@@ -75,3 +75,56 @@ pub fn group_ids(kind: u8, p: &[u8], n: usize, mn: u64, mx: u64, gid: &mut [u8],
 pub fn group_ids_win(kind: u8, c: Coc, n: usize, mn: u64, mx: u64, gid: &mut [u8], first: &mut [usize]) -> usize {
     unimplemented!()
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::key::SK_KEY;
+    // expected values: /data/tmp/qrs/B4/drv.c (sort.c's group_find over the slot table it prints), run
+    const K: [u64; 8] = [30, 10, 30, 20, 10, 1_000_000_007, 20, 1_000_000_007];
+    const IDS: [usize; 8] = [0, 1, 0, 2, 1, 3, 2, 3];
+    fn keys() -> Vec<u8> { K.iter().flat_map(|k| k.to_ne_bytes()).collect() }
+    fn hashed() -> Table<'static> {
+        Table::Hashed { slot: Cow::Owned(vec![4, 2, 3, 0, 1, 0, 0, 0]), gkey: Cow::Owned(vec![30, 10, 20, 1_000_000_007]),
+                        sh: 61 }
+    }
+    fn ids(g: &[u8], lane: u32) -> Vec<usize> {
+        g.chunks_exact(lane as usize / 8).map(|c| match lane {
+            8 => c[0] as usize, 16 => u16::from_ne_bytes(c.try_into().unwrap()) as usize,
+            32 => u32::from_ne_bytes(c.try_into().unwrap()) as usize, _ => u64::from_ne_bytes(c.try_into().unwrap()) as usize,
+        }).collect()
+    }
+    #[test] fn hashed_every_lane() {
+        for lane in [8u32, 16, 32, 64] {
+            let mut g = vec![0xffu8; 8 * lane as usize / 8];
+            assert!(fill(SK_KEY, &keys(), 8, &hashed(), lane, &mut g));
+            assert_eq!(ids(&g, lane), IDS, "lane {lane}");
+        }
+    }
+    #[test] fn direct_every_lane() {
+        let mut tab = vec![0u32; 21];
+        tab[20] = 1; tab[0] = 2; tab[10] = 3;
+        let t = Table::Direct { tab: Cow::Owned(tab), mn: 10 };
+        let k: Vec<u8> = [30u64, 10, 30, 20, 10].iter().flat_map(|k| k.to_ne_bytes()).collect();
+        for lane in [8u32, 16, 32, 64] {
+            let mut g = vec![0xffu8; 5 * lane as usize / 8];
+            assert!(fill(SK_KEY, &k, 5, &t, lane, &mut g));
+            assert_eq!(ids(&g, lane), [0, 1, 0, 2, 1], "lane {lane}");
+        }
+    }
+    #[test] fn refuses() {
+        let mut g = vec![0u8; 64];
+        assert!(!fill(SK_KEY, &keys(), 8, &hashed(), 24, &mut g));       // lane
+        assert!(!fill(SK_KEY, &keys(), 8, &hashed(), 64, &mut g[..63])); // gid short
+        assert!(!fill(99, &keys(), 8, &hashed(), 8, &mut g));            // unknown kind
+        assert!(!fill(crate::key::SK_WIN, &keys(), 8, &hashed(), 8, &mut g));
+    }
+    #[test] fn many_rows_split_across_workers() {
+        let n = 300_000usize;
+        let k: Vec<u8> = (0..n as u64).flat_map(|i| (i % 5).to_ne_bytes()).collect();
+        let t = Table::Direct { tab: Cow::Owned((1..=5).collect()), mn: 0 };
+        let mut g = vec![0u8; n];
+        assert!(fill(SK_KEY, &k, n, &t, 8, &mut g));
+        assert!(g.iter().enumerate().all(|(i, &b)| b as usize == i % 5));
+    }
+}
