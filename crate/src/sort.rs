@@ -7,7 +7,7 @@ use alloc::vec::Vec;
 
 use crate::c::Runner;
 use crate::coc::Coc;
-use crate::sym::Syms;
+use crate::sym::{sym_cmp, sym_hash, sym_msort, Syms};
 
 /// sort.c:351 `ksrc`: the keys of a dense payload `p` or of an encoded column `c`, `n` of them.
 #[derive(Clone, Copy)]
@@ -117,19 +117,149 @@ pub fn id_longs(n: usize, w: u32, ids: &[u8], out: &mut [i64]) { unimplemented!(
 
 // ---- A25: sort.c:2814-2990 ----
 /// sort.c:2884 `symgroups`: the distinct symbols' keys, first indices, group ids and counts.
+/// `dk` is empty exactly when a symbol did not pack; `gid`, `cnt` are empty unless `want` asked for them.
 pub struct SymGroups { pub dk: Vec<u64>, pub first: Vec<usize>, pub ng: usize, pub gid: Vec<u32>, pub cnt: Vec<u32> }
-/// sort.c:2814 `sym_whole`: the column packs into 8-byte keys whole.
-pub fn sym_whole(s: &Syms, n: usize) -> bool { unimplemented!("A25: sym_whole") }
+/// sym.h:153 `SYM_KEY_BLOCK`: a block is checked, then packed while it is in cache.
+const SYM_KEY_BLOCK: usize = 4096;
+/// sym.h `SYM_PAD`: the mask keeping a symbol's first `len` bytes of an 8-byte big-endian load.
+fn sym_pad(len: usize) -> u64 { if len == 0 { 0 } else { !0u64 << (8 * (8 - len)) } }
+/// The packed key of symbol `i` (len <= 8); `whole` says an 8-byte load at its start stays inside the blob.
+fn sym_key(s: &Syms, i: usize, whole: bool) -> u64 {
+    let (lo, hi) = (s.off(i), s.off(i + 1));
+    let len = hi - lo - 1;
+    if len == 0 { 0 } else if whole { u64::from_be_bytes(s.blob[lo..lo + 8].try_into().unwrap()) & sym_pad(len) }
+    else { s.blob[lo..lo + len].iter().fold(0, |w, &b| w << 8 | b as u64) << (8 * (8 - len)) }
+}
+/// sort.c:2814 `sym_whole`: the column packs into 8-byte keys whole, i.e. an 8-byte load at the start of any of the
+/// first `n` symbols stays inside the blob (C answers how many symbols it holds for; the last is the farthest).
+pub fn sym_whole(s: &Syms, n: usize) -> bool { n == 0 || (s.off(n - 1) + 8 <= s.blob.len()) }
 /// sort.c:2829 `sym_dedup`: group ids and counts of the sorted symbols `v`; answers the group count.
-pub fn sym_dedup(v: &[&[u8]], gid: &mut [u32], cnt: &mut [u32], first: &mut [usize]) -> usize { unimplemented!("A25: sym_dedup") }
+/// An empty `gid` (or `cnt`) is C's NULL.
+pub fn sym_dedup(v: &[&[u8]], gid: &mut [u32], cnt: &mut [u32], first: &mut [usize]) -> usize {
+    let n = v.len();
+    if n == 0 { return 0 }
+    let (cap, mut ng) = (crate::group::cap_for(n), 0);
+    let mut tab = alloc::vec![0usize; cap];
+    for i in 0..n {
+        let mut s = (sym_hash(v[i]) as usize) & (cap - 1);
+        while tab[s] != 0 && sym_cmp(v[first[tab[s] - 1]], v[i]).is_ne() { s = (s + 1) & (cap - 1) }
+        if tab[s] == 0 { ng += 1; tab[s] = ng; first[ng - 1] = i; if !cnt.is_empty() { cnt[ng - 1] = 0 } }
+        if !gid.is_empty() { gid[i] = (tab[s] - 1) as u32; if !cnt.is_empty() { cnt[tab[s] - 1] += 1 } }
+    }
+    ng
+}
 /// sort.c:2848 `sym_heads`: each group's first symbol.
-pub fn sym_heads<'a>(s: &Syms<'a>, first: &[usize]) -> Vec<&'a [u8]> { unimplemented!("A25: sym_heads") }
-/// sort.c:2886 `sym_group`: `want` says which fields are filled (C's bit flags).
-pub fn sym_group(s: &Syms, n: usize, want: i32) -> SymGroups { unimplemented!("A25: sym_group") }
+pub fn sym_heads<'a>(s: &Syms<'a>, first: &[usize]) -> Vec<&'a [u8]> { first.iter().map(|&i| s.at(i)).collect() }
+/// sort.c:2886 `sym_group`: `want` says which fields are filled (C's bit flags: 0 firsts, 1 gids, 2 gids and counts).
+pub fn sym_group(s: &Syms, n: usize, want: i32) -> SymGroups {
+    if want != 0 && n > u32::MAX as usize { panic!("qlean: group cuts at most {} rows into buckets, not {n}", u32::MAX) }
+    let mut gid = if want != 0 { alloc::vec![0u32; n] } else { Vec::new() };
+    let mut cnt = if want == 2 { alloc::vec![0u32; n] } else { Vec::new() };
+    let (cap, mut first, mut dk) = (crate::group::cap_for(n), alloc::vec![0usize; n], Vec::<u64>::new());
+    let (sh, mut tab, mut packed) = (64 - cap.trailing_zeros(), alloc::vec![0usize; cap], true);
+    for at in (0..n).step_by(SYM_KEY_BLOCK) {
+        let blk = (n - at).min(SYM_KEY_BLOCK);
+        let b = Syms { blob: s.blob, offs: &s.offs[at..] };
+        if !b.packs(blk) { packed = false; break }
+        let whole = sym_whole(&b, blk);
+        for i in at..at + blk {
+            let key = sym_key(s, i, whole);
+            let mut t = (key.wrapping_mul(crate::group::PHI64) >> sh) as usize;
+            while tab[t] != 0 && dk[tab[t] - 1] != key { t = (t + 1) & (cap - 1) }
+            if tab[t] == 0 { dk.push(key); tab[t] = dk.len(); first[dk.len() - 1] = i; if want == 2 { cnt[dk.len() - 1] = 0 } }
+            let g = tab[t] - 1;
+            if want != 0 { gid[i] = g as u32; if want == 2 { cnt[g] += 1 } }
+        }
+    }
+    let ng = if packed { dk.len() } else {
+        dk = Vec::new();
+        sym_dedup(&s.slices(n), &mut gid, &mut cnt, &mut first)
+    };
+    first.truncate(ng);
+    cnt.truncate(ng);
+    SymGroups { dk, first, ng, gid, cnt }
+}
 /// sort.c:2934 `sym_ranks`: each symbol's rank in q's symbol order.
-pub fn sym_ranks(s: &Syms, n: usize) -> Vec<u64> { unimplemented!("A25: sym_ranks") }
+pub fn sym_ranks(s: &Syms, n: usize) -> Vec<u64> {
+    let g = sym_group(s, n, 1);
+    let mut ord: Vec<usize> = (0..g.ng).collect();
+    if !g.dk.is_empty() { ord.sort_unstable_by_key(|&t| g.dk[t]) } // keys are distinct, so unstable is the stable order
+    else { sym_msort(&sym_heads(s, &g.first), &mut ord, &mut alloc::vec![0usize; g.ng]) }
+    let mut rank = alloc::vec![0usize; g.ng];
+    for (t, &o) in ord.iter().enumerate() { rank[o] = t }
+    g.gid.iter().map(|&x| rank[x as usize] as u64).collect()
+}
 /// sort.c:2964 `qlean_sort_grade_syms` past the unboxing.
-pub fn grade_syms(run: Runner, desc: bool, s: &Syms, out: &mut [i64]) { unimplemented!("A25: qlean_sort_grade_syms") }
+/// Ranks are dense in `0 .. ng`, so the grade is one stable counting pass (`grade_keys` would pick `grade_count`).
+pub fn grade_syms(_run: Runner, desc: bool, s: &Syms, out: &mut [i64]) {
+    let n = s.count();
+    if n == 0 { return }
+    let k = sym_ranks(s, n);
+    let ng = k.iter().max().map_or(0, |&m| m as usize + 1);
+    let (mut c, mut at, mut acc) = (alloc::vec![0usize; ng], alloc::vec![0usize; ng], 0);
+    for &r in &k { c[r as usize] += 1 }
+    if desc { for r in (0..ng).rev() { at[r] = acc; acc += c[r] } } else { for r in 0..ng { at[r] = acc; acc += c[r] } }
+    for (i, &r) in k.iter().enumerate() { out[at[r as usize]] = i as i64; at[r as usize] += 1 }
+}
+
+#[cfg(test)]
+mod a25_tests {
+    use super::*;
+    use alloc::vec;
+    /// `offs` for the symbols `ss`, each NUL-terminated in the blob, boxed; `pad` extra blob bytes make the 8-byte load whole
+    fn col(ss: &[Vec<u8>], pad: usize) -> (Vec<u8>, Vec<usize>) {
+        let (mut b, mut o) = (vec![], vec![1]);
+        for s in ss { b.extend_from_slice(s); b.push(0); o.push(b.len() << 1 | 1) }
+        b.extend(core::iter::repeat(7).take(pad));
+        (b, o)
+    }
+    fn rnd(x: &mut u64) -> u64 { *x ^= *x << 13; *x ^= *x >> 7; *x ^= *x << 17; *x }
+    /// The spec: `0 .. n-1` ordered by `sym_cmp`, ties in original order (descending: by key, ties still original).
+    fn oracle(ss: &[Vec<u8>], desc: bool) -> Vec<i64> {
+        let mut v: Vec<i64> = (0..ss.len() as i64).collect();
+        v.sort_by(|&a, &b| { let c = ss[a as usize].cmp(&ss[b as usize]); if desc { c.reverse() } else { c } });
+        v
+    }
+    #[test] fn grade_matches_oracle() {
+        let mut x = 0x9e3779b97f4a7c15u64;
+        let mut cases = 0;
+        for round in 0..3000 {
+            let n = (rnd(&mut x) % 40) as usize + (round % 7 == 0) as usize * 5000;
+            let (maxlen, alpha) = [(8, 3), (3, 2), (12, 4), (8, 200), (1, 255)][round % 5];
+            let ss: Vec<Vec<u8>> = (0..n).map(|_| {
+                let l = (rnd(&mut x) % (maxlen + 1)) as usize;
+                (0..l).map(|_| 1 + (rnd(&mut x) % alpha) as u8).collect()
+            }).collect();
+            for pad in [0, 9] {
+                let (b, o) = col(&ss, pad);
+                let s = Syms { blob: &b, offs: &o };
+                for desc in [false, true] {
+                    let mut out = vec![0i64; n];
+                    grade_syms(crate::c::qlean_run_c, desc, &s, &mut out);
+                    assert_eq!(out, oracle(&ss, desc), "n {n} desc {desc} pad {pad}");
+                    cases += 1;
+                }
+            }
+        }
+        assert_eq!(cases, 12000);
+    }
+    #[test] fn group_fields() {
+        let ss: Vec<Vec<u8>> = ["b", "a", "b", "", "a", "b"].iter().map(|s| s.as_bytes().to_vec()).collect();
+        let (b, o) = col(&ss, 0);
+        let s = Syms { blob: &b, offs: &o };
+        let g = sym_group(&s, 6, 2);
+        assert_eq!((g.ng, g.first.clone(), g.gid.clone(), g.cnt.clone()), (3, vec![0, 1, 3], vec![0, 1, 0, 2, 1, 0], vec![3, 2, 1]));
+        assert_eq!(g.dk.len(), 3);
+        assert_eq!(sym_group(&s, 6, 0).first, vec![0, 1, 3]);
+        let long: Vec<Vec<u8>> = ["abcdefghij", "a", "abcdefghij"].iter().map(|s| s.as_bytes().to_vec()).collect();
+        let (b, o) = col(&long, 0);
+        let g = sym_group(&Syms { blob: &b, offs: &o }, 3, 2);
+        assert_eq!((g.ng, g.dk.len(), g.first, g.gid, g.cnt), (2, 0, vec![0, 1], vec![0, 1, 0], vec![2, 1]));
+        assert_eq!(sym_ranks(&Syms { blob: &b, offs: &o }, 3), vec![1, 0, 1]);
+        let (b, o) = col(&long[1..2], 0);
+        assert!(!sym_whole(&Syms { blob: &b, offs: &o }, 1));
+    }
+}
 
 // ---- A26: sort.c:3060-3460 ----
 /// sort.c:3060 `id_rank`: id `i`'s rank among the dictionary keys `dk`.
