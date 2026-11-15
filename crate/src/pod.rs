@@ -1,4 +1,4 @@
-#![allow(unused_variables)] // scaffold: the task that fills this module removes it
+#![allow(unused_variables)] // scaffold: B8 fills cast_mut and removes this
 //! The one checked reinterpretation of bytes as a slice of numbers.
 
 pub trait Pod: Copy {}
@@ -21,5 +21,9 @@ impl Lane for i32 { fn wrap(v: u64) -> Self { v as i32 } }
 impl Lane for i64 { fn wrap(v: u64) -> Self { v as i64 } }
 
 /// None when `b` is misaligned for `T` or `b.len() % size_of::<T>() != 0`.
-pub fn cast<T: Pod>(b: &[u8]) -> Option<&[T]> { unimplemented!() }
+pub fn cast<T: Pod>(b: &[u8]) -> Option<&[T]> {
+    // Safety: every `Pod` is a plain number type, valid for any bit pattern; `align_to` yields an aligned middle
+    let (pre, mid, post) = unsafe { b.align_to::<T>() };
+    (pre.is_empty() && post.is_empty()).then_some(mid)
+}
 pub fn cast_mut<T: Pod>(b: &mut [u8]) -> Option<&mut [T]> { unimplemented!() }
