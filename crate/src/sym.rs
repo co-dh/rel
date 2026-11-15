@@ -19,7 +19,8 @@ impl<'a> Syms<'a> {
     /// sym.h:40 `sym_at`
     pub fn at(&self, i: usize) -> &'a [u8] { {
         let (lo, hi) = (self.off(i), self.off(i + 1));
-        &self.blob[lo..lo + hi.saturating_sub(lo + 1)]
+        let n = hi.saturating_sub(lo + 1); // an empty symbol never reads the blob, as C's `sym_at` does not (`dof` may point past an empty dictionary)
+        if n == 0 { &self.blob[..0] } else { &self.blob[lo..lo + n] }
     } }
     /// sym.h:47 `sym_count`: the symbol count, `offs.len() - 1` (0 for an empty `offs`).
     pub fn count(&self) -> usize { self.offs.len().saturating_sub(1) }
