@@ -102,13 +102,13 @@ pub unsafe extern "C" fn qrs_group_fill(kind: u8, p: *const u8, n: usize, mn: u6
     group::fill(unsafe { core::mem::transmute::<unsafe extern "C" fn(), c::Runner>(run) }, kind, b, n, &t, lane, unsafe { sl_mut(gid, n.saturating_mul(lane as usize) / 8) }) as c_int
 }
 
-/// `groupIds` of a dense column: `gid` is `gcap` bytes, `first` `n` entries. Answers `ng`, or `SIZE_MAX` for
+/// `groupIds` of a dense column: `gid` is `gcap` bytes, `first` `n` entries, `run` C's `qlean_run_c` as in `qrs_group_fill`. Answers `ng`, or `SIZE_MAX` for
 /// `SK_WIN`, an unknown kind.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn qrs_group_ids(kind: u8, p: *const u8, n: usize, mn: u64, mx: u64, gid: *mut u8, gcap: usize,
-                                       first: *mut usize) -> usize {
+                                       first: *mut usize, run: unsafe extern "C" fn()) -> usize {
     let Some(b) = (unsafe { keys(kind, p, n) }) else { return usize::MAX };
-    group::group_ids(kind, b, n, mn, mx, unsafe { sl_mut(gid, gcap) }, unsafe { sl_mut(first, n) }).unwrap_or(usize::MAX)
+    group::group_ids(unsafe { core::mem::transmute::<unsafe extern "C" fn(), c::Runner>(run) }, kind, b, n, mn, mx, unsafe { sl_mut(gid, gcap) }, unsafe { sl_mut(first, n) }).unwrap_or(usize::MAX)
 }
 
 /// `groupIds` of an encoded column (`qlean_sort_group_ids_foR`): as `qrs_group_ids`, `mn`/`mx` from

@@ -1,14 +1,25 @@
 #![forbid(unsafe_code)]
-#![allow(unused_variables)] // scaffold: number, group_ids, group_ids_win still unimplemented (B5, B11)
+#![allow(unused_variables)] // scaffold: group_ids_win still unimplemented (B11)
 //! `dedup`'s `groupIds` arm (sort.c:2025, `gid` given, no `cnt`) and `ids_run` (sort.c:2006): number the groups on
 //! one thread, then write each element's group id threaded at the lane `ng` fixes.
 use alloc::borrow::Cow;
+use alloc::vec;
+use alloc::vec::Vec;
 
 use crate::c::{run_map, Runner};
 use crate::coc::Coc;
+use crate::ids::id_width;
+use crate::simd::prefetch;
 use crate::key::{each, Keys, Pass};
 
 pub const PHI64: u64 = 0x9e3779b97f4a7c15;
+/// How many elements ahead the hashed numbering starts a slot's cache line (sort.c's `group_prefetch` users). The
+/// sweep is flat -- 4.74 ms unprefetched at a million distinct longs, 4.03 at 32, 3.98 at 64 -- so 32 is where it
+/// stops paying.
+pub const SK_AHEAD: usize = 32;
+
+/// `cap_for` (coc.h:387): the least power of two, at least 8, holding `n` keys at load 1/2.
+pub fn cap_for(n: usize) -> usize { n.saturating_mul(2).next_power_of_two().max(8) }
 
 /// `group_find` (sort.c:1985): a key the numbering has already put in the table.
 fn find(slot: &[usize], gkey: &[u64], sh: u32, key: u64) -> usize {
@@ -60,7 +71,48 @@ pub enum Table<'a> {
 /// The numbering pass: groups in order of first occurrence, `first[g]` its first element; answers `ng` and the
 /// table. None = an unknown kind or a misaligned `p`, which C never produces.
 pub fn number(kind: u8, p: &[u8], n: usize, mn: u64, mx: u64, first: &mut [usize]) -> Option<(usize, Table<'static>)> {
-    unimplemented!()
+    if first.len() < n { return None }
+    each(kind, p, n, Number { mn, mx, first })
+}
+
+struct Number<'f> { mn: u64, mx: u64, first: &'f mut [usize] }
+impl Pass for Number<'_> {
+    type Out = (usize, Table<'static>);
+    fn run<K: Keys>(self, mut k: K, n: usize) -> Self::Out {
+        let (mn, first, span) = (self.mn, self.first, self.mx.wrapping_sub(self.mn));
+        // a table of at most four slots an element, and group numbers that fit one
+        if span < (n as u64).saturating_mul(4) + 1024 && span != u64::MAX && n <= u32::MAX as usize {
+            let slots = span as usize + 1;
+            let mut tab = vec![0u32; slots];
+            let mut ng = 0;
+            for i in 0..n {
+                let d = (k.at(i) - mn) as usize;
+                if tab[d] == 0 {
+                    ng += 1;
+                    tab[d] = ng as u32;
+                    first[ng - 1] = i;
+                    if ng == slots { break } // every slot filled: the rest cannot name a new group
+                }
+            }
+            return (ng, Table::Direct { tab: Cow::Owned(tab), mn });
+        }
+        let cap = cap_for(n);
+        let (mask, sh) = (cap - 1, 64 - cap.trailing_zeros());
+        let mut slot = vec![0usize; cap];
+        let mut gkey: Vec<u64> = Vec::with_capacity(n);
+        for i in 0..n {
+            if i + SK_AHEAD < n { prefetch(&slot[(k.at(i + SK_AHEAD).wrapping_mul(PHI64) >> sh) as usize]) }
+            let key = k.at(i);
+            let mut s = (key.wrapping_mul(PHI64) >> sh) as usize;
+            while slot[s] != 0 && gkey[slot[s] - 1] != key { s = (s + 1) & mask }
+            if slot[s] == 0 {
+                gkey.push(key);
+                slot[s] = gkey.len();
+                first[gkey.len() - 1] = i;
+            }
+        }
+        (gkey.len(), Table::Hashed { slot: Cow::Owned(slot), gkey: Cow::Owned(gkey), sh })
+    }
 }
 
 /// `ids_run`: element `i`'s group into `gid` at `lane` (8, 16, 32 or 64) bits, threaded by `c::run_map`. False =
@@ -71,9 +123,11 @@ pub fn fill(run: Runner, kind: u8, p: &[u8], n: usize, t: &Table, lane: u32, gid
 }
 
 /// `number` then `fill` at `max(8, id_width(ng))`: answers `ng`.
-pub fn group_ids(kind: u8, p: &[u8], n: usize, mn: u64, mx: u64, gid: &mut [u8], first: &mut [usize])
+pub fn group_ids(run: Runner, kind: u8, p: &[u8], n: usize, mn: u64, mx: u64, gid: &mut [u8], first: &mut [usize])
     -> Option<usize> {
-    unimplemented!()
+    if n == 0 { return Some(0) }
+    let (ng, t) = number(kind, p, n, mn, mx, first)?;
+    fill(run, kind, p, n, &t, id_width(ng).max(8), gid).then_some(ng)
 }
 
 /// `group_ids` over an encoded column's keys, read through `kwin::Kwin` (`qlean_sort_group_ids_foR`, sort.c:2685);
@@ -117,6 +171,25 @@ mod tests {
             assert!(fill(crate::c::qlean_run_c, SK_KEY, &k, 5, &t, lane, &mut g));
             assert_eq!(ids(&g, lane), [0, 1, 0, 2, 1], "lane {lane}");
         }
+    }
+    #[test] fn number_hashed_matches_c() {
+        let mut first = [9usize; 8];
+        let (ng, t) = number(SK_KEY, &keys(), 8, 10, 1_000_000_007, &mut first).unwrap();
+        assert_eq!((ng, &first[..4]), (4, &[0, 1, 3, 5][..]));
+        let Table::Hashed { slot, gkey, sh } = t else { panic!("range 1e9 is hashed") };
+        assert_eq!((&slot[..], &gkey[..], sh), (&[0, 4, 2, 0, 0, 3, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0][..], &[30, 10, 20, 1_000_000_007][..], 60));
+    }
+    #[test] fn number_direct_and_group_ids() {
+        let k: Vec<u8> = [30u64, 10, 30, 20, 10].iter().flat_map(|k| k.to_ne_bytes()).collect();
+        let mut first = [0usize; 5];
+        let (ng, t) = number(SK_KEY, &k, 5, 10, 30, &mut first).unwrap();
+        assert!(matches!(t, Table::Direct { .. }));
+        assert_eq!((ng, &first[..3]), (3, &[0, 1, 3][..]));
+        let mut g = [0xffu8; 5];
+        assert_eq!(group_ids(crate::c::qlean_run_c, SK_KEY, &k, 5, 10, 30, &mut g, &mut first), Some(3));
+        assert_eq!(g, [0, 1, 0, 2, 1]);
+        assert_eq!(group_ids(crate::c::qlean_run_c, SK_KEY, &[], 0, 0, 0, &mut [], &mut []), Some(0));
+        assert_eq!(group_ids(crate::c::qlean_run_c, crate::key::SK_WIN, &k, 5, 10, 30, &mut g, &mut first), None);
     }
     #[test] fn refuses() {
         let mut g = vec![0u8; 64];
