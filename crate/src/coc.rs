@@ -1,0 +1,36 @@
+#![forbid(unsafe_code)]
+//! The read views of coc.h's `coc`: metadata, patch list, and the whole column.
+
+/// `coc_meta_view`: the 33*mblk + 16 byte buffer.
+#[derive(Clone, Copy)]
+pub struct Meta<'a> {
+    pub base: &'a [i64], pub maxv: &'a [i64], pub off: &'a [u64], pub bsum: &'a [i64], pub width: &'a [u8],
+    /// one slot each, read by value
+    pub sumnul: i64, pub sumn: u64,
+    /// slices are mblk long; nblk <= mblk is what n reaches
+    pub n: usize, pub nblk: usize, pub mblk: usize,
+}
+/// nexc = pos.len()
+#[derive(Clone, Copy)]
+pub struct Exc<'a> { pub off: &'a [u32], pub pos: &'a [u16], pub raw: &'a [u8], pub esz: usize }
+#[derive(Clone, Copy)]
+pub struct Coc<'a> { pub meta: Meta<'a>, pub pack: &'a [u8], pub exc: Option<Exc<'a>>, pub fdelta: Option<&'a [u64]> }
+
+impl<'a> Meta<'a> {
+    /// coc.h:133; None = misaligned buffer
+    pub fn new(m: &'a [u8], n: usize) -> Option<Self> { unimplemented!() }
+    /// coc.h:222
+    pub fn res_end(&self) -> usize { unimplemented!() }
+    /// coc.h:233
+    pub fn grid(&self, n: usize) -> bool { unimplemented!() }
+}
+impl<'a> Coc<'a> {
+    /// coc.h:245; None where C aborts
+    pub fn attach(meta: Meta<'a>, pack: &'a [u8]) -> Option<Self> { unimplemented!() }
+    /// coc.h:234
+    pub fn std(&self, n: usize) -> bool { unimplemented!() }
+    /// coc.h:155; off stays absolute into pack
+    pub fn blocks(&self, b0: usize, b1: usize) -> Coc<'a> { unimplemented!() }
+    /// coc.h:217
+    pub fn frame(&self, b: usize) -> u64 { unimplemented!() }
+}
