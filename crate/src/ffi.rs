@@ -353,7 +353,8 @@ unsafe fn syms<'a>(blob: *const u8, bytes: usize, offs: *const usize, n: usize) 
 /// A2: coc.h:690 `res_pack`: the vector pack where the build has it, the scalar one elsewhere.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn qrs_res_pack(v: *const u64, w: u8, nb: usize, dst: *mut u8) {
-    unsafe { simd::res_pack(sl(v, BLK), w, nb, sl_mut(dst, BLK * 8)) }
+    // the C callers pass a block of the pack, `BLK * w / 8` bytes, not `BLK * 8`; the pack writes `⌈nb * w / 8⌉` of them
+    unsafe { simd::res_pack(sl(v, BLK), w, nb, sl_mut(dst, (nb * w as usize).div_ceil(8))) }
 }
 /// A3: coc.h:860 `coc_sum`.
 #[unsafe(no_mangle)]
@@ -401,7 +402,9 @@ pub unsafe extern "C" fn qrs_bit_rows(run: unsafe extern "C" fn(), all: c_int, w
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn qrs_scan_run(op: c_int, kind: c_int, p: *const u8, out: *mut u8, bytes: usize, n: usize,
                                       carry: *mut u8, resume: c_int) {
-    unsafe { scan::scan_run(op, kind, sl(p, bytes), sl_mut(out, bytes), n, sl_mut(carry, 16), resume != 0) }
+    // `bytes` is the input's (scan.c:490 `lean_sarray_size(a)`); the answer is `n * sc_out_width` bytes (scan.c:496), and
+    // `carry` is `&acc`, an `int64_t` or `uint64_t` (scan.c:517, 570), or null
+    unsafe { scan::scan_run(op, kind, sl(p, bytes), sl_mut(out, n * scan::sc_out_width(op, kind)), n, sl_mut(carry, 8), resume != 0) }
 }
 /// A15: coc.c `coc_decode_run`, 8-byte lanes.
 #[unsafe(no_mangle)]
@@ -478,12 +481,14 @@ pub unsafe extern "C" fn qrs_order_enc(run: unsafe extern "C" fn(), kind: u8, de
 pub unsafe extern "C" fn qrs_pair_ids_narrow(run: unsafe extern "C" fn(), wa: u32, wb: u32, m: usize, pa: *const u8,
                                              pb: *const u8, gid: *mut u8, gbytes: usize, first: *mut usize) -> usize {
     unsafe { sort::pair_ids_narrow(rn(run), wa, wb, m, sl(pa, ids::ids_bytes(m, wa)), sl(pb, ids::ids_bytes(m, wb)),
-                                   sl_mut(gid, gbytes), sl_mut(first, m)) }
+                                   // sort.c:3386-3391: `first` is `ids_slots(1 << wc, m)`'s `min(m, (1 << wc) + 1)`
+                                   sl_mut(gid, gbytes), sl_mut(first, m.min((1usize << ids::id_width(1 << (wa + wb))) + 1))) }
 }
 /// A24: sort.c `qlean_sort_rank_slices` past the unboxing.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn qrs_rank_slices(w: usize, v: *const u8, bytes: usize, o: *const i64, ng: usize, out: *mut i64) {
-    unsafe { sort::rank_slices(w, sl(v, bytes), sl(o, ng + 1), sl_mut(out, bytes / w.max(1))) }
+    // sort.c:2487: the answer is one id per group, `g * 8` bytes with `g = ng`
+    unsafe { sort::rank_slices(w, sl(v, bytes), sl(o, ng + 1), sl_mut(out, ng)) }
 }
 /// A25: sort.c `qlean_sort_grade_syms` past the unboxing.
 #[unsafe(no_mangle)]
@@ -529,12 +534,15 @@ pub unsafe extern "C" fn qrs_bin(run: unsafe extern "C" fn(), w: usize, is_float
 /// A34: structural.c `reverse_foR_run`.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn qrs_reverse_enc(run: unsafe extern "C" fn(), c: *const CCoc, pack: *mut u8) {
-    unsafe { structural::reverse_enc(rn(run), &(*c).view(), sl_mut(pack, (*c).packbytes)) }
+    // structural.c:254-257: the answer's pack is the residuals only, `Σ BLK * width / 8`; the source's `packbytes` may
+    // be longer (a patch list) or shorter
+    unsafe { let v = (*c).view(); structural::reverse_enc(rn(run), &v, sl_mut(pack, v.meta.width.iter().map(|&w| BLK * w as usize / 8).sum())) }
 }
 /// A36: structural.c `put_res`.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn qrs_put_res(p: *mut u8, w: u8, lo: usize, v: *const i64, n: usize, base: u64) {
-    unsafe { structural::put_res(sl_mut(p, BLK * 8), w, lo, sl(v, n), base) }
+    // structural.c:760 passes block `b` of a pack: `BLK * w / 8` bytes, not `BLK * 8`
+    unsafe { structural::put_res(sl_mut(p, BLK * w as usize / 8), w, lo, sl(v, n), base) }
 }
 /// A37: structural.c `gather_run`.
 #[unsafe(no_mangle)]
@@ -588,8 +596,10 @@ pub unsafe extern "C" fn qrs_til(run: unsafe extern "C" fn(), out: *mut i64, n: 
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn qrs_scatter(wb: usize, dst: *mut u8, nd: usize, idx: *const i64, n: usize, src: *const u8,
                                      soff: usize, bcast: c_int) -> c_int {
-    let ns = if bcast != 0 { 1 } else { soff + n };
-    unsafe { structural::scatter(wb, sl_mut(dst, wb * nd), sl(idx, n), sl(src, wb * ns), soff, bcast != 0) as c_int }
+    // structural.c:2995-3021: `wb` is in BITS (`wb >= 8` takes `wb / 8` bytes, below 8 it packs `8 / wb` to a byte); the
+    // source must hold element `soff` (broadcast) or `soff + n - 1`
+    let ns = soff + if bcast != 0 { 1 } else { n };
+    unsafe { structural::scatter(wb, sl_mut(dst, (wb * nd).div_ceil(8)), sl(idx, n), sl(src, (wb * ns).div_ceil(8)), soff, bcast != 0) as c_int }
 }
 /// A43: elementwise.c `ew_val_run`.
 #[unsafe(no_mangle)]
@@ -601,7 +611,8 @@ pub unsafe extern "C" fn qrs_ew_val(run: unsafe extern "C" fn(), op: u8, cls: u8
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn qrs_ew_cmp(run: unsafe extern "C" fn(), op: u8, cls: u8, shape: u8, a: *const u8, abytes: usize,
                                     b: *const u8, bbytes: usize, n: usize, out: *mut u8) {
-    unsafe { ew::cmp(rn(run), op, cls, shape, sl(a, abytes), sl(b, bbytes), n, sl_mut(out, n)) }
+    // elementwise.c:857: the answer is a bit vector, `⌈n / 8⌉` bytes
+    unsafe { ew::cmp(rn(run), op, cls, shape, sl(a, abytes), sl(b, bbytes), n, sl_mut(out, n.div_ceil(8))) }
 }
 /// A44: elementwise.c `ew_mon_run`.
 #[unsafe(no_mangle)]
