@@ -1,7 +1,6 @@
 #![forbid(unsafe_code)]
 //! sort.c:212-334: an encoded column's keys through a window of two blocks, each decoded on first touch, and the
-//! column's key range from its metadata. The ALP arm (`kwin.f`, sort.c:2618) is column (a)'s, task A5: `alp` is
-//! the `Option` it will fill, and is `None` until then.
+//! column's key range from its metadata. The ALP arm (`kwin.f`, sort.c:2618) is `alp`, `None` for an integral column.
 use alloc::boxed::Box;
 
 use crate::BLK;
@@ -12,8 +11,7 @@ use crate::key::{Keys, SK_C8, SK_F32, SK_F64, SK_I16, SK_I32, SK_I64, SK_U8};
 /// `kwin` (sort.c:270): keys `lo .. lo + len` are in `key`; block `b` is in slot `b & 1`.
 pub struct Kwin<'a> {
     kind: u8, c: Coc<'a>,
-    /// the ALP arm, `kwin.f`: `kwin_blk` and `range_foR` branch on it (A5)
-    #[allow(dead_code)] // scaffold: A5 removes it
+    /// the ALP arm, `kwin.f`: `kwin_blk` and `range_foR` branch on it
     alp: Option<Cocf<'a>>,
      lo: usize, len: usize, key: Box<[u64; 2 * BLK]> }
 
@@ -40,7 +38,10 @@ impl<'a> Kwin<'a> {
         let at = b * BLK;
         let cnt = (self.c.meta.n - at).min(BLK);
         let s = (b & 1) * BLK;
-        keys_blk(self.kind, &self.c, b, &mut self.key[s..s + cnt]);
+        match &self.alp {
+            Some(f) => keys_blk_alp(f, b, &mut self.key[s..s + cnt]),
+            None => keys_blk(self.kind, &self.c, b, &mut self.key[s..s + cnt]),
+        }
         cnt
     }
 
@@ -62,7 +63,7 @@ impl Keys for Kwin<'_> {
         if i.wrapping_sub(self.lo) >= self.len { self.miss(i) }
         self.key[i & (2 * BLK - 1)]
     }
-    fn fork(&self) -> Self { Kwin::new(self.kind, self.c) }
+    fn fork(&self) -> Self { self.alp.map_or_else(|| Kwin::new(self.kind, self.c), |f| Kwin::with_alp(self.kind, f)) }
 }
 
 /// sort.c:212: the bit `keys_of` flips at `kind`'s width.
@@ -121,12 +122,20 @@ mod tests {
     }
 }
 
-// ---- A5: sort.c:281 `keys_blk_alp`, the ALP arm of `kwin` ----
-/// sort.c:281 `keys_blk_alp`: block `b` of `f` as sort keys into `k`.
-#[allow(unused_variables)] // scaffold: A5 removes it
-pub fn keys_blk_alp(f: &Cocf, b: usize, k: &mut [u64]) { unimplemented!("A5: keys_blk_alp") }
+// ---- sort.c:281 `keys_blk_alp`, the ALP arm of `kwin` ----
+/// sort.c:281 `keys_blk_alp`: block `b` of `f`, `k.len()` elements restored and each ranked, as sort keys into `k`;
+/// `rank32`/`rank64` are the key at the two float kinds whatever holds the payload.
+pub fn keys_blk_alp(f: &Cocf, b: usize, k: &mut [u64]) {
+    let mut v = [0u64; BLK];
+    let v = crate::pod::bytes_mut(&mut v);
+    f.load_blk(b, k.len(), v);
+    if f.f32 { for (x, e) in k.iter_mut().zip(v.chunks_exact(4)) { *x = crate::key::rank32(u32::from_ne_bytes(e.try_into().unwrap())) } }
+    else { for (x, e) in k.iter_mut().zip(v.chunks_exact(8)) { *x = crate::key::rank64(u64::from_ne_bytes(e.try_into().unwrap())) } }
+}
 impl<'a> Kwin<'a> {
-    /// sort.c:2618 `kwin_init` over an ALP column.
-    #[allow(unused_variables)] // scaffold: A5 removes it
-    pub fn with_alp(kind: u8, f: Cocf<'a>) -> Self { unimplemented!("A5: kwin_init alp") }
+    /// sort.c:2618 `kwin_init` over an ALP column: `kwin->f = &f`.
+    pub fn with_alp(kind: u8, f: Cocf<'a>) -> Self { Kwin { alp: Some(f), ..Kwin::new(kind, f.c) } }
+    /// sort.c:320 `range_foR`'s ALP line: a frame is over decimals, and a float's keys span the binades between its
+    /// extremes, so the range is all of it and `dedup` takes its hashed loop; else `range`.
+    pub fn range(&self) -> (u64, u64) { if self.alp.is_some() { (0, !0) } else { range(self.kind, &self.c) } }
 }
