@@ -19,9 +19,9 @@ fn find(slot: &[usize], gkey: &[u64], sh: u32, key: u64) -> usize {
 }
 
 /// One monomorphic loop per lane width and table kind: `g` is the table lookup, inlined into the loop.
-fn lanes<K: Keys, G: Fn(u64) -> usize + Sync>(k: &K, n: usize, lane: u32, gid: &mut [u8], g: G) {
+fn lanes<K: Keys, G: Fn(u64) -> usize + Sync + Copy>(k: &K, n: usize, lane: u32, gid: &mut [u8], g: G) {
     let f = |lo: usize, hi: usize, o: &mut [u8]| {
-        let mut k = k.fork();
+        let (mut k, g) = (k.fork(), g); // own copies: a captured reference reloads every row past the output stores
         match lane {
             8 => for (i, b) in (lo..hi).zip(o.iter_mut()) { *b = g(k.at(i)) as u8 },
             16 => for (i, b) in (lo..hi).zip(o.chunks_exact_mut(2)) { b.copy_from_slice(&(g(k.at(i)) as u16).to_ne_bytes()) },
@@ -37,8 +37,14 @@ impl Pass for Fill<'_, '_, '_> {
     type Out = ();
     fn run<K: Keys>(self, k: K, n: usize) {
         match self.t {
-            Table::Direct { tab, mn } => lanes(&k, n, self.lane, self.gid, |key| (tab[(key - mn) as usize] - 1) as usize),
-            Table::Hashed { slot, gkey, sh } => lanes(&k, n, self.lane, self.gid, |key| find(slot, gkey, *sh, key)),
+            Table::Direct { tab, mn } => {
+                let (tab, mn): (&[u32], u64) = (tab, *mn);
+                lanes(&k, n, self.lane, self.gid, move |key| (tab[(key - mn) as usize] - 1) as usize)
+            }
+            Table::Hashed { slot, gkey, sh } => {
+                let (slot, gkey, sh): (&[usize], &[u64], u32) = (slot, gkey, *sh);
+                lanes(&k, n, self.lane, self.gid, move |key| find(slot, gkey, sh, key))
+            }
         }
     }
 }
