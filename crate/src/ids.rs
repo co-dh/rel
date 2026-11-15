@@ -306,21 +306,191 @@ mod map_tests {
 }
 
 // ---- A10: ids.h:56-281 (per element: C keeps these bodies while a C caller remains) ----
-/// ids.h:56 `id_put`: id `v` at index `i`, `w` bits each.
-#[allow(unused_variables)] // scaffold: A10 removes it
-pub fn id_put(p: &mut [u8], w: u32, i: usize, v: u64) { unimplemented!("A10: id_put") }
-/// ids.h:76 `ids_fill`: `cnt` copies of `v` from index `at`.
-#[allow(unused_variables)] // scaffold: A10 removes it
-pub fn ids_fill(out: &mut [u8], w: u32, at: usize, cnt: usize, v: u64) { unimplemented!("A10: ids_fill") }
-/// ids.h:201 `ids_bitcopy`: `bits` bits of `src` from bit `sb` to bit `db` of `dst`.
-#[allow(unused_variables)] // scaffold: A10 removes it
-pub fn bitcopy(dst: &mut [u8], db: usize, src: &[u8], sb: usize, bits: usize) { unimplemented!("A10: ids_bitcopy") }
-/// ids.h:230 `ids_slice_elems`: elements per copy slice at `w`.
-#[allow(unused_variables)] // scaffold: A10 removes it
-pub fn slice_elems(w: u32) -> usize { unimplemented!("A10: ids_slice_elems") }
-/// ids.h:251 `ids_unpack16`: `m` ids from `from` widened to u16.
-#[allow(unused_variables)] // scaffold: A10 removes it
-pub fn unpack16(p: &[u8], w: u32, from: usize, m: usize, dst: &mut [u16]) { unimplemented!("A10: ids_unpack16") }
-/// ids.h:281 `ids_runs`: the run starts of `n` ids (at most `most`) into `out`; answers their count.
-#[allow(unused_variables)] // scaffold: A10 removes it
-pub fn runs(p: &[u8], n: usize, w: u32, nd: usize, most: usize, out: &mut [i64]) -> usize { unimplemented!("A10: ids_runs") }
+/// ids.h:56 `id_put`: id `v` at index `i`, `w` bits each; a narrow field is a read-modify-write of its shared byte.
+pub fn id_put(p: &mut [u8], w: u32, i: usize, v: u64) {
+    let put = |p: &mut [u8], k: usize| p[i * k..i * k + k].copy_from_slice(&v.to_le_bytes()[..k]);
+    match w {
+        0 => {}
+        1 | 2 | 4 => {
+            let (b, s, m) = (i * w as usize >> 3, (i * w as usize & 7) as u32, (1u8 << w) - 1);
+            p[b] = p[b] & !(m << s) | ((v as u8 & m) << s);
+        }
+        8 => p[i] = v as u8,
+        16 => put(p, 2),
+        32 => put(p, 4),
+        _ => put(p, 8),
+    }
+}
+
+/// ids.h:76 `ids_fill`: `cnt` copies of `v` from index `at`; at a narrow width the aligned middle is a byte pattern.
+pub fn ids_fill(out: &mut [u8], w: u32, at: usize, cnt: usize, v: u64) {
+    if w == 0 || cnt == 0 { return; }
+    let end = at + cnt;
+    if w >= 8 { (at..end).for_each(|i| id_put(out, w, i, v)); return; }
+    let per = (8 / w) as usize;
+    let f = (v & ((1 << w) - 1)) as u8;
+    let pat = (0..per).fold(0u8, |a, j| a | f << (j as u32 * w));
+    let lo = at.div_ceil(per).saturating_mul(per).min(end);
+    let hi = (end / per * per).max(lo);
+    (at..lo).for_each(|i| id_put(out, w, i, v));
+    out[lo / per..hi / per].fill(pat);
+    (hi..end).for_each(|i| id_put(out, w, i, v));
+}
+
+// One destination byte of `bitcopy`: up to the byte's end of the `bits - i` left, from bit `sb + i` of the source.
+fn bitcopy_byte(dst: &mut [u8], db: usize, src: &[u8], sb: usize, bits: usize, i: usize) -> usize {
+    let (dbit, s) = ((db + i) & 7, sb + i);
+    let (sk, sbit) = (s >> 3, (s & 7) as u32);
+    let take = (8 - dbit).min(bits - i);
+    let mut v = (src[sk] >> sbit) as u32;
+    if sbit != 0 && sk + 1 < src.len() { v |= (src[sk + 1] as u32) << (8 - sbit); }
+    dst[(db + i) >> 3] |= ((v & ((1u32 << take) - 1)) << dbit) as u8;
+    i + take
+}
+
+/// ids.h:201 `ids_bitcopy`: `bits` bits of `src` from bit `sb` to bit `db` of `dst`, which arrives zeroed.
+pub fn bitcopy(dst: &mut [u8], db: usize, src: &[u8], sb: usize, bits: usize) {
+    let mut i = 0;
+    if db & 7 != 0 && bits != 0 { i = bitcopy_byte(dst, db, src, sb, bits, i); }
+    let rd = |at: usize| u64::from_le_bytes(src[at..at + 8].try_into().unwrap());
+    // eight destination bytes an iteration; a run starting inside a byte reads the next eight as well
+    while bits - i >= 64 && ((sb + i) >> 3) + if (sb + i) & 7 != 0 { 16 } else { 8 } <= src.len() {
+        let (s, sbit) = (sb + i, ((sb + i) & 7) as u32);
+        let v = if sbit != 0 { rd(s >> 3) >> sbit | rd((s >> 3) + 8) << (64 - sbit) } else { rd(s >> 3) };
+        let d = (db + i) >> 3;
+        dst[d..d + 8].copy_from_slice(&v.to_le_bytes());
+        i += 64;
+    }
+    while i < bits { i = bitcopy_byte(dst, db, src, sb, bits, i); }
+}
+
+/// ids.h:230 `ids_slice_elems`: elements per copy slice at `w`, a whole byte's worth so two threads never share one.
+pub fn slice_elems(w: u32) -> usize { if w != 0 && w < 8 { (8 / w) as usize } else { 1 } }
+
+fn unpack16_at<const W: u32>(p: &[u8], from: usize, m: usize, dst: &mut [u16]) {
+    let per = slice_elems(W);
+    let mut j = 0;
+    if per > 1 {
+        while j < m && (from + j) % per != 0 { dst[j] = id_at(p, W, from + j) as u16; j += 1; }
+        let b = (from + j) / per;
+        for (k, &x) in p[b..].iter().enumerate().take((m - j) / per) {
+            for t in 0..per { dst[j + k * per + t] = ((x as u32 >> (t as u32 * W)) & 1u32.checked_shl(W).unwrap_or(0).wrapping_sub(1)) as u16; }
+        }
+        j += (m - j) / per * per;
+    }
+    while j < m { dst[j] = id_at(p, W, from + j) as u16; j += 1; }
+}
+
+/// ids.h:251 `ids_unpack16`: `m` ids from `from` widened to u16, whole bytes split by constant shifts.
+pub fn unpack16(p: &[u8], w: u32, from: usize, m: usize, dst: &mut [u16]) {
+    match w {
+        0 => unpack16_at::<0>(p, from, m, dst), 1 => unpack16_at::<1>(p, from, m, dst), 2 => unpack16_at::<2>(p, from, m, dst),
+        4 => unpack16_at::<4>(p, from, m, dst), 8 => unpack16_at::<8>(p, from, m, dst), 16 => unpack16_at::<16>(p, from, m, dst),
+        32 => unpack16_at::<32>(p, from, m, dst), _ => unpack16_at::<64>(p, from, m, dst),
+    }
+}
+
+// The head test of `runs`: field `i` raw value `raw` is a head where `min(raw, nd)` differs from the field before.
+struct Heads<'a> { out: &'a mut [i64], nd: usize, g: usize, prev: usize }
+impl Heads<'_> {
+    fn at(&mut self, i: usize, raw: usize) {
+        let v = raw.min(self.nd);
+        if i == 0 || v != self.prev {
+            if !self.out.is_empty() { self.out[self.g] = i as i64; }
+            self.g += 1;
+        }
+        self.prev = v;
+    }
+}
+
+fn runs_at<const W: u32>(p: &[u8], n: usize, most: usize, h: &mut Heads) {
+    let sub = W != 0 && W < 8;
+    let per = if sub { (8 / W) as usize } else { 1 };
+    let mask = 1u32.checked_shl(W).unwrap_or(0).wrapping_sub(1).max(1);
+    let mut i = 0;
+    if sub {
+        let mut rep = 0u8;
+        for b in 0..n / per {
+            if h.g > most { break; }
+            let x = p[b] as u32;
+            if b != 0 && x == rep as u32 { continue; }
+            for t in 0..per { h.at(b * per + t, (x >> (t as u32 * W) & mask) as usize); }
+            rep = ((x >> ((per as u32 - 1) * W)) * (0xFF / mask)) as u8;
+        }
+        i = n / per * per;
+    }
+    while i < n && h.g <= most { h.at(i, id_at(p, W, i)); i += 1; }
+}
+
+/// ids.h:281 `ids_runs`: the run heads of `n` ids, each read as `min(id, nd)`, into `out` (empty: only counted); the
+/// walk stops once there are more than `most`. A sub-byte byte repeating the last field is skipped whole.
+pub fn runs(p: &[u8], n: usize, w: u32, nd: usize, most: usize, out: &mut [i64]) -> usize {
+    let mut h = Heads { out, nd, g: 0, prev: 0 };
+    match w {
+        0 => runs_at::<0>(p, n, most, &mut h), 1 => runs_at::<1>(p, n, most, &mut h), 2 => runs_at::<2>(p, n, most, &mut h),
+        4 => runs_at::<4>(p, n, most, &mut h), 8 => runs_at::<8>(p, n, most, &mut h), 16 => runs_at::<16>(p, n, most, &mut h),
+        32 => runs_at::<32>(p, n, most, &mut h), _ => runs_at::<64>(p, n, most, &mut h),
+    }
+    h.g
+}
+
+#[cfg(test)]
+mod a10_tests {
+    use super::*;
+
+    struct Rng(u64);
+    impl Rng {
+        fn rnd(&mut self) -> u64 { self.0 = self.0.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407); self.0 >> 33 }
+        fn rnd64(&mut self) -> u64 { let a = self.rnd(); a << 31 ^ self.rnd() }
+    }
+    fn hb(h: &mut u64, b: &[u8]) { for &x in b { *h = (*h ^ x as u64).wrapping_mul(1099511628211); } }
+    fn h16(h: &mut u64, d: &[u16]) { for x in d { hb(h, &x.to_le_bytes()); } }
+
+    // The same random walk as the C harness over ids.h at 98305ab: the expected hashes are the C's output.
+    #[test]
+    fn matches_c() {
+        let mut r = Rng(0x9E3779B97F4A7C15);
+        let [mut hp, mut hf, mut hu, mut hr, mut hc] = [14695981039346656037u64; 5];
+        for _ in 0..3000 {
+            for w in [0u32, 1, 2, 4, 8, 16, 32, 64] {
+                let cap = if w != 0 { 64 * 8 / w as usize } else { 100 };
+                let buf: Vec<u8> = (0..64).map(|_| r.rnd() as u8).collect();
+                let mut b2 = buf.clone();
+                let i = r.rnd() as usize % cap; let v = r.rnd64();
+                id_put(&mut b2, w, i, v); hb(&mut hp, &b2);
+                let mut b2 = buf.clone();
+                let at = r.rnd() as usize % (cap + 1); let cnt = r.rnd() as usize % (cap - at + 1); let v = r.rnd64();
+                ids_fill(&mut b2, w, at, cnt, v); hb(&mut hf, &b2);
+                let p: Vec<u8> = (0..64).map(|_| r.rnd() as u8).collect();
+                let from = r.rnd() as usize % (cap + 1); let m = r.rnd() as usize % (cap - from + 1);
+                let mut d = [0u16; 800];
+                unpack16(&p, w, from, m, &mut d); h16(&mut hu, &d[..m]);
+                let n = r.rnd() as usize % (cap + 1); let nd = 1 + r.rnd() as usize % 300;
+                let mut most = if r.rnd() % 4 != 0 { r.rnd() as usize % (n + 2) } else { usize::MAX };
+                let mut prev = 0u8;
+                let p: Vec<u8> = (0..40).map(|_| { if r.rnd() % 4 == 0 { prev = r.rnd() as u8; } prev }).collect();
+                let n = n.min(40 * 8 / w.max(1) as usize);
+                let mut o = [-1i64; 400];
+                let g = if r.rnd() % 3 != 0 { most = n; runs(&p, n, w, nd, most, &mut o[..most]) } else { runs(&p, n, w, nd, most, &mut []) };
+                hb(&mut hr, &(g as u64).to_le_bytes());
+                for x in &o[..g.min(400)] { hb(&mut hr, &x.to_le_bytes()); }
+            }
+            let src: Vec<u8> = (0..40).map(|_| r.rnd() as u8).collect();
+            let ss = 24 + r.rnd() as usize % 17; let sb = r.rnd() as usize % (ss * 8); let db = r.rnd() as usize % 64;
+            let lim = (ss * 8 - sb).min(320 - db); let bits = r.rnd() as usize % (lim + 1);
+            let mut dst = [0u8; 40];
+            bitcopy(&mut dst, db, &src[..ss], sb, bits); hb(&mut hc, &dst);
+        }
+        assert_eq!([hp, hf, hu, hr, hc], [0x6a45bdefcd81525e, 0xad88878f87de21f7, 0xf8cd5342bebc2451, 0x60ea9b1386f531b5, 0x2ad203a0f427c6ff]);
+    }
+
+    #[test]
+    fn edges() {
+        assert_eq!(slice_elems(0), 1); assert_eq!(slice_elems(2), 4); assert_eq!(slice_elems(8), 1);
+        assert_eq!(runs(&[], 0, 8, 3, 5, &mut []), 0);
+        let mut o = [0i64; 3];
+        assert_eq!(runs(&[1, 1, 2], 3, 8, 9, 9, &mut o), 2); assert_eq!(o[..2], [0, 2]);
+        // ids past nd read as nd: 5 and 9 are one run at nd = 3
+        assert_eq!(runs(&[5, 9], 2, 8, 3, 9, &mut []), 1);
+    }
+}
