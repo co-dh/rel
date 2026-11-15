@@ -430,7 +430,199 @@ pub fn res_sum8(p: &[u8], nb: usize, w: u8) -> u64 { unimplemented!("A3: res_sum
 pub fn scan_fill(kind: i32, p: &[u8], out: &mut [u8], n: usize) { unimplemented!("A14: scan_fill avx512") }
 /// A14: scan.c's vector `scan_any_null`.
 pub fn any_null(kind: i32, p: &[u8], n: usize) -> bool { unimplemented!("A14: scan_any_null avx512") }
-/// A43: elementwise.c `ew_val_avx`.
-pub fn ew_val(op: u8, cls: u8, a: &[u8], b: &[u8], n: usize, out: &mut [u8]) { unimplemented!("A43: ew_val_avx") }
-/// A43: elementwise.c `ew_cmp_avx`.
-pub fn ew_cmp(op: u8, cls: u8, a: &[u8], b: &[u8], n: usize, out: &mut [u8]) { unimplemented!("A43: ew_cmp_avx") }
+/// A43: elementwise.c `ew_val_avx`: `a op b` of the four arithmetic verbs at a float class (4 f32, 5 f64), all `n`
+/// elements, the tail under a mask. An operand of one element against `n > 1` is the atom, broadcast. Only the
+/// caller that tested the build for AVX-512 may call it.
+pub fn ew_val(op: u8, cls: u8, a: &[u8], b: &[u8], n: usize, out: &mut [u8]) {
+    #[cfg(all(target_arch = "x86_64", target_feature = "avx512f", target_feature = "avx512bw"))]
+    // SAFETY: the cfg above is the build enabling every feature the `ev` kernels are compiled for
+    unsafe { ev::val(op, cls, a, b, n, out) }
+    #[cfg(not(all(target_arch = "x86_64", target_feature = "avx512f", target_feature = "avx512bw")))]
+    panic!("qlean_ew: simd::ew_val without AVX-512 in the build (target-cpu=native); the caller tests the build first")
+}
+/// A43: elementwise.c `ew_cmp_avx`: the six comparisons at the six classes as a mask register stored to `out`, all `n`
+/// elements, the tail under a mask and the bits above `n` zero. Atoms as `ew_val`.
+pub fn ew_cmp(op: u8, cls: u8, a: &[u8], b: &[u8], n: usize, out: &mut [u8]) {
+    #[cfg(all(target_arch = "x86_64", target_feature = "avx512f", target_feature = "avx512bw"))]
+    // SAFETY: as `ew_val`
+    unsafe { ev::cmp(op, cls, a, b, n, out) }
+    #[cfg(not(all(target_arch = "x86_64", target_feature = "avx512f", target_feature = "avx512bw")))]
+    panic!("qlean_ew: simd::ew_cmp without AVX-512 in the build (target-cpu=native); the caller tests the build first")
+}
+/// `x - y * f` rounded once where the build has FMA, as GCC contracts it at `-march=native` (elementwise.c:404's `mod` at
+/// a float width); two roundings elsewhere.
+pub fn fnma64(x: f64, y: f64, f: f64) -> f64 {
+    #[cfg(all(target_arch = "x86_64", target_feature = "fma"))]
+    // SAFETY: the cfg above is the build enabling `fma`
+    return unsafe { core::arch::x86_64::_mm_cvtsd_f64(core::arch::x86_64::_mm_fnmadd_sd(
+        core::arch::x86_64::_mm_set_sd(y), core::arch::x86_64::_mm_set_sd(f), core::arch::x86_64::_mm_set_sd(x))) };
+    #[cfg(not(all(target_arch = "x86_64", target_feature = "fma")))]
+    return x - y * f;
+}
+pub fn fnma32(x: f32, y: f32, f: f32) -> f32 {
+    #[cfg(all(target_arch = "x86_64", target_feature = "fma"))]
+    // SAFETY: as `fnma64`
+    return unsafe { core::arch::x86_64::_mm_cvtss_f32(core::arch::x86_64::_mm_fnmadd_ss(
+        core::arch::x86_64::_mm_set_ss(y), core::arch::x86_64::_mm_set_ss(f), core::arch::x86_64::_mm_set_ss(x))) };
+    #[cfg(not(all(target_arch = "x86_64", target_feature = "fma")))]
+    return x - y * f;
+}
+
+/// elementwise.c:421-809: the mask-register kernels. A comparison's result is a mask, so packing the bits is one store;
+/// q's NaN rule is two mask blends over the arithmetic.
+#[cfg(all(target_arch = "x86_64", target_feature = "avx512f", target_feature = "avx512bw"))]
+mod ev {
+    use core::arch::x86_64::*;
+    use crate::pod::{cast, cast_mut, Pod};
+
+    fn ro<T: Pod>(b: &[u8]) -> &[T] { cast(b).unwrap_or_else(|| panic!("qlean_ew: a {}-byte operand is not a whole, aligned array", b.len())) }
+    fn rw<T: Pod>(b: &mut [u8]) -> &mut [T] { let n = b.len(); cast_mut(b).unwrap_or_else(|| panic!("qlean_ew: a {n}-byte output is not a whole, aligned array")) }
+    /// whether `x` is a vector of `n` elements of `w` bytes rather than the atom; anything else is a short operand
+    fn vector(x: &[u8], n: usize, w: usize) -> bool {
+        if x.len() >= n * w { true } else { assert!(x.len() == w, "qlean_ew: an operand of {} bytes against {n} elements of {w} bytes", x.len()); false }
+    }
+
+    /// `+ - * %` at one float width, `OP` the verb: compute, blend `y` where `y` is NaN, blend `x` where `x` is NaN (so `x`
+    /// wins); `-` blends the negated `y`, q subtracting by negating and adding.
+    macro_rules! val_kernel { ($name:ident, $T:ty, $M:ty, $L:literal, $set1:ident, $mzld:ident, $mst:ident, $cmp:ident, $mov:ident,
+                               $add:ident, $sub:ident, $mul:ident, $div:ident, $neg:expr) => {
+        #[target_feature(enable = "avx512f,avx512bw")]
+        fn $name<const OP: u8>(a: &[$T], b: &[$T], o: &mut [$T], la: bool, lb: bool) {
+            let n = o.len();
+            let (ba, bb) = (if la { $set1(0.0) } else { $set1(a[0]) }, if lb { $set1(0.0) } else { $set1(b[0]) });
+            let mut i = 0;
+            while i < n {
+                let r = (n - i).min($L);
+                let k: $M = if r == $L { !0 } else { ((1 as $M) << r) - 1 };
+                // SAFETY: a masked load or store touches only the lanes its mask selects, the `r` elements at `i`, and
+                // the caller checked that a vector operand and `o` hold `n` elements
+                let (xa, xb) = unsafe { (if la { $mzld(k, a.as_ptr().add(i)) } else { ba }, if lb { $mzld(k, b.as_ptr().add(i)) } else { bb }) };
+                let (mx, my) = ($cmp::<_CMP_UNORD_Q>(xa, xa), $cmp::<_CMP_UNORD_Q>(xb, xb));
+                let (z, y) = match OP { 0 => ($add(xa, xb), xb), 1 => ($sub(xa, xb), ($neg)(xb)), 2 => ($mul(xa, xb), xb), _ => ($div(xa, xb), xb) };
+                let z = $mov($mov(z, my, y), mx, xa);
+                // SAFETY: as the loads
+                unsafe { $mst(o.as_mut_ptr().add(i), k, z) };
+                i += $L;
+            }
+        }
+    } }
+    val_kernel!(val64, f64, u8, 8, _mm512_set1_pd, _mm512_maskz_loadu_pd, _mm512_mask_storeu_pd, _mm512_cmp_pd_mask, _mm512_mask_mov_pd,
+                _mm512_add_pd, _mm512_sub_pd, _mm512_mul_pd, _mm512_div_pd,
+                |y| _mm512_castsi512_pd(_mm512_xor_si512(_mm512_castpd_si512(y), _mm512_set1_epi64(i64::MIN))));
+    val_kernel!(val32, f32, u16, 16, _mm512_set1_ps, _mm512_maskz_loadu_ps, _mm512_mask_storeu_ps, _mm512_cmp_ps_mask, _mm512_mask_mov_ps,
+                _mm512_add_ps, _mm512_sub_ps, _mm512_mul_ps, _mm512_div_ps,
+                |y| _mm512_castsi512_ps(_mm512_xor_si512(_mm512_castps_si512(y), _mm512_set1_epi32(i32::MIN))));
+
+    /// # Safety
+    /// The build enables AVX-512 F and BW (the cfg of this module).
+    pub unsafe fn val(op: u8, cls: u8, a: &[u8], b: &[u8], n: usize, out: &mut [u8]) {
+        let w = if cls == 4 { 4 } else { 8 };
+        assert!(op <= 3 && (cls == 4 || cls == 5), "qlean_ew: simd::ew_val has no case for verb {op} at storage class {cls}");
+        let (la, lb) = (vector(a, n, w), vector(b, n, w));
+        let out = &mut out[..n * w];
+        // SAFETY: the features are enabled (the caller's contract)
+        unsafe { match (cls, op) {
+            (4, 0) => val32::<0>(ro(a), ro(b), rw(out), la, lb),
+            (4, 1) => val32::<1>(ro(a), ro(b), rw(out), la, lb),
+            (4, 2) => val32::<2>(ro(a), ro(b), rw(out), la, lb),
+            (4, _) => val32::<3>(ro(a), ro(b), rw(out), la, lb),
+            (_, 0) => val64::<0>(ro(a), ro(b), rw(out), la, lb),
+            (_, 1) => val64::<1>(ro(a), ro(b), rw(out), la, lb),
+            (_, 2) => val64::<2>(ro(a), ro(b), rw(out), la, lb),
+            (_, _) => val64::<3>(ro(a), ro(b), rw(out), la, lb),
+        } }
+    }
+
+    /// Integral compare: the predicate `P` is an immediate of the instruction, so the six verbs are six instantiations.
+    macro_rules! cmp_int { ($name:ident, $T:ty, $M:ty, $L:literal, $set1:ident, $mzld:ident, $cmp:ident) => {
+        #[target_feature(enable = "avx512f,avx512bw")]
+        fn $name<const P: i32>(a: &[$T], b: &[$T], o: &mut [u8], n: usize, la: bool, lb: bool) {
+            let (ba, bb) = (if la { $set1(0) } else { $set1(a[0] as _) }, if lb { $set1(0) } else { $set1(b[0] as _) });
+            let mut i = 0;
+            while i < n {
+                let r = (n - i).min($L);
+                let k: $M = if r == $L { !0 } else { ((1 as $M) << r) - 1 };
+                // SAFETY: a masked load touches only the `r` elements at `i` of a vector operand
+                let (xa, xb) = unsafe { (if la { $mzld(k, a.as_ptr().add(i).cast()) } else { ba }, if lb { $mzld(k, b.as_ptr().add(i).cast()) } else { bb }) };
+                let m = $cmp::<P>(xa, xb) & k;
+                let nb = r.div_ceil(8);
+                o[i / 8..i / 8 + nb].copy_from_slice(&m.to_le_bytes()[..nb]);
+                i += $L;
+            }
+        }
+    } }
+    cmp_int!(cmp_u8, u8, u64, 64, _mm512_set1_epi8, _mm512_maskz_loadu_epi8, _mm512_cmp_epu8_mask);
+    cmp_int!(cmp_i16, i16, u32, 32, _mm512_set1_epi16, _mm512_maskz_loadu_epi16, _mm512_cmp_epi16_mask);
+    cmp_int!(cmp_i32, i32, u16, 16, _mm512_set1_epi32, _mm512_maskz_loadu_epi32, _mm512_cmp_epi32_mask);
+    cmp_int!(cmp_i64, i64, u8, 8, _mm512_set1_epi64, _mm512_maskz_loadu_epi64, _mm512_cmp_epi64_mask);
+
+    /// `ew_tol` in the lanes, the same four operations in the same order so every lane rounds as the scalar does.
+    #[target_feature(enable = "avx512f,avx512bw")]
+    fn tol_pd(xa: __m512d, xb: __m512d) -> u8 {
+        _mm512_cmp_pd_mask::<_CMP_LT_OQ>(_mm512_abs_pd(_mm512_sub_pd(xa, xb)),
+            _mm512_mul_pd(_mm512_set1_pd(1.0 / (1u64 << 43) as f64), _mm512_min_pd(_mm512_abs_pd(xa), _mm512_abs_pd(xb))))
+    }
+    /// Float compare, `V` the verb and `P` the instruction's predicate for it: IEEE's own answer `c`, which side is a null
+    /// (`na`, `nb`), and the tolerance `t`. `lt` is `c` plus the pairs where only the left is null, `le` is `c` plus every
+    /// null left, `eq` is `c` plus two nulls, and the other three verbs are those negated. IEEE is false on a NaN, so every
+    /// correction is an OR.
+    macro_rules! cmp_flt { ($name:ident, $T:ty, $M:ty, $L:literal, $set1:ident, $mzld:ident, $cmp:ident, $tol:expr) => {
+        #[target_feature(enable = "avx512f,avx512bw")]
+        fn $name<const V: u8, const P: i32>(a: &[$T], b: &[$T], o: &mut [u8], n: usize, la: bool, lb: bool) {
+            let (ba, bb) = (if la { $set1(0.0) } else { $set1(a[0]) }, if lb { $set1(0.0) } else { $set1(b[0]) });
+            let mut i = 0;
+            while i < n {
+                let r = (n - i).min($L);
+                let k: $M = if r == $L { !0 } else { ((1 as $M) << r) - 1 };
+                // SAFETY: as `cmp_int`
+                let (xa, xb) = unsafe { (if la { $mzld(k, a.as_ptr().add(i)) } else { ba }, if lb { $mzld(k, b.as_ptr().add(i)) } else { bb }) };
+                let (na, nb): ($M, $M) = ($cmp::<_CMP_UNORD_Q>(xa, xa), $cmp::<_CMP_UNORD_Q>(xb, xb));
+                let c: $M = $cmp::<P>(xa, xb);
+                let t: $M = ($tol)(xa, xb);
+                let m: $M = match V {
+                    0 => c | (na & nb) | t,
+                    1 => !(c | (na & nb) | t),
+                    2 => (c | (na & !nb)) & !t,
+                    5 => !((c | (na & !nb)) & !t),
+                    3 => c | na | t,
+                    _ => !(c | na | t),
+                } & k;
+                let nbytes = r.div_ceil(8);
+                o[i / 8..i / 8 + nbytes].copy_from_slice(&m.to_le_bytes()[..nbytes]);
+                i += $L;
+            }
+        }
+    } }
+    cmp_flt!(cmp_f64, f64, u8, 8, _mm512_set1_pd, _mm512_maskz_loadu_pd, _mm512_cmp_pd_mask, tol_pd);
+    cmp_flt!(cmp_f32, f32, u16, 16, _mm512_set1_ps, _mm512_maskz_loadu_ps, _mm512_cmp_ps_mask, |_, _| 0u16);
+
+    /// A comparison's verb against each class's kernel; `$f` is the kernel and `$p` its predicate constants per verb.
+    macro_rules! by_verb_int { ($f:ident, $op:expr, $($args:expr),*) => { match $op {
+        0 => $f::<{ _MM_CMPINT_EQ }>($($args),*), 1 => $f::<{ _MM_CMPINT_NE }>($($args),*),
+        2 => $f::<{ _MM_CMPINT_LT }>($($args),*), 3 => $f::<{ _MM_CMPINT_LE }>($($args),*),
+        4 => $f::<{ _MM_CMPINT_NLE }>($($args),*), _ => $f::<{ _MM_CMPINT_NLT }>($($args),*),
+    } } }
+    macro_rules! by_verb_flt { ($f:ident, $op:expr, $($args:expr),*) => { match $op {
+        0 => $f::<0, { _CMP_EQ_OQ }>($($args),*), 1 => $f::<1, { _CMP_EQ_OQ }>($($args),*),
+        2 => $f::<2, { _CMP_LT_OQ }>($($args),*), 5 => $f::<5, { _CMP_LT_OQ }>($($args),*),
+        3 => $f::<3, { _CMP_LE_OQ }>($($args),*), _ => $f::<4, { _CMP_LE_OQ }>($($args),*),
+    } } }
+
+    /// # Safety
+    /// The build enables AVX-512 F and BW (the cfg of this module).
+    pub unsafe fn cmp(op: u8, cls: u8, a: &[u8], b: &[u8], n: usize, out: &mut [u8]) {
+        let w = match cls { 0 => 1, 1 => 2, 2 | 4 => 4, 3 | 5 => 8, _ => panic!("qlean_ew: simd::ew_cmp has no case for storage class {cls}") };
+        assert!(op <= 5, "qlean_ew: simd::ew_cmp has no case for verb {op}");
+        let (la, lb) = (vector(a, n, w), vector(b, n, w));
+        let o = &mut out[..n.div_ceil(8)];
+        // SAFETY: the features are enabled (the caller's contract)
+        unsafe { match cls {
+            0 => by_verb_int!(cmp_u8, op, a, b, o, n, la, lb),
+            1 => by_verb_int!(cmp_i16, op, ro(a), ro(b), o, n, la, lb),
+            2 => by_verb_int!(cmp_i32, op, ro(a), ro(b), o, n, la, lb),
+            3 => by_verb_int!(cmp_i64, op, ro(a), ro(b), o, n, la, lb),
+            4 => by_verb_flt!(cmp_f32, op, ro(a), ro(b), o, n, la, lb),
+            _ => by_verb_flt!(cmp_f64, op, ro(a), ro(b), o, n, la, lb),
+        } }
+    }
+}

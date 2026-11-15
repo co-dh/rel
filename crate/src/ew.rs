@@ -81,30 +81,368 @@ pub fn fdiv_magic(g: &Magic, x: i64) -> i64 {
 }
 
 // ---- A43: elementwise.c:482-1092 ----
+use crate::c::run_map;
+use crate::ids::id_at;
+use crate::pod::{self, bytes_mut, Lane, Pod};
+use crate::sym::sym_msort;
+use crate::{BLK, QLEAN_COST_ARITH, QLEAN_COST_COPY};
+use alloc::vec;
+use alloc::vec::Vec;
+
+/// `EW_*` codes of elementwise.c:86-100 that this section reads; the two lists cannot change apart.
+mod k {
+    pub(super) const F32: u8 = 4;
+    pub(super) const ADD: u8 = 0; pub(super) const SUB: u8 = 1; pub(super) const MUL: u8 = 2; pub(super) const DIV: u8 = 3; pub(super) const FILL: u8 = 4;
+    pub(super) const LESSER: u8 = 5; pub(super) const GREATER: u8 = 6; pub(super) const IDIV: u8 = 7; pub(super) const IMOD: u8 = 8; pub(super) const POW: u8 = 9;
+    pub(super) const EQ: u8 = 0; pub(super) const NE: u8 = 1; pub(super) const LT: u8 = 2; pub(super) const LE: u8 = 3; pub(super) const GT: u8 = 4; pub(super) const GE: u8 = 5;
+    pub(super) const VV: u8 = 0; pub(super) const VA: u8 = 1; pub(super) const AV: u8 = 2;
+}
+/// elementwise.c:436's `#if`: the mask paths exist only where the build enables the instructions they use.
+const VEC: bool = cfg!(all(target_arch = "x86_64", target_feature = "avx512f", target_feature = "avx512bw"));
+const NAN64: u64 = 0xfff8000000000000;
+const PNAN64: u64 = 0x7ff8000000000000;
+const NAN32: u32 = 0xffc00000;
+const PNAN32: u32 = 0x7fc00000;
+
+/// An integral storage class: `i` is the element as q reads it (zero-extended at `u8`), `wrap` the truncating write.
+trait Elt: Lane + Ord { fn i(self) -> i64; }
+impl Elt for u8 { fn i(self) -> i64 { self as i64 } }
+impl Elt for i16 { fn i(self) -> i64 { self as i64 } }
+impl Elt for i32 { fn i(self) -> i64 { self as i64 } }
+impl Elt for i64 { fn i(self) -> i64 { self } }
+
+fn ro<T: Pod>(b: &[u8]) -> &[T] {
+    pod::cast(b).unwrap_or_else(|| panic!("qlean_ew: a {}-byte payload is not a whole, aligned array of {}-byte elements", b.len(), size_of::<T>()))
+}
+fn rw<T: Pod>(b: &mut [u8]) -> &mut [T] {
+    let n = b.len();
+    pod::cast_mut(b).unwrap_or_else(|| panic!("qlean_ew: a {n}-byte output is not a whole, aligned array of {}-byte elements", size_of::<T>()))
+}
+/// elements `[lo, hi)` of the `w`-byte payload `x`, or its first element when `atom`; the C reads past the end instead.
+fn side<'a>(x: &'a [u8], atom: bool, lo: usize, hi: usize, w: usize) -> &'a [u8] {
+    let (s, e) = if atom { (0, w) } else { (lo * w, hi * w) };
+    x.get(s..e).unwrap_or_else(|| panic!("qlean_ew: elements {}..{} of a {}-byte payload of {w}-byte elements", s / w, e / w, x.len()))
+}
+/// The bytes of `buf` as a block's elements.
+fn block<'a>(c: &Coc, b: usize, cnt: usize, w: usize, buf: &'a mut [u64; BLK]) -> &'a [u8] {
+    let o = bytes_mut(buf);
+    match w {
+        1 => c.decode_blk::<u8>(b, cnt, rw(o)),
+        2 => c.decode_blk::<i16>(b, cnt, rw(o)),
+        4 => c.decode_blk::<i32>(b, cnt, rw(o)),
+        _ => c.decode_blk::<i64>(b, cnt, rw(o)),
+    }
+    o
+}
+
+/// elementwise.c:226 `EW_SHAPED`: `o[i] = f(a[ia], b[ib])` with `(ia, ib)` the shape's index pair, an atom a one-element slice.
+#[inline(always)]
+fn zip2<T: Copy, U: Copy>(shape: u8, a: &[T], b: &[T], o: &mut [U], f: impl Fn(T, T) -> U) {
+    if o.is_empty() { return }
+    match shape {
+        k::VV => for ((o, &x), &y) in o.iter_mut().zip(a).zip(b) { *o = f(x, y) },
+        k::VA => { let y = b[0]; for (o, &x) in o.iter_mut().zip(a) { *o = f(x, y) } }
+        _ => { let x = a[0]; for (o, &y) in o.iter_mut().zip(b) { *o = f(x, y) } }
+    }
+}
+/// elementwise.c:626 `EW_CMP_SHAPED`: the `m` bits LSB-first, the bits of the last byte above `m` zero.
+#[inline(always)]
+fn pack_bits(o: &mut [u8], m: usize, ev: impl Fn(usize) -> bool) {
+    for (k, byte) in o.iter_mut().enumerate() {
+        let (lo, hi) = (k * 8, (k * 8 + 8).min(m));
+        *byte = (lo..hi).fold(0u8, |v, i| v | (ev(i) as u8) << (i - lo));
+    }
+}
+/// `pack_bits` of `p(a[ia], b[ib])`, `(ia, ib)` the shape's index pair.
+#[inline(always)]
+fn pack2<T: Copy>(shape: u8, a: &[T], b: &[T], o: &mut [u8], m: usize, p: impl Fn(T, T) -> bool) {
+    if m == 0 { return }
+    match shape {
+        k::VV => pack_bits(o, m, |i| p(a[i], b[i])),
+        k::VA => { let y = b[0]; pack_bits(o, m, |i| p(a[i], y)) }
+        _ => { let x = a[0]; pack_bits(o, m, |i| p(x, b[i])) }
+    }
+}
+
+/// elementwise.c:305 `EW_VAL_INT`: the wrap is the truncation the write does; `&` and `|` need no null test, q's
+/// null being the least value of the type.
+fn val_int<T: Elt>(op: u8, cls: u8, nul: i64, shape: u8, a: &[T], b: &[T], o: &mut [T]) {
+    let nulv = T::wrap(nul as u64);
+    let isn = |x: T| x.i() == nul;
+    let wrap = |x: T, y: T, f: fn(u64, u64) -> u64| if isn(x) || isn(y) { nulv } else { T::wrap(f(x.i() as u64, y.i() as u64)) };
+    match op {
+        k::ADD => zip2(shape, a, b, o, |x, y| wrap(x, y, u64::wrapping_add)),
+        k::SUB => zip2(shape, a, b, o, |x, y| wrap(x, y, u64::wrapping_sub)),
+        k::MUL => zip2(shape, a, b, o, |x, y| wrap(x, y, u64::wrapping_mul)),
+        k::FILL => zip2(shape, a, b, o, |x, y| if isn(y) { x } else { y }),
+        k::LESSER => zip2(shape, a, b, o, |x, y| if x < y { x } else { y }),
+        k::GREATER => zip2(shape, a, b, o, |x, y| if y < x { x } else { y }),
+        k::IDIV | k::IMOD => {
+            // a constant divisor (elementwise.c:253) takes the multiply-shift form instead of a 64-bit divide
+            let g = if shape == k::VA && !o.is_empty() && !isn(b[0]) { magic_of(b[0].i()) } else { None };
+            let md = op == k::IMOD;
+            let q = |x: i64, y: i64| if md { (x as u64).wrapping_sub((y as u64).wrapping_mul(ew_fdiv(x, y) as u64)) } else { ew_fdiv(x, y) as u64 };
+            match g {
+                Some(g) => for (o, &x) in o.iter_mut().zip(a) {
+                    let x = x.i();
+                    *o = if x == nul { nulv } else if md { T::wrap((x as u64).wrapping_sub((g.d as u64).wrapping_mul(fdiv_magic(&g, x) as u64))) } else { T::wrap(fdiv_magic(&g, x) as u64) };
+                },
+                None => zip2(shape, a, b, o, |x, y| { let (x, y) = (x.i(), y.i()); if x == nul || y == nul || y == 0 { nulv } else { T::wrap(q(x, y)) } }),
+            }
+        }
+        _ => ew_unsupported("qlean_ew_val", op as u32, cls as u32),
+    }
+}
+
+/// `floor` at double width; `core` has none. A NaN, an infinity, a magnitude from 2^52 and a zero are their own floor.
+fn floor64(x: f64) -> f64 {
+    if !(x.abs() < 4503599627370496.0) || x == 0.0 { return x }
+    let t = x as i64 as f64;
+    if t > x { t - 1.0 } else { t }
+}
+fn floor32(x: f32) -> f32 {
+    if !(x.abs() < 8388608.0) || x == 0.0 { return x }
+    let t = x as i32 as f32;
+    if t > x { t - 1.0 } else { t }
+}
+fn le64(x: u64, y: u64) -> bool { if f64::from_bits(x).is_nan() { true } else { f64::from_bits(x) <= f64::from_bits(y) } }
+fn le32(x: u32, y: u32) -> bool { if f32::from_bits(x).is_nan() { true } else { f32::from_bits(x) <= f32::from_bits(y) } }
+fn eq64(x: u64, y: u64) -> bool { if f64::from_bits(x).is_nan() { f64::from_bits(y).is_nan() } else { f64::from_bits(x) == f64::from_bits(y) } }
+fn eq32(x: u32, y: u32) -> bool { if f32::from_bits(x).is_nan() { f32::from_bits(y).is_nan() } else { f32::from_bits(x) == f32::from_bits(y) } }
+fn tol64(x: u64, y: u64) -> bool { ew_tol(f64::from_bits(x), f64::from_bits(y)) }
+fn tol32(_: u32, _: u32) -> bool { false }
+
+/// elementwise.c:366 `EW_VAL_FLT`: a NaN operand is answered before any conversion and comes back as it is, the left
+/// one first; the right one of `-` comes back with its sign flipped (q subtracts by negating and adding).
+macro_rules! val_flt { ($name:ident, $B:ty, $F:ty, $nanq:expr, $nanp:expr, $ord:ident, $floor:ident, $fnma:ident) => {
+    fn $name(op: u8, cls: u8, shape: u8, a: &[$B], b: &[$B], o: &mut [$B]) {
+        let isn = |x: $B| <$F>::from_bits(x).is_nan();
+        let (tof, tob) = (<$F>::from_bits, |v: $F| if v.is_nan() { $nanq } else { v.to_bits() });
+        match op {
+            k::ADD => zip2(shape, a, b, o, |x, y| if isn(x) { x } else if isn(y) { y } else { tob(tof(x) + tof(y)) }),
+            k::SUB => zip2(shape, a, b, o, |x, y| if isn(x) { x } else if isn(y) { y ^ ($nanq ^ $nanp) } else { tob(tof(x) - tof(y)) }),
+            k::MUL => zip2(shape, a, b, o, |x, y| if isn(x) { x } else if isn(y) { y } else { tob(tof(x) * tof(y)) }),
+            k::DIV => zip2(shape, a, b, o, |x, y| if isn(x) { x } else if isn(y) { y } else { tob(tof(x) / tof(y)) }),
+            k::FILL => zip2(shape, a, b, o, |x, y| if isn(y) { x } else { y }),
+            k::LESSER => zip2(shape, a, b, o, |x, y| if $ord(x, y) > 0 { y } else { x }),
+            k::GREATER => zip2(shape, a, b, o, |x, y| if $ord(x, y) < 0 { y } else { x }),
+            k::IDIV => zip2(shape, a, b, o, |x, y| {
+                let f = $floor(tof(x) / tof(y));
+                if isn(x) || isn(y) || ew_outside_long(f as f64) { $nanq } else { tob(f) }
+            }),
+            k::IMOD => zip2(shape, a, b, o, |x, y| {
+                let f = $floor(tof(x) / tof(y));
+                if isn(x) || isn(y) { $nanq } else if ew_outside_long(f as f64) { $nanp } else { tob($fnma(tof(x), tof(y), f)) }
+            }),
+            // `pow` is libm's, and the 10 libc names of the design (§1) hold none; the C entry keeps this verb
+            k::POW => unreachable!("`no_pow` refused pow at storage class {cls} before the pool started"),
+            _ => ew_unsupported("qlean_ew_val", op as u32, cls as u32),
+        }
+    }
+} }
+val_flt!(val_f64, u64, f64, NAN64, PNAN64, ew_ord64, floor64, fnma64);
+val_flt!(val_f32, u32, f32, NAN32, PNAN32, ew_ord32, floor32, fnma32);
+fn fnma64(x: f64, y: f64, f: f64) -> f64 { crate::simd::fnma64(x, y, f) }
+fn fnma32(x: f32, y: f32, f: f32) -> f32 { crate::simd::fnma32(x, y, f) }
+
+/// elementwise.c:501 `ew_val_run` over the elements `[lo, hi)` of `a`, `b` (an atom is one element): into `o`.
+fn val_slice(op: u8, cls: u8, shape: u8, nul: i64, a: &[u8], b: &[u8], lo: usize, hi: usize, o: &mut [u8]) {
+    let w = ew_width(cls as u32);
+    let (a, b) = (side(a, shape == k::AV, lo, hi, w), side(b, shape == k::VA, lo, hi, w));
+    // the mask path answers the four arithmetic verbs at a float width; every other pair is the loop below
+    if VEC && cls >= k::F32 && op <= k::DIV { return crate::simd::ew_val(op, cls, a, b, hi - lo, o) }
+    match cls {
+        0 => val_int::<u8>(op, cls, nul, shape, ro(a), ro(b), rw(o)),
+        1 => val_int::<i16>(op, cls, nul, shape, ro(a), ro(b), rw(o)),
+        2 => val_int::<i32>(op, cls, nul, shape, ro(a), ro(b), rw(o)),
+        3 => val_int::<i64>(op, cls, nul, shape, ro(a), ro(b), rw(o)),
+        4 => val_f32(op, cls, shape, ro(a), ro(b), rw(o)),
+        5 => val_f64(op, cls, shape, ro(a), ro(b), rw(o)),
+        _ => ew_unsupported("qlean_ew_val", op as u32, cls as u32),
+    }
+}
+
+/// `pow` is libm's, and the 10 libc names of the design (§1) hold none, so the C entry keeps this verb; refused here
+/// before the pool starts, because a panic inside a worker cannot unwind through the C pool.
+fn no_pow(op: u8, cls: u8) {
+    assert!(!(op == k::POW && cls >= k::F32), "qlean_ew_val: pow at storage class {cls} stays in C (it calls libm's pow); qlean_ew_val must not hand it to Rust");
+}
 /// elementwise.c:501 `ew_val_run` and its entry: `a op b` of class `cls` (`shape` vector/atom) into `out`, `n` long.
 pub fn val(run: Runner, op: u8, cls: u8, shape: u8, nul: i64, a: &[u8], b: &[u8], n: usize, out: &mut [u8]) {
-    unimplemented!("A43: ew_val_run")
+    no_pow(op, cls);
+    let w = ew_width(cls as u32);
+    run_map(run, out, n, w, QLEAN_COST_ARITH, w, &|lo, hi, o| val_slice(op, cls, shape, nul, a, b, lo, hi, o));
 }
 /// elementwise.c:539 `ew_val_foR_run`: two encoded columns, the answer dense.
-pub fn val_enc(run: Runner, op: u8, cls: u8, nul: i64, a: &Coc, b: &Coc, out: &mut [u8]) { unimplemented!("A43: ew_val_foR_run") }
+pub fn val_enc(run: Runner, op: u8, cls: u8, nul: i64, a: &Coc, b: &Coc, out: &mut [u8]) {
+    no_pow(op, cls);
+    let (w, n) = (ew_width(cls as u32), a.meta.n);
+    run_map(run, out, n, w, QLEAN_COST_ARITH, w, &|lo, hi, o| {
+        let (mut xa, mut xb) = ([0u64; BLK], [0u64; BLK]);
+        let mut at = lo;
+        while at < hi {
+            // a slice may start inside a block, so the block is decoded from its own start and entered at `at - blo`
+            let (blk, end) = (at / BLK, (at / BLK * BLK + BLK).min(hi));
+            let (blo, cnt) = (blk * BLK, end - blk * BLK);
+            let (pa, pb) = (block(a, blk, cnt, w, &mut xa), block(b, blk, cnt, w, &mut xb));
+            val_slice(op, cls, k::VV, nul, pa, pb, at - blo, cnt, &mut o[(at - lo) * w..(end - lo) * w]);
+            at = end;
+        }
+    });
+}
 /// elementwise.c:562 `ew_val_foR_atom_run`: an encoded column and an atom.
 pub fn val_enc_atom(run: Runner, op: u8, cls: u8, shape: u8, nul: i64, c: &Coc, atom: &[u8], out: &mut [u8]) {
-    unimplemented!("A43: ew_val_foR_atom_run")
+    no_pow(op, cls);
+    let (w, n) = (ew_width(cls as u32), c.meta.n);
+    run_map(run, out, n, w, QLEAN_COST_ARITH, w, &|lo, hi, o| {
+        let mut xv = [0u64; BLK];
+        let mut at = lo;
+        while at < hi {
+            let (blk, end) = (at / BLK, (at / BLK * BLK + BLK).min(hi));
+            let (blo, cnt) = (blk * BLK, end - blk * BLK);
+            let x = block(c, blk, cnt, w, &mut xv);
+            let o = &mut o[(at - lo) * w..(end - lo) * w];
+            if shape == k::VA { val_slice(op, cls, shape, nul, x, atom, at - blo, cnt, o) } else { val_slice(op, cls, shape, nul, atom, x, at - blo, cnt, o) }
+            at = end;
+        }
+    });
+}
+
+/// elementwise.c:648 `EW_CMP_INT`: no null case, q's null being the least value of the type (a byte and a char compare
+/// by their byte).
+fn cmp_int<T: Elt>(op: u8, cls: u8, shape: u8, a: &[T], b: &[T], o: &mut [u8], m: usize) {
+    match op {
+        k::EQ => pack2(shape, a, b, o, m, |x, y| x == y),
+        k::NE => pack2(shape, a, b, o, m, |x, y| x != y),
+        k::LT => pack2(shape, a, b, o, m, |x, y| x < y),
+        k::LE => pack2(shape, a, b, o, m, |x, y| x <= y),
+        k::GT => pack2(shape, a, b, o, m, |x, y| x > y),
+        k::GE => pack2(shape, a, b, o, m, |x, y| x >= y),
+        _ => ew_unsupported("qlean_ew_cmp", op as u32, cls as u32),
+    }
+}
+/// elementwise.c:661 `EW_CMP_FLT`: q's order (a null below everything) with its tolerance, which `<` excludes.
+macro_rules! cmp_flt { ($name:ident, $B:ty, $lt:ident, $le:ident, $eq:ident, $tol:ident) => {
+    fn $name(op: u8, cls: u8, shape: u8, a: &[$B], b: &[$B], o: &mut [u8], m: usize) {
+        match op {
+            k::EQ => pack2(shape, a, b, o, m, |x, y| $eq(x, y) || $tol(x, y)),
+            k::NE => pack2(shape, a, b, o, m, |x, y| !($eq(x, y) || $tol(x, y))),
+            k::LT => pack2(shape, a, b, o, m, |x, y| $lt(x, y) && !$tol(x, y)),
+            k::LE => pack2(shape, a, b, o, m, |x, y| $le(x, y) || $tol(x, y)),
+            k::GT => pack2(shape, a, b, o, m, |x, y| !($le(x, y) || $tol(x, y))),
+            k::GE => pack2(shape, a, b, o, m, |x, y| !($lt(x, y) && !$tol(x, y))),
+            _ => ew_unsupported("qlean_ew_cmp", op as u32, cls as u32),
+        }
+    }
+} }
+cmp_flt!(cmp_f64, u64, lt64, le64, eq64, tol64);
+cmp_flt!(cmp_f32, u32, lt32, le32, eq32, tol32);
+
+/// elementwise.c:820 `ew_cmp_run` over the output bytes `[lo, hi)`: the elements `8 lo ..` of `a`, `b`, `n` in all.
+fn cmp_slice(op: u8, cls: u8, shape: u8, a: &[u8], b: &[u8], n: usize, lo: usize, hi: usize, o: &mut [u8]) {
+    let w = ew_width(cls as u32);
+    let (e0, e1) = (lo * 8, (hi * 8).min(n));
+    let (a, b) = (side(a, shape == k::AV, e0, e1, w), side(b, shape == k::VA, e0, e1, w));
+    let m = e1 - e0;
+    if VEC && op <= k::GE { return crate::simd::ew_cmp(op, cls, a, b, m, o) }
+    match cls {
+        0 => cmp_int::<u8>(op, cls, shape, ro(a), ro(b), o, m),
+        1 => cmp_int::<i16>(op, cls, shape, ro(a), ro(b), o, m),
+        2 => cmp_int::<i32>(op, cls, shape, ro(a), ro(b), o, m),
+        3 => cmp_int::<i64>(op, cls, shape, ro(a), ro(b), o, m),
+        4 => cmp_f32(op, cls, shape, ro(a), ro(b), o, m),
+        5 => cmp_f64(op, cls, shape, ro(a), ro(b), o, m),
+        _ => ew_unsupported("qlean_ew_cmp", op as u32, cls as u32),
+    }
 }
 /// elementwise.c:820 `ew_cmp_run` and its entry: a byte per comparison.
-pub fn cmp(run: Runner, op: u8, cls: u8, shape: u8, a: &[u8], b: &[u8], n: usize, out: &mut [u8]) { unimplemented!("A43: ew_cmp_run") }
-/// elementwise.c:867 `ew_low_zero_run`
-pub fn low_zero(run: Runner, a: &[u8], b: &[u8], n: usize, out: &mut [u8]) { unimplemented!("A43: ew_low_zero_run") }
-/// elementwise.c:888 `ew_low_zero_foR_run`
-pub fn low_zero_enc(run: Runner, c: &Coc, atom: &[u8], out: &mut [u8]) { unimplemented!("A43: ew_low_zero_foR_run") }
-/// elementwise.c:927 `ew_bitw_run`
-pub fn bitw(run: Runner, op: u8, a: &[u8], b: &[u8], n: usize, out: &mut [u8]) { unimplemented!("A43: ew_bitw_run") }
+pub fn cmp(run: Runner, op: u8, cls: u8, shape: u8, a: &[u8], b: &[u8], n: usize, out: &mut [u8]) {
+    let nb = n.div_ceil(8);
+    // sliced by output byte, so eight elements move together and no two threads share one
+    run_map(run, out, nb, 1, QLEAN_COST_ARITH, 8 * ew_width(cls as u32), &|lo, hi, o| cmp_slice(op, cls, shape, a, b, n, lo, hi, o));
+}
+/// elementwise.c:867 `ew_low_zero_run`: bit `i` is `(a[i] & b[0]) = 0`.
+pub fn low_zero(run: Runner, a: &[u8], b: &[u8], n: usize, out: &mut [u8]) {
+    let (a, b) = (side(a, false, 0, n, 8), side(b, true, 0, 1, 8));
+    run_map(run, out, n.div_ceil(8), 1, QLEAN_COST_ARITH, 64, &|lo, hi, o| {
+        let (e0, e1) = (lo * 8, (hi * 8).min(n));
+        pack2(k::VA, ro::<u64>(&a[e0 * 8..e1 * 8]), ro::<u64>(b), o, e1 - e0, |x, y| x & y == 0)
+    });
+}
+/// elementwise.c:888 `ew_low_zero_foR_run`: a block with `base = maxv` is one value and is answered from its metadata,
+/// any other is restored into a buffer; sliced by output byte, a block's bytes may be split between two slices.
+pub fn low_zero_enc(run: Runner, c: &Coc, atom: &[u8], out: &mut [u8]) {
+    let (n, m) = (c.meta.n, ro::<u64>(side(atom, true, 0, 1, 8))[0]);
+    run_map(run, out, n.div_ceil(8), 1, QLEAN_COST_ARITH, BLK * 8, &|lo, hi, o| {
+        let mut xv = [0u64; BLK];
+        let mut at = lo;
+        while at < hi {
+            let (blk, end) = (at / (BLK / 8), ((at / (BLK / 8) + 1) * (BLK / 8)).min(hi));
+            let (blo, cnt) = (blk * BLK, (n - blk * BLK).min(BLK));
+            let (e0, e1) = (at * 8, (end * 8).min(blo + cnt));
+            let o = &mut o[at - lo..end - lo];
+            if c.meta.base[blk] == c.meta.maxv[blk] {
+                let all = c.meta.base[blk] as u64 & m == 0;
+                pack_bits(o, e1 - e0, |_| all);
+            } else {
+                let x = ro::<u64>(block(c, blk, cnt, 8, &mut xv));
+                pack2(k::VA, &x[e0 - blo..e1 - blo], &[m], o, e1 - e0, |x, y| x & y == 0);
+            }
+            at = end;
+        }
+    });
+}
+/// elementwise.c:927 `ew_bitw_run`: `op` is band 0, bor 1, bandnot 2; any other reads as band.
+pub fn bitw(run: Runner, op: u8, a: &[u8], b: &[u8], n: usize, out: &mut [u8]) {
+    let (a, b) = (ro::<u64>(side(a, false, 0, n, 8)), ro::<u64>(side(b, false, 0, n, 8)));
+    run_map(run, out, n, 8, QLEAN_COST_ARITH, 8, &|lo, hi, o| {
+        let o = rw::<u64>(o);
+        let (a, b) = (&a[lo..hi], &b[lo..hi]);
+        match op {
+            1 => zip2(k::VV, a, b, o, |x, y| x | y),
+            2 => zip2(k::VV, a, b, o, |x, y| x & !y),
+            _ => zip2(k::VV, a, b, o, |x, y| x & y),
+        }
+    });
+}
 /// elementwise.c:970 `qlean_ew_rank_pair` past the unboxing: each symbol's rank in the merged order of `da`, `db`.
-pub fn rank_pair(da: &Syms, db: &Syms, ra: &mut [i32], rb: &mut [i32]) { unimplemented!("A43: qlean_ew_rank_pair") }
+pub fn rank_pair(da: &Syms, db: &Syms, ra: &mut [i32], rb: &mut [i32]) {
+    let (na, n) = (da.count(), da.count() + db.count());
+    if n == 0 { return }
+    let mut v = da.slices(na);
+    v.extend(db.slices(db.count()));
+    let (mut ord, mut tmp) = ((0..n).collect::<Vec<_>>(), vec![0usize; n]);
+    sym_msort(&v, &mut ord, &mut tmp);
+    // identical entries land in one group and both sides get the same rank
+    let mut r = 0;
+    for t in 0..n {
+        if t > 0 && v[ord[t - 1]] != v[ord[t]] { r += 1 }
+        if ord[t] < na { ra[ord[t]] = r } else { rb[ord[t] - na] = r }
+    }
+}
 /// elementwise.c:1040-1079 `ew_cmp_ids_run`, `ew_eq_ids_run` and their entry: ids at `w` compared through the
-/// rank tables `ra`, `rb`; a byte each.
+/// rank tables `ra`, `rb`; a byte each. Both tables empty is `ew_eq_ids_run`: the ids themselves, only `=` and `<>`.
 pub fn eq_ids(run: Runner, op: u8, shape: u8, ia: &[u8], ib: &[u8], w: u32, n: usize, ra: &[i32], rb: &[i32], out: &mut [u8]) {
-    unimplemented!("A43: ew_eq_ids_run")
+    let ranked = !(ra.is_empty() && rb.is_empty());
+    let (cost, wide) = if ranked { (QLEAN_COST_ARITH, 32) } else { (QLEAN_COST_COPY, 2 * w as usize) };
+    run_map(run, out, n.div_ceil(8), 1, cost, wide, &|lo, hi, o| {
+        let (e0, m) = (lo * 8, (hi * 8).min(n) - lo * 8);
+        let at = |i: usize, atom: bool, p: &[u8]| id_at(p, w, if atom { 0 } else { e0 + i });
+        let rank = |t: &[i32], u: usize| t.get(u).copied().unwrap_or(0);
+        if !ranked {
+            let ne = op == k::NE;
+            return pack_bits(o, m, |i| (at(i, shape == k::AV, ia) == at(i, shape == k::VA, ib)) != ne);
+        }
+        let (x, y) = (|i| rank(ra, at(i, shape == k::AV, ia)), |i| rank(rb, at(i, shape == k::VA, ib)));
+        match op {
+            k::EQ => pack_bits(o, m, |i| x(i) == y(i)),
+            k::NE => pack_bits(o, m, |i| x(i) != y(i)),
+            k::LT => pack_bits(o, m, |i| x(i) < y(i)),
+            k::LE => pack_bits(o, m, |i| x(i) <= y(i)),
+            k::GT => pack_bits(o, m, |i| x(i) > y(i)),
+            _ => pack_bits(o, m, |i| x(i) >= y(i)),
+        }
+    });
 }
 
 // ---- A44: elementwise.c:1569-1813 ----
@@ -187,5 +525,143 @@ mod a42 {
         assert_eq!((ew_fdiv(-7, 2), ew_fdiv(7, -2), ew_fdiv(-7, -2), ew_fdiv(i64::MIN, -1)), (-4, -4, 3, i64::MIN));
         assert_eq!(magic_of(1), None); assert_eq!(magic_of(-1), None); assert_eq!(magic_of(0), None);
         assert!(ew_outside_long(9.3e18) && !ew_outside_long(9.2e18) && ew_outside_long(-9223372036854775808.0));
+    }
+}
+
+#[cfg(test)]
+mod tests43 {
+    use super::*;
+    use crate::c::qlean_run_c;
+    use crate::coc::Meta;
+    use crate::pod::bytes_mut;
+    use std::vec::Vec;
+
+    fn by<T: Pod>(v: &mut [T]) -> &[u8] { bytes_mut(v) }
+    fn run_val<T: Pod>(op: u8, cls: u8, shape: u8, nul: i64, a: &mut [T], b: &mut [T], n: usize) -> Vec<u64> {
+        let mut o = vec![0u64; n];
+        val(qlean_run_c, op, cls, shape, nul, by(a), by(b), n, bytes_mut(&mut o[..]));
+        o
+    }
+    // expected values below are the C worker's (`ew_val_run`, `ew_cmp_run` of a43be95) answers on the same inputs
+    #[test] fn floored_division_and_remainder() {
+        let mut a = [-7i64, 7, 0, i64::MIN, i64::MAX];
+        let n = i64::MIN;
+        assert_eq!(run_val(7, 3, k::VA, n, &mut a, &mut [2i64], 5), [0xfffffffffffffffc, 3, 0, 1 << 63, 0x3fffffffffffffff]);
+        assert_eq!(run_val(7, 3, k::VA, n, &mut a, &mut [-2i64], 5), [3, 0xfffffffffffffffc, 0, 1 << 63, 0xc000000000000000]);
+        assert_eq!(run_val(8, 3, k::VA, n, &mut a, &mut [7i64], 5), [0, 0, 0, 1 << 63, 0]);
+        assert_eq!(run_val(7, 3, k::VA, n, &mut a, &mut [0i64], 5), [1 << 63; 5]);
+    }
+    #[test] fn byte_wraps_and_never_meets_its_null() {
+        let mut a = [250u8, 3, 255, 100];
+        let mut o = [0u8; 4];
+        val(qlean_run_c, k::ADD, 0, k::VA, 256, by(&mut a), &[10], 4, &mut o);
+        assert_eq!(o, [4, 0xd, 9, 0x6e]);
+        val(qlean_run_c, k::MUL, 0, k::VA, 256, by(&mut a), &[10], 4, &mut o);
+        assert_eq!(o, [0xc4, 0x1e, 0xf6, 0xe8]);
+    }
+    #[test] fn float_nulls_come_back_as_they_are_and_the_right_one_of_minus_flips() {
+        let mut f = [0xfff8000000000000u64, 0x3ff0000000000000, 0x43f0000000000000, 0x4015800000000000, 0xc015800000000000, 0x7e37e43c8800759c];
+        let (mut one, mut two) = ([0x3ff0000000000000u64], [0x4000000000000000u64]);
+        assert_eq!(run_val(k::SUB, 5, k::AV, 0, &mut one, &mut f, 6),
+                   [0x7ff8000000000000, 0, 0xc3f0000000000000, 0xc011800000000000, 0x4019800000000000, 0xfe37e43c8800759c]);
+        assert_eq!(run_val(k::ADD, 5, k::VA, 0, &mut f, &mut one, 6),
+                   [0xfff8000000000000, 0x4000000000000000, 0x43f0000000000000, 0x4019800000000000, 0xc011800000000000, 0x7e37e43c8800759c]);
+        // a quotient outside q's long is a null, and `mod` of it the other one
+        assert_eq!(run_val(k::IDIV, 5, k::VA, 0, &mut f, &mut one, 6),
+                   [0xfff8000000000000, 0x3ff0000000000000, 0xfff8000000000000, 0x4014000000000000, 0xc018000000000000, 0xfff8000000000000]);
+        assert_eq!(run_val(k::IMOD, 5, k::VA, 0, &mut f, &mut two, 6),
+                   [0xfff8000000000000, 0x3ff0000000000000, 0x7ff8000000000000, 0x3ff6000000000000, 0x3fe4000000000000, 0x7ff8000000000000]);
+    }
+    #[test] #[should_panic(expected = "pow at storage class 5 stays in C")]
+    fn pow_is_not_rust() { run_val(k::POW, 5, k::VV, 0, &mut [1u64], &mut [1u64], 1); }
+    fn run_cmp<T: Pod>(op: u8, cls: u8, shape: u8, a: &mut [T], b: &mut [T], n: usize) -> Vec<u8> {
+        let mut o = vec![0xABu8; n.div_ceil(8)];
+        cmp(qlean_run_c, op, cls, shape, by(a), by(b), n, &mut o);
+        o
+    }
+    #[test] fn comparisons_pack_lsb_first_with_zero_tail() {
+        let mut t = [0x3ff0000000000000u64, 0x3ff0000000000001, 0x3ff00000000fffff, 0xfff8000000000000];
+        assert_eq!(run_cmp(k::EQ, 5, k::VA, &mut t, &mut [0x3ff0000000000000u64], 4), [0x03]);
+        assert_eq!(run_cmp(k::LT, 5, k::VA, &mut t, &mut [0x3ff0000000000000u64], 4), [0x08]);
+        let mut u = t;
+        assert_eq!(run_cmp(k::LE, 5, k::VV, &mut t, &mut u, 4), [0x0f]);
+        let mut i: [i32; 11] = core::array::from_fn(|k| k as i32 + 1);
+        assert_eq!(run_cmp(k::LT, 2, k::VA, &mut i, &mut [3i32], 11), [0x03, 0x00]);
+        assert_eq!(run_cmp(k::GE, 2, k::AV, &mut [3i32], &mut i, 11), [0x07, 0x00]);
+        // the tail past `n` stays zero whatever the verb answers there
+        assert_eq!(run_cmp(k::NE, 0, k::VA, &mut [1u8; 9], &mut [0u8], 9), [0xff, 0x01]);
+    }
+    #[test] fn bitwise_and_low_zero() {
+        let (mut a, mut b) = ([0b1100u64, !0, 5, 0, 9], [0b1010u64; 5]);
+        let mut o = [0u64; 5];
+        for (op, want) in [(0u8, [0b1000u64, 0b1010, 0, 0, 8]), (1, [0b1110, !0, 0b1111, 0b1010, 0b1011]), (2, [0b0100, !0b1010, 5, 0, 1]), (7, [0b1000, 0b1010, 0, 0, 8])] {
+            bitw(qlean_run_c, op, by(&mut a), by(&mut b), 5, bytes_mut(&mut o));
+            assert_eq!(o, want, "op {op}");
+        }
+        let mut z = vec![0xABu8; 1];
+        low_zero(qlean_run_c, by(&mut a), by(&mut [0b0001u64]), 5, &mut z);
+        assert_eq!(z, [0b01001]);
+    }
+    /// three blocks of 1024 longs and a tail of 452: block 0 and 2 at 8-bit residuals, block 1 constant
+    fn coc_data() -> (Vec<u8>, Vec<i64>, Vec<u64>, Vec<u64>, Vec<i64>) {
+        let (mut s, mut pack) = (0x9e3779b97f4a7c15u64, vec![]);
+        let mut next = || { s ^= s << 13; s ^= s >> 7; s ^= s << 17; s };
+        for _ in 0..2048 { pack.push(next() as u8) }
+        (pack, vec![-1000, 77, 1 << 40], vec![0, 1024, 1024], vec![0; 3], vec![0, 0, 0])
+    }
+    #[test] fn encoded_operands_equal_their_decodes() {
+        let n = 2 * BLK + 452;
+        let (pack, base, off, _, bsum) = coc_data();
+        let (maxv, width) = (vec![base[0] + 255, 77, base[2] + 255], [8u8, 0, 8]);
+        let meta = Meta { base: &base, maxv: &maxv, off: &off, bsum: &bsum, width: &width, sumnul: 0, sumn: 0, n, nblk: 3, mblk: 3 };
+        let c = Coc { meta, pack: &pack, exc: None, fdelta: None };
+        let mut dense = vec![0i64; 3 * BLK];
+        for b in 0..3 { c.decode_blk::<i64>(b, if b < 2 { BLK } else { 452 }, &mut dense[b * BLK..]) }
+        let mut other: Vec<i64> = (0..n as i64).map(|i| i * 3 - 2000).collect();
+        let mut ds = dense[..n].to_vec();
+        let mut o = vec![0u64; n];
+        val_enc(qlean_run_c, k::ADD, 3, i64::MIN, &c, &c, bytes_mut(&mut o));
+        assert_eq!(o, run_val(k::ADD, 3, k::VV, i64::MIN, &mut ds, &mut dense[..n].to_vec(), n));
+        for (shape, op) in [(k::VA, k::SUB), (k::AV, k::MUL), (k::VA, k::IDIV)] {
+            let mut atom = [7i64];
+            let want = if shape == k::VA { run_val(op, 3, shape, i64::MIN, &mut ds, &mut atom, n) } else { run_val(op, 3, shape, i64::MIN, &mut atom, &mut ds, n) };
+            val_enc_atom(qlean_run_c, op, 3, shape, i64::MIN, &c, by(&mut atom), bytes_mut(&mut o));
+            assert_eq!(o, want, "shape {shape} op {op}");
+        }
+        for m in [0u64, 0xff, 1 << 40, 77, 1] {
+            let mut want = vec![0u8; n.div_ceil(8)];
+            let mut got = vec![0xABu8; n.div_ceil(8)];
+            let mut me = [m];
+            let _ = &mut other;
+            low_zero(qlean_run_c, by(&mut ds), by(&mut me), n, &mut want);
+            low_zero_enc(qlean_run_c, &c, by(&mut me), &mut got);
+            assert_eq!(got, want, "mask {m:#x}");
+        }
+    }
+    fn syms(ss: &[&[u8]]) -> (Vec<u8>, Vec<usize>) {
+        let (mut b, mut o) = (vec![], vec![1]);
+        for s in ss { b.extend_from_slice(s); b.push(0); o.push(b.len() << 1 | 1) }
+        (b, o)
+    }
+    #[test] fn ranks_in_the_merged_distinct_order_and_ids_through_them() {
+        let ((ba, oa), (bb, ob)) = (syms(&[b"b", b"a", b"b"]), syms(&[b"c", b"a", b"", b"b"]));
+        let (da, db) = (Syms { blob: &ba, offs: &oa }, Syms { blob: &bb, offs: &ob });
+        let (mut ra, mut rb) = (vec![9; 3], vec![9; 4]);
+        rank_pair(&da, &db, &mut ra, &mut rb);
+        assert_eq!((ra.as_slice(), rb.as_slice()), (&[2, 1, 2][..], &[3, 1, 0, 2][..]));
+        // ids at 2 bits, four to a byte: 0 1 2 3 0 | 3 2 1 0 3
+        let (ia, ib) = ([0b11100100u8, 0b00000000], [0b00011011u8, 0b00000011]);
+        let mut o = [0xABu8; 1];
+        eq_ids(qlean_run_c, k::EQ, k::VV, &ia, &ib, 2, 5, &[], &[], &mut o);
+        assert_eq!(o, [0b00000000]);
+        eq_ids(qlean_run_c, k::NE, k::VV, &ia, &ib, 2, 5, &[], &[], &mut o);
+        assert_eq!(o, [0b11111]);
+        // ranks: ra = [2, 1, 2] for ids 0..2, past the table reads 0; rb = [3, 1, 0, 2]
+        eq_ids(qlean_run_c, k::LT, k::VV, &ia, &ib, 2, 5, &ra, &rb, &mut o);
+        assert_eq!(o, [0b01000]);
+        eq_ids(qlean_run_c, k::GE, k::VV, &ia, &ib, 2, 5, &ra, &rb, &mut o);
+        assert_eq!(o, [0b10111]);
+        eq_ids(qlean_run_c, k::EQ, k::VA, &ia, &[0b10], 2, 5, &[], &[], &mut o);
+        assert_eq!(o, [0b00100]);
     }
 }
