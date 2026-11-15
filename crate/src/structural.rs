@@ -124,23 +124,81 @@ pub fn gather_ids_enc(run: Runner, w: u32, wout: u32, fill: u64, src: &[u8], n: 
 pub fn cycle_ids(n: usize, off: usize, m: usize, w: u32, ids: &[u8], out: &mut [u8]) { unimplemented!("A38: qlean_structural_cycle_ids") }
 
 // ---- A39: structural.c:1792-2008 ----
+/// An enumerated element as an id: `0Nj` is `nullid`, a negative index reads `0`, any other is itself (`enum_ids`
+/// finds the out-of-range first in the C entry).
+fn enum_id(v: i64, nullid: usize) -> u64 { if v == i64::MIN { nullid as u64 } else { v.max(0) as u64 } }
 /// structural.c:1792 `qlean_structural_cycle_bits`
-pub fn cycle_bits(n: usize, off: usize, m: usize, b: &[u8], out: &mut [u8]) { unimplemented!("A39: qlean_structural_cycle_bits") }
+pub fn cycle_bits(n: usize, off: usize, m: usize, b: &[u8], out: &mut [u8]) {
+    if m == 0 || n == 0 { return }
+    // a run of the source up to its end at a time, the read index wrapped once per lap rather than divided
+    let (mut j, mut i) = (0, off % n);
+    while j < m { let len = (m - j).min(n - i); copy_bits(out, j, b, i, len); j += len; i = 0 }
+}
 /// structural.c:1820 `concat_run` and its entry: the parts end to end into `out`.
-pub fn concat(run: Runner, parts: &[&[u8]], out: &mut [u8]) { unimplemented!("A39: concat_run") }
+pub fn concat(run: Runner, parts: &[&[u8]], out: &mut [u8]) {
+    let k = parts.len();
+    let at: alloc::vec::Vec<usize> = core::iter::once(0).chain(parts.iter().scan(0, |t, p| { *t += p.len(); Some(*t) })).collect();
+    assert_eq!(out.len(), at[k], "concat: {} output bytes for {} bytes of parts", out.len(), at[k]);
+    if k == 0 { return }
+    // each slice bisects the start offsets for its first part, so a slice does not walk every lap of a cycle
+    crate::c::run_map(run, out, at[k], 1, crate::QLEAN_COST_COPY, 1, &|lo, hi, o: &mut [u8]| {
+        let (mut i, mut j) = (0, k);
+        while j - i > 1 { let m = i + (j - i) / 2; if at[m] <= lo { i = m } else { j = m } }
+        while i < k && at[i] < hi {
+            let (s, e) = (at[i].max(lo), at[i + 1].min(hi));
+            if s < e { o[s - lo..e - lo].copy_from_slice(&parts[i][s - at[i]..e - at[i]]) }
+            i += 1;
+        }
+    });
+}
 /// structural.c:1863 `qlean_structural_concat_bits`: `counts[j]` bits of `parts[j]`.
-pub fn concat_bits(counts: &[usize], parts: &[&[u8]], out: &mut [u8]) { unimplemented!("A39: qlean_structural_concat_bits") }
+pub fn concat_bits(counts: &[usize], parts: &[&[u8]], out: &mut [u8]) {
+    let mut at = 0;
+    for (&cn, p) in counts.iter().zip(parts) { copy_bits(out, at, p, 0, cn); at += cn }
+}
 /// structural.c:1885 `enum_at`: element `i` of a payload of `have` bytes per element.
-pub fn enum_at(src: &[u8], have: usize, i: usize) -> i64 { unimplemented!("A39: enum_at") }
+pub fn enum_at(src: &[u8], have: usize, i: usize) -> i64 {
+    if i >= have { 0 } else { i64::from_le_bytes(src[i * 8..i * 8 + 8].try_into().unwrap()) }
+}
 /// structural.c:1898 `qlean_structural_enum_ids`: values as ids into `0 .. d` at `w` bits, `nullid` outside.
-pub fn enum_ids(n: usize, d: usize, nullid: usize, w: u32, b: &[u8], out: &mut [u8]) { unimplemented!("A39: qlean_structural_enum_ids") }
+pub fn enum_ids(n: usize, d: usize, nullid: usize, w: u32, b: &[u8], out: &mut [u8]) {
+    for i in 0..n { crate::ids::id_put(out, w, i, enum_id(enum_at(b, b.len() / 8, i), nullid)) }
+}
 /// structural.c:1924 `qlean_structural_enum_ids_for`: from an encoded column.
-pub fn enum_ids_enc(n: usize, d: usize, nullid: usize, w: u32, c: &Coc, out: &mut [u8]) { unimplemented!("A39: qlean_structural_enum_ids_for") }
+pub fn enum_ids_enc(n: usize, d: usize, nullid: usize, w: u32, c: &Coc, out: &mut [u8]) {
+    let mut v = [0i64; crate::BLK];
+    for b in 0..n.div_ceil(crate::BLK) {
+        let (lo, nb) = (b * crate::BLK, crate::BLK.min(n - b * crate::BLK));
+        c.decode_blk(b, nb, &mut v);
+        for (i, &x) in v[..nb].iter().enumerate() { crate::ids::id_put(out, w, lo + i, enum_id(x, nullid)) }
+    }
+}
 /// structural.c:1949 `ids_place`: `cn` ids at `w` mapped by `tab` (`nm` entries) to `wout` bits at `at`.
-pub fn ids_place(out: &mut [u8], at: usize, wout: u32, cn: usize, w: u32, pp: &[u8], tab: &[usize]) { unimplemented!("A39: ids_place") }
+pub fn ids_place(out: &mut [u8], at: usize, wout: u32, cn: usize, w: u32, pp: &[u8], tab: &[usize]) {
+    let val = |j: usize| tab.get(crate::ids::id_at(pp, w, j)).map_or(0, |&t| t as u64);
+    if (at * wout as usize) & 7 == 0 {
+        let dst = &mut out[at * wout as usize / 8..];
+        for j in 0..cn { crate::ids::id_put(dst, wout, j, val(j)) }
+    } else {
+        // packed into its own buffer and bit-copied, so no store crosses into the part before it
+        let mut tmp = alloc::vec![0u8; crate::ids::ids_bytes(cn, wout) + 1];
+        for j in 0..cn { crate::ids::id_put(&mut tmp, wout, j, val(j)) }
+        crate::ids::bitcopy(out, at * wout as usize, &tmp, 0, cn * wout as usize);
+    }
+}
 /// structural.c:1969 `qlean_structural_concat_ids`: each part's ids through its map.
 pub fn concat_ids(wout: u32, counts: &[usize], widths: &[u32], maps: &[&[usize]], parts: &[&[u8]], out: &mut [u8]) {
-    unimplemented!("A39: qlean_structural_concat_ids")
+    let k = counts.len().min(parts.len());
+    let mut at = 0;
+    for i in 0..k {
+        // the part is read at the `cn` ids `counts` claims and the `w` `widths` claims; short of that it is zeros
+        let w = widths.get(i).copied().unwrap_or(0);
+        let need = crate::ids::ids_bytes(counts[i], w);
+        let padded;
+        let pp = if parts[i].len() >= need { parts[i] } else { padded = [parts[i], &alloc::vec![0u8; need - parts[i].len()]].concat(); &padded[..] };
+        ids_place(out, at, wout, counts[i], w, pp, maps.get(i).copied().unwrap_or(&[]));
+        at += counts[i];
+    }
 }
 
 // ---- A40: structural.c:2039-2170, the symbol dictionary's hash table ----
@@ -180,3 +238,106 @@ pub fn scatter(wb: usize, dst: &mut [u8], idx: &[i64], src: &[u8], soff: usize, 
     unimplemented!("A41b: qlean_structural_scatter")
 }
 
+
+#[cfg(test)]
+mod a39_tests {
+    use super::*;
+    use crate::ids::{id_at, ids_bytes};
+    fn rng(s: &mut u64) -> u64 { *s ^= *s << 13; *s ^= *s >> 7; *s ^= *s << 17; *s }
+    fn bit(b: &[u8], i: usize) -> bool { b.get(i / 8).is_some_and(|x| x >> (i % 8) & 1 == 1) }
+
+    #[test] fn concat_is_the_fold_of_append() {
+        let mut s = 0x9E3779B97F4A7C15;
+        for _ in 0..500 {
+            let parts: Vec<Vec<u8>> = (0..rng(&mut s) % 12).map(|_| (0..rng(&mut s) % 40).map(|_| rng(&mut s) as u8).collect()).collect();
+            let want = parts.concat();
+            let ps: Vec<&[u8]> = parts.iter().map(|p| &p[..]).collect();
+            let mut out = vec![0u8; want.len()];
+            concat(crate::c::qlean_run_c, &ps, &mut out);
+            assert_eq!(out, want);
+        }
+    }
+    #[test] fn enum_at_reads_zero_past_the_payload() {
+        let b: Vec<u8> = [5i64, -3].iter().flat_map(|x| x.to_le_bytes()).collect();
+        assert_eq!((enum_at(&b, 2, 0), enum_at(&b, 2, 1), enum_at(&b, 2, 2), enum_at(&b, 2, 99)), (5, -3, 0, 0));
+    }
+    #[test] fn enum_ids_nulls_negatives_and_short_payload() {
+        let mut s = 7;
+        for w in [0u32, 1, 2, 4, 8, 16, 32, 64] {
+            let vals: Vec<i64> = (0..37).map(|_| match rng(&mut s) % 5 { 0 => i64::MIN, 1 => -1, _ => (rng(&mut s) % 3) as i64 }).collect();
+            let b: Vec<u8> = vals[..30].iter().flat_map(|x| x.to_le_bytes()).collect();
+            let mut out = vec![0u8; ids_bytes(37, w)];
+            enum_ids(37, 3, 2, w, &b, &mut out);
+            for i in 0..37 {
+                let v = vals.get(i).filter(|_| i < 30).copied().unwrap_or(0);
+                let want = if v == i64::MIN { 2 } else { v.max(0) as u64 };
+                if w != 0 { assert_eq!(id_at(&out, w, i) as u64, want & (u64::MAX >> (64 - w.min(64))), "w {w} i {i}") }
+            }
+        }
+    }
+    #[test] fn enum_ids_enc_is_enum_ids_of_the_decoded_column() {
+        let n = 1500;
+        let pack: Vec<u8> = (0..2 * crate::BLK * 2).map(|i| (i * 7 % 251) as u8).collect();
+        let (base, z, off, width) = ([10i64, -4], [0i64; 2], [0u64, 2048], [16u8; 2]);
+        let meta = crate::coc::Meta { base: &base, maxv: &z, off: &off, bsum: &z, width: &width, sumnul: 0, sumn: 0, n, nblk: 2, mblk: 2 };
+        let c = Coc { meta, pack: &pack, exc: None, fdelta: None };
+        let mut v = vec![0i64; 2 * crate::BLK];
+        for b in 0..2 { c.decode_blk(b, crate::BLK, &mut v[b * crate::BLK..]) }
+        v.truncate(n);
+        let raw: Vec<u8> = v.iter().flat_map(|x| x.to_le_bytes()).collect();
+        for w in [8u32, 16, 32] {
+            let (mut a, mut b) = (vec![0u8; ids_bytes(n, w)], vec![0u8; ids_bytes(n, w)]);
+            enum_ids(n, 1 << 20, 0, w, &raw, &mut a);
+            enum_ids_enc(n, 1 << 20, 0, w, &c, &mut b);
+            assert_eq!(a, b, "w {w}");
+        }
+    }
+    #[test] fn ids_place_and_concat_ids_read_through_each_map() {
+        let mut s = 11;
+        for _ in 0..400 {
+            let wout = [1u32, 2, 4, 8, 16, 32][rng(&mut s) as usize % 6];
+            let k = rng(&mut s) as usize % 5;
+            let (mut counts, mut widths, mut maps, mut raw) = (vec![], vec![], vec![], vec![]);
+            for _ in 0..k {
+                let w = [1u32, 2, 4, 8, 16][rng(&mut s) as usize % 5];
+                let cn = rng(&mut s) as usize % 50;
+                let mut p = vec![0u8; ids_bytes(cn, w)];
+                for j in 0..cn { crate::ids::id_put(&mut p, w, j, rng(&mut s)) }
+                counts.push(cn); widths.push(w); raw.push(p);
+                maps.push((0..rng(&mut s) % 9).map(|_| rng(&mut s) as usize % (1 << wout.min(20))).collect::<Vec<usize>>());
+            }
+            let total: usize = counts.iter().sum();
+            let mut out = vec![0u8; ids_bytes(total, wout)];
+            let (mr, pr): (Vec<&[usize]>, Vec<&[u8]>) = (maps.iter().map(|m| &m[..]).collect(), raw.iter().map(|p| &p[..]).collect());
+            concat_ids(wout, &counts, &widths, &mr, &pr, &mut out);
+            let mut at = 0;
+            for i in 0..k {
+                for j in 0..counts[i] {
+                    let want = maps[i].get(id_at(&raw[i], widths[i], j)).copied().unwrap_or(0);
+                    assert_eq!(id_at(&out, wout, at + j), want, "wout {wout} part {i} j {j}");
+                }
+                at += counts[i];
+            }
+        }
+    }
+    // needs A34's `copy_bits`
+    #[test] #[ignore = "A34: copy_bits is still a stub in this branch"] fn cycle_bits_and_concat_bits_match_bit_definitions() {
+        let mut s = 5;
+        for _ in 0..300 {
+            let n = 1 + rng(&mut s) as usize % 150;
+            let b: Vec<u8> = (0..n.div_ceil(8)).map(|_| rng(&mut s) as u8).collect();
+            let (off, m) = (rng(&mut s) as usize % 400, rng(&mut s) as usize % 300);
+            let mut out = vec![0u8; m.div_ceil(8)];
+            cycle_bits(n, off % n, m, &b, &mut out);
+            for j in 0..m { assert_eq!(bit(&out, j), bit(&b, (off % n + j) % n), "n {n} off {off} j {j}") }
+            let counts = [rng(&mut s) as usize % 70, rng(&mut s) as usize % 70, rng(&mut s) as usize % 70];
+            let parts: Vec<Vec<u8>> = counts.iter().map(|&c| (0..c.div_ceil(8)).map(|_| rng(&mut s) as u8).collect()).collect();
+            let pr: Vec<&[u8]> = parts.iter().map(|p| &p[..]).collect();
+            let total: usize = counts.iter().sum();
+            let mut o = vec![0u8; total.div_ceil(8)];
+            concat_bits(&counts, &pr, &mut o);
+            let mut at = 0;
+            for (i, &c) in counts.iter().enumerate() { for j in 0..c { assert_eq!(bit(&o, at + j), bit(&parts[i], j)) } at += c }
+        }
+    }
+}
