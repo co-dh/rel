@@ -1,7 +1,11 @@
 #![forbid(unsafe_code)]
-#![allow(unused_variables)] // scaffold: the task that fills this module removes it
 //! The read views of coc.h's `coc`: metadata, patch list, and the whole column.
-use crate::pod::Lane;
+use crate::layout::{Tail, exc_layout};
+use crate::pod::{self, Lane};
+use crate::BLK;
+
+/// coc.h:196: bit 8 of the patch list's element size, set when the frames follow
+const COC_EXC_FRM: usize = 0x100;
 
 /// `coc_meta_view`: the 33*mblk + 16 byte buffer.
 #[derive(Clone, Copy)]
@@ -19,20 +23,66 @@ pub struct Exc<'a> { pub off: &'a [u32], pub pos: &'a [u16], pub raw: &'a [u8], 
 pub struct Coc<'a> { pub meta: Meta<'a>, pub pack: &'a [u8], pub exc: Option<Exc<'a>>, pub fdelta: Option<&'a [u64]> }
 
 impl<'a> Meta<'a> {
-    /// coc.h:133; None = misaligned buffer
-    pub fn new(m: &'a [u8], n: usize) -> Option<Self> { unimplemented!() }
+    /// coc.h:133; None = misaligned buffer, or one shorter than `33 * (len / 33) + 16` where C reads past it
+    pub fn new(m: &'a [u8], n: usize) -> Option<Self> {
+        let nb = m.len() / 33;
+        if m.len() < 33 * nb + 16 { return None }
+        let (w, tail) = m.split_at(32 * nb + 16);
+        let (head, sums) = w.split_at(32 * nb);
+        let (base, rest) = head.split_at(8 * nb);
+        let (maxv, rest) = rest.split_at(8 * nb);
+        let (off, bsum) = rest.split_at(8 * nb);
+        let n = n.min(nb * BLK);
+        Some(Meta {
+            base: pod::cast(base)?, maxv: pod::cast(maxv)?, off: pod::cast(off)?, bsum: pod::cast(bsum)?,
+            width: &tail[..nb],
+            sumnul: pod::cast::<i64>(&sums[..8])?[0], sumn: pod::cast::<u64>(&sums[8..16])?[0],
+            n, nblk: n.div_ceil(BLK), mblk: nb,
+        })
+    }
     /// coc.h:222
-    pub fn res_end(&self) -> usize { unimplemented!() }
+    pub fn res_end(&self) -> usize {
+        if self.mblk == 0 { 0 } else { self.off[self.mblk - 1] as usize + BLK * self.width[self.mblk - 1] as usize / 8 }
+    }
     /// coc.h:233
-    pub fn grid(&self, n: usize) -> bool { unimplemented!() }
+    pub fn grid(&self, n: usize) -> bool { self.mblk == n.div_ceil(BLK) }
 }
 impl<'a> Coc<'a> {
-    /// coc.h:245; None where C aborts
-    pub fn attach(meta: Meta<'a>, pack: &'a [u8]) -> Option<Self> { unimplemented!() }
+    /// coc.h:245; None where C aborts, or where the pack's tail is misaligned for its sections
+    pub fn attach(meta: Meta<'a>, pack: &'a [u8]) -> Option<Self> {
+        let e = meta.res_end();
+        let c = Coc { meta, pack, exc: None, fdelta: None };
+        if pack.len() <= e { return Some(c) }
+        let t = &pack[e..];
+        let (nexc, h1) = (u64::from_ne_bytes(t.get(..8)?.try_into().ok()?), u64::from_ne_bytes(t.get(8..16)?.try_into().ok()?));
+        let (esz, frm) = (h1 & !(COC_EXC_FRM as u64), h1 & COC_EXC_FRM as u64);
+        if !matches!(esz, 1 | 2 | 4 | 8) || nexc > t.len() as u64 / 2 { return None }
+        let (nexc, esz, mb) = (nexc as usize, esz as usize, meta.mblk);
+        let l = exc_layout(mb, nexc, esz, if frm != 0 { Tail::Frames } else { Tail::None })?;
+        if l.size != t.len() { return None }
+        let exc = Exc { off: pod::cast(&t[l.off..l.off + 4 * (mb + 1)])?, pos: pod::cast(&t[l.pos..l.pos + 2 * nexc])?,
+                        raw: &t[l.raw..l.raw + nexc * esz], esz };
+        let fdelta = if frm != 0 { Some(pod::cast(&t[l.tail..l.tail + 8 * mb])?) } else { None };
+        Some(Coc { exc: Some(exc), fdelta, ..c })
+    }
     /// coc.h:234
-    pub fn std(&self, n: usize) -> bool { unimplemented!() }
+    pub fn std(&self, n: usize) -> bool {
+        let (m, e) = (&self.meta, self.meta.res_end());
+        let pb = self.pack.len();
+        if !m.grid(n) || pb < e || m.width.iter().any(|&w| w > 64) { return false }
+        if pb == e { return true }
+        let (nexc, esz) = self.exc.map_or((0, 0), |x| (x.pos.len(), x.esz));
+        exc_layout(m.mblk, nexc, esz, if self.fdelta.is_some() { Tail::Frames } else { Tail::None }).is_some_and(|l| pb == e + l.size)
+    }
     /// coc.h:155; off stays absolute into pack
-    pub fn blocks(&self, b0: usize, b1: usize) -> Coc<'a> { unimplemented!() }
+    pub fn blocks(&self, b0: usize, b1: usize) -> Coc<'a> {
+        let (m, k) = (&self.meta, b1 - b0);
+        let n = m.n.saturating_sub(b0 * BLK).min(k * BLK);
+        let meta = Meta { base: &m.base[b0..b1], maxv: &m.maxv[b0..b1], off: &m.off[b0..b1], bsum: &m.bsum[b0..b1],
+                          width: &m.width[b0..b1], n, nblk: k, mblk: k, ..*m };
+        Coc { meta, pack: self.pack, exc: self.exc.map(|e| Exc { off: &e.off[b0..=b1], ..e }),
+              fdelta: self.fdelta.map(|f| &f[b0..b1]) }
+    }
     /// coc.h:217
     pub fn frame(&self, b: usize) -> u64 {
         (self.meta.base[b] as u64).wrapping_add(self.fdelta.map_or(0, |f| f[b]))
@@ -127,6 +177,24 @@ mod tests {
     fn res_get(p: &[u8], w: u8, i: usize) -> u64 {
         (0..w as usize).map(|k| { let bit = i * w as usize + k; ((p[bit / 8] >> (bit % 8)) & 1) as u64 }).enumerate()
             .fold(0, |a, (k, b)| a | b << k)
+    }
+    // expected values: coc.h's coc_attach (aborts) and coc_meta_view at 152d98f
+    #[test] fn attach_refuses_what_c_aborts_on() {
+        let (z, off, width) = ([0i64], [0u64], [8u8]);
+        let meta = super::Meta { base: &z, maxv: &z, off: &off, bsum: &z, width: &width, sumnul: 0, sumn: 0, n: 1, nblk: 1, mblk: 1 };
+        let res = BLK; // one block of width 8
+        assert!(super::Coc::attach(meta, &vec![0u8; res]).is_some());
+        assert!(super::Coc::attach(meta, &vec![0u8; res + 8]).is_none());
+        let mut p = vec![0u64; (res + 16 + 8) / 8];
+        p[res / 8] = 1; p[res / 8 + 1] = 3; // nexc 1, esz 3
+        assert!(super::Coc::attach(meta, &crate::pod::bytes_mut(&mut p)[..res + 24]).is_none());
+    }
+    #[test] fn meta_new_refuses_a_misaligned_or_short_buffer() {
+        let mut v = vec![0u64; 8];
+        let b = &*crate::pod::bytes_mut(&mut v);
+        assert!(super::Meta::new(&b[..49], 1).is_some()); // 33 + 16
+        assert!(super::Meta::new(&b[1..50], 1).is_none());
+        assert!(super::Meta::new(&b[..40], 1).is_none());
     }
     #[test] fn decode_blk_every_width() { check::<u8>(1); check::<i16>(2); check::<i32>(3); check::<i64>(4) }
 }
