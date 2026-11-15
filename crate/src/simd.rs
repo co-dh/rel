@@ -21,7 +21,31 @@ pub fn res_unpack(p: &[u8], w: u8, nb: usize, out: &mut [u8]) {
                   target_feature = "avx512bw", target_feature = "avx512dq")))]
     crate::unpack::res_unpack_scalar(p, w, nb, out)
 }
-pub fn res_unpack_add(p: &[u8], w: u8, nb: usize, base: u64, out: &mut [u8], tw: u32) -> bool { unimplemented!() }
+/// coc.h's `res_unpack_add`: block residuals widened to `tw`-byte elements with `base` added, wrapping, the first `nb`
+/// stored and nothing after; false (nothing written) at a power-of-two width, an element narrower than the lane, or
+/// a build without the vector path.
+pub fn res_unpack_add(p: &[u8], w: u8, nb: usize, base: u64, out: &mut [u8], tw: u32) -> bool {
+    #[cfg(all(target_arch = "x86_64", target_feature = "avx512vbmi", target_feature = "avx512vbmi2",
+              target_feature = "avx512bw", target_feature = "avx512dq"))]
+    {
+        if w & w.wrapping_sub(1) == 0 || w > 64 { return false }
+        // SAFETY: the cfg above is the build enabling every feature the v:: kernels are compiled for
+        unsafe { match (w, tw) {
+            (..16, 1) => v::add16_u8(p, w, nb, base, out),
+            (..16, 2) => v::add16_i16(p, w, nb, base, out),
+            (..16, 4) => v::add16_i32(p, w, nb, base, out),
+            (..16, 8) => v::add16_i64(p, w, nb, base, out),
+            (16..32, 4) => v::add32_i32(p, w, nb, base, out),
+            (16..32, 8) => v::add32_i64(p, w, nb, base, out),
+            (32.., 8) => v::add64_i64(p, w, nb, base, out),
+            _ => return false,
+        } }
+        true
+    }
+    #[cfg(not(all(target_arch = "x86_64", target_feature = "avx512vbmi", target_feature = "avx512vbmi2",
+                  target_feature = "avx512bw", target_feature = "avx512dq")))]
+    false
+}
 
 /// One function per `RES_VUNPACK` instance of coc.h:589-695 (`res_unpack`: B9; `res_unpack_add`: B10). Each names
 /// every intrinsic its C instance uses, so this file compiling on the pinned toolchain is the check that all of
@@ -30,20 +54,6 @@ pub fn res_unpack_add(p: &[u8], w: u8, nb: usize, base: u64, out: &mut [u8], tw:
 pub mod v {
     #![allow(clippy::let_unit_value)]
     use core::arch::x86_64::*;
-
-    // RES_VUNPACK's own intrinsics at lane width 16, 32, 64, and the iota it is fed
-    macro_rules! vunpack16 { () => { let _ = (_mm512_mullo_epi16, _mm512_set1_epi16, _mm512_and_si512,
-        _mm512_add_epi16, _mm512_srli_epi16::<3>, _mm512_add_epi8, _mm512_set1_epi8, _mm512_maskz_loadu_epi8,
-        _mm512_shrdv_epi16, _mm512_permutex2var_epi8, _mm512_set_epi8, _mm512_cvtepu8_epi16,
-        _mm512_castsi512_si256); } }
-    macro_rules! vunpack32 { () => { let _ = (_mm512_mullo_epi32, _mm512_set1_epi32, _mm512_and_si512,
-        _mm512_add_epi32, _mm512_srli_epi32::<3>, _mm512_add_epi8, _mm512_set1_epi8, _mm512_maskz_loadu_epi8,
-        _mm512_shrdv_epi32, _mm512_permutex2var_epi8, _mm512_set_epi8, _mm512_cvtepu8_epi32,
-        _mm512_castsi512_si128); } }
-    macro_rules! vunpack64 { () => { let _ = (_mm512_mullo_epi64, _mm512_set1_epi64, _mm512_and_si512,
-        _mm512_add_epi64, _mm512_srli_epi64::<3>, _mm512_add_epi8, _mm512_set1_epi8, _mm512_maskz_loadu_epi8,
-        _mm512_shrdv_epi64, _mm512_permutex2var_epi8, _mm512_set_epi8, _mm512_cvtepu8_epi64,
-        _mm512_castsi512_si128); } }
 
     /// `res_span`: the first `r` bytes of a 64-byte window, none when `r <= 0`.
     fn span(r: isize) -> __mmask64 { if r >= 64 { !0 } else if r <= 0 { 0 } else { (1u64 << r) - 1 } }
@@ -117,50 +127,94 @@ pub mod v {
                           unsafe { _mm512_storeu_si512(o.as_mut_ptr() as *mut _, v) } })
     }
 
+    /// `res_unpack_add`'s ST: the first `n` (at most `$k`) `$e`-byte elements of `$x` stored masked at byte `$off`,
+    /// none when `n <= 0`; the slice taken is exactly the bytes the mask selects.
+    macro_rules! st {
+        ($out:ident, $off:expr, $n:expr, $e:literal, $k:literal, $mt:ty, $store:ident, $pt:ty, $x:expr) => {{
+            let n: isize = $n;
+            if n > 0 {
+                let n = (n as usize).min($k);
+                let o = &mut $out[$off..$off + n * $e];
+                // SAFETY: the mask selects the first n elements, the n * e bytes of o
+                unsafe { $store(o.as_mut_ptr() as *mut $pt, span(n as isize) as $mt, $x) }
+            }
+        }};
+    }
     /// `res_unpack_add`, `w < 16`, one-byte elements.
     #[target_feature(enable = "avx512f,avx512bw,avx512dq,avx512vbmi,avx512vbmi2")]
     pub fn add16_u8(p: &[u8], w: u8, nb: usize, base: u64, out: &mut [u8]) {
-        vunpack16!(); let _ = (_mm256_mask_storeu_epi8, _mm256_add_epi8, _mm512_cvtepi16_epi8, _mm256_set1_epi8);
-        unimplemented!()
+        let b8 = _mm256_set1_epi8(base as i8);
+        vunpack!(p, w, nb, 16, _mm512_mullo_epi16, _mm512_set1_epi16, _mm512_add_epi16, _mm512_srli_epi16,
+                 _mm512_shrdv_epi16, _mm512_cvtepu8_epi16(_mm512_castsi512_si256(iota8!())), 0x0101, 0x0100,
+                 |g, v| st!(out, g * 32, nb as isize - (g * 32) as isize, 1, 32, __mmask32, _mm256_mask_storeu_epi8,
+                            i8, _mm256_add_epi8(_mm512_cvtepi16_epi8(v), b8)))
     }
     /// `res_unpack_add`, `w < 16`, two-byte elements.
     #[target_feature(enable = "avx512f,avx512bw,avx512dq,avx512vbmi,avx512vbmi2")]
     pub fn add16_i16(p: &[u8], w: u8, nb: usize, base: u64, out: &mut [u8]) {
-        vunpack16!(); let _ = (_mm512_mask_storeu_epi16, _mm512_add_epi16); unimplemented!()
+        let b16 = _mm512_set1_epi16(base as i16);
+        vunpack!(p, w, nb, 16, _mm512_mullo_epi16, _mm512_set1_epi16, _mm512_add_epi16, _mm512_srli_epi16,
+                 _mm512_shrdv_epi16, _mm512_cvtepu8_epi16(_mm512_castsi512_si256(iota8!())), 0x0101, 0x0100,
+                 |g, v| st!(out, g * 64, nb as isize - (g * 32) as isize, 2, 32, __mmask32, _mm512_mask_storeu_epi16,
+                            i16, _mm512_add_epi16(v, b16)))
     }
     /// `res_unpack_add`, `w < 16`, four-byte elements.
     #[target_feature(enable = "avx512f,avx512bw,avx512dq,avx512vbmi,avx512vbmi2")]
     pub fn add16_i32(p: &[u8], w: u8, nb: usize, base: u64, out: &mut [u8]) {
-        vunpack16!();
-        let _ = (_mm512_mask_storeu_epi32, _mm512_add_epi32, _mm512_cvtepu16_epi32, _mm512_extracti64x4_epi64::<0>,
-                 _mm512_extracti64x4_epi64::<1>);
-        unimplemented!()
+        let b32 = _mm512_set1_epi32(base as i32);
+        vunpack!(p, w, nb, 16, _mm512_mullo_epi16, _mm512_set1_epi16, _mm512_add_epi16, _mm512_srli_epi16,
+                 _mm512_shrdv_epi16, _mm512_cvtepu8_epi16(_mm512_castsi512_si256(iota8!())), 0x0101, 0x0100,
+                 |g, v| { let n = nb as isize - (g * 32) as isize;
+                   st!(out, g * 128, n, 4, 16, __mmask16, _mm512_mask_storeu_epi32, i32,
+                       _mm512_add_epi32(_mm512_cvtepu16_epi32(_mm512_extracti64x4_epi64::<0>(v)), b32));
+                   st!(out, g * 128 + 64, n - 16, 4, 16, __mmask16, _mm512_mask_storeu_epi32, i32,
+                       _mm512_add_epi32(_mm512_cvtepu16_epi32(_mm512_extracti64x4_epi64::<1>(v)), b32)) })
     }
     /// `res_unpack_add`, `w < 16`, eight-byte elements.
     #[target_feature(enable = "avx512f,avx512bw,avx512dq,avx512vbmi,avx512vbmi2")]
     pub fn add16_i64(p: &[u8], w: u8, nb: usize, base: u64, out: &mut [u8]) {
-        vunpack16!();
-        let _ = (_mm512_mask_storeu_epi64, _mm512_add_epi64, _mm512_cvtepu16_epi64, _mm512_extracti32x4_epi32::<0>,
-                 _mm512_extracti32x4_epi32::<1>, _mm512_extracti32x4_epi32::<2>, _mm512_extracti32x4_epi32::<3>);
-        unimplemented!()
+        let b64 = _mm512_set1_epi64(base as i64);
+        vunpack!(p, w, nb, 16, _mm512_mullo_epi16, _mm512_set1_epi16, _mm512_add_epi16, _mm512_srli_epi16,
+                 _mm512_shrdv_epi16, _mm512_cvtepu8_epi16(_mm512_castsi512_si256(iota8!())), 0x0101, 0x0100,
+                 |g, v| { let n = nb as isize - (g * 32) as isize;
+                   st!(out, g * 256, n, 8, 8, __mmask8, _mm512_mask_storeu_epi64, i64,
+                       _mm512_add_epi64(_mm512_cvtepu16_epi64(_mm512_extracti32x4_epi32::<0>(v)), b64));
+                   st!(out, g * 256 + 64, n - 8, 8, 8, __mmask8, _mm512_mask_storeu_epi64, i64,
+                       _mm512_add_epi64(_mm512_cvtepu16_epi64(_mm512_extracti32x4_epi32::<1>(v)), b64));
+                   st!(out, g * 256 + 128, n - 16, 8, 8, __mmask8, _mm512_mask_storeu_epi64, i64,
+                       _mm512_add_epi64(_mm512_cvtepu16_epi64(_mm512_extracti32x4_epi32::<2>(v)), b64));
+                   st!(out, g * 256 + 192, n - 24, 8, 8, __mmask8, _mm512_mask_storeu_epi64, i64,
+                       _mm512_add_epi64(_mm512_cvtepu16_epi64(_mm512_extracti32x4_epi32::<3>(v)), b64)) })
     }
     /// `res_unpack_add`, `16 < w < 32`, four-byte elements.
     #[target_feature(enable = "avx512f,avx512bw,avx512dq,avx512vbmi,avx512vbmi2")]
     pub fn add32_i32(p: &[u8], w: u8, nb: usize, base: u64, out: &mut [u8]) {
-        vunpack32!(); let _ = (_mm512_mask_storeu_epi32, _mm512_add_epi32); unimplemented!()
+        let b32 = _mm512_set1_epi32(base as i32);
+        vunpack!(p, w, nb, 32, _mm512_mullo_epi32, _mm512_set1_epi32, _mm512_add_epi32, _mm512_srli_epi32,
+                 _mm512_shrdv_epi32, _mm512_cvtepu8_epi32(_mm512_castsi512_si128(iota8!())), 0x01010101, 0x03020100,
+                 |g, v| st!(out, g * 64, nb as isize - (g * 16) as isize, 4, 16, __mmask16, _mm512_mask_storeu_epi32,
+                            i32, _mm512_add_epi32(v, b32)))
     }
     /// `res_unpack_add`, `16 < w < 32`, eight-byte elements.
     #[target_feature(enable = "avx512f,avx512bw,avx512dq,avx512vbmi,avx512vbmi2")]
     pub fn add32_i64(p: &[u8], w: u8, nb: usize, base: u64, out: &mut [u8]) {
-        vunpack32!();
-        let _ = (_mm512_mask_storeu_epi64, _mm512_add_epi64, _mm512_cvtepu32_epi64, _mm512_extracti64x4_epi64::<0>,
-                 _mm512_extracti64x4_epi64::<1>);
-        unimplemented!()
+        let b64 = _mm512_set1_epi64(base as i64);
+        vunpack!(p, w, nb, 32, _mm512_mullo_epi32, _mm512_set1_epi32, _mm512_add_epi32, _mm512_srli_epi32,
+                 _mm512_shrdv_epi32, _mm512_cvtepu8_epi32(_mm512_castsi512_si128(iota8!())), 0x01010101, 0x03020100,
+                 |g, v| { let n = nb as isize - (g * 16) as isize;
+                   st!(out, g * 128, n, 8, 8, __mmask8, _mm512_mask_storeu_epi64, i64,
+                       _mm512_add_epi64(_mm512_cvtepu32_epi64(_mm512_extracti64x4_epi64::<0>(v)), b64));
+                   st!(out, g * 128 + 64, n - 8, 8, 8, __mmask8, _mm512_mask_storeu_epi64, i64,
+                       _mm512_add_epi64(_mm512_cvtepu32_epi64(_mm512_extracti64x4_epi64::<1>(v)), b64)) })
     }
     /// `res_unpack_add`, `32 < w < 64`, eight-byte elements.
     #[target_feature(enable = "avx512f,avx512bw,avx512dq,avx512vbmi,avx512vbmi2")]
     pub fn add64_i64(p: &[u8], w: u8, nb: usize, base: u64, out: &mut [u8]) {
-        vunpack64!(); let _ = (_mm512_mask_storeu_epi64, _mm512_add_epi64); unimplemented!()
+        let b64 = _mm512_set1_epi64(base as i64);
+        vunpack!(p, w, nb, 64, _mm512_mullo_epi64, _mm512_set1_epi64, _mm512_add_epi64, _mm512_srli_epi64,
+                 _mm512_shrdv_epi64, _mm512_cvtepu8_epi64(_mm512_castsi512_si128(iota8!())), 0x0101010101010101, 0x0706050403020100,
+                 |g, v| st!(out, g * 64, nb as isize - (g * 8) as isize, 8, 8, __mmask8, _mm512_mask_storeu_epi64,
+                            i64, _mm512_add_epi64(v, b64)))
     }
 }
 
@@ -178,6 +232,35 @@ mod tests {
                 let (mut a, mut b) = (vec![0xA5u8; BLK * 8], vec![0x5Au8; BLK * 8]);
                 res_unpack_scalar(&p, w, nb, &mut a); super::res_unpack(&p, w, nb, &mut b);
                 assert_eq!(a[..nb * l], b[..nb * l], "w {w} nb {nb}");
+            }
+        }
+    }
+    // res_unpack_add against the scalar unpack plus base, truncated to tw bytes; the bytes after nb untouched
+    #[test] fn res_unpack_add_matches_scalar() {
+        let mut s = 0x9E3779B97F4A7C15u64;
+        let vec_path = cfg!(all(target_arch = "x86_64", target_feature = "avx512vbmi", target_feature = "avx512vbmi2",
+                                target_feature = "avx512bw", target_feature = "avx512dq"));
+        for w in 1..64u8 {
+            if w.is_power_of_two() { continue }
+            let p: Vec<u8> = (0..BLK * w as usize / 8).map(|_| { s ^= s << 13; s ^= s >> 7; s ^= s << 17; s as u8 }).collect();
+            let l = if w < 8 { 1 } else { crate::bits::lane_width(w) as usize / 8 };
+            let base = 0x8000000000000123u64 ^ (w as u64) << 40;
+            for nb in [1, 7, 63, 64, 1023, 1024] {
+                let mut r = vec![0u8; BLK * 8];
+                res_unpack_scalar(&p, w, nb, &mut r);
+                for tw in [1u32, 2, 4, 8] {
+                    let t = tw as usize;
+                    let mut d = vec![0xEEu8; nb * t + 64];
+                    let ok = super::res_unpack_add(&p, w, nb, base, &mut d[..nb * t], tw);
+                    assert_eq!(ok, vec_path && (w < 16 || t >= l), "accepted w {w} tw {tw}");
+                    if !ok { assert!(d.iter().all(|&x| x == 0xEE), "refused yet wrote, w {w} tw {tw}"); continue }
+                    for i in 0..nb {
+                        let mut v = [0u8; 8]; v[..l].copy_from_slice(&r[i * l..i * l + l]);
+                        let x = base.wrapping_add(u64::from_le_bytes(v)).to_le_bytes();
+                        assert_eq!(d[i * t..i * t + t], x[..t], "w {w} nb {nb} tw {tw} i {i}");
+                    }
+                    assert!(d[nb * t..].iter().all(|&x| x == 0xEE), "wrote past nb: w {w} nb {nb} tw {tw}");
+                }
             }
         }
     }

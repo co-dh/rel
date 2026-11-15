@@ -151,16 +151,24 @@ pub unsafe extern "C" fn qrs_coc_lanes(p: *const u8, w: *mut u8, nb: usize, buf:
     unsafe { coc::lanes(sl(p, BLK * *w as usize / 8), w, nb, sl_mut(buf, BLK * 8)) }.as_ptr()
 }
 
-macro_rules! decode_blk {
-    ($($name:ident: $t:ty),*) => {$(
-        /// `decode_blk`: block `b`'s first `nb` elements into `out`.
-        #[unsafe(no_mangle)]
-        pub unsafe extern "C" fn $name(c: *const CCoc, b: usize, nb: usize, out: *mut $t) {
-            unsafe { (*c).view().decode_blk(b, nb, sl_mut(out, nb)) }
-        }
-    )*};
+/// `decode_blk`: block `b`'s first `nb` elements into `out`. Written out per type, not by a macro: cbindgen
+/// does not expand macros, and rs.h needs the prototype.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn qrs_decode_blk_u8(c: *const CCoc, b: usize, nb: usize, out: *mut u8) {
+    unsafe { (*c).view().decode_blk(b, nb, sl_mut(out, nb)) }
 }
-decode_blk!(qrs_decode_blk_u8: u8, qrs_decode_blk_i16: i16, qrs_decode_blk_i32: i32, qrs_decode_blk_i64: i64);
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn qrs_decode_blk_i16(c: *const CCoc, b: usize, nb: usize, out: *mut i16) {
+    unsafe { (*c).view().decode_blk(b, nb, sl_mut(out, nb)) }
+}
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn qrs_decode_blk_i32(c: *const CCoc, b: usize, nb: usize, out: *mut i32) {
+    unsafe { (*c).view().decode_blk(b, nb, sl_mut(out, nb)) }
+}
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn qrs_decode_blk_i64(c: *const CCoc, b: usize, nb: usize, out: *mut i64) {
+    unsafe { (*c).view().decode_blk(b, nb, sl_mut(out, nb)) }
+}
 
 /// Safety: `p` is null or valid for `n` reads of `T` during `'a`.
 unsafe fn sl<'a, T>(p: *const T, n: usize) -> &'a [T] {
@@ -306,6 +314,25 @@ mod tests {
             }
             assert_eq!(seen, cc.nexc);
         }
+    }
+    // decode_blk against the C decoder (testdata/drv.c's col<esz>.dec), block by block, patches applied
+    fn decodes_as_c<T: crate::pod::Lane + PartialEq + core::fmt::Debug>(mut c: Col, dec: &[u8]) {
+        let cc = ccoc(&mut c);
+        let v = unsafe { cc.view() };
+        let e = size_of::<T>();
+        let want: Vec<T> = dec.chunks_exact(e).map(|r| { let mut t = [0u8; 8]; t[..e].copy_from_slice(r); T::wrap(u64::from_le_bytes(t)) }).collect();
+        let mut got = vec![T::wrap(0x5A); cc.n];
+        for b in 0..cc.nblk {
+            let lo = b * BLK; let nb = (cc.n - lo).min(BLK);
+            v.decode_blk(b, nb, &mut got[lo..lo + nb]);
+        }
+        assert_eq!(got, want);
+    }
+    #[test] fn decode_blk_matches_the_c_decoder() {
+        decodes_as_c::<i64>(load(include_bytes!("../testdata/col8.meta"), include_bytes!("../testdata/col8.pack"), include_str!("../testdata/col8.txt")), include_bytes!("../testdata/col8.dec"));
+        decodes_as_c::<i32>(load(include_bytes!("../testdata/col4.meta"), include_bytes!("../testdata/col4.pack"), include_str!("../testdata/col4.txt")), include_bytes!("../testdata/col4.dec"));
+        decodes_as_c::<i16>(load(include_bytes!("../testdata/col2.meta"), include_bytes!("../testdata/col2.pack"), include_str!("../testdata/col2.txt")), include_bytes!("../testdata/col2.dec"));
+        decodes_as_c::<u8>(load(include_bytes!("../testdata/col1.meta"), include_bytes!("../testdata/col1.pack"), include_str!("../testdata/col1.txt")), include_bytes!("../testdata/col1.dec"));
     }
     #[test] fn null_patch_list_and_null_frames_are_none() {
         let mut c = load(include_bytes!("../testdata/col8.meta"), include_bytes!("../testdata/col8.pack"), include_str!("../testdata/col8.txt"));
