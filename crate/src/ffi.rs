@@ -495,13 +495,63 @@ pub unsafe extern "C" fn qrs_grade_syms(run: unsafe extern "C" fn(), desc: c_int
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn qrs_grade_ids(run: unsafe extern "C" fn(), desc: c_int, n: usize, blob: *const u8, bytes: usize,
                                        offs: *const usize, nd: usize, p: *const u8, w: u32, out: *mut i64) {
-    unsafe { sort::grade_ids(rn(run), desc != 0, n, &syms(blob, bytes, offs, nd), sl(p, ids::ids_bytes(n, w)), w, sl_mut(out, n)) }
+    unsafe { sort::grade_ids(rn(run), desc != 0, n, &syms0(blob, bytes, offs, nd), sl(p, ids::ids_bytes(n, w)), w, sl_mut(out, n)) }
 }
 /// A26: sort.c `qlean_sort_intern_syms` past the unboxing; answers the distinct count.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn qrs_intern_syms(blob: *const u8, bytes: usize, offs: *const usize, n: usize, w: u32, out: *mut u8,
                                          first: *mut usize) -> usize {
     unsafe { sort::intern_syms(&syms(blob, bytes, offs, n), w, sl_mut(out, ids::ids_bytes(n, w)), sl_mut(first, n)) }
+}
+/// A26: sort.c `qlean_sort_distinct_syms` past the unboxing: `first` holds `n` entries; answers the distinct count.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn qrs_distinct_syms(blob: *const u8, bytes: usize, offs: *const usize, n: usize, first: *mut usize) -> usize {
+    unsafe { sort::distinct_syms(&syms(blob, bytes, offs, n), sl_mut(first, n)) }
+}
+/// A26: sort.c `sym_group` for `qlean_sort_group_syms`: `want` 2 fills `gid`, `cnt` and `first` (`n` entries each);
+/// answers the group count.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn qrs_sym_group(blob: *const u8, bytes: usize, offs: *const usize, n: usize, want: c_int, gid: *mut u32,
+                                       cnt: *mut u32, first: *mut usize) -> usize {
+    let g = unsafe { sort::sym_group(&syms(blob, bytes, offs, n), n, want) };
+    unsafe { sl_mut(gid, g.gid.len()).copy_from_slice(&g.gid); sl_mut(cnt, g.cnt.len()).copy_from_slice(&g.cnt) };
+    unsafe { sl_mut(first, g.ng).copy_from_slice(&g.first) };
+    g.ng
+}
+/// A26: sort.c `sym_heads`: the symbol at each of the `ng` indices `first`, into `out`; `offs` holds `nd + 1` entries.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn qrs_sym_heads(blob: *const u8, bytes: usize, offs: *const usize, nd: usize, first: *const usize, ng: usize,
+                                       out: *mut CSym) {
+    let h = unsafe { sort::sym_heads(&syms0(blob, bytes, offs, nd), sl(first, ng)) };
+    for (o, s) in unsafe { sl_mut(out, ng) }.iter_mut().zip(h) { *o = CSym { p: s.as_ptr(), len: s.len() } }
+}
+/// A26: sort.c `ids_heads`: the dictionary symbol of each of the `ng` first rows `first`, into `out`; `nids` ids at `w`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn qrs_ids_heads(blob: *const u8, bytes: usize, offs: *const usize, nd: usize, ids: *const u8, nids: usize,
+                                       w: u32, first: *const usize, ng: usize, out: *mut CSym) {
+    let h = unsafe { sort::ids_heads(&syms0(blob, bytes, offs, nd), sl(ids, ids::ids_bytes(nids, w)), w, sl(first, ng)) };
+    for (o, s) in unsafe { sl_mut(out, ng) }.iter_mut().zip(h) { *o = CSym { p: s.as_ptr(), len: s.len() } }
+}
+/// A26: sort.c `qlean_sort_sorted_ids` past the unboxing: `out` is `ids_bytes(n, w)` zeroed bytes.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn qrs_sorted_ids(run: unsafe extern "C" fn(), desc: c_int, n: usize, blob: *const u8, bytes: usize,
+                                        offs: *const usize, nd: usize, p: *const u8, w: u32, out: *mut u8) {
+    unsafe { sort::sorted_ids(rn(run), desc != 0, n, &syms0(blob, bytes, offs, nd), sl(p, ids::ids_bytes(n, w)), w,
+                              sl_mut(out, ids::ids_bytes(n, w))) }
+}
+/// A26: sort.c `ids_group`: `gid` (null for none) is `4n` bytes, `cnt` `nd + 1` entries, `first` `min(n, nd + 1)`;
+/// answers the group count.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn qrs_ids_group(ids: *const u8, n: usize, w: u32, nd: usize, gid: *mut u8, cnt: *mut u32, first: *mut usize) -> usize {
+    let g = unsafe { sort::ids_group(sl(ids, ids::ids_bytes(n, w)), n, w, nd, if gid.is_null() { None } else { Some(sl_mut(gid, 4 * n)) },
+                                     sl_mut(cnt, nd + 1)) };
+    unsafe { sl_mut(first, g.len()).copy_from_slice(&g) };
+    g.len()
+}
+/// A26: sort.c `qlean_sort_parted_ids` past the clamp of `n` to the ids present; `d` is the dictionary size.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn qrs_parted_ids(strict: c_int, d: usize, n: usize, w: u32, ids: *const u8) -> c_int {
+    unsafe { sort::parted_ids(strict != 0, d, n, w, sl(ids, ids::ids_bytes(n, w))) as c_int }
 }
 /// A27: sort.c `qlean_sort_grade_guid`: 16-byte elements.
 #[unsafe(no_mangle)]
