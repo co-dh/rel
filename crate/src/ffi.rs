@@ -62,8 +62,8 @@ pub unsafe extern "C" fn qrs_ids_firsts(ids: *const u8, bytes: usize, n: usize, 
 /// `ids` is `ids_bytes(n, w)` long, `slot` `nd + 1` entries, `out` `ids_bytes(n, wo)` bytes.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn qrs_ids_map(ids: *const u8, n: usize, w: u32, nd: usize, slot: *const usize, wo: u32,
-                                     out: *mut u8) {
-    unsafe { ids::map(sl(ids, ids::ids_bytes(n, w)), n, w, nd, sl(slot, nd + 1), wo, sl_mut(out, ids::ids_bytes(n, wo))) }
+                                     out: *mut u8, run: unsafe extern "C" fn()) {
+    unsafe { ids::map(core::mem::transmute::<unsafe extern "C" fn(), c::Runner>(run), sl(ids, ids::ids_bytes(n, w)), n, w, nd, sl(slot, nd + 1), wo, sl_mut(out, ids::ids_bytes(n, wo))) }
 }
 
 /// `g` holds `n` ids a byte each; packed in place to `w < 8` bits.

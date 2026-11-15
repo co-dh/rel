@@ -1,6 +1,11 @@
 #![forbid(unsafe_code)]
 //! ids.h:19, 25, 40; own.c:231, 245.
 use crate::bits::{lane_width, width_for};
+use crate::c::Runner;
+
+/// `c::run_map`'s cost and wide for the id map (`QLEAN_COST_ARITH`, 8).
+const COST: u32 = 4;
+const WIDE: usize = 8;
 
 /// `Column.idWidth`: zero at one entry and at none -- there is one id, so nothing is stored.
 pub fn id_width(nd: usize) -> u32 { if nd < 2 { 0 } else { lane_width(width_for((nd - 1) as u64)) as u32 } }
@@ -115,8 +120,43 @@ fn go<const W: u32>(ids: &[u8], n: usize, nd: usize, slot: &mut [usize], first: 
 
 /// `idGroups`' second pass (sort.c:3283-3315, 3400-3414): row `i`'s group `slot[min(id, nd)]` into `out` at `wo`
 /// bits, `ids_bytes(n, wo)` bytes, the bits past `n` zero; threaded by `c::run_map`.
-#[allow(unused_variables)] // scaffold: B2 fills it
-pub fn map(ids: &[u8], n: usize, w: u32, nd: usize, slot: &[usize], wo: u32, out: &mut [u8]) { unimplemented!() }
+pub fn map(run: Runner, ids: &[u8], n: usize, w: u32, nd: usize, slot: &[usize], wo: u32, out: &mut [u8]) {
+    let ob = ids_bytes(n, wo);
+    if ob == 0 { return; }
+    let at = |v: usize| slot[v.min(nd)];
+    let out = &mut out[..ob];
+    if wo >= 8 {
+        let u = wo as usize / 8;
+        crate::c::run_map(run, out, n, u, COST, WIDE, &|lo, hi, o: &mut [u8]| {
+            for (i, c) in (lo..hi).zip(o.chunks_exact_mut(u)) { c.copy_from_slice(&at(id_at(ids, w, i)).to_le_bytes()[..u]); }
+        });
+    } else if (1..8).contains(&w) {
+        // below a byte, a byte of ids is a byte of table entries: one load a byte
+        let mut tab = [0u8; 256];
+        for (b, e) in tab.iter_mut().enumerate() {
+            *e = (0..8 / w).fold(0u32, |v, t| v | ((at((b >> (t * w)) & ((1 << w) - 1)) & ((1 << wo) - 1)) as u32) << (t * wo)) as u8;
+        }
+        // `wo <= w`, as `ng <= 2^w`: an input byte is `k` output bits, `r` of them an output byte
+        let (k, r) = (8 / w * wo, 8 / (8 / w * wo));
+        let ib = ids_bytes(n, w);
+        crate::c::run_map(run, out, ob, 1, COST, WIDE, &|lo, hi, o: &mut [u8]| {
+            for (b, e) in (lo..hi).zip(o.iter_mut()) {
+                *e = (0..r as usize).take_while(|t| b * r as usize + t < ib)
+                    .fold(0u32, |v, t| v | (tab[ids[b * r as usize + t] as usize] as u32) << (t as u32 * k)) as u8;
+            }
+        });
+    } else {
+        let per = 8 / wo as usize;
+        crate::c::run_map(run, out, ob, 1, COST, WIDE, &|lo, hi, o: &mut [u8]| {
+            for (b, e) in (lo..hi).zip(o.iter_mut()) {
+                *e = (0..per).take_while(|t| b * per + t < n)
+                    .fold(0u32, |v, t| v | (at(id_at(ids, w, b * per + t)) << (t as u32 * wo)) as u32) as u8;
+            }
+        });
+    }
+    // the fields past `n` in the last input byte were mapped too; the tail bits stay zero
+    if (n * wo as usize) & 7 != 0 { out[ob - 1] &= ((1u32 << ((n * wo as usize) & 7)) - 1) as u8; }
+}
 
 /// `IDS_PACK` (ids.h:167) in place: `n` ids one byte each in `g` packed to `w < 8` bits from `g[0]`.
 #[allow(unused_variables)] // scaffold: B6 fills it
@@ -167,6 +207,29 @@ mod firsts_tests {
                     let ng = firsts(&p[..ids_bytes(n, w)], n, w, nd, &mut slot, &mut first);
                     let (wng, wf1) = match pos { Some(i) if i != 0 => (2, i), Some(_) => (2, 1), None => (1, 0) };
                     assert_eq!((ng, if ng > 1 { first[1] } else { 0 }), (wng, wf1), "w={w} nd={nd} pos={pos:?}");
+                }
+            }
+        }
+    }
+}
+
+#[cfg(test)]
+mod map_tests {
+    use super::*;
+    // The C `ids_map_run` + table agreed (/data/tmp/qrs/B2/h.c, 26268 random cases); here the per-row definition.
+    #[test] fn map_is_slot_of_id() {
+        let mut s = 7u64;
+        let mut rnd = || { s ^= s << 13; s ^= s >> 7; s ^= s << 17; s };
+        for w in [1u32, 2, 4, 8, 16, 32, 64] {
+            for n in [0usize, 1, 3, 7, 8, 9, 63, 130] {
+                let ids: Vec<u8> = (0..ids_bytes(n, w) + 8).map(|_| rnd() as u8).collect();
+                let nd = if w <= 8 { 1 << w } else { 5 };
+                let slot: Vec<usize> = (0..=nd).map(|v| v % 3).collect();
+                for wo in [2u32, 8, 16, 32, 64].into_iter().filter(|&wo| wo >= 8 || w >= 2) {
+                    let mut out = vec![0u8; ids_bytes(n, wo)];
+                    map(crate::c::qlean_run_c, &ids, n, w, nd, &slot, wo, &mut out);
+                    for i in 0..n { assert_eq!(id_at(&out, wo, i), slot[id_at(&ids, w, i).min(nd)], "w={w} n={n} wo={wo} i={i}"); }
+                    if (n * wo as usize) & 7 != 0 { assert_eq!(out[out.len() - 1] >> ((n * wo as usize) & 7), 0); }
                 }
             }
         }
