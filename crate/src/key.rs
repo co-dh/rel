@@ -1,0 +1,77 @@
+#![forbid(unsafe_code)]
+#![allow(unused_variables)] // scaffold: the task that fills this module removes it
+//! `key_at` (sort.c:132) with the kind switch hoisted by monomorphisation (`SK_EACH`, sort.c:1697): `each` switches
+//! once and hands the pass a `Keys` of one concrete type, so the element loop has no switch.
+
+/// coc.h:347, sort.c:59, 65: the kinds `key_at` switches on. `SK_C8` reads as `SK_U8`; `SK_KEY` is a payload of
+/// keys already biased; `SK_WIN` is an encoded column read through `kwin::Kwin`, never a byte payload.
+pub const SK_BIT: u8 = 0;
+pub const SK_U8: u8 = 1;
+pub const SK_I16: u8 = 2;
+pub const SK_I32: u8 = 3;
+pub const SK_I64: u8 = 4;
+pub const SK_F32: u8 = 5;
+pub const SK_F64: u8 = 6;
+pub const SK_C8: u8 = 7;
+pub const SK_KEY: u8 = 8;
+pub const SK_WIN: u8 = 9;
+
+/// Element `i`'s key, in the unsigned order q sorts by. `at` takes `&mut self` because a window decodes a block
+/// on first touch; `fork` is a worker's own copy (a fresh window over the same column).
+pub trait Keys: Sync {
+    fn at(&mut self, i: usize) -> u64;
+    fn fork(&self) -> Self where Self: Sized;
+}
+
+/// A loop over keys, written once and instantiated per key type by `each`.
+pub trait Pass { type Out; fn run<K: Keys>(self, k: K, n: usize) -> Self::Out; }
+
+macro_rules! dense {
+    ($($(#[$d:meta])* $name:ident($t:ty);)*) => {$(
+        $(#[$d])*
+        #[derive(Clone, Copy)]
+        pub struct $name<'a>(pub &'a [$t]);
+        impl Keys for $name<'_> {
+            fn at(&mut self, i: usize) -> u64 { unimplemented!() }
+            fn fork(&self) -> Self { *self }
+        }
+    )*};
+}
+dense! {
+    /// `SK_BIT`: bit `i` of the bytes, low bit first.
+    Bit(u8);
+    /// `SK_U8`, `SK_C8`: the byte is its own key.
+    U8(u8);
+    /// `SK_I16`: the sign bit flipped within 16 bits.
+    I16(u16);
+    I32(u32);
+    I64(u64);
+    /// `SK_F32`: `rank32` of the bits.
+    F32(u32);
+    F64(u64);
+    /// `SK_KEY`: the payload is the key.
+    Key(u64);
+}
+
+/// sort.c:100; NaN payloads to 0, `-0.0` to `+0.0`'s key.
+pub fn rank32(b: u32) -> u64 { unimplemented!() }
+/// sort.c:106
+pub fn rank64(b: u64) -> u64 { unimplemented!() }
+
+/// The payload bytes `n` elements of a dense `kind` occupy; None for `SK_WIN` and an unknown kind.
+pub fn bytes(kind: u8, n: usize) -> Option<usize> {
+    match kind {
+        SK_BIT => Some(n.div_ceil(8)),
+        SK_U8 | SK_C8 => Some(n),
+        SK_I16 => n.checked_mul(2),
+        SK_I32 | SK_F32 => n.checked_mul(4),
+        SK_I64 | SK_F64 | SK_KEY => n.checked_mul(8),
+        _ => None,
+    }
+}
+
+/// `SK_EACH`: `pass` over the keys of `p`; None = `SK_WIN`, an unknown kind, or `p` misaligned or short.
+pub fn each<P: Pass>(kind: u8, p: &[u8], n: usize, pass: P) -> Option<P::Out> { unimplemented!() }
+
+/// `range_of` (sort.c:1969) for a dense kind: the least and greatest key, `(0, 0)` at `n = 0`.
+pub fn range(kind: u8, p: &[u8], n: usize) -> Option<(u64, u64)> { unimplemented!() }

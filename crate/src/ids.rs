@@ -48,6 +48,22 @@ pub fn ids_max(p: &[u8], w: u32, n: usize) -> usize {
     }
 }
 
+/// `ids_firsts` (ids.h:271): each group's first row into `first` (`min(n, nd + 1)` long) and into `slot` (`nd + 1`
+/// entries, all `usize::MAX` on entry) the group of each value `min(id, nd)`; answers the group count.
+#[allow(unused_variables)] // scaffold: B1 fills it
+pub fn firsts(ids: &[u8], n: usize, w: u32, nd: usize, slot: &mut [usize], first: &mut [usize]) -> usize {
+    unimplemented!()
+}
+
+/// `idGroups`' second pass (sort.c:3283-3315, 3400-3414): row `i`'s group `slot[min(id, nd)]` into `out` at `wo`
+/// bits, `ids_bytes(n, wo)` bytes, the bits past `n` zero; threaded by `c::run_map`.
+#[allow(unused_variables)] // scaffold: B2 fills it
+pub fn map(ids: &[u8], n: usize, w: u32, nd: usize, slot: &[usize], wo: u32, out: &mut [u8]) { unimplemented!() }
+
+/// `IDS_PACK` (ids.h:167) in place: `n` ids one byte each in `g` packed to `w < 8` bits from `g[0]`.
+#[allow(unused_variables)] // scaffold: B6 fills it
+pub fn pack_in_place(g: &mut [u8], w: u32, n: usize) { unimplemented!() }
+
 #[cfg(test)]
 mod tests {
     use super::*;

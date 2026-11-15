@@ -73,6 +73,14 @@ bytes", k, at, l, off, size));
 }
 pub fn check(kind: u8, n: u64, part: &[&[u8]], why: &mut Why) -> bool { unimplemented!() }
 
+/// `qlean_own_write` (own.c:147-179) without the file: the header (`OWN_HEAD + 16 * len.len()` bytes into `head`)
+/// and each part's 8-aligned offset after `OWN_ROOM` into `off`; answers the header length. None and `why` filled
+/// when the kind, the part count or the `nl`-byte domain name is refused.
+pub fn write_head(code: u8, attr: u8, kind: u8, count: u64, nl: usize, len: &[usize],
+                  head: &mut [u8], off: &mut [usize], why: &mut Why) -> Option<usize> {
+    unimplemented!()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

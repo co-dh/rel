@@ -1,6 +1,7 @@
 #![forbid(unsafe_code)]
 #![allow(unused_variables)] // scaffold: the task that fills this module removes it
 //! The read views of coc.h's `coc`: metadata, patch list, and the whole column.
+use crate::pod::Lane;
 
 /// `coc_meta_view`: the 33*mblk + 16 byte buffer.
 #[derive(Clone, Copy)]
@@ -34,4 +35,14 @@ impl<'a> Coc<'a> {
     pub fn blocks(&self, b0: usize, b1: usize) -> Coc<'a> { unimplemented!() }
     /// coc.h:217
     pub fn frame(&self, b: usize) -> u64 { unimplemented!() }
+    /// coc.h:277: exception `j`'s element, sign-extended; one byte zero-extends.
+    pub fn exc(&self, j: usize) -> i64 { unimplemented!() }
+    /// coc.h:293
+    pub fn blk_nexc(&self, b: usize) -> usize { unimplemented!() }
+    /// coc.h:2633: block `b`'s first `nb` elements into `out`, the patches applied.
+    pub fn decode_blk<T: Lane>(&self, b: usize, nb: usize, out: &mut [T]) { unimplemented!() }
 }
+
+/// coc.h:819: the residuals of a block at a power-of-two width in place, else unpacked into `buf` (`BLK * 8` bytes)
+/// with `*w` raised to the lane it now has.
+pub fn lanes<'b>(p: &'b [u8], w: &mut u8, nb: usize, buf: &'b mut [u8]) -> &'b [u8] { unimplemented!() }
