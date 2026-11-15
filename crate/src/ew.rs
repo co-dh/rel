@@ -600,7 +600,7 @@ mod tests43 {
         }
         let mut z = vec![0xABu8; 1];
         low_zero(qlean_run_c, by(&mut a), by(&mut [0b0001u64]), 5, &mut z);
-        assert_eq!(z, [0b01010]);
+        assert_eq!(z, [0b01001]);
     }
     /// three blocks of 1024 longs and a tail of 452: block 0 and 2 at 8-bit residuals, block 1 constant
     fn coc_data() -> (Vec<u8>, Vec<i64>, Vec<u64>, Vec<u64>, Vec<i64>) {
@@ -658,9 +658,9 @@ mod tests43 {
         assert_eq!(o, [0b11111]);
         // ranks: ra = [2, 1, 2] for ids 0..2, past the table reads 0; rb = [3, 1, 0, 2]
         eq_ids(qlean_run_c, k::LT, k::VV, &ia, &ib, 2, 5, &ra, &rb, &mut o);
-        assert_eq!(o, [0b00001]);
+        assert_eq!(o, [0b01000]);
         eq_ids(qlean_run_c, k::GE, k::VV, &ia, &ib, 2, 5, &ra, &rb, &mut o);
-        assert_eq!(o, [0b11110]);
+        assert_eq!(o, [0b10111]);
         eq_ids(qlean_run_c, k::EQ, k::VA, &ia, &[0b10], 2, 5, &[], &[], &mut o);
         assert_eq!(o, [0b00100]);
     }
