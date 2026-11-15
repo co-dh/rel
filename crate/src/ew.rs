@@ -559,6 +559,31 @@ mod eng {
 }
 
 #[cfg(test)]
+mod a46b {
+    use super::*;
+    // expected values are elementwise.c's `ew_stage_bits` / `ew_stage_fixed` read off the C switch
+    #[test] fn stage_costs_and_widths() {
+        use crate::{QLEAN_COST_ARITH as A, QLEAN_COST_COPY as C, QLEAN_COST_MATH as M};
+        assert_eq!(stage_bits(eng::VAL, k::POW as u32, 5, 0), (M, 64, 64, 64));
+        assert_eq!(stage_bits(eng::VAL, k::ADD as u32, 0, 0), (A, 8, 8, 8));
+        assert_eq!(stage_bits(eng::CMP, 0, 3, 0), (A, 64, 64, 1));
+        assert_eq!(stage_bits(eng::WIDEN, 0, 6, 3), (C, 1, 0, 64));
+        assert_eq!(stage_bits(eng::WIDEN, 0, 1, 2), (C, 16, 0, 32));
+        assert_eq!(stage_bits(eng::BIT, 0, 0, 0), (C, 1, 1, 1));
+        assert_eq!(stage_bits(eng::PACK, 0, 3, 2), (C, 64, 0, 2));
+        assert_eq!(stage_bits(eng::ENCMETA, 0, 2, 0), (A, 32, 0, 0));
+        assert_eq!(stage_bits(eng::DECODE, 0, 2, 0), (C, 0, 0, 32));
+    }
+    #[test] fn atoms_and_encoded_views_are_not_rebased() {
+        assert!(stage_fixed(eng::VAL, k::AV as u32, true) && !stage_fixed(eng::VAL, k::AV as u32, false));
+        assert!(stage_fixed(eng::CMP, k::VA as u32, false) && !stage_fixed(eng::CMP, k::VV as u32, true));
+        assert!(stage_fixed(eng::DECODE, 0, true) && stage_fixed(eng::ALP, 0, false));
+        // a monadic engine has no left atom, and its right side is always fixed
+        assert!(!stage_fixed(eng::MON, 0, true) && stage_fixed(eng::MON, 0, false));
+    }
+}
+
+#[cfg(test)]
 mod a42 {
     use super::*;
     fn h(s: &str) -> u64 { u64::from_str_radix(s, 16).unwrap() }
