@@ -389,13 +389,13 @@ pub unsafe extern "C" fn qrs_over_bytes(op: u8, cls: u8, nul: i64, a: *const u8,
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn qrs_segments(run: unsafe extern "C" fn(), op: u8, cls: u8, nul: i64, offs: *const i64, ng: usize,
                                       src: *const u8, bytes: usize, n: usize, res: *mut i64) {
-    unsafe { reduce::segments(rn(run), op, cls, nul, sl(offs, ng + 1), sl(src, bytes), n, sl_mut(res, ng)) }
+    unsafe { reduce::segments(rn(run), op, cls, nul, sl(offs, ng + 1), sl(src, bytes), n, sl_mut(res, 2 * ng)) }
 }
 /// A13: reduce.c `bit_rows_run`.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn qrs_bit_rows(run: unsafe extern "C" fn(), all: c_int, w: usize, offs: *const i64, ng: usize,
                                       idx: *const i64, ni: usize, m: *const u8, mbytes: usize, out: *mut u8) {
-    unsafe { reduce::bit_rows(rn(run), all != 0, w, sl(offs, ng + 1), sl(idx, ni), sl(m, mbytes), sl_mut(out, ng.div_ceil(8))) }
+    unsafe { reduce::bit_rows(rn(run), all != 0, w, sl(offs, ng + 1), sl(idx, ni), sl(m, mbytes), sl_mut(out, (ng * w).div_ceil(8))) }
 }
 /// A14: scan.c `scan_run`.
 #[unsafe(no_mangle)]
