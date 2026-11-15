@@ -9,8 +9,32 @@ pub fn prefetch<T>(r: &T) {
     unsafe { core::arch::x86_64::_mm_prefetch::<{ core::arch::x86_64::_MM_HINT_T0 }>((r as *const T).cast()) }
 }
 
-/// Dispatches by cfg.
-pub fn u8_sum(p: &[u8]) -> i64 { unimplemented!() }
+/// reduce.c:264 `over_u8_sum`: `+/` of a byte payload; `psadbw` against zero adds eight bytes into one 64-bit lane.
+#[cfg(all(target_arch = "x86_64", target_feature = "avx512bw"))]
+#[target_feature(enable = "avx512f,avx512bw")]
+fn u8_sum512(p: &[u8]) -> i64 {
+    use core::arch::x86_64::*;
+    let z = _mm512_setzero_si512();
+    let (mut a0, mut a1) = (z, z);
+    let mut c = p.chunks_exact(128);
+    for b in c.by_ref() {
+        // SAFETY: b is 128 bytes, two unaligned 64-byte loads
+        unsafe {
+            a0 = _mm512_add_epi64(a0, _mm512_sad_epu8(_mm512_loadu_si512(b.as_ptr().cast()), z));
+            a1 = _mm512_add_epi64(a1, _mm512_sad_epu8(_mm512_loadu_si512(b.as_ptr().add(64).cast()), z));
+        }
+    }
+    _mm512_reduce_add_epi64(_mm512_add_epi64(a0, a1)).wrapping_add(u8_sum_scalar(c.remainder()))
+}
+fn u8_sum_scalar(p: &[u8]) -> i64 { p.iter().fold(0u64, |s, &b| s + b as u64) as i64 }
+/// Dispatches by cfg, as the C picks by `#if defined(__AVX512BW__)`.
+pub fn u8_sum(p: &[u8]) -> i64 {
+    #[cfg(all(target_arch = "x86_64", target_feature = "avx512bw"))]
+    // SAFETY: the cfg is the build enabling avx512f and avx512bw
+    return unsafe { u8_sum512(p) };
+    #[cfg(not(all(target_arch = "x86_64", target_feature = "avx512bw")))]
+    u8_sum_scalar(p)
+}
 pub fn res_unpack(p: &[u8], w: u8, nb: usize, out: &mut [u8]) {
     // coc.h:598's `#if`: the vector path only where the build enables every feature it needs (target-cpu=native)
     #[cfg(all(target_arch = "x86_64", target_feature = "avx512vbmi", target_feature = "avx512vbmi2",
@@ -229,6 +253,10 @@ pub mod v {
 #[cfg(test)]
 mod tests {
     use crate::{BLK, unpack::res_unpack_scalar};
+    #[test] fn u8_sum_paths_agree() {
+        let p: Vec<u8> = (0..300usize).map(|i| (i * 37 + 255 * (i % 3)) as u8).collect();
+        for n in 0..300 { assert_eq!(super::u8_sum(&p[..n]), super::u8_sum_scalar(&p[..n]), "n {n}") }
+    }
     // the vector path against B8's scalar port at every odd width, on random blocks (target-cpu=native runs it)
     #[test] fn res_unpack_matches_scalar() {
         let mut s = 0x2545F4914F6CDD1Du64;
