@@ -1,4 +1,5 @@
 #![forbid(unsafe_code)]
+#![allow(unused_variables)] // scaffold: the task that fills this module removes it
 //! The read views of coc.h's `coc`: metadata, patch list, and the whole column.
 
 /// `coc_meta_view`: the 33*mblk + 16 byte buffer.

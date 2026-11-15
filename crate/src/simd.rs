@@ -1,3 +1,4 @@
+#![allow(unused_variables)] // scaffold: the task that fills this module removes it
 //! The AVX-512 kernels: coc.h:598, 646; reduce.c:261. Each picks its path by `cfg`, as the C picks by `#if`.
 
 /// Dispatches by cfg.

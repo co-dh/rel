@@ -1,4 +1,5 @@
 #![forbid(unsafe_code)]
+#![allow(unused_variables)] // scaffold: the task that fills this module removes it
 //! ids.h:19, 25, 40; own.c:231, 245.
 
 pub fn id_width(nd: usize) -> u32 { unimplemented!() }

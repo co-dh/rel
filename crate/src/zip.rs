@@ -1,4 +1,5 @@
 #![forbid(unsafe_code)]
+#![allow(unused_variables)] // scaffold: the task that fills this module removes it
 //! zip.c:141 and the pure parts of zopen (zip.c:185-250).
 use crate::why::Why;
 

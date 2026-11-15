@@ -1,4 +1,5 @@
 #![forbid(unsafe_code)]
+#![allow(unused_variables)] // scaffold: the task that fills this module removes it
 //! own.c:263 and the header checks of own.c:366-394.
 use crate::why::Why;
 

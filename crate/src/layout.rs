@@ -1,4 +1,5 @@
 #![forbid(unsafe_code)]
+#![allow(unused_variables)] // scaffold: the task that fills this module removes it
 //! `exc_layout` / `for_layout` / `alp_layout` (coc.h:199, 209, 1518) as one function, and own.c's `exc_ok`.
 use crate::why::Why;
 

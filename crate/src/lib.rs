@@ -6,8 +6,11 @@ extern crate alloc;
 
 pub const BLK: usize = 1024;
 
+// the runtime and the C declarations are not interface: cbindgen skips both
+/// cbindgen:ignore
 #[cfg(not(test))]
 mod rt;
+/// cbindgen:ignore
 pub mod c;
 pub mod ffi;
 pub mod pod;

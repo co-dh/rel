@@ -1,3 +1,4 @@
+#![allow(unused_variables)] // scaffold: the task that fills this module removes it
 //! The one checked reinterpretation of bytes as a slice of numbers.
 
 pub trait Pod: Copy {}
