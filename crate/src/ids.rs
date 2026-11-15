@@ -50,9 +50,67 @@ pub fn ids_max(p: &[u8], w: u32, n: usize) -> usize {
 
 /// `ids_firsts` (ids.h:271): each group's first row into `first` (`min(n, nd + 1)` long) and into `slot` (`nd + 1`
 /// entries, all `usize::MAX` on entry) the group of each value `min(id, nd)`; answers the group count.
-#[allow(unused_variables)] // scaffold: B1 fills it
 pub fn firsts(ids: &[u8], n: usize, w: u32, nd: usize, slot: &mut [usize], first: &mut [usize]) -> usize {
-    unimplemented!()
+    match w {
+        0 => go::<0>(ids, n, nd, slot, first), 1 => go::<1>(ids, n, nd, slot, first), 2 => go::<2>(ids, n, nd, slot, first),
+        4 => go::<4>(ids, n, nd, slot, first), 8 => go::<8>(ids, n, nd, slot, first), 16 => go::<16>(ids, n, nd, slot, first),
+        32 => go::<32>(ids, n, nd, slot, first), _ => go::<64>(ids, n, nd, slot, first),
+    }
+}
+
+// `W` const so `id_at`'s match folds, as the C's `IDS_WIDTHS` does.
+fn go<const W: u32>(ids: &[u8], n: usize, nd: usize, slot: &mut [usize], first: &mut [usize]) -> usize {
+    let top = if W < 64 && 1usize << W <= nd { 1usize << W } else { nd + 1 };
+    let (mut ng, mut i) = (0, 0);
+    while i < n {
+        let v = id_at(ids, W, i).min(nd);
+        i += 1;
+        if slot[v] == usize::MAX {
+            slot[v] = ng;
+            first[ng] = i - 1;
+            ng += 1;
+            if ng == top || (ng == nd && slot[nd] == usize::MAX) { break; }
+        }
+    }
+    if ng == top || i >= n || slot[nd] != usize::MAX { return ng; }
+    // A word at a time up to 32 bits: the even and odd fields spread over `2w` bits plus `2^w - nd`, so a field
+    // from `nd` up carries into bit `w` of its slot (the `k` mask).
+    let wide = W == 0 || W > 32;
+    let per = if wide { 1 } else { 64 / W as usize };
+    let (mut e, mut c, mut k) = (0u64, 0u64, 0u64);
+    if !wide {
+        for s in (0..64).step_by(2 * W as usize) {
+            e |= ((1u64 << W) - 1) << s;
+            c |= (1u64 << W).wrapping_sub(nd as u64) << s;
+            k |= 1u64 << (s + W);
+        }
+    }
+    let word = |i: usize| u64::from_le_bytes(ids[i * W as usize / 8..][..8].try_into().unwrap());
+    let hit1 = |x: u64| (x & e).wrapping_add(c) | ((x >> W) & e).wrapping_add(c);
+    let mut j = None;
+    while i < n && j.is_none() && (wide || i % per != 0) {
+        if id_at(ids, W, i) >= nd { j = Some(i); }
+        i += 1;
+    }
+    // 32 words with no exit between them, so the compiler vectorises the test; the word walk finds which
+    if !wide && j.is_none() {
+        let mut hit = 0u64;
+        while hit & k == 0 && i + 32 * per <= n {
+            // one slice check for the 32 words, so the loop body has no bounds test to block vectorising
+            for ch in ids[i * W as usize / 8..][..256].chunks_exact(8) { hit |= hit1(u64::from_le_bytes(ch.try_into().unwrap())); }
+            if hit & k == 0 { i += 32 * per; }
+        }
+        while i + per <= n {
+            if hit1(word(i)) & k != 0 { break; }
+            i += per;
+        }
+    }
+    while i < n && j.is_none() {
+        if id_at(ids, W, i) >= nd { j = Some(i); }
+        i += 1;
+    }
+    if let Some(j) = j { slot[nd] = ng; first[ng] = j; ng += 1; }
+    ng
 }
 
 /// `idGroups`' second pass (sort.c:3283-3315, 3400-3414): row `i`'s group `slot[min(id, nd)]` into `out` at `wo`
@@ -85,5 +143,32 @@ mod tests {
             }
         }
         assert_eq!(ids_max(&p, 0, 5), 0);
+    }
+}
+
+#[cfg(test)]
+mod firsts_tests {
+    use super::*;
+    // The C driver (/data/tmp/qrs/B1/drv.c) answered (ng, first[1]) = (2, pos), or (1, 0) with no id >= nd, for
+    // every (w, nd, pos) of this table; the ids are all 0 but `v` at `pos`.
+    #[test] fn firsts_cases() {
+        let n = 130;
+        for w in [1u32, 2, 4, 8, 16, 32, 64] {
+            let nds: &[usize] = if w <= 16 { &[1 << w, (1 << w) - 1] } else { &[3] };
+            for &nd in nds {
+                let v: u64 = if w >= 32 { 5 } else { (nd as u64).min((1 << w) - 1) };
+                for pos in [Some(0), Some(63), Some(64), Some(n - 1), None] {
+                    let mut p = vec![0u8; n * 8 + 16];
+                    if let Some(i) = pos {
+                        if w < 8 { p[i * w as usize / 8] |= (v << (i * w as usize % 8)) as u8 }
+                        else { let k = w as usize / 8; p[i * k..(i + 1) * k].copy_from_slice(&v.to_le_bytes()[..k]) }
+                    }
+                    let (mut slot, mut first) = (vec![usize::MAX; nd + 1], vec![0; n.min(nd + 1)]);
+                    let ng = firsts(&p[..ids_bytes(n, w)], n, w, nd, &mut slot, &mut first);
+                    let (wng, wf1) = match pos { Some(i) if i != 0 => (2, i), Some(_) => (2, 1), None => (1, 0) };
+                    assert_eq!((ng, if ng > 1 { first[1] } else { 0 }), (wng, wf1), "w={w} nd={nd} pos={pos:?}");
+                }
+            }
+        }
     }
 }
