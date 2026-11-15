@@ -96,7 +96,7 @@ pub fn each<P: Pass>(kind: u8, p: &[u8], n: usize, pass: P) -> Option<P::Out> {
 }
 
 /// `SK_RANGE`: the least and greatest key, in the one pass `SK_EACH` instantiates per kind.
-struct Range;
+pub struct Range;
 impl Pass for Range {
     type Out = (u64, u64);
     #[inline(always)]
@@ -109,8 +109,6 @@ impl Pass for Range {
     }
 }
 
-/// `range_of` (sort.c:1969) for a dense kind: the least and greatest key, `(0, 0)` at `n = 0`.
-pub fn range(kind: u8, p: &[u8], n: usize) -> Option<(u64, u64)> { each(kind, p, n, Range) }
 
 #[cfg(test)]
 mod tests {
@@ -137,12 +135,12 @@ mod tests {
     #[test]
     fn range_c() {
         let s = bytes_of(&[3i16, -5, 7, -32768, 32767], |x| x.to_ne_bytes().to_vec());
-        assert_eq!(range(SK_I16, &s, 5), Some((0, 0xffff)));
-        assert_eq!(range(SK_BIT, &[0xa4, 0x01], 10), Some((0, 1)));
+        assert_eq!(each(SK_I16, &s, 5, Range), Some((0, 0xffff)));
+        assert_eq!(each(SK_BIT, &[0xa4, 0x01], 10, Range), Some((0, 1)));
         let l = bytes_of(&[5i64, -1, 9], |x| x.to_ne_bytes().to_vec());
-        assert_eq!(range(SK_I64, &l, 3), Some((0x7fff_ffff_ffff_ffff, 0x8000_0000_0000_0009)));
-        assert_eq!(range(SK_I64, &[], 0), Some((0, 0)));
-        assert_eq!(range(SK_WIN, &[], 0), None);
-        assert_eq!(range(SK_I32, &[0; 7], 2), None);
+        assert_eq!(each(SK_I64, &l, 3, Range), Some((0x7fff_ffff_ffff_ffff, 0x8000_0000_0000_0009)));
+        assert_eq!(each(SK_I64, &[], 0, Range), Some((0, 0)));
+        assert_eq!(each(SK_WIN, &[], 0, Range), None);
+        assert_eq!(each(SK_I32, &[0; 7], 2, Range), None);
     }
 }
