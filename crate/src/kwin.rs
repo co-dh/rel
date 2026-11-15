@@ -70,38 +70,20 @@ pub fn key_flip(kind: u8) -> u64 {
 
 fn mask(kind: u8) -> u64 { let w = dense_bits(kind); if w == 64 { !0 } else { (1 << w) - 1 } }
 
-/// Residual `j` of the pack `p` at width `w`: bits `j*w ..` little-endian; the generic arm reads at most 9 bytes
-/// and zero-pads past the block's end, as `unpack::res_unpack_scalar` does.
-#[inline(always)]
-fn res_at(p: &[u8], w: u32, j: usize) -> u64 {
-    let w = w as usize;
-    let bit = j * w;
-    let (by, sh) = (bit >> 3, bit & 7);
-    let mut t = [0u8; 16];
-    let e = p.len().min(by + 9);
-    t[..e - by].copy_from_slice(&p[by..e]);
-    let v = u128::from_le_bytes(t) >> sh;
-    (v as u64) & if w == 64 { !0 } else { (1u64 << w) - 1 }
-}
-
 /// `keys_blk_foR` (sort.c:243): block `b`'s `k.len()` keys.
 pub fn keys_blk(kind: u8, c: &Coc, b: usize, k: &mut [u64]) {
     let (mask, flip) = (mask(kind), key_flip(kind));
     let p = &c.pack[c.meta.off[b] as usize..];
     let cnt = k.len();
-    // a patched block is decoded (patches applied over the frame) and read as residuals of 64 bits over base 0
-    if c.blk_nexc(b) != 0 {
-        let (fr, w) = (c.frame(b), c.meta.width[b] as u32);
-        let mut dec = [0u64; BLK];
-        for j in 0..cnt { dec[j] = fr.wrapping_add(res_at(p, w, j)) }
-        let e = c.exc.expect("blk_nexc != 0 has a patch list");
-        for j in e.off[b] as usize..e.off[b + 1] as usize {
-            if (e.pos[j] as usize) < cnt { dec[e.pos[j] as usize] = c.exc(j) as u64 }
-        }
-        for j in 0..cnt { k[j] = dec[j] & mask ^ flip }
+    let w = c.meta.width[b];
+    // a patched block, and an odd width, are decoded (frame + residual, patches over it); frame is base without patches
+    if c.blk_nexc(b) != 0 || !matches!(w, 0 | 8 | 16 | 32 | 64) {
+        let mut dec = [0i64; BLK];
+        c.decode_blk(b, cnt, &mut dec);
+        for j in 0..cnt { k[j] = dec[j] as u64 & mask ^ flip }
         return;
     }
-    let (base, w) = (c.meta.base[b] as u64, c.meta.width[b] as u32);
+    let base = c.meta.base[b] as u64;
     macro_rules! go { ($r:expr) => { for j in 0..cnt { k[j] = (base.wrapping_add($r(j)) & mask) ^ flip } }; }
     match w {
         0 => go!(|_| 0u64),
@@ -109,7 +91,7 @@ pub fn keys_blk(kind: u8, c: &Coc, b: usize, k: &mut [u64]) {
         16 => go!(|j: usize| u16::from_le_bytes([p[2 * j], p[2 * j + 1]]) as u64),
         32 => go!(|j: usize| u32::from_le_bytes(p[4 * j..4 * j + 4].try_into().unwrap()) as u64),
         64 => go!(|j: usize| u64::from_le_bytes(p[8 * j..8 * j + 8].try_into().unwrap())),
-        _ => go!(|j: usize| res_at(p, w, j)),
+        _ => unreachable!(),
     }
 }
 
@@ -134,12 +116,5 @@ mod tests {
     use super::*;
     #[test] fn flip() {
         assert_eq!([SK_U8, SK_I16, SK_I32, SK_I64, SK_F32].map(key_flip), [0, 0x8000, 0x8000_0000, 1 << 63, 0]);
-    }
-    #[test] fn residuals_odd_widths() {
-        // 3-bit residuals 5, 2, 7, 1 are the bits 101 010 111 001 low first
-        let p = [0b11_010_101u8, 0b11];
-        assert_eq!([0, 1, 2, 3].map(|j| res_at(&p, 3, j)), [5, 2, 7, 1]);
-        assert_eq!(res_at(&[0xff; 8], 64, 0), !0);
-        assert_eq!(res_at(&[0xff; 16], 63, 1), (1 << 63) - 1);
     }
 }
