@@ -476,7 +476,50 @@ pub fn tick(run: Runner, op: u8, cls: u8, nul: i64, x: &[u8], n: usize, out: &mu
 // ---- A46a: elementwise.c:2007-2150 ----
 /// elementwise.c:2007 `ew_widen_run` and its entry: class `src` widened to `dst`, nulls mapped.
 pub fn widen(run: Runner, src: u8, dst: u8, nul_in: i64, nul_out: i64, x: &[u8], n: usize, out: &mut [u8]) {
-    unimplemented!("A46a: ew_widen_run")
+    const PNAN64: u64 = 0x7ff8000000000000;
+    if n > 0 && (!matches!(dst, 2..=5) || (dst != 5 && matches!(src, 4 | 5))) { ew_unsupported("qlean_ew_widen", src as u32, dst as u32) }
+    // the source class is chosen outside the loop, so each pair is its own straight-line pass (elementwise.c:2023)
+    fn pass<const W: usize>(src: u8, lo: usize, hi: usize, x: &[u8], o: &mut [u8], f: impl Fn(i64) -> [u8; W]) {
+        let os = o.chunks_exact_mut(W);
+        match src {
+            6 => for (k, c) in os.enumerate() { let i = lo + k; c.copy_from_slice(&f(((x[i >> 3] >> (i & 7)) & 1) as i64)) },
+            0 => for (c, &b) in os.zip(&x[lo..hi]) { c.copy_from_slice(&f(b as i64)) },
+            1 => for (c, b) in os.zip(x[lo * 2..hi * 2].chunks_exact(2)) { c.copy_from_slice(&f(i16::from_le_bytes([b[0], b[1]]) as i64)) },
+            2 => for (c, b) in os.zip(x[lo * 4..hi * 4].chunks_exact(4)) { c.copy_from_slice(&f(i32::from_le_bytes([b[0], b[1], b[2], b[3]]) as i64)) },
+            _ => for (c, b) in os.zip(x[lo * 8..hi * 8].chunks_exact(8)) { c.copy_from_slice(&f(i64::from_le_bytes([b[0], b[1], b[2], b[3], b[4], b[5], b[6], b[7]]))) },
+        }
+    }
+    let w = if matches!(dst, 2..=5) { ew_width(dst as u32) } else { 1 };
+    crate::c::run_map(run, out, n, w, crate::QLEAN_COST_COPY, w, &|lo, hi, o: &mut [u8]| match dst {
+        2 => pass(src, lo, hi, x, o, |v| (if v == nul_in { nul_out } else { v } as i32).to_le_bytes()),
+        3 => pass(src, lo, hi, x, o, |v| (if v == nul_in { nul_out } else { v }).to_le_bytes()),
+        4 => pass(src, lo, hi, x, o, |v| (if v == nul_in { nul_out as u32 } else { (v as f32).to_bits() }).to_le_bytes()),
+        _ if src == 4 => for (c, b) in o.chunks_exact_mut(8).zip(x[lo * 4..hi * 4].chunks_exact(4)) {
+            let f = u32::from_le_bytes([b[0], b[1], b[2], b[3]]);
+            // a real null is q's `0n` at double width, the sign kept (elementwise.c:2070)
+            let r = if f32::from_bits(f).is_nan() { ((f >> 31) as u64) << 63 | PNAN64 } else { (f32::from_bits(f) as f64).to_bits() };
+            c.copy_from_slice(&r.to_le_bytes())
+        },
+        _ if src == 5 => o.copy_from_slice(&x[lo * 8..hi * 8]),
+        _ => pass(src, lo, hi, x, o, |v| (if v == nul_in { nul_out as u64 } else { (v as f64).to_bits() }).to_le_bytes()),
+    });
+}
+
+#[cfg(test)]
+mod a46a {
+    use super::*;
+    #[test] fn widen_nulls_and_floats() {
+        let x: Vec<u8> = [i16::MIN, 5, -7].iter().flat_map(|v| v.to_le_bytes()).collect();
+        let mut o = [0u8; 24];
+        widen(crate::c::qlean_run_c, 1, 3, i16::MIN as i64, i64::MIN, &x, 3, &mut o);
+        assert_eq!(&o[..8], &i64::MIN.to_le_bytes());
+        assert_eq!(&o[8..16], &5i64.to_le_bytes());
+        let f: Vec<u8> = [0xffc00000u32, 0x3f800000].iter().flat_map(|v| v.to_le_bytes()).collect();
+        let mut o = [0u8; 16];
+        widen(crate::c::qlean_run_c, 4, 5, 0, 0, &f, 2, &mut o);
+        assert_eq!(u64::from_le_bytes(o[..8].try_into().unwrap()), 0xfff8000000000000);
+        assert_eq!(u64::from_le_bytes(o[8..].try_into().unwrap()), 1f64.to_bits());
+    }
 }
 
 // ---- A46b: elementwise.c:2150-2310 (the stage workers stay C until `c::run_chain` calls Rust ones) ----
