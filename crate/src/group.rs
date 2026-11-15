@@ -1,5 +1,4 @@
 #![forbid(unsafe_code)]
-#![allow(unused_variables)] // scaffold: group_ids_win still unimplemented (B11)
 //! `dedup`'s `groupIds` arm (sort.c:2025, `gid` given, no `cnt`) and `ids_run` (sort.c:2006): number the groups on
 //! one thread, then write each element's group id threaded at the lane `ng` fixes.
 use alloc::borrow::Cow;
@@ -8,6 +7,7 @@ use alloc::vec::Vec;
 
 use crate::c::{run_map, Runner};
 use crate::coc::Coc;
+use crate::kwin::Kwin;
 use crate::ids::id_width;
 use crate::simd::prefetch;
 use crate::key::{each, Keys, Pass};
@@ -131,9 +131,17 @@ pub fn group_ids(run: Runner, kind: u8, p: &[u8], n: usize, mn: u64, mx: u64, gi
 }
 
 /// `group_ids` over an encoded column's keys, read through `kwin::Kwin` (`qlean_sort_group_ids_foR`, sort.c:2685);
-/// `mn`, `mx` from `kwin::range`.
-pub fn group_ids_win(kind: u8, c: Coc, n: usize, mn: u64, mx: u64, gid: &mut [u8], first: &mut [usize]) -> usize {
-    unimplemented!()
+/// `mn`, `mx` from `kwin::range`. `gid` holds `n` ids at the lane `max(8, id_width(ng))` fixes. A refusal (`gid` too
+/// short for that lane, `first` shorter than `n`) is None: C aborts.
+pub fn group_ids_win(run: Runner, kind: u8, c: Coc, n: usize, mn: u64, mx: u64, gid: &mut [u8], first: &mut [usize])
+    -> Option<usize> {
+    if n == 0 { return Some(0) }
+    if first.len() < n { return None }
+    let (ng, t) = Number { mn, mx, first }.run(Kwin::new(kind, c), n);
+    let lane = id_width(ng).max(8);
+    if n.checked_mul(lane as usize / 8)? > gid.len() { return None }
+    Fill { run, t: &t, lane, gid }.run(Kwin::new(kind, c), n);
+    Some(ng)
 }
 
 #[cfg(test)]

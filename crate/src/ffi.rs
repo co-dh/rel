@@ -128,11 +128,11 @@ pub unsafe extern "C" fn qrs_group_ids(kind: u8, p: *const u8, n: usize, mn: u64
 }
 
 /// `groupIds` of an encoded column (`qlean_sort_group_ids_foR`): as `qrs_group_ids`, `mn`/`mx` from
-/// `qrs_key_range_win`.
+/// `qrs_key_range_win`. `SIZE_MAX` = `gid` or `first` too short.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn qrs_group_ids_win(kind: u8, c: *const CCoc, n: usize, mn: u64, mx: u64, gid: *mut u8,
-                                           gcap: usize, first: *mut usize) -> usize {
-    group::group_ids_win(kind, unsafe { (*c).view() }, n, mn, mx, unsafe { sl_mut(gid, gcap) }, unsafe { sl_mut(first, n) })
+                                           gcap: usize, first: *mut usize, run: unsafe extern "C" fn()) -> usize {
+    group::group_ids_win(unsafe { core::mem::transmute::<unsafe extern "C" fn(), c::Runner>(run) }, kind, unsafe { (*c).view() }, n, mn, mx, unsafe { sl_mut(gid, gcap) }, unsafe { sl_mut(first, n) }).unwrap_or(usize::MAX)
 }
 
 /// `len` and `off` are `np` entries, `head` `hcap` bytes. Answers the header length, or 0 and `why` filled.
