@@ -34,11 +34,24 @@ impl<'a> Coc<'a> {
     /// coc.h:155; off stays absolute into pack
     pub fn blocks(&self, b0: usize, b1: usize) -> Coc<'a> { unimplemented!() }
     /// coc.h:217
-    pub fn frame(&self, b: usize) -> u64 { unimplemented!() }
+    pub fn frame(&self, b: usize) -> u64 {
+        (self.meta.base[b] as u64).wrapping_add(self.fdelta.map_or(0, |f| f[b]))
+    }
     /// coc.h:277: exception `j`'s element, sign-extended; one byte zero-extends.
-    pub fn exc(&self, j: usize) -> i64 { unimplemented!() }
+    pub fn exc(&self, j: usize) -> i64 {
+        let e = self.exc.expect("coc exc: no patch list");
+        let r = &e.raw[j * e.esz..(j + 1) * e.esz];
+        match e.esz {
+            1 => r[0] as i64,
+            2 => i16::from_ne_bytes([r[0], r[1]]) as i64,
+            4 => i32::from_ne_bytes([r[0], r[1], r[2], r[3]]) as i64,
+            _ => i64::from_ne_bytes([r[0], r[1], r[2], r[3], r[4], r[5], r[6], r[7]]),
+        }
+    }
     /// coc.h:293
-    pub fn blk_nexc(&self, b: usize) -> usize { unimplemented!() }
+    pub fn blk_nexc(&self, b: usize) -> usize {
+        self.exc.filter(|e| !e.pos.is_empty()).map_or(0, |e| (e.off[b + 1] - e.off[b]) as usize)
+    }
     /// coc.h:2633: block `b`'s first `nb` elements into `out`, the patches applied.
     pub fn decode_blk<T: Lane>(&self, b: usize, nb: usize, out: &mut [T]) { unimplemented!() }
 }

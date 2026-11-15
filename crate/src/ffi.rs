@@ -28,7 +28,23 @@ pub struct CCoc {
 impl CCoc {
     /// The only place raw `coc` pointers become slices. Safety: every pointer is null or valid for the length
     /// coc.h documents, for `'a`.
-    pub unsafe fn view<'a>(&self) -> Coc<'a> { unimplemented!() }
+    pub unsafe fn view<'a>(&self) -> Coc<'a> {
+        let m = self.mblk;
+        let meta = coc::Meta {
+            base: unsafe { sl(self.base, m) }, maxv: unsafe { sl(self.maxv, m) }, off: unsafe { sl(self.off, m) },
+            bsum: unsafe { sl(self.bsum, m) }, width: unsafe { sl(self.width, m) },
+            // a null slot is "no sums stored", which coc.h spells 0
+            sumnul: if self.sumnul.is_null() { 0 } else { unsafe { *self.sumnul } },
+            sumn: if self.sumn.is_null() { 0 } else { unsafe { *self.sumn } },
+            n: self.n, nblk: self.nblk, mblk: m,
+        };
+        let exc = if self.exc_off.is_null() { None } else {
+            Some(coc::Exc { off: unsafe { sl(self.exc_off, m + 1) }, pos: unsafe { sl(self.exc_pos, self.nexc) },
+                            raw: unsafe { sl(self.exc_raw, self.nexc * self.exc_esz) }, esz: self.exc_esz })
+        };
+        let fdelta = if self.fdelta.is_null() { None } else { Some(unsafe { sl(self.fdelta.cast_const(), m) }) };
+        Coc { meta, pack: unsafe { sl(self.pack.cast_const(), self.packbytes) }, exc, fdelta }
+    }
 }
 
 /// Mirror of pass.h:74 `qlean_pass`, the context `c::run_map` hands the C pool; rs.h's `QRS_ASSERT_CPASS`, expanded
@@ -237,4 +253,81 @@ pub unsafe extern "C" fn qrs_res_unpack(p: *const u8, w: u8, nb: usize, out: *mu
 pub unsafe extern "C" fn qrs_res_unpack_add(p: *const u8, w: u8, nb: usize, base: u64, out: *mut u8, tw: u32)
     -> c_int {
     unsafe { simd::res_unpack_add(sl(p, BLK * w as usize / 8), w, nb, base, sl_mut(out, BLK * 8), tw) as c_int }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    // testdata/drv.c encoded a 3000-element column with the C encoder at each element width and dumped the buffers
+    // and what coc.h's accessors answered (`col<esz>.txt`): the header, then `blk b frame nexc` and `exc j value`.
+    struct Col { meta: Vec<u64>, pack: Vec<u64>, txt: &'static str }
+    fn load(m: &[u8], p: &[u8], txt: &'static str) -> Col {
+        let w = |b: &[u8]| { let mut v = vec![0u64; b.len().div_ceil(8)]; v.iter_mut().zip(b.chunks(8)).for_each(|(d, c)| { let mut t = [0u8; 8]; t[..c.len()].copy_from_slice(c); *d = u64::from_ne_bytes(t) }); v };
+        Col { meta: w(m), pack: w(p), txt }
+    }
+    fn cols() -> [Col; 3] {
+        [load(include_bytes!("../testdata/col8.meta"), include_bytes!("../testdata/col8.pack"), include_str!("../testdata/col8.txt")),
+         load(include_bytes!("../testdata/col4.meta"), include_bytes!("../testdata/col4.pack"), include_str!("../testdata/col4.txt")),
+         load(include_bytes!("../testdata/col2.meta"), include_bytes!("../testdata/col2.pack"), include_str!("../testdata/col2.txt"))]
+    }
+    fn head(c: &Col) -> Vec<i64> { c.txt.lines().next().unwrap().split_whitespace().skip(1).step_by(2).map(|x| x.parse().unwrap()).collect() }
+    /// The CCoc coc_view/coc_attach would make: [n nblk mblk packbytes nexc esz exc_off exc_pos exc_raw fdelta]
+    fn ccoc(c: &mut Col) -> CCoc {
+        let h = head(c);
+        let (n, mblk, pb) = (h[0] as usize, h[2] as usize, h[3] as usize);
+        let m = c.meta.as_mut_ptr().cast::<u8>();
+        let pk = c.pack.as_mut_ptr().cast::<u8>();
+        let at = |o: i64| if o < 0 { core::ptr::null() } else { unsafe { pk.add(o as usize) } };
+        unsafe { CCoc {
+            base: m.cast(), maxv: m.add(8 * mblk).cast(), off: m.add(16 * mblk).cast(), bsum: m.add(24 * mblk).cast(),
+            sumnul: m.add(32 * mblk).cast(), sumn: m.add(32 * mblk + 8).cast(), width: m.add(32 * mblk + 16),
+            pack: pk, n, nblk: h[1] as usize, packbytes: pb, mblk,
+            exc_off: at(h[6]).cast(), exc_pos: at(h[7]).cast(), exc_raw: at(h[8]), fdelta: at(h[9]).cast_mut().cast(),
+            nexc: h[4] as usize, exc_esz: h[5] as usize,
+        } }
+    }
+    #[test] fn view_reads_back_what_the_c_accessors_answered() {
+        for mut c in cols() {
+            let (cc, h) = (ccoc(&mut c), head(&c));
+            let v = unsafe { cc.view() };
+            assert_eq!((v.meta.base.len(), v.meta.maxv.len(), v.meta.off.len(), v.meta.bsum.len(), v.meta.width.len()),
+                       (cc.mblk, cc.mblk, cc.mblk, cc.mblk, cc.mblk));
+            let e = v.exc.unwrap();
+            assert_eq!((e.off.len(), e.pos.len(), e.raw.len(), e.esz), (cc.mblk + 1, cc.nexc, cc.nexc * cc.exc_esz, cc.exc_esz));
+            assert!(h[4] > 0, "the column must have patches");
+            let mut seen = 0;
+            for l in c.txt.lines().skip(1) {
+                let f: Vec<&str> = l.split_whitespace().collect();
+                let a: usize = f[1].parse().unwrap();
+                match f[0] {
+                    "blk" => { assert_eq!(v.frame(a), f[2].parse::<u64>().unwrap(), "frame {a}"); assert_eq!(v.blk_nexc(a), f[3].parse::<usize>().unwrap(), "nexc {a}"); }
+                    _ => { assert_eq!(v.exc(a), f[2].parse::<i64>().unwrap(), "exc {a}"); seen += 1 }
+                }
+            }
+            assert_eq!(seen, cc.nexc);
+        }
+    }
+    #[test] fn null_patch_list_and_null_frames_are_none() {
+        let mut c = load(include_bytes!("../testdata/col8.meta"), include_bytes!("../testdata/col8.pack"), include_str!("../testdata/col8.txt"));
+        let mut cc = ccoc(&mut c);
+        assert!(unsafe { cc.view() }.fdelta.is_some() || head(&c)[9] < 0);
+        cc.fdelta = core::ptr::null_mut();
+        assert!(unsafe { cc.view() }.fdelta.is_none());
+        let v = unsafe { cc.view() };
+        assert_eq!(v.frame(0), v.meta.base[0] as u64, "no fdelta is 0s");
+        cc.exc_off = core::ptr::null();
+        let v = unsafe { cc.view() };
+        assert!(v.exc.is_none());
+        assert_eq!(v.blk_nexc(0), 0);
+        cc.sumnul = core::ptr::null_mut(); cc.sumn = core::ptr::null_mut();
+        assert_eq!((unsafe { cc.view() }.meta.sumnul, unsafe { cc.view() }.meta.sumn), (0, 0));
+    }
+    #[test] fn views_never_exceed_mblk() {
+        let mut c = load(include_bytes!("../testdata/col8.meta"), include_bytes!("../testdata/col8.pack"), include_str!("../testdata/col8.txt"));
+        let mut cc = ccoc(&mut c);
+        cc.nblk = cc.mblk + 5; // a clamped view may hold fewer blocks, never more slices than the metadata has
+        let v = unsafe { cc.view() };
+        assert_eq!(v.meta.base.len(), cc.mblk);
+        assert!(std::panic::catch_unwind(|| v.frame(cc.mblk)).is_err());
+    }
 }

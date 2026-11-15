@@ -1,4 +1,3 @@
-#![allow(unused_variables)] // scaffold: B8 fills cast_mut and removes this
 //! The one checked reinterpretation of bytes as a slice of numbers.
 
 pub trait Pod: Copy {}
@@ -27,4 +26,32 @@ pub fn cast<T: Pod>(b: &[u8]) -> Option<&[T]> {
     // Safety: aligned and a whole number of elements, both tested above; `Pod` is valid for any bit pattern
     Some(unsafe { core::slice::from_raw_parts(b.as_ptr().cast::<T>(), b.len() / size_of::<T>()) })
 }
-pub fn cast_mut<T: Pod>(b: &mut [u8]) -> Option<&mut [T]> { unimplemented!() }
+/// As `cast`, for writing.
+pub fn cast_mut<T: Pod>(b: &mut [u8]) -> Option<&mut [T]> {
+    if b.is_empty() { return Some(&mut []) }
+    if b.as_ptr() as usize % align_of::<T>() != 0 || b.len() % size_of::<T>() != 0 { return None }
+    // Safety: aligned and a whole number of elements, both tested above; `Pod` is valid for any bit pattern
+    Some(unsafe { core::slice::from_raw_parts_mut(b.as_mut_ptr().cast::<T>(), b.len() / size_of::<T>()) })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test] fn cast_rejects_misaligned_and_ragged() {
+        let a = [0u64; 4];
+        let b: &[u8] = unsafe { core::slice::from_raw_parts(a.as_ptr().cast::<u8>(), 32) };
+        assert_eq!(cast::<u32>(&b[..8]).map(|s| s.len()), Some(2));
+        assert!(cast::<u32>(&b[1..9]).is_none(), "misaligned");
+        assert!(cast::<u32>(&b[..7]).is_none(), "ragged length");
+        assert_eq!(cast::<u64>(&b[..0]).map(|s| s.len()), Some(0));
+    }
+    #[test] fn cast_mut_rejects_misaligned_and_ragged() {
+        let mut a = [0u64; 4];
+        let b: &mut [u8] = unsafe { core::slice::from_raw_parts_mut(a.as_mut_ptr().cast::<u8>(), 32) };
+        assert!(cast_mut::<u32>(&mut b[1..9]).is_none(), "misaligned");
+        assert!(cast_mut::<u32>(&mut b[..7]).is_none(), "ragged length");
+        assert_eq!(cast_mut::<u64>(&mut b[..0]).map(|s| s.len()), Some(0));
+        cast_mut::<u32>(&mut b[..8]).unwrap()[1] = 7;
+        assert_eq!(a[0] >> 32, 7);
+    }
+}
