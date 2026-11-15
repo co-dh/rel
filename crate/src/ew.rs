@@ -446,16 +446,129 @@ pub fn eq_ids(run: Runner, op: u8, shape: u8, ia: &[u8], ib: &[u8], w: u32, n: u
 }
 
 // ---- A44: elementwise.c:1569-1813 ----
-/// elementwise.c:1569 `ew_bit_run` and its entry: bitmap verbs.
-pub fn bit(run: Runner, op: u8, shape: u8, a: &[u8], b: &[u8], n: usize, out: &mut [u8]) { unimplemented!("A44: ew_bit_run") }
-/// elementwise.c:1665 `ew_mon_run` and its entry: the monadic verbs.
-pub fn mon(run: Runner, op: u8, cls: u8, nul: i64, x: &[u8], n: usize, out: &mut [u8]) { unimplemented!("A44: ew_mon_run") }
+/// `EW_*` codes of elementwise.c:86-100 this section reads (the verbs `k` does not hold).
+mod k44 {
+    pub(super) const BITS: u32 = 6; pub(super) const F32: u8 = 4; pub(super) const F64: u8 = 5;
+    pub(super) const NEG: u8 = 0; pub(super) const ABS: u8 = 1; pub(super) const SQRT: u8 = 2; pub(super) const ATAN: u8 = 10;
+    // `EW_BCMP + EW_EQ ..= EW_GE`
+    pub(super) const BEQ: u8 = 16; pub(super) const BNE: u8 = 17; pub(super) const BLT: u8 = 18;
+    pub(super) const BLE: u8 = 19; pub(super) const BGT: u8 = 20; pub(super) const BGE: u8 = 21;
+}
+/// elementwise.c:1569 `ew_bit_run` and its entry: bitmap verbs. `out` is the `⌈n / 8⌉` bytes, the bits above `n` zero;
+/// an atom operand is one bit, widened to a byte before the loop.
+pub fn bit(run: Runner, op: u8, shape: u8, a: &[u8], b: &[u8], n: usize, out: &mut [u8]) {
+    let nb = n.div_ceil(8);
+    if nb == 0 { return }
+    // chosen before the pool starts: a panic inside a worker cannot unwind through the C pool
+    let f: fn(u8, u8) -> u8 = match op {
+        k::LESSER => |x, y| x & y,
+        k::GREATER => |x, y| x | y,
+        k::FILL => |_, y| y,
+        k44::BEQ => |x, y| !(x ^ y),
+        k44::BNE => |x, y| x ^ y,
+        k44::BLT => |x, y| !x & y,
+        k44::BLE => |x, y| !x | y,
+        k44::BGT => |x, y| x & !y,
+        k44::BGE => |x, y| x | !y,
+        _ => ew_unsupported("qlean_ew_bit", op as u32, k44::BITS),
+    };
+    assert!(shape == k::AV || a.len() >= nb, "qlean_ew_bit: a {}-byte operand for {n} bits", a.len());
+    assert!(shape == k::VA || b.len() >= nb, "qlean_ew_bit: a {}-byte operand for {n} bits", b.len());
+    let wide = |x: &[u8]| if x.first().is_some_and(|v| v & 1 == 1) { 0xffu8 } else { 0 };
+    let (ac, bc) = (wide(a), wide(b));
+    run_map(run, out, nb, 1, QLEAN_COST_COPY, 1, &|lo, hi, o| {
+        for (k, ob) in (lo..hi).zip(o) {
+            *ob = f(if shape == k::AV { ac } else { a[k] }, if shape == k::VA { bc } else { b[k] });
+        }
+    });
+    // the tail byte belongs to whoever wrote the last slice, so it is cleared here and not in a worker
+    if n & 7 != 0 { out[nb - 1] &= ((1u16 << (n & 7)) - 1) as u8 }
+}
+
+/// `neg` and `abs` over the class's elements: a null stays itself (q's null is the least value, so `abs` needs no case
+/// of its own but shares the loop's shape); `neg` at a float flips the sign bit, `abs` clears it.
+fn mon_int<T: Elt>(op: u8, nul: i64, x: &[T], o: &mut [T]) {
+    let nulv = T::wrap(nul as u64);
+    for (o, &v) in o.iter_mut().zip(x) {
+        *o = if v.i() == nul { nulv } else if op == k44::NEG || v.i() < 0 { T::wrap(0u64.wrapping_sub(v.i() as u64)) } else { v };
+    }
+}
+/// elementwise.c:1665 `ew_mon_run` over `x`'s elements into `o` (the same count): the pair was checked by `mon_chk`.
+fn mon_slice(op: u8, cls: u8, nul: i64, x: &[u8], o: &mut [u8]) {
+    match cls {
+        0 => mon_int::<u8>(op, nul, ro(x), rw(o)),
+        1 => mon_int::<i16>(op, nul, ro(x), rw(o)),
+        2 => mon_int::<i32>(op, nul, ro(x), rw(o)),
+        3 => mon_int::<i64>(op, nul, ro(x), rw(o)),
+        k44::F32 => for (o, &v) in rw::<u32>(o).iter_mut().zip(ro::<u32>(x)) { *o = if op == k44::NEG { v ^ 0x8000_0000 } else { v & 0x7fff_ffff } },
+        _ => for (o, &v) in rw::<u64>(o).iter_mut().zip(ro::<u64>(x)) { *o = if op == k44::NEG { v ^ (1 << 63) } else { v & !(1 << 63) } },
+    }
+}
+/// The pairs the engine answers: `neg` and `abs` at the six classes. The nine float maps at `f64` call libm, which
+/// the object may not (§1), so the C entry keeps them and must not hand them over.
+fn mon_chk(op: u8, cls: u8) {
+    assert!(!(cls == k44::F64 && (k44::SQRT..=k44::ATAN).contains(&op)),
+            "qlean_ew_mon: map {op} at f64 stays in C (it calls libm); qlean_ew_mon must not hand it to Rust");
+    if op > k44::ABS || cls > k44::F64 { ew_unsupported("qlean_ew_mon", op as u32, cls as u32) }
+}
+/// elementwise.c:1665 `ew_mon_run` and its entry: the monadic verbs `neg` and `abs`.
+pub fn mon(run: Runner, op: u8, cls: u8, nul: i64, x: &[u8], n: usize, out: &mut [u8]) {
+    if n == 0 { return }
+    mon_chk(op, cls);
+    let w = ew_width(cls as u32);
+    run_map(run, out, n, w, QLEAN_COST_ARITH, w, &|lo, hi, o| mon_slice(op, cls, nul, side(x, false, lo, hi, w), o));
+}
 /// elementwise.c:1708-1765 `ew_mon_foR_run`, `ew_mon_foR_blk`: over an encoded column, the answer dense.
-pub fn mon_enc(run: Runner, op: u8, cls: u8, nul: i64, c: &Coc, out: &mut [u8]) { unimplemented!("A44: ew_mon_foR_run") }
-/// elementwise.c:1743 `ew_mon_fill`: the encoder source of `qlean_coc_ew_mon_enc`.
-pub fn mon_fill(op: u8, cls: u8, nul: i64, c: &Coc, buf: &mut [i64], i0: usize) { unimplemented!("A44: ew_mon_fill") }
-/// elementwise.c:1789 `ew_floor_run`
-pub fn floor(run: Runner, cls: u8, nul: i64, x: &[u8], n: usize, out: &mut [u8]) { unimplemented!("A44: ew_floor_run") }
+pub fn mon_enc(run: Runner, op: u8, cls: u8, nul: i64, c: &Coc, out: &mut [u8]) {
+    let n = c.meta.n;
+    if n == 0 { return }
+    mon_chk(op, cls);
+    let w = ew_width(cls as u32);
+    run_map(run, out, n, w, QLEAN_COST_ARITH, w, &|lo, hi, o| {
+        let mut xv = [0u64; BLK];
+        let mut at = lo;
+        while at < hi {
+            // a slice may start inside a block, so the block is decoded from its own start and entered at `at - blo`
+            let (blk, end) = (at / BLK, (at / BLK * BLK + BLK).min(hi));
+            let (blo, cnt) = (blk * BLK, end - blk * BLK);
+            let x = block(c, blk, cnt, w, &mut xv);
+            mon_slice(op, cls, nul, &x[(at - blo) * w..cnt * w], &mut o[(at - lo) * w..(end - lo) * w]);
+            at = end;
+        }
+    });
+}
+/// elementwise.c:1743 `ew_mon_fill`: the encoder source of `qlean_coc_ew_mon_enc`. `buf` is the `buf.len()` elements of
+/// block `i0 / BLK`, mapped at the class's width and widened back to `i64` (`coc_widen`, which reads any width but 2
+/// and 4 as eight bytes).
+pub fn mon_fill(op: u8, cls: u8, nul: i64, c: &Coc, buf: &mut [i64], i0: usize) {
+    let (nb, w) = (buf.len(), ew_width(cls as u32));
+    if nb == 0 { return }
+    mon_chk(op, cls);
+    let mut xv = [0u64; BLK];
+    let x = block(c, i0 / BLK, nb, w, &mut xv);
+    if w == 8 { return mon_slice(op, cls, nul, &x[..nb * 8], bytes_mut(buf)) }
+    let mut yv = [0u64; BLK];
+    let y = bytes_mut(&mut yv);
+    mon_slice(op, cls, nul, &x[..nb * w], &mut y[..nb * w]);
+    match w {
+        2 => for (d, &s) in buf.iter_mut().zip(ro::<i16>(&y[..nb * 2])) { *d = s as i64 },
+        4 => for (d, &s) in buf.iter_mut().zip(ro::<i32>(&y[..nb * 4])) { *d = s as i64 },
+        _ => for (d, &s) in buf.iter_mut().zip(ro::<u64>(&y[..nb * 8])) { *d = s as i64 },
+    }
+}
+/// elementwise.c:1789 `ew_floor_run`: `floor` at a float class, always a `long`; out of range or a NaN answers `0N`.
+pub fn floor(run: Runner, cls: u8, nul: i64, x: &[u8], n: usize, out: &mut [u8]) {
+    if n == 0 { return }
+    if cls != k44::F32 && cls != k44::F64 { ew_unsupported("qlean_ew_floor", 0, cls as u32) }
+    let w = ew_width(cls as u32);
+    // the bound is tested on the floored value, exactly as QLean/Eval/Mon.lean's `floorFloats` does
+    let long = |v: f64| if v.is_nan() { i64::MIN } else { let f = floor64(v); if ew_outside_long(f) { i64::MIN } else { f as i64 } };
+    run_map(run, out, n, 8, QLEAN_COST_ARITH, 8, &|lo, hi, o| {
+        let (x, o) = (side(x, false, lo, hi, w), rw::<i64>(o));
+        if cls == k44::F32 { for (o, &v) in o.iter_mut().zip(ro::<u32>(x)) { *o = long(f32::from_bits(v) as f64) } }
+        else { for (o, &v) in o.iter_mut().zip(ro::<u64>(x)) { *o = long(f64::from_bits(v)) } }
+    });
+}
 
 // ---- A45: elementwise.c:1843-1981 ----
 /// elementwise.c:1843 `ew_cast_clamp`
@@ -761,5 +874,106 @@ mod tests43 {
         assert_eq!(o, [0b10111]);
         eq_ids(qlean_run_c, k::EQ, k::VA, &ia, &[0b10], 2, 5, &[], &[], &mut o);
         assert_eq!(o, [0b00100]);
+    }
+}
+
+#[cfg(test)]
+mod tests44 {
+    use super::*;
+    use crate::c::qlean_run_c;
+    use crate::coc::Meta;
+    use std::vec::Vec;
+
+    fn hex(s: &str) -> Vec<u8> { (0..s.len() / 2).map(|i| u8::from_str_radix(&s[2 * i..2 * i + 2], 16).unwrap()).collect() }
+    fn mon_of(op: u8, cls: u8, nul: i64, x: &[u8], n: usize) -> Vec<u8> {
+        let mut o = vec![0u8; n * ew_width(cls as u32)];
+        mon(qlean_run_c, op, cls, nul, x, n, &mut o);
+        o
+    }
+    #[test] fn neg_abs_edges() {
+        // null stays null; the wrapping minimum of the class is its own negation
+        assert_eq!(mon_of(0, 3, i64::MIN, &i64::MIN.to_ne_bytes(), 1), i64::MIN.to_ne_bytes());
+        assert_eq!(mon_of(1, 3, i64::MIN, &(i64::MIN + 1).to_ne_bytes(), 1), i64::MAX.to_ne_bytes());
+        assert_eq!(mon_of(0, 1, -32768, &(-32768i16).to_ne_bytes(), 1), (-32768i16).to_ne_bytes());
+        assert_eq!(mon_of(0, 0, 256, &[0, 1, 255], 3), [0, 255, 1]);
+        assert_eq!(mon_of(0, 5, 0, &0f64.to_bits().to_ne_bytes(), 1), (-0f64).to_bits().to_ne_bytes());
+        assert_eq!(mon_of(1, 5, 0, &(-0f64).to_bits().to_ne_bytes(), 1), 0f64.to_bits().to_ne_bytes());
+        assert_eq!(mon_of(0, 4, 0, &1.5f32.to_bits().to_ne_bytes(), 1), (-1.5f32).to_bits().to_ne_bytes());
+    }
+    #[test] fn floor_bounds() {
+        let x: Vec<u8> = [9.3e18f64, f64::INFINITY, f64::NAN, -2.5, 9.2e18, -9.3e18].iter().flat_map(|v| v.to_bits().to_ne_bytes()).collect();
+        let mut o = vec![0u8; 48];
+        floor(qlean_run_c, 5, 0, &x, 6, &mut o);
+        let r: Vec<i64> = o.chunks(8).map(|c| i64::from_ne_bytes(c.try_into().unwrap())).collect();
+        assert_eq!(r, [i64::MIN, i64::MIN, i64::MIN, -3, 9_200_000_000_000_000_000, i64::MIN]);
+    }
+    #[test] fn bit_tail_is_masked() {
+        let mut o = [0xabu8; 2];
+        bit(qlean_run_c, 16 + 5, 1, &[0, 0], &[0], 11, &mut o); // not-zero by `>=` against a zero atom: all ones
+        assert_eq!(o, [0xff, 0x07]);
+    }
+    /// the vectors `/data/tmp/qrs/A44/drv` dumps from the C of 78a5c06; run with EW_A44_VEC=<file> --ignored
+    #[test] #[ignore] fn diff44() {
+        let path = std::env::var("EW_A44_VEC").expect("EW_A44_VEC: the file `drv N file` wrote");
+        let (mut cnt, mut bad) = (0, 0);
+        for l in std::fs::read_to_string(path).unwrap().lines() {
+            let f: Vec<&str> = l.split(' ').collect();
+            let num = |i: usize| f[i].parse::<i64>().unwrap();
+            match f[0] {
+                "mon" => {
+                    let (op, cls, nul, n) = (num(1) as u8, num(2) as u8, num(3), num(4) as usize);
+                    if mon_of(op, cls, nul, &hex(f[5]), n) != hex(f[6]) { bad += 1 }
+                }
+                "floor" => {
+                    let (cls, n) = (num(2) as u8, num(4) as usize);
+                    let mut o = vec![0u8; n * 8];
+                    floor(qlean_run_c, cls, 0, &hex(f[5]), n, &mut o);
+                    if o != hex(f[6]) { bad += 1 }
+                }
+                _ => {
+                    let (op, shape, n) = (num(1) as u8, num(2) as u8, num(3) as usize);
+                    let mut o = vec![0u8; n.div_ceil(8)];
+                    bit(qlean_run_c, op, shape, &hex(f[4]), &hex(f[5]), n, &mut o);
+                    if o != hex(f[6]) { bad += 1 }
+                }
+            }
+            cnt += 1;
+        }
+        eprintln!("diff44: {cnt} vectors, {bad} mismatches");
+        assert_eq!(bad, 0);
+    }
+    /// `foRMon = mon (decode ..)`: three blocks at widths 8, 16, 0 bits, the last one short
+    #[test] fn enc_and_fill_equal_mon_of_the_decode() {
+        let (n, nblk) = (2500usize, 3usize);
+        let (base, maxv, bsum) = ([-5i64, 100, 7], [0i64; 3], [0i64; 3]);
+        let width = [8u8, 16, 0];
+        let mut off = [0u64; 3];
+        let mut pack: Vec<u8> = vec![];
+        for b in 0..nblk { off[b] = pack.len() as u64; pack.extend((0..crate::BLK * width[b] as usize / 8).map(|i| (i * 37 + b * 11) as u8)) }
+        let meta = Meta { base: &base, maxv: &maxv, off: &off, bsum: &bsum, width: &width, sumnul: 0, sumn: 0, n, nblk, mblk: nblk };
+        let c = Coc { meta, pack: &pack, exc: None, fdelta: None };
+        for (cls, w) in [(1u8, 2usize), (2, 4), (3, 8)] {
+            for op in 0..2u8 {
+                let mut dense = vec![0u8; n * w];
+                for b in 0..nblk {
+                    let (cnt, mut xv) = ((n - b * crate::BLK).min(crate::BLK), [0u64; crate::BLK]);
+                    let x = block(&c, b, cnt, w, &mut xv);
+                    dense[b * crate::BLK * w..(b * crate::BLK + cnt) * w].copy_from_slice(&x[..cnt * w]);
+                }
+                let want = mon_of(op, cls, i64::MIN, &dense, n);
+                let mut got = vec![0u8; n * w];
+                mon_enc(qlean_run_c, op, cls, i64::MIN, &c, &mut got);
+                assert_eq!(got, want, "mon_enc cls {cls} op {op}");
+                for b in 0..nblk {
+                    let cnt = (n - b * crate::BLK).min(crate::BLK);
+                    let mut buf = vec![0i64; cnt];
+                    mon_fill(op, cls, i64::MIN, &c, &mut buf, b * crate::BLK);
+                    let ex: Vec<i64> = want[b * crate::BLK * w..(b * crate::BLK + cnt) * w].chunks(w).map(|e| match w {
+                        2 => i16::from_ne_bytes(e.try_into().unwrap()) as i64, 4 => i32::from_ne_bytes(e.try_into().unwrap()) as i64,
+                        _ => i64::from_ne_bytes(e.try_into().unwrap()) }).collect();
+                    assert_eq!(buf, ex, "mon_fill cls {cls} op {op} blk {b}");
+                }
+            }
+        }
     }
 }
