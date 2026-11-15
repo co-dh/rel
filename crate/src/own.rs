@@ -78,7 +78,27 @@ pub fn check(kind: u8, n: u64, part: &[&[u8]], why: &mut Why) -> bool { unimplem
 /// when the kind, the part count or the `nl`-byte domain name is refused.
 pub fn write_head(code: u8, attr: u8, kind: u8, count: u64, nl: usize, len: &[usize],
                   head: &mut [u8], off: &mut [usize], why: &mut Why) -> Option<usize> {
-    unimplemented!()
+    let np = len.len();
+    if kind > 4 || np != OWN_NPARTS[kind as usize] || nl > 0xffff {
+        why.say(format_args!("a column of kind 0..4 with its parts and a domain name under 65536 \
+bytes, given kind {} with {} parts and a {}-byte name", kind, np, nl));
+        return None;
+    }
+    head[..8].copy_from_slice(b"qleancol");
+    head[8..12].copy_from_slice(&[OWN_VERSION, code, attr, kind]);
+    head[12..14].copy_from_slice(&(np as u16).to_le_bytes());
+    head[14..16].copy_from_slice(&(nl as u16).to_le_bytes());
+    head[16..24].copy_from_slice(&count.to_le_bytes());
+    let mut at = OWN_HEAD + 16 * np + nl;
+    for (k, &l) in len.iter().enumerate() {
+        let o = (at + OWN_ROOM as usize + 7) & !7;
+        let t = OWN_HEAD + 16 * k;
+        head[t..t + 8].copy_from_slice(&(o as u64).to_le_bytes());
+        head[t + 8..t + 16].copy_from_slice(&(l as u64).to_le_bytes());
+        off[k] = o;
+        at = o + l;
+    }
+    Some(OWN_HEAD + 16 * np)
 }
 
 #[cfg(test)]
