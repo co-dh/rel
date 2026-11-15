@@ -355,6 +355,62 @@ unsafe fn syms<'a>(blob: *const u8, bytes: usize, offs: *const usize, n: usize) 
 pub unsafe extern "C" fn qrs_res_pack(v: *const u64, w: u8, nb: usize, dst: *mut u8) {
     unsafe { simd::res_pack(sl(v, BLK), w, nb, sl_mut(dst, BLK * 8)) }
 }
+/// A7: coc.h:2191 `pack_block`, per element type (cbindgen does not expand macros). `dst` is the block's ⌈nb*w/8⌉ bytes.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn qrs_pack_block_u8(dst: *mut u8, src: *const u8, nb: usize, base: i64, w: u8) {
+    unsafe { enc::pack_block(sl_mut(dst, (nb * w as usize).div_ceil(8)), sl(src, nb), nb, base, w) }
+}
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn qrs_pack_block_i16(dst: *mut u8, src: *const i16, nb: usize, base: i64, w: u8) {
+    unsafe { enc::pack_block(sl_mut(dst, (nb * w as usize).div_ceil(8)), sl(src, nb), nb, base, w) }
+}
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn qrs_pack_block_i32(dst: *mut u8, src: *const i32, nb: usize, base: i64, w: u8) {
+    unsafe { enc::pack_block(sl_mut(dst, (nb * w as usize).div_ceil(8)), sl(src, nb), nb, base, w) }
+}
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn qrs_pack_block_i64(dst: *mut u8, src: *const i64, nb: usize, base: i64, w: u8) {
+    unsafe { enc::pack_block(sl_mut(dst, (nb * w as usize).div_ceil(8)), sl(src, nb), nb, base, w) }
+}
+/// `encode_meta_blk` writes block `b`'s `base`, `maxv`, `width`, `bsum` of `c`; the patch and early-decline slots of
+/// `EncMeta` have no C counterpart here and are scratch. Safety: `b < c.mblk`, the four arrays valid, no other view of `b`.
+unsafe fn meta_blk<T: enc::Elt>(c: *mut CCoc, b: usize, x: *const T, nb: usize) {
+    let (lb, over, mut nexc) = (core::sync::atomic::AtomicUsize::new(0), core::sync::atomic::AtomicI32::new(0), 0u32);
+    let c = unsafe { &*c };
+    let mut m = unsafe { EncMeta { b, base: &mut *c.base.add(b), maxv: &mut *c.maxv.add(b), width: &mut *c.width.add(b),
+                                   bsum: &mut *c.bsum.add(b), frm: None, nexc: &mut nexc, exp: None, below: 0, lb: &lb, over: &over } };
+    enc::encode_meta_blk(&mut m, unsafe { sl(x, nb) }, nb)
+}
+/// A7: coc.h:2240 `encode_meta_blk`, per element type.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn qrs_encode_meta_blk_u8(c: *mut CCoc, b: usize, x: *const u8, nb: usize) { unsafe { meta_blk(c, b, x, nb) } }
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn qrs_encode_meta_blk_i16(c: *mut CCoc, b: usize, x: *const i16, nb: usize) { unsafe { meta_blk(c, b, x, nb) } }
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn qrs_encode_meta_blk_i32(c: *mut CCoc, b: usize, x: *const i32, nb: usize) { unsafe { meta_blk(c, b, x, nb) } }
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn qrs_encode_meta_blk_i64(c: *mut CCoc, b: usize, x: *const i64, nb: usize) { unsafe { meta_blk(c, b, x, nb) } }
+/// `frame_pick` for C: 1 with `fo`, `wo`, `neo` written when a frame beats `cost`, else 0. `smp` is `k` samples.
+unsafe fn pick<T: enc::Elt>(smp: *mut i64, k: usize, nb: usize, nnul: usize, cost: usize, mn: i64, x: *const T,
+                            fo: *mut i64, wo: *mut u8, neo: *mut u32) -> c_int {
+    match enc::frame_pick(unsafe { sl_mut(smp, k) }, nb, nnul, cost, mn, unsafe { sl(x, nb) }) {
+        Some(f) => { unsafe { *fo = f.fo; *wo = f.wo; *neo = f.neo } 1 }
+        None => 0,
+    }
+}
+/// A7: coc.h:2275 `frame_pick`, per element type.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn qrs_frame_pick_u8(smp: *mut i64, k: usize, nb: usize, nnul: usize, cost: usize, mn: i64, x: *const u8,
+                                           fo: *mut i64, wo: *mut u8, neo: *mut u32) -> c_int { unsafe { pick(smp, k, nb, nnul, cost, mn, x, fo, wo, neo) } }
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn qrs_frame_pick_i16(smp: *mut i64, k: usize, nb: usize, nnul: usize, cost: usize, mn: i64, x: *const i16,
+                                            fo: *mut i64, wo: *mut u8, neo: *mut u32) -> c_int { unsafe { pick(smp, k, nb, nnul, cost, mn, x, fo, wo, neo) } }
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn qrs_frame_pick_i32(smp: *mut i64, k: usize, nb: usize, nnul: usize, cost: usize, mn: i64, x: *const i32,
+                                            fo: *mut i64, wo: *mut u8, neo: *mut u32) -> c_int { unsafe { pick(smp, k, nb, nnul, cost, mn, x, fo, wo, neo) } }
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn qrs_frame_pick_i64(smp: *mut i64, k: usize, nb: usize, nnul: usize, cost: usize, mn: i64, x: *const i64,
+                                            fo: *mut i64, wo: *mut u8, neo: *mut u32) -> c_int { unsafe { pick(smp, k, nb, nnul, cost, mn, x, fo, wo, neo) } }
 /// A3: coc.h:860 `coc_sum`.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn qrs_coc_sum(c: *const CCoc, nul: i64) -> u64 { unsafe { (*c).view() }.sum(nul) }

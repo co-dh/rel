@@ -244,12 +244,15 @@ mod tests {
                     let (mut d, mut ee) = (vec![0i64; nb], vec![0i8; nb]);
                     for i in 0..nb { d[i] = c.u() as i64; ee[i] = c.u() as i64 as i8 }
                     let (ne, exp, dh) = (c.u(), c.u(), c.u());
-                    // base, maxv, width: `encode_meta_blk` is A7's, so they are read past here and checked when it lands
-                    for _ in 0..3 { c.u(); }
-                    let _ = (be, exp);
-                    assert_eq!((exc_as_base(&mut d, &ee, nb) as u64, fnv_w(&d.iter().map(|&x| x as u64).collect::<Vec<_>>())), (ne, dh),
-                               "alp_fin_blk nb {nb}");
-                    checks += 1;
+                    let (cb, cm, cw) = (c.u() as i64, c.u() as i64, c.u());
+                    let (mut base, mut maxv, mut width, mut bsum, mut nexc, mut e) = (0i64, 0i64, 0u8, 0i64, 0u32, 0i8);
+                    let (lb, over) = (core::sync::atomic::AtomicUsize::new(0), core::sync::atomic::AtomicI32::new(0));
+                    let mut m = EncMeta { b: 0, base: &mut base, maxv: &mut maxv, width: &mut width, bsum: &mut bsum, frm: None,
+                                          nexc: &mut nexc, exp: Some(&mut e), below: 0, lb: &lb, over: &over };
+                    assert_eq!((alp_fin_blk(&mut m, be as i32, &mut d, &ee, nb) as u64, fnv_w(&d.iter().map(|&x| x as u64).collect::<Vec<_>>())),
+                               (ne, dh), "alp_fin_blk nb {nb}");
+                    assert_eq!((e as i64 as u64, base, maxv, width as u64), (exp, cb, cm, cw), "alp_fin_blk meta nb {nb}");
+                    checks += 2;
                 }
             }
         }
