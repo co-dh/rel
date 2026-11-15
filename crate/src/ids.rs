@@ -159,8 +159,17 @@ pub fn map(run: Runner, ids: &[u8], n: usize, w: u32, nd: usize, slot: &[usize],
 }
 
 /// `IDS_PACK` (ids.h:167) in place: `n` ids one byte each in `g` packed to `w < 8` bits from `g[0]`.
-#[allow(unused_variables)] // scaffold: B6 fills it
-pub fn pack_in_place(g: &mut [u8], w: u32, n: usize) { unimplemented!() }
+/// Byte `j` reads the ids at `j·per ..` and lands at `g[j]`, which is at or below them, so ascending order reads
+/// every id before its byte is stored. The last byte's fields past `n` stay zero.
+pub fn pack_in_place(g: &mut [u8], w: u32, n: usize) {
+    if w == 0 { return; }
+    assert!(matches!(w, 1 | 2 | 4) && g.len() >= n, "pack_in_place: width {w} (must be 1, 2 or 4), {n} ids in {} bytes", g.len());
+    let (per, mask) = (8 / w as usize, (1u8 << w) - 1);
+    for j in 0..ids_bytes(n, w) {
+        let ids = &g[j * per..n.min(j * per + per)];
+        g[j] = ids.iter().enumerate().fold(0u8, |b, (t, &v)| b | (v & mask) << (t as u32 * w));
+    }
+}
 
 #[cfg(test)]
 mod tests {
@@ -170,6 +179,16 @@ mod tests {
         assert_eq!([0, 1, 2, 3, 4, 5, 8, 9, 16, 17, 32, 33, 64].map(lane_width), [0, 1, 2, 4, 4, 8, 8, 16, 16, 32, 32, 64, 64]);
         assert_eq!([0, 1, 2, 3, 4, 5, 256, 257, 65537].map(id_width), [0, 0, 1, 2, 2, 4, 8, 16, 32]);
         assert_eq!((ids_bytes(0, 4), ids_bytes(3, 1), ids_bytes(5, 2), ids_bytes(3, 64)), (0, 1, 2, 24));
+    }
+    #[test] fn pack_roundtrip() {
+        for w in [1u32, 2, 4] {
+            for n in 0..70usize {
+                let src: Vec<u8> = (0..n).map(|i| (i * 7 + 3) as u8 & ((1 << w) - 1)).collect();
+                let mut g = src.clone();
+                pack_in_place(&mut g, w, n);
+                assert!(src.iter().enumerate().all(|(i, &v)| id_at(&g, w, i) == v as usize), "w={w} n={n}");
+            }
+        }
     }
     #[test] fn at_and_max() {
         let p = [0b1110_0100u8, 0b0000_0011, 5, 0, 0, 0, 0, 0, 0, 0];

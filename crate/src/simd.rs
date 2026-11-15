@@ -1,6 +1,14 @@
 #![allow(unused_variables)] // scaffold: the task that fills this module removes it
 //! The AVX-512 kernels: coc.h:598, 646; reduce.c:261. Each picks its path by `cfg`, as the C picks by `#if`.
 
+/// `__builtin_prefetch(r, 1)`: starts the line of `r` loading; a hint, it never faults.
+#[inline(always)]
+pub fn prefetch<T>(r: &T) {
+    #[cfg(target_arch = "x86_64")]
+    // SAFETY: a prefetch reads no memory architecturally and `r` is a live reference.
+    unsafe { core::arch::x86_64::_mm_prefetch::<{ core::arch::x86_64::_MM_HINT_T0 }>((r as *const T).cast()) }
+}
+
 /// Dispatches by cfg.
 pub fn u8_sum(p: &[u8]) -> i64 { unimplemented!() }
 pub fn res_unpack(p: &[u8], w: u8, nb: usize, out: &mut [u8]) { unimplemented!() }
