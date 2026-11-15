@@ -118,6 +118,32 @@ fn go<const W: u32>(ids: &[u8], n: usize, nd: usize, slot: &mut [usize], first: 
     ng
 }
 
+/// `map` at an output lane of `U` bytes: `w` is matched once a slice, so the row loop has a constant-width load and
+/// store, which `id_at` and a `copy_from_slice` of a run-time length are not.
+fn wide<const U: usize>(run: Runner, out: &mut [u8], ids: &[u8], w: u32, n: usize, nd: usize, slot: &[usize]) {
+    #[inline(always)]
+    fn sweep<const U: usize>(o: &mut [u8], lo: usize, hi: usize, nd: usize, slot: &[usize], id: impl Fn(usize) -> usize) {
+        for (i, c) in (lo..hi).zip(o.chunks_exact_mut(U)) {
+            let v = slot[id(i).min(nd)].to_le_bytes();
+            c.copy_from_slice(&v[..U]);
+        }
+    }
+    crate::c::run_map(run, out, n, U, QLEAN_COST_ARITH, WIDE, &|lo, hi, o: &mut [u8]| {
+        let (ids, slot) = (ids, slot); // own copies: a captured reference reloads every row past the output stores
+        let le = |k: usize| move |i: usize| ids[i * k..i * k + k].iter().rev().fold(0usize, |a, &b| a << 8 | b as usize);
+        match w {
+            0 => sweep::<U>(o, lo, hi, nd, slot, |_| 0),
+            1 => sweep::<U>(o, lo, hi, nd, slot, |i| (ids[i >> 3] >> (i & 7) & 1) as usize),
+            2 => sweep::<U>(o, lo, hi, nd, slot, |i| (ids[i >> 2] >> ((i & 3) * 2) & 3) as usize),
+            4 => sweep::<U>(o, lo, hi, nd, slot, |i| (ids[i >> 1] >> ((i & 1) * 4) & 15) as usize),
+            8 => sweep::<U>(o, lo, hi, nd, slot, |i| ids[i] as usize),
+            16 => sweep::<U>(o, lo, hi, nd, slot, le(2)),
+            32 => sweep::<U>(o, lo, hi, nd, slot, le(4)),
+            _ => sweep::<U>(o, lo, hi, nd, slot, le(8)),
+        }
+    });
+}
+
 /// `idGroups`' second pass (sort.c:3283-3315, 3400-3414): row `i`'s group `slot[min(id, nd)]` into `out` at `wo`
 /// bits, `ids_bytes(n, wo)` bytes, the bits past `n` zero; threaded by `c::run_map`.
 pub fn map(run: Runner, ids: &[u8], n: usize, w: u32, nd: usize, slot: &[usize], wo: u32, out: &mut [u8]) {
@@ -126,10 +152,8 @@ pub fn map(run: Runner, ids: &[u8], n: usize, w: u32, nd: usize, slot: &[usize],
     let at = |v: usize| slot[v.min(nd)];
     let out = &mut out[..ob];
     if wo >= 8 {
-        let u = wo as usize / 8;
-        crate::c::run_map(run, out, n, u, QLEAN_COST_ARITH, WIDE, &|lo, hi, o: &mut [u8]| {
-            for (i, c) in (lo..hi).zip(o.chunks_exact_mut(u)) { c.copy_from_slice(&at(id_at(ids, w, i)).to_le_bytes()[..u]); }
-        });
+        match wo { 8 => wide::<1>(run, out, ids, w, n, nd, slot), 16 => wide::<2>(run, out, ids, w, n, nd, slot),
+                   32 => wide::<4>(run, out, ids, w, n, nd, slot), _ => wide::<8>(run, out, ids, w, n, nd, slot) }
     } else if (1..8).contains(&w) {
         // below a byte, a byte of ids is a byte of table entries: one load a byte
         let mut tab = [0u8; 256];
@@ -164,10 +188,29 @@ pub fn map(run: Runner, ids: &[u8], n: usize, w: u32, nd: usize, slot: &[usize],
 pub fn pack_in_place(g: &mut [u8], w: u32, n: usize) {
     if w == 0 { return; }
     assert!(matches!(w, 1 | 2 | 4) && g.len() >= n, "pack_in_place: width {w} (must be 1, 2 or 4), {n} ids in {} bytes", g.len());
+    // whole output bytes from a copied block, as a const-width loop the compiler vectorises: the block is read
+    // before its bytes are stored, which the borrow checker cannot see in `g` alone (a plain fold was 4x slower)
+    match w { 1 => pack_whole::<1, 8>(g, n), 2 => pack_whole::<2, 4>(g, n), _ => pack_whole::<4, 2>(g, n) }
     let (per, mask) = (8 / w as usize, (1u8 << w) - 1);
-    for j in 0..ids_bytes(n, w) {
+    for j in n / per..ids_bytes(n, w) {
         let ids = &g[j * per..n.min(j * per + per)];
         g[j] = ids.iter().enumerate().fold(0u8, |b, (t, &v)| b | (v & mask) << (t as u32 * w));
+    }
+}
+
+/// The `n / PER` output bytes of `pack_in_place` that hold `PER` ids each, `W` bits an id.
+fn pack_whole<const W: u32, const PER: usize>(g: &mut [u8], n: usize) {
+    const BLOCK: usize = 2048;
+    let (mut buf, mut j, full) = ([0u8; BLOCK], 0, n / PER);
+    while j < full {
+        let take = (full - j).min(BLOCK / PER);
+        buf[..take * PER].copy_from_slice(&g[j * PER..(j + take) * PER]);
+        for (o, c) in g[j..j + take].iter_mut().zip(buf[..take * PER].chunks_exact(PER)) {
+            let mut b = 0u8;
+            for t in 0..PER { b |= (c[t] & ((1u8 << W) - 1)) << (t as u32 * W) }
+            *o = b;
+        }
+        j += take;
     }
 }
 
