@@ -53,9 +53,80 @@ impl<'a> Coc<'a> {
         self.exc.filter(|e| !e.pos.is_empty()).map_or(0, |e| (e.off[b + 1] - e.off[b]) as usize)
     }
     /// coc.h:2633: block `b`'s first `nb` elements into `out`, the patches applied.
-    pub fn decode_blk<T: Lane>(&self, b: usize, nb: usize, out: &mut [T]) { unimplemented!() }
+    pub fn decode_blk<T: Lane>(&self, b: usize, nb: usize, out: &mut [T]) {
+        let (mut w, base, out) = (self.meta.width[b], self.frame(b), &mut out[..nb]);
+        let at = self.meta.off[b] as usize;
+        let p = &self.pack[at..at + crate::BLK * w as usize / 8];
+        // an odd width decoded in one pass, the lanes never stored
+        if !crate::simd::res_unpack_add(p, w, nb, base, crate::pod::bytes_mut(out), size_of::<T>() as u32) {
+            let mut lb = [0u64; crate::BLK];
+            let p = lanes(p, &mut w, nb, crate::pod::bytes_mut(&mut lb));
+            let add = |r: u64| T::wrap(base.wrapping_add(r));
+            match w {
+                0 => out.fill(T::wrap(base)),
+                8 => out.iter_mut().zip(p).for_each(|(o, &r)| *o = add(r as u64)),
+                16 => out.iter_mut().zip(p.chunks_exact(2)).for_each(|(o, r)| *o = add(u16::from_ne_bytes([r[0], r[1]]) as u64)),
+                32 => out.iter_mut().zip(p.chunks_exact(4)).for_each(|(o, r)| *o = add(u32::from_ne_bytes(r.try_into().unwrap()) as u64)),
+                64 => out.iter_mut().zip(p.chunks_exact(8)).for_each(|(o, r)| *o = add(u64::from_ne_bytes(r.try_into().unwrap()))),
+                1 => load_sub::<T, 1>(p, base, out),
+                2 => load_sub::<T, 2>(p, base, out),
+                _ => load_sub::<T, 4>(p, base, out),
+            }
+        }
+        if let Some(e) = self.exc.filter(|e| !e.pos.is_empty()) {
+            for j in e.off[b] as usize..e.off[b + 1] as usize {
+                if (e.pos[j] as usize) < nb { out[e.pos[j] as usize] = T::wrap(self.exc(j) as u64) }
+            }
+        }
+    }
+}
+
+/// coc.h's `COC_LOAD_SUB`: residuals of `W` < 8 bits, `8 / W` to a byte, the shift a literal per byte so the loop
+/// vectorises.
+fn load_sub<T: Lane, const W: usize>(p: &[u8], base: u64, out: &mut [T]) {
+    let (per, m) = (8 / W, (1u8 << W) - 1);
+    let g = out.len() / per;
+    let mut whole = out.chunks_exact_mut(per);
+    for (o, &v) in (&mut whole).zip(p) {
+        for (s, x) in o.iter_mut().enumerate() { *x = T::wrap(base.wrapping_add(((v >> (s * W)) & m) as u64)) }
+    }
+    let rest = whole.into_remainder();
+    for (s, x) in rest.iter_mut().enumerate() { *x = T::wrap(base.wrapping_add(((p[g] >> (s * W)) & m) as u64)) }
 }
 
 /// coc.h:819: the residuals of a block at a power-of-two width in place, else unpacked into `buf` (`BLK * 8` bytes)
 /// with `*w` raised to the lane it now has.
-pub fn lanes<'b>(p: &'b [u8], w: &mut u8, nb: usize, buf: &'b mut [u8]) -> &'b [u8] { unimplemented!() }
+pub fn lanes<'b>(p: &'b [u8], w: &mut u8, nb: usize, buf: &'b mut [u8]) -> &'b [u8] {
+    if *w & w.wrapping_sub(1) == 0 { return p }
+    crate::simd::res_unpack(p, *w, nb, buf);
+    *w = if *w < 8 { 8 } else { crate::bits::lane_width(*w) };
+    buf
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::BLK;
+    // decode_blk at every width 0..=64 and element type against B8's scalar unpack plus the frame, on a block of
+    // random residuals; the patches are checked against the C decoder in ffi.rs
+    fn check<T: crate::pod::Lane + PartialEq + core::fmt::Debug>(mut s: u64) {
+        for w in 0..=64u8 {
+            let pack: Vec<u8> = (0..BLK * w as usize / 8).map(|_| { s ^= s << 13; s ^= s >> 7; s ^= s << 17; s as u8 }).collect();
+            let base = [s as i64]; let (z, off, width) = ([0i64], [0u64], [w]);
+            let meta = super::Meta { base: &base, maxv: &z, off: &off, bsum: &z, width: &width, sumnul: 0, sumn: 0,
+                                     n: BLK, nblk: 1, mblk: 1 };
+            let c = super::Coc { meta, pack: &pack, exc: None, fdelta: None };
+            for nb in [1, 7, 63, 64, 1023, 1024] {
+                let mut got = vec![T::wrap(0x5A); nb];
+                c.decode_blk(0, nb, &mut got);
+                let want: Vec<T> = (0..nb).map(|i| T::wrap((s as u64).wrapping_add(res_get(&pack, w, i)))).collect();
+                assert_eq!(got, want, "w {w} nb {nb}");
+            }
+        }
+    }
+    /// residual i of a block at width w, bit by bit
+    fn res_get(p: &[u8], w: u8, i: usize) -> u64 {
+        (0..w as usize).map(|k| { let bit = i * w as usize + k; ((p[bit / 8] >> (bit % 8)) & 1) as u64 }).enumerate()
+            .fold(0, |a, (k, b)| a | b << k)
+    }
+    #[test] fn decode_blk_every_width() { check::<u8>(1); check::<i16>(2); check::<i32>(3); check::<i64>(4) }
+}

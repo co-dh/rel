@@ -53,6 +53,8 @@ mod tests {
                 let mut out = vec![0xAAu8; BLK * 8];
                 res_unpack_scalar(&p, w, nb, &mut out);
                 assert_eq!(fnv(&out[..nb * l]), WANT[w as usize - 1][k], "w {w} nb {nb}");
+                crate::simd::res_unpack(&p, w, nb, &mut out);
+                assert_eq!(fnv(&out[..nb * l]), WANT[w as usize - 1][k], "simd w {w} nb {nb}");
             }
         }
     }

@@ -33,6 +33,11 @@ pub fn cast_mut<T: Pod>(b: &mut [u8]) -> Option<&mut [T]> {
     // Safety: aligned and a whole number of elements, both tested above; `Pod` is valid for any bit pattern
     Some(unsafe { core::slice::from_raw_parts_mut(b.as_mut_ptr().cast::<T>(), b.len() / size_of::<T>()) })
 }
+/// A slice of numbers as its bytes, for writing.
+pub fn bytes_mut<T: Pod>(s: &mut [T]) -> &mut [u8] {
+    // Safety: a `Pod` has no padding, so every byte is initialised, and any byte pattern written back is a valid `T`
+    unsafe { core::slice::from_raw_parts_mut(s.as_mut_ptr().cast::<u8>(), size_of_val(s)) }
+}
 
 #[cfg(test)]
 mod tests {
