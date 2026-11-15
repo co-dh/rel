@@ -569,14 +569,48 @@ pub unsafe extern "C" fn qrs_concat(run: unsafe extern "C" fn(), p: *const *cons
     let parts: alloc::vec::Vec<&[u8]> = ps.iter().zip(ls).map(|(&q, &l)| unsafe { sl(q, l) }).collect();
     unsafe { structural::concat(rn(run), &parts, sl_mut(out, bytes)) }
 }
-/// A40: structural.c `symtab_fit` over a plain dictionary of `n` symbols.
+/// `n` symbols as `syms`, but an empty dictionary may come with no starts at all (`sym_count`'s case).
+unsafe fn syms0<'a>(blob: *const u8, bytes: usize, offs: *const usize, n: usize) -> Syms<'a> {
+    if n == 0 { Syms { blob: &[], offs: &[] } } else { unsafe { syms(blob, bytes, offs, n) } }
+}
+/// A40: structural.c `symtab_fit`'s rehash over the whole symview: the base's `d0` symbols, then the table's
+/// `cnt - d0` new ones in `tb` at the starts `to`.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn qrs_symtab_fill(t: *mut CSymtab, blob: *const u8, bytes: usize, offs: *const usize, n: usize) {
+pub unsafe extern "C" fn qrs_symtab_fill(t: *mut CSymtab, blob: *const u8, bytes: usize, offs: *const usize, d0: usize,
+                                         tb: *const u8, to: *const usize) {
+    unsafe {
+        let t = &mut *t;
+        let to = sl(to, if t.cnt > d0 { t.cnt - d0 + 1 } else { 0 });
+        let tb = sl(tb, to.last().copied().unwrap_or(0));
+        let mut s = structural::Symtab { cnt: t.cnt, mask: t.mask, stale: t.stale, slot: sl_mut(t.slot, t.mask + 1) };
+        s.fill(&structural::Symview { base: syms0(blob, bytes, offs, d0), d0, tb, to });
+        (t.cnt, t.stale) = (s.cnt, s.stale);
+    }
+}
+/// A40: structural.c `symtab_fork` after the allocation: `t`'s `slot` is `s_mask + 1` ids, filled from `s`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn qrs_symtab_fork(t: *mut CSymtab, s: *const u32, s_mask: usize, d: usize) {
+    unsafe {
+        let t = &mut *t;
+        let mut f = structural::Symtab { cnt: t.cnt, mask: t.mask, stale: t.stale, slot: sl_mut(t.slot, s_mask + 1) };
+        f.fork(sl(s, s_mask + 1), d);
+        (t.cnt, t.mask, t.stale) = (f.cnt, f.mask, f.stale);
+    }
+}
+/// A41a: structural.c `symdict_concat`'s per-part interning; `tb`/`to` are the new-symbol area's `tbn`/`ton`
+/// capacity. Answers the index it stopped at (`symtab_fit` is due) or `di`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn qrs_symdict_intern(t: *mut CSymtab, blob: *const u8, bytes: usize, offs: *const usize, d0: usize,
+                                            tb: *mut u8, tbn: usize, to: *mut usize, ton: usize, pblob: *const u8,
+                                            pbytes: usize, poffs: *const usize, di: usize, map: *mut usize,
+                                            from: usize) -> usize {
     unsafe {
         let t = &mut *t;
         let mut s = structural::Symtab { cnt: t.cnt, mask: t.mask, stale: t.stale, slot: sl_mut(t.slot, t.mask + 1) };
-        s.fill(&structural::Symview { base: syms(blob, bytes, offs, n), d0: n, tb: &[], to: &[] }, n);
+        let j = structural::symdict_intern(&mut s, &syms0(blob, bytes, offs, d0), d0, sl_mut(tb, tbn), sl_mut(to, ton),
+                                           &syms0(pblob, pbytes, poffs, di), sl_mut(map, di), from);
         (t.cnt, t.stale) = (s.cnt, s.stale);
+        j
     }
 }
 /// A41b: structural.c `til_run`.
