@@ -61,9 +61,58 @@ mod tests {
     }
 }
 
-/// A46b: pass.h:502 `qlean_chain_run` -- tiles of `n` elements, every stage of `st` over a tile before the next --
-/// on the pool; answers the thread count. Stays here: it calls the stages' C workers.
+/// pass.h:488-491: a stage operand's source code at or above `SLOTS` is a column (re-based per tile) or fixed (one pointer).
+const SLOTS: usize = 10;
+const TILE: usize = 1024;
+const COLUMN: u8 = 254;
+
+/// One tile of eight-byte elements per slot, the widest any stage answers, on a cache line.
+#[repr(align(64))]
+struct Slot([u8; TILE * 8]);
+
+/// pass.h:502 `qlean_chain_run` over the tiles `[lo, hi)`: every stage over a tile before the next tile starts.
+/// Safety: `cp.a` is the `[CStage; cp.op]` of `run_chain`, whose `f` are live workers and whose bindings reach `cp.n` elements.
+pub unsafe extern "C" fn chain_tiles(lo: usize, hi: usize, cp: *const CPass) {
+    let (st, k, n) = unsafe { (core::slice::from_raw_parts((*cp).a.cast::<crate::ffi::CStage>(), (*cp).op as usize), (*cp).op as usize, (*cp).n) };
+    // uninitialised like C's: a stage writes a slot before a later stage reads it, and 80 KiB of zeroes a call is a pass
+    let mut slot = core::mem::MaybeUninit::<[Slot; SLOTS]>::uninit();
+    let sp = slot.as_mut_ptr().cast::<Slot>();
+    for t in lo..hi {
+        let at = t * TILE;
+        let cnt = if at + TILE < n { TILE } else { n - at };
+        for s in &st[..k] {
+            let mut q = unsafe { core::ptr::read(&s.p) };
+            let bind = |src: u8, bits: u16, p: *const core::ffi::c_void| -> *const core::ffi::c_void {
+                if (src as usize) < SLOTS { unsafe { (*sp.add(src as usize)).0.as_ptr().cast() } }
+                else if src == COLUMN { p.cast::<u8>().wrapping_add(at * bits as usize / 8).cast() } else { p }
+            };
+            q.a = bind(s.asrc, s.abits, q.a);
+            q.b = bind(s.bsrc, s.bbits, q.b);
+            q.o = if (s.osrc as usize) < SLOTS { unsafe { (*sp.add(s.osrc as usize)).0.as_mut_ptr().cast() } }
+                  else if s.osrc == COLUMN { q.o.cast::<u8>().wrapping_add(at * s.obits as usize / 8).cast() } else { q.o };
+            q.n = cnt;
+            q.at = at;
+            let f = s.f.expect("qlean_chain_run: a stage with no worker");
+            unsafe { f(0, if s.bytewise != 0 { (cnt * s.obits as usize).div_ceil(8) } else { cnt }, &q) }
+        }
+    }
+}
+
+/// pass.h:530 `qlean_run_chain`: the stages of `st` over `n` elements on the pool, one thread or several; answers the
+/// thread count. `cost` and `wide` are the whole chain's, so the split is decided on the expression, not on one verb.
+/// Safety (of the pointers in `st`): the bindings of every stage reach `n` elements, as `qlean_ew_chain` built them.
 pub fn run_chain(run: Runner, st: &[crate::ffi::CStage], n: usize, cost: u32, wide: usize) -> u32 {
-    let _ = (run, st, n, cost, wide);
-    unimplemented!("A46b: qlean_chain_run")
+    assert!(!st.is_empty() && st.len() <= SLOTS, "qlean_run_chain: {} stages, and the driver holds {SLOTS}", st.len());
+    if let [s] = st {
+        // a chain of one pass is that pass: tiling it fuses nothing and costs a call a tile. A comparison is sliced by
+        // output byte, so its widest operand is counted per output bit (pass.h:545)
+        let widest = s.abits.max(s.obits).max(s.bbits) as usize;
+        let mut one = unsafe { core::ptr::read(&s.p) };
+        one.n = n;
+        let (units, w) = if s.bytewise != 0 { ((n * s.obits as usize).div_ceil(8), widest / s.obits as usize) } else { (n, widest / 8) };
+        return unsafe { run(s.f.expect("qlean_run_chain: a stage with no worker"), units, cost, w, &one) };
+    }
+    let p = CPass { a: st.as_ptr().cast(), b: null(), c: null(), o: core::ptr::null_mut(), n, at: 0, r#priv: 0, nul: 0,
+                    op: st.len() as u8, cls: 0, shape: 0 };
+    unsafe { run(chain_tiles, n.div_ceil(TILE), cost, wide * TILE, &p) }
 }

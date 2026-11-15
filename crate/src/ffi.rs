@@ -661,6 +661,23 @@ pub unsafe extern "C" fn qrs_run_chain(run: unsafe extern "C" fn(), st: *const C
                                        wide: usize) -> u32 {
     unsafe { c::run_chain(rn(run), sl(st, k), n, cost, wide) }
 }
+/// A46b: the tiles `[lo, hi)` of a chain on the calling thread, `cp` as `qlean_chain_run` read it (`a` the stages, `op`
+/// their count, `n` the elements); `ew_stats_pass` runs its fold chain through it.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn qrs_chain_run(lo: usize, hi: usize, cp: *const CPass) { unsafe { c::chain_tiles(lo, hi, cp) } }
+/// A46b: elementwise.c `ew_stage_bits`: writes a stage's bits per element of `a`, `b`, `o`; answers its cost.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn qrs_ew_stage_bits(engine: u32, op: u32, cls: u32, shape: u32, ab: *mut u16, bb: *mut u16,
+                                           ob: *mut u16) -> u32 {
+    let (cost, a, b, o) = ew::stage_bits(engine, op, cls, shape);
+    unsafe { (*ab, *bb, *ob) = (a, b, o) };
+    cost
+}
+/// A46b: elementwise.c `ew_stage_fixed`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn qrs_ew_stage_fixed(engine: u32, shape: u32, left: c_int) -> c_int {
+    ew::stage_fixed(engine, shape, left != 0) as c_int
+}
 
 #[cfg(test)]
 mod tests {
