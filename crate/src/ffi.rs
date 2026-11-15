@@ -449,6 +449,38 @@ pub unsafe extern "C" fn qrs_alp_gather(run: unsafe extern "C" fn(), fill: u64, 
                                         out: *mut u8) {
     unsafe { let e = if (*f).f32 != 0 { 4 } else { 8 }; codec::alp_gather(rn(run), fill, &(*f).view(), sl(idx, n), sl_mut(out, n * e)) }
 }
+// A9: the ALP encoder's per-block steps that need nothing of A7. C reaches them through `coc *` and an exponent array
+// the Rust side has no view of (`EncMeta` is A16's), so each is its own entry per element type.
+/// A9: coc.h `dat_blk_f32`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn qrs_dat_blk_f32(x: *const f32, nb: usize, e: c_int, d: *mut i64, ok: *mut u8) {
+    unsafe { crate::alp::dat_blk(sl(x, nb), e, sl_mut(d, nb), sl_mut(ok, nb)) }
+}
+/// A9: coc.h `dat_blk_f64`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn qrs_dat_blk_f64(x: *const f64, nb: usize, e: c_int, d: *mut i64, ok: *mut u8) {
+    unsafe { crate::alp::dat_blk(sl(x, nb), e, sl_mut(d, nb), sl_mut(ok, nb)) }
+}
+/// A9: coc.h `alp_meta_blk_f32`'s exponent search; answers the block exponent.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn qrs_alp_exps_f32(x: *const f32, nb: usize, ee: *mut i8) -> c_int {
+    unsafe { crate::alp::alp_exps(sl(x, nb), nb, sl_mut(ee, nb)) }
+}
+/// A9: coc.h `alp_meta_blk_f64`'s exponent search; answers the block exponent.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn qrs_alp_exps_f64(x: *const f64, nb: usize, ee: *mut i8) -> c_int {
+    unsafe { crate::alp::alp_exps(sl(x, nb), nb, sl_mut(ee, nb)) }
+}
+/// A9: coc.h `alp_exc_at_f32`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn qrs_alp_exc_at_f32(x: *const f32, nb: usize, be: c_int, lim: u32) -> u32 {
+    unsafe { crate::alp::alp_exc_at(sl(x, nb), be, lim) }
+}
+/// A9: coc.h `alp_exc_at_f64`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn qrs_alp_exc_at_f64(x: *const f64, nb: usize, be: c_int, lim: u32) -> u32 {
+    unsafe { crate::alp::alp_exc_at(sl(x, nb), be, lim) }
+}
 /// A20: sort.c `grade_keys`.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn qrs_grade_keys(run: unsafe extern "C" fn(), k: *const u64, n: usize, desc: c_int, mn: u64, mx: u64,
