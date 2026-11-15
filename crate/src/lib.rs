@@ -18,7 +18,10 @@ pub mod simd;
 
 pub mod bits;
 pub mod coc;
+pub mod group;
 pub mod ids;
+pub mod key;
+pub mod kwin;
 pub mod layout;
 pub mod own;
 pub mod unpack;
