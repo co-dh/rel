@@ -665,8 +665,9 @@ pub unsafe extern "C" fn qrs_gather_enc(run: unsafe extern "C" fn(), w: usize, f
 /// A38: structural.c `expand_run`.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn qrs_expand(run: unsafe extern "C" fn(), w: usize, fill: u64, src: *const u8, ns: usize,
-                                    wv: *const i64, n: usize, out: *mut u8) {
-    unsafe { structural::expand(rn(run), w, fill, sl(src, w * ns), sl(wv, ns), sl_mut(out, w * n)) }
+                                    wv: *const i64, k: usize, n: usize, out: *mut u8) {
+    // `wv` holds `k = size / 8` widths (structural.c `qlean_structural_expand`), which is not `ns` = the source length
+    unsafe { structural::expand(rn(run), w, fill, sl(src, w * ns), sl(wv, k), sl_mut(out, w * n)) }
 }
 /// A38: structural.c `gather_ids_run`.
 #[unsafe(no_mangle)]
@@ -783,6 +784,31 @@ pub unsafe extern "C" fn qrs_ew_cmp(run: unsafe extern "C" fn(), op: u8, cls: u8
 pub unsafe extern "C" fn qrs_ew_mon(run: unsafe extern "C" fn(), op: u8, cls: u8, nul: i64, x: *const u8, xbytes: usize,
                                     n: usize, out: *mut u8, obytes: usize) {
     unsafe { ew::mon(rn(run), op, cls, nul, sl(x, xbytes), n, sl_mut(out, obytes)) }
+}
+/// A44: elementwise.c `qlean_ew_bit`; `n` bits, so `⌈n / 8⌉` answer bytes. An atom operand is `abytes`/`bbytes` = 1.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn qrs_ew_bit(run: unsafe extern "C" fn(), op: u8, shape: u8, a: *const u8, abytes: usize,
+                                    b: *const u8, bbytes: usize, n: usize, out: *mut u8) {
+    unsafe { ew::bit(rn(run), op, shape, sl(a, abytes), sl(b, bbytes), n, sl_mut(out, n.div_ceil(8))) }
+}
+/// A44: elementwise.c `qlean_ew_floor`; the answer is `n` longs.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn qrs_ew_floor(run: unsafe extern "C" fn(), cls: u8, nul: i64, x: *const u8, xbytes: usize,
+                                      n: usize, out: *mut u8) {
+    unsafe { ew::floor(rn(run), cls, nul, sl(x, xbytes), n, sl_mut(out, n * 8)) }
+}
+/// A44: elementwise.c `qlean_coc_ew_mon`: `neg`/`abs` over an encoded column `c`, the answer dense in `obytes`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn qrs_ew_mon_enc(run: unsafe extern "C" fn(), op: u8, cls: u8, nul: i64, c: *const CCoc,
+                                        out: *mut u8, obytes: usize) {
+    unsafe { ew::mon_enc(rn(run), op, cls, nul, &(*c).view(), sl_mut(out, obytes)) }
+}
+/// A44: elementwise.c `ew_mon_fill`, the encoder source of `qlean_coc_ew_mon_enc`: the `nb` elements of block
+/// `i0 / BLK` of `c`, mapped and widened to `buf`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn qrs_ew_mon_fill(op: u8, cls: u8, nul: i64, c: *const CCoc, buf: *mut i64, nb: usize,
+                                         i0: usize) {
+    unsafe { ew::mon_fill(op, cls, nul, &(*c).view(), sl_mut(buf, nb), i0) }
 }
 /// A45: elementwise.c `ew_cast_run`.
 #[unsafe(no_mangle)]
