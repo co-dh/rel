@@ -140,6 +140,11 @@ pub unsafe extern "C" fn qrs_group_ids_win(kind: u8, c: *const CCoc, n: usize, m
 pub unsafe extern "C" fn qrs_own_write_head(code: u8, attr: u8, kind: u8, count: u64, nl: usize, len: *const usize,
                                             np: usize, head: *mut u8, hcap: usize, off: *mut usize,
                                             w: *mut c_char, cap: usize) -> usize {
+    // `len` has `OWN_NPARTS[kind]` entries at most; a larger `np` is refused before a slice over `len` is formed
+    if np > own::OWN_NPARTS.into_iter().max().unwrap_or(0) {
+        own::refuse_head(kind, np, nl, &mut unsafe { why(w, cap) });
+        return 0;
+    }
     unsafe { own::write_head(code, attr, kind, count, nl, sl(len, np), sl_mut(head, hcap), sl_mut(off, np),
                              &mut why(w, cap)) }.unwrap_or(0)
 }

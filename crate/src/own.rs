@@ -73,17 +73,20 @@ bytes", k, at, l, off, size));
 }
 pub fn check(kind: u8, n: u64, part: &[&[u8]], why: &mut Why) -> bool { unimplemented!() }
 
+/// The refusal `write_head` gives a bad kind, part count or name length; None, so a caller returns it.
+pub fn refuse_head(kind: u8, np: usize, nl: usize, why: &mut Why) -> Option<usize> {
+    why.say(format_args!("a column of kind 0..4 with its parts and a domain name under 65536 \
+bytes, given kind {} with {} parts and a {}-byte name", kind, np, nl));
+    None
+}
+
 /// `qlean_own_write` (own.c:147-179) without the file: the header (`OWN_HEAD + 16 * len.len()` bytes into `head`)
 /// and each part's 8-aligned offset after `OWN_ROOM` into `off`; answers the header length. None and `why` filled
 /// when the kind, the part count or the `nl`-byte domain name is refused.
 pub fn write_head(code: u8, attr: u8, kind: u8, count: u64, nl: usize, len: &[usize],
                   head: &mut [u8], off: &mut [usize], why: &mut Why) -> Option<usize> {
     let np = len.len();
-    if kind > 4 || np != OWN_NPARTS[kind as usize] || nl > 0xffff {
-        why.say(format_args!("a column of kind 0..4 with its parts and a domain name under 65536 \
-bytes, given kind {} with {} parts and a {}-byte name", kind, np, nl));
-        return None;
-    }
+    if kind > 4 || np != OWN_NPARTS[kind as usize] || nl > 0xffff { return refuse_head(kind, np, nl, why) }
     head[..8].copy_from_slice(b"qleancol");
     head[8..12].copy_from_slice(&[OWN_VERSION, code, attr, kind]);
     head[12..14].copy_from_slice(&(np as u16).to_le_bytes());
