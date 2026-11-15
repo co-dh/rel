@@ -147,6 +147,13 @@ const P49: f64 = 562949953421312.0;
 /// C's `nearbyint` (ties to even, the default mode) for |s| < 2^53, without libm: adding and removing 2^52 of the
 /// sign of `s` rounds at the unit place; from 2^52 on every double is already an integer.
 fn rint(s: f64) -> f64 { let c = 4503599627370496.0f64.copysign(s); if s.abs() < 4503599627370496.0 { (s + c) - c } else { s } }
+/// `cvt_nearest` for a whole block, where the intrinsic would stop the loop vectorising: `rint`, then the integer
+/// read off the bits (|s| < 2^53, so the shift is at most 52 and a value under 1 shifts out to 0).
+fn nearest(s: f64) -> i64 {
+    let b = rint(s).to_bits();
+    let m = ((b & ((1 << 52) - 1)) | 1 << 52) >> 1075u64.wrapping_sub((b >> 52) & 0x7ff).min(63);
+    if (b as i64) < 0 { -(m as i64) } else { m as i64 }
+}
 /// coc.h:1703 `COC_SENT`: the exponent field all ones, tested on the raw bits (NaN and infinities).
 fn sent<F: Flt>(x: F) -> bool { let (s, m) = if F::F32 { (23, 0xff) } else { (52, 0x7ff) }; x.bits() >> s & m == m }
 /// coc.h:2448 `dec_f64`: `d / 10^e`. It divides, as ALP written with a multiply by 10^-e is another operation.
@@ -156,7 +163,7 @@ pub fn dec(d: i64, e: i32) -> f64 { d as f64 / POW10[e as usize] }
 pub fn dat<F: Flt>(x: F, e: i32) -> Option<i64> {
     let s = x.to_f64() * POW10[e as usize];
     if !(s.abs() < P53) { return None }
-    let r = rint(s) as i64;
+    let r = crate::simd::cvt_nearest(s);
     (F::of_f64(dec(r, e)).bits() == x.bits()).then_some(r)
 }
 /// coc.h:2471 `dexp_f32`/`dexp_f64`: the smallest exponent at which `x` round-trips; -1 = none. At `f64` a
@@ -176,7 +183,7 @@ pub fn dat_blk<F: Flt>(x: &[F], e: i32, d: &mut [i64], ok: &mut [u8]) {
     for ((&x, d), ok) in x.iter().zip(d).zip(ok) {
         let s = x.to_f64() * p;
         let inn = s.abs() < P53;
-        let r = rint(if inn { s } else { 0.0 }) as i64;
+        let r = nearest(if inn { s } else { 0.0 });
         *d = r;
         *ok = (inn & (F::of_f64(r as f64 / p).bits() == x.bits())) as u8;
     }
@@ -418,6 +425,17 @@ mod tests {
             c.u(); c.u(); // base, width: A7
         }
         n + 8
+    }
+    // the vector path's `nearest` is the scalar `cvt_nearest`, ties to even, on the edges and a sweep of the range
+    #[test] fn nearest_is_cvtsd2si() {
+        for s in [0.0, -0.0, 0.5, -0.5, 1.5, 2.5, -2.5, 0.4999999, 4503599627370495.5, 4503599627370496.0, 9007199254740991.0,
+                  -9007199254740991.0, 1e15 + 0.5] { assert_eq!(nearest(s), crate::simd::cvt_nearest(s), "{s}") }
+        let mut x = 0x9e3779b97f4a7c15u64;
+        for _ in 0..200000 {
+            x ^= x << 13; x ^= x >> 7; x ^= x << 17;
+            let s = f64::from_bits(x) % P53;
+            if s.is_finite() { assert_eq!(nearest(s), crate::simd::cvt_nearest(s), "{s}") }
+        }
     }
     #[test] fn differential_enc() {
         let path = std::env::var("QRS_A9_CASES").unwrap_or_else(|_| concat!(env!("CARGO_MANIFEST_DIR"), "/testdata/alp_enc.bin").into());

@@ -626,3 +626,11 @@ mod ev {
         } }
     }
 }
+
+/// `(int64_t)nearbyint(s)` for |s| < 2^53 (coc.h `dat`): `cvtsd2si` rounds in the current mode, to nearest even, in one
+/// instruction and without libm.
+#[inline(always)]
+pub fn cvt_nearest(s: f64) -> i64 {
+    // SAFETY: SSE2 is the x86_64 baseline and the intrinsic works on a register.
+    unsafe { core::arch::x86_64::_mm_cvtsd_si64(core::arch::x86_64::_mm_set_sd(s)) }
+}
