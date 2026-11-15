@@ -58,4 +58,9 @@ impl<'a> Coc<'a> {
 
 /// coc.h:819: the residuals of a block at a power-of-two width in place, else unpacked into `buf` (`BLK * 8` bytes)
 /// with `*w` raised to the lane it now has.
-pub fn lanes<'b>(p: &'b [u8], w: &mut u8, nb: usize, buf: &'b mut [u8]) -> &'b [u8] { unimplemented!() }
+pub fn lanes<'b>(p: &'b [u8], w: &mut u8, nb: usize, buf: &'b mut [u8]) -> &'b [u8] {
+    if *w & w.wrapping_sub(1) == 0 { return p }
+    crate::simd::res_unpack(p, *w, nb, buf);
+    *w = if *w < 8 { 8 } else { crate::bits::lane_width(*w) };
+    buf
+}
