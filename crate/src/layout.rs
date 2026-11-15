@@ -47,6 +47,18 @@ pub fn exc_ok(t: &[u8], nblk: usize, nexc: u64, esz: usize, part: i32, tail: Tai
         why.say(format_args!("part {part}: exception offsets running from 0 to {nexc}, found {} to {}", eo(0), eo(nblk)));
         return false;
     }
+    // as C: one branch-free pass over each whole table on slices of exact length, the walk that names the
+    // culprit only when it fails
+    let offs = &t[l.off..l.off + 4 * (nblk + 1)];
+    let poss = &t[l.pos..l.pos + 2 * nexc as usize];
+    let exps = if alp { &t[l.tail..l.tail + nblk] } else { &t[..0] };
+    let mut bad = false;
+    for (a, b) in offs[..4 * nblk].chunks_exact(4).zip(offs[4..].chunks_exact(4)) {
+        bad |= u32::from_ne_bytes(a.try_into().unwrap()) > u32::from_ne_bytes(b.try_into().unwrap());
+    }
+    for &e in exps { bad |= (e as i8) < 0 || e as i8 > ALP_MAXE as i8; }
+    for c in poss.chunks_exact(2) { bad |= u16::from_ne_bytes(c.try_into().unwrap()) as usize >= BLK; }
+    if !bad { return true; }
     for b in 0..nblk {
         if eo(b) > eo(b + 1) {
             why.say(format_args!("part {part} block {b}: ascending exception offsets, found {} then {}", eo(b), eo(b + 1)));
