@@ -248,6 +248,100 @@ pub mod v {
                  |g, v| st!(out, g * 64, nb as isize - (g * 8) as isize, 8, 8, __mmask8, _mm512_mask_storeu_epi64,
                             i64, _mm512_add_epi64(v, b64)))
     }
+
+    /// The first `n` of the lanes of `v` that fit 64 bits, narrowed; lanes past `n` are zero (res_lanes64).
+    #[target_feature(enable = "avx512f,avx512bw,avx512dq,avx512vbmi,avx512vbmi2")]
+    fn lanes64(v: &[u64], at: usize, n: usize) -> __m512i {
+        let n = n.min(8);
+        // SAFETY: the mask selects lanes at - at + n of v only, and v[at..at + n] exists (caller: at + n <= nb <= v.len())
+        unsafe { _mm512_maskz_loadu_epi64(((1u16 << n) - 1) as __mmask8, v.as_ptr().wrapping_add(at) as *const i64) }
+    }
+    #[target_feature(enable = "avx512f,avx512bw,avx512dq,avx512vbmi,avx512vbmi2")]
+    fn lanes32(v: &[u64], at: usize, n: usize) -> __m512i {
+        _mm512_inserti64x4::<1>(_mm512_castsi256_si512(_mm512_cvtepi64_epi32(lanes64(v, at, n))),
+                                _mm512_cvtepi64_epi32(lanes64(v, at + 8, n.saturating_sub(8))))
+    }
+    #[target_feature(enable = "avx512f,avx512bw,avx512dq,avx512vbmi,avx512vbmi2")]
+    fn lanes16(v: &[u64], at: usize, n: usize) -> __m512i {
+        _mm512_inserti64x4::<1>(_mm512_castsi256_si512(_mm512_cvtepi32_epi16(lanes32(v, at, n))),
+                                _mm512_cvtepi32_epi16(lanes32(v, at + 16, n.saturating_sub(16))))
+    }
+    /// RES_VPACK's index setup for lane width `8 << LG`... `LG` is log2 of the lane bytes: output byte k takes, per
+    /// parity c, the byte of the one lane of that parity whose field reaches it; which lane is floor(8k / w) or the
+    /// next, by a multiply with ceil(2^16 / w), exact for 8k < 512.
+    #[target_feature(enable = "avx512f,avx512bw,avx512dq,avx512vbmi,avx512vbmi2")]
+    fn pack_idx<const LG: u32>(w: u8) -> ([__m512i; 2], [__mmask64; 2]) {
+        let lb = (1i16 << LG) - 1; // L / 8 - 1
+        let mut ix = [_mm512_setzero_si512(); 2];
+        let mut ok = [0 as __mmask64; 2];
+        for c in 0..2 {
+            let mut h = [_mm256_setzero_si256(); 2];
+            let mut k = [0 as __mmask32; 2];
+            for half in 0..2 {
+                let (ww, one) = (_mm512_set1_epi16(w as i16), _mm512_set1_epi16(1));
+                let x = _mm512_slli_epi16::<3>(_mm512_add_epi16(_mm512_cvtepu8_epi16(_mm512_castsi512_si256(iota8!())),
+                                                                _mm512_set1_epi16(32 * half)));
+                let j0 = _mm512_mulhi_epu16(x, _mm512_set1_epi16(((65536 + w as i32 - 1) / w as i32) as i16));
+                let j1 = _mm512_add_epi16(j0, one);
+                let even = _mm512_cmpeq_epi16_mask(_mm512_and_si512(j0, one), _mm512_set1_epi16(c));
+                let t1 = _mm512_cmple_epu16_mask(_mm512_mullo_epi16(j1, ww), _mm512_add_epi16(x, _mm512_set1_epi16(7)));
+                let j = _mm512_mask_blend_epi16(even, j1, j0);
+                let b = _mm512_sub_epi16(_mm512_srli_epi16::<3>(x), _mm512_srli_epi16::<3>(_mm512_mullo_epi16(j, ww)));
+                let i = _mm512_add_epi16(_mm512_add_epi16(_mm512_slli_epi16::<LG>(j), _mm512_and_si512(b, _mm512_set1_epi16(lb))),
+                                         _mm512_slli_epi16::<6>(_mm512_srli_epi16::<LG>(b)));
+                h[half as usize] = _mm512_cvtepi16_epi8(i);
+                k[half as usize] = even | t1;
+            }
+            ix[c as usize] = _mm512_inserti64x4::<1>(_mm512_castsi256_si512(h[0]), h[1]);
+            ok[c as usize] = k[0] as __mmask64 | (k[1] as __mmask64) << 32;
+        }
+        (ix, ok)
+    }
+    /// RES_VPACK: each lane is shifted into the pair of L-bit windows at byte (j * w) >> 3, and the even and odd
+    /// lanes' bytes are gathered by vpermi2b and ORed; the group's ⌈n*w/8⌉ bytes are stored masked.
+    macro_rules! vpack {
+        ($v:ident, $w:ident, $nb:ident, $dst:ident, $l:literal, $lg:literal, $set1:ident, $sllv:ident, $srlv:ident,
+         $mullo:ident, $sub:ident, $iota:expr, $load:ident) => {{
+            let wu = $w as usize;
+            let (gn, gb) = (512 / $l, 512 / $l * wu / 8);
+            assert!($v.len() >= $nb && $dst.len() >= ($nb * wu + 7) / 8, "res_pack: {} values / {} bytes for nb {}, width {wu}", $v.len(), $dst.len(), $nb);
+            let bit = $mullo($iota, $set1($w as _));
+            let sh = _mm512_and_si512(bit, $set1(7));
+            let rsh = $sub($set1($l), sh);
+            let m = $set1(((1u64 << wu) - 1) as _);
+            let (ix, ok) = pack_idx::<$lg>($w);
+            let mut g = 0;
+            while g * gn < $nb {
+                let n = ($nb - g * gn).min(gn);
+                let v_ = _mm512_and_si512(m, $load($v, g * gn, n));
+                let (lo, hi) = ($sllv(v_, sh), $srlv(v_, rsh));
+                let o = _mm512_or_si512(_mm512_maskz_permutex2var_epi8(ok[0], lo, ix[0], hi),
+                                        _mm512_maskz_permutex2var_epi8(ok[1], lo, ix[1], hi));
+                let bytes = (n * wu + 7) / 8;
+                // SAFETY: the mask selects the first `bytes` bytes of dst[g * gb..], inside the length asserted above
+                unsafe { _mm512_mask_storeu_epi8($dst.as_mut_ptr().wrapping_add(g * gb) as *mut i8, span(bytes as isize), o) }
+                g += 1;
+            }
+        }};
+    }
+    /// `res_pack`, `9 < w < 16`
+    #[target_feature(enable = "avx512f,avx512bw,avx512dq,avx512vbmi,avx512vbmi2")]
+    pub fn pack16(v: &[u64], w: u8, nb: usize, dst: &mut [u8]) {
+        vpack!(v, w, nb, dst, 16, 1, _mm512_set1_epi16, _mm512_sllv_epi16, _mm512_srlv_epi16, _mm512_mullo_epi16, _mm512_sub_epi16,
+               _mm512_cvtepu8_epi16(_mm512_castsi512_si256(iota8!())), lanes16)
+    }
+    /// `res_pack`, `16 < w < 32`
+    #[target_feature(enable = "avx512f,avx512bw,avx512dq,avx512vbmi,avx512vbmi2")]
+    pub fn pack32(v: &[u64], w: u8, nb: usize, dst: &mut [u8]) {
+        vpack!(v, w, nb, dst, 32, 2, _mm512_set1_epi32, _mm512_sllv_epi32, _mm512_srlv_epi32, _mm512_mullo_epi32, _mm512_sub_epi32,
+               _mm512_cvtepu8_epi32(_mm512_castsi512_si128(iota8!())), lanes32)
+    }
+    /// `res_pack`, `32 < w < 64`
+    #[target_feature(enable = "avx512f,avx512bw,avx512dq,avx512vbmi,avx512vbmi2")]
+    pub fn pack64(v: &[u64], w: u8, nb: usize, dst: &mut [u8]) {
+        vpack!(v, w, nb, dst, 64, 3, _mm512_set1_epi64, _mm512_sllv_epi64, _mm512_srlv_epi64, _mm512_mullo_epi64, _mm512_sub_epi64,
+               _mm512_cvtepu8_epi64(_mm512_castsi512_si128(iota8!())), lanes64)
+    }
 }
 
 #[cfg(test)]
@@ -268,6 +362,22 @@ mod tests {
                 let (mut a, mut b) = (vec![0xA5u8; BLK * 8], vec![0x5Au8; BLK * 8]);
                 res_unpack_scalar(&p, w, nb, &mut a); super::res_unpack(&p, w, nb, &mut b);
                 assert_eq!(a[..nb * l], b[..nb * l], "w {w} nb {nb}");
+            }
+        }
+    }
+    // res_pack against the scalar port at every odd width: same bytes, none written past ⌈nb*w/8⌉
+    #[test] fn res_pack_matches_scalar() {
+        let mut s = 0x1234567899ABCDEFu64;
+        for w in 1..64u8 {
+            if w.is_power_of_two() { continue }
+            let v: Vec<u64> = (0..BLK).map(|_| { s ^= s << 13; s ^= s >> 7; s ^= s << 17; s }).collect();
+            for nb in [1, 7, 8, 9, 15, 16, 17, 31, 33, 63, 64, 65, 1000, 1023, 1024] {
+                if w < 3 { continue }
+                let (mut a, mut b) = (vec![0xA5u8; BLK * 8], vec![0x5Au8; BLK * 8]);
+                crate::res::res_pack_scalar(&v, w, nb, &mut a); super::res_pack(&v, w, nb, &mut b);
+                let len = (nb * w as usize + 7) / 8;
+                assert_eq!(a[..len], b[..len], "w {w} nb {nb}");
+                assert!(b[len..].iter().all(|&x| x == 0x5A), "w {w} nb {nb} wrote past {len}");
             }
         }
     }
@@ -302,8 +412,18 @@ mod tests {
     }
 }
 
-/// A2: coc.h:690 `res_pack`'s vector arm (scalar: `res::res_pack_scalar`).
-pub fn res_pack(v: &[u64], w: u8, nb: usize, dst: &mut [u8]) { unimplemented!("A2: res_pack avx512") }
+/// coc.h:690 `res_pack`: the vector pack at an odd width from 9 to 63 where the build enables the vector path (as
+/// `res_unpack`), `res::res_pack_scalar` otherwise. Writes the first ⌈nb*w/8⌉ bytes of `dst`, no more.
+pub fn res_pack(v: &[u64], w: u8, nb: usize, dst: &mut [u8]) {
+    #[cfg(all(target_arch = "x86_64", target_feature = "avx512vbmi", target_feature = "avx512vbmi2",
+              target_feature = "avx512bw", target_feature = "avx512dq"))]
+    if !(w < 9 || w & w.wrapping_sub(1) == 0 || w > 64) {
+        // SAFETY: the cfg above is the build enabling every feature the v:: kernels are compiled for
+        unsafe { if w < 16 { v::pack16(v, w, nb, dst) } else if w < 32 { v::pack32(v, w, nb, dst) } else { v::pack64(v, w, nb, dst) } }
+        return;
+    }
+    crate::res::res_pack_scalar(v, w, nb, dst)
+}
 /// A3: coc.h:820 `res_sum8`, the vector residual sum.
 pub fn res_sum8(p: &[u8], nb: usize, w: u8) -> u64 { unimplemented!("A3: res_sum8") }
 /// A14: scan.c's vector `scan_fill`.

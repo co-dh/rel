@@ -19,7 +19,7 @@ use crate::alp::Cocf;
 use crate::cocops::CocMut;
 use crate::enc::{EncMeta, EncPack};
 use crate::sym::{self, Syms};
-use crate::{codec, enc, ew, reduce, res, scan, search, sort, structural};
+use crate::{codec, enc, ew, reduce, scan, search, sort, structural};
 
 /// Mirror of coc.h:103 `coc`; rs.h asserts every field's offset against it.
 #[repr(C)]
@@ -350,10 +350,10 @@ unsafe fn syms<'a>(blob: *const u8, bytes: usize, offs: *const usize, n: usize) 
     Syms { blob: unsafe { sl(blob, bytes) }, offs: unsafe { sl(offs, n + 1) } }
 }
 
-/// A2: coc.h:690 `res_pack`'s scalar arm.
+/// A2: coc.h:690 `res_pack`: the vector pack where the build has it, the scalar one elsewhere.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn qrs_res_pack(v: *const u64, w: u8, nb: usize, dst: *mut u8) {
-    unsafe { res::res_pack_scalar(sl(v, BLK), w, nb, sl_mut(dst, BLK * 8)) }
+    unsafe { simd::res_pack(sl(v, BLK), w, nb, sl_mut(dst, BLK * 8)) }
 }
 /// A3: coc.h:860 `coc_sum`.
 #[unsafe(no_mangle)]
