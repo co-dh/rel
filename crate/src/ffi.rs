@@ -412,6 +412,54 @@ pub unsafe extern "C" fn qrs_frame_pick_i32(smp: *mut i64, k: usize, nb: usize, 
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn qrs_frame_pick_i64(smp: *mut i64, k: usize, nb: usize, nnul: usize, cost: usize, mn: i64, x: *const i64,
                                             fo: *mut i64, wo: *mut u8, neo: *mut u32) -> c_int { unsafe { pick(smp, k, nb, nnul, cost, mn, x, fo, wo, neo) } }
+/// `encode_meta_exc_blk` for C: block `b` of `c`'s four meta arrays and `fdelta`; answers the patch count.
+/// Safety: as `meta_blk`, and `c.fdelta` is valid for `b`.
+unsafe fn meta_exc_blk<T: enc::Elt>(c: *mut CCoc, b: usize, x: *const T, nb: usize) -> u32 {
+    let (lb, over, mut nexc) = (core::sync::atomic::AtomicUsize::new(0), core::sync::atomic::AtomicI32::new(0), 0u32);
+    let c = unsafe { &*c };
+    let mut m = unsafe { EncMeta { b, base: &mut *c.base.add(b), maxv: &mut *c.maxv.add(b), width: &mut *c.width.add(b),
+                                   bsum: &mut *c.bsum.add(b), frm: Some(&mut *c.fdelta.add(b)), nexc: &mut nexc, exp: None,
+                                   below: 0, lb: &lb, over: &over } };
+    enc::encode_meta_exc_blk(&mut m, unsafe { sl(x, nb) }, nb)
+}
+/// `pack_exc_blk` for C: block `b`'s residuals at `off[b]`, its `ne` patches at `pos` and `raw`.
+/// Safety: `c` has its pack and layout set, `pos`/`raw` hold `ne` slots of `u16` / `T`.
+unsafe fn pack_exc<T: enc::Elt>(c: *const CCoc, b: usize, x: *const T, nb: usize, ne: u32, pos: *mut u16, raw: *mut u8) {
+    let c = unsafe { &*c };
+    let w = unsafe { *c.width.add(b) };
+    let frame = unsafe { (*c.base.add(b) as u64).wrapping_add(if c.fdelta.is_null() { 0 } else { *c.fdelta.add(b) }) };
+    let mut p = enc::EncPack { b, nb, base: unsafe { *c.base.add(b) }, frame, width: w, exp: 0,
+                               res: unsafe { sl_mut(c.pack.add(*c.off.add(b) as usize), (nb * w as usize).div_ceil(8)) },
+                               pos: unsafe { sl_mut(pos, ne as usize) }, raw: unsafe { sl_mut(raw, ne as usize * size_of::<T>()) } };
+    enc::pack_exc_blk(&mut p, unsafe { sl(x, nb) }, ne)
+}
+/// A8: coc.h:2226 `encode_meta_exc_blk`, per element type.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn qrs_encode_meta_exc_blk_u8(c: *mut CCoc, b: usize, x: *const u8, nb: usize) -> u32 { unsafe { meta_exc_blk(c, b, x, nb) } }
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn qrs_encode_meta_exc_blk_i16(c: *mut CCoc, b: usize, x: *const i16, nb: usize) -> u32 { unsafe { meta_exc_blk(c, b, x, nb) } }
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn qrs_encode_meta_exc_blk_i32(c: *mut CCoc, b: usize, x: *const i32, nb: usize) -> u32 { unsafe { meta_exc_blk(c, b, x, nb) } }
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn qrs_encode_meta_exc_blk_i64(c: *mut CCoc, b: usize, x: *const i64, nb: usize) -> u32 { unsafe { meta_exc_blk(c, b, x, nb) } }
+/// A8: coc.h:2263 `pack_exc_blk`, per element type.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn qrs_pack_exc_blk_u8(c: *const CCoc, b: usize, x: *const u8, nb: usize, ne: u32, pos: *mut u16, raw: *mut u8) { unsafe { pack_exc(c, b, x, nb, ne, pos, raw) } }
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn qrs_pack_exc_blk_i16(c: *const CCoc, b: usize, x: *const i16, nb: usize, ne: u32, pos: *mut u16, raw: *mut u8) { unsafe { pack_exc(c, b, x, nb, ne, pos, raw) } }
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn qrs_pack_exc_blk_i32(c: *const CCoc, b: usize, x: *const i32, nb: usize, ne: u32, pos: *mut u16, raw: *mut u8) { unsafe { pack_exc(c, b, x, nb, ne, pos, raw) } }
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn qrs_pack_exc_blk_i64(c: *const CCoc, b: usize, x: *const i64, nb: usize, ne: u32, pos: *mut u16, raw: *mut u8) { unsafe { pack_exc(c, b, x, nb, ne, pos, raw) } }
+/// A8: coc.h:2320 `decode`, per element type: the whole column, `c->n` elements, into `out`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn qrs_decode_u8(c: *const CCoc, out: *mut u8) { unsafe { enc::decode(&(*c).view(), sl_mut(out, (*c).n)) } }
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn qrs_decode_i16(c: *const CCoc, out: *mut i16) { unsafe { enc::decode(&(*c).view(), sl_mut(out, (*c).n)) } }
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn qrs_decode_i32(c: *const CCoc, out: *mut i32) { unsafe { enc::decode(&(*c).view(), sl_mut(out, (*c).n)) } }
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn qrs_decode_i64(c: *const CCoc, out: *mut i64) { unsafe { enc::decode(&(*c).view(), sl_mut(out, (*c).n)) } }
 /// A3: coc.h:860 `coc_sum`.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn qrs_coc_sum(c: *const CCoc, nul: i64) -> u64 { unsafe { (*c).view() }.sum(nul) }

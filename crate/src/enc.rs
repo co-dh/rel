@@ -108,13 +108,55 @@ pub fn frame_pick<T: Elt>(smp: &mut [i64], nb: usize, nnul: usize, cost: usize, 
     Some(Frame { fo: f, wo: w, neo: ne })
 }
 
-// ---- A8: coc.h:2452-2546 ----
-/// coc.h:2452 `encode_meta_exc_blk`: block metadata with patches; answers the patch count.
-pub fn encode_meta_exc_blk<T: Elt>(m: &mut EncMeta, x: &[T], nb: usize) -> u32 { unimplemented!("A8: encode_meta_exc_blk") }
-/// coc.h:2489 `pack_exc_blk`: residuals and the block's `ne` patches.
-pub fn pack_exc_blk<T: Elt>(p: &mut EncPack, x: &[T], ne: u32) { unimplemented!("A8: pack_exc_blk") }
-/// coc.h:2546 `decode`: the whole column into `out` (`n` long).
-pub fn decode<T: Lane>(c: &Coc, out: &mut [T]) { unimplemented!("A8: decode") }
+// ---- A8: coc.h:2226-2310 ----
+/// coc.h:2226 `encode_meta_exc_blk`: block metadata with patches; answers the patch count. The frame goes to `frm`.
+pub fn encode_meta_exc_blk<T: Elt>(m: &mut EncMeta, x: &[T], nb: usize) -> u32 {
+    let (x, nul, esz) = (&x[..nb], nul::<T>(), size_of::<T>());
+    let frm = m.frm.as_deref_mut().expect("encode_meta_exc_blk: the column keeps no frames");
+    let v = || x.iter().map(|v| v.widen()).filter(|&v| v != nul);
+    let nnul = x.len() - v().count();
+    *frm = 0;
+    if nnul == nb { // all null: the null is the frame at width 0, and nothing is patched
+        (*m.base, *m.maxv, *m.bsum, *m.width, *m.nexc) = (nul, nul, 0, 0, 0);
+        return 0;
+    }
+    let (mn, mx) = v().fold((i64::MAX, i64::MIN), |(a, b), v| (a.min(v), b.max(v)));
+    let mut h = [0u32; 65];
+    for v in v() { h[crate::bits::width_for((v as u64).wrapping_sub(mn as u64)) as usize] += 1 }
+    (*m.base, *m.maxv, *m.bsum) = (mn, mx, v().fold(0i64, i64::wrapping_add));
+    let (mut w, mut ne) = crate::cocops::width_exc(&h, nnul, esz, nb);
+    if w > 1 { // frame_pick is asked only where the median sits high in the window
+        let mut smp = [0i64; 5];
+        let mut k = 0;
+        for q in 0..5 { let v = x[q * (nb - 1) / 4].widen(); if v != nul { smp[k] = v; k += 1 } }
+        if let Some(f) = frame_pick(&mut smp[..k], nb, nnul, (nb * w as usize + 7) / 8 + ne as usize * (2 + esz), mn, x) {
+            (w, ne, *frm) = (f.wo, f.neo, (f.fo as u64).wrapping_sub(mn as u64));
+        }
+    }
+    (*m.width, *m.nexc) = (w, ne);
+    ne
+}
+/// coc.h:2263 `pack_exc_blk`: residuals and the block's `ne` patches (an element the frame and width cannot hold, or a
+/// null), their slots set to the frame.
+pub fn pack_exc_blk<T: Elt>(p: &mut EncPack, x: &[T], ne: u32) {
+    let (nul, base, w, x) = (nul::<T>(), p.frame as i64, p.width, &x[..p.nb]);
+    if ne == 0 { return pack_block(p.res, x, p.nb, base, w) }
+    let (mut y, mut k) = ([T::wrap(base as u64); crate::BLK], 0);
+    for (i, &v) in x.iter().enumerate() {
+        let r = (v.widen() as u64).wrapping_sub(base as u64);
+        if v.widen() == nul || (w < 64 && r >> w != 0) {
+            let mut e = [v];
+            p.raw[k * size_of::<T>()..][..size_of::<T>()].copy_from_slice(crate::pod::bytes_mut(&mut e));
+            p.pos[k] = i as u16;
+            k += 1;
+        } else { y[i] = v }
+    }
+    pack_block(p.res, &y[..p.nb], p.nb, base, w)
+}
+/// coc.h:2320 `decode`: the whole column into `out` (`n` long).
+pub fn decode<T: Lane>(c: &Coc, out: &mut [T]) {
+    for (b, o) in out[..c.meta.n].chunks_mut(crate::BLK).enumerate() { c.decode_blk(b, o.len(), o) }
+}
 
 // ---- A16: coc.c:165-210, the block steps of `coc_enc` ----
 /// coc.c:165 `coc_enc_for_meta`: the FoR meta step over block `b`'s `nb` elements `x` at `width` bytes each.
@@ -174,5 +216,59 @@ mod a7_tests {
         encode_meta_blk(&mut m, &x, 4);
         // the null is the minimum, so the sum skips it
         assert_eq!((base, maxv, width, bsum), (i16::MIN as i64, 9, 16, 10));
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::BLK;
+    // encode with patches, decode the whole column: the round trip, for a column of low outliers and nulls, so the
+    // frame is lifted and the patch list is non-empty; the C comparison is /data/tmp/qrs/A8/diff.c
+    fn round<T: Elt + PartialEq + core::fmt::Debug>(x: &[T]) -> u32 {
+        let n = x.len();
+        let (mut base, mut maxv, mut bsum, mut width, mut frm) = (vec![0i64; 2], vec![0i64; 2], vec![0i64; 2], vec![0u8; 2], vec![0u64; 2]);
+        let (lb, over) = (AtomicUsize::new(0), AtomicI32::new(0));
+        let mut ne = vec![0u32; 2];
+        for b in 0..n.div_ceil(BLK) {
+            let mut nx = 0;
+            let mut m = EncMeta { b, base: &mut base[b], maxv: &mut maxv[b], width: &mut width[b], bsum: &mut bsum[b],
+                                  frm: Some(&mut frm[b]), nexc: &mut nx, exp: None, below: 0, lb: &lb, over: &over };
+            let nb = BLK.min(n - b * BLK);
+            ne[b] = encode_meta_exc_blk(&mut m, &x[b * BLK..], nb);
+        }
+        let (mut off, mut pack, mut at) = (vec![0u64; 2], vec![0u8; 2 * BLK * 8], 0usize);
+        let (mut pos, mut raw) = (vec![0u16; ne.iter().sum::<u32>() as usize], vec![0u8; ne.iter().sum::<u32>() as usize * size_of::<T>()]);
+        let mut eo = vec![0u32; 3];
+        for b in 0..n.div_ceil(BLK) {
+            off[b] = at as u64;
+            let nb = BLK.min(n - b * BLK);
+            let (e0, e1) = (eo[b] as usize, (eo[b] + ne[b]) as usize);
+            eo[b + 1] = eo[b] + ne[b];
+            let mut p = EncPack { b, nb, base: base[b], frame: (base[b] as u64).wrapping_add(frm[b]), width: width[b], exp: 0,
+                                  res: &mut pack[at..at + (nb * width[b] as usize).div_ceil(8)],
+                                  pos: &mut pos[e0..e1], raw: &mut raw[e0 * size_of::<T>()..e1 * size_of::<T>()] };
+            pack_exc_blk(&mut p, &x[b * BLK..], ne[b]);
+            at += BLK * width[b] as usize / 8;
+        }
+        let nbk = n.div_ceil(BLK);
+        let c = Coc { meta: crate::coc::Meta { base: &base, maxv: &maxv, off: &off, bsum: &bsum, width: &width, sumnul: 0, sumn: 0,
+                                                n, nblk: nbk, mblk: 2 },
+                      pack: &pack, exc: Some(crate::coc::Exc { off: &eo, pos: &pos, raw: &raw, esz: size_of::<T>() }),
+                      fdelta: Some(&frm) };
+        let mut out = vec![T::wrap(0); n];
+        decode(&c, &mut out);
+        assert_eq!(out, x);
+        ne.iter().sum()
+    }
+    #[test] fn decode_round_trip_with_patches() {
+        let mut x: Vec<i64> = (0..BLK as i64 + 300).map(|i| 1_000_000 + (i * 37) % 500).collect();
+        x[3] = -5; x[900] = 1 << 40; x[1100] = i64::MIN; x[1200] = 7;
+        assert!(round(&x) >= 4);
+        let y: Vec<i16> = (0..2000).map(|i| if i % 97 == 0 { i16::MIN } else { 300 + (i % 11) as i16 }).collect();
+        assert!(round(&y) > 0);
+        let z: Vec<u8> = (0..BLK as u32 + 5).map(|i| if i == 5 { 0 } else { 200 + (i % 5) as u8 }).collect();
+        round(&z);
+        round(&[i32::MIN; 7]);
     }
 }
