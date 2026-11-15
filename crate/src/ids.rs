@@ -304,3 +304,23 @@ mod map_tests {
         }
     }
 }
+
+// ---- A10: ids.h:56-281 (per element: C keeps these bodies while a C caller remains) ----
+/// ids.h:56 `id_put`: id `v` at index `i`, `w` bits each.
+#[allow(unused_variables)] // scaffold: A10 removes it
+pub fn id_put(p: &mut [u8], w: u32, i: usize, v: u64) { unimplemented!("A10: id_put") }
+/// ids.h:76 `ids_fill`: `cnt` copies of `v` from index `at`.
+#[allow(unused_variables)] // scaffold: A10 removes it
+pub fn ids_fill(out: &mut [u8], w: u32, at: usize, cnt: usize, v: u64) { unimplemented!("A10: ids_fill") }
+/// ids.h:201 `ids_bitcopy`: `bits` bits of `src` from bit `sb` to bit `db` of `dst`.
+#[allow(unused_variables)] // scaffold: A10 removes it
+pub fn bitcopy(dst: &mut [u8], db: usize, src: &[u8], sb: usize, bits: usize) { unimplemented!("A10: ids_bitcopy") }
+/// ids.h:230 `ids_slice_elems`: elements per copy slice at `w`.
+#[allow(unused_variables)] // scaffold: A10 removes it
+pub fn slice_elems(w: u32) -> usize { unimplemented!("A10: ids_slice_elems") }
+/// ids.h:251 `ids_unpack16`: `m` ids from `from` widened to u16.
+#[allow(unused_variables)] // scaffold: A10 removes it
+pub fn unpack16(p: &[u8], w: u32, from: usize, m: usize, dst: &mut [u16]) { unimplemented!("A10: ids_unpack16") }
+/// ids.h:281 `ids_runs`: the run starts of `n` ids (at most `most`) into `out`; answers their count.
+#[allow(unused_variables)] // scaffold: A10 removes it
+pub fn runs(p: &[u8], n: usize, w: u32, nd: usize, most: usize, out: &mut [i64]) -> usize { unimplemented!("A10: ids_runs") }

@@ -5,14 +5,16 @@
 use alloc::boxed::Box;
 
 use crate::BLK;
+use crate::alp::Cocf;
 use crate::coc::Coc;
 use crate::key::{Keys, SK_C8, SK_F32, SK_F64, SK_I16, SK_I32, SK_I64, SK_U8};
 
 /// `kwin` (sort.c:270): keys `lo .. lo + len` are in `key`; block `b` is in slot `b & 1`.
 pub struct Kwin<'a> {
     kind: u8, c: Coc<'a>,
-    #[allow(dead_code)] // A5 reads it: `kwin_blk` and `range_foR` branch on `w->f`
-    alp: Option<()>,
+    /// the ALP arm, `kwin.f`: `kwin_blk` and `range_foR` branch on it (A5)
+    #[allow(dead_code)] // scaffold: A5 removes it
+    alp: Option<Cocf<'a>>,
      lo: usize, len: usize, key: Box<[u64; 2 * BLK]> }
 
 /// `sk_dense_width` (coc.h:359) in bits; C exits at the kinds with no dense width, which an encoded column never has.
@@ -117,4 +119,14 @@ mod tests {
     #[test] fn flip() {
         assert_eq!([SK_U8, SK_I16, SK_I32, SK_I64, SK_F32].map(key_flip), [0, 0x8000, 0x8000_0000, 1 << 63, 0]);
     }
+}
+
+// ---- A5: sort.c:281 `keys_blk_alp`, the ALP arm of `kwin` ----
+/// sort.c:281 `keys_blk_alp`: block `b` of `f` as sort keys into `k`.
+#[allow(unused_variables)] // scaffold: A5 removes it
+pub fn keys_blk_alp(f: &Cocf, b: usize, k: &mut [u64]) { unimplemented!("A5: keys_blk_alp") }
+impl<'a> Kwin<'a> {
+    /// sort.c:2618 `kwin_init` over an ALP column.
+    #[allow(unused_variables)] // scaffold: A5 removes it
+    pub fn with_alp(kind: u8, f: Cocf<'a>) -> Self { unimplemented!("A5: kwin_init alp") }
 }

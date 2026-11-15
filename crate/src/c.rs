@@ -60,3 +60,10 @@ mod tests {
         assert_eq!(out, [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 0]);
     }
 }
+
+/// A46b: pass.h:502 `qlean_chain_run` -- tiles of `n` elements, every stage of `st` over a tile before the next --
+/// on the pool; answers the thread count. Stays here: it calls the stages' C workers.
+pub fn run_chain(run: Runner, st: &[crate::ffi::CStage], n: usize, cost: u32, wide: usize) -> u32 {
+    let _ = (run, st, n, cost, wide);
+    unimplemented!("A46b: qlean_chain_run")
+}

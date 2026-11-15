@@ -273,3 +273,16 @@ mod tests {
         }
     }
 }
+
+/// A2: coc.h:690 `res_pack`'s vector arm (scalar: `res::res_pack_scalar`).
+pub fn res_pack(v: &[u64], w: u8, nb: usize, dst: &mut [u8]) { unimplemented!("A2: res_pack avx512") }
+/// A3: coc.h:820 `res_sum8`, the vector residual sum.
+pub fn res_sum8(p: &[u8], nb: usize, w: u8) -> u64 { unimplemented!("A3: res_sum8") }
+/// A14: scan.c's vector `scan_fill`.
+pub fn scan_fill(kind: i32, p: &[u8], out: &mut [u8], n: usize) { unimplemented!("A14: scan_fill avx512") }
+/// A14: scan.c's vector `scan_any_null`.
+pub fn any_null(kind: i32, p: &[u8], n: usize) -> bool { unimplemented!("A14: scan_any_null avx512") }
+/// A43: elementwise.c `ew_val_avx`.
+pub fn ew_val(op: u8, cls: u8, a: &[u8], b: &[u8], n: usize, out: &mut [u8]) { unimplemented!("A43: ew_val_avx") }
+/// A43: elementwise.c `ew_cmp_avx`.
+pub fn ew_cmp(op: u8, cls: u8, a: &[u8], b: &[u8], n: usize, out: &mut [u8]) { unimplemented!("A43: ew_cmp_avx") }
