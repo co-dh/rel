@@ -171,11 +171,18 @@ pub fn map(run: Runner, ids: &[u8], n: usize, w: u32, nd: usize, slot: &[usize],
         });
     } else {
         let per = 8 / wo as usize;
-        crate::c::run_map(run, out, ob, 1, QLEAN_COST_ARITH, WIDE, &|lo, hi, o: &mut [u8]| {
-            for (b, e) in (lo..hi).zip(o.iter_mut()) {
+        // `w >= 8` here: each id a whole element, read at a width fixed outside the byte loop
+        #[inline(always)]
+        fn narrow(o: &mut [u8], lo: usize, (per, n, nd, wo): (usize, usize, usize, u32), slot: &[usize], id: impl Fn(usize) -> usize) {
+            for (b, e) in (lo..lo + o.len()).zip(o.iter_mut()) {
                 *e = (0..per).take_while(|t| b * per + t < n)
-                    .fold(0u32, |v, t| v | (at(id_at(ids, w, b * per + t)) << (t as u32 * wo)) as u32) as u8;
+                    .fold(0u32, |v, t| v | (slot[id(b * per + t).min(nd)] << (t as u32 * wo)) as u32) as u8;
             }
+        }
+        let g = (per, n, nd, wo);
+        crate::c::run_map(run, out, ob, 1, QLEAN_COST_ARITH, WIDE, &|lo, _hi, o: &mut [u8]| match w {
+            8 => narrow(o, lo, g, slot, |i| ids[i] as usize),
+            _ => narrow(o, lo, g, slot, |i| id_at(ids, w, i)),
         });
     }
     // the fields past `n` in the last input byte were mapped too; the tail bits stay zero
