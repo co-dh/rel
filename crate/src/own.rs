@@ -90,4 +90,37 @@ mod tests {
         let h = head(&m, &mut Why::new(&mut buf)).unwrap();
         assert_eq!((h.n, h.hdr, h.np, h.off[0], h.len[0], h.kind), (7, 40, 1, 72, 16, 0));
     }
+
+    fn err(m: &[u8]) -> alloc::string::String {
+        let mut buf = [0u8; 320];
+        assert!(head(m, &mut Why::new(&mut buf)).is_none());
+        let z = buf.iter().position(|&b| b == 0).unwrap();
+        alloc::string::String::from_utf8(buf[..z].to_vec()).unwrap()
+    }
+    fn good() -> alloc::vec::Vec<u8> {
+        let mut m = vec![0u8; 96];
+        m[..8].copy_from_slice(b"qleancol");
+        m[8] = 4; m[12] = 1;
+        m[24..32].copy_from_slice(&72u64.to_le_bytes());
+        m[32..40].copy_from_slice(&16u64.to_le_bytes());
+        m
+    }
+    #[test] fn head_errors() {
+        let mut m = good(); m[0] = b'x';
+        assert_eq!(err(&m), "byte 0: the magic `qleancol`");
+        let mut m = good(); m[8] = 2;
+        assert!(err(&m).starts_with("byte 8: format version 3 or 4, found 2; a version-1 file predates the Frame"));
+        let mut m = good(); m[11] = 5;
+        assert_eq!(err(&m), "byte 11: a constructor kind in 0..4 with its 1, 1, 2, 3 or 2 parts, found kind 5 with 1 parts");
+        let mut m = good(); m[11] = 2;
+        assert_eq!(err(&m), "byte 11: a constructor kind in 0..4 with its 1, 1, 2, 3 or 2 parts, found kind 2 with 1 parts");
+        let mut m = good(); m[14] = 100;
+        assert_eq!(err(&m), "byte 24: a part table and domain name ending at byte 140, the file is 96 bytes");
+        let mut m = good(); m[24] = 73;
+        assert_eq!(err(&m), "part 0 at byte 24: a data offset that is a multiple of 8, found 73");
+        let mut m = good(); m[24] = 64;
+        assert_eq!(err(&m), "part 0 at byte 24: 32 reserved bytes after byte 40 before its data, found offset 64");
+        let mut m = good(); m[32] = 40;
+        assert_eq!(err(&m), "part 0 at byte 24: 40 bytes from byte 72, the file is 96 bytes");
+    }
 }
