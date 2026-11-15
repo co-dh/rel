@@ -613,6 +613,31 @@ pub unsafe extern "C" fn qrs_symdict_intern(t: *mut CSymtab, blob: *const u8, by
         j
     }
 }
+/// A41b: structural.c `symtab_find` over the plain dictionary of `d` symbols (`blob`, `offs`): the id of `k` in it,
+/// or `d`. `t` is `symdict_probe`'s const table.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn qrs_symtab_find(t: *const CSymtab, blob: *const u8, bytes: usize, offs: *const usize, d: usize,
+                                         k: *const u8, klen: usize) -> usize {
+    unsafe {
+        let t = &*t;
+        let v = structural::Symview { base: syms0(blob, bytes, offs, d), d0: d, tb: &[], to: &[] };
+        structural::symtab_find(sl(t.slot, t.mask + 1), t.mask, &v, d, sl(k, klen))
+    }
+}
+/// A41b: structural.c `symtab_build`'s loop over the plain dictionary of `d` symbols once `t`'s slots are
+/// allocated and empty; sets `t->cnt`. 0 when one symbol repeats an earlier one.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn qrs_symtab_build(t: *mut CSymtab, blob: *const u8, bytes: usize, offs: *const usize,
+                                          d: usize) -> c_int {
+    unsafe {
+        let t = &mut *t;
+        let mut s = structural::Symtab { cnt: t.cnt, mask: t.mask, stale: t.stale, slot: sl_mut(t.slot, t.mask + 1) };
+        let v = structural::Symview { base: syms0(blob, bytes, offs, d), d0: d, tb: &[], to: &[] };
+        let ok = structural::symtab_build(&mut s, &v, d);
+        t.cnt = s.cnt;
+        ok as c_int
+    }
+}
 /// A41b: structural.c `til_run`.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn qrs_til(run: unsafe extern "C" fn(), out: *mut i64, n: usize) {
@@ -622,7 +647,7 @@ pub unsafe extern "C" fn qrs_til(run: unsafe extern "C" fn(), out: *mut i64, n: 
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn qrs_scatter(wb: usize, dst: *mut u8, nd: usize, idx: *const i64, n: usize, src: *const u8,
                                      soff: usize, bcast: c_int) -> c_int {
-    let ns = if bcast != 0 { 1 } else { soff + n };
+    let ns = soff + if bcast != 0 { 1 } else { n };
     unsafe { structural::scatter(wb, sl_mut(dst, wb * nd), sl(idx, n), sl(src, wb * ns), soff, bcast != 0) as c_int }
 }
 /// A43: elementwise.c `ew_val_run`.

@@ -271,11 +271,46 @@ pub fn symdict_intern(t: &mut Symtab, base: &Syms, d0: usize, tb: &mut [u8], to:
 
 // ---- A41b: structural.c:2373-2384, 3005-3030 ----
 /// structural.c:2373 `til_run` and its entry: `0 .. out.len()`.
-pub fn til(run: Runner, out: &mut [i64]) { unimplemented!("A41b: til_run") }
+pub fn til(run: Runner, out: &mut [i64]) {
+    let n = out.len();
+    crate::c::run_map(run, crate::pod::bytes_mut(out), n, 8, crate::QLEAN_COST_COPY, 8, &|lo, hi, o: &mut [u8]| {
+        for (i, b) in (lo..hi).zip(o.chunks_exact_mut(8)) { b.copy_from_slice(&(i as i64).to_le_bytes()) }
+    });
+}
 /// structural.c:3005 `qlean_structural_scatter` past the unboxing: `dst[idx[i]] = src[soff + i]` (`bcast`: `src[soff]`)
-/// at `wb` bytes; false = an index out of range.
+/// at `wb` bytes; false = an index out of range. Such an index writes nothing, as in C; the rest are written in order,
+/// so the last write to a repeated index stays.
 pub fn scatter(wb: usize, dst: &mut [u8], idx: &[i64], src: &[u8], soff: usize, bcast: bool) -> bool {
-    unimplemented!("A41b: qlean_structural_scatter")
+    // one instance per width C's WIDTHS offers, so the copy is a single move
+    fn go<const W: usize>(dst: &mut [u8], idx: &[i64], src: &[u8], soff: usize, bcast: bool) -> bool {
+        let (d, s) = (dst.as_chunks_mut::<W>().0, src.as_chunks::<W>().0);
+        let mut ok = true;
+        for (k, &x) in idx.iter().enumerate() {
+            let u = x as u64;
+            if u >= d.len() as u64 { ok = false; continue }
+            d[u as usize] = s[soff + if bcast { 0 } else { k }];
+        }
+        ok
+    }
+    match wb {
+        1 => go::<1>(dst, idx, src, soff, bcast),
+        2 => go::<2>(dst, idx, src, soff, bcast),
+        4 => go::<4>(dst, idx, src, soff, bcast),
+        8 => go::<8>(dst, idx, src, soff, bcast),
+        16 => go::<16>(dst, idx, src, soff, bcast),
+        _ => panic!("qlean structural: scatter got element width {wb}; the kernels are instantiated at 1, 2, 4, 8 and 16 bytes"),
+    }
+}
+/// structural.c:2071 `symtab_build` past the slot allocation: the `d` entries of the plain dictionary `v` (`d0 == d`,
+/// no new-symbol area) hashed in order, `cnt` following; false = one repeats an earlier one, the table then unusable.
+pub fn symtab_build(t: &mut Symtab, v: &Symview, d: usize) -> bool {
+    for i in 0..d {
+        let k = v.at(i);
+        if symtab_find(t.slot, t.mask, v, i, k) != i { return false }
+        t.put(v, k, i);
+        t.cnt = i + 1;
+    }
+    true
 }
 
 
@@ -431,5 +466,40 @@ mod a39_tests {
             let mut at = 0;
             for (i, &c) in counts.iter().enumerate() { for j in 0..c { assert_eq!(bit(&o, at + j), bit(&parts[i], j)) } at += c }
         }
+    }
+}
+
+#[cfg(test)]
+mod til_scatter_build_tests {
+    use super::*;
+    #[test]
+    fn til_counts_up() {
+        for n in [0usize, 1, 5, 1000] {
+            let mut out = alloc::vec![-1i64; n];
+            til(crate::c::qlean_run_c, &mut out);
+            assert!(out.iter().enumerate().all(|(i, &x)| x == i as i64));
+        }
+    }
+    #[test]
+    fn scatter_last_write_wins_and_out_of_range_writes_nothing() {
+        let mut dst = [0u8; 8]; // four 2-byte fields
+        let src = [1u8, 1, 2, 2, 3, 3];
+        assert!(!scatter(2, &mut dst, &[1, 9, 1, -1], &src, 0, false));
+        assert_eq!(dst, [0, 0, 3, 3, 0, 0, 0, 0]); // field 1 got source 0, then source 2
+        let mut dst = [0u8; 4];
+        assert!(scatter(1, &mut dst, &[3, 0], &src, 2, true));
+        assert_eq!(dst, [2, 0, 0, 2]);
+    }
+    #[test]
+    fn build_refuses_a_repeat() {
+        let (b, o) = (b"a\0b\0a\0".to_vec(), alloc::vec![1usize, 5, 9, 13]); // boxed starts 0, 2, 4, 6
+        let v = Symview { base: Syms { blob: &b, offs: &o }, d0: 3, tb: &[], to: &[] };
+        let mut slot = alloc::vec![0u32; 16];
+        assert!(!symtab_build(&mut Symtab { cnt: 0, mask: 15, stale: 0, slot: &mut slot }, &v, 3));
+        let v = Symview { base: Syms { blob: &b, offs: &o }, d0: 2, tb: &[], to: &[] };
+        let mut slot = alloc::vec![0u32; 16];
+        let mut t = Symtab { cnt: 0, mask: 15, stale: 0, slot: &mut slot };
+        assert!(symtab_build(&mut t, &v, 2));
+        assert_eq!(t.cnt, 2);
     }
 }
