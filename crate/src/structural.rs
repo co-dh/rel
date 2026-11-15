@@ -10,7 +10,7 @@
 use crate::alp::Cocf;
 use crate::c::Runner;
 use crate::coc::Coc;
-use crate::sym::Syms;
+use crate::sym::{sym_eq, sym_hash, Syms};
 
 // ---- A34: structural.c:56-374 ----
 /// structural.c:56 `bit_set`
@@ -152,18 +152,39 @@ pub struct Symview<'a> { pub base: Syms<'a>, pub d0: usize, pub tb: &'a [u8], pu
 pub struct Symtab<'a> { pub cnt: usize, pub mask: usize, pub stale: usize, pub slot: &'a mut [u32] }
 impl<'a> Symview<'a> {
     /// structural.c:2046 `symview_at`
-    pub fn at(&self, i: usize) -> &'a [u8] { unimplemented!("A40: symview_at") }
+    pub fn at(&self, i: usize) -> &'a [u8] {
+        if i < self.d0 { return self.base.at(i) }
+        let (lo, hi) = (self.to[i - self.d0], self.to[i - self.d0 + 1]);
+        &self.tb[lo..hi - 1]
+    }
 }
 /// structural.c:2053 `symtab_find`: the id of `k` among the first `d`, or `d`.
-pub fn symtab_find(slot: &[u32], mask: usize, v: &Symview, d: usize, k: &[u8]) -> usize { unimplemented!("A40: symtab_find") }
+pub fn symtab_find(slot: &[u32], mask: usize, v: &Symview, d: usize, k: &[u8]) -> usize {
+    let mut s = sym_hash(k) as usize & mask;
+    while slot[s] != 0 {
+        let e = slot[s] as usize - 1;
+        if e < d && sym_eq(v.at(e), k) { return e }
+        s = (s + 1) & mask;
+    }
+    d
+}
 impl<'a> Symtab<'a> {
     /// structural.c:2061 `symtab_put`
-    pub fn put(&mut self, v: &Symview, k: &[u8], id: usize) { unimplemented!("A40: symtab_put") }
+    pub fn put(&mut self, _v: &Symview, k: &[u8], id: usize) {
+        let mut s = sym_hash(k) as usize & self.mask;
+        while self.slot[s] != 0 { s = (s + 1) & self.mask }
+        self.slot[s] = (id + 1) as u32;
+    }
     /// structural.c:2069-2100 `symtab_fit`/`symtab_build` after the slots are allocated: the first `n` entries of
     /// `v` hashed into empty slots.
-    pub fn fill(&mut self, v: &Symview, n: usize) { unimplemented!("A40: symtab_fit") }
+    pub fn fill(&mut self, v: &Symview, n: usize) { for i in 0..n { self.put(v, v.at(i), i) } }
     /// structural.c:2105 `symtab_fork` after the allocation: `s`'s slots copied, entries at or past `d` counted stale.
-    pub fn fork(&mut self, s: &[u32], d: usize) { unimplemented!("A40: symtab_fork") }
+    pub fn fork(&mut self, s: &[u32], d: usize) {
+        // every non-empty slot is an entry of the chain or a stale one, so `s`'s count + stale is their number
+        let used = s.iter().filter(|&&x| x != 0).count();
+        self.slot.copy_from_slice(s);
+        (self.mask, self.cnt, self.stale) = (s.len() - 1, d, used.saturating_sub(d));
+    }
 }
 
 // ---- A41a: structural.c:2203-2370 ----
@@ -180,3 +201,34 @@ pub fn scatter(wb: usize, dst: &mut [u8], idx: &[i64], src: &[u8], soff: usize, 
     unimplemented!("A41b: qlean_structural_scatter")
 }
 
+
+#[cfg(test)]
+mod symtab_tests {
+    use super::*;
+    fn offs(ss: &[&[u8]]) -> (Vec<u8>, Vec<usize>) {
+        let (mut b, mut o) = (Vec::new(), Vec::new());
+        for s in ss { o.push(b.len() << 1 | 1); b.extend_from_slice(s); b.push(0) }
+        o.push(b.len() << 1 | 1);
+        (b, o)
+    }
+    #[test]
+    fn view_find_put_fill_fork() {
+        let (b, o) = offs(&[b"a", b"", b"bc"]);
+        let base = Syms { blob: &b, offs: &o };
+        let (tb, to) = (b"xyz\0q\0".to_vec(), vec![0usize, 4, 6]);
+        let v = Symview { base, d0: 3, tb: &tb, to: &to };
+        assert_eq!((v.at(0), v.at(1), v.at(2), v.at(3), v.at(4)), (&b"a"[..], &b""[..], &b"bc"[..], &b"xyz"[..], &b"q"[..]));
+        let mut slot = vec![0u32; 16];
+        let mut t = Symtab { cnt: 5, mask: 15, stale: 0, slot: &mut slot };
+        t.fill(&v, 5);
+        for i in 0..5 { assert_eq!(symtab_find(t.slot, 15, &v, 5, v.at(i)), i) }
+        assert_eq!(symtab_find(t.slot, 15, &v, 5, b"nope"), 5);
+        assert_eq!(symtab_find(t.slot, 15, &v, 3, b"xyz"), 3); // at or past `d` is absent
+        let s = t.slot.to_vec();
+        let mut slot2 = vec![0u32; 16];
+        let mut f = Symtab { cnt: 0, mask: 0, stale: 0, slot: &mut slot2 };
+        f.fork(&s, 3);
+        assert_eq!((f.cnt, f.mask, f.stale), (3, 15, 2));
+        assert_eq!(f.slot, &s[..]);
+    }
+}
