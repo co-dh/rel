@@ -26,7 +26,7 @@ pub fn zq(b: &[u8], dst: &mut [u8]) -> Result<(), &'static core::ffi::CStr> {
             d += 2;
             let r = aa[x as usize];
             m = y as usize;
-            if s + 2 + m > total || r + 2 + m > total { return Err(PAST) }
+            if s + 2 + m > total { return Err(PAST) }
             dst.copy_within(r..r + 2, s);
             s += 2;
             // byte by byte: the source overlaps the destination when the match repeats

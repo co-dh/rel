@@ -6,6 +6,7 @@ use core::slice;
 
 use alloc::borrow::Cow;
 
+use crate::c;
 use crate::coc::{self, Coc};
 use crate::group::{self, Table};
 use crate::{key, kwin, own};
@@ -72,7 +73,7 @@ pub unsafe extern "C" fn qrs_ids_pack(g: *mut u8, n: usize, w: u32) { unsafe { i
 /// 1 and `*mn`, `*mx` filled; 0 for `SK_WIN` or an unknown kind.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn qrs_key_range(kind: u8, p: *const u8, n: usize, mn: *mut u64, mx: *mut u64) -> c_int {
-    match unsafe { keys(kind, p, n) }.and_then(|b| key::range(kind, b, n)) {
+    match unsafe { keys(kind, p, n) }.and_then(|b| key::each(kind, b, n, key::Range)) {
         Some((a, b)) => { unsafe { mn.write(a); mx.write(b) }; 1 }
         None => 0,
     }
@@ -86,11 +87,11 @@ pub unsafe extern "C" fn qrs_key_range_win(kind: u8, c: *const CCoc, mn: *mut u6
 }
 
 /// `ids_run` over `dedup`'s tables: `dtab` (`slots` entries) when not null, else `htab` (`cap` entries) and `gkey`
-/// (`ng` entries). `gid` is `n * lane / 8` bytes. 1 = written, 0 = refused (kind, alignment).
+/// (`ng` entries). `gid` is `n * lane / 8` bytes.  `run` is C's `qlean_run_c`, passed as a `void (*)(void)` and called as `c::Runner`. 1 = written, 0 = refused (a kind outside the enum, `SK_WIN`, a short payload or `gid`, a lane not 8, 16, 32 or 64).
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn qrs_group_fill(kind: u8, p: *const u8, n: usize, mn: u64, dtab: *const u32, slots: usize,
                                         htab: *const usize, gkey: *const u64, ng: usize, cap: usize, sh: c_int,
-                                        gid: *mut u8, lane: u32) -> c_int {
+                                        gid: *mut u8, lane: u32, run: unsafe extern "C" fn()) -> c_int {
     let Some(b) = (unsafe { keys(kind, p, n) }) else { return 0 };
     let t = if dtab.is_null() {
         Table::Hashed { slot: Cow::Borrowed(unsafe { sl(htab, cap) }), gkey: Cow::Borrowed(unsafe { sl(gkey, ng) }),
@@ -98,11 +99,11 @@ pub unsafe extern "C" fn qrs_group_fill(kind: u8, p: *const u8, n: usize, mn: u6
     } else {
         Table::Direct { tab: Cow::Borrowed(unsafe { sl(dtab, slots) }), mn }
     };
-    group::fill(kind, b, n, &t, lane, unsafe { sl_mut(gid, n.saturating_mul(lane as usize) / 8) }) as c_int
+    group::fill(unsafe { core::mem::transmute::<unsafe extern "C" fn(), c::Runner>(run) }, kind, b, n, &t, lane, unsafe { sl_mut(gid, n.saturating_mul(lane as usize) / 8) }) as c_int
 }
 
 /// `groupIds` of a dense column: `gid` is `gcap` bytes, `first` `n` entries. Answers `ng`, or `SIZE_MAX` for
-/// `SK_WIN`, an unknown kind or a misaligned `p`.
+/// `SK_WIN`, an unknown kind.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn qrs_group_ids(kind: u8, p: *const u8, n: usize, mn: u64, mx: u64, gid: *mut u8, gcap: usize,
                                        first: *mut usize) -> usize {

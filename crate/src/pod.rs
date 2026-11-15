@@ -22,8 +22,9 @@ impl Lane for i64 { fn wrap(v: u64) -> Self { v as i64 } }
 
 /// None when `b` is misaligned for `T` or `b.len() % size_of::<T>() != 0`.
 pub fn cast<T: Pod>(b: &[u8]) -> Option<&[T]> {
-    // Safety: every `Pod` is a plain number type, valid for any bit pattern; `align_to` yields an aligned middle
-    let (pre, mid, post) = unsafe { b.align_to::<T>() };
-    (pre.is_empty() && post.is_empty()).then_some(mid)
+    if b.is_empty() { return Some(&[]) } // no element is read, so the dangling pointer of `&[]` is no misalignment
+    if b.as_ptr() as usize % align_of::<T>() != 0 || b.len() % size_of::<T>() != 0 { return None }
+    // Safety: aligned and a whole number of elements, both tested above; `Pod` is valid for any bit pattern
+    Some(unsafe { core::slice::from_raw_parts(b.as_ptr().cast::<T>(), b.len() / size_of::<T>()) })
 }
 pub fn cast_mut<T: Pod>(b: &mut [u8]) -> Option<&mut [T]> { unimplemented!() }
