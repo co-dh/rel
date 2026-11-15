@@ -233,9 +233,9 @@ impl<'a> Symtab<'a> {
         while self.slot[s] != 0 { s = (s + 1) & self.mask }
         self.slot[s] = (id + 1) as u32;
     }
-    /// structural.c:2069-2100 `symtab_fit`/`symtab_build` after the slots are allocated: the first `n` entries of
-    /// `v` hashed into empty slots.
-    pub fn fill(&mut self, v: &Symview, n: usize) { for i in 0..n { self.put(v, v.at(i), i) } }
+    /// structural.c:2069-2100 `symtab_fit`/`symtab_build` after the slots are allocated: the `cnt` entries of
+    /// `v`, both areas, hashed into empty slots.
+    pub fn fill(&mut self, v: &Symview) { for i in 0..self.cnt { self.put(v, v.at(i), i) } }
     /// structural.c:2105 `symtab_fork` after the allocation: `s`'s slots copied, entries at or past `d` counted stale.
     pub fn fork(&mut self, s: &[u32], d: usize) {
         // every non-empty slot is an entry of the chain or a stale one, so `s`'s count + stale is their number
@@ -246,9 +246,28 @@ impl<'a> Symtab<'a> {
 }
 
 // ---- A41a: structural.c:2203-2370 ----
-/// structural.c:2223 `symdict_concat`'s per-part step: each symbol of `part` interned into `t` over `v`
-/// (new ones appended to `v`'s `tb`/`to` by the caller from `map`), its id into `map`; answers the new count.
-pub fn symdict_intern(t: &mut Symtab, v: &Symview, part: &Syms, map: &mut [usize]) -> usize { unimplemented!("A41a: symdict_concat") }
+/// structural.c:2223 `symdict_concat`'s per-part step: the symbols of `part` from `from` interned into `t` over the
+/// base `base` (`d0` entries) and the new-symbol area `tb`/`to` (the starts, `to[0] == 0`), each one's id into
+/// `map`. A new symbol is appended to `tb`/`to`. The slots cannot grow here, so it returns the index it stopped at
+/// when the next insert would pass half full (`symtab_fit`'s test), and `map.len()` when the part is done.
+pub fn symdict_intern(t: &mut Symtab, base: &Syms, d0: usize, tb: &mut [u8], to: &mut [usize], part: &Syms,
+                      map: &mut [usize], from: usize) -> usize {
+    for j in from..map.len() {
+        let (s, cnt) = (part.at(j), t.cnt);
+        let e = symtab_find(t.slot, t.mask, &Symview { base: *base, d0, tb: &*tb, to: &*to }, cnt, s);
+        if e == cnt {
+            if 2 * (cnt + 1 + t.stale) > t.mask + 1 { return j }
+            let at = to[cnt - d0];
+            tb[at..at + s.len()].copy_from_slice(s);
+            tb[at + s.len()] = 0;
+            to[cnt - d0 + 1] = at + s.len() + 1;
+            t.put(&Symview { base: *base, d0, tb: &*tb, to: &*to }, s, cnt);
+            t.cnt = cnt + 1;
+        }
+        map[j] = e;
+    }
+    map.len()
+}
 
 // ---- A41b: structural.c:2373-2384, 3005-3030 ----
 /// structural.c:2373 `til_run` and its entry: `0 .. out.len()`.
@@ -278,7 +297,7 @@ mod symtab_tests {
         assert_eq!((v.at(0), v.at(1), v.at(2), v.at(3), v.at(4)), (&b"a"[..], &b""[..], &b"bc"[..], &b"xyz"[..], &b"q"[..]));
         let mut slot = vec![0u32; 16];
         let mut t = Symtab { cnt: 5, mask: 15, stale: 0, slot: &mut slot };
-        t.fill(&v, 5);
+        t.fill(&v);
         for i in 0..5 { assert_eq!(symtab_find(t.slot, 15, &v, 5, v.at(i)), i) }
         assert_eq!(symtab_find(t.slot, 15, &v, 5, b"nope"), 5);
         assert_eq!(symtab_find(t.slot, 15, &v, 3, b"xyz"), 3); // at or past `d` is absent
@@ -288,6 +307,27 @@ mod symtab_tests {
         f.fork(&s, 3);
         assert_eq!((f.cnt, f.mask, f.stale), (3, 15, 2));
         assert_eq!(f.slot, &s[..]);
+    }
+    #[test]
+    fn intern_dedupes_and_stops_for_a_fit() {
+        let (b, o) = offs(&[b"a", b"", b"bc"]);
+        let base = Syms { blob: &b, offs: &o };
+        let (pb, po) = offs(&[b"bc", b"x", b"a", b"x", b"y"]);
+        let part = Syms { blob: &pb, offs: &po };
+        let (mut tb, mut to) = (vec![0u8; 8], vec![0usize; 5]);
+        let mut slot = vec![0u32; 16];
+        let mut t = Symtab { cnt: 3, mask: 15, stale: 0, slot: &mut slot };
+        t.fill(&Symview { base, d0: 3, tb: &[], to: &[] });
+        let mut map = vec![0usize; 5];
+        assert_eq!(symdict_intern(&mut t, &base, 3, &mut tb, &mut to, &part, &mut map, 0), 5);
+        assert_eq!((t.cnt, &map[..], &to[..3], &tb[..5]), (5, &[2, 3, 0, 3, 4][..], &[0, 2, 4][..], &b"x\0y\0\0"[..]));
+        // half full: 2 * (3 + 1) > 4 + 1 stops before the first new symbol
+        let mut slot = vec![0u32; 4];
+        let mut t = Symtab { cnt: 3, mask: 3, stale: 0, slot: &mut slot };
+        t.fill(&Symview { base, d0: 3, tb: &[], to: &[] });
+        let mut map = vec![0usize; 5];
+        assert_eq!(symdict_intern(&mut t, &base, 3, &mut tb, &mut to, &part, &mut map, 0), 1);
+        assert_eq!((t.cnt, map[0]), (3, 2));
     }
 }
 
