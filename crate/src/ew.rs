@@ -91,7 +91,7 @@ use alloc::vec::Vec;
 
 /// `EW_*` codes of elementwise.c:86-100 that this section reads; the two lists cannot change apart.
 mod k {
-    pub(super) const F32: u8 = 4;
+    pub(super) const F32: u8 = 4; pub(super) const BITS: u8 = 6; pub(super) const ABS: u8 = 1;
     pub(super) const ADD: u8 = 0; pub(super) const SUB: u8 = 1; pub(super) const MUL: u8 = 2; pub(super) const DIV: u8 = 3; pub(super) const FILL: u8 = 4;
     pub(super) const LESSER: u8 = 5; pub(super) const GREATER: u8 = 6; pub(super) const IDIV: u8 = 7; pub(super) const IMOD: u8 = 8; pub(super) const POW: u8 = 9;
     pub(super) const EQ: u8 = 0; pub(super) const NE: u8 = 1; pub(super) const LT: u8 = 2; pub(super) const LE: u8 = 3; pub(super) const GT: u8 = 4; pub(super) const GE: u8 = 5;
@@ -524,9 +524,64 @@ mod a46a {
 
 // ---- A46b: elementwise.c:2150-2310 (the stage workers stay C until `c::run_chain` calls Rust ones) ----
 /// elementwise.c:2242 `ew_stage_bits`: a stage's bits per element of `a`, `b`, `o`; answers the cost.
-pub fn stage_bits(engine: u32, op: u32, cls: u32, shape: u32) -> (u32, u16, u16, u16) { unimplemented!("A46b: ew_stage_bits") }
+pub fn stage_bits(engine: u32, op: u32, cls: u32, shape: u32) -> (u32, u16, u16, u16) {
+    use crate::{QLEAN_COST_ARITH as ARITH, QLEAN_COST_CAST as CAST, QLEAN_COST_COPY as COPY, QLEAN_COST_MATH as MATH};
+    let bits = |c: u32| (8 * ew_width(c)) as u16;
+    match engine {
+        eng::VAL => (if op == k::POW as u32 { MATH } else { ARITH }, bits(cls), bits(cls), bits(cls)),
+        eng::CMP => (ARITH, bits(cls), bits(cls), 1),
+        eng::MON => (if op > k::ABS as u32 { MATH } else { ARITH }, bits(cls), 0, bits(cls)),
+        eng::WIDEN => (COPY, if cls == k::BITS as u32 { 1 } else { bits(cls) }, 0, bits(shape)),
+        eng::BIT => (COPY, 1, 1, 1),
+        eng::FLOOR => (ARITH, bits(cls), 0, 64),
+        eng::CAST | eng::TICK => (CAST, bits(cls), 0, bits(shape)),
+        eng::IDS => (COPY, shape as u16, 0, bits(cls)),
+        eng::PACK => (COPY, bits(cls), 0, shape as u16),
+        // an ALP block costs a division an element on top of the unpack, which a Frame-of-Reference block does not
+        eng::ALP => (ARITH, 0, 0, bits(cls)),
+        // both encoder stages read the tile and answer no payload: what they write is the `coc` at `p.o`
+        eng::ENCMETA | eng::ENCPACK => (ARITH, bits(cls), 0, 0),
+        _ => (COPY, 0, 0, bits(cls)),
+    }
+}
 /// elementwise.c:2294 `ew_stage_fixed`: operand `left` of the stage is not re-based per tile.
-pub fn stage_fixed(engine: u32, shape: u32, left: bool) -> bool { unimplemented!("A46b: ew_stage_fixed") }
+pub fn stage_fixed(engine: u32, shape: u32, left: bool) -> bool {
+    if engine == eng::DECODE || engine == eng::ALP { return true }
+    if !matches!(engine, eng::VAL | eng::CMP | eng::BIT) { return !left }
+    if left { shape == k::AV as u32 } else { shape == k::VA as u32 }
+}
+/// elementwise.c:2150's engine codes, the `Ew.Engine` constants of QLean/Kernel/Elementwise.lean.
+mod eng {
+    pub(super) const VAL: u32 = 0; pub(super) const CMP: u32 = 1; pub(super) const MON: u32 = 2; pub(super) const WIDEN: u32 = 3;
+    pub(super) const BIT: u32 = 4; pub(super) const FLOOR: u32 = 5; pub(super) const CAST: u32 = 6; pub(super) const DECODE: u32 = 7;
+    pub(super) const ALP: u32 = 8; pub(super) const ENCMETA: u32 = 9; pub(super) const ENCPACK: u32 = 10; pub(super) const TICK: u32 = 11;
+    pub(super) const IDS: u32 = 12; pub(super) const PACK: u32 = 13;
+}
+
+#[cfg(test)]
+mod a46b {
+    use super::*;
+    // expected values are elementwise.c's `ew_stage_bits` / `ew_stage_fixed` read off the C switch
+    #[test] fn stage_costs_and_widths() {
+        use crate::{QLEAN_COST_ARITH as A, QLEAN_COST_COPY as C, QLEAN_COST_MATH as M};
+        assert_eq!(stage_bits(eng::VAL, k::POW as u32, 5, 0), (M, 64, 64, 64));
+        assert_eq!(stage_bits(eng::VAL, k::ADD as u32, 0, 0), (A, 8, 8, 8));
+        assert_eq!(stage_bits(eng::CMP, 0, 3, 0), (A, 64, 64, 1));
+        assert_eq!(stage_bits(eng::WIDEN, 0, 6, 3), (C, 1, 0, 64));
+        assert_eq!(stage_bits(eng::WIDEN, 0, 1, 2), (C, 16, 0, 32));
+        assert_eq!(stage_bits(eng::BIT, 0, 0, 0), (C, 1, 1, 1));
+        assert_eq!(stage_bits(eng::PACK, 0, 3, 2), (C, 64, 0, 2));
+        assert_eq!(stage_bits(eng::ENCMETA, 0, 2, 0), (A, 32, 0, 0));
+        assert_eq!(stage_bits(eng::DECODE, 0, 2, 0), (C, 0, 0, 32));
+    }
+    #[test] fn atoms_and_encoded_views_are_not_rebased() {
+        assert!(stage_fixed(eng::VAL, k::AV as u32, true) && !stage_fixed(eng::VAL, k::AV as u32, false));
+        assert!(stage_fixed(eng::CMP, k::VA as u32, false) && !stage_fixed(eng::CMP, k::VV as u32, true));
+        assert!(stage_fixed(eng::DECODE, 0, true) && stage_fixed(eng::ALP, 0, false));
+        // a monadic engine has no left atom, and its right side is always fixed
+        assert!(!stage_fixed(eng::MON, 0, true) && stage_fixed(eng::MON, 0, false));
+    }
+}
 
 #[cfg(test)]
 mod a42 {
