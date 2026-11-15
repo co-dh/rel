@@ -40,7 +40,7 @@ fn lanes<K: Keys, G: Fn(u64) -> usize + Sync + Copy>(run: Runner, k: &K, n: usiz
             _ => for (i, b) in (lo..hi).zip(o.chunks_exact_mut(8)) { b.copy_from_slice(&(g(k.at(i)) as u64).to_ne_bytes()) },
         }
     };
-    run_map(run, gid, n, lane as usize / 8, 4, 8, &f);
+    run_map(run, gid, n, lane as usize / 8, crate::QLEAN_COST_ARITH, 8, &f);
 }
 
 struct Fill<'t, 'a, 'g> { run: Runner, t: &'t Table<'a>, lane: u32, gid: &'g mut [u8] }

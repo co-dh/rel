@@ -1,10 +1,10 @@
 #![forbid(unsafe_code)]
 //! ids.h:19, 25, 40; own.c:231, 245.
 use crate::bits::{lane_width, width_for};
+use crate::QLEAN_COST_ARITH;
 use crate::c::Runner;
 
-/// `c::run_map`'s cost and wide for the id map (`QLEAN_COST_ARITH`, 8).
-const COST: u32 = 4;
+/// `c::run_map`'s wide for the id map; its cost is `QLEAN_COST_ARITH`.
 const WIDE: usize = 8;
 
 /// `Column.idWidth`: zero at one entry and at none -- there is one id, so nothing is stored.
@@ -127,7 +127,7 @@ pub fn map(run: Runner, ids: &[u8], n: usize, w: u32, nd: usize, slot: &[usize],
     let out = &mut out[..ob];
     if wo >= 8 {
         let u = wo as usize / 8;
-        crate::c::run_map(run, out, n, u, COST, WIDE, &|lo, hi, o: &mut [u8]| {
+        crate::c::run_map(run, out, n, u, QLEAN_COST_ARITH, WIDE, &|lo, hi, o: &mut [u8]| {
             for (i, c) in (lo..hi).zip(o.chunks_exact_mut(u)) { c.copy_from_slice(&at(id_at(ids, w, i)).to_le_bytes()[..u]); }
         });
     } else if (1..8).contains(&w) {
@@ -139,7 +139,7 @@ pub fn map(run: Runner, ids: &[u8], n: usize, w: u32, nd: usize, slot: &[usize],
         // `wo <= w`, as `ng <= 2^w`: an input byte is `k` output bits, `r` of them an output byte
         let (k, r) = (8 / w * wo, 8 / (8 / w * wo));
         let ib = ids_bytes(n, w);
-        crate::c::run_map(run, out, ob, 1, COST, WIDE, &|lo, hi, o: &mut [u8]| {
+        crate::c::run_map(run, out, ob, 1, QLEAN_COST_ARITH, WIDE, &|lo, hi, o: &mut [u8]| {
             for (b, e) in (lo..hi).zip(o.iter_mut()) {
                 *e = (0..r as usize).take_while(|t| b * r as usize + t < ib)
                     .fold(0u32, |v, t| v | (tab[ids[b * r as usize + t] as usize] as u32) << (t as u32 * k)) as u8;
@@ -147,7 +147,7 @@ pub fn map(run: Runner, ids: &[u8], n: usize, w: u32, nd: usize, slot: &[usize],
         });
     } else {
         let per = 8 / wo as usize;
-        crate::c::run_map(run, out, ob, 1, COST, WIDE, &|lo, hi, o: &mut [u8]| {
+        crate::c::run_map(run, out, ob, 1, QLEAN_COST_ARITH, WIDE, &|lo, hi, o: &mut [u8]| {
             for (b, e) in (lo..hi).zip(o.iter_mut()) {
                 *e = (0..per).take_while(|t| b * per + t < n)
                     .fold(0u32, |v, t| v | (at(id_at(ids, w, b * per + t)) << (t as u32 * wo)) as u32) as u8;

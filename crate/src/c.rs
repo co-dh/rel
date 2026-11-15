@@ -52,7 +52,7 @@ pub fn run_map<F: Fn(usize, usize, &mut [u8]) + Sync>(run: Runner, out: &mut [u8
 mod tests {
     #[test] fn run_map_cuts_disjoint_slices() {
         let mut out = [0u8; 2 * 7 + 1];
-        let parts = super::run_map(super::qlean_run_c, &mut out, 7, 2, 4, 8, &|lo, hi, o: &mut [u8]| {
+        let parts = super::run_map(super::qlean_run_c, &mut out, 7, 2, crate::QLEAN_COST_ARITH, 8, &|lo, hi, o: &mut [u8]| {
             assert_eq!(o.len(), 2 * (hi - lo));
             for (k, b) in o.iter_mut().enumerate() { *b = (lo * 2 + k) as u8 + 1 }
         });

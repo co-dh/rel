@@ -6,6 +6,19 @@ extern crate alloc;
 
 pub const BLK: usize = 1024;
 
+/// Costs per element, named so a call site says why rather than what; the one definition, C reads it through rs.h.
+/// one indexed load and one store
+pub const QLEAN_COST_GATHER: u32 = 1;
+/// a straight-line move, no arithmetic. 3, not 2: a move writes a fresh answer and its page faults are the cost, so
+/// at 2 a 4 MB answer ran on one thread -- `prev` on 1M reals or 500k floats 120-148us serial against 22-33 split
+pub const QLEAN_COST_COPY: u32 = 3;
+/// the element-wise verbs and the comparisons
+pub const QLEAN_COST_ARITH: u32 = 4;
+/// a conversion, a rounding and a range test
+pub const QLEAN_COST_CAST: u32 = 6;
+/// a libm call
+pub const QLEAN_COST_MATH: u32 = 12;
+
 // the runtime and the C declarations are not interface: cbindgen skips both
 /// cbindgen:ignore
 #[cfg(not(test))]
