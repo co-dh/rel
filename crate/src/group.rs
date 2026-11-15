@@ -8,7 +8,7 @@ use crate::c::run_map;
 use crate::coc::Coc;
 use crate::key::{each, Keys, Pass};
 
-const PHI64: u64 = 0x9e3779b97f4a7c15;
+pub const PHI64: u64 = 0x9e3779b97f4a7c15;
 
 /// `group_find` (sort.c:1985): a key the numbering has already put in the table.
 fn find(slot: &[usize], gkey: &[u64], sh: u32, key: u64) -> usize {

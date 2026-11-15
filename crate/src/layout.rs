@@ -7,7 +7,7 @@ use crate::BLK;
 pub enum Tail { None, Frames, Exps }
 pub struct ExcLayout { pub raw: usize, pub off: usize, pub pos: usize, pub tail: usize, pub size: usize }
 
-const ALP_MAXE: i32 = 18; // coc.h ALP_MAXE
+pub const ALP_MAXE: i32 = 18; // c/rs.h defines it from here; coc.h has no copy
 
 fn align8(x: usize) -> Option<usize> { Some(x.checked_add(7)? & !7) }
 

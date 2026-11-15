@@ -8,11 +8,11 @@ pub const OWN_MAXPARTS: usize = 3;
 pub struct OwnHead { pub n: u64, pub hdr: usize, pub np: usize,
                      pub off: [usize; OWN_MAXPARTS], pub len: [usize; OWN_MAXPARTS], pub kind: u8 }
 
-const OWN_ROOM: u64 = 32;
-const OWN_HEAD: usize = 24;
-const OWN_VERSION: u8 = 4;
-const OWN_OLDEST: u8 = 3;
-const OWN_NPARTS: [usize; 5] = [1, 1, 2, 3, 2];
+pub const OWN_ROOM: u64 = 32;
+pub const OWN_HEAD: usize = 24;
+pub const OWN_VERSION: u8 = 4;
+pub const OWN_OLDEST: u8 = 3;
+pub const OWN_NPARTS: [usize; 5] = [1, 1, 2, 3, 2];
 
 fn le(m: &[u8], at: usize, w: usize) -> u64 {
     let mut b = [0u8; 8];

@@ -2,8 +2,8 @@
 //! `key_at` (sort.c:132) with the kind switch hoisted by monomorphisation (`SK_EACH`, sort.c:1697): `each` switches
 //! once and hands the pass a `Keys` of one concrete type, so the element loop has no switch.
 
-/// coc.h:347, sort.c:59, 65: the kinds `key_at` switches on. `SK_C8` reads as `SK_U8`; `SK_KEY` is a payload of
-/// keys already biased; `SK_WIN` is an encoded column read through `kwin::Kwin`, never a byte payload.
+/// The kinds `key_at` switches on; c/rs.h defines them from here. `SK_C8` reads as `SK_U8`; `SK_KEY` is a payload
+/// of keys already biased; `SK_WIN` is an encoded column read through `kwin::Kwin`, never a byte payload.
 pub const SK_BIT: u8 = 0;
 pub const SK_U8: u8 = 1;
 pub const SK_I16: u8 = 2;
@@ -12,8 +12,9 @@ pub const SK_I64: u8 = 4;
 pub const SK_F32: u8 = 5;
 pub const SK_F64: u8 = 6;
 pub const SK_C8: u8 = 7;
-pub const SK_KEY: u8 = 8;
-pub const SK_WIN: u8 = 9;
+pub const SK_KINDS_N: u8 = SK_C8 + 1;
+pub const SK_KEY: u8 = SK_KINDS_N;
+pub const SK_WIN: u8 = SK_KINDS_N + 1;
 
 /// Element `i`'s key, in the unsigned order q sorts by. `at` takes `&mut self` because a window decodes a block
 /// on first touch; `fork` is a worker's own copy (a fresh window over the same column).
