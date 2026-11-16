@@ -1647,6 +1647,33 @@ pub unsafe extern "C" fn qrs_ew_cmp(run: unsafe extern "C" fn(), op: u8, cls: u8
     // elementwise.c:857: the answer is a bit vector, `⌈n / 8⌉` bytes
     unsafe { ew::cmp(rn(run), op, cls, shape, sl(a, abytes), sl(b, bbytes), n, sl_mut(out, n.div_ceil(8))) }
 }
+/// K8: elementwise.c `ew_cmp_syms_run`: the symbol columns `ba`/`oa` and `bb`/`ob` (`noa`, `nob` boxed offsets), `out` `⌈n / 8⌉` bytes.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn qrs_ew_cmp_syms(run: unsafe extern "C" fn(), op: u8, shape: u8, ba: *const u8, bab: usize, oa: *const usize,
+                                         noa: usize, bb: *const u8, bbb: usize, ob: *const usize, nob: usize, n: usize, out: *mut u8) {
+    unsafe { ew::cmp_syms(rn(run), op, shape, &symcol(ba, bab, oa, noa), &symcol(bb, bbb, ob, nob), n, sl_mut(out, n.div_ceil(8))) }
+}
+/// K8: elementwise.c `like_*` over a symbol column; 0 (nothing written) where `parsePat` refuses; `out` is `⌈count / 8⌉` bytes.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn qrs_ew_like_syms(pat: *const u8, pn: usize, blob: *const u8, bytes: usize, offs: *const usize, noffs: usize,
+                                          out: *mut u8) -> c_int {
+    let s = unsafe { symcol(blob, bytes, offs, noffs) };
+    unsafe { ew::like_syms(sl(pat, pn), &s, sl_mut(out, s.count().div_ceil(8))) as c_int }
+}
+/// K8: elementwise.c `fixed_items` + `fixed_width`: the pattern's width, 0 for each of the three refusals.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn qrs_ew_fixed_width(atom: u8, pat: *const u8, pn: usize) -> usize { unsafe { ew::fixed_width(atom != 0, sl(pat, pn)) } }
+/// K8: elementwise.c `fixed_scan`: the match starts into `h` (`n / w + 1` entries, `w` the width above); answers how many.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn qrs_ew_fixed_scan(atom: u8, pat: *const u8, pn: usize, b: *const u8, n: usize, h: *mut i64, hcap: usize) -> usize {
+    unsafe { ew::fixed_scan(atom != 0, sl(pat, pn), sl(b, n), sl_mut(h, hcap)) }
+}
+/// K8: elementwise.c `qlean_ew_ssr`'s copy loop: `o` is `total + 16` bytes (the answer and 16 of slack).
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn qrs_ew_ssr_fill(o: *mut u8, olen: usize, b: *const u8, n: usize, h: *const i64, hits: usize, w: usize,
+                                         t: *const u8, tn: usize) {
+    unsafe { ew::ssr_fill(sl_mut(o, olen), sl(b, n), sl(h, hits), w, sl(t, tn)) }
+}
 /// A44: elementwise.c `ew_mon_run`.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn qrs_ew_mon(run: unsafe extern "C" fn(), op: u8, cls: u8, nul: i64, x: *const u8, xbytes: usize,

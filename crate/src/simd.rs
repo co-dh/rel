@@ -96,6 +96,19 @@ pub fn u8_sum(p: &[u8]) -> i64 {
     #[cfg(not(all(target_arch = "x86_64", target_feature = "avx512bw")))]
     u8_sum_scalar(p)
 }
+/// elementwise.c `fixed_scan`'s vector step: bit `k` of the answer is set when `b[s + k] == f` and `b[s + k + w - 1] == g`, for the
+/// 64 positions `k` of `s`; the caller has seen `s + 63 + w <= b.len()`. Only a build enabling avx512bw has it, as the C's `#if`.
+#[cfg(all(target_arch = "x86_64", target_feature = "avx512f", target_feature = "avx512bw"))]
+#[inline]
+pub fn lit_mask64(b: &[u8], s: usize, w: usize, f: u8, g: u8) -> u64 {
+    use core::arch::x86_64::*;
+    let (x, y) = (&b[s..s + 64], &b[s + w - 1..s + w + 63]);
+    // SAFETY: x and y are 64 bytes each, unaligned loads
+    unsafe {
+        (_mm512_cmpeq_epi8_mask(_mm512_set1_epi8(f as i8), _mm512_loadu_si512(x.as_ptr().cast())) as u64)
+            & (_mm512_cmpeq_epi8_mask(_mm512_set1_epi8(g as i8), _mm512_loadu_si512(y.as_ptr().cast())) as u64)
+    }
+}
 pub fn res_unpack(p: &[u8], w: u8, nb: usize, out: &mut [u8]) {
     // coc.h:598's `#if`: the vector path only where the build enables every feature it needs (target-cpu=native)
     #[cfg(all(target_arch = "x86_64", target_feature = "avx512vbmi", target_feature = "avx512vbmi2",
