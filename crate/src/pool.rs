@@ -86,6 +86,9 @@ pub struct Pool {
     parked: AtomicU32,
     left: Line<AtomicU32>,
     ctr: Line<[AtomicU64; 7]>,
+    /// `BUSY` by slice: slot `k` is written only by whoever runs slice `k` of a split pass, one thread at a time, so
+    /// it stays in that core's cache; one shared counter bounced a line between every worker on every pass (1.35x C).
+    spent: [Line<AtomicU64>; MAX_THREADS as usize],
 }
 // Safety: `job` is written only by the entry holding `busy`, while every worker is between passes (`left` was 0), and
 // read by the workers after the release of `generation` that published it.
@@ -157,7 +160,7 @@ impl Pool {
         Pool { fixed, width: AtomicU32::new(0), started: AtomicBool::new(false), busy: AtomicBool::new(false),
                next: AtomicU32::new(0), job: UnsafeCell::new(Job { call: nop, ctx: null(), n: 0, parts: 0 }),
                generation: Line(AtomicU32::new(0)), parked: AtomicU32::new(0), left: Line(AtomicU32::new(0)),
-               ctr: Line([Z; 7]) }
+               ctr: Line([Z; 7]), spent: [const { Line(AtomicU64::new(0)) }; MAX_THREADS as usize] }
     }
 
     /// How many threads a pass may use, read once: `getenv` in the hot path would be the measurement. The CPUs
@@ -182,7 +185,10 @@ impl Pool {
         self.width() > 1 && n.wrapping_mul(cost as usize).wrapping_mul(wide) >= SPLIT_AT
     }
 
-    pub fn stat(&self, k: u8) -> u64 { self.ctr.0.get(k as usize).map_or(0, |c| c.load(Relaxed)) }
+    pub fn stat(&self, k: u8) -> u64 {
+        if k as usize == BUSY { return self.spent.iter().map(|b| b.0.load(Relaxed)).fold(0, u64::wrapping_add) }
+        self.ctr.0.get(k as usize).map_or(0, |c| c.load(Relaxed))
+    }
 
     fn add(&self, k: usize, v: u64) { self.ctr.0[k].fetch_add(v, Relaxed); }
 
@@ -192,7 +198,9 @@ impl Pool {
             let t = ticks();
             // Safety: `enter`'s caller made `call` sound for every slice, concurrently for disjoint ones
             unsafe { (job.call)(job.ctx, k, lo, hi) }
-            self.add(BUSY, ticks().wrapping_sub(t));
+            // a load and a store, not a locked add: slice `k` has one runner at a time (`busy` orders the entries)
+            let b = &self.spent[k as usize].0;
+            b.store(b.load(Relaxed).wrapping_add(ticks().wrapping_sub(t)), Relaxed);
         }
     }
 
