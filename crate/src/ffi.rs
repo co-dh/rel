@@ -601,6 +601,11 @@ pub extern "C" fn qrs_coc_sumnul(width: usize, alp: c_int) -> i64 { enc::coc_sum
 pub unsafe extern "C" fn qrs_enc_blk_meta(s: *mut CEnc, b: usize, v: *const i64, nb: usize) -> u32 {
     unsafe { let w = (*s).width; enc::blk_meta(&mut (*s).meta_blk(b), sl(v, nb), w) }
 }
+/// A18: coc.c `alp_chunk_run`, blocks `b0 .. b1` of an `f64` column into `buf` (`(b1 - b0) * BLK` doubles).
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn qrs_alp_chunk(run: unsafe extern "C" fn(), f: *const CCocf, b0: usize, b1: usize, buf: *mut u8) {
+    unsafe { codec::alp_chunk(rn(run), &(*f).view(), b0, b1, sl_mut(buf, (b1 - b0) * crate::BLK * 8)) }
+}
 /// A18: coc.c `alp_decode_run`.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn qrs_alp_decode(run: unsafe extern "C" fn(), f: *const CCocf, out: *mut u8, bytes: usize) {
