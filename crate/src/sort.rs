@@ -129,23 +129,33 @@ impl Ix for u32 { #[inline(always)] fn of(v: usize) -> u32 { v as u32 } #[inline
 impl Ix for usize { #[inline(always)] fn of(v: usize) -> usize { v } #[inline(always)] fn to(self) -> usize { self } }
 /// One bucket per value of `d(key)`: a single stable pass, no comparisons. `d` is recomputed from the key, not read
 /// out of an array: the subtraction is one instruction, the array eight bytes an element written once and read twice.
-fn count<C: Ix>(s: &Ksrc, nb: usize, rank: bool, d: impl Fn(u64) -> u64, out: &mut [i64]) {
-    let mut cnt = alloc::vec![C::default(); nb];
-    ksrc_each(s, |_, k| { let c = &mut cnt[d(k) as usize]; *c = C::of(c.to() + 1) });
+/// `N` is the table length when it is one of the literals `grade_count` picks (0 = `nb`): `d(k) < nb <= N`, so masking
+/// the index with `N - 1` changes nothing and lets the compiler see the index is in range (no bounds check).
+fn count<C: Ix, const N: usize>(s: &Ksrc, nb: usize, rank: bool, d: impl Fn(u64) -> u64, out: &mut [i64]) {
+    let (len, m) = if N == 0 { (nb, usize::MAX) } else { (N, N - 1) };
+    let mut cnt = alloc::vec![C::default(); len];
+    ksrc_each(s, |_, k| { let c = &mut cnt[d(k) as usize & m]; *c = C::of(c.to() + 1) });
     let mut at = 0;
-    for c in cnt.iter_mut() { let t = c.to(); *c = C::of(at); at += t }
+    for c in cnt[..nb].iter_mut() { let t = c.to(); *c = C::of(at); at += t }
     // the rank is where the grade would have put `i`: the same counter, stored the other way
-    if rank { ksrc_each(s, |i, k| { let c = &mut cnt[d(k) as usize]; out[i] = c.to() as i64; *c = C::of(c.to() + 1) }) }
-    else { ksrc_each(s, |i, k| { let c = &mut cnt[d(k) as usize]; out[c.to()] = i as i64; *c = C::of(c.to() + 1) }) }
+    if rank { ksrc_each(s, |i, k| { let c = &mut cnt[d(k) as usize & m]; out[i] = c.to() as i64; *c = C::of(c.to() + 1) }) }
+    else { ksrc_each(s, |i, k| { let c = &mut cnt[d(k) as usize & m]; out[c.to()] = i as i64; *c = C::of(c.to() + 1) }) }
+}
+/// `count` at the table length that holds `nb` buckets: 256, 4096 or 65536 (what `sk_countable` allows), else `nb`.
+fn count_by<C: Ix>(s: &Ksrc, nb: usize, rank: bool, d: impl Fn(u64) -> u64, out: &mut [i64]) {
+    if nb <= 256 { count::<C, 256>(s, nb, rank, d, out) }
+    else if nb <= 4096 { count::<C, 4096>(s, nb, rank, d, out) }
+    else if nb <= 65536 { count::<C, 65536>(s, nb, rank, d, out) }
+    else { count::<C, 0>(s, nb, rank, d, out) }
 }
 /// sort.c:474 `grade_count`: counting sort over the key span `span`; `rank` answers ranks instead of the grade.
 pub fn grade_count(s: &Ksrc, mn: u64, mx: u64, desc: bool, rank: bool, span: u64, out: &mut [i64]) {
     let nb = span as usize + 1;
     match (s.n <= u32::MAX as usize, desc) {
-        (true, true) => count::<u32>(s, nb, rank, |k| mx - k, out),
-        (true, false) => count::<u32>(s, nb, rank, |k| k - mn, out),
-        (false, true) => count::<usize>(s, nb, rank, |k| mx - k, out),
-        (false, false) => count::<usize>(s, nb, rank, |k| k - mn, out),
+        (true, true) => count_by::<u32>(s, nb, rank, |k| mx - k, out),
+        (true, false) => count_by::<u32>(s, nb, rank, |k| k - mn, out),
+        (false, true) => count_by::<usize>(s, nb, rank, |k| mx - k, out),
+        (false, false) => count_by::<usize>(s, nb, rank, |k| k - mn, out),
     }
 }
 /// sort.c:498 `grade_perm`: the keys are a permutation of `mn ..= mx`; false = they are not. Inverting the permutation
