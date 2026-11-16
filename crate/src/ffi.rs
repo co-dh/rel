@@ -1658,6 +1658,41 @@ pub unsafe extern "C" fn qrs_ew_widen(run: unsafe extern "C" fn(), src: u8, dst:
                                       x: *const u8, xbytes: usize, n: usize, out: *mut u8, obytes: usize) {
     unsafe { ew::widen(rn(run), src, dst, nul_in, nul_out, sl(x, xbytes), n, sl_mut(out, obytes)) }
 }
+/// K9: elementwise.c `ew_widen_stage`: elements `[lo, hi)` of a tile of `n`, on the calling thread; `x` is the whole tile
+/// (a bit source packed from its bit 0) and `out` the tile's `n` answers.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn qrs_ew_widen_stage(src: u8, dst: u8, nul_in: i64, nul_out: i64, x: *const u8, n: usize, lo: usize,
+                                            hi: usize, out: *mut u8) {
+    let xb = if src == 6 { n.div_ceil(8) } else { n * ew::ew_width(src as u32) };
+    unsafe { ew::widen_stage(src, dst, nul_in, nul_out, sl(x, xb), lo, hi, sl_mut(out, n * ew::ew_width(dst as u32))) }
+}
+/// K9: elementwise.c `ew_decode_run`: block `b`'s first `cnt` elements of `c` at `w` bytes each into `out`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn qrs_ew_decode_stage(c: *const CCoc, b: usize, cnt: usize, w: usize, out: *mut u8) {
+    unsafe { ew::decode_stage(&(*c).view(), b, cnt, w, sl_mut(out, cnt * w)) }
+}
+/// K9: elementwise.c `ew_alp_run`: block `b`'s first `cnt` elements of the ALP column `f`, patches applied, into `out`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn qrs_ew_alp_stage(f: *const CCocf, b: usize, cnt: usize, out: *mut u8) {
+    unsafe { let esz = if (*f).f32 != 0 { 4 } else { 8 }; (*f).view().load_blk(b, cnt, sl_mut(out, cnt * esz)) }
+}
+/// K9: elementwise.c `ew_ids_run`: ids `[lo, hi)` of the `n` packed at `w` bits in `x` into `out`, at class `cls`'s width.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn qrs_ew_ids_stage(cls: u8, w: u32, x: *const u8, n: usize, lo: usize, hi: usize, out: *mut u8) {
+    unsafe { ew::ids_stage(cls, w, sl(x, ew::ids_len(n, w)), lo, hi, sl_mut(out, n * ew::ew_width(cls as u32))) }
+}
+/// K9: elementwise.c `ew_pack_run`: the `n` elements of `x` (class `cls`) as `w`-bit ids into `out`; `[lo, hi)` are output
+/// bytes below a byte of width, elements at or above it.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn qrs_ew_pack_stage(cls: u8, w: u32, x: *const u8, n: usize, lo: usize, hi: usize, out: *mut u8) {
+    unsafe { ew::pack_stage(cls, w, sl(x, n * ew::ew_width(cls as u32)), n, lo, hi, sl_mut(out, ew::ids_len(n, w))) }
+}
+/// K9: elementwise.c `ew_serial`, the runner of every stage worker (`c::serial` with the worker's type erased).
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn qrs_serial(f: unsafe extern "C" fn(), n: usize, cost: u32, wide: usize, p: *const CPass) -> u32 {
+    // Safety: `f` is a `qlean_worker`, which every caller of a runner passes
+    unsafe { c::serial(core::mem::transmute::<unsafe extern "C" fn(), c::Worker>(f), n, cost, wide, p) }
+}
 /// A46b: pass.h:502 `qlean_chain_run`'s driver over `k` stages and `n` elements.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn qrs_run_chain(run: unsafe extern "C" fn(), st: *const CStage, k: usize, n: usize, cost: u32,
