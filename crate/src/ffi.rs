@@ -786,6 +786,21 @@ pub unsafe extern "C" fn qrs_rank_slices(w: usize, v: *const u8, bytes: usize, o
     // sort.c:2487: the answer is one id per group, `g * 8` bytes with `g = ng`
     unsafe { sort::rank_slices(w, sl(v, bytes), sl(o, ng + 1), sl_mut(out, ng)) }
 }
+/// A24: sort.c `qlean_sort_group_sizes`: `n` is already clamped to what `gid` holds, `out` is `ng` long.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn qrs_group_sizes(ng: usize, w: u32, n: usize, gid: *const u8, out: *mut i64) {
+    unsafe { sort::group_sizes(ng, w, n, sl(gid, ids::ids_bytes(n, w)), sl_mut(out, ng)) }
+}
+/// A24: sort.c `qlean_sort_group_lasts`, as `qrs_group_sizes`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn qrs_group_lasts(ng: usize, w: u32, n: usize, gid: *const u8, out: *mut i64) {
+    unsafe { sort::group_lasts(ng, w, n, sl(gid, ids::ids_bytes(n, w)), sl_mut(out, ng)) }
+}
+/// A24: sort.c `qlean_sort_id_longs`: `n` is already clamped to what `ids` holds, `out` is `n` long.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn qrs_id_longs(n: usize, w: u32, ids: *const u8, out: *mut i64) {
+    unsafe { sort::id_longs(n, w, sl(ids, ids::ids_bytes(n, w)), sl_mut(out, n)) }
+}
 /// A25: sort.c `qlean_sort_grade_syms` past the unboxing.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn qrs_grade_syms(run: unsafe extern "C" fn(), desc: c_int, blob: *const u8, bytes: usize,

@@ -322,15 +322,85 @@ pub fn pair_ids_narrow(run: Runner, wa: u32, wb: u32, m: usize, pa: &[u8], pb: &
     unimplemented!("A23: pair_ids_narrow")
 }
 
+/// `f::<W>(args)` for the run-time width `w`, so `id_at`'s match folds as the C's `IDS_WIDTHS` does.
+macro_rules! by_width {
+    ($w:expr, $f:ident($($a:expr),*)) => { match $w {
+        0 => $f::<0>($($a),*), 1 => $f::<1>($($a),*), 2 => $f::<2>($($a),*), 4 => $f::<4>($($a),*),
+        8 => $f::<8>($($a),*), 16 => $f::<16>($($a),*), 32 => $f::<32>($($a),*), _ => $f::<64>($($a),*),
+    } };
+}
+
 // ---- A24: sort.c:2475-2550 ----
-/// sort.c:2475 `qlean_sort_rank_slices` past the unboxing.
-pub fn rank_slices(w: usize, v: &[u8], o: &[i64], out: &mut [i64]) { unimplemented!("A24: qlean_sort_rank_slices") }
-/// sort.c:2509 `qlean_sort_group_sizes`: the size of each of `ng` groups of the ids `gid` (`n` at `w` bits).
-pub fn group_sizes(ng: usize, w: u32, n: usize, gid: &[u8], out: &mut [i64]) { unimplemented!("A24: qlean_sort_group_sizes") }
-/// sort.c:2522 `qlean_sort_group_lasts`: each group's last index.
-pub fn group_lasts(ng: usize, w: u32, n: usize, gid: &[u8], out: &mut [i64]) { unimplemented!("A24: qlean_sort_group_lasts") }
-/// sort.c:2536 `qlean_sort_id_longs`: `n` ids at `w` bits as longs.
-pub fn id_longs(n: usize, w: u32, ids: &[u8], out: &mut [i64]) { unimplemented!("A24: qlean_sort_id_longs") }
+/// Element `k` of `rank_slices`' payload at the pass's width `W` (65 = an odd width, read at the runtime `w`): a
+/// whole-byte lane is one load, a sub-byte lane one byte load (it never straddles a byte), any other `res_get_in`.
+fn rs_elem<const W: u32>(v: &[u8], w: u32, end: usize, k: usize) -> u64 {
+    match W {
+        0 => 0,
+        8 => v[k] as u64,
+        16 => u16::from_le_bytes(v[2 * k..2 * k + 2].try_into().unwrap()) as u64,
+        32 => u32::from_le_bytes(v[4 * k..4 * k + 4].try_into().unwrap()) as u64,
+        64 => u64::from_le_bytes(v[8 * k..8 * k + 8].try_into().unwrap()),
+        1 | 2 | 4 => ((v[k * W as usize >> 3] >> (k * W as usize & 7)) & ((1u32 << W) - 1) as u8) as u64,
+        _ => crate::res::res_get_in(v, w as u8, k, end),
+    }
+}
+/// The hashed pass at one width: `groupIds`' hashed numbering with each segment's hash as the key and a compare of
+/// the elements only where two hashes agree. The length seeds the hash, so runs of one value at different lengths
+/// do not collide.
+fn rs_pass<const W: u32>(w: u32, v: &[u8], o: &[i64], out: &mut [i64]) {
+    let g = out.len();
+    let (cap, end) = (crate::group::cap_for(g), v.len());
+    let (mask, sh) = (cap - 1, 64 - cap.trailing_zeros());
+    let (mut slot, mut gkey, mut rep) = (vec![0usize; cap], vec![0u64; g], vec![0usize; g]);
+    let el = |k: usize| rs_elem::<W>(v, w, end, k);
+    let mut ng = 0;
+    for j in 0..g {
+        let (a, len) = (o[j] as usize, (o[j + 1] - o[j]) as usize);
+        let mut h = (len as u64).wrapping_mul(crate::group::PHI64);
+        for k in a..a + len { h = (h ^ el(k)).wrapping_mul(0xc2b2ae3d27d4eb4f) }
+        let key = h ^ (h >> 29);
+        let same = |r: usize| {
+            let b = o[r] as usize;
+            if (o[r + 1] - o[r]) as usize != len { return false }
+            // at a whole-byte width both segments start on a byte, so their bytes are their elements
+            if matches!(W, 8 | 16 | 32 | 64) { let by = W as usize / 8; v[a * by..(a + len) * by] == v[b * by..(b + len) * by] }
+            else { (0..len).all(|t| el(a + t) == el(b + t)) }
+        };
+        let mut s = (key.wrapping_mul(crate::group::PHI64) >> sh) as usize;
+        while slot[s] != 0 && (gkey[slot[s] - 1] != key || !same(rep[slot[s] - 1])) { s = (s + 1) & mask }
+        if slot[s] == 0 { ng += 1; slot[s] = ng; gkey[ng - 1] = key; rep[ng - 1] = j }
+        out[j] = (slot[s] - 1) as i64;
+    }
+}
+/// sort.c `qlean_sort_rank_slices` past the unboxing and the validation (`w` at most 64, `o` ascending inside `v`):
+/// each of `o`'s `out.len()` segments of `v`'s `w`-bit elements numbered by first occurrence, segments equal as
+/// sequences.
+pub fn rank_slices(w: usize, v: &[u8], o: &[i64], out: &mut [i64]) {
+    let w = w as u32;
+    match w {
+        0 => rs_pass::<0>(w, v, o, out), 1 => rs_pass::<1>(w, v, o, out), 2 => rs_pass::<2>(w, v, o, out),
+        4 => rs_pass::<4>(w, v, o, out), 8 => rs_pass::<8>(w, v, o, out), 16 => rs_pass::<16>(w, v, o, out),
+        32 => rs_pass::<32>(w, v, o, out), 64 => rs_pass::<64>(w, v, o, out), _ => rs_pass::<65>(w, v, o, out),
+    }
+}
+fn sizes<const W: u32>(ng: usize, n: usize, ids: &[u8], out: &mut [i64]) {
+    out.fill(0);
+    for i in 0..n { let v = crate::ids::id_at(ids, W, i); if v < ng { out[v] += 1 } }
+}
+/// sort.c `qlean_sort_group_sizes`: the size of each of `ng` groups of the ids `gid` (`n` at `w` bits), `n` already
+/// clamped to what `gid` holds.
+pub fn group_sizes(ng: usize, w: u32, n: usize, gid: &[u8], out: &mut [i64]) { by_width!(w, sizes(ng, n, gid, out)) }
+fn lasts<const W: u32>(ng: usize, n: usize, ids: &[u8], out: &mut [i64]) {
+    out.fill(0);
+    for i in 0..n { let v = crate::ids::id_at(ids, W, i); if v < ng { out[v] = i as i64 } }
+}
+/// sort.c `qlean_sort_group_lasts`: each group's last index, 0 for one no row names.
+pub fn group_lasts(ng: usize, w: u32, n: usize, gid: &[u8], out: &mut [i64]) { by_width!(w, lasts(ng, n, gid, out)) }
+fn longs<const W: u32>(n: usize, ids: &[u8], out: &mut [i64]) {
+    for (i, o) in out[..n].iter_mut().enumerate() { *o = crate::ids::id_at(ids, W, i) as i64 }
+}
+/// sort.c `qlean_sort_id_longs`: the first `n` ids at `w` bits as longs.
+pub fn id_longs(n: usize, w: u32, ids: &[u8], out: &mut [i64]) { by_width!(w, longs(n, ids, out)) }
 
 // ---- A25: sort.c:2814-2990 ----
 /// sort.c:2884 `symgroups`: the distinct symbols' keys, first indices, group ids and counts.
@@ -420,6 +490,44 @@ pub fn grade_syms(_run: Runner, desc: bool, s: &Syms, out: &mut [i64]) {
 }
 
 #[cfg(test)]
+mod a24_tests {
+    use super::*;
+    fn longs(x: &[u64]) -> Vec<u8> { x.iter().flat_map(|v| v.to_le_bytes()).collect() }
+    fn rank(w: usize, v: &[u8], o: &[i64]) -> Vec<i64> { let mut r = vec![0; o.len() - 1]; rank_slices(w, v, o, &mut r); r }
+    // expected values are SortTest.lean's `rankSlices` guards (the C's answers)
+    #[test]
+    fn rank_longs() {
+        assert_eq!(rank(64, &longs(&[1, 2, 2, 1, 1, 2]), &[0, 2, 4, 6]), [0, 1, 0]);
+        assert_eq!(rank(64, &longs(&[0; 6]), &[0, 0, 1, 3, 3, 6]), [0, 1, 2, 0, 3]);
+        assert_eq!(rank(64, &longs(&[7, 8, 7, 8, 7, 8]), &[0, 2, 4, 6]), [0, 0, 0]);
+        assert_eq!(rank(64, &longs(&[9, 1, 2, 1, 2]), &[1, 3, 5]), [0, 0]);
+    }
+    #[test]
+    fn rank_odd_and_narrow_widths() {
+        // 3-bit elements 1,2,1,2 pack to the bytes 81, 4
+        assert_eq!(rank(3, &[81, 4], &[0, 2, 4]), [0, 0]);
+        assert_eq!(rank(3, &[81, 4], &[0, 1, 2, 3, 4]), [0, 1, 0, 1]);
+        assert_eq!(rank(1, &[0b0101_0101], &[0, 2, 4, 6, 8]), [0, 0, 0, 0]);
+        assert_eq!(rank(0, &[], &[0, 3, 5, 8]), [0, 1, 0]); // one value: segments equal iff their lengths are
+    }
+    #[test]
+    fn id_passes() {
+        let g = [0u8, 1, 1, 3, 1];
+        let (mut s, mut l, mut c) = ([9i64; 4], [9i64; 4], [0i64; 5]);
+        group_sizes(4, 8, 5, &g, &mut s);
+        group_lasts(4, 8, 5, &g, &mut l);
+        id_longs(5, 8, &g, &mut c);
+        assert_eq!((s, l, c), ([1, 3, 0, 1], [0, 4, 0, 3], [0, 1, 1, 3, 1]));
+        let mut z = [9i64; 3];
+        group_sizes(3, 0, 4, &[], &mut z); // width 0: every id is 0
+        assert_eq!(z, [4, 0, 0]);
+        let mut p = [0i64; 4];
+        id_longs(4, 2, &[0b11_10_01_00], &mut p);
+        assert_eq!(p, [0, 1, 2, 3]);
+    }
+}
+
+#[cfg(test)]
 mod a25_tests {
     use super::*;
     use alloc::vec;
@@ -479,13 +587,6 @@ mod a25_tests {
 }
 
 // ---- A26: sort.c:3060-3460 ----
-/// `f::<W>(args)` for the run-time width `w`, so `id_at`'s match folds as the C's `IDS_WIDTHS` does.
-macro_rules! by_width {
-    ($w:expr, $f:ident($($a:expr),*)) => { match $w {
-        0 => $f::<0>($($a),*), 1 => $f::<1>($($a),*), 2 => $f::<2>($($a),*), 4 => $f::<4>($($a),*),
-        8 => $f::<8>($($a),*), 16 => $f::<16>($($a),*), 32 => $f::<32>($($a),*), _ => $f::<64>($($a),*),
-    } };
-}
 /// sort.c:3060 `id_rank`: id `i`'s rank among the dictionary keys `dk`; an id past the dictionary reads rank 0.
 pub fn id_rank(ids: &[u8], w: u32, i: usize, dk: &[u64]) -> usize { dk.get(crate::ids::id_at(ids, w, i)).map_or(0, |&r| r as usize) }
 /// The rank of each id, `n` ids, counted into four private tables of `nr` entries (the lanes break the dependent
