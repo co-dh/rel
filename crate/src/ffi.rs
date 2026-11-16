@@ -533,6 +533,12 @@ pub unsafe extern "C" fn qrs_sym_msort(v: *const CSym, n: usize, a: *mut usize, 
 pub unsafe extern "C" fn qrs_over_bytes(op: u8, cls: u8, nul: i64, a: *const u8, bytes: usize) -> i64 {
     reduce::over_bytes(op, cls, nul, unsafe { sl(a, bytes) })
 }
+/// K1: reduce.c `qlean_over_groups` past the unboxing and the empty-groups case: `res` is `2 * ng` slots.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn qrs_over_groups(run: unsafe extern "C" fn(), op: u8, cls: u8, nul: i64, ng: usize, iw: u32, rows: usize,
+                                         gid: *const u8, gbytes: usize, src: *const u8, bytes: usize, res: *mut i64) {
+    unsafe { reduce::over_groups(rn(run), op, cls, nul, ng, iw, rows, sl(gid, gbytes), sl(src, bytes), sl_mut(res, 2 * ng)) }
+}
 /// A13: reduce.c `qlean_over_segments`' threaded pass.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn qrs_segments(run: unsafe extern "C" fn(), op: u8, cls: u8, nul: i64, offs: *const i64, ng: usize,

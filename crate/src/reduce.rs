@@ -4,7 +4,8 @@
 use alloc::vec::Vec;
 use alloc::vec;
 use core::sync::atomic::{AtomicI64, Ordering::Relaxed};
-use crate::c::{run_map, Runner};
+use crate::c::{run_map, run_slices, Runner};
+use crate::ids::id_at;
 
 // ---- A12: reduce.c:261-298 ----
 /// An element of the four integer classes: read in native order, widened to `i64` as C's `(int64_t)` cast does.
@@ -228,10 +229,148 @@ pub fn bit_rows(run: Runner, all: bool, w: usize, offs: &[i64], idx: &[i64], m: 
     out[..bytes].copy_from_slice(&buf[..bytes]);
 }
 
+// ---- K1: reduce.c:271-386, the grouped fold ----
+/// `OB_VERBS`' six verbs as `go!(identity, skips-nul, step)` calls: `lo`/`hi` are the min/max identities. `all` and
+/// `any` skip nothing, so their element count is every element.
+macro_rules! og_verbs {
+    ($op:expr, $lo:expr, $hi:expr, $go:ident) => {
+        match $op {
+            0 => $go!(0, true, |a: i64, v: i64| a.wrapping_add(v)),
+            1 => $go!(1, true, |a: i64, v: i64| a.wrapping_mul(v)),
+            2 => $go!($hi, true, |a: i64, v: i64| if a < v { a } else { v }),
+            3 => $go!($lo, true, |a: i64, v: i64| if v < a { a } else { v }),
+            4 => $go!(1, false, |a: i64, v: i64| if v != 0 { a } else { 0 }),
+            _ => $go!(0, false, |a: i64, v: i64| if v != 0 { 1 } else { a }),
+        }
+    };
+}
+
+/// A worker's block, `[fold, count]` for each group in turn (so one pair is one cache line, not two), at element type
+/// `T` and id width `IW`: rows `from .. to` scattered by their id, an id at or past `ng` dropped. Both are constants
+/// of the loop, as `IDS_WIDTHS` and the class switch hoist them in C.
+fn og_loop<T: Elem, const IW: u32, const SK: bool>(init: i64, nul: i64, step: impl Fn(i64, i64) -> i64, ng: usize, gid: &[u8],
+                                                  src: &[u8], from: usize, to: usize, acc: &mut [i64]) {
+    for p in acc[..2 * ng].chunks_exact_mut(2) { p[0] = init; p[1] = 0 }
+    for (i, b) in (from..to).zip(src[from * T::W..to * T::W].chunks_exact(T::W)) {
+        let g = id_at(gid, IW, i);
+        let v: i64 = T::rd(b).into();
+        let live = !(SK && v == nul);
+        if g >= ng { continue }
+        acc[2 * g] = step(acc[2 * g], if live { v } else { init });
+        acc[2 * g + 1] += live as i64;
+    }
+}
+
+fn og_at<T: Elem, const IW: u32>(op: u8, nul: i64, lo: i64, hi: i64, ng: usize, gid: &[u8], src: &[u8], from: usize,
+                                 to: usize, acc: &mut [i64]) {
+    macro_rules! go { ($init:expr, $sk:tt, $step:expr) => { og_loop::<T, IW, $sk>($init, nul, $step, ng, gid, src, from, to, acc) }; }
+    og_verbs!(op, lo, hi, go)
+}
+
+fn og_cls<const IW: u32>(op: u8, cls: u8, nul: i64, ng: usize, gid: &[u8], src: &[u8], from: usize, to: usize, acc: &mut [i64]) {
+    let (lo, hi) = if cls == 0 { (0, 255) } else { (nul.wrapping_add(1), !nul) };
+    match cls {
+        0 => og_at::<u8, IW>(op, nul, lo, hi, ng, gid, src, from, to, acc),
+        1 => og_at::<i16, IW>(op, nul, lo, hi, ng, gid, src, from, to, acc),
+        2 => og_at::<i32, IW>(op, nul, lo, hi, ng, gid, src, from, to, acc),
+        _ => og_at::<i64, IW>(op, nul, lo, hi, ng, gid, src, from, to, acc),
+    }
+}
+
+/// reduce.c:306 `over_groups`: rows `from .. to`, their ids packed at `iw` bits in `gid`, into `acc` (`2 * ng` slots).
+#[allow(clippy::too_many_arguments)]
+pub fn over_groups_slice(op: u8, cls: u8, nul: i64, ng: usize, iw: u32, gid: &[u8], src: &[u8], from: usize, to: usize, acc: &mut [i64]) {
+    match iw {
+        0 => og_cls::<0>(op, cls, nul, ng, gid, src, from, to, acc),
+        1 => og_cls::<1>(op, cls, nul, ng, gid, src, from, to, acc),
+        2 => og_cls::<2>(op, cls, nul, ng, gid, src, from, to, acc),
+        4 => og_cls::<4>(op, cls, nul, ng, gid, src, from, to, acc),
+        8 => og_cls::<8>(op, cls, nul, ng, gid, src, from, to, acc),
+        16 => og_cls::<16>(op, cls, nul, ng, gid, src, from, to, acc),
+        32 => og_cls::<32>(op, cls, nul, ng, gid, src, from, to, acc),
+        _ => og_cls::<64>(op, cls, nul, ng, gid, src, from, to, acc),
+    }
+}
+
+/// reduce.c:339 `over_groups_merge`: the blocks in slice order, folds into `res[..ng]`, counts into `res[ng..]`.
+fn og_merge(op: u8, lo: i64, hi: i64, ng: usize, blocks: &[(usize, Vec<i64>)], res: &mut [i64]) {
+    macro_rules! go {
+        ($init:expr, $sk:tt, $step:expr) => {{
+            res[..ng].fill($init);
+            res[ng..2 * ng].fill(0);
+            for (_, b) in blocks {
+                for (g, p) in b[OG_PAD..OG_PAD + 2 * ng].chunks_exact(2).enumerate() {
+                    res[g] = ($step)(res[g], p[0]);
+                    res[ng + g] += p[1];
+                }
+            }
+        }};
+    }
+    og_verbs!(op, lo, hi, go)
+}
+
+/// A block's first slot: a worker's block sits between 64 bytes of padding on each side, so no cache line of it is
+/// shared with another allocation (C's `qlean_priv_alloc` aligns each block to its own lines).
+const OG_PAD: usize = 8;
+/// reduce.c:355: above this many groups a worker's block (`2 * ng` slots, 128 KB at the limit) no longer sits in its
+/// own cache beside the payload it reads, so the split is declined (`wide = 0`).
+const OG_MAX_GROUPS: usize = 8192;
+
+/// reduce.c:358 `qlean_over_groups` past the unboxing: `op` of class `cls` over the first `rows` elements of `src`,
+/// grouped by the ids in `gid` (packed at `iw` bits), into `res` (`2 * ng` slots: the folds, then the live counts).
+/// Threaded: each slice folds into a block of its own, and the blocks combine in slice order.
+#[allow(clippy::too_many_arguments)]
+pub fn over_groups(run: Runner, op: u8, cls: u8, nul: i64, ng: usize, iw: u32, rows: usize, gid: &[u8], src: &[u8], res: &mut [i64]) {
+    if ng == 0 { return }
+    let w = size_of::<i64>() >> (3 - cls.min(3));
+    // an id payload holds as many ids as its bytes do; a one-entry dictionary (`iw = 0`) stores none and every id is 0
+    let gn = if iw == 0 { usize::MAX } else { gid.len() * 8 / iw as usize };
+    let n = (src.len() / w).min(rows).min(gn);
+    let iw = (iw as u8) as u32; // the C pass carries the width in a `uint8_t`
+    let (lo, hi) = if cls == 0 { (0, 255) } else { (nul.wrapping_add(1), !nul) };
+    let wide = if ng <= OG_MAX_GROUPS { w } else { 0 };
+    let (_, blocks) = run_slices(run, n, crate::QLEAN_COST_ARITH, wide, &|from, to| {
+        let mut acc = vec![0i64; 2 * ng + 2 * OG_PAD];
+        over_groups_slice(op, cls, nul, ng, iw, gid, src, from, to, &mut acc[OG_PAD..OG_PAD + 2 * ng]);
+        acc
+    });
+    og_merge(op, lo, hi, ng, &blocks, res)
+}
+
 #[cfg(test)]
 mod tests {
     use super::over_bytes;
     use alloc::vec::Vec;
+    // ids at 8 bits; the id 5 is at or past `ng` and dropped; nul 3 is skipped by `sum` and kept by `any`
+    #[test] fn over_groups_small() {
+        let (gid, src) = ([0u8, 1, 0, 1, 5], [1u8, 2, 3, 4, 9]);
+        let mut r = [0i64; 4];
+        super::over_groups(crate::c::qlean_run_c, 0, 0, 3, 2, 8, 5, &gid, &src, &mut r);
+        assert_eq!(r, [1, 6, 1, 2]);
+        super::over_groups(crate::c::qlean_run_c, 5, 0, 3, 2, 8, 5, &gid, &src, &mut r);
+        assert_eq!(r, [1, 1, 2, 2]);
+        // rows clamps the count; a width-0 payload is all group 0
+        super::over_groups(crate::c::qlean_run_c, 0, 0, -1, 2, 0, 3, &[], &src, &mut r);
+        assert_eq!(r, [6, 0, 3, 0]);
+    }
+    // three slices combine to what one slice folds, at every packed width
+    #[test] fn over_groups_slices_combine() {
+        let src: Vec<u8> = (0..300u32).flat_map(|i| (i as i32 * 7 - 500).to_ne_bytes()).collect();
+        for iw in [0u32, 1, 2, 4, 8, 16, 32, 64] {
+            let gid: Vec<u8> = (0..300 * 8).map(|i: u32| (i.wrapping_mul(2654435761) >> 13) as u8).collect();
+            for op in 0..6u8 {
+                let mut many = [0i64; 6];
+                let mut acc = [0i64; 6];
+                super::over_groups_slice(op, 2, 0, 3, iw, &gid, &src, 0, 300, &mut acc);
+                let n = 300;
+                super::over_groups(crate::c::qlean_run_c, op, 2, 0, 3, iw, n, &gid, &src, &mut many);
+                // the combine of the three blocks folds as one block does, with the counts equal
+                let mut cnt = [0i64; 3];
+                for g in 0..3 { cnt[g] = acc[2 * g + 1] }
+                assert_eq!(&many[3..], &cnt, "iw {iw} op {op}");
+            }
+        }
+    }
     fn bytes<T: Copy>(x: &[T], f: fn(T) -> Vec<u8>) -> Vec<u8> { x.iter().flat_map(|&v| f(v)).collect() }
     // expected values are the C's own, from the original `qlean_over_bytes`
     #[test] fn against_c() {
