@@ -1,5 +1,4 @@
 #![forbid(unsafe_code)]
-#![allow(unused_variables)] // scaffold: the task that fills this module removes it
 //! Column (a), coc.h: the ALP (decimal float) column. `Cocf` is the read view of coc.h:1443 `cocf` (A5: view,
 //! block loads, decode, the finishing step); the encoder's per-block steps are A9.
 use crate::coc::{Coc, Meta};
@@ -263,11 +262,24 @@ pub fn alp_meta_exp<F: Flt>(m: &mut EncMeta, x: &[F], nb: usize, be: i32) -> u32
 }
 /// `alp_meta_exp`'s marks: only a sentinel is an exception beforehand.
 fn exp_marks<F: Flt>(x: &[F], nb: usize, ee: &mut [i8]) { for (e, &v) in ee.iter_mut().zip(&x[..nb]) { *e = if sent(v) { -1 } else { 0 } } }
-/// coc.h:2619 `alp_patch_blk`: block `b` of `o` with the `ix.len()` writes `ix`/`v` applied, as decimals `d`
-/// and exponents `ee`; false = a written value has no decimal at the block's exponent.
-// BLOCKED: C answers `alt`, an exponent >= 0 or -1 (structural.c:3098 compares it), and a `bool` cannot carry it.
-pub fn alp_patch_blk<F: Flt>(o: &Cocf, b: usize, nb: usize, ix: &[u64], v: &[F], d: &mut [i64], ee: &mut [i8]) -> bool {
-    unimplemented!("A9: alp_patch_blk")
+/// coc.h:2619 `alp_patch_blk`: block `b` of `o` with the `ix.len()` writes `ix`/`v` applied, as pass 1 wants it at
+/// the block's OLD exponent, no search: `d` the old decimals patched, `ee[i]` -1 at an old exception not overwritten and
+/// -2 at a new one (a sentinel, or not exact at that exponent). Answers the exponent the search would raise it to, or -1:
+/// only a new value can need more than the old exponent, and the caller keeps whichever leaves fewer exceptions.
+pub fn alp_patch_blk<F: Flt>(o: &Cocf, b: usize, nb: usize, ix: &[u64], v: &[F], d: &mut [i64], ee: &mut [i8]) -> i32 {
+    let (e, mut alt, ee) = (o.exp[b] as i32, -1, &mut ee[..nb]);
+    o.c.decode_blk(b, nb, &mut d[..nb]);
+    ee.fill(0);
+    for &i in &o.exc_pos[o.exc_off[b] as usize..o.exc_off[b + 1] as usize] { ee[i as usize] = -1 }
+    for (&k, &v) in ix.iter().zip(v) {
+        let i = (k - (b * crate::BLK) as u64) as usize;
+        if sent(v) { ee[i] = -2; continue }
+        if let Some(r) = dat(v, e) { d[i] = r; ee[i] = 0; continue }
+        ee[i] = -2;
+        let de = dexp(v);
+        if de > e && de > alt { alt = de }
+    }
+    alt
 }
 /// coc.h:2640 `alp_patch_pack`: the pack step for a block `alp_patch_blk` rewrote.
 pub fn alp_patch_pack<F: Flt>(p: &mut EncPack, o: &Cocf, ix: &[u64], v: &[F], d: &mut [i64], ee: &[i8], raw: &mut [F]) {
@@ -302,6 +314,20 @@ fn holes<F: Flt>(x: &[F], be: i32, base: i64, d: &mut [i64], pos: &mut [u16], ra
 mod tests {
     use super::*;
     use crate::{BLK, pod::bytes_mut};
+
+    // Expected values come from the original C: `encode_f64` of [1.5, 2.25, NaN, 100.0] (exponent 2, base 150, width 14, one
+    // patch) patched by [1 -> 1.25, 3 -> 0.1234567], /data/tmp/qrs/A17/one2.c; the random comparison is /data/tmp/qrs/A17/diff.c.
+    #[test] fn patch_blk_keeps_the_old_exponent_and_answers_the_one_the_search_would_pick() {
+        let (base, maxv, off, bsum, width) = ([150i64], [10000i64], [0u64], [0i64], [14u8]);
+        let meta = Meta { base: &base, maxv: &maxv, off: &off, bsum: &bsum, width: &width, sumnul: 0, sumn: 4, n: 4, nblk: 1, mblk: 1 };
+        let mut pack = vec![0u8; BLK * 14 / 8];
+        pack[..7].copy_from_slice(&[0, 192, 18, 0, 0, 232, 153]); // residuals 0, 75, 0, 9850
+        let raw = f64::NAN.to_ne_bytes();
+        let o = Cocf { c: Coc { meta, pack: &pack, exc: None, fdelta: None }, exp: &[2], exc_off: &[0, 1], exc_pos: &[2], exc_raw: &raw, f32: false };
+        let (mut d, mut ee) = ([0i64; BLK], [0i8; BLK]);
+        assert_eq!(alp_patch_blk(&o, 0, 4, &[1, 3], &[1.25f64, 0.1234567], &mut d, &mut ee), 7);
+        assert_eq!((&d[..4], &ee[..4]), (&[150, 125, 150, 10000][..], &[0, 0, -1, -2][..]));
+    }
 
     struct Cur { w: Vec<u64>, at: usize }
     impl Cur {

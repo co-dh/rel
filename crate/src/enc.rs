@@ -9,6 +9,7 @@
 //! `b`, `EncPack` what the pack pass may write; `ffi::CEnc` cuts them, so parallel blocks hold disjoint borrows.
 use core::sync::atomic::{AtomicI32, AtomicUsize};
 
+use crate::alp::Cocf;
 use crate::coc::Coc;
 use crate::pod::Lane;
 
@@ -203,13 +204,109 @@ pub fn coc_sumnul(width: usize, alp: bool) -> i64 {
 
 // ---- A17: coc.c:363-490 ----
 /// coc.c:363 `coc_narrow`: `v` narrowed to `width` bytes into `out` (`v` itself when `width` is 8).
-pub fn narrow<'b>(width: usize, v: &'b [i64], out: &'b mut [u8]) -> &'b [u8] { unimplemented!("A17: coc_narrow") }
+pub fn narrow<'b>(width: usize, v: &'b [i64], out: &'b mut [u8]) -> &'b [u8] {
+    fn put<'b, const W: usize>(v: &[i64], out: &'b mut [u8], f: fn(i64) -> [u8; W]) -> &'b [u8] {
+        let out = &mut out[..W * v.len()];
+        for (o, &x) in out.chunks_exact_mut(W).zip(v) { o.copy_from_slice(&f(x)) }
+        out
+    }
+    match width {
+        1 => put(v, out, |x| (x as u8).to_ne_bytes()),
+        2 => put(v, out, |x| (x as i16).to_ne_bytes()),
+        4 => put(v, out, |x| (x as i32).to_ne_bytes()),
+        8 => crate::pod::bytes(v),
+        _ => panic!("qlean: a Frame of Reference element of {width} bytes; the writer has 1, 2, 4 and 8"),
+    }
+}
 /// coc.c:375 `coc_enc_blk_meta`: block metadata from decoded `v`; answers the patch count.
-pub fn blk_meta(m: &mut EncMeta, v: &[i64], width: usize) -> u32 { unimplemented!("A17: coc_enc_blk_meta") }
-/// coc.c:418 `move_meta`: the meta step of a column moved from another encoding (`x` the decoded block).
-pub fn move_meta(m: &mut EncMeta, x: &[u8], width: usize, nb: usize) { unimplemented!("A17: move_meta") }
-/// coc.c:450 `move_pack`
-pub fn move_pack(p: &mut EncPack, x: &[u8], width: usize) { unimplemented!("A17: move_pack") }
+pub fn blk_meta(m: &mut EncMeta, v: &[i64], width: usize) -> u32 {
+    fn go<T: Elt>(m: &mut EncMeta, x: &[u8], nb: usize) -> u32 {
+        encode_meta_exc_blk(m, crate::pod::cast::<T>(x).expect("qlean: narrowed block misaligned"), nb)
+    }
+    let mut buf = [0i64; crate::BLK]; // i64 lanes, so the narrowed bytes are aligned for every `T`
+    let x = narrow(width, v, crate::pod::bytes_mut(&mut buf));
+    match width { 1 => go::<u8>(m, x, v.len()), 2 => go::<i16>(m, x, v.len()), 4 => go::<i32>(m, x, v.len()), _ => go::<i64>(m, x, v.len()) }
+}
+/// coc.c:418 `move_meta`, the branch where block `pb` of the column `f` is taken whole: its metadata is the block's,
+/// and its patch count is what the layout prefix-sums. Answers it, and leaves it in `m.nexc`. The branches that call
+/// back into the source (`ints`, `hint`, `fill`) stay C.
+pub fn move_meta(m: &mut EncMeta, f: &Cocf, pb: usize) -> u32 {
+    let p = &f.c;
+    (*m.base, *m.maxv, *m.bsum, *m.width) = (p.meta.base[pb], p.meta.maxv[pb], p.meta.bsum[pb], p.meta.width[pb]);
+    let ne = if let Some(e) = m.exp.as_deref_mut() {
+        *e = f.exp[pb];
+        f.exc_off[pb + 1] - f.exc_off[pb]
+    } else {
+        if let Some(fr) = m.frm.as_deref_mut() { *fr = p.fdelta.map_or(0, |d| d[pb]) }
+        p.blk_nexc(pb) as u32
+    };
+    *m.nexc = ne;
+    ne
+}
+/// coc.c:450 `move_pack`, the taken branch: block `pb` of `f`'s residuals (`p.res` is the whole `BLK * width / 8`
+/// bytes, a pack shorter than its widths claim reading zeros past its end, `Column.resAt`'s convention) and its patch
+/// list, whose positions move unchanged. `esz` is the written column's element size, `alp` its form.
+pub fn move_pack(p: &mut EncPack, f: &Cocf, pb: usize, alp: bool, esz: usize) {
+    let c = &f.c;
+    let (bytes, so) = (crate::BLK * c.meta.width[pb] as usize / 8, c.meta.off[pb] as usize);
+    let src = c.pack.get(so..).unwrap_or(&[]);
+    let avail = src.len().min(bytes);
+    p.res[..avail].copy_from_slice(&src[..avail]);
+    p.res[avail..bytes].fill(0);
+    if alp {
+        let (from, to) = (f.exc_off[pb] as usize, f.exc_off[pb + 1] as usize);
+        p.pos[..to - from].copy_from_slice(&f.exc_pos[from..to]);
+        p.raw[..(to - from) * esz].copy_from_slice(&f.exc_raw[from * esz..to * esz]);
+    } else if let Some(e) = c.exc.filter(|e| !e.pos.is_empty()) {
+        // the element's first `esz` bytes: a patch of a wider column is truncated as the written column is
+        for (q, j) in (e.off[pb] as usize..e.off[pb + 1] as usize).enumerate() {
+            p.pos[q] = e.pos[j];
+            p.raw[q * esz..(q + 1) * esz].copy_from_slice(&e.raw[j * e.esz..j * e.esz + esz]);
+        }
+    }
+}
+
+#[cfg(test)]
+mod a17_tests {
+    use super::*;
+    // Expected values come from running the original C (coc_narrow, coc_enc_blk_meta) on these vectors, /data/tmp/qrs/A17/one.c;
+    // the random comparison of those and of move_meta, move_pack, alp_patch_blk is /data/tmp/qrs/A17/diff.c.
+    #[test] fn narrow_truncates() {
+        let v = [1, -1, 0x1_0000_0001, i64::MIN, i64::MAX];
+        let mut o = [0u8; 40];
+        assert_eq!(narrow(1, &v, &mut o), [1, 255, 1, 0, 255]);
+        assert_eq!(narrow(2, &v, &mut o), [1, 0, 255, 255, 1, 0, 0, 0, 255, 255]);
+        assert_eq!(narrow(4, &v, &mut o), [1, 0, 0, 0, 255, 255, 255, 255, 1, 0, 0, 0, 0, 0, 0, 0, 255, 255, 255, 255]);
+        assert_eq!(narrow(8, &v, &mut o).as_ptr(), v.as_ptr().cast::<u8>());
+    }
+    #[test] #[should_panic(expected = "a Frame of Reference element of 3 bytes; the writer has 1, 2, 4 and 8")]
+    fn narrow_refuses_an_odd_width() { narrow(3, &[0], &mut [0; 8]); }
+    fn meta(v: &[i64], width: usize) -> (u32, i64, i64, i64, u8, u64) {
+        let (mut base, mut maxv, mut width_, mut bsum, mut nexc, mut frm) = (0, 0, 0, 0, 0, 7u64);
+        let (lb, over) = (AtomicUsize::new(0), AtomicI32::new(0));
+        let mut m = EncMeta { b: 0, base: &mut base, maxv: &mut maxv, width: &mut width_, bsum: &mut bsum, frm: Some(&mut frm),
+                              nexc: &mut nexc, exp: None, below: 0, lb: &lb, over: &over };
+        let ne = blk_meta(&mut m, v, width);
+        (ne, base, maxv, bsum, width_, frm)
+    }
+    #[test] fn blk_meta_at_each_width() {
+        let u = [i16::MIN as i64, 3, 9, -2];
+        assert_eq!(meta(&u, 2), (1, -2, 9, 10, 4, 0)); // the null is a patch
+        assert_eq!(meta(&[500, 100000, 100003], 4), (0, 500, 100003, 200503, 18, 0));
+        assert_eq!(meta(&u, 8), (0, -32768, 9, -32758, 16, 0));
+    }
+    #[test] fn move_pack_zero_pads_a_short_pack() {
+        // block 0 of width 8 whose pack holds 3 of its 1024 bytes: the rest reads as zeros, `Column.resAt`'s convention
+        let (base, z, off, width) = ([5i64], [0i64], [0u64], [8u8]);
+        let meta = crate::coc::Meta { base: &base, maxv: &z, off: &off, bsum: &z, width: &width, sumnul: 0, sumn: 0, n: 3, nblk: 1, mblk: 1 };
+        let f = Cocf { c: Coc { meta, pack: &[1, 2, 3], exc: None, fdelta: None }, exp: &[], exc_off: &[], exc_pos: &[], exc_raw: &[], f32: false };
+        let mut res = [0xa5u8; crate::BLK];
+        let mut p = EncPack { b: 0, nb: 3, base: 5, frame: 5, width: 8, exp: 0, res: &mut res, pos: &mut [], raw: &mut [] };
+        move_pack(&mut p, &f, 0, false, 2);
+        assert_eq!(&res[..4], [1, 2, 3, 0]);
+        assert!(res[3..].iter().all(|&x| x == 0));
+    }
+}
 
 #[cfg(test)]
 mod a7_tests {
