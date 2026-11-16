@@ -6,6 +6,16 @@ use core::sync::atomic::{AtomicBool, Ordering};
 
 use crate::ffi::CPass;
 
+// libm names the crate may leave undefined (listed in rust/BENCH.md, symbols gate); each is declared once here, where `unsafe` is
+// allowed, and called through a safe wrapper, so the safe modules need no unsafe block.
+unsafe extern "C" { #[link_name = "pow"] fn libm_pow(x: f64, y: f64) -> f64; }
+/// libm's `pow`, the one libm call of `ew::val`; both float classes compute it at double width.
+#[inline]
+pub fn pow(x: f64, y: f64) -> f64 {
+    // Safety: `pow` is a pure libm function of two doubles
+    unsafe { libm_pow(x, y) }
+}
+
 pub type Worker = unsafe extern "C" fn(lo: usize, hi: usize, p: *const CPass);
 /// C's `qlean_run` (pass.h:415) under a symbol; sort.c passes `qlean_run_c`, so this object needs no C symbol of its own.
 pub type Runner = unsafe extern "C" fn(f: Worker, n: usize, cost: u32, wide: usize, p: *const CPass) -> u32;
