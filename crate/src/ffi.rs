@@ -1590,6 +1590,55 @@ pub unsafe extern "C" fn qrs_concat(run: unsafe extern "C" fn(), p: *const *cons
     let parts: alloc::vec::Vec<&[u8]> = ps.iter().zip(ls).map(|(&q, &l)| unsafe { sl(q, l) }).collect();
     unsafe { structural::concat(rn(run), &parts, sl_mut(out, bytes)) }
 }
+/// K19: structural.c `qlean_structural_split`'s first pass over delimiter `d` and payload `b`: the cuts.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn qrs_split_cuts(d: *const u8, dn: usize, b: *const u8, bn: usize) -> usize {
+    unsafe { structural::split_cuts(sl(d, dn), sl(b, bn)) }
+}
+/// K19: its second pass: `total` payload bytes, `cuts + 2` boxed starts in `offs`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn qrs_split(d: *const u8, dn: usize, b: *const u8, bn: usize, out: *mut u8, total: usize,
+                                   cuts: usize, offs: *mut usize) {
+    unsafe { structural::split(sl(d, dn), sl(b, bn), sl_mut(out, total), sl_mut(offs, cuts + 2)) }
+}
+/// K19: structural.c `reverse_run`: `n` elements of `w` bytes reversed into `out`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn qrs_reverse(run: unsafe extern "C" fn(), w: usize, src: *const u8, n: usize, out: *mut u8) {
+    unsafe { structural::reverse(rn(run), w, sl(src, n * w), n, sl_mut(out, n * w)) }
+}
+/// K19: structural.c `shift_run`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn qrs_shift(run: unsafe extern "C" fn(), w: usize, fill: u64, k: i64, src: *const u8, n: usize,
+                                   out: *mut u8) {
+    unsafe { structural::shift(rn(run), w, fill, k, sl(src, n * w), n, sl_mut(out, n * w)) }
+}
+/// K19: structural.c `translate_run`: `n` bytes through the `tn`-byte table `tab`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn qrs_translate(run: unsafe extern "C" fn(), tab: *const u8, tn: usize, src: *const u8, n: usize,
+                                       out: *mut u8) {
+    unsafe { structural::translate(rn(run), sl(tab, tn), sl(src, n), sl_mut(out, n)) }
+}
+/// K19: structural.c `ids_place`; `tab` null reads each id as itself, either way an id at or past `nm` reads `0`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn qrs_ids_place(out: *mut u8, bytes: usize, at: usize, wout: u32, cn: usize, w: u32, pp: *const u8,
+                                       ppn: usize, tab: *const usize, nm: usize) {
+    unsafe {
+        let t = if tab.is_null() { None } else { Some(sl(tab, nm + 1)) };
+        structural::ids_place(sl_mut(out, bytes), at, wout, cn, w, sl(pp, ppn), t, nm)
+    }
+}
+/// K19: structural.c `qlean_structural_concat_ids` past the unboxing: `k` parts, their `counts`, `widths`, part and map
+/// payloads (`ppn[i]`, `mpn[i]` bytes; a map the array does not reach is null).
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn qrs_concat_ids(wout: u32, k: usize, counts: *const usize, widths: *const u32, pp: *const *const u8,
+                                        ppn: *const usize, mp: *const *const u8, mpn: *const usize, out: *mut u8, bytes: usize) {
+    unsafe {
+        let rows = |p: *const *const u8, n: *const usize| -> alloc::vec::Vec<&[u8]> {
+            sl(p, k).iter().zip(sl(n, k)).map(|(&q, &l)| sl(q, l)).collect()
+        };
+        structural::concat_ids(wout, sl(counts, k), sl(widths, k), &rows(mp, mpn), &rows(pp, ppn), sl_mut(out, bytes))
+    }
+}
 /// `n` symbols as `syms`, but an empty dictionary may come with no starts at all (`sym_count`'s case).
 unsafe fn syms0<'a>(blob: *const u8, bytes: usize, offs: *const usize, n: usize) -> Syms<'a> {
     if n == 0 { Syms { blob: &[], offs: &[] } } else { unsafe { syms(blob, bytes, offs, n) } }
