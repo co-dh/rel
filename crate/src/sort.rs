@@ -9,6 +9,7 @@ use core::sync::atomic::Ordering::Relaxed;
 use crate::c::{run_map, run_slices, Runner};
 use crate::coc::{lanes, Coc};
 use crate::key::{self, Keys, Pass, SK_BIT, SK_I16, SK_I32, SK_I64, SK_KINDS_N, SK_U8};
+use crate::ids::by_width;
 use crate::sym::{sym_hash, sym_msort, Syms};
 use crate::{ids, kwin, pod, BLK, QLEAN_COST_ARITH, QLEAN_COST_COPY};
 /// sort.c `SK_LANE`: kind bit that makes `grade_narrow` read the payload as ids of `kind & 0x7f` bits.
@@ -673,14 +674,6 @@ mod tests_a22 {
         grade_lane(qlean_run_c, false, 0, &[], 5, &mut o);
         assert_eq!(o, [0, 1, 2, 3, 4]);
     }
-}
-
-/// `f::<W>(args)` for the run-time width `w`, so `id_at`'s match folds as the C's `IDS_WIDTHS` does.
-macro_rules! by_width {
-    ($w:expr, $f:ident($($a:expr),*)) => { match $w {
-        0 => $f::<0>($($a),*), 1 => $f::<1>($($a),*), 2 => $f::<2>($($a),*), 4 => $f::<4>($($a),*),
-        8 => $f::<8>($($a),*), 16 => $f::<16>($($a),*), 32 => $f::<32>($($a),*), _ => $f::<64>($($a),*),
-    } };
 }
 
 // ---- A23: sort.c:1631, 2293-2400, 3386 ----

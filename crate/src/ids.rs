@@ -4,6 +4,15 @@ use crate::bits::{lane_width, width_for};
 use crate::QLEAN_COST_ARITH;
 use crate::c::Runner;
 
+/// `f::<W>(args)` for the run-time width `w`, so `id_at`'s match folds as the C's `IDS_WIDTHS` does.
+macro_rules! by_width {
+    ($w:expr, $f:ident($($a:expr),*)) => { match $w {
+        0 => $f::<0>($($a),*), 1 => $f::<1>($($a),*), 2 => $f::<2>($($a),*), 4 => $f::<4>($($a),*),
+        8 => $f::<8>($($a),*), 16 => $f::<16>($($a),*), 32 => $f::<32>($($a),*), _ => $f::<64>($($a),*),
+    } };
+}
+pub(crate) use by_width;
+
 /// `c::run_map`'s wide for the id map; its cost is `QLEAN_COST_ARITH`.
 const WIDE: usize = 8;
 
@@ -224,8 +233,9 @@ pub fn map(run: Runner, ids: &[u8], n: usize, w: u32, nd: usize, slot: &[usize],
     if wo >= 8 {
         match wo { 8 => wide::<1>(run, out, ids, w, n, nd, slot), 16 => wide::<2>(run, out, ids, w, n, nd, slot),
                    32 => wide::<4>(run, out, ids, w, n, nd, slot), _ => wide::<8>(run, out, ids, w, n, nd, slot) }
-    } else if (1..8).contains(&w) {
-        // below a byte, a byte of ids is a byte of table entries: one load a byte
+    } else if (1..8).contains(&w) && wo <= w {
+        // below a byte, a byte of ids is a byte of table entries: one load a byte; a wider output (a renaming that
+        // grows the dictionary's width) takes the byte-per-output loop below
         let mut tab = [0u8; 256];
         for (b, e) in tab.iter_mut().enumerate() {
             *e = (0..8 / w).fold(0u32, |v, t| v | ((at((b >> (t * w)) & ((1 << w) - 1)) & ((1 << wo) - 1)) as u32) << (t * wo)) as u8;

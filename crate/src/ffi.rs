@@ -1186,6 +1186,105 @@ pub unsafe extern "C" fn qrs_sym_translate(ab: *const u8, abytes: usize, ao: *co
                                            bbytes: usize, bo: *const usize, nb: usize, tr: *mut usize) {
     unsafe { search::sym_translate(&syms0(ab, abytes, ao, na), na, &syms0(bb, bbytes, bo, nb), nb, sl_mut(tr, na)) }
 }
+/// K17: search.c `coc_may_hold64`: the blocks `[b0, b0 + k)`, `k <= 64`, of `c` that may hold `v`, as a bit mask.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn qrs_coc_may_hold64(c: *const CCoc, b0: usize, k: usize, v: i64) -> u64 {
+    search::coc_may_hold64(&unsafe { (*c).view() }, b0, k, v)
+}
+/// K17: search.c `qlean_search_remap_ids`: `n` ids of `ids` (`idbytes` long, `w` bits) renamed by `map` (`mapbytes` long,
+/// `wout` bits), into `out` (`ids_bytes(n, wout)` bytes).
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn qrs_remap_ids(ids: *const u8, idbytes: usize, n: usize, w: u32, map: *const u8, mapbytes: usize,
+                                       wout: u32, out: *mut u8, run: unsafe extern "C" fn()) {
+    unsafe {
+        search::remap_ids(core::mem::transmute::<unsafe extern "C" fn(), c::Runner>(run), sl(ids, idbytes), n, w, sl(map, mapbytes),
+                          wout, sl_mut(out, ids::ids_bytes(n, wout)))
+    }
+}
+/// K17: search.c `ix_alloc`'s size: the bytes of a table for `distinct` keys.
+#[unsafe(no_mangle)]
+pub extern "C" fn qrs_ix_bytes(distinct: usize) -> usize { search::ix_bytes(distinct) }
+/// A table of the index: `bytes` of slots and the rows word, 8-aligned (a Lean scalar array's payload).
+/// Safety: as `sl_mut`, for `bytes / 8` words.
+unsafe fn ix<'a>(t: *mut u8, bytes: usize) -> &'a mut [u64] { unsafe { sl_mut(t.cast::<u64>(), bytes / 8) } }
+/// K17: search.c `ix_alloc`'s fill: every slot empty, no rows hashed.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn qrs_ix_init(t: *mut u8, bytes: usize) { search::ix_init(unsafe { ix(t, bytes) }) }
+/// K17: search.c `qlean_index_hash_build`: how many runs of equal neighbours `n` ids at `w` bits make.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn qrs_ix_distinct(p: *const u8, pbytes: usize, w: u32, n: usize) -> usize {
+    search::ix_distinct(unsafe { sl(p, pbytes) }, w, n)
+}
+/// K17: search.c `qlean_index_hash_build`'s fill of the initialised table `t`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn qrs_ix_build(t: *mut u8, tbytes: usize, p: *const u8, pbytes: usize, w: u32, n: usize) {
+    unsafe { search::ix_build(ix(t, tbytes), sl(p, pbytes), w, n) }
+}
+/// K17: search.c `qlean_index_hash_find`: `m` needles at `w` bits against the table `t`, `m` answers in `out`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn qrs_ix_find(t: *const u8, tbytes: usize, p: *const u8, pbytes: usize, w: u32, miss: usize, out: *mut i64,
+                                     m: usize) {
+    unsafe { search::ix_find(sl(t.cast::<u64>(), tbytes / 8), sl(p, pbytes), w, miss, sl_mut(out, m)) }
+}
+/// K17: search.c `qlean_index_hash_extend`: the `m` keys at `w` bits added as rows `base` on.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn qrs_ix_extend(t: *mut u8, tbytes: usize, p: *const u8, pbytes: usize, w: u32, base: usize, m: usize) {
+    unsafe { search::ix_extend(ix(t, tbytes), sl(p, pbytes), w, base, m) }
+}
+/// K17: search.c `ix_room`: 1 when the table `t` (owned, hashing `base` rows) is large enough for `keys` and now hashes
+/// them, claimed by compare-and-swap of the rows word -- every value sharing it reads only its own rows, so the claim is
+/// all that is needed; 0 when the caller copies it.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn qrs_ix_claim(t: *mut u8, tbytes: usize, base: usize, keys: usize) -> c_int {
+    let cap = tbytes / 16;
+    if cap < 16 || cap < keys + keys / 2 { return 0 }
+    let rows = unsafe { core::sync::atomic::AtomicU64::from_ptr(t.add(cap * 16).cast::<u64>()) };
+    use core::sync::atomic::Ordering::{AcqRel, Acquire};
+    rows.compare_exchange(base as u64, keys as u64, AcqRel, Acquire).is_ok() as c_int
+}
+/// K17: search.c `ix_room`'s copy of the slots of `src` below `base` into the initialised `dst`, which then hashes `keys`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn qrs_ix_rehash(dst: *mut u8, dbytes: usize, src: *const u8, sbytes: usize, base: usize, keys: usize) {
+    unsafe { search::ix_rehash(ix(dst, dbytes), sl(src.cast::<u64>(), sbytes / 8), base, keys) }
+}
+/// A symbol column as the index reads it (search.c `ixsyms`): the blob and its `noffs` offsets, the `idbytes` of ids at `w`
+/// bits when `interned`.
+/// Safety: as `symcol` and `sl`.
+unsafe fn ixsyms<'a>(blob: *const u8, bytes: usize, offs: *const usize, noffs: usize, ids: *const u8, idbytes: usize, w: u32,
+                     interned: u8) -> search::IxSyms<'a> {
+    search::IxSyms { s: unsafe { symcol(blob, bytes, offs, noffs) }, ids: unsafe { sl(ids, idbytes) }, w, interned: interned != 0 }
+}
+/// K17: search.c `qlean_index_hash_build_syms`: how many runs of equal neighbouring symbols the first `n` make.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn qrs_ix_distinct_syms(blob: *const u8, bytes: usize, offs: *const usize, noffs: usize, ids: *const u8,
+                                              idbytes: usize, w: u32, interned: u8, n: usize) -> usize {
+    search::ix_distinct_syms(&unsafe { ixsyms(blob, bytes, offs, noffs, ids, idbytes, w, interned) }, n)
+}
+/// K17: search.c `qlean_index_hash_build_syms`' fill of the initialised table `t`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn qrs_ix_build_syms(t: *mut u8, tbytes: usize, blob: *const u8, bytes: usize, offs: *const usize,
+                                           noffs: usize, ids: *const u8, idbytes: usize, w: u32, interned: u8, n: usize) {
+    unsafe { search::ix_build_syms(ix(t, tbytes), &ixsyms(blob, bytes, offs, noffs, ids, idbytes, w, interned), n) }
+}
+/// K17: search.c `qlean_index_hash_extend_syms`: rows `base..n` of the column added to `t`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn qrs_ix_extend_syms(t: *mut u8, tbytes: usize, blob: *const u8, bytes: usize, offs: *const usize,
+                                            noffs: usize, ids: *const u8, idbytes: usize, w: u32, interned: u8, base: usize,
+                                            n: usize) {
+    unsafe { search::ix_extend_syms(ix(t, tbytes), &ixsyms(blob, bytes, offs, noffs, ids, idbytes, w, interned), base, n) }
+}
+/// K17: search.c `qlean_index_hash_find_syms`: each of the `nno - 1` symbols of the needle blob `nb`/`no` against `t`, which
+/// hashes the column `blob`/`offs`/`ids`; `out` holds them.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn qrs_ix_find_syms(t: *const u8, tbytes: usize, blob: *const u8, bytes: usize, offs: *const usize,
+                                          noffs: usize, ids: *const u8, idbytes: usize, w: u32, interned: u8, nb: *const u8,
+                                          nbytes: usize, no: *const usize, nno: usize, miss: usize, out: *mut i64) {
+    unsafe {
+        let nd = symcol(nb, nbytes, no, nno);
+        search::ix_find_syms(sl(t.cast::<u64>(), tbytes / 8), &ixsyms(blob, bytes, offs, noffs, ids, idbytes, w, interned), &nd, miss,
+                             sl_mut(out, nd.count()))
+    }
+}
 /// A31: search.c `find_bit` over a payload of `size` bytes.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn qrs_find_bit(b: *const u8, size: usize, n: usize, needle: u8) -> usize {
@@ -1865,6 +1964,27 @@ mod tests {
         assert_eq!(v.blk_nexc(0), 0);
         cc.sumnul = core::ptr::null_mut(); cc.sumn = core::ptr::null_mut();
         assert_eq!((unsafe { cc.view() }.meta.sumnul, unsafe { cc.view() }.meta.sumn), (0, 0));
+    }
+    // coc.h's `coc_may_hold64` read off the raw pointers, as the C wrote it
+    #[test] fn may_hold64_is_the_c_formula() {
+        for mut c in cols() {
+            let cc = ccoc(&mut c);
+            let nb = cc.n.div_ceil(BLK);
+            let sample: Vec<i64> = (0..nb).flat_map(|b| unsafe { [*cc.base.add(b), *cc.maxv.add(b), (*cc.base.add(b)).wrapping_sub(1), (*cc.maxv.add(b)).wrapping_add(1)] })
+                .chain([0, 1, -1, i64::MAX, i64::MIN]).collect();
+            for v in sample {
+                for b0 in (0..nb).step_by(3) {
+                    let k = (nb - b0).min(64).min(1 + b0 % 5);
+                    let mut m = 0u64;
+                    unsafe {
+                        for j in 0..k { m |= (((*cc.base.add(b0 + j) <= v) & (v <= *cc.maxv.add(b0 + j))) as u64) << j }
+                        let exc = cc.nexc != 0 && *cc.exc_off.add(b0 + k) != *cc.exc_off.add(b0);
+                        if exc { for j in 0..k { if m >> j & 1 == 0 && qrs_coc_exc_within(&cc, b0 + j, v, v) != 0 { m |= 1 << j } } }
+                        assert_eq!(qrs_coc_may_hold64(&cc, b0, k, v), m, "block {b0}+{k} for {v}");
+                    }
+                }
+            }
+        }
     }
     #[test] fn views_never_exceed_mblk() {
         let mut c = load(include_bytes!("../testdata/col8.meta"), include_bytes!("../testdata/col8.pack"), include_str!("../testdata/col8.txt"));
