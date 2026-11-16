@@ -36,6 +36,7 @@ pub mod os;
 #[path = "ffi"]
 pub mod exports {
     pub mod env;
+    pub mod interp;
     pub mod handle;
     pub mod pool;
     pub mod search;
@@ -63,6 +64,7 @@ pub mod structural;
 pub mod sym;
 pub mod group;
 pub mod ids;
+pub mod interp;
 pub mod key;
 pub mod kwin;
 pub mod layout;
