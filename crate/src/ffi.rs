@@ -17,7 +17,7 @@ use crate::layout::{Tail, exc_ok};
 use crate::own::{OwnHead, head};
 use crate::why::Why;
 use crate::zip::zq;
-use crate::{BLK, ids, simd, unpack};
+use crate::{BLK, ids, simd};
 use crate::alp::Cocf;
 use crate::cocops::CocMut;
 use crate::enc::{EncMeta, EncPack};
@@ -277,29 +277,9 @@ pub unsafe extern "C" fn qrs_zq(b: *const u8, n: usize, dst: *mut u8, want: usiz
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn qrs_u8_sum(p: *const u8, n: usize) -> i64 { simd::u8_sum(unsafe { sl(p, n) }) }
 
-/// `p` is the block's BLK*w/8 bytes; `out` BLK*8.
+/// coc.h `res_unpack_agrees`, the self-check `qlean_coc_unpack_agrees` exports.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn qrs_res_unpack_scalar(p: *const u8, w: u8, nb: usize, out: *mut u8) {
-    unsafe { unpack::res_unpack_scalar(sl(p, BLK * w as usize / 8), w, nb, sl_mut(out, BLK * 8)) }
-}
-
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn qrs_res_unpack(p: *const u8, w: u8, nb: usize, out: *mut u8) {
-    unsafe { simd::res_unpack(sl(p, BLK * w as usize / 8), w, nb, sl_mut(out, BLK * 8)) }
-}
-
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn qrs_res_unpack_add(p: *const u8, w: u8, nb: usize, base: u64, out: *mut u8, tw: u32)
-    -> c_int {
-    unsafe { simd::res_unpack_add(sl(p, BLK * w as usize / 8), w, nb, base, sl_mut(out, BLK * 8), tw) as c_int }
-}
-
-/// `res_unpack_agrees`' check of the in-register compare: `p` is the block's BLK*w/8 bytes, `out` `ceil(nb / 64)` words.
-/// 1 = written, 0 = refused (a power-of-two width, a window outside the lane, a build without the vector path).
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn qrs_res_vcmp(p: *const u8, w: u8, nb: usize, lo: u64, span: u64, inv: c_int, out: *mut u64) -> c_int {
-    unsafe { simd::res_vcmp(sl(p, BLK * w as usize / 8), w, nb, lo, span, inv != 0, sl_mut(out, nb.div_ceil(64))) as c_int }
-}
+pub extern "C" fn qrs_res_unpack_agrees(w: u8, nb: usize) -> c_int { crate::res::res_unpack_agrees(w, nb) as c_int }
 
 // ---- Column (a) scaffold: the mirrors its shims take, asserted by `QRS_ASSERT_COLA` (structural.c). ----
 
@@ -508,6 +488,34 @@ pub unsafe extern "C" fn qrs_coc_sums_drop(c: *mut CCoc) { unsafe { (*c).view_mu
 /// A3: coc.h:802 `res_count_lt8`, which `res_count_lt` still calls.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn qrs_res_count_lt8(p: *const u8, nb: usize, t: u64) -> usize { crate::res::res_count_lt8(unsafe { sl(p, nb) }, nb, t) }
+/// K25: coc.h `coc_count_lt`, which `qlean_coc_count_lt` and tools/coc/coc.c call.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn qrs_coc_count_lt(c: *const CCoc, v: i64) -> usize { unsafe { (*c).view() }.count_lt(v) }
+/// K25: coc.h `coc_any_null`, which `qlean_coc_any_null` calls.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn qrs_coc_any_null(c: *const CCoc, nul: i64) -> c_int { unsafe { (*c).view() }.any_null(nul) as c_int }
+/// K25: coc.h `cocf_min`, `cocf_max`, `cocf_count_lt` (tools/coc/coc.c's) and `cocf_mask_lt`; `out` is `ceil(n / 64)` words.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn qrs_cocf_min(f: *const CCocf) -> f64 { unsafe { (*f).view() }.min() }
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn qrs_cocf_max(f: *const CCocf) -> f64 { unsafe { (*f).view() }.max() }
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn qrs_cocf_count_lt(f: *const CCocf, v: f64) -> usize { unsafe { (*f).view() }.count_lt(v) }
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn qrs_cocf_mask_lt(f: *const CCocf, v: f64, out: *mut u64) {
+    unsafe { (*f).view().mask_lt(v, sl_mut(out, (*f).c.n.div_ceil(64))) }
+}
+/// K25: coc.h `cocf_load_blk`: block `b`'s first `nb` elements into `out` (`nb` of the column's element), patches applied.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn qrs_cocf_load_blk(f: *const CCocf, b: usize, nb: usize, out: *mut u8) {
+    unsafe { let f = (*f).view(); f.load_blk(b, nb, sl_mut(out, nb * if f.f32 { 4 } else { 8 })) }
+}
+/// K25: coc.h `cocf_load_range`: elements `i0 .. i1` of block `b` into `out` at their own places, from the lanes `p`
+/// (`cocf_lanes`' answer at lane width `w`) which are read up to element `i1`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn qrs_cocf_load_range(f: *const CCocf, b: usize, p: *const u8, w: u8, i0: usize, i1: usize, out: *mut u8) {
+    unsafe { let f = (*f).view(); f.load_range(b, sl(p, (i1 * w as usize).div_ceil(8)), w, i0, i1, sl_mut(out, i1 * if f.f32 { 4 } else { 8 })) }
+}
 /// A4: coc.h:934 `coc_prd`.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn qrs_coc_prd(c: *const CCoc, nul: i64) -> u64 { unsafe { (*c).view() }.prd(nul) }
