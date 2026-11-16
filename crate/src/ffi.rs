@@ -551,6 +551,65 @@ pub unsafe extern "C" fn qrs_bit_rows(run: unsafe extern "C" fn(), all: c_int, w
                                       idx: *const i64, ni: usize, m: *const u8, mbytes: usize, out: *mut u8) {
     unsafe { reduce::bit_rows(rn(run), all != 0, w, sl(offs, ng + 1), sl(idx, ni), sl(m, mbytes), sl_mut(out, (ng * w).div_ceil(8))) }
 }
+/// K2: reduce.c `qlean_md5`: the 16 digest bytes of `n` bytes at `msg`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn qrs_md5(msg: *const u8, n: usize, out: *mut u8) {
+    unsafe { sl_mut(out, 16).copy_from_slice(&reduce::md5(sl(msg, n))) }
+}
+/// K2: reduce.c `qlean_group_cells` past its width check: `n` cells of `ow` bytes (`w`, or 8 for the two averages) at
+/// `out`, from the `2 * ng` slots at `m` gathered by the `n` ids at `ord`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn qrs_group_cells(kind: u8, w: usize, ow: usize, ng: usize, m: *const i64, ord: *const u64,
+                                         n: usize, out: *mut u8) {
+    unsafe { reduce::group_cells(kind, w, ng, sl(m, 2 * ng), sl(ord, n), sl_mut(out, n * ow)) }
+}
+/// Safety: `p` is null or valid for a write of a `usize`.
+unsafe fn opt<'a>(p: *mut usize) -> Option<&'a mut usize> { unsafe { p.as_mut() } }
+/// A column read through C's block callback `at(src, b, nb, buf)`: a pointer to block `b`'s `nb` elements.
+struct CBlocks<T> {
+    src: *const c_void,
+    at: unsafe extern "C" fn(*const c_void, usize, usize, *mut T) -> *const T,
+}
+impl<T> reduce::Blocks<T> for CBlocks<T> {
+    fn at<'a>(&'a mut self, b: usize, nb: usize, buf: &'a mut [T]) -> &'a [T] {
+        // SAFETY: the callback answers a pointer valid for `nb` elements until the next call, as C's callers do
+        unsafe { sl((self.at)(self.src, b, nb, buf.as_mut_ptr()), nb) }
+    }
+}
+/// K2: reduce.c `qlean_f32_sum_src`; `live` null or a `size_t`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn qrs_f32_sum_src(src: *const c_void,
+                                         at: unsafe extern "C" fn(*const c_void, usize, usize, *mut f32) -> *const f32,
+                                         n: usize, blk: usize, live: *mut usize) -> f64 {
+    reduce::with_buf(blk, |buf| reduce::f32_sum(&mut CBlocks { src, at }, n, blk, buf, unsafe { opt(live) }))
+}
+/// K2: reduce.c `qlean_f64_sum_src`; `live` null or a `size_t`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn qrs_f64_sum_src(src: *const c_void,
+                                         at: unsafe extern "C" fn(*const c_void, usize, usize, *mut f64) -> *const f64,
+                                         n: usize, blk: usize, live: *mut usize, avg: c_int) -> f64 {
+    reduce::with_buf(blk, |buf| reduce::f64_sum(&mut CBlocks { src, at }, n, blk, buf, unsafe { opt(live) }, avg != 0))
+}
+/// K2: reduce.c `qlean_over_f32_sum` over the `n` floats at `p`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn qrs_over_f32_sum(p: *const f32, n: usize, live: *mut usize) -> f64 {
+    unsafe { reduce::over_f32_sum(sl(p, n), opt(live)) }
+}
+/// K2: reduce.c `qlean_over_f64_sum` over the `n` doubles at `p`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn qrs_over_f64_sum(p: *const f64, n: usize, live: *mut usize) -> f64 {
+    unsafe { reduce::over_f64_sum(sl(p, n), opt(live)) }
+}
+/// K2: reduce.c `over_f32` (`qlean_over_f32` past the unboxing) over the `n` floats at `p`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn qrs_over_f32(op: u8, p: *const f32, n: usize, live: *mut usize) -> f32 {
+    unsafe { reduce::over_f32(op, sl(p, n), opt(live)) }
+}
+/// K2: reduce.c `over_f64` (`qlean_over_f64` past the unboxing) over the `n` doubles at `p`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn qrs_over_f64(op: u8, p: *const f64, n: usize, live: *mut usize) -> f64 {
+    unsafe { reduce::over_f64(op, sl(p, n), opt(live)) }
+}
 /// A14: scan.c `scan_run`.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn qrs_scan_run(op: c_int, kind: c_int, p: *const u8, out: *mut u8, bytes: usize, n: usize,
