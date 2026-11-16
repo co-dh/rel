@@ -272,6 +272,97 @@ pub fn grade_keys(k: &[u64], desc: bool, mn: u64, mx: u64, out: &mut [i64]) {
     grade_src(&Ksrc { kind: key::SK_KEY, p: crate::pod::bytes(k), c: None, n: k.len() }, desc, false, mn, mx, out)
 }
 
+// ---- K12: sort.c `hist_find`, `select_keys`, `xr_floor`, `xrank_src` ----
+/// sort.c `hist_find`: the bucket rank `*r` falls in, `*r` made relative to that bucket's first element.
+pub fn hist_find(cnt: &[usize], r: &mut usize) -> usize {
+    let mut b = 0;
+    while b + 1 < cnt.len() && *r >= cnt[b] { *r -= cnt[b]; b += 1 }
+    b
+}
+/// What one `select_keys` round settles: the two keys, or the one surviving bucket's keys and the ranks inside it.
+enum Round { Done(u64, u64), Next(Vec<u64>, usize, usize) }
+/// One round of `select_keys`: histogram the top 16 bits of the range left (the `bits > 16` shift) and keep the buckets
+/// the two ranks fall in.
+fn select_round(s: &Ksrc, r1: usize, r2: usize) -> Round {
+    let (mn, mx) = s.range();
+    let span = mx - mn;
+    let bits = if span == 0 { 0 } else { 64 - span.leading_zeros() };
+    let sh = bits.saturating_sub(16);
+    let mut cnt = vec![0usize; (span >> sh) as usize + 1];
+    ksrc_each(s, |_, k| cnt[((k - mn) >> sh) as usize] += 1);
+    let (mut q1, mut q2) = (r1, r2);
+    let (b1, b2) = (hist_find(&cnt, &mut q1), hist_find(&cnt, &mut q2));
+    if sh == 0 { return Round::Done(mn + b1 as u64, mn + b2 as u64) }
+    // Two buckets mean `r1` is the last of `b1` and `r2 = r1 + 1` the first of `b2`, however many empty ones lie
+    // between: keeping `b1 .. b2` instead re-kept the whole range forever on `0N,x`.
+    if b1 != b2 {
+        let (mut a, mut z) = (0u64, !0u64);
+        ksrc_each(s, |_, k| {
+            let b = ((k - mn) >> sh) as usize;
+            if b == b1 && k > a { a = k }
+            if b == b2 && k < z { z = k }
+        });
+        return Round::Done(a, z);
+    }
+    let mut next = Vec::with_capacity(cnt[b1]);
+    ksrc_each(s, |_, k| if ((k - mn) >> sh) as usize == b1 { next.push(k) });
+    Round::Next(next, q1, q1 + (r2 - r1))
+}
+/// sort.c:`select_keys`: the keys at ranks `r1 <= r2 <= r1 + 1` of `s`, selected and never sorted. One bucket that
+/// survives is narrower than the round's range by 16 bits, and the ranks count from its first element.
+pub fn select_keys(s: &Ksrc, r1: usize, r2: usize) -> (u64, u64) {
+    let mut st = select_round(s, r1, r2);
+    loop {
+        match st {
+            Round::Done(a, b) => return (a, b),
+            Round::Next(kept, r1, r2) => st = select_round(&Ksrc { kind: key::SK_KEY, p: pod::bytes(&kept), c: None, n: kept.len() }, r1, r2),
+        }
+    }
+}
+/// sort.c `xr_floor`: toward zero and then one down where that rounded up, which is `floor` without libm. The caller
+/// guarantees `|v| < 2^53`, so the cast is exact and the comparison is the whole correction.
+#[inline(always)]
+fn xr_floor(v: f64) -> i64 { let q = v as i64; q - (v < q as f64) as i64 }
+/// sort.c `SK_XR_BITS`: 65536 digits over a million elements is fifteen ranks apiece where the keys are uniform.
+const SK_XR_HB: usize = 1 << 16;
+/// sort.c:`xrank_src`: `_ (<<y) * t` -- `~/q/q.k` line 16's `xrank` -- without the grade. `floor(rank * t)` is constant
+/// along a run of ranks and a digit's elements occupy a contiguous run of them, so a digit whose first and last rank
+/// floor alike answers with that one number; only the digits a bucket boundary falls inside are graded, as gathered
+/// groups, by `grade_keys`, so ties keep the order they came in.
+pub fn xrank_src(s: &Ksrc, t: f64, out: &mut [i64]) {
+    let (mn, mx) = s.range();
+    let span = mx - mn;
+    let (mut cur, mut at, mut lut, mut amb) = (vec![0usize; SK_XR_HB], Vec::with_capacity(SK_XR_HB), Vec::with_capacity(SK_XR_HB), Vec::with_capacity(SK_XR_HB));
+    let (mut sh, mut run, mut namb, mut wide) = (0, 0usize, 0usize, 0usize);
+    while (span >> sh) >= SK_XR_HB as u64 { sh += 1 }
+    ksrc_each(s, |_, k| cur[((k - mn) >> sh) as usize] += 1);
+    for h in 0..SK_XR_HB {
+        let c = cur[h];
+        at.push(run);
+        if c == 0 { amb.push(false); lut.push(0i64); continue }
+        let l = xr_floor(run as f64 * t);
+        let a = l != xr_floor((run + c - 1) as f64 * t);
+        lut.push(l);
+        amb.push(a);
+        if a { cur[h] = namb; namb += c; wide = wide.max(c) }
+        run += c;
+    }
+    let (mut gi, mut gk, mut sp) = (vec![0usize; namb], vec![0u64; namb], vec![0i64; wide]);
+    ksrc_each(s, |i, k| {
+        let d = ((k - mn) >> sh) as usize;
+        if amb[d] { gi[cur[d]] = i; gk[cur[d]] = k; cur[d] += 1 } else { out[i] = lut[d] }
+    });
+    let mut g0 = 0;
+    for h in (0..SK_XR_HB).filter(|&h| amb[h]) {
+        let c = cur[h] - g0;
+        let g = &gk[g0..g0 + c];
+        let (smn, smx) = (g.iter().copied().min().unwrap(), g.iter().copied().max().unwrap());
+        grade_keys(g, false, smn, smx, &mut sp[..c]);
+        for r in 0..c { out[gi[g0 + sp[r] as usize]] = xr_floor((at[h] + r) as f64 * t) }
+        g0 = cur[h];
+    }
+}
+
 // ---- A21: sort.c:734-842 ----
 /// The `k` bytes of `p` from `at` as a little-endian word, the rest zero.
 fn load(p: &[u8], at: usize, k: usize) -> u64 {
@@ -1445,5 +1536,31 @@ mod a20_tests {
         let s = Ksrc { kind: key::SK_KEY, p: crate::pod::bytes(&k), c: None, n: 3 };
         grade_src(&s, false, true, 0, 2, &mut o);
         assert_eq!(o, vec![2, 0, 1]);
+    }
+}
+
+#[cfg(test)]
+mod tests_k12 {
+    use super::*;
+    fn keys(k: &[u64]) -> Ksrc<'_> { Ksrc { kind: key::SK_KEY, p: pod::bytes(k), c: None, n: k.len() } }
+    #[test] fn hist_find_relative_rank() {
+        let mut r = 5; assert_eq!(hist_find(&[2, 0, 4, 9], &mut r), 2); assert_eq!(r, 3);
+        let mut r = 99; assert_eq!(hist_find(&[1], &mut r), 0, "one bucket takes every rank"); assert_eq!(r, 99, "the last bucket subtracts nothing");
+    }
+    #[test] fn select_two_buckets_wide_range() {
+        // `0N,x` shape: two far-apart keys, r1 last of the low bucket and r2 = r1 + 1 first of the high one
+        let k = [1u64 << 63, 0, 0, 1 << 63];
+        assert_eq!(select_keys(&keys(&k), 1, 2), (0, 1 << 63));
+        assert_eq!(select_keys(&keys(&[7, 7, 7]), 1, 1), (7, 7));
+        let k: Vec<u64> = (0..100_000u64).map(|i| i * 40_009 % 100_003 * 3).collect();
+        let mut s = k.clone(); s.sort();
+        assert_eq!(select_keys(&keys(&k), 49_999, 50_000), (s[49_999], s[50_000]));
+    }
+    #[test] fn xrank_floors_scaled_ranks() {
+        let k = [30u64, 10, 20, 10];
+        let mut o = [0i64; 4]; xrank_src(&keys(&k), 0.5, &mut o);
+        assert_eq!(o, [1, 0, 1, 0], "ranks 3 0 2 1 scaled by 0.5, ties in index order");
+        xrank_src(&keys(&k), 1.0, &mut o); assert_eq!(o, [3, 0, 2, 1]);
+        assert_eq!(xr_floor(-0.5), -1); assert_eq!(xr_floor(2.0), 2);
     }
 }
