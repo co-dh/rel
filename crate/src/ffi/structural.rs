@@ -4,8 +4,8 @@
 #![deny(unsafe_code)]
 use crate::alp::Cocf;
 use crate::coc::{Coc, Meta};
-use crate::ffi::{Producer, encode_alp, encode_fill, sarray_room, take_first};
-use crate::lean::{B, O, SArr, ctor, export};
+use crate::ffi::{Producer, bytes_room, concat_own, encode_alp, encode_fill, sarray_room, take_first};
+use crate::lean::{B, O, SArr, box_usize_o, boxed, ctor, export};
 use crate::{BLK, c, pod, structural};
 use alloc::vec::Vec;
 
@@ -231,5 +231,125 @@ export! {
     fn qlean_structural_shift_alp(mv: B, pv: B, av: B, n: usize, k: u64, fill: u64) -> O {
         let f = alp_view(mv, pv, av, n);
         encode_alp(f.c.meta.n, if f.f32 { 4 } else { 8 }, &ShiftAlp { f: &f, k: k as i64, fill: fill as i64 })
+    }
+}
+
+/// A fresh payload of `n` bytes, zeroed: structural.c `zeroed_bits` and `ids_alloc`, whose unwritten tail bits must be 0
+/// for two equal columns to hold the same bytes.
+fn zeroed(n: usize) -> SArr {
+    let mut a = SArr::new(1, n);
+    a.bytes_mut().fill(0);
+    a
+}
+/// The fields `ids` holds at `w` bits, `n` clamped to them: structural.c `ids_avail`, where width 0 holds any count.
+fn ids_n(n: usize, ids: &[u8], w: usize) -> usize { n.min(if w != 0 { ids.len() * 8 / w } else { usize::MAX }) }
+/// A fresh `ByteArray` of the `n` elements of `w` bytes `f` writes, as structural.c's `lean_alloc_sarray(1, n * w, n * w)`.
+fn fresh(n: usize, f: impl FnOnce(&mut [u8])) -> O {
+    let mut a = SArr::new(1, n);
+    f(a.bytes_mut());
+    a.into()
+}
+
+export! {
+    /// Spec: `reverseIds n w ids` is element `n - 1 - j` at each `j`, the fields being `w` bits.
+    fn qlean_structural_reverse_ids(n: usize, w: usize, idsv: B) -> O {
+        let (ids, n) = (idsv.bytes(), ids_n(n, idsv.bytes(), w));
+        let mut a = zeroed(crate::ids::ids_bytes(n, w as u32));
+        structural::reverse_ids(n, w as u32, ids, a.bytes_mut());
+        a.into()
+    }
+
+    /// Spec: `cycleIds n off m w ids` is `m` fields from `off`, cycling. Not `cycleBytes`' extract and concatenate: at a
+    /// sub-byte width a slice can start inside a byte, so the fields move one at a time.
+    fn qlean_structural_cycle_ids(n: usize, off: usize, m: usize, w: usize, idsv: B) -> O {
+        let mut a = zeroed(crate::ids::ids_bytes(m, w as u32));
+        structural::cycle_ids(ids_n(n, idsv.bytes(), w), off, m, w as u32, idsv.bytes(), a.bytes_mut());
+        a.into()
+    }
+
+    /// Spec: `reverse w b` is its `n = size / w` elements in reverse order. `n * w` and not the payload size: a payload that is
+    /// not a whole number of elements would otherwise leave its trailing bytes uninitialised.
+    fn qlean_structural_reverse(w: usize, bv: B) -> O {
+        let n = bv.bytes().len() / w;
+        fresh(n * w, |o| structural::reverse(c::pool(), w, &bv.bytes()[..n * w], n, o))
+    }
+
+    /// Spec: `reverseSegs w b offs`, each slice of `b` between consecutive byte offsets reversed at element width `w` and
+    /// every byte outside them kept; `none` where an offset is boxed, not a multiple of `w`, past `b` or below the one before it.
+    fn qlean_structural_reverse_segs(w: usize, bv: B, offs: B) -> O {
+        let (src, offs) = (bv.bytes(), offs.array());
+        let Some(offs) = offs.iter().map(|o| o.is_scalar().then(|| o.unbox())).collect::<Option<Vec<usize>>>() else { return boxed(0) };
+        if !structural::segs_ok(w, src.len(), &offs) { return boxed(0) }
+        ctor(1, [fresh(src.len(), |o| { o.copy_from_slice(src); structural::reverse_segs(w, &offs, o) })], &[])
+    }
+
+    /// Spec: `reverseBits n b` is bit `j` set exactly when `Column.bitAt b (n - 1 - j)`.
+    fn qlean_structural_reverse_bits(n: usize, bv: B) -> O {
+        let mut a = zeroed(n.div_ceil(8));
+        structural::reverse_bits(n, bv.bytes(), a.bytes_mut());
+        a.into()
+    }
+
+    /// Spec: `shiftBytes w fill k b` is element `j - k` of `b` at each `j`, and `fill` where `j - k` is outside `[0, n)`. `k`
+    /// is signed on the way in because `xprev` takes it from q and both signs are ordinary there.
+    fn qlean_structural_shift(w: usize, fill: u64, k: u64, bv: B) -> O {
+        let n = bv.bytes().len() / w;
+        fresh(n * w, |o| structural::shift(c::pool(), w, fill, k as i64, &bv.bytes()[..n * w], n, o))
+    }
+
+    /// Spec: `shiftBits n fill k b` is bit `j` set to `Column.bitAt b (j - k)` when `j - k` is inside `[0, n)` and to `fill`'s low
+    /// bit otherwise. The fill is not `boolean`'s null: `&`'s prior seeds with `1b` and q's `(&':)1011b` is `1001b`.
+    fn qlean_structural_shift_bits(n: usize, fill: u64, k: u64, bv: B) -> O {
+        let mut a = zeroed(n.div_ceil(8));
+        structural::shift_bits(n, fill, k as i64, bv.bytes(), a.bytes_mut());
+        a.into()
+    }
+
+    /// Spec: `trimBlanks left right b` is the first byte that is not the blank and one past the last, with `max lo hi` on the
+    /// right so an all-blank payload answers an empty slice rather than a negative one.
+    fn qlean_structural_trim_bounds(left: u8, right: u8, bv: B) -> O {
+        let (lo, hi) = structural::trim_bounds(left != 0, right != 0, bv.bytes());
+        pair(box_usize_o(lo), box_usize_o(hi))
+    }
+
+    /// Spec: `translateBytes tab b` is `tab[b[i]]` at each `i`, where `tab` is 256 bytes.
+    fn qlean_structural_translate(tabv: B, bv: B) -> O {
+        fresh(bv.bytes().len(), |o| structural::translate(c::pool(), tabv.bytes(), bv.bytes(), o))
+    }
+
+    /// Spec: `cycleBits n off m b` is bit `j` of `m` set exactly when `Column.bitAt b ((off + j) % n)`. `sliceColumn` reduces
+    /// `off` into `[0, n)` and substitutes a one-element null source for an empty one, so `n` of zero arrives only with `m` of zero.
+    fn qlean_structural_cycle_bits(n: usize, off: usize, m: usize, bv: B) -> O {
+        let mut a = zeroed(m.div_ceil(8));
+        structural::cycle_bits(n, off, m, bv.bytes(), a.bytes_mut());
+        a.into()
+    }
+
+    /// Spec: `concatBytes parts` is `parts.foldl (init := ByteArray.empty) (· ++ ·)`, in one pass to size the answer and one to
+    /// fill it, where the fold copies the prefix once per part. `parts` is owned: the first part, when nothing else holds it,
+    /// is grown in place; else every part, the first included, is copied by one split pass.
+    fn qlean_structural_concat(parts: O) -> O {
+        let (parts, cap0) = concat_own(parts);
+        let (total, len0, k) = { let ps = parts.borrow().array(); (ps.iter().map(|p| p.bytes().len()).sum::<usize>(), ps.first().map_or(0, |p| p.bytes().len()), ps.len()) };
+        if k == 0 { return bytes_room(0, 0) }
+        let from = cap0.is_some_and(|c| c >= total);
+        let (parts, first) = if from { let (a, f) = take_first(parts); (a, Some(f)) } else { (parts, None) };
+        let mut res = match first { Some(f) => sarray_room(f, total), None => bytes_room(total, if cap0.is_some() { 2 * total } else { total }) };
+        let rest: Vec<&[u8]> = parts.borrow().array()[from as usize..].iter().map(|p| p.bytes()).collect();
+        let out = res.exclusive().expect("qlean concat: an answer holds one reference");
+        let pre = if from { len0 } else { 0 };
+        structural::concat(c::pool(), &rest, &mut out[pre..]);
+        res
+    }
+
+    /// Spec: `concatBits counts parts` is every part's `counts[i]` bits in turn, packed LSB first from bit 0 of the answer, so a
+    /// part starts where the one before it ended and not on a byte boundary. It reads `min (counts.size / 8) parts.size` parts.
+    fn qlean_structural_concat_bits(countsv: B, parts: B) -> O {
+        let (cb, ps) = (countsv.bytes(), parts.array());
+        let k = (cb.len() / 8).min(ps.len());
+        let cs: &[usize] = pod::cast(&cb[..k * 8]).expect("qlean concatBits: the counts are not 8-aligned");
+        let mut a = zeroed(cs.iter().sum::<usize>().div_ceil(8));
+        structural::concat_bits(cs, &bytes_of(&ps[..k]), a.bytes_mut());
+        a.into()
     }
 }

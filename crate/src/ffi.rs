@@ -1292,26 +1292,6 @@ pub unsafe extern "C" fn qrs_run_starts_syms(blob: *const u8, bytes: usize, offs
 pub unsafe extern "C" fn qrs_run_starts_bits(n: usize, bits: *const u8, size: usize, out: *mut i64) -> usize {
     unsafe { search::run_starts_bits(n, sl(bits, size), sl_mut(out, n + 1)) }
 }
-/// A34: structural.c `copy_bits`: bits `[from, from + len)` of `b` (`size` bytes) or-ed into `out` (`bytes`) at bit `at`.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn qrs_copy_bits(out: *mut u8, bytes: usize, at: usize, b: *const u8, size: usize, from: usize, len: usize) {
-    unsafe { structural::copy_bits(sl_mut(out, bytes), at, sl(b, size), from, len) }
-}
-/// A39: structural.c `qlean_structural_cycle_bits`: `out` is the zeroed `bytes = (m + 7) / 8` bytes.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn qrs_cycle_bits(n: usize, off: usize, m: usize, b: *const u8, size: usize, out: *mut u8, bytes: usize) {
-    unsafe { structural::cycle_bits(n, off, m, sl(b, size), sl_mut(out, bytes)) }
-}
-/// A39: structural.c `qlean_structural_reverse_bits`: `out` is the zeroed `bytes = (n + 7) / 8` bytes.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn qrs_reverse_bits(n: usize, b: *const u8, size: usize, out: *mut u8, bytes: usize) {
-    unsafe { structural::reverse_bits(n, sl(b, size), sl_mut(out, bytes)) }
-}
-/// A39: structural.c `qlean_structural_shift_bits`: `out` is the zeroed `bytes = (n + 7) / 8` bytes.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn qrs_shift_bits(n: usize, fill: u64, k: i64, b: *const u8, size: usize, out: *mut u8, bytes: usize) {
-    unsafe { structural::shift_bits(n, fill, k, sl(b, size), sl_mut(out, bytes)) }
-}
 /// A37: structural.c `gather_run`.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn qrs_gather(run: unsafe extern "C" fn(), w: usize, fill: u64, src: *const u8, ns: usize,
@@ -1367,11 +1347,6 @@ pub unsafe extern "C" fn qrs_gather_ids_enc(run: unsafe extern "C" fn(), w: u32,
                                    sl_mut(out, ids::ids_bytes(v.meta.n, wout)))
     }
 }
-/// A38: structural.c `qlean_structural_cycle_ids`: `ids` is `bytes` long, `out` the zeroed `ids_bytes(m, w)`.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn qrs_cycle_ids(n: usize, off: usize, m: usize, w: u32, ids: *const u8, bytes: usize, out: *mut u8) {
-    unsafe { structural::cycle_ids(n, off, m, w, sl(ids, bytes), sl_mut(out, ids::ids_bytes(m, w))) }
-}
 /// A38: structural.c `qlean_structural_rows_of`: `n` longs of `b` as the boxed words `out` holds.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn qrs_rows_of(b: *const u8, n: usize, out: *mut i64) {
@@ -1390,13 +1365,6 @@ pub unsafe extern "C" fn qrs_gather_syms(blob: *const u8, bytes: usize, offs: *c
     unsafe { structural::gather_syms(&syms0(blob, bytes, offs, n), sl(idx, m), sl_mut(nb, total), sl_mut(no, m + 1)) }
 }
 /// A39: structural.c `concat_run` over `np` parts.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn qrs_concat(run: unsafe extern "C" fn(), p: *const *const u8, len: *const usize, np: usize,
-                                    out: *mut u8, bytes: usize) {
-    let (ps, ls) = unsafe { (sl(p, np), sl(len, np)) };
-    let parts: alloc::vec::Vec<&[u8]> = ps.iter().zip(ls).map(|(&q, &l)| unsafe { sl(q, l) }).collect();
-    unsafe { structural::concat(rn(run), &parts, sl_mut(out, bytes)) }
-}
 /// K19: structural.c `qlean_structural_split`'s first pass over delimiter `d` and payload `b`: the cuts.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn qrs_split_cuts(d: *const u8, dn: usize, b: *const u8, bn: usize) -> usize {
@@ -1409,22 +1377,6 @@ pub unsafe extern "C" fn qrs_split(d: *const u8, dn: usize, b: *const u8, bn: us
     unsafe { structural::split(sl(d, dn), sl(b, bn), sl_mut(out, total), sl_mut(offs, cuts + 2)) }
 }
 /// K19: structural.c `reverse_run`: `n` elements of `w` bytes reversed into `out`.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn qrs_reverse(run: unsafe extern "C" fn(), w: usize, src: *const u8, n: usize, out: *mut u8) {
-    unsafe { structural::reverse(rn(run), w, sl(src, n * w), n, sl_mut(out, n * w)) }
-}
-/// K19: structural.c `shift_run`.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn qrs_shift(run: unsafe extern "C" fn(), w: usize, fill: u64, k: i64, src: *const u8, n: usize,
-                                   out: *mut u8) {
-    unsafe { structural::shift(rn(run), w, fill, k, sl(src, n * w), n, sl_mut(out, n * w)) }
-}
-/// K19: structural.c `translate_run`: `n` bytes through the `tn`-byte table `tab`.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn qrs_translate(run: unsafe extern "C" fn(), tab: *const u8, tn: usize, src: *const u8, n: usize,
-                                       out: *mut u8) {
-    unsafe { structural::translate(rn(run), sl(tab, tn), sl(src, n), sl_mut(out, n)) }
-}
 /// K19: structural.c `ids_place`; `tab` null reads each id as itself, either way an id at or past `nm` reads `0`.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn qrs_ids_place(out: *mut u8, bytes: usize, at: usize, wout: u32, cn: usize, w: u32, pp: *const u8,
@@ -2570,6 +2522,18 @@ pub fn take_first(a: lean::O) -> (lean::O, lean::O) {
         (lean::O::own(p), lean::O::own(e))
     }
 }
+/// structural.c `qlean_structural_concat`'s test for growing part 0 in place: `parts` and its element 0 each held by this
+/// reference alone, answering that part's capacity. `parts` comes back.
+pub fn concat_own(parts: lean::O) -> (lean::O, Option<usize>) {
+    unsafe {
+        let p = parts.into_raw();
+        let cap = (lean::array_size(p) != 0 && lean::is_exclusive(p) && lean::is_exclusive(lean::array_get_core(p, 0)))
+            .then(|| lean::sarray_capacity(lean::array_get_core(p, 0)));
+        (lean::O::own(p), cap)
+    }
+}
+/// A fresh `ByteArray` of `size` bytes in a capacity of `cap`, the contents unwritten.
+pub fn bytes_room(size: usize, cap: usize) -> lean::O { unsafe { lean::O::own(lean::alloc_sarray(1, size, cap)) } }
 /// structural.c `sarray_room`: the owned `ByteArray` `o` at `need` bytes, its first `min(size, need)` kept and the rest
 /// unwritten: `o` itself where it holds the only reference and its capacity reaches, a copy otherwise. A copy of an
 /// exclusive `o` that outgrew its capacity doubles it, so a loop of one-element appends copies a logarithmic number of
