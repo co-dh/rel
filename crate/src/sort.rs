@@ -85,24 +85,75 @@ pub fn grade_lane(run: Runner, desc: bool, w: u32, ids: &[u8], n: usize, out: &m
 }
 
 // ---- A23: sort.c:1631, 2293-2400, 3386 ----
-/// sort.c:1631 `group_bound`: aborts when `n` groups cannot be numbered.
-pub fn group_bound(n: usize) { unimplemented!("A23: group_bound") }
+/// sort.c:1631 `group_bound`: `group`'s scratch numbers groups and counts buckets in `u32`, so a column past that many
+/// rows cannot be cut this way; the row count is the one bound, and the message names it instead of an allocation failing.
+pub fn group_bound(n: usize) {
+    if n > u32::MAX as usize { panic!("qlean: group cuts at most {} rows into buckets, not {n}", u32::MAX) }
+}
 /// sort.c:2293 `pair_fits`: two spans pack into one 64-bit key.
-pub fn pair_fits(sx: u64, sy: u64) -> bool { unimplemented!("A23: pair_fits") }
-/// sort.c:2301 `pair_narrow`: keys `k` renumbered densely (`ids`, `first`); answers `(mn, span)`.
-pub fn pair_narrow(k: &mut [u64], ids: &mut [usize], first: &mut [usize]) -> (u64, u64) { unimplemented!("A23: pair_narrow") }
+pub fn pair_fits(sx: u64, sy: u64) -> bool {
+    // a whole-range side first: `2^64 * 2^64` wraps to 0 in a 128-bit product
+    if sx == u64::MAX || sy == u64::MAX { return sx == 0 || sy == 0 }
+    (sx as u128 + 1) * (sy as u128 + 1) <= 1u128 << 64
+}
+/// sort.c:2301 `pair_narrow`: keys `k` replaced by their group ids, which are equal exactly where the keys are and span
+/// less than `k.len()`; answers `(mn, span)` = `(0, ng - 1)`. The numbering is serial (no `run` in this signature, and
+/// the path is only for pairs whose spans do not fit 64 bits) and keeps its table, so `ids` is not needed; `first` is
+/// scratch of `k.len()`. The range given to the numbering is `k`'s own: it only decides direct against hashed.
+pub fn pair_narrow(k: &mut [u64], ids: &mut [usize], first: &mut [usize]) -> (u64, u64) {
+    let (mn, mx) = (k.iter().copied().min().unwrap_or(0), k.iter().copied().max().unwrap_or(0));
+    let m = k.len();
+    let (ng, t) = crate::group::number(crate::key::SK_KEY, crate::pod::bytes_mut(k), m, mn, mx, first)
+        .expect("qlean: pair_narrow: number refused SK_KEY keys");
+    for e in k.iter_mut() { *e = t.at(*e) as u64 }
+    (0, ng.saturating_sub(1) as u64)
+}
 /// sort.c:2314 `pair_ids` past the allocation: the group id of each pair `(x[i], y[i])` into `gid` at
 /// `max(8, id_width(ng))` bits, the first index of each group into `first`; answers `ng`.
+/// The pair is made one injective key, `(x - mnx) * (sy + 1) + (y - mny)`; a pair whose spans do not fit 64 bits has
+/// its wider side, then the other, narrowed to its group ids first, which leaves at most `m * m` codes.
 pub fn pair_ids(run: Runner, x: &[u64], y: &[u64], mnx: u64, sx: u64, mny: u64, sy: u64, gid: &mut [u8],
                 first: &mut [usize]) -> usize {
-    unimplemented!("A23: pair_ids")
+    use alloc::borrow::Cow;
+    let m = x.len();
+    let (mut x, mut y, mut mnx, mut sx, mut mny, mut sy) = (Cow::Borrowed(x), Cow::Borrowed(y), mnx, sx, mny, sy);
+    let mut fs = Vec::new();
+    for _ in 0..2 {
+        if pair_fits(sx, sy) { break }
+        if fs.is_empty() { fs = alloc::vec![0usize; m] }
+        if sx >= sy { (mnx, sx) = pair_narrow(x.to_mut(), &mut [], &mut fs) } else { (mny, sy) = pair_narrow(y.to_mut(), &mut [], &mut fs) }
+    }
+    if !pair_fits(sx, sy) {
+        panic!("qlean sort: groupIdsPair over {m} rows: {} x {} codes do not fit one 64-bit key", sx.wrapping_add(1), sy.wrapping_add(1))
+    }
+    // `sy + 1` wraps to 0 only where `sy` is the whole range, and `pair_fits` then has `sx` at 0
+    let mut c: Vec<u64> = x.iter().zip(y.iter()).map(|(&a, &b)| a.wrapping_sub(mnx).wrapping_mul(sy.wrapping_add(1)).wrapping_add(b.wrapping_sub(mny))).collect();
+    let (lo, hi) = (c.iter().copied().min().unwrap_or(0), c.iter().copied().max().unwrap_or(0));
+    crate::group::group_ids(run, crate::key::SK_KEY, crate::pod::bytes_mut(&mut c), m, lo, hi, gid, first)
+        .expect("qlean: pair_ids: group_ids refused SK_KEY keys")
 }
 /// sort.c:2366 `ids_keys`: `m` ids at `w` bits as keys; answers `(min, max)`.
-pub fn ids_keys(v: &[u8], w: u32, m: usize, k: &mut [u64]) -> (u64, u64) { unimplemented!("A23: ids_keys") }
-/// sort.c:3386 `pair_ids_narrow` past the allocation: as `pair_ids` for two id payloads.
+/// Below a byte the range is the lane's own, `0 .. 2^w - 1`: `pair_ids` needs only a bound there.
+pub fn ids_keys(v: &[u8], w: u32, m: usize, k: &mut [u64]) -> (u64, u64) {
+    for (i, e) in k[..m].iter_mut().enumerate() { *e = crate::ids::id_at(v, w, i) as u64 }
+    if m == 0 { return (0, 0) }
+    if w < 8 { return (0, (1u64 << w) - 1) }
+    (k[..m].iter().copied().min().unwrap(), k[..m].iter().copied().max().unwrap())
+}
+/// sort.c:3386 `pair_ids_narrow` past the allocation: as `pair_ids` for two id payloads that fit a byte together
+/// (`wa + wb <= 8`): the code `a << wb | b` at its own lane `id_width(2^(wa+wb))`, numbered by `ids::firsts`, and the
+/// ids written by `ids::map` at exactly `id_width(ng)` bits (`ids_bytes(m, id_width(ng))` bytes of `gid`, packed).
 pub fn pair_ids_narrow(run: Runner, wa: u32, wb: u32, m: usize, pa: &[u8], pb: &[u8], gid: &mut [u8], first: &mut [usize])
     -> usize {
-    unimplemented!("A23: pair_ids_narrow")
+    use crate::ids::{firsts, id_at, id_put, id_width, ids_bytes, map};
+    let wc = id_width(1 << (wa + wb));
+    let nd = 1usize << wc;
+    let mut c = alloc::vec![0u8; ids_bytes(m, wc)];
+    for i in 0..m { id_put(&mut c, wc, i, (id_at(pa, wa, i) << wb | id_at(pb, wb, i)) as u64) }
+    let mut slot = alloc::vec![usize::MAX; nd + 1];
+    let ng = firsts(&c, m, wc, nd, &mut slot, first);
+    map(run, &c, m, wc, nd, &slot, id_width(ng), gid);
+    ng
 }
 
 // ---- A24: sort.c:2475-2550 ----
@@ -152,7 +203,7 @@ pub fn sym_dedup(v: &[&[u8]], gid: &mut [u32], cnt: &mut [u32], first: &mut [usi
 pub fn sym_heads<'a>(s: &Syms<'a>, first: &[usize]) -> Vec<&'a [u8]> { first.iter().map(|&i| s.at(i)).collect() }
 /// sort.c:2886 `sym_group`: `want` says which fields are filled (C's bit flags: 0 firsts, 1 gids, 2 gids and counts).
 pub fn sym_group(s: &Syms, n: usize, want: i32) -> SymGroups {
-    if want != 0 && n > u32::MAX as usize { panic!("qlean: group cuts at most {} rows into buckets, not {n}", u32::MAX) }
+    if want != 0 { group_bound(n) }
     let mut gid = if want != 0 { alloc::vec![0u32; n] } else { Vec::new() };
     let mut cnt = if want == 2 { alloc::vec![0u32; n] } else { Vec::new() };
     let (cap, mut first, mut dk) = (crate::group::cap_for(n), alloc::vec![0usize; n], Vec::<u64>::new());
@@ -299,6 +350,7 @@ fn scatter<const W: u32>(ids: &[u8], n: usize, dk: &[u64], at: &mut [usize], out
 /// A counting sort over the dictionary's dense ranks, stable both ways round.
 pub fn grade_ids(_run: Runner, desc: bool, n: usize, dict: &Syms, ids: &[u8], w: u32, out: &mut [i64]) {
     if n == 0 { return }
+    if dict.count() != 0 { group_bound(dict.count()) }
     let dk = dict_ranks(dict);
     let mut at = starts(&by_width!(w, rank_counts(ids, n, &dk, dk.len().max(1))), desc);
     by_width!(w, scatter(ids, n, &dk, &mut at, out))
@@ -307,6 +359,7 @@ pub fn grade_ids(_run: Runner, desc: bool, n: usize, dict: &Syms, ids: &[u8], w:
 /// A rank's rows all name one id, so each rank is one `ids_fill` run; `rid` inverts the rank.
 pub fn sorted_ids(_run: Runner, desc: bool, n: usize, dict: &Syms, ids: &[u8], w: u32, out: &mut [u8]) {
     if n == 0 { return }
+    if dict.count() != 0 { group_bound(dict.count()) }
     let dk = dict_ranks(dict);
     let cnt = by_width!(w, rank_counts(ids, n, &dk, dk.len().max(1)));
     let mut rid = alloc::vec![0u64; cnt.len()];
@@ -336,6 +389,7 @@ fn group_at<const W: u32>(ids: &[u8], n: usize, nd: usize, mut gid: Option<&mut 
 /// sort.c:3265 `ids_group`: group ids (`gid`, `u32`s as bytes, null for none) and counts (`nd + 1` long) of `n` ids at
 /// `w` into a dictionary of `nd`, an id from `nd` up naming the one empty symbol; answers each group's first index.
 pub fn ids_group(ids: &[u8], n: usize, w: u32, nd: usize, gid: Option<&mut [u8]>, cnt: &mut [u32]) -> Vec<usize> {
+    group_bound(n);
     by_width!(w, group_at(ids, n, nd, gid, cnt))
 }
 /// sort.c:3288 `ids_heads`: the dictionary symbol of each group's first id; an id past the dictionary reads the empty symbol.
@@ -453,3 +507,105 @@ mod a26_tests {
 pub fn guid_words(p: &[u8], n: usize, at: usize, perm: &[i64], k: &mut [u64]) -> (u64, u64) { unimplemented!("A27: guid_words") }
 /// sort.c:3483 `qlean_sort_grade_guid` past the unboxing.
 pub fn grade_guid(run: Runner, desc: bool, p: &[u8], out: &mut [i64]) { unimplemented!("A27: qlean_sort_grade_guid") }
+
+#[cfg(test)]
+mod a23_tests {
+    use super::*;
+    use crate::ids::{id_at, id_put, id_width, ids_bytes};
+    use alloc::collections::BTreeMap;
+    use alloc::vec;
+    fn rnd(s: &mut u64) -> u64 { *s ^= *s << 13; *s ^= *s >> 7; *s ^= *s << 17; *s }
+    /// first-occurrence numbering of the pairs: each pair's group and each group's first index
+    fn naive(x: &[u64], y: &[u64]) -> (Vec<usize>, Vec<usize>) {
+        let (mut seen, mut g, mut first) = (BTreeMap::new(), Vec::new(), Vec::new());
+        for i in 0..x.len() { let n = seen.len(); let e = *seen.entry((x[i], y[i])).or_insert(n); if e == n { first.push(i) } g.push(e) }
+        (g, first)
+    }
+    fn range(k: &[u64]) -> (u64, u64) { (*k.iter().min().unwrap(), *k.iter().max().unwrap()) }
+    #[test] fn bound() {
+        group_bound(0);
+        group_bound(u32::MAX as usize);
+    }
+    #[test] #[should_panic(expected = "qlean: group cuts at most 4294967295 rows into buckets, not 4294967296")]
+    fn bound_past() { group_bound(u32::MAX as usize + 1) }
+    #[test] fn fits() {
+        assert!(pair_fits(0, u64::MAX) && pair_fits(u64::MAX, 0) && !pair_fits(1, u64::MAX) && !pair_fits(u64::MAX, u64::MAX));
+        assert!(pair_fits(u32::MAX as u64, u32::MAX as u64) && !pair_fits(u32::MAX as u64 + 1, u32::MAX as u64));
+        assert!(pair_fits(0, 0) && pair_fits(1 << 63, 1));
+    }
+    #[test] fn keys_of_ids() {
+        let mut s = 7;
+        for w in [0u32, 1, 2, 4, 8, 16, 32, 64] {
+            for m in [0usize, 1, 5, 64, 1000] {
+                let mut v = vec![0u8; ids_bytes(m, w)];
+                let mask = if w == 0 { 0 } else if w == 64 { !0 } else { (1u64 << w) - 1 };
+                for i in 0..m { id_put(&mut v, w, i, rnd(&mut s) & mask) }
+                let mut k = vec![9u64; m];
+                let (mn, mx) = ids_keys(&v, w, m, &mut k);
+                for i in 0..m { assert_eq!(k[i], id_at(&v, w, i) as u64) }
+                if m == 0 { assert_eq!((mn, mx), (0, 0)) }
+                else if w < 8 { assert_eq!((mn, mx), (0, (1u64 << w) - 1)) }
+                else { assert_eq!((mn, mx), range(&k)) }
+            }
+        }
+    }
+    #[test] fn narrow_ids() {
+        let mut s = 11;
+        let mut k: Vec<u64> = (0..300).map(|_| rnd(&mut s) % 7 * (1 << 50)).collect();
+        let want = naive(&k, &vec![0; 300]).0;
+        let (mn, span) = pair_narrow(&mut k, &mut [], &mut vec![0; 300]);
+        assert_eq!((mn, span), (0, 6));
+        assert_eq!(k, want.iter().map(|&g| g as u64).collect::<Vec<_>>());
+    }
+    fn check_pair(x: &[u64], y: &[u64], widen: (u64, u64)) {
+        let m = x.len();
+        let ((mnx, mxx), (mny, mxy)) = (range(x), range(y));
+        let (want, wfirst) = naive(x, y);
+        let ng = wfirst.len();
+        let lane = id_width(ng).max(8);
+        let (mut gid, mut first) = (vec![0u8; m * 8], vec![0usize; m]);
+        let got = pair_ids(crate::c::qlean_run_c, x, y, mnx.saturating_sub(widen.0), mxx - mnx + widen.0, mny, mxy - mny + widen.1,
+                           &mut gid, &mut first);
+        assert_eq!(got, ng);
+        assert_eq!(&first[..ng], &wfirst[..]);
+        for i in 0..m { assert_eq!(id_at(&gid, lane, i), want[i], "row {i}") }
+    }
+    #[test] fn pairs_match_naive() {
+        let mut s = 99;
+        for (m, dx, dy) in [(1usize, 1u64, 1u64), (50, 3, 4), (1000, 1000, 1000), (1000, 1 << 20, 1 << 20), (2000, 1 << 33, 1 << 33),
+                            (2000, 1 << 33, 5), (2000, 5, 1 << 40), (2000, u64::MAX, u64::MAX), (3000, 300, 1 << 63), (500, 2, 2)] {
+            let pool = |r: &mut u64, d: u64| (0..40).map(|_| rnd(r) % d).collect::<Vec<u64>>();
+            let (px, py) = (pool(&mut s, dx), pool(&mut s, dy));
+            let x: Vec<u64> = (0..m).map(|_| px[rnd(&mut s) as usize % 40]).collect();
+            let y: Vec<u64> = (0..m).map(|_| py[rnd(&mut s) as usize % 40]).collect();
+            check_pair(&x, &y, (0, 0));
+            check_pair(&x, &y, (3, 7));
+        }
+        // 3000 distinct pairs: ids past one byte
+        let x: Vec<u64> = (0..3000).map(|i| i as u64 * (1 << 40)).collect();
+        check_pair(&x, &x.iter().map(|&v| v >> 3).collect::<Vec<_>>(), (0, 0));
+    }
+    #[test] fn narrow_pairs_match_naive() {
+        let mut s = 5;
+        for (wa, wb) in [(0u32, 0u32), (0, 8), (8, 0), (1, 1), (2, 2), (4, 4), (1, 7), (3 - 1, 1), (4, 2), (0, 4)] {
+            for m in [1usize, 7, 64, 1000] {
+                let (mut pa, mut pb) = (vec![0u8; ids_bytes(m, wa)], vec![0u8; ids_bytes(m, wb)]);
+                let (ma, mb) = (if wa == 0 { 0 } else { (1u64 << wa) - 1 }, if wb == 0 { 0 } else { (1u64 << wb) - 1 });
+                // few distinct values, so groups repeat
+                let (va, vb) = (rnd(&mut s) & ma, rnd(&mut s) & mb);
+                let a: Vec<u64> = (0..m).map(|_| if rnd(&mut s) % 3 == 0 { rnd(&mut s) & ma } else { va }).collect();
+                let b: Vec<u64> = (0..m).map(|_| if rnd(&mut s) % 3 == 0 { rnd(&mut s) & mb } else { vb }).collect();
+                for i in 0..m { id_put(&mut pa, wa, i, a[i]); id_put(&mut pb, wb, i, b[i]) }
+                let (want, wfirst) = naive(&a, &b);
+                let ng = wfirst.len();
+                let wc = id_width(1 << (wa + wb));
+                let wm = id_width(m.min(1 << (wa + wb)));
+                let (mut gid, mut first) = (vec![0u8; ids_bytes(m, wm)], vec![0usize; m.min((1usize << wc) + 1)]);
+                let got = pair_ids_narrow(crate::c::qlean_run_c, wa, wb, m, &pa, &pb, &mut gid, &mut first);
+                assert_eq!(got, ng, "wa {wa} wb {wb} m {m}");
+                assert_eq!(&first[..ng], &wfirst[..]);
+                for i in 0..m { assert_eq!(id_at(&gid, id_width(ng), i), want[i]) }
+            }
+        }
+    }
+}
