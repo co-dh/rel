@@ -76,8 +76,9 @@ use sys::*;
 /// Safety, for every `unsafe fn` below: `o` points at a live object of the kind the `lean.h` original asserts.
 #[inline(always)] pub unsafe fn ptr_tag(o: *const Object) -> u8 { unsafe { (*o).tag } }
 #[inline(always)] pub unsafe fn ptr_other(o: *const Object) -> u8 { unsafe { (*o).other } }
-#[inline(always)] pub unsafe fn obj_tag(o: *const Object) -> usize {
-    if is_scalar(o) { unbox(o) } else { unsafe { ptr_tag(o) as usize } }
+/// `lean_obj_tag` answers `unsigned`, so a scalar past 2^32 is truncated as in C
+#[inline(always)] pub unsafe fn obj_tag(o: *const Object) -> u32 {
+    if is_scalar(o) { unbox(o) as u32 } else { unsafe { ptr_tag(o) as u32 } }
 }
 #[inline(always)] pub unsafe fn is_mt(o: *const Object) -> bool { unsafe { (*o).rc < 0 } }
 #[inline(always)] pub unsafe fn is_st(o: *const Object) -> bool { unsafe { (*o).rc > 0 } }
@@ -240,7 +241,7 @@ impl<'a> B<'a> {
     pub fn is_scalar(self) -> bool { is_scalar(self.p()) }
     pub fn unbox(self) -> usize { unbox(self.p()) }
     /// `lean_obj_tag`: the ctor tag of a heap object, the value of a scalar
-    pub fn tag(self) -> usize { unsafe { obj_tag(self.p()) } }
+    pub fn tag(self) -> u32 { unsafe { obj_tag(self.p()) } }
     /// field `i` of a ctor; panics on anything else or an index past its fields
     pub fn field(self, i: u32) -> B<'a> {
         assert!(!self.is_scalar() && unsafe { is_ctor(self.p()) && i < ctor_num_objs(self.p()) }, "lean::B::field {i}: not a field");
@@ -288,13 +289,16 @@ pub fn arr<I: ExactSizeIterator<Item = O>>(items: I) -> O {
 pub fn box_u64(v: u64) -> O { unsafe { O::own(box_uint64(v)) } }
 pub fn box_f64(v: f64) -> O { unsafe { O::own(box_float(v)) } }
 
-/// A Lean extern under its `@[extern]` name, in a `deny(unsafe_code)` file: the item gets the one attribute that
-/// needs `unsafe`, so the export files hold no `unsafe` token (`forbid` would reject even the macro's `allow`).
+/// A Lean extern under its `@[extern]` name, in an export file that denies `unsafe_code`: the item gets the one
+/// attribute that needs `unsafe`, so the export files hold no `unsafe` token (`forbid` would reject even the macro's
+/// `allow`).
+#[cfg_attr(test, allow(unused_macros))] // the export files are not built under `cargo test`
 macro_rules! export {
     ($($(#[$m:meta])* fn $name:ident($($a:ident: $t:ty),* $(,)?) $(-> $r:ty)? $body:block)*) => {$(
         $(#[$m])* #[allow(unsafe_code)] #[unsafe(no_mangle)] pub extern "C" fn $name($($a: $t),*) $(-> $r)? $body
     )*};
 }
+#[cfg_attr(test, allow(unused_imports))]
 pub(crate) use export;
 
 /// The twins `test/abi.c` calls beside the `lean.h` originals, in the separate object `build.sh` makes with feature `abi`.
@@ -313,7 +317,7 @@ pub mod abi {
         qrs_abi_align = align(v: usize, a: usize) -> usize;
         qrs_abi_ptr_tag = ptr_tag(o: *const Object) -> u8;
         qrs_abi_ptr_other = ptr_other(o: *const Object) -> u8;
-        qrs_abi_obj_tag = obj_tag(o: *const Object) -> usize;
+        qrs_abi_obj_tag = obj_tag(o: *const Object) -> u32;
         qrs_abi_is_mt = is_mt(o: *const Object) -> bool;
         qrs_abi_is_st = is_st(o: *const Object) -> bool;
         qrs_abi_is_persistent = is_persistent(o: *const Object) -> bool;
