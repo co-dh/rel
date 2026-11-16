@@ -826,8 +826,9 @@ pub fn run_starts_ids(n: usize, w: u32, ids: &[u8], out: &mut [i64]) -> usize {
 }
 /// search.c:2056 `qlean_search_run_starts_syms`: the run starts of the symbols, then their count. `out` is `count + 1` long.
 pub fn run_starts_syms(s: &Syms, out: &mut [i64]) -> usize {
-    let (n, mut g) = (s.count(), 0);
-    for i in 0..n { if i == 0 || s.at(i) != s.at(i - 1) { out[g] = i as i64; g += 1 } }
+    let (n, mut g, mut prev) = (s.count(), 0, &[][..]);
+    // one `at` per element, the previous symbol carried, as search.c's loop carries `prev`
+    for i in 0..n { let x = s.at(i); if i == 0 || x != prev { out[g] = i as i64; g += 1 } prev = x }
     out[g] = n as i64;
     g + 1
 }

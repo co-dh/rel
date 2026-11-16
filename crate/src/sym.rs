@@ -11,12 +11,14 @@ pub struct Syms<'a> { pub blob: &'a [u8], pub offs: &'a [usize] }
 
 impl<'a> Syms<'a> {
     /// sym.h:28 `off_at`: start `i`, unboxed. Per element: C keeps its body while a C caller remains.
+    #[inline]
     pub fn off(&self, i: usize) -> usize { {
         let w = self.offs[i];
         if w & 1 == 0 { panic!("qlean: symbol offset {i} is a bignum; an offset is bounded by the blob's byte count and cannot reach 2^63") }
         w >> 1
     } }
     /// sym.h:40 `sym_at`
+    #[inline]
     pub fn at(&self, i: usize) -> &'a [u8] { {
         let (lo, hi) = (self.off(i), self.off(i + 1));
         let n = hi.saturating_sub(lo + 1); // an empty symbol never reads the blob, as C's `sym_at` does not (`dof` may point past an empty dictionary)

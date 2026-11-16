@@ -34,7 +34,9 @@ pub struct CCoc {
 }
 impl CCoc {
     /// The only place raw `coc` pointers become slices. Safety: every pointer is null or valid for the length
-    /// coc.h documents, for `'a`.
+    /// coc.h documents, for `'a`. Inlined so a caller that reads one field (`qrs_coc_block_start`, called per block)
+    /// builds only that slice, not the whole 208-byte view out of line.
+    #[inline(always)]
     pub unsafe fn view<'a>(&self) -> Coc<'a> {
         let m = self.mblk;
         let meta = coc::Meta {
