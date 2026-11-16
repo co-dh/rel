@@ -63,8 +63,11 @@ pub const BUSY: usize = 5;
 /// `rdtsc` ticks from the hand-off of each split pass to its join
 pub const WALL: usize = 6;
 
+// `call(ctx, arg, k, lo, hi)`. Two words travel in the job, so C's worker and pass reach a worker on the line it
+// already read: a `Ctx` on the entry's stack cost every worker a miss on a remote line each pass (1.3x C at width 8).
+type Call = unsafe fn(*const (), *const (), u32, usize, usize);
 #[derive(Clone, Copy)]
-struct Job { call: unsafe fn(*const (), u32, usize, usize), ctx: *const (), n: usize, parts: u32 }
+struct Job { call: Call, ctx: *const (), arg: *const (), n: usize, parts: u32 }
 
 /// `generation` is stored by the entry and spun on by every worker, `left` the reverse: one line each, or the two
 /// streams of coherence traffic land on one line. One shared `left`, not a flag a worker: no faster, 25x less steady.
@@ -158,7 +161,7 @@ impl Pool {
     pub const fn new(fixed: u32) -> Pool {
         const Z: AtomicU64 = AtomicU64::new(0);
         Pool { fixed, width: AtomicU32::new(0), started: AtomicBool::new(false), busy: AtomicBool::new(false),
-               next: AtomicU32::new(0), job: UnsafeCell::new(Job { call: nop, ctx: null(), n: 0, parts: 0 }),
+               next: AtomicU32::new(0), job: UnsafeCell::new(Job { call: nop, ctx: null(), arg: null(), n: 0, parts: 0 }),
                generation: Line(AtomicU32::new(0)), parked: AtomicU32::new(0), left: Line(AtomicU32::new(0)),
                ctr: Line([Z; 7]), spent: [const { Line(AtomicU64::new(0)) }; MAX_THREADS as usize] }
     }
@@ -197,7 +200,7 @@ impl Pool {
         if lo < hi {
             let t = ticks();
             // Safety: `enter`'s caller made `call` sound for every slice, concurrently for disjoint ones
-            unsafe { (job.call)(job.ctx, k, lo, hi) }
+            unsafe { (job.call)(job.ctx, job.arg, k, lo, hi) }
             // a load and a store, not a locked add: slice `k` has one runner at a time (`busy` orders the entries)
             let b = &self.spent[k as usize].0;
             b.store(b.load(Relaxed).wrapping_add(ticks().wrapping_sub(t)), Relaxed);
@@ -219,25 +222,24 @@ impl Pool {
         self.started.store(true, Relaxed);
     }
 
-    /// Runs `call(ctx, k, lo, hi)` over the slices of `[0, n)`, on one thread or several; answers how many slices
-    /// there were, 1 when the split was declined (then `call(ctx, 0, 0, n)` ran, `n = 0` included). Slice 0 is the
+    /// Runs `call(ctx, arg, k, lo, hi)` over the slices of `[0, n)`, on one thread or several; answers how many slices
+    /// there were, 1 when the split was declined (then `call(ctx, arg, 0, 0, n)` ran, `n = 0` included). Slice 0 is the
     /// caller's. A pass entered while another is in flight (a second Lean thread) runs the same slices in turn here.
-    /// Safety: `call(ctx, ..)` is sound on any thread for every slice of `[0, n)`, concurrently for disjoint slices.
-    unsafe fn enter(&'static self, n: usize, cost: u32, wide: usize, call: unsafe fn(*const (), u32, usize, usize),
-                    ctx: *const ()) -> u32 {
+    /// Safety: `call(ctx, arg, ..)` is sound on any thread for every slice of `[0, n)`, concurrently for disjoint slices.
+    unsafe fn enter(&'static self, n: usize, cost: u32, wide: usize, call: Call, ctx: *const (), arg: *const ()) -> u32 {
         self.add(PASSES, 1);
         #[cfg(test)] tests::SEEN.with(|s| s.set(s.get().max(n.wrapping_mul(cost as usize).wrapping_mul(wide))));
         if !self.worth(n, cost, wide) {
             self.add(DECLINED, 1);
-            unsafe { call(ctx, 0, 0, n) };
+            unsafe { call(ctx, arg, 0, 0, n) };
             return 1;
         }
-        let job = Job { call, ctx, n, parts: self.width() };
+        let job = Job { call, ctx, arg, n, parts: self.width() };
         if self.busy.swap(true, Acquire) {
             self.add(CONTENDED, 1);
             for k in 0..job.parts {
                 let (lo, hi) = cut(n, job.parts, k);
-                if lo < hi { unsafe { call(ctx, k, lo, hi) } }
+                if lo < hi { unsafe { call(ctx, arg, k, lo, hi) } }
             }
             return job.parts;
         }
@@ -273,13 +275,13 @@ impl Pool {
     /// `f(k, lo, hi)` over the slices of `[0, n)` (see `enter`); answers the slice count.
     pub fn run<F: Fn(u32, usize, usize) + Sync>(&'static self, n: usize, cost: u32, wide: usize, f: &F) -> u32 {
         // Safety: `ctx` is the `&F` below, alive until `enter` returns, which is after every slice
-        unsafe fn call<F: Fn(u32, usize, usize) + Sync>(ctx: *const (), k: u32, lo: usize, hi: usize) { unsafe { (*ctx.cast::<F>())(k, lo, hi) } }
+        unsafe fn call<F: Fn(u32, usize, usize) + Sync>(ctx: *const (), _: *const (), k: u32, lo: usize, hi: usize) { unsafe { (*ctx.cast::<F>())(k, lo, hi) } }
         // Safety: `F: Sync`, so calling it from several threads at once is sound
-        unsafe { self.enter(n, cost, wide, call::<F>, (f as *const F).cast()) }
+        unsafe { self.enter(n, cost, wide, call::<F>, (f as *const F).cast(), null()) }
     }
 }
 
-fn nop(_: *const (), _: u32, _: usize, _: usize) {}
+fn nop(_: *const (), _: *const (), _: u32, _: usize, _: usize) {}
 
 /// The one pool of the process: one, not one per C translation unit (three statics once made 69 threads).
 static THE: Pool = Pool::new(if cfg!(test) { 3 } else { 0 });
@@ -305,13 +307,11 @@ pub fn slices<T: Send, F: Fn(usize, usize) -> T + Sync>(n: usize, cost: u32, wid
 /// C's `qlean_run`: worker `f` over `p` on the pool (`c::Runner`, and `qrs_pool_run` under its C name).
 /// Safety: `f(lo, hi, p)` is sound on any thread for every slice of `[0, n)`, concurrently for disjoint slices.
 pub unsafe extern "C" fn run_c(f: Worker, n: usize, cost: u32, wide: usize, p: *const CPass) -> u32 {
-    struct Ctx { f: Worker, p: *const CPass }
-    unsafe fn call(ctx: *const (), _: u32, lo: usize, hi: usize) {
-        let c = unsafe { &*ctx.cast::<Ctx>() };
-        unsafe { (c.f)(lo, hi, c.p) }
+    // Safety: `f` is the `Worker` `run_c` put in `ctx`, `p` its pass
+    unsafe fn call(f: *const (), p: *const (), _: u32, lo: usize, hi: usize) {
+        unsafe { core::mem::transmute::<*const (), Worker>(f)(lo, hi, p.cast()) }
     }
-    let ctx = Ctx { f, p };
-    unsafe { THE.enter(n, cost, wide, call, (&ctx as *const Ctx).cast()) }
+    unsafe { THE.enter(n, cost, wide, call, f as *const (), p.cast()) }
 }
 
 /// Counter `k` of the process's pool (`PASSES` .. `WALL`), 0 for any other.
