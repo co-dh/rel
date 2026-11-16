@@ -1,10 +1,9 @@
 #![forbid(unsafe_code)]
-#![allow(unused_variables)] // scaffold: the task that fills this module removes it
 //! Column (a), coc.h: the whole-column reads of a `Coc` (A1), its sums (A3), product, any/all, min and max (A4)
 //! and the in-place shift (A6), plus `CocMut`, the writable form of the same `coc`.
 use crate::coc::{Coc, Meta};
 use crate::coc::lanes;
-use crate::res::{res_get, res_get_in, res_min_nonzero, res_sum};
+use crate::res::{res_get, res_get_in, res_min_nonzero, res_pack_scalar, res_sum};
 use crate::simd::prefetch;
 use crate::BLK;
 
@@ -258,18 +257,91 @@ impl<'a> Coc<'a> {
     }
 }
 
-// ---- A6: coc.h:1304-1400 ----
+// ---- A6: coc.h:945-1035 ----
 impl<'a> Coc<'a> {
-    /// coc.h:1304 `coc_blk_allnul`
-    pub fn blk_allnul(&self, b: usize) -> bool { unimplemented!("A6: coc_blk_allnul") }
-    /// coc.h:1311 `coc_shift_ok`: `x + k` (`neg`: `k - x`) cannot overflow any block's frame.
-    pub fn shift_ok(&self, k: i64, neg: bool) -> bool { unimplemented!("A6: coc_shift_ok") }
-    /// coc.h:1330 `coc_negate_res`: every block's residuals negated into `out` (`packbytes` long).
-    pub fn negate_res(&self, out: &mut [u8]) { unimplemented!("A6: coc_negate_res") }
+    /// coc.h:945 `coc_blk_allnul`: the writer's whole block of nulls, `base == maxv ==` the null. A `base` alone at the
+    /// null is a kernel's own answer from before the writer, and every whole-column verb refuses it.
+    pub fn blk_allnul(&self, b: usize) -> bool { self.meta.base[b] == i64::MIN && self.meta.maxv[b] == i64::MIN }
+    /// coc.h:952 `coc_shift_ok`: 0 when `x + k` (`neg`: `k - x`) must be refused (the null as `k`, a block holding a
+    /// pre-writer null, a frame leaving `i64`), 1 when it rides the metadata, 2 when it needs `coc_fill_nul`.
+    pub fn shift_ok(&self, k: i64, neg: bool) -> i32 {
+        let m = &self.meta;
+        let mut path = if neg || self.exc.is_some_and(|e| !e.pos.is_empty()) { 2 } else { 1 };
+        if k == i64::MIN { return 0 }
+        for b in 0..m.nblk {
+            if self.blk_allnul(b) { path = 2; continue }
+            if m.base[b] == i64::MIN { return 0 }
+            let (lo, hi) = if neg { (k.checked_sub(m.maxv[b]), k.checked_sub(m.base[b])) }
+                           else { (m.base[b].checked_add(k), m.maxv[b].checked_add(k)) };
+            let (Some(lo), Some(_)) = (lo, hi) else { return 0 };
+            // a minimum landing on the null makes a null the writer would patch, so the frame is not its
+            if lo == i64::MIN { path = 2 }
+        }
+        path
+    }
+    /// coc.h:971 `coc_negate_res`: the residuals of `k - x` into `out`, a pack of the same size. The block turns round,
+    /// its minimum becoming `k - maxv`, so an element's residual is `R - r` for the block's range `R`; the width and
+    /// the offsets stay. Bytes of a block past its last element are written 0.
+    pub fn negate_res(&self, out: &mut [u8]) {
+        let m = &self.meta;
+        for b in 0..m.nblk {
+            let (lo, w) = (b * BLK, m.width[b]);
+            let nb = if lo + BLK < m.n { BLK } else { m.n - lo };
+            let r = (m.maxv[b] as u64).wrapping_sub(m.base[b] as u64);
+            let (at, bytes) = (m.off[b] as usize, BLK * w as usize / 8);
+            let (p, o) = (&self.pack[at..at + bytes], &mut out[at..at + bytes]);
+            let done = (nb * w as usize).div_ceil(8);
+            match w {
+                0 => {}
+                8 => for (d, &s) in o.iter_mut().zip(p).take(nb) { *d = (r as u8).wrapping_sub(s) },
+                16 => for (d, s) in o.chunks_exact_mut(2).zip(p.chunks_exact(2)).take(nb) {
+                    d.copy_from_slice(&(r as u16).wrapping_sub(u16::from_le_bytes([s[0], s[1]])).to_le_bytes())
+                },
+                32 => for (d, s) in o.chunks_exact_mut(4).zip(p.chunks_exact(4)).take(nb) {
+                    d.copy_from_slice(&(r as u32).wrapping_sub(u32::from_le_bytes(s.try_into().unwrap())).to_le_bytes())
+                },
+                64 => for (d, s) in o.chunks_exact_mut(8).zip(p.chunks_exact(8)).take(nb) {
+                    d.copy_from_slice(&r.wrapping_sub(u64::from_le_bytes(s.try_into().unwrap())).to_le_bytes())
+                },
+                // 1, 2 and 4 bits: no field borrows into the next, every residual being at most R, so one byte-wide
+                // subtraction from R replicated in each field does 8 / width of them at once
+                1 | 2 | 4 => {
+                    let per = 8 / w as usize;
+                    let rep = (r.wrapping_mul(0xff / ((1u64 << w) - 1))) as u8;
+                    for (d, &s) in o.iter_mut().zip(p).take(nb.div_ceil(per)) { *d = rep.wrapping_sub(s) }
+                    // the fields of the last byte that no element owns
+                    if nb % per != 0 { o[nb.div_ceil(per) - 1] &= ((1u32 << ((nb % per) * w as usize)) - 1) as u8 }
+                }
+                _ => {
+                    let mut v = [0u64; BLK];
+                    for (j, x) in v[..nb].iter_mut().enumerate() { *x = r.wrapping_sub(res_get(p, w, j)) }
+                    res_pack_scalar(&v, w, nb, &mut o[..done]);
+                }
+            }
+            o[done..].fill(0);
+        }
+    }
 }
 impl<'a> CocMut<'a> {
-    /// coc.h:1382 `coc_shift`: `x + k` (or `k - x`) by rewriting the metadata; sums dropped.
-    pub fn shift(&mut self, k: i64, neg: bool) { unimplemented!("A6: coc_shift") }
+    /// coc.h:1023 `coc_shift`: `k + x` (`neg`: `k - x`) on base, maxv and the block sums, in unsigned arithmetic. The
+    /// guard is `shift_ok`'s, not this function's. The sums come along only where they still say what they said: a block
+    /// whose minimum is the null held a null the stored sum left out, and one whose minimum lands on it has made one.
+    pub fn shift(&mut self, k: i64, neg: bool) {
+        let mut keep = self.sumnul.as_deref().is_some_and(|&s| s == i64::MIN) && self.sumn.as_deref().is_some_and(|&s| s == self.n as u64);
+        for b in 0..self.nblk {
+            let (bs, mx) = (self.base[b] as u64, self.maxv[b] as u64);
+            let (lo, hi) = if neg { ((k as u64).wrapping_sub(mx), (k as u64).wrapping_sub(bs)) }
+                           else { (bs.wrapping_add(k as u64), mx.wrapping_add(k as u64)) };
+            let at = b * BLK;
+            let nb = if at + BLK < self.n { BLK } else { self.n - at };
+            let s = (nb as u64).wrapping_mul(k as u64);
+            if self.base[b] == i64::MIN || lo as i64 == i64::MIN { keep = false }
+            (self.base[b], self.maxv[b]) = (lo as i64, hi as i64);
+            let old = self.bsum[b] as u64;
+            self.bsum[b] = (if neg { s.wrapping_sub(old) } else { s.wrapping_add(old) }) as i64;
+        }
+        if !keep { self.sums_drop() }
+    }
 }
 
 #[cfg(test)]
@@ -344,5 +416,43 @@ mod tests {
         assert_eq!(out[0], 0b001);
         res_cmp2(&[i64::MIN, 1, 2], &[i64::MIN, 1, 5], EQ, &mut out);
         assert_eq!(out[0], 0b011);
+    }
+    // expected values: the C of 336b87b (/data/tmp/qrs/A6b/gen.c: 3000 columns, 63000 comparisons, 0 mismatches)
+    #[test] fn shift_refusals_paths_and_sums() {
+        let cm = |base: &[i64], maxv: &[i64]| Coc { meta: Meta { base: &base.to_vec().leak()[..], maxv: &maxv.to_vec().leak()[..], off: &[0; 2],
+            bsum: &[0; 2], width: &[0; 2], sumnul: i64::MIN, sumn: 2048, n: 2048, nblk: 2, mblk: 2 }, pack: &[], exc: None, fdelta: None };
+        let c = cm(&[1, 5], &[9, 9]);
+        assert_eq!((c.shift_ok(1, false), c.shift_ok(1, true), c.shift_ok(i64::MIN, false)), (1, 2, 0));
+        assert_eq!((c.shift_ok(i64::MAX - 8, false), c.shift_ok(i64::MAX - 9, false)), (0, 1));
+        assert_eq!(c.shift_ok(i64::MIN + 9, true), 2); // k - maxv lands on the null: the writer patches it
+        assert_eq!(cm(&[i64::MIN, 0], &[3, 3]).shift_ok(1, false), 0); // a pre-writer null
+        assert_eq!(cm(&[i64::MIN, 0], &[i64::MIN, 3]).shift_ok(1, false), 2); // an all-null block goes through the writer
+        let (mut base, mut maxv, mut off, mut bsum, mut width) = ([1i64, 5], [9i64, 9], [0u64; 2], [10i64, 20], [0u8; 2]);
+        let (mut sn, mut sc) = (i64::MIN, 2048u64);
+        let mut m = CocMut { base: &mut base, maxv: &mut maxv, off: &mut off, bsum: &mut bsum, width: &mut width,
+                             sumnul: Some(&mut sn), sumn: Some(&mut sc), pack: &mut [], n: 2048, nblk: 2, mblk: 2 };
+        m.shift(3, false);
+        assert_eq!((m.base.to_vec(), m.maxv.to_vec(), m.bsum.to_vec()), (vec![4, 8], vec![12, 12], vec![3082, 3092]));
+        m.shift(0, true); // `0 - x` turns the blocks round; the sums are told so
+        assert_eq!((m.base.to_vec(), m.bsum.to_vec(), *m.sumnul.as_deref().unwrap()), (vec![-12, -12], vec![-3082, -3092], i64::MIN));
+        m.shift(i64::MIN.wrapping_add(-8), true); // block 1's minimum lands on the null: the sums go
+        assert_eq!((*m.sumnul.as_deref().unwrap(), *m.sumn.as_deref().unwrap()), (0, 0));
+    }
+    #[test] fn negate_res_turns_each_block_round_at_every_width() {
+        let pack: Vec<u8> = (0..BLK as u32 * 8).map(|i| (i * 37 + 11) as u8).collect();
+        for w in [0u8, 1, 2, 3, 4, 7, 8, 13, 16, 32, 63, 64] {
+            let m = |n: usize| Meta { base: &[10], maxv: &[10 + 200], off: &[0], bsum: &[0], width: &*vec![w].leak(), sumnul: 0, sumn: 0, n, nblk: 1, mblk: 1 };
+            let nb = BLK * w as usize / 8;
+            for n in [BLK, 100] {
+                let c = Coc { meta: m(n), pack: &pack[..nb], exc: None, fdelta: None };
+                let (mut once, mut twice) = (vec![0xabu8; nb], vec![0xabu8; nb]);
+                c.negate_res(&mut once);
+                let c2 = Coc { pack: &once, ..c };
+                c2.negate_res(&mut twice);
+                // R - (R - r) = r on the n elements, and the bytes past them are 0
+                for j in 0..n { assert_eq!(res_get(&twice, w, j), res_get(&pack[..nb], w, j), "w {w} n {n} j {j}") }
+                assert!(twice[(n * w as usize).div_ceil(8)..].iter().all(|&x| x == 0));
+            }
+        }
     }
 }
