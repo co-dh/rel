@@ -427,10 +427,93 @@ pub fn res_pack(v: &[u64], w: u8, nb: usize, dst: &mut [u8]) {
 /// A3: coc.h:820 `res_sum8`, the vector residual sum.
 /// The scaffold's `w` is the width `res::res_sum` dispatched on, always 8 here. The bytes are `u8_sum`'s `psadbw`.
 pub fn res_sum8(p: &[u8], nb: usize, w: u8) -> u64 { debug_assert_eq!(w, 8); u8_sum(&p[..nb]) as u64 }
-/// A14: scan.c's vector `scan_fill`.
-pub fn scan_fill(kind: i32, p: &[u8], out: &mut [u8], n: usize) { unimplemented!("A14: scan_fill avx512") }
-/// A14: scan.c's vector `scan_any_null`.
-pub fn any_null(kind: i32, p: &[u8], n: usize) -> bool { unimplemented!("A14: scan_any_null avx512") }
+/// A14: scan.c's vector `scan_fill`: copies the leading 64-byte groups of `p` (`n` elements of the kind) that hold no
+/// null into `out` and returns how many elements that is. The caller (`scan::scan_fill`) does the group that stopped
+/// it, and the tail; without AVX-512 in the build it copies nothing and the caller does everything.
+pub fn scan_fill(kind: i32, p: &[u8], out: &mut [u8], n: usize) -> usize {
+    #[cfg(all(target_arch = "x86_64", target_feature = "avx512f", target_feature = "avx512bw"))]
+    return sc::fill(kind, p, out, n);
+    #[cfg(not(all(target_arch = "x86_64", target_feature = "avx512f", target_feature = "avx512bw")))]
+    { let _ = (kind, p, out, n); 0 }
+}
+/// A14: scan.c's vector `scan_any_null`: `(true, i)` when the 64-byte group at element `i` holds a null, else
+/// `(false, k)` with the first `k` elements (whole groups) null-free; the caller tests the tail.
+pub fn any_null(kind: i32, p: &[u8], n: usize) -> (bool, usize) {
+    #[cfg(all(target_arch = "x86_64", target_feature = "avx512f", target_feature = "avx512bw"))]
+    return sc::any_null(kind, p, n);
+    #[cfg(not(all(target_arch = "x86_64", target_feature = "avx512f", target_feature = "avx512bw")))]
+    { let _ = (kind, p, n); (false, 0) }
+}
+/// scan.c:268-304 `SCG_*`: whether a 64-byte group holds the kind's null, one `cmp` to a mask. `byte` has none.
+#[cfg(all(target_arch = "x86_64", target_feature = "avx512f", target_feature = "avx512bw"))]
+mod sc {
+    use core::arch::x86_64::*;
+    use crate::key::{SK_C8, SK_F32, SK_F64, SK_I16, SK_I32, SK_I64, SK_U8};
+
+    #[target_feature(enable = "avx512f,avx512bw")]
+    fn has_null<const K: u8>(g: __m512i) -> bool {
+        match K {
+            SK_C8 => _mm512_cmpeq_epi8_mask(g, _mm512_set1_epi8(0x20)) != 0,
+            SK_I16 => _mm512_cmpeq_epi16_mask(g, _mm512_set1_epi16(i16::MIN)) != 0,
+            SK_I32 => _mm512_cmpeq_epi32_mask(g, _mm512_set1_epi32(i32::MIN)) != 0,
+            SK_I64 => _mm512_cmpeq_epi64_mask(g, _mm512_set1_epi64(i64::MIN)) != 0,
+            SK_F32 => _mm512_cmp_ps_mask::<_CMP_UNORD_Q>(_mm512_castsi512_ps(g), _mm512_castsi512_ps(g)) != 0,
+            SK_F64 => _mm512_cmp_pd_mask::<_CMP_UNORD_Q>(_mm512_castsi512_pd(g), _mm512_castsi512_pd(g)) != 0,
+            _ => false,
+        }
+    }
+    /// the element's bytes at kind `K`
+    const fn width<const K: u8>() -> usize { match K { SK_U8 | SK_C8 => 1, SK_I16 => 2, SK_I32 | SK_F32 => 4, _ => 8 } }
+
+    /// Leading null-free groups: `(i, hit)`, `hit` when the group at element `i` holds a null. `STORE` copies each
+    /// null-free group to `out`.
+    #[target_feature(enable = "avx512f,avx512bw")]
+    fn groups<const K: u8, const STORE: bool>(p: &[u8], out: &mut [u8], n: usize) -> (usize, bool) {
+        let (w, lanes) = (width::<K>(), 64 / width::<K>());
+        assert!(p.len() >= n * w && (!STORE || out.len() >= n * w), "scan: a payload of {} bytes holds fewer than {n} elements", p.len());
+        let mut i = 0;
+        while i + lanes <= n {
+            // SAFETY: the 64 bytes at element `i` lie inside the `n * w` bytes asserted above (`i + lanes <= n`)
+            let g = unsafe { _mm512_loadu_si512(p.as_ptr().add(i * w).cast()) };
+            if has_null::<K>(g) { return (i, true) }
+            // SAFETY: as the load, for `out`
+            if STORE { unsafe { _mm512_storeu_si512(out.as_mut_ptr().add(i * w).cast(), g) } }
+            i += lanes;
+        }
+        (i, false)
+    }
+    pub fn fill(kind: i32, p: &[u8], out: &mut [u8], n: usize) -> usize {
+        // SAFETY: the module's cfg enables avx512f and avx512bw, which every `groups` is compiled for
+        unsafe {
+            match u8::try_from(kind).unwrap_or(u8::MAX) {
+                SK_U8 => groups::<SK_U8, true>(p, out, n).0,
+                SK_C8 => groups::<SK_C8, true>(p, out, n).0,
+                SK_I16 => groups::<SK_I16, true>(p, out, n).0,
+                SK_I32 => groups::<SK_I32, true>(p, out, n).0,
+                SK_I64 => groups::<SK_I64, true>(p, out, n).0,
+                SK_F32 => groups::<SK_F32, true>(p, out, n).0,
+                SK_F64 => groups::<SK_F64, true>(p, out, n).0,
+                _ => 0,
+            }
+        }
+    }
+    pub fn any_null(kind: i32, p: &[u8], n: usize) -> (bool, usize) {
+        let o = &mut [][..];
+        // SAFETY: as `fill`
+        let (i, hit) = unsafe {
+            match u8::try_from(kind).unwrap_or(u8::MAX) {
+                SK_C8 => groups::<SK_C8, false>(p, o, n),
+                SK_I16 => groups::<SK_I16, false>(p, o, n),
+                SK_I32 => groups::<SK_I32, false>(p, o, n),
+                SK_I64 => groups::<SK_I64, false>(p, o, n),
+                SK_F32 => groups::<SK_F32, false>(p, o, n),
+                SK_F64 => groups::<SK_F64, false>(p, o, n),
+                _ => (0, false),
+            }
+        };
+        (hit, i)
+    }
+}
 /// A43: elementwise.c `ew_val_avx`: `a op b` of the four arithmetic verbs at a float class (4 f32, 5 f64), all `n`
 /// elements, the tail under a mask. An operand of one element against `n > 1` is the atom, broadcast. Only the
 /// caller that tested the build for AVX-512 may call it.
