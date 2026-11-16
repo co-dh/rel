@@ -841,21 +841,59 @@ pub fn enum_ids_enc(n: usize, d: usize, nullid: usize, w: u32, c: &Coc, out: &mu
     }
     bad
 }
-/// structural.c:1949 `ids_place`: `cn` ids at `w` mapped by `tab` (`nm` entries) to `wout` bits at `at`.
-pub fn ids_place(out: &mut [u8], at: usize, wout: u32, cn: usize, w: u32, pp: &[u8], tab: &[usize]) {
-    let val = |j: usize| tab.get(crate::ids::id_at(pp, w, j)).map_or(0, |&t| t as u64);
+/// structural.c `ids_place`: `cn` ids at `w` bits from `pp`, each read through `tab` (`nm + 1` entries, the last `0`, so an id at or past `nm` reads `0` with no branch;
+/// `None` reads each id as itself: a part whose dictionary is a prefix of the answer's), packed at `wout` into `out`
+/// from field `at`. A part that lands byte aligned is packed straight into the answer; one that does not is packed
+/// into its own buffer and then bit-copied, so no store crosses into the part before it.
+pub fn ids_place(out: &mut [u8], at: usize, wout: u32, cn: usize, w: u32, pp: &[u8], tab: Option<&[usize]>, nm: usize) {
+    // The source width is matched once, outside the loop. A whole-byte answer is written through `unpack`, which walks
+    // the source a word at a time with no per-id bounds test (`id_at` at a running index has one); a sub-byte answer
+    // packs a word of fields in a register.
+    #[inline(always)]
+    fn go<const W: u32>(dst: &mut [u8], wout: u32, cn: usize, pp: &[u8], val: impl Fn(usize) -> u64) {
+        #[inline(always)]
+        fn whole<const W: u32, const K: usize>(dst: &mut [u8], cn: usize, pp: &[u8], val: impl Fn(usize) -> u64) {
+            crate::ids::unpack::<W, [u8; K]>(pp, &mut dst.as_chunks_mut::<K>().0[..cn], |_, e, v| *e = word::<K>(val(v)));
+        }
+        match wout {
+            8 => whole::<W, 1>(dst, cn, pp, val), 16 => whole::<W, 2>(dst, cn, pp, val),
+            32 => whole::<W, 4>(dst, cn, pp, val), 64 => whole::<W, 8>(dst, cn, pp, val),
+            _ => crate::ids::pack(dst, wout, cn, |j| val(crate::ids::id_at(pp, W, j))),
+        }
+    }
+    #[inline(always)]
+    fn by<const W: u32>(dst: &mut [u8], wout: u32, cn: usize, pp: &[u8], tab: Option<&[usize]>, nm: usize) {
+        match tab {
+            Some(t) => { let t = &t[..=nm]; go::<W>(dst, wout, cn, pp, |i| t[i.min(nm)] as u64) }
+            None => go::<W>(dst, wout, cn, pp, |i| if i < nm { i as u64 } else { 0 }),
+        }
+    }
+    let put = |dst: &mut [u8]| match w {
+        0 => by::<0>(dst, wout, cn, pp, tab, nm), 1 => by::<1>(dst, wout, cn, pp, tab, nm), 2 => by::<2>(dst, wout, cn, pp, tab, nm),
+        4 => by::<4>(dst, wout, cn, pp, tab, nm), 8 => by::<8>(dst, wout, cn, pp, tab, nm), 16 => by::<16>(dst, wout, cn, pp, tab, nm),
+        32 => by::<32>(dst, wout, cn, pp, tab, nm), _ => by::<64>(dst, wout, cn, pp, tab, nm),
+    };
     if (at * wout as usize) & 7 == 0 {
-        let dst = &mut out[at * wout as usize / 8..];
-        for j in 0..cn { crate::ids::id_put(dst, wout, j, val(j)) }
+        put(&mut out[at * wout as usize / 8..]);
     } else {
-        // packed into its own buffer and bit-copied, so no store crosses into the part before it
         let mut tmp = alloc::vec![0u8; crate::ids::ids_bytes(cn, wout) + 1];
-        for j in 0..cn { crate::ids::id_put(&mut tmp, wout, j, val(j)) }
+        put(&mut tmp);
         crate::ids::bitcopy(out, at * wout as usize, &tmp, 0, cn * wout as usize);
     }
 }
-/// structural.c:1969 `qlean_structural_concat_ids`: each part's ids through its map.
-pub fn concat_ids(wout: u32, counts: &[usize], widths: &[u32], maps: &[&[usize]], parts: &[&[u8]], out: &mut [u8]) {
+/// A part's renaming read out once into a dictionary-sized table (`remap_ids`' reason: `d` entries where the column is
+/// millions, and the map's width stays out of the loop): the ids of `map` at `wout` bits, then a `0`.
+fn remap_table(map: &[u8], wout: u32) -> alloc::vec::Vec<usize> {
+    let nm = if wout == 0 { 0 } else { map.len() * 8 / wout as usize };
+    let mut tab = alloc::vec![0usize; nm + 1];
+    macro_rules! at { ($($w:literal)*) => { match wout { 0 => {} $($w => crate::ids::unpack::<$w, usize>(map, &mut tab[..nm], |_, e, v| *e = v),)* _ => crate::ids::unpack::<64, usize>(map, &mut tab[..nm], |_, e, v| *e = v) } } }
+    at!(1 2 4 8 16 32);
+    tab
+}
+/// structural.c `qlean_structural_concat_ids`: each part's ids through its map (`maps[i]` the ids of the renaming at
+/// `wout` bits), laid end to end. `widths` and `maps` are reached with `!` in the specification and not zipped: a part
+/// they do not reach is width `0` and the empty map, both of which answer id `0`.
+pub fn concat_ids(wout: u32, counts: &[usize], widths: &[u32], maps: &[&[u8]], parts: &[&[u8]], out: &mut [u8]) {
     let k = counts.len().min(parts.len());
     let mut at = 0;
     for i in 0..k {
@@ -864,9 +902,111 @@ pub fn concat_ids(wout: u32, counts: &[usize], widths: &[u32], maps: &[&[usize]]
         let need = crate::ids::ids_bytes(counts[i], w);
         let padded;
         let pp = if parts[i].len() >= need { parts[i] } else { padded = [parts[i], &alloc::vec![0u8; need - parts[i].len()]].concat(); &padded[..] };
-        ids_place(out, at, wout, counts[i], w, pp, maps.get(i).copied().unwrap_or(&[]));
+        let tab = remap_table(maps.get(i).copied().unwrap_or(&[]), wout);
+        ids_place(out, at, wout, counts[i], w, pp, Some(&tab), tab.len() - 1);
         at += counts[i];
     }
+}
+
+// ---- K19: structural.c `split`, `reverse`, `shift`, `translate` ----
+/// structural.c `next_byte`: the first index at or after `i`, below `lim`, holding byte `c`, or `lim`. Eight bytes a
+/// step off the SWAR zero-byte test, because a `memchr` pays a fresh SIMD prologue per call and a separator every five
+/// bytes calls it once per five.
+#[inline(always)]
+fn next_byte(b: &[u8], lim: usize, mut i: usize, c: u8) -> usize {
+    let rep = 0x0101010101010101u64 * c as u64;
+    while i + 8 <= lim {
+        let v = u64::from_le_bytes(b[i..i + 8].try_into().unwrap()) ^ rep;
+        let m = v.wrapping_sub(0x0101010101010101) & !v & 0x8080808080808080;
+        if m != 0 { return i + (m.trailing_zeros() >> 3) as usize }
+        i += 8;
+    }
+    while i < lim && b[i] != c { i += 1 }
+    i
+}
+/// structural.c `copy_piece`: a split's piece, short far more often than not -- a `memcpy` of a runtime length is a
+/// call and a size dispatch per field where four bytes are a single load and store.
+#[inline(always)]
+fn copy_piece(d: &mut [u8], s: &[u8]) {
+    let n = d.len();
+    if n >= 32 { d.copy_from_slice(s); return }
+    let mut i = 0;
+    while i + 8 <= n { d[i..i + 8].copy_from_slice(&s[i..i + 8]); i += 8 }
+    while i < n { d[i] = s[i]; i += 1 }
+}
+/// The starts of the occurrences of `d` in `b`, left to right and not overlapping. An empty `d` occurs nowhere.
+fn cuts<'a>(d: &'a [u8], b: &'a [u8]) -> impl Iterator<Item = usize> + 'a {
+    let dn = d.len();
+    // the last index a match may start at, plus one: past it there is not room for the delimiter
+    let lim = if dn != 0 && dn <= b.len() { b.len() - dn + 1 } else { 0 };
+    let mut i = 0;
+    core::iter::from_fn(move || loop {
+        if i >= lim { return None }
+        i = next_byte(b, lim, i, d[0]);
+        if i == lim { return None }
+        if dn == 1 || &b[i..i + dn] == d { let at = i; i += dn; return Some(at) }
+        i += 1;
+    })
+}
+/// structural.c `qlean_structural_split`, first pass: how many cuts `d` makes in `b`.
+pub fn split_cuts(d: &[u8], b: &[u8]) -> usize { cuts(d, b).count() }
+/// structural.c `qlean_structural_split`, second pass: the pieces end to end into `out` (`b.len() - cuts * d.len()`
+/// bytes) and their `cuts + 2` boxed starts into `offs`.
+pub fn split(d: &[u8], b: &[u8], out: &mut [u8], offs: &mut [usize]) {
+    let boxed = |at: usize| at << 1 | 1;
+    let (mut at, mut from, mut k) = (0, 0, 0);
+    offs[0] = boxed(0);
+    for i in cuts(d, b) {
+        copy_piece(&mut out[at..at + i - from], &b[from..i]);
+        at += i - from;
+        k += 1;
+        offs[k] = boxed(at);
+        from = i + d.len();
+    }
+    out[at..at + b.len() - from].copy_from_slice(&b[from..]);
+    at += b.len() - from;
+    offs[k + 1] = boxed(at);
+}
+/// `reverseBytes w b`: element `n - 1 - j` of `b` at each `j`, `n` elements of `W` bytes.
+fn reverse_w<const W: usize>(run: Runner, src: &[u8], n: usize, out: &mut [u8]) {
+    let sc = src.as_chunks::<W>().0;
+    crate::c::run_map(run, out, n, W, crate::QLEAN_COST_COPY, W, &|lo, hi, o: &mut [u8]| {
+        for (d, s) in o.as_chunks_mut::<W>().0.iter_mut().zip(sc[n - hi..n - lo].iter().rev()) { *d = *s }
+    });
+}
+/// structural.c `reverse_run` and `qlean_structural_reverse`.
+pub fn reverse(run: Runner, w: usize, src: &[u8], n: usize, out: &mut [u8]) {
+    check_w(w, "reverse");
+    match w { 1 => reverse_w::<1>(run, src, n, out), 2 => reverse_w::<2>(run, src, n, out), 4 => reverse_w::<4>(run, src, n, out),
+              8 => reverse_w::<8>(run, src, n, out), _ => reverse_w::<16>(run, src, n, out) }
+}
+/// `shiftBytes w fill k b`: element `j - k` at each `j`, `fill` where `j - k` is outside `[0, n)`. The in-range
+/// middle of a slice is one copy and the two ends are fill, where the C tests every element with one unsigned compare.
+fn shift_w<const W: usize>(run: Runner, fill: u64, k: i64, src: &[u8], n: usize, out: &mut [u8]) {
+    let (f, sc) = (word::<W>(fill), src.as_chunks::<W>().0);
+    crate::c::run_map(run, out, n, W, crate::QLEAN_COST_COPY, W, &|lo, hi, o: &mut [u8]| {
+        // output index `j` reads `j - k`, in range for `j` in `[k, k + n)`; i128 holds both ends of every `i64` `k`
+        let s = (k as i128).clamp(lo as i128, hi as i128) as usize;
+        let e = (k as i128 + n as i128).clamp(s as i128, hi as i128) as usize;
+        let o = o.as_chunks_mut::<W>().0;
+        o[..s - lo].fill(f);
+        if e > s { o[s - lo..e - lo].copy_from_slice(&sc[(s as i128 - k as i128) as usize..(e as i128 - k as i128) as usize]) }
+        o[e - lo..].fill(f);
+    });
+}
+/// structural.c `shift_run` and `qlean_structural_shift`.
+pub fn shift(run: Runner, w: usize, fill: u64, k: i64, src: &[u8], n: usize, out: &mut [u8]) {
+    check_w(w, "shift");
+    match w { 1 => shift_w::<1>(run, fill, k, src, n, out), 2 => shift_w::<2>(run, fill, k, src, n, out),
+              4 => shift_w::<4>(run, fill, k, src, n, out), 8 => shift_w::<8>(run, fill, k, src, n, out),
+              _ => shift_w::<16>(run, fill, k, src, n, out) }
+}
+/// structural.c `translate_run` and `qlean_structural_translate`: `tab[src[i]]` at each `i`, `tab` 256 bytes.
+pub fn translate(run: Runner, tab: &[u8], src: &[u8], out: &mut [u8]) {
+    let t: &[u8; 256] = tab.try_into().unwrap_or_else(|_| panic!("qlean structural: translate got a table of {} bytes, not 256", tab.len()));
+    crate::c::run_map(run, out, src.len(), 1, crate::QLEAN_COST_GATHER, 1, &|lo, hi, o: &mut [u8]| {
+        for (d, &s) in o.iter_mut().zip(&src[lo..hi]) { *d = t[s as usize] }
+    });
 }
 
 // ---- A40: structural.c:2039-2170, the symbol dictionary's hash table ----
@@ -1115,7 +1255,8 @@ mod a39_tests {
             }
             let total: usize = counts.iter().sum();
             let mut out = vec![0u8; ids_bytes(total, wout)];
-            let (mr, pr): (Vec<&[usize]>, Vec<&[u8]>) = (maps.iter().map(|m| &m[..]).collect(), raw.iter().map(|p| &p[..]).collect());
+            let packed: Vec<Vec<u8>> = maps.iter().map(|m| { let mut b = vec![0u8; ids_bytes(m.len(), wout)]; for (j, &v) in m.iter().enumerate() { crate::ids::id_put(&mut b, wout, j, v as u64) } b }).collect();
+            let (mr, pr): (Vec<&[u8]>, Vec<&[u8]>) = (packed.iter().map(|m| &m[..]).collect(), raw.iter().map(|p| &p[..]).collect());
             concat_ids(wout, &counts, &widths, &mr, &pr, &mut out);
             let mut at = 0;
             for i in 0..k {
@@ -1468,5 +1609,73 @@ mod a36_tests {
         assert_eq!(cat_take(&[0, 1500, 2100], 2), None);    // starts inside part 1
         assert_eq!(cat_take(&[0, 2048], 1), Some((0, 1)));
         assert_eq!(cat_take(&[0], 0), None);
+    }
+}
+
+#[cfg(test)]
+mod k19_tests {
+    use super::*;
+    use crate::c::qlean_run_c;
+    fn rng(s: &mut u64) -> u64 { *s ^= *s << 13; *s ^= *s >> 7; *s ^= *s << 17; *s }
+    // `splitBytes` read off the definition: pieces between non-overlapping left-to-right occurrences of `d`
+    fn split_ref(d: &[u8], b: &[u8]) -> Vec<Vec<u8>> {
+        let (mut ps, mut cur, mut i) = (vec![], vec![], 0);
+        while i < b.len() {
+            if !d.is_empty() && b[i..].starts_with(d) { ps.push(core::mem::take(&mut cur)); i += d.len() } else { cur.push(b[i]); i += 1 }
+        }
+        ps.push(cur);
+        ps
+    }
+    #[test] fn split_cuts_and_pieces_match_the_definition() {
+        let mut s = 5;
+        for _ in 0..600 {
+            let alpha = 1 + rng(&mut s) % 3;
+            let d: Vec<u8> = (0..rng(&mut s) % 4).map(|_| (rng(&mut s) % alpha) as u8).collect();
+            let b: Vec<u8> = (0..rng(&mut s) % 150).map(|_| (rng(&mut s) % alpha) as u8).collect();
+            let cuts = split_cuts(&d, &b);
+            let (mut out, mut offs) = (vec![0u8; b.len() - cuts * d.len()], vec![0usize; cuts + 2]);
+            split(&d, &b, &mut out, &mut offs);
+            let want = split_ref(&d, &b);
+            assert_eq!(cuts + 1, want.len(), "d {d:?} b {b:?}");
+            for (k, p) in want.iter().enumerate() { assert_eq!(&out[offs[k] >> 1..offs[k + 1] >> 1], &p[..], "d {d:?} b {b:?} piece {k}") }
+            assert_eq!((offs[0], offs[cuts + 1] >> 1), (1, out.len()));
+        }
+    }
+    #[test] fn reverse_shift_translate_match_the_definition() {
+        let mut s = 9;
+        for _ in 0..300 {
+            let w = [1usize, 2, 4, 8, 16][rng(&mut s) as usize % 5];
+            let n = rng(&mut s) as usize % 200;
+            let src: Vec<u8> = (0..n * w).map(|_| rng(&mut s) as u8).collect();
+            let el = |j: usize| &src[j * w..(j + 1) * w];
+            let mut out = vec![0u8; n * w];
+            reverse(qlean_run_c, w, &src, n, &mut out);
+            for j in 0..n { assert_eq!(&out[j * w..(j + 1) * w], el(n - 1 - j), "reverse w {w} n {n} j {j}") }
+            let fill = rng(&mut s);
+            for k in [0i64, 1, -1, n as i64, -(n as i64), n as i64 + 1, 1 - n as i64, i64::MAX, i64::MIN, rng(&mut s) as i64 % 300] {
+                shift(qlean_run_c, w, fill, k, &src, n, &mut out);
+                for j in 0..n {
+                    let i = (j as u64).wrapping_sub(k as u64);
+                    let mut f = [0u8; 16];
+                    f[..8].copy_from_slice(&fill.to_le_bytes());
+                    let want = if i < n as u64 { el(i as usize) } else { &f[..w] };
+                    assert_eq!(&out[j * w..(j + 1) * w], want, "shift w {w} n {n} k {k} j {j}");
+                }
+            }
+            let tab: Vec<u8> = (0..256).map(|_| rng(&mut s) as u8).collect();
+            let mut o = vec![0u8; src.len()];
+            translate(qlean_run_c, &tab, &src, &mut o);
+            assert!(src.iter().zip(&o).all(|(&b, &t)| t == tab[b as usize]));
+        }
+    }
+    #[test] fn ids_place_with_no_table_reads_each_id_as_itself_below_nm() {
+        // ids 0 1 2 3 at 2 bits placed at 4 bits from field 1 (unaligned: through the part's own buffer); `nm` 3 drops id 3
+        let mut out = [0u8; 3];
+        ids_place(&mut out, 1, 4, 4, 2, &[0b11_10_01_00], None, 3);
+        assert_eq!(out, [0x00, 0x21, 0x00]);
+        // aligned, whole-byte answer, through a table with its trailing zero
+        let mut o8 = [0u8; 4];
+        ids_place(&mut o8, 0, 8, 4, 2, &[0b11_10_01_00], Some(&[7, 8, 9, 0]), 3);
+        assert_eq!(o8, [7, 8, 9, 0]);
     }
 }
