@@ -822,6 +822,40 @@ pub unsafe extern "C" fn qrs_grade_guid(run: unsafe extern "C" fn(), desc: c_int
 pub unsafe extern "C" fn qrs_coc_srange(c: *const CCoc, lo: *mut i64, hi: *mut i64) {
     unsafe { (*lo, *hi) = search::coc_srange(&(*c).view()) }
 }
+/// A28: search.c `coc_exc_within`: whether a patch of block `b` lies in `lo ..= hi`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn qrs_coc_exc_within(c: *const CCoc, b: usize, lo: i64, hi: i64) -> c_int {
+    unsafe { search::coc_exc_within(&(*c).view(), b, lo, hi) as c_int }
+}
+/// A28: search.c `ids_top`.
+#[unsafe(no_mangle)]
+pub extern "C" fn qrs_ids_top(lw: u32) -> u64 { search::ids_top(lw) }
+/// A28: search.c `opnd_blk` over C's `opnd`: payload `d` (`enc` 0 and 2) or the column `c` (`enc` 1), `n` elements; block
+/// `b` at key width `w`. Answers the block, a pointer into `d` or `buf` (BLK * w bytes), and its length in `cnt`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn qrs_opnd_blk(d: *const u8, c: *const CCoc, n: usize, enc: c_int, lw: u32, b: usize, w: usize,
+                                      buf: *mut u8, cnt: *mut usize) -> *const u8 {
+    let cv = if enc == 1 { Some(unsafe { (*c).view() }) } else { None };
+    let src = match (enc, cv) {
+        (1, Some(c)) => search::Src::Enc(c),
+        (2, _) => search::Src::Ids(unsafe { sl(d, ids::ids_bytes(n, lw)) }, lw),
+        _ => search::Src::Dense(unsafe { sl(d, n * w) }),
+    };
+    let r = search::Opnd { src, n }.blk(b, w, unsafe { sl_mut(buf, crate::BLK * w) });
+    unsafe { *cnt = r.len() / w };
+    r.as_ptr()
+}
+/// A28: search.c `kind_of`: the `kind` enum's number; `who` names the caller in the abort text.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn qrs_kind_of(w: usize, is_float: u8, who: *const c_char) -> c_int {
+    search::kind_of(w, is_float != 0, unsafe { core::ffi::CStr::from_ptr(who) }.to_str().unwrap_or("?")) as c_int
+}
+/// A28: search.c `kind_width` of the `kind` number `k`.
+#[unsafe(no_mangle)]
+pub extern "C" fn qrs_kind_width(k: c_int) -> usize {
+    use search::Kind::*;
+    [U8, U16, U32, U64, F32, F64, U128][k as usize].width()
+}
 /// A31: search.c `sym_scan`: the first of `n` symbols equal to `k`, or `n`.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn qrs_sym_scan(blob: *const u8, bytes: usize, offs: *const usize, n: usize, k: *const u8, klen: usize)
