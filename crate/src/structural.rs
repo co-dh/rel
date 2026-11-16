@@ -2348,3 +2348,92 @@ mod k22_tests {
         }
     }
 }
+
+// ---- B28: structural.c:1-467, the part of the Lean boundary that holds no object ----
+/// What `concat_foR_append` found: the first part's last block grown in place by the parts after it. `put` writes it into
+/// the first part's own metadata and pack once Lean has handed them over.
+pub struct Grow {
+    /// the block grown, how many of its elements are the first part's own, the first part's count, and the elements added
+    b: usize, lo: usize, n: usize, m: usize,
+    /// the block's residual width, where its residuals start in the pack, its base and its sum once grown
+    w: u8, s: usize, base: u64, sum: i64,
+    /// elements `lo ..` of the grown block are the added ones
+    buf: [i64; BLK],
+}
+/// structural.c:414 `concat_foR_append`'s decision and block: `Some` only where the writer, asked about the grown block,
+/// keeps its base, maximum and width with no exception, and the first part was the writer's to begin with. `parts` are the
+/// `k >= 1` parts' views, `start` their `k + 1` boundaries, `ew` the element width; `None` is `none`, and the caller re-encodes.
+pub fn append_plan(parts: &[Coc], start: &[usize], ew: usize) -> Option<Grow> {
+    let (h, k) = (parts.first()?, parts.len());
+    let (n, lo, b, m) = (h.meta.n, h.meta.n % BLK, h.meta.n / BLK, start[k] - h.meta.n);
+    // `h.meta.n` is the part's own count wherever `lo != 0`: only a count past the grid is clamped, to a block boundary. The
+    // writer's form covers the block; a patch list rides along in the pack's tail untouched where block `b` has no exception,
+    // every one then lying before the append point; `put_res` measures from the base, so a block whose frame is above it declines.
+    if lo == 0 || lo + m > BLK || !h.std(n) || h.blk_nexc(b) != 0 || h.frame(b) != h.meta.base[b] as u64 || !trailer_ok(h, n, ew, false) {
+        return None;
+    }
+    let mut buf = [0i64; BLK];
+    unpack_run(&mut buf[..lo], h, b, 0, false);
+    cat_fill(&|i| plain(&parts[i]), start, ew, false, &mut buf[lo..lo + m], n);
+    let (mut mn, mut mx, mut sum, mut w, mut fd, mut nexc) = (0i64, 0i64, 0i64, 0u8, 0u64, 0u32);
+    let (lb, over) = (AtomicUsize::new(0), core::sync::atomic::AtomicI32::new(0));
+    let mut meta = EncMeta { b: 0, base: &mut mn, maxv: &mut mx, width: &mut w, bsum: &mut sum, frm: Some(&mut fd), nexc: &mut nexc,
+                             exp: None, below: 0, lb: &lb, over: &over };
+    if crate::enc::blk_meta(&mut meta, &buf[..lo + m], ew) != 0 || fd != 0 || mn != h.meta.base[b] || mx != h.meta.maxv[b] || w != h.meta.width[b] {
+        return None;
+    }
+    Some(Grow { b, lo, n, m, w, s: h.meta.off[b] as usize, base: mn as u64, sum, buf })
+}
+impl Grow {
+    /// The first part's own metadata and pack (`33 * nblk + 16` bytes, and its pack) with the block's sum and the trailer's
+    /// count brought up to the grown column and the added residuals written into the block.
+    pub fn put(&self, meta: &mut [u8], pack: &mut [u8]) {
+        let (nb, at) = (meta.len() / 33, 24 * (meta.len() / 33) + 8 * self.b);
+        meta[at..at + 8].copy_from_slice(&self.sum.to_ne_bytes());
+        meta[32 * nb + 8..32 * nb + 16].copy_from_slice(&((self.n + self.m) as u64).to_ne_bytes());
+        put_res(&mut pack[self.s..self.s + BLK * self.w as usize / 8], self.w, self.lo, &self.buf[self.lo..self.lo + self.m], self.base);
+    }
+}
+
+/// structural.c:87 `row_at`: part `i` of `rs` read at `want` bytes -- where it lies when it is long enough, else a copy of
+/// what it has followed by zeros (`Column.bitsAt`'s convention), and a part the array does not have at all is all zeros.
+pub fn row_at<'a>(rs: &[&'a [u8]], i: usize, want: usize) -> alloc::borrow::Cow<'a, [u8]> {
+    match rs.get(i) {
+        Some(r) if r.len() >= want => alloc::borrow::Cow::Borrowed(&r[..want]),
+        r => { let mut v = alloc::vec![0u8; want]; copy_row(&mut v, r.copied()); alloc::borrow::Cow::Owned(v) }
+    }
+}
+fn copy_row(dst: &mut [u8], r: Option<&[u8]>) { let t = r.map_or(0, |r| r.len().min(dst.len())); if let Some(r) = r { dst[..t].copy_from_slice(&r[..t]) } }
+/// structural.c:96 `rows_at`: every row of a matrix at `want` bytes; one short row pads all of them into a single buffer.
+pub struct Rows<'a, 'b> { rs: &'b [&'a [u8]], want: usize, pad: Option<Vec<u8>> }
+pub fn rows_at<'a, 'b>(rs: &'b [&'a [u8]], want: usize) -> Rows<'a, 'b> {
+    let pad = rs.iter().any(|r| r.len() < want).then(|| {
+        let mut v = alloc::vec![0u8; rs.len() * want];
+        if want != 0 { for (d, r) in v.chunks_exact_mut(want).zip(rs) { copy_row(d, Some(r)) } }
+        v
+    });
+    Rows { rs, want, pad }
+}
+impl Rows<'_, '_> {
+    /// row `i`, `want` bytes
+    pub fn get(&self, i: usize) -> &[u8] {
+        match &self.pad { Some(p) => &p[i * self.want..(i + 1) * self.want], None => &self.rs[i][..self.want] }
+    }
+}
+
+#[cfg(test)]
+mod b28_tests {
+    use super::*;
+    #[test] fn short_parts_read_as_zeros_and_nothing_is_copied_when_none_is_short() {
+        let (a, b): (&[u8], &[u8]) = (&[1, 2, 3, 4], &[9]);
+        let rs = [a, b];
+        assert!(matches!(row_at(&rs, 0, 3), alloc::borrow::Cow::Borrowed(r) if r == [1, 2, 3]));
+        assert_eq!(&*row_at(&rs, 1, 3), &[9, 0, 0]);
+        assert_eq!(&*row_at(&rs, 2, 3), &[0, 0, 0]);
+        let m = rows_at(&rs, 3);
+        assert_eq!((m.get(0), m.get(1)), (&[1u8, 2, 3][..], &[9u8, 0, 0][..]));
+        let m = rows_at(&rs[..1], 3);
+        assert!(m.pad.is_none() && m.get(0) == [1, 2, 3]);
+        assert_eq!(rows_at(&[], 5).pad.as_deref(), None);
+    }
+}
