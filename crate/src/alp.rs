@@ -387,6 +387,14 @@ fn holes<F: Flt>(x: &[F], be: i32, base: i64, d: &mut [i64], pos: &mut [u16], ra
 }
 
 
+impl<'a> Cocf<'a> {
+    /// coc.h `cocf_view`: `meta_view` with the pack `pv` attached; `None` as `meta_view`'s.
+    pub fn view(mv: &'a [u8], pv: &'a [u8], av: &'a [u8], n: usize) -> Option<Cocf<'a>> {
+        let mut f = Self::meta_view(mv, av, n)?;
+        f.c.pack = pv;
+        Some(f)
+    }
+}
 #[cfg(test)]
 mod tests {
     use super::*;

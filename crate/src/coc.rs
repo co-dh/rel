@@ -189,6 +189,23 @@ pub fn lanes<'b>(p: &'b [u8], w: &mut u8, nb: usize, buf: &'b mut [u8]) -> &'b [
     buf
 }
 
+/// Why a metadata array and a pack are no column.
+pub enum ViewErr { Meta, Pack { pack: usize, end: usize, mblk: usize } }
+impl core::fmt::Display for ViewErr {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        match self {
+            ViewErr::Meta => f.write_str("the metadata array is not a column's 33 * nblk + 16 bytes"),
+            // coc.h `coc_attach`'s text
+            ViewErr::Pack { pack, end, mblk } => write!(f, "a Frame of Reference pack of {pack} bytes whose residuals end at {end} holds no patch list of {mblk} blocks after them"),
+        }
+    }
+}
+/// coc.h `coc_view` over slices: `mv`, `pv` as a column of at most `n` elements (cut to what the blocks hold).
+pub fn view<'a>(mv: &'a [u8], pv: &'a [u8], n: usize) -> Result<Coc<'a>, ViewErr> {
+    let m = Meta::new(mv, n).ok_or(ViewErr::Meta)?;
+    Coc::attach(m, pv).ok_or(ViewErr::Pack { pack: pv.len(), end: m.res_end(), mblk: m.mblk })
+}
+
 #[cfg(test)]
 mod tests {
     use crate::BLK;

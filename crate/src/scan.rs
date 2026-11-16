@@ -841,17 +841,6 @@ pub fn col_bits(op: u8, n: usize, a: &[u8], out: &mut [u8]) {
     if nb != 0 && n & 7 != 0 { out[nb - 1] &= ((1u32 << (n & 7)) - 1) as u8 }
 }
 
-/// `coc_view`: the metadata and the pack of an encoded column, the element count clamped to what the block grid holds.
-fn view<'a>(mv: &'a [u8], pv: &'a [u8], n: usize) -> Coc<'a> {
-    let m = Meta::new(mv, n).unwrap_or_else(|| panic!("qlean: a metadata buffer of {} bytes is misaligned or shorter than its block grid", mv.len()));
-    let e = m.res_end();
-    Coc::attach(m, pv).unwrap_or_else(|| panic!("qlean: a Frame of Reference pack of {} bytes whose residuals end at {e} holds no patch list of {} blocks after them", pv.len(), m.mblk))
-}
-fn view_alp<'a>(mv: &'a [u8], pv: &'a [u8], av: &'a [u8], n: usize) -> Cocf<'a> {
-    let mut f = Cocf::meta_view(mv, av, n).unwrap_or_else(|| panic!("qlean: the ALP part of {} bytes or its metadata of {} bytes is misaligned or short", av.len(), mv.len()));
-    f.c.pack = pv;
-    f
-}
 /// The elements of an encoded column of `n` asked for: what its block grid holds.
 fn enc_n(mv: &[u8], n: usize) -> usize { Meta::new(mv, n).map_or(0, |m| m.n) }
 /// coc.h:829 `coc_load_blk_at`: block `b`'s first `nb` elements at `w` bytes an element into `buf`.
@@ -871,7 +860,7 @@ pub fn for_len(op: u8, kind: u8, mv: &[u8], n: usize) -> usize { enc_n(mv, n) * 
 /// the dense payload is never materialised; a block resumes from the previous block's carry.
 pub fn col_for(op: u8, kind: u8, n: usize, mv: &[u8], pv: &[u8], out: &mut [u8]) {
     let (op, kind) = (op as i32, kind as i32);
-    let c = view(mv, pv, n);
+    let c = crate::coc::view(mv, pv, n).unwrap_or_else(|e| panic!("qlean: {e}"));
     let (w, ow) = (dense_width(kind), sc_out_width(op, kind));
     let (mut buf, mut acc) = ([0u64; BLK], [0u8; 8]);
     for (b, at) in (0..c.meta.n).step_by(BLK).enumerate() {
@@ -890,7 +879,7 @@ pub fn alp_len(op: u8, kind: u8, mv: &[u8], n: usize) -> usize { for_len(op, kin
 /// `qlean_scan_alp`: the ALP twin of `col_for`; `real` accumulates in `real`, so the answer is bit-identical to the unblocked scan.
 pub fn col_alp(op: u8, kind: u8, n: usize, mv: &[u8], pv: &[u8], av: &[u8], out: &mut [u8]) {
     let (op, kind) = (op as i32, kind as i32);
-    let f = view_alp(mv, pv, av, n);
+    let f = Cocf::view(mv, pv, av, n).unwrap_or_else(|| panic!("qlean: the ALP part of {} bytes or its metadata of {} bytes is misaligned or short", av.len(), mv.len()));
     let (w, ow, nn) = (dense_width(kind), sc_out_width(op, kind), f.c.meta.n);
     let (mut buf, mut lanes, mut acc) = ([0u64; BLK], [0u64; BLK], [0u8; 8]);
     for (b, at) in (0..nn).step_by(BLK).enumerate() {
@@ -1019,7 +1008,7 @@ pub fn mwin_for_len(op: u8, kind: u8, mv: &[u8], n: usize) -> usize { enc_n(mv, 
 /// `qlean_mwin_foR`: `mwin op kind w n (Coc.decode 8 metadata pack n)` into `out`, one block at a time.
 pub fn mwin_for(op: u8, kind: u8, w: usize, n: usize, mv: &[u8], pv: &[u8], out: &mut [u8]) {
     let (op, kind) = (op as i32, kind as i32);
-    let c = view(mv, pv, n);
+    let c = crate::coc::view(mv, pv, n).unwrap_or_else(|e| panic!("qlean: {e}"));
     let (ew, ow, mut buf) = (dense_width(kind), mw_out_width(op, kind), [0u64; BLK]);
     let mut st = MwSt::open(op, kind, w, c.meta.n);
     for at in (0..c.meta.n).step_by(BLK) {
@@ -1033,7 +1022,7 @@ pub fn mwin_alp_len(op: u8, kind: u8, mv: &[u8], n: usize) -> usize { mwin_for_l
 /// `qlean_mwin_alp`: the ALP twin of `mwin_for`.
 pub fn mwin_alp(op: u8, kind: u8, w: usize, n: usize, mv: &[u8], pv: &[u8], av: &[u8], out: &mut [u8]) {
     let (op, kind) = (op as i32, kind as i32);
-    let f = view_alp(mv, pv, av, n);
+    let f = Cocf::view(mv, pv, av, n).unwrap_or_else(|| panic!("qlean: the ALP part of {} bytes or its metadata of {} bytes is misaligned or short", av.len(), mv.len()));
     let (ow, mut buf) = (mw_out_width(op, kind), [0u64; BLK]);
     let mut st = MwSt::open(op, kind, w, f.c.meta.n);
     for at in (0..f.c.meta.n).step_by(BLK) {

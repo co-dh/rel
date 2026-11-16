@@ -96,7 +96,7 @@ export! {
     /// `Column.idsCap ids w n`.
     fn qlean_sort_grade_lane(desc: u8, n: usize, w: usize, idsv: B) -> O {
         let p = idsv.bytes();
-        let n = n.min(ids::avail(p, w as u32));
+        let n = n.min(ids::ids_avail(p.len(), w as u32));
         let mut r = SArr::new(1, n * 8);
         sort::grade_lane(pool(), desc != 0, w as u32, p, n, longs(&mut r));
         r.into()

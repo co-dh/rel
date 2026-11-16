@@ -3,8 +3,8 @@
 //! Each unpacks the two byte arrays into a `Coc`, makes one call into a kernel and packs the answer.
 #![deny(unsafe_code)]
 use crate::c::pool;
-use crate::coc::{Coc, Meta};
 use crate::alp::Cocf;
+use crate::coc::{self, Coc, Meta, ViewErr};
 use crate::cocops::{self, CocMut, GE};
 use crate::ffi::{encode_dense, encode_fill};
 use crate::lean::{B, O, SArr, boxed, ctor, export, nat};
@@ -20,10 +20,19 @@ fn die(args: core::fmt::Arguments) -> ! {
 /// list does not fit is C's `coc_attach` abort; a metadata array with misaligned or missing sections (which C read
 /// past) is the same stop.
 pub fn view<'a>(who: &str, meta: B<'a>, pack: B<'a>, n: usize) -> Coc<'a> {
-    let Some(m) = Meta::new(meta.bytes(), n) else { die(format_args!("{who}: the metadata array is not a column's 33 * nblk + 16 bytes\n")) };
-    let (e, mblk, pb) = (m.res_end(), m.mblk, pack.bytes().len());
-    Coc::attach(m, pack.bytes()).unwrap_or_else(|| die(format_args!(
-        "qlean: a Frame of Reference pack of {pb} bytes whose residuals end at {e} holds no patch list of {mblk} blocks after them\n")))
+    coc::view(meta.bytes(), pack.bytes(), n).unwrap_or_else(|e| match e {
+        ViewErr::Meta => die(format_args!("{who}: {e}\n")),
+        ViewErr::Pack { .. } => die(format_args!("qlean: {e}\n")),
+    })
+}
+/// coc.h `coc_meta_view`: the metadata alone, as `view`'s metadata stop.
+pub fn meta<'a>(who: &str, mv: B<'a>, n: usize) -> Meta<'a> {
+    Meta::new(mv.bytes(), n).unwrap_or_else(|| die(format_args!("{who}: {}\n", ViewErr::Meta)))
+}
+/// structural.c `alp_view`: an ALP column's metadata, blob and pack, `n` clamped to what the blocks hold.
+pub fn alp_view<'a>(mv: B<'a>, pv: B<'a>, av: B<'a>, n: usize) -> Cocf<'a> {
+    Cocf::view(mv.bytes(), pv.bytes(), av.bytes(), n).unwrap_or_else(|| die(format_args!(
+        "qlean: an ALP column's metadata of {} bytes or its blob of {} are short or misaligned\n", mv.bytes().len(), av.bytes().len())))
 }
 
 export! {

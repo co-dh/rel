@@ -5,7 +5,7 @@ use alloc::vec::Vec;
 use alloc::vec;
 use core::sync::atomic::{AtomicI64, Ordering::Relaxed};
 use crate::c::{run_map, run_slices, Runner};
-use crate::ids::{avail, id_at};
+use crate::ids::{id_at, ids_avail};
 use crate::{simd, BLK};
 
 // ---- A12: reduce.c:261-298 ----
@@ -325,7 +325,7 @@ pub fn over_groups(run: Runner, op: u8, cls: u8, nul: i64, ng: usize, iw: u32, r
     if ng == 0 { return }
     let w = size_of::<i64>() >> (3 - cls.min(3));
     // an id payload holds as many ids as its bytes do; a one-entry dictionary (`iw = 0`) stores none and every id is 0
-    let gn = avail(gid, iw);
+    let gn = ids_avail(gid.len(), iw);
     let n = (src.len() / w).min(rows).min(gn);
     let iw = (iw as u8) as u32; // the C pass carries the width in a `uint8_t`
     let (lo, hi) = if cls == 0 { (0, 255) } else { (nul.wrapping_add(1), !nul) };
@@ -603,7 +603,7 @@ fn og_float<T: Copy + PartialEq + Into<A>, A: Fl, const IW: u32>(op: u8, ids: &[
 pub fn over_groups_float(op: u8, f32: bool, avg: bool, ng: usize, iw: usize, rows: usize, gid: &[u8], a: &[u8], res: &mut [u8]) {
     let w = if f32 { 4 } else { 8 };
     let iw32 = iw as u32;
-    let n = (a.len() / w).min(rows).min(avail(gid, iw32));
+    let n = (a.len() / w).min(rows).min(ids_avail(gid.len(), iw32));
     // C's `IDS_WIDTHS` switch on the `size_t` goes to 64 for any width it does not name
     let wd = match iw { 0 | 1 | 2 | 4 | 8 | 16 | 32 => iw32, _ => 64 };
     let (s, cnt) = res.split_at_mut(ng * 8);

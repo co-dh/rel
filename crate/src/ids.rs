@@ -19,9 +19,6 @@ const WIDE: usize = 8;
 /// `Column.idWidth`: zero at one entry and at none -- there is one id, so nothing is stored.
 pub fn id_width(nd: usize) -> u32 { if nd < 2 { 0 } else { lane_width(width_for((nd - 1) as u64)) as u32 } }
 
-/// ids.h `ids_avail`: how many ids a payload of `gid.len()` bytes holds at `w` bits; a one-entry dictionary (`w = 0`) stores
-/// none and every id is 0, so no count is out of range.
-pub fn avail(gid: &[u8], w: u32) -> usize { if w == 0 { usize::MAX } else { gid.len() * 8 / w as usize } }
 
 /// Bytes `n` ids occupy at `w` bits: `⌈n·w/8⌉`, wrapping like the C `size_t` arithmetic.
 pub fn ids_bytes(n: usize, w: u32) -> usize { n.wrapping_mul(w as usize).wrapping_add(7) / 8 }
