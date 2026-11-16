@@ -39,6 +39,7 @@ pub mod exports {
     pub mod interp;
     pub mod handle;
     pub mod pool;
+    pub mod reduce;
     pub mod search;
     pub mod structural;
     pub mod time;
