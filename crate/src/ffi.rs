@@ -1,6 +1,7 @@
 //! Every symbol that leaves the object, and the `#[repr(C)]` mirrors of C structs. A shim does nothing but turn
 //! pointer + length into slices (null or zero length gives an empty slice) and call. c/rs.h is generated from
 //! this file by cbindgen (rust/build.sh).
+use core::alloc::Layout;
 use core::ffi::{c_char, c_int, c_void};
 use core::ptr::null_mut;
 use core::slice;
@@ -578,6 +579,109 @@ pub extern "C" fn qrs_scan_bad_kind(kind: c_int) -> c_int { scan::sc_bad_kind(ki
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn qrs_scan_alp_skip(op: c_int, f: *const CCocf, b: usize, cnt: usize, acc: f64) -> c_int {
     unsafe { scan::sc_alp_skip(op, &(*f).view(), b, cnt, acc) as c_int }
+}
+/// K3: scan.c `sc_bits_run` over `nb` bytes.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn qrs_scan_bits_run(out: *mut u8, p: *const u8, nb: usize, inv: u64) {
+    scan::bits_run(unsafe { sl_mut(out, nb) }, unsafe { sl(p, nb) }, inv)
+}
+/// K3: scan.c `qlean_scan_ema`'s recurrence over the `n` doubles `y`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn qrs_scan_ema(abits: u64, y: *const u8, out: *mut u8, n: usize) {
+    scan::ema(abits, unsafe { sl(y, 8 * n) }, unsafe { sl_mut(out, 8 * n) })
+}
+/// K3: scan.c `qlean_scan_ema_v`'s recurrence over the `n` doubles `xy` and `co`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn qrs_scan_ema_v(xy: *const u8, co: *const u8, seedbits: u64, out: *mut u8, n: usize) {
+    scan::ema_v(unsafe { sl(xy, 8 * n) }, unsafe { sl(co, 8 * n) }, seedbits, unsafe { sl_mut(out, 8 * n) })
+}
+/// K3: scan.c `mw_out_width`: the bytes of one element of the answer of window verb `op` at `kind`.
+#[unsafe(no_mangle)]
+pub extern "C" fn qrs_mw_out_width(op: c_int, kind: c_int) -> usize { scan::mw_out_width(op, kind) }
+
+/// Mirror of scan.c's `mwin`, the state of the window engine that `mw_run` (C until K4) runs on; the rings are
+/// allocated by `qrs_mw_open` and freed by `qrs_mw_close`, and C's `typedef CMwin mwin` is the one definition.
+#[repr(C)]
+pub struct CMwin {
+    /// the window, clamped to n + 1 -- past that no lookback ever lands
+    pub w: usize,
+    /// history cursor: the slot the accumulator after element i lands in
+    pub cu: usize,
+    /// the history's capacity `w + tl`
+    pub cap: usize,
+    /// `tl`, the longest chunk a pass runs
+    pub tl: usize,
+    /// offset inside the current van Herk phase
+    pub t: usize,
+    /// `+\y` at an integral layout, wrapping the way q's `+` does
+    pub isum: u64,
+    /// `+\0.0^"f"$y` for the two means, `+\y` with the null skipped for `msum`
+    pub fsum: f64,
+    /// `+\0.0^"f"$y*y`
+    pub fsq: f64,
+    /// `+\~^y`
+    pub cnt: i64,
+    pub ri: *mut u64,
+    pub rf: *mut f64,
+    pub rq: *mut f64,
+    pub rc: *mut i64,
+    pub phase: *mut c_void,
+    pub sufx: *mut c_void,
+    /// the phase's prefix extreme, at the element's own width
+    pub extbits: u64,
+    /// the extreme of no elements, as bits (`mw_sent`): what a phase's opening `ex` holds again after each close
+    pub sent: u64,
+    /// the answer's width in bytes, which is the width of `phase` and `sufx`; `qrs_mw_close` sizes them by it
+    pub ew: usize,
+}
+/// `calloc(n, size)` as the C tree's `xcalloc`: a zeroed block, or the run stops saying which buffer and how big.
+/// no_std has no `exit`, so the panic handler prints the text and aborts.
+unsafe fn zalloc<T>(n: usize, size: usize, what: &str) -> *mut T {
+    let p = n.checked_mul(size).and_then(|b| Layout::from_size_align(b, 8).ok()).map_or(null_mut(), |l| unsafe { alloc::alloc::alloc_zeroed(l) });
+    if p.is_null() { panic!("qlean: calloc of {n} x {size} bytes for {what} failed") }
+    p.cast()
+}
+unsafe fn zfree<T>(p: *mut T, n: usize, size: usize) {
+    if !p.is_null() { unsafe { alloc::alloc::dealloc(p.cast(), Layout::from_size_align_unchecked(n * size, 8)) } }
+}
+/// K3: scan.c `mw_open`: `st` is zeroed, sized for window `w` over `n` elements, and given the rings `op` reads and
+/// nothing more, so a window wider than the column costs one array and not six.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn qrs_mw_open(st: *mut CMwin, op: c_int, kind: c_int, w: usize, n: usize) {
+    let d = scan::mw_dims(op, kind, w, n);
+    let mut s = CMwin { w: d.w, cu: 0, cap: d.cap, tl: d.tl, t: 0, isum: 0, fsum: 0.0, fsq: 0.0, cnt: 0, ri: null_mut(),
+                        rf: null_mut(), rq: null_mut(), rc: null_mut(), phase: null_mut(), sufx: null_mut(), extbits: 0,
+                        sent: 0, ew: d.ew };
+    let f = kind == key::SK_F32 as c_int || kind == key::SK_F64 as c_int;
+    unsafe {
+        match op {
+            scan::MW_MSUM if f => s.rf = zalloc(d.cap, 8, "a msum ring"),
+            scan::MW_MSUM => s.ri = zalloc(d.cap, 8, "a msum ring"),
+            scan::MW_MCOUNT => s.rc = zalloc(d.cap, 8, "a mcount ring"),
+            scan::MW_MAVG => { s.rf = zalloc(d.cap, 8, "a mavg ring"); s.rc = zalloc(d.cap, 8, "a mavg null count") }
+            scan::MW_MDEV => {
+                s.rf = zalloc(d.cap, 8, "a mdev ring");
+                s.rq = zalloc(d.cap, 8, "a mdev square ring");
+                s.rc = zalloc(d.cap, 8, "a mdev null count");
+            }
+            _ => {
+                s.phase = zalloc(d.w, d.ew, "a window extreme's phase");
+                s.sufx = zalloc(d.w + 1, d.ew, "a window extreme's suffix");
+                s.extbits = scan::mw_prime(slice::from_raw_parts_mut(s.sufx.cast::<u8>(), (d.w + 1) * d.ew), op, kind, d.ew);
+                s.sent = s.extbits;
+            }
+        }
+        st.write(s);
+    }
+}
+/// K3: scan.c `mw_close`: frees what `qrs_mw_open` allocated.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn qrs_mw_close(st: *mut CMwin) {
+    let s = unsafe { &*st };
+    unsafe {
+        zfree(s.ri, s.cap, 8); zfree(s.rf, s.cap, 8); zfree(s.rq, s.cap, 8); zfree(s.rc, s.cap, 8);
+        zfree(s.phase, s.w, s.ew); zfree(s.sufx, s.w + 1, s.ew);
+    }
 }
 /// A15: coc.c `coc_decode_run`, 8-byte lanes.
 #[unsafe(no_mangle)]

@@ -289,6 +289,142 @@ pub fn sc_alp_skip(op: i32, f: &Cocf, b: usize, cnt: usize, acc: f64) -> bool {
     }
 }
 
+// ---- K3 (scan.c `sc_bits_run`, `ema_*`, `mw_sent`, `mw_seed`, `mw_open`, `mw_close`) ----
+
+/// One word of `sc_bits_run`: once a set bit is seen every later bit is set, so the answer of a word is its bits from the
+/// lowest set bit upward, `-(w & -w)`; `carry` is "a set bit was seen before this word".
+#[inline(always)]
+fn bits_word(carry: &mut bool, w: u64, inv: u64) -> u64 {
+    let w = w ^ inv;
+    let o = if *carry { !0 } else {
+        let m = w & (!w).wrapping_add(1);
+        *carry = w != 0;
+        if m != 0 { 0u64.wrapping_sub(m) } else { 0 }
+    };
+    o ^ inv
+}
+/// scan.c `sc_bits_run`: the prefix fold at the bit layout over `out.len()` bytes of `p`, a word at a time; `inv` is
+/// all ones for `mins` (prefix AND is prefix OR on the complement) and zero for `maxs` and `fills`. The bytes of the
+/// last word past `out` are read as zero and not written, so the bits above `n` are the caller's to clear.
+pub fn bits_run(out: &mut [u8], p: &[u8], inv: u64) {
+    let p = &p[..out.len()];
+    let mut carry = false;
+    let mut ow = out.chunks_exact_mut(8);
+    let mut pw = p.chunks_exact(8);
+    for (o, c) in ow.by_ref().zip(pw.by_ref()) {
+        o.copy_from_slice(&bits_word(&mut carry, u64::from_ne_bytes(c.try_into().unwrap()), inv).to_ne_bytes());
+    }
+    let (o, c) = (ow.into_remainder(), pw.remainder());
+    if !o.is_empty() {
+        let mut b = [0u8; 8];
+        b[..c.len()].copy_from_slice(c);
+        o.copy_from_slice(&bits_word(&mut carry, u64::from_ne_bytes(b), inv).to_ne_bytes()[..o.len()]);
+    }
+}
+
+/// q takes the first NaN of a pair, spelled out and not left to the order the compiler emits: `0n*(1f-0n)` is `0xfff8..`
+/// and `(1f-0n)*0n` is `0x7ff8..`, the left operand's NaN either way.
+#[inline(always)]
+fn ema_mul(x: f64, y: f64) -> f64 { if x != x { x } else if y != y { y } else { x * y } }
+#[inline(always)]
+fn ema_add(x: f64, y: f64) -> f64 { if x != x { x } else if y != y { y } else { x + y } }
+/// The doubles of a payload, as `n = len / 8` elements.
+#[inline(always)]
+fn f64s(p: &[u8]) -> impl Iterator<Item = f64> + Clone + '_ { elts::<8, f64>(p, p.len() / 8, f64::from_ne_bytes) }
+/// scan.c `qlean_scan_ema`'s loop: `out[i] = (1-a)*out[i-1] + a*y[i]`, `1-a` as q forms it (a NaN `a` keeps its sign bit
+/// cleared, by negating the bits), and the first element is `(1-a)*y[0] + a*y[0]` and not `y[0]`, so `0n ema 1 2 3f` is
+/// `0n` there too. Serial, and no step a fused multiply-add. `out` is `y.len() / 8` doubles.
+pub fn ema(abits: u64, y: &[u8], out: &mut [u8]) {
+    let a = f64::from_bits(abits);
+    let oma = if a != a { f64::from_bits(abits ^ (1 << 63)) } else { 1.0 - a };
+    // the element before the first is `y[0]` itself, so `prev` is `acc` throughout
+    let mut acc = f64s(y).next().unwrap_or(0.0);
+    for (v, o) in f64s(y).zip(slots::<8>(out, y.len() / 8)) {
+        acc = ema_add(ema_mul(oma, acc), ema_mul(a, v));
+        o.copy_from_slice(&acc.to_ne_bytes());
+    }
+}
+/// scan.c `qlean_scan_ema_v`'s loop: `out[i] = co[i]*out[i-1] + xy[i]` seeded at `out[-1] = seed`; the product is handed
+/// in already formed, so this is not `ema` with a branch.
+pub fn ema_v(xy: &[u8], co: &[u8], seedbits: u64, out: &mut [u8]) {
+    let mut acc = f64::from_bits(seedbits);
+    for ((v, c), o) in f64s(xy).zip(f64s(co)).zip(slots::<8>(out, xy.len() / 8)) {
+        acc = ema_add(ema_mul(c, acc), v);
+        o.copy_from_slice(&acc.to_ne_bytes());
+    }
+}
+
+// the moving-window verbs, as `QLean/Kernel/Scan.lean`'s `MOp` in constructor order (rs.h hands them to scan.c)
+pub const MW_MSUM: i32 = 0;
+pub const MW_MCOUNT: i32 = 1;
+pub const MW_MAVG: i32 = 2;
+pub const MW_MDEV: i32 = 3;
+pub const MW_MMIN: i32 = 4;
+pub const MW_MMAX: i32 = 5;
+pub const MW_OPS_N: i32 = 6;
+/// The shortest chunk the two loops of every reducing verb run in, and the tile `qlean_mwin_bits` writes a byte an
+/// element into.
+pub const MW_TILE: usize = 1024;
+
+/// scan.c `mw_out_width`, `MOp.width`: bytes one element of the answer occupies. `msum` answers at `sums`'s width,
+/// `mavg` and `mdev` eight, `mcount` four, the extremes at the operand's own width.
+pub fn mw_out_width(op: i32, kind: i32) -> usize {
+    match op {
+        MW_MSUM => sc_out_width(SC_SUMS, kind),
+        MW_MCOUNT => 4,
+        MW_MMIN | MW_MMAX => sc_out_width(SC_MINS, kind),
+        _ => 8,
+    }
+}
+/// scan.c `mw_sent`: the extreme of no elements, as bits at the element's own width. `mmax` at a float takes q's `0n`
+/// and not `-0w` (`|` ignores a null, so the null is its identity); at the signed widths `0N` already is the extreme.
+fn mw_sent(op: i32, kind: i32) -> u64 {
+    let mn = op == MW_MMIN;
+    match u8::try_from(kind).unwrap_or(u8::MAX) {
+        SK_BIT => mn as u64,
+        SK_U8 | SK_C8 => if mn { 0xff } else { 0 },
+        SK_I16 => if mn { i16::MAX as u64 } else { i16::MIN as u16 as u64 },
+        SK_I32 => if mn { i32::MAX as u64 } else { i32::MIN as u32 as u64 },
+        SK_I64 => if mn { i64::MAX as u64 } else { i64::MIN as u64 },
+        SK_F32 => if mn { 0x7f80_0000 } else { SC_NAN32 as u64 },
+        _ => if mn { 0x7ff0_0000_0000_0000 } else { SC_NAN64 },
+    }
+}
+/// scan.c `mw_seed`, `MOp.seed`: the identity q's each-prior `&':` and `|':` start from, which each of the first `w - 1`
+/// windows also holds. `3 mmax 0N 0N 0N 1` is `-0W -0W 0N 1`. The seed of `mmin` is the type's top.
+fn mw_seed(op: i32, kind: i32) -> u64 {
+    let mn = op == MW_MMIN;
+    match u8::try_from(kind).unwrap_or(u8::MAX) {
+        SK_I16 => if mn { i16::MAX as u64 } else { (-i16::MAX) as u16 as u64 },
+        SK_I32 => if mn { i32::MAX as u64 } else { (-i32::MAX) as u32 as u64 },
+        SK_I64 => if mn { i64::MAX as u64 } else { (-i64::MAX) as u64 },
+        SK_F32 => if mn { 0x7f80_0000 } else { 0xff80_0000 },
+        SK_F64 => if mn { 0x7ff0_0000_0000_0000 } else { 0xfff0_0000_0000_0000 },
+        _ => mw_sent(op, kind),
+    }
+}
+
+/// What `mw_open` sizes: the window clamped to `n + 1` (past that no lookback lands in the column), the history's chunk
+/// `tl` and capacity `cap = w + tl`, and `ew`, the answer's width, which is also the width of an extreme's phase.
+pub struct MwDims { pub w: usize, pub tl: usize, pub cap: usize, pub ew: usize }
+pub fn mw_dims(op: i32, kind: i32, w: usize, n: usize) -> MwDims {
+    let w = if w < 1 { 1 } else if w > n { n + 1 } else { w };
+    let tl = w.max(MW_TILE);
+    MwDims { w, tl, cap: w + tl, ew: mw_out_width(op, kind) }
+}
+/// The extremes' suffix table `sufx` (`w + 1` slots of `ew` bytes): the first phase has no previous one, so its suffix
+/// is what a truncated window adds, q's each-prior seed in the `w` leading slots and the identity in the last, which
+/// the first full window reads and no phase close overwrites. Returns the opening extreme `extbits`.
+pub fn mw_prime(sufx: &mut [u8], op: i32, kind: i32, ew: usize) -> u64 {
+    let (sb, sd) = (mw_sent(op, kind), mw_seed(op, kind));
+    let (seed, last) = sufx.split_at_mut(sufx.len() - ew);
+    #[inline(always)]
+    fn fill<const E: usize>(s: &mut [u8], v: u64) { s.chunks_exact_mut(E).for_each(|c| c.copy_from_slice(&v.to_ne_bytes()[..E])) }
+    match ew { 1 => fill::<1>(seed, sd), 2 => fill::<2>(seed, sd), 4 => fill::<4>(seed, sd), _ => fill::<8>(seed, sd) }
+    last.copy_from_slice(&sb.to_ne_bytes()[..ew]);
+    sb
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -378,5 +514,47 @@ mod tests {
         let mut o = [0xEEu8; 8];
         sc_fill_c(&mut o, 3, 2, 0x1_0203);
         assert_eq!(o, [3, 2, 3, 2, 3, 2, 0xEE, 0xEE]);
+    }
+    #[test]
+    fn bits_run_is_the_bitwise_prefix_or_and_and() {
+        // set bit 13 and 70: maxs is zero below 13, one from 13; mins (inv = !0) is one until the first clear bit
+        let nb = 11;
+        let mut p = [0u8; 11];
+        p[1] |= 1 << 5;
+        p[8] |= 1 << 6;
+        let (mut o, mut want) = ([0xAAu8; 11], [0u8; 11]);
+        bits_run(&mut o, &p, 0);
+        (13..nb * 8).for_each(|i| want[i / 8] |= 1 << (i % 8));
+        assert_eq!(o, want);
+        let q = p.map(|b| !b);
+        bits_run(&mut o, &q, !0);
+        want = [0xff; 11];
+        (13..nb * 8).for_each(|i| want[i / 8] &= !(1 << (i % 8)));
+        assert_eq!(o, want);
+        bits_run(&mut [], &[], 0);
+    }
+    #[test]
+    fn ema_nan_coefficient_gives_the_positive_nan_at_every_element() {
+        let y: Vec<u8> = [1.0f64, 2.0, 3.0].iter().flat_map(|x| x.to_ne_bytes()).collect();
+        let mut o = [0u8; 24];
+        ema(f64::NAN.to_bits() | 1 << 63, &y, &mut o);
+        assert!(o.chunks(8).all(|c| u64::from_ne_bytes(c.try_into().unwrap()) >> 63 == 0 && c[7] == 0x7f));
+        ema(0.5f64.to_bits(), &y, &mut o);
+        assert_eq!(f64s(&o).collect::<Vec<_>>(), [1.0, 1.5, 2.25]);
+        ema_v(&y, &y, 2.0f64.to_bits(), &mut o);
+        assert_eq!(f64s(&o).collect::<Vec<_>>(), [3.0, 8.0, 27.0]);
+    }
+    #[test]
+    fn window_seeds_and_sentinels() {
+        assert_eq!(mw_seed(MW_MMAX, SK_I64 as i32), (-i64::MAX) as u64);
+        assert_eq!(mw_sent(MW_MMAX, SK_I64 as i32), i64::MIN as u64);
+        assert_eq!(mw_sent(MW_MMAX, SK_F64 as i32), SC_NAN64);
+        assert_eq!(mw_seed(MW_MMIN, SK_F32 as i32), 0x7f80_0000);
+        assert_eq!(mw_sent(MW_MMIN, SK_BIT as i32), 1);
+        let d = mw_dims(MW_MMIN, SK_I16 as i32, 5000, 10);
+        assert_eq!((d.w, d.tl, d.cap, d.ew), (11, MW_TILE, 11 + MW_TILE, 2));
+        let mut sufx = [0u8; 8];
+        assert_eq!(mw_prime(&mut sufx, MW_MMAX, SK_I16 as i32, 2), i16::MIN as u16 as u64);
+        assert_eq!(sufx, [1, 0x80, 1, 0x80, 1, 0x80, 0x00, 0x80]);
     }
 }
