@@ -24,13 +24,13 @@ fn cut(n: usize, parts: usize, k: usize) -> (usize, usize) {
     (lo, lo + q + (k < r) as usize)
 }
 
-struct Job<'f, F> { f: &'f F, out: *mut u8, unit: usize }
+struct Job<'f, F> { f: &'f F, out: *mut u8, unit: usize, len: usize }
 
 /// Safety: `p` is the `CPass` `run_map` built, whose `a` is a live `Job<F>`; `[lo, hi)` is a slice of `[0, n)`
 /// that no other worker of the same pass is given.
 unsafe extern "C" fn slice<F: Fn(usize, usize, &mut [u8]) + Sync>(lo: usize, hi: usize, p: *const CPass) {
     let j = unsafe { &*(*p).a.cast::<Job<F>>() };
-    let o = unsafe { core::slice::from_raw_parts_mut(j.out.add(lo * j.unit), (hi - lo) * j.unit) };
+    let o = unsafe { core::slice::from_raw_parts_mut(j.out.add(lo * j.unit), (hi * j.unit).min(j.len) - lo * j.unit) };
     (j.f)(lo, hi, o)
 }
 
@@ -38,10 +38,11 @@ unsafe extern "C" fn slice<F: Fn(usize, usize, &mut [u8]) + Sync>(lo: usize, hi:
 /// once per slice, on as many threads as `qlean_run` splits `units` into at `cost` and `wide`; answers that count.
 pub fn run_map<F: Fn(usize, usize, &mut [u8]) + Sync>(run: Runner, out: &mut [u8], units: usize, unit: usize, cost: u32,
                                                       wide: usize, f: &F) -> u32 {
-    assert!(units.checked_mul(unit).is_some_and(|b| b <= out.len()),
-            "run_map: {units} units of {unit} bytes past a {}-byte output", out.len());
+    // the last unit may be short (a ragged final block): its slice ends at `out`
+    assert!(units == 0 || (units - 1).checked_mul(unit).is_some_and(|b| b <= out.len()),
+            "run_map: {units} units of {unit} bytes start past a {}-byte output", out.len());
     let o = out.as_mut_ptr();
-    let job = Job { f, out: o, unit };
+    let job = Job { f, out: o, unit, len: out.len() };
     let p = CPass { a: (&raw const job).cast(), b: null(), c: null(), o: o.cast(), n: units, at: 0,
                     r#priv: 0, nul: 0, op: 0, cls: 0, shape: 0 };
     // the slices partition [0, units), so the `&mut` each worker makes are disjoint; `out` outlives the call
@@ -58,6 +59,15 @@ mod tests {
         });
         assert_eq!(parts, 3);
         assert_eq!(out, [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 0]);
+    }
+    // a short last unit (a ragged final block) ends its slice at `out`, not at `units * unit`
+    #[test] fn run_map_ends_the_last_slice_at_out() {
+        let mut out = [0u8; 2 * 6 + 1];
+        super::run_map(super::qlean_run_c, &mut out, 7, 2, crate::QLEAN_COST_ARITH, 8, &|lo, hi, o: &mut [u8]| {
+            assert_eq!(o.len(), (2 * hi).min(13) - 2 * lo);
+            for (k, b) in o.iter_mut().enumerate() { *b = (lo * 2 + k) as u8 + 1 }
+        });
+        assert_eq!(out, [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13]);
     }
     use crate::ffi::{CPass, CStage};
     use std::vec::Vec;

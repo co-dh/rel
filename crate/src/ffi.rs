@@ -658,6 +658,11 @@ pub unsafe extern "C" fn qrs_alp_patch_blk_f64(o: *const CCocf, b: usize, nb: us
                                                d: *mut i64, ee: *mut i8) -> c_int {
     unsafe { crate::alp::alp_patch_blk(&(*o).view(), b, nb, sl(ix, m), sl(v, m), sl_mut(d, nb), sl_mut(ee, nb)) }
 }
+/// A18: coc.c `alp_chunk_run`, blocks `b0 .. b1` of an `f64` column into `buf` (`(b1 - b0) * BLK` doubles).
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn qrs_alp_chunk(run: unsafe extern "C" fn(), f: *const CCocf, b0: usize, b1: usize, buf: *mut u8) {
+    unsafe { codec::alp_chunk(rn(run), &(*f).view(), b0, b1, sl_mut(buf, (b1 - b0) * crate::BLK * 8)) }
+}
 /// A18: coc.c `alp_decode_run`.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn qrs_alp_decode(run: unsafe extern "C" fn(), f: *const CCocf, out: *mut u8, bytes: usize) {
