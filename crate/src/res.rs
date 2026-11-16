@@ -1,5 +1,4 @@
 #![forbid(unsafe_code)]
-#![allow(unused_variables)] // A3, A4 stubs below
 //! Column (a), coc.h: one block's residuals as bits — single fields (A2), the scalar pack (A2; the AVX-512 one is
 //! `simd::res_pack`), the residual sums (A3, `simd::res_sum8` for 8 bits), the smallest nonzero residual (A4).
 //! `p` is always the block's `BLK * w / 8` bytes.
@@ -85,8 +84,8 @@ pub fn res_sum(p: &[u8], nb: usize, w: u8) -> u64 {
 }
 
 // ---- A4: coc.h:993 ----
-/// coc.h:993 `res_min_nonzero`
-pub fn res_min_nonzero(p: &[u8], nb: usize, w: u8) -> u64 { unimplemented!("A4: res_min_nonzero") }
+/// coc.h:993 `res_min_nonzero`: the smallest nonzero residual of the block, 0 when every element is null.
+pub fn res_min_nonzero(p: &[u8], nb: usize, w: u8) -> u64 { (0..nb).map(|j| res_get(p, w, j)).filter(|&r| r != 0).min().unwrap_or(0) }
 
 #[cfg(test)]
 mod tests {

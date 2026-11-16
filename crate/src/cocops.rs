@@ -4,7 +4,7 @@
 //! and the in-place shift (A6), plus `CocMut`, the writable form of the same `coc`.
 use crate::coc::{Coc, Meta};
 use crate::coc::lanes;
-use crate::res::{res_get, res_get_in, res_sum};
+use crate::res::{res_get, res_get_in, res_min_nonzero, res_sum};
 use crate::simd::prefetch;
 use crate::BLK;
 
@@ -193,16 +193,69 @@ impl<'a> CocMut<'a> {
 
 // ---- A4: coc.h:934-1050 ----
 impl<'a> Coc<'a> {
-    /// coc.h:934 `coc_prd`: product, nulls skipped, wrapping.
-    pub fn prd(&self, nul: i64) -> u64 { unimplemented!("A4: coc_prd") }
-    /// coc.h:964 `coc_any`
-    pub fn any(&self) -> bool { unimplemented!("A4: coc_any") }
-    /// coc.h:970 `coc_all`
-    pub fn all(&self) -> bool { unimplemented!("A4: coc_all") }
-    /// coc.h:1007 `coc_min`: nulls skipped; `nul` when every element is null.
-    pub fn min(&self, nul: i64) -> i64 { unimplemented!("A4: coc_min") }
-    /// coc.h:1031 `coc_max`
-    pub fn max(&self, nul: i64) -> i64 { unimplemented!("A4: coc_max") }
+    /// Block `b`'s residual bytes and its element count.
+    fn blk(&self, b: usize) -> (&'a [u8], usize) {
+        let m = &self.meta;
+        let at = m.off[b] as usize;
+        (&self.pack[at..at + BLK * m.width[b] as usize / 8], if b * BLK + BLK < m.n { BLK } else { m.n - b * BLK })
+    }
+    /// coc.h:934 `coc_prd`: product, nulls skipped, wrapping. Every element is read; the accumulator reaching 0
+    /// ends the column, a wrapping product being absorbing at 0 as an exact one is.
+    pub fn prd(&self, nul: i64) -> u64 {
+        let (mut acc, m) = (1u64, &self.meta);
+        for b in 0..m.nblk {
+            if acc == 0 { break }
+            let ((p, nb), base, w) = (self.blk(b), m.base[b] as u64, m.width[b]);
+            if self.blk_nexc(b) != 0 {
+                let mut x = [0i64; BLK];
+                self.decode_blk(b, nb, &mut x);
+                for &v in x[..nb].iter().filter(|&&v| v != nul) { acc = acc.wrapping_mul(v as u64) }
+            } else if m.base[b] == nul {
+                for r in (0..nb).map(|j| res_get(p, w, j)).filter(|&r| r != 0) { acc = acc.wrapping_mul(base.wrapping_add(r)) }
+            } else {
+                for j in 0..nb { acc = acc.wrapping_mul(base.wrapping_add(res_get(p, w, j))) }
+            }
+        }
+        acc
+    }
+    /// coc.h:964 `coc_any`: base and maxv are attained values, so only a patched block's exceptions need asking too.
+    pub fn any(&self) -> bool {
+        let m = &self.meta;
+        (0..m.nblk).any(|b| m.base[b] != 0 || m.maxv[b] != 0) || (0..self.exc.map_or(0, |e| e.pos.len())).any(|j| self.exc(j) != 0)
+    }
+    /// coc.h:970 `coc_all`: descends only into a block that could hold a zero (base <= 0 <= maxv), where a zero has
+    /// the residual `0 - base`.
+    pub fn all(&self) -> bool {
+        let m = &self.meta;
+        (0..m.nblk).filter(|&b| !(m.base[b] > 0 || m.maxv[b] < 0)).all(|b| {
+            let (p, nb) = self.blk(b);
+            if self.blk_nexc(b) != 0 { // a slot reads as base, which may be the zero it is not
+                let mut x = [0i64; BLK];
+                self.decode_blk(b, nb, &mut x);
+                return x[..nb].iter().all(|&v| v != 0)
+            }
+            let t = 0u64.wrapping_sub(m.base[b] as u64);
+            (0..nb).all(|j| res_get(p, m.width[b], j) != t)
+        })
+    }
+    /// coc.h:1007 `coc_min`: nulls skipped; `!nul` (q's 0W) when every element is null. The first phase is a plain
+    /// running minimum that vectorises; the null test is asked once afterwards.
+    pub fn min(&self, nul: i64) -> i64 {
+        let m = &self.meta;
+        let lo = m.base[..m.nblk].iter().fold(!nul, |a, &b| a.min(b));
+        if lo != nul { return lo }
+        (0..m.nblk).filter_map(|b| if m.base[b] != nul { Some(m.base[b]) } else {
+            let (p, nb) = self.blk(b);
+            let r = res_min_nonzero(p, nb, m.width[b]);
+            (r != 0).then(|| self.frame(b).wrapping_add(r) as i64) // r = 0: every element of the block is null
+        }).fold(!nul, i64::min)
+    }
+    /// coc.h:1031 `coc_max`: a null is the smallest element, so `maxv` is the answer unless every block is null,
+    /// which is q's -0W.
+    pub fn max(&self, nul: i64) -> i64 {
+        let m = self.meta.maxv[..self.meta.nblk].iter().fold(nul, |a, &b| a.max(b));
+        if m == nul { nul.wrapping_add(1) } else { m }
+    }
 }
 
 // ---- A6: coc.h:1304-1400 ----
@@ -245,6 +298,22 @@ mod tests {
         assert_eq!(out[..3], [99, 99, 99]);
         assert_eq!((c.std(3), c.std(1025), c.std(0)), (true, false, false));
         assert_eq!(c.one_width(), 0);
+    }
+    // expected values: the C of 7091572 (/data/tmp/qrs/A4/diff.c: 312000 checks, 0 mismatches)
+    #[test] fn folds_of_a_column_with_no_element_are_q_seeds() {
+        let meta = Meta { base: &[], maxv: &[], off: &[], bsum: &[], width: &[], sumnul: 0, sumn: 0, n: 0, nblk: 0, mblk: 0 };
+        let c = Coc { meta, pack: &[], exc: None, fdelta: None };
+        assert_eq!((c.prd(i64::MIN), c.min(i64::MIN), c.max(i64::MIN)), (1, i64::MAX, i64::MIN + 1));
+        assert_eq!((c.all(), c.any()), (true, false));
+    }
+    #[test] fn all_null_block_and_all_zero_block() {
+        fn mk(v: &[i64; 1]) -> Coc<'_> {
+            Coc { meta: Meta { base: v, maxv: v, off: &[0], bsum: &[0], width: &[0], sumnul: 0, sumn: 0, n: 3, nblk: 1, mblk: 1 }, pack: &[], exc: None, fdelta: None }
+        }
+        let n = mk(&[i64::MIN]);
+        assert_eq!((n.min(i64::MIN), n.max(i64::MIN), n.prd(i64::MIN)), (i64::MAX, i64::MIN + 1, 1));
+        let z = mk(&[0]);
+        assert_eq!((z.any(), z.all(), z.prd(i64::MIN)), (false, false, 0));
     }
     // expected values: the C of d995c59 (/data/tmp/qrs/A3/diff.c: 185232 checks, 0 mismatches)
     #[test] fn sums_wrap_skip_nulls_and_drop() {

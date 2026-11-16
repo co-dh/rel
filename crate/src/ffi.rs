@@ -478,6 +478,18 @@ pub unsafe extern "C" fn qrs_res_count_lt8(p: *const u8, nb: usize, t: u64) -> u
 /// A4: coc.h:934 `coc_prd`.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn qrs_coc_prd(c: *const CCoc, nul: i64) -> u64 { unsafe { (*c).view() }.prd(nul) }
+/// A4: coc.h:964 `coc_any`, which `qlean_coc_over` calls.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn qrs_coc_any(c: *const CCoc) -> c_int { unsafe { (*c).view() }.any() as c_int }
+/// A4: coc.h:970 `coc_all`, which `qlean_coc_over` calls.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn qrs_coc_all(c: *const CCoc) -> c_int { unsafe { (*c).view() }.all() as c_int }
+/// A4: coc.h:1007 `coc_min`, which `qlean_coc_over` calls.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn qrs_coc_min(c: *const CCoc, nul: i64) -> i64 { unsafe { (*c).view() }.min(nul) }
+/// A4: coc.h:1031 `coc_max`, which `qlean_coc_over` calls.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn qrs_coc_max(c: *const CCoc, nul: i64) -> i64 { unsafe { (*c).view() }.max(nul) }
 /// A5: coc.h:1554 `cocf_decode`.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn qrs_cocf_decode(f: *const CCocf, b0: usize, b1: usize, out: *mut u8, bytes: usize) {
