@@ -5,10 +5,10 @@
 use crate::lean::{B, O, SArr, export};
 use crate::{c, pod, reduce};
 
-/// The `Int64` slots of a payload (a ragged tail is not a slot, as `size >> 3` in C).
-fn longs<'a>(b: B<'a>) -> &'a [i64] {
+/// The whole `T` elements of a payload (a ragged tail is not one, as `size >> 3` in C).
+fn elems<'a, T: pod::Pod>(b: B<'a>) -> &'a [T] {
     let v = b.bytes();
-    pod::cast(&v[..v.len() & !7]).expect("reduce: an Int64 payload is not 8-aligned")
+    pod::cast(&v[..v.len() - v.len() % size_of::<T>()]).expect("reduce: a payload is not aligned for its element")
 }
 /// An answer of `n` bytes, undefined until the kernel writes it.
 fn answer(n: usize) -> SArr { SArr::new(1, n) }
@@ -40,7 +40,7 @@ export! {
 
     /// `overSegments`: `overGroups`' fold over the rows of each segment of `offv` (ascending starts split by rows).
     fn qlean_over_segments(op: u8, cls: u8, nul: u64, offv: B, a: B) -> O {
-        let offs = longs(offv);
+        let offs = elems::<i64>(offv);
         let ng = offs.len().saturating_sub(1);
         let mut r = answer(ng * 16);
         if ng != 0 {
@@ -53,11 +53,11 @@ export! {
 
     /// `bitRowsOver`: row `g` of `w` bits is the `|` (`&` under `all`) of the rows `idx[k]` of `m`, `k` over segment `g`.
     fn qlean_bit_rows_over(all: u8, w: usize, offv: B, idxv: B, mv: B) -> O {
-        let offs = longs(offv);
+        let offs = elems::<i64>(offv);
         let ng = offs.len().saturating_sub(1);
         let bytes = if w != 0 && ng != 0 { (ng * w).div_ceil(8) } else { 0 };
         let mut r = answer(bytes);
-        reduce::bit_rows(c::pool(), all != 0, w, offs, longs(idxv), mv.bytes(), r.bytes_mut());
+        reduce::bit_rows(c::pool(), all != 0, w, offs, elems::<i64>(idxv), mv.bytes(), r.bytes_mut());
         r.into()
     }
 
@@ -70,9 +70,28 @@ export! {
 
     /// `overSegmentsFloat`: `overGroupsFloat`'s fold over each segment of `offv`.
     fn qlean_over_segments_float(op: u8, f32: u8, avg: u8, offv: B, a: B) -> O {
-        let offs = longs(offv);
+        let offs = elems::<i64>(offv);
         let mut r = answer(offs.len().saturating_sub(1) * 16);
         reduce::over_segments_float(op, f32 != 0, avg != 0, offs, a.bytes(), r.bytes_mut());
         r.into()
     }
+
+    /// `groupCells`: cell `i` of `ord` as `w` bytes (eight under the two averages) from the `2 * ng` slots of `m`.
+    fn qlean_group_cells(kind: u8, w: usize, ng: usize, mv: B, ordv: B) -> O {
+        let ord = elems::<u64>(ordv);
+        let ow = if kind == 2 || kind == 4 { 8 } else { w };
+        // the spec reads past a short `m` as zero slots; a caller never passes one, so it is an abort
+        if mv.bytes().len() < ng.wrapping_mul(16) || !matches!(ow, 1 | 2 | 4 | 8) {
+            panic!("qlean_group_cells: {} slot bytes for {} groups at width {}", mv.bytes().len(), ng, ow);
+        }
+        let mut r = answer(ord.len() * ow);
+        reduce::group_cells(kind, w, ng, elems::<i64>(mv), ord, r.bytes_mut());
+        r.into()
+    }
+
+    /// `overF64`: the bits of `op` over the doubles of `a`.
+    fn qlean_over_f64(op: u8, a: B) -> u64 { reduce::over_f64(op, elems::<f64>(a), None).to_bits() }
+
+    /// `overF32`: the bits of `op` over the floats of `a`.
+    fn qlean_over_f32(op: u8, a: B) -> u32 { reduce::over_f32(op, elems::<f32>(a), None).to_bits() }
 }

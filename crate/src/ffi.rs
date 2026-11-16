@@ -583,13 +583,6 @@ pub unsafe extern "C" fn qrs_sym_msort(v: *const CSym, n: usize, a: *mut usize, 
     let s: alloc::vec::Vec<&[u8]> = unsafe { sl(v, n) }.iter().map(|x| unsafe { sl(x.p, x.len) }).collect();
     unsafe { sym::sym_msort(&s, sl_mut(a, n), sl_mut(tmp, n)) }
 }
-/// K2: reduce.c `qlean_group_cells` past its width check: `n` cells of `ow` bytes (`w`, or 8 for the two averages) at
-/// `out`, from the `2 * ng` slots at `m` gathered by the `n` ids at `ord`.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn qrs_group_cells(kind: u8, w: usize, ow: usize, ng: usize, m: *const i64, ord: *const u64,
-                                         n: usize, out: *mut u8) {
-    unsafe { reduce::group_cells(kind, w, ng, sl(m, 2 * ng), sl(ord, n), sl_mut(out, n * ow)) }
-}
 /// Safety: `p` is null or valid for a write of a `usize`.
 unsafe fn opt<'a>(p: *mut usize) -> Option<&'a mut usize> { unsafe { p.as_mut() } }
 /// A column read through C's block callback `at(src, b, nb, buf)`: a pointer to block `b`'s `nb` elements.
@@ -626,16 +619,6 @@ pub unsafe extern "C" fn qrs_over_f32_sum(p: *const f32, n: usize, live: *mut us
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn qrs_over_f64_sum(p: *const f64, n: usize, live: *mut usize) -> f64 {
     unsafe { reduce::over_f64_sum(sl(p, n), opt(live)) }
-}
-/// K2: reduce.c `over_f32` (`qlean_over_f32` past the unboxing) over the `n` floats at `p`.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn qrs_over_f32(op: u8, p: *const f32, n: usize, live: *mut usize) -> f32 {
-    unsafe { reduce::over_f32(op, sl(p, n), opt(live)) }
-}
-/// K2: reduce.c `over_f64` (`qlean_over_f64` past the unboxing) over the `n` doubles at `p`.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn qrs_over_f64(op: u8, p: *const f64, n: usize, live: *mut usize) -> f64 {
-    unsafe { reduce::over_f64(op, sl(p, n), opt(live)) }
 }
 /// A14: scan.c `scan_run`.
 #[unsafe(no_mangle)]
