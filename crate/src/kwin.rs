@@ -16,7 +16,7 @@ pub struct Kwin<'a> {
      lo: usize, len: usize, key: Box<[u64; 2 * BLK]> }
 
 /// `sk_dense_width` (coc.h:359) in bits; C exits at the kinds with no dense width, which an encoded column never has.
-fn dense_bits(kind: u8) -> u32 {
+pub fn dense_bits(kind: u8) -> u32 {
     match kind {
         SK_U8 | SK_C8 => 8,
         SK_I16 => 16,

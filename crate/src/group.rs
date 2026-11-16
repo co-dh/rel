@@ -8,11 +8,13 @@ use alloc::vec::Vec;
 
 use crate::c::{run_map, Runner};
 use crate::coc::Coc;
-use crate::kwin::Kwin;
+use crate::kwin::{self, Kwin};
 use crate::ids::id_width;
 use crate::simd::prefetch;
 use crate::pod::uninit;
-use crate::key::{each, Keys, Pass};
+use crate::alp::Cocf;
+use crate::key::{each, Keys, Pass, Range};
+use crate::BLK;
 
 pub const PHI64: u64 = 0x9e3779b97f4a7c15;
 /// How many elements ahead the hashed numbering starts a slot's cache line (sort.c's `group_prefetch` users). The
@@ -400,6 +402,128 @@ pub fn group_ids_win(run: Runner, kind: u8, c: Coc, n: usize, mn: u64, mx: u64, 
     Some(ng)
 }
 
+// ---- K15: sort.c's `buckets`, `distinct_fill[_alp]`, `keys_gather_foR` and `parted_of` ----
+
+/// `lean_box` of the byte offset of element `at` of an `i64` array (`at * 8`): a `QValue.slices` bound.
+fn boxed(at: usize) -> usize { at << 4 | 1 }
+
+/// `buckets`: the indices of `gid` bucket by bucket, each bucket ascending, into `ord`, and the `ng + 1` boxed byte offsets
+/// that cut them into `bnd` (`ng = bnd.len() - 1`); `cnt[..ng]` is how many elements name each group. Prefix-sum, then one
+/// scatter in index order.
+pub fn buckets(gid: &[u32], cnt: &[u32], ord: &mut [i64], bnd: &mut [usize]) {
+    assert!(!bnd.is_empty() && cnt.len() + 1 >= bnd.len() && ord.len() == gid.len(),
+            "qlean buckets: {} elements, {} offsets, {} counts, {} indices to write", gid.len(), bnd.len(), cnt.len(), ord.len());
+    let ng = bnd.len() - 1;
+    let mut at = uninit::<usize>(ng);
+    let mut run = 0;
+    for ((a, c), e) in at.iter_mut().zip(cnt).zip(bnd.iter_mut()) { (*a, *e) = (run, boxed(run)); run += *c as usize }
+    bnd[ng] = boxed(run);
+    for (i, &g) in gid.iter().enumerate() { let a = &mut at[g as usize]; ord[*a] = i as i64; *a += 1 }
+}
+
+/// `distinct_fill`: the elements of the encoded column `c` at `first` (ascending), as the key under `flip` (`key_flip`: the
+/// element again at the three kinds Frame of Reference encodes) into `buf`. `first` ascends, so the elements a block of
+/// the column holds are a run of it: each block touched is decoded once, into `k`, and its run read out of it.
+fn fill_keys(kind: u8, c: &Coc, first: &[usize], flip: u64, buf: &mut [i64], k: &mut [u64; BLK]) {
+    let (n, buf, mut j) = (c.meta.n, &mut buf[..first.len()], 0);
+    while j < first.len() {
+        let (b, e) = (first[j] / BLK, first[j] / BLK * BLK + BLK);
+        kwin::keys_blk(kind, c, b, &mut k[..(n - b * BLK).min(BLK)]);
+        while j < first.len() && first[j] < e { buf[j] = (k[first[j] & (BLK - 1)] ^ flip) as i64; j += 1 }
+    }
+}
+pub fn distinct_fill(kind: u8, c: &Coc, first: &[usize], buf: &mut [i64]) { fill_keys(kind, c, first, kwin::key_flip(kind), buf, &mut [0; BLK]) }
+
+/// `distinct_fill_alp`: as `distinct_fill` over an ALP column, the elements restored out of their blocks and not rebuilt from
+/// the key, which at a float folds every NaN and both zeros: q's `distinct` answers the first element as stored. `buf`
+/// takes the f32 bits zero-extended.
+pub fn distinct_fill_alp(f: &Cocf, first: &[usize], buf: &mut [i64]) {
+    let (n, w, buf, mut j) = (f.c.meta.n, if f.f32 { 4 } else { 8 }, &mut buf[..first.len()], 0);
+    let mut v = [0u64; BLK];
+    while j < first.len() {
+        let (at, cnt) = (first[j] / BLK * BLK, (n - first[j] / BLK * BLK).min(BLK));
+        f.load_blk(first[j] / BLK, cnt, &mut crate::pod::bytes_mut(&mut v)[..cnt * w]);
+        let e = at + BLK;
+        if f.f32 {
+            let v32 = crate::pod::cast::<u32>(crate::pod::bytes(&v)).expect("a u64 array is a u32 array");
+            while j < first.len() && first[j] < e { buf[j] = v32[first[j] & (BLK - 1)] as i64; j += 1 }
+        } else {
+            while j < first.len() && first[j] < e { buf[j] = v[first[j] & (BLK - 1)] as i64; j += 1 }
+        }
+    }
+}
+
+/// `keys_gather_foR`: the `first.len()` keys of `distinct_fill`, narrowed to the column's own width (`out` holds that many
+/// of 2, 4 or 8 bytes: the kinds Frame of Reference encodes).
+pub fn keys_gather(kind: u8, c: &Coc, first: &[usize], out: &mut [u8]) {
+    let w = (kwin::dense_bits(kind) / 8) as usize;
+    assert!(matches!(w, 2 | 4 | 8) && out.len() == first.len() * w,
+            "qlean group: {} keys of kind {kind} (width {w}) cannot fill {} bytes", first.len(), out.len());
+    let (flip, mut k, mut buf) = (kwin::key_flip(kind), [0u64; BLK], [0i64; BLK]);
+    for (f, o) in first.chunks(BLK).zip(out.chunks_mut(BLK * w)) {
+        let buf = &mut buf[..f.len()];
+        fill_keys(kind, c, f, flip, buf, &mut k);
+        match w {
+            2 => for (o, b) in o.chunks_exact_mut(2).zip(&*buf) { o.copy_from_slice(&(*b as u16).to_ne_bytes()) },
+            4 => for (o, b) in o.chunks_exact_mut(4).zip(&*buf) { o.copy_from_slice(&(*b as u32).to_ne_bytes()) },
+            _ => for (o, b) in o.chunks_exact_mut(8).zip(&*buf) { o.copy_from_slice(&b.to_ne_bytes()) },
+        }
+    }
+}
+
+/// `SK_PARTED`'s walk: false at the first run head already seen (`seen` records the ones it has not), or at the first repeat
+/// of a key inside a run when `strict`. So a mark that does not hold costs a few elements and one that does, a probe a run.
+#[inline(always)]
+fn heads<K: Keys>(mut k: K, n: usize, strict: bool, mut seen: impl FnMut(u64) -> bool) -> bool {
+    let mut prev = k.at(0);
+    if seen(prev) { return false }
+    for i in 1..n {
+        let v = k.at(i);
+        if v == prev { if strict { return false } continue }
+        prev = v;
+        if seen(v) { return false }
+    }
+    true
+}
+
+/// `parted_of`: `Order.firsts` against `Order.runHeads` as a count of run heads the walk has not met: a byte table over the
+/// range when that is at most four slots an element and a thousand, else `dedup`'s hashed table. `range` is the window's
+/// metadata range, none for a dense column (one pass over it).
+struct Parted { strict: bool, range: Option<(u64, u64)> }
+impl Pass for Parted {
+    type Out = bool;
+    fn run<K: Keys>(self, k: K, n: usize) -> bool {
+        if n < 2 { return true }
+        assert!(n <= k.len(), "qlean parted: {n} keys of a source holding {}", k.len());
+        let (mn, mx) = self.range.unwrap_or_else(|| Range.run(k.fork(), n));
+        let span = mx.wrapping_sub(mn);
+        if span < (n as u64).saturating_mul(4) + 1024 && span != u64::MAX {
+            let mut tab = vec![0u8; span as usize + 1];
+            return heads(k, n, self.strict, |v| { let t = &mut tab[(v - mn) as usize]; let s = *t != 0; *t = 1; s });
+        }
+        let cap = cap_for(n);
+        let (mask, sh, mut ng) = (cap - 1, shift(cap), 0);
+        let (mut slot, mut gkey) = (vec![0usize; cap], uninit::<u64>(n));
+        heads(k, n, self.strict, |key| {
+            let mut s = (key.wrapping_mul(PHI64) >> sh) as usize & mask;
+            loop {
+                let g = slot[s];
+                if g == 0 { (slot[s], gkey[ng]) = (ng + 1, key); ng += 1; return false }
+                if gkey[g - 1] == key { return true }
+                s = (s + 1) & mask;
+            }
+        })
+    }
+}
+
+/// `parted_of` over a dense column of `kind`; None = an unknown kind, `SK_WIN`, or a misaligned or short `p`.
+pub fn parted(kind: u8, p: &[u8], n: usize, strict: bool) -> Option<bool> { each(kind, p, n, Parted { strict, range: None }) }
+/// `parted_of` over an encoded column through a window (`qlean_sort_parted_foR`).
+pub fn parted_win(kind: u8, c: Coc, strict: bool) -> bool {
+    let n = c.meta.n;
+    Parted { strict, range: Some(kwin::win_range(kind, &c, false)) }.run(Kwin::new(kind, c), n)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -494,6 +618,23 @@ mod tests {
         assert_eq!(gather(crate::key::SK_I16, &p, &[3], &mut [0; 2]), None);  // past the payload
         assert_eq!(gather(crate::key::SK_I16, &p, &[0], &mut [0; 1]), None);  // short out
         assert_eq!(gather(crate::key::SK_KEY, &p, &[0], &mut [0; 8]), None);  // no write width
+    }
+    // expected values: the C's comments (`group 9 1 9` is `9 1!(0 2;,1)`) and /data/tmp/qrs/K15/diff.c over 20000 cases
+    #[test] fn buckets_ascend_within_each_group() {
+        let (mut ord, mut bnd) = ([-1i64; 3], [0usize; 3]);
+        buckets(&[0, 1, 0], &[2, 1], &mut ord, &mut bnd);
+        assert_eq!((ord, bnd), ([0, 2, 1], [1, 16 << 1 | 1, 24 << 1 | 1]));
+        buckets(&[], &[], &mut [], &mut bnd[..1]);
+        assert_eq!(bnd[0], 1);
+    }
+    fn parted_of(k: &[u64], strict: bool) -> bool { parted(SK_KEY, crate::pod::bytes(k), k.len(), strict).unwrap() }
+    #[test] fn parted_counts_run_heads() {
+        assert!(parted_of(&[], true) && parted_of(&[7], true));
+        assert!(parted_of(&[1, 1, 2], false) && !parted_of(&[1, 1, 2], true));
+        assert!(!parted_of(&[1, 2, 1], false));
+        assert!(!parted_of(&[1, 1 << 40, 1], false)); // the hashed table, not the direct one
+        assert!(parted_of(&[5, 1 << 40, 7 << 20], true));
+        assert_eq!(parted(crate::key::SK_WIN, &[], 0, false), None);
     }
     #[test] fn refuses() {
         let mut g = vec![0u8; 64];
