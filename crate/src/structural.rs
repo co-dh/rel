@@ -481,6 +481,18 @@ pub fn shift_ints(f: &Cocf, k: i64, b: usize, hole: (i64, i8, *const u8), out: &
     ints_fill(&|_| *f, false, hole, out, &|g: &mut dyn FnMut(Seg)| shift_walk(f.c.meta.n, k, b * BLK, blk_count(f.c.meta.n, b), g))
 }
 
+/// structural.c `shift_ints`: both passes of a shift's `coc_ints`. A hole is `fill`, its integer at the exponent where it is
+/// exact there and an exception holding its bits where not (the low four bytes of `fill` at a real, as the fill's own
+/// narrowing reads them); `dat` leaves the integer alone where it refuses, so that is 0.
+pub fn shift_ints_at(f: &Cocf, k: i64, fill: &i64, b: usize, out: Option<&mut Ints>) -> i32 {
+    let e = shift_exp(f, k, b);
+    let Some(out) = out.filter(|_| e >= 0) else { return e };
+    let (mut d, mut ok) = ([0i64], [0u8]);
+    if f.f32 { crate::alp::dat_blk(&[f32::from_bits(*fill as u32)], e, &mut d, &mut ok) } else { crate::alp::dat_blk(&[f64::from_bits(*fill as u64)], e, &mut d, &mut ok) }
+    let (hd, hx) = if ok[0] != 0 { (d[0], 0) } else { (0, -1) };
+    shift_ints(f, k, b, (hd, hx, core::ptr::from_ref(fill).cast()), out);
+    e
+}
 // ---- A36: structural.c:684-760 (the rest of the concat entries is Lean glue) ----
 /// structural.c:684 `cat_take`: the part holding block `b` and its block there.
 pub fn cat_take(start: &[usize], b: usize) -> Option<(usize, usize)> {

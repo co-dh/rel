@@ -1312,124 +1312,6 @@ pub unsafe extern "C" fn qrs_reverse_bits(n: usize, b: *const u8, size: usize, o
 pub unsafe extern "C" fn qrs_shift_bits(n: usize, fill: u64, k: i64, b: *const u8, size: usize, out: *mut u8, bytes: usize) {
     unsafe { structural::shift_bits(n, fill, k, sl(b, size), sl_mut(out, bytes)) }
 }
-/// A35: the parts of a concat. `parts` is C's `cocf` array; a part that is not ALP holds only its `c`, the rest of the
-/// struct is not set, so it is not read.
-unsafe fn cat_parts<'a>(parts: *const CCocf, alp: bool) -> impl Fn(usize) -> Cocf<'a> {
-    move |p| unsafe { let f = &*parts.add(p); if alp { f.view() } else { structural::plain(&f.c.view()) } }
-}
-/// A35: C's `coc_ints` outputs for a block of `cnt` elements; `d` null is pass 1 only.
-unsafe fn ints_out<'a>(d: *mut i64, ee: *mut i8, raw: *mut *const c_void, cnt: usize) -> Option<structural::Ints<'a>> {
-    if d.is_null() { return None }
-    Some(structural::Ints { d: unsafe { sl_mut(d, cnt) }, ee: unsafe { sl_mut(ee, cnt) },
-                            raw: if raw.is_null() { None } else { Some(unsafe { sl_mut(raw.cast::<*const u8>(), cnt) }) } })
-}
-/// A35: structural.c `cycle_fill`; `off` is below the source's count.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn qrs_cycle_fill(c: *const CCoc, off: usize, m: usize, buf: *mut i64, i0: usize, cnt: usize) {
-    unsafe { structural::cycle_fill(&(*c).view(), off, m, sl_mut(buf, cnt), i0) }
-}
-/// A35: structural.c `shift_fill`.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn qrs_shift_fill(c: *const CCoc, k: i64, fill: i64, buf: *mut i64, i0: usize, cnt: usize) {
-    unsafe { structural::shift_fill(&(*c).view(), k, fill, sl_mut(buf, cnt), i0) }
-}
-/// A35: structural.c `cat_fill_alp`.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn qrs_cat_fill_alp(parts: *const CCocf, start: *const usize, k: usize, w: usize, buf: *mut i64,
-                                          i0: usize, cnt: usize) {
-    unsafe { structural::cat_fill_alp(&cat_parts(parts, true), sl(start, k + 1), w, sl_mut(buf, cnt), i0) }
-}
-/// A35: structural.c `rev_fill_alp`.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn qrs_rev_fill_alp(f: *const CCocf, buf: *mut i64, i0: usize, cnt: usize) {
-    unsafe { structural::rev_fill_alp(&(*f).view(), sl_mut(buf, cnt), i0) }
-}
-/// A35: structural.c `cycle_fill_alp`.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn qrs_cycle_fill_alp(f: *const CCocf, off: usize, m: usize, buf: *mut i64, i0: usize, cnt: usize) {
-    unsafe { structural::cycle_fill_alp(&(*f).view(), off, m, sl_mut(buf, cnt), i0) }
-}
-/// A35: structural.c `shift_fill_alp`.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn qrs_shift_fill_alp(f: *const CCocf, k: i64, fill: i64, buf: *mut i64, i0: usize, cnt: usize) {
-    unsafe { structural::shift_fill_alp(&(*f).view(), k, fill, sl_mut(buf, cnt), i0) }
-}
-/// A35: structural.c `cat_hint`; -1 is no hint.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn qrs_cat_hint(parts: *const CCocf, start: *const usize, k: usize, b: usize, lim: *mut u32) -> c_int {
-    unsafe { structural::cat_hint(&cat_parts(parts, true), sl(start, k + 1), b, &mut *lim) }
-}
-/// A35: structural.c `rev_hint`.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn qrs_rev_hint(f: *const CCocf, b: usize, lim: *mut u32) -> c_int {
-    unsafe { structural::rev_hint(&(*f).view(), b, &mut *lim) }
-}
-/// A35: structural.c `cycle_hint`; `m` is the answer's count.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn qrs_cycle_hint(f: *const CCocf, off: usize, m: usize, b: usize, lim: *mut u32) -> c_int {
-    unsafe { structural::cycle_hint(&(*f).view(), off, m, b, &mut *lim) }
-}
-/// A35: structural.c `shift_hint`.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn qrs_shift_hint(f: *const CCocf, k: i64, b: usize, lim: *mut u32) -> c_int {
-    unsafe { structural::shift_hint(&(*f).view(), k, b, &mut *lim) }
-}
-/// A35: structural.c `cat_ints`: `d` null is pass 1 only.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn qrs_cat_ints(parts: *const CCocf, start: *const usize, k: usize, b: usize, d: *mut i64, ee: *mut i8,
-                                      raw: *mut *const c_void) -> c_int {
-    unsafe {
-        let n = *start.add(k);
-        let mut o = ints_out(d, ee, raw, (n - b * BLK).min(BLK));
-        structural::cat_ints(&cat_parts(parts, true), sl(start, k + 1), b, o.as_mut())
-    }
-}
-/// A35: structural.c `rev_ints`.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn qrs_rev_ints(f: *const CCocf, b: usize, d: *mut i64, ee: *mut i8, raw: *mut *const c_void) -> c_int {
-    unsafe {
-        let v = (*f).view();
-        let mut o = ints_out(d, ee, raw, structural::blk_count(v.c.meta.n, b));
-        structural::rev_ints(&v, b, o.as_mut())
-    }
-}
-/// A35: structural.c `cycle_ints`; `m` is the answer's count.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn qrs_cycle_ints(f: *const CCocf, off: usize, m: usize, b: usize, d: *mut i64, ee: *mut i8,
-                                        raw: *mut *const c_void) -> c_int {
-    unsafe {
-        let mut o = ints_out(d, ee, raw, structural::blk_count(m, b));
-        structural::cycle_ints(&(*f).view(), off, m, b, o.as_mut())
-    }
-}
-/// A35: structural.c `shift_ints`' pass 1, the exponent every source block holds; -1 = the general path.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn qrs_shift_exp(f: *const CCocf, k: i64, b: usize) -> c_int {
-    unsafe { structural::shift_exp(&(*f).view(), k, b) }
-}
-/// A35: structural.c `shift_ints`' pass 2; a hole is the integer `hd`, `ee` `hx` and the bits at `fill`.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn qrs_shift_ints(f: *const CCocf, k: i64, b: usize, fill: *const i64, hd: i64, hx: i8, d: *mut i64,
-                                        ee: *mut i8, raw: *mut *const c_void) {
-    unsafe {
-        let v = (*f).view();
-        if let Some(mut o) = ints_out(d, ee, raw, structural::blk_count(v.c.meta.n, b)) {
-            structural::shift_ints(&v, k, b, (hd, hx, fill.cast::<u8>()), &mut o)
-        }
-    }
-}
-/// A36: structural.c `cat_take` over the `k` parts: the part that holds answer block `b` whole, its block there in
-/// `*pb`, or null.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn qrs_cat_take(parts: *const CCocf, start: *const usize, k: usize, w: usize, alp: c_int, b: usize,
-                                      pb: *mut usize) -> *const CCocf {
-    unsafe {
-        let Some((p, j)) = structural::cat_take(sl(start, k + 1), b) else { return core::ptr::null() };
-        if !structural::cat_part_ok(&(*parts.add(p)).c.view(), w, alp != 0) { return core::ptr::null() }
-        *pb = j;
-        parts.add(p)
-    }
-}
 /// A37: structural.c `gather_run`.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn qrs_gather(run: unsafe extern "C" fn(), w: usize, fill: u64, src: *const u8, ns: usize,
@@ -2684,27 +2566,42 @@ pub unsafe extern "C" fn qrs_coc_encode_raw(src: *const u8, n: usize, width: usi
 }
 
 /// A producer written in safe Rust: coc.h's `coc_fill` and, where the answer holds whole blocks of a column already in
-/// the writer's form, `coc_take`. Frame of Reference only; ALP's two hints (`coc_hint`, `coc_ints`) arrive with their first
-/// Rust producer.
+/// the writer's form, `coc_take`; ALP's two hints, `coc_hint` and `coc_ints`, have no answer by default.
 pub trait Producer: Sync {
     /// Elements `i0 .. i0 + buf.len()` of the answer into `buf`.
     fn fill(&self, buf: &mut [i64], i0: usize);
     /// Block `pb` of a column in the writer's form that answer block `b` equals, with `pb`.
     fn take(&self, _b: usize) -> Option<(Cocf<'_>, usize)> { None }
+    /// A block exponent for answer block `b` and the most exceptions it may leave; -1 is no hint.
+    fn hint(&self, _b: usize) -> Option<(i32, u32)> { None }
+    /// Answer block `b` as decimals (`out`, none for pass 1 only) and the exponent they are at; -1 = the general path.
+    fn ints(&self, _b: usize, _out: Option<&mut structural::Ints>) -> i32 { -1 }
 }
+/// A closure over `(buf, i0)` is a producer that only fills.
+impl<F: Fn(&mut [i64], usize) + Sync> Producer for F { fn fill(&self, buf: &mut [i64], i0: usize) { self(buf, i0) } }
 /// `P` as the writer's source: the cursor and the blocks it claims, as `FillSrc`'s are for a C producer.
 struct ProdSrc<'a, P> { p: &'a P, width: usize }
 impl<P: Producer> Moves for ProdSrc<'_, P> {
     fn take(&self, b: usize) -> Option<(Cocf<'_>, usize)> { self.p.take(b) }
-    fn ints(&self, _: usize, _: usize, _: &mut [i64], _: &mut [i8], _: Option<&mut [u8]>) -> Option<i32> { None }
-    fn hint(&self, _: usize) -> Option<(i32, u32)> { None }
+    fn ints(&self, b: usize, nb: usize, d: &mut [i64], ee: &mut [i8], raw: Option<&mut [u8]>) -> Option<i32> {
+        let mut ptrs = [core::ptr::null::<u8>(); BLK];
+        let mut o = structural::Ints { d: &mut d[..nb], ee: &mut ee[..nb], raw: raw.is_some().then(|| &mut ptrs[..nb]) };
+        let e = self.p.ints(b, Some(&mut o));
+        if let (Some(raw), true) = (raw, e >= 0) {
+            let w = self.width;
+            // each exception's `w` raw bytes are in the source's patch list or the producer's hole, both alive here
+            for i in (0..nb).filter(|&i| ee[i] < 0) { raw[i * w..(i + 1) * w].copy_from_slice(unsafe { sl(ptrs[i], w) }) }
+        }
+        Some(e)
+    }
+    fn hint(&self, b: usize) -> Option<(i32, u32)> { self.p.hint(b) }
 }
 impl<P: Producer> Source for ProdSrc<'_, P> {
     unsafe fn open(&self) -> Option<*mut c_void> { Some(unsafe { coc_alloc(BLK * 16) }.cast()) }
     unsafe fn at(&self, cur: *mut c_void, off: usize, len: usize) -> *const u8 {
         unsafe {
             let (b, w) = (off / self.width / BLK, self.width);
-            if self.p.take(b).is_some() { return cur.cast() }
+            if self.p.take(b).is_some() || self.p.ints(b, None) >= 0 { return cur.cast() }
             let (v, cnt) = (cur.cast::<i64>(), len / w);
             self.p.fill(sl_mut(v, cnt), off / w);
             enc::narrow(w, sl(v, cnt), sl_mut(v.add(BLK).cast::<u8>(), cnt * w)).as_ptr()
@@ -2716,6 +2613,10 @@ impl<P: Producer> Source for ProdSrc<'_, P> {
 /// The (meta, pack) of the `n` elements `p` denotes, `width` bytes each: coc.c `qlean_coc_encode_fill` for a Rust producer.
 pub fn encode_fill<P: Producer>(n: usize, width: usize, p: &P) -> lean::O {
     unsafe { lean::O::own(encode_move(n, width, false, &ProdSrc { p, width }).cast()) }
+}
+/// `encode_fill` at ALP: `(meta, (pack, alp))` of the `n` floats of `width` bytes `p` denotes (`qlean_coc_encode_move`, alp 1).
+pub fn encode_alp<P: Producer>(n: usize, width: usize, p: &P) -> lean::O {
+    unsafe { lean::O::own(encode_move(n, width, true, &ProdSrc { p, width }).cast()) }
 }
 /// structural.c `take_first`: the array `a` back, and its element 0 as an owned reference -- moved out where `a` held the
 /// only reference to it (the slot is left `box(0)`), a reference of its own otherwise -- so an append whose first part
@@ -2792,13 +2693,6 @@ pub fn encode_pair_below(x: &[u8], width: usize) -> Option<lean::O> {
     let mut r = CParts { meta: null_mut(), body: null_mut(), alp: null_mut() };
     if unsafe { qrs_coc_encode_dense(x.as_ptr(), n, width, SRC_FOR, n * width, &mut r) } == 0 { return None }
     Some(own(unsafe { mk_pair(r.meta, r.body) }))
-}
-/// `(meta, pack)` of the `n` elements of `width` bytes `fill(buf, i0)` writes as `i64`s a block at a time (`qrs_coc_encode_fill`).
-pub fn encode_fill(n: usize, width: usize, fill: &(dyn Fn(&mut [i64], usize) + Sync)) -> lean::O {
-    unsafe extern "C" fn go(buf: *mut i64, i0: usize, nb: usize, ctx: *const c_void) {
-        unsafe { (*ctx.cast::<&(dyn Fn(&mut [i64], usize) + Sync)>())(sl_mut(buf, nb), i0) }
-    }
-    own(unsafe { qrs_coc_encode_fill(n, width, go, (&raw const fill).cast()) })
 }
 /// coc.c `mask_alloc` and the kernel that fills it: a `Column.bits` payload of `ceil(n / 8)` bytes inside the `ceil(n / 64)`
 /// words the kernels write; `f` gets the words, any contents.

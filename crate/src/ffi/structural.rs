@@ -4,7 +4,7 @@
 #![deny(unsafe_code)]
 use crate::alp::Cocf;
 use crate::coc::{Coc, Meta};
-use crate::ffi::{Producer, encode_fill, sarray_room, take_first};
+use crate::ffi::{Producer, encode_alp, encode_fill, sarray_room, take_first};
 use crate::lean::{B, O, SArr, ctor, export};
 use crate::{BLK, c, pod, structural};
 use alloc::vec::Vec;
@@ -56,6 +56,48 @@ impl Producer for Cat<'_, '_> {
         let (p, j) = structural::cat_take(self.start, b)?;
         structural::cat_part_ok(&self.parts[p], self.w, false).then(|| (structural::plain(&self.parts[p]), j))
     }
+}
+
+/// The cycling slice of a column: structural.c `cycle_fill`; `off` is below the count.
+struct Cycle<'a, 'b> { c: &'a Coc<'b>, off: usize }
+impl Producer for Cycle<'_, '_> { fn fill(&self, buf: &mut [i64], i0: usize) { structural::cycle_fill(self.c, self.off, 0, buf, i0) } }
+/// A column shifted by `k`, `fill` entering: structural.c `shift_fill`.
+struct Shift<'a, 'b> { c: &'a Coc<'b>, k: i64, fill: i64 }
+impl Producer for Shift<'_, '_> { fn fill(&self, buf: &mut [i64], i0: usize) { structural::shift_fill(self.c, self.k, self.fill, buf, i0) } }
+
+/// The hint callbacks all answer the exponent and the patch limit the walk leaves in `lim`.
+fn hinted(h: impl FnOnce(&mut u32) -> i32) -> Option<(i32, u32)> { let mut lim = 0; let e = h(&mut lim); Some((e, lim)) }
+/// `,` of ALP parts: structural.c `cat_fill_alp`, `cat_take`, `cat_hint`, `cat_ints`.
+struct CatAlp<'a, 'b> { parts: &'a [Cocf<'b>], start: &'a [usize], w: usize }
+impl Producer for CatAlp<'_, '_> {
+    fn fill(&self, buf: &mut [i64], i0: usize) { structural::cat_fill_alp(&|i| self.parts[i], self.start, self.w, buf, i0) }
+    fn take(&self, b: usize) -> Option<(Cocf<'_>, usize)> {
+        let (p, j) = structural::cat_take(self.start, b)?;
+        structural::cat_part_ok(&self.parts[p].c, self.w, true).then(|| (self.parts[p], j))
+    }
+    fn hint(&self, b: usize) -> Option<(i32, u32)> { hinted(|l| structural::cat_hint(&|i| self.parts[i], self.start, b, l)) }
+    fn ints(&self, b: usize, out: Option<&mut structural::Ints>) -> i32 { structural::cat_ints(&|i| self.parts[i], self.start, b, out) }
+}
+/// `reverse` of an ALP column: structural.c `rev_fill_alp`, `rev_hint`, `rev_ints`.
+struct RevAlp<'a, 'b>(&'a Cocf<'b>);
+impl Producer for RevAlp<'_, '_> {
+    fn fill(&self, buf: &mut [i64], i0: usize) { structural::rev_fill_alp(self.0, buf, i0) }
+    fn hint(&self, b: usize) -> Option<(i32, u32)> { hinted(|l| structural::rev_hint(self.0, b, l)) }
+    fn ints(&self, b: usize, out: Option<&mut structural::Ints>) -> i32 { structural::rev_ints(self.0, b, out) }
+}
+/// The cycling slice of an ALP column, `m` elements from `off` (below the count): structural.c `cycle_fill_alp` and its hints.
+struct CycleAlp<'a, 'b> { f: &'a Cocf<'b>, off: usize, m: usize }
+impl Producer for CycleAlp<'_, '_> {
+    fn fill(&self, buf: &mut [i64], i0: usize) { structural::cycle_fill_alp(self.f, self.off, self.m, buf, i0) }
+    fn hint(&self, b: usize) -> Option<(i32, u32)> { hinted(|l| structural::cycle_hint(self.f, self.off, self.m, b, l)) }
+    fn ints(&self, b: usize, out: Option<&mut structural::Ints>) -> i32 { structural::cycle_ints(self.f, self.off, self.m, b, out) }
+}
+/// An ALP column shifted by `k`, `fill` entering: structural.c `shift_fill_alp` and its hints.
+struct ShiftAlp<'a, 'b> { f: &'a Cocf<'b>, k: i64, fill: i64 }
+impl Producer for ShiftAlp<'_, '_> {
+    fn fill(&self, buf: &mut [i64], i0: usize) { structural::shift_fill_alp(self.f, self.k, self.fill, buf, i0) }
+    fn hint(&self, b: usize) -> Option<(i32, u32)> { hinted(|l| structural::shift_hint(self.f, self.k, b, l)) }
+    fn ints(&self, b: usize, out: Option<&mut structural::Ints>) -> i32 { structural::shift_ints_at(self.f, self.k, &self.fill, b, out) }
 }
 
 /// structural.c `reverse_foR_move`: the blocks in reverse order, each keeping its base, maximum and width, its residuals
@@ -130,5 +172,64 @@ export! {
         let mut a = SArr::new(1, n * 8);
         structural::til(c::pool(), pod::cast_mut(a.bytes_mut()).expect("til: a ByteArray's data is 8-aligned"));
         a.into()
+    }
+}
+
+export! {
+    /// Spec: `concatALP w ns metas packs alps`. `concatFoR`'s rule at ALP: an answer block that is one part's own block on the
+    /// grid moves -- metadata, residuals, exponent and exceptions -- and only the blocks straddling a part boundary are
+    /// restored and handed to ALP's block steps. So appending `m` elements to `n` re-encodes the last partial block and the
+    /// `m`, and copies the rest, where decoding every part and encoding the join was the whole column.
+    fn qlean_structural_concat_alp(w: usize, nsv: B, metasv: B, packsv: B, alpsv: B) -> O {
+        let (ms, ps, als, nb) = (metasv.array(), packsv.array(), alpsv.array(), nsv.bytes());
+        let k = ms.len().min(ps.len()).min(als.len()).min(nb.len() / 8);
+        if w != 4 && w != 8 { die(format_args!("qlean concatALP: element width {w} is not a float's\n")) }
+        let ns: &[u64] = pod::cast(&nb[..k * 8]).expect("qlean concatALP: the counts are not 8-aligned");
+        let parts: Vec<Cocf> = (0..k).map(|i| {
+            let f = alp_view(ms[i], ps[i], als[i], ns[i] as usize);
+            if f.f32 != (w == 4) { die(format_args!("qlean concatALP: part {i} holds {}-byte floats, the answer {w}\n", if f.f32 { 4 } else { 8 })) }
+            f
+        }).collect();
+        let (mut start, mut at) = (Vec::with_capacity(k + 1), 0);
+        for p in &parts { start.push(at); at += p.c.meta.n }
+        start.push(at);
+        encode_alp(at, w, &CatAlp { parts: &parts, start: &start, w })
+    }
+
+    /// Spec: `cycleFoR metadata pack n off m` is the round trip `Coc.encode 8 (cycleBytes (· * 8) n off m (Coc.decode 8
+    /// metadata pack n))` -- `m` elements from `off`, cycling, with neither the source nor the answer ever dense. `off < n`
+    /// and `0 < n`: `sliceColumn` reduces the one and substitutes a one-element null source for an empty column.
+    fn qlean_structural_cycle_foR(w: usize, mv: B, pv: B, n: usize, off: usize, m: usize) -> O {
+        let col = coc_view(mv, pv, n);
+        let nn = col.meta.n;
+        encode_fill(if nn != 0 { m } else { 0 }, w, &Cycle { c: &col, off: if nn != 0 { off % nn } else { 0 } })
+    }
+
+    /// Spec: `shiftFoR metadata pack n k fill` is the round trip `Coc.encode 8 (shiftBytes 8 fill k (Coc.decode 8 metadata
+    /// pack n))` -- the answer's element `j` is the source's `j - k`, and `fill` where that is off either end. No
+    /// aligned-move case: a shift lines the 1024-element grid up only when `k` is a multiple of 1024.
+    fn qlean_structural_shift_foR(w: usize, mv: B, pv: B, n: usize, k: u64, fill: u64) -> O {
+        let col = coc_view(mv, pv, n);
+        encode_fill(col.meta.n, w, &Shift { c: &col, k: k as i64, fill: fill as i64 })
+    }
+
+    /// Spec: `reverseALP`, `cycleALP` and `shiftALP`, the round trips through ALP's decode and encoder. The FoR moves at ALP:
+    /// each answer block is restored from the at most two source blocks it is drawn from and handed to ALP's block steps,
+    /// with those blocks' largest exponent as the hint, so a reversed block keeps its exponent and skips the search.
+    fn qlean_structural_reverse_alp(mv: B, pv: B, av: B, n: usize) -> O {
+        let f = alp_view(mv, pv, av, n);
+        encode_alp(f.c.meta.n, if f.f32 { 4 } else { 8 }, &RevAlp(&f))
+    }
+
+    fn qlean_structural_cycle_alp(mv: B, pv: B, av: B, n: usize, off: usize, m: usize) -> O {
+        let f = alp_view(mv, pv, av, n);
+        let nn = f.c.meta.n;
+        let m = if nn != 0 { m } else { 0 };
+        encode_alp(m, if f.f32 { 4 } else { 8 }, &CycleAlp { f: &f, off: if nn != 0 { off % nn } else { 0 }, m })
+    }
+
+    fn qlean_structural_shift_alp(mv: B, pv: B, av: B, n: usize, k: u64, fill: u64) -> O {
+        let f = alp_view(mv, pv, av, n);
+        encode_alp(f.c.meta.n, if f.f32 { 4 } else { 8 }, &ShiftAlp { f: &f, k: k as i64, fill: fill as i64 })
     }
 }
