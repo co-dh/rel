@@ -5,7 +5,7 @@
 //! elementwise.c:86-100's `EW_*`. The `qlean_ew_*` entries unbox and allocate and stay C (§1).
 use crate::c::Runner;
 use crate::coc::Coc;
-use crate::sym::Syms;
+use crate::sym::{sym_eq, Syms};
 
 // ---- A42: elementwise.c:140-299 (per element: C keeps these bodies while a C caller remains) ----
 /// elementwise.c:140 `ew_unsupported`: the abort naming the engine, `op` and `cls`.
@@ -754,6 +754,302 @@ mod a46a {
         widen(crate::c::qlean_run_c, 4, 5, 0, 0, &f, 2, &mut o);
         assert_eq!(u64::from_le_bytes(o[..8].try_into().unwrap()), 0xfff8000000000000);
         assert_eq!(u64::from_le_bytes(o[8..].try_into().unwrap()), 1f64.to_bits());
+    }
+}
+
+// ---- K8: elementwise.c `like_*`, `fixed_*`, `ew_cmp_syms_run` (symbol patterns, fixed-width search, symbol comparisons) ----
+/// `Order.symCmp` over two symbols: q's order (bytes unsigned, then length). Overlapping big-endian windows of 8, 4, 2, 1 bytes
+/// (the last window ends at the shorter length), so a short symbol is a few compares and never a `memcmp` call (`[u8]::cmp` is one).
+/// When the first window differs it decides; when it is equal the last one's first difference is the first of the bytes beyond it.
+#[inline(always)]
+fn sym_ord(a: &[u8], b: &[u8]) -> core::cmp::Ordering {
+    macro_rules! win { ($t:ty, $s:expr, $at:expr) => { <$t>::from_be_bytes($s[$at..$at + size_of::<$t>()].try_into().unwrap()) } }
+    macro_rules! two { ($t:ty, $n:expr) => { {
+        let (x, y) = (win!($t, a, 0), win!($t, b, 0));
+        if x != y { x.cmp(&y) } else { win!($t, a, $n - size_of::<$t>()).cmp(&win!($t, b, $n - size_of::<$t>())) }
+    } } }
+    let n = a.len().min(b.len());
+    let c = if n >= 8 {
+        let mut i = 0;
+        loop {
+            if i + 8 >= n { break win!(u64, a, n - 8).cmp(&win!(u64, b, n - 8)) }
+            let (x, y) = (win!(u64, a, i), win!(u64, b, i));
+            if x != y { break x.cmp(&y) }
+            i += 8;
+        }
+    } else if n >= 4 { two!(u32, n) } else if n >= 2 { two!(u16, n) } else if n == 1 { a[0].cmp(&b[0]) } else { core::cmp::Ordering::Equal };
+    c.then(a.len().cmp(&b.len()))
+}
+
+/// `pack_bits` of `p(x, y)` over the symbols the shape indexes at elements `e0 ..`, `x` of `a` and `y` of `b`.
+#[inline(always)]
+fn pack_syms(shape: u8, a: &Syms, b: &Syms, o: &mut [u8], e0: usize, m: usize, p: impl Fn(&[u8], &[u8]) -> bool) {
+    if m == 0 { return }
+    match shape {
+        k::VV => pack_bits(o, m, |i| p(a.at(e0 + i), b.at(e0 + i))),
+        k::VA => { let y = b.at(0); pack_bits(o, m, |i| p(a.at(e0 + i), y)) }
+        _ => { let x = a.at(0); pack_bits(o, m, |i| p(x, b.at(e0 + i))) }
+    }
+}
+/// elementwise.c:640 `ew_cmp_syms_run` and its entry: bit `i` is `op` of the two symbols the shape indexes; sliced by output
+/// byte, so the whole answer is written here (the C zeroed it first and or-ed).
+pub fn cmp_syms(run: Runner, op: u8, shape: u8, a: &Syms, b: &Syms, n: usize, out: &mut [u8]) {
+    use core::cmp::Ordering::{Greater, Less};
+    run_map(run, out, n.div_ceil(8), 1, QLEAN_COST_ARITH, 8 * 4, &|lo, hi, o| {
+        let (e0, m) = (lo * 8, (hi * 8).min(n) - lo * 8);
+        match op {
+            k::EQ => pack_syms(shape, a, b, o, e0, m, |x, y| sym_eq(x, y)),
+            k::NE => pack_syms(shape, a, b, o, e0, m, |x, y| !sym_eq(x, y)),
+            k::LT => pack_syms(shape, a, b, o, e0, m, |x, y| sym_ord(x, y) == Less),
+            k::LE => pack_syms(shape, a, b, o, e0, m, |x, y| sym_ord(x, y) != Greater),
+            k::GT => pack_syms(shape, a, b, o, e0, m, |x, y| sym_ord(x, y) == Greater),
+            _ => pack_syms(shape, a, b, o, e0, m, |x, y| sym_ord(x, y) != Less), // EW_GE
+        }
+    });
+}
+
+/// elementwise.c `pat_item`: one parsed item of a `like` pattern; a set's ranges are `Pattern::rng[lo .. lo + 2 * n]`, pairs.
+#[derive(Clone, Copy)]
+enum Item { Star, Any, Lit(u8), Set { neg: bool, lo: usize, n: usize } }
+/// elementwise.c `pattern`: the items and the ranges of every set, packed end to end.
+pub struct Pattern { its: Vec<Item>, rng: Vec<u8> }
+impl Pattern {
+    /// `like_parse`, `parsePat` transcribed: `None` for two `*` in a row (q's `'nyi`) and a class that never closes (q's `'[`);
+    /// a `[` never closed is refused, a range needs a byte after its `-` that is inside the pattern and is not `]`.
+    pub fn parse(p: &[u8]) -> Option<Pattern> {
+        let pn = p.len();
+        let (mut its, mut rng) = (Vec::with_capacity(pn), Vec::with_capacity(2 * pn));
+        let mut i = 0;
+        while i < pn {
+            let c = p[i];
+            if c == b'*' {
+                if matches!(its.last(), Some(Item::Star)) { return None }
+                its.push(Item::Star);
+                i += 1;
+            } else if c == b'?' {
+                its.push(Item::Any);
+                i += 1;
+            } else if c == b'[' {
+                let mut j = i + 1;
+                let neg = j < pn && p[j] == b'^';
+                if neg { j += 1 }
+                let lo = rng.len();
+                let (mut closed, mut first) = (false, true);
+                while j < pn {
+                    if p[j] == b']' && !first { closed = true; j += 1; break }
+                    if j + 2 < pn && p[j + 1] == b'-' && p[j + 2] != b']' { rng.push(p[j]); rng.push(p[j + 2]); j += 3 }
+                    else { rng.push(p[j]); rng.push(p[j]); j += 1 }
+                    first = false;
+                }
+                if !closed { return None }
+                its.push(Item::Set { neg, lo, n: (rng.len() - lo) / 2 });
+                i = j;
+            } else {
+                its.push(Item::Lit(c));
+                i += 1;
+            }
+        }
+        Some(Pattern { its, rng })
+    }
+    /// `like_hit`: byte `c` matches the non-`*` item `it`.
+    #[inline(always)]
+    fn hit(&self, it: Item, c: u8) -> bool {
+        match it {
+            Item::Any => true,
+            Item::Lit(l) => c == l,
+            Item::Set { neg, lo, n } => self.rng[lo..lo + 2 * n].chunks_exact(2).any(|r| r[0] <= c && c <= r[1]) != neg,
+            Item::Star => false,
+        }
+    }
+    /// `like_match`: the two-pointer wildcard walk, one `*` remembered and the position after it.
+    #[inline]
+    fn matches(&self, s: &[u8]) -> bool {
+        let (its, n) = (&self.its[..], s.len());
+        let (mut i, mut j, mut mark, mut star) = (0, 0, 0, usize::MAX);
+        while i < n {
+            match its.get(j) {
+                Some(&it) if !matches!(it, Item::Star) && self.hit(it, s[i]) => { i += 1; j += 1 }
+                Some(Item::Star) => { star = j; j += 1; mark = i }
+                _ if star != usize::MAX => { j = star + 1; mark += 1; i = mark }
+                _ => return false,
+            }
+        }
+        while matches!(its.get(j), Some(Item::Star)) { j += 1 }
+        j == its.len()
+    }
+    /// `fixed_width`: the item count, 0 where the pattern is empty or holds a `*` (q's two `'length` refusals).
+    fn width(&self) -> usize { if self.its.iter().any(|it| matches!(it, Item::Star)) { 0 } else { self.its.len() } }
+    /// `fixed_items`: a char atom operand is one literal byte and not a pattern, the one place `ss` and `ssr` differ from `like`.
+    fn fixed(atom: bool, p: &[u8]) -> Option<Pattern> {
+        if atom && p.len() == 1 { Some(Pattern { its: alloc::vec![Item::Lit(p[0])], rng: Vec::new() }) } else { Pattern::parse(p) }
+    }
+}
+/// `qlean_ew_like_syms` past the allocation: bit `i` of `out` (`⌈n / 8⌉` bytes, all written) is `patMatch` at symbol `i`;
+/// false where `parsePat` refuses, `out` untouched.
+pub fn like_syms(pat: &[u8], s: &Syms, out: &mut [u8]) -> bool {
+    let Some(q) = Pattern::parse(pat) else { return false };
+    pack_bits(out, s.count(), |i| q.matches(s.at(i)));
+    true
+}
+/// `fixed_width` past `fixed_items`: 0 for all three refusals (`fixed_items`'s, an empty pattern, a `*`), where the caller answers `none`.
+pub fn fixed_width(atom: bool, p: &[u8]) -> usize { Pattern::fixed(atom, p).map_or(0, |q| q.width()) }
+/// elementwise.c `fixed_scan` (`atom`, `p` as `fixed_width`'s): every non-overlapping match start, in order, into `o`
+/// (`b.len() / w + 1` entries, `w` the answer of `fixed_width`); answers how many. One walk for `ss` and `ssr`, so they cannot
+/// disagree. A literal needle takes 64 positions at a time where the build has avx512bw: its first and last byte give the mask
+/// of positions where both sit, and only those are compared in full.
+pub fn fixed_scan(atom: bool, p: &[u8], b: &[u8], o: &mut [i64]) -> usize {
+    let q = Pattern::fixed(atom, p).expect("qlean_ew_fixed_scan: a pattern `fixed_width` accepted");
+    let (n, w, mut at, mut i) = (b.len(), q.width(), 0, 0);
+    if w == 0 || w > n { return 0 }
+    let last = n - w; // the final position a match may start at
+    #[cfg(all(target_arch = "x86_64", target_feature = "avx512f", target_feature = "avx512bw"))]
+    {
+        // an all-literal pattern's items are the raw pattern bytes one for one (`parse` reaches `Lit` only where it takes one byte)
+        if last >= 63 && q.its.iter().all(|it| matches!(it, Item::Lit(_))) {
+            let mut s = 0;
+            while s + 63 <= last {
+                let mut m = crate::simd::lit_mask64(b, s, w, p[0], p[w - 1]);
+                // clearing the low bit is loop-carried, so it is one `blsr`; `k < i` is the non-overlap, the last match still covers it
+                while m != 0 {
+                    let k = s + m.trailing_zeros() as usize;
+                    if k >= i && (w <= 2 || sym_eq(&b[k + 1..k + w - 1], &p[1..w - 1])) {
+                        o[at] = k as i64;
+                        at += 1;
+                        i = k + w;
+                    }
+                    m &= m - 1;
+                }
+                if i < s + 64 { i = s + 64 } // every position under here is decided
+                s += 64;
+            }
+        }
+    }
+    while i <= last {
+        if q.its.iter().zip(&b[i..i + w]).all(|(&it, &c)| q.hit(it, c)) { o[at] = i as i64; at += 1; i += w } else { i += 1 }
+    }
+    at
+}
+/// `copy_run`: `d = s` (equal lengths) by overlapping fixed-width moves up to 32 bytes, so a short run is no `memcpy` call.
+#[inline(always)]
+fn copy_run(d: &mut [u8], s: &[u8]) {
+    macro_rules! mv { ($n:literal, $k:expr) => { { d[..$n].copy_from_slice(&s[..$n]); d[$k - $n..$k].copy_from_slice(&s[$k - $n..$k]) } } }
+    let k = s.len();
+    if k >= 32 { d.copy_from_slice(s) } else if k >= 16 { mv!(16, k) } else if k >= 8 { mv!(8, k) } else if k >= 4 { mv!(4, k) }
+    else if k >= 2 { mv!(2, k) } else if k == 1 { d[0] = s[0] }
+}
+/// `qlean_ew_ssr`'s copy loop: `o` is `b` with each of the `hits` (`fixed_scan`'s) `w` bytes replaced by `t`. `o` is the answer
+/// and 16 bytes of slack, so a short run is one fixed-width move: measured, `ssr[xc;"ab";"xy"]` copies one subject byte and
+/// two replacement bytes 333333 times.
+pub fn ssr_fill(o: &mut [u8], b: &[u8], hits: &[i64], w: usize, t: &[u8]) {
+    let (n, tn, wide) = (b.len(), t.len(), t.len() > 16);
+    let mut tb = [0u8; 16];
+    if !wide { tb[..tn].copy_from_slice(t) }
+    let (mut i, mut at) = (0, 0);
+    for &h in hits {
+        let s = h as usize;
+        if s - i <= 16 && i + 16 <= n { o[at..at + 16].copy_from_slice(&b[i..i + 16]) } else { copy_run(&mut o[at..at + s - i], &b[i..s]) }
+        at += s - i;
+        if wide { o[at..at + tn].copy_from_slice(t) } else { o[at..at + 16].copy_from_slice(&tb) }
+        at += tn;
+        i = s + w;
+    }
+    copy_run(&mut o[at..at + n - i], &b[i..]);
+}
+
+#[cfg(test)]
+mod tests_k8 {
+    use super::*;
+    use crate::c::qlean_run_c;
+    /// a symbol column of `ss`: NUL-terminated blob, boxed starts
+    fn col(ss: &[&[u8]]) -> (Vec<u8>, Vec<usize>) {
+        let (mut b, mut o) = (Vec::new(), alloc::vec![1]);
+        for s in ss { b.extend_from_slice(s); b.push(0); o.push(b.len() << 1 | 1) }
+        (b, o)
+    }
+    fn like(pat: &[u8], ss: &[&[u8]]) -> Option<Vec<u8>> {
+        let (b, o) = col(ss);
+        let mut out = alloc::vec![0xAAu8; ss.len().div_ceil(8)];
+        like_syms(pat, &Syms { blob: &b, offs: &o }, &mut out).then_some(out)
+    }
+    fn hits(atom: bool, pat: &[u8], b: &[u8]) -> Option<Vec<i64>> {
+        let w = fixed_width(atom, pat);
+        if w == 0 { return None }
+        let mut h = alloc::vec![0i64; b.len() / w + 1];
+        let k = fixed_scan(atom, pat, b, &mut h);
+        h.truncate(k);
+        Some(h)
+    }
+    #[test] fn like_language() {
+        let ss: [&[u8]; 5] = [b"abc", b"", b"a-c", b"xbz", b"ab"];
+        assert_eq!(like(b"a*", &ss), Some(alloc::vec![0b10101]));
+        assert_eq!(like(b"?b?", &ss), Some(alloc::vec![0b01001]));
+        assert_eq!(like(b"[a-b]*", &ss), Some(alloc::vec![0b10101]));
+        assert_eq!(like(b"[^a]*", &ss), Some(alloc::vec![0b01000]));
+        assert_eq!(like(b"", &ss), Some(alloc::vec![0b00010]));
+        assert_eq!(like(b"*", &ss), Some(alloc::vec![0b11111]));
+        assert_eq!(like(b"a**", &ss), None); // q's `'nyi`
+        assert_eq!(like(b"[abc", &ss), None); // q's `'[`
+        assert_eq!(like(b"[]]", &[b"]"]), Some(alloc::vec![1])); // a `]` first in a class is a member
+        assert_eq!(like(b"[a-]", &[b"-", b"a"]), Some(alloc::vec![0b11])); // a range needs a byte after `-` that is not `]`
+    }
+    #[test] fn fixed_matches_do_not_overlap() {
+        assert_eq!(hits(false, b"aa", b"aaaa"), Some(alloc::vec![0, 2])); // measured: `"aaaa" ss "aa"` is `0 2`
+        assert_eq!(hits(true, b"?", b"abc"), Some(alloc::vec![]));
+        assert_eq!(hits(false, b"?", b"abc"), Some(alloc::vec![0, 1, 2]));
+        assert_eq!(hits(true, b"[", b"a[c"), Some(alloc::vec![1]));
+        assert_eq!(hits(false, b"[", b"a[c"), None);
+        assert_eq!(hits(false, b"", b"abc"), None);
+        assert_eq!(hits(false, b"a*", b"abc"), None);
+        // the vector path (64 positions at a time) and the item walk agree, hits across a 64-byte step included
+        let b: Vec<u8> = (0..300).map(|i| if i % 5 == 3 || i % 7 == 0 { b'a' } else { b'b' }).collect();
+        for pat in [&b"ab"[..], b"a", b"aba", b"abbab", b"b"] {
+            let item: Vec<u8> = pat.iter().flat_map(|&c| [b'[', c, b']']).collect(); // the same needle as `[a][b]`: no vector path
+            assert_eq!(hits(false, pat, &b), hits(false, &item, &b), "{}", core::str::from_utf8(pat).unwrap());
+        }
+    }
+    #[test] fn ssr_replaces_the_scan() {
+        let run = |pat: &[u8], t: &[u8], b: &[u8]| {
+            let (w, mut h) = (fixed_width(false, pat), alloc::vec![0i64; b.len() + 1]);
+            let k = fixed_scan(false, pat, b, &mut h);
+            let mut o = alloc::vec![0u8; b.len() - k * w + k * t.len() + 16];
+            ssr_fill(&mut o, b, &h[..k], w, t);
+            o.truncate(b.len() - k * w + k * t.len());
+            o
+        };
+        assert_eq!(run(b"aa", b"b", b"aaa"), b"ba"); // measured: `ssr["aaa";"aa";"b"]` is `"ba"`
+        assert_eq!(run(b"[ab]", b"X", b"abc"), b"XXc"); // the step is the item count, not the byte count
+        let long = [b'z'; 40];
+        assert_eq!(run(b"a", &long, b"xay"), [&b"x"[..], &long, b"y"].concat());
+    }
+    #[test] fn sym_order_is_slice_order() {
+        let mut s = 0x2545F4914F6CDD1Du64;
+        let mut next = || { s ^= s << 13; s ^= s >> 7; s ^= s << 17; s };
+        for _ in 0..20000 {
+            let (la, lb) = (next() as usize % 40, next() as usize % 40);
+            let mut a: Vec<u8> = (0..la).map(|_| (next() % 3) as u8 * 100).collect();
+            let mut b: Vec<u8> = (0..lb).map(|_| (next() % 3) as u8 * 100).collect();
+            if next() % 3 == 0 { let k = la.min(lb); b[..k].copy_from_slice(&a[..k]) }
+            if next() % 7 == 0 { b = a.clone(); a.push(0) }
+            assert_eq!(sym_ord(&a, &b), a.cmp(&b), "{a:?} {b:?}");
+        }
+    }
+    #[test] fn cmp_all_shapes() {
+        let (ba, oa) = col(&[b"ab", b"", b"b", "\u{e9}".as_bytes(), b"ab", b"abc", b"z", b"a", b"b", b"q"]);
+        let (bb, ob) = col(&[b"ab", b"a", b"a", b"z", b"abc", b"ab", b"z", b"", b"b", b"q"]);
+        let (a, b) = (Syms { blob: &ba, offs: &oa }, Syms { blob: &bb, offs: &ob });
+        let n = 10;
+        let go = |op, sh, a: &Syms, b: &Syms| { let mut o = alloc::vec![0xFFu8; 2]; cmp_syms(qlean_run_c, op, sh, a, b, n, &mut o); o };
+        let want = |op: u8, f: &dyn Fn(usize) -> (Vec<u8>, Vec<u8>)| {
+            let mut o = alloc::vec![0u8; 2];
+            for i in 0..n { let (x, y) = f(i); let r = match op { 0 => x == y, 1 => x != y, 2 => x < y, 3 => x <= y, 4 => x > y, _ => x >= y }; o[i / 8] |= (r as u8) << (i % 8) }
+            o
+        };
+        let (sa, sb) = (a.slices(10), b.slices(10));
+        for op in 0..6 {
+            assert_eq!(go(op, k::VV, &a, &b), want(op, &|i| (sa[i].to_vec(), sb[i].to_vec())), "VV {op}");
+            assert_eq!(go(op, k::VA, &a, &b), want(op, &|i| (sa[i].to_vec(), sb[0].to_vec())), "VA {op}");
+            assert_eq!(go(op, k::AV, &a, &b), want(op, &|i| (sa[0].to_vec(), sb[i].to_vec())), "AV {op}");
+        }
     }
 }
 
