@@ -3,6 +3,7 @@
 //! and the in-place shift (A6), plus `CocMut`, the writable form of the same `coc`.
 use crate::coc::{Coc, Meta};
 use crate::coc::lanes;
+use crate::pod;
 use crate::res::{res_get, res_get_in, res_min_nonzero, res_sum};
 use crate::simd::prefetch;
 use crate::BLK;
@@ -25,6 +26,27 @@ pub struct CocMut<'a> {
     pub sumnul: Option<&'a mut i64>, pub sumn: Option<&'a mut u64>,
     pub pack: &'a mut [u8],
     pub n: usize, pub nblk: usize, pub mblk: usize,
+}
+
+impl<'a> CocMut<'a> {
+    /// `coc_meta_view` (coc.h:139) over writable metadata bytes and no pack, the view `coc_shift` rides the metadata
+    /// through: None where `Meta::new` is, misaligned or shorter than its sections.
+    pub fn meta_only(m: &'a mut [u8], n: usize) -> Option<Self> {
+        let nb = m.len() / 33;
+        if m.len() < 33 * nb + 16 { return None }
+        let (head, tail) = m.split_at_mut(32 * nb);
+        let (base, rest) = head.split_at_mut(8 * nb);
+        let (maxv, rest) = rest.split_at_mut(8 * nb);
+        let (off, bsum) = rest.split_at_mut(8 * nb);
+        let (sums, width) = tail.split_at_mut(16);
+        let (sumnul, sumn) = sums.split_at_mut(8);
+        let n = n.min(nb * BLK);
+        Some(CocMut {
+            base: pod::cast_mut(base)?, maxv: pod::cast_mut(maxv)?, off: pod::cast_mut(off)?, bsum: pod::cast_mut(bsum)?,
+            width: &mut width[..nb], sumnul: Some(&mut pod::cast_mut::<i64>(sumnul)?[0]), sumn: Some(&mut pod::cast_mut::<u64>(sumn)?[0]),
+            pack: &mut [], n, nblk: n.div_ceil(BLK), mblk: nb,
+        })
+    }
 }
 
 // ---- A1: coc.h:139-303, 2043-2165 ----
