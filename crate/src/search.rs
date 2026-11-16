@@ -469,20 +469,13 @@ impl<'a> Symscan<'a> {
         let Some(&b) = k.first() else { return self.empty };
         let c = self.first[b as usize] as usize;
         if c == 0 { return self.hay.len() }
-        (c - 1..self.hay.len()).find(|&i| self.hay[i] == k).unwrap_or(self.hay.len())
+        (c - 1..self.hay.len()).find(|&i| crate::sym::sym_eq(self.hay[i], k)).unwrap_or(self.hay.len())
     }
 }
 /// search.c:1209 `sym_pack`: the first `n` symbols as 8-byte keys, big-endian and zero-padded, so `=` on a key is symbol
 /// equality (a symbol holds no NUL). Every symbol must fit (`Syms::packs`).
 pub fn sym_pack(s: &Syms, n: usize, k: &mut [u64]) {
-    for (i, k) in k[..n].iter_mut().enumerate() {
-        let (lo, hi) = (s.offs[i] >> 1, s.offs[i + 1] >> 1);
-        let mut w = [0u8; 8];
-        let m = (hi - lo - 1).min(s.blob.len() - lo);
-        w[..m].copy_from_slice(&s.blob[lo..lo + m]);
-        // the C reads the symbol and whatever follows it and masks that off; the bytes past the symbol are 0 here
-        *k = u64::from_be_bytes(w);
-    }
+    for (k, v) in k[..n].iter_mut().zip(s.keys(n)) { *k = v }
 }
 /// search.c:1236 `sym_scan`: the first of the first `n` symbols equal to `k`, or `n`.
 pub fn sym_scan(s: &Syms, n: usize, k: &[u8]) -> usize {
@@ -491,7 +484,7 @@ pub fn sym_scan(s: &Syms, n: usize, k: &[u8]) -> usize {
     for i in 0..n {
         let hi = s.off(i + 1);
         let len = hi.saturating_sub(lo + 1);
-        if len == k.len() && (len == 0 || s.blob[lo..lo + len] == *k) { return i }
+        if len == k.len() && (len == 0 || crate::sym::sym_eq(&s.blob[lo..lo + len], k)) { return i }
         lo = hi;
     }
     n
@@ -502,7 +495,7 @@ pub fn sym_build(s: &Syms, n: usize, tab: &mut [usize], mask: u64) {
     for i in 0..n {
         let k = s.at(i);
         let mut h = (crate::sym::sym_hash(k) & mask) as usize;
-        while tab[h] != 0 && s.at(tab[h] - 1) != k { h = (h + 1) & mask as usize }
+        while tab[h] != 0 && !crate::sym::sym_eq(s.at(tab[h] - 1), k) { h = (h + 1) & mask as usize }
         if tab[h] == 0 { tab[h] = i + 1 }
     }
 }
@@ -510,7 +503,7 @@ pub fn sym_build(s: &Syms, n: usize, tab: &mut [usize], mask: u64) {
 pub fn sym_probe(s: &Syms, tab: &[usize], mask: u64, n: usize, k: &[u8]) -> usize {
     let mut h = (crate::sym::sym_hash(k) & mask) as usize;
     while tab[h] != 0 {
-        if s.at(tab[h] - 1) == k { return tab[h] - 1 }
+        if crate::sym::sym_eq(s.at(tab[h] - 1), k) { return tab[h] - 1 }
         h = (h + 1) & mask as usize;
     }
     n
@@ -530,8 +523,7 @@ pub fn sym_search(bits: bool, nd: &Syms, hb: &Syms, out: &mut [u8]) {
     }
     // an empty haystack answers `n = 0` for every needle, which sets no bit
     if n > 0 && hb.packs(n) {
-        let mut hk = vec![0u64; n];
-        sym_pack(hb, n, &mut hk);
+        let hk: Vec<u64> = hb.keys(n).collect();
         let h = Opnd { src: Src::Dense(crate::pod::bytes(&hk)), n };
         let p = (n > SYM_SCAN_MAX).then(|| Probe::new(Kind::U64, &h));
         let mut buf = [0u64; SYM_KEY_BLOCK];
@@ -828,7 +820,7 @@ pub fn run_starts_ids(n: usize, w: u32, ids: &[u8], out: &mut [i64]) -> usize {
 pub fn run_starts_syms(s: &Syms, out: &mut [i64]) -> usize {
     let (n, mut g, mut prev) = (s.count(), 0, &[][..]);
     // one `at` per element, the previous symbol carried, as search.c's loop carries `prev`
-    for i in 0..n { let x = s.at(i); if i == 0 || x != prev { out[g] = i as i64; g += 1 } prev = x }
+    for i in 0..n { let x = s.at(i); if i == 0 || !crate::sym::sym_eq(x, prev) { out[g] = i as i64; g += 1 } prev = x }
     out[g] = n as i64;
     g + 1
 }

@@ -26,6 +26,29 @@ impl<'a> Syms<'a> {
     } }
     /// sym.h:47 `sym_count`: the symbol count, `offs.len() - 1` (0 for an empty `offs`).
     pub fn count(&self) -> usize { self.offs.len().saturating_sub(1) }
+    /// sym.h `sym_pad` + the load of search.c `sym_pack`: symbol `i` (at most 8 bytes) as a big-endian key, zero padded.
+    #[inline]
+    pub fn key(&self, i: usize) -> u64 { self.key_of(self.off(i), self.off(i + 1)) }
+    /// `key` of the symbol at the unboxed starts `lo`, `hi`: one 8-byte load and a mask while the load stays inside the
+    /// blob (the C `whole` prefix), the bytes folded for the last few; a loop over a column carries `lo`, as C does.
+    #[inline]
+    pub fn key_of(&self, lo: usize, hi: usize) -> u64 {
+        let len = hi.wrapping_sub(lo + 1);
+        if len == 0 { 0 }
+        else if lo + 8 <= self.blob.len() { self.key_whole(lo, len) }
+        else { self.blob[lo..lo + len].iter().fold(0, |w, &b| w << 8 | b as u64) << (8 * (8 - len)) }
+    }
+    /// the keys of the first `n` symbols, in order, `lo` carried as C's loop does. The caller has seen `packs(n)`: every tag
+    /// bit is set, so the starts unbox without a test.
+    pub fn keys(&self, n: usize) -> impl Iterator<Item = u64> + '_ {
+        let mut lo = if n > 0 { self.offs[0] >> 1 } else { 0 };
+        self.offs[..n.saturating_add(1).min(self.offs.len())].windows(2).map(move |w| { let hi = w[1] >> 1; let k = self.key_of(lo, hi); lo = hi; k })
+    }
+    /// the load of `key_of` where it stays inside the blob and `len` is 1 ..= 8
+    #[inline]
+    pub fn key_whole(&self, lo: usize, len: usize) -> u64 {
+        u64::from_be_bytes(self.blob[lo..lo + 8].try_into().unwrap()) & (!0u64 << (8 * (8 - len)))
+    }
     /// sym.h:106 `sym_slices`: the first `n` symbols.
     pub fn slices(&self, n: usize) -> Vec<&'a [u8]> { (0..n).map(|i| self.at(i)).collect() }
     /// sym.h:146 `sym_packs`: every symbol of the first `n` fits the 8-byte key `sym_pack` makes.
@@ -38,8 +61,23 @@ impl<'a> Syms<'a> {
         tags & 1 != 0 && !wide && self.offs[n] >> 1 <= self.blob.len()
     } }
 }
-/// sym.h:68 `sym_eq`
-pub fn sym_eq(a: &[u8], b: &[u8]) -> bool { a == b }
+/// sym.h:68 `sym_eq`: length first, then the bytes in overlapping loads (8, 4, 2, 1), so a short symbol is a few
+/// compares and never a `bcmp` call (`[u8] ==` is one, and a symbol is two to six bytes).
+#[inline]
+pub fn sym_eq(a: &[u8], b: &[u8]) -> bool {
+    let n = a.len();
+    if n != b.len() { return false }
+    let w = |s: &[u8], at: usize| u64::from_le_bytes(s[at..at + 8].try_into().unwrap());
+    let d = |s: &[u8], at: usize| u32::from_le_bytes(s[at..at + 4].try_into().unwrap());
+    let h = |s: &[u8], at: usize| u16::from_le_bytes(s[at..at + 2].try_into().unwrap());
+    if n >= 8 {
+        let mut i = 0;
+        while i + 8 < n { if w(a, i) != w(b, i) { return false } i += 8 }
+        w(a, n - 8) == w(b, n - 8)
+    } else if n >= 4 { d(a, 0) == d(b, 0) && d(a, n - 4) == d(b, n - 4) }
+    else if n >= 2 { h(a, 0) == h(b, 0) && h(a, n - 2) == h(b, n - 2) }
+    else { n == 0 || a[0] == b[0] }
+}
 /// sym.h:77 `sym_cmp`: q's symbol order (bytes unsigned, then length), which is `[u8]`'s.
 pub fn sym_cmp(a: &[u8], b: &[u8]) -> Ordering { a.cmp(b) }
 /// sym.h:120 `sym_hash`: FNV-1a.
