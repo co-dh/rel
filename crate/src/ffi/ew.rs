@@ -139,12 +139,13 @@ export! {
     /// `translateSyms pre tab blob offs`: every symbol's bytes mapped through `tab`, `pre` in front unless already there; the (blob, starts) pair.
     fn qlean_ew_translate_syms(prev: B, tabv: B, blobv: B, offsv: B) -> O {
         let s = syms_of(blobv, offsv);
-        let (pre, tab, n) = (prev.bytes(), tabv.bytes(), s.count());
-        let mut nb = answer(ew::translate_size(pre, tab, &s));
-        let mut ends = pod::uninit::<usize>(n);
-        ew::translate_fill(pre, tab, &s, nb.bytes_mut(), &mut ends);
-        // start 0, then the end of each symbol, boxed
-        ctor(0, [nb.into(), arr((0..n + 1).map(|i| boxed(if i == 0 { 0 } else { ends[i - 1] })))], &[])
+        let (pre, n) = (prev.bytes(), s.count());
+        let tab: &[u8; 256] = tabv.bytes().try_into().expect("qlean_ew_translate_syms: the table is not 256 bytes");
+        // the starts are built first: the last is the blob's byte count
+        let offs = arr(ew::translate_ends(pre, tab, s).map(boxed));
+        let mut nb = answer(offs.borrow().array()[n].unbox());
+        ew::translate_fill(pre, tab, &s, nb.bytes_mut());
+        ctor(0, [nb.into(), offs], &[])
     }
 
     /// `cmpSyms op shape blobA offsA blobB offsB n`: bit `i` is `Order.symCmp` of the two symbols the shape indexes satisfying `op`.
