@@ -20,11 +20,16 @@ pub fn popcount(p: &[u8], nbits: usize) -> usize {
 }
 
 /// coc.c `qlean_coc_some_bit`: whether some bit among the first `n` (cut to the `8 * p.len()` there are) is `set`, else
-/// whether some is clear. Both stop at the byte that decides, and only the last byte is masked to the bits that exist.
+/// whether some is clear. Both stop at the 64-byte block that decides, and only the last byte is masked to the bits that exist.
 pub fn some_bit(set: bool, p: &[u8], n: usize) -> bool {
     let n = n.min(p.len() * 8);
     let (whole, rest) = (n / 8, n % 8);
-    if if set { p[..whole].iter().any(|&b| b != 0) } else { p[..whole].iter().any(|&b| b != 0xff) } { return true }
+    // 64 bytes folded at a time with no exit inside, which vectorises where a per-byte early exit does not; the width test
+    // is outside the loops
+    let (blocks, tail) = p[..whole].as_chunks::<64>();
+    let hit = if set { blocks.iter().any(|c| c.iter().fold(0u8, |a, &b| a | b) != 0) || tail.iter().any(|&b| b != 0) }
+              else { blocks.iter().any(|c| c.iter().fold(0xffu8, |a, &b| a & b) != 0xff) || tail.iter().any(|&b| b != 0xff) };
+    if hit { return true }
     let mask = ((1u16 << rest) - 1) as u8;
     rest != 0 && if set { p[whole] & mask != 0 } else { p[whole] & mask != mask }
 }
@@ -41,7 +46,7 @@ mod tests {
     // against the bit-by-bit definition, every length and a few patterns, `n` past the array included
     #[test] fn some_bit_matches_the_bitwise_definition() {
         for pat in [0x00u8, 0xff, 0x01, 0x80, 0xf0, 0x7f, 0xfe] {
-            for len in 0..4usize {
+            for len in [0usize, 1, 2, 3, 63, 64, 65, 130] {
                 let p = alloc::vec![pat; len];
                 for n in 0..=len * 8 + 9 {
                     let bit = |i: usize| p[i / 8] >> (i % 8) & 1 == 1;
