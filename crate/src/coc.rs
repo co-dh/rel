@@ -6,7 +6,7 @@ use crate::BLK;
 use alloc::vec::Vec;
 
 /// coc.h:196: bit 8 of the patch list's element size, set when the frames follow
-const COC_EXC_FRM: usize = 0x100;
+pub(crate) const COC_EXC_FRM: usize = 0x100;
 
 /// `coc_meta_view`: the 33*mblk + 16 byte buffer.
 #[derive(Clone, Copy)]

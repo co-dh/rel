@@ -280,6 +280,54 @@ impl<'a> Coc<'a> {
         }
         path
     }
+    /// coc.h `coc_shift_bounds`: an outer bound on what `load_run(lo - s, fill)` of `nb` answers: the extremes of every source
+    /// block it touches, and `fill` where it runs off an end. A null, filled or stored, answers a null, so it bounds
+    /// nothing. `(MAX, MIN)` = every operand a null. `lo - s` wraps, as C's does when `s` is at `i64`'s ends.
+    pub fn shift_bounds(&self, lo: usize, nb: usize, s: i64, fill: i64) -> (i64, i64) {
+        let m = &self.meta;
+        let (from, n) = ((lo as i64).wrapping_sub(s), m.n as i64);
+        let end = from.wrapping_add(nb as i64);
+        let (l, h) = (from.max(0), end.min(n));
+        let (mut a, mut z) = (i64::MAX, i64::MIN);
+        if (from < 0 || end > n) && fill != i64::MIN { (a, z) = (fill, fill) }
+        if l < h {
+            for g in l as usize / BLK..=(h - 1) as usize / BLK {
+                if self.blk_allnul(g) { continue }
+                (a, z) = (a.min(m.base[g]), z.max(m.maxv[g]));
+            }
+        }
+        (a, z)
+    }
+    /// coc.h `coc_vv_ok`: whether `self op (b shifted by s, fill off its ends)` rides the encoded form (`op` 0 `+`, 1 `-`,
+    /// else `*`). The bounds are the non-null extremes, a patch list's outliers included, and the fill keeps every null a
+    /// null, so only an overflow or a pre-writer null frame is refused.
+    pub fn vv_ok(&self, b: &Coc, op: i32, s: i64, fill: i64) -> bool {
+        let m = &self.meta;
+        if m.nblk != b.meta.nblk { return false }
+        for k in 0..m.nblk {
+            let lo = k * BLK;
+            let nb = if lo + BLK < m.n { BLK } else { m.n - lo };
+            if self.blk_allnul(k) { continue }
+            let (ba, ma) = (m.base[k], m.maxv[k]);
+            let (bb, mb) = b.shift_bounds(lo, nb, s, fill);
+            if bb > mb { continue } // every operand a null
+            if ba == i64::MIN || bb == i64::MIN { return false }
+            let ok = match op {
+                0 => ba.checked_add(bb).is_some() && ma.checked_add(mb).is_some(),
+                1 => ba.checked_sub(mb).is_some() && ma.checked_sub(bb).is_some(),
+                _ => ba.checked_mul(bb).is_some() && ba.checked_mul(mb).is_some() && ma.checked_mul(bb).is_some() && ma.checked_mul(mb).is_some(),
+            };
+            if !ok { return false }
+        }
+        true
+    }
+    /// coc.h `coc_scale_ok`: whether `x * k` rides the encoded form. q's `x*0N` and `0N*0` are `0N`, so a pre-writer null
+    /// frame and `k` at the null are refused, and so is an overflow of either end of a block.
+    pub fn scale_ok(&self, k: i64) -> bool {
+        let m = &self.meta;
+        k != i64::MIN && (0..m.nblk).all(|b| self.blk_allnul(b)
+            || (m.base[b] != i64::MIN && m.base[b].checked_mul(k).is_some() && m.maxv[b].checked_mul(k).is_some()))
+    }
 }
 impl<'a> CocMut<'a> {
     /// coc.h:1023 `coc_shift`: `k + x` (`neg`: `k - x`) on base, maxv and the block sums, in unsigned arithmetic. The
@@ -395,6 +443,21 @@ mod tests {
         assert_eq!(out[0], 0b001);
         res_cmp2(&[i64::MIN, 1, 2], &[i64::MIN, 1, 5], EQ, &mut out);
         assert_eq!(out[0], 0b011);
+    }
+    // expected values: the C of e16b3fd (/data/tmp/qrs/K26/diff.c: 720000 vv/scale checks, shifts at i64's ends included, 0 mismatches)
+    #[test] fn vv_scale_refusals_and_shift_bounds() {
+        let cm = |base: &[i64], maxv: &[i64]| Coc { meta: Meta { base: &base.to_vec().leak()[..], maxv: &maxv.to_vec().leak()[..], off: &[0; 2],
+            bsum: &[0; 2], width: &[0; 2], sumnul: i64::MIN, sumn: 2048, n: 2048, nblk: 2, mblk: 2 }, pack: &[], exc: None, fdelta: None };
+        let (a, b) = (cm(&[i64::MAX - 1, 0], &[i64::MAX, 0]), cm(&[2, 2], &[8, 8]));
+        assert_eq!((a.vv_ok(&b, 0, 0, 0), a.vv_ok(&b, 1, 0, 0), a.vv_ok(&b, 2, 0, 0)), (false, true, false));
+        assert_eq!((b.shift_bounds(0, 1024, 0, 0), b.shift_bounds(0, 1024, 1, 7)), ((2, 8), (2, 8)));
+        assert_eq!(b.shift_bounds(1024, 1024, 2048, 100), (100, 100)); // runs off the front: the fill alone
+        assert_eq!(b.shift_bounds(0, 1024, 5000, i64::MIN), (i64::MAX, i64::MIN)); // off the end with a null fill: bounds nothing
+        assert_eq!(b.shift_bounds(0, 1024, i64::MIN, 3), (3, 3)); // `lo - s` wraps, as C's does
+        assert!(b.vv_ok(&b, 2, 0, 0) && !b.vv_ok(&cm(&[i64::MIN, 0], &[3, 3]), 0, 0, 0)); // a pre-writer null on either side
+        let s = cm(&[1, 5], &[9, 9]);
+        assert_eq!((s.scale_ok(0), s.scale_ok(i64::MAX / 9), s.scale_ok(i64::MAX / 9 + 1), s.scale_ok(i64::MIN)), (true, true, false, false));
+        assert_eq!((cm(&[i64::MIN, 0], &[i64::MIN, 3]).scale_ok(7), cm(&[i64::MIN, 0], &[3, 3]).scale_ok(7)), (true, false));
     }
     // expected values: the C of 336b87b (/data/tmp/qrs/A6b/gen.c: 3000 columns, 63000 comparisons, 0 mismatches)
     #[test] fn shift_refusals_paths_and_sums() {

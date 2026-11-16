@@ -358,6 +358,21 @@ mod tests {
         assert!(!Syms { blob: &b, offs: &o }.packs(1));
         assert_eq!(sym_hash(b""), 0xcbf29ce484222325);
     }
+    // the specification is sym.h's byte loops (`sym_eq`) and `memcmp` then lengths (`sym_cmp`): every length 0..20, bytes from both
+    // halves of the byte range (q's order is unsigned), and pairs that share a prefix or differ in the last byte only
+    #[test] fn eq_and_cmp_match_the_byte_loops() {
+        let mut s = 0x9E3779B97F4A7C15u64;
+        let mut r = move || { s ^= s << 13; s ^= s >> 7; s ^= s << 17; s };
+        for _ in 0..200_000 {
+            let (n, m) = ((r() % 21) as usize, (r() % 21) as usize);
+            let a: Vec<u8> = (0..n).map(|_| if r() % 3 == 0 { 0x80 + (r() % 128) as u8 } else { (r() % 4) as u8 }).collect();
+            let mut b: Vec<u8> = if r() % 2 == 0 { a.iter().copied().chain((0..m).map(|_| r() as u8)).take(m).collect() } else { (0..m).map(|_| (r() % 4) as u8).collect() };
+            if r() % 4 == 0 && b.len() == a.len() && !b.is_empty() { b.copy_from_slice(&a); let l = b.len() - 1; b[l] ^= 1 << (r() % 8); }
+            let by_loop = a.len() == b.len() && a.iter().zip(&b).all(|(x, y)| x == y);
+            let first = a.iter().zip(&b).find(|(x, y)| x != y).map(|(x, y)| x.cmp(y));
+            assert_eq!((sym_eq(&a, &b), sym_cmp(&a, &b)), (by_loop, first.unwrap_or(a.len().cmp(&b.len()))), "{a:?} {b:?}");
+        }
+    }
 }
 
 #[cfg(test)]
