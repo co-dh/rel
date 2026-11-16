@@ -1652,6 +1652,30 @@ pub unsafe extern "C" fn qrs_ew_tick(run: unsafe extern "C" fn(), op: u8, src: u
                                      x: *const u8, xbytes: usize, n: usize, out: *mut u8, obytes: usize) {
     unsafe { ew::tick(rn(run), op, src, dst, nul_in, nul_out, sl(x, xbytes), n, sl_mut(out, obytes)) }
 }
+/// K7: elementwise.c `ew_eq_ids_run`; `out` is `⌈n / 8⌉` bytes.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn qrs_ew_eq_ids(run: unsafe extern "C" fn(), op: u8, shape: u8, ia: *const u8, iabytes: usize,
+                                       ib: *const u8, ibbytes: usize, w: u32, n: usize, out: *mut u8) {
+    unsafe { ew::eq_ids(rn(run), op, shape, sl(ia, iabytes), sl(ib, ibbytes), w, n, sl_mut(out, n.div_ceil(8))) }
+}
+/// K7: elementwise.c `ew_cmp_ids_run`; `ra`, `rb` hold `nra`, `nrb` ranks.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn qrs_ew_cmp_ids(run: unsafe extern "C" fn(), op: u8, shape: u8, ra: *const i32, nra: usize,
+                                        ia: *const u8, iabytes: usize, wa: u32, rb: *const i32, nrb: usize,
+                                        ib: *const u8, ibbytes: usize, wb: u32, n: usize, out: *mut u8) {
+    unsafe {
+        ew::cmp_ids(rn(run), op, shape, sl(ra, nra), sl(ia, iabytes), wa, sl(rb, nrb), sl(ib, ibbytes), wb, n,
+                    sl_mut(out, n.div_ceil(8)))
+    }
+}
+/// K7: elementwise.c `ew_cmp_key_run`; `tab` is `d + 1` verdict bytes, or null where the verb is `=`/`<>`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn qrs_ew_cmp_ids_key(run: unsafe extern "C" fn(), op: u8, ids: *const u8, idbytes: usize, w: u32,
+                                            n: usize, na: usize, e: usize, d: usize, past: c_int, tab: *const u8,
+                                            out: *mut u8) {
+    let tab = if tab.is_null() { None } else { Some(unsafe { sl(tab, d + 1) }) };
+    unsafe { ew::cmp_key(rn(run), op, sl(ids, idbytes), w, n, na, e, d, past != 0, tab, sl_mut(out, n.div_ceil(8))) }
+}
 /// A46a: elementwise.c `ew_widen_run`.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn qrs_ew_widen(run: unsafe extern "C" fn(), src: u8, dst: u8, nul_in: i64, nul_out: i64,
