@@ -741,6 +741,18 @@ pub unsafe extern "C" fn qrs_grade_keys(run: unsafe extern "C" fn(), k: *const u
                                         out: *mut i64) {
     unsafe { sort::grade_keys(rn(run), sl(k, n), desc != 0, mn, mx, sl_mut(out, n)) }
 }
+/// A20: sort.c `grade_src`: the grade or rank of a `ksrc` (`c` an encoded column, else `p` a dense payload of `kind`).
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn qrs_grade_src(run: unsafe extern "C" fn(), kind: u8, p: *const u8, c: *const CCoc, n: usize,
+                                       desc: c_int, rank: c_int, mn: u64, mx: u64, out: *mut i64) {
+    unsafe { sort::grade_src(rn(run), &ksrc(kind, p, c, n), desc != 0, rank != 0, mn, mx, sl_mut(out, n)) }
+}
+/// A20: sort.c `SK_COUNTABLE`: a counting table over `span + 1` buckets for `n` keys is affordable.
+#[unsafe(no_mangle)]
+pub extern "C" fn qrs_sk_countable(span: u64, n: usize) -> c_int { sort::sk_countable(span, n) as c_int }
+/// A20: sort.c `sk_digit`: the radix digit width for `bits`-bit keys and `n` of them.
+#[unsafe(no_mangle)]
+pub extern "C" fn qrs_sk_digit(bits: u32, n: usize) -> u32 { sort::sk_digit(bits, n) }
 /// A21: sort.c `grade_narrow`.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn qrs_grade_narrow(run: unsafe extern "C" fn(), kind: u8, p: *const u8, bytes: usize, n: usize,
@@ -785,6 +797,21 @@ pub unsafe extern "C" fn qrs_pair_ids_narrow(run: unsafe extern "C" fn(), wa: u3
 pub unsafe extern "C" fn qrs_rank_slices(w: usize, v: *const u8, bytes: usize, o: *const i64, ng: usize, out: *mut i64) {
     // sort.c:2487: the answer is one id per group, `g * 8` bytes with `g = ng`
     unsafe { sort::rank_slices(w, sl(v, bytes), sl(o, ng + 1), sl_mut(out, ng)) }
+}
+/// A24: sort.c `qlean_sort_group_sizes`: `n` is already clamped to what `gid` holds, `out` is `ng` long.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn qrs_group_sizes(ng: usize, w: u32, n: usize, gid: *const u8, out: *mut i64) {
+    unsafe { sort::group_sizes(ng, w, n, sl(gid, ids::ids_bytes(n, w)), sl_mut(out, ng)) }
+}
+/// A24: sort.c `qlean_sort_group_lasts`, as `qrs_group_sizes`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn qrs_group_lasts(ng: usize, w: u32, n: usize, gid: *const u8, out: *mut i64) {
+    unsafe { sort::group_lasts(ng, w, n, sl(gid, ids::ids_bytes(n, w)), sl_mut(out, ng)) }
+}
+/// A24: sort.c `qlean_sort_id_longs`: `n` is already clamped to what `ids` holds, `out` is `n` long.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn qrs_id_longs(n: usize, w: u32, ids: *const u8, out: *mut i64) {
+    unsafe { sort::id_longs(n, w, sl(ids, ids::ids_bytes(n, w)), sl_mut(out, n)) }
 }
 /// A25: sort.c `qlean_sort_grade_syms` past the unboxing.
 #[unsafe(no_mangle)]
@@ -1211,6 +1238,25 @@ pub unsafe extern "C" fn qrs_gather(run: unsafe extern "C" fn(), w: usize, fill:
 pub unsafe extern "C" fn qrs_gather_enc(run: unsafe extern "C" fn(), w: usize, fill: u64, c: *const CCoc, idx: *const i64,
                                         n: usize, out: *mut u8) {
     unsafe { structural::gather_enc(rn(run), w, fill, &(*c).view(), sl(idx, n), sl_mut(out, w * n)) }
+}
+/// A37: structural.c `qlean_structural_all_below` over the `m` indices; 1 when every one, unsigned, is below `n`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn qrs_all_below(n: usize, idx: *const i64, m: usize) -> u8 { unsafe { structural::all_below(n, sl(idx, m)) as u8 } }
+/// A37: structural.c `gather_foR_idx_run`; `ic` is the encoded index (`ic.n` of them), `out` is `w * ic.n` bytes.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn qrs_gather_enc_idx(run: unsafe extern "C" fn(), w: usize, fill: u64, c: *const CCoc, ic: *const CCoc,
+                                            out: *mut u8) {
+    unsafe {
+        let (v, iv) = ((*c).view(), (*ic).view());
+        structural::gather_enc_idx(rn(run), w, fill, &v, &iv, iv.meta.n, sl_mut(out, w * iv.meta.n))
+    }
+}
+/// A37: structural.c `gather_bits_run`: `n` is the source's bit count, `bits` its `bytes` bytes, `out` the zeroed
+/// `ceil(m / 8)` bytes.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn qrs_gather_bits(run: unsafe extern "C" fn(), n: usize, bits: *const u8, bytes: usize,
+                                         idx: *const i64, m: usize, out: *mut u8) {
+    unsafe { structural::gather_bits(rn(run), n, sl(bits, bytes), sl(idx, m), sl_mut(out, m.div_ceil(8))) }
 }
 /// A38: structural.c `expand_run`.
 #[unsafe(no_mangle)]
