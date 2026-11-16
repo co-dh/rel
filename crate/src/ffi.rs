@@ -1669,41 +1669,6 @@ pub unsafe extern "C" fn qrs_ew_val(run: unsafe extern "C" fn(), op: u8, cls: u8
                                     abytes: usize, b: *const u8, bbytes: usize, n: usize, out: *mut u8, obytes: usize) {
     unsafe { ew::val(rn(run), op, cls, shape, nul, sl(a, abytes), sl(b, bbytes), n, sl_mut(out, obytes)) }
 }
-/// K6: elementwise.c `qlean_coc_ew_val`: `op` over two encoded columns of `n` elements, the answer dense in `obytes`.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn qrs_ew_val_enc(run: unsafe extern "C" fn(), op: u8, cls: u8, nul: i64, a: *const CCoc,
-                                        b: *const CCoc, out: *mut u8, obytes: usize) {
-    unsafe { ew::val_enc(rn(run), op, cls, nul, &(*a).view(), &(*b).view(), sl_mut(out, obytes)) }
-}
-/// K6: elementwise.c `qlean_coc_ew_val_atom`: an encoded column and the one-element `atom` (`ew_width(cls)` bytes).
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn qrs_ew_val_enc_atom(run: unsafe extern "C" fn(), op: u8, cls: u8, shape: u8, nul: i64,
-                                             c: *const CCoc, atom: *const u8, out: *mut u8, obytes: usize) {
-    unsafe { ew::val_enc_atom(rn(run), op, cls, shape, nul, &(*c).view(), sl(atom, ew::ew_width(cls as u32)), sl_mut(out, obytes)) }
-}
-/// K6: elementwise.c `qlean_ew_low_zero`: `a` is `n` longs, `b` one; the answer is `⌈n / 8⌉` bytes of bits.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn qrs_ew_low_zero(run: unsafe extern "C" fn(), a: *const u8, b: *const u8, n: usize, out: *mut u8) {
-    unsafe { ew::low_zero(rn(run), sl(a, n * 8), sl(b, 8), n, sl_mut(out, n.div_ceil(8))) }
-}
-/// K6: elementwise.c `qlean_coc_low_zero`: as `qrs_ew_low_zero` over an encoded column of `n` longs.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn qrs_ew_low_zero_enc(run: unsafe extern "C" fn(), c: *const CCoc, atom: *const u8, n: usize,
-                                             out: *mut u8) {
-    unsafe { ew::low_zero_enc(rn(run), &(*c).view(), sl(atom, 8), sl_mut(out, n.div_ceil(8))) }
-}
-/// K6: elementwise.c `qlean_ew_bitw`: `op` 0 and, 1 or, 2 and-not (any other reads as and) over `n` longs.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn qrs_ew_bitw(run: unsafe extern "C" fn(), op: u8, a: *const u8, b: *const u8, n: usize, out: *mut u8) {
-    unsafe { ew::bitw(rn(run), op, sl(a, n * 8), sl(b, n * 8), n, sl_mut(out, n * 8)) }
-}
-/// A43: elementwise.c `ew_cmp_run`.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn qrs_ew_cmp(run: unsafe extern "C" fn(), op: u8, cls: u8, shape: u8, a: *const u8, abytes: usize,
-                                    b: *const u8, bbytes: usize, n: usize, out: *mut u8) {
-    // elementwise.c:857: the answer is a bit vector, `⌈n / 8⌉` bytes
-    unsafe { ew::cmp(rn(run), op, cls, shape, sl(a, abytes), sl(b, bbytes), n, sl_mut(out, n.div_ceil(8))) }
-}
 /// K8: elementwise.c `ew_cmp_syms_run`: the symbol columns `ba`/`oa` and `bb`/`ob` (`noa`, `nob` boxed offsets), `out` `⌈n / 8⌉` bytes.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn qrs_ew_cmp_syms(run: unsafe extern "C" fn(), op: u8, shape: u8, ba: *const u8, bab: usize, oa: *const usize,
@@ -1774,30 +1739,6 @@ pub unsafe extern "C" fn qrs_ew_cast(run: unsafe extern "C" fn(), src: u8, dst: 
 pub unsafe extern "C" fn qrs_ew_tick(run: unsafe extern "C" fn(), op: u8, src: u8, dst: u8, nul_in: i64, nul_out: i64,
                                      x: *const u8, xbytes: usize, n: usize, out: *mut u8, obytes: usize) {
     unsafe { ew::tick(rn(run), op, src, dst, nul_in, nul_out, sl(x, xbytes), n, sl_mut(out, obytes)) }
-}
-/// K7: elementwise.c `ew_eq_ids_run`; `out` is `⌈n / 8⌉` bytes.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn qrs_ew_eq_ids(run: unsafe extern "C" fn(), op: u8, shape: u8, ia: *const u8, iabytes: usize,
-                                       ib: *const u8, ibbytes: usize, w: u32, n: usize, out: *mut u8) {
-    unsafe { ew::eq_ids(rn(run), op, shape, sl(ia, iabytes), sl(ib, ibbytes), w, n, sl_mut(out, n.div_ceil(8))) }
-}
-/// K7: elementwise.c `ew_cmp_ids_run`; `ra`, `rb` hold `nra`, `nrb` ranks.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn qrs_ew_cmp_ids(run: unsafe extern "C" fn(), op: u8, shape: u8, ra: *const i32, nra: usize,
-                                        ia: *const u8, iabytes: usize, wa: u32, rb: *const i32, nrb: usize,
-                                        ib: *const u8, ibbytes: usize, wb: u32, n: usize, out: *mut u8) {
-    unsafe {
-        ew::cmp_ids(rn(run), op, shape, sl(ra, nra), sl(ia, iabytes), wa, sl(rb, nrb), sl(ib, ibbytes), wb, n,
-                    sl_mut(out, n.div_ceil(8)))
-    }
-}
-/// K7: elementwise.c `ew_cmp_key_run`; `tab` is `d + 1` verdict bytes, or null where the verb is `=`/`<>`.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn qrs_ew_cmp_ids_key(run: unsafe extern "C" fn(), op: u8, ids: *const u8, idbytes: usize, w: u32,
-                                            n: usize, na: usize, e: usize, d: usize, past: c_int, tab: *const u8,
-                                            out: *mut u8) {
-    let tab = if tab.is_null() { None } else { Some(unsafe { sl(tab, d + 1) }) };
-    unsafe { ew::cmp_key(rn(run), op, sl(ids, idbytes), w, n, na, e, d, past != 0, tab, sl_mut(out, n.div_ceil(8))) }
 }
 /// A46a: elementwise.c `ew_widen_run`.
 #[unsafe(no_mangle)]
