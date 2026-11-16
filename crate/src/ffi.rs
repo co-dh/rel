@@ -936,6 +936,13 @@ pub unsafe extern "C" fn qrs_grade_keys(k: *const u64, n: usize, desc: c_int, mn
                                         out: *mut i64) {
     unsafe { sort::grade_keys(sl(k, n), desc != 0, mn, mx, sl_mut(out, n)) }
 }
+/// K13: sort.c `sort_values`: the `m` elements of `kind` in `p` (`bytes` long) sorted into `out` (`m` elements of the kind's
+/// write width); `m` already clamped to what `p` holds.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn qrs_sort_values(kind: u8, desc: c_int, m: usize, p: *const u8, bytes: usize, out: *mut u8) {
+    let w = if kind == key::SK_BIT { 1 } else { key::bytes(kind, 1).unwrap_or(0) };
+    unsafe { sort::sort_values(kind, desc != 0, m, sl(p, bytes), sl_mut(out, m * w)) }
+}
 /// K12: sort.c `hist_find`: the bucket of the `nb` counts in `cnt` that rank `*r` falls in; `*r` becomes relative to it.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn qrs_hist_find(cnt: *const usize, nb: usize, r: *mut usize) -> usize {
