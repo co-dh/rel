@@ -81,7 +81,7 @@ pub fn fdiv_magic(g: &Magic, x: i64) -> i64 {
 
 // ---- A43: elementwise.c:482-1092 ----
 use crate::c::run_map;
-use crate::ids::id_at;
+use crate::ids::{self, id_at};
 use crate::pod::{self, bytes_mut, Lane, Pod};
 use crate::sym::sym_msort;
 use crate::{BLK, QLEAN_COST_ARITH, QLEAN_COST_COPY};
@@ -411,27 +411,118 @@ pub fn rank_pair(da: &Syms, db: &Syms, ra: &mut [i32], rb: &mut [i32]) {
         if ord[t] < na { ra[ord[t]] = r } else { rb[ord[t] - na] = r }
     }
 }
-/// elementwise.c:1040-1079 `ew_cmp_ids_run`, `ew_eq_ids_run` and their entry: ids at `w` compared through the
-/// rank tables `ra`, `rb`; a byte each. Both tables empty is `ew_eq_ids_run`: the ids themselves, only `=` and `<>`.
-pub fn eq_ids(run: Runner, op: u8, shape: u8, ia: &[u8], ib: &[u8], w: u32, n: usize, ra: &[i32], rb: &[i32], out: &mut [u8]) {
-    let ranked = !(ra.is_empty() && rb.is_empty());
-    let (cost, wide) = if ranked { (QLEAN_COST_ARITH, 32) } else { (QLEAN_COST_COPY, 2 * w as usize) };
-    run_map(run, out, n.div_ceil(8), 1, cost, wide, &|lo, hi, o| {
-        let (e0, m) = (lo * 8, (hi * 8).min(n) - lo * 8);
-        let at = |i: usize, atom: bool, p: &[u8]| id_at(p, w, if atom { 0 } else { e0 + i });
-        let rank = |t: &[i32], u: usize| t.get(u).copied().unwrap_or(0);
-        if !ranked {
-            let ne = op == k::NE;
-            return pack_bits(o, m, |i| (at(i, shape == k::AV, ia) == at(i, shape == k::VA, ib)) != ne);
+/// Elements per block of the id kernels: 64 are eight whole output bytes and a whole number of bytes at every id width.
+const IDB: usize = 64;
+/// `Column.idWidth`'s lane widths; any other width reads as 64, as `id_at` and the C `IDS_WIDTHS` default do.
+fn lane(w: u32) -> u32 { if matches!(w, 0 | 1 | 2 | 4 | 8 | 16 | 32) { w } else { 64 } }
+/// The ids of `p` into `out` at the lane width `w`, matched once per block.
+fn unpack_w(p: &[u8], w: u32, out: &mut [i64]) {
+    macro_rules! at { ($W:literal) => { ids::unpack::<$W, i64>(p, out, |_, e, v| *e = v as i64) } }
+    match w { 0 => at!(0), 1 => at!(1), 2 => at!(2), 4 => at!(4), 8 => at!(8), 16 => at!(16), 32 => at!(32), _ => at!(64) }
+}
+/// Bits `[0, c)` of one block, `p(x[i], y[i])` at bit `i`; the verb matched once per block.
+#[inline(always)]
+fn verb_bits(op: u8, x: &[i64], y: &[i64], c: usize) -> u64 {
+    let f = |p: fn(i64, i64) -> bool| (0..c).fold(0u64, |m, i| m | (p(x[i], y[i]) as u64) << i);
+    match op {
+        k::EQ => f(|x, y| x == y), k::NE => f(|x, y| x != y), k::LT => f(|x, y| x < y),
+        k::LE => f(|x, y| x <= y), k::GT => f(|x, y| x > y), _ => f(|x, y| x >= y),
+    }
+}
+/// elementwise.c `EW_CMP_IDS`: the `m` bits for elements `[e0, e0 + m)` of the shape's two id streams, a block of
+/// `IDB` at a time. `get(a, p, out)` unpacks side `a`'s (`true` = left) ids from `p`; `map(a, id)` is the key compared
+/// (the id's rank, or the id). An atom side is its element 0, mapped once. `e0` is a multiple of 8, so a slice starts
+/// on a byte at every width.
+#[inline(always)]
+fn ids_bits(op: u8, shape: u8, ia: &[u8], wa: u32, ib: &[u8], wb: u32, e0: usize, m: usize, o: &mut [u8],
+            get: impl Fn(bool, &[u8], &mut [i64]), map: impl Fn(bool, i64) -> i64) {
+    if m == 0 { return }
+    let (mut x, mut y) = ([0i64; IDB], [0i64; IDB]);
+    if shape == k::AV { x = [map(true, id_at(ia, wa, 0) as i64); IDB] }
+    if shape == k::VA { y = [map(false, id_at(ib, wb, 0) as i64); IDB] }
+    let off = |w: u32, s: usize| (e0 + s) * w as usize / 8;
+    for (j, ob) in o.chunks_mut(IDB / 8).enumerate() {
+        let (s, c) = (j * IDB, (m - j * IDB).min(IDB));
+        if shape != k::AV {
+            get(true, &ia[off(wa, s)..], &mut x[..c]);
+            x[..c].iter_mut().for_each(|v| *v = map(true, *v));
         }
-        let (x, y) = (|i| rank(ra, at(i, shape == k::AV, ia)), |i| rank(rb, at(i, shape == k::VA, ib)));
-        match op {
-            k::EQ => pack_bits(o, m, |i| x(i) == y(i)),
-            k::NE => pack_bits(o, m, |i| x(i) != y(i)),
-            k::LT => pack_bits(o, m, |i| x(i) < y(i)),
-            k::LE => pack_bits(o, m, |i| x(i) <= y(i)),
-            k::GT => pack_bits(o, m, |i| x(i) > y(i)),
-            _ => pack_bits(o, m, |i| x(i) >= y(i)),
+        if shape != k::VA {
+            get(false, &ib[off(wb, s)..], &mut y[..c]);
+            y[..c].iter_mut().for_each(|v| *v = map(false, *v));
+        }
+        ob.copy_from_slice(&verb_bits(op, &x, &y, c).to_le_bytes()[..ob.len()]);
+    }
+}
+/// `ids_bits` over the whole bitmap: one width switch outside the loops where the two sides agree (every pair a column
+/// meets its own kind in), the general `unpack_w` where they differ. `ranks` is `ew_cmp_ids_run`'s two tables; none is
+/// `ew_eq_ids_run`: the ids themselves, only `=` and `<>`.
+fn ids_pair(run: Runner, cost: u32, wide: usize, op: u8, shape: u8, ia: &[u8], wa: u32, ib: &[u8], wb: u32, n: usize,
+            ranks: Option<(&[i32], &[i32])>, out: &mut [u8]) {
+    let (wa, wb) = (lane(wa), lane(wb));
+    let op = if ranks.is_none() && op != k::NE { k::EQ } else { op };
+    run_map(run, out, n.div_ceil(8), 1, cost, wide, &|lo, hi, o| {
+        let (e0, m) = (lo * 8, (hi * 8).min(n).saturating_sub(lo * 8));
+        // an id past its table reads rank 0, the convention `Column.idAt` sets
+        let map = |a: bool, u: i64| match ranks {
+            None => u,
+            Some((ra, rb)) => (if a { ra } else { rb }).get(u as usize).copied().unwrap_or(0) as i64,
+        };
+        macro_rules! same { ($W:literal) => {
+            ids_bits(op, shape, ia, wa, ib, wb, e0, m, o, |_, p, out| ids::unpack::<$W, i64>(p, out, |_, e, v| *e = v as i64), map)
+        } }
+        if wa == wb {
+            match wa { 0 => same!(0), 1 => same!(1), 2 => same!(2), 4 => same!(4), 8 => same!(8), 16 => same!(16), 32 => same!(32), _ => same!(64) }
+        } else {
+            ids_bits(op, shape, ia, wa, ib, wb, e0, m, o, |a, p, out| unpack_w(p, if a { wa } else { wb }, out), map)
+        }
+    });
+}
+/// elementwise.c `ew_eq_ids_run` and its entry: bit `i` is whether the two ids the shape indexes, both read at `w`,
+/// are equal (`op` = `=`) or differ (`<>`).
+pub fn eq_ids(run: Runner, op: u8, shape: u8, ia: &[u8], ib: &[u8], w: u32, n: usize, out: &mut [u8]) {
+    ids_pair(run, QLEAN_COST_COPY, 2 * w as usize, op, shape, ia, w, ib, w, n, None, out)
+}
+/// elementwise.c `ew_cmp_ids_run` and its entry: `op` between the ranks `ra[id]`, `rb[id]` of the two ids the shape
+/// indexes, read at `wa`, `wb`.
+pub fn cmp_ids(run: Runner, op: u8, shape: u8, ra: &[i32], ia: &[u8], wa: u32, rb: &[i32], ib: &[u8], wb: u32, n: usize,
+               out: &mut [u8]) {
+    ids_pair(run, QLEAN_COST_ARITH, 8 * 4, op, shape, ia, wa, ib, wb, n, Some((ra, rb)), out)
+}
+/// elementwise.c `ew_cmp_key_run` and its entry: an interned column against one symbol. `e` is the key's entry (`usize::MAX`
+/// when the dictionary of `d` entries does not hold it), `past` whether the key is the empty symbol, which every id
+/// past the dictionary reads as; `tab` is the verdict per entry, the last (`d`) for every id past the dictionary,
+/// where the verb is an ordering. An element at or past `na` reads id 0 (`Column.idAt`'s convention).
+pub fn cmp_key(run: Runner, op: u8, ids: &[u8], w: u32, n: usize, na: usize, e: usize, d: usize, past: bool,
+               tab: Option<&[u8]>, out: &mut [u8]) {
+    #[inline(always)]
+    fn bits<const W: u32>(op: u8, ids: &[u8], e0: usize, m: usize, na: usize, e: usize, d: usize, past: bool,
+                          tab: Option<&[u8]>, o: &mut [u8]) {
+        #[inline(always)]
+        fn fold(u: &[usize], c: usize, p: impl Fn(usize) -> bool) -> u64 { (0..c).fold(0u64, |b, i| b | (p(u[i]) as u64) << i) }
+        for (j, ob) in o.chunks_mut(IDB / 8).enumerate() {
+            let (s, c) = (e0 + j * IDB, (m - j * IDB).min(IDB));
+            // the elements of this block that have an id; the rest read 0
+            let have = na.saturating_sub(s).min(c);
+            let mut u = [0usize; IDB];
+            if have > 0 { ids::unpack::<W, usize>(&ids[s * W as usize / 8..], &mut u[..have], |_, e, v| *e = v) }
+            let b = match tab {
+                Some(t) => fold(&u, c, |u| t[u.min(d)] != 0),
+                None if op == k::NE => fold(&u, c, |u| !(u == e || (past && u >= d))),
+                None => fold(&u, c, |u| u == e || (past && u >= d)),
+            };
+            ob.copy_from_slice(&b.to_le_bytes()[..ob.len()]);
+        }
+    }
+    let lw = lane(w);
+    run_map(run, out, n.div_ceil(8), 1, QLEAN_COST_COPY, w as usize, &|lo, hi, o| {
+        let (e0, m) = (lo * 8, (hi * 8).min(n).saturating_sub(lo * 8));
+        if m == 0 { return }
+        match lw {
+            0 => bits::<0>(op, ids, e0, m, na, e, d, past, tab, o), 1 => bits::<1>(op, ids, e0, m, na, e, d, past, tab, o),
+            2 => bits::<2>(op, ids, e0, m, na, e, d, past, tab, o), 4 => bits::<4>(op, ids, e0, m, na, e, d, past, tab, o),
+            8 => bits::<8>(op, ids, e0, m, na, e, d, past, tab, o), 16 => bits::<16>(op, ids, e0, m, na, e, d, past, tab, o),
+            32 => bits::<32>(op, ids, e0, m, na, e, d, past, tab, o), _ => bits::<64>(op, ids, e0, m, na, e, d, past, tab, o),
         }
     });
 }
@@ -992,16 +1083,16 @@ mod tests43 {
         // ids at 2 bits, four to a byte: 0 1 2 3 0 | 3 2 1 0 3
         let (ia, ib) = ([0b11100100u8, 0b00000000], [0b00011011u8, 0b00000011]);
         let mut o = [0xABu8; 1];
-        eq_ids(qlean_run_c, k::EQ, k::VV, &ia, &ib, 2, 5, &[], &[], &mut o);
+        eq_ids(qlean_run_c, k::EQ, k::VV, &ia, &ib, 2, 5, &mut o);
         assert_eq!(o, [0b00000000]);
-        eq_ids(qlean_run_c, k::NE, k::VV, &ia, &ib, 2, 5, &[], &[], &mut o);
+        eq_ids(qlean_run_c, k::NE, k::VV, &ia, &ib, 2, 5, &mut o);
         assert_eq!(o, [0b11111]);
         // ranks: ra = [2, 1, 2] for ids 0..2, past the table reads 0; rb = [3, 1, 0, 2]
-        eq_ids(qlean_run_c, k::LT, k::VV, &ia, &ib, 2, 5, &ra, &rb, &mut o);
+        cmp_ids(qlean_run_c, k::LT, k::VV, &ra, &ia, 2, &rb, &ib, 2, 5, &mut o);
         assert_eq!(o, [0b01000]);
-        eq_ids(qlean_run_c, k::GE, k::VV, &ia, &ib, 2, 5, &ra, &rb, &mut o);
+        cmp_ids(qlean_run_c, k::GE, k::VV, &ra, &ia, 2, &rb, &ib, 2, 5, &mut o);
         assert_eq!(o, [0b10111]);
-        eq_ids(qlean_run_c, k::EQ, k::VA, &ia, &[0b10], 2, 5, &[], &[], &mut o);
+        eq_ids(qlean_run_c, k::EQ, k::VA, &ia, &[0b10], 2, 5, &mut o);
         assert_eq!(o, [0b00100]);
     }
 }
