@@ -91,7 +91,8 @@ pub fn over_bytes(op: u8, cls: u8, nul: i64, a: &[u8]) -> i64 {
         0 => verbs::<u8, 32, 256>(op, nul, n, a, seed),
         1 => verbs::<i16, 32, 128>(op, nul, n, a, seed),
         2 => verbs::<i32, 32, 64>(op, nul, n, a, seed),
-        _ => verbs::<i64, 32, 32>(op, nul, n, a, seed),
+        // 4 sum lanes, not 32: with 32 at i64 LLVM vectorizes across blocks by stride-256-byte gathers (12.9 ms, C 1.04)
+        _ => verbs::<i64, 4, 32>(op, nul, n, a, seed),
     }
 }
 

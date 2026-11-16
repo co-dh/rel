@@ -34,6 +34,18 @@ pub fn cast_mut<T: Pod>(b: &mut [u8]) -> Option<&mut [T]> {
     // Safety: aligned and a whole number of elements, both tested above; `Pod` is valid for any bit pattern
     Some(unsafe { core::slice::from_raw_parts_mut(b.as_mut_ptr().cast::<T>(), b.len() / size_of::<T>()) })
 }
+/// A slice of numbers as its bytes.
+pub fn bytes<T: Pod>(s: &[T]) -> &[u8] {
+    // Safety: a `Pod` has no padding, so every byte is initialised
+    unsafe { core::slice::from_raw_parts(s.as_ptr().cast::<u8>(), size_of_val(s)) }
+}
+/// `s` as atomics, so workers whose indices are disjoint but not contiguous (a scatter) share one output: a relaxed
+/// store is a plain store on the targets we ship, and overlapping indices stay defined (last writer wins).
+pub fn atomics(s: &mut [i64]) -> &[core::sync::atomic::AtomicI64] {
+    // Safety: `AtomicI64` has the size and alignment of `i64` on this target, and the `&mut` borrow means nothing
+    // else touches `s` for as long as the atomic view lives
+    unsafe { core::slice::from_raw_parts(s.as_ptr().cast::<core::sync::atomic::AtomicI64>(), s.len()) }
+}
 /// A slice of numbers as its bytes, for writing.
 pub fn bytes_mut<T: Pod>(s: &mut [T]) -> &mut [u8] {
     // Safety: a `Pod` has no padding, so every byte is initialised, and any byte pattern written back is a valid `T`
