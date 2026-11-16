@@ -325,7 +325,7 @@ pub fn over_groups(run: Runner, op: u8, cls: u8, nul: i64, ng: usize, iw: u32, r
     if ng == 0 { return }
     let w = size_of::<i64>() >> (3 - cls.min(3));
     // an id payload holds as many ids as its bytes do; a one-entry dictionary (`iw = 0`) stores none and every id is 0
-    let gn = if iw == 0 { usize::MAX } else { gid.len() * 8 / iw as usize };
+    let gn = avail(gid, iw);
     let n = (src.len() / w).min(rows).min(gn);
     let iw = (iw as u8) as u32; // the C pass carries the width in a `uint8_t`
     let (lo, hi) = if cls == 0 { (0, 255) } else { (nul.wrapping_add(1), !nul) };
@@ -536,13 +536,126 @@ pub fn with_buf<T: Copy + Default, R>(blk: usize, f: impl FnOnce(&mut [T]) -> R)
 }
 
 /// The two float widths `over_f32` and `over_f64` share.
-pub trait Fl: Copy + PartialOrd + core::ops::Mul<Output = Self> + core::ops::Neg<Output = Self> {
+pub trait Fl: Copy + PartialOrd + core::ops::Add<Output = Self> + core::ops::Mul<Output = Self> + core::ops::Neg<Output = Self> {
     const ZERO: Self;
     const ONE: Self;
     const INF: Self;
 }
 impl Fl for f32 { const ZERO: f32 = 0.0; const ONE: f32 = 1.0; const INF: f32 = f32::INFINITY; }
 impl Fl for f64 { const ZERO: f64 = 0.0; const ONE: f64 = 1.0; const INF: f64 = f64::INFINITY; }
+
+/// ids.h `ids_avail`: how many ids `gid` holds at `w` bits; a one-entry dictionary (`w = 0`) stores none and every id is 0.
+fn avail(gid: &[u8], w: u32) -> usize { if w == 0 { usize::MAX } else { gid.len() * 8 / w as usize } }
+
+/// reduce.c `qlean_over_sv`: `acc * base + digit` down the longs of `a`, mod 2^64, which is a monoid, so the chain splits
+/// into `SV_LANES` interleaved ones (lane `j` folds elements `j, j + L, ..` under `base^L`) that recombine by one more
+/// Horner: bit-identical to the serial fold. 24 lanes: where the pass stops multiplying and starts reading memory
+/// (serial 711us at a million longs, 4 lanes 222, 8 111, 16 56, 24 49.6, 32 49.4). No null case: q's `sv` runs
+/// straight through `0N` as `-2^63`.
+pub fn over_sv(base: i64, a: &[u8]) -> i64 {
+    const L: usize = 24;
+    let rd = |e: &[u8]| u64::from_ne_bytes(e.try_into().unwrap());
+    let b = base as u64;
+    let step = (0..L).fold(1u64, |s, _| s.wrapping_mul(b));
+    let mut lane = [0u64; L];
+    let mut c = a[..a.len() / 8 * 8].chunks_exact(8 * L);
+    for ch in c.by_ref() {
+        for (j, l) in lane.iter_mut().enumerate() { *l = l.wrapping_mul(step).wrapping_add(rd(&ch[8 * j..8 * j + 8])) }
+    }
+    let acc = lane.iter().fold(0u64, |acc, &l| acc.wrapping_mul(b).wrapping_add(l));
+    c.remainder().chunks_exact(8).fold(acc, |acc, e| acc.wrapping_mul(b).wrapping_add(rd(e))) as i64
+}
+
+/// The float verb table of `qlean_over_groups_float` and `qlean_over_segments_float`: one left fold from 0, 1, `inf`,
+/// `-inf` at accumulator type `A`, the element widened to `A` first (a `real` fold in `double` widens each element).
+macro_rules! of_verbs {
+    ($op:expr, $go:ident) => { match $op {
+        1 => $go!(A::ONE, |a: A, v: A| a * v),
+        2 => $go!(A::INF, |a: A, v: A| if v < a { v } else { a }),
+        3 => $go!(-A::INF, |a: A, v: A| if v > a { v } else { a }),
+        _ => $go!(A::ZERO, |a: A, v: A| a + v),
+    } };
+}
+/// `f::<T, A, W>(args)` at the id width `w`, as `ids::by_width` does for one parameter.
+macro_rules! by_width_ta {
+    ($w:expr, $f:ident::<$t:ty, $a:ty>($($x:expr),*)) => { match $w {
+        0 => $f::<$t, $a, 0>($($x),*), 1 => $f::<$t, $a, 1>($($x),*), 2 => $f::<$t, $a, 2>($($x),*),
+        4 => $f::<$t, $a, 4>($($x),*), 8 => $f::<$t, $a, 8>($($x),*), 16 => $f::<$t, $a, 16>($($x),*),
+        32 => $f::<$t, $a, 32>($($x),*), _ => $f::<$t, $a, 64>($($x),*),
+    } };
+}
+
+/// reduce.c `OGF_LOOP`: one group per id, one accumulator each, rows in order, NaN (q's null) skipped.
+fn og_float<T: Copy + PartialEq + Into<A>, A: Fl, const IW: u32>(op: u8, ids: &[u8], x: &[T], acc: &mut [A], cnt: &mut [i64]) {
+    let ng = acc.len();
+    macro_rules! go { ($seed:expr, $step:expr) => {{
+        acc.fill($seed);
+        for (i, &v) in x.iter().enumerate() {
+            let k = id_at(ids, IW, i);
+            if k < ng && v == v { acc[k] = ($step)(acc[k], v.into()); cnt[k] += 1 }
+        }
+    }}; }
+    of_verbs!(op, go)
+}
+
+/// reduce.c `qlean_over_groups_float` past the unboxing: `res` is `16 * ng` bytes, the folds as double bits then the
+/// live counts. q's `select sum x by g` over floats is one left fold per group in row order, not the verb per group
+/// (whose `sum` runs lanes), so one serial pass with no split: a slice's partial would be a reassociation. A `real` fold
+/// rounds to `real` at each step, a `real` avg folds in double.
+#[allow(clippy::too_many_arguments)]
+pub fn over_groups_float(op: u8, f32: bool, avg: bool, ng: usize, iw: usize, rows: usize, gid: &[u8], a: &[u8], res: &mut [u8]) {
+    let w = if f32 { 4 } else { 8 };
+    let iw32 = iw as u32;
+    let n = (a.len() / w).min(rows).min(avail(gid, iw32));
+    // C's `IDS_WIDTHS` switch on the `size_t` goes to 64 for any width it does not name
+    let wd = match iw { 0 | 1 | 2 | 4 | 8 | 16 | 32 => iw32, _ => 64 };
+    let (s, cnt) = res.split_at_mut(ng * 8);
+    let s = crate::pod::cast_mut::<f64>(s).expect("over_groups_float: the answer is not 8-aligned");
+    let cnt = crate::pod::cast_mut::<i64>(cnt).expect("over_groups_float: the answer is not 8-aligned");
+    cnt.fill(0);
+    if f32 {
+        let x = crate::pod::cast::<f32>(&a[..n * 4]).expect("over_groups_float: the payload is not 4-aligned");
+        if avg { by_width_ta!(wd, og_float::<f32, f64>(op, gid, x, s, cnt)) } else {
+            let mut acc = vec![0f32; ng];
+            by_width_ta!(wd, og_float::<f32, f32>(op, gid, x, &mut acc, cnt));
+            for (d, &v) in s.iter_mut().zip(&acc) { *d = v as f64 }
+        }
+    } else {
+        let x = crate::pod::cast::<f64>(&a[..n * 8]).expect("over_groups_float: the payload is not 8-aligned");
+        by_width_ta!(wd, og_float::<f64, f64>(op, gid, x, s, cnt))
+    }
+}
+
+/// reduce.c `OSF_LOOP`: `og_float`'s fold, seeds and steps over each segment's rows (`seg_at`: the offsets clamped into
+/// `[0, n]`, empty where they descend) into one accumulator of type `A`.
+fn os_float<T: Copy + PartialEq + Into<A>, A: Fl + Into<f64>>(op: u8, offs: &[i64], x: &[T], s: &mut [f64], cnt: &mut [i64]) {
+    let n = x.len();
+    macro_rules! go { ($seed:expr, $step:expr) => {
+        for (r, (d, c)) in s.iter_mut().zip(cnt.iter_mut()).enumerate() {
+            let (lo, e) = (seg_at(offs, n, r), seg_at(offs, n, r + 1));
+            let (mut acc, mut k) = ($seed, 0i64);
+            for &v in x.get(lo..e).unwrap_or_default() { if v == v { acc = ($step)(acc, v.into()); k += 1 } }
+            (*d, *c) = (acc.into(), k);
+        }
+    }; }
+    of_verbs!(op, go)
+}
+
+/// reduce.c `qlean_over_segments_float` past the unboxing: `offs.len() - 1` segments into `res` (`16 * ng` bytes: the
+/// folds as double bits, then the live counts). Serial, as the id form is.
+pub fn over_segments_float(op: u8, f32: bool, avg: bool, offs: &[i64], a: &[u8], res: &mut [u8]) {
+    let ng = offs.len().saturating_sub(1);
+    let (s, cnt) = res.split_at_mut(ng * 8);
+    let s = crate::pod::cast_mut::<f64>(s).expect("over_segments_float: the answer is not 8-aligned");
+    let cnt = crate::pod::cast_mut::<i64>(cnt).expect("over_segments_float: the answer is not 8-aligned");
+    if f32 {
+        let x = crate::pod::cast::<f32>(&a[..a.len() / 4 * 4]).expect("over_segments_float: the payload is not 4-aligned");
+        if avg { os_float::<f32, f64>(op, offs, x, s, cnt) } else { os_float::<f32, f32>(op, offs, x, s, cnt) }
+    } else {
+        let x = crate::pod::cast::<f64>(&a[..a.len() / 8 * 8]).expect("over_segments_float: the payload is not 8-aligned");
+        os_float::<f64, f64>(op, offs, x, s, cnt)
+    }
+}
 
 /// reduce.c:`OVER_MINMAX_CASE`, the AVX-512 arm: `min`/`max` over `L` lanes (one `__m512`). Below one group it is the
 /// serial fold with `stepk`, which keeps its accumulator on a tie (q answers the FIRST of a `+0`/`-0` tie there); at or

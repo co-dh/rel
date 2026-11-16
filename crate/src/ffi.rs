@@ -565,34 +565,6 @@ pub unsafe extern "C" fn qrs_sym_msort(v: *const CSym, n: usize, a: *mut usize, 
     let s: alloc::vec::Vec<&[u8]> = unsafe { sl(v, n) }.iter().map(|x| unsafe { sl(x.p, x.len) }).collect();
     unsafe { sym::sym_msort(&s, sl_mut(a, n), sl_mut(tmp, n)) }
 }
-/// A12: reduce.c `qlean_over_bytes` past the unboxing.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn qrs_over_bytes(op: u8, cls: u8, nul: i64, a: *const u8, bytes: usize) -> i64 {
-    reduce::over_bytes(op, cls, nul, unsafe { sl(a, bytes) })
-}
-/// K1: reduce.c `qlean_over_groups` past the unboxing and the empty-groups case: `res` is `2 * ng` slots.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn qrs_over_groups(run: unsafe extern "C" fn(), op: u8, cls: u8, nul: i64, ng: usize, iw: u32, rows: usize,
-                                         gid: *const u8, gbytes: usize, src: *const u8, bytes: usize, res: *mut i64) {
-    unsafe { reduce::over_groups(rn(run), op, cls, nul, ng, iw, rows, sl(gid, gbytes), sl(src, bytes), sl_mut(res, 2 * ng)) }
-}
-/// A13: reduce.c `qlean_over_segments`' threaded pass.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn qrs_segments(run: unsafe extern "C" fn(), op: u8, cls: u8, nul: i64, offs: *const i64, ng: usize,
-                                      src: *const u8, bytes: usize, n: usize, res: *mut i64) {
-    unsafe { reduce::segments(rn(run), op, cls, nul, sl(offs, ng + 1), sl(src, bytes), n, sl_mut(res, 2 * ng)) }
-}
-/// A13: reduce.c `bit_rows_run`.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn qrs_bit_rows(run: unsafe extern "C" fn(), all: c_int, w: usize, offs: *const i64, ng: usize,
-                                      idx: *const i64, ni: usize, m: *const u8, mbytes: usize, out: *mut u8) {
-    unsafe { reduce::bit_rows(rn(run), all != 0, w, sl(offs, ng + 1), sl(idx, ni), sl(m, mbytes), sl_mut(out, (ng * w).div_ceil(8))) }
-}
-/// K2: reduce.c `qlean_md5`: the 16 digest bytes of `n` bytes at `msg`.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn qrs_md5(msg: *const u8, n: usize, out: *mut u8) {
-    unsafe { sl_mut(out, 16).copy_from_slice(&reduce::md5(sl(msg, n))) }
-}
 /// K2: reduce.c `qlean_group_cells` past its width check: `n` cells of `ow` bytes (`w`, or 8 for the two averages) at
 /// `out`, from the `2 * ng` slots at `m` gathered by the `n` ids at `ord`.
 #[unsafe(no_mangle)]
