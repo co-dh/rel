@@ -265,6 +265,87 @@ pub fn move_pack(p: &mut EncPack, f: &Cocf, pb: usize, alp: bool, esz: usize) {
     }
 }
 
+// ---- K24b: coc.c's writer orchestration that needs no raw pointer; ffi.rs keeps the Lean objects, the pool and the C callbacks ----
+/// A block's metadata step: the writer's own choice for the column's form (`m.exp` is the exponent slot of an ALP column).
+pub fn meta_step(m: &mut EncMeta, x: &[u8], width: usize, nb: usize) {
+    if m.exp.is_some() { alp_meta(m, x, width, nb) } else { for_meta(m, x, width, nb) }
+}
+/// A block's pack step, as `meta_step`.
+pub fn pack_step(p: &mut EncPack, x: &[u8], width: usize, alp: bool) { if alp { alp_pack(p, x, width) } else { for_pack(p, x, width) } }
+/// coc.c `src_run`'s lower bound on a sized block's share of the encoded size: its residuals and its patches' bytes.
+pub fn block_bytes(width_b: u8, nexc: u32, width: usize) -> usize { crate::BLK * width_b as usize / 8 + nexc as usize * (width + 2) }
+/// coc.c `coc_enc_layout`'s patch list or ALP blob header: `nexc` and `w` in its first 16 bytes, the rest of `t` zero.
+pub fn exc_header(t: &mut [u8], nexc: usize, w: u64) {
+    t.fill(0);
+    t[..8].copy_from_slice(&(nexc as u64).to_ne_bytes());
+    t[8..16].copy_from_slice(&w.to_ne_bytes());
+}
+/// coc.c `coc_enc_plan`'s tail: the bytes after the residuals, the patch list of Frame of Reference (with its frames when
+/// `frm`) or ALP's blob; 0 for a column with neither.
+pub fn tail_bytes(alp: bool, nexc: usize, frm: bool, width: usize, nblk: usize) -> usize {
+    use crate::layout::{exc_layout, Tail};
+    let tail = if alp { Some(Tail::Exps) } else if nexc != 0 { Some(if frm { Tail::Frames } else { Tail::None }) } else { None };
+    tail.map_or(0, |t| exc_layout(nblk, nexc, width, t).expect("qlean: the exception layout overflows").size)
+}
+
+/// A producer's optional callbacks that move whole blocks (coc.h `coc_take`, `coc_hint`, `coc_ints`); `None` is no callback
+/// or no answer. The raw pointers of the C callbacks stay in the implementor.
+pub trait Moves {
+    /// Block `pb` of a column in the writer's own form that answer block `b` equals, with `pb`.
+    fn take(&self, b: usize) -> Option<(Cocf<'_>, usize)>;
+    /// ALP: block `b`'s decimals `d`, exponents `ee` (negative = exception) of its first `nb` elements, and the block's exponent;
+    /// with `raw` also each exception's `width` raw bytes at `raw[i * width..]`. `None` when the producer has no answer.
+    fn ints(&self, b: usize, nb: usize, d: &mut [i64], ee: &mut [i8], raw: Option<&mut [u8]>) -> Option<i32>;
+    /// ALP: a block exponent for block `b` and the most exceptions it may leave.
+    fn hint(&self, b: usize) -> Option<(i32, u32)>;
+}
+/// coc.c `move_meta`: a moved block's metadata is its column's and its exception count is what the layout prefix-sums; the
+/// writer's own step would choose exactly these for the same elements. Else the ALP shortcuts (the sources' exponent where it
+/// leaves no more exceptions than they had), else the writer's own step. `x` is read only on the last two paths.
+pub fn move_meta_blk<'a>(mv: &impl Moves, m: &mut EncMeta, x: impl FnOnce() -> &'a [u8], width: usize, nb: usize) {
+    use crate::alp::{alp_exc_at, alp_fin_blk, alp_meta_exp};
+    let (b, alp) = (m.b, m.exp.is_some());
+    if let Some((f, pb)) = mv.take(b) { move_meta(m, &f, pb); return }
+    if alp {
+        let (mut d, mut ee) = ([0i64; crate::BLK], [0i8; crate::BLK]);
+        if let Some(e) = mv.ints(b, nb, &mut d, &mut ee, None).filter(|&e| e >= 0) { *m.nexc = alp_fin_blk(m, e, &mut d, &ee, nb); return }
+    }
+    let x = x();
+    if let Some((e, lim)) = if alp { mv.hint(b).filter(|&(e, _)| e >= 0) } else { None } {
+        // the search's up to 19 trials an element were what re-encoding a part off the grid cost
+        let f64s = width != 4;
+        let kept = if f64s { alp_exc_at(elts::<f64>(x, "move_meta"), e, lim + 1) } else { alp_exc_at(elts::<f32>(x, "move_meta"), e, lim + 1) };
+        if kept <= lim {
+            *m.nexc = if f64s { alp_meta_exp(m, elts::<f64>(x, "move_meta"), nb, e) } else { alp_meta_exp(m, elts::<f32>(x, "move_meta"), nb, e) };
+            return;
+        }
+    }
+    meta_step(m, x, width, nb)
+}
+/// coc.c `move_pack`: a moved block's residuals and its patch list, whose positions are the block's own and so move unchanged.
+/// `pack(whole)` is block `b`'s `EncPack`, asked once; `whole` for a taken block's full `BLK * width / 8` residual region.
+pub fn move_pack_blk<'a, 'b>(mv: &impl Moves, pack: impl FnOnce(bool) -> EncPack<'b>, x: impl FnOnce() -> &'a [u8], b: usize, nb: usize,
+                             width: usize, alp: bool) {
+    if let Some((f, pb)) = mv.take(b) { return move_pack(&mut pack(true), &f, pb, alp, width) }
+    if alp {
+        let (mut d, mut ee, mut raw) = ([0i64; crate::BLK], [0i8; crate::BLK], [0u64; crate::BLK]);
+        let raw = &mut crate::pod::bytes_mut(&mut raw)[..nb * width];
+        if mv.ints(b, nb, &mut d, &mut ee, Some(raw)).is_some_and(|e| e >= 0) {
+            let p = &mut pack(false);
+            let (base, wd) = (p.base, p.width);
+            // an exception's decimal packs as the block's base, residual 0, its raw bits in the patch list
+            for (k, i) in (0..nb).filter(|&i| ee[i] < 0).enumerate() {
+                d[i] = base;
+                p.pos[k] = i as u16;
+                p.raw[k * width..(k + 1) * width].copy_from_slice(&raw[i * width..(i + 1) * width]);
+            }
+            pack_block(p.res, &d, nb, base, wd);
+            return;
+        }
+    }
+    pack_step(&mut pack(false), x(), width, alp)
+}
+
 #[cfg(test)]
 mod a17_tests {
     use super::*;
