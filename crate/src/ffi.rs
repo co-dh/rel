@@ -886,40 +886,6 @@ unsafe fn opnd<'a>(d: *const u8, c: *const CCoc, n: usize, enc: c_int, lw: u32, 
     };
     search::Opnd { src, n }
 }
-/// A29: search.c `table_*` over the haystack (`kind` as `qrs_kind_of` numbers it). Answers the probe table for
-/// `qrs_ptab_find`/`qrs_ptab_member`, freed by `qrs_ptab_free`.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn qrs_ptab_new(kind: c_int, d: *const u8, c: *const CCoc, n: usize, enc: c_int, lw: u32) -> *mut c_void {
-    let kd = search::KINDS[kind as usize];
-    alloc::boxed::Box::into_raw(alloc::boxed::Box::new(search::Probe::new(kd, &unsafe { opnd(d, c, n, enc, lw, kd.width()) }))).cast()
-}
-/// A29: search.c's table over the needles `x`, the haystack `h` walked to each needle key's first occurrence.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn qrs_ptab_over(kind: c_int, hd: *const u8, hc: *const CCoc, hn: usize, henc: c_int, hlw: u32,
-                                       xd: *const u8, xc: *const CCoc, xn: usize, xenc: c_int, xlw: u32) -> *mut c_void {
-    let kd = search::KINDS[kind as usize];
-    let (h, x) = unsafe { (opnd(hd, hc, hn, henc, hlw, kd.width()), opnd(xd, xc, xn, xenc, xlw, kd.width())) };
-    alloc::boxed::Box::into_raw(alloc::boxed::Box::new(search::Probe::over(kd, &h, &x))).cast()
-}
-/// A29: search.c `findtab_*` over the needles `lo .. hi` of the operand; `out` is the answer at `lo` (`hi - lo` entries).
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn qrs_ptab_find(t: *const c_void, d: *const u8, c: *const CCoc, n: usize, enc: c_int, lw: u32,
-                                       lo: usize, hi: usize, out: *mut i64) {
-    let t = unsafe { &*t.cast::<search::Probe>() };
-    t.find(&unsafe { opnd(d, c, n, enc, lw, t.width()) }, lo, hi, unsafe { sl_mut(out, hi - lo) })
-}
-/// A29: search.c `membertab_*`: bit `i - lo` of `out` for needle `i` of `lo .. hi` (`lo` a multiple of 8).
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn qrs_ptab_member(t: *const c_void, d: *const u8, c: *const CCoc, n: usize, enc: c_int, lw: u32,
-                                         lo: usize, hi: usize, out: *mut u8) {
-    let t = unsafe { &*t.cast::<search::Probe>() };
-    t.member(&unsafe { opnd(d, c, n, enc, lw, t.width()) }, lo, hi, unsafe { sl_mut(out, (hi - lo).div_ceil(8)) })
-}
-/// A29: frees what `qrs_ptab_new` and `qrs_ptab_over` answered; null is none.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn qrs_ptab_free(t: *mut c_void) {
-    if !t.is_null() { drop(unsafe { alloc::boxed::Box::from_raw(t.cast::<search::Probe>()) }) }
-}
 /// A29: search.c `scan_*`: the first index in the dense haystack `h` of `n` keys of each of the `m` needles `x`, or `n`.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn qrs_scan(kind: c_int, h: *const u8, n: usize, x: *const u8, m: usize, out: *mut i64) {
@@ -955,7 +921,54 @@ pub extern "C" fn qrs_kind_width(k: c_int) -> usize {
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn qrs_sym_scan(blob: *const u8, bytes: usize, offs: *const usize, n: usize, k: *const u8, klen: usize)
     -> usize {
-    unsafe { search::sym_scan(&syms(blob, bytes, offs, n), n, sl(k, klen)) }
+    unsafe { search::sym_scan(&syms0(blob, bytes, offs, n), n, sl(k, klen)) }
+}
+/// `lean_array_size` boxed offsets (`n + 1` for `n` symbols, none for an empty dictionary) as a column.
+unsafe fn symcol<'a>(blob: *const u8, bytes: usize, offs: *const usize, noffs: usize) -> Syms<'a> {
+    Syms { blob: unsafe { sl(blob, bytes) }, offs: unsafe { sl(offs, noffs) } }
+}
+/// A31: search.c `sym_search` past the kept hash: the needle column `nb`/`no` (`nno` offsets) against the haystack `hb`/`ho`
+/// (`nho` offsets), `bits` 0: `out` is `8 * m` bytes of `Int64`s; `bits` 1: `ceil(m / 8)` zeroed bytes.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn qrs_sym_search(bits: c_int, nb: *const u8, nbytes: usize, no: *const usize, nno: usize, hb: *const u8,
+                                        hbytes: usize, ho: *const usize, nho: usize, out: *mut u8) {
+    let (nd, h) = unsafe { (symcol(nb, nbytes, no, nno), symcol(hb, hbytes, ho, nho)) };
+    let m = nd.count();
+    unsafe { search::sym_search(bits != 0, &nd, &h, sl_mut(out, if bits != 0 { m.div_ceil(8) } else { m * 8 })) }
+}
+/// A31: search.c `qlean_search_match_ids`' translation: for each of the `na` entries of `a`, its index among the `nb` of `b`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn qrs_sym_translate(ab: *const u8, abytes: usize, ao: *const usize, na: usize, bb: *const u8,
+                                           bbytes: usize, bo: *const usize, nb: usize, tr: *mut usize) {
+    unsafe { search::sym_translate(&syms0(ab, abytes, ao, na), na, &syms0(bb, bbytes, bo, nb), nb, sl_mut(tr, na)) }
+}
+/// A31: search.c `find_bit` over a payload of `size` bytes.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn qrs_find_bit(b: *const u8, size: usize, n: usize, needle: u8) -> usize {
+    search::find_bit(unsafe { sl(b, size) }, n, needle)
+}
+/// A31: search.c `qlean_search_find_bit_vec`; `out` holds `m` entries.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn qrs_find_bit_vec(n: usize, hay: *const u8, hs: usize, ndl: *const u8, ns: usize, m: usize, out: *mut i64) {
+    unsafe { search::find_bit_vec(n, sl(hay, hs), sl(ndl, ns), m, sl_mut(out, m)) }
+}
+/// A31: search.c `qlean_search_bin_bits`; `out` holds `m` entries.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn qrs_bin_bits(n: usize, hay: *const u8, hs: usize, ndl: *const u8, ns: usize, m: usize, right: u8, out: *mut i64) {
+    unsafe { search::bin_bits(n, sl(hay, hs), sl(ndl, ns), m, right != 0, sl_mut(out, m)) }
+}
+/// A31: search.c `qlean_search_member_bits`; `out` holds `ceil(m / 8)` bytes.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn qrs_member_bits(m: usize, xs: *const u8, xsz: usize, n: usize, hay: *const u8, hsz: usize, out: *mut u8) {
+    unsafe { search::member_bits(m, sl(xs, xsz), n, sl(hay, hsz), sl_mut(out, m.div_ceil(8))) }
+}
+/// A31: search.c `qlean_search_where_bits`, the count: how many of the first `n` bits of the `size`-byte payload are set.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn qrs_where_count(n: usize, bits: *const u8, size: usize) -> usize { search::where_count(n, unsafe { sl(bits, size) }) }
+/// A31: search.c `qlean_search_where_bits`, the indices; `out` holds `qrs_where_count` entries. Answers that count.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn qrs_where_bits(n: usize, bits: *const u8, size: usize, k: usize, out: *mut i64) -> usize {
+    unsafe { search::where_bits(n, sl(bits, size), sl_mut(out, k)) }
 }
 /// A32: search.c `bin` over a dense haystack and dense keys.
 #[unsafe(no_mangle)]
