@@ -213,6 +213,56 @@ pub unsafe extern "C" fn qrs_sort_gather(kind: u8, p: *const u8, n: usize, first
     group::gather(kind, b, unsafe { sl(first, ng) }, unsafe { sl_mut(out, w) }).is_some() as c_int
 }
 
+/// K15: sort.c `buckets`' scatter: `ord` `n` indices, `bnd` `ng + 1` boxed byte offsets (a `lean_object **`), `cnt` `ng` counts.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn qrs_buckets(gid: *const u32, n: usize, ng: usize, cnt: *const u32, ord: *mut i64, bnd: *mut usize) {
+    unsafe { group::buckets(sl(gid, n), sl(cnt, ng), sl_mut(ord, n), sl_mut(bnd, ng + 1)) }
+}
+
+/// K15: `distinct_fill`'s context: the encoded column `c` and its first-occurrence indices.
+#[repr(C)]
+pub struct CDfill { pub kind: u8, pub c: *const CCoc, pub first: *const usize }
+/// K15: `distinct_fill_alp`'s context.
+#[repr(C)]
+pub struct CDfillAlp { pub f: *const CCocf, pub first: *const usize }
+
+/// K15: sort.c `distinct_fill`, a `FillFn` over a `CDfill`: elements `i0 .. i0 + cnt` of the answer, the keys at `first`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn qrs_distinct_fill(buf: *mut i64, i0: usize, cnt: usize, ctx: *const c_void) {
+    if cnt == 0 { return }
+    let d = unsafe { &*ctx.cast::<CDfill>() };
+    unsafe { group::distinct_fill(d.kind, &(*d.c).view(), sl(d.first.add(i0), cnt), sl_mut(buf, cnt)) }
+}
+
+/// K15: sort.c `distinct_fill_alp`, a `FillFn` over a `CDfillAlp`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn qrs_distinct_fill_alp(buf: *mut i64, i0: usize, cnt: usize, ctx: *const c_void) {
+    if cnt == 0 { return }
+    let d = unsafe { &*ctx.cast::<CDfillAlp>() };
+    unsafe { group::distinct_fill_alp(&(*d.f).view(), sl(d.first.add(i0), cnt), sl_mut(buf, cnt)) }
+}
+
+/// K15: sort.c `keys_gather_foR`: the keys at `first[..ng]` of the encoded column `c`, narrowed to the kind's dense width,
+/// into `out` (`ng` times that width, 2, 4 or 8, bytes).
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn qrs_keys_gather_foR(kind: u8, c: *const CCoc, first: *const usize, ng: usize, out: *mut u8) {
+    unsafe { group::keys_gather(kind, &(*c).view(), sl(first, ng), sl_mut(out, ng * (kwin::dense_bits(kind) / 8) as usize)) }
+}
+
+/// K15: sort.c `parted_of` over a dense column: 1 when each key's runs are one contiguous run (`strict`: every run one
+/// element), else 0. `n` keys of `p` (at least `key::bytes(kind, n)` bytes); an unknown kind or `SK_WIN` is a panic.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn qrs_parted(kind: u8, p: *const u8, n: usize, strict: u8) -> u8 {
+    let b = unsafe { keys(kind, p, n) };
+    b.and_then(|b| group::parted(kind, b, n, strict != 0)).unwrap_or_else(|| panic!("qlean sort: parted refused kind {kind} (impossible: outside the enum or a misaligned payload), n {n}")) as u8
+}
+
+/// K15: sort.c `parted_of` over an encoded column `c` read through a window.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn qrs_parted_win(kind: u8, c: *const CCoc, strict: u8) -> u8 {
+    group::parted_win(kind, unsafe { (*c).view() }, strict != 0) as u8
+}
+
 /// `p` is the block's `BLK * *w / 8` bytes, `buf` `BLK * 8`; answers `p` or `buf`.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn qrs_coc_lanes(p: *const u8, w: *mut u8, nb: usize, buf: *mut u8) -> *const u8 {
