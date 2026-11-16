@@ -8,12 +8,27 @@ use crate::ffi::CPass;
 
 // libm names the crate may leave undefined (listed in rust/BENCH.md, symbols gate); each is declared once here, where `unsafe` is
 // allowed, and called through a safe wrapper, so the safe modules need no unsafe block.
-unsafe extern "C" { #[link_name = "pow"] fn libm_pow(x: f64, y: f64) -> f64; }
-/// libm's `pow`, the one libm call of `ew::val`; both float classes compute it at double width.
-#[inline]
-pub fn pow(x: f64, y: f64) -> f64 {
-    // Safety: `pow` is a pure libm function of two doubles
-    unsafe { libm_pow(x, y) }
+macro_rules! libm {
+    ($($f:ident($($a:ident),+);)*) => {
+        mod sys { unsafe extern "C" { $(pub fn $f($($a: f64),+) -> f64;)* } }
+        $(
+            /// libm's own, a safe `#[inline]` wrapper so a loop over it costs the call C's `__builtin_*` costs.
+            #[inline]
+            pub fn $f($($a: f64),+) -> f64 {
+                // Safety: a pure libm function of doubles
+                unsafe { sys::$f($($a),+) }
+            }
+        )*
+    };
+}
+// `pow` (both float classes of `ew::val`, the f32 one computed at double width) and the nine float maps of `ew::mon`.
+libm! { pow(x, y); sqrt(x); exp(x); log(x); sin(x); cos(x); tan(x); asin(x); acos(x); atan(x); }
+
+/// elementwise.c `ew_serial`: a runner that runs the whole range on the calling thread and answers one part, for a
+/// worker that is already one slice of the pool (a chain tile) and must not enter it again.
+pub unsafe extern "C" fn serial(f: Worker, n: usize, _cost: u32, _wide: usize, p: *const CPass) -> u32 {
+    unsafe { f(0, n, p) };
+    1
 }
 
 pub type Worker = unsafe extern "C" fn(lo: usize, hi: usize, p: *const CPass);
