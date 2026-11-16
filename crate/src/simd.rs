@@ -892,3 +892,18 @@ pub fn fill_nan(mut x: f64) -> (f64, i64) {
     { l = (x == x) as i64; x = if x == x { x } else { 0.0 }; }
     (x, l)
 }
+
+/// The same for an integral kind: `(live ? v as f64 : 0.0, live as i64)` with `live = v != nul`, the branch on the null
+/// gcc's loop has (`nul` is the sign-extended null of the kind, a value no element holds where it has none).
+#[inline(always)]
+pub fn fill_int(v: i64, nul: i64) -> (f64, i64) {
+    let (x, l): (f64, i64);
+    #[cfg(target_arch = "x86_64")]
+    // SAFETY: register-only asm; the label is local to the block, which writes `x`, `l` and the flags.
+    unsafe { core::arch::asm!("vxorps {x}, {x}, {x}", "vcvtsi2sd {x}, {x}, {v}", "mov {l:e}, 1", "cmp {v}, {n}", "jne 2f",
+        "vxorps {x}, {x}, {x}", "xor {l:e}, {l:e}", "2:",
+        x = out(xmm_reg) x, l = out(reg) l, v = in(reg) v, n = in(reg) nul, options(pure, nomem, nostack)) }
+    #[cfg(not(target_arch = "x86_64"))]
+    { l = (v != nul) as i64; x = if v != nul { v as f64 } else { 0.0 }; }
+    (x, l)
+}

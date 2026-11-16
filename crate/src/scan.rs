@@ -453,14 +453,15 @@ trait Elt: Copy {
     fn reg(self) -> Self::Acc;
     fn lane(a: Self::Acc) -> Self;
     fn stv(a: Self::Acc, d: &mut Self::B);
-    fn best<const MIN: bool>(v: Self::Acc, ex: Self::Acc) -> Self::Acc;
+    /// `BR` picks a float's branch over its select, the choice of `ext`; an integral kind has the one form.
+    fn best<const MIN: bool, const BR: bool>(v: Self::Acc, ex: Self::Acc) -> Self::Acc;
 }
 macro_rules! elt_int { ($($t:ty, $u:ty, $reg:ident, $lane:ident, $stv:ident, $mn:ident, $mx:ident);*) => { $(impl Elt for $t {
     type Acc = simd::VReg;
     #[inline(always)] fn reg(self) -> simd::VReg { simd::$reg(self) }
     #[inline(always)] fn lane(a: simd::VReg) -> Self { simd::$lane(a) }
     #[inline(always)] fn stv(a: simd::VReg, d: &mut Self::B) { simd::$stv(a, d) }
-    #[inline(always)] fn best<const MIN: bool>(v: simd::VReg, ex: simd::VReg) -> simd::VReg { if MIN { simd::$mn(v, ex) } else { simd::$mx(v, ex) } }
+    #[inline(always)] fn best<const MIN: bool, const BR: bool>(v: simd::VReg, ex: simd::VReg) -> simd::VReg { if MIN { simd::$mn(v, ex) } else { simd::$mx(v, ex) } }
     type B = [u8; size_of::<$t>()];
     #[inline(always)] fn from_b(b: Self::B) -> Self { Self::from_ne_bytes(b) }
     #[inline(always)] fn to_b(self) -> Self::B { self.to_ne_bytes() }
@@ -474,7 +475,14 @@ macro_rules! elt_flt { ($t:ty, $u:ty, $mn:ident, $mx:ident) => { impl Elt for $t
     #[inline(always)] fn reg(self) -> $t { self }
     #[inline(always)] fn lane(a: $t) -> Self { a }
     #[inline(always)] fn stv(a: $t, d: &mut Self::B) { *d = a.to_ne_bytes() }
-    #[inline(always)] fn best<const MIN: bool>(v: $t, ex: $t) -> $t { if MIN { simd::$mn(v, ex) } else { simd::$mx(v, ex) } }
+    #[inline(always)] fn best<const MIN: bool, const BR: bool>(v: $t, ex: $t) -> $t {
+        match (MIN, BR) {
+            (true, true) => simd::$mn(v, ex),
+            (false, true) => simd::$mx(v, ex),
+            (true, false) => if (v < ex) | (v != v) { v } else { ex },
+            (false, false) => if (v > ex) | (ex != ex) { v } else { ex },
+        }
+    }
     type B = [u8; size_of::<$t>()];
     #[inline(always)] fn from_b(b: Self::B) -> Self { Self::from_ne_bytes(b) }
     #[inline(always)] fn to_b(self) -> Self::B { self.to_ne_bytes() }
@@ -520,18 +528,21 @@ trait Kd {
     fn run(p: &[u8], i: usize, k: usize) -> impl Iterator<Item = Self::E> + '_;
     fn nul(e: Self::E) -> bool;
     fn dbl(e: Self::E) -> f64;
-    /// The null is a NaN, which `simd::fill_nan` tests as a branch.
+    /// The null as `fill` tests it: a NaN (`NULV` is then unused), or the element sign-extended equal to `NULV`.
     const NAN_NULL: bool;
-    /// `(live ? dbl : 0.0, live as i64)`: the filled value the means add and the count they keep.
+    const NULV: i64;
+    fn raw(e: Self::E) -> i64;
+    /// `(live ? dbl : 0.0, live as i64)`: the filled value the means add and the count they keep, each a branch on the
+    /// null (`simd::fill_*`).
     #[inline(always)] fn fill(e: Self::E) -> (f64, i64) {
-        if Self::NAN_NULL { simd::fill_nan(Self::dbl(e)) } else { let l = !Self::nul(e); (if l { Self::dbl(e) } else { 0.0 }, l as i64) }
+        if Self::NAN_NULL { simd::fill_nan(Self::dbl(e)) } else { simd::fill_int(Self::raw(e), Self::NULV) }
     }
     fn msum(st: &mut Mw, p: &[u8], o: &mut [u8], n: usize);
 }
 /// The integral kinds, whose accumulator is the wrapping 64-bit `+\y`.
 trait KInt: Kd { fn int(e: Self::E) -> i64; }
 /// A kind stored `$w` bytes an element; `$sum` is its `msum` instance.
-macro_rules! kd { ($k:ident, $e:ty, $w:literal, $nul:expr, $dbl:expr, $nn:literal, $sum:ident $(, $x:tt)*) => {
+macro_rules! kd { ($k:ident, $e:ty, $w:literal, $nul:expr, $dbl:expr, $nn:literal, $nv:expr, $raw:expr, $sum:ident $(, $x:tt)*) => {
     struct $k;
     impl Kd for $k {
         type E = $e;
@@ -541,16 +552,18 @@ macro_rules! kd { ($k:ident, $e:ty, $w:literal, $nul:expr, $dbl:expr, $nn:litera
         #[inline(always)] fn nul(e: $e) -> bool { let f: fn($e) -> bool = $nul; f(e) }
         #[inline(always)] fn dbl(e: $e) -> f64 { let f: fn($e) -> f64 = $dbl; f(e) }
         const NAN_NULL: bool = $nn;
+        const NULV: i64 = $nv;
+        #[inline(always)] fn raw(e: $e) -> i64 { let f: fn($e) -> i64 = $raw; f(e) }
         fn msum(st: &mut Mw, p: &[u8], o: &mut [u8], n: usize) { $sum::<$k $(, $x)*>(st, p, o, n) }
     }
 } }
-kd!(KU8, u8, 1, |_| false, |e| e as f64, false, sum_int, i32, 4);
-kd!(KC8, u8, 1, |e| e == 0x20, |e| e as f64, false, sum_int, i32, 4);
-kd!(KI16, i16, 2, |e| e == i16::MIN, |e| e as f64, false, sum_int, i32, 4);
-kd!(KI32, i32, 4, |e| e == i32::MIN, |e| e as f64, false, sum_int, i32, 4);
-kd!(KI64, i64, 8, |e| e == i64::MIN, |e| e as f64, false, sum_int, i64, 8);
-kd!(KF32, f32, 4, |e| e != e, |e| e as f64, true, sum_flt, 4);
-kd!(KF64, f64, 8, |e| e != e, |e| e, true, sum_flt, 8);
+kd!(KU8, u8, 1, |_| false, |e| e as f64, false, -1, |e| e as i64, sum_int, i32, 4);
+kd!(KC8, u8, 1, |e| e == 0x20, |e| e as f64, false, 0x20, |e| e as i64, sum_int, i32, 4);
+kd!(KI16, i16, 2, |e| e == i16::MIN, |e| e as f64, false, i16::MIN as i64, |e| e as i64, sum_int, i32, 4);
+kd!(KI32, i32, 4, |e| e == i32::MIN, |e| e as f64, false, i32::MIN as i64, |e| e as i64, sum_int, i32, 4);
+kd!(KI64, i64, 8, |e| e == i64::MIN, |e| e as f64, false, i64::MIN, |e| e, sum_int, i64, 8);
+kd!(KF32, f32, 4, |e| e != e, |e| e as f64, true, 0, |_| 0, sum_flt, 4);
+kd!(KF64, f64, 8, |e| e != e, |e| e, true, 0, |_| 0, sum_flt, 8);
 /// A boolean is one bit an element, LSB first, so its reader is not a width: it takes the bit at each index.
 struct KBit;
 impl Kd for KBit {
@@ -559,6 +572,8 @@ impl Kd for KBit {
     #[inline(always)] fn nul(_: u8) -> bool { false }
     #[inline(always)] fn dbl(e: u8) -> f64 { e as f64 }
     const NAN_NULL: bool = false;
+    const NULV: i64 = -1;
+    #[inline(always)] fn raw(e: u8) -> i64 { e as i64 }
     fn msum(st: &mut Mw, p: &[u8], o: &mut [u8], n: usize) { sum_int::<KBit, i32, 4>(st, p, o, n) }
 }
 macro_rules! kints { ($($k:ident),*) => { $(impl KInt for $k { #[inline(always)] fn int(e: Self::E) -> i64 { e as i64 } })* } }
@@ -686,37 +701,68 @@ fn dev<K: Kd>(st: &mut Mw, p: &[u8], o: &mut [u8], n: usize) {
 /// two compares and a store an element with no branch on the data. The inner loop runs to the end of the phase or the
 /// piece; the suffix pass that closes a phase touches `w` elements once every `w`.
 #[inline(always)]
-fn ext<K: Kd, const MIN: bool, const EW: usize>(st: &mut Mw, p: &[u8], o: &mut [u8], n: usize) where K::E: Elt<B = [u8; EW]> {
+fn ext<K: Kd, const MIN: bool, const BR: bool, const EW: usize>(st: &mut Mw, p: &[u8], o: &mut [u8], n: usize) where K::E: Elt<B = [u8; EW]> {
     let w = st.w;
     let (sent, mut ex, mut t) = (<K::E as Elt>::from_bits(st.sent).reg(), <K::E as Elt>::from_bits(st.extbits).reg(), st.t);
     // chunked once: a phase of one element would otherwise pay the byte-range arithmetic of four slicings
     let (ph, sf, oc) = (st.phase.as_chunks_mut::<EW>().0, st.sufx.as_chunks_mut::<EW>().0, o[..n * EW].as_chunks_mut::<EW>().0);
     // facts for the optimiser, so the four slicings below need no check of their own: `t < w` is the loop's invariant
     assert!(t < w && w <= ph.len() && w < sf.len() && n <= oc.len(), "qlean_mwin: window state t={t} w={w} does not fit its rings");
-    let mut i = 0;
-    while i < n {
-        let k = (w - t).min(n - i);
+    // one element: the window answer from the running extreme `ex` and the previous phase's suffix `sc`
+    let step = |ex: <K::E as Elt>::Acc, v: K::E, sc: &[u8; EW], pc: &mut [u8; EW], oc: &mut [u8; EW]| {
+        let (r, vr) = (<K::E as Elt>::from_b(*sc).reg(), v.reg());
+        let ex = <K::E as Elt>::best::<MIN, BR>(vr, ex);
+        <K::E as Elt>::stv(vr, pc);
+        <K::E as Elt>::stv(<K::E as Elt>::best::<MIN, BR>(ex, r), oc);
+        ex
+    };
+    // elements `t..t + k` of a phase, from element `i` of the piece
+    let phase_in = |mut ex: <K::E as Elt>::Acc, ph: &mut [[u8; EW]], sf: &[[u8; EW]], oc: &mut [[u8; EW]], t: usize, i: usize, k: usize| {
         let it = ph[t..t + k].iter_mut().zip(&sf[t + 1..t + 1 + k]).zip(&mut oc[i..i + k]).zip(K::run(p, i, k));
-        for (((pc, sc), oc), v) in it {
-            let r = <K::E as Elt>::from_b(*sc).reg();
-            let vr = v.reg();
-            ex = <K::E as Elt>::best::<MIN>(vr, ex);
-            <K::E as Elt>::stv(vr, pc);
-            <K::E as Elt>::stv(<K::E as Elt>::best::<MIN>(ex, r), oc);
+        for (((pc, sc), oc), v) in it { ex = step(ex, v, sc, pc, oc) }
+        ex
+    };
+    // the suffix pass that closes a phase
+    let close = |ph: &[[u8; EW]], sf: &mut [[u8; EW]]| {
+        let mut a = sent;
+        for (pc, sc) in ph[..w].iter().zip(sf[..w].iter_mut()).rev() {
+            a = <K::E as Elt>::best::<MIN, BR>(a, <K::E as Elt>::from_b(*pc).reg());
+            <K::E as Elt>::stv(a, sc);
         }
-        t += k; i += k;
-        if t == w {
-            let mut a = sent;
-            for (pc, sc) in ph[..w].iter().zip(sf[..w].iter_mut()).rev() {
-                a = <K::E as Elt>::best::<MIN>(a, <K::E as Elt>::from_b(*pc).reg());
-                <K::E as Elt>::stv(a, sc);
-            }
-            t = 0; ex = sent;
+    };
+    // a window of a few elements closes a phase every few elements, and a chunk's slicings would cost more than they
+    // save, so it runs flat with the phase offset carried
+    if w < 4 {
+        for (oc, v) in oc[..n].iter_mut().zip(K::run(p, 0, n)) {
+            ex = step(ex, v, &sf[t + 1], &mut ph[t], oc);
+            t += 1;
+            if t == w { close(ph, sf); t = 0; ex = sent; }
         }
+        st.t = t;
+        st.extbits = <K::E as Elt>::lane(ex).bits();
+        return;
     }
+    // the phase the piece starts in, then whole phases from `t = 0` (so the window slicings are hoisted), then the
+    // start of the last one
+    let mut i = 0;
+    if w - t <= n {
+        let k = w - t;
+        phase_in(ex, ph, sf, oc, t, 0, k);
+        i = k; close(ph, sf); t = 0;
+        while n - i >= w {
+            phase_in(sent, ph, sf, oc, 0, i, w);
+            i += w; close(ph, sf);
+        }
+        ex = sent;
+    }
+    if i < n { let k = n - i; ex = phase_in(ex, ph, sf, oc, t, i, k); t += k; }
     st.t = t;
     st.extbits = <K::E as Elt>::lane(ex).bits();
 }
+
+/// Whether a float's running extreme is replaced so rarely (a window of 1 replaces it always, a wide one about `ln w`
+/// times in `w`) that a branch predicts; a window of a few elements replaces it about every other element at random.
+fn branches(w: usize) -> bool { w == 1 || w >= 32 }
 
 /// `MW_OPS`: one expansion per element layout with the op switch outside the loop; `EW` is the element's width.
 #[inline(always)]
@@ -726,8 +772,11 @@ fn ops<K: Kd, const EW: usize>(st: &mut Mw, op: i32, p: &[u8], o: &mut [u8], n: 
         MW_MCOUNT => cnt::<K>(st, p, o, n),
         MW_MAVG => avg::<K>(st, p, o, n),
         MW_MDEV => dev::<K>(st, p, o, n),
-        MW_MMIN => ext::<K, true, EW>(st, p, o, n),
-        _ => ext::<K, false, EW>(st, p, o, n),
+        // a window this narrow replaces its extreme about every other element at random, which a branch mispredicts
+        MW_MMIN if !branches(st.w) => ext::<K, true, false, EW>(st, p, o, n),
+        MW_MMIN => ext::<K, true, true, EW>(st, p, o, n),
+        _ if !branches(st.w) => ext::<K, false, false, EW>(st, p, o, n),
+        _ => ext::<K, false, true, EW>(st, p, o, n),
     }
 }
 
