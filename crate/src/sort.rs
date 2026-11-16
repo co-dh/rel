@@ -666,10 +666,59 @@ mod a26_tests {
 }
 
 // ---- A27: sort.c:3471-3500 ----
-/// sort.c:3471 `guid_words`: the 8-byte word at byte `at` of each of `n` guids, in the order `perm`.
-pub fn guid_words(p: &[u8], n: usize, at: usize, perm: &[i64], k: &mut [u64]) -> (u64, u64) { unimplemented!("A27: guid_words") }
-/// sort.c:3483 `qlean_sort_grade_guid` past the unboxing.
-pub fn grade_guid(run: Runner, desc: bool, p: &[u8], out: &mut [i64]) { unimplemented!("A27: qlean_sort_grade_guid") }
+/// sort.c:3471 `guid_words`: the 8-byte word at byte `at` of each of `n` guids, in the order `perm` (empty: as stored).
+pub fn guid_words(p: &[u8], n: usize, at: usize, perm: &[i64], k: &mut [u64]) -> (u64, u64) {
+    let (mut lo, mut hi) = (u64::MAX, 0);
+    for i in 0..n {
+        let g = if perm.is_empty() { i } else { perm[i] as usize };
+        let w = u64::from_be_bytes(p[16 * g + at..16 * g + at + 8].try_into().unwrap());
+        k[i] = w; lo = lo.min(w); hi = hi.max(w);
+    }
+    (lo, hi)
+}
+/// Stable grade of the keys `k`, ties in their original order whichever way `desc` runs.
+/// needs A20: `grade_keys(run, k, desc, mn, mx, out)` is the radix grade; its Rust body is still a stub, so a stable sort answers.
+fn grade_words(k: &[u64], desc: bool, out: &mut [i64]) {
+    for (i, o) in out.iter_mut().enumerate() { *o = i as i64 }
+    if desc { out.sort_by(|&a, &b| k[b as usize].cmp(&k[a as usize])) } else { out.sort_by_key(|&i| k[i as usize]) }
+}
+/// sort.c:3483 `qlean_sort_grade_guid` past the unboxing: two big-endian words, the low one graded first, so a stable grade
+/// by the high word over that order is the order of the pair; the low pass runs only when two high words tie.
+pub fn grade_guid(run: Runner, desc: bool, p: &[u8], out: &mut [i64]) {
+    let n = out.len();
+    if n == 0 { return }
+    let mut k = vec![0u64; n];
+    guid_words(p, n, 0, &[], &mut k);
+    grade_words(&k, desc, out);
+    if (1..n).any(|i| k[out[i] as usize] == k[out[i - 1] as usize]) {
+        let mut lo = vec![0i64; n];
+        guid_words(p, n, 8, &[], &mut k);
+        grade_words(&k, desc, &mut lo);
+        guid_words(p, n, 0, &lo, &mut k);
+        grade_words(&k, desc, out);
+        for o in out.iter_mut() { *o = lo[*o as usize] }
+    }
+}
+#[cfg(test)]
+mod a27_tests {
+    use super::*;
+    fn rnd(x: &mut u64) -> u64 { *x ^= *x << 13; *x ^= *x >> 7; *x ^= *x << 17; *x }
+    #[test] fn grade_matches_oracle() {
+        let mut x = 0x9e3779b97f4a7c15u64;
+        for round in 0..3000 {
+            let n = (rnd(&mut x) % 40) as usize;
+            let m = 1 + (round % 4) as u64; // few distinct bytes so words and whole guids tie
+            let p: Vec<u8> = (0..16 * n).map(|i| if i % 16 < 7 { 0 } else { (rnd(&mut x) % m) as u8 }).collect();
+            for desc in [false, true] {
+                let mut want: Vec<i64> = (0..n as i64).collect();
+                want.sort_by(|&a, &b| { let c = p[16 * a as usize..][..16].cmp(&p[16 * b as usize..][..16]); if desc { c.reverse() } else { c } });
+                let mut out = vec![0i64; n];
+                grade_guid(crate::c::qlean_run_c, desc, &p, &mut out);
+                assert_eq!(out, want);
+            }
+        }
+    }
+}
 
 #[cfg(test)]
 mod tests_a19 {
