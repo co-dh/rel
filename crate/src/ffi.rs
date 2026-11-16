@@ -815,11 +815,12 @@ pub unsafe extern "C" fn qrs_ids_keys(v: *const u8, w: u32, m: usize, k: *mut u6
     unsafe { mn.write(a); mx.write(b) }
 }
 /// A23: sort.c `pair_ids`: the group of each pair `(x[i], y[i])`, `m` of them, into `gid` (`gbytes` bytes) at
-/// `max(8, id_width(ng))` bits; `first` holds `m` entries. Answers `ng`.
+/// `max(8, id_width(ng))` bits; `first` holds `m` entries. Answers `ng`. `x` and `y` are the caller's scratch: both
+/// are overwritten (a side narrowed, then the combined key).
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn qrs_pair_ids(run: unsafe extern "C" fn(), x: *const u64, y: *const u64, m: usize, mnx: u64, sx: u64,
+pub unsafe extern "C" fn qrs_pair_ids(run: unsafe extern "C" fn(), x: *mut u64, y: *mut u64, m: usize, mnx: u64, sx: u64,
                                       mny: u64, sy: u64, gid: *mut u8, gbytes: usize, first: *mut usize) -> usize {
-    unsafe { sort::pair_ids(rn(run), sl(x, m), sl(y, m), mnx, sx, mny, sy, sl_mut(gid, gbytes), sl_mut(first, m)) }
+    unsafe { sort::pair_ids(rn(run), sl_mut(x, m), sl_mut(y, m), mnx, sx, mny, sy, sl_mut(gid, gbytes), sl_mut(first, m)) }
 }
 /// A23: sort.c:3386 `pair_ids_narrow`.
 #[unsafe(no_mangle)]

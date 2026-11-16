@@ -672,10 +672,9 @@ pub fn pair_fits(sx: u64, sy: u64) -> bool {
 }
 /// sort.c:2301 `pair_narrow`: keys `k` replaced by their group ids, which are equal exactly where the keys are and span
 /// less than `k.len()`; answers `(mn, span)` = `(0, ng - 1)`. The numbering is serial (no `run` in this signature, and
-/// the path is only for pairs whose spans do not fit 64 bits) and keeps its table, so `ids` is not needed; `first` is
-/// scratch of `k.len()`. The range given to the numbering is `k`'s own: it only decides direct against hashed.
-pub fn pair_narrow(k: &mut [u64], ids: &mut [usize], first: &mut [usize]) -> (u64, u64) {
-    let (mn, mx) = (k.iter().copied().min().unwrap_or(0), k.iter().copied().max().unwrap_or(0));
+/// the path is only for pairs whose spans do not fit 64 bits) and keeps its table; `first` is scratch of `k.len()`. The range given to the numbering is `k`'s own: it only decides direct against hashed.
+pub fn pair_narrow(k: &mut [u64], first: &mut [usize]) -> (u64, u64) {
+    let (mn, mx) = keys_range(k);
     let m = k.len();
     let (ng, t) = crate::group::number(crate::key::SK_KEY, crate::pod::bytes_mut(k), m, mn, mx, first)
         .expect("qlean: pair_narrow: number refused SK_KEY keys");
@@ -686,24 +685,23 @@ pub fn pair_narrow(k: &mut [u64], ids: &mut [usize], first: &mut [usize]) -> (u6
 /// `max(8, id_width(ng))` bits, the first index of each group into `first`; answers `ng`.
 /// The pair is made one injective key, `(x - mnx) * (sy + 1) + (y - mny)`; a pair whose spans do not fit 64 bits has
 /// its wider side, then the other, narrowed to its group ids first, which leaves at most `m * m` codes.
-pub fn pair_ids(run: Runner, x: &[u64], y: &[u64], mnx: u64, sx: u64, mny: u64, sy: u64, gid: &mut [u8],
+pub fn pair_ids(run: Runner, x: &mut [u64], y: &mut [u64], mnx: u64, sx: u64, mny: u64, sy: u64, gid: &mut [u8],
                 first: &mut [usize]) -> usize {
-    use alloc::borrow::Cow;
     let m = x.len();
-    let (mut x, mut y, mut mnx, mut sx, mut mny, mut sy) = (Cow::Borrowed(x), Cow::Borrowed(y), mnx, sx, mny, sy);
-    let mut fs = Vec::new();
+    let (mut mnx, mut sx, mut mny, mut sy) = (mnx, sx, mny, sy);
+    // `first` is the numbering's scratch here and the answer's once the key is built
     for _ in 0..2 {
         if pair_fits(sx, sy) { break }
-        if fs.is_empty() { fs = alloc::vec![0usize; m] }
-        if sx >= sy { (mnx, sx) = pair_narrow(x.to_mut(), &mut [], &mut fs) } else { (mny, sy) = pair_narrow(y.to_mut(), &mut [], &mut fs) }
+        if sx >= sy { (mnx, sx) = pair_narrow(x, first) } else { (mny, sy) = pair_narrow(y, first) }
     }
     if !pair_fits(sx, sy) {
         panic!("qlean sort: groupIdsPair over {m} rows: {} x {} codes do not fit one 64-bit key", sx.wrapping_add(1), sy.wrapping_add(1))
     }
-    // `sy + 1` wraps to 0 only where `sy` is the whole range, and `pair_fits` then has `sx` at 0
-    let mut c: Vec<u64> = x.iter().zip(y.iter()).map(|(&a, &b)| a.wrapping_sub(mnx).wrapping_mul(sy.wrapping_add(1)).wrapping_add(b.wrapping_sub(mny))).collect();
-    let (lo, hi) = (c.iter().copied().min().unwrap_or(0), c.iter().copied().max().unwrap_or(0));
-    crate::group::group_ids(run, crate::key::SK_KEY, crate::pod::bytes_mut(&mut c), m, lo, hi, gid, first)
+    // the combined key goes back into `x`, which C owns and frees; `sy + 1` wraps to 0 only where `sy` is the whole
+    // range, and `pair_fits` then has `sx` at 0
+    for (a, &b) in x.iter_mut().zip(y.iter()) { *a = a.wrapping_sub(mnx).wrapping_mul(sy.wrapping_add(1)).wrapping_add(b.wrapping_sub(mny)) }
+    let (lo, hi) = keys_range(x);
+    crate::group::group_ids(run, crate::key::SK_KEY, crate::pod::bytes_mut(x), m, lo, hi, gid, first)
         .expect("qlean: pair_ids: group_ids refused SK_KEY keys")
 }
 /// sort.c:2366 `ids_keys`: `m` ids at `w` bits as keys; answers `(min, max)`.
@@ -1268,7 +1266,7 @@ mod a23_tests {
         let mut s = 11;
         let mut k: Vec<u64> = (0..300).map(|_| rnd(&mut s) % 7 * (1 << 50)).collect();
         let want = naive(&k, &vec![0; 300]).0;
-        let (mn, span) = pair_narrow(&mut k, &mut [], &mut vec![0; 300]);
+        let (mn, span) = pair_narrow(&mut k, &mut vec![0; 300]);
         assert_eq!((mn, span), (0, 6));
         assert_eq!(k, want.iter().map(|&g| g as u64).collect::<Vec<_>>());
     }
@@ -1279,7 +1277,8 @@ mod a23_tests {
         let ng = wfirst.len();
         let lane = id_width(ng).max(8);
         let (mut gid, mut first) = (vec![0u8; m * 8], vec![0usize; m]);
-        let got = pair_ids(crate::c::qlean_run_c, x, y, mnx.saturating_sub(widen.0), mxx - mnx + widen.0, mny, mxy - mny + widen.1,
+        let (mut x, mut y) = (x.to_vec(), y.to_vec());
+        let got = pair_ids(crate::c::qlean_run_c, &mut x, &mut y, mnx.saturating_sub(widen.0), mxx - mnx + widen.0, mny, mxy - mny + widen.1,
                            &mut gid, &mut first);
         assert_eq!(got, ng);
         assert_eq!(&first[..ng], &wfirst[..]);

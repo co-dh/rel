@@ -1,17 +1,19 @@
 //! The one checked reinterpretation of bytes as a slice of numbers.
 
-pub trait Pod: Copy {}
-impl Pod for u8 {}
-impl Pod for i8 {}
-impl Pod for u16 {}
-impl Pod for i16 {}
-impl Pod for u32 {}
-impl Pod for i32 {}
-impl Pod for u64 {}
-impl Pod for usize {}
-impl Pod for i64 {}
-impl Pod for f32 {}
-impl Pod for f64 {}
+/// # Safety
+/// No padding bytes and every bit pattern a valid value: `cast`, `cast_mut` and `bytes` reinterpret memory as `Self`.
+pub unsafe trait Pod: Copy {}
+unsafe impl Pod for u8 {}
+unsafe impl Pod for i8 {}
+unsafe impl Pod for u16 {}
+unsafe impl Pod for i16 {}
+unsafe impl Pod for u32 {}
+unsafe impl Pod for i32 {}
+unsafe impl Pod for u64 {}
+unsafe impl Pod for usize {}
+unsafe impl Pod for i64 {}
+unsafe impl Pod for f32 {}
+unsafe impl Pod for f64 {}
 
 /// An element type a residual becomes (`COC_T` of coc.h's `decode_blk`): `base + residual` truncated, wrapping.
 pub trait Lane: Pod { fn wrap(v: u64) -> Self; }

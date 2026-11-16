@@ -33,7 +33,8 @@ struct Job<'f, F> { f: &'f F, out: *mut u8, at: &'f (dyn Fn(usize) -> usize + Sy
 /// that no other worker of the same pass is given.
 unsafe extern "C" fn slice<F: Fn(usize, usize, &mut [u8]) + Sync>(lo: usize, hi: usize, p: *const CPass) {
     let j = unsafe { &*(*p).a.cast::<Job<F>>() };
-    let (s, e) = ((j.at)(lo), (j.at)(hi).min(j.len));
+    let e = (j.at)(hi).min(j.len);
+    let s = (j.at)(lo).min(e);
     let o = unsafe { core::slice::from_raw_parts_mut(j.out.add(s), e - s) };
     (j.f)(lo, hi, o)
 }
@@ -42,16 +43,17 @@ unsafe extern "C" fn slice<F: Fn(usize, usize, &mut [u8]) + Sync>(lo: usize, hi:
 /// once per slice, on as many threads as `qlean_run` splits `units` into at `cost` and `wide`; answers that count.
 pub fn run_map<F: Fn(usize, usize, &mut [u8]) + Sync>(run: Runner, out: &mut [u8], units: usize, unit: usize, cost: u32,
                                                       wide: usize, f: &F) -> u32 {
-    // the last unit may be short (a ragged final block): its slice ends at `out`
-    assert!(units == 0 || (units - 1).checked_mul(unit).is_some_and(|b| b <= out.len()),
-            "run_map: {units} units of {unit} bytes start past a {}-byte output", out.len());
-    run_map_at(run, out, units, &|k| k * unit, cost, wide, f)
+    run_map_at(run, out, units, &|k| k.saturating_mul(unit), cost, wide, f)
 }
 
 /// `run_map` whose unit `k` starts at byte `at(k)` of `out` (`at` ascending, `at(units)` the end): slice `[lo, hi)` is
 /// `out[at(lo) .. at(hi)]`, so units that are not equally spaced (the deep blocks of a bitmap) still get disjoint slices.
+/// Panics unless `at` is non-decreasing over `0 ..= units` and starts every unit inside `out` (the last unit may be
+/// short, a ragged final block: its slice ends at `out`); that one check is what makes the `&mut` slices disjoint.
 pub fn run_map_at<F: Fn(usize, usize, &mut [u8]) + Sync>(run: Runner, out: &mut [u8], units: usize,
                                                          at: &(dyn Fn(usize) -> usize + Sync), cost: u32, wide: usize, f: &F) -> u32 {
+    assert!((0..units).all(|k| at(k) <= at(k + 1)) && (units == 0 || at(units - 1) <= out.len()),
+            "run_map_at: {units} units do not start in ascending order inside a {}-byte output", out.len());
     let o = out.as_mut_ptr();
     let job = Job { f, out: o, at, len: out.len() };
     let p = CPass { a: (&raw const job).cast(), b: null(), c: null(), o: o.cast(), n: units, at: 0,
