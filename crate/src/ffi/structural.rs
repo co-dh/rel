@@ -3,7 +3,8 @@
 //! raw objects). The logic is `crate::structural`; an encoded answer is `ffi::encode_fill` over a `Producer`.
 #![deny(unsafe_code)]
 use crate::alp::Cocf;
-use crate::coc::{Coc, Meta};
+use crate::coc::Coc;
+use crate::exports::coc::view;
 use crate::ffi::{Producer, encode_fill, sarray_room, take_first};
 use crate::lean::{B, O, SArr, ctor, export};
 use crate::{BLK, c, pod, structural};
@@ -25,21 +26,6 @@ pub fn count_at(counts: &[B], i: usize) -> usize {
         die(format_args!("qlean structural: count {i} is a bignum; a count is bounded by the column it describes and cannot reach 2^63\n"))
     }
     o.unbox()
-}
-/// coc.h `coc_view`: the metadata sections and the pack over the buffers a Lean caller owns, the count clamped to what the
-/// block grid can hold. A tail that does not size a patch list is a bug and stops.
-pub fn coc_view<'a>(mv: B<'a>, pv: B<'a>, n: usize) -> Coc<'a> {
-    let (m, p) = (mv.bytes(), pv.bytes());
-    let Some(meta) = Meta::new(m, n) else { die(format_args!("qlean: {} metadata bytes are not 33 a block and a 16-byte trailer, 8-aligned\n", m.len())) };
-    let (e, mb) = (meta.res_end(), meta.mblk);
-    Coc::attach(meta, p).unwrap_or_else(|| die(format_args!(
-        "qlean: a Frame of Reference pack of {} bytes whose residuals end at {e} holds no patch list of {mb} blocks after them\n", p.len())))
-}
-/// structural.c `alp_view`: an ALP column's metadata, blob and pack, `n` clamped to what the blocks hold.
-pub fn alp_view<'a>(mv: B<'a>, pv: B<'a>, av: B<'a>, n: usize) -> Cocf<'a> {
-    let Some(mut f) = Cocf::meta_view(mv.bytes(), av.bytes(), n) else { die(format_args!("qlean: an ALP column's metadata of {} bytes or its blob of {} are short or misaligned\n", mv.bytes().len(), av.bytes().len())) };
-    f.c.pack = pv.bytes();
-    f
 }
 
 /// `reverse` of a column as the writer's producer: structural.c `rev_fill`.
@@ -80,7 +66,7 @@ fn concat(w: usize, nsv: B, metasv: &O, packsv: &O) -> Result<O, (structural::Gr
     // `zip` in the specification truncates to the shortest array, so the loop takes the same minimum
     let k = ms.len().min(ps.len()).min(nb.len() / 8);
     let ns: &[u64] = pod::cast(&nb[..k * 8]).expect("qlean concatFoR: the counts are not 8-aligned");
-    let parts: Vec<Coc> = (0..k).map(|i| coc_view(ms[i], ps[i], ns[i] as usize)).collect();
+    let parts: Vec<Coc> = (0..k).map(|i| view("qlean structural", ms[i], ps[i], ns[i] as usize)).collect();
     let (mut start, mut at) = (Vec::with_capacity(k + 1), 0);
     for p in &parts { start.push(at); at += p.meta.n }
     start.push(at);
@@ -96,7 +82,7 @@ export! {
     /// it; a column that is not aligned is re-encoded through the writer. `w` is the element's own width in bytes, which
     /// decides the null a block's sums skip and the size of a patched element.
     fn qlean_structural_reverse_foR(w: usize, mv: B, pv: B, n: usize) -> O {
-        let col = coc_view(mv, pv, n);
+        let col = view("qlean structural", mv, pv, n);
         // a patch list's positions are the block's own, so a patched column is re-encoded, not moved, and so is one with a
         // block past its count, which would come first
         if n % BLK == 0 && col.std(n) && col.pack.len() == col.meta.res_end() && structural::trailer_ok(&col, col.meta.n, w, false) {

@@ -81,7 +81,7 @@ pub fn fdiv_magic(g: &Magic, x: i64) -> i64 {
 
 // ---- A43: elementwise.c:482-1092 ----
 use crate::c::run_map;
-use crate::ids::{self, id_at, ids_bytes, pack, unpack};
+use crate::ids::{self, id_at, ids_avail, ids_bytes, pack, unpack};
 use crate::pod::{self, bytes_mut, Lane, Pod};
 use crate::sym::sym_msort;
 use crate::{BLK, QLEAN_COST_ARITH, QLEAN_COST_COPY, QLEAN_COST_MATH};
@@ -532,9 +532,6 @@ pub fn cmp_key(run: Runner, op: u8, ids: &[u8], w: u32, n: usize, na: usize, e: 
     });
 }
 
-/// The ids a payload of `bytes` bytes holds at width `w` (elementwise.c `ids_avail`: a one-entry dictionary stores nothing
-/// and answers 0 everywhere, so width 0 holds `usize::MAX`).
-pub fn ids_avail(bytes: usize, w: u32) -> usize { if w != 0 { bytes * 8 / w as usize } else { usize::MAX } }
 /// elementwise.c `qlean_ew_eq_ids` / `qlean_ew_cmp_ids`: `n` clamped to what the vector sides hold (an atom side is read at
 /// index 0 only, so an empty one leaves nothing to compare); `ba`, `bb` are the id payloads' byte counts.
 pub fn ids_n(shape: u8, n: usize, ba: usize, wa: u32, bb: usize, wb: u32) -> usize {

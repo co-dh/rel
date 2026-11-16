@@ -2,26 +2,10 @@
 //! index cell, an external object holding a value's index. Each unboxes its arguments, allocates the answer and makes one
 //! call into `search.rs`, which owns the loops. Lean passes `Int64` and `UInt64` as C's `uint64_t`.
 #![deny(unsafe_code)]
-use crate::coc::{Coc, Meta};
+use crate::exports::coc::{meta, view};
 use crate::lean::{B, Class, Ext, Io, O, Once, SArr, Slot, apply, box_usize_o, boxed, export};
-use crate::{ids, os, pod, search};
+use crate::{ids, pod, search};
 
-/// coc.h `coc_meta_view` over `mv`, the count cut to what its blocks hold. Metadata too short for a block is no blocks and
-/// is never read, as C's view over it (`COC_META_NBLK` 0).
-fn meta<'a>(mv: B<'a>, n: usize) -> Meta<'a> {
-    let m = mv.bytes();
-    if m.len() < 33 { return Meta { base: &[], maxv: &[], off: &[], bsum: &[], width: &[], sumnul: 0, sumn: 0, n: 0, nblk: 0, mblk: 0 } }
-    Meta::new(m, n).unwrap_or_else(|| panic!("qlean search: {} bytes of Frame of Reference metadata are not {} aligned blocks", m.len(), m.len() / 33))
-}
-/// coc.h `coc_view`: `meta` and the pack and patch list after it; a tail whose header does not size it is a bug and aborts.
-fn coc_view<'a>(mv: B<'a>, pv: B<'a>, n: usize) -> Coc<'a> {
-    let (m, pack) = (meta(mv, n), pv.bytes());
-    Coc::attach(m, pack).unwrap_or_else(|| {
-        let said = os::eprint(format_args!("qlean: a Frame of Reference pack of {} bytes whose residuals end at {} holds no patch list of {} blocks after them\n", pack.len(), m.res_end(), m.mblk));
-        said.expect("qlean: the Frame of Reference pack message did not reach stderr");
-        os::exit(1)
-    })
-}
 /// The needle as the signed key of a column of `w`-byte elements (`coc_needle`: its low `w` bytes, sign-extended).
 fn key(w: usize, needle: u64) -> i64 { search::sext(needle, w) }
 
@@ -61,16 +45,16 @@ export! {
     fn qlean_search_find_scalar(w: usize, is_float: u8, hay: B, needle: u64) -> usize { search::find_scalar(w, is_float != 0, hay.bytes(), needle) }
 
     /// Spec: `foRFind w needle metadata pack n` is `findScalar w false (Coc.decode w metadata pack n) needle`.
-    fn qlean_coc_find_scalar(w: usize, needle: u64, mv: B, pv: B, n: usize) -> usize { search::coc_find(&coc_view(mv, pv, n), key(w, needle)) }
+    fn qlean_coc_find_scalar(w: usize, needle: u64, mv: B, pv: B, n: usize) -> usize { search::coc_find(&view("qlean_coc_find_scalar", mv, pv, n), key(w, needle)) }
 
     /// Spec: `foRSpan w needle metadata n` is the number of blocks whose [base, maxv] holds the needle, read off the
     /// metadata alone.
-    fn qlean_coc_span(w: usize, needle: u64, mv: B, n: usize) -> usize { search::coc_span(&meta(mv, n), key(w, needle)) }
+    fn qlean_coc_span(w: usize, needle: u64, mv: B, n: usize) -> usize { search::coc_span(&meta("qlean_coc_span", mv, n), key(w, needle)) }
 
     /// Spec: `foRRows w needle metadata pack n` is every row of `Coc.decode` equal to the needle, ascending, as
     /// little-endian `Int64`s.
     fn qlean_coc_rows_eq(w: usize, needle: u64, mv: B, pv: B, n: usize) -> O {
-        let rows = search::coc_rows_eq(&coc_view(mv, pv, n), key(w, needle));
+        let rows = search::coc_rows_eq(&view("qlean_coc_rows_eq", mv, pv, n), key(w, needle));
         let mut r = SArr::new(1, rows.len() * 8);
         r.bytes_mut().copy_from_slice(pod::bytes(&rows));
         r.into()
