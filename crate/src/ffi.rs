@@ -878,6 +878,14 @@ pub unsafe extern "C" fn qrs_sym_scan(blob: *const u8, bytes: usize, offs: *cons
 unsafe fn symcol<'a>(blob: *const u8, bytes: usize, offs: *const usize, noffs: usize) -> Syms<'a> {
     Syms { blob: unsafe { sl(blob, bytes) }, offs: unsafe { sl(offs, noffs) } }
 }
+/// The symbol column `blob` and `offs` (an `Array` of boxed starts) names, read where it lies: no copy of the starts, which a
+/// per-element kernel would pay as a second pass. A boxed start is the object word itself; a bignum is an even word, which
+/// `Syms::off` refuses when it is read. Lean has no `lean.rs` accessor for an array's words yet.
+pub fn syms_of<'a>(blob: lean::B<'a>, offs: lean::B<'a>) -> Syms<'a> {
+    let a = offs.array();
+    // Safety: `lean::B` is `repr(transparent)` over one non-null pointer, so `a` is `a.len()` consecutive `usize` words
+    Syms { blob: blob.bytes(), offs: unsafe { sl(a.as_ptr().cast::<usize>(), a.len()) } }
+}
 /// A31: search.c `sym_search` past the kept hash: the needle column `nb`/`no` (`nno` offsets) against the haystack `hb`/`ho`
 /// (`nho` offsets), `bits` 0: `out` is `8 * m` bytes of `Int64`s; `bits` 1: `ceil(m / 8)` zeroed bytes.
 #[unsafe(no_mangle)]
@@ -1324,82 +1332,12 @@ pub unsafe extern "C" fn qrs_ew_val(run: unsafe extern "C" fn(), op: u8, cls: u8
                                     abytes: usize, b: *const u8, bbytes: usize, n: usize, out: *mut u8, obytes: usize) {
     unsafe { ew::val(rn(run), op, cls, shape, nul, sl(a, abytes), sl(b, bbytes), n, sl_mut(out, obytes)) }
 }
-/// K8: elementwise.c `ew_cmp_syms_run`: the symbol columns `ba`/`oa` and `bb`/`ob` (`noa`, `nob` boxed offsets), `out` `⌈n / 8⌉` bytes.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn qrs_ew_cmp_syms(run: unsafe extern "C" fn(), op: u8, shape: u8, ba: *const u8, bab: usize, oa: *const usize,
-                                         noa: usize, bb: *const u8, bbb: usize, ob: *const usize, nob: usize, n: usize, out: *mut u8) {
-    unsafe { ew::cmp_syms(rn(run), op, shape, &symcol(ba, bab, oa, noa), &symcol(bb, bbb, ob, nob), n, sl_mut(out, n.div_ceil(8))) }
-}
-/// K8: elementwise.c `like_*` over a symbol column; 0 (nothing written) where `parsePat` refuses; `out` is `⌈count / 8⌉` bytes.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn qrs_ew_like_syms(pat: *const u8, pn: usize, blob: *const u8, bytes: usize, offs: *const usize, noffs: usize,
-                                          out: *mut u8) -> c_int {
-    let s = unsafe { symcol(blob, bytes, offs, noffs) };
-    unsafe { ew::like_syms(sl(pat, pn), &s, sl_mut(out, s.count().div_ceil(8))) as c_int }
-}
-/// K8: elementwise.c `fixed_items` + `fixed_width`: the pattern's width, 0 for each of the three refusals.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn qrs_ew_fixed_width(atom: u8, pat: *const u8, pn: usize) -> usize { unsafe { ew::fixed_width(atom != 0, sl(pat, pn)) } }
-/// K8: elementwise.c `fixed_scan`: the match starts into `h` (`n / w + 1` entries, `w` the width above); answers how many.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn qrs_ew_fixed_scan(atom: u8, pat: *const u8, pn: usize, b: *const u8, n: usize, h: *mut i64, hcap: usize) -> usize {
-    unsafe { ew::fixed_scan(atom != 0, sl(pat, pn), sl(b, n), sl_mut(h, hcap)) }
-}
-/// K8: elementwise.c `qlean_ew_ssr`'s copy loop: `o` is `total + 16` bytes (the answer and 16 of slack).
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn qrs_ew_ssr_fill(o: *mut u8, olen: usize, b: *const u8, n: usize, h: *const i64, hits: usize, w: usize,
-                                         t: *const u8, tn: usize) {
-    unsafe { ew::ssr_fill(sl_mut(o, olen), sl(b, n), sl(h, hits), w, sl(t, tn)) }
-}
-/// A44: elementwise.c `ew_mon_run`.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn qrs_ew_mon(run: unsafe extern "C" fn(), op: u8, cls: u8, nul: i64, x: *const u8, xbytes: usize,
-                                    n: usize, out: *mut u8, obytes: usize) {
-    unsafe { ew::mon(rn(run), op, cls, nul, sl(x, xbytes), n, sl_mut(out, obytes)) }
-}
-/// A44: elementwise.c `qlean_ew_bit`; `n` bits, so `⌈n / 8⌉` answer bytes. An atom operand is `abytes`/`bbytes` = 1.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn qrs_ew_bit(run: unsafe extern "C" fn(), op: u8, shape: u8, a: *const u8, abytes: usize,
-                                    b: *const u8, bbytes: usize, n: usize, out: *mut u8) {
-    unsafe { ew::bit(rn(run), op, shape, sl(a, abytes), sl(b, bbytes), n, sl_mut(out, n.div_ceil(8))) }
-}
-/// A44: elementwise.c `qlean_ew_floor`; the answer is `n` longs.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn qrs_ew_floor(run: unsafe extern "C" fn(), cls: u8, x: *const u8, xbytes: usize,
-                                      n: usize, out: *mut u8) {
-    unsafe { ew::floor(rn(run), cls, sl(x, xbytes), n, sl_mut(out, n * 8)) }
-}
-/// A44: elementwise.c `qlean_coc_ew_mon`: `neg`/`abs` over an encoded column `c`, the answer dense in `obytes`.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn qrs_ew_mon_enc(run: unsafe extern "C" fn(), op: u8, cls: u8, nul: i64, c: *const CCoc,
-                                        out: *mut u8, obytes: usize) {
-    unsafe { ew::mon_enc(rn(run), op, cls, nul, &(*c).view(), sl_mut(out, obytes)) }
-}
-/// A44: elementwise.c `ew_mon_fill`, the encoder source of `qlean_coc_ew_mon_enc`: the `nb` elements of block
-/// `i0 / BLK` of `c`, mapped and widened to `buf`.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn qrs_ew_mon_fill(op: u8, cls: u8, nul: i64, c: *const CCoc, buf: *mut i64, nb: usize,
-                                         i0: usize) {
-    unsafe { ew::mon_fill(op, cls, nul, &(*c).view(), sl_mut(buf, nb), i0) }
-}
-/// A45: elementwise.c `ew_cast_run`.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn qrs_ew_cast(run: unsafe extern "C" fn(), src: u8, dst: u8, nul: i64, x: *const u8, xbytes: usize,
-                                     n: usize, out: *mut u8, obytes: usize) {
-    unsafe { ew::cast(rn(run), src, dst, nul, sl(x, xbytes), n, sl_mut(out, obytes)) }
-}
 /// A45: elementwise.c `ew_tick_run`, the chain's time-unit stage: `op` is the source unit's code times 16 plus the
 /// target's, `src`/`dst` the two classes, `nul_in`/`nul_out` the two nulls.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn qrs_ew_tick(run: unsafe extern "C" fn(), op: u8, src: u8, dst: u8, nul_in: i64, nul_out: i64,
                                      x: *const u8, xbytes: usize, n: usize, out: *mut u8, obytes: usize) {
     unsafe { ew::tick(rn(run), op, src, dst, nul_in, nul_out, sl(x, xbytes), n, sl_mut(out, obytes)) }
-}
-/// A46a: elementwise.c `ew_widen_run`.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn qrs_ew_widen(run: unsafe extern "C" fn(), src: u8, dst: u8, nul_in: i64, nul_out: i64,
-                                      x: *const u8, xbytes: usize, n: usize, out: *mut u8, obytes: usize) {
-    unsafe { ew::widen(rn(run), src, dst, nul_in, nul_out, sl(x, xbytes), n, sl_mut(out, obytes)) }
 }
 /// P1: pass.h's `qlean_run`, worker `f` (a `qlean_worker`) over its `qlean_pass` `p` on the pool (`pool::run_c`);
 /// answers the slice count. `f` and `p` are untyped so pass.h, which comes before `CPass`, declares this prototype.

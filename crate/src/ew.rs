@@ -1125,6 +1125,45 @@ pub fn ssr_fill(o: &mut [u8], b: &[u8], hits: &[i64], w: usize, t: &[u8]) {
     copy_run(&mut o[at..at + n - i], &b[i..]);
 }
 
+/// `f(i, symbol i)` down the column with the starts carried, so each is decoded once (`Syms::at` decodes two per symbol).
+#[inline(always)]
+fn each_sym<'a>(s: &Syms<'a>, mut f: impl FnMut(usize, &'a [u8])) {
+    let n = s.count();
+    if n == 0 { return }
+    let mut lo = s.off(0);
+    for i in 0..n {
+        let hi = s.off(i + 1);
+        let len = hi.saturating_sub(lo + 1); // an empty symbol never reads the blob, as `Syms::at`
+        f(i, if len == 0 { &s.blob[..0] } else { &s.blob[lo..lo + len] });
+        lo = hi;
+    }
+}
+/// Whether `pre` stays off symbol `x` in `translate_syms`: `x` is empty, or its mapped bytes already begin with `pre`.
+#[inline(always)]
+fn keeps_prefix(pre: &[u8], tab: &[u8; 256], x: &[u8]) -> bool {
+    x.is_empty() || (pre.len() <= x.len() && x.iter().zip(pre).all(|(&c, &p)| tab[c as usize] == p))
+}
+/// elementwise.c `qlean_ew_translate_syms`'s starts: `0`, then the offset just past each symbol's NUL in the answer blob
+/// (`pre` in front of every symbol that does not keep it, its bytes, its NUL), so the last is the blob's byte count.
+pub fn translate_ends<'a>(pre: &'a [u8], tab: &'a [u8; 256], s: Syms<'a>) -> impl ExactSizeIterator<Item = usize> + 'a {
+    let mut tot = 0;
+    (0..s.count() + 1).map(move |i| {
+        if i > 0 { let x = s.at(i - 1); tot += x.len() + if keeps_prefix(pre, tab, x) { 0 } else { pre.len() } + 1 }
+        tot
+    })
+}
+/// Every symbol of `s` mapped through `tab` into `out` (the last of `translate_ends` bytes).
+pub fn translate_fill(pre: &[u8], tab: &[u8; 256], s: &Syms, out: &mut [u8]) {
+    let mut at = 0;
+    each_sym(s, |_, x| {
+        if !keeps_prefix(pre, tab, x) { out[at..at + pre.len()].copy_from_slice(pre); at += pre.len() }
+        for (d, &c) in out[at..at + x.len()].iter_mut().zip(x) { *d = tab[c as usize] }
+        at += x.len();
+        out[at] = 0;
+        at += 1;
+    });
+}
+
 #[cfg(test)]
 mod tests_k8 {
     use super::*;
