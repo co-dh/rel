@@ -3,13 +3,19 @@
 //! Column (a), sort.c: keys and their range (A19), the grades (A20–A22), pair and id grouping (A23–A24), symbol
 //! sorts and groups (A25–A26), guids (A27). The `qlean_sort_*` entries unbox and allocate and stay C (§1).
 //! A grade answers into `out: &mut [i64]` of `n`; `kind` is sort.c's `SK_*`.
+use alloc::vec;
 use alloc::vec::Vec;
+use core::sync::atomic::Ordering::Relaxed;
 
-use crate::c::Runner;
+use crate::c::{run_map, run_slices, Runner};
 use crate::coc::Coc;
-use crate::key::{self, Keys, Pass, SK_KINDS_N};
+use crate::key::{self, Keys, Pass, SK_I16, SK_KINDS_N, SK_U8};
 use crate::{kwin, BLK};
 use crate::sym::{sym_cmp, sym_hash, sym_msort, Syms};
+use crate::{ids, pod, QLEAN_COST_COPY};
+
+/// sort.c `SK_LANE`: kind bit that makes `grade_narrow` read the payload as ids of `kind & 0x7f` bits.
+const SK_LANE: u8 = 0x80;
 
 /// sort.c:351 `ksrc`: the keys of a dense payload `p` or of an encoded column `c`, `n` of them.
 #[derive(Clone, Copy)]
@@ -112,13 +118,160 @@ pub fn grade_src(run: Runner, s: &Ksrc, desc: bool, rank: bool, mn: u64, mx: u64
 pub fn grade_keys(run: Runner, k: &[u64], desc: bool, mn: u64, mx: u64, out: &mut [i64]) { unimplemented!("A20: grade_keys") }
 
 // ---- A21: sort.c:734-842 ----
-/// sort.c:734 `grade_bits`: a bitmap's grade (zeros then ones, stable).
-pub fn grade_bits(p: &[u8], n: usize, desc: bool, rank: bool, out: &mut [i64]) { unimplemented!("A21: grade_bits") }
-/// sort.c:801 `hist_narrow`: the histogram of a 1- or 2-byte payload (256 or 65536 counts per slice).
-pub fn hist_narrow(run: Runner, kind: u8, p: &[u8], n: usize) -> Vec<usize> { unimplemented!("A21: hist_narrow") }
-/// sort.c:831 `grade_narrow`: counting grade of a 1- or 2-byte payload, threaded (`narrow_hist_run`, `narrow_scatter_run`).
+/// The `k` bytes of `p` from `at` as a little-endian word, the rest zero.
+fn load(p: &[u8], at: usize, k: usize) -> u64 {
+    let mut x = [0u8; 8];
+    x[..k].copy_from_slice(&p[at..at + k]);
+    u64::from_le_bytes(x)
+}
+/// sort.c:734 `grade_bits`: a bitmap's grade (zeros then ones, stable), or under `rank` the rank. A boolean column has
+/// two keys, so this is two passes over the bitmap and no sort: ascending, every clear index in order and then every
+/// set one, `Order.grade`'s body at `.bit` read literally (`iasc 1001b` is `1 2 0 3`, `idesc 1001b` is `0 3 1 2`).
+pub fn grade_bits(p: &[u8], n: usize, desc: bool, rank: bool, out: &mut [i64]) {
+    // a word at a time: a byte load per element was 66ms of 20M
+    if rank {
+        // the rank of a bit is how many clear bits precede it, or every clear bit and the set ones before it
+        let full = n & !63;
+        let ones = (0..full / 64).map(|w| load(p, w * 8, 8).count_ones() as usize).sum::<usize>()
+            + (full..n).map(|i| (p[i >> 3] >> (i & 7)) as usize & 1).sum::<usize>();
+        let (z, mut o) = (n - ones, 0usize);
+        for at in (0..n).step_by(64) {
+            let nb = (n - at).min(64);
+            let mut v = load(p, at >> 3, nb.div_ceil(8));
+            for j in 0..nb {
+                let b = (v & 1) as usize;
+                out[at + j] = (if b != 0 { z + o } else { at + j - o }) as i64;
+                o += b;
+                v >>= 1;
+            }
+        }
+        return;
+    }
+    // each index found by `ctz` over a 64-bit word, not tested one bit at a time: on a random bitmap the per-bit
+    // branch mispredicts every other element, 122ms of 20M against 9 this way
+    let mut at = 0;
+    for pass in 0..2 {
+        for i in 0..n.div_ceil(64) {
+            let nb = (n - i * 64).min(64);
+            let mut v = load(p, i * 8, nb.div_ceil(8));
+            // pass 0 takes the bits equal to `desc`, pass 1 the rest
+            if (pass == 0) != desc { v = !v }
+            if nb < 64 { v &= !0 >> (64 - nb) }
+            while v != 0 {
+                out[at] = (i * 64 + v.trailing_zeros() as usize) as i64;
+                at += 1;
+                v &= v - 1;
+            }
+        }
+    }
+}
+
+/// sort.c `SK_NARROW_NB`: the table of a narrow kind, one count per key.
+pub fn narrow_nb(kind: u8) -> usize {
+    if kind == SK_U8 { 256 } else if kind & SK_LANE != 0 { 1 << (kind & 0x7f) } else { 1 << 16 }
+}
+/// sort.c `SK_NARROW_RUN`: `f(i, key)` at each row `i` of `[lo, hi)` with its narrow key, unsigned: a byte is its own
+/// key, a `short` flips its sign bit (`key_at`'s rule), a lane is the id `id_at` reads, unpacked a chunk at a time.
+#[inline(always)]
+fn each_key(kind: u8, p: &[u8], lo: usize, hi: usize, mut f: impl FnMut(usize, usize)) {
+    if kind == SK_U8 {
+        for (i, &x) in p[lo..hi].iter().enumerate() { f(lo + i, x as usize) }
+    } else if kind & SK_LANE != 0 {
+        let mut kb = [0u16; 1024];
+        for c in (lo..hi).step_by(kb.len()) {
+            let e = (hi - c).min(kb.len());
+            ids::unpack16(p, (kind & 0x7f) as u32, c, e, &mut kb[..e]);
+            for (i, &x) in kb[..e].iter().enumerate() { f(c + i, x as usize) }
+        }
+    } else {
+        assert!(kind == SK_I16, "grade_narrow: kind {kind} is not a narrow kind");
+        for (i, x) in p[2 * lo..2 * hi].chunks_exact(2).enumerate() { f(lo + i, (u16::from_le_bytes([x[0], x[1]]) ^ 0x8000) as usize) }
+    }
+}
+/// sort.c `narrow_hist_run`: one slice's histogram, per slice and in slice order, with the thread count `run` made.
+fn hists(run: Runner, kind: u8, p: &[u8], n: usize) -> (u32, Vec<(usize, Vec<usize>)>) {
+    run_slices(run, n, QLEAN_COST_COPY, if kind == SK_I16 { 2 } else { 1 }, &|lo, hi| {
+        let mut cnt = vec![0usize; narrow_nb(kind)];
+        each_key(kind, p, lo, hi, |_, key| cnt[key] += 1);
+        cnt
+    })
+}
+/// sort.c:801 `hist_narrow`: the histogram of a 1- or 2-byte payload, read straight off the payload: its keys number at
+/// most 65536, so the table fits in L2 where `keys_of` would write eight bytes for every one it holds.
+pub fn hist_narrow(run: Runner, kind: u8, p: &[u8], n: usize) -> Vec<usize> {
+    let mut cnt = vec![0usize; narrow_nb(kind)];
+    for (_, r) in hists(run, kind, p, n).1 { for (c, x) in cnt.iter_mut().zip(r) { *c += x } }
+    cnt
+}
+/// sort.c:831 `grade_narrow`: the grade of a narrow payload: a histogram per slice, the prefix in the asked-for
+/// direction taken bucket-major and slice-minor so slice `k`'s run of a bucket follows slice `k - 1`'s, and one stable
+/// scatter per slice. A slice is a contiguous range of rows in row order, so the split keeps the grade stable.
 pub fn grade_narrow(run: Runner, kind: u8, p: &[u8], n: usize, desc: bool, rank: bool, out: &mut [i64]) {
-    unimplemented!("A21: grade_narrow")
+    let nb = narrow_nb(kind);
+    let (parts, mut rows) = hists(run, kind, p, n);
+    let mut at = 0;
+    for j in 0..nb {
+        let b = if desc { nb - 1 - j } else { j };
+        for (_, r) in rows.iter_mut() { let c = r[b]; r[b] = at; at += c }
+    }
+    let out = pod::atomics(&mut out[..n]);
+    let wide = if kind == SK_I16 { 2 } else { 1 };
+    // a slice owns its row, copied: the rows stay shared and unchanged, as the C row is the slice's alone
+    let again = run_map(run, &mut [], n, 0, QLEAN_COST_COPY, wide, &|lo, hi, _: &mut [u8]| {
+        let k = rows.binary_search_by_key(&lo, |r| r.0).unwrap_or_else(|_| panic!("grade_narrow: the scatter split {n} rows differently from the histogram"));
+        let mut at = rows[k].1.clone();
+        // `at[key]` is the rank: the slot the grade would write `i` into is `i`'s rank, stored in element order
+        if rank { each_key(kind, p, lo, hi, |i, key| { out[i].store(at[key] as i64, Relaxed); at[key] += 1 }) }
+        else { each_key(kind, p, lo, hi, |i, key| { out[at[key]].store(i as i64, Relaxed); at[key] += 1 }) }
+    });
+    assert!(again == parts, "grade_narrow: the scatter split {n} rows differently from the histogram");
+}
+
+#[cfg(test)]
+mod a21_tests {
+    use super::*;
+    use crate::c::qlean_run_c;
+    fn bits(p: u8, n: usize, desc: bool, rank: bool) -> Vec<i64> { let mut o = vec![0; n]; grade_bits(&[p], n, desc, rank, &mut o); o }
+    fn narrow(kind: u8, p: &[u8], n: usize, desc: bool, rank: bool) -> Vec<i64> {
+        let mut o = vec![0; n];
+        grade_narrow(qlean_run_c, kind, p, n, desc, rank, &mut o);
+        o
+    }
+    // the examples sort.c's comment gives: `iasc 1001b` is `1 2 0 3`, `idesc 1001b` is `0 3 1 2`
+    #[test] fn bits_grade_is_zeros_then_ones() {
+        assert_eq!(bits(0b1001, 4, false, false), [1, 2, 0, 3]);
+        assert_eq!(bits(0b1001, 4, true, false), [0, 3, 1, 2]);
+    }
+    // bits past `n` in the last byte are not elements; the rank is where the grade would put each row (ascending only, as `rank` is)
+    #[test] fn bits_rank_ignores_bits_past_n() {
+        assert_eq!(bits(0b1111_1001, 4, false, true), [2, 0, 1, 3]);
+    }
+    #[test] fn u8_is_stable_on_ties() {
+        let p = [3, 1, 3, 0, 1];
+        assert_eq!(narrow(SK_U8, &p, 5, false, false), [3, 1, 4, 0, 2]);
+        assert_eq!(narrow(SK_U8, &p, 5, true, false), [0, 2, 1, 4, 3]);
+        assert_eq!(narrow(SK_U8, &p, 5, false, true), [3, 1, 4, 0, 2]);
+    }
+    // a `short` flips its sign bit: -32768 is the least key, -1 comes before 5
+    #[test] fn i16_orders_by_sign() {
+        let p: Vec<u8> = [-1i16, 5, i16::MIN, 5].iter().flat_map(|x| x.to_le_bytes()).collect();
+        assert_eq!(narrow(SK_I16, &p, 4, false, false), [2, 0, 1, 3]);
+        assert_eq!(hist_narrow(qlean_run_c, SK_I16, &p, 4).iter().sum::<usize>(), 4);
+    }
+    // a 4-bit lane: ids 2, 0, 2, 1 packed low nibble first
+    #[test] fn lane_reads_ids() {
+        assert_eq!(narrow(SK_LANE | 4, &[0x02, 0x12], 4, false, false), [1, 3, 0, 2]);
+    }
+    #[test] fn empty_and_one() {
+        assert_eq!(narrow(SK_U8, &[], 0, false, false), Vec::<i64>::new());
+        assert_eq!(narrow(SK_U8, &[9], 1, true, true), [0]);
+    }
+    // three slices (the test runner's cut): the stable prefix runs across slice boundaries
+    #[test] fn slices_keep_the_grade_stable() {
+        let p: Vec<u8> = (0..1000u32).map(|i| (i * 7 % 3) as u8).collect();
+        let g = narrow(SK_U8, &p, 1000, false, false);
+        assert!(g.windows(2).all(|w| (p[w[0] as usize], w[0]) < (p[w[1] as usize], w[1])));
+    }
 }
 
 // ---- A22: sort.c:887-1120 ----

@@ -747,6 +747,19 @@ pub unsafe extern "C" fn qrs_grade_narrow(run: unsafe extern "C" fn(), kind: u8,
                                           desc: c_int, rank: c_int, out: *mut i64) {
     unsafe { sort::grade_narrow(rn(run), kind, sl(p, bytes), n, desc != 0, rank != 0, sl_mut(out, n)) }
 }
+/// A21: sort.c `grade_bits`: the grade (or under `rank` the rank) of the `n` bits of `p` (`bytes` long).
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn qrs_grade_bits(p: *const u8, bytes: usize, n: usize, desc: c_int, rank: c_int, out: *mut i64) {
+    unsafe { sort::grade_bits(sl(p, bytes), n, desc != 0, rank != 0, sl_mut(out, n)) }
+}
+/// A21: sort.c `hist_narrow`: the counts of the `n` keys of a one-byte (`SK_U8`) or two-byte (`SK_I16`) payload into
+/// `out`, which holds `SK_NARROW_NB(kind)` of them (256 or 65536).
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn qrs_hist_narrow(run: unsafe extern "C" fn(), kind: u8, p: *const u8, bytes: usize, n: usize,
+                                         out: *mut usize) {
+    let h = unsafe { sort::hist_narrow(rn(run), kind, sl(p, bytes), n) };
+    unsafe { sl_mut(out, h.len()) }.copy_from_slice(&h)
+}
 /// A22: sort.c `order`.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn qrs_order(run: unsafe extern "C" fn(), kind: u8, desc: c_int, rank: c_int, p: *const u8,

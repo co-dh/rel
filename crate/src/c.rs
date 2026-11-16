@@ -1,5 +1,8 @@
 //! The one C callback Rust takes, `qlean_run`, as a function pointer C passes in, and the one safe call over it.
+use alloc::vec::Vec;
+use core::cell::UnsafeCell;
 use core::ptr::null;
+use core::sync::atomic::{AtomicBool, Ordering};
 
 use crate::ffi::CPass;
 
@@ -47,6 +50,27 @@ pub fn run_map<F: Fn(usize, usize, &mut [u8]) + Sync>(run: Runner, out: &mut [u8
                     r#priv: 0, nul: 0, op: 0, cls: 0, shape: 0 };
     // the slices partition [0, units), so the `&mut` each worker makes are disjoint; `out` outlives the call
     unsafe { run(slice::<F>, units, cost, wide, &p) }
+}
+
+/// `run_map` whose slices each answer one `T` (a private histogram, a partial fold): `(parts, answers)` with the
+/// answers `(lo, t)` in slice order. C's `qlean_me` row index is not visible from Rust, so a slice is named by its
+/// `lo`, which no other slice shares; a slice `qlean_run` leaves empty gives none.
+pub fn run_slices<T: Send, F: Fn(usize, usize) -> T + Sync>(run: Runner, n: usize, cost: u32, wide: usize, f: &F) -> (u32, Vec<(usize, T)>) {
+    struct Bag<T> { lock: AtomicBool, v: UnsafeCell<Vec<(usize, T)>> }
+    // Safety: `v` is touched only with `lock` held
+    unsafe impl<T: Send> Sync for Bag<T> {}
+    let bag = Bag { lock: AtomicBool::new(false), v: UnsafeCell::new(Vec::new()) };
+    let parts = run_map(run, &mut [], n, 0, cost, wide, &|lo, hi, _: &mut [u8]| {
+        let t = f(lo, hi);
+        let bag = &bag; // the whole bag, not its fields: only the bag is `Sync`
+        while bag.lock.compare_exchange_weak(false, true, Ordering::Acquire, Ordering::Relaxed).is_err() { core::hint::spin_loop() }
+        // Safety: the lock is ours
+        unsafe { (*bag.v.get()).push((lo, t)) }
+        bag.lock.store(false, Ordering::Release);
+    });
+    let mut v = bag.v.into_inner();
+    v.sort_unstable_by_key(|r| r.0);
+    (parts, v)
 }
 
 #[cfg(test)]
