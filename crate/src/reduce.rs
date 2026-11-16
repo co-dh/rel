@@ -6,6 +6,7 @@ use alloc::vec;
 use core::sync::atomic::{AtomicI64, Ordering::Relaxed};
 use crate::c::{run_map, run_slices, Runner};
 use crate::ids::id_at;
+use crate::{simd, BLK};
 
 // ---- A12: reduce.c:261-298 ----
 /// An element of the four integer classes: read in native order, widened to `i64` as C's `(int64_t)` cast does.
@@ -337,6 +338,268 @@ pub fn over_groups(run: Runner, op: u8, cls: u8, nul: i64, ng: usize, iw: u32, r
     og_merge(op, lo, hi, ng, &blocks, res)
 }
 
+// ---- K2: reduce.c md5, `groupCells`, float payloads ----
+const MD5_K: [u32; 64] = [
+    0xd76aa478, 0xe8c7b756, 0x242070db, 0xc1bdceee, 0xf57c0faf, 0x4787c62a, 0xa8304613, 0xfd469501,
+    0x698098d8, 0x8b44f7af, 0xffff5bb1, 0x895cd7be, 0x6b901122, 0xfd987193, 0xa679438e, 0x49b40821,
+    0xf61e2562, 0xc040b340, 0x265e5a51, 0xe9b6c7aa, 0xd62f105d, 0x02441453, 0xd8a1e681, 0xe7d3fbc8,
+    0x21e1cde6, 0xc33707d6, 0xf4d50d87, 0x455a14ed, 0xa9e3e905, 0xfcefa3f8, 0x676f02d9, 0x8d2a4c8a,
+    0xfffa3942, 0x8771f681, 0x6d9d6122, 0xfde5380c, 0xa4beea44, 0x4bdecfa9, 0xf6bb4b60, 0xbebfbc70,
+    0x289b7ec6, 0xeaa127fa, 0xd4ef3085, 0x04881d05, 0xd9d4d039, 0xe6db99e5, 0x1fa27cf8, 0xc4ac5665,
+    0xf4292244, 0x432aff97, 0xab9423a7, 0xfc93a039, 0x655b59c3, 0x8f0ccc92, 0xffeff47d, 0x85845dd1,
+    0x6fa87e4f, 0xfe2ce6e0, 0xa3014314, 0x4e0811a1, 0xf7537e82, 0xbd3af235, 0x2ad7d2bb, 0xeb86d391,
+];
+// `c ^ d`, `c & !d` and `!d` are two rounds old, so each of these is one operation from `b` (the other three two):
+// the round's chain is five operations, against RFC 1321's own spelling of six.
+fn md5_f(b: u32, c: u32, d: u32) -> u32 { d ^ (b & (c ^ d)) }
+fn md5_g(b: u32, c: u32, d: u32) -> u32 { (b & d) | (c & !d) }
+fn md5_h(b: u32, c: u32, d: u32) -> u32 { b ^ c ^ d }
+fn md5_i(b: u32, c: u32, d: u32) -> u32 { c ^ (b | !d) }
+
+/// reduce.c `md5_block`: one 64-byte block into `h`. A message is one serial chain, so the cost is the round's critical
+/// path; `simd::keep` holds `a + w + k` as its own addend, which is what takes the sixth operation off that chain.
+fn md5_block(h: &mut [u32; 4], p: &[u8; 64]) {
+    let m: [u32; 16] = core::array::from_fn(|j| u32::from_le_bytes([p[4 * j], p[4 * j + 1], p[4 * j + 2], p[4 * j + 3]]));
+    let [mut a, mut b, mut c, mut d] = *h;
+    macro_rules! round {
+        ($f:ident, $r:expr, $g:expr, $s:expr) => {
+            for i in 0..16usize {
+                let t = simd::keep(a.wrapping_add(m[$g(i)]).wrapping_add(MD5_K[16 * $r + i]));
+                let n = b.wrapping_add(t.wrapping_add($f(b, c, d)).rotate_left($s[i & 3]));
+                (a, b, c, d) = (d, n, b, c);
+            }
+        };
+    }
+    round!(md5_f, 0, |i: usize| i, [7u32, 12, 17, 22]);
+    round!(md5_g, 1, |i: usize| (5 * i + 1) & 15, [5u32, 9, 14, 20]);
+    round!(md5_h, 2, |i: usize| (3 * i + 5) & 15, [4u32, 11, 16, 23]);
+    round!(md5_i, 3, |i: usize| (7 * i) & 15, [6u32, 10, 15, 21]);
+    h[0] = h[0].wrapping_add(a);
+    h[1] = h[1].wrapping_add(b);
+    h[2] = h[2].wrapping_add(c);
+    h[3] = h[3].wrapping_add(d);
+}
+
+/// reduce.c:114 `qlean_md5` past the unboxing: RFC 1321's digest of `msg`, read where it lies; only the last block or
+/// two are copied out (128 bytes of stack, not a padded copy of the message).
+pub fn md5(msg: &[u8]) -> [u8; 16] {
+    let mut h = [0x67452301u32, 0xefcdab89, 0x98badcfe, 0x10325476];
+    let mut whole = msg.chunks_exact(64);
+    for blk in whole.by_ref() { md5_block(&mut h, blk.try_into().unwrap()) }
+    let rest = whole.remainder();
+    let blocks = if rest.len() < 56 { 1 } else { 2 };
+    let mut tail = [0u8; 128];
+    tail[..rest.len()].copy_from_slice(rest);
+    tail[rest.len()] = 0x80;
+    tail[blocks * 64 - 8..blocks * 64].copy_from_slice(&(msg.len() as u64 * 8).to_le_bytes());
+    for blk in tail[..blocks * 64].chunks_exact(64) { md5_block(&mut h, blk.try_into().unwrap()) }
+    let mut o = [0u8; 16];
+    for (d, v) in o.chunks_exact_mut(4).zip(h) { d.copy_from_slice(&v.to_le_bytes()) }
+    o
+}
+
+// reduce.c `GC_*`: the cell kinds of `groupCells`.
+// kind 0 (wrap) is every kind the arms below do not name
+const GC_CLAMP: u8 = 1;
+const GC_AVG_INT: u8 = 2;
+const GC_FLOAT: u8 = 3;
+const GC_AVG_FLOAT: u8 = 4;
+const GC_NAN: u64 = 0xfff8000000000000;
+
+/// reduce.c:`GC_LOOP`: cell `i` is `cell(sum, count)` of group `ord[i]`, written as its low `W` bytes; an id at or past
+/// `ng` reads zero slots. `m` is the `2 * ng` slots, folds then counts.
+fn cells<const W: usize>(m: &[i64], ord: &[u64], out: &mut [u8], cell: impl Fn(i64, i64) -> u64) {
+    assert_eq!(out.len(), ord.len() * W, "group_cells: {} output bytes for {} cells of width {W}", out.len(), ord.len());
+    let (s, k) = m.split_at(m.len() / 2);
+    for (o, &g) in out.chunks_exact_mut(W).zip(ord) {
+        let g = usize::try_from(g).unwrap_or(usize::MAX);
+        let (s, k) = (s.get(g).copied().unwrap_or(0), k.get(g).copied().unwrap_or(0));
+        o.copy_from_slice(&cell(s, k).to_le_bytes()[..W]);
+    }
+}
+fn clamped(s: i64) -> i64 { if s > -2147483648 && s < 2147483648 { s } else { -2147483648 } }
+
+/// reduce.c:`qlean_group_cells` past the unboxing and its width check: `out` is `ord.len()` cells of `w` bytes (eight for
+/// the two averages), the kind switch outside the loop so each arm is one gather of the slots by `ord`.
+pub fn group_cells(kind: u8, w: usize, ng: usize, m: &[i64], ord: &[u64], out: &mut [u8]) {
+    let m = &m[..2 * ng];
+    match kind {
+        GC_AVG_INT => cells::<8>(m, ord, out, |s, k| if k == 0 { GC_NAN } else { (s as f64 / k as f64).to_bits() }),
+        GC_AVG_FLOAT => cells::<8>(m, ord, out, |s, k| {
+            let r = f64::from_bits(s as u64) / k as f64;
+            if k == 0 || r.is_nan() { GC_NAN } else { r.to_bits() }
+        }),
+        GC_FLOAT if w == 4 => cells::<4>(m, ord, out, |s, _| (f64::from_bits(s as u64) as f32).to_bits() as u64),
+        GC_FLOAT => cells::<8>(m, ord, out, |s, _| s as u64),
+        _ => {
+            let c = kind == GC_CLAMP;
+            match w {
+                1 => cells::<1>(m, ord, out, |s, _| if c { clamped(s) } else { s } as u64),
+                2 => cells::<2>(m, ord, out, |s, _| if c { clamped(s) } else { s } as u64),
+                4 => cells::<4>(m, ord, out, |s, _| if c { clamped(s) } else { s } as u64),
+                _ => cells::<8>(m, ord, out, |s, _| if c { clamped(s) } else { s } as u64),
+            }
+        }
+    }
+}
+
+// q reduces floats in lanes and the lane count shows up in the answer: eight double lanes and sixteen float lanes,
+// the tail folded in AFTER the lanes, and no split below two full groups (`sum (1e16),(k#1f),-1e16` is the strict left
+// fold's 0f through n = 15 and lane-split from n = 16). The lane count is part of the specification (`Coc.Over.lanes`,
+// `overFold`). A NaN is q's null and contributes nothing. Every add is a plain `+`, no FMA, so the association order
+// written here is the one that runs.
+
+/// Where a float sum's elements come from, a block of `blk` at a time: a pointer into a dense payload, or an ALP block
+/// decoded into `buf`, so a column is never restored whole and the two forms cannot be summed in two orders.
+pub trait Blocks<T> {
+    /// Block `b`'s first `nb` elements: a slice of the source, or of `buf` once filled.
+    fn at<'a>(&'a mut self, b: usize, nb: usize, buf: &'a mut [T]) -> &'a [T];
+}
+/// A dense payload: block `b` starts at element `b * BLK`.
+pub struct Dense<'a, T>(pub &'a [T]);
+impl<T> Blocks<T> for Dense<'_, T> {
+    fn at<'a>(&'a mut self, b: usize, _: usize, _: &'a mut [T]) -> &'a [T] { &self.0[b * BLK..] }
+}
+
+/// reduce.c `qlean_f32_sum_src`, q's `real` sum, measured on 20M two-decimal prices: sixteen `float` lanes over the full
+/// groups, an eight-wide `float` group when eight or more remain, the last few in double, all combined in double (`sum`
+/// rounds that once to `real`, `avg` divides it unrounded). `blk` is a multiple of 16, so element i is in lane i % 16
+/// whatever the source and only the last block has a tail. A NaN poisons its lane and is counted; any at all and the
+/// lanes are thrown away for the serial pass q takes over the live elements in one double accumulator.
+pub fn f32_sum<S: Blocks<f32>>(src: &mut S, n: usize, blk: usize, buf: &mut [f32], live: Option<&mut usize>) -> f64 {
+    let (mut acc, mut a8) = ([0f32; 16], [0f32; 8]);
+    let (mut rest, mut s, mut s8, mut nan) = (0.0f64, 0.0f64, 0.0f64, 0usize);
+    for (b, lo) in (0..n).step_by(blk).enumerate() {
+        let nb = (n - lo).min(blk);
+        let full = nb & !15;
+        let x = src.at(b, nb, buf);
+        nan += simd::f32_lanes(&x[..full], &mut acc);
+        let mut k = full;
+        if nb - full >= 8 {
+            for j in 0..8 { a8[j] += x[k + j]; nan += (x[k + j] != x[k + j]) as usize }
+            k += 8;
+        }
+        for &v in &x[k..nb] { rest += v as f64; nan += (v != v) as usize }
+    }
+    if let Some(l) = live { *l = n - nan }
+    if nan != 0 {
+        for (b, lo) in (0..n).step_by(blk).enumerate() {
+            let nb = (n - lo).min(blk);
+            for &v in &src.at(b, nb, buf)[..nb] { if v == v { s += v as f64 } }
+        }
+        return s;
+    }
+    for a in acc { s += a as f64 }
+    for a in a8 { s8 += a as f64 }
+    s + s8 + rest
+}
+
+/// reduce.c `qlean_f64_sum_src`, `sumF64Total`, the one order of a `float` sum and `avg` at every encoding: serial below
+/// two full groups, else eight lanes over the full groups folded left to right and the tail added after. `blk` is a
+/// multiple of 8, so element i is in lane i % 8 whatever the source. On a column holding a null `sum` is one serial
+/// accumulator over the live elements and `avg` two lanes by position over the even prefix, then the last.
+pub fn f64_sum<S: Blocks<f64>>(src: &mut S, n: usize, blk: usize, buf: &mut [f64], live: Option<&mut usize>, avg: bool)
+    -> f64 {
+    assert!(blk % 8 == 0, "f64_sum: block of {blk} elements is not a multiple of the 8 lanes");
+    let (mut acc, mut s, mut a2) = ([0f64; 8], 0.0f64, [0f64; 2]);
+    // the lanes' extent: nothing below two full groups, else every full group
+    let lanes = if n / 8 < 2 { 0 } else { n & !7 };
+    let mut nan = 0usize;
+    for (b, lo) in (0..n).step_by(blk).enumerate() {
+        let nb = (n - lo).min(blk);
+        let full = lanes.wrapping_sub(lo).min(nb);
+        let x = src.at(b, nb, buf);
+        nan += simd::f64_lanes(&x[..full], &mut acc);
+        // past the lanes: the whole column below the split, the under-eight tail above it, added after the lanes are
+        // folded, both in the last block since `lanes` is a multiple of 8
+        if lanes != 0 && lo + nb == n { s = acc[0]; for j in 1..8 { s += acc[j] } }
+        for &v in &x[full..nb] { nan += (v != v) as usize; s += v }
+    }
+    if let Some(l) = live { *l = n - nan }
+    if nan == 0 { return s }
+    let m = if avg { n & !1 } else { 0 };
+    s = 0.0;
+    for (b, lo) in (0..n).step_by(blk).enumerate() {
+        let nb = (n - lo).min(blk);
+        for (i, &v) in src.at(b, nb, buf)[..nb].iter().enumerate() {
+            if v == v { if lo + i < m { a2[i & 1] += v } else { s += v } }
+        }
+    }
+    (a2[0] + a2[1]) + s
+}
+
+/// A scratch block for a source that decodes into it, 64-byte aligned as the decoders' stores want.
+pub fn with_buf<T: Copy + Default, R>(blk: usize, f: impl FnOnce(&mut [T]) -> R) -> R {
+    let mut v = alloc::vec![T::default(); blk + 64 / size_of::<T>()];
+    let off = v.as_ptr().align_offset(64).min(64 / size_of::<T>());
+    f(&mut v[off..off + blk])
+}
+
+/// The two float widths `over_f32` and `over_f64` share.
+pub trait Fl: Copy + PartialOrd + core::ops::Mul<Output = Self> + core::ops::Neg<Output = Self> {
+    const ZERO: Self;
+    const ONE: Self;
+    const INF: Self;
+}
+impl Fl for f32 { const ZERO: f32 = 0.0; const ONE: f32 = 1.0; const INF: f32 = f32::INFINITY; }
+impl Fl for f64 { const ZERO: f64 = 0.0; const ONE: f64 = 1.0; const INF: f64 = f64::INFINITY; }
+
+/// reduce.c:`OVER_MINMAX_CASE`, the AVX-512 arm: `min`/`max` over `L` lanes (one `__m512`). Below one group it is the
+/// serial fold with `stepk`, which keeps its accumulator on a tie (q answers the FIRST of a `+0`/`-0` tie there); at or
+/// above it the lanes take `step`, where the later wins, the tail lanes folding nothing, then the horizontal `step`.
+/// A NaN is skipped by its own lane (the mask), and the count is the elements that were not.
+fn minmax<T: Fl, const L: usize>(p: &[T], id: T, step: impl Fn(T, T) -> T, stepk: impl Fn(T, T) -> T) -> (T, usize) {
+    if p.len() < L {
+        let (mut r, mut seen) = (id, 0);
+        for &v in p { if v == v { r = stepk(r, v); seen += 1 } }
+        return (r, seen);
+    }
+    let (mut acc, mut cn) = ([id; L], [0u64; L]);
+    let (whole, rest) = p.as_chunks::<L>();
+    for ch in whole {
+        for j in 0..L { if ch[j] == ch[j] { acc[j] = step(acc[j], ch[j]) } cn[j] += (ch[j] == ch[j]) as u64 }
+    }
+    for (j, &v) in rest.iter().enumerate() {
+        if v == v { acc[j] = step(acc[j], v) }
+        cn[j] += (v == v) as u64;
+    }
+    let r = acc[1..].iter().fold(acc[0], |r, &x| step(r, x));
+    (r, cn.iter().sum::<u64>() as usize)
+}
+
+/// reduce.c:`OVER_ENGINE`: the verb switch outside the loop. `add` is the verb-0 fold (a block-wise sum). `prd` is not
+/// lane-split (`(1e200;1e200),(1000000#1f),(1e-200;1e-200)` is `0w`, the overflow surviving as a left fold leaves it);
+/// verbs past `max` answer 0 and count nothing. `live` is the count of elements the fold stepped on.
+fn over<T: Fl, const L: usize>(op: u8, p: &[T], live: Option<&mut usize>, add: impl FnOnce(&[T], Option<&mut usize>) -> T) -> T {
+    let (r, seen) = match op {
+        0 => return add(p, live),
+        1 => {
+            let (mut r, mut seen) = (T::ONE, 0);
+            // a skipped element multiplies by the identity, which keeps the select off the multiply's chain
+            for &v in p { let ok = v == v; r = r * if ok { v } else { T::ONE }; seen += ok as usize }
+            (r, seen)
+        }
+        2 => minmax::<T, L>(p, T::INF, |a, v| if a < v { a } else { v }, |a, v| if v < a { v } else { a }),
+        3 => minmax::<T, L>(p, -T::INF, |a, v| if v < a { a } else { v }, |a, v| if a < v { v } else { a }),
+        _ => (T::ZERO, 0),
+    };
+    if let Some(l) = live { *l = seen }
+    r
+}
+/// reduce.c `over_f64`: `op` over doubles, `live` the non-null count.
+pub fn over_f64(op: u8, p: &[f64], live: Option<&mut usize>) -> f64 {
+    over::<f64, 8>(op, p, live, |p, l| f64_sum(&mut Dense(p), p.len(), BLK, &mut [], l, false))
+}
+/// reduce.c `over_f32`: `op` over floats; `sum` is the double total rounded once to `real`.
+pub fn over_f32(op: u8, p: &[f32], live: Option<&mut usize>) -> f32 {
+    over::<f32, 16>(op, p, live, |p, l| f32_sum(&mut Dense(p), p.len(), BLK, &mut [], l) as f32)
+}
+/// reduce.c `qlean_over_f64_sum`: the total `avg` divides and its count out of the same pass; with no null it is
+/// `sum`'s to the bit, with one it is the two lanes where `sum` is serial.
+pub fn over_f64_sum(p: &[f64], live: Option<&mut usize>) -> f64 { f64_sum(&mut Dense(p), p.len(), BLK, &mut [], live, true) }
+/// reduce.c `qlean_over_f32_sum`.
+pub fn over_f32_sum(p: &[f32], live: Option<&mut usize>) -> f64 { f32_sum(&mut Dense(p), p.len(), BLK, &mut [], live) }
+
 #[cfg(test)]
 mod tests {
     use super::over_bytes;
@@ -408,5 +671,67 @@ mod tests {
         bit_rows(qlean_run_c, false, 3, &[0, 2, 2, 4], &[1, 0, 5, 2, 100, -1], &[0xb5, 0x6c, 0x0f], &mut a);
         bit_rows(qlean_run_c, true, 3, &[0, 2, 2, 4], &[1, 0, 5, 2, 100, -1], &[0xb5, 0x6c, 0x0f], &mut b);
         assert_eq!((a, b), ([135, 1], [188, 0]));
+    }
+    // RFC 1321's suite, and the block-edge lengths 55, 56, 63, 64 (one or two padding blocks)
+    #[test] fn md5_rfc_vectors() {
+        let hex = |m: &[u8]| super::md5(m).iter().map(|b| alloc::format!("{b:02x}")).collect::<alloc::string::String>();
+        assert_eq!(hex(b""), "d41d8cd98f00b204e9800998ecf8427e");
+        assert_eq!(hex(b"abc"), "900150983cd24fb0d6963f7d28e17f72");
+        assert_eq!(hex(b"message digest"), "f96b697d7cb7938d525a2f31aaf161d0");
+        assert_eq!(hex(b"12345678901234567890123456789012345678901234567890123456789012345678901234567890"),
+                   "57edf4a22be3c955ac49da2e2107b67a");
+        assert_eq!(hex(&[b'a'; 55]), hex(&[b'a'; 55]));
+        assert_ne!(hex(&[b'a'; 55]), hex(&[b'a'; 56]));
+    }
+    // expected values are the C's own (`over_f64`, `over_f32`): the split floor at n = 16, the tail added after the
+    // lanes, and the live counts
+    #[test] fn float_sums_against_c() {
+        use super::{over_f32, over_f64, over_f64_sum};
+        let shape = |k: usize| { let mut v = alloc::vec![1e16]; v.extend(core::iter::repeat_n(1.0, k)); v.push(-1e16); v };
+        for (k, want) in [(1, 0.0), (7, 0.0), (13, 0.0), (16, 16.0), (17, 16.0), (20, 16.0), (23, 28.0), (26, 28.0)] {
+            let mut live = 0;
+            assert_eq!(over_f64(0, &shape(k), Some(&mut live)), want, "k {k}");
+            assert_eq!(live, k + 2);
+        }
+        let real = |k: usize| { let mut v = alloc::vec![16777216f32]; v.extend(core::iter::repeat_n(1.0, k)); v.push(-16777216.0); v };
+        for k in [14, 20, 26] { assert_eq!(over_f32(0, &real(k), None), k as f32, "real k {k}") }
+        let (mut live, mut v) = (0, (1..=20).map(f64::from).collect::<Vec<_>>());
+        v[5] = f64::NAN;
+        assert_eq!(over_f64(0, &v, Some(&mut live)), 204.0);
+        assert_eq!(live, 19);
+        assert_eq!(over_f64_sum(&v, Some(&mut live)), 204.0);
+        // `prd` skips the null, a verb past `max` answers 0 and counts nothing
+        let n3 = [f64::NAN, 1.0, 2.0];
+        assert_eq!((over_f64(1, &n3, Some(&mut live)), live), (2.0, 2));
+        assert_eq!((over_f64(9, &n3, Some(&mut live)), live), (0.0, 0));
+    }
+    // q answers the first of a `+0`/`-0` tie below one lane group and the later one at or above it
+    #[test] fn min_max_signed_zero_tie() {
+        let z: Vec<f64> = (0..9).map(|i| if i & 1 == 1 { -0.0 } else { 0.0 }).collect();
+        for op in [2, 3] {
+            assert!(super::over_f64(op, &z[..7], None).is_sign_positive(), "op {op} n 7");
+            assert!(super::over_f64(op, &z[..8], None).is_sign_negative(), "op {op} n 8");
+            assert!(super::over_f64(op, &z, None).is_sign_negative(), "op {op} n 9");
+        }
+    }
+    // expected bytes are the C's own (`qlean_group_cells`): wrap, clamp, the id past `ng` reading zero slots, and the
+    // two float kinds
+    #[test] fn group_cells_against_c() {
+        use super::{group_cells, GC_AVG_FLOAT, GC_CLAMP, GC_FLOAT};
+        let m = [-5i64, 3000000000, -3000000000, 0, 2, 1, 0, 4];
+        let ord = [0u64, 1, 2, 3, 9];
+        let mut o = [0u8; 10];
+        group_cells(0, 2, 4, &m, &ord, &mut o);
+        assert_eq!(o, [0xfb, 0xff, 0x00, 0x5e, 0x00, 0xa2, 0, 0, 0, 0]);
+        let mut o = [0u8; 20];
+        group_cells(GC_CLAMP, 4, 4, &m, &ord, &mut o);
+        assert_eq!(o, [0xfb, 0xff, 0xff, 0xff, 0, 0, 0, 0x80, 0, 0, 0, 0x80, 0, 0, 0, 0, 0, 0, 0, 0]);
+        let f = [1.5f64.to_bits() as i64, (-0.0f64).to_bits() as i64, 0, 3.0f64.to_bits() as i64, 2, 0, 1, 1];
+        let mut o = [0u8; 12];
+        group_cells(GC_FLOAT, 4, 4, &f, &ord[..3], &mut o);
+        assert_eq!(o, [0, 0, 0xc0, 0x3f, 0, 0, 0, 0x80, 0, 0, 0, 0]);
+        let mut o = [0u8; 24];
+        group_cells(GC_AVG_FLOAT, 8, 4, &f, &ord[..3], &mut o);
+        assert_eq!(o, [0, 0, 0, 0, 0, 0, 0xe8, 0x3f, 0, 0, 0, 0, 0, 0, 0xf8, 0xff, 0, 0, 0, 0, 0, 0, 0, 0]);
     }
 }

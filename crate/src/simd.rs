@@ -1,5 +1,67 @@
 //! The AVX-512 kernels: coc.h:598, 646; reduce.c:261. Each picks its path by `cfg`, as the C picks by `#if`.
 
+/// reduce.c `MD5_STEP`'s `asm("" : "+r"(t))`: an empty asm that makes `t` opaque, so the optimiser cannot reassociate
+/// `a + w + k + F` into `((a + F) + w) + k` and put a sixth operation back on md5's critical chain.
+#[inline(always)]
+pub fn keep(t: u32) -> u32 {
+    let mut t = t;
+    // SAFETY: the template is a comment; it touches no memory, no stack and no flags
+    unsafe { core::arch::asm!("/* {0:e} */", inout(reg) t, options(nomem, nostack, preserves_flags)) }
+    t
+}
+
+/// reduce.c `qlean_f32_sum_src`'s lane loop: `acc[j] += x[16 * i + j]` over the whole groups of 16 in `x` (a tail shorter
+/// than 16 is left), one `vaddps` a group so every lane adds in element order; answers the NaNs seen.
+pub fn f32_lanes(x: &[f32], acc: &mut [f32; 16]) -> usize {
+    #[cfg(all(target_arch = "x86_64", target_feature = "avx512f"))]
+    // SAFETY: the cfg is the build enabling avx512f; each load reads one whole group of 16 floats
+    return unsafe { f32_lanes512(x, acc) };
+    #[cfg(not(all(target_arch = "x86_64", target_feature = "avx512f")))]
+    {
+        let mut c = [0u32; 16];
+        for ch in x.as_chunks::<16>().0 { for j in 0..16 { acc[j] += ch[j]; c[j] += (ch[j] != ch[j]) as u32 } }
+        c.iter().map(|&v| v as usize).sum()
+    }
+}
+#[cfg(all(target_arch = "x86_64", target_feature = "avx512f"))]
+#[target_feature(enable = "avx512f")]
+fn f32_lanes512(x: &[f32], acc: &mut [f32; 16]) -> usize {
+    use core::arch::x86_64::*;
+    let (mut a, mut nan) = (unsafe { _mm512_loadu_ps(acc.as_ptr()) }, 0u32);
+    for ch in x.as_chunks::<16>().0 {
+        let v = unsafe { _mm512_loadu_ps(ch.as_ptr()) };
+        a = _mm512_add_ps(a, v);
+        nan += _mm512_cmp_ps_mask::<_CMP_UNORD_Q>(v, v).count_ones();
+    }
+    unsafe { _mm512_storeu_ps(acc.as_mut_ptr(), a) };
+    nan as usize
+}
+/// The eight-lane double counterpart of `f32_lanes`.
+pub fn f64_lanes(x: &[f64], acc: &mut [f64; 8]) -> usize {
+    #[cfg(all(target_arch = "x86_64", target_feature = "avx512f"))]
+    // SAFETY: the cfg is the build enabling avx512f; each load reads one whole group of 8 doubles
+    return unsafe { f64_lanes512(x, acc) };
+    #[cfg(not(all(target_arch = "x86_64", target_feature = "avx512f")))]
+    {
+        let mut c = [0u64; 8];
+        for ch in x.as_chunks::<8>().0 { for j in 0..8 { acc[j] += ch[j]; c[j] += (ch[j] != ch[j]) as u64 } }
+        c.iter().sum::<u64>() as usize
+    }
+}
+#[cfg(all(target_arch = "x86_64", target_feature = "avx512f"))]
+#[target_feature(enable = "avx512f")]
+fn f64_lanes512(x: &[f64], acc: &mut [f64; 8]) -> usize {
+    use core::arch::x86_64::*;
+    let (mut a, mut nan) = (unsafe { _mm512_loadu_pd(acc.as_ptr()) }, 0u32);
+    for ch in x.as_chunks::<8>().0 {
+        let v = unsafe { _mm512_loadu_pd(ch.as_ptr()) };
+        a = _mm512_add_pd(a, v);
+        nan += _mm512_cmp_pd_mask::<_CMP_UNORD_Q>(v, v).count_ones();
+    }
+    unsafe { _mm512_storeu_pd(acc.as_mut_ptr(), a) };
+    nan as usize
+}
+
 /// `__builtin_prefetch(r, 1)`: starts the line of `r` loading; a hint, it never faults.
 #[inline(always)]
 pub fn prefetch<T>(r: &T) {
