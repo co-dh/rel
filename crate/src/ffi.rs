@@ -186,6 +186,34 @@ pub unsafe extern "C" fn qrs_group_ids_win(kind: u8, c: *const CCoc, n: usize, m
     group::group_ids_win(unsafe { core::mem::transmute::<unsafe extern "C" fn(), c::Runner>(run) }, kind, unsafe { (*c).view() }, n, mn, mx, unsafe { sl_mut(gid, gcap) }, unsafe { sl_mut(first, n) }).unwrap_or(usize::MAX)
 }
 
+/// K14: sort.c `dedup` for `distinct` (`gid` null) and `group` (`gid` and `cnt` `n` entries each): `first[..ng]` the
+/// first occurrence of each distinct key in order of first occurrence, answers `ng`. `c` null: a dense column, `kind`
+/// and `p`; else an encoded one read through a window, and `f` its ALP column when not null. `mn`, `mx` the key range.
+/// `SIZE_MAX` = an unknown kind or a misaligned `p`, which C never produces.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn qrs_dedup(kind: u8, p: *const u8, c: *const CCoc, f: *const CCocf, n: usize, mn: u64, mx: u64,
+                                   gid: *mut u32, cnt: *mut u32, first: *mut usize) -> usize {
+    let d = group::Dedup { mn, mx, first: unsafe { sl_mut(first, n) },
+                           bucket: if gid.is_null() { None } else { Some((unsafe { sl_mut(gid, n) }, unsafe { sl_mut(cnt, n) })) } };
+    if c.is_null() {
+        let Some(b) = (unsafe { keys(kind, p, n) }) else { return usize::MAX };
+        return key::each(kind, b, n, d).unwrap_or(usize::MAX);
+    }
+    let cv = unsafe { (*c).view() };
+    use key::Pass;
+    if f.is_null() { d.run(kwin::Kwin::new(kind, cv), n) } else { d.run(kwin::Kwin::with_alp(kind, unsafe { (*f).view() }), n) }
+}
+
+/// K14: sort.c `gather`: the `ng` elements of the dense column `p` (`n` of kind `kind`) at `first`, written at their own
+/// width into `out` (`ng` bytes of a bit or one-byte kind, else `ng` times its width). 0 = an unknown kind, a short
+/// `p`, or an index past `n`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn qrs_sort_gather(kind: u8, p: *const u8, n: usize, first: *const usize, ng: usize, out: *mut u8) -> c_int {
+    let w = if kind == key::SK_BIT { Some(ng) } else { key::bytes(kind, ng) };
+    let (Some(b), Some(w)) = (unsafe { keys(kind, p, n) }, w) else { return 0 };
+    group::gather(kind, b, unsafe { sl(first, ng) }, unsafe { sl_mut(out, w) }).is_some() as c_int
+}
+
 /// `len` and `off` are `np` entries, `head` `hcap` bytes. Answers the header length, or 0 and `why` filled.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn qrs_own_write_head(code: u8, attr: u8, kind: u8, count: u64, nl: usize, len: *const usize,
@@ -978,12 +1006,6 @@ pub unsafe extern "C" fn qrs_select_keys(kind: u8, p: *const u8, c: *const CCoc,
 pub unsafe extern "C" fn qrs_xrank_src(kind: u8, p: *const u8, c: *const CCoc, n: usize, t: f64, out: *mut i64) {
     sort::xrank_src(&unsafe { ksrc(kind, p, c, n) }, t, unsafe { sl_mut(out, n) })
 }
-/// A20: sort.c `SK_COUNTABLE`: a counting table over `span + 1` buckets for `n` keys is affordable.
-#[unsafe(no_mangle)]
-pub extern "C" fn qrs_sk_countable(span: u64, n: usize) -> c_int { sort::sk_countable(span, n) as c_int }
-/// A20: sort.c `sk_digit`: the radix digit width for `bits`-bit keys and `n` of them.
-#[unsafe(no_mangle)]
-pub extern "C" fn qrs_sk_digit(bits: u32, n: usize) -> u32 { sort::sk_digit(bits, n) }
 /// A21: sort.c `hist_narrow`: the counts of the `n` keys of a one-byte (`SK_U8`) or two-byte (`SK_I16`) payload into
 /// `out`, which holds `SK_NARROW_NB(kind)` of them (256 or 65536).
 #[unsafe(no_mangle)]
