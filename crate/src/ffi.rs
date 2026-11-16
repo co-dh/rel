@@ -21,6 +21,7 @@ use crate::{BLK, ids, simd};
 use crate::alp::Cocf;
 use crate::cocops::CocMut;
 use crate::enc::{EncMeta, EncPack};
+use crate::lean;
 use crate::sym::{self, Syms};
 use crate::{codec, enc, ew, reduce, scan, search, sort, structural};
 
@@ -353,11 +354,8 @@ pub struct CStage {
     pub f: Option<unsafe extern "C" fn(usize, usize, *const CPass)>, pub p: CPass, pub asrc: u8, pub bsrc: u8, pub osrc: u8,
     pub abits: u16, pub bbits: u16, pub obits: u16, pub bytewise: u8,
 }
-/// Mirror of structural.c:2039 `symtab`; `slot` holds `mask + 1` ids.
-#[repr(C)]
-pub struct CSymtab { pub refs: usize, pub cnt: usize, pub mask: usize, pub stale: usize, pub slot: *mut u32 }
 const _: () = assert!(size_of::<CCocf>() == 192 && size_of::<CSrc>() == 40 && size_of::<CEnc>() == 320);
-const _: () = assert!(size_of::<CSym>() == 16 && size_of::<CStage>() == 96 && size_of::<CSymtab>() == 40);
+const _: () = assert!(size_of::<CSym>() == 16 && size_of::<CStage>() == 96);
 
 impl CCoc {
     /// The writable view the in-place verbs (A3 `sums_drop`, A6 `shift`) take. Safety: as `view`, and no other
@@ -1772,71 +1770,85 @@ pub unsafe extern "C" fn qrs_concat_ids(wout: u32, k: usize, counts: *const usiz
 unsafe fn syms0<'a>(blob: *const u8, bytes: usize, offs: *const usize, n: usize) -> Syms<'a> {
     if n == 0 { Syms { blob: &[], offs: &[] } } else { unsafe { syms(blob, bytes, offs, n) } }
 }
-/// A40: structural.c `symtab_fit`'s rehash over the whole symview: the base's `d0` symbols, then the table's
-/// `cnt - d0` new ones in `tb` at the starts `to`.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn qrs_symtab_fill(t: *mut CSymtab, blob: *const u8, bytes: usize, offs: *const usize, d0: usize,
-                                         tb: *const u8, to: *const usize) {
-    unsafe {
-        let t = &mut *t;
-        let to = sl(to, if t.cnt > d0 { t.cnt - d0 + 1 } else { 0 });
-        let tb = sl(tb, to.last().copied().unwrap_or(0));
-        let mut s = structural::Symtab { cnt: t.cnt, mask: t.mask, stale: t.stale, slot: sl_mut(t.slot, t.mask + 1) };
-        s.fill(&structural::Symview { base: syms0(blob, bytes, offs, d0), d0, tb, to });
-        (t.cnt, t.stale) = (s.cnt, s.stale);
+/// K20: a dictionary or starts object as `sym::Heap` sees it, the lean.rs inlines under the names lean.h gives them.
+#[derive(Clone, Copy, PartialEq)]
+struct Obj(*mut lean::Object);
+impl sym::Heap for Obj {
+    fn rc(self) -> i32 { unsafe { (*self.0).rc } }
+    fn inc(self) { unsafe { lean::inc(self.0) } }
+    fn dec(self) { unsafe { lean::dec(self.0) } }
+    fn cap(self) -> usize { unsafe { if lean::ptr_tag(self.0) == lean::TAG_ARRAY { lean::array_capacity(self.0) } else { lean::sarray_capacity(self.0) } } }
+    fn len(self) -> usize { unsafe { lean::sarray_size(self.0) } }
+    fn resize(self, offs: Self, bytes: usize, n: usize) { unsafe { lean::sarray_set_size(self.0, bytes); lean::array_set_size(offs.0, n) } }
+    fn alloc(bytes: usize, cap: usize, n: usize, ncap: usize) -> (Self, Self) {
+        (Obj(lean::alloc_sarray(1, bytes, cap)), Obj(lean::alloc_array(n, ncap)))
+    }
+    fn put_bytes(self, at: usize, src: &[u8]) { unsafe { core::ptr::copy(src.as_ptr(), lean::sarray_cptr(self.0).add(at), src.len()) } }
+    fn put_starts(self, at: usize, it: impl Iterator<Item = usize>) {
+        let p = unsafe { lean::array_cptr(self.0).add(at) };
+        for (k, v) in it.enumerate() { unsafe { *p.add(k) = lean::box_(v) } }
     }
 }
-/// A40: structural.c `symtab_fork` after the allocation: `t`'s `slot` is `s.mask + 1` ids, filled from `s`, whose counts it reads.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn qrs_symtab_fork(t: *mut CSymtab, s: *const CSymtab, d: usize) {
+/// The one cache of kept dictionary hashes. Safety: structural.c's `sd_mu` is held across every call that reaches it.
+struct Kept(core::cell::UnsafeCell<sym::Cache<Obj>>);
+unsafe impl Sync for Kept {}
+static KEPT: Kept = Kept(core::cell::UnsafeCell::new(sym::Cache::new()));
+/// `dict`/`offs` as a part: the bytes and the boxed starts, in place.
+unsafe fn part<'a>(dict: *mut lean::Object, offs: *mut lean::Object) -> sym::Part<'a, Obj> {
     unsafe {
-        let (t, s) = (&mut *t, &*s);
-        let mut f = structural::Symtab { cnt: t.cnt, mask: t.mask, stale: t.stale, slot: sl_mut(t.slot, s.mask + 1) };
-        f.fork(sl(s.slot, s.mask + 1), s.cnt, s.stale, d);
-        (t.cnt, t.mask, t.stale) = (f.cnt, f.mask, f.stale);
+        sym::Part { dict: Obj(dict), offs: Obj(offs),
+                    syms: Syms { blob: sl(lean::sarray_cptr(dict), lean::sarray_size(dict)), offs: sl(lean::array_cptr(offs).cast(), lean::array_size(offs)) } }
     }
 }
-/// A41a: structural.c `symdict_concat`'s per-part interning; `tb`/`to` are the new-symbol area's `tbn`/`ton`
-/// capacity. Answers the index it stopped at (`symtab_fit` is due) or `di`.
+/// K20: structural.c `symdict_hold`'s find, `sd_mu` held by the caller: the kept table of the dictionary `dict`/`offs`
+/// at its own count, or null.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn qrs_symdict_intern(t: *mut CSymtab, blob: *const u8, bytes: usize, offs: *const usize, d0: usize,
-                                            tb: *mut u8, tbn: usize, to: *mut usize, ton: usize, pblob: *const u8,
-                                            pbytes: usize, poffs: *const usize, di: usize, map: *mut usize,
-                                            from: usize) -> usize {
+pub unsafe extern "C" fn qrs_sd_find(dict: *mut lean::Object, offs: *mut lean::Object) -> *const sym::Tab {
     unsafe {
-        let t = &mut *t;
-        let mut s = structural::Symtab { cnt: t.cnt, mask: t.mask, stale: t.stale, slot: sl_mut(t.slot, t.mask + 1) };
-        let j = structural::symdict_intern(&mut s, &syms0(blob, bytes, offs, d0), d0, sl_mut(tb, tbn), sl_mut(to, ton),
-                                           &syms0(pblob, pbytes, poffs, di), sl_mut(map, di), from);
-        (t.cnt, t.stale) = (s.cnt, s.stale);
-        j
+        let (c, d) = (&mut *KEPT.0.get(), part(dict, offs).syms.count());
+        c.find(Obj(dict), d).map_or(core::ptr::null(), |i| c.table(i))
     }
 }
-/// A41b: structural.c `symtab_find` over the plain dictionary of `d` symbols (`blob`, `offs`): the id of `k` in it,
-/// or `d`. `t` is `symdict_probe`'s const table.
+/// K20: structural.c `symdict_probe`: the id of `k` in the plain dictionary `dict`/`offs` through the table `t`, or its
+/// symbol count. `sd_mu` is held since `qrs_sd_find` answered `t`.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn qrs_symtab_find(t: *const CSymtab, blob: *const u8, bytes: usize, offs: *const usize, d: usize,
-                                         k: *const u8, klen: usize) -> usize {
+pub unsafe extern "C" fn qrs_sd_probe(t: *const sym::Tab, dict: *mut lean::Object, offs: *mut lean::Object, k: *const u8,
+                                      klen: usize) -> usize {
     unsafe {
-        let t = &*t;
-        let v = structural::Symview { base: syms0(blob, bytes, offs, d), d0: d, tb: &[], to: &[] };
-        structural::symtab_find(sl(t.slot, t.mask + 1), t.mask, &v, d, sl(k, klen))
+        let (t, p) = ((*t).0.borrow(), part(dict, offs));
+        let d = p.syms.count();
+        structural::symtab_find(&t.slot, t.mask, &structural::Symview { base: p.syms, d0: d, tb: &[], to: &[] }, d, sl(k, klen))
     }
 }
-/// A41b: structural.c `symtab_build`'s loop over the plain dictionary of `d` symbols once `t`'s slots are
-/// allocated and empty; sets `t->cnt`. 0 when one symbol repeats an earlier one.
+/// One part of `qrs_sd_concat`'s input.
+#[repr(C)]
+pub struct CPart { pub dict: *mut lean::Object, pub offs: *mut lean::Object }
+/// What `qrs_sd_concat` answers past the dictionary: the id map of each part (`qrs_sd_map`).
+pub struct Plan(sym::Dicts<Obj>);
+/// K20: structural.c `symdict_concat`'s dictionary half under `sd_mu`, held by the caller. Null declines; else the
+/// joined dictionary and starts (one reference each, the caller's) and its symbol count are written to
+/// `dict`/`offs`/`cnt`, and the answer is the plan whose maps `qrs_sd_map` reads, until `qrs_sd_plan_free`.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn qrs_symtab_build(t: *mut CSymtab, blob: *const u8, bytes: usize, offs: *const usize,
-                                          d: usize) -> c_int {
+pub unsafe extern "C" fn qrs_sd_concat(parts: *const CPart, k: usize, dict: *mut *mut lean::Object,
+                                       offs: *mut *mut lean::Object, cnt: *mut usize) -> *mut Plan {
     unsafe {
-        let t = &mut *t;
-        let mut s = structural::Symtab { cnt: t.cnt, mask: t.mask, stale: t.stale, slot: sl_mut(t.slot, t.mask + 1) };
-        let v = structural::Symview { base: syms0(blob, bytes, offs, d), d0: d, tb: &[], to: &[] };
-        let ok = structural::symtab_build(&mut s, &v, d);
-        t.cnt = s.cnt;
-        ok as c_int
+        let ps: alloc::vec::Vec<_> = sl(parts, k).iter().map(|p| part(p.dict, p.offs)).collect();
+        match (&mut *KEPT.0.get()).concat(&ps) {
+            None => null_mut(),
+            Some(d) => {
+                (*dict, *offs, *cnt) = (d.dict.0, d.offs.0, d.cnt);
+                alloc::boxed::Box::into_raw(alloc::boxed::Box::new(Plan(d)))
+            }
+        }
     }
 }
+/// K20: part `i`'s id map (a 0 past its last), or null for a part whose symbols are the base's own.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn qrs_sd_map(p: *const Plan, i: usize) -> *const usize {
+    unsafe { (&*p).0.maps[i].as_ref().map_or(core::ptr::null(), |m| m.as_ptr()) }
+}
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn qrs_sd_plan_free(p: *mut Plan) { drop(unsafe { alloc::boxed::Box::from_raw(p) }) }
 /// A41b: structural.c `scatter`; 0 when an index is out of range.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn qrs_scatter(wb: usize, dst: *mut u8, nd: usize, idx: *const i64, n: usize, src: *const u8,
