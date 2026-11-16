@@ -5,7 +5,9 @@
 use crate::alp::{Cocf, POW10};
 use crate::coc::Coc;
 use crate::key::{SK_BIT, SK_C8, SK_F32, SK_F64, SK_I16, SK_I32, SK_I64, SK_KINDS_N, SK_U8};
-use crate::{simd, BLK};
+use crate::{bits, pod, reduce, simd, BLK};
+use crate::coc::Meta;
+use alloc::vec::Vec;
 
 // the verb, as QLean/Kernel/Scan.lean's `Verb` in constructor order
 const SC_SUMS: i32 = 0;
@@ -803,6 +805,244 @@ pub fn mw_run(st: &mut Mw, op: i32, kind: i32, p: &[u8], o: &mut [u8], n: usize)
 pub fn mw_in_bytes(kind: i32, n: usize) -> usize {
     if kind == SK_BIT as i32 { n.div_ceil(8) } else { n * dense_width(kind) }
 }
+// ---- B7/B8: the column entry points of scan.c's twelve Lean exports (ffi/scan.rs), over the payloads' bytes ----
+
+/// scan.c `SC_TILE`: the elements of an ALP block a scan restores, runs and leaves in L1 before the next.
+const SC_TILE: usize = 128;
+/// coc.h:349 `sk_avail`: how many elements `bytes` hold (the boolean's payload is packed bits).
+fn avail(kind: i32, bytes: usize) -> usize { if kind == SK_BIT as i32 { bytes * 8 } else { bytes / dense_width(kind) } }
+/// `n` clamped to what a payload of `bytes` holds: getting `n` wrong would otherwise read past it.
+fn clamp(kind: i32, n: usize, bytes: usize) -> usize { n.min(avail(kind, bytes)) }
+
+/// `qlean_scan_any_null`: whether one of the payload's first `n` elements is the kind's null.
+pub fn col_any_null(kind: u8, n: usize, a: &[u8]) -> bool { scan_any_null(kind as i32, a, clamp(kind as i32, n, a.len())) }
+/// `qlean_scan`: the bytes of the answer, `n` (clamped) elements at `sc_out_width`.
+pub fn col_len(op: u8, kind: u8, n: usize, bytes: usize) -> usize { clamp(kind as i32, n, bytes) * sc_out_width(op as i32, kind as i32) }
+/// `qlean_scan`: `fills` over a payload with no null in its first `n` elements is the argument itself, where the answer's
+/// bytes are the argument's -- not at `bit`, whose `fills` writes a byte an element, and not where `n` was clamped.
+pub fn col_same(op: u8, kind: u8, n: usize, a: &[u8]) -> bool {
+    op as i32 == SC_FILLS && kind != SK_BIT && col_len(op, kind, n, a.len()) == a.len()
+        && !scan_any_null(kind as i32, a, clamp(kind as i32, n, a.len()))
+}
+/// `qlean_scan`: the scan into `out` (`col_len` bytes).
+pub fn col(op: u8, kind: u8, n: usize, a: &[u8], out: &mut [u8]) {
+    scan_run(op as i32, kind as i32, a, out, clamp(kind as i32, n, a.len()), &mut [], false)
+}
+
+/// `qlean_scan_bits`: the bytes of the answer, or `None` for a verb that does not answer at the bit layout.
+pub fn bits_len(op: u8, n: usize, bytes: usize) -> Option<usize> {
+    matches!(op as i32, SC_MINS | SC_MAXS | SC_FILLS).then(|| n.min(bytes * 8).div_ceil(8))
+}
+/// `qlean_scan_bits`: the fold packed one bit an element into `out` (`bits_len` bytes). The bits above `n` in the last byte
+/// are cleared, because `Column.packBits` writes zeros there and `qlean_search_match` compares two bitmaps byte for byte.
+pub fn col_bits(op: u8, n: usize, a: &[u8], out: &mut [u8]) {
+    let (n, nb) = (n.min(a.len() * 8), out.len());
+    if op as i32 == SC_FILLS { out.copy_from_slice(&a[..nb]) } else { bits_run(out, a, if op as i32 == SC_MINS { !0 } else { 0 }) }
+    if nb != 0 && n & 7 != 0 { out[nb - 1] &= ((1u32 << (n & 7)) - 1) as u8 }
+}
+
+/// `coc_view`: the metadata and the pack of an encoded column, the element count clamped to what the block grid holds.
+fn view<'a>(mv: &'a [u8], pv: &'a [u8], n: usize) -> Coc<'a> {
+    let m = Meta::new(mv, n).unwrap_or_else(|| panic!("qlean: a metadata buffer of {} bytes is misaligned or shorter than its block grid", mv.len()));
+    let e = m.res_end();
+    Coc::attach(m, pv).unwrap_or_else(|| panic!("qlean: a Frame of Reference pack of {} bytes whose residuals end at {e} holds no patch list of {} blocks after them", pv.len(), m.mblk))
+}
+fn view_alp<'a>(mv: &'a [u8], pv: &'a [u8], av: &'a [u8], n: usize) -> Cocf<'a> {
+    let mut f = Cocf::meta_view(mv, av, n).unwrap_or_else(|| panic!("qlean: the ALP part of {} bytes or its metadata of {} bytes is misaligned or short", av.len(), mv.len()));
+    f.c.pack = pv;
+    f
+}
+/// The elements of an encoded column of `n` asked for: what its block grid holds.
+fn enc_n(mv: &[u8], n: usize) -> usize { Meta::new(mv, n).map_or(0, |m| m.n) }
+/// coc.h:829 `coc_load_blk_at`: block `b`'s first `nb` elements at `w` bytes an element into `buf`.
+fn load_blk(c: &Coc, b: usize, nb: usize, w: usize, buf: &mut [u64; BLK]) {
+    let by = pod::bytes_mut(buf);
+    match w {
+        1 => c.decode_blk::<u8>(b, nb, pod::cast_mut(by).unwrap()),
+        2 => c.decode_blk::<i16>(b, nb, pod::cast_mut(by).unwrap()),
+        4 => c.decode_blk::<i32>(b, nb, pod::cast_mut(by).unwrap()),
+        _ => c.decode_blk::<i64>(b, nb, pod::cast_mut(by).unwrap()),
+    }
+}
+
+/// `qlean_scan_foR`: the bytes of the answer.
+pub fn for_len(op: u8, kind: u8, mv: &[u8], n: usize) -> usize { enc_n(mv, n) * sc_out_width(op as i32, kind as i32) }
+/// `qlean_scan_foR`: `scan op kind n (Coc.decode 8 metadata pack n)` into `out` (`for_len` bytes), one block at a time so
+/// the dense payload is never materialised; a block resumes from the previous block's carry.
+pub fn col_for(op: u8, kind: u8, n: usize, mv: &[u8], pv: &[u8], out: &mut [u8]) {
+    let (op, kind) = (op as i32, kind as i32);
+    let c = view(mv, pv, n);
+    let (w, ow) = (dense_width(kind), sc_out_width(op, kind));
+    let (mut buf, mut acc) = ([0u64; BLK], [0u8; 8]);
+    for (b, at) in (0..c.meta.n).step_by(BLK).enumerate() {
+        let cnt = (c.meta.n - at).min(BLK);
+        let (o, a) = (&mut out[at * ow..(at + cnt) * ow], i64::from_ne_bytes(acc));
+        if at != 0 && sc_blk_skip(op, kind, &c, b, cnt, a) {
+            sc_fill_c(o, cnt, ow, a);
+        } else {
+            load_blk(&c, b, cnt, w, &mut buf);
+            scan_run(op, kind, &pod::bytes_mut(&mut buf)[..cnt * w], o, cnt, &mut acc, at != 0);
+        }
+    }
+}
+/// `qlean_scan_alp`: the bytes of the answer.
+pub fn alp_len(op: u8, kind: u8, mv: &[u8], n: usize) -> usize { for_len(op, kind, mv, n) }
+/// `qlean_scan_alp`: the ALP twin of `col_for`; `real` accumulates in `real`, so the answer is bit-identical to the unblocked scan.
+pub fn col_alp(op: u8, kind: u8, n: usize, mv: &[u8], pv: &[u8], av: &[u8], out: &mut [u8]) {
+    let (op, kind) = (op as i32, kind as i32);
+    let f = view_alp(mv, pv, av, n);
+    let (w, ow, nn) = (dense_width(kind), sc_out_width(op, kind), f.c.meta.n);
+    let (mut buf, mut lanes, mut acc) = ([0u64; BLK], [0u64; BLK], [0u8; 8]);
+    for (b, at) in (0..nn).step_by(BLK).enumerate() {
+        let cnt = (nn - at).min(BLK);
+        if at != 0 && sc_alp_skip(op, &f, b, cnt, f64::from_ne_bytes(acc)) {
+            sc_fill_c(&mut out[at * ow..(at + cnt) * ow], cnt, ow, i64::from_ne_bytes(acc));
+            continue;
+        }
+        let (lp, lw, _) = f.lanes(b, cnt, pod::bytes_mut(&mut lanes));
+        for t in (0..cnt).step_by(SC_TILE) {
+            let tn = (cnt - t).min(SC_TILE);
+            f.load_range(b, lp, lw, t, t + tn, pod::bytes_mut(&mut buf));
+            scan_run(op, kind, &pod::bytes(&buf)[t * w..(t + tn) * w], &mut out[(at + t) * ow..(at + t + tn) * ow], tn, &mut acc, at + t != 0);
+        }
+    }
+}
+
+/// One loop for `avg`: the element kind is the only thing that varies. The null adds 0 and counts 0 rather than branching
+/// around the step, the form that vectorises; the total wraps, as q's does.
+#[inline(always)]
+fn avg_loop<const W: usize>(p: &[u8], n: usize, rd: impl Fn([u8; W]) -> i64, nul: impl Fn(i64) -> bool) -> (u64, usize) {
+    let (mut tot, mut cnt) = (0u64, 0usize);
+    for c in &p.as_chunks::<W>().0[..n] {
+        let v = rd(*c);
+        let live = !nul(v);
+        tot = tot.wrapping_add(if live { v as u64 } else { 0 });
+        cnt += live as usize;
+    }
+    (tot, cnt)
+}
+/// `qlean_scan_avg`: q's `avg` as the bits of the `Float` it answers (`0n` for no live element), or `None` for a kind
+/// that is none of the eight.
+pub fn col_avg(kind: u8, n: usize, a: &[u8]) -> Option<u64> {
+    let n = clamp(kind as i32, n, a.len());
+    let (mut whole, mut total, mut cnt) = (0u64, 0.0f64, 0usize);
+    match kind {
+        // a boolean has no null, so its total is the popcount and its count the length
+        SK_BIT => { whole = bits::popcount(a, n) as u64; cnt = n }
+        SK_U8 => (whole, cnt) = avg_loop::<1>(a, n, |b| b[0] as i64, |_| false),
+        SK_C8 => (whole, cnt) = avg_loop::<1>(a, n, |b| b[0] as i64, |v| v == 0x20),
+        SK_I16 => (whole, cnt) = avg_loop::<2>(a, n, |b| i16::from_ne_bytes(b) as i64, |v| v == i16::MIN as i64),
+        SK_I32 => (whole, cnt) = avg_loop::<4>(a, n, |b| i32::from_ne_bytes(b) as i64, |v| v == i32::MIN as i64),
+        SK_I64 => (whole, cnt) = avg_loop::<8>(a, n, i64::from_ne_bytes, |v| v == i64::MIN),
+        SK_F32 => total = reduce::over_f32_sum(pod::cast(&a[..4 * n]).expect("qlean_scan_avg: a misaligned float payload"), Some(&mut cnt)),
+        SK_F64 => total = reduce::over_f64_sum(pod::cast(&a[..8 * n]).expect("qlean_scan_avg: a misaligned float payload"), Some(&mut cnt)),
+        _ => return None,
+    }
+    if cnt == 0 { return Some(SC_NAN64) }
+    // the two accumulators are exclusive, and picking rather than adding keeps a `-0f` total `-0f`
+    let r = (if kind == SK_F32 || kind == SK_F64 { total } else { whole as i64 as f64 }) / cnt as f64;
+    Some(if r != r { SC_NAN64 } else { r.to_bits() })
+}
+
+/// `qlean_scan_ema` / `qlean_scan_ema_v`: the doubles a recurrence over `bytes` bytes answers.
+pub fn ema_n(bytes: usize) -> usize { bytes / 8 }
+
+/// The window engine's state, owned: scan.c's `mwin` (the rings an op reads and no more, so a window wider than the
+/// column costs one array and not six). Zeroed as C's `calloc` was.
+pub struct MwSt {
+    w: usize, cu: usize, cap: usize, tl: usize, t: usize, isum: u64, fsum: f64, fsq: f64, cnt: i64, extbits: u64, sent: u64,
+    ri: Vec<u64>, rf: Vec<f64>, rq: Vec<f64>, rc: Vec<i64>, phase: Vec<u8>, sufx: Vec<u8>,
+}
+impl MwSt {
+    /// scan.c `mw_open`: sized for window `w` over `n` elements.
+    pub fn open(op: i32, kind: i32, w: usize, n: usize) -> MwSt {
+        let d = mw_dims(op, kind, w, n);
+        let mut s = MwSt { w: d.w, cu: 0, cap: d.cap, tl: d.tl, t: 0, isum: 0, fsum: 0.0, fsq: 0.0, cnt: 0, extbits: 0, sent: 0,
+                           ri: Vec::new(), rf: Vec::new(), rq: Vec::new(), rc: Vec::new(), phase: Vec::new(), sufx: Vec::new() };
+        let f = kind == SK_F32 as i32 || kind == SK_F64 as i32;
+        match op {
+            MW_MSUM if f => s.rf = alloc::vec![0.0; d.cap],
+            MW_MSUM => s.ri = alloc::vec![0; d.cap],
+            MW_MCOUNT => s.rc = alloc::vec![0; d.cap],
+            MW_MAVG => { s.rf = alloc::vec![0.0; d.cap]; s.rc = alloc::vec![0; d.cap] }
+            MW_MDEV => { s.rf = alloc::vec![0.0; d.cap]; s.rq = alloc::vec![0.0; d.cap]; s.rc = alloc::vec![0; d.cap] }
+            _ => {
+                s.phase = alloc::vec![0; d.w * d.ew];
+                s.sufx = alloc::vec![0; (d.w + 1) * d.ew];
+                s.extbits = mw_prime(&mut s.sufx, op, kind, d.ew);
+                s.sent = s.extbits;
+            }
+        }
+        s
+    }
+    /// scan.c `mw_run` on a piece of the column: `p` holds `n` elements at `kind` (a boolean's is the bitmap from element 0 of
+    /// the piece), `o` their answers; the scalars are kept so the next piece resumes.
+    pub fn run(&mut self, op: i32, kind: i32, p: &[u8], o: &mut [u8], n: usize) {
+        let mut m = Mw { w: self.w, cu: self.cu, cap: self.cap, tl: self.tl, t: self.t, isum: self.isum, fsum: self.fsum, fsq: self.fsq,
+                         cnt: self.cnt, extbits: self.extbits, sent: self.sent, ri: &mut self.ri, rf: &mut self.rf, rq: &mut self.rq,
+                         rc: &mut self.rc, phase: &mut self.phase, sufx: &mut self.sufx };
+        mw_run(&mut m, op, kind, &p[..mw_in_bytes(kind, n)], o, n);
+        (self.cu, self.t, self.isum, self.fsum, self.fsq, self.cnt, self.extbits) = (m.cu, m.t, m.isum, m.fsum, m.fsq, m.cnt, m.extbits);
+    }
+}
+
+/// `qlean_mwin`: the bytes of the answer.
+pub fn mwin_len(op: u8, kind: u8, n: usize, bytes: usize) -> usize { clamp(kind as i32, n, bytes) * mw_out_width(op as i32, kind as i32) }
+/// `qlean_mwin`: the window verb over the payload into `out` (`mwin_len` bytes).
+pub fn mwin(op: u8, kind: u8, w: usize, n: usize, a: &[u8], out: &mut [u8]) {
+    let (op, kind) = (op as i32, kind as i32);
+    let n = clamp(kind, n, a.len());
+    MwSt::open(op, kind, w, n).run(op, kind, a, out, n)
+}
+/// `qlean_mwin_bits`: the bytes of the answer, or `None` for a verb that does not answer a boolean.
+pub fn mwin_bits_len(op: u8, n: usize, bytes: usize) -> Option<usize> {
+    matches!(op as i32, MW_MMIN | MW_MMAX).then(|| n.min(bytes * 8).div_ceil(8))
+}
+/// `qlean_mwin_bits`: the extremes packed one bit an element into `out` (`mwin_bits_len` bytes). The engine writes its
+/// byte an element a tile at a time into a buffer that stays in L1.
+pub fn mwin_bits(op: u8, w: usize, n: usize, a: &[u8], out: &mut [u8]) {
+    let (op, bit) = (op as i32, SK_BIT as i32);
+    let n = n.min(a.len() * 8);
+    let mut tile = [0u8; MW_TILE];
+    out.fill(0);
+    let mut st = MwSt::open(op, bit, w, n);
+    // MW_EXT reads its operand from element 0 of `p`, so a tile hands it the bitmap advanced by whole bytes: MW_TILE is a
+    // multiple of 8 and every tile but the last is full
+    for at in (0..n).step_by(MW_TILE) {
+        let cnt = (n - at).min(MW_TILE);
+        st.run(op, bit, &a[at / 8..], &mut tile[..cnt], cnt);
+        for (g, &t) in tile[..cnt].iter().enumerate() { out[(at + g) >> 3] |= (t & 1) << ((at + g) & 7) }
+    }
+}
+/// `qlean_mwin_foR`: the bytes of the answer.
+pub fn mwin_for_len(op: u8, kind: u8, mv: &[u8], n: usize) -> usize { enc_n(mv, n) * mw_out_width(op as i32, kind as i32) }
+/// `qlean_mwin_foR`: `mwin op kind w n (Coc.decode 8 metadata pack n)` into `out`, one block at a time.
+pub fn mwin_for(op: u8, kind: u8, w: usize, n: usize, mv: &[u8], pv: &[u8], out: &mut [u8]) {
+    let (op, kind) = (op as i32, kind as i32);
+    let c = view(mv, pv, n);
+    let (ew, ow, mut buf) = (dense_width(kind), mw_out_width(op, kind), [0u64; BLK]);
+    let mut st = MwSt::open(op, kind, w, c.meta.n);
+    for at in (0..c.meta.n).step_by(BLK) {
+        let cnt = (c.meta.n - at).min(BLK);
+        load_blk(&c, at / BLK, cnt, ew, &mut buf);
+        st.run(op, kind, pod::bytes(&buf), &mut out[at * ow..(at + cnt) * ow], cnt);
+    }
+}
+/// `qlean_mwin_alp`: the bytes of the answer.
+pub fn mwin_alp_len(op: u8, kind: u8, mv: &[u8], n: usize) -> usize { mwin_for_len(op, kind, mv, n) }
+/// `qlean_mwin_alp`: the ALP twin of `mwin_for`.
+pub fn mwin_alp(op: u8, kind: u8, w: usize, n: usize, mv: &[u8], pv: &[u8], av: &[u8], out: &mut [u8]) {
+    let (op, kind) = (op as i32, kind as i32);
+    let f = view_alp(mv, pv, av, n);
+    let (ow, mut buf) = (mw_out_width(op, kind), [0u64; BLK]);
+    let mut st = MwSt::open(op, kind, w, f.c.meta.n);
+    for at in (0..f.c.meta.n).step_by(BLK) {
+        let cnt = (f.c.meta.n - at).min(BLK);
+        f.load_blk(at / BLK, cnt, pod::bytes_mut(&mut buf));
+        st.run(op, kind, pod::bytes(&buf), &mut out[at * ow..(at + cnt) * ow], cnt);
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
