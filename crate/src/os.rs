@@ -256,6 +256,143 @@ impl Lib {
     }
 }
 
+/// A cell the first caller of `set` fills and nobody changes after: zip.c's "the first failure is the one reported",
+/// where workers race to write one message. `is_set` is true from the claim on, `get` waits for the value.
+pub struct First<T> { state: core::sync::atomic::AtomicU8, v: core::cell::UnsafeCell<Option<T>> }
+// the value is written once, by the one caller that moved `state` 0 -> 1, and read only after it reads 2
+unsafe impl<T: Send + Sync> Sync for First<T> {}
+impl<T> First<T> {
+    pub const fn new() -> Self { First { state: core::sync::atomic::AtomicU8::new(0), v: core::cell::UnsafeCell::new(None) } }
+    /// true when this call stored `v`, false when another call had already claimed the cell
+    pub fn set(&self, v: T) -> bool {
+        use core::sync::atomic::Ordering::*;
+        if self.state.compare_exchange(0, 1, AcqRel, Acquire).is_err() { return false }
+        unsafe { *self.v.get() = Some(v) };
+        self.state.store(2, Release);
+        true
+    }
+    pub fn is_set(&self) -> bool { self.state.load(core::sync::atomic::Ordering::Acquire) != 0 }
+    pub fn get(&self) -> Option<&T> {
+        loop {
+            match self.state.load(core::sync::atomic::Ordering::Acquire) {
+                0 => return None,
+                1 => core::hint::spin_loop(),
+                _ => return unsafe { (*self.v.get()).as_ref() },
+            }
+        }
+    }
+}
+impl<T> Default for First<T> { fn default() -> Self { Self::new() } }
+
+/// A library or symbol zip.c needs that `dlopen`/`dlsym` could not give: the library's file name, the symbol the load was
+/// after, and `dlerror`'s text.
+#[derive(Debug)]
+pub struct Missing { pub so: &'static str, pub sym: &'static str, pub why: String }
+
+/// The decompressors zip.c reaches by `dlopen`, as q itself does. Each is loaded once a process and never closed; a failed
+/// load is tried again by the next caller, as zip.c's `zlib_load` did.
+/// cbindgen:ignore
+mod codecs {
+    use super::*;
+    use core::ffi::{c_char, c_int, c_ulong};
+    use core::sync::atomic::{AtomicPtr, Ordering};
+
+    /// `name` of `lib` as the function type `F`
+    fn fnptr<F: Copy>(lib: &Lib, so: &'static str, name: &'static CStr) -> Result<F, Missing> {
+        const { assert!(core::mem::size_of::<F>() == core::mem::size_of::<*mut c_void>()) };
+        let p = lib.sym(name).map_err(|why| Missing { so, sym: name.to_str().expect("os: a symbol name is ASCII"), why })?;
+        // a function pointer is a data pointer's size on every target this builds for (asserted above); `p` is a
+        // `dlsym` answer for the symbol whose C type `F` spells
+        Ok(unsafe { core::mem::transmute_copy::<*mut c_void, F>(&p) })
+    }
+    fn open(so: &'static str, sym: &'static CStr) -> Result<Lib, Missing> {
+        let c = alloc::ffi::CString::new(so).expect("os: a library name has no NUL");
+        Lib::open(&c, RTLD_NOW).map_err(|why| Missing { so, sym: sym.to_str().expect("os: a symbol name is ASCII"), why })
+    }
+    /// `cell`'s value, or the `load()` of it published there; a racing loser's copy is dropped, the libraries not closed
+    fn once<T>(cell: &AtomicPtr<T>, load: impl FnOnce() -> Result<T, Missing>) -> Result<&'static T, Missing> {
+        let p = cell.load(Ordering::Acquire);
+        if !p.is_null() { return Ok(unsafe { &*p }) }
+        let b = alloc::boxed::Box::into_raw(alloc::boxed::Box::new(load()?));
+        match cell.compare_exchange(core::ptr::null_mut(), b, Ordering::AcqRel, Ordering::Acquire) {
+            Ok(_) => Ok(unsafe { &*b }),
+            Err(won) => { drop(unsafe { alloc::boxed::Box::from_raw(b) }); Ok(unsafe { &*won }) }
+        }
+    }
+    fn text(p: *const c_char) -> String { String::from_utf8_lossy(unsafe { CStr::from_ptr(p) }.to_bytes()).into_owned() }
+
+    pub struct Zlib { uncompress: unsafe extern "C" fn(*mut u8, *mut c_ulong, *const u8, c_ulong) -> c_int,
+                      error: unsafe extern "C" fn(c_int) -> *const c_char }
+    impl Zlib {
+        /// zlib's `uncompress(dst, &n, src, src.len())`: the bytes it wrote, or `zError`'s text for its code
+        pub fn uncompress(&self, dst: &mut [u8], src: &[u8]) -> Result<usize, String> {
+            let mut n = dst.len() as c_ulong;
+            let r = unsafe { (self.uncompress)(dst.as_mut_ptr(), &mut n, src.as_ptr(), src.len() as c_ulong) };
+            if r != 0 { return Err(text(unsafe { (self.error)(r) })) }
+            Ok(n as usize)
+        }
+    }
+    pub struct Snappy { uncompress: unsafe extern "C" fn(*const u8, usize, *mut u8, *mut usize) -> c_int }
+    impl Snappy {
+        /// `snappy_uncompress(src, src.len(), dst, &n)` with `n` the room of `dst`: the bytes it wrote
+        pub fn uncompress(&self, dst: &mut [u8], src: &[u8]) -> Result<usize, String> {
+            let mut n = dst.len();
+            match unsafe { (self.uncompress)(src.as_ptr(), src.len(), dst.as_mut_ptr(), &mut n) } {
+                0 => Ok(n),
+                1 => Err("invalid input".into()),
+                _ => Err("buffer too small".into()),
+            }
+        }
+    }
+    pub struct Lz4 { decompress_safe: unsafe extern "C" fn(*const u8, *mut u8, c_int, c_int) -> c_int }
+    impl Lz4 {
+        /// `LZ4_decompress_safe(src, dst, src.len(), dst.len())`, lengths as C `int`s as zip.c passed them
+        pub fn uncompress(&self, dst: &mut [u8], src: &[u8]) -> Result<usize, String> {
+            let r = unsafe { (self.decompress_safe)(src.as_ptr(), dst.as_mut_ptr(), src.len() as c_int, dst.len() as c_int) };
+            if r < 0 { Err("malformed input".into()) } else { Ok(r as usize) }
+        }
+    }
+    pub struct Zstd { decompress: unsafe extern "C" fn(*mut u8, usize, *const u8, usize) -> usize,
+                      is_error: unsafe extern "C" fn(usize) -> u32, error_name: unsafe extern "C" fn(usize) -> *const c_char }
+    impl Zstd {
+        /// `ZSTD_decompress(dst, dst.len(), src, src.len())`: the bytes it wrote, or `ZSTD_getErrorName`'s text
+        pub fn uncompress(&self, dst: &mut [u8], src: &[u8]) -> Result<usize, String> {
+            let r = unsafe { (self.decompress)(dst.as_mut_ptr(), dst.len(), src.as_ptr(), src.len()) };
+            if unsafe { (self.is_error)(r) } != 0 { return Err(text(unsafe { (self.error_name)(r) })) }
+            Ok(r)
+        }
+    }
+
+    static ZLIB: AtomicPtr<Zlib> = AtomicPtr::new(core::ptr::null_mut());
+    static SNAPPY: AtomicPtr<Snappy> = AtomicPtr::new(core::ptr::null_mut());
+    static LZ4: AtomicPtr<Lz4> = AtomicPtr::new(core::ptr::null_mut());
+    static ZSTD: AtomicPtr<Zstd> = AtomicPtr::new(core::ptr::null_mut());
+    pub fn zlib() -> Result<&'static Zlib, Missing> {
+        once(&ZLIB, || {
+            let l = open("libz.so.1", c"zError")?;
+            let error = fnptr(&l, "libz.so.1", c"zError")?;
+            Ok(Zlib { error, uncompress: fnptr(&l, "libz.so.1", c"uncompress")? })
+        })
+    }
+    pub fn snappy() -> Result<&'static Snappy, Missing> {
+        once(&SNAPPY, || { let l = open("libsnappy.so.1", c"snappy_uncompress")?;
+                           Ok(Snappy { uncompress: fnptr(&l, "libsnappy.so.1", c"snappy_uncompress")? }) })
+    }
+    pub fn lz4() -> Result<&'static Lz4, Missing> {
+        once(&LZ4, || { let l = open("liblz4.so.1", c"LZ4_decompress_safe")?;
+                        Ok(Lz4 { decompress_safe: fnptr(&l, "liblz4.so.1", c"LZ4_decompress_safe")? }) })
+    }
+    pub fn zstd() -> Result<&'static Zstd, Missing> {
+        once(&ZSTD, || {
+            let l = open("libzstd.so.1", c"ZSTD_isError")?;
+            let is_error = fnptr(&l, "libzstd.so.1", c"ZSTD_isError")?;
+            let error_name = fnptr(&l, "libzstd.so.1", c"ZSTD_getErrorName")?;
+            Ok(Zstd { is_error, error_name, decompress: fnptr(&l, "libzstd.so.1", c"ZSTD_decompress")? })
+        })
+    }
+}
+pub use codecs::{lz4, snappy, zlib, zstd, Lz4, Snappy, Zlib, Zstd};
+
 /// A `core::fmt` sink on a stack buffer: `n` bytes, then `Err` (so a too-long value is an error, never a truncation)
 pub struct Buf<const N: usize> { b: [u8; N], n: usize }
 impl<const N: usize> Buf<N> {
