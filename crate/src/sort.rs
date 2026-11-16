@@ -674,6 +674,14 @@ mod tests_a22 {
     }
 }
 
+/// `f::<W>(args)` for the run-time width `w`, so `id_at`'s match folds as the C's `IDS_WIDTHS` does.
+macro_rules! by_width {
+    ($w:expr, $f:ident($($a:expr),*)) => { match $w {
+        0 => $f::<0>($($a),*), 1 => $f::<1>($($a),*), 2 => $f::<2>($($a),*), 4 => $f::<4>($($a),*),
+        8 => $f::<8>($($a),*), 16 => $f::<16>($($a),*), 32 => $f::<32>($($a),*), _ => $f::<64>($($a),*),
+    } };
+}
+
 // ---- A23: sort.c:1631, 2293-2400, 3386 ----
 /// sort.c:1631 `group_bound`: `group`'s scratch numbers groups and counts buckets in `u32`, so a column past that many
 /// rows cannot be cut this way; the row count is the one bound, and the message names it instead of an allocation failing.
@@ -715,41 +723,56 @@ pub fn pair_ids(run: Runner, x: &mut [u64], y: &mut [u64], mnx: u64, sx: u64, mn
     }
     // the combined key goes back into `x`, which C owns and frees; `sy + 1` wraps to 0 only where `sy` is the whole
     // range, and `pair_fits` then has `sx` at 0
-    for (a, &b) in x.iter_mut().zip(y.iter()) { *a = a.wrapping_sub(mnx).wrapping_mul(sy.wrapping_add(1)).wrapping_add(b.wrapping_sub(mny)) }
-    let (lo, hi) = keys_range(x);
+    // the range taken in the same pass, as sort.c does: `keys_range` after it was a second read of `x`
+    let (mut lo, mut hi) = (u64::MAX, 0u64);
+    for (a, &b) in x.iter_mut().zip(y.iter()) {
+        let c = a.wrapping_sub(mnx).wrapping_mul(sy.wrapping_add(1)).wrapping_add(b.wrapping_sub(mny));
+        (*a, lo, hi) = (c, lo.min(c), hi.max(c));
+    }
     crate::group::group_ids(run, crate::key::SK_KEY, crate::pod::bytes_mut(x), m, lo, hi, gid, first)
         .expect("qlean: pair_ids: group_ids refused SK_KEY keys")
 }
 /// sort.c:2366 `ids_keys`: `m` ids at `w` bits as keys; answers `(min, max)`.
 /// Below a byte the range is the lane's own, `0 .. 2^w - 1`: `pair_ids` needs only a bound there.
 pub fn ids_keys(v: &[u8], w: u32, m: usize, k: &mut [u64]) -> (u64, u64) {
-    for (i, e) in k[..m].iter_mut().enumerate() { *e = crate::ids::id_at(v, w, i) as u64 }
     if m == 0 { return (0, 0) }
-    if w < 8 { return (0, (1u64 << w) - 1) }
-    (k[..m].iter().copied().min().unwrap(), k[..m].iter().copied().max().unwrap())
+    by_width!(w, keys_at(v, &mut k[..m]))
+}
+// `ids_keys` at the constant width `W`; from a byte up the range is taken in the unpacking pass, as sort.c's `KEY_PUT`.
+fn keys_at<const W: u32>(v: &[u8], k: &mut [u64]) -> (u64, u64) {
+    let m = k.len();
+    if W < 8 {
+        crate::ids::each::<W>(v, m, |i, x| k[i] = x as u64);
+        return (0, (1u64 << W) - 1)
+    }
+    let (mut lo, mut hi) = (u64::MAX, 0u64);
+    crate::ids::each::<W>(v, m, |i, x| { k[i] = x as u64; (lo, hi) = (lo.min(x as u64), hi.max(x as u64)) });
+    (lo, hi)
 }
 /// sort.c:3386 `pair_ids_narrow` past the allocation: as `pair_ids` for two id payloads that fit a byte together
 /// (`wa + wb <= 8`): the code `a << wb | b` at its own lane `id_width(2^(wa+wb))`, numbered by `ids::firsts`, and the
 /// ids written by `ids::map` at exactly `id_width(ng)` bits (`ids_bytes(m, id_width(ng))` bytes of `gid`, packed).
 pub fn pair_ids_narrow(run: Runner, wa: u32, wb: u32, m: usize, pa: &[u8], pb: &[u8], gid: &mut [u8], first: &mut [usize])
     -> usize {
-    use crate::ids::{firsts, id_at, id_put, id_width, ids_bytes, map};
+    use crate::ids::{firsts, id_at, id_width, ids_bytes, map, pack};
+    // both lanes constant, as sort.c's nested `IDS_WIDTHS`, and the code packed a word at a time (`IDS_PACK`)
+    fn code<const WA: u32, const WB: u32>(c: &mut [u8], wc: u32, m: usize, pa: &[u8], pb: &[u8]) {
+        pack(c, wc, m, |i| (id_at(pa, WA, i) << WB | id_at(pb, WB, i)) as u64)
+    }
+    fn code_a<const WA: u32>(wb: u32, c: &mut [u8], wc: u32, m: usize, pa: &[u8], pb: &[u8]) {
+        match wb { 0 => code::<WA, 0>(c, wc, m, pa, pb), 1 => code::<WA, 1>(c, wc, m, pa, pb), 2 => code::<WA, 2>(c, wc, m, pa, pb),
+                   4 => code::<WA, 4>(c, wc, m, pa, pb), _ => code::<WA, 8>(c, wc, m, pa, pb) }
+    }
     let wc = id_width(1 << (wa + wb));
     let nd = 1usize << wc;
     let mut c = alloc::vec![0u8; ids_bytes(m, wc)];
-    for i in 0..m { id_put(&mut c, wc, i, (id_at(pa, wa, i) << wb | id_at(pb, wb, i)) as u64) }
+    match wa { 0 => code_a::<0>(wb, &mut c, wc, m, pa, pb), 1 => code_a::<1>(wb, &mut c, wc, m, pa, pb),
+               2 => code_a::<2>(wb, &mut c, wc, m, pa, pb), 4 => code_a::<4>(wb, &mut c, wc, m, pa, pb),
+               _ => code_a::<8>(wb, &mut c, wc, m, pa, pb) }
     let mut slot = alloc::vec![usize::MAX; nd + 1];
     let ng = firsts(&c, m, wc, nd, &mut slot, first);
     map(run, &c, m, wc, nd, &slot, id_width(ng), gid);
     ng
-}
-
-/// `f::<W>(args)` for the run-time width `w`, so `id_at`'s match folds as the C's `IDS_WIDTHS` does.
-macro_rules! by_width {
-    ($w:expr, $f:ident($($a:expr),*)) => { match $w {
-        0 => $f::<0>($($a),*), 1 => $f::<1>($($a),*), 2 => $f::<2>($($a),*), 4 => $f::<4>($($a),*),
-        8 => $f::<8>($($a),*), 16 => $f::<16>($($a),*), 32 => $f::<32>($($a),*), _ => $f::<64>($($a),*),
-    } };
 }
 
 // ---- A24: sort.c:2475-2550 ----
@@ -806,20 +829,24 @@ pub fn rank_slices(w: usize, v: &[u8], o: &[i64], out: &mut [i64]) {
     }
 }
 fn sizes<const W: u32>(ng: usize, n: usize, ids: &[u8], out: &mut [i64]) {
+    let out = &mut out[..ng];
     out.fill(0);
-    for i in 0..n { let v = crate::ids::id_at(ids, W, i); if v < ng { out[v] += 1 } }
+    // `out` is `ng` long, so `get_mut` is the `v < ng` test and the store's bounds test in one
+    crate::ids::each::<W>(ids, n, |_, v| if let Some(o) = out.get_mut(v) { *o += 1 });
 }
 /// sort.c `qlean_sort_group_sizes`: the size of each of `ng` groups of the ids `gid` (`n` at `w` bits), `n` already
 /// clamped to what `gid` holds.
 pub fn group_sizes(ng: usize, w: u32, n: usize, gid: &[u8], out: &mut [i64]) { by_width!(w, sizes(ng, n, gid, out)) }
 fn lasts<const W: u32>(ng: usize, n: usize, ids: &[u8], out: &mut [i64]) {
+    let out = &mut out[..ng];
     out.fill(0);
-    for i in 0..n { let v = crate::ids::id_at(ids, W, i); if v < ng { out[v] = i as i64 } }
+    crate::ids::each::<W>(ids, n, |i, v| if let Some(o) = out.get_mut(v) { *o = i as i64 });
 }
 /// sort.c `qlean_sort_group_lasts`: each group's last index, 0 for one no row names.
 pub fn group_lasts(ng: usize, w: u32, n: usize, gid: &[u8], out: &mut [i64]) { by_width!(w, lasts(ng, n, gid, out)) }
 fn longs<const W: u32>(n: usize, ids: &[u8], out: &mut [i64]) {
-    for (i, o) in out[..n].iter_mut().enumerate() { *o = crate::ids::id_at(ids, W, i) as i64 }
+    let out = &mut out[..n];
+    crate::ids::each::<W>(ids, n, |i, v| out[i] = v as i64);
 }
 /// sort.c `qlean_sort_id_longs`: the first `n` ids at `w` bits as longs.
 pub fn id_longs(n: usize, w: u32, ids: &[u8], out: &mut [i64]) { by_width!(w, longs(n, ids, out)) }

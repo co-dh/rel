@@ -32,6 +32,64 @@ pub fn id_at(p: &[u8], w: u32, i: usize) -> usize {
 #[inline(always)]
 fn le<const W: usize>(p: &[u8], i: usize) -> [u8; W] { p[i * W..(i + 1) * W].try_into().unwrap() }
 
+/// `IDS_UNPACK` (ids.h:144): `f(i, id)` for the first `n` ids at the constant width `W`. Below a byte one word holds
+/// `64 / W` ids at constant shifts, a whole-byte lane is a chunked load: no per-id bounds test or index shift, which
+/// `id_at` at a running index has.
+#[inline(always)]
+pub fn each<const W: u32>(p: &[u8], n: usize, mut f: impl FnMut(usize, usize)) {
+    let mut i = 0;
+    match W {
+        0 => (0..n).for_each(|i| f(i, 0)),
+        1 | 2 | 4 => {
+            let (per, m) = (64 / W as usize, (1u64 << W) - 1);
+            for x in p.chunks_exact(8).take(n / per) {
+                let x = u64::from_le_bytes(x.try_into().unwrap());
+                for t in 0..per { f(i + t, (x >> (t as u32 * W) & m) as usize) }
+                i += per;
+            }
+            (i..n).for_each(|i| f(i, id_at(p, W, i)));
+        }
+        _ => {
+            for c in p.chunks_exact(if W >= 8 { W as usize / 8 } else { 1 }).take(n) {
+                let v = match W { 8 => c[0] as usize, 16 => u16::from_le_bytes([c[0], c[1]]) as usize,
+                                  32 => u32::from_le_bytes([c[0], c[1], c[2], c[3]]) as usize,
+                                  _ => u64::from_le_bytes(c.try_into().unwrap()) as usize };
+                f(i, v);
+                i += 1;
+            }
+        }
+    }
+}
+
+/// `IDS_PACK` (ids.h:167): `n` fields `val(i)` into `out` at `w` bits, `w` matched once outside the loop. Below a
+/// byte eight output bytes are built in a register a word at a time, where `id_put`'s read-modify-write of a shared
+/// byte per field is a dependent chain through memory.
+#[inline(always)]
+pub fn pack(out: &mut [u8], w: u32, n: usize, val: impl Fn(usize) -> u64) {
+    #[inline(always)]
+    fn sub<const W: u32>(out: &mut [u8], n: usize, val: impl Fn(usize) -> u64) {
+        let (per, m) = (8 / W as usize, (1u64 << W) - 1);
+        let byte = |j: usize, cnt: usize| (0..cnt).fold(0u64, |b, t| b | (val(j * per + t) & m) << (t as u32 * W)) as u8;
+        let full = n / per;
+        for (j8, c) in out[..full / 8 * 8].chunks_exact_mut(8).enumerate() {
+            let mut x = 0u64;
+            for t in 0..64 / W as usize { x |= (val(j8 * (64 / W as usize) + t) & m) << (t as u32 * W) }
+            c.copy_from_slice(&x.to_le_bytes());
+        }
+        for j in full / 8 * 8..full { out[j] = byte(j, per) }
+        if n % per != 0 { out[full] = byte(full, n % per) }
+    }
+    #[inline(always)]
+    fn whole<const K: usize>(out: &mut [u8], n: usize, val: impl Fn(usize) -> u64) {
+        for (i, c) in out[..n * K].chunks_exact_mut(K).enumerate() { c.copy_from_slice(&val(i).to_le_bytes()[..K]) }
+    }
+    match w {
+        0 => {}
+        1 => sub::<1>(out, n, val), 2 => sub::<2>(out, n, val), 4 => sub::<4>(out, n, val),
+        8 => whole::<1>(out, n, val), 16 => whole::<2>(out, n, val), 32 => whole::<4>(out, n, val), _ => whole::<8>(out, n, val),
+    }
+}
+
 // The largest of whole bytes' fields at a constant narrow width: a const generic so the field loop unrolls.
 fn narrow_max<const W: u32>(p: &[u8]) -> u8 {
     p.iter().fold(0, |a, &b| (0..8 / W).map(|k| b >> (k * W) & ((1 << W) - 1)).fold(a, u8::max))
