@@ -936,6 +936,26 @@ pub unsafe extern "C" fn qrs_grade_keys(k: *const u64, n: usize, desc: c_int, mn
                                         out: *mut i64) {
     unsafe { sort::grade_keys(sl(k, n), desc != 0, mn, mx, sl_mut(out, n)) }
 }
+/// K12: sort.c `hist_find`: the bucket of the `nb` counts in `cnt` that rank `*r` falls in; `*r` becomes relative to it.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn qrs_hist_find(cnt: *const usize, nb: usize, r: *mut usize) -> usize {
+    let mut q = unsafe { r.read() };
+    let b = sort::hist_find(unsafe { sl(cnt, nb) }, &mut q);
+    unsafe { r.write(q) };
+    b
+}
+/// K12: sort.c `select_keys`: the keys at ranks `r1 <= r2 <= r1 + 1` of a `ksrc` into `*k1`, `*k2`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn qrs_select_keys(kind: u8, p: *const u8, c: *const CCoc, n: usize, r1: usize, r2: usize,
+                                         k1: *mut u64, k2: *mut u64) {
+    let (a, b) = sort::select_keys(&unsafe { ksrc(kind, p, c, n) }, r1, r2);
+    unsafe { k1.write(a); k2.write(b) }
+}
+/// K12: sort.c `xrank_src`: `floor(rank * t)` of each of the `n` keys of a `ksrc`, into `out` (`n` entries).
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn qrs_xrank_src(kind: u8, p: *const u8, c: *const CCoc, n: usize, t: f64, out: *mut i64) {
+    sort::xrank_src(&unsafe { ksrc(kind, p, c, n) }, t, unsafe { sl_mut(out, n) })
+}
 /// A20: sort.c `SK_COUNTABLE`: a counting table over `span + 1` buckets for `n` keys is affordable.
 #[unsafe(no_mangle)]
 pub extern "C" fn qrs_sk_countable(span: u64, n: usize) -> c_int { sort::sk_countable(span, n) as c_int }
