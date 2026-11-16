@@ -847,3 +847,138 @@ pub fn cvt_nearest(s: f64) -> i64 {
     // SAFETY: SSE2 is the x86_64 baseline and the intrinsic works on a register.
     unsafe { core::arch::x86_64::_mm_cvtsd_si64(core::arch::x86_64::_mm_set_sd(s)) }
 }
+
+/// `sqrt` of a double, the one libm name the window engine needs: `sqrtsd` is correctly rounded, as libm's is, and a
+/// negative argument answers a NaN either way. Kept here so `scan.rs` needs no libm symbol.
+#[inline(always)]
+pub fn sqrt64(x: f64) -> f64 {
+    #[cfg(target_arch = "x86_64")]
+    // SAFETY: sse2 is part of the x86_64 baseline; the intrinsics read no memory.
+    unsafe { use core::arch::x86_64::*; _mm_cvtsd_f64(_mm_sqrt_sd(_mm_set_sd(x), _mm_set_sd(x))) }
+}
+
+// ---- the moving-window extremes (scan.c `MW_EXT`) ----
+// The carried `ex = better(v, ex) ? v : ex` is a one-register chain. LLVM lowers a scalar select there to a cmov and its
+// cmov converter turns that into a branch, which mispredicts on random data; gcc keeps the chain in an xmm register as a
+// one-cycle `vpmin`, so the integral kinds do the same, and a float is a branch only because the running extreme is
+// rarely replaced at a wide window (`ucomis` then `ja`, as gcc's own loop), written as asm so LLVM cannot turn it back
+// into selects.
+
+/// The carried extreme of an integral kind lives in a vector register for the whole loop: lane 0 of an xmm under
+/// avx512vl, an `i64` without it. `reg`/`lane` move an element in and out; `$mn`/`$mx` are `a < b ? a : b` and
+/// `a > b ? a : b` as one `vpmin`/`vpmax` of `$w`, in asm because LLVM sees a vector min of one live lane, scalarises it
+/// to a cmov and turns that into a branch.
+#[cfg(all(target_arch = "x86_64", target_feature = "avx512vl"))]
+pub type VReg = core::arch::x86_64::__m128i;
+#[cfg(not(all(target_arch = "x86_64", target_feature = "avx512vl")))]
+pub type VReg = i64;
+macro_rules! lane_mm { ($t:ty, $n:literal, $to:ident, $from:ident, $reg:ident, $lane:ident, $mn:ident, $mx:ident, $vmn:literal, $vmx:literal,
+                     $stv:ident, $vst:expr) => {
+    /// The register stored as the element's bytes, one vector store and no GPR round trip. Asm at the widths LLVM would
+    /// otherwise store from a GPR copy of the loaded value or as a two-uop `vextractps`.
+    #[inline(always)]
+    pub fn $stv(x: VReg, d: &mut [u8; $n]) {
+        #[cfg(all(target_arch = "x86_64", target_feature = "avx512vl"))]
+        // SAFETY: `d` is `$n` writable bytes, the width the intrinsic writes.
+        unsafe { let f: unsafe fn(*mut u8, VReg) = $vst; f(d.as_mut_ptr(), x) }
+        #[cfg(not(all(target_arch = "x86_64", target_feature = "avx512vl")))]
+        { *d = (x as $t).to_ne_bytes() }
+    }
+    #[inline(always)]
+    pub fn $reg(a: $t) -> VReg {
+        #[cfg(all(target_arch = "x86_64", target_feature = "avx512vl"))]
+        // SAFETY: sse2 is the x86_64 baseline; the intrinsic works on a register.
+        return unsafe { core::arch::x86_64::$to(a as _) };
+        #[cfg(not(all(target_arch = "x86_64", target_feature = "avx512vl")))]
+        { a as i64 }
+    }
+    #[inline(always)]
+    pub fn $lane(x: VReg) -> $t {
+        #[cfg(all(target_arch = "x86_64", target_feature = "avx512vl"))]
+        // SAFETY: as above.
+        return unsafe { core::arch::x86_64::$from(x) as $t };
+        #[cfg(not(all(target_arch = "x86_64", target_feature = "avx512vl")))]
+        { x as $t }
+    }
+    #[inline(always)]
+    pub fn $mn(a: VReg, b: VReg) -> VReg {
+        #[cfg(all(target_arch = "x86_64", target_feature = "avx512vl"))]
+        // SAFETY: register-only asm on avx512vl, enabled by the cfg.
+        return unsafe { let o: VReg; core::arch::asm!(concat!($vmn, " {o}, {a}, {b}"), o = lateout(xmm_reg) o, a = in(xmm_reg) a, b = in(xmm_reg) b, options(pure, nomem, nostack, preserves_flags)); o };
+        #[cfg(not(all(target_arch = "x86_64", target_feature = "avx512vl")))]
+        { if a < b { a } else { b } }
+    }
+    #[inline(always)]
+    pub fn $mx(a: VReg, b: VReg) -> VReg {
+        #[cfg(all(target_arch = "x86_64", target_feature = "avx512vl"))]
+        // SAFETY: as above.
+        return unsafe { let o: VReg; core::arch::asm!(concat!($vmx, " {o}, {a}, {b}"), o = lateout(xmm_reg) o, a = in(xmm_reg) a, b = in(xmm_reg) b, options(pure, nomem, nostack, preserves_flags)); o };
+        #[cfg(not(all(target_arch = "x86_64", target_feature = "avx512vl")))]
+        { if a > b { a } else { b } }
+    }
+} }
+lane_mm!(u8, 1, _mm_cvtsi32_si128, _mm_cvtsi128_si32, reg_u8, lane_u8, min_u8, max_u8, "vpminub", "vpmaxub", st_u8,
+         |p, x| *p = core::arch::x86_64::_mm_cvtsi128_si32(x) as u8);
+lane_mm!(i16, 2, _mm_cvtsi32_si128, _mm_cvtsi128_si32, reg_i16, lane_i16, min_i16, max_i16, "vpminsw", "vpmaxsw", st_i16,
+         |p, x| core::arch::x86_64::_mm_storeu_si16(p, x));
+lane_mm!(i32, 4, _mm_cvtsi32_si128, _mm_cvtsi128_si32, reg_i32, lane_i32, min_i32, max_i32, "vpminsd", "vpmaxsd", st_i32,
+         |p, x| core::arch::asm!("vmovd dword ptr [{p}], {x}", p = in(reg) p, x = in(xmm_reg) x, options(nostack, preserves_flags)));
+lane_mm!(i64, 8, _mm_cvtsi64_si128, _mm_cvtsi128_si64, reg_i64, lane_i64, min_i64, max_i64, "vpminsq", "vpmaxsq", st_i64,
+         |p, x| core::arch::asm!("vmovq qword ptr [{p}], {x}", p = in(reg) p, x = in(xmm_reg) x, options(nostack, preserves_flags)));
+
+/// `MW_LT_F(v, ex) ? v : ex` (`MIN`) or `MW_GT_F(v, ex) ? v : ex` at a float, q's `&` and `|`: the null replaces the
+/// running extreme for `&` and is ignored by `|`. Two compares and a branch on the rare replace path.
+macro_rules! br_sel { ($t:ty, $mn:ident, $mx:ident, $ucomi:literal) => {
+    #[inline(always)]
+    pub fn $mn(v: $t, mut ex: $t) -> $t {
+        #[cfg(target_arch = "x86_64")]
+        // SAFETY: register-only asm; the labels are local to the block, which writes `ex` and the flags.
+        unsafe { core::arch::asm!(
+            concat!($ucomi, " {ex}, {v}"), "ja 2f", "jnp 3f", concat!($ucomi, " {v}, {v}"), "jnp 3f",
+            "2:", "vmovaps {ex}, {v}", "3:",
+            ex = inout(xmm_reg) ex, v = in(xmm_reg) v, options(pure, nomem, nostack)) }
+        ex
+    }
+    #[inline(always)]
+    pub fn $mx(v: $t, mut ex: $t) -> $t {
+        #[cfg(target_arch = "x86_64")]
+        // SAFETY: as above.
+        unsafe { core::arch::asm!(
+            concat!($ucomi, " {v}, {ex}"), "ja 2f", "jnp 3f", concat!($ucomi, " {ex}, {ex}"), "jnp 3f",
+            "2:", "vmovaps {ex}, {v}", "3:",
+            ex = inout(xmm_reg) ex, v = in(xmm_reg) v, options(pure, nomem, nostack)) }
+        ex
+    }
+} }
+br_sel!(f64, min_f64, max_f64, "vucomisd");
+br_sel!(f32, min_f32, max_f32, "vucomiss");
+
+/// The mean verbs' read of one element: `(live ? x : 0.0, live as i64)` with `live = x == x`, as gcc's loop is, a branch
+/// on the null that a column without nulls predicts perfectly. LLVM lowers the same select to `setnp`, a mask move and
+/// a zeroing, six more instructions an element on a chain that is otherwise two.
+#[inline(always)]
+pub fn fill_nan(mut x: f64) -> (f64, i64) {
+    let l: i64;
+    #[cfg(target_arch = "x86_64")]
+    // SAFETY: register-only asm; the label is local to the block, which writes `x`, `l` and the flags.
+    unsafe { core::arch::asm!("mov {l:e}, 1", "vucomisd {x}, {x}", "jnp 2f", "vxorps {x}, {x}, {x}", "xor {l:e}, {l:e}", "2:",
+        x = inout(xmm_reg) x, l = out(reg) l, options(pure, nomem, nostack)) }
+    #[cfg(not(target_arch = "x86_64"))]
+    { l = (x == x) as i64; x = if x == x { x } else { 0.0 }; }
+    (x, l)
+}
+
+/// The same for an integral kind: `(live ? v as f64 : 0.0, live as i64)` with `live = v != nul`, the branch on the null
+/// gcc's loop has (`nul` is the sign-extended null of the kind, a value no element holds where it has none).
+#[inline(always)]
+pub fn fill_int(v: i64, nul: i64) -> (f64, i64) {
+    let (x, l): (f64, i64);
+    #[cfg(target_arch = "x86_64")]
+    // SAFETY: register-only asm; the label is local to the block, which writes `x`, `l` and the flags.
+    unsafe { core::arch::asm!("vxorps {x}, {x}, {x}", "vcvtsi2sd {x}, {x}, {v}", "mov {l:e}, 1", "cmp {v}, {n}", "jne 2f",
+        "vxorps {x}, {x}, {x}", "xor {l:e}, {l:e}", "2:",
+        x = out(xmm_reg) x, l = out(reg) l, v = in(reg) v, n = in(reg) nul, options(pure, nomem, nostack)) }
+    #[cfg(not(target_arch = "x86_64"))]
+    { l = (v != nul) as i64; x = if v != nul { v as f64 } else { 0.0 }; }
+    (x, l)
+}
