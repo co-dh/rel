@@ -444,6 +444,21 @@ mod tests {
         res_cmp2(&[i64::MIN, 1, 2], &[i64::MIN, 1, 5], EQ, &mut out);
         assert_eq!(out[0], 0b011);
     }
+    // expected values: the C of e16b3fd (/data/tmp/qrs/K26/diff.c: 720000 vv/scale checks, shifts at i64's ends included, 0 mismatches)
+    #[test] fn vv_scale_refusals_and_shift_bounds() {
+        let cm = |base: &[i64], maxv: &[i64]| Coc { meta: Meta { base: &base.to_vec().leak()[..], maxv: &maxv.to_vec().leak()[..], off: &[0; 2],
+            bsum: &[0; 2], width: &[0; 2], sumnul: i64::MIN, sumn: 2048, n: 2048, nblk: 2, mblk: 2 }, pack: &[], exc: None, fdelta: None };
+        let (a, b) = (cm(&[i64::MAX - 1, 0], &[i64::MAX, 0]), cm(&[2, 2], &[8, 8]));
+        assert_eq!((a.vv_ok(&b, 0, 0, 0), a.vv_ok(&b, 1, 0, 0), a.vv_ok(&b, 2, 0, 0)), (false, true, false));
+        assert_eq!((b.shift_bounds(0, 1024, 0, 0), b.shift_bounds(0, 1024, 1, 7)), ((2, 8), (2, 8)));
+        assert_eq!(b.shift_bounds(1024, 1024, 2048, 100), (100, 100)); // runs off the front: the fill alone
+        assert_eq!(b.shift_bounds(0, 1024, 5000, i64::MIN), (i64::MAX, i64::MIN)); // off the end with a null fill: bounds nothing
+        assert_eq!(b.shift_bounds(0, 1024, i64::MIN, 3), (3, 3)); // `lo - s` wraps, as C's does
+        assert!(b.vv_ok(&b, 2, 0, 0) && !b.vv_ok(&cm(&[i64::MIN, 0], &[3, 3]), 0, 0, 0)); // a pre-writer null on either side
+        let s = cm(&[1, 5], &[9, 9]);
+        assert_eq!((s.scale_ok(0), s.scale_ok(i64::MAX / 9), s.scale_ok(i64::MAX / 9 + 1), s.scale_ok(i64::MIN)), (true, true, false, false));
+        assert_eq!((cm(&[i64::MIN, 0], &[i64::MIN, 3]).scale_ok(7), cm(&[i64::MIN, 0], &[3, 3]).scale_ok(7)), (true, false));
+    }
     // expected values: the C of 336b87b (/data/tmp/qrs/A6b/gen.c: 3000 columns, 63000 comparisons, 0 mismatches)
     #[test] fn shift_refusals_paths_and_sums() {
         let cm = |base: &[i64], maxv: &[i64]| Coc { meta: Meta { base: &base.to_vec().leak()[..], maxv: &maxv.to_vec().leak()[..], off: &[0; 2],

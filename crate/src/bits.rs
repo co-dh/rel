@@ -24,7 +24,7 @@ mod tests {
     use super::popcount;
     #[test] fn popcount_ignores_bits_past_nbits() {
         let p = [0xffu8; 17];
-        for n in 0..=136 { assert_eq!(popcount(&p[..n.div_ceil(8)], n), n, "n {n}") }
+        for n in 0..=136usize { assert_eq!(popcount(&p[..n.div_ceil(8)], n), n, "n {n}") }
         assert_eq!(popcount(&[], 0), 0);
         assert_eq!(popcount(&[0b1010_1010, 0xff], 12), 4 + 4);
     }

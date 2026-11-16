@@ -271,4 +271,34 @@ mod tests {
         let mut m = good(); m[32] = 40;
         assert_eq!(err(&m), "part 0 at byte 24: 40 bytes from byte 72, the file is 96 bytes");
     }
+
+    // expected values: the C of e16b3fd (/data/tmp/qrs/K26/diff.c: 40000 parts of every kind, mutated headers, 0 mismatches)
+    fn say(kind: u8, n: u64, p: [&[u8]; OWN_MAXPARTS]) -> (bool, alloc::string::String) {
+        let mut buf = [0u8; 320];
+        let ok = check(kind, n, p, &mut Why::new(&mut buf));
+        let z = buf.iter().position(|&b| b == 0).unwrap();
+        (ok, alloc::string::String::from_utf8(buf[..z].to_vec()).unwrap())
+    }
+    #[test] fn check_bitmap_and_symbols() {
+        let e: &[u8] = &[];
+        assert_eq!(say(1, 9, [&[0; 2], e, e]), (true, "".into()));
+        assert_eq!(say(1, 9, [&[0; 3], e, e]), (false, "part 0 (bitmap): 9 booleans need exactly 2 bytes, found 3".into()));
+        assert_eq!(say(1, u64::MAX, [e, e, e]).1, "part 0 (bitmap): 18446744073709551615 booleans need exactly 0 bytes, found 0");
+        // 3 symbols need 2-bit ids, so 5 ids are 2 bytes; the last symbol must end in its NUL
+        assert_eq!(say(4, 5, [b"a\0b\0c\0", &[0; 2], e]), (true, "".into()));
+        assert_eq!(say(4, 5, [b"a\0b\0c", &[0; 2], e]), (false, "part 0: a NUL ending the last dictionary symbol at byte 4".into()));
+        assert_eq!(say(4, 5, [b"a\0b\0c\0", &[0; 3], e]).1, "part 1 (ids of the symbol column): 5 ids of 2 bits need exactly 2 bytes, found 3");
+        // id 3 is past the 3 symbols (2-bit ids are not all valid)
+        assert_eq!(say(4, 2, [b"a\0b\0c\0", &[0b1100], e]).1, "part 1 id 1: an index into the 3 dictionary symbols, found 3");
+    }
+    #[test] fn check_frame_of_reference_metadata() {
+        let e: &[u8] = &[];
+        assert_eq!(say(2, 0, [&[0; 20], e, e]).1, "part 0: Frame of Reference metadata of 33 bytes a block and a 16-byte trailer, found 20 bytes");
+        assert_eq!(say(2, 2000, [&[0; 49], e, e]).1, "part 0: blocks for 2000 elements, found 1 blocks of 1024");
+        let mut m = [0u8; 49];
+        m[48] = 65; // block 0's width, past 64 bits
+        assert_eq!(say(2, 10, [&m, &[0; 8], e]).1, "part 0 block 0: a residual width of 0..64 bits, found 65");
+        m[48] = 8; // 1024 residual bytes in an 8-byte pack
+        assert_eq!(say(2, 10, [&m, &[0; 8], e]).1, "part 1 block 0: 1024 residual bytes at a pack offset that is a multiple of 8, found offset 0 in a pack of 8 bytes");
+    }
 }
