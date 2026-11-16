@@ -881,6 +881,20 @@ pub unsafe extern "C" fn qrs_scan(kind: c_int, h: *const u8, n: usize, x: *const
     let (h, x) = unsafe { (opnd(h, null_mut(), n, 0, 0, kd.width()), opnd(x, null_mut(), m, 0, 0, kd.width())) };
     search::scan_kind(kd, &h, &x, unsafe { sl_mut(out, m) })
 }
+/// A30: search.c `search`: `x ? h` (`member` 0, `8 * xn` bytes of `Int64`s) or `x in h` (`member` 1, `ceil(xn / 8)` bytes,
+/// bit `i` for needle `i`) into `out`, the whole job on `run` (C's `qlean_run_c`) with no further call back into C.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn qrs_search(run: unsafe extern "C" fn(), kind: c_int, hd: *const u8, hc: *const CCoc, hn: usize, henc: c_int,
+                                    hlw: u32, xd: *const u8, xc: *const CCoc, xn: usize, xenc: c_int, xlw: u32, member: c_int,
+                                    out: *mut u8) {
+    let kd = search::KINDS[kind as usize];
+    let (h, x) = unsafe { (opnd(hd, hc, hn, henc, hlw, kd.width()), opnd(xd, xc, xn, xenc, xlw, kd.width())) };
+    let bytes = if member != 0 { xn.div_ceil(8) } else { xn * 8 };
+    search::search(unsafe { rn(run) }, kd, &h, &x, member != 0, unsafe { sl_mut(out, bytes) })
+}
+/// A30: search.c `ids_key_width`: bytes an id key takes where one side is at `a` bits and the other at `b`.
+#[unsafe(no_mangle)]
+pub extern "C" fn qrs_ids_key_width(a: usize, b: usize) -> usize { search::ids_key_width(a, b) }
 /// A28: search.c `kind_of`: the `kind` enum's number; `who` names the caller in the abort text.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn qrs_kind_of(w: usize, is_float: u8, who: *const c_char) -> c_int {
