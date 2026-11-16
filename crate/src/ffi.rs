@@ -1299,6 +1299,47 @@ pub unsafe extern "C" fn qrs_reverse_enc(run: unsafe extern "C" fn(), c: *const 
     // be longer (a patch list) or shorter
     unsafe { let v = (*c).view(); structural::reverse_enc(rn(run), &v, sl_mut(pack, v.meta.width.iter().map(|&w| BLK * w as usize / 8).sum())) }
 }
+/// A34: structural.c `reverse_foR_move`'s metadata into `out` (`msz` = `33 * c.mblk + 16` bytes); answers the pack's length.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn qrs_reverse_meta(c: *const CCoc, out: *mut u8, msz: usize) -> usize {
+    unsafe { structural::reverse_meta(&(*c).view(), sl_mut(out, msz)) }
+}
+/// A34: structural.c `concat_foR_move`: `p` holds the `k` metadata pointers then the `k` pack pointers, `sz` their sizes;
+/// `mo`/`po` are the answer's `mosz`/`posz` bytes.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn qrs_concat_move(p: *const *const u8, sz: *const usize, k: usize, n: usize, w: usize,
+                                         mo: *mut u8, mosz: usize, po: *mut u8, posz: usize) {
+    unsafe {
+        let (p, sz) = (sl(p, 2 * k), sl(sz, 2 * k));
+        let v = |r: core::ops::Range<usize>| -> alloc::vec::Vec<&[u8]> { r.map(|i| sl(p[i], sz[i])).collect() };
+        structural::concat_move(&v(0..k), &v(k..2 * k), n, w, sl_mut(mo, mosz), sl_mut(po, posz))
+    }
+}
+/// A34: structural.c `concat_foR`'s test over the `k` parts (`ns` their counts); a part that is not ALP holds only its `c`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn qrs_cat_aligned(part: *const CCocf, k: usize, ns: *const u64, w: usize) -> c_int {
+    unsafe { structural::cat_aligned(k, sl(ns, k), w, |i| (*part.add(i)).c.view()) as c_int }
+}
+/// A34: structural.c `copy_bits`: bits `[from, from + len)` of `b` (`size` bytes) or-ed into `out` (`bytes`) at bit `at`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn qrs_copy_bits(out: *mut u8, bytes: usize, at: usize, b: *const u8, size: usize, from: usize, len: usize) {
+    unsafe { structural::copy_bits(sl_mut(out, bytes), at, sl(b, size), from, len) }
+}
+/// A39: structural.c `qlean_structural_cycle_bits`: `out` is the zeroed `bytes = (m + 7) / 8` bytes.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn qrs_cycle_bits(n: usize, off: usize, m: usize, b: *const u8, size: usize, out: *mut u8, bytes: usize) {
+    unsafe { structural::cycle_bits(n, off, m, sl(b, size), sl_mut(out, bytes)) }
+}
+/// A39: structural.c `qlean_structural_reverse_bits`: `out` is the zeroed `bytes = (n + 7) / 8` bytes.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn qrs_reverse_bits(n: usize, b: *const u8, size: usize, out: *mut u8, bytes: usize) {
+    unsafe { structural::reverse_bits(n, sl(b, size), sl_mut(out, bytes)) }
+}
+/// A39: structural.c `qlean_structural_shift_bits`: `out` is the zeroed `bytes = (n + 7) / 8` bytes.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn qrs_shift_bits(n: usize, fill: u64, k: i64, b: *const u8, size: usize, out: *mut u8, bytes: usize) {
+    unsafe { structural::shift_bits(n, fill, k, sl(b, size), sl_mut(out, bytes)) }
+}
 /// A35: structural.c `unpack_run`: elements `lo .. lo + cnt` of block `s` (reversed when `rev`) into `dst`.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn qrs_unpack_run(dst: *mut i64, c: *const CCoc, s: usize, lo: usize, cnt: usize, rev: c_int) {
