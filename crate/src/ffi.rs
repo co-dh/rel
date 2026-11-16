@@ -131,27 +131,6 @@ pub unsafe extern "C" fn qrs_keys_of(kind: u8, p: *const u8, n: usize, k: *mut u
     1
 }
 
-/// `ksrc_blk`: block `b` of `n` keys of a `ksrc` (`c` an encoded column, else `p` a dense payload of `kind`) into `k`,
-/// `BLK` long. Answers the block's key count.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn qrs_ksrc_blk(kind: u8, p: *const u8, c: *const CCoc, n: usize, b: usize, k: *mut u64) -> usize {
-    let s = unsafe { ksrc(kind, p, c, n) };
-    s.blk(b, unsafe { sl_mut(k, BLK) })
-}
-
-/// `ksrc_range`: the key range of a `ksrc`, `u64::MAX, 0` for none.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn qrs_ksrc_range(kind: u8, p: *const u8, c: *const CCoc, n: usize, mn: *mut u64, mx: *mut u64) {
-    let (a, b) = unsafe { ksrc(kind, p, c, n) }.range();
-    unsafe { mn.write(a); mx.write(b) }
-}
-
-/// Safety: `c` is null or a live `coc`; else `p` is null or valid for `key::bytes(kind, n)` reads.
-unsafe fn ksrc<'a>(kind: u8, p: *const u8, c: *const CCoc, n: usize) -> sort::Ksrc<'a> {
-    let c = if c.is_null() { None } else { Some(unsafe { (*c).view() }) };
-    sort::Ksrc { kind, p: unsafe { sl(p, if c.is_some() { 0 } else { key::bytes(kind, n).unwrap_or(0) }) }, c, n }
-}
-
 /// `ids_run` over `dedup`'s tables: `dtab` (`slots` entries) when not null, else `htab` (`cap` entries) and `gkey`
 /// (`ng` entries). `gid` is `n * lane / 8` bytes.  `run` is the pool (`qrs_pool_run`), passed as a `void (*)(void)` and called as `c::Runner`. 1 = written, 0 = refused (a kind outside the enum, `SK_WIN`, a short payload or `gid`, a lane not 8, 16, 32 or 64).
 #[unsafe(no_mangle)]
@@ -778,80 +757,6 @@ pub unsafe extern "C" fn qrs_alp_meta_exp_f32(c: *mut CCoc, exp: *mut i8, b: usi
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn qrs_alp_meta_exp_f64(c: *mut CCoc, exp: *mut i8, b: usize, x: *const f64, nb: usize, be: c_int) -> u32 {
     unsafe { alp_meta(c, exp, b, |m| crate::alp::alp_meta_exp(m, sl(x, nb), nb, be)) }
-}
-/// A20: sort.c `grade_keys`.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn qrs_grade_keys(k: *const u64, n: usize, desc: c_int, mn: u64, mx: u64,
-                                        out: *mut i64) {
-    unsafe { sort::grade_keys(sl(k, n), desc != 0, mn, mx, sl_mut(out, n)) }
-}
-/// K13: sort.c `sort_values`: the `m` elements of `kind` in `p` (`bytes` long) sorted into `out` (`m` elements of the kind's
-/// write width); `m` already clamped to what `p` holds.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn qrs_sort_values(kind: u8, desc: c_int, m: usize, p: *const u8, bytes: usize, out: *mut u8) {
-    let w = if kind == key::SK_BIT { 1 } else { key::bytes(kind, 1).unwrap_or(0) };
-    unsafe { sort::sort_values(kind, desc != 0, m, sl(p, bytes), sl_mut(out, m * w)) }
-}
-/// K12: sort.c `hist_find`: the bucket of the `nb` counts in `cnt` that rank `*r` falls in; `*r` becomes relative to it.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn qrs_hist_find(cnt: *const usize, nb: usize, r: *mut usize) -> usize {
-    let mut q = unsafe { r.read() };
-    let b = sort::hist_find(unsafe { sl(cnt, nb) }, &mut q);
-    unsafe { r.write(q) };
-    b
-}
-/// K12: sort.c `select_keys`: the keys at ranks `r1 <= r2 <= r1 + 1` of a `ksrc` into `*k1`, `*k2`.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn qrs_select_keys(kind: u8, p: *const u8, c: *const CCoc, n: usize, r1: usize, r2: usize,
-                                         k1: *mut u64, k2: *mut u64) {
-    let (a, b) = sort::select_keys(&unsafe { ksrc(kind, p, c, n) }, r1, r2);
-    unsafe { k1.write(a); k2.write(b) }
-}
-/// K12: sort.c `xrank_src`: `floor(rank * t)` of each of the `n` keys of a `ksrc`, into `out` (`n` entries).
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn qrs_xrank_src(kind: u8, p: *const u8, c: *const CCoc, n: usize, t: f64, out: *mut i64) {
-    sort::xrank_src(&unsafe { ksrc(kind, p, c, n) }, t, unsafe { sl_mut(out, n) })
-}
-/// A21: sort.c `hist_narrow`: the counts of the `n` keys of a one-byte (`SK_U8`) or two-byte (`SK_I16`) payload into
-/// `out`, which holds `SK_NARROW_NB(kind)` of them (256 or 65536).
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn qrs_hist_narrow(run: unsafe extern "C" fn(), kind: u8, p: *const u8, bytes: usize, n: usize,
-                                         out: *mut usize) {
-    let h = unsafe { sort::hist_narrow(rn(run), kind, sl(p, bytes), n) };
-    unsafe { sl_mut(out, h.len()) }.copy_from_slice(&h)
-}
-/// A22: sort.c `order`.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn qrs_order(run: unsafe extern "C" fn(), kind: u8, desc: c_int, rank: c_int, p: *const u8,
-                                   bytes: usize, n: usize, out: *mut i64) {
-    unsafe { sort::order(rn(run), kind, desc != 0, rank != 0, sl(p, bytes), n, sl_mut(out, n)) }
-}
-/// A22: sort.c `order_foR`.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn qrs_order_enc(run: unsafe extern "C" fn(), kind: u8, desc: c_int, rank: c_int, c: *const CCoc,
-                                       out: *mut i64) {
-    unsafe { sort::order_enc(rn(run), kind, desc != 0, rank != 0, &(*c).view(), sl_mut(out, (*c).n)) }
-}
-/// A22: sort.c `qlean_sort_ascending`: 1 = ordered, 0 = not. `bytes` is the payload's size, `n` the Lean count.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn qrs_ascending(kind: u8, desc: c_int, strict: c_int, p: *const u8, bytes: usize, n: usize) -> c_int {
-    unsafe { sort::ascending(kind, desc != 0, strict != 0, sl(p, bytes), n) as c_int }
-}
-/// A22: sort.c `qlean_sort_ascending_foR`; `kind` is one of `SK_I16`, `SK_I32`, `SK_I64`.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn qrs_ascending_enc(run: unsafe extern "C" fn(), kind: u8, desc: c_int, strict: c_int, c: *const CCoc) -> c_int {
-    unsafe { sort::ascending_enc(rn(run), kind, desc != 0, strict != 0, &(*c).view()) as c_int }
-}
-/// A22: sort.c `qlean_sort_invert`: `out` is `m` entries, `p` is the `m` of the permutation.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn qrs_invert(p: *const i64, m: usize, out: *mut i64) {
-    unsafe { sort::invert(sl(p, m), sl_mut(out, m)) }
-}
-/// A22: sort.c `qlean_sort_grade_lane`: `n` ids at `w` bits in `ids` (`bytes` long), `n` already clamped.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn qrs_grade_lane(run: unsafe extern "C" fn(), desc: c_int, w: u32, ids: *const u8, bytes: usize,
-                                        n: usize, out: *mut i64) {
-    unsafe { sort::grade_lane(rn(run), desc != 0, w, sl(ids, bytes), n, sl_mut(out, n)) }
 }
 /// A23: sort.c `group_bound`: aborts when `n` rows cannot be numbered in `u32`; for the C callers with no Rust callee.
 #[unsafe(no_mangle)]

@@ -44,6 +44,7 @@ pub mod exports {
     pub mod reduce;
     pub mod scan;
     pub mod search;
+    pub mod sort;
     pub mod structural;
     pub mod time;
     pub mod zip;

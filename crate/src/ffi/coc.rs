@@ -18,7 +18,7 @@ fn die(args: core::fmt::Arguments) -> ! {
 /// coc.h `coc_view`: the column `meta`, `pack` hold, its count cut to what the blocks can hold. A pack whose patch
 /// list does not fit is C's `coc_attach` abort; a metadata array with misaligned or missing sections (which C read
 /// past) is the same stop.
-fn view<'a>(who: &str, meta: B<'a>, pack: B<'a>, n: usize) -> Coc<'a> {
+pub(crate) fn view<'a>(who: &str, meta: B<'a>, pack: B<'a>, n: usize) -> Coc<'a> {
     let Some(m) = Meta::new(meta.bytes(), n) else { die(format_args!("{who}: the metadata array is not a column's 33 * nblk + 16 bytes\n")) };
     let (e, mblk, pb) = (m.res_end(), m.mblk, pack.bytes().len());
     Coc::attach(m, pack.bytes()).unwrap_or_else(|| die(format_args!(
