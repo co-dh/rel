@@ -7,6 +7,8 @@ use alloc::vec::Vec;
 
 use crate::c::Runner;
 use crate::coc::Coc;
+use crate::key::{self, Keys, Pass, SK_KINDS_N};
+use crate::{kwin, BLK};
 use crate::sym::{sym_cmp, sym_hash, sym_msort, Syms};
 
 /// sort.c:351 `ksrc`: the keys of a dense payload `p` or of an encoded column `c`, `n` of them.
@@ -14,15 +16,77 @@ use crate::sym::{sym_cmp, sym_hash, sym_msort, Syms};
 pub struct Ksrc<'a> { pub kind: u8, pub p: &'a [u8], pub c: Option<Coc<'a>>, pub n: usize }
 
 // ---- A19: sort.c:183-400 (key_flip, keys_blk_foR, kwin_* are kwin.rs, B11) ----
-/// sort.c:183 `keys_of`: every key of `p` into `k`; answers `(min, max)`.
-pub fn keys_of(kind: u8, p: &[u8], n: usize, k: &mut [u64]) -> (u64, u64) { unimplemented!("A19: keys_of") }
-/// sort.c:205 `keys_range`
-pub fn keys_range(k: &[u64]) -> (u64, u64) { unimplemented!("A19: keys_range") }
+/// sort.c:`SK_MM_*`: the least and greatest key in four independent accumulators, because one `lo`/`hi` pair makes the
+/// compare a loop-carried chain a cycle long per element (measured in sort.c, kept for the same reason).
+struct Mm { lo: [u64; 4], hi: [u64; 4] }
+impl Mm {
+    fn new() -> Self { Mm { lo: [!0; 4], hi: [0; 4] } }
+    #[inline(always)]
+    fn four(&mut self, v: [u64; 4]) { for j in 0..4 { self.lo[j] = self.lo[j].min(v[j]); self.hi[j] = self.hi[j].max(v[j]) } }
+    #[inline(always)]
+    fn one(&mut self, v: u64) { self.lo[0] = self.lo[0].min(v); self.hi[0] = self.hi[0].max(v) }
+    fn done(&self) -> (u64, u64) { (self.lo.into_iter().min().unwrap(), self.hi.into_iter().max().unwrap()) }
+}
+/// sort.c:`SK_KEYS`: write every key and take the range in the same pass.
+struct Fill<'k>(&'k mut [u64]);
+impl Pass for Fill<'_> {
+    type Out = (u64, u64);
+    #[inline(always)]
+    fn run<K: Keys>(self, mut s: K, n: usize) -> (u64, u64) {
+        let (k, mut m, mut i) = (&mut self.0[..n], Mm::new(), 0);
+        while i + 4 <= n {
+            let v = [s.at(i), s.at(i + 1), s.at(i + 2), s.at(i + 3)];
+            k[i..i + 4].copy_from_slice(&v);
+            m.four(v);
+            i += 4;
+        }
+        for i in i..n { let v = s.at(i); k[i] = v; m.one(v) }
+        m.done()
+    }
+}
+/// sort.c:183 `keys_of`: every key of `p` into `k`; answers `(min, max)`, `(0, 0)` for none. `kind` is one of the eight
+/// element kinds (not `SK_KEY`, `SK_WIN`); the C wrapper reports that, so here it is a panic.
+pub fn keys_of(kind: u8, p: &[u8], n: usize, k: &mut [u64]) -> (u64, u64) {
+    if n == 0 { return (0, 0) }
+    assert!(kind < SK_KINDS_N, "qlean sort: element kind {kind} is not one of the {SK_KINDS_N} in QLean/Kernel/Scan.lean");
+    key::each(kind, &p[..key::bytes(kind, n).expect("keys_of: dense kind")], n, Fill(k))
+        .unwrap_or_else(|| panic!("keys_of: the payload of kind {kind} is misaligned"))
+}
+/// sort.c:205 `keys_range`: the same reduction over keys already written; `(0, 0)` for none.
+pub fn keys_range(k: &[u64]) -> (u64, u64) {
+    let (mut m, mut c) = (Mm::new(), k.chunks_exact(4));
+    if k.is_empty() { return (0, 0) }
+    for v in c.by_ref() { m.four([v[0], v[1], v[2], v[3]]) }
+    for &v in c.remainder() { m.one(v) }
+    m.done()
+}
+/// sort.c:`SK_DENSE_BLK`: keys `[at, at + k.len())` of a dense payload.
+struct Blk<'k> { at: usize, k: &'k mut [u64] }
+impl Pass for Blk<'_> {
+    type Out = ();
+    #[inline(always)]
+    fn run<K: Keys>(self, mut s: K, _: usize) { for (j, o) in self.k.iter_mut().enumerate() { *o = s.at(self.at + j) } }
+}
 impl<'a> Ksrc<'a> {
-    /// sort.c:354 `ksrc_blk`: block `b`'s keys into `k` (BLK long); answers their count.
-    pub fn blk(&self, b: usize, k: &mut [u64]) -> usize { unimplemented!("A19: ksrc_blk") }
-    /// sort.c:394 `ksrc_range`
-    pub fn range(&self) -> (u64, u64) { unimplemented!("A19: ksrc_range") }
+    /// sort.c:354 `ksrc_blk`: block `b`'s keys into `k` (BLK long); answers their count. A dense payload of any
+    /// kind that is not an element kind (`SK_KEY`) is read as keys already.
+    pub fn blk(&self, b: usize, k: &mut [u64]) -> usize {
+        let (at, cnt) = (b * BLK, (self.n - b * BLK).min(BLK));
+        match &self.c {
+            Some(c) => kwin::keys_blk(self.kind, c, b, &mut k[..cnt]),
+            None => key::each(self.kind, &self.p[..key::bytes(self.kind, self.n).expect("ksrc_blk: dense kind")], self.n, Blk { at, k: &mut k[..cnt] })
+                .unwrap_or_else(|| panic!("ksrc_blk: the payload of kind {} is misaligned", self.kind)),
+        }
+        cnt
+    }
+    /// sort.c:394 `ksrc_range`: off the block metadata for a pack, one pass over the keys for a dense payload;
+    /// `(u64::MAX, 0)` for none, which is what the C's untouched accumulators answered.
+    pub fn range(&self) -> (u64, u64) {
+        if let Some(c) = &self.c { return kwin::range(self.kind, c) }
+        if self.n == 0 { return (!0, 0) }
+        key::each(self.kind, &self.p[..key::bytes(self.kind, self.n).expect("ksrc_range: dense kind")], self.n, key::Range)
+            .unwrap_or_else(|| panic!("ksrc_range: the payload of kind {} is misaligned", self.kind))
+    }
 }
 
 // ---- A20: sort.c:417-730 ----
@@ -453,3 +517,48 @@ mod a26_tests {
 pub fn guid_words(p: &[u8], n: usize, at: usize, perm: &[i64], k: &mut [u64]) -> (u64, u64) { unimplemented!("A27: guid_words") }
 /// sort.c:3483 `qlean_sort_grade_guid` past the unboxing.
 pub fn grade_guid(run: Runner, desc: bool, p: &[u8], out: &mut [i64]) { unimplemented!("A27: qlean_sort_grade_guid") }
+
+#[cfg(test)]
+mod tests_a19 {
+    use super::*;
+    use crate::key::{SK_F64, SK_I16, SK_I64, SK_KEY, SK_U8};
+    use crate::pod;
+    // the empty cases are the ones the C's untouched accumulators answer: keys_of / keys_range (0, 0), ksrc_range (MAX, 0)
+    #[test] fn empty_answers() {
+        assert_eq!(keys_of(SK_I64, &[], 0, &mut []), (0, 0));
+        assert_eq!(keys_range(&[]), (0, 0));
+        let s = Ksrc { kind: SK_I64, p: &[], c: None, n: 0 };
+        assert_eq!(s.range(), (u64::MAX, 0));
+    }
+    #[test] fn keys_flip_the_sign_within_the_width() {
+        let p = pod::bytes(&[-1i16, 0, 5]).to_vec();
+        let mut k = [0u64; 3];
+        assert_eq!(keys_of(SK_I16, &p, 3, &mut k), (0x7fff, 0x8005));
+        assert_eq!(k, [0x7fff, 0x8000, 0x8005]);
+    }
+    #[test] fn nan_is_key_zero_and_negative_zero_is_positive_zero() {
+        let p = pod::bytes(&[f64::NAN, -0.0, 0.0]).to_vec();
+        let mut k = [9u64; 3];
+        assert_eq!(keys_of(SK_F64, &p, 3, &mut k), (0, 1 << 63));
+        assert_eq!(k, [0, 1 << 63, 1 << 63]);
+    }
+    #[test] fn range_tail_past_a_multiple_of_four() {
+        let k: Vec<u64> = (0..7).map(|i| 10 + (i * 5) % 7).collect();
+        assert_eq!(keys_range(&k), (10, 16));
+    }
+    #[test] fn blk_cuts_at_blk_and_key_payload_is_read_as_is() {
+        let v: Vec<u64> = (0..BLK as u64 + 3).collect();
+        let s = Ksrc { kind: SK_KEY, p: pod::bytes(&v), c: None, n: v.len() };
+        let mut k = [0u64; BLK];
+        assert_eq!(s.blk(0, &mut k), BLK);
+        assert_eq!(k[BLK - 1], BLK as u64 - 1);
+        assert_eq!(s.blk(1, &mut k), 3);
+        assert_eq!(&k[..3], &[BLK as u64, BLK as u64 + 1, BLK as u64 + 2]);
+        assert_eq!(s.range(), (0, BLK as u64 + 2));
+    }
+    #[test] fn u8_keys_are_their_own() {
+        let mut k = [0u64; 3];
+        assert_eq!(keys_of(SK_U8, &[7, 0, 255], 3, &mut k), (0, 255));
+        assert_eq!(k, [7, 0, 255]);
+    }
+}

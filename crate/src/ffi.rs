@@ -109,6 +109,44 @@ pub unsafe extern "C" fn qrs_key_range_win(kind: u8, c: *const CCoc, mn: *mut u6
     unsafe { mn.write(a); mx.write(b) }
 }
 
+/// `keys_of`: the `n` keys of the dense payload `p` into `k`, and their range into `*mn`, `*mx` (`0, 0` for none).
+/// 1 = written, 0 = `kind` is not one of the eight element kinds.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn qrs_keys_of(kind: u8, p: *const u8, n: usize, k: *mut u64, mn: *mut u64, mx: *mut u64) -> c_int {
+    if kind >= key::SK_KINDS_N { return 0 }
+    let (a, b) = sort::keys_of(kind, unsafe { sl(p, key::bytes(kind, n).unwrap_or(0)) }, n, unsafe { sl_mut(k, n) });
+    unsafe { mn.write(a); mx.write(b) };
+    1
+}
+
+/// `keys_range`: the range of `n` keys already written, `0, 0` for none.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn qrs_keys_range(k: *const u64, n: usize, mn: *mut u64, mx: *mut u64) {
+    let (a, b) = sort::keys_range(unsafe { sl(k, n) });
+    unsafe { mn.write(a); mx.write(b) }
+}
+
+/// `ksrc_blk`: block `b` of `n` keys of a `ksrc` (`c` an encoded column, else `p` a dense payload of `kind`) into `k`,
+/// `BLK` long. Answers the block's key count.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn qrs_ksrc_blk(kind: u8, p: *const u8, c: *const CCoc, n: usize, b: usize, k: *mut u64) -> usize {
+    let s = unsafe { ksrc(kind, p, c, n) };
+    s.blk(b, unsafe { sl_mut(k, BLK) })
+}
+
+/// `ksrc_range`: the key range of a `ksrc`, `u64::MAX, 0` for none.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn qrs_ksrc_range(kind: u8, p: *const u8, c: *const CCoc, n: usize, mn: *mut u64, mx: *mut u64) {
+    let (a, b) = unsafe { ksrc(kind, p, c, n) }.range();
+    unsafe { mn.write(a); mx.write(b) }
+}
+
+/// Safety: `c` is null or a live `coc`; else `p` is null or valid for `key::bytes(kind, n)` reads.
+unsafe fn ksrc<'a>(kind: u8, p: *const u8, c: *const CCoc, n: usize) -> sort::Ksrc<'a> {
+    let c = if c.is_null() { None } else { Some(unsafe { (*c).view() }) };
+    sort::Ksrc { kind, p: unsafe { sl(p, if c.is_some() { 0 } else { key::bytes(kind, n).unwrap_or(0) }) }, c, n }
+}
+
 /// `ids_run` over `dedup`'s tables: `dtab` (`slots` entries) when not null, else `htab` (`cap` entries) and `gkey`
 /// (`ng` entries). `gid` is `n * lane / 8` bytes.  `run` is C's `qlean_run_c`, passed as a `void (*)(void)` and called as `c::Runner`. 1 = written, 0 = refused (a kind outside the enum, `SK_WIN`, a short payload or `gid`, a lane not 8, 16, 32 or 64).
 #[unsafe(no_mangle)]
