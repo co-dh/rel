@@ -570,21 +570,146 @@ pub fn floor(run: Runner, cls: u8, nul: i64, x: &[u8], n: usize, out: &mut [u8])
     });
 }
 
-// ---- A45: elementwise.c:1843-1981 ----
-/// elementwise.c:1843 `ew_cast_clamp`
-pub fn cast_clamp(v: i64, lo: i64, hi: i64) -> i64 { unimplemented!("A45: ew_cast_clamp") }
-/// elementwise.c:1850 `ew_cast_round`: q's round half away from zero.
-pub fn cast_round(x: f64) -> i64 { unimplemented!("A45: ew_cast_round") }
-/// elementwise.c:1882 `ew_cast_run` and its entry: class `src` to class `dst`.
-pub fn cast(run: Runner, src: u8, dst: u8, nul_in: i64, x: &[u8], n: usize, out: &mut [u8]) { unimplemented!("A45: ew_cast_run") }
-/// elementwise.c:1921 `ew_fdiv64`
-pub fn fdiv64(a: i64, b: i64) -> i64 { unimplemented!("A45: ew_fdiv64") }
-/// elementwise.c:1925 `ew_days_of_first`: days from 2000.01.01 to the first of month `m`.
-pub fn days_of_first(m: i64) -> i64 { unimplemented!("A45: ew_days_of_first") }
-/// elementwise.c:1935 `ew_month_of_days`
-pub fn month_of_days(d: i64) -> i64 { unimplemented!("A45: ew_month_of_days") }
-/// elementwise.c:1951 `ew_tick_run`: the time-unit conversions (`op`).
-pub fn tick(run: Runner, op: u8, cls: u8, nul: i64, x: &[u8], n: usize, out: &mut [u8]) { unimplemented!("A45: ew_tick_run") }
+// ---- A45: elementwise.c:1469-1610 ----
+/// elementwise.c:1469 `ew_cast_clamp`
+pub fn cast_clamp(v: i64, lo: i64, hi: i64) -> i64 { if v < lo { lo } else if v > hi { hi } else { v } }
+/// elementwise.c:1476 `ew_cast_round`: q's round half away from zero; a value `long` cannot hold saturates (to `-0W`
+/// below), and a NaN is the caller's to test first. `core` has no `round`, which would be a libm call anyway.
+pub fn cast_round(x: f64) -> i64 {
+    // from 2^52 on every double is its own round; below, `a - trunc(a)` is exact, so the half test is too
+    let t = if !(x.abs() < 4503599627370496.0) { x } else {
+        let a = x.abs();
+        let f = a as i64 as f64;
+        let r = if a - f >= 0.5 { f + 1.0 } else { f };
+        if x < 0.0 { -r } else { r }
+    };
+    if t <= -9223372036854775808.0 { i64::MIN + 1 } else if t >= 9223372036854775808.0 { i64::MAX } else { t as i64 }
+}
+/// elementwise.c:1508 `ew_cast_run` and its entry `qlean_ew_cast`: class `src` to class `dst`, every element
+/// `Ew.castStep` (the target's clamp or wrap, its null, a float source rounding).
+pub fn cast(run: Runner, src: u8, dst: u8, nul_in: i64, x: &[u8], n: usize, out: &mut [u8]) {
+    if n == 0 { return }
+    if src > k44::F64 || dst > k44::F64 { ew_unsupported("qlean_ew_cast", src as u32, dst as u32) }
+    let (sw, dw) = (ew_width(src as u32), ew_width(dst as u32));
+    // `Ew.castBounds` and `Ew.castNul`: U8 keeps the whole range and writes 0, its truncating store being the narrowing
+    let (lo, hi, nul_out) = match dst {
+        1 => (-32767, 32767, i16::MIN as i64),
+        2 => (-2147483647, 2147483647, i32::MIN as i64),
+        3 => (i64::MIN + 1, i64::MAX, i64::MIN),
+        _ => (i64::MIN + 1, i64::MAX, 0),
+    };
+    // one straight-line pass per (source, target): `ld` reads an element three ways, `em` writes the target's one line
+    fn go<S: Pod, D: Pod>(x: &[u8], l: usize, h: usize, o: &mut [u8], ld: impl Fn(S) -> (i64, f64, bool), em: impl Fn(i64, f64, bool) -> D) {
+        for (o, &v) in rw::<D>(o).iter_mut().zip(ro::<S>(side(x, false, l, h, size_of::<S>()))) { let (i, d, m) = ld(v); *o = em(i, d, m) }
+    }
+    fn src_of<D: Pod>(src: u8, nul: i64, x: &[u8], l: usize, h: usize, o: &mut [u8], em: impl Fn(i64, f64, bool) -> D) {
+        match src {
+            0 => go::<u8, D>(x, l, h, o, |v| (v as i64, v as f64, v as i64 == nul), em),
+            1 => go::<i16, D>(x, l, h, o, |v| (v as i64, v as f64, v as i64 == nul), em),
+            2 => go::<i32, D>(x, l, h, o, |v| (v as i64, v as f64, v as i64 == nul), em),
+            3 => go::<i64, D>(x, l, h, o, |v| (v, v as f64, v == nul), em),
+            4 => go::<u32, D>(x, l, h, o, |v| { let f = f32::from_bits(v) as f64; (cast_round(f), f, f.is_nan()) }, em),
+            _ => go::<u64, D>(x, l, h, o, |v| { let f = f64::from_bits(v); (cast_round(f), f, f.is_nan()) }, em),
+        }
+    }
+    crate::c::run_map(run, out, n, dw, crate::QLEAN_COST_CAST, sw.max(dw), &|l, h, o: &mut [u8]| match dst {
+        5 => src_of::<u64>(src, nul_in, x, l, h, o, |_, d, m| if m { NAN64 } else { d.to_bits() }),
+        4 => src_of::<u32>(src, nul_in, x, l, h, o, |_, d, m| if m { NAN32 } else { (d as f32).to_bits() }),
+        0 => src_of::<u8>(src, nul_in, x, l, h, o, |i, _, m| (if m { nul_out } else { cast_clamp(i, lo, hi) }) as u8),
+        1 => src_of::<i16>(src, nul_in, x, l, h, o, |i, _, m| (if m { nul_out } else { cast_clamp(i, lo, hi) }) as i16),
+        2 => src_of::<i32>(src, nul_in, x, l, h, o, |i, _, m| (if m { nul_out } else { cast_clamp(i, lo, hi) }) as i32),
+        _ => src_of::<i64>(src, nul_in, x, l, h, o, |i, _, m| if m { nul_out } else { cast_clamp(i, lo, hi) }),
+    });
+}
+/// elementwise.c:1547 `ew_fdiv64`: floor division by a positive divisor.
+pub fn fdiv64(a: i64, b: i64) -> i64 { a / b - (a % b < 0) as i64 }
+/// elementwise.c:1551 `ew_days_of_first`: days from 2000.01.01 to the first of month `m`. Wrapping, as the C is at
+/// the extremes of `long`.
+pub fn days_of_first(m: i64) -> i64 {
+    let (y, mo) = (2000i64.wrapping_add(fdiv64(m, 12)), 1 + m.wrapping_sub(12i64.wrapping_mul(fdiv64(m, 12))));
+    let y = if mo <= 2 { y.wrapping_sub(1) } else { y };
+    let era = fdiv64(if y >= 0 { y } else { y.wrapping_sub(399) }, 400);
+    let yoe = y.wrapping_sub(era.wrapping_mul(400));
+    let doy = fdiv64(153 * ((mo + 9) % 12) + 2, 5);
+    era.wrapping_mul(146097).wrapping_add(yoe * 365 + fdiv64(yoe, 4) - fdiv64(yoe, 100) + doy).wrapping_sub(730425)
+}
+/// elementwise.c:1561 `ew_month_of_days`: the month from 2000.01 holding day `d` from 2000.01.01.
+pub fn month_of_days(d: i64) -> i64 {
+    let z = d.wrapping_add(730425);
+    let era = fdiv64(if z >= 0 { z } else { z.wrapping_sub(146096) }, 146097);
+    let doe = z.wrapping_sub(era.wrapping_mul(146097));
+    let yoe = (doe - doe / 1460 + doe / 36524 - doe / 146096) / 365;
+    let mp = (5 * (doe - (365 * yoe + yoe / 4 - yoe / 100)) + 2) / 153;
+    let m = mp + if mp < 10 { 3 } else { -9 };
+    era.wrapping_mul(400).wrapping_add(yoe).wrapping_add((m <= 2) as i64).wrapping_mul(12).wrapping_sub(24000).wrapping_add(m - 1)
+}
+/// elementwise.c:1577 `ew_tick_run`: a temporal operand re-counted in its result's unit (`op` is the source unit's
+/// code times 16 plus the target's; `nul_in` the source null, `nul_out` the target's). The nanosecond count is 128 bits
+/// and the wrap to the target's width is the store. A source is `i32`, `f64` (days) or else `i64`; a target `f64`,
+/// `i32` or else `i64`.
+pub fn tick(run: Runner, op: u8, src: u8, dst: u8, nul_in: i64, nul_out: i64, x: &[u8], n: usize, out: &mut [u8]) {
+    const U: [i64; 5] = [1, 1000000, 1000000000, 60000000000, 86400000000000];
+    let (su, du) = ((op >> 4) as usize, (op & 15) as usize);
+    let u = U[if du < 5 { du } else { 4 }];
+    let (sw, dw) = (if src == 2 { 4 } else { 8 }, if dst == 2 { 4 } else { 8 });
+    let one = |k: usize, x: &[u8]| -> (bool, i128) {
+        if src == k44::F64 {
+            let f = f64::from_bits(u64::from_le_bytes(x[k * 8..k * 8 + 8].try_into().unwrap()));
+            if f.is_nan() { (true, 0) } else { (false, cast_round(f * 86400000000000.0) as i128) }
+        } else {
+            let v = if src == 2 { i32::from_le_bytes(x[k * 4..k * 4 + 4].try_into().unwrap()) as i64 } else { i64::from_le_bytes(x[k * 8..k * 8 + 8].try_into().unwrap()) };
+            let a = if su == 5 { days_of_first(v) as i128 * U[4] as i128 } else { v as i128 * U[if su < 5 { su } else { 4 }] as i128 };
+            (v == nul_in, a)
+        }
+    };
+    crate::c::run_map(run, out, n, dw, crate::QLEAN_COST_CAST, sw.max(dw), &|l, h, o: &mut [u8]| {
+        let x = side(x, false, l, h, sw);
+        for k in 0..h - l {
+            let (miss, ns) = one(k, x);
+            if dst == k44::F64 {
+                rw::<u64>(o)[k] = if miss { nul_out as u64 } else { (ns as f64 / u as f64).to_bits() };
+                continue;
+            }
+            let mut q = if u == 1 { ns as i64 } else if ns >= i64::MIN as i128 && ns <= i64::MAX as i128 { fdiv64(ns as i64, u) } else { (ns / u as i128 - (ns % (u as i128) < 0) as i128) as i64 };
+            // a month target: `u` is a day, and the calendar takes the day count the rest of the way
+            if du == 5 { q = month_of_days(q) }
+            if miss { q = nul_out }
+            if dst == 2 { rw::<i32>(o)[k] = q as i32 } else { rw::<i64>(o)[k] = q }
+        }
+    });
+}
+
+#[cfg(test)]
+mod a45 {
+    use super::*;
+    // expected values are the C's comments (elementwise.c "Eval.castAtom ... measured against q 4.1") and its helpers
+    #[test] fn round_is_half_away_and_saturates() {
+        assert_eq!((cast_round(2.5), cast_round(-2.5), cast_round(0.49999999999999994)), (3, -3, 0));
+        assert_eq!((cast_round(1e19), cast_round(-1e19), cast_round(f64::INFINITY)), (i64::MAX, i64::MIN + 1, i64::MAX));
+    }
+    #[test] fn casts_clamp_at_a_null_target_and_wrap_without() {
+        let x: Vec<u8> = [70000.0f64, -32768.0, 300.0, f64::NAN].iter().flat_map(|v| v.to_bits().to_le_bytes()).collect();
+        let mut o = [0u8; 8];
+        cast(crate::c::qlean_run_c, 5, 1, 0, &x, 4, &mut o);
+        assert_eq!([i16::from_le_bytes([o[0], o[1]]), i16::from_le_bytes([o[2], o[3]]), i16::from_le_bytes([o[4], o[5]]), i16::from_le_bytes([o[6], o[7]])],
+                   [32767, -32767, 300, i16::MIN]);
+        let mut o = [0u8; 4];
+        cast(crate::c::qlean_run_c, 5, 0, 0, &x, 4, &mut o);
+        assert_eq!(o, [0x70, 0, 0x2c, 0]);
+    }
+    #[test] fn calendar_round_trips() {
+        assert_eq!((fdiv64(-7, 2), days_of_first(0), month_of_days(0), days_of_first(1), days_of_first(-1)), (-4, 0, 0, 31, -31));
+        for m in -20000..30000 { assert_eq!(month_of_days(days_of_first(m)), m); assert_eq!(month_of_days(days_of_first(m + 1) - 1), m) }
+    }
+    #[test] fn tick_counts_a_month_in_days() {
+        // su 5 (month) to du 4 (day): months 0, 1, 2 from 2000.01 are 0, 31, 60 days; the null stays the target's
+        let x: Vec<u8> = [0i32, 1, 2, i32::MIN].iter().flat_map(|v| v.to_le_bytes()).collect();
+        let mut o = [0u8; 32];
+        tick(crate::c::qlean_run_c, 5 * 16 + 4, 2, 3, i32::MIN as i64, i64::MIN, &x, 4, &mut o);
+        let v: Vec<i64> = o.chunks(8).map(|c| i64::from_le_bytes(c.try_into().unwrap())).collect();
+        assert_eq!(v, [0, 31, 60, i64::MIN]);
+    }
+}
 
 // ---- A46a: elementwise.c:2007-2150 ----
 /// elementwise.c:2007 `ew_widen_run` and its entry: class `src` widened to `dst`, nulls mapped.
