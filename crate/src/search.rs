@@ -197,11 +197,12 @@ struct Walk { w: usize, f: bool, s: bool, right: bool }
 impl Walk {
     /// search.c:1483 `bin_step`: the partition point in `lo .. hi` of key `k`. Branchless, which is what makes the
     /// timing a property of the code and not of the branch predictor's aliasing (the C comment's measurement).
-    fn step(self, h: &Col, k: u64, mut lo: i64, hi: i64) -> i64 {
+    /// `ix` is the index payload the walk reads `h` through (`order`), `|i| i` where each position is its own index.
+    fn step(self, h: &Col, ix: impl Fn(usize) -> usize, k: u64, mut lo: i64, hi: i64) -> i64 {
         let mut len = hi - lo;
         while len > 0 {
             let (half, mid) = (len / 2, lo + len / 2);
-            let v = bin_key(self.w, self.f, self.s, h.at(self.w, mid as usize));
+            let v = bin_key(self.w, self.f, self.s, h.at(self.w, ix(mid as usize)));
             let adv = if self.right { v < k } else { v <= k };
             let (nlo, nlen) = (mid + 1, len - half - 1);
             lo = if adv { nlo } else { lo };
@@ -210,7 +211,7 @@ impl Walk {
         lo
     }
     /// `bin` for key `k` over `n` elements: the position, `- 1` for `bin` and as is for `binr`.
-    fn pos(self, h: &Col, k: u64, n: i64) -> i64 { let at = self.step(h, k, 0, n); if self.right { at } else { at - 1 } }
+    fn pos(self, h: &Col, k: u64, n: i64) -> i64 { let at = self.step(h, |i| i, k, 0, n); if self.right { at } else { at - 1 } }
 }
 /// search.c:1661 `kcur`: a worker's view of the needles, the dense payload or the last block restored.
 struct Kcur<'a> { k: Col<'a>, w: usize, b: usize, buf: [u64; crate::BLK] }
@@ -288,16 +289,133 @@ pub fn bin(run: Runner, w: usize, is_float: bool, is_signed: bool, right: bool, 
     crate::c::run_map(run, ob, m, 8, crate::QLEAN_COST_MATH, 8, &walk);
 }
 
-// ---- A33: search.c:731-740, 2004-2099 ----
-/// search.c:2004 `run_starts` past the allocation: the start of each run of equal elements into `out`; answers
-/// the count.
-pub fn run_starts(o: &Opnd, w: usize, is_float: bool, out: &mut [i64]) -> usize { unimplemented!("A33: run_starts") }
-/// search.c:731 `qlean_search_run_starts_ids`
-pub fn run_starts_ids(n: usize, w: u32, ids: &[u8], out: &mut [i64]) -> usize { unimplemented!("A33: qlean_search_run_starts_ids") }
-/// search.c:2056 `qlean_search_run_starts_syms`
-pub fn run_starts_syms(s: &Syms, out: &mut [i64]) -> usize { unimplemented!("A33: qlean_search_run_starts_syms") }
-/// search.c:2078 `qlean_search_run_starts_bits`
-pub fn run_starts_bits(n: usize, bits: &[u8], out: &mut [i64]) -> usize { unimplemented!("A33: qlean_search_run_starts_bits") }
+// ---- A33: search.c:731-740, 1539-1830, 2004-2099: the per-element callers of A32's walk, whole loops in Rust ----
+/// The width switch hoisted out of the loop, as C's `IDS_WIDTHS`: `W` is a constant inside `go`, so `id_at` folds to a shift and a mask.
+fn with_ids_width<R>(w: u32, f: impl IdsFn<R>) -> R {
+    match w { 0 => f.go::<0>(), 1 => f.go::<1>(), 2 => f.go::<2>(), 4 => f.go::<4>(), 8 => f.go::<8>(), 16 => f.go::<16>(), 32 => f.go::<32>(), _ => f.go::<64>() }
+}
+trait IdsFn<R> { fn go<const W: u32>(self) -> R; }
+
+/// search.c:1609 `qlean_search_bin_ids` past the unboxing: `binBytes 8 false true right` of the `n` ranks `vals[ids[i]]`
+/// (`ids` at `w` bits) for each 8-byte key of `keys`, into `out` (one per key). The ids are the walk's index payload.
+pub fn bin_ids(right: bool, vals: &[u8], n: usize, w: u32, ids: &[u8], keys: &[u8], out: &mut [i64]) {
+    struct J<'a> { right: bool, vals: &'a [u8], n: usize, ids: &'a [u8], keys: &'a [u8], out: &'a mut [i64] }
+    impl IdsFn<()> for J<'_> {
+        fn go<const W: u32>(self) {
+            let wk = Walk { w: 8, f: false, s: true, right: self.right };
+            let h = Col { d: self.vals, c: None, uw: 0 };
+            for (j, x) in self.out.iter_mut().enumerate() {
+                let lo = wk.step(&h, |i| ids::id_at(self.ids, W, i), bin_key(8, false, true, bin_at(self.keys, 8, j)), 0, self.n as i64);
+                *x = if self.right { lo } else { lo - 1 }
+            }
+        }
+    }
+    with_ids_width(w, J { right, vals, n, ids, keys, out })
+}
+
+fn sorted_col<'a>(w: usize, hay: &'a [u8], enc: Option<&'a Coc<'a>>) -> Col<'a> {
+    assert!(matches!(w, 1 | 2 | 4 | 8), "qlean search: a sorted-haystack probe got element width {w}; the kernel is instantiated at 1, 2, 4 and 8 bytes");
+    Col { d: hay, c: enc, uw: enc.map_or(0, |c| c.one_width()) }
+}
+/// search.c:1651 `sorted_probe`: the least index of the `n`-element sorted haystack whose key equals key `j`'s, `n` where none.
+/// `bin_key` is a bijection on each class once the float fold has run, so key equality is the equality `kind_of`'s
+/// keys give; the walk is `binr`'s (the first index not below the needle).
+fn sorted_probe(wk: Walk, h: &Col, keys: &[u8], n: i64, j: usize) -> i64 {
+    let k = bin_key(wk.w, wk.f, wk.s, bin_at(keys, wk.w, j));
+    let lo = wk.step(h, |i| i, k, 0, n);
+    if lo < n && bin_key(wk.w, wk.f, wk.s, h.at(wk.w, lo as usize)) == k { lo } else { n }
+}
+/// search.c:1684-1734 `qlean_search_find_sorted`, `qlean_coc_find_sorted` past the unboxing: each of the `m` dense keys'
+/// first index in the sorted haystack (dense `hay`, or `enc`) of `n`, `n` where absent, into `out`; threaded.
+pub fn find_sorted(run: Runner, w: usize, is_float: bool, is_signed: bool, hay: &[u8], enc: Option<&Coc>, n: i64, keys: &[u8], m: usize, out: &mut [i64]) {
+    let (wk, h) = (Walk { w, f: is_float, s: is_signed, right: true }, sorted_col(w, hay, enc));
+    crate::c::run_map(run, crate::pod::bytes_mut(&mut out[..m]), m, 8, crate::QLEAN_COST_MATH, 8, &|lo, hi, o: &mut [u8]| {
+        for (j, x) in (lo..hi).zip(i64s(o)) { *x = sorted_probe(wk, &h, keys, n, j) }
+    });
+}
+/// search.c:1697-1734 `qlean_search_member_sorted`, `qlean_coc_member_sorted` past the unboxing: bit `j` of `out` (LSB
+/// first, `m.div_ceil(8)` bytes, the tail bits left zero) is set when key `j` is in the haystack. Threaded by output
+/// byte, so no two slices touch one byte.
+pub fn member_sorted(run: Runner, w: usize, is_float: bool, is_signed: bool, hay: &[u8], enc: Option<&Coc>, n: i64, keys: &[u8], m: usize, out: &mut [u8]) {
+    let (wk, h) = (Walk { w, f: is_float, s: is_signed, right: true }, sorted_col(w, hay, enc));
+    let bytes = m.div_ceil(8);
+    out[..bytes].fill(0);
+    crate::c::run_map(run, &mut out[..bytes], bytes, 1, crate::QLEAN_COST_MATH, w * 8, &|lo, hi, o: &mut [u8]| {
+        for j in lo * 8..(hi * 8).min(m) { if sorted_probe(wk, &h, keys, n, j) < n { o[(j >> 3) - lo] |= 1 << (j & 7) } }
+    });
+}
+
+/// search.c:1773 `bin_rows` past the unboxing: for each of the `m` dense keys, the row `binRows` names inside group
+/// `g = gids[j]`: the walk over `bounds[g] .. bounds[g + 1]` reading the haystack (dense `hay` or `enc`) through `order`
+/// (64-bit rows; empty: each position is its own row), then the row at the partition point's predecessor. `miss` where `gids`
+/// has no entry `j`, `g` names no group, or the group holds nothing at or before the key. Threaded.
+pub fn bin_rows(run: Runner, w: usize, is_float: bool, is_signed: bool, right: bool, hay: &[u8], enc: Option<&Coc>, keys: &[u8],
+                order: &[u8], bounds: &[i64], gids: &[i64], miss: i64, m: usize, out: &mut [i64]) {
+    let (wk, h) = (Walk { w, f: is_float, s: is_signed, right }, sorted_col(w, hay, enc));
+    let ng = bounds.len().saturating_sub(1);
+    let row = |i: usize| if order.is_empty() { i } else { ids::id_at(order, 64, i) };
+    crate::c::run_map(run, crate::pod::bytes_mut(&mut out[..m]), m, 8, crate::QLEAN_COST_MATH, 8, &|lo, hi, o: &mut [u8]| {
+        for (j, x) in (lo..hi).zip(i64s(o)) {
+            let g = gids.get(j).map_or(u64::MAX, |&g| g as u64);
+            if g >= ng as u64 { *x = miss; continue }
+            let (b, g) = (bounds[g as usize], g as usize);
+            let at = wk.step(&h, row, bin_key(w, is_float, is_signed, bin_at(keys, w, j)), b, bounds[g + 1]);
+            *x = if at == b { miss } else { row(at as usize - 1) as i64 }
+        }
+    });
+}
+
+/// search.c:2004 `run_starts` past the allocation: the start of each run of equal elements of `o` (`norm_key`'s equality)
+/// into `out` (`o.n + 1` long), then `o.n` as the terminator; answers the count with the terminator. The payload is read
+/// a block at a time at width `w`, 1, 2, 4 or 8.
+pub fn run_starts(o: &Opnd, w: usize, is_float: bool, out: &mut [i64]) -> usize {
+    assert!(matches!(w, 1 | 2 | 4 | 8), "qlean search: run_starts got element width {w}; the kernel is instantiated at 1, 2, 4 and 8 bytes");
+    let (mut buf, mut g, mut prev) = ([0u64; crate::BLK], 0, 0u64);
+    for b in 0..o.n.div_ceil(crate::BLK) {
+        let h = o.blk(b, w, crate::pod::bytes_mut(&mut buf));
+        for (j, c) in h.chunks_exact(w).enumerate() {
+            let v = norm_key(w, is_float, bin_at(c, w, 0));
+            if (b | j) == 0 || v != prev { out[g] = (b * crate::BLK + j) as i64; g += 1 }
+            prev = v;
+        }
+    }
+    out[g] = o.n as i64;
+    g + 1
+}
+/// search.c:731 `qlean_search_run_starts_ids`: `runStarts` over `n` ids at `w` bits; the dictionary is distinct, so equal
+/// ids are equal elements. `out` is `n + 1` long; answers the count with the terminator `n`.
+pub fn run_starts_ids(n: usize, w: u32, ids: &[u8], out: &mut [i64]) -> usize {
+    let g = ids::runs(ids, n, w, usize::MAX, n, out);
+    out[g] = n as i64;
+    g + 1
+}
+/// search.c:2056 `qlean_search_run_starts_syms`: the run starts of the symbols, then their count. `out` is `count + 1` long.
+pub fn run_starts_syms(s: &Syms, out: &mut [i64]) -> usize {
+    let (n, mut g) = (s.count(), 0);
+    for i in 0..n { if i == 0 || s.at(i) != s.at(i - 1) { out[g] = i as i64; g += 1 } }
+    out[g] = n as i64;
+    g + 1
+}
+/// search.c:2078 `qlean_search_run_starts_bits`: `runStarts` over `n` booleans packed LSB first, a byte past the end
+/// reading 0. A word at a time: bit i of `x ^ (x << 1 | top)` is set where bit i differs from bit i-1, `top` the previous
+/// word's last bit. `out` is `n + 1` long.
+pub fn run_starts_bits(n: usize, bits: &[u8], out: &mut [i64]) -> usize {
+    let (mut g, mut top) = (0, 0u64);
+    for k in 0..n.div_ceil(64) {
+        let mut b = [0u8; 8];
+        let src = bits.get(k * 8..).unwrap_or(&[]);
+        let m = src.len().min(8);
+        b[..m].copy_from_slice(&src[..m]);
+        let x = u64::from_le_bytes(b);
+        let mut d = x ^ (x << 1 | top);
+        top = x >> 63;
+        if k == 0 { d |= 1 } // row 0 starts a run whatever its bit
+        if n - k * 64 < 64 { d &= (1u64 << (n - k * 64)) - 1 }
+        while d != 0 { out[g] = (k * 64 + d.trailing_zeros() as usize) as i64; g += 1; d &= d - 1 }
+    }
+    out[g] = n as i64;
+    g + 1
+}
 
 #[cfg(test)]
 mod tests {
@@ -387,5 +505,62 @@ mod tests {
             let want: alloc::vec::Vec<i64> = keys.iter().map(|k| { let p = h.partition_point(|x| if right { x < k } else { x <= k }) as i64; if right { p } else { p - 1 } }).collect();
             assert_eq!(run_bin(8, right, &h, &keys), want);
         }
+    }
+    // A33: expected values are the C comments' measurements of q 4.1 (`(`s#1 1 2 2 3)?2` is 2, `?9` is 5, `?0.0` over `-0.0 0.0 1.0` is 0)
+    #[test] fn sorted_find_and_member() {
+        let h = bytes_of(&[1, 1, 2, 2, 3], 8);
+        let mut out = [0i64; 4];
+        find_sorted(crate::c::qlean_run_c, 8, false, true, &h, None, 5, &bytes_of(&[2, 9, 1, -4], 8), 4, &mut out);
+        assert_eq!(out, [2, 5, 0, 5]);
+        let mut bits = [0xffu8; 2];
+        member_sorted(crate::c::qlean_run_c, 8, false, true, &h, None, 5, &bytes_of(&[1, 2, 9], 8), 3, &mut bits);
+        assert_eq!(bits, [0b011, 0xff]);
+        let fh: alloc::vec::Vec<u8> = [-0.0f64, 0.0, 1.0].iter().flat_map(|x| x.to_bits().to_le_bytes()).collect();
+        let fk: alloc::vec::Vec<u8> = [0.0f64, -0.0, 2.0, f64::NAN].iter().flat_map(|x| x.to_bits().to_le_bytes()).collect();
+        find_sorted(crate::c::qlean_run_c, 8, true, false, &fh, None, 3, &fk, 4, &mut out);
+        assert_eq!(out, [0, 0, 3, 3]);
+        find_sorted(crate::c::qlean_run_c, 8, false, true, &[], None, 0, &bytes_of(&[1], 8), 1, &mut out);
+        assert_eq!(out[0], 0);
+    }
+    // the walk through the ids: ranks `[10, 20, 30]`, elements `ids = [0, 1, 1, 2]` read as `10 20 20 30`, at 2 bits per id
+    #[test] fn bin_over_ids() {
+        let (vals, ids) = (bytes_of(&[10, 20, 30], 8), [0b10_01_01_00u8]);
+        let mut out = [0i64; 3];
+        bin_ids(false, &vals, 4, 2, &ids, &bytes_of(&[20, 5, 40], 8), &mut out);
+        assert_eq!(out, [2, -1, 3]);
+        bin_ids(true, &vals, 4, 2, &ids, &bytes_of(&[20, 5, 40], 8), &mut out);
+        assert_eq!(out, [1, 0, 4]);
+    }
+    // two groups over the haystack `1 2 3 | 10 20`, read through `order`; rows are named by `order`, `miss` = -7
+    #[test] fn bin_rows_groups() {
+        let hay = bytes_of(&[20, 10, 3, 2, 1], 8);
+        let order: alloc::vec::Vec<u8> = [4i64, 3, 2, 1, 0].iter().flat_map(|x| x.to_le_bytes()).collect();
+        let mut out = [0i64; 5];
+        bin_rows(crate::c::qlean_run_c, 8, false, true, false, &hay, None, &bytes_of(&[2, 0, 15, 99, 5], 8), &order, &[0, 3, 5], &[0, 0, 1, 2], -7, 5, &mut out);
+        // key 2 in group 0 (1 2 3): the row of `2` is order[1] = 3; key 0 is below the group; key 15 in group 1 (10 20): row of 10 is order[3] = 1;
+        // gid 2 names no group; no gid for the fifth
+        assert_eq!(out, [3, -7, 1, -7, -7]);
+        bin_rows(crate::c::qlean_run_c, 8, false, true, false, &bytes_of(&[1, 2, 3], 8), None, &bytes_of(&[2], 8), &[], &[0, 3], &[0], -7, 1, &mut out);
+        assert_eq!(out[0], 1);
+    }
+    fn starts(f: impl FnOnce(&mut [i64]) -> usize, n: usize) -> alloc::vec::Vec<i64> { let mut o = vec![0i64; n + 1]; let g = f(&mut o); o.truncate(g); o }
+    #[test] fn run_starts_all_shapes() {
+        let d = bytes_of(&[5, 5, 6, 6, 6, 7, 5], 2);
+        assert_eq!(starts(|o| run_starts(&Opnd { src: Src::Dense(&d), n: 7 }, 2, false, o), 7), [0, 2, 5, 6, 7]);
+        // -0.0 and 0.0 are one value, and every NaN is one value
+        let f: alloc::vec::Vec<u8> = [0.0f32, -0.0, f32::NAN, -f32::NAN, 1.0].iter().flat_map(|x| x.to_bits().to_le_bytes()).collect();
+        assert_eq!(starts(|o| run_starts(&Opnd { src: Src::Dense(&f), n: 5 }, 4, true, o), 5), [0, 2, 4, 5]);
+        assert_eq!(starts(|o| run_starts(&Opnd { src: Src::Dense(&[]), n: 0 }, 8, false, o), 0), [0]);
+        // 1500 elements in blocks of 1024: a run across the block edge is one run
+        let big: alloc::vec::Vec<u8> = (0..1500u32).flat_map(|i| u32::from(i >= 1023 && i < 1030).to_le_bytes()).collect();
+        assert_eq!(starts(|o| run_starts(&Opnd { src: Src::Dense(&big), n: 1500 }, 4, false, o), 1500), [0, 1023, 1030, 1500]);
+        // ids at 2 bits: 0 0 1 1 3 3 3 0
+        assert_eq!(starts(|o| run_starts_ids(8, 2, &[0b0101_0000, 0b0011_1111], o), 8), [0, 2, 4, 7, 8]);
+        let (b, off) = ([b'a', 0, b'a', 0, b'b', 0], [1usize, 2 << 1 | 1, 4 << 1 | 1, 6 << 1 | 1]);
+        assert_eq!(starts(|o| run_starts_syms(&Syms { blob: &b, offs: &off }, o), 3), [0, 2, 3]);
+        // bits LSB first: 0 0 1 1 1 0 over 6 bits, and a 70-bit run crossing a word edge
+        assert_eq!(starts(|o| run_starts_bits(6, &[0b011100], o), 6), [0, 2, 5, 6]);
+        assert_eq!(starts(|o| run_starts_bits(70, &[0xff; 9], o), 70), [0, 70]);
+        assert_eq!(starts(|o| run_starts_bits(0, &[], o), 0), [0]);
     }
 }
