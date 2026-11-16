@@ -998,28 +998,35 @@ pub fn enum_at(src: &[u8], have: usize, i: usize) -> i64 {
     if i >= have { 0 } else { i64::from_le_bytes(src[i * 8..i * 8 + 8].try_into().unwrap()) }
 }
 /// An element out of range of the domain `0 .. d`: neither `0Nj` nor an index below `d`.
-fn enum_bad(v: i64, d: usize) -> bool { v != i64::MIN && (v < 0 || v as u64 >= d as u64) }
+fn enum_bad(v: i64, d: usize) -> bool { (v != i64::MIN) & ((v < 0) | (v as u64 >= d as u64)) }
+/// The first element of `ch` out of range of `0 .. d`: a whole run is tested with no early exit so the test vectorises, and only
+/// the run holding the answer is searched.
+fn first_bad(ch: &[[u8; 8]], d: usize) -> Option<usize> {
+    ch.chunks(64).enumerate().find_map(|(k, r)| r.iter().fold(false, |a, c| a | enum_bad(i64::from_le_bytes(*c), d)).then(|| k * 64 + r.iter().position(|c| enum_bad(i64::from_le_bytes(*c), d)).unwrap()))
+}
 /// structural.c:1898 `qlean_structural_enum_ids`: values as ids into `0 .. d` at `w` bits, `nullid` outside; answers the
-/// first element that is neither an index below `d` nor `0Nj` (`n` when every one is).
+/// first element that is neither an index below `d` nor `0Nj` (`n` when every one is). `out` is written whole, so it needs no zeroing.
 pub fn enum_ids(n: usize, d: usize, nullid: usize, w: u32, b: &[u8], out: &mut [u8]) -> usize {
-    let mut bad = n;
-    for i in 0..n {
-        let v = enum_at(b, b.len() / 8, i);
-        if bad == n && enum_bad(v, d) { bad = i }
-        crate::ids::id_put(out, w, i, enum_id(v, nullid))
+    // the payload as whole elements; one past it reads `0` (`enum_at`), which is out of range only for an empty domain
+    let ch = b.as_chunks::<8>().0;
+    let bad = first_bad(&ch[..ch.len().min(n)], d).unwrap_or(if d == 0 && ch.len() < n { ch.len() } else { n });
+    // a payload that holds all `n` is indexed with no bound test per element
+    match ch.get(..n) {
+        Some(ch) => crate::ids::pack(out, w, n, |i| enum_id(i64::from_le_bytes(ch[i]), nullid)),
+        None => crate::ids::pack(out, w, n, |i| enum_id(ch.get(i).map_or(0, |c| i64::from_le_bytes(*c)), nullid)),
     }
     bad
 }
-/// structural.c:1924 `qlean_structural_enum_ids_for`: from an encoded column.
+/// structural.c:1924 `qlean_structural_enum_ids_for`: from an encoded column, a block at a time (a block's ids are whole
+/// bytes at every width, so each packs to its own offset). Elements past the column's own count stay zero.
 pub fn enum_ids_enc(n: usize, d: usize, nullid: usize, w: u32, c: &Coc, out: &mut [u8]) -> usize {
-    let (mut v, mut bad) = ([0i64; crate::BLK], n);
-    for b in 0..n.div_ceil(crate::BLK) {
-        let (lo, nb) = (b * crate::BLK, crate::BLK.min(n - b * crate::BLK));
+    let (cn, mut v, mut bad) = (c.meta.n, [0i64; crate::BLK], n);
+    if cn < n { out.fill(0) }
+    for b in 0..cn.div_ceil(crate::BLK) {
+        let (lo, nb) = (b * crate::BLK, crate::BLK.min(cn - b * crate::BLK));
         c.decode_blk(b, nb, &mut v);
-        for (i, &x) in v[..nb].iter().enumerate() {
-            if bad == n && enum_bad(x, d) { bad = lo + i }
-            crate::ids::id_put(out, w, lo + i, enum_id(x, nullid))
-        }
+        if bad == n && v[..nb].iter().fold(false, |a, &x| a | enum_bad(x, d)) { bad = lo + v[..nb].iter().position(|&x| enum_bad(x, d)).unwrap() }
+        crate::ids::pack(&mut out[b * (crate::BLK / 8) * w as usize..], w, nb, |i| enum_id(v[i], nullid));
     }
     bad
 }
