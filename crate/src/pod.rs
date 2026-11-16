@@ -48,6 +48,14 @@ pub fn atomics(s: &mut [i64]) -> &[core::sync::atomic::AtomicI64] {
     // else touches `s` for as long as the atomic view lives
     unsafe { core::slice::from_raw_parts(s.as_ptr().cast::<core::sync::atomic::AtomicI64>(), s.len()) }
 }
+/// `n` elements with no initialisation, as C's `xalloc`: for a buffer every slot of which is written before it is read,
+/// where `vec![0; n]` would write it twice.
+pub fn uninit<T: Pod>(n: usize) -> alloc::vec::Vec<T> {
+    let mut v = alloc::vec::Vec::with_capacity(n);
+    // Safety: capacity `n` was just reserved, and a `Pod` is valid for any bit pattern; the caller writes before it reads
+    unsafe { v.set_len(n) };
+    v
+}
 /// A slice of numbers as its bytes, for writing.
 pub fn bytes_mut<T: Pod>(s: &mut [T]) -> &mut [u8] {
     // Safety: a `Pod` has no padding, so every byte is initialised, and any byte pattern written back is a valid `T`
