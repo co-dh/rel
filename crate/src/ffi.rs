@@ -463,6 +463,18 @@ pub unsafe extern "C" fn qrs_decode_i64(c: *const CCoc, out: *mut i64) { unsafe 
 /// A3: coc.h:860 `coc_sum`.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn qrs_coc_sum(c: *const CCoc, nul: i64) -> u64 { unsafe { (*c).view() }.sum(nul) }
+/// A3: coc.h:858 `coc_sum_blk`, which the float layer's block sums still call.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn qrs_coc_sum_blk(c: *const CCoc, b: usize, nb: usize) -> u64 { unsafe { (*c).view() }.sum_blk(b, nb) }
+/// A3: coc.h:893 `coc_sums_ok`, which `coc_shift` still calls.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn qrs_coc_sums_ok(c: *const CCoc, nul: i64) -> c_int { unsafe { (*c).view() }.sums_ok(nul) as c_int }
+/// A3: coc.h:901 `coc_sums_drop`, which `coc_shift` and the float layer's shift still call.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn qrs_coc_sums_drop(c: *mut CCoc) { unsafe { (*c).view_mut() }.sums_drop() }
+/// A3: coc.h:802 `res_count_lt8`, which `res_count_lt` still calls.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn qrs_res_count_lt8(p: *const u8, nb: usize, t: u64) -> usize { crate::res::res_count_lt8(unsafe { sl(p, nb) }, nb, t) }
 /// A4: coc.h:934 `coc_prd`.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn qrs_coc_prd(c: *const CCoc, nul: i64) -> u64 { unsafe { (*c).view() }.prd(nul) }
