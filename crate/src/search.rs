@@ -2,7 +2,7 @@
 #![allow(unused_variables)] // scaffold: the task that fills this module removes it
 //! Column (a), search.c: operands (A28), the probe table (A29), find/member (A30), bits and symbols (A31), binary
 //! search (A32), run starts (A33). The `qlean_search_*` entries unbox and allocate and stay C (§1).
-use alloc::vec::Vec;
+use alloc::{vec, vec::Vec};
 
 use crate::c::Runner;
 use crate::coc::Coc;
@@ -81,38 +81,264 @@ impl Kind {
 }
 
 // ---- A29: search.c:190-399, the probe table, one instance per key type ----
-/// A key the probe table holds: `RAW`/`FKEY` of search.c:190 (floats compare as search.c:186 says: both zeros
-/// one value, every NaN one value).
-pub trait PKey: Copy + Send + Sync { fn of(b: &[u8]) -> Self; fn key(self) -> u128; }
-impl PKey for u8 { fn of(b: &[u8]) -> Self { unimplemented!("A29: PKey u8") } fn key(self) -> u128 { unimplemented!("A29: PKey u8") } }
-impl PKey for u16 { fn of(b: &[u8]) -> Self { unimplemented!("A29: PKey u16") } fn key(self) -> u128 { unimplemented!("A29: PKey u16") } }
-impl PKey for u32 { fn of(b: &[u8]) -> Self { unimplemented!("A29: PKey u32") } fn key(self) -> u128 { unimplemented!("A29: PKey u32") } }
-impl PKey for u64 { fn of(b: &[u8]) -> Self { unimplemented!("A29: PKey u64") } fn key(self) -> u128 { unimplemented!("A29: PKey u64") } }
-impl PKey for u128 { fn of(b: &[u8]) -> Self { unimplemented!("A29: PKey u128") } fn key(self) -> u128 { unimplemented!("A29: PKey u128") } }
-/// `f32` and `f64` keys by their bits, normalised as `FKEY` does
+/// The build starts a slot's cache line this many keys early (search.c:105 `SEARCH_AHEAD`).
+const AHEAD: usize = 32;
+/// A key the probe table holds: `RAW`/`F32Z`/`F64Z` of search.c:186 (floats compare as that comment says: both zeros
+/// one value, every NaN one value). `of` reads the key at the start of `b` already normalised, so every use of a key
+/// is the one that table, scan and walk agree on.
+pub trait PKey: Copy + Send + Sync {
+    /// bytes per key
+    const W: usize;
+    fn of(b: &[u8]) -> Self;
+    /// the normalised bits, zero-extended
+    fn key(self) -> u128;
+    /// search.c `KEY_HASH`: the key up to eight bytes, a sixteen-byte key's two words folded into one
+    fn hash(self) -> u64 { let v = self.key(); v as u64 ^ ((v >> 64) as u64).wrapping_mul(0xc2b2_ae3d_27d4_eb4f) }
+}
+macro_rules! raw_key { ($($t:ty),*) => {$(impl PKey for $t {
+    const W: usize = core::mem::size_of::<$t>();
+    fn of(b: &[u8]) -> Self { Self::from_le_bytes(b[..Self::W].try_into().expect("a key's bytes")) }
+    fn key(self) -> u128 { self as u128 }
+})*} }
+raw_key!(u8, u16, u32, u64, u128);
+/// `f32` and `f64` keys by their bits, normalised as `F32Z`/`F64Z` do
 #[derive(Clone, Copy)] pub struct F32(pub u32);
 #[derive(Clone, Copy)] pub struct F64(pub u64);
-impl PKey for F32 { fn of(b: &[u8]) -> Self { unimplemented!("A29: PKey f32") } fn key(self) -> u128 { unimplemented!("A29: PKey f32") } }
-impl PKey for F64 { fn of(b: &[u8]) -> Self { unimplemented!("A29: PKey f64") } fn key(self) -> u128 { unimplemented!("A29: PKey f64") } }
+impl PKey for F32 {
+    const W: usize = 4;
+    fn of(b: &[u8]) -> Self {
+        let v = u32::from_le_bytes(b[..4].try_into().expect("a key's bytes"));
+        let m = v & 0x7fff_ffff;
+        F32(if m == 0 { 0 } else if m > 0x7f80_0000 { 0xffc0_0000 } else { v })
+    }
+    fn key(self) -> u128 { self.0 as u128 }
+}
+impl PKey for F64 {
+    const W: usize = 8;
+    fn of(b: &[u8]) -> Self {
+        let v = u64::from_le_bytes(b[..8].try_into().expect("a key's bytes"));
+        let m = v & 0x7fff_ffff_ffff_ffff;
+        F64(if m == 0 { 0 } else if m > 0x7ff0_0000_0000_0000 { 0xfff8_0000_0000_0000 } else { v })
+    }
+    fn key(self) -> u128 { self.0 as u128 }
+}
+/// the low `8 * W` bits (all 64 from eight bytes up): a direct slot is `key - lo` taken in the key's own width
+fn mask<K: PKey>() -> u64 { if K::W >= 8 { !0 } else { (1u64 << (8 * K::W)) - 1 } }
+
 /// search.c:103 `ptab`: direct (`slot` indexed by key − `lo`) or hashed (`sh`); `tab[g]` the first index + 1.
 pub struct Ptab<K> { pub tab: Vec<usize>, pub slot: Vec<u32>, pub key: Vec<K>, pub top: u64, pub lo: u64, pub n: usize,
                      pub used: usize, pub direct: bool, pub sh: u32 }
-/// search.c:251 `table_*`: the table over the haystack `o`.
-pub fn table<K: PKey>(o: &Opnd) -> Ptab<K> { unimplemented!("A29: table") }
-impl<K: PKey> Ptab<K> {
-    /// search.c:231 `dslot_*`, 235 `hslot_*`: the slot of `k`.
-    pub fn slot_of(&self, k: K) -> usize { unimplemented!("A29: dslot/hslot") }
-    /// search.c:335 `hits_*`: block-wise lookups of `x`'s keys `lo .. hi` into `out` (first index, or `n`).
-    pub fn hits(&self, x: &Opnd, lo: usize, hi: usize, out: &mut [i64]) { unimplemented!("A29: hits") }
-    /// search.c:360 `findtab_*`: `x ? hay` for `lo .. hi`.
-    pub fn find(&self, x: &Opnd, lo: usize, hi: usize, out: &mut [i64]) { unimplemented!("A29: findtab") }
-    /// search.c:376 `membertab_*`: `x in hay` for `lo .. hi`, a byte each.
-    pub fn member(&self, x: &Opnd, lo: usize, hi: usize, out: &mut [u8]) { unimplemented!("A29: membertab") }
+
+/// The blocks of `x` covering elements `lo .. hi`, each as the slice of those elements starting at element `at`.
+fn blocks(x: &Opnd, w: usize, lo: usize, hi: usize, mut f: impl FnMut(usize, &[u8])) {
+    let mut buf = [0u64; 2 * crate::BLK];
+    let bb = crate::pod::bytes_mut(&mut buf);
+    let mut at = lo;
+    while at < hi {
+        let (b, end) = (at / crate::BLK, ((at / crate::BLK + 1) * crate::BLK).min(hi));
+        let blo = b * crate::BLK;
+        f(at, &x.blk(b, w, bb)[(at - blo) * w..(end - blo) * w]);
+        at = end;
+    }
 }
-/// search.c:218 `scan_*`: the linear search for a short haystack.
-pub fn scan<K: PKey>(h: &Opnd, x: &Opnd, lo: usize, hi: usize, out: &mut [i64]) { unimplemented!("A29: scan") }
-/// search.c:319 `srange_*`: the haystack's key range, which decides direct against hashed.
-pub fn srange<K: PKey>(o: &Opnd) -> (u64, u64) { unimplemented!("A29: srange") }
+
+/// search.c:251 `table_*`: the table over the haystack `o`, a block at a time, each slot holding the first index its key
+/// occurs at plus one. Direct when the keys span at most `4n + 8`; a direct table whose every slot is filled stops there.
+pub fn table<K: PKey>(o: &Opnd) -> Ptab<K> {
+    let mut p = Ptab { tab: Vec::new(), slot: Vec::new(), key: Vec::new(), top: 0, lo: 0, n: o.n, used: 0, direct: false, sh: 0 };
+    let mut buf = [0u64; 2 * crate::BLK];
+    let bb = crate::pod::bytes_mut(&mut buf);
+    let nb = o.n.div_ceil(crate::BLK);
+    if o.n > 0 && K::W <= 8 {
+        let (lo, span) = match o.src {
+            Src::Ids(_, lw) => (0, ids_top(lw)),
+            Src::Enc(c) => { let (a, z) = coc_srange(&c); (a as u64 & mask::<K>(), (z as u64).wrapping_sub(a as u64)) }
+            Src::Dense(d) => {
+                let (mn, mx) = d.chunks_exact(K::W).take(o.n).map(|c| K::of(c).key() as u64)
+                    .fold((!0u64, 0u64), |(a, z), k| (a.min(k), z.max(k)));
+                (mn, mx - mn)
+            }
+        };
+        if span < o.n as u64 * 4 + 8 {
+            (p.direct, p.lo, p.top) = (true, lo, span);
+            p.tab = vec![0usize; span as usize + 1];
+            for b in 0..nb {
+                for (j, c) in o.blk(b, K::W, bb).chunks_exact(K::W).enumerate() {
+                    let d = ((K::of(c).key() as u64).wrapping_sub(lo) & mask::<K>()) as usize;
+                    if p.tab[d] == 0 {
+                        p.tab[d] = b * crate::BLK + j + 1;
+                        p.used += 1;
+                        if p.used as u64 > span { return p }
+                    }
+                }
+            }
+            return p;
+        }
+    }
+    if o.n >= u32::MAX as usize {
+        panic!("qlean search: a hashed table numbers its keys in 32 bits and cannot hold the {} elements it was handed", o.n);
+    }
+    let cap = crate::group::cap_for(o.n);
+    p.top = cap as u64 - 1;
+    p.sh = 64 - cap.trailing_zeros();
+    p.slot = vec![0u32; cap];
+    p.tab = Vec::with_capacity(o.n);
+    p.key = Vec::with_capacity(o.n);
+    let at = |k: K, sh: u32| (k.hash().wrapping_mul(crate::group::PHI64) >> sh) as usize;
+    for b in 0..nb {
+        let blk = o.blk(b, K::W, bb);
+        let cnt = blk.len() / K::W;
+        for (j, c) in blk.chunks_exact(K::W).enumerate() {
+            let k = K::of(c);
+            if j + AHEAD < cnt { crate::simd::prefetch(&p.slot[at(K::of(&blk[(j + AHEAD) * K::W..]), p.sh)]) }
+            let mut s = at(k, p.sh);
+            while p.slot[s] != 0 && p.key[p.slot[s] as usize - 1].key() != k.key() { s = (s + 1) & p.top as usize }
+            if p.slot[s] == 0 {
+                p.key.push(k);
+                p.tab.push(b * crate::BLK + j + 1);
+                p.used += 1;
+                p.slot[s] = p.used as u32;
+            }
+        }
+    }
+    p
+}
+impl<K: PKey> Ptab<K> {
+    /// search.c:195 `dslot_*`: the slot key `k` names, or `usize::MAX` where none can hold it.
+    #[inline(always)]
+    fn dslot(&self, k: K) -> usize {
+        let d = (k.key() as u64).wrapping_sub(self.lo) & mask::<K>();
+        if d <= self.top { d as usize } else { usize::MAX }
+    }
+    /// search.c:199 `hslot_*`: the key number of `k`, or `usize::MAX`.
+    #[inline(always)]
+    fn hslot(&self, k: K) -> usize {
+        let mut s = (k.hash().wrapping_mul(crate::group::PHI64) >> self.sh) as usize;
+        while self.slot[s] != 0 {
+            let g = self.slot[s] as usize - 1;
+            if self.key[g].key() == k.key() { return g }
+            s = (s + 1) & self.top as usize;
+        }
+        usize::MAX
+    }
+    /// the slot of `k`, `usize::MAX` where there is none.
+    pub fn slot_of(&self, k: K) -> usize { if self.direct { self.dslot(k) } else { self.hslot(k) } }
+    /// search.c:335 `hits_*`: the haystack `h` walked in order to the first occurrence of each key of a table built over
+    /// the needles, `ans[s]` that index plus one; it stops once every key is found. An encoded block whose `[base, maxv]`
+    /// misses the needles' `[lo, hi]` is passed over on its metadata.
+    pub fn hits(&self, h: &Opnd, lo: i64, hi: i64, ans: &mut [usize]) {
+        let mut left = self.used;
+        let mut buf = [0u64; 2 * crate::BLK];
+        let bb = crate::pod::bytes_mut(&mut buf);
+        for b in 0..h.n.div_ceil(crate::BLK) {
+            if left == 0 { return }
+            if let Src::Enc(c) = h.src {
+                if (c.meta.maxv[b] < lo || c.meta.base[b] > hi) && !coc_exc_within(&c, b, lo, hi) { continue }
+            }
+            for (j, c) in h.blk(b, K::W, bb).chunks_exact(K::W).enumerate() {
+                let s = self.slot_of(K::of(c));
+                if s != usize::MAX && self.tab[s] != 0 && ans[s] == 0 {
+                    ans[s] = b * crate::BLK + j + 1;
+                    left -= 1;
+                    if left == 0 { return }
+                }
+            }
+        }
+    }
+    /// each element `i` of `x`'s `lo .. hi` with its slot; which table was built is settled before the loop, not per element.
+    fn each(&self, x: &Opnd, lo: usize, hi: usize, mut f: impl FnMut(usize, usize)) {
+        blocks(x, K::W, lo, hi, |at, q| {
+            if self.direct { for (j, c) in q.chunks_exact(K::W).enumerate() { f(at + j, self.dslot(K::of(c))) } }
+            else { for (j, c) in q.chunks_exact(K::W).enumerate() { f(at + j, self.hslot(K::of(c))) } }
+        })
+    }
+    /// search.c:360 `findtab_*`: `x ? hay` for `lo .. hi` into `out[i - lo]`, `ans` the table's own `tab` or the walk's
+    /// `hits`; an absent key answers `n`.
+    pub fn find(&self, ans: &[usize], x: &Opnd, lo: usize, hi: usize, out: &mut [i64]) {
+        self.each(x, lo, hi, |i, s| out[i - lo] = if s != usize::MAX && ans[s] != 0 { ans[s] as i64 - 1 } else { self.n as i64 })
+    }
+    /// search.c:376 `membertab_*`: `x in hay` for `lo .. hi`, bit `i - lo` of `out` (`lo` a multiple of 8) set when found.
+    pub fn member(&self, ans: &[usize], x: &Opnd, lo: usize, hi: usize, out: &mut [u8]) {
+        self.each(x, lo, hi, |i, s| if s != usize::MAX && ans[s] != 0 { out[(i - lo) >> 3] |= 1 << ((i - lo) & 7) })
+    }
+}
+/// search.c:182 `scan_*`: the first index of each needle `lo .. hi` of `x` in the dense haystack `h`, or `h.n`; eight
+/// keys at a time so that the comparison vectorises.
+pub fn scan<K: PKey>(h: &Opnd, x: &Opnd, lo: usize, hi: usize, out: &mut [i64]) {
+    let Src::Dense(hb) = h.src else { panic!("qlean search: scan reads a dense haystack") };
+    let at = |i: usize| K::of(&hb[i * K::W..]).key();
+    blocks(x, K::W, lo, hi, |a, q| {
+        for (c, r) in q.chunks_exact(K::W).zip(&mut out[a - lo..]) {
+            let k = K::of(c).key();
+            let mut i = 0;
+            *r = loop {
+                if i + 8 > h.n { break (i..h.n).find(|&i| at(i) == k).unwrap_or(h.n) as i64 }
+                let m = (0..8).fold(0u32, |m, t| m | ((at(i + t) == k) as u32) << t);
+                if m != 0 { break (i + m.trailing_zeros() as usize) as i64 }
+                i += 8;
+            };
+        }
+    })
+}
+/// search.c:283 `srange_*`: the operand's signed key range, which a walk over an encoded haystack tests each block's
+/// metadata against.
+pub fn srange<K: PKey>(o: &Opnd) -> (i64, i64) {
+    match o.src {
+        Src::Ids(_, lw) => (0, (ids_top(lw) >> 1) as i64),
+        Src::Enc(c) => coc_srange(&c),
+        Src::Dense(d) => {
+            let w = K::W.min(8);
+            d.chunks_exact(K::W).take(o.n).map(|c| { let mut b = [0u8; 8]; b[..w].copy_from_slice(&c[..w]); sext(u64::from_le_bytes(b), w) })
+                .fold((i64::MAX, i64::MIN), |(a, z), v| (a.min(v), z.max(v)))
+        }
+    }
+}
+
+/// The seven key types as one handle the C side holds: the table, and the answers of a walk when it was built over the
+/// needles (`hit`; absent: the table's own `tab`).
+enum Any { U8(Ptab<u8>), U16(Ptab<u16>), U32(Ptab<u32>), U64(Ptab<u64>), F32(Ptab<F32>), F64(Ptab<F64>), U128(Ptab<u128>) }
+pub struct Probe { t: Any, hit: Option<Vec<usize>> }
+/// the key type of `Kind`, as `K` and the `Any` constructor as `V`, in `$e`
+macro_rules! by_kind { ($kd:expr, $K:ident, $V:ident => $e:expr) => { match $kd {
+    Kind::U8 => { type $K = u8; #[allow(unused_imports)] use Any::U8 as $V; $e } Kind::U16 => { type $K = u16; #[allow(unused_imports)] use Any::U16 as $V; $e }
+    Kind::U32 => { type $K = u32; #[allow(unused_imports)] use Any::U32 as $V; $e } Kind::U64 => { type $K = u64; #[allow(unused_imports)] use Any::U64 as $V; $e }
+    Kind::F32 => { type $K = F32; #[allow(unused_imports)] use Any::F32 as $V; $e } Kind::F64 => { type $K = F64; #[allow(unused_imports)] use Any::F64 as $V; $e }
+    Kind::U128 => { type $K = u128; #[allow(unused_imports)] use Any::U128 as $V; $e }
+} } }
+macro_rules! any { ($s:expr, $p:ident => $e:expr) => { match $s {
+    Any::U8($p) => $e, Any::U16($p) => $e, Any::U32($p) => $e, Any::U64($p) => $e, Any::F32($p) => $e, Any::F64($p) => $e,
+    Any::U128($p) => $e,
+} } }
+pub const KINDS: [Kind; 7] = [Kind::U8, Kind::U16, Kind::U32, Kind::U64, Kind::F32, Kind::F64, Kind::U128];
+impl Probe {
+    /// the table over the haystack `o`
+    pub fn new(kd: Kind, o: &Opnd) -> Probe { by_kind!(kd, K, V => Probe { t: V(table::<K>(o)), hit: None }) }
+    /// search.c:810 `SEARCH_TABLE`'s smaller-side branch: the table over the needles `x`, and the haystack `h` walked to
+    /// the first occurrence of each needle key.
+    pub fn over(kd: Kind, h: &Opnd, x: &Opnd) -> Probe {
+        by_kind!(kd, K, V => {
+            let mut t = table::<K>(x);
+            let (lo, hi) = if matches!(h.src, Src::Enc(_)) { srange::<K>(x) } else { (i64::MIN, i64::MAX) };
+            let mut ans = vec![0usize; t.top as usize + 1];
+            t.hits(h, lo, hi, &mut ans);
+            t.n = h.n;
+            Probe { t: V(t), hit: Some(ans) }
+        })
+    }
+    pub fn width(&self) -> usize { fn w<K: PKey>(_: &Ptab<K>) -> usize { K::W } any!(&self.t, p => w(p)) }
+    /// `x ? hay` for `lo .. hi`
+    pub fn find(&self, x: &Opnd, lo: usize, hi: usize, out: &mut [i64]) {
+        any!(&self.t, p => p.find(self.hit.as_deref().unwrap_or(&p.tab), x, lo, hi, out))
+    }
+    /// `x in hay` for `lo .. hi`
+    pub fn member(&self, x: &Opnd, lo: usize, hi: usize, out: &mut [u8]) {
+        any!(&self.t, p => p.member(self.hit.as_deref().unwrap_or(&p.tab), x, lo, hi, out))
+    }
+}
+/// `scan` at the key type of `kd`
+pub fn scan_kind(kd: Kind, h: &Opnd, x: &Opnd, out: &mut [i64]) {
+    by_kind!(kd, K, V => scan::<K>(h, x, 0, x.n, out))
+}
 
 // ---- A30: search.c:829-965 ----
 /// search.c:881 `search` past the allocation: `x ? h` (index, `h.n` when absent) or `x in h` (`member`, a byte
@@ -387,5 +613,61 @@ mod tests {
             let want: alloc::vec::Vec<i64> = keys.iter().map(|k| { let p = h.partition_point(|x| if right { x < k } else { x <= k }) as i64; if right { p } else { p - 1 } }).collect();
             assert_eq!(run_bin(8, right, &h, &keys), want);
         }
+    }
+    fn dense(b: &[u8], w: usize) -> Opnd<'_> { Opnd { src: Src::Dense(b), n: b.len() / w } }
+    fn finds(kd: Kind, h: &[u8], x: &[u8]) -> Vec<i64> {
+        let (hh, xx) = (dense(h, kd.width()), dense(x, kd.width()));
+        let mut a = vec![0i64; xx.n];
+        Probe::new(kd, &hh).find(&xx, 0, xx.n, &mut a);
+        let mut b = vec![0i64; xx.n];
+        Probe::over(kd, &hh, &xx).find(&xx, 0, xx.n, &mut b);
+        let mut c = vec![0i64; xx.n];
+        scan_kind(kd, &hh, &xx, &mut c);
+        assert_eq!((&a, &b), (&c, &c), "table over the haystack, over the needles and the scan agree");
+        a
+    }
+    fn le<const W: usize>(v: &[u64]) -> Vec<u8> { v.iter().flat_map(|x| x.to_le_bytes()[..W].to_vec()).collect() }
+    // expected values: q (search.c's comments): `1 1 2?1` is 0, `1 1 2?9` is 3; one NaN, one zero (search.c:186)
+    #[test] fn first_index_and_absent() {
+        assert_eq!(finds(Kind::U32, &le::<4>(&[1, 1, 2]), &le::<4>(&[1, 2, 9])), [0, 2, 3]);
+        assert_eq!(finds(Kind::U8, &[], &[1]), [0]);
+        assert_eq!(finds(Kind::U64, &le::<8>(&[u64::MAX, 0]), &le::<8>(&[0, u64::MAX, 7])), [1, 0, 2]);
+    }
+    #[test] fn floats_one_zero_one_nan() {
+        let h = le::<4>(&[0, 0x7fc0_0001, 0x3f80_0000]);
+        assert_eq!(finds(Kind::F32, &h, &le::<4>(&[0x8000_0000, 0xffc0_0000, 0x3f80_0000, 0xbf80_0000])), [0, 1, 2, 3]);
+        assert_eq!(finds(Kind::U32, &h, &le::<4>(&[0x8000_0000])), [3]);
+        let h = le::<8>(&[0x8000_0000_0000_0000, 0x7ff0_0000_0000_0001]);
+        assert_eq!(finds(Kind::F64, &h, &le::<8>(&[0, 0xfff8_0000_0000_0000, 0x7ff0_0000_0000_0000])), [0, 1, 2]);
+    }
+    #[test] fn direct_when_dense_hashed_when_spread() {
+        let h: Vec<u8> = (10..21u8).collect();
+        let t = table::<u8>(&dense(&h, 1));
+        assert!(t.direct && t.lo == 10 && t.top == 10);
+        assert_eq!(finds(Kind::U8, &h, &[10, 20, 21, 9]), [0, 10, 11, 11]);
+        let h: Vec<u64> = (0..100).map(|i| i * 1_000_003).collect();
+        let t = table::<u64>(&dense(&le::<8>(&h), 8));
+        assert!(!t.direct && t.used == 100 && t.slot.len() == 256);
+        assert_eq!(finds(Kind::U64, &le::<8>(&h), &le::<8>(&[h[57], 5, h[0], h[99]])), [57, 100, 0, 99]);
+        // sixteen bytes are always hashed, and the high word counts
+        let g: Vec<u8> = [[1u64, 0], [1, 1], [0, 1]].iter().flat_map(|p| le::<8>(p)).collect();
+        assert!(!table::<u128>(&dense(&g, 16)).direct);
+        assert_eq!(finds(Kind::U128, &g, &[g[16..32].to_vec(), g[32..].to_vec(), vec![0; 16]].concat()), [1, 2, 3]);
+    }
+    #[test] fn member_sets_bits_from_lo() {
+        let h = le::<2>(&[3, 9, 4]);
+        let x = le::<2>(&[9, 1, 3, 3, 8, 4, 4, 0, 3, 9, 0, 0]);
+        let mut out = [0u8; 2];
+        Probe::new(Kind::U16, &dense(&h, 2)).member(&dense(&x, 2), 0, 12, &mut out);
+        assert_eq!(out, [0b0110_1101, 0b0000_0011]);
+        let mut out = [0u8; 1];
+        Probe::new(Kind::U16, &dense(&h, 2)).member(&dense(&x, 2), 8, 12, &mut out);
+        assert_eq!(out, [0b0000_0011]);
+    }
+    #[test] fn srange_is_signed_at_the_key_width() {
+        assert_eq!(srange::<u8>(&dense(&[0xff, 0x7f, 1], 1)), (-1, 127));
+        assert_eq!(srange::<u32>(&dense(&[], 4)), (i64::MAX, i64::MIN));
+        assert_eq!(srange::<u128>(&dense(&le::<8>(&[1, 0, u64::MAX, 0]), 16)), (-1, 1));
+        assert_eq!(srange::<u16>(&Opnd { src: Src::Ids(&[], 8), n: 0 }), (0, 127));
     }
 }
