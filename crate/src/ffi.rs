@@ -321,10 +321,6 @@ pub unsafe extern "C" fn qrs_coc_std(c: *const CCoc, n: usize) -> c_int {
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn qrs_u8_sum(p: *const u8, n: usize) -> i64 { simd::u8_sum(unsafe { sl(p, n) }) }
 
-/// coc.h `res_unpack_agrees`, the self-check `qlean_coc_unpack_agrees` exports.
-#[unsafe(no_mangle)]
-pub extern "C" fn qrs_res_unpack_agrees(w: u8, nb: usize) -> c_int { crate::res::res_unpack_agrees(w, nb) as c_int }
-
 // ---- Column (a) scaffold: the mirrors its shims take, asserted by `QRS_ASSERT_COLA` (structural.c). ----
 
 /// Mirror of coc.h:1443 `cocf`, the ALP column.
@@ -529,17 +525,9 @@ pub unsafe extern "C" fn qrs_coc_sums_drop(c: *mut CCoc) { unsafe { (*c).view_mu
 /// A3: coc.h:802 `res_count_lt8`, which `res_count_lt` still calls.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn qrs_res_count_lt8(p: *const u8, nb: usize, t: u64) -> usize { crate::res::res_count_lt8(unsafe { sl(p, nb) }, nb, t) }
-/// K25: coc.h `cocf_min`, `cocf_max`, `cocf_count_lt` (tools/coc/coc.c's) and `cocf_mask_lt`; `out` is `ceil(n / 64)` words.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn qrs_cocf_min(f: *const CCocf) -> f64 { unsafe { (*f).view() }.min() }
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn qrs_cocf_max(f: *const CCocf) -> f64 { unsafe { (*f).view() }.max() }
+/// K25: coc.h `cocf_count_lt` (tools/coc/coc.c's).
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn qrs_cocf_count_lt(f: *const CCocf, v: f64) -> usize { unsafe { (*f).view() }.count_lt(v) }
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn qrs_cocf_mask_lt(f: *const CCocf, v: f64, out: *mut u64) {
-    unsafe { (*f).view().mask_lt(v, sl_mut(out, (*f).c.n.div_ceil(64))) }
-}
 /// K25: coc.h `cocf_load_blk`: block `b`'s first `nb` elements into `out` (`nb` of the column's element), patches applied.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn qrs_cocf_load_blk(f: *const CCocf, b: usize, nb: usize, out: *mut u8) {
@@ -585,31 +573,6 @@ pub unsafe extern "C" fn qrs_sym_msort(v: *const CSym, n: usize, a: *mut usize, 
 }
 /// Safety: `p` is null or valid for a write of a `usize`.
 unsafe fn opt<'a>(p: *mut usize) -> Option<&'a mut usize> { unsafe { p.as_mut() } }
-/// A column read through C's block callback `at(src, b, nb, buf)`: a pointer to block `b`'s `nb` elements.
-struct CBlocks<T> {
-    src: *const c_void,
-    at: unsafe extern "C" fn(*const c_void, usize, usize, *mut T) -> *const T,
-}
-impl<T> reduce::Blocks<T> for CBlocks<T> {
-    fn at<'a>(&'a mut self, b: usize, nb: usize, buf: &'a mut [T]) -> &'a [T] {
-        // SAFETY: the callback answers a pointer valid for `nb` elements until the next call, as C's callers do
-        unsafe { sl((self.at)(self.src, b, nb, buf.as_mut_ptr()), nb) }
-    }
-}
-/// K2: reduce.c `qlean_f32_sum_src`; `live` null or a `size_t`.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn qrs_f32_sum_src(src: *const c_void,
-                                         at: unsafe extern "C" fn(*const c_void, usize, usize, *mut f32) -> *const f32,
-                                         n: usize, blk: usize, live: *mut usize) -> f64 {
-    reduce::with_buf(blk, |buf| reduce::f32_sum(&mut CBlocks { src, at }, n, blk, buf, unsafe { opt(live) }))
-}
-/// K2: reduce.c `qlean_f64_sum_src`; `live` null or a `size_t`.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn qrs_f64_sum_src(src: *const c_void,
-                                         at: unsafe extern "C" fn(*const c_void, usize, usize, *mut f64) -> *const f64,
-                                         n: usize, blk: usize, live: *mut usize, avg: c_int) -> f64 {
-    reduce::with_buf(blk, |buf| reduce::f64_sum(&mut CBlocks { src, at }, n, blk, buf, unsafe { opt(live) }, avg != 0))
-}
 /// K2: reduce.c `qlean_over_f32_sum` over the `n` floats at `p`.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn qrs_over_f32_sum(p: *const f32, n: usize, live: *mut usize) -> f64 {
@@ -844,22 +807,6 @@ pub unsafe extern "C" fn qrs_alp_patch_blk_f64(o: *const CCocf, b: usize, nb: us
                                                d: *mut i64, ee: *mut i8) -> c_int {
     unsafe { crate::alp::alp_patch_blk(&(*o).view(), b, nb, sl(ix, m), sl(v, m), sl_mut(d, nb), sl_mut(ee, nb)) }
 }
-/// A18: coc.c `alp_chunk_run`, blocks `b0 .. b1` of an `f64` column into `buf` (`(b1 - b0) * BLK` doubles).
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn qrs_alp_chunk(run: unsafe extern "C" fn(), f: *const CCocf, b0: usize, b1: usize, buf: *mut u8) {
-    unsafe { codec::alp_chunk(rn(run), &(*f).view(), b0, b1, sl_mut(buf, (b1 - b0) * crate::BLK * 8)) }
-}
-/// A18: coc.c `alp_decode_run`.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn qrs_alp_decode(run: unsafe extern "C" fn(), f: *const CCocf, out: *mut u8, bytes: usize) {
-    unsafe { codec::alp_decode(rn(run), &(*f).view(), sl_mut(out, bytes)) }
-}
-/// A18: coc.c `alp_gather_run`.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn qrs_alp_gather(run: unsafe extern "C" fn(), fill: u64, f: *const CCocf, idx: *const i64, n: usize,
-                                        out: *mut u8) {
-    unsafe { let e = if (*f).f32 != 0 { 4 } else { 8 }; codec::alp_gather(rn(run), fill, &(*f).view(), sl(idx, n), sl_mut(out, n * e)) }
-}
 // A9: the ALP encoder's per-block steps that need nothing of A7. C reaches them through `coc *` and an exponent array
 // the Rust side has no view of (`EncMeta` is A16's), so each is its own entry per element type.
 /// A9: coc.h `dat_blk_f32`.
@@ -897,14 +844,6 @@ pub unsafe extern "C" fn qrs_alp_exc_at_f64(x: *const f64, nb: usize, be: c_int,
 pub unsafe extern "C" fn qrs_coc_popcount(bits: *const u64, nbits: usize) -> usize {
     crate::bits::popcount(unsafe { sl(bits.cast::<u8>(), nbits.div_ceil(8)) }, nbits)
 }
-/// K26: coc.h `coc_vv_ok`: whether `a op b` (`b` read from `i - s`, `fill` off its ends) rides the encoded forms.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn qrs_coc_vv_ok(a: *const CCoc, b: *const CCoc, op: c_int, s: i64, fill: i64) -> c_int {
-    unsafe { (*a).view().vv_ok(&(*b).view(), op, s, fill) as c_int }
-}
-/// K26: coc.h `coc_scale_ok`.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn qrs_coc_scale_ok(c: *const CCoc, k: i64) -> c_int { unsafe { (*c).view() }.scale_ok(k) as c_int }
 /// K26: sym.h `sym_slices`: the first `n` symbols of `blob` (`bytes` long) and the boxed `offs` into `out`.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn qrs_sym_slices(blob: *const u8, bytes: usize, offs: *const usize, n: usize, out: *mut CSym) {
@@ -2965,23 +2904,4 @@ pub fn encode_fill(n: usize, width: usize, fill: &(dyn Fn(&mut [i64], usize) + S
         unsafe { (*ctx.cast::<&(dyn Fn(&mut [i64], usize) + Sync)>())(sl_mut(buf, nb), i0) }
     }
     unsafe { lean::O::from_raw(qrs_coc_encode_fill(n, width, go, (&raw const fill).cast()).cast()) }
-}
-
-/// coc.c `coc_fill_ctx`, the context of the shift, vv and scale producers.
-#[repr(C)]
-pub struct CFillCtx { pub a: *const CCoc, pub b: *const CCoc, pub op: c_int, pub s: i64, pub fill: i64, pub k: i64 }
-/// coc.c `vv_fill`, `cocops::vv_fill` over the producer's context.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn qrs_coc_vv_fill(buf: *mut i64, i0: usize, nb: usize, ctx: *const c_void) {
-    unsafe { let x = &*ctx.cast::<CFillCtx>(); crate::cocops::vv_fill(&(*x.a).view(), &(*x.b).view(), x.op, x.s, x.fill, i0, sl_mut(buf, nb)) }
-}
-/// coc.c `scale_fill`, `cocops::scale_fill` over the producer's context.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn qrs_coc_scale_fill(buf: *mut i64, i0: usize, nb: usize, ctx: *const c_void) {
-    unsafe { let x = &*ctx.cast::<CFillCtx>(); crate::cocops::scale_fill(&(*x.a).view(), x.k, i0, sl_mut(buf, nb)) }
-}
-/// coc.c `coc_encode_dense`: the parts of the `n` elements of `width` bytes at `x`, 1 unless they would be `below` bytes or more.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn qrs_coc_encode_dense(x: *const u8, n: usize, width: usize, kind: u32, below: usize, r: *mut CParts) -> c_int {
-    unsafe { (encode(&Dense(x), n, width, kind, &mut *r, below) == 1) as c_int }
 }

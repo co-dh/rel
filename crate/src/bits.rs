@@ -19,13 +19,36 @@ pub fn popcount(p: &[u8], nbits: usize) -> usize {
     if rest == 0 { k } else { k + (p[whole] & ((1u8 << rest) - 1)).count_ones() as usize }
 }
 
+/// coc.c `qlean_coc_some_bit`: whether some bit among the first `n` (cut to the `8 * p.len()` there are) is `set`, else
+/// whether some is clear. Both stop at the byte that decides, and only the last byte is masked to the bits that exist.
+pub fn some_bit(set: bool, p: &[u8], n: usize) -> bool {
+    let n = n.min(p.len() * 8);
+    let (whole, rest) = (n / 8, n % 8);
+    if if set { p[..whole].iter().any(|&b| b != 0) } else { p[..whole].iter().any(|&b| b != 0xff) } { return true }
+    let mask = ((1u16 << rest) - 1) as u8;
+    rest != 0 && if set { p[whole] & mask != 0 } else { p[whole] & mask != mask }
+}
+
 #[cfg(test)]
 mod tests {
-    use super::popcount;
+    use super::{popcount, some_bit};
     #[test] fn popcount_ignores_bits_past_nbits() {
         let p = [0xffu8; 17];
         for n in 0..=136usize { assert_eq!(popcount(&p[..n.div_ceil(8)], n), n, "n {n}") }
         assert_eq!(popcount(&[], 0), 0);
         assert_eq!(popcount(&[0b1010_1010, 0xff], 12), 4 + 4);
+    }
+    // against the bit-by-bit definition, every length and a few patterns, `n` past the array included
+    #[test] fn some_bit_matches_the_bitwise_definition() {
+        for pat in [0x00u8, 0xff, 0x01, 0x80, 0xf0, 0x7f, 0xfe] {
+            for len in 0..4usize {
+                let p = alloc::vec![pat; len];
+                for n in 0..=len * 8 + 9 {
+                    let bit = |i: usize| p[i / 8] >> (i % 8) & 1 == 1;
+                    let m = n.min(len * 8);
+                    for set in [false, true] { assert_eq!(some_bit(set, &p, n), (0..m).any(|i| bit(i) == set), "pat {pat:#x} len {len} n {n} set {set}") }
+                }
+            }
+        }
     }
 }

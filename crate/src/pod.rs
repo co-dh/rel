@@ -64,6 +64,34 @@ pub fn bytes_mut<T: Pod>(s: &mut [T]) -> &mut [u8] {
     unsafe { core::slice::from_raw_parts_mut(s.as_mut_ptr().cast::<u8>(), size_of_val(s)) }
 }
 
+/// `bytes` bytes of 64-byte aligned scratch with no initialisation, kept for the next call so that faulting a large buffer in
+/// is paid once (C's `static __thread` chunk of `qlean_alp_sum_f64`). A call takes the kept buffer or allocates one, and puts
+/// it back unless another call already has; the buffer one call asks for is the size every call asks for.
+pub fn with_kept<R>(bytes: usize, f: impl FnOnce(&mut [u8]) -> R) -> R {
+    use core::sync::atomic::{AtomicPtr, AtomicUsize, Ordering::{AcqRel, Acquire, Release}};
+    static KEEP: AtomicPtr<u8> = AtomicPtr::new(core::ptr::null_mut());
+    static SIZE: AtomicUsize = AtomicUsize::new(0);
+    let lay = |n: usize| alloc::alloc::Layout::from_size_align(n.max(1), 64).expect("pod::with_kept: layout");
+    let mut p = KEEP.swap(core::ptr::null_mut(), AcqRel);
+    // the holder of the pointer is the only writer of SIZE until it publishes the pointer again
+    if !p.is_null() && SIZE.load(Acquire) != bytes {
+        unsafe { alloc::alloc::dealloc(p, lay(SIZE.load(Acquire))) };
+        p = core::ptr::null_mut();
+    }
+    if p.is_null() {
+        p = unsafe { alloc::alloc::alloc(lay(bytes)) };
+        if p.is_null() {
+            crate::os::eprint(format_args!("qlean: out of memory for a {bytes}-byte scratch buffer\n")).expect("qlean: stderr");
+            alloc::alloc::handle_alloc_error(lay(bytes))
+        }
+    }
+    // Safety: `p` is a live allocation of `bytes` bytes that nothing else holds until it is put back below
+    let r = f(unsafe { core::slice::from_raw_parts_mut(p, bytes) });
+    SIZE.store(bytes, Release);
+    if KEEP.compare_exchange(core::ptr::null_mut(), p, Release, Acquire).is_err() { unsafe { alloc::alloc::dealloc(p, lay(bytes)) } }
+    r
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
