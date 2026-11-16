@@ -515,12 +515,6 @@ pub unsafe extern "C" fn qrs_coc_sums_drop(c: *mut CCoc) { unsafe { (*c).view_mu
 /// A3: coc.h:802 `res_count_lt8`, which `res_count_lt` still calls.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn qrs_res_count_lt8(p: *const u8, nb: usize, t: u64) -> usize { crate::res::res_count_lt8(unsafe { sl(p, nb) }, nb, t) }
-/// K25: coc.h `coc_count_lt`, which `qlean_coc_count_lt` and tools/coc/coc.c call.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn qrs_coc_count_lt(c: *const CCoc, v: i64) -> usize { unsafe { (*c).view() }.count_lt(v) }
-/// K25: coc.h `coc_any_null`, which `qlean_coc_any_null` calls.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn qrs_coc_any_null(c: *const CCoc, nul: i64) -> c_int { unsafe { (*c).view() }.any_null(nul) as c_int }
 /// K25: coc.h `cocf_min`, `cocf_max`, `cocf_count_lt` (tools/coc/coc.c's) and `cocf_mask_lt`; `out` is `ceil(n / 64)` words.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn qrs_cocf_min(f: *const CCocf) -> f64 { unsafe { (*f).view() }.min() }
@@ -808,41 +802,6 @@ pub unsafe extern "C" fn qrs_mw_close(st: *mut CMwin) {
         zfree(s.ri, s.cap, 8); zfree(s.rf, s.cap, 8); zfree(s.rq, s.cap, 8); zfree(s.rc, s.cap, 8);
         zfree(s.phase, s.w, s.ew); zfree(s.sufx, s.w + 1, s.ew);
     }
-}
-/// A15: coc.c `coc_decode_run`, 8-byte lanes.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn qrs_coc_decode(run: unsafe extern "C" fn(), c: *const CCoc, out: *mut i64) {
-    unsafe { codec::decode(rn(run), &(*c).view(), sl_mut(out, (*c).n)) }
-}
-/// A15: `qrs_coc_decode` at 2-byte lanes (coc.c `qlean_coc_decode_i16`).
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn qrs_coc_decode_i16(run: unsafe extern "C" fn(), c: *const CCoc, out: *mut i16) {
-    unsafe { codec::decode(rn(run), &(*c).view(), sl_mut(out, (*c).n)) }
-}
-/// A15: `qrs_coc_decode` at 4-byte lanes (coc.c `qlean_coc_decode_i32`).
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn qrs_coc_decode_i32(run: unsafe extern "C" fn(), c: *const CCoc, out: *mut i32) {
-    unsafe { codec::decode(rn(run), &(*c).view(), sl_mut(out, (*c).n)) }
-}
-/// A15: coc.c `qlean_coc_block_start` past the unboxing; `c` is a metadata-only view.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn qrs_coc_block_start(c: *const CCoc, b: usize) -> usize { unsafe { codec::block_start(&(*c).view().meta, b) } }
-/// A15: coc.c `coc_cmp2_run`: the `nd` deep blocks `deep` of `a op b` into the bitmap `out` (`a.n.div_ceil(64)` words).
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn qrs_coc_cmp2(run: unsafe extern "C" fn(), op: c_int, a: *const CCoc, b: *const CCoc, deep: *const u32, nd: usize, out: *mut u64) {
-    unsafe { codec::cmp2(rn(run), op, &(*a).view(), &(*b).view(), sl(deep, nd), sl_mut(out, (*a).n.div_ceil(64))) }
-}
-/// A15: coc.c `shift_fill` (the encoder's per-block source of `k + x`, `k - x` when `neg`), `cnt` elements from `i0`, nulls
-/// staying the null.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn qrs_coc_shift_fill(c: *const CCoc, k: i64, neg: c_int, buf: *mut i64, i0: usize, cnt: usize) {
-    unsafe { codec::shift_fill(&(*c).view(), k, neg != 0, i64::MIN, sl_mut(buf, cnt), i0) }
-}
-/// A15b: `x <op> v` of a column as a bitmap, a bit per element LSB-first, the whole job (the metadata pass, then the deep
-/// blocks threaded on `run`, the pool (`qrs_pool_run`)). `out` is `ceil(n / 64)` words, any contents.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn qrs_coc_mask_cmp(run: unsafe extern "C" fn(), op: u8, v: i64, c: *const CCoc, out: *mut u64) {
-    unsafe { codec::mask_cmp(rn(run), op, v, &(*c).view(), sl_mut(out, (*c).n.div_ceil(64))) }
 }
 /// A15b: the metadata pass of `a <op> b` (`b` null: the atom form, `v` the other side): the bitmap `out` (`ceil(n / 64)`
 /// words) wherever a block's range settles it, and in `deep` (`nblk` entries) the numbers of the blocks it does not;
@@ -2950,6 +2909,36 @@ pub unsafe extern "C" fn qrs_coc_encode_move(n: usize, width: usize, alp: c_int,
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn qrs_coc_encode_fill(n: usize, width: usize, fill: FillFn, ctx: *const c_void) -> *mut c_void {
     unsafe { qrs_coc_encode_move(n, width, 0, fill, None, None, None, ctx) }
+}
+
+// ---- B9: the safe face of the encoder and of the bitmaps, for ffi/coc.rs. lean.rs has no `O::from_raw` and no array whose
+// size is below its capacity, so what this file allocates raw becomes an `O` here; F3 moves these into lean.rs. ----
+const _: () = assert!(size_of::<lean::O>() == size_of::<*mut c_void>() && align_of::<lean::O>() == align_of::<*mut c_void>());
+/// A reference this file allocated, as the `O` that drops it. `O` is the one non-null pointer, and `p` is non-null.
+fn own(p: *mut c_void) -> lean::O { unsafe { core::mem::transmute::<*mut c_void, lean::O>(p) } }
+/// `(meta, pack)` of the `x.len() / width` elements of `width` bytes at `x`, whatever their size (`qrs_coc_encode_raw`).
+pub fn encode_pair(x: &[u8], width: usize) -> lean::O { own(unsafe { qrs_coc_encode_raw(x.as_ptr(), x.len() / width, width) }) }
+/// `encode_pair`, or `None` when the encoded form would be as long as `x` or longer (`qrs_coc_encode_dense`).
+pub fn encode_pair_below(x: &[u8], width: usize) -> Option<lean::O> {
+    let n = x.len() / width;
+    let mut r = CParts { meta: null_mut(), body: null_mut(), alp: null_mut() };
+    if unsafe { qrs_coc_encode_dense(x.as_ptr(), n, width, SRC_FOR, n * width, &mut r) } == 0 { return None }
+    Some(own(unsafe { mk_pair(r.meta, r.body) }))
+}
+/// `(meta, pack)` of the `n` elements of `width` bytes `fill(buf, i0)` writes as `i64`s a block at a time (`qrs_coc_encode_fill`).
+pub fn encode_fill(n: usize, width: usize, fill: &(dyn Fn(&mut [i64], usize) + Sync)) -> lean::O {
+    unsafe extern "C" fn go(buf: *mut i64, i0: usize, nb: usize, ctx: *const c_void) {
+        unsafe { (*ctx.cast::<&(dyn Fn(&mut [i64], usize) + Sync)>())(sl_mut(buf, nb), i0) }
+    }
+    own(unsafe { qrs_coc_encode_fill(n, width, go, (&raw const fill).cast()) })
+}
+/// coc.c `mask_alloc` and the kernel that fills it: a `Column.bits` payload of `ceil(n / 8)` bytes inside the `ceil(n / 64)`
+/// words the kernels write; `f` gets the words, any contents.
+pub fn mask_with(n: usize, f: impl FnOnce(&mut [u64])) -> lean::O {
+    let w = n.div_ceil(64);
+    let p = lean::alloc_sarray(1, n.div_ceil(8), w * 8);
+    f(unsafe { sl_mut(lean::sarray_cptr(p).cast::<u64>(), w) });
+    own(p.cast())
 }
 
 /// coc.c `coc_fill_ctx`, the context of the shift, vv and scale producers.
