@@ -1612,6 +1612,194 @@ mod a36_tests {
     }
 }
 
+// ---- K22: structural.c:1860-2105 `amend_index` ----
+/// structural.c:1887 `AMSEG`: the indices or bitmap words of one segment of a compaction.
+const AMSEG: usize = 4096;
+/// The three Lean arrays `amend_index` asks its caller to allocate, in this order: `Dom` (`nd` words, only when
+/// compacting and no index misses), `Rank` (`m` words, likewise), `Res` (the answer).
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum AmOut { Dom, Rank, Res }
+fn seg_hi(s: usize, lim: usize) -> usize { ((s + 1) * AMSEG).min(lim) }
+/// structural.c:1994 `amx_scan`: the prefix of `sc` into `so` (`so[0] = 0`).
+fn seg_scan(so: &mut [usize], sc: &[usize]) {
+    so[0] = 0;
+    for (s, c) in sc.iter().enumerate() { so[s + 1] = so[s] + c }
+}
+/// structural.c:2004 `amend_index`: `amendRounds` of the `idx` indices (`wi` bytes each) into `n` slots, and with
+/// `compact` also `amendCompact` of them widened, out of one bitmap of `n` bits. Word 0 of `Res` is the round count (all
+/// ones on a miss, whose index is word 1), then the round ends, the positions grouped by round, and a widened index
+/// column. `alloc` makes each output array of the given number of words; it is called for `Dom` and `Rank` only when
+/// `compact` and no index misses, and for `Res` once, last.
+#[allow(clippy::too_many_arguments)]
+pub fn amend_index<'o>(run: Runner, n: usize, wi: usize, ranked: bool, compact: bool, idx: &[u8],
+                       alloc: &mut dyn FnMut(AmOut, usize) -> &'o mut [i64]) {
+    use alloc::{vec, vec::Vec};
+    use core::sync::atomic::{AtomicBool, AtomicUsize, Ordering::Relaxed};
+    use crate::{QLEAN_COST_COPY as COPY, QLEAN_COST_GATHER as GATHER};
+    let m = idx.len() / wi;
+    let mut wid: Vec<i64> = if wi == 8 { Vec::new() } else { pod::uninit(m) };
+    let miss_at = AtomicUsize::new(m);
+    // keep the least position whose index misses `[0, n)`: q reports the first one
+    // a chunk is tested without an early exit so the test vectorises; only a chunk that holds a miss is searched
+    let first_miss = |lo: usize, v: &[i64]| {
+        for (c, ch) in v.chunks(256).enumerate() {
+            if ch.iter().fold(false, |a, &x| a | (x as u64 >= n as u64)) {
+                let k = ch.iter().position(|&x| x as u64 >= n as u64).unwrap();
+                miss_at.fetch_min(lo + c * 256 + k, Relaxed);
+                return;
+            }
+        }
+    };
+    if wi == 8 {
+        let ix = pod::cast::<i64>(idx).expect("amend_index: the 8-byte index column is misaligned");
+        crate::c::run_map(run, &mut [], m, 0, COPY, 16, &|lo, hi, _| first_miss(lo, &ix[lo..hi]));
+    } else {
+        macro_rules! widen { ($t:ty) => {{
+            let src = pod::cast::<$t>(idx).expect("amend_index: the index column is misaligned");
+            crate::c::run_map(run, pod::bytes_mut(&mut wid), m, 8, COPY, 16, &|lo, hi, o| {
+                let o = pod::cast_mut::<i64>(o).expect("amend_index: widened slice");
+                for (d, &x) in o.iter_mut().zip(&src[lo..hi]) { *d = x as i64 }
+                first_miss(lo, o)
+            })
+        }}; }
+        match wi { 1 => widen!(i8), 2 => widen!(i16), 4 => widen!(i32), _ => panic!("qlean amend: index width {wi}; 1, 2, 4 and 8 are read") };
+    }
+    let ix: &[i64] = if wi == 8 { pod::cast(idx).unwrap() } else { &wid };
+    let miss = miss_at.load(Relaxed) < m;
+    let bad = if miss { ix[miss_at.load(Relaxed)] } else { 0 };
+    let mut rounds = m.min(1);
+    let (bw, ns) = (n.div_ceil(64), m.div_ceil(AMSEG));
+    let nsw = bw.div_ceil(AMSEG);
+    let compacting = compact && !miss;
+    let (mut seen, mut dup): (Vec<i64>, Vec<i64>) = (Vec::new(), Vec::new());
+    let rep = AtomicBool::new(false);
+    if !miss && ((ranked && m > 1) || compact) {
+        seen = vec![0i64; bw.max(1)];
+        if ranked { dup = vec![0i64; bw.max(1)] }
+        // atomic only when the pass was split: a lock prefix a bit on one thread is what the split was meant to save
+        let (sa, da) = (pod::atomics(&mut seen), pod::atomics(&mut dup));
+        crate::c::run_map(run, &mut [], m, 0, GATHER, 16, &|lo, hi, _| {
+            let whole = lo == 0 && hi == m;
+            let mut again = false;
+            for &x in &ix[lo..hi] {
+                let (w, bit) = ((x as u64 >> 6) as usize, 1u64 << (x as u64 & 63));
+                let old = if whole { let o = sa[w].load(Relaxed) as u64; sa[w].store((o | bit) as i64, Relaxed); o }
+                          else { sa[w].fetch_or(bit as i64, Relaxed) as u64 };
+                if ranked && old & bit != 0 {
+                    again = true;
+                    if whole { da[w].store(da[w].load(Relaxed) | bit as i64, Relaxed) } else { da[w].fetch_or(bit as i64, Relaxed); }
+                }
+            }
+            if again { rep.store(true, Relaxed) }
+        });
+    }
+    let rep = rep.load(Relaxed);
+    let (mut sc, mut so): (Vec<usize>, Vec<usize>) = (Vec::new(), Vec::new());
+    let (mut ll, mut lr): (Vec<i64>, Vec<u32>) = (Vec::new(), Vec::new());
+    if rep || compacting {
+        let nsm = nsw.max(ns);
+        sc = vec![0usize; nsm + 1];
+        so = vec![0usize; nsm + 1];
+        let mut pre: Vec<i64> = pod::uninit(bw.max(1));
+        crate::c::run_map(run, pod::bytes_mut(&mut sc[..nsw]), nsw, 8, COPY * AMSEG as u32, 64, &|lo, hi, o| {
+            let o = pod::cast_mut::<usize>(o).expect("amend_index: counts");
+            for (s, c) in (lo..hi).zip(o) { *c = (s * AMSEG..seg_hi(s, bw)).map(|w| (seen[w] as u64).count_ones() as usize).sum() }
+        });
+        let sc0 = sc[..nsw].to_vec();
+        seg_scan(&mut so, &sc0);
+        let nd = so[nsw];
+        let mut dvec: Vec<i64>;
+        let (dom, d): (&mut [i64], &mut [i64]) = if compacting { let dom = alloc(AmOut::Dom, nd); (dom, alloc(AmOut::Rank, m)) }
+                                                 else { dvec = pod::uninit(m.max(1)); (&mut [], &mut dvec) };
+        // the popcount prefix of a word, and with `compacting` the distinct indices themselves, ascending
+        let doma = pod::atomics(dom);
+        crate::c::run_map(run, pod::bytes_mut(&mut pre[..bw]), nsw, AMSEG * 8, GATHER * AMSEG as u32, 64, &|lo, hi, o| {
+            let o = pod::cast_mut::<i64>(o).expect("amend_index: prefix");
+            for s in lo..hi {
+                let mut j = so[s];
+                for w in s * AMSEG..seg_hi(s, bw) {
+                    o[w - lo * AMSEG] = j as i64;
+                    let mut x = seen[w] as u64;
+                    if compacting { while x != 0 { doma[j].store((w as u64 * 64 + x.trailing_zeros() as u64) as i64, Relaxed); j += 1; x &= x - 1 } }
+                    else { j += x.count_ones() as usize }
+                }
+            }
+        });
+        // an index's position among the distinct ones: the popcount prefix of its word and the bits under it
+        crate::c::run_map(run, pod::bytes_mut(&mut d[..m]), m, 8, GATHER, 16, &|lo, hi, o| {
+            let o = pod::cast_mut::<i64>(o).expect("amend_index: ranks");
+            for (&x, r) in ix[lo..hi].iter().zip(o) {
+                let (w, u) = ((x as u64 >> 6) as usize, x as u64 & 63);
+                *r = (pre[w] as u64 + (seen[w] as u64 & ((1u64 << u) - 1)).count_ones() as u64) as i64;
+            }
+        });
+        if rep {
+            let isdup = |x: i64| dup[(x as u64 >> 6) as usize] as u64 >> (x as u64 & 63) & 1;
+            crate::c::run_map(run, pod::bytes_mut(&mut sc[..ns]), ns, 8, GATHER * AMSEG as u32, 64, &|lo, hi, o| {
+                let o = pod::cast_mut::<usize>(o).expect("amend_index: counts");
+                for (s, c) in (lo..hi).zip(o) { *c = ix[s * AMSEG..seg_hi(s, m)].iter().map(|&x| isdup(x) as usize).sum() }
+            });
+            let sc0 = sc[..ns].to_vec();
+            seg_scan(&mut so, &sc0);
+            let nl = so[ns];
+            ll = pod::uninit(nl);
+            lr = pod::uninit(nl);
+            let la = pod::atomics(&mut ll);
+            crate::c::run_map(run, &mut [], ns, 0, GATHER * AMSEG as u32, 64, &|lo, hi, _| {
+                for s in lo..hi {
+                    let mut j = so[s];
+                    for k in s * AMSEG..seg_hi(s, m) { if isdup(ix[k]) != 0 { la[j].store(k as i64, Relaxed); j += 1 } }
+                }
+            });
+            // ranks stay serial: proportional to the repeats alone
+            let mut cnt = vec![0u32; nd.max(1)];
+            rounds = 1;
+            for (r, &k) in lr.iter_mut().zip(&ll) {
+                let c = &mut cnt[d[k as usize] as usize];
+                *r = *c;
+                *c += 1;
+                rounds = rounds.max(*c as usize);
+            }
+        }
+    }
+    drop((seen, dup));
+    let tail = if rounds > 1 { rounds + m } else { 0 };
+    let o = alloc(AmOut::Res, 2 + tail + if wi != 8 && !miss { m } else { 0 });
+    o[0] = if miss { -1 } else { rounds as i64 };
+    o[1] = bad;
+    let (head, rest) = o[2..].split_at_mut(if rounds > 1 { rounds } else { 0 });
+    let rest = if rounds > 1 {
+        let (ends, pos) = (head, &mut rest[..m]);
+        let nl = ll.len();
+        ends.fill(0);
+        // round 0 is every position but the later occurrences of a repeat; each segment's share of it is its
+        // length less those, so the fill knows where to start
+        for s in 0..ns { sc[s] = seg_hi(s, m) - s * AMSEG - (so[s + 1] - so[s]) }
+        for (&r, &k) in lr.iter().zip(&ll) { ends[r as usize] += 1; if r == 0 { sc[k as usize / AMSEG] += 1 } }
+        let mut t = 0;
+        for c in &mut sc[..ns] { let v = *c; *c = t; t += v }
+        ends[0] += (m - nl) as i64;
+        for r in 1..rounds { ends[r] += ends[r - 1] }
+        let pa = pod::atomics(pos);
+        crate::c::run_map(run, &mut [], ns, 0, COPY * AMSEG as u32, 64, &|lo, hi, _| {
+            for s in lo..hi {
+                let (mut c, mut j) = (so[s], sc[s]);
+                for k in s * AMSEG..seg_hi(s, m) {
+                    if c < so[s + 1] && ll[c] as usize == k { if lr[c] == 0 { pa[j].store(k as i64, Relaxed); j += 1 } c += 1 }
+                    else { pa[j].store(k as i64, Relaxed); j += 1 }
+                }
+            }
+        });
+        // the later rounds hold only repeats, few by construction: fill each from the previous round's end
+        let mut at: Vec<i64> = (0..rounds).map(|r| if r == 0 { 0 } else { ends[r - 1] }).collect();
+        for (&r, &k) in lr.iter().zip(&ll) {
+            if r != 0 { pa[at[r as usize] as usize].store(k, Relaxed); at[r as usize] += 1 }
+        }
+        &mut rest[m..]
+    } else { rest };
+    if wi != 8 && !miss { rest[..m].copy_from_slice(ix) }
+}
+
 #[cfg(test)]
 mod k19_tests {
     use super::*;
@@ -1677,5 +1865,64 @@ mod k19_tests {
         let mut o8 = [0u8; 4];
         ids_place(&mut o8, 0, 8, 4, 2, &[0b11_10_01_00], Some(&[7, 8, 9, 0]), 3);
         assert_eq!(o8, [7, 8, 9, 0]);
+    }
+}
+
+#[cfg(test)]
+mod k22_tests {
+    use super::*;
+    use crate::c::qlean_run_c;
+    // `amendRounds` and `amendCompact` read off their definitions: the round of a position is how many earlier
+    // positions hold the same index; the compaction is the sorted distinct indices and each index's place in them
+    fn spec(n: usize, ix: &[i64]) -> (Vec<i64>, Vec<i64>, Vec<i64>) {
+        if let Some(&b) = ix.iter().find(|&&x| x as u64 >= n as u64) { return (vec![-1, b], vec![], vec![]) }
+        let rk: Vec<usize> = (0..ix.len()).map(|k| ix[..k].iter().filter(|&&x| x == ix[k]).count()).collect();
+        let rounds = rk.iter().map(|r| r + 1).max().unwrap_or(0);
+        let mut res = vec![rounds as i64, 0];
+        let mut ends = vec![];
+        let mut pos = vec![];
+        for r in 0..rounds { pos.extend((0..ix.len()).filter(|&k| rk[k] == r).map(|k| k as i64)); ends.push(pos.len() as i64) }
+        if rounds > 1 { res.extend(ends); res.extend(pos) }
+        let mut dom: Vec<i64> = ix.to_vec();
+        dom.sort_unstable();
+        dom.dedup();
+        let ranks = ix.iter().map(|x| dom.binary_search(x).unwrap() as i64).collect();
+        (res, dom, ranks)
+    }
+    #[test] fn amend_index_matches_the_definition() {
+        let mut s = 0x9e3779b97f4a7c15u64;
+        let mut rng = || { s ^= s << 13; s ^= s >> 7; s ^= s << 17; s };
+        for (m, n, dist) in [(0usize, 5usize, 1u64), (1, 1, 1), (7, 4, 3), (9000, 300000, 100), (9000, 300000, 100000), (5000, 70, 70)] {
+            for miss in [false, true] {
+                let mut ix: Vec<i64> = (0..m).map(|_| (rng() % dist % n.max(1) as u64) as i64).collect();
+                if miss && m > 0 { ix[m / 2] = n as i64 }
+                for wi in [1usize, 2, 4, 8] {
+                    if wi < 8 && ix.iter().any(|&x| x > 127) { continue }
+                    let bytes: Vec<u8> = ix.iter().flat_map(|x| x.to_le_bytes()[..wi].to_vec()).collect();
+                    for ranked in [false, true] {
+                        let (sres, sdom, srk) = spec(n, &ix);
+                        let mut bufs = [vec![0i64; m + 1], vec![0i64; m + 1], vec![0i64; 3 * m + 3]];
+                        let sizes = core::cell::Cell::new([0usize; 3]);
+                        let [b0, b1, b2] = &mut bufs;
+                        let mut free = [Some(&mut b0[..]), Some(&mut b1[..]), Some(&mut b2[..])];
+                        amend_index(qlean_run_c, n, wi, ranked, true, &bytes, &mut |o, w| {
+                            let mut z = sizes.get();
+                            z[o as usize] = w;
+                            sizes.set(z);
+                            free[o as usize].take().unwrap().split_at_mut(w).0
+                        });
+                        let z = sizes.get();
+                        let (dom, rk, res) = (&bufs[0][..z[0]], &bufs[1][..z[1]], &bufs[2][..z[2]]);
+                        if ranked || sres[0] <= 1 {
+                            let tail = if wi != 8 && sres[0] >= 0 { ix.clone() } else { vec![] };
+                            let want: Vec<i64> = sres.iter().copied().chain(tail).collect();
+                            assert_eq!(res, &want[..], "m {m} n {n} wi {wi} dist {dist} miss {miss} ranked {ranked}");
+                        }
+                        assert_eq!(dom, &sdom[..], "dom m {m} n {n} wi {wi}");
+                        assert_eq!(rk, &srk[..], "rk m {m} n {n} wi {wi}");
+                    }
+                }
+            }
+        }
     }
 }
