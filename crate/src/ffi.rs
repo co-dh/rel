@@ -1894,6 +1894,13 @@ pub unsafe extern "C" fn qrs_sd_map(p: *const Plan, i: usize) -> *const usize {
 }
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn qrs_sd_plan_free(p: *mut Plan) { drop(unsafe { alloc::boxed::Box::from_raw(p) }) }
+/// K22: structural.c `amend_index` past the width check; `alloc(ctx, which, words)` makes the Lean array `which` (`AmOut`).
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn qrs_amend_index(run: unsafe extern "C" fn(), n: usize, wi: usize, ranked: u8, compact: c_int, idx: *const u8,
+                                         bytes: usize, alloc: unsafe extern "C" fn(*mut c_void, c_int, usize) -> *mut i64, ctx: *mut c_void) {
+    structural::amend_index(unsafe { rn(run) }, n, wi, ranked != 0, compact != 0, unsafe { sl(idx, bytes) },
+                            &mut |o, w| unsafe { sl_mut(alloc(ctx, o as c_int, w), w) })
+}
 /// A41b: structural.c `scatter`; 0 when an index is out of range.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn qrs_scatter(wb: usize, dst: *mut u8, nd: usize, idx: *const i64, n: usize, src: *const u8,
