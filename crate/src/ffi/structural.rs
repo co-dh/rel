@@ -353,3 +353,23 @@ export! {
         a.into()
     }
 }
+
+export! {
+    /// Spec: `enumIds n d nullId w b` is `b`'s 8-byte domain indices packed at `w`, `0Nj` sent to `nullId`, and the first
+    /// element that is neither an index below `d` nor `0Nj` (`n` when every one of them is). The domain is the dictionary and
+    /// these are the ids, so no element is resolved to a symbol.
+    fn qlean_structural_enum_ids(n: usize, d: usize, nullid: usize, w: usize, bv: B) -> O {
+        let mut ids = SArr::new(1, crate::ids::ids_bytes(n, w as u32));
+        let bad = structural::enum_ids(n, d, nullid, w as u32, bv.bytes(), ids.bytes_mut());
+        pair(ids.into(), box_usize_o(bad))
+    }
+
+    /// Spec: `enumIdsFoR n d nullId w meta pack = enumIds n d nullId w (decode 8 meta pack n)`, packed a block at a time from
+    /// the encoded column, which is never decoded whole.
+    fn qlean_structural_enum_ids_for(n: usize, d: usize, nullid: usize, w: usize, mv: B, pv: B) -> O {
+        let col = coc_view(mv, pv, n);
+        let mut ids = SArr::new(1, crate::ids::ids_bytes(n, w as u32));
+        let bad = structural::enum_ids_enc(n, d, nullid, w as u32, &col, ids.bytes_mut());
+        pair(ids.into(), box_usize_o(bad))
+    }
+}
