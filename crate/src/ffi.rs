@@ -2117,11 +2117,12 @@ pub unsafe extern "C" fn qrs_ew_stats_chain(mode: u8, st: *mut CStage, k: usize,
         if n != 0 { unsafe { c::chain_tiles(0, n.div_ceil(crate::BLK), &cp) } }
     };
     let mut o = [0f64; 5];
+    let cnt;
     if mode == 0 {
         pass(ew::st::SUMS);
         (o[3], o[4]) = (s().sum(0), s().sum(1));
-        let cnt = s().cnt as f64;
-        (s().mx, s().my) = (o[3] / cnt, o[4] / cnt);
+        cnt = s().cnt;
+        (s().mx, s().my) = (o[3] / cnt as f64, o[4] / cnt as f64);
         pass(ew::st::CENTRED);
         (o[0], o[1], o[2]) = (s().sum(0), s().sum(1), s().sum(2));
     } else {
@@ -2131,9 +2132,10 @@ pub unsafe extern "C" fn qrs_ew_stats_chain(mode: u8, st: *mut CStage, k: usize,
         // and past them one under a live left
         if if mode == 3 { s().bad != 0 } else { s().cnt != n } { pass(ew::st::SERIAL) }
         (o[0], o[3]) = (s().sum(0), s().sum(1));
+        cnt = s().cnt;
     }
     let r = unsafe { sl_mut(out, 48) };
-    for (d, v) in r.chunks_exact_mut(8).zip(o.iter().map(|v| v.to_ne_bytes()).chain([(s().cnt as i64).to_ne_bytes()])) { d.copy_from_slice(&v) }
+    for (d, v) in r.chunks_exact_mut(8).zip(o.iter().map(|v| v.to_ne_bytes()).chain([(cnt as i64).to_ne_bytes()])) { d.copy_from_slice(&v) }
 }
 
 #[cfg(test)]
