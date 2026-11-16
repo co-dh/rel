@@ -430,7 +430,8 @@ impl<'a> B<'a> {
     pub fn cstr(self) -> &'a core::ffi::CStr {
         assert!(!self.is_scalar() && unsafe { ptr_tag(self.p()) } == TAG_STRING, "lean::B::cstr: not a String");
         let b = unsafe { core::slice::from_raw_parts(string_cstr(self.p()), string_size(self.p())) };
-        core::ffi::CStr::from_bytes_with_nul(b).expect("lean::B::cstr: a NUL inside a String")
+        // a C string stops at the first NUL, as every C caller of `lean_string_cstr` read it
+        core::ffi::CStr::from_bytes_until_nul(b).expect("lean::B::cstr: a String with no terminating NUL")
     }
     /// the value of an external object of class `cls`; panics on any other object
     pub fn external<T: Ext>(self, cls: &Class<T>) -> &'a T {
