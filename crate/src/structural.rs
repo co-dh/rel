@@ -418,19 +418,157 @@ pub fn put_res(p: &mut [u8], w: u8, lo: usize, v: &[i64], base: u64) {
     }
 }
 
-// ---- A37: structural.c:926-1146 ----
-/// structural.c:936 `qlean_structural_all_below`: every index is below `n`.
-pub fn all_below(n: usize, idx: &[i64]) -> bool { unimplemented!("A37: qlean_structural_all_below") }
-/// structural.c:926 `gather_run` and its entry: `src[idx[i]]` (`w` bytes) into `out`, `fill` out of range.
-pub fn gather(run: Runner, w: usize, fill: u64, src: &[u8], idx: &[i64], out: &mut [u8]) { unimplemented!("A37: gather_run") }
-/// structural.c:1045 `gather_foR_run`: from an encoded column.
-pub fn gather_enc(run: Runner, w: usize, fill: u64, c: &Coc, idx: &[i64], out: &mut [u8]) { unimplemented!("A37: gather_foR_run") }
-/// structural.c:1084 `gather_foR_idx_run`: encoded column, encoded indices (`count` of them).
-pub fn gather_enc_idx(run: Runner, w: usize, fill: u64, c: &Coc, ic: &Coc, count: usize, out: &mut [u8]) {
-    unimplemented!("A37: gather_foR_idx_run")
+// ---- A37: structural.c:594-830 ----
+/// `(T)v` of structural.c's kernels: the low `W` bytes of `v`, zero-extended past 8.
+fn word<const W: usize>(v: u64) -> [u8; W] { let b = v.to_le_bytes(); core::array::from_fn(|k| if k < 8 { b[k] } else { 0 }) }
+/// structural.c's `WIDTHS`: the kernels exist at these element widths only, and say so before any worker starts.
+fn check_w(w: usize, who: &str) {
+    assert!(matches!(w, 1 | 2 | 4 | 8 | 16),
+            "qlean structural: {who} got element width {w}; the kernels are instantiated at 1, 2, 4, 8 and 16 bytes");
 }
-/// structural.c:1122 `gather_bits_run`
-pub fn gather_bits(run: Runner, n: usize, bits: &[u8], idx: &[i64], out: &mut [u8]) { unimplemented!("A37: gather_bits_run") }
+/// structural.c `GATHER_DECODE`: indices in one block in a row that make decoding the block cheaper than reading each.
+const GATHER_DECODE: usize = crate::BLK / 8;
+/// structural.c `GATHER_AHEAD`: how far ahead of the index being read the source is prefetched.
+const GATHER_AHEAD: usize = 16;
+/// structural.c:619 `qlean_structural_all_below`: every index, read unsigned, is below `n`.
+pub fn all_below(n: usize, idx: &[i64]) -> bool { idx.is_empty() || idx.iter().fold(0u64, |m, &x| m.max(x as u64)) < n as u64 }
+// One unsigned compare rejects all three of q's misses (past the end, negative, `0N` = 2^63 unsigned), as `get` does.
+fn gather_w<const W: usize>(run: Runner, fill: u64, src: &[u8], idx: &[i64], out: &mut [u8]) {
+    let (sc, f) = (src.as_chunks::<W>().0, word::<W>(fill));
+    crate::c::run_map(run, out, idx.len(), W, crate::QLEAN_COST_GATHER, W + 8, &|lo, hi, o: &mut [u8]| {
+        for (d, &i) in o.as_chunks_mut::<W>().0.iter_mut().zip(&idx[lo..hi]) { *d = sc.get(i as usize).copied().unwrap_or(f) }
+    });
+}
+/// structural.c:609 `gather_run` and its entry: `src[idx[i]]` (`w` bytes) into `out`, `fill` out of range. `idx.len()`
+/// is the slicing unit and `w + 8` its cost: the index is read as well as the element, so the element alone left a
+/// million-element gather under the threshold and on one thread.
+pub fn gather(run: Runner, w: usize, fill: u64, src: &[u8], idx: &[i64], out: &mut [u8]) {
+    check_w(w, "gather");
+    match w {
+        1 => gather_w::<1>(run, fill, src, idx, out),
+        2 => gather_w::<2>(run, fill, src, idx, out),
+        4 => gather_w::<4>(run, fill, src, idx, out),
+        8 => gather_w::<8>(run, fill, src, idx, out),
+        _ => gather_w::<16>(run, fill, src, idx, out),
+    }
+}
+/// coc.h `coc_load_blk_at`: block `b`'s first `nb` elements decoded at `w` bytes (4 and below, else 8) into `out`.
+fn load_blk_at(c: &Coc, b: usize, nb: usize, w: usize, out: &mut [u8]) {
+    match w {
+        1 => c.decode_blk::<u8>(b, nb, out),
+        2 => c.decode_blk::<i16>(b, nb, crate::pod::cast_mut(out).expect("load_blk_at: the buffer is not aligned for the width")),
+        4 => c.decode_blk::<i32>(b, nb, crate::pod::cast_mut(out).expect("load_blk_at: the buffer is not aligned for the width")),
+        _ => c.decode_blk::<i64>(b, nb, crate::pod::cast_mut(out).expect("load_blk_at: the buffer is not aligned for the width")),
+    }
+}
+// One width for the whole column makes the pack a flat array of residuals, so `u * width / 8` is the address and the
+// block structure cancels out of it: one scaled index plus the block's base, which stays in L1.
+fn flat<const W: usize>(c: &Coc, sw: u8, f: [u8; W], ix: &[i64], o: &mut [u8], rd: impl Fn(usize) -> u64) {
+    let sn = c.meta.n as u64;
+    for (j, (d, &i)) in o.as_chunks_mut::<W>().0.iter_mut().zip(ix).enumerate() {
+        // `coc_prefetch`'s reason at the flat address; a wild one is skipped, where C's is a hint that never faults
+        if let Some(&a) = ix.get(j + GATHER_AHEAD) {
+            if let Some(r) = c.pack.get(((a as u64).wrapping_mul(sw as u64) >> 3) as usize) { crate::simd::prefetch(r) }
+        }
+        let u = i as u64;
+        *d = if u < sn { word(rd(u as usize)) } else { f };
+    }
+}
+// A column whose blocks disagree, or that carries a patch list, has no flat form: a run of indices in one block that
+// is `GATHER_DECODE` long decodes the block once, a shorter one is read through `get`.
+fn runs<const W: usize>(c: &Coc, f: [u8; W], ix: &[i64], o: &mut [u8]) {
+    // coc.h `coc_load_blk_at` decodes at 8 bytes for a 16-byte element, which `(u128 *)buf` then misreads in C
+    assert!(W <= 8, "qlean structural: gather of an encoded column with unequal blocks has no width-{W} reader");
+    let sn = c.meta.n;
+    let mut buf = [0u64; crate::BLK];
+    let bb = crate::pod::bytes_mut(&mut buf);
+    let d = o.as_chunks_mut::<W>().0;
+    let mut j = 0;
+    while j < ix.len() {
+        let u0 = ix[j] as u64;
+        if u0 >= sn as u64 { d[j] = f; j += 1; continue }
+        let (b, blo) = (u0 as usize / crate::BLK, u0 as usize / crate::BLK * crate::BLK);
+        let mut e = j + 1;
+        while e < ix.len() && ix[e] as u64 / crate::BLK as u64 == b as u64 { e += 1 }
+        if e - j < GATHER_DECODE {
+            for k in j..e {
+                if let Some(&a) = ix.get(k + GATHER_AHEAD) { c.prefetch(a as usize) }
+                let u = ix[k] as u64;
+                d[k] = if u < sn as u64 { word(c.get(u as usize) as u64) } else { f };
+            }
+        } else {
+            load_blk_at(c, b, (sn - blo).min(crate::BLK), W, bb);
+            for k in j..e {
+                let u = ix[k] as u64;
+                d[k] = if u < sn as u64 { bb[(u as usize - blo) * W..][..W].try_into().unwrap() } else { f };
+            }
+        }
+        j = e;
+    }
+}
+// One slice of `gather_enc`: `sw` is the source's one width, decided by the entry once rather than per slice.
+fn enc_w<const W: usize>(c: &Coc, sw: u8, fill: u64, ix: &[i64], o: &mut [u8]) {
+    let f = word::<W>(fill);
+    let (sb, sp) = (c.meta.base, c.pack);
+    let base = |u: usize| sb[u / crate::BLK] as u64;
+    let at = |k: usize, n: usize| &sp[k..k + n];
+    match sw {
+        0 => flat(c, sw, f, ix, o, base),
+        1 => flat(c, sw, f, ix, o, |u| base(u).wrapping_add((sp[u >> 3] >> (u & 7) & 1) as u64)),
+        2 => flat(c, sw, f, ix, o, |u| base(u).wrapping_add((sp[u >> 2] >> ((u & 3) * 2) & 3) as u64)),
+        4 => flat(c, sw, f, ix, o, |u| base(u).wrapping_add((sp[u >> 1] >> ((u & 1) * 4) & 15) as u64)),
+        8 => flat(c, sw, f, ix, o, |u| base(u).wrapping_add(sp[u] as u64)),
+        16 => flat(c, sw, f, ix, o, |u| base(u).wrapping_add(u16::from_ne_bytes(at(2 * u, 2).try_into().unwrap()) as u64)),
+        32 => flat(c, sw, f, ix, o, |u| base(u).wrapping_add(u32::from_ne_bytes(at(4 * u, 4).try_into().unwrap()) as u64)),
+        64 => flat(c, sw, f, ix, o, |u| base(u).wrapping_add(u64::from_ne_bytes(at(8 * u, 8).try_into().unwrap()))),
+        255 => runs(c, f, ix, o),
+        _ => flat(c, sw, f, ix, o, |u| base(u).wrapping_add(crate::res::res_get_in(sp, sw, u, sp.len()))),
+    }
+}
+fn enc(w: usize, c: &Coc, sw: u8, fill: u64, ix: &[i64], o: &mut [u8]) {
+    match w {
+        1 => enc_w::<1>(c, sw, fill, ix, o),
+        2 => enc_w::<2>(c, sw, fill, ix, o),
+        4 => enc_w::<4>(c, sw, fill, ix, o),
+        8 => enc_w::<8>(c, sw, fill, ix, o),
+        _ => enc_w::<16>(c, sw, fill, ix, o),
+    }
+}
+/// structural.c:728 `gather_foR_run` and its entry: from an encoded column, which a gather reads only where its index
+/// points, so the source is never decoded whole.
+pub fn gather_enc(run: Runner, w: usize, fill: u64, c: &Coc, idx: &[i64], out: &mut [u8]) {
+    check_w(w, "gather_foR");
+    let sw = c.one_width();
+    crate::c::run_map(run, out, idx.len(), w, crate::QLEAN_COST_GATHER, w + 8,
+                      &|lo, hi, o: &mut [u8]| enc(w, c, sw, fill, &idx[lo..hi], o));
+}
+/// structural.c:767 `gather_foR_idx_run`: encoded column, encoded indices (`ic.meta.n` of them, `count` cut to the
+/// grid), the index decoded a block at a time and never whole.
+pub fn gather_enc_idx(run: Runner, w: usize, fill: u64, c: &Coc, ic: &Coc, count: usize, out: &mut [u8]) {
+    check_w(w, "gather_foR");
+    let sw = c.one_width();
+    crate::c::run_map(run, out, ic.meta.n, w, crate::QLEAN_COST_GATHER, w + 8, &|lo, hi, o: &mut [u8]| {
+        let mut buf = [0i64; crate::BLK];
+        let mut at = lo;
+        while at < hi {
+            let blo = at / crate::BLK * crate::BLK;
+            let end = (blo + crate::BLK).min(hi);
+            ic.decode_blk(at / crate::BLK, end - blo, &mut buf);
+            enc(w, c, sw, fill, &buf[at - blo..end - blo], &mut o[(at - lo) * w..(end - lo) * w]);
+            at = end;
+        }
+    });
+}
+/// structural.c:805 `gather_bits_run` and its entry: bit `j` of `out` is bit `idx[j]` of `bits`, `0` for a miss. The unit
+/// is an output byte (`out` arrives zeroed): two slices sharing a byte would lose each other's bits.
+pub fn gather_bits(run: Runner, n: usize, bits: &[u8], idx: &[i64], out: &mut [u8]) {
+    let hit = |&i: &i64| (i as u64) < n as u64 && bits.get((i as u64 >> 3) as usize).is_some_and(|b| b >> (i & 7) & 1 == 1);
+    crate::c::run_map(run, out, idx.len().div_ceil(8), 1, crate::QLEAN_COST_GATHER, 64, &|lo, _, o: &mut [u8]| {
+        for (d, ch) in o.iter_mut().zip(idx[lo * 8..].chunks(8)) {
+            *d |= ch.iter().enumerate().fold(0u8, |a, (k, i)| a | (hit(i) as u8) << k)
+        }
+    });
+}
 
 // ---- A38: structural.c:1278-1608 ----
 // One width of `expand`: `fill` is the C's `(T)fill`, its low `W` bytes (zero-extended past 8).
@@ -1097,6 +1235,31 @@ mod a38_tests {
         // four 2-bit ids 0 1 2 3; 4, -1 and `0N` are misses, `fill` 9 at 4 bits
         gather_ids(qlean_run_c, 2, 4, 9, &[0b1110_0100], 4, &[3, -1, 0, 4, i64::MIN], &mut out);
         assert_eq!(out, [0x93, 0x90, 0x09]);
+    }
+    // C's own comment: `(til 10)@9 10 -1 0N` is `9 0N 0N 0N`; a 16-byte element zero-extends `fill`
+    #[test] fn gather_misses_all_take_fill() {
+        let src: alloc::vec::Vec<u8> = (0u8..10).collect();
+        let mut out = [0u8; 4];
+        gather(qlean_run_c, 1, 0xff, &src, &[9, 10, -1, i64::MIN], &mut out);
+        assert_eq!(out, [9, 0xff, 0xff, 0xff]);
+        let mut o16 = [1u8; 16];
+        gather(qlean_run_c, 16, 0x0102, &[7; 16], &[1], &mut o16);
+        assert_eq!(o16, [2, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]);
+    }
+    #[test] #[should_panic(expected = "gather got element width 3")]
+    fn gather_refuses_a_width_it_has_no_kernel_for() { gather(qlean_run_c, 3, 0, &[0; 6], &[0], &mut [0; 3]) }
+    // C's own comment: `101b@0 5` is `10b`, so a miss is `0b` and not a dropped element
+    #[test] fn gather_bits_miss_is_zero() {
+        let mut out = [0u8];
+        gather_bits(qlean_run_c, 3, &[0b101], &[0, 5], &mut out);
+        assert_eq!(out, [0b01]);
+        let mut out = [0u8; 2];
+        // a bit past the payload reads 0 though `n` says it exists
+        gather_bits(qlean_run_c, 100, &[0xff], &(0..10).collect::<alloc::vec::Vec<i64>>(), &mut out);
+        assert_eq!(out, [0xff, 0]);
+    }
+    #[test] fn all_below_is_unsigned_and_empty_is_true() {
+        assert!(all_below(0, &[]) && all_below(3, &[0, 2]) && !all_below(3, &[0, 3]) && !all_below(3, &[-1]));
     }
     #[test] fn cycle_ids_takes_the_run_to_the_end_then_laps() {
         let mut out = [0u8; 2];

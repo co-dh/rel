@@ -1212,6 +1212,25 @@ pub unsafe extern "C" fn qrs_gather_enc(run: unsafe extern "C" fn(), w: usize, f
                                         n: usize, out: *mut u8) {
     unsafe { structural::gather_enc(rn(run), w, fill, &(*c).view(), sl(idx, n), sl_mut(out, w * n)) }
 }
+/// A37: structural.c `qlean_structural_all_below` over the `m` indices; 1 when every one, unsigned, is below `n`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn qrs_all_below(n: usize, idx: *const i64, m: usize) -> u8 { unsafe { structural::all_below(n, sl(idx, m)) as u8 } }
+/// A37: structural.c `gather_foR_idx_run`; `ic` is the encoded index (`ic.n` of them), `out` is `w * ic.n` bytes.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn qrs_gather_enc_idx(run: unsafe extern "C" fn(), w: usize, fill: u64, c: *const CCoc, ic: *const CCoc,
+                                            out: *mut u8) {
+    unsafe {
+        let (v, iv) = ((*c).view(), (*ic).view());
+        structural::gather_enc_idx(rn(run), w, fill, &v, &iv, iv.meta.n, sl_mut(out, w * iv.meta.n))
+    }
+}
+/// A37: structural.c `gather_bits_run`: `n` is the source's bit count, `bits` its `bytes` bytes, `out` the zeroed
+/// `ceil(m / 8)` bytes.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn qrs_gather_bits(run: unsafe extern "C" fn(), n: usize, bits: *const u8, bytes: usize,
+                                         idx: *const i64, m: usize, out: *mut u8) {
+    unsafe { structural::gather_bits(rn(run), n, sl(bits, bytes), sl(idx, m), sl_mut(out, m.div_ceil(8))) }
+}
 /// A38: structural.c `expand_run`.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn qrs_expand(run: unsafe extern "C" fn(), w: usize, fill: u64, src: *const u8, ns: usize,
