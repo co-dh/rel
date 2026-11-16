@@ -20,6 +20,15 @@ pub type Worker = unsafe extern "C" fn(lo: usize, hi: usize, p: *const CPass);
 /// C's `qlean_run` (pass.h:415) under a symbol; sort.c passes `qlean_run_c`, so this object needs no C symbol of its own.
 pub type Runner = unsafe extern "C" fn(f: Worker, n: usize, cost: u32, wide: usize, p: *const CPass) -> u32;
 
+#[cfg(not(test))]
+unsafe extern "C" {
+    /// pass.h:453, defined in sort.c
+    fn qlean_run_c(f: Worker, n: usize, cost: u32, wide: usize, p: *const CPass) -> u32;
+}
+/// The C pool as the runner a Rust export hands its kernel (the fake below under `cargo test`), until P1 makes it
+/// `pool::run`. Adds `qlean_run_c` to the names qrs.o leaves undefined.
+pub fn pool() -> Runner { qlean_run_c }
+
 /// Under `cargo test` there is no C pool: three slices, cut as `qlean_slice` (pass.h:243) cuts them, run in turn.
 #[cfg(test)]
 pub unsafe extern "C" fn qlean_run_c(f: Worker, n: usize, _cost: u32, _wide: usize, p: *const CPass) -> u32 {

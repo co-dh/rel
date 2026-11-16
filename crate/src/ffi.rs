@@ -1528,11 +1528,6 @@ pub unsafe extern "C" fn qrs_symtab_build(t: *mut CSymtab, blob: *const u8, byte
         ok as c_int
     }
 }
-/// A41b: structural.c `til_run`.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn qrs_til(run: unsafe extern "C" fn(), out: *mut i64, n: usize) {
-    unsafe { structural::til(rn(run), sl_mut(out, n)) }
-}
 /// A41b: structural.c `scatter`; 0 when an index is out of range.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn qrs_scatter(wb: usize, dst: *mut u8, nd: usize, idx: *const i64, n: usize, src: *const u8,
