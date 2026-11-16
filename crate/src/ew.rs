@@ -213,7 +213,7 @@ fn tol32(_: u32, _: u32) -> bool { false }
 
 /// elementwise.c:366 `EW_VAL_FLT`: a NaN operand is answered before any conversion and comes back as it is, the left
 /// one first; the right one of `-` comes back with its sign flipped (q subtracts by negating and adding).
-macro_rules! val_flt { ($name:ident, $B:ty, $F:ty, $nanq:expr, $nanp:expr, $ord:ident, $floor:ident, $fnma:ident) => {
+macro_rules! val_flt { ($name:ident, $B:ty, $F:ty, $nanq:expr, $nanp:expr, $ord:ident, $floor:ident, $fnma:ident, $pow:expr) => {
     fn $name(op: u8, cls: u8, shape: u8, a: &[$B], b: &[$B], o: &mut [$B]) {
         let isn = |x: $B| <$F>::from_bits(x).is_nan();
         let (tof, tob) = (<$F>::from_bits, |v: $F| if v.is_nan() { $nanq } else { v.to_bits() });
@@ -233,14 +233,14 @@ macro_rules! val_flt { ($name:ident, $B:ty, $F:ty, $nanq:expr, $nanp:expr, $ord:
                 let f = $floor(tof(x) / tof(y));
                 if isn(x) || isn(y) { $nanq } else if ew_outside_long(f as f64) { $nanp } else { tob($fnma(tof(x), tof(y), f)) }
             }),
-            // `pow` is libm's, and the 10 libc names of the design (§1) hold none; the C entry keeps this verb
-            k::POW => unreachable!("`no_pow` refused pow at storage class {cls} before the pool started"),
+            // elementwise.c `EW_POW`: a NaN operand is `0n`; the power is libm's, at double width (the float class narrows it)
+            k::POW => zip2(shape, a, b, o, |x, y| if isn(x) || isn(y) { $nanq } else { tob($pow(tof(x), tof(y))) }),
             _ => ew_unsupported("qlean_ew_val", op as u32, cls as u32),
         }
     }
 } }
-val_flt!(val_f64, u64, f64, NAN64, PNAN64, ew_ord64, floor64, fnma64);
-val_flt!(val_f32, u32, f32, NAN32, PNAN32, ew_ord32, floor32, fnma32);
+val_flt!(val_f64, u64, f64, NAN64, PNAN64, ew_ord64, floor64, fnma64, |x: f64, y: f64| crate::c::pow(x, y));
+val_flt!(val_f32, u32, f32, NAN32, PNAN32, ew_ord32, floor32, fnma32, |x: f32, y: f32| crate::c::pow(x as f64, y as f64) as f32);
 fn fnma64(x: f64, y: f64, f: f64) -> f64 { crate::simd::fnma64(x, y, f) }
 fn fnma32(x: f32, y: f32, f: f32) -> f32 { crate::simd::fnma32(x, y, f) }
 
@@ -261,20 +261,13 @@ fn val_slice(op: u8, cls: u8, shape: u8, nul: i64, a: &[u8], b: &[u8], lo: usize
     }
 }
 
-/// `pow` is libm's, and the 10 libc names of the design (§1) hold none, so the C entry keeps this verb; refused here
-/// before the pool starts, because a panic inside a worker cannot unwind through the C pool.
-fn no_pow(op: u8, cls: u8) {
-    assert!(!(op == k::POW && cls >= k::F32), "qlean_ew_val: pow at storage class {cls} stays in C (it calls libm's pow); qlean_ew_val must not hand it to Rust");
-}
 /// elementwise.c:501 `ew_val_run` and its entry: `a op b` of class `cls` (`shape` vector/atom) into `out`, `n` long.
 pub fn val(run: Runner, op: u8, cls: u8, shape: u8, nul: i64, a: &[u8], b: &[u8], n: usize, out: &mut [u8]) {
-    no_pow(op, cls);
     let w = ew_width(cls as u32);
     run_map(run, out, n, w, QLEAN_COST_ARITH, w, &|lo, hi, o| val_slice(op, cls, shape, nul, a, b, lo, hi, o));
 }
 /// elementwise.c:539 `ew_val_foR_run`: two encoded columns, the answer dense.
 pub fn val_enc(run: Runner, op: u8, cls: u8, nul: i64, a: &Coc, b: &Coc, out: &mut [u8]) {
-    no_pow(op, cls);
     let (w, n) = (ew_width(cls as u32), a.meta.n);
     run_map(run, out, n, w, QLEAN_COST_ARITH, w, &|lo, hi, o| {
         let (mut xa, mut xb) = ([0u64; BLK], [0u64; BLK]);
@@ -291,7 +284,6 @@ pub fn val_enc(run: Runner, op: u8, cls: u8, nul: i64, a: &Coc, b: &Coc, out: &m
 }
 /// elementwise.c:562 `ew_val_foR_atom_run`: an encoded column and an atom.
 pub fn val_enc_atom(run: Runner, op: u8, cls: u8, shape: u8, nul: i64, c: &Coc, atom: &[u8], out: &mut [u8]) {
-    no_pow(op, cls);
     let (w, n) = (ew_width(cls as u32), c.meta.n);
     run_map(run, out, n, w, QLEAN_COST_ARITH, w, &|lo, hi, o| {
         let mut xv = [0u64; BLK];
@@ -907,8 +899,15 @@ mod tests43 {
         assert_eq!(run_val(k::IMOD, 5, k::VA, 0, &mut f, &mut two, 6),
                    [0xfff8000000000000, 0x3ff0000000000000, 0x7ff8000000000000, 0x3ff6000000000000, 0x3fe4000000000000, 0x7ff8000000000000]);
     }
-    #[test] #[should_panic(expected = "pow at storage class 5 stays in C")]
-    fn pow_is_not_rust() { run_val(k::POW, 5, k::VV, 0, &mut [1u64], &mut [1u64], 1); }
+    // `pow` (libm) at both float widths, the f32 one computed at double width and narrowed; a NaN operand is `0n`
+    #[test] fn pow_through_libm() {
+        let (mut x, mut y) = ([2.0f64.to_bits(), f64::NAN.to_bits(), 4.0f64.to_bits()], [10.0f64.to_bits(), 1.0f64.to_bits(), 0.5f64.to_bits()]);
+        assert_eq!(run_val(k::POW, 5, k::VV, 0, &mut x, &mut y, 3), [0x4090000000000000, 0xfff8000000000000, 0x4000000000000000]);
+        let (mut x, mut y) = ([2.0f32.to_bits(), f32::NAN.to_bits()], [10.0f32.to_bits(), 1.0f32.to_bits()]);
+        let mut o = [0u32; 2];
+        val(qlean_run_c, k::POW, 4, k::VV, 0, by(&mut x), by(&mut y), 2, bytes_mut(&mut o[..]));
+        assert_eq!(o, [1024.0f32.to_bits(), 0xffc00000]);
+    }
     fn run_cmp<T: Pod>(op: u8, cls: u8, shape: u8, a: &mut [T], b: &mut [T], n: usize) -> Vec<u8> {
         let mut o = vec![0xABu8; n.div_ceil(8)];
         cmp(qlean_run_c, op, cls, shape, by(a), by(b), n, &mut o);
