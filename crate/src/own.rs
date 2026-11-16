@@ -1,6 +1,11 @@
 #![forbid(unsafe_code)]
-//! own.c:263 and the header checks of own.c:366-394.
+//! own.c:263 and the header checks of own.c:366-394, and `own_check`.
+use crate::coc::{COC_EXC_FRM, Meta};
+use crate::ids::{id_at, id_width, ids_bytes, ids_max};
+use crate::layout::{Tail, exc_ok};
 use crate::why::Why;
+use crate::BLK;
+
 
 pub const OWN_MAXPARTS: usize = 3;
 #[repr(C)]
@@ -100,6 +105,120 @@ pub fn write_head(code: u8, attr: u8, kind: u8, count: u64, nl: usize, len: &[us
         at = o + l;
     }
     Some(OWN_HEAD + 16 * np)
+}
+
+/// own.c `own_check`: what a kernel trusts about the parts and the file could have wrong -- the Frame of Reference block
+/// widths and offsets (`coc_view`: "the stored offsets are trusted"), the ALP sections, and an id past its dictionary.
+/// Residuals and the cached `maxv` and `bsum` cannot make a read leave its part, so they are not checked. False with
+/// `why` filled. `p` are the parts, `kind`'s first `OWN_NPARTS[kind]` of them.
+pub fn check(kind: u8, n: u64, p: [&[u8]; OWN_MAXPARTS], why: &mut Why) -> bool {
+    if kind == 2 || kind == 3 {
+        if !check_coc(kind, n, p, why) { return false }
+    }
+    // `Enc.WF`'s bits clause: b.size = (n+7)/8 exactly. The dense kind's `n * width` is checked by `Own.lean`, which alone
+    // knows the type's width.
+    if kind == 1 && (n > u64::MAX - 7 || p[0].len() as u64 != n.wrapping_add(7) / 8) {
+        why.say(format_args!("part 0 (bitmap): {} booleans need exactly {} bytes, found {}", n, n.wrapping_add(7) / 8, p[0].len()));
+        return false;
+    }
+    kind != 4 || check_syms(n, p, why)
+}
+
+/// `check`'s Frame of Reference and ALP kinds (2 and 3): the metadata part, the pack, the patch list or ALP blob.
+fn check_coc(kind: u8, n: u64, p: [&[u8]; OWN_MAXPARTS], why: &mut Why) -> bool {
+    let (m, pk) = (p[0], p[1]);
+    let nblk = m.len() / 33;
+    if m.len() != 33 * nblk + 16 {
+        why.say(format_args!("part 0: Frame of Reference metadata of 33 bytes a block and a 16-byte trailer, found {} bytes", m.len()));
+        return false;
+    }
+    if n > nblk as u64 * BLK as u64 {
+        why.say(format_args!("part 0: blocks for {} elements, found {} blocks of {}", n, nblk, BLK));
+        return false;
+    }
+    let Some(meta) = Meta::new(m, n as usize) else {
+        why.say(format_args!("part 0: Frame of Reference metadata at an address that is not a multiple of 8"));
+        return false;
+    };
+    // one branch-free pass that vectorises; only a file it rejects is walked again for the block
+    let plen = pk.len() as u64;
+    let bad = (0..nblk).fold(false, |bad, b| {
+        let (wd, o) = (meta.width[b] as u64, meta.off[b]);
+        bad | (wd > 64) | (o % 8 != 0) | (o > plen) | (BLK as u64 * wd / 8 > plen.wrapping_sub(o))
+    });
+    if bad {
+        for b in 0..nblk {
+            let (wd, o) = (meta.width[b] as u64, meta.off[b]);
+            let need = BLK as u64 * wd / 8;
+            if wd > 64 {
+                why.say(format_args!("part 0 block {}: a residual width of 0..64 bits, found {}", b, wd));
+                return false;
+            }
+            if o % 8 != 0 || o > plen || need > plen - o {
+                why.say(format_args!("part 1 block {}: {} residual bytes at a pack offset that is a multiple of 8, found offset {} \
+in a pack of {} bytes", b, need, o, plen));
+                return false;
+            }
+        }
+    }
+    let e = meta.res_end();
+    if kind == 2 {
+        if pk.len() > e {
+            let t = &pk[e..];
+            if t.len() < 16 {
+                why.say(format_args!("part 1: a 16-byte patch list header at byte {}, found {} bytes", e, t.len()));
+                return false;
+            }
+            let (nexc, h1) = (u64::from_ne_bytes(t[..8].try_into().unwrap()), u64::from_ne_bytes(t[8..16].try_into().unwrap()));
+            let (frm, esz) = (h1 & COC_EXC_FRM as u64 != 0, h1 & !(COC_EXC_FRM as u64));
+            if !matches!(esz, 1 | 2 | 4 | 8) {
+                why.say(format_args!("part 1: a patch list element width of 1, 2, 4 or 8 bytes, found {}", esz));
+                return false;
+            }
+            return exc_ok(t, nblk, nexc, esz as usize, 1, if frm { Tail::Frames } else { Tail::None }, why);
+        }
+    } else {
+        if pk.len() != e {
+            why.say(format_args!("part 1: an ALP pack of exactly its {} residual bytes, found {}", e, pk.len()));
+            return false;
+        }
+        let a = p[2];
+        if a.len() < 16 {
+            why.say(format_args!("part 2: a 16-byte ALP header, found {} bytes", a.len()));
+            return false;
+        }
+        let flags = u64::from_ne_bytes(a[8..16].try_into().unwrap());
+        return exc_ok(a, nblk, u64::from_ne_bytes(a[..8].try_into().unwrap()), if flags & 1 != 0 { 4 } else { 8 }, 2, Tail::Exps, why);
+    }
+    true
+}
+
+/// `check`'s symbol column (kind 4): a dictionary of NUL-ended symbols and the ids into it.
+fn check_syms(n: u64, p: [&[u8]; OWN_MAXPARTS], why: &mut Why) -> bool {
+    let (d, ids) = (p[0], p[1]);
+    if d.last().is_some_and(|&z| z != 0) {
+        why.say(format_args!("part 0: a NUL ending the last dictionary symbol at byte {}", d.len() - 1));
+        return false;
+    }
+    let nd = d.iter().filter(|&&z| z == 0).count();
+    let wd = id_width(nd);
+    // `Enc.WF`'s enum clause: ids.size = ⌈n·idWidth/8⌉ exactly, not at least -- a longer pack is a file no writer made
+    if n > usize::MAX as u64 / 64 || ids.len() != ids_bytes(n as usize, wd) {
+        why.say(format_args!("part 1 (ids of the symbol column): {} ids of {} bits need exactly {} bytes, found {}", n, wd,
+                             if n > usize::MAX as u64 / 64 { 0 } else { ids_bytes(n as usize, wd) }, ids.len()));
+        return false;
+    }
+    // Checked here and not at each use: no fixed-width code for d != 2^w ids is free of patterns past d, and the ~40 kernels
+    // that read ids are pure and clamp (`tab[u < nm ? u : nm]`, `idKey`), so they cannot raise.
+    let n = n as usize;
+    let loose = if wd == 0 { nd == 0 } else { wd == 64 || nd != 1usize << wd };
+    if n != 0 && loose && ids_max(ids, wd, n) >= nd {
+        if let Some(i) = (0..n).find(|&i| id_at(ids, wd, i) >= nd) {
+            why.say(format_args!("part 1 id {}: an index into the {} dictionary symbols, found {}", i, nd, id_at(ids, wd, i)));
+            return false;
+        }
+    }
+    true
 }
 
 #[cfg(test)]

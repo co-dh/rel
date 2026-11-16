@@ -936,6 +936,67 @@ pub unsafe extern "C" fn qrs_alp_exc_at_f32(x: *const f32, nb: usize, be: c_int,
 pub unsafe extern "C" fn qrs_alp_exc_at_f64(x: *const f64, nb: usize, be: c_int, lim: u32) -> u32 {
     unsafe { crate::alp::alp_exc_at(sl(x, nb), be, lim) }
 }
+/// K26: coc.h `coc_popcount`: the set bits among the first `nbits` of `bits`, which holds `nbits.div_ceil(8)` bytes.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn qrs_coc_popcount(bits: *const u64, nbits: usize) -> usize {
+    crate::bits::popcount(unsafe { sl(bits.cast::<u8>(), nbits.div_ceil(8)) }, nbits)
+}
+/// K26: coc.h `coc_vv_ok`: whether `a op b` (`b` read from `i - s`, `fill` off its ends) rides the encoded forms.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn qrs_coc_vv_ok(a: *const CCoc, b: *const CCoc, op: c_int, s: i64, fill: i64) -> c_int {
+    unsafe { (*a).view().vv_ok(&(*b).view(), op, s, fill) as c_int }
+}
+/// K26: coc.h `coc_scale_ok`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn qrs_coc_scale_ok(c: *const CCoc, k: i64) -> c_int { unsafe { (*c).view() }.scale_ok(k) as c_int }
+/// K26: own.c `own_check`: `p` and `len` are `OWN_MAXPARTS` parts, those past the kind's null/0. 1, or 0 and `why` filled.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn qrs_own_check(kind: u8, n: u64, p: *const *const u8, len: *const usize, w: *mut c_char, cap: usize) -> c_int {
+    let (p, len) = unsafe { (sl(p, own::OWN_MAXPARTS), sl(len, own::OWN_MAXPARTS)) };
+    own::check(kind, n, core::array::from_fn(|k| unsafe { sl(p[k], len[k]) }), &mut unsafe { why(w, cap) }) as c_int
+}
+/// K26: sym.h `sym_slices`: the first `n` symbols of `blob` (`bytes` long) and the boxed `offs` into `out`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn qrs_sym_slices(blob: *const u8, bytes: usize, offs: *const usize, n: usize, out: *mut CSym) {
+    let s = unsafe { syms0(blob, bytes, offs, n) };
+    for (i, o) in unsafe { sl_mut(out, n) }.iter_mut().enumerate() { let v = s.at(i); *o = CSym { p: v.as_ptr(), len: v.len() } }
+}
+/// K26: coc.h `alp_offsets`: the per-block patch counts in `exc_off[1..=nblk]` into prefix sums; answers the total.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn qrs_alp_offsets(exc_off: *mut u32, nblk: usize) -> usize {
+    crate::alp::alp_offsets(unsafe { sl_mut(exc_off, nblk + 1) }, nblk)
+}
+/// K26: block `b`'s meta view over `c` with the ALP exponent slot `exp`; `body` gets it and the patch count it answers.
+unsafe fn alp_meta<R>(c: *mut CCoc, exp: *mut i8, b: usize, body: impl FnOnce(&mut EncMeta) -> R) -> R {
+    let (lb, over, mut nexc) = (AtomicUsize::new(0), AtomicI32::new(0), 0u32);
+    body(&mut unsafe { ccoc_meta(&*c, b, exp, &mut nexc, &lb, &over) })
+}
+/// K26: coc.h `alp_fin_blk`: block `b`'s decimals `d` (exponents `ee`) at the block exponent `be` into the integer metadata
+/// and `exp[b]`; answers the patch count.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn qrs_alp_fin_blk(c: *mut CCoc, exp: *mut i8, b: usize, be: c_int, d: *mut i64, ee: *const i8, nb: usize) -> u32 {
+    unsafe { alp_meta(c, exp, b, |m| crate::alp::alp_fin_blk(m, be, sl_mut(d, nb), sl(ee, nb), nb)) }
+}
+/// K26: coc.h `alp_meta_blk_f32`: block `b`'s exponent search and metadata; answers the patch count.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn qrs_alp_meta_blk_f32(c: *mut CCoc, exp: *mut i8, b: usize, x: *const f32, nb: usize) -> u32 {
+    unsafe { alp_meta(c, exp, b, |m| crate::alp::alp_meta_blk(m, sl(x, nb), nb)) }
+}
+/// K26: coc.h `alp_meta_blk_f64`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn qrs_alp_meta_blk_f64(c: *mut CCoc, exp: *mut i8, b: usize, x: *const f64, nb: usize) -> u32 {
+    unsafe { alp_meta(c, exp, b, |m| crate::alp::alp_meta_blk(m, sl(x, nb), nb)) }
+}
+/// K26: coc.h `alp_meta_exp_f32`: block `b`'s metadata at the given exponent `be`, no search.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn qrs_alp_meta_exp_f32(c: *mut CCoc, exp: *mut i8, b: usize, x: *const f32, nb: usize, be: c_int) -> u32 {
+    unsafe { alp_meta(c, exp, b, |m| crate::alp::alp_meta_exp(m, sl(x, nb), nb, be)) }
+}
+/// K26: coc.h `alp_meta_exp_f64`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn qrs_alp_meta_exp_f64(c: *mut CCoc, exp: *mut i8, b: usize, x: *const f64, nb: usize, be: c_int) -> u32 {
+    unsafe { alp_meta(c, exp, b, |m| crate::alp::alp_meta_exp(m, sl(x, nb), nb, be)) }
+}
 /// A20: sort.c `grade_keys`.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn qrs_grade_keys(k: *const u64, n: usize, desc: c_int, mn: u64, mx: u64,

@@ -280,6 +280,54 @@ impl<'a> Coc<'a> {
         }
         path
     }
+    /// coc.h `coc_shift_bounds`: an outer bound on what `load_run(lo - s, fill)` of `nb` answers: the extremes of every source
+    /// block it touches, and `fill` where it runs off an end. A null, filled or stored, answers a null, so it bounds
+    /// nothing. `(MAX, MIN)` = every operand a null. `lo - s` wraps, as C's does when `s` is at `i64`'s ends.
+    pub fn shift_bounds(&self, lo: usize, nb: usize, s: i64, fill: i64) -> (i64, i64) {
+        let m = &self.meta;
+        let (from, n) = ((lo as i64).wrapping_sub(s), m.n as i64);
+        let end = from.wrapping_add(nb as i64);
+        let (l, h) = (from.max(0), end.min(n));
+        let (mut a, mut z) = (i64::MAX, i64::MIN);
+        if (from < 0 || end > n) && fill != i64::MIN { (a, z) = (fill, fill) }
+        if l < h {
+            for g in l as usize / BLK..=(h - 1) as usize / BLK {
+                if self.blk_allnul(g) { continue }
+                (a, z) = (a.min(m.base[g]), z.max(m.maxv[g]));
+            }
+        }
+        (a, z)
+    }
+    /// coc.h `coc_vv_ok`: whether `self op (b shifted by s, fill off its ends)` rides the encoded form (`op` 0 `+`, 1 `-`,
+    /// else `*`). The bounds are the non-null extremes, a patch list's outliers included, and the fill keeps every null a
+    /// null, so only an overflow or a pre-writer null frame is refused.
+    pub fn vv_ok(&self, b: &Coc, op: i32, s: i64, fill: i64) -> bool {
+        let m = &self.meta;
+        if m.nblk != b.meta.nblk { return false }
+        for k in 0..m.nblk {
+            let lo = k * BLK;
+            let nb = if lo + BLK < m.n { BLK } else { m.n - lo };
+            if self.blk_allnul(k) { continue }
+            let (ba, ma) = (m.base[k], m.maxv[k]);
+            let (bb, mb) = b.shift_bounds(lo, nb, s, fill);
+            if bb > mb { continue } // every operand a null
+            if ba == i64::MIN || bb == i64::MIN { return false }
+            let ok = match op {
+                0 => ba.checked_add(bb).is_some() && ma.checked_add(mb).is_some(),
+                1 => ba.checked_sub(mb).is_some() && ma.checked_sub(bb).is_some(),
+                _ => ba.checked_mul(bb).is_some() && ba.checked_mul(mb).is_some() && ma.checked_mul(bb).is_some() && ma.checked_mul(mb).is_some(),
+            };
+            if !ok { return false }
+        }
+        true
+    }
+    /// coc.h `coc_scale_ok`: whether `x * k` rides the encoded form. q's `x*0N` and `0N*0` are `0N`, so a pre-writer null
+    /// frame and `k` at the null are refused, and so is an overflow of either end of a block.
+    pub fn scale_ok(&self, k: i64) -> bool {
+        let m = &self.meta;
+        k != i64::MIN && (0..m.nblk).all(|b| self.blk_allnul(b)
+            || (m.base[b] != i64::MIN && m.base[b].checked_mul(k).is_some() && m.maxv[b].checked_mul(k).is_some()))
+    }
 }
 impl<'a> CocMut<'a> {
     /// coc.h:1023 `coc_shift`: `k + x` (`neg`: `k - x`) on base, maxv and the block sums, in unsigned arithmetic. The
