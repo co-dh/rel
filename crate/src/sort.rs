@@ -4,13 +4,14 @@
 //! A grade answers into `out: &mut [i64]` of `n`; `kind` is sort.c's `SK_*`.
 use alloc::vec;
 use alloc::vec::Vec;
+use core::cmp::Ordering::{Equal, Greater};
 use core::sync::atomic::Ordering::Relaxed;
 
 use crate::c::{run_map, run_slices, Runner};
 use crate::coc::{lanes, Coc};
 use crate::key::{self, Keys, Pass, SK_BIT, SK_I16, SK_I32, SK_I64, SK_KINDS_N, SK_U8};
 use crate::ids::by_width;
-use crate::sym::{sym_hash, sym_msort, Syms};
+use crate::sym::{sym_cmp, sym_hash, sym_msort, Syms};
 use crate::{ids, kwin, pod, BLK, QLEAN_COST_ARITH, QLEAN_COST_COPY};
 /// sort.c `SK_LANE`: kind bit that makes `grade_narrow` read the payload as ids of `kind & 0x7f` bits.
 const SK_LANE: u8 = 0x80;
@@ -1769,5 +1770,179 @@ mod tests_k13 {
         let o = run(crate::key::SK_F64, false, &v);
         let r = pod::cast::<f64>(&o).unwrap();
         assert!(r[0].is_nan() && r[1] == f64::NEG_INFINITY && r[2] == 0.0 && r[3] == 0.0 && r[4] == 1.0, "{r:?}");
+    }
+}
+
+// ---- K16: sort.c `asc_syms`, `syms_at`, `guid_cmp`, thinSweep ----
+/// sort.c `asc_syms`: `n` symbols in order, adjacent pairs compared by `sym_cmp` (`>` fails, `>=` when `strict`; swapped
+/// when `desc`). `at(i)` is symbol `i`; one closure so the plain and the interned walk are the same loop.
+#[inline(always)]
+fn asc_by<'a>(desc: bool, strict: bool, n: usize, mut at: impl FnMut(usize) -> &'a [u8]) -> bool {
+    if n < 2 { return true }
+    let mut a = at(0);
+    for i in 1..n {
+        let c = at(i);
+        let o = if desc { sym_cmp(c, a) } else { sym_cmp(a, c) };
+        if o == Greater || (strict && o == Equal) { return false }
+        a = c;
+    }
+    true
+}
+/// sort.c `qlean_sort_ascending_syms` past the unboxing; `s` holds the `n` symbols.
+pub fn ascending_syms(desc: bool, strict: bool, s: &Syms, n: usize) -> bool { asc_by(desc, strict, n, |i| s.at(i)) }
+fn asc_ids<const W: u32>(desc: bool, strict: bool, dict: &Syms, ids: &[u8], n: usize) -> bool {
+    let (nd, empty) = (dict.count(), &dict.blob[..0]);
+    // an id from `nd` up names the empty symbol, as everywhere an id is followed
+    asc_by(desc, strict, n, |i| { let u = crate::ids::id_at(ids, W, i); if u < nd { dict.at(u) } else { empty } })
+}
+/// sort.c `qlean_sort_ascending_ids` past the clamp of `n` to the ids present.
+pub fn ascending_ids(desc: bool, strict: bool, dict: &Syms, ids: &[u8], w: u32, n: usize) -> bool {
+    by_width!(w, asc_ids(desc, strict, dict, ids, n))
+}
+/// sort.c `qlean_sort_ascending_guid`: a guid is two big-endian words, so its order is the one `u128` compare.
+pub fn ascending_guid(desc: bool, strict: bool, p: &[u8], n: usize) -> bool {
+    let g = |i: usize| u128::from_be_bytes(p[16 * i..16 * i + 16].try_into().unwrap());
+    (1..n).all(|i| { let (a, b) = if desc { (g(i), g(i - 1)) } else { (g(i - 1), g(i)) }; a < b || (!strict && a == b) })
+}
+/// sort.c `syms_at`: bytes the symbols `v` take, each followed by its NUL.
+pub fn syms_len<'a>(v: impl Iterator<Item = &'a [u8]>) -> usize { v.map(|s| s.len() + 1).sum() }
+/// sort.c `syms_at`: the symbols `v` and their NULs into `out`, and the `ng + 1` starts into `offs` as `Array Nat`'s tagged
+/// scalars (a byte count below 2^63, so none is a bignum); `offs` is one longer than `v`.
+pub fn syms_at<'a>(v: impl Iterator<Item = &'a [u8]>, out: &mut [u8], offs: &mut [usize]) {
+    let mut at = 0;
+    let mut g = 0;
+    for (o, s) in offs.iter_mut().zip(v) {
+        *o = at << 1 | 1;
+        out[at..at + s.len()].copy_from_slice(s);
+        out[at + s.len()] = 0;
+        at += s.len() + 1;
+        g += 1;
+    }
+    offs[g] = at << 1 | 1;
+}
+
+/// sort.c `ts_cols`: every column as a key where smaller is better. The sign flip makes unsigned `<` signed order and
+/// `!` turns a larger-is-better column around, so dominance is one `<=` per column.
+struct TsCols<'a> { col: Vec<&'a [u8]>, flip: Vec<u64> }
+impl TsCols<'_> {
+    #[inline(always)]
+    fn key(&self, c: usize, i: usize) -> u64 { u64::from_ne_bytes(self.col[c][8 * i..8 * i + 8].try_into().unwrap()) ^ self.flip[c] }
+    /// `a` no worse than `b` everywhere, and better somewhere.
+    #[inline(always)]
+    fn dom(&self, a: usize, b: usize) -> bool {
+        let mut lt = false;
+        for c in 0..self.col.len() {
+            let (x, y) = (self.key(c, a), self.key(c, b));
+            if x > y { return false }
+            lt |= x < y;
+        }
+        lt
+    }
+}
+fn ts_set(mask: &mut [u8], j: usize) { mask[j >> 3] |= 1 << (j & 7) }
+/// sort.c `ts_group`: the rows `r` of one segment, ascending, into `mask`. `buf` and `win` are scratch of `r.len()`.
+fn ts_group(t: &TsCols, r: &[usize], mask: &mut [u8], buf: &mut Vec<(u64, u64, usize)>, win: &mut Vec<usize>) {
+    match t.col.len() {
+        1 => {
+            let best = r.iter().map(|&j| t.key(0, j)).min().unwrap_or(u64::MAX);
+            for &j in r { if t.key(0, j) == best { ts_set(mask, j) } }
+        }
+        2 => {
+            buf.clear();
+            buf.extend(r.iter().map(|&j| (t.key(0, j), t.key(1, j), j)));
+            // equal pairs may land in either order: the mask below sets all of them or none
+            buf.sort_unstable_by_key(|&(a, b, _)| (a, b));
+            // `best` is the smallest column-1 key over rows strictly better on column 0: a row equal to it there is
+            // dominated, and inside its own tie group only a strictly smaller key dominates it
+            let (mut best, mut seen, mut x) = (0, false, 0);
+            while x < buf.len() {
+                let (mut y, gmin) = (x, buf[x].1);
+                while y < buf.len() && buf[y].0 == buf[x].0 {
+                    if buf[y].1 == gmin && (!seen || gmin < best) { ts_set(mask, buf[y].2) }
+                    y += 1;
+                }
+                if !seen || gmin < best { best = gmin }
+                seen = true;
+                x = y;
+            }
+        }
+        _ => {
+            // block-nested-loop: the window holds the rows no earlier row dominates
+            win.clear();
+            for &j in r {
+                if win.iter().any(|&w| t.dom(w, j)) { continue }
+                win.retain(|&w| !t.dom(j, w));
+                win.push(j);
+            }
+            for &w in win.iter() { ts_set(mask, w) }
+        }
+    }
+}
+/// sort.c `ts_free_at`: the first row at or after `j` no segment has taken, with path halving.
+fn ts_free_at(nx: &mut [usize], mut j: usize) -> usize {
+    while nx[j] != j { nx[j] = nx[nx[j]]; j = nx[j] }
+    j
+}
+/// sort.c `qlean_sort_thin_sweep` past the unboxing: `cols` are the `k >= 1` columns of 8-byte keys (`n` rows; a shorter
+/// column reads as zero past its end, as `Column.bitsAt` does), `big[c]` whether column `c` is larger-is-better (columns
+/// past `big` are not), `o` the little-endian `i64` segment offsets and `mask` the `ceil(n / 8)` answer bytes.
+///
+/// A row belongs to the first segment `[o[s], o[s+1])` holding it and rows in none form one group of their own, exactly
+/// the Lean body's `segOf`; for ascending offsets that is each row's one segment.
+pub fn thin_sweep(cols: &[&[u8]], big: &[bool], o: &[u8], n: usize, mask: &mut [u8]) {
+    mask.fill(0);
+    if n == 0 { return }
+    let pads: Vec<Vec<u8>> = cols.iter().map(|c| if c.len() >= 8 * n { Vec::new() } else { let mut v = vec![0; 8 * n]; v[..c.len()].copy_from_slice(c); v }).collect();
+    let t = TsCols {
+        col: cols.iter().zip(&pads).map(|(&c, p)| if c.len() >= 8 * n { c } else { &p[..] }).collect(),
+        flip: (0..cols.len()).map(|c| if big.get(c).copied().unwrap_or(false) { !(1 << 63) } else { 1 << 63 }).collect(),
+    };
+    let g = (o.len() / 8).saturating_sub(1);
+    let off = |s: usize| i64::from_ne_bytes(o[8 * s..8 * s + 8].try_into().unwrap());
+    let clamp = |v: i64| if v < 0 { 0 } else if v as u64 > n as u64 { n } else { v as usize };
+    // `seg[j]` is row j's group, `g` for none; `nx` skips the rows already placed, so overlapping segments cost no more
+    // than disjoint ones
+    let mut seg = vec![g; n];
+    let mut nx: Vec<usize> = (0..=n).collect();
+    for s in 0..g {
+        let (lo, hi) = (clamp(off(s)), clamp(off(s + 1)));
+        let mut j = ts_free_at(&mut nx, lo);
+        while j < hi { seg[j] = s; nx[j] = j + 1; j = ts_free_at(&mut nx, j) }
+    }
+    drop(nx);
+    let mut start = vec![0usize; g + 2];
+    for &s in &seg { start[s + 1] += 1 }
+    for s in 0..=g { start[s + 1] += start[s] }
+    let mx = (0..=g).map(|s| start[s + 1] - start[s]).max().unwrap_or(0);
+    let mut r = vec![0usize; n];
+    for (j, &s) in seg.iter().enumerate() { r[start[s]] = j; start[s] += 1 }
+    drop(seg);
+    let (mut buf, mut win) = (Vec::with_capacity(if t.col.len() == 2 { mx } else { 0 }), Vec::with_capacity(if t.col.len() >= 3 { mx } else { 0 }));
+    // the scatter advanced each `start[s]` to its group's end, which is group s + 1's beginning
+    let mut b = 0;
+    for s in 0..=g { ts_group(&t, &r[b..start[s]], mask, &mut buf, &mut win); b = start[s] }
+}
+
+#[cfg(test)]
+mod k16_tests {
+    use super::*;
+    fn le(v: &[i64]) -> Vec<u8> { v.iter().flat_map(|x| x.to_le_bytes()).collect() }
+    #[test] fn guid_order_is_bytewise() {
+        let mut p = [0u8; 48];
+        p[15] = 1; p[16 + 7] = 1; p[32..].fill(0xff);
+        assert!(ascending_guid(false, true, &p, 3) && !ascending_guid(true, false, &p, 3));
+        assert!(ascending_guid(false, false, &p[..16], 1) && !ascending_guid(false, true, &[0u8; 32], 2));
+    }
+    #[test] fn thin_sweep_two_columns_and_tie_groups() {
+        // rows (1,5) (1,3) (2,3) (0,9): row 1 beats rows 0 and 2; row 3 wins column 0
+        let (a, b) = (le(&[1, 1, 2, 0]), le(&[5, 3, 3, 9]));
+        let mut m = [0u8; 1];
+        thin_sweep(&[&a, &b], &[], &le(&[0, 4]), 4, &mut m);
+        assert_eq!(m[0], 0b1010);
+    }
+    #[test] fn syms_at_writes_nul_and_starts() {
+        let (mut out, mut offs) = ([9u8; 5], [0usize; 3]);
+        syms_at([&b"ab"[..], b"c"].into_iter(), &mut out, &mut offs);
+        assert_eq!((out, offs), ([b'a', b'b', 0, b'c', 0], [1, 7, 11]));
     }
 }

@@ -77,11 +77,13 @@ unsafe fn keys<'a>(kind: u8, p: *const u8, n: usize) -> Option<&'a [u8]> {
     key::bytes(kind, n).map(|b| unsafe { sl(p, b) })
 }
 
-/// `ids` is `bytes` long; `slot` `nd + 1` entries; `first` `min(n, nd + 1)`. Answers the group count.
+/// `ids` is `bytes` long; `slot` `nd + 1` entries, filled empty here; `first` `min(n, nd + 1)`. Answers the group count.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn qrs_ids_firsts(ids: *const u8, bytes: usize, n: usize, w: u32, nd: usize, slot: *mut usize,
                                         first: *mut usize) -> usize {
-    unsafe { ids::firsts(sl(ids, bytes), n, w, nd, sl_mut(slot, nd + 1), sl_mut(first, n.min(nd + 1))) }
+    let slot = unsafe { sl_mut(slot, nd + 1) };
+    slot.fill(usize::MAX); // C's `ids_slots` did this memset
+    unsafe { ids::firsts(sl(ids, bytes), n, w, nd, slot, sl_mut(first, n.min(nd + 1))) }
 }
 
 /// `ids` is `ids_bytes(n, w)` long, `slot` `nd + 1` entries, `out` `ids_bytes(n, wo)` bytes.
@@ -1151,6 +1153,44 @@ pub unsafe extern "C" fn qrs_parted_ids(strict: c_int, d: usize, n: usize, w: u3
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn qrs_grade_guid(desc: c_int, p: *const u8, n: usize, out: *mut i64) {
     unsafe { sort::grade_guid(desc != 0, sl(p, 16 * n), sl_mut(out, n)) }
+}
+/// K16: sort.c `qlean_sort_ascending_syms` past the unboxing: `n` symbols.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn qrs_ascending_syms(desc: c_int, strict: c_int, blob: *const u8, bytes: usize, offs: *const usize,
+                                            n: usize) -> c_int {
+    unsafe { sort::ascending_syms(desc != 0, strict != 0, &syms0(blob, bytes, offs, n), n) as c_int }
+}
+/// K16: sort.c `qlean_sort_ascending_ids` past the clamp of `n`: the dictionary has `nd` symbols, the ids are at `w`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn qrs_ascending_ids(desc: c_int, strict: c_int, blob: *const u8, bytes: usize, offs: *const usize,
+                                           nd: usize, ids: *const u8, w: u32, n: usize) -> c_int {
+    unsafe { sort::ascending_ids(desc != 0, strict != 0, &syms0(blob, bytes, offs, nd), sl(ids, ids::ids_bytes(n, w)), w, n) as c_int }
+}
+/// K16: sort.c `qlean_sort_ascending_guid`: `n` 16-byte guids.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn qrs_ascending_guid(desc: c_int, strict: c_int, p: *const u8, n: usize) -> c_int {
+    unsafe { sort::ascending_guid(desc != 0, strict != 0, sl(p, 16 * n), n) as c_int }
+}
+/// The bytes of the `ng` symbols `v`.
+unsafe fn sym_iter<'a>(v: *const CSym, ng: usize) -> impl Iterator<Item = &'a [u8]> {
+    unsafe { sl(v, ng) }.iter().map(|s| unsafe { sl(s.p, s.len) })
+}
+/// K16: sort.c `syms_at`'s size: the bytes of the `ng` symbols `v`, each with its NUL.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn qrs_syms_len(v: *const CSym, ng: usize) -> usize { unsafe { sort::syms_len(sym_iter(v, ng)) } }
+/// K16: sort.c `syms_at`: `out` is `qrs_syms_len` bytes, `offs` `ng + 1` words (the data of an `Array Nat`).
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn qrs_syms_at(v: *const CSym, ng: usize, out: *mut u8, offs: *mut usize) {
+    unsafe { sort::syms_at(sym_iter(v, ng), sl_mut(out, sort::syms_len(sym_iter(v, ng))), sl_mut(offs, ng + 1)) }
+}
+/// K16: sort.c `qlean_sort_thin_sweep`: `k` columns `cols` (pointer and byte size), the `nb` boxed `Bool`s `big`, the
+/// `ob` bytes of segment offsets `o`, and `mask` of `ceil(n / 8)` bytes.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn qrs_thin_sweep(cols: *const CSym, k: usize, big: *const usize, nb: usize, o: *const u8, ob: usize, n: usize,
+                                        mask: *mut u8) {
+    let big: alloc::vec::Vec<bool> = unsafe { sl(big, nb) }.iter().map(|w| w >> 1 != 0).collect();
+    let cols: alloc::vec::Vec<&[u8]> = unsafe { sym_iter(cols, k) }.collect();
+    unsafe { sort::thin_sweep(&cols, &big, sl(o, ob), n, sl_mut(mask, n.div_ceil(8))) }
 }
 /// A28: search.c `coc_exc_within`: whether a patch of block `b` lies in `lo ..= hi`.
 #[unsafe(no_mangle)]
