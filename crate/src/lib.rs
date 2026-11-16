@@ -35,6 +35,9 @@ pub mod os;
 #[cfg(not(test))]
 #[path = "ffi"]
 pub mod exports {
+    pub mod env;
+    pub mod handle;
+    pub mod search;
     pub mod structural;
     pub mod time;
 }
