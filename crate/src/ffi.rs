@@ -808,11 +808,6 @@ pub unsafe extern "C" fn qrs_parted_ids(strict: c_int, d: usize, n: usize, w: u3
 pub unsafe extern "C" fn qrs_grade_guid(run: unsafe extern "C" fn(), desc: c_int, p: *const u8, n: usize, out: *mut i64) {
     unsafe { sort::grade_guid(rn(run), desc != 0, sl(p, 16 * n), sl_mut(out, n)) }
 }
-/// A28: search.c `coc_srange`: an encoded column's signed range, written to `lo`, `hi`.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn qrs_coc_srange(c: *const CCoc, lo: *mut i64, hi: *mut i64) {
-    unsafe { (*lo, *hi) = search::coc_srange(&(*c).view()) }
-}
 /// A28: search.c `coc_exc_within`: whether a patch of block `b` lies in `lo ..= hi`.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn qrs_coc_exc_within(c: *const CCoc, b: usize, lo: i64, hi: i64) -> c_int {
@@ -830,6 +825,57 @@ pub unsafe extern "C" fn qrs_opnd_blk(d: *const u8, c: *const CCoc, n: usize, en
     unsafe { *cnt = r.len() / w };
     r.as_ptr()
 }
+/// search.c `opnd` as C holds it: payload `d` (`enc` 0 at key width `w`, `enc` 2 at `lw` bits) or the column `c` (`enc` 1).
+/// Safety: as `sl`, for the payload `n` elements need.
+unsafe fn opnd<'a>(d: *const u8, c: *const CCoc, n: usize, enc: c_int, lw: u32, w: usize) -> search::Opnd<'a> {
+    let src = match enc {
+        1 => search::Src::Enc(unsafe { (*c).view() }),
+        2 => search::Src::Ids(unsafe { sl(d, ids::ids_bytes(n, lw)) }, lw),
+        _ => search::Src::Dense(unsafe { sl(d, n * w) }),
+    };
+    search::Opnd { src, n }
+}
+/// A29: search.c `table_*` over the haystack (`kind` as `qrs_kind_of` numbers it). Answers the probe table for
+/// `qrs_ptab_find`/`qrs_ptab_member`, freed by `qrs_ptab_free`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn qrs_ptab_new(kind: c_int, d: *const u8, c: *const CCoc, n: usize, enc: c_int, lw: u32) -> *mut c_void {
+    let kd = search::KINDS[kind as usize];
+    alloc::boxed::Box::into_raw(alloc::boxed::Box::new(search::Probe::new(kd, &unsafe { opnd(d, c, n, enc, lw, kd.width()) }))).cast()
+}
+/// A29: search.c's table over the needles `x`, the haystack `h` walked to each needle key's first occurrence.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn qrs_ptab_over(kind: c_int, hd: *const u8, hc: *const CCoc, hn: usize, henc: c_int, hlw: u32,
+                                       xd: *const u8, xc: *const CCoc, xn: usize, xenc: c_int, xlw: u32) -> *mut c_void {
+    let kd = search::KINDS[kind as usize];
+    let (h, x) = unsafe { (opnd(hd, hc, hn, henc, hlw, kd.width()), opnd(xd, xc, xn, xenc, xlw, kd.width())) };
+    alloc::boxed::Box::into_raw(alloc::boxed::Box::new(search::Probe::over(kd, &h, &x))).cast()
+}
+/// A29: search.c `findtab_*` over the needles `lo .. hi` of the operand; `out` is the answer at `lo` (`hi - lo` entries).
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn qrs_ptab_find(t: *const c_void, d: *const u8, c: *const CCoc, n: usize, enc: c_int, lw: u32,
+                                       lo: usize, hi: usize, out: *mut i64) {
+    let t = unsafe { &*t.cast::<search::Probe>() };
+    t.find(&unsafe { opnd(d, c, n, enc, lw, t.width()) }, lo, hi, unsafe { sl_mut(out, hi - lo) })
+}
+/// A29: search.c `membertab_*`: bit `i - lo` of `out` for needle `i` of `lo .. hi` (`lo` a multiple of 8).
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn qrs_ptab_member(t: *const c_void, d: *const u8, c: *const CCoc, n: usize, enc: c_int, lw: u32,
+                                         lo: usize, hi: usize, out: *mut u8) {
+    let t = unsafe { &*t.cast::<search::Probe>() };
+    t.member(&unsafe { opnd(d, c, n, enc, lw, t.width()) }, lo, hi, unsafe { sl_mut(out, (hi - lo).div_ceil(8)) })
+}
+/// A29: frees what `qrs_ptab_new` and `qrs_ptab_over` answered; null is none.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn qrs_ptab_free(t: *mut c_void) {
+    if !t.is_null() { drop(unsafe { alloc::boxed::Box::from_raw(t.cast::<search::Probe>()) }) }
+}
+/// A29: search.c `scan_*`: the first index in the dense haystack `h` of `n` keys of each of the `m` needles `x`, or `n`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn qrs_scan(kind: c_int, h: *const u8, n: usize, x: *const u8, m: usize, out: *mut i64) {
+    let kd = search::KINDS[kind as usize];
+    let (h, x) = unsafe { (opnd(h, null_mut(), n, 0, 0, kd.width()), opnd(x, null_mut(), m, 0, 0, kd.width())) };
+    search::scan_kind(kd, &h, &x, unsafe { sl_mut(out, m) })
+}
 /// A28: search.c `kind_of`: the `kind` enum's number; `who` names the caller in the abort text.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn qrs_kind_of(w: usize, is_float: u8, who: *const c_char) -> c_int {
@@ -838,8 +884,7 @@ pub unsafe extern "C" fn qrs_kind_of(w: usize, is_float: u8, who: *const c_char)
 /// A28: search.c `kind_width` of the `kind` number `k`.
 #[unsafe(no_mangle)]
 pub extern "C" fn qrs_kind_width(k: c_int) -> usize {
-    use search::Kind::*;
-    [U8, U16, U32, U64, F32, F64, U128][k as usize].width()
+    search::KINDS[k as usize].width()
 }
 /// A31: search.c `sym_scan`: the first of `n` symbols equal to `k`, or `n`.
 #[unsafe(no_mangle)]
@@ -903,15 +948,6 @@ pub unsafe extern "C" fn qrs_bin_rows(run: unsafe extern "C" fn(), w: usize, is_
         search::bin_rows(rn(run), w, is_float != 0, is_signed != 0, right != 0, sl(hay, if h.is_some() { 0 } else { hbytes }), h.as_ref(),
                          sl(keys, w * m), sl(order, obytes), sl(bounds, nb), sl(gids, ng), miss, m, sl_mut(out, m))
     }
-}
-/// The operand `qrs_opnd_blk` and `qrs_run_starts` describe: dense `d` (`enc` 0), the column `c` (1), or ids at `lw` bits (2).
-unsafe fn opnd<'a>(d: *const u8, c: *const CCoc, n: usize, enc: c_int, lw: u32, w: usize) -> search::Opnd<'a> {
-    let src = match enc {
-        1 => search::Src::Enc(unsafe { (*c).view() }),
-        2 => search::Src::Ids(unsafe { sl(d, ids::ids_bytes(n, lw)) }, lw),
-        _ => search::Src::Dense(unsafe { sl(d, n * w) }),
-    };
-    search::Opnd { src, n }
 }
 /// A33: search.c `run_starts` over C's `opnd`; `out` holds `n + 1`. Answers the count with the terminator.
 #[unsafe(no_mangle)]
