@@ -81,10 +81,10 @@ pub fn fdiv_magic(g: &Magic, x: i64) -> i64 {
 
 // ---- A43: elementwise.c:482-1092 ----
 use crate::c::run_map;
-use crate::ids::{self, id_at};
+use crate::ids::{self, id_at, ids_bytes, pack, unpack};
 use crate::pod::{self, bytes_mut, Lane, Pod};
 use crate::sym::sym_msort;
-use crate::{BLK, QLEAN_COST_ARITH, QLEAN_COST_COPY};
+use crate::{BLK, QLEAN_COST_ARITH, QLEAN_COST_COPY, QLEAN_COST_MATH};
 use alloc::vec;
 use alloc::vec::Vec;
 
@@ -122,15 +122,19 @@ fn side<'a>(x: &'a [u8], atom: bool, lo: usize, hi: usize, w: usize) -> &'a [u8]
     let (s, e) = if atom { (0, w) } else { (lo * w, hi * w) };
     x.get(s..e).unwrap_or_else(|| panic!("qlean_ew: elements {}..{} of a {}-byte payload of {w}-byte elements", s / w, e / w, x.len()))
 }
-/// The bytes of `buf` as a block's elements.
-fn block<'a>(c: &Coc, b: usize, cnt: usize, w: usize, buf: &'a mut [u64; BLK]) -> &'a [u8] {
-    let o = bytes_mut(buf);
+/// elementwise.c:1269 `ew_decode_run` (`coc_load_blk_at`): block `b`'s first `cnt` elements, `w` bytes each, into `o`.
+pub fn decode_stage(c: &Coc, b: usize, cnt: usize, w: usize, o: &mut [u8]) {
     match w {
         1 => c.decode_blk::<u8>(b, cnt, rw(o)),
         2 => c.decode_blk::<i16>(b, cnt, rw(o)),
         4 => c.decode_blk::<i32>(b, cnt, rw(o)),
         _ => c.decode_blk::<i64>(b, cnt, rw(o)),
     }
+}
+/// The bytes of `buf` as a block's elements.
+fn block<'a>(c: &Coc, b: usize, cnt: usize, w: usize, buf: &'a mut [u64; BLK]) -> &'a [u8] {
+    let o = bytes_mut(buf);
+    decode_stage(c, b, cnt, w, o);
     o
 }
 
@@ -586,19 +590,46 @@ fn mon_slice(op: u8, cls: u8, nul: i64, x: &[u8], o: &mut [u8]) {
         _ => for (o, &v) in rw::<u64>(o).iter_mut().zip(ro::<u64>(x)) { *o = if op == k44::NEG { v ^ (1 << 63) } else { v & !(1 << 63) } },
     }
 }
-/// The pairs the engine answers: `neg` and `abs` at the six classes. The nine float maps at `f64` call libm, which
-/// the object may not (§1), so the C entry keeps them and must not hand them over.
+/// The nine float maps' answer at `f64`, elementwise.c `EW_MON_MAP`: a NaN operand answers `0n` before libm sees it, and
+/// a NaN result is `nanout` (`0n`, except the two arc functions' positive one: measured, `asin 2` and `acos -0w`).
+#[inline(always)]
+fn mon_map(x: &[u64], o: &mut [u64], nanout: u64, f: impl Fn(f64) -> f64) {
+    for (o, &b) in o.iter_mut().zip(x) {
+        *o = if f64::from_bits(b).is_nan() { NAN64 } else {
+            let y = f(f64::from_bits(b)).to_bits();
+            if f64::from_bits(y).is_nan() { nanout } else { y }
+        };
+    }
+}
+/// elementwise.c:1039 `ew_mon_run`'s switch, outside the loop: one straight libm loop per map.
+fn mon_libm(op: u8, x: &[u8], o: &mut [u8]) {
+    use crate::c as m;
+    let (x, o) = (ro::<u64>(x), rw::<u64>(o));
+    match op {
+        2 => mon_map(x, o, NAN64, m::sqrt), 3 => mon_map(x, o, NAN64, m::exp), 4 => mon_map(x, o, NAN64, m::log),
+        5 => mon_map(x, o, NAN64, m::sin), 6 => mon_map(x, o, NAN64, m::cos), 7 => mon_map(x, o, NAN64, m::tan),
+        8 => mon_map(x, o, PNAN64, m::asin), 9 => mon_map(x, o, PNAN64, m::acos), _ => mon_map(x, o, NAN64, m::atan),
+    }
+}
+/// The pairs `neg`/`abs` answer (the encoded entries read nothing else): the six classes at the two verbs.
 fn mon_chk(op: u8, cls: u8) {
-    assert!(!(cls == k44::F64 && (k44::SQRT..=k44::ATAN).contains(&op)),
-            "qlean_ew_mon: map {op} at f64 stays in C (it calls libm); qlean_ew_mon must not hand it to Rust");
     if op > k44::ABS || cls > k44::F64 { ew_unsupported("qlean_ew_mon", op as u32, cls as u32) }
 }
-/// elementwise.c:1665 `ew_mon_run` and its entry: the monadic verbs `neg` and `abs`.
+/// The nine float maps are `SQRT ..= ATAN` at `f64` alone (q answers a float whatever the argument's type, so the
+/// dispatch widens first); any other pair of them is unsupported, as `ew_mon_run`'s `default`.
+fn is_libm(op: u8, cls: u8) -> bool { (k44::SQRT..=k44::ATAN).contains(&op) && cls == k44::F64 }
+/// elementwise.c:1039 `ew_mon_run` and its entry: the monadic verbs, `neg` and `abs` and the nine libm maps.
 pub fn mon(run: Runner, op: u8, cls: u8, nul: i64, x: &[u8], n: usize, out: &mut [u8]) {
     if n == 0 { return }
-    mon_chk(op, cls);
+    let lib = is_libm(op, cls);
+    if !lib { mon_chk(op, cls) }
     let w = ew_width(cls as u32);
-    run_map(run, out, n, w, QLEAN_COST_ARITH, w, &|lo, hi, o| mon_slice(op, cls, nul, side(x, false, lo, hi, w), o));
+    // chosen before the pool starts: the cost is the verb's, and a libm call an element is `QLEAN_COST_MATH`
+    let cost = if lib { QLEAN_COST_MATH } else { QLEAN_COST_ARITH };
+    run_map(run, out, n, w, cost, w, &|lo, hi, o| {
+        let x = side(x, false, lo, hi, w);
+        if lib { mon_libm(op, x, o) } else { mon_slice(op, cls, nul, x, o) }
+    });
 }
 /// elementwise.c:1708-1765 `ew_mon_foR_run`, `ew_mon_foR_blk`: over an encoded column, the answer dense.
 pub fn mon_enc(run: Runner, op: u8, cls: u8, nul: i64, c: &Coc, out: &mut [u8]) {
@@ -800,10 +831,14 @@ mod a45 {
 }
 
 // ---- A46a: elementwise.c:2007-2150 ----
-/// elementwise.c:2007 `ew_widen_run` and its entry: class `src` widened to `dst`, nulls mapped.
-pub fn widen(run: Runner, src: u8, dst: u8, nul_in: i64, nul_out: i64, x: &[u8], n: usize, out: &mut [u8]) {
+/// elementwise.c:2007 `ew_widen_run`'s refusal: widening goes up to `int`, `long`, `real` or `float`, and a float only to `float`.
+fn widen_chk(src: u8, dst: u8) {
+    if !matches!(dst, 2..=5) || (dst != 5 && matches!(src, 4 | 5)) { ew_unsupported("qlean_ew_widen", src as u32, dst as u32) }
+}
+/// elementwise.c:2007 `ew_widen_run` over elements `[lo, hi)` of the whole source `x` (a bit source indexed from its own
+/// bit 0, so a slice may start inside a byte) into `o`, the `hi - lo` answers. The pair was checked by `widen_chk`.
+fn widen_slice(src: u8, dst: u8, nul_in: i64, nul_out: i64, x: &[u8], lo: usize, hi: usize, o: &mut [u8]) {
     const PNAN64: u64 = 0x7ff8000000000000;
-    if n > 0 && (!matches!(dst, 2..=5) || (dst != 5 && matches!(src, 4 | 5))) { ew_unsupported("qlean_ew_widen", src as u32, dst as u32) }
     // the source class is chosen outside the loop, so each pair is its own straight-line pass (elementwise.c:2023)
     fn pass<const W: usize>(src: u8, lo: usize, hi: usize, x: &[u8], o: &mut [u8], f: impl Fn(i64) -> [u8; W]) {
         let os = o.chunks_exact_mut(W);
@@ -815,8 +850,7 @@ pub fn widen(run: Runner, src: u8, dst: u8, nul_in: i64, nul_out: i64, x: &[u8],
             _ => for (c, b) in os.zip(x[lo * 8..hi * 8].chunks_exact(8)) { c.copy_from_slice(&f(i64::from_le_bytes([b[0], b[1], b[2], b[3], b[4], b[5], b[6], b[7]]))) },
         }
     }
-    let w = if matches!(dst, 2..=5) { ew_width(dst as u32) } else { 1 };
-    crate::c::run_map(run, out, n, w, crate::QLEAN_COST_COPY, w, &|lo, hi, o: &mut [u8]| match dst {
+    match dst {
         2 => pass(src, lo, hi, x, o, |v| (if v == nul_in { nul_out } else { v } as i32).to_le_bytes()),
         3 => pass(src, lo, hi, x, o, |v| (if v == nul_in { nul_out } else { v }).to_le_bytes()),
         4 => pass(src, lo, hi, x, o, |v| (if v == nul_in { nul_out as u32 } else { (v as f32).to_bits() }).to_le_bytes()),
@@ -828,7 +862,20 @@ pub fn widen(run: Runner, src: u8, dst: u8, nul_in: i64, nul_out: i64, x: &[u8],
         },
         _ if src == 5 => o.copy_from_slice(&x[lo * 8..hi * 8]),
         _ => pass(src, lo, hi, x, o, |v| (if v == nul_in { nul_out as u64 } else { (v as f64).to_bits() }).to_le_bytes()),
-    });
+    }
+}
+/// elementwise.c:2007 `ew_widen_run` and its entry: class `src` widened to `dst`, nulls mapped.
+pub fn widen(run: Runner, src: u8, dst: u8, nul_in: i64, nul_out: i64, x: &[u8], n: usize, out: &mut [u8]) {
+    if n > 0 { widen_chk(src, dst) }
+    let w = if matches!(dst, 2..=5) { ew_width(dst as u32) } else { 1 };
+    crate::c::run_map(run, out, n, w, crate::QLEAN_COST_COPY, w, &|lo, hi, o: &mut [u8]| widen_slice(src, dst, nul_in, nul_out, x, lo, hi, o));
+}
+/// elementwise.c:1214 `ew_widen_stage`: elements `[lo, hi)` of a chain tile (or of a column of one stage) of `n`
+/// elements, on the calling thread. A bit source may be cut inside a byte; `widen_slice` indexes bits from the tile's own.
+pub fn widen_stage(src: u8, dst: u8, nul_in: i64, nul_out: i64, x: &[u8], lo: usize, hi: usize, out: &mut [u8]) {
+    if lo == hi { return }
+    widen_chk(src, dst);
+    widen_slice(src, dst, nul_in, nul_out, x, lo, hi, &mut out[lo * ew_width(dst as u32)..hi * ew_width(dst as u32)])
 }
 
 #[cfg(test)]
@@ -1180,6 +1227,60 @@ mod eng {
     pub(super) const IDS: u32 = 12; pub(super) const PACK: u32 = 13;
 }
 
+// ---- K9: the chain's tile workers over a packed id column (elementwise.c:1288 `ew_ids_run`, :1315 `ew_pack_run`) ----
+/// Bytes of `n` ids at `w` bits as the two stages see them: a width the table does not list is the 64-bit lane, as in
+/// `IDS_WIDTHS`' `default`.
+pub fn ids_len(n: usize, w: u32) -> usize {
+    match w { 0 => 0, 1 | 2 | 4 => ids_bytes(n, w), 8 => n, 16 => 2 * n, 32 => 4 * n, _ => 8 * n }
+}
+/// elementwise.c:1288 `ew_ids_run`: ids `[lo, hi)` of the packed payload `x` (`w` bits each) written into `o` at class
+/// `cls`'s width. A sub-byte slice may start inside a word, so its ragged head goes id by id and the rest is `ids::unpack`.
+pub fn ids_stage(cls: u8, w: u32, x: &[u8], lo: usize, hi: usize, o: &mut [u8]) {
+    #[inline(always)]
+    fn go<const W: u32, T: Lane>(x: &[u8], lo: usize, hi: usize, o: &mut [T]) {
+        let mut i = lo;
+        if W != 0 && W < 8 { while i < hi && i % (64 / W as usize) != 0 { o[i] = T::wrap(id_at(x, W, i) as u64); i += 1 } }
+        // `i` is a whole word in (or the lane width makes it a whole id), so the byte it starts at is exact
+        let at = i * W as usize / 8;
+        unpack::<W, T>(&x[at..], &mut o[i..hi], |_, e, v| *e = T::wrap(v as u64));
+    }
+    #[inline(always)]
+    fn by_w<T: Lane>(w: u32, x: &[u8], lo: usize, hi: usize, o: &mut [T]) {
+        match w {
+            0 => go::<0, T>(x, lo, hi, o), 1 => go::<1, T>(x, lo, hi, o), 2 => go::<2, T>(x, lo, hi, o),
+            4 => go::<4, T>(x, lo, hi, o), 8 => go::<8, T>(x, lo, hi, o), 16 => go::<16, T>(x, lo, hi, o),
+            32 => go::<32, T>(x, lo, hi, o), _ => go::<64, T>(x, lo, hi, o),
+        }
+    }
+    match ew_width(cls as u32) {
+        1 => by_w::<u8>(w, x, lo, hi, rw(o)),
+        2 => by_w::<i16>(w, x, lo, hi, rw(o)),
+        4 => by_w::<i32>(w, x, lo, hi, rw(o)),
+        _ => by_w::<i64>(w, x, lo, hi, rw(o)),
+    }
+}
+/// elementwise.c:1315 `ew_pack_run`: the `n` elements of `x` (class `cls`, zero-extended) written as `w`-bit ids. Below a
+/// byte `[lo, hi)` are output bytes, each built in a register, so no two slices share a byte and the last byte's fields
+/// past `n` stay zero; at a byte and up they are elements. `o` is `ids_len(n, w)` bytes.
+pub fn pack_stage(cls: u8, w: u32, x: &[u8], n: usize, lo: usize, hi: usize, o: &mut [u8]) {
+    fn go<T: Pod + Into<u64>>(w: u32, x: &[u8], n: usize, lo: usize, hi: usize, o: &mut [u8]) {
+        let x = ro::<T>(x);
+        if matches!(w, 1 | 2 | 4) {
+            let per = 8 / w as usize;
+            pack(&mut o[lo..hi], w, n.saturating_sub(lo * per).min((hi - lo) * per), |i| x[lo * per + i].into())
+        } else {
+            let k = match w { 0 => 0, 8 => 1, 16 => 2, 32 => 4, _ => 8 };
+            pack(&mut o[lo * k..hi * k], k as u32 * 8, hi - lo, |i| x[lo + i].into())
+        }
+    }
+    match ew_width(cls as u32) {
+        1 => go::<u8>(w, x, n, lo, hi, o),
+        2 => go::<u16>(w, x, n, lo, hi, o),
+        4 => go::<u32>(w, x, n, lo, hi, o),
+        _ => go::<u64>(w, x, n, lo, hi, o),
+    }
+}
+
 #[cfg(test)]
 mod a46b {
     use super::*;
@@ -1491,5 +1592,55 @@ mod tests44 {
                 }
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod k9 {
+    use super::*;
+    use crate::c::qlean_run_c;
+    fn mon_f64(op: u8, x: &[u64]) -> Vec<u64> {
+        let mut o = vec![0u64; x.len()];
+        mon(qlean_run_c, op, k44::F64, 0, bytes_mut(&mut x.to_vec()[..]), x.len(), bytes_mut(&mut o[..]));
+        o
+    }
+    // expected bits are the C's own answers: `sqrt -1`, `log -1`, `tan 0w` are 0n; `asin 2`, `acos -0w` are the positive NaN
+    #[test] fn libm_maps_answer_q_nulls() {
+        let (inf, ninf) = (f64::INFINITY.to_bits(), f64::NEG_INFINITY.to_bits());
+        assert_eq!(mon_f64(2, &[(-1f64).to_bits(), 4f64.to_bits(), 0x7ff8000000000001]), [NAN64, 2f64.to_bits(), NAN64]);
+        assert_eq!(mon_f64(4, &[(-1f64).to_bits(), 0, 1f64.to_bits()]), [NAN64, ninf, 0]);
+        assert_eq!(mon_f64(7, &[inf]), [NAN64]);
+        assert_eq!(mon_f64(8, &[2f64.to_bits()]), [PNAN64]);
+        assert_eq!(mon_f64(9, &[ninf]), [PNAN64]);
+        assert_eq!(mon_f64(10, &[0f64.to_bits(), inf]), [0, (core::f64::consts::FRAC_PI_2).to_bits()]);
+    }
+    #[test] #[should_panic(expected = "qlean_ew_mon: no case for verb 11 at storage class 5")]
+    fn a_verb_past_atan_is_refused() { mon_f64(11, &[0]); }
+    #[test] #[should_panic(expected = "qlean_ew_mon: no case for verb 2 at storage class 3")]
+    fn a_libm_map_at_long_is_refused() { mon(qlean_run_c, 2, 3, 0, &[0; 8], 1, &mut [0; 8]); }
+    // `pack_stage` then `ids_stage` returns every id, whole or cut in two at a point inside a word
+    #[test] fn ids_round_trip_cut_anywhere() {
+        for w in [0u32, 1, 2, 4, 8, 16, 32, 64] {
+            for n in [0usize, 1, 7, 64, 65, 200] {
+                let x: Vec<u64> = (0..n as u64).map(|i| if w == 0 { 0 } else { i.wrapping_mul(0x9e3779b97f4a7c15) & (if w == 64 { !0 } else { (1 << w) - 1 }) }).collect();
+                let mut p = vec![0u8; ids_len(n, w)];
+                let nb = if matches!(w, 1 | 2 | 4) { p.len() } else { n };
+                pack_stage(3, w, bytes_mut(&mut x.clone()[..]), n, 0, nb, &mut p);
+                for cut in [0, n / 3, n / 2, n] {
+                    let mut o = vec![0u64; n];
+                    for (lo, hi) in [(0, cut), (cut, n)] { ids_stage(3, w, &p, lo, hi, bytes_mut(&mut o[..])) }
+                    assert_eq!(o, x, "w {w} n {n} cut {cut}");
+                }
+            }
+        }
+    }
+    #[test] fn widen_stage_cuts_a_bit_source_inside_a_byte() {
+        let x = [0b1010_0110u8, 0b0000_0101];
+        let mut whole = [0u8; 10 * 4];
+        widen(qlean_run_c, 6, 2, 7, 9, &x, 10, &mut whole);
+        let mut o = [0xAAu8; 10 * 4];
+        widen_stage(6, 2, 7, 9, &x, 0, 3, &mut o);
+        widen_stage(6, 2, 7, 9, &x, 3, 10, &mut o);
+        assert_eq!(o, whole);
     }
 }

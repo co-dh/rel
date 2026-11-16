@@ -45,6 +45,26 @@ pub fn set_bits(out: &mut [u8], at: usize, len: usize) {
 }
 /// structural.c:112 `bitrev64`
 pub fn bitrev64(x: u64) -> u64 { x.reverse_bits() }
+/// structural.c:1079 `qlean_structural_reverse_bits`: bit `j` of `out` is bit `n - 1 - j` of `b` (answer bits
+/// `[j, j + cnt)` are source bits `[n - j - cnt, n - j)` reversed).
+pub fn reverse_bits(n: usize, b: &[u8], out: &mut [u8]) {
+    for j in (0..n).step_by(64) {
+        let cnt = (n - j).min(64);
+        let w = bits64_at(b, n - j - cnt);
+        let w = if cnt < 64 { w & ((1u64 << cnt) - 1) } else { w };
+        or_bits(out, j, bitrev64(w) >> (64 - cnt), cnt);
+    }
+}
+/// structural.c:1120 `qlean_structural_shift_bits`: bit `j` of `out` is bit `j - k` of `b` inside `[0, n)` and the low
+/// bit of `fill` outside.
+pub fn shift_bits(n: usize, fill: u64, k: i64, b: &[u8], out: &mut [u8]) {
+    // `|k|` clamped to `n` without negating `k`, which overflows at `i64::MIN`
+    let m = k.unsigned_abs().min(n as u64) as usize;
+    // a right shift fills `[0, m)` and moves `[0, n - m)` up; a left one moves `[m, n)` down
+    let (lo, at, from) = if k < 0 { (n - m, 0, m) } else { (0, m, 0) };
+    copy_bits(out, at, b, from, n - m);
+    if fill != 0 { set_bits(out, lo, m) }
+}
 /// structural.c:194 `rev_fields`: a byte's `w`-bit fields reversed.
 pub fn rev_fields(x: u8, w: u8) -> u8 {
     match w {
@@ -107,6 +127,73 @@ pub fn reverse_enc(run: Runner, c: &Coc, pack: &mut [u8]) {
             b += 1;
         }
     });
+}
+/// coc.h:138's layout over a writer's metadata of `nb` blocks: base, maxv, off, bsum (8 bytes a block each), the
+/// trailer's two words, then the widths.
+fn meta_parts(m: &mut [u8], nb: usize) -> [&mut [u8]; 6] {
+    assert_eq!(m.len(), 33 * nb + 16, "qlean structural: {} metadata bytes for {nb} blocks of 33 and a 16-byte trailer", m.len());
+    let (base, m) = m.split_at_mut(8 * nb);
+    let (maxv, m) = m.split_at_mut(8 * nb);
+    let (off, m) = m.split_at_mut(8 * nb);
+    let (bsum, m) = m.split_at_mut(8 * nb);
+    let (sums, width) = m.split_at_mut(16);
+    [base, maxv, off, bsum, sums, width]
+}
+fn put64(d: &mut [u8], i: usize, v: u64) { d[8 * i..8 * i + 8].copy_from_slice(&v.to_ne_bytes()) }
+/// structural.c:197 `reverse_foR_move`'s metadata: the blocks in reverse order, each keeping its base, maximum, width
+/// and sum (a reversed block holds the same elements), `off` recomputed from the widths, the trailer the source's.
+/// `out` is `33 * mblk + 16` bytes; answers the pack's length, `Σ BLK * width / 8`.
+pub fn reverse_meta(c: &Coc, out: &mut [u8]) -> usize {
+    let (m, nb) = (&c.meta, c.meta.mblk);
+    let [base, maxv, off, bsum, sums, width] = meta_parts(out, nb);
+    let mut at = 0;
+    for b in 0..nb {
+        let s = nb - 1 - b;
+        put64(base, b, m.base[s] as u64);
+        put64(maxv, b, m.maxv[s] as u64);
+        put64(bsum, b, m.bsum[s] as u64);
+        width[b] = m.width[s];
+        put64(off, b, at as u64);
+        at += BLK * m.width[s] as usize / 8;
+    }
+    put64(sums, 0, m.sumnul as u64);
+    put64(sums, 1, m.sumn);
+    at
+}
+/// structural.c:220 `concat_foR_move`: the four metadata sections of each part in turn, `off` recomputed from the
+/// concatenated widths, the trailer the writer's for `n` elements of `w` bytes, and the packs end to end.
+/// `mo`/`po` are `33 * Σ nblk + 16` and `Σ pack` bytes.
+pub fn concat_move(ms: &[&[u8]], ps: &[&[u8]], n: usize, w: usize, mo: &mut [u8], po: &mut [u8]) {
+    let nbs: alloc::vec::Vec<usize> = ms.iter().map(|m| m.len() / 33).collect();
+    let nb: usize = nbs.iter().sum();
+    let [base, maxv, off, bsum, sums, width] = meta_parts(mo, nb);
+    let mut at = 0;
+    for (m, &k) in ms.iter().zip(&nbs) {
+        assert!(m.len() >= 33 * k + 16, "qlean structural: {} metadata bytes for {k} blocks of 33 and a 16-byte trailer", m.len());
+        // the part's own sections are the byte ranges coc.h:138 gives, so no alignment is asked of them
+        base[8 * at..8 * (at + k)].copy_from_slice(&m[..8 * k]);
+        maxv[8 * at..8 * (at + k)].copy_from_slice(&m[8 * k..16 * k]);
+        bsum[8 * at..8 * (at + k)].copy_from_slice(&m[24 * k..32 * k]);
+        width[at..at + k].copy_from_slice(&m[32 * k + 16..33 * k + 16]);
+        at += k;
+    }
+    put64(sums, 0, crate::enc::coc_sumnul(w, false) as u64);
+    put64(sums, 1, n as u64);
+    let mut o = 0;
+    for b in 0..nb { put64(off, b, o as u64); o += BLK * width[b] as usize / 8 }
+    assert_eq!(po.len(), ps.iter().map(|p| p.len()).sum::<usize>(), "qlean structural: concat pack of {} bytes", po.len());
+    let mut at = 0;
+    for p in ps { po[at..at + p.len()].copy_from_slice(p); at += p.len() }
+}
+/// structural.c:469 `concat_foR`'s test: every part but the last fills its blocks, and each is in the writer's form
+/// (a patch list's positions and offsets are its own column's; a block past the count or a short pack would carry into
+/// the answer). `part(i)` is part `i`'s view and `ns[i]` its count.
+pub fn cat_aligned<'a>(k: usize, ns: &[u64], w: usize, part: impl Fn(usize) -> Coc<'a>) -> bool {
+    (0..k).all(|i| {
+        let c = part(i);
+        !(i + 1 < k && c.meta.n % BLK != 0) && c.std(ns[i] as usize) && c.pack.len() == c.meta.res_end()
+            && trailer_ok(&c, c.meta.n, w, false)
+    })
 }
 /// structural.c:320 `trailer_ok`: `c`'s trailer fits `n` elements of `w` bytes (`alp`: an ALP column's).
 pub fn trailer_ok(c: &Coc, n: usize, w: usize, alp: bool) -> bool {
@@ -1132,6 +1219,52 @@ mod a34_tests {
             assert_eq!(o.iter().map(|x| x.count_ones()).sum::<u32>(), 1);
         }
         assert_eq!(bitrev64(1), 1 << 63);
+    }
+    #[test] fn reverse_and_shift_bits_match_the_bitwise_definitions() {
+        let mut s = 0xfeed_beef_1234_5678;
+        for _ in 0..2000 {
+            let n = rng(&mut s) as usize % 300;
+            let b: Vec<u8> = (0..rng(&mut s) as usize % (n.div_ceil(8) + 3)).map(|_| rng(&mut s) as u8).collect();
+            let mut o = vec![0u8; n.div_ceil(8)];
+            reverse_bits(n, &b, &mut o);
+            for j in 0..8 * o.len() { assert_eq!(bit(&o, j), j < n && bit(&b, n - 1 - j), "reverse n {n} j {j}") }
+            let (k, fill) = (rng(&mut s) as i64 % (n as i64 + 70) * if rng(&mut s) & 1 == 1 { -1 } else { 1 }, rng(&mut s) & 3);
+            let mut o = vec![0u8; n.div_ceil(8)];
+            shift_bits(n, fill, k, &b, &mut o);
+            for j in 0..8 * o.len() {
+                let i = j as i64 - k;
+                let want = j < n && if 0 <= i && (i as usize) < n { bit(&b, i as usize) } else { fill != 0 };
+                assert_eq!(bit(&o, j), want, "shift n {n} k {k} j {j}");
+            }
+        }
+        let mut o = vec![0u8; 8];
+        shift_bits(5, 1, i64::MIN, &[0], &mut o[..1]);
+        assert_eq!(o[0], 0b11111);
+    }
+    #[test] fn reverse_and_concat_moves_keep_blocks_and_recompute_offsets() {
+        // two parts of 2 and 1 blocks: widths 3, 8 | 0
+        let part = |bases: &[i64], ws: &[u8], sum: i64| -> Vec<u8> {
+            let mut m = Vec::new();
+            for &b in bases { m.extend(b.to_ne_bytes()) }
+            for (i, _) in bases.iter().enumerate() { m.extend((b'a' as i64 + i as i64).to_ne_bytes()) }
+            for _ in bases { m.extend(0u64.to_ne_bytes()) }
+            for _ in bases { m.extend(sum.to_ne_bytes()) }
+            m.extend([0u8; 16]);
+            m.extend(ws);
+            m
+        };
+        let (m0, m1) = (part(&[10, 20], &[3, 8], 7), part(&[30], &[0], 9));
+        let (p0, p1): (Vec<u8>, Vec<u8>) = ((0..384 + 1024).map(|i| i as u8).collect(), vec![]);
+        let (mut mo, mut po) = (vec![0u8; 33 * 3 + 16], vec![0u8; p0.len()]);
+        concat_move(&[&m0, &m1], &[&p0, &p1], 3 * BLK, 8, &mut mo, &mut po);
+        assert_eq!(po, p0);
+        let c = Coc { meta: crate::coc::Meta::new(&mo, usize::MAX).unwrap(), pack: &po, exc: None, fdelta: None };
+        assert_eq!((c.meta.base, c.meta.bsum, c.meta.width, c.meta.off), (&[10, 20, 30][..], &[7, 7, 9][..], &[3, 8, 0][..], &[0, 384, 1408][..]));
+        assert_eq!((c.meta.sumnul, c.meta.sumn), (i64::MIN, 3 * BLK as u64));
+        let mut r = vec![0u8; 33 * 3 + 16];
+        assert_eq!(reverse_meta(&c, &mut r), 1408);
+        let rc = crate::coc::Meta::new(&r, usize::MAX).unwrap();
+        assert_eq!((rc.base, rc.width, rc.off, rc.sumn), (&[30, 20, 10][..], &[0, 8, 3][..], &[0, 0, 1024][..], 3 * BLK as u64));
     }
     #[test] fn rev_fields_reverses_the_fields_of_a_byte() {
         for w in [1u8, 2, 4] {

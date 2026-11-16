@@ -936,6 +936,26 @@ pub unsafe extern "C" fn qrs_grade_keys(k: *const u64, n: usize, desc: c_int, mn
                                         out: *mut i64) {
     unsafe { sort::grade_keys(sl(k, n), desc != 0, mn, mx, sl_mut(out, n)) }
 }
+/// K12: sort.c `hist_find`: the bucket of the `nb` counts in `cnt` that rank `*r` falls in; `*r` becomes relative to it.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn qrs_hist_find(cnt: *const usize, nb: usize, r: *mut usize) -> usize {
+    let mut q = unsafe { r.read() };
+    let b = sort::hist_find(unsafe { sl(cnt, nb) }, &mut q);
+    unsafe { r.write(q) };
+    b
+}
+/// K12: sort.c `select_keys`: the keys at ranks `r1 <= r2 <= r1 + 1` of a `ksrc` into `*k1`, `*k2`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn qrs_select_keys(kind: u8, p: *const u8, c: *const CCoc, n: usize, r1: usize, r2: usize,
+                                         k1: *mut u64, k2: *mut u64) {
+    let (a, b) = sort::select_keys(&unsafe { ksrc(kind, p, c, n) }, r1, r2);
+    unsafe { k1.write(a); k2.write(b) }
+}
+/// K12: sort.c `xrank_src`: `floor(rank * t)` of each of the `n` keys of a `ksrc`, into `out` (`n` entries).
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn qrs_xrank_src(kind: u8, p: *const u8, c: *const CCoc, n: usize, t: f64, out: *mut i64) {
+    sort::xrank_src(&unsafe { ksrc(kind, p, c, n) }, t, unsafe { sl_mut(out, n) })
+}
 /// A20: sort.c `SK_COUNTABLE`: a counting table over `span + 1` buckets for `n` keys is affordable.
 #[unsafe(no_mangle)]
 pub extern "C" fn qrs_sk_countable(span: u64, n: usize) -> c_int { sort::sk_countable(span, n) as c_int }
@@ -1398,6 +1418,47 @@ pub unsafe extern "C" fn qrs_reverse_enc(run: unsafe extern "C" fn(), c: *const 
     // be longer (a patch list) or shorter
     unsafe { let v = (*c).view(); structural::reverse_enc(rn(run), &v, sl_mut(pack, v.meta.width.iter().map(|&w| BLK * w as usize / 8).sum())) }
 }
+/// A34: structural.c `reverse_foR_move`'s metadata into `out` (`msz` = `33 * c.mblk + 16` bytes); answers the pack's length.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn qrs_reverse_meta(c: *const CCoc, out: *mut u8, msz: usize) -> usize {
+    unsafe { structural::reverse_meta(&(*c).view(), sl_mut(out, msz)) }
+}
+/// A34: structural.c `concat_foR_move`: `p` holds the `k` metadata pointers then the `k` pack pointers, `sz` their sizes;
+/// `mo`/`po` are the answer's `mosz`/`posz` bytes.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn qrs_concat_move(p: *const *const u8, sz: *const usize, k: usize, n: usize, w: usize,
+                                         mo: *mut u8, mosz: usize, po: *mut u8, posz: usize) {
+    unsafe {
+        let (p, sz) = (sl(p, 2 * k), sl(sz, 2 * k));
+        let v = |r: core::ops::Range<usize>| -> alloc::vec::Vec<&[u8]> { r.map(|i| sl(p[i], sz[i])).collect() };
+        structural::concat_move(&v(0..k), &v(k..2 * k), n, w, sl_mut(mo, mosz), sl_mut(po, posz))
+    }
+}
+/// A34: structural.c `concat_foR`'s test over the `k` parts (`ns` their counts); a part that is not ALP holds only its `c`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn qrs_cat_aligned(part: *const CCocf, k: usize, ns: *const u64, w: usize) -> c_int {
+    unsafe { structural::cat_aligned(k, sl(ns, k), w, |i| (*part.add(i)).c.view()) as c_int }
+}
+/// A34: structural.c `copy_bits`: bits `[from, from + len)` of `b` (`size` bytes) or-ed into `out` (`bytes`) at bit `at`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn qrs_copy_bits(out: *mut u8, bytes: usize, at: usize, b: *const u8, size: usize, from: usize, len: usize) {
+    unsafe { structural::copy_bits(sl_mut(out, bytes), at, sl(b, size), from, len) }
+}
+/// A39: structural.c `qlean_structural_cycle_bits`: `out` is the zeroed `bytes = (m + 7) / 8` bytes.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn qrs_cycle_bits(n: usize, off: usize, m: usize, b: *const u8, size: usize, out: *mut u8, bytes: usize) {
+    unsafe { structural::cycle_bits(n, off, m, sl(b, size), sl_mut(out, bytes)) }
+}
+/// A39: structural.c `qlean_structural_reverse_bits`: `out` is the zeroed `bytes = (n + 7) / 8` bytes.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn qrs_reverse_bits(n: usize, b: *const u8, size: usize, out: *mut u8, bytes: usize) {
+    unsafe { structural::reverse_bits(n, sl(b, size), sl_mut(out, bytes)) }
+}
+/// A39: structural.c `qlean_structural_shift_bits`: `out` is the zeroed `bytes = (n + 7) / 8` bytes.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn qrs_shift_bits(n: usize, fill: u64, k: i64, b: *const u8, size: usize, out: *mut u8, bytes: usize) {
+    unsafe { structural::shift_bits(n, fill, k, sl(b, size), sl_mut(out, bytes)) }
+}
 /// A35: structural.c `unpack_run`: elements `lo .. lo + cnt` of block `s` (reversed when `rev`) into `dst`.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn qrs_unpack_run(dst: *mut i64, c: *const CCoc, s: usize, lo: usize, cnt: usize, rev: c_int) {
@@ -1846,6 +1907,41 @@ pub unsafe extern "C" fn qrs_ew_cmp_ids_key(run: unsafe extern "C" fn(), op: u8,
 pub unsafe extern "C" fn qrs_ew_widen(run: unsafe extern "C" fn(), src: u8, dst: u8, nul_in: i64, nul_out: i64,
                                       x: *const u8, xbytes: usize, n: usize, out: *mut u8, obytes: usize) {
     unsafe { ew::widen(rn(run), src, dst, nul_in, nul_out, sl(x, xbytes), n, sl_mut(out, obytes)) }
+}
+/// K9: elementwise.c `ew_widen_stage`: elements `[lo, hi)` of a tile of `n`, on the calling thread; `x` is the whole tile
+/// (a bit source packed from its bit 0) and `out` the tile's `n` answers.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn qrs_ew_widen_stage(src: u8, dst: u8, nul_in: i64, nul_out: i64, x: *const u8, n: usize, lo: usize,
+                                            hi: usize, out: *mut u8) {
+    let xb = if src == 6 { n.div_ceil(8) } else { n * ew::ew_width(src as u32) };
+    unsafe { ew::widen_stage(src, dst, nul_in, nul_out, sl(x, xb), lo, hi, sl_mut(out, n * ew::ew_width(dst as u32))) }
+}
+/// K9: elementwise.c `ew_decode_run`: block `b`'s first `cnt` elements of `c` at `w` bytes each into `out`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn qrs_ew_decode_stage(c: *const CCoc, b: usize, cnt: usize, w: usize, out: *mut u8) {
+    unsafe { ew::decode_stage(&(*c).view(), b, cnt, w, sl_mut(out, cnt * w)) }
+}
+/// K9: elementwise.c `ew_alp_run`: block `b`'s first `cnt` elements of the ALP column `f`, patches applied, into `out`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn qrs_ew_alp_stage(f: *const CCocf, b: usize, cnt: usize, out: *mut u8) {
+    unsafe { let esz = if (*f).f32 != 0 { 4 } else { 8 }; (*f).view().load_blk(b, cnt, sl_mut(out, cnt * esz)) }
+}
+/// K9: elementwise.c `ew_ids_run`: ids `[lo, hi)` of the `n` packed at `w` bits in `x` into `out`, at class `cls`'s width.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn qrs_ew_ids_stage(cls: u8, w: u32, x: *const u8, n: usize, lo: usize, hi: usize, out: *mut u8) {
+    unsafe { ew::ids_stage(cls, w, sl(x, ew::ids_len(n, w)), lo, hi, sl_mut(out, n * ew::ew_width(cls as u32))) }
+}
+/// K9: elementwise.c `ew_pack_run`: the `n` elements of `x` (class `cls`) as `w`-bit ids into `out`; `[lo, hi)` are output
+/// bytes below a byte of width, elements at or above it.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn qrs_ew_pack_stage(cls: u8, w: u32, x: *const u8, n: usize, lo: usize, hi: usize, out: *mut u8) {
+    unsafe { ew::pack_stage(cls, w, sl(x, n * ew::ew_width(cls as u32)), n, lo, hi, sl_mut(out, ew::ids_len(n, w))) }
+}
+/// K9: elementwise.c `ew_serial`, the runner of every stage worker (`c::serial` with the worker's type erased).
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn qrs_serial(f: unsafe extern "C" fn(), n: usize, cost: u32, wide: usize, p: *const CPass) -> u32 {
+    // Safety: `f` is a `qlean_worker`, which every caller of a runner passes
+    unsafe { c::serial(core::mem::transmute::<unsafe extern "C" fn(), c::Worker>(f), n, cost, wide, p) }
 }
 /// A46b: pass.h:502 `qlean_chain_run`'s driver over `k` stages and `n` elements.
 #[unsafe(no_mangle)]
