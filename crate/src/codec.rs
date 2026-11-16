@@ -1,13 +1,13 @@
 #![forbid(unsafe_code)]
-#![allow(unused_variables)] // scaffold: the task that fills this module removes it
 //! Column (a), coc.c: the threaded passes behind the `qlean_coc_*` entries (A15) and the `qlean_alp_*` ones (A18).
 //! The entries themselves unbox and allocate, and stay C (§1); each calls the pass here through its `qrs_*` shim.
 use crate::alp::{dec, Cocf};
 use crate::c::{run_map, run_map_at, Runner};
-use crate::coc::Meta;
-use crate::cocops::cmp2_res;
+use crate::coc::{lanes, Coc, Meta};
+use crate::cocops::{cmp2_res, EQ, GE, GT, LE, LT, NE};
 use crate::enc;
-use crate::coc::Coc;
+use crate::simd::res_vcmp;
+use alloc::vec;
 use crate::pod::{self, Lane};
 use crate::{BLK, QLEAN_COST_ARITH, QLEAN_COST_GATHER};
 
@@ -22,19 +22,150 @@ pub fn decode<T: Lane + Send>(run: Runner, c: &Coc, out: &mut [T]) {
 }
 /// coc.c:616 `qlean_coc_block_start`: byte offset in the pack of block `b`; past the last block, the pack's whole length.
 pub fn block_start(m: &Meta, b: usize) -> usize { if b < m.mblk { m.off[b] as usize } else { m.res_end() } }
-/// coc.c:761 `coc_mask_cmp_run` and its entry: `x op v` as a bitmap into `out` (`(n + 7) / 8` bytes).
-pub fn mask_cmp(run: Runner, op: u8, v: i64, c: &Coc, out: &mut [u8]) { unimplemented!("A15: coc_mask_cmp_run") }
-/// coc.c:766 `coc_cmp2_run`: `a op b` as a bitmap, the deep blocks `deep` threaded over `cmp2_res`. A slice of deep blocks
-/// owns `out` from its first deep block's words to the next slice's first (`deep` ascends), so no two slices overlap.
-pub fn cmp2(run: Runner, op: i32, a: &Coc, b: &Coc, deep: &[u32], out: &mut [u64]) {
-    let words = BLK / 64;
+/// The deep blocks `deep` of a bitmap threaded: `f(lo, hi, o, w0)` once per slice `[lo, hi)` of them, `o` the words
+/// from the slice's first deep block to the next slice's first (`deep` ascends, so no two slices overlap) and `w0`
+/// the word of the whole bitmap `o[0]` is.
+fn over_deep<F: Fn(usize, usize, &mut [u64], usize) + Sync>(run: Runner, out: &mut [u64], deep: &[u32], who: &str, f: &F) {
     let end = out.len() * 8;
-    let at = |k: usize| if k < deep.len() { deep[k] as usize * words * 8 } else { end };
+    let at = |k: usize| if k < deep.len() { deep[k] as usize * (BLK / 64) * 8 } else { end };
     run_map_at(run, pod::bytes_mut(out), deep.len(), &at, QLEAN_COST_ARITH, BLK * 8, &|lo, hi, o: &mut [u8]| {
-        let o = pod::cast_mut::<u64>(o).expect("qlean_coc_mask_cmp_vv: bitmap misaligned");
-        cmp2_res(a, b, op, o, deep, lo, hi, at(lo) / 8)
+        f(lo, hi, pod::cast_mut::<u64>(o).unwrap_or_else(|| panic!("{who}: bitmap misaligned")), at(lo) / 8)
     });
 }
+/// coc.c:766 `coc_cmp2_run`: `a op b` as a bitmap, the deep blocks `deep` threaded over `cmp2_res`.
+pub fn cmp2(run: Runner, op: i32, a: &Coc, b: &Coc, deep: &[u32], out: &mut [u64]) {
+    over_deep(run, out, deep, "qlean_coc_mask_cmp_vv", &|lo, hi, o, w0| cmp2_res(a, b, op, o, deep, lo, hi, w0))
+}
+
+/// coc.h:757 `coc_cmp1`: one element of `x op v`, the exceptions a mask pass corrects.
+fn cmp1(op: i32, x: i64, v: i64) -> bool {
+    match op { EQ => x == v, NE => x != v, LT => x < v, LE => x <= v, GT => x > v, _ => x >= v }
+}
+/// coc.h:870 `coc_blk_cmp`: 1 when every pair passes `x op y` for x anywhere in [ba, ma] and y anywhere in [bb, mb], 0 when
+/// none does, -1 when the residuals decide. An atom on the right is `bb = mb = v`, so one rule serves it and `x op y`.
+fn blk_cmp(op: i32, ba: i64, ma: i64, bb: i64, mb: i64) -> i32 {
+    match op {
+        LT => if ma < bb { 1 } else if mb <= ba { 0 } else { -1 },
+        LE => if ma <= bb { 1 } else if mb < ba { 0 } else { -1 },
+        GT => if mb < ba { 1 } else if ma <= bb { 0 } else { -1 },
+        GE => if mb <= ba { 1 } else if ma < bb { 0 } else { -1 },
+        EQ => if ma < bb || mb < ba { 0 } else if ba == ma && bb == mb { 1 } else { -1 },
+        _ => if ma < bb || mb < ba { 1 } else if ba == ma && bb == mb { 0 } else { -1 },
+    }
+}
+/// coc.h:~885 `coc_mask_fill`: the first `nb` bits of `w` set. Only the last block can be partial, and its last word is
+/// written masked so no bit past the column is set.
+fn mask_fill(w: &mut [u64], nb: usize) {
+    let full = nb >> 6;
+    w[..full].fill(!0);
+    if nb & 63 != 0 { w[full] = !0 >> (64 - (nb & 63)) }
+}
+/// coc.h:893 `coc_cmp_meta`: the bitmap wherever a block's range settles it whole, and the numbers of the blocks it does not
+/// (`deep`, answering how many). `b` none is the atom form, `v` standing for the other side's range. A patched block
+/// is always deep: the ranges leave its nulls out.
+pub fn cmp_meta(a: &Coc, b: Option<&Coc>, op: i32, v: i64, out: &mut [u64], deep: &mut [u32]) -> usize {
+    let (n, m, mut nd) = (a.meta.n, &a.meta, 0);
+    out[..n.div_ceil(64)].fill(0);
+    for k in 0..n.div_ceil(BLK) {
+        let (lo, nb) = (k * BLK, (n - k * BLK).min(BLK));
+        let whole = if a.blk_nexc(k) > 0 || b.is_some_and(|b| b.blk_nexc(k) > 0) { -1 } else {
+            match b { Some(b) => blk_cmp(op, m.base[k], m.maxv[k], b.meta.base[k], b.meta.maxv[k]),
+                      None => blk_cmp(op, m.base[k], m.maxv[k], v, v) }
+        };
+        if whole == 1 { mask_fill(&mut out[lo >> 6..], nb) } else if whole < 0 { deep[nd] = k as u32; nd += 1 }
+    }
+    nd
+}
+
+/// coc.h:813 `res_expand`: the residuals of width `W` < 8, `8 / W` to a byte, one to a byte of `out`.
+fn expand<const W: usize>(p: &[u8], nb: usize, out: &mut [u8]) {
+    for (o, &b) in out.chunks_mut(8 / W).zip(&p[..(nb * W).div_ceil(8)]) {
+        for (t, x) in o.iter_mut().enumerate() { *x = (b >> (t * W)) & ((1u16 << W) - 1) as u8 }
+    }
+}
+/// coc.h:766 `COC_MASK_WORD`: `r - lo <= span` (unsigned, flipped when `inv`) for `nb` `E`-byte residuals, a 64-bit word
+/// built in a register and stored once; the width is a constant so the loop vectorises.
+fn words<const E: usize>(p: &[u8], nb: usize, lo: u64, span: u64, inv: bool, out: &mut [u64]) {
+    for (o, ch) in out.iter_mut().zip(p[..nb * E].chunks(64 * E)) {
+        let mut word = 0u64;
+        for (j, r) in ch.chunks_exact(E).enumerate() {
+            let mut a = [0u8; 8];
+            a[..E].copy_from_slice(r);
+            word |= (((u64::from_le_bytes(a).wrapping_sub(lo) <= span) ^ inv) as u64) << j;
+        }
+        *o |= word;
+    }
+}
+/// coc.h:814 `res_mask_cmp`: block residuals `p` at width `w` tested `r - lo <= span`, into the zeroed `out`. `scratch` is
+/// `BLK * 8` bytes the caller owns, so a kilobyte is not declared inside the loop over blocks.
+fn res_mask_cmp(p: &[u8], nb: usize, w: u8, lo: u64, span: u64, inv: bool, out: &mut [u64], scratch: &mut [u8]) {
+    if res_vcmp(p, w, nb, lo, span, inv, out) { return }
+    match w {
+        // every residual is 0, so every bit is the same
+        0 => if (0u64.wrapping_sub(lo) <= span) ^ inv { mask_fill(out, nb) },
+        1 => { expand::<1>(p, nb, scratch); words::<1>(scratch, nb, lo, span, inv, out) }
+        2 => { expand::<2>(p, nb, scratch); words::<1>(scratch, nb, lo, span, inv, out) }
+        4 => { expand::<4>(p, nb, scratch); words::<1>(scratch, nb, lo, span, inv, out) }
+        _ => {
+            let mut w = w; // an odd width leaves w >= 8
+            let p = lanes(p, &mut w, nb, scratch);
+            match w { 8 => words::<1>(p, nb, lo, span, inv, out), 16 => words::<2>(p, nb, lo, span, inv, out),
+                      32 => words::<4>(p, nb, lo, span, inv, out), _ => words::<8>(p, nb, lo, span, inv, out) }
+        }
+    }
+}
+/// coc.h:888 `coc_mask_cmp_blk`: block `b`'s first `nb` elements of `x op v` into its zeroed words `w64`, the patches
+/// applied. A block whose range the threshold `v` leaves is a window on the residuals: `r - lo <= hi - lo`, inverted for
+/// `<>`, which is never empty there.
+fn mask_blk(c: &Coc, b: usize, nb: usize, op: i32, v: i64, w64: &mut [u64], scratch: &mut [u8]) {
+    let m = &c.meta;
+    match blk_cmp(op, m.base[b], m.maxv[b], v, v) {
+        1 => mask_fill(w64, nb),
+        0 => {}
+        _ => {
+            let f = c.frame(b) as i64;
+            // a frame above v is the one case the window cannot say: every residual is then above it
+            if f > v { if matches!(op, GT | GE | NE) { mask_fill(w64, nb) } } else {
+                let t = (v as u64).wrapping_sub(f as u64);
+                let (lo, hi) = match op { LT => (0, t.wrapping_sub(1)), LE => (0, t), GT => (t.wrapping_add(1), u64::MAX),
+                                          GE => (t, u64::MAX), _ => (t, t) };
+                let at = m.off[b] as usize;
+                res_mask_cmp(&c.pack[at..at + BLK * m.width[b] as usize / 8], nb, m.width[b], lo, hi.wrapping_sub(lo), op == NE,
+                             w64, scratch)
+            }
+        }
+    }
+    if let Some(e) = c.exc.filter(|e| !e.pos.is_empty()) {
+        for j in e.off[b] as usize..e.off[b + 1] as usize {
+            let p = e.pos[j] as usize;
+            if p < nb {
+                let one = 1u64 << (p & 63);
+                w64[p >> 6] = (w64[p >> 6] & !one) | if cmp1(op, c.exc(j), v) { one } else { 0 };
+            }
+        }
+    }
+}
+/// coc.h:910 `coc_mask_cmp_res`: the blocks `blocks` of `x op t(b)` into `out`, whose `out[0]` is word `w0` of the bitmap.
+fn mask_res<T: Fn(usize) -> i64>(c: &Coc, op: i32, t: T, blocks: impl Iterator<Item = usize>, out: &mut [u64], w0: usize) {
+    let mut scratch = [0u64; BLK];
+    for b in blocks {
+        let (at, nb) = (b * BLK, (c.meta.n - b * BLK).min(BLK));
+        mask_blk(c, b, nb, op, t(b), &mut out[(at >> 6) - w0..], pod::bytes_mut(&mut scratch))
+    }
+}
+/// coc.c:761 `coc_mask_cmp_run` and its entry: `x op v` as a bitmap into `out` (`n.div_ceil(64)` words). The blocks the
+/// metadata settles are filled on the calling thread; the deep ones are threaded.
+pub fn mask_cmp(run: Runner, op: u8, v: i64, c: &Coc, out: &mut [u64]) {
+    let op = op as i32;
+    let mut deep = vec![0u32; c.meta.nblk];
+    let nd = cmp_meta(c, None, op, v, out, &mut deep);
+    let deep = &deep[..nd];
+    over_deep(run, out, deep, "qlean_coc_mask_cmp", &|lo, hi, o, w0| {
+        mask_res(c, op, |_| v, deep[lo..hi].iter().map(|&k| k as usize), o, w0)
+    })
+}
+/// coc.h:1302 `cocf_mask_lt`'s block loop: every block of `x op ts[b]` into the zeroed `out`, on the calling thread.
+pub fn mask_blks(c: &Coc, op: i32, ts: &[i64], out: &mut [u64]) { mask_res(c, op, |b| ts[b], 0..c.meta.n.div_ceil(BLK), out, 0) }
 /// coc.c:810 `shift_fill`: the encoder's source for `qlean_coc_shift` when the metadata cannot absorb `k`:
 /// elements `i0 .. i0 + buf.len()` of `x + k` (`neg`: `k - x`), nulls `fill`.
 pub fn shift_fill(c: &Coc, k: i64, neg: bool, fill: i64, buf: &mut [i64], i0: usize) {
@@ -113,6 +244,33 @@ mod tests {
         let mut out = [0i16; 1030];
         decode(qlean_run_c, &c, &mut out);
         assert!(out[..1024].iter().all(|&x| x == 10) && out[1024..].iter().all(|&x| x == -5));
+    }
+    // the whole mask against the decoded elements, every width a block can have (the vector compare at the odd ones, the
+    // unpack-then-word path where the window leaves the lane), a ragged last block, v below / at / inside / above the range
+    #[test] fn mask_cmp_agrees_with_decoding_at_every_width() {
+        let mut s = 0x9e3779b97f4a7c15u64;
+        let mut rnd = move || { s ^= s << 13; s ^= s >> 7; s ^= s << 17; s };
+        let (n, tail) = (BLK + 6, 6);
+        for w in 0..=40u8 {
+            let bb = BLK * w as usize / 8;
+            let pack: Vec<u8> = (0..2 * bb).map(|_| rnd() as u8).collect();
+            let (base, off, width) = ([0i64, 5], [0u64, bb as u64], [w, w]);
+            let mut c = two_blocks(&base, &off, &[0, 0], &width, n, &pack);
+            let mut dec = vec![0i64; n];
+            for b in 0..2 { let nb = if b == 0 { BLK } else { tail }; c.decode_blk(b, nb, &mut dec[b * BLK..b * BLK + nb]) }
+            let maxv = [*dec[..BLK].iter().max().unwrap(), *dec[BLK..].iter().max().unwrap()];
+            c.meta.maxv = &maxv;
+            for v in [-1, 0, 4, 5, maxv[0] / 2, maxv[0], maxv[0] + 1, rnd() as i64 % 1000] {
+                for op in 0..6u8 {
+                    let mut out = [u64::MAX; BLK / 64 + 1];
+                    mask_cmp(qlean_run_c, op, v, &c, &mut out);
+                    for (i, &x) in dec.iter().enumerate() {
+                        assert_eq!(out[i / 64] >> (i % 64) & 1 == 1, cmp1(op as i32, x, v), "w {w} op {op} v {v} i {i}");
+                    }
+                    assert_eq!(out[BLK / 64] >> tail, 0, "bits past the column, w {w} op {op}");
+                }
+            }
+        }
     }
     #[test] fn shift_fill_keeps_the_null_and_shifts_the_rest() {
         let base = [i64::MIN, 7];
