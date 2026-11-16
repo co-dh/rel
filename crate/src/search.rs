@@ -1000,6 +1000,91 @@ pub fn ix_find_syms(t: &[u64], v: &IxSyms, nd: &Syms, miss: usize, out: &mut [i6
     }
 }
 
+// ---- B17: search.c's scalar find, the Frame-of-Reference equality walks, the id mask ----
+/// `qlean_search_find_scalar`'s body: the least `i < hay.len() / w` whose key equals the needle's, `hay.len() / w` when
+/// none does. The needle is `scan`'s one key, the low `w` bytes of `needle` little-endian (zero above, for `w` 16).
+pub fn find_scalar(w: usize, is_float: bool, hay: &[u8], needle: u64) -> usize {
+    let kd = kind_of(w, is_float, "find_scalar"); // before dividing by `w`
+    let nb = (needle as u128).to_le_bytes();
+    let mut r = [0i64];
+    scan_kind(kd, &Opnd { src: Src::Dense(hay), n: hay.len() / w }, &Opnd { src: Src::Dense(&nb[..w]), n: 1 }, &mut r);
+    r[0] as usize
+}
+
+/// search.c `COC_EQ_BLOCKS`: each block of `c` that may hold `v`, in order, decoded into a buffer; `f(at, elems)` sees the
+/// block's first row and its elements, and a `Some` ends the walk. `?` at an atom asks about one element, so a block whose
+/// `[base, maxv]` cannot hold the needle is skipped from its 16 bytes of metadata instead of its 8 KB of elements.
+fn eq_blocks<R>(c: &Coc, v: i64, mut f: impl FnMut(usize, &[i64]) -> Option<R>) -> Option<R> {
+    let (nb, mut buf) = (c.meta.n.div_ceil(crate::BLK), [0i64; crate::BLK]);
+    for b0 in (0..nb).step_by(64) {
+        let mut m = coc_may_hold64(c, b0, (nb - b0).min(64), v);
+        while m != 0 {
+            let at = (b0 + m.trailing_zeros() as usize) * crate::BLK;
+            m &= m - 1;
+            let cnt = (c.meta.n - at).min(crate::BLK);
+            c.decode_blk(at / crate::BLK, cnt, &mut buf);
+            if let Some(r) = f(at, &buf[..cnt]) { return Some(r) }
+        }
+    }
+    None
+}
+/// `qlean_coc_find_scalar`'s body: the least row of `c` holding `v`, `c.meta.n` when none does.
+pub fn coc_find(c: &Coc, v: i64) -> usize {
+    eq_blocks(c, v, |at, e| e.iter().position(|&x| x == v).map(|i| at + i)).unwrap_or(c.meta.n)
+}
+/// `qlean_coc_span`'s body: how many of the first `nblk` blocks have `[base, maxv]` holding `v`, off the metadata alone.
+pub fn coc_span(m: &crate::coc::Meta, v: i64) -> usize {
+    m.base[..m.nblk].iter().zip(&m.maxv[..m.nblk]).map(|(&b, &x)| ((b <= v) & (v <= x)) as usize).sum()
+}
+/// `qlean_coc_rows_eq`'s body: every row of `c` equal to `v`, ascending: `coc_find`'s walk carried past the first hit. A
+/// block's hits are written branch-free into a stack buffer and appended whole, so a hit costs no branch.
+pub fn coc_rows_eq(c: &Coc, v: i64) -> Vec<i64> {
+    let (mut rows, mut t) = (Vec::with_capacity(crate::BLK), [0i64; crate::BLK]);
+    eq_blocks::<()>(c, v, |at, e| {
+        let mut k = 0;
+        for (i, &x) in e.iter().enumerate() { t[k] = (at + i) as i64; k += (x == v) as usize }
+        rows.extend_from_slice(&t[..k]);
+        None
+    });
+    rows
+}
+
+/// Id `u` is inside `nmask` and `mask` has its bit.
+fn passes(mask: &[u8], nmask: usize, u: usize) -> bool { u < nmask && mask[u >> 3] >> (u & 7) & 1 != 0 }
+/// `maskByIds` at an id width below a byte: a whole source byte answered at a time out of a 256-entry table, `8 / w`
+/// elements an instruction where a four-byte payload took one element a load. The predicate is already decided per
+/// dictionary entry, so the table folds the unpack and the lookup together: `w` source bytes make one answer byte, `per`
+/// bits from each. `inline(always)` so `w` is a constant at the widths ids use.
+#[inline(always)]
+fn mask_packed(mask: &[u8], nmask: usize, n: usize, w: usize, ids: &[u8], out: &mut [u8]) {
+    let (per, msk, src) = (8 / w, (1usize << w) - 1, &ids[..ids::ids_bytes(n, w as u32)]);
+    let mut lut = [0u8; 256];
+    for (b, l) in lut.iter_mut().enumerate() { *l = (0..per).fold(0u32, |v, j| v | (passes(mask, nmask, (b >> (j * w)) & msk) as u32) << j) as u8 }
+    let at = |s: u8, t: usize| (lut[s as usize] as u32) << (t * per);
+    let full = src.len() / w; // the answer bytes whose `w` source bytes are all there
+    for (o, c) in out.iter_mut().zip(src.chunks_exact(w)) { *o = c.iter().enumerate().fold(0u32, |v, (t, &s)| v | at(s, t)) as u8 }
+    for (k, o) in out.iter_mut().enumerate().skip(full) { *o = (0..w).fold(0u32, |v, t| v | src.get(k * w + t).map_or(0, |&s| at(s, t))) as u8 }
+    // the fields past `n` are stored as zero and a zero id can pass the mask, so the bits the count does not reach are
+    // cleared here rather than left to the table
+    if n % 8 != 0 { if let Some(l) = out.last_mut() { *l &= ((1u32 << (n % 8)) - 1) as u8 } }
+}
+/// `maskByIds` at a whole-byte width (or none): the answer byte is built in a register and stored once, for the reason
+/// `ids::pack` gives: an `|=` per element is eight dependent read-modify-writes to one byte.
+fn mask_wide<const W: u32>(mask: &[u8], nmask: usize, n: usize, ids: &[u8], out: &mut [u8]) {
+    for (k, o) in out.iter_mut().enumerate() {
+        let (blo, bhi) = (k << 3, ((k << 3) + 8).min(n));
+        *o = (blo..bhi).fold(0u32, |b, i| b | (passes(mask, nmask, ids::id_at(ids, W, i)) as u32) << (i - blo)) as u8;
+    }
+}
+/// `qlean_search_mask_by_ids`' body: bit `i` of `out` (`n.div_ceil(8)` bytes) is set exactly when id `i` of `ids` (`w` bits,
+/// `n` of them held) is inside `nmask` and `mask` has that bit.
+pub fn mask_by_ids(mask: &[u8], nmask: usize, n: usize, w: u32, ids: &[u8], out: &mut [u8]) {
+    match w {
+        1 | 2 | 4 | 3 | 5 | 6 | 7 => mask_packed(mask, nmask, n, w as usize, ids, out),
+        _ => ids::by_width!(w, mask_wide(mask, nmask, n, ids, out)),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1330,6 +1415,26 @@ mod tests {
         }
     }
     // equal 64-bit keys of different symbols: the bytes decide, and a chain of them is probed past
+    #[test] fn mask_by_ids_is_the_per_id_lookup() {
+        let mut x = 0x9e37_79b9_7f4a_7c15u64;
+        let mut nx = move || { x ^= x << 13; x ^= x >> 7; x ^= x << 17; x };
+        let mask: Vec<u8> = (0..40).map(|_| nx() as u8).collect();
+        for w in [0u32, 1, 2, 4, 8, 16, 32, 64] {
+            for n in [0usize, 1, 7, 8, 9, 63, 64, 65, 200] {
+                for nmask in [0usize, 1, 3, 17, 300] {
+                    let lim = if w == 0 { 0 } else if w >= 16 { 400 } else { (1u64 << w) - 1 };
+                    let v: Vec<u64> = (0..n).map(|_| nx() % (lim + 1)).collect();
+                    let mut out = vec![0u8; n.div_ceil(8)];
+                    mask_by_ids(&mask, nmask, n, w, &pack(&v, w), &mut out);
+                    for (i, &u) in v.iter().enumerate() {
+                        let want = (u as usize) < nmask && mask[u as usize >> 3] >> (u & 7) & 1 != 0;
+                        assert_eq!(out[i >> 3] >> (i & 7) & 1 != 0, want, "w {w} n {n} nmask {nmask} id {i}");
+                    }
+                    assert!(n % 8 == 0 || out[n / 8] >> (n % 8) == 0, "bits past n are zero: w {w} n {n}");
+                }
+            }
+        }
+    }
     #[test] fn index_put_probes_past_a_key_collision() {
         let mut t = vec![0u64; ix_bytes(4) / 8];
         ix_init(&mut t);
