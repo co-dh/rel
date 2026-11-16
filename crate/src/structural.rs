@@ -392,9 +392,31 @@ pub fn shift_ints(f: &Cocf, k: i64, b: usize, hole: (i64, i8, *const u8), out: &
 
 // ---- A36: structural.c:684-760 (the rest of the concat entries is Lean glue) ----
 /// structural.c:684 `cat_take`: the part holding block `b` and its block there.
-pub fn cat_take(start: &[usize], b: usize) -> Option<(usize, usize)> { unimplemented!("A36: cat_take") }
+pub fn cat_take(start: &[usize], b: usize) -> Option<(usize, usize)> {
+    let k = start.len().checked_sub(1).filter(|&k| k > 0)?;
+    let (s, n) = (b * BLK, start[k]);
+    let (mut pi, mut hi) = (0, k);
+    while pi + 1 < hi { let mid = (pi + hi) / 2; if start[mid] <= s { pi = mid } else { hi = mid } }
+    let j = s - start[pi];
+    if j % BLK != 0 || (s + BLK).min(n) > start[pi + 1] { return None }
+    Some((pi, j / BLK))
+}
+/// structural.c:699 `cat_take`'s test of the part itself: a part moves whole only in the writer's trailer, and a plain
+/// one only when its patch list's elements are the answer's width.
+pub fn cat_part_ok(c: &Coc, w: usize, alp: bool) -> bool {
+    trailer_ok(c, c.meta.n, w, alp) && (alp || c.exc.is_none_or(|x| x.pos.is_empty() || x.esz == w))
+}
 /// structural.c:704 `put_res`: `v` minus `base` at `w` bits into `p` from field `lo`.
-pub fn put_res(p: &mut [u8], w: u8, lo: usize, v: &[i64], base: u64) { unimplemented!("A36: put_res") }
+pub fn put_res(p: &mut [u8], w: u8, lo: usize, v: &[i64], base: u64) {
+    match w {
+        0 => {}      // every element of the block is the base, and only those were let through
+        8 | 16 | 32 | 64 => {
+            let k = w as usize / 8;
+            for (o, &x) in p[lo * k..].chunks_exact_mut(k).zip(v) { o.copy_from_slice(&(x as u64).wrapping_sub(base).to_le_bytes()[..k]) }
+        }
+        _ => for (j, &x) in v.iter().enumerate() { crate::res::res_put(p, w, lo + j, (x as u64).wrapping_sub(base)) },
+    }
+}
 
 // ---- A37: structural.c:926-1146 ----
 /// structural.c:936 `qlean_structural_all_below`: every index is below `n`.
@@ -1093,4 +1115,28 @@ mod a38_tests {
     }
     #[test] #[should_panic(expected = "qlean_structural_rows_of: row 0 is 4611686018427387904")]
     fn rows_of_refuses_a_row_no_boxed_natural_carries() { rows_of(&(1u64 << 62).to_le_bytes(), &mut [0]); }
+}
+
+#[cfg(test)]
+mod a36_tests {
+    use super::*;
+    #[test] fn put_res_writes_whole_fields_and_shared_bits_and_nothing_at_width_0() {
+        let mut p = [0xffu8; 8];
+        put_res(&mut p, 8, 1, &[10, 11], 4);
+        assert_eq!(p, [0xff, 6, 7, 0xff, 0xff, 0xff, 0xff, 0xff]);
+        let mut p = [0u8; 4];
+        put_res(&mut p, 3, 1, &[5, 6], 4);     // fields 1 and 2 of 3 bits: 1 and 2
+        assert_eq!(p, [0x88, 0, 0, 0]);
+        let mut p = [7u8; 2];
+        put_res(&mut p, 0, 3, &[1], 0);
+        assert_eq!(p, [7, 7]);
+    }
+    #[test] fn cat_take_needs_a_whole_block_of_one_part() {
+        assert_eq!(cat_take(&[0, 1024, 2048, 2100], 0), Some((0, 0)));
+        assert_eq!(cat_take(&[0, 1024, 2048, 2100], 2), Some((2, 0)));
+        assert_eq!(cat_take(&[0, 1500, 2100], 1), None);    // straddles the parts
+        assert_eq!(cat_take(&[0, 1500, 2100], 2), None);    // starts inside part 1
+        assert_eq!(cat_take(&[0, 2048], 1), Some((0, 1)));
+        assert_eq!(cat_take(&[0], 0), None);
+    }
 }
