@@ -772,3 +772,12 @@ pub fn cvt_nearest(s: f64) -> i64 {
     // SAFETY: SSE2 is the x86_64 baseline and the intrinsic works on a register.
     unsafe { core::arch::x86_64::_mm_cvtsd_si64(core::arch::x86_64::_mm_set_sd(s)) }
 }
+
+/// `sqrt` of a double, the one libm name the window engine needs: `sqrtsd` is correctly rounded, as libm's is, and a
+/// negative argument answers a NaN either way. Kept here so `scan.rs` needs no libm symbol.
+#[inline(always)]
+pub fn sqrt64(x: f64) -> f64 {
+    #[cfg(target_arch = "x86_64")]
+    // SAFETY: sse2 is part of the x86_64 baseline; the intrinsics read no memory.
+    unsafe { use core::arch::x86_64::*; _mm_cvtsd_f64(_mm_sqrt_sd(_mm_set_sd(x), _mm_set_sd(x))) }
+}

@@ -680,6 +680,21 @@ pub unsafe extern "C" fn qrs_mw_open(st: *mut CMwin, op: c_int, kind: c_int, w: 
         st.write(s);
     }
 }
+/// K4: scan.c `mw_run`: the window verb `op` over `n` elements of `p` at `kind` into `o`, on the state `st` that
+/// `qrs_mw_open` made; the scalars of `st` are written back so the next piece resumes. `p` holds `n` elements at
+/// `kind` (a boolean's is the bitmap from element 0 of the piece).
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn qrs_mw_run(st: *mut CMwin, op: c_int, kind: c_int, p: *const u8, o: *mut u8, n: usize) {
+    let s = unsafe { &mut *st };
+    let mut m = scan::Mw {
+        w: s.w, cu: s.cu, cap: s.cap, tl: s.tl, t: s.t, isum: s.isum, fsum: s.fsum, fsq: s.fsq, cnt: s.cnt, extbits: s.extbits,
+        sent: s.sent, ri: unsafe { sl_mut(s.ri, s.cap) }, rf: unsafe { sl_mut(s.rf, s.cap) }, rq: unsafe { sl_mut(s.rq, s.cap) },
+        rc: unsafe { sl_mut(s.rc, s.cap) }, phase: unsafe { sl_mut(s.phase.cast::<u8>(), s.w * s.ew) },
+        sufx: unsafe { sl_mut(s.sufx.cast::<u8>(), (s.w + 1) * s.ew) },
+    };
+    scan::mw_run(&mut m, op, kind, unsafe { sl(p, scan::mw_in_bytes(kind, n)) }, unsafe { sl_mut(o, n * scan::mw_out_width(op, kind)) }, n);
+    (s.cu, s.t, s.isum, s.fsum, s.fsq, s.cnt, s.extbits) = (m.cu, m.t, m.isum, m.fsum, m.fsq, m.cnt, m.extbits);
+}
 /// K3: scan.c `mw_close`: frees what `qrs_mw_open` allocated.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn qrs_mw_close(st: *mut CMwin) {

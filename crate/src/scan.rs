@@ -425,6 +425,316 @@ pub fn mw_prime(sufx: &mut [u8], op: i32, kind: i32, ew: usize) -> u64 {
     sb
 }
 
+
+// ---- the moving-window engine: scan.c `mw_run` and its window macros (K4) ----
+
+/// The engine state of scan.c's `mwin` (rs.h `CMwin`), as safe slices: `qrs_mw_run` builds it from the C struct, runs
+/// one piece and writes the scalars back, so a column resumes across tiles and blocks. A ring an op does not read is
+/// empty.
+pub struct Mw<'a> {
+    pub w: usize, pub cu: usize, pub cap: usize, pub tl: usize, pub t: usize,
+    pub isum: u64, pub fsum: f64, pub fsq: f64, pub cnt: i64, pub extbits: u64, pub sent: u64,
+    pub ri: &'a mut [u64], pub rf: &'a mut [f64], pub rq: &'a mut [f64], pub rc: &'a mut [i64],
+    pub phase: &'a mut [u8], pub sufx: &'a mut [u8],
+}
+
+/// An element stored at its own width, as the `B` bytes it occupies. `lt`/`gt` are `MW_LT`/`MW_GT`, and at a float
+/// `MW_LT_F`/`MW_GT_F`: q's `&` and `|`, where the null is the smallest thing for `&` and ignored by `|`
+/// (`3 mmin 1 0n 3 2 5 4f` is `1 0n 0n 0n 2 2`). `|` and not `||`: the second test is one instruction and the first is
+/// a coin toss on real data.
+trait Elt: Copy {
+    type B: Copy;
+    fn from_b(b: Self::B) -> Self;
+    fn to_b(self) -> Self::B;
+    fn bits(self) -> u64;
+    fn from_bits(b: u64) -> Self;
+    fn lt(a: Self, b: Self) -> bool;
+    fn gt(a: Self, b: Self) -> bool;
+}
+macro_rules! elt_int { ($($t:ty, $u:ty);*) => { $(impl Elt for $t {
+    type B = [u8; size_of::<$t>()];
+    #[inline(always)] fn from_b(b: Self::B) -> Self { Self::from_ne_bytes(b) }
+    #[inline(always)] fn to_b(self) -> Self::B { self.to_ne_bytes() }
+    #[inline(always)] fn bits(self) -> u64 { self as $u as u64 }
+    #[inline(always)] fn from_bits(b: u64) -> Self { b as Self }
+    #[inline(always)] fn lt(a: Self, b: Self) -> bool { a < b }
+    #[inline(always)] fn gt(a: Self, b: Self) -> bool { a > b }
+})* } }
+elt_int!(u8, u8; i16, u16; i32, u32; i64, u64);
+macro_rules! elt_flt { ($t:ty, $u:ty) => { impl Elt for $t {
+    type B = [u8; size_of::<$t>()];
+    #[inline(always)] fn from_b(b: Self::B) -> Self { Self::from_ne_bytes(b) }
+    #[inline(always)] fn to_b(self) -> Self::B { self.to_ne_bytes() }
+    #[inline(always)] fn bits(self) -> u64 { self.to_bits() as u64 }
+    #[inline(always)] fn from_bits(b: u64) -> Self { Self::from_bits(b as $u) }
+    #[inline(always)] fn lt(a: Self, b: Self) -> bool { (a < b) | (a != a) }
+    #[inline(always)] fn gt(a: Self, b: Self) -> bool { (a > b) | (b != b) }
+} } }
+elt_flt!(f32, u32);
+elt_flt!(f64, u64);
+
+/// The float layouts a `msum` accumulates and subtracts at: a `real` at 32 bits (measured `last 3 msum
+/// "e"$1000#0.1 0.2 0.3` is `0.6000061e`), the history holding it exactly as a `double`.
+trait Flt: Elt + core::ops::Add<Output = Self> + core::ops::Sub<Output = Self> + Into<f64> {
+    fn of(x: f64) -> Self;
+}
+impl Flt for f32 { fn of(x: f64) -> Self { x as f32 } }
+impl Flt for f64 { fn of(x: f64) -> Self { x } }
+
+/// The integral width `msum` answers at, `sums`'s: `0N` where the 64-bit total does not narrow into it.
+trait IntOut {
+    type B: Copy;
+    const NL: i64;
+    fn sx(s: i64) -> i64;
+    fn to_b(a: u64) -> Self::B;
+}
+impl IntOut for i32 {
+    type B = [u8; 4];
+    const NL: i64 = i32::MIN as i64;
+    #[inline(always)] fn sx(s: i64) -> i64 { s as i32 as i64 }
+    #[inline(always)] fn to_b(a: u64) -> [u8; 4] { (a as i32).to_ne_bytes() }
+}
+impl IntOut for i64 {
+    type B = [u8; 8];
+    const NL: i64 = i64::MIN;
+    #[inline(always)] fn sx(s: i64) -> i64 { s }
+    #[inline(always)] fn to_b(a: u64) -> [u8; 8] { a.to_ne_bytes() }
+}
+
+/// One element kind: the reader (`RD_*`, as the `k` elements from `i`), the null test (`NUL_*`) and the conversion to
+/// the double the means accumulate. `msum` is the kind's own method because an integral kind sums at 64 bits and a float
+/// at its own width.
+trait Kd {
+    type E: Elt;
+    fn run(p: &[u8], i: usize, k: usize) -> impl Iterator<Item = Self::E> + '_;
+    fn nul(e: Self::E) -> bool;
+    fn dbl(e: Self::E) -> f64;
+    fn msum(st: &mut Mw, p: &[u8], o: &mut [u8], n: usize);
+}
+/// The integral kinds, whose accumulator is the wrapping 64-bit `+\y`.
+trait KInt: Kd { fn int(e: Self::E) -> i64; }
+/// A kind stored `$w` bytes an element; `$sum` is its `msum` instance.
+macro_rules! kd { ($k:ident, $e:ty, $w:literal, $nul:expr, $dbl:expr, $sum:ident $(, $x:tt)*) => {
+    struct $k;
+    impl Kd for $k {
+        type E = $e;
+        #[inline(always)] fn run(p: &[u8], i: usize, k: usize) -> impl Iterator<Item = $e> + '_ {
+            p[i * $w..(i + k) * $w].as_chunks::<$w>().0.iter().map(|&b| <$e as Elt>::from_b(b))
+        }
+        #[inline(always)] fn nul(e: $e) -> bool { let f: fn($e) -> bool = $nul; f(e) }
+        #[inline(always)] fn dbl(e: $e) -> f64 { let f: fn($e) -> f64 = $dbl; f(e) }
+        fn msum(st: &mut Mw, p: &[u8], o: &mut [u8], n: usize) { $sum::<$k $(, $x)*>(st, p, o, n) }
+    }
+} }
+kd!(KU8, u8, 1, |_| false, |e| e as f64, sum_int, i32, 4);
+kd!(KC8, u8, 1, |e| e == 0x20, |e| e as f64, sum_int, i32, 4);
+kd!(KI16, i16, 2, |e| e == i16::MIN, |e| e as f64, sum_int, i32, 4);
+kd!(KI32, i32, 4, |e| e == i32::MIN, |e| e as f64, sum_int, i32, 4);
+kd!(KI64, i64, 8, |e| e == i64::MIN, |e| e as f64, sum_int, i64, 8);
+kd!(KF32, f32, 4, |e| e != e, |e| e as f64, sum_flt, 4);
+kd!(KF64, f64, 8, |e| e != e, |e| e, sum_flt, 8);
+/// A boolean is one bit an element, LSB first, so its reader is not a width: it takes the bit at each index.
+struct KBit;
+impl Kd for KBit {
+    type E = u8;
+    #[inline(always)] fn run(p: &[u8], i: usize, k: usize) -> impl Iterator<Item = u8> + '_ { (i..i + k).map(|j| (p[j >> 3] >> (j & 7)) & 1) }
+    #[inline(always)] fn nul(_: u8) -> bool { false }
+    #[inline(always)] fn dbl(e: u8) -> f64 { e as f64 }
+    fn msum(st: &mut Mw, p: &[u8], o: &mut [u8], n: usize) { sum_int::<KBit, i32, 4>(st, p, o, n) }
+}
+macro_rules! kints { ($($k:ident),*) => { $(impl KInt for $k { #[inline(always)] fn int(e: Self::E) -> i64 { e as i64 } })* } }
+kints!(KBit, KU8, KC8, KI16, KI32, KI64);
+
+/// `MW_HEAD` and `MW_NEXT`: the chunks the two loops of every reducing verb run in. A chunk is the longest run from the
+/// cursor `cu` for which the slot the accumulator is written to and the slot `w` back (`rp`) are both contiguous; it
+/// is never split and no element is copied. `body(i, k, cu, rp)` runs the accumulator loop then the subtraction loop.
+#[inline(always)]
+fn chunks(st: &mut Mw, n: usize, mut body: impl FnMut(usize, usize, usize, usize, &mut Mw)) {
+    let (w, cap, tl) = (st.w, st.cap, st.tl);
+    let mut i = 0;
+    while i < n {
+        let cu = st.cu;
+        let lim = if cu >= w { cap - cu } else { w - cu };
+        let k = (n - i).min(lim);
+        let rp = if cu >= w { cu - w } else { cu + tl };
+        body(i, k, cu, rp, st);
+        i += k;
+        st.cu = if cu + k == cap { 0 } else { cu + k };
+    }
+}
+/// The first `k` answer slots of `o` from element `i`, `W` bytes each.
+#[inline(always)]
+fn out<const W: usize>(o: &mut [u8], i: usize, k: usize) -> &mut [[u8; W]] { o[i * W..(i + k) * W].as_chunks_mut::<W>().0 }
+
+/// `+\y` at an integral layout minus the same total `w` back, answered at `O`, `sums`'s type. The total stays exact at
+/// 64 bits and each prefix is narrowed as `sums` narrows it; q's `-` then carries a null and wraps at `O`, so the two
+/// ends are tested rather than the elements (`2 msum 2147483647 0N 1i` is `0W 0W 0Ni`).
+#[inline(always)]
+fn sum_int<K: KInt, O: IntOut<B = [u8; OW]>, const OW: usize>(st: &mut Mw, p: &[u8], o: &mut [u8], n: usize) {
+    let mut acc = st.isum;
+    chunks(st, n, |i, k, cu, rp, st| {
+        for (h, e) in st.ri[cu..cu + k].iter_mut().zip(K::run(p, i, k)) {
+            if !K::nul(e) { acc = acc.wrapping_add(K::int(e) as u64) }
+            let s = acc as i64;
+            *h = (if s == O::sx(s) { s } else { O::NL }) as u64;
+        }
+        let (hd, bk) = (&st.ri[cu..cu + k], &st.ri[rp..rp + k]);
+        for ((c, &a), &b) in out::<OW>(o, i, k).iter_mut().zip(hd).zip(bk) {
+            *c = O::to_b(if a == O::NL as u64 || b == O::NL as u64 { O::NL as u64 } else { a.wrapping_sub(b) });
+        }
+    });
+    st.isum = acc;
+}
+
+/// The same at a float layout, where `+\` skips the null rather than wrapping and the subtraction is the plain one,
+/// cancellation included.
+#[inline(always)]
+fn sum_flt<K: Kd, const EW: usize>(st: &mut Mw, p: &[u8], o: &mut [u8], n: usize) where K::E: Flt + Elt<B = [u8; EW]> {
+    let mut acc = <K::E as Flt>::of(st.fsum);
+    chunks(st, n, |i, k, cu, rp, st| {
+        for (h, e) in st.rf[cu..cu + k].iter_mut().zip(K::run(p, i, k)) {
+            // `acc` is never -0.0 (it starts at +0.0 and a sum is -0.0 only of two -0.0), so adding +0.0 at a null leaves it
+            // unchanged and the chain is the add alone, not a compare and a blend on it
+            acc = acc + if K::nul(e) { <K::E as Flt>::of(0.0) } else { e };
+            *h = acc.into();
+        }
+        let (hd, bk) = (&st.rf[cu..cu + k], &st.rf[rp..rp + k]);
+        for ((c, &a), &b) in out::<EW>(o, i, k).iter_mut().zip(hd).zip(bk) { *c = (<K::E as Flt>::of(a) - <K::E as Flt>::of(b)).to_b() }
+    });
+    st.fsum = acc.into();
+}
+
+/// `mcount:{msum[x;~^y]}` -- the window's non-nulls, at `int`.
+#[inline(always)]
+fn cnt<K: Kd>(st: &mut Mw, p: &[u8], o: &mut [u8], n: usize) {
+    let mut acc = st.cnt;
+    chunks(st, n, |i, k, cu, rp, st| {
+        for (h, e) in st.rc[cu..cu + k].iter_mut().zip(K::run(p, i, k)) {
+            acc += !K::nul(e) as i64;
+            *h = acc;
+        }
+        let (hd, bk) = (&st.rc[cu..cu + k], &st.rc[rp..rp + k]);
+        for ((c, &a), &b) in out::<4>(o, i, k).iter_mut().zip(hd).zip(bk) { *c = ((a - b) as i32).to_ne_bytes() }
+    });
+    st.cnt = acc;
+}
+
+/// `mavg:{msum[x;0.0^y]%mcount[x;y]}` -- two accumulators over one pass. The null adds `0.0` rather than being skipped
+/// (the `0.0^`, which makes a `-0f` total end at `0f`) and is left out of the count (the `~^`).
+#[inline(always)]
+fn avg<K: Kd>(st: &mut Mw, p: &[u8], o: &mut [u8], n: usize) {
+    let (mut s, mut c) = (st.fsum, st.cnt);
+    chunks(st, n, |i, k, cu, rp, st| {
+        for ((hs, hc), e) in st.rf[cu..cu + k].iter_mut().zip(st.rc[cu..cu + k].iter_mut()).zip(K::run(p, i, k)) {
+            let live = !K::nul(e);
+            s += if live { K::dbl(e) } else { 0.0 };
+            c += live as i64;
+            (*hs, *hc) = (s, c);
+        }
+        let (hs, bs, hc, bc) = (&st.rf[cu..cu + k], &st.rf[rp..rp + k], &st.rc[cu..cu + k], &st.rc[rp..rp + k]);
+        for (((r, (&a, &b)), &x), &y) in out::<8>(o, i, k).iter_mut().zip(hs.iter().zip(bs)).zip(hc).zip(bc) {
+            *r = ((a - b) / (x - y) as f64).to_ne_bytes();
+        }
+    });
+    (st.fsum, st.cnt) = (s, c);
+}
+
+/// `mdev:{sqrt mavg[x;y*y]-m*m:mavg[x;y:"f"$y]}` -- the third accumulator joins the other two. The square is taken of
+/// the *filled* value. A negative variance and an empty window both reach `sqrt` as q's `0n`. No step is a fused
+/// multiply-add: Rust never contracts, which is scan.c's `-ffp-contract=off`.
+#[inline(always)]
+fn dev<K: Kd>(st: &mut Mw, p: &[u8], o: &mut [u8], n: usize) {
+    let (mut s, mut q, mut c) = (st.fsum, st.fsq, st.cnt);
+    chunks(st, n, |i, k, cu, rp, st| {
+        for (((hs, hq), hc), e) in st.rf[cu..cu + k].iter_mut().zip(st.rq[cu..cu + k].iter_mut()).zip(st.rc[cu..cu + k].iter_mut()).zip(K::run(p, i, k)) {
+            let live = !K::nul(e);
+            let x = if live { K::dbl(e) } else { 0.0 };
+            s += x; q += x * x; c += live as i64;
+            (*hs, *hq, *hc) = (s, q, c);
+        }
+        let (hs, bs, hq, bq) = (&st.rf[cu..cu + k], &st.rf[rp..rp + k], &st.rq[cu..cu + k], &st.rq[rp..rp + k]);
+        let (hc, bc) = (&st.rc[cu..cu + k], &st.rc[rp..rp + k]);
+        for (g, r) in out::<8>(o, i, k).iter_mut().enumerate() {
+            let dc = (hc[g] - bc[g]) as f64;
+            let m = (hs[g] - bs[g]) / dc;
+            let v = simd::sqrt64((hq[g] - bq[g]) / dc - m * m);
+            *r = (if v != v { SC_NAN64 } else { v.to_bits() }).to_ne_bytes();
+        }
+    });
+    (st.fsum, st.fsq, st.cnt) = (s, q, c);
+}
+
+/// van Herk's two-level pass: inside a phase of `w` keep the running extreme `ex` of its prefix, between phases keep
+/// `sufx`, the previous phase's suffix extremes; the window ending at offset `t` is `min(sufx[t+1], ex)`, two loads,
+/// two compares and a store an element with no branch on the data. The inner loop runs to the end of the phase or the
+/// piece; the suffix pass that closes a phase touches `w` elements once every `w`.
+#[inline(always)]
+fn ext<K: Kd, const MIN: bool, const EW: usize>(st: &mut Mw, p: &[u8], o: &mut [u8], n: usize) where K::E: Elt<B = [u8; EW]> {
+    let better = |a: K::E, b: K::E| if MIN { <K::E as Elt>::lt(a, b) } else { <K::E as Elt>::gt(a, b) };
+    let w = st.w;
+    let (sent, mut ex, mut t) = (<K::E as Elt>::from_bits(st.sent), <K::E as Elt>::from_bits(st.extbits), st.t);
+    let (ph, sf) = (&mut *st.phase, &mut *st.sufx);
+    let mut i = 0;
+    while i < n {
+        let k = (w - t).min(n - i);
+        let it = out::<EW>(ph, t, k).iter_mut().zip(sf[(t + 1) * EW..(t + 1 + k) * EW].as_chunks::<EW>().0).zip(out::<EW>(o, i, k)).zip(K::run(p, i, k));
+        for (((pc, sc), oc), v) in it {
+            let r = <K::E as Elt>::from_b(*sc);
+            ex = if better(v, ex) { v } else { ex };
+            *pc = v.to_b();
+            *oc = (if better(ex, r) { ex } else { r }).to_b();
+        }
+        t += k; i += k;
+        if t == w {
+            let mut a = sent;
+            for (pc, sc) in ph.as_chunks_mut::<EW>().0.iter().zip(sf.as_chunks_mut::<EW>().0.iter_mut()).rev() {
+                let b = <K::E as Elt>::from_b(*pc);
+                a = if better(a, b) { a } else { b };
+                *sc = a.to_b();
+            }
+            t = 0; ex = sent;
+        }
+    }
+    st.t = t;
+    st.extbits = ex.bits();
+}
+
+/// `MW_OPS`: one expansion per element layout with the op switch outside the loop; `EW` is the element's width.
+#[inline(always)]
+fn ops<K: Kd, const EW: usize>(st: &mut Mw, op: i32, p: &[u8], o: &mut [u8], n: usize) where K::E: Elt<B = [u8; EW]> {
+    match op {
+        MW_MSUM => K::msum(st, p, o, n),
+        MW_MCOUNT => cnt::<K>(st, p, o, n),
+        MW_MAVG => avg::<K>(st, p, o, n),
+        MW_MDEV => dev::<K>(st, p, o, n),
+        MW_MMIN => ext::<K, true, EW>(st, p, o, n),
+        _ => ext::<K, false, EW>(st, p, o, n),
+    }
+}
+
+/// scan.c `mw_run`: the window verb `op` over `n` elements of `p` at `kind`, resuming where `st` stopped. A boolean
+/// reads one bit an element, so `p` must be the whole bitmap from element 0 of the piece.
+pub fn mw_run(st: &mut Mw, op: i32, kind: i32, p: &[u8], o: &mut [u8], n: usize) {
+    if op >= MW_OPS_N {
+        // C exits 1 after this text; no_std has no exit, so the panic handler prints it and aborts
+        panic!("qlean_mwin: verb {op} is not one of the {MW_OPS_N} in QLean/Kernel/Scan.lean")
+    }
+    match u8::try_from(kind).unwrap_or(u8::MAX) {
+        SK_BIT => ops::<KBit, 1>(st, op, p, o, n),
+        SK_U8 => ops::<KU8, 1>(st, op, p, o, n),
+        SK_C8 => ops::<KC8, 1>(st, op, p, o, n),
+        SK_I16 => ops::<KI16, 2>(st, op, p, o, n),
+        SK_I32 => ops::<KI32, 4>(st, op, p, o, n),
+        SK_I64 => ops::<KI64, 8>(st, op, p, o, n),
+        SK_F32 => ops::<KF32, 4>(st, op, p, o, n),
+        SK_F64 => ops::<KF64, 8>(st, op, p, o, n),
+        _ => sc_bad_kind(kind),
+    }
+}
+/// The bytes of `p` that hold `n` elements at `kind`: packed bits for the boolean, `dense_width` each otherwise.
+pub fn mw_in_bytes(kind: i32, n: usize) -> usize {
+    if kind == SK_BIT as i32 { n.div_ceil(8) } else { n * dense_width(kind) }
+}
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -557,4 +867,45 @@ mod tests {
         assert_eq!(mw_prime(&mut sufx, MW_MMAX, SK_I16 as i32, 2), i16::MIN as u16 as u64);
         assert_eq!(sufx, [1, 0x80, 1, 0x80, 1, 0x80, 0x00, 0x80]);
     }
+
+    /// the window engine over one piece, rings and phases sized as `qrs_mw_open` sizes them
+    fn mw(op: i32, kind: i32, w: usize, p: &[u8], n: usize) -> Vec<u8> {
+        let d = mw_dims(op, kind, w, n);
+        let (mut ri, mut rf, mut rq, mut rc) = (alloc::vec![0u64; d.cap], alloc::vec![0f64; d.cap], alloc::vec![0f64; d.cap], alloc::vec![0i64; d.cap]);
+        let (mut phase, mut sufx) = (alloc::vec![0u8; d.w * d.ew], alloc::vec![0u8; (d.w + 1) * d.ew]);
+        let sent = mw_prime(&mut sufx, op, kind, d.ew);
+        let mut st = Mw { w: d.w, cu: 0, cap: d.cap, tl: d.tl, t: 0, isum: 0, fsum: 0.0, fsq: 0.0, cnt: 0, extbits: sent, sent,
+                          ri: &mut ri, rf: &mut rf, rq: &mut rq, rc: &mut rc, phase: &mut phase, sufx: &mut sufx };
+        let mut o = alloc::vec![0u8; n * mw_out_width(op, kind)];
+        mw_run(&mut st, op, kind, p, &mut o, n);
+        o
+    }
+    fn f64b(v: &[f64]) -> Vec<u8> { v.iter().flat_map(|x| x.to_ne_bytes()).collect() }
+    fn f64o(o: &[u8]) -> Vec<f64> { o.chunks(8).map(|c| f64::from_ne_bytes(c.try_into().unwrap())).collect() }
+    fn i32b(v: &[i32]) -> Vec<u8> { v.iter().flat_map(|x| x.to_ne_bytes()).collect() }
+    const FN: f64 = f64::NAN;
+    #[test]
+    fn mmin_and_mmax_of_a_float_null_follow_qs_and_and_or() {
+        let p = f64b(&[1.0, FN, 3.0, 2.0, 5.0, 4.0]);
+        let mn = f64o(&mw(MW_MMIN, SK_F64 as i32, 3, &p, 6));
+        assert_eq!([mn[0], mn[4], mn[5]], [1.0, 2.0, 2.0]);
+        assert!(mn[1].is_nan() && mn[2].is_nan() && mn[3].is_nan());
+        assert_eq!(f64o(&mw(MW_MMAX, SK_F64 as i32, 3, &p, 6)), [1.0, 1.0, 3.0, 3.0, 5.0, 5.0]);
+    }
+    #[test]
+    fn msum_of_an_int_column_narrows_to_null_and_a_null_end_stays_null() {
+        let o = mw(MW_MSUM, SK_I32 as i32, 3, &i32b(&[2_000_000_000, 2_000_000_000, -2_000_000_000]), 3);
+        assert_eq!(i32s(&o), [2_000_000_000, i32::MIN, 2_000_000_000]);
+        assert_eq!(i32s(&mw(MW_MSUM, SK_I32 as i32, 2, &i32b(&[i32::MAX, i32::MIN, 1]), 3)), [i32::MAX, i32::MAX, i32::MIN]);
+    }
+    #[test]
+    fn mavg_and_mcount_skip_nulls_and_a_window_wider_than_the_column_is_short() {
+        let p = f64b(&[1.0, FN, 3.0]);
+        assert_eq!(f64o(&mw(MW_MAVG, SK_F64 as i32, 9, &p, 3)), [1.0, 1.0, 2.0]);
+        assert_eq!(i32s(&mw(MW_MCOUNT, SK_F64 as i32, 2, &p, 3)), [1, 1, 1]);
+        assert_eq!(f64o(&mw(MW_MDEV, SK_F64 as i32, 9, &f64b(&[1.0, 3.0]), 2)), [0.0, 1.0]);
+    }
+    #[test]
+    #[should_panic(expected = "verb 6")]
+    fn a_verb_past_the_last_is_refused() { mw(6, SK_I64 as i32, 1, &[], 0); }
 }
