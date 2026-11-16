@@ -533,7 +533,10 @@ pub unsafe extern "C" fn qrs_coc_max(c: *const CCoc, nul: i64) -> i64 { unsafe {
 pub unsafe extern "C" fn qrs_cocf_decode(f: *const CCocf, b0: usize, b1: usize, out: *mut u8, bytes: usize) {
     unsafe { (*f).view().decode(b0, b1, sl_mut(out, bytes)) }
 }
-/// A6: coc.h:1304 `coc_shift`.
+/// A6: coc.h:952 `coc_shift_ok`, which `qlean_coc_shift` calls.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn qrs_coc_shift_ok(c: *const CCoc, k: i64, neg: c_int) -> c_int { unsafe { (*c).view() }.shift_ok(k, neg != 0) }
+/// A6: coc.h:1023 `coc_shift`, which `qlean_coc_shift` calls.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn qrs_coc_shift(c: *mut CCoc, k: i64, neg: c_int) { unsafe { (*c).view_mut() }.shift(k, neg != 0) }
 /// A10: ids.h:281 `ids_runs`.
