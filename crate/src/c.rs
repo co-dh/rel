@@ -1,9 +1,10 @@
-//! The pool as the runner a kernel takes (`pool::run_c`), and the safe calls over the pool.
+//! The runner a kernel takes (the pool, or C's serial one for a stage inside a slice), and the safe calls over it.
 use alloc::vec::Vec;
+use core::cell::UnsafeCell;
 use core::ptr::null;
+use core::sync::atomic::{AtomicBool, Ordering};
 
 use crate::ffi::CPass;
-use crate::pool;
 
 // libm names the crate may leave undefined (listed in rust/BENCH.md, symbols gate); each is declared once here, where `unsafe` is
 // allowed, and called through a safe wrapper, so the safe modules need no unsafe block.
@@ -16,17 +17,30 @@ pub fn pow(x: f64, y: f64) -> f64 {
 }
 
 pub type Worker = unsafe extern "C" fn(lo: usize, hi: usize, p: *const CPass);
-/// The pool's C entry (`pool::run_c`, exported as `qrs_pool_run`) as a function pointer; F3 deletes the parameter.
+/// A pass's runner: the pool (`pool::run_c`, `qrs_pool_run` in C) or a serial one C hands a stage already inside a
+/// slice (elementwise.c `ew_serial`), which is why the kernels take it rather than call the pool; F3 makes it `Par`.
 pub type Runner = unsafe extern "C" fn(f: Worker, n: usize, cost: u32, wide: usize, p: *const CPass) -> u32;
 
 /// The runner a Rust export hands its kernel: the process's one pool.
-pub fn pool() -> Runner { pool::run_c }
+pub fn pool() -> Runner { crate::pool::run_c }
 /// The unit tests' name for the pool, which they once faked (three slices in turn); under `cargo test` the real pool
 /// splits every non-empty pass three ways (`pool::SPLIT_AT`).
 #[cfg(test)]
 pub use crate::pool::run_c as qlean_run_c;
 
-/// The pool over `units` units of `unit` bytes of `out`: `f(lo, hi, &mut out[lo * unit .. hi * unit])`
+struct Job<'f, F> { f: &'f F, out: *mut u8, at: &'f (dyn Fn(usize) -> usize + Sync), len: usize }
+
+/// Safety: `p` is the `CPass` `run_map` built, whose `a` is a live `Job<F>`; `[lo, hi)` is a slice of `[0, n)`
+/// that no other worker of the same pass is given.
+unsafe extern "C" fn slice<F: Fn(usize, usize, &mut [u8]) + Sync>(lo: usize, hi: usize, p: *const CPass) {
+    let j = unsafe { &*(*p).a.cast::<Job<F>>() };
+    let e = (j.at)(hi).min(j.len);
+    let s = (j.at)(lo).min(e);
+    let o = unsafe { core::slice::from_raw_parts_mut(j.out.add(s), e - s) };
+    (j.f)(lo, hi, o)
+}
+
+/// The C pool (pass.h:415) over `units` units of `unit` bytes of `out`: `f(lo, hi, &mut out[lo * unit .. hi * unit])`
 /// once per slice, on as many threads as `qlean_run` splits `units` into at `cost` and `wide`; answers that count.
 pub fn run_map<F: Fn(usize, usize, &mut [u8]) + Sync>(run: Runner, out: &mut [u8], units: usize, unit: usize, cost: u32,
                                                       wide: usize, f: &F) -> u32 {
@@ -50,24 +64,35 @@ pub fn run_map_at<F: Fn(usize, usize, &mut [u8]) + Sync>(run: Runner, out: &mut 
 
 /// The pool call behind `run_map` and `run_map_at`, each of which has checked that `at` is non-decreasing over
 /// `0 ..= units` and starts every unit inside `out`: that is what makes the `&mut` slices disjoint.
-fn map_at<F: Fn(usize, usize, &mut [u8]) + Sync>(_run: Runner, out: &mut [u8], units: usize,
+fn map_at<F: Fn(usize, usize, &mut [u8]) + Sync>(run: Runner, out: &mut [u8], units: usize,
                                                  at: &(dyn Fn(usize) -> usize + Sync), cost: u32, wide: usize, f: &F) -> u32 {
-    struct Out(*mut u8);
-    // Safety: each slice makes a `&mut` of its own disjoint range only
-    unsafe impl Sync for Out {}
-    let (o, len) = (Out(out.as_mut_ptr()), out.len());
-    pool::run(units, cost, wide, &|_, lo, hi| {
-        let e = at(hi).min(len);
-        let s = at(lo).min(e);
-        // the slices partition [0, units) and `at` is non-decreasing, so these ranges are disjoint; `out` outlives the pass
-        f(lo, hi, unsafe { core::slice::from_raw_parts_mut((&o).0.add(s), e - s) })
-    })
+    let o = out.as_mut_ptr();
+    let job = Job { f, out: o, at, len: out.len() };
+    let p = CPass { a: (&raw const job).cast(), b: null(), c: null(), o: o.cast(), n: units, at: 0,
+                    r#priv: 0, nul: 0, op: 0, cls: 0, shape: 0 };
+    // the slices partition [0, units), so the `&mut` each worker makes are disjoint; `out` outlives the call
+    unsafe { run(slice::<F>, units, cost, wide, &p) }
 }
 
 /// `run_map` whose slices each answer one `T` (a private histogram, a partial fold): `(parts, answers)` with the
-/// answers `(lo, t)` in slice order (`pool::slices`); a slice the pool leaves empty gives none.
-pub fn run_slices<T: Send, F: Fn(usize, usize) -> T + Sync>(_run: Runner, n: usize, cost: u32, wide: usize, f: &F) -> (u32, Vec<(usize, T)>) {
-    pool::slices(n, cost, wide, f)
+/// answers `(lo, t)` in slice order. The runner may be C's serial one, which passes no slice index, so a slice is named by its
+/// `lo`, which no other slice shares; a slice `qlean_run` leaves empty gives none.
+pub fn run_slices<T: Send, F: Fn(usize, usize) -> T + Sync>(run: Runner, n: usize, cost: u32, wide: usize, f: &F) -> (u32, Vec<(usize, T)>) {
+    struct Bag<T> { lock: AtomicBool, v: UnsafeCell<Vec<(usize, T)>> }
+    // Safety: `v` is touched only with `lock` held
+    unsafe impl<T: Send> Sync for Bag<T> {}
+    let bag = Bag { lock: AtomicBool::new(false), v: UnsafeCell::new(Vec::new()) };
+    let parts = run_map(run, &mut [], n, 0, cost, wide, &|lo, hi, _: &mut [u8]| {
+        let t = f(lo, hi);
+        let bag = &bag; // the whole bag, not its fields: only the bag is `Sync`
+        while bag.lock.compare_exchange_weak(false, true, Ordering::Acquire, Ordering::Relaxed).is_err() { core::hint::spin_loop() }
+        // Safety: the lock is ours
+        unsafe { (*bag.v.get()).push((lo, t)) }
+        bag.lock.store(false, Ordering::Release);
+    });
+    let mut v = bag.v.into_inner();
+    v.sort_unstable_by_key(|r| r.0);
+    (parts, v)
 }
 
 #[cfg(test)]
