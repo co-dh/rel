@@ -21,6 +21,10 @@ pub fn id_width(nd: usize) -> u32 { if nd < 2 { 0 } else { lane_width(width_for(
 
 /// Bytes `n` ids occupy at `w` bits: `⌈n·w/8⌉`, wrapping like the C `size_t` arithmetic.
 pub fn ids_bytes(n: usize, w: u32) -> usize { n.wrapping_mul(w as usize).wrapping_add(7) / 8 }
+/// `ids_avail`: how many ids a payload of `len` bytes holds at `w` bits, which every kernel clamps the count Lean handed it
+/// to (`ids_bytes` is not invertible, so this rounds down). `usize::MAX` at width 0: a one-entry dictionary stores nothing
+/// and `id_at` answers 0 at every index.
+pub fn ids_avail(len: usize, w: u32) -> usize { if w == 0 { usize::MAX } else { len.wrapping_mul(8) / w as usize } }
 
 /// `Column.idAt`. Narrow widths share a byte, low field first; eight and above are whole elements. Inlined with a
 /// fixed-width load per arm, as ids.h's `static inline` is: an out-of-line call per element was most of `find` ids.

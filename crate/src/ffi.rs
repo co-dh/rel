@@ -1245,13 +1245,6 @@ unsafe fn opnd<'a>(d: *const u8, c: *const CCoc, n: usize, enc: c_int, lw: u32, 
     };
     search::Opnd { src, n }
 }
-/// A29: search.c `scan_*`: the first index in the dense haystack `h` of `n` keys of each of the `m` needles `x`, or `n`.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn qrs_scan(kind: c_int, h: *const u8, n: usize, x: *const u8, m: usize, out: *mut i64) {
-    let kd = search::KINDS[kind as usize];
-    let (h, x) = unsafe { (opnd(h, null_mut(), n, 0, 0, kd.width()), opnd(x, null_mut(), m, 0, 0, kd.width())) };
-    search::scan_kind(kd, &h, &x, unsafe { sl_mut(out, m) })
-}
 /// A30: search.c `search`: `x ? h` (`member` 0, `8 * xn` bytes of `Int64`s) or `x in h` (`member` 1, `ceil(xn / 8)` bytes,
 /// bit `i` for needle `i`) into `out`, the whole job on `run` (the pool (`qrs_pool_run`)) with no further call back into C.
 #[unsafe(no_mangle)]
@@ -1301,11 +1294,6 @@ pub unsafe extern "C" fn qrs_sym_search(bits: c_int, nb: *const u8, nbytes: usiz
 pub unsafe extern "C" fn qrs_sym_translate(ab: *const u8, abytes: usize, ao: *const usize, na: usize, bb: *const u8,
                                            bbytes: usize, bo: *const usize, nb: usize, tr: *mut usize) {
     unsafe { search::sym_translate(&syms0(ab, abytes, ao, na), na, &syms0(bb, bbytes, bo, nb), nb, sl_mut(tr, na)) }
-}
-/// K17: search.c `coc_may_hold64`: the blocks `[b0, b0 + k)`, `k <= 64`, of `c` that may hold `v`, as a bit mask.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn qrs_coc_may_hold64(c: *const CCoc, b0: usize, k: usize, v: i64) -> u64 {
-    search::coc_may_hold64(&unsafe { (*c).view() }, b0, k, v)
 }
 /// K17: search.c `qlean_search_remap_ids`: `n` ids of `ids` (`idbytes` long, `w` bits) renamed by `map` (`mapbytes` long,
 /// `wout` bits), into `out` (`ids_bytes(n, wout)` bytes).
@@ -2581,7 +2569,7 @@ mod tests {
                         for j in 0..k { m |= (((*cc.base.add(b0 + j) <= v) & (v <= *cc.maxv.add(b0 + j))) as u64) << j }
                         let exc = cc.nexc != 0 && *cc.exc_off.add(b0 + k) != *cc.exc_off.add(b0);
                         if exc { for j in 0..k { if m >> j & 1 == 0 && qrs_coc_exc_within(&cc, b0 + j, v, v) != 0 { m |= 1 << j } } }
-                        assert_eq!(qrs_coc_may_hold64(&cc, b0, k, v), m, "block {b0}+{k} for {v}");
+                        assert_eq!(search::coc_may_hold64(&cc.view(), b0, k, v), m, "block {b0}+{k} for {v}");
                     }
                 }
             }
