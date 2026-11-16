@@ -125,15 +125,15 @@ pub fn res_cmp2(x: &[i64], y: &[i64], op: i32, out: &mut [u64]) {
     }
 }
 /// coc.h:2129 `coc_cmp2_res`: blocks `lo .. hi` of `a op b` into `out`; `deep` lists the blocks whose frames do not
-/// decide the answer.
-pub fn cmp2_res(a: &Coc, b: &Coc, op: i32, out: &mut [u64], deep: &[u32], lo: usize, hi: usize) {
+/// decide the answer. `out[0]` is word `w0` of the whole bitmap (0 for the whole of it).
+pub fn cmp2_res(a: &Coc, b: &Coc, op: i32, out: &mut [u64], deep: &[u32], lo: usize, hi: usize, w0: usize) {
     let (mut xa, mut xb) = ([0i64; BLK], [0i64; BLK]);
     for &k in &deep[lo..hi] {
         let (k, n) = (k as usize, a.meta.n);
         let (at, nb) = (k * BLK, if k * BLK + BLK < n { BLK } else { n - k * BLK });
         a.decode_blk(k, nb, &mut xa);
         b.decode_blk(k, nb, &mut xb);
-        res_cmp2(&xa[..nb], &xb[..nb], op, &mut out[at >> 6..]); // BLK=1024 -> 16 u64 per block
+        res_cmp2(&xa[..nb], &xb[..nb], op, &mut out[(at >> 6) - w0..]); // BLK=1024 -> 16 u64 per block
     }
 }
 

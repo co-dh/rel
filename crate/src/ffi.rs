@@ -610,6 +610,30 @@ pub unsafe extern "C" fn qrs_scan_alp_skip(op: c_int, f: *const CCocf, b: usize,
 pub unsafe extern "C" fn qrs_coc_decode(run: unsafe extern "C" fn(), c: *const CCoc, out: *mut i64) {
     unsafe { codec::decode(rn(run), &(*c).view(), sl_mut(out, (*c).n)) }
 }
+/// A15: `qrs_coc_decode` at 2-byte lanes (coc.c `qlean_coc_decode_i16`).
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn qrs_coc_decode_i16(run: unsafe extern "C" fn(), c: *const CCoc, out: *mut i16) {
+    unsafe { codec::decode(rn(run), &(*c).view(), sl_mut(out, (*c).n)) }
+}
+/// A15: `qrs_coc_decode` at 4-byte lanes (coc.c `qlean_coc_decode_i32`).
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn qrs_coc_decode_i32(run: unsafe extern "C" fn(), c: *const CCoc, out: *mut i32) {
+    unsafe { codec::decode(rn(run), &(*c).view(), sl_mut(out, (*c).n)) }
+}
+/// A15: coc.c `qlean_coc_block_start` past the unboxing; `c` is a metadata-only view.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn qrs_coc_block_start(c: *const CCoc, b: usize) -> usize { unsafe { codec::block_start(&(*c).view().meta, b) } }
+/// A15: coc.c `coc_cmp2_run`: the `nd` deep blocks `deep` of `a op b` into the bitmap `out` (`a.n.div_ceil(64)` words).
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn qrs_coc_cmp2(run: unsafe extern "C" fn(), op: c_int, a: *const CCoc, b: *const CCoc, deep: *const u32, nd: usize, out: *mut u64) {
+    unsafe { codec::cmp2(rn(run), op, &(*a).view(), &(*b).view(), sl(deep, nd), sl_mut(out, (*a).n.div_ceil(64))) }
+}
+/// A15: coc.c `shift_fill` (the encoder's per-block source of `k + x`, `k - x` when `neg`), `cnt` elements from `i0`, nulls
+/// staying the null.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn qrs_coc_shift_fill(c: *const CCoc, k: i64, neg: c_int, buf: *mut i64, i0: usize, cnt: usize) {
+    unsafe { codec::shift_fill(&(*c).view(), k, neg != 0, i64::MIN, sl_mut(buf, cnt), i0) }
+}
 /// A15: coc.c `coc_mask_cmp_run`: a bit per element.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn qrs_coc_mask_cmp(run: unsafe extern "C" fn(), op: u8, v: i64, c: *const CCoc, out: *mut u8) {

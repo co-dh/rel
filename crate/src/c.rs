@@ -27,13 +27,14 @@ fn cut(n: usize, parts: usize, k: usize) -> (usize, usize) {
     (lo, lo + q + (k < r) as usize)
 }
 
-struct Job<'f, F> { f: &'f F, out: *mut u8, unit: usize, len: usize }
+struct Job<'f, F> { f: &'f F, out: *mut u8, at: &'f (dyn Fn(usize) -> usize + Sync), len: usize }
 
 /// Safety: `p` is the `CPass` `run_map` built, whose `a` is a live `Job<F>`; `[lo, hi)` is a slice of `[0, n)`
 /// that no other worker of the same pass is given.
 unsafe extern "C" fn slice<F: Fn(usize, usize, &mut [u8]) + Sync>(lo: usize, hi: usize, p: *const CPass) {
     let j = unsafe { &*(*p).a.cast::<Job<F>>() };
-    let o = unsafe { core::slice::from_raw_parts_mut(j.out.add(lo * j.unit), (hi * j.unit).min(j.len) - lo * j.unit) };
+    let (s, e) = ((j.at)(lo), (j.at)(hi).min(j.len));
+    let o = unsafe { core::slice::from_raw_parts_mut(j.out.add(s), e - s) };
     (j.f)(lo, hi, o)
 }
 
@@ -44,8 +45,15 @@ pub fn run_map<F: Fn(usize, usize, &mut [u8]) + Sync>(run: Runner, out: &mut [u8
     // the last unit may be short (a ragged final block): its slice ends at `out`
     assert!(units == 0 || (units - 1).checked_mul(unit).is_some_and(|b| b <= out.len()),
             "run_map: {units} units of {unit} bytes start past a {}-byte output", out.len());
+    run_map_at(run, out, units, &|k| k * unit, cost, wide, f)
+}
+
+/// `run_map` whose unit `k` starts at byte `at(k)` of `out` (`at` ascending, `at(units)` the end): slice `[lo, hi)` is
+/// `out[at(lo) .. at(hi)]`, so units that are not equally spaced (the deep blocks of a bitmap) still get disjoint slices.
+pub fn run_map_at<F: Fn(usize, usize, &mut [u8]) + Sync>(run: Runner, out: &mut [u8], units: usize,
+                                                         at: &(dyn Fn(usize) -> usize + Sync), cost: u32, wide: usize, f: &F) -> u32 {
     let o = out.as_mut_ptr();
-    let job = Job { f, out: o, unit, len: out.len() };
+    let job = Job { f, out: o, at, len: out.len() };
     let p = CPass { a: (&raw const job).cast(), b: null(), c: null(), o: o.cast(), n: units, at: 0,
                     r#priv: 0, nul: 0, op: 0, cls: 0, shape: 0 };
     // the slices partition [0, units), so the `&mut` each worker makes are disjoint; `out` outlives the call
@@ -92,6 +100,16 @@ mod tests {
             for (k, b) in o.iter_mut().enumerate() { *b = (lo * 2 + k) as u8 + 1 }
         });
         assert_eq!(out, [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13]);
+    }
+    // units that are not equally spaced still get disjoint slices, `at(lo) .. at(hi)`
+    #[test] fn run_map_at_cuts_by_the_start_function() {
+        let starts = [0usize, 3, 4, 9, 10];
+        let mut out = [0u8; 10];
+        super::run_map_at(super::qlean_run_c, &mut out, 4, &|k| starts[k], crate::QLEAN_COST_ARITH, 8, &|lo, hi, o: &mut [u8]| {
+            assert_eq!(o.len(), starts[hi] - starts[lo]);
+            o.fill(lo as u8 + 1)
+        });
+        assert!(out.iter().all(|&b| b != 0));
     }
     use crate::ffi::{CPass, CStage};
     use std::vec::Vec;
