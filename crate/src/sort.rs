@@ -3,10 +3,13 @@
 //! Column (a), sort.c: keys and their range (A19), the grades (A20–A22), pair and id grouping (A23–A24), symbol
 //! sorts and groups (A25–A26), guids (A27). The `qlean_sort_*` entries unbox and allocate and stay C (§1).
 //! A grade answers into `out: &mut [i64]` of `n`; `kind` is sort.c's `SK_*`.
+use alloc::vec;
 use alloc::vec::Vec;
 
-use crate::c::Runner;
-use crate::coc::Coc;
+use crate::c::{run_map, Runner};
+use crate::coc::{lanes, Coc};
+use crate::key::{self, Keys, Pass, SK_BIT, SK_I16, SK_I32, SK_I64, SK_U8};
+use crate::{pod, BLK, QLEAN_COST_ARITH};
 use crate::sym::{sym_cmp, sym_hash, sym_msort, Syms};
 
 /// sort.c:351 `ksrc`: the keys of a dense payload `p` or of an encoded column `c`, `n` of them.
@@ -58,30 +61,234 @@ pub fn grade_narrow(run: Runner, kind: u8, p: &[u8], n: usize, desc: bool, rank:
 }
 
 // ---- A22: sort.c:887-1120 ----
+/// sort.c `SK_LANE`: kind bit that makes `grade_narrow` read the payload as ids of `kind & 0x7f` bits.
+const SK_LANE: u8 = 0x80;
 /// sort.c:941 `sk_ends`: a block's first and last key and whether it is ordered inside.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Ends { pub fst: i64, pub lst: i64, pub ok: bool }
-/// sort.c:894 `qlean_sort_ascending` past the unboxing.
-pub fn ascending(kind: u8, desc: bool, strict: bool, p: &[u8], n: usize) -> bool { unimplemented!("A22: qlean_sort_ascending") }
-/// sort.c:941 `asc_blk_foR`
-pub fn asc_blk(c: &Coc, b: usize, desc: bool, strict: bool) -> Ends { unimplemented!("A22: asc_blk_foR") }
-/// sort.c:977 `qlean_sort_ascending_foR` past the unboxing, threaded (`asc_run`).
+
+/// coc.h:353 `sk_avail`: how many elements `bytes` hold (the bit payload answers before the width is consulted).
+fn avail(kind: u8, bytes: usize) -> usize {
+    if kind == SK_BIT { bytes * 8 } else { bytes / key::bytes(kind, 1).unwrap_or_else(|| panic!("qlean: element kind {kind} has no dense width")) }
+}
+
+/// sort.c:880 `SK_ASC_DIR`: no key is carried between elements, so a chunk's violations accumulate and the early exit
+/// is taken at the chunk. `bad(a, b)` is the failing comparison of two adjacent keys, a closure so each of the four
+/// directions is its own loop.
+#[inline(always)]
+fn ordered<K: Keys>(k: &mut K, m: usize, bad: impl Fn(u64, u64) -> bool) -> bool {
+    const CHUNK: usize = 512;
+    let mut lo = 1;
+    while lo < m {
+        let hi = (lo + CHUNK).min(m);
+        let mut x = false;
+        for i in lo..hi { x |= bad(k.at(i - 1), k.at(i)) }
+        if x { return false }
+        lo = hi;
+    }
+    true
+}
+/// sort.c:894 `SK_ASC`: `strict` moves the failing comparison from `>` to `>=` (a repeat breaks a strict order).
+struct Asc { desc: bool, strict: bool }
+impl Pass for Asc {
+    type Out = bool;
+    #[inline(always)]
+    fn run<K: Keys>(self, mut k: K, m: usize) -> bool {
+        match (self.desc, self.strict) {
+            (true, true) => ordered(&mut k, m, |a, b| a <= b),
+            (true, false) => ordered(&mut k, m, |a, b| a < b),
+            (false, true) => ordered(&mut k, m, |a, b| a >= b),
+            (false, false) => ordered(&mut k, m, |a, b| a > b),
+        }
+    }
+}
+/// sort.c:894 `qlean_sort_ascending` past the unboxing; `n` is clamped to what `p` holds.
+pub fn ascending(kind: u8, desc: bool, strict: bool, p: &[u8], n: usize) -> bool {
+    let m = avail(kind, p.len()).min(n);
+    if m < 2 { return true }
+    let b = key::bytes(kind, m).unwrap_or_else(|| panic!("qlean_sort_ascending: kind {kind} is not a dense kind"));
+    key::each(kind, &p[..b], m, Asc { desc, strict })
+        .unwrap_or_else(|| panic!("qlean_sort_ascending: the {}-byte payload of kind {kind} is misaligned", p.len()))
+}
+
+/// sort.c:941 `asc_blk_foR`: block `b`'s own order and its ends, read off the residuals without decoding. A block's
+/// base is the same for all of it and the encoder biases a key into unsigned order before subtracting it, so the
+/// residuals ascend exactly when the elements do. `ok` false = out of order (the ends are then 0).
+pub fn asc_blk(c: &Coc, b: usize, desc: bool, strict: bool) -> Ends {
+    /// the walk of `cnt` residuals through `rd`, a closure of the index so the width switch stays out of the loop
+    fn walk(cnt: usize, desc: bool, strict: bool, rd: impl Fn(usize) -> u64) -> Option<(u64, u64)> {
+        let bad = (1..cnt).fold(false, |x, j| x | match (desc, strict) {
+            (true, true) => rd(j - 1) <= rd(j), (true, false) => rd(j - 1) < rd(j),
+            (false, true) => rd(j - 1) >= rd(j), (false, false) => rd(j - 1) > rd(j),
+        });
+        if bad { None } else { Some((rd(0), rd(cnt - 1))) }
+    }
+    let cnt = (c.meta.n - b * BLK).min(BLK);
+    // a patched block is decoded and re-biased: residuals compare unsigned, so `v ^ sign` over a base of INT64_MIN
+    // keeps signed order, and `base + r` is `v` again
+    let (base, r) = if c.blk_nexc(b) > 0 {
+        let mut dec = [0i64; BLK];
+        c.decode_blk(b, cnt, &mut dec);
+        (1u64 << 63, walk(cnt, desc, strict, |j| dec[j] as u64 ^ (1 << 63)))
+    } else {
+        let at = c.meta.off[b] as usize;
+        let mut w = c.meta.width[b];
+        let mut lb = [0u64; BLK];
+        let p = lanes(&c.pack[at..at + BLK * w as usize / 8], &mut w, cnt, pod::bytes_mut(&mut lb));
+        let r = match w {
+            // a zero-width block is its base repeated, which is not a strict order past one element
+            0 => if strict && cnt > 1 { None } else { Some((0, 0)) },
+            8 => walk(cnt, desc, strict, |j| p[j] as u64),
+            16 => walk(cnt, desc, strict, |j| u16::from_ne_bytes([p[2 * j], p[2 * j + 1]]) as u64),
+            32 => walk(cnt, desc, strict, |j| u32::from_ne_bytes(p[4 * j..4 * j + 4].try_into().unwrap()) as u64),
+            64 => walk(cnt, desc, strict, |j| u64::from_ne_bytes(p[8 * j..8 * j + 8].try_into().unwrap())),
+            // widths 1, 2, 4 stay packed: a shift inside one byte
+            _ => walk(cnt, desc, strict, |j| ((p[j * w as usize >> 3] >> (j * w as usize & 7)) & ((1u8 << w) - 1)) as u64),
+        };
+        (c.frame(b), r)
+    };
+    match r {
+        Some((r0, rl)) => Ends { fst: base.wrapping_add(r0) as i64, lst: base.wrapping_add(rl) as i64, ok: true },
+        None => Ends { fst: 0, lst: 0, ok: false },
+    }
+}
+/// sort.c:977 `qlean_sort_ascending_foR` past the unboxing, threaded (`asc_run`). The blocks are checked apart, by
+/// block across the pool, and the pairs between them afterwards from their ends; the first block goes alone and first,
+/// so a column that is not sorted still leaves inside it. `kind` is one of `SK_I16`, `SK_I32`, `SK_I64`.
 pub fn ascending_enc(run: Runner, kind: u8, desc: bool, strict: bool, c: &Coc) -> bool {
-    unimplemented!("A22: qlean_sort_ascending_foR")
+    debug_assert!(matches!(kind, SK_I16 | SK_I32 | SK_I64));
+    let nb = c.meta.nblk;
+    if c.meta.n == 0 { return true }
+    let f = asc_blk(c, 0, desc, strict);
+    if !f.ok || nb == 1 { return f.ok }
+    // block `b >= 1` lands at words `3(b-1)..3b` as (fst, lst, ok); `ok` is written last, so a block a worker never
+    // reached (it stops at its first block out of order) reads as out of order
+    let mut e = vec![0u64; 3 * (nb - 1)];
+    let rest = c.blocks(1, nb);
+    run_map(run, pod::bytes_mut(&mut e), nb - 1, 24, QLEAN_COST_ARITH, BLK * 8, &|lo, hi, o: &mut [u8]| {
+        let o = pod::cast_mut::<u64>(o).expect("ascending_enc: the block ends are misaligned");
+        for (k, b) in (lo..hi).enumerate() {
+            let r = asc_blk(&rest, b, desc, strict);
+            if !r.ok { return }
+            o[3 * k] = r.fst as u64; o[3 * k + 1] = r.lst as u64; o[3 * k + 2] = 1;
+        }
+    });
+    // between each pair of neighbours: the last of one against the first of the next
+    let ends = |b: usize| if b == 0 { (f.fst, f.lst, true) } else { (e[3 * b - 3] as i64, e[3 * b - 2] as i64, e[3 * b - 1] != 0) };
+    (1..nb).all(|b| {
+        let ((_, pl, _), (nf, _, ok)) = (ends(b - 1), ends(b));
+        let bad = match (desc, strict) { (true, true) => pl <= nf, (true, false) => pl < nf, (false, true) => nf <= pl, (false, false) => nf < pl };
+        ok && !bad
+    })
 }
-/// sort.c:1012 `qlean_sort_invert`: the inverse permutation.
-pub fn invert(p: &[i64], out: &mut [i64]) { unimplemented!("A22: qlean_sort_invert") }
-/// sort.c:1025 `order_runs`: the grade of an already ordered column (`asc`), or reversed (`desc_strict`).
-pub fn order_runs(asc: bool, desc_strict: bool, out: &mut [i64]) -> bool { unimplemented!("A22: order_runs") }
-/// sort.c:1034 `order_dense` past the allocation: grade or ranks of a dense payload.
+/// sort.c:1012 `qlean_sort_invert`: the inverse permutation. The scatter runs from the top so that a repeated entry
+/// keeps its first position, which only a payload that is not a permutation has; a grade always is one.
+pub fn invert(p: &[i64], out: &mut [i64]) {
+    let m = p.len();
+    out[..m].fill(m as i64);
+    for j in (0..m).rev() { if (p[j] as u64) < m as u64 { out[p[j] as usize] = j as i64 } }
+}
+/// sort.c:1025 `order_runs`: the grade of an already ordered column (`asc`), or reversed (`desc_strict`); both are
+/// involutions, so they are their own rank as well.
+pub fn order_runs(asc: bool, desc_strict: bool, out: &mut [i64]) -> bool {
+    let n = out.len();
+    if asc { out.iter_mut().enumerate().for_each(|(i, o)| *o = i as i64); true }
+    else if desc_strict { out.iter_mut().enumerate().for_each(|(i, o)| *o = (n - 1 - i) as i64); true }
+    else { false }
+}
+/// sort.c:1034 `order_dense` past the allocation: grade or ranks of a dense payload, `n` already clamped to what `p`
+/// holds. A wide payload is never copied into a key array: its range is one read of it and every engine reads the
+/// keys straight off it.
 pub fn order(run: Runner, kind: u8, desc: bool, rank: bool, p: &[u8], n: usize, out: &mut [i64]) {
-    unimplemented!("A22: order_dense")
+    if n == 0 { return }
+    let p = &p[..key::bytes(kind, n).unwrap_or_else(|| panic!("qlean_sort_grade: kind {kind} is not a dense kind"))];
+    if kind == SK_BIT { return grade_bits(p, n, desc, rank, out) }
+    if kind == SK_U8 || kind == SK_I16 { return grade_narrow(run, kind, p, n, desc, rank, out) }
+    let a = ascending(kind, desc, false, p, n);
+    if !order_runs(a, !a && ascending(kind, !desc, true, p, n), out) {
+        let s = Ksrc { kind, p, c: None, n };
+        let (mn, mx) = s.range();
+        grade_src(run, &s, desc, rank, mn, mx, out)
+    }
 }
-/// sort.c:1068 `order_foR` past the allocation
-pub fn order_enc(run: Runner, kind: u8, desc: bool, rank: bool, c: &Coc, out: &mut [i64]) { unimplemented!("A22: order_foR") }
-/// sort.c:1093 `qlean_sort_grade_lane` past the unboxing: the grade of `n` ids at `w` bits.
+/// sort.c:1068 `order_foR` past the allocation: `order` off the pack. The range is the block metadata's, so the only
+/// passes over the residuals are the ones the chosen engine makes, each decoding a block at a time into L1.
+pub fn order_enc(run: Runner, kind: u8, desc: bool, rank: bool, c: &Coc, out: &mut [i64]) {
+    if c.meta.n == 0 { return }
+    let a = ascending_enc(run, kind, desc, false, c);
+    if !order_runs(a, !a && ascending_enc(run, kind, !desc, true, c), out) {
+        let s = Ksrc { kind, p: &[], c: Some(*c), n: c.meta.n };
+        let (mn, mx) = s.range();
+        grade_src(run, &s, desc, rank, mn, mx, out)
+    }
+}
+/// sort.c:1093 `qlean_sort_grade_lane` past the unboxing: the grade of `n` ids at `w` bits, `n` already clamped to
+/// what `ids` holds. Up to sixteen bits it is `grade_narrow`'s counting sort at the lane, a `2^w` table and nothing
+/// widened; at width zero every key is `0` and the stable answer is `til n`. Past sixteen bits the table is not
+/// affordable and the ids become `grade_keys`' unsigned keys.
 pub fn grade_lane(run: Runner, desc: bool, w: u32, ids: &[u8], n: usize, out: &mut [i64]) {
-    unimplemented!("A22: qlean_sort_grade_lane")
+    if n == 0 { return }
+    if w == 0 { out.iter_mut().enumerate().for_each(|(i, o)| *o = i as i64) }
+    else if w == 1 { grade_bits(ids, n, desc, false, out) } // a one-bit lane is `.bit`'s layout
+    else if w <= 16 { grade_narrow(run, SK_LANE | w as u8, ids, n, desc, false, out) }
+    else {
+        let mut k = vec![0u64; n];
+        let (mn, mx) = ids_keys(ids, w, n, &mut k); // needs A23
+        grade_keys(run, &k, desc, mn, mx, out)
+    }
+}
+
+#[cfg(test)]
+mod tests_a22 {
+    use super::*;
+    use crate::c::qlean_run_c;
+    use crate::key::SK_F64;
+    fn le<T: crate::pod::Pod>(v: &[T]) -> alloc::vec::Vec<u8> { pod::bytes(v).to_vec() }
+    // the cases of /data/tmp/qrs/A22/diff.c's `edge`, whose C answers (14bdbcd) these are
+    #[test] fn ascending_ties_strict_desc() {
+        let p = le(&[1i64, 2, 2, 5]);
+        assert!(ascending(SK_I64, false, false, &p, 4));
+        assert!(!ascending(SK_I64, false, true, &p, 4), "a repeat breaks a strict order");
+        assert!(!ascending(SK_I64, true, false, &p, 4));
+        assert!(ascending(SK_I64, true, false, &le(&[5i64, 2, 2, 1]), 4));
+        assert!(ascending(SK_I64, true, true, &le(&[5i64, 3, 2, 1]), 4));
+        assert!(ascending(SK_I16, false, false, &le(&[-5i16, 3]), 2), "the sign bit is flipped into key order");
+        assert!(ascending(SK_I64, false, false, &p, 1) && ascending(SK_I64, false, true, &p, 0), "under two elements");
+        assert!(ascending(SK_I64, false, false, &p, 9), "n clamps to what the payload holds");
+        assert!(ascending(SK_BIT, false, false, &[0b1100_0000u8], 8) && !ascending(SK_BIT, false, false, &[0b0000_0010u8], 8));
+    }
+    #[test] fn ascending_floats_nan_first() {
+        // NaN's key is 0, below every number
+        assert!(ascending(SK_F64, false, true, &le(&[f64::NAN, -1.0, 0.0, f64::INFINITY]), 4));
+        assert!(!ascending(SK_F64, false, false, &le(&[1.0f64, f64::NAN]), 2));
+    }
+    #[test] fn invert_first_position_and_m_where_none() {
+        let mut o = [9i64; 4];
+        invert(&[2, 0, 2, 7], &mut o);
+        assert_eq!(o, [1, 4, 0, 4]);
+        invert(&[], &mut []);
+    }
+    #[test] fn order_runs_shapes() {
+        let mut o = [9i64; 3];
+        assert!(order_runs(true, true, &mut o) && o == [0, 1, 2]);
+        assert!(order_runs(false, true, &mut o) && o == [2, 1, 0]);
+        o = [9; 3];
+        assert!(!order_runs(false, false, &mut o) && o == [9; 3]);
+    }
+    #[test] fn order_sorted_and_reversed_i64_skip_the_engine() {
+        let mut o = [0i64; 4];
+        order(qlean_run_c, SK_I64, false, false, &le(&[1i64, 2, 2, 5]), 4, &mut o);
+        assert_eq!(o, [0, 1, 2, 3]);
+        order(qlean_run_c, SK_I64, false, true, &le(&[9i64, 5, 2, 1]), 4, &mut o);
+        assert_eq!(o, [3, 2, 1, 0], "strictly descending: til n reversed, its own rank");
+        order(qlean_run_c, SK_I64, true, false, &le(&[5i64, 2, 2, 1]), 4, &mut o);
+        assert_eq!(o, [0, 1, 2, 3]);
+    }
+    #[test] fn grade_lane_zero_width_is_til() {
+        let mut o = [9i64; 5];
+        grade_lane(qlean_run_c, false, 0, &[], 5, &mut o);
+        assert_eq!(o, [0, 1, 2, 3, 4]);
+    }
 }
 
 // ---- A23: sort.c:1631, 2293-2400, 3386 ----

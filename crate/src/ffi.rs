@@ -756,6 +756,27 @@ pub unsafe extern "C" fn qrs_order_enc(run: unsafe extern "C" fn(), kind: u8, de
                                        out: *mut i64) {
     unsafe { sort::order_enc(rn(run), kind, desc != 0, rank != 0, &(*c).view(), sl_mut(out, (*c).n)) }
 }
+/// A22: sort.c `qlean_sort_ascending`: 1 = ordered, 0 = not. `bytes` is the payload's size, `n` the Lean count.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn qrs_ascending(kind: u8, desc: c_int, strict: c_int, p: *const u8, bytes: usize, n: usize) -> c_int {
+    unsafe { sort::ascending(kind, desc != 0, strict != 0, sl(p, bytes), n) as c_int }
+}
+/// A22: sort.c `qlean_sort_ascending_foR`; `kind` is one of `SK_I16`, `SK_I32`, `SK_I64`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn qrs_ascending_enc(run: unsafe extern "C" fn(), kind: u8, desc: c_int, strict: c_int, c: *const CCoc) -> c_int {
+    unsafe { sort::ascending_enc(rn(run), kind, desc != 0, strict != 0, &(*c).view()) as c_int }
+}
+/// A22: sort.c `qlean_sort_invert`: `out` is `m` entries, `p` is the `m` of the permutation.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn qrs_invert(p: *const i64, m: usize, out: *mut i64) {
+    unsafe { sort::invert(sl(p, m), sl_mut(out, m)) }
+}
+/// A22: sort.c `qlean_sort_grade_lane`: `n` ids at `w` bits in `ids` (`bytes` long), `n` already clamped.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn qrs_grade_lane(run: unsafe extern "C" fn(), desc: c_int, w: u32, ids: *const u8, bytes: usize,
+                                        n: usize, out: *mut i64) {
+    unsafe { sort::grade_lane(rn(run), desc != 0, w, sl(ids, bytes), n, sl_mut(out, n)) }
+}
 /// A23: sort.c:3386 `pair_ids_narrow`.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn qrs_pair_ids_narrow(run: unsafe extern "C" fn(), wa: u32, wb: u32, m: usize, pa: *const u8,
