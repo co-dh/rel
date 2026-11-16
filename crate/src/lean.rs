@@ -425,7 +425,11 @@ impl O {
 impl<'a> B<'a> {
     pub fn is_mt(self) -> bool { !self.is_scalar() && unsafe { is_mt(self.p()) } }
     /// a `String`'s UTF-8 bytes, the NUL `lean_string_size` counts left off
-    pub fn str_bytes(self) -> &'a [u8] { self.cstr().to_bytes() }
+    /// (all `lean_string_size - 1` of them, an embedded NUL included, as the C read `lean_string_cstr` with that size)
+    pub fn str_bytes(self) -> &'a [u8] {
+        assert!(!self.is_scalar() && unsafe { ptr_tag(self.p()) } == TAG_STRING, "lean::B::str_bytes: not a String");
+        unsafe { core::slice::from_raw_parts(string_cstr(self.p()), string_size(self.p()) - 1) }
+    }
     /// a `String` as the NUL-terminated text libc takes (`lean_string_cstr`)
     pub fn cstr(self) -> &'a core::ffi::CStr {
         assert!(!self.is_scalar() && unsafe { ptr_tag(self.p()) } == TAG_STRING, "lean::B::cstr: not a String");

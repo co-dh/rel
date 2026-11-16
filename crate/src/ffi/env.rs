@@ -26,8 +26,8 @@ export! {
         drop(model);
         let s = apply(msg, [boxed(0)]);
         // the exit is the report; a failed write to stderr changes nothing about it
-        // the bytes whole, as C's `fprintf(stderr, "qlean: %s\n", …)` wrote them: no 1 KiB cut, no UTF-8 check
-        let _ = os::write_all(2, &[b"qlean: ", s.borrow().str_bytes(), b"\n"].concat());
+        // as C's `fprintf(stderr, "qlean: %s\n", …)`: up to the first NUL, no 1 KiB cut, no UTF-8 check
+        let _ = os::write_all(2, &[b"qlean: ", s.borrow().cstr().to_bytes(), b"\n"].concat());
         os::exit(1)
     }
 }
