@@ -18,7 +18,7 @@ fn die(args: core::fmt::Arguments) -> ! {
 /// coc.h `coc_view`: the column `meta`, `pack` hold, its count cut to what the blocks can hold. A pack whose patch
 /// list does not fit is C's `coc_attach` abort; a metadata array with misaligned or missing sections (which C read
 /// past) is the same stop.
-fn view<'a>(who: &str, meta: B<'a>, pack: B<'a>, n: usize) -> Coc<'a> {
+pub fn view<'a>(who: &str, meta: B<'a>, pack: B<'a>, n: usize) -> Coc<'a> {
     let Some(m) = Meta::new(meta.bytes(), n) else { die(format_args!("{who}: the metadata array is not a column's 33 * nblk + 16 bytes\n")) };
     let (e, mblk, pb) = (m.res_end(), m.mblk, pack.bytes().len());
     Coc::attach(m, pack.bytes()).unwrap_or_else(|| die(format_args!(
@@ -85,7 +85,7 @@ export! {
         let src = view("qlean_coc_shift", meta, pack, n);
         match src.shift_ok(k, neg != 0) {
             0 => crate::lean::boxed(0),
-            2 => ctor(1, [encode_fill(src.meta.n, 8, &|buf, i0| codec::shift_fill(&src, k, neg != 0, i64::MIN, buf, i0))], &[]),
+            2 => ctor(1, [encode_fill(src.meta.n, 8, &|buf: &mut [i64], i0: usize| codec::shift_fill(&src, k, neg != 0, i64::MIN, buf, i0))], &[]),
             _ => {
                 let mut m2 = SArr::new(1, meta.bytes().len());
                 m2.bytes_mut().copy_from_slice(meta.bytes());
