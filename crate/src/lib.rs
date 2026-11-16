@@ -44,6 +44,7 @@ pub mod exports {
 }
 pub mod pod;
 pub mod simd;
+/// cbindgen:ignore
 pub mod pool;
 
 pub mod bits;
