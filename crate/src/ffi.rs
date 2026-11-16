@@ -784,6 +784,22 @@ pub unsafe extern "C" fn qrs_order_enc(run: unsafe extern "C" fn(), kind: u8, de
                                        out: *mut i64) {
     unsafe { sort::order_enc(rn(run), kind, desc != 0, rank != 0, &(*c).view(), sl_mut(out, (*c).n)) }
 }
+/// A23: sort.c `group_bound`: aborts when `n` rows cannot be numbered in `u32`; for the C callers with no Rust callee.
+#[unsafe(no_mangle)]
+pub extern "C" fn qrs_group_bound(n: usize) { sort::group_bound(n) }
+/// A23: sort.c `ids_keys`: `m` ids at `w` bits as keys into `k` (`m` entries); `*mn`, `*mx` the range.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn qrs_ids_keys(v: *const u8, w: u32, m: usize, k: *mut u64, mn: *mut u64, mx: *mut u64) {
+    let (a, b) = sort::ids_keys(unsafe { sl(v, ids::ids_bytes(m, w)) }, w, m, unsafe { sl_mut(k, m) });
+    unsafe { mn.write(a); mx.write(b) }
+}
+/// A23: sort.c `pair_ids`: the group of each pair `(x[i], y[i])`, `m` of them, into `gid` (`gbytes` bytes) at
+/// `max(8, id_width(ng))` bits; `first` holds `m` entries. Answers `ng`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn qrs_pair_ids(run: unsafe extern "C" fn(), x: *const u64, y: *const u64, m: usize, mnx: u64, sx: u64,
+                                      mny: u64, sy: u64, gid: *mut u8, gbytes: usize, first: *mut usize) -> usize {
+    unsafe { sort::pair_ids(rn(run), sl(x, m), sl(y, m), mnx, sx, mny, sy, sl_mut(gid, gbytes), sl_mut(first, m)) }
+}
 /// A23: sort.c:3386 `pair_ids_narrow`.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn qrs_pair_ids_narrow(run: unsafe extern "C" fn(), wa: u32, wb: u32, m: usize, pa: *const u8,

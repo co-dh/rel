@@ -68,6 +68,16 @@ pub enum Table<'a> {
     Hashed { slot: Cow<'a, [usize]>, gkey: Cow<'a, [u64]>, sh: u32 },
 }
 
+impl Table<'_> {
+    /// The group of a key the numbering has put in the table.
+    pub fn at(&self, key: u64) -> usize {
+        match self {
+            Table::Direct { tab, mn } => (tab[(key - mn) as usize] - 1) as usize,
+            Table::Hashed { slot, gkey, sh } => find(slot, gkey, *sh, key),
+        }
+    }
+}
+
 /// The numbering pass: groups in order of first occurrence, `first[g]` its first element; answers `ng` and the
 /// table. None = an unknown kind or a misaligned `p`, which C never produces.
 pub fn number(kind: u8, p: &[u8], n: usize, mn: u64, mx: u64, first: &mut [usize]) -> Option<(usize, Table<'static>)> {

@@ -8,6 +8,7 @@ impl Pod for i16 {}
 impl Pod for u32 {}
 impl Pod for i32 {}
 impl Pod for u64 {}
+impl Pod for usize {}
 impl Pod for i64 {}
 impl Pod for f32 {}
 impl Pod for f64 {}
