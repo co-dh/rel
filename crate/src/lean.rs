@@ -50,18 +50,36 @@ pub const MAX_SMALL_OBJECT_SIZE: usize = 4096;
 pub const MAX_CTOR_FIELDS: usize = 256;
 pub const MAX_CTOR_SCALARS_SIZE: usize = 1024;
 pub const CLOSURE_MAX_ARGS: usize = 16;
+/// `LEAN_MAX_SMALL_NAT`: the largest `Nat` a scalar holds
+pub const MAX_SMALL_NAT: usize = 0x7FFF_FFFF_FFFF_FFFF; // SIZE_MAX >> 1 on the 64-bit target, c/abi.c asserts
 
 // The out-of-line runtime: c/rt.c defines each for a program linked without Lean, and the Rel gate checks that every
 // `lean_*`/`mi_*` name this object leaves undefined is one rt.c defines. A module so cbindgen skips the declarations.
 /// cbindgen:ignore
 mod sys {
-    use super::Object;
+    use super::{ExternalClass, Object};
     unsafe extern "C" {
         pub fn lean_alloc_object(sz: usize) -> *mut Object;
         pub fn mi_malloc_small(sz: usize) -> *mut u8;
         pub fn lean_inc_heartbeat();
         pub fn lean_internal_panic_out_of_memory() -> !;
         pub fn lean_dec_ref_cold(o: *mut Object);
+        pub fn lean_mk_string(s: *const core::ffi::c_char) -> *mut Object;
+        pub fn lean_mk_io_user_error(s: *mut Object) -> *mut Object;
+        pub fn lean_decode_io_error(errnum: i32, fname: *mut Object) -> *mut Object;
+        pub fn lean_register_external_class(fin: Option<unsafe extern "C" fn(*mut u8)>,
+                                            fe: Option<unsafe extern "C" fn(*mut u8, *mut Object)>) -> *mut ExternalClass;
+        pub fn lean_apply_1(f: *mut Object, a1: *mut Object) -> *mut Object;
+        pub fn lean_apply_2(f: *mut Object, a1: *mut Object, a2: *mut Object) -> *mut Object;
+        pub fn lean_apply_3(f: *mut Object, a1: *mut Object, a2: *mut Object, a3: *mut Object) -> *mut Object;
+        pub fn lean_apply_4(f: *mut Object, a1: *mut Object, a2: *mut Object, a3: *mut Object, a4: *mut Object) -> *mut Object;
+        pub fn lean_apply_5(f: *mut Object, a1: *mut Object, a2: *mut Object, a3: *mut Object, a4: *mut Object,
+                            a5: *mut Object) -> *mut Object;
+        pub fn lean_apply_n(f: *mut Object, n: u32, args: *mut *mut Object) -> *mut Object;
+        pub fn lean_mark_mt(o: *mut Object);
+        pub fn lean_mark_persistent(o: *mut Object);
+        pub fn lean_copy_byte_array(a: *mut Object) -> *mut Object;
+        pub fn lean_big_usize_to_nat(n: usize) -> *mut Object;
     }
 }
 use sys::*;
@@ -215,6 +233,50 @@ use sys::*;
 #[inline(always)] pub unsafe fn unbox_float(o: *mut Object) -> f64 { unsafe { ctor_get_scalar(o, 0) } }
 #[inline(always)] pub unsafe fn unbox_float32(o: *mut Object) -> f32 { unsafe { ctor_get_scalar(o, 0) } }
 
+/// `lean_set_non_heap_header_for_big`: a non-heap array or string, whose size does not fit `cs_sz`, records 1
+#[inline(always)] pub unsafe fn set_non_heap_header_for_big(o: *mut Object, tag: u8, other: u8) {
+    unsafe { set_non_heap_header(o, 1, tag, other) }
+}
+/// `lean_usize_to_nat`: a scalar up to `MAX_SMALL_NAT`, the runtime's bignum past it
+#[inline(always)] pub fn usize_to_nat(n: usize) -> *mut Object {
+    if n <= MAX_SMALL_NAT { box_(n) } else { unsafe { lean_big_usize_to_nat(n) } }
+}
+
+/// `lean_io_result_mk_ok`/`mk_error`: `EStateM.Result` without its world field, tag 0 ok and 1 error (`lean.h:2871`)
+#[inline(always)] pub fn io_result_mk_ok(a: *mut Object) -> *mut Object {
+    let r = alloc_ctor(0, 1, 0);
+    unsafe { ctor_set(r, 0, a) }
+    r
+}
+#[inline(always)] pub fn io_result_mk_error(e: *mut Object) -> *mut Object {
+    let r = alloc_ctor(1, 1, 0);
+    unsafe { ctor_set(r, 0, e) }
+    r
+}
+#[inline(always)] pub unsafe fn io_result_is_ok(r: *const Object) -> bool { unsafe { ptr_tag(r) == 0 } }
+#[inline(always)] pub unsafe fn io_result_is_error(r: *const Object) -> bool { unsafe { ptr_tag(r) == 1 } }
+#[inline(always)] pub unsafe fn io_result_get_value(r: *mut Object) -> *mut Object { unsafe { ctor_get(r, 0) } }
+#[inline(always)] pub unsafe fn io_result_get_error(r: *mut Object) -> *mut Object { unsafe { ctor_get(r, 0) } }
+
+#[inline(always)] pub unsafe fn string_size(o: *const Object) -> usize { unsafe { (*o.cast::<Str>()).size } }
+#[inline(always)] pub unsafe fn string_len(o: *const Object) -> usize { unsafe { (*o.cast::<Str>()).length } }
+#[inline(always)] pub unsafe fn string_capacity(o: *const Object) -> usize { unsafe { (*o.cast::<Str>()).capacity } }
+#[inline(always)] pub unsafe fn string_cstr(o: *mut Object) -> *const u8 { unsafe { (&raw const (*o.cast::<Str>()).data).cast() } }
+
+/// `lean_alloc_external`: a small object, so mimalloc's path
+#[inline(always)] pub fn alloc_external(cls: *mut ExternalClass, data: *mut u8) -> *mut Object {
+    let o = alloc_small_object(size_of::<External>() as u32);
+    unsafe {
+        set_st_header(o, TAG_EXTERNAL, 0);
+        let e = o.cast::<External>();
+        (*e).class = cls;
+        (*e).data = data;
+    }
+    o
+}
+#[inline(always)] pub unsafe fn get_external_class(o: *mut Object) -> *mut ExternalClass { unsafe { (*o.cast::<External>()).class } }
+#[inline(always)] pub unsafe fn get_external_data(o: *mut Object) -> *mut u8 { unsafe { (*o.cast::<External>()).data } }
+
 // ---------------------------------------------------------------- the safe types an export is written in
 
 /// A borrowed argument (`@&`, `b_lean_obj_arg`): Lean holds the reference for the whole call, so `'a` is the call.
@@ -288,6 +350,179 @@ pub fn arr<I: ExactSizeIterator<Item = O>>(items: I) -> O {
 }
 pub fn box_u64(v: u64) -> O { unsafe { O::own(box_uint64(v)) } }
 pub fn box_f64(v: f64) -> O { unsafe { O::own(box_float(v)) } }
+/// `lean_box_usize`: a `USize` field of a ctor or a closure argument
+pub fn box_usize_o(v: usize) -> O { unsafe { O::own(box_usize(v)) } }
+/// `lean_usize_to_nat`: a `Nat`
+pub fn nat(n: usize) -> O { unsafe { O::own(usize_to_nat(n)) } }
+
+/// A Lean `String` of `s` by `lean_mk_string`, which reads to the NUL and counts the code points
+pub fn string_c(s: &core::ffi::CStr) -> O { unsafe { O::own(lean_mk_string(s.as_ptr())) } }
+/// A Lean `String` of `s`; panics on a NUL inside it, which `lean_mk_string` would cut the string at
+pub fn string(s: &str) -> O {
+    let mut z = alloc::vec::Vec::with_capacity(s.len() + 1);
+    z.extend_from_slice(s.as_bytes());
+    z.push(0);
+    string_c(core::ffi::CStr::from_bytes_with_nul(&z).expect("lean::string: a NUL inside the text"))
+}
+
+/// The results of an `IO` extern (`EStateM.Result` without its world field: ok is tag 0, error tag 1).
+pub struct Io;
+impl Io {
+    /// `lean_io_result_mk_ok(v)`
+    pub fn ok(v: O) -> O { unsafe { O::own(io_result_mk_ok(v.into_raw())) } }
+    /// `lean_io_result_mk_error(e)`, `e` an `IO.Error`
+    pub fn err(e: O) -> O { unsafe { O::own(io_result_mk_error(e.into_raw())) } }
+    /// `lean_decode_io_error(eno, path)` as the error: the runtime's `IO.Error` for an errno, naming the file if any
+    pub fn errno(eno: i32, path: Option<B>) -> O {
+        Io::err(unsafe { O::own(lean_decode_io_error(eno, path.map_or(core::ptr::null_mut(), B::p))) })
+    }
+    /// `lean_mk_io_user_error(lean_mk_string(why))` as the error: `IO.userError why`
+    pub fn user(why: &str) -> O { Io::err(unsafe { O::own(lean_mk_io_user_error(string(why).into_raw())) }) }
+}
+
+/// `lean_apply_N(f, args…)`: applies the closure `f` to `args`, all consumed. N up to 5 by the runtime's fixed-arity
+/// entry (the ones c/rt.c defines are 1, 2 and 5), past it `lean_apply_n`; N is a constant, so only one is referenced.
+pub fn apply<const N: usize>(f: O, args: [O; N]) -> O {
+    let f = f.into_raw();
+    let mut a = args.map(O::into_raw);
+    unsafe {
+        O::own(match N {
+            1 => lean_apply_1(f, a[0]),
+            2 => lean_apply_2(f, a[0], a[1]),
+            3 => lean_apply_3(f, a[0], a[1], a[2]),
+            4 => lean_apply_4(f, a[0], a[1], a[2], a[3]),
+            5 => lean_apply_5(f, a[0], a[1], a[2], a[3], a[4]),
+            _ => lean_apply_n(f, N as u32, a.as_mut_ptr()),
+        })
+    }
+}
+
+impl O {
+    /// `lean_mark_mt`: the object and all it reaches become shared between threads (counted atomically from now)
+    pub fn mark_mt(&self) { unsafe { lean_mark_mt(self.0.as_ptr()) } }
+    /// `lean_mark_persistent`: the object and all it reaches are never freed, so a borrow of it lasts forever
+    pub fn persist(self) -> B<'static> {
+        let p = self.into_raw();
+        unsafe { lean_mark_persistent(p); B(NonNull::new_unchecked(p), PhantomData) }
+    }
+    /// The bytes of a scalar array this reference holds alone (`lean_is_exclusive`), to update in place; `None` when
+    /// it is shared, persistent or multi-threaded
+    pub fn exclusive(&mut self) -> Option<&mut [u8]> {
+        let p = self.0.as_ptr();
+        assert!(!is_scalar(p) && unsafe { ptr_tag(p) } == TAG_SCALAR_ARRAY, "lean::O::exclusive: not a scalar array");
+        if !unsafe { is_exclusive(p) } { return None }
+        Some(unsafe { core::slice::from_raw_parts_mut(sarray_cptr(p), sarray_size(p) * sarray_elem_size(p) as usize) })
+    }
+    /// A `ByteArray` held alone: itself when exclusive, else `lean_copy_byte_array`'s copy (same size and capacity),
+    /// the shared one losing this reference
+    pub fn into_exclusive(mut self) -> SArr {
+        if self.exclusive().is_some() { return SArr(self) }
+        assert!(unsafe { sarray_elem_size(self.0.as_ptr()) } == 1, "lean::O::into_exclusive: not a ByteArray");
+        SArr(unsafe { O::own(lean_copy_byte_array(self.into_raw())) })
+    }
+}
+
+impl<'a> B<'a> {
+    pub fn is_mt(self) -> bool { !self.is_scalar() && unsafe { is_mt(self.p()) } }
+    /// a `String`'s UTF-8 bytes, the NUL `lean_string_size` counts left off
+    pub fn str_bytes(self) -> &'a [u8] { self.cstr().to_bytes() }
+    /// a `String` as the NUL-terminated text libc takes (`lean_string_cstr`)
+    pub fn cstr(self) -> &'a core::ffi::CStr {
+        assert!(!self.is_scalar() && unsafe { ptr_tag(self.p()) } == TAG_STRING, "lean::B::cstr: not a String");
+        let b = unsafe { core::slice::from_raw_parts(string_cstr(self.p()), string_size(self.p())) };
+        core::ffi::CStr::from_bytes_with_nul(b).expect("lean::B::cstr: a NUL inside a String")
+    }
+    /// the value of an external object of class `cls`; panics on any other object
+    pub fn external<T: Ext>(self, cls: &Class<T>) -> &'a T {
+        assert!(!self.is_scalar() && unsafe { ptr_tag(self.p()) } == TAG_EXTERNAL && unsafe { get_external_class(self.p()) } == cls.get(),
+                "lean::B::external: not an object of this class");
+        unsafe { &*get_external_data(self.p()).cast::<T>() }
+    }
+}
+
+/// A value an external object holds. `foreach` hands every object it references to `f`, as the runtime's
+/// `lean_external_foreach_proc` does when it marks a graph multi-threaded or persistent.
+pub trait Ext: Sized + 'static { fn foreach(&self, f: B<'_>); }
+unsafe extern "C" fn ext_finalize<T: Ext>(p: *mut u8) { drop(unsafe { alloc::boxed::Box::from_raw(p.cast::<T>()) }) }
+unsafe extern "C" fn ext_foreach<T: Ext>(p: *mut u8, f: *mut Object) {
+    unsafe { (*p.cast::<T>()).foreach(B(NonNull::new_unchecked(f), PhantomData)) }
+}
+/// The `lean_external_class` of `T`, registered on first use: a `static` in the export file. Two threads racing the
+/// first use each register one and the loser's is never used, where C's `pthread_once` registers one; a class is
+/// two words the runtime never frees either way.
+pub struct Class<T>(core::sync::atomic::AtomicPtr<ExternalClass>, PhantomData<fn() -> T>);
+impl<T: Ext> Class<T> {
+    pub const fn new() -> Self { Class(core::sync::atomic::AtomicPtr::new(core::ptr::null_mut()), PhantomData) }
+    fn get(&self) -> *mut ExternalClass {
+        use core::sync::atomic::Ordering::{AcqRel, Acquire};
+        let c = self.0.load(Acquire);
+        if !c.is_null() { return c }
+        let n = unsafe { lean_register_external_class(Some(ext_finalize::<T>), Some(ext_foreach::<T>)) };
+        match self.0.compare_exchange(core::ptr::null_mut(), n, AcqRel, Acquire) { Ok(_) => n, Err(w) => w }
+    }
+    /// `lean_alloc_external(class, v)`: `v` moves to the heap and the class's finalizer drops it
+    pub fn alloc(&self, v: T) -> O {
+        let d = alloc::boxed::Box::into_raw(alloc::boxed::Box::new(v)).cast::<u8>();
+        unsafe { O::own(alloc_external(self.get(), d)) }
+    }
+}
+
+/// A slot that holds one owned object once set: set at most once by compare-and-swap, so two racing writers keep one
+/// answer and drop the other (search.c's `ix`). Dropping the slot drops the object.
+pub struct Once(core::sync::atomic::AtomicPtr<Object>);
+impl Once {
+    pub const fn new() -> Once { Once(core::sync::atomic::AtomicPtr::new(core::ptr::null_mut())) }
+    pub fn with(o: O) -> Once { Once(core::sync::atomic::AtomicPtr::new(o.into_raw())) }
+    pub fn get(&self) -> Option<B<'_>> {
+        NonNull::new(self.0.load(core::sync::atomic::Ordering::Acquire)).map(|p| B(p, PhantomData))
+    }
+    /// stores `o` when empty and answers it; else drops `o` and answers what is there
+    pub fn set(&self, o: O) -> B<'_> {
+        use core::sync::atomic::Ordering::{AcqRel, Acquire};
+        let p = o.into_raw();
+        match self.0.compare_exchange(core::ptr::null_mut(), p, AcqRel, Acquire) {
+            Ok(_) => B(unsafe { NonNull::new_unchecked(p) }, PhantomData),
+            Err(w) => { unsafe { dec(p); B(NonNull::new_unchecked(w), PhantomData) } }
+        }
+    }
+}
+impl Drop for Once { fn drop(&mut self) { let p = *self.0.get_mut(); if !p.is_null() { unsafe { dec(p) } } } }
+
+/// A global slot for a persistent object (a closure Lean registers at module initialisation)
+pub struct Slot(core::sync::atomic::AtomicPtr<Object>);
+impl Slot {
+    pub const fn new() -> Slot { Slot(core::sync::atomic::AtomicPtr::new(core::ptr::null_mut())) }
+    pub fn set(&self, o: B<'static>) { self.0.store(o.p(), core::sync::atomic::Ordering::Release) }
+    pub fn get(&self) -> Option<B<'static>> {
+        NonNull::new(self.0.load(core::sync::atomic::Ordering::Acquire)).map(|p| B(p, PhantomData))
+    }
+}
+
+/// Byte arrays laid inside a mapping that is never unmapped (own.c's parts of a `.own` file): span `(off, len)` gets
+/// its `SArray` header in the `size_of::<SArray>()` bytes before `off`, by `lean_set_non_heap_header_for_big` (`rc` 0,
+/// so Lean never frees it nor updates it in place). Panics when a header would fall outside `m`, overlap another span
+/// or its header, or sit off an 8-byte boundary.
+pub fn sarrays_in(m: &'static mut [u8], spans: &[(usize, usize)]) -> alloc::vec::Vec<O> {
+    let h = size_of::<SArray>();
+    let mut ord: alloc::vec::Vec<usize> = (0..spans.len()).collect();
+    ord.sort_by_key(|&k| spans[k].0);
+    let mut end = 0;
+    for &k in &ord {
+        let (off, len) = spans[k];
+        assert!(off >= end + h && off.checked_add(len).is_some_and(|e| e <= m.len()),
+                "lean::sarrays_in: span {k} ({off}, {len}) has no room for its header in a {}-byte mapping", m.len());
+        end = off + len;
+    }
+    let base = m.as_mut_ptr();
+    spans.iter().map(|&(off, len)| unsafe {
+        let o = base.add(off - h).cast::<Object>();
+        assert!(o as usize % 8 == 0, "lean::sarrays_in: header at offset {} is not 8-aligned", off - h);
+        set_non_heap_header_for_big(o, TAG_SCALAR_ARRAY, 1);
+        (*o.cast::<SArray>()).size = len;
+        (*o.cast::<SArray>()).capacity = len;
+        O::own(o)
+    }).collect()
+}
 
 /// A Lean extern under its `@[extern]` name, in an export file that denies `unsafe_code`: the item gets the one
 /// attribute that needs `unsafe`, so the export files hold no `unsafe` token (`forbid` would reject even the macro's
@@ -367,6 +602,58 @@ pub mod abi {
         qrs_abi_unbox_usize = unbox_usize(o: *mut Object) -> usize;
         qrs_abi_unbox_float = unbox_float(o: *mut Object) -> f64;
         qrs_abi_unbox_float32 = unbox_float32(o: *mut Object) -> f32;
+        qrs_abi_set_non_heap_header_for_big = set_non_heap_header_for_big(o: *mut Object, tag: u8, other: u8);
+        qrs_abi_usize_to_nat = usize_to_nat(n: usize) -> *mut Object;
+        qrs_abi_io_result_mk_ok = io_result_mk_ok(a: *mut Object) -> *mut Object;
+        qrs_abi_io_result_mk_error = io_result_mk_error(e: *mut Object) -> *mut Object;
+        qrs_abi_io_result_is_ok = io_result_is_ok(r: *const Object) -> bool;
+        qrs_abi_io_result_is_error = io_result_is_error(r: *const Object) -> bool;
+        qrs_abi_io_result_get_value = io_result_get_value(r: *mut Object) -> *mut Object;
+        qrs_abi_io_result_get_error = io_result_get_error(r: *mut Object) -> *mut Object;
+        qrs_abi_string_size = string_size(o: *const Object) -> usize;
+        qrs_abi_string_len = string_len(o: *const Object) -> usize;
+        qrs_abi_string_capacity = string_capacity(o: *const Object) -> usize;
+        qrs_abi_string_cstr = string_cstr(o: *mut Object) -> *const u8;
+        qrs_abi_alloc_external = alloc_external(cls: *mut ExternalClass, data: *mut u8) -> *mut Object;
+        qrs_abi_get_external_class = get_external_class(o: *mut Object) -> *mut ExternalClass;
+        qrs_abi_get_external_data = get_external_data(o: *mut Object) -> *mut u8;
+    }
+    // the safe wrappers over the out-of-line runtime, each against the C that an export wrote before
+    fn b<'a>(o: *mut Object) -> B<'a> { B(NonNull::new(o).expect("qrs_abi: a null object"), PhantomData) }
+    /// `string(&str)` of `n` bytes at `s` (valid UTF-8, no NUL)
+    #[unsafe(no_mangle)] pub unsafe extern "C" fn qrs_abi_string(s: *const u8, n: usize) -> *mut Object {
+        string(core::str::from_utf8(unsafe { core::slice::from_raw_parts(s, n) }).expect("qrs_abi_string: UTF-8")).into_raw()
+    }
+    /// `B::str_bytes`: its length and pointer
+    #[unsafe(no_mangle)] pub unsafe extern "C" fn qrs_abi_str_bytes(o: *mut Object, n: *mut usize) -> *const u8 {
+        let s = b(o).str_bytes();
+        unsafe { *n = s.len() }
+        s.as_ptr()
+    }
+    #[unsafe(no_mangle)] pub unsafe extern "C" fn qrs_abi_io_ok(v: *mut Object) -> *mut Object { Io::ok(unsafe { O::own(v) }).into_raw() }
+    #[unsafe(no_mangle)] pub unsafe extern "C" fn qrs_abi_io_errno(eno: i32, path: *mut Object) -> *mut Object {
+        Io::errno(eno, NonNull::new(path).map(|p| B(p, PhantomData))).into_raw()
+    }
+    #[unsafe(no_mangle)] pub unsafe extern "C" fn qrs_abi_io_user(s: *const u8, n: usize) -> *mut Object {
+        Io::user(core::str::from_utf8(unsafe { core::slice::from_raw_parts(s, n) }).expect("qrs_abi_io_user: UTF-8")).into_raw()
+    }
+    #[unsafe(no_mangle)] pub unsafe extern "C" fn qrs_abi_nat(n: usize) -> *mut Object { nat(n).into_raw() }
+    /// `O::exclusive` on a reference the caller keeps: its bytes' address, or null when shared
+    #[unsafe(no_mangle)] pub unsafe extern "C" fn qrs_abi_exclusive(o: *mut Object) -> *mut u8 {
+        let mut x = unsafe { O::own(o) };
+        let r = x.exclusive().map_or(core::ptr::null_mut(), <[u8]>::as_mut_ptr);
+        core::mem::forget(x);
+        r
+    }
+    #[unsafe(no_mangle)] pub unsafe extern "C" fn qrs_abi_into_exclusive(o: *mut Object) -> *mut Object {
+        O::from(unsafe { O::own(o) }.into_exclusive()).into_raw()
+    }
+    /// `sarrays_in` over `len` bytes at `m` (never freed by the caller), spans as `off`/`len` pairs; writes the objects
+    #[unsafe(no_mangle)] pub unsafe extern "C" fn qrs_abi_sarrays_in(m: *mut u8, len: usize, spans: *const usize, k: usize, out: *mut *mut Object) {
+        let sp: alloc::vec::Vec<(usize, usize)> = (0..k).map(|i| unsafe { (*spans.add(2 * i), *spans.add(2 * i + 1)) }).collect();
+        for (i, o) in sarrays_in(unsafe { core::slice::from_raw_parts_mut(m, len) }, &sp).into_iter().enumerate() {
+            unsafe { *out.add(i) = o.into_raw() }
+        }
     }
     /// The scalar accessors are one generic twin; C calls them per width.
     #[unsafe(no_mangle)] pub unsafe extern "C" fn qrs_abi_ctor_get_uint8(o: *mut Object, off: u32) -> u8 { unsafe { ctor_get_scalar(o, off) } }
