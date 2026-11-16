@@ -32,33 +32,41 @@ pub fn id_at(p: &[u8], w: u32, i: usize) -> usize {
 #[inline(always)]
 fn le<const W: usize>(p: &[u8], i: usize) -> [u8; W] { p[i * W..(i + 1) * W].try_into().unwrap() }
 
-/// `IDS_UNPACK` (ids.h:144): `f(i, id)` for the first `n` ids at the constant width `W`. Below a byte one word holds
-/// `64 / W` ids at constant shifts, a whole-byte lane is a chunked load: no per-id bounds test or index shift, which
-/// `id_at` at a running index has.
+/// `IDS_UNPACK` (ids.h:144): `f(i, &mut out[i], id)` for each element of `out` and the id of the same index at the
+/// constant width `W`. Below a byte one word holds `64 / W` ids at constant shifts, a whole-byte lane is a chunked
+/// load, and `out` is walked in step: no per-id bounds test or index shift, which `id_at` at a running index has,
+/// so the loop vectorises as the C's does.
 #[inline(always)]
-pub fn each<const W: u32>(p: &[u8], n: usize, mut f: impl FnMut(usize, usize)) {
+pub fn unpack<const W: u32, T>(p: &[u8], out: &mut [T], mut f: impl FnMut(usize, &mut T, usize)) {
     let mut i = 0;
     match W {
-        0 => (0..n).for_each(|i| f(i, 0)),
+        0 => out.iter_mut().enumerate().for_each(|(i, e)| f(i, e, 0)),
         1 | 2 | 4 => {
             let (per, m) = (64 / W as usize, (1u64 << W) - 1);
-            for x in p.chunks_exact(8).take(n / per) {
+            for (c, x) in out.chunks_exact_mut(per).zip(p.chunks_exact(8)) {
                 let x = u64::from_le_bytes(x.try_into().unwrap());
-                for t in 0..per { f(i + t, (x >> (t as u32 * W) & m) as usize) }
+                for (t, e) in c.iter_mut().enumerate() { f(i + t, e, (x >> (t as u32 * W) & m) as usize) }
                 i += per;
             }
-            (i..n).for_each(|i| f(i, id_at(p, W, i)));
+            for (j, e) in out[i..].iter_mut().enumerate() { f(i + j, e, id_at(p, W, i + j)) }
         }
         _ => {
-            for c in p.chunks_exact(if W >= 8 { W as usize / 8 } else { 1 }).take(n) {
-                let v = match W { 8 => c[0] as usize, 16 => u16::from_le_bytes([c[0], c[1]]) as usize,
-                                  32 => u32::from_le_bytes([c[0], c[1], c[2], c[3]]) as usize,
-                                  _ => u64::from_le_bytes(c.try_into().unwrap()) as usize };
-                f(i, v);
-                i += 1;
-            }
+            for (j, (e, c)) in out.iter_mut().zip(p.chunks_exact(whole_bytes(W))).enumerate() { f(j, e, word::<W>(c)) }
         }
     }
+}
+/// Bytes of one id at a whole-byte width `w` (1 below a byte, where no caller reads whole ids).
+const fn whole_bytes(w: u32) -> usize { if w >= 8 { w as usize / 8 } else { 1 } }
+/// The id `c` holds at the whole-byte width `W`, `c` exactly `whole_bytes(W)` long: a load of that width.
+#[inline(always)]
+fn word<const W: u32>(c: &[u8]) -> usize {
+    match W { 8 => c[0] as usize, 16 => u16::from_le_bytes([c[0], c[1]]) as usize,
+              32 => u32::from_le_bytes([c[0], c[1], c[2], c[3]]) as usize, _ => u64::from_le_bytes(c.try_into().unwrap()) as usize }
+}
+/// `unpack` with no output: `f(i, id)` for the first `n` ids (a slice of `()` takes no memory).
+#[inline(always)]
+pub fn each<const W: u32>(p: &[u8], n: usize, mut f: impl FnMut(usize, usize)) {
+    unpack::<W, ()>(p, &mut alloc::vec![(); n], |i, _, v| f(i, v))
 }
 
 /// `IDS_PACK` (ids.h:167): `n` fields `val(i)` into `out` at `w` bits, `w` matched once outside the loop. Below a
@@ -292,6 +300,27 @@ mod tests {
         assert_eq!([0, 1, 2, 3, 4, 5, 256, 257, 65537].map(id_width), [0, 0, 1, 2, 2, 4, 8, 16, 32]);
         assert_eq!((ids_bytes(0, 4), ids_bytes(3, 1), ids_bytes(5, 2), ids_bytes(3, 64)), (0, 1, 2, 24));
     }
+    // `pack` and `unpack` against the per-id `id_put` and `id_at` they replace, across the word boundary and its tail
+    #[test] fn pack_unpack_match_id_put_id_at() {
+        fn go<const W: u32>() {
+            for n in [0usize, 1, 7, 63, 64, 65, 200, 517] {
+                let mask = if W == 64 { !0 } else { (1u64 << W) - 1 };
+                let val = |i: usize| (i as u64).wrapping_mul(0x9E37_79B9_7F4A_7C15).rotate_left(17) & mask;
+                let (mut a, mut b) = (vec![0u8; ids_bytes(n, W)], vec![0u8; ids_bytes(n, W)]);
+                pack(&mut a, W, n, val);
+                (0..n).for_each(|i| id_put(&mut b, W, i, val(i)));
+                assert_eq!(a, b, "pack w={W} n={n}");
+                let mut got = vec![usize::MAX; n];
+                unpack::<W, usize>(&a, &mut got, |i, e, v| { assert!(*e == usize::MAX); *e = v; assert_eq!(v, id_at(&a, W, i)) });
+                assert!(got.iter().enumerate().all(|(i, &v)| v == id_at(&a, W, i)), "unpack w={W} n={n}");
+                let mut runs_out = vec![0i64; n + 1];
+                let g = runs(&a, n, W, usize::MAX, n, &mut runs_out);
+                let want: Vec<i64> = (0..n).filter(|&i| i == 0 || id_at(&a, W, i) != id_at(&a, W, i - 1)).map(|i| i as i64).collect();
+                assert_eq!(&runs_out[..g], &want[..], "runs w={W} n={n}");
+            }
+        }
+        go::<0>(); go::<1>(); go::<2>(); go::<4>(); go::<8>(); go::<16>(); go::<32>(); go::<64>();
+    }
     #[test] fn pack_roundtrip() {
         for w in [1u32, 2, 4] {
             for n in 0..70usize {
@@ -456,47 +485,48 @@ pub fn unpack16(p: &[u8], w: u32, from: usize, m: usize, dst: &mut [u16]) {
 }
 
 // The head test of `runs`: field `i` raw value `raw` is a head where `min(raw, nd)` differs from the field before.
+// Taken by value into `runs_at`, so its fields live in registers; `get_mut` is the C's `if (out)` and the store's
+// bounds test in one compare (a non-empty `out` holds every head).
 struct Heads<'a> { out: &'a mut [i64], nd: usize, g: usize, prev: usize }
 impl Heads<'_> {
+    #[inline(always)]
     fn at(&mut self, i: usize, raw: usize) {
         let v = raw.min(self.nd);
         if i == 0 || v != self.prev {
-            if !self.out.is_empty() { self.out[self.g] = i as i64; }
+            if let Some(o) = self.out.get_mut(self.g) { *o = i as i64 }
             self.g += 1;
         }
         self.prev = v;
     }
 }
 
-fn runs_at<const W: u32>(p: &[u8], n: usize, most: usize, h: &mut Heads) {
-    let sub = W != 0 && W < 8;
-    let per = if sub { (8 / W) as usize } else { 1 };
-    let mask = 1u32.checked_shl(W).unwrap_or(0).wrapping_sub(1).max(1);
-    let mut i = 0;
-    if sub {
-        let mut rep = 0u8;
-        for b in 0..n / per {
-            if h.g > most { break; }
-            let x = p[b] as u32;
-            if b != 0 && x == rep as u32 { continue; }
-            for t in 0..per { h.at(b * per + t, (x >> (t as u32 * W) & mask) as usize); }
-            rep = ((x >> ((per as u32 - 1) * W)) * (0xFF / mask)) as u8;
-        }
-        i = n / per * per;
+fn runs_at<const W: u32>(p: &[u8], n: usize, most: usize, mut h: Heads) -> usize {
+    if W >= 8 {
+        for (i, c) in p.chunks_exact(whole_bytes(W)).take(n).enumerate() { if h.g > most { break } h.at(i, word::<W>(c)) }
+        return h.g
     }
+    let (per, mask, mut i) = ((8 / W.max(1)) as usize, (1u32 << W) - 1, 0);
+    let mut rep = 0u8;
+    for (b, &x) in p[..if W == 0 { 0 } else { n / per }].iter().enumerate() {
+        if h.g > most { break; }
+        if b != 0 && x == rep { continue; }
+        for t in 0..per { h.at(b * per + t, (x as u32 >> (t as u32 * W) & mask) as usize); }
+        rep = ((x as u32 >> ((per as u32 - 1) * W)) * (0xFF / mask.max(1))) as u8;
+    }
+    if W != 0 { i = n / per * per }
     while i < n && h.g <= most { h.at(i, id_at(p, W, i)); i += 1; }
+    h.g
 }
 
 /// ids.h:281 `ids_runs`: the run heads of `n` ids, each read as `min(id, nd)`, into `out` (empty: only counted); the
 /// walk stops once there are more than `most`. A sub-byte byte repeating the last field is skipped whole.
 pub fn runs(p: &[u8], n: usize, w: u32, nd: usize, most: usize, out: &mut [i64]) -> usize {
-    let mut h = Heads { out, nd, g: 0, prev: 0 };
+    let h = Heads { out, nd, g: 0, prev: 0 };
     match w {
-        0 => runs_at::<0>(p, n, most, &mut h), 1 => runs_at::<1>(p, n, most, &mut h), 2 => runs_at::<2>(p, n, most, &mut h),
-        4 => runs_at::<4>(p, n, most, &mut h), 8 => runs_at::<8>(p, n, most, &mut h), 16 => runs_at::<16>(p, n, most, &mut h),
-        32 => runs_at::<32>(p, n, most, &mut h), _ => runs_at::<64>(p, n, most, &mut h),
+        0 => runs_at::<0>(p, n, most, h), 1 => runs_at::<1>(p, n, most, h), 2 => runs_at::<2>(p, n, most, h),
+        4 => runs_at::<4>(p, n, most, h), 8 => runs_at::<8>(p, n, most, h), 16 => runs_at::<16>(p, n, most, h),
+        32 => runs_at::<32>(p, n, most, h), _ => runs_at::<64>(p, n, most, h),
     }
-    h.g
 }
 
 #[cfg(test)]

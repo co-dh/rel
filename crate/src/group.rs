@@ -33,6 +33,7 @@ fn find(slot: &[usize], gkey: &[u64], sh: u32, key: u64) -> usize {
 fn lanes<K: Keys, G: Fn(u64) -> usize + Sync + Copy>(run: Runner, k: &K, n: usize, lane: u32, gid: &mut [u8], g: G) {
     let f = |lo: usize, hi: usize, o: &mut [u8]| {
         let (mut k, g) = (k.fork(), g); // own copies: a captured reference reloads every row past the output stores
+        assert!(hi <= k.len(), "qlean group: ids over keys {lo}..{hi} of a source holding {}", k.len());
         match lane {
             8 => for (i, b) in (lo..hi).zip(o.iter_mut()) { *b = g(k.at(i)) as u8 },
             16 => for (i, b) in (lo..hi).zip(o.chunks_exact_mut(2)) { b.copy_from_slice(&(g(k.at(i)) as u16).to_ne_bytes()) },
@@ -89,6 +90,7 @@ struct Number<'f> { mn: u64, mx: u64, first: &'f mut [usize] }
 impl Pass for Number<'_> {
     type Out = (usize, Table<'static>);
     fn run<K: Keys>(self, mut k: K, n: usize) -> Self::Out {
+        assert!(n <= k.len(), "qlean group: number over {n} keys of a source holding {}", k.len());
         let (mn, first, span) = (self.mn, self.first, self.mx.wrapping_sub(self.mn));
         // a table of at most four slots an element, and group numbers that fit one
         if span < (n as u64).saturating_mul(4) + 1024 && span != u64::MAX && n <= u32::MAX as usize {

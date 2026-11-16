@@ -5,10 +5,17 @@
 
 // ---- A2: coc.h:446-518, 678-760 ----
 /// coc.h:446 `res_get`: field `j` of width `w`. Per element: C keeps its body while a C caller remains.
+#[inline]
 pub fn res_get(p: &[u8], w: u8, j: usize) -> u64 {
     if w == 0 { return 0 }
     let (bit, w) = (j * w as usize, w as usize);
     let (o, sh) = (bit >> 3, bit & 7);
+    // a whole word where the payload holds one past the field: one load, where copying the `nby` bytes the field
+    // spans is a `memcpy` call of a run-time length per element (perf: the calls were most of `reverse foR`)
+    if sh + w <= 64 && let Some(c) = p.get(o..o + 8) {
+        let v = u64::from_le_bytes(c.try_into().unwrap()) >> sh;
+        return if w == 64 { v } else { v & ((1u64 << w) - 1) }
+    }
     let nby = (sh + w + 7) >> 3;
     let mut b = [0u8; 8];
     let m = nby.min(8);

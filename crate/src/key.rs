@@ -21,13 +21,16 @@ pub const SK_WIN: u8 = SK_KINDS_N + 1;
 pub trait Keys: Sync {
     fn at(&mut self, i: usize) -> u64;
     fn fork(&self) -> Self where Self: Sized;
+    /// How many keys `at` reads without a bounds failure: a pass asserts its `n` against it once, so the per-key bounds
+    /// test folds away and the loop vectorises (a window decodes on a miss and has no such bound).
+    fn len(&self) -> usize { usize::MAX }
 }
 
 /// A loop over keys, written once and instantiated per key type by `each`.
 pub trait Pass { type Out; fn run<K: Keys>(self, k: K, n: usize) -> Self::Out; }
 
 macro_rules! dense {
-    ($($(#[$d:meta])* $name:ident($t:ty) |$s:ident, $i:ident| $e:expr;)*) => {$(
+    ($($(#[$d:meta])* $name:ident($t:ty, $per:literal) |$s:ident, $i:ident| $e:expr;)*) => {$(
         $(#[$d])*
         #[derive(Clone, Copy)]
         pub struct $name<'a>(pub &'a [$t]);
@@ -35,23 +38,25 @@ macro_rules! dense {
             #[inline(always)]
             fn at(&mut self, $i: usize) -> u64 { let $s = self.0; $e }
             fn fork(&self) -> Self { *self }
+            #[inline(always)]
+            fn len(&self) -> usize { self.0.len() * $per }
         }
     )*};
 }
 dense! {
     /// `SK_BIT`: bit `i` of the bytes, low bit first.
-    Bit(u8) |s, i| ((s[i >> 3] >> (i & 7)) & 1) as u64;
+    Bit(u8, 8) |s, i| ((s[i >> 3] >> (i & 7)) & 1) as u64;
     /// `SK_U8`, `SK_C8`: the byte is its own key.
-    U8(u8) |s, i| s[i] as u64;
+    U8(u8, 1) |s, i| s[i] as u64;
     /// `SK_I16`: the sign bit flipped within 16 bits.
-    I16(u16) |s, i| (s[i] ^ 0x8000) as u64;
-    I32(u32) |s, i| (s[i] ^ 0x8000_0000) as u64;
-    I64(u64) |s, i| s[i] ^ 0x8000_0000_0000_0000;
+    I16(u16, 1) |s, i| (s[i] ^ 0x8000) as u64;
+    I32(u32, 1) |s, i| (s[i] ^ 0x8000_0000) as u64;
+    I64(u64, 1) |s, i| s[i] ^ 0x8000_0000_0000_0000;
     /// `SK_F32`: `rank32` of the bits.
-    F32(u32) |s, i| rank32(s[i]);
-    F64(u64) |s, i| rank64(s[i]);
+    F32(u32, 1) |s, i| rank32(s[i]);
+    F64(u64, 1) |s, i| rank64(s[i]);
     /// `SK_KEY`: the payload is the key.
-    Key(u64) |s, i| s[i];
+    Key(u64, 1) |s, i| s[i];
 }
 
 /// sort.c:100; NaN payloads to 0, `-0.0` to `+0.0`'s key.
@@ -101,6 +106,7 @@ impl Pass for Range {
     type Out = (u64, u64);
     #[inline(always)]
     fn run<K: Keys>(self, mut k: K, n: usize) -> (u64, u64) {
+        assert!(n <= k.len(), "qlean keys: Range over {n} keys of a source holding {}", k.len());
         if n == 0 { return (0, 0) }
         let a = k.at(0);
         let (mut lo, mut hi) = (a, a);

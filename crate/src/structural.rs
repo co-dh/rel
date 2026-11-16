@@ -58,7 +58,9 @@ pub fn rev_block(dp: &mut [u8], sp: &[u8], w: u8) {
     if w == 0 { return }
     let nbytes = crate::BLK * w as usize / 8;
     if w & (w - 1) != 0 {
-        let v: alloc::vec::Vec<u64> = (0..crate::BLK).map(|i| crate::res::res_get(sp, w, crate::BLK - 1 - i)).collect();
+        // on the stack, as the C packs straight from `res_get`: a heap vector per block was an allocation per block
+        let mut v = [0u64; crate::BLK];
+        for (i, e) in v.iter_mut().enumerate() { *e = crate::res::res_get(sp, w, crate::BLK - 1 - i) }
         return crate::simd::res_pack(&v, w, crate::BLK, dp);
     }
     // a fixed element size per call, so the copy is one load and one store
@@ -598,8 +600,10 @@ fn expand_w<const W: usize>(run: Runner, fill: u64, src: &[u8], at: &[usize], ou
 /// structural.c:1278 `expand_run` and its entry: `src[i]` repeated `wv[i]` times (a negative count is none),
 /// `fill` for a run past the end of `src`; `out` is the `Σ max(wv[i], 0)` elements of `w` bytes.
 pub fn expand(run: Runner, w: usize, fill: u64, src: &[u8], wv: &[i64], out: &mut [u8]) {
-    let at: alloc::vec::Vec<usize> =
-        core::iter::once(0).chain(wv.iter().scan(0usize, |t, &c| { *t += c.max(0) as usize; Some(*t) })).collect();
+    // sized up front: `scan` gives `collect` no length, so it grew the vector by doubling, copying it each time
+    let mut at = alloc::vec::Vec::with_capacity(wv.len() + 1);
+    at.push(0usize);
+    wv.iter().fold(0usize, |t, &c| { let t = t + c.max(0) as usize; at.push(t); t });
     assert_eq!(out.len(), at[wv.len()] * w, "expand: {} output bytes for {} elements of {w} bytes", out.len(), at[wv.len()]);
     if at[wv.len()] == 0 { return }
     match w {

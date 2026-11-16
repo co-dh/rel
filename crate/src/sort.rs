@@ -36,6 +36,7 @@ impl Pass for Fill<'_> {
     type Out = (u64, u64);
     #[inline(always)]
     fn run<K: Keys>(self, mut s: K, n: usize) -> (u64, u64) {
+        assert!(n <= s.len(), "qlean sort: keys_of over {n} keys of a source holding {}", s.len());
         let (k, mut m, mut i) = (&mut self.0[..n], Mm::new(), 0);
         while i + 4 <= n {
             let v = [s.at(i), s.at(i + 1), s.at(i + 2), s.at(i + 3)];
@@ -740,13 +741,12 @@ pub fn ids_keys(v: &[u8], w: u32, m: usize, k: &mut [u64]) -> (u64, u64) {
 }
 // `ids_keys` at the constant width `W`; from a byte up the range is taken in the unpacking pass, as sort.c's `KEY_PUT`.
 fn keys_at<const W: u32>(v: &[u8], k: &mut [u64]) -> (u64, u64) {
-    let m = k.len();
     if W < 8 {
-        crate::ids::each::<W>(v, m, |i, x| k[i] = x as u64);
+        crate::ids::unpack::<W, u64>(v, k, |_, e, x| *e = x as u64);
         return (0, (1u64 << W) - 1)
     }
     let (mut lo, mut hi) = (u64::MAX, 0u64);
-    crate::ids::each::<W>(v, m, |i, x| { k[i] = x as u64; (lo, hi) = (lo.min(x as u64), hi.max(x as u64)) });
+    crate::ids::unpack::<W, u64>(v, k, |_, e, x| { *e = x as u64; (lo, hi) = (lo.min(x as u64), hi.max(x as u64)) });
     (lo, hi)
 }
 /// sort.c:3386 `pair_ids_narrow` past the allocation: as `pair_ids` for two id payloads that fit a byte together
@@ -802,7 +802,11 @@ fn rs_pass<const W: u32>(w: u32, v: &[u8], o: &[i64], out: &mut [i64]) {
     for j in 0..g {
         let (a, len) = (o[j] as usize, (o[j + 1] - o[j]) as usize);
         let mut h = (len as u64).wrapping_mul(crate::group::PHI64);
-        for k in a..a + len { h = (h ^ el(k)).wrapping_mul(0xc2b2ae3d27d4eb4f) }
+        // a lane width reads the segment's own slice through `ids::each`: one bounds test a segment, not one an element
+        if matches!(W, 1 | 2 | 4 | 8 | 16 | 32 | 64) && (a * W as usize) % 8 == 0 {
+            let sub = &v[a * W as usize / 8..((a + len) * W as usize).div_ceil(8)];
+            crate::ids::each::<W>(sub, len, |_, x| h = (h ^ x as u64).wrapping_mul(0xc2b2ae3d27d4eb4f));
+        } else { for k in a..a + len { h = (h ^ el(k)).wrapping_mul(0xc2b2ae3d27d4eb4f) } }
         let key = h ^ (h >> 29);
         let same = |r: usize| {
             let b = o[r] as usize;
@@ -846,7 +850,7 @@ fn lasts<const W: u32>(ng: usize, n: usize, ids: &[u8], out: &mut [i64]) {
 pub fn group_lasts(ng: usize, w: u32, n: usize, gid: &[u8], out: &mut [i64]) { by_width!(w, lasts(ng, n, gid, out)) }
 fn longs<const W: u32>(n: usize, ids: &[u8], out: &mut [i64]) {
     let out = &mut out[..n];
-    crate::ids::each::<W>(ids, n, |i, v| out[i] = v as i64);
+    crate::ids::unpack::<W, i64>(ids, out, |_, e, v| *e = v as i64);
 }
 /// sort.c `qlean_sort_id_longs`: the first `n` ids at `w` bits as longs.
 pub fn id_longs(n: usize, w: u32, ids: &[u8], out: &mut [i64]) { by_width!(w, longs(n, ids, out)) }
