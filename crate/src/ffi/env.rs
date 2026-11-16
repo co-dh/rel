@@ -1,6 +1,6 @@
-//! env.c's Lean exports that moved.
+//! env.c's Lean exports.
 #![deny(unsafe_code)]
-use crate::lean::{Io, O, box_u64, export};
+use crate::lean::{B, Io, O, apply, boxed, box_u64, export};
 use crate::os;
 
 export! {
@@ -10,5 +10,24 @@ export! {
     /// calls an `IO` extern with none.
     fn qlean_peak_rss() -> O {
         match os::peak_rss() { Ok(b) => Io::ok(box_u64(b)), Err(eno) => Io::errno(eno, None) }
+    }
+}
+
+export! {
+    /// `setenv(name, value, 1)`: 0, or the negated errno. Lean's `IO` reads the environment and does not write it, so
+    /// this is the one write; there is no oracle (q's own `setenv` raises), so it does what `setenv(3)` does.
+    fn qlean_setenv(name: B, value: B) -> u64 {
+        match os::setenv(name.cstr(), value.cstr()) { Ok(()) => 0, Err(eno) => (-(eno as i64)) as u64 }
+    }
+
+    /// `QLean.Kernel.stop`, the failing branch of `need`: prints `qlean: ` and `msg ()` and exits 1, so it never returns
+    /// and cannot disagree with the Lean body `model ()`.
+    fn qlean_stop(msg: O, model: O) -> O {
+        drop(model);
+        let s = apply(msg, [boxed(0)]);
+        // the exit is the report; a failed write to stderr changes nothing about it
+        // the bytes whole, as C's `fprintf(stderr, "qlean: %s\n", …)` wrote them: no 1 KiB cut, no UTF-8 check
+        let _ = os::write_all(2, &[b"qlean: ", s.borrow().str_bytes(), b"\n"].concat());
+        os::exit(1)
     }
 }
