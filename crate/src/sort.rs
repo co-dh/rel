@@ -9,7 +9,7 @@ use core::sync::atomic::Ordering::Relaxed;
 use crate::c::{run_map, run_slices, Runner};
 use crate::coc::{lanes, Coc};
 use crate::key::{self, Keys, Pass, SK_BIT, SK_I16, SK_I32, SK_I64, SK_KINDS_N, SK_U8};
-use crate::sym::{sym_cmp, sym_hash, sym_msort, Syms};
+use crate::sym::{sym_hash, sym_msort, Syms};
 use crate::{ids, kwin, pod, BLK, QLEAN_COST_ARITH, QLEAN_COST_COPY};
 /// sort.c `SK_LANE`: kind bit that makes `grade_narrow` read the payload as ids of `kind & 0x7f` bits.
 const SK_LANE: u8 = 0x80;
@@ -861,18 +861,6 @@ pub fn id_longs(n: usize, w: u32, ids: &[u8], out: &mut [i64]) { by_width!(w, lo
 pub struct SymGroups { pub dk: Vec<u64>, pub first: Vec<usize>, pub ng: usize, pub gid: Vec<u32>, pub cnt: Vec<u32> }
 /// sym.h:153 `SYM_KEY_BLOCK`: a block is checked, then packed while it is in cache.
 const SYM_KEY_BLOCK: usize = 4096;
-/// sym.h `SYM_PAD`: the mask keeping a symbol's first `len` bytes of an 8-byte big-endian load.
-fn sym_pad(len: usize) -> u64 { if len == 0 { 0 } else { !0u64 << (8 * (8 - len)) } }
-/// The packed key of symbol `i` (len <= 8); `whole` says an 8-byte load at its start stays inside the blob.
-fn sym_key(s: &Syms, i: usize, whole: bool) -> u64 {
-    let (lo, hi) = (s.off(i), s.off(i + 1));
-    let len = hi - lo - 1;
-    if len == 0 { 0 } else if whole { u64::from_be_bytes(s.blob[lo..lo + 8].try_into().unwrap()) & sym_pad(len) }
-    else { s.blob[lo..lo + len].iter().fold(0, |w, &b| w << 8 | b as u64) << (8 * (8 - len)) }
-}
-/// sort.c:2814 `sym_whole`: the column packs into 8-byte keys whole, i.e. an 8-byte load at the start of any of the
-/// first `n` symbols stays inside the blob (C answers how many symbols it holds for; the last is the farthest).
-pub fn sym_whole(s: &Syms, n: usize) -> bool { n == 0 || (s.off(n - 1) + 8 <= s.blob.len()) }
 /// sort.c:2829 `sym_dedup`: group ids and counts of the sorted symbols `v`; answers the group count.
 /// An empty `gid` (or `cnt`) is C's NULL.
 pub fn sym_dedup(v: &[&[u8]], gid: &mut [u32], cnt: &mut [u32], first: &mut [usize]) -> usize {
@@ -882,7 +870,7 @@ pub fn sym_dedup(v: &[&[u8]], gid: &mut [u32], cnt: &mut [u32], first: &mut [usi
     let mut tab = alloc::vec![0usize; cap];
     for i in 0..n {
         let mut s = (sym_hash(v[i]) as usize) & (cap - 1);
-        while tab[s] != 0 && sym_cmp(v[first[tab[s] - 1]], v[i]).is_ne() { s = (s + 1) & (cap - 1) }
+        while tab[s] != 0 && !crate::sym::sym_eq(v[first[tab[s] - 1]], v[i]) { s = (s + 1) & (cap - 1) }
         if tab[s] == 0 { ng += 1; tab[s] = ng; first[ng - 1] = i; if !cnt.is_empty() { cnt[ng - 1] = 0 } }
         if !gid.is_empty() { gid[i] = (tab[s] - 1) as u32; if !cnt.is_empty() { cnt[tab[s] - 1] += 1 } }
     }
@@ -893,26 +881,32 @@ pub fn sym_heads<'a>(s: &Syms<'a>, first: &[usize]) -> Vec<&'a [u8]> { first.ite
 /// sort.c:2886 `sym_group`: `want` says which fields are filled (C's bit flags: 0 firsts, 1 gids, 2 gids and counts).
 pub fn sym_group(s: &Syms, n: usize, want: i32) -> SymGroups {
     if want != 0 { group_bound(n) }
-    let mut gid = if want != 0 { alloc::vec![0u32; n] } else { Vec::new() };
-    let mut cnt = if want == 2 { alloc::vec![0u32; n] } else { Vec::new() };
-    let (cap, mut first, mut dk) = (crate::group::cap_for(n), alloc::vec![0usize; n], Vec::<u64>::new());
+    // pushed in order, never zero-filled: only the first `ng` of `first`/`dk`/`cnt` are written, and a zeroed `n`-long vector is
+    // 8 MB of memset once malloc has stopped handing out fresh mmap pages (C's xalloc does not zero)
+    let mut gid = Vec::with_capacity(if want != 0 { n } else { 0 });
+    let (mut cnt, mut first, mut dk) = (Vec::with_capacity(if want == 2 { n } else { 0 }), Vec::with_capacity(n), Vec::with_capacity(n));
+    let cap = crate::group::cap_for(n);
     let (sh, mut tab, mut packed) = (64 - cap.trailing_zeros(), alloc::vec![0usize; cap], true);
     for at in (0..n).step_by(SYM_KEY_BLOCK) {
         let blk = (n - at).min(SYM_KEY_BLOCK);
         let b = Syms { blob: s.blob, offs: &s.offs[at..] };
         if !b.packs(blk) { packed = false; break }
-        let whole = sym_whole(&b, blk);
+        // `packs` saw every tag bit of the block set, so the starts unbox without a test; `lo` is carried, as C's loop does
+        let mut lo = s.offs[at] >> 1;
         for i in at..at + blk {
-            let key = sym_key(s, i, whole);
+            let hi = s.offs[i + 1] >> 1;
+            let key = s.key_of(lo, hi);
+            lo = hi;
             let mut t = (key.wrapping_mul(crate::group::PHI64) >> sh) as usize;
             while tab[t] != 0 && dk[tab[t] - 1] != key { t = (t + 1) & (cap - 1) }
-            if tab[t] == 0 { dk.push(key); tab[t] = dk.len(); first[dk.len() - 1] = i; if want == 2 { cnt[dk.len() - 1] = 0 } }
+            if tab[t] == 0 { dk.push(key); tab[t] = dk.len(); first.push(i); if want == 2 { cnt.push(0) } }
             let g = tab[t] - 1;
-            if want != 0 { gid[i] = g as u32; if want == 2 { cnt[g] += 1 } }
+            if want != 0 { gid.push(g as u32); if want == 2 { cnt[g] += 1 } }
         }
     }
     let ng = if packed { dk.len() } else {
         dk = Vec::new();
+        (gid, cnt, first) = (alloc::vec![0; if want != 0 { n } else { 0 }], alloc::vec![0; if want == 2 { n } else { 0 }], alloc::vec![0; n]);
         sym_dedup(&s.slices(n), &mut gid, &mut cnt, &mut first)
     };
     first.truncate(ng);
@@ -1032,7 +1026,6 @@ mod a25_tests {
         assert_eq!((g.ng, g.dk.len(), g.first, g.gid, g.cnt), (2, 0, vec![0, 1], vec![0, 1, 0], vec![2, 1]));
         assert_eq!(sym_ranks(&Syms { blob: &b, offs: &o }, 3), vec![1, 0, 1]);
         let (b, o) = col(&long[1..2], 0);
-        assert!(!sym_whole(&Syms { blob: &b, offs: &o }, 1));
     }
 }
 

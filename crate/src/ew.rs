@@ -614,6 +614,11 @@ pub fn cast(run: Runner, src: u8, dst: u8, nul_in: i64, x: &[u8], n: usize, out:
 }
 /// elementwise.c:1547 `ew_fdiv64`: floor division by a positive divisor.
 pub fn fdiv64(a: i64, b: i64) -> i64 { a / b - (a % b < 0) as i64 }
+/// `fdiv64` by one of the tick units `U`, each divisor a constant.
+#[inline(always)]
+fn fdiv_unit(a: i64, u: i64) -> i64 {
+    match u { 1000000 => fdiv64(a, 1000000), 1000000000 => fdiv64(a, 1000000000), 60000000000 => fdiv64(a, 60000000000), _ => fdiv64(a, 86400000000000) }
+}
 /// elementwise.c:1551 `ew_days_of_first`: days from 2000.01.01 to the first of month `m`. Wrapping, as the C is at
 /// the extremes of `long`.
 pub fn days_of_first(m: i64) -> i64 {
@@ -661,7 +666,8 @@ pub fn tick(run: Runner, op: u8, src: u8, dst: u8, nul_in: i64, nul_out: i64, x:
                 rw::<u64>(o)[k] = if miss { nul_out as u64 } else { (ns as f64 / u as f64).to_bits() };
                 continue;
             }
-            let mut q = if u == 1 { ns as i64 } else if ns >= i64::MIN as i128 && ns <= i64::MAX as i128 { fdiv64(ns as i64, u) } else { (ns / u as i128 - (ns % (u as i128) < 0) as i128) as i64 };
+            // `u` is one of five constants; a constant divisor is a multiply, where the runtime one is an `idiv` per element
+            let mut q = if u == 1 { ns as i64 } else if ns >= i64::MIN as i128 && ns <= i64::MAX as i128 { fdiv_unit(ns as i64, u) } else { (ns / u as i128 - (ns % (u as i128) < 0) as i128) as i64 };
             // a month target: `u` is a day, and the calendar takes the day count the rest of the way
             if du == 5 { q = month_of_days(q) }
             if miss { q = nul_out }
