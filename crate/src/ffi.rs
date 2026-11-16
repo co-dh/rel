@@ -306,6 +306,13 @@ pub unsafe extern "C" fn qrs_res_unpack_add(p: *const u8, w: u8, nb: usize, base
     unsafe { simd::res_unpack_add(sl(p, BLK * w as usize / 8), w, nb, base, sl_mut(out, BLK * 8), tw) as c_int }
 }
 
+/// `res_unpack_agrees`' check of the in-register compare: `p` is the block's BLK*w/8 bytes, `out` `ceil(nb / 64)` words.
+/// 1 = written, 0 = refused (a power-of-two width, a window outside the lane, a build without the vector path).
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn qrs_res_vcmp(p: *const u8, w: u8, nb: usize, lo: u64, span: u64, inv: c_int, out: *mut u64) -> c_int {
+    unsafe { simd::res_vcmp(sl(p, BLK * w as usize / 8), w, nb, lo, span, inv != 0, sl_mut(out, nb.div_ceil(64))) as c_int }
+}
+
 // ---- Column (a) scaffold: the mirrors its shims take, asserted by `QRS_ASSERT_COLA` (structural.c). ----
 
 /// Mirror of coc.h:1443 `cocf`, the ALP column.
@@ -627,10 +634,27 @@ pub unsafe extern "C" fn qrs_coc_cmp2(run: unsafe extern "C" fn(), op: c_int, a:
 pub unsafe extern "C" fn qrs_coc_shift_fill(c: *const CCoc, k: i64, neg: c_int, buf: *mut i64, i0: usize, cnt: usize) {
     unsafe { codec::shift_fill(&(*c).view(), k, neg != 0, i64::MIN, sl_mut(buf, cnt), i0) }
 }
-/// A15: coc.c `coc_mask_cmp_run`: a bit per element.
+/// A15b: `x <op> v` of a column as a bitmap, a bit per element LSB-first, the whole job (the metadata pass, then the deep
+/// blocks threaded on `run`, C's `qlean_run_c`). `out` is `ceil(n / 64)` words, any contents.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn qrs_coc_mask_cmp(run: unsafe extern "C" fn(), op: u8, v: i64, c: *const CCoc, out: *mut u8) {
-    unsafe { codec::mask_cmp(rn(run), op, v, &(*c).view(), sl_mut(out, (*c).n.div_ceil(8))) }
+pub unsafe extern "C" fn qrs_coc_mask_cmp(run: unsafe extern "C" fn(), op: u8, v: i64, c: *const CCoc, out: *mut u64) {
+    unsafe { codec::mask_cmp(rn(run), op, v, &(*c).view(), sl_mut(out, (*c).n.div_ceil(64))) }
+}
+/// A15b: the metadata pass of `a <op> b` (`b` null: the atom form, `v` the other side): the bitmap `out` (`ceil(n / 64)`
+/// words) wherever a block's range settles it, and in `deep` (`nblk` entries) the numbers of the blocks it does not;
+/// answers how many.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn qrs_coc_cmp_meta(op: c_int, a: *const CCoc, b: *const CCoc, v: i64, deep: *mut u32, out: *mut u64) -> usize {
+    unsafe {
+        let b = b.as_ref().map(|b| b.view());
+        codec::cmp_meta(&(*a).view(), b.as_ref(), op, v, sl_mut(out, (*a).n.div_ceil(64)), sl_mut(deep, (*a).nblk))
+    }
+}
+/// A15b: coc.h `cocf_mask_lt`'s block loop: block `b` of `x <op> ts[b]` into the zeroed bitmap `out`, serial. `ts` is `nblk`
+/// thresholds.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn qrs_coc_mask_blks(c: *const CCoc, op: c_int, ts: *const i64, out: *mut u64) {
+    unsafe { codec::mask_blks(&(*c).view(), op, sl(ts, (*c).nblk), sl_mut(out, (*c).n.div_ceil(64))) }
 }
 /// A16: coc.c `coc_enc_for_meta`, C's `blk` step.
 #[unsafe(no_mangle)]

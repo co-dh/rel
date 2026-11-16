@@ -79,6 +79,27 @@ pub fn res_unpack_add(p: &[u8], w: u8, nb: usize, base: u64, out: &mut [u8], tw:
     false
 }
 
+/// coc.h's `res_vcmp`: `r - lo <= span` (unsigned, flipped when `inv`) of an odd-width block's residuals, in register, ORed
+/// into the bitmap `out` (bit `i` of its word `i / 64`), the lanes never stored. Only when [lo, lo + span] lies inside the
+/// L-bit lane, where the lane's wrapping subtraction agrees with the 64-bit one; false (nothing written) otherwise, at a
+/// power-of-two width, or in a build without the vector path.
+pub fn res_vcmp(p: &[u8], w: u8, nb: usize, lo: u64, span: u64, inv: bool, out: &mut [u64]) -> bool {
+    #[cfg(all(target_arch = "x86_64", target_feature = "avx512vbmi", target_feature = "avx512vbmi2",
+              target_feature = "avx512bw", target_feature = "avx512dq"))]
+    {
+        let lmax = match w { ..16 => 0xffff, 16..32 => 0xffff_ffff, _ => u64::MAX };
+        if w & w.wrapping_sub(1) == 0 || w > 64 || span > lmax || lo > lmax - span { return false }
+        let flip = if inv { u64::MAX } else { 0 };
+        // SAFETY: the cfg above is the build enabling every feature the v:: kernels are compiled for
+        unsafe { match w { ..16 => v::vcmp16(p, w, nb, lo, span, flip, out), 16..32 => v::vcmp32(p, w, nb, lo, span, flip, out),
+                           _ => v::vcmp64(p, w, nb, lo, span, flip, out) } }
+        true
+    }
+    #[cfg(not(all(target_arch = "x86_64", target_feature = "avx512vbmi", target_feature = "avx512vbmi2",
+                  target_feature = "avx512bw", target_feature = "avx512dq")))]
+    false
+}
+
 /// One function per `RES_VUNPACK` instance of coc.h:589-695 (`res_unpack`: B9; `res_unpack_add`: B10). Each names
 /// every intrinsic its C instance uses, so this file compiling on the pinned toolchain is the check that all of
 /// them are stable; the bodies are B9's and B10's.
@@ -247,6 +268,40 @@ pub mod v {
                  _mm512_shrdv_epi64, _mm512_cvtepu8_epi64(_mm512_castsi512_si128(iota8!())), 0x0101010101010101, 0x0706050403020100,
                  |g, v| st!(out, g * 64, nb as isize - (g * 8) as isize, 8, 8, __mmask8, _mm512_mask_storeu_epi64,
                             i64, _mm512_add_epi64(v, b64)))
+    }
+
+    /// `res_vcmp`'s RES_VCMP: the group's lanes `r - lo <= span` at the lane's width as a mask, flipped by `flip`, its
+    /// first `n` bits ORed into `out` at bit `at`. Only entered when [lo, lo + span] lies inside the lane.
+    macro_rules! vcmp {
+        ($p:ident, $w:ident, $nb:ident, $l:literal, $mullo:ident, $set1:ident, $add:ident, $srli:ident, $shrdv:ident,
+         $iota:expr, $ones:expr, $ramp:expr, $sub:ident, $cmp:ident, $lo:ident, $span:ident, $flip:ident, $out:ident) => {
+            vunpack!($p, $w, $nb, $l, $mullo, $set1, $add, $srli, $shrdv, $iota, $ones, $ramp, |g, v| {
+                let (at, n) = (g * (512 / $l), ($nb - g * (512 / $l)).min(512 / $l));
+                let k = $cmp($sub(v, $set1($lo as _)), $set1($span as _)) as u64;
+                $out[at / 64] |= ((k ^ $flip) & ((1u64 << n) - 1)) << (at % 64);
+            })
+        };
+    }
+    /// `res_vcmp`, `w < 16`
+    #[target_feature(enable = "avx512f,avx512bw,avx512dq,avx512vbmi,avx512vbmi2")]
+    pub fn vcmp16(p: &[u8], w: u8, nb: usize, lo: u64, span: u64, flip: u64, out: &mut [u64]) {
+        vcmp!(p, w, nb, 16, _mm512_mullo_epi16, _mm512_set1_epi16, _mm512_add_epi16, _mm512_srli_epi16, _mm512_shrdv_epi16,
+              _mm512_cvtepu8_epi16(_mm512_castsi512_si256(iota8!())), 0x0101, 0x0100,
+              _mm512_sub_epi16, _mm512_cmple_epu16_mask, lo, span, flip, out)
+    }
+    /// `res_vcmp`, `16 < w < 32`
+    #[target_feature(enable = "avx512f,avx512bw,avx512dq,avx512vbmi,avx512vbmi2")]
+    pub fn vcmp32(p: &[u8], w: u8, nb: usize, lo: u64, span: u64, flip: u64, out: &mut [u64]) {
+        vcmp!(p, w, nb, 32, _mm512_mullo_epi32, _mm512_set1_epi32, _mm512_add_epi32, _mm512_srli_epi32, _mm512_shrdv_epi32,
+              _mm512_cvtepu8_epi32(_mm512_castsi512_si128(iota8!())), 0x01010101, 0x03020100,
+              _mm512_sub_epi32, _mm512_cmple_epu32_mask, lo, span, flip, out)
+    }
+    /// `res_vcmp`, `32 < w < 64`
+    #[target_feature(enable = "avx512f,avx512bw,avx512dq,avx512vbmi,avx512vbmi2")]
+    pub fn vcmp64(p: &[u8], w: u8, nb: usize, lo: u64, span: u64, flip: u64, out: &mut [u64]) {
+        vcmp!(p, w, nb, 64, _mm512_mullo_epi64, _mm512_set1_epi64, _mm512_add_epi64, _mm512_srli_epi64, _mm512_shrdv_epi64,
+              _mm512_cvtepu8_epi64(_mm512_castsi512_si128(iota8!())), 0x0101010101010101, 0x0706050403020100,
+              _mm512_sub_epi64, _mm512_cmple_epu64_mask, lo, span, flip, out)
     }
 
     /// The first `n` of the lanes of `v` that fit 64 bits, narrowed; lanes past `n` are zero (res_lanes64).
