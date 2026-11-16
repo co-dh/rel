@@ -12,9 +12,8 @@ use alloc::borrow::Cow;
 use crate::{c, lean};
 use crate::coc::{self, Coc};
 use crate::group::{self, Table};
-use crate::{key, kwin, own};
+use crate::{key, kwin};
 use crate::layout::{Tail, exc_ok};
-use crate::own::{OwnHead, head};
 use crate::why::Why;
 use crate::{BLK, ids, simd};
 use crate::alp::Cocf;
@@ -69,7 +68,6 @@ pub struct CPass {
 
 const _: () = assert!(size_of::<CCoc>() == 144);
 const _: () = assert!(size_of::<CPass>() == 72);
-const _: () = assert!(size_of::<OwnHead>() == 80);
 
 /// Safety: `p` is null or valid for `key::bytes(kind, n)` reads.
 unsafe fn keys<'a>(kind: u8, p: *const u8, n: usize) -> Option<&'a [u8]> {
@@ -215,20 +213,6 @@ pub unsafe extern "C" fn qrs_sort_gather(kind: u8, p: *const u8, n: usize, first
     group::gather(kind, b, unsafe { sl(first, ng) }, unsafe { sl_mut(out, w) }).is_some() as c_int
 }
 
-/// `len` and `off` are `np` entries, `head` `hcap` bytes. Answers the header length, or 0 and `why` filled.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn qrs_own_write_head(code: u8, attr: u8, kind: u8, count: u64, nl: usize, len: *const usize,
-                                            np: usize, head: *mut u8, hcap: usize, off: *mut usize,
-                                            w: *mut c_char, cap: usize) -> usize {
-    // `len` has `OWN_NPARTS[kind]` entries at most; a larger `np` is refused before a slice over `len` is formed
-    if np > own::OWN_NPARTS.into_iter().max().unwrap_or(0) {
-        own::refuse_head(kind, np, nl, &mut unsafe { why(w, cap) });
-        return 0;
-    }
-    unsafe { own::write_head(code, attr, kind, count, nl, sl(len, np), sl_mut(head, hcap), sl_mut(off, np),
-                             &mut why(w, cap)) }.unwrap_or(0)
-}
-
 /// `p` is the block's `BLK * *w / 8` bytes, `buf` `BLK * 8`; answers `p` or `buf`.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn qrs_coc_lanes(p: *const u8, w: *mut u8, nb: usize, buf: *mut u8) -> *const u8 {
@@ -277,16 +261,6 @@ pub unsafe extern "C" fn qrs_exc_ok(t: *const u8, len: usize, nblk: usize, nexc:
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn qrs_ids_max(p: *const u8, bytes: usize, w: u32, n: usize) -> usize {
     ids::ids_max(unsafe { sl(p, bytes) }, w, n)
-}
-
-/// 1 and `*h` filled, or 0 and `why` filled.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn qrs_own_head(m: *const u8, size: usize, h: *mut OwnHead, w: *mut c_char, cap: usize)
-    -> c_int {
-    match head(unsafe { sl(m, size) }, &mut unsafe { why(w, cap) }) {
-        Some(v) => { unsafe { h.write(v) }; 1 }
-        None => 0,
-    }
 }
 
 #[unsafe(no_mangle)]
@@ -939,12 +913,6 @@ pub unsafe extern "C" fn qrs_coc_vv_ok(a: *const CCoc, b: *const CCoc, op: c_int
 /// K26: coc.h `coc_scale_ok`.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn qrs_coc_scale_ok(c: *const CCoc, k: i64) -> c_int { unsafe { (*c).view() }.scale_ok(k) as c_int }
-/// K26: own.c `own_check`: `p` and `len` are `OWN_MAXPARTS` parts, those past the kind's null/0. 1, or 0 and `why` filled.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn qrs_own_check(kind: u8, n: u64, p: *const *const u8, len: *const usize, w: *mut c_char, cap: usize) -> c_int {
-    let (p, len) = unsafe { (sl(p, own::OWN_MAXPARTS), sl(len, own::OWN_MAXPARTS)) };
-    own::check(kind, n, core::array::from_fn(|k| unsafe { sl(p[k], len[k]) }), &mut unsafe { why(w, cap) }) as c_int
-}
 /// K26: sym.h `sym_slices`: the first `n` symbols of `blob` (`bytes` long) and the boxed `offs` into `out`.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn qrs_sym_slices(blob: *const u8, bytes: usize, offs: *const usize, n: usize, out: *mut CSym) {

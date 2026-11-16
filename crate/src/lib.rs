@@ -38,6 +38,7 @@ pub mod exports {
     pub mod env;
     pub mod interp;
     pub mod handle;
+    pub mod own;
     pub mod pool;
     pub mod reduce;
     pub mod search;
