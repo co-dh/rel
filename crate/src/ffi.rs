@@ -543,6 +543,32 @@ pub unsafe extern "C" fn qrs_scan_run(op: c_int, kind: c_int, p: *const u8, out:
     // `carry` is `&acc`, an `int64_t` or `uint64_t` (scan.c:517, 570), or null
     unsafe { scan::scan_run(op, kind, sl(p, bytes), sl_mut(out, n * scan::sc_out_width(op, kind)), n, sl_mut(carry, 8), resume != 0) }
 }
+/// A14: scan.c `scan_any_null` over the first `n` elements of a payload of `bytes` bytes.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn qrs_scan_any_null(kind: c_int, p: *const u8, bytes: usize, n: usize) -> c_int {
+    unsafe { scan::scan_any_null(kind, sl(p, bytes), n) as c_int }
+}
+/// A14: scan.c `sc_out_width`: the bytes of one element of the answer of verb `op` at `kind`.
+#[unsafe(no_mangle)]
+pub extern "C" fn qrs_scan_out_width(op: c_int, kind: c_int) -> usize { scan::sc_out_width(op, kind) }
+/// A14: scan.c `sc_fill_const`: `cnt` copies of the low `w` bytes of `acc` at `out`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn qrs_scan_fill_c(out: *mut u8, cnt: usize, w: usize, acc: i64) {
+    unsafe { scan::sc_fill_c(sl_mut(out, cnt * w), cnt, w, acc) }
+}
+/// A14: scan.c `sc_blk_skip` over block `b` of the view `c`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn qrs_scan_blk_skip(op: c_int, kind: c_int, c: *const CCoc, b: usize, cnt: usize, acc: i64) -> c_int {
+    unsafe { scan::sc_blk_skip(op, kind, &(*c).view(), b, cnt, acc) as c_int }
+}
+/// A14: scan.c `sc_bad_kind`: the abort for a kind the dispatch never sends; never returns.
+#[unsafe(no_mangle)]
+pub extern "C" fn qrs_scan_bad_kind(kind: c_int) -> c_int { scan::sc_bad_kind(kind) }
+/// A14: scan.c `sc_alp_skip` over block `b` of the ALP column `f`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn qrs_scan_alp_skip(op: c_int, f: *const CCocf, b: usize, cnt: usize, acc: f64) -> c_int {
+    unsafe { scan::sc_alp_skip(op, &(*f).view(), b, cnt, acc) as c_int }
+}
 /// A15: coc.c `coc_decode_run`, 8-byte lanes.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn qrs_coc_decode(run: unsafe extern "C" fn(), c: *const CCoc, out: *mut i64) {
