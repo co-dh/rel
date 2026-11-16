@@ -756,6 +756,38 @@ pub unsafe extern "C" fn qrs_gather_ids(run: unsafe extern "C" fn(), w: u32, wou
     unsafe { structural::gather_ids(rn(run), w, wout, fill, sl(src, ids::ids_bytes(ns, w)), ns, sl(idx, n),
                                     sl_mut(out, ids::ids_bytes(n, wout))) }
 }
+/// A38: structural.c `gather_ids_foR_run`; `out` is `ids_bytes(c.n, wout)` bytes.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn qrs_gather_ids_enc(run: unsafe extern "C" fn(), w: u32, wout: u32, fill: u64, src: *const u8,
+                                            ns: usize, c: *const CCoc, out: *mut u8) {
+    unsafe {
+        let v = (*c).view();
+        structural::gather_ids_enc(rn(run), w, wout, fill, sl(src, ids::ids_bytes(ns, w)), ns, &v, v.meta.n,
+                                   sl_mut(out, ids::ids_bytes(v.meta.n, wout)))
+    }
+}
+/// A38: structural.c `qlean_structural_cycle_ids`: `ids` is `bytes` long, `out` the zeroed `ids_bytes(m, w)`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn qrs_cycle_ids(n: usize, off: usize, m: usize, w: u32, ids: *const u8, bytes: usize, out: *mut u8) {
+    unsafe { structural::cycle_ids(n, off, m, w, sl(ids, bytes), sl_mut(out, ids::ids_bytes(m, w))) }
+}
+/// A38: structural.c `qlean_structural_rows_of`: `n` longs of `b` as the boxed words `out` holds.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn qrs_rows_of(b: *const u8, n: usize, out: *mut i64) {
+    unsafe { structural::rows_of(sl(b, n * 8), sl_mut(out, n)); }
+}
+/// A38: structural.c `qlean_structural_gather_syms`, the blob length: `n` symbols, `m` indices.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn qrs_gather_syms_len(blob: *const u8, bytes: usize, offs: *const usize, n: usize,
+                                             idx: *const i64, m: usize) -> usize {
+    unsafe { structural::gather_syms_len(&syms0(blob, bytes, offs, n), sl(idx, m)) }
+}
+/// A38: structural.c `qlean_structural_gather_syms`: `total` is `qrs_gather_syms_len`, `no` holds `m + 1` boxed starts.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn qrs_gather_syms(blob: *const u8, bytes: usize, offs: *const usize, n: usize, idx: *const i64,
+                                         m: usize, nb: *mut u8, total: usize, no: *mut usize) {
+    unsafe { structural::gather_syms(&syms0(blob, bytes, offs, n), sl(idx, m), sl_mut(nb, total), sl_mut(no, m + 1)) }
+}
 /// A39: structural.c `concat_run` over `np` parts.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn qrs_concat(run: unsafe extern "C" fn(), p: *const *const u8, len: *const usize, np: usize,
