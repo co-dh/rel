@@ -33,9 +33,15 @@ impl<'a> Opnd<'a> {
             Src::Dense(d) => &d[at * w..(at + cnt) * w],
             Src::Ids(p, lw) => {
                 // `ids_key_width` answers at most 8; the clamp is for the `guid` instantiation, never run
-                let cw = w.min(8);
                 let out = &mut buf[..cnt * w];
-                for k in 0..cnt { out[k * w..k * w + cw].copy_from_slice(&(ids::id_at(p, lw, at + k) as u64).to_le_bytes()[..cw]) }
+                if matches!(w, 1 | 2 | 4 | 8) {
+                    // `id_put` at `8w` bits is the fixed-width store; a `w`-byte copy here was a `memcpy` call per id
+                    let ow = 8 * w as u32;
+                    for k in 0..cnt { ids::id_put(out, ow, k, ids::id_at(p, lw, at + k) as u64) }
+                } else {
+                    let cw = w.min(8);
+                    for k in 0..cnt { out[k * w..k * w + cw].copy_from_slice(&(ids::id_at(p, lw, at + k) as u64).to_le_bytes()[..cw]) }
+                }
                 out
             }
             Src::Enc(c) => {
@@ -585,11 +591,18 @@ pub fn bin_key(w: usize, is_float: bool, is_signed: bool, v: u64) -> u64 {
     }
     if is_signed { (v & mask) ^ top } else { v & mask }
 }
-/// search.c:1510 `bin_at`: element `i` of a `w`-byte payload.
+/// search.c:1510 `bin_at`: element `i` of a `w`-byte payload. One fixed-width load per width: a `w`-byte copy into a
+/// `u64` compiles to a `memcpy` call per element, which was most of `runStarts`' pass.
+#[inline(always)]
 pub fn bin_at(p: &[u8], w: usize, i: usize) -> u64 {
-    let mut b = [0u8; 8];
-    b[..w].copy_from_slice(&p[i * w..(i + 1) * w]);
-    u64::from_le_bytes(b)
+    fn ld<const W: usize>(p: &[u8], i: usize) -> [u8; W] { p[i * W..(i + 1) * W].try_into().unwrap() }
+    match w {
+        1 => p[i] as u64,
+        2 => u16::from_le_bytes(ld(p, i)) as u64,
+        4 => u32::from_le_bytes(ld(p, i)) as u64,
+        8 => u64::from_le_bytes(ld(p, i)),
+        _ => { let mut b = [0u8; 8]; b[..w].copy_from_slice(&p[i * w..(i + 1) * w]); u64::from_le_bytes(b) }
+    }
 }
 /// search.c:1519 `norm_key`
 pub fn norm_key(w: usize, is_float: bool, v: u64) -> u64 {
@@ -787,10 +800,18 @@ pub fn run_starts(o: &Opnd, w: usize, is_float: bool, out: &mut [i64]) -> usize 
     let (mut buf, mut g, mut prev) = ([0u64; crate::BLK], 0, 0u64);
     for b in 0..o.n.div_ceil(crate::BLK) {
         let h = o.blk(b, w, crate::pod::bytes_mut(&mut buf));
-        for (j, c) in h.chunks_exact(w).enumerate() {
-            let v = norm_key(w, is_float, bin_at(c, w, 0));
+        // the width switch hoisted out of the element loop, as search.c's `RS_RUNS` hoists it
+        let mut runs = |key: &dyn Fn(usize) -> u64| for j in 0..h.len() / w {
+            let v = key(j);
             if (b | j) == 0 || v != prev { out[g] = (b * crate::BLK + j) as i64; g += 1 }
             prev = v;
+        };
+        match (is_float, w) {
+            (true, _) => runs(&|j| norm_key(w, true, bin_at(h, w, j))),
+            (_, 1) => runs(&|j| bin_at(h, 1, j)),
+            (_, 2) => runs(&|j| bin_at(h, 2, j)),
+            (_, 4) => runs(&|j| bin_at(h, 4, j)),
+            _ => runs(&|j| bin_at(h, 8, j)),
         }
     }
     out[g] = o.n as i64;

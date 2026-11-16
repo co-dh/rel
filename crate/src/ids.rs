@@ -13,20 +13,24 @@ pub fn id_width(nd: usize) -> u32 { if nd < 2 { 0 } else { lane_width(width_for(
 /// Bytes `n` ids occupy at `w` bits: `⌈n·w/8⌉`, wrapping like the C `size_t` arithmetic.
 pub fn ids_bytes(n: usize, w: u32) -> usize { n.wrapping_mul(w as usize).wrapping_add(7) / 8 }
 
-/// `Column.idAt`. Narrow widths share a byte, low field first; eight and above are whole elements.
+/// `Column.idAt`. Narrow widths share a byte, low field first; eight and above are whole elements. Inlined with a
+/// fixed-width load per arm, as ids.h's `static inline` is: an out-of-line call per element was most of `find` ids.
+#[inline(always)]
 pub fn id_at(p: &[u8], w: u32, i: usize) -> usize {
-    let le = |k: usize| p[i * k..i * k + k].iter().rev().fold(0usize, |a, &b| a << 8 | b as usize);
     match w {
         0 => 0,
         1 => (p[i >> 3] >> (i & 7) & 1) as usize,
         2 => (p[i >> 2] >> ((i & 3) * 2) & 3) as usize,
         4 => (p[i >> 1] >> ((i & 1) * 4) & 15) as usize,
         8 => p[i] as usize,
-        16 => le(2),
-        32 => le(4),
-        _ => le(8),
+        16 => u16::from_le_bytes(le(p, i)) as usize,
+        32 => u32::from_le_bytes(le(p, i)) as usize,
+        _ => u64::from_le_bytes(le(p, i)) as usize,
     }
 }
+/// Element `i` of `p` at `W` bytes.
+#[inline(always)]
+fn le<const W: usize>(p: &[u8], i: usize) -> [u8; W] { p[i * W..(i + 1) * W].try_into().unwrap() }
 
 // The largest of whole bytes' fields at a constant narrow width: a const generic so the field loop unrolls.
 fn narrow_max<const W: u32>(p: &[u8]) -> u8 {
@@ -307,8 +311,11 @@ mod map_tests {
 
 // ---- A10: ids.h:56-281 (per element: C keeps these bodies while a C caller remains) ----
 /// ids.h:56 `id_put`: id `v` at index `i`, `w` bits each; a narrow field is a read-modify-write of its shared byte.
+#[inline(always)]
 pub fn id_put(p: &mut [u8], w: u32, i: usize, v: u64) {
-    let put = |p: &mut [u8], k: usize| p[i * k..i * k + k].copy_from_slice(&v.to_le_bytes()[..k]);
+    // a store of `k` bytes, `k` a constant in each arm once inlined, so no `memcpy` call per element
+    #[inline(always)]
+    fn put(p: &mut [u8], i: usize, k: usize, v: u64) { p[i * k..i * k + k].copy_from_slice(&v.to_le_bytes()[..k]) }
     match w {
         0 => {}
         1 | 2 | 4 => {
@@ -316,9 +323,9 @@ pub fn id_put(p: &mut [u8], w: u32, i: usize, v: u64) {
             p[b] = p[b] & !(m << s) | ((v as u8 & m) << s);
         }
         8 => p[i] = v as u8,
-        16 => put(p, 2),
-        32 => put(p, 4),
-        _ => put(p, 8),
+        16 => put(p, i, 2, v),
+        32 => put(p, i, 4, v),
+        _ => put(p, i, 8, v),
     }
 }
 

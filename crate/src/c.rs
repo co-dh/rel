@@ -43,7 +43,11 @@ unsafe extern "C" fn slice<F: Fn(usize, usize, &mut [u8]) + Sync>(lo: usize, hi:
 /// once per slice, on as many threads as `qlean_run` splits `units` into at `cost` and `wide`; answers that count.
 pub fn run_map<F: Fn(usize, usize, &mut [u8]) + Sync>(run: Runner, out: &mut [u8], units: usize, unit: usize, cost: u32,
                                                       wide: usize, f: &F) -> u32 {
-    run_map_at(run, out, units, &|k| k.saturating_mul(unit), cost, wide, f)
+    // `k * unit` is ascending, so only the last start needs checking: O(1), where `run_map_at`'s O(units) scan ran
+    // serially on the calling thread over every element and cost more wall time than the threaded pass itself
+    assert!(units == 0 || (units - 1).checked_mul(unit).is_some_and(|s| s <= out.len()),
+            "run_map: {units} units of {unit} bytes do not start inside a {}-byte output", out.len());
+    map_at(run, out, units, &|k| k.saturating_mul(unit), cost, wide, f)
 }
 
 /// `run_map` whose unit `k` starts at byte `at(k)` of `out` (`at` ascending, `at(units)` the end): slice `[lo, hi)` is
@@ -54,6 +58,13 @@ pub fn run_map_at<F: Fn(usize, usize, &mut [u8]) + Sync>(run: Runner, out: &mut 
                                                          at: &(dyn Fn(usize) -> usize + Sync), cost: u32, wide: usize, f: &F) -> u32 {
     assert!((0..units).all(|k| at(k) <= at(k + 1)) && (units == 0 || at(units - 1) <= out.len()),
             "run_map_at: {units} units do not start in ascending order inside a {}-byte output", out.len());
+    map_at(run, out, units, at, cost, wide, f)
+}
+
+/// The pool call behind `run_map` and `run_map_at`, each of which has checked that `at` is non-decreasing over
+/// `0 ..= units` and starts every unit inside `out`: that is what makes the `&mut` slices disjoint.
+fn map_at<F: Fn(usize, usize, &mut [u8]) + Sync>(run: Runner, out: &mut [u8], units: usize,
+                                                 at: &(dyn Fn(usize) -> usize + Sync), cost: u32, wide: usize, f: &F) -> u32 {
     let o = out.as_mut_ptr();
     let job = Job { f, out: o, at, len: out.len() };
     let p = CPass { a: (&raw const job).cast(), b: null(), c: null(), o: o.cast(), n: units, at: 0,
