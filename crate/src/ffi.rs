@@ -104,11 +104,22 @@ pub unsafe extern "C" fn qrs_key_range(kind: u8, p: *const u8, n: usize, mn: *mu
     }
 }
 
-/// `range_foR`: an encoded column's key range.
+/// `range_foR`: the key range of C's `kwin` window over `c` (`f` its ALP column, else null).
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn qrs_key_range_win(kind: u8, c: *const CCoc, mn: *mut u64, mx: *mut u64) {
-    let (a, b) = kwin::range(kind, &unsafe { (*c).view() });
+pub unsafe extern "C" fn qrs_kwin_range(kind: u8, c: *const CCoc, f: *const CCocf, mn: *mut u64, mx: *mut u64) {
+    let (a, b) = kwin::win_range(kind, &unsafe { (*c).view() }, !f.is_null());
     unsafe { mn.write(a); mx.write(b) }
+}
+
+/// `kwin_blk`'s decode: block `b` of `c` as keys into `k` (`BLK` long), through `f` when it is not null
+/// (`keys_blk_alp`), else `keys_blk_foR`. Answers the block's key count.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn qrs_kwin_blk(kind: u8, c: *const CCoc, f: *const CCocf, b: usize, k: *mut u64) -> usize {
+    let cv = unsafe { (*c).view() };
+    let cnt = (cv.meta.n - b * BLK).min(BLK);
+    let k = unsafe { sl_mut(k, BLK) };
+    if f.is_null() { kwin::keys_blk(kind, &cv, b, &mut k[..cnt]) } else { kwin::keys_blk_alp(&unsafe { (*f).view() }, b, &mut k[..cnt]) }
+    cnt
 }
 
 /// `keys_of`: the `n` keys of the dense payload `p` into `k`, and their range into `*mn`, `*mx` (`0, 0` for none).
@@ -168,7 +179,7 @@ pub unsafe extern "C" fn qrs_group_ids(kind: u8, p: *const u8, n: usize, mn: u64
 }
 
 /// `groupIds` of an encoded column (`qlean_sort_group_ids_foR`): as `qrs_group_ids`, `mn`/`mx` from
-/// `qrs_key_range_win`. `SIZE_MAX` = `gid` or `first` too short.
+/// `qrs_kwin_range`. `SIZE_MAX` = `gid` or `first` too short.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn qrs_group_ids_win(kind: u8, c: *const CCoc, n: usize, mn: u64, mx: u64, gid: *mut u8,
                                            gcap: usize, first: *mut usize, run: unsafe extern "C" fn()) -> usize {

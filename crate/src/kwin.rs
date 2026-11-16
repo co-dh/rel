@@ -137,5 +137,8 @@ impl<'a> Kwin<'a> {
     pub fn with_alp(kind: u8, f: Cocf<'a>) -> Self { Kwin { alp: Some(f), ..Kwin::new(kind, f.c) } }
     /// sort.c:320 `range_foR`'s ALP line: a frame is over decimals, and a float's keys span the binades between its
     /// extremes, so the range is all of it and `dedup` takes its hashed loop; else `range`.
-    pub fn range(&self) -> (u64, u64) { if self.alp.is_some() { (0, !0) } else { range(self.kind, &self.c) } }
+    pub fn range(&self) -> (u64, u64) { win_range(self.kind, &self.c, self.alp.is_some()) }
 }
+
+/// `range_foR` over a window of either arm: the ALP rule once, for `Kwin::range` and C's `qrs_kwin_range`.
+pub fn win_range(kind: u8, c: &Coc, alp: bool) -> (u64, u64) { if alp { (0, !0) } else { range(kind, c) } }
