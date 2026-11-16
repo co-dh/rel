@@ -3,6 +3,7 @@
 //! this file by cbindgen (rust/build.sh).
 use core::ffi::{c_char, c_int, c_void};
 use core::slice;
+use core::sync::atomic::{AtomicI32, AtomicUsize};
 
 use alloc::borrow::Cow;
 
@@ -310,10 +311,30 @@ pub struct CEnc {
     pub at: usize, pub nexc: usize, pub tail: usize, pub below: usize, pub lb: usize, pub over: c_int,
 }
 impl CEnc {
-    /// Block `b`'s meta-pass view. Safety: `self` is an open encoder, `b < c.mblk`, no other view of `b` alive.
-    pub unsafe fn meta_blk<'a>(&mut self, b: usize) -> EncMeta<'a> { let _ = b; unimplemented!("A16: coc_enc meta view") }
-    /// Block `b`'s pack-pass view, after `coc_enc_layout`. Safety: as `meta_blk`.
-    pub unsafe fn pack_blk<'a>(&mut self, b: usize, nb: usize) -> EncPack<'a> { let _ = (b, nb); unimplemented!("A16: coc_enc pack view") }
+    /// Block `b`'s meta-pass view: the slots `coc_enc_open` set up (`c`'s four arrays, `frm_heap` as `c.fdelta`, `exc_off`,
+    /// `exp`; the two a column does not keep are null) and the early-decline words, which C reads through its atomics.
+    /// Safety: `self` is an open encoder, `b < c.mblk`, no other view of `b` alive.
+    pub unsafe fn meta_blk<'a>(&mut self, b: usize) -> EncMeta<'a> {
+        let (lb, over) = unsafe { (AtomicUsize::from_ptr(&raw mut self.lb), AtomicI32::from_ptr(&raw mut self.over)) };
+        let c = &self.c;
+        unsafe { EncMeta { b, base: &mut *c.base.add(b), maxv: &mut *c.maxv.add(b), width: &mut *c.width.add(b), bsum: &mut *c.bsum.add(b),
+                           frm: if c.fdelta.is_null() { None } else { Some(&mut *c.fdelta.add(b)) }, nexc: &mut *self.exc_off.add(b + 1),
+                           exp: if self.exp.is_null() { None } else { Some(&mut *self.exp.add(b)) },
+                           below: self.below, lb, over } }
+    }
+    /// Block `b`'s pack-pass view, after `coc_enc_layout`: residuals at `off[b]`, patches `exc_off[b]..exc_off[b + 1]`.
+    /// Safety: as `meta_blk`.
+    pub unsafe fn pack_blk<'a>(&mut self, b: usize, nb: usize) -> EncPack<'a> {
+        let c = &self.c;
+        unsafe {
+            let (base, w, at) = (*c.base.add(b), *c.width.add(b), *self.exc_off.add(b) as usize);
+            let ne = *self.exc_off.add(b + 1) as usize - at;
+            EncPack { b, nb, base, frame: (base as u64).wrapping_add(if c.fdelta.is_null() { 0 } else { *c.fdelta.add(b) }), width: w,
+                      exp: if self.exp.is_null() { 0 } else { *self.exp.add(b) },
+                      res: sl_mut(c.pack.add(*c.off.add(b) as usize), (nb * w as usize).div_ceil(8)),
+                      pos: sl_mut(self.exc_pos.add(at), ne), raw: sl_mut(self.exc_raw.add(at * self.width), ne * self.width) }
+        }
+    }
 }
 /// Mirror of sym.h:22 `sym`.
 #[repr(C)]
@@ -552,6 +573,17 @@ pub unsafe extern "C" fn qrs_enc_alp_meta(s: *mut CEnc, b: usize, x: *const u8, 
 pub unsafe extern "C" fn qrs_enc_alp_pack(s: *mut CEnc, b: usize, x: *const u8, nb: usize) {
     unsafe { let w = (*s).width; enc::alp_pack(&mut (*s).pack_blk(b, nb), sl(x, nb * w), w) }
 }
+/// A16: coc.c `src_copy`, a dense block of `bytes` copied to `out`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn qrs_src_copy(out: *mut u8, x: *const u8, bytes: usize) { unsafe { enc::src_copy(sl_mut(out, bytes), sl(x, bytes)) } }
+/// A16: coc.c `src_bits`, block `b`'s `nb` bytes packed into the `nbytes`-byte bitmap `out`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn qrs_src_bits(out: *mut u8, nbytes: usize, b: usize, x: *const u8, nb: usize) {
+    unsafe { enc::src_bits(sl_mut(out, nbytes), b, sl(x, nb)) }
+}
+/// A16: coc.h `coc_sumnul`.
+#[unsafe(no_mangle)]
+pub extern "C" fn qrs_coc_sumnul(width: usize, alp: c_int) -> i64 { enc::coc_sumnul(width, alp != 0) }
 /// A17: coc.c `coc_enc_blk_meta` over one block's values.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn qrs_enc_blk_meta(s: *mut CEnc, b: usize, v: *const i64, nb: usize) -> u32 {
