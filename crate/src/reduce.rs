@@ -5,7 +5,7 @@ use alloc::vec::Vec;
 use alloc::vec;
 use core::sync::atomic::{AtomicI64, Ordering::Relaxed};
 use crate::c::{run_map, run_slices, Runner};
-use crate::ids::id_at;
+use crate::ids::{avail, id_at};
 use crate::{simd, BLK};
 
 // ---- A12: reduce.c:261-298 ----
@@ -543,9 +543,6 @@ pub trait Fl: Copy + PartialOrd + core::ops::Add<Output = Self> + core::ops::Mul
 }
 impl Fl for f32 { const ZERO: f32 = 0.0; const ONE: f32 = 1.0; const INF: f32 = f32::INFINITY; }
 impl Fl for f64 { const ZERO: f64 = 0.0; const ONE: f64 = 1.0; const INF: f64 = f64::INFINITY; }
-
-/// ids.h `ids_avail`: how many ids `gid` holds at `w` bits; a one-entry dictionary (`w = 0`) stores none and every id is 0.
-fn avail(gid: &[u8], w: u32) -> usize { if w == 0 { usize::MAX } else { gid.len() * 8 / w as usize } }
 
 /// reduce.c `qlean_over_sv`: `acc * base + digit` down the longs of `a`, mod 2^64, which is a monoid, so the chain splits
 /// into `SV_LANES` interleaved ones (lane `j` folds elements `j, j + L, ..` under `base^L`) that recombine by one more

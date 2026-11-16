@@ -544,9 +544,14 @@ mod a21_tests {
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Ends { pub fst: i64, pub lst: i64, pub ok: bool }
 
-/// coc.h:353 `sk_avail`: how many elements `bytes` hold (the bit payload answers before the width is consulted).
-fn avail(kind: u8, bytes: usize) -> usize {
-    if kind == SK_BIT { bytes * 8 } else { bytes / key::bytes(kind, 1).unwrap_or_else(|| panic!("qlean: element kind {kind} has no dense width")) }
+/// coc.h `sk_avail`: how many elements `bytes` hold (the bit payload answers before the width is consulted); None for a
+/// kind with no dense width, which the export reports.
+pub fn avail(kind: u8, bytes: usize) -> Option<usize> {
+    if kind == SK_BIT { Some(bytes * 8) } else if kind < SK_KINDS_N { key::bytes(kind, 1).map(|w| bytes / w) } else { None }
+}
+/// sort.c `sk_write_width`, `Kind.width`: the bytes one element of `kind` is written back at; a boolean is a whole byte.
+pub fn write_width(kind: u8) -> Option<usize> {
+    if kind == SK_BIT { Some(1) } else if kind < SK_KINDS_N { key::bytes(kind, 1) } else { None }
 }
 
 /// sort.c:880 `SK_ASC_DIR`: no key is carried between elements, so a chunk's violations accumulate and the early exit
@@ -581,7 +586,7 @@ impl Pass for Asc {
 }
 /// sort.c:894 `qlean_sort_ascending` past the unboxing; `n` is clamped to what `p` holds.
 pub fn ascending(kind: u8, desc: bool, strict: bool, p: &[u8], n: usize) -> bool {
-    let m = avail(kind, p.len()).min(n);
+    let m = avail(kind, p.len()).unwrap_or_else(|| panic!("qlean: element kind {kind} has no dense width")).min(n);
     if m < 2 { return true }
     let b = key::bytes(kind, m).unwrap_or_else(|| panic!("qlean_sort_ascending: kind {kind} is not a dense kind"));
     key::each(kind, &p[..b], m, Asc { desc, strict })
@@ -713,6 +718,52 @@ pub fn grade_lane(run: Runner, desc: bool, w: u32, ids: &[u8], n: usize, out: &m
         let (mn, mx) = ids_keys(ids, w, n, &mut k); // needs A23
         grade_keys(&k, desc, mn, mx, out)
     }
+}
+
+/// sort.c `middle_of`: the raw elements at ranks `(n-1)/2` and `n/2` of `s` (`n > 0`), each at the kind's write width, into
+/// `out`. They are selected and never sorted. Every kind but the two float ones writes them out of their key, the key
+/// being a bijection of the stored bits there; the float ones fold NaNs and both zeros onto one key, so they grade and
+/// read the two elements back (a float column is never a pack: ALP is its encoding).
+pub fn middle(run: Runner, s: &Ksrc, out: &mut [u8]) {
+    let (r1, r2) = ((s.n - 1) / 2, s.n / 2);
+    let w = write_width(s.kind).unwrap_or_else(|| panic!("qlean sort: element kind {} is not one of the {SK_KINDS_N}", s.kind));
+    if s.kind == SK_BIT {
+        let z = s.n - crate::bits::popcount(s.p, s.n);
+        out[0] = (r1 >= z) as u8;
+        out[1] = (r2 >= z) as u8;
+        return;
+    }
+    if s.kind == key::SK_F32 || s.kind == key::SK_F64 {
+        let mut k = vec![0u64; s.n];
+        let (mn, mx) = keys_of(s.kind, s.p, s.n, &mut k);
+        let mut perm = vec![0i64; s.n];
+        grade_keys(&k, false, mn, mx, &mut perm);
+        out[..w].copy_from_slice(&s.p[perm[r1] as usize * w..][..w]);
+        out[w..2 * w].copy_from_slice(&s.p[perm[r2] as usize * w..][..w]);
+        return;
+    }
+    let (k1, k2) = if s.c.is_none() && (s.kind == SK_U8 || s.kind == SK_I16) {
+        let cnt = hist_narrow(run, s.kind, s.p, s.n);
+        let (mut q1, mut q2) = (r1, r2);
+        (hist_find(&cnt, &mut q1) as u64, hist_find(&cnt, &mut q2) as u64)
+    } else { select_keys(s, r1, r2) };
+    let flip = kwin::key_flip(s.kind);
+    out[..w].copy_from_slice(&(k1 ^ flip).to_le_bytes()[..w]);
+    out[w..2 * w].copy_from_slice(&(k2 ^ flip).to_le_bytes()[..w]);
+}
+/// sort.c `qlean_sort_bits_sorted` past the allocation: the first `m` bits of `p` sorted, packed a bit an element into
+/// `out` (`⌈m/8⌉` bytes). Two keys, so the answer is the popcount: ascending, the clear bits and then the set ones, which
+/// is a run of zero bytes, one partial byte and a run of `0xff`.
+pub fn bits_sorted(desc: bool, m: usize, p: &[u8], out: &mut [u8]) {
+    let k = crate::bits::popcount(p, m);
+    // the set bits are `[lo, hi)`
+    let (lo, hi) = if desc { (0, k) } else { (m - k, m) };
+    out.fill(0);
+    let mut i = lo;
+    while i < hi && i & 7 != 0 { out[i >> 3] |= 1 << (i & 7); i += 1 }
+    let full = i + ((hi - i) & !7usize); // `i` is byte-aligned here, or `hi`
+    out[i >> 3..full >> 3].fill(0xff);
+    for i in full..hi { out[i >> 3] |= 1 << (i & 7) }
 }
 
 #[cfg(test)]
@@ -1943,5 +1994,58 @@ mod k16_tests {
         let (mut out, mut offs) = ([9u8; 5], [0usize; 3]);
         syms_at([&b"ab"[..], b"c"].into_iter(), &mut out, &mut offs);
         assert_eq!((out, offs), ([b'a', b'b', 0, b'c', 0], [1, 7, 11]));
+    }
+}
+
+#[cfg(test)]
+mod tests_b22 {
+    use super::*;
+    use crate::c::qlean_run_c;
+    use crate::key::{SK_F64, SK_I64};
+    fn lcg(s: &mut u64) -> u64 { *s = s.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407); *s >> 33 }
+    // `bits_sorted` against the sorted bits themselves, at every count that splits a byte differently
+    #[test] fn bits_sorted_is_the_sorted_bits() {
+        let mut s = 7u64;
+        for m in 0..200usize {
+            let p: Vec<u8> = (0..m.div_ceil(8)).map(|_| lcg(&mut s) as u8).collect();
+            for desc in [false, true] {
+                let mut v: Vec<u8> = (0..m).map(|i| p[i >> 3] >> (i & 7) & 1).collect();
+                v.sort();
+                if desc { v.reverse() }
+                let mut out = vec![0u8; m.div_ceil(8)];
+                bits_sorted(desc, m, &p, &mut out);
+                let got: Vec<u8> = (0..m).map(|i| out[i >> 3] >> (i & 7) & 1).collect();
+                assert_eq!(got, v, "m {m} desc {desc}");
+                assert!(out.iter().map(|b| b.count_ones() as usize).sum::<usize>() == v.iter().map(|&b| b as usize).sum::<usize>(), "no bit past m");
+            }
+        }
+    }
+    // `middle` against a sort, over each route: the boolean popcount, the narrow histogram, the selection rounds, the float grade
+    #[test] fn middle_is_the_two_central_elements() {
+        let mut s = 11u64;
+        for n in 1..300usize {
+            let (u8s, i16s, i64s): (Vec<u8>, Vec<i16>, Vec<i64>) = ((0..n).map(|_| lcg(&mut s) as u8 % 9).collect(), (0..n).map(|_| lcg(&mut s) as i16).collect(), (0..n).map(|_| lcg(&mut s) as i64 - (1 << 30)).collect());
+            let f64s: Vec<f64> = i64s.iter().map(|&x| x as f64 / 8.0).collect();
+            let (r1, r2) = ((n - 1) / 2, n / 2);
+            fn check<T: crate::pod::Pod + Ord + Copy>(kind: u8, v: &[T], r: (usize, usize)) {
+                let mut o = vec![0u8; 2 * size_of::<T>()];
+                middle(qlean_run_c, &Ksrc { kind, p: pod::bytes(v), c: None, n: v.len() }, &mut o);
+                let mut t = v.to_vec();
+                t.sort();
+                assert_eq!(o, pod::bytes(&[t[r.0], t[r.1]]), "kind {kind} n {}", v.len());
+            }
+            check(SK_U8, &u8s, (r1, r2)); check(SK_I16, &i16s, (r1, r2)); check(SK_I64, &i64s, (r1, r2));
+            let mut o = vec![0u8; 16];
+            middle(qlean_run_c, &Ksrc { kind: SK_F64, p: pod::bytes(&f64s), c: None, n }, &mut o);
+            let mut t = f64s.clone();
+            t.sort_by(f64::total_cmp);
+            assert_eq!(o, pod::bytes(&[t[r1], t[r2]]), "f64 n {n}");
+            let bits: Vec<u8> = (0..n.div_ceil(8)).map(|_| lcg(&mut s) as u8).collect();
+            let mut o = [0u8; 2];
+            middle(qlean_run_c, &Ksrc { kind: SK_BIT, p: &bits, c: None, n }, &mut o);
+            let mut b: Vec<u8> = (0..n).map(|i| bits[i >> 3] >> (i & 7) & 1).collect();
+            b.sort();
+            assert_eq!(o, [b[r1], b[r2]], "bit n {n}");
+        }
     }
 }
