@@ -416,24 +416,116 @@ pub fn gather_enc_idx(run: Runner, w: usize, fill: u64, c: &Coc, ic: &Coc, count
 pub fn gather_bits(run: Runner, n: usize, bits: &[u8], idx: &[i64], out: &mut [u8]) { unimplemented!("A37: gather_bits_run") }
 
 // ---- A38: structural.c:1278-1608 ----
-/// structural.c:1278 `expand_run` and its entry: `src[i]` repeated `wv[i]` times.
-pub fn expand(run: Runner, w: usize, fill: u64, src: &[u8], wv: &[i64], out: &mut [u8]) { unimplemented!("A38: expand_run") }
-/// structural.c:1412 `qlean_structural_rows_of` past the unboxing: the set rows of a bitmap; answers the count.
-pub fn rows_of(b: &[u8], out: &mut [i64]) -> usize { unimplemented!("A38: qlean_structural_rows_of") }
-/// structural.c:1430 `qlean_structural_gather_syms`: the gathered column's blob length.
-pub fn gather_syms_len(s: &Syms, idx: &[i64]) -> usize { unimplemented!("A38: qlean_structural_gather_syms") }
-/// structural.c:1430: the gathered blob and its `idx.len() + 1` starts (unboxed).
-pub fn gather_syms(s: &Syms, idx: &[i64], blob: &mut [u8], offs: &mut [usize]) { unimplemented!("A38: qlean_structural_gather_syms") }
-/// structural.c:1477 `gather_ids_run`: ids at `w` gathered to `wout` bits.
+// One width of `expand`: `fill` is the C's `(T)fill`, its low `W` bytes (zero-extended past 8).
+fn expand_w<const W: usize>(run: Runner, fill: u64, src: &[u8], at: &[usize], out: &mut [u8]) {
+    let (k, m, ns) = (at.len() - 1, at[at.len() - 1], src.len() / W);
+    let (mut f, fb) = ([0u8; W], fill.to_le_bytes());
+    f[..W.min(8)].copy_from_slice(&fb[..W.min(8)]);
+    // each slice bisects the prefix sums for the run its `lo` falls in, then walks forward: threaded over the answer
+    crate::c::run_map(run, out, m, W, crate::QLEAN_COST_COPY, W, &|lo, hi, o: &mut [u8]| {
+        let (mut g, mut gh) = (0, k);
+        while g + 1 < gh { let mid = (g + gh) / 2; if at[mid] <= lo { g = mid } else { gh = mid } }
+        let mut i = lo;
+        while i < hi {
+            while at[g + 1] <= i { g += 1 }
+            let end = at[g + 1].min(hi);
+            let v: [u8; W] = if g < ns { src[g * W..g * W + W].try_into().unwrap() } else { f };
+            o[(i - lo) * W..(end - lo) * W].chunks_exact_mut(W).for_each(|c| c.copy_from_slice(&v));
+            i = end;
+        }
+    });
+}
+/// structural.c:1278 `expand_run` and its entry: `src[i]` repeated `wv[i]` times (a negative count is none),
+/// `fill` for a run past the end of `src`; `out` is the `Σ max(wv[i], 0)` elements of `w` bytes.
+pub fn expand(run: Runner, w: usize, fill: u64, src: &[u8], wv: &[i64], out: &mut [u8]) {
+    let at: alloc::vec::Vec<usize> =
+        core::iter::once(0).chain(wv.iter().scan(0usize, |t, &c| { *t += c.max(0) as usize; Some(*t) })).collect();
+    assert_eq!(out.len(), at[wv.len()] * w, "expand: {} output bytes for {} elements of {w} bytes", out.len(), at[wv.len()]);
+    if at[wv.len()] == 0 { return }
+    match w {
+        1 => expand_w::<1>(run, fill, src, &at, out),
+        2 => expand_w::<2>(run, fill, src, &at, out),
+        4 => expand_w::<4>(run, fill, src, &at, out),
+        8 => expand_w::<8>(run, fill, src, &at, out),
+        16 => expand_w::<16>(run, fill, src, &at, out),
+        _ => panic!("qlean structural: expand got element width {w}; the kernels are instantiated at 1, 2, 4, 8 and 16 bytes"),
+    }
+}
+/// structural.c:1363 `qlean_structural_rows_of` past the unboxing: each little-endian `i64` of `b` as the boxed
+/// word `lean_box` makes of it, into `out` (C passes `lean_array_cptr`); answers the count.
+pub fn rows_of(b: &[u8], out: &mut [i64]) -> usize {
+    let n = b.len() / 8;
+    for (i, (c, o)) in b.chunks_exact(8).zip(out.iter_mut()).enumerate() {
+        let u = u64::from_le_bytes(c.try_into().unwrap());
+        if u >> 62 != 0 {
+            panic!("qlean_structural_rows_of: row {i} is {u}, which no column is long enough to hold and no boxed natural can carry")
+        }
+        *o = (u << 1 | 1) as i64;
+    }
+    n
+}
+// A row past `s` (an unsigned compare: negative and `0N` too) is the empty symbol.
+fn gathered<'a>(s: &Syms<'a>, u: i64) -> &'a [u8] { if (u as u64) < s.count() as u64 { s.at(u as usize) } else { &[] } }
+/// structural.c:1381 `qlean_structural_gather_syms`: the gathered column's blob length, one NUL a symbol.
+pub fn gather_syms_len(s: &Syms, idx: &[i64]) -> usize { idx.iter().map(|&u| gathered(s, u).len() + 1).sum() }
+/// structural.c:1381: the gathered blob and its `idx.len() + 1` starts, written boxed as C's `lean_array_cptr` holds them.
+pub fn gather_syms(s: &Syms, idx: &[i64], blob: &mut [u8], offs: &mut [usize]) {
+    let (mut at, boxed) = (0, |at: usize| at << 1 | 1);
+    offs[0] = boxed(0);
+    for (j, &u) in idx.iter().enumerate() {
+        let t = gathered(s, u);
+        blob[at..at + t.len()].copy_from_slice(t);
+        at += t.len();
+        blob[at] = 0;
+        at += 1;
+        offs[j + 1] = boxed(at);
+    }
+}
+// One id gathered: a miss (an unsigned compare folds past-the-end, negative and `0N`) is `fill`.
+fn gathered_id(src: &[u8], w: u32, n: usize, fill: u64, u: i64) -> u64 {
+    if (u as u64) < n as u64 { crate::ids::id_at(src, w, u as usize) as u64 } else { fill }
+}
+/// structural.c:1428 `gather_ids_run` and its entry: ids at `w` gathered to `wout` bits; `n` is the source count
+/// (already cut to what `src` holds). Sliced on whole bytes of the answer, `slice_elems` elements to a unit.
 pub fn gather_ids(run: Runner, w: u32, wout: u32, fill: u64, src: &[u8], n: usize, idx: &[i64], out: &mut [u8]) {
-    unimplemented!("A38: gather_ids_run")
+    let (g, m) = (crate::ids::slice_elems(wout), idx.len());
+    crate::c::run_map(run, out, m.div_ceil(g), crate::ids::ids_bytes(g, wout), crate::QLEAN_COST_GATHER, g * 9,
+                      &|lo, hi, o: &mut [u8]| {
+        let (lo, hi) = (lo * g, (hi * g).min(m));
+        for j in lo..hi { crate::ids::id_put(o, wout, j - lo, gathered_id(src, w, n, fill, idx[j])) }
+    });
 }
-/// structural.c:1514 `gather_ids_foR_run`: encoded indices.
+/// structural.c:1465 `gather_ids_foR_run`: encoded indices, `ic.meta.n` of them (`count`, cut to the grid).
 pub fn gather_ids_enc(run: Runner, w: u32, wout: u32, fill: u64, src: &[u8], n: usize, ic: &Coc, count: usize, out: &mut [u8]) {
-    unimplemented!("A38: gather_ids_foR_run")
+    let (g, m) = (crate::ids::slice_elems(wout), ic.meta.n);
+    crate::c::run_map(run, out, m.div_ceil(g), crate::ids::ids_bytes(g, wout), crate::QLEAN_COST_GATHER, g * 9,
+                      &|lo8, hi8, o: &mut [u8]| {
+        // a slice starts on a whole byte of the answer and each block of the index on a multiple of `BLK`
+        let (lo, hi) = (lo8 * g, (hi8 * g).min(m));
+        let mut v = [0i64; crate::BLK];
+        let mut at = lo;
+        while at < hi {
+            let blo = at / crate::BLK * crate::BLK;
+            let end = (blo + crate::BLK).min(hi);
+            ic.decode_blk(at / crate::BLK, end - blo, &mut v);
+            for j in at..end { crate::ids::id_put(o, wout, j - lo, gathered_id(src, w, n, fill, v[j - blo])) }
+            at = end;
+        }
+    });
 }
-/// structural.c:1586 `qlean_structural_cycle_ids`
-pub fn cycle_ids(n: usize, off: usize, m: usize, w: u32, ids: &[u8], out: &mut [u8]) { unimplemented!("A38: qlean_structural_cycle_ids") }
+/// structural.c:1537 `qlean_structural_cycle_ids`: `m` fields of `ids` from `off`, cycling over `n`; `out` arrives zeroed.
+pub fn cycle_ids(n: usize, off: usize, m: usize, w: u32, ids: &[u8], out: &mut [u8]) {
+    // a payload shorter than the count claims leaves no lap to take, and the loop below would not end at `n = 0`
+    if off >= n { return }
+    let (mut done, mut si, w) = (0, off, w as usize);
+    while done < m {
+        let take = (n - si).min(m - done);
+        crate::ids::bitcopy(out, done * w, ids, si * w, take * w);
+        done += take;
+        si += take;
+        if si == n { si = 0 }
+    }
+}
 
 // ---- A39: structural.c:1792-2008 ----
 /// An enumerated element as an id: `0Nj` is `nullid`, a negative index reads `0`, any other is itself (`enum_ids`
@@ -970,4 +1062,40 @@ mod a35_tests {
             cover(cnt, false, |g| cat_walk(&start, i0, cnt, g), |a| Some(which(i0 + a)));
         }
     }
+}
+
+#[cfg(test)]
+mod a38_tests {
+    use super::*;
+    use crate::c::qlean_run_c;
+    #[test] fn expand_repeats_skips_negative_and_fills_past_the_source() {
+        // runs 2, -1, 0, 3 over two 2-byte elements: run 3 has no element, so it takes `fill`
+        let mut out = [0u8; 10];
+        expand(qlean_run_c, 2, 0x0807, &[1, 2, 3, 4], &[2, -1, 0, 3], &mut out);
+        assert_eq!(out, [1, 2, 1, 2, 7, 8, 7, 8, 7, 8]);
+        expand(qlean_run_c, 1, 0x1ff, &[9], &[0, -3], &mut []);
+    }
+    #[test] fn gather_ids_misses_take_fill_and_are_cut_to_wout() {
+        let mut out = [0u8; 3];
+        // four 2-bit ids 0 1 2 3; 4, -1 and `0N` are misses, `fill` 9 at 4 bits
+        gather_ids(qlean_run_c, 2, 4, 9, &[0b1110_0100], 4, &[3, -1, 0, 4, i64::MIN], &mut out);
+        assert_eq!(out, [0x93, 0x90, 0x09]);
+    }
+    #[test] fn cycle_ids_takes_the_run_to_the_end_then_laps() {
+        let mut out = [0u8; 2];
+        cycle_ids(3, 1, 5, 2, &[0b00_10_01_00], &mut out); // ids 0 1 2 from 1: 1 2 0 1 2
+        assert_eq!(out, [0x49, 0x02]);
+    }
+    #[test] fn rows_of_boxes_and_gather_syms_writes_boxed_starts() {
+        let mut o = [0i64; 2];
+        assert_eq!(rows_of(&[5, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], &mut o), 2);
+        assert_eq!(o, [11, 1]);
+        let s = Syms { blob: b"ab\0c\0", offs: &[1, 7, 11] };
+        let (mut blob, mut offs) = ([0u8; 6], [0usize; 4]);
+        assert_eq!(gather_syms_len(&s, &[1, 5, 0]), 6);
+        gather_syms(&s, &[1, 5, 0], &mut blob, &mut offs); // "c", a miss, "ab"
+        assert_eq!((blob, offs), (*b"c\0\0ab\0", [1, 5, 7, 13]));
+    }
+    #[test] #[should_panic(expected = "qlean_structural_rows_of: row 0 is 4611686018427387904")]
+    fn rows_of_refuses_a_row_no_boxed_natural_carries() { rows_of(&(1u64 << 62).to_le_bytes(), &mut [0]); }
 }
