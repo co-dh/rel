@@ -1885,6 +1885,42 @@ pub unsafe extern "C" fn qrs_scatter(wb: usize, dst: *mut u8, nd: usize, idx: *c
     let ns = soff + if bcast != 0 { 1 } else { n };
     unsafe { structural::scatter(wb, sl_mut(dst, wb * nd), sl(idx, n), sl(src, wb * ns), soff, bcast != 0) as c_int }
 }
+/// K21: structural.c `til_fill`, the encoder's block producer for `til`: `buf[j] = i0 + j`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn qrs_til_fill(buf: *mut i64, i0: usize, cnt: usize, _ctx: *const c_void) { unsafe { structural::til_fill(sl_mut(buf, cnt), i0) } }
+/// K21: structural.c `qlean_structural_string_digits`' count pass over `n` integers of `w` (2, 4 or 8) bytes; `at` has
+/// `ceil(n / 4096) + 1` words, the first of which answer where each block's spellings start and the last the blob's length, returned.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn qrs_str_count(w: usize, src: *const u8, n: usize, at: *mut usize) -> usize {
+    unsafe { structural::str_count(c::pool(), w, sl(src, n * w), n, sl_mut(at, n.div_ceil(structural::STR_BLK) + 1)) }
+}
+/// K21: the write pass: `blob` is the `at[ceil(n / 4096)]` bytes `qrs_str_count` counted, `offs` `n + 1` boxed offsets.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn qrs_str_write(w: usize, src: *const u8, n: usize, at: *const usize, blob: *mut u8, offs: *mut usize) {
+    unsafe {
+        let at = sl(at, n.div_ceil(structural::STR_BLK) + 1);
+        structural::str_write(c::pool(), w, sl(src, n * w), n, at, sl_mut(blob, at[at.len() - 1]), sl_mut(offs, n + 1))
+    }
+}
+/// K21: structural.c `qlean_structural_mmu`'s products: `a` the `n` rows of `m` doubles, `b` the `m` rows of `p`, `out` room for
+/// `ceil(n / 4) * 4` rows of `p`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn qrs_mmu(a: *const *const u8, n: usize, b: *const *const u8, m: usize, p: usize, out: *mut f64) {
+    unsafe {
+        let rows = |r: *const *const u8, k: usize, len: usize| sl(r, k).iter().map(|&x| sl(x.cast::<f64>(), len)).collect::<alloc::vec::Vec<_>>();
+        structural::mmu(&rows(a, n, m), &rows(b, m, p), p, sl_mut(out, n.div_ceil(4) * 4 * p))
+    }
+}
+/// K21: structural.c `qlean_structural_transpose`'s copy: `cols` the `k` columns of `n` cells of `w` bytes, `out` `n * k * w` bytes.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn qrs_transpose(w: usize, n: usize, cols: *const *const u8, k: usize, out: *mut u8) {
+    unsafe { structural::transpose(w, n, &sl(cols, k).iter().map(|&c| sl(c, n * w)).collect::<alloc::vec::Vec<_>>(), sl_mut(out, n * k * w)) }
+}
+/// K21: structural.c `qlean_structural_untranspose`'s copy: `src` the `n` rows of `k` cells of `w` bytes into `out`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn qrs_untranspose(w: usize, n: usize, k: usize, src: *const u8, out: *mut u8) {
+    unsafe { structural::untranspose(w, n, k, sl(src, n * k * w), sl_mut(out, n * k * w)) }
+}
 /// A43: elementwise.c `ew_val_run`.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn qrs_ew_val(run: unsafe extern "C" fn(), op: u8, cls: u8, shape: u8, nul: i64, a: *const u8,

@@ -107,6 +107,33 @@ fn map_at<F: Fn(usize, usize, &mut [u8]) + Sync>(run: Runner, out: &mut [u8], un
     unsafe { run(slice::<F>, units, cost, wide, &p) }
 }
 
+/// `run_map_at` with a second output `b` of equally spaced units (`unit` bytes, the last may be short): slice `[lo, hi)`
+/// is `f(lo, hi, &mut a[at(lo) .. at(hi)], &mut b[lo * unit ..])`, `b` ending at `hi * unit`. For a pass that writes a
+/// variable-length blob and a per-element table side by side. Panics unless `at` is non-decreasing over `0 ..= units`
+/// and every unit of both starts inside its output, which is what makes the `&mut` slices disjoint.
+pub fn run_map2<F: Fn(usize, usize, &mut [u8], &mut [u8]) + Sync>(run: Runner, a: &mut [u8], at: &(dyn Fn(usize) -> usize + Sync),
+                                                                  b: &mut [u8], unit: usize, units: usize, cost: u32, wide: usize,
+                                                                  f: &F) -> u32 {
+    assert!((0..units).all(|k| at(k) <= at(k + 1)) && (units == 0 || at(units - 1) <= a.len()),
+            "run_map2: {units} units do not start in ascending order inside a {}-byte output", a.len());
+    assert!(units == 0 || (units - 1).checked_mul(unit).is_some_and(|s| s <= b.len()),
+            "run_map2: {units} units of {unit} bytes do not start inside a {}-byte output", b.len());
+    struct Job2<'f, F> { f: &'f F, a: *mut u8, at: &'f (dyn Fn(usize) -> usize + Sync), la: usize, b: *mut u8, unit: usize, lb: usize }
+    /// Safety: `p.a` is a live `Job2<F>` and `[lo, hi)` is a slice of `[0, n)` no other worker is given.
+    unsafe extern "C" fn slice2<F: Fn(usize, usize, &mut [u8], &mut [u8]) + Sync>(lo: usize, hi: usize, p: *const CPass) {
+        let j = unsafe { &*(*p).a.cast::<Job2<F>>() };
+        let (ae, be) = ((j.at)(hi).min(j.la), (hi * j.unit).min(j.lb));
+        let (as_, bs) = ((j.at)(lo).min(ae), (lo * j.unit).min(be));
+        let (oa, ob) = unsafe { (core::slice::from_raw_parts_mut(j.a.add(as_), ae - as_), core::slice::from_raw_parts_mut(j.b.add(bs), be - bs)) };
+        (j.f)(lo, hi, oa, ob)
+    }
+    let job = Job2 { f, a: a.as_mut_ptr(), at, la: a.len(), b: b.as_mut_ptr(), unit, lb: b.len() };
+    let p = CPass { a: (&raw const job).cast(), b: null(), c: null(), o: core::ptr::null_mut(), n: units, at: 0,
+                    r#priv: 0, nul: 0, op: 0, cls: 0, shape: 0 };
+    // the slices partition [0, units), so the `&mut` each worker makes are disjoint in `a` (ascending `at`) and in `b`
+    unsafe { run(slice2::<F>, units, cost, wide, &p) }
+}
+
 /// `run_map` whose slices each answer one `T` (a private histogram, a partial fold): `(parts, answers)` with the
 /// answers `(lo, t)` in slice order. C's `qlean_me` row index is not visible from Rust, so a slice is named by its
 /// `lo`, which no other slice shares; a slice `qlean_run` leaves empty gives none.

@@ -1122,6 +1122,208 @@ pub fn symtab_build(t: &mut Symtab, v: &Symview, d: usize) -> bool {
 }
 
 
+// ---- K21: structural.c `til_fill`, `str_*`, `mmu_block`, `transpose_cells`, `transpose_rows` ----
+/// `til_fill`: the `cnt = buf.len()` elements of `til` from `i0`, the block the encoder asks for.
+pub fn til_fill(buf: &mut [i64], i0: usize) { for (j, b) in buf.iter_mut().enumerate() { *b = (i0 + j) as i64 } }
+
+/// `STR_BLK`: the unit of both passes of `string`, so the prefix sum between them is over `n / STR_BLK` numbers.
+pub(crate) const STR_BLK: usize = 4096;
+const STR_PAIR: &[u8; 200] = b"0001020304050607080910111213141516171819202122232425262728293031323334353637383940414243444546474849\
+5051525354555657585960616263646566676869707172737475767778798081828384858687888990919293949596979899";
+const STR_POW10: [u64; 20] = [1, 10, 100, 1000, 10000, 100000, 1000000, 10000000, 100000000, 1000000000, 10000000000, 100000000000,
+    1000000000000, 10000000000000, 100000000000000, 1000000000000000, 10000000000000000, 100000000000000000, 1000000000000000000,
+    10000000000000000000];
+/// `str_len`: digits in `m`, at least one. `77/256` is `log10(2)` from below, so the estimate is right or one short and
+/// the one table compare corrects it; `m | 1` gives zero a digit of its own.
+#[inline(always)]
+fn str_len(m: u64) -> usize {
+    let t = ((63 - (m | 1).leading_zeros() as usize) * 77) >> 8;
+    t + (m >= STR_POW10[t + 1]) as usize + 1
+}
+/// `str_one`: the decimal spelling of `v` at the start of `out`, two digits a division, written where they land; answers
+/// its length.
+#[inline(always)]
+fn str_one(out: &mut [u8], v: i64) -> usize {
+    let mut m = v.unsigned_abs();
+    let (neg, len) = ((v < 0) as usize, str_len(m));
+    let out = &mut out[..neg + len];
+    if neg == 1 { out[0] = b'-' }
+    let mut e = out.len();
+    while m >= 100 {
+        let d = (m % 100) as usize;
+        m /= 100;
+        e -= 2;
+        out[e..e + 2].copy_from_slice(&STR_PAIR[2 * d..2 * d + 2]);
+    }
+    if m >= 10 { out[e - 2..e].copy_from_slice(&STR_PAIR[2 * m as usize..2 * m as usize + 2]) } else { out[e - 1] = b'0' + m as u8 }
+    neg + len
+}
+/// The elements of block `b` of `n`: `STR_BLK` of them, the last block the rest.
+fn str_blk(n: usize, b: usize) -> core::ops::Range<usize> { b * STR_BLK..((b + 1) * STR_BLK).min(n) }
+/// `str_count_run` for one width: the bytes each block spells, a null (`null`, that width's minimum) nothing.
+fn str_count_w<T: pod::Pod + Into<i64> + Sync>(run: Runner, src: &[u8], n: usize, at: &mut [usize], null: i64) {
+    let q = &pod::cast::<T>(src).expect("string digits: a misaligned column")[..n];
+    let w = size_of::<T>();
+    let nb = n.div_ceil(STR_BLK);
+    crate::c::run_map(run, pod::bytes_mut(&mut at[..nb]), nb, 8, crate::QLEAN_COST_ARITH * STR_BLK as u32, w + 8, &|lo, hi, o: &mut [u8]| {
+        let o = pod::cast_mut::<usize>(o).expect("string digits: a misaligned block table");
+        for (b, o) in (lo..hi).zip(o) {
+            *o = q[str_blk(n, b)].iter().map(|&x| { let v: i64 = x.into(); if v == null { 0 } else { (v < 0) as usize + str_len(v.unsigned_abs()) } }).sum();
+        }
+    });
+}
+/// The `stringDigits` count pass: turns `at[..nb]`, `nb = ceil(n / STR_BLK)`, into where block `b`'s spellings start in
+/// the blob, `at[nb]` the blob's length, which it answers. `w` is 2, 4 or 8, the width of the integers in `src`.
+pub fn str_count(run: Runner, w: usize, src: &[u8], n: usize, at: &mut [usize]) -> usize {
+    match w {
+        2 => str_count_w::<i16>(run, src, n, at, i16::MIN as i64),
+        4 => str_count_w::<i32>(run, src, n, at, i32::MIN as i64),
+        8 => str_count_w::<i64>(run, src, n, at, i64::MIN),
+        _ => panic!("qlean structural: string digits got width {w}; it takes 2, 4 or 8"),
+    }
+    let mut total = 0;
+    for b in at[..n.div_ceil(STR_BLK)].iter_mut() { let t = *b; *b = total; total += t }
+    at[n.div_ceil(STR_BLK)] = total;
+    total
+}
+/// `str_write_run` for one width: the spellings into `blob` and, for every element, where it ends (`lean_box` of the
+/// offset, a tagged scalar) into `offs[1..]`; `offs[0]` is the box of 0.
+fn str_write_w<T: pod::Pod + Into<i64> + Sync>(run: Runner, src: &[u8], n: usize, at: &[usize], blob: &mut [u8], offs: &mut [usize], null: i64) {
+    let q = &pod::cast::<T>(src).expect("string digits: a misaligned column")[..n];
+    let nb = n.div_ceil(STR_BLK);
+    offs[0] = 1;
+    crate::c::run_map2(run, blob, &|k| at[k], pod::bytes_mut(&mut offs[1..=n]), STR_BLK * 8, nb, crate::QLEAN_COST_ARITH * STR_BLK as u32,
+                       size_of::<T>() + 8, &|lo, hi, o: &mut [u8], ob: &mut [u8]| {
+        let mut ob = pod::cast_mut::<usize>(ob).expect("string digits: a misaligned offsets array").iter_mut();
+        let mut here = at[lo];
+        for &x in &q[lo * STR_BLK..(hi * STR_BLK).min(n)] {
+            let v: i64 = x.into();
+            if v != null { here += str_one(&mut o[here - at[lo]..], v) }
+            *ob.next().unwrap() = here << 1 | 1;
+        }
+    });
+}
+/// The `stringDigits` write pass over `str_count`'s `at`: `blob` is `at[nb]` bytes, `offs` `n + 1` words.
+pub fn str_write(run: Runner, w: usize, src: &[u8], n: usize, at: &[usize], blob: &mut [u8], offs: &mut [usize]) {
+    match w {
+        2 => str_write_w::<i16>(run, src, n, at, blob, offs, i16::MIN as i64),
+        4 => str_write_w::<i32>(run, src, n, at, blob, offs, i32::MIN as i64),
+        8 => str_write_w::<i64>(run, src, n, at, blob, offs, i64::MIN),
+        _ => panic!("qlean structural: string digits got width {w}; it takes 2, 4 or 8"),
+    }
+}
+
+/// `MMU_ROWS`: rows of the left matrix per pass over the right one; at this width the `j` loop still vectorises (measured:
+/// one row 73us at 100 by 100, two 62, four 40, five 35, six 128 under C's compiler).
+const MMU_ROWS: usize = 4;
+/// `mmu_block`: the product rows of `MMU_ROWS` rows of `a` into `o`, `MMU_ROWS * p` numbers. `j` innermost is what vectorises;
+/// each element still sums `k` ascending, the order the specification fixes, and Rust never fuses `x * b + o`, as q does not.
+fn mmu_block(ra: [&[f64]; MMU_ROWS], rb: &[&[f64]], p: usize, o: &mut [f64]) {
+    o.fill(0.0);
+    let (o0, o) = o.split_at_mut(p);
+    let (o1, o) = o.split_at_mut(p);
+    let (o2, o3) = o.split_at_mut(p);
+    for (k, bk) in rb.iter().enumerate() {
+        let (x0, x1, x2, x3) = (ra[0][k], ra[1][k], ra[2][k], ra[3][k]);
+        for ((((b, a0), a1), a2), a3) in bk[..p].iter().zip(&mut *o0).zip(&mut *o1).zip(&mut *o2).zip(&mut *o3) {
+            *a0 += x0 * b; *a1 += x1 * b; *a2 += x2 * b; *a3 += x3 * b;
+        }
+    }
+}
+/// `qlean_structural_mmu` past the unboxing: `out` holds the `n * p` products of `n` rows `a` of `m` against `m` rows `b` of
+/// `p`, and room for the rows up to a whole block, which the last block writes (reading row 0 of `a` for its unasked-for rows).
+pub fn mmu(a: &[&[f64]], b: &[&[f64]], p: usize, out: &mut [f64]) {
+    let n = a.len();
+    assert!(out.len() >= n.div_ceil(MMU_ROWS) * MMU_ROWS * p, "mmu: {} slots for {n} rows of {p}", out.len());
+    for (i, o) in (0..n).step_by(MMU_ROWS).zip(out.chunks_mut(MMU_ROWS * p.max(1))) {
+        mmu_block(core::array::from_fn(|t| *a.get(i + t).unwrap_or(&a[0])), b, p, &mut o[..MMU_ROWS * p]);
+    }
+}
+
+/// `TRANSPOSE_BLOCK`: bytes of the answer a block of rows may span, inside this machine's L2 with room for the source lines.
+const TRANSPOSE_BLOCK: usize = 128 * 1024;
+/// `transpose_rows`: rows per pass of the blocked transpose, sized in bytes (`stride` a row's) and not in rows.
+fn transpose_rows(stride: usize, n: usize) -> usize { if stride == 0 { n } else { (TRANSPOSE_BLOCK / stride).max(1) } }
+/// `transpose_cells`: cell `i` of a column at stride `ss` into stride `ds`, for the width `W`, so each is one typed move.
+fn cells<const W: usize>(d: &mut [u8], ds: usize, s: &[u8], ss: usize, n: usize) {
+    let (d, s) = (d.as_chunks_mut::<W>().0, s.as_chunks::<W>().0);
+    if n == 0 { return }
+    // exactly one side is strided (a transpose writes at `stride`, its inverse reads at it): the first `n - 1` cells of it
+    // start a whole chunk of `stride / W` cells (`chunks_exact` has no short chunk to test for), the last has no row after it
+    if ss == W {
+        let (rows, last) = d[..(n - 1) * (ds / W) + 1].split_at_mut((n - 1) * (ds / W));
+        for (d, s) in rows.chunks_exact_mut(ds / W).zip(s) { d[0] = *s }
+        last[0] = s[n - 1];
+    } else {
+        let (rows, last) = s[..(n - 1) * (ss / W) + 1].split_at((n - 1) * (ss / W));
+        for (d, s) in d.iter_mut().zip(rows.chunks_exact(ss / W)) { *d = s[0] }
+        d[n - 1] = last[0];
+    }
+}
+/// One column of a transpose in either direction: `n` cells of `w` bytes read at stride `ss` and written at stride `ds`
+/// (both multiples of `w`); the width is switched outside the loop, `memcpy` of a run-time width being a call per cell.
+fn transpose_cells(d: &mut [u8], ds: usize, s: &[u8], ss: usize, w: usize, n: usize) {
+    match w {
+        0 => {}
+        1 => cells::<1>(d, ds, s, ss, n),
+        2 => cells::<2>(d, ds, s, ss, n),
+        4 => cells::<4>(d, ds, s, ss, n),
+        8 => cells::<8>(d, ds, s, ss, n),
+        16 => cells::<16>(d, ds, s, ss, n),
+        _ => for (d, s) in d.chunks_mut(ds).zip(s.chunks(ss)).take(n) { d[..w].copy_from_slice(&s[..w]) },
+    }
+}
+/// One block of `cnt` rows from row `i0`, for `K` columns of `W`-byte cells, in the row-major direction: every cell is a
+/// constant offset into a row, so the copy is an interleave of `K` streams. Strided per-column stores of the same cells
+/// compile to an AVX-512 scatter, which runs at half the speed of the C's scalar loop.
+fn rows_k<const W: usize, const K: usize>(out: &mut [u8], cols: &[&[u8]], i0: usize, cnt: usize) {
+    let cs: [&[[u8; W]]; K] = core::array::from_fn(|j| &cols[j].as_chunks::<W>().0[i0..i0 + cnt]);
+    let o = &mut out.as_chunks_mut::<W>().0.as_chunks_mut::<K>().0[i0..i0 + cnt];
+    for i in 0..cnt { for j in 0..K { o[i][j] = cs[j][i] } }
+}
+/// `rows_k` the other way: `src` rows of `K` cells into `K` columns of `n` cells.
+fn cols_k<const W: usize, const K: usize>(out: &mut [u8], src: &[u8], n: usize, i0: usize, cnt: usize) {
+    let mut it = out.chunks_exact_mut(n * W);
+    let cs: [&mut [[u8; W]]; K] = core::array::from_fn(|_| &mut it.next().expect("transpose: fewer columns than K").as_chunks_mut::<W>().0[i0..i0 + cnt]);
+    let s = &src.as_chunks::<W>().0.as_chunks::<K>().0[i0..i0 + cnt];
+    for i in 0..cnt { for j in 0..K { cs[j][i] = s[i][j] } }
+}
+/// `f::<W, K>` for the widths and column counts that `rows_k` and `cols_k` are instantiated at; false = neither is.
+macro_rules! by_wk {
+    ($w:expr, $k:expr, $f:ident($($a:expr),*)) => { match ($w, $k) {
+        (1, 2) => $f::<1, 2>($($a),*), (2, 2) => $f::<2, 2>($($a),*), (4, 2) => $f::<4, 2>($($a),*), (8, 2) => $f::<8, 2>($($a),*),
+        (1, 3) => $f::<1, 3>($($a),*), (2, 3) => $f::<2, 3>($($a),*), (4, 3) => $f::<4, 3>($($a),*), (8, 3) => $f::<8, 3>($($a),*),
+        (1, 4) => $f::<1, 4>($($a),*), (2, 4) => $f::<2, 4>($($a),*), (4, 4) => $f::<4, 4>($($a),*), (8, 4) => $f::<8, 4>($($a),*),
+        _ => return false,
+    } };
+}
+fn block_rows(w: usize, cols: &[&[u8]], out: &mut [u8], i0: usize, cnt: usize) -> bool { by_wk!(w, cols.len(), rows_k(out, cols, i0, cnt)); true }
+fn block_cols(w: usize, k: usize, src: &[u8], out: &mut [u8], n: usize, i0: usize, cnt: usize) -> bool { by_wk!(w, k, cols_k(out, src, n, i0, cnt)); true }
+/// `qlean_structural_transpose`: `out` the `n` rows of `k = cols.len()` cells of `w` bytes, cell `j` of row `i` being element `i`
+/// of `cols[j]` (each at least `n * w` bytes). A block of rows at a time: a pass down one column touches every cache line of
+/// the answer, a read-modify-write of all of it once per column.
+pub fn transpose(w: usize, n: usize, cols: &[&[u8]], out: &mut [u8]) {
+    let (k, stride) = (cols.len(), cols.len() * w);
+    let rows = transpose_rows(stride, n);
+    for i0 in (0..n).step_by(rows.max(1)) {
+        let cnt = rows.min(n - i0);
+        if !block_rows(w, cols, out, i0, cnt) {
+            for (j, c) in cols.iter().enumerate() { transpose_cells(&mut out[(i0 * k + j) * w..], stride, &c[i0 * w..], w, w, cnt) }
+        }
+    }
+}
+/// `qlean_structural_untranspose`'s copy: `src` the `n` rows of `k` cells of `w` bytes into `out`, the `k` columns end to end.
+pub fn untranspose(w: usize, n: usize, k: usize, src: &[u8], out: &mut [u8]) {
+    let stride = k * w;
+    let rows = transpose_rows(stride, n);
+    for i0 in (0..n).step_by(rows.max(1)) {
+        let cnt = rows.min(n - i0);
+        if !block_cols(w, k, src, out, n, i0, cnt) {
+            for j in 0..k { transpose_cells(&mut out[(j * n + i0) * w..], w, &src[(i0 * k + j) * w..], stride, w, cnt) }
+        }
+    }
+}
+
 #[cfg(test)]
 mod symtab_tests {
     use super::*;
@@ -1677,5 +1879,55 @@ mod k19_tests {
         let mut o8 = [0u8; 4];
         ids_place(&mut o8, 0, 8, 4, 2, &[0b11_10_01_00], Some(&[7, 8, 9, 0]), 3);
         assert_eq!(o8, [7, 8, 9, 0]);
+    }
+}
+
+#[cfg(test)]
+mod k21_tests {
+    use super::*;
+    use crate::c::qlean_run_c;
+    // expected spellings are the C's: a null is empty, INT64_MIN + 1 keeps its sign
+    #[test] fn digits_of_every_width() {
+        let v = [i64::MIN, i64::MIN + 1, -1, 0, 9, 10, 99, 100, i64::MAX];
+        let src: alloc::vec::Vec<u8> = v.iter().flat_map(|x| x.to_le_bytes()).collect();
+        let mut at = [0usize; 2];
+        let total = str_count(qlean_run_c, 8, &src, v.len(), &mut at);
+        let (mut blob, mut offs) = (alloc::vec![0u8; total], [0usize; 10]);
+        str_write(qlean_run_c, 8, &src, v.len(), &at, &mut blob, &mut offs);
+        assert_eq!(core::str::from_utf8(&blob).unwrap(), "-9223372036854775807-10910991009223372036854775807");
+        assert_eq!(offs[0], 1);
+        assert_eq!(offs.iter().map(|o| o >> 1).collect::<alloc::vec::Vec<_>>(), [0, 0, 20, 22, 23, 24, 26, 28, 31, 50]);
+        let src: alloc::vec::Vec<u8> = [i16::MIN, -7, 300].iter().flat_map(|x| x.to_le_bytes()).collect();
+        let mut at = [0usize; 2];
+        let total = str_count(qlean_run_c, 2, &src, 3, &mut at);
+        assert_eq!(total, 5);
+    }
+    #[test] fn mmu_is_the_left_fold_with_slack_rows() {
+        let (a0, a1, a2) = ([1.0, 2.0], [3.0, 4.0], [5.0, 6.0]);
+        let (b0, b1) = ([1.0, 0.0, 2.0], [0.0, 1.0, 3.0]);
+        let mut out = [9.0; 12 * 1];
+        out.fill(9.0);
+        mmu(&[&a0, &a1, &a2], &[&b0, &b1], 3, &mut out);
+        assert_eq!(&out[..9], &[1.0, 2.0, 8.0, 3.0, 4.0, 18.0, 5.0, 6.0, 28.0]);
+    }
+    #[test] fn transpose_and_back() {
+        let (c0, c1) = ([1u8, 2, 3, 4, 5, 6], [7u8, 8, 9, 10, 11, 12]);
+        let mut rows = [0u8; 12];
+        transpose(2, 3, &[&c0, &c1], &mut rows);
+        assert_eq!(rows, [1, 2, 7, 8, 3, 4, 9, 10, 5, 6, 11, 12]);
+        let mut cols = [0u8; 12];
+        untranspose(2, 3, 2, &rows, &mut cols);
+        assert_eq!(cols, [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]);
+        // width 3 takes the run-time path, width 0 and no columns move nothing
+        let mut o3 = [0u8; 6];
+        transpose(3, 1, &[&[1, 2, 3], &[4, 5, 6]], &mut o3);
+        assert_eq!(o3, [1, 2, 3, 4, 5, 6]);
+        transpose(0, 5, &[&[], &[]], &mut []);
+        transpose(4, 5, &[], &mut []);
+    }
+    #[test] fn til_fill_counts_from_the_block_start() {
+        let mut b = [0i64; 3];
+        til_fill(&mut b, 1022);
+        assert_eq!(b, [1022, 1023, 1024]);
     }
 }
