@@ -89,12 +89,13 @@ use alloc::vec;
 use alloc::vec::Vec;
 
 /// `EW_*` codes of elementwise.c:86-100 that this section reads; the two lists cannot change apart.
-mod k {
-    pub(super) const F32: u8 = 4; pub(super) const BITS: u8 = 6; pub(super) const ABS: u8 = 1;
-    pub(super) const ADD: u8 = 0; pub(super) const SUB: u8 = 1; pub(super) const MUL: u8 = 2; pub(super) const DIV: u8 = 3; pub(super) const FILL: u8 = 4;
-    pub(super) const LESSER: u8 = 5; pub(super) const GREATER: u8 = 6; pub(super) const IDIV: u8 = 7; pub(super) const IMOD: u8 = 8; pub(super) const POW: u8 = 9;
-    pub(super) const EQ: u8 = 0; pub(super) const NE: u8 = 1; pub(super) const LT: u8 = 2; pub(super) const LE: u8 = 3; pub(super) const GT: u8 = 4; pub(super) const GE: u8 = 5;
-    pub(super) const VV: u8 = 0; pub(super) const VA: u8 = 1; pub(super) const AV: u8 = 2;
+pub mod k {
+    pub const I32: u8 = 2;
+    pub const F32: u8 = 4; pub const BITS: u8 = 6; pub const ABS: u8 = 1;
+    pub const ADD: u8 = 0; pub const SUB: u8 = 1; pub const MUL: u8 = 2; pub const DIV: u8 = 3; pub const FILL: u8 = 4;
+    pub const LESSER: u8 = 5; pub const GREATER: u8 = 6; pub const IDIV: u8 = 7; pub const IMOD: u8 = 8; pub const POW: u8 = 9;
+    pub const EQ: u8 = 0; pub const NE: u8 = 1; pub const LT: u8 = 2; pub const LE: u8 = 3; pub const GT: u8 = 4; pub const GE: u8 = 5;
+    pub const VV: u8 = 0; pub const VA: u8 = 1; pub const AV: u8 = 2;
 }
 /// elementwise.c:436's `#if`: the mask paths exist only where the build enables the instructions they use.
 const VEC: bool = cfg!(all(target_arch = "x86_64", target_feature = "avx512f", target_feature = "avx512bw"));
@@ -1220,11 +1221,11 @@ pub fn stage_fixed(engine: u32, shape: u32, left: bool) -> bool {
     if left { shape == k::AV as u32 } else { shape == k::VA as u32 }
 }
 /// elementwise.c:2150's engine codes, the `Ew.Engine` constants of QLean/Kernel/Elementwise.lean.
-mod eng {
-    pub(super) const VAL: u32 = 0; pub(super) const CMP: u32 = 1; pub(super) const MON: u32 = 2; pub(super) const WIDEN: u32 = 3;
-    pub(super) const BIT: u32 = 4; pub(super) const FLOOR: u32 = 5; pub(super) const CAST: u32 = 6; pub(super) const DECODE: u32 = 7;
-    pub(super) const ALP: u32 = 8; pub(super) const ENCMETA: u32 = 9; pub(super) const ENCPACK: u32 = 10; pub(super) const TICK: u32 = 11;
-    pub(super) const IDS: u32 = 12; pub(super) const PACK: u32 = 13;
+pub mod eng {
+    pub const VAL: u32 = 0; pub const CMP: u32 = 1; pub const MON: u32 = 2; pub const WIDEN: u32 = 3;
+    pub const BIT: u32 = 4; pub const FLOOR: u32 = 5; pub const CAST: u32 = 6; pub const DECODE: u32 = 7;
+    pub const ALP: u32 = 8; pub const ENCMETA: u32 = 9; pub const ENCPACK: u32 = 10; pub const TICK: u32 = 11;
+    pub const IDS: u32 = 12; pub const PACK: u32 = 13;
 }
 
 // ---- K9: the chain's tile workers over a packed id column (elementwise.c:1288 `ew_ids_run`, :1315 `ew_pack_run`) ----
@@ -1278,6 +1279,115 @@ pub fn pack_stage(cls: u8, w: u32, x: &[u8], n: usize, lo: usize, hi: usize, o: 
         2 => go::<u16>(w, x, n, lo, hi, o),
         4 => go::<u32>(w, x, n, lo, hi, o),
         _ => go::<u64>(w, x, n, lo, hi, o),
+    }
+}
+
+// ---- K10: the statistics fold, a chain's last stage (elementwise.c `ew_stats_run`, `ew_stats_sum`) ----
+/// elementwise.c:1019's `ST_*`: the five phases, each one pass over the column.
+pub mod st { pub const SUMS: u8 = 0; pub const CENTRED: u8 = 1; pub const DOTS: u8 = 2; pub const DOTS32: u8 = 3; pub const SERIAL: u8 = 4; }
+/// A lane's number: `f64` for the double phases, `f32` for `DOTS32`'s real lanes.
+trait Fl: Copy + PartialEq + core::ops::Add<Output = Self> { const Z: Self; }
+impl Fl for f64 { const Z: f64 = 0.0; }
+impl Fl for f32 { const Z: f32 = 0.0; }
+/// elementwise.c:1010 `ew_stats`: the accumulators of one phase. `l` and `lf` are `lanes` wide, row `k` the sum `k`.
+pub struct Stats {
+    pub phase: u8, pub lanes: usize, nt: usize, full: usize, pub cnt: usize, pub bad: usize, pub mx: f64, pub my: f64,
+    tail: [[f64; 8]; 3], l: [[f64; 8]; 3], lf: [[f32; 4]; 3],
+}
+/// elementwise.c `ST_FOLD`: one tile into `L` lanes by position, `m` a multiple of `L`. A term of a dropped pair adds a
+/// zero, so an accumulator is never `-0`. Answers the pairs kept and the null right operands among them.
+#[inline(always)]
+fn fold<const L: usize, const W: usize, T: Fl>(a: &mut [[T; W]; 3], x: &[f64], y: &[f64], m: usize,
+                                              uv: impl Fn(f64, f64) -> (T, T), t: impl Fn(T, T) -> [T; 3]) -> (usize, usize) {
+    let mut acc = [0, 1, 2].map(|k| -> [T; L] { a[k][..L].try_into().unwrap() });
+    let (mut kept, mut ykept) = ([0u32; L], [0u32; L]);
+    for (xc, yc) in x[..m].chunks_exact(L).zip(y[..m].chunks_exact(L)) {
+        for j in 0..L {
+            let (u, v) = uv(xc[j], yc[j]);
+            let (ylive, live) = (v == v, v == v && u == u);
+            let t = t(u, v);
+            for k in 0..3 { acc[k][j] = acc[k][j] + if live { t[k] } else { T::Z } }
+            kept[j] += live as u32;
+            ykept[j] += ylive as u32;
+        }
+    }
+    for k in 0..3 { a[k][..L].copy_from_slice(&acc[k]) }
+    (kept.iter().map(|&c| c as usize).sum(), ykept.iter().map(|&c| c as usize).sum())
+}
+impl Stats {
+    pub fn new() -> Stats { Stats { phase: 0, lanes: 1, nt: 0, full: 0, cnt: 0, bad: 0, mx: 0.0, my: 0.0, tail: [[0.0; 8]; 3], l: [[0.0; 8]; 3], lf: [[0.0; 4]; 3] } }
+    /// elementwise.c `ew_stats_pass`'s set-up: `phase` over a column of `n`, before the chain runs.
+    pub fn begin(&mut self, phase: u8, n: usize) {
+        self.phase = phase;
+        self.lanes = [2, 2, 8, 4, 1][phase as usize];
+        self.nt = 0;
+        self.cnt = 0;
+        self.bad = 0;
+        self.full = n - n % self.lanes;
+        self.l = [[0.0; 8]; 3];
+        self.lf = [[0.0; 4]; 3];
+    }
+    /// elementwise.c `ew_stats_run`: one tile `x`, `y` at element `at` of the column, in order on the calling thread.
+    /// q rounds each product before it adds it, which Rust never contracts into a fused multiply-add.
+    pub fn run(&mut self, x: &[f64], y: &[f64], at: usize) {
+        let n = x.len();
+        let m = if self.phase == st::SERIAL || at >= self.full { 0 } else if at + n <= self.full { n } else { self.full - at };
+        let (mx, my) = (self.mx, self.my);
+        // a null right operand counts in a lane whatever is left of it, and past the lanes under a live one
+        let (mut c, mut bad) = (0, m);
+        // `var x` is `cov[x;x]`: both operands one tile, so every accumulator is the same sum, run once and copied
+        let same = core::ptr::eq(x.as_ptr(), y.as_ptr());
+        let (kept, ykept) = match self.phase {
+            st::SUMS | st::CENTRED if same => {
+                let ph = self.phase;
+                let f = |x: f64| if ph == st::SUMS { (x, x) } else { let u = x - mx; (u, u * u) };
+                let mut a: [f64; 2] = self.l[0][..2].try_into().unwrap();
+                let mut kept = [0u32; 2];
+                for xc in x[..m].chunks_exact(2) {
+                    for j in 0..2 { let (u, t0) = f(xc[j]); a[j] += if u == u { t0 } else { 0.0 }; kept[j] += (u == u) as u32 }
+                }
+                for k in 0..2 { self.l[k][..2].copy_from_slice(&a) }
+                if self.phase == st::CENTRED { self.l[2][..2].copy_from_slice(&a) }
+                let k = (kept[0] + kept[1]) as usize;
+                (k, k)
+            }
+            st::SUMS => fold::<2, 8, f64>(&mut self.l, x, y, m, |u, v| (u, v), |u, v| [u, v, 0.0]),
+            st::CENTRED => fold::<2, 8, f64>(&mut self.l, x, y, m, |u, v| (u - mx, v - my), |u, v| [u * v, u * u, v * v]),
+            st::DOTS => fold::<8, 8, f64>(&mut self.l, x, y, m, |u, v| (u, v), |u, v| [u * v, u, 0.0]),
+            st::DOTS32 => fold::<4, 4, f32>(&mut self.lf, x, y, m, |u, v| (u as f32, v as f32), |u, v| [u * v, u, 0.0]),
+            _ => (0, 0),
+        };
+        c += kept;
+        bad -= ykept;
+        // past the last full group: held back for the fold's end, or, with one lane, the fold itself
+        let (mut a0, mut a1) = (self.l[0][0], self.l[1][0]);
+        for i in m..n {
+            let (mut u, mut v) = (x[i], y[i]);
+            if self.phase == st::DOTS32 { u = u as f32 as f64; v = v as f32 as f64 }
+            if self.phase == st::CENTRED { u -= mx; v -= my }
+            bad += (u == u && v != v) as usize;
+            if u != u || v != v { continue }
+            c += 1;
+            let t = match self.phase {
+                st::SUMS => [u, v, 0.0],
+                st::CENTRED => [u * v, u * u, v * v],
+                st::DOTS32 => [(u as f32 * v as f32) as f64, u, 0.0],
+                _ => [u * v, u, 0.0],
+            };
+            if self.phase == st::SERIAL { a0 += t[0]; a1 += t[1]; continue }
+            for k in 0..3 { self.tail[k][self.nt] = t[k] }
+            self.nt += 1;
+        }
+        if self.phase == st::SERIAL { self.l[0][0] = a0; self.l[1][0] = a1 }
+        self.cnt += c;
+        self.bad += bad;
+    }
+    /// elementwise.c `ew_stats_sum`: sum `k` of the phase just run, the lanes in order and then the tail, which is q's order.
+    pub fn sum(&self, k: usize) -> f64 {
+        let mut r = 0.0;
+        for j in 0..self.lanes { r += if self.phase == st::DOTS32 { self.lf[k][j] as f64 } else { self.l[k][j] } }
+        for t in 0..self.nt { r += self.tail[k][t] }
+        r
     }
 }
 
