@@ -6,7 +6,10 @@
 //! An encoder source (`coc_fill`, `coc_hint`, `coc_ints`, coc.h:2001-2018) is a Rust fn here over views; its C
 //! callback keeps a one-line body that unpacks its `ctx` and calls the `qrs_*` shim.
 
-use crate::alp::Cocf;
+use alloc::vec::Vec;
+use core::sync::atomic::{AtomicU8, AtomicUsize, Ordering::{Relaxed, SeqCst}};
+use crate::alp::{Cocf, Flt};
+use crate::enc::{EncMeta, EncPack};
 use crate::c::Runner;
 use crate::coc::Coc;
 use crate::sym::{sym_eq, sym_hash, Syms};
@@ -503,6 +506,173 @@ pub fn put_res(p: &mut [u8], w: u8, lo: usize, v: &[i64], base: u64) {
             for (o, &x) in p[lo * k..].chunks_exact_mut(k).zip(v) { o.copy_from_slice(&(x as u64).wrapping_sub(base).to_le_bytes()[..k]) }
         }
         _ => for (j, &x) in v.iter().enumerate() { crate::res::res_put(p, w, lo + j, (x as u64).wrapping_sub(base)) },
+    }
+}
+
+// ---- K23: structural.c `fsc_*`, `fsx_check`: scatter into an encoded column ----
+/// `scatterFoR` and `scatterALP`, one engine for both encodings, because the block is what they share: a block no index
+/// lands in keeps its metadata entries, residual bytes, exponent and exceptions as they are (`move_meta`, `move_pack`); a
+/// block some index lands in is decoded, written and handed to the writer's block steps for its encoding. The kept
+/// entries are only kept when the block sums were taken the way the writer takes them (`coc_sumnul`, `sumn`), and a
+/// Frame of Reference patch list at another element width is not copied; either one re-encodes every block instead.
+pub struct Scatter<'a> {
+    old: Cocf<'a>, alp: bool, w: usize, keep: bool, ix: &'a [u64], vals: &'a [u8],
+    /// block `b`'s writes are `ix[at[b] .. at[b + 1]]`; written once each by the slice that holds the first index of `b`
+    at: Vec<AtomicUsize>,
+    /// ALP: pass 1 kept the old exponent and patched the block, so pass 2 takes the same road
+    patched: Vec<AtomicU8>,
+}
+fn die(args: core::fmt::Arguments) -> ! {
+    crate::os::eprint(args).expect("qlean: stderr");
+    crate::os::exit(1)
+}
+/// structural.c `fsx_check`: the checks and block cursors in one pass off the pool. The first offending position is the
+/// least one any slice saw, which is the one a serial loop reports, and since `ix` ascends, the blocks from just past
+/// `ix[k - 1]`'s up to `ix[k]`'s are exactly those whose first index is `k`, so each cursor is written once, by the slice
+/// holding that `k`, and no count is taken. `Err(k)` = `ix[k]` is not ascending, distinct and below `n`.
+fn cursors(run: Runner, ix: &[u64], n: usize, nblk: usize) -> Result<Vec<AtomicUsize>, usize> {
+    let m = ix.len();
+    let at: Vec<AtomicUsize> = (0..n.div_ceil(BLK).max(nblk) + 1).map(|_| AtomicUsize::new(0)).collect();
+    let bad = AtomicUsize::new(m);
+    crate::c::run_map(run, &mut [], m, 0, crate::QLEAN_COST_COPY, 16, &|lo, hi, _: &mut [u8]| {
+        for k in lo..hi {
+            if ix[k] >= n as u64 || (k > 0 && ix[k] <= ix[k - 1]) { bad.fetch_min(k, SeqCst); return }
+            for b in (if k > 0 { ix[k - 1] / BLK as u64 + 1 } else { 0 })..=ix[k] / BLK as u64 { at[b as usize].store(k, Relaxed) }
+        }
+    });
+    let bad = bad.into_inner();
+    if bad < m { return Err(bad) }
+    for b in (if m > 0 { ix[m - 1] as usize / BLK + 1 } else { 0 })..=nblk { at[b].store(m, Relaxed) }
+    Ok(at)
+}
+/// Block `b`'s writes into a decoded block: `W`-byte values at the positions `ix` names.
+fn put_vals<const W: usize>(out: &mut [u8], b: usize, ix: &[u64], vals: &[u8]) {
+    let (o, v) = (out.as_chunks_mut::<W>().0, vals.as_chunks::<W>().0);
+    for (&i, &x) in ix.iter().zip(v) { o[i as usize - b * BLK] = x }
+}
+impl<'a> Scatter<'a> {
+    /// structural.c `fsc_scatter`'s views and refusals: metadata `m`, pack `pk`, the ALP part `a` for an ALP column, `n`
+    /// elements of `w` bytes, the ascending distinct indices `ix` (`amendCompact`'s `u`) and their `w`-byte `vals`.
+    /// A refusal names itself and exits, as the C did.
+    pub fn new(run: Runner, w: usize, m: &'a [u8], pk: &'a [u8], a: Option<&'a [u8]>, n: usize, ix: &'a [u8], vals: &'a [u8]) -> Self {
+        let alp = a.is_some();
+        let old = match a {
+            Some(a) => {
+                let mut f = Cocf::meta_view(m, a, n).expect("qlean scatter: the ALP sections are misaligned or short");
+                f.c.pack = pk;
+                f
+            }
+            None => {
+                let meta = crate::coc::Meta::new(m, n).expect("qlean scatter: the metadata is misaligned or short");
+                plain(&Coc::attach(meta, pk).unwrap_or_else(|| die(format_args!(
+                    "qlean: a Frame of Reference pack of {} bytes whose residuals end at {} holds no patch list of {} blocks after them\n",
+                    pk.len(), meta.res_end(), meta.mblk))))
+            }
+        };
+        if if alp { (w != 4 && w != 8) || (w == 4) != old.f32 } else { w != 2 && w != 4 && w != 8 } {
+            die(format_args!("qlean scatter{}: element width {w} is not one this encoding holds\n", if alp { "ALP" } else { "FoR" }))
+        }
+        let ix = pod::cast::<u64>(&ix[..ix.len() / 8 * 8]).expect("qlean scatter: the index vector is misaligned");
+        let nw = ix.len();
+        if vals.len() < nw * w { die(format_args!("qlean scatter: {nw} values of {w} bytes asked of {} bytes\n", vals.len())) }
+        let at = cursors(run, ix, n, old.c.meta.nblk).unwrap_or_else(|k| die(format_args!(
+            "qlean scatter: index {} at {k} is not ascending, distinct and below {n}\n", ix[k])));
+        let c = &old.c;
+        let keep = c.meta.sumnul == crate::enc::coc_sumnul(w, alp) && c.meta.sumn == n as u64 && c.exc.is_none_or(|e| e.pos.is_empty() || e.esz == w);
+        let patched = (0..if alp { c.meta.nblk } else { 0 }).map(|_| AtomicU8::new(0)).collect();
+        Scatter { old, alp, w, keep, ix, vals, at, patched }
+    }
+    /// A block no index lands in, whose old entries are the new ones.
+    pub fn kept(&self, b: usize) -> bool { self.keep && self.span(b).is_empty() }
+    fn span(&self, b: usize) -> core::ops::Range<usize> { self.at[b].load(Relaxed)..self.at[b + 1].load(Relaxed) }
+    fn nb(&self, b: usize) -> usize { blk_count(self.old.c.meta.n, b) }
+    /// structural.c `fsc_load`: block `b` decoded at `w` bytes an element into `out` (8-aligned), its writes applied.
+    fn load(&self, b: usize, nb: usize, out: &mut [u8]) {
+        if self.alp { self.old.load_blk(b, nb, out) } else { load_blk_at(&self.old.c, b, nb, self.w, out) }
+        let r = self.span(b);
+        let (ix, v) = (&self.ix[r.clone()], &self.vals[r.start * self.w..r.end * self.w]);
+        match self.w { 2 => put_vals::<2>(out, b, ix, v), 4 => put_vals::<4>(out, b, ix, v), _ => put_vals::<8>(out, b, ix, v) }
+    }
+    /// Block `b`'s writes: the positions and the floats.
+    fn writes<F: Flt>(&self, b: usize) -> (&[u64], &[F]) {
+        let r = self.span(b);
+        (&self.ix[r.clone()], pod::cast::<F>(&self.vals[r.start * self.w..r.end * self.w]).expect("qlean scatter: the values are misaligned"))
+    }
+    /// structural.c `fsc_patch`: pass 1's integers with the writes at the block's OLD exponent (`alp_patch_blk`).
+    fn patch<F: Flt>(&self, b: usize, nb: usize, d: &mut [i64], ee: &mut [i8]) -> i32 {
+        let (ix, v) = self.writes::<F>(b);
+        crate::alp::alp_patch_blk(&self.old, b, nb, ix, v, d, ee)
+    }
+    /// structural.c `fsc_meta` for block `b`: what the meta pass writes into `m`.
+    pub fn meta(&self, m: &mut EncMeta, b: usize) {
+        let nb = self.nb(b);
+        if self.kept(b) { crate::enc::move_meta(m, &self.old, b); return }
+        let mut buf = [0u64; BLK];
+        if !self.alp {
+            let bytes = pod::bytes_mut(&mut buf);
+            self.load(b, nb, bytes);
+            return crate::enc::for_meta(m, bytes, self.w, nb)
+        }
+        if self.w == 4 { self.meta_alp::<f32>(m, b, nb, &mut buf) } else { self.meta_alp::<f64>(m, b, nb, &mut buf) }
+    }
+    /// An ALP block with writes: the patch, unless the search's exponent leaves fewer exceptions; each costs its raw bytes
+    /// and a position, more than the residual bits a higher exponent adds.
+    fn meta_alp<F: Flt>(&self, m: &mut EncMeta, b: usize, nb: usize, buf: &mut [u64; BLK]) {
+        let (mut d, mut ee) = ([0i64; BLK], [0i8; BLK]);
+        let alt = self.patch::<F>(b, nb, &mut d, &mut ee);
+        let np = ee[..nb].iter().filter(|&&e| e < 0).count() as u32;
+        self.patched[b].store(1, Relaxed);
+        if alt >= 0 {
+            let bytes = pod::bytes_mut(buf);
+            self.load(b, nb, bytes);
+            let x = pod::cast::<F>(&bytes[..nb * self.w]).expect("qlean scatter: the block buffer is misaligned");
+            if crate::alp::alp_exc_at(x, alt, np) < np {
+                self.patched[b].store(0, Relaxed);
+                *m.nexc = crate::alp::alp_meta_exp(m, x, nb, alt);
+                return;
+            }
+        }
+        *m.nexc = crate::alp::alp_fin_blk(m, self.old.exp[b] as i32, &mut d, &ee, nb);
+    }
+    /// structural.c `fsc_pack` for block `b`; `p` is cut whole (`BLK * width / 8` residual bytes) when `kept(b)`.
+    pub fn pack(&self, p: &mut EncPack, b: usize) {
+        let nb = self.nb(b);
+        if self.kept(b) { crate::enc::move_pack(p, &self.old, b, self.alp, self.w); return }
+        if self.alp && self.patched[b].load(Relaxed) != 0 {
+            return if self.w == 4 { self.pack_patched::<f32>(p, b, nb) } else { self.pack_patched::<f64>(p, b, nb) }
+        }
+        let mut buf = [0u64; BLK];
+        let bytes = pod::bytes_mut(&mut buf);
+        self.load(b, nb, bytes);
+        if self.alp { crate::enc::alp_pack(p, bytes, self.w) } else { crate::enc::for_pack(p, bytes, self.w) }
+    }
+    /// Pass 2 for a block pass 1 patched at the old exponent, with the same writes.
+    fn pack_patched<F: Flt>(&self, p: &mut EncPack, b: usize, nb: usize) {
+        let (mut d, mut ee) = ([0i64; BLK], [0i8; BLK]);
+        self.patch::<F>(b, nb, &mut d, &mut ee);
+        let (ix, v) = self.writes::<F>(b);
+        let raw = core::mem::take(&mut p.raw);
+        crate::alp::alp_patch_pack(p, &self.old, ix, v, &mut d, &ee, pod::cast_mut::<F>(raw).expect("qlean scatter: misaligned patch bits"))
+    }
+}
+
+#[cfg(test)]
+mod k23_tests {
+    use super::*;
+    use crate::c::qlean_run_c;
+    fn at(ix: &[u64], n: usize) -> Result<Vec<usize>, usize> {
+        cursors(qlean_run_c, ix, n, n.div_ceil(BLK)).map(|v| v.iter().map(|a| a.load(Relaxed)).collect())
+    }
+    // Expected values come from running the original C (`fsx_check` and its tail loop, /data/tmp/qrs/K23/diff.c)
+    #[test] fn cursors_start_each_block_at_its_first_index() {
+        // block 0 holds indices 0, 5 (positions 0, 1); block 1 holds 1024 (2); block 2 holds 3000 (3); block 3 has none
+        assert_eq!(at(&[0, 5, 1024, 3000], 4000), Ok(vec![0, 2, 3, 4, 4]));
+        assert_eq!(at(&[], 2000), Ok(vec![0, 0, 0]));
+    }
+    #[test] fn cursors_name_the_first_offender() {
+        assert_eq!(at(&[3, 3], 4000), Err(1));
+        assert_eq!(at(&[2, 9, 8, 7], 4000), Err(2));
+        assert_eq!(at(&[0, 4000], 4000), Err(1));
     }
 }
 

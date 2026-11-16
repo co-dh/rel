@@ -1916,6 +1916,34 @@ pub unsafe extern "C" fn qrs_transpose(w: usize, n: usize, cols: *const *const u
 pub unsafe extern "C" fn qrs_untranspose(w: usize, n: usize, k: usize, src: *const u8, out: *mut u8) {
     unsafe { structural::untranspose(w, n, k, sl(src, n * k * w), sl_mut(out, n * k * w)) }
 }
+/// K23: structural.c `qlean_structural_scatter_for` / `_alp` past the unboxing (`a` null = Frame of Reference): the writer's
+/// parts as the Lean declaration types them, `(meta, pack)` or `(meta, (pack, alp))`. The blocks come from `structural::Scatter`,
+/// not from a source, so `NoElts` stands in for the element cursor `src_pass` hands each step.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn qrs_structural_scatter(w: usize, m: *const u8, msz: usize, pk: *const u8, pksz: usize, a: *const u8, asz: usize,
+                                                n: usize, ix: *const u8, ixsz: usize, vals: *const u8, vsz: usize) -> *mut c_void {
+    unsafe {
+        let alp = !a.is_null();
+        let sc = structural::Scatter::new(c::pool(), w, sl(m, msz), sl(pk, pksz), alp.then(|| sl(a, asz)), n, sl(ix, ixsz), sl(vals, vsz));
+        let mut e: CEnc = core::mem::zeroed();
+        let s = &raw mut e;
+        qrs_coc_enc_open(s, n, w, alp as c_int);
+        src_pass(s, &NoElts, &|s, b, _, _| sc.meta(&mut (*s).meta_blk(b), b), true, if alp { crate::QLEAN_COST_MATH } else { crate::QLEAN_COST_ARITH });
+        qrs_coc_enc_layout(s);
+        src_pass(s, &NoElts, &|s, b, _, nb| sc.pack(&mut (*s).pack_blk(b, nb, sc.kept(b)), b), false, crate::QLEAN_COST_ARITH);
+        if !alp { return qrs_coc_enc_pair(s) }
+        coc_free((*s).exc_heap.cast());
+        mk_pair((*s).meta, mk_pair((*s).pack, (*s).blob))
+    }
+}
+/// K23: `qrs_structural_scatter` has no elements, only block numbers.
+struct NoElts;
+impl Source for NoElts {
+    unsafe fn open(&self) -> Option<*mut c_void> { Some(null_mut()) }
+    unsafe fn at(&self, _: *mut c_void, _: usize, _: usize) -> *const u8 { core::ptr::NonNull::dangling().as_ptr() }
+    unsafe fn close(&self, _: *mut c_void) {}
+    unsafe fn bad(&self) -> bool { false }
+}
 /// A43: elementwise.c `ew_val_run`.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn qrs_ew_val(run: unsafe extern "C" fn(), op: u8, cls: u8, shape: u8, nul: i64, a: *const u8,
