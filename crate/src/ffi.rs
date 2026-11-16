@@ -324,15 +324,16 @@ impl CEnc {
                            below: self.below, lb, over } }
     }
     /// Block `b`'s pack-pass view, after `coc_enc_layout`: residuals at `off[b]`, patches `exc_off[b]..exc_off[b + 1]`.
-    /// Safety: as `meta_blk`.
-    pub unsafe fn pack_blk<'a>(&mut self, b: usize, nb: usize) -> EncPack<'a> {
+    /// The residual region is the `nb` elements' `ceil(nb * width / 8)` bytes, or with `whole` the full `BLK * width / 8`
+    /// (`move_pack` copies a whole block). Safety: as `meta_blk`.
+    pub unsafe fn pack_blk<'a>(&mut self, b: usize, nb: usize, whole: bool) -> EncPack<'a> {
         let c = &self.c;
         unsafe {
             let (base, w, at) = (*c.base.add(b), *c.width.add(b), *self.exc_off.add(b) as usize);
             let ne = *self.exc_off.add(b + 1) as usize - at;
             EncPack { b, nb, base, frame: (base as u64).wrapping_add(if c.fdelta.is_null() { 0 } else { *c.fdelta.add(b) }), width: w,
                       exp: if self.exp.is_null() { 0 } else { *self.exp.add(b) },
-                      res: sl_mut(c.pack.add(*c.off.add(b) as usize), (nb * w as usize).div_ceil(8)),
+                      res: sl_mut(c.pack.add(*c.off.add(b) as usize), (if whole { BLK } else { nb } * w as usize).div_ceil(8)),
                       pos: sl_mut(self.exc_pos.add(at), ne), raw: sl_mut(self.exc_raw.add(at * self.width), ne * self.width) }
         }
     }
@@ -448,17 +449,6 @@ unsafe fn meta_exc_blk<T: enc::Elt>(c: *mut CCoc, b: usize, x: *const T, nb: usi
     let (lb, over, mut nexc) = (AtomicUsize::new(0), AtomicI32::new(0), 0u32);
     enc::encode_meta_exc_blk(&mut unsafe { ccoc_meta(&*c, b, null_mut(), &mut nexc, &lb, &over) }, unsafe { sl(x, nb) }, nb)
 }
-/// `pack_exc_blk` for C: block `b`'s residuals at `off[b]`, its `ne` patches at `pos` and `raw`.
-/// Safety: `c` has its pack and layout set, `pos`/`raw` hold `ne` slots of `u16` / `T`.
-unsafe fn pack_exc<T: enc::Elt>(c: *const CCoc, b: usize, x: *const T, nb: usize, ne: u32, pos: *mut u16, raw: *mut u8) {
-    let c = unsafe { &*c };
-    let w = unsafe { *c.width.add(b) };
-    let frame = unsafe { (*c.base.add(b) as u64).wrapping_add(if c.fdelta.is_null() { 0 } else { *c.fdelta.add(b) }) };
-    let mut p = enc::EncPack { b, nb, base: unsafe { *c.base.add(b) }, frame, width: w, exp: 0,
-                               res: unsafe { sl_mut(c.pack.add(*c.off.add(b) as usize), (nb * w as usize).div_ceil(8)) },
-                               pos: unsafe { sl_mut(pos, ne as usize) }, raw: unsafe { sl_mut(raw, ne as usize * size_of::<T>()) } };
-    enc::pack_exc_blk(&mut p, unsafe { sl(x, nb) }, ne)
-}
 /// A8: coc.h:2226 `encode_meta_exc_blk`, per element type.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn qrs_encode_meta_exc_blk_u8(c: *mut CCoc, b: usize, x: *const u8, nb: usize) -> u32 { unsafe { meta_exc_blk(c, b, x, nb) } }
@@ -468,15 +458,6 @@ pub unsafe extern "C" fn qrs_encode_meta_exc_blk_i16(c: *mut CCoc, b: usize, x: 
 pub unsafe extern "C" fn qrs_encode_meta_exc_blk_i32(c: *mut CCoc, b: usize, x: *const i32, nb: usize) -> u32 { unsafe { meta_exc_blk(c, b, x, nb) } }
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn qrs_encode_meta_exc_blk_i64(c: *mut CCoc, b: usize, x: *const i64, nb: usize) -> u32 { unsafe { meta_exc_blk(c, b, x, nb) } }
-/// A8: coc.h:2263 `pack_exc_blk`, per element type.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn qrs_pack_exc_blk_u8(c: *const CCoc, b: usize, x: *const u8, nb: usize, ne: u32, pos: *mut u16, raw: *mut u8) { unsafe { pack_exc(c, b, x, nb, ne, pos, raw) } }
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn qrs_pack_exc_blk_i16(c: *const CCoc, b: usize, x: *const i16, nb: usize, ne: u32, pos: *mut u16, raw: *mut u8) { unsafe { pack_exc(c, b, x, nb, ne, pos, raw) } }
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn qrs_pack_exc_blk_i32(c: *const CCoc, b: usize, x: *const i32, nb: usize, ne: u32, pos: *mut u16, raw: *mut u8) { unsafe { pack_exc(c, b, x, nb, ne, pos, raw) } }
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn qrs_pack_exc_blk_i64(c: *const CCoc, b: usize, x: *const i64, nb: usize, ne: u32, pos: *mut u16, raw: *mut u8) { unsafe { pack_exc(c, b, x, nb, ne, pos, raw) } }
 /// A8: coc.h:2320 `decode`, per element type: the whole column, `c->n` elements, into `out`.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn qrs_decode_u8(c: *const CCoc, out: *mut u8) { unsafe { enc::decode(&(*c).view(), sl_mut(out, (*c).n)) } }
@@ -578,7 +559,7 @@ pub unsafe extern "C" fn qrs_enc_for_meta(s: *mut CEnc, b: usize, x: *const u8, 
 /// A16: coc.c `coc_enc_for_pack`.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn qrs_enc_for_pack(s: *mut CEnc, b: usize, x: *const u8, nb: usize) {
-    unsafe { let w = (*s).width; enc::for_pack(&mut (*s).pack_blk(b, nb), sl(x, nb * w), w) }
+    unsafe { let w = (*s).width; enc::for_pack(&mut (*s).pack_blk(b, nb, false), sl(x, nb * w), w) }
 }
 /// A16: coc.c `coc_enc_alp_meta`.
 #[unsafe(no_mangle)]
@@ -588,7 +569,7 @@ pub unsafe extern "C" fn qrs_enc_alp_meta(s: *mut CEnc, b: usize, x: *const u8, 
 /// A16: coc.c `coc_enc_alp_pack`.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn qrs_enc_alp_pack(s: *mut CEnc, b: usize, x: *const u8, nb: usize) {
-    unsafe { let w = (*s).width; enc::alp_pack(&mut (*s).pack_blk(b, nb), sl(x, nb * w), w) }
+    unsafe { let w = (*s).width; enc::alp_pack(&mut (*s).pack_blk(b, nb, false), sl(x, nb * w), w) }
 }
 /// A16: coc.c `src_copy`, a dense block of `bytes` copied to `out`.
 #[unsafe(no_mangle)]
@@ -596,16 +577,12 @@ pub unsafe extern "C" fn qrs_src_copy(out: *mut u8, x: *const u8, bytes: usize) 
 /// A16: coc.c `src_bits`, block `b`'s `nb` bytes packed into the `nbytes`-byte bitmap `out`.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn qrs_src_bits(out: *mut u8, nbytes: usize, b: usize, x: *const u8, nb: usize) {
-    unsafe { enc::src_bits(sl_mut(out, nbytes), b, sl(x, nb)) }
+    // BLK is a multiple of 8, so block `b` starts on byte `b * BLK / 8`; the slice is its own bytes only (disjoint across blocks)
+    unsafe { let (o, n) = (b * (BLK / 8), nb.div_ceil(8)); assert!(o + n <= nbytes, "qlean src_bits: block {b} of {nb} bytes past the {nbytes}-byte bitmap"); enc::src_bits(sl_mut(out.add(o), n), sl(x, nb)) }
 }
 /// A16: coc.h `coc_sumnul`.
 #[unsafe(no_mangle)]
 pub extern "C" fn qrs_coc_sumnul(width: usize, alp: c_int) -> i64 { enc::coc_sumnul(width, alp != 0) }
-/// A17: coc.c `coc_enc_blk_meta` over one block's values.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn qrs_enc_blk_meta(s: *mut CEnc, b: usize, v: *const i64, nb: usize) -> u32 {
-    unsafe { let w = (*s).width; enc::blk_meta(&mut (*s).meta_blk(b), sl(v, nb), w) }
-}
 /// A17: coc.c `coc_narrow`; answers `v` itself at eight bytes, else `out` holding the `cnt` narrowed elements.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn qrs_enc_narrow(width: usize, v: *const i64, cnt: usize, out: *mut u8) -> *const u8 {
@@ -624,27 +601,15 @@ unsafe fn taken<'a>(f: *const CCocf, alp: bool) -> Cocf<'a> {
     unsafe { if alp { (*f).view() } else { Cocf { c: (*f).c.view(), exp: &[], exc_off: &[], exc_pos: &[], exc_raw: &[], f32: false } } }
 }
 /// A17: coc.c `move_meta`'s branch for a block `take` claimed (block `pb` of `f`); writes `exc_off[b + 1]`.
-// needs A16: `CEnc::meta_blk(b)` is this view
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn qrs_enc_move_meta(s: *mut CEnc, b: usize, f: *const CCocf, pb: usize) {
-    let (lb, over) = (AtomicUsize::new(0), AtomicI32::new(0));
-    unsafe { let s = &*s; enc::move_meta(&mut ccoc_meta(&s.c, b, s.exp, &mut *s.exc_off.add(b + 1), &lb, &over), &taken(f, s.alp != 0), pb); }
+    unsafe { let alp = (*s).alp != 0; enc::move_meta(&mut (*s).meta_blk(b), &taken(f, alp), pb); }
 }
-/// A17: coc.c `move_pack`'s branch for a block `take` claimed. The residual region is the whole `BLK * width / 8`
-/// bytes, not the `nb` elements' share: the moved block's pack is copied whole, zero padded.
-// needs A16: `CEnc::pack_blk(b, nb)` is this view, with a region of `ceil(nb * width / 8)` bytes
+/// A17: coc.c `move_pack`'s branch for a block `take` claimed: the whole `BLK * width / 8` residual region
+/// (`pack_blk`'s `whole`), as the moved block's pack is copied whole, zero padded.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn qrs_enc_move_pack(s: *mut CEnc, b: usize, nb: usize, f: *const CCocf, pb: usize) {
-    unsafe {
-        let (s, w) = (&*s, *(*s).c.width.add(b));
-        let (base, at) = (*s.c.base.add(b), *s.exc_off.add(b) as usize);
-        let ne = *s.exc_off.add(b + 1) as usize - at;
-        let mut p = enc::EncPack { b, nb, base, frame: (base as u64).wrapping_add(if s.c.fdelta.is_null() { 0 } else { *s.c.fdelta.add(b) }),
-                                   width: w, exp: if s.exp.is_null() { 0 } else { *s.exp.add(b) },
-                                   res: sl_mut(s.c.pack.add(*s.c.off.add(b) as usize), BLK * w as usize / 8),
-                                   pos: sl_mut(s.exc_pos.add(at), ne), raw: sl_mut(s.exc_raw.add(at * s.width), ne * s.width) };
-        enc::move_pack(&mut p, &taken(f, s.alp != 0), pb, s.alp != 0, s.width)
-    }
+    unsafe { let alp = (*s).alp != 0; enc::move_pack(&mut (*s).pack_blk(b, nb, true), &taken(f, alp), pb, alp, (*s).width) }
 }
 /// A9: coc.h `alp_patch_blk_f32`; answers the exponent the search would raise the block to, or -1.
 #[unsafe(no_mangle)]

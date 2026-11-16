@@ -189,10 +189,10 @@ pub fn alp_pack(p: &mut EncPack, x: &[u8], width: usize) {
 }
 /// coc.c:197 `src_copy`: a dense column's block copied into its place in the dense output `out`.
 pub fn src_copy(out: &mut [u8], x: &[u8]) { out[..x.len()].copy_from_slice(x) }
-/// coc.c:203 `src_bits`: block `b`'s bytes (0/1) packed into the bitmap `out` at bit `b * BLK`, bit `i % 8` of byte
-/// `i / 8`, a non-zero byte reading as set (`Wire.booleanColumn`'s packing).
-pub fn src_bits(out: &mut [u8], b: usize, x: &[u8]) {
-    for (o, c) in out[b * (crate::BLK / 8)..].iter_mut().zip(x.chunks(8)) {
+/// coc.c:203 `src_bits`: the bytes `x` (0/1) of one block packed into `out`, its own bytes of the bitmap (it starts at bit
+/// `b * BLK`, a byte boundary): bit `i % 8` of byte `i / 8`, a non-zero byte reading as set (`Wire.booleanColumn`'s packing).
+pub fn src_bits(out: &mut [u8], x: &[u8]) {
+    for (o, c) in out.iter_mut().zip(x.chunks(8)) {
         *o = c.iter().enumerate().fold(0, |w, (j, &v)| w | ((v != 0) as u8) << j)
     }
 }
@@ -407,11 +407,11 @@ mod a16_tests {
     #[test] fn src_bits_packs_bit_i_of_byte_i_div_8() {
         let x = [1u8, 0, 7, 0, 0, 0, 0, 0, 255, 0, 0, 1];
         let mut o = [0xffu8; 3 + 130];
-        src_bits(&mut o[..], 0, &x);
+        src_bits(&mut o[..2], &x);
         assert_eq!(&o[..2], &[0b101, 0b1001]);
         // block 1 starts at byte BLK / 8, and a short block writes only its ceil(nb / 8) bytes
         let mut o = [0u8; 130];
-        src_bits(&mut o, 1, &x[..9]);
+        src_bits(&mut o[128..130], &x[..9]);
         assert_eq!((o[127], o[128], o[129]), (0, 0b101, 1));
     }
     #[test] fn src_copy_and_sumnul() {
