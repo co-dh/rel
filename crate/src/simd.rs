@@ -109,6 +109,9 @@ pub fn lit_mask64(b: &[u8], s: usize, w: usize, f: u8, g: u8) -> u64 {
             & (_mm512_cmpeq_epi8_mask(_mm512_set1_epi8(g as i8), _mm512_loadu_si512(y.as_ptr().cast())) as u64)
     }
 }
+/// coc.h's `RES_SIMD`: the build enables every feature the odd-width vector kernels need.
+pub(crate) const RES_SIMD: bool = cfg!(all(target_arch = "x86_64", target_feature = "avx512vbmi", target_feature = "avx512vbmi2",
+                                    target_feature = "avx512bw", target_feature = "avx512dq"));
 pub fn res_unpack(p: &[u8], w: u8, nb: usize, out: &mut [u8]) {
     // coc.h:598's `#if`: the vector path only where the build enables every feature it needs (target-cpu=native)
     #[cfg(all(target_arch = "x86_64", target_feature = "avx512vbmi", target_feature = "avx512vbmi2",
