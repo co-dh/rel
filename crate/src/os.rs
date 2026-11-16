@@ -323,6 +323,9 @@ impl Sock {
     pub fn write_all(&self, p: &[u8]) -> Result<(), i32> { self.0.write_all(p) }
 }
 
+/// `close(2)` of a descriptor the caller holds as a bare integer (Lean's `hclose`); not retried on `EINTR`, see `File::close`
+pub fn close_fd(fd: i32) -> Result<(), i32> { ok(unsafe { sys2::close(fd) }) }
+
 /// `setenv(name, value, 1)`
 pub fn setenv(name: &CStr, value: &CStr) -> Result<(), i32> { ok(unsafe { sys2::setenv(name.as_ptr(), value.as_ptr(), 1) }) }
 /// the value of `name`, copied out (the libc pointer dies with the next `setenv`)
