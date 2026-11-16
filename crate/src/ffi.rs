@@ -860,6 +860,18 @@ pub unsafe extern "C" fn qrs_bin(run: unsafe extern "C" fn(), w: usize, is_float
     unsafe { search::bin(rn(run), w, is_float != 0, is_signed != 0, right != 0, sl(hay, w * n.max(0) as usize), None, n,
                          sl(keys, w * m), None, m, sl_mut(out, m)) }
 }
+/// A32: `qrs_bin` where either side may be an encoded column (`qlean_bin_operands`, `qlean_coc_bin`): `hc` or `kc` non-null
+/// is that side's column, and its dense pointer is not read.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn qrs_bin_enc(run: unsafe extern "C" fn(), w: usize, is_float: c_int, is_signed: c_int, right: c_int,
+                                     hay: *const u8, hc: *const CCoc, n: i64, keys: *const u8, kc: *const CCoc, m: usize,
+                                     out: *mut i64) {
+    unsafe {
+        let (h, k) = (hc.as_ref().map(|c| c.view()), kc.as_ref().map(|c| c.view()));
+        search::bin(rn(run), w, is_float != 0, is_signed != 0, right != 0, sl(hay, if h.is_some() { 0 } else { w * n.max(0) as usize }),
+                    h.as_ref(), n, sl(keys, if k.is_some() { 0 } else { w * m }), k.as_ref(), m, sl_mut(out, m))
+    }
+}
 /// A34: structural.c `reverse_foR_run`.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn qrs_reverse_enc(run: unsafe extern "C" fn(), c: *const CCoc, pack: *mut u8) {

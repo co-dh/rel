@@ -159,17 +159,133 @@ pub fn find_sym_scalar(s: &Syms, ndl: &[u8]) -> usize { unimplemented!("A31: qle
 
 // ---- A32: search.c:1497-1716 ----
 /// search.c:1497 `bin_key`: `v` as an unsigned key in the column's order.
-pub fn bin_key(w: usize, is_float: bool, is_signed: bool, v: u64) -> u64 { unimplemented!("A32: bin_key") }
+pub fn bin_key(w: usize, is_float: bool, is_signed: bool, v: u64) -> u64 {
+    let mask = if w == 8 { !0 } else { (1u64 << (8 * w)) - 1 };
+    let top = 1u64 << (8 * w - 1);
+    if is_float {
+        let (inf, nan) = if w == 8 { (0x7ff0_0000_0000_0000u64, 0xfff8_0000_0000_0000u64) } else { (0x7f80_0000, 0xffc0_0000) };
+        let mut u = v & mask;
+        // -0.0 folds onto 0.0, and every NaN is q's null
+        if u & (top - 1) == 0 { u = 0 } else if u & (top - 1) > inf { u = nan }
+        return if u & top != 0 { !u & mask } else { u | top };
+    }
+    if is_signed { (v & mask) ^ top } else { v & mask }
+}
 /// search.c:1510 `bin_at`: element `i` of a `w`-byte payload.
-pub fn bin_at(p: &[u8], w: usize, i: usize) -> u64 { unimplemented!("A32: bin_at") }
+pub fn bin_at(p: &[u8], w: usize, i: usize) -> u64 {
+    let mut b = [0u8; 8];
+    b[..w].copy_from_slice(&p[i * w..(i + 1) * w]);
+    u64::from_le_bytes(b)
+}
 /// search.c:1519 `norm_key`
-pub fn norm_key(w: usize, is_float: bool, v: u64) -> u64 { unimplemented!("A32: norm_key") }
+pub fn norm_key(w: usize, is_float: bool, v: u64) -> u64 {
+    if !is_float { return v }
+    let (low, inf, nan) = if w == 8 { (0x7fff_ffff_ffff_ffffu64, 0x7ff0_0000_0000_0000u64, 0xfff8_0000_0000_0000u64) }
+                          else { (0x7fff_ffff, 0x7f80_0000, 0xffc0_0000) };
+    if v & low == 0 { 0 } else if v & low > inf { nan } else { v }
+}
+
+/// A haystack or a needle column where it lies: dense, or encoded with one residual width `uw` (`one_width`).
+#[derive(Clone, Copy)]
+struct Col<'a> { d: &'a [u8], c: Option<&'a Coc<'a>>, uw: u8 }
+impl Col<'_> {
+    fn at(&self, w: usize, i: usize) -> u64 { self.c.map_or_else(|| bin_at(self.d, w, i), |c| c.get_w(self.uw, i) as u64) }
+}
+/// The flags every walk is handed.
+#[derive(Clone, Copy)]
+struct Walk { w: usize, f: bool, s: bool, right: bool }
+impl Walk {
+    /// search.c:1483 `bin_step`: the partition point in `lo .. hi` of key `k`. Branchless, which is what makes the
+    /// timing a property of the code and not of the branch predictor's aliasing (the C comment's measurement).
+    fn step(self, h: &Col, k: u64, mut lo: i64, hi: i64) -> i64 {
+        let mut len = hi - lo;
+        while len > 0 {
+            let (half, mid) = (len / 2, lo + len / 2);
+            let v = bin_key(self.w, self.f, self.s, h.at(self.w, mid as usize));
+            let adv = if self.right { v < k } else { v <= k };
+            let (nlo, nlen) = (mid + 1, len - half - 1);
+            lo = if adv { nlo } else { lo };
+            len = if adv { nlen } else { half };
+        }
+        lo
+    }
+    /// `bin` for key `k` over `n` elements: the position, `- 1` for `bin` and as is for `binr`.
+    fn pos(self, h: &Col, k: u64, n: i64) -> i64 { let at = self.step(h, k, 0, n); if self.right { at } else { at - 1 } }
+}
+/// search.c:1661 `kcur`: a worker's view of the needles, the dense payload or the last block restored.
+struct Kcur<'a> { k: Col<'a>, w: usize, b: usize, buf: [u64; crate::BLK] }
+impl<'a> Kcur<'a> {
+    fn new(k: Col<'a>, w: usize) -> Self { Kcur { k, w, b: usize::MAX, buf: [0; crate::BLK] } }
+    /// search.c:1668 `kcur_at`
+    fn at(&mut self, j: usize) -> u64 {
+        let Some(c) = self.k.c else { return bin_at(self.k.d, self.w, j) };
+        let b = j / crate::BLK;
+        if b != self.b {
+            let (at, w) = (b * crate::BLK, self.w);
+            let cnt = (c.meta.n - at).min(crate::BLK);
+            let o = crate::pod::bytes_mut(&mut self.buf);
+            match w {
+                1 => c.decode_blk::<u8>(b, cnt, o),
+                2 => c.decode_blk::<i16>(b, cnt, crate::pod::cast_mut(o).expect("kcur: u64 buffer is aligned")),
+                4 => c.decode_blk::<i32>(b, cnt, crate::pod::cast_mut(o).expect("kcur: u64 buffer is aligned")),
+                _ => c.decode_blk::<i64>(b, cnt, crate::pod::cast_mut(o).expect("kcur: u64 buffer is aligned")),
+            }
+            self.b = b;
+        }
+        bin_at(crate::pod::bytes(&self.buf), self.w, j % crate::BLK)
+    }
+}
+/// search.c:1741 `BIN_TAB_MAX`, `BIN_TAB_SAMPLE`
+const BIN_TAB_MAX: u64 = 1 << 16;
+const BIN_TAB_SAMPLE: usize = 4096;
+
+fn i64s(o: &mut [u8]) -> &mut [i64] { crate::pod::cast_mut(o).expect("bin: the answer is 8-byte aligned") }
+
 /// search.c:1706 `qlean_search_bin` past the unboxing: for each of the `m` keys (dense `keys`, or `kenc`), the
-/// binary-search position in the sorted haystack (dense `hay`, or `enc`) of `n`, into `out`; threaded
+/// binary search position in the sorted haystack (dense `hay`, or `enc`) of `n`, into `out`; threaded
 /// (`bin_run`, `bin_tab_run`, `bin_gather_run`).
+///
+/// `step`'s answer is a function of the needle's `bin_key` and the haystack alone, so where the keys occupy a small
+/// range (taken from a stride sample, not a min/max pass) the walks collapse to one per key in the range and a gather;
+/// a needle the sample missed takes the walk. `BIN_TAB_MAX` keeps the table in L2, `m / 8` keeps the build under an
+/// eighth of the walks it replaces.
 pub fn bin(run: Runner, w: usize, is_float: bool, is_signed: bool, right: bool, hay: &[u8], enc: Option<&Coc>, n: i64,
            keys: &[u8], kenc: Option<&Coc>, m: usize, out: &mut [i64]) {
-    unimplemented!("A32: qlean_search_bin")
+    assert!(matches!(w, 1 | 2 | 4 | 8), "qlean search: bin got element width {w}; the kernel is instantiated at 1, 2, 4 and 8 bytes");
+    let wk = Walk { w, f: is_float, s: is_signed, right };
+    let h = Col { d: hay, c: enc, uw: enc.map_or(0, |c| c.one_width()) };
+    let kc = Col { d: keys, c: kenc, uw: 0 };
+    let ob = crate::pod::bytes_mut(&mut out[..m]);
+    let walk = |lo: usize, hi: usize, o: &mut [u8]| {
+        let (o, mut k) = (i64s(o), Kcur::new(kc, w));
+        for (j, x) in (lo..hi).zip(o) { *x = wk.pos(&h, bin_key(w, is_float, is_signed, k.at(j)), n) }
+    };
+    if m >= 8 * BIN_TAB_SAMPLE && n >= 64 {
+        let step = m / BIN_TAB_SAMPLE;
+        let (mut klo, mut khi) = (!0u64, 0u64);
+        for j in (0..m).step_by(step) {
+            let k = bin_key(w, is_float, is_signed, kenc.map_or_else(|| bin_at(keys, w, j), |c| c.get(j) as u64));
+            klo = klo.min(k); khi = khi.max(k);
+        }
+        let (span, cnt) = (khi - klo, (khi - klo) as usize + 1);
+        if span < BIN_TAB_MAX && cnt <= m / 8 {
+            let mut tab = alloc::vec![0i64; cnt];
+            crate::c::run_map(run, crate::pod::bytes_mut(&mut tab), cnt, 8, crate::QLEAN_COST_MATH, 8, &|lo, hi, o: &mut [u8]| {
+                for (i, x) in (lo..hi).zip(i64s(o)) { *x = wk.pos(&h, klo + i as u64, n) }
+            });
+            let tab = &tab[..];
+            crate::c::run_map(run, ob, m, 8, crate::QLEAN_COST_ARITH, 8, &|lo, hi, o: &mut [u8]| {
+                let (o, mut k) = (i64s(o), Kcur::new(kc, w));
+                for (j, x) in (lo..hi).zip(o) {
+                    let key = bin_key(w, is_float, is_signed, k.at(j));
+                    let d = key.wrapping_sub(klo);
+                    *x = if d <= span { tab[d as usize] } else { wk.pos(&h, key, n) }
+                }
+            });
+            return;
+        }
+    }
+    crate::c::run_map(run, ob, m, 8, crate::QLEAN_COST_MATH, 8, &walk);
 }
 
 // ---- A33: search.c:731-740, 2004-2099 ----
@@ -237,5 +353,39 @@ mod tests {
         let r = o.blk(0, 8, b);
         assert_eq!(r.len(), 800);
         assert!(r.chunks_exact(8).all(|x| x == 7i64.to_ne_bytes()));
+    }
+    // A32: expected values are search.c's `bin_key` (1439) and `bin_step` (1483), checked against the old C by /data/tmp/qrs/A32/diff.c
+    #[test] fn bin_keys() {
+        assert_eq!((bin_key(1, false, true, 0x80), bin_key(1, false, true, 0x7f), bin_key(1, false, false, 0x1ff)), (0, 0xff, 0xff));
+        let (z, nz) = (bin_key(8, true, false, 0), bin_key(8, true, false, 1 << 63));
+        assert_eq!(z, nz, "-0.0 folds onto 0.0");
+        assert_eq!(bin_key(4, true, false, 0x7fc0_0001), bin_key(4, true, false, 0x7f80_0001), "every NaN is one value");
+        assert!(bin_key(8, true, false, (-1.5f64).to_bits()) < bin_key(8, true, false, 0) && bin_key(8, true, false, 0) < bin_key(8, true, false, 2.5f64.to_bits()));
+        assert_eq!(norm_key(4, true, 0x8000_0000), 0); assert_eq!(norm_key(8, false, 5), 5);
+        assert_eq!(norm_key(8, true, 0x7ff0_0000_0000_0001), 0xfff8_0000_0000_0000);
+    }
+    fn bytes_of(v: &[i64], w: usize) -> alloc::vec::Vec<u8> { v.iter().flat_map(|x| x.to_le_bytes()[..w].to_vec()).collect() }
+    fn run_bin(w: usize, right: bool, hay: &[i64], keys: &[i64]) -> alloc::vec::Vec<i64> {
+        let mut out = vec![0i64; keys.len()];
+        bin(crate::c::qlean_run_c, w, false, true, right, &bytes_of(hay, w), None, hay.len() as i64, &bytes_of(keys, w), None, keys.len(), &mut out);
+        out
+    }
+    // `10 20 20 20 30 bin 20` is 3 and `binr 20` is 1 (the C comment's measurements); `bin` below every element is -1
+    #[test] fn bin_and_binr() {
+        let h = [10, 20, 20, 20, 30];
+        assert_eq!(run_bin(8, false, &h, &[20, 5, 40, 10]), [3, -1, 4, 0]);
+        assert_eq!(run_bin(8, true, &h, &[20, 5, 40, 10]), [1, 0, 5, 0]);
+        assert_eq!(run_bin(1, false, &[-128, 0, 127], &[-128, 1]), [0, 1]);
+        assert_eq!(run_bin(8, false, &[], &[3]), [-1]);
+    }
+    // the gather path: 40000 keys in a 100-wide range over 200 haystack elements, a stride-missed outlier takes the walk
+    #[test] fn bin_table_path() {
+        let h: alloc::vec::Vec<i64> = (0..200).map(|i| i * 3).collect();
+        let mut keys: alloc::vec::Vec<i64> = (0..40000).map(|i| (i * 7919) % 100).collect();
+        keys[1] = 5000; keys[39999] = -7;
+        for right in [false, true] {
+            let want: alloc::vec::Vec<i64> = keys.iter().map(|k| { let p = h.partition_point(|x| if right { x < k } else { x <= k }) as i64; if right { p } else { p - 1 } }).collect();
+            assert_eq!(run_bin(8, right, &h, &keys), want);
+        }
     }
 }
