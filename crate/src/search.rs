@@ -1,5 +1,4 @@
 #![forbid(unsafe_code)]
-#![allow(unused_variables)] // scaffold: the task that fills this module removes it
 //! Column (a), search.c: operands (A28), the probe table (A29), find/member (A30), bits and symbols (A31), binary
 //! search (A32), run starts (A33). The `qlean_search_*` entries unbox and allocate and stay C (§1).
 use alloc::{vec, vec::Vec};
@@ -365,40 +364,210 @@ pub fn search(run: Runner, kd: Kind, h: &Opnd, x: &Opnd, member: bool, out: &mut
 pub fn ids_key_width(a: usize, b: usize) -> usize { match a.max(b) { ..=8 => 1, ..=16 => 2, ..=32 => 4, _ => 8 } }
 
 // ---- A31: search.c:974-1272 ----
-/// search.c:980 `word_at`: 64 bits from bit `i` of the bitmap `b`.
-pub fn word_at(b: &[u8], i: usize) -> u64 { unimplemented!("A31: word_at") }
-/// search.c:990 `find_bit`: the first index of `needle` among `n` bits.
-pub fn find_bit(b: &[u8], n: usize, needle: u8) -> usize { unimplemented!("A31: find_bit") }
-/// search.c:1010 `qlean_search_find_bit_vec` past the unboxing: each needle's first index.
-pub fn find_bit_vec(n: usize, hay: &[u8], ndl: &[u8], m: usize, out: &mut [i64]) { unimplemented!("A31: qlean_search_find_bit_vec") }
-/// search.c:1023 `bin_bit`: binary search of a sorted bitmap for `k`.
-pub fn bin_bit(b: &[u8], n: usize, k: i32, right: bool) -> i64 { unimplemented!("A31: bin_bit") }
-/// search.c:1041 `qlean_search_bin_bits` past the unboxing.
-pub fn bin_bits(n: usize, hay: &[u8], ndl: &[u8], m: usize, right: bool, out: &mut [i64]) { unimplemented!("A31: qlean_search_bin_bits") }
-/// search.c:1054 `qlean_search_member_bits` past the unboxing.
-pub fn member_bits(m: usize, xs: &[u8], n: usize, hay: &[u8], out: &mut [u8]) { unimplemented!("A31: qlean_search_member_bits") }
+/// c/coc.h `bit_at`: bit `i` of the payload, 0 past its end.
+fn bit_at(b: &[u8], i: usize) -> u8 { b.get(i >> 3).map_or(0, |&x| x >> (i & 7) & 1) }
+/// search.c:980 `word_at`: the 8 payload bytes from byte `i` as one little-endian word, zero past the end.
+pub fn word_at(b: &[u8], i: usize) -> u64 {
+    let src = b.get(i..).unwrap_or(&[]);
+    let mut w = [0u8; 8];
+    let m = src.len().min(8);
+    w[..m].copy_from_slice(&src[..m]);
+    u64::from_le_bytes(w)
+}
+/// search.c:990 `find_bit`: the first index of `needle` among `n` bits, whole bytes at a time, `n` when there is none.
+pub fn find_bit(b: &[u8], n: usize, needle: u8) -> usize {
+    let mut i = 0;
+    while i < n {
+        let byte = i >> 3;
+        let raw = b.get(byte).copied().unwrap_or(0);
+        let v = (if needle != 0 { raw } else { !raw }) & (0xffu8 << (i & 7));
+        if v != 0 { return ((byte << 3) + v.trailing_zeros() as usize).min(n) }
+        i = (byte + 1) << 3;
+    }
+    n
+}
+/// search.c:1010 `qlean_search_find_bit_vec` past the unboxing: each needle's first index. Only two answers exist, so
+/// both are computed once.
+pub fn find_bit_vec(n: usize, hay: &[u8], ndl: &[u8], m: usize, out: &mut [i64]) {
+    let at = [find_bit(hay, n, 0) as i64, find_bit(hay, n, 1) as i64];
+    for (j, o) in out[..m].iter_mut().enumerate() { *o = at[bit_at(ndl, j) as usize] }
+}
+/// search.c:1023 `bin_bit`: binary search of a sorted bitmap for `k`, with the `-1` of `bin` already applied.
+pub fn bin_bit(b: &[u8], n: usize, k: i32, right: bool) -> i64 {
+    let (mut lo, mut hi) = (0, n);
+    while lo < hi {
+        let mid = lo + (hi - lo) / 2;
+        let v = bit_at(b, mid) as i32;
+        if if right { v < k } else { v <= k } { lo = mid + 1 } else { hi = mid }
+    }
+    if right { lo as i64 } else { lo as i64 - 1 }
+}
+/// search.c:1041 `qlean_search_bin_bits` past the unboxing: two keys exist, so two halvings and a select.
+pub fn bin_bits(n: usize, hay: &[u8], ndl: &[u8], m: usize, right: bool, out: &mut [i64]) {
+    let at = [bin_bit(hay, n, 0, right), bin_bit(hay, n, 1, right)];
+    for (j, o) in out[..m].iter_mut().enumerate() { *o = at[bit_at(ndl, j) as usize] }
+}
+/// search.c:1054 `qlean_search_member_bits` past the unboxing: bit `i` of `out` (`m.div_ceil(8)` bytes) is set when
+/// `xs`' bit `i` occurs among the first `n` bits of `hay`; the tail bits stay zero.
+pub fn member_bits(m: usize, xs: &[u8], n: usize, hay: &[u8], out: &mut [u8]) {
+    let has = [find_bit(hay, n, 0) < n, find_bit(hay, n, 1) < n];
+    out.fill(0);
+    for i in 0..m { if has[bit_at(xs, i) as usize] { out[i >> 3] |= 1 << (i & 7) } }
+}
 /// search.c:1074 `spread`: the set bits of word `v` (word `i`) as indices into `out` at `at`; answers the new `at`.
-pub fn spread(out: &mut [i64], at: usize, i: usize, v: u64) -> usize { unimplemented!("A31: spread") }
-/// search.c:1107 `qlean_search_where_bits` past the allocation (`out` holds the popcount); answers the count.
-pub fn where_bits(n: usize, bits: &[u8], out: &mut [i64]) -> usize { unimplemented!("A31: qlean_search_where_bits") }
-/// search.c:1174 `symscan`: a short symbol haystack indexed by first byte.
+pub fn spread(out: &mut [i64], mut at: usize, i: usize, mut v: u64) -> usize {
+    while v != 0 { out[at] = ((i << 6) + v.trailing_zeros() as usize) as i64; at += 1; v &= v - 1 }
+    at
+}
+/// the mask of word `i` of `n` bits: the last word (`n >> 6`) keeps the low `n & 63` bits, every other all 64
+fn word_mask(n: usize, i: usize) -> u64 { if i == n >> 6 { if n & 63 != 0 { !0 >> (64 - (n & 63)) } else { 0 } } else { !0 } }
+/// search.c:1107 `qlean_search_where_bits`, the first pass: how many of the first `n` bits are set. A word inside the
+/// payload is read straight (`full` of them), the ragged end and the masked tail go through `word_at`.
+pub fn where_count(n: usize, bits: &[u8]) -> usize {
+    let (whole, full) = (n >> 6, (bits.len() / 8).min(n >> 6));
+    let k: usize = bits[..full * 8].chunks_exact(8).map(|c| u64::from_le_bytes(c.try_into().expect("8 bytes")).count_ones() as usize).sum();
+    k + (full..=whole).map(|i| (word_at(bits, i * 8) & word_mask(n, i)).count_ones() as usize).sum::<usize>()
+}
+/// search.c:1107 `qlean_search_where_bits`, the second pass (`out` holds `where_count`): the ascending indices of the set
+/// bits among the first `n`; answers the count. A clear group of eight words is skipped on one test, as the mask of a
+/// selective `where` is mostly clear.
+pub fn where_bits(n: usize, bits: &[u8], out: &mut [i64]) -> usize {
+    let (whole, full) = (n >> 6, (bits.len() / 8).min(n >> 6));
+    let (mut at, mut i) = (0, 0);
+    while i + 8 <= full {
+        let g = &bits[i * 8..(i + 8) * 8];
+        if g.iter().any(|&b| b != 0) { for (j, c) in g.chunks_exact(8).enumerate() { at = spread(out, at, i + j, u64::from_le_bytes(c.try_into().expect("8 bytes"))) } }
+        i += 8;
+    }
+    for i in i..=whole { at = spread(out, at, i, word_at(bits, i * 8) & word_mask(n, i)) }
+    at
+}
+/// Below this a symbol haystack is scanned rather than hashed (search.c:803 `SYM_SCAN_MAX`).
+pub const SYM_SCAN_MAX: usize = 8;
+/// The needles are packed and probed this many at a time (c/sym.h `SYM_KEY_BLOCK`).
+const SYM_KEY_BLOCK: usize = 4096;
+/// search.c:1174 `symscan`: a short symbol haystack indexed by first byte. `first[b]` is the lowest index whose first
+/// byte is `b`, plus one; `empty` the index of the empty symbol, a legal element with no first byte.
 pub struct Symscan<'a> { pub hay: Vec<&'a [u8]>, pub empty: usize, pub first: [u8; 256] }
 impl<'a> Symscan<'a> {
-    /// search.c:1176 `symscan_build`
-    pub fn build(hay: Vec<&'a [u8]>) -> Self { unimplemented!("A31: symscan_build") }
-    /// search.c:1185 `symscan_find`
-    pub fn find(&self, k: &[u8]) -> usize { unimplemented!("A31: symscan_find") }
+    /// search.c:1176 `symscan_build`: backwards, so the lowest index wins
+    pub fn build(hay: Vec<&'a [u8]>) -> Self {
+        let (mut empty, mut first) = (hay.len(), [0u8; 256]);
+        for (i, h) in hay.iter().enumerate().rev() { match h.first() { None => empty = i, Some(&b) => first[b as usize] = (i + 1) as u8 } }
+        Symscan { hay, empty, first }
+    }
+    /// search.c:1185 `symscan_find`: the first index holding `k`, the count when none does
+    pub fn find(&self, k: &[u8]) -> usize {
+        let Some(&b) = k.first() else { return self.empty };
+        let c = self.first[b as usize] as usize;
+        if c == 0 { return self.hay.len() }
+        (c - 1..self.hay.len()).find(|&i| self.hay[i] == k).unwrap_or(self.hay.len())
+    }
 }
-/// search.c:1209 `sym_pack`: the first `n` symbols as 8-byte keys.
-pub fn sym_pack(s: &Syms, n: usize, k: &mut [u64]) { unimplemented!("A31: sym_pack") }
-/// search.c:1236 `sym_scan`
-pub fn sym_scan(s: &Syms, n: usize, k: &[u8]) -> usize { unimplemented!("A31: sym_scan") }
-/// search.c:1243 `sym_build`: the hash table `tab` (`mask + 1` slots) over the first `n` symbols.
-pub fn sym_build(s: &Syms, n: usize, tab: &mut [usize], mask: u64) { unimplemented!("A31: sym_build") }
-/// search.c:1253 `sym_probe`
-pub fn sym_probe(s: &Syms, tab: &[usize], mask: u64, n: usize, k: &[u8]) -> usize { unimplemented!("A31: sym_probe") }
-/// search.c:1266 `qlean_search_find_sym_scalar` past the unboxing.
-pub fn find_sym_scalar(s: &Syms, ndl: &[u8]) -> usize { unimplemented!("A31: qlean_search_find_sym_scalar") }
+/// search.c:1209 `sym_pack`: the first `n` symbols as 8-byte keys, big-endian and zero-padded, so `=` on a key is symbol
+/// equality (a symbol holds no NUL). Every symbol must fit (`Syms::packs`).
+pub fn sym_pack(s: &Syms, n: usize, k: &mut [u64]) {
+    for (i, k) in k[..n].iter_mut().enumerate() {
+        let (lo, hi) = (s.offs[i] >> 1, s.offs[i + 1] >> 1);
+        let mut w = [0u8; 8];
+        let m = (hi - lo - 1).min(s.blob.len() - lo);
+        w[..m].copy_from_slice(&s.blob[lo..lo + m]);
+        // the C reads the symbol and whatever follows it and masks that off; the bytes past the symbol are 0 here
+        *k = u64::from_be_bytes(w);
+    }
+}
+/// search.c:1236 `sym_scan`: the first of the first `n` symbols equal to `k`, or `n`.
+pub fn sym_scan(s: &Syms, n: usize, k: &[u8]) -> usize {
+    if n == 0 { return 0 }
+    let mut lo = s.off(0);
+    for i in 0..n {
+        let hi = s.off(i + 1);
+        let len = hi.saturating_sub(lo + 1);
+        if len == k.len() && (len == 0 || s.blob[lo..lo + len] == *k) { return i }
+        lo = hi;
+    }
+    n
+}
+/// search.c:1243 `sym_build`: the hash table `tab` (`mask + 1` slots, zeroed) over the first `n` symbols, each slot the
+/// first index holding its symbol, plus one.
+pub fn sym_build(s: &Syms, n: usize, tab: &mut [usize], mask: u64) {
+    for i in 0..n {
+        let k = s.at(i);
+        let mut h = (crate::sym::sym_hash(k) & mask) as usize;
+        while tab[h] != 0 && s.at(tab[h] - 1) != k { h = (h + 1) & mask as usize }
+        if tab[h] == 0 { tab[h] = i + 1 }
+    }
+}
+/// search.c:1253 `sym_probe`: the index `sym_build` stored for `k`, `n` when none.
+pub fn sym_probe(s: &Syms, tab: &[usize], mask: u64, n: usize, k: &[u8]) -> usize {
+    let mut h = (crate::sym::sym_hash(k) & mask) as usize;
+    while tab[h] != 0 {
+        if s.at(tab[h] - 1) == k { return tab[h] - 1 }
+        h = (h + 1) & mask as usize;
+    }
+    n
+}
+/// search.c:1266 `qlean_search_find_sym_scalar` past the unboxing and the kept hash: one scan.
+pub fn find_sym_scalar(s: &Syms, ndl: &[u8]) -> usize { sym_scan(s, s.count(), ndl) }
+/// search.c:925 `sym_search`: `needles ? hay` (`bits` false: `out` is `8 * m` bytes of `Int64`s) or `needles in hay` (`bits`
+/// true: `out` is `m.div_ceil(8)` bytes, zeroed) for symbol columns with no kept hash. A haystack whose symbols fit the
+/// 8-byte key goes through the `u64` probe table (or a scan of up to `SYM_SCAN_MAX` keys), the needles a block at a time;
+/// a block that does not fit abandons that for the byte path, a `Symscan` or a hash table over the bytes.
+pub fn sym_search(bits: bool, nd: &Syms, hb: &Syms, out: &mut [u8]) {
+    let (n, m) = (hb.count(), nd.count());
+    if m == 0 { return }
+    // the answer for needle `j` is index `idx`; absent is `n`
+    fn put(bits: bool, out: &mut [u8], n: usize, j: usize, idx: usize) {
+        if bits { if idx < n { out[j >> 3] |= 1 << (j & 7) } } else { i64s(out)[j] = idx as i64 }
+    }
+    // an empty haystack answers `n = 0` for every needle, which sets no bit
+    if n > 0 && hb.packs(n) {
+        let mut hk = vec![0u64; n];
+        sym_pack(hb, n, &mut hk);
+        let h = Opnd { src: Src::Dense(crate::pod::bytes(&hk)), n };
+        let p = (n > SYM_SCAN_MAX).then(|| Probe::new(Kind::U64, &h));
+        let mut buf = [0u64; SYM_KEY_BLOCK];
+        let mut at = 0;
+        while at < m {
+            let cnt = (m - at).min(SYM_KEY_BLOCK);
+            let blk = Syms { blob: nd.blob, offs: &nd.offs[at..=at + cnt] };
+            if !blk.packs(cnt) { break }
+            sym_pack(&blk, cnt, &mut buf);
+            let x = Opnd { src: Src::Dense(crate::pod::bytes(&buf[..cnt])), n: cnt };
+            match &p {
+                Some(p) if bits => p.member(&x, 0, cnt, &mut out[at / 8..]),
+                Some(p) => p.find(&x, 0, cnt, &mut i64s(out)[at..at + cnt]),
+                None => {
+                    let mut r = vec![0i64; cnt];
+                    scan::<u64>(&h, &x, 0, cnt, &mut r);
+                    for (j, &r) in r.iter().enumerate() { put(bits, out, n, at + j, r as usize) }
+                }
+            }
+            at += cnt;
+        }
+        if at >= m { return }
+        // the bits a declining block left behind, before the byte path
+        if bits { out.fill(0) }
+    }
+    if n <= SYM_SCAN_MAX {
+        let s = Symscan::build(hb.slices(n));
+        for j in 0..m { put(bits, out, n, j, s.find(nd.at(j))) }
+        return;
+    }
+    let cap = crate::group::cap_for(n);
+    let mut tab = vec![0usize; cap];
+    sym_build(hb, n, &mut tab, cap as u64 - 1);
+    for j in 0..m { put(bits, out, n, j, sym_probe(hb, &tab, cap as u64 - 1, n, nd.at(j))) }
+}
+/// search.c `qlean_search_match_ids`'s translation: for each of the `na` entries of `a`, its index in `b` (`nb` when
+/// `b` does not hold it), through one hash table over `b`.
+pub fn sym_translate(a: &Syms, na: usize, b: &Syms, nb: usize, tr: &mut [usize]) {
+    let cap = crate::group::cap_for(nb.max(1));
+    let mut tab = vec![0usize; cap];
+    sym_build(b, nb, &mut tab, cap as u64 - 1);
+    for (i, t) in tr[..na].iter_mut().enumerate() { *t = sym_probe(b, &tab, cap as u64 - 1, nb, a.at(i)) }
+}
+
 
 // ---- A32: search.c:1497-1716 ----
 /// search.c:1497 `bin_key`: `v` as an unsigned key in the column's order.
@@ -878,5 +1047,74 @@ mod tests {
         assert_eq!(srange::<u32>(&dense(&[], 4)), (i64::MAX, i64::MIN));
         assert_eq!(srange::<u128>(&dense(&le::<8>(&[1, 0, u64::MAX, 0]), 16)), (-1, 1));
         assert_eq!(srange::<u16>(&Opnd { src: Src::Ids(&[], 8), n: 0 }), (0, 127));
+    }
+    // A31: expected values are search.c's (4ebc95c) own, which `/data/tmp/qrs/A31/diff` compares on 41026 random cases;
+    // the q facts are the ones QLean/Kernel/Search.lean measured
+    #[test] fn bit_kernels() {
+        let b = [0b101u8];
+        assert_eq!((find_bit(&b, 3, 1), find_bit(&b, 3, 0), find_bit(&[], 0, 1), find_bit(&[0], 9, 1), find_bit(&[0xff], 70, 0)), (0, 1, 0, 9, 8));
+        // a payload shorter than the count reads 0 past its end
+        assert_eq!((find_bit(&[0xff], 12, 0), word_at(&[1, 2], 0), word_at(&[1, 2], 5), bit_at(&[1], 8)), (8, 0x201, 0, 0));
+        let mut o = [0i64; 3];
+        find_bit_vec(3, &b, &[0b010], 3, &mut o);
+        assert_eq!(o, [1, 0, 1]);
+        // `bin` of 000111b: key 0 is last-<= at 2 (right: first >= at 0), key 1 at 5 (right: 3)
+        let h = [0b111000u8];
+        assert_eq!((bin_bit(&h, 6, 0, false), bin_bit(&h, 6, 1, false), bin_bit(&h, 6, 0, true), bin_bit(&h, 6, 1, true)), (2, 5, 0, 3));
+        bin_bits(6, &h, &[0b10], 2, false, &mut o[..2]);
+        assert_eq!(o[..2], [2, 5]);
+        let mut m = [0xffu8; 2];
+        member_bits(10, &[0b11], 1, &[1], &mut m);
+        assert_eq!(m, [0b11, 0]);
+        member_bits(10, &[0b11], 3, &[0], &mut m);
+        assert_eq!(m, [0xfc, 0b11]);
+    }
+    #[test] fn where_bits_all_shapes() {
+        let w = |n: usize, b: &[u8]| { let mut o = vec![0i64; where_count(n, b)]; assert_eq!(where_bits(n, b, &mut o), o.len()); o };
+        assert_eq!((w(3, &[0b101]), w(3, &[0]), w(0, &[])), (vec![0, 2], vec![], vec![]));
+        // the tail is masked, a short payload reads 0, a clear group of eight words is skipped, a full one is not
+        assert_eq!(w(4, &[0xff]), [0, 1, 2, 3]);
+        assert_eq!(w(130, &[0xff; 3]), (0..24).collect::<Vec<i64>>());
+        let mut big = vec![0u8; 8 * 17];
+        big[8 * 12 + 1] = 0x80;
+        assert_eq!(w(64 * 17, &big), [64 * 12 + 15]);
+        assert_eq!(w(64 * 17, &vec![0xff; 8 * 17]).len(), 64 * 17);
+        assert_eq!(spread(&mut [0; 3], 1, 2, 0b101), 3);
+    }
+    #[test] fn symbol_kernels() {
+        // blob "ab\0\0b\0": symbols "ab", "", "b"; offsets are boxed (`2 * start + 1`)
+        let blob = b"ab\0\0b\0";
+        let offs = [1usize, 7, 9, 13];
+        let s = Syms { blob, offs: &offs };
+        assert_eq!((sym_scan(&s, 3, b"ab"), sym_scan(&s, 3, b""), sym_scan(&s, 3, b"b"), sym_scan(&s, 3, b"a"), sym_scan(&s, 0, b"")), (0, 1, 2, 3, 0));
+        assert_eq!((find_sym_scalar(&s, b"b"), find_sym_scalar(&Syms { blob: &[], offs: &[] }, b"b")), (2, 0));
+        let sc = Symscan::build(s.slices(3));
+        assert_eq!((sc.find(b"ab"), sc.find(b""), sc.find(b"b"), sc.find(b"bb"), sc.find(b"z")), (0, 1, 2, 3, 3));
+        let mut k = [0u64; 3];
+        sym_pack(&s, 3, &mut k);
+        assert_eq!(k, [0x6162_0000_0000_0000, 0, 0x6200_0000_0000_0000]);
+        let mut tr = [0usize; 3];
+        sym_translate(&s, 3, &s, 3, &mut tr);
+        assert_eq!(tr, [0, 1, 2]);
+        let mut o = [0u8; 24];
+        sym_search(false, &s, &s, &mut o);
+        assert_eq!(crate::pod::cast::<i64>(&o).unwrap(), [0, 1, 2]);
+        let mut bits = [0u8; 1];
+        sym_search(true, &Syms { blob: b"b\0z\0", offs: &[1, 5, 9] }, &s, &mut bits);
+        assert_eq!(bits, [1]);
+    }
+    #[test] fn symbol_search_past_eight_symbols_and_a_declining_block() {
+        // 20 haystack symbols hash; a needle of nine bytes declines the packed key and the byte path answers it
+        let (mut blob, mut offs) = (Vec::new(), vec![1usize]);
+        for i in 0..20 { blob.extend_from_slice(format!("s{i}\0").as_bytes()); offs.push(blob.len() * 2 + 1) }
+        let h = Syms { blob: &blob, offs: &offs };
+        let (nb, no) = (b"s7\0s19\0wwwwwwwww\0".to_vec(), [1usize, 7, 15, 35]);
+        let n = Syms { blob: &nb, offs: &no };
+        let mut o = [0u8; 24];
+        sym_search(false, &n, &h, &mut o);
+        assert_eq!(crate::pod::cast::<i64>(&o).unwrap(), [7, 19, 20]);
+        let mut bits = [0u8; 1];
+        sym_search(true, &n, &h, &mut bits);
+        assert_eq!(bits, [0b011]);
     }
 }
