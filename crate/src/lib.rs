@@ -37,6 +37,7 @@ pub mod os;
 pub mod exports {
     pub mod coc;
     pub mod env;
+    pub mod ew;
     pub mod interp;
     pub mod handle;
     pub mod own;

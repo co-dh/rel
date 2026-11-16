@@ -532,6 +532,39 @@ pub fn cmp_key(run: Runner, op: u8, ids: &[u8], w: u32, n: usize, na: usize, e: 
     });
 }
 
+/// The ids a payload of `bytes` bytes holds at width `w` (elementwise.c `ids_avail`: a one-entry dictionary stores nothing
+/// and answers 0 everywhere, so width 0 holds `usize::MAX`).
+pub fn ids_avail(bytes: usize, w: u32) -> usize { if w != 0 { bytes * 8 / w as usize } else { usize::MAX } }
+/// elementwise.c `qlean_ew_eq_ids` / `qlean_ew_cmp_ids`: `n` clamped to what the vector sides hold (an atom side is read at
+/// index 0 only, so an empty one leaves nothing to compare); `ba`, `bb` are the id payloads' byte counts.
+pub fn ids_n(shape: u8, n: usize, ba: usize, wa: u32, bb: usize, wb: u32) -> usize {
+    let (aa, ab) = (ids_avail(ba, wa), ids_avail(bb, wb));
+    if (shape == k::AV && aa == 0) || (shape == k::VA && ab == 0) { return 0 }
+    let n = if shape != k::AV { n.min(aa) } else { n };
+    if shape != k::VA { n.min(ab) } else { n }
+}
+/// elementwise.c `qlean_ew_cmp_ids_key` past the unboxing: bit `i` is `op` between the symbol element `i`'s id names in
+/// `dict` and `key`, in q's order. A key no entry holds answers one bit throughout where the verb is `=`/`<>` and no id
+/// is read; an ordering is a verdict per entry (the last, past the dictionary, is the empty symbol's).
+pub fn cmp_ids_key(run: Runner, op: u8, dict: &Syms, ids: &[u8], w: u32, key: &[u8], n: usize, out: &mut [u8]) {
+    let (d, past) = (dict.count(), key.is_empty());
+    let na = ids_avail(ids.len(), w).min(n);
+    let (mut e, mut tab) = (usize::MAX, None);
+    if op == k::EQ || op == k::NE {
+        let f = crate::search::find_sym_scalar(dict, key);
+        if f < d { e = f } else if !past {
+            out.fill(if op == k::NE { 0xff } else { 0 });
+            if n & 7 != 0 { out[n.div_ceil(8) - 1] &= ((1u32 << (n & 7)) - 1) as u8 }
+            return;
+        }
+    } else {
+        tab = Some((0..=d).map(|u| {
+            let x = if u < d { dict.at(u).cmp(key) } else { (&[][..]).cmp(key) };
+            (match op { k::LT => x.is_lt(), k::LE => x.is_le(), k::GT => x.is_gt(), _ => x.is_ge() }) as u8
+        }).collect::<Vec<u8>>());
+    }
+    cmp_key(run, op, ids, w, n, na, e, d, past, tab.as_deref(), out)
+}
 // ---- A44: elementwise.c:1569-1813 ----
 /// `EW_*` codes of elementwise.c:86-100 this section reads (the verbs `k` does not hold).
 mod k44 {

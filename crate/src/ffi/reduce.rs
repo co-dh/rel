@@ -6,7 +6,7 @@ use crate::lean::{B, O, SArr, export};
 use crate::{c, pod, reduce};
 
 /// The whole `T` elements of a payload (a ragged tail is not one, as `size >> 3` in C).
-fn elems<'a, T: pod::Pod>(b: B<'a>) -> &'a [T] {
+pub fn elems<'a, T: pod::Pod>(b: B<'a>) -> &'a [T] {
     let v = b.bytes();
     pod::cast(&v[..v.len() - v.len() % size_of::<T>()]).expect("reduce: a payload is not aligned for its element")
 }
