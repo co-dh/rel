@@ -85,7 +85,7 @@ export! {
         let src = view("qlean_coc_shift", meta, pack, n);
         match src.shift_ok(k, neg != 0) {
             0 => crate::lean::boxed(0),
-            2 => ctor(1, [encode_fill(src.meta.n, 8, &|buf, i0| codec::shift_fill(&src, k, neg != 0, i64::MIN, buf, i0))], &[]),
+            2 => ctor(1, [encode_fill(src.meta.n, 8, &|buf: &mut [i64], i0: usize| codec::shift_fill(&src, k, neg != 0, i64::MIN, buf, i0))], &[]),
             _ => {
                 let mut m2 = SArr::new(1, meta.bytes().len());
                 m2.bytes_mut().copy_from_slice(meta.bytes());

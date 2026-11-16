@@ -2633,6 +2633,8 @@ pub trait Producer: Sync {
     /// Block `pb` of a column in the writer's form that answer block `b` equals, with `pb`.
     fn take(&self, _b: usize) -> Option<(Cocf<'_>, usize)> { None }
 }
+/// A closure `fill(buf, i0)` is a producer with no block to take (B9's coc.c shift and encode paths).
+impl<F: Fn(&mut [i64], usize) + Sync> Producer for F { fn fill(&self, buf: &mut [i64], i0: usize) { self(buf, i0) } }
 /// `P` as the writer's source: the cursor and the blocks it claims, as `FillSrc`'s are for a C producer.
 struct ProdSrc<'a, P> { p: &'a P, width: usize }
 impl<P: Producer> Moves for ProdSrc<'_, P> {
@@ -2733,13 +2735,6 @@ pub fn encode_pair_below(x: &[u8], width: usize) -> Option<lean::O> {
     let mut r = CParts { meta: null_mut(), body: null_mut(), alp: null_mut() };
     if unsafe { qrs_coc_encode_dense(x.as_ptr(), n, width, SRC_FOR, n * width, &mut r) } == 0 { return None }
     Some(own(unsafe { mk_pair(r.meta, r.body) }))
-}
-/// `(meta, pack)` of the `n` elements of `width` bytes `fill(buf, i0)` writes as `i64`s a block at a time (`qrs_coc_encode_fill`).
-pub fn encode_fill(n: usize, width: usize, fill: &(dyn Fn(&mut [i64], usize) + Sync)) -> lean::O {
-    unsafe extern "C" fn go(buf: *mut i64, i0: usize, nb: usize, ctx: *const c_void) {
-        unsafe { (*ctx.cast::<&(dyn Fn(&mut [i64], usize) + Sync)>())(sl_mut(buf, nb), i0) }
-    }
-    own(unsafe { qrs_coc_encode_fill(n, width, go, (&raw const fill).cast()) })
 }
 /// coc.c `mask_alloc` and the kernel that fills it: a `Column.bits` payload of `ceil(n / 8)` bytes inside the `ceil(n / 64)`
 /// words the kernels write; `f` gets the words, any contents.
