@@ -42,6 +42,7 @@ pub mod exports {
     pub mod own;
     pub mod pool;
     pub mod reduce;
+    pub mod scan;
     pub mod search;
     pub mod structural;
     pub mod time;

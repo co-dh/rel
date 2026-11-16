@@ -87,7 +87,7 @@ export! {
         let src = view("qlean_coc_shift", meta, pack, n);
         match src.shift_ok(k, neg != 0) {
             0 => boxed(0),
-            2 => ctor(1, [encode_fill(src.meta.n, 8, &|buf, i0| codec::shift_fill(&src, k, neg != 0, i64::MIN, buf, i0))], &[]),
+            2 => ctor(1, [encode_fill(src.meta.n, 8, &|buf: &mut [i64], i0: usize| codec::shift_fill(&src, k, neg != 0, i64::MIN, buf, i0))], &[]),
             _ => {
                 let mut m2 = SArr::new(1, meta.bytes().len());
                 m2.bytes_mut().copy_from_slice(meta.bytes());
@@ -143,7 +143,7 @@ fn fview<'a>(who: &str, meta: B<'a>, pack: B<'a>, alp: B<'a>, n: usize) -> Cocf<
 fn val_vv(op: u8, a: &Coc, b: &Coc, s: i64, fill: i64) -> O {
     if op > 2 { die(format_args!("coc_val_vv: verb {op} is not one of the three in QLean.Kernel.Ew\n")) }
     if !a.vv_ok(b, op as i32, s, fill) { return boxed(0) }
-    ctor(1, [encode_fill(a.meta.n, 8, &|buf, i0| cocops::vv_fill(a, b, op as i32, s, fill, i0, buf))], &[])
+    ctor(1, [encode_fill(a.meta.n, 8, &|buf: &mut [i64], i0: usize| cocops::vv_fill(a, b, op as i32, s, fill, i0, buf))], &[])
 }
 
 export! {
@@ -161,7 +161,7 @@ export! {
         let k = k as i64;
         let c = view("qlean_coc_scale", meta, pack, n);
         if !c.scale_ok(k) { return boxed(0) }
-        ctor(1, [encode_fill(c.meta.n, 8, &|buf, i0| cocops::scale_fill(&c, k, i0, buf))], &[])
+        ctor(1, [encode_fill(c.meta.n, 8, &|buf: &mut [i64], i0: usize| cocops::scale_fill(&c, k, i0, buf))], &[])
     }
     /// `res_unpack` against `res_unpack_scalar`, both readers of `Column.resAt`'s layout
     fn qlean_coc_unpack_agrees(w: u8, nb: usize) -> u8 { crate::res::res_unpack_agrees(w, nb) as u8 }
