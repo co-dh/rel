@@ -1,4 +1,4 @@
-//! The one C callback Rust takes, `qlean_run`, as a function pointer C passes in, and the one safe call over it.
+//! The runner a kernel takes (the pool, or C's serial one for a stage inside a slice), and the safe calls over it.
 use alloc::vec::Vec;
 use core::cell::UnsafeCell;
 use core::ptr::null;
@@ -32,34 +32,16 @@ pub unsafe extern "C" fn serial(f: Worker, n: usize, _cost: u32, _wide: usize, p
 }
 
 pub type Worker = unsafe extern "C" fn(lo: usize, hi: usize, p: *const CPass);
-/// C's `qlean_run` (pass.h:415) under a symbol; sort.c passes `qlean_run_c`, so this object needs no C symbol of its own.
+/// A pass's runner: the pool (`pool::run_c`, `qrs_pool_run` in C) or a serial one C hands a stage already inside a
+/// slice (elementwise.c `ew_serial`), which is why the kernels take it rather than call the pool; F3 makes it `Par`.
 pub type Runner = unsafe extern "C" fn(f: Worker, n: usize, cost: u32, wide: usize, p: *const CPass) -> u32;
 
-#[cfg(not(test))]
-unsafe extern "C" {
-    /// pass.h:453, defined in sort.c
-    fn qlean_run_c(f: Worker, n: usize, cost: u32, wide: usize, p: *const CPass) -> u32;
-}
-/// The C pool as the runner a Rust export hands its kernel (the fake below under `cargo test`), until P1 makes it
-/// `pool::run`. Adds `qlean_run_c` to the names qrs.o leaves undefined.
-pub fn pool() -> Runner { qlean_run_c }
-
-/// Under `cargo test` there is no C pool: three slices, cut as `qlean_slice` (pass.h:243) cuts them, run in turn.
+/// The runner a Rust export hands its kernel: the process's one pool.
+pub fn pool() -> Runner { crate::pool::run_c }
+/// The unit tests' name for the pool, which they once faked (three slices in turn); under `cargo test` the real pool
+/// splits every non-empty pass three ways (`pool::SPLIT_AT`).
 #[cfg(test)]
-pub unsafe extern "C" fn qlean_run_c(f: Worker, n: usize, _cost: u32, _wide: usize, p: *const CPass) -> u32 {
-    const PARTS: usize = 3;
-    for k in 0..PARTS {
-        let (lo, hi) = cut(n, PARTS, k);
-        if lo < hi { unsafe { f(lo, hi, p) } }
-    }
-    PARTS as u32
-}
-#[cfg(test)]
-fn cut(n: usize, parts: usize, k: usize) -> (usize, usize) {
-    let (q, r) = (n / parts, n % parts);
-    let lo = q * k + k.min(r);
-    (lo, lo + q + (k < r) as usize)
-}
+pub use crate::pool::run_c as qlean_run_c;
 
 struct Job<'f, F> { f: &'f F, out: *mut u8, at: &'f (dyn Fn(usize) -> usize + Sync), len: usize }
 
@@ -108,7 +90,7 @@ fn map_at<F: Fn(usize, usize, &mut [u8]) + Sync>(run: Runner, out: &mut [u8], un
 }
 
 /// `run_map` whose slices each answer one `T` (a private histogram, a partial fold): `(parts, answers)` with the
-/// answers `(lo, t)` in slice order. C's `qlean_me` row index is not visible from Rust, so a slice is named by its
+/// answers `(lo, t)` in slice order. The runner may be C's serial one, which passes no slice index, so a slice is named by its
 /// `lo`, which no other slice shares; a slice `qlean_run` leaves empty gives none.
 pub fn run_slices<T: Send, F: Fn(usize, usize) -> T + Sync>(run: Runner, n: usize, cost: u32, wide: usize, f: &F) -> (u32, Vec<(usize, T)>) {
     struct Bag<T> { lock: AtomicBool, v: UnsafeCell<Vec<(usize, T)>> }
