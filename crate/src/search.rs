@@ -1383,7 +1383,6 @@ mod tests {
         assert_eq!(bits, [0b011]);
     }
     fn pack(ids: &[u64], w: u32) -> Vec<u8> { let mut o = vec![0u8; ids::ids_bytes(ids.len(), w)]; ids::pack(&mut o, w, ids.len(), |i| ids[i]); o }
-    fn words(b: &[u8]) -> Vec<u64> { b.chunks(8).map(|c| { let mut t = [0u8; 8]; t[..c.len()].copy_from_slice(c); u64::from_le_bytes(t) }).collect() }
     // the index against a map from key to least position, at every id width, sizes either side of a capacity step
     #[test] fn index_build_find_extend_agree_with_a_map() {
         for w in [0u32, 1, 2, 4, 8, 16, 32, 64] {

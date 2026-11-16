@@ -5,7 +5,7 @@ use crate::alp::{dec, Cocf};
 use crate::c::{run_map, run_map_at, Runner};
 use crate::coc::{lanes, Coc, Meta};
 use crate::cocops::{cmp2_res, EQ, GE, GT, LE, LT, NE};
-use crate::enc;
+use crate::{enc, reduce};
 use crate::simd::res_vcmp;
 use alloc::vec;
 use crate::pod::{self, Lane};
@@ -281,4 +281,39 @@ mod tests {
         shift_fill(&c, 5, true, i64::MIN, &mut buf, 1023);
         assert_eq!(buf, [i64::MIN, -2]);
     }
+}
+
+// ---- B10: the sums of an ALP column, coc.c's `alp_f64_blk` / `alp_f32_blk` over reduce.rs's lane chains ----
+/// The chunk of blocks `alp_sum_f64` decodes at a time: 1024 blocks, 8MB, the least the pool (`pool::SPLIT`) splits.
+const ALP_SUM_CHUNK: usize = 1024;
+/// An ALP `f64` column read as `reduce::Blocks`: a chunk is decoded on every thread into `buf`, the serial chain reads it.
+struct AlpChunks<'a> { run: Runner, f: Cocf<'a>, buf: &'a mut [f64], b0: usize, b1: usize }
+impl reduce::Blocks<f64> for AlpChunks<'_> {
+    fn at<'b>(&'b mut self, b: usize, nb: usize, _: &'b mut [f64]) -> &'b [f64] {
+        if b < self.b0 || b >= self.b1 {
+            self.b0 = b / ALP_SUM_CHUNK * ALP_SUM_CHUNK;
+            self.b1 = (self.b0 + ALP_SUM_CHUNK).min(self.f.c.meta.nblk);
+            alp_chunk(self.run, &self.f, self.b0, self.b1, pod::bytes_mut(&mut self.buf[..(self.b1 - self.b0) * BLK]));
+        }
+        &self.buf[(b - self.b0) * BLK..][..nb]
+    }
+}
+/// coc.c `qlean_alp_sum_f64`: `alpSumF64 avg`, reduce.rs's eight-lane `f64_sum` fed a chunk of decoded blocks at a time.
+pub fn alp_sum_f64(run: Runner, f: &Cocf, avg: bool) -> f64 {
+    pod::with_kept(ALP_SUM_CHUNK * BLK * 8, |bytes| {
+        let buf = pod::cast_mut::<f64>(bytes).expect("alp_sum_f64: the chunk buffer is misaligned for doubles");
+        reduce::f64_sum(&mut AlpChunks { run, f: *f, buf, b0: 1, b1: 0 }, f.c.meta.n, BLK, &mut [], None, avg)
+    })
+}
+/// An ALP `f32` column read as `reduce::Blocks`: each block is decoded into the chain's own buffer.
+struct AlpBlocks<'a>(Cocf<'a>);
+impl reduce::Blocks<f32> for AlpBlocks<'_> {
+    fn at<'b>(&'b mut self, b: usize, nb: usize, buf: &'b mut [f32]) -> &'b [f32] {
+        self.0.load_blk(b, nb, pod::bytes_mut(&mut buf[..nb]));
+        &buf[..nb]
+    }
+}
+/// coc.c `qlean_alp_sum_f32`: `alpSumF32`, reduce.rs's sixteen-lane `f32_sum` fed a decoded block at a time.
+pub fn alp_sum_f32(f: &Cocf) -> f64 {
+    reduce::with_buf(BLK, |buf| reduce::f32_sum(&mut AlpBlocks(*f), f.c.meta.n, BLK, buf, None))
 }

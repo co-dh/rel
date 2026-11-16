@@ -1,4 +1,6 @@
 //! The AVX-512 kernels: coc.h:598, 646; reduce.c:261. Each picks its path by `cfg`, as the C picks by `#if`.
+// a build without the vector features takes the scalar arm of each function and ignores what only the vector arm reads
+#![cfg_attr(not(all(target_arch = "x86_64", target_feature = "avx512bw")), allow(unused_variables))]
 
 /// reduce.c `MD5_STEP`'s `asm("" : "+r"(t))`: an empty asm that makes `t` opaque, so the optimiser cannot reassociate
 /// `a + w + k + F` into `((a + F) + w) + k` and put a sixth operation back on md5's critical chain.

@@ -38,7 +38,6 @@ export! {
         let mut z = match open(path) { Ok(z) => z, Err(e) => return e };
         if let Err(e) = z.region(start, n, width) { return fail(e, path) }
         let Some(p) = encode_zip(&z, n, width, kind) else { return fail(z.error(), path) };
-        let part = |i: usize| { let mut a = SArr::new(1, p.part(i).len()); a.bytes_mut().copy_from_slice(p.part(i)); O::from(a) };
-        Io::ok(ctor(0, [part(0), ctor(0, [part(1), part(2)], &[])], &[]))
+        Io::ok(p.into_triple())
     }
 }
