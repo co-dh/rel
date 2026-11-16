@@ -3,7 +3,8 @@
 //! Column (a), coc.h: the whole-column reads of a `Coc` (A1), its sums (A3), product, any/all, min and max (A4)
 //! and the in-place shift (A6), plus `CocMut`, the writable form of the same `coc`.
 use crate::coc::{Coc, Meta};
-use crate::res::res_get_in;
+use crate::coc::lanes;
+use crate::res::{res_get, res_get_in, res_sum};
 use crate::simd::prefetch;
 use crate::BLK;
 
@@ -139,17 +140,55 @@ pub fn cmp2_res(a: &Coc, b: &Coc, op: i32, out: &mut [u64], deep: &[u32], lo: us
 // ---- A3: coc.h:858-930 (the residual sums are res.rs) ----
 impl<'a> Coc<'a> {
     /// coc.h:858 `coc_sum_blk`: block `b`'s first `nb` elements summed, wrapping.
-    pub fn sum_blk(&self, b: usize, nb: usize) -> u64 { unimplemented!("A3: coc_sum_blk") }
-    /// coc.h:878 `coc_sum_blk_nulls`: as `sum_blk`, nulls skipped.
-    pub fn sum_blk_nulls(&self, b: usize, nb: usize) -> u64 { unimplemented!("A3: coc_sum_blk_nulls") }
-    /// coc.h:893 `coc_sums_ok`: the stored block sums were taken at `nul` and the current `n`.
-    pub fn sums_ok(&self, nul: i64) -> bool { unimplemented!("A3: coc_sums_ok") }
+    pub fn sum_blk(&self, b: usize, nb: usize) -> u64 {
+        let (mut w, at) = (self.meta.width[b], self.meta.off[b] as usize);
+        let p = &self.pack[at..at + BLK * w as usize / 8];
+        let s = if w & w.wrapping_sub(1) == 0 { res_sum(p, nb, w) } else {
+            let mut buf = [0u8; BLK * 8]; // the lanes of an odd width, summed at the lane width `lanes` leaves in `w`
+            let q = lanes(p, &mut w, nb, &mut buf);
+            res_sum(q, nb, w)
+        };
+        (nb as u64).wrapping_mul(self.frame(b)).wrapping_add(s)
+    }
+    /// coc.h:878 `coc_sum_blk_nulls`: as `sum_blk`, nulls skipped. A null is the residual 0, which neither the
+    /// residual sum nor the count `k` of elements takes in.
+    pub fn sum_blk_nulls(&self, b: usize, nb: usize) -> u64 {
+        let (w, at) = (self.meta.width[b], self.meta.off[b] as usize);
+        let p = &self.pack[at..at + BLK * w as usize / 8];
+        let (mut s, mut k) = (0u64, 0u64);
+        for j in 0..nb { let r = res_get(p, w, j); if r != 0 { s = s.wrapping_add(r); k += 1 } }
+        k.wrapping_mul(self.frame(b)).wrapping_add(s)
+    }
+    /// coc.h:893 `coc_sums_ok`: the stored block sums were taken at `nul` and the current `n`. 0 is no type's null,
+    /// so "no sums stored" and "taken at another null" are one test.
+    pub fn sums_ok(&self, nul: i64) -> bool { self.meta.sumnul == nul && self.meta.sumn == self.meta.n as u64 && nul != 0 }
     /// coc.h:910 `coc_sum`: the column's sum, nulls `nul` skipped, wrapping.
-    pub fn sum(&self, nul: i64) -> u64 { unimplemented!("A3: coc_sum") }
+    pub fn sum(&self, nul: i64) -> u64 {
+        let m = &self.meta;
+        // the stored sums are the numbers `sum_blk` and `sum_blk_nulls` compute, at nblk reads rather than n
+        if self.sums_ok(nul) { return m.bsum[..m.nblk].iter().fold(0u64, |a, &s| a.wrapping_add(s as u64)) }
+        let mut acc = 0u64;
+        for b in 0..m.nblk {
+            let nb = if b * BLK + BLK < m.n { BLK } else { m.n - b * BLK };
+            acc = acc.wrapping_add(if m.base[b] == nul { self.sum_blk_nulls(b, nb) } else { self.sum_blk(b, nb) });
+            // each exception's slot added the frame: take it back and add the element, a null adding nothing
+            let Some(e) = self.exc.filter(|e| !e.pos.is_empty()) else { continue };
+            for j in (e.off[b] as usize..e.off[b + 1] as usize).filter(|&j| (e.pos[j] as usize) < nb) {
+                let v = self.exc(j);
+                acc = acc.wrapping_add(if v == nul { 0 } else { v as u64 }).wrapping_sub(self.frame(b));
+            }
+        }
+        acc
+    }
 }
 impl<'a> CocMut<'a> {
-    /// coc.h:901 `coc_sums_drop`: mark the stored sums stale.
-    pub fn sums_drop(&mut self) { unimplemented!("A3: coc_sums_drop") }
+    /// coc.h:901 `coc_sums_drop`: mark the stored sums stale. `bsum` is zeroed with the trailer, so two columns of the
+    /// same elements hold the same bytes.
+    pub fn sums_drop(&mut self) {
+        self.bsum[..self.nblk].fill(0);
+        if let Some(s) = self.sumnul.as_deref_mut() { *s = 0 }
+        if let Some(s) = self.sumn.as_deref_mut() { *s = 0 }
+    }
 }
 
 // ---- A4: coc.h:934-1050 ----
@@ -206,6 +245,29 @@ mod tests {
         assert_eq!(out[..3], [99, 99, 99]);
         assert_eq!((c.std(3), c.std(1025), c.std(0)), (true, false, false));
         assert_eq!(c.one_width(), 0);
+    }
+    // expected values: the C of d995c59 (/data/tmp/qrs/A3/diff.c: 185232 checks, 0 mismatches)
+    #[test] fn sums_wrap_skip_nulls_and_drop() {
+        let mut base = [i64::MAX];
+        let mut bsum = [5i64];
+        let (mut sn, mut ss) = (i64::MIN, 3u64);
+        fn mk<'a>(base: &'a [i64], bsum: &'a [i64], sumnul: i64, sumn: u64) -> Coc<'a> {
+            let meta = Meta { base, maxv: &[0], off: &[0], bsum, width: &[0], sumnul, sumn, n: 3, nblk: 1, mblk: 1 };
+            Coc { meta, pack: &[], exc: None, fdelta: None }
+        }
+        // 3 * i64::MAX wraps; a block whose base is the null sums to 0
+        let c = mk(&base, &bsum, 0, 0);
+        assert_eq!(c.sum(i64::MIN), i64::MAX.wrapping_mul(3) as u64);
+        assert_eq!(c.sum(i64::MAX), 0);
+        assert!(!c.sums_ok(i64::MIN));
+        // stored sums answer only at their own null and n; 0 is never a null
+        assert_eq!(mk(&base, &bsum, i64::MIN, 3).sum(i64::MIN), 5);
+        assert!(mk(&base, &bsum, i64::MIN, 3).sums_ok(i64::MIN));
+        assert!(!mk(&base, &bsum, i64::MIN, 4).sums_ok(i64::MIN) && !mk(&base, &bsum, 0, 3).sums_ok(0));
+        let mut m = CocMut { base: &mut base, maxv: &mut [0], off: &mut [0], bsum: &mut bsum, width: &mut [0], sumnul: Some(&mut sn),
+                             sumn: Some(&mut ss), pack: &mut [], n: 3, nblk: 1, mblk: 1 };
+        m.sums_drop();
+        assert_eq!((m.bsum[0], *m.sumnul.unwrap(), *m.sumn.unwrap()), (0, 0, 0));
     }
     #[test] fn res_cmp2_puts_null_least() {
         let mut out = [0u64; 1];

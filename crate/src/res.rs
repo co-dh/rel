@@ -67,9 +67,22 @@ pub fn res_pack_scalar(v: &[u64], w: u8, nb: usize, dst: &mut [u8]) {
 
 // ---- A3: coc.h:790-856 ----
 /// coc.h:802 `res_count_lt8`: of `nb` 8-bit residuals, how many are below `t`.
-pub fn res_count_lt8(p: &[u8], nb: usize, t: u64) -> usize { unimplemented!("A3: res_count_lt8") }
-/// coc.h:825 `res_sum`: `nb` residuals of width `w` summed.
-pub fn res_sum(p: &[u8], nb: usize, w: u8) -> u64 { unimplemented!("A3: res_sum") }
+pub fn res_count_lt8(p: &[u8], nb: usize, t: u64) -> usize { p[..nb].iter().filter(|&&x| (x as u64) < t).count() }
+/// coc.h:825 `res_sum`: `nb` residuals of width `w` summed, wrapping. `w` is a lane width (`coc::lanes` has run) or
+/// 1, 2, 4; like C, any other width reads one byte per residual, so a field crossing a byte is cut.
+pub fn res_sum(p: &[u8], nb: usize, w: u8) -> u64 {
+    fn lanes<const N: usize>(p: &[u8], nb: usize, f: fn([u8; N]) -> u64) -> u64 {
+        p[..nb * N].chunks_exact(N).fold(0u64, |a, c| a.wrapping_add(f(c.try_into().unwrap())))
+    }
+    match w {
+        0 => 0,
+        8 => crate::simd::res_sum8(p, nb, w),
+        16 => lanes(p, nb, |c| u16::from_ne_bytes(c) as u64),
+        32 => lanes(p, nb, |c| u32::from_ne_bytes(c) as u64),
+        64 => lanes(p, nb, u64::from_ne_bytes),
+        _ => (0..nb).fold(0u64, |a, i| { let bit = i * w as usize; a.wrapping_add(((p[bit >> 3] >> (bit & 7)) as u64) & ((1u64 << w) - 1)) }),
+    }
+}
 
 // ---- A4: coc.h:993 ----
 /// coc.h:993 `res_min_nonzero`
@@ -113,6 +126,19 @@ mod tests {
                 assert!(d[len..].iter().all(|&x| x == 0xC3), "w {w} nb {nb} wrote past {len}");
             }
         }
+    }
+    #[test] fn sum_and_count_agree_with_the_bit_stream() {
+        let mut s = 0x1234567899AB1u64;
+        for w in [0u8, 1, 2, 4, 8, 16, 32, 64] {
+            let p: Vec<u8> = (0..BLK * w as usize / 8).map(|_| rng(&mut s) as u8).collect();
+            for nb in [0, 1, 31, 32, 33, 1000, BLK] {
+                let e = (0..nb).fold(0u64, |a, j| a.wrapping_add(spec(&p, w as usize, j)));
+                assert_eq!(res_sum(&p, nb, w), e, "w {w} nb {nb}");
+            }
+        }
+        let p: Vec<u8> = (0..BLK).map(|i| (i * 7) as u8).collect();
+        for t in [0u64, 1, 100, 255, 256, 9999] { assert_eq!(res_count_lt8(&p, 1000, t), p[..1000].iter().filter(|&&x| (x as u64) < t).count()) }
+        assert_eq!(res_count_lt8(&p, 1000, 256), 1000);
     }
     #[test] #[should_panic(expected = "res_pack asked for width 8, which is a power of two or over 64")]
     fn pack_refuses_a_power_of_two() { res_pack_scalar(&[0; BLK], 8, 1, &mut [0; 8]) }

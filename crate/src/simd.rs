@@ -425,7 +425,8 @@ pub fn res_pack(v: &[u64], w: u8, nb: usize, dst: &mut [u8]) {
     crate::res::res_pack_scalar(v, w, nb, dst)
 }
 /// A3: coc.h:820 `res_sum8`, the vector residual sum.
-pub fn res_sum8(p: &[u8], nb: usize, w: u8) -> u64 { unimplemented!("A3: res_sum8") }
+/// The scaffold's `w` is the width `res::res_sum` dispatched on, always 8 here. The bytes are `u8_sum`'s `psadbw`.
+pub fn res_sum8(p: &[u8], nb: usize, w: u8) -> u64 { debug_assert_eq!(w, 8); u8_sum(&p[..nb]) as u64 }
 /// A14: scan.c's vector `scan_fill`.
 pub fn scan_fill(kind: i32, p: &[u8], out: &mut [u8], n: usize) { unimplemented!("A14: scan_fill avx512") }
 /// A14: scan.c's vector `scan_any_null`.
