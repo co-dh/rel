@@ -1128,6 +1128,29 @@ pub fn ssr_fill(o: &mut [u8], b: &[u8], hits: &[i64], w: usize, t: &[u8]) {
     copy_run(&mut o[at..at + n - i], &b[i..]);
 }
 
+/// Whether `pre` stays off symbol `x` in `translate_syms`: `x` is empty, or its mapped bytes already begin with `pre`.
+fn keeps_prefix(pre: &[u8], tab: &[u8], x: &[u8]) -> bool {
+    x.is_empty() || (pre.len() <= x.len() && x.iter().zip(pre).all(|(&c, &p)| tab[c as usize] == p))
+}
+/// elementwise.c `qlean_ew_translate_syms`, first pass: the answer blob's byte count, `pre` in front of every symbol that
+/// does not keep it, each symbol's bytes and its NUL.
+pub fn translate_size(pre: &[u8], tab: &[u8], s: &Syms) -> usize {
+    (0..s.count()).map(|i| { let x = s.at(i); x.len() + if keeps_prefix(pre, tab, x) { 0 } else { pre.len() } + 1 }).sum()
+}
+/// The second pass: every symbol of `s` mapped through the 256-entry `tab` into `out` (`translate_size` bytes), `ends[i]`
+/// the offset just past symbol `i`'s NUL, which is symbol `i + 1`'s start.
+pub fn translate_fill(pre: &[u8], tab: &[u8], s: &Syms, out: &mut [u8], ends: &mut [usize]) {
+    let mut at = 0;
+    for (i, e) in ends.iter_mut().enumerate() {
+        let x = s.at(i);
+        if !keeps_prefix(pre, tab, x) { out[at..at + pre.len()].copy_from_slice(pre); at += pre.len() }
+        for (d, &c) in out[at..at + x.len()].iter_mut().zip(x) { *d = tab[c as usize] }
+        at += x.len();
+        out[at] = 0;
+        at += 1;
+        *e = at;
+    }
+}
 #[cfg(test)]
 mod tests_k8 {
     use super::*;
