@@ -845,6 +845,161 @@ pub fn run_starts_bits(n: usize, bits: &[u8], out: &mut [i64]) -> usize {
     g + 1
 }
 
+// ---- K17: search.c `coc_may_hold64`, `remap_ids_run`, the index's slots (`ix_*`) ----
+/// search.c `coc_may_hold64`: the blocks `[b0, b0 + k)`, `k <= 64`, that may hold `v` as a bit mask: those whose
+/// `[base, maxv]` holds it, and a patched block one of whose exceptions is it. The OR reduction first is what vectorises
+/// where the shift by `j` does not, and most chunks hold no candidate.
+pub fn coc_may_hold64(c: &Coc, b0: usize, k: usize, v: i64) -> u64 {
+    let (base, maxv) = (&c.meta.base[b0..b0 + k], &c.meta.maxv[b0..b0 + k]);
+    let any = base.iter().zip(maxv).fold(false, |a, (&b, &x)| a | ((b <= v) & (v <= x)));
+    let exc = c.exc.filter(|e| !e.pos.is_empty()).is_some_and(|e| e.off[b0 + k] != e.off[b0]);
+    if !any && !exc { return 0 }
+    let mut m = base.iter().zip(maxv).enumerate().fold(0u64, |m, (j, (&b, &x))| m | (((b <= v) & (v <= x)) as u64) << j);
+    if exc { for j in 0..k { if m >> j & 1 == 0 && coc_exc_within(c, b0 + j, v, v) { m |= 1 << j } } }
+    m
+}
+
+/// search.c `qlean_search_remap_ids`' body: `map` (`wout`-bit entries) read at each of the `n` ids of `ids` (`w` bits),
+/// the entry past the map answering a stray id, into `out` at `wout` bits. It is `ids::map`, `idGroups`' pass, over
+/// the map read out once into a dictionary-sized table: `d` entries where the column is millions, which keeps the
+/// map's own width out of the loop.
+pub fn remap_ids(run: Runner, ids: &[u8], n: usize, w: u32, map: &[u8], wout: u32, out: &mut [u8]) {
+    let nm = if wout == 0 { 0 } else { map.len() * 8 / wout as usize };
+    let mut tab = vec![0usize; nm + 1];
+    fn read<const W: u32>(map: &[u8], nm: usize, tab: &mut [usize]) { ids::each::<W>(map, nm, |u, v| tab[u] = v) }
+    ids::by_width!(wout, read(map, nm, &mut tab));
+    ids::map(run, &ids[..ids::ids_bytes(n, w)], n, w, nm, &tab, wout, out)
+}
+
+/// The slots an index keeps: open addressing over 16-byte slots, a key and the least position holding it, the position
+/// `IX_EMPTY` in an empty slot; then one word, how many rows the slots hash. A table is `2 * cap + 1` words.
+const IX_EMPTY: u64 = u64::MAX;
+/// search.c `ix_slot`: a key below the capacity is its own slot, so needles near each other read slots near each other;
+/// the bits above are mixed (murmur3's fmix64, 0 at 0) before they reach the slot, since xor-folding them kept their
+/// structure.
+#[inline(always)]
+pub fn ix_slot(k: u64, s: u32, mask: u64) -> usize {
+    let mut h = k >> s;
+    h ^= h >> 33; h = h.wrapping_mul(0xff51afd7ed558ccd); h ^= h >> 33; h = h.wrapping_mul(0xc4ceb9fe1a85ec53); h ^= h >> 33;
+    ((k ^ h) & mask) as usize
+}
+/// search.c `ix_alloc`'s size: the capacity is a power of two, at least 16 and 1.5 times the distinct keys.
+pub fn ix_bytes(distinct: usize) -> usize {
+    let mut cap = 16usize;
+    while cap < distinct + distinct / 2 { cap <<= 1 }
+    cap * 16 + 8
+}
+fn ix_slots(t: &[u64]) -> &[[u64; 2]] { t[..t.len() & !1].as_chunks::<2>().0 }
+fn ix_slots_mut(t: &mut [u64]) -> &mut [[u64; 2]] { let n = t.len() & !1; t[..n].as_chunks_mut::<2>().0 }
+/// The shift and mask of a table of `cap` slots (an empty table reads 0 and 0).
+fn ix_geom(cap: usize) -> (u32, u64) { if cap == 0 { (0, 0) } else { (cap.trailing_zeros(), cap as u64 - 1) } }
+fn ix_set_rows(t: &mut [u64], rows: usize) { let n = t.len() & !1; t[n] = rows as u64 }
+/// search.c `ix_alloc`'s fill: every slot empty, no rows hashed.
+pub fn ix_init(t: &mut [u64]) { let n = t.len() & !1; t[..n].fill(IX_EMPTY); ix_set_rows(t, 0) }
+/// Row `row` under key `k` at the first slot from `ix_slot` that is empty (written) or holds `k` with `same` of its
+/// position (kept: an earlier position holds it).
+#[inline(always)]
+fn ix_put(sl: &mut [[u64; 2]], k: u64, row: usize, s: u32, mask: u64, same: impl Fn(usize) -> bool) {
+    let mut h = ix_slot(k, s, mask);
+    loop {
+        let e = &mut sl[h];
+        if e[1] == IX_EMPTY { *e = [k, row as u64]; return }
+        if e[0] == k && same(e[1] as usize) { return }
+        h = (h + 1) & mask as usize;
+    }
+}
+/// The least position of `k` among the first `miss` rows, or `miss`; a position at or past `miss` is a row appended to a
+/// later value, not this one's. `same` decides a key match (symbols compare their bytes).
+#[inline(always)]
+fn ix_get(sl: &[[u64; 2]], k: u64, s: u32, mask: u64, miss: usize, same: impl Fn(usize) -> bool) -> usize {
+    let mut h = ix_slot(k, s, mask);
+    loop {
+        let e = sl[h];
+        if e[1] == IX_EMPTY { return miss }
+        if e[0] == k && (e[1] as usize) < miss && same(e[1] as usize) { return e[1] as usize }
+        h = (h + 1) & mask as usize;
+    }
+}
+
+fn distinct_w<const W: u32>(p: &[u8], n: usize) -> usize {
+    let (mut d, mut prev) = (n.min(1), 0);
+    ids::each::<W>(p, n, |i, k| { d += (i > 0 && k != prev) as usize; prev = k });
+    d
+}
+/// The runs of equal neighbours of `n` ids at `w` bits: what the table sizes itself by (distinct keys at most).
+pub fn ix_distinct(p: &[u8], w: u32, n: usize) -> usize { ids::by_width!(w, distinct_w(p, n)) }
+fn build_w<const W: u32>(t: &mut [u64], p: &[u8], n: usize) {
+    let (s, mask) = ix_geom(t.len() / 2);
+    let sl = ix_slots_mut(t);
+    ids::each::<W>(p, n, |i, k| ix_put(sl, k as u64, i, s, mask, |_| true));
+}
+/// `qlean_index_hash_build`'s fill: slots hashing the `n` keys `p` holds at `w` bits to the least position of each.
+pub fn ix_build(t: &mut [u64], p: &[u8], w: u32, n: usize) { ids::by_width!(w, build_w(t, p, n)); ix_set_rows(t, n) }
+fn find_w<const W: u32>(t: &[u64], p: &[u8], miss: usize, out: &mut [i64]) {
+    // a few needles ahead, so a run of misses into a table larger than the cache overlaps rather than queues
+    const AHEAD: usize = 8;
+    let (sl, m) = (ix_slots(t), out.len());
+    let (s, mask) = ix_geom(sl.len());
+    ids::unpack::<W, i64>(p, out, |i, e, k| {
+        if !sl.is_empty() && i + AHEAD < m { crate::simd::prefetch(&sl[ix_slot(ids::id_at(p, W, i + AHEAD) as u64, s, mask)]) }
+        *e = (if sl.is_empty() { miss } else { ix_get(sl, k as u64, s, mask, miss, |_| true) }) as i64;
+    });
+}
+/// `qlean_index_hash_find`: each of the `out.len()` needles `p` holds at `w` bits, its position in the slots, `miss` where
+/// they hold none.
+pub fn ix_find(t: &[u64], p: &[u8], w: u32, miss: usize, out: &mut [i64]) { ids::by_width!(w, find_w(t, p, miss, out)) }
+fn extend_w<const W: u32>(t: &mut [u64], p: &[u8], base: usize, m: usize) {
+    let (s, mask) = ix_geom(t.len() / 2);
+    let sl = ix_slots_mut(t);
+    ids::each::<W>(p, m, |i, k| ix_put(sl, k as u64, base + i, s, mask, |_| true));
+}
+/// `qlean_index_hash_extend`'s fill: the `m` keys `p` holds at `w` bits added as rows `base` on.
+pub fn ix_extend(t: &mut [u64], p: &[u8], w: u32, base: usize, m: usize) { ids::by_width!(w, extend_w(t, p, base, m)) }
+/// search.c `ix_room`'s copy: `src`'s slots below `base` rehashed into the fresh `dst`, which then hashes `keys` rows.
+/// Where another value has claimed past `base`, its rows are not this value's, and open addressing cannot delete them
+/// from a copy.
+pub fn ix_rehash(dst: &mut [u64], src: &[u64], base: usize, keys: usize) {
+    let (s, mask) = ix_geom(dst.len() / 2);
+    let ds = ix_slots_mut(dst);
+    for e in ix_slots(src) { if e[1] != IX_EMPTY && e[1] < base as u64 { ix_put(ds, e[0], e[1] as usize, s, mask, |_| false) } }
+    ix_set_rows(dst, keys)
+}
+
+/// search.c `ixsyms`: a symbol column as the hash reads it: element `i` is entry `i` of the blob or, interned, the entry
+/// the id `i` names, which keys the interned form by the bytes too.
+pub struct IxSyms<'a> { pub s: Syms<'a>, pub ids: &'a [u8], pub w: u32, pub interned: bool }
+impl IxSyms<'_> {
+    #[inline]
+    fn at(&self, i: usize) -> &[u8] { self.s.at(if self.interned { ids::id_at(self.ids, self.w, i) } else { i }) }
+}
+/// Symbols differing from their predecessor among the first `n`: the table's size.
+pub fn ix_distinct_syms(v: &IxSyms, n: usize) -> usize {
+    n.min(1) + (1..n).filter(|&i| !crate::sym::sym_eq(v.at(i), v.at(i - 1))).count()
+}
+/// `qlean_index_hash_build_syms`'s fill, a key `sym_hash` and the bytes compared on a match.
+pub fn ix_build_syms(t: &mut [u64], v: &IxSyms, n: usize) {
+    ix_extend_syms(t, v, 0, n);
+    ix_set_rows(t, n)
+}
+/// `qlean_index_hash_extend_syms`'s fill: rows `base..n`.
+pub fn ix_extend_syms(t: &mut [u64], v: &IxSyms, base: usize, n: usize) {
+    let (s, mask) = ix_geom(t.len() / 2);
+    let sl = ix_slots_mut(t);
+    for i in base..n {
+        let x = v.at(i);
+        ix_put(sl, crate::sym::sym_hash(x), i, s, mask, |r| crate::sym::sym_eq(v.at(r), x));
+    }
+}
+/// `qlean_index_hash_find_syms`: each symbol of `nd`, its position in the slots of `v`, `miss` where they hold none.
+pub fn ix_find_syms(t: &[u64], v: &IxSyms, nd: &Syms, miss: usize, out: &mut [i64]) {
+    let sl = ix_slots(t);
+    let (s, mask) = ix_geom(sl.len());
+    for (i, e) in out.iter_mut().enumerate() {
+        let x = nd.at(i);
+        *e = (if sl.is_empty() { miss } else { ix_get(sl, crate::sym::sym_hash(x), s, mask, miss, |r| crate::sym::sym_eq(v.at(r), x)) }) as i64;
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1141,5 +1296,62 @@ mod tests {
         let mut bits = [0u8; 1];
         sym_search(true, &n, &h, &mut bits);
         assert_eq!(bits, [0b011]);
+    }
+    fn pack(ids: &[u64], w: u32) -> Vec<u8> { let mut o = vec![0u8; ids::ids_bytes(ids.len(), w)]; ids::pack(&mut o, w, ids.len(), |i| ids[i]); o }
+    fn words(b: &[u8]) -> Vec<u64> { b.chunks(8).map(|c| { let mut t = [0u8; 8]; t[..c.len()].copy_from_slice(c); u64::from_le_bytes(t) }).collect() }
+    // the index against a map from key to least position, at every id width, sizes either side of a capacity step
+    #[test] fn index_build_find_extend_agree_with_a_map() {
+        for w in [0u32, 1, 2, 4, 8, 16, 32, 64] {
+            for n in [0usize, 1, 2, 10, 11, 12, 24, 25, 26, 100, 1000] {
+                let top = if w == 0 { 1u64 } else if w >= 64 { u64::MAX } else { 1u64 << w };
+                let keys: Vec<u64> = (0..n as u64).map(|i| (i / 3).wrapping_mul(0x9e37_79b9_7f4a_7c15) % top).collect();
+                let kb = pack(&keys, w);
+                let mut t = vec![0u64; ix_bytes(ix_distinct(&kb, w, n)) / 8];
+                ix_init(&mut t);
+                ix_build(&mut t, &kb, w, n);
+                assert_eq!(t[t.len() - 1], n as u64);
+                let least = |k: u64| keys.iter().position(|&x| x == k).unwrap_or(n);
+                let mut out = vec![0i64; n + 2];
+                let nd: Vec<u64> = keys.iter().copied().chain([top.wrapping_sub(1), 0]).collect();
+                ix_find(&t, &pack(&nd, w), w, n, &mut out);
+                for (i, &k) in nd.iter().enumerate() { assert_eq!(out[i] as usize, least(k), "w {w} n {n} key {k}") }
+                // rows at or past `miss` are another value's: hidden
+                ix_find(&t, &pack(&nd, w), w, n / 2, &mut out);
+                for (i, &k) in nd.iter().enumerate() { assert_eq!(out[i] as usize, if least(k) < n / 2 { least(k) } else { n / 2 }) }
+                // rehash below `base`, then extend by the rest
+                let base = n / 2;
+                let mut u = vec![0u64; ix_bytes(2 * n) / 8];
+                ix_init(&mut u);
+                ix_rehash(&mut u, &t, base, n);
+                ix_extend(&mut u, &pack(&keys[base..], w), w, base, n - base);
+                ix_find(&u, &pack(&nd, w), w, n, &mut out);
+                for (i, &k) in nd.iter().enumerate() { assert_eq!(out[i] as usize, least(k)) }
+            }
+        }
+    }
+    // equal 64-bit keys of different symbols: the bytes decide, and a chain of them is probed past
+    #[test] fn index_put_probes_past_a_key_collision() {
+        let mut t = vec![0u64; ix_bytes(4) / 8];
+        ix_init(&mut t);
+        let (s, mask) = ix_geom(t.len() / 2);
+        let sl = ix_slots_mut(&mut t);
+        let syms = [b"a".as_slice(), b"b", b"a", b"c"];
+        for (i, x) in syms.iter().enumerate() { ix_put(sl, 7, i, s, mask, |r| syms[r] == *x) }
+        let at = |x: &[u8]| ix_get(sl, 7, s, mask, 4, |r| syms[r] == x);
+        assert_eq!((at(b"a"), at(b"b"), at(b"c"), at(b"z")), (0, 1, 3, 4));
+    }
+    #[test] fn remap_renames_with_a_stray_id_reading_entry_zero() {
+        for (w, wout) in [(0u32, 0u32), (1, 1), (2, 4), (4, 2), (8, 8), (4, 16), (16, 1), (64, 64), (0, 8)] {
+            let (tw, to) = (if w == 0 { 1 } else { 1u64 << w.min(20) }, if wout == 0 { 1 } else { 1u64 << wout.min(20) });
+            for (n, nm) in [(0usize, 3usize), (7, 3), (8, 5), (1001, 17), (1000, 300)] {
+                let nm = nm.min(to as usize);
+                let ids: Vec<u64> = (0..n as u64).map(|i| i.wrapping_mul(2654435761) % tw).collect();
+                let map: Vec<u64> = (0..nm as u64).map(|u| (u * 7 + 1) % to).collect();
+                let mut out = vec![0u8; ids::ids_bytes(n, wout)];
+                remap_ids(crate::c::qlean_run_c, &pack(&ids, w), n, w, &pack(&map, wout), wout, &mut out);
+                let want: Vec<u64> = if wout == 0 { vec![] } else { ids.iter().map(|&i| map.get(i as usize).copied().unwrap_or(0)).collect() };
+                assert_eq!(out, pack(&want, wout), "w {w} wout {wout} n {n} nm {nm}");
+            }
+        }
     }
 }
