@@ -58,7 +58,7 @@ impl CCoc {
 }
 
 /// Mirror of pass.h:74 `qlean_pass`, the context `c::run_map` hands the C pool; rs.h's `QRS_ASSERT_CPASS`, expanded
-/// in sort.c beside `qlean_run_c`, asserts every field's offset against it.
+/// in sort.c, asserts every field's offset against it.
 #[repr(C)]
 pub struct CPass {
     pub a: *const core::ffi::c_void, pub b: *const core::ffi::c_void, pub c: *const core::ffi::c_void,
@@ -154,7 +154,7 @@ unsafe fn ksrc<'a>(kind: u8, p: *const u8, c: *const CCoc, n: usize) -> sort::Ks
 }
 
 /// `ids_run` over `dedup`'s tables: `dtab` (`slots` entries) when not null, else `htab` (`cap` entries) and `gkey`
-/// (`ng` entries). `gid` is `n * lane / 8` bytes.  `run` is C's `qlean_run_c`, passed as a `void (*)(void)` and called as `c::Runner`. 1 = written, 0 = refused (a kind outside the enum, `SK_WIN`, a short payload or `gid`, a lane not 8, 16, 32 or 64).
+/// (`ng` entries). `gid` is `n * lane / 8` bytes.  `run` is the pool (`qrs_pool_run`), passed as a `void (*)(void)` and called as `c::Runner`. 1 = written, 0 = refused (a kind outside the enum, `SK_WIN`, a short payload or `gid`, a lane not 8, 16, 32 or 64).
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn qrs_group_fill(kind: u8, p: *const u8, n: usize, mn: u64, dtab: *const u32, slots: usize,
                                         htab: *const usize, gkey: *const u64, ng: usize, cap: usize, sh: c_int,
@@ -169,7 +169,7 @@ pub unsafe extern "C" fn qrs_group_fill(kind: u8, p: *const u8, n: usize, mn: u6
     group::fill(unsafe { core::mem::transmute::<unsafe extern "C" fn(), c::Runner>(run) }, kind, b, n, &t, lane, unsafe { sl_mut(gid, n.saturating_mul(lane as usize) / 8) }) as c_int
 }
 
-/// `groupIds` of a dense column: `gid` is `gcap` bytes, `first` `n` entries, `run` C's `qlean_run_c` as in `qrs_group_fill`. Answers `ng`, or `SIZE_MAX` for
+/// `groupIds` of a dense column: `gid` is `gcap` bytes, `first` `n` entries, `run` the pool (`qrs_pool_run`) as in `qrs_group_fill`. Answers `ng`, or `SIZE_MAX` for
 /// `SK_WIN`, an unknown kind.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn qrs_group_ids(kind: u8, p: *const u8, n: usize, mn: u64, mx: u64, gid: *mut u8, gcap: usize,
@@ -392,7 +392,7 @@ impl CCoc {
     }
 }
 
-/// C's `qlean_run_c` as the Rust `Runner`, the one cast every column (a) shim makes.
+/// the pool (`qrs_pool_run`) as the Rust `Runner`, the one cast every column (a) shim makes.
 unsafe fn rn(run: unsafe extern "C" fn()) -> c::Runner { unsafe { core::mem::transmute::<unsafe extern "C" fn(), c::Runner>(run) } }
 /// `n` symbols: `blob` and C's boxed `lean_array_cptr(offs)`, unboxed by `Syms`.
 unsafe fn syms<'a>(blob: *const u8, bytes: usize, offs: *const usize, n: usize) -> Syms<'a> {
@@ -789,7 +789,7 @@ pub unsafe extern "C" fn qrs_coc_shift_fill(c: *const CCoc, k: i64, neg: c_int, 
     unsafe { codec::shift_fill(&(*c).view(), k, neg != 0, i64::MIN, sl_mut(buf, cnt), i0) }
 }
 /// A15b: `x <op> v` of a column as a bitmap, a bit per element LSB-first, the whole job (the metadata pass, then the deep
-/// blocks threaded on `run`, C's `qlean_run_c`). `out` is `ceil(n / 64)` words, any contents.
+/// blocks threaded on `run`, the pool (`qrs_pool_run`)). `out` is `ceil(n / 64)` words, any contents.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn qrs_coc_mask_cmp(run: unsafe extern "C" fn(), op: u8, v: i64, c: *const CCoc, out: *mut u64) {
     unsafe { codec::mask_cmp(rn(run), op, v, &(*c).view(), sl_mut(out, (*c).n.div_ceil(64))) }
@@ -1137,7 +1137,7 @@ pub unsafe extern "C" fn qrs_scan(kind: c_int, h: *const u8, n: usize, x: *const
     search::scan_kind(kd, &h, &x, unsafe { sl_mut(out, m) })
 }
 /// A30: search.c `search`: `x ? h` (`member` 0, `8 * xn` bytes of `Int64`s) or `x in h` (`member` 1, `ceil(xn / 8)` bytes,
-/// bit `i` for needle `i`) into `out`, the whole job on `run` (C's `qlean_run_c`) with no further call back into C.
+/// bit `i` for needle `i`) into `out`, the whole job on `run` (the pool (`qrs_pool_run`)) with no further call back into C.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn qrs_search(run: unsafe extern "C" fn(), kind: c_int, hd: *const u8, hc: *const CCoc, hn: usize, henc: c_int,
                                     hlw: u32, xd: *const u8, xc: *const CCoc, xn: usize, xenc: c_int, xlw: u32, member: c_int,
@@ -1720,6 +1720,12 @@ pub unsafe extern "C" fn qrs_ew_cmp_ids_key(run: unsafe extern "C" fn(), op: u8,
 pub unsafe extern "C" fn qrs_ew_widen(run: unsafe extern "C" fn(), src: u8, dst: u8, nul_in: i64, nul_out: i64,
                                       x: *const u8, xbytes: usize, n: usize, out: *mut u8, obytes: usize) {
     unsafe { ew::widen(rn(run), src, dst, nul_in, nul_out, sl(x, xbytes), n, sl_mut(out, obytes)) }
+}
+/// P1: pass.h's `qlean_run`, worker `f` (a `qlean_worker`) over its `qlean_pass` `p` on the pool (`pool::run_c`);
+/// answers the slice count. `f` and `p` are untyped so pass.h, which comes before `CPass`, declares this prototype.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn qrs_pool_run(f: unsafe extern "C" fn(), n: usize, cost: u32, wide: usize, p: *const c_void) -> u32 {
+    unsafe { crate::pool::run_c(core::mem::transmute::<unsafe extern "C" fn(), c::Worker>(f), n, cost, wide, p.cast()) }
 }
 /// A46b: pass.h:502 `qlean_chain_run`'s driver over `k` stages and `n` elements.
 #[unsafe(no_mangle)]

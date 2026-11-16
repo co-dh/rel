@@ -1,5 +1,5 @@
 //! qlean's kernels in Rust, linked into `libqleankernel.a` as `rust/qrs.o`. Only `qrs_*` (ffi.rs) leave the
-//! object, beside the Lean externs of `ffi/*.rs`. `unsafe` is confined to c.rs, ffi.rs, lean.rs, lib.rs, os.rs, pod.rs,
+//! object, beside the Lean externs of `ffi/*.rs`. `unsafe` is confined to c.rs, ffi.rs, lean.rs, lib.rs, os.rs, pod.rs, pool.rs,
 //! rt.rs, simd.rs; every other module refuses it, and `ffi/*.rs` denies it (their one `allow` comes from `lean::export!`).
 #![cfg_attr(not(test), no_std)]
 #![deny(unsafe_op_in_unsafe_fn)]
@@ -37,12 +37,14 @@ pub mod os;
 pub mod exports {
     pub mod env;
     pub mod handle;
+    pub mod pool;
     pub mod search;
     pub mod structural;
     pub mod time;
 }
 pub mod pod;
 pub mod simd;
+pub mod pool;
 
 pub mod bits;
 pub mod alp;

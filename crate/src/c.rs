@@ -1,10 +1,9 @@
-//! The one C callback Rust takes, `qlean_run`, as a function pointer C passes in, and the one safe call over it.
+//! The pool as the runner a kernel takes (`pool::run_c`), and the safe calls over the pool.
 use alloc::vec::Vec;
-use core::cell::UnsafeCell;
 use core::ptr::null;
-use core::sync::atomic::{AtomicBool, Ordering};
 
 use crate::ffi::CPass;
+use crate::pool;
 
 // libm names the crate may leave undefined (listed in rust/BENCH.md, symbols gate); each is declared once here, where `unsafe` is
 // allowed, and called through a safe wrapper, so the safe modules need no unsafe block.
@@ -17,48 +16,17 @@ pub fn pow(x: f64, y: f64) -> f64 {
 }
 
 pub type Worker = unsafe extern "C" fn(lo: usize, hi: usize, p: *const CPass);
-/// C's `qlean_run` (pass.h:415) under a symbol; sort.c passes `qlean_run_c`, so this object needs no C symbol of its own.
+/// The pool's C entry (`pool::run_c`, exported as `qrs_pool_run`) as a function pointer; F3 deletes the parameter.
 pub type Runner = unsafe extern "C" fn(f: Worker, n: usize, cost: u32, wide: usize, p: *const CPass) -> u32;
 
-#[cfg(not(test))]
-unsafe extern "C" {
-    /// pass.h:453, defined in sort.c
-    fn qlean_run_c(f: Worker, n: usize, cost: u32, wide: usize, p: *const CPass) -> u32;
-}
-/// The C pool as the runner a Rust export hands its kernel (the fake below under `cargo test`), until P1 makes it
-/// `pool::run`. Adds `qlean_run_c` to the names qrs.o leaves undefined.
-pub fn pool() -> Runner { qlean_run_c }
-
-/// Under `cargo test` there is no C pool: three slices, cut as `qlean_slice` (pass.h:243) cuts them, run in turn.
+/// The runner a Rust export hands its kernel: the process's one pool.
+pub fn pool() -> Runner { pool::run_c }
+/// The unit tests' name for the pool, which they once faked (three slices in turn); under `cargo test` the real pool
+/// splits every non-empty pass three ways (`pool::SPLIT_AT`).
 #[cfg(test)]
-pub unsafe extern "C" fn qlean_run_c(f: Worker, n: usize, _cost: u32, _wide: usize, p: *const CPass) -> u32 {
-    const PARTS: usize = 3;
-    for k in 0..PARTS {
-        let (lo, hi) = cut(n, PARTS, k);
-        if lo < hi { unsafe { f(lo, hi, p) } }
-    }
-    PARTS as u32
-}
-#[cfg(test)]
-fn cut(n: usize, parts: usize, k: usize) -> (usize, usize) {
-    let (q, r) = (n / parts, n % parts);
-    let lo = q * k + k.min(r);
-    (lo, lo + q + (k < r) as usize)
-}
+pub use crate::pool::run_c as qlean_run_c;
 
-struct Job<'f, F> { f: &'f F, out: *mut u8, at: &'f (dyn Fn(usize) -> usize + Sync), len: usize }
-
-/// Safety: `p` is the `CPass` `run_map` built, whose `a` is a live `Job<F>`; `[lo, hi)` is a slice of `[0, n)`
-/// that no other worker of the same pass is given.
-unsafe extern "C" fn slice<F: Fn(usize, usize, &mut [u8]) + Sync>(lo: usize, hi: usize, p: *const CPass) {
-    let j = unsafe { &*(*p).a.cast::<Job<F>>() };
-    let e = (j.at)(hi).min(j.len);
-    let s = (j.at)(lo).min(e);
-    let o = unsafe { core::slice::from_raw_parts_mut(j.out.add(s), e - s) };
-    (j.f)(lo, hi, o)
-}
-
-/// The C pool (pass.h:415) over `units` units of `unit` bytes of `out`: `f(lo, hi, &mut out[lo * unit .. hi * unit])`
+/// The pool over `units` units of `unit` bytes of `out`: `f(lo, hi, &mut out[lo * unit .. hi * unit])`
 /// once per slice, on as many threads as `qlean_run` splits `units` into at `cost` and `wide`; answers that count.
 pub fn run_map<F: Fn(usize, usize, &mut [u8]) + Sync>(run: Runner, out: &mut [u8], units: usize, unit: usize, cost: u32,
                                                       wide: usize, f: &F) -> u32 {
@@ -82,35 +50,24 @@ pub fn run_map_at<F: Fn(usize, usize, &mut [u8]) + Sync>(run: Runner, out: &mut 
 
 /// The pool call behind `run_map` and `run_map_at`, each of which has checked that `at` is non-decreasing over
 /// `0 ..= units` and starts every unit inside `out`: that is what makes the `&mut` slices disjoint.
-fn map_at<F: Fn(usize, usize, &mut [u8]) + Sync>(run: Runner, out: &mut [u8], units: usize,
+fn map_at<F: Fn(usize, usize, &mut [u8]) + Sync>(_run: Runner, out: &mut [u8], units: usize,
                                                  at: &(dyn Fn(usize) -> usize + Sync), cost: u32, wide: usize, f: &F) -> u32 {
-    let o = out.as_mut_ptr();
-    let job = Job { f, out: o, at, len: out.len() };
-    let p = CPass { a: (&raw const job).cast(), b: null(), c: null(), o: o.cast(), n: units, at: 0,
-                    r#priv: 0, nul: 0, op: 0, cls: 0, shape: 0 };
-    // the slices partition [0, units), so the `&mut` each worker makes are disjoint; `out` outlives the call
-    unsafe { run(slice::<F>, units, cost, wide, &p) }
+    struct Out(*mut u8);
+    // Safety: each slice makes a `&mut` of its own disjoint range only
+    unsafe impl Sync for Out {}
+    let (o, len) = (Out(out.as_mut_ptr()), out.len());
+    pool::run(units, cost, wide, &|_, lo, hi| {
+        let e = at(hi).min(len);
+        let s = at(lo).min(e);
+        // the slices partition [0, units) and `at` is non-decreasing, so these ranges are disjoint; `out` outlives the pass
+        f(lo, hi, unsafe { core::slice::from_raw_parts_mut((&o).0.add(s), e - s) })
+    })
 }
 
 /// `run_map` whose slices each answer one `T` (a private histogram, a partial fold): `(parts, answers)` with the
-/// answers `(lo, t)` in slice order. C's `qlean_me` row index is not visible from Rust, so a slice is named by its
-/// `lo`, which no other slice shares; a slice `qlean_run` leaves empty gives none.
-pub fn run_slices<T: Send, F: Fn(usize, usize) -> T + Sync>(run: Runner, n: usize, cost: u32, wide: usize, f: &F) -> (u32, Vec<(usize, T)>) {
-    struct Bag<T> { lock: AtomicBool, v: UnsafeCell<Vec<(usize, T)>> }
-    // Safety: `v` is touched only with `lock` held
-    unsafe impl<T: Send> Sync for Bag<T> {}
-    let bag = Bag { lock: AtomicBool::new(false), v: UnsafeCell::new(Vec::new()) };
-    let parts = run_map(run, &mut [], n, 0, cost, wide, &|lo, hi, _: &mut [u8]| {
-        let t = f(lo, hi);
-        let bag = &bag; // the whole bag, not its fields: only the bag is `Sync`
-        while bag.lock.compare_exchange_weak(false, true, Ordering::Acquire, Ordering::Relaxed).is_err() { core::hint::spin_loop() }
-        // Safety: the lock is ours
-        unsafe { (*bag.v.get()).push((lo, t)) }
-        bag.lock.store(false, Ordering::Release);
-    });
-    let mut v = bag.v.into_inner();
-    v.sort_unstable_by_key(|r| r.0);
-    (parts, v)
+/// answers `(lo, t)` in slice order (`pool::slices`); a slice the pool leaves empty gives none.
+pub fn run_slices<T: Send, F: Fn(usize, usize) -> T + Sync>(_run: Runner, n: usize, cost: u32, wide: usize, f: &F) -> (u32, Vec<(usize, T)>) {
+    pool::slices(n, cost, wide, f)
 }
 
 #[cfg(test)]
