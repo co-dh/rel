@@ -11,6 +11,7 @@ use crate::alp::Cocf;
 use crate::c::Runner;
 use crate::coc::Coc;
 use crate::sym::{sym_eq, sym_hash, Syms};
+use crate::{pod, BLK};
 
 // ---- A34: structural.c:56-374 ----
 /// structural.c:56 `bit_set`
@@ -160,48 +161,238 @@ pub fn unpack_run(dst: &mut [i64], c: &Coc, s: usize, lo: usize, rev: bool) {
 }
 
 // ---- A35: structural.c:377-610, the encoder sources ----
-/// structural.c:377 `blk_count`
-pub fn blk_count(n: usize, b: usize) -> usize { unimplemented!("A35: blk_count") }
-/// structural.c:425 `rev_fill`: elements `i0 ..` of `reverse c` into `buf`.
-pub fn rev_fill(c: &Coc, buf: &mut [i64], i0: usize) { unimplemented!("A35: rev_fill") }
-/// structural.c:473 `cycle_fill`: of `m` elements rotated by `off`.
-pub fn cycle_fill(c: &Coc, off: usize, m: usize, buf: &mut [i64], i0: usize) { unimplemented!("A35: cycle_fill") }
-/// structural.c:478 `shift_fill`: of `c` shifted by `k`, `fill` entering.
-pub fn shift_fill(c: &Coc, k: i64, fill: i64, buf: &mut [i64], i0: usize) { unimplemented!("A35: shift_fill") }
-/// structural.c:483 `cat_fill`: of the parts `part(j)` starting at `start[j]` (`start.len()` parts).
-pub fn cat_fill<'a>(part: &dyn Fn(usize) -> Cocf<'a>, start: &[usize], w: usize, alp: bool, buf: &mut [i64], i0: usize) {
-    unimplemented!("A35: cat_fill")
+/// structural.c:377 `blk_count`: the elements in block `b` of a column of `n`, a full block except the last.
+pub fn blk_count(n: usize, b: usize) -> usize { if (b + 1) * BLK <= n { BLK } else { n - b * BLK } }
+
+/// One piece of an answer block: `len` elements from `lo` of block `b` of part `p` landing at `at`, or a hole.
+#[derive(Clone, Copy)]
+enum Seg { Run { p: usize, b: usize, lo: usize, len: usize, at: usize }, Hole { at: usize, len: usize } }
+/// A verb's walk over the source runs an answer block is made of (structural.c's `*_WALK`), written once and used by
+/// every pass, so the passes cannot disagree about which elements a block holds.
+type Walk<'w> = &'w dyn Fn(&mut dyn FnMut(Seg));
+
+/// `reverse`: the answer's element `i` is the source's `n - 1 - i`, so the source indices descend from `n - 1 - i0`.
+fn rev_walk(n: usize, i0: usize, cnt: usize, g: &mut dyn FnMut(Seg)) {
+    let (mut top, mut k) = (n.wrapping_sub(1 + i0), 0);
+    while k < cnt {
+        let take = (top % BLK + 1).min(cnt - k);
+        g(Seg::Run { p: 0, b: top / BLK, lo: top % BLK + 1 - take, len: take, at: k });
+        k += take;
+        top = top.wrapping_sub(take);
+    }
 }
-/// structural.c:491 `alp_run`: the decimals of elements `lo .. lo + out.len()` of block `b`.
-pub fn alp_run(out: &mut [i64], f: &Cocf, b: usize, lo: usize, rev: bool) { unimplemented!("A35: alp_run") }
+/// `,`: `start[p]` is where part `p` begins and the last entry is the answer's own count; a binary search finds the
+/// part holding `i0`, and an empty part is stepped over by the test that advances across a full one.
+fn cat_walk(start: &[usize], i0: usize, cnt: usize, g: &mut dyn FnMut(Seg)) {
+    let (np, mut k) = (start.len() - 1, 0);
+    let (mut pi, mut hi) = (0, np);
+    while pi + 1 < hi { let mid = (pi + hi) / 2; if start[mid] <= i0 { pi = mid } else { hi = mid } }
+    while k < cnt {
+        while pi + 1 < np && start[pi + 1] <= i0 + k { pi += 1 }
+        let mut j = i0 + k - start[pi];
+        let mut take = (start[pi + 1] - start[pi] - j).min(cnt - k);
+        while take > 0 {
+            let t = (BLK - j % BLK).min(take);
+            g(Seg::Run { p: pi, b: j / BLK, lo: j % BLK, len: t, at: k });
+            k += t; j += t; take -= t;
+        }
+    }
+}
+/// The cycling slice `n#x`, `n_x`, `x sublist y` and `rotate` share: the answer's element `j` is the source's
+/// `(off + j) % n`, a run advancing forward and wrapping at most once per lap.
+fn cycle_walk(n: usize, off: usize, i0: usize, cnt: usize, g: &mut dyn FnMut(Seg)) {
+    if cnt == 0 { return }
+    let (mut j, mut k) = ((off + i0) % n, 0);
+    while k < cnt {
+        let t = (BLK - j % BLK).min(n - j).min(cnt - k);
+        g(Seg::Run { p: 0, b: j / BLK, lo: j % BLK, len: t, at: k });
+        k += t; j += t;
+        if j == n { j = 0 }
+    }
+}
+/// A shift: the answer's element `j` is the source's `j - k`, so what the source can serve of a run is one forward
+/// stretch across at most two blocks and the rest is a hole at both ends.
+fn shift_walk(n: usize, k: i64, i0: usize, cnt: usize, g: &mut dyn FnMut(Seg)) {
+    let from = (i0 as i64).wrapping_sub(k);
+    let head = (if from < 0 { from.unsigned_abs() as usize } else { 0 }).min(cnt);
+    let mut tail = cnt;
+    if from.wrapping_add(cnt as i64) > n as i64 { tail = if from >= n as i64 { head } else { (n as i64 - from) as usize } }
+    let tail = tail.max(head);
+    if head > 0 { g(Seg::Hole { at: 0, len: head }) }
+    if tail < cnt { g(Seg::Hole { at: tail, len: cnt - tail }) }
+    let (mut at, mut j) = (head, from.wrapping_add(head as i64) as usize);
+    while at < tail {
+        let t = (BLK - j % BLK).min(tail - at);
+        g(Seg::Run { p: 0, b: j / BLK, lo: j % BLK, len: t, at });
+        at += t; j += t;
+    }
+}
+
+/// An integer column as the view the ALP-aware passes take, its ALP part empty.
+pub fn plain<'a>(c: &Coc<'a>) -> Cocf<'a> { Cocf { c: *c, exp: &[], exc_off: &[], exc_pos: &[], exc_raw: &[], f32: false } }
+
+/// One run of `buf`, filled from block `b` of the part `f`: its decimals' integers, or at `alp` its elements' bits.
+fn fill_run(f: &Cocf, alp: bool, out: &mut [i64], b: usize, lo: usize, rev: bool) {
+    if alp { alp_run(out, f, b, lo, rev) } else { unpack_run(out, &f.c, b, lo, rev) }
+}
+/// Every fill below, its walk and its holes (`hole` entering where the source cannot serve).
+fn fill<'a>(part: &dyn Fn(usize) -> Cocf<'a>, alp: bool, rev: bool, hole: i64, buf: &mut [i64], walk: Walk) {
+    walk(&mut |s| match s {
+        Seg::Run { p, b, lo, len, at } => fill_run(&part(p), alp, &mut buf[at..at + len], b, lo, rev),
+        Seg::Hole { at, len } => buf[at..at + len].fill(hole),
+    })
+}
+/// structural.c:425 `rev_fill`: elements `i0 ..` of `reverse c` into `buf`.
+pub fn rev_fill(c: &Coc, buf: &mut [i64], i0: usize) {
+    let (f, cnt) = (plain(c), buf.len());
+    fill(&|_| f, false, true, 0, buf, &|g: &mut dyn FnMut(Seg)| rev_walk(c.meta.n, i0, cnt, g))
+}
+/// structural.c:473 `cycle_fill`: of `m` elements rotated by `off` (already below the count); `m` only a hint asks.
+pub fn cycle_fill(c: &Coc, off: usize, _m: usize, buf: &mut [i64], i0: usize) {
+    let (f, cnt) = (plain(c), buf.len());
+    fill(&|_| f, false, false, 0, buf, &|g: &mut dyn FnMut(Seg)| cycle_walk(c.meta.n, off, i0, cnt, g))
+}
+/// structural.c:478 `shift_fill`: of `c` shifted by `k`, `fill` entering.
+pub fn shift_fill(c: &Coc, k: i64, fill_v: i64, buf: &mut [i64], i0: usize) {
+    let (f, cnt) = (plain(c), buf.len());
+    fill(&|_| f, false, false, fill_v, buf, &|g: &mut dyn FnMut(Seg)| shift_walk(c.meta.n, k, i0, cnt, g))
+}
+/// structural.c:483 `cat_fill`: of the parts `part(j)` starting at `start[j]`; `start` holds the part count + 1
+/// entries, the last the answer's count. `w` is the element width, which only the take step asks.
+pub fn cat_fill<'a>(part: &dyn Fn(usize) -> Cocf<'a>, start: &[usize], _w: usize, alp: bool, buf: &mut [i64], i0: usize) {
+    let cnt = buf.len();
+    fill(part, alp, false, 0, buf, &|g: &mut dyn FnMut(Seg)| cat_walk(start, i0, cnt, g))
+}
+/// structural.c:491 `alp_run`: the elements' IEEE bits (what the writer's ALP steps read back at `w` bytes) of
+/// elements `lo .. lo + out.len()` of block `b`, restored exceptions included; only the run is restored.
+pub fn alp_run(out: &mut [i64], f: &Cocf, b: usize, lo: usize, rev: bool) {
+    let (len, mut tmp, mut lb) = (out.len(), [0u64; BLK], [0u64; BLK]);
+    let (p, w, _) = f.lanes(b, lo + len, pod::bytes_mut(&mut lb));
+    let tb = pod::bytes_mut(&mut tmp);
+    f.load_range(b, p, w, lo, lo + len, tb);
+    let tb: &[u8] = tb;
+    for i in 0..len {
+        let v = if f.f32 { u32::from_ne_bytes(tb[4 * (lo + i)..4 * (lo + i) + 4].try_into().unwrap()) as i64 }
+                else { i64::from_ne_bytes(tb[8 * (lo + i)..8 * (lo + i) + 8].try_into().unwrap()) };
+        out[if rev { len - 1 - i } else { i }] = v;
+    }
+}
 /// structural.c:511 `cat_fill_alp`
 pub fn cat_fill_alp<'a>(part: &dyn Fn(usize) -> Cocf<'a>, start: &[usize], w: usize, buf: &mut [i64], i0: usize) {
-    unimplemented!("A35: cat_fill_alp")
+    cat_fill(part, start, w, true, buf, i0)
 }
 /// structural.c:516 `rev_fill_alp`
-pub fn rev_fill_alp(f: &Cocf, buf: &mut [i64], i0: usize) { unimplemented!("A35: rev_fill_alp") }
+pub fn rev_fill_alp(f: &Cocf, buf: &mut [i64], i0: usize) {
+    let cnt = buf.len();
+    fill(&|_| *f, true, true, 0, buf, &|g: &mut dyn FnMut(Seg)| rev_walk(f.c.meta.n, i0, cnt, g))
+}
 /// structural.c:521 `cycle_fill_alp`
-pub fn cycle_fill_alp(f: &Cocf, off: usize, m: usize, buf: &mut [i64], i0: usize) { unimplemented!("A35: cycle_fill_alp") }
-/// structural.c:527 `shift_fill_alp`
-pub fn shift_fill_alp(f: &Cocf, k: i64, buf: &mut [i64], i0: usize) { unimplemented!("A35: shift_fill_alp") }
-/// structural.c:543 `cat_hint`: block `b`'s exponent hint and patch limit `lim`; false = no hint.
-pub fn cat_hint<'a>(part: &dyn Fn(usize) -> Cocf<'a>, start: &[usize], b: usize, lim: &mut u32) -> bool {
-    unimplemented!("A35: cat_hint")
+pub fn cycle_fill_alp(f: &Cocf, off: usize, _m: usize, buf: &mut [i64], i0: usize) {
+    let cnt = buf.len();
+    fill(&|_| *f, true, false, 0, buf, &|g: &mut dyn FnMut(Seg)| cycle_walk(f.c.meta.n, off, i0, cnt, g))
+}
+/// structural.c:527 `shift_fill_alp`; `fill_v` is the hole's bits (the stub had no such parameter, C's `x->fill`).
+pub fn shift_fill_alp(f: &Cocf, k: i64, fill_v: i64, buf: &mut [i64], i0: usize) {
+    let cnt = buf.len();
+    fill(&|_| *f, true, false, fill_v, buf, &|g: &mut dyn FnMut(Seg)| shift_walk(f.c.meta.n, k, i0, cnt, g))
+}
+
+/// structural.c:543 `HINT_RUN`: the largest exponent among the source blocks answer block is drawn from, and their
+/// exceptions: every element exact at its own block's exponent is exact at the largest one short of `2^53`, which
+/// `alp_meta_at`'s re-check catches. A shift's hole is `fill`, which may be `0n` and so an exception at any exponent;
+/// it is counted as one, the re-check holding the answer to the real count.
+fn hint<'a>(part: &dyn Fn(usize) -> Cocf<'a>, lim: &mut u32, walk: Walk) -> i32 {
+    let mut e = -1;
+    *lim = 0;
+    walk(&mut |s| match s {
+        Seg::Run { p, b, .. } => { let f = part(p); e = e.max(f.exp[b] as i32); *lim += f.exc_off[b + 1] - f.exc_off[b] }
+        Seg::Hole { len, .. } => *lim += len as u32,
+    });
+    e
+}
+/// structural.c:543 `cat_hint`: answer block `b`'s exponent hint and patch limit `lim`; -1 = no hint.
+pub fn cat_hint<'a>(part: &dyn Fn(usize) -> Cocf<'a>, start: &[usize], b: usize, lim: &mut u32) -> i32 {
+    let (s, n) = (b * BLK, start[start.len() - 1]);
+    hint(part, lim, &|g: &mut dyn FnMut(Seg)| cat_walk(start, s, (n - s).min(BLK), g))
 }
 /// structural.c:555 `rev_hint`
-pub fn rev_hint(f: &Cocf, b: usize, lim: &mut u32) -> bool { unimplemented!("A35: rev_hint") }
-/// structural.c:563 `cycle_hint`
-pub fn cycle_hint(f: &Cocf, off: usize, m: usize, b: usize, lim: &mut u32) -> bool { unimplemented!("A35: cycle_hint") }
-/// structural.c:572 `shift_hint`
-pub fn shift_hint(f: &Cocf, k: i64, b: usize, lim: &mut u32) -> bool { unimplemented!("A35: shift_hint") }
-/// structural.c:584 `alp_ints_run`: decimals `d` and exponents `ee` of elements `lo ..` of block `s`; answers the
-/// block's float patches as bytes (C's `raw`).
-pub fn alp_ints_run<'a>(d: &mut [i64], ee: &mut [i8], f: &Cocf<'a>, s: usize, lo: usize, rev: bool) -> &'a [u8] {
-    unimplemented!("A35: alp_ints_run")
+pub fn rev_hint(f: &Cocf, b: usize, lim: &mut u32) -> i32 {
+    hint(&|_| *f, lim, &|g: &mut dyn FnMut(Seg)| rev_walk(f.c.meta.n, b * BLK, blk_count(f.c.meta.n, b), g))
 }
-/// structural.c:602 `cat_ints`: block `b` of the concat as decimals; false = take the general path.
-pub fn cat_ints<'a>(part: &dyn Fn(usize) -> Cocf<'a>, start: &[usize], b: usize, d: &mut [i64], ee: &mut [i8]) -> Option<&'a [u8]> {
-    unimplemented!("A35: cat_ints")
+/// structural.c:563 `cycle_hint`: `m` is the answer's count.
+pub fn cycle_hint(f: &Cocf, off: usize, m: usize, b: usize, lim: &mut u32) -> i32 {
+    hint(&|_| *f, lim, &|g: &mut dyn FnMut(Seg)| cycle_walk(f.c.meta.n, off, b * BLK, blk_count(m, b), g))
+}
+/// structural.c:572 `shift_hint`
+pub fn shift_hint(f: &Cocf, k: i64, b: usize, lim: &mut u32) -> i32 {
+    hint(&|_| *f, lim, &|g: &mut dyn FnMut(Seg)| shift_walk(f.c.meta.n, k, b * BLK, blk_count(f.c.meta.n, b), g))
+}
+
+/// The writer's second form of an answer block, `coc_ints`'s outputs: the decimals `d`, `ee[i] < 0` at each exception
+/// and, with `raw`, `raw[i]` the address of its bits (in a source's patch list, or the hole's).
+pub struct Ints<'b> { pub d: &'b mut [i64], pub ee: &'b mut [i8], pub raw: Option<&'b mut [*const u8]> }
+/// structural.c:584 `alp_ints_run`: decimals `d` and `ee` of elements `lo ..` of block `s` (reversed when `rev`),
+/// each source exception carried to its place in the answer.
+pub fn alp_ints_run(d: &mut [i64], ee: &mut [i8], mut raw: Option<&mut [*const u8]>, f: &Cocf, s: usize, lo: usize, rev: bool) {
+    let len = d.len();
+    unpack_run(d, &f.c, s, lo, rev);
+    ee.fill(0);
+    let esz = if f.f32 { 4 } else { 8 };
+    for j in f.exc_off[s] as usize..f.exc_off[s + 1] as usize {
+        let p = f.exc_pos[j] as usize;
+        if p < lo || p >= lo + len { continue }
+        let i = if rev { lo + len - 1 - p } else { p - lo };
+        ee[i] = -1;
+        if let Some(r) = raw.as_deref_mut() { r[i] = f.exc_raw[j * esz..].as_ptr() }
+    }
+}
+/// Pass 1 of a verb's `coc_ints`: the one exponent the source blocks hold, -1 where they differ or there are none.
+fn ints_exp<'a>(part: &dyn Fn(usize) -> Cocf<'a>, walk: Walk) -> i32 {
+    let (mut e, mut one) = (-1, true);
+    walk(&mut |s| if let Seg::Run { p, b, .. } = s {
+        let x = part(p).exp[b] as i32;
+        if e < 0 { e = x } else if e != x { one = false }
+    });
+    if one { e } else { -1 }
+}
+/// Pass 2: the integers at that exponent, a hole being `hole` = (its integer, its `ee`, the address of its bits).
+fn ints_fill<'a>(part: &dyn Fn(usize) -> Cocf<'a>, rev: bool, hole: (i64, i8, *const u8), out: &mut Ints, walk: Walk) {
+    walk(&mut |s| match s {
+        Seg::Run { p, b, lo, len, at } => alp_ints_run(&mut out.d[at..at + len], &mut out.ee[at..at + len],
+            out.raw.as_deref_mut().map(|r| &mut r[at..at + len]), &part(p), b, lo, rev),
+        Seg::Hole { at, len } => for z in at..at + len {
+            out.d[z] = hole.0; out.ee[z] = hole.1;
+            if let Some(r) = out.raw.as_deref_mut() { r[z] = hole.2 }
+        },
+    })
+}
+/// The verbs with no hole: both passes, the second only with `out`; the exponent, -1 = the general path.
+fn ints<'a>(part: &dyn Fn(usize) -> Cocf<'a>, rev: bool, out: Option<&mut Ints>, walk: Walk) -> i32 {
+    let e = ints_exp(part, walk);
+    if let (Some(o), true) = (out, e >= 0) { ints_fill(part, rev, (0, 0, core::ptr::null()), o, walk) }
+    e
+}
+/// structural.c:602 `cat_ints`: answer block `b` of the concat as decimals; -1 = take the general path.
+pub fn cat_ints<'a>(part: &dyn Fn(usize) -> Cocf<'a>, start: &[usize], b: usize, out: Option<&mut Ints>) -> i32 {
+    let (s, n) = (b * BLK, start[start.len() - 1]);
+    ints(part, false, out, &|g: &mut dyn FnMut(Seg)| cat_walk(start, s, (n - s).min(BLK), g))
+}
+/// structural.c:612 `rev_ints`
+pub fn rev_ints(f: &Cocf, b: usize, out: Option<&mut Ints>) -> i32 {
+    ints(&|_| *f, true, out, &|g: &mut dyn FnMut(Seg)| rev_walk(f.c.meta.n, b * BLK, blk_count(f.c.meta.n, b), g))
+}
+/// structural.c:622 `cycle_ints`: `m` is the answer's count.
+pub fn cycle_ints(f: &Cocf, off: usize, m: usize, b: usize, out: Option<&mut Ints>) -> i32 {
+    ints(&|_| *f, false, out, &|g: &mut dyn FnMut(Seg)| cycle_walk(f.c.meta.n, off, b * BLK, blk_count(m, b), g))
+}
+/// structural.c:635 `shift_ints`' pass 1. The hole's integer needs `dat` (A9), so C computes it from this exponent
+/// and calls `shift_ints` for pass 2.
+pub fn shift_exp(f: &Cocf, k: i64, b: usize) -> i32 {
+    ints_exp(&|_| *f, &|g: &mut dyn FnMut(Seg)| shift_walk(f.c.meta.n, k, b * BLK, blk_count(f.c.meta.n, b), g))
+}
+/// structural.c:635 `shift_ints`' pass 2: a hole is `hole` = (`fill`'s integer at the exponent, its `ee`, `&fill`).
+pub fn shift_ints(f: &Cocf, k: i64, b: usize, hole: (i64, i8, *const u8), out: &mut Ints) {
+    ints_fill(&|_| *f, false, hole, out, &|g: &mut dyn FnMut(Seg)| shift_walk(f.c.meta.n, k, b * BLK, blk_count(f.c.meta.n, b), g))
 }
 
 // ---- A36: structural.c:684-760 (the rest of the concat entries is Lean glue) ----
@@ -743,5 +934,40 @@ mod a34_tests {
         assert!(trailer_ok(&c, 5, 8, false) && !trailer_ok(&c, 6, 8, false) && trailer_ok(&c, 5, 1, true));
         c.meta.sumnul = i16::MIN as i64;
         assert!(trailer_ok(&c, 5, 2, false) && !trailer_ok(&c, 5, 4, false));
+    }
+}
+
+#[cfg(test)]
+mod a35_tests {
+    use super::*;
+    /// Every answer position 0..cnt is served exactly once, by a run or a hole, and the source index of each is the verb's.
+    fn cover(cnt: usize, rev: bool, walk: impl Fn(&mut dyn FnMut(Seg)), src: impl Fn(usize) -> Option<(usize, usize)>) {
+        let mut seen = vec![0; cnt];
+        walk(&mut |s| match s {
+            Seg::Run { p, b, lo, len, at } => for j in 0..len { seen[at + j] += 1; assert_eq!(src(at + j), Some((p, b * BLK + lo + if rev { len - 1 - j } else { j })), "at {}", at + j) },
+            Seg::Hole { at, len } => for j in 0..len { seen[at + j] += 1; assert_eq!(src(at + j), None) },
+        });
+        assert!(seen.iter().all(|&x| x == 1));
+    }
+    #[test] fn blk_count_is_full_except_the_last() {
+        assert_eq!((blk_count(2048, 0), blk_count(2048, 1), blk_count(2049, 2), blk_count(1, 0)), (BLK, BLK, 1, 1));
+    }
+    #[test] fn walks_serve_every_position_once() {
+        let n = 2500;
+        for i0 in [0, 1, 1023, 1024, 2400] {
+            let cnt = 100.min(n - i0);
+            cover(cnt, true, |g| rev_walk(n, i0, cnt, g), |a| Some((0, n - 1 - (i0 + a))));
+            cover(cnt, false, |g| cycle_walk(n, 7, i0, cnt, g), |a| Some((0, (7 + i0 + a) % n)));
+            for k in [0i64, 1, -1, 3000, -3000, 2499, 2500] {
+                cover(cnt, false, |g| shift_walk(n, k, i0, cnt, g), |a| { let f = (i0 + a) as i64 - k; (0 <= f && f < n as i64).then_some((0, f as usize)) });
+            }
+        }
+        // parts of 5, 0, 1030 and 7 elements, an empty one stepped over
+        let start = [0, 5, 5, 1035, 1042];
+        let which = |i: usize| { let p = (0..4).rev().find(|&p| start[p] <= i && start[p + 1] > i).unwrap(); (p, i - start[p]) };
+        for i0 in [0, 3, 5, 1000, 1030, 1041] {
+            let cnt = 12.min(1042 - i0);
+            cover(cnt, false, |g| cat_walk(&start, i0, cnt, g), |a| Some(which(i0 + a)));
+        }
     }
 }
