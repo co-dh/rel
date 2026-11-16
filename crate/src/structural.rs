@@ -481,6 +481,18 @@ pub fn shift_ints(f: &Cocf, k: i64, b: usize, hole: (i64, i8, *const u8), out: &
     ints_fill(&|_| *f, false, hole, out, &|g: &mut dyn FnMut(Seg)| shift_walk(f.c.meta.n, k, b * BLK, blk_count(f.c.meta.n, b), g))
 }
 
+/// structural.c `shift_ints`: both passes of a shift's `coc_ints`. A hole is `fill`, its integer at the exponent where it is
+/// exact there and an exception holding its bits where not (the low four bytes of `fill` at a real, as the fill's own
+/// narrowing reads them); `dat` leaves the integer alone where it refuses, so that is 0.
+pub fn shift_ints_at(f: &Cocf, k: i64, fill: &i64, b: usize, out: Option<&mut Ints>) -> i32 {
+    let e = shift_exp(f, k, b);
+    let Some(out) = out.filter(|_| e >= 0) else { return e };
+    let (mut d, mut ok) = ([0i64], [0u8]);
+    if f.f32 { crate::alp::dat_blk(&[f32::from_bits(*fill as u32)], e, &mut d, &mut ok) } else { crate::alp::dat_blk(&[f64::from_bits(*fill as u64)], e, &mut d, &mut ok) }
+    let (hd, hx) = if ok[0] != 0 { (d[0], 0) } else { (0, -1) };
+    shift_ints(f, k, b, (hd, hx, core::ptr::from_ref(fill).cast()), out);
+    e
+}
 // ---- A36: structural.c:684-760 (the rest of the concat entries is Lean glue) ----
 /// structural.c:684 `cat_take`: the part holding block `b` and its block there.
 pub fn cat_take(start: &[usize], b: usize) -> Option<(usize, usize)> {
@@ -1179,6 +1191,42 @@ pub fn translate(run: Runner, tab: &[u8], src: &[u8], out: &mut [u8]) {
     });
 }
 
+/// structural.c `qlean_structural_reverse_ids`: `n` fields of `w` bits reversed into the zeroed `out`. Where a byte holds a
+/// whole number of fields, reversing the column is reversing the bytes and then the fields inside each one, a 256-entry
+/// table read; a count that leaves the last byte part-full shifts every field and takes the general pack.
+pub fn reverse_ids(n: usize, w: u32, ids: &[u8], out: &mut [u8]) {
+    if w != 0 && w < 8 && n % (8 / w as usize) == 0 {
+        let (per, msk) = (8 / w, (1u32 << w) - 1);
+        let rev: [u8; 256] = core::array::from_fn(|b| (0..per).fold(0u32, |v, j| v | ((b as u32 >> (j * w)) & msk) << ((per - 1 - j) * w)) as u8);
+        let bytes = crate::ids::ids_bytes(n, w);
+        for (k, o) in out[..bytes].iter_mut().enumerate() { *o = rev[ids[bytes - 1 - k] as usize] }
+    } else {
+        crate::ids::pack(out, w, n, |j| crate::ids::id_at(ids, w, n - 1 - j) as u64)
+    }
+}
+/// structural.c `qlean_structural_reverse_segs`'s validation, the spec's own `any`: every offset a multiple of `w`, within
+/// the `sz` bytes and not below the one before it.
+pub fn segs_ok(w: usize, sz: usize, offs: &[usize]) -> bool {
+    w != 0 && offs.iter().enumerate().all(|(s, &o)| o % w == 0 && o <= sz && (s == 0 || o >= offs[s - 1]))
+}
+/// `reverseSegs w b offs` over `out`, the copy of `b`: each slice between consecutive offsets reversed at element width `w`.
+pub fn reverse_segs(w: usize, offs: &[usize], out: &mut [u8]) {
+    for p in offs.windows(2) {
+        let seg = &mut out[p[0]..p[1]];
+        match w {
+            1 => seg.reverse(), 2 => seg.as_chunks_mut::<2>().0.reverse(), 4 => seg.as_chunks_mut::<4>().0.reverse(),
+            8 => seg.as_chunks_mut::<8>().0.reverse(),
+            _ => { let m = seg.len() / w; for i in 0..m / 2 { let (a, b) = seg.split_at_mut((m - 1 - i) * w); a[i * w..(i + 1) * w].swap_with_slice(&mut b[..w]) } }
+        }
+    }
+}
+/// structural.c `qlean_structural_trim_bounds`: the first byte that is not a blank and one past the last, `hi` held at `lo`
+/// so an all-blank payload answers an empty slice.
+pub fn trim_bounds(left: bool, right: bool, b: &[u8]) -> (usize, usize) {
+    let lo = if left { b.iter().position(|&x| x != 32).unwrap_or(b.len()) } else { 0 };
+    let hi = if right { b.iter().rposition(|&x| x != 32).map_or(0, |i| i + 1) } else { b.len() };
+    (lo, hi.max(lo))
+}
 // ---- A40: structural.c:2039-2170, the symbol dictionary's hash table ----
 /// structural.c:2044 `symview`: a dictionary being extended: the base's first `d0` symbols, then new ones in `tb`
 /// at the (unboxed) starts `to`.
