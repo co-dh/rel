@@ -864,6 +864,23 @@ pub unsafe extern "C" fn qrs_put_res(p: *mut u8, w: u8, lo: usize, v: *const i64
     // structural.c:760 passes block `b` of a pack: `BLK * w / 8` bytes, not `BLK * 8`
     unsafe { structural::put_res(sl_mut(p, BLK * w as usize / 8), w, lo, sl(v, n), base) }
 }
+/// A36: structural.c `trailer_ok`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn qrs_trailer_ok(c: *const CCoc, n: usize, w: usize, alp: c_int) -> c_int {
+    unsafe { structural::trailer_ok(&(*c).view(), n, w, alp != 0) as c_int }
+}
+/// A36: structural.c `cat_take` over the `k` parts: the part that holds answer block `b` whole, its block there in
+/// `*pb`, or null.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn qrs_cat_take(parts: *const CCocf, start: *const usize, k: usize, w: usize, alp: c_int, b: usize,
+                                      pb: *mut usize) -> *const CCocf {
+    unsafe {
+        let Some((p, j)) = structural::cat_take(sl(start, k + 1), b) else { return core::ptr::null() };
+        if !structural::cat_part_ok(&(*parts.add(p)).c.view(), w, alp != 0) { return core::ptr::null() }
+        *pb = j;
+        parts.add(p)
+    }
+}
 /// A37: structural.c `gather_run`.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn qrs_gather(run: unsafe extern "C" fn(), w: usize, fill: u64, src: *const u8, ns: usize,
