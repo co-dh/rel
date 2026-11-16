@@ -290,7 +290,7 @@ pub struct O(NonNull<Object>);
 impl Drop for O { fn drop(&mut self) { unsafe { dec(self.0.as_ptr()) } } }
 impl O {
     /// Safety: `p` is a reference the caller owns and gives up
-    unsafe fn own(p: *mut Object) -> O { O(unsafe { NonNull::new_unchecked(p) }) }
+    pub unsafe fn own(p: *mut Object) -> O { O(unsafe { NonNull::new_unchecked(p) }) }
     pub fn borrow(&self) -> B<'_> { B(self.0, PhantomData) }
     pub fn into_raw(self) -> *mut Object { let p = self.0.as_ptr(); core::mem::forget(self); p }
 }
