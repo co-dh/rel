@@ -1444,6 +1444,13 @@ pub unsafe extern "C" fn qrs_ew_cast(run: unsafe extern "C" fn(), src: u8, dst: 
                                      n: usize, out: *mut u8, obytes: usize) {
     unsafe { ew::cast(rn(run), src, dst, nul, sl(x, xbytes), n, sl_mut(out, obytes)) }
 }
+/// A45: elementwise.c `ew_tick_run`, the chain's time-unit stage: `op` is the source unit's code times 16 plus the
+/// target's, `src`/`dst` the two classes, `nul_in`/`nul_out` the two nulls.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn qrs_ew_tick(run: unsafe extern "C" fn(), op: u8, src: u8, dst: u8, nul_in: i64, nul_out: i64,
+                                     x: *const u8, xbytes: usize, n: usize, out: *mut u8, obytes: usize) {
+    unsafe { ew::tick(rn(run), op, src, dst, nul_in, nul_out, sl(x, xbytes), n, sl_mut(out, obytes)) }
+}
 /// A46a: elementwise.c `ew_widen_run`.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn qrs_ew_widen(run: unsafe extern "C" fn(), src: u8, dst: u8, nul_in: i64, nul_out: i64,
