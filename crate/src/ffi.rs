@@ -109,6 +109,37 @@ pub unsafe extern "C" fn qrs_key_range_win(kind: u8, c: *const CCoc, mn: *mut u6
     unsafe { mn.write(a); mx.write(b) }
 }
 
+/// `keys_of`: the `n` keys of the dense payload `p` into `k`, and their range into `*mn`, `*mx` (`0, 0` for none).
+/// 1 = written, 0 = `kind` is not one of the eight element kinds.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn qrs_keys_of(kind: u8, p: *const u8, n: usize, k: *mut u64, mn: *mut u64, mx: *mut u64) -> c_int {
+    if kind >= key::SK_KINDS_N { return 0 }
+    let (a, b) = sort::keys_of(kind, unsafe { sl(p, key::bytes(kind, n).unwrap_or(0)) }, n, unsafe { sl_mut(k, n) });
+    unsafe { mn.write(a); mx.write(b) };
+    1
+}
+
+/// `ksrc_blk`: block `b` of `n` keys of a `ksrc` (`c` an encoded column, else `p` a dense payload of `kind`) into `k`,
+/// `BLK` long. Answers the block's key count.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn qrs_ksrc_blk(kind: u8, p: *const u8, c: *const CCoc, n: usize, b: usize, k: *mut u64) -> usize {
+    let s = unsafe { ksrc(kind, p, c, n) };
+    s.blk(b, unsafe { sl_mut(k, BLK) })
+}
+
+/// `ksrc_range`: the key range of a `ksrc`, `u64::MAX, 0` for none.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn qrs_ksrc_range(kind: u8, p: *const u8, c: *const CCoc, n: usize, mn: *mut u64, mx: *mut u64) {
+    let (a, b) = unsafe { ksrc(kind, p, c, n) }.range();
+    unsafe { mn.write(a); mx.write(b) }
+}
+
+/// Safety: `c` is null or a live `coc`; else `p` is null or valid for `key::bytes(kind, n)` reads.
+unsafe fn ksrc<'a>(kind: u8, p: *const u8, c: *const CCoc, n: usize) -> sort::Ksrc<'a> {
+    let c = if c.is_null() { None } else { Some(unsafe { (*c).view() }) };
+    sort::Ksrc { kind, p: unsafe { sl(p, if c.is_some() { 0 } else { key::bytes(kind, n).unwrap_or(0) }) }, c, n }
+}
+
 /// `ids_run` over `dedup`'s tables: `dtab` (`slots` entries) when not null, else `htab` (`cap` entries) and `gkey`
 /// (`ng` entries). `gid` is `n * lane / 8` bytes.  `run` is C's `qlean_run_c`, passed as a `void (*)(void)` and called as `c::Runner`. 1 = written, 0 = refused (a kind outside the enum, `SK_WIN`, a short payload or `gid`, a lane not 8, 16, 32 or 64).
 #[unsafe(no_mangle)]
@@ -324,15 +355,16 @@ impl CEnc {
                            below: self.below, lb, over } }
     }
     /// Block `b`'s pack-pass view, after `coc_enc_layout`: residuals at `off[b]`, patches `exc_off[b]..exc_off[b + 1]`.
-    /// Safety: as `meta_blk`.
-    pub unsafe fn pack_blk<'a>(&mut self, b: usize, nb: usize) -> EncPack<'a> {
+    /// The residual region is the `nb` elements' `ceil(nb * width / 8)` bytes, or with `whole` the full `BLK * width / 8`
+    /// (`move_pack` copies a whole block). Safety: as `meta_blk`.
+    pub unsafe fn pack_blk<'a>(&mut self, b: usize, nb: usize, whole: bool) -> EncPack<'a> {
         let c = &self.c;
         unsafe {
             let (base, w, at) = (*c.base.add(b), *c.width.add(b), *self.exc_off.add(b) as usize);
             let ne = *self.exc_off.add(b + 1) as usize - at;
             EncPack { b, nb, base, frame: (base as u64).wrapping_add(if c.fdelta.is_null() { 0 } else { *c.fdelta.add(b) }), width: w,
                       exp: if self.exp.is_null() { 0 } else { *self.exp.add(b) },
-                      res: sl_mut(c.pack.add(*c.off.add(b) as usize), (nb * w as usize).div_ceil(8)),
+                      res: sl_mut(c.pack.add(*c.off.add(b) as usize), (if whole { BLK } else { nb } * w as usize).div_ceil(8)),
                       pos: sl_mut(self.exc_pos.add(at), ne), raw: sl_mut(self.exc_raw.add(at * self.width), ne * self.width) }
         }
     }
@@ -448,17 +480,6 @@ unsafe fn meta_exc_blk<T: enc::Elt>(c: *mut CCoc, b: usize, x: *const T, nb: usi
     let (lb, over, mut nexc) = (AtomicUsize::new(0), AtomicI32::new(0), 0u32);
     enc::encode_meta_exc_blk(&mut unsafe { ccoc_meta(&*c, b, null_mut(), &mut nexc, &lb, &over) }, unsafe { sl(x, nb) }, nb)
 }
-/// `pack_exc_blk` for C: block `b`'s residuals at `off[b]`, its `ne` patches at `pos` and `raw`.
-/// Safety: `c` has its pack and layout set, `pos`/`raw` hold `ne` slots of `u16` / `T`.
-unsafe fn pack_exc<T: enc::Elt>(c: *const CCoc, b: usize, x: *const T, nb: usize, ne: u32, pos: *mut u16, raw: *mut u8) {
-    let c = unsafe { &*c };
-    let w = unsafe { *c.width.add(b) };
-    let frame = unsafe { (*c.base.add(b) as u64).wrapping_add(if c.fdelta.is_null() { 0 } else { *c.fdelta.add(b) }) };
-    let mut p = enc::EncPack { b, nb, base: unsafe { *c.base.add(b) }, frame, width: w, exp: 0,
-                               res: unsafe { sl_mut(c.pack.add(*c.off.add(b) as usize), (nb * w as usize).div_ceil(8)) },
-                               pos: unsafe { sl_mut(pos, ne as usize) }, raw: unsafe { sl_mut(raw, ne as usize * size_of::<T>()) } };
-    enc::pack_exc_blk(&mut p, unsafe { sl(x, nb) }, ne)
-}
 /// A8: coc.h:2226 `encode_meta_exc_blk`, per element type.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn qrs_encode_meta_exc_blk_u8(c: *mut CCoc, b: usize, x: *const u8, nb: usize) -> u32 { unsafe { meta_exc_blk(c, b, x, nb) } }
@@ -468,15 +489,6 @@ pub unsafe extern "C" fn qrs_encode_meta_exc_blk_i16(c: *mut CCoc, b: usize, x: 
 pub unsafe extern "C" fn qrs_encode_meta_exc_blk_i32(c: *mut CCoc, b: usize, x: *const i32, nb: usize) -> u32 { unsafe { meta_exc_blk(c, b, x, nb) } }
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn qrs_encode_meta_exc_blk_i64(c: *mut CCoc, b: usize, x: *const i64, nb: usize) -> u32 { unsafe { meta_exc_blk(c, b, x, nb) } }
-/// A8: coc.h:2263 `pack_exc_blk`, per element type.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn qrs_pack_exc_blk_u8(c: *const CCoc, b: usize, x: *const u8, nb: usize, ne: u32, pos: *mut u16, raw: *mut u8) { unsafe { pack_exc(c, b, x, nb, ne, pos, raw) } }
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn qrs_pack_exc_blk_i16(c: *const CCoc, b: usize, x: *const i16, nb: usize, ne: u32, pos: *mut u16, raw: *mut u8) { unsafe { pack_exc(c, b, x, nb, ne, pos, raw) } }
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn qrs_pack_exc_blk_i32(c: *const CCoc, b: usize, x: *const i32, nb: usize, ne: u32, pos: *mut u16, raw: *mut u8) { unsafe { pack_exc(c, b, x, nb, ne, pos, raw) } }
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn qrs_pack_exc_blk_i64(c: *const CCoc, b: usize, x: *const i64, nb: usize, ne: u32, pos: *mut u16, raw: *mut u8) { unsafe { pack_exc(c, b, x, nb, ne, pos, raw) } }
 /// A8: coc.h:2320 `decode`, per element type: the whole column, `c->n` elements, into `out`.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn qrs_decode_u8(c: *const CCoc, out: *mut u8) { unsafe { enc::decode(&(*c).view(), sl_mut(out, (*c).n)) } }
@@ -591,6 +603,30 @@ pub unsafe extern "C" fn qrs_scan_alp_skip(op: c_int, f: *const CCocf, b: usize,
 pub unsafe extern "C" fn qrs_coc_decode(run: unsafe extern "C" fn(), c: *const CCoc, out: *mut i64) {
     unsafe { codec::decode(rn(run), &(*c).view(), sl_mut(out, (*c).n)) }
 }
+/// A15: `qrs_coc_decode` at 2-byte lanes (coc.c `qlean_coc_decode_i16`).
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn qrs_coc_decode_i16(run: unsafe extern "C" fn(), c: *const CCoc, out: *mut i16) {
+    unsafe { codec::decode(rn(run), &(*c).view(), sl_mut(out, (*c).n)) }
+}
+/// A15: `qrs_coc_decode` at 4-byte lanes (coc.c `qlean_coc_decode_i32`).
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn qrs_coc_decode_i32(run: unsafe extern "C" fn(), c: *const CCoc, out: *mut i32) {
+    unsafe { codec::decode(rn(run), &(*c).view(), sl_mut(out, (*c).n)) }
+}
+/// A15: coc.c `qlean_coc_block_start` past the unboxing; `c` is a metadata-only view.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn qrs_coc_block_start(c: *const CCoc, b: usize) -> usize { unsafe { codec::block_start(&(*c).view().meta, b) } }
+/// A15: coc.c `coc_cmp2_run`: the `nd` deep blocks `deep` of `a op b` into the bitmap `out` (`a.n.div_ceil(64)` words).
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn qrs_coc_cmp2(run: unsafe extern "C" fn(), op: c_int, a: *const CCoc, b: *const CCoc, deep: *const u32, nd: usize, out: *mut u64) {
+    unsafe { codec::cmp2(rn(run), op, &(*a).view(), &(*b).view(), sl(deep, nd), sl_mut(out, (*a).n.div_ceil(64))) }
+}
+/// A15: coc.c `shift_fill` (the encoder's per-block source of `k + x`, `k - x` when `neg`), `cnt` elements from `i0`, nulls
+/// staying the null.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn qrs_coc_shift_fill(c: *const CCoc, k: i64, neg: c_int, buf: *mut i64, i0: usize, cnt: usize) {
+    unsafe { codec::shift_fill(&(*c).view(), k, neg != 0, i64::MIN, sl_mut(buf, cnt), i0) }
+}
 /// A15: coc.c `coc_mask_cmp_run`: a bit per element.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn qrs_coc_mask_cmp(run: unsafe extern "C" fn(), op: u8, v: i64, c: *const CCoc, out: *mut u8) {
@@ -604,7 +640,7 @@ pub unsafe extern "C" fn qrs_enc_for_meta(s: *mut CEnc, b: usize, x: *const u8, 
 /// A16: coc.c `coc_enc_for_pack`.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn qrs_enc_for_pack(s: *mut CEnc, b: usize, x: *const u8, nb: usize) {
-    unsafe { let w = (*s).width; enc::for_pack(&mut (*s).pack_blk(b, nb), sl(x, nb * w), w) }
+    unsafe { let w = (*s).width; enc::for_pack(&mut (*s).pack_blk(b, nb, false), sl(x, nb * w), w) }
 }
 /// A16: coc.c `coc_enc_alp_meta`.
 #[unsafe(no_mangle)]
@@ -614,7 +650,7 @@ pub unsafe extern "C" fn qrs_enc_alp_meta(s: *mut CEnc, b: usize, x: *const u8, 
 /// A16: coc.c `coc_enc_alp_pack`.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn qrs_enc_alp_pack(s: *mut CEnc, b: usize, x: *const u8, nb: usize) {
-    unsafe { let w = (*s).width; enc::alp_pack(&mut (*s).pack_blk(b, nb), sl(x, nb * w), w) }
+    unsafe { let w = (*s).width; enc::alp_pack(&mut (*s).pack_blk(b, nb, false), sl(x, nb * w), w) }
 }
 /// A16: coc.c `src_copy`, a dense block of `bytes` copied to `out`.
 #[unsafe(no_mangle)]
@@ -622,16 +658,12 @@ pub unsafe extern "C" fn qrs_src_copy(out: *mut u8, x: *const u8, bytes: usize) 
 /// A16: coc.c `src_bits`, block `b`'s `nb` bytes packed into the `nbytes`-byte bitmap `out`.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn qrs_src_bits(out: *mut u8, nbytes: usize, b: usize, x: *const u8, nb: usize) {
-    unsafe { enc::src_bits(sl_mut(out, nbytes), b, sl(x, nb)) }
+    // BLK is a multiple of 8, so block `b` starts on byte `b * BLK / 8`; the slice is its own bytes only (disjoint across blocks)
+    unsafe { let (o, n) = (b * (BLK / 8), nb.div_ceil(8)); assert!(o + n <= nbytes, "qlean src_bits: block {b} of {nb} bytes past the {nbytes}-byte bitmap"); enc::src_bits(sl_mut(out.add(o), n), sl(x, nb)) }
 }
 /// A16: coc.h `coc_sumnul`.
 #[unsafe(no_mangle)]
 pub extern "C" fn qrs_coc_sumnul(width: usize, alp: c_int) -> i64 { enc::coc_sumnul(width, alp != 0) }
-/// A17: coc.c `coc_enc_blk_meta` over one block's values.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn qrs_enc_blk_meta(s: *mut CEnc, b: usize, v: *const i64, nb: usize) -> u32 {
-    unsafe { let w = (*s).width; enc::blk_meta(&mut (*s).meta_blk(b), sl(v, nb), w) }
-}
 /// A17: coc.c `coc_narrow`; answers `v` itself at eight bytes, else `out` holding the `cnt` narrowed elements.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn qrs_enc_narrow(width: usize, v: *const i64, cnt: usize, out: *mut u8) -> *const u8 {
@@ -650,27 +682,15 @@ unsafe fn taken<'a>(f: *const CCocf, alp: bool) -> Cocf<'a> {
     unsafe { if alp { (*f).view() } else { Cocf { c: (*f).c.view(), exp: &[], exc_off: &[], exc_pos: &[], exc_raw: &[], f32: false } } }
 }
 /// A17: coc.c `move_meta`'s branch for a block `take` claimed (block `pb` of `f`); writes `exc_off[b + 1]`.
-// needs A16: `CEnc::meta_blk(b)` is this view
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn qrs_enc_move_meta(s: *mut CEnc, b: usize, f: *const CCocf, pb: usize) {
-    let (lb, over) = (AtomicUsize::new(0), AtomicI32::new(0));
-    unsafe { let s = &*s; enc::move_meta(&mut ccoc_meta(&s.c, b, s.exp, &mut *s.exc_off.add(b + 1), &lb, &over), &taken(f, s.alp != 0), pb); }
+    unsafe { let alp = (*s).alp != 0; enc::move_meta(&mut (*s).meta_blk(b), &taken(f, alp), pb); }
 }
-/// A17: coc.c `move_pack`'s branch for a block `take` claimed. The residual region is the whole `BLK * width / 8`
-/// bytes, not the `nb` elements' share: the moved block's pack is copied whole, zero padded.
-// needs A16: `CEnc::pack_blk(b, nb)` is this view, with a region of `ceil(nb * width / 8)` bytes
+/// A17: coc.c `move_pack`'s branch for a block `take` claimed: the whole `BLK * width / 8` residual region
+/// (`pack_blk`'s `whole`), as the moved block's pack is copied whole, zero padded.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn qrs_enc_move_pack(s: *mut CEnc, b: usize, nb: usize, f: *const CCocf, pb: usize) {
-    unsafe {
-        let (s, w) = (&*s, *(*s).c.width.add(b));
-        let (base, at) = (*s.c.base.add(b), *s.exc_off.add(b) as usize);
-        let ne = *s.exc_off.add(b + 1) as usize - at;
-        let mut p = enc::EncPack { b, nb, base, frame: (base as u64).wrapping_add(if s.c.fdelta.is_null() { 0 } else { *s.c.fdelta.add(b) }),
-                                   width: w, exp: if s.exp.is_null() { 0 } else { *s.exp.add(b) },
-                                   res: sl_mut(s.c.pack.add(*s.c.off.add(b) as usize), BLK * w as usize / 8),
-                                   pos: sl_mut(s.exc_pos.add(at), ne), raw: sl_mut(s.exc_raw.add(at * s.width), ne * s.width) };
-        enc::move_pack(&mut p, &taken(f, s.alp != 0), pb, s.alp != 0, s.width)
-    }
+    unsafe { let alp = (*s).alp != 0; enc::move_pack(&mut (*s).pack_blk(b, nb, true), &taken(f, alp), pb, alp, (*s).width) }
 }
 /// A9: coc.h `alp_patch_blk_f32`; answers the exponent the search would raise the block to, or -1.
 #[unsafe(no_mangle)]
@@ -738,11 +758,19 @@ pub unsafe extern "C" fn qrs_grade_keys(run: unsafe extern "C" fn(), k: *const u
                                         out: *mut i64) {
     unsafe { sort::grade_keys(rn(run), sl(k, n), desc != 0, mn, mx, sl_mut(out, n)) }
 }
-/// A21: sort.c `grade_narrow`.
+/// A20: sort.c `SK_COUNTABLE`: a counting table over `span + 1` buckets for `n` keys is affordable.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn qrs_grade_narrow(run: unsafe extern "C" fn(), kind: u8, p: *const u8, bytes: usize, n: usize,
-                                          desc: c_int, rank: c_int, out: *mut i64) {
-    unsafe { sort::grade_narrow(rn(run), kind, sl(p, bytes), n, desc != 0, rank != 0, sl_mut(out, n)) }
+pub extern "C" fn qrs_sk_countable(span: u64, n: usize) -> c_int { sort::sk_countable(span, n) as c_int }
+/// A20: sort.c `sk_digit`: the radix digit width for `bits`-bit keys and `n` of them.
+#[unsafe(no_mangle)]
+pub extern "C" fn qrs_sk_digit(bits: u32, n: usize) -> u32 { sort::sk_digit(bits, n) }
+/// A21: sort.c `hist_narrow`: the counts of the `n` keys of a one-byte (`SK_U8`) or two-byte (`SK_I16`) payload into
+/// `out`, which holds `SK_NARROW_NB(kind)` of them (256 or 65536).
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn qrs_hist_narrow(run: unsafe extern "C" fn(), kind: u8, p: *const u8, bytes: usize, n: usize,
+                                         out: *mut usize) {
+    let h = unsafe { sort::hist_narrow(rn(run), kind, sl(p, bytes), n) };
+    unsafe { sl_mut(out, h.len()) }.copy_from_slice(&h)
 }
 /// A22: sort.c `order`.
 #[unsafe(no_mangle)]
@@ -777,6 +805,22 @@ pub unsafe extern "C" fn qrs_grade_lane(run: unsafe extern "C" fn(), desc: c_int
                                         n: usize, out: *mut i64) {
     unsafe { sort::grade_lane(rn(run), desc != 0, w, sl(ids, bytes), n, sl_mut(out, n)) }
 }
+/// A23: sort.c `group_bound`: aborts when `n` rows cannot be numbered in `u32`; for the C callers with no Rust callee.
+#[unsafe(no_mangle)]
+pub extern "C" fn qrs_group_bound(n: usize) { sort::group_bound(n) }
+/// A23: sort.c `ids_keys`: `m` ids at `w` bits as keys into `k` (`m` entries); `*mn`, `*mx` the range.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn qrs_ids_keys(v: *const u8, w: u32, m: usize, k: *mut u64, mn: *mut u64, mx: *mut u64) {
+    let (a, b) = sort::ids_keys(unsafe { sl(v, ids::ids_bytes(m, w)) }, w, m, unsafe { sl_mut(k, m) });
+    unsafe { mn.write(a); mx.write(b) }
+}
+/// A23: sort.c `pair_ids`: the group of each pair `(x[i], y[i])`, `m` of them, into `gid` (`gbytes` bytes) at
+/// `max(8, id_width(ng))` bits; `first` holds `m` entries. Answers `ng`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn qrs_pair_ids(run: unsafe extern "C" fn(), x: *const u64, y: *const u64, m: usize, mnx: u64, sx: u64,
+                                      mny: u64, sy: u64, gid: *mut u8, gbytes: usize, first: *mut usize) -> usize {
+    unsafe { sort::pair_ids(rn(run), sl(x, m), sl(y, m), mnx, sx, mny, sy, sl_mut(gid, gbytes), sl_mut(first, m)) }
+}
 /// A23: sort.c:3386 `pair_ids_narrow`.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn qrs_pair_ids_narrow(run: unsafe extern "C" fn(), wa: u32, wb: u32, m: usize, pa: *const u8,
@@ -790,6 +834,21 @@ pub unsafe extern "C" fn qrs_pair_ids_narrow(run: unsafe extern "C" fn(), wa: u3
 pub unsafe extern "C" fn qrs_rank_slices(w: usize, v: *const u8, bytes: usize, o: *const i64, ng: usize, out: *mut i64) {
     // sort.c:2487: the answer is one id per group, `g * 8` bytes with `g = ng`
     unsafe { sort::rank_slices(w, sl(v, bytes), sl(o, ng + 1), sl_mut(out, ng)) }
+}
+/// A24: sort.c `qlean_sort_group_sizes`: `n` is already clamped to what `gid` holds, `out` is `ng` long.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn qrs_group_sizes(ng: usize, w: u32, n: usize, gid: *const u8, out: *mut i64) {
+    unsafe { sort::group_sizes(ng, w, n, sl(gid, ids::ids_bytes(n, w)), sl_mut(out, ng)) }
+}
+/// A24: sort.c `qlean_sort_group_lasts`, as `qrs_group_sizes`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn qrs_group_lasts(ng: usize, w: u32, n: usize, gid: *const u8, out: *mut i64) {
+    unsafe { sort::group_lasts(ng, w, n, sl(gid, ids::ids_bytes(n, w)), sl_mut(out, ng)) }
+}
+/// A24: sort.c `qlean_sort_id_longs`: `n` is already clamped to what `ids` holds, `out` is `n` long.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn qrs_id_longs(n: usize, w: u32, ids: *const u8, out: *mut i64) {
+    unsafe { sort::id_longs(n, w, sl(ids, ids::ids_bytes(n, w)), sl_mut(out, n)) }
 }
 /// A25: sort.c `qlean_sort_grade_syms` past the unboxing.
 #[unsafe(no_mangle)]
@@ -864,11 +923,6 @@ pub unsafe extern "C" fn qrs_parted_ids(strict: c_int, d: usize, n: usize, w: u3
 pub unsafe extern "C" fn qrs_grade_guid(run: unsafe extern "C" fn(), desc: c_int, p: *const u8, n: usize, out: *mut i64) {
     unsafe { sort::grade_guid(rn(run), desc != 0, sl(p, 16 * n), sl_mut(out, n)) }
 }
-/// A28: search.c `coc_srange`: an encoded column's signed range, written to `lo`, `hi`.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn qrs_coc_srange(c: *const CCoc, lo: *mut i64, hi: *mut i64) {
-    unsafe { (*lo, *hi) = search::coc_srange(&(*c).view()) }
-}
 /// A28: search.c `coc_exc_within`: whether a patch of block `b` lies in `lo ..= hi`.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn qrs_coc_exc_within(c: *const CCoc, b: usize, lo: i64, hi: i64) -> c_int {
@@ -882,16 +936,41 @@ pub extern "C" fn qrs_ids_top(lw: u32) -> u64 { search::ids_top(lw) }
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn qrs_opnd_blk(d: *const u8, c: *const CCoc, n: usize, enc: c_int, lw: u32, b: usize, w: usize,
                                       buf: *mut u8, cnt: *mut usize) -> *const u8 {
-    let cv = if enc == 1 { Some(unsafe { (*c).view() }) } else { None };
-    let src = match (enc, cv) {
-        (1, Some(c)) => search::Src::Enc(c),
-        (2, _) => search::Src::Ids(unsafe { sl(d, ids::ids_bytes(n, lw)) }, lw),
-        _ => search::Src::Dense(unsafe { sl(d, n * w) }),
-    };
-    let r = search::Opnd { src, n }.blk(b, w, unsafe { sl_mut(buf, crate::BLK * w) });
+    let r = unsafe { opnd(d, c, n, enc, lw, w) }.blk(b, w, unsafe { sl_mut(buf, crate::BLK * w) });
     unsafe { *cnt = r.len() / w };
     r.as_ptr()
 }
+/// search.c `opnd` as C holds it: payload `d` (`enc` 0 at key width `w`, `enc` 2 at `lw` bits) or the column `c` (`enc` 1).
+/// Safety: as `sl`, for the payload `n` elements need.
+unsafe fn opnd<'a>(d: *const u8, c: *const CCoc, n: usize, enc: c_int, lw: u32, w: usize) -> search::Opnd<'a> {
+    let src = match enc {
+        1 => search::Src::Enc(unsafe { (*c).view() }),
+        2 => search::Src::Ids(unsafe { sl(d, ids::ids_bytes(n, lw)) }, lw),
+        _ => search::Src::Dense(unsafe { sl(d, n * w) }),
+    };
+    search::Opnd { src, n }
+}
+/// A29: search.c `scan_*`: the first index in the dense haystack `h` of `n` keys of each of the `m` needles `x`, or `n`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn qrs_scan(kind: c_int, h: *const u8, n: usize, x: *const u8, m: usize, out: *mut i64) {
+    let kd = search::KINDS[kind as usize];
+    let (h, x) = unsafe { (opnd(h, null_mut(), n, 0, 0, kd.width()), opnd(x, null_mut(), m, 0, 0, kd.width())) };
+    search::scan_kind(kd, &h, &x, unsafe { sl_mut(out, m) })
+}
+/// A30: search.c `search`: `x ? h` (`member` 0, `8 * xn` bytes of `Int64`s) or `x in h` (`member` 1, `ceil(xn / 8)` bytes,
+/// bit `i` for needle `i`) into `out`, the whole job on `run` (C's `qlean_run_c`) with no further call back into C.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn qrs_search(run: unsafe extern "C" fn(), kind: c_int, hd: *const u8, hc: *const CCoc, hn: usize, henc: c_int,
+                                    hlw: u32, xd: *const u8, xc: *const CCoc, xn: usize, xenc: c_int, xlw: u32, member: c_int,
+                                    out: *mut u8) {
+    let kd = search::KINDS[kind as usize];
+    let (h, x) = unsafe { (opnd(hd, hc, hn, henc, hlw, kd.width()), opnd(xd, xc, xn, xenc, xlw, kd.width())) };
+    let bytes = if member != 0 { xn.div_ceil(8) } else { xn * 8 };
+    search::search(unsafe { rn(run) }, kd, &h, &x, member != 0, unsafe { sl_mut(out, bytes) })
+}
+/// A30: search.c `ids_key_width`: bytes an id key takes where one side is at `a` bits and the other at `b`.
+#[unsafe(no_mangle)]
+pub extern "C" fn qrs_ids_key_width(a: usize, b: usize) -> usize { search::ids_key_width(a, b) }
 /// A28: search.c `kind_of`: the `kind` enum's number; `who` names the caller in the abort text.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn qrs_kind_of(w: usize, is_float: u8, who: *const c_char) -> c_int {
@@ -900,14 +979,60 @@ pub unsafe extern "C" fn qrs_kind_of(w: usize, is_float: u8, who: *const c_char)
 /// A28: search.c `kind_width` of the `kind` number `k`.
 #[unsafe(no_mangle)]
 pub extern "C" fn qrs_kind_width(k: c_int) -> usize {
-    use search::Kind::*;
-    [U8, U16, U32, U64, F32, F64, U128][k as usize].width()
+    search::KINDS[k as usize].width()
 }
 /// A31: search.c `sym_scan`: the first of `n` symbols equal to `k`, or `n`.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn qrs_sym_scan(blob: *const u8, bytes: usize, offs: *const usize, n: usize, k: *const u8, klen: usize)
     -> usize {
-    unsafe { search::sym_scan(&syms(blob, bytes, offs, n), n, sl(k, klen)) }
+    unsafe { search::sym_scan(&syms0(blob, bytes, offs, n), n, sl(k, klen)) }
+}
+/// `lean_array_size` boxed offsets (`n + 1` for `n` symbols, none for an empty dictionary) as a column.
+unsafe fn symcol<'a>(blob: *const u8, bytes: usize, offs: *const usize, noffs: usize) -> Syms<'a> {
+    Syms { blob: unsafe { sl(blob, bytes) }, offs: unsafe { sl(offs, noffs) } }
+}
+/// A31: search.c `sym_search` past the kept hash: the needle column `nb`/`no` (`nno` offsets) against the haystack `hb`/`ho`
+/// (`nho` offsets), `bits` 0: `out` is `8 * m` bytes of `Int64`s; `bits` 1: `ceil(m / 8)` zeroed bytes.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn qrs_sym_search(bits: c_int, nb: *const u8, nbytes: usize, no: *const usize, nno: usize, hb: *const u8,
+                                        hbytes: usize, ho: *const usize, nho: usize, out: *mut u8) {
+    let (nd, h) = unsafe { (symcol(nb, nbytes, no, nno), symcol(hb, hbytes, ho, nho)) };
+    let m = nd.count();
+    unsafe { search::sym_search(bits != 0, &nd, &h, sl_mut(out, if bits != 0 { m.div_ceil(8) } else { m * 8 })) }
+}
+/// A31: search.c `qlean_search_match_ids`' translation: for each of the `na` entries of `a`, its index among the `nb` of `b`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn qrs_sym_translate(ab: *const u8, abytes: usize, ao: *const usize, na: usize, bb: *const u8,
+                                           bbytes: usize, bo: *const usize, nb: usize, tr: *mut usize) {
+    unsafe { search::sym_translate(&syms0(ab, abytes, ao, na), na, &syms0(bb, bbytes, bo, nb), nb, sl_mut(tr, na)) }
+}
+/// A31: search.c `find_bit` over a payload of `size` bytes.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn qrs_find_bit(b: *const u8, size: usize, n: usize, needle: u8) -> usize {
+    search::find_bit(unsafe { sl(b, size) }, n, needle)
+}
+/// A31: search.c `qlean_search_find_bit_vec`; `out` holds `m` entries.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn qrs_find_bit_vec(n: usize, hay: *const u8, hs: usize, ndl: *const u8, ns: usize, m: usize, out: *mut i64) {
+    unsafe { search::find_bit_vec(n, sl(hay, hs), sl(ndl, ns), m, sl_mut(out, m)) }
+}
+/// A31: search.c `qlean_search_bin_bits`; `out` holds `m` entries.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn qrs_bin_bits(n: usize, hay: *const u8, hs: usize, ndl: *const u8, ns: usize, m: usize, right: u8, out: *mut i64) {
+    unsafe { search::bin_bits(n, sl(hay, hs), sl(ndl, ns), m, right != 0, sl_mut(out, m)) }
+}
+/// A31: search.c `qlean_search_member_bits`; `out` holds `ceil(m / 8)` bytes.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn qrs_member_bits(m: usize, xs: *const u8, xsz: usize, n: usize, hay: *const u8, hsz: usize, out: *mut u8) {
+    unsafe { search::member_bits(m, sl(xs, xsz), n, sl(hay, hsz), sl_mut(out, m.div_ceil(8))) }
+}
+/// A31: search.c `qlean_search_where_bits`, the count: how many of the first `n` bits of the `size`-byte payload are set.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn qrs_where_count(n: usize, bits: *const u8, size: usize) -> usize { search::where_count(n, unsafe { sl(bits, size) }) }
+/// A31: search.c `qlean_search_where_bits`, the indices; `out` holds `qrs_where_count` entries. Answers that count.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn qrs_where_bits(n: usize, bits: *const u8, size: usize, k: usize, out: *mut i64) -> usize {
+    unsafe { search::where_bits(n, sl(bits, size), sl_mut(out, k)) }
 }
 /// A32: search.c `bin` over a dense haystack and dense keys.
 #[unsafe(no_mangle)]
@@ -915,6 +1040,77 @@ pub unsafe extern "C" fn qrs_bin(run: unsafe extern "C" fn(), w: usize, is_float
                                  hay: *const u8, n: i64, keys: *const u8, m: usize, out: *mut i64) {
     unsafe { search::bin(rn(run), w, is_float != 0, is_signed != 0, right != 0, sl(hay, w * n.max(0) as usize), None, n,
                          sl(keys, w * m), None, m, sl_mut(out, m)) }
+}
+/// A32: `qrs_bin` where either side may be an encoded column (`qlean_bin_operands`, `qlean_coc_bin`): `hc` or `kc` non-null
+/// is that side's column, and its dense pointer is not read.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn qrs_bin_enc(run: unsafe extern "C" fn(), w: usize, is_float: c_int, is_signed: c_int, right: c_int,
+                                     hay: *const u8, hc: *const CCoc, n: i64, keys: *const u8, kc: *const CCoc, m: usize,
+                                     out: *mut i64) {
+    unsafe {
+        let (h, k) = (hc.as_ref().map(|c| c.view()), kc.as_ref().map(|c| c.view()));
+        search::bin(rn(run), w, is_float != 0, is_signed != 0, right != 0, sl(hay, if h.is_some() { 0 } else { w * n.max(0) as usize }),
+                    h.as_ref(), n, sl(keys, if k.is_some() { 0 } else { w * m }), k.as_ref(), m, sl_mut(out, m))
+    }
+}
+/// A33: search.c `find_sorted_run`: `find_sorted` over a dense or encoded (`hc` non-null) haystack of `n` and dense keys.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn qrs_find_sorted(run: unsafe extern "C" fn(), w: usize, is_float: c_int, is_signed: c_int, hay: *const u8,
+                                         hc: *const CCoc, n: i64, keys: *const u8, m: usize, out: *mut i64) {
+    unsafe {
+        let h = hc.as_ref().map(|c| c.view());
+        search::find_sorted(rn(run), w, is_float != 0, is_signed != 0, sl(hay, if h.is_some() { 0 } else { w * n.max(0) as usize }),
+                            h.as_ref(), n, sl(keys, w * m), m, sl_mut(out, m))
+    }
+}
+/// A33: search.c `member_sorted_run`: the bitmap (`m.div_ceil(8)` bytes) of `qrs_find_sorted`'s answers below `n`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn qrs_member_sorted(run: unsafe extern "C" fn(), w: usize, is_float: c_int, is_signed: c_int, hay: *const u8,
+                                           hc: *const CCoc, n: i64, keys: *const u8, m: usize, out: *mut u8) {
+    unsafe {
+        let h = hc.as_ref().map(|c| c.view());
+        search::member_sorted(rn(run), w, is_float != 0, is_signed != 0, sl(hay, if h.is_some() { 0 } else { w * n.max(0) as usize }),
+                              h.as_ref(), n, sl(keys, w * m), m, sl_mut(out, m.div_ceil(8)))
+    }
+}
+/// A33: search.c `qlean_search_bin_ids`: `vals` is `vbytes` long, `ids` holds `n` ids at `w` bits, `keys` and `out` `m` each.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn qrs_bin_ids(right: c_int, vals: *const u8, vbytes: usize, n: usize, w: u32, ids: *const u8, keys: *const u8,
+                                     m: usize, out: *mut i64) {
+    unsafe { search::bin_ids(right != 0, sl(vals, vbytes), n, w, sl(ids, ids::ids_bytes(n, w)), sl(keys, 8 * m), sl_mut(out, m)) }
+}
+/// A33: search.c `bin_rows`: the haystack is `hay` (`hbytes` long) or the column `hc`; `order` is `obytes` long (0: none),
+/// `bounds` `nb` and `gids` `ng` words; `keys` and `out` `m` each.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn qrs_bin_rows(run: unsafe extern "C" fn(), w: usize, is_float: c_int, is_signed: c_int, right: c_int,
+                                      hay: *const u8, hbytes: usize, hc: *const CCoc, keys: *const u8, order: *const u8, obytes: usize,
+                                      bounds: *const i64, nb: usize, gids: *const i64, ng: usize, miss: i64, m: usize, out: *mut i64) {
+    unsafe {
+        let h = hc.as_ref().map(|c| c.view());
+        search::bin_rows(rn(run), w, is_float != 0, is_signed != 0, right != 0, sl(hay, if h.is_some() { 0 } else { hbytes }), h.as_ref(),
+                         sl(keys, w * m), sl(order, obytes), sl(bounds, nb), sl(gids, ng), miss, m, sl_mut(out, m))
+    }
+}
+/// A33: search.c `run_starts` over C's `opnd`; `out` holds `n + 1`. Answers the count with the terminator.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn qrs_run_starts(d: *const u8, c: *const CCoc, n: usize, enc: c_int, lw: u32, w: usize, is_float: c_int,
+                                        out: *mut i64) -> usize {
+    unsafe { search::run_starts(&opnd(d, c, n, enc, lw, w), w, is_float != 0, sl_mut(out, n + 1)) }
+}
+/// A33: search.c `qlean_search_run_starts_ids`; `out` holds `n + 1`. Answers the count with the terminator.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn qrs_run_starts_ids(n: usize, w: u32, ids: *const u8, out: *mut i64) -> usize {
+    unsafe { search::run_starts_ids(n, w, sl(ids, ids::ids_bytes(n, w)), sl_mut(out, n + 1)) }
+}
+/// A33: search.c `qlean_search_run_starts_syms` over `n` symbols; `out` holds `n + 1`. Answers the count with the terminator.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn qrs_run_starts_syms(blob: *const u8, bytes: usize, offs: *const usize, n: usize, out: *mut i64) -> usize {
+    unsafe { search::run_starts_syms(&syms0(blob, bytes, offs, n), sl_mut(out, n + 1)) }
+}
+/// A33: search.c `qlean_search_run_starts_bits`: `size` bytes of bits for `n` booleans; `out` holds `n + 1`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn qrs_run_starts_bits(n: usize, bits: *const u8, size: usize, out: *mut i64) -> usize {
+    unsafe { search::run_starts_bits(n, sl(bits, size), sl_mut(out, n + 1)) }
 }
 /// A34: structural.c `reverse_foR_run`.
 #[unsafe(no_mangle)]
@@ -1079,6 +1275,25 @@ pub unsafe extern "C" fn qrs_gather(run: unsafe extern "C" fn(), w: usize, fill:
 pub unsafe extern "C" fn qrs_gather_enc(run: unsafe extern "C" fn(), w: usize, fill: u64, c: *const CCoc, idx: *const i64,
                                         n: usize, out: *mut u8) {
     unsafe { structural::gather_enc(rn(run), w, fill, &(*c).view(), sl(idx, n), sl_mut(out, w * n)) }
+}
+/// A37: structural.c `qlean_structural_all_below` over the `m` indices; 1 when every one, unsigned, is below `n`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn qrs_all_below(n: usize, idx: *const i64, m: usize) -> u8 { unsafe { structural::all_below(n, sl(idx, m)) as u8 } }
+/// A37: structural.c `gather_foR_idx_run`; `ic` is the encoded index (`ic.n` of them), `out` is `w * ic.n` bytes.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn qrs_gather_enc_idx(run: unsafe extern "C" fn(), w: usize, fill: u64, c: *const CCoc, ic: *const CCoc,
+                                            out: *mut u8) {
+    unsafe {
+        let (v, iv) = ((*c).view(), (*ic).view());
+        structural::gather_enc_idx(rn(run), w, fill, &v, &iv, iv.meta.n, sl_mut(out, w * iv.meta.n))
+    }
+}
+/// A37: structural.c `gather_bits_run`: `n` is the source's bit count, `bits` its `bytes` bytes, `out` the zeroed
+/// `ceil(m / 8)` bytes.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn qrs_gather_bits(run: unsafe extern "C" fn(), n: usize, bits: *const u8, bytes: usize,
+                                         idx: *const i64, m: usize, out: *mut u8) {
+    unsafe { structural::gather_bits(rn(run), n, sl(bits, bytes), sl(idx, m), sl_mut(out, m.div_ceil(8))) }
 }
 /// A38: structural.c `expand_run`.
 #[unsafe(no_mangle)]
@@ -1265,6 +1480,13 @@ pub unsafe extern "C" fn qrs_ew_mon_fill(op: u8, cls: u8, nul: i64, c: *const CC
 pub unsafe extern "C" fn qrs_ew_cast(run: unsafe extern "C" fn(), src: u8, dst: u8, nul: i64, x: *const u8, xbytes: usize,
                                      n: usize, out: *mut u8, obytes: usize) {
     unsafe { ew::cast(rn(run), src, dst, nul, sl(x, xbytes), n, sl_mut(out, obytes)) }
+}
+/// A45: elementwise.c `ew_tick_run`, the chain's time-unit stage: `op` is the source unit's code times 16 plus the
+/// target's, `src`/`dst` the two classes, `nul_in`/`nul_out` the two nulls.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn qrs_ew_tick(run: unsafe extern "C" fn(), op: u8, src: u8, dst: u8, nul_in: i64, nul_out: i64,
+                                     x: *const u8, xbytes: usize, n: usize, out: *mut u8, obytes: usize) {
+    unsafe { ew::tick(rn(run), op, src, dst, nul_in, nul_out, sl(x, xbytes), n, sl_mut(out, obytes)) }
 }
 /// A46a: elementwise.c `ew_widen_run`.
 #[unsafe(no_mangle)]
