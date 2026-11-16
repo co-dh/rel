@@ -11,7 +11,7 @@
 //! scheduler: pinning worker `k` to a die cost up to 3x against the evaluator, whose buffers never sit still.
 use alloc::vec::Vec;
 use core::cell::UnsafeCell;
-use core::ffi::{c_char, c_int, c_long, c_void};
+use core::ffi::{c_int, c_long, c_void};
 use core::hint::spin_loop;
 use core::ptr::null;
 use core::sync::atomic::{AtomicBool, AtomicU32, AtomicU64, Ordering::{Acquire, Relaxed, Release, SeqCst}};
@@ -19,18 +19,16 @@ use core::sync::atomic::{AtomicBool, AtomicU32, AtomicU64, Ordering::{Acquire, R
 use crate::c::Worker;
 use crate::ffi::CPass;
 
-// The five libc names the pool adds to qrs.o's undefined list; futex, sched_getaffinity and sched_yield go through
+// The three libc names the pool adds to qrs.o's undefined list; futex, sched_getaffinity and sched_yield go through
 // `syscall`. `std::thread` would bring `std` (863 KB and libgcc_s); a raw `clone` leaves glibc's thread state unset.
 /// cbindgen:ignore
 mod sys {
-    use core::ffi::{c_char, c_int, c_long, c_ulong, c_void};
+    use core::ffi::{c_int, c_long, c_ulong, c_void};
     unsafe extern "C" {
         pub fn pthread_create(t: *mut c_ulong, attr: *const c_void, f: extern "C" fn(*mut c_void) -> *mut c_void,
                               arg: *mut c_void) -> c_int;
         pub fn pthread_detach(t: c_ulong) -> c_int;
         pub fn syscall(n: c_long, ...) -> c_long;
-        pub fn getenv(name: *const c_char) -> *const c_char;
-        pub fn sysconf(name: c_int) -> c_long;
     }
 }
 // x86-64 Linux numbers (<sys/syscall.h>, <linux/futex.h>, <unistd.h>)
@@ -134,10 +132,7 @@ fn cpu_count() -> i64 {
 
 /// `QLEAN_THREADS`'s leading digits (0 when it has none), or None when it is unset.
 fn env_threads() -> Option<i64> {
-    // Safety: a NUL-terminated name; getenv answers null or a NUL-terminated value nobody frees while we read it
-    let v = unsafe { sys::getenv(c"QLEAN_THREADS".as_ptr()) };
-    if v.is_null() { return None }
-    let s = unsafe { core::ffi::CStr::from_ptr(v as *const c_char) }.to_bytes();
+    let s = crate::os::getenv(c"QLEAN_THREADS")?;
     Some(s.iter().take_while(|c| c.is_ascii_digit()).fold(0i64, |a, &c| a.saturating_mul(10).saturating_add((c - b'0') as i64)))
 }
 
@@ -172,8 +167,7 @@ impl Pool {
         if w != 0 { return w }
         let want = if self.fixed != 0 { self.fixed as i64 } else {
             env_threads().unwrap_or_else(|| match cpu_count() {
-                // Safety: sysconf reads a constant
-                c if c < 1 => (unsafe { sys::sysconf(SC_NPROCESSORS_ONLN) }) as i64,
+                c if c < 1 => crate::os::sysconf(SC_NPROCESSORS_ONLN).unwrap_or(1),
                 c => c,
             })
         };

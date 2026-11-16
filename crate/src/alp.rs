@@ -6,6 +6,7 @@ use crate::layout::{Tail, exc_layout};
 use crate::pod;
 use crate::enc::{EncMeta, EncPack};
 use crate::pod::Pod;
+use alloc::vec::Vec;
 
 /// coc.h:1443 `cocf`: the integer column `c` (the FoR encoding of the decimals `d`) plus each block's exponent and
 /// the float patches. `'a` as `Coc`'s. Built from C by `ffi::CCocf::view`.
@@ -103,6 +104,80 @@ impl<'a> Cocf<'a> {
         }
     }
 }
+impl Cocf<'_> {
+    /// coc.h:867 `exc_val`: patch `j` widened to a double, as the reduction layer reads it.
+    fn exc_val(&self, j: usize) -> f64 {
+        let r = &self.exc_raw;
+        if self.f32 { f32::from_ne_bytes(r[j * 4..j * 4 + 4].try_into().unwrap()) as f64 }
+        else { f64::from_ne_bytes(r[j * 8..j * 8 + 8].try_into().unwrap()) }
+    }
+    /// coc.h:874 `alp_dec`: `d / 10^e`, cast through the column's element type; the decoder's own expression.
+    fn dec(&self, d: i64, e: i32) -> f64 {
+        let v = d as f64 / POW10[e as usize];
+        if self.f32 { v as f32 as f64 } else { v }
+    }
+    /// coc.h:883 `alp_thresh`: `x < v` in the value domain is `d < t` in the block's integer domain at exponent `e`, with
+    /// `t = ceil(v * 10^e)` corrected against the decoder. Out of reach either way clamps outside 2^53, so every `d`
+    /// counts (or none does): a value a block could hold would answer a different question.
+    pub fn thresh(&self, v: f64, e: i32) -> i64 {
+        let y = ceil(v * POW10[e as usize]);
+        if !(y > -P53) { return i64::MIN / 2 } // the negated form also catches NaN
+        if !(y < P53) { return i64::MAX / 2 }
+        let mut t = y as i64;
+        for _ in 0..4 { if self.dec(t - 1, e) >= v { t -= 1 } else { break } }
+        for _ in 0..4 { if self.dec(t, e) < v { t += 1 } else { break } }
+        t
+    }
+    /// The block's first `nb`-element grid: `(lo, nb)` of block `b`.
+    fn blk(&self, b: usize) -> usize { (self.c.meta.n - b * crate::BLK).min(crate::BLK) }
+    /// coc.h:926 `cocf_min`: metadata and the patch list only; NaN loses every comparison, and the `+inf` seed is q's `0w`.
+    /// A block of nothing but patches has no base to offer.
+    pub fn min(&self) -> f64 {
+        let m = (0..self.c.meta.nblk).filter(|&b| (self.exc_off[b + 1] - self.exc_off[b]) as usize != self.blk(b))
+            .fold(f64::INFINITY, |m, b| { let v = self.dec(self.c.meta.base[b], self.exp[b] as i32); if v < m { v } else { m } });
+        (0..self.exc_pos.len()).fold(m, |m, j| { let v = self.exc_val(j); if v < m { v } else { m } })
+    }
+    /// coc.h:938 `cocf_max`, dually seeded with `-inf`.
+    pub fn max(&self) -> f64 {
+        let m = (0..self.c.meta.nblk).filter(|&b| (self.exc_off[b + 1] - self.exc_off[b]) as usize != self.blk(b))
+            .fold(f64::NEG_INFINITY, |m, b| { let v = self.dec(self.c.meta.maxv[b], self.exp[b] as i32); if v > m { v } else { m } });
+        (0..self.exc_pos.len()).fold(m, |m, j| { let v = self.exc_val(j); if v > m { v } else { m } })
+    }
+    /// each block's threshold, from its exponent, the threshold moved into the integer domain once per exponent
+    fn thresholds(&self, v: f64) -> Vec<i64> {
+        let t: Vec<i64> = (0..=MAXE as i32).map(|e| self.thresh(v, e)).collect();
+        self.exp[..self.c.meta.nblk].iter().map(|&e| t[e as usize]).collect()
+    }
+    /// coc.h:954 `cocf_count_lt`: `x < v` with C's rule that `NaN < v` is false, the integral kernel run per block at that
+    /// block's threshold, whole-block skip included.
+    pub fn count_lt(&self, v: f64) -> usize {
+        let (ts, mut buf) = (self.thresholds(v), Vec::new());
+        let mut k = 0usize;
+        for (b, &t) in ts.iter().enumerate() {
+            k = k.wrapping_add(self.c.count_lt_blk(b, self.blk(b), t, &mut buf));
+            let counted = (self.c.meta.base[b] < t) as usize; // what the kernel scored for a residual 0
+            for j in self.exc_off[b] as usize..self.exc_off[b + 1] as usize {
+                k = k.wrapping_add((self.exc_val(j) < v) as usize).wrapping_sub(counted);
+            }
+        }
+        k
+    }
+    /// coc.h:970 `cocf_mask_lt`: `x < v` into `out` (`ceil(n / 64)` words, zeroed here), a patch scored by its own value.
+    pub fn mask_lt(&self, v: f64, out: &mut [u64]) {
+        out.fill(0);
+        crate::codec::mask_blks(&self.c, crate::cocops::LT, &self.thresholds(v), out);
+        for b in 0..self.c.meta.nblk {
+            let at = (b * crate::BLK >> 6).min(out.len());
+            let w64 = &mut out[at..];
+            for j in self.exc_off[b] as usize..self.exc_off[b + 1] as usize {
+                let p = self.exc_pos[j] as usize;
+                let one = 1u64 << (p & 63);
+                // a patch past the bitmap belongs to an element a clamped view does not show; C wrote past `out` for it
+                if let Some(w) = w64.get_mut(p >> 6) { *w = (*w & !one) | if self.exc_val(j) < v { one } else { 0 } }
+            }
+        }
+    }
+}
 /// `cocf_load_range`'s decimals: `base + residual` as an integer over `p10`, narrowed to `F`. `p` is read at `w` bits.
 fn restore<F: Flt>(base: u64, p10: f64, p: &[u8], w: u8, i0: usize, i1: usize, out: &mut [u8]) {
     let o = &mut pod::cast_mut::<F>(&mut out[i0 * size_of::<F>()..i1 * size_of::<F>()])
@@ -146,6 +221,8 @@ const P49: f64 = 562949953421312.0;
 /// C's `nearbyint` (ties to even, the default mode) for |s| < 2^53, without libm: adding and removing 2^52 of the
 /// sign of `s` rounds at the unit place; from 2^52 on every double is already an integer.
 fn rint(s: f64) -> f64 { let c = 4503599627370496.0f64.copysign(s); if s.abs() < 4503599627370496.0 { (s + c) - c } else { s } }
+/// libm's `ceil` below 2^52, where a double is not yet an integer; at or past it, and NaN, `x` itself (core has none).
+fn ceil(x: f64) -> f64 { if x.abs() < 4503599627370496.0 { let t = x as i64 as f64; if t < x { t + 1.0 } else { t } } else { x } }
 /// `cvt_nearest` for a whole block, where the intrinsic would stop the loop vectorising: `rint`, then the integer
 /// read off the bits (|s| < 2^53, so the shift is at most 52 and a value under 1 shifts out to 0).
 fn nearest(s: f64) -> i64 {
@@ -315,6 +392,15 @@ mod tests {
     use super::*;
     use crate::{BLK, pod::bytes_mut};
 
+    // Expected values from coc.h's alp_thresh: the clamps outside 2^53 and the ceil at an exponent
+    #[test] fn thresh_clamps_and_rounds_up() {
+        let (z, o, w) = ([0i64], [0u64], [0u8]);
+        let meta = Meta { base: &z, maxv: &z, off: &o, bsum: &z, width: &w, sumnul: 0, sumn: 0, n: 1, nblk: 1, mblk: 1 };
+        let f = Cocf { c: Coc { meta, pack: &[], exc: None, fdelta: None }, exp: &[0], exc_off: &[0, 0], exc_pos: &[], exc_raw: &[], f32: false };
+        assert_eq!([f.thresh(f64::NAN, 0), f.thresh(1e300, 0), f.thresh(-1e300, 3), f.thresh(f64::INFINITY, 2)],
+                   [i64::MIN / 2, i64::MAX / 2, i64::MIN / 2, i64::MAX / 2]);
+        assert_eq!([f.thresh(2.5, 0), f.thresh(-2.5, 0), f.thresh(3.0, 0), f.thresh(1.5, 1), f.thresh(0.1, 1), f.thresh(0.3, 1)], [3, -2, 3, 15, 1, 3]);
+    }
     // Expected values come from the original C: `encode_f64` of [1.5, 2.25, NaN, 100.0] (exponent 2, base 150, width 14, one
     // patch) patched by [1 -> 1.25, 3 -> 0.1234567], /data/tmp/qrs/A17/one2.c; the random comparison is /data/tmp/qrs/A17/diff.c.
     #[test] fn patch_blk_keeps_the_old_exponent_and_answers_the_one_the_search_would_pick() {
