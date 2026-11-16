@@ -16,7 +16,6 @@ use crate::{key, kwin, own};
 use crate::layout::{Tail, exc_ok};
 use crate::own::{OwnHead, head};
 use crate::why::Why;
-use crate::zip::zq;
 use crate::{BLK, ids, simd};
 use crate::alp::Cocf;
 use crate::cocops::CocMut;
@@ -293,15 +292,6 @@ pub unsafe extern "C" fn qrs_own_head(m: *const u8, size: usize, h: *mut OwnHead
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn qrs_coc_std(c: *const CCoc, n: usize) -> c_int {
     unsafe { (*c).view() }.std(n) as c_int
-}
-
-/// Null = ok, else the message. `dst` is the pointer C passes, 8 bytes before the block.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn qrs_zq(b: *const u8, n: usize, dst: *mut u8, want: usize) -> *const c_char {
-    match zq(unsafe { sl(b, n) }, unsafe { sl_mut(dst, 8 + want) }) {
-        Ok(()) => core::ptr::null(),
-        Err(m) => m.as_ptr(),
-    }
 }
 
 #[unsafe(no_mangle)]
@@ -2601,18 +2591,15 @@ trait Source: Sync {
     /// A failed read was recorded: the answer is no column.
     unsafe fn bad(&self) -> bool;
 }
-struct CSource(*const CSrc);
-// Safety: the callbacks of a `coc_src` are the C source's own, called from every worker as C's `src_run` did
-unsafe impl Sync for CSource {}
-impl Source for CSource {
-    unsafe fn open(&self) -> Option<*mut c_void> {
-        unsafe { match (*self.0).open { Some(f) => { let c = f(self.0.cast()); (!c.is_null()).then_some(c) } None => Some(null_mut()) } }
-    }
+/// B4: a `kxzipped` or plain column file as a `Source`; each worker's cursor is a boxed `zip::Cursor`.
+struct ZSrc<'a>(&'a crate::zip::File);
+impl Source for ZSrc<'_> {
+    unsafe fn open(&self) -> Option<*mut c_void> { crate::zip::Cursor::new(self.0).map(|c| alloc::boxed::Box::into_raw(alloc::boxed::Box::new(c)).cast()) }
     unsafe fn at(&self, cur: *mut c_void, off: usize, len: usize) -> *const u8 {
-        unsafe { ((*self.0).at.expect("qlean: a coc_src with no `at`"))(self.0.cast(), cur, off, len).cast() }
+        unsafe { (*cur.cast::<crate::zip::Cursor>()).at(self.0, off, len) }.map_or(core::ptr::null(), <[u8]>::as_ptr)
     }
-    unsafe fn close(&self, cur: *mut c_void) { unsafe { if let Some(f) = (*self.0).close { f(self.0.cast(), cur) } } }
-    unsafe fn bad(&self) -> bool { unsafe { let b = (*self.0).bad; !b.is_null() && AtomicI32::from_ptr(b).load(core::sync::atomic::Ordering::SeqCst) != 0 } }
+    unsafe fn close(&self, cur: *mut c_void) { drop(unsafe { alloc::boxed::Box::from_raw(cur.cast::<crate::zip::Cursor>()) }) }
+    unsafe fn bad(&self) -> bool { self.0.bad() }
 }
 struct Dense(*const u8);
 // Safety: read only
@@ -2899,10 +2886,24 @@ unsafe fn encode<S: Source>(src: &S, n: usize, width: usize, kind: u32, out: &mu
         1
     }
 }
-/// coc.c `qlean_coc_encode_src` over a `coc_src`.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn qrs_coc_encode_src(src: *const CSrc, n: usize, width: usize, kind: u32, out: *mut CParts, below: usize) -> c_int {
-    unsafe { encode(&CSource(src), n, width, kind, &mut *out, below) }
+/// The three parts of an encoded column (meta, body, alp) as the writer allocated them; dropped, they are released. A
+/// part the form has not is empty.
+pub struct ZParts(CParts);
+impl ZParts {
+    /// part `i` (0 meta, 1 body, 2 alp) as bytes
+    pub fn part(&self, i: usize) -> &[u8] {
+        let p = [self.0.meta, self.0.body, self.0.alp][i].cast::<lean::Object>();
+        if p.is_null() { &[] } else { unsafe { sl(lean::sarray_cptr(p), lean::sarray_size(p)) } }
+    }
+}
+impl Drop for ZParts {
+    fn drop(&mut self) { for p in [self.0.meta, self.0.body, self.0.alp] { if !p.is_null() { unsafe { lean::dec(p.cast()) } } } }
+}
+/// coc.c `qlean_zip_parts`'s encode: the `n` elements of `width` bytes of `z`'s element region in the form `kind` names,
+/// unconditionally (no size test); `None` when `z` failed, the failure being `z.error()`.
+pub fn encode_zip(z: &crate::zip::File, n: usize, width: usize, kind: u8) -> Option<ZParts> {
+    let mut out = CParts { meta: null_mut(), body: null_mut(), alp: null_mut() };
+    (unsafe { encode(&ZSrc(z), n, width, kind as u32, &mut out, usize::MAX) } == 1).then_some(ZParts(out))
 }
 /// coc.c `coc_encode_dense`: the parts of the `n` elements of `width` bytes at `x`, 1 unless they would be `below` bytes or more.
 #[unsafe(no_mangle)]

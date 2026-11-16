@@ -41,6 +41,7 @@ pub mod exports {
     pub mod search;
     pub mod structural;
     pub mod time;
+    pub mod zip;
 }
 pub mod pod;
 pub mod simd;
