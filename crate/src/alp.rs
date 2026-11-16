@@ -281,14 +281,14 @@ pub fn alp_patch_pack<F: Flt>(p: &mut EncPack, o: &Cocf, ix: &[u64], v: &[F], d:
         raw[q] = if ee[i] == -2 { while ix[k] - lo != i as u64 { k += 1 } v[k] } else { while o.exc_pos[j] as usize != i { j += 1 } oraw[j] };
         q += 1;
     }
-    crate::enc::pack_block(&mut *p.res, &d[..nb], nb, p.base, p.width) // needs A7
+    crate::enc::pack_block(&mut *p.res, &d[..nb], nb, p.base, p.width)
 }
 /// coc.h:2659 `alp_pack_blk`: residuals and float patches of one block at exponent `be`. An exception is an element
 /// `dat` refuses at `be`, which is pass 1's set: a sentinel fails `dat` on its magnitude, a non-decimal at every e.
 pub fn alp_pack_blk<F: Flt>(p: &mut EncPack, be: i32, x: &[F], raw: &mut [F]) {
     let (nb, mut d) = (p.nb, [0i64; crate::BLK]);
     holes(&x[..nb], be, p.base, &mut d, p.pos, raw);
-    crate::enc::pack_block(&mut *p.res, &d[..nb], nb, p.base, p.width) // needs A7
+    crate::enc::pack_block(&mut *p.res, &d[..nb], nb, p.base, p.width)
 }
 /// `alp_pack_blk` before the pack: the decimals `d` with each exception's residual 0 (`d = base`), its position and bits.
 fn holes<F: Flt>(x: &[F], be: i32, base: i64, d: &mut [i64], pos: &mut [u16], raw: &mut [F]) {

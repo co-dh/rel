@@ -159,18 +159,47 @@ pub fn decode<T: Lane>(c: &Coc, out: &mut [T]) {
 }
 
 // ---- A16: coc.c:165-210, the block steps of `coc_enc` ----
+/// `x` as `nb` elements of `T`; C read them through a typed pointer, so a misaligned source is a bug there too.
+fn elts<'b, T: crate::pod::Pod>(x: &'b [u8], what: &str) -> &'b [T] {
+    crate::pod::cast::<T>(x).unwrap_or_else(|| panic!("qlean {what}: a block of {} bytes is misaligned for {}-byte elements", x.len(), size_of::<T>()))
+}
 /// coc.c:165 `coc_enc_for_meta`: the FoR meta step over block `b`'s `nb` elements `x` at `width` bytes each.
-pub fn for_meta(m: &mut EncMeta, x: &[u8], width: usize, nb: usize) { unimplemented!("A16: coc_enc_for_meta") }
-/// coc.c:174 `coc_enc_for_pack`
-pub fn for_pack(p: &mut EncPack, x: &[u8], width: usize) { unimplemented!("A16: coc_enc_for_pack") }
+pub fn for_meta(m: &mut EncMeta, x: &[u8], width: usize, nb: usize) {
+    fn go<T: Elt>(m: &mut EncMeta, x: &[u8], nb: usize) { let ne = encode_meta_exc_blk(m, elts::<T>(x, "coc_enc_for_meta"), nb); *m.nexc = ne }
+    match width { 1 => go::<u8>(m, x, nb), 2 => go::<i16>(m, x, nb), 4 => go::<i32>(m, x, nb), _ => go::<i64>(m, x, nb) }
+}
+/// coc.c:174 `coc_enc_for_pack`: `p.pos` holds the block's patches, `exc_off[b + 1] - exc_off[b]` of them.
+pub fn for_pack(p: &mut EncPack, x: &[u8], width: usize) {
+    fn go<T: Elt>(p: &mut EncPack, x: &[u8]) { let ne = p.pos.len() as u32; pack_exc_blk(p, elts::<T>(x, "coc_enc_for_pack"), ne) }
+    match width { 1 => go::<u8>(p, x), 2 => go::<i16>(p, x), 4 => go::<i32>(p, x), _ => go::<i64>(p, x) }
+}
 /// coc.c:186 `coc_enc_alp_meta`: `x` is `f32` (`width` 4) or `f64`.
-pub fn alp_meta(m: &mut EncMeta, x: &[u8], width: usize, nb: usize) { unimplemented!("A16: coc_enc_alp_meta") }
-/// coc.c:191 `coc_enc_alp_pack`
-pub fn alp_pack(p: &mut EncPack, x: &[u8], width: usize) { unimplemented!("A16: coc_enc_alp_pack") }
-/// coc.c:197 `src_copy`: a dense column's block `b` copied into the dense output `out`.
-pub fn src_copy(out: &mut [u8], x: &[u8]) { unimplemented!("A16: src_copy") }
-/// coc.c:203 `src_bits`: block `b`'s bytes (0/1) packed into the bitmap `out` at bit `b * BLK`.
-pub fn src_bits(out: &mut [u8], b: usize, x: &[u8]) { unimplemented!("A16: src_bits") }
+pub fn alp_meta(m: &mut EncMeta, x: &[u8], width: usize, nb: usize) {
+    use crate::alp::alp_meta_blk;
+    let ne = if width == 4 { alp_meta_blk(m, elts::<f32>(x, "coc_enc_alp_meta"), nb) } else { alp_meta_blk(m, elts::<f64>(x, "coc_enc_alp_meta"), nb) };
+    *m.nexc = ne
+}
+/// coc.c:191 `coc_enc_alp_pack`: the block exponent is `p.exp`, its patches' bits go to `p.raw`.
+pub fn alp_pack(p: &mut EncPack, x: &[u8], width: usize) {
+    use crate::alp::alp_pack_blk;
+    let (be, raw) = (p.exp as i32, core::mem::take(&mut p.raw));
+    if width == 4 { alp_pack_blk(p, be, elts::<f32>(x, "coc_enc_alp_pack"), crate::pod::cast_mut::<f32>(raw).expect("qlean coc_enc_alp_pack: misaligned f32 patch bits")) }
+    else { alp_pack_blk(p, be, elts::<f64>(x, "coc_enc_alp_pack"), crate::pod::cast_mut::<f64>(raw).expect("qlean coc_enc_alp_pack: misaligned f64 patch bits")) }
+}
+/// coc.c:197 `src_copy`: a dense column's block copied into its place in the dense output `out`.
+pub fn src_copy(out: &mut [u8], x: &[u8]) { out[..x.len()].copy_from_slice(x) }
+/// coc.c:203 `src_bits`: block `b`'s bytes (0/1) packed into the bitmap `out` at bit `b * BLK`, bit `i % 8` of byte
+/// `i / 8`, a non-zero byte reading as set (`Wire.booleanColumn`'s packing).
+pub fn src_bits(out: &mut [u8], b: usize, x: &[u8]) {
+    for (o, c) in out[b * (crate::BLK / 8)..].iter_mut().zip(x.chunks(8)) {
+        *o = c.iter().enumerate().fold(0, |w, (j, &v)| w | ((v != 0) as u8) << j)
+    }
+}
+/// coc.h:1845 `coc_sumnul`: the null the writer's block sums skip, which its trailer records: the element type's own,
+/// and a float's integers are an `i64` column.
+pub fn coc_sumnul(width: usize, alp: bool) -> i64 {
+    if alp || width == 1 || width == 8 { i64::MIN } else if width == 2 { i16::MIN as i64 } else { i32::MIN as i64 }
+}
 
 // ---- A17: coc.c:363-490 ----
 /// coc.c:363 `coc_narrow`: `v` narrowed to `width` bytes into `out` (`v` itself when `width` is 8).
@@ -270,5 +299,29 @@ mod tests {
         let z: Vec<u8> = (0..BLK as u32 + 5).map(|i| if i == 5 { 0 } else { 200 + (i % 5) as u8 }).collect();
         round(&z);
         round(&[i32::MIN; 7]);
+    }
+}
+
+#[cfg(test)]
+mod a16_tests {
+    use super::*;
+    // Expected values come from running the original C loops of coc.c:197-210 and coc.h:1845 (/data/tmp/qrs/A16/diff.c
+    // compares the block steps over 12,000 columns).
+    #[test] fn src_bits_packs_bit_i_of_byte_i_div_8() {
+        let x = [1u8, 0, 7, 0, 0, 0, 0, 0, 255, 0, 0, 1];
+        let mut o = [0xffu8; 3 + 130];
+        src_bits(&mut o[..], 0, &x);
+        assert_eq!(&o[..2], &[0b101, 0b1001]);
+        // block 1 starts at byte BLK / 8, and a short block writes only its ceil(nb / 8) bytes
+        let mut o = [0u8; 130];
+        src_bits(&mut o, 1, &x[..9]);
+        assert_eq!((o[127], o[128], o[129]), (0, 0b101, 1));
+    }
+    #[test] fn src_copy_and_sumnul() {
+        let mut o = [9u8; 6];
+        src_copy(&mut o, &[1, 2, 3]);
+        assert_eq!(o, [1, 2, 3, 9, 9, 9]);
+        assert_eq!([(1, false), (2, false), (4, false), (8, false), (4, true)].map(|(w, a)| coc_sumnul(w, a)),
+                   [i64::MIN, i16::MIN as i64, i32::MIN as i64, i64::MIN, i64::MIN]);
     }
 }

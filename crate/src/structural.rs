@@ -75,11 +75,6 @@ pub fn rev_block(dp: &mut [u8], sp: &[u8], w: u8) {
     }
     for (d, &s) in dp.iter_mut().zip(sp.iter().rev()) { *d = rev_fields(s, w) }
 }
-/// coc.h:1864 `coc_sumnul`: the null the writer's block sums skip, which its trailer records. C keeps its copy until
-/// A16 ports the writer.
-fn coc_sumnul(w: usize, alp: bool) -> i64 {
-    if alp || w == 1 || w == 8 { i64::MIN } else if w == 2 { i16::MIN as i64 } else { i32::MIN as i64 }
-}
 /// structural.c:225 `reverse_foR_run`: every block's residuals reversed into `pack` (the moved column's), threaded.
 /// `c` is the source column; answer block `b` is its block `nb - 1 - b`, and `pack` holds the answer's blocks in order.
 pub fn reverse_enc(run: Runner, c: &Coc, pack: &mut [u8]) {
@@ -113,7 +108,7 @@ pub fn reverse_enc(run: Runner, c: &Coc, pack: &mut [u8]) {
 }
 /// structural.c:320 `trailer_ok`: `c`'s trailer fits `n` elements of `w` bytes (`alp`: an ALP column's).
 pub fn trailer_ok(c: &Coc, n: usize, w: usize, alp: bool) -> bool {
-    c.meta.sumn == n as u64 && c.meta.sumnul == coc_sumnul(w, alp)
+    c.meta.sumn == n as u64 && c.meta.sumnul == crate::enc::coc_sumnul(w, alp)
 }
 /// structural.c:327 `res_bytes`: block `s`'s residuals as whole bytes, from the pack or restored into `buf`.
 pub fn res_bytes<'b>(c: &Coc<'b>, s: usize, buf: &'b mut [u8]) -> &'b [u8] {
