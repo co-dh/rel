@@ -659,7 +659,7 @@ impl<'a> Kcur<'a> {
 const BIN_TAB_MAX: u64 = 1 << 16;
 const BIN_TAB_SAMPLE: usize = 4096;
 
-fn i64s(o: &mut [u8]) -> &mut [i64] { crate::pod::cast_mut(o).expect("bin: the answer is 8-byte aligned") }
+pub fn i64s(o: &mut [u8]) -> &mut [i64] { crate::pod::cast_mut(o).expect("bin: the answer is 8-byte aligned") }
 
 /// search.c:1706 `qlean_search_bin` past the unboxing: for each of the `m` keys (dense `keys`, or `kenc`), the
 /// binary search position in the sorted haystack (dense `hay`, or `enc`) of `n`, into `out`; threaded
@@ -1085,6 +1085,61 @@ pub fn mask_by_ids(mask: &[u8], nmask: usize, n: usize, w: u32, ids: &[u8], out:
     }
 }
 
+/// The operand a dense payload `p` of `w`-byte elements is (`opnd_dense`).
+impl<'a> Opnd<'a> {
+    pub fn dense(p: &'a [u8], w: usize) -> Self { Opnd { src: Src::Dense(p), n: p.len() / w } }
+    /// `Column.idsCap`'s count of `n` ids at `lw` bits, which is all `id_at` may read (`opnd_ids`).
+    pub fn ids(p: &'a [u8], n: usize, lw: u32) -> Self {
+        let n = n.min(ids::ids_avail(p.len(), lw));
+        Opnd { src: Src::Ids(&p[..ids::ids_bytes(n, lw)], lw), n }
+    }
+}
+/// `qlean_search_find_ids`' body: the least of the first `n` ids (clamped to what `ids` holds) equal to `needle`, else `n`.
+pub fn find_ids(n: usize, w: u32, ids: &[u8], needle: usize) -> usize {
+    fn go<const W: u32>(n: usize, ids: &[u8], needle: usize) -> usize { (0..n).find(|&i| ids::id_at(ids, W, i) == needle).unwrap_or(n) }
+    let n = n.min(ids::ids_avail(ids.len(), w));
+    ids::by_width!(w, go(n, ids, needle))
+}
+/// `qlean_search_longs_by_ids`' body: `out[i]` is `vals` read at id `i` of `ids` (`w` bits), 0 past the first `nvals`;
+/// `out` holds the count the caller clamped.
+pub fn longs_by_ids(vals: &[i64], nvals: usize, w: u32, ids: &[u8], out: &mut [i64]) {
+    fn go<const W: u32>(vals: &[i64], ids: &[u8], out: &mut [i64]) {
+        for (i, o) in out.iter_mut().enumerate() { *o = vals.get(ids::id_at(ids, W, i)).copied().unwrap_or(0) }
+    }
+    let vals = &vals[..nvals.min(vals.len())];
+    ids::by_width!(w, go(vals, ids, out))
+}
+/// `qlean_search_below_bits`' body: bit `j` of `out` is set exactly when `vals[j]`, `j < m`, is below `n` unsigned.
+pub fn below_bits(vals: &[i64], m: usize, n: usize, out: &mut [u8]) {
+    let n = n as u64; // unsigned, as C
+    for (k, o) in out.iter_mut().enumerate() {
+        let (lo, hi) = (k * 8, (k * 8 + 8).min(m).min(vals.len()));
+        *o = (lo..hi).fold(0u8, |v, j| v | (((vals[j] as u64) < n) as u8) << (j - lo));
+    }
+}
+/// `qlean_match_bytes`' body: `QAtom.identical` element by element of two dense payloads; at the float widths the two zeros
+/// are one value and every other pattern matches only itself.
+pub fn match_bytes(w: usize, is_float: bool, a: &[u8], b: &[u8]) -> bool {
+    if a.len() != b.len() { return false }
+    // one payload against itself is `x~x`; reading it twice is the whole cost
+    if core::ptr::eq(a, b) { return true }
+    if !is_float { return a == b }
+    fn same<const W: usize>(a: &[u8], b: &[u8], mask: u64) -> bool {
+        a.chunks_exact(W).zip(b.chunks_exact(W)).all(|(x, y)| {
+            let (x, y) = (word::<W>(x), word::<W>(y));
+            x == y || (x | y) & mask == 0
+        })
+    }
+    fn word<const W: usize>(c: &[u8]) -> u64 { let mut v = [0u8; 8]; v[..W].copy_from_slice(c); u64::from_le_bytes(v) }
+    if w == 8 { same::<8>(a, b, 0x7fff_ffff_ffff_ffff) } else { same::<4>(a, b, 0x7fff_ffff) }
+}
+/// `qlean_coc_match`'s body: two operands of `w`-byte elements equal, a block of each at a time, stopping at the first
+/// that differs.
+pub fn coc_match(a: &Opnd, b: &Opnd, w: usize) -> bool {
+    if a.n != b.n { return false }
+    let (mut xa, mut xb) = ([0u8; crate::BLK * 8], [0u8; crate::BLK * 8]);
+    (0..a.n.div_ceil(crate::BLK)).all(|k| a.blk(k, w, &mut xa) == b.blk(k, w, &mut xb))
+}
 #[cfg(test)]
 mod tests {
     use super::*;

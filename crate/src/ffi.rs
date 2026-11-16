@@ -1011,15 +1011,6 @@ pub unsafe extern "C" fn qrs_coc_exc_within(c: *const CCoc, b: usize, lo: i64, h
 /// A28: search.c `ids_top`.
 #[unsafe(no_mangle)]
 pub extern "C" fn qrs_ids_top(lw: u32) -> u64 { search::ids_top(lw) }
-/// A28: search.c `opnd_blk` over C's `opnd`: payload `d` (`enc` 0 and 2) or the column `c` (`enc` 1), `n` elements; block
-/// `b` at key width `w`. Answers the block, a pointer into `d` or `buf` (BLK * w bytes), and its length in `cnt`.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn qrs_opnd_blk(d: *const u8, c: *const CCoc, n: usize, enc: c_int, lw: u32, b: usize, w: usize,
-                                      buf: *mut u8, cnt: *mut usize) -> *const u8 {
-    let r = unsafe { opnd(d, c, n, enc, lw, w) }.blk(b, w, unsafe { sl_mut(buf, crate::BLK * w) });
-    unsafe { *cnt = r.len() / w };
-    r.as_ptr()
-}
 /// search.c `opnd` as C holds it: payload `d` (`enc` 0 at key width `w`, `enc` 2 at `lw` bits) or the column `c` (`enc` 1).
 /// Safety: as `sl`, for the payload `n` elements need.
 unsafe fn opnd<'a>(d: *const u8, c: *const CCoc, n: usize, enc: c_int, lw: u32, w: usize) -> search::Opnd<'a> {
@@ -1029,26 +1020,6 @@ unsafe fn opnd<'a>(d: *const u8, c: *const CCoc, n: usize, enc: c_int, lw: u32, 
         _ => search::Src::Dense(unsafe { sl(d, n * w) }),
     };
     search::Opnd { src, n }
-}
-/// A30: search.c `search`: `x ? h` (`member` 0, `8 * xn` bytes of `Int64`s) or `x in h` (`member` 1, `ceil(xn / 8)` bytes,
-/// bit `i` for needle `i`) into `out`, the whole job on `run` (the pool (`qrs_pool_run`)) with no further call back into C.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn qrs_search(run: unsafe extern "C" fn(), kind: c_int, hd: *const u8, hc: *const CCoc, hn: usize, henc: c_int,
-                                    hlw: u32, xd: *const u8, xc: *const CCoc, xn: usize, xenc: c_int, xlw: u32, member: c_int,
-                                    out: *mut u8) {
-    let kd = search::KINDS[kind as usize];
-    let (h, x) = unsafe { (opnd(hd, hc, hn, henc, hlw, kd.width()), opnd(xd, xc, xn, xenc, xlw, kd.width())) };
-    let bytes = if member != 0 { xn.div_ceil(8) } else { xn * 8 };
-    search::search(unsafe { rn(run) }, kd, &h, &x, member != 0, unsafe { sl_mut(out, bytes) })
-}
-/// A30: search.c `ids_key_width`: bytes an id key takes where one side is at `a` bits and the other at `b`.
-#[unsafe(no_mangle)]
-pub extern "C" fn qrs_ids_key_width(a: usize, b: usize) -> usize { search::ids_key_width(a, b) }
-/// A28: search.c `kind_of`: the `kind` enum's number; `who` names the caller in the abort text (null reads as `?`).
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn qrs_kind_of(w: usize, is_float: u8, who: *const c_char) -> c_int {
-    let who = if who.is_null() { "?" } else { unsafe { core::ffi::CStr::from_ptr(who) }.to_str().unwrap_or("?") };
-    search::kind_of(w, is_float != 0, who) as c_int
 }
 /// A28: search.c `kind_width` of the `kind` number `k`; a number past the enum answers 8, as the C's `switch` falls out.
 #[unsafe(no_mangle)]
@@ -1079,16 +1050,6 @@ pub unsafe extern "C" fn qrs_sym_search(bits: c_int, nb: *const u8, nbytes: usiz
 pub unsafe extern "C" fn qrs_sym_translate(ab: *const u8, abytes: usize, ao: *const usize, na: usize, bb: *const u8,
                                            bbytes: usize, bo: *const usize, nb: usize, tr: *mut usize) {
     unsafe { search::sym_translate(&syms0(ab, abytes, ao, na), na, &syms0(bb, bbytes, bo, nb), nb, sl_mut(tr, na)) }
-}
-/// K17: search.c `qlean_search_remap_ids`: `n` ids of `ids` (`idbytes` long, `w` bits) renamed by `map` (`mapbytes` long,
-/// `wout` bits), into `out` (`ids_bytes(n, wout)` bytes).
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn qrs_remap_ids(ids: *const u8, idbytes: usize, n: usize, w: u32, map: *const u8, mapbytes: usize,
-                                       wout: u32, out: *mut u8, run: unsafe extern "C" fn()) {
-    unsafe {
-        search::remap_ids(core::mem::transmute::<unsafe extern "C" fn(), c::Runner>(run), sl(ids, idbytes), n, w, sl(map, mapbytes),
-                          wout, sl_mut(out, ids::ids_bytes(n, wout)))
-    }
 }
 /// K17: search.c `ix_alloc`'s size: the bytes of a table for `distinct` keys.
 #[unsafe(no_mangle)]
@@ -1174,34 +1135,6 @@ pub unsafe extern "C" fn qrs_ix_find_syms(t: *const u8, tbytes: usize, blob: *co
                              sl_mut(out, nd.count()))
     }
 }
-/// A31: search.c `find_bit` over a payload of `size` bytes.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn qrs_find_bit(b: *const u8, size: usize, n: usize, needle: u8) -> usize {
-    search::find_bit(unsafe { sl(b, size) }, n, needle)
-}
-/// A31: search.c `qlean_search_find_bit_vec`; `out` holds `m` entries.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn qrs_find_bit_vec(n: usize, hay: *const u8, hs: usize, ndl: *const u8, ns: usize, m: usize, out: *mut i64) {
-    unsafe { search::find_bit_vec(n, sl(hay, hs), sl(ndl, ns), m, sl_mut(out, m)) }
-}
-/// A31: search.c `qlean_search_bin_bits`; `out` holds `m` entries.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn qrs_bin_bits(n: usize, hay: *const u8, hs: usize, ndl: *const u8, ns: usize, m: usize, right: u8, out: *mut i64) {
-    unsafe { search::bin_bits(n, sl(hay, hs), sl(ndl, ns), m, right != 0, sl_mut(out, m)) }
-}
-/// A31: search.c `qlean_search_member_bits`; `out` holds `ceil(m / 8)` bytes.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn qrs_member_bits(m: usize, xs: *const u8, xsz: usize, n: usize, hay: *const u8, hsz: usize, out: *mut u8) {
-    unsafe { search::member_bits(m, sl(xs, xsz), n, sl(hay, hsz), sl_mut(out, m.div_ceil(8))) }
-}
-/// A31: search.c `qlean_search_where_bits`, the count: how many of the first `n` bits of the `size`-byte payload are set.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn qrs_where_count(n: usize, bits: *const u8, size: usize) -> usize { search::where_count(n, unsafe { sl(bits, size) }) }
-/// A31: search.c `qlean_search_where_bits`, the indices; `out` holds `qrs_where_count` entries. Answers that count.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn qrs_where_bits(n: usize, bits: *const u8, size: usize, k: usize, out: *mut i64) -> usize {
-    unsafe { search::where_bits(n, sl(bits, size), sl_mut(out, k)) }
-}
 /// A32: search.c `bin` over a dense haystack and dense keys.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn qrs_bin(run: unsafe extern "C" fn(), w: usize, is_float: c_int, is_signed: c_int, right: c_int,
@@ -1264,11 +1197,6 @@ pub unsafe extern "C" fn qrs_bin_rows(run: unsafe extern "C" fn(), w: usize, is_
 pub unsafe extern "C" fn qrs_run_starts(d: *const u8, c: *const CCoc, n: usize, enc: c_int, lw: u32, w: usize, is_float: c_int,
                                         out: *mut i64) -> usize {
     unsafe { search::run_starts(&opnd(d, c, n, enc, lw, w), w, is_float != 0, sl_mut(out, n + 1)) }
-}
-/// A33: search.c `qlean_search_run_starts_ids`; `out` holds `n + 1`. Answers the count with the terminator.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn qrs_run_starts_ids(n: usize, w: u32, ids: *const u8, out: *mut i64) -> usize {
-    unsafe { search::run_starts_ids(n, w, sl(ids, ids::ids_bytes(n, w)), sl_mut(out, n + 1)) }
 }
 /// A33: search.c `qlean_search_run_starts_syms` over `n` symbols; `out` holds `n + 1`. Answers the count with the terminator.
 #[unsafe(no_mangle)]
@@ -2134,12 +2062,8 @@ pub unsafe extern "C" fn qrs_ew_stats_chain(mode: u8, st: *mut CStage, k: usize,
 #[cfg(test)]
 mod tests {
     use super::*;
-    // the C's `kind_of` always had a string; a null `who` reads as `?`. A `kind` number past the enum answers 8 as the C's switch falls out
-    #[test] fn kind_of_and_width_take_null_and_out_of_range() {
-        unsafe {
-            assert_eq!(qrs_kind_of(4, 1, core::ptr::null()), search::Kind::F32 as c_int);
-            assert_eq!(qrs_kind_of(1, 0, c"who".as_ptr()), search::Kind::U8 as c_int);
-        }
+    // a `kind` number past the enum answers 8 as the C's switch falls out
+    #[test] fn kind_width_takes_out_of_range() {
         assert_eq!((qrs_kind_width(0), qrs_kind_width(6), qrs_kind_width(-1), qrs_kind_width(99)), (1, 16, 8, 8));
     }
     // testdata/drv.c encoded a 3000-element column with the C encoder at each element width and dumped the buffers
