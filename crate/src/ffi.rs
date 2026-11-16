@@ -20,7 +20,7 @@ use crate::zip::zq;
 use crate::{BLK, ids, simd};
 use crate::alp::Cocf;
 use crate::cocops::CocMut;
-use crate::enc::{EncMeta, EncPack};
+use crate::enc::{EncMeta, EncPack, Moves};
 use crate::sym::{self, Syms};
 use crate::{codec, enc, ew, reduce, scan, search, sort, structural};
 
@@ -878,22 +878,6 @@ pub unsafe extern "C" fn qrs_enc_narrow(width: usize, v: *const i64, cnt: usize,
 pub unsafe extern "C" fn qrs_enc_blk_meta_coc(c: *mut CCoc, b: usize, v: *const i64, nb: usize, width: usize) -> u32 {
     let (lb, over, mut nexc) = (AtomicUsize::new(0), AtomicI32::new(0), 0u32);
     unsafe { enc::blk_meta(&mut ccoc_meta(&*c, b, null_mut(), &mut nexc, &lb, &over), sl(v, nb), width) }
-}
-/// The column `take` answered, as the encoder's form reads it: a Frame of Reference part has only `c` set, its ALP fields
-/// (`exp`, `nexc`, ...) being whatever the caller's allocation held.
-unsafe fn taken<'a>(f: *const CCocf, alp: bool) -> Cocf<'a> {
-    unsafe { if alp { (*f).view() } else { Cocf { c: (*f).c.view(), exp: &[], exc_off: &[], exc_pos: &[], exc_raw: &[], f32: false } } }
-}
-/// A17: coc.c `move_meta`'s branch for a block `take` claimed (block `pb` of `f`); writes `exc_off[b + 1]`.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn qrs_enc_move_meta(s: *mut CEnc, b: usize, f: *const CCocf, pb: usize) {
-    unsafe { let alp = (*s).alp != 0; enc::move_meta(&mut (*s).meta_blk(b), &taken(f, alp), pb); }
-}
-/// A17: coc.c `move_pack`'s branch for a block `take` claimed: the whole `BLK * width / 8` residual region
-/// (`pack_blk`'s `whole`), as the moved block's pack is copied whole, zero padded.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn qrs_enc_move_pack(s: *mut CEnc, b: usize, nb: usize, f: *const CCocf, pb: usize) {
-    unsafe { let alp = (*s).alp != 0; enc::move_pack(&mut (*s).pack_blk(b, nb, true), &taken(f, alp), pb, alp, (*s).width) }
 }
 /// A9: coc.h `alp_patch_blk_f32`; answers the exponent the search would raise the block to, or -1.
 #[unsafe(no_mangle)]
@@ -2489,9 +2473,9 @@ mod tests {
 #[repr(C)]
 pub struct CParts { pub meta: *mut c_void, pub body: *mut c_void, pub alp: *mut c_void }
 type FillFn = unsafe extern "C" fn(*mut i64, usize, usize, *const c_void);
-type TakeFn = unsafe extern "C" fn(usize, *mut usize, *const c_void) -> *const CCocf;
-type HintFn = unsafe extern "C" fn(usize, *mut u32, *const c_void) -> c_int;
-type IntsFn = unsafe extern "C" fn(usize, *mut i64, *mut i8, *mut *const c_void, *const c_void) -> c_int;
+type TakeFn = Option<unsafe extern "C" fn(usize, *mut usize, *const c_void) -> *const CCocf>;
+type HintFn = Option<unsafe extern "C" fn(usize, *mut u32, *const c_void) -> c_int>;
+type IntsFn = Option<unsafe extern "C" fn(usize, *mut i64, *mut i8, *mut *const c_void, *const c_void) -> c_int>;
 const SRC_DENSE: u32 = 0;
 const SRC_BITS: u32 = 1;
 const SRC_FOR: u32 = 2;
@@ -2532,18 +2516,42 @@ impl Source for Dense {
 /// A producer's `coc_fill`: each worker's cursor is a block of `i64` and its narrowed copy. A block `take` claims is not
 /// filled -- the cursor itself stands in for its elements, which the two move steps never read -- and neither is a block
 /// `ints` answers.
-struct FillSrc { fill: FillFn, take: Option<TakeFn>, hint: Option<HintFn>, ints: Option<IntsFn>, ctx: *const c_void, width: usize }
+struct FillSrc { fill: FillFn, take: TakeFn, hint: HintFn, ints: IntsFn, ctx: *const c_void, width: usize, alp: bool }
 // Safety: the producer's callbacks are called from every worker, as C's were
 unsafe impl Sync for FillSrc {}
-impl FillSrc {
-    unsafe fn taken(&self, b: usize, pb: &mut usize) -> *const CCocf { unsafe { self.take.map_or(core::ptr::null(), |t| t(b, pb, self.ctx)) } }
+impl Moves for FillSrc {
+    fn take(&self, b: usize) -> Option<(Cocf<'_>, usize)> {
+        unsafe {
+            let mut pb = 0usize;
+            let f = self.take.map_or(core::ptr::null(), |t| t(b, &mut pb, self.ctx));
+            // a Frame of Reference part has only `c` set, its ALP fields being whatever the caller's allocation held
+            (!f.is_null()).then(|| (if self.alp { (*f).view() } else { Cocf { c: (*f).c.view(), exp: &[], exc_off: &[], exc_pos: &[], exc_raw: &[], f32: false } }, pb))
+        }
+    }
+    fn ints(&self, b: usize, nb: usize, d: &mut [i64], ee: &mut [i8], raw: Option<&mut [u8]>) -> Option<i32> {
+        let f = self.ints?;
+        unsafe {
+            let mut ptrs = core::mem::MaybeUninit::<[*const c_void; BLK]>::uninit();
+            let e = f(b, d.as_mut_ptr(), ee.as_mut_ptr(), if raw.is_some() { ptrs.as_mut_ptr().cast() } else { null_mut() }, self.ctx);
+            if let (Some(raw), true) = (raw, e >= 0) {
+                let (ptrs, w) = (sl(ptrs.as_ptr().cast::<*const c_void>(), nb), self.width);
+                for i in (0..nb).filter(|&i| ee[i] < 0) { raw[i * w..(i + 1) * w].copy_from_slice(sl(ptrs[i].cast::<u8>(), w)) }
+            }
+            Some(e)
+        }
+    }
+    fn hint(&self, b: usize) -> Option<(i32, u32)> {
+        let h = self.hint?;
+        let mut lim = 0u32;
+        Some((unsafe { h(b, &mut lim, self.ctx) }, lim))
+    }
 }
 impl Source for FillSrc {
     unsafe fn open(&self) -> Option<*mut c_void> { Some(unsafe { coc_alloc(BLK * 16) }.cast()) }
     unsafe fn at(&self, cur: *mut c_void, off: usize, len: usize) -> *const u8 {
         unsafe {
-            let (b, w, mut pb) = (off / self.width / BLK, self.width, 0usize);
-            if !self.taken(b, &mut pb).is_null() || self.ints.is_some_and(|i| i(b, null_mut(), null_mut(), null_mut(), self.ctx) >= 0) { return cur.cast() }
+            let (b, w) = (off / self.width / BLK, self.width);
+            if self.take(b).is_some() || self.ints.is_some_and(|i| i(b, null_mut(), null_mut(), null_mut(), self.ctx) >= 0) { return cur.cast() }
             let (v, cnt) = (cur.cast::<i64>(), len / w);
             (self.fill)(v, off / w, cnt, self.ctx);
             // the producers compute in i64, the writer's block steps read the column's own element type
@@ -2613,8 +2621,7 @@ pub unsafe extern "C" fn qrs_coc_enc_plan(s: *mut CEnc) -> usize {
             let alp = (*s).alp != 0;
             (*s).frm = (!alp && sl((*s).frm_heap, nblk).iter().any(|&f| f != 0)) as c_int;
             // the ALP blob is a part of its own and Frame of Reference's patch list the pack's tail: `tail` is what follows the residuals
-            let tail = if alp { Some(Tail::Exps) } else if (*s).nexc != 0 { Some(if (*s).frm != 0 { Tail::Frames } else { Tail::None }) } else { None };
-            (*s).tail = tail.map_or(0, |t| crate::layout::exc_layout(nblk, (*s).nexc, width, t).expect("qlean: the exception layout overflows").size);
+            (*s).tail = enc::tail_bytes(alp, (*s).nexc, (*s).frm != 0, width, nblk);
         }
         lean::sarray_size((*s).meta.cast()) + (*s).at + (*s).tail
     }
@@ -2630,10 +2637,7 @@ pub unsafe extern "C" fn qrs_coc_enc_layout(s: *mut CEnc) {
         *(*s).c.sumn = n as u64;
         qrs_coc_enc_plan(s);
         let (at, nexc) = ((*s).at, (*s).nexc);
-        let put = |t: *mut u8, tail: usize, w: u64| { // the 16-byte header, zero-padded tail
-            core::ptr::write_bytes(t, 0, tail);
-            core::ptr::copy_nonoverlapping([nexc as u64, w].as_ptr().cast::<u8>(), t, 16);
-        };
+        let put = |t: *mut u8, tail: usize, w: u64| enc::exc_header(sl_mut(t, tail), nexc, w);
         if alp {
             let l = exc_layout(nblk, nexc, width, Tail::Exps).expect("qlean: the exception layout overflows");
             let blob = lean::alloc_sarray(1, l.size, l.size);
@@ -2715,7 +2719,7 @@ unsafe extern "C" fn src_run<S: Source>(b0: usize, b1: usize, p: *const CPass) {
             if x.is_null() { break }
             (job.blk)(s, b, x, nb);
             if !sized { continue }
-            mine += BLK * *(*s).c.width.add(b) as usize / 8 + *(*s).exc_off.add(b + 1) as usize * (width + 2);
+            mine += enc::block_bytes(*(*s).c.width.add(b), *(*s).exc_off.add(b + 1), width);
             if (b - b0) % 16 == 15 {
                 if lb.fetch_add(mine, SeqCst) + mine >= (*s).below { over.store(1, SeqCst) }
                 mine = 0;
@@ -2736,11 +2740,9 @@ unsafe fn src_pass<S: Source>(s: *mut CEnc, src: &S, blk: Blk, meta: bool, cost:
         !src.bad()
     }
 }
-fn meta_step(alp: bool) -> impl Fn(*mut CEnc, usize, *const u8, usize) + Sync {
-    move |s, b, x, nb| unsafe { if alp { qrs_enc_alp_meta(s, b, x, nb) } else { qrs_enc_for_meta(s, b, x, nb) } }
-}
-fn pack_step(alp: bool) -> impl Fn(*mut CEnc, usize, *const u8, usize) + Sync {
-    move |s, b, x, nb| unsafe { if alp { qrs_enc_alp_pack(s, b, x, nb) } else { qrs_enc_for_pack(s, b, x, nb) } }
+fn meta_step(s: *mut CEnc, b: usize, x: *const u8, nb: usize) { unsafe { let w = (*s).width; enc::meta_step(&mut (*s).meta_blk(b), sl(x, nb * w), w, nb) } }
+fn pack_step(s: *mut CEnc, b: usize, x: *const u8, nb: usize) {
+    unsafe { let w = (*s).width; enc::pack_step(&mut (*s).pack_blk(b, nb, false), sl(x, nb * w), w, (*s).alp != 0) }
 }
 
 /// coc.c `qlean_coc_encode_src`: 1 and the parts, or 0 with nothing allocated when the source failed, or 2 with nothing
@@ -2776,12 +2778,12 @@ unsafe fn encode<S: Source>(src: &S, n: usize, width: usize, kind: u32, out: &mu
             (*s).below = below - msz;
         }
         let cost = if alp { crate::QLEAN_COST_MATH } else { crate::QLEAN_COST_ARITH };
-        if !src_pass(s, src, &meta_step(alp), true, cost) { enc_free(s); return 0 }
+        if !src_pass(s, src, &|s, b, x, nb| meta_step(s, b, x, nb), true, cost) { enc_free(s); return 0 }
         if AtomicI32::from_ptr(&raw mut (*s).over).load(core::sync::atomic::Ordering::SeqCst) != 0 { enc_free(s); return 2 }
         // the size is known here, so a form that does not shrink is never packed
         if qrs_coc_enc_plan(s) >= below { enc_free(s); return 2 }
         qrs_coc_enc_layout(s);
-        if !src_pass(s, src, &pack_step(alp), false, crate::QLEAN_COST_ARITH) { enc_free(s); return 0 }
+        if !src_pass(s, src, &|s, b, x, nb| pack_step(s, b, x, nb), false, crate::QLEAN_COST_ARITH) { enc_free(s); return 0 }
         coc_free((*s).exc_heap.cast());
         *out = CParts { meta: (*s).meta, body: (*s).pack, alp: (*s).blob };
         1
@@ -2807,83 +2809,22 @@ pub unsafe extern "C" fn qrs_coc_encode_raw(src: *const u8, n: usize, width: usi
     }
 }
 
-/// coc.c `move_meta`: a moved block's metadata is its column's and its exception count is what the layout prefix-sums;
-/// the writer's own step would choose exactly these for the same elements. Else the ALP shortcuts (the sources' exponent
-/// where it leaves no more exceptions than they had), else the writer's own step.
-unsafe fn move_meta(fs: &FillSrc, s: *mut CEnc, b: usize, x: *const u8, nb: usize) {
-    unsafe {
-        let (alp, mut pb) = ((*s).alp != 0, 0usize);
-        let f = fs.taken(b, &mut pb);
-        if !f.is_null() { return qrs_enc_move_meta(s, b, f, pb) }
-        if alp && let Some(ints) = fs.ints {
-            let (mut d, mut ee) = (core::mem::MaybeUninit::<[i64; BLK]>::uninit(), core::mem::MaybeUninit::<[i8; BLK]>::uninit());
-            let e = ints(b, d.as_mut_ptr().cast(), ee.as_mut_ptr().cast(), null_mut(), fs.ctx);
-            if e >= 0 {
-                let n = crate::alp::alp_fin_blk(&mut (*s).meta_blk(b), e, sl_mut(d.as_mut_ptr().cast(), nb), sl(ee.as_ptr().cast(), nb), nb);
-                *(*s).exc_off.add(b + 1) = n;
-                return;
-            }
-        }
-        let mut lim = 0u32;
-        let e = if alp { fs.hint.map_or(-1, |h| h(b, &mut lim, fs.ctx)) } else { -1 };
-        if e >= 0 {
-            // the search's up to 19 trials an element were what re-encoding a part off the grid cost
-            let (mut m, n) = ((*s).meta_blk(b), (*s).width);
-            let kept = if n == 4 { crate::alp::alp_exc_at(sl(x.cast::<f32>(), nb), e, lim + 1) } else { crate::alp::alp_exc_at(sl(x.cast::<f64>(), nb), e, lim + 1) };
-            if kept <= lim {
-                *(*s).exc_off.add(b + 1) = if n == 4 { crate::alp::alp_meta_exp(&mut m, sl(x.cast::<f32>(), nb), nb, e) } else { crate::alp::alp_meta_exp(&mut m, sl(x.cast::<f64>(), nb), nb, e) };
-                return;
-            }
-        }
-        meta_step(alp)(s, b, x, nb)
-    }
-}
-/// coc.c `move_pack`: a moved block's residuals and its patch list, whose positions are the block's own and so move unchanged.
-unsafe fn move_pack(fs: &FillSrc, s: *mut CEnc, b: usize, x: *const u8, nb: usize) {
-    unsafe {
-        let (alp, mut pb) = ((*s).alp != 0, 0usize);
-        let f = fs.taken(b, &mut pb);
-        if f.is_null() && alp && let Some(ints) = fs.ints {
-            let (mut d, mut ee) = (core::mem::MaybeUninit::<[i64; BLK]>::uninit(), core::mem::MaybeUninit::<[i8; BLK]>::uninit());
-            let mut raw = core::mem::MaybeUninit::<[*const c_void; BLK]>::uninit();
-            if ints(b, d.as_mut_ptr().cast(), ee.as_mut_ptr().cast(), raw.as_mut_ptr().cast(), fs.ctx) >= 0 {
-                let (d, ee, raw) = (sl_mut(d.as_mut_ptr().cast::<i64>(), nb), sl(ee.as_ptr().cast::<i8>(), nb), sl(raw.as_ptr().cast::<*const c_void>(), nb));
-                let p = (*s).pack_blk(b, nb, false);
-                let (base, w) = (p.base, fs.width);
-                // an exception's decimal packs as the block's base, residual 0, its raw bits in the patch list
-                for (k, i) in (0..nb).filter(|&i| ee[i] < 0).enumerate() {
-                    d[i] = base;
-                    p.pos[k] = i as u16;
-                    p.raw[k * w..(k + 1) * w].copy_from_slice(sl(raw[i].cast::<u8>(), w));
-                }
-                let wd = p.width;
-                enc::pack_block(p.res, d, nb, base, wd);
-                return;
-            }
-        }
-        if f.is_null() { return pack_step(alp)(s, b, x, nb) }
-        qrs_enc_move_pack(s, b, nb, f, pb)
-    }
-}
 /// coc.c `qlean_coc_encode_move`: the writer where some answer blocks already exist in the writer's form (`take`), with
 /// ALP's two hints (`hint`, `ints`); null callbacks fill the block. `alp` answers `(meta, (pack, alp))`, else `(meta, pack)`.
-/// `take`, `hint` and `ints` are function pointers of coc.h's `coc_take`, `coc_hint`, `coc_ints`, passed as data pointers
-/// so the C callers need no cast; null is none.
+/// `take`, `hint` and `ints` are coc.h's `coc_take`, `coc_hint`, `coc_ints`; null is none.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn qrs_coc_encode_move(n: usize, width: usize, alp: c_int, fill: FillFn, take: *const c_void, hint: *const c_void,
-                                             ints: *const c_void, ctx: *const c_void) -> *mut c_void {
+pub unsafe extern "C" fn qrs_coc_encode_move(n: usize, width: usize, alp: c_int, fill: FillFn, take: TakeFn, hint: HintFn,
+                                             ints: IntsFn, ctx: *const c_void) -> *mut c_void {
     unsafe {
-        use core::mem::transmute;
-        let fs = FillSrc { fill, take: transmute::<*const c_void, Option<TakeFn>>(take), hint: transmute::<*const c_void, Option<HintFn>>(hint),
-                           ints: transmute::<*const c_void, Option<IntsFn>>(ints), ctx, width };
+        let fs = FillSrc { fill, take, hint, ints, ctx, width, alp: alp != 0 };
         let mut e: CEnc = core::mem::zeroed();
         let s = &raw mut e;
         qrs_coc_enc_open(s, n, width, alp);
         let cost = if alp != 0 { crate::QLEAN_COST_MATH } else { crate::QLEAN_COST_ARITH };
         // a fill cannot fail, having no `bad`: a refusal here is the writer's own bug
-        let ok = src_pass(s, &fs, &|s, b, x, nb| move_meta(&fs, s, b, x, nb), true, cost) && {
+        let ok = src_pass(s, &fs, &|s, b, x, nb| enc::move_meta_blk(&fs, &mut (*s).meta_blk(b), || sl(x, nb * width), width, nb), true, cost) && {
             qrs_coc_enc_layout(s);
-            src_pass(s, &fs, &|s, b, x, nb| move_pack(&fs, s, b, x, nb), false, crate::QLEAN_COST_ARITH)
+            src_pass(s, &fs, &|s, b, x, nb| enc::move_pack_blk(&fs, |whole| (*s).pack_blk(b, nb, whole), || sl(x, nb * width), b, nb, width, alp != 0), false, crate::QLEAN_COST_ARITH)
         };
         if !ok {
             crate::os::eprint(format_args!("qlean_coc_encode_move: the writer refused {n} elements of {width} bytes from a fill\n")).expect("qlean: stderr");
@@ -2898,33 +2839,19 @@ pub unsafe extern "C" fn qrs_coc_encode_move(n: usize, width: usize, alp: c_int,
 /// Frame of Reference answer hands it to the writer.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn qrs_coc_encode_fill(n: usize, width: usize, fill: FillFn, ctx: *const c_void) -> *mut c_void {
-    unsafe { qrs_coc_encode_move(n, width, 0, fill, core::ptr::null(), core::ptr::null(), core::ptr::null(), ctx) }
+    unsafe { qrs_coc_encode_move(n, width, 0, fill, None, None, None, ctx) }
 }
 
 /// coc.c `coc_fill_ctx`, the context of the shift, vv and scale producers.
 #[repr(C)]
 pub struct CFillCtx { pub a: *const CCoc, pub b: *const CCoc, pub op: c_int, pub s: i64, pub fill: i64, pub k: i64 }
-/// coc.c `vv_fill`: the answer block of `x + y`, `x - y` or `x * y` from `i0`, a block start: a null on either side is the null.
+/// coc.c `vv_fill`, `cocops::vv_fill` over the producer's context.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn qrs_coc_vv_fill(buf: *mut i64, i0: usize, nb: usize, ctx: *const c_void) {
-    fn go(xa: &mut [i64], xb: &[i64], f: impl Fn(u64, u64) -> u64) {
-        for (a, &b) in xa.iter_mut().zip(xb) { *a = if *a == i64::MIN || b == i64::MIN { i64::MIN } else { f(*a as u64, b as u64) as i64 } }
-    }
-    unsafe {
-        let (x, xa, mut xb) = (&*ctx.cast::<CFillCtx>(), sl_mut(buf, nb), [0i64; BLK]);
-        let xb = &mut xb[..nb];
-        (*x.a).view().decode_blk(i0 / BLK, nb, xa);
-        (*x.b).view().load_run(i0 as i64 - x.s, x.fill, xb);
-        // unsigned arithmetic throughout: signed overflow is UB in C even where `coc_vv_ok` has refused it
-        match x.op { 0 => go(xa, xb, u64::wrapping_add), 1 => go(xa, xb, u64::wrapping_sub), _ => go(xa, xb, u64::wrapping_mul) }
-    }
+    unsafe { let x = &*ctx.cast::<CFillCtx>(); crate::cocops::vv_fill(&(*x.a).view(), &(*x.b).view(), x.op, x.s, x.fill, i0, sl_mut(buf, nb)) }
 }
-/// coc.c `scale_fill`: the answer block of `x * k`, nulls staying the null.
+/// coc.c `scale_fill`, `cocops::scale_fill` over the producer's context.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn qrs_coc_scale_fill(buf: *mut i64, i0: usize, nb: usize, ctx: *const c_void) {
-    unsafe {
-        let (x, buf) = (&*ctx.cast::<CFillCtx>(), sl_mut(buf, nb));
-        (*x.a).view().decode_blk(i0 / BLK, nb, buf);
-        for v in buf { if *v != i64::MIN { *v = (*v as u64).wrapping_mul(x.k as u64) as i64 } }
-    }
+    unsafe { let x = &*ctx.cast::<CFillCtx>(); crate::cocops::scale_fill(&(*x.a).view(), x.k, i0, sl_mut(buf, nb)) }
 }

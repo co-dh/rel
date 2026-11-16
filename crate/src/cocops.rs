@@ -303,6 +303,26 @@ impl<'a> CocMut<'a> {
     }
 }
 
+// ---- K24b: coc.c `vv_fill` and `scale_fill`, the producers of `x op y` and `x * k` ----
+/// coc.c `vv_fill`: the answer block of `x op y` from `i0`, a block start, into `xa` (`op` 0 `+`, 1 `-`, else `*`): `a` decoded
+/// there, `b` read from `i0 - s` with `fill` outside it, and a null on either side is the null.
+pub fn vv_fill(a: &Coc, b: &Coc, op: i32, s: i64, fill: i64, i0: usize, xa: &mut [i64]) {
+    fn go(xa: &mut [i64], xb: &[i64], f: impl Fn(u64, u64) -> u64) {
+        for (a, &b) in xa.iter_mut().zip(xb) { *a = if *a == i64::MIN || b == i64::MIN { i64::MIN } else { f(*a as u64, b as u64) as i64 } }
+    }
+    let mut xb = [0i64; BLK];
+    let xb = &mut xb[..xa.len()];
+    a.decode_blk(i0 / BLK, xa.len(), xa);
+    b.load_run(i0 as i64 - s, fill, xb);
+    // unsigned arithmetic throughout: signed overflow is UB in C even where `coc_vv_ok` has refused it
+    match op { 0 => go(xa, xb, u64::wrapping_add), 1 => go(xa, xb, u64::wrapping_sub), _ => go(xa, xb, u64::wrapping_mul) }
+}
+/// coc.c `scale_fill`: the answer block of `x * k` from `i0` into `buf`, nulls staying the null.
+pub fn scale_fill(a: &Coc, k: i64, i0: usize, buf: &mut [i64]) {
+    a.decode_blk(i0 / BLK, buf.len(), buf);
+    for v in buf { if *v != i64::MIN { *v = (*v as u64).wrapping_mul(k as u64) as i64 } }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
