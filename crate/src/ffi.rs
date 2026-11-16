@@ -644,6 +644,128 @@ pub unsafe extern "C" fn qrs_reverse_enc(run: unsafe extern "C" fn(), c: *const 
     // be longer (a patch list) or shorter
     unsafe { let v = (*c).view(); structural::reverse_enc(rn(run), &v, sl_mut(pack, v.meta.width.iter().map(|&w| BLK * w as usize / 8).sum())) }
 }
+/// A35: structural.c `unpack_run`: elements `lo .. lo + cnt` of block `s` (reversed when `rev`) into `dst`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn qrs_unpack_run(dst: *mut i64, c: *const CCoc, s: usize, lo: usize, cnt: usize, rev: c_int) {
+    unsafe { structural::unpack_run(sl_mut(dst, cnt), &(*c).view(), s, lo, rev != 0) }
+}
+/// A35: the parts of a concat. `parts` is C's `cocf` array; a part that is not ALP holds only its `c`, the rest of the
+/// struct is not set, so it is not read.
+unsafe fn cat_parts<'a>(parts: *const CCocf, alp: bool) -> impl Fn(usize) -> Cocf<'a> {
+    move |p| unsafe { let f = &*parts.add(p); if alp { f.view() } else { structural::plain(&f.c.view()) } }
+}
+/// A35: C's `coc_ints` outputs for a block of `cnt` elements; `d` null is pass 1 only.
+unsafe fn ints_out<'a>(d: *mut i64, ee: *mut i8, raw: *mut *const c_void, cnt: usize) -> Option<structural::Ints<'a>> {
+    if d.is_null() { return None }
+    Some(structural::Ints { d: unsafe { sl_mut(d, cnt) }, ee: unsafe { sl_mut(ee, cnt) },
+                            raw: if raw.is_null() { None } else { Some(unsafe { sl_mut(raw.cast::<*const u8>(), cnt) }) } })
+}
+/// A35: structural.c `rev_fill`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn qrs_rev_fill(c: *const CCoc, buf: *mut i64, i0: usize, cnt: usize) {
+    unsafe { structural::rev_fill(&(*c).view(), sl_mut(buf, cnt), i0) }
+}
+/// A35: structural.c `cycle_fill`; `off` is below the source's count.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn qrs_cycle_fill(c: *const CCoc, off: usize, m: usize, buf: *mut i64, i0: usize, cnt: usize) {
+    unsafe { structural::cycle_fill(&(*c).view(), off, m, sl_mut(buf, cnt), i0) }
+}
+/// A35: structural.c `shift_fill`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn qrs_shift_fill(c: *const CCoc, k: i64, fill: i64, buf: *mut i64, i0: usize, cnt: usize) {
+    unsafe { structural::shift_fill(&(*c).view(), k, fill, sl_mut(buf, cnt), i0) }
+}
+/// A35: structural.c `cat_fill` over the `k` parts (`start` holds `k + 1`).
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn qrs_cat_fill(parts: *const CCocf, start: *const usize, k: usize, w: usize, buf: *mut i64, i0: usize,
+                                      cnt: usize) {
+    unsafe { structural::cat_fill(&cat_parts(parts, false), sl(start, k + 1), w, false, sl_mut(buf, cnt), i0) }
+}
+/// A35: structural.c `cat_fill_alp`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn qrs_cat_fill_alp(parts: *const CCocf, start: *const usize, k: usize, w: usize, buf: *mut i64,
+                                          i0: usize, cnt: usize) {
+    unsafe { structural::cat_fill_alp(&cat_parts(parts, true), sl(start, k + 1), w, sl_mut(buf, cnt), i0) }
+}
+/// A35: structural.c `rev_fill_alp`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn qrs_rev_fill_alp(f: *const CCocf, buf: *mut i64, i0: usize, cnt: usize) {
+    unsafe { structural::rev_fill_alp(&(*f).view(), sl_mut(buf, cnt), i0) }
+}
+/// A35: structural.c `cycle_fill_alp`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn qrs_cycle_fill_alp(f: *const CCocf, off: usize, m: usize, buf: *mut i64, i0: usize, cnt: usize) {
+    unsafe { structural::cycle_fill_alp(&(*f).view(), off, m, sl_mut(buf, cnt), i0) }
+}
+/// A35: structural.c `shift_fill_alp`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn qrs_shift_fill_alp(f: *const CCocf, k: i64, fill: i64, buf: *mut i64, i0: usize, cnt: usize) {
+    unsafe { structural::shift_fill_alp(&(*f).view(), k, fill, sl_mut(buf, cnt), i0) }
+}
+/// A35: structural.c `cat_hint`; -1 is no hint.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn qrs_cat_hint(parts: *const CCocf, start: *const usize, k: usize, b: usize, lim: *mut u32) -> c_int {
+    unsafe { structural::cat_hint(&cat_parts(parts, true), sl(start, k + 1), b, &mut *lim) }
+}
+/// A35: structural.c `rev_hint`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn qrs_rev_hint(f: *const CCocf, b: usize, lim: *mut u32) -> c_int {
+    unsafe { structural::rev_hint(&(*f).view(), b, &mut *lim) }
+}
+/// A35: structural.c `cycle_hint`; `m` is the answer's count.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn qrs_cycle_hint(f: *const CCocf, off: usize, m: usize, b: usize, lim: *mut u32) -> c_int {
+    unsafe { structural::cycle_hint(&(*f).view(), off, m, b, &mut *lim) }
+}
+/// A35: structural.c `shift_hint`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn qrs_shift_hint(f: *const CCocf, k: i64, b: usize, lim: *mut u32) -> c_int {
+    unsafe { structural::shift_hint(&(*f).view(), k, b, &mut *lim) }
+}
+/// A35: structural.c `cat_ints`: `d` null is pass 1 only.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn qrs_cat_ints(parts: *const CCocf, start: *const usize, k: usize, b: usize, d: *mut i64, ee: *mut i8,
+                                      raw: *mut *const c_void) -> c_int {
+    unsafe {
+        let n = *start.add(k);
+        let mut o = ints_out(d, ee, raw, (n - b * BLK).min(BLK));
+        structural::cat_ints(&cat_parts(parts, true), sl(start, k + 1), b, o.as_mut())
+    }
+}
+/// A35: structural.c `rev_ints`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn qrs_rev_ints(f: *const CCocf, b: usize, d: *mut i64, ee: *mut i8, raw: *mut *const c_void) -> c_int {
+    unsafe {
+        let v = (*f).view();
+        let mut o = ints_out(d, ee, raw, structural::blk_count(v.c.meta.n, b));
+        structural::rev_ints(&v, b, o.as_mut())
+    }
+}
+/// A35: structural.c `cycle_ints`; `m` is the answer's count.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn qrs_cycle_ints(f: *const CCocf, off: usize, m: usize, b: usize, d: *mut i64, ee: *mut i8,
+                                        raw: *mut *const c_void) -> c_int {
+    unsafe {
+        let mut o = ints_out(d, ee, raw, structural::blk_count(m, b));
+        structural::cycle_ints(&(*f).view(), off, m, b, o.as_mut())
+    }
+}
+/// A35: structural.c `shift_ints`' pass 1, the exponent every source block holds; -1 = the general path.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn qrs_shift_exp(f: *const CCocf, k: i64, b: usize) -> c_int {
+    unsafe { structural::shift_exp(&(*f).view(), k, b) }
+}
+/// A35: structural.c `shift_ints`' pass 2; a hole is the integer `hd`, `ee` `hx` and the bits at `fill`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn qrs_shift_ints(f: *const CCocf, k: i64, b: usize, fill: *const i64, hd: i64, hx: i8, d: *mut i64,
+                                        ee: *mut i8, raw: *mut *const c_void) {
+    unsafe {
+        let v = (*f).view();
+        if let Some(mut o) = ints_out(d, ee, raw, structural::blk_count(v.c.meta.n, b)) {
+            structural::shift_ints(&v, k, b, (hd, hx, fill.cast::<u8>()), &mut o)
+        }
+    }
+}
 /// A36: structural.c `put_res`.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn qrs_put_res(p: *mut u8, w: u8, lo: usize, v: *const i64, n: usize, base: u64) {
