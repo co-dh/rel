@@ -13,9 +13,9 @@ use crate::coc::{self, Coc};
 use crate::group::{self, Table};
 use crate::{key, kwin, own};
 use crate::layout::{Tail, exc_ok};
-use crate::own::{OwnHead, check, head};
+use crate::own::{OwnHead, head};
 use crate::why::Why;
-use crate::zip::{ZTrailer, table, trailer, zq};
+use crate::zip::zq;
 use crate::{BLK, ids, simd, unpack};
 use crate::alp::Cocf;
 use crate::cocops::CocMut;
@@ -68,7 +68,6 @@ pub struct CPass {
 const _: () = assert!(size_of::<CCoc>() == 144);
 const _: () = assert!(size_of::<CPass>() == 72);
 const _: () = assert!(size_of::<OwnHead>() == 80);
-const _: () = assert!(size_of::<ZTrailer>() == 24);
 
 /// Safety: `p` is null or valid for `key::bytes(kind, n)` reads.
 unsafe fn keys<'a>(kind: u8, p: *const u8, n: usize) -> Option<&'a [u8]> {
@@ -248,14 +247,6 @@ pub unsafe extern "C" fn qrs_own_head(m: *const u8, size: usize, h: *mut OwnHead
 }
 
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn qrs_own_check(kind: u8, n: u64, p: *const *const u8, len: *const usize, np: usize,
-                                       w: *mut c_char, cap: usize) -> c_int {
-    let (ps, ls) = unsafe { (sl(p, np), sl(len, np)) };
-    let parts: alloc::vec::Vec<&[u8]> = ps.iter().zip(ls).map(|(&q, &l)| unsafe { sl(q, l) }).collect();
-    check(kind, n, &parts, &mut unsafe { why(w, cap) }) as c_int
-}
-
-#[unsafe(no_mangle)]
 pub unsafe extern "C" fn qrs_coc_std(c: *const CCoc, n: usize) -> c_int {
     unsafe { (*c).view() }.std(n) as c_int
 }
@@ -267,23 +258,6 @@ pub unsafe extern "C" fn qrs_zq(b: *const u8, n: usize, dst: *mut u8, want: usiz
         Ok(()) => core::ptr::null(),
         Err(m) => m.as_ptr(),
     }
-}
-
-/// 1 and `*t` filled, or 0 and `why` filled.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn qrs_ztrailer(hdr: *const u8, size: u64, nblk: u64, hat: u64, t: *mut ZTrailer,
-                                      w: *mut c_char, cap: usize) -> c_int {
-    let h = unsafe { &*hdr.cast::<[u8; 32]>() };
-    match trailer(h, size, nblk, hat, &mut unsafe { why(w, cap) }) {
-        Some(v) => { unsafe { t.write(v) }; 1 }
-        None => 0,
-    }
-}
-
-/// `ent` is 8*nblk bytes, `at` nblk+1 entries, `algo` nblk; returns maxc.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn qrs_ztable(ent: *const u8, nblk: usize, at: *mut u64, algo: *mut u32) -> usize {
-    unsafe { table(sl(ent, 8 * nblk), sl_mut(at, nblk + 1), sl_mut(algo, nblk)) }
 }
 
 #[unsafe(no_mangle)]
@@ -546,11 +520,6 @@ pub unsafe extern "C" fn qrs_coc_shift_ok(c: *const CCoc, k: i64, neg: c_int) ->
 /// A6: coc.h:1023 `coc_shift`, which `qlean_coc_shift` calls.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn qrs_coc_shift(c: *mut CCoc, k: i64, neg: c_int) { unsafe { (*c).view_mut() }.shift(k, neg != 0) }
-/// A10: ids.h:281 `ids_runs`.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn qrs_ids_runs(p: *const u8, n: usize, w: u32, nd: usize, most: usize, out: *mut i64) -> usize {
-    unsafe { ids::runs(sl(p, ids::ids_bytes(n, w)), n, w, nd, most, sl_mut(out, most)) }
-}
 /// A11: sym.h `sym_msort` over `n` symbols.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn qrs_sym_msort(v: *const CSym, n: usize, a: *mut usize, tmp: *mut usize) {
@@ -781,9 +750,9 @@ pub unsafe extern "C" fn qrs_alp_exc_at_f64(x: *const f64, nb: usize, be: c_int,
 }
 /// A20: sort.c `grade_keys`.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn qrs_grade_keys(run: unsafe extern "C" fn(), k: *const u64, n: usize, desc: c_int, mn: u64, mx: u64,
+pub unsafe extern "C" fn qrs_grade_keys(k: *const u64, n: usize, desc: c_int, mn: u64, mx: u64,
                                         out: *mut i64) {
-    unsafe { sort::grade_keys(rn(run), sl(k, n), desc != 0, mn, mx, sl_mut(out, n)) }
+    unsafe { sort::grade_keys(sl(k, n), desc != 0, mn, mx, sl_mut(out, n)) }
 }
 /// A20: sort.c `SK_COUNTABLE`: a counting table over `span + 1` buckets for `n` keys is affordable.
 #[unsafe(no_mangle)]
@@ -880,15 +849,15 @@ pub unsafe extern "C" fn qrs_id_longs(n: usize, w: u32, ids: *const u8, out: *mu
 }
 /// A25: sort.c `qlean_sort_grade_syms` past the unboxing.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn qrs_grade_syms(run: unsafe extern "C" fn(), desc: c_int, blob: *const u8, bytes: usize,
+pub unsafe extern "C" fn qrs_grade_syms(desc: c_int, blob: *const u8, bytes: usize,
                                         offs: *const usize, n: usize, out: *mut i64) {
-    unsafe { sort::grade_syms(rn(run), desc != 0, &syms(blob, bytes, offs, n), sl_mut(out, n)) }
+    unsafe { sort::grade_syms(desc != 0, &syms(blob, bytes, offs, n), sl_mut(out, n)) }
 }
 /// A26: sort.c `qlean_sort_grade_ids` past the unboxing.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn qrs_grade_ids(run: unsafe extern "C" fn(), desc: c_int, n: usize, blob: *const u8, bytes: usize,
+pub unsafe extern "C" fn qrs_grade_ids(desc: c_int, n: usize, blob: *const u8, bytes: usize,
                                        offs: *const usize, nd: usize, p: *const u8, w: u32, out: *mut i64) {
-    unsafe { sort::grade_ids(rn(run), desc != 0, n, &syms0(blob, bytes, offs, nd), sl(p, ids::ids_bytes(n, w)), w, sl_mut(out, n)) }
+    unsafe { sort::grade_ids(desc != 0, n, &syms0(blob, bytes, offs, nd), sl(p, ids::ids_bytes(n, w)), w, sl_mut(out, n)) }
 }
 /// A26: sort.c `qlean_sort_intern_syms` past the unboxing; answers the distinct count.
 #[unsafe(no_mangle)]
@@ -927,9 +896,9 @@ pub unsafe extern "C" fn qrs_ids_heads(blob: *const u8, bytes: usize, offs: *con
 }
 /// A26: sort.c `qlean_sort_sorted_ids` past the unboxing: `out` is `ids_bytes(n, w)` zeroed bytes.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn qrs_sorted_ids(run: unsafe extern "C" fn(), desc: c_int, n: usize, blob: *const u8, bytes: usize,
+pub unsafe extern "C" fn qrs_sorted_ids(desc: c_int, n: usize, blob: *const u8, bytes: usize,
                                         offs: *const usize, nd: usize, p: *const u8, w: u32, out: *mut u8) {
-    unsafe { sort::sorted_ids(rn(run), desc != 0, n, &syms0(blob, bytes, offs, nd), sl(p, ids::ids_bytes(n, w)), w,
+    unsafe { sort::sorted_ids(desc != 0, n, &syms0(blob, bytes, offs, nd), sl(p, ids::ids_bytes(n, w)), w,
                               sl_mut(out, ids::ids_bytes(n, w))) }
 }
 /// A26: sort.c `ids_group`: `gid` (null for none) is `4n` bytes, `cnt` `nd + 1` entries, `first` `min(n, nd + 1)`;
@@ -948,8 +917,8 @@ pub unsafe extern "C" fn qrs_parted_ids(strict: c_int, d: usize, n: usize, w: u3
 }
 /// A27: sort.c `qlean_sort_grade_guid`: 16-byte elements.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn qrs_grade_guid(run: unsafe extern "C" fn(), desc: c_int, p: *const u8, n: usize, out: *mut i64) {
-    unsafe { sort::grade_guid(rn(run), desc != 0, sl(p, 16 * n), sl_mut(out, n)) }
+pub unsafe extern "C" fn qrs_grade_guid(desc: c_int, p: *const u8, n: usize, out: *mut i64) {
+    unsafe { sort::grade_guid(desc != 0, sl(p, 16 * n), sl_mut(out, n)) }
 }
 /// A28: search.c `coc_exc_within`: whether a patch of block `b` lies in `lo ..= hi`.
 #[unsafe(no_mangle)]
@@ -999,15 +968,16 @@ pub unsafe extern "C" fn qrs_search(run: unsafe extern "C" fn(), kind: c_int, hd
 /// A30: search.c `ids_key_width`: bytes an id key takes where one side is at `a` bits and the other at `b`.
 #[unsafe(no_mangle)]
 pub extern "C" fn qrs_ids_key_width(a: usize, b: usize) -> usize { search::ids_key_width(a, b) }
-/// A28: search.c `kind_of`: the `kind` enum's number; `who` names the caller in the abort text.
+/// A28: search.c `kind_of`: the `kind` enum's number; `who` names the caller in the abort text (null reads as `?`).
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn qrs_kind_of(w: usize, is_float: u8, who: *const c_char) -> c_int {
-    search::kind_of(w, is_float != 0, unsafe { core::ffi::CStr::from_ptr(who) }.to_str().unwrap_or("?")) as c_int
+    let who = if who.is_null() { "?" } else { unsafe { core::ffi::CStr::from_ptr(who) }.to_str().unwrap_or("?") };
+    search::kind_of(w, is_float != 0, who) as c_int
 }
-/// A28: search.c `kind_width` of the `kind` number `k`.
+/// A28: search.c `kind_width` of the `kind` number `k`; a number past the enum answers 8, as the C's `switch` falls out.
 #[unsafe(no_mangle)]
 pub extern "C" fn qrs_kind_width(k: c_int) -> usize {
-    search::KINDS[k as usize].width()
+    search::KINDS.get(k as usize).map_or(8, |k| k.width())
 }
 /// A31: search.c `sym_scan`: the first of `n` symbols equal to `k`, or `n`.
 #[unsafe(no_mangle)]
@@ -1313,7 +1283,7 @@ pub unsafe extern "C" fn qrs_gather_enc_idx(run: unsafe extern "C" fn(), w: usiz
                                             out: *mut u8) {
     unsafe {
         let (v, iv) = ((*c).view(), (*ic).view());
-        structural::gather_enc_idx(rn(run), w, fill, &v, &iv, iv.meta.n, sl_mut(out, w * iv.meta.n))
+        structural::gather_enc_idx(rn(run), w, fill, &v, &iv, sl_mut(out, w * iv.meta.n))
     }
 }
 /// A37: structural.c `gather_bits_run`: `n` is the source's bit count, `bits` its `bytes` bytes, `out` the zeroed
@@ -1343,7 +1313,7 @@ pub unsafe extern "C" fn qrs_gather_ids_enc(run: unsafe extern "C" fn(), w: u32,
                                             ns: usize, c: *const CCoc, out: *mut u8) {
     unsafe {
         let v = (*c).view();
-        structural::gather_ids_enc(rn(run), w, wout, fill, sl(src, ids::ids_bytes(ns, w)), ns, &v, v.meta.n,
+        structural::gather_ids_enc(rn(run), w, wout, fill, sl(src, ids::ids_bytes(ns, w)), ns, &v,
                                    sl_mut(out, ids::ids_bytes(v.meta.n, wout)))
     }
 }
@@ -1395,13 +1365,13 @@ pub unsafe extern "C" fn qrs_symtab_fill(t: *mut CSymtab, blob: *const u8, bytes
         (t.cnt, t.stale) = (s.cnt, s.stale);
     }
 }
-/// A40: structural.c `symtab_fork` after the allocation: `t`'s `slot` is `s_mask + 1` ids, filled from `s`.
+/// A40: structural.c `symtab_fork` after the allocation: `t`'s `slot` is `s.mask + 1` ids, filled from `s`, whose counts it reads.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn qrs_symtab_fork(t: *mut CSymtab, s: *const u32, s_mask: usize, d: usize) {
+pub unsafe extern "C" fn qrs_symtab_fork(t: *mut CSymtab, s: *const CSymtab, d: usize) {
     unsafe {
-        let t = &mut *t;
-        let mut f = structural::Symtab { cnt: t.cnt, mask: t.mask, stale: t.stale, slot: sl_mut(t.slot, s_mask + 1) };
-        f.fork(sl(s, s_mask + 1), d);
+        let (t, s) = (&mut *t, &*s);
+        let mut f = structural::Symtab { cnt: t.cnt, mask: t.mask, stale: t.stale, slot: sl_mut(t.slot, s.mask + 1) };
+        f.fork(sl(s.slot, s.mask + 1), s.cnt, s.stale, d);
         (t.cnt, t.mask, t.stale) = (f.cnt, f.mask, f.stale);
     }
 }
@@ -1486,9 +1456,9 @@ pub unsafe extern "C" fn qrs_ew_bit(run: unsafe extern "C" fn(), op: u8, shape: 
 }
 /// A44: elementwise.c `qlean_ew_floor`; the answer is `n` longs.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn qrs_ew_floor(run: unsafe extern "C" fn(), cls: u8, nul: i64, x: *const u8, xbytes: usize,
+pub unsafe extern "C" fn qrs_ew_floor(run: unsafe extern "C" fn(), cls: u8, x: *const u8, xbytes: usize,
                                       n: usize, out: *mut u8) {
-    unsafe { ew::floor(rn(run), cls, nul, sl(x, xbytes), n, sl_mut(out, n * 8)) }
+    unsafe { ew::floor(rn(run), cls, sl(x, xbytes), n, sl_mut(out, n * 8)) }
 }
 /// A44: elementwise.c `qlean_coc_ew_mon`: `neg`/`abs` over an encoded column `c`, the answer dense in `obytes`.
 #[unsafe(no_mangle)]
@@ -1549,6 +1519,14 @@ pub unsafe extern "C" fn qrs_ew_stage_fixed(engine: u32, shape: u32, left: c_int
 #[cfg(test)]
 mod tests {
     use super::*;
+    // the C's `kind_of` always had a string; a null `who` reads as `?`. A `kind` number past the enum answers 8 as the C's switch falls out
+    #[test] fn kind_of_and_width_take_null_and_out_of_range() {
+        unsafe {
+            assert_eq!(qrs_kind_of(4, 1, core::ptr::null()), search::Kind::F32 as c_int);
+            assert_eq!(qrs_kind_of(1, 0, c"who".as_ptr()), search::Kind::U8 as c_int);
+        }
+        assert_eq!((qrs_kind_width(0), qrs_kind_width(6), qrs_kind_width(-1), qrs_kind_width(99)), (1, 16, 8, 8));
+    }
     // testdata/drv.c encoded a 3000-element column with the C encoder at each element width and dumped the buffers
     // and what coc.h's accessors answered (`col<esz>.txt`): the header, then `blk b frame nexc` and `exc j value`.
     struct Col { meta: Vec<u64>, pack: Vec<u64>, txt: &'static str }

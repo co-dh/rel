@@ -3,7 +3,7 @@
 //! and the in-place shift (A6), plus `CocMut`, the writable form of the same `coc`.
 use crate::coc::{Coc, Meta};
 use crate::coc::lanes;
-use crate::res::{res_get, res_get_in, res_min_nonzero, res_pack_scalar, res_sum};
+use crate::res::{res_get, res_get_in, res_min_nonzero, res_sum};
 use crate::simd::prefetch;
 use crate::BLK;
 
@@ -280,48 +280,6 @@ impl<'a> Coc<'a> {
         }
         path
     }
-    /// coc.h:971 `coc_negate_res`: the residuals of `k - x` into `out`, a pack of the same size. The block turns round,
-    /// its minimum becoming `k - maxv`, so an element's residual is `R - r` for the block's range `R`; the width and
-    /// the offsets stay. Bytes of a block past its last element are written 0.
-    pub fn negate_res(&self, out: &mut [u8]) {
-        let m = &self.meta;
-        for b in 0..m.nblk {
-            let (lo, w) = (b * BLK, m.width[b]);
-            let nb = if lo + BLK < m.n { BLK } else { m.n - lo };
-            let r = (m.maxv[b] as u64).wrapping_sub(m.base[b] as u64);
-            let (at, bytes) = (m.off[b] as usize, BLK * w as usize / 8);
-            let (p, o) = (&self.pack[at..at + bytes], &mut out[at..at + bytes]);
-            let done = (nb * w as usize).div_ceil(8);
-            match w {
-                0 => {}
-                8 => for (d, &s) in o.iter_mut().zip(p).take(nb) { *d = (r as u8).wrapping_sub(s) },
-                16 => for (d, s) in o.chunks_exact_mut(2).zip(p.chunks_exact(2)).take(nb) {
-                    d.copy_from_slice(&(r as u16).wrapping_sub(u16::from_le_bytes([s[0], s[1]])).to_le_bytes())
-                },
-                32 => for (d, s) in o.chunks_exact_mut(4).zip(p.chunks_exact(4)).take(nb) {
-                    d.copy_from_slice(&(r as u32).wrapping_sub(u32::from_le_bytes(s.try_into().unwrap())).to_le_bytes())
-                },
-                64 => for (d, s) in o.chunks_exact_mut(8).zip(p.chunks_exact(8)).take(nb) {
-                    d.copy_from_slice(&r.wrapping_sub(u64::from_le_bytes(s.try_into().unwrap())).to_le_bytes())
-                },
-                // 1, 2 and 4 bits: no field borrows into the next, every residual being at most R, so one byte-wide
-                // subtraction from R replicated in each field does 8 / width of them at once
-                1 | 2 | 4 => {
-                    let per = 8 / w as usize;
-                    let rep = (r.wrapping_mul(0xff / ((1u64 << w) - 1))) as u8;
-                    for (d, &s) in o.iter_mut().zip(p).take(nb.div_ceil(per)) { *d = rep.wrapping_sub(s) }
-                    // the fields of the last byte that no element owns
-                    if nb % per != 0 { o[nb.div_ceil(per) - 1] &= ((1u32 << ((nb % per) * w as usize)) - 1) as u8 }
-                }
-                _ => {
-                    let mut v = [0u64; BLK];
-                    for (j, x) in v[..nb].iter_mut().enumerate() { *x = r.wrapping_sub(res_get(p, w, j)) }
-                    res_pack_scalar(&v, w, nb, &mut o[..done]);
-                }
-            }
-            o[done..].fill(0);
-        }
-    }
 }
 impl<'a> CocMut<'a> {
     /// coc.h:1023 `coc_shift`: `k + x` (`neg`: `k - x`) on base, maxv and the block sums, in unsigned arithmetic. The
@@ -438,22 +396,5 @@ mod tests {
         assert_eq!((m.base.to_vec(), m.bsum.to_vec(), *m.sumnul.as_deref().unwrap()), (vec![-12, -12], vec![-3082, -3092], i64::MIN));
         m.shift(i64::MIN.wrapping_add(-8), true); // block 1's minimum lands on the null: the sums go
         assert_eq!((*m.sumnul.as_deref().unwrap(), *m.sumn.as_deref().unwrap()), (0, 0));
-    }
-    #[test] fn negate_res_turns_each_block_round_at_every_width() {
-        let pack: Vec<u8> = (0..BLK as u32 * 8).map(|i| (i * 37 + 11) as u8).collect();
-        for w in [0u8, 1, 2, 3, 4, 7, 8, 13, 16, 32, 63, 64] {
-            let m = |n: usize| Meta { base: &[10], maxv: &[10 + 200], off: &[0], bsum: &[0], width: &*vec![w].leak(), sumnul: 0, sumn: 0, n, nblk: 1, mblk: 1 };
-            let nb = BLK * w as usize / 8;
-            for n in [BLK, 100] {
-                let c = Coc { meta: m(n), pack: &pack[..nb], exc: None, fdelta: None };
-                let (mut once, mut twice) = (vec![0xabu8; nb], vec![0xabu8; nb]);
-                c.negate_res(&mut once);
-                let c2 = Coc { pack: &once, ..c };
-                c2.negate_res(&mut twice);
-                // R - (R - r) = r on the n elements, and the bytes past them are 0
-                for j in 0..n { assert_eq!(res_get(&twice, w, j), res_get(&pack[..nb], w, j), "w {w} n {n} j {j}") }
-                assert!(twice[(n * w as usize).div_ceil(8)..].iter().all(|&x| x == 0));
-            }
-        }
     }
 }

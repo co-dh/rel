@@ -1,5 +1,4 @@
 #![forbid(unsafe_code)]
-#![allow(unused_variables)] // scaffold: the task that fills this module removes it
 //! Column (a), structural.c: bit helpers and the encoded-column readers (A34), the encoder sources of reverse,
 //! cycle, shift and concat (A35), concat of encoded columns (A36), gathers (A37–A38), cycles, concats and
 //! enumerations (A39), the symbol dictionary table (A40), dictionary concat (A41a), `til` and `scatter` (A41b).
@@ -426,6 +425,12 @@ fn check_w(w: usize, who: &str) {
     assert!(matches!(w, 1 | 2 | 4 | 8 | 16),
             "qlean structural: {who} got element width {w}; the kernels are instantiated at 1, 2, 4, 8 and 16 bytes");
 }
+/// The entry's refusal for an encoded source: besides `check_w`, a column whose blocks disagree (`one_width` 255) has
+/// no 16-byte reader. Said here, before any worker starts, as `check_w` does.
+fn check_enc(w: usize, sw: u8, who: &str) {
+    check_w(w, who);
+    assert!(!(sw == 255 && w == 16), "qlean structural: {who} of an encoded column with unequal blocks has no width-16 reader");
+}
 /// structural.c `GATHER_DECODE`: indices in one block in a row that make decoding the block cheaper than reading each.
 const GATHER_DECODE: usize = crate::BLK / 8;
 /// structural.c `GATHER_AHEAD`: how far ahead of the index being read the source is prefetched.
@@ -477,8 +482,6 @@ fn flat<const W: usize>(c: &Coc, sw: u8, f: [u8; W], ix: &[i64], o: &mut [u8], r
 // A column whose blocks disagree, or that carries a patch list, has no flat form: a run of indices in one block that
 // is `GATHER_DECODE` long decodes the block once, a shorter one is read through `get`.
 fn runs<const W: usize>(c: &Coc, f: [u8; W], ix: &[i64], o: &mut [u8]) {
-    // coc.h `coc_load_blk_at` decodes at 8 bytes for a 16-byte element, which `(u128 *)buf` then misreads in C
-    assert!(W <= 8, "qlean structural: gather of an encoded column with unequal blocks has no width-{W} reader");
     let sn = c.meta.n;
     let mut buf = [0u64; crate::BLK];
     let bb = crate::pod::bytes_mut(&mut buf);
@@ -521,7 +524,9 @@ fn enc_w<const W: usize>(c: &Coc, sw: u8, fill: u64, ix: &[i64], o: &mut [u8]) {
         16 => flat(c, sw, f, ix, o, |u| base(u).wrapping_add(u16::from_ne_bytes(at(2 * u, 2).try_into().unwrap()) as u64)),
         32 => flat(c, sw, f, ix, o, |u| base(u).wrapping_add(u32::from_ne_bytes(at(4 * u, 4).try_into().unwrap()) as u64)),
         64 => flat(c, sw, f, ix, o, |u| base(u).wrapping_add(u64::from_ne_bytes(at(8 * u, 8).try_into().unwrap()))),
-        255 => runs(c, f, ix, o),
+        // `check_enc` refused width 16 here at the entry: coc.h `coc_load_blk_at` decodes at 8 bytes, which C misreads as a `u128`
+        255 if W <= 8 => runs(c, f, ix, o),
+        255 => unreachable!("an unequal-blocks gather at width {W} is refused at the entry"),
         _ => flat(c, sw, f, ix, o, |u| base(u).wrapping_add(crate::res::res_get_in(sp, sw, u, sp.len()))),
     }
 }
@@ -537,16 +542,16 @@ fn enc(w: usize, c: &Coc, sw: u8, fill: u64, ix: &[i64], o: &mut [u8]) {
 /// structural.c:728 `gather_foR_run` and its entry: from an encoded column, which a gather reads only where its index
 /// points, so the source is never decoded whole.
 pub fn gather_enc(run: Runner, w: usize, fill: u64, c: &Coc, idx: &[i64], out: &mut [u8]) {
-    check_w(w, "gather_foR");
     let sw = c.one_width();
+    check_enc(w, sw, "gather_foR");
     crate::c::run_map(run, out, idx.len(), w, crate::QLEAN_COST_GATHER, w + 8,
                       &|lo, hi, o: &mut [u8]| enc(w, c, sw, fill, &idx[lo..hi], o));
 }
 /// structural.c:767 `gather_foR_idx_run`: encoded column, encoded indices (`ic.meta.n` of them, `count` cut to the
 /// grid), the index decoded a block at a time and never whole.
-pub fn gather_enc_idx(run: Runner, w: usize, fill: u64, c: &Coc, ic: &Coc, count: usize, out: &mut [u8]) {
-    check_w(w, "gather_foR");
+pub fn gather_enc_idx(run: Runner, w: usize, fill: u64, c: &Coc, ic: &Coc, out: &mut [u8]) {
     let sw = c.one_width();
+    check_enc(w, sw, "gather_foR");
     crate::c::run_map(run, out, ic.meta.n, w, crate::QLEAN_COST_GATHER, w + 8, &|lo, hi, o: &mut [u8]| {
         let mut buf = [0i64; crate::BLK];
         let mut at = lo;
@@ -651,7 +656,7 @@ pub fn gather_ids(run: Runner, w: u32, wout: u32, fill: u64, src: &[u8], n: usiz
     });
 }
 /// structural.c:1465 `gather_ids_foR_run`: encoded indices, `ic.meta.n` of them (`count`, cut to the grid).
-pub fn gather_ids_enc(run: Runner, w: u32, wout: u32, fill: u64, src: &[u8], n: usize, ic: &Coc, count: usize, out: &mut [u8]) {
+pub fn gather_ids_enc(run: Runner, w: u32, wout: u32, fill: u64, src: &[u8], n: usize, ic: &Coc, out: &mut [u8]) {
     let (g, m) = (crate::ids::slice_elems(wout), ic.meta.n);
     crate::c::run_map(run, out, m.div_ceil(g), crate::ids::ids_bytes(g, wout), crate::QLEAN_COST_GATHER, g * 9,
                       &|lo8, hi8, o: &mut [u8]| {
@@ -719,18 +724,31 @@ pub fn concat_bits(counts: &[usize], parts: &[&[u8]], out: &mut [u8]) {
 pub fn enum_at(src: &[u8], have: usize, i: usize) -> i64 {
     if i >= have { 0 } else { i64::from_le_bytes(src[i * 8..i * 8 + 8].try_into().unwrap()) }
 }
-/// structural.c:1898 `qlean_structural_enum_ids`: values as ids into `0 .. d` at `w` bits, `nullid` outside.
-pub fn enum_ids(n: usize, d: usize, nullid: usize, w: u32, b: &[u8], out: &mut [u8]) {
-    for i in 0..n { crate::ids::id_put(out, w, i, enum_id(enum_at(b, b.len() / 8, i), nullid)) }
+/// An element out of range of the domain `0 .. d`: neither `0Nj` nor an index below `d`.
+fn enum_bad(v: i64, d: usize) -> bool { v != i64::MIN && (v < 0 || v as u64 >= d as u64) }
+/// structural.c:1898 `qlean_structural_enum_ids`: values as ids into `0 .. d` at `w` bits, `nullid` outside; answers the
+/// first element that is neither an index below `d` nor `0Nj` (`n` when every one is).
+pub fn enum_ids(n: usize, d: usize, nullid: usize, w: u32, b: &[u8], out: &mut [u8]) -> usize {
+    let mut bad = n;
+    for i in 0..n {
+        let v = enum_at(b, b.len() / 8, i);
+        if bad == n && enum_bad(v, d) { bad = i }
+        crate::ids::id_put(out, w, i, enum_id(v, nullid))
+    }
+    bad
 }
 /// structural.c:1924 `qlean_structural_enum_ids_for`: from an encoded column.
-pub fn enum_ids_enc(n: usize, d: usize, nullid: usize, w: u32, c: &Coc, out: &mut [u8]) {
-    let mut v = [0i64; crate::BLK];
+pub fn enum_ids_enc(n: usize, d: usize, nullid: usize, w: u32, c: &Coc, out: &mut [u8]) -> usize {
+    let (mut v, mut bad) = ([0i64; crate::BLK], n);
     for b in 0..n.div_ceil(crate::BLK) {
         let (lo, nb) = (b * crate::BLK, crate::BLK.min(n - b * crate::BLK));
         c.decode_blk(b, nb, &mut v);
-        for (i, &x) in v[..nb].iter().enumerate() { crate::ids::id_put(out, w, lo + i, enum_id(x, nullid)) }
+        for (i, &x) in v[..nb].iter().enumerate() {
+            if bad == n && enum_bad(x, d) { bad = lo + i }
+            crate::ids::id_put(out, w, lo + i, enum_id(x, nullid))
+        }
     }
+    bad
 }
 /// structural.c:1949 `ids_place`: `cn` ids at `w` mapped by `tab` (`nm` entries) to `wout` bits at `at`.
 pub fn ids_place(out: &mut [u8], at: usize, wout: u32, cn: usize, w: u32, pp: &[u8], tab: &[usize]) {
@@ -795,12 +813,12 @@ impl<'a> Symtab<'a> {
     /// structural.c:2069-2100 `symtab_fit`/`symtab_build` after the slots are allocated: the `cnt` entries of
     /// `v`, both areas, hashed into empty slots.
     pub fn fill(&mut self, v: &Symview) { for i in 0..self.cnt { self.put(v, v.at(i), i) } }
-    /// structural.c:2105 `symtab_fork` after the allocation: `s`'s slots copied, entries at or past `d` counted stale.
-    pub fn fork(&mut self, s: &[u32], d: usize) {
-        // every non-empty slot is an entry of the chain or a stale one, so `s`'s count + stale is their number
-        let used = s.iter().filter(|&&x| x != 0).count();
+    /// structural.c:2105 `symtab_fork` after the allocation: `s`'s slots copied (`scnt` entries, `sstale` stale ones), the
+    /// entries at or past `d` counted stale on top of `s`'s. O(1) beyond the copy, as the C: the counts are passed in.
+    pub fn fork(&mut self, s: &[u32], scnt: usize, sstale: usize, d: usize) {
+        assert!(d <= scnt, "qlean structural: symtab_fork of {d} entries from a table of {scnt}");
         self.slot.copy_from_slice(s);
-        (self.mask, self.cnt, self.stale) = (s.len() - 1, d, used.saturating_sub(d));
+        (self.mask, self.cnt, self.stale) = (s.len() - 1, d, sstale + (scnt - d));
     }
 }
 
@@ -898,9 +916,12 @@ mod symtab_tests {
         let s = t.slot.to_vec();
         let mut slot2 = vec![0u32; 16];
         let mut f = Symtab { cnt: 0, mask: 0, stale: 0, slot: &mut slot2 };
-        f.fork(&s, 3);
+        f.fork(&s, 5, 0, 3);
         assert_eq!((f.cnt, f.mask, f.stale), (3, 15, 2));
         assert_eq!(f.slot, &s[..]);
+        // a table that already carries 4 stale slots: they stay counted, and the 2 entries past `d` join them
+        f.fork(&s, 5, 4, 3);
+        assert_eq!(f.stale, 6);
     }
     #[test]
     fn intern_dedupes_and_stops_for_a_fit() {
@@ -943,6 +964,12 @@ mod a39_tests {
             assert_eq!(out, want);
         }
     }
+    // the entry refuses an unequal-blocks source at width 16 by name; every other width and shape passes
+    #[test] fn unequal_blocks_at_width_16_is_refused_at_the_entry() {
+        assert!(std::panic::catch_unwind(|| check_enc(16, 255, "gather_foR")).is_err());
+        for (w, sw) in [(16, 0), (16, 64), (8, 255), (1, 255)] { check_enc(w, sw, "gather_foR") }
+        assert!(std::panic::catch_unwind(|| check_enc(3, 0, "gather_foR")).is_err());
+    }
     #[test] fn enum_at_reads_zero_past_the_payload() {
         let b: Vec<u8> = [5i64, -3].iter().flat_map(|x| x.to_le_bytes()).collect();
         assert_eq!((enum_at(&b, 2, 0), enum_at(&b, 2, 1), enum_at(&b, 2, 2), enum_at(&b, 2, 99)), (5, -3, 0, 0));
@@ -953,7 +980,8 @@ mod a39_tests {
             let vals: Vec<i64> = (0..37).map(|_| match rng(&mut s) % 5 { 0 => i64::MIN, 1 => -1, _ => (rng(&mut s) % 3) as i64 }).collect();
             let b: Vec<u8> = vals[..30].iter().flat_map(|x| x.to_le_bytes()).collect();
             let mut out = vec![0u8; ids_bytes(37, w)];
-            enum_ids(37, 3, 2, w, &b, &mut out);
+            let bad = enum_ids(37, 3, 2, w, &b, &mut out);
+            assert_eq!(bad, vals[..30].iter().position(|&v| v == -1).unwrap_or(37), "w {w} bad");
             for i in 0..37 {
                 let v = vals.get(i).filter(|_| i < 30).copied().unwrap_or(0);
                 let want = if v == i64::MIN { 2 } else { v.max(0) as u64 };
@@ -973,9 +1001,11 @@ mod a39_tests {
         let raw: Vec<u8> = v.iter().flat_map(|x| x.to_le_bytes()).collect();
         for w in [8u32, 16, 32] {
             let (mut a, mut b) = (vec![0u8; ids_bytes(n, w)], vec![0u8; ids_bytes(n, w)]);
-            enum_ids(n, 1 << 20, 0, w, &raw, &mut a);
-            enum_ids_enc(n, 1 << 20, 0, w, &c, &mut b);
-            assert_eq!(a, b, "w {w}");
+            for d in [3usize, 1 << 20] {
+                let (ba, bb) = (enum_ids(n, d, 0, w, &raw, &mut a), enum_ids_enc(n, d, 0, w, &c, &mut b));
+                assert_eq!((&a, ba), (&b, bb), "w {w} d {d}");
+                assert_eq!(ba, v.iter().position(|&x| x < 0 || x as u64 >= d as u64).unwrap_or(n), "w {w} d {d} bad");
+            }
         }
     }
     #[test] fn ids_place_and_concat_ids_read_through_each_map() {

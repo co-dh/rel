@@ -1,5 +1,4 @@
 #![forbid(unsafe_code)]
-#![allow(unused_variables)] // check is still a scaffold (task 4)
 //! own.c:263 and the header checks of own.c:366-394.
 use crate::why::Why;
 
@@ -71,7 +70,6 @@ bytes", k, at, l, off, size));
     }
     Some(h)
 }
-pub fn check(kind: u8, n: u64, part: &[&[u8]], why: &mut Why) -> bool { unimplemented!() }
 
 /// The refusal `write_head` gives a bad kind, part count or name length; None, so a caller returns it.
 pub fn refuse_head(kind: u8, np: usize, nl: usize, why: &mut Why) -> Option<usize> {

@@ -1,5 +1,4 @@
 #![forbid(unsafe_code)]
-#![allow(unused_variables)] // scaffold: the task that fills this module removes it
 //! Column (a): the Frame of Reference encoder's per-block steps — coc.h's FoR encode (A7), its patch list and the
 //! whole-column decode (A8), coc.c's block steps of `coc_enc` (A16) and of the fill/move sources (A17).
 //!

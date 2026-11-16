@@ -1,4 +1,3 @@
-#![allow(unused_variables)] // scaffold: the task that fills this module removes it
 //! The AVX-512 kernels: coc.h:598, 646; reduce.c:261. Each picks its path by `cfg`, as the C picks by `#if`.
 
 /// `__builtin_prefetch(r, 1)`: starts the line of `r` loading; a hint, it never faults.

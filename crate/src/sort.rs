@@ -1,5 +1,4 @@
 #![forbid(unsafe_code)]
-#![allow(unused_variables)] // scaffold: the task that fills this module removes it
 //! Column (a), sort.c: keys and their range (A19), the grades (A20–A22), pair and id grouping (A23–A24), symbol
 //! sorts and groups (A25–A26), guids (A27). The `qlean_sort_*` entries unbox and allocate and stay C (§1).
 //! A grade answers into `out: &mut [i64]` of `n`; `kind` is sort.c's `SK_*`.
@@ -193,7 +192,7 @@ pub fn sk_digit(bits: u32, n: usize) -> u32 {
 /// sort.c:682 `grade_radix`: LSD radix grade of keys `xr`-flipped minus `base` (`n >= 2`, `span` their range).
 /// Every digit's histogram is taken in one read of the keys, which names the surviving passes first: the last writes
 /// only the answer, and once what is left of the key fits beside the index (`ixb` bits) the two travel as one word.
-pub fn grade_radix(run: Runner, s: &Ksrc, span: u64, xr: u64, base: u64, out: &mut [i64]) {
+pub fn grade_radix(s: &Ksrc, span: u64, xr: u64, base: u64, out: &mut [i64]) {
     let (bits, wid) = (64 - span.leading_zeros(), sk_digit(64 - span.leading_zeros(), s.n));
     if s.n > u32::MAX as usize { return radix::<usize, 0>(s, wid, bits, xr, base, out) }
     match wid {
@@ -256,20 +255,20 @@ fn radix<T: Ix, const D: u32>(s: &Ksrc, wid: u32, bits: u32, xr: u64, base: u64,
 /// sort.c:713 `grade_src`: the grade (or ranks) of a key source whose presorted shapes the caller has ruled out, by the
 /// key range `mn ..= mx` alone (the caller's: whoever built the keys had them in a register): a counting sort where
 /// `sk_countable` says the table is affordable, else the radix. Only the radix's rank needs its grade inverted.
-pub fn grade_src(run: Runner, s: &Ksrc, desc: bool, rank: bool, mn: u64, mx: u64, out: &mut [i64]) {
+pub fn grade_src(s: &Ksrc, desc: bool, rank: bool, mn: u64, mx: u64, out: &mut [i64]) {
     let (n, span) = (s.n, mx - mn);
     if span == 0 { for (i, o) in out[..n].iter_mut().enumerate() { *o = if rank { 0 } else { i as i64 } } return }
     if span == n as u64 - 1 && grade_perm(s, mn, mx, desc, rank, out) { return }
     if sk_countable(span, n) { return grade_count(s, mn, mx, desc, rank, span, out) }
     let mut g = if rank { alloc::vec![0i64; n] } else { Vec::new() };
     let o = if rank { &mut g[..] } else { &mut *out };
-    if desc { grade_radix(run, s, span, !0, !mx, o) } else { grade_radix(run, s, span, 0, mn, o) }
+    if desc { grade_radix(s, span, !0, !mx, o) } else { grade_radix(s, span, 0, mn, o) }
     if rank { for (i, &x) in g.iter().enumerate() { out[x as usize] = i as i64 } }
 }
 /// sort.c:724 `grade_keys`: `grade_src` over keys already made.
-pub fn grade_keys(run: Runner, k: &[u64], desc: bool, mn: u64, mx: u64, out: &mut [i64]) {
+pub fn grade_keys(k: &[u64], desc: bool, mn: u64, mx: u64, out: &mut [i64]) {
     if k.is_empty() || grade_runs(k, desc, out) { return }
-    grade_src(run, &Ksrc { kind: key::SK_KEY, p: crate::pod::bytes(k), c: None, n: k.len() }, desc, false, mn, mx, out)
+    grade_src(&Ksrc { kind: key::SK_KEY, p: crate::pod::bytes(k), c: None, n: k.len() }, desc, false, mn, mx, out)
 }
 
 // ---- A21: sort.c:734-842 ----
@@ -285,7 +284,8 @@ fn load(p: &[u8], at: usize, k: usize) -> u64 {
 pub fn grade_bits(p: &[u8], n: usize, desc: bool, rank: bool, out: &mut [i64]) {
     // a word at a time: a byte load per element was 66ms of 20M
     if rank {
-        // the rank of a bit is how many clear bits precede it, or every clear bit and the set ones before it
+        // the rank of a bit: ascending, the clear bits before it, or every clear bit and the set ones before it; `desc` puts
+        // the set bits first, so a set bit counts the set ones before it and a clear one follows all of them
         let full = n & !63;
         let ones = (0..full / 64).map(|w| load(p, w * 8, 8).count_ones() as usize).sum::<usize>()
             + (full..n).map(|i| (p[i >> 3] >> (i & 7)) as usize & 1).sum::<usize>();
@@ -295,7 +295,8 @@ pub fn grade_bits(p: &[u8], n: usize, desc: bool, rank: bool, out: &mut [i64]) {
             let mut v = load(p, at >> 3, nb.div_ceil(8));
             for j in 0..nb {
                 let b = (v & 1) as usize;
-                out[at + j] = (if b != 0 { z + o } else { at + j - o }) as i64;
+                let (set, clear) = (o, at + j - o);
+                out[at + j] = (match (b != 0, desc) { (true, false) => z + set, (false, false) => clear, (true, true) => set, (false, true) => ones + clear }) as i64;
                 o += b;
                 v >>= 1;
             }
@@ -397,9 +398,24 @@ mod a21_tests {
         assert_eq!(bits(0b1001, 4, false, false), [1, 2, 0, 3]);
         assert_eq!(bits(0b1001, 4, true, false), [0, 3, 1, 2]);
     }
-    // bits past `n` in the last byte are not elements; the rank is where the grade would put each row (ascending only, as `rank` is)
+    // bits past `n` in the last byte are not elements; the rank is where the grade would put each row
     #[test] fn bits_rank_ignores_bits_past_n() {
         assert_eq!(bits(0b1111_1001, 4, false, true), [2, 0, 1, 3]);
+    }
+    // the rank is the grade's inverse in both directions, across word boundaries and a ragged tail
+    #[test] fn bits_rank_inverts_the_grade_both_ways() {
+        assert_eq!(bits(0b1001, 4, false, true), [2, 0, 1, 3]);
+        assert_eq!(bits(0b1001, 4, true, true), [0, 2, 3, 1]);
+        let mut s = 0x9e37_79b9_7f4a_7c15u64;
+        for n in [1usize, 63, 64, 65, 130, 200] {
+            let p: Vec<u8> = (0..n.div_ceil(8)).map(|_| { s ^= s << 13; s ^= s >> 7; s ^= s << 17; (s >> 24) as u8 }).collect();
+            for desc in [false, true] {
+                let (mut g, mut r) = (vec![0; n], vec![0; n]);
+                grade_bits(&p, n, desc, false, &mut g);
+                grade_bits(&p, n, desc, true, &mut r);
+                for (t, &i) in g.iter().enumerate() { assert_eq!(r[i as usize], t as i64, "n {n} desc {desc} row {i}") }
+            }
+        }
     }
     #[test] fn u8_is_stable_on_ties() {
         let p = [3, 1, 3, 0, 1];
@@ -575,7 +591,7 @@ pub fn order(run: Runner, kind: u8, desc: bool, rank: bool, p: &[u8], n: usize, 
     if !order_runs(a, !a && ascending(kind, !desc, true, p, n), out) {
         let s = Ksrc { kind, p, c: None, n };
         let (mn, mx) = s.range();
-        grade_src(run, &s, desc, rank, mn, mx, out)
+        grade_src(&s, desc, rank, mn, mx, out)
     }
 }
 /// sort.c:1068 `order_foR` past the allocation: `order` off the pack. The range is the block metadata's, so the only
@@ -586,7 +602,7 @@ pub fn order_enc(run: Runner, kind: u8, desc: bool, rank: bool, c: &Coc, out: &m
     if !order_runs(a, !a && ascending_enc(run, kind, !desc, true, c), out) {
         let s = Ksrc { kind, p: &[], c: Some(*c), n: c.meta.n };
         let (mn, mx) = s.range();
-        grade_src(run, &s, desc, rank, mn, mx, out)
+        grade_src(&s, desc, rank, mn, mx, out)
     }
 }
 /// sort.c:1093 `qlean_sort_grade_lane` past the unboxing: the grade of `n` ids at `w` bits, `n` already clamped to
@@ -601,7 +617,7 @@ pub fn grade_lane(run: Runner, desc: bool, w: u32, ids: &[u8], n: usize, out: &m
     else {
         let mut k = vec![0u64; n];
         let (mn, mx) = ids_keys(ids, w, n, &mut k); // needs A23
-        grade_keys(run, &k, desc, mn, mx, out)
+        grade_keys(&k, desc, mn, mx, out)
     }
 }
 
@@ -884,7 +900,7 @@ pub fn sym_ranks(s: &Syms, n: usize) -> Vec<u64> {
 }
 /// sort.c:2964 `qlean_sort_grade_syms` past the unboxing.
 /// Ranks are dense in `0 .. ng`, so the grade is one stable counting pass (`grade_keys` would pick `grade_count`).
-pub fn grade_syms(_run: Runner, desc: bool, s: &Syms, out: &mut [i64]) {
+pub fn grade_syms(desc: bool, s: &Syms, out: &mut [i64]) {
     let n = s.count();
     if n == 0 { return }
     let k = sym_ranks(s, n);
@@ -963,7 +979,7 @@ mod a25_tests {
                 let s = Syms { blob: &b, offs: &o };
                 for desc in [false, true] {
                     let mut out = vec![0i64; n];
-                    grade_syms(crate::c::qlean_run_c, desc, &s, &mut out);
+                    grade_syms(desc, &s, &mut out);
                     assert_eq!(out, oracle(&ss, desc), "n {n} desc {desc} pad {pad}");
                     cases += 1;
                 }
@@ -1018,7 +1034,7 @@ fn scatter<const W: u32>(ids: &[u8], n: usize, dk: &[u64], at: &mut [usize], out
 }
 /// sort.c:3079 `qlean_sort_grade_ids` past the unboxing: the grade of `n` ids at `w` into the dictionary `dict`.
 /// A counting sort over the dictionary's dense ranks, stable both ways round.
-pub fn grade_ids(_run: Runner, desc: bool, n: usize, dict: &Syms, ids: &[u8], w: u32, out: &mut [i64]) {
+pub fn grade_ids(desc: bool, n: usize, dict: &Syms, ids: &[u8], w: u32, out: &mut [i64]) {
     if n == 0 { return }
     if dict.count() != 0 { group_bound(dict.count()) }
     let dk = dict_ranks(dict);
@@ -1027,7 +1043,7 @@ pub fn grade_ids(_run: Runner, desc: bool, n: usize, dict: &Syms, ids: &[u8], w:
 }
 /// sort.c:3136 `qlean_sort_sorted_ids`: the ids in dictionary order, into `out` (zeroed, `ids_bytes(n, w)` long) at `w` bits.
 /// A rank's rows all name one id, so each rank is one `ids_fill` run; `rid` inverts the rank.
-pub fn sorted_ids(_run: Runner, desc: bool, n: usize, dict: &Syms, ids: &[u8], w: u32, out: &mut [u8]) {
+pub fn sorted_ids(desc: bool, n: usize, dict: &Syms, ids: &[u8], w: u32, out: &mut [u8]) {
     if n == 0 { return }
     if dict.count() != 0 { group_bound(dict.count()) }
     let dk = dict_ranks(dict);
@@ -1134,10 +1150,10 @@ mod a26_tests {
                 let rk = |i: i64| { let u = v[i as usize]; if u < nd { dd.iter().position(|s| *s == ss[u]).unwrap() } else { 0 } };
                 want.sort_by(|&a, &c| { let k = rk(a).cmp(&rk(c)); if desc { k.reverse() } else { k } });
                 let mut out = vec![0i64; n];
-                grade_ids(crate::c::qlean_run_c, desc, n, &d, &p, w, &mut out);
+                grade_ids(desc, n, &d, &p, w, &mut out);
                 assert_eq!(out, want);
                 let mut s = vec![0u8; p.len()];
-                sorted_ids(crate::c::qlean_run_c, desc, n, &d, &p, w, &mut s);
+                sorted_ids(desc, n, &d, &p, w, &mut s);
                 if nd > 0 { for (k, &i) in out.iter().enumerate() { assert_eq!(sym(crate::ids::id_at(&s, w, k)), dd[rk(i)]) } }
             }
             let mut cnt = vec![0u32; nd + 1];
@@ -1185,18 +1201,18 @@ pub fn guid_words(p: &[u8], n: usize, at: usize, perm: &[i64], k: &mut [u64]) ->
 }
 /// sort.c:3483 `qlean_sort_grade_guid` past the unboxing: two big-endian words, the low one graded first, so a stable grade
 /// by the high word over that order is the order of the pair; the low pass runs only when two high words tie.
-pub fn grade_guid(run: Runner, desc: bool, p: &[u8], out: &mut [i64]) {
+pub fn grade_guid(desc: bool, p: &[u8], out: &mut [i64]) {
     let n = out.len();
     if n == 0 { return }
     let mut k = vec![0u64; n];
     let (mn, mx) = guid_words(p, n, 0, &[], &mut k);
-    grade_keys(run, &k, desc, mn, mx, out);
+    grade_keys(&k, desc, mn, mx, out);
     if (1..n).any(|i| k[out[i] as usize] == k[out[i - 1] as usize]) {
         let mut lo = vec![0i64; n];
         let (mn, mx) = guid_words(p, n, 8, &[], &mut k);
-        grade_keys(run, &k, desc, mn, mx, &mut lo);
+        grade_keys(&k, desc, mn, mx, &mut lo);
         let (mn, mx) = guid_words(p, n, 0, &lo, &mut k);
-        grade_keys(run, &k, desc, mn, mx, out);
+        grade_keys(&k, desc, mn, mx, out);
         for o in out.iter_mut() { *o = lo[*o as usize] }
     }
 }
@@ -1214,7 +1230,7 @@ mod a27_tests {
                 let mut want: Vec<i64> = (0..n as i64).collect();
                 want.sort_by(|&a, &b| { let c = p[16 * a as usize..][..16].cmp(&p[16 * b as usize..][..16]); if desc { c.reverse() } else { c } });
                 let mut out = vec![0i64; n];
-                grade_guid(crate::c::qlean_run_c, desc, &p, &mut out);
+                grade_guid(desc, &p, &mut out);
                 assert_eq!(out, want);
             }
         }
@@ -1376,7 +1392,7 @@ mod a20_tests {
     fn grade(k: &[u64], desc: bool) -> Vec<i64> {
         let mut o = vec![0i64; k.len()];
         let (mn, mx) = keys_range(k);
-        grade_keys(crate::c::qlean_run_c, k, desc, mn, mx, &mut o);
+        grade_keys(k, desc, mn, mx, &mut o);
         o
     }
     // expected values: the C's own comments (sort.c "the grade": `iasc 9 1 9 1 9`, `idesc 9 1 9 1 9`, `2 2 1`)
@@ -1403,7 +1419,7 @@ mod a20_tests {
         let k = [2u64, 0, 1];
         let mut o = vec![0i64; 3];
         let s = Ksrc { kind: key::SK_KEY, p: crate::pod::bytes(&k), c: None, n: 3 };
-        grade_src(crate::c::qlean_run_c, &s, false, true, 0, 2, &mut o);
+        grade_src(&s, false, true, 0, 2, &mut o);
         assert_eq!(o, vec![2, 0, 1]);
     }
 }

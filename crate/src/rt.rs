@@ -4,6 +4,8 @@ use core::alloc::{GlobalAlloc, Layout};
 
 unsafe extern "C" {
     fn aligned_alloc(a: usize, n: usize) -> *mut u8;
+    fn calloc(n: usize, m: usize) -> *mut u8;
+    fn realloc(p: *mut u8, n: usize) -> *mut u8;
     fn free(p: *mut u8);
     fn abort() -> !;
     fn write(fd: i32, p: *const u8, n: usize) -> isize;
@@ -16,6 +18,23 @@ unsafe impl GlobalAlloc for Malloc {
         unsafe { aligned_alloc(l.align().max(16), l.size().next_multiple_of(l.align().max(16))) }
     }
     unsafe fn dealloc(&self, p: *mut u8, _: Layout) { unsafe { free(p) } }
+    // calloc and realloc align to 16 only: a stricter layout takes alloc plus a fill or a copy, as the trait's defaults do
+    unsafe fn alloc_zeroed(&self, l: Layout) -> *mut u8 {
+        unsafe {
+            if l.align() <= 16 { return calloc(1, l.size()) }
+            let p = self.alloc(l);
+            if !p.is_null() { p.write_bytes(0, l.size()) }
+            p
+        }
+    }
+    unsafe fn realloc(&self, p: *mut u8, l: Layout, n: usize) -> *mut u8 {
+        unsafe {
+            if l.align() <= 16 { return realloc(p, n) }
+            let q = self.alloc(Layout::from_size_align_unchecked(n, l.align()));
+            if !q.is_null() { core::ptr::copy_nonoverlapping(p, q, l.size().min(n)); free(p) }
+            q
+        }
+    }
 }
 #[global_allocator]
 static A: Malloc = Malloc;

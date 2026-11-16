@@ -153,6 +153,8 @@ pub fn table<K: PKey>(o: &Opnd) -> Ptab<K> {
             Src::Ids(_, lw) => (0, ids_top(lw)),
             Src::Enc(c) => { let (a, z) = coc_srange(&c); (a as u64 & mask::<K>(), (z as u64).wrapping_sub(a as u64)) }
             Src::Dense(d) => {
+                // the C reads exactly `n` elements; a shorter payload is a caller bug and would fold to an empty range
+                assert!(d.len() >= o.n * K::W, "qlean search: a dense haystack of {} bytes holds fewer than its {} elements of {} bytes", d.len(), o.n, K::W);
                 let (mn, mx) = d.chunks_exact(K::W).take(o.n).map(|c| K::of(c).key() as u64)
                     .fold((!0u64, 0u64), |(a, z), k| (a.min(k), z.max(k)));
                 (mn, mx - mn)
@@ -1014,6 +1016,15 @@ mod tests {
         let g: Vec<u8> = [[1u64, 0], [1, 1], [0, 1]].iter().flat_map(|p| le::<8>(p)).collect();
         assert!(!table::<u128>(&dense(&g, 16)).direct);
         assert_eq!(finds(Kind::U128, &g, &[g[16..32].to_vec(), g[32..].to_vec(), vec![0; 16]].concat()), [1, 2, 3]);
+    }
+    // an empty haystack builds nothing, and a dense payload shorter than its `n` is refused by name, never folded to an empty range
+    #[test] fn table_of_an_empty_or_short_haystack() {
+        let t = table::<u64>(&Opnd { src: Src::Dense(&[]), n: 0 });
+        assert_eq!(t.used, 0);
+        let r = std::panic::catch_unwind(|| table::<u32>(&Opnd { src: Src::Dense(&[1, 0, 0, 0]), n: 3 }));
+        assert!(r.is_err());
+        let r = std::panic::catch_unwind(|| table::<u8>(&Opnd { src: Src::Dense(&[]), n: 1 }));
+        assert!(r.is_err());
     }
     #[test] fn member_sets_bits_from_lo() {
         let h = le::<2>(&[3, 9, 4]);

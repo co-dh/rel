@@ -1,5 +1,4 @@
 #![forbid(unsafe_code)]
-#![allow(unused_variables)] // scaffold: the task that fills this module removes it
 //! Column (a), elementwise.c: scalar helpers (A42), the two-operand verbs and comparisons (A43; `ew_val_avx` and
 //! `ew_cmp_avx` are `simd::ew_val`/`simd::ew_cmp`), bit verbs and the monadic ones (A44), casts and time (A45),
 //! widening (A46a), the fused chain's stage table (A46b; its runner is `c::run_chain`). `op`, `cls`, `shape` are
@@ -557,7 +556,7 @@ pub fn mon_fill(op: u8, cls: u8, nul: i64, c: &Coc, buf: &mut [i64], i0: usize) 
     }
 }
 /// elementwise.c:1789 `ew_floor_run`: `floor` at a float class, always a `long`; out of range or a NaN answers `0N`.
-pub fn floor(run: Runner, cls: u8, nul: i64, x: &[u8], n: usize, out: &mut [u8]) {
+pub fn floor(run: Runner, cls: u8, x: &[u8], n: usize, out: &mut [u8]) {
     if n == 0 { return }
     if cls != k44::F32 && cls != k44::F64 { ew_unsupported("qlean_ew_floor", 0, cls as u32) }
     let w = ew_width(cls as u32);
@@ -1028,7 +1027,7 @@ mod tests44 {
     #[test] fn floor_bounds() {
         let x: Vec<u8> = [9.3e18f64, f64::INFINITY, f64::NAN, -2.5, 9.2e18, -9.3e18].iter().flat_map(|v| v.to_bits().to_ne_bytes()).collect();
         let mut o = vec![0u8; 48];
-        floor(qlean_run_c, 5, 0, &x, 6, &mut o);
+        floor(qlean_run_c, 5, &x, 6, &mut o);
         let r: Vec<i64> = o.chunks(8).map(|c| i64::from_ne_bytes(c.try_into().unwrap())).collect();
         assert_eq!(r, [i64::MIN, i64::MIN, i64::MIN, -3, 9_200_000_000_000_000_000, i64::MIN]);
     }
@@ -1052,7 +1051,7 @@ mod tests44 {
                 "floor" => {
                     let (cls, n) = (num(2) as u8, num(4) as usize);
                     let mut o = vec![0u8; n * 8];
-                    floor(qlean_run_c, cls, 0, &hex(f[5]), n, &mut o);
+                    floor(qlean_run_c, cls, &hex(f[5]), n, &mut o);
                     if o != hex(f[6]) { bad += 1 }
                 }
                 _ => {
