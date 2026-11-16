@@ -289,17 +289,19 @@ pub struct O(NonNull<Object>);
 
 impl Drop for O { fn drop(&mut self) { unsafe { dec(self.0.as_ptr()) } } }
 impl O {
-    /// Safety: `p` is a reference the caller owns and gives up
-    unsafe fn own(p: *mut Object) -> O { O(unsafe { NonNull::new_unchecked(p) }) }
+    /// Wraps a raw `lean_object *` the caller owns: the `O` drops (`lean_dec`) it, or `into_raw` gives it back.
+    /// Safety: `p` is non-null and a heap object or boxed scalar whose one reference the caller gives up, e.g. the result
+    /// of a `lean_alloc_*` or of a C function returning `lean_obj_res`.
+    pub unsafe fn from_raw(p: *mut Object) -> O { O(unsafe { NonNull::new_unchecked(p) }) }
     pub fn borrow(&self) -> B<'_> { B(self.0, PhantomData) }
     pub fn into_raw(self) -> *mut Object { let p = self.0.as_ptr(); core::mem::forget(self); p }
 }
 /// `lean_box(n)`: a scalar, `n < 2^63`
-pub fn boxed(n: usize) -> O { unsafe { O::own(box_(n)) } }
+pub fn boxed(n: usize) -> O { unsafe { O::from_raw(box_(n)) } }
 impl<'a> B<'a> {
     fn p(self) -> *mut Object { self.0.as_ptr() }
     /// `lean_inc`: a reference of its own
-    pub fn to_owned(self) -> O { unsafe { inc(self.p()); O::own(self.p()) } }
+    pub fn to_owned(self) -> O { unsafe { inc(self.p()); O::from_raw(self.p()) } }
     pub fn is_scalar(self) -> bool { is_scalar(self.p()) }
     pub fn unbox(self) -> usize { unbox(self.p()) }
     /// `lean_obj_tag`: the ctor tag of a heap object, the value of a scalar
@@ -325,10 +327,20 @@ impl<'a> B<'a> {
 pub struct SArr(O);
 impl SArr {
     /// `n` elements of `elem` bytes, size = capacity = `n`; the contents are undefined until written
-    pub fn new(elem: u32, n: usize) -> SArr { SArr(unsafe { O::own(alloc_sarray(elem, n, n)) }) }
+    pub fn new(elem: u32, n: usize) -> SArr { SArr::with_capacity(elem, n, n) }
+    /// `lean_alloc_sarray(elem, n, cap)`: `n` elements counted, room for `cap >= n`; contents undefined until written
+    pub fn with_capacity(elem: u32, n: usize, cap: usize) -> SArr {
+        assert!(n <= cap, "lean::SArr::with_capacity: size {n} is above capacity {cap}");
+        SArr(unsafe { O::from_raw(alloc_sarray(elem, n, cap)) })
+    }
     pub fn bytes_mut(&mut self) -> &mut [u8] {
         let p = self.0.0.as_ptr();
         unsafe { core::slice::from_raw_parts_mut(sarray_cptr(p), sarray_size(p) * sarray_elem_size(p) as usize) }
+    }
+    /// All `capacity * elem_size` bytes the allocation holds, those past the size included (a kernel that writes whole words)
+    pub fn capacity_mut(&mut self) -> &mut [u8] {
+        let p = self.0.0.as_ptr();
+        unsafe { core::slice::from_raw_parts_mut(sarray_cptr(p), sarray_capacity(p) * sarray_elem_size(p) as usize) }
     }
 }
 impl From<SArr> for O { fn from(a: SArr) -> O { a.0 } }
@@ -337,7 +349,7 @@ impl From<SArr> for O { fn from(a: SArr) -> O { a.0 } }
 pub fn ctor<const N: usize>(tag: u8, objs: [O; N], scalars: &[u8]) -> O {
     let o = alloc_ctor(tag, N as u32, scalars.len() as u32);
     for (i, f) in objs.into_iter().enumerate() { unsafe { ctor_set(o, i as u32, f.into_raw()) } }
-    unsafe { core::ptr::copy_nonoverlapping(scalars.as_ptr(), ctor_scalar_cptr(o), scalars.len()); O::own(o) }
+    unsafe { core::ptr::copy_nonoverlapping(scalars.as_ptr(), ctor_scalar_cptr(o), scalars.len()); O::from_raw(o) }
 }
 /// An `Array` of `items`, size = capacity = their count
 pub fn arr<I: ExactSizeIterator<Item = O>>(items: I) -> O {
@@ -346,17 +358,17 @@ pub fn arr<I: ExactSizeIterator<Item = O>>(items: I) -> O {
     let mut k = 0;
     for f in items { assert!(k < n, "lean::arr: more items than len()"); unsafe { array_set_core(o, k, f.into_raw()) }; k += 1 }
     assert!(k == n, "lean::arr: {k} items, len() said {n}");
-    unsafe { O::own(o) }
+    unsafe { O::from_raw(o) }
 }
-pub fn box_u64(v: u64) -> O { unsafe { O::own(box_uint64(v)) } }
-pub fn box_f64(v: f64) -> O { unsafe { O::own(box_float(v)) } }
+pub fn box_u64(v: u64) -> O { unsafe { O::from_raw(box_uint64(v)) } }
+pub fn box_f64(v: f64) -> O { unsafe { O::from_raw(box_float(v)) } }
 /// `lean_box_usize`: a `USize` field of a ctor or a closure argument
-pub fn box_usize_o(v: usize) -> O { unsafe { O::own(box_usize(v)) } }
+pub fn box_usize_o(v: usize) -> O { unsafe { O::from_raw(box_usize(v)) } }
 /// `lean_usize_to_nat`: a `Nat`
-pub fn nat(n: usize) -> O { unsafe { O::own(usize_to_nat(n)) } }
+pub fn nat(n: usize) -> O { unsafe { O::from_raw(usize_to_nat(n)) } }
 
 /// A Lean `String` of `s` by `lean_mk_string`, which reads to the NUL and counts the code points
-pub fn string_c(s: &core::ffi::CStr) -> O { unsafe { O::own(lean_mk_string(s.as_ptr())) } }
+pub fn string_c(s: &core::ffi::CStr) -> O { unsafe { O::from_raw(lean_mk_string(s.as_ptr())) } }
 /// A Lean `String` of `s`; panics on a NUL inside it, which `lean_mk_string` would cut the string at
 pub fn string(s: &str) -> O {
     let mut z = alloc::vec::Vec::with_capacity(s.len() + 1);
@@ -369,15 +381,15 @@ pub fn string(s: &str) -> O {
 pub struct Io;
 impl Io {
     /// `lean_io_result_mk_ok(v)`
-    pub fn ok(v: O) -> O { unsafe { O::own(io_result_mk_ok(v.into_raw())) } }
+    pub fn ok(v: O) -> O { unsafe { O::from_raw(io_result_mk_ok(v.into_raw())) } }
     /// `lean_io_result_mk_error(e)`, `e` an `IO.Error`
-    pub fn err(e: O) -> O { unsafe { O::own(io_result_mk_error(e.into_raw())) } }
+    pub fn err(e: O) -> O { unsafe { O::from_raw(io_result_mk_error(e.into_raw())) } }
     /// `lean_decode_io_error(eno, path)` as the error: the runtime's `IO.Error` for an errno, naming the file if any
     pub fn errno(eno: i32, path: Option<B>) -> O {
-        Io::err(unsafe { O::own(lean_decode_io_error(eno, path.map_or(core::ptr::null_mut(), B::p))) })
+        Io::err(unsafe { O::from_raw(lean_decode_io_error(eno, path.map_or(core::ptr::null_mut(), B::p))) })
     }
     /// `lean_mk_io_user_error(lean_mk_string(why))` as the error: `IO.userError why`
-    pub fn user(why: &str) -> O { Io::err(unsafe { O::own(lean_mk_io_user_error(string(why).into_raw())) }) }
+    pub fn user(why: &str) -> O { Io::err(unsafe { O::from_raw(lean_mk_io_user_error(string(why).into_raw())) }) }
 }
 
 /// `lean_apply_N(f, args…)`: applies the closure `f` to `args`, all consumed. N up to 5 by the runtime's fixed-arity
@@ -386,7 +398,7 @@ pub fn apply<const N: usize>(f: O, args: [O; N]) -> O {
     let f = f.into_raw();
     let mut a = args.map(O::into_raw);
     unsafe {
-        O::own(match N {
+        O::from_raw(match N {
             1 => lean_apply_1(f, a[0]),
             2 => lean_apply_2(f, a[0], a[1]),
             3 => lean_apply_3(f, a[0], a[1], a[2]),
@@ -418,7 +430,7 @@ impl O {
     pub fn into_exclusive(mut self) -> SArr {
         if self.exclusive().is_some() { return SArr(self) }
         assert!(unsafe { sarray_elem_size(self.0.as_ptr()) } == 1, "lean::O::into_exclusive: not a ByteArray");
-        SArr(unsafe { O::own(lean_copy_byte_array(self.into_raw())) })
+        SArr(unsafe { O::from_raw(lean_copy_byte_array(self.into_raw())) })
     }
 }
 
@@ -468,7 +480,7 @@ impl<T: Ext> Class<T> {
     /// `lean_alloc_external(class, v)`: `v` moves to the heap and the class's finalizer drops it
     pub fn alloc(&self, v: T) -> O {
         let d = alloc::boxed::Box::into_raw(alloc::boxed::Box::new(v)).cast::<u8>();
-        unsafe { O::own(alloc_external(self.get(), d)) }
+        unsafe { O::from_raw(alloc_external(self.get(), d)) }
     }
 }
 
@@ -525,7 +537,7 @@ pub fn sarrays_in(m: &'static mut [u8], spans: &[(usize, usize)]) -> alloc::vec:
         set_non_heap_header_for_big(o, TAG_SCALAR_ARRAY, 1);
         (*o.cast::<SArray>()).size = len;
         (*o.cast::<SArray>()).capacity = len;
-        O::own(o)
+        O::from_raw(o)
     }).collect()
 }
 
@@ -635,7 +647,7 @@ pub mod abi {
         unsafe { *n = s.len() }
         s.as_ptr()
     }
-    #[unsafe(no_mangle)] pub unsafe extern "C" fn qrs_abi_io_ok(v: *mut Object) -> *mut Object { Io::ok(unsafe { O::own(v) }).into_raw() }
+    #[unsafe(no_mangle)] pub unsafe extern "C" fn qrs_abi_io_ok(v: *mut Object) -> *mut Object { Io::ok(unsafe { O::from_raw(v) }).into_raw() }
     #[unsafe(no_mangle)] pub unsafe extern "C" fn qrs_abi_io_errno(eno: i32, path: *mut Object) -> *mut Object {
         Io::errno(eno, NonNull::new(path).map(|p| B(p, PhantomData))).into_raw()
     }
@@ -645,13 +657,13 @@ pub mod abi {
     #[unsafe(no_mangle)] pub unsafe extern "C" fn qrs_abi_nat(n: usize) -> *mut Object { nat(n).into_raw() }
     /// `O::exclusive` on a reference the caller keeps: its bytes' address, or null when shared
     #[unsafe(no_mangle)] pub unsafe extern "C" fn qrs_abi_exclusive(o: *mut Object) -> *mut u8 {
-        let mut x = unsafe { O::own(o) };
+        let mut x = unsafe { O::from_raw(o) };
         let r = x.exclusive().map_or(core::ptr::null_mut(), <[u8]>::as_mut_ptr);
         core::mem::forget(x);
         r
     }
     #[unsafe(no_mangle)] pub unsafe extern "C" fn qrs_abi_into_exclusive(o: *mut Object) -> *mut Object {
-        O::from(unsafe { O::own(o) }.into_exclusive()).into_raw()
+        O::from(unsafe { O::from_raw(o) }.into_exclusive()).into_raw()
     }
     /// `sarrays_in` over `len` bytes at `m` (never freed by the caller), spans as `off`/`len` pairs; writes the objects
     #[unsafe(no_mangle)] pub unsafe extern "C" fn qrs_abi_sarrays_in(m: *mut u8, len: usize, spans: *const usize, k: usize, out: *mut *mut Object) {

@@ -1110,7 +1110,6 @@ mod a25_tests {
         let g = sym_group(&Syms { blob: &b, offs: &o }, 3, 2);
         assert_eq!((g.ng, g.dk.len(), g.first, g.gid, g.cnt), (2, 0, vec![0, 1], vec![0, 1, 0], vec![2, 1]));
         assert_eq!(sym_ranks(&Syms { blob: &b, offs: &o }, 3), vec![1, 0, 1]);
-        let (b, o) = col(&long[1..2], 0);
     }
 }
 

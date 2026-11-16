@@ -5,7 +5,7 @@
 use crate::c::pool;
 use crate::coc::{Coc, Meta};
 use crate::cocops::{CocMut, GE};
-use crate::ffi::{encode_fill, encode_pair, encode_pair_below, mask_with};
+use crate::ffi::{encode_dense, encode_fill};
 use crate::lean::{B, O, SArr, ctor, export, nat};
 use crate::{codec, os, pod};
 
@@ -37,12 +37,13 @@ export! {
     /// `(meta, pack)` of the dense column `x` of elements `width` bytes wide (2, 4 or 8)
     fn qlean_coc_encode(width: usize, x: B) -> O {
         if !matches!(width, 2 | 4 | 8) { die(format_args!("qlean_coc_encode: element width {width} is not 2, 4 or 8\n")) }
-        encode_pair(x.bytes(), width)
+        encode_dense(x.bytes(), width, false, usize::MAX).expect("qlean_coc_encode: a dense buffer cannot fail").into_pair()
     }
     /// `qlean_coc_encode` as `some`, or `none` when the encoded form would not be shorter than `x`
     fn qlean_coc_encode_below(width: usize, x: B) -> O {
         if !matches!(width, 2 | 4 | 8) { die(format_args!("qlean_coc_encode_below: element width {width} is not 2, 4 or 8\n")) }
-        match encode_pair_below(x.bytes(), width) { Some(p) => ctor(1, [p], &[]), None => crate::lean::boxed(0) }
+        // the encoded form must be shorter than the whole elements it replaces
+        match encode_dense(x.bytes(), width, false, x.bytes().len() / width * width) { Some(p) => ctor(1, [p.into_pair()], &[]), None => crate::lean::boxed(0) }
     }
     /// The column restored: `n` elements of `width` bytes, little-endian
     fn qlean_coc_decode(width: usize, meta: B, pack: B, n: usize) -> O {
@@ -117,3 +118,12 @@ fn dec<T: pod::Lane + Send>(c: &Coc) -> O {
 }
 
 
+
+/// coc.c `mask_alloc` and the kernel that fills it: a `Column.bits` payload of `ceil(n / 8)` bytes inside the `ceil(n / 64)`
+/// words the kernels write (the bits between `n` and the last word's end are the kernel's to set to 0); `f` gets the
+/// words, any contents.
+fn mask_with(n: usize, f: impl FnOnce(&mut [u64])) -> O {
+    let mut a = SArr::with_capacity(1, n.div_ceil(8), n.div_ceil(64) * 8);
+    f(pod::cast_mut::<u64>(a.capacity_mut()).expect("a bitmap array is misaligned for its 64-bit words"));
+    a.into()
+}

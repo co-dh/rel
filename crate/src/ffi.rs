@@ -2883,11 +2883,21 @@ unsafe fn encode<S: Source>(src: &S, n: usize, width: usize, kind: u32, out: &mu
 /// part the form has not is empty.
 pub struct ZParts(CParts);
 impl ZParts {
-    /// part `i` (0 meta, 1 body, 2 alp) as bytes
-    pub fn part(&self, i: usize) -> &[u8] {
-        let p = [self.0.meta, self.0.body, self.0.alp][i].cast::<lean::Object>();
-        if p.is_null() { &[] } else { unsafe { sl(lean::sarray_cptr(p), lean::sarray_size(p)) } }
+    /// part `i` (0 meta, 1 body, 2 alp) as the array the writer allocated, handed over without a copy; `None` for a part
+    /// the form has not
+    fn take(&mut self, i: usize) -> Option<lean::O> {
+        let p = core::mem::replace([&mut self.0.meta, &mut self.0.body, &mut self.0.alp][i], null_mut());
+        (!p.is_null()).then(|| unsafe { lean::O::from_raw(p.cast()) })
     }
+    /// The three parts, a part the form has not being a fresh empty array
+    pub fn into_parts(mut self) -> [lean::O; 3] { core::array::from_fn(|i| self.take(i).unwrap_or_else(|| lean::SArr::new(1, 0).into())) }
+    /// `(meta, body)`, the answer of the Frame of Reference forms (no alp part)
+    pub fn into_pair(mut self) -> lean::O {
+        let (m, b) = (self.take(0), self.take(1));
+        lean::ctor(0, [m.expect("ZParts::into_pair: no meta part"), b.expect("ZParts::into_pair: no body part")], &[])
+    }
+    /// `(meta, (body, alp))`, the answer of the ALP form
+    pub fn into_triple(self) -> lean::O { let [m, b, a] = self.into_parts(); lean::ctor(0, [m, lean::ctor(0, [b, a], &[])], &[]) }
 }
 impl Drop for ZParts {
     fn drop(&mut self) { for p in [self.0.meta, self.0.body, self.0.alp] { if !p.is_null() { unsafe { lean::dec(p.cast()) } } } }
@@ -2898,10 +2908,11 @@ pub fn encode_zip(z: &crate::zip::File, n: usize, width: usize, kind: u8) -> Opt
     let mut out = CParts { meta: null_mut(), body: null_mut(), alp: null_mut() };
     (unsafe { encode(&ZSrc(z), n, width, kind as u32, &mut out, usize::MAX) } == 1).then_some(ZParts(out))
 }
-/// coc.c `coc_encode_dense`: the parts of the `n` elements of `width` bytes at `x`, 1 unless they would be `below` bytes or more.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn qrs_coc_encode_dense(x: *const u8, n: usize, width: usize, kind: u32, below: usize, r: *mut CParts) -> c_int {
-    unsafe { (encode(&Dense(x), n, width, kind, &mut *r, below) == 1) as c_int }
+/// coc.c `coc_encode_dense`: the parts of the dense `x`'s `x.len() / width` elements of `width` bytes in the Frame of
+/// Reference form (`alp` false) or the ALP one, `None` when they would take `below` bytes or more (`usize::MAX`: never).
+pub fn encode_dense(x: &[u8], width: usize, alp: bool, below: usize) -> Option<ZParts> {
+    let mut out = CParts { meta: null_mut(), body: null_mut(), alp: null_mut() };
+    (unsafe { encode(&Dense(x.as_ptr()), x.len() / width, width, if alp { SRC_ALP } else { SRC_FOR }, &mut out, below) } == 1).then_some(ZParts(out))
 }
 /// coc.c `qlean_coc_encode_raw`: the (meta, pack) of a whole dense column, the one place that says how one is encoded.
 #[unsafe(no_mangle)]
@@ -2946,34 +2957,14 @@ pub unsafe extern "C" fn qrs_coc_encode_fill(n: usize, width: usize, fill: FillF
     unsafe { qrs_coc_encode_move(n, width, 0, fill, None, None, None, ctx) }
 }
 
-// ---- B9: the safe face of the encoder and of the bitmaps, for ffi/coc.rs. lean.rs has no `O::from_raw` and no array whose
-// size is below its capacity, so what this file allocates raw becomes an `O` here; F3 moves these into lean.rs. ----
-const _: () = assert!(size_of::<lean::O>() == size_of::<*mut c_void>() && align_of::<lean::O>() == align_of::<*mut c_void>());
-/// A reference this file allocated, as the `O` that drops it. `O` is the one non-null pointer, and `p` is non-null.
-fn own(p: *mut c_void) -> lean::O { unsafe { core::mem::transmute::<*mut c_void, lean::O>(p) } }
-/// `(meta, pack)` of the `x.len() / width` elements of `width` bytes at `x`, whatever their size (`qrs_coc_encode_raw`).
-pub fn encode_pair(x: &[u8], width: usize) -> lean::O { own(unsafe { qrs_coc_encode_raw(x.as_ptr(), x.len() / width, width) }) }
-/// `encode_pair`, or `None` when the encoded form would be as long as `x` or longer (`qrs_coc_encode_dense`).
-pub fn encode_pair_below(x: &[u8], width: usize) -> Option<lean::O> {
-    let n = x.len() / width;
-    let mut r = CParts { meta: null_mut(), body: null_mut(), alp: null_mut() };
-    if unsafe { qrs_coc_encode_dense(x.as_ptr(), n, width, SRC_FOR, n * width, &mut r) } == 0 { return None }
-    Some(own(unsafe { mk_pair(r.meta, r.body) }))
-}
+// The safe face of the writer's fill entry, for ffi/*.rs (which holds no `unsafe`): the trampoline that turns the closure
+// into C's `fill` callback is the one thing that cannot be safe, and C's callers still use `qrs_coc_encode_fill`.
 /// `(meta, pack)` of the `n` elements of `width` bytes `fill(buf, i0)` writes as `i64`s a block at a time (`qrs_coc_encode_fill`).
 pub fn encode_fill(n: usize, width: usize, fill: &(dyn Fn(&mut [i64], usize) + Sync)) -> lean::O {
     unsafe extern "C" fn go(buf: *mut i64, i0: usize, nb: usize, ctx: *const c_void) {
         unsafe { (*ctx.cast::<&(dyn Fn(&mut [i64], usize) + Sync)>())(sl_mut(buf, nb), i0) }
     }
-    own(unsafe { qrs_coc_encode_fill(n, width, go, (&raw const fill).cast()) })
-}
-/// coc.c `mask_alloc` and the kernel that fills it: a `Column.bits` payload of `ceil(n / 8)` bytes inside the `ceil(n / 64)`
-/// words the kernels write; `f` gets the words, any contents.
-pub fn mask_with(n: usize, f: impl FnOnce(&mut [u64])) -> lean::O {
-    let w = n.div_ceil(64);
-    let p = lean::alloc_sarray(1, n.div_ceil(8), w * 8);
-    f(unsafe { sl_mut(lean::sarray_cptr(p).cast::<u64>(), w) });
-    own(p.cast())
+    unsafe { lean::O::from_raw(qrs_coc_encode_fill(n, width, go, (&raw const fill).cast()).cast()) }
 }
 
 /// coc.c `coc_fill_ctx`, the context of the shift, vv and scale producers.
@@ -2988,4 +2979,9 @@ pub unsafe extern "C" fn qrs_coc_vv_fill(buf: *mut i64, i0: usize, nb: usize, ct
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn qrs_coc_scale_fill(buf: *mut i64, i0: usize, nb: usize, ctx: *const c_void) {
     unsafe { let x = &*ctx.cast::<CFillCtx>(); crate::cocops::scale_fill(&(*x.a).view(), x.k, i0, sl_mut(buf, nb)) }
+}
+/// coc.c `coc_encode_dense`: the parts of the `n` elements of `width` bytes at `x`, 1 unless they would be `below` bytes or more.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn qrs_coc_encode_dense(x: *const u8, n: usize, width: usize, kind: u32, below: usize, r: *mut CParts) -> c_int {
+    unsafe { (encode(&Dense(x), n, width, kind, &mut *r, below) == 1) as c_int }
 }
