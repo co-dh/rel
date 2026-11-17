@@ -39,7 +39,7 @@ rel_program prelude where
     ordered(Q : α ⟶ α) : [α] ⟶ [α] ≜ 𝟙 − dom(tails ∋ ⟨at(0),tail⟩(π₁∼Q ∩ (π₂∋)))   -- every element is Q-related to each later one
     sort(Q : α ⟶ α) : [α] ⟶ [α] ≜ perm ordered(Q)
 
-    -- Laws of any relation, proved by `rel_aop prelude` (LeetQ/Aop/Prelude.lean); a map is `dom(f) = 𝟙` and `simple(f)`.
+    -- Laws of any relation, proved by `rel_aop prelude` (relaop/RelAop/Prelude.lean); a map is `dom(f) = 𝟙` and `simple(f)`.
 
     simple(f : α ⟶ β) ≜ f°f ⊑ 𝟙                                   -- f relates each input to at most one output
     theorem absorption(S : α ⟶ β, R : β ⟶ γ) : Λ(S)E(R) = Λ(S R)  -- B&dM (4.24) Λ-absorption

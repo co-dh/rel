@@ -16,8 +16,8 @@ variable {A : Obj}
 
 -- the notations are `scoped` in `Pow` so that `RepE` states `rep_E` with them too
 namespace Pow
--- Freyd's global `/` (`DivisionAllegory.div`) and `\` (`leftDiv`) make every `a / 8` and `R \ S` an overload
--- whose losing branch searches every division allegory instance; these win the parse and elaborate as core's
+-- where Freyd is imported too (freyd's relaop), its global `/` (`DivisionAllegory.div`) and `\` (`leftDiv`) make
+-- `a / 8`, `R \ S` overloads whose losing branch searches every division allegory; these win and elaborate as core's
 scoped notation:70 (priority := high) x:70 " / " y:71 => binop% HDiv.hDiv x y
 scoped notation:70 (priority := high) x:70 " \\ " y:71 => SDiff.sdiff x y
 -- `transpose`'s pieces at a relation `R` (`RepLambda`'s `kcT`, `pT`, `loT`, as notations taking `R`)

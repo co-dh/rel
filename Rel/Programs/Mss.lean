@@ -46,7 +46,7 @@ rel_program mss where
     check A scan = A mss
 
     /- B&dM Ex 7.40: the spec is the linear `scan`, one theorem per step of the note's derivation. The laws with no
-       `calc` are owed to Lean: `rel_aop mss` (LeetQ/Aop/Mss.lean) proves them over the book's model (`Int`, cons
+       `calc` are owed to Lean: `rel_aop mss` (relaop/RelAop/Mss.lean) proves them over the book's model (`Int`, cons
        lists, the power object), so `linear` is a theorem about that model, not about the executable `mss.rel.*`; the evidence
        between those two is the `check`s above. -/
 
