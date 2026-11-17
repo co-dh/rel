@@ -30,7 +30,7 @@ fn for_kind(kind: u8) {
     }
 }
 /// The answer array's `Int64`s.
-fn longs(r: &mut SArr) -> &mut [i64] { pod::cast_mut(r.bytes_mut()).expect("qlean sort: the answer array is not 8-aligned") }
+pub fn longs(r: &mut SArr) -> &mut [i64] { pod::cast_mut(r.bytes_mut()).expect("qlean sort: the answer array is not 8-aligned") }
 
 /// sort.c `order_dense`: `grade` and, under `rank`, `ranks` of a dense payload, `n` clamped to what it holds.
 fn order_dense(kind: u8, desc: bool, rank: bool, n: usize, b: B) -> O {

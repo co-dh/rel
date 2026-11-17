@@ -1249,6 +1249,43 @@ pub fn parted_ids(strict: bool, d: usize, n: usize, w: u32, ids: &[u8]) -> bool 
     let ng = crate::ids::firsts(ids, n, w, d, &mut slot, &mut first);
     ng == if strict { n } else { crate::ids::runs(ids, n, w, d, ng, &mut []) }
 }
+/// sort.c `qlean_sort_parted_syms`: each symbol's run contiguous (`strict`: no symbol twice). Counted rather than stopped
+/// early, as `parted_ids` does not: the group is where symbols are deduplicated and carries the packed-key path.
+pub fn parted_syms(strict: bool, s: &Syms) -> bool {
+    let n = s.count();
+    if n < 2 { return true }
+    let runs = (0..n).filter(|&i| i == 0 || !crate::sym::sym_eq(s.at(i), s.at(i - 1))).count();
+    distinct_syms(s, &mut alloc::vec![0usize; n]) == if strict { n } else { runs }
+}
+/// sort.c `qlean_sort_parted_guid`: whether every two equal guids stand in one run of equals, and with `strict` whether
+/// no two are equal. A column in order has its equals adjacent; any other is graded, and the grade being stable a run of
+/// equals in it is consecutive rows exactly when its last row less its first is its length less one.
+pub fn parted_guid(strict: bool, p: &[u8], n: usize) -> bool {
+    if n < 2 { return true }
+    let g = |i: usize| &p[16 * i..16 * i + 16];
+    if ascending_guid(false, false, p, n) { return !strict || (1..n).all(|i| g(i - 1) != g(i)) }
+    let mut o = alloc::vec![0i64; n];
+    grade_guid(false, p, &mut o);
+    let (mut i, mut ok) = (0, true);
+    while i < n && ok {
+        let mut j = i + 1;
+        while j < n && g(o[j] as usize) == g(o[i] as usize) { j += 1 }
+        if j - i > 1 && (strict || o[j - 1] - o[i] != (j - i - 1) as i64) { ok = false }
+        i = j;
+    }
+    ok
+}
+/// sort.c `qlean_sort_sym_offs`: the ends (`i + 1 - start`) of the first `n` NUL-terminated strings from byte `start`, and
+/// whether every byte scanned is ASCII. A byte loop, not `memchr`: a symbol is a few bytes, shorter than one call's setup.
+pub fn sym_offs(p: &[u8], start: usize, n: usize) -> (Vec<usize>, bool) {
+    let (mut ends, mut acc) = (Vec::with_capacity(n.min(p.len().saturating_sub(start))), 0u8);
+    for (i, &b) in p.iter().enumerate().skip(start) {
+        if ends.len() == n { break }
+        acc |= b;
+        if b == 0 { ends.push(i + 1 - start) }
+    }
+    (ends, acc < 0x80)
+}
 /// `g` packed `w` bits an id into `out`, the last byte's fields past `g` zero.
 fn pack_gids(g: &[u32], w: u32, out: &mut [u8]) {
     match w {
@@ -2047,5 +2084,38 @@ mod tests_b22 {
             b.sort();
             assert_eq!(o, [b[r1], b[r2]], "bit n {n}");
         }
+    }
+}
+
+#[cfg(test)]
+mod s2_tests {
+    use super::*;
+    fn col(ss: &[&[u8]]) -> (Vec<u8>, Vec<usize>) {
+        let (mut b, mut o) = (vec![], vec![1]);
+        for s in ss { b.extend_from_slice(s); b.push(0); o.push(b.len() << 1 | 1) }
+        (b, o)
+    }
+    #[test] fn parted_syms_runs_and_strict() {
+        for (ss, loose, strict) in [(&[&b"a"[..], b"a", b"b"][..], true, false), (&[b"a", b"b", b"a"], false, false), (&[b"a", b"b", b"c"], true, true)] {
+            let (b, o) = col(ss);
+            let s = Syms { blob: &b, offs: &o };
+            assert_eq!((parted_syms(false, &s), parted_syms(true, &s)), (loose, strict));
+        }
+    }
+    #[test] fn parted_guid_matches_the_definition() {
+        let g = |x: u8| { let mut v = [0u8; 16]; v[15] = x; v };
+        for xs in [[1u8, 1, 2], [2, 1, 2], [1, 2, 3], [3, 2, 1], [1, 2, 1], [2, 2, 2]] {
+            let p: Vec<u8> = xs.iter().flat_map(|&x| g(x)).collect();
+            let loose = (0..3).all(|i| (i + 1..3).all(|j| xs[i] != xs[j] || (i..=j).all(|k| xs[k] == xs[i])));
+            let strict = xs[0] != xs[1] && xs[1] != xs[2] && xs[0] != xs[2];
+            assert_eq!((parted_guid(false, &p, 3), parted_guid(true, &p, 3)), (loose, strict), "{xs:?}");
+        }
+    }
+    #[test] fn sym_offs_counts_ends_and_ascii() {
+        let b = b"ab\0c\0\xc3\xa9\0";
+        assert_eq!(sym_offs(b, 0, 2), (vec![3, 5], true));
+        assert_eq!(sym_offs(b, 3, 9), (vec![2, 5], false));
+        assert_eq!(sym_offs(b, 99, 3), (vec![], true));
+        assert_eq!(sym_offs(b, 0, 0), (vec![], true));
     }
 }
