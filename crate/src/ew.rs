@@ -2001,24 +2001,20 @@ pub fn stats_chain<'a>(mode: u8, prog: &[u8], input: &impl Fn(u8) -> &'a [u8], n
 /// `=`, `<>` and `null` at guid: sixteen bytes compared as two words, one bit out per element, the bitmap `bit` writes. `atom` reads `b`'s
 /// one element against every element of `a`.
 pub fn guid_eq(a: &[u8], b: &[u8], atom: bool, ne: bool, n: usize, out: &mut [u8]) {
-    type G = [[u8; 8]; 2];
-    // branchless on both words, so a group of eight is straight-line code
-    let eq = |x: &G, y: &G| (u64::from_ne_bytes(x[0]) == u64::from_ne_bytes(y[0])) & (u64::from_ne_bytes(x[1]) == u64::from_ne_bytes(y[1]));
-    fn gs(s: &[u8], n: usize) -> &[G] { &s.as_chunks::<8>().0.as_chunks::<2>().0[..n] }
-    if atom {
-        let (xs, xt) = gs(a, n).as_chunks::<8>();
-        let full = xs.len();
-        let b0 = if n != 0 { gs(b, 1)[0] } else { [[0; 8]; 2] };
-        for (o, x) in out.iter_mut().zip(xs) { *o = (0..8).fold(0u8, |m, j| m | ((eq(&x[j], &b0) != ne) as u8) << j) }
-        if !xt.is_empty() { out[full] = xt.iter().enumerate().fold(0u8, |m, (j, e)| m | ((eq(e, &b0) != ne) as u8) << j) }
-    } else {
-        // one element at a time and a byte flushed every eighth: the group form above made LLVM gather the two words of every element
-        let (mut m, mut o) = (0u8, out.iter_mut());
-        for (i, (x, y)) in gs(a, n).iter().zip(gs(b, n)).enumerate() {
-            m |= ((eq(x, y) != ne) as u8) << (i & 7);
-            if i & 7 == 7 { *o.next().expect("guid_eq: the bitmap is shorter than n bits") = m; m = 0 }
-        }
-        if n & 7 != 0 { *o.next().expect("guid_eq: the bitmap is shorter than n bits") = m }
+    let m = if ne { 0xff } else { 0 };
+    let (a, a_tail) = (&a[..16 * n]).as_chunks::<128>();
+    // eight elements: the xor of both sides is contiguous bytes, and an element is equal when its sixteen xored bytes are all 0
+    let byte = |x: &[u8; 128], y: &[u8; 128]| {
+        let d: [u8; 128] = core::array::from_fn(|k| x[k] ^ y[k]);
+        d.as_chunks::<16>().0.iter().enumerate().fold(0u8, |r, (j, e)| r | ((u128::from_ne_bytes(*e) == 0) as u8) << j) ^ m
+    };
+    let y1: [u8; 128] = core::array::from_fn(|k| if atom && n != 0 { b[k & 15] } else { 0 });
+    if atom { for (o, x) in out.iter_mut().zip(a) { *o = byte(x, &y1) } }
+    else { for ((o, x), y) in out.iter_mut().zip(a).zip(b[..16 * n].as_chunks::<128>().0) { *o = byte(x, y) } }
+    let full = a.len();
+    if !a_tail.is_empty() {
+        let eq = |j: usize| { let y = if atom { &b[..16] } else { &b[16 * (8 * full + j)..][..16] }; a_tail[16 * j..][..16] == *y };
+        out[full] = (0..a_tail.len() / 16).fold(0u8, |r, j| r | ((eq(j) != ne) as u8) << j);
     }
 }
 /// `x^y` at guid: `y`'s element unless it is `0Ng`, sixteen zero bytes, and then `x`'s, read at 0 when `atom`.
