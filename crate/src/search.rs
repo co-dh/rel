@@ -568,6 +568,41 @@ pub fn sym_translate(a: &Syms, na: usize, b: &Syms, nb: usize, tr: &mut [usize])
     for (i, t) in tr[..na].iter_mut().enumerate() { *t = sym_probe(b, &tab, cap as u64 - 1, nb, a.at(i)) }
 }
 
+/// One column's symbols are one object when its blob and its starts are the same objects, so equal without a read.
+fn same_syms(a: &Syms, b: &Syms) -> bool { core::ptr::eq(a.blob.as_ptr(), b.blob.as_ptr()) && core::ptr::eq(a.offs.as_ptr(), b.offs.as_ptr()) }
+/// `qlean_match_syms`: `Column.symKey` equal at every index, symbol by symbol (a gather leaves equal symbols in blobs that
+/// differ), `false` when the starts arrays differ in length.
+pub fn match_syms(a: &Syms, b: &Syms) -> bool {
+    a.offs.len() == b.offs.len() && (same_syms(a, b) || (0..a.count()).all(|i| crate::sym::sym_eq(a.at(i), b.at(i))))
+}
+/// `qlean_search_match_ids`: the `n` ids `ia` (read at the width of dictionary `da`) name the symbols the `m` ids `ib` name
+/// in `db`, position by position. Two columns do not agree on ids, so `da` is translated into `db` first (an entry `db` lacks
+/// translates past its last id, which no id of `db` is); one dictionary object needs no translation.
+pub fn match_ids(n: usize, m: usize, da: &Syms, ia: &[u8], db: &Syms, ib: &[u8]) -> bool {
+    if n != m { return false }
+    let (na, nb) = (da.count(), db.count());
+    let (wa, wb) = (ids::id_width(na), ids::id_width(nb));
+    let n = n.min(ids::ids_avail(ia.len(), wa)).min(ids::ids_avail(ib.len(), wb));
+    let same = same_syms(da, db);
+    // one column against itself: translating a dictionary into itself to compare a million ids with themselves is the cost
+    if same && core::ptr::eq(ia.as_ptr(), ib.as_ptr()) { return true }
+    if same { return (0..n).all(|i| ids::id_at(ia, wa, i) == ids::id_at(ib, wb, i)) }
+    let mut tr = vec![0usize; na];
+    sym_translate(da, na, db, nb, &mut tr);
+    (0..n).all(|i| { let (ua, ub) = (ids::id_at(ia, wa, i), ids::id_at(ib, wb, i)); ua < na && ub < nb && tr[ua] == ub })
+}
+/// `qlean_search_match_syms_ids`: element `i` of `b` equals entry `ids[i]` of dictionary `d`, an id past the dictionary (or the
+/// ids) reading the empty symbol. `false` when `b` does not hold `n` symbols.
+pub fn match_syms_ids(b: &Syms, n: usize, d: &Syms, ids: &[u8]) -> bool {
+    if b.count() != n { return false }
+    let nd = d.count();
+    let w = ids::id_width(nd);
+    let have = ids::ids_avail(ids.len(), w);
+    (0..n).all(|i| {
+        let e = if i < have { ids::id_at(ids, w, i) } else { 0 };
+        crate::sym::sym_eq(b.at(i), if e < nd { d.at(e) } else { &[] })
+    })
+}
 
 // ---- A32: search.c:1497-1716 ----
 /// search.c:1497 `bin_key`: `v` as an unsigned key in the column's order.
@@ -661,6 +696,31 @@ const BIN_TAB_SAMPLE: usize = 4096;
 
 pub fn i64s(o: &mut [u8]) -> &mut [i64] { crate::pod::cast_mut(o).expect("bin: the answer is 8-byte aligned") }
 
+/// `qlean_search_bin_wide`: `bin`'s halving with an element compared as `w` bytes in address order (`memcmp`), for each of the
+/// `out.len()` keys; `p - 1` when `!right`, `p` when `right`. Sixteen bytes have no `u64` key, so this walk is not `Walk::step`.
+pub fn bin_wide(w: usize, right: bool, hay: &[u8], keys: &[u8], out: &mut [i64]) {
+    let n = hay.len() / w;
+    // the halving at a constant `right`, over elements of an ordered type `T` read by `at`
+    fn walk<const R: bool, T: Ord>(n: usize, out: &mut [i64], keys: impl Iterator<Item = T>, at: impl Fn(usize) -> T) {
+        for (k, x) in keys.zip(out) {
+            let (mut lo, mut hi) = (0, n);
+            while lo < hi {
+                let mid = lo + (hi - lo) / 2;
+                let c = at(mid).cmp(&k);
+                if if R { c.is_lt() } else { c.is_le() } { lo = mid + 1 } else { hi = mid }
+            }
+            *x = if R { lo as i64 } else { lo as i64 - 1 }
+        }
+    }
+    // `memcmp` order on 16 bytes is the order of the big-endian `u128`: one compare, no call
+    let g = |p: &[u8], i: usize| u128::from_be_bytes(p[i * 16..(i + 1) * 16].try_into().unwrap());
+    match (w, right) {
+        (16, false) => walk::<false, _>(n, out, keys.chunks_exact(16).map(|k| g(k, 0)), |i| g(hay, i)),
+        (16, true) => walk::<true, _>(n, out, keys.chunks_exact(16).map(|k| g(k, 0)), |i| g(hay, i)),
+        (_, false) => walk::<false, _>(n, out, keys.chunks_exact(w), |i| &hay[i * w..(i + 1) * w]),
+        (_, true) => walk::<true, _>(n, out, keys.chunks_exact(w), |i| &hay[i * w..(i + 1) * w]),
+    }
+}
 /// search.c:1706 `qlean_search_bin` past the unboxing: for each of the `m` keys (dense `keys`, or `kenc`), the
 /// binary search position in the sorted haystack (dense `hay`, or `enc`) of `n`, into `out`; threaded
 /// (`bin_run`, `bin_tab_run`, `bin_gather_run`).
@@ -789,21 +849,32 @@ pub fn bin_rows(run: Runner, w: usize, is_float: bool, is_signed: bool, right: b
 /// a block at a time at width `w`, 1, 2, 4 or 8.
 pub fn run_starts(o: &Opnd, w: usize, is_float: bool, out: &mut [i64]) -> usize {
     assert!(matches!(w, 1 | 2 | 4 | 8), "qlean search: run_starts got element width {w}; the kernel is instantiated at 1, 2, 4 and 8 bytes");
+    // one block at element width `W` from element `skip`: a start is written when the key moves off the previous one
+    #[inline(always)]
+    fn blk<const W: usize>(h: &[u8], at: usize, skip: usize, prev: &mut u64, g: &mut usize, out: &mut [i64], key: impl Fn(u64) -> u64) {
+        for (j, c) in h.chunks_exact(W).enumerate().skip(skip) {
+            let mut b = [0u8; 8];
+            b[..W].copy_from_slice(c);
+            let v = key(u64::from_le_bytes(b));
+            if v != *prev { out[*g] = (at + j) as i64; *g += 1; *prev = v }
+        }
+    }
     let (mut buf, mut g, mut prev) = ([0u64; crate::BLK], 0, 0u64);
     for b in 0..o.n.div_ceil(crate::BLK) {
         let h = o.blk(b, w, crate::pod::bytes_mut(&mut buf));
+        let at = b * crate::BLK;
+        // row 0 starts a run whatever its key; the loop then needs no test for it
+        let skip = if b == 0 { out[0] = 0; g = 1; prev = norm_key(w, is_float, bin_at(h, w, 0)); 1 } else { 0 };
         // the width switch hoisted out of the element loop, as search.c's `RS_RUNS` hoists it
-        let mut runs = |key: &dyn Fn(usize) -> u64| for j in 0..h.len() / w {
-            let v = key(j);
-            if (b | j) == 0 || v != prev { out[g] = (b * crate::BLK + j) as i64; g += 1 }
-            prev = v;
-        };
         match (is_float, w) {
-            (true, _) => runs(&|j| norm_key(w, true, bin_at(h, w, j))),
-            (_, 1) => runs(&|j| bin_at(h, 1, j)),
-            (_, 2) => runs(&|j| bin_at(h, 2, j)),
-            (_, 4) => runs(&|j| bin_at(h, 4, j)),
-            _ => runs(&|j| bin_at(h, 8, j)),
+            (true, 1) => blk::<1>(h, at, skip, &mut prev, &mut g, out, |v| norm_key(1, true, v)),
+            (true, 2) => blk::<2>(h, at, skip, &mut prev, &mut g, out, |v| norm_key(2, true, v)),
+            (true, 4) => blk::<4>(h, at, skip, &mut prev, &mut g, out, |v| norm_key(4, true, v)),
+            (true, _) => blk::<8>(h, at, skip, &mut prev, &mut g, out, |v| norm_key(8, true, v)),
+            (_, 1) => blk::<1>(h, at, skip, &mut prev, &mut g, out, |v| v),
+            (_, 2) => blk::<2>(h, at, skip, &mut prev, &mut g, out, |v| v),
+            (_, 4) => blk::<4>(h, at, skip, &mut prev, &mut g, out, |v| v),
+            _ => blk::<8>(h, at, skip, &mut prev, &mut g, out, |v| v),
         }
     }
     out[g] = o.n as i64;
@@ -1535,5 +1606,18 @@ mod tests {
                 assert_eq!(out, pack(&want, wout), "w {w} wout {wout} n {n} nm {nm}");
             }
         }
+    }
+    #[test] fn symbol_matches_and_the_wide_halving() {
+        // boxed starts (`2 * off + 1`): a = `ab`,`c`; b the same symbols in a longer blob; d = `c`,`ab` as a dictionary
+        let (a, b, d) = (Syms { blob: b"ab\0c\0", offs: &[1, 7, 11] }, Syms { blob: b"zab\0c\0", offs: &[3, 9, 13] }, Syms { blob: b"c\0ab\0", offs: &[1, 5, 11] });
+        assert!(match_syms(&a, &b) && match_syms(&a, &a) && !match_syms(&a, &d) && !match_syms(&a, &Syms { blob: &[], offs: &[] }));
+        // ids 0, 1 of a read as d's ids 1, 0: translated, equal; with n different, not
+        assert!(match_ids(2, 2, &a, &[0b10], &d, &[0b01]) && !match_ids(2, 3, &a, &[0b10], &d, &[0b01]) && !match_ids(2, 2, &a, &[0b10], &d, &[0b10]));
+        assert!(match_syms_ids(&a, 2, &a, &[0b10]) && !match_syms_ids(&a, 2, &d, &[0b10]) && !match_syms_ids(&a, 3, &a, &[0b10]));
+        let hay = [[1u8, 0], [1, 5], [1, 5], [2, 0]].concat();
+        let (mut o, mut r) = ([0i64; 3], [0i64; 3]);
+        bin_wide(2, false, &hay, &[1, 5, 0, 0, 3, 0], &mut o);
+        bin_wide(2, true, &hay, &[1, 5, 0, 0, 3, 0], &mut r);
+        assert_eq!((o, r), ([2, -1, 3], [1, 0, 4]));
     }
 }

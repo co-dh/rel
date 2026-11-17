@@ -3,9 +3,10 @@
 //! index. Each unboxes its arguments, allocates the answer and makes one call into `search.rs`, which owns the loops.
 //! Lean passes `Int64` and `UInt64` as C's `uint64_t`.
 #![deny(unsafe_code)]
+use crate::coc::Coc;
 use crate::exports::coc::{meta, view};
+use crate::ffi::{sarray_room, syms_of};
 use crate::exports::reduce::elems;
-use alloc::vec;
 use crate::lean::{B, Class, Ext, Io, O, Once, SArr, Slot, apply, box_usize_o, boxed, export};
 use crate::search::{Kind, Opnd, Src};
 use crate::{c, ids, pod, search};
@@ -25,6 +26,25 @@ fn probe(kd: Kind, h: &Opnd, x: &Opnd, member: bool) -> O {
     let mut r = SArr::new(1, if member { x.n.div_ceil(8) } else { x.n * 8 });
     search::search(c::pool(), kd, h, x, member, r.bytes_mut());
     r.into()
+}
+/// The encoded column `metadata`, `pack` and `n` name, or `None` where `metadata` is empty and the operand is the payload.
+fn enc<'a>(who: &str, mv: B<'a>, pv: B<'a>, n: usize) -> Option<Coc<'a>> { (!mv.bytes().is_empty()).then(|| view(who, mv, pv, n)) }
+/// `binRows` over a haystack dense or encoded: `bounds` and `gids` are `Int64`s, `order` 64-bit rows (empty: none).
+fn bin_rows(w: usize, is_float: bool, is_signed: bool, right: bool, hay: &[u8], enc: Option<&Coc>, keysv: B, orderv: B, boundsv: B, gidsv: B, miss: u64) -> O {
+    fn words<'a>(v: B<'a>) -> &'a [i64] { let b = v.bytes(); pod::cast::<i64>(&b[..b.len() / 8 * 8]).expect("qlean bin_rows: a bounds or gids array is misaligned") }
+    let keys = keysv.bytes();
+    let m = keys.len() / w;
+    let mut r = longs(m);
+    search::bin_rows(c::pool(), w, is_float, is_signed, right, hay, enc, &keys[..w * m], orderv.bytes(), words(boundsv), words(gidsv), miss as i64, m,
+                     search::i64s(r.bytes_mut()));
+    r.into()
+}
+/// A run-starts answer: `f` writes the starts and the terminator into room for `n + 1` and answers how many it wrote; the array
+/// is allocated at that room and sized to the count in place (the run count is not known before the pass).
+fn starts(n: usize, f: impl FnOnce(&mut [i64]) -> usize) -> O {
+    let mut r = SArr::with_capacity(1, 0, (n + 1) * 8);
+    let g = f(pod::cast_mut(r.capacity_mut()).expect("qlean run_starts: the answer array is misaligned"));
+    sarray_room(r.into(), g * 8)
 }
 /// An answer of `m` `Int64`s, to be written whole.
 fn longs(m: usize) -> SArr { SArr::new(1, m * 8) }
@@ -96,11 +116,7 @@ export! {
     fn qlean_search_run_starts_ids(n: usize, w: usize, idsv: B) -> O {
         let (ids, w) = (idsv.bytes(), w as u32);
         let n = n.min(ids::ids_avail(ids.len(), w));
-        let mut starts = vec![0i64; n + 1]; // the run count is not known before the pass
-        let g = search::run_starts_ids(n, w, ids, &mut starts);
-        let mut r = longs(g);
-        r.bytes_mut().copy_from_slice(pod::bytes(&starts[..g]));
-        r.into()
+        starts(n, |out| search::run_starts_ids(n, w, ids, out))
     }
 
     /// Spec: `matchBytes w float a b` is `QAtom.identical` element by element over two dense payloads.
@@ -212,6 +228,152 @@ export! {
         search::mask_by_ids(maskv.bytes(), nmask, n, w, ids, r.bytes_mut());
         r.into()
     }
+
+    /// Spec: `matchSyms ba oa bb ob` is `Column.symKey` equal at every index.
+    fn qlean_match_syms(bav: B, oav: B, bbv: B, obv: B) -> u8 { search::match_syms(&syms_of(bav, oav), &syms_of(bbv, obv)) as u8 }
+
+    /// Spec: `matchIds da doa ia db dob ib` is `Column.symKey` equal at every position, the ids read through their own
+    /// dictionaries.
+    fn qlean_search_match_ids(n: usize, m: usize, dav: B, doav: B, iav: B, dbv: B, dobv: B, ibv: B) -> u8 {
+        search::match_ids(n, m, &syms_of(dav, doav), iav.bytes(), &syms_of(dbv, dobv), ibv.bytes()) as u8
+    }
+
+    /// Spec: `matchSymsIds b o n d dof ids` is `Column.symKey` equal at every position, element `i` of the blob against
+    /// entry `ids[i]` of the dictionary; an id past the dictionary reads the empty symbol.
+    fn qlean_search_match_syms_ids(bv: B, ov: B, n: usize, dv: B, dofv: B, idsv: B) -> u8 {
+        search::match_syms_ids(&syms_of(bv, ov), n, &syms_of(dv, dofv), idsv.bytes()) as u8
+    }
+
+    /// Spec: `binBytes w float signed right hay keys` is, for each element `k` of `keys`, the partition point `p` of the
+    /// halving that advances past `key hay[mid] <= key k` when `right` is false and past `<` when it is true; written out as
+    /// `p - 1` for `bin` and `p` for `binr`, as `Int64`s.
+    fn qlean_search_bin(w: usize, is_float: u8, is_signed: u8, right: u8, hayv: B, keysv: B) -> O {
+        let (hay, keys) = (hayv.bytes(), keysv.bytes());
+        let m = keys.len() / w;
+        let mut r = longs(m);
+        search::bin(c::pool(), w, is_float != 0, is_signed != 0, right != 0, hay, None, (hay.len() / w) as i64, &keys[..w * m], None, m,
+                    search::i64s(r.bytes_mut()));
+        r.into()
+    }
+
+    /// Spec: `binOperands w float signed right hm hp hn km kp kn` is `binBytes w float signed right (operandBytes w hm hp hn)
+    /// (operandBytes w km kp kn)`: either side where it lies. An encoded side is a signed integral column.
+    fn qlean_bin_operands(w: usize, is_float: u8, is_signed: u8, right: u8, hm: B, hp: B, hn: usize, km: B, kp: B, kn: usize) -> O {
+        let (h, k) = (enc("qlean_bin_operands", hm, hp, hn), enc("qlean_bin_operands", km, kp, kn));
+        let n = h.as_ref().map_or(hp.bytes().len() / w, |c| c.meta.n);
+        let m = k.as_ref().map_or(kp.bytes().len() / w, |c| c.meta.n);
+        let mut r = longs(m);
+        let (hay, keys) = (if h.is_some() { &[][..] } else { hp.bytes() }, if k.is_some() { &[][..] } else { &kp.bytes()[..w * m] });
+        search::bin(c::pool(), w, is_float != 0, is_signed != 0, right != 0, hay, h.as_ref(), n as i64, keys, k.as_ref(), m, search::i64s(r.bytes_mut()));
+        r.into()
+    }
+
+    /// Spec: `binWide w right hay keys` is `binBytes`' halving with the element compared as `w` bytes in address order
+    /// (`QAtom.identical`'s `cmpBytes`, q's order on a `guid`).
+    fn qlean_search_bin_wide(w: usize, right: u8, hayv: B, keysv: B) -> O {
+        let mut r = longs(keysv.bytes().len() / w);
+        search::bin_wide(w, right != 0, hayv.bytes(), keysv.bytes(), search::i64s(r.bytes_mut()));
+        r.into()
+    }
+
+    /// Spec: `foRBin w right metadata pack n keys` is `binBytes w false true right (Coc.decode w metadata pack n) keys`, the
+    /// halving reading the encoded column where it lies.
+    fn qlean_coc_bin(w: usize, right: u8, mv: B, pv: B, n: usize, keysv: B) -> O {
+        let (c, keys) = (view("qlean_coc_bin", mv, pv, n), keysv.bytes());
+        let m = keys.len() / w;
+        let mut r = longs(m);
+        search::bin(c::pool(), w, false, true, right != 0, &[], Some(&c), c.meta.n as i64, &keys[..w * m], None, m, search::i64s(r.bytes_mut()));
+        r.into()
+    }
+
+    /// Spec: `binIds right vals n w ids keys` is `binBytes 8 false true right (longsByIds vals (vals.size / 8) n w ids) keys`:
+    /// the same halving over an interned column, `vals` one `Int64` rank per dictionary entry; the ids are trusted to name
+    /// entries of `vals`.
+    fn qlean_search_bin_ids(right: u8, valsv: B, n: usize, w: usize, idsv: B, keysv: B) -> O {
+        let (ids, w) = (idsv.bytes(), w as u32);
+        let n = n.min(ids::ids_avail(ids.len(), w));
+        let mut r = longs(keysv.bytes().len() / 8);
+        search::bin_ids(right != 0, valsv.bytes(), n, w, &ids[..ids::ids_bytes(n, w)], keysv.bytes(), search::i64s(r.bytes_mut()));
+        r.into()
+    }
+
+    /// Spec: `findSortedBytes w float signed hay keys` is, for each element `k` of `keys`, the least index whose `ordKey`
+    /// equals `k`'s and `hay.size / w` where there is none, as `Int64`s: `findVec`'s answer read off a sorted haystack.
+    fn qlean_search_find_sorted(w: usize, is_float: u8, is_signed: u8, hayv: B, keysv: B) -> O {
+        let (hay, keys) = (hayv.bytes(), keysv.bytes());
+        let m = keys.len() / w;
+        let mut r = longs(m);
+        search::find_sorted(c::pool(), w, is_float != 0, is_signed != 0, hay, None, (hay.len() / w) as i64, &keys[..w * m], m,
+                            search::i64s(r.bytes_mut()));
+        r.into()
+    }
+
+    /// Spec: `memberSortedBytes w float signed xs hay` is `findSortedBytes`' answer below the count, a bit an element of `xs`,
+    /// LSB first and the tail bits of the last byte left zero.
+    fn qlean_search_member_sorted(w: usize, is_float: u8, is_signed: u8, xsv: B, hayv: B) -> O {
+        let (hay, xs) = (hayv.bytes(), xsv.bytes());
+        let m = xs.len() / w;
+        let mut r = SArr::new(1, m.div_ceil(8));
+        search::member_sorted(c::pool(), w, is_float != 0, is_signed != 0, hay, None, (hay.len() / w) as i64, &xs[..w * m], m, r.bytes_mut());
+        r.into()
+    }
+
+    /// Spec: `foRFindSorted w metadata pack n keys` is `findSortedBytes w false true (Coc.decode w metadata pack n) keys`.
+    fn qlean_coc_find_sorted(w: usize, mv: B, pv: B, n: usize, keysv: B) -> O {
+        let (c, keys) = (view("qlean_coc_find_sorted", mv, pv, n), keysv.bytes());
+        let m = keys.len() / w;
+        let mut r = longs(m);
+        search::find_sorted(c::pool(), w, false, true, &[], Some(&c), c.meta.n as i64, &keys[..w * m], m, search::i64s(r.bytes_mut()));
+        r.into()
+    }
+
+    /// Spec: `foRMemberSorted w xs metadata pack n` is `memberSortedBytes w false true xs (Coc.decode w metadata pack n)`.
+    fn qlean_coc_member_sorted(w: usize, xsv: B, mv: B, pv: B, n: usize) -> O {
+        let (c, xs) = (view("qlean_coc_member_sorted", mv, pv, n), xsv.bytes());
+        let m = xs.len() / w;
+        let mut r = SArr::new(1, m.div_ceil(8));
+        search::member_sorted(c::pool(), w, false, true, &[], Some(&c), c.meta.n as i64, &xs[..w * m], m, r.bytes_mut());
+        r.into()
+    }
+
+    /// Spec: `binRows w float signed right hay keys order bounds gids miss` is, for each element `k` of `keys`, the right row
+    /// the halving names inside group `g = gids[j]` over `[bounds[g], bounds[g+1])` reading `hay` through `order` (empty: the
+    /// position is the row); `miss` where `gids` has no entry `j`, `g` names no group, or the group holds nothing at or
+    /// before `k`.
+    fn qlean_search_bin_rows(w: usize, is_float: u8, is_signed: u8, right: u8, hayv: B, keysv: B, orderv: B, boundsv: B, gidsv: B, miss: u64) -> O {
+        bin_rows(w, is_float != 0, is_signed != 0, right != 0, hayv.bytes(), None, keysv, orderv, boundsv, gidsv, miss)
+    }
+
+    /// Spec: `foRBinRows w right metadata pack n keys order bounds gids miss` is `binRows w false true right (Coc.decode w
+    /// metadata pack n) keys order bounds gids miss`.
+    fn qlean_coc_bin_rows(w: usize, right: u8, mv: B, pv: B, n: usize, keysv: B, orderv: B, boundsv: B, gidsv: B, miss: u64) -> O {
+        bin_rows(w, false, true, right != 0, &[], Some(&view("qlean_coc_bin_rows", mv, pv, n)), keysv, orderv, boundsv, gidsv, miss)
+    }
+
+    /// Spec: `runStarts w float hay` is the ascending indices `i` where `key hay[i]` differs from `key hay[i-1]`, with `0`
+    /// first and the element count last, as `Int64`s. An empty payload answers `,0`.
+    fn qlean_search_run_starts(w: usize, is_float: u8, hayv: B) -> O {
+        let o = Opnd::dense(hayv.bytes(), w);
+        starts(o.n, |out| search::run_starts(&o, w, is_float != 0, out))
+    }
+
+    /// Spec: `foRRunStarts w metadata pack n` is `runStarts w false (Coc.decode w metadata pack n)`, the pack read a block at
+    /// a time.
+    fn qlean_coc_run_starts(w: usize, mv: B, pv: B, n: usize) -> O {
+        let o = opnd_of("qlean_coc_run_starts", mv, pv, n, w);
+        starts(o.n, |out| search::run_starts(&o, w, false, out))
+    }
+
+    /// Spec: `runStartsSyms blob offs` is `runStarts` over a symbol payload: the run starts of the bytes `Column.symBytes`
+    /// points at, with the symbol count last.
+    fn qlean_search_run_starts_syms(blobv: B, offsv: B) -> O {
+        let s = syms_of(blobv, offsv);
+        starts(s.count(), |out| search::run_starts_syms(&s, out))
+    }
+
+    /// Spec: `runStartsBits n bits` is `runStarts` over `n` booleans packed LSB first, a byte past the end reading `0` as
+    /// `Column.bitAt` does.
+    fn qlean_search_run_starts_bits(n: usize, bitsv: B) -> O { starts(n, |out| search::run_starts_bits(n, bitsv.bytes(), out)) }
 
     /// `Index.register`: the builder and the extender, kept for the life of the process. Lean 4.28 passes an `IO`
     /// extern no world argument (the generated C calls `qlean_index_register(f, g)`).

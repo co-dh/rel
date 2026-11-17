@@ -555,16 +555,6 @@ pub unsafe extern "C" fn qrs_coc_exc_within(c: *const CCoc, b: usize, lo: i64, h
 /// A28: search.c `ids_top`.
 #[unsafe(no_mangle)]
 pub extern "C" fn qrs_ids_top(lw: u32) -> u64 { search::ids_top(lw) }
-/// search.c `opnd` as C holds it: payload `d` (`enc` 0 at key width `w`, `enc` 2 at `lw` bits) or the column `c` (`enc` 1).
-/// Safety: as `sl`, for the payload `n` elements need.
-unsafe fn opnd<'a>(d: *const u8, c: *const CCoc, n: usize, enc: c_int, lw: u32, w: usize) -> search::Opnd<'a> {
-    let src = match enc {
-        1 => search::Src::Enc(unsafe { (*c).view() }),
-        2 => search::Src::Ids(unsafe { sl(d, ids::ids_bytes(n, lw)) }, lw),
-        _ => search::Src::Dense(unsafe { sl(d, n * w) }),
-    };
-    search::Opnd { src, n }
-}
 /// A28: search.c `kind_width` of the `kind` number `k`; a number past the enum answers 8, as the C's `switch` falls out.
 #[unsafe(no_mangle)]
 pub extern "C" fn qrs_kind_width(k: c_int) -> usize {
@@ -596,12 +586,6 @@ pub unsafe extern "C" fn qrs_sym_search(bits: c_int, nb: *const u8, nbytes: usiz
     let (nd, h) = unsafe { (symcol(nb, nbytes, no, nno), symcol(hb, hbytes, ho, nho)) };
     let m = nd.count();
     unsafe { search::sym_search(bits != 0, &nd, &h, sl_mut(out, if bits != 0 { m.div_ceil(8) } else { m * 8 })) }
-}
-/// A31: search.c `qlean_search_match_ids`' translation: for each of the `na` entries of `a`, its index among the `nb` of `b`.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn qrs_sym_translate(ab: *const u8, abytes: usize, ao: *const usize, na: usize, bb: *const u8,
-                                           bbytes: usize, bo: *const usize, nb: usize, tr: *mut usize) {
-    unsafe { search::sym_translate(&syms0(ab, abytes, ao, na), na, &syms0(bb, bbytes, bo, nb), nb, sl_mut(tr, na)) }
 }
 /// K17: search.c `ix_alloc`'s size: the bytes of a table for `distinct` keys.
 #[unsafe(no_mangle)]
@@ -686,79 +670,6 @@ pub unsafe extern "C" fn qrs_ix_find_syms(t: *const u8, tbytes: usize, blob: *co
         search::ix_find_syms(sl(t.cast::<u64>(), tbytes / 8), &ixsyms(blob, bytes, offs, noffs, ids, idbytes, w, interned), &nd, miss,
                              sl_mut(out, nd.count()))
     }
-}
-/// A32: search.c `bin` over a dense haystack and dense keys.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn qrs_bin(run: unsafe extern "C" fn(), w: usize, is_float: c_int, is_signed: c_int, right: c_int,
-                                 hay: *const u8, n: i64, keys: *const u8, m: usize, out: *mut i64) {
-    unsafe { search::bin(rn(run), w, is_float != 0, is_signed != 0, right != 0, sl(hay, w * n.max(0) as usize), None, n,
-                         sl(keys, w * m), None, m, sl_mut(out, m)) }
-}
-/// A32: `qrs_bin` where either side may be an encoded column (`qlean_bin_operands`, `qlean_coc_bin`): `hc` or `kc` non-null
-/// is that side's column, and its dense pointer is not read.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn qrs_bin_enc(run: unsafe extern "C" fn(), w: usize, is_float: c_int, is_signed: c_int, right: c_int,
-                                     hay: *const u8, hc: *const CCoc, n: i64, keys: *const u8, kc: *const CCoc, m: usize,
-                                     out: *mut i64) {
-    unsafe {
-        let (h, k) = (hc.as_ref().map(|c| c.view()), kc.as_ref().map(|c| c.view()));
-        search::bin(rn(run), w, is_float != 0, is_signed != 0, right != 0, sl(hay, if h.is_some() { 0 } else { w * n.max(0) as usize }),
-                    h.as_ref(), n, sl(keys, if k.is_some() { 0 } else { w * m }), k.as_ref(), m, sl_mut(out, m))
-    }
-}
-/// A33: search.c `find_sorted_run`: `find_sorted` over a dense or encoded (`hc` non-null) haystack of `n` and dense keys.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn qrs_find_sorted(run: unsafe extern "C" fn(), w: usize, is_float: c_int, is_signed: c_int, hay: *const u8,
-                                         hc: *const CCoc, n: i64, keys: *const u8, m: usize, out: *mut i64) {
-    unsafe {
-        let h = hc.as_ref().map(|c| c.view());
-        search::find_sorted(rn(run), w, is_float != 0, is_signed != 0, sl(hay, if h.is_some() { 0 } else { w * n.max(0) as usize }),
-                            h.as_ref(), n, sl(keys, w * m), m, sl_mut(out, m))
-    }
-}
-/// A33: search.c `member_sorted_run`: the bitmap (`m.div_ceil(8)` bytes) of `qrs_find_sorted`'s answers below `n`.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn qrs_member_sorted(run: unsafe extern "C" fn(), w: usize, is_float: c_int, is_signed: c_int, hay: *const u8,
-                                           hc: *const CCoc, n: i64, keys: *const u8, m: usize, out: *mut u8) {
-    unsafe {
-        let h = hc.as_ref().map(|c| c.view());
-        search::member_sorted(rn(run), w, is_float != 0, is_signed != 0, sl(hay, if h.is_some() { 0 } else { w * n.max(0) as usize }),
-                              h.as_ref(), n, sl(keys, w * m), m, sl_mut(out, m.div_ceil(8)))
-    }
-}
-/// A33: search.c `qlean_search_bin_ids`: `vals` is `vbytes` long, `ids` holds `n` ids at `w` bits, `keys` and `out` `m` each.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn qrs_bin_ids(right: c_int, vals: *const u8, vbytes: usize, n: usize, w: u32, ids: *const u8, keys: *const u8,
-                                     m: usize, out: *mut i64) {
-    unsafe { search::bin_ids(right != 0, sl(vals, vbytes), n, w, sl(ids, ids::ids_bytes(n, w)), sl(keys, 8 * m), sl_mut(out, m)) }
-}
-/// A33: search.c `bin_rows`: the haystack is `hay` (`hbytes` long) or the column `hc`; `order` is `obytes` long (0: none),
-/// `bounds` `nb` and `gids` `ng` words; `keys` and `out` `m` each.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn qrs_bin_rows(run: unsafe extern "C" fn(), w: usize, is_float: c_int, is_signed: c_int, right: c_int,
-                                      hay: *const u8, hbytes: usize, hc: *const CCoc, keys: *const u8, order: *const u8, obytes: usize,
-                                      bounds: *const i64, nb: usize, gids: *const i64, ng: usize, miss: i64, m: usize, out: *mut i64) {
-    unsafe {
-        let h = hc.as_ref().map(|c| c.view());
-        search::bin_rows(rn(run), w, is_float != 0, is_signed != 0, right != 0, sl(hay, if h.is_some() { 0 } else { hbytes }), h.as_ref(),
-                         sl(keys, w * m), sl(order, obytes), sl(bounds, nb), sl(gids, ng), miss, m, sl_mut(out, m))
-    }
-}
-/// A33: search.c `run_starts` over C's `opnd`; `out` holds `n + 1`. Answers the count with the terminator.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn qrs_run_starts(d: *const u8, c: *const CCoc, n: usize, enc: c_int, lw: u32, w: usize, is_float: c_int,
-                                        out: *mut i64) -> usize {
-    unsafe { search::run_starts(&opnd(d, c, n, enc, lw, w), w, is_float != 0, sl_mut(out, n + 1)) }
-}
-/// A33: search.c `qlean_search_run_starts_syms` over `n` symbols; `out` holds `n + 1`. Answers the count with the terminator.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn qrs_run_starts_syms(blob: *const u8, bytes: usize, offs: *const usize, n: usize, out: *mut i64) -> usize {
-    unsafe { search::run_starts_syms(&syms0(blob, bytes, offs, n), sl_mut(out, n + 1)) }
-}
-/// A33: search.c `qlean_search_run_starts_bits`: `size` bytes of bits for `n` booleans; `out` holds `n + 1`.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn qrs_run_starts_bits(n: usize, bits: *const u8, size: usize, out: *mut i64) -> usize {
-    unsafe { search::run_starts_bits(n, sl(bits, size), sl_mut(out, n + 1)) }
 }
 /// `n` symbols as `syms`, but an empty dictionary may come with no starts at all (`sym_count`'s case).
 unsafe fn syms0<'a>(blob: *const u8, bytes: usize, offs: *const usize, n: usize) -> Syms<'a> {
