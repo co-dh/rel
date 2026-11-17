@@ -30,7 +30,7 @@ pub mod ffi;
 pub mod lean;
 pub mod os;
 /// The Lean externs, one file per C file they replace. Not under `cargo test`: they call the Lean runtime, which only
-/// a Lean link (or c/rt.c) provides. A module of its own, not `ffi::`, because ffi.rs imports the kernel modules of
+/// a Lean link (or rust/rt) provides. A module of its own, not `ffi::`, because ffi.rs imports the kernel modules of
 /// the same names.
 #[cfg(not(test))]
 #[path = "ffi"]

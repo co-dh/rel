@@ -22,6 +22,23 @@ link() {
     rm "$2.r"
 }
 
+if [ "${1:-}" = rt ]; then
+    # $CARGO_TARGET_DIR/qrt.o: the Lean runtime a program linked WITHOUT libleanshared needs (the Rel native backend),
+    # replacing the C runtime. Never linked into libqleankernel.a, which a Lean build pairs with the real runtime.
+    # plt=yes: the default GOT-indirect `call *malloc@GOT` ran copy_byte_array 1.3x slower than rt.c's `call malloc@plt` (perf stat)
+    RUSTC_BOOTSTRAP=1 RUSTFLAGS="-D warnings -Z plt=yes" cargo build --release --manifest-path "$here/rt/Cargo.toml" --target-dir "$CARGO_TARGET_DIR/rt"
+    lib="$CARGO_TARGET_DIR/rt/release/libqrt.a"
+    syms=$(nm -g --defined-only --format=just-symbols "$lib" | grep '^lean_\|^mi_\|^qlean_rt_io$' | sed 's/^/-u /')
+    [ -n "$syms" ] || { echo "build.sh: no lean_*, mi_* or qlean_rt_io symbol defined in $lib" >&2; exit 1; }
+    # shellcheck disable=SC2086 # one `-u sym` word pair per export
+    ld -r $syms -o "$CARGO_TARGET_DIR/qrt.o.r" "$lib"
+    objcopy --wildcard -G 'lean_*' -G 'mi_*' -G qlean_rt_io "$CARGO_TARGET_DIR/qrt.o.r" "$CARGO_TARGET_DIR/qrt.o"
+    rm "$CARGO_TARGET_DIR/qrt.o.r"
+    # the counted twin rust/testdata/rtcount.c wraps: the runtime's own malloc and free renamed, nothing else
+    objcopy --redefine-sym malloc=qrt_malloc --redefine-sym free=qrt_free "$CARGO_TARGET_DIR/qrt.o" "$CARGO_TARGET_DIR/qrt-count.o"
+    exit 0
+fi
+
 if [ "${1:-}" = abi ]; then
     RUSTFLAGS="-C target-cpu=native -D warnings" cargo build --release --lib --features abi --target-dir "$CARGO_TARGET_DIR/abi"
     link "$CARGO_TARGET_DIR/abi/release/libqrs.a" "$CARGO_TARGET_DIR/qrs-abi.o"

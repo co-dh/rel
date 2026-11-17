@@ -53,8 +53,8 @@ pub const CLOSURE_MAX_ARGS: usize = 16;
 /// `LEAN_MAX_SMALL_NAT`: the largest `Nat` a scalar holds
 pub const MAX_SMALL_NAT: usize = 0x7FFF_FFFF_FFFF_FFFF; // SIZE_MAX >> 1 on the 64-bit target, c/abi.c asserts
 
-// The out-of-line runtime: c/rt.c defines each for a program linked without Lean, and the Rel gate checks that every
-// `lean_*`/`mi_*` name this object leaves undefined is one rt.c defines. A module so cbindgen skips the declarations.
+// The out-of-line runtime: rust/rt defines each for a program linked without Lean, and the Rel gate checks that every
+// `lean_*`/`mi_*` name this object leaves undefined is one qrt.o defines. A module so cbindgen skips the declarations.
 /// cbindgen:ignore
 mod sys {
     use super::{ExternalClass, Object};
@@ -393,7 +393,7 @@ impl Io {
 }
 
 /// `lean_apply_N(f, args…)`: applies the closure `f` to `args`, all consumed. N up to 5 by the runtime's fixed-arity
-/// entry (the ones c/rt.c defines are 1, 2 and 5), past it `lean_apply_n`; N is a constant, so only one is referenced.
+/// entry (the ones rust/rt defines are 1, 2 and 5), past it `lean_apply_n`; N is a constant, so only one is referenced.
 pub fn apply<const N: usize>(f: O, args: [O; N]) -> O {
     let f = f.into_raw();
     let mut a = args.map(O::into_raw);
