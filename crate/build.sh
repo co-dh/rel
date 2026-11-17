@@ -8,6 +8,11 @@
 #                   --no-default-features (no `ffi`) and requires zero `qlean_*` defined.
 # Any failing step stops the script.
 set -eu
+# Two Rust objects in one link share the COMDAT signed by DW.ref.rust_eh_personality and the linker keeps one copy, which
+# breaks the other's unwind references; each object renames its own signature, so no downstream Rust object has to.
+eh=DW.ref.rust_eh_personality
+# (the group signature and the symbol; the member sections keep their .data.DW.ref.* names, which collide with nothing)
+noeh() { if { readelf -g "$1" | grep -F "[$eh]"; nm "$1" | grep -F " $eh"; } >&2; then echo "build.sh: $1 still has $eh" >&2; exit 1; fi; }
 here=$(cd "$(dirname "$0")" && pwd)
 # one target dir per checkout: parallel worktrees would otherwise take turns on cargo's lock and rebuild each other
 export CARGO_TARGET_DIR="${CARGO_TARGET_DIR:-/data/tmp/relk/target/$(basename "$(dirname "$here")")}"
@@ -22,8 +27,9 @@ if [ "${1:-}" = rt ]; then
     [ -n "$syms" ] || { echo "build.sh: no lean_*, mi_* or qlean_rt_io symbol defined in $lib" >&2; exit 1; }
     # shellcheck disable=SC2086 # one `-u sym` word pair per export
     ld -r $syms -o "$CARGO_TARGET_DIR/qrt.o.r" "$lib"
-    objcopy --wildcard -G 'lean_*' -G 'mi_*' -G qlean_rt_io "$CARGO_TARGET_DIR/qrt.o.r" "$CARGO_TARGET_DIR/qrt.o"
+    objcopy --wildcard -G 'lean_*' -G 'mi_*' -G qlean_rt_io --redefine-sym $eh=DW.ref.relk_eh_personality "$CARGO_TARGET_DIR/qrt.o.r" "$CARGO_TARGET_DIR/qrt.o"
     rm "$CARGO_TARGET_DIR/qrt.o.r"
+    noeh "$CARGO_TARGET_DIR/qrt.o"
     exit 0
 fi
 
@@ -35,6 +41,8 @@ if [ "${1:-}" = syms ]; then
     sort -u "$here/RELK.txt" > "$CARGO_TARGET_DIR/relk.want"
     diff "$CARGO_TARGET_DIR/relk.want" "$CARGO_TARGET_DIR/relk.have" || { echo "build.sh syms: relk's defined qlean_* differ from RELK.txt (< wanted, > defined)" >&2; exit 1; }
     echo "build.sh syms: $(wc -l < "$CARGO_TARGET_DIR/relk.have") qlean_* defined, equal to RELK.txt"
+    sh "$here/build.sh" "$CARGO_TARGET_DIR/relk.syms.o"
+    echo "build.sh syms: no $eh in the extern_lib object"
     # a crate that links beside the rel package's object (which defines every qlean_*) must define none
     RUSTFLAGS="-C target-cpu=native -D warnings" cargo build --release --lib --no-default-features
     nm -g --defined-only --format=just-symbols "$lib" | { grep '^qlean_' || true; } | sort -u > "$CARGO_TARGET_DIR/relk.nofeat"
@@ -48,5 +56,6 @@ syms=$(nm -g --defined-only --format=just-symbols "$lib" | grep '^qlean_' | sed 
 [ -n "$syms" ] || { echo "build.sh: no qlean_* symbol defined in $lib" >&2; exit 1; }
 # shellcheck disable=SC2086 # one `-u sym` word pair per export
 ld -r $syms -o "$out.r" "$lib"
-objcopy --wildcard -G 'qlean_*' "$out.r" "$out"
+objcopy --wildcard -G 'qlean_*' --redefine-sym $eh=DW.ref.relk_eh_personality "$out.r" "$out"
 rm "$out.r"
+noeh "$out"
