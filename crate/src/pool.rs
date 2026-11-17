@@ -18,7 +18,7 @@ use core::sync::atomic::{AtomicBool, AtomicU32, AtomicU64, Ordering::{Acquire, R
 use crate::c::Worker;
 use crate::ffi::CPass;
 
-// The three libc names the pool adds to qrs.o's undefined list; futex, sched_getaffinity and sched_yield go through
+// The three libc names the pool adds to the rel package's object's undefined list; futex, sched_getaffinity and sched_yield go through
 // `syscall`. `std::thread` would bring `std` (863 KB and libgcc_s); a raw `clone` leaves glibc's thread state unset.
 /// cbindgen:ignore
 mod sys {

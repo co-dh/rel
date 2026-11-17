@@ -1,4 +1,4 @@
-//! qlean's kernels in Rust, linked into `libqleankernel.a` as `rust/qrs.o`. The Lean externs of `ffi/*.rs` leave the
+//! qlean's kernels in Rust, linked into `libqleankernel.a` as the rel package's object. The Lean externs of `ffi/*.rs` leave the
 //! object (`qrs_abi_*` beside them with feature `abi`). `unsafe` is confined to c.rs, ffi.rs, lean.rs, lib.rs, os.rs, pod.rs, pool.rs,
 //! rt.rs, simd.rs; every other module refuses it, and `ffi/*.rs` denies it (their one `allow` comes from `lean::export!`).
 #![cfg_attr(not(any(test, feature = "std")), no_std)]
@@ -40,7 +40,7 @@ pub mod os;
 /// The Lean externs, one file per C file they replace. Not under `cargo test`: they call the Lean runtime, which only
 /// a Lean link (or rust/rt) provides. A module of its own, not `ffi::`, because ffi.rs imports the kernel modules of
 /// the same names.
-#[cfg(not(any(test, feature = "std")))]
+#[cfg(all(feature = "ffi", not(any(test, feature = "std"))))]
 #[path = "ffi"]
 pub mod exports {
     pub mod coc;

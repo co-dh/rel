@@ -4,7 +4,8 @@
 #                   everything else local, so `libleanshared`'s and the C library's names cannot collide with relk's
 #                   internals. The lakefile's `extern_lib relk` archives it as `librelk.a`.
 #   build.sh rt     $CARGO_TARGET_DIR/qrt.o: the Lean runtime a Rel native program links instead of `libleanshared`.
-#   build.sh syms   builds relk ALONE and diffs its staticlib's defined `qlean_*` against RELK.txt.
+#   build.sh syms   builds relk ALONE and diffs its staticlib's defined `qlean_*` against RELK.txt, then builds it with
+#                   --no-default-features (no `ffi`) and requires zero `qlean_*` defined.
 # Any failing step stops the script.
 set -eu
 here=$(cd "$(dirname "$0")" && pwd)
@@ -34,6 +35,11 @@ if [ "${1:-}" = syms ]; then
     sort -u "$here/RELK.txt" > "$CARGO_TARGET_DIR/relk.want"
     diff "$CARGO_TARGET_DIR/relk.want" "$CARGO_TARGET_DIR/relk.have" || { echo "build.sh syms: relk's defined qlean_* differ from RELK.txt (< wanted, > defined)" >&2; exit 1; }
     echo "build.sh syms: $(wc -l < "$CARGO_TARGET_DIR/relk.have") qlean_* defined, equal to RELK.txt"
+    # a crate that links beside the rel package's object (which defines every qlean_*) must define none
+    RUSTFLAGS="-C target-cpu=native -D warnings" cargo build --release --lib --no-default-features
+    nm -g --defined-only --format=just-symbols "$lib" | { grep '^qlean_' || true; } | sort -u > "$CARGO_TARGET_DIR/relk.nofeat"
+    [ ! -s "$CARGO_TARGET_DIR/relk.nofeat" ] || { echo "build.sh syms: --no-default-features still defines qlean_*:" >&2; cat "$CARGO_TARGET_DIR/relk.nofeat" >&2; exit 1; }
+    echo "build.sh syms: --no-default-features defines 0 qlean_*"
     exit 0
 fi
 
