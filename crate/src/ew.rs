@@ -1998,24 +1998,64 @@ pub fn stats_chain<'a>(mode: u8, prog: &[u8], input: &impl Fn(u8) -> &'a [u8], n
     for (d, v) in out[..48].chunks_exact_mut(8).zip(o.iter().map(|v| v.to_ne_bytes()).chain([(cnt as i64).to_ne_bytes()])) { d.copy_from_slice(&v) }
 }
 
-/// `=`, `<>` and `null` at guid: sixteen bytes compared as one word, one bit out per element, the bitmap `bit` writes. `atom` reads `b`'s
+/// `=`, `<>` and `null` at guid: sixteen bytes compared as two words, one bit out per element, the bitmap `bit` writes. `atom` reads `b`'s
 /// one element against every element of `a`.
 pub fn guid_eq(a: &[u8], b: &[u8], atom: bool, ne: bool, n: usize, out: &mut [u8]) {
-    let ac = &a.as_chunks::<16>().0[..n];
-    // one byte of the bitmap from up to eight elements and what each is compared to
-    fn byte<F: Fn(usize) -> [u8; 16]>(x: &[[u8; 16]], ne: bool, y: F) -> u8 { x.iter().enumerate().fold(0u8, |m, (j, e)| m | (((*e == y(j)) != ne) as u8) << j) }
+    type G = [[u8; 8]; 2];
+    // branchless on both words, so a group of eight is straight-line code
+    let eq = |x: &G, y: &G| (u64::from_ne_bytes(x[0]) == u64::from_ne_bytes(y[0])) & (u64::from_ne_bytes(x[1]) == u64::from_ne_bytes(y[1]));
+    fn gs(s: &[u8], n: usize) -> &[G] { &s.as_chunks::<8>().0.as_chunks::<2>().0[..n] }
     if atom {
-        let b0 = if n != 0 { b.as_chunks::<16>().0[0] } else { [0; 16] };
-        for (o, x) in out.iter_mut().zip(ac.chunks(8)) { *o = byte(x, ne, |_| b0) }
+        let (xs, xt) = gs(a, n).as_chunks::<8>();
+        let full = xs.len();
+        let b0 = if n != 0 { gs(b, 1)[0] } else { [[0; 8]; 2] };
+        for (o, x) in out.iter_mut().zip(xs) { *o = (0..8).fold(0u8, |m, j| m | ((eq(&x[j], &b0) != ne) as u8) << j) }
+        if !xt.is_empty() { out[full] = xt.iter().enumerate().fold(0u8, |m, (j, e)| m | ((eq(e, &b0) != ne) as u8) << j) }
     } else {
-        let bc = &b.as_chunks::<16>().0[..n];
-        for ((o, x), y) in out.iter_mut().zip(ac.chunks(8)).zip(bc.chunks(8)) { *o = byte(x, ne, |j| y[j]) }
+        // one element at a time and a byte flushed every eighth: the group form above made LLVM gather the two words of every element
+        let (mut m, mut o) = (0u8, out.iter_mut());
+        for (i, (x, y)) in gs(a, n).iter().zip(gs(b, n)).enumerate() {
+            m |= ((eq(x, y) != ne) as u8) << (i & 7);
+            if i & 7 == 7 { *o.next().expect("guid_eq: the bitmap is shorter than n bits") = m; m = 0 }
+        }
+        if n & 7 != 0 { *o.next().expect("guid_eq: the bitmap is shorter than n bits") = m }
     }
 }
 /// `x^y` at guid: `y`'s element unless it is `0Ng`, sixteen zero bytes, and then `x`'s, read at 0 when `atom`.
 pub fn guid_fill(a: &[u8], b: &[u8], atom: bool, n: usize, out: &mut [u8]) {
-    let (ac, bc) = (a.as_chunks::<16>().0, &b.as_chunks::<16>().0[..n]);
-    for (i, (o, y)) in out[..16 * n].chunks_exact_mut(16).zip(bc).enumerate() {
-        o.copy_from_slice(if *y != [0; 16] { y } else { &ac[if atom { 0 } else { i }] });
+    let (ac, bc, oc) = (a.as_chunks::<16>().0, &b.as_chunks::<16>().0[..n], out[..16 * n].as_chunks_mut::<16>().0);
+    if atom {
+        for (o, y) in oc.iter_mut().zip(bc) { *o = if *y != [0; 16] { *y } else { ac[0] } }
+    } else {
+        for ((o, y), x) in oc.iter_mut().zip(bc).zip(&ac[..n]) { *o = if *y != [0; 16] { *y } else { *x } }
+    }
+}
+#[cfg(test)]
+mod tests_e {
+    use super::*;
+    use std::vec::Vec;
+    fn g(v: &[u8]) -> Vec<u8> { v.iter().flat_map(|&b| (0..16).map(move |k| if k == 15 { b } else { 0 })).collect() }
+    // every length around a byte boundary, an atom and a column on both sides, `=` and `<>`
+    #[test] fn guid_eq_bits_match_the_elements() {
+        for n in 0..20usize {
+            let (x, y): (Vec<u8>, Vec<u8>) = ((0..n).map(|i| (i % 3) as u8).collect(), (0..n).map(|i| (i % 2) as u8).collect());
+            for ne in [false, true] {
+                let mut o = vec![0u8; n.div_ceil(8)];
+                guid_eq(&g(&x), &g(&y), false, ne, n, &mut o);
+                for i in 0..n { assert_eq!(o[i / 8] >> (i % 8) & 1 == 1, (x[i] == y[i]) != ne, "n {n} i {i}") }
+                let mut o = vec![0u8; n.div_ceil(8)];
+                guid_eq(&g(&x), &g(&[1]), true, ne, n, &mut o);
+                for i in 0..n { assert_eq!(o[i / 8] >> (i % 8) & 1 == 1, (x[i] == 1) != ne, "atom n {n} i {i}") }
+                if n % 8 != 0 { assert_eq!(o[n / 8] >> (n % 8), 0, "bits past n stay zero") }
+            }
+        }
+    }
+    #[test] fn guid_fill_takes_the_right_unless_null() {
+        let (x, y) = ([5u8, 6, 7, 8], [0u8, 2, 0, 4]);
+        let mut o = vec![0u8; 64];
+        guid_fill(&g(&x), &g(&y), false, 4, &mut o);
+        assert_eq!(o, g(&[5, 2, 7, 4]));
+        guid_fill(&g(&[9]), &g(&y), true, 4, &mut o);
+        assert_eq!(o, g(&[9, 2, 9, 4]));
     }
 }
