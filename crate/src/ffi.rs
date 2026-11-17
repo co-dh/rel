@@ -30,10 +30,10 @@ pub struct CCoc {
     pub nexc: usize, pub exc_esz: usize,
 }
 impl CCoc {
-    /// The block size exponent, read from the metadata trailer the `sumnul` slot points into (two words on); a column with
-    /// no trailer slots is the writer's.
+    /// The block size exponent, read from the metadata trailer the `sumnul` slot points into (two words on). A view with no
+    /// trailer has no block size, so there is no default to answer with: it aborts naming the slot.
     #[inline(always)]
-    pub fn lg(&self) -> u32 { if self.sumnul.is_null() { DEFAULT_LG } else { unsafe { *self.sumnul.add(2) as u32 } } }
+    pub fn lg(&self) -> u32 { assert!(!self.sumnul.is_null(), "qlean coc view: no metadata trailer (null sumnul), so no block size lg"); unsafe { *self.sumnul.add(2) as u32 } }
     /// The only place raw `coc` pointers become slices. Safety: every pointer is null or valid for the length
     /// coc.rs documents, for `'a`. Inlined so a caller that reads one field (`qrs_coc_block_start`, called per block)
     /// builds only that slice, not the whole 208-byte view out of line.
@@ -616,8 +616,8 @@ mod tests {
         let v = unsafe { cc.view() };
         assert!(v.exc.is_none());
         assert_eq!(v.blk_nexc(0), 0);
-        cc.sumnul = core::ptr::null_mut(); cc.sumn = core::ptr::null_mut();
-        assert_eq!((unsafe { cc.view() }.meta.sumnul, unsafe { cc.view() }.meta.sumn), (0, 0));
+        cc.sumn = core::ptr::null_mut();
+        assert_eq!(unsafe { cc.view() }.meta.sumn, 0);
     }
     // coc.rs's `coc_may_hold64` read off the raw pointers, as the C wrote it
     #[test] fn may_hold64_is_the_c_formula() {
