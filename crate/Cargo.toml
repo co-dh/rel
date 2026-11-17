@@ -16,3 +16,5 @@ doctest = false
 [features]
 # the lean.rs twins test/abi.c calls, built by `build.sh abi` into a separate object, never into relk.o
 abi = []
+# the lib as a `std` crate, for qrs's unit tests (a no_std lib cannot be built with the test profile's unwinding panics)
+std = []

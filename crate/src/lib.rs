@@ -1,7 +1,7 @@
 //! qlean's kernels in Rust, linked into `libqleankernel.a` as `rust/qrs.o`. The Lean externs of `ffi/*.rs` leave the
 //! object (`qrs_abi_*` beside them with feature `abi`). `unsafe` is confined to c.rs, ffi.rs, lean.rs, lib.rs, os.rs, pod.rs, pool.rs,
 //! rt.rs, simd.rs; every other module refuses it, and `ffi/*.rs` denies it (their one `allow` comes from `lean::export!`).
-#![cfg_attr(not(test), no_std)]
+#![cfg_attr(not(any(test, feature = "std")), no_std)]
 #![deny(unsafe_op_in_unsafe_fn)]
 extern crate alloc;
 
@@ -9,7 +9,7 @@ extern crate alloc;
 /// the one place 10 is written.
 pub const DEFAULT_LG: u32 = 10;
 /// tests that name the default block by its size
-#[cfg(test)]
+#[cfg(any(test, feature = "std"))]
 pub const BLK: usize = 1 << DEFAULT_LG;
 pub const MIN_LG: u32 = 6;
 pub const MAX_LG: u32 = 16;
@@ -29,17 +29,18 @@ pub const QLEAN_COST_MATH: u32 = 12;
 
 // the runtime and the C declarations are not interface: cbindgen skips both
 /// cbindgen:ignore
-#[cfg(not(test))]
+#[cfg(not(any(test, feature = "std")))]
 mod rt;
 /// cbindgen:ignore
 pub mod c;
+/// cbindgen:ignore
 pub mod ffi;
 pub mod lean;
 pub mod os;
 /// The Lean externs, one file per C file they replace. Not under `cargo test`: they call the Lean runtime, which only
 /// a Lean link (or rust/rt) provides. A module of its own, not `ffi::`, because ffi.rs imports the kernel modules of
 /// the same names.
-#[cfg(not(test))]
+#[cfg(not(any(test, feature = "std")))]
 #[path = "ffi"]
 pub mod exports {
     pub mod coc;
@@ -54,31 +55,56 @@ pub mod exports {
     pub mod structural;
     pub mod symsort;
 }
+/// cbindgen:ignore
 pub mod pod;
+/// cbindgen:ignore
 pub mod simd;
 /// cbindgen:ignore
 pub mod pool;
 
+/// cbindgen:ignore
 pub mod bits;
+/// cbindgen:ignore
 pub mod bitblk;
+/// cbindgen:ignore
 pub mod alp;
+/// cbindgen:ignore
 pub mod coc;
+/// cbindgen:ignore
 pub mod cocops;
+/// cbindgen:ignore
 pub mod codec;
+/// cbindgen:ignore
 pub mod enc;
+/// cbindgen:ignore
 pub mod ew;
+/// cbindgen:ignore
 pub mod reduce;
+/// cbindgen:ignore
 pub mod res;
+/// cbindgen:ignore
 pub mod scan;
+/// cbindgen:ignore
 pub mod search;
+/// cbindgen:ignore
 pub mod sort;
+/// cbindgen:ignore
 pub mod structural;
+/// cbindgen:ignore
 pub mod sym;
+/// cbindgen:ignore
 pub mod group;
+/// cbindgen:ignore
 pub mod ids;
+/// cbindgen:ignore
 pub mod key;
+/// cbindgen:ignore
 pub mod kwin;
+/// cbindgen:ignore
 pub mod layout;
+/// cbindgen:ignore
 pub mod own;
+/// cbindgen:ignore
 pub mod unpack;
+/// cbindgen:ignore
 pub mod why;

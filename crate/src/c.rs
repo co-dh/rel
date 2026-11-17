@@ -40,7 +40,7 @@ pub type Runner = unsafe extern "C" fn(f: Worker, n: usize, cost: u32, wide: usi
 pub fn pool() -> Runner { crate::pool::run_c }
 /// The unit tests' name for the pool, which they once faked (three slices in turn); under `cargo test` the real pool
 /// splits every non-empty pass three ways (`pool::SPLIT_AT`).
-#[cfg(test)]
+#[cfg(any(test, feature = "std"))]
 pub use crate::pool::run_c as qlean_run_c;
 
 pub struct Job<'f, F> { f: &'f F, out: *mut u8, at: &'f (dyn Fn(usize) -> usize + Sync), len: usize }

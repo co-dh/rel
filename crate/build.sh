@@ -1,10 +1,16 @@
 #!/bin/sh
-# Builds rust/qrs.o (the crate partial-linked, every symbol but qrs_* and the qlean_* Lean externs made local) and
-# regenerates c/rs.h from the crate with the cbindgen CLI. Lake's `qrs.o` target runs this before any C object is
-# compiled, so no C file ever compiles against a header older than the Rust. Any failing step stops the script.
-# `build.sh symbols` compares `nm -u qrs.o` with UNDEF.txt, exactly.
-# `build.sh abi` instead builds $CARGO_TARGET_DIR/qrs-abi.o: the same crate with feature `abi` (the lean.rs twins
-# test/abi.c calls), never part of the library.
+# Builds rust/relk.o and rust/qrs.o (the two crates partial-linked) and regenerates c/rs.h from both with the cbindgen CLI.
+#   relk.o: every symbol of relk's own object stays global (qrs.o calls them) except what the crate pulled from core/alloc;
+#           the Lean externs it defines are the 94 `qlean_*` of relk.
+#   qrs.o:  libqrs.a bundles the relk object too; that member is deleted first, so qrs.o defines only its own `qrs_*` and
+#           `qlean_*` and leaves relk's names undefined, to be resolved by relk.o. Everything else in it is local.
+# Lake's `qrs.o` target runs this before any C object is compiled, so no C file ever compiles against a header older than
+# the Rust. Any failing step stops the script.
+# `build.sh symbols` compares what the two objects leave undefined (less what they define) with UNDEF.txt, exactly, and
+# fails when both define a name.
+# `build.sh abi` instead builds $CARGO_TARGET_DIR/qrs-abi.o: both crates with feature `abi` (the lean.rs twins test/abi.c
+# calls) as ONE object, never part of the library.
+# `build.sh relk-syms` builds relk ALONE and prints the diff between its staticlib's defined `qlean_*` and rust/RELK.txt.
 set -eu
 here=$(cd "$(dirname "$0")" && pwd)
 root=$(dirname "$here")
@@ -22,11 +28,14 @@ link() {
     rm "$2.r"
 }
 
+# the archive member holding crate $2 of staticlib $1
+member() { ar t "$1" | grep "^$2-"; }
+
 if [ "${1:-}" = rt ]; then
     # $CARGO_TARGET_DIR/qrt.o: the Lean runtime a program linked WITHOUT libleanshared needs (the Rel native backend),
     # replacing the C runtime. Never linked into libqleankernel.a, which a Lean build pairs with the real runtime.
     # plt=yes: the default GOT-indirect `call *malloc@GOT` ran copy_byte_array 1.3x slower than rt.c's `call malloc@plt` (perf stat)
-    RUSTC_BOOTSTRAP=1 RUSTFLAGS="-D warnings -Z plt=yes" cargo build --release --manifest-path "$here/rt/Cargo.toml" --target-dir "$CARGO_TARGET_DIR/rt"
+    RUSTC_BOOTSTRAP=1 RUSTFLAGS="-D warnings -Z plt=yes" cargo build --release --manifest-path "$here/relk/rt/Cargo.toml" --target-dir "$CARGO_TARGET_DIR/rt"
     lib="$CARGO_TARGET_DIR/rt/release/libqrt.a"
     syms=$(nm -g --defined-only --format=just-symbols "$lib" | grep '^lean_\|^mi_\|^qlean_rt_io$' | sed 's/^/-u /')
     [ -n "$syms" ] || { echo "build.sh: no lean_*, mi_* or qlean_rt_io symbol defined in $lib" >&2; exit 1; }
@@ -34,37 +43,69 @@ if [ "${1:-}" = rt ]; then
     ld -r $syms -o "$CARGO_TARGET_DIR/qrt.o.r" "$lib"
     objcopy --wildcard -G 'lean_*' -G 'mi_*' -G qlean_rt_io "$CARGO_TARGET_DIR/qrt.o.r" "$CARGO_TARGET_DIR/qrt.o"
     rm "$CARGO_TARGET_DIR/qrt.o.r"
-    # the counted twin rust/testdata/rtcount.c wraps: the runtime's own malloc and free renamed, nothing else
+    # the counted twin relk/testdata/rtcount.c wraps: the runtime's own malloc and free renamed, nothing else
     objcopy --redefine-sym malloc=qrt_malloc --redefine-sym free=qrt_free "$CARGO_TARGET_DIR/qrt.o" "$CARGO_TARGET_DIR/qrt-count.o"
     exit 0
 fi
 
 if [ "${1:-}" = abi ]; then
-    RUSTFLAGS="-C target-cpu=native -D warnings" cargo build --release --lib --features abi --target-dir "$CARGO_TARGET_DIR/abi"
+    RUSTFLAGS="-C target-cpu=native -D warnings" cargo build --release --lib -p qrs --features abi --target-dir "$CARGO_TARGET_DIR/abi"
     link "$CARGO_TARGET_DIR/abi/release/libqrs.a" "$CARGO_TARGET_DIR/qrs-abi.o"
     exit 0
 fi
 
+if [ "${1:-}" = relk-syms ]; then
+    RUSTFLAGS="-C target-cpu=native -D warnings" cargo build --release --lib -p relk --target-dir "$CARGO_TARGET_DIR/relk-alone"
+    nm -g --defined-only --format=just-symbols "$CARGO_TARGET_DIR/relk-alone/release/librelk.a" | grep '^qlean_' | sort -u > "$CARGO_TARGET_DIR/relk.have"
+    sort -u "$here/RELK.txt" > "$CARGO_TARGET_DIR/relk.want"
+    diff "$CARGO_TARGET_DIR/relk.want" "$CARGO_TARGET_DIR/relk.have" || { echo "build.sh relk-syms: relk's defined qlean_* differ from RELK.txt (< wanted, > defined)" >&2; exit 1; }
+    echo "build.sh relk-syms: $(wc -l < "$CARGO_TARGET_DIR/relk.have") qlean_* defined, equal to RELK.txt"
+    exit 0
+fi
+
 if [ "${1:-}" = symbols ]; then
-    # `build.sh symbols` compares the object the last plain build left against UNDEF.txt, in both directions
-    [ -f "$here/qrs.o" ] || { echo "build.sh: $here/qrs.o is not built; run: sh $here/build.sh" >&2; exit 1; }
-    nm -u --format=just-symbols "$here/qrs.o" > "$CARGO_TARGET_DIR/undef.nm"
-    sort -u "$CARGO_TARGET_DIR/undef.nm" > "$CARGO_TARGET_DIR/undef.have"
+    for o in relk qrs; do [ -f "$here/$o.o" ] || { echo "build.sh: $here/$o.o is not built; run: sh $here/build.sh" >&2; exit 1; }; done
+    for o in relk qrs; do nm -g --defined-only --format=just-symbols "$here/$o.o" | sort -u > "$CARGO_TARGET_DIR/def.$o"; done
+    both=$(comm -12 "$CARGO_TARGET_DIR/def.relk" "$CARGO_TARGET_DIR/def.qrs")
+    [ -z "$both" ] || { echo "build.sh symbols: relk.o and qrs.o both define: $both" >&2; exit 1; }
+    sort -u "$CARGO_TARGET_DIR/def.relk" "$CARGO_TARGET_DIR/def.qrs" > "$CARGO_TARGET_DIR/def.all"
+    { nm -u --format=just-symbols "$here/relk.o"; nm -u --format=just-symbols "$here/qrs.o"; } | sort -u > "$CARGO_TARGET_DIR/undef.nm"
+    comm -23 "$CARGO_TARGET_DIR/undef.nm" "$CARGO_TARGET_DIR/def.all" > "$CARGO_TARGET_DIR/undef.have"
     sed -e '/^#/d' -e '/^[[:space:]]*$/d' "$here/UNDEF.txt" > "$CARGO_TARGET_DIR/undef.rows"
     cut -d' ' -f1 "$CARGO_TARGET_DIR/undef.rows" | sort -u > "$CARGO_TARGET_DIR/undef.want"
     extra=$(comm -23 "$CARGO_TARGET_DIR/undef.have" "$CARGO_TARGET_DIR/undef.want")
     missing=$(comm -13 "$CARGO_TARGET_DIR/undef.have" "$CARGO_TARGET_DIR/undef.want")
-    [ -z "$extra" ] || echo "build.sh symbols: qrs.o leaves these undefined and UNDEF.txt does not list them: $extra" >&2
-    [ -z "$missing" ] || echo "build.sh symbols: UNDEF.txt lists these and qrs.o no longer needs them: $missing" >&2
+    [ -z "$extra" ] || echo "build.sh symbols: relk.o and qrs.o leave these undefined and UNDEF.txt does not list them: $extra" >&2
+    [ -z "$missing" ] || echo "build.sh symbols: UNDEF.txt lists these and the objects no longer need them: $missing" >&2
     [ -z "$extra$missing" ] || exit 1
-    echo "build.sh symbols: $(wc -l < "$CARGO_TARGET_DIR/undef.have") undefined names, all in UNDEF.txt"
+    echo "build.sh symbols: $(wc -l < "$CARGO_TARGET_DIR/undef.have") undefined names, all in UNDEF.txt; nothing defined twice"
     exit 0
 fi
 
-RUSTFLAGS="-C target-cpu=native -D warnings" cargo build --release --lib
+RUSTFLAGS="-C target-cpu=native -D warnings" cargo build --release --lib -p relk -p qrs
 command -v cbindgen > /dev/null || { echo "build.sh: cbindgen not on PATH; run: cargo install --locked cbindgen" >&2; exit 1; }
-# the Lean externs are macro output, which cbindgen reads from the expanded crate (`-Zunpretty=expanded`)
-RUSTC_BOOTSTRAP=1 cbindgen --quiet --config "$here/cbindgen.toml" --crate qrs --output "$CARGO_TARGET_DIR/rs.h" "$here"
+# the Lean externs are macro output, which cbindgen reads from the expanded crates (`-Zunpretty=expanded`); a crate's
+# header is its own prototypes, so rs.h is relk's (with the mirrors and constants) followed by the prototypes of qrs
+for c in relk qrs; do
+    CARGO_PROFILE_DEV_PANIC=abort RUSTC_BOOTSTRAP=1 cbindgen --quiet --config "$here/cbindgen.toml" --crate "$c" --output "$CARGO_TARGET_DIR/rs-$c.h" "$here/$c"
+done
+{ sed '$d' "$CARGO_TARGET_DIR/rs-relk.h"
+  awk 'BEGIN { RS = ""; ORS = "\n\n" } /(^|\n)[a-z_0-9 ]+ \*?(qlean|qrs)_[a-z0-9_]+\(/' "$CARGO_TARGET_DIR/rs-qrs.h"
+  echo '#endif  /* QLEAN_RS_H */'; } > "$CARGO_TARGET_DIR/rs.h"
 # written only on a change, so lake's hash of c/rs.h moves only when the interface does
 cmp -s "$CARGO_TARGET_DIR/rs.h" "$root/c/rs.h" || cp "$CARGO_TARGET_DIR/rs.h" "$root/c/rs.h"
-link "$CARGO_TARGET_DIR/release/libqrs.a" "$here/qrs.o"
+
+rel="$CARGO_TARGET_DIR/release"
+# relk.o: all of relk's own symbols global (qrs.o needs them), core/alloc's local
+mkdir -p "$CARGO_TARGET_DIR/relk-member"
+(cd "$CARGO_TARGET_DIR/relk-member" && rm -f ./*.o && member "$rel/librelk.a" relk | xargs ar x "$rel/librelk.a")
+nm -g --defined-only --format=just-symbols "$CARGO_TARGET_DIR"/relk-member/relk-*.o | sort -u > "$CARGO_TARGET_DIR/relk.global"
+syms=$(grep '^qlean_\|^qrs_' "$CARGO_TARGET_DIR/relk.global" | sed 's/^/-u /')
+# shellcheck disable=SC2086 # one `-u sym` word pair per export
+ld -r $syms -o "$here/relk.o.r" "$rel/librelk.a"
+objcopy --keep-global-symbols="$CARGO_TARGET_DIR/relk.global" "$here/relk.o.r" "$here/relk.o"
+rm "$here/relk.o.r"
+# qrs.o: relk's member deleted from a copy of the archive
+cp "$rel/libqrs.a" "$CARGO_TARGET_DIR/libqrs-own.a"
+member "$rel/libqrs.a" relk | xargs ar d "$CARGO_TARGET_DIR/libqrs-own.a"
+link "$CARGO_TARGET_DIR/libqrs-own.a" "$here/qrs.o"

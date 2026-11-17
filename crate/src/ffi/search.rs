@@ -3,6 +3,7 @@
 //! index. Each unboxes its arguments, allocates the answer and makes one call into `search.rs`, which owns the loops.
 //! Lean passes `Int64` and `UInt64` as C's `uint64_t`.
 #![deny(unsafe_code)]
+use crate::coc::Coc;
 use crate::ffi::{sarray_room, sd_kept, syms_of};
 use crate::lean::{B, O, SArr, export};
 use crate::search::{Kind, Opnd};
@@ -175,4 +176,24 @@ export! {
 
 
 
+}
+/// `binRows` over a haystack dense or encoded: `bounds` and `gids` are `Int64`s, `order` 64-bit rows (empty: none).
+pub fn bin_rows(w: usize, is_float: bool, is_signed: bool, right: bool, hay: &[u8], enc: Option<&Coc>, keysv: B, orderv: B, boundsv: B, gidsv: B, miss: u64) -> O {
+    fn words<'a>(v: B<'a>) -> &'a [i64] { let b = v.bytes(); pod::cast::<i64>(&b[..b.len() / 8 * 8]).expect("qlean bin_rows: a bounds or gids array is misaligned") }
+    let keys = keysv.bytes();
+    let m = keys.len() / w;
+    let mut r = longs(m);
+    search::bin_rows(c::pool(), w, is_float, is_signed, right, hay, enc, &keys[..w * m], orderv.bytes(), words(boundsv), words(gidsv), miss as i64, m,
+                     search::i64s(r.bytes_mut()));
+    r.into()
+}
+/// `needles ? hay` (`bits` false: `out` is `8 * m` bytes of `Int64`s) or `needles in hay` (bits, `out` zeroed) for symbol
+/// columns: through the haystack's kept hash where it is an interned dictionary that keeps one (`m` probes, no table built),
+/// else `search::sym_search`.
+pub fn sym_search(bits: bool, nb: B, no: B, hb: B, ho: B, out: &mut [u8]) {
+    let (nd, h) = (syms_of(nb, no), syms_of(hb, ho));
+    let (m, n) = (nd.count(), h.count());
+    if m == 0 { return }
+    let kept = sd_kept(hb, ho, |probe| for j in 0..m { search::sym_put(bits, out, n, j, probe(nd.at(j))) });
+    if kept.is_none() { search::sym_search(bits, &nd, &h, out) }
 }
