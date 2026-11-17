@@ -43,7 +43,7 @@ if [ "${1:-}" = rt ]; then
     ld -r $syms -o "$CARGO_TARGET_DIR/qrt.o.r" "$lib"
     objcopy --wildcard -G 'lean_*' -G 'mi_*' -G qlean_rt_io "$CARGO_TARGET_DIR/qrt.o.r" "$CARGO_TARGET_DIR/qrt.o"
     rm "$CARGO_TARGET_DIR/qrt.o.r"
-    # the counted twin relk/testdata/rtcount.c wraps: the runtime's own malloc and free renamed, nothing else
+    # the counted twin testdata/rtcount.c wraps: the runtime's own malloc and free renamed, nothing else
     objcopy --redefine-sym malloc=qrt_malloc --redefine-sym free=qrt_free "$CARGO_TARGET_DIR/qrt.o" "$CARGO_TARGET_DIR/qrt-count.o"
     exit 0
 fi
@@ -64,12 +64,10 @@ if [ "${1:-}" = relk-syms ]; then
 fi
 
 if [ "${1:-}" = symbols ]; then
-    for o in relk qrs; do [ -f "$here/$o.o" ] || { echo "build.sh: $here/$o.o is not built; run: sh $here/build.sh" >&2; exit 1; }; done
-    for o in relk qrs; do nm -g --defined-only --format=just-symbols "$here/$o.o" | sort -u > "$CARGO_TARGET_DIR/def.$o"; done
-    both=$(comm -12 "$CARGO_TARGET_DIR/def.relk" "$CARGO_TARGET_DIR/def.qrs")
-    [ -z "$both" ] || { echo "build.sh symbols: relk.o and qrs.o both define: $both" >&2; exit 1; }
-    sort -u "$CARGO_TARGET_DIR/def.relk" "$CARGO_TARGET_DIR/def.qrs" > "$CARGO_TARGET_DIR/def.all"
-    { nm -u --format=just-symbols "$here/relk.o"; nm -u --format=just-symbols "$here/qrs.o"; } | sort -u > "$CARGO_TARGET_DIR/undef.nm"
+    for o in qrs; do [ -f "$here/$o.o" ] || { echo "build.sh: $here/$o.o is not built; run: sh $here/build.sh" >&2; exit 1; }; done
+    for o in qrs; do nm -g --defined-only --format=just-symbols "$here/$o.o" | sort -u > "$CARGO_TARGET_DIR/def.$o"; done
+    cp "$CARGO_TARGET_DIR/def.qrs" "$CARGO_TARGET_DIR/def.all"
+    nm -u --format=just-symbols "$here/qrs.o" | sort -u > "$CARGO_TARGET_DIR/undef.nm"
     comm -23 "$CARGO_TARGET_DIR/undef.nm" "$CARGO_TARGET_DIR/def.all" > "$CARGO_TARGET_DIR/undef.have"
     sed -e '/^#/d' -e '/^[[:space:]]*$/d' "$here/UNDEF.txt" > "$CARGO_TARGET_DIR/undef.rows"
     cut -d' ' -f1 "$CARGO_TARGET_DIR/undef.rows" | sort -u > "$CARGO_TARGET_DIR/undef.want"
@@ -90,22 +88,9 @@ for c in relk qrs; do
     CARGO_PROFILE_DEV_PANIC=abort RUSTC_BOOTSTRAP=1 cbindgen --quiet --config "$here/cbindgen.toml" --crate "$c" --output "$CARGO_TARGET_DIR/rs-$c.h" "$here/$c"
 done
 { sed '$d' "$CARGO_TARGET_DIR/rs-relk.h"
-  awk 'BEGIN { RS = ""; ORS = "\n\n" } /(^|\n)[a-z_0-9 ]+ \*?(qlean|qrs)_[a-z0-9_]+\(/' "$CARGO_TARGET_DIR/rs-qrs.h"
+  awk 'BEGIN { RS = ""; ORS = "\n\n" } NR == FNR { n = split($0, l, "\n"); for (i = 1; i <= n; i++) if (l[i] ~ /^#define /) { split(l[i], w, " "); seen[w[2]] = 1 }; next } { if (/(^|\n)[a-z_0-9 ]+ \*?(qlean|qrs)_[a-z0-9_]+\(/) print; else if (match($0, /#define RS_[A-Z_0-9]+/)) { d = substr($0, RSTART + 8, RLENGTH - 8); if (!(d in seen)) print } }' "$CARGO_TARGET_DIR/rs-relk.h" "$CARGO_TARGET_DIR/rs-qrs.h"
   echo '#endif  /* QLEAN_RS_H */'; } > "$CARGO_TARGET_DIR/rs.h"
 # written only on a change, so lake's hash of c/rs.h moves only when the interface does
 cmp -s "$CARGO_TARGET_DIR/rs.h" "$root/c/rs.h" || cp "$CARGO_TARGET_DIR/rs.h" "$root/c/rs.h"
 
-rel="$CARGO_TARGET_DIR/release"
-# relk.o: all of relk's own symbols global (qrs.o needs them), core/alloc's local
-mkdir -p "$CARGO_TARGET_DIR/relk-member"
-(cd "$CARGO_TARGET_DIR/relk-member" && rm -f ./*.o && member "$rel/librelk.a" relk | xargs ar x "$rel/librelk.a")
-nm -g --defined-only --format=just-symbols "$CARGO_TARGET_DIR"/relk-member/relk-*.o | sort -u > "$CARGO_TARGET_DIR/relk.global"
-syms=$(grep '^qlean_\|^qrs_' "$CARGO_TARGET_DIR/relk.global" | sed 's/^/-u /')
-# shellcheck disable=SC2086 # one `-u sym` word pair per export
-ld -r $syms -o "$here/relk.o.r" "$rel/librelk.a"
-objcopy --keep-global-symbols="$CARGO_TARGET_DIR/relk.global" "$here/relk.o.r" "$here/relk.o"
-rm "$here/relk.o.r"
-# qrs.o: relk's member deleted from a copy of the archive
-cp "$rel/libqrs.a" "$CARGO_TARGET_DIR/libqrs-own.a"
-member "$rel/libqrs.a" relk | xargs ar d "$CARGO_TARGET_DIR/libqrs-own.a"
-link "$CARGO_TARGET_DIR/libqrs-own.a" "$here/qrs.o"
+link "$CARGO_TARGET_DIR/release/libqrs.a" "$here/qrs.o"

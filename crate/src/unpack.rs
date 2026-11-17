@@ -39,7 +39,7 @@ mod tests {
     use crate::BLK;
     // `unpack.in`: FNV-1a of the first nb * lane bytes C's res_unpack_scalar wrote, by [width - 1][nb index]
     // (testdata/drv.c (deleted; in git history) dumped it); 0 at a width C refuses.
-    const WANT: [[u64; 4]; 64] = include!("../testdata/unpack.in");
+    const WANT: [[u64; 4]; 64] = include!("../../testdata/unpack.in");
     fn fnv(p: &[u8]) -> u64 { p.iter().fold(0xcbf29ce484222325, |h, &b| (h ^ b as u64).wrapping_mul(0x100000001b3)) }
     #[test] fn every_width_against_c() {
         for w in 3..64u8 {

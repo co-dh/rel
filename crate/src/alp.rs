@@ -424,7 +424,7 @@ mod tests {
     // alp_fin_blk, sort.rs's keys_blk_alp) on random columns of every residual width, with sentinel patches; the stream is
     // made by the generator in /data/tmp/qrs/A5/gen.c. `QRS_A5_CASES` names a bigger one than the committed sample.
     #[test] fn differential() {
-        let path = std::env::var("QRS_A5_CASES").unwrap_or_else(|_| concat!(env!("CARGO_MANIFEST_DIR"), "/testdata/alp.bin").into());
+        let path = std::env::var("QRS_A5_CASES").unwrap_or_else(|_| concat!(env!("CARGO_MANIFEST_DIR"), "/../testdata/alp.bin").into());
         let raw = std::fs::read(&path).unwrap_or_else(|e| panic!("{path}: {e}"));
         let mut c = Cur { w: raw.chunks_exact(8).map(|x| u64::from_ne_bytes(x.try_into().unwrap())).collect(), at: 0 };
         let (mut cols, mut checks) = (0u64, 0u64);
@@ -548,7 +548,7 @@ mod tests {
         }
     }
     #[test] fn differential_enc() {
-        let path = std::env::var("QRS_A9_CASES").unwrap_or_else(|_| concat!(env!("CARGO_MANIFEST_DIR"), "/testdata/alp_enc.bin").into());
+        let path = std::env::var("QRS_A9_CASES").unwrap_or_else(|_| concat!(env!("CARGO_MANIFEST_DIR"), "/../testdata/alp_enc.bin").into());
         let raw = std::fs::read(&path).unwrap_or_else(|e| panic!("{path}: {e}"));
         let mut c = Cur { w: raw.chunks_exact(8).map(|x| u64::from_ne_bytes(x.try_into().unwrap())).collect(), at: 0 };
         let (mut blocks, mut checks) = (0u64, 0u64);

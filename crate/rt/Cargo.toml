@@ -21,3 +21,6 @@ codegen-units = 1
 # lean.rs's `abi` twins are not built here
 [features]
 abi = []
+
+# not a member of rust/'s workspace
+[workspace]
