@@ -82,6 +82,6 @@ def rows : List Row :=
 def rowGaps : List String := ["F", "setify", "asc", "filter", "takewhile", "thinL", "merge", "loop"]
 
 -- every row's code has its `Row` or is a gap, never both: the obligations are `rowCodes`, not `rows`
-#guard rowCodes.all fun c => (rows.any (·.code.sym == c.sym)) != rowGaps.contains c.sym
+example : (rowCodes.all fun c => (rows.any (·.code.sym == c.sym)) != rowGaps.contains c.sym) = true := by decide
 
 end Rel.Lang

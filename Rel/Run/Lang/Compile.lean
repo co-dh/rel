@@ -157,10 +157,16 @@ structure Out (d : Bool) (A B : Obj) where
   pl : Pl d A B
   row : Option (Prim × List Code) := none
 
+/-- A closed node's table and plan computed once, where the `Gen` combinators would recompute it at every call
+    (each round of a fold over it): the sharing `rel_program` gets from Lean hoisting closed terms. -/
+def Out.memo {A B : Obj} : {d : Bool} → Out d A B → Out d A B
+  | false, o => let r := o.fn (); let p := o.pl (); ⟨fun _ => r, fun _ => p, o.row⟩
+  | true, o => o
+
 /-- `t`'s code and plan, one `Gen` combinator per constructor, as `Expand.node` and `Expand.plan?` build them. The
     plan is the bit-rule node where the node has one, else its table as a leaf (`Gen.pleaf`); a closed term's plan
     is its table. `ν` runs as plain rounds (`Gen.nu`); `call` vouches for nothing until stage 5. -/
-def Tm.gen : CodeEnv → {A B : Obj} → {d : Bool} → Tm A B d → Out d A B
+def Tm.gen (η : CodeEnv) {A B : Obj} {d : Bool} (t : Tm A B d) : Out d A B := Out.memo <| match η, A, B, d, t with
   | _, A, B, _, .val R => leaf (Gen.val A B (R, true))
   | _, A, _, _, .uni (m := m) U => leaf (Gen.uni A m (U, true))
   | _, A, B, _, .zero => leaf (Gen.zero A B)
