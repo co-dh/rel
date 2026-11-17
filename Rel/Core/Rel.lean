@@ -107,6 +107,49 @@ theorem le_antisymm {R S : Rel α β} (h₁ : R ⊑ S) (h₂ : S ⊑ R) : R = S 
 theorem le_trans {R S T : Rel α β} (h₁ : R ⊑ S) (h₂ : S ⊑ T) : R ⊑ T :=
   le_iff.2 fun a b h => le_iff.1 h₂ a b (le_iff.1 h₁ a b h)
 
+/-! ### The allegory axioms (Freyd §2.1) and the distributive laws (§2.21) in `Rel(Set)` -/
+
+theorem recip_recip (R : Rel α β) : R°° = R := rfl
+
+theorem recip_comp (R : Rel α β) (S : Rel β γ) : (R ≫ S)° = S° ≫ R° :=
+  ext fun _ _ => ⟨fun ⟨b, h, h'⟩ => ⟨b, h', h⟩, fun ⟨b, h, h'⟩ => ⟨b, h', h⟩⟩
+
+theorem inter_le_left (R S : Rel α β) : R ∩ S ⊑ R := le_iff.2 fun _ _ h => h.1
+
+theorem inter_le_right (R S : Rel α β) : R ∩ S ⊑ S := le_iff.2 fun _ _ h => h.2
+
+theorem le_inter {R S T : Rel α β} (h₁ : T ⊑ R) (h₂ : T ⊑ S) : T ⊑ R ∩ S :=
+  le_iff.2 fun a b h => ⟨le_iff.1 h₁ a b h, le_iff.1 h₂ a b h⟩
+
+theorem le_union_left (R S : Rel α β) : R ⊑ R ∪ S := le_iff.2 fun _ _ => Or.inl
+
+theorem le_union_right (R S : Rel α β) : S ⊑ R ∪ S := le_iff.2 fun _ _ => Or.inr
+
+theorem union_le {R S T : Rel α β} (h₁ : R ⊑ T) (h₂ : S ⊑ T) : R ∪ S ⊑ T :=
+  le_iff.2 fun a b h => h.elim (le_iff.1 h₁ a b) (le_iff.1 h₂ a b)
+
+theorem zero_le (R : Rel α β) : 𝟘 ⊑ R := le_iff.2 fun _ _ h => h.elim
+
+theorem inter_union (R S T : Rel α β) : R ∩ (S ∪ T) = (R ∩ S) ∪ (R ∩ T) :=
+  ext fun _ _ => ⟨fun ⟨h, h'⟩ => h'.imp (⟨h, ·⟩) (⟨h, ·⟩),
+    fun h => h.elim (fun ⟨h, h'⟩ => ⟨h, Or.inl h'⟩) (fun ⟨h, h'⟩ => ⟨h, Or.inr h'⟩)⟩
+
+theorem comp_union (R : Rel α β) (S T : Rel β γ) : R ≫ (S ∪ T) = (R ≫ S) ∪ (R ≫ T) :=
+  ext fun _ _ => ⟨fun ⟨b, h, h'⟩ => h'.imp (fun h' => ⟨b, h, h'⟩) (fun h' => ⟨b, h, h'⟩),
+    fun h => h.elim (fun ⟨b, h, h'⟩ => ⟨b, h, Or.inl h'⟩) (fun ⟨b, h, h'⟩ => ⟨b, h, Or.inr h'⟩)⟩
+
+theorem union_comp (R S : Rel α β) (T : Rel β γ) : (R ∪ S) ≫ T = (R ≫ T) ∪ (S ≫ T) :=
+  ext fun _ _ => ⟨fun ⟨b, h, h'⟩ => h.imp (fun h => ⟨b, h, h'⟩) (fun h => ⟨b, h, h'⟩),
+    fun h => h.elim (fun ⟨b, h, h'⟩ => ⟨b, Or.inl h, h'⟩) (fun ⟨b, h, h'⟩ => ⟨b, Or.inr h, h'⟩)⟩
+
+theorem comp_zero (R : Rel α β) : R ≫ (𝟘 : Rel β γ) = 𝟘 := ext fun _ _ => ⟨fun ⟨_, _, h⟩ => h, False.elim⟩
+
+theorem zero_comp (R : Rel β γ) : (𝟘 : Rel α β) ≫ R = 𝟘 := ext fun _ _ => ⟨fun ⟨_, h, _⟩ => h, False.elim⟩
+
+/-- The modular law: `R S ∩ T ⊑ (R ∩ T S°) S`. -/
+theorem modular (R : Rel α β) (S : Rel β γ) (T : Rel α γ) : (R ≫ S) ∩ T ⊑ (R ∩ (T ≫ S°)) ≫ S :=
+  le_iff.2 fun _ c ⟨⟨b, hR, hS⟩, hT⟩ => ⟨b, ⟨hR, c, hT, hS⟩, hS⟩
+
 end Rel
 
 end Rel.Core
