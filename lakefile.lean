@@ -106,3 +106,9 @@ target «rel-native» pkg : System.FilePath := do
     let exe := dir / "rel-native"
     proc { cmd := "cc", args := #["-o", exe.toString, m.toString, r.toString, k.toString, "-lm"] }
     return exe
+
+/-- `make axioms` and `make externs`: enumerate the declarations of named modules. Outside the `Rel` glob, so
+    `lake build Rel` neither builds nor runs it. -/
+lean_exe gates where
+  srcDir := "gates"
+  root := `Gates
