@@ -221,12 +221,12 @@ def gradeIds (desc : Bool) (n : USize) (dict : @& ByteArray) (dof : @& Array Nat
     (ids : @& ByteArray) : ByteArray :=
   let d := dof.size - 1
   let w := Column.idWidth dof
-  let ord := gradeSyms false dict dof
-  grade .i32 desc n
-    ((List.range n.toNat).foldl (init := ByteArray.empty) fun acc i =>
-      let k := Column.idAt ids w i
-      Column.pushBits acc
-        (((List.range d).find? fun j => Column.bitsAt ord (j * 8) 8 == k.toUInt64).getD 0).toUInt64 4)
+  -- the rank is a `Nat`, the entries below the id's symbol, as relk's `u64` one: a four-byte key wrapped past `2^31`
+  -- entries. Equal symbols tie and an id past the dictionary (the empty symbol) ranks 0, as the kernel's do
+  let rank (i : Nat) : Nat := (List.range d).countP fun j =>
+    Column.symCmp (Column.symKey dict dof j) (Column.symKey dict dof (Column.idAt ids w i)) == .lt
+  indices ((List.range n.toNat).mergeSort fun i j =>
+    if desc then decide (rank j ≤ rank i) else decide (rank i ≤ rank j))
 
 /-- The dictionary entry element `i` names: its id, and `d` for any id past the dictionary. Those
 all denote the **one** empty symbol — `Column.symBytes` answers `(0, 0)` past its table — so they are

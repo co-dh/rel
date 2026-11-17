@@ -729,12 +729,25 @@ pub fn id_longs(n: usize, w: u32, ids: &[u8], out: &mut [i64]) { by_width!(w, lo
 // ---- A25: sort.rs ----
 /// sort.rs `symgroups`: the distinct symbols' keys, first indices, group ids and counts.
 /// `dk` is empty exactly when a symbol did not pack; `gid`, `cnt` are empty unless `want` asked for them.
-pub struct SymGroups { pub dk: Vec<u64>, pub first: Vec<usize>, pub ng: usize, pub gid: Vec<u32>, pub cnt: Vec<u32> }
+/// `G` is the lane a group id and a count travel in, `gid_lane(n)` bytes: never narrower than `n` groups need.
+pub struct SymGroups<G> { pub dk: Vec<u64>, pub first: Vec<usize>, pub ng: usize, pub gid: Vec<G>, pub cnt: Vec<G> }
+/// Bytes of the lane `n` rows' group ids and counts take: four while `n` fits a `u32`, eight past it, never a cap.
+pub const fn gid_lane(n: usize) -> usize { if n as u64 <= u32::MAX as u64 { 4 } else { 8 } }
+/// `f::<G>(args)` for `G` the `gid_lane(n)` lane: switched once for the call, never per element.
+#[macro_export]
+macro_rules! by_gid {
+    ($n:expr, $f:ident($($a:expr),*)) => { if $crate::sort::gid_lane($n) == 4 { $f::<u32>($($a),*) } else { $f::<u64>($($a),*) } };
+}
+/// The lane `G` holds every id and count of `n` rows: the stop a narrower lane would otherwise wrap past.
+fn lane_holds<G: Un>(n: usize) {
+    let mx = G::of(u64::MAX).get();
+    if n as u64 > mx { panic!("qlean: a {}-byte group lane holds at most {mx} rows, not {n}", core::mem::size_of::<G>()) }
+}
 /// sym.rs `SYM_KEY_BLOCK`: a block is checked, then packed while it is in cache.
 pub const SYM_KEY_BLOCK: usize = 4096;
 /// sort.rs `sym_dedup`: group ids and counts of the sorted symbols `v`; answers the group count.
 /// An empty `gid` (or `cnt`) is C's NULL.
-pub fn sym_dedup(v: &[&[u8]], gid: &mut [u32], cnt: &mut [u32], first: &mut [usize]) -> usize {
+pub fn sym_dedup<G: Un>(v: &[&[u8]], gid: &mut [G], cnt: &mut [G], first: &mut [usize]) -> usize {
     let n = v.len();
     if n == 0 { return 0 }
     let (cap, mut ng) = (crate::group::cap_for(n), 0);
@@ -742,16 +755,19 @@ pub fn sym_dedup(v: &[&[u8]], gid: &mut [u32], cnt: &mut [u32], first: &mut [usi
     for i in 0..n {
         let mut s = (sym_hash(v[i]) as usize) & (cap - 1);
         while tab[s] != 0 && !crate::sym::sym_eq(v[first[tab[s] - 1]], v[i]) { s = (s + 1) & (cap - 1) }
-        if tab[s] == 0 { ng += 1; tab[s] = ng; first[ng - 1] = i; if !cnt.is_empty() { cnt[ng - 1] = 0 } }
-        if !gid.is_empty() { gid[i] = (tab[s] - 1) as u32; if !cnt.is_empty() { cnt[tab[s] - 1] += 1 } }
+        if tab[s] == 0 { ng += 1; tab[s] = ng; first[ng - 1] = i; if !cnt.is_empty() { cnt[ng - 1] = G::of(0) } }
+        if !gid.is_empty() {
+            gid[i] = G::of((tab[s] - 1) as u64);
+            if !cnt.is_empty() { cnt[tab[s] - 1] = G::of(cnt[tab[s] - 1].get() + 1) }
+        }
     }
     ng
 }
 /// sort.rs `sym_heads`: each group's first symbol.
 pub fn sym_heads<'a>(s: &Syms<'a>, first: &[usize]) -> Vec<&'a [u8]> { first.iter().map(|&i| s.at(i)).collect() }
 /// sort.rs `sym_group`: `want` says which fields are filled (C's bit flags: 0 firsts, 1 gids, 2 gids and counts).
-pub fn sym_group(s: &Syms, n: usize, want: i32) -> SymGroups {
-    if want != 0 { group_bound(n) }
+pub fn sym_group<G: Un>(s: &Syms, n: usize, want: i32) -> SymGroups<G> {
+    if want != 0 { lane_holds::<G>(n) }
     // pushed in order, never zero-filled: only the first `ng` of `first`/`dk`/`cnt` are written, and a zeroed `n`-long vector is
     // 8 MB of memset once malloc has stopped handing out fresh mmap pages (C's xalloc does not zero)
     let mut gid = Vec::with_capacity(if want != 0 { n } else { 0 });
@@ -770,14 +786,14 @@ pub fn sym_group(s: &Syms, n: usize, want: i32) -> SymGroups {
             lo = hi;
             let mut t = (key.wrapping_mul(crate::group::PHI64) >> sh) as usize;
             while tab[t] != 0 && dk[tab[t] - 1] != key { t = (t + 1) & (cap - 1) }
-            if tab[t] == 0 { dk.push(key); tab[t] = dk.len(); first.push(i); if want == 2 { cnt.push(0) } }
+            if tab[t] == 0 { dk.push(key); tab[t] = dk.len(); first.push(i); if want == 2 { cnt.push(G::of(0)) } }
             let g = tab[t] - 1;
-            if want != 0 { gid.push(g as u32); if want == 2 { cnt[g] += 1 } }
+            if want != 0 { gid.push(G::of(g as u64)); if want == 2 { cnt[g] = G::of(cnt[g].get() + 1) } }
         }
     }
     let ng = if packed { dk.len() } else {
         dk = Vec::new();
-        (gid, cnt, first) = (alloc::vec![0; if want != 0 { n } else { 0 }], alloc::vec![0; if want == 2 { n } else { 0 }], alloc::vec![0; n]);
+        (gid, cnt, first) = (alloc::vec![G::of(0); if want != 0 { n } else { 0 }], alloc::vec![G::of(0); if want == 2 { n } else { 0 }], alloc::vec![0; n]);
         sym_dedup(&s.slices(n), &mut gid, &mut cnt, &mut first)
     };
     first.truncate(ng);
@@ -785,14 +801,16 @@ pub fn sym_group(s: &Syms, n: usize, want: i32) -> SymGroups {
     SymGroups { dk, first, ng, gid, cnt }
 }
 /// sort.rs `sym_ranks`: each symbol's rank in q's symbol order.
-pub fn sym_ranks(s: &Syms, n: usize) -> Vec<u64> {
-    let g = sym_group(s, n, 1);
+pub fn sym_ranks(s: &Syms, n: usize) -> Vec<u64> { by_gid!(n, ranks_in(s, n)) }
+/// `sym_ranks` with the group ids in the lane `G`; a rank is a `u64` whatever `G` is.
+pub fn ranks_in<G: Un>(s: &Syms, n: usize) -> Vec<u64> {
+    let g = sym_group::<G>(s, n, 1);
     let mut ord: Vec<usize> = (0..g.ng).collect();
     if !g.dk.is_empty() { ord.sort_unstable_by_key(|&t| g.dk[t]) } // keys are distinct, so unstable is the stable order
     else { sym_msort(&sym_heads(s, &g.first), &mut ord, &mut alloc::vec![0usize; g.ng]) }
     let mut rank = alloc::vec![0usize; g.ng];
     for (t, &o) in ord.iter().enumerate() { rank[o] = t }
-    g.gid.iter().map(|&x| rank[x as usize] as u64).collect()
+    g.gid.iter().map(|&x| rank[x.get() as usize] as u64).collect()
 }
 /// sort.rs `qlean_sort_grade_syms` past the unboxing.
 /// Ranks are dense in `0 .. ng`, so the grade is one stable counting pass (`grade_keys` would pick `grade_count`).
@@ -837,7 +855,6 @@ pub fn scatter<const W: u32>(ids: &[u8], n: usize, dk: &[u64], at: &mut [usize],
 /// A counting sort over the dictionary's dense ranks, stable both ways round.
 pub fn grade_ids(desc: bool, n: usize, dict: &Syms, ids: &[u8], w: u32, out: &mut [i64]) {
     if n == 0 { return }
-    if dict.count() != 0 { group_bound(dict.count()) }
     let dk = dict_ranks(dict);
     let mut at = starts(&by_width!(w, rank_counts(ids, n, &dk, dk.len().max(1))), desc);
     by_width!(w, scatter(ids, n, &dk, &mut at, out))
@@ -847,18 +864,18 @@ pub fn grade_ids(desc: bool, n: usize, dict: &Syms, ids: &[u8], w: u32, out: &mu
 pub fn distinct_syms(s: &Syms, first: &mut [usize]) -> usize {
     let n = s.count();
     if n == 0 { return 0 }
-    let g = sym_group(s, n, 0);
+    let g = sym_group::<u32>(s, n, 0); // no ids asked for, so no lane is filled
     first[..g.ng].copy_from_slice(&g.first);
     g.ng
 }
 /// `g` packed `w` bits an id into `out`, the last byte's fields past `g` zero.
-pub fn pack_gids(g: &[u32], w: u32, out: &mut [u8]) {
+pub fn pack_gids<G: Un>(g: &[G], w: u32, out: &mut [u8]) {
     match w {
         0 => {}
         1 | 2 | 4 => for (o, c) in out.iter_mut().zip(g.chunks((8 / w) as usize)) {
-            *o = c.iter().enumerate().fold(0u8, |b, (t, &v)| b | (v as u8 & ((1u8 << w) - 1)) << (t as u32 * w));
+            *o = c.iter().enumerate().fold(0u8, |b, (t, &v)| b | (v.get() as u8 & ((1u8 << w) - 1)) << (t as u32 * w));
         },
-        _ => { let k = (w / 8) as usize; for (o, &v) in out.chunks_exact_mut(k).zip(g) { o.copy_from_slice(&(v as u64).to_le_bytes()[..k]) } }
+        _ => { let k = (w / 8) as usize; for (o, &v) in out.chunks_exact_mut(k).zip(g) { o.copy_from_slice(&v.get().to_le_bytes()[..k]) } }
     }
 }
 /// sort.rs `qlean_sort_intern_syms` past the allocation: the id of each symbol into `out` at `id_width(ng)` bits,
@@ -868,7 +885,11 @@ pub fn pack_gids(g: &[u32], w: u32, out: &mut [u8]) {
 pub fn intern_syms(s: &Syms, w: u32, out: &mut [u8], first: &mut [usize]) -> usize {
     let n = s.count();
     if n == 0 { return 0 }
-    let g = sym_group(s, n, 1);
+    by_gid!(n, intern_in(s, n, w, out, first))
+}
+/// `intern_syms` with the group ids in the lane `G`.
+fn intern_in<G: Un>(s: &Syms, n: usize, w: u32, out: &mut [u8], first: &mut [usize]) -> usize {
+    let g = sym_group::<G>(s, n, 1);
     let wo = crate::ids::id_width(g.ng);
     assert!(wo <= w, "qlean: intern_syms: {} ids need {wo} bits, past the {w} the buffer was sized for", g.ng);
     pack_gids(&g.gid, wo, out);

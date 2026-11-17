@@ -87,7 +87,6 @@ export! {
         let s = syms_of(blob, offs);
         let n = s.count();
         if n == 0 { let (nb, no) = syms_out(&[]); return pair(nb, pair(no, SArr::new(1, 0).into())) }
-        sort::group_bound(n); // before the allocations; the limit is named
         let mut first = pod::uninit::<usize>(n);
         // the width is the answer's, known once `ng` is: the ids go into scratch sized for `id_width(n)` and are copied
         let mut tmp = pod::uninit::<u8>(ids_bytes(n, id_width(n)) + 1);
