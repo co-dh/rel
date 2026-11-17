@@ -177,7 +177,13 @@ theorem Tm.Le.sound {A B : Obj} {d e : Bool} {s : Tm A B d} {t : Tm A B e} (h : 
   | succ _ ih =>
     exact fun ρ => le_iff.2 fun _ _ ⟨⟨v, h⟩, hw, v', h'⟩ =>
       ⟨⟨v, le_iff.1 (ih ρ) _ _ h⟩, hw, v', le_iff.1 (ih ρ) _ _ h'⟩
-  | arith _ _ ih => exact fun ρ => comp_le' (Core.Rel.le_refl _) (ih ρ)
+  | arith _ _ ih =>
+    -- arithDen filters both inputs by ⟦U⟧ and its result through ⟦U⟧: each factor is monotone in ⟦U⟧
+    intro ρ
+    exact comp_le' (inter_le' (Core.Rel.le_refl _) (comp_le' (comp_le' (Core.Rel.le_refl _) (ih ρ))
+        (conv_le' (comp_le' (Core.Rel.le_refl _) (ih ρ)))))
+      (comp_le' (inter_le' (Core.Rel.le_refl _) (comp_le' (comp_le' (Core.Rel.le_refl _) (ih ρ))
+        (conv_le' (comp_le' (Core.Rel.le_refl _) (ih ρ))))) (comp_le' (Core.Rel.le_refl _) (ih ρ)))
   | leq _ ih | lt _ ih =>
     exact fun ρ => le_iff.2 fun _ _ ⟨⟨v, h⟩, ⟨v', h'⟩, hl⟩ =>
       ⟨⟨v, le_iff.1 (ih ρ) _ _ h⟩, ⟨v', le_iff.1 (ih ρ) _ _ h'⟩, hl⟩
