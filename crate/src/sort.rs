@@ -451,16 +451,11 @@ pub fn asc_blk(c: &Coc, b: usize, desc: bool, strict: bool) -> Ends {
         let mut w = c.meta.width[b];
         let mut lb = pod::Scr::<u64>::new(c.meta.blk());
         let p = lanes(&c.pack[at..at + c.meta.blk() * w as usize / 8], &mut w, cnt, pod::bytes_mut(&mut lb));
-        let r = match w {
-            // a zero-width block is its base repeated, which is not a strict order past one element
-            0 => if strict && cnt > 1 { None } else { Some((0, 0)) },
-            8 => walk(cnt, desc, strict, |j| p[j] as u64),
-            16 => walk(cnt, desc, strict, |j| u16::from_ne_bytes([p[2 * j], p[2 * j + 1]]) as u64),
-            32 => walk(cnt, desc, strict, |j| u32::from_ne_bytes(p[4 * j..4 * j + 4].try_into().unwrap()) as u64),
-            64 => walk(cnt, desc, strict, |j| u64::from_ne_bytes(p[8 * j..8 * j + 8].try_into().unwrap())),
-            // widths 1, 2, 4 stay packed: a shift inside one byte
-            _ => walk(cnt, desc, strict, |j| ((p[j * w as usize >> 3] >> (j * w as usize & 7)) & ((1u8 << w) - 1)) as u64),
-        };
+        fn ends_at<const W: u32>(p: &[u8], cnt: usize, desc: bool, strict: bool) -> Option<(u64, u64)> {
+            walk(cnt, desc, strict, |j| crate::ids::lane::<W>(p, j))
+        }
+        // a zero-width block is its base repeated, which is not a strict order past one element
+        let r = if w == 0 && strict && cnt > 1 { None } else { crate::by_width!(w, ends_at(p, cnt, desc, strict)) };
         (c.frame(b), r)
     };
     match r {
@@ -652,15 +647,7 @@ pub fn pair_ids_narrow(run: Runner, wa: u32, wb: u32, m: usize, pa: &[u8], pb: &
 /// Element `k` of `rank_slices`' payload at the pass's width `W` (65 = an odd width, read at the runtime `w`): a
 /// whole-byte lane is one load, a sub-byte lane one byte load (it never straddles a byte), any other `res_get_in`.
 pub fn rs_elem<const W: u32>(v: &[u8], w: u32, end: usize, k: usize) -> u64 {
-    match W {
-        0 => 0,
-        8 => v[k] as u64,
-        16 => u16::from_le_bytes(v[2 * k..2 * k + 2].try_into().unwrap()) as u64,
-        32 => u32::from_le_bytes(v[4 * k..4 * k + 4].try_into().unwrap()) as u64,
-        64 => u64::from_le_bytes(v[8 * k..8 * k + 8].try_into().unwrap()),
-        1 | 2 | 4 => ((v[k * W as usize >> 3] >> (k * W as usize & 7)) & ((1u32 << W) - 1) as u8) as u64,
-        _ => crate::res::res_get_in(v, w as u8, k, end),
-    }
+    if W == 65 { crate::res::res_get_in(v, w as u8, k, end) } else { crate::ids::lane::<W>(v, k) }
 }
 /// The hashed pass at one width: `groupIds`' hashed numbering with each segment's hash as the key and a compare of
 /// the elements only where two hashes agree. The length seeds the hash, so runs of one value at different lengths
@@ -699,11 +686,8 @@ pub fn rs_pass<const W: u32>(w: u32, v: &[u8], o: &[i64], out: &mut [i64]) {
 /// sequences.
 pub fn rank_slices(w: usize, v: &[u8], o: &[i64], out: &mut [i64]) {
     let w = w as u32;
-    match w {
-        0 => rs_pass::<0>(w, v, o, out), 1 => rs_pass::<1>(w, v, o, out), 2 => rs_pass::<2>(w, v, o, out),
-        4 => rs_pass::<4>(w, v, o, out), 8 => rs_pass::<8>(w, v, o, out), 16 => rs_pass::<16>(w, v, o, out),
-        32 => rs_pass::<32>(w, v, o, out), 64 => rs_pass::<64>(w, v, o, out), _ => rs_pass::<65>(w, v, o, out),
-    }
+    // a lane width through `by_width!`; any other is read at the runtime `w` (`rs_elem`'s 65)
+    if w <= 64 && w & w.wrapping_sub(1) == 0 { by_width!(w, rs_pass(w, v, o, out)) } else { rs_pass::<65>(w, v, o, out) }
 }
 pub fn sizes<const W: u32>(ng: usize, n: usize, ids: &[u8], out: &mut [i64]) {
     let out = &mut out[..ng];

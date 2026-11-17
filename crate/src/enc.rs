@@ -43,22 +43,27 @@ pub fn nul<T: Elt>() -> i64 { if size_of::<T>() == 1 { i64::MIN } else { i64::MI
 pub fn pack_block<T: Elt>(dst: &mut [u8], src: &[T], nb: usize, base: i64, w: u8) {
     let r = |v: &T| (v.i() as u64).wrapping_sub(base as u64);
     let src = &src[..nb];
-    match w {
-        0 => {}
-        8 => for (o, v) in dst.iter_mut().zip(src) { *o = r(v) as u8 },
-        16 => for (o, v) in dst.chunks_exact_mut(2).zip(src) { o.copy_from_slice(&(r(v) as u16).to_le_bytes()) },
-        32 => for (o, v) in dst.chunks_exact_mut(4).zip(src) { o.copy_from_slice(&(r(v) as u32).to_le_bytes()) },
-        64 => for (o, v) in dst.chunks_exact_mut(8).zip(src) { o.copy_from_slice(&r(v).to_le_bytes()) },
-        // 1, 2, 4: 8/w residuals to a byte, built then stored so the buffer needs no zeroing
-        1 | 2 | 4 => for (o, g) in dst.iter_mut().zip(src.chunks(8 / w as usize)) {
-            *o = g.iter().enumerate().fold(0u8, |a, (t, v)| a | ((r(v) & ((1 << w) - 1)) << (t * w as usize)) as u8)
-        },
-        _ => {
-            let mut v = crate::pod::Scr::<u64>::new(nb.next_multiple_of(64));
-            for (o, x) in v.iter_mut().zip(src) { *o = r(x) }
-            crate::simd::res_pack(&v, w, nb, dst)
+    #[inline(always)]
+    fn pack_at<T: Elt, const W: u32>(dst: &mut [u8], src: &[T], base: i64) {
+        let (r, w) = (|v: &T| (v.i() as u64).wrapping_sub(base as u64), W as usize);
+        match W {
+            0 => {}
+            // 8/w residuals to a byte, built then stored so the buffer needs no zeroing
+            1 | 2 | 4 => {
+                let byte = |g: &[T]| g.iter().enumerate().fold(0u8, |a, (t, v)| a | ((r(v) & ((1 << W) - 1)) << (t * w)) as u8);
+                let ch = src.chunks_exact(8 / w);
+                let (tail, k) = (ch.remainder(), src.len() / (8 / w));
+                for (o, g) in dst.iter_mut().zip(ch) { *o = byte(g) }
+                if !tail.is_empty() { dst[k] = byte(tail) }
+            }
+            _ => for (o, v) in dst.chunks_exact_mut(w / 8).zip(src) { o.copy_from_slice(&r(v).to_le_bytes()[..w / 8]) },
         }
     }
+    // a lane width through `by_width!`; an odd one packed by `simd::res_pack`
+    if w & w.wrapping_sub(1) == 0 { return crate::by_width!(w, pack_at::<T>(dst, src, base)) }
+    let mut v = crate::pod::Scr::<u64>::new(nb.next_multiple_of(64));
+    for (o, x) in v.iter_mut().zip(src) { *o = r(x) }
+    crate::simd::res_pack(&v, w, nb, dst)
 }
 /// coc.rs `encode_meta_blk`: block metadata with no patch list.
 pub fn encode_meta_blk<T: Elt>(m: &mut EncMeta, x: &[T], nb: usize) {
@@ -188,18 +193,14 @@ pub fn coc_sumnul(width: usize, alp: bool) -> i64 {
 // ---- A17: coc.rs ----
 /// coc.rs `coc_narrow`: `v` narrowed to `width` bytes into `out` (`v` itself when `width` is 8).
 pub fn narrow<'b>(width: usize, v: &'b [i64], out: &'b mut [u8]) -> &'b [u8] {
-    fn put<'b, const W: usize>(v: &[i64], out: &'b mut [u8], f: fn(i64) -> [u8; W]) -> &'b [u8] {
-        let out = &mut out[..W * v.len()];
-        for (o, &x) in out.chunks_exact_mut(W).zip(v) { o.copy_from_slice(&f(x)) }
+    fn put<'b, T: Elt>(v: &'b [i64], out: &'b mut [u8]) -> &'b [u8] {
+        if T::W == 8 { return crate::pod::bytes(v) }
+        let out = &mut out[..T::W * v.len()];
+        for (o, &x) in out.chunks_exact_mut(T::W).zip(v) { o.copy_from_slice(&x.to_ne_bytes()[..T::W]) }
         out
     }
-    match width {
-        1 => put(v, out, |x| (x as u8).to_ne_bytes()),
-        2 => put(v, out, |x| (x as i16).to_ne_bytes()),
-        4 => put(v, out, |x| (x as i32).to_ne_bytes()),
-        8 => crate::pod::bytes(v),
-        _ => panic!("qlean: a Frame of Reference element of {width} bytes; the writer has 1, 2, 4 and 8"),
-    }
+    assert!(matches!(width, 1 | 2 | 4 | 8), "qlean: a Frame of Reference element of {width} bytes; the writer has 1, 2, 4 and 8");
+    crate::by_width!(int width, put(v, out))
 }
 /// coc.rs `coc_enc_blk_meta`: block metadata from decoded `v`; answers the patch count.
 pub fn blk_meta(m: &mut EncMeta, v: &[i64], width: usize) -> u32 {

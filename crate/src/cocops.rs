@@ -65,21 +65,10 @@ impl<'a> Coc<'a> {
     /// coc.rs `coc_get_w`: `get` for a column whose every block has residual width `uw` (`one_width`).
     pub fn get_w(&self, uw: u8, i: usize) -> i64 {
         let (base, p) = (self.meta.base[i >> self.meta.lg] as u64, self.pack);
-        let at = |k: usize, n: usize| &p[k..k + n];
-        if self.exc.is_some_and(|e| !e.pos.is_empty()) { return self.get(i) }
-        base.wrapping_add(match uw {
-            0 => 0,
-            1 => (p[i >> 3] >> (i & 7) & 1) as u64,
-            2 => (p[i >> 2] >> ((i & 3) * 2) & 3) as u64,
-            4 => (p[i >> 1] >> ((i & 1) * 4) & 15) as u64,
-            8 => p[i] as u64,
-            16 => u16::from_ne_bytes(at(2 * i, 2).try_into().unwrap()) as u64,
-            32 => u32::from_ne_bytes(at(4 * i, 4).try_into().unwrap()) as u64,
-            64 => u64::from_ne_bytes(at(8 * i, 8).try_into().unwrap()),
-            255 => return self.get(i),
-            // an odd width is flat too, so the residual is read at `i * uw` bits of the whole pack
-            _ => res_get_in(p, uw, i, p.len()),
-        }) as i64
+        if uw == 255 || self.exc.is_some_and(|e| !e.pos.is_empty()) { return self.get(i) }
+        // a lane width through `by_width!`; an odd width is flat too, so the residual is read at `i * uw` bits of the pack
+        base.wrapping_add(if uw <= 64 && uw & uw.wrapping_sub(1) == 0 { use crate::ids::lane; crate::by_width!(uw, lane(p, i)) }
+            else { res_get_in(p, uw, i, p.len()) }) as i64
     }
     /// coc.rs `coc_prefetch`: element `i`'s residual into cache.
     pub fn prefetch(&self, i: usize) {

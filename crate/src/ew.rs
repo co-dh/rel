@@ -746,7 +746,7 @@ pub fn ids_len(n: usize, w: u32) -> usize {
 /// `cls`'s width. A sub-byte slice may start inside a word, so its ragged head goes id by id and the rest is `ids::unpack`.
 pub fn ids_stage(cls: u8, w: u32, x: &[u8], lo: usize, hi: usize, o: &mut [u8]) {
     #[inline(always)]
-    fn go<const W: u32, T: Elt>(x: &[u8], lo: usize, hi: usize, o: &mut [T]) {
+    fn go<T: Elt, const W: u32>(x: &[u8], lo: usize, hi: usize, o: &mut [T]) {
         let mut i = lo;
         if W != 0 && W < 8 { while i < hi && i % (64 / W as usize) != 0 { o[i] = T::wrap(id_at(x, W, i) as u64); i += 1 } }
         // `i` is a whole word in (or the lane width makes it a whole id), so the byte it starts at is exact
@@ -754,13 +754,7 @@ pub fn ids_stage(cls: u8, w: u32, x: &[u8], lo: usize, hi: usize, o: &mut [u8]) 
         unpack::<W, T>(&x[at..], &mut o[i..hi], |_, e, v| *e = T::wrap(v as u64));
     }
     #[inline(always)]
-    fn by_w<T: Elt>(w: u32, x: &[u8], lo: usize, hi: usize, o: &mut [T]) {
-        match w {
-            0 => go::<0, T>(x, lo, hi, o), 1 => go::<1, T>(x, lo, hi, o), 2 => go::<2, T>(x, lo, hi, o),
-            4 => go::<4, T>(x, lo, hi, o), 8 => go::<8, T>(x, lo, hi, o), 16 => go::<16, T>(x, lo, hi, o),
-            32 => go::<32, T>(x, lo, hi, o), _ => go::<64, T>(x, lo, hi, o),
-        }
-    }
+    fn by_w<T: Elt>(w: u32, x: &[u8], lo: usize, hi: usize, o: &mut [T]) { crate::by_width!(w, go::<T>(x, lo, hi, o)) }
     crate::by_width!(int ew_width(cls as u32), by_w(w, x, lo, hi, rw(o)))
 }
 /// ew.rs `ew_pack_run`: the `n` elements of `x` (class `cls`, zero-extended) written as `w`-bit ids. Below a

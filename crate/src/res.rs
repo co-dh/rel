@@ -79,23 +79,23 @@ pub fn res_count_lt8(p: &[u8], nb: usize, t: u64) -> usize { p[..nb].iter().filt
 /// coc.rs `res_count_lt`: of a block's `nb` residuals at width `w`, how many are below `t`. `p` is the lanes
 /// `coc::lanes` answers, so `w` is a power of two; 1, 2 and 4 are read a byte at a time.
 pub fn res_count_lt(p: &[u8], nb: usize, w: u8, t: u64) -> usize {
-    fn sub<const W: usize>(p: &[u8], nb: usize, t: u64) -> usize {
-        let (per, m) = (8 / W, (1u8 << W) - 1);
-        let at = |v: u8, s: usize| ((((v >> (s * W)) & m) as u64) < t) as usize;
-        let k = p[..nb / per].iter().map(|&v| (0..per).map(|s| at(v, s)).sum::<usize>()).sum::<usize>();
-        k + (0..nb % per).map(|s| at(p[nb / per], s)).sum::<usize>()
+    fn count<const W: u32>(p: &[u8], nb: usize, t: u64) -> usize {
+        let w = W as usize;
+        match W {
+            0 => if t > 0 { nb } else { 0 },
+            1 | 2 | 4 => {
+                let (per, m) = (8 / w, (1u8 << W) - 1);
+                let at = |v: u8, s: usize| ((((v >> (s * w)) & m) as u64) < t) as usize;
+                let k = p[..nb / per].iter().map(|&v| (0..per).map(|s| at(v, s)).sum::<usize>()).sum::<usize>();
+                k + (0..nb % per).map(|s| at(p[nb / per], s)).sum::<usize>()
+            }
+            8 => res_count_lt8(p, nb, t),
+            _ => p[..nb * w / 8].chunks_exact(w / 8)
+                .map(|c| { let mut a = [0u8; 8]; a[..w / 8].copy_from_slice(c); (u64::from_le_bytes(a) < t) as usize }).sum(),
+        }
     }
-    match w {
-        0 => if t > 0 { nb } else { 0 },
-        1 => sub::<1>(p, nb, t),
-        2 => sub::<2>(p, nb, t),
-        4 => sub::<4>(p, nb, t),
-        8 => res_count_lt8(p, nb, t),
-        16 => p.chunks_exact(2).take(nb).map(|c| ((u16::from_ne_bytes([c[0], c[1]]) as u64) < t) as usize).sum(),
-        32 => p.chunks_exact(4).take(nb).map(|c| ((u32::from_ne_bytes([c[0], c[1], c[2], c[3]]) as u64) < t) as usize).sum(),
-        64 => p.chunks_exact(8).take(nb).map(|c| (u64::from_ne_bytes(c.try_into().unwrap()) < t) as usize).sum(),
-        _ => panic!("qlean: res_count_lt asked for width {w}, which is not a lane"),
-    }
+    assert!(w <= 64 && w & w.wrapping_sub(1) == 0, "qlean: res_count_lt asked for width {w}, which is not a lane");
+    crate::by_width!(w, count(p, nb, t))
 }
 /// coc.rs `res_unpack_agrees`: over one block of pseudo-random stream bytes at width `w` and `nb` residuals, whether
 /// `simd::res_unpack` answers what `unpack::res_unpack_scalar` does on every lane below `nb`, the in-register compare

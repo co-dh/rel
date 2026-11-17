@@ -682,11 +682,7 @@ pub fn ids_place(out: &mut [u8], at: usize, wout: u32, cn: usize, w: u32, pp: &[
             None => go::<W>(dst, wout, cn, pp, |i| if i < nm { i as u64 } else { 0 }),
         }
     }
-    let put = |dst: &mut [u8]| match w {
-        0 => by::<0>(dst, wout, cn, pp, tab, nm), 1 => by::<1>(dst, wout, cn, pp, tab, nm), 2 => by::<2>(dst, wout, cn, pp, tab, nm),
-        4 => by::<4>(dst, wout, cn, pp, tab, nm), 8 => by::<8>(dst, wout, cn, pp, tab, nm), 16 => by::<16>(dst, wout, cn, pp, tab, nm),
-        32 => by::<32>(dst, wout, cn, pp, tab, nm), _ => by::<64>(dst, wout, cn, pp, tab, nm),
-    };
+    let put = |dst: &mut [u8]| crate::by_width!(w, by(dst, wout, cn, pp, tab, nm));
     if (at * wout as usize) & 7 == 0 {
         put(&mut out[at * wout as usize / 8..]);
     } else {

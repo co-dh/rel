@@ -117,17 +117,7 @@ impl<'a> Coc<'a> {
         if !crate::simd::res_unpack_add(p, w, nb, base, crate::pod::bytes_mut(out), size_of::<T>() as u32) {
             let mut lb = crate::pod::Scr::<u64>::new(self.meta.blk());
             let p = lanes(p, &mut w, nb, crate::pod::bytes_mut(&mut lb));
-            let add = |r: u64| T::wrap(base.wrapping_add(r));
-            match w {
-                0 => out.fill(T::wrap(base)),
-                8 => out.iter_mut().zip(p).for_each(|(o, &r)| *o = add(r as u64)),
-                16 => out.iter_mut().zip(p.chunks_exact(2)).for_each(|(o, r)| *o = add(u16::from_ne_bytes([r[0], r[1]]) as u64)),
-                32 => out.iter_mut().zip(p.chunks_exact(4)).for_each(|(o, r)| *o = add(u32::from_ne_bytes(r.try_into().unwrap()) as u64)),
-                64 => out.iter_mut().zip(p.chunks_exact(8)).for_each(|(o, r)| *o = add(u64::from_ne_bytes(r.try_into().unwrap()))),
-                1 => load_sub::<T, 1>(p, base, out),
-                2 => load_sub::<T, 2>(p, base, out),
-                _ => load_sub::<T, 4>(p, base, out),
-            }
+            crate::by_width!(w, load_lanes::<T>(p, base, out))
         }
         if let Some(e) = self.exc.filter(|e| !e.pos.is_empty()) {
             for j in e.off[b] as usize..e.off[b + 1] as usize {
@@ -174,17 +164,26 @@ impl Coc<'_> {
 
 /// coc.rs's `COC_LOAD_SUB`: residuals of `W` < 8 bits, `8 / W` to a byte, the shift a literal per byte so the loop
 /// vectorises.
-pub fn load_sub<T: Elt, const W: usize>(p: &[u8], base: u64, out: &mut [T]) {
-    let (per, m) = (8 / W, (1u8 << W) - 1);
+pub fn load_sub<T: Elt, const W: u32>(p: &[u8], base: u64, out: &mut [T]) {
+    let (per, m, w) = (8 / W as usize, ((1u16 << W) - 1) as u8, W as usize);
     let g = out.len() / per;
     let mut whole = out.chunks_exact_mut(per);
     for (o, &v) in (&mut whole).zip(p) {
-        for (s, x) in o.iter_mut().enumerate() { *x = T::wrap(base.wrapping_add(((v >> (s * W)) & m) as u64)) }
+        for (s, x) in o.iter_mut().enumerate() { *x = T::wrap(base.wrapping_add(((v >> (s * w)) & m) as u64)) }
     }
     let rest = whole.into_remainder();
-    for (s, x) in rest.iter_mut().enumerate() { *x = T::wrap(base.wrapping_add(((p[g] >> (s * W)) & m) as u64)) }
+    for (s, x) in rest.iter_mut().enumerate() { *x = T::wrap(base.wrapping_add(((p[g] >> (s * w)) & m) as u64)) }
 }
 
+/// `base` plus each residual of a block at the lane width `W` into `out`: a sub-byte lane by `load_sub`, a whole one
+/// through `ids::unpack`'s chunked load.
+#[inline(always)]
+pub fn load_lanes<T: Elt, const W: u32>(p: &[u8], base: u64, out: &mut [T]) {
+    match W {
+        1 | 2 | 4 => load_sub::<T, W>(p, base, out),
+        _ => crate::ids::unpack::<W, T>(p, out, |_, o, r| *o = T::wrap(base.wrapping_add(r as u64))),
+    }
+}
 /// coc.rs: the residuals of a block at a power-of-two width in place, else unpacked into `buf` (`blk * 8` bytes)
 /// with `*w` raised to the lane it now has.
 pub fn lanes<'b>(p: &'b [u8], w: &mut u8, nb: usize, buf: &'b mut [u8]) -> &'b [u8] {

@@ -240,13 +240,13 @@ pub const GC_NAN: u64 = 0xfff8000000000000;
 
 /// reduce.rs:`GC_LOOP`: cell `i` is `cell(sum, count)` of group `ord[i]`, written as its low `W` bytes; an id at or past
 /// `ng` reads zero slots. `m` is the `2 * ng` slots, folds then counts.
-pub fn cells<const W: usize>(m: &[i64], ord: &[u64], out: &mut [u8], cell: impl Fn(i64, i64) -> u64) {
-    assert_eq!(out.len(), ord.len() * W, "group_cells: {} output bytes for {} cells of width {W}", out.len(), ord.len());
+pub fn cells<T: Elt>(m: &[i64], ord: &[u64], out: &mut [u8], cell: impl Fn(i64, i64) -> u64) {
+    assert_eq!(out.len(), ord.len() * T::W, "group_cells: {} output bytes for {} cells of width {}", out.len(), ord.len(), T::W);
     let (s, k) = m.split_at(m.len() / 2);
-    for (o, &g) in out.chunks_exact_mut(W).zip(ord) {
+    for (o, &g) in out.chunks_exact_mut(T::W).zip(ord) {
         let g = usize::try_from(g).unwrap_or(usize::MAX);
         let (s, k) = (s.get(g).copied().unwrap_or(0), k.get(g).copied().unwrap_or(0));
-        o.copy_from_slice(&cell(s, k).to_le_bytes()[..W]);
+        o.copy_from_slice(&cell(s, k).to_le_bytes()[..T::W]);
     }
 }
 pub fn clamped(s: i64) -> i64 { if s > -2147483648 && s < 2147483648 { s } else { -2147483648 } }
@@ -256,21 +256,16 @@ pub fn clamped(s: i64) -> i64 { if s > -2147483648 && s < 2147483648 { s } else 
 pub fn group_cells(kind: u8, w: usize, ng: usize, m: &[i64], ord: &[u64], out: &mut [u8]) {
     let m = &m[..2 * ng];
     match kind {
-        GC_AVG_INT => cells::<8>(m, ord, out, |s, k| if k == 0 { GC_NAN } else { (s as f64 / k as f64).to_bits() }),
-        GC_AVG_FLOAT => cells::<8>(m, ord, out, |s, k| {
+        GC_AVG_INT => cells::<u64>(m, ord, out, |s, k| if k == 0 { GC_NAN } else { (s as f64 / k as f64).to_bits() }),
+        GC_AVG_FLOAT => cells::<u64>(m, ord, out, |s, k| {
             let r = f64::from_bits(s as u64) / k as f64;
             if k == 0 || r.is_nan() { GC_NAN } else { r.to_bits() }
         }),
-        GC_FLOAT if w == 4 => cells::<4>(m, ord, out, |s, _| (f64::from_bits(s as u64) as f32).to_bits() as u64),
-        GC_FLOAT => cells::<8>(m, ord, out, |s, _| s as u64),
+        GC_FLOAT if w == 4 => cells::<u32>(m, ord, out, |s, _| (f64::from_bits(s as u64) as f32).to_bits() as u64),
+        GC_FLOAT => cells::<u64>(m, ord, out, |s, _| s as u64),
         _ => {
             let c = kind == GC_CLAMP;
-            match w {
-                1 => cells::<1>(m, ord, out, |s, _| if c { clamped(s) } else { s } as u64),
-                2 => cells::<2>(m, ord, out, |s, _| if c { clamped(s) } else { s } as u64),
-                4 => cells::<4>(m, ord, out, |s, _| if c { clamped(s) } else { s } as u64),
-                _ => cells::<8>(m, ord, out, |s, _| if c { clamped(s) } else { s } as u64),
-            }
+            crate::by_width!(uint w, cells(m, ord, out, |s, _| if c { clamped(s) } else { s } as u64))
         }
     }
 }

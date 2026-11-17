@@ -85,15 +85,10 @@ pub fn keys_blk(kind: u8, c: &Coc, b: usize, k: &mut [u64]) {
         return;
     }
     let base = c.meta.base[b] as u64;
-    macro_rules! go { ($r:expr) => { for j in 0..cnt { k[j] = (base.wrapping_add($r(j)) & mask) ^ flip } }; }
-    match w {
-        0 => go!(|_| 0u64),
-        8 => go!(|j: usize| p[j] as u64),
-        16 => go!(|j: usize| u16::from_le_bytes([p[2 * j], p[2 * j + 1]]) as u64),
-        32 => go!(|j: usize| u32::from_le_bytes(p[4 * j..4 * j + 4].try_into().unwrap()) as u64),
-        64 => go!(|j: usize| u64::from_le_bytes(p[8 * j..8 * j + 8].try_into().unwrap())),
-        _ => unreachable!(),
+    fn go<const W: u32>(p: &[u8], base: u64, mask: u64, flip: u64, k: &mut [u64]) {
+        for (j, k) in k.iter_mut().enumerate() { *k = (base.wrapping_add(crate::ids::lane::<W>(p, j)) & mask) ^ flip }
     }
+    crate::by_width!(w, go(p, base, mask, flip, k))
 }
 
 /// `range_foR` (sort.rs): the least and greatest key, from the frames, the maxima and the patches.

@@ -77,9 +77,10 @@ pub fn cmp_meta(a: &Coc, b: Option<&Coc>, op: i32, v: i64, out: &mut [u64], deep
 }
 
 /// coc.rs `res_expand`: the residuals of width `W` < 8, `8 / W` to a byte, one to a byte of `out`.
-pub fn expand<const W: usize>(p: &[u8], nb: usize, out: &mut [u8]) {
-    for (o, &b) in out.chunks_mut(8 / W).zip(&p[..(nb * W).div_ceil(8)]) {
-        for (t, x) in o.iter_mut().enumerate() { *x = (b >> (t * W)) & ((1u16 << W) - 1) as u8 }
+pub fn expand<const W: u32>(p: &[u8], nb: usize, out: &mut [u8]) {
+    let w = W as usize;
+    for (o, &b) in out.chunks_mut(8 / w).zip(&p[..(nb * w).div_ceil(8)]) {
+        for (t, x) in o.iter_mut().enumerate() { *x = (b >> (t * w)) & ((1u16 << W) - 1) as u8 }
     }
 }
 /// coc.rs `COC_MASK_WORD`: `r - lo <= span` (unsigned, flipped when `inv`) for `nb` `E`-byte residuals, a 64-bit word
@@ -95,23 +96,29 @@ pub fn words<const E: usize>(p: &[u8], nb: usize, lo: u64, span: u64, inv: bool,
         *o |= word;
     }
 }
+/// `res_mask_cmp` at the lane width `W`: a sub-byte lane spread a byte to a residual first (`scratch`), a whole one
+/// tested where it lies.
+#[inline(always)]
+fn mask_at<const W: u32>(p: &[u8], nb: usize, lo: u64, span: u64, inv: bool, out: &mut [u64], scratch: &mut [u8]) {
+    match W {
+        // every residual is 0, so every bit is the same
+        0 => if (0u64.wrapping_sub(lo) <= span) ^ inv { mask_fill(out, nb) },
+        1 | 2 | 4 => { expand::<W>(p, nb, scratch); words::<1>(scratch, nb, lo, span, inv, out) }
+        8 => words::<1>(p, nb, lo, span, inv, out),
+        16 => words::<2>(p, nb, lo, span, inv, out),
+        32 => words::<4>(p, nb, lo, span, inv, out),
+        _ => words::<8>(p, nb, lo, span, inv, out),
+    }
+}
 /// coc.rs `res_mask_cmp`: block residuals `p` at width `w` tested `r - lo <= span`, into the zeroed `out`. `scratch` is
 /// `blk * 8` bytes the caller owns, so a kilobyte is not declared inside the loop over blocks.
 pub fn res_mask_cmp(p: &[u8], nb: usize, w: u8, lo: u64, span: u64, inv: bool, out: &mut [u64], scratch: &mut [u8]) {
     if res_vcmp(p, w, nb, lo, span, inv, out) { return }
-    match w {
-        // every residual is 0, so every bit is the same
-        0 => if (0u64.wrapping_sub(lo) <= span) ^ inv { mask_fill(out, nb) },
-        1 => { expand::<1>(p, nb, scratch); words::<1>(scratch, nb, lo, span, inv, out) }
-        2 => { expand::<2>(p, nb, scratch); words::<1>(scratch, nb, lo, span, inv, out) }
-        4 => { expand::<4>(p, nb, scratch); words::<1>(scratch, nb, lo, span, inv, out) }
-        _ => {
-            let mut w = w; // an odd width leaves w >= 8
-            let p = lanes(p, &mut w, nb, scratch);
-            match w { 8 => words::<1>(p, nb, lo, span, inv, out), 16 => words::<2>(p, nb, lo, span, inv, out),
-                      32 => words::<4>(p, nb, lo, span, inv, out), _ => words::<8>(p, nb, lo, span, inv, out) }
-        }
-    }
+    if w & w.wrapping_sub(1) == 0 { return crate::by_width!(w, mask_at(p, nb, lo, span, inv, out, scratch)) }
+    // an odd width unpacked to its lane (8 bits or more) in `scratch`
+    let mut w = w;
+    let p = lanes(p, &mut w, nb, scratch);
+    crate::by_width!(w, mask_at(p, nb, lo, span, inv, out, &mut []))
 }
 /// coc.rs `coc_mask_cmp_blk`: block `b`'s first `nb` elements of `x op v` into its zeroed words `w64`, the patches
 /// applied. A block whose range the threshold `v` leaves is a window on the residuals: `r - lo <= hi - lo`, inverted for
