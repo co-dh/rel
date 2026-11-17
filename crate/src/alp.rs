@@ -47,7 +47,7 @@ impl Flt for f64 {
 
 // ---- A5: coc.rs, 1689 ----
 /// coc.rs `POW10`: `10^e`, exact as doubles up to 1e18.
-pub(crate) const POW10: [f64; 19] = [1e0, 1e1, 1e2, 1e3, 1e4, 1e5, 1e6, 1e7, 1e8, 1e9, 1e10, 1e11, 1e12, 1e13, 1e14, 1e15,
+pub const POW10: [f64; 19] = [1e0, 1e1, 1e2, 1e3, 1e4, 1e5, 1e6, 1e7, 1e8, 1e9, 1e10, 1e11, 1e12, 1e13, 1e14, 1e15,
                               1e16, 1e17, 1e18];
 /// coc.rs `alp_offsets`: per-block patch counts in `exc_off[1..=nblk]` into prefix sums; answers the total.
 pub fn alp_offsets(exc_off: &mut [u32], nblk: usize) -> usize {
@@ -156,7 +156,7 @@ impl Cocf<'_> {
     }
 }
 /// `cocf_load_range`'s decimals: `base + residual` as an integer over `p10`, narrowed to `F`. `p` is read at `w` bits.
-fn restore<F: Flt>(base: u64, p10: f64, p: &[u8], w: u8, i0: usize, i1: usize, out: &mut [u8]) {
+pub fn restore<F: Flt>(base: u64, p10: f64, p: &[u8], w: u8, i0: usize, i1: usize, out: &mut [u8]) {
     let o = &mut pod::cast_mut::<F>(&mut out[i0 * size_of::<F>()..i1 * size_of::<F>()])
         .expect("qlean: cocf output misaligned for its element")[..];
     fn put<F: Flt>(o: &mut [F], i0: usize, base: u64, p10: f64, get: impl Fn(usize) -> u64) {
@@ -181,7 +181,7 @@ pub fn alp_fin_blk(m: &mut EncMeta, be: i32, d: &mut [i64], ee: &[i8], nb: usize
 }
 /// `alp_fin_blk`'s first half: every exception's decimal becomes the block minimum (0 when all are), so it packs as
 /// residual 0; answers the exception count.
-fn exc_as_base(d: &mut [i64], ee: &[i8], nb: usize) -> u32 {
+pub fn exc_as_base(d: &mut [i64], ee: &[i8], nb: usize) -> u32 {
     let (d, ee) = (&mut d[..nb], &ee[..nb]);
     let nexc = ee.iter().filter(|&&e| e < 0).count();
     let mn = if nexc == nb { 0 } else { d.iter().zip(ee).filter(|&(_, &e)| e >= 0).map(|(&x, _)| x).min().unwrap() };
@@ -190,25 +190,25 @@ fn exc_as_base(d: &mut [i64], ee: &[i8], nb: usize) -> u32 {
 }
 
 // ---- A9: coc.rs, the ALP encoder per block, one instance per `Flt` ----
-const MAXE: usize = crate::layout::ALP_MAXE as usize;
+pub const MAXE: usize = crate::layout::ALP_MAXE as usize;
 /// coc.rs `ALP_P53`: a product at or past 2^53 is not an exact integer.
-const P53: f64 = 9007199254740992.0;
+pub const P53: f64 = 9007199254740992.0;
 /// 2^49: `dexp`'s bound, under which three trials decide a double.
-const P49: f64 = 562949953421312.0;
+pub const P49: f64 = 562949953421312.0;
 /// C's `nearbyint` (ties to even, the default mode) for |s| < 2^53, without libm: adding and removing 2^52 of the
 /// sign of `s` rounds at the unit place; from 2^52 on every double is already an integer.
-fn rint(s: f64) -> f64 { let c = 4503599627370496.0f64.copysign(s); if s.abs() < 4503599627370496.0 { (s + c) - c } else { s } }
+pub fn rint(s: f64) -> f64 { let c = 4503599627370496.0f64.copysign(s); if s.abs() < 4503599627370496.0 { (s + c) - c } else { s } }
 /// libm's `ceil` below 2^52, where a double is not yet an integer; at or past it, and NaN, `x` itself (core has none).
-fn ceil(x: f64) -> f64 { if x.abs() < 4503599627370496.0 { let t = x as i64 as f64; if t < x { t + 1.0 } else { t } } else { x } }
+pub fn ceil(x: f64) -> f64 { if x.abs() < 4503599627370496.0 { let t = x as i64 as f64; if t < x { t + 1.0 } else { t } } else { x } }
 /// `cvt_nearest` for a whole block, where the intrinsic would stop the loop vectorising: `rint`, then the integer
 /// read off the bits (|s| < 2^53, so the shift is at most 52 and a value under 1 shifts out to 0).
-fn nearest(s: f64) -> i64 {
+pub fn nearest(s: f64) -> i64 {
     let b = rint(s).to_bits();
     let m = ((b & ((1 << 52) - 1)) | 1 << 52) >> 1075u64.wrapping_sub((b >> 52) & 0x7ff).min(63);
     if (b as i64) < 0 { -(m as i64) } else { m as i64 }
 }
 /// coc.rs `COC_SENT`: the exponent field all ones, tested on the raw bits (NaN and infinities).
-fn sent<F: Flt>(x: F) -> bool { let (s, m) = if F::F32 { (23, 0xff) } else { (52, 0x7ff) }; x.bits() >> s & m == m }
+pub fn sent<F: Flt>(x: F) -> bool { let (s, m) = if F::F32 { (23, 0xff) } else { (52, 0x7ff) }; x.bits() >> s & m == m }
 /// coc.rs `dec_f64`: `d / 10^e`. It divides, as ALP written with a multiply by 10^-e is another operation.
 pub fn dec(d: i64, e: i32) -> f64 { d as f64 / POW10[e as usize] }
 /// coc.rs `dat_f32`/`dat_f64`: `x` as a decimal at exponent `e`, or `None` when it does not round-trip. The
@@ -291,7 +291,7 @@ pub fn alp_meta_blk<F: Flt>(m: &mut EncMeta, x: &[F], nb: usize) -> u32 {
     alp_meta_at(m, x, nb, be, &mut ee)
 }
 /// `alp_meta_at`'s re-check: `d` at the block exponent `be`, and an element that is not exact there becomes an exception.
-fn recheck<F: Flt>(x: &[F], nb: usize, be: i32, ee: &mut [i8], d: &mut [i64]) {
+pub fn recheck<F: Flt>(x: &[F], nb: usize, be: i32, ee: &mut [i8], d: &mut [i64]) {
     let mut ok = pod::Scr::<u8>::new(nb);
     dat_blk(&x[..nb], be, d, &mut ok);
     for (e, &k) in ee[..nb].iter_mut().zip(&ok) { if k == 0 { *e = -1 } }
@@ -315,7 +315,7 @@ pub fn alp_meta_exp<F: Flt>(m: &mut EncMeta, x: &[F], nb: usize, be: i32) -> u32
     alp_meta_at(m, x, nb, be, &mut ee)
 }
 /// `alp_meta_exp`'s marks: only a sentinel is an exception beforehand.
-fn exp_marks<F: Flt>(x: &[F], nb: usize, ee: &mut [i8]) { for (e, &v) in ee.iter_mut().zip(&x[..nb]) { *e = if sent(v) { -1 } else { 0 } } }
+pub fn exp_marks<F: Flt>(x: &[F], nb: usize, ee: &mut [i8]) { for (e, &v) in ee.iter_mut().zip(&x[..nb]) { *e = if sent(v) { -1 } else { 0 } } }
 /// coc.rs `alp_patch_blk`: block `b` of `o` with the `ix.len()` writes `ix`/`v` applied, as pass 1 wants it at
 /// the block's OLD exponent, no search: `d` the old decimals patched, `ee[i]` -1 at an old exception not overwritten and
 /// -2 at a new one (a sentinel, or not exact at that exponent). Answers the exponent the search would raise it to, or -1:
@@ -357,7 +357,7 @@ pub fn alp_pack_blk<F: Flt>(p: &mut EncPack, be: i32, x: &[F], raw: &mut [F]) {
     crate::enc::pack_block(&mut *p.res, &d[..nb], nb, p.base, p.width)
 }
 /// `alp_pack_blk` before the pack: the decimals `d` with each exception's residual 0 (`d = base`), its position and bits.
-fn holes<F: Flt>(x: &[F], be: i32, base: i64, d: &mut [i64], pos: &mut [u16], raw: &mut [F]) {
+pub fn holes<F: Flt>(x: &[F], be: i32, base: i64, d: &mut [i64], pos: &mut [u16], raw: &mut [F]) {
     let mut ok = pod::Scr::<u8>::new(x.len());
     dat_blk(x, be, d, &mut ok);
     for (j, i) in (0..x.len()).filter(|&i| ok[i] == 0).enumerate() { d[i] = base; pos[j] = i as u16; raw[j] = x[i] }

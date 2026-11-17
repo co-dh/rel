@@ -8,12 +8,12 @@ use crate::res::{res_get, res_get_in, res_min_nonzero, res_sum};
 use crate::simd::prefetch;
 
 /// coc.rs, the comparison codes in QLean.Kernel.Ew's constructor order
-pub(crate) const EQ: i32 = 0;
-pub(crate) const NE: i32 = 1;
-pub(crate) const LT: i32 = 2;
-pub(crate) const LE: i32 = 3;
-pub(crate) const GT: i32 = 4;
-pub(crate) const GE: i32 = 5;
+pub const EQ: i32 = 0;
+pub const NE: i32 = 1;
+pub const LT: i32 = 2;
+pub const LE: i32 = 3;
+pub const GT: i32 = 4;
+pub const GE: i32 = 5;
 
 /// The writable form of coc.rs `coc`, for the operations that rewrite a column in place: `coc_offsets` (A1),
 /// `coc_sums_drop` (A3), `coc_shift` (A6). Lengths as `Coc`'s; the per-block writers of the encoder take

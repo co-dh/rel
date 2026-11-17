@@ -8,14 +8,11 @@ use alloc::vec::Vec;
 
 use crate::c::{run_map, Runner};
 use crate::coc::Coc;
-use crate::kwin::{self, Kwin};
+use crate::kwin::Kwin;
 use crate::ids::id_width;
 use crate::simd::prefetch;
 use crate::pod::uninit;
-use crate::alp::Cocf;
 use crate::key::{each, Keys, Pass, Range};
-/// How many keys `keys_gather` stages at a time: a batch, not a column's block.
-const BATCH: usize = 1 << crate::DEFAULT_LG;
 
 pub const PHI64: u64 = 0x9e3779b97f4a7c15;
 /// How many elements ahead the hashed numbering starts a slot's cache line (sort.rs's `group_prefetch` users). The
@@ -27,7 +24,7 @@ pub const SK_AHEAD: usize = 32;
 pub fn cap_for(n: usize) -> usize { n.saturating_mul(2).next_power_of_two().max(8) }
 
 /// `group_find` (sort.rs): a key the numbering has already put in the table.
-fn find(slot: &[usize], gkey: &[u64], sh: u32, key: u64) -> usize {
+pub fn find(slot: &[usize], gkey: &[u64], sh: u32, key: u64) -> usize {
     let mask = slot.len() - 1;
     let mut s = (key.wrapping_mul(PHI64) >> sh) as usize & mask;
     while gkey[slot[s] - 1] != key { s = (s + 1) & mask }
@@ -35,7 +32,7 @@ fn find(slot: &[usize], gkey: &[u64], sh: u32, key: u64) -> usize {
 }
 
 /// One monomorphic loop per lane width and table kind: `g` is the table lookup, inlined into the loop.
-fn lanes<K: Keys, G: Fn(u64) -> usize + Sync + Copy>(run: Runner, k: &K, n: usize, lane: u32, gid: &mut [u8], g: G) {
+pub fn lanes<K: Keys, G: Fn(u64) -> usize + Sync + Copy>(run: Runner, k: &K, n: usize, lane: u32, gid: &mut [u8], g: G) {
     let f = |lo: usize, hi: usize, o: &mut [u8]| {
         let (mut k, g) = (k.fork(), g); // own copies: a captured reference reloads every row past the output stores
         assert!(hi <= k.len(), "qlean group: ids over keys {lo}..{hi} of a source holding {}", k.len());
@@ -49,7 +46,7 @@ fn lanes<K: Keys, G: Fn(u64) -> usize + Sync + Copy>(run: Runner, k: &K, n: usiz
     run_map(run, gid, n, lane as usize / 8, crate::QLEAN_COST_ARITH, 8, &f);
 }
 
-struct Fill<'t, 'a, 'g> { run: Runner, t: &'t Table<'a>, lane: u32, gid: &'g mut [u8] }
+pub struct Fill<'t, 'a, 'g> { run: Runner, t: &'t Table<'a>, lane: u32, gid: &'g mut [u8] }
 impl Pass for Fill<'_, '_, '_> {
     type Out = ();
     fn run<K: Keys>(self, k: K, n: usize) {
@@ -104,26 +101,13 @@ impl Put for Nothing {
     fn fit(&mut self, _: usize) {}
     fn parts(&mut self) -> (&mut [u32], &mut [u32]) { (&mut [], &mut []) }
 }
-pub struct Bucket<'a> { pub gid: &'a mut [u32], pub cnt: &'a mut [u32] }
-impl Put for Bucket<'_> {
-    const BUCKET: bool = true;
-    // zeroed where the group is made, beside its `first`: `cnt` arrives unwritten, and one test in the loop's new-group
-    // arm moves the whole arm out of line
-    #[inline(always)] fn new(&mut self, g: usize) { self.cnt[g] = 0 }
-    #[inline(always)] fn put(&mut self, i: usize, g: usize) { self.gid[i] = g as u32; self.cnt[g] += 1 }
-    #[inline(always)] fn fit(&mut self, n: usize) {
-        let (g, c) = (core::mem::take(&mut self.gid), core::mem::take(&mut self.cnt));
-        (self.gid, self.cnt) = (&mut g[..n], &mut c[..n]);
-    }
-    fn parts(&mut self) -> (&mut [u32], &mut [u32]) { (self.gid, self.cnt) }
-}
 
 /// The direct table is at most four slots an element, and a group number has to fit its `u32` slot.
-fn direct_ok(span: u64, n: usize) -> bool { span < (n as u64).saturating_mul(4) + 1024 && span != u64::MAX && n <= u32::MAX as usize }
-fn shift(cap: usize) -> u32 { 64 - cap.trailing_zeros() }
+pub fn direct_ok(span: u64, n: usize) -> bool { span < (n as u64).saturating_mul(4) + 1024 && span != u64::MAX && n <= u32::MAX as usize }
+pub fn shift(cap: usize) -> u32 { 64 - cap.trailing_zeros() }
 
 /// `SK_DIRECT`: the table is indexed by `key - mn` and a probe is one load. Answers `ng` and the table.
-fn direct<K: Keys, P: Put>(mut k: K, n: usize, mn: u64, span: u64, first: &mut [usize], mut put: P) -> (usize, Vec<u32>) {
+pub fn direct<K: Keys, P: Put>(mut k: K, n: usize, mn: u64, span: u64, first: &mut [usize], mut put: P) -> (usize, Vec<u32>) {
     put.fit(n);
     // the cut slice and `min` carry the bounds of `first[ng - 1]`, `k.at(i)` and the scratch; `t` is the one test of `tab`
     let (n, first) = (n.min(k.len()), &mut first[..n]);
@@ -147,7 +131,7 @@ fn direct<K: Keys, P: Put>(mut k: K, n: usize, mn: u64, span: u64, first: &mut [
 /// `SK_HASHED` over the first `end` elements: `slot` (a power of two long) holds group + 1, `gkey[g]` is its key, linear
 /// probing from `(key * PHI64) >> shift`; each element's slot is prefetched `SK_AHEAD` before its probe. Answers `ng`;
 /// `gkey` and `first` hold `end` entries, written before they are read.
-fn hashed<K: Keys, P: Put>(mut k: K, end: usize, slot: &mut [usize], gkey: &mut [u64], first: &mut [usize], mut put: P) -> usize {
+pub fn hashed<K: Keys, P: Put>(mut k: K, end: usize, slot: &mut [usize], gkey: &mut [u64], first: &mut [usize], mut put: P) -> usize {
     put.fit(end);
     // the cut slices and `min` carry the bounds, so the loop tests only `slot` and `gkey` at a probe; the mask is the
     // shift's own range, said where LLVM can see that it is a bound
@@ -180,7 +164,7 @@ pub fn number(kind: u8, p: &[u8], n: usize, mn: u64, mx: u64, first: &mut [usize
     each(kind, p, n, Number { mn, mx, first })
 }
 
-struct Number<'f> { mn: u64, mx: u64, first: &'f mut [usize] }
+pub struct Number<'f> { mn: u64, mx: u64, first: &'f mut [usize] }
 impl Pass for Number<'_> {
     type Out = (usize, Table<'static>);
     fn run<K: Keys>(self, k: K, n: usize) -> Self::Out {
@@ -198,181 +182,16 @@ impl Pass for Number<'_> {
     }
 }
 
-/// Where the partitioned pass runs: a column this long, and the hashed loop's first `SK_PART_PREFIX` elements measure how
-/// many of them were new.
-const SK_PART_MIN: usize = 1 << 19;
-const SK_PART_PREFIX: usize = 1 << 16;
 
-/// Twelve bytes and not sixteen: the scatter writes one an element and the marking pass reads them all back, so the
-/// four bytes of padding are 8MB of traffic at a million elements across the two. `at` is `u32` because the pass only
-/// runs below `u32::MAX` rows.
-#[derive(Clone, Copy)]
-#[repr(C, packed)]
-pub struct KeyAt { key: u64, at: u32 }
 
-/// `part_dedup`: distinct by radix partition. The keys are scattered into `2^kb` buckets by the hash's top bits, each
-/// bucket then probes a table of its own that stays in L1, and a new group in a bucket sets a bit at the element's own
-/// index, so the walk of the bitmap finds the first occurrences in index order. With `GID` (`group`) the bucket pass
-/// writes each element's group's first-occurrence index into `gid` and a last pass maps it to the group number.
-#[inline(never)] // one copy per key type and mode, and a symbol `reach.sh` can break on
-fn part<K: Keys, const GID: bool>(mut k: K, n: usize, first: &mut [usize], gid: &mut [u32], cnt: &mut [u32]) -> usize {
-    let (n, mut kb) = (n.min(k.len()), 6u32);
-    while kb < 10 && (1usize << (kb + 11)) < n { kb += 1 }
-    let (nb, nblk) = (1usize << kb, n.div_ceil(64));
-    let mut at = vec![0usize; nb + 1];
-    let mut buf = uninit::<KeyAt>(n);
-    let mut mark = vec![0u64; nblk];
-    let mut rank = if GID { uninit::<u32>(n) } else { Vec::new() };
-    // `& (nb - 1)` is the shift's own range, said where LLVM can see it is a bound of `at`
-    for i in 0..n { at[(k.at(i).wrapping_mul(PHI64) >> (64 - kb)) as usize & (nb - 1)] += 1 }
-    let bmax = at[..nb].iter().copied().max().unwrap_or(0);
-    let mut bb = 3u32;
-    while (1usize << bb) < bmax * 2 { bb += 1 }
-    let bcap = 1usize << bb;
-    let mut tab = uninit::<u32>(bcap);
-    let mut run = 0;
-    for c in &mut at[..nb] { let c0 = *c; *c = run; run += c0 }
-    for i in 0..n {
-        let key = k.at(i);
-        let d = &mut at[(key.wrapping_mul(PHI64) >> (64 - kb)) as usize & (nb - 1)];
-        buf[*d] = KeyAt { key, at: i as u32 };
-        *d += 1;
-    }
-    // the scatter left `at[b]` one past bucket `b`, so the buckets are the runs it cuts
-    let mut lo = 0;
-    for b in 0..nb {
-        let hi = at[b];
-        if hi == lo { continue }
-        tab.fill(0);
-        let run = &buf[lo..hi];
-        for (j, e) in run.iter().enumerate() {
-            let (key, ai) = (e.key, e.at as usize);
-            let mut s = (key.wrapping_mul(PHI64) >> (64 - kb - bb)) as usize & (bcap - 1);
-            while tab[s] != 0 && run[tab[s] as usize - 1].key != key { s = (s + 1) & (bcap - 1) }
-            if tab[s] == 0 {
-                tab[s] = (j + 1) as u32;
-                mark[ai >> 6] |= 1 << (ai & 63);
-            }
-            if GID { gid[ai] = run[tab[s] as usize - 1].at }
-        }
-        lo = hi;
-    }
-    let mut w = 0;
-    for (blk, &m) in mark.iter().enumerate() {
-        let mut m = m;
-        while m != 0 {
-            let x = blk * 64 + m.trailing_zeros() as usize;
-            first[w] = x;
-            if GID { rank[x] = w as u32 }
-            w += 1;
-            m &= m - 1;
-        }
-    }
-    if GID {
-        cnt[..w].fill(0);
-        for g in gid[..n].iter_mut() { *g = rank[*g as usize]; cnt[*g as usize] += 1 }
-    }
-    w
-}
 
 /// Calling it marks the branch it is in unlikely, which rustc 1.93 has no stable hint for: it puts the word switch out of
 /// the way of the run of keys in one word, as sort.rs's loop is laid out.
 #[cold] #[inline(never)] fn cold() {}
 
-/// The `distinct` engine over a range of at most 64 slots an element: the table is a bitmap, a 64th of the direct table's
-/// bytes. Answers `ng`.
-fn bitmap<K: Keys>(mut k: K, n: usize, span: u64, mn: u64, first: &mut [usize]) -> usize {
-    // `min` and the cut slices state the bounds the loop's indexes need, so no test stays in it
-    let (n, first) = (n.min(k.len()), &mut first[..n]);
-    let slots = span as usize + 1;
-    let mut bm = vec![0u64; (span / 64) as usize + 1];
-    let cap = slots.min(n);
-    let mut rest = &mut first[..cap];
-    let (mut cw, mut cv) = (0usize, bm[0]);
-    // the word last touched is held in `cv` and written back only when the walk leaves it: a column with locality
-    // would otherwise read each word straight after its own store. `rest` is the part of `first` not yet written: no
-    // count to keep beside it, and it runs out exactly when every slot is seen (or at the last element, which ends the loop)
-    for i in 0..n {
-        let d = k.at(i).wrapping_sub(mn);
-        let m = 1u64 << (d & 63);
-        if (d >> 6) as usize != cw { cold(); bm[cw] = cv; cw = (d >> 6) as usize; cv = bm[cw] }
-        if cv & m == 0 {
-            cv |= m;
-            let Some((o, r)) = core::mem::take(&mut rest).split_first_mut() else { unreachable!("qlean group: more groups than slots") };
-            (*o, rest) = (i, r);
-            if rest.is_empty() { break }
-        }
-    }
-    cap - rest.len()
-}
 
-/// `dedup`: `first[..ng]` the first occurrence of each distinct key in order of first occurrence, and answers `ng`;
-/// under `Bucket` also each element's group in `gid` and the group sizes in `cnt`. `mn`, `mx` the keys' range (it only
-/// chooses the engine). `first` and `gid` / `cnt` hold `n` entries.
-pub fn dedup<K: Keys, P: Put>(k: K, n: usize, mn: u64, mx: u64, first: &mut [usize], mut put: P) -> usize {
-    if n == 0 { return 0 }
-    assert!(n <= k.len() && first.len() >= n, "qlean group: dedup over {n} keys of a source holding {}, first {}", k.len(), first.len());
-    let span = mx.wrapping_sub(mn);
-    // `distinct` asks only whether a key was seen -- a bit, so the table is a bitmap over the range, a 64th of the direct
-    // table's bytes, which serves a range of up to 64 slots an element and not 4
-    if !P::BUCKET && span != u64::MAX && span / 64 < n as u64 { return bitmap(k, n, span, mn, first) }
-    if direct_ok(span, n) { return direct(k, n, mn, span, first, put).0 }
-    // `part_dedup` carries an element index in four bytes, so a longer column stays on the hashed loop
-    let part_ok = n >= SK_PART_MIN && n <= u32::MAX as usize;
-    if part_ok {
-        // the first `2^16` elements of the hashed loop are the estimate of the distinct count: `ng / 2^16` is `1 - 2^16/2d`
-        // for `d` roughly equal values, so 15/16 puts `d` at half a million, where a slot per value stops fitting the L3
-        // and the partition measured ahead. Its table is sized for the estimate, not the column.
-        let (mut slot, mut gkey) = (vec![0usize; cap_for(SK_PART_PREFIX)], uninit::<u64>(SK_PART_PREFIX));
-        let ng = hashed(k.fork(), SK_PART_PREFIX, &mut slot, &mut gkey, first, Nothing);
-        if ng * 16 >= SK_PART_PREFIX * 15 {
-            let (gid, cnt) = put.parts();
-            return if P::BUCKET { part::<K, true>(k, n, first, gid, cnt) } else { part::<K, false>(k, n, first, gid, cnt) };
-        }
-    }
-    let (mut slot, mut gkey) = (vec![0usize; cap_for(n)], uninit::<u64>(n));
-    hashed(k, n, &mut slot, &mut gkey, first, put)
-}
 
-/// `dedup`'s kind switch: a dense column through `key::each`, an encoded one through `Kwin`.
-pub struct Dedup<'a> { pub mn: u64, pub mx: u64, pub first: &'a mut [usize], pub bucket: Option<(&'a mut [u32], &'a mut [u32])> }
-impl Pass for Dedup<'_> {
-    type Out = usize;
-    fn run<K: Keys>(self, k: K, n: usize) -> usize {
-        match self.bucket {
-            None => dedup(k, n, self.mn, self.mx, self.first, Nothing),
-            Some((gid, cnt)) => {
-                assert!(gid.len() >= n && cnt.len() >= n, "qlean group: dedup scratch holds {} and {}, wants {n}", gid.len(), cnt.len());
-                dedup(k, n, self.mn, self.mx, self.first, Bucket { gid, cnt })
-            }
-        }
-    }
-}
 
-/// `gather`: the elements at `first` written back at their own width (a bit as a whole byte), not rebuilt from the key,
-/// which keeps `distinct (-0.0;0.0;-0.0)` answering `-0f`. `out` is `first.len() * width` bytes. None = a short `out`,
-/// a `p` too short for `first`, or an unknown kind.
-pub fn gather(kind: u8, p: &[u8], first: &[usize], out: &mut [u8]) -> Option<()> {
-    use crate::key::{SK_BIT, SK_C8, SK_F32, SK_F64, SK_I16, SK_I32, SK_I64, SK_U8};
-    fn go<T: crate::pod::Pod>(p: &[u8], first: &[usize], out: &mut [u8]) -> Option<()> {
-        let (q, o) = (crate::pod::cast::<T>(p)?, crate::pod::cast_mut::<T>(out)?);
-        if o.len() != first.len() { return None }
-        for (o, &f) in o.iter_mut().zip(first) { *o = *q.get(f)? }
-        Some(())
-    }
-    match kind {
-        SK_BIT => {
-            if out.len() != first.len() { return None }
-            for (o, &f) in out.iter_mut().zip(first) { *o = (p.get(f >> 3)? >> (f & 7)) & 1 }
-            Some(())
-        }
-        SK_U8 | SK_C8 => go::<u8>(p, first, out),
-        SK_I16 => go::<u16>(p, first, out),
-        SK_I32 | SK_F32 => go::<u32>(p, first, out),
-        SK_I64 | SK_F64 => go::<u64>(p, first, out),
-        _ => None,
-    }
-}
 
 /// `ids_run`: element `i`'s group into `gid` at `lane` (8, 16, 32 or 64) bits, threaded by `c::run_map`. False =
 /// an unknown kind, or `gid` shorter than `n * lane / 8`.
@@ -405,35 +224,8 @@ pub fn group_ids_win(run: Runner, kind: u8, c: Coc, n: usize, mn: u64, mx: u64, 
 
 // ---- K15: sort.rs's `buckets`, `distinct_fill[_alp]`, `keys_gather_foR` and `parted_of` ----
 
-/// `lean_box` of the byte offset of element `at` of an `i64` array (`at * 8`): a `QValue.slices` bound.
-fn boxed(at: usize) -> usize { at << 4 | 1 }
 
-/// `buckets`' prefix sum: the first slot of each of the `cnt.len()` buckets in order, and the total after them.
-pub fn bucket_starts(cnt: &[u32]) -> Vec<usize> {
-    let mut at = uninit::<usize>(cnt.len() + 1);
-    let mut run = 0;
-    for (a, c) in at.iter_mut().zip(cnt) { (*a, run) = (run, run + *c as usize) }
-    at[cnt.len()] = run;
-    at
-}
-/// `buckets`' scatter: the indices of `gid` bucket by bucket into `ord`, each bucket ascending (in index order), from the
-/// cursors `at` (`bucket_starts`' first `ng` entries), which end one past each bucket.
-pub fn bucket_scatter(gid: &[u32], at: &mut [usize], ord: &mut [i64]) {
-    assert!(ord.len() == gid.len(), "qlean buckets: {} elements, {} indices to write", gid.len(), ord.len());
-    for (i, &g) in gid.iter().enumerate() { let a = &mut at[g as usize]; ord[*a] = i as i64; *a += 1 }
-}
 
-/// `buckets`: the indices of `gid` bucket by bucket, each bucket ascending, into `ord`, and the `ng + 1` boxed byte offsets
-/// that cut them into `bnd` (`ng = bnd.len() - 1`); `cnt[..ng]` is how many elements name each group. Prefix-sum, then one
-/// scatter in index order.
-pub fn buckets(gid: &[u32], cnt: &[u32], ord: &mut [i64], bnd: &mut [usize]) {
-    assert!(!bnd.is_empty() && cnt.len() + 1 >= bnd.len() && ord.len() == gid.len(),
-            "qlean buckets: {} elements, {} offsets, {} counts, {} indices to write", gid.len(), bnd.len(), cnt.len(), ord.len());
-    let ng = bnd.len() - 1;
-    let mut at = bucket_starts(&cnt[..ng]);
-    for (e, &a) in bnd.iter_mut().zip(&at) { *e = boxed(a) }
-    bucket_scatter(gid, &mut at[..ng], ord)
-}
 
 /// The first `n` elements of the dense payload `p` of `kind`, exactly the bytes `key::each` reads. `p` holds at least that
 /// many, which every caller clamped `n` to.
@@ -446,117 +238,27 @@ pub fn range_dense(kind: u8, p: &[u8], n: usize) -> (u64, u64) {
     if n == 0 { return (0, 0) }
     each(kind, dense(kind, p, n), n, Range).unwrap_or_else(|| panic!("range_of: key range refused kind {kind} (impossible: outside the enum or a misaligned payload), n {n}"))
 }
-/// `range_dense`, then `dedup` over the dense column (`first` and `bucket`'s two arrays hold `n` entries): answers `ng`.
-pub fn dedup_dense(kind: u8, p: &[u8], n: usize, bucket: Option<(&mut [u32], &mut [u32])>, first: &mut [usize]) -> usize {
-    let (mn, mx) = range_dense(kind, p, n);
-    each(kind, dense(kind, p, n), n, Dedup { mn, mx, first, bucket }).unwrap_or_else(|| panic!("dedup: refused kind {kind} (impossible: outside the enum or a misaligned payload), n {n}"))
-}
 
-/// `distinct_fill`: the elements of the encoded column `c` at `first` (ascending), as the key under `flip` (`key_flip`: the
-/// element again at the three kinds Frame of Reference encodes) into `buf`. `first` ascends, so the elements a block of
-/// the column holds are a run of it: each block touched is decoded once, into `k`, and its run read out of it.
-fn fill_keys(kind: u8, c: &Coc, first: &[usize], flip: u64, buf: &mut [i64], k: &mut [u64]) {
-    let (lg, blk) = (c.meta.lg, c.meta.blk());
-    let (n, buf, mut j) = (c.meta.n, &mut buf[..first.len()], 0);
-    while j < first.len() {
-        let (b, e) = (first[j] >> lg, ((first[j] >> lg) + 1) << lg);
-        kwin::keys_blk(kind, c, b, &mut k[..(n - (b << lg)).min(blk)]);
-        while j < first.len() && first[j] < e { buf[j] = (k[first[j] & (blk - 1)] ^ flip) as i64; j += 1 }
-    }
-}
-pub fn distinct_fill(kind: u8, c: &Coc, first: &[usize], buf: &mut [i64]) { fill_keys(kind, c, first, kwin::key_flip(kind), buf, &mut crate::pod::Scr::<u64>::new(c.meta.blk())) }
 
-/// `distinct_fill_alp`: as `distinct_fill` over an ALP column, the elements restored out of their blocks and not rebuilt from
-/// the key, which at a float folds every NaN and both zeros: q's `distinct` answers the first element as stored. `buf`
-/// takes the f32 bits zero-extended.
-pub fn distinct_fill_alp(f: &Cocf, first: &[usize], buf: &mut [i64]) {
-    let (n, w, buf, mut j) = (f.c.meta.n, if f.f32 { 4 } else { 8 }, &mut buf[..first.len()], 0);
-    let (lg, blk) = (f.c.meta.lg, f.c.meta.blk());
-    let mut v = crate::pod::Scr::<u64>::new(blk);
-    while j < first.len() {
-        let (at, cnt) = ((first[j] >> lg) << lg, (n - ((first[j] >> lg) << lg)).min(blk));
-        f.load_blk(first[j] >> lg, cnt, &mut crate::pod::bytes_mut(&mut v)[..cnt * w]);
-        let e = at + blk;
-        if f.f32 {
-            let v32 = crate::pod::cast::<u32>(crate::pod::bytes(&v)).expect("a u64 array is a u32 array");
-            while j < first.len() && first[j] < e { buf[j] = v32[first[j] & (blk - 1)] as i64; j += 1 }
-        } else {
-            while j < first.len() && first[j] < e { buf[j] = v[first[j] & (blk - 1)] as i64; j += 1 }
-        }
-    }
-}
 
-/// `keys_gather_foR`: the `first.len()` keys of `distinct_fill`, narrowed to the column's own width (`out` holds that many
-/// of 2, 4 or 8 bytes: the kinds Frame of Reference encodes).
-pub fn keys_gather(kind: u8, c: &Coc, first: &[usize], out: &mut [u8]) {
-    let w = (kwin::dense_bits(kind) / 8) as usize;
-    assert!(matches!(w, 2 | 4 | 8) && out.len() == first.len() * w,
-            "qlean group: {} keys of kind {kind} (width {w}) cannot fill {} bytes", first.len(), out.len());
-    let (flip, mut k, mut buf) = (kwin::key_flip(kind), crate::pod::Scr::<u64>::new(c.meta.blk()), [0i64; BATCH]);
-    for (f, o) in first.chunks(BATCH).zip(out.chunks_mut(BATCH * w)) {
-        let buf = &mut buf[..f.len()];
-        fill_keys(kind, c, f, flip, buf, &mut k);
-        match w {
-            2 => for (o, b) in o.chunks_exact_mut(2).zip(&*buf) { o.copy_from_slice(&(*b as u16).to_ne_bytes()) },
-            4 => for (o, b) in o.chunks_exact_mut(4).zip(&*buf) { o.copy_from_slice(&(*b as u32).to_ne_bytes()) },
-            _ => for (o, b) in o.chunks_exact_mut(8).zip(&*buf) { o.copy_from_slice(&b.to_ne_bytes()) },
-        }
-    }
-}
 
-/// `SK_PARTED`'s walk: false at the first run head already seen (`seen` records the ones it has not), or at the first repeat
-/// of a key inside a run when `strict`. So a mark that does not hold costs a few elements and one that does, a probe a run.
-#[inline(always)]
-fn heads<K: Keys>(mut k: K, n: usize, strict: bool, mut seen: impl FnMut(u64) -> bool) -> bool {
-    let mut prev = k.at(0);
-    if seen(prev) { return false }
-    for i in 1..n {
-        let v = k.at(i);
-        if v == prev { if strict { return false } continue }
-        prev = v;
-        if seen(v) { return false }
-    }
-    true
-}
 
-/// `parted_of`: `Order.firsts` against `Order.runHeads` as a count of run heads the walk has not met: a byte table over the
-/// range when that is at most four slots an element and a thousand, else `dedup`'s hashed table. `range` is the window's
-/// metadata range, none for a dense column (one pass over it).
-struct Parted { strict: bool, range: Option<(u64, u64)> }
-impl Pass for Parted {
-    type Out = bool;
-    fn run<K: Keys>(self, k: K, n: usize) -> bool {
-        if n < 2 { return true }
-        assert!(n <= k.len(), "qlean parted: {n} keys of a source holding {}", k.len());
-        let (mn, mx) = self.range.unwrap_or_else(|| Range.run(k.fork(), n));
-        let span = mx.wrapping_sub(mn);
-        if span < (n as u64).saturating_mul(4) + 1024 && span != u64::MAX {
-            let mut tab = vec![0u8; span as usize + 1];
-            return heads(k, n, self.strict, |v| { let t = &mut tab[(v - mn) as usize]; let s = *t != 0; *t = 1; s });
-        }
-        let cap = cap_for(n);
-        let (mask, sh, mut ng) = (cap - 1, shift(cap), 0);
-        let (mut slot, mut gkey) = (vec![0usize; cap], uninit::<u64>(n));
-        heads(k, n, self.strict, |key| {
-            let mut s = (key.wrapping_mul(PHI64) >> sh) as usize & mask;
-            loop {
-                let g = slot[s];
-                if g == 0 { (slot[s], gkey[ng]) = (ng + 1, key); ng += 1; return false }
-                if gkey[g - 1] == key { return true }
-                s = (s + 1) & mask;
+
+
+/// `dedup`'s kind switch: a dense column through `key::each`, an encoded one through `Kwin`.
+pub struct Dedup<'a> { pub mn: u64, pub mx: u64, pub first: &'a mut [usize], pub bucket: Option<(&'a mut [u32], &'a mut [u32])> }
+impl Pass for Dedup<'_> {
+    type Out = usize;
+    fn run<K: Keys>(self, k: K, n: usize) -> usize {
+        match self.bucket {
+            None => dedup(k, n, self.mn, self.mx, self.first, Nothing),
+            Some((gid, cnt)) => {
+                assert!(gid.len() >= n && cnt.len() >= n, "qlean group: dedup scratch holds {} and {}, wants {n}", gid.len(), cnt.len());
+                dedup(k, n, self.mn, self.mx, self.first, Bucket { gid, cnt })
             }
-        })
+        }
     }
 }
-
-/// `parted_of` over a dense column of `kind`; None = an unknown kind, `SK_WIN`, or a misaligned or short `p`.
-pub fn parted(kind: u8, p: &[u8], n: usize, strict: bool) -> Option<bool> { each(kind, p, n, Parted { strict, range: None }) }
-/// `parted_of` over an encoded column through a window (`qlean_sort_parted_foR`).
-pub fn parted_win(kind: u8, c: Coc, strict: bool) -> bool {
-    let n = c.meta.n;
-    Parted { strict, range: Some(kwin::win_range(kind, &c, false)) }.run(Kwin::new(kind, c), n)
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -682,3 +384,143 @@ mod tests {
         assert!(g.iter().enumerate().all(|(i, &b)| b as usize == i % 5));
     }
 }
+/// Twelve bytes and not sixteen: the scatter writes one an element and the marking pass reads them all back, so the
+/// four bytes of padding are 8MB of traffic at a million elements across the two. `at` is `u32` because the pass only
+/// runs below `u32::MAX` rows.
+#[derive(Clone, Copy)]
+#[repr(C, packed)]
+pub struct KeyAt { key: u64, at: u32 }
+pub struct Bucket<'a> { pub gid: &'a mut [u32], pub cnt: &'a mut [u32] }
+impl Put for Bucket<'_> {
+    const BUCKET: bool = true;
+    // zeroed where the group is made, beside its `first`: `cnt` arrives unwritten, and one test in the loop's new-group
+    // arm moves the whole arm out of line
+    #[inline(always)] fn new(&mut self, g: usize) { self.cnt[g] = 0 }
+    #[inline(always)] fn put(&mut self, i: usize, g: usize) { self.gid[i] = g as u32; self.cnt[g] += 1 }
+    #[inline(always)] fn fit(&mut self, n: usize) {
+        let (g, c) = (core::mem::take(&mut self.gid), core::mem::take(&mut self.cnt));
+        (self.gid, self.cnt) = (&mut g[..n], &mut c[..n]);
+    }
+    fn parts(&mut self) -> (&mut [u32], &mut [u32]) { (self.gid, self.cnt) }
+}
+/// `dedup`: `first[..ng]` the first occurrence of each distinct key in order of first occurrence, and answers `ng`;
+/// under `Bucket` also each element's group in `gid` and the group sizes in `cnt`. `mn`, `mx` the keys' range (it only
+/// chooses the engine). `first` and `gid` / `cnt` hold `n` entries.
+pub fn dedup<K: Keys, P: Put>(k: K, n: usize, mn: u64, mx: u64, first: &mut [usize], mut put: P) -> usize {
+    if n == 0 { return 0 }
+    assert!(n <= k.len() && first.len() >= n, "qlean group: dedup over {n} keys of a source holding {}, first {}", k.len(), first.len());
+    let span = mx.wrapping_sub(mn);
+    // `distinct` asks only whether a key was seen -- a bit, so the table is a bitmap over the range, a 64th of the direct
+    // table's bytes, which serves a range of up to 64 slots an element and not 4
+    if !P::BUCKET && span != u64::MAX && span / 64 < n as u64 { return bitmap(k, n, span, mn, first) }
+    if direct_ok(span, n) { return direct(k, n, mn, span, first, put).0 }
+    // `part_dedup` carries an element index in four bytes, so a longer column stays on the hashed loop
+    let part_ok = n >= SK_PART_MIN && n <= u32::MAX as usize;
+    if part_ok {
+        // the first `2^16` elements of the hashed loop are the estimate of the distinct count: `ng / 2^16` is `1 - 2^16/2d`
+        // for `d` roughly equal values, so 15/16 puts `d` at half a million, where a slot per value stops fitting the L3
+        // and the partition measured ahead. Its table is sized for the estimate, not the column.
+        let (mut slot, mut gkey) = (vec![0usize; cap_for(SK_PART_PREFIX)], uninit::<u64>(SK_PART_PREFIX));
+        let ng = hashed(k.fork(), SK_PART_PREFIX, &mut slot, &mut gkey, first, Nothing);
+        if ng * 16 >= SK_PART_PREFIX * 15 {
+            let (gid, cnt) = put.parts();
+            return if P::BUCKET { part::<K, true>(k, n, first, gid, cnt) } else { part::<K, false>(k, n, first, gid, cnt) };
+        }
+    }
+    let (mut slot, mut gkey) = (vec![0usize; cap_for(n)], uninit::<u64>(n));
+    hashed(k, n, &mut slot, &mut gkey, first, put)
+}
+/// The `distinct` engine over a range of at most 64 slots an element: the table is a bitmap, a 64th of the direct table's
+/// bytes. Answers `ng`.
+pub fn bitmap<K: Keys>(mut k: K, n: usize, span: u64, mn: u64, first: &mut [usize]) -> usize {
+    // `min` and the cut slices state the bounds the loop's indexes need, so no test stays in it
+    let (n, first) = (n.min(k.len()), &mut first[..n]);
+    let slots = span as usize + 1;
+    let mut bm = vec![0u64; (span / 64) as usize + 1];
+    let cap = slots.min(n);
+    let mut rest = &mut first[..cap];
+    let (mut cw, mut cv) = (0usize, bm[0]);
+    // the word last touched is held in `cv` and written back only when the walk leaves it: a column with locality
+    // would otherwise read each word straight after its own store. `rest` is the part of `first` not yet written: no
+    // count to keep beside it, and it runs out exactly when every slot is seen (or at the last element, which ends the loop)
+    for i in 0..n {
+        let d = k.at(i).wrapping_sub(mn);
+        let m = 1u64 << (d & 63);
+        if (d >> 6) as usize != cw { cold(); bm[cw] = cv; cw = (d >> 6) as usize; cv = bm[cw] }
+        if cv & m == 0 {
+            cv |= m;
+            let Some((o, r)) = core::mem::take(&mut rest).split_first_mut() else { unreachable!("qlean group: more groups than slots") };
+            (*o, rest) = (i, r);
+            if rest.is_empty() { break }
+        }
+    }
+    cap - rest.len()
+}
+/// `part_dedup`: distinct by radix partition. The keys are scattered into `2^kb` buckets by the hash's top bits, each
+/// bucket then probes a table of its own that stays in L1, and a new group in a bucket sets a bit at the element's own
+/// index, so the walk of the bitmap finds the first occurrences in index order. With `GID` (`group`) the bucket pass
+/// writes each element's group's first-occurrence index into `gid` and a last pass maps it to the group number.
+#[inline(never)] // one copy per key type and mode, and a symbol `reach.sh` can break on
+pub fn part<K: Keys, const GID: bool>(mut k: K, n: usize, first: &mut [usize], gid: &mut [u32], cnt: &mut [u32]) -> usize {
+    let (n, mut kb) = (n.min(k.len()), 6u32);
+    while kb < 10 && (1usize << (kb + 11)) < n { kb += 1 }
+    let (nb, nblk) = (1usize << kb, n.div_ceil(64));
+    let mut at = vec![0usize; nb + 1];
+    let mut buf = uninit::<KeyAt>(n);
+    let mut mark = vec![0u64; nblk];
+    let mut rank = if GID { uninit::<u32>(n) } else { Vec::new() };
+    // `& (nb - 1)` is the shift's own range, said where LLVM can see it is a bound of `at`
+    for i in 0..n { at[(k.at(i).wrapping_mul(PHI64) >> (64 - kb)) as usize & (nb - 1)] += 1 }
+    let bmax = at[..nb].iter().copied().max().unwrap_or(0);
+    let mut bb = 3u32;
+    while (1usize << bb) < bmax * 2 { bb += 1 }
+    let bcap = 1usize << bb;
+    let mut tab = uninit::<u32>(bcap);
+    let mut run = 0;
+    for c in &mut at[..nb] { let c0 = *c; *c = run; run += c0 }
+    for i in 0..n {
+        let key = k.at(i);
+        let d = &mut at[(key.wrapping_mul(PHI64) >> (64 - kb)) as usize & (nb - 1)];
+        buf[*d] = KeyAt { key, at: i as u32 };
+        *d += 1;
+    }
+    // the scatter left `at[b]` one past bucket `b`, so the buckets are the runs it cuts
+    let mut lo = 0;
+    for b in 0..nb {
+        let hi = at[b];
+        if hi == lo { continue }
+        tab.fill(0);
+        let run = &buf[lo..hi];
+        for (j, e) in run.iter().enumerate() {
+            let (key, ai) = (e.key, e.at as usize);
+            let mut s = (key.wrapping_mul(PHI64) >> (64 - kb - bb)) as usize & (bcap - 1);
+            while tab[s] != 0 && run[tab[s] as usize - 1].key != key { s = (s + 1) & (bcap - 1) }
+            if tab[s] == 0 {
+                tab[s] = (j + 1) as u32;
+                mark[ai >> 6] |= 1 << (ai & 63);
+            }
+            if GID { gid[ai] = run[tab[s] as usize - 1].at }
+        }
+        lo = hi;
+    }
+    let mut w = 0;
+    for (blk, &m) in mark.iter().enumerate() {
+        let mut m = m;
+        while m != 0 {
+            let x = blk * 64 + m.trailing_zeros() as usize;
+            first[w] = x;
+            if GID { rank[x] = w as u32 }
+            w += 1;
+            m &= m - 1;
+        }
+    }
+    if GID {
+        cnt[..w].fill(0);
+        for g in gid[..n].iter_mut() { *g = rank[*g as usize]; cnt[*g as usize] += 1 }
+    }
+    w
+}
+/// Where the partitioned pass runs: a column this long, and the hashed loop's first `SK_PART_PREFIX` elements measure how
+/// many of them were new.
+pub const SK_PART_MIN: usize = 1 << 19;
+pub const SK_PART_PREFIX: usize = 1 << 16;

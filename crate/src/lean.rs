@@ -491,8 +491,8 @@ impl<'a> B<'a> {
 /// A value an external object holds. `foreach` hands every object it references to `f`, as the runtime's
 /// `lean_external_foreach_proc` does when it marks a graph multi-threaded or persistent.
 pub trait Ext: Sized + 'static { fn foreach(&self, f: B<'_>); }
-unsafe extern "C" fn ext_finalize<T: Ext>(p: *mut u8) { drop(unsafe { alloc::boxed::Box::from_raw(p.cast::<T>()) }) }
-unsafe extern "C" fn ext_foreach<T: Ext>(p: *mut u8, f: *mut Object) {
+pub unsafe extern "C" fn ext_finalize<T: Ext>(p: *mut u8) { drop(unsafe { alloc::boxed::Box::from_raw(p.cast::<T>()) }) }
+pub unsafe extern "C" fn ext_foreach<T: Ext>(p: *mut u8, f: *mut Object) {
     unsafe { (*p.cast::<T>()).foreach(B(NonNull::new_unchecked(f), PhantomData)) }
 }
 /// The `lean_external_class` of `T`, registered on first use: a `static` in the export file. Two threads racing the
@@ -576,13 +576,14 @@ pub fn sarrays_in(m: &'static mut [u8], spans: &[(usize, usize)]) -> alloc::vec:
 /// attribute that needs `unsafe`, so the export files hold no `unsafe` token (`forbid` would reject even the macro's
 /// `allow`).
 #[cfg_attr(test, allow(unused_macros))] // the export files are not built under `cargo test`
+#[macro_export]
 macro_rules! export {
     ($($(#[$m:meta])* fn $name:ident($($a:ident: $t:ty),* $(,)?) $(-> $r:ty)? $body:block)*) => {$(
         $(#[$m])* #[allow(unsafe_code)] #[unsafe(no_mangle)] pub extern "C" fn $name($($a: $t),*) $(-> $r)? $body
     )*};
 }
 #[cfg_attr(test, allow(unused_imports))]
-pub(crate) use export;
+pub use export;
 
 /// The twins `test/abi.c` calls beside the `lean.h` originals, in the separate object `build.sh` makes with feature `abi`.
 #[cfg(feature = "abi")]

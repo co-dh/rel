@@ -5,7 +5,7 @@ use crate::pod::{self, Lane};
 use alloc::vec::Vec;
 
 /// coc.rs: bit 8 of the patch list's element size, set when the frames follow
-pub(crate) const COC_EXC_FRM: usize = 0x100;
+pub const COC_EXC_FRM: usize = 0x100;
 
 /// `coc_meta_view`: the 33*mblk + 24 byte buffer (the trailer: sumnul, sumn, lg, then the widths).
 #[derive(Clone, Copy)]
@@ -175,7 +175,7 @@ impl Coc<'_> {
 
 /// coc.rs's `COC_LOAD_SUB`: residuals of `W` < 8 bits, `8 / W` to a byte, the shift a literal per byte so the loop
 /// vectorises.
-fn load_sub<T: Lane, const W: usize>(p: &[u8], base: u64, out: &mut [T]) {
+pub fn load_sub<T: Lane, const W: usize>(p: &[u8], base: u64, out: &mut [T]) {
     let (per, m) = (8 / W, (1u8 << W) - 1);
     let g = out.len() / per;
     let mut whole = out.chunks_exact_mut(per);

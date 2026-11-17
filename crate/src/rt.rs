@@ -11,7 +11,7 @@ unsafe extern "C" {
     fn write(fd: i32, p: *const u8, n: usize) -> isize;
 }
 
-struct Malloc;
+pub struct Malloc;
 unsafe impl GlobalAlloc for Malloc {
     // aligned_alloc wants a size that is a multiple of the alignment
     unsafe fn alloc(&self, l: Layout) -> *mut u8 {
@@ -37,9 +37,9 @@ unsafe impl GlobalAlloc for Malloc {
     }
 }
 #[global_allocator]
-static A: Malloc = Malloc;
+pub static A: Malloc = Malloc;
 
-struct Err;
+pub struct Err;
 impl core::fmt::Write for Err {
     fn write_str(&mut self, s: &str) -> core::fmt::Result {
         unsafe { write(2, s.as_ptr(), s.len()) };
@@ -48,12 +48,12 @@ impl core::fmt::Write for Err {
 }
 
 #[panic_handler]
-fn panic(i: &core::panic::PanicInfo) -> ! {
+pub fn panic(i: &core::panic::PanicInfo) -> ! {
     let _ = core::fmt::write(&mut Err, format_args!("qlean kernel: {i}\n"));
     unsafe { abort() }
 }
 
 #[unsafe(no_mangle)]
-extern "C" fn rust_eh_personality() {}
+pub extern "C" fn rust_eh_personality() {}
 #[unsafe(no_mangle)]
-extern "C" fn _Unwind_Resume() -> ! { unsafe { abort() } }
+pub extern "C" fn _Unwind_Resume() -> ! { unsafe { abort() } }

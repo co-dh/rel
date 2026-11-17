@@ -1,0 +1,18 @@
+[package]
+name = "relk"
+version = "0.1.0"
+edition = "2024"
+
+# No dependencies: `relk.o` must stay libc-only; `c/rs.h` comes from the cbindgen CLI, not a build script.
+[dependencies]
+
+[lib]
+path = "src/lib.rs"
+# rlib for qrs, staticlib for `cargo build -p relk` alone (its `qlean_*` set is gate `relk-syms`)
+crate-type = ["staticlib", "rlib"]
+# doc tests would link the `no_std` panic handler into a `std` binary
+doctest = false
+
+[features]
+# the lean.rs twins test/abi.c calls, built by `build.sh abi` into a separate object, never into relk.o
+abi = []

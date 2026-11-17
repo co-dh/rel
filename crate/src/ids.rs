@@ -5,16 +5,17 @@ use crate::QLEAN_COST_ARITH;
 use crate::c::Runner;
 
 /// `f::<W>(args)` for the run-time width `w`, so `id_at`'s match folds as the C's `IDS_WIDTHS` does.
+#[macro_export]
 macro_rules! by_width {
     ($w:expr, $f:ident($($a:expr),*)) => { match $w {
         0 => $f::<0>($($a),*), 1 => $f::<1>($($a),*), 2 => $f::<2>($($a),*), 4 => $f::<4>($($a),*),
         8 => $f::<8>($($a),*), 16 => $f::<16>($($a),*), 32 => $f::<32>($($a),*), _ => $f::<64>($($a),*),
     } };
 }
-pub(crate) use by_width;
+pub use by_width;
 
 /// `c::run_map`'s wide for the id map; its cost is `QLEAN_COST_ARITH`.
-const WIDE: usize = 8;
+pub const WIDE: usize = 8;
 
 /// `Column.idWidth`: zero at one entry and at none -- there is one id, so nothing is stored.
 pub fn id_width(nd: usize) -> u32 { if nd < 2 { 0 } else { lane_width(width_for((nd - 1) as u64)) as u32 } }
@@ -44,7 +45,7 @@ pub fn id_at(p: &[u8], w: u32, i: usize) -> usize {
 }
 /// Element `i` of `p` at `W` bytes.
 #[inline(always)]
-fn le<const W: usize>(p: &[u8], i: usize) -> [u8; W] { p[i * W..(i + 1) * W].try_into().unwrap() }
+pub fn le<const W: usize>(p: &[u8], i: usize) -> [u8; W] { p[i * W..(i + 1) * W].try_into().unwrap() }
 
 /// `IDS_UNPACK` (ids.rs): `f(i, &mut out[i], id)` for each element of `out` and the id of the same index at the
 /// constant width `W`. Below a byte one word holds `64 / W` ids at constant shifts, a whole-byte lane is a chunked
@@ -70,10 +71,10 @@ pub fn unpack<const W: u32, T>(p: &[u8], out: &mut [T], mut f: impl FnMut(usize,
     }
 }
 /// Bytes of one id at a whole-byte width `w` (1 below a byte, where no caller reads whole ids).
-const fn whole_bytes(w: u32) -> usize { if w >= 8 { w as usize / 8 } else { 1 } }
+pub const fn whole_bytes(w: u32) -> usize { if w >= 8 { w as usize / 8 } else { 1 } }
 /// The id `c` holds at the whole-byte width `W`, `c` exactly `whole_bytes(W)` long: a load of that width.
 #[inline(always)]
-fn word<const W: u32>(c: &[u8]) -> usize {
+pub fn word<const W: u32>(c: &[u8]) -> usize {
     match W { 8 => c[0] as usize, 16 => u16::from_le_bytes([c[0], c[1]]) as usize,
               32 => u32::from_le_bytes([c[0], c[1], c[2], c[3]]) as usize, _ => u64::from_le_bytes(c.try_into().unwrap()) as usize }
 }
@@ -113,11 +114,11 @@ pub fn pack(out: &mut [u8], w: u32, n: usize, val: impl Fn(usize) -> u64) {
 }
 
 // The largest of whole bytes' fields at a constant narrow width: a const generic so the field loop unrolls.
-fn narrow_max<const W: u32>(p: &[u8]) -> u8 {
+pub fn narrow_max<const W: u32>(p: &[u8]) -> u8 {
     p.iter().fold(0, |a, &b| (0..8 / W).map(|k| b >> (k * W) & ((1 << W) - 1)).fold(a, u8::max))
 }
 
-fn wide_max<const K: usize>(p: &[u8], n: usize) -> usize {
+pub fn wide_max<const K: usize>(p: &[u8], n: usize) -> usize {
     p.chunks_exact(K).take(n).map(|c| c.iter().rev().fold(0usize, |a, &b| a << 8 | b as usize)).max().unwrap_or(0)
 }
 
@@ -148,7 +149,7 @@ pub fn firsts(ids: &[u8], n: usize, w: u32, nd: usize, slot: &mut [usize], first
 }
 
 // `W` const so `id_at`'s match folds, as the C's `IDS_WIDTHS` does.
-fn go<const W: u32>(ids: &[u8], n: usize, nd: usize, slot: &mut [usize], first: &mut [usize]) -> usize {
+pub fn go<const W: u32>(ids: &[u8], n: usize, nd: usize, slot: &mut [usize], first: &mut [usize]) -> usize {
     let top = if W < 64 && 1usize << W <= nd { 1usize << W } else { nd + 1 };
     let (mut ng, mut i) = (0, 0);
     while i < n {
@@ -204,7 +205,7 @@ fn go<const W: u32>(ids: &[u8], n: usize, nd: usize, slot: &mut [usize], first: 
 
 /// `map` at an output lane of `U` bytes: `w` is matched once a slice, so the row loop has a constant-width load and
 /// store, which `id_at` and a `copy_from_slice` of a run-time length are not.
-fn wide<const U: usize>(run: Runner, out: &mut [u8], ids: &[u8], w: u32, n: usize, nd: usize, slot: &[usize]) {
+pub fn wide<const U: usize>(run: Runner, out: &mut [u8], ids: &[u8], w: u32, n: usize, nd: usize, slot: &[usize]) {
     #[inline(always)]
     fn sweep<const U: usize>(o: &mut [u8], lo: usize, hi: usize, nd: usize, slot: &[usize], id: impl Fn(usize) -> usize) {
         for (i, c) in (lo..hi).zip(o.chunks_exact_mut(U)) {
@@ -291,7 +292,7 @@ pub fn pack_in_place(g: &mut [u8], w: u32, n: usize) {
 }
 
 /// The `n / PER` output bytes of `pack_in_place` that hold `PER` ids each, `W` bits an id.
-fn pack_whole<const W: u32, const PER: usize>(g: &mut [u8], n: usize) {
+pub fn pack_whole<const W: u32, const PER: usize>(g: &mut [u8], n: usize) {
     const BLOCK: usize = 2048;
     let (mut buf, mut j, full) = ([0u8; BLOCK], 0, n / PER);
     while j < full {
@@ -447,7 +448,7 @@ pub fn ids_fill(out: &mut [u8], w: u32, at: usize, cnt: usize, v: u64) {
 }
 
 // One destination byte of `bitcopy`: up to the byte's end of the `bits - i` left, from bit `sb + i` of the source.
-fn bitcopy_byte(dst: &mut [u8], db: usize, src: &[u8], sb: usize, bits: usize, i: usize) -> usize {
+pub fn bitcopy_byte(dst: &mut [u8], db: usize, src: &[u8], sb: usize, bits: usize, i: usize) -> usize {
     let (dbit, s) = ((db + i) & 7, sb + i);
     let (sk, sbit) = (s >> 3, (s & 7) as u32);
     let take = (8 - dbit).min(bits - i);
@@ -476,7 +477,7 @@ pub fn bitcopy(dst: &mut [u8], db: usize, src: &[u8], sb: usize, bits: usize) {
 /// ids.rs `ids_slice_elems`: elements per copy slice at `w`, a whole byte's worth so two threads never share one.
 pub fn slice_elems(w: u32) -> usize { if w != 0 && w < 8 { (8 / w) as usize } else { 1 } }
 
-fn unpack16_at<const W: u32>(p: &[u8], from: usize, m: usize, dst: &mut [u16]) {
+pub fn unpack16_at<const W: u32>(p: &[u8], from: usize, m: usize, dst: &mut [u16]) {
     let per = slice_elems(W);
     let mut j = 0;
     if per > 1 {
@@ -502,7 +503,7 @@ pub fn unpack16(p: &[u8], w: u32, from: usize, m: usize, dst: &mut [u16]) {
 // The head test of `runs`: field `i` raw value `raw` is a head where `min(raw, nd)` differs from the field before.
 // Taken by value into `runs_at`, so its fields live in registers; `get_mut` is the C's `if (out)` and the store's
 // bounds test in one compare (a non-empty `out` holds every head).
-struct Heads<'a> { out: &'a mut [i64], nd: usize, g: usize, prev: usize }
+pub struct Heads<'a> { out: &'a mut [i64], nd: usize, g: usize, prev: usize }
 impl Heads<'_> {
     #[inline(always)]
     fn at(&mut self, i: usize, raw: usize) {
@@ -515,7 +516,7 @@ impl Heads<'_> {
     }
 }
 
-fn runs_at<const W: u32>(p: &[u8], n: usize, most: usize, mut h: Heads) -> usize {
+pub fn runs_at<const W: u32>(p: &[u8], n: usize, most: usize, mut h: Heads) -> usize {
     if W >= 8 {
         for (i, c) in p.chunks_exact(whole_bytes(W)).take(n).enumerate() { if h.g > most { break } h.at(i, word::<W>(c)) }
         return h.g

@@ -67,8 +67,8 @@ pub struct CPass {
     pub op: u8, pub cls: u8, pub shape: u8,
 }
 
-const _: () = assert!(size_of::<CCoc>() == 144);
-const _: () = assert!(size_of::<CPass>() == 72);
+pub const _: () = assert!(size_of::<CCoc>() == 144);
+pub const _: () = assert!(size_of::<CPass>() == 72);
 
 
 
@@ -76,11 +76,11 @@ const _: () = assert!(size_of::<CPass>() == 72);
 
 
 /// Safety: `p` is null or valid for `n` reads of `T` during `'a`.
-unsafe fn sl<'a, T>(p: *const T, n: usize) -> &'a [T] {
+pub unsafe fn sl<'a, T>(p: *const T, n: usize) -> &'a [T] {
     if p.is_null() || n == 0 { &[] } else { unsafe { slice::from_raw_parts(p, n) } }
 }
 /// Safety: `p` is null or valid for `n` writes of `T` during `'a`, and nothing else aliases it.
-unsafe fn sl_mut<'a, T>(p: *mut T, n: usize) -> &'a mut [T] {
+pub unsafe fn sl_mut<'a, T>(p: *mut T, n: usize) -> &'a mut [T] {
     if p.is_null() || n == 0 { &mut [] } else { unsafe { slice::from_raw_parts_mut(p, n) } }
 }
 
@@ -157,8 +157,8 @@ pub struct CStage {
     pub f: Option<unsafe extern "C" fn(usize, usize, *const CPass)>, pub p: CPass, pub asrc: u8, pub bsrc: u8, pub osrc: u8,
     pub abits: u16, pub bbits: u16, pub obits: u16, pub bytewise: u8,
 }
-const _: () = assert!(size_of::<CCocf>() == 192 && size_of::<CSrc>() == 40 && size_of::<CEnc>() == 320);
-const _: () = assert!(size_of::<CSym>() == 16 && size_of::<CStage>() == 96);
+pub const _: () = assert!(size_of::<CCocf>() == 192 && size_of::<CSrc>() == 40 && size_of::<CEnc>() == 320);
+pub const _: () = assert!(size_of::<CSym>() == 16 && size_of::<CStage>() == 96);
 impl CPass {
     /// Every pointer null, every count zero: what a stage is before the builder binds it.
     pub const EMPTY: CPass = CPass { a: core::ptr::null(), b: core::ptr::null(), c: core::ptr::null(), o: null_mut(), n: 0, at: 0,
@@ -203,7 +203,7 @@ pub unsafe extern "C" fn qrs_src_bits(out: *mut u8, nbytes: usize, b: usize, x: 
 pub fn syms_of<'a>(blob: lean::B<'a>, offs: lean::B<'a>) -> Syms<'a> { Syms { blob: blob.bytes(), offs: offs.words() } }
 /// K20: a dictionary or starts object as `sym::Heap` sees it, the lean.rs inlines under the names lean.h gives them.
 #[derive(Clone, Copy, PartialEq)]
-struct Obj(*mut lean::Object);
+pub struct Obj(*mut lean::Object);
 impl sym::Heap for Obj {
     fn rc(self) -> i32 { unsafe { (*self.0).rc } }
     fn inc(self) { unsafe { lean::inc(self.0) } }
@@ -221,11 +221,11 @@ impl sym::Heap for Obj {
     }
 }
 /// The one cache of kept dictionary hashes. Safety: `SD_LOCK` is held across every call that reaches it.
-struct Kept(core::cell::UnsafeCell<sym::Cache<Obj>>);
+pub struct Kept(core::cell::UnsafeCell<sym::Cache<Obj>>);
 unsafe impl Sync for Kept {}
-static KEPT: Kept = Kept(core::cell::UnsafeCell::new(sym::Cache::new()));
+pub static KEPT: Kept = Kept(core::cell::UnsafeCell::new(sym::Cache::new()));
 /// `dict`/`offs` as a part: the bytes and the boxed starts, in place.
-fn part<'a>(dict: lean::B<'a>, offs: lean::B<'a>) -> sym::Part<'a, Obj> {
+pub fn part<'a>(dict: lean::B<'a>, offs: lean::B<'a>) -> sym::Part<'a, Obj> {
     sym::Part { dict: Obj(raw(dict)), offs: Obj(raw(offs)), syms: syms_of(dict, offs) }
 }
 /// The kept hash of the dictionary `dict`/`offs` at its own count, when the cache holds one: `f` gets its probe, the least id
@@ -247,9 +247,9 @@ pub fn sd_kept<R>(dict: lean::B, offs: lean::B, f: impl FnOnce(&dyn Fn(&[u8]) ->
     r
 }
 /// The lock of the kept dictionary hashes: held by `sd_kept` around its probes and by `sd_concat` around its one call into the cache.
-static SD_LOCK: crate::pool::Lock = crate::pool::Lock::new();
+pub static SD_LOCK: crate::pool::Lock = crate::pool::Lock::new();
 /// The pointer of a borrowed object: `lean::B` is `repr(transparent)` over one non-null pointer.
-fn raw(b: lean::B) -> *mut lean::Object {
+pub fn raw(b: lean::B) -> *mut lean::Object {
     // Safety: same size and meaning, as `lean::B` is a pointer
     unsafe { core::mem::transmute(b) }
 }
@@ -289,58 +289,15 @@ pub fn sd_concat(parts: &[(lean::B, lean::B)]) -> Option<(lean::O, lean::O, usiz
     // Safety: the cache's answer holds one reference to each, which the caller owns
     r.map(|d| unsafe { (lean::O::from_raw(d.dict.0), lean::O::from_raw(d.offs.0), d.cnt, d.maps) })
 }
-/// K22: structural.rs `amend_index` past the width check, the answer's three Lean arrays allocated as the kernel asks for them:
-/// `Res`, and, when `compact` and no index misses, `Dom` and `Rank` (`None` otherwise). The kernel writes into each while the
-/// others are alive, so each is held here by its `SArr` and the slice handed out is of its own payload.
-pub fn amend(n: usize, wi: usize, ranked: bool, compact: bool, idx: &[u8]) -> (lean::O, Option<lean::O>, Option<lean::O>) {
-    let mut out: [Option<lean::SArr>; 3] = [None, None, None];
-    structural::amend_index(c::pool(), n, wi, ranked, compact, idx, &mut |which, words| {
-        let mut a = lean::SArr::new(1, words * 8);
-        let p = a.bytes_mut().as_mut_ptr().cast::<i64>();
-        out[which as usize] = Some(a);
-        // Safety: `p` is the payload of the array just stored in `out`, `words` of 8-aligned `Int64`s, which `out` keeps alive
-        // until the kernel returns and which nothing else names
-        unsafe { sl_mut(p, words) }
-    });
-    let [dom, rank, res] = out;
-    (res.expect("amend_index: the answer is allocated last").into(), dom.map(Into::into), rank.map(Into::into))
-}
-/// K23: `scatterFoR` (`a` is `None`) and `scatterALP` (`a` the exponents): `(meta, pack)` or `(meta, (pack, alp))`, the writer's
-/// parts as the Lean declaration types them. The blocks come from `structural::Scatter`, not from a source, so `NoElts`
-/// stands in for the element cursor `src_pass` hands each step.
-#[allow(clippy::too_many_arguments)]
-pub fn encode_scatter(w: usize, m: &[u8], pk: &[u8], a: Option<&[u8]>, n: usize, ix: &[u8], vals: &[u8]) -> lean::O {
-    unsafe {
-        let alp = a.is_some();
-        let sc = structural::Scatter::new(c::pool(), w, m, pk, a, n, ix, vals);
-        let mut e: CEnc = core::mem::zeroed();
-        let s = &raw mut e;
-        qrs_coc_enc_open(s, n, w, alp as c_int);
-        src_pass(s, (*s).c.lg(), &NoElts, &|s, b, _, _| sc.meta(&mut (*s).meta_blk(b), b), true, if alp { crate::QLEAN_COST_MATH } else { crate::QLEAN_COST_ARITH });
-        qrs_coc_enc_layout(s);
-        src_pass(s, (*s).c.lg(), &NoElts, &|s, b, _, nb| sc.pack(&mut (*s).pack_blk(b, nb, sc.kept(b)), b), false, crate::QLEAN_COST_ARITH);
-        if !alp { return lean::O::from_raw(qrs_coc_enc_pair(s).cast()) }
-        coc_free((*s).exc_heap.cast());
-        lean::O::from_raw(mk_pair((*s).meta, mk_pair((*s).pack, (*s).blob)).cast())
-    }
-}
-/// K23: `encode_scatter` has no elements, only block numbers.
-struct NoElts;
-impl Source for NoElts {
-    unsafe fn open(&self) -> Option<*mut c_void> { Some(null_mut()) }
-    unsafe fn at(&self, _: *mut c_void, _: usize, _: usize) -> *const u8 { core::ptr::NonNull::dangling().as_ptr() }
-    unsafe fn close(&self, _: *mut c_void) {}
-    unsafe fn bad(&self) -> bool { false }
-}
 // ---- K10: the chain's stage table and builder (ew.rs `ew_stage_worker`, `ew_chain_build`) and the statistics fold ----
 pub type Worker = unsafe extern "C" fn(usize, usize, *const CPass);
 /// `p`'s operand at `lo` elements of `w` bytes, `n` of them, unless it is an atom (`one`), which is `w` bytes at its start.
-unsafe fn tile<'a>(q: *const c_void, lo: usize, n: usize, w: usize, one: bool) -> &'a [u8] {
+pub unsafe fn tile<'a>(q: *const c_void, lo: usize, n: usize, w: usize, one: bool) -> &'a [u8] {
     unsafe { if one { sl(q.cast::<u8>(), w) } else { sl(q.cast::<u8>().add(lo * w), n * w) } }
 }
 /// ew.rs `ew_val_run`: the value verbs over one tile, an atom operand its one element; the runner is serial because a
 /// chain tile is already one pool slice.
-unsafe extern "C" fn qrs_ew_val_stage(lo: usize, hi: usize, p: *const CPass) {
+pub unsafe extern "C" fn qrs_ew_val_stage(lo: usize, hi: usize, p: *const CPass) {
     unsafe {
         let p = &*p;
         let (w, n) = (ew::ew_width(p.cls as u32), hi - lo);
@@ -350,7 +307,7 @@ unsafe extern "C" fn qrs_ew_val_stage(lo: usize, hi: usize, p: *const CPass) {
     }
 }
 /// ew.rs `ew_cmp_stage`: `lo`, `hi` are output bytes, so eight elements each and no two slices share one.
-unsafe extern "C" fn qrs_ew_cmp_stage(lo: usize, hi: usize, p: *const CPass) {
+pub unsafe extern "C" fn qrs_ew_cmp_stage(lo: usize, hi: usize, p: *const CPass) {
     unsafe {
         let p = &*p;
         let w = ew::ew_width(p.cls as u32);
@@ -361,7 +318,7 @@ unsafe extern "C" fn qrs_ew_cmp_stage(lo: usize, hi: usize, p: *const CPass) {
     }
 }
 /// ew.rs `ew_mon_stage`.
-unsafe extern "C" fn qrs_ew_mon_stage(lo: usize, hi: usize, p: *const CPass) {
+pub unsafe extern "C" fn qrs_ew_mon_stage(lo: usize, hi: usize, p: *const CPass) {
     unsafe {
         let p = &*p;
         let (w, n) = (ew::ew_width(p.cls as u32), hi - lo);
@@ -369,7 +326,7 @@ unsafe extern "C" fn qrs_ew_mon_stage(lo: usize, hi: usize, p: *const CPass) {
     }
 }
 /// ew.rs `ew_floor_stage`: `n` longs out.
-unsafe extern "C" fn qrs_ew_floor_stage(lo: usize, hi: usize, p: *const CPass) {
+pub unsafe extern "C" fn qrs_ew_floor_stage(lo: usize, hi: usize, p: *const CPass) {
     unsafe {
         let p = &*p;
         let (w, n) = (ew::ew_width(p.cls as u32), hi - lo);
@@ -377,7 +334,7 @@ unsafe extern "C" fn qrs_ew_floor_stage(lo: usize, hi: usize, p: *const CPass) {
     }
 }
 /// ew.rs `ew_bit_stage`: `lo`, `hi` are output bytes, so eight bits each; an atom operand is its one byte.
-unsafe extern "C" fn qrs_ew_bit_stage(lo: usize, hi: usize, p: *const CPass) {
+pub unsafe extern "C" fn qrs_ew_bit_stage(lo: usize, hi: usize, p: *const CPass) {
     unsafe {
         let p = &*p;
         let m = hi - lo;
@@ -386,7 +343,7 @@ unsafe extern "C" fn qrs_ew_bit_stage(lo: usize, hi: usize, p: *const CPass) {
     }
 }
 /// ew.rs `ew_cast_stage`: the two classes travel as `cls` and `shape`.
-unsafe extern "C" fn qrs_ew_cast_stage(lo: usize, hi: usize, p: *const CPass) {
+pub unsafe extern "C" fn qrs_ew_cast_stage(lo: usize, hi: usize, p: *const CPass) {
     unsafe {
         let p = &*p;
         let (sw, dw, n) = (ew::ew_width(p.cls as u32), ew::ew_width(p.shape as u32), hi - lo);
@@ -395,7 +352,7 @@ unsafe extern "C" fn qrs_ew_cast_stage(lo: usize, hi: usize, p: *const CPass) {
 }
 /// ew.rs `ew_tick_stage`: `op` is the source unit's code times 16 plus the target's, `p.c` the target's null; the
 /// source is `int`, `double` or else `long`, the target `double`, `int` or else `long`.
-unsafe extern "C" fn qrs_ew_tick_stage(lo: usize, hi: usize, p: *const CPass) {
+pub unsafe extern "C" fn qrs_ew_tick_stage(lo: usize, hi: usize, p: *const CPass) {
     unsafe {
         let p = &*p;
         let (sw, dw, n) = (if p.cls == ew::k::I32 { 4 } else { 8 }, if p.shape == ew::k::I32 { 4 } else { 8 }, hi - lo);
@@ -404,7 +361,7 @@ unsafe extern "C" fn qrs_ew_tick_stage(lo: usize, hi: usize, p: *const CPass) {
     }
 }
 /// ew.rs `ew_widen_stage`: elements `[lo, hi)` of a tile of `p.n`; a bit source is read from the tile's own bit 0.
-unsafe extern "C" fn qrs_ew_widen_stage(lo: usize, hi: usize, p: *const CPass) {
+pub unsafe extern "C" fn qrs_ew_widen_stage(lo: usize, hi: usize, p: *const CPass) {
     unsafe {
         let p = &*p;
         let xb = if p.cls == ew::k::BITS { p.n.div_ceil(8) } else { p.n * ew::ew_width(p.cls as u32) };
@@ -413,7 +370,7 @@ unsafe extern "C" fn qrs_ew_widen_stage(lo: usize, hi: usize, p: *const CPass) {
     }
 }
 /// ew.rs `ew_decode_run`: `Coc.decode` over one tile, the block addressed by its number (`p.at`).
-unsafe extern "C" fn qrs_ew_decode_stage(lo: usize, hi: usize, p: *const CPass) {
+pub unsafe extern "C" fn qrs_ew_decode_stage(lo: usize, hi: usize, p: *const CPass) {
     unsafe {
         let p = &*p;
         let (w, cnt) = (ew::ew_width(p.cls as u32), hi - lo);
@@ -421,7 +378,7 @@ unsafe extern "C" fn qrs_ew_decode_stage(lo: usize, hi: usize, p: *const CPass) 
     }
 }
 /// ew.rs `ew_alp_run`: `Coc.alpDecode` over one tile, the patches the block names applied.
-unsafe extern "C" fn qrs_ew_alp_stage(lo: usize, hi: usize, p: *const CPass) {
+pub unsafe extern "C" fn qrs_ew_alp_stage(lo: usize, hi: usize, p: *const CPass) {
     unsafe {
         let (p, cnt) = (&*p, hi - lo);
         let f = &*p.a.cast::<CCocf>();
@@ -429,7 +386,7 @@ unsafe extern "C" fn qrs_ew_alp_stage(lo: usize, hi: usize, p: *const CPass) {
     }
 }
 /// ew.rs `ew_ids_run`: an interned column's ids read where they lie at any lane and written at `cls`.
-unsafe extern "C" fn qrs_ew_ids_stage(lo: usize, hi: usize, p: *const CPass) {
+pub unsafe extern "C" fn qrs_ew_ids_stage(lo: usize, hi: usize, p: *const CPass) {
     unsafe {
         let p = &*p;
         let w = p.shape as u32;
@@ -437,7 +394,7 @@ unsafe extern "C" fn qrs_ew_ids_stage(lo: usize, hi: usize, p: *const CPass) {
     }
 }
 /// ew.rs `ew_pack_run`: `qrs_ew_ids_stage`'s inverse; below a byte `lo..hi` are output bytes.
-unsafe extern "C" fn qrs_ew_pack_stage(lo: usize, hi: usize, p: *const CPass) {
+pub unsafe extern "C" fn qrs_ew_pack_stage(lo: usize, hi: usize, p: *const CPass) {
     unsafe {
         let p = &*p;
         let w = p.shape as u32;
@@ -445,11 +402,11 @@ unsafe extern "C" fn qrs_ew_pack_stage(lo: usize, hi: usize, p: *const CPass) {
     }
 }
 /// ew.rs `ew_encmeta_run`: the writer's meta step over the tile the chain just computed (`p.o` the `coc_enc`).
-unsafe extern "C" fn qrs_ew_encmeta_stage(lo: usize, hi: usize, p: *const CPass) {
+pub unsafe extern "C" fn qrs_ew_encmeta_stage(lo: usize, hi: usize, p: *const CPass) {
     unsafe { qrs_enc_for_meta((*p).o.cast(), (*p).at >> (*(*p).o.cast::<CEnc>()).c.lg(), (*p).a.cast(), hi - lo) }
 }
 /// ew.rs `ew_encpack_run`: its pack step over the same tile.
-unsafe extern "C" fn qrs_ew_encpack_stage(lo: usize, hi: usize, p: *const CPass) {
+pub unsafe extern "C" fn qrs_ew_encpack_stage(lo: usize, hi: usize, p: *const CPass) {
     unsafe { qrs_enc_for_pack((*p).o.cast(), (*p).at >> (*(*p).o.cast::<CEnc>()).c.lg(), (*p).a.cast(), hi - lo) }
 }
 /// ew.rs `ew_stage_worker`: the worker of `engine`, chosen once a stage and never per element.
@@ -476,13 +433,6 @@ impl CCoc {
             exc_off: eo, exc_pos: ep, exc_raw: er, fdelta: c.fdelta.map_or(null_mut(), |f| f.as_ptr().cast_mut()),
             nexc: c.exc.map_or(0, |e| e.pos.len()), exc_esz: esz,
         }
-    }
-}
-/// The stats stage's worker: its fold over the two tiles, `p.o` the `Stats` of the phase running.
-pub(crate) unsafe extern "C" fn qrs_ew_stats_stage(lo: usize, hi: usize, p: *const CPass) {
-    unsafe {
-        let (p, n) = (&*p, hi - lo);
-        (*p.o.cast::<ew::Stats>()).run(sl(p.a.cast::<f64>(), n), sl(p.b.cast::<f64>(), n), p.at)
     }
 }
 
@@ -515,6 +465,423 @@ pub fn chain_enc<'a>(prog: &[u8], input: &impl Fn(u8) -> &'a [u8], n: usize, wid
     unsafe { lean::O::from_raw(qrs_coc_enc_pair(ep).cast()) }
 }
 
+
+// ---- K24: coc.rs, 764-816, the one writer of an encoded column ----
+// A column's blocks come from a `Source` (a C `coc_src`, a dense buffer, or a producer's `fill` with the three optional
+// callbacks that move whole blocks); a pass runs a per-block step over them on the pool, a slice at a time. Allocation of
+// the writer's scratch aborts like coc.rs's `coc_alloc`, and its `free`s are the C callers' (`structural.rs` frees `exc_heap`).
+
+/// coc.rs `coc_parts`: the writer's ByteArrays, null where the form has none.
+#[repr(C)]
+pub struct CParts { pub meta: *mut c_void, pub body: *mut c_void, pub alp: *mut c_void }
+pub const SRC_DENSE: u32 = 0;
+pub const SRC_BITS: u32 = 1;
+pub const SRC_FOR: u32 = 2;
+pub const SRC_ALP: u32 = 3;
+
+/// Where one worker's blocks come from; the encoder's whole difference between a buffer, a file and a producer.
+pub trait Source: Sync {
+    /// A private cursor (null when the source needs none); `None` when it cannot open one, and the slice does nothing.
+    unsafe fn open(&self) -> Option<*mut c_void>;
+    /// The `len` bytes at byte `off` of the element region, good until `cur` is asked again; null stops the slice.
+    unsafe fn at(&self, cur: *mut c_void, off: usize, len: usize) -> *const u8;
+    unsafe fn close(&self, cur: *mut c_void);
+    /// A failed read was recorded: the answer is no column.
+    unsafe fn bad(&self) -> bool;
+}
+pub struct Dense(*const u8);
+// Safety: read only
+unsafe impl Sync for Dense {}
+impl Source for Dense {
+    unsafe fn open(&self) -> Option<*mut c_void> { Some(null_mut()) }
+    unsafe fn at(&self, _: *mut c_void, off: usize, _: usize) -> *const u8 { unsafe { self.0.add(off) } }
+    unsafe fn close(&self, _: *mut c_void) {}
+    unsafe fn bad(&self) -> bool { false }
+}
+/// coc.rs `coc_alloc`: 64-byte aligned, never size 0, abort on failure.
+pub unsafe fn coc_alloc(bytes: usize) -> *mut u8 {
+    let want = bytes.next_multiple_of(64).max(64);
+    let p = unsafe { alloc::alloc::alloc(Layout::from_size_align_unchecked(want, 64)) };
+    if p.is_null() {
+        crate::os::eprint(format_args!("aligned_alloc {bytes} bytes failed\n")).expect("qlean: stderr");
+        crate::os::exit(1)
+    }
+    p
+}
+/// Frees what `coc_alloc` or C's `aligned_alloc` gave (the allocator's `dealloc` is `free`, whatever the layout says).
+pub unsafe fn coc_free(p: *mut u8) { if !p.is_null() { unsafe { alloc::alloc::dealloc(p, Layout::from_size_align_unchecked(64, 64)) } } }
+pub unsafe fn mk_pair(a: *mut c_void, b: *mut c_void) -> *mut c_void {
+    unsafe { let p = lean::alloc_ctor(0, 2, 0); lean::ctor_set(p, 0, a.cast()); lean::ctor_set(p, 1, b.cast()); p.cast() }
+}
+/// coc.rs `coc_meta_view`: the five sections and the trailer over `metabytes` bytes at `m`, the count cut to what they hold.
+pub unsafe fn meta_view(m: *mut u8, metabytes: usize, n: usize) -> CCoc {
+    let nblk = metabytes / 33;
+    unsafe {
+        let lg = *m.add(32 * nblk + 16).cast::<u64>();
+        assert!((crate::MIN_LG as u64..=crate::MAX_LG as u64).contains(&lg), "qlean: a column's block size lg {lg} is outside 6 ..= 16");
+        let (lg, n) = (lg as u32, n.min(nblk << lg));
+        CCoc { base: m.cast(), maxv: m.add(8 * nblk).cast(), off: m.add(16 * nblk).cast(), bsum: m.add(24 * nblk).cast(),
+               sumnul: m.add(32 * nblk).cast(), sumn: m.add(32 * nblk + 8).cast(), width: m.add(32 * nblk + 24), pack: null_mut(),
+               n, nblk: n.div_ceil(1 << lg), packbytes: 0, mblk: nblk, exc_off: core::ptr::null(), exc_pos: core::ptr::null(),
+               exc_raw: core::ptr::null(), fdelta: null_mut(), nexc: 0, exc_esz: 0 }
+    }
+}
+
+/// coc.rs `coc_enc_open`: the metadata sarray and the heap copies the meta pass fills.
+pub unsafe extern "C" fn qrs_coc_enc_open(s: *mut CEnc, n: usize, width: usize, alp: c_int) {
+    unsafe {
+        let (nblk, msz) = (n.div_ceil(1 << DEFAULT_LG), 33 * n.div_ceil(1 << DEFAULT_LG) + 24);
+        core::ptr::write_bytes(s, 0, 1);
+        (*s).n = n;
+        (*s).width = width;
+        (*s).alp = alp;
+        let meta = lean::alloc_sarray(1, msz, msz);
+        // the trailer's block size, which every reader of this metadata (the encoder's own view first) takes its grid from
+        lean::sarray_cptr(meta).add(32 * nblk + 16).cast::<u64>().write(DEFAULT_LG as u64);
+        (*s).meta = meta.cast();
+        (*s).c = meta_view(lean::sarray_cptr(meta), msz, n);
+        if alp != 0 { (*s).exp = coc_alloc(nblk).cast() } else { (*s).frm_heap = coc_alloc(nblk * 8).cast(); (*s).c.fdelta = (*s).frm_heap }
+        (*s).exc_heap = coc_alloc((nblk + 1) * 4).cast();
+        (*s).exc_off = (*s).exc_heap;
+    }
+}
+/// coc.rs `coc_enc_plan`: between the two passes, the offsets, the exception prefix sums and the tail's size; answers the
+/// encoded column's whole size. Once per encoder.
+pub unsafe extern "C" fn qrs_coc_enc_plan(s: *mut CEnc) -> usize {
+    unsafe {
+        let (nblk, width) = ((*s).c.nblk, (*s).width);
+        if (*s).planned == 0 {
+            (*s).planned = 1;
+            let at = crate::coc::Meta::offsets((*s).c.lg(), sl((*s).c.width, nblk), nblk, sl_mut((*s).c.off, nblk));
+            (*s).c.packbytes = at as usize;
+            (*s).at = at as usize;
+            (*s).nexc = crate::alp::alp_offsets(sl_mut((*s).exc_off, nblk + 1), nblk);
+            let alp = (*s).alp != 0;
+            (*s).frm = (!alp && sl((*s).frm_heap, nblk).iter().any(|&f| f != 0)) as c_int;
+            // the ALP blob is a part of its own and Frame of Reference's patch list the pack's tail: `tail` is what follows the residuals
+            (*s).tail = enc::tail_bytes(alp, (*s).nexc, (*s).frm != 0, width, nblk);
+        }
+        lean::sarray_size((*s).meta.cast()) + (*s).at + (*s).tail
+    }
+}
+/// coc.rs `coc_enc_layout`: the trailer, then the pack with the patch list as its tail (or ALP's blob), the heap copies moved in.
+pub unsafe extern "C" fn qrs_coc_enc_layout(s: *mut CEnc) {
+    use crate::layout::exc_layout;
+    unsafe {
+        let (nblk, n, width, alp) = ((*s).c.nblk, (*s).n, (*s).width, (*s).alp != 0);
+        // the trailer is the column's, so it is written here and not inside a block slice
+        *(*s).c.sumnul = enc::coc_sumnul(width, alp);
+        *(*s).c.sumn = n as u64;
+        qrs_coc_enc_plan(s);
+        let (at, nexc) = ((*s).at, (*s).nexc);
+        let put = |t: *mut u8, tail: usize, w: u64| enc::exc_header(sl_mut(t, tail), nexc, w);
+        if alp {
+            let l = exc_layout(nblk, nexc, width, Tail::Exps).expect("qlean: the exception layout overflows");
+            let blob = lean::alloc_sarray(1, l.size, l.size);
+            (*s).blob = blob.cast();
+            let a = lean::sarray_cptr(blob);
+            put(a, l.size, (width == 4) as u64); // the alignment padding is written, not left undefined
+            core::ptr::copy_nonoverlapping((*s).exc_off.cast::<u8>(), a.add(l.off), (nblk + 1) * 4);
+            core::ptr::copy_nonoverlapping((*s).exp.cast::<u8>(), a.add(l.tail), nblk);
+            coc_free((*s).exp.cast());
+            coc_free((*s).exc_heap.cast());
+            (*s).exc_heap = null_mut();
+            (*s).exp = a.add(l.tail).cast();
+            (*s).exc_off = a.add(l.off).cast();
+            (*s).exc_pos = a.add(l.pos).cast();
+            (*s).exc_raw = a.add(l.raw);
+        }
+        // Frame of Reference's patch list is the pack's tail, and there is none without an exception
+        let frm = (*s).frm != 0;
+        let l = if !alp && nexc != 0 { exc_layout(nblk, nexc, width, if frm { Tail::Frames } else { Tail::None }) } else { None };
+        let tail = l.as_ref().map_or(0, |l| l.size);
+        let pack = lean::alloc_sarray(1, at + tail, at + tail);
+        (*s).pack = pack.cast();
+        (*s).c.pack = lean::sarray_cptr(pack);
+        (*s).c.packbytes = at + tail;
+        // a short last block reserves a full block's room and packs only `n % blk` residuals into it; the rest is written
+        // here, so equal columns are equal bytes
+        if n % (1 << (*s).c.lg()) != 0 { core::ptr::write_bytes((*s).c.pack.add(*(*s).c.off.add(nblk - 1) as usize), 0, at - *(*s).c.off.add(nblk - 1) as usize) }
+        let o_frm = l.as_ref().map_or(0, |l| l.tail);
+        if let Some(l) = l {
+            let t = (*s).c.pack.add(at);
+            put(t, tail, width as u64 | if frm { 0x100 } else { 0 }); // COC_EXC_FRM
+            core::ptr::copy_nonoverlapping((*s).exc_off.cast::<u8>(), t.add(l.off), (nblk + 1) * 4);
+            if frm { core::ptr::copy_nonoverlapping((*s).frm_heap.cast::<u8>(), t.add(o_frm), nblk * 8) }
+            coc_free((*s).exc_heap.cast());
+            (*s).exc_heap = null_mut();
+            (*s).exc_off = t.add(l.off).cast();
+            (*s).exc_pos = t.add(l.pos).cast();
+            (*s).exc_raw = t.add(l.raw);
+        }
+        // a frame above the minimum leaves an element under it, which is an exception, so a column with no patch list has
+        // every frame at base and the null `fdelta` says so
+        coc_free((*s).frm_heap.cast());
+        (*s).frm_heap = null_mut();
+        (*s).c.fdelta = if frm { (*s).c.pack.add(at + o_frm).cast() } else { null_mut() };
+    }
+}
+/// Whatever a failed pass leaves: the heap copies and every part allocated so far.
+pub unsafe fn enc_free(s: *mut CEnc) {
+    unsafe {
+        coc_free((*s).exc_heap.cast());
+        coc_free((*s).frm_heap.cast());
+        if (*s).alp != 0 && (*s).blob.is_null() { coc_free((*s).exp.cast()) }
+        lean::dec((*s).meta.cast());
+        if !(*s).pack.is_null() { lean::dec((*s).pack.cast()) }
+        if !(*s).blob.is_null() { lean::dec((*s).blob.cast()) }
+    }
+}
+/// coc.rs `coc_enc_pair`: the (meta, pack) of a finished Frame of Reference writer.
+pub unsafe extern "C" fn qrs_coc_enc_pair(s: *mut CEnc) -> *mut c_void { unsafe { coc_free((*s).exc_heap.cast()); mk_pair((*s).meta, (*s).pack) } }
+
+pub type Blk<'a> = &'a (dyn Fn(*mut CEnc, usize, *const u8, usize) + Sync);
+pub struct Pass<'a, S> { src: &'a S, blk: Blk<'a>, sized: bool, lg: u32 }
+/// coc.rs `src_run`: the blocks `[b0, b1)` through the per-block step; a worker writes only what its block owns (its
+/// metadata entries, its bytes at off[b], its exceptions at exc_off[b]), so any pass may be split.
+pub unsafe extern "C" fn src_run<S: Source>(b0: usize, b1: usize, p: *const CPass) {
+    use core::sync::atomic::Ordering::SeqCst;
+    unsafe {
+        let (s, job) = ((*p).o.cast::<CEnc>(), &*(*p).a.cast::<Pass<S>>());
+        let Some(cur) = job.src.open() else { return };
+        let (n, width, sized, lg) = ((*s).n, (*s).width, job.sized, job.lg);
+        let (lb, over) = (AtomicUsize::from_ptr(&raw mut (*s).lb), AtomicI32::from_ptr(&raw mut (*s).over));
+        // the meta pass under a size test stops once the blocks it has sized already reach it: each block's residuals and its
+        // exceptions' bytes are a part of the total `qrs_coc_enc_plan` would answer, so their sum is a lower bound
+        let mut mine = 0usize;
+        for b in b0..b1 {
+            let (lo, nb) = (b << lg, if (b + 1) << lg < n { 1 << lg } else { n - (b << lg) });
+            let x = job.src.at(cur, lo * width, nb * width);
+            if x.is_null() { break }
+            (job.blk)(s, b, x, nb);
+            if !sized { continue }
+            mine += enc::block_bytes(lg, *(*s).c.width.add(b), *(*s).exc_off.add(b + 1), width);
+            if (b - b0) % 16 == 15 {
+                if lb.fetch_add(mine, SeqCst) + mine >= (*s).below { over.store(1, SeqCst) }
+                mine = 0;
+                if over.load(SeqCst) != 0 { break }
+            }
+        }
+        if sized { lb.fetch_add(mine, SeqCst); }
+        job.src.close(cur);
+    }
+}
+/// coc.rs `src_pass`: `blk` over every block of `src` on the pool; `meta` marks the sizing pass. False when the source failed.
+pub unsafe fn src_pass<S: Source>(s: *mut CEnc, lg: u32, src: &S, blk: Blk, meta: bool, cost: u32) -> bool {
+    unsafe {
+        let job = Pass { src, blk, sized: meta && (*s).below != 0, lg };
+        let (n, w) = ((*s).n, (*s).width);
+        let p = CPass { a: (&raw const job).cast(), b: core::ptr::null(), c: core::ptr::null(), o: s.cast(), n, at: 0, r#priv: 0, nul: 0, op: 0, cls: 0, shape: 0 };
+        c::pool()(src_run::<S>, n.div_ceil(1 << lg), cost, w << lg, &p);
+        !src.bad()
+    }
+}
+pub fn meta_step(s: *mut CEnc, b: usize, x: *const u8, nb: usize) { unsafe { let w = (*s).width; enc::meta_step(&mut (*s).meta_blk(b), sl(x, nb * w), w, nb) } }
+pub fn pack_step(s: *mut CEnc, b: usize, x: *const u8, nb: usize) {
+    unsafe { let w = (*s).width; enc::pack_step(&mut (*s).pack_blk(b, nb, false), sl(x, nb * w), w, (*s).alp != 0) }
+}
+
+/// coc.rs `qlean_coc_encode_src`: 1 and the parts, or 0 with nothing allocated when the source failed, or 2 with nothing
+/// allocated when the encoded form would be `below` bytes or more (`SIZE_MAX` encodes unconditionally).
+pub unsafe fn encode<S: Source>(src: &S, n: usize, width: usize, kind: u32, out: &mut CParts, below: usize) -> c_int {
+    unsafe {
+        let mut e: CEnc = core::mem::zeroed();
+        let s = &raw mut e;
+        *out = CParts { meta: null_mut(), body: null_mut(), alp: null_mut() };
+        if kind == SRC_DENSE || kind == SRC_BITS {
+            let sz = if kind == SRC_BITS { n.div_ceil(8) } else { n * width };
+            let o = lean::alloc_sarray(1, sz, sz);
+            (*s).n = n;
+            (*s).width = width;
+            (*s).out = lean::sarray_cptr(o);
+            let bits = kind == SRC_BITS;
+            let blk = move |s: *mut CEnc, b: usize, x: *const u8, nb: usize| if bits { qrs_src_bits((*s).out, n.div_ceil(8), b, x, nb) } else { qrs_src_copy((*s).out.add((b << DEFAULT_LG) * width), x, nb * width) };
+            // a dense answer has no metadata, so no trailer lg: its grid is only the work split the `blk` above copies on
+            if !src_pass(s, DEFAULT_LG, src, &blk, false, crate::QLEAN_COST_COPY) { lean::dec(o); return 0 }
+            out.body = o.cast();
+            return 1;
+        }
+        if kind != SRC_FOR && kind != SRC_ALP {
+            crate::os::eprint(format_args!("qlean_coc_encode_src: form {kind} is not one of rust/src/coc.rs's SRC_*\n")).expect("qlean: stderr");
+            crate::os::exit(1)
+        }
+        let alp = kind == SRC_ALP;
+        qrs_coc_enc_open(s, n, width, alp as c_int);
+        // what the residuals and exceptions may come to before the size test is already failed, the metadata being fixed;
+        // 0 is no test, which `SIZE_MAX` asks for
+        let msz = lean::sarray_size((*s).meta.cast());
+        if below != usize::MAX {
+            if below <= msz { enc_free(s); return 2 }
+            (*s).below = below - msz;
+        }
+        let cost = if alp { crate::QLEAN_COST_MATH } else { crate::QLEAN_COST_ARITH };
+        if !src_pass(s, (*s).c.lg(), src, &|s, b, x, nb| meta_step(s, b, x, nb), true, cost) { enc_free(s); return 0 }
+        if AtomicI32::from_ptr(&raw mut (*s).over).load(core::sync::atomic::Ordering::SeqCst) != 0 { enc_free(s); return 2 }
+        // the size is known here, so a form that does not shrink is never packed
+        if qrs_coc_enc_plan(s) >= below { enc_free(s); return 2 }
+        qrs_coc_enc_layout(s);
+        if !src_pass(s, (*s).c.lg(), src, &|s, b, x, nb| pack_step(s, b, x, nb), false, crate::QLEAN_COST_ARITH) { enc_free(s); return 0 }
+        coc_free((*s).exc_heap.cast());
+        *out = CParts { meta: (*s).meta, body: (*s).pack, alp: (*s).blob };
+        1
+    }
+}
+/// The three parts of an encoded column (meta, body, alp) as the writer allocated them; dropped, they are released. A
+/// part the form has not is empty.
+pub struct ZParts(pub CParts);
+impl ZParts {
+    /// part `i` (0 meta, 1 body, 2 alp) as the array the writer allocated, handed over without a copy; `None` for a part
+    /// the form has not
+    fn take(&mut self, i: usize) -> Option<lean::O> {
+        let p = core::mem::replace([&mut self.0.meta, &mut self.0.body, &mut self.0.alp][i], null_mut());
+        (!p.is_null()).then(|| unsafe { lean::O::from_raw(p.cast()) })
+    }
+    /// The three parts, a part the form has not being a fresh empty array
+    pub fn into_parts(mut self) -> [lean::O; 3] { core::array::from_fn(|i| self.take(i).unwrap_or_else(|| lean::SArr::new(1, 0).into())) }
+    /// `(meta, body)`, the answer of the Frame of Reference forms (no alp part)
+    pub fn into_pair(mut self) -> lean::O {
+        let (m, b) = (self.take(0), self.take(1));
+        lean::ctor(0, [m.expect("ZParts::into_pair: no meta part"), b.expect("ZParts::into_pair: no body part")], &[])
+    }
+    /// `(meta, (body, alp))`, the answer of the ALP form
+    pub fn into_triple(self) -> lean::O { let [m, b, a] = self.into_parts(); lean::ctor(0, [m, lean::ctor(0, [b, a], &[])], &[]) }
+}
+impl Drop for ZParts {
+    fn drop(&mut self) { for p in [self.0.meta, self.0.body, self.0.alp] { if !p.is_null() { unsafe { lean::dec(p.cast()) } } } }
+}
+/// coc.rs `coc_encode_dense`: the parts of the dense `x`'s `x.len() / width` elements of `width` bytes in the Frame of
+/// Reference form (`alp` false) or the ALP one, `None` when they would take `below` bytes or more (`usize::MAX`: never).
+pub fn encode_dense(x: &[u8], width: usize, alp: bool, below: usize) -> Option<ZParts> {
+    let mut out = CParts { meta: null_mut(), body: null_mut(), alp: null_mut() };
+    (unsafe { encode(&Dense(x.as_ptr()), x.len() / width, width, if alp { SRC_ALP } else { SRC_FOR }, &mut out, below) } == 1).then_some(ZParts(out))
+}
+
+/// A producer written in safe Rust: coc.rs's `coc_fill` and, where the answer holds whole blocks of a column already in
+/// the writer's form, `coc_take`; ALP's two hints, `coc_hint` and `coc_ints`, have no answer by default.
+pub trait Producer: Sync {
+    /// Elements `i0 .. i0 + buf.len()` of the answer into `buf`.
+    fn fill(&self, buf: &mut [i64], i0: usize);
+    /// Block `pb` of a column in the writer's form that answer block `b` equals, with `pb`.
+    fn take(&self, _b: usize) -> Option<(Cocf<'_>, usize)> { None }
+    /// A block exponent for answer block `b` and the most exceptions it may leave; -1 is no hint.
+    fn hint(&self, _b: usize) -> Option<(i32, u32)> { None }
+    /// Answer block `b` as decimals (`out`, none for pass 1 only) and the exponent they are at; -1 = the general path.
+    fn ints(&self, _b: usize, _out: Option<&mut structural::Ints>) -> i32 { -1 }
+}
+/// A closure is a producer with no `take`: the form every kernel that computes an answer a block at a time uses.
+impl<F: Fn(&mut [i64], usize) + Sync> Producer for F { fn fill(&self, buf: &mut [i64], i0: usize) { self(buf, i0) } }
+/// `P` as the writer's source: the cursor and the blocks it claims, as `FillSrc`'s are for a C producer.
+pub struct ProdSrc<'a, P> { p: &'a P, width: usize, lg: u32 }
+impl<P: Producer> Moves for ProdSrc<'_, P> {
+    fn take(&self, b: usize) -> Option<(Cocf<'_>, usize)> { self.p.take(b) }
+    fn ints(&self, b: usize, nb: usize, d: &mut [i64], ee: &mut [i8], raw: Option<&mut [u8]>) -> Option<i32> {
+        let mut ptrs = alloc::vec![core::ptr::null::<u8>(); nb];
+        let mut o = structural::Ints { d: &mut d[..nb], ee: &mut ee[..nb], raw: raw.is_some().then(|| &mut ptrs[..nb]) };
+        let e = self.p.ints(b, Some(&mut o));
+        if let (Some(raw), true) = (raw, e >= 0) {
+            let w = self.width;
+            // each exception's `w` raw bytes are in the source's patch list or the producer's hole, both alive here
+            for i in (0..nb).filter(|&i| ee[i] < 0) { raw[i * w..(i + 1) * w].copy_from_slice(unsafe { sl(ptrs[i], w) }) }
+        }
+        Some(e)
+    }
+    fn hint(&self, b: usize) -> Option<(i32, u32)> { self.p.hint(b) }
+}
+impl<P: Producer> Source for ProdSrc<'_, P> {
+    unsafe fn open(&self) -> Option<*mut c_void> { Some(unsafe { coc_alloc(16 << self.lg) }.cast()) }
+    unsafe fn at(&self, cur: *mut c_void, off: usize, len: usize) -> *const u8 {
+        unsafe {
+            let (b, w) = (off / self.width >> self.lg, self.width);
+            if self.p.take(b).is_some() || self.p.ints(b, None) >= 0 { return cur.cast() }
+            let (v, cnt) = (cur.cast::<i64>(), len / w);
+            self.p.fill(sl_mut(v, cnt), off / w);
+            enc::narrow(w, sl(v, cnt), sl_mut(v.add(1 << self.lg).cast::<u8>(), cnt * w)).as_ptr()
+        }
+    }
+    unsafe fn close(&self, cur: *mut c_void) { unsafe { coc_free(cur.cast()) } }
+    unsafe fn bad(&self) -> bool { false }
+}
+/// The (meta, pack) of the `n` elements `p` denotes, `width` bytes each: coc.rs `qlean_coc_encode_fill` for a Rust producer.
+pub fn encode_fill<P: Producer>(n: usize, width: usize, p: &P) -> lean::O {
+    unsafe { lean::O::from_raw(encode_move(n, width, false, &ProdSrc { p, width, lg: DEFAULT_LG }).cast()) }
+}
+/// `encode_fill` at ALP: `(meta, (pack, alp))` of the `n` floats of `width` bytes `p` denotes (`qlean_coc_encode_move`, alp 1).
+pub fn encode_alp<P: Producer>(n: usize, width: usize, p: &P) -> lean::O {
+    unsafe { lean::O::from_raw(encode_move(n, width, true, &ProdSrc { p, width, lg: DEFAULT_LG }).cast()) }
+}
+/// structural.rs `take_first`: the array `a` back, and its element 0 as an owned reference -- moved out where `a` held the
+/// only reference to it (the slot is left `box(0)`), a reference of its own otherwise -- so an append whose first part
+/// nothing else holds can write that part in place.
+pub fn take_first(a: lean::O) -> (lean::O, lean::O) {
+    unsafe {
+        let p = a.into_raw();
+        let e = lean::array_get_core(p, 0);
+        if lean::is_exclusive(p) { lean::array_set_core(p, 0, lean::box_(0)) } else { lean::inc(e) }
+        (lean::O::from_raw(p), lean::O::from_raw(e))
+    }
+}
+/// structural.rs `qlean_structural_concat`'s test for growing part 0 in place: `parts` and its element 0 each held by this
+/// reference alone, answering that part's capacity. `parts` comes back.
+pub fn concat_own(parts: lean::O) -> (lean::O, Option<usize>) {
+    unsafe {
+        let p = parts.into_raw();
+        let cap = (lean::array_size(p) != 0 && lean::is_exclusive(p) && lean::is_exclusive(lean::array_get_core(p, 0)))
+            .then(|| lean::sarray_capacity(lean::array_get_core(p, 0)));
+        (lean::O::from_raw(p), cap)
+    }
+}
+/// structural.rs `sarray_room`: the owned `ByteArray` `o` at `need` bytes, its first `min(size, need)` kept and the rest
+/// unwritten: `o` itself where it holds the only reference and its capacity reaches, a copy otherwise. A copy of an
+/// exclusive `o` that outgrew its capacity doubles it, so a loop of one-element appends copies a logarithmic number of
+/// times; a shared `o` is copied at size. A mapped part's `rc` is 0 and is never exclusive.
+pub fn sarray_room(o: lean::O, need: usize) -> lean::O {
+    unsafe {
+        let p = o.into_raw();
+        let (sz, ex) = (lean::sarray_size(p), lean::is_exclusive(p));
+        if ex && lean::sarray_capacity(p) >= need { let mut o = lean::O::from_raw(p); o.set_size(need); return o }
+        let r = lean::alloc_sarray(1, need, if ex { 2 * need } else { need });
+        core::ptr::copy_nonoverlapping(lean::sarray_cptr(p), lean::sarray_cptr(r), sz.min(need));
+        lean::dec(p);
+        lean::O::from_raw(r)
+    }
+}
+/// coc.rs `qlean_coc_encode_move` over any source of blocks that also moves them (`alp` answers `(meta, (pack, alp))`).
+pub unsafe fn encode_move<S: Source + Moves>(n: usize, width: usize, alp: bool, fs: &S) -> *mut c_void {
+    unsafe {
+        let mut e: CEnc = core::mem::zeroed();
+        let s = &raw mut e;
+        qrs_coc_enc_open(s, n, width, alp as c_int);
+        let cost = if alp { crate::QLEAN_COST_MATH } else { crate::QLEAN_COST_ARITH };
+        // a fill cannot fail, having no `bad`: a refusal here is the writer's own bug
+        let ok = src_pass(s, (*s).c.lg(), fs, &|s, b, x, nb| enc::move_meta_blk(fs, &mut (*s).meta_blk(b), || sl(x, nb * width), width, nb), true, cost) && {
+            qrs_coc_enc_layout(s);
+            src_pass(s, (*s).c.lg(), fs, &|s, b, x, nb| enc::move_pack_blk(fs, |whole| (*s).pack_blk(b, nb, whole), || sl(x, nb * width), b, nb, width, alp), false, crate::QLEAN_COST_ARITH)
+        };
+        if !ok {
+            crate::os::eprint(format_args!("qlean_coc_encode_move: the writer refused {n} elements of {width} bytes from a fill\n")).expect("qlean: stderr");
+            crate::os::exit(1)
+        }
+        if !alp { return qrs_coc_enc_pair(s) }
+        coc_free((*s).exc_heap.cast());
+        mk_pair((*s).meta, mk_pair((*s).pack, (*s).blob))
+    }
+}
+/// K22: structural.rs `amend_index` past the width check, the answer's three Lean arrays allocated as the kernel asks for them:
+/// `Res`, and, when `compact` and no index misses, `Dom` and `Rank` (`None` otherwise). The kernel writes into each while the
+/// others are alive, so each is held here by its `SArr` and the slice handed out is of its own payload.
+pub fn amend(n: usize, wi: usize, ranked: bool, compact: bool, idx: &[u8]) -> (lean::O, Option<lean::O>, Option<lean::O>) {
+    let mut out: [Option<lean::SArr>; 3] = [None, None, None];
+    structural::amend_index(c::pool(), n, wi, ranked, compact, idx, &mut |which, words| {
+        let mut a = lean::SArr::new(1, words * 8);
+        let p = a.bytes_mut().as_mut_ptr().cast::<i64>();
+        out[which as usize] = Some(a);
+        // Safety: `p` is the payload of the array just stored in `out`, `words` of 8-aligned `Int64`s, which `out` keeps alive
+        // until the kernel returns and which nothing else names
+        unsafe { sl_mut(p, words) }
+    });
+    let [dom, rank, res] = out;
+    (res.expect("amend_index: the answer is allocated last").into(), dom.map(Into::into), rank.map(Into::into))
+}
 #[cfg(test)]
 mod tests {
     use crate::BLK;
@@ -632,420 +999,37 @@ mod tests {
         assert!(std::panic::catch_unwind(|| v.frame(cc.mblk)).is_err());
     }
 }
-
-// ---- K24: coc.rs, 764-816, the one writer of an encoded column ----
-// A column's blocks come from a `Source` (a C `coc_src`, a dense buffer, or a producer's `fill` with the three optional
-// callbacks that move whole blocks); a pass runs a per-block step over them on the pool, a slice at a time. Allocation of
-// the writer's scratch aborts like coc.rs's `coc_alloc`, and its `free`s are the C callers' (`structural.rs` frees `exc_heap`).
-
-/// coc.rs `coc_parts`: the writer's ByteArrays, null where the form has none.
-#[repr(C)]
-pub struct CParts { pub meta: *mut c_void, pub body: *mut c_void, pub alp: *mut c_void }
-const SRC_DENSE: u32 = 0;
-const SRC_BITS: u32 = 1;
-const SRC_FOR: u32 = 2;
-const SRC_ALP: u32 = 3;
-
-/// Where one worker's blocks come from; the encoder's whole difference between a buffer, a file and a producer.
-trait Source: Sync {
-    /// A private cursor (null when the source needs none); `None` when it cannot open one, and the slice does nothing.
-    unsafe fn open(&self) -> Option<*mut c_void>;
-    /// The `len` bytes at byte `off` of the element region, good until `cur` is asked again; null stops the slice.
-    unsafe fn at(&self, cur: *mut c_void, off: usize, len: usize) -> *const u8;
-    unsafe fn close(&self, cur: *mut c_void);
-    /// A failed read was recorded: the answer is no column.
-    unsafe fn bad(&self) -> bool;
-}
-/// B4: a `kxzipped` or plain column file as a `Source`; each worker's cursor is a boxed `zip::Cursor`.
-struct ZSrc<'a>(&'a crate::zip::File);
-impl Source for ZSrc<'_> {
-    unsafe fn open(&self) -> Option<*mut c_void> { crate::zip::Cursor::new(self.0).map(|c| alloc::boxed::Box::into_raw(alloc::boxed::Box::new(c)).cast()) }
-    unsafe fn at(&self, cur: *mut c_void, off: usize, len: usize) -> *const u8 {
-        unsafe { (*cur.cast::<crate::zip::Cursor>()).at(self.0, off, len) }.map_or(core::ptr::null(), <[u8]>::as_ptr)
+/// K23: `scatterFoR` (`a` is `None`) and `scatterALP` (`a` the exponents): `(meta, pack)` or `(meta, (pack, alp))`, the writer's
+/// parts as the Lean declaration types them. The blocks come from `structural::Scatter`, not from a source, so `NoElts`
+/// stands in for the element cursor `src_pass` hands each step.
+#[allow(clippy::too_many_arguments)]
+pub fn encode_scatter(w: usize, m: &[u8], pk: &[u8], a: Option<&[u8]>, n: usize, ix: &[u8], vals: &[u8]) -> lean::O {
+    unsafe {
+        let alp = a.is_some();
+        let sc = structural::Scatter::new(c::pool(), w, m, pk, a, n, ix, vals);
+        let mut e: CEnc = core::mem::zeroed();
+        let s = &raw mut e;
+        qrs_coc_enc_open(s, n, w, alp as c_int);
+        src_pass(s, (*s).c.lg(), &NoElts, &|s, b, _, _| sc.meta(&mut (*s).meta_blk(b), b), true, if alp { crate::QLEAN_COST_MATH } else { crate::QLEAN_COST_ARITH });
+        qrs_coc_enc_layout(s);
+        src_pass(s, (*s).c.lg(), &NoElts, &|s, b, _, nb| sc.pack(&mut (*s).pack_blk(b, nb, sc.kept(b)), b), false, crate::QLEAN_COST_ARITH);
+        if !alp { return lean::O::from_raw(qrs_coc_enc_pair(s).cast()) }
+        coc_free((*s).exc_heap.cast());
+        lean::O::from_raw(mk_pair((*s).meta, mk_pair((*s).pack, (*s).blob)).cast())
     }
-    unsafe fn close(&self, cur: *mut c_void) { drop(unsafe { alloc::boxed::Box::from_raw(cur.cast::<crate::zip::Cursor>()) }) }
-    unsafe fn bad(&self) -> bool { self.0.bad() }
 }
-struct Dense(*const u8);
-// Safety: read only
-unsafe impl Sync for Dense {}
-impl Source for Dense {
+/// The stats stage's worker: its fold over the two tiles, `p.o` the `Stats` of the phase running.
+pub unsafe extern "C" fn qrs_ew_stats_stage(lo: usize, hi: usize, p: *const CPass) {
+    unsafe {
+        let (p, n) = (&*p, hi - lo);
+        (*p.o.cast::<ew::Stats>()).run(sl(p.a.cast::<f64>(), n), sl(p.b.cast::<f64>(), n), p.at)
+    }
+}
+/// K23: `encode_scatter` has no elements, only block numbers.
+pub struct NoElts;
+impl Source for NoElts {
     unsafe fn open(&self) -> Option<*mut c_void> { Some(null_mut()) }
-    unsafe fn at(&self, _: *mut c_void, off: usize, _: usize) -> *const u8 { unsafe { self.0.add(off) } }
+    unsafe fn at(&self, _: *mut c_void, _: usize, _: usize) -> *const u8 { core::ptr::NonNull::dangling().as_ptr() }
     unsafe fn close(&self, _: *mut c_void) {}
     unsafe fn bad(&self) -> bool { false }
-}
-/// coc.rs `coc_alloc`: 64-byte aligned, never size 0, abort on failure.
-unsafe fn coc_alloc(bytes: usize) -> *mut u8 {
-    let want = bytes.next_multiple_of(64).max(64);
-    let p = unsafe { alloc::alloc::alloc(Layout::from_size_align_unchecked(want, 64)) };
-    if p.is_null() {
-        crate::os::eprint(format_args!("aligned_alloc {bytes} bytes failed\n")).expect("qlean: stderr");
-        crate::os::exit(1)
-    }
-    p
-}
-/// Frees what `coc_alloc` or C's `aligned_alloc` gave (the allocator's `dealloc` is `free`, whatever the layout says).
-unsafe fn coc_free(p: *mut u8) { if !p.is_null() { unsafe { alloc::alloc::dealloc(p, Layout::from_size_align_unchecked(64, 64)) } } }
-unsafe fn mk_pair(a: *mut c_void, b: *mut c_void) -> *mut c_void {
-    unsafe { let p = lean::alloc_ctor(0, 2, 0); lean::ctor_set(p, 0, a.cast()); lean::ctor_set(p, 1, b.cast()); p.cast() }
-}
-/// coc.rs `coc_meta_view`: the five sections and the trailer over `metabytes` bytes at `m`, the count cut to what they hold.
-unsafe fn meta_view(m: *mut u8, metabytes: usize, n: usize) -> CCoc {
-    let nblk = metabytes / 33;
-    unsafe {
-        let lg = *m.add(32 * nblk + 16).cast::<u64>();
-        assert!((crate::MIN_LG as u64..=crate::MAX_LG as u64).contains(&lg), "qlean: a column's block size lg {lg} is outside 6 ..= 16");
-        let (lg, n) = (lg as u32, n.min(nblk << lg));
-        CCoc { base: m.cast(), maxv: m.add(8 * nblk).cast(), off: m.add(16 * nblk).cast(), bsum: m.add(24 * nblk).cast(),
-               sumnul: m.add(32 * nblk).cast(), sumn: m.add(32 * nblk + 8).cast(), width: m.add(32 * nblk + 24), pack: null_mut(),
-               n, nblk: n.div_ceil(1 << lg), packbytes: 0, mblk: nblk, exc_off: core::ptr::null(), exc_pos: core::ptr::null(),
-               exc_raw: core::ptr::null(), fdelta: null_mut(), nexc: 0, exc_esz: 0 }
-    }
-}
-
-/// coc.rs `coc_enc_open`: the metadata sarray and the heap copies the meta pass fills.
-pub unsafe extern "C" fn qrs_coc_enc_open(s: *mut CEnc, n: usize, width: usize, alp: c_int) {
-    unsafe {
-        let (nblk, msz) = (n.div_ceil(1 << DEFAULT_LG), 33 * n.div_ceil(1 << DEFAULT_LG) + 24);
-        core::ptr::write_bytes(s, 0, 1);
-        (*s).n = n;
-        (*s).width = width;
-        (*s).alp = alp;
-        let meta = lean::alloc_sarray(1, msz, msz);
-        // the trailer's block size, which every reader of this metadata (the encoder's own view first) takes its grid from
-        lean::sarray_cptr(meta).add(32 * nblk + 16).cast::<u64>().write(DEFAULT_LG as u64);
-        (*s).meta = meta.cast();
-        (*s).c = meta_view(lean::sarray_cptr(meta), msz, n);
-        if alp != 0 { (*s).exp = coc_alloc(nblk).cast() } else { (*s).frm_heap = coc_alloc(nblk * 8).cast(); (*s).c.fdelta = (*s).frm_heap }
-        (*s).exc_heap = coc_alloc((nblk + 1) * 4).cast();
-        (*s).exc_off = (*s).exc_heap;
-    }
-}
-/// coc.rs `coc_enc_plan`: between the two passes, the offsets, the exception prefix sums and the tail's size; answers the
-/// encoded column's whole size. Once per encoder.
-pub unsafe extern "C" fn qrs_coc_enc_plan(s: *mut CEnc) -> usize {
-    unsafe {
-        let (nblk, width) = ((*s).c.nblk, (*s).width);
-        if (*s).planned == 0 {
-            (*s).planned = 1;
-            let at = crate::coc::Meta::offsets((*s).c.lg(), sl((*s).c.width, nblk), nblk, sl_mut((*s).c.off, nblk));
-            (*s).c.packbytes = at as usize;
-            (*s).at = at as usize;
-            (*s).nexc = crate::alp::alp_offsets(sl_mut((*s).exc_off, nblk + 1), nblk);
-            let alp = (*s).alp != 0;
-            (*s).frm = (!alp && sl((*s).frm_heap, nblk).iter().any(|&f| f != 0)) as c_int;
-            // the ALP blob is a part of its own and Frame of Reference's patch list the pack's tail: `tail` is what follows the residuals
-            (*s).tail = enc::tail_bytes(alp, (*s).nexc, (*s).frm != 0, width, nblk);
-        }
-        lean::sarray_size((*s).meta.cast()) + (*s).at + (*s).tail
-    }
-}
-/// coc.rs `coc_enc_layout`: the trailer, then the pack with the patch list as its tail (or ALP's blob), the heap copies moved in.
-pub unsafe extern "C" fn qrs_coc_enc_layout(s: *mut CEnc) {
-    use crate::layout::exc_layout;
-    unsafe {
-        let (nblk, n, width, alp) = ((*s).c.nblk, (*s).n, (*s).width, (*s).alp != 0);
-        // the trailer is the column's, so it is written here and not inside a block slice
-        *(*s).c.sumnul = enc::coc_sumnul(width, alp);
-        *(*s).c.sumn = n as u64;
-        qrs_coc_enc_plan(s);
-        let (at, nexc) = ((*s).at, (*s).nexc);
-        let put = |t: *mut u8, tail: usize, w: u64| enc::exc_header(sl_mut(t, tail), nexc, w);
-        if alp {
-            let l = exc_layout(nblk, nexc, width, Tail::Exps).expect("qlean: the exception layout overflows");
-            let blob = lean::alloc_sarray(1, l.size, l.size);
-            (*s).blob = blob.cast();
-            let a = lean::sarray_cptr(blob);
-            put(a, l.size, (width == 4) as u64); // the alignment padding is written, not left undefined
-            core::ptr::copy_nonoverlapping((*s).exc_off.cast::<u8>(), a.add(l.off), (nblk + 1) * 4);
-            core::ptr::copy_nonoverlapping((*s).exp.cast::<u8>(), a.add(l.tail), nblk);
-            coc_free((*s).exp.cast());
-            coc_free((*s).exc_heap.cast());
-            (*s).exc_heap = null_mut();
-            (*s).exp = a.add(l.tail).cast();
-            (*s).exc_off = a.add(l.off).cast();
-            (*s).exc_pos = a.add(l.pos).cast();
-            (*s).exc_raw = a.add(l.raw);
-        }
-        // Frame of Reference's patch list is the pack's tail, and there is none without an exception
-        let frm = (*s).frm != 0;
-        let l = if !alp && nexc != 0 { exc_layout(nblk, nexc, width, if frm { Tail::Frames } else { Tail::None }) } else { None };
-        let tail = l.as_ref().map_or(0, |l| l.size);
-        let pack = lean::alloc_sarray(1, at + tail, at + tail);
-        (*s).pack = pack.cast();
-        (*s).c.pack = lean::sarray_cptr(pack);
-        (*s).c.packbytes = at + tail;
-        // a short last block reserves a full block's room and packs only `n % blk` residuals into it; the rest is written
-        // here, so equal columns are equal bytes
-        if n % (1 << (*s).c.lg()) != 0 { core::ptr::write_bytes((*s).c.pack.add(*(*s).c.off.add(nblk - 1) as usize), 0, at - *(*s).c.off.add(nblk - 1) as usize) }
-        let o_frm = l.as_ref().map_or(0, |l| l.tail);
-        if let Some(l) = l {
-            let t = (*s).c.pack.add(at);
-            put(t, tail, width as u64 | if frm { 0x100 } else { 0 }); // COC_EXC_FRM
-            core::ptr::copy_nonoverlapping((*s).exc_off.cast::<u8>(), t.add(l.off), (nblk + 1) * 4);
-            if frm { core::ptr::copy_nonoverlapping((*s).frm_heap.cast::<u8>(), t.add(o_frm), nblk * 8) }
-            coc_free((*s).exc_heap.cast());
-            (*s).exc_heap = null_mut();
-            (*s).exc_off = t.add(l.off).cast();
-            (*s).exc_pos = t.add(l.pos).cast();
-            (*s).exc_raw = t.add(l.raw);
-        }
-        // a frame above the minimum leaves an element under it, which is an exception, so a column with no patch list has
-        // every frame at base and the null `fdelta` says so
-        coc_free((*s).frm_heap.cast());
-        (*s).frm_heap = null_mut();
-        (*s).c.fdelta = if frm { (*s).c.pack.add(at + o_frm).cast() } else { null_mut() };
-    }
-}
-/// Whatever a failed pass leaves: the heap copies and every part allocated so far.
-unsafe fn enc_free(s: *mut CEnc) {
-    unsafe {
-        coc_free((*s).exc_heap.cast());
-        coc_free((*s).frm_heap.cast());
-        if (*s).alp != 0 && (*s).blob.is_null() { coc_free((*s).exp.cast()) }
-        lean::dec((*s).meta.cast());
-        if !(*s).pack.is_null() { lean::dec((*s).pack.cast()) }
-        if !(*s).blob.is_null() { lean::dec((*s).blob.cast()) }
-    }
-}
-/// coc.rs `coc_enc_pair`: the (meta, pack) of a finished Frame of Reference writer.
-pub unsafe extern "C" fn qrs_coc_enc_pair(s: *mut CEnc) -> *mut c_void { unsafe { coc_free((*s).exc_heap.cast()); mk_pair((*s).meta, (*s).pack) } }
-
-type Blk<'a> = &'a (dyn Fn(*mut CEnc, usize, *const u8, usize) + Sync);
-struct Pass<'a, S> { src: &'a S, blk: Blk<'a>, sized: bool, lg: u32 }
-/// coc.rs `src_run`: the blocks `[b0, b1)` through the per-block step; a worker writes only what its block owns (its
-/// metadata entries, its bytes at off[b], its exceptions at exc_off[b]), so any pass may be split.
-unsafe extern "C" fn src_run<S: Source>(b0: usize, b1: usize, p: *const CPass) {
-    use core::sync::atomic::Ordering::SeqCst;
-    unsafe {
-        let (s, job) = ((*p).o.cast::<CEnc>(), &*(*p).a.cast::<Pass<S>>());
-        let Some(cur) = job.src.open() else { return };
-        let (n, width, sized, lg) = ((*s).n, (*s).width, job.sized, job.lg);
-        let (lb, over) = (AtomicUsize::from_ptr(&raw mut (*s).lb), AtomicI32::from_ptr(&raw mut (*s).over));
-        // the meta pass under a size test stops once the blocks it has sized already reach it: each block's residuals and its
-        // exceptions' bytes are a part of the total `qrs_coc_enc_plan` would answer, so their sum is a lower bound
-        let mut mine = 0usize;
-        for b in b0..b1 {
-            let (lo, nb) = (b << lg, if (b + 1) << lg < n { 1 << lg } else { n - (b << lg) });
-            let x = job.src.at(cur, lo * width, nb * width);
-            if x.is_null() { break }
-            (job.blk)(s, b, x, nb);
-            if !sized { continue }
-            mine += enc::block_bytes(lg, *(*s).c.width.add(b), *(*s).exc_off.add(b + 1), width);
-            if (b - b0) % 16 == 15 {
-                if lb.fetch_add(mine, SeqCst) + mine >= (*s).below { over.store(1, SeqCst) }
-                mine = 0;
-                if over.load(SeqCst) != 0 { break }
-            }
-        }
-        if sized { lb.fetch_add(mine, SeqCst); }
-        job.src.close(cur);
-    }
-}
-/// coc.rs `src_pass`: `blk` over every block of `src` on the pool; `meta` marks the sizing pass. False when the source failed.
-unsafe fn src_pass<S: Source>(s: *mut CEnc, lg: u32, src: &S, blk: Blk, meta: bool, cost: u32) -> bool {
-    unsafe {
-        let job = Pass { src, blk, sized: meta && (*s).below != 0, lg };
-        let (n, w) = ((*s).n, (*s).width);
-        let p = CPass { a: (&raw const job).cast(), b: core::ptr::null(), c: core::ptr::null(), o: s.cast(), n, at: 0, r#priv: 0, nul: 0, op: 0, cls: 0, shape: 0 };
-        c::pool()(src_run::<S>, n.div_ceil(1 << lg), cost, w << lg, &p);
-        !src.bad()
-    }
-}
-fn meta_step(s: *mut CEnc, b: usize, x: *const u8, nb: usize) { unsafe { let w = (*s).width; enc::meta_step(&mut (*s).meta_blk(b), sl(x, nb * w), w, nb) } }
-fn pack_step(s: *mut CEnc, b: usize, x: *const u8, nb: usize) {
-    unsafe { let w = (*s).width; enc::pack_step(&mut (*s).pack_blk(b, nb, false), sl(x, nb * w), w, (*s).alp != 0) }
-}
-
-/// coc.rs `qlean_coc_encode_src`: 1 and the parts, or 0 with nothing allocated when the source failed, or 2 with nothing
-/// allocated when the encoded form would be `below` bytes or more (`SIZE_MAX` encodes unconditionally).
-unsafe fn encode<S: Source>(src: &S, n: usize, width: usize, kind: u32, out: &mut CParts, below: usize) -> c_int {
-    unsafe {
-        let mut e: CEnc = core::mem::zeroed();
-        let s = &raw mut e;
-        *out = CParts { meta: null_mut(), body: null_mut(), alp: null_mut() };
-        if kind == SRC_DENSE || kind == SRC_BITS {
-            let sz = if kind == SRC_BITS { n.div_ceil(8) } else { n * width };
-            let o = lean::alloc_sarray(1, sz, sz);
-            (*s).n = n;
-            (*s).width = width;
-            (*s).out = lean::sarray_cptr(o);
-            let bits = kind == SRC_BITS;
-            let blk = move |s: *mut CEnc, b: usize, x: *const u8, nb: usize| if bits { qrs_src_bits((*s).out, n.div_ceil(8), b, x, nb) } else { qrs_src_copy((*s).out.add((b << DEFAULT_LG) * width), x, nb * width) };
-            // a dense answer has no metadata, so no trailer lg: its grid is only the work split the `blk` above copies on
-            if !src_pass(s, DEFAULT_LG, src, &blk, false, crate::QLEAN_COST_COPY) { lean::dec(o); return 0 }
-            out.body = o.cast();
-            return 1;
-        }
-        if kind != SRC_FOR && kind != SRC_ALP {
-            crate::os::eprint(format_args!("qlean_coc_encode_src: form {kind} is not one of rust/src/coc.rs's SRC_*\n")).expect("qlean: stderr");
-            crate::os::exit(1)
-        }
-        let alp = kind == SRC_ALP;
-        qrs_coc_enc_open(s, n, width, alp as c_int);
-        // what the residuals and exceptions may come to before the size test is already failed, the metadata being fixed;
-        // 0 is no test, which `SIZE_MAX` asks for
-        let msz = lean::sarray_size((*s).meta.cast());
-        if below != usize::MAX {
-            if below <= msz { enc_free(s); return 2 }
-            (*s).below = below - msz;
-        }
-        let cost = if alp { crate::QLEAN_COST_MATH } else { crate::QLEAN_COST_ARITH };
-        if !src_pass(s, (*s).c.lg(), src, &|s, b, x, nb| meta_step(s, b, x, nb), true, cost) { enc_free(s); return 0 }
-        if AtomicI32::from_ptr(&raw mut (*s).over).load(core::sync::atomic::Ordering::SeqCst) != 0 { enc_free(s); return 2 }
-        // the size is known here, so a form that does not shrink is never packed
-        if qrs_coc_enc_plan(s) >= below { enc_free(s); return 2 }
-        qrs_coc_enc_layout(s);
-        if !src_pass(s, (*s).c.lg(), src, &|s, b, x, nb| pack_step(s, b, x, nb), false, crate::QLEAN_COST_ARITH) { enc_free(s); return 0 }
-        coc_free((*s).exc_heap.cast());
-        *out = CParts { meta: (*s).meta, body: (*s).pack, alp: (*s).blob };
-        1
-    }
-}
-/// The three parts of an encoded column (meta, body, alp) as the writer allocated them; dropped, they are released. A
-/// part the form has not is empty.
-pub struct ZParts(CParts);
-impl ZParts {
-    /// part `i` (0 meta, 1 body, 2 alp) as the array the writer allocated, handed over without a copy; `None` for a part
-    /// the form has not
-    fn take(&mut self, i: usize) -> Option<lean::O> {
-        let p = core::mem::replace([&mut self.0.meta, &mut self.0.body, &mut self.0.alp][i], null_mut());
-        (!p.is_null()).then(|| unsafe { lean::O::from_raw(p.cast()) })
-    }
-    /// The three parts, a part the form has not being a fresh empty array
-    pub fn into_parts(mut self) -> [lean::O; 3] { core::array::from_fn(|i| self.take(i).unwrap_or_else(|| lean::SArr::new(1, 0).into())) }
-    /// `(meta, body)`, the answer of the Frame of Reference forms (no alp part)
-    pub fn into_pair(mut self) -> lean::O {
-        let (m, b) = (self.take(0), self.take(1));
-        lean::ctor(0, [m.expect("ZParts::into_pair: no meta part"), b.expect("ZParts::into_pair: no body part")], &[])
-    }
-    /// `(meta, (body, alp))`, the answer of the ALP form
-    pub fn into_triple(self) -> lean::O { let [m, b, a] = self.into_parts(); lean::ctor(0, [m, lean::ctor(0, [b, a], &[])], &[]) }
-}
-impl Drop for ZParts {
-    fn drop(&mut self) { for p in [self.0.meta, self.0.body, self.0.alp] { if !p.is_null() { unsafe { lean::dec(p.cast()) } } } }
-}
-/// coc.rs `qlean_zip_parts`'s encode: the `n` elements of `width` bytes of `z`'s element region in the form `kind` names,
-/// unconditionally (no size test); `None` when `z` failed, the failure being `z.error()`.
-pub fn encode_zip(z: &crate::zip::File, n: usize, width: usize, kind: u8) -> Option<ZParts> {
-    let mut out = CParts { meta: null_mut(), body: null_mut(), alp: null_mut() };
-    (unsafe { encode(&ZSrc(z), n, width, kind as u32, &mut out, usize::MAX) } == 1).then_some(ZParts(out))
-}
-/// coc.rs `coc_encode_dense`: the parts of the dense `x`'s `x.len() / width` elements of `width` bytes in the Frame of
-/// Reference form (`alp` false) or the ALP one, `None` when they would take `below` bytes or more (`usize::MAX`: never).
-pub fn encode_dense(x: &[u8], width: usize, alp: bool, below: usize) -> Option<ZParts> {
-    let mut out = CParts { meta: null_mut(), body: null_mut(), alp: null_mut() };
-    (unsafe { encode(&Dense(x.as_ptr()), x.len() / width, width, if alp { SRC_ALP } else { SRC_FOR }, &mut out, below) } == 1).then_some(ZParts(out))
-}
-
-/// A producer written in safe Rust: coc.rs's `coc_fill` and, where the answer holds whole blocks of a column already in
-/// the writer's form, `coc_take`; ALP's two hints, `coc_hint` and `coc_ints`, have no answer by default.
-pub trait Producer: Sync {
-    /// Elements `i0 .. i0 + buf.len()` of the answer into `buf`.
-    fn fill(&self, buf: &mut [i64], i0: usize);
-    /// Block `pb` of a column in the writer's form that answer block `b` equals, with `pb`.
-    fn take(&self, _b: usize) -> Option<(Cocf<'_>, usize)> { None }
-    /// A block exponent for answer block `b` and the most exceptions it may leave; -1 is no hint.
-    fn hint(&self, _b: usize) -> Option<(i32, u32)> { None }
-    /// Answer block `b` as decimals (`out`, none for pass 1 only) and the exponent they are at; -1 = the general path.
-    fn ints(&self, _b: usize, _out: Option<&mut structural::Ints>) -> i32 { -1 }
-}
-/// A closure is a producer with no `take`: the form every kernel that computes an answer a block at a time uses.
-impl<F: Fn(&mut [i64], usize) + Sync> Producer for F { fn fill(&self, buf: &mut [i64], i0: usize) { self(buf, i0) } }
-/// `P` as the writer's source: the cursor and the blocks it claims, as `FillSrc`'s are for a C producer.
-struct ProdSrc<'a, P> { p: &'a P, width: usize, lg: u32 }
-impl<P: Producer> Moves for ProdSrc<'_, P> {
-    fn take(&self, b: usize) -> Option<(Cocf<'_>, usize)> { self.p.take(b) }
-    fn ints(&self, b: usize, nb: usize, d: &mut [i64], ee: &mut [i8], raw: Option<&mut [u8]>) -> Option<i32> {
-        let mut ptrs = alloc::vec![core::ptr::null::<u8>(); nb];
-        let mut o = structural::Ints { d: &mut d[..nb], ee: &mut ee[..nb], raw: raw.is_some().then(|| &mut ptrs[..nb]) };
-        let e = self.p.ints(b, Some(&mut o));
-        if let (Some(raw), true) = (raw, e >= 0) {
-            let w = self.width;
-            // each exception's `w` raw bytes are in the source's patch list or the producer's hole, both alive here
-            for i in (0..nb).filter(|&i| ee[i] < 0) { raw[i * w..(i + 1) * w].copy_from_slice(unsafe { sl(ptrs[i], w) }) }
-        }
-        Some(e)
-    }
-    fn hint(&self, b: usize) -> Option<(i32, u32)> { self.p.hint(b) }
-}
-impl<P: Producer> Source for ProdSrc<'_, P> {
-    unsafe fn open(&self) -> Option<*mut c_void> { Some(unsafe { coc_alloc(16 << self.lg) }.cast()) }
-    unsafe fn at(&self, cur: *mut c_void, off: usize, len: usize) -> *const u8 {
-        unsafe {
-            let (b, w) = (off / self.width >> self.lg, self.width);
-            if self.p.take(b).is_some() || self.p.ints(b, None) >= 0 { return cur.cast() }
-            let (v, cnt) = (cur.cast::<i64>(), len / w);
-            self.p.fill(sl_mut(v, cnt), off / w);
-            enc::narrow(w, sl(v, cnt), sl_mut(v.add(1 << self.lg).cast::<u8>(), cnt * w)).as_ptr()
-        }
-    }
-    unsafe fn close(&self, cur: *mut c_void) { unsafe { coc_free(cur.cast()) } }
-    unsafe fn bad(&self) -> bool { false }
-}
-/// The (meta, pack) of the `n` elements `p` denotes, `width` bytes each: coc.rs `qlean_coc_encode_fill` for a Rust producer.
-pub fn encode_fill<P: Producer>(n: usize, width: usize, p: &P) -> lean::O {
-    unsafe { lean::O::from_raw(encode_move(n, width, false, &ProdSrc { p, width, lg: DEFAULT_LG }).cast()) }
-}
-/// `encode_fill` at ALP: `(meta, (pack, alp))` of the `n` floats of `width` bytes `p` denotes (`qlean_coc_encode_move`, alp 1).
-pub fn encode_alp<P: Producer>(n: usize, width: usize, p: &P) -> lean::O {
-    unsafe { lean::O::from_raw(encode_move(n, width, true, &ProdSrc { p, width, lg: DEFAULT_LG }).cast()) }
-}
-/// structural.rs `take_first`: the array `a` back, and its element 0 as an owned reference -- moved out where `a` held the
-/// only reference to it (the slot is left `box(0)`), a reference of its own otherwise -- so an append whose first part
-/// nothing else holds can write that part in place.
-pub fn take_first(a: lean::O) -> (lean::O, lean::O) {
-    unsafe {
-        let p = a.into_raw();
-        let e = lean::array_get_core(p, 0);
-        if lean::is_exclusive(p) { lean::array_set_core(p, 0, lean::box_(0)) } else { lean::inc(e) }
-        (lean::O::from_raw(p), lean::O::from_raw(e))
-    }
-}
-/// structural.rs `qlean_structural_concat`'s test for growing part 0 in place: `parts` and its element 0 each held by this
-/// reference alone, answering that part's capacity. `parts` comes back.
-pub fn concat_own(parts: lean::O) -> (lean::O, Option<usize>) {
-    unsafe {
-        let p = parts.into_raw();
-        let cap = (lean::array_size(p) != 0 && lean::is_exclusive(p) && lean::is_exclusive(lean::array_get_core(p, 0)))
-            .then(|| lean::sarray_capacity(lean::array_get_core(p, 0)));
-        (lean::O::from_raw(p), cap)
-    }
-}
-/// structural.rs `sarray_room`: the owned `ByteArray` `o` at `need` bytes, its first `min(size, need)` kept and the rest
-/// unwritten: `o` itself where it holds the only reference and its capacity reaches, a copy otherwise. A copy of an
-/// exclusive `o` that outgrew its capacity doubles it, so a loop of one-element appends copies a logarithmic number of
-/// times; a shared `o` is copied at size. A mapped part's `rc` is 0 and is never exclusive.
-pub fn sarray_room(o: lean::O, need: usize) -> lean::O {
-    unsafe {
-        let p = o.into_raw();
-        let (sz, ex) = (lean::sarray_size(p), lean::is_exclusive(p));
-        if ex && lean::sarray_capacity(p) >= need { let mut o = lean::O::from_raw(p); o.set_size(need); return o }
-        let r = lean::alloc_sarray(1, need, if ex { 2 * need } else { need });
-        core::ptr::copy_nonoverlapping(lean::sarray_cptr(p), lean::sarray_cptr(r), sz.min(need));
-        lean::dec(p);
-        lean::O::from_raw(r)
-    }
-}
-/// coc.rs `qlean_coc_encode_move` over any source of blocks that also moves them (`alp` answers `(meta, (pack, alp))`).
-unsafe fn encode_move<S: Source + Moves>(n: usize, width: usize, alp: bool, fs: &S) -> *mut c_void {
-    unsafe {
-        let mut e: CEnc = core::mem::zeroed();
-        let s = &raw mut e;
-        qrs_coc_enc_open(s, n, width, alp as c_int);
-        let cost = if alp { crate::QLEAN_COST_MATH } else { crate::QLEAN_COST_ARITH };
-        // a fill cannot fail, having no `bad`: a refusal here is the writer's own bug
-        let ok = src_pass(s, (*s).c.lg(), fs, &|s, b, x, nb| enc::move_meta_blk(fs, &mut (*s).meta_blk(b), || sl(x, nb * width), width, nb), true, cost) && {
-            qrs_coc_enc_layout(s);
-            src_pass(s, (*s).c.lg(), fs, &|s, b, x, nb| enc::move_pack_blk(fs, |whole| (*s).pack_blk(b, nb, whole), || sl(x, nb * width), b, nb, width, alp), false, crate::QLEAN_COST_ARITH)
-        };
-        if !ok {
-            crate::os::eprint(format_args!("qlean_coc_encode_move: the writer refused {n} elements of {width} bytes from a fill\n")).expect("qlean: stderr");
-            crate::os::exit(1)
-        }
-        if !alp { return qrs_coc_enc_pair(s) }
-        coc_free((*s).exc_heap.cast());
-        mk_pair((*s).meta, mk_pair((*s).pack, (*s).blob))
-    }
 }

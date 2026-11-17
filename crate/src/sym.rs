@@ -169,8 +169,8 @@ pub trait Heap: Copy + PartialEq {
     fn put_starts(self, at: usize, it: impl Iterator<Item = usize>);
 }
 
-const SLOTS: usize = 16;
-struct Slot<H> { dict: H, offs: H, t: Rc<Tab>, d: usize, used: u64 }
+pub const SLOTS: usize = 16;
+pub struct Slot<H> { dict: H, offs: H, t: Rc<Tab>, d: usize, used: u64 }
 /// structural.rs's `sd[]`: the last 16 dictionaries kept with their table at their count. Not thread safe: the
 /// caller holds one lock around every call (C's `sd_mu`).
 pub struct Cache<H> { slots: [Option<Slot<H>>; SLOTS], clock: u64 }

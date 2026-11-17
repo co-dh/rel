@@ -1,17 +1,10 @@
 //! libc beyond the allocator, as safe calls: bytes and numbers in, bytes and numbers out (phase-2 §2.4; O0 extends it).
 //! Every mirrored struct is asserted against its C header in c/abi.c.
 
-/// glibc's `struct tm` on x86-64; `gmtoff` is the GNU/BSD field that makes `utc_offset` the offset at that instant
-#[repr(C)]
-pub struct Tm { pub sec: i32, pub min: i32, pub hour: i32, pub mday: i32, pub mon: i32, pub year: i32, pub wday: i32,
-                pub yday: i32, pub isdst: i32, pub gmtoff: i64, pub zone: *const u8 }
-/// glibc's `struct rusage` on x86-64: two `timeval`s, then fourteen `long`s from `ru_maxrss` (in KiB) on
-#[repr(C)]
-pub struct Rusage { pub utime: [i64; 2], pub stime: [i64; 2], pub maxrss: i64, pub rest: [i64; 13] }
 
 // libc declares these itself, with its own types
 /// cbindgen:ignore
-mod sys {
+pub mod sys {
     use super::{Rusage, Tm};
     unsafe extern "C" {
         pub fn getrusage(who: i32, u: *mut Rusage) -> i32;
@@ -24,58 +17,20 @@ mod sys {
 }
 use sys::*;
 
-/// The offset from UTC in force at the instant `secs`, in seconds, from libc's zone table -- the table q reads too,
-/// so the two agree on every transition (ffi/time.rs's note). 0 when `localtime_r` fails, as in C.
-pub fn utc_offset(secs: i64) -> i64 {
-    let mut tm = core::mem::MaybeUninit::<Tm>::uninit();
-    unsafe {
-        tzset();
-        if localtime_r(&secs, tm.as_mut_ptr()).is_null() { return 0 }
-        tm.assume_init().gmtoff
-    }
-}
 
-fn errno() -> i32 { unsafe { *__errno_location() } }
+pub fn errno() -> i32 { unsafe { *__errno_location() } }
 
-/// The process's peak resident set in bytes (`getrusage(RUSAGE_SELF)`'s `ru_maxrss` · 1024), or the errno it failed with
-pub fn peak_rss() -> Result<u64, i32> {
-    let mut u = core::mem::MaybeUninit::<Rusage>::uninit();
-    if unsafe { getrusage(0, u.as_mut_ptr()) } < 0 { return Err(errno()) }
-    Ok((unsafe { u.assume_init() }.maxrss as u64).wrapping_mul(1024))
-}
 
-/// libc's text for errno `e` in `buf` (XSI `strerror_r`), or `None` when it has none (`EINVAL`, `ERANGE`)
-pub fn strerror(e: i32, buf: &mut [u8; 256]) -> Option<&core::ffi::CStr> {
-    if unsafe { __xpg_strerror_r(e, buf.as_mut_ptr(), buf.len()) } != 0 { return None }
-    Some(core::ffi::CStr::from_bytes_until_nul(buf).expect("os::strerror: strerror_r left no NUL in its buffer"))
-}
 
-// ---- constants of the x86-64 Linux headers; c/abi.c asserts each against its header (cbindgen prints them `RS_*`) ----
-pub const O_RDONLY: i32 = 0;
 pub const O_WRONLY: i32 = 1;
-pub const O_RDWR: i32 = 2;
 pub const O_CREAT: i32 = 0o100;
 pub const O_EXCL: i32 = 0o200;
-pub const O_APPEND: i32 = 0o2000;
 pub const O_CLOEXEC: i32 = 0o2000000;
-pub const PROT_READ: i32 = 1;
-pub const PROT_WRITE: i32 = 2;
-pub const MAP_PRIVATE: i32 = 2;
-pub const MAP_SHARED: i32 = 1;
-pub const MAP_NORESERVE: i32 = 0x4000;
-pub const RTLD_LAZY: i32 = 1;
-pub const RTLD_NOW: i32 = 2;
 pub const S_IFMT: u32 = 0o170000;
-pub const S_IFDIR: u32 = 0o040000;
 pub const S_IFREG: u32 = 0o100000;
 pub const ENOENT: i32 = 2;
 pub const EINTR: i32 = 4;
 pub const EIO: i32 = 5;
-pub const EISDIR: i32 = 21;
-pub const EHOSTUNREACH: i32 = 113;
-pub const AF_UNSPEC: i32 = 0;
-pub const SOCK_STREAM: i32 = 1;
-pub const SC_NPROCESSORS_ONLN: i32 = 84;
 pub const PATH_MAX: usize = 4096;
 pub const EMSGSIZE: i32 = 90;
 
@@ -83,10 +38,6 @@ pub const EMSGSIZE: i32 = 90;
 #[repr(C)]
 pub struct Stat { pub dev: u64, pub ino: u64, pub nlink: u64, pub mode: u32, pub uid: u32, pub gid: u32, pub pad0: i32,
                   pub rdev: u64, pub size: i64, pub blksize: i64, pub blocks: i64, pub times: [i64; 6], pub rest: [i64; 3] }
-/// glibc's `struct addrinfo` on x86-64: `addrlen` is a `socklen_t`, so 4 bytes of padding follow it; `next` is typed `void *` because cbindgen cannot print a self-referential typedef
-#[repr(C)]
-pub struct AddrInfo { pub flags: i32, pub family: i32, pub socktype: i32, pub protocol: i32, pub addrlen: u32,
-                      pub pad0: u32, pub addr: *mut u8, pub canonname: *mut u8, pub next: *mut c_void }
 
 // ---------------------------------------------------------------------------------------------------------------------
 // Phase-2 §2.4: files, mappings, shared libraries, sockets, the environment. Each wrapper answers `Result<_, i32>` with
@@ -99,7 +50,7 @@ use core::ffi::{c_void, CStr};
 
 // libc declares these itself, with its own types
 /// cbindgen:ignore
-mod sys2 {
+pub mod sys2 {
     use super::{AddrInfo, Stat};
     use core::ffi::{c_char, c_void};
     unsafe extern "C" {
@@ -131,7 +82,7 @@ mod sys2 {
 }
 
 
-fn ok(r: i32) -> Result<(), i32> { if r < 0 { Err(errno()) } else { Ok(()) } }
+pub fn ok(r: i32) -> Result<(), i32> { if r < 0 { Err(errno()) } else { Ok(()) } }
 
 /// `write(2)` until every byte is out. A short write (a pipe or socket whose buffer fills) is continued, `EINTR` retried,
 /// and a write that moves nothing is `EIO`, so a descriptor that will not move cannot spin: ffi/handle.rs's loop.
@@ -147,11 +98,8 @@ pub fn write_all(fd: i32, mut p: &[u8]) -> Result<(), i32> {
 
 /// An open file descriptor. `Drop` closes it and has nowhere to report a failure, so a path that must see `close`'s
 /// errno calls `close()`; `into_raw` hands the descriptor to a caller who owns it from then on (Lean's `hopen` integer).
-pub struct File(i32);
+pub struct File(pub i32);
 
-/// How `pread_exact` stopped short: an errno, or the end of the file after `Eof(n)` bytes had been read
-#[derive(Debug, PartialEq)]
-pub enum Short { Errno(i32), Eof(usize) }
 
 impl File {
     /// `open(2)`, retried on `EINTR` as ffi/handle.rs does
@@ -203,88 +151,10 @@ pub fn realpath<'a>(path: &CStr, out: &'a mut [u8; PATH_MAX]) -> Result<&'a CStr
 }
 pub fn getpid() -> i32 { unsafe { sys2::getpid() } }
 
-/// A file mapped into memory. `Drop` unmaps and has nowhere to report a failure, so a path that must see `munmap`'s errno
-/// calls `unmap()`; `leak` gives the bytes to the process for good, as own.rs's `.own` parts are.
-pub struct Map { p: *mut u8, len: usize }
-impl Map {
-    /// `mmap(NULL, len, prot, flags, fd, 0)`; the descriptor may be closed afterwards, the mapping holds the file
-    pub fn file(f: &File, len: usize, prot: i32, flags: i32) -> Result<Map, i32> {
-        let p = unsafe { sys2::mmap(core::ptr::null_mut(), len, prot, flags, f.0, 0) };
-        if p as usize == usize::MAX { return Err(errno()) }
-        Ok(Map { p: p.cast(), len })
-    }
-    pub fn as_slice(&self) -> &[u8] { unsafe { core::slice::from_raw_parts(self.p, self.len) } }
-    /// never unmapped: the mapping lives as long as the process (`lean::sarrays_in` takes it)
-    pub fn leak(self) -> &'static mut [u8] {
-        let s = unsafe { core::slice::from_raw_parts_mut(self.p, self.len) };
-        core::mem::forget(self);
-        s
-    }
-    pub fn unmap(self) -> Result<(), i32> {
-        let r = ok(unsafe { sys2::munmap(self.p.cast(), self.len) });
-        core::mem::forget(self);
-        r
-    }
-}
-impl Drop for Map { fn drop(&mut self) { unsafe { sys2::munmap(self.p.cast(), self.len); } } }
 
-fn dl_error(what: &str) -> String {
-    let e = unsafe { sys2::dlerror() };
-    if e.is_null() { return alloc::format!("{what}: dlerror has no text") }
-    String::from_utf8_lossy(unsafe { CStr::from_ptr(e) }.to_bytes()).into_owned()
-}
 
-/// A shared library from `dlopen`. Never closed: zip.rs keeps its four for the life of the process, so there is no `Drop`.
-#[derive(Debug)]
-pub struct Lib(*mut c_void);
-// a dlopen handle is a process-wide token, safe to use from every thread
-unsafe impl Send for Lib {}
-unsafe impl Sync for Lib {}
-impl Lib {
-    /// `dlopen(path, flags)`; the error is `dlerror`'s text
-    pub fn open(path: &CStr, flags: i32) -> Result<Lib, String> {
-        let h = unsafe { sys2::dlopen(path.as_ptr(), flags) };
-        if h.is_null() { Err(dl_error("dlopen")) } else { Ok(Lib(h)) }
-    }
-    /// the address of `name`; a null address is a failure, as in zip.rs's `zsym`
-    pub fn sym(&self, name: &CStr) -> Result<*mut c_void, String> {
-        let f = unsafe { sys2::dlsym(self.0, name.as_ptr()) };
-        if f.is_null() { Err(dl_error("dlsym")) } else { Ok(f) }
-    }
-}
 
-/// A cell the first caller of `set` fills and nobody changes after: zip.rs's "the first failure is the one reported",
-/// where workers race to write one message. `is_set` is true from the claim on, `get` waits for the value.
-pub struct First<T> { state: core::sync::atomic::AtomicU8, v: core::cell::UnsafeCell<Option<T>> }
-// the value is written once, by the one caller that moved `state` 0 -> 1, and read only after it reads 2
-unsafe impl<T: Send + Sync> Sync for First<T> {}
-impl<T> First<T> {
-    pub const fn new() -> Self { First { state: core::sync::atomic::AtomicU8::new(0), v: core::cell::UnsafeCell::new(None) } }
-    /// true when this call stored `v`, false when another call had already claimed the cell
-    pub fn set(&self, v: T) -> bool {
-        use core::sync::atomic::Ordering::*;
-        if self.state.compare_exchange(0, 1, AcqRel, Acquire).is_err() { return false }
-        unsafe { *self.v.get() = Some(v) };
-        self.state.store(2, Release);
-        true
-    }
-    pub fn is_set(&self) -> bool { self.state.load(core::sync::atomic::Ordering::Acquire) != 0 }
-    pub fn get(&self) -> Option<&T> {
-        loop {
-            match self.state.load(core::sync::atomic::Ordering::Acquire) {
-                0 => return None,
-                1 => core::hint::spin_loop(),
-                _ => return unsafe { (*self.v.get()).as_ref() },
-            }
-        }
-    }
-}
-impl<T> Default for First<T> { fn default() -> Self { Self::new() } }
 
-/// A library or symbol zip.rs needs that `dlopen`/`dlsym` could not give: the library's file name, the symbol the load was
-/// after, and `dlerror`'s text.
-#[derive(Debug)]
-pub struct Missing { pub so: &'static str, pub sym: &'static str, pub why: String }
 
 /// The decompressors zip.rs reaches by `dlopen`, as q itself does. Each is loaded once a process and never closed; a failed
 /// load is tried again by the next caller, as zip.rs's `zlib_load` did.
@@ -417,49 +287,8 @@ pub fn eprint(args: core::fmt::Arguments) -> Result<(), i32> {
 /// `exit(code)`: runs `atexit` handlers and flushes stdio, as the C `exit(1)` sites do
 pub fn exit(code: i32) -> ! { unsafe { sys2::exit(code) } }
 
-/// Why `Sock::connect` failed: the name did not resolve (q names the host then), or an errno
-#[derive(Debug, PartialEq)]
-pub enum Conn { Unresolved, Errno(i32) }
-/// A connected TCP socket
-pub struct Sock(File);
-struct Addrs(*mut AddrInfo);
-impl Drop for Addrs { fn drop(&mut self) { unsafe { sys2::freeaddrinfo(self.0) } } }
-impl Sock {
-    /// ffi/handle.rs's `connect`: every address `getaddrinfo` returns for `host` (`localhost` when empty) and `port`, first one
-    /// that connects wins, else the last errno (`EHOSTUNREACH` when there is none). Not retried on `EINTR`: the connection
-    /// goes on in the background and a second call answers `EALREADY`.
-    pub fn connect(host: &CStr, port: i64) -> Result<Sock, Conn> {
-        let mut svc = Buf::<24>::new();
-        core::fmt::write(&mut svc, format_args!("{port}\0")).expect("os::Sock::connect: a port number is at most 20 bytes");
-        let h = if host.to_bytes().is_empty() { c"localhost" } else { host };
-        let hints = AddrInfo { flags: 0, family: AF_UNSPEC, socktype: SOCK_STREAM, protocol: 0, addrlen: 0, pad0: 0,
-                               addr: core::ptr::null_mut(), canonname: core::ptr::null_mut(), next: core::ptr::null_mut() };
-        let mut res = core::ptr::null_mut();
-        if unsafe { sys2::getaddrinfo(h.as_ptr(), svc.bytes().as_ptr().cast(), &hints, &mut res) } != 0 { return Err(Conn::Unresolved) }
-        let res = Addrs(res);
-        let mut err = EHOSTUNREACH;
-        let mut a = res.0;
-        while !a.is_null() {
-            let ai = unsafe { &*a };
-            let fd = unsafe { sys2::socket(ai.family, ai.socktype, ai.protocol) };
-            if fd < 0 { err = errno() } else {
-                let s = File(fd);
-                if unsafe { sys2::connect(fd, ai.addr, ai.addrlen) } == 0 { return Ok(Sock(s)) }
-                err = errno();
-            }
-            a = ai.next.cast();
-        }
-        Err(Conn::Errno(err))
-    }
-    /// the descriptor, owned by the caller from here on
-    pub fn into_raw(self) -> i32 { self.0.into_raw() }
-}
 
-/// `close(2)` of a descriptor the caller holds as a bare integer (Lean's `hclose`); not retried on `EINTR`, see `File::close`
-pub fn close_fd(fd: i32) -> Result<(), i32> { ok(unsafe { sys2::close(fd) }) }
 
-/// `setenv(name, value, 1)`
-pub fn setenv(name: &CStr, value: &CStr) -> Result<(), i32> { ok(unsafe { sys2::setenv(name.as_ptr(), value.as_ptr(), 1) }) }
 /// the value of `name`, copied out (the libc pointer dies with the next `setenv`)
 pub fn getenv(name: &CStr) -> Option<Vec<u8>> {
     let p = unsafe { sys2::getenv(name.as_ptr()) };
@@ -468,6 +297,10 @@ pub fn getenv(name: &CStr) -> Option<Vec<u8>> {
 /// `sysconf(name)`; `None` when the answer is -1 (unsupported or indeterminate)
 pub fn sysconf(name: i32) -> Option<i64> { let v = unsafe { sys2::sysconf(name) }; if v < 0 { None } else { Some(v) } }
 
+/// glibc's `struct addrinfo` on x86-64: `addrlen` is a `socklen_t`, so 4 bytes of padding follow it; `next` is typed `void *` because cbindgen cannot print a self-referential typedef
+#[repr(C)]
+pub struct AddrInfo { pub flags: i32, pub family: i32, pub socktype: i32, pub protocol: i32, pub addrlen: u32,
+                      pub pad0: u32, pub addr: *mut u8, pub canonname: *mut u8, pub next: *mut c_void }
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -572,4 +405,66 @@ mod tests {
         assert_eq!(eprint(format_args!("os::eprint test {}\n", 1)), Ok(()));
         assert_eq!(eprint(format_args!("{}", "x".repeat(2000))), Err(EMSGSIZE));
     }
+}
+/// A shared library from `dlopen`. Never closed: zip.rs keeps its four for the life of the process, so there is no `Drop`.
+#[derive(Debug)]
+pub struct Lib(*mut c_void);
+// a dlopen handle is a process-wide token, safe to use from every thread
+unsafe impl Send for Lib {}
+unsafe impl Sync for Lib {}
+impl Lib {
+    /// `dlopen(path, flags)`; the error is `dlerror`'s text
+    pub fn open(path: &CStr, flags: i32) -> Result<Lib, String> {
+        let h = unsafe { sys2::dlopen(path.as_ptr(), flags) };
+        if h.is_null() { Err(dl_error("dlopen")) } else { Ok(Lib(h)) }
+    }
+    /// the address of `name`; a null address is a failure, as in zip.rs's `zsym`
+    pub fn sym(&self, name: &CStr) -> Result<*mut c_void, String> {
+        let f = unsafe { sys2::dlsym(self.0, name.as_ptr()) };
+        if f.is_null() { Err(dl_error("dlsym")) } else { Ok(f) }
+    }
+}
+/// A file mapped into memory. `Drop` unmaps and has nowhere to report a failure, so a path that must see `munmap`'s errno
+/// calls `unmap()`; `leak` gives the bytes to the process for good, as own.rs's `.own` parts are.
+pub struct Map { p: *mut u8, len: usize }
+impl Map {
+    /// `mmap(NULL, len, prot, flags, fd, 0)`; the descriptor may be closed afterwards, the mapping holds the file
+    pub fn file(f: &File, len: usize, prot: i32, flags: i32) -> Result<Map, i32> {
+        let p = unsafe { sys2::mmap(core::ptr::null_mut(), len, prot, flags, f.0, 0) };
+        if p as usize == usize::MAX { return Err(errno()) }
+        Ok(Map { p: p.cast(), len })
+    }
+    pub fn as_slice(&self) -> &[u8] { unsafe { core::slice::from_raw_parts(self.p, self.len) } }
+    /// never unmapped: the mapping lives as long as the process (`lean::sarrays_in` takes it)
+    pub fn leak(self) -> &'static mut [u8] {
+        let s = unsafe { core::slice::from_raw_parts_mut(self.p, self.len) };
+        core::mem::forget(self);
+        s
+    }
+    pub fn unmap(self) -> Result<(), i32> {
+        let r = ok(unsafe { sys2::munmap(self.p.cast(), self.len) });
+        core::mem::forget(self);
+        r
+    }
+}
+impl Drop for Map { fn drop(&mut self) { unsafe { sys2::munmap(self.p.cast(), self.len); } } }
+/// A library or symbol zip.rs needs that `dlopen`/`dlsym` could not give: the library's file name, the symbol the load was
+/// after, and `dlerror`'s text.
+#[derive(Debug)]
+pub struct Missing { pub so: &'static str, pub sym: &'static str, pub why: String }
+pub const RTLD_NOW: i32 = 2;
+/// glibc's `struct rusage` on x86-64: two `timeval`s, then fourteen `long`s from `ru_maxrss` (in KiB) on
+#[repr(C)]
+pub struct Rusage { pub utime: [i64; 2], pub stime: [i64; 2], pub maxrss: i64, pub rest: [i64; 13] }
+/// How `pread_exact` stopped short: an errno, or the end of the file after `Eof(n)` bytes had been read
+#[derive(Debug, PartialEq)]
+pub enum Short { Errno(i32), Eof(usize) }
+/// glibc's `struct tm` on x86-64; `gmtoff` is the GNU/BSD field that makes `utc_offset` the offset at that instant
+#[repr(C)]
+pub struct Tm { pub sec: i32, pub min: i32, pub hour: i32, pub mday: i32, pub mon: i32, pub year: i32, pub wday: i32,
+                pub yday: i32, pub isdst: i32, pub gmtoff: i64, pub zone: *const u8 }
+pub fn dl_error(what: &str) -> String {
+    let e = unsafe { sys2::dlerror() };
+    if e.is_null() { return alloc::format!("{what}: dlerror has no text") }
+    String::from_utf8_lossy(unsafe { CStr::from_ptr(e) }.to_bytes()).into_owned()
 }

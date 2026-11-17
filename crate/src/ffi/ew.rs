@@ -4,15 +4,14 @@
 //! split over the pool (`c::pool()`). Lean passes `Int64` as C's `uint64_t`.
 #![deny(unsafe_code)]
 use crate::exports::coc::view;
-use crate::exports::reduce::elems;
-use crate::ffi::{chain_enc, encode_fill, syms_of};
-use crate::lean::{B, O, SArr, arr, boxed, ctor, export};
-use crate::{c, ew, pod};
+use crate::ffi::chain_enc;
+use crate::lean::{B, O, SArr, export};
+use crate::{c, ew};
 
 /// An answer of `n` bytes, undefined until the kernel writes it.
-fn answer(n: usize) -> SArr { SArr::new(1, n) }
+pub fn answer(n: usize) -> SArr { SArr::new(1, n) }
 /// The bitmap of `n` elements, one bit each.
-fn bits(n: usize) -> SArr { answer(n.div_ceil(8)) }
+pub fn bits(n: usize) -> SArr { answer(n.div_ceil(8)) }
 
 export! {
     /// `val op cls shape nul a b n`: `a op b` at class `cls`, `shape` naming which side is an atom (read at 0).
@@ -46,37 +45,9 @@ export! {
         r.into()
     }
 
-    /// `lowZero a b n`: bit `i` is `(a[i] & b[0]) = 0` over `n` longs.
-    fn qlean_ew_low_zero(a: B, b: B, n: usize) -> O {
-        let mut r = bits(n);
-        ew::low_zero(c::pool(), a.bytes(), b.bytes(), n, r.bytes_mut());
-        r.into()
-    }
 
-    /// `foRLowZero m p n atom`: `lowZero` over the decoded column of `n` longs.
-    fn qlean_coc_low_zero(mv: B, pv: B, n: usize, av: B) -> O {
-        let col = view("qlean_coc_low_zero", mv, pv, n);
-        let mut r = bits(n);
-        ew::low_zero_enc(c::pool(), &col, av.bytes(), r.bytes_mut());
-        r.into()
-    }
 
-    /// `bitw op a b n`: `&`, `|` or `& ~` of two long columns (any other `op` reads as `&`).
-    fn qlean_ew_bitw(op: u8, a: B, b: B, n: usize) -> O {
-        let mut r = answer(n * 8);
-        ew::bitw(c::pool(), op, a.bytes(), b.bytes(), n, r.bytes_mut());
-        r.into()
-    }
 
-    /// `rankPair da doa db dob`: each dictionary's entries ranked among the distinct symbols of both, as `Int32`s.
-    fn qlean_ew_rank_pair(dav: B, doav: B, dbv: B, dobv: B) -> O {
-        let (da, db) = (syms_of(dav, doav), syms_of(dbv, dobv));
-        let (mut ra, mut rb) = (answer(da.count() * 4), answer(db.count() * 4));
-        let (sa, sb) = (crate::pod::cast_mut(ra.bytes_mut()).expect("qlean_ew_rank_pair: the answer is not 4-aligned"),
-                        crate::pod::cast_mut(rb.bytes_mut()).expect("qlean_ew_rank_pair: the answer is not 4-aligned"));
-        ew::rank_pair(&da, &db, sa, sb);
-        ctor(0, [ra.into(), rb.into()], &[])
-    }
 
     /// `eqIds op shape ia ib w n`: bit `i` is whether the two ids the shape indexes, both read at `w`, are equal (`=`) or differ.
     fn qlean_ew_eq_ids(op: u8, shape: u8, iav: B, ibv: B, w: usize, n: usize) -> O {
@@ -87,73 +58,12 @@ export! {
         r.into()
     }
 
-    /// `cmpIds op shape ra ia rb ib n`: `op` between the ranks `r[id[j]]` of the two sides the shape indexes.
-    fn qlean_ew_cmp_ids(op: u8, shape: u8, rav: B, iav: B, wav: usize, rbv: B, ibv: B, wbv: usize, n: usize) -> O {
-        let (wa, wb, iab, ibb) = (wav as u32, wbv as u32, iav.bytes(), ibv.bytes());
-        let n = ew::ids_n(shape, n, iab.len(), wa, ibb.len(), wb);
-        let mut r = bits(n);
-        ew::cmp_ids(c::pool(), op, shape, elems::<i32>(rav), iab, wa, elems::<i32>(rbv), ibb, wb, n, r.bytes_mut());
-        r.into()
-    }
 
-    /// `cmpIdsKey op dict dof ids w key n`: bit `i` is `op` between the symbol element `i`'s id names and `key`, in q's order.
-    fn qlean_ew_cmp_ids_key(op: u8, dictv: B, dofv: B, idsv: B, w: usize, keyv: B, n: usize) -> O {
-        let mut r = bits(n);
-        ew::cmp_ids_key(c::pool(), op, &syms_of(dictv, dofv), idsv.bytes(), w as u32, keyv.bytes(), n, r.bytes_mut());
-        r.into()
-    }
 
-    /// `fixedHits pat b atom`: `some` of every non-overlapping match start (`Int64`s), `none` for the refusals `fixed_width` names.
-    fn qlean_ew_fixed_hits(patv: B, bv: B, atom: u8) -> O {
-        let (p, b, atom) = (patv.bytes(), bv.bytes(), atom != 0);
-        let w = ew::fixed_width(atom, p);
-        if w == 0 { return boxed(0) }
-        let mut h = pod::uninit::<i64>(b.len() / w + 1);
-        let hits = ew::fixed_scan(atom, p, b, &mut h);
-        let mut r = answer(hits * 8);
-        r.bytes_mut().copy_from_slice(pod::bytes_mut(&mut h[..hits]));
-        ctor(1, [r.into()], &[])
-    }
 
-    /// `ssrBytes pat repl b atom`: `b` with every match of `fixedHits` replaced by `repl`, `none` on the same refusals.
-    fn qlean_ew_ssr(patv: B, replv: B, bv: B, atom: u8) -> O {
-        let (p, t, b, atom) = (patv.bytes(), replv.bytes(), bv.bytes(), atom != 0);
-        let w = ew::fixed_width(atom, p);
-        if w == 0 { return boxed(0) }
-        let mut h = pod::uninit::<i64>(b.len() / w + 1);
-        let hits = ew::fixed_scan(atom, p, b, &mut h);
-        let total = b.len() - hits * w + hits * t.len();
-        // 16 bytes of slack, so a short run is one fixed-width move rather than a call
-        let mut r = SArr::with_capacity(1, total, total + 16);
-        ew::ssr_fill(r.capacity_mut(), b, &h[..hits], w, t);
-        ctor(1, [r.into()], &[])
-    }
 
-    /// `likeSyms pat blob offs`: bit `i` is `patMatch` at symbol `i`; `none` where `parsePat` refuses the pattern.
-    fn qlean_ew_like_syms(patv: B, blobv: B, offsv: B) -> O {
-        let s = syms_of(blobv, offsv);
-        let mut r = bits(s.count());
-        if ew::like_syms(patv.bytes(), &s, r.bytes_mut()) { ctor(1, [r.into()], &[]) } else { boxed(0) }
-    }
 
-    /// `translateSyms pre tab blob offs`: every symbol's bytes mapped through `tab`, `pre` in front unless already there; the (blob, starts) pair.
-    fn qlean_ew_translate_syms(prev: B, tabv: B, blobv: B, offsv: B) -> O {
-        let s = syms_of(blobv, offsv);
-        let (pre, n) = (prev.bytes(), s.count());
-        let tab: &[u8; 256] = tabv.bytes().try_into().expect("qlean_ew_translate_syms: the table is not 256 bytes");
-        // the starts are built first: the last is the blob's byte count
-        let offs = arr(ew::translate_ends(pre, tab, s).map(boxed));
-        let mut nb = answer(offs.borrow().array()[n].unbox());
-        ew::translate_fill(pre, tab, &s, nb.bytes_mut());
-        ctor(0, [nb.into(), offs], &[])
-    }
 
-    /// `cmpSyms op shape blobA offsA blobB offsB n`: bit `i` is `Order.symCmp` of the two symbols the shape indexes satisfying `op`.
-    fn qlean_ew_cmp_syms(op: u8, shape: u8, ba: B, oa: B, bb: B, ob: B, n: usize) -> O {
-        let mut r = bits(n);
-        ew::cmp_syms(c::pool(), op, shape, &syms_of(ba, oa), &syms_of(bb, ob), n, r.bytes_mut());
-        r.into()
-    }
 
     /// `bit op shape a b n`: a verb of two bitmaps (`&`, `|`, fill, the six comparisons), the bits above `n` zero.
     fn qlean_ew_bit(op: u8, shape: u8, a: B, b: B, n: usize) -> O {
@@ -169,19 +79,7 @@ export! {
         r.into()
     }
 
-    /// `foRMonEnc op cls nul m p n`: the writer's encoding of `mon` over the decoded column, the map run a block at a time.
-    fn qlean_coc_ew_mon_enc(op: u8, cls: u8, nul: u64, mv: B, pv: B, n: usize) -> O {
-        let col = view("qlean_coc_ew_mon_enc", mv, pv, n);
-        encode_fill(col.meta.n, ew::ew_width(cls as u32), &|buf: &mut [i64], i0: usize| ew::mon_fill(op, cls, nul as i64, &col, buf, i0))
-    }
 
-    /// `foRMon op cls nul m p n`: `mon` over the decoded column.
-    fn qlean_coc_ew_mon(op: u8, cls: u8, nul: u64, mv: B, pv: B, n: usize) -> O {
-        let col = view("qlean_coc_ew_mon", mv, pv, n);
-        let mut r = answer(n * ew::ew_width(cls as u32));
-        ew::mon_enc(c::pool(), op, cls, nul as i64, &col, r.bytes_mut());
-        r.into()
-    }
 
     /// `floor cls x n`: `_` at a float class, answering `long`s, `0N` out of range.
     fn qlean_ew_floor(cls: u8, x: B, n: usize) -> O {
@@ -218,25 +116,6 @@ export! {
         chain_enc(progv.bytes(), &|i| ins[i as usize].bytes(), n, width)
     }
 
-    /// `statsChain mode prog inputs n sa sb`: `Kernel.moments` (0) or `Kernel.dots` (1, 2 on `real` lanes) as the chain's last stage; 48 bytes.
-    fn qlean_stats_chain(mode: u8, progv: B, inputsv: B, n: usize, sa: u8, sb: u8) -> O {
-        let ins = inputsv.array();
-        let mut r = answer(48);
-        ew::stats_chain(mode, progv.bytes(), &|i| ins[i as usize].bytes(), n, sa, sb, r.bytes_mut());
-        r.into()
-    }
 
-    /// `guidEq a b atom ne n`: bit `i` is `a[i] = b[i]` (`b[0]` when `atom`), or its negation when `ne`, over sixteen-byte elements.
-    fn qlean_guid_eq(a: B, b: B, atom: u8, ne: u8, n: usize) -> O {
-        let mut r = bits(n);
-        ew::guid_eq(a.bytes(), b.bytes(), atom != 0, ne != 0, n, r.bytes_mut());
-        r.into()
-    }
 
-    /// `guidFill a b atom n`: `b`'s element unless it is `0Ng`, and then `a`'s (read at 0 when `atom`).
-    fn qlean_guid_fill(a: B, b: B, atom: u8, n: usize) -> O {
-        let mut r = answer(16 * n);
-        ew::guid_fill(a.bytes(), b.bytes(), atom != 0, n, r.bytes_mut());
-        r.into()
-    }
 }

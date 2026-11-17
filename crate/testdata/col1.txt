@@ -1,0 +1,4 @@
+n 3000 nblk 3 mblk 3 packbytes 3072 nexc 0 esz 0 exc_off -1 exc_pos -1 exc_raw -1 fdelta -1
+blk 0 0 0
+blk 1 0 0
+blk 2 0 0

@@ -27,7 +27,7 @@ pub fn f32_lanes(x: &[f32], acc: &mut [f32; 16]) -> usize {
 }
 #[cfg(all(target_arch = "x86_64", target_feature = "avx512f"))]
 #[target_feature(enable = "avx512f")]
-fn f32_lanes512(x: &[f32], acc: &mut [f32; 16]) -> usize {
+pub fn f32_lanes512(x: &[f32], acc: &mut [f32; 16]) -> usize {
     use core::arch::x86_64::*;
     let (mut a, mut nan) = (unsafe { _mm512_loadu_ps(acc.as_ptr()) }, 0u32);
     for ch in x.as_chunks::<16>().0 {
@@ -52,7 +52,7 @@ pub fn f64_lanes(x: &[f64], acc: &mut [f64; 8]) -> usize {
 }
 #[cfg(all(target_arch = "x86_64", target_feature = "avx512f"))]
 #[target_feature(enable = "avx512f")]
-fn f64_lanes512(x: &[f64], acc: &mut [f64; 8]) -> usize {
+pub fn f64_lanes512(x: &[f64], acc: &mut [f64; 8]) -> usize {
     use core::arch::x86_64::*;
     let (mut a, mut nan) = (unsafe { _mm512_loadu_pd(acc.as_ptr()) }, 0u32);
     for ch in x.as_chunks::<8>().0 {
@@ -75,7 +75,7 @@ pub fn prefetch<T>(r: &T) {
 /// reduce.rs `over_u8_sum`: `+/` of a byte payload; `psadbw` against zero adds eight bytes into one 64-bit lane.
 #[cfg(all(target_arch = "x86_64", target_feature = "avx512bw"))]
 #[target_feature(enable = "avx512f,avx512bw")]
-fn u8_sum512(p: &[u8]) -> i64 {
+pub fn u8_sum512(p: &[u8]) -> i64 {
     use core::arch::x86_64::*;
     let z = _mm512_setzero_si512();
     let (mut a0, mut a1) = (z, z);
@@ -89,7 +89,7 @@ fn u8_sum512(p: &[u8]) -> i64 {
     }
     _mm512_reduce_add_epi64(_mm512_add_epi64(a0, a1)).wrapping_add(u8_sum_scalar(c.remainder()))
 }
-fn u8_sum_scalar(p: &[u8]) -> i64 { p.iter().fold(0u64, |s, &b| s + b as u64) as i64 }
+pub fn u8_sum_scalar(p: &[u8]) -> i64 { p.iter().fold(0u64, |s, &b| s + b as u64) as i64 }
 /// Dispatches by cfg, as the C picks by `#if defined(__AVX512BW__)`.
 pub fn u8_sum(p: &[u8]) -> i64 {
     #[cfg(all(target_arch = "x86_64", target_feature = "avx512bw"))]
@@ -112,7 +112,7 @@ pub fn lit_mask64(b: &[u8], s: usize, w: usize, f: u8, g: u8) -> u64 {
     }
 }
 /// coc.rs's `RES_SIMD`: the build enables every feature the odd-width vector kernels need.
-pub(crate) const RES_SIMD: bool = cfg!(all(target_arch = "x86_64", target_feature = "avx512vbmi", target_feature = "avx512vbmi2",
+pub const RES_SIMD: bool = cfg!(all(target_arch = "x86_64", target_feature = "avx512vbmi", target_feature = "avx512vbmi2",
                                     target_feature = "avx512bw", target_feature = "avx512dq"));
 pub fn res_unpack(p: &[u8], w: u8, nb: usize, out: &mut [u8]) {
     // coc.rs's `#if`: the vector path only where the build enables every feature it needs (target-cpu=native)

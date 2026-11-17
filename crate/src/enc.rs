@@ -44,7 +44,7 @@ pub struct Frame { pub fo: i64, pub wo: u8, pub neo: u32 }
 
 // ---- A7: coc.rs ----
 /// `COC_NUL` of the element type: `INT16_MIN`, `INT32_MIN`, `INT64_MIN`; `u8` has none, so `INT64_MIN` there never matches.
-fn nul<T: Elt>() -> i64 { if size_of::<T>() == 1 { i64::MIN } else { i64::MIN >> (64 - 8 * size_of::<T>()) } }
+pub fn nul<T: Elt>() -> i64 { if size_of::<T>() == 1 { i64::MIN } else { i64::MIN >> (64 - 8 * size_of::<T>()) } }
 /// coc.rs `pack_block`: `nb` elements of `src` minus `base` into `dst` at `w` bits, the first ⌈nb*w/8⌉ bytes of it.
 pub fn pack_block<T: Elt>(dst: &mut [u8], src: &[T], nb: usize, base: i64, w: u8) {
     let r = |v: &T| (v.widen() as u64).wrapping_sub(base as u64);
@@ -158,7 +158,7 @@ pub fn decode<T: Lane>(c: &Coc, out: &mut [T]) {
 
 // ---- A16: coc.rs, the block steps of `coc_enc` ----
 /// `x` as `nb` elements of `T`; C read them through a typed pointer, so a misaligned source is a bug there too.
-fn elts<'b, T: crate::pod::Pod>(x: &'b [u8], what: &str) -> &'b [T] {
+pub fn elts<'b, T: crate::pod::Pod>(x: &'b [u8], what: &str) -> &'b [T] {
     crate::pod::cast::<T>(x).unwrap_or_else(|| panic!("qlean {what}: a block of {} bytes is misaligned for {}-byte elements", x.len(), size_of::<T>()))
 }
 /// coc.rs `coc_enc_for_meta`: the FoR meta step over block `b`'s `nb` elements `x` at `width` bytes each.

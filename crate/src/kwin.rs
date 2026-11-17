@@ -71,7 +71,7 @@ pub fn key_flip(kind: u8) -> u64 {
     match kind { SK_I16 => 0x8000, SK_I32 => 0x8000_0000, SK_I64 => 0x8000_0000_0000_0000, _ => 0 }
 }
 
-fn mask(kind: u8) -> u64 { let w = dense_bits(kind); if w == 64 { !0 } else { (1 << w) - 1 } }
+pub fn mask(kind: u8) -> u64 { let w = dense_bits(kind); if w == 64 { !0 } else { (1 << w) - 1 } }
 
 /// `keys_blk_foR` (sort.rs): block `b`'s `k.len()` keys.
 pub fn keys_blk(kind: u8, c: &Coc, b: usize, k: &mut [u64]) {

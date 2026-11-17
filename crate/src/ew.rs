@@ -5,7 +5,6 @@
 //! ew.rs's `EW_*`. The `qlean_ew_*` entries unbox and allocate and stay C (§1).
 use crate::c::Runner;
 use crate::coc::Coc;
-use crate::sym::{sym_eq, Syms};
 
 // ---- A42: ew.rs (per element: C keeps these bodies while a C caller remains) ----
 /// ew.rs `ew_unsupported`: the abort naming the engine, `op` and `cls`.
@@ -24,8 +23,8 @@ pub fn ew_width(cls: u32) -> usize {
     }
 }
 // q's order on floats as two predicates: a null (a NaN) below everything, two nulls equal (ew.rs)
-fn lt64(x: u64, y: u64) -> bool { if f64::from_bits(x).is_nan() { !f64::from_bits(y).is_nan() } else { f64::from_bits(x) < f64::from_bits(y) } }
-fn lt32(x: u32, y: u32) -> bool { if f32::from_bits(x).is_nan() { !f32::from_bits(y).is_nan() } else { f32::from_bits(x) < f32::from_bits(y) } }
+pub fn lt64(x: u64, y: u64) -> bool { if f64::from_bits(x).is_nan() { !f64::from_bits(y).is_nan() } else { f64::from_bits(x) < f64::from_bits(y) } }
+pub fn lt32(x: u32, y: u32) -> bool { if f32::from_bits(x).is_nan() { !f32::from_bits(y).is_nan() } else { f32::from_bits(x) < f32::from_bits(y) } }
 /// ew.rs `ew_tol`: q's tolerant float equality.
 pub fn ew_tol(x: f64, y: f64) -> bool {
     let (ax, ay) = (x.abs(), y.abs());
@@ -83,10 +82,7 @@ pub fn fdiv_magic(g: &Magic, x: i64) -> i64 {
 use crate::c::run_map;
 use crate::ids::{self, id_at, ids_avail, ids_bytes, pack, unpack};
 use crate::pod::{self, bytes_mut, Lane, Pod};
-use crate::sym::sym_msort;
 use crate::{QLEAN_COST_ARITH, QLEAN_COST_COPY, QLEAN_COST_MATH};
-use alloc::vec;
-use alloc::vec::Vec;
 
 /// `EW_*` codes of ew.rs that this section reads; the two lists cannot change apart.
 pub mod k {
@@ -98,28 +94,28 @@ pub mod k {
     pub const VV: u8 = 0; pub const VA: u8 = 1; pub const AV: u8 = 2;
 }
 /// ew.rs's `#if`: the mask paths exist only where the build enables the instructions they use.
-const VEC: bool = cfg!(all(target_arch = "x86_64", target_feature = "avx512f", target_feature = "avx512bw"));
-const NAN64: u64 = 0xfff8000000000000;
-const PNAN64: u64 = 0x7ff8000000000000;
-const NAN32: u32 = 0xffc00000;
-const PNAN32: u32 = 0x7fc00000;
+pub const VEC: bool = cfg!(all(target_arch = "x86_64", target_feature = "avx512f", target_feature = "avx512bw"));
+pub const NAN64: u64 = 0xfff8000000000000;
+pub const PNAN64: u64 = 0x7ff8000000000000;
+pub const NAN32: u32 = 0xffc00000;
+pub const PNAN32: u32 = 0x7fc00000;
 
 /// An integral storage class: `i` is the element as q reads it (zero-extended at `u8`), `wrap` the truncating write.
-trait Elt: Lane + Ord { fn i(self) -> i64; }
+pub trait Elt: Lane + Ord { fn i(self) -> i64; }
 impl Elt for u8 { fn i(self) -> i64 { self as i64 } }
 impl Elt for i16 { fn i(self) -> i64 { self as i64 } }
 impl Elt for i32 { fn i(self) -> i64 { self as i64 } }
 impl Elt for i64 { fn i(self) -> i64 { self } }
 
-fn ro<T: Pod>(b: &[u8]) -> &[T] {
+pub fn ro<T: Pod>(b: &[u8]) -> &[T] {
     pod::cast(b).unwrap_or_else(|| panic!("qlean_ew: a {}-byte payload is not a whole, aligned array of {}-byte elements", b.len(), size_of::<T>()))
 }
-fn rw<T: Pod>(b: &mut [u8]) -> &mut [T] {
+pub fn rw<T: Pod>(b: &mut [u8]) -> &mut [T] {
     let n = b.len();
     pod::cast_mut(b).unwrap_or_else(|| panic!("qlean_ew: a {n}-byte output is not a whole, aligned array of {}-byte elements", size_of::<T>()))
 }
 /// elements `[lo, hi)` of the `w`-byte payload `x`, or its first element when `atom`; the C reads past the end instead.
-fn side<'a>(x: &'a [u8], atom: bool, lo: usize, hi: usize, w: usize) -> &'a [u8] {
+pub fn side<'a>(x: &'a [u8], atom: bool, lo: usize, hi: usize, w: usize) -> &'a [u8] {
     let (s, e) = if atom { (0, w) } else { (lo * w, hi * w) };
     x.get(s..e).unwrap_or_else(|| panic!("qlean_ew: elements {}..{} of a {}-byte payload of {w}-byte elements", s / w, e / w, x.len()))
 }
@@ -133,9 +129,9 @@ pub fn decode_stage(c: &Coc, b: usize, cnt: usize, w: usize, o: &mut [u8]) {
     }
 }
 /// A block-sized scratch for `c`.
-fn pod_scr(c: &Coc) -> crate::pod::Scr<u64> { crate::pod::Scr::<u64>::new(c.meta.blk()) }
+pub fn pod_scr(c: &Coc) -> crate::pod::Scr<u64> { crate::pod::Scr::<u64>::new(c.meta.blk()) }
 /// The bytes of `buf` as a block's elements.
-fn block<'a>(c: &Coc, b: usize, cnt: usize, w: usize, buf: &'a mut [u64]) -> &'a [u8] {
+pub fn block<'a>(c: &Coc, b: usize, cnt: usize, w: usize, buf: &'a mut [u64]) -> &'a [u8] {
     let o = bytes_mut(buf);
     decode_stage(c, b, cnt, w, o);
     o
@@ -143,7 +139,7 @@ fn block<'a>(c: &Coc, b: usize, cnt: usize, w: usize, buf: &'a mut [u64]) -> &'a
 
 /// ew.rs `EW_SHAPED`: `o[i] = f(a[ia], b[ib])` with `(ia, ib)` the shape's index pair, an atom a one-element slice.
 #[inline(always)]
-fn zip2<T: Copy, U: Copy>(shape: u8, a: &[T], b: &[T], o: &mut [U], f: impl Fn(T, T) -> U) {
+pub fn zip2<T: Copy, U: Copy>(shape: u8, a: &[T], b: &[T], o: &mut [U], f: impl Fn(T, T) -> U) {
     if o.is_empty() { return }
     match shape {
         k::VV => for ((o, &x), &y) in o.iter_mut().zip(a).zip(b) { *o = f(x, y) },
@@ -153,7 +149,7 @@ fn zip2<T: Copy, U: Copy>(shape: u8, a: &[T], b: &[T], o: &mut [U], f: impl Fn(T
 }
 /// ew.rs `EW_CMP_SHAPED`: the `m` bits LSB-first, the bits of the last byte above `m` zero.
 #[inline(always)]
-fn pack_bits(o: &mut [u8], m: usize, ev: impl Fn(usize) -> bool) {
+pub fn pack_bits(o: &mut [u8], m: usize, ev: impl Fn(usize) -> bool) {
     for (k, byte) in o.iter_mut().enumerate() {
         let (lo, hi) = (k * 8, (k * 8 + 8).min(m));
         *byte = (lo..hi).fold(0u8, |v, i| v | (ev(i) as u8) << (i - lo));
@@ -161,7 +157,7 @@ fn pack_bits(o: &mut [u8], m: usize, ev: impl Fn(usize) -> bool) {
 }
 /// `pack_bits` of `p(a[ia], b[ib])`, `(ia, ib)` the shape's index pair.
 #[inline(always)]
-fn pack2<T: Copy>(shape: u8, a: &[T], b: &[T], o: &mut [u8], m: usize, p: impl Fn(T, T) -> bool) {
+pub fn pack2<T: Copy>(shape: u8, a: &[T], b: &[T], o: &mut [u8], m: usize, p: impl Fn(T, T) -> bool) {
     if m == 0 { return }
     match shape {
         k::VV => pack_bits(o, m, |i| p(a[i], b[i])),
@@ -172,7 +168,7 @@ fn pack2<T: Copy>(shape: u8, a: &[T], b: &[T], o: &mut [u8], m: usize, p: impl F
 
 /// ew.rs `EW_VAL_INT`: the wrap is the truncation the write does; `&` and `|` need no null test, q's
 /// null being the least value of the type.
-fn val_int<T: Elt>(op: u8, cls: u8, nul: i64, shape: u8, a: &[T], b: &[T], o: &mut [T]) {
+pub fn val_int<T: Elt>(op: u8, cls: u8, nul: i64, shape: u8, a: &[T], b: &[T], o: &mut [T]) {
     let nulv = T::wrap(nul as u64);
     let isn = |x: T| x.i() == nul;
     let wrap = |x: T, y: T, f: fn(u64, u64) -> u64| if isn(x) || isn(y) { nulv } else { T::wrap(f(x.i() as u64, y.i() as u64)) };
@@ -201,22 +197,22 @@ fn val_int<T: Elt>(op: u8, cls: u8, nul: i64, shape: u8, a: &[T], b: &[T], o: &m
 }
 
 /// `floor` at double width; `core` has none. A NaN, an infinity, a magnitude from 2^52 and a zero are their own floor.
-fn floor64(x: f64) -> f64 {
+pub fn floor64(x: f64) -> f64 {
     if !(x.abs() < 4503599627370496.0) || x == 0.0 { return x }
     let t = x as i64 as f64;
     if t > x { t - 1.0 } else { t }
 }
-fn floor32(x: f32) -> f32 {
+pub fn floor32(x: f32) -> f32 {
     if !(x.abs() < 8388608.0) || x == 0.0 { return x }
     let t = x as i32 as f32;
     if t > x { t - 1.0 } else { t }
 }
-fn le64(x: u64, y: u64) -> bool { if f64::from_bits(x).is_nan() { true } else { f64::from_bits(x) <= f64::from_bits(y) } }
-fn le32(x: u32, y: u32) -> bool { if f32::from_bits(x).is_nan() { true } else { f32::from_bits(x) <= f32::from_bits(y) } }
-fn eq64(x: u64, y: u64) -> bool { if f64::from_bits(x).is_nan() { f64::from_bits(y).is_nan() } else { f64::from_bits(x) == f64::from_bits(y) } }
-fn eq32(x: u32, y: u32) -> bool { if f32::from_bits(x).is_nan() { f32::from_bits(y).is_nan() } else { f32::from_bits(x) == f32::from_bits(y) } }
-fn tol64(x: u64, y: u64) -> bool { ew_tol(f64::from_bits(x), f64::from_bits(y)) }
-fn tol32(_: u32, _: u32) -> bool { false }
+pub fn le64(x: u64, y: u64) -> bool { if f64::from_bits(x).is_nan() { true } else { f64::from_bits(x) <= f64::from_bits(y) } }
+pub fn le32(x: u32, y: u32) -> bool { if f32::from_bits(x).is_nan() { true } else { f32::from_bits(x) <= f32::from_bits(y) } }
+pub fn eq64(x: u64, y: u64) -> bool { if f64::from_bits(x).is_nan() { f64::from_bits(y).is_nan() } else { f64::from_bits(x) == f64::from_bits(y) } }
+pub fn eq32(x: u32, y: u32) -> bool { if f32::from_bits(x).is_nan() { f32::from_bits(y).is_nan() } else { f32::from_bits(x) == f32::from_bits(y) } }
+pub fn tol64(x: u64, y: u64) -> bool { ew_tol(f64::from_bits(x), f64::from_bits(y)) }
+pub fn tol32(_: u32, _: u32) -> bool { false }
 
 /// ew.rs `EW_VAL_FLT`: a NaN operand is answered before any conversion and comes back as it is, the left
 /// one first; the right one of `-` comes back with its sign flipped (q subtracts by negating and adding).
@@ -248,11 +244,11 @@ macro_rules! val_flt { ($name:ident, $B:ty, $F:ty, $nanq:expr, $nanp:expr, $ord:
 } }
 val_flt!(val_f64, u64, f64, NAN64, PNAN64, ew_ord64, floor64, fnma64, |x: f64, y: f64| crate::c::pow(x, y));
 val_flt!(val_f32, u32, f32, NAN32, PNAN32, ew_ord32, floor32, fnma32, |x: f32, y: f32| crate::c::pow(x as f64, y as f64) as f32);
-fn fnma64(x: f64, y: f64, f: f64) -> f64 { crate::simd::fnma64(x, y, f) }
-fn fnma32(x: f32, y: f32, f: f32) -> f32 { crate::simd::fnma32(x, y, f) }
+pub fn fnma64(x: f64, y: f64, f: f64) -> f64 { crate::simd::fnma64(x, y, f) }
+pub fn fnma32(x: f32, y: f32, f: f32) -> f32 { crate::simd::fnma32(x, y, f) }
 
 /// ew.rs `ew_val_run` over the elements `[lo, hi)` of `a`, `b` (an atom is one element): into `o`.
-fn val_slice(op: u8, cls: u8, shape: u8, nul: i64, a: &[u8], b: &[u8], lo: usize, hi: usize, o: &mut [u8]) {
+pub fn val_slice(op: u8, cls: u8, shape: u8, nul: i64, a: &[u8], b: &[u8], lo: usize, hi: usize, o: &mut [u8]) {
     let w = ew_width(cls as u32);
     let (a, b) = (side(a, shape == k::AV, lo, hi, w), side(b, shape == k::VA, lo, hi, w));
     // the mask path answers the four arithmetic verbs at a float width; every other pair is the loop below
@@ -309,7 +305,7 @@ pub fn val_enc_atom(run: Runner, op: u8, cls: u8, shape: u8, nul: i64, c: &Coc, 
 
 /// ew.rs `EW_CMP_INT`: no null case, q's null being the least value of the type (a byte and a char compare
 /// by their byte).
-fn cmp_int<T: Elt>(op: u8, cls: u8, shape: u8, a: &[T], b: &[T], o: &mut [u8], m: usize) {
+pub fn cmp_int<T: Elt>(op: u8, cls: u8, shape: u8, a: &[T], b: &[T], o: &mut [u8], m: usize) {
     match op {
         k::EQ => pack2(shape, a, b, o, m, |x, y| x == y),
         k::NE => pack2(shape, a, b, o, m, |x, y| x != y),
@@ -338,7 +334,7 @@ cmp_flt!(cmp_f64, u64, lt64, le64, eq64, tol64);
 cmp_flt!(cmp_f32, u32, lt32, le32, eq32, tol32);
 
 /// ew.rs `ew_cmp_run` over the output bytes `[lo, hi)`: the elements `8 lo ..` of `a`, `b`, `n` in all.
-fn cmp_slice(op: u8, cls: u8, shape: u8, a: &[u8], b: &[u8], n: usize, lo: usize, hi: usize, o: &mut [u8]) {
+pub fn cmp_slice(op: u8, cls: u8, shape: u8, a: &[u8], b: &[u8], n: usize, lo: usize, hi: usize, o: &mut [u8]) {
     let w = ew_width(cls as u32);
     let (e0, e1) = (lo * 8, (hi * 8).min(n));
     let (a, b) = (side(a, shape == k::AV, e0, e1, w), side(b, shape == k::VA, e0, e1, w));
@@ -360,77 +356,18 @@ pub fn cmp(run: Runner, op: u8, cls: u8, shape: u8, a: &[u8], b: &[u8], n: usize
     // sliced by output byte, so eight elements move together and no two threads share one
     run_map(run, out, nb, 1, QLEAN_COST_ARITH, 8 * ew_width(cls as u32), &|lo, hi, o| cmp_slice(op, cls, shape, a, b, n, lo, hi, o));
 }
-/// ew.rs `ew_low_zero_run`: bit `i` is `(a[i] & b[0]) = 0`.
-pub fn low_zero(run: Runner, a: &[u8], b: &[u8], n: usize, out: &mut [u8]) {
-    let (a, b) = (side(a, false, 0, n, 8), side(b, true, 0, 1, 8));
-    run_map(run, out, n.div_ceil(8), 1, QLEAN_COST_ARITH, 64, &|lo, hi, o| {
-        let (e0, e1) = (lo * 8, (hi * 8).min(n));
-        pack2(k::VA, ro::<u64>(&a[e0 * 8..e1 * 8]), ro::<u64>(b), o, e1 - e0, |x, y| x & y == 0)
-    });
-}
-/// ew.rs `ew_low_zero_foR_run`: a block with `base = maxv` is one value and is answered from its metadata,
-/// any other is restored into a buffer; sliced by output byte, a block's bytes may be split between two slices.
-pub fn low_zero_enc(run: Runner, c: &Coc, atom: &[u8], out: &mut [u8]) {
-    let (n, m, lg) = (c.meta.n, ro::<u64>(side(atom, true, 0, 1, 8))[0], c.meta.lg);
-    run_map(run, out, n.div_ceil(8), 1, QLEAN_COST_ARITH, c.meta.blk() * 8, &|lo, hi, o| {
-        let mut xv = pod_scr(c);
-        let mut at = lo;
-        while at < hi {
-            let (blk, end) = (at >> (lg - 3), (((at >> (lg - 3)) + 1) << (lg - 3)).min(hi));
-            let (blo, cnt) = (blk << lg, (n - (blk << lg)).min(c.meta.blk()));
-            let (e0, e1) = (at * 8, (end * 8).min(blo + cnt));
-            let o = &mut o[at - lo..end - lo];
-            if c.meta.base[blk] == c.meta.maxv[blk] {
-                let all = c.meta.base[blk] as u64 & m == 0;
-                pack_bits(o, e1 - e0, |_| all);
-            } else {
-                let x = ro::<u64>(block(c, blk, cnt, 8, &mut xv));
-                pack2(k::VA, &x[e0 - blo..e1 - blo], &[m], o, e1 - e0, |x, y| x & y == 0);
-            }
-            at = end;
-        }
-    });
-}
-/// ew.rs `ew_bitw_run`: `op` is band 0, bor 1, bandnot 2; any other reads as band.
-pub fn bitw(run: Runner, op: u8, a: &[u8], b: &[u8], n: usize, out: &mut [u8]) {
-    let (a, b) = (ro::<u64>(side(a, false, 0, n, 8)), ro::<u64>(side(b, false, 0, n, 8)));
-    run_map(run, out, n, 8, QLEAN_COST_ARITH, 8, &|lo, hi, o| {
-        let o = rw::<u64>(o);
-        let (a, b) = (&a[lo..hi], &b[lo..hi]);
-        match op {
-            1 => zip2(k::VV, a, b, o, |x, y| x | y),
-            2 => zip2(k::VV, a, b, o, |x, y| x & !y),
-            _ => zip2(k::VV, a, b, o, |x, y| x & y),
-        }
-    });
-}
-/// ew.rs `qlean_ew_rank_pair` past the unboxing: each symbol's rank in the merged order of `da`, `db`.
-pub fn rank_pair(da: &Syms, db: &Syms, ra: &mut [i32], rb: &mut [i32]) {
-    let (na, n) = (da.count(), da.count() + db.count());
-    if n == 0 { return }
-    let mut v = da.slices(na);
-    v.extend(db.slices(db.count()));
-    let (mut ord, mut tmp) = ((0..n).collect::<Vec<_>>(), vec![0usize; n]);
-    sym_msort(&v, &mut ord, &mut tmp);
-    // identical entries land in one group and both sides get the same rank
-    let mut r = 0;
-    for t in 0..n {
-        if t > 0 && v[ord[t - 1]] != v[ord[t]] { r += 1 }
-        if ord[t] < na { ra[ord[t]] = r } else { rb[ord[t] - na] = r }
-    }
-}
 /// Elements per block of the id kernels: 64 are eight whole output bytes and a whole number of bytes at every id width.
-const IDB: usize = 64;
+pub const IDB: usize = 64;
 /// `Column.idWidth`'s lane widths; any other width reads as 64, as `id_at` and the C `IDS_WIDTHS` default do.
-fn lane(w: u32) -> u32 { if matches!(w, 0 | 1 | 2 | 4 | 8 | 16 | 32) { w } else { 64 } }
+pub fn lane(w: u32) -> u32 { if matches!(w, 0 | 1 | 2 | 4 | 8 | 16 | 32) { w } else { 64 } }
 /// The ids of `p` into `out` at the lane width `w`, matched once per block.
-fn unpack_w(p: &[u8], w: u32, out: &mut [i64]) {
+pub fn unpack_w(p: &[u8], w: u32, out: &mut [i64]) {
     macro_rules! at { ($W:literal) => { ids::unpack::<$W, i64>(p, out, |_, e, v| *e = v as i64) } }
     match w { 0 => at!(0), 1 => at!(1), 2 => at!(2), 4 => at!(4), 8 => at!(8), 16 => at!(16), 32 => at!(32), _ => at!(64) }
 }
 /// Bits `[0, c)` of one block, `p(x[i], y[i])` at bit `i`; the verb matched once per block.
 #[inline(always)]
-fn verb_bits(op: u8, x: &[i64], y: &[i64], c: usize) -> u64 {
+pub fn verb_bits(op: u8, x: &[i64], y: &[i64], c: usize) -> u64 {
     let f = |p: fn(i64, i64) -> bool| (0..c).fold(0u64, |m, i| m | (p(x[i], y[i]) as u64) << i);
     match op {
         k::EQ => f(|x, y| x == y), k::NE => f(|x, y| x != y), k::LT => f(|x, y| x < y),
@@ -442,7 +379,7 @@ fn verb_bits(op: u8, x: &[i64], y: &[i64], c: usize) -> u64 {
 /// (the id's rank, or the id). An atom side is its element 0, mapped once. `e0` is a multiple of 8, so a slice starts
 /// on a byte at every width.
 #[inline(always)]
-fn ids_bits(op: u8, shape: u8, ia: &[u8], wa: u32, ib: &[u8], wb: u32, e0: usize, m: usize, o: &mut [u8],
+pub fn ids_bits(op: u8, shape: u8, ia: &[u8], wa: u32, ib: &[u8], wb: u32, e0: usize, m: usize, o: &mut [u8],
             get: impl Fn(bool, &[u8], &mut [i64]), map: impl Fn(bool, i64) -> i64) {
     if m == 0 { return }
     let (mut x, mut y) = ([0i64; IDB], [0i64; IDB]);
@@ -465,7 +402,7 @@ fn ids_bits(op: u8, shape: u8, ia: &[u8], wa: u32, ib: &[u8], wb: u32, e0: usize
 /// `ids_bits` over the whole bitmap: one width switch outside the loops where the two sides agree (every pair a column
 /// meets its own kind in), the general `unpack_w` where they differ. `ranks` is `ew_cmp_ids_run`'s two tables; none is
 /// `ew_eq_ids_run`: the ids themselves, only `=` and `<>`.
-fn ids_pair(run: Runner, cost: u32, wide: usize, op: u8, shape: u8, ia: &[u8], wa: u32, ib: &[u8], wb: u32, n: usize,
+pub fn ids_pair(run: Runner, cost: u32, wide: usize, op: u8, shape: u8, ia: &[u8], wa: u32, ib: &[u8], wb: u32, n: usize,
             ranks: Option<(&[i32], &[i32])>, out: &mut [u8]) {
     let (wa, wb) = (lane(wa), lane(wb));
     let op = if ranks.is_none() && op != k::NE { k::EQ } else { op };
@@ -491,49 +428,6 @@ fn ids_pair(run: Runner, cost: u32, wide: usize, op: u8, shape: u8, ia: &[u8], w
 pub fn eq_ids(run: Runner, op: u8, shape: u8, ia: &[u8], ib: &[u8], w: u32, n: usize, out: &mut [u8]) {
     ids_pair(run, QLEAN_COST_COPY, 2 * w as usize, op, shape, ia, w, ib, w, n, None, out)
 }
-/// ew.rs `ew_cmp_ids_run` and its entry: `op` between the ranks `ra[id]`, `rb[id]` of the two ids the shape
-/// indexes, read at `wa`, `wb`.
-pub fn cmp_ids(run: Runner, op: u8, shape: u8, ra: &[i32], ia: &[u8], wa: u32, rb: &[i32], ib: &[u8], wb: u32, n: usize,
-               out: &mut [u8]) {
-    ids_pair(run, QLEAN_COST_ARITH, 8 * 4, op, shape, ia, wa, ib, wb, n, Some((ra, rb)), out)
-}
-/// ew.rs `ew_cmp_key_run` and its entry: an interned column against one symbol. `e` is the key's entry (`usize::MAX`
-/// when the dictionary of `d` entries does not hold it), `past` whether the key is the empty symbol, which every id
-/// past the dictionary reads as; `tab` is the verdict per entry, the last (`d`) for every id past the dictionary,
-/// where the verb is an ordering. An element at or past `na` reads id 0 (`Column.idAt`'s convention).
-pub fn cmp_key(run: Runner, op: u8, ids: &[u8], w: u32, n: usize, na: usize, e: usize, d: usize, past: bool,
-               tab: Option<&[u8]>, out: &mut [u8]) {
-    #[inline(always)]
-    fn bits<const W: u32>(op: u8, ids: &[u8], e0: usize, m: usize, na: usize, e: usize, d: usize, past: bool,
-                          tab: Option<&[u8]>, o: &mut [u8]) {
-        #[inline(always)]
-        fn fold(u: &[usize], c: usize, p: impl Fn(usize) -> bool) -> u64 { (0..c).fold(0u64, |b, i| b | (p(u[i]) as u64) << i) }
-        for (j, ob) in o.chunks_mut(IDB / 8).enumerate() {
-            let (s, c) = (e0 + j * IDB, (m - j * IDB).min(IDB));
-            // the elements of this block that have an id; the rest read 0
-            let have = na.saturating_sub(s).min(c);
-            let mut u = [0usize; IDB];
-            if have > 0 { ids::unpack::<W, usize>(&ids[s * W as usize / 8..], &mut u[..have], |_, e, v| *e = v) }
-            let b = match tab {
-                Some(t) => fold(&u, c, |u| t[u.min(d)] != 0),
-                None if op == k::NE => fold(&u, c, |u| !(u == e || (past && u >= d))),
-                None => fold(&u, c, |u| u == e || (past && u >= d)),
-            };
-            ob.copy_from_slice(&b.to_le_bytes()[..ob.len()]);
-        }
-    }
-    let lw = lane(w);
-    run_map(run, out, n.div_ceil(8), 1, QLEAN_COST_COPY, w as usize, &|lo, hi, o| {
-        let (e0, m) = (lo * 8, (hi * 8).min(n).saturating_sub(lo * 8));
-        if m == 0 { return }
-        match lw {
-            0 => bits::<0>(op, ids, e0, m, na, e, d, past, tab, o), 1 => bits::<1>(op, ids, e0, m, na, e, d, past, tab, o),
-            2 => bits::<2>(op, ids, e0, m, na, e, d, past, tab, o), 4 => bits::<4>(op, ids, e0, m, na, e, d, past, tab, o),
-            8 => bits::<8>(op, ids, e0, m, na, e, d, past, tab, o), 16 => bits::<16>(op, ids, e0, m, na, e, d, past, tab, o),
-            32 => bits::<32>(op, ids, e0, m, na, e, d, past, tab, o), _ => bits::<64>(op, ids, e0, m, na, e, d, past, tab, o),
-        }
-    });
-}
 
 /// ew.rs `qlean_ew_eq_ids` / `qlean_ew_cmp_ids`: `n` clamped to what the vector sides hold (an atom side is read at
 /// index 0 only, so an empty one leaves nothing to compare); `ba`, `bb` are the id payloads' byte counts.
@@ -542,28 +436,6 @@ pub fn ids_n(shape: u8, n: usize, ba: usize, wa: u32, bb: usize, wb: u32) -> usi
     if (shape == k::AV && aa == 0) || (shape == k::VA && ab == 0) { return 0 }
     let n = if shape != k::AV { n.min(aa) } else { n };
     if shape != k::VA { n.min(ab) } else { n }
-}
-/// ew.rs `qlean_ew_cmp_ids_key` past the unboxing: bit `i` is `op` between the symbol element `i`'s id names in
-/// `dict` and `key`, in q's order. A key no entry holds answers one bit throughout where the verb is `=`/`<>` and no id
-/// is read; an ordering is a verdict per entry (the last, past the dictionary, is the empty symbol's).
-pub fn cmp_ids_key(run: Runner, op: u8, dict: &Syms, ids: &[u8], w: u32, key: &[u8], n: usize, out: &mut [u8]) {
-    let (d, past) = (dict.count(), key.is_empty());
-    let na = ids_avail(ids.len(), w).min(n);
-    let (mut e, mut tab) = (usize::MAX, None);
-    if op == k::EQ || op == k::NE {
-        let f = crate::search::find_sym_scalar(dict, key);
-        if f < d { e = f } else if !past {
-            out.fill(if op == k::NE { 0xff } else { 0 });
-            if n & 7 != 0 { out[n.div_ceil(8) - 1] &= ((1u32 << (n & 7)) - 1) as u8 }
-            return;
-        }
-    } else {
-        tab = Some((0..=d).map(|u| {
-            let x = if u < d { dict.at(u).cmp(key) } else { (&[][..]).cmp(key) };
-            (match op { k::LT => x.is_lt(), k::LE => x.is_le(), k::GT => x.is_gt(), _ => x.is_ge() }) as u8
-        }).collect::<Vec<u8>>());
-    }
-    cmp_key(run, op, ids, w, n, na, e, d, past, tab.as_deref(), out)
 }
 // ---- A44: ew.rs ----
 /// `EW_*` codes of ew.rs this section reads (the verbs `k` does not hold).
@@ -607,14 +479,14 @@ pub fn bit(run: Runner, op: u8, shape: u8, a: &[u8], b: &[u8], n: usize, out: &m
 
 /// `neg` and `abs` over the class's elements: a null stays itself (q's null is the least value, so `abs` needs no case
 /// of its own but shares the loop's shape); `neg` at a float flips the sign bit, `abs` clears it.
-fn mon_int<T: Elt>(op: u8, nul: i64, x: &[T], o: &mut [T]) {
+pub fn mon_int<T: Elt>(op: u8, nul: i64, x: &[T], o: &mut [T]) {
     let nulv = T::wrap(nul as u64);
     for (o, &v) in o.iter_mut().zip(x) {
         *o = if v.i() == nul { nulv } else if op == k44::NEG || v.i() < 0 { T::wrap(0u64.wrapping_sub(v.i() as u64)) } else { v };
     }
 }
 /// ew.rs `ew_mon_run` over `x`'s elements into `o` (the same count): the pair was checked by `mon_chk`.
-fn mon_slice(op: u8, cls: u8, nul: i64, x: &[u8], o: &mut [u8]) {
+pub fn mon_slice(op: u8, cls: u8, nul: i64, x: &[u8], o: &mut [u8]) {
     match cls {
         0 => mon_int::<u8>(op, nul, ro(x), rw(o)),
         1 => mon_int::<i16>(op, nul, ro(x), rw(o)),
@@ -627,7 +499,7 @@ fn mon_slice(op: u8, cls: u8, nul: i64, x: &[u8], o: &mut [u8]) {
 /// The nine float maps' answer at `f64`, ew.rs `EW_MON_MAP`: a NaN operand answers `0n` before libm sees it, and
 /// a NaN result is `nanout` (`0n`, except the two arc functions' positive one: measured, `asin 2` and `acos -0w`).
 #[inline(always)]
-fn mon_map(x: &[u64], o: &mut [u64], nanout: u64, f: impl Fn(f64) -> f64) {
+pub fn mon_map(x: &[u64], o: &mut [u64], nanout: u64, f: impl Fn(f64) -> f64) {
     for (o, &b) in o.iter_mut().zip(x) {
         *o = if f64::from_bits(b).is_nan() { NAN64 } else {
             let y = f(f64::from_bits(b)).to_bits();
@@ -636,7 +508,7 @@ fn mon_map(x: &[u64], o: &mut [u64], nanout: u64, f: impl Fn(f64) -> f64) {
     }
 }
 /// ew.rs `ew_mon_run`'s switch, outside the loop: one straight libm loop per map.
-fn mon_libm(op: u8, x: &[u8], o: &mut [u8]) {
+pub fn mon_libm(op: u8, x: &[u8], o: &mut [u8]) {
     use crate::c as m;
     let (x, o) = (ro::<u64>(x), rw::<u64>(o));
     match op {
@@ -646,12 +518,12 @@ fn mon_libm(op: u8, x: &[u8], o: &mut [u8]) {
     }
 }
 /// The pairs `neg`/`abs` answer (the encoded entries read nothing else): the six classes at the two verbs.
-fn mon_chk(op: u8, cls: u8) {
+pub fn mon_chk(op: u8, cls: u8) {
     if op > k44::ABS || cls > k44::F64 { ew_unsupported("qlean_ew_mon", op as u32, cls as u32) }
 }
 /// The nine float maps are `SQRT ..= ATAN` at `f64` alone (q answers a float whatever the argument's type, so the
 /// dispatch widens first); any other pair of them is unsupported, as `ew_mon_run`'s `default`.
-fn is_libm(op: u8, cls: u8) -> bool { (k44::SQRT..=k44::ATAN).contains(&op) && cls == k44::F64 }
+pub fn is_libm(op: u8, cls: u8) -> bool { (k44::SQRT..=k44::ATAN).contains(&op) && cls == k44::F64 }
 /// ew.rs `ew_mon_run` and its entry: the monadic verbs, `neg` and `abs` and the nine libm maps.
 pub fn mon(run: Runner, op: u8, cls: u8, nul: i64, x: &[u8], n: usize, out: &mut [u8]) {
     if n == 0 { return }
@@ -664,53 +536,6 @@ pub fn mon(run: Runner, op: u8, cls: u8, nul: i64, x: &[u8], n: usize, out: &mut
         let x = side(x, false, lo, hi, w);
         if lib { mon_libm(op, x, o) } else { mon_slice(op, cls, nul, x, o) }
     });
-}
-/// ew.rs `ew_mon_foR_run`, `ew_mon_foR_blk`: over an encoded column, the answer dense.
-pub fn mon_enc(run: Runner, op: u8, cls: u8, nul: i64, c: &Coc, out: &mut [u8]) {
-    let n = c.meta.n;
-    if n == 0 { return }
-    mon_chk(op, cls);
-    let (w, lg) = (ew_width(cls as u32), c.meta.lg);
-    run_map(run, out, n, w, QLEAN_COST_ARITH, w, &|lo, hi, o| {
-        let mut xv = pod_scr(c);
-        let mut at = lo;
-        while at < hi {
-            // a slice may start inside a block, so the block is decoded from its own start and entered at `at - blo`
-            let (blk, end) = (at >> lg, (((at >> lg) + 1) << lg).min(hi));
-            let (blo, cnt) = (blk << lg, end - (blk << lg));
-            let x = block(c, blk, cnt, w, &mut xv);
-            mon_slice(op, cls, nul, &x[(at - blo) * w..cnt * w], &mut o[(at - lo) * w..(end - lo) * w]);
-            at = end;
-        }
-    });
-}
-/// ew.rs `ew_mon_fill`: the encoder source of `qlean_coc_ew_mon_enc`. `buf` is the `buf.len()` elements of
-/// the column from element `i0`, mapped at the class's width and widened back to `i64` (`coc_widen`, which reads any width but 2
-/// and 4 as eight bytes).
-pub fn mon_fill(op: u8, cls: u8, nul: i64, c: &Coc, buf: &mut [i64], i0: usize) {
-    let (nb, w) = (buf.len(), ew_width(cls as u32));
-    if nb == 0 { return }
-    mon_chk(op, cls);
-    // the source's blocks need not be the writer's: one pass per source block the span touches (one, whole, at the same size)
-    let (lg, blk) = (c.meta.lg, c.meta.blk());
-    let (mut xv, mut yv) = (pod_scr(c), pod_scr(c));
-    let mut at = 0;
-    while at < nb {
-        let (b, o) = ((i0 + at) >> lg, (i0 + at) & (blk - 1));
-        let take = (blk - o).min(nb - at);
-        let x = &block(c, b, o + take, w, &mut xv)[o * w..];
-        let d = &mut buf[at..at + take];
-        if w == 8 { mon_slice(op, cls, nul, &x[..take * 8], bytes_mut(d)) } else {
-            let y = bytes_mut(&mut yv);
-            mon_slice(op, cls, nul, &x[..take * w], &mut y[..take * w]);
-            match w {
-                2 => for (d, &s) in d.iter_mut().zip(ro::<i16>(&y[..take * 2])) { *d = s as i64 },
-                4 => for (d, &s) in d.iter_mut().zip(ro::<i32>(&y[..take * 4])) { *d = s as i64 },
-                _ => for (d, &s) in d.iter_mut().zip(ro::<u64>(&y[..take * 8])) { *d = s as i64 },
-            }
-        }
-        at += take;
-    }
 }
 /// ew.rs `ew_floor_run`: `floor` at a float class, always a `long`; out of range or a NaN answers `0N`.
 pub fn floor(run: Runner, cls: u8, x: &[u8], n: usize, out: &mut [u8]) {
@@ -781,7 +606,7 @@ pub fn cast(run: Runner, src: u8, dst: u8, nul_in: i64, x: &[u8], n: usize, out:
 pub fn fdiv64(a: i64, b: i64) -> i64 { a / b - (a % b < 0) as i64 }
 /// `fdiv64` by one of the tick units `U`, each divisor a constant.
 #[inline(always)]
-fn fdiv_unit(a: i64, u: i64) -> i64 {
+pub fn fdiv_unit(a: i64, u: i64) -> i64 {
     match u { 1000000 => fdiv64(a, 1000000), 1000000000 => fdiv64(a, 1000000000), 60000000000 => fdiv64(a, 60000000000), _ => fdiv64(a, 86400000000000) }
 }
 /// ew.rs `ew_days_of_first`: days from 2000.01.01 to the first of month `m`. Wrapping, as the C is at
@@ -875,12 +700,12 @@ mod a45 {
 
 // ---- A46a: ew.rs ----
 /// ew.rs `ew_widen_run`'s refusal: widening goes up to `int`, `long`, `real` or `float`, and a float only to `float`.
-fn widen_chk(src: u8, dst: u8) {
+pub fn widen_chk(src: u8, dst: u8) {
     if !matches!(dst, 2..=5) || (dst != 5 && matches!(src, 4 | 5)) { ew_unsupported("qlean_ew_widen", src as u32, dst as u32) }
 }
 /// ew.rs `ew_widen_run` over elements `[lo, hi)` of the whole source `x` (a bit source indexed from its own
 /// bit 0, so a slice may start inside a byte) into `o`, the `hi - lo` answers. The pair was checked by `widen_chk`.
-fn widen_slice(src: u8, dst: u8, nul_in: i64, nul_out: i64, x: &[u8], lo: usize, hi: usize, o: &mut [u8]) {
+pub fn widen_slice(src: u8, dst: u8, nul_in: i64, nul_out: i64, x: &[u8], lo: usize, hi: usize, o: &mut [u8]) {
     const PNAN64: u64 = 0x7ff8000000000000;
     // the source class is chosen outside the loop, so each pair is its own straight-line pass (ew.rs)
     fn pass<const W: usize>(src: u8, lo: usize, hi: usize, x: &[u8], o: &mut [u8], f: impl Fn(i64) -> [u8; W]) {
@@ -938,243 +763,9 @@ mod a46a {
     }
 }
 
-// ---- K8: ew.rs `like_*`, `fixed_*`, `ew_cmp_syms_run` (symbol patterns, fixed-width search, symbol comparisons) ----
-/// `Order.symCmp` over two symbols: q's order (bytes unsigned, then length). Overlapping big-endian windows of 8, 4, 2, 1 bytes
-/// (the last window ends at the shorter length), so a short symbol is a few compares and never a `memcmp` call (`[u8]::cmp` is one).
-/// When the first window differs it decides; when it is equal the last one's first difference is the first of the bytes beyond it.
-#[inline(always)]
-fn sym_ord(a: &[u8], b: &[u8]) -> core::cmp::Ordering {
-    macro_rules! win { ($t:ty, $s:expr, $at:expr) => { <$t>::from_be_bytes($s[$at..$at + size_of::<$t>()].try_into().unwrap()) } }
-    macro_rules! two { ($t:ty, $n:expr) => { {
-        let (x, y) = (win!($t, a, 0), win!($t, b, 0));
-        if x != y { x.cmp(&y) } else { win!($t, a, $n - size_of::<$t>()).cmp(&win!($t, b, $n - size_of::<$t>())) }
-    } } }
-    let n = a.len().min(b.len());
-    let c = if n >= 8 {
-        let mut i = 0;
-        loop {
-            if i + 8 >= n { break win!(u64, a, n - 8).cmp(&win!(u64, b, n - 8)) }
-            let (x, y) = (win!(u64, a, i), win!(u64, b, i));
-            if x != y { break x.cmp(&y) }
-            i += 8;
-        }
-    } else if n >= 4 { two!(u32, n) } else if n >= 2 { two!(u16, n) } else if n == 1 { a[0].cmp(&b[0]) } else { core::cmp::Ordering::Equal };
-    c.then(a.len().cmp(&b.len()))
-}
 
-/// `pack_bits` of `p(x, y)` over the symbols the shape indexes at elements `e0 ..`, `x` of `a` and `y` of `b`.
-#[inline(always)]
-fn pack_syms(shape: u8, a: &Syms, b: &Syms, o: &mut [u8], e0: usize, m: usize, p: impl Fn(&[u8], &[u8]) -> bool) {
-    if m == 0 { return }
-    match shape {
-        k::VV => pack_bits(o, m, |i| p(a.at(e0 + i), b.at(e0 + i))),
-        k::VA => { let y = b.at(0); pack_bits(o, m, |i| p(a.at(e0 + i), y)) }
-        _ => { let x = a.at(0); pack_bits(o, m, |i| p(x, b.at(e0 + i))) }
-    }
-}
-/// ew.rs `ew_cmp_syms_run` and its entry: bit `i` is `op` of the two symbols the shape indexes; sliced by output
-/// byte, so the whole answer is written here (the C zeroed it first and or-ed).
-pub fn cmp_syms(run: Runner, op: u8, shape: u8, a: &Syms, b: &Syms, n: usize, out: &mut [u8]) {
-    use core::cmp::Ordering::{Greater, Less};
-    run_map(run, out, n.div_ceil(8), 1, QLEAN_COST_ARITH, 8 * 4, &|lo, hi, o| {
-        let (e0, m) = (lo * 8, (hi * 8).min(n) - lo * 8);
-        match op {
-            k::EQ => pack_syms(shape, a, b, o, e0, m, |x, y| sym_eq(x, y)),
-            k::NE => pack_syms(shape, a, b, o, e0, m, |x, y| !sym_eq(x, y)),
-            k::LT => pack_syms(shape, a, b, o, e0, m, |x, y| sym_ord(x, y) == Less),
-            k::LE => pack_syms(shape, a, b, o, e0, m, |x, y| sym_ord(x, y) != Greater),
-            k::GT => pack_syms(shape, a, b, o, e0, m, |x, y| sym_ord(x, y) == Greater),
-            _ => pack_syms(shape, a, b, o, e0, m, |x, y| sym_ord(x, y) != Less), // EW_GE
-        }
-    });
-}
 
-/// ew.rs `pat_item`: one parsed item of a `like` pattern; a set's ranges are `Pattern::rng[lo .. lo + 2 * n]`, pairs.
-#[derive(Clone, Copy)]
-enum Item { Star, Any, Lit(u8), Set { neg: bool, lo: usize, n: usize } }
-/// ew.rs `pattern`: the items and the ranges of every set, packed end to end.
-pub struct Pattern { its: Vec<Item>, rng: Vec<u8> }
-impl Pattern {
-    /// `like_parse`, `parsePat` transcribed: `None` for two `*` in a row (q's `'nyi`) and a class that never closes (q's `'[`);
-    /// a `[` never closed is refused, a range needs a byte after its `-` that is inside the pattern and is not `]`.
-    pub fn parse(p: &[u8]) -> Option<Pattern> {
-        let pn = p.len();
-        let (mut its, mut rng) = (Vec::with_capacity(pn), Vec::with_capacity(2 * pn));
-        let mut i = 0;
-        while i < pn {
-            let c = p[i];
-            if c == b'*' {
-                if matches!(its.last(), Some(Item::Star)) { return None }
-                its.push(Item::Star);
-                i += 1;
-            } else if c == b'?' {
-                its.push(Item::Any);
-                i += 1;
-            } else if c == b'[' {
-                let mut j = i + 1;
-                let neg = j < pn && p[j] == b'^';
-                if neg { j += 1 }
-                let lo = rng.len();
-                let (mut closed, mut first) = (false, true);
-                while j < pn {
-                    if p[j] == b']' && !first { closed = true; j += 1; break }
-                    if j + 2 < pn && p[j + 1] == b'-' && p[j + 2] != b']' { rng.push(p[j]); rng.push(p[j + 2]); j += 3 }
-                    else { rng.push(p[j]); rng.push(p[j]); j += 1 }
-                    first = false;
-                }
-                if !closed { return None }
-                its.push(Item::Set { neg, lo, n: (rng.len() - lo) / 2 });
-                i = j;
-            } else {
-                its.push(Item::Lit(c));
-                i += 1;
-            }
-        }
-        Some(Pattern { its, rng })
-    }
-    /// `like_hit`: byte `c` matches the non-`*` item `it`.
-    #[inline(always)]
-    fn hit(&self, it: Item, c: u8) -> bool {
-        match it {
-            Item::Any => true,
-            Item::Lit(l) => c == l,
-            Item::Set { neg, lo, n } => self.rng[lo..lo + 2 * n].chunks_exact(2).any(|r| r[0] <= c && c <= r[1]) != neg,
-            Item::Star => false,
-        }
-    }
-    /// `like_match`: the two-pointer wildcard walk, one `*` remembered and the position after it.
-    #[inline]
-    fn matches(&self, s: &[u8]) -> bool {
-        let (its, n) = (&self.its[..], s.len());
-        let (mut i, mut j, mut mark, mut star) = (0, 0, 0, usize::MAX);
-        while i < n {
-            match its.get(j) {
-                Some(&it) if !matches!(it, Item::Star) && self.hit(it, s[i]) => { i += 1; j += 1 }
-                Some(Item::Star) => { star = j; j += 1; mark = i }
-                _ if star != usize::MAX => { j = star + 1; mark += 1; i = mark }
-                _ => return false,
-            }
-        }
-        while matches!(its.get(j), Some(Item::Star)) { j += 1 }
-        j == its.len()
-    }
-    /// `fixed_width`: the item count, 0 where the pattern is empty or holds a `*` (q's two `'length` refusals).
-    fn width(&self) -> usize { if self.its.iter().any(|it| matches!(it, Item::Star)) { 0 } else { self.its.len() } }
-    /// `fixed_items`: a char atom operand is one literal byte and not a pattern, the one place `ss` and `ssr` differ from `like`.
-    fn fixed(atom: bool, p: &[u8]) -> Option<Pattern> {
-        if atom && p.len() == 1 { Some(Pattern { its: alloc::vec![Item::Lit(p[0])], rng: Vec::new() }) } else { Pattern::parse(p) }
-    }
-}
-/// `qlean_ew_like_syms` past the allocation: bit `i` of `out` (`⌈n / 8⌉` bytes, all written) is `patMatch` at symbol `i`;
-/// false where `parsePat` refuses, `out` untouched.
-pub fn like_syms(pat: &[u8], s: &Syms, out: &mut [u8]) -> bool {
-    let Some(q) = Pattern::parse(pat) else { return false };
-    pack_bits(out, s.count(), |i| q.matches(s.at(i)));
-    true
-}
-/// `fixed_width` past `fixed_items`: 0 for all three refusals (`fixed_items`'s, an empty pattern, a `*`), where the caller answers `none`.
-pub fn fixed_width(atom: bool, p: &[u8]) -> usize { Pattern::fixed(atom, p).map_or(0, |q| q.width()) }
-/// ew.rs `fixed_scan` (`atom`, `p` as `fixed_width`'s): every non-overlapping match start, in order, into `o`
-/// (`b.len() / w + 1` entries, `w` the answer of `fixed_width`); answers how many. One walk for `ss` and `ssr`, so they cannot
-/// disagree. A literal needle takes 64 positions at a time where the build has avx512bw: its first and last byte give the mask
-/// of positions where both sit, and only those are compared in full.
-pub fn fixed_scan(atom: bool, p: &[u8], b: &[u8], o: &mut [i64]) -> usize {
-    let q = Pattern::fixed(atom, p).expect("qlean_ew_fixed_scan: a pattern `fixed_width` accepted");
-    let (n, w, mut at, mut i) = (b.len(), q.width(), 0, 0);
-    if w == 0 || w > n { return 0 }
-    let last = n - w; // the final position a match may start at
-    #[cfg(all(target_arch = "x86_64", target_feature = "avx512f", target_feature = "avx512bw"))]
-    {
-        // an all-literal pattern's items are the raw pattern bytes one for one (`parse` reaches `Lit` only where it takes one byte)
-        if last >= 63 && q.its.iter().all(|it| matches!(it, Item::Lit(_))) {
-            let mut s = 0;
-            while s + 63 <= last {
-                let mut m = crate::simd::lit_mask64(b, s, w, p[0], p[w - 1]);
-                // clearing the low bit is loop-carried, so it is one `blsr`; `k < i` is the non-overlap, the last match still covers it
-                while m != 0 {
-                    let k = s + m.trailing_zeros() as usize;
-                    if k >= i && (w <= 2 || sym_eq(&b[k + 1..k + w - 1], &p[1..w - 1])) {
-                        o[at] = k as i64;
-                        at += 1;
-                        i = k + w;
-                    }
-                    m &= m - 1;
-                }
-                if i < s + 64 { i = s + 64 } // every position under here is decided
-                s += 64;
-            }
-        }
-    }
-    while i <= last {
-        if q.its.iter().zip(&b[i..i + w]).all(|(&it, &c)| q.hit(it, c)) { o[at] = i as i64; at += 1; i += w } else { i += 1 }
-    }
-    at
-}
-/// `copy_run`: `d = s` (equal lengths) by overlapping fixed-width moves up to 32 bytes, so a short run is no `memcpy` call.
-#[inline(always)]
-fn copy_run(d: &mut [u8], s: &[u8]) {
-    macro_rules! mv { ($n:literal, $k:expr) => { { d[..$n].copy_from_slice(&s[..$n]); d[$k - $n..$k].copy_from_slice(&s[$k - $n..$k]) } } }
-    let k = s.len();
-    if k >= 32 { d.copy_from_slice(s) } else if k >= 16 { mv!(16, k) } else if k >= 8 { mv!(8, k) } else if k >= 4 { mv!(4, k) }
-    else if k >= 2 { mv!(2, k) } else if k == 1 { d[0] = s[0] }
-}
-/// `qlean_ew_ssr`'s copy loop: `o` is `b` with each of the `hits` (`fixed_scan`'s) `w` bytes replaced by `t`. `o` is the answer
-/// and 16 bytes of slack, so a short run is one fixed-width move: measured, `ssr[xc;"ab";"xy"]` copies one subject byte and
-/// two replacement bytes 333333 times.
-pub fn ssr_fill(o: &mut [u8], b: &[u8], hits: &[i64], w: usize, t: &[u8]) {
-    let (n, tn, wide) = (b.len(), t.len(), t.len() > 16);
-    let mut tb = [0u8; 16];
-    if !wide { tb[..tn].copy_from_slice(t) }
-    let (mut i, mut at) = (0, 0);
-    for &h in hits {
-        let s = h as usize;
-        if s - i <= 16 && i + 16 <= n { o[at..at + 16].copy_from_slice(&b[i..i + 16]) } else { copy_run(&mut o[at..at + s - i], &b[i..s]) }
-        at += s - i;
-        if wide { o[at..at + tn].copy_from_slice(t) } else { o[at..at + 16].copy_from_slice(&tb) }
-        at += tn;
-        i = s + w;
-    }
-    copy_run(&mut o[at..at + n - i], &b[i..]);
-}
 
-/// `f(i, symbol i)` down the column with the starts carried, so each is decoded once (`Syms::at` decodes two per symbol).
-#[inline(always)]
-fn each_sym<'a>(s: &Syms<'a>, mut f: impl FnMut(usize, &'a [u8])) {
-    let n = s.count();
-    if n == 0 { return }
-    let mut lo = s.off(0);
-    for i in 0..n {
-        let hi = s.off(i + 1);
-        let len = hi.saturating_sub(lo + 1); // an empty symbol never reads the blob, as `Syms::at`
-        f(i, if len == 0 { &s.blob[..0] } else { &s.blob[lo..lo + len] });
-        lo = hi;
-    }
-}
-/// Whether `pre` stays off symbol `x` in `translate_syms`: `x` is empty, or its mapped bytes already begin with `pre`.
-#[inline(always)]
-fn keeps_prefix(pre: &[u8], tab: &[u8; 256], x: &[u8]) -> bool {
-    x.is_empty() || (pre.len() <= x.len() && x.iter().zip(pre).all(|(&c, &p)| tab[c as usize] == p))
-}
-/// ew.rs `qlean_ew_translate_syms`'s starts: `0`, then the offset just past each symbol's NUL in the answer blob
-/// (`pre` in front of every symbol that does not keep it, its bytes, its NUL), so the last is the blob's byte count.
-pub fn translate_ends<'a>(pre: &'a [u8], tab: &'a [u8; 256], s: Syms<'a>) -> impl ExactSizeIterator<Item = usize> + 'a {
-    let mut tot = 0;
-    (0..s.count() + 1).map(move |i| {
-        if i > 0 { let x = s.at(i - 1); tot += x.len() + if keeps_prefix(pre, tab, x) { 0 } else { pre.len() } + 1 }
-        tot
-    })
-}
-/// Every symbol of `s` mapped through `tab` into `out` (the last of `translate_ends` bytes).
-pub fn translate_fill(pre: &[u8], tab: &[u8; 256], s: &Syms, out: &mut [u8]) {
-    let mut at = 0;
-    each_sym(s, |_, x| {
-        if !keeps_prefix(pre, tab, x) { out[at..at + pre.len()].copy_from_slice(pre); at += pre.len() }
-        for (d, &c) in out[at..at + x.len()].iter_mut().zip(x) { *d = tab[c as usize] }
-        at += x.len();
-        out[at] = 0;
-        at += 1;
-    });
-}
 
 #[cfg(test)]
 mod tests_k8 {
@@ -1366,111 +957,6 @@ pub fn pack_stage(cls: u8, w: u32, x: &[u8], n: usize, lo: usize, hi: usize, o: 
 // ---- K10: the statistics fold, a chain's last stage (ew.rs `ew_stats_run`, `ew_stats_sum`) ----
 /// ew.rs's `ST_*`: the five phases, each one pass over the column.
 pub mod st { pub const SUMS: u8 = 0; pub const CENTRED: u8 = 1; pub const DOTS: u8 = 2; pub const DOTS32: u8 = 3; pub const SERIAL: u8 = 4; }
-/// A lane's number: `f64` for the double phases, `f32` for `DOTS32`'s real lanes.
-trait Fl: Copy + PartialEq + core::ops::Add<Output = Self> { const Z: Self; }
-impl Fl for f64 { const Z: f64 = 0.0; }
-impl Fl for f32 { const Z: f32 = 0.0; }
-/// ew.rs `ew_stats`: the accumulators of one phase. `l` and `lf` are `lanes` wide, row `k` the sum `k`.
-pub struct Stats {
-    pub phase: u8, pub lanes: usize, nt: usize, full: usize, pub cnt: usize, pub bad: usize, pub mx: f64, pub my: f64,
-    tail: [[f64; 8]; 3], l: [[f64; 8]; 3], lf: [[f32; 4]; 3],
-}
-/// ew.rs `ST_FOLD`: one tile into `L` lanes by position, `m` a multiple of `L`. A term of a dropped pair adds a
-/// zero, so an accumulator is never `-0`. Answers the pairs kept and the null right operands among them.
-#[inline(always)]
-fn fold<const L: usize, const W: usize, T: Fl>(a: &mut [[T; W]; 3], x: &[f64], y: &[f64], m: usize,
-                                              uv: impl Fn(f64, f64) -> (T, T), t: impl Fn(T, T) -> [T; 3]) -> (usize, usize) {
-    let mut acc = [0, 1, 2].map(|k| -> [T; L] { a[k][..L].try_into().unwrap() });
-    let (mut kept, mut ykept) = ([0u32; L], [0u32; L]);
-    for (xc, yc) in x[..m].chunks_exact(L).zip(y[..m].chunks_exact(L)) {
-        for j in 0..L {
-            let (u, v) = uv(xc[j], yc[j]);
-            let (ylive, live) = (v == v, v == v && u == u);
-            let t = t(u, v);
-            for k in 0..3 { acc[k][j] = acc[k][j] + if live { t[k] } else { T::Z } }
-            kept[j] += live as u32;
-            ykept[j] += ylive as u32;
-        }
-    }
-    for k in 0..3 { a[k][..L].copy_from_slice(&acc[k]) }
-    (kept.iter().map(|&c| c as usize).sum(), ykept.iter().map(|&c| c as usize).sum())
-}
-impl Stats {
-    pub fn new() -> Stats { Stats { phase: 0, lanes: 1, nt: 0, full: 0, cnt: 0, bad: 0, mx: 0.0, my: 0.0, tail: [[0.0; 8]; 3], l: [[0.0; 8]; 3], lf: [[0.0; 4]; 3] } }
-    /// ew.rs `ew_stats_pass`'s set-up: `phase` over a column of `n`, before the chain runs.
-    pub fn begin(&mut self, phase: u8, n: usize) {
-        self.phase = phase;
-        self.lanes = [2, 2, 8, 4, 1][phase as usize];
-        self.nt = 0;
-        self.cnt = 0;
-        self.bad = 0;
-        self.full = n - n % self.lanes;
-        self.l = [[0.0; 8]; 3];
-        self.lf = [[0.0; 4]; 3];
-    }
-    /// ew.rs `ew_stats_run`: one tile `x`, `y` at element `at` of the column, in order on the calling thread.
-    /// q rounds each product before it adds it, which Rust never contracts into a fused multiply-add.
-    pub fn run(&mut self, x: &[f64], y: &[f64], at: usize) {
-        let n = x.len();
-        let m = if self.phase == st::SERIAL || at >= self.full { 0 } else if at + n <= self.full { n } else { self.full - at };
-        let (mx, my) = (self.mx, self.my);
-        // a null right operand counts in a lane whatever is left of it, and past the lanes under a live one
-        let (mut c, mut bad) = (0, m);
-        // `var x` is `cov[x;x]`: both operands one tile, so every accumulator is the same sum, run once and copied
-        let same = core::ptr::eq(x.as_ptr(), y.as_ptr());
-        let (kept, ykept) = match self.phase {
-            st::SUMS | st::CENTRED if same => {
-                let ph = self.phase;
-                let f = |x: f64| if ph == st::SUMS { (x, x) } else { let u = x - mx; (u, u * u) };
-                let mut a: [f64; 2] = self.l[0][..2].try_into().unwrap();
-                let mut kept = [0u32; 2];
-                for xc in x[..m].chunks_exact(2) {
-                    for j in 0..2 { let (u, t0) = f(xc[j]); a[j] += if u == u { t0 } else { 0.0 }; kept[j] += (u == u) as u32 }
-                }
-                for k in 0..2 { self.l[k][..2].copy_from_slice(&a) }
-                if self.phase == st::CENTRED { self.l[2][..2].copy_from_slice(&a) }
-                let k = (kept[0] + kept[1]) as usize;
-                (k, k)
-            }
-            st::SUMS => fold::<2, 8, f64>(&mut self.l, x, y, m, |u, v| (u, v), |u, v| [u, v, 0.0]),
-            st::CENTRED => fold::<2, 8, f64>(&mut self.l, x, y, m, |u, v| (u - mx, v - my), |u, v| [u * v, u * u, v * v]),
-            st::DOTS => fold::<8, 8, f64>(&mut self.l, x, y, m, |u, v| (u, v), |u, v| [u * v, u, 0.0]),
-            st::DOTS32 => fold::<4, 4, f32>(&mut self.lf, x, y, m, |u, v| (u as f32, v as f32), |u, v| [u * v, u, 0.0]),
-            _ => (0, 0),
-        };
-        c += kept;
-        bad -= ykept;
-        // past the last full group: held back for the fold's end, or, with one lane, the fold itself
-        let (mut a0, mut a1) = (self.l[0][0], self.l[1][0]);
-        for i in m..n {
-            let (mut u, mut v) = (x[i], y[i]);
-            if self.phase == st::DOTS32 { u = u as f32 as f64; v = v as f32 as f64 }
-            if self.phase == st::CENTRED { u -= mx; v -= my }
-            bad += (u == u && v != v) as usize;
-            if u != u || v != v { continue }
-            c += 1;
-            let t = match self.phase {
-                st::SUMS => [u, v, 0.0],
-                st::CENTRED => [u * v, u * u, v * v],
-                st::DOTS32 => [(u as f32 * v as f32) as f64, u, 0.0],
-                _ => [u * v, u, 0.0],
-            };
-            if self.phase == st::SERIAL { a0 += t[0]; a1 += t[1]; continue }
-            for k in 0..3 { self.tail[k][self.nt] = t[k] }
-            self.nt += 1;
-        }
-        if self.phase == st::SERIAL { self.l[0][0] = a0; self.l[1][0] = a1 }
-        self.cnt += c;
-        self.bad += bad;
-    }
-    /// ew.rs `ew_stats_sum`: sum `k` of the phase just run, the lanes in order and then the tail, which is q's order.
-    pub fn sum(&self, k: usize) -> f64 {
-        let mut r = 0.0;
-        for j in 0..self.lanes { r += if self.phase == st::DOTS32 { self.lf[k][j] as f64 } else { self.l[k][j] } }
-        for t in 0..self.nt { r += self.tail[k][t] }
-        r
-    }
-}
 
 #[cfg(test)]
 mod a46b {
@@ -1838,32 +1324,31 @@ mod k9 {
 }
 
 // ---- E: the fused chain's program, its builder and its two folds (ew.rs `ew_chain_build`, `qlean_ew_chain*`, `qlean_stats_chain`) ----
-use crate::c::{chain_in_order, pool, run_chain};
+use crate::c::{pool, run_chain};
 use crate::coc::Meta;
 use crate::alp::Cocf;
-use crate::ffi::{stage_worker, qrs_ew_stats_stage, CCoc, CCocf, CPass, CStage};
-use core::cell::RefCell;
+use crate::ffi::{stage_worker, CCoc, CCocf, CPass, CStage};
 use core::ffi::c_void;
 
 /// c.rs's `QLEAN_SLOTS`: the most stages a chain holds, and the first source code that is a column, a fixed operand or a slot.
 pub const SLOTS: usize = 10;
 pub const COLUMN: u8 = 254;
-const FIXED: u8 = 255;
+pub const FIXED: u8 = 255;
 /// ew.rs `EW_SLOT0`: a source code from here is the answer of the stage that many places along.
-const SLOT0: u8 = 128;
+pub const SLOT0: u8 = 128;
 /// ew.rs `EW_STAGE_BYTES`: one record of the program `Ew.Stage.bytes` writes.
-const STAGE_BYTES: usize = 24;
+pub const STAGE_BYTES: usize = 24;
 
 /// The number of stages of `prog`, none refused: the chain is built in QLean/Kernel/Elementwise.lean and every one holds at most `SLOTS`.
 pub fn stages(prog: &[u8]) -> usize { prog.len() / STAGE_BYTES }
-fn checked(k: usize) -> usize {
+pub fn checked(k: usize) -> usize {
     assert!(k != 0 && k <= SLOTS, "qlean_ew_chain: {k} stages, and the driver holds {SLOTS}. The chain is built in QLean/Kernel/Elementwise.lean and every one of them is shorter than that; a longer one needs QLEAN_SLOTS in rust/src/c.rs raised with it.");
     k
 }
 /// One record of a program: `engine op cls shape`, the two operand codes (a third for ALP's float sections), the stage's null and the
 /// target's null.
-struct Rec { engine: u32, op: u8, cls: u8, shape: u8, code: [u8; 3], nul: i64, nul_out: i64 }
-fn rec(prog: &[u8], i: usize) -> Rec {
+pub struct Rec { engine: u32, op: u8, cls: u8, shape: u8, code: [u8; 3], nul: i64, nul_out: i64 }
+pub fn rec(prog: &[u8], i: usize) -> Rec {
     let r = &prog[i * STAGE_BYTES..(i + 1) * STAGE_BYTES];
     Rec { engine: r[0] as u32, op: r[1], cls: r[2], shape: r[3], code: [r[4], r[5], r[6]],
           nul: i64::from_ne_bytes(r[8..16].try_into().unwrap()), nul_out: i64::from_ne_bytes(r[16..24].try_into().unwrap()) }
@@ -1876,7 +1361,7 @@ pub fn chain_bytes(prog: &[u8], n: usize) -> usize {
 }
 /// A decode or ALP stage's view: metadata `m`, pack `pk`, and for ALP the float sections `a`. Where C's `coc_attach` aborts or a
 /// buffer is misaligned or short, the stage names it.
-fn stage_view(i: usize, alp: bool, m: &[u8], pk: &[u8], a: &[u8], n: usize) -> CCocf {
+pub fn stage_view(i: usize, alp: bool, m: &[u8], pk: &[u8], a: &[u8], n: usize) -> CCocf {
     let me = Meta::new(m, n).unwrap_or_else(|| panic!("qlean_ew_chain: stage {i}'s metadata is misaligned or short"));
     let cocf = alp.then(|| Cocf::meta_view(m, a, n).unwrap_or_else(|| panic!("qlean_ew_chain: stage {i}'s ALP sections are misaligned or short")));
     let c = Coc::attach(cocf.as_ref().map_or(me, |f| f.c.meta), pk).unwrap_or_else(|| {
@@ -1961,82 +1446,86 @@ pub fn enc_stage(st: &mut [CStage], k: usize, cls: u32, enc: *mut c_void, pack: 
     if !pack { *cost += cs }
 }
 
-/// `Kernel.statsChain mode prog inputs n sa sb`: `Kernel.moments` (`mode` 0) or `Kernel.dots` (1, and 2 on `real` lanes) over the two payloads
-/// the source codes `sa`, `sb` name, the fold as the chain's last stage so neither operand is ever a dense column. Writes the answer's 48
-/// bytes: five doubles and the pairs kept as a long.
-pub fn stats_chain<'a>(mode: u8, prog: &[u8], input: &impl Fn(u8) -> &'a [u8], n: usize, sa: u8, sb: u8, out: &mut [u8]) {
-    let k = stages(prog);
-    let mut st = [const { CStage::EMPTY }; SLOTS + 1];
-    let mut views = [const { CCocf::EMPTY }; SLOTS];
-    // two dense float columns need no stage before the fold, and the build refuses none
-    if k != 0 { chain_build(prog, k, input, n, &mut st, &mut views); }
-    // the fold's phase state: the worker reaches it through `p.o` while the passes below set it up and read it, which a `RefCell`'s
-    // `as_ptr` allows without either side invalidating the other
-    let acc = RefCell::new(Stats::new());
-    let mut fold = CStage { f: Some(qrs_ew_stats_stage), p: CPass { o: acc.as_ptr().cast(), ..CPass::EMPTY }, asrc: 0, bsrc: 0, osrc: FIXED,
-                            abits: 64, bbits: 64, obits: 0, bytewise: 0 };
-    for (side, code) in [sa, sb].into_iter().enumerate() {
-        let slot = code >= SLOT0;
-        let at = if slot { (code - SLOT0) as usize } else { code as usize };
-        if if slot { at >= k || st[at].obits != 64 } else { input(code).len() < n * 8 } {
-            panic!("qlean_stats_chain: operand {side}, source code {code} of a {k}-stage chain, is not {n} doubles. `Kernel.statsColumns` brings both operands to `Ew.f64` through `operandSource`, so this means that builder named another class.");
-        }
-        let (bind, src) = if slot { (core::ptr::null(), at as u8) } else { (input(code).as_ptr().cast(), COLUMN) };
-        if side == 1 { fold.p.b = bind; fold.bsrc = src } else { fold.p.a = bind; fold.asrc = src }
-    }
-    st[k] = fold;
-    // one phase over the whole column, on the calling thread and in order: the lanes are positional, so a split across threads would be another sum
-    let pass = |phase: u8| {
-        acc.borrow_mut().begin(phase, n);
-        if n != 0 { chain_in_order(&st[..=k], n) }
-    };
-    let s = || acc.borrow();
-    let mut o = [0f64; 5];
-    let cnt;
-    if mode == 0 {
-        pass(st::SUMS);
-        (o[3], o[4]) = (s().sum(0), s().sum(1));
-        cnt = s().cnt;
-        { let mut a = acc.borrow_mut(); (a.mx, a.my) = (o[3] / cnt as f64, o[4] / cnt as f64) }
-        pass(st::CENTRED);
-        (o[0], o[1], o[2]) = (s().sum(0), s().sum(1), s().sum(2));
-    } else {
-        pass(if mode >= 2 { st::DOTS32 } else { st::DOTS });
-        // a null anywhere and q's sum is one accumulator over the live pairs; under `real` lanes an integral left operand's null (mode 3) is a zero
-        // weight instead, and only a null right operand is that accumulator: any inside the lanes, and past them one under a live left
-        if if mode == 3 { s().bad != 0 } else { s().cnt != n } { pass(st::SERIAL) }
-        (o[0], o[3]) = (s().sum(0), s().sum(1));
-        cnt = s().cnt;
-    }
-    for (d, v) in out[..48].chunks_exact_mut(8).zip(o.iter().map(|v| v.to_ne_bytes()).chain([(cnt as i64).to_ne_bytes()])) { d.copy_from_slice(&v) }
-}
 
-/// `=`, `<>` and `null` at guid: sixteen bytes compared as two words, one bit out per element, the bitmap `bit` writes. `atom` reads `b`'s
-/// one element against every element of `a`.
-pub fn guid_eq(a: &[u8], b: &[u8], atom: bool, ne: bool, n: usize, out: &mut [u8]) {
-    let m = if ne { 0xff } else { 0 };
-    let (a, a_tail) = (&a[..16 * n]).as_chunks::<128>();
-    // eight elements: the xor of both sides is contiguous bytes, and an element is equal when its sixteen xored bytes are all 0
-    let byte = |x: &[u8; 128], y: &[u8; 128]| {
-        let d: [u8; 128] = core::array::from_fn(|k| x[k] ^ y[k]);
-        d.as_chunks::<16>().0.iter().enumerate().fold(0u8, |r, (j, e)| r | ((u128::from_ne_bytes(*e) == 0) as u8) << j) ^ m
-    };
-    let y1: [u8; 128] = core::array::from_fn(|k| if atom && n != 0 { b[k & 15] } else { 0 });
-    if atom { for (o, x) in out.iter_mut().zip(a) { *o = byte(x, &y1) } }
-    else { for ((o, x), y) in out.iter_mut().zip(a).zip(b[..16 * n].as_chunks::<128>().0) { *o = byte(x, y) } }
-    let full = a.len();
-    if !a_tail.is_empty() {
-        let eq = |j: usize| { let y = if atom { &b[..16] } else { &b[16 * (8 * full + j)..][..16] }; a_tail[16 * j..][..16] == *y };
-        out[full] = (0..a_tail.len() / 16).fold(0u8, |r, j| r | ((eq(j) != ne) as u8) << j);
-    }
+/// ew.rs `ew_stats`: the accumulators of one phase. `l` and `lf` are `lanes` wide, row `k` the sum `k`.
+pub struct Stats {
+    pub phase: u8, pub lanes: usize, nt: usize, full: usize, pub cnt: usize, pub bad: usize, pub mx: f64, pub my: f64,
+    tail: [[f64; 8]; 3], l: [[f64; 8]; 3], lf: [[f32; 4]; 3],
 }
-/// `x^y` at guid: `y`'s element unless it is `0Ng`, sixteen zero bytes, and then `x`'s, read at 0 when `atom`.
-pub fn guid_fill(a: &[u8], b: &[u8], atom: bool, n: usize, out: &mut [u8]) {
-    let (ac, bc, oc) = (a.as_chunks::<16>().0, &b.as_chunks::<16>().0[..n], out[..16 * n].as_chunks_mut::<16>().0);
-    if atom {
-        for (o, y) in oc.iter_mut().zip(bc) { *o = if *y != [0; 16] { *y } else { ac[0] } }
-    } else {
-        for ((o, y), x) in oc.iter_mut().zip(bc).zip(&ac[..n]) { *o = if *y != [0; 16] { *y } else { *x } }
+impl Stats {
+    pub fn new() -> Stats { Stats { phase: 0, lanes: 1, nt: 0, full: 0, cnt: 0, bad: 0, mx: 0.0, my: 0.0, tail: [[0.0; 8]; 3], l: [[0.0; 8]; 3], lf: [[0.0; 4]; 3] } }
+    /// ew.rs `ew_stats_pass`'s set-up: `phase` over a column of `n`, before the chain runs.
+    pub fn begin(&mut self, phase: u8, n: usize) {
+        self.phase = phase;
+        self.lanes = [2, 2, 8, 4, 1][phase as usize];
+        self.nt = 0;
+        self.cnt = 0;
+        self.bad = 0;
+        self.full = n - n % self.lanes;
+        self.l = [[0.0; 8]; 3];
+        self.lf = [[0.0; 4]; 3];
+    }
+    /// ew.rs `ew_stats_run`: one tile `x`, `y` at element `at` of the column, in order on the calling thread.
+    /// q rounds each product before it adds it, which Rust never contracts into a fused multiply-add.
+    pub fn run(&mut self, x: &[f64], y: &[f64], at: usize) {
+        let n = x.len();
+        let m = if self.phase == st::SERIAL || at >= self.full { 0 } else if at + n <= self.full { n } else { self.full - at };
+        let (mx, my) = (self.mx, self.my);
+        // a null right operand counts in a lane whatever is left of it, and past the lanes under a live one
+        let (mut c, mut bad) = (0, m);
+        // `var x` is `cov[x;x]`: both operands one tile, so every accumulator is the same sum, run once and copied
+        let same = core::ptr::eq(x.as_ptr(), y.as_ptr());
+        let (kept, ykept) = match self.phase {
+            st::SUMS | st::CENTRED if same => {
+                let ph = self.phase;
+                let f = |x: f64| if ph == st::SUMS { (x, x) } else { let u = x - mx; (u, u * u) };
+                let mut a: [f64; 2] = self.l[0][..2].try_into().unwrap();
+                let mut kept = [0u32; 2];
+                for xc in x[..m].chunks_exact(2) {
+                    for j in 0..2 { let (u, t0) = f(xc[j]); a[j] += if u == u { t0 } else { 0.0 }; kept[j] += (u == u) as u32 }
+                }
+                for k in 0..2 { self.l[k][..2].copy_from_slice(&a) }
+                if self.phase == st::CENTRED { self.l[2][..2].copy_from_slice(&a) }
+                let k = (kept[0] + kept[1]) as usize;
+                (k, k)
+            }
+            st::SUMS => fold::<2, 8, f64>(&mut self.l, x, y, m, |u, v| (u, v), |u, v| [u, v, 0.0]),
+            st::CENTRED => fold::<2, 8, f64>(&mut self.l, x, y, m, |u, v| (u - mx, v - my), |u, v| [u * v, u * u, v * v]),
+            st::DOTS => fold::<8, 8, f64>(&mut self.l, x, y, m, |u, v| (u, v), |u, v| [u * v, u, 0.0]),
+            st::DOTS32 => fold::<4, 4, f32>(&mut self.lf, x, y, m, |u, v| (u as f32, v as f32), |u, v| [u * v, u, 0.0]),
+            _ => (0, 0),
+        };
+        c += kept;
+        bad -= ykept;
+        // past the last full group: held back for the fold's end, or, with one lane, the fold itself
+        let (mut a0, mut a1) = (self.l[0][0], self.l[1][0]);
+        for i in m..n {
+            let (mut u, mut v) = (x[i], y[i]);
+            if self.phase == st::DOTS32 { u = u as f32 as f64; v = v as f32 as f64 }
+            if self.phase == st::CENTRED { u -= mx; v -= my }
+            bad += (u == u && v != v) as usize;
+            if u != u || v != v { continue }
+            c += 1;
+            let t = match self.phase {
+                st::SUMS => [u, v, 0.0],
+                st::CENTRED => [u * v, u * u, v * v],
+                st::DOTS32 => [(u as f32 * v as f32) as f64, u, 0.0],
+                _ => [u * v, u, 0.0],
+            };
+            if self.phase == st::SERIAL { a0 += t[0]; a1 += t[1]; continue }
+            for k in 0..3 { self.tail[k][self.nt] = t[k] }
+            self.nt += 1;
+        }
+        if self.phase == st::SERIAL { self.l[0][0] = a0; self.l[1][0] = a1 }
+        self.cnt += c;
+        self.bad += bad;
+    }
+    /// ew.rs `ew_stats_sum`: sum `k` of the phase just run, the lanes in order and then the tail, which is q's order.
+    pub fn sum(&self, k: usize) -> f64 {
+        let mut r = 0.0;
+        for j in 0..self.lanes { r += if self.phase == st::DOTS32 { self.lf[k][j] as f64 } else { self.l[k][j] } }
+        for t in 0..self.nt { r += self.tail[k][t] }
+        r
     }
 }
 #[cfg(test)]
@@ -2068,3 +1557,27 @@ mod tests_e {
         assert_eq!(o, g(&[9, 2, 9, 4]));
     }
 }
+/// ew.rs `ST_FOLD`: one tile into `L` lanes by position, `m` a multiple of `L`. A term of a dropped pair adds a
+/// zero, so an accumulator is never `-0`. Answers the pairs kept and the null right operands among them.
+#[inline(always)]
+pub fn fold<const L: usize, const W: usize, T: Fl>(a: &mut [[T; W]; 3], x: &[f64], y: &[f64], m: usize,
+                                              uv: impl Fn(f64, f64) -> (T, T), t: impl Fn(T, T) -> [T; 3]) -> (usize, usize) {
+    let mut acc = [0, 1, 2].map(|k| -> [T; L] { a[k][..L].try_into().unwrap() });
+    let (mut kept, mut ykept) = ([0u32; L], [0u32; L]);
+    for (xc, yc) in x[..m].chunks_exact(L).zip(y[..m].chunks_exact(L)) {
+        for j in 0..L {
+            let (u, v) = uv(xc[j], yc[j]);
+            let (ylive, live) = (v == v, v == v && u == u);
+            let t = t(u, v);
+            for k in 0..3 { acc[k][j] = acc[k][j] + if live { t[k] } else { T::Z } }
+            kept[j] += live as u32;
+            ykept[j] += ylive as u32;
+        }
+    }
+    for k in 0..3 { a[k][..L].copy_from_slice(&acc[k]) }
+    (kept.iter().map(|&c| c as usize).sum(), ykept.iter().map(|&c| c as usize).sum())
+}
+/// A lane's number: `f64` for the double phases, `f32` for `DOTS32`'s real lanes.
+pub trait Fl: Copy + PartialEq + core::ops::Add<Output = Self> { const Z: Self; }
+impl Fl for f64 { const Z: f64 = 0.0; }
+impl Fl for f32 { const Z: f32 = 0.0; }

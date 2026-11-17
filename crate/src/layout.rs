@@ -8,7 +8,7 @@ pub struct ExcLayout { pub raw: usize, pub off: usize, pub pos: usize, pub tail:
 
 pub const ALP_MAXE: i32 = 18; // c/rs.h defines it from here; coc.rs has no copy
 
-fn align8(x: usize) -> Option<usize> { Some(x.checked_add(7)? & !7) }
+pub fn align8(x: usize) -> Option<usize> { Some(x.checked_add(7)? & !7) }
 
 /// None = overflow.
 pub fn exc_layout(nblk: usize, nexc: usize, esz: usize, tail: Tail) -> Option<ExcLayout> {
@@ -24,8 +24,8 @@ pub fn exc_layout(nblk: usize, nexc: usize, esz: usize, tail: Tail) -> Option<Ex
     Some(ExcLayout { raw, off, pos, tail: t, size })
 }
 
-fn u32_at(t: &[u8], o: usize) -> u32 { u32::from_ne_bytes(t[o..o + 4].try_into().unwrap()) }
-fn u16_at(t: &[u8], o: usize) -> u16 { u16::from_ne_bytes(t[o..o + 2].try_into().unwrap()) }
+pub fn u32_at(t: &[u8], o: usize) -> u32 { u32::from_ne_bytes(t[o..o + 4].try_into().unwrap()) }
+pub fn u16_at(t: &[u8], o: usize) -> u16 { u16::from_ne_bytes(t[o..o + 2].try_into().unwrap()) }
 
 /// The exception ladder at `t` in part `part`: a FoR patch list fills its tail exactly, an ALP blob
 /// (`Tail::Exps`) holds it with a decimal exponent a block after it.

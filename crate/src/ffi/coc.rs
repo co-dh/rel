@@ -11,7 +11,7 @@ use crate::lean::{B, O, SArr, boxed, ctor, export, nat};
 use crate::{codec, os, pod};
 
 /// What C's `fprintf(stderr, …); exit(1)` did for a call no Lean body makes.
-fn die(args: core::fmt::Arguments) -> ! {
+pub fn die(args: core::fmt::Arguments) -> ! {
     os::eprint(args).expect("qlean: stderr");
     os::exit(1)
 }
@@ -24,10 +24,6 @@ pub fn view<'a>(who: &str, meta: B<'a>, pack: B<'a>, n: usize) -> Coc<'a> {
         ViewErr::Meta => die(format_args!("{who}: {e}\n")),
         ViewErr::Pack { .. } => die(format_args!("qlean: {e}\n")),
     })
-}
-/// coc.rs `coc_meta_view`: the metadata alone, as `view`'s metadata stop.
-pub fn meta<'a>(who: &str, mv: B<'a>, n: usize) -> Meta<'a> {
-    Meta::new(mv.bytes(), n).unwrap_or_else(|| die(format_args!("{who}: {}\n", ViewErr::Meta)))
 }
 /// structural.rs `alp_view`: an ALP column's metadata, blob and pack, `n` clamped to what the blocks hold.
 pub fn alp_view<'a>(mv: B<'a>, pv: B<'a>, av: B<'a>, n: usize) -> Cocf<'a> {
@@ -78,10 +74,6 @@ export! {
             _ => die(format_args!("qlean_coc_over: verb {op} is not one of the six in QLean.Kernel.Coc.Over\n")),
         }
     }
-    /// How many elements are below `v`
-    fn qlean_coc_count_lt(meta: B, pack: B, n: usize, v: u64) -> usize { view("qlean_coc_count_lt", meta, pack, n).count_lt(v as i64) }
-    /// Whether any element is the null `nul`
-    fn qlean_coc_any_null(nul: u64, meta: B, pack: B, n: usize) -> u8 { view("qlean_coc_any_null", meta, pack, n).any_null(nul as i64) as u8 }
     /// `x op v` as a `Column.bits` payload
     fn qlean_coc_mask_cmp(op: u8, v: u64, meta: B, pack: B, n: usize) -> O {
         let v = v as i64;
@@ -122,7 +114,7 @@ export! {
 }
 
 /// The column as `n` elements of `T`, by blocks on the pool
-fn dec<T: pod::Lane + Send>(c: &Coc) -> O {
+pub fn dec<T: pod::Lane + Send>(c: &Coc) -> O {
     let mut out = SArr::new(1, c.meta.n * size_of::<T>());
     codec::decode(pool(), c, pod::cast_mut::<T>(out.bytes_mut()).expect("qlean_coc_decode: the result array is misaligned for its element"));
     out.into()
@@ -133,7 +125,7 @@ fn dec<T: pod::Lane + Send>(c: &Coc) -> O {
 /// coc.rs `mask_alloc` and the kernel that fills it: a `Column.bits` payload of `ceil(n / 8)` bytes inside the `ceil(n / 64)`
 /// words the kernels write (the bits between `n` and the last word's end are the kernel's to set to 0); `f` gets the
 /// words, any contents.
-fn mask_with(n: usize, f: impl FnOnce(&mut [u64])) -> O {
+pub fn mask_with(n: usize, f: impl FnOnce(&mut [u64])) -> O {
     let mut a = SArr::with_capacity(1, n.div_ceil(8), n.div_ceil(64) * 8);
     f(pod::cast_mut::<u64>(a.capacity_mut()).expect("a bitmap array is misaligned for its 64-bit words"));
     a.into()
@@ -141,7 +133,7 @@ fn mask_with(n: usize, f: impl FnOnce(&mut [u64])) -> O {
 
 /// coc.rs `cocf_meta_view` with the pack set (rust/src/coc.rs's `cocf_view`): the ALP column `meta`, `pack`, `alp` hold, its count cut
 /// to what the blocks can hold. A metadata or ALP array with misaligned or missing sections, which C read past, is a stop.
-fn fview<'a>(who: &str, meta: B<'a>, pack: B<'a>, alp: B<'a>, n: usize) -> Cocf<'a> {
+pub fn fview<'a>(who: &str, meta: B<'a>, pack: B<'a>, alp: B<'a>, n: usize) -> Cocf<'a> {
     let mut f = Cocf::meta_view(meta.bytes(), alp.bytes(), n).unwrap_or_else(|| die(format_args!(
         "{who}: the metadata array is not a column's 33 * nblk + 24 bytes, or the alp array is misaligned or shorter than its header says\n")));
     f.c.pack = pack.bytes();
@@ -150,7 +142,7 @@ fn fview<'a>(who: &str, meta: B<'a>, pack: B<'a>, alp: B<'a>, n: usize) -> Cocf<
 
 /// rust/src/coc.rs `coc_val_vv`: `some (meta, pack)` of `a op b` (`b` read from `s` elements back, `fill` off its ends) as the writer
 /// encodes what the dense engine writes, `none` where `Coc::vv_ok` refuses; `s = 0` is `x op y`, and `a = b` the prior form.
-fn val_vv(op: u8, a: &Coc, b: &Coc, s: i64, fill: i64) -> O {
+pub fn val_vv(op: u8, a: &Coc, b: &Coc, s: i64, fill: i64) -> O {
     if op > 2 { die(format_args!("coc_val_vv: verb {op} is not one of the three in QLean.Kernel.Ew\n")) }
     if !a.vv_ok(b, op as i32, s, fill) { return boxed(0) }
     ctor(1, [encode_fill(a.meta.n, 8, &|buf: &mut [i64], i0: usize| cocops::vv_fill(a, b, op as i32, s, fill, i0, buf))], &[])
@@ -161,11 +153,6 @@ export! {
     fn qlean_coc_val_vv(op: u8, ma: B, pa: B, mb: B, pb: B, n: usize) -> O {
         val_vv(op, &view("qlean_coc_val_vv", ma, pa, n), &view("qlean_coc_val_vv", mb, pb, n), 0, 0)
     }
-    /// `Option (ByteArray × ByteArray)`: the new (meta, pack) of `x - (k _ x)` and its two siblings, `fill` standing off the end
-    fn qlean_coc_val_prior(op: u8, k: u64, fill: u64, meta: B, pack: B, n: usize) -> O {
-        let c = view("qlean_coc_val_prior", meta, pack, n);
-        val_vv(op, &c, &c, k as i64, fill as i64)
-    }
     /// `Option (ByteArray × ByteArray)`: the new (meta, pack) of `x * k`, `none` where `Coc::scale_ok` refuses
     fn qlean_coc_scale(k: u64, meta: B, pack: B, n: usize) -> O {
         let k = k as i64;
@@ -173,12 +160,6 @@ export! {
         if !c.scale_ok(k) { return boxed(0) }
         ctor(1, [encode_fill(c.meta.n, 8, &|buf: &mut [i64], i0: usize| cocops::scale_fill(&c, k, i0, buf))], &[])
     }
-    /// `res_unpack` against `res_unpack_scalar`, both readers of `Column.resAt`'s layout
-    fn qlean_coc_unpack_agrees(w: u8, nb: usize) -> u8 { crate::res::res_unpack_agrees(w, nb) as u8 }
-    /// The set bits among the first `n` bits of `bits`
-    fn qlean_coc_popcount(bits: B, n: usize) -> usize { let p = bits.bytes(); crate::bits::popcount(p, n.min(p.len() * 8)) }
-    /// Whether some bit among the first `n` is `set` (`set` clear: is clear)
-    fn qlean_coc_some_bit(set: u8, bits: B, n: usize) -> u8 { crate::bits::some_bit(set != 0, bits.bytes(), n) as u8 }
     /// `(meta, (pack, alp))` of the dense `f64` column `x`
     fn qlean_alp_encode_f64(x: B) -> O { alp_encode(x, 8) }
     /// `(meta, (pack, alp))` of the dense `f32` column `x`
@@ -191,12 +172,6 @@ export! {
     fn qlean_alp_decode_f64(meta: B, pack: B, alp: B, n: usize) -> O { alp_dec(8, fview("qlean_alp_decode_f64", meta, pack, alp, n)) }
     /// The column restored: `n` little-endian `f32`
     fn qlean_alp_decode_f32(meta: B, pack: B, alp: B, n: usize) -> O { alp_dec(4, fview("qlean_alp_decode_f32", meta, pack, alp, n)) }
-    /// q's `float` sum of the column, `avg` choosing the order q's `avg` takes on a column holding a null
-    fn qlean_alp_sum_f64(avg: u8, meta: B, pack: B, alp: B, n: usize) -> f64 {
-        codec::alp_sum_f64(pool(), &fview("qlean_alp_sum_f64", meta, pack, alp, n), avg != 0)
-    }
-    /// q's `real` sum of the column
-    fn qlean_alp_sum_f32(meta: B, pack: B, alp: B, n: usize) -> f64 { codec::alp_sum_f32(&fview("qlean_alp_sum_f32", meta, pack, alp, n)) }
     /// Element `idxv[j]` of the column, `fill` where `idxv[j]` is not below `n`, at the column's own width
     fn qlean_alp_gather(fill: u64, meta: B, pack: B, alp: B, n: usize, idxv: B) -> O {
         let f = fview("qlean_alp_gather", meta, pack, alp, n);
@@ -206,28 +181,23 @@ export! {
         codec::alp_gather(pool(), fill, &f, idx, res.bytes_mut());
         res.into()
     }
-    /// The smallest element, seeded with +inf
-    fn qlean_alp_min(meta: B, pack: B, alp: B, n: usize) -> f64 { fview("qlean_alp_min", meta, pack, alp, n).min() }
-    /// The largest element, seeded with -inf
-    fn qlean_alp_max(meta: B, pack: B, alp: B, n: usize) -> f64 { fview("qlean_alp_max", meta, pack, alp, n).max() }
-    /// The `Column.bits` payload of `(atoms f).map (· < v)`
-    fn qlean_alp_mask_lt(meta: B, pack: B, alp: B, n: usize, v: f64) -> O {
-        let f = fview("qlean_alp_mask_lt", meta, pack, alp, n);
-        mask_with(f.c.meta.n, |out| f.mask_lt(v, out))
-    }
 }
 
 /// `qlean_alp_encode_{f64,f32}`: the three parts of the dense column of `w`-byte elements
-fn alp_encode(x: B, w: usize) -> O {
+pub fn alp_encode(x: B, w: usize) -> O {
     encode_dense(x.bytes(), w, true, usize::MAX).expect("qlean_alp_encode: a dense buffer cannot fail").into_triple()
 }
 /// `qlean_coc_encode_below`'s rule at ALP: the three parts against the dense bytes
-fn alp_encode_below(x: B, w: usize) -> O {
+pub fn alp_encode_below(x: B, w: usize) -> O {
     match encode_dense(x.bytes(), w, true, x.bytes().len() / w * w) { Some(p) => ctor(1, [p.into_triple()], &[]), None => boxed(0) }
 }
 /// The ALP column as `f.c.meta.n` elements of `w` bytes, by blocks on the pool
-fn alp_dec(w: usize, f: Cocf) -> O {
+pub fn alp_dec(w: usize, f: Cocf) -> O {
     let mut out = SArr::new(1, f.c.meta.n * w);
     codec::alp_decode(pool(), &f, out.bytes_mut());
     out.into()
+}
+/// coc.rs `coc_meta_view`: the metadata alone, as `view`'s metadata stop.
+pub fn meta<'a>(who: &str, mv: B<'a>, n: usize) -> Meta<'a> {
+    Meta::new(mv.bytes(), n).unwrap_or_else(|| die(format_args!("{who}: {}\n", ViewErr::Meta)))
 }

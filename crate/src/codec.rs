@@ -5,7 +5,7 @@ use crate::alp::{dec, Cocf};
 use crate::c::{run_map, run_map_at, Runner};
 use crate::coc::{lanes, Coc, Meta};
 use crate::cocops::{cmp2_res, EQ, GE, GT, LE, LT, NE};
-use crate::{enc, reduce};
+use crate::enc;
 use crate::simd::res_vcmp;
 use alloc::vec;
 use crate::pod::{self, Lane};
@@ -25,7 +25,7 @@ pub fn block_start(m: &Meta, b: usize) -> usize { if b < m.mblk { m.off[b] as us
 /// The deep blocks `deep` of a bitmap threaded: `f(lo, hi, o, w0)` once per slice `[lo, hi)` of them, `o` the words
 /// from the slice's first deep block to the next slice's first (`deep` ascends, so no two slices overlap) and `w0`
 /// the word of the whole bitmap `o[0]` is.
-fn over_deep<F: Fn(usize, usize, &mut [u64], usize) + Sync>(run: Runner, lg: u32, out: &mut [u64], deep: &[u32], who: &str, f: &F) {
+pub fn over_deep<F: Fn(usize, usize, &mut [u64], usize) + Sync>(run: Runner, lg: u32, out: &mut [u64], deep: &[u32], who: &str, f: &F) {
     let end = out.len() * 8;
     let at = |k: usize| if k < deep.len() { (deep[k] as usize) << lg >> 3 } else { end };
     run_map_at(run, pod::bytes_mut(out), deep.len(), &at, QLEAN_COST_ARITH, 8 << lg, &|lo, hi, o: &mut [u8]| {
@@ -38,12 +38,12 @@ pub fn cmp2(run: Runner, op: i32, a: &Coc, b: &Coc, deep: &[u32], out: &mut [u64
 }
 
 /// coc.rs `coc_cmp1`: one element of `x op v`, the exceptions a mask pass corrects.
-fn cmp1(op: i32, x: i64, v: i64) -> bool {
+pub fn cmp1(op: i32, x: i64, v: i64) -> bool {
     match op { EQ => x == v, NE => x != v, LT => x < v, LE => x <= v, GT => x > v, _ => x >= v }
 }
 /// coc.rs `coc_blk_cmp`: 1 when every pair passes `x op y` for x anywhere in [ba, ma] and y anywhere in [bb, mb], 0 when
 /// none does, -1 when the residuals decide. An atom on the right is `bb = mb = v`, so one rule serves it and `x op y`.
-fn blk_cmp(op: i32, ba: i64, ma: i64, bb: i64, mb: i64) -> i32 {
+pub fn blk_cmp(op: i32, ba: i64, ma: i64, bb: i64, mb: i64) -> i32 {
     match op {
         LT => if ma < bb { 1 } else if mb <= ba { 0 } else { -1 },
         LE => if ma <= bb { 1 } else if mb < ba { 0 } else { -1 },
@@ -55,7 +55,7 @@ fn blk_cmp(op: i32, ba: i64, ma: i64, bb: i64, mb: i64) -> i32 {
 }
 /// coc.rs:~885 `coc_mask_fill`: the first `nb` bits of `w` set. Only the last block can be partial, and its last word is
 /// written masked so no bit past the column is set.
-fn mask_fill(w: &mut [u64], nb: usize) {
+pub fn mask_fill(w: &mut [u64], nb: usize) {
     let full = nb >> 6;
     w[..full].fill(!0);
     if nb & 63 != 0 { w[full] = !0 >> (64 - (nb & 63)) }
@@ -78,14 +78,14 @@ pub fn cmp_meta(a: &Coc, b: Option<&Coc>, op: i32, v: i64, out: &mut [u64], deep
 }
 
 /// coc.rs `res_expand`: the residuals of width `W` < 8, `8 / W` to a byte, one to a byte of `out`.
-fn expand<const W: usize>(p: &[u8], nb: usize, out: &mut [u8]) {
+pub fn expand<const W: usize>(p: &[u8], nb: usize, out: &mut [u8]) {
     for (o, &b) in out.chunks_mut(8 / W).zip(&p[..(nb * W).div_ceil(8)]) {
         for (t, x) in o.iter_mut().enumerate() { *x = (b >> (t * W)) & ((1u16 << W) - 1) as u8 }
     }
 }
 /// coc.rs `COC_MASK_WORD`: `r - lo <= span` (unsigned, flipped when `inv`) for `nb` `E`-byte residuals, a 64-bit word
 /// built in a register and stored once; the width is a constant so the loop vectorises.
-fn words<const E: usize>(p: &[u8], nb: usize, lo: u64, span: u64, inv: bool, out: &mut [u64]) {
+pub fn words<const E: usize>(p: &[u8], nb: usize, lo: u64, span: u64, inv: bool, out: &mut [u64]) {
     for (o, ch) in out.iter_mut().zip(p[..nb * E].chunks(64 * E)) {
         let mut word = 0u64;
         for (j, r) in ch.chunks_exact(E).enumerate() {
@@ -98,7 +98,7 @@ fn words<const E: usize>(p: &[u8], nb: usize, lo: u64, span: u64, inv: bool, out
 }
 /// coc.rs `res_mask_cmp`: block residuals `p` at width `w` tested `r - lo <= span`, into the zeroed `out`. `scratch` is
 /// `blk * 8` bytes the caller owns, so a kilobyte is not declared inside the loop over blocks.
-fn res_mask_cmp(p: &[u8], nb: usize, w: u8, lo: u64, span: u64, inv: bool, out: &mut [u64], scratch: &mut [u8]) {
+pub fn res_mask_cmp(p: &[u8], nb: usize, w: u8, lo: u64, span: u64, inv: bool, out: &mut [u64], scratch: &mut [u8]) {
     if res_vcmp(p, w, nb, lo, span, inv, out) { return }
     match w {
         // every residual is 0, so every bit is the same
@@ -117,7 +117,7 @@ fn res_mask_cmp(p: &[u8], nb: usize, w: u8, lo: u64, span: u64, inv: bool, out: 
 /// coc.rs `coc_mask_cmp_blk`: block `b`'s first `nb` elements of `x op v` into its zeroed words `w64`, the patches
 /// applied. A block whose range the threshold `v` leaves is a window on the residuals: `r - lo <= hi - lo`, inverted for
 /// `<>`, which is never empty there.
-fn mask_blk(c: &Coc, b: usize, nb: usize, op: i32, v: i64, w64: &mut [u64], scratch: &mut [u8]) {
+pub fn mask_blk(c: &Coc, b: usize, nb: usize, op: i32, v: i64, w64: &mut [u64], scratch: &mut [u8]) {
     let m = &c.meta;
     match blk_cmp(op, m.base[b], m.maxv[b], v, v) {
         1 => mask_fill(w64, nb),
@@ -147,7 +147,7 @@ fn mask_blk(c: &Coc, b: usize, nb: usize, op: i32, v: i64, w64: &mut [u64], scra
     }
 }
 /// coc.rs `coc_mask_cmp_res`: the blocks `blocks` of `x op t(b)` into `out`, whose `out[0]` is word `w0` of the bitmap.
-fn mask_res<T: Fn(usize) -> i64>(c: &Coc, op: i32, t: T, blocks: impl Iterator<Item = usize>, out: &mut [u64], w0: usize) {
+pub fn mask_res<T: Fn(usize) -> i64>(c: &Coc, op: i32, t: T, blocks: impl Iterator<Item = usize>, out: &mut [u64], w0: usize) {
     let mut scratch = pod::Scr::<u64>::new(c.meta.blk());
     for b in blocks {
         let (at, nb) = (b << c.meta.lg, (c.meta.n - (b << c.meta.lg)).min(c.meta.blk()));
@@ -165,8 +165,6 @@ pub fn mask_cmp(run: Runner, op: u8, v: i64, c: &Coc, out: &mut [u64]) {
         mask_res(c, op, |_| v, deep[lo..hi].iter().map(|&k| k as usize), o, w0)
     })
 }
-/// coc.rs `cocf_mask_lt`'s block loop: every block of `x op ts[b]` into the zeroed `out`, on the calling thread.
-pub fn mask_blks(c: &Coc, op: i32, ts: &[i64], out: &mut [u64]) { mask_res(c, op, |b| ts[b], 0..c.meta.n.div_ceil(c.meta.blk()), out, 0) }
 /// coc.rs `shift_fill`: the encoder's source for `qlean_coc_shift` when the metadata cannot absorb `k`:
 /// elements `i0 .. i0 + reduce::with_buf(f.c.meta.blk(), |buf| reduce::f32_sum(&mut AlpBlocks(*f), f.c.meta.n, f.c.meta.blk(), buf, None)).len()` of `x + k` (`neg`: `k - x`), nulls `fill`.
 pub fn shift_fill(c: &Coc, k: i64, neg: bool, fill: i64, buf: &mut [i64], i0: usize) {
@@ -176,7 +174,7 @@ pub fn shift_fill(c: &Coc, k: i64, neg: bool, fill: i64, buf: &mut [i64], i0: us
 
 // ---- A18: coc.rs ----
 /// Blocks `b0 .. b1` into `o`, block `b` at `o[(b - b0) * blk * esz ..]` (`o` may end inside the last block).
-fn load_blocks(f: &Cocf, b0: usize, b1: usize, o: &mut [u8]) {
+pub fn load_blocks(f: &Cocf, b0: usize, b1: usize, o: &mut [u8]) {
     let (n, esz, blk) = (f.c.meta.n, if f.f32 { 4 } else { 8 }, f.c.meta.blk());
     for b in b0..b1 {
         let nb = (n - b * blk).min(blk);
@@ -187,12 +185,6 @@ fn load_blocks(f: &Cocf, b0: usize, b1: usize, o: &mut [u8]) {
 pub fn alp_decode(run: Runner, f: &Cocf, out: &mut [u8]) {
     let unit = f.c.meta.blk() * if f.f32 { 4 } else { 8 };
     run_map(run, out, f.c.meta.nblk, unit, QLEAN_COST_ARITH, unit, &|lo, hi, o: &mut [u8]| load_blocks(f, lo, hi, o));
-}
-/// coc.rs `alp_chunk_run`: blocks `b0 .. b1` of an `f64` column into `buf` (`(b1 - b0) * blk` doubles), the
-/// chunk `qlean_alp_sum_f64` hands its serial lane chain. The chain itself is reduce.rs's, which `at` feeds.
-pub fn alp_chunk(run: Runner, f: &Cocf, b0: usize, b1: usize, buf: &mut [u8]) {
-    let unit = f.c.meta.blk() * 8;
-    run_map(run, buf, b1 - b0, unit, QLEAN_COST_ARITH, unit, &|lo, hi, o: &mut [u8]| load_blocks(f, b0 + lo, b0 + hi, o));
 }
 /// coc.rs `alp_gather_run` and its entry: `f[idx[i]]` into `out`, `fill`'s bits where `idx[i]` is out of range.
 pub fn alp_gather(run: Runner, fill: u64, f: &Cocf, idx: &[i64], out: &mut [u8]) {
@@ -225,6 +217,17 @@ pub fn alp_gather(run: Runner, fill: u64, f: &Cocf, idx: &[i64], out: &mut [u8])
     });
 }
 
+
+/// `cmp2` for two columns of different block sizes: each is restored whole, then compared as one run, because no block
+/// of `a` is a block of `b`. Rare (the writer picks one size), so it is serial.
+pub fn cmp2_dense(op: i32, a: &Coc, b: &Coc, out: &mut [u64]) {
+    let n = a.meta.n;
+    let dense = |c: &Coc| { let mut v = alloc::vec![0i64; n]; for k in 0..n.div_ceil(c.meta.blk()) { c.decode_blk(k, (n - (k << c.meta.lg)).min(c.meta.blk()), &mut v[k << c.meta.lg..]) } v };
+    crate::cocops::res_cmp2(&dense(a), &dense(b), op, out);
+}
+
+/// coc.rs `cocf_mask_lt`'s block loop: every block of `x op ts[b]` into the zeroed `out`, on the calling thread.
+pub fn mask_blks(c: &Coc, op: i32, ts: &[i64], out: &mut [u64]) { mask_res(c, op, |b| ts[b], 0..c.meta.n.div_ceil(c.meta.blk()), out, 0) }
 #[cfg(test)]
 mod tests {
     use crate::BLK;
@@ -285,51 +288,6 @@ mod tests {
         assert_eq!(buf, [i64::MIN, -2]);
     }
 }
-
-// ---- B10: the sums of an ALP column, coc.rs's `alp_f64_blk` / `alp_f32_blk` over reduce.rs's lane chains ----
-/// The chunk `alp_sum_f64` decodes at a time: 2^20 elements (1024 blocks at the default `lg`), 8MB, the least the pool
-/// (`pool::SPLIT`) splits.
-const ALP_SUM_ELEMS: usize = 1 << 20;
-/// An ALP `f64` column read as `reduce::Blocks`: a chunk is decoded on every thread into `buf`, the serial chain reads it.
-struct AlpChunks<'a> { run: Runner, f: Cocf<'a>, buf: &'a mut [f64], b0: usize, b1: usize, chunk: usize }
-impl reduce::Blocks<f64> for AlpChunks<'_> {
-    fn at<'b>(&'b mut self, b: usize, nb: usize, _: &'b mut [f64]) -> &'b [f64] {
-        if b < self.b0 || b >= self.b1 {
-            self.b0 = b / self.chunk * self.chunk;
-            self.b1 = (self.b0 + self.chunk).min(self.f.c.meta.nblk);
-            alp_chunk(self.run, &self.f, self.b0, self.b1, pod::bytes_mut(&mut self.buf[..(self.b1 - self.b0) << self.f.c.meta.lg]));
-        }
-        &self.buf[(b - self.b0) << self.f.c.meta.lg..][..nb]
-    }
-}
-/// coc.rs `qlean_alp_sum_f64`: `alpSumF64 avg`, reduce.rs's eight-lane `f64_sum` fed a chunk of decoded blocks at a time.
-pub fn alp_sum_f64(run: Runner, f: &Cocf, avg: bool) -> f64 {
-    let (blk, chunk) = (f.c.meta.blk(), ALP_SUM_ELEMS >> f.c.meta.lg);
-    pod::with_kept(chunk * blk * 8, |bytes| {
-        let buf = pod::cast_mut::<f64>(bytes).expect("alp_sum_f64: the chunk buffer is misaligned for doubles");
-        reduce::f64_sum(&mut AlpChunks { run, f: *f, buf, b0: 1, b1: 0, chunk }, f.c.meta.n, blk, &mut [], None, avg)
-    })
-}
-/// An ALP `f32` column read as `reduce::Blocks`: each block is decoded into the chain's own buffer.
-struct AlpBlocks<'a>(Cocf<'a>);
-impl reduce::Blocks<f32> for AlpBlocks<'_> {
-    fn at<'b>(&'b mut self, b: usize, nb: usize, buf: &'b mut [f32]) -> &'b [f32] {
-        self.0.load_blk(b, nb, pod::bytes_mut(&mut buf[..nb]));
-        &buf[..nb]
-    }
-}
-/// coc.rs `qlean_alp_sum_f32`: `alpSumF32`, reduce.rs's sixteen-lane `f32_sum` fed a decoded block at a time.
-pub fn alp_sum_f32(f: &Cocf) -> f64 {
-    reduce::with_buf(f.c.meta.blk(), |buf| reduce::f32_sum(&mut AlpBlocks(*f), f.c.meta.n, f.c.meta.blk(), buf, None))
-}
-/// `cmp2` for two columns of different block sizes: each is restored whole, then compared as one run, because no block
-/// of `a` is a block of `b`. Rare (the writer picks one size), so it is serial.
-pub fn cmp2_dense(op: i32, a: &Coc, b: &Coc, out: &mut [u64]) {
-    let n = a.meta.n;
-    let dense = |c: &Coc| { let mut v = alloc::vec![0i64; n]; for k in 0..n.div_ceil(c.meta.blk()) { c.decode_blk(k, (n - (k << c.meta.lg)).min(c.meta.blk()), &mut v[k << c.meta.lg..]) } v };
-    crate::cocops::res_cmp2(&dense(a), &dense(b), op, out);
-}
-
 /// Columns at the smallest and the largest block size, built by hand (the writer only makes `DEFAULT_LG`): view, decode,
 /// sum/min/max, gather, the moves of structural.rs, and two columns of different block sizes.
 #[cfg(test)]

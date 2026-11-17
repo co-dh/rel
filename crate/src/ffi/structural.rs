@@ -6,14 +6,13 @@ use crate::alp::Cocf;
 use crate::coc::Coc;
 use crate::exports::coc::{alp_view, view};
 use crate::exports::reduce::elems;
-use crate::ffi::{Producer, SdPart, amend, concat_own, encode_alp, encode_fill, encode_scatter, sarray_room, sd_concat, sd_part, syms_of, take_first, take_ids0};
+use crate::ffi::{Producer, SdPart, concat_own, encode_alp, encode_fill, sarray_room, sd_concat, sd_part, syms_of, take_first, take_ids0};
 use crate::ids::ids_bytes;
-use crate::lean::{B, O, SArr, box_, box_usize_o, boxed, ctor, export};
+use crate::lean::{B, O, SArr, box_usize_o, ctor, export};
 use crate::{c, lean, pod, structural};
-use crate::structural::{STR_BLK, rows_at};
 use alloc::vec::Vec;
 
-fn die(args: core::fmt::Arguments) -> ! {
+pub fn die(args: core::fmt::Arguments) -> ! {
     crate::os::eprint(args).expect("qlean: stderr");
     crate::os::exit(1)
 }
@@ -31,12 +30,9 @@ pub fn count_at(counts: &[B], i: usize) -> usize {
     o.unbox()
 }
 
-/// `reverse` of a column as the writer's producer: structural.rs `rev_fill`.
-struct Rev<'a, 'b>(&'a Coc<'b>);
-impl Producer for Rev<'_, '_> { fn fill(&self, buf: &mut [i64], i0: usize) { structural::rev_fill(self.0, buf, i0) } }
 /// `,` of the parts `parts` starting at `start[j]` (`start` holds the part count + 1 entries) of element width `w`: structural.rs
 /// `cat_fill` and `cat_take`.
-struct Cat<'a, 'b> { parts: &'a [Coc<'b>], start: &'a [usize], w: usize }
+pub struct Cat<'a, 'b> { parts: &'a [Coc<'b>], start: &'a [usize], w: usize }
 impl Producer for Cat<'_, '_> {
     fn fill(&self, buf: &mut [i64], i0: usize) {
         structural::cat_fill(&|i| structural::plain(&self.parts[i]), self.start, self.w, false, buf, i0)
@@ -47,17 +43,14 @@ impl Producer for Cat<'_, '_> {
     }
 }
 
-/// The cycling slice of a column: structural.rs `cycle_fill`; `off` is below the count.
-struct Cycle<'a, 'b> { c: &'a Coc<'b>, off: usize }
-impl Producer for Cycle<'_, '_> { fn fill(&self, buf: &mut [i64], i0: usize) { structural::cycle_fill(self.c, self.off, 0, buf, i0) } }
 /// A column shifted by `k`, `fill` entering: structural.rs `shift_fill`.
-struct Shift<'a, 'b> { c: &'a Coc<'b>, k: i64, fill: i64 }
+pub struct Shift<'a, 'b> { c: &'a Coc<'b>, k: i64, fill: i64 }
 impl Producer for Shift<'_, '_> { fn fill(&self, buf: &mut [i64], i0: usize) { structural::shift_fill(self.c, self.k, self.fill, buf, i0) } }
 
 /// The hint callbacks all answer the exponent and the patch limit the walk leaves in `lim`.
-fn hinted(h: impl FnOnce(&mut u32) -> i32) -> Option<(i32, u32)> { let mut lim = 0; let e = h(&mut lim); Some((e, lim)) }
+pub fn hinted(h: impl FnOnce(&mut u32) -> i32) -> Option<(i32, u32)> { let mut lim = 0; let e = h(&mut lim); Some((e, lim)) }
 /// `,` of ALP parts: structural.rs `cat_fill_alp`, `cat_take`, `cat_hint`, `cat_ints`.
-struct CatAlp<'a, 'b> { parts: &'a [Cocf<'b>], start: &'a [usize], w: usize }
+pub struct CatAlp<'a, 'b> { parts: &'a [Cocf<'b>], start: &'a [usize], w: usize }
 impl Producer for CatAlp<'_, '_> {
     fn fill(&self, buf: &mut [i64], i0: usize) { structural::cat_fill_alp(&|i| self.parts[i], self.start, self.w, buf, i0) }
     fn take(&self, b: usize) -> Option<(Cocf<'_>, usize)> {
@@ -67,38 +60,9 @@ impl Producer for CatAlp<'_, '_> {
     fn hint(&self, b: usize) -> Option<(i32, u32)> { hinted(|l| structural::cat_hint(&|i| self.parts[i], self.start, b, l)) }
     fn ints(&self, b: usize, out: Option<&mut structural::Ints>) -> i32 { structural::cat_ints(&|i| self.parts[i], self.start, b, out) }
 }
-/// `reverse` of an ALP column: structural.rs `rev_fill_alp`, `rev_hint`, `rev_ints`.
-struct RevAlp<'a, 'b>(&'a Cocf<'b>);
-impl Producer for RevAlp<'_, '_> {
-    fn fill(&self, buf: &mut [i64], i0: usize) { structural::rev_fill_alp(self.0, buf, i0) }
-    fn hint(&self, b: usize) -> Option<(i32, u32)> { hinted(|l| structural::rev_hint(self.0, b, l)) }
-    fn ints(&self, b: usize, out: Option<&mut structural::Ints>) -> i32 { structural::rev_ints(self.0, b, out) }
-}
-/// The cycling slice of an ALP column, `m` elements from `off` (below the count): structural.rs `cycle_fill_alp` and its hints.
-struct CycleAlp<'a, 'b> { f: &'a Cocf<'b>, off: usize, m: usize }
-impl Producer for CycleAlp<'_, '_> {
-    fn fill(&self, buf: &mut [i64], i0: usize) { structural::cycle_fill_alp(self.f, self.off, self.m, buf, i0) }
-    fn hint(&self, b: usize) -> Option<(i32, u32)> { hinted(|l| structural::cycle_hint(self.f, self.off, self.m, b, l)) }
-    fn ints(&self, b: usize, out: Option<&mut structural::Ints>) -> i32 { structural::cycle_ints(self.f, self.off, self.m, b, out) }
-}
-/// An ALP column shifted by `k`, `fill` entering: structural.rs `shift_fill_alp` and its hints.
-struct ShiftAlp<'a, 'b> { f: &'a Cocf<'b>, k: i64, fill: i64 }
-impl Producer for ShiftAlp<'_, '_> {
-    fn fill(&self, buf: &mut [i64], i0: usize) { structural::shift_fill_alp(self.f, self.k, self.fill, buf, i0) }
-    fn hint(&self, b: usize) -> Option<(i32, u32)> { hinted(|l| structural::shift_hint(self.f, self.k, b, l)) }
-    fn ints(&self, b: usize, out: Option<&mut structural::Ints>) -> i32 { structural::shift_ints_at(self.f, self.k, &self.fill, b, out) }
-}
 
-/// structural.rs `reverse_foR_move`: the blocks in reverse order, each keeping its base, maximum and width, its residuals
-/// reversed inside it.
-fn reverse_moved(col: &Coc) -> O {
-    let mut mo = SArr::new(1, 33 * col.meta.nblk + 24);
-    let mut po = SArr::new(1, structural::reverse_meta(col, mo.bytes_mut()));
-    structural::reverse_enc(c::pool(), col, po.bytes_mut());
-    pair(mo.into(), po.into())
-}
 /// structural.rs `concat_foR_move`: the parts' four metadata sections in turn and their packs end to end, `n` elements.
-fn concat_moved(ms: &[&[u8]], ps: &[&[u8]], n: usize, w: usize) -> O {
+pub fn concat_moved(ms: &[&[u8]], ps: &[&[u8]], n: usize, w: usize) -> O {
     let mut mo = SArr::new(1, 33 * ms.iter().map(|m| m.len() / 33).sum::<usize>() + 24);
     let mut po = SArr::new(1, ps.iter().map(|p| p.len()).sum());
     structural::concat_move(crate::coc::Meta::new(ms[0], 0).map_or(crate::DEFAULT_LG, |m| m.lg), ms, ps, n, w, mo.bytes_mut(), po.bytes_mut());
@@ -106,7 +70,7 @@ fn concat_moved(ms: &[&[u8]], ps: &[&[u8]], n: usize, w: usize) -> O {
 }
 /// structural.rs `concat_foR`: the answer, or `Err` of the append `qlean_structural_concat_foR` makes in the first part's own
 /// objects, with their sizes. Nothing here changes an argument, so every view lives only inside it.
-fn concat(w: usize, nsv: B, metasv: &O, packsv: &O) -> Result<O, (structural::Grow, usize, usize)> {
+pub fn concat(w: usize, nsv: B, metasv: &O, packsv: &O) -> Result<O, (structural::Grow, usize, usize)> {
     let (ms, ps, nb) = (metasv.borrow().array(), packsv.borrow().array(), nsv.bytes());
     // `zip` in the specification truncates to the shortest array, so the loop takes the same minimum
     let k = ms.len().min(ps.len()).min(nb.len() / 8);
@@ -122,19 +86,6 @@ fn concat(w: usize, nsv: B, metasv: &O, packsv: &O) -> Result<O, (structural::Gr
 }
 
 export! {
-    /// Spec: the aligned half of `reverseFoR metadata pack n` is the metadata with the blocks in reverse order, each keeping
-    /// its base, maximum and width, and the pack with the blocks in reverse order and each block's residuals reversed inside
-    /// it; a column that is not aligned is re-encoded through the writer. `w` is the element's own width in bytes, which
-    /// decides the null a block's sums skip and the size of a patched element.
-    fn qlean_structural_reverse_foR(w: usize, mv: B, pv: B, n: usize) -> O {
-        let col = view("qlean structural", mv, pv, n);
-        // a patch list's positions are the block's own, so a patched column is re-encoded, not moved, and so is one with a
-        // block past its count, which would come first
-        if n % col.meta.blk() == 0 && col.std(n) && col.pack.len() == col.meta.res_end() && structural::trailer_ok(&col, col.meta.n, w, false) {
-            return reverse_moved(&col);
-        }
-        encode_fill(col.meta.n, w, &Rev(&col))
-    }
 
     /// Spec: `concatFoR ns metas packs`: the four metadata sections of each part in turn, `off` recomputed from the
     /// concatenated widths, and the packs concatenated where every part but the last fills its blocks; the first part's own
@@ -185,14 +136,6 @@ export! {
         encode_alp(at, w, &CatAlp { parts: &parts, start: &start, w })
     }
 
-    /// Spec: `cycleFoR metadata pack n off m` is the round trip `Coc.encode 8 (cycleBytes (· * 8) n off m (Coc.decode 8
-    /// metadata pack n))` -- `m` elements from `off`, cycling, with neither the source nor the answer ever dense. `off < n`
-    /// and `0 < n`: `sliceColumn` reduces the one and substitutes a one-element null source for an empty column.
-    fn qlean_structural_cycle_foR(w: usize, mv: B, pv: B, n: usize, off: usize, m: usize) -> O {
-        let col = view("qlean structural", mv, pv, n);
-        let nn = col.meta.n;
-        encode_fill(if nn != 0 { m } else { 0 }, w, &Cycle { c: &col, off: if nn != 0 { off % nn } else { 0 } })
-    }
 
     /// Spec: `shiftFoR metadata pack n k fill` is the round trip `Coc.encode 8 (shiftBytes 8 fill k (Coc.decode 8 metadata
     /// pack n))` -- the answer's element `j` is the source's `j - k`, and `fill` where that is off either end. No
@@ -202,51 +145,27 @@ export! {
         encode_fill(col.meta.n, w, &Shift { c: &col, k: k as i64, fill: fill as i64 })
     }
 
-    /// Spec: `reverseALP`, `cycleALP` and `shiftALP`, the round trips through ALP's decode and encoder. The FoR moves at ALP:
-    /// each answer block is restored from the at most two source blocks it is drawn from and handed to ALP's block steps,
-    /// with those blocks' largest exponent as the hint, so a reversed block keeps its exponent and skips the search.
-    fn qlean_structural_reverse_alp(mv: B, pv: B, av: B, n: usize) -> O {
-        let f = alp_view(mv, pv, av, n);
-        encode_alp(f.c.meta.n, if f.f32 { 4 } else { 8 }, &RevAlp(&f))
-    }
 
-    fn qlean_structural_cycle_alp(mv: B, pv: B, av: B, n: usize, off: usize, m: usize) -> O {
-        let f = alp_view(mv, pv, av, n);
-        let nn = f.c.meta.n;
-        let m = if nn != 0 { m } else { 0 };
-        encode_alp(m, if f.f32 { 4 } else { 8 }, &CycleAlp { f: &f, off: if nn != 0 { off % nn } else { 0 }, m })
-    }
 
-    fn qlean_structural_shift_alp(mv: B, pv: B, av: B, n: usize, k: u64, fill: u64) -> O {
-        let f = alp_view(mv, pv, av, n);
-        encode_alp(f.c.meta.n, if f.f32 { 4 } else { 8 }, &ShiftAlp { f: &f, k: k as i64, fill: fill as i64 })
-    }
 }
 
 /// A fresh payload of `n` bytes, zeroed: structural.rs `zeroed_bits` and `ids_alloc`, whose unwritten tail bits must be 0
 /// for two equal columns to hold the same bytes.
-fn zeroed(n: usize) -> SArr {
+pub fn zeroed(n: usize) -> SArr {
     let mut a = SArr::new(1, n);
     a.bytes_mut().fill(0);
     a
 }
 /// The fields `ids` holds at `w` bits, `n` clamped to them: structural.rs `ids_avail`, where width 0 holds any count.
-fn ids_n(n: usize, ids: &[u8], w: usize) -> usize { n.min(if w != 0 { ids.len() * 8 / w } else { usize::MAX }) }
+pub fn ids_n(n: usize, ids: &[u8], w: usize) -> usize { n.min(if w != 0 { ids.len() * 8 / w } else { usize::MAX }) }
 /// A fresh `ByteArray` of the `n` elements of `w` bytes `f` writes, as structural.rs's `lean_alloc_sarray(1, n * w, n * w)`.
-fn fresh(n: usize, f: impl FnOnce(&mut [u8])) -> O {
+pub fn fresh(n: usize, f: impl FnOnce(&mut [u8])) -> O {
     let mut a = SArr::new(1, n);
     f(a.bytes_mut());
     a.into()
 }
 
 export! {
-    /// Spec: `reverseIds n w ids` is element `n - 1 - j` at each `j`, the fields being `w` bits.
-    fn qlean_structural_reverse_ids(n: usize, w: usize, idsv: B) -> O {
-        let (ids, n) = (idsv.bytes(), ids_n(n, idsv.bytes(), w));
-        let mut a = zeroed(crate::ids::ids_bytes(n, w as u32));
-        structural::reverse_ids(n, w as u32, ids, a.bytes_mut());
-        a.into()
-    }
 
     /// Spec: `cycleIds n off m w ids` is `m` fields from `off`, cycling. Not `cycleBytes`' extract and concatenate: at a
     /// sub-byte width a slice can start inside a byte, so the fields move one at a time.
@@ -256,28 +175,8 @@ export! {
         a.into()
     }
 
-    /// Spec: `reverse w b` is its `n = size / w` elements in reverse order. `n * w` and not the payload size: a payload that is
-    /// not a whole number of elements would otherwise leave its trailing bytes uninitialised.
-    fn qlean_structural_reverse(w: usize, bv: B) -> O {
-        let n = bv.bytes().len() / w;
-        fresh(n * w, |o| structural::reverse(c::pool(), w, &bv.bytes()[..n * w], n, o))
-    }
 
-    /// Spec: `reverseSegs w b offs`, each slice of `b` between consecutive byte offsets reversed at element width `w` and
-    /// every byte outside them kept; `none` where an offset is boxed, not a multiple of `w`, past `b` or below the one before it.
-    fn qlean_structural_reverse_segs(w: usize, bv: B, offs: B) -> O {
-        let (src, offs) = (bv.bytes(), offs.array());
-        let Some(offs) = offs.iter().map(|o| o.is_scalar().then(|| o.unbox())).collect::<Option<Vec<usize>>>() else { return boxed(0) };
-        if !structural::segs_ok(w, src.len(), &offs) { return boxed(0) }
-        ctor(1, [fresh(src.len(), |o| { o.copy_from_slice(src); structural::reverse_segs(w, &offs, o) })], &[])
-    }
 
-    /// Spec: `reverseBits n b` is bit `j` set exactly when `Column.bitAt b (n - 1 - j)`.
-    fn qlean_structural_reverse_bits(n: usize, bv: B) -> O {
-        let mut a = zeroed(n.div_ceil(8));
-        structural::reverse_bits(n, bv.bytes(), a.bytes_mut());
-        a.into()
-    }
 
     /// Spec: `shiftBytes w fill k b` is element `j - k` of `b` at each `j`, and `fill` where `j - k` is outside `[0, n)`. `k`
     /// is signed on the way in because `xprev` takes it from q and both signs are ordinary there.
@@ -286,25 +185,8 @@ export! {
         fresh(n * w, |o| structural::shift(c::pool(), w, fill, k as i64, &bv.bytes()[..n * w], n, o))
     }
 
-    /// Spec: `shiftBits n fill k b` is bit `j` set to `Column.bitAt b (j - k)` when `j - k` is inside `[0, n)` and to `fill`'s low
-    /// bit otherwise. The fill is not `boolean`'s null: `&`'s prior seeds with `1b` and q's `(&':)1011b` is `1001b`.
-    fn qlean_structural_shift_bits(n: usize, fill: u64, k: u64, bv: B) -> O {
-        let mut a = zeroed(n.div_ceil(8));
-        structural::shift_bits(n, fill, k as i64, bv.bytes(), a.bytes_mut());
-        a.into()
-    }
 
-    /// Spec: `trimBlanks left right b` is the first byte that is not the blank and one past the last, with `max lo hi` on the
-    /// right so an all-blank payload answers an empty slice rather than a negative one.
-    fn qlean_structural_trim_bounds(left: u8, right: u8, bv: B) -> O {
-        let (lo, hi) = structural::trim_bounds(left != 0, right != 0, bv.bytes());
-        pair(box_usize_o(lo), box_usize_o(hi))
-    }
 
-    /// Spec: `translateBytes tab b` is `tab[b[i]]` at each `i`, where `tab` is 256 bytes.
-    fn qlean_structural_translate(tabv: B, bv: B) -> O {
-        fresh(bv.bytes().len(), |o| structural::translate(c::pool(), tabv.bytes(), bv.bytes(), o))
-    }
 
     /// Spec: `cycleBits n off m b` is bit `j` of `m` set exactly when `Column.bitAt b ((off + j) % n)`. `sliceColumn` reduces
     /// `off` into `[0, n)` and substitutes a one-element null source for an empty one, so `n` of zero arrives only with `m` of zero.
@@ -363,10 +245,8 @@ export! {
     }
 }
 
-/// The `Int64`s of an answer payload, written in place.
-fn longs_mut(a: &mut SArr) -> &mut [i64] { pod::cast_mut(a.bytes_mut()).expect("qlean structural: a ByteArray's data is 8-aligned") }
 /// The symbols a dictionary's starts describe: `n + 1` starts are `n` symbols and an empty table is none (sym.rs `sym_count`).
-fn sym_count(offs: B) -> usize { offs.array().len().saturating_sub(1) }
+pub fn sym_count(offs: B) -> usize { offs.array().len().saturating_sub(1) }
 
 export! {
     /// Spec: `allBelow n idx` -- every index, unsigned, below `n`.
@@ -404,32 +284,8 @@ export! {
         a.into()
     }
 
-    /// Spec: `splitBytes d b` is `(blob, offs)` for the pieces `b` falls into around the non-overlapping occurrences of `d`,
-    /// left to right -- the separator dropped, no NUL added, and `k` occurrences giving `k + 1` pieces. An empty `d` occurs
-    /// nowhere and answers the whole payload as one piece.
-    fn qlean_structural_split(dv: B, bv: B) -> O {
-        let (d, b) = (dv.bytes(), bv.bytes());
-        let cuts = structural::split_cuts(d, b);
-        let mut nb = SArr::new(1, b.len() - cuts * d.len());
-        let no = lean::arr_words(cuts + 2, |offs| structural::split(d, b, nb.bytes_mut(), offs));
-        pair(nb.into(), no)
-    }
 
-    /// Spec: `longBytes rows` is those row numbers as little-endian `Int64`s: the one place a row list becomes a payload.
-    fn qlean_structural_longs_of(rowsv: B) -> O {
-        let rows = rowsv.array();
-        let mut a = SArr::new(1, rows.len() * 8);
-        for (i, o) in longs_mut(&mut a).iter_mut().enumerate() { *o = count_at(rows, i) as i64 }
-        a.into()
-    }
 
-    /// Spec: `spreadBytes ws` is index `i` repeated `ws[i]` times, as little-endian `Int64`s.
-    fn qlean_structural_spread(wv: B) -> O {
-        let ws = elems::<u64>(wv);
-        let mut a = SArr::new(1, ws.iter().fold(0usize, |t, &c| t.wrapping_add(c as usize)) * 8);
-        structural::spread(ws, longs_mut(&mut a));
-        a.into()
-    }
 
     /// Spec: `expandBytes w fill src ws` is `gatherBytes w fill src (spreadBytes ws)` -- element `i` of `src` repeated `ws[i]`
     /// times (a negative count is a run of none), and `fill` for a run past the end of `src`; the index is never built.
@@ -438,25 +294,7 @@ export! {
         fresh(ws.iter().map(|&x| x.max(0) as usize).sum::<usize>() * w, |o| structural::expand(c::pool(), w, fill, srcv.bytes(), ws, o))
     }
 
-    /// Spec: `gaussJordan a aug` is the augmented half of `[a | aug]` once `a` has been reduced to the identity, `n` rows of
-    /// `w` doubles laid out row by row, or that many q float nulls where `a` is singular; `aug` empty is the identity of order
-    /// `n`. Swapping only on an exact-zero pivot is the Lean body's rule, and what finds `inv(1 2 3f;4 5 6f;7 8 9f)` singular.
-    fn qlean_structural_gauss_jordan(av: B, augv: B) -> O {
-        let (a, aug) = (bytes_of(av.array()), bytes_of(augv.array()));
-        let w = structural::gauss_width(&a, &aug);
-        let mut o = SArr::new(1, a.len() * w * 8);
-        structural::gauss_jordan(&a, &aug, w, pod::cast_mut(o.bytes_mut()).expect("qlean gaussJordan: a ByteArray's data is 8-aligned"));
-        o.into()
-    }
 
-    /// Spec: `complementBytes n idx` is the row numbers below `n` that `idx` does not name, in order. Nothing needs `idx`
-    /// sorted, and a row named twice is dropped once.
-    fn qlean_structural_complement(n: usize, bv: B) -> O {
-        let (seen, gone) = structural::complement_seen(n, elems::<i64>(bv));
-        let mut a = SArr::new(1, (n - gone) * 8);
-        structural::complement_fill(&seen, longs_mut(&mut a));
-        a.into()
-    }
 
     /// Spec: `longRows b` is the inverse of `longBytes`, those little-endian `Int64`s as row numbers. One that does not fit a
     /// boxed scalar stops rather than being truncated into a valid-looking row.
@@ -524,7 +362,7 @@ export! {
 }
 
 /// The interned answer `(dict, (offs, ids))` of `ps`, or `None` where the dictionary half declines.
-fn symdict_concat(ps: &O) -> Option<O> {
+pub fn symdict_concat(ps: &O) -> Option<O> {
     let k = ps.borrow().array().len();
     if k == 0 { return None }
     let pt: Vec<SdPart> = (0..k).map(|i| sd_part(ps.borrow(), i)).collect();
@@ -561,107 +399,20 @@ fn symdict_concat(ps: &O) -> Option<O> {
     Some(pair(db, pair(dbo, res)))
 }
 
-// ---- T2: from `qlean_structural_til_foR` to the end: `til`, `string`, `mmu`, the transposes, the amends and the scatters ----
-/// A `Nat` array of the `n` values `f(i)`, as tagged scalars (a count below 2^63).
-fn boxed_array(n: usize, f: impl Fn(usize) -> usize) -> O {
-    lean::arr_words(n, |o| for (i, x) in o.iter_mut().enumerate() { *x = box_(f(i)) as usize })
-}
 /// The `Int64`s of an index column, `size / 8` of them.
-fn longs<'a, T: pod::Pod>(b: B<'a>) -> &'a [T] {
+pub fn longs<'a, T: pod::Pod>(b: B<'a>) -> &'a [T] {
     let b = b.bytes();
     pod::cast(&b[..b.len() / 8 * 8]).expect("qlean structural: an index column is not 8-aligned")
 }
-/// An `Array ByteArray` of rows, each at `want` bytes (a short one zero-padded, `Column.bitsAt`'s convention), as the `f64`s
-/// the specification reads.
-fn f64_rows<'a>(rows: &'a structural::Rows<'_, '_>, k: usize) -> Vec<&'a [f64]> {
-    (0..k).map(|i| pod::cast(rows.get(i)).expect("qlean mmu: a padded row is not 8-aligned")).collect()
-}
 
 export! {
-    /// Spec: `tilFoR n` is `Coc.encode 8 (tilLongs n)`. The ramp is handed to the writer a block at a time, so the dense column is
-    /// never built.
-    fn qlean_structural_til_foR(n: usize) -> O { encode_fill(n, 8, &structural::til_fill) }
 
-    /// Spec: `stringDigits w n x` is `(blob, offs)` where `offs` is the `n + 1` starts and the bytes between `offs[i]` and
-    /// `offs[i+1]` are `atomText` of element `i` -- its decimal spelling, and the empty string where it is that width's null. `w` is
-    /// 2, 4 or 8; anything else aborts rather than answering an empty pair and dropping a column's contents silently.
-    fn qlean_structural_string_digits(width: u8, n: usize, x: B) -> O {
-        let w = width as usize;
-        if !matches!(w, 2 | 4 | 8) { die(format_args!("qlean_structural_string_digits: width {width} is not 2, 4 or 8\n")) }
-        let n = n.min(x.bytes().len() / w);
-        let src = &x.bytes()[..n * w];
-        let mut at = alloc::vec![0usize; n.div_ceil(STR_BLK) + 1];
-        let total = structural::str_count(c::pool(), w, src, n, &mut at);
-        let mut blob = SArr::new(1, total);
-        let offs = lean::arr_words(n + 1, |o| structural::str_write(c::pool(), w, src, n, &at, blob.bytes_mut(), o));
-        pair(blob.into(), offs)
-    }
 
-    /// Spec: `mmuF64 a b` is the n * p products of n rows of m against m rows of p, row by row, each a strict left fold over k:
-    /// float addition is not associative, so the order is part of the specification. A row is read at the width `b` fixes (`m`
-    /// doubles for `a`, `p` for `b`), a short one as zeros.
-    fn qlean_structural_mmu(av: B, bv: B) -> O {
-        let (a, b) = (av.array(), bv.array());
-        let (n, m) = (a.len(), b.len());
-        let p = if m != 0 { b[0].bytes().len() / 8 } else { 0 };
-        let (ab, bb) = (bytes_of(a), bytes_of(b));
-        let (rb, ra) = (rows_at(&bb, p * 8), rows_at(&ab, m * 8));
-        // the answer is allocated up to a whole number of blocks so that the last block is a whole block
-        let mut res = SArr::with_capacity(1, n * p * 8, n.div_ceil(4) * 4 * p * 8);
-        structural::mmu(&f64_rows(&ra, n), &f64_rows(&rb, m), p, pod::cast_mut(res.capacity_mut()).expect("qlean mmu: the answer is not 8-aligned"));
-        res.into()
-    }
 
-    /// Spec: `transpose w n k cols` is `(blob, offs)` where `offs` is `0, k*w, 2*k*w, ...` -- the `n + 1` boundaries of `n` rows of
-    /// `k` elements -- and the bytes of row `i` are element `i` of each of the `k` columns in order, `w` bytes each. Every column
-    /// is read at the `n` the caller gives and not at its own length.
-    fn qlean_structural_transpose(w: u8, n: usize, cols: B) -> O {
-        let (wd, cs) = (w as usize, bytes_of(cols.array()));
-        let stride = cs.len() * wd;
-        let rows = rows_at(&cs, n * wd);
-        let cv: Vec<&[u8]> = (0..cs.len()).map(|j| rows.get(j)).collect();
-        let mut blob = SArr::new(1, n * stride);
-        structural::transpose(wd, n, &cv, blob.bytes_mut());
-        pair(blob.into(), boxed_array(n + 1, |i| i * stride))
-    }
 
-    /// Spec: `untranspose w offs b` is `some (blob, cuts)` where `b` holds `n` rows of `k` cells of `w` bytes -- which is what `offs`
-    /// says exactly when it is `0, s, 2s, ...` for `s = k * w` -- and `blob` is the `k` columns laid end to end with `cuts` the
-    /// `k + 1` boundaries between them. `none` at any other `offs`, which is a ragged slices value and not a matrix.
-    fn qlean_structural_untranspose(w: u8, offsv: B, bv: B) -> O {
-        let (ofs, wd) = (offsv.array(), w as usize);
-        if wd == 0 || ofs.len() < 2 { return boxed(0) }
-        let n = ofs.len() - 1;
-        let Some(k) = structural::uniform_stride(wd, n, bv.bytes().len(), |i| count_at(ofs, i)) else { return boxed(0) };
-        let mut blob = SArr::new(1, n * k * wd);
-        structural::untranspose(wd, n, k, bv.bytes(), blob.bytes_mut());
-        ctor(1, [pair(blob.into(), boxed_array(k + 1, |j| j * n * wd))], &[])
-    }
 
-    /// Spec: the answer `transpose` would give for the two columns `l[k / m]` and `r[k % m]`, without building either: every row is
-    /// one element of `l` beside one of `r`.
-    fn qlean_structural_cross(w: u8, n: usize, m: usize, l: B, r: B) -> O {
-        let (wd, rows) = (w as usize, n * m);
-        let stride = 2 * wd;
-        let mut blob = SArr::new(1, rows * stride);
-        structural::cross(wd, n, m, l.bytes(), r.bytes(), blob.bytes_mut());
-        pair(blob.into(), boxed_array(rows + 1, |i| i * stride))
-    }
 
-    /// Spec: `amendRounds n wi ranked idx`. Word 0 is the round count, or all ones when an index misses `[0, n)` -- q's `'length`,
-    /// `0N` and negatives included -- with that index in word 1. Ranked and repeated, the round ends and the positions grouped by
-    /// round follow; an index narrower than a long follows widened.
-    fn qlean_structural_amend_rounds(n: usize, wi: usize, ranked: u8, idxv: B) -> O {
-        amend_of(n, wi, ranked, false, idxv).0
-    }
 
-    /// Spec: `amendIndex n wi ranked idx` -- `amendRounds` and, when no index misses, `amendCompact` of the indices widened, both
-    /// empty when one does.
-    fn qlean_structural_amend_index(n: usize, wi: usize, ranked: u8, idxv: B) -> O {
-        let (res, dom, rank) = amend_of(n, wi, ranked, true, idxv);
-        let empty = || SArr::new(1, 0).into();
-        pair(res, pair(dom.unwrap_or_else(empty), rank.unwrap_or_else(empty)))
-    }
 
     /// Spec: `scatterPacked wb dst idx src soff bcast` -- for each long `idx[k]` in order, the field at it in `dst` becomes field
     /// `soff + k` of `src`, or field `soff` for every `k` under `bcast`; fields are `wb` bits, packed low field first below a byte.
@@ -695,37 +446,12 @@ export! {
         pair(blob.into(), offs)
     }
 
-    /// Spec: `amendCompact n idx` -- `(u, rk)`: `u` the distinct longs of `idx` ascending, `rk[k]` the position of `idx[k]` in `u`.
-    /// Every index is below `n`; `amendRounds` raised one that is not. An amend's rounds run over `x@u`, so the column takes one
-    /// sorted scatter at the end rather than being decoded whole for a few writes.
-    fn qlean_structural_amend_compact(n: usize, idxv: B) -> O {
-        let ix = longs::<u64>(idxv);
-        let cp = structural::Compact::new(n, ix)
-            .unwrap_or_else(|k| die(format_args!("qlean amend: index {} of a column of {n} reached the compaction\n", ix[k])));
-        let (mut u, mut rk) = (SArr::new(1, cp.count * 8), SArr::new(1, ix.len() * 8));
-        cp.fill(ix, pod::cast_mut(u.bytes_mut()).expect("qlean amend: u is not 8-aligned"), pod::cast_mut(rk.bytes_mut()).expect("qlean amend: rk is not 8-aligned"));
-        pair(u.into(), rk.into())
-    }
 
-    /// Spec: `scatterFoR w meta pack n ix vals` -- `Coc.encode w (scatterPacked (8 * w) (Coc.decode w meta pack n) ix vals 0 false)`,
-    /// `ix` ascending, distinct and below `n` (`amendCompact`'s `u`), re-encoding only the blocks an index lands in.
-    fn qlean_structural_scatter_for(w: usize, meta: B, pack: B, n: usize, idxv: B, valv: B) -> O {
-        encode_scatter(w, meta.bytes(), pack.bytes(), None, n, idxv.bytes(), valv.bytes())
-    }
 
-    /// Spec: `scatterALP`, `scatterFoR` through ALP's encode and decode; the exponents `alpv` are the ALP part of the column.
-    fn qlean_structural_scatter_alp(w: usize, meta: B, pack: B, alpv: B, n: usize, idxv: B, valv: B) -> O {
-        encode_scatter(w, meta.bytes(), pack.bytes(), Some(alpv.bytes()), n, idxv.bytes(), valv.bytes())
-    }
 }
 
-/// `amend`'s arrays for an index column, its width checked: 1, 2, 4 and 8 are read.
-fn amend_of(n: usize, wi: usize, ranked: u8, compact: bool, idxv: B) -> (O, Option<O>, Option<O>) {
-    if !matches!(wi, 1 | 2 | 4 | 8) { die(format_args!("qlean amend: index width {wi}; 1, 2, 4 and 8 are read\n")) }
-    amend(n, wi, ranked != 0, compact, idxv.bytes())
-}
 /// `scatterPacked` in the answer `dst` itself where this reference holds it alone, a copy otherwise.
-fn scatter(wb: usize, dst: O, idxv: B, srcv: B, soff: usize, bcast: u8) -> O {
+pub fn scatter(wb: usize, dst: O, idxv: B, srcv: B, soff: usize, bcast: u8) -> O {
     if wb == 0 { return dst }
     let mut dst = dst.into_exclusive();
     structural::scatter_packed(wb, dst.bytes_mut(), longs::<i64>(idxv), srcv.bytes(), soff, bcast != 0);

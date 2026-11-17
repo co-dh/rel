@@ -4,17 +4,16 @@
 //! A grade answers into `out: &mut [i64]` of `n`; `kind` is sort.rs's `SK_*`.
 use alloc::vec;
 use alloc::vec::Vec;
-use core::cmp::Ordering::{Equal, Greater};
 use core::sync::atomic::Ordering::Relaxed;
 
 use crate::c::{run_map, run_slices, Runner};
 use crate::coc::{lanes, Coc};
 use crate::key::{self, Keys, Pass, SK_BIT, SK_I16, SK_I32, SK_I64, SK_KINDS_N, SK_U8};
 use crate::ids::by_width;
-use crate::sym::{sym_cmp, sym_hash, sym_msort, Syms};
+use crate::sym::{sym_hash, sym_msort, Syms};
 use crate::{ids, kwin, pod, QLEAN_COST_ARITH, QLEAN_COST_COPY};
 /// sort.rs `SK_LANE`: kind bit that makes `grade_narrow` read the payload as ids of `kind & 0x7f` bits.
-const SK_LANE: u8 = 0x80;
+pub const SK_LANE: u8 = 0x80;
 
 /// sort.rs `ksrc`: the keys of a dense payload `p` or of an encoded column `c`, `n` of them.
 #[derive(Clone, Copy)]
@@ -23,7 +22,7 @@ pub struct Ksrc<'a> { pub kind: u8, pub p: &'a [u8], pub c: Option<Coc<'a>>, pub
 // ---- A19: sort.rs (key_flip, keys_blk_foR, kwin_* are kwin.rs, B11) ----
 /// sort.rs:`SK_MM_*`: the least and greatest key in four independent accumulators, because one `lo`/`hi` pair makes the
 /// compare a loop-carried chain a cycle long per element (measured in sort.rs, kept for the same reason).
-struct Mm { lo: [u64; 4], hi: [u64; 4] }
+pub struct Mm { lo: [u64; 4], hi: [u64; 4] }
 impl Mm {
     fn new() -> Self { Mm { lo: [!0; 4], hi: [0; 4] } }
     #[inline(always)]
@@ -33,7 +32,7 @@ impl Mm {
     fn done(&self) -> (u64, u64) { (self.lo.into_iter().min().unwrap(), self.hi.into_iter().max().unwrap()) }
 }
 /// sort.rs:`SK_KEYS`: write every key and take the range in the same pass.
-struct Fill<'k>(&'k mut [u64]);
+pub struct Fill<'k>(&'k mut [u64]);
 impl Pass for Fill<'_> {
     type Out = (u64, u64);
     #[inline(always)]
@@ -67,7 +66,7 @@ pub fn keys_range(k: &[u64]) -> (u64, u64) {
     m.done()
 }
 /// sort.rs:`SK_DENSE_BLK`: keys `[at, at + k.len())` of a dense payload.
-struct Blk<'k> { at: usize, k: &'k mut [u64] }
+pub struct Blk<'k> { at: usize, k: &'k mut [u64] }
 impl Pass for Blk<'_> {
     type Out = ();
     #[inline(always)]
@@ -101,7 +100,7 @@ impl<'a> Ksrc<'a> {
 /// sort.rs:`SK_KSRC_EACH`, a block at a time: `f(i, keys)` for the keys `i ..` of `s` in order. A key array is read in
 /// place; a pack or a dense payload of elements goes through `Ksrc::blk`, so an encoded column's keys never exist whole.
 #[inline(always)]
-fn ksrc_blocks(s: &Ksrc, mut f: impl FnMut(usize, &[u64])) {
+pub fn ksrc_blocks(s: &Ksrc, mut f: impl FnMut(usize, &[u64])) {
     if s.c.is_none() && s.kind == key::SK_KEY {
         let k = crate::pod::cast::<u64>(s.p).expect("ksrc_blocks: the key array is misaligned");
         for (b, ch) in k[..s.n].chunks(s.blk_len()).enumerate() { f(b * s.blk_len(), ch) }
@@ -112,7 +111,7 @@ fn ksrc_blocks(s: &Ksrc, mut f: impl FnMut(usize, &[u64])) {
 }
 /// `f(i, key)` for every key of `s` in order.
 #[inline(always)]
-fn ksrc_each(s: &Ksrc, mut f: impl FnMut(usize, u64)) {
+pub fn ksrc_each(s: &Ksrc, mut f: impl FnMut(usize, u64)) {
     ksrc_blocks(s, |at, ks| for (j, &v) in ks.iter().enumerate() { f(at + j, v) })
 }
 /// sort.rs `grade_runs`: the grade when the keys are a few ascending runs; false = not that shape. A run in the
@@ -125,11 +124,11 @@ pub fn grade_runs(k: &[u64], desc: bool, out: &mut [i64]) -> bool {
     false
 }
 /// sort.rs:`SK_COUNT_MAX`: a counting table past this many buckets costs two cache misses an element to save a pass.
-const SK_COUNT_MAX: u64 = 1 << 16;
+pub const SK_COUNT_MAX: u64 = 1 << 16;
 /// sort.rs:`SK_COUNTABLE`: a table with one bucket per key is affordable (within twice the column and in cache).
 pub fn sk_countable(span: u64, n: usize) -> bool { span < n as u64 * 2 + 1024 && span < SK_COUNT_MAX }
 /// A counter or an index as wide as `n` needs: `u32` below 2^32 elements, `usize` above.
-trait Ix: Copy + Default {
+pub trait Ix: Copy + Default {
     fn of(v: usize) -> Self;
     fn to(self) -> usize;
 }
@@ -139,7 +138,7 @@ impl Ix for usize { #[inline(always)] fn of(v: usize) -> usize { v } #[inline(al
 /// out of an array: the subtraction is one instruction, the array eight bytes an element written once and read twice.
 /// `N` is the table length when it is one of the literals `grade_count` picks (0 = `nb`): `d(k) < nb <= N`, so masking
 /// the index with `N - 1` changes nothing and lets the compiler see the index is in range (no bounds check).
-fn count<C: Ix, const N: usize>(s: &Ksrc, nb: usize, rank: bool, d: impl Fn(u64) -> u64, out: &mut [i64]) {
+pub fn count<C: Ix, const N: usize>(s: &Ksrc, nb: usize, rank: bool, d: impl Fn(u64) -> u64, out: &mut [i64]) {
     let (len, m) = if N == 0 { (nb, usize::MAX) } else { (N, N - 1) };
     let mut cnt = alloc::vec![C::default(); len];
     ksrc_each(s, |_, k| { let c = &mut cnt[d(k) as usize & m]; *c = C::of(c.to() + 1) });
@@ -150,7 +149,7 @@ fn count<C: Ix, const N: usize>(s: &Ksrc, nb: usize, rank: bool, d: impl Fn(u64)
     else { ksrc_each(s, |i, k| { let c = &mut cnt[d(k) as usize & m]; out[c.to()] = i as i64; *c = C::of(c.to() + 1) }) }
 }
 /// `count` at the table length that holds `nb` buckets: 256, 4096 or 65536 (what `sk_countable` allows), else `nb`.
-fn count_by<C: Ix>(s: &Ksrc, nb: usize, rank: bool, d: impl Fn(u64) -> u64, out: &mut [i64]) {
+pub fn count_by<C: Ix>(s: &Ksrc, nb: usize, rank: bool, d: impl Fn(u64) -> u64, out: &mut [i64]) {
     if nb <= 256 { count::<C, 256>(s, nb, rank, d, out) }
     else if nb <= 4096 { count::<C, 4096>(s, nb, rank, d, out) }
     else if nb <= 65536 { count::<C, 65536>(s, nb, rank, d, out) }
@@ -209,7 +208,7 @@ pub fn grade_radix(s: &Ksrc, span: u64, xr: u64, base: u64, out: &mut [i64]) {
     }
 }
 /// `D` is the digit width as a literal (0 = run-time `wid`), so the common widths compile to constants.
-fn radix<T: Ix, const D: u32>(s: &Ksrc, wid: u32, bits: u32, xr: u64, base: u64, out: &mut [i64]) {
+pub fn radix<T: Ix, const D: u32>(s: &Ksrc, wid: u32, bits: u32, xr: u64, base: u64, out: &mut [i64]) {
     let n = s.n;
     let dig = if D == 0 { wid } else { D };
     let (nb, mask) = (1usize << dig, (1u64 << dig) - 1);
@@ -276,100 +275,10 @@ pub fn grade_keys(k: &[u64], desc: bool, mn: u64, mx: u64, out: &mut [i64]) {
     grade_src(&Ksrc { kind: key::SK_KEY, p: crate::pod::bytes(k), c: None, n: k.len() }, desc, false, mn, mx, out)
 }
 
-// ---- K12: sort.rs `hist_find`, `select_keys`, `xr_floor`, `xrank_src` ----
-/// sort.rs `hist_find`: the bucket rank `*r` falls in, `*r` made relative to that bucket's first element.
-pub fn hist_find(cnt: &[usize], r: &mut usize) -> usize {
-    let mut b = 0;
-    while b + 1 < cnt.len() && *r >= cnt[b] { *r -= cnt[b]; b += 1 }
-    b
-}
-/// What one `select_keys` round settles: the two keys, or the one surviving bucket's keys and the ranks inside it.
-enum Round { Done(u64, u64), Next(Vec<u64>, usize, usize) }
-/// One round of `select_keys`: histogram the top 16 bits of the range left (the `bits > 16` shift) and keep the buckets
-/// the two ranks fall in.
-fn select_round(s: &Ksrc, r1: usize, r2: usize) -> Round {
-    let (mn, mx) = s.range();
-    let span = mx - mn;
-    let bits = if span == 0 { 0 } else { 64 - span.leading_zeros() };
-    let sh = bits.saturating_sub(16);
-    let mut cnt = vec![0usize; (span >> sh) as usize + 1];
-    ksrc_each(s, |_, k| cnt[((k - mn) >> sh) as usize] += 1);
-    let (mut q1, mut q2) = (r1, r2);
-    let (b1, b2) = (hist_find(&cnt, &mut q1), hist_find(&cnt, &mut q2));
-    if sh == 0 { return Round::Done(mn + b1 as u64, mn + b2 as u64) }
-    // Two buckets mean `r1` is the last of `b1` and `r2 = r1 + 1` the first of `b2`, however many empty ones lie
-    // between: keeping `b1 .. b2` instead re-kept the whole range forever on `0N,x`.
-    if b1 != b2 {
-        let (mut a, mut z) = (0u64, !0u64);
-        ksrc_each(s, |_, k| {
-            let b = ((k - mn) >> sh) as usize;
-            if b == b1 && k > a { a = k }
-            if b == b2 && k < z { z = k }
-        });
-        return Round::Done(a, z);
-    }
-    let mut next = Vec::with_capacity(cnt[b1]);
-    ksrc_each(s, |_, k| if ((k - mn) >> sh) as usize == b1 { next.push(k) });
-    Round::Next(next, q1, q1 + (r2 - r1))
-}
-/// sort.rs:`select_keys`: the keys at ranks `r1 <= r2 <= r1 + 1` of `s`, selected and never sorted. One bucket that
-/// survives is narrower than the round's range by 16 bits, and the ranks count from its first element.
-pub fn select_keys(s: &Ksrc, r1: usize, r2: usize) -> (u64, u64) {
-    let mut st = select_round(s, r1, r2);
-    loop {
-        match st {
-            Round::Done(a, b) => return (a, b),
-            Round::Next(kept, r1, r2) => st = select_round(&Ksrc { kind: key::SK_KEY, p: pod::bytes(&kept), c: None, n: kept.len() }, r1, r2),
-        }
-    }
-}
-/// sort.rs `xr_floor`: toward zero and then one down where that rounded up, which is `floor` without libm. The caller
-/// guarantees `|v| < 2^53`, so the cast is exact and the comparison is the whole correction.
-#[inline(always)]
-fn xr_floor(v: f64) -> i64 { let q = v as i64; q - (v < q as f64) as i64 }
-/// sort.rs `SK_XR_BITS`: 65536 digits over a million elements is fifteen ranks apiece where the keys are uniform.
-const SK_XR_HB: usize = 1 << 16;
-/// sort.rs:`xrank_src`: `_ (<<y) * t` -- `~/q/q.k` line 16's `xrank` -- without the grade. `floor(rank * t)` is constant
-/// along a run of ranks and a digit's elements occupy a contiguous run of them, so a digit whose first and last rank
-/// floor alike answers with that one number; only the digits a bucket boundary falls inside are graded, as gathered
-/// groups, by `grade_keys`, so ties keep the order they came in.
-pub fn xrank_src(s: &Ksrc, t: f64, out: &mut [i64]) {
-    let (mn, mx) = s.range();
-    let span = mx - mn;
-    let (mut cur, mut at, mut lut, mut amb) = (vec![0usize; SK_XR_HB], Vec::with_capacity(SK_XR_HB), Vec::with_capacity(SK_XR_HB), Vec::with_capacity(SK_XR_HB));
-    let (mut sh, mut run, mut namb, mut wide) = (0, 0usize, 0usize, 0usize);
-    while (span >> sh) >= SK_XR_HB as u64 { sh += 1 }
-    ksrc_each(s, |_, k| cur[((k - mn) >> sh) as usize] += 1);
-    for h in 0..SK_XR_HB {
-        let c = cur[h];
-        at.push(run);
-        if c == 0 { amb.push(false); lut.push(0i64); continue }
-        let l = xr_floor(run as f64 * t);
-        let a = l != xr_floor((run + c - 1) as f64 * t);
-        lut.push(l);
-        amb.push(a);
-        if a { cur[h] = namb; namb += c; wide = wide.max(c) }
-        run += c;
-    }
-    let (mut gi, mut gk, mut sp) = (vec![0usize; namb], vec![0u64; namb], vec![0i64; wide]);
-    ksrc_each(s, |i, k| {
-        let d = ((k - mn) >> sh) as usize;
-        if amb[d] { gi[cur[d]] = i; gk[cur[d]] = k; cur[d] += 1 } else { out[i] = lut[d] }
-    });
-    let mut g0 = 0;
-    for h in (0..SK_XR_HB).filter(|&h| amb[h]) {
-        let c = cur[h] - g0;
-        let g = &gk[g0..g0 + c];
-        let (smn, smx) = (g.iter().copied().min().unwrap(), g.iter().copied().max().unwrap());
-        grade_keys(g, false, smn, smx, &mut sp[..c]);
-        for r in 0..c { out[gi[g0 + sp[r] as usize]] = xr_floor((at[h] + r) as f64 * t) }
-        g0 = cur[h];
-    }
-}
 
 // ---- A21: sort.rs ----
 /// The `k` bytes of `p` from `at` as a little-endian word, the rest zero.
-fn load(p: &[u8], at: usize, k: usize) -> u64 {
+pub fn load(p: &[u8], at: usize, k: usize) -> u64 {
     let mut x = [0u8; 8];
     x[..k].copy_from_slice(&p[at..at + k]);
     u64::from_le_bytes(x)
@@ -425,7 +334,7 @@ pub fn narrow_nb(kind: u8) -> usize {
 /// sort.rs `SK_NARROW_RUN`: `f(i, key)` at each row `i` of `[lo, hi)` with its narrow key, unsigned: a byte is its own
 /// key, a `short` flips its sign bit (`key_at`'s rule), a lane is the id `id_at` reads, unpacked a chunk at a time.
 #[inline(always)]
-fn each_key(kind: u8, p: &[u8], lo: usize, hi: usize, mut f: impl FnMut(usize, usize)) {
+pub fn each_key(kind: u8, p: &[u8], lo: usize, hi: usize, mut f: impl FnMut(usize, usize)) {
     if kind == SK_U8 {
         for (i, &x) in p[lo..hi].iter().enumerate() { f(lo + i, x as usize) }
     } else if kind & SK_LANE != 0 {
@@ -441,19 +350,12 @@ fn each_key(kind: u8, p: &[u8], lo: usize, hi: usize, mut f: impl FnMut(usize, u
     }
 }
 /// sort.rs `narrow_hist_run`: one slice's histogram, per slice and in slice order, with the thread count `run` made.
-fn hists(run: Runner, kind: u8, p: &[u8], n: usize) -> (u32, Vec<(usize, Vec<usize>)>) {
+pub fn hists(run: Runner, kind: u8, p: &[u8], n: usize) -> (u32, Vec<(usize, Vec<usize>)>) {
     run_slices(run, n, QLEAN_COST_COPY, if kind == SK_I16 { 2 } else { 1 }, &|lo, hi| {
         let mut cnt = vec![0usize; narrow_nb(kind)];
         each_key(kind, p, lo, hi, |_, key| cnt[key] += 1);
         cnt
     })
-}
-/// sort.rs `hist_narrow`: the histogram of a 1- or 2-byte payload, read straight off the payload: its keys number at
-/// most 65536, so the table fits in L2 where `keys_of` would write eight bytes for every one it holds.
-pub fn hist_narrow(run: Runner, kind: u8, p: &[u8], n: usize) -> Vec<usize> {
-    let mut cnt = vec![0usize; narrow_nb(kind)];
-    for (_, r) in hists(run, kind, p, n).1 { for (c, x) in cnt.iter_mut().zip(r) { *c += x } }
-    cnt
 }
 /// sort.rs `grade_narrow`: the grade of a narrow payload: a histogram per slice, the prefix in the asked-for
 /// direction taken bucket-major and slice-minor so slice `k`'s run of a bucket follows slice `k - 1`'s, and one stable
@@ -551,16 +453,12 @@ pub struct Ends { pub fst: i64, pub lst: i64, pub ok: bool }
 pub fn avail(kind: u8, bytes: usize) -> Option<usize> {
     if kind == SK_BIT { Some(bytes * 8) } else if kind < SK_KINDS_N { key::bytes(kind, 1).map(|w| bytes / w) } else { None }
 }
-/// sort.rs `sk_write_width`, `Kind.width`: the bytes one element of `kind` is written back at; a boolean is a whole byte.
-pub fn write_width(kind: u8) -> Option<usize> {
-    if kind == SK_BIT { Some(1) } else if kind < SK_KINDS_N { key::bytes(kind, 1) } else { None }
-}
 
 /// sort.rs `SK_ASC_DIR`: no key is carried between elements, so a chunk's violations accumulate and the early exit
 /// is taken at the chunk. `bad(a, b)` is the failing comparison of two adjacent keys, a closure so each of the four
 /// directions is its own loop.
 #[inline(always)]
-fn ordered<K: Keys>(k: &mut K, m: usize, bad: impl Fn(u64, u64) -> bool) -> bool {
+pub fn ordered<K: Keys>(k: &mut K, m: usize, bad: impl Fn(u64, u64) -> bool) -> bool {
     const CHUNK: usize = 512;
     let mut lo = 1;
     while lo < m {
@@ -573,7 +471,7 @@ fn ordered<K: Keys>(k: &mut K, m: usize, bad: impl Fn(u64, u64) -> bool) -> bool
     true
 }
 /// sort.rs `SK_ASC`: `strict` moves the failing comparison from `>` to `>=` (a repeat breaks a strict order).
-struct Asc { desc: bool, strict: bool }
+pub struct Asc { pub desc: bool, pub strict: bool }
 impl Pass for Asc {
     type Out = bool;
     #[inline(always)]
@@ -722,51 +620,6 @@ pub fn grade_lane(run: Runner, desc: bool, w: u32, ids: &[u8], n: usize, out: &m
     }
 }
 
-/// sort.rs `middle_of`: the raw elements at ranks `(n-1)/2` and `n/2` of `s` (`n > 0`), each at the kind's write width, into
-/// `out`. They are selected and never sorted. Every kind but the two float ones writes them out of their key, the key
-/// being a bijection of the stored bits there; the float ones fold NaNs and both zeros onto one key, so they grade and
-/// read the two elements back (a float column is never a pack: ALP is its encoding).
-pub fn middle(run: Runner, s: &Ksrc, out: &mut [u8]) {
-    let (r1, r2) = ((s.n - 1) / 2, s.n / 2);
-    let w = write_width(s.kind).unwrap_or_else(|| panic!("qlean sort: element kind {} is not one of the {SK_KINDS_N}", s.kind));
-    if s.kind == SK_BIT {
-        let z = s.n - crate::bits::popcount(s.p, s.n);
-        out[0] = (r1 >= z) as u8;
-        out[1] = (r2 >= z) as u8;
-        return;
-    }
-    if s.kind == key::SK_F32 || s.kind == key::SK_F64 {
-        let mut k = vec![0u64; s.n];
-        let (mn, mx) = keys_of(s.kind, s.p, s.n, &mut k);
-        let mut perm = vec![0i64; s.n];
-        grade_keys(&k, false, mn, mx, &mut perm);
-        out[..w].copy_from_slice(&s.p[perm[r1] as usize * w..][..w]);
-        out[w..2 * w].copy_from_slice(&s.p[perm[r2] as usize * w..][..w]);
-        return;
-    }
-    let (k1, k2) = if s.c.is_none() && (s.kind == SK_U8 || s.kind == SK_I16) {
-        let cnt = hist_narrow(run, s.kind, s.p, s.n);
-        let (mut q1, mut q2) = (r1, r2);
-        (hist_find(&cnt, &mut q1) as u64, hist_find(&cnt, &mut q2) as u64)
-    } else { select_keys(s, r1, r2) };
-    let flip = kwin::key_flip(s.kind);
-    out[..w].copy_from_slice(&(k1 ^ flip).to_le_bytes()[..w]);
-    out[w..2 * w].copy_from_slice(&(k2 ^ flip).to_le_bytes()[..w]);
-}
-/// sort.rs `qlean_sort_bits_sorted` past the allocation: the first `m` bits of `p` sorted, packed a bit an element into
-/// `out` (`⌈m/8⌉` bytes). Two keys, so the answer is the popcount: ascending, the clear bits and then the set ones, which
-/// is a run of zero bytes, one partial byte and a run of `0xff`.
-pub fn bits_sorted(desc: bool, m: usize, p: &[u8], out: &mut [u8]) {
-    let k = crate::bits::popcount(p, m);
-    // the set bits are `[lo, hi)`
-    let (lo, hi) = if desc { (0, k) } else { (m - k, m) };
-    out.fill(0);
-    let mut i = lo;
-    while i < hi && i & 7 != 0 { out[i >> 3] |= 1 << (i & 7); i += 1 }
-    let full = i + ((hi - i) & !7usize); // `i` is byte-aligned here, or `hi`
-    out[i >> 3..full >> 3].fill(0xff);
-    for i in full..hi { out[i >> 3] |= 1 << (i & 7) }
-}
 
 #[cfg(test)]
 mod tests_a22 {
@@ -878,7 +731,7 @@ pub fn ids_keys(v: &[u8], w: u32, m: usize, k: &mut [u64]) -> (u64, u64) {
     by_width!(w, keys_at(v, &mut k[..m]))
 }
 // `ids_keys` at the constant width `W`; from a byte up the range is taken in the unpacking pass, as sort.rs's `KEY_PUT`.
-fn keys_at<const W: u32>(v: &[u8], k: &mut [u64]) -> (u64, u64) {
+pub fn keys_at<const W: u32>(v: &[u8], k: &mut [u64]) -> (u64, u64) {
     if W < 8 {
         crate::ids::unpack::<W, u64>(v, k, |_, e, x| *e = x as u64);
         return (0, (1u64 << W) - 1)
@@ -916,7 +769,7 @@ pub fn pair_ids_narrow(run: Runner, wa: u32, wb: u32, m: usize, pa: &[u8], pb: &
 // ---- A24: sort.rs ----
 /// Element `k` of `rank_slices`' payload at the pass's width `W` (65 = an odd width, read at the runtime `w`): a
 /// whole-byte lane is one load, a sub-byte lane one byte load (it never straddles a byte), any other `res_get_in`.
-fn rs_elem<const W: u32>(v: &[u8], w: u32, end: usize, k: usize) -> u64 {
+pub fn rs_elem<const W: u32>(v: &[u8], w: u32, end: usize, k: usize) -> u64 {
     match W {
         0 => 0,
         8 => v[k] as u64,
@@ -930,7 +783,7 @@ fn rs_elem<const W: u32>(v: &[u8], w: u32, end: usize, k: usize) -> u64 {
 /// The hashed pass at one width: `groupIds`' hashed numbering with each segment's hash as the key and a compare of
 /// the elements only where two hashes agree. The length seeds the hash, so runs of one value at different lengths
 /// do not collide.
-fn rs_pass<const W: u32>(w: u32, v: &[u8], o: &[i64], out: &mut [i64]) {
+pub fn rs_pass<const W: u32>(w: u32, v: &[u8], o: &[i64], out: &mut [i64]) {
     let g = out.len();
     let (cap, end) = (crate::group::cap_for(g), v.len());
     let (mask, sh) = (cap - 1, 64 - cap.trailing_zeros());
@@ -970,7 +823,7 @@ pub fn rank_slices(w: usize, v: &[u8], o: &[i64], out: &mut [i64]) {
         32 => rs_pass::<32>(w, v, o, out), 64 => rs_pass::<64>(w, v, o, out), _ => rs_pass::<65>(w, v, o, out),
     }
 }
-fn sizes<const W: u32>(ng: usize, n: usize, ids: &[u8], out: &mut [i64]) {
+pub fn sizes<const W: u32>(ng: usize, n: usize, ids: &[u8], out: &mut [i64]) {
     let out = &mut out[..ng];
     out.fill(0);
     // `out` is `ng` long, so `get_mut` is the `v < ng` test and the store's bounds test in one
@@ -979,14 +832,7 @@ fn sizes<const W: u32>(ng: usize, n: usize, ids: &[u8], out: &mut [i64]) {
 /// sort.rs `qlean_sort_group_sizes`: the size of each of `ng` groups of the ids `gid` (`n` at `w` bits), `n` already
 /// clamped to what `gid` holds.
 pub fn group_sizes(ng: usize, w: u32, n: usize, gid: &[u8], out: &mut [i64]) { by_width!(w, sizes(ng, n, gid, out)) }
-fn lasts<const W: u32>(ng: usize, n: usize, ids: &[u8], out: &mut [i64]) {
-    let out = &mut out[..ng];
-    out.fill(0);
-    crate::ids::each::<W>(ids, n, |i, v| if let Some(o) = out.get_mut(v) { *o = i as i64 });
-}
-/// sort.rs `qlean_sort_group_lasts`: each group's last index, 0 for one no row names.
-pub fn group_lasts(ng: usize, w: u32, n: usize, gid: &[u8], out: &mut [i64]) { by_width!(w, lasts(ng, n, gid, out)) }
-fn longs<const W: u32>(n: usize, ids: &[u8], out: &mut [i64]) {
+pub fn longs<const W: u32>(n: usize, ids: &[u8], out: &mut [i64]) {
     let out = &mut out[..n];
     crate::ids::unpack::<W, i64>(ids, out, |_, e, v| *e = v as i64);
 }
@@ -998,7 +844,7 @@ pub fn id_longs(n: usize, w: u32, ids: &[u8], out: &mut [i64]) { by_width!(w, lo
 /// `dk` is empty exactly when a symbol did not pack; `gid`, `cnt` are empty unless `want` asked for them.
 pub struct SymGroups { pub dk: Vec<u64>, pub first: Vec<usize>, pub ng: usize, pub gid: Vec<u32>, pub cnt: Vec<u32> }
 /// sym.rs `SYM_KEY_BLOCK`: a block is checked, then packed while it is in cache.
-const SYM_KEY_BLOCK: usize = 4096;
+pub const SYM_KEY_BLOCK: usize = 4096;
 /// sort.rs `sym_dedup`: group ids and counts of the sorted symbols `v`; answers the group count.
 /// An empty `gid` (or `cnt`) is C's NULL.
 pub fn sym_dedup(v: &[&[u8]], gid: &mut [u32], cnt: &mut [u32], first: &mut [usize]) -> usize {
@@ -1171,7 +1017,7 @@ mod a25_tests {
 pub fn id_rank(ids: &[u8], w: u32, i: usize, dk: &[u64]) -> usize { dk.get(crate::ids::id_at(ids, w, i)).map_or(0, |&r| r as usize) }
 /// The rank of each id, `n` ids, counted into four private tables of `nr` entries (the lanes break the dependent
 /// read-modify-write a small dictionary makes), then summed into the first.
-fn rank_counts<const W: u32>(ids: &[u8], n: usize, dk: &[u64], nr: usize) -> Vec<usize> {
+pub fn rank_counts<const W: u32>(ids: &[u8], n: usize, dk: &[u64], nr: usize) -> Vec<usize> {
     let mut c = alloc::vec![0usize; 4 * nr];
     let rk = |i: usize| id_rank(ids, W, i, dk);
     let mut i = 0;
@@ -1182,15 +1028,15 @@ fn rank_counts<const W: u32>(ids: &[u8], n: usize, dk: &[u64], nr: usize) -> Vec
     c
 }
 /// Each rank's starting slot, ascending or descending by rank: `at[r]` becomes the rows before rank `r`'s.
-fn starts(cnt: &[usize], desc: bool) -> Vec<usize> {
+pub fn starts(cnt: &[usize], desc: bool) -> Vec<usize> {
     let (mut at, mut run) = (alloc::vec![0usize; cnt.len()], 0);
     let mut put = |r: usize| { at[r] = run; run += cnt[r] };
     if desc { (0..cnt.len()).rev().for_each(&mut put) } else { (0..cnt.len()).for_each(&mut put) }
     at
 }
 /// The dictionary's ranks, or none for an empty dictionary (every id then reads rank 0).
-fn dict_ranks(dict: &Syms) -> Vec<u64> { if dict.count() == 0 { Vec::new() } else { sym_ranks(dict, dict.count()) } }
-fn scatter<const W: u32>(ids: &[u8], n: usize, dk: &[u64], at: &mut [usize], out: &mut [i64]) {
+pub fn dict_ranks(dict: &Syms) -> Vec<u64> { if dict.count() == 0 { Vec::new() } else { sym_ranks(dict, dict.count()) } }
+pub fn scatter<const W: u32>(ids: &[u8], n: usize, dk: &[u64], at: &mut [usize], out: &mut [i64]) {
     for i in 0..n { let r = id_rank(ids, W, i, dk); out[at[r]] = i as i64; at[r] += 1 }
 }
 /// sort.rs `qlean_sort_grade_ids` past the unboxing: the grade of `n` ids at `w` into the dictionary `dict`.
@@ -1202,17 +1048,6 @@ pub fn grade_ids(desc: bool, n: usize, dict: &Syms, ids: &[u8], w: u32, out: &mu
     let mut at = starts(&by_width!(w, rank_counts(ids, n, &dk, dk.len().max(1))), desc);
     by_width!(w, scatter(ids, n, &dk, &mut at, out))
 }
-/// sort.rs `qlean_sort_sorted_ids`: the ids in dictionary order, into `out` (zeroed, `ids_bytes(n, w)` long) at `w` bits.
-/// A rank's rows all name one id, so each rank is one `ids_fill` run; `rid` inverts the rank.
-pub fn sorted_ids(desc: bool, n: usize, dict: &Syms, ids: &[u8], w: u32, out: &mut [u8]) {
-    if n == 0 { return }
-    if dict.count() != 0 { group_bound(dict.count()) }
-    let dk = dict_ranks(dict);
-    let cnt = by_width!(w, rank_counts(ids, n, &dk, dk.len().max(1)));
-    let mut rid = alloc::vec![0u64; cnt.len()];
-    for (u, &r) in dk.iter().enumerate() { rid[r as usize] = u as u64 }
-    for (r, at) in starts(&cnt, desc).into_iter().enumerate() { crate::ids::ids_fill(out, w, at, cnt[r], rid[r]) }
-}
 /// sort.rs `qlean_sort_distinct_syms` past the allocation: each distinct symbol's first index, in order of
 /// appearance, into `first`; answers the count.
 pub fn distinct_syms(s: &Syms, first: &mut [usize]) -> usize {
@@ -1222,75 +1057,8 @@ pub fn distinct_syms(s: &Syms, first: &mut [usize]) -> usize {
     first[..g.ng].copy_from_slice(&g.first);
     g.ng
 }
-fn group_at<const W: u32>(ids: &[u8], n: usize, nd: usize, mut gid: Option<&mut [u8]>, cnt: &mut [u32]) -> Vec<usize> {
-    let (mut slot, mut first) = (alloc::vec![usize::MAX; nd + 1], Vec::with_capacity(n.min(nd + 1)));
-    for i in 0..n {
-        let v = crate::ids::id_at(ids, W, i).min(nd);
-        if slot[v] == usize::MAX { slot[v] = first.len(); cnt[first.len()] = 0; first.push(i) }
-        let k = slot[v];
-        if let Some(g) = gid.as_deref_mut() { g[4 * i..4 * i + 4].copy_from_slice(&(k as u32).to_ne_bytes()) }
-        cnt[k] += 1;
-    }
-    first
-}
-/// sort.rs `ids_group`: group ids (`gid`, `u32`s as bytes, null for none) and counts (`nd + 1` long) of `n` ids at
-/// `w` into a dictionary of `nd`, an id from `nd` up naming the one empty symbol; answers each group's first index.
-pub fn ids_group(ids: &[u8], n: usize, w: u32, nd: usize, gid: Option<&mut [u8]>, cnt: &mut [u32]) -> Vec<usize> {
-    group_bound(n);
-    by_width!(w, group_at(ids, n, nd, gid, cnt))
-}
-/// sort.rs `ids_heads`: the dictionary symbol of each group's first id; an id past the dictionary reads the empty symbol.
-pub fn ids_heads<'a>(dict: &Syms<'a>, ids: &[u8], w: u32, first: &[usize]) -> Vec<&'a [u8]> {
-    first.iter().map(|&f| { let u = crate::ids::id_at(ids, w, f); if u < dict.count() { dict.at(u) } else { &dict.blob[..0] } }).collect()
-}
-/// sort.rs `qlean_sort_parted_ids`: the ids are parted (each id's run contiguous). The distinct count is
-/// `firsts`' and runs are never fewer, so the run walk stops past `ng`.
-pub fn parted_ids(strict: bool, d: usize, n: usize, w: u32, ids: &[u8]) -> bool {
-    if n == 0 { return true }
-    let (mut slot, mut first) = (alloc::vec![usize::MAX; d + 1], alloc::vec![0usize; n.min(d + 1)]);
-    let ng = crate::ids::firsts(ids, n, w, d, &mut slot, &mut first);
-    ng == if strict { n } else { crate::ids::runs(ids, n, w, d, ng, &mut []) }
-}
-/// sort.rs `qlean_sort_parted_syms`: each symbol's run contiguous (`strict`: no symbol twice). Counted rather than stopped
-/// early, as `parted_ids` does not: the group is where symbols are deduplicated and carries the packed-key path.
-pub fn parted_syms(strict: bool, s: &Syms) -> bool {
-    let n = s.count();
-    if n < 2 { return true }
-    let (mut runs, mut prev) = (0, &s.blob[..0]);
-    for i in 0..n { let c = s.at(i); if i == 0 || !crate::sym::sym_eq(c, prev) { runs += 1 } prev = c }
-    distinct_syms(s, &mut crate::pod::uninit::<usize>(n)) == if strict { n } else { runs }
-}
-/// sort.rs `qlean_sort_parted_guid`: whether every two equal guids stand in one run of equals, and with `strict` whether
-/// no two are equal. A column in order has its equals adjacent; any other is graded, and the grade being stable a run of
-/// equals in it is consecutive rows exactly when its last row less its first is its length less one.
-pub fn parted_guid(strict: bool, p: &[u8], n: usize) -> bool {
-    if n < 2 { return true }
-    let g = |i: usize| &p[16 * i..16 * i + 16];
-    if ascending_guid(false, false, p, n) { return !strict || (1..n).all(|i| g(i - 1) != g(i)) }
-    let mut o = alloc::vec![0i64; n];
-    grade_guid(false, p, &mut o);
-    let (mut i, mut ok) = (0, true);
-    while i < n && ok {
-        let mut j = i + 1;
-        while j < n && g(o[j] as usize) == g(o[i] as usize) { j += 1 }
-        if j - i > 1 && (strict || o[j - 1] - o[i] != (j - i - 1) as i64) { ok = false }
-        i = j;
-    }
-    ok
-}
-/// sort.rs `qlean_sort_sym_offs`: the ends (`i + 1 - start`) of the first `n` NUL-terminated strings from byte `start`, and
-/// whether every byte scanned is ASCII. A byte loop, not `memchr`: a symbol is a few bytes, shorter than one call's setup.
-pub fn sym_offs(p: &[u8], start: usize, n: usize) -> (Vec<usize>, bool) {
-    let (mut ends, mut acc) = (Vec::with_capacity(n.min(p.len().saturating_sub(start))), 0u8);
-    for (i, &b) in p.iter().enumerate().skip(start) {
-        if ends.len() == n { break }
-        acc |= b;
-        if b == 0 { ends.push(i + 1 - start) }
-    }
-    (ends, acc < 0x80)
-}
 /// `g` packed `w` bits an id into `out`, the last byte's fields past `g` zero.
-fn pack_gids(g: &[u32], w: u32, out: &mut [u8]) {
+pub fn pack_gids(g: &[u32], w: u32, out: &mut [u8]) {
     match w {
         0 => {}
         1 | 2 | 4 => for (o, c) in out.iter_mut().zip(g.chunks((8 / w) as usize)) {
@@ -1387,34 +1155,6 @@ mod a26_tests {
     }
 }
 
-// ---- A27: sort.rs ----
-/// sort.rs `guid_words`: the 8-byte word at byte `at` of each of `n` guids, in the order `perm` (empty: as stored).
-pub fn guid_words(p: &[u8], n: usize, at: usize, perm: &[i64], k: &mut [u64]) -> (u64, u64) {
-    let (mut lo, mut hi) = (u64::MAX, 0);
-    for i in 0..n {
-        let g = if perm.is_empty() { i } else { perm[i] as usize };
-        let w = u64::from_be_bytes(p[16 * g + at..16 * g + at + 8].try_into().unwrap());
-        k[i] = w; lo = lo.min(w); hi = hi.max(w);
-    }
-    (lo, hi)
-}
-/// sort.rs `qlean_sort_grade_guid` past the unboxing: two big-endian words, the low one graded first, so a stable grade
-/// by the high word over that order is the order of the pair; the low pass runs only when two high words tie.
-pub fn grade_guid(desc: bool, p: &[u8], out: &mut [i64]) {
-    let n = out.len();
-    if n == 0 { return }
-    let mut k = vec![0u64; n];
-    let (mn, mx) = guid_words(p, n, 0, &[], &mut k);
-    grade_keys(&k, desc, mn, mx, out);
-    if (1..n).any(|i| k[out[i] as usize] == k[out[i - 1] as usize]) {
-        let mut lo = vec![0i64; n];
-        let (mn, mx) = guid_words(p, n, 8, &[], &mut k);
-        grade_keys(&k, desc, mn, mx, &mut lo);
-        let (mn, mx) = guid_words(p, n, 0, &lo, &mut k);
-        grade_keys(&k, desc, mn, mx, out);
-        for o in out.iter_mut() { *o = lo[*o as usize] }
-    }
-}
 #[cfg(test)]
 mod a27_tests {
     use super::*;
@@ -1624,181 +1364,16 @@ mod a20_tests {
     }
 }
 
-// ---- K13: sort.rs `radix_values`, `take_graded`, `sort_values` ----
-/// An unsigned lane: the element an answer is written in, or the width a narrowed key travels in.
-trait Un: pod::Pod {
-    fn of(v: u64) -> Self;
-    fn get(self) -> u64;
-}
 macro_rules! un { ($($t:ty)*) => {$(
     impl Un for $t { #[inline(always)] fn of(v: u64) -> Self { v as $t } #[inline(always)] fn get(self) -> u64 { self as u64 } }
 )*} }
 un!(u8 u16 u32 u64);
 /// `f::<T>(args)` for `T` the unsigned lane of `w` bytes: the width is switched once for the column, never per element.
+#[macro_export]
 macro_rules! by_lane {
     ($w:expr, $f:ident($($a:expr),*)) => { match $w {
         1 => $f::<u8>($($a),*), 2 => $f::<u16>($($a),*), 4 => $f::<u32>($($a),*), _ => $f::<u64>($($a),*),
     } };
-}
-fn lane<T: Un>(out: &mut [u8]) -> &mut [T] { pod::cast_mut::<T>(out).expect("sort_values: the answer is misaligned") }
-/// sort.rs `SK_TAKE`: the elements of `p` at `ix(i)`, `w` bytes each.
-fn take<T: Un>(p: &[u8], out: &mut [u8], ix: impl Fn(usize) -> usize) {
-    let s = pod::cast::<T>(p).expect("sort_values: the payload is misaligned");
-    for (i, o) in lane::<T>(out).iter_mut().enumerate() { *o = s[ix(i)] }
-}
-/// sort.rs `SK_EXPAND`: every bucket in order, `cnt[j]` copies of the element bucket `j` stands for. A one-byte fill is a
-/// `memset`, which is what C kept for `byte` and `char`: there a bucket is a long run and there are at most 256.
-fn expand<T: Un>(out: &mut [u8], cnt: &[usize], desc: bool, mn: u64, flip: u64) {
-    let (o, nb, mut at) = (lane::<T>(out), cnt.len(), 0);
-    for b in 0..nb {
-        let (j, c) = { let j = if desc { nb - 1 - b } else { b }; (j, cnt[j]) };
-        o[at..at + c].fill(T::of((mn + j as u64) ^ flip));
-        at += c;
-    }
-}
-/// sort.rs `SK_VPUT`: the last radix pass writes the element `(v + base) ^ uxr` a key `v` stands for, not the key.
-fn vput<C: Ix, T: Un, O: Un>(da: &[T], c: &mut [C], sh: u32, mask: u64, base: u64, uxr: u64, out: &mut [u8]) {
-    let o = lane::<O>(out);
-    for &x in da {
-        let v = x.get();
-        let s = &mut c[((v >> sh) & mask) as usize];
-        let at = s.to();
-        *s = C::of(at + 1);
-        o[at] = O::of(v.wrapping_add(base) ^ uxr);
-    }
-}
-/// sort.rs:`radix_values`: LSD radix over the keys alone (`da`, narrowed against `base`, `bits` wide), the last pass
-/// writing the elements. `C` is the counter width, `T` the key's, `D` the digit width as a literal (0 = run-time `wid`).
-fn radix_values<C: Ix, T: Un, const D: u32>(mut da: Vec<T>, bits: u32, wid: u32, base: u64, uxr: u64, w: usize, out: &mut [u8]) {
-    let n = da.len();
-    let dig = if D == 0 { wid } else { D };
-    let (nb, mask) = (1usize << dig, (1u64 << dig) - 1);
-    let np = bits.div_ceil(dig) as usize;
-    let mut cnt = vec![C::default(); nb * np];
-    // every digit's histogram in one read of the keys: a loop per digit over a block that is in L1
-    for ch in da.chunks(1 << crate::DEFAULT_LG) {
-        for (p, c) in cnt.chunks_exact_mut(nb).enumerate() {
-            let sh = p as u32 * dig;
-            for &x in ch { let s = &mut c[((x.get() >> sh) & mask) as usize]; *s = C::of(s.to() + 1) }
-        }
-    }
-    let v0 = da[0].get();
-    let mut act: Vec<usize> = (0..np).filter(|&p| cnt[p * nb + ((v0 >> (p as u32 * dig)) & mask) as usize].to() != n).collect();
-    if act.is_empty() { act.push(0) } // every digit constant, so that one pass copies in order
-    let na = act.len();
-    let mut db: Vec<T> = if na >= 2 { pod::uninit(n) } else { Vec::new() };
-    for (j, &p) in act.iter().enumerate() {
-        let sh = p as u32 * dig;
-        let c = &mut cnt[p * nb..][..nb];
-        let mut at = 0;
-        for x in c.iter_mut() { let t = x.to(); *x = C::of(at); at += t }
-        if j + 1 == na {
-            match w {
-                1 => vput::<C, T, u8>(&da, c, sh, mask, base, uxr, out),
-                2 => vput::<C, T, u16>(&da, c, sh, mask, base, uxr, out),
-                4 => vput::<C, T, u32>(&da, c, sh, mask, base, uxr, out),
-                _ => vput::<C, T, u64>(&da, c, sh, mask, base, uxr, out),
-            }
-        } else {
-            for &x in &da { let s = &mut c[((x.get() >> sh) & mask) as usize]; let at = s.to(); *s = C::of(at + 1); db[at] = x }
-            core::mem::swap(&mut da, &mut db);
-        }
-    }
-}
-/// `radix_values` at the digit widths C instantiates as literals: 16, 13, 10 for a key in four bytes, 16, 14, 13 in eight.
-fn radix_narrow(d: Vec<u32>, bits: u32, base: u64, uxr: u64, w: usize, out: &mut [u8]) {
-    let wid = sk_digit(bits, d.len());
-    if d.len() > u32::MAX as usize { return radix_values::<usize, u32, 0>(d, bits, wid, base, uxr, w, out) }
-    match wid {
-        16 => radix_values::<u32, u32, 16>(d, bits, wid, base, uxr, w, out),
-        13 => radix_values::<u32, u32, 13>(d, bits, wid, base, uxr, w, out),
-        10 => radix_values::<u32, u32, 10>(d, bits, wid, base, uxr, w, out),
-        _ => radix_values::<u32, u32, 0>(d, bits, wid, base, uxr, w, out),
-    }
-}
-fn radix_wide(d: Vec<u64>, bits: u32, base: u64, uxr: u64, w: usize, out: &mut [u8]) {
-    let wid = sk_digit(bits, d.len());
-    if d.len() > u32::MAX as usize { return radix_values::<usize, u64, 0>(d, bits, wid, base, uxr, w, out) }
-    match wid {
-        16 => radix_values::<u32, u64, 16>(d, bits, wid, base, uxr, w, out),
-        14 => radix_values::<u32, u64, 14>(d, bits, wid, base, uxr, w, out),
-        13 => radix_values::<u32, u64, 13>(d, bits, wid, base, uxr, w, out),
-        _ => radix_values::<u32, u64, 0>(d, bits, wid, base, uxr, w, out),
-    }
-}
-/// sort.rs `sort_values` past the bits and floats: the column already in order is a copy, one strictly the other way a
-/// reverse, few enough values are counted and expanded, more are radix sorted as keys and written back through `flip`.
-struct Values<'a> { desc: bool, w: usize, flip: u64, p: &'a [u8], out: &'a mut [u8] }
-impl Pass for Values<'_> {
-    type Out = ();
-    #[inline(always)]
-    fn run<K: Keys>(self, mut k: K, m: usize) {
-        let Values { desc, w, flip, p, out } = self;
-        if (Asc { desc, strict: false }).run(k.fork(), m) { return out.copy_from_slice(p) }
-        if (Asc { desc: !desc, strict: true }).run(k.fork(), m) { return by_lane!(w, take(p, out, |i| m - 1 - i)) }
-        // a byte's whole range is the table (256 counters), which saves the min-max pass
-        let (mn, mx) = if w == 1 { (0, 255) } else { key::Range.run(k.fork(), m) };
-        let span = mx - mn;
-        if sk_countable(span, m) {
-            // four private tables while they fit in L1, one otherwise: a stride of zero *is* the one table
-            let nb = span as usize + 1;
-            let st = if nb <= 1024 { nb } else { 0 };
-            let mut cnt = vec![0usize; nb + 3 * st];
-            let mut i = 0;
-            while i + 4 <= m {
-                cnt[(k.at(i) - mn) as usize] += 1;
-                cnt[st + (k.at(i + 1) - mn) as usize] += 1;
-                cnt[2 * st + (k.at(i + 2) - mn) as usize] += 1;
-                cnt[3 * st + (k.at(i + 3) - mn) as usize] += 1;
-                i += 4;
-            }
-            for i in i..m { cnt[(k.at(i) - mn) as usize] += 1 }
-            if st > 0 { for b in 0..nb { cnt[b] += cnt[st + b] + cnt[2 * st + b] + cnt[3 * st + b] } }
-            return by_lane!(w, expand(out, &cnt[..nb], desc, mn, flip));
-        }
-        // `max - key` is `(!key) - (!max)`: the bijection that reverses the order, so the two directions are one expression
-        let (xr, base) = if desc { (!0u64, !mx) } else { (0, mn) };
-        let (bits, uxr) = (64 - span.leading_zeros(), xr ^ flip);
-        if span <= u32::MAX as u64 {
-            let mut d = pod::uninit::<u32>(m);
-            for (i, o) in d.iter_mut().enumerate() { *o = ((k.at(i) ^ xr).wrapping_sub(base)) as u32 }
-            radix_narrow(d, bits, base, uxr, w, out)
-        } else {
-            let mut d = pod::uninit::<u64>(m);
-            for (i, o) in d.iter_mut().enumerate() { *o = (k.at(i) ^ xr).wrapping_sub(base) }
-            radix_wide(d, bits, base, uxr, w, out)
-        }
-    }
-}
-/// sort.rs `take_graded`: `x@<x` written out, the only thing the two float kinds can do (`rank64` folds every NaN payload and
-/// both zeros onto one key, so an element may not be written out of its key).
-fn take_graded(kind: u8, p: &[u8], m: usize, desc: bool, w: usize, out: &mut [u8]) {
-    let mut k = pod::uninit::<u64>(m);
-    let (mn, mx) = keys_of(kind, p, m, &mut k);
-    let mut ix = pod::uninit::<i64>(m);
-    grade_keys(&k, desc, mn, mx, &mut ix);
-    by_lane!(w, take(p, out, |i| ix[i] as usize))
-}
-/// sort.rs `sort_values`: `x@<x`, the `m` elements of `kind` in `p` in order, into `out` (`m` elements; `m` already clamped
-/// to what `p` holds).
-pub fn sort_values(kind: u8, desc: bool, m: usize, p: &[u8], out: &mut [u8]) {
-    assert!(kind < SK_KINDS_N, "qlean sort: element kind {kind} is not one of the {SK_KINDS_N} in QLean/Kernel/Scan.lean");
-    // `Kind.width`: a boolean is written back as a whole byte
-    let w = if kind == SK_BIT { 1 } else { key::bytes(kind, 1).unwrap() };
-    assert!(out.len() == m * w, "qlean sort: the answer holds {} bytes for {m} elements of {w}", out.len());
-    if m == 0 { return }
-    let p = &p[..key::bytes(kind, m).expect("sort_values: dense kind")];
-    if kind == SK_BIT { // `Kind.bitsAt` at `.bit` is 0 or 1, so the answer is bytes
-        let ones: usize = p[..m / 8].iter().map(|b| b.count_ones() as usize).sum::<usize>()
-            + if m % 8 != 0 { (p[m / 8] & ((1u8 << (m % 8)) - 1)).count_ones() as usize } else { 0 };
-        let lo = if desc { ones } else { m - ones };
-        out[..lo].fill(desc as u8);
-        out[lo..].fill(!desc as u8);
-    } else if kind == key::SK_F32 || kind == key::SK_F64 { take_graded(kind, p, m, desc, w, out) }
-    else {
-        key::each(kind, p, m, Values { desc, w, flip: kwin::key_flip(kind), p, out })
-            .unwrap_or_else(|| panic!("sort_values: the payload of kind {kind} is misaligned"))
-    }
 }
 
 
@@ -1864,37 +1439,6 @@ mod tests_k13 {
     }
 }
 
-// ---- K16: sort.rs `asc_syms`, `syms_at`, `guid_cmp`, thinSweep ----
-/// sort.rs `asc_syms`: `n` symbols in order, adjacent pairs compared by `sym_cmp` (`>` fails, `>=` when `strict`; swapped
-/// when `desc`). `at(i)` is symbol `i`; one closure so the plain and the interned walk are the same loop.
-#[inline(always)]
-fn asc_by<'a>(desc: bool, strict: bool, n: usize, mut at: impl FnMut(usize) -> &'a [u8]) -> bool {
-    if n < 2 { return true }
-    let mut a = at(0);
-    for i in 1..n {
-        let c = at(i);
-        let o = if desc { sym_cmp(c, a) } else { sym_cmp(a, c) };
-        if o == Greater || (strict && o == Equal) { return false }
-        a = c;
-    }
-    true
-}
-/// sort.rs `qlean_sort_ascending_syms` past the unboxing; `s` holds the `n` symbols.
-pub fn ascending_syms(desc: bool, strict: bool, s: &Syms, n: usize) -> bool { asc_by(desc, strict, n, |i| s.at(i)) }
-fn asc_ids<const W: u32>(desc: bool, strict: bool, dict: &Syms, ids: &[u8], n: usize) -> bool {
-    let (nd, empty) = (dict.count(), &dict.blob[..0]);
-    // an id from `nd` up names the empty symbol, as everywhere an id is followed
-    asc_by(desc, strict, n, |i| { let u = crate::ids::id_at(ids, W, i); if u < nd { dict.at(u) } else { empty } })
-}
-/// sort.rs `qlean_sort_ascending_ids` past the clamp of `n` to the ids present.
-pub fn ascending_ids(desc: bool, strict: bool, dict: &Syms, ids: &[u8], w: u32, n: usize) -> bool {
-    by_width!(w, asc_ids(desc, strict, dict, ids, n))
-}
-/// sort.rs `qlean_sort_ascending_guid`: a guid is two big-endian words, so its order is the one `u128` compare.
-pub fn ascending_guid(desc: bool, strict: bool, p: &[u8], n: usize) -> bool {
-    let g = |i: usize| u128::from_be_bytes(p[16 * i..16 * i + 16].try_into().unwrap());
-    (1..n).all(|i| { let (a, b) = if desc { (g(i), g(i - 1)) } else { (g(i - 1), g(i)) }; a < b || (!strict && a == b) })
-}
 /// sort.rs `syms_at`: bytes the symbols `v` take, each followed by its NUL.
 pub fn syms_len<'a>(v: impl Iterator<Item = &'a [u8]>) -> usize { v.map(|s| s.len() + 1).sum() }
 /// sort.rs `syms_at`: the symbols `v` and their NULs into `out`, and the `ng + 1` starts into `offs` as `Array Nat`'s tagged
@@ -1912,107 +1456,6 @@ pub fn syms_at<'a>(v: impl Iterator<Item = &'a [u8]>, out: &mut [u8], offs: &mut
     offs[g] = at << 1 | 1;
 }
 
-/// sort.rs `ts_cols`: every column as a key where smaller is better. The sign flip makes unsigned `<` signed order and
-/// `!` turns a larger-is-better column around, so dominance is one `<=` per column.
-struct TsCols<'a> { col: Vec<&'a [u8]>, flip: Vec<u64> }
-impl TsCols<'_> {
-    #[inline(always)]
-    fn key(&self, c: usize, i: usize) -> u64 { u64::from_ne_bytes(self.col[c][8 * i..8 * i + 8].try_into().unwrap()) ^ self.flip[c] }
-    /// `a` no worse than `b` everywhere, and better somewhere.
-    #[inline(always)]
-    fn dom(&self, a: usize, b: usize) -> bool {
-        let mut lt = false;
-        for c in 0..self.col.len() {
-            let (x, y) = (self.key(c, a), self.key(c, b));
-            if x > y { return false }
-            lt |= x < y;
-        }
-        lt
-    }
-}
-fn ts_set(mask: &mut [u8], j: usize) { mask[j >> 3] |= 1 << (j & 7) }
-/// sort.rs `ts_group`: the rows `r` of one segment, ascending, into `mask`. `buf` and `win` are scratch of `r.len()`.
-fn ts_group(t: &TsCols, r: &[usize], mask: &mut [u8], buf: &mut Vec<(u64, u64, usize)>, win: &mut Vec<usize>) {
-    match t.col.len() {
-        1 => {
-            let best = r.iter().map(|&j| t.key(0, j)).min().unwrap_or(u64::MAX);
-            for &j in r { if t.key(0, j) == best { ts_set(mask, j) } }
-        }
-        2 => {
-            buf.clear();
-            buf.extend(r.iter().map(|&j| (t.key(0, j), t.key(1, j), j)));
-            // equal pairs may land in either order: the mask below sets all of them or none
-            buf.sort_unstable_by_key(|&(a, b, _)| (a, b));
-            // `best` is the smallest column-1 key over rows strictly better on column 0: a row equal to it there is
-            // dominated, and inside its own tie group only a strictly smaller key dominates it
-            let (mut best, mut seen, mut x) = (0, false, 0);
-            while x < buf.len() {
-                let (mut y, gmin) = (x, buf[x].1);
-                while y < buf.len() && buf[y].0 == buf[x].0 {
-                    if buf[y].1 == gmin && (!seen || gmin < best) { ts_set(mask, buf[y].2) }
-                    y += 1;
-                }
-                if !seen || gmin < best { best = gmin }
-                seen = true;
-                x = y;
-            }
-        }
-        _ => {
-            // block-nested-loop: the window holds the rows no earlier row dominates
-            win.clear();
-            for &j in r {
-                if win.iter().any(|&w| t.dom(w, j)) { continue }
-                win.retain(|&w| !t.dom(j, w));
-                win.push(j);
-            }
-            for &w in win.iter() { ts_set(mask, w) }
-        }
-    }
-}
-/// sort.rs `ts_free_at`: the first row at or after `j` no segment has taken, with path halving.
-fn ts_free_at(nx: &mut [usize], mut j: usize) -> usize {
-    while nx[j] != j { nx[j] = nx[nx[j]]; j = nx[j] }
-    j
-}
-/// sort.rs `qlean_sort_thin_sweep` past the unboxing: `cols` are the `k >= 1` columns of 8-byte keys (`n` rows; a shorter
-/// column reads as zero past its end, as `Column.bitsAt` does), `big[c]` whether column `c` is larger-is-better (columns
-/// past `big` are not), `o` the little-endian `i64` segment offsets and `mask` the `ceil(n / 8)` answer bytes.
-///
-/// A row belongs to the first segment `[o[s], o[s+1])` holding it and rows in none form one group of their own, exactly
-/// the Lean body's `segOf`; for ascending offsets that is each row's one segment.
-pub fn thin_sweep(cols: &[&[u8]], big: &[bool], o: &[u8], n: usize, mask: &mut [u8]) {
-    mask.fill(0);
-    if n == 0 { return }
-    let pads: Vec<Vec<u8>> = cols.iter().map(|c| if c.len() >= 8 * n { Vec::new() } else { let mut v = vec![0; 8 * n]; v[..c.len()].copy_from_slice(c); v }).collect();
-    let t = TsCols {
-        col: cols.iter().zip(&pads).map(|(&c, p)| if c.len() >= 8 * n { c } else { &p[..] }).collect(),
-        flip: (0..cols.len()).map(|c| if big.get(c).copied().unwrap_or(false) { !(1 << 63) } else { 1 << 63 }).collect(),
-    };
-    let g = (o.len() / 8).saturating_sub(1);
-    let off = |s: usize| i64::from_ne_bytes(o[8 * s..8 * s + 8].try_into().unwrap());
-    let clamp = |v: i64| if v < 0 { 0 } else if v as u64 > n as u64 { n } else { v as usize };
-    // `seg[j]` is row j's group, `g` for none; `nx` skips the rows already placed, so overlapping segments cost no more
-    // than disjoint ones
-    let mut seg = vec![g; n];
-    let mut nx: Vec<usize> = (0..=n).collect();
-    for s in 0..g {
-        let (lo, hi) = (clamp(off(s)), clamp(off(s + 1)));
-        let mut j = ts_free_at(&mut nx, lo);
-        while j < hi { seg[j] = s; nx[j] = j + 1; j = ts_free_at(&mut nx, j) }
-    }
-    drop(nx);
-    let mut start = vec![0usize; g + 2];
-    for &s in &seg { start[s + 1] += 1 }
-    for s in 0..=g { start[s + 1] += start[s] }
-    let mx = (0..=g).map(|s| start[s + 1] - start[s]).max().unwrap_or(0);
-    let mut r = vec![0usize; n];
-    for (j, &s) in seg.iter().enumerate() { r[start[s]] = j; start[s] += 1 }
-    drop(seg);
-    let (mut buf, mut win) = (Vec::with_capacity(if t.col.len() == 2 { mx } else { 0 }), Vec::with_capacity(if t.col.len() >= 3 { mx } else { 0 }));
-    // the scatter advanced each `start[s]` to its group's end, which is group s + 1's beginning
-    let mut b = 0;
-    for s in 0..=g { ts_group(&t, &r[b..start[s]], mask, &mut buf, &mut win); b = start[s] }
-}
 
 #[cfg(test)]
 mod k16_tests {
@@ -2122,4 +1565,14 @@ mod s2_tests {
         assert_eq!(sym_offs(b, 99, 3), (vec![], true));
         assert_eq!(sym_offs(b, 0, 0), (vec![], true));
     }
+}
+// ---- K13: sort.rs `radix_values`, `take_graded`, `sort_values` ----
+/// An unsigned lane: the element an answer is written in, or the width a narrowed key travels in.
+pub trait Un: pod::Pod {
+    fn of(v: u64) -> Self;
+    fn get(self) -> u64;
+}
+/// sort.rs `sk_write_width`, `Kind.width`: the bytes one element of `kind` is written back at; a boolean is a whole byte.
+pub fn write_width(kind: u8) -> Option<usize> {
+    if kind == SK_BIT { Some(1) } else if kind < SK_KINDS_N { key::bytes(kind, 1) } else { None }
 }

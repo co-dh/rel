@@ -8,9 +8,9 @@ use crate::cocops::{EQ, GE, GT, LE, LT, NE};
 use alloc::vec::Vec;
 
 /// word `i` of a payload (8-byte aligned in length for every block: `blk * 1 / 8` is a multiple of 8)
-fn word(p: &[u8], i: usize) -> u64 { u64::from_le_bytes(p[i * 8..i * 8 + 8].try_into().expect("8 bytes")) }
+pub fn word(p: &[u8], i: usize) -> u64 { u64::from_le_bytes(p[i * 8..i * 8 + 8].try_into().expect("8 bytes")) }
 /// the bits of word `i` that are rows of an `nb`-row block
-fn live(nb: usize, i: usize) -> u64 { let r = nb - (i << 6).min(nb); if r >= 64 { !0 } else { !0 >> (64 - r) } }
+pub fn live(nb: usize, i: usize) -> u64 { let r = nb - (i << 6).min(nb); if r >= 64 { !0 } else { !0 >> (64 - r) } }
 
 impl<'a> Coc<'a> {
     /// Block `b`'s payload when the block is a bit vector: width 1, frame 0 (base and frame delta), no patch.
@@ -27,7 +27,7 @@ pub fn ones(p: &[u8], nb: usize) -> usize { popcount(p, nb) }
 /// `coc_all` of a bit block: no row is 0.
 pub fn all_set(p: &[u8], nb: usize) -> bool { !some_bit(false, p, nb) }
 /// The `op` of two bits `x`, `y` as the word `a op b` (rows past `nb` left to the caller's mask).
-fn cmp_word(op: i32, a: u64, b: u64) -> u64 {
+pub fn cmp_word(op: i32, a: u64, b: u64) -> u64 {
     match op { EQ => !(a ^ b), NE => a ^ b, LT => !a & b, LE => !a | b, GT => a & !b, _ => { debug_assert!(op == GE); a | !b } }
 }
 /// `x op v` of a bit block into the zeroed words `out`: each of the two values 0, 1 passes or not, so the answer is

@@ -31,12 +31,12 @@ mod sys {
     }
 }
 // x86-64 Linux numbers (<sys/syscall.h>, <linux/futex.h>, <unistd.h>)
-const SYS_SCHED_YIELD: c_long = 24;
-const SYS_FUTEX: c_long = 202;
-const SYS_SCHED_GETAFFINITY: c_long = 204;
-const FUTEX_WAIT_PRIVATE: c_long = 128;
-const FUTEX_WAKE_PRIVATE: c_long = 129;
-const SC_NPROCESSORS_ONLN: c_int = 84;
+pub const SYS_SCHED_YIELD: c_long = 24;
+pub const SYS_FUTEX: c_long = 202;
+pub const SYS_SCHED_GETAFFINITY: c_long = 204;
+pub const FUTEX_WAIT_PRIVATE: c_long = 128;
+pub const FUTEX_WAKE_PRIVATE: c_long = 129;
+pub const SC_NPROCESSORS_ONLN: c_int = 84;
 
 /// Pauses before a waiter parks or yields; a `pause` is 11.8 ns here.
 pub const SPIN: u32 = 1024;
@@ -47,7 +47,7 @@ pub const MAX_THREADS: u32 = 64;
 pub const SPLIT: usize = 8388608;
 // Under `cargo test` every pass of one element or more splits, three ways on the shared pool, so the kernels' unit
 // tests run their multi-slice paths on real threads.
-const SPLIT_AT: usize = if cfg!(test) { 1 } else { SPLIT };
+pub const SPLIT_AT: usize = if cfg!(test) { 1 } else { SPLIT };
 
 /// Counter indices of `stat` (Lean `poolStat`): 0-2 are P0's, the bench's `split`/`passes`/`slices` columns.
 pub const PASSES: usize = 0;
@@ -64,14 +64,14 @@ pub const WALL: usize = 6;
 
 // `call(ctx, arg, k, lo, hi)`. Two words travel in the job, so C's worker and pass reach a worker on the line it
 // already read: a `Ctx` on the entry's stack cost every worker a miss on a remote line each pass (1.3x C at width 8).
-type Call = unsafe fn(*const (), *const (), u32, usize, usize);
+pub type Call = unsafe fn(*const (), *const (), u32, usize, usize);
 #[derive(Clone, Copy)]
-struct Job { call: Call, ctx: *const (), arg: *const (), n: usize, parts: u32 }
+pub struct Job { call: Call, ctx: *const (), arg: *const (), n: usize, parts: u32 }
 
 /// `generation` is stored by the entry and spun on by every worker, `left` the reverse: one line each, or the two
 /// streams of coherence traffic land on one line. One shared `left`, not a flag a worker: no faster, 25x less steady.
 #[repr(align(64))]
-struct Line<T>(T);
+pub struct Line<T>(T);
 
 pub struct Pool {
     /// fixed width (a test's pool) or 0: `QLEAN_THREADS`, else the CPUs this process may run on
@@ -123,14 +123,14 @@ pub fn cut(n: usize, parts: u32, k: u32) -> (usize, usize) {
 }
 
 #[inline(always)]
-fn ticks() -> u64 {
+pub fn ticks() -> u64 {
     // Safety: `rdtsc` reads a counter and has no precondition
     unsafe { core::arch::x86_64::_rdtsc() }
 }
 
 /// Spins `SPIN` pauses, then sleeps until `*a` is no longer `stale`. `flag` tells the other side the sleep needs a
 /// wake; both sides' stores are SeqCst so of "set flag, re-read `a`" and "change `a`, read flag" one sees the other.
-fn wait(a: &AtomicU32, stale: u32, flag: &AtomicU32) {
+pub fn wait(a: &AtomicU32, stale: u32, flag: &AtomicU32) {
     for _ in 0..SPIN {
         if a.load(Acquire) != stale { return }
         spin_loop()
@@ -147,7 +147,7 @@ fn wait(a: &AtomicU32, stale: u32, flag: &AtomicU32) {
 
 /// The CPUs this process may run on, through `syscall`: glibc declares `sched_getaffinity` only under `_GNU_SOURCE`.
 /// The mask starts zeroed because the kernel fills only the bytes its own mask needs.
-fn cpu_count() -> i64 {
+pub fn cpu_count() -> i64 {
     let mut m = [0u64; 16];
     // Safety: `m` is 128 writable bytes, the size passed
     if unsafe { sys::syscall(SYS_SCHED_GETAFFINITY, 0 as c_long, size_of_val(&m) as c_long, m.as_mut_ptr()) } <= 0 { return 0 }
@@ -155,12 +155,12 @@ fn cpu_count() -> i64 {
 }
 
 /// `QLEAN_THREADS`'s leading digits (0 when it has none), or None when it is unset.
-fn env_threads() -> Option<i64> {
+pub fn env_threads() -> Option<i64> {
     let s = crate::os::getenv(c"QLEAN_THREADS")?;
     Some(s.iter().take_while(|c| c.is_ascii_digit()).fold(0i64, |a, &c| a.saturating_mul(10).saturating_add((c - b'0') as i64)))
 }
 
-extern "C" fn worker(arg: *mut c_void) -> *mut c_void {
+pub extern "C" fn worker(arg: *mut c_void) -> *mut c_void {
     // Safety: `start` passes a `&'static Pool`
     let pool = unsafe { &*(arg as *const Pool) };
     let me = pool.next.fetch_add(1, Relaxed) + 1;
@@ -300,10 +300,10 @@ impl Pool {
     }
 }
 
-fn nop(_: *const (), _: *const (), _: u32, _: usize, _: usize) {}
+pub fn nop(_: *const (), _: *const (), _: u32, _: usize, _: usize) {}
 
 /// The one pool of the process: one, not one per C translation unit (three statics once made 69 threads).
-static THE: Pool = Pool::new(if cfg!(test) { 3 } else { 0 });
+pub static THE: Pool = Pool::new(if cfg!(test) { 3 } else { 0 });
 
 
 
@@ -321,7 +321,7 @@ pub unsafe extern "C" fn run_c(f: Worker, n: usize, cost: u32, wide: usize, p: *
 pub fn stat(k: u8) -> u64 { THE.stat(k) }
 
 #[cfg(test)]
-pub(crate) mod tests {
+pub mod tests {
     use super::*;
     use std::time::{Duration, Instant};
     std::thread_local! {

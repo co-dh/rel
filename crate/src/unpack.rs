@@ -2,7 +2,7 @@
 //! coc.rs, the scalar spec of every decode.
 
 /// `W`-bit residuals of the block `p` into `L`-byte lanes of `out`, eight to a group of `W` bytes.
-fn lanes_of<const L: usize>(p: &[u8], w: usize, nb: usize, out: &mut [u8]) {
+pub fn lanes_of<const L: usize>(p: &[u8], w: usize, nb: usize, out: &mut [u8]) {
     for g in 0..nb.div_ceil(8) {
         // the last group can reach past the block's bytes: read a zero-padded copy (the window is 16 bytes over)
         let mut t = [0u8; 64 + 16];

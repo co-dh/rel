@@ -43,11 +43,11 @@ pub fn pool() -> Runner { crate::pool::run_c }
 #[cfg(test)]
 pub use crate::pool::run_c as qlean_run_c;
 
-struct Job<'f, F> { f: &'f F, out: *mut u8, at: &'f (dyn Fn(usize) -> usize + Sync), len: usize }
+pub struct Job<'f, F> { f: &'f F, out: *mut u8, at: &'f (dyn Fn(usize) -> usize + Sync), len: usize }
 
 /// Safety: `p` is the `CPass` `run_map` built, whose `a` is a live `Job<F>`; `[lo, hi)` is a slice of `[0, n)`
 /// that no other worker of the same pass is given.
-unsafe extern "C" fn slice<F: Fn(usize, usize, &mut [u8]) + Sync>(lo: usize, hi: usize, p: *const CPass) {
+pub unsafe extern "C" fn slice<F: Fn(usize, usize, &mut [u8]) + Sync>(lo: usize, hi: usize, p: *const CPass) {
     let j = unsafe { &*(*p).a.cast::<Job<F>>() };
     let e = (j.at)(hi).min(j.len);
     let s = (j.at)(lo).min(e);
@@ -79,7 +79,7 @@ pub fn run_map_at<F: Fn(usize, usize, &mut [u8]) + Sync>(run: Runner, out: &mut 
 
 /// The pool call behind `run_map` and `run_map_at`, each of which has checked that `at` is non-decreasing over
 /// `0 ..= units` and starts every unit inside `out`: that is what makes the `&mut` slices disjoint.
-fn map_at<F: Fn(usize, usize, &mut [u8]) + Sync>(run: Runner, out: &mut [u8], units: usize,
+pub fn map_at<F: Fn(usize, usize, &mut [u8]) + Sync>(run: Runner, out: &mut [u8], units: usize,
                                                  at: &(dyn Fn(usize) -> usize + Sync), cost: u32, wide: usize, f: &F) -> u32 {
     let o = out.as_mut_ptr();
     let job = Job { f, out: o, at, len: out.len() };
@@ -196,13 +196,13 @@ mod tests {
 }
 
 /// c.rs: a stage operand's source code at or above `SLOTS` is a column (re-based per tile) or fixed (one pointer).
-const SLOTS: usize = 10;
-const TILE: usize = 1024;
-const COLUMN: u8 = 254;
+pub const SLOTS: usize = 10;
+pub const TILE: usize = 1024;
+pub const COLUMN: u8 = 254;
 
 /// One tile of eight-byte elements per slot, the widest any stage answers, on a cache line.
 #[repr(align(64))]
-struct Slot([u8; TILE * 8]);
+pub struct Slot([u8; TILE * 8]);
 
 /// c.rs `qlean_chain_run` over the tiles `[lo, hi)`: every stage over a tile before the next tile starts.
 /// Safety: `cp.a` is the `[CStage; cp.op]` of `run_chain`, whose `f` are live workers and whose bindings reach `cp.n` elements.
