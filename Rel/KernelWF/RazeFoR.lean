@@ -12,14 +12,14 @@ open Rel Rel.Kernel Rel.Dep Rel Rel.Alg Rel.Rep
 open scoped Rel.Core.Rel
 open Rel.Core.Rel hiding id comp recip inter union zero le inl inr junc
 
-/-- A type Frame of Reference encodes is two to eight bytes wide, and neither `boolean` nor `guid`. -/
+/-- A type Frame of Reference encodes is two to eight bytes wide, and not `boolean`. -/
 theorem foR_width {t : QAtomicType} {w : Nat} (he : Column.encodes t = true) (hw : t.width = some w) :
-    1 < w ∧ w ≤ 8 ∧ t ≠ .boolean ∧ t ≠ .guid := by
+    1 < w ∧ w ≤ 8 ∧ t ≠ .boolean := by
   cases t <;> simp_all [Column.encodes, QAtomicType.width] <;> (try subst hw) <;> decide
 
 /-- **`Enc.answer` of a Frame-of-Reference payload keeps its elements**: kept, it is `foRBits`; decoded, it is
     `foRBits`' low `8w` bits (`decodeW`), which `atomOfBits` reads alike (`atomOfBits_mod`). No count bound. -/
-theorem get_answer_foR {t : QAtomicType} {w : Nat} (hw : t.width = some w) (hb : t ≠ .boolean) (hg : t ≠ .guid)
+theorem get_answer_foR {t : QAtomicType} {w : Nat} (hw : t.width = some w) (hb : t ≠ .boolean)
     {N : USize} (M P : ByteArray) {i : Nat} (hi : i < N.toNat) :
     Enc.get t N (Enc.answer t N (.foR M P)) i =
       some (Column.atomOfBits t (Column.foRBits M P (Column.blockStarts M) i) (QAtomicType.ne_general_of_width hw)) := by
@@ -211,20 +211,19 @@ theorem razeTo_toList_all {t : QAtomicType} {w : Nat} (hw : t.width = some w) (h
       omega
     obtain ⟨c, rfl⟩ := List.length_eq_one_iff.1 h1; simp
 
-/-- **`raze_row`'s `hat` at every type and encoding**: `razeTo2_fits` at `boolean`, `general`, `symbol`, `guid`,
+/-- **`raze_row`'s `hat` at every type and encoding**: `razeTo2_fits` at `boolean`, `general`, `symbol`,
     `razeTo_toList_all` at the rest, the ALP bound from `RazeFits`. -/
 theorem hat_all : ∀ (t : QAtomicType) {n m : USize} (x : Arr t n) (y : Arr t m)
     (hN : ((#[⟨n, x⟩, ⟨m, y⟩] : Array (Part (.atom t))).toList.map fun c : Part (.atom t) => c.1.toNat).sum <
       USize.size), Vals.RazeFits (.atom t) x y →
     (razeTo t #[⟨n, x⟩, ⟨m, y⟩] rfl hN).toList = x.toList ++ y.toList := by
   intro t n m x y hN hF
-  by_cases hs : t = .boolean ∨ t = .general ∨ t = .symbol ∨ t = .guid
+  by_cases hs : t = .boolean ∨ t = .general ∨ t = .symbol
   · exact razeTo2_fits x y hN hF (by
-      rcases hs with h | h | h | h
+      rcases hs with h | h | h
       · exact .inl h
       · exact .inr (.inl h)
-      · exact .inr (.inr (.inl h))
-      · exact .inr (.inr (.inr (.inl h))))
+      · exact .inr (.inr (.inl h)))
   · obtain ⟨w, hw⟩ : ∃ w, t.width = some w := by cases t <;> simp_all [QAtomicType.width]
     have := razeTo_toList_all hw (fun h => hs (.inl h)) #[⟨n, x⟩, ⟨m, y⟩] rfl hN
       (fun _ ht => by simpa using hF.2 ht)

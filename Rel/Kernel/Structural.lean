@@ -554,7 +554,7 @@ def gatherColumn (t : QAtomicType) (n : USize) (e : Enc) (m : USize) (ie : Enc) 
       if !Column.alpEncodes t then none else
         (idx ()).map fun ix => .bytes (gatherAlp ((nullBits t).getD 0) md p a n ix)
     | t, e =>
-      match rowWidth t, foRColumn t n e with
+      match denseWidth t, foRColumn t n e with
       | some w, some (n, sm, sp) =>
         (idx ()).map fun ix => .bytes (gatherFoR w.toUSize ((nullBits t).getD 0) sm sp n ix)
       | some w, none =>

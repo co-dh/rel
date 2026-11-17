@@ -105,25 +105,19 @@ theorem razeFits_atom_count {t : QAtomicType} {n m : USize} (x : Arr t n) (y : A
     next d o i he => exact absurd he (no _ _ _ _)
     next => exact hN
 
-/-- A guid column's payload is dense bytes: `Enc.WF` admits no other at `guid`. -/
-theorem guid_bytes {n : USize} (x : Arr .guid n) : ∃ b, x.enc = .bytes b := by
-  have hw := x.wf; revert hw
-  cases x.enc <;> simp [Enc.WF, QAtomicType.width]
-
 /-- **Two parts' `razeTo` list** at the types and encodings proved so far: `boolean`, `general`, `symbol` (under
-    the dictionary bound of `Vals.RazeFits`), `guid`, and any type whose two parts are dense bytes. -/
+    the dictionary bound of `Vals.RazeFits`), and any type whose two parts are dense bytes. -/
 theorem razeTo2_fits {t : QAtomicType} {n m : USize} (x : Arr t n) (y : Arr t m)
     (hN : ((#[⟨n, x⟩, ⟨m, y⟩] : Array (Part (.atom t))).toList.map fun c : Part (.atom t) => c.1.toNat).sum <
       USize.size)
     (hF : Vals.RazeFits (.atom t) x y)
-    (ht : t = .boolean ∨ t = .general ∨ t = .symbol ∨ t = .guid ∨
+    (ht : t = .boolean ∨ t = .general ∨ t = .symbol ∨
       ((∃ b, x.enc = .bytes b) ∧ ∃ b, y.enc = .bytes b)) :
     (razeTo t #[⟨n, x⟩, ⟨m, y⟩] rfl hN).toList = x.toList ++ y.toList := by
-  rcases ht with rfl | rfl | rfl | rfl | ⟨hx, hy⟩
+  rcases ht with rfl | rfl | rfl | ⟨hx, hy⟩
   · exact razeTo2_boolean x y hN
   · exact razeTo2_general x y hN
   · exact razeTo2_symbol x y hN (by simpa using hF.1)
-  · exact razeTo2_bytes x y hN (guid_bytes x) (guid_bytes y)
   · exact razeTo2_bytes x y hN hx hy
 
 #print axioms razeTo2_fits

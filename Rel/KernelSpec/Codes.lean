@@ -74,7 +74,7 @@ theorem idsBy_iff {α : Type} [BEq α] [LawfulBEq α] {m : Nat} (hm : m < 2 ^ 64
 /-- **`groupIdsColumn`'s ids agree exactly where the elements do**, at every layout it claims, read at
 the width `groupLongs` reads them: an interned column's ids (`idKey`, the dictionary index), a symbol
 blob's ids once interned, and otherwise `Order.keyAt` over the payload `groupIds` numbers — the bitmap,
-a guid column's `x?x`, a Frame of Reference column decoded, or the dense bytes. At every integral kind
+a Frame of Reference column decoded, or the dense bytes. At every integral kind
 `keyAt_eq_iff` says two keys agree exactly when the stored bits do. -/
 theorem groupIdsColumn_spec {t : QAtomicType} {n : USize} {e : Enc} {p : ByteArray × ByteArray}
     (h : groupIdsColumn t n e = some p) :
@@ -89,7 +89,6 @@ theorem groupIdsColumn_spec {t : QAtomicType} {n : USize} {e : Enc} {p : ByteArr
           Order.idKey (dof.size - 1) ids (Column.idWidth dof).toUSize.toNat j)) ∨
     (∃ k u b, p = Order.groupIds k u b ∧
       ((t = .boolean ∧ k = .bit ∧ e = .bits b) ∨
-        (t = .guid ∧ k = .i64 ∧ ∃ g, Enc.bytesOf t n e = some g ∧ b = findVec 16 false g g) ∨
         (orderKind t = some k ∧ ∃ md pk, e = .foR md pk ∧ b = Coc.decode k.width.toUSize md pk n) ∨
         (orderKind t = some k ∧ Enc.bytesOf t n e = some b)) ∧
       ∀ i < min u.toNat (k.avail b), ∀ j < min u.toNat (k.avail b),
@@ -122,22 +121,18 @@ theorem groupIdsColumn_spec {t : QAtomicType} {n : USize} {e : Enc} {p : ByteArr
   · cases Option.some.inj h
     exact Or.inr (Or.inr ⟨_, _, _, rfl, Or.inl ⟨rfl, rfl, rfl⟩, keyed _ _ _⟩)
   · split at h
-    · cases Option.some.inj h
-      exact Or.inr (Or.inr ⟨_, _, _, rfl, Or.inr (Or.inl ⟨rfl, rfl, _, ‹_›, rfl⟩), keyed _ _ _⟩)
-    · nomatch h
-  · split at h
     · nomatch h
     · split at h
       · nomatch h
       · split at h
         · cases Option.some.inj h
-          exact Or.inr (Or.inr ⟨_, _, _, rfl, Or.inr (Or.inr (Or.inl ⟨‹_›, _, _, rfl, rfl⟩)), keyed _ _ _⟩)
+          exact Or.inr (Or.inr ⟨_, _, _, rfl, Or.inr (Or.inl ⟨‹_›, _, _, rfl, rfl⟩), keyed _ _ _⟩)
         · cases hb : Enc.bytesOf t n e with
           | none => rw [hb] at h; cases h
           | some b =>
             rw [hb] at h
             cases Option.some.inj h
-            exact Or.inr (Or.inr ⟨_, _, _, rfl, Or.inr (Or.inr (Or.inr ⟨‹_›, rfl⟩)), keyed _ _ _⟩)
+            exact Or.inr (Or.inr ⟨_, _, _, rfl, Or.inr (Or.inr ⟨‹_›, rfl⟩), keyed _ _ _⟩)
 
 /-- info: 'Rel.Verify.groupIdsColumn_spec' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs in

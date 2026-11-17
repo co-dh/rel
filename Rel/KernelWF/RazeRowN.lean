@@ -78,8 +78,6 @@ theorem razeTo_toList_bit {t : QAtomicType} (cs : Array (Part (.atom t)))
   · subst hG; exact razeTo_toList_general cs rfl hN
   by_cases hY : t = .symbol
   · subst hY; exact razeTo_toList_symbol cs rfl hN hb.1
-  by_cases hU : t = .guid
-  · subst hU; exact razeTo_toList_bytes cs rfl hN fun c _ => guid_bytes c.2
   obtain ⟨w, hw⟩ : ∃ w, t.width = some w := by cases t <;> simp_all [QAtomicType.width]
   exact razeTo_toList_all hw hB cs rfl hN fun _ ha => by
     rcases hb.2 with h | h

@@ -816,12 +816,12 @@ theorem sortsAsc_arr {b : Obj} (hb : SortsAsc b) : SortsAsc (.arr b) := by
 
 /-! ## Every side whose atoms qlean orders
 
-A `.general` or `.guid` atom is left out: qlean states no order on it (`orderKind t = none`),
+A `.general` atom is left out: qlean states no order on it (`orderKind t = none`),
 and its rows sort by `codes`, an order of one call. -/
 
-/-- `A` holds no `.general` or `.guid` atom: each of its atoms is one qlean's sort kernels order. -/
+/-- `A` holds no `.general` atom: each of its atoms is one qlean's sort kernels order. -/
 def _root_.Rel.Obj.Ordered : Obj → Prop
-  | .atom t => t ≠ .general ∧ t ≠ .guid
+  | .atom t => t ≠ .general
   | .prod a b => a.Ordered ∧ b.Ordered
   | .arr b => b.Ordered
   | .sum a b => a.Ordered ∧ b.Ordered
@@ -833,12 +833,11 @@ theorem _root_.Rel.Obj.eq_of_not_lt (A : Obj) (hA : ∀ x y : A.El, A.key x = A.
     (h1 : ¬ A.lt x y) (h2 : ¬ A.lt y x) : x = y :=
   hA x y (((A.lt_trichotomy x y).resolve_left h1).resolve_right h2)
 
-/-- **Every atom but `.general` and `.guid` sorts stably by `Obj.lt`.** -/
-theorem sortsAsc_ordered_atom {t : QAtomicType} (h : t ≠ .general) (hu : t ≠ .guid) : SortsAsc (.atom t) := by
+/-- **Every atom but `.general` sorts stably by `Obj.lt`.** -/
+theorem sortsAsc_ordered_atom {t : QAtomicType} (h : t ≠ .general) : SortsAsc (.atom t) := by
   cases t
   case boolean => exact sortsAsc_boolean
   case symbol => exact sortsAsc_symbol
-  case guid => exact absurd rfl hu
   case general => exact absurd rfl h
   all_goals exact sortsAsc_num rfl (by decide)
 

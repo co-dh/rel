@@ -17,7 +17,6 @@ def nullAtom (t : QAtomicType) (h : t ≠ .general := by first | decide | assump
   match t with
   | .general => absurd rfl h
   | .boolean => .boolean false
-  | .guid => .guid (Vector.replicate 16 0)
   | .byte => .byte 0
   | .short => .short Int16.minValue
   | .int => .int Int32.minValue

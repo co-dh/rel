@@ -132,7 +132,6 @@ theorem alp_part {t : QAtomicType} {w : Nat} (ht : Column.alpEncodes t = true) (
       some (Column.atomOfBits t (Column.alpBits md pk a (Column.blockStarts md) i)
         (QAtomicType.ne_general_of_width hw)) := by
   have hb : t ≠ .boolean := by rintro rfl; simp [Column.alpEncodes] at ht
-  have hg : t ≠ .guid := by rintro rfl; simp [Column.alpEncodes] at ht
   obtain ⟨h48, h0⟩ := alp_width ht hw
   rcases he with rfl | he
   · have hesz : Column.alpEsz a = w := by
@@ -183,7 +182,7 @@ theorem razeColumn_alp {t : QAtomicType} {w : Nat} (hw : t.width = some w) (ht :
     element `i` off `F i`, part `k`'s element `i` off `fs k i`, and `F`'s low `8w` bits list `fs`' part after
     part, the razed column lists its parts' elements one part after another — `atomOfBits` reads only the low
     `8w` bits (`atomOfBits_mod`). -/
-theorem razeTo_of_bits {t : QAtomicType} {w : Nat} (hw : t.width = some w) (hb : t ≠ .boolean) (hg8 : t ≠ .guid)
+theorem razeTo_of_bits {t : QAtomicType} {w : Nat} (hw : t.width = some w) (hb : t ≠ .boolean)
     (cs : Array ((k : USize) × Arr t k)) {S : Nat} (hs : (cs.toList.map (·.1.toNat)).sum = S)
     (hS : S < USize.size) (h2 : 2 ≤ cs.size) (F : Nat → UInt64) (cnt : Nat → Nat) (fs : Nat → Nat → UInt64)
     (hJ : ∀ c E a, razeColumn t (cs.map (·.2.part)) = some (.vector t c E a) → ∀ i < S,
@@ -231,7 +230,6 @@ theorem razeTo_join_alp {t : QAtomicType} {w : Nat} (hw : t.width = some w) (cs 
   obtain ⟨hal, hns, hNv, hms, hps, has, -⟩ := encodedParts_spec hE
   have ht : Column.alpEncodes t = true := hal.symm
   have hb : t ≠ .boolean := by rintro rfl; simp [Column.alpEncodes] at ht
-  have hg8 : t ≠ .guid := by rintro rfl; simp [Column.alpEncodes] at ht
   obtain ⟨h48, h0⟩ := alp_width ht hw
   have hw48 : w = 4 ∨ w = 8 := by revert h48; split <;> omega
   have hw8 : w ≤ 8 := by omega

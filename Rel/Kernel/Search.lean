@@ -253,22 +253,14 @@ def runStartsBits (n : USize) (bits : @& ByteArray) : ByteArray :=
     if i == 0 || Column.bitAt bits i != Column.bitAt bits (i - 1)
     then Column.pushBits acc i.toUInt64 8 else acc) n.toUInt64 8
 
-/-- The width the dense engine is instantiated at, and `none` at the three types that never reach
-it: `boolean` is a `bits` payload, `symbol` has no fixed width, and `guid` is sixteen bytes, wider
-than any instantiation and with no scalar form for a needle to cross the FFI in. That is a statement
-about the dense *engine* and not about what a kernel can answer — `binColumn` reads all three, each
+/-- The width the dense engine is instantiated at, and `none` at the two types that never reach
+it: `boolean` is a `bits` payload and `symbol` has no fixed width. That is a statement
+about the dense *engine* and not about what a kernel can answer — `binColumn` reads both, each
 by its own payload — so this gate is never the place to add one. Everything else has
 a width of 1, 2, 4 or 8, so adding a q type is an entry in `QAtomicType.width` and nothing here. -/
 def denseWidth : QAtomicType → Option Nat
-  | .boolean | .symbol | .guid => none
+  | .boolean | .symbol => none
   | t => t.width
-
-/-- The width a kernel that only **moves** or **hashes** whole elements reads at: `denseWidth`, and
-`guid`'s sixteen bytes, which the C takes whole as a `u128` — no needle crosses the FFI as a `UInt64`
-and nothing is ordered, which are the two things `denseWidth` guards. -/
-def rowWidth : QAtomicType → Option Nat
-  | .guid => some 16
-  | t => denseWidth t
 
 /-- An encoded column at a type the encoding is *for*, which is what every kernel that reads one
 where it lies asks first: `?` and `bin` here, `x@i`, `reverse` and a shift in

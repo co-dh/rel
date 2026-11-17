@@ -27,7 +27,6 @@ def Obj.key : (A : Obj) → A.El → List Nat
   | .atom .real, x => [(Order.rank .f32 (x : UInt32).toUInt64).toNat]
   | .atom .float, x | .atom .datetime, x => [(Order.rank .f64 (x : UInt64)).toNat]
   | .atom .symbol, x => (x : String).toUTF8.data.toList.map (·.toNat + 1) ++ [0]
-  | .atom .guid, x => (x : Guid).toList.map (·.toNat)
   | .atom .general, _ => []
   | .prod a b, (x, y) => a.key x ++ b.key y
   | .arr b, xs => (xs : List b.El).foldr (fun x k => 1 :: b.key x ++ k) [0]

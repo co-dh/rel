@@ -889,7 +889,6 @@ where
       decide (orderKind t = some .i64) ||
       (decide (t = .symbol) && decide ((cs.toList.map fun c : Part (.atom t) => match c.2.enc with
         | .enum _ o _ => o.size - 1 | _ => c.1.toNat).sum < USize.size)) ||
-      decide (t = .guid) ||
       (decide (t = .general) && cs.toArray.all fun c => match c.2.enc with | .gen xs => xs.all cellFree | _ => true))
 
 theorem gather_len (s i : ByteArray) : len (gather 8 s i) = len i := by

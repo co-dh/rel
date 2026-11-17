@@ -5,14 +5,14 @@ import Rel.Kernel.Need
 
 namespace Rel
 
-/-- The element type of a q list, q's list type codes 0 to 19, in type-code order. `general` is type 0,
+/-- The element type of a q list, q's list type codes 0 to 19 less guid's 2, in type-code order. `general` is type 0,
 a list of any values. q has no type-0 atom, so `general` is a column type with no atom value: a function
 that reads or builds an atom (`atomOfBits`, `Column.ofAtoms`) takes `t ≠ .general`. A general list's
 null is not a function of its type either: it depends on the value (its first item's typed null, its
 empty vector, or `()`). -/
 inductive QAtomicType
   | general
-  | boolean | guid | byte | short | int | long | real | float | char | symbol
+  | boolean | byte | short | int | long | real | float | char | symbol
   | timestamp | month | date | datetime | timespan | minute | second | time
   deriving Repr, DecidableEq, Inhabited, Hashable
 
@@ -28,13 +28,9 @@ def width : QAtomicType → Option Nat
   | short => some 2
   | int | real | month | date | minute | second | time => some 4
   | long | float | timestamp | datetime | timespan => some 8
-  | guid => some 16
   | symbol | general => none
 
 end QAtomicType
-
-/-- A 16-byte GUID. -/
-abbrev Guid := Vector UInt8 16
 
 namespace Bits
 
@@ -47,7 +43,6 @@ end Bits
 the payload is the raw wire value, including null and infinity sentinels. -/
 inductive QAtom
   | boolean : Bool → QAtom
-  | guid : Guid → QAtom
   | byte : UInt8 → QAtom
   | short : Int16 → QAtom
   | int : Int32 → QAtom
@@ -672,7 +667,7 @@ def WF (t : QAtomicType) (n : USize) (e : Enc) : Prop :=
     | some w => b.size = n.toNat * w
     | none => False
   | t, .foR metadata _ =>
-    t.width.isSome ∧ t ≠ .boolean ∧ t ≠ .guid ∧ n.toNat ≤ blk metadata * nblk metadata ∧ lgOk metadata
+    t.width.isSome ∧ t ≠ .boolean ∧ n.toNat ≤ blk metadata * nblk metadata ∧ lgOk metadata
   | t, .alp metadata _ a =>
     (t = .real ∨ t = .float ∨ t = .datetime) ∧ n.toNat ≤ blk metadata * nblk metadata ∧ lgOk metadata ∧ alpF32 a = (t.width == some 4)
   | _, _ => False
@@ -681,9 +676,8 @@ def WF (t : QAtomicType) (n : USize) (e : Enc) : Prop :=
 numeric column is stated over this, because `atoms`' symbol branch brings `Classical.choice` with it. -/
 def raw (t : QAtomicType) (n : USize) (e : Enc) : Array UInt64 :=
   match t, e with
-  | .boolean, .bytes _ | .guid, .bytes _ | .boolean, .foR _ _
-  | .guid, .foR _ _ => #[]
-  | .boolean, .alp _ _ _ | .guid, .alp _ _ _ => #[]
+  | .boolean, .bytes _ | .boolean, .foR _ _ => #[]
+  | .boolean, .alp _ _ _ => #[]
   | t, .bytes b => match t.width with
     | some w => (Array.range n.toNat).map fun i => bitsAt b (i * w) w
     | none => #[]
@@ -901,11 +895,11 @@ namespace Rel
 
 namespace QAtomicType
 
-/-- The q type code of the *vector* form; the atom form is its negation. Code 3 is unused, and code 0,
-the general list, has no atom form. -/
+/-- The q type code of the *vector* form; the atom form is its negation. Codes 2 (guid, which Rel does not
+carry) and 3 are unused, and code 0, the general list, has no atom form. -/
 def code : QAtomicType → Int8
   | general => 0
-  | boolean => 1 | guid => 2 | byte => 4 | short => 5 | int => 6 | long => 7
+  | boolean => 1 | byte => 4 | short => 5 | int => 6 | long => 7
   | real => 8 | float => 9 | char => 10 | symbol => 11 | timestamp => 12
   | month => 13 | date => 14 | datetime => 15 | timespan => 16 | minute => 17
   | second => 18 | time => 19
@@ -924,7 +918,7 @@ end Bits
 namespace QAtom
 
 def type : QAtom → QAtomicType
-  | boolean _ => .boolean | guid _ => .guid | byte _ => .byte | short _ => .short
+  | boolean _ => .boolean | byte _ => .byte | short _ => .short
   | int _ => .int | long _ => .long | real _ => .real | float _ => .float
   | char _ => .char | symbol _ => .symbol | timestamp _ => .timestamp
   | month _ => .month | date _ => .date | datetime _ => .datetime
@@ -933,7 +927,6 @@ def type : QAtom → QAtomicType
 /-- q's `~` on atoms: bit-pattern identity, so a null matches a null. -/
 def identical : QAtom → QAtom → Bool
   | boolean a, boolean b => a == b
-  | guid a, guid b => a.toArray == b.toArray
   | byte a, byte b | char a, char b => a == b
   | short a, short b => a == b
   | int a, int b | month a, month b | date a, date b
@@ -970,7 +963,7 @@ namespace Column
 
 Floats stay *bits*: `QAtom.float` already holds the wire pattern, and it must never pass through
 `Float.ofBits`, which canonicalises `0xfff8000000000000` — q's `0n` — to `0x7ff8000000000000` and so
-corrupts every float null. `guid` and `symbol` are not scalars and do not come through here. -/
+corrupts every float null. `symbol` is not a scalar and does not come through here. -/
 def bitsOf : QAtom → UInt64
   | .boolean x => if x then 1 else 0
   | .byte x | .char x => x.toUInt64
@@ -979,11 +972,11 @@ def bitsOf : QAtom → UInt64
   | .long x | .timestamp x | .timespan x => x.toUInt64
   | .real x => x.toUInt64
   | .float x | .datetime x => x
-  | .guid _ | .symbol _ => 0
+  | .symbol _ => 0
 
 /-- The atom of type `t` those raw bits denote. Total, and its type is `t` by construction, which is
-what `atoms_type` turns into the invariant `QLean/Verify/` used to assume. `guid` and `symbol` are
-handled by `atoms` directly and answer their own null here. `general` has no atom. -/
+what `atoms_type` turns into the invariant `QLean/Verify/` used to assume. `symbol` is
+handled by `atoms` directly and answers its own null here. `general` has no atom. -/
 def atomOfBits (t : QAtomicType) (v : UInt64) (h : t ≠ .general := by first | decide | assumption) :
     QAtom :=
   match t with
@@ -1004,7 +997,6 @@ def atomOfBits (t : QAtomicType) (v : UInt64) (h : t ≠ .general := by first | 
   | .real => .real v.toUInt32
   | .float => .float v
   | .datetime => .datetime v
-  | .guid => .guid (Vector.replicate 16 0)
   | .symbol => .symbol ""
 
 /-- Booleans packed eight to a byte, LSB first. The unused tail bits of the last byte stay `0`, so
@@ -1088,8 +1080,6 @@ def get (t : QAtomicType) (n : USize) (e : Enc) (i : Nat) : Option QAtom :=
     | .symbol, .enum dict offs ids =>
       let (lo, len) := symBytes offs (idAt ids (idWidth offs) i)
       some (.symbol ((String.fromUTF8? (dict.extract lo (lo + len))).getD ""))
-    | .guid, .bytes b =>
-      some (.guid (Vector.ofFn fun k : Fin 16 => (b[i * 16 + k.val]?).getD 0))
     | t, .bytes b => match hw : t.width with
       | some w => some (atomOfBits t (bitsAt b (i * w) w) (QAtomicType.ne_general_of_width hw))
       | none => none
@@ -1124,11 +1114,6 @@ def ofAtoms (t : QAtomicType) (as : Array QAtom) (h : t ≠ .general := by first
     | .general => absurd rfl h
     | .boolean => some (.bits (packBits as))
     | .symbol => some (symsOf as)
-    | .guid =>
-      some (.bytes (as.foldl (init := ByteArray.emptyWithCapacity (as.size * 16))
-        fun acc a => match a with
-          | .guid g => g.toArray.foldl ByteArray.push acc
-          | _ => acc))
     | t => match t.width with
       | some w =>
         some (.bytes (as.foldl (init := ByteArray.emptyWithCapacity (as.size * w))
@@ -1325,23 +1310,6 @@ theorem foldl_push_size (b : ByteArray) (xs : List UInt8) :
   induction xs generalizing b with
   | nil => simp
   | cons x xs ih => rw [List.foldl_cons, ih, push_size]; simp only [List.length_cons]; omega
-
-/-- The guid fold appends sixteen bytes per element. -/
-private theorem foldl_guid_size (b : ByteArray) (as : List QAtom)
-    (h : ∀ a ∈ as, a.type = .guid) :
-    (as.foldl (fun acc a => match a with
-        | .guid g => g.toArray.foldl ByteArray.push acc
-        | _ => acc) b).size = b.size + as.length * 16 := by
-  induction as generalizing b with
-  | nil => simp
-  | cons a as ih =>
-    obtain ⟨g, rfl⟩ : ∃ g, a = .guid g := by
-      have ha := h a List.mem_cons_self
-      cases a <;> first | exact ⟨_, rfl⟩ | simp [QAtom.type] at ha
-    simp only [List.foldl_cons]
-    rw [ih _ fun x hx => h x (List.mem_cons_of_mem _ hx), ← Array.foldl_toList, foldl_push_size]
-    simp [Nat.succ_mul]
-    omega
 
 /-- The bytes a symbol contributes. The NUL that follows them is `blobStep`'s, not this. -/
 def utf8Of : QAtom → ByteArray
@@ -1594,10 +1562,6 @@ theorem ofAtoms_WF {t : QAtomicType} {as : Array QAtom} {e : Enc} {hn : t ≠ .g
     rw [symKey_folds _ i (by simpa using hi), getElem!_pos _ i (by simpa using hi), Array.getElem_toList,
       Array.getElem_map]
     cases as[i] <;> first | exact String.isValidUTF8 _ | exact (by decide : ByteArray.empty.IsValidUTF8)
-  | .guid, _, h, hc =>
-    cases hc
-    show _ = as.size * 16
-    rw [← Array.foldl_toList, foldl_guid_size _ _ fun a ha => h a (by simpa using ha), h0]; simp
   | .byte, _, _, hc | .char, _, _, hc | .short, _, _, hc | .int, _, _, hc | .long, _, _, hc
   | .real, _, _, hc | .float, _, _, hc | .timestamp, _, _, hc | .month, _, _, hc | .date, _, _, hc
   | .datetime, _, _, hc | .timespan, _, _, hc | .minute, _, _, hc | .second, _, _, hc

@@ -18,7 +18,6 @@ its q type, which defeats the point of indexing by the q type. -/
   -- a general list's element is any value, boxed: the `xs` of `.general xs`
   | .general => QValue
   | .boolean => Bool
-  | .guid => Guid
   | .byte | .char => UInt8
   | .short => Int16
   | .int | .month | .date | .minute | .second | .time => Int32
@@ -34,7 +33,6 @@ index travels with the value. -/
 def Carrier.of? : (t : QAtomicType) → QValue → Option (Carrier t)
   | .general, v => some v
   | .boolean, .atom (.boolean x) => some x
-  | .guid, .atom (.guid x) => some x
   | .byte, .atom (.byte x) => some x
   | .char, .atom (.char x) => some x
   | .short, .atom (.short x) => some x

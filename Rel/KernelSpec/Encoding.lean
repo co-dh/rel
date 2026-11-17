@@ -578,12 +578,12 @@ theorem foRBits_encode (lg : Nat) (hlg : 6 ≤ lg ∧ lg ≤ 16) (w : Nat) (hw0 
     case hs => exact pack_steps
     simp [hnb]
 
-theorem raw_foR (t : QAtomicType) (w : Nat) (ht : t.width = some w) (hb : t ≠ .boolean) (hg : t ≠ .guid)
+theorem raw_foR (t : QAtomicType) (w : Nat) (ht : t.width = some w) (hb : t ≠ .boolean)
     (n : USize) (M P : ByteArray) :
     Enc.raw t n (.foR M P) = (Array.range n.toNat).map (Column.foRBits M P (Column.blockStarts M)) := by
   cases t <;> simp_all [Enc.raw]
 
-theorem raw_bytes (t : QAtomicType) (w : Nat) (ht : t.width = some w) (hb : t ≠ .boolean) (hg : t ≠ .guid)
+theorem raw_bytes (t : QAtomicType) (w : Nat) (ht : t.width = some w) (hb : t ≠ .boolean)
     (n : USize) (x : ByteArray) :
     Enc.raw t n (.bytes x) = (Array.range n.toNat).map fun i => Column.bitsAt x (i * w) w := by
   cases t <;> simp_all [Enc.raw]

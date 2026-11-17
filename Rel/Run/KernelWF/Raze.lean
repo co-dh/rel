@@ -82,9 +82,9 @@ theorem countBytes_get (xs : Array USize) (k : Nat) (h : k < xs.size) :
 
 /-! ## `orderKind`: which types have a sort layout -/
 
-/-- `orderKind` has no sort layout exactly at symbol, guid and the general list. -/
+/-- `orderKind` has no sort layout exactly at symbol and the general list. -/
 theorem orderKind_eq_none {t : QAtomicType} :
-    orderKind t = none ↔ t = .symbol ∨ t = .guid ∨ t = .general := by
+    orderKind t = none ↔ t = .symbol ∨ t = .general := by
   cases t <;> simp [orderKind]
 
 /-- `groupIdsColumn` codes every well-formed payload except a general list's, where the interned
@@ -472,10 +472,10 @@ theorem decode_size (w : USize) (M P : ByteArray) (n : USize) :
   simp only [Coc.decode, Coc.elems]
   rw [foldl_size ByteArray.size _ w.toNat (fun _ _ => Column.pushBits_size ..)]; simp
 
-/-- A Frame-of-Reference payload is well formed at a fixed-width type other than boolean and guid
+/-- A Frame-of-Reference payload is well formed at a fixed-width type other than boolean
     exactly when its blocks cover its count and its metadata records a block size the layout admits. -/
 theorem wf_foR {t : QAtomicType} {n : USize} {m p : ByteArray} (hw : t.width.isSome) (hb : t ≠ .boolean)
-    (hg : t ≠ .guid) (h : n.toNat ≤ Column.blk m * Column.nblk m) (hl : Column.lgOk m = true) :
+    (h : n.toNat ≤ Column.blk m * Column.nblk m) (hl : Column.lgOk m = true) :
     Enc.WF t n (.foR m p) := by
   cases t <;> simp_all [Enc.WF]
 
@@ -620,7 +620,7 @@ theorem answer_wf {t : QAtomicType} {n : USize} {e : Enc}
     · rename_i hE
       split
       · rename_i m p heq
-        have h0 : 0 < w ∧ w ≤ 8 ∧ t ≠ .guid := by
+        have h0 : 0 < w ∧ w ≤ 8 := by
           cases t <;> simp_all [QAtomicType.width, Column.encodes] <;> omega
         have hmp := encodeBelow_eq heq
         have hk := Verify.nblk_encode Column.lgEnc (by decide) w h0.1 h0.2.1 b

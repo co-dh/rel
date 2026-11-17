@@ -278,8 +278,7 @@ open Rel.Kernel.Order
 /-- The layout a column of this type is ordered at. Every q type but the two that have no key of a
 fixed width is here, `char` included — q orders it by its unsigned byte and the blank is not a null
 to a comparison, which is `Eval.missing`'s split read from the ordering side. `symbol` has its own
-three entry points; `guid` is sixteen bytes, wider than any instantiation, and falls back for the
-reason `denseWidth` declines it. -/
+three entry points. -/
 def orderKind : QAtomicType → Option Kind
   | .boolean => some .bit
   | .byte | .char => some .u8
@@ -288,7 +287,7 @@ def orderKind : QAtomicType → Option Kind
   | .long | .timestamp | .timespan => some .i64
   | .real => some .f32
   | .float | .datetime => some .f64
-  | .symbol | .guid | .general => none
+  | .symbol | .general => none
 
 /-- `groupColumn`'s groups as a grouped reduction reads them: the group of every row, and the row
 each group was first seen at, which is where its key lies. The key column itself is a gather of the
@@ -311,11 +310,6 @@ def groupIdsColumn (t : QAtomicType) (n : USize) (e : Enc) : Option (ByteArray �
       fun nd => some (idGroups nd n (Column.idWidth dof).toUSize ids)
   -- `dedup` reads a bitmap a bit an element at `Kind.bit`, so the bitmap is the payload as it lies
   | .boolean, .bits b => some (groupIds .bit n b)
-  -- `groupColumn`'s reading: the groups of `x?x`, whose first rows are `x`'s
-  | .guid, e =>
-    match Enc.bytesOf .guid n e with
-    | some b => some (groupIds .i64 n (findVec 16 false b b))
-    | none => none
   | t, e =>
     match orderKind t with
     | none => none
