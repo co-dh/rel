@@ -66,8 +66,7 @@ pub fn mask_fill(w: &mut [u64], nb: usize) {
 pub fn cmp_meta(a: &Coc, b: Option<&Coc>, op: i32, v: i64, out: &mut [u64], deep: &mut [u32]) -> usize {
     let (n, m, mut nd) = (a.meta.n, &a.meta, 0);
     out[..n.div_ceil(64)].fill(0);
-    for k in 0..n.div_ceil(m.blk()) {
-        let (lo, nb) = (k << m.lg, (n - (k << m.lg)).min(m.blk()));
+    for (k, lo, nb) in crate::blocks::Blocks::from(*a).walk() {
         let whole = if a.blk_nexc(k) > 0 || b.is_some_and(|b| b.blk_nexc(k) > 0) { -1 } else {
             match b { Some(b) => blk_cmp(op, m.base[k], m.maxv[k], b.meta.base[k], b.meta.maxv[k]),
                       None => blk_cmp(op, m.base[k], m.maxv[k], v, v) }
@@ -150,7 +149,7 @@ pub fn mask_blk(c: &Coc, b: usize, nb: usize, op: i32, v: i64, w64: &mut [u64], 
 pub fn mask_res<T: Fn(usize) -> i64>(c: &Coc, op: i32, t: T, blocks: impl Iterator<Item = usize>, out: &mut [u64], w0: usize) {
     let mut scratch = pod::Scr::<u64>::new(c.meta.blk());
     for b in blocks {
-        let (at, nb) = (b << c.meta.lg, (c.meta.n - (b << c.meta.lg)).min(c.meta.blk()));
+        let (at, nb) = crate::blocks::Blocks::from(*c).span(b);
         mask_blk(c, b, nb, op, t(b), &mut out[(at >> 6) - w0..], pod::bytes_mut(&mut scratch))
     }
 }
@@ -175,9 +174,9 @@ pub fn shift_fill(c: &Coc, k: i64, neg: bool, fill: i64, buf: &mut [i64], i0: us
 // ---- A18: coc.rs ----
 /// Blocks `b0 .. b1` into `o`, block `b` at `o[(b - b0) * blk * esz ..]` (`o` may end inside the last block).
 pub fn load_blocks(f: &Cocf, b0: usize, b1: usize, o: &mut [u8]) {
-    let (n, esz, blk) = (f.c.meta.n, if f.f32 { 4 } else { 8 }, f.c.meta.blk());
+    let (s, esz, blk) = (crate::blocks::Blocks::from(*f), if f.f32 { 4 } else { 8 }, f.c.meta.blk());
     for b in b0..b1 {
-        let nb = (n - b * blk).min(blk);
+        let nb = s.span(b).1;
         f.load_blk(b, nb, &mut o[(b - b0) * blk * esz..][..nb * esz])
     }
 }
@@ -203,7 +202,7 @@ pub fn alp_gather(run: Runner, fill: u64, f: &Cocf, idx: &[i64], out: &mut [u8])
             if j >= re {
                 re = j + 1;
                 while re < hi && idx[re] as u64 >> lg == b as u64 { re += 1 }
-                if re - j >= blk / 8 { rb = b; f.load_blk(b, (sn - (b << lg)).min(blk), bb) } else { rb = usize::MAX }
+                if re - j >= blk / 8 { rb = b; f.load_blk(b, crate::blocks::Blocks::from(*f).span(b).1, bb) } else { rb = usize::MAX }
             }
             if rb == b { o[at..at + esz].copy_from_slice(&bb[(u - (b << lg)) * esz..][..esz]); continue }
             if j + 16 < hi { f.c.prefetch(idx[j + 16] as usize) }
@@ -227,4 +226,4 @@ pub fn cmp2_dense(op: i32, a: &Coc, b: &Coc, out: &mut [u64]) {
 }
 
 /// coc.rs `cocf_mask_lt`'s block loop: every block of `x op ts[b]` into the zeroed `out`, on the calling thread.
-pub fn mask_blks(c: &Coc, op: i32, ts: &[i64], out: &mut [u64]) { mask_res(c, op, |b| ts[b], 0..c.meta.n.div_ceil(c.meta.blk()), out, 0) }
+pub fn mask_blks(c: &Coc, op: i32, ts: &[i64], out: &mut [u64]) { mask_res(c, op, |b| ts[b], 0..crate::blocks::Blocks::from(*c).nblk(), out, 0) }

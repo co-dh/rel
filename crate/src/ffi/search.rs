@@ -7,14 +7,14 @@ use crate::coc::Coc;
 use crate::ffi::{sarray_room, sd_kept, syms_of};
 use crate::lean::{B, O, SArr, export};
 use crate::exports::coc::view;
-use crate::search::{Kind, Opnd, Src};
+use crate::search::{Kind, Blocks, Src};
 use crate::{c, pod, search};
 #[cfg(all(feature = "ffi", not(any(test, feature = "std"))))]
 use crate::ids;
 
 
 /// `x ? h` (`member` false, `Int64`s) or `x in h` (bits) at the key type `kd`, over the pool.
-pub fn probe(kd: Kind, h: &Opnd, x: &Opnd, member: bool) -> O {
+pub fn probe(kd: Kind, h: &Blocks, x: &Blocks, member: bool) -> O {
     let mut r = SArr::new(1, if member { x.n.div_ceil(8) } else { x.n * 8 });
     search::search(c::pool(), kd, h, x, member, r.bytes_mut());
     r.into()
@@ -62,14 +62,14 @@ export! {
     /// Spec: `findVec w float hay ndl` is `findScalar w float hay` at each element of `ndl`, as `Int64`s.
     fn qlean_search_find_vec(w: usize, is_float: u8, hay: B, ndl: B) -> O {
         let kd = search::kind_of(w, is_float != 0, "find_vec"); // before dividing by `w`
-        probe(kd, &Opnd::dense(hay.bytes(), w), &Opnd::dense(ndl.bytes(), w), false)
+        probe(kd, &Blocks::dense(hay.bytes(), w), &Blocks::dense(ndl.bytes(), w), false)
     }
 
     /// Spec: `memberVec w float xs hay` is bit `i` set exactly when `findScalar w float hay xs[i]` is below `hay.size / w`,
     /// packed LSB first with the tail bits of the last byte zero.
     fn qlean_search_member_vec(w: usize, is_float: u8, xs: B, hay: B) -> O {
         let kd = search::kind_of(w, is_float != 0, "member_vec");
-        probe(kd, &Opnd::dense(hay.bytes(), w), &Opnd::dense(xs.bytes(), w), true)
+        probe(kd, &Blocks::dense(hay.bytes(), w), &Blocks::dense(xs.bytes(), w), true)
     }
 
 
@@ -77,13 +77,13 @@ export! {
     /// Spec: `findIdsVec hw hay hn nw ndl nn` is `findVec` at `idKeyWidth hw nw` bytes over both id payloads repacked there
     /// (nothing is repacked: a block of ids is restored at a time).
     fn qlean_search_find_ids_vec(hw: usize, hay: B, hn: usize, nw: usize, ndl: B, nn: usize) -> O {
-        let (h, x) = (Opnd::ids(hay.bytes(), hn, hw as u32), Opnd::ids(ndl.bytes(), nn, nw as u32));
+        let (h, x) = (Blocks::ids(hay.bytes(), hn, hw as u32), Blocks::ids(ndl.bytes(), nn, nw as u32));
         probe(search::kind_of(search::ids_key_width(hw, nw), false, "find_ids_vec"), &h, &x, false)
     }
 
     /// Spec: `memberIdsVec xw xs xn hw hay hn` is `memberVec` at `idKeyWidth xw hw` bytes over both id payloads repacked there.
     fn qlean_search_member_ids_vec(xw: usize, xs: B, xn: usize, hw: usize, hay: B, hn: usize) -> O {
-        let (x, h) = (Opnd::ids(xs.bytes(), xn, xw as u32), Opnd::ids(hay.bytes(), hn, hw as u32));
+        let (x, h) = (Blocks::ids(xs.bytes(), xn, xw as u32), Blocks::ids(hay.bytes(), hn, hw as u32));
         probe(search::kind_of(search::ids_key_width(xw, hw), false, "member_ids_vec"), &h, &x, true)
     }
 
@@ -150,7 +150,7 @@ export! {
     /// Spec: `runStarts w float hay` is the ascending indices `i` where `key hay[i]` differs from `key hay[i-1]`, with `0`
     /// first and the element count last, as `Int64`s. An empty payload answers `,0`.
     fn qlean_search_run_starts(w: usize, is_float: u8, hayv: B) -> O {
-        let o = Opnd::dense(hayv.bytes(), w);
+        let o = Blocks::dense(hayv.bytes(), w);
         starts(o.n, |out| search::run_starts(&o, w, is_float != 0, out))
     }
 
@@ -220,8 +220,8 @@ pub fn sym_search(bits: bool, nb: B, no: B, hb: B, ho: B, out: &mut [u8]) {
 }
 /// The operand `operand w metadata pack n`: the payload `pack` when `metadata` is empty, and `Coc.decode w metadata pack n`
 /// otherwise.
-pub fn opnd_of<'a>(who: &str, mv: B<'a>, pv: B<'a>, n: usize, w: usize) -> Opnd<'a> {
-    if mv.bytes().is_empty() { return Opnd::dense(pv.bytes(), w) }
+pub fn opnd_of<'a>(who: &str, mv: B<'a>, pv: B<'a>, n: usize, w: usize) -> Blocks<'a> {
+    if mv.bytes().is_empty() { return Blocks::dense(pv.bytes(), w) }
     let c = view(who, mv, pv, n);
-    Opnd { n: c.meta.n, src: Src::Enc(c) }
+    Blocks { n: c.meta.n, src: Src::For(c) }
 }

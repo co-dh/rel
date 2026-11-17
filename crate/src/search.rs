@@ -7,12 +7,7 @@ use crate::c::Runner;
 use crate::coc::Coc;
 use crate::ids;
 use crate::sym::Syms;
-
-/// search.rs `opnd`: a dense payload (`enc` 0), an encoded column (1), or ids at `lw` bits (2); `n` elements.
-#[derive(Clone, Copy)]
-pub enum Src<'a> { Dense(&'a [u8]), Enc(Coc<'a>), Ids(&'a [u8], u32) }
-#[derive(Clone, Copy)]
-pub struct Opnd<'a> { pub src: Src<'a>, pub n: usize }
+pub use crate::blocks::{Blocks, Src};
 /// search.rs `kind`: the key type, chosen once per operator.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Kind { U8, U16, U32, U64, F32, F64, U128 }
@@ -24,64 +19,11 @@ pub fn coc_exc_within(c: &Coc, b: usize, lo: i64, hi: i64) -> bool {
 }
 /// search.rs `ids_top`: one past the largest id at `lw` bits.
 pub fn ids_top(lw: u32) -> u64 { if lw >= 64 { !0 } else { (1u64 << lw) - 1 } }
-impl<'a> Opnd<'a> {
-    /// The block size exponent of this operand: an encoded column's own, the writer's grid for a payload with none.
-    pub fn lg(&self) -> u32 { match self.src { Src::Enc(c) => c.meta.lg, _ => crate::DEFAULT_LG } }
-    /// Elements `at .. at + cnt` at width `w`, as the slice of `buf` they are restored into: one or more of this operand's own
-    /// blocks, whichever its block size cuts them from.
-    pub fn range<'b>(&self, at: usize, cnt: usize, w: usize, buf: &'b mut [u8]) -> &'b [u8] where 'a: 'b {
-        let (lg, blk) = (self.lg(), 1usize << self.lg());
-        let mut tmp = crate::pod::Scr::<u64, 1024>::new(2 * blk);
-        let mut k = 0;
-        while k < cnt {
-            let (b, o) = ((at + k) >> lg, (at + k) & (blk - 1));
-            let t = (blk - o).min(cnt - k);
-            let x = self.blk(b, w, crate::pod::bytes_mut(&mut tmp));
-            buf[k * w..(k + t) * w].copy_from_slice(&x[o * w..(o + t) * w]);
-            k += t;
-        }
-        &buf[..cnt * w]
-    }
-    /// search.rs `opnd_blk`: block `b` at key width `w`: a slice of the payload, or restored into `buf`
-    /// (block size * w); the element count is the answer's length / `w`.
-    pub fn blk<'b>(&self, b: usize, w: usize, buf: &'b mut [u8]) -> &'b [u8] where 'a: 'b {
-        let (at, cnt) = (b << self.lg(), (self.n - (b << self.lg())).min(1 << self.lg()));
-        match self.src {
-            Src::Dense(d) => &d[at * w..(at + cnt) * w],
-            Src::Ids(p, lw) => {
-                // `ids_key_width` answers at most 8; the clamp is for the `guid` instantiation, never run
-                let out = &mut buf[..cnt * w];
-                if matches!(w, 1 | 2 | 4 | 8) {
-                    // `id_put` at `8w` bits is the fixed-width store; a `w`-byte copy here was a `memcpy` call per id
-                    let ow = 8 * w as u32;
-                    for k in 0..cnt { ids::id_put(out, ow, k, ids::id_at(p, lw, at + k) as u64) }
-                } else {
-                    let cw = w.min(8);
-                    for k in 0..cnt { out[k * w..k * w + cw].copy_from_slice(&(ids::id_at(p, lw, at + k) as u64).to_le_bytes()[..cw]) }
-                }
-                out
-            }
-            Src::Enc(c) => {
-                let out = &mut buf[..cnt * w];
-                let n = out.len();
-                let bad = || -> ! { panic!("qlean search: a block buffer of {n} bytes is misaligned for {w}-byte elements") };
-                match w {
-                    1 => c.decode_blk(b, cnt, crate::pod::cast_mut::<u8>(out).unwrap_or_else(|| bad())),
-                    2 => c.decode_blk(b, cnt, crate::pod::cast_mut::<i16>(out).unwrap_or_else(|| bad())),
-                    4 => c.decode_blk(b, cnt, crate::pod::cast_mut::<i32>(out).unwrap_or_else(|| bad())),
-                    _ => c.decode_blk(b, cnt, crate::pod::cast_mut::<i64>(out).unwrap_or_else(|| bad())),
-                }
-                out
-            }
-        }
-    }
-}
 /// search.rs `coc_srange`: the column's value range from its metadata.
 pub fn coc_srange(c: &Coc) -> (i64, i64) {
     let m = &c.meta;
-    let nb = m.n.div_ceil(m.blk());
     let (mut a, mut z) = (i64::MAX, i64::MIN);
-    for b in 0..nb { a = a.min(m.base[b]); z = z.max(m.maxv[b]) }
+    for (b, ..) in Blocks::from(*c).walk() { a = a.min(m.base[b]); z = z.max(m.maxv[b]) }
     for j in 0..c.exc.map_or(0, |e| e.pos.len()) { let v = c.exc(j); a = a.min(v); z = z.max(v) }
     (a, z)
 }
@@ -152,35 +94,29 @@ pub struct Ptab<K> { pub tab: Vec<usize>, pub slot: Vec<u32>, pub key: Vec<K>, p
                      pub used: usize, pub direct: bool, pub sh: u32 }
 
 /// The blocks of `x` covering elements `lo .. hi`, each as the slice of those elements starting at element `at`.
-pub fn blocks(x: &Opnd, w: usize, lo: usize, hi: usize, mut f: impl FnMut(usize, &[u8])) {
-    let lg = x.lg();
-    let mut buf = crate::pod::Scr::<u64>::new(2 << lg);
+pub fn blocks(x: &Blocks, w: usize, lo: usize, hi: usize, mut f: impl FnMut(usize, &[u8])) {
+    let mut buf = crate::pod::Scr::<u64>::new(2 * x.blk());
     let bb = crate::pod::bytes_mut(&mut buf);
-    let mut at = lo;
-    while at < hi {
-        let (b, end) = (at >> lg, (((at >> lg) + 1) << lg).min(hi));
-        let blo = b << lg;
-        f(at, &x.blk(b, w, bb)[(at - blo) * w..(end - blo) * w]);
-        at = end;
-    }
+    for (b, blo, at, end) in x.tiles(lo, hi) { f(at, &x.view(b, w, bb)[(at - blo) * w..(end - blo) * w]) }
 }
 
 /// search.rs `table_*`: the table over the haystack `o`, a block at a time, each slot holding the first index its key
 /// occurs at plus one. Direct when the keys span at most `4n + 8`; a direct table whose every slot is filled stops there.
-pub fn table<K: PKey>(o: &Opnd) -> Ptab<K> {
+pub fn table<K: PKey>(o: &Blocks) -> Ptab<K> {
     let mut p = Ptab { tab: Vec::new(), slot: Vec::new(), key: Vec::new(), top: 0, lo: 0, n: o.n, used: 0, direct: false, sh: 0 };
     let (lg, mut buf) = (o.lg(), crate::pod::Scr::<u64>::new(2 << o.lg()));
     let bb = crate::pod::bytes_mut(&mut buf);
-    let nb = o.n.div_ceil(1 << lg);
+    let nb = o.nblk();
     if o.n > 0 && K::W <= 8 {
         let (lo, span) = match o.src {
             Src::Ids(_, lw) => (0, ids_top(lw)),
-            Src::Enc(c) => { let (a, z) = coc_srange(&c); (a as u64 & mask::<K>(), (z as u64).wrapping_sub(a as u64)) }
-            Src::Dense(d) => {
+            Src::For(c) => { let (a, z) = coc_srange(&c); (a as u64 & mask::<K>(), (z as u64).wrapping_sub(a as u64)) }
+            Src::Dense(_) | Src::Alp(_) => {
                 // the C reads exactly `n` elements; a shorter payload is a caller bug and would fold to an empty range
-                assert!(d.len() >= o.n * K::W, "qlean search: a dense haystack of {} bytes holds fewer than its {} elements of {} bytes", d.len(), o.n, K::W);
-                let (mn, mx) = d.chunks_exact(K::W).take(o.n).map(|c| K::of(c).key() as u64)
-                    .fold((!0u64, 0u64), |(a, z), k| (a.min(k), z.max(k)));
+                if let Src::Dense(d) = o.src { assert!(d.len() >= o.n * K::W, "qlean search: a dense haystack of {} bytes holds fewer than its {} elements of {} bytes", d.len(), o.n, K::W) }
+                let mut buf = crate::pod::Scr::<u64>::new(o.blk() * K::W / 8 + 1);
+                let (mn, mx) = o.walk().fold((!0u64, 0u64), |acc, (b, ..)| o.view(b, K::W, crate::pod::bytes_mut(&mut buf)).chunks_exact(K::W)
+                    .map(|c| K::of(c).key() as u64).fold(acc, |(a, z), k| (a.min(k), z.max(k))));
                 (mn, mx - mn)
             }
         };
@@ -188,7 +124,7 @@ pub fn table<K: PKey>(o: &Opnd) -> Ptab<K> {
             (p.direct, p.lo, p.top) = (true, lo, span);
             p.tab = vec![0usize; span as usize + 1];
             for b in 0..nb {
-                for (j, c) in o.blk(b, K::W, bb).chunks_exact(K::W).enumerate() {
+                for (j, c) in o.view(b, K::W, bb).chunks_exact(K::W).enumerate() {
                     let d = ((K::of(c).key() as u64).wrapping_sub(lo) & mask::<K>()) as usize;
                     if p.tab[d] == 0 {
                         p.tab[d] = (b << lg) + j + 1;
@@ -211,7 +147,7 @@ pub fn table<K: PKey>(o: &Opnd) -> Ptab<K> {
     p.key = Vec::with_capacity(o.n);
     let at = |k: K, sh: u32| (k.hash().wrapping_mul(crate::group::PHI64) >> sh) as usize;
     for b in 0..nb {
-        let blk = o.blk(b, K::W, bb);
+        let blk = o.view(b, K::W, bb);
         let cnt = blk.len() / K::W;
         for (j, c) in blk.chunks_exact(K::W).enumerate() {
             let k = K::of(c);
@@ -251,17 +187,17 @@ impl<K: PKey> Ptab<K> {
     /// search.rs `hits_*`: the haystack `h` walked in order to the first occurrence of each key of a table built over
     /// the needles, `ans[s]` that index plus one; it stops once every key is found. An encoded block whose `[base, maxv]`
     /// misses the needles' `[lo, hi]` is passed over on its metadata.
-    pub fn hits(&self, h: &Opnd, lo: i64, hi: i64, ans: &mut [usize]) {
+    pub fn hits(&self, h: &Blocks, lo: i64, hi: i64, ans: &mut [usize]) {
         let mut left = self.used;
         let lg = h.lg();
         let mut buf = crate::pod::Scr::<u64>::new(2 << lg);
         let bb = crate::pod::bytes_mut(&mut buf);
-        for b in 0..h.n.div_ceil(1 << lg) {
+        for b in 0..h.nblk() {
             if left == 0 { return }
-            if let Src::Enc(c) = h.src {
+            if let Src::For(c) = h.src {
                 if (c.meta.maxv[b] < lo || c.meta.base[b] > hi) && !coc_exc_within(&c, b, lo, hi) { continue }
             }
-            for (j, c) in h.blk(b, K::W, bb).chunks_exact(K::W).enumerate() {
+            for (j, c) in h.view(b, K::W, bb).chunks_exact(K::W).enumerate() {
                 let s = self.slot_of(K::of(c));
                 if s != usize::MAX && self.tab[s] != 0 && ans[s] == 0 {
                     ans[s] = (b << lg) + j + 1;
@@ -272,7 +208,7 @@ impl<K: PKey> Ptab<K> {
         }
     }
     /// each element `i` of `x`'s `lo .. hi` with its slot; which table was built is settled before the loop, not per element.
-    fn each(&self, x: &Opnd, lo: usize, hi: usize, mut f: impl FnMut(usize, usize)) {
+    fn each(&self, x: &Blocks, lo: usize, hi: usize, mut f: impl FnMut(usize, usize)) {
         blocks(x, K::W, lo, hi, |at, q| {
             if self.direct { for (j, c) in q.chunks_exact(K::W).enumerate() { f(at + j, self.dslot(K::of(c))) } }
             else { for (j, c) in q.chunks_exact(K::W).enumerate() { f(at + j, self.hslot(K::of(c))) } }
@@ -280,17 +216,17 @@ impl<K: PKey> Ptab<K> {
     }
     /// search.rs `findtab_*`: `x ? hay` for `lo .. hi` into `out[i - lo]`, `ans` the table's own `tab` or the walk's
     /// `hits`; an absent key answers `n`.
-    pub fn find(&self, ans: &[usize], x: &Opnd, lo: usize, hi: usize, out: &mut [i64]) {
+    pub fn find(&self, ans: &[usize], x: &Blocks, lo: usize, hi: usize, out: &mut [i64]) {
         self.each(x, lo, hi, |i, s| out[i - lo] = if s != usize::MAX && ans[s] != 0 { ans[s] as i64 - 1 } else { self.n as i64 })
     }
     /// search.rs `membertab_*`: `x in hay` for `lo .. hi`, bit `i - lo` of `out` (`lo` a multiple of 8) set when found.
-    pub fn member(&self, ans: &[usize], x: &Opnd, lo: usize, hi: usize, out: &mut [u8]) {
+    pub fn member(&self, ans: &[usize], x: &Blocks, lo: usize, hi: usize, out: &mut [u8]) {
         self.each(x, lo, hi, |i, s| if s != usize::MAX && ans[s] != 0 { out[(i - lo) >> 3] |= 1 << ((i - lo) & 7) })
     }
 }
 /// search.rs `scan_*`: the first index of each needle `lo .. hi` of `x` in the dense haystack `h`, or `h.n`; eight
 /// keys at a time so that the comparison vectorises.
-pub fn scan<K: PKey>(h: &Opnd, x: &Opnd, lo: usize, hi: usize, out: &mut [i64]) {
+pub fn scan<K: PKey>(h: &Blocks, x: &Blocks, lo: usize, hi: usize, out: &mut [i64]) {
     let Src::Dense(hb) = h.src else { panic!("qlean search: scan reads a dense haystack") };
     let at = |i: usize| K::of(&hb[i * K::W..]).key();
     blocks(x, K::W, lo, hi, |a, q| {
@@ -308,15 +244,16 @@ pub fn scan<K: PKey>(h: &Opnd, x: &Opnd, lo: usize, hi: usize, out: &mut [i64]) 
 }
 /// search.rs `srange_*`: the operand's signed key range, which a walk over an encoded haystack tests each block's
 /// metadata against.
-pub fn srange<K: PKey>(o: &Opnd) -> (i64, i64) {
+pub fn srange<K: PKey>(o: &Blocks) -> (i64, i64) {
     match o.src {
         Src::Ids(_, lw) => (0, (ids_top(lw) >> 1) as i64),
-        Src::Enc(c) => coc_srange(&c),
-        Src::Dense(d) => {
-            let w = K::W.min(8);
-            d.chunks_exact(K::W).take(o.n).map(|c| { let mut b = [0u8; 8]; b[..w].copy_from_slice(&c[..w]); sext(u64::from_le_bytes(b), w) })
-                .fold((i64::MAX, i64::MIN), |(a, z), v| (a.min(v), z.max(v)))
+        Src::Dense(_) | Src::Alp(_) => {
+            let (w, mut buf) = (K::W.min(8), crate::pod::Scr::<u64>::new(o.blk() * K::W / 8 + 1));
+            o.walk().fold((i64::MAX, i64::MIN), |acc, (b, ..)| o.view(b, K::W, crate::pod::bytes_mut(&mut buf)).chunks_exact(K::W)
+                .map(|c| { let mut b = [0u8; 8]; b[..w].copy_from_slice(&c[..w]); sext(u64::from_le_bytes(b), w) })
+                .fold(acc, |(a, z), v| (a.min(v), z.max(v))))
         }
+        Src::For(c) => coc_srange(&c),
     }
 }
 
@@ -337,13 +274,13 @@ macro_rules! any { ($s:expr, $p:ident => $e:expr) => { match $s {
 } } }
 impl Probe {
     /// the table over the haystack `o`
-    pub fn new(kd: Kind, o: &Opnd) -> Probe { by_kind!(kd, K, V => Probe { t: V(table::<K>(o)), hit: None }) }
+    pub fn new(kd: Kind, o: &Blocks) -> Probe { by_kind!(kd, K, V => Probe { t: V(table::<K>(o)), hit: None }) }
     /// search.rs `SEARCH_TABLE`'s smaller-side branch: the table over the needles `x`, and the haystack `h` walked to
     /// the first occurrence of each needle key.
-    pub fn over(kd: Kind, h: &Opnd, x: &Opnd) -> Probe {
+    pub fn over(kd: Kind, h: &Blocks, x: &Blocks) -> Probe {
         by_kind!(kd, K, V => {
             let mut t = table::<K>(x);
-            let (lo, hi) = if matches!(h.src, Src::Enc(_)) { srange::<K>(x) } else { (i64::MIN, i64::MAX) };
+            let (lo, hi) = if matches!(h.src, Src::For(_)) { srange::<K>(x) } else { (i64::MIN, i64::MAX) };
             let mut ans = vec![0usize; t.top as usize + 1];
             t.hits(h, lo, hi, &mut ans);
             t.n = h.n;
@@ -351,16 +288,16 @@ impl Probe {
         })
     }
     /// `x ? hay` for `lo .. hi`
-    pub fn find(&self, x: &Opnd, lo: usize, hi: usize, out: &mut [i64]) {
+    pub fn find(&self, x: &Blocks, lo: usize, hi: usize, out: &mut [i64]) {
         any!(&self.t, p => p.find(self.hit.as_deref().unwrap_or(&p.tab), x, lo, hi, out))
     }
     /// `x in hay` for `lo .. hi`
-    pub fn member(&self, x: &Opnd, lo: usize, hi: usize, out: &mut [u8]) {
+    pub fn member(&self, x: &Blocks, lo: usize, hi: usize, out: &mut [u8]) {
         any!(&self.t, p => p.member(self.hit.as_deref().unwrap_or(&p.tab), x, lo, hi, out))
     }
 }
 /// `scan` at the key type of `kd`
-pub fn scan_kind(kd: Kind, h: &Opnd, x: &Opnd, out: &mut [i64]) {
+pub fn scan_kind(kd: Kind, h: &Blocks, x: &Blocks, out: &mut [i64]) {
     by_kind!(kd, K, V => scan::<K>(h, x, 0, x.n, out))
 }
 
@@ -370,7 +307,7 @@ pub fn scan_kind(kd: Kind, h: &Opnd, x: &Opnd, out: &mut [i64]) {
 /// smaller side, so the haystack is walked to the first occurrence of each needle key when the needles are fewer.
 /// The table is read-only for the whole pass, so slices are disjoint in `out`; a probe is `QLEAN_COST_ARITH` rather than
 /// `GATHER` (measured 0.40 ns an element against 0.05 for a straight read: 400 ns a thousand on one thread, 66 on 24).
-pub fn search(run: Runner, kd: Kind, h: &Opnd, x: &Opnd, member: bool, out: &mut [u8]) {
+pub fn search(run: Runner, kd: Kind, h: &Blocks, x: &Blocks, member: bool, out: &mut [u8]) {
     let m = x.n;
     if m == 0 { return }
     let t = if m < h.n { Probe::over(kd, h, x) } else { Probe::new(kd, h) };
@@ -538,20 +475,13 @@ impl<'a> Kcur<'a> {
     /// search.rs `kcur_at`
     fn at(&mut self, j: usize) -> u64 {
         let Some(c) = self.k.c else { return bin_at(self.k.d, self.w, j) };
-        let b = j >> c.meta.lg;
+        let s = Blocks::from(*c);
+        let b = j >> s.lg();
         if b != self.b {
-            let (at, w) = (b << c.meta.lg, self.w);
-            let cnt = (c.meta.n - at).min(c.meta.blk());
-            let o = crate::pod::bytes_mut(&mut self.buf);
-            match w {
-                1 => c.decode_blk::<u8>(b, cnt, o),
-                2 => c.decode_blk::<i16>(b, cnt, crate::pod::cast_mut(o).expect("kcur: u64 buffer is aligned")),
-                4 => c.decode_blk::<i32>(b, cnt, crate::pod::cast_mut(o).expect("kcur: u64 buffer is aligned")),
-                _ => c.decode_blk::<i64>(b, cnt, crate::pod::cast_mut(o).expect("kcur: u64 buffer is aligned")),
-            }
+            s.load_w(b, s.span(b).1, self.w, crate::pod::bytes_mut(&mut self.buf));
             self.b = b;
         }
-        bin_at(crate::pod::bytes(&self.buf), self.w, j & (c.meta.blk() - 1))
+        bin_at(crate::pod::bytes(&self.buf), self.w, j & (s.blk() - 1))
     }
 }
 /// search.rs `BIN_TAB_MAX`, `BIN_TAB_SAMPLE`
@@ -614,7 +544,7 @@ pub fn bin(run: Runner, w: usize, is_float: bool, is_signed: bool, right: bool, 
 /// search.rs `run_starts` past the allocation: the start of each run of equal elements of `o` (`norm_key`'s equality)
 /// into `out` (`o.n + 1` long), then `o.n` as the terminator; answers the count with the terminator. The payload is read
 /// a block at a time at width `w`, 1, 2, 4 or 8.
-pub fn run_starts(o: &Opnd, w: usize, is_float: bool, out: &mut [i64]) -> usize {
+pub fn run_starts(o: &Blocks, w: usize, is_float: bool, out: &mut [i64]) -> usize {
     assert!(matches!(w, 1 | 2 | 4 | 8), "qlean search: run_starts got element width {w}; the kernel is instantiated at 1, 2, 4 and 8 bytes");
     // one block at element width `W` from element `skip`: a start is written when the key moves off the previous one
     #[inline(always)]
@@ -626,16 +556,15 @@ pub fn run_starts(o: &Opnd, w: usize, is_float: bool, out: &mut [i64]) -> usize 
             if v != *prev { out[*g] = (at + j) as i64; *g += 1; *prev = v }
         }
     }
-    let (lg, mut buf, mut g, mut prev) = (o.lg(), crate::pod::Scr::<u64>::new(1 << o.lg()), 0, 0u64);
-    for b in 0..o.n.div_ceil(1 << lg) {
-        let at = b << lg;
+    let (mut buf, mut g, mut prev) = (crate::pod::Scr::<u64>::new(o.blk()), 0, 0u64);
+    for (b, at, nb) in o.walk() {
         // a bit block runs the word algorithm of `run_starts_bits`, the key being the bit itself
-        if let (false, Src::Enc(c)) = (is_float, &o.src) { if let Some(p) = c.bit_blk(b) {
+        if let (false, Src::For(c)) = (is_float, &o.src) { if let Some(p) = c.bit_blk(b) {
             if b == 0 { out[0] = 0; g = 1; prev = (p[0] & 1) as u64 }
-            crate::bitblk::run_starts(p, (o.n - at).min(1 << lg), at, &mut prev, &mut g, out);
+            crate::bitblk::run_starts(p, nb, at, &mut prev, &mut g, out);
             continue
         } }
-        let h = o.blk(b, w, crate::pod::bytes_mut(&mut buf));
+        let h = o.view(b, w, crate::pod::bytes_mut(&mut buf));
         // row 0 starts a run whatever its key; the loop then needs no test for it
         let skip = if b == 0 { out[0] = 0; g = 1; prev = norm_key(w, is_float, bin_at(h, w, 0)); 1 } else { 0 };
         // the width switch hoisted out of the element loop, as search.rs's `RS_RUNS` hoists it
@@ -693,20 +622,8 @@ pub fn find_scalar(w: usize, is_float: bool, hay: &[u8], needle: u64) -> usize {
     let kd = kind_of(w, is_float, "find_scalar"); // before dividing by `w`
     let nb = (needle as u128).to_le_bytes();
     let mut r = [0i64];
-    scan_kind(kd, &Opnd { src: Src::Dense(hay), n: hay.len() / w }, &Opnd { src: Src::Dense(&nb[..w]), n: 1 }, &mut r);
+    scan_kind(kd, &Blocks { src: Src::Dense(hay), n: hay.len() / w }, &Blocks { src: Src::Dense(&nb[..w]), n: 1 }, &mut r);
     r[0] as usize
-}
-
-
-
-/// The operand a dense payload `p` of `w`-byte elements is (`opnd_dense`).
-impl<'a> Opnd<'a> {
-    pub fn dense(p: &'a [u8], w: usize) -> Self { Opnd { src: Src::Dense(p), n: p.len() / w } }
-    /// `Column.idsCap`'s count of `n` ids at `lw` bits, which is all `id_at` may read (`opnd_ids`).
-    pub fn ids(p: &'a [u8], n: usize, lw: u32) -> Self {
-        let n = n.min(ids::ids_avail(p.len(), lw));
-        Opnd { src: Src::Ids(&p[..ids::ids_bytes(n, lw)], lw), n }
-    }
 }
 
 /// `qlean_coc_find_scalar`'s body: the least row of `c` holding `v`, `c.meta.n` when none does.
@@ -749,25 +666,25 @@ mod tests {
     }
     #[test] fn blk_dense_ids_enc() {
         let d: Vec<u8> = (0..2100u32).flat_map(|i| (i as u16).to_le_bytes()).collect();
-        let o = Opnd { src: Src::Dense(&d), n: 2100 };
+        let o = Blocks { src: Src::Dense(&d), n: 2100 };
         let mut buf = [0u64; 1024 * 2 / 8];
         let b = crate::pod::bytes_mut(&mut buf);
-        assert_eq!((o.blk(2, 2, b).len(), o.blk(0, 2, b).len()), (52 * 2, 2048));
-        assert_eq!(o.blk(2, 2, b)[..4], [0, 8, 1, 8]);
+        assert_eq!((o.view(2, 2, b).len(), o.view(0, 2, b).len()), (52 * 2, 2048));
+        assert_eq!(o.view(2, 2, b)[..4], [0, 8, 1, 8]);
         // ids at 4 bits: id i is i % 16; written at 4-byte keys
         let p: Vec<u8> = (0..1050usize).map(|i| ((2 * i % 16) as u8) | ((((2 * i + 1) % 16) as u8) << 4)).collect();
-        let o = Opnd { src: Src::Ids(&p, 4), n: 2100 };
+        let o = Blocks { src: Src::Ids(&p, 4), n: 2100 };
         let mut buf = vec![0u64; 1024 * 4 / 8];
         let b = crate::pod::bytes_mut(&mut buf);
-        let r = o.blk(2, 4, b);
+        let r = o.view(2, 4, b);
         assert_eq!(r.len(), 52 * 4);
         assert_eq!(&r[..12], &[(2048 % 16) as u8, 0, 0, 0, 1, 0, 0, 0, 2, 0, 0, 0]);
         // a short block of a column of 1 block: base 7 at width 0 is 7 each
         let c = col(&[7], &[7], &[0], &[0], 100, None);
-        let o = Opnd { src: Src::Enc(c), n: 100 };
+        let o = Blocks { src: Src::For(c), n: 100 };
         let mut buf = vec![0u64; 1024];
         let b = crate::pod::bytes_mut(&mut buf);
-        let r = o.blk(0, 8, b);
+        let r = o.view(0, 8, b);
         assert_eq!(r.len(), 800);
         assert!(r.chunks_exact(8).all(|x| x == 7i64.to_ne_bytes()));
     }
@@ -845,14 +762,14 @@ mod tests {
     fn starts(f: impl FnOnce(&mut [i64]) -> usize, n: usize) -> alloc::vec::Vec<i64> { let mut o = vec![0i64; n + 1]; let g = f(&mut o); o.truncate(g); o }
     #[test] fn run_starts_all_shapes() {
         let d = bytes_of(&[5, 5, 6, 6, 6, 7, 5], 2);
-        assert_eq!(starts(|o| run_starts(&Opnd { src: Src::Dense(&d), n: 7 }, 2, false, o), 7), [0, 2, 5, 6, 7]);
+        assert_eq!(starts(|o| run_starts(&Blocks { src: Src::Dense(&d), n: 7 }, 2, false, o), 7), [0, 2, 5, 6, 7]);
         // -0.0 and 0.0 are one value, and every NaN is one value
         let f: alloc::vec::Vec<u8> = [0.0f32, -0.0, f32::NAN, -f32::NAN, 1.0].iter().flat_map(|x| x.to_bits().to_le_bytes()).collect();
-        assert_eq!(starts(|o| run_starts(&Opnd { src: Src::Dense(&f), n: 5 }, 4, true, o), 5), [0, 2, 4, 5]);
-        assert_eq!(starts(|o| run_starts(&Opnd { src: Src::Dense(&[]), n: 0 }, 8, false, o), 0), [0]);
+        assert_eq!(starts(|o| run_starts(&Blocks { src: Src::Dense(&f), n: 5 }, 4, true, o), 5), [0, 2, 4, 5]);
+        assert_eq!(starts(|o| run_starts(&Blocks { src: Src::Dense(&[]), n: 0 }, 8, false, o), 0), [0]);
         // 1500 elements in blocks of 1024: a run across the block edge is one run
         let big: alloc::vec::Vec<u8> = (0..1500u32).flat_map(|i| u32::from(i >= 1023 && i < 1030).to_le_bytes()).collect();
-        assert_eq!(starts(|o| run_starts(&Opnd { src: Src::Dense(&big), n: 1500 }, 4, false, o), 1500), [0, 1023, 1030, 1500]);
+        assert_eq!(starts(|o| run_starts(&Blocks { src: Src::Dense(&big), n: 1500 }, 4, false, o), 1500), [0, 1023, 1030, 1500]);
         // ids at 2 bits: 0 0 1 1 3 3 3 0
         assert_eq!(starts(|o| run_starts_ids(8, 2, &[0b0101_0000, 0b0011_1111], o), 8), [0, 2, 4, 7, 8]);
         let (b, off) = ([b'a', 0, b'a', 0, b'b', 0], [1usize, 2 << 1 | 1, 4 << 1 | 1, 6 << 1 | 1]);
@@ -862,7 +779,7 @@ mod tests {
         assert_eq!(starts(|o| run_starts_bits(70, &[0xff; 9], o), 70), [0, 70]);
         assert_eq!(starts(|o| run_starts_bits(0, &[], o), 0), [0]);
     }
-    fn dense(b: &[u8], w: usize) -> Opnd<'_> { Opnd { src: Src::Dense(b), n: b.len() / w } }
+    fn dense(b: &[u8], w: usize) -> Blocks<'_> { Blocks { src: Src::Dense(b), n: b.len() / w } }
     fn finds(kd: Kind, h: &[u8], x: &[u8]) -> Vec<i64> {
         let (hh, xx) = (dense(h, kd.width()), dense(x, kd.width()));
         let mut a = vec![0i64; xx.n];
@@ -904,11 +821,11 @@ mod tests {
     }
     // an empty haystack builds nothing, and a dense payload shorter than its `n` is refused by name, never folded to an empty range
     #[test] fn table_of_an_empty_or_short_haystack() {
-        let t = table::<u64>(&Opnd { src: Src::Dense(&[]), n: 0 });
+        let t = table::<u64>(&Blocks { src: Src::Dense(&[]), n: 0 });
         assert_eq!(t.used, 0);
-        let r = std::panic::catch_unwind(|| table::<u32>(&Opnd { src: Src::Dense(&[1, 0, 0, 0]), n: 3 }));
+        let r = std::panic::catch_unwind(|| table::<u32>(&Blocks { src: Src::Dense(&[1, 0, 0, 0]), n: 3 }));
         assert!(r.is_err());
-        let r = std::panic::catch_unwind(|| table::<u8>(&Opnd { src: Src::Dense(&[]), n: 1 }));
+        let r = std::panic::catch_unwind(|| table::<u8>(&Blocks { src: Src::Dense(&[]), n: 1 }));
         assert!(r.is_err());
     }
     #[test] fn member_sets_bits_from_lo() {
@@ -942,7 +859,7 @@ mod tests {
         assert_eq!(srange::<u8>(&dense(&[0xff, 0x7f, 1], 1)), (-1, 127));
         assert_eq!(srange::<u32>(&dense(&[], 4)), (i64::MAX, i64::MIN));
         assert_eq!(srange::<u128>(&dense(&le::<8>(&[1, 0, u64::MAX, 0]), 16)), (-1, 1));
-        assert_eq!(srange::<u16>(&Opnd { src: Src::Ids(&[], 8), n: 0 }), (0, 127));
+        assert_eq!(srange::<u16>(&Blocks { src: Src::Ids(&[], 8), n: 0 }), (0, 127));
     }
     // A31: expected values are search.rs's (4ebc95c) own, which `/data/tmp/qrs/A31/diff` compares on 41026 random cases;
     // the q facts are the ones QLean/Kernel/Search.lean measured
@@ -1196,14 +1113,15 @@ pub fn bin_wide(w: usize, right: bool, hay: &[u8], keys: &[u8], out: &mut [i64])
 /// scratch to decode into; a bit block is read in place), and a `Some` ends the walk. `?` at an atom asks about one element, so a block whose
 /// `[base, maxv]` cannot hold the needle is skipped from its 16 bytes of metadata instead of its 8 KB of elements.
 pub fn eq_blocks<R>(c: &Coc, v: i64, mut f: impl FnMut(usize, usize, usize, &mut [i64]) -> Option<R>) -> Option<R> {
-    let (nb, mut buf) = (c.meta.n.div_ceil(c.meta.blk()), crate::pod::Scr::<i64>::new(c.meta.blk()));
+    let (s, mut buf) = (Blocks::from(*c), crate::pod::Scr::<i64>::new(c.meta.blk()));
+    let nb = s.nblk();
     for b0 in (0..nb).step_by(64) {
         let mut m = coc_may_hold64(c, b0, (nb - b0).min(64), v);
         while m != 0 {
-            let at = (b0 + m.trailing_zeros() as usize) << c.meta.lg;
+            let b = b0 + m.trailing_zeros() as usize;
             m &= m - 1;
-            let cnt = (c.meta.n - at).min(c.meta.blk());
-            if let Some(r) = f(at >> c.meta.lg, at, cnt, &mut buf) { return Some(r) }
+            let (at, cnt) = s.span(b);
+            if let Some(r) = f(b, at, cnt, &mut buf) { return Some(r) }
         }
     }
     None
@@ -1328,20 +1246,17 @@ pub fn match_bytes(w: usize, is_float: bool, a: &[u8], b: &[u8]) -> bool {
 }
 /// `qlean_coc_match`'s body: two operands of `w`-byte elements equal, a block of each at a time, stopping at the first
 /// that differs.
-pub fn coc_match(a: &Opnd, b: &Opnd, w: usize) -> bool {
+pub fn coc_match(a: &Blocks, b: &Blocks, w: usize) -> bool {
     if a.n != b.n { return false }
     let (la, lb) = (a.lg(), b.lg());
     if la == lb {
         let (mut xa, mut xb) = (crate::pod::Scr::<u8, 8192>::new(8 << la), crate::pod::Scr::<u8, 8192>::new(8 << la));
-        return (0..a.n.div_ceil(1 << la)).all(|k| a.blk(k, w, &mut xa) == b.blk(k, w, &mut xb));
+        return (0..a.nblk()).all(|k| a.view(k, w, &mut xa) == b.view(k, w, &mut xb));
     }
     // blocks of two sizes: each side restores the span the larger block covers, from as many of its own blocks as that takes
-    let l = la.max(lb);
-    let (mut xa, mut xb) = (crate::pod::Scr::<u8, 8192>::new(w << l), crate::pod::Scr::<u8, 8192>::new(w << l));
-    (0..a.n.div_ceil(1 << l)).all(|k| {
-        let cnt = (a.n - (k << l)).min(1 << l);
-        a.range(k << l, cnt, w, &mut xa) == b.range(k << l, cnt, w, &mut xb)
-    })
+    let g = if la > lb { a } else { b };
+    let (mut xa, mut xb) = (crate::pod::Scr::<u8, 8192>::new(w << g.lg()), crate::pod::Scr::<u8, 8192>::new(w << g.lg()));
+    g.walk().all(|(_, lo, cnt)| a.range(lo, cnt, w, &mut xa) == b.range(lo, cnt, w, &mut xb))
 }
 /// search.rs `qlean_search_member_sorted`, `qlean_coc_member_sorted` past the unboxing: bit `j` of `out` (LSB
 /// first, `m.div_ceil(8)` bytes, the tail bits left zero) is set when key `j` is in the haystack. Threaded by output
@@ -1406,7 +1321,7 @@ pub fn sym_search(bits: bool, nd: &Syms, hb: &Syms, out: &mut [u8]) {
     // an empty haystack answers `n = 0` for every needle, which sets no bit
     if n > 0 && hb.packs(n) {
         let hk: Vec<u64> = hb.keys(n).collect();
-        let h = Opnd { src: Src::Dense(crate::pod::bytes(&hk)), n };
+        let h = Blocks { src: Src::Dense(crate::pod::bytes(&hk)), n };
         let p = (n > SYM_SCAN_MAX).then(|| Probe::new(Kind::U64, &h));
         let mut buf = [0u64; SYM_KEY_BLOCK];
         let mut at = 0;
@@ -1415,7 +1330,7 @@ pub fn sym_search(bits: bool, nd: &Syms, hb: &Syms, out: &mut [u8]) {
             let blk = Syms { blob: nd.blob, offs: &nd.offs[at..=at + cnt] };
             if !blk.packs(cnt) { break }
             sym_pack(&blk, cnt, &mut buf);
-            let x = Opnd { src: Src::Dense(crate::pod::bytes(&buf[..cnt])), n: cnt };
+            let x = Blocks { src: Src::Dense(crate::pod::bytes(&buf[..cnt])), n: cnt };
             match &p {
                 Some(p) if bits => p.member(&x, 0, cnt, &mut out[at / 8..]),
                 Some(p) => p.find(&x, 0, cnt, &mut i64s(out)[at..at + cnt]),

@@ -4,6 +4,7 @@
 //! A grade answers into `out: &mut [i64]` of `n`; `kind` is sort.rs's `SK_*`.
 use alloc::vec;
 use alloc::vec::Vec;
+use crate::blocks::{Blocks, Src};
 use core::sync::atomic::Ordering::Relaxed;
 
 use crate::c::{run_map, run_slices, Runner};
@@ -73,12 +74,12 @@ impl Pass for Blk<'_> {
     fn run<K: Keys>(self, mut s: K, _: usize) { for (j, o) in self.k.iter_mut().enumerate() { *o = s.at(self.at + j) } }
 }
 impl<'a> Ksrc<'a> {
-    /// The keys a block of this source holds: the column's own block, or the writer's grid for a dense payload.
-    pub fn blk_len(&self) -> usize { self.c.as_ref().map_or(1 << crate::DEFAULT_LG, |c| c.meta.blk()) }
-    /// sort.rs `ksrc_blk`: block `b`'s keys into `k` (`blk_len` long); answers their count. A dense payload of any
+    /// This source's grid: the column's own blocks, or the writer's for a dense payload.
+    pub fn grid(&self) -> Blocks<'a> { self.c.map_or(Blocks { src: Src::Dense(self.p), n: self.n }, Blocks::from) }
+    /// sort.rs `ksrc_blk`: block `b`'s keys into `k` (`grid().blk()` long); answers their count. A dense payload of any
     /// kind that is not an element kind (`SK_KEY`) is read as keys already.
     pub fn blk(&self, b: usize, k: &mut [u64]) -> usize {
-        let (at, cnt) = (b * self.blk_len(), (self.n - b * self.blk_len()).min(self.blk_len()));
+        let (at, cnt) = self.grid().span(b);
         match &self.c {
             Some(c) => kwin::keys_blk(self.kind, c, b, &mut k[..cnt]),
             None => key::each(self.kind, &self.p[..key::bytes(self.kind, self.n).expect("ksrc_blk: dense kind")], self.n, Blk { at, k: &mut k[..cnt] })
@@ -103,10 +104,10 @@ impl<'a> Ksrc<'a> {
 pub fn ksrc_blocks(s: &Ksrc, mut f: impl FnMut(usize, &[u64])) {
     if s.c.is_none() && s.kind == key::SK_KEY {
         let k = crate::pod::cast::<u64>(s.p).expect("ksrc_blocks: the key array is misaligned");
-        for (b, ch) in k[..s.n].chunks(s.blk_len()).enumerate() { f(b * s.blk_len(), ch) }
+        for (b, ch) in k[..s.n].chunks(s.grid().blk()).enumerate() { f(b * s.grid().blk(), ch) }
     } else {
-        let mut kb = pod::Scr::<u64>::new(s.blk_len());
-        for b in 0..s.n.div_ceil(s.blk_len()) { let c = s.blk(b, &mut kb); f(b * s.blk_len(), &kb[..c]) }
+        let mut kb = pod::Scr::<u64>::new(s.grid().blk());
+        for (b, at, _) in s.grid().walk() { let c = s.blk(b, &mut kb); f(at, &kb[..c]) }
     }
 }
 /// `f(i, key)` for every key of `s` in order.
@@ -170,7 +171,7 @@ pub fn grade_count(s: &Ksrc, mn: u64, mx: u64, desc: bool, rank: bool, span: u64
 /// column that is not a permutation exits at its first repeated key. Under `rank` the answer is the narrowed key itself.
 pub fn grade_perm(s: &Ksrc, mn: u64, mx: u64, desc: bool, rank: bool, out: &mut [i64]) -> bool {
     let mut seen = alloc::vec![0u64; s.n.div_ceil(64)];
-    let (mut kb, mut ok, bl) = (pod::Scr::<u64>::new(s.blk_len()), true, s.blk_len());
+    let (mut kb, mut ok, bl) = (pod::Scr::<u64>::new(s.grid().blk()), true, s.grid().blk());
     'blocks: for b in 0..s.n.div_ceil(bl) {
         let cnt = s.blk(b, &mut kb);
         for j in 0..cnt {
@@ -216,7 +217,7 @@ pub fn radix<T: Ix, const D: u32>(s: &Ksrc, wid: u32, bits: u32, xr: u64, base: 
     let ixb = 64 - (n as u64 - 1).leading_zeros() as i32; // n >= 2: a run answered above
     let d = |k: u64| (k ^ xr).wrapping_sub(base);
     let mut cnt = alloc::vec![T::default(); nb * np];
-    let v0 = { let mut kb = pod::Scr::<u64>::new(s.blk_len()); s.blk(0, &mut kb); d(kb[0]) };
+    let v0 = { let mut kb = pod::Scr::<u64>::new(s.grid().blk()); s.blk(0, &mut kb); d(kb[0]) };
     // one loop per digit over a block that is in L1, not np updates an element: the shift is a constant of its loop
     ksrc_blocks(s, |_, ks| for (p, c) in cnt.chunks_exact_mut(nb).enumerate() {
         for &k in ks { let x = &mut c[((d(k) >> (p as u32 * dig)) & mask) as usize]; *x = T::of(x.to() + 1) }
@@ -444,7 +445,7 @@ pub fn asc_blk(c: &Coc, b: usize, desc: bool, strict: bool) -> Ends {
         });
         if bad { None } else { Some((rd(0), rd(cnt - 1))) }
     }
-    let cnt = (c.meta.n - (b << c.meta.lg)).min(c.meta.blk());
+    let cnt = crate::blocks::Blocks::from(*c).span(b).1;
     // a patched block is decoded and re-biased: residuals compare unsigned, so `v ^ sign` over a base of INT64_MIN
     // keeps signed order, and `base + r` is `v` again
     let (base, r) = if c.blk_nexc(b) > 0 {

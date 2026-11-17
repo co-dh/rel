@@ -64,6 +64,8 @@ pub mod pool;
 /// cbindgen:ignore
 pub mod bits;
 /// cbindgen:ignore
+pub mod blocks;
+/// cbindgen:ignore
 pub mod bitblk;
 /// cbindgen:ignore
 pub mod alp;

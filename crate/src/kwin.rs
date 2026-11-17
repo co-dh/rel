@@ -33,9 +33,7 @@ impl<'a> Kwin<'a> {
 
     /// `kwin_blk`: block `b` into its slot; answers its key count.
     fn blk(&mut self, b: usize) -> usize {
-        let blk = self.c.meta.blk();
-        let at = b * blk;
-        let cnt = (self.c.meta.n - at).min(blk);
+        let (blk, cnt) = (self.c.meta.blk(), crate::blocks::Blocks::from(self.c).span(b).1);
         let s = (b & 1) * blk;
         match &self.alp {
             Some(f) => keys_blk_alp(f, b, &mut self.key[s..s + cnt]),
@@ -102,7 +100,7 @@ pub fn keys_blk(kind: u8, c: &Coc, b: usize, k: &mut [u64]) {
 pub fn range(kind: u8, c: &Coc) -> (u64, u64) {
     let (mask, flip) = (mask(kind), key_flip(kind));
     let (mut mn, mut mx) = (!0u64, 0u64);
-    for b in 0..c.meta.n.div_ceil(c.meta.blk()) {
+    for (b, ..) in crate::blocks::Blocks::from(*c).walk() {
         mn = mn.min((c.meta.base[b] as u64 & mask) ^ flip);
         mx = mx.max((c.meta.maxv[b] as u64 & mask) ^ flip);
     }

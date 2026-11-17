@@ -1,6 +1,7 @@
 #![forbid(unsafe_code)]
 //! Column (a), coc.rs: the whole-column reads of a `Coc` (A1), its sums (A3), product, any/all, min and max (A4)
 //! and the in-place shift (A6), plus `CocMut`, the writable form of the same `coc`.
+use crate::blocks::{Blocks, Res};
 use crate::coc::{Coc, Meta};
 use crate::coc::lanes;
 use crate::pod;
@@ -105,7 +106,7 @@ impl<'a> Coc<'a> {
         let (b0, b1) = (lo as usize >> lg, (hi - 1) as usize >> lg);
         let g = if b1 != b0 && hi as usize - (b1 << lg) > (b1 << lg) - lo as usize { b1 } else { b0 };
         let bs = (g << lg) as i64;
-        let cnt = if (g + 1) << lg < self.meta.n { blk } else { self.meta.n - (g << lg) };
+        let cnt = Blocks::from(*self).span(g).1;
         let (s, e) = (bs.max(lo), (bs + blk as i64).min(hi));
         if bs >= from && bs + cnt as i64 <= end {
             self.decode_blk(g, cnt, &mut out[(bs - from) as usize..][..cnt]);
@@ -149,11 +150,11 @@ pub fn res_cmp2(x: &[i64], y: &[i64], op: i32, out: &mut [u64]) {
 /// decide the answer. `out[0]` is word `w0` of the whole bitmap (0 for the whole of it).
 pub fn cmp2_res(a: &Coc, b: &Coc, op: i32, out: &mut [u64], deep: &[u32], lo: usize, hi: usize, w0: usize) {
     assert_eq!(a.meta.lg, b.meta.lg, "coc cmp2: columns of different block sizes");
-    let (lg, blk) = (a.meta.lg, a.meta.blk());
+    let blk = a.meta.blk();
     let (mut xa, mut xb) = (pod::Scr::<i64>::new(blk), pod::Scr::<i64>::new(blk));
     for &k in &deep[lo..hi] {
-        let (k, n) = (k as usize, a.meta.n);
-        let (at, nb) = (k << lg, if (k + 1) << lg < n { blk } else { n - (k << lg) });
+        let k = k as usize;
+        let (at, nb) = Blocks::from(*a).span(k);
         if let (Some(pa), Some(pb)) = (a.bit_blk(k), b.bit_blk(k)) { crate::bitblk::cmp2(pa, pb, nb, op, &mut out[(at >> 6) - w0..]); continue }
         a.decode_blk(k, nb, &mut xa);
         b.decode_blk(k, nb, &mut xb);
@@ -219,19 +220,13 @@ impl<'a> CocMut<'a> {
 
 // ---- A4: coc.rs ----
 impl<'a> Coc<'a> {
-    /// Block `b`'s residual bytes and its element count.
-    fn blk(&self, b: usize) -> (&'a [u8], usize) {
-        let m = &self.meta;
-        let at = m.off[b] as usize;
-        (&self.pack[at..at + m.blk() * m.width[b] as usize / 8], if (b + 1) << m.lg < m.n { m.blk() } else { m.n - (b << m.lg) })
-    }
     /// coc.rs `coc_prd`: product, nulls skipped, wrapping. Every element is read; the accumulator reaching 0
     /// ends the column, a wrapping product being absorbing at 0 as an exact one is.
     pub fn prd(&self, nul: i64) -> u64 {
         let (mut acc, m) = (1u64, &self.meta);
         for b in 0..m.nblk {
             if acc == 0 { break }
-            let ((p, nb), base, w) = (self.blk(b), m.base[b] as u64, m.width[b]);
+            let (Res { pack: p, nb, .. }, base, w) = (Blocks::from(*self).res(b), m.base[b] as u64, m.width[b]);
             if self.blk_nexc(b) != 0 {
                 let mut x = pod::Scr::<i64>::new(m.blk());
                 self.decode_blk(b, nb, &mut x);
@@ -254,7 +249,7 @@ impl<'a> Coc<'a> {
     pub fn all(&self) -> bool {
         let m = &self.meta;
         (0..m.nblk).filter(|&b| !(m.base[b] > 0 || m.maxv[b] < 0)).all(|b| {
-            let (p, nb) = self.blk(b);
+            let Res { pack: p, nb, .. } = Blocks::from(*self).res(b);
             if self.blk_nexc(b) != 0 { // a slot reads as base, which may be the zero it is not
                 let mut x = pod::Scr::<i64>::new(m.blk());
                 self.decode_blk(b, nb, &mut x);
@@ -272,7 +267,7 @@ impl<'a> Coc<'a> {
         let lo = m.base[..m.nblk].iter().fold(!nul, |a, &b| a.min(b));
         if lo != nul { return lo }
         (0..m.nblk).filter_map(|b| if m.base[b] != nul { Some(m.base[b]) } else {
-            let (p, nb) = self.blk(b);
+            let Res { pack: p, nb, .. } = Blocks::from(*self).res(b);
             let r = res_min_nonzero(p, nb, m.width[b]);
             (r != 0).then(|| self.frame(b).wrapping_add(r) as i64) // r = 0: every element of the block is null
         }).fold(!nul, i64::min)

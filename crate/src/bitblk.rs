@@ -120,7 +120,7 @@ mod tests {
 mod coc_tests {
     use crate::coc::{view, Coc};
     use crate::cocops::{EQ, GE, GT, LE, LT, NE};
-    use crate::search::{self, Opnd, Src};
+    use crate::search::{self, Blocks, Src};
     use crate::{bits, codec, pod};
 
     /// `n` rows of `payload` (`Column.bits`, LSB first) as a coc of block size `1 << lg`: (metadata words, pack words)
@@ -167,7 +167,7 @@ mod coc_tests {
             assert_eq!(search::coc_rows_eq(&a, 1), want, "rows_eq lg {lg} n {n}");
             let (mut r1, mut r2) = (vec![0i64; n + 1], vec![0i64; n + 1]);
             let g1 = search::run_starts_bits(n, &pa, &mut r1);
-            let g2 = search::run_starts(&Opnd { n, src: Src::Enc(a) }, 8, false, &mut r2);
+            let g2 = search::run_starts(&Blocks { n, src: Src::For(a) }, 8, false, &mut r2);
             assert_eq!(r1[..g1], r2[..g2], "run_starts lg {lg} n {n}");
             for op in [EQ, NE, LT, LE, GT, GE] {
                 let c = |x: i64, y: i64| match op { EQ => x == y, NE => x != y, LT => x < y, LE => x <= y, GT => x > y, _ => x >= y };
@@ -211,7 +211,7 @@ mod coc_tests {
             row("where (count+index)", ms(|| { let mut o = vec![0i64; search::where_count(n, &sparse)]; search::where_bits(n, &sparse, &mut o); std::hint::black_box(&o); }),
                 both(&|a, _, _| ms(|| { std::hint::black_box(search::coc_rows_eq(a, 1).len() == cnt); })));
             row("run_starts", ms(|| { let mut o = vec![0i64; n + 1]; std::hint::black_box(search::run_starts_bits(n, &sparse, &mut o)); }),
-                both(&|a, _, _| ms(|| { let mut o = vec![0i64; n + 1]; std::hint::black_box(search::run_starts(&Opnd { n, src: Src::Enc(*a) }, 8, false, &mut o)); })));
+                both(&|a, _, _| ms(|| { let mut o = vec![0i64; n + 1]; std::hint::black_box(search::run_starts(&Blocks { n, src: Src::For(*a) }, 8, false, &mut o)); })));
             row("count of zeros / count_lt 1", ms(|| { std::hint::black_box(n - bits::popcount(&sparse, n)); }), both(&|a, _, _| ms(|| { std::hint::black_box(a.count_lt(1)); })));
             row("mask x==1 (copy) / mask_cmp", ms(|| { std::hint::black_box(sparse.clone()); }),
                 both(&|a, _, _| ms(|| { let mut o = vec![0u64; n.div_ceil(64)]; codec::mask_cmp(crate::c::pool(), EQ as u8, 1, a, &mut o); std::hint::black_box(&o); })));

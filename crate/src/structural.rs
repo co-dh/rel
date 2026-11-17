@@ -11,6 +11,7 @@ use core::sync::atomic::{AtomicU8, AtomicUsize, Ordering::{Relaxed, SeqCst}};
 use crate::alp::{Cocf, Flt};
 use crate::enc::{EncMeta, EncPack};
 use crate::c::Runner;
+use crate::blocks::Blocks;
 use crate::coc::Coc;
 use crate::sym::{sym_eq, sym_hash, Syms};
 use crate::pod;
@@ -372,15 +373,6 @@ pub fn gather(run: Runner, w: usize, fill: u64, src: &[u8], idx: &[i64], out: &m
         _ => gather_w::<16>(run, fill, src, idx, out),
     }
 }
-/// coc.rs `coc_load_blk_at`: block `b`'s first `nb` elements decoded at `w` bytes (4 and below, else 8) into `out`.
-pub fn load_blk_at(c: &Coc, b: usize, nb: usize, w: usize, out: &mut [u8]) {
-    match w {
-        1 => c.decode_blk::<u8>(b, nb, out),
-        2 => c.decode_blk::<i16>(b, nb, crate::pod::cast_mut(out).expect("load_blk_at: the buffer is not aligned for the width")),
-        4 => c.decode_blk::<i32>(b, nb, crate::pod::cast_mut(out).expect("load_blk_at: the buffer is not aligned for the width")),
-        _ => c.decode_blk::<i64>(b, nb, crate::pod::cast_mut(out).expect("load_blk_at: the buffer is not aligned for the width")),
-    }
-}
 // One width for the whole column makes the pack a flat array of residuals, so `u * width / 8` is the address and the
 // block structure cancels out of it: one scaled index plus the block's base, which stays in L1.
 pub fn flat<const W: usize>(c: &Coc, sw: u8, f: [u8; W], ix: &[i64], o: &mut [u8], rd: impl Fn(usize) -> u64) {
@@ -415,7 +407,8 @@ pub fn runs<const W: usize>(c: &Coc, f: [u8; W], ix: &[i64], o: &mut [u8]) {
                 d[k] = if u < sn as u64 { word(c.get(u as usize) as u64) } else { f };
             }
         } else {
-            load_blk_at(c, b, (sn - blo).min(WBLK), W, bb);
+            let s = Blocks { src: crate::blocks::Src::For(*c), n: sn };
+            s.load_w(b, s.span(b).1, W, bb);
             for k in j..e {
                 let u = ix[k] as u64;
                 d[k] = if u < sn as u64 { bb[(u as usize - blo) * W..][..W].try_into().unwrap() } else { f };
@@ -468,14 +461,10 @@ pub fn gather_enc_idx(run: Runner, w: usize, fill: u64, c: &Coc, ic: &Coc, out: 
     let sw = c.one_width();
     check_enc(w, sw, "gather_foR");
     crate::c::run_map(run, out, ic.meta.n, w, crate::QLEAN_COST_GATHER, w + 8, &|lo, hi, o: &mut [u8]| {
-        let mut buf = [0i64; WBLK];
-        let mut at = lo;
-        while at < hi {
-            let blo = at / WBLK * WBLK;
-            let end = (blo + WBLK).min(hi);
-            ic.decode_blk(at / WBLK, end - blo, &mut buf);
+        let mut buf = pod::Scr::<i64>::new(ic.meta.blk());
+        for (b, blo, at, end) in Blocks::from(*ic).tiles(lo, hi) {
+            ic.decode_blk(b, end - blo, &mut buf);
             enc(w, c, sw, fill, &buf[at - blo..end - blo], &mut o[(at - lo) * w..(end - lo) * w]);
-            at = end;
         }
     });
 }
@@ -579,14 +568,10 @@ pub fn gather_ids_enc(run: Runner, w: u32, wout: u32, fill: u64, src: &[u8], n: 
                       &|lo8, hi8, o: &mut [u8]| {
         // a slice starts on a whole byte of the answer and each block of the index on a multiple of `WBLK`
         let (lo, hi) = (lo8 * g, (hi8 * g).min(m));
-        let mut v = [0i64; WBLK];
-        let mut at = lo;
-        while at < hi {
-            let blo = at / WBLK * WBLK;
-            let end = (blo + WBLK).min(hi);
-            ic.decode_blk(at / WBLK, end - blo, &mut v);
+        let mut v = pod::Scr::<i64>::new(ic.meta.blk());
+        for (b, blo, at, end) in Blocks::from(*ic).tiles(lo, hi) {
+            ic.decode_blk(b, end - blo, &mut v);
             for j in at..end { crate::ids::id_put(o, wout, j - lo, gathered_id(src, w, n, fill, v[j - blo])) }
-            at = end;
         }
     });
 }
@@ -660,13 +645,12 @@ pub fn enum_ids(n: usize, d: usize, nullid: usize, w: u32, b: &[u8], out: &mut [
 /// structural.rs `qlean_structural_enum_ids_for`: from an encoded column, a block at a time (a block's ids are whole
 /// bytes at every width, so each packs to its own offset). Elements past the column's own count stay zero.
 pub fn enum_ids_enc(n: usize, d: usize, nullid: usize, w: u32, c: &Coc, out: &mut [u8]) -> usize {
-    let (cn, mut v, mut bad) = (c.meta.n, [0i64; WBLK], n);
+    let (cn, mut v, mut bad) = (c.meta.n, pod::Scr::<i64>::new(c.meta.blk()), n);
     if cn < n { out.fill(0) }
-    for b in 0..cn.div_ceil(WBLK) {
-        let (lo, nb) = (b * WBLK, WBLK.min(cn - b * WBLK));
+    for (b, lo, nb) in Blocks::from(*c).walk() {
         c.decode_blk(b, nb, &mut v);
         if bad == n && v[..nb].iter().fold(false, |a, &x| a | enum_bad(x, d)) { bad = lo + v[..nb].iter().position(|&x| enum_bad(x, d)).unwrap() }
-        crate::ids::pack(&mut out[b * (WBLK / 8) * w as usize..], w, nb, |i| enum_id(v[i], nullid));
+        crate::ids::pack(&mut out[lo / 8 * w as usize..], w, nb, |i| enum_id(v[i], nullid));
     }
     bad
 }
@@ -1272,10 +1256,10 @@ impl<'a> Scatter<'a> {
     /// A block no index lands in, whose old entries are the new ones.
     pub fn kept(&self, b: usize) -> bool { self.keep && self.span(b).is_empty() }
     fn span(&self, b: usize) -> core::ops::Range<usize> { self.at[b].load(Relaxed)..self.at[b + 1].load(Relaxed) }
-    fn nb(&self, b: usize) -> usize { blk_count(self.old.c.meta.n, b) }
+    fn nb(&self, b: usize) -> usize { Blocks::from(self.old.c).span(b).1 }
     /// structural.rs `fsc_load`: block `b` decoded at `w` bytes an element into `out` (8-aligned), its writes applied.
     fn load(&self, b: usize, nb: usize, out: &mut [u8]) {
-        if self.alp { self.old.load_blk(b, nb, out) } else { load_blk_at(&self.old.c, b, nb, self.w, out) }
+        if self.alp { Blocks::from(self.old) } else { Blocks::from(self.old.c) }.load_w(b, nb, self.w, out);
         let r = self.span(b);
         let (ix, v) = (&self.ix[r.clone()], &self.vals[r.start * self.w..r.end * self.w]);
         match self.w { 2 => put_vals::<2>(out, b, ix, v), 4 => put_vals::<4>(out, b, ix, v), _ => put_vals::<8>(out, b, ix, v) }
@@ -1343,8 +1327,6 @@ impl<'a> Scatter<'a> {
     }
 }
 // ---- A35: structural.rs, the encoder sources ----
-/// structural.rs `blk_count`: the elements in block `b` of a column of `n`, a full block except the last.
-pub fn blk_count(n: usize, b: usize) -> usize { if (b + 1) * WBLK <= n { WBLK } else { n - b * WBLK } }
 /// structural.rs `fsx_check`: the checks and block cursors in one pass off the pool. The first offending position is the
 /// least one any slice saw, which is the one a serial loop reports, and since `ix` ascends, the blocks from just past
 /// `ix[k - 1]`'s up to `ix[k]`'s are exactly those whose first index is `k`, so each cursor is written once, by the slice
