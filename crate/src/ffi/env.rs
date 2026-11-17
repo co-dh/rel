@@ -1,7 +1,8 @@
 //! ffi/env.rs's Lean exports.
 #![deny(unsafe_code)]
-use crate::lean::{O, apply, boxed, export};
-use crate::os;
+use crate::lean::export;
+#[cfg(all(feature = "ffi", not(any(test, feature = "std"))))]
+use {crate::lean::{O, apply, boxed}, crate::os};
 
 export! {
 }

@@ -2,8 +2,10 @@
 //! Each unboxes its arguments, allocates the answer and makes one call into `reduce.rs`, which owns the loops and the
 //! split over the pool (`c::pool()`). Lean passes `Int64` as C's `uint64_t` and `Bool` as `uint8_t`.
 #![deny(unsafe_code)]
-use crate::lean::{B, O, SArr, export};
-use crate::{c, pod, reduce};
+use crate::lean::{B, SArr, export};
+use crate::pod;
+#[cfg(all(feature = "ffi", not(any(test, feature = "std"))))]
+use {crate::lean::O, crate::{c, reduce}};
 
 /// The whole `T` elements of a payload (a ragged tail is not one, as `size >> 3` in C).
 pub fn elems<'a, T: pod::Pod>(b: B<'a>) -> &'a [T] {

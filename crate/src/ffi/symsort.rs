@@ -3,13 +3,12 @@
 //! over guids, plus `symOffs` and `thinSweep`. Each unboxes its arguments, sizes the answer and makes one call into
 //! `sort.rs`, which owns the loops. Lean passes `Nat` counts as `size_t` and `Bool` as `uint8_t`.
 #![deny(unsafe_code)]
-use crate::c::pool;
-use crate::exports::sort::longs;
 use crate::exports::structural::pair;
-use crate::ffi::syms_of;
-use crate::ids::{id_width, ids_avail, ids_bytes};
+use crate::ids::{id_width, ids_avail};
 use crate::lean::{B, O, SArr, arr, boxed, export};
-use crate::{ids, pod, sort};
+use crate::{pod, sort};
+#[cfg(all(feature = "ffi", not(any(test, feature = "std"))))]
+use {crate::c::pool, crate::exports::sort::longs, crate::ffi::syms_of, crate::ids::ids_bytes, crate::ids};
 
 /// `Order.symsAt`: the symbols' bytes each followed by its NUL, and the starts as an `Array Nat` of tagged scalars (a blob
 /// byte count below 2^63, so nothing allocates a bignum). No symbols give no bytes and the one terminating start.

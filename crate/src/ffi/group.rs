@@ -5,15 +5,13 @@
 #![deny(unsafe_code)]
 use alloc::vec::Vec;
 use crate::c::pool;
-use crate::exports::coc::view;
-use crate::exports::sort::{avail, longs};
 use crate::exports::structural::pair;
-use crate::group::{self};
-use crate::ids::{id_width, ids_avail, ids_bytes};
-use crate::kwin::{self};
-use crate::lean::{B, O, SArr, export};
+use crate::ids::{id_width, ids_bytes};
+use crate::lean::{O, SArr, export};
 use crate::pod::{self, uninit};
 use crate::{ids, sort};
+#[cfg(all(feature = "ffi", not(any(test, feature = "std"))))]
+use {crate::exports::coc::view, crate::exports::sort::{avail, longs}, crate::group, crate::ids::ids_avail, crate::kwin, crate::lean::B};
 
 pub fn empty() -> O { SArr::new(1, 0).into() }
 pub fn empty_pair() -> O { pair(empty(), empty()) }

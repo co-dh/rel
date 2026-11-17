@@ -8,7 +8,9 @@ use crate::exports::coc::view;
 use crate::key::{SK_BIT, SK_KINDS_N, SK_I16, SK_I32, SK_I64};
 use crate::lean::{B, O, SArr, export};
 use crate::sort::{self};
-use crate::{ids, os, pod};
+use crate::{os, pod};
+#[cfg(all(feature = "ffi", not(any(test, feature = "std"))))]
+use crate::ids;
 
 /// What C's `fprintf(stderr, …); exit(1)` did for a call no Lean body makes.
 pub fn die(args: core::fmt::Arguments) -> ! {

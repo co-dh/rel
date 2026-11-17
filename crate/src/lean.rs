@@ -579,7 +579,7 @@ pub fn sarrays_in(m: &'static mut [u8], spans: &[(usize, usize)]) -> alloc::vec:
 #[macro_export]
 macro_rules! export {
     ($($(#[$m:meta])* fn $name:ident($($a:ident: $t:ty),* $(,)?) $(-> $r:ty)? $body:block)*) => {$(
-        $(#[$m])* #[allow(unsafe_code)] #[unsafe(no_mangle)] pub extern "C" fn $name($($a: $t),*) $(-> $r)? $body
+        $(#[$m])* #[cfg(all(feature = "ffi", not(any(test, feature = "std"))))] #[allow(unsafe_code)] #[unsafe(no_mangle)] pub extern "C" fn $name($($a: $t),*) $(-> $r)? $body
     )*};
 }
 #[cfg_attr(test, allow(unused_imports))]

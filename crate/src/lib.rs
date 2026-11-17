@@ -40,7 +40,6 @@ pub mod os;
 /// The Lean externs, one file per C file they replace. Not under `cargo test`: they call the Lean runtime, which only
 /// a Lean link (or rust/rt) provides. A module of its own, not `ffi::`, because ffi.rs imports the kernel modules of
 /// the same names.
-#[cfg(all(feature = "ffi", not(any(test, feature = "std"))))]
 #[path = "ffi"]
 pub mod exports {
     pub mod coc;

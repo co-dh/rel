@@ -4,13 +4,13 @@
 #![deny(unsafe_code)]
 use crate::alp::Cocf;
 use crate::coc::Coc;
-use crate::exports::coc::{alp_view, view};
-use crate::exports::reduce::elems;
-use crate::ffi::{Producer, SdPart, concat_own, encode_alp, encode_fill, sarray_room, sd_concat, sd_part, syms_of, take_first, take_ids0};
-use crate::ids::ids_bytes;
-use crate::lean::{B, O, SArr, box_usize_o, ctor, export};
-use crate::{c, lean, pod, structural};
+use crate::exports::coc::view;
+use crate::ffi::{Producer, SdPart, encode_fill, sarray_room, sd_concat, sd_part, take_ids0};
+use crate::lean::{B, O, SArr, ctor, export};
+use crate::{pod, structural};
 use alloc::vec::Vec;
+#[cfg(all(feature = "ffi", not(any(test, feature = "std"))))]
+use {crate::exports::coc::alp_view, crate::exports::reduce::elems, crate::ffi::{concat_own, encode_alp, syms_of, take_first}, crate::ids::ids_bytes, crate::lean::box_usize_o, crate::{c, lean}};
 
 pub fn die(args: core::fmt::Arguments) -> ! {
     crate::os::eprint(args).expect("qlean: stderr");

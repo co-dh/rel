@@ -8,7 +8,9 @@ use crate::ffi::{sarray_room, sd_kept, syms_of};
 use crate::lean::{B, O, SArr, export};
 use crate::exports::coc::view;
 use crate::search::{Kind, Opnd, Src};
-use crate::{c, ids, pod, search};
+use crate::{c, pod, search};
+#[cfg(all(feature = "ffi", not(any(test, feature = "std"))))]
+use crate::ids;
 
 
 /// `x ? h` (`member` false, `Int64`s) or `x in h` (bits) at the key type `kd`, over the pool.

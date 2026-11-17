@@ -3,10 +3,9 @@
 //! widening. Each unboxes its arguments, allocates the answer and makes one call into `ew.rs`, which owns the loops and the
 //! split over the pool (`c::pool()`). Lean passes `Int64` as C's `uint64_t`.
 #![deny(unsafe_code)]
-use crate::exports::coc::view;
-use crate::ffi::chain_enc;
-use crate::lean::{B, O, SArr, export};
-use crate::{c, ew};
+use crate::lean::{SArr, export};
+#[cfg(all(feature = "ffi", not(any(test, feature = "std"))))]
+use {crate::exports::coc::view, crate::ffi::chain_enc, crate::lean::{B, O}, crate::{c, ew}};
 
 /// An answer of `n` bytes, undefined until the kernel writes it.
 pub fn answer(n: usize) -> SArr { SArr::new(1, n) }

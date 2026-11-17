@@ -2,9 +2,10 @@
 //! the logic). Each is an `IO` extern, so none takes a world argument in Lean 4.28; a failure is an errno the Lean side reports
 //! as `path. OS reports: <strerror>`, or the text of a refusal.
 #![deny(unsafe_code)]
-use alloc::vec::Vec;
-use crate::lean::{B, Io, O, boxed, export};
-use crate::own::{self, Fail};
+use crate::lean::{B, Io, O, export};
+use crate::own::Fail;
+#[cfg(all(feature = "ffi", not(any(test, feature = "std"))))]
+use {alloc::vec::Vec, crate::lean::boxed, crate::own};
 
 pub fn answer(r: Result<O, Fail>, path: B) -> O {
     match r { Ok(v) => Io::ok(v), Err(Fail::Errno(e)) => Io::errno(e, Some(path)), Err(Fail::User(w)) => Io::user(&w) }

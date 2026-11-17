@@ -5,10 +5,12 @@
 use crate::c::pool;
 use crate::alp::Cocf;
 use crate::coc::{self, Coc, Meta, ViewErr};
-use crate::cocops::{self, CocMut, GE};
+use crate::cocops;
 use crate::ffi::{encode_dense, encode_fill};
-use crate::lean::{B, O, SArr, boxed, ctor, export, nat};
+use crate::lean::{B, O, SArr, boxed, ctor, export};
 use crate::{codec, os, pod};
+#[cfg(all(feature = "ffi", not(any(test, feature = "std"))))]
+use {crate::cocops::{CocMut, GE}, crate::lean::nat};
 
 /// What C's `fprintf(stderr, …); exit(1)` did for a call no Lean body makes.
 pub fn die(args: core::fmt::Arguments) -> ! {
