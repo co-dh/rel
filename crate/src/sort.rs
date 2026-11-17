@@ -1254,8 +1254,9 @@ pub fn parted_ids(strict: bool, d: usize, n: usize, w: u32, ids: &[u8]) -> bool 
 pub fn parted_syms(strict: bool, s: &Syms) -> bool {
     let n = s.count();
     if n < 2 { return true }
-    let runs = (0..n).filter(|&i| i == 0 || !crate::sym::sym_eq(s.at(i), s.at(i - 1))).count();
-    distinct_syms(s, &mut alloc::vec![0usize; n]) == if strict { n } else { runs }
+    let (mut runs, mut prev) = (0, &s.blob[..0]);
+    for i in 0..n { let c = s.at(i); if i == 0 || !crate::sym::sym_eq(c, prev) { runs += 1 } prev = c }
+    distinct_syms(s, &mut crate::pod::uninit::<usize>(n)) == if strict { n } else { runs }
 }
 /// sort.c `qlean_sort_parted_guid`: whether every two equal guids stand in one run of equals, and with `strict` whether
 /// no two are equal. A column in order has its equals adjacent; any other is graded, and the grade being stable a run of
