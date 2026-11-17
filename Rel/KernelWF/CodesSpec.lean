@@ -187,14 +187,16 @@ theorem groupIdsColumn_small_int {t : QAtomicType} {k : Scan.Kind} (ht : orderKi
   rcases hk with rfl | rfl | rfl <;> cases t <;> simp [orderKind] at ht <;>
     exact ⟨fun b => by simp [groupIdsColumn, orderKind, Enc.bytesOf], fun md pk => by simp [groupIdsColumn, orderKind]⟩
 
-/-- A small integral payload's raw word `i`: a dense one's `w` bytes at `i·w`, an encoded one's `foRBits`. -/
+/-- A small integral payload's raw word `i`: a dense one's `w` bytes at `i·w`, an encoded one's `foRBits` cut to
+    `8 * w` bits. -/
 theorem raw_small_int {t : QAtomicType} {k : Scan.Kind} (ht : orderKind t = some k)
     (hk : k = .u8 ∨ k = .i16 ∨ k = .i32) {n : USize} {i : Nat} (hi : i < n.toNat) :
     (∀ b, (Enc.raw (X := Empty) t n (.bytes b)).toList.getD i 0 = Column.bitsAt b (i * k.width) k.width) ∧
-      ∀ md pk, (Enc.raw (X := Empty) t n (.foR md pk)).toList.getD i 0 = Column.foRBits md pk (Column.blockStarts md) i := by
+      ∀ md pk, (Enc.raw (X := Empty) t n (.foR md pk)).toList.getD i 0 =
+        UInt64.ofNat ((Column.foRBits md pk (Column.blockStarts md) i).toNat % 2 ^ (8 * k.width)) := by
   rcases hk with rfl | rfl | rfl <;> cases t <;> simp [orderKind] at ht <;>
     exact ⟨fun b => by simp [Enc.raw, QAtomicType.width, Scan.Kind.width, List.getD_eq_getElem?_getD, hi],
-      fun md pk => by simp [Enc.raw, QAtomicType.width, List.getD_eq_getElem?_getD, hi]⟩
+      fun md pk => by simp [Enc.raw, QAtomicType.width, Scan.Kind.width, List.getD_eq_getElem?_getD, hi]⟩
 
 /-- **One part of a small integral side: its codes are faithful.** Part `0`'s codes at `i` and `j` agree
     exactly when the rows do, the part dense or Frame-of-Reference encoded. -/
@@ -234,11 +236,10 @@ theorem codes_small_int_faithful {t : QAtomicType} {k : Scan.Kind} (ht : orderKi
     simp only [foRKey]
     have hrank : ∀ a c : UInt64, Order.rank k a = Order.rank k c ↔ a = c := fun a c => by
       rcases hk with rfl | rfl | rfl <;> simp only [Order.rank] <;> first | exact Iff.rfl | exact UInt64.xor_left_inj _
-    rw [hrank]
-    constructor
-    · intro h; have := congrArg UInt64.toNat h
-      simpa [Nat.mod_eq_of_lt (Nat.lt_of_lt_of_le (Nat.mod_lt _ (Nat.two_pow_pos _)) hM)] using this
-    · intro h; rw [h]
+    have hlt : ∀ v : UInt64, (UInt64.ofNat (v.toNat % 2 ^ (8 * k.width))).toNat < 2 ^ (8 * k.width) := fun v => by
+      rw [UInt64.toNat_ofNat', Nat.mod_eq_of_lt (Nat.lt_of_lt_of_le (Nat.mod_lt _ (Nat.two_pow_pos _)) hM)]
+      exact Nat.mod_lt _ (Nat.two_pow_pos _)
+    rw [hrank, Nat.mod_eq_of_lt (hlt _), Nat.mod_eq_of_lt (hlt _), UInt64.toNat_inj]
 
 /-! ## Well-formedness of a grouping code -/
 

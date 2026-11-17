@@ -697,7 +697,11 @@ def WF (t : QAtomicType) (n : USize) (e : Ext.Enc X) : Prop :=
 
 /-- `atoms`' fixed-width branches before `atomOfBits`: the raw bits of each element, a boolean's as `0`/`1` and an
 interned symbol column's as its ids (coc plan §3: `bits` is ids at width 1, `enum` ids over a dictionary). A theorem
-about a numeric column is stated over this, because `atoms`' symbol branch brings `Classical.choice` with it. -/
+about a numeric column is stated over this, because `atoms`' symbol branch brings `Classical.choice` with it.
+
+Every form reads an element of a `w`-byte type as its `8 * w` bits zero-extended, the dense payload's own reading, so
+`raw` is a function of the column and not of its form: `foRBits` holds an element sign-extended to 64 bits
+(`Verify.unbias_keyAt`), and its encoded forms are cut to the low `8 * w` here. -/
 def raw (t : QAtomicType) (n : USize) (e : Ext.Enc X) : Array UInt64 :=
   match t, e with
   | .boolean, .bytes _ | .boolean, .foR _ _ => #[]
@@ -706,12 +710,12 @@ def raw (t : QAtomicType) (n : USize) (e : Ext.Enc X) : Array UInt64 :=
     | some w => (Array.range n.toNat).map fun i => bitsAt b (i * w) w
     | none => #[]
   | t, .foR metadata pack => match t.width with
-    | some _ =>
-      let starts := blockStarts metadata; (Array.range n.toNat).map (foRBits metadata pack starts)
+    | some w => let starts := blockStarts metadata
+      (Array.range n.toNat).map fun i => UInt64.ofNat ((foRBits metadata pack starts i).toNat % 2 ^ (8 * w))
     | none => #[]
   | t, .alp metadata pack a => match t.width with
-    | some _ =>
-      let starts := blockStarts metadata; (Array.range n.toNat).map (alpBits metadata pack a starts)
+    | some w => let starts := blockStarts metadata
+      (Array.range n.toNat).map fun i => UInt64.ofNat ((alpBits metadata pack a starts i).toNat % 2 ^ (8 * w))
     | none => #[]
   | .boolean, .bits b => (Array.range n.toNat).map fun i => if bitAt b i then 1 else 0
   | .symbol, .enum _ offs ids => (Array.range n.toNat).map fun i => (idAt ids (idWidth offs) i).toUInt64
