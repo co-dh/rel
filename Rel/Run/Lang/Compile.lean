@@ -1,7 +1,7 @@
 import Rel.Run.Lang.Gen
 
 /-! `compile` (`doc/rel-denotation-design.md` §3.2): a term's code as one structural function over `Tm`, one `Gen`
-    combinator per constructor, with its environment `Env`, the code side of `Val`. A `μ`/`ν` body's variable is
+    combinator per constructor, with its environment `CodeEnv`, the code side of `Val`. A `μ`/`ν` body's variable is
     bound to the round's table, an earlier binding of a program to its constant. The rows of `prims` are code here
     (`RowCode`); their meanings and lemmas are `Rows`. -/
 
@@ -10,11 +10,11 @@ namespace Rel.Lang
 open Rel Rel.Alg Gen
 
 /-- The plan each variable `k` is bound to, at the objects and demand bit the term asks for. -/
-abbrev Env := Nat → (A B : Obj) → (d : Bool) → Pl d A B
+abbrev CodeEnv := Nat → (A B : Obj) → (d : Bool) → Pl d A B
 
 /-- `η` with the variable `k` bound to the table `X : A ⟶ B`, read at every demand. A use of `k` at other objects
     is ill-typed and reads `𝟘`, as `Val.bind` reads it, so the two stay one binder. -/
-def Env.bind (η : Env) (k : Nat) {A B : Obj} (X : CRel A B) : Env := fun j A' B' d =>
+def CodeEnv.bind (η : CodeEnv) (k : Nat) {A B : Obj} (X : CRel A B) : CodeEnv := fun j A' B' d =>
   if j = k then (if h : A = A' ∧ B = B' then fun _ => (.val (h.1 ▸ h.2 ▸ X.rel), X.ok) else fun _ => (.zero, true))
   else η j A' B' d
 
@@ -160,7 +160,7 @@ structure Out (d : Bool) (A B : Obj) where
 /-- `t`'s code and plan, one `Gen` combinator per constructor, as `Expand.node` and `Expand.plan?` build them. The
     plan is the bit-rule node where the node has one, else its table as a leaf (`Gen.pleaf`); a closed term's plan
     is its table. `ν` runs as plain rounds (`Gen.nu`); `call` vouches for nothing until stage 5. -/
-def Tm.gen : Env → {A B : Obj} → {d : Bool} → Tm A B d → Out d A B
+def Tm.gen : CodeEnv → {A B : Obj} → {d : Bool} → Tm A B d → Out d A B
   | _, A, B, _, .val R => leaf (Gen.val A B (R, true))
   | _, A, _, _, .uni (m := m) U => leaf (Gen.uni A m (U, true))
   | _, A, B, _, .zero => leaf (Gen.zero A B)
@@ -226,9 +226,9 @@ where
   leaf {A B : Obj} {d : Bool} (f : Fn d A B) : Out d A B := ⟨f, pleaf A B d f, none⟩
 
 /-- `t`'s code. -/
-def compile (η : Env) {A B : Obj} {d : Bool} (t : Tm A B d) : Fn d A B := (t.gen η).fn
+def compile (η : CodeEnv) {A B : Obj} {d : Bool} (t : Tm A B d) : Fn d A B := (t.gen η).fn
 
 /-- `t`'s bit-matrix plan where its node has a bit rule, else its table as a leaf (`Gen.pleaf`). -/
-def Tm.plan (η : Env) {A B : Obj} {d : Bool} (t : Tm A B d) : Pl d A B := (t.gen η).pl
+def Tm.plan (η : CodeEnv) {A B : Obj} {d : Bool} (t : Tm A B d) : Pl d A B := (t.gen η).pl
 
 end Rel.Lang
