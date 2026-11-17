@@ -731,7 +731,7 @@ pub fn of_raw<P: Producer + ?Sized>(n: usize, w: usize, form: Option<Form>, cost
         let mut buf = crate::pod::uninit::<i64>(2 << g.lg);
         for b in b0..b1 {
             let (lo, nb) = g.span(b);
-            o[(lo - g.span(b0).0) * w..][..nb * w].copy_from_slice(p.block(b, lo, nb, w, crate::pod::bytes_mut(&mut buf)));
+            p.block_into(b, lo, nb, w, crate::pod::bytes_mut(&mut buf), &mut o[(lo - g.span(b0).0) * w..][..nb * w]);
         }
     });
     lean::ctor(0, [r.into()], &[])

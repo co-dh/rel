@@ -506,6 +506,7 @@ impl<F: Fn(&[u8], &mut [u8]) + Sync> crate::enc::Producer for Map<'_, F> {
         (self.lane)(self.src.block(b, lo, nb, self.wi, x), &mut o[..nb * w]);
         &o[..nb * w]
     }
+    fn block_into(&self, b: usize, lo: usize, nb: usize, _: usize, buf: &mut [u8], out: &mut [u8]) { (self.lane)(self.src.block(b, lo, nb, self.wi, buf), out) }
 }
 /// The encoding an answer at class `cls` takes: `Column.alpEncodes` holds of every type of a float class and
 /// `Column.encodes` of every type of the classes `i16 ..= i64`; a byte class has none.
