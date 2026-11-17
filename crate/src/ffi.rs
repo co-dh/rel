@@ -531,7 +531,7 @@ pub fn chain_enc<'a>(prog: &[u8], input: &impl Fn(u8) -> &'a [u8], n: usize, wid
 #[cfg(test)]
 mod tests {
     use super::*;
-    // testdata/drv.c encoded a 3000-element column with the C encoder at each element width and dumped the buffers
+    // testdata/drv.c (deleted; in git history) encoded a 3000-element column with the C encoder at each element width and dumped the buffers
     // and what coc.rs's accessors answered (`col<esz>.txt`): the header, then `blk b frame nexc` and `exc j value`.
     struct Col { meta: Vec<u64>, pack: Vec<u64>, txt: &'static str }
     fn load(m: &[u8], p: &[u8], txt: &'static str) -> Col {
@@ -580,7 +580,7 @@ mod tests {
             assert_eq!(seen, cc.nexc);
         }
     }
-    // decode_blk against the C decoder (testdata/drv.c's col<esz>.dec), block by block, patches applied
+    // decode_blk against the C decoder (testdata/drv.c (deleted; in git history)'s col<esz>.dec), block by block, patches applied
     fn decodes_as_c<T: crate::pod::Lane + PartialEq + core::fmt::Debug>(mut c: Col, dec: &[u8]) {
         let cc = ccoc(&mut c);
         let v = unsafe { cc.view() };
