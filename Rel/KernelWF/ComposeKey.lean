@@ -65,7 +65,8 @@ theorem foldl_push_get_lt {α : Type} [Inhabited α] (g : Array α → Nat → �
 def stageRun (st : Ew.Stage) (src : UInt8 → ByteArray) (n : USize) : ByteArray :=
   if st.engine == Ew.eVal then Ew.val st.op st.cls st.shape st.nul (src st.a) (src st.b) n
   else if st.engine == Ew.eCmp then Ew.cmp st.op st.cls st.shape (src st.a) (src st.b) n
-  else if st.engine == Ew.eMon then Ew.mon st.op st.cls st.nul (src st.a) n
+  else if st.engine == Ew.eMon then (List.range n.toNat).foldl (init := ByteArray.empty) fun acc i =>
+    Column.pushBits acc (Ew.monStep st.op st.cls st.nul.toUInt64 (Ew.elem st.cls (src st.a) i)) (Ew.width st.cls)
   else if st.engine == Ew.eWiden then Ew.widen st.cls st.shape st.nul st.nulOut (src st.a) n
   else if st.engine == Ew.eBit then Ew.bit st.op st.shape (src st.a) (src st.b) n
   else if st.engine == Ew.eFloor then Ew.floor st.cls (src st.a) n

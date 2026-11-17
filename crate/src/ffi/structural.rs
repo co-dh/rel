@@ -5,7 +5,7 @@
 use crate::alp::Cocf;
 use crate::coc::Coc;
 use crate::exports::coc::view;
-use crate::enc::{Producer, filled};
+use crate::enc::{Producer, filled, filled_into};
 use crate::ffi::{Form, SdPart, Sink, ints_at, sarray_room, sd_concat, sd_part, take_ids0};
 use crate::lean::{B, O, SArr, ctor, export};
 use crate::{pod, structural};
@@ -34,10 +34,10 @@ pub fn count_at(counts: &[B], i: usize) -> usize {
 /// `,` of the parts `parts` starting at `start[j]` (`start` holds the part count + 1 entries) of element width `w`: structural.rs
 /// `cat_fill` and `cat_take`.
 pub struct Cat<'a, 'b> { parts: &'a [Coc<'b>], start: &'a [usize], w: usize }
+impl Cat<'_, '_> { fn elems(&self, v: &mut [i64], i0: usize) { structural::cat_fill(&|i| structural::plain(&self.parts[i]), self.start, self.w, false, v, i0) } }
 impl Producer for Cat<'_, '_> {
-    fn block<'s>(&'s self, _: usize, lo: usize, nb: usize, w: usize, buf: &'s mut [u8]) -> &'s [u8] {
-        filled(|v, i0| structural::cat_fill(&|i| structural::plain(&self.parts[i]), self.start, self.w, false, v, i0), lo, nb, w, buf)
-    }
+    fn block<'s>(&'s self, _: usize, lo: usize, nb: usize, w: usize, buf: &'s mut [u8]) -> &'s [u8] { filled(|v, i0| self.elems(v, i0), lo, nb, w, buf) }
+    fn block_into(&self, _: usize, lo: usize, nb: usize, w: usize, buf: &mut [u8], out: &mut [u8]) { filled_into(|v, i0| self.elems(v, i0), lo, nb, w, buf, out) }
     fn take(&self, b: usize) -> Option<(Cocf<'_>, usize)> {
         let (p, j) = structural::cat_take(self.start, b)?;
         structural::cat_part_ok(&self.parts[p], self.w, false).then(|| (structural::plain(&self.parts[p]), j))
@@ -46,18 +46,20 @@ impl Producer for Cat<'_, '_> {
 
 /// A column shifted by `k`, `fill` entering: structural.rs `shift_fill`.
 pub struct Shift<'a, 'b> { c: &'a Coc<'b>, k: i64, fill: i64 }
+impl Shift<'_, '_> { fn elems(&self, v: &mut [i64], i0: usize) { structural::shift_fill(self.c, self.k, self.fill, v, i0) } }
 impl Producer for Shift<'_, '_> {
-    fn block<'s>(&'s self, _: usize, lo: usize, nb: usize, w: usize, buf: &'s mut [u8]) -> &'s [u8] { filled(|v, i0| structural::shift_fill(self.c, self.k, self.fill, v, i0), lo, nb, w, buf) }
+    fn block<'s>(&'s self, _: usize, lo: usize, nb: usize, w: usize, buf: &'s mut [u8]) -> &'s [u8] { filled(|v, i0| self.elems(v, i0), lo, nb, w, buf) }
+    fn block_into(&self, _: usize, lo: usize, nb: usize, w: usize, buf: &mut [u8], out: &mut [u8]) { filled_into(|v, i0| self.elems(v, i0), lo, nb, w, buf, out) }
 }
 
 /// The hint callbacks all answer the exponent and the patch limit the walk leaves in `lim`.
 pub fn hinted(h: impl FnOnce(&mut u32) -> i32) -> Option<(i32, u32)> { let mut lim = 0; let e = h(&mut lim); Some((e, lim)) }
 /// `,` of ALP parts: structural.rs `cat_fill_alp`, `cat_take`, `cat_hint`, `cat_ints`.
 pub struct CatAlp<'a, 'b> { parts: &'a [Cocf<'b>], start: &'a [usize], w: usize }
+impl CatAlp<'_, '_> { fn elems(&self, v: &mut [i64], i0: usize) { structural::cat_fill_alp(&|i| self.parts[i], self.start, self.w, v, i0) } }
 impl Producer for CatAlp<'_, '_> {
-    fn block<'s>(&'s self, _: usize, lo: usize, nb: usize, w: usize, buf: &'s mut [u8]) -> &'s [u8] {
-        filled(|v, i0| structural::cat_fill_alp(&|i| self.parts[i], self.start, self.w, v, i0), lo, nb, w, buf)
-    }
+    fn block<'s>(&'s self, _: usize, lo: usize, nb: usize, w: usize, buf: &'s mut [u8]) -> &'s [u8] { filled(|v, i0| self.elems(v, i0), lo, nb, w, buf) }
+    fn block_into(&self, _: usize, lo: usize, nb: usize, w: usize, buf: &mut [u8], out: &mut [u8]) { filled_into(|v, i0| self.elems(v, i0), lo, nb, w, buf, out) }
     fn take(&self, b: usize) -> Option<(Cocf<'_>, usize)> {
         let (p, j) = structural::cat_take(self.start, b)?;
         structural::cat_part_ok(&self.parts[p].c, self.w, true).then(|| (self.parts[p], j))

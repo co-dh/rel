@@ -1,4 +1,5 @@
 import Rel.Kernel.Coc
+import Rel.Kernel.Driver
 import Rel.Kernel.Value
 
 /-! The part of `Rel.Kernel.Elementwise` the Rel kernels reach; `Rel.Kernel.Elementwise` imports it. -/
@@ -536,11 +537,11 @@ def bit (op shape : UInt8) (a b : @& ByteArray) (n : USize) : ByteArray :=
         byte ||| (1 <<< j.toUInt8)
       else byte)
 
-/-- `neg` and `abs`, at the class the argument already occupies. -/
+/-- `neg`, `abs` and the nine float maps over the `n` elements of `x` at `t`, whatever its kind, answering at `t`:
+`Kernel.map` of `monStep`. `cls` is `t`'s storage class, which is all the answer's form depends on. -/
 @[extern "qlean_ew_mon"]
-def mon (op cls : UInt8) (nul : Int64) (x : @& ByteArray) (n : USize) : ByteArray :=
-  (List.range n.toNat).foldl (init := ByteArray.empty) fun acc i =>
-    Column.pushBits acc (monStep op cls nul.toUInt64 (elem cls x i)) (width cls)
+def mon (op cls : UInt8) (nul : Int64) (t : QAtomicType) (n : USize) (x : @& Enc) : Enc :=
+  Kernel.map t t n (fun v => monStep op cls nul.toUInt64 (v.headD 0)) [x]
 
 /-- Monadic `_` at a float width. -/
 @[extern "qlean_ew_floor"]
@@ -703,7 +704,8 @@ def chain (prog : @& ByteArray) (inputs : @& Array ByteArray) (n : USize) : Byte
     outs.push <|
       if st.engine == eVal then val st.op st.cls st.shape st.nul (src st.a) (src st.b) n
       else if st.engine == eCmp then cmp st.op st.cls st.shape (src st.a) (src st.b) n
-      else if st.engine == eMon then mon st.op st.cls st.nul (src st.a) n
+      else if st.engine == eMon then (List.range n.toNat).foldl (init := ByteArray.empty) fun acc i =>
+        Column.pushBits acc (monStep st.op st.cls st.nul.toUInt64 (elem st.cls (src st.a) i)) (width st.cls)
       else if st.engine == eWiden then widen st.cls st.shape st.nul st.nulOut (src st.a) n
       else if st.engine == eBit then bit st.op st.shape (src st.a) (src st.b) n
       else if st.engine == eFloor then floor st.cls (src st.a) n

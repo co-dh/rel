@@ -278,6 +278,9 @@ pub trait Producer: Sync {
     /// Elements `lo .. lo + nb` (block `b` of the writer's grid) at `w` bytes each: a slice of the producer's own memory, or
     /// written into `buf` (`16 * nb` bytes, 8-aligned).
     fn block<'s>(&'s self, b: usize, lo: usize, nb: usize, w: usize, buf: &'s mut [u8]) -> &'s [u8];
+    /// `block` written into `out` (`nb * w` bytes), the dense answer's own memory: a producer that computes its elements
+    /// computes them there, so the dense answer is written once; one that holds them (`Blocks`) copies them.
+    fn block_into(&self, b: usize, lo: usize, nb: usize, w: usize, buf: &mut [u8], out: &mut [u8]) { out.copy_from_slice(self.block(b, lo, nb, w, buf)) }
     /// Block `pb` of a column in the writer's own form that answer block `b` equals, with `pb`.
     fn take(&self, _b: usize) -> Option<(Cocf<'_>, usize)> { None }
     /// ALP: block `b`'s decimals `d`, exponents `ee` (negative = exception) of its first `nb` elements, and the block's exponent;
@@ -293,9 +296,18 @@ pub fn filled<'s>(fill: impl FnOnce(&mut [i64], usize), lo: usize, nb: usize, w:
     fill(v, lo);
     narrow(w, v, o)
 }
+/// `filled` into `out` (`nb * w` bytes): at 8 bytes the fill writes `out` itself (an 8-aligned one, as a Lean payload's
+/// blocks are), narrower it is narrowed into `out`.
+pub fn filled_into(fill: impl FnOnce(&mut [i64], usize), lo: usize, nb: usize, w: usize, buf: &mut [u8], out: &mut [u8]) {
+    if w == 8 && out.as_ptr() as usize % 8 == 0 { return fill(crate::pod::cast_mut(out).expect("qlean Sink: an answer block of whole i64s"), lo) }
+    let v = crate::pod::cast_mut::<i64>(&mut buf[..8 * nb]).expect("qlean Sink: a block buffer is misaligned for i64");
+    fill(v, lo);
+    if w == 8 { out.copy_from_slice(crate::pod::bytes(v)) } else { narrow(w, v, out); }
+}
 /// A closure is a producer with no `take`: the form every kernel that computes an answer a block at a time uses.
 impl<F: Fn(&mut [i64], usize) + Sync> Producer for F {
     fn block<'s>(&'s self, _: usize, lo: usize, nb: usize, w: usize, buf: &'s mut [u8]) -> &'s [u8] { filled(self, lo, nb, w, buf) }
+    fn block_into(&self, _: usize, lo: usize, nb: usize, w: usize, buf: &mut [u8], out: &mut [u8]) { filled_into(self, lo, nb, w, buf, out) }
 }
 /// A column read as the writer's elements: the encoder's input where it is dense, a transcode where it is not. A span on
 /// the column's own grid is read in place where it lies, any other is cut from the blocks it crosses.

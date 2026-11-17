@@ -64,6 +64,21 @@ impl<'a> Blocks<'a> {
     }
     /// A bit column of `n` bits: ids at width 1 (decision B).
     pub fn bits(p: &'a [u8], n: usize) -> Self { Self::ids(p, n, 1) }
+    /// The `n` elements of `w` bytes a Lean `Enc` object holds, whatever its kind (coc plan §3 `Col::of`, decision C1):
+    /// the one reader of `Enc`'s constructor tags, in `Rel/Kernel/Value.lean`'s order. `who` names the export in a panic.
+    pub fn of(e: crate::lean::B<'a>, w: usize, n: usize, who: &str) -> Self {
+        let f = |i| e.field(i).bytes();
+        match e.tag() {
+            0 => Blocks::new(Src::Dense(f(0).get(..n * w).unwrap_or_else(|| panic!(
+                "{who}: a dense payload of {} bytes holds fewer than {n} elements of {w} bytes", f(0).len()))), n),
+            1 => Blocks::bits(f(0), n),
+            3 => Blocks::from(crate::coc::view(f(0), f(1), n).unwrap_or_else(|err| panic!("{who}: {err}"))),
+            4 => Blocks::from(Cocf::view(f(0), f(1), f(2), n).unwrap_or_else(|| panic!(
+                "{who}: an ALP column's metadata of {} bytes or its blob of {} are short or misaligned", f(0).len(), f(2).len()))),
+            5 => Blocks::ids(f(2), n, ids::id_width(e.field(1).words().len().saturating_sub(1))),
+            t => panic!("{who}: an `Enc` of constructor {t} (`syms`, `gen`) has no raw elements"),
+        }
+    }
     /// Block `b`'s metadata.
     pub fn meta(&self, b: usize) -> BlkMeta {
         match self.src {
