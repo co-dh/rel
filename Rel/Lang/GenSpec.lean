@@ -99,10 +99,9 @@ theorem uni_sound {A : Obj} {m : USize} (U : Vals A m × Bool) : Sound (uni A m 
     definition of each is also the literal form, so no second copy can drift from it. -/
 theorem uni_lits {m : USize} (U : Vals .long m × Bool) (k : UInt8) :
     succ (uni .long m U) = (fun D => also U.2 (CRel.comp ⟨D, true⟩ (CRel.succ U.1))) ∧
-    arith k (uni .long m U) = (fun D => CRel.comp ⟨Alg.arith k D.val, true⟩ ⟨idU U.1, U.2⟩) ∧
     leq (uni .long m U) = (fun _ => also U.2 (CRel.leq U.1)) ∧
     lt (uni .long m U) = (fun _ => also U.2 (CRel.lt U.1)) :=
-  ⟨rfl, rfl, rfl, rfl⟩
+  ⟨rfl, rfl, rfl⟩
 
 theorem zero_sound {A B : Obj} : Sound (zero A B) 𝟘 := fun _ _ _ x y _ => by
   show rep (Alg.zero : Rel A B) x y ↔ _; rw [rep_zero]
@@ -450,16 +449,18 @@ theorem lt_sound {U : Fn false .long .long} {TU : Den .long .long} (hU : Sound U
   simp only [lt, also, Bool.and_eq_true] at hb ⊢
   rw [CRel.rep_lt _ _ hb.2, keyRowRep, keyRowRep, hU.eq hb.1]
 
-/-- A value verb `k` on the universe `U`: `Int64`'s step, not the null and, for `+ - *`, not wrapped, then
-    within `U` (`rep_arith`). -/
+/-- A value verb `k` on the universe `U`: both inputs in `U`, `Int64`'s step, not the null and, for `+ - *`, not
+    wrapped, then within `U` (`rep_arith`). -/
 theorem arith_sound (k : UInt8) {U : Fn false .long .long} {TU : Den .long .long} (hU : Sound U TU) :
-    Sound (arith k U) (arithDen k TU) :=
-  fun D _ hb p w hp => by
+    Sound (arith k U) (arithDen k TU) := by
+  have hs : Sound (fun D => CRel.comp ⟨Alg.arith k D.val, true⟩ (U ()) : Fn true (.prod .long .long) .long)
+      (stepDen k ≫ TU) := fun D _ hb p w hp => by
     have hc := ok_and hb; rw [Bool.and_eq_true] at hc
     show rep (CRel.comp _ _).rel p w ↔ _
-    rw [CRel.rep_comp _ _ hb, hU.eq hc.2, Core.Rel.comp_apply, arithDen, Core.Rel.comp_apply]
+    rw [CRel.rep_comp _ _ hb, hU.eq hc.2, Core.Rel.comp_apply, Core.Rel.comp_apply]
     obtain ⟨a, b⟩ := p
     exact exists_congr fun v => and_congr_left fun _ => (rep_arith k D.val a b v).trans (and_iff_right (keyRow hp))
+  exact comp_sound (dom_sound (comp_sound outl_sound hU)) (comp_sound (dom_sound (comp_sound outr_sound hU)) hs)
 
 /-- `fold(e, S)`: a chain of values `ys`, its last from `e`, each the step `S` of the element and the next value
     (`rep_foldOn`, `S` run on each round's pairs by `onKeys`). -/
