@@ -1264,7 +1264,7 @@ mod a42 {
         }
         n
     }
-    #[test] fn vectors() { assert!(replay(include_str!("../../testdata/ew_a42.vec")) > 1000); }
+    #[test] fn vectors() { assert!(replay(include_str!("../testdata/ew_a42.vec")) > 1000); }
     #[test] fn big() { if let Ok(p) = std::env::var("EW_A42_VEC") { println!("{} vectors", replay(&std::fs::read_to_string(p).unwrap())); } }
     #[test] #[should_panic(expected = "storage class 6 has no dense element width")] fn width_bits() { ew_width(6); }
     #[test] #[should_panic(expected = "qlean_ew_val: no case for verb 9 at storage class 0. The dispatch")] fn unsupported() { ew_unsupported("qlean_ew_val", 9, 0); }

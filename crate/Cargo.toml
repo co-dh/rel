@@ -28,6 +28,9 @@ std = []
 exclude = ["rt"]
 resolver = "3"
 
+[profile.dev]
+panic = "abort"
+
 [profile.release]
 opt-level = 3
 panic = "abort"
