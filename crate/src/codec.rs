@@ -8,12 +8,12 @@ use crate::cocops::{cmp2_res, EQ, GE, GT, LE, LT, NE};
 use crate::enc;
 use crate::simd::res_vcmp;
 use alloc::vec;
-use crate::pod::{self, Lane};
+use crate::pod::{self, Elt};
 use crate::{QLEAN_COST_ARITH, QLEAN_COST_GATHER};
 
 // ---- A15: coc.rs ----
 /// coc.rs `qlean_coc_decode_{i16,i32,i64}` past the unboxing: the whole column into `out`, by blocks.
-pub fn decode<T: Lane + Send>(run: Runner, c: &Coc, out: &mut [T]) {
+pub fn decode<T: Elt + Send>(run: Runner, c: &Coc, out: &mut [T]) {
     let unit = c.meta.blk() * size_of::<T>();
     run_map(run, pod::bytes_mut(out), c.meta.nblk, unit, QLEAN_COST_ARITH, unit, &|lo, hi, o: &mut [u8]| {
         let o = pod::cast_mut::<T>(o).expect("qlean_coc_decode: output misaligned for its element");

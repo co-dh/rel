@@ -4,6 +4,7 @@
 //! `simd.rs`, which this module calls and finishes (the groups that hold a null, the tail).
 use crate::key::{SK_BIT, SK_C8, SK_F32, SK_F64, SK_I16, SK_I32, SK_I64, SK_KINDS_N, SK_U8};
 use crate::simd;
+use crate::pod::Elt;
 
 // the verb, as QLean/Kernel/Scan.lean's `Verb` in constructor order
 pub const SC_SUMS: i32 = 0;
@@ -265,7 +266,7 @@ pub fn sc_out_width(op: i32, kind: i32) -> usize {
 // ---- the moving-window engine: scan.rs `mw_run` and its window macros (K4) ----
 
 
-macro_rules! elt_int { ($($t:ty, $u:ty, $reg:ident, $lane:ident, $stv:ident, $mn:ident, $mx:ident);*) => { $(impl Elt for $t {
+macro_rules! elt_int { ($($t:ty, $u:ty, $reg:ident, $lane:ident, $stv:ident, $mn:ident, $mx:ident);*) => { $(impl Reg for $t {
     type Acc = simd::VReg;
     #[inline(always)] fn reg(self) -> simd::VReg { simd::$reg(self) }
     #[inline(always)] fn lane(a: simd::VReg) -> Self { simd::$lane(a) }
@@ -274,12 +275,10 @@ macro_rules! elt_int { ($($t:ty, $u:ty, $reg:ident, $lane:ident, $stv:ident, $mn
     type B = [u8; size_of::<$t>()];
     #[inline(always)] fn from_b(b: Self::B) -> Self { Self::from_ne_bytes(b) }
     #[inline(always)] fn to_b(self) -> Self::B { self.to_ne_bytes() }
-    #[inline(always)] fn bits(self) -> u64 { self as $u as u64 }
-    #[inline(always)] fn from_bits(b: u64) -> Self { b as Self }
 })* } }
 elt_int!(u8, u8, reg_u8, lane_u8, st_u8, min_u8, max_u8; i16, u16, reg_i16, lane_i16, st_i16, min_i16, max_i16;
          i32, u32, reg_i32, lane_i32, st_i32, min_i32, max_i32; i64, u64, reg_i64, lane_i64, st_i64, min_i64, max_i64);
-macro_rules! elt_flt { ($t:ty, $u:ty, $mn:ident, $mx:ident) => { impl Elt for $t {
+macro_rules! elt_flt { ($t:ty, $u:ty, $mn:ident, $mx:ident) => { impl Reg for $t {
     type Acc = $t;
     #[inline(always)] fn reg(self) -> $t { self }
     #[inline(always)] fn lane(a: $t) -> Self { a }
@@ -295,8 +294,6 @@ macro_rules! elt_flt { ($t:ty, $u:ty, $mn:ident, $mx:ident) => { impl Elt for $t
     type B = [u8; size_of::<$t>()];
     #[inline(always)] fn from_b(b: Self::B) -> Self { Self::from_ne_bytes(b) }
     #[inline(always)] fn to_b(self) -> Self::B { self.to_ne_bytes() }
-    #[inline(always)] fn bits(self) -> u64 { self.to_bits() as u64 }
-    #[inline(always)] fn from_bits(b: u64) -> Self { Self::from_bits(b as $u) }
 } } }
 elt_flt!(f32, u32, min_f32, max_f32);
 elt_flt!(f64, u64, min_f64, max_f64);
@@ -309,7 +306,7 @@ macro_rules! kd { ($k:ident, $e:ty, $w:literal, $nul:expr, $dbl:expr, $nn:litera
     impl Kd for $k {
         type E = $e;
         #[inline(always)] fn run(p: &[u8], i: usize, k: usize) -> impl Iterator<Item = $e> + '_ {
-            p[i * $w..(i + k) * $w].as_chunks::<$w>().0.iter().map(|&b| <$e as Elt>::from_b(b))
+            p[i * $w..(i + k) * $w].as_chunks::<$w>().0.iter().map(|&b| <$e as Reg>::from_b(b))
         }
         #[inline(always)] fn nul(e: $e) -> bool { let f: fn($e) -> bool = $nul; f(e) }
         #[inline(always)] fn dbl(e: $e) -> f64 { let f: fn($e) -> f64 = $dbl; f(e) }
@@ -369,12 +366,10 @@ pub fn col(op: u8, kind: u8, n: usize, a: &[u8], out: &mut [u8]) {
 /// `MW_LT_F`/`MW_GT_F`: q's `&` and `|`, where the null is the smallest thing for `&` and ignored by `|`
 /// (`3 mmin 1 0n 3 2 5 4f` is `1 0n 0n 0n 2 2`). `|` and not `||`: the second test is one instruction and the first is
 /// a coin toss on real data.
-pub trait Elt: Copy {
+pub trait Reg: Elt {
     type B: Copy;
     fn from_b(b: Self::B) -> Self;
     fn to_b(self) -> Self::B;
-    fn bits(self) -> u64;
-    fn from_bits(b: u64) -> Self;
     /// The register the carried extreme lives in, and `better(v, ex) ? v : ex`, the carried select of `MW_EXT`, on it.
     type Acc: Copy;
     fn reg(self) -> Self::Acc;
@@ -399,7 +394,7 @@ impl Kd for KBit {
 /// the double the means accumulate. `msum` is the kind's own method because an integral kind sums at 64 bits and a float
 /// at its own width.
 pub trait Kd {
-    type E: Elt;
+    type E: Reg;
     fn run(p: &[u8], i: usize, k: usize) -> impl Iterator<Item = Self::E> + '_;
     fn nul(e: Self::E) -> bool;
     fn dbl(e: Self::E) -> f64;
@@ -428,35 +423,35 @@ pub struct Mw<'a> {
 /// The same at a float layout, where `+\` skips the null rather than wrapping and the subtraction is the plain one,
 /// cancellation included.
 #[inline(always)]
-pub fn sum_flt<K: Kd, const EW: usize>(st: &mut Mw, p: &[u8], o: &mut [u8], n: usize) where K::E: Flt + Elt<B = [u8; EW]> {
-    let mut acc = <K::E as Flt>::of(st.fsum);
+pub fn sum_flt<K: Kd, const EW: usize>(st: &mut Mw, p: &[u8], o: &mut [u8], n: usize) where K::E: Reg<B = [u8; EW]> + core::ops::Add<Output = K::E> + core::ops::Sub<Output = K::E> {
+    let mut acc = <K::E as Elt>::of_f(st.fsum);
     chunks(st, n, |i, k, cu, rp, st| {
         for (h, e) in st.rf[cu..cu + k].iter_mut().zip(K::run(p, i, k)) {
             // `acc` is never -0.0 (it starts at +0.0 and a sum is -0.0 only of two -0.0), so adding +0.0 at a null leaves it
             // unchanged and the chain is the add alone, not a compare and a blend on it
-            acc = acc + if K::nul(e) { <K::E as Flt>::of(0.0) } else { e };
-            *h = acc.into();
+            acc = acc + if K::nul(e) { <K::E as Elt>::of_f(0.0) } else { e };
+            *h = acc.f();
         }
         let (hd, bk) = (&st.rf[cu..cu + k], &st.rf[rp..rp + k]);
-        for ((c, &a), &b) in out::<EW>(o, i, k).iter_mut().zip(hd).zip(bk) { *c = (<K::E as Flt>::of(a) - <K::E as Flt>::of(b)).to_b() }
+        for ((c, &a), &b) in out::<EW>(o, i, k).iter_mut().zip(hd).zip(bk) { *c = (<K::E as Elt>::of_f(a) - <K::E as Elt>::of_f(b)).to_b() }
     });
-    st.fsum = acc.into();
+    st.fsum = acc.f();
 }
 /// `+\y` at an integral layout minus the same total `w` back, answered at `O`, `sums`'s type. The total stays exact at
 /// 64 bits and each prefix is narrowed as `sums` narrows it; q's `-` then carries a null and wraps at `O`, so the two
 /// ends are tested rather than the elements (`2 msum 2147483647 0N 1i` is `0W 0W 0Ni`).
 #[inline(always)]
-pub fn sum_int<K: KInt, O: IntOut<B = [u8; OW]>, const OW: usize>(st: &mut Mw, p: &[u8], o: &mut [u8], n: usize) {
+pub fn sum_int<K: KInt, O: Reg<B = [u8; OW]>, const OW: usize>(st: &mut Mw, p: &[u8], o: &mut [u8], n: usize) {
     let mut acc = st.isum;
     chunks(st, n, |i, k, cu, rp, st| {
         for (h, e) in st.ri[cu..cu + k].iter_mut().zip(K::run(p, i, k)) {
             if !K::nul(e) { acc = acc.wrapping_add(K::int(e) as u64) }
             let s = acc as i64;
-            *h = (if s == O::sx(s) { s } else { O::NL }) as u64;
+            *h = (if s == O::wrap(s as u64).i() { s } else { O::LO.i() }) as u64;
         }
         let (hd, bk) = (&st.ri[cu..cu + k], &st.ri[rp..rp + k]);
         for ((c, &a), &b) in out::<OW>(o, i, k).iter_mut().zip(hd).zip(bk) {
-            *c = O::to_b(if a == O::NL as u64 || b == O::NL as u64 { O::NL as u64 } else { a.wrapping_sub(b) });
+            *c = O::wrap(if a == O::LO.bits() || b == O::LO.bits() { O::LO.bits() } else { a.wrapping_sub(b) }).to_b();
         }
     });
     st.isum = acc;
@@ -477,32 +472,6 @@ pub fn chunks(st: &mut Mw, n: usize, mut body: impl FnMut(usize, usize, usize, u
         i += k;
         st.cu = if cu + k == cap { 0 } else { cu + k };
     }
-}
-/// The float layouts a `msum` accumulates and subtracts at: a `real` at 32 bits (measured `last 3 msum
-/// "e"$1000#0.1 0.2 0.3` is `0.6000061e`), the history holding it exactly as a `double`.
-pub trait Flt: Elt + core::ops::Add<Output = Self> + core::ops::Sub<Output = Self> + Into<f64> {
-    fn of(x: f64) -> Self;
-}
-impl Flt for f32 { fn of(x: f64) -> Self { x as f32 } }
-impl Flt for f64 { fn of(x: f64) -> Self { x } }
-/// The integral width `msum` answers at, `sums`'s: `0N` where the 64-bit total does not narrow into it.
-pub trait IntOut {
-    type B: Copy;
-    const NL: i64;
-    fn sx(s: i64) -> i64;
-    fn to_b(a: u64) -> Self::B;
-}
-impl IntOut for i32 {
-    type B = [u8; 4];
-    const NL: i64 = i32::MIN as i64;
-    #[inline(always)] fn sx(s: i64) -> i64 { s as i32 as i64 }
-    #[inline(always)] fn to_b(a: u64) -> [u8; 4] { (a as i32).to_ne_bytes() }
-}
-impl IntOut for i64 {
-    type B = [u8; 8];
-    const NL: i64 = i64::MIN;
-    #[inline(always)] fn sx(s: i64) -> i64 { s }
-    #[inline(always)] fn to_b(a: u64) -> [u8; 8] { a.to_ne_bytes() }
 }
 /// The first `k` answer slots of `o` from element `i`, `W` bytes each.
 #[inline(always)]

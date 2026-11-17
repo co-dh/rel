@@ -5,7 +5,7 @@
 use crate::alp::Cocf;
 use crate::coc::Coc;
 use crate::ids;
-use crate::pod::{self, Lane};
+use crate::pod::{self, Elt};
 use core::ops::Range;
 
 /// The kinds a column's blocks come from: a dense payload, FoR (`Coc`), ALP (`Cocf`), or ids at `lw` bits. A bit column
@@ -88,7 +88,7 @@ impl<'a> Blocks<'a> {
     }
     /// Block `b`'s first `cnt` elements as `T` into `out`, patches applied. ALP answers its floats' bits, so `T` is
     /// `i32` for `real` and `i64` for `float`; a dense payload's elements are `T`'s width.
-    pub fn load<T: Lane>(&self, b: usize, cnt: usize, out: &mut [T]) {
+    pub fn load<T: Elt>(&self, b: usize, cnt: usize, out: &mut [T]) {
         let lo = b << self.lg();
         match self.src {
             Src::For(c) => c.decode_blk(b, cnt, out),
@@ -112,10 +112,7 @@ impl<'a> Blocks<'a> {
                 let lo = b << self.lg();
                 for k in 0..cnt { out[k * 16..k * 16 + 16].fill(0); out[k * 16..k * 16 + 8].copy_from_slice(&(ids::id_at(p, lw, lo + k) as u64).to_le_bytes()) }
             }
-            (_, 1) => self.load::<u8>(b, cnt, pod::cast_mut(out).unwrap_or_else(|| bad())),
-            (_, 2) => self.load::<i16>(b, cnt, pod::cast_mut(out).unwrap_or_else(|| bad())),
-            (_, 4) => self.load::<i32>(b, cnt, pod::cast_mut(out).unwrap_or_else(|| bad())),
-            _ => self.load::<i64>(b, cnt, pod::cast_mut(out).unwrap_or_else(|| bad())),
+            _ => crate::by_width!(int w, self.load(b, cnt, pod::cast_mut(out).unwrap_or_else(|| bad()))),
         }
         out
     }
