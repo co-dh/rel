@@ -886,14 +886,14 @@ pub fn expand(run: Runner, w: usize, fill: u64, src: &[u8], wv: &[i64], out: &mu
 }
 /// structural.c:1363 `qlean_structural_rows_of` past the unboxing: each little-endian `i64` of `b` as the boxed
 /// word `lean_box` makes of it, into `out` (C passes `lean_array_cptr`); answers the count.
-pub fn rows_of(b: &[u8], out: &mut [i64]) -> usize {
+pub fn rows_of(b: &[u8], out: &mut [usize]) -> usize {
     let n = b.len() / 8;
     for (i, (c, o)) in b.chunks_exact(8).zip(out.iter_mut()).enumerate() {
         let u = u64::from_le_bytes(c.try_into().unwrap());
         if u >> 62 != 0 {
             panic!("qlean_structural_rows_of: row {i} is {u}, which no column is long enough to hold and no boxed natural can carry")
         }
-        *o = (u << 1 | 1) as i64;
+        *o = (u << 1 | 1) as usize;
     }
     n
 }
@@ -2002,7 +2002,7 @@ mod a38_tests {
         assert_eq!(out, [0x49, 0x02]);
     }
     #[test] fn rows_of_boxes_and_gather_syms_writes_boxed_starts() {
-        let mut o = [0i64; 2];
+        let mut o = [0usize; 2];
         assert_eq!(rows_of(&[5, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], &mut o), 2);
         assert_eq!(o, [11, 1]);
         let s = Syms { blob: b"ab\0c\0", offs: &[1, 7, 11] };
@@ -2450,6 +2450,60 @@ impl Grow {
     }
 }
 
+/// structural.c `qlean_structural_spread`: index `i` repeated `ws[i]` times into `out` (`Σ ws` entries).
+pub fn spread(ws: &[u64], out: &mut [i64]) {
+    let mut at = 0;
+    for (i, &c) in ws.iter().enumerate() { out[at..at + c as usize].fill(i as i64); at += c as usize }
+}
+/// structural.c `qlean_structural_complement`, first pass: which of the rows below `n` `idx` names, and how many distinct.
+/// A row named twice counts once; an index not below `n` (unsigned: a negative too) names none.
+pub fn complement_seen(n: usize, idx: &[i64]) -> (Vec<u8>, usize) {
+    let (mut seen, mut gone) = (alloc::vec![0u8; n], 0);
+    for &i in idx { if let Some(s) = seen.get_mut(i as u64 as usize) { gone += (*s == 0) as usize; *s = 1 } }
+    (seen, gone)
+}
+/// structural.c `qlean_structural_complement`, second pass: the rows `seen` does not mark, in order.
+pub fn complement_fill(seen: &[u8], out: &mut [i64]) {
+    let mut at = 0;
+    for (i, &s) in seen.iter().enumerate() { if s == 0 { out[at] = i as i64; at += 1 } }
+}
+/// structural.c `qlean_structural_gauss_jordan`: the width `w` of the augmented half -- `n = a.len()` when `aug` is empty
+/// (the identity), else the doubles `aug[0]` holds; none for no rows.
+pub fn gauss_width(a: &[&[u8]], aug: &[&[u8]]) -> usize { if aug.is_empty() || a.is_empty() { a.len() } else { aug[0].len() / 8 } }
+/// structural.c `qlean_structural_gauss_jordan`: the augmented half of `[a | aug]` once `a` is the identity, `n * w`
+/// doubles row by row, or q's float null throughout where `a` is singular. A row of `a` is read at `n` doubles and a row
+/// of `aug` at `w`, short ones zero padded (`copy_row`); the pivot swaps only on an exact-zero pivot, the Lean body's rule.
+/// Rust never contracts `d[j] -= f * r[j]` into a fused multiply-add, which the row update's rounding needs.
+pub fn gauss_jordan(a: &[&[u8]], aug: &[&[u8]], w: usize, out: &mut [f64]) {
+    let (n, ld) = (a.len(), a.len() + w);
+    let mut m = alloc::vec![0f64; n * ld];
+    let mut buf = alloc::vec![0u8; 8 * ld];
+    for i in 0..n {
+        buf.fill(0);
+        copy_row(&mut buf[..8 * n], a.get(i).copied());
+        if !aug.is_empty() { copy_row(&mut buf[8 * n..], aug.get(i).copied()) }
+        for (d, c) in m[i * ld..(i + 1) * ld].iter_mut().zip(buf.chunks_exact(8)) { *d = f64::from_ne_bytes(c.try_into().unwrap()) }
+        if aug.is_empty() { m[i * ld + n + i] = 1.0 }
+    }
+    let mut singular = false;
+    for k in 0..n {
+        if m[k * ld + k] == 0.0 {
+            let Some(piv) = (k + 1..n).find(|&i| m[i * ld + k] != 0.0) else { singular = true; break };
+            for j in 0..ld { m.swap(k * ld + j, piv * ld + j) }
+        }
+        let pv = m[k * ld + k];
+        for x in &mut m[k * ld..(k + 1) * ld] { *x /= pv }
+        let r: Vec<f64> = m[k * ld..(k + 1) * ld].to_vec();
+        for (i, d) in m.chunks_exact_mut(ld).enumerate() {
+            let f = d[k];
+            if i != k && f != 0.0 { for (x, &y) in d.iter_mut().zip(&r) { *x -= f * y } }
+        }
+    }
+    // q's one float null, the negative quiet NaN: the platform's own is 0x7ff8..., and a `0n` in the operand reaches the answer
+    // as whatever NaN the hardware carried
+    let nan_q = f64::from_bits(0xfff8000000000000);
+    for i in 0..n { for j in 0..w { let v = m[i * ld + n + j]; out[i * w + j] = if singular || v != v { nan_q } else { v } } }
+}
 /// structural.c:87 `row_at`: part `i` of `rs` read at `want` bytes -- where it lies when it is long enough, else a copy of
 /// what it has followed by zeros (`Column.bitsAt`'s convention), and a part the array does not have at all is all zeros.
 pub fn row_at<'a>(rs: &[&'a [u8]], i: usize, want: usize) -> alloc::borrow::Cow<'a, [u8]> {

@@ -760,112 +760,6 @@ pub unsafe extern "C" fn qrs_run_starts_syms(blob: *const u8, bytes: usize, offs
 pub unsafe extern "C" fn qrs_run_starts_bits(n: usize, bits: *const u8, size: usize, out: *mut i64) -> usize {
     unsafe { search::run_starts_bits(n, sl(bits, size), sl_mut(out, n + 1)) }
 }
-/// A37: structural.c `gather_run`.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn qrs_gather(run: unsafe extern "C" fn(), w: usize, fill: u64, src: *const u8, ns: usize,
-                                    idx: *const i64, n: usize, out: *mut u8) {
-    unsafe { structural::gather(rn(run), w, fill, sl(src, w * ns), sl(idx, n), sl_mut(out, w * n)) }
-}
-/// A37: structural.c `gather_foR_run`.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn qrs_gather_enc(run: unsafe extern "C" fn(), w: usize, fill: u64, c: *const CCoc, idx: *const i64,
-                                        n: usize, out: *mut u8) {
-    unsafe { structural::gather_enc(rn(run), w, fill, &(*c).view(), sl(idx, n), sl_mut(out, w * n)) }
-}
-/// A37: structural.c `qlean_structural_all_below` over the `m` indices; 1 when every one, unsigned, is below `n`.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn qrs_all_below(n: usize, idx: *const i64, m: usize) -> u8 { unsafe { structural::all_below(n, sl(idx, m)) as u8 } }
-/// A37: structural.c `gather_foR_idx_run`; `ic` is the encoded index (`ic.n` of them), `out` is `w * ic.n` bytes.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn qrs_gather_enc_idx(run: unsafe extern "C" fn(), w: usize, fill: u64, c: *const CCoc, ic: *const CCoc,
-                                            out: *mut u8) {
-    unsafe {
-        let (v, iv) = ((*c).view(), (*ic).view());
-        structural::gather_enc_idx(rn(run), w, fill, &v, &iv, sl_mut(out, w * iv.meta.n))
-    }
-}
-/// A37: structural.c `gather_bits_run`: `n` is the source's bit count, `bits` its `bytes` bytes, `out` the zeroed
-/// `ceil(m / 8)` bytes.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn qrs_gather_bits(run: unsafe extern "C" fn(), n: usize, bits: *const u8, bytes: usize,
-                                         idx: *const i64, m: usize, out: *mut u8) {
-    unsafe { structural::gather_bits(rn(run), n, sl(bits, bytes), sl(idx, m), sl_mut(out, m.div_ceil(8))) }
-}
-/// A38: structural.c `expand_run`.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn qrs_expand(run: unsafe extern "C" fn(), w: usize, fill: u64, src: *const u8, ns: usize,
-                                    wv: *const i64, k: usize, n: usize, out: *mut u8) {
-    // `wv` holds `k = size / 8` widths (structural.c `qlean_structural_expand`), which is not `ns` = the source length
-    unsafe { structural::expand(rn(run), w, fill, sl(src, w * ns), sl(wv, k), sl_mut(out, w * n)) }
-}
-/// A38: structural.c `gather_ids_run`.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn qrs_gather_ids(run: unsafe extern "C" fn(), w: u32, wout: u32, fill: u64, src: *const u8,
-                                        ns: usize, idx: *const i64, n: usize, out: *mut u8) {
-    unsafe { structural::gather_ids(rn(run), w, wout, fill, sl(src, ids::ids_bytes(ns, w)), ns, sl(idx, n),
-                                    sl_mut(out, ids::ids_bytes(n, wout))) }
-}
-/// A38: structural.c `gather_ids_foR_run`; `out` is `ids_bytes(c.n, wout)` bytes.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn qrs_gather_ids_enc(run: unsafe extern "C" fn(), w: u32, wout: u32, fill: u64, src: *const u8,
-                                            ns: usize, c: *const CCoc, out: *mut u8) {
-    unsafe {
-        let v = (*c).view();
-        structural::gather_ids_enc(rn(run), w, wout, fill, sl(src, ids::ids_bytes(ns, w)), ns, &v,
-                                   sl_mut(out, ids::ids_bytes(v.meta.n, wout)))
-    }
-}
-/// A38: structural.c `qlean_structural_rows_of`: `n` longs of `b` as the boxed words `out` holds.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn qrs_rows_of(b: *const u8, n: usize, out: *mut i64) {
-    unsafe { structural::rows_of(sl(b, n * 8), sl_mut(out, n)); }
-}
-/// A38: structural.c `qlean_structural_gather_syms`, the blob length: `n` symbols, `m` indices.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn qrs_gather_syms_len(blob: *const u8, bytes: usize, offs: *const usize, n: usize,
-                                             idx: *const i64, m: usize) -> usize {
-    unsafe { structural::gather_syms_len(&syms0(blob, bytes, offs, n), sl(idx, m)) }
-}
-/// A38: structural.c `qlean_structural_gather_syms`: `total` is `qrs_gather_syms_len`, `no` holds `m + 1` boxed starts.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn qrs_gather_syms(blob: *const u8, bytes: usize, offs: *const usize, n: usize, idx: *const i64,
-                                         m: usize, nb: *mut u8, total: usize, no: *mut usize) {
-    unsafe { structural::gather_syms(&syms0(blob, bytes, offs, n), sl(idx, m), sl_mut(nb, total), sl_mut(no, m + 1)) }
-}
-/// A39: structural.c `concat_run` over `np` parts.
-/// K19: structural.c `qlean_structural_split`'s first pass over delimiter `d` and payload `b`: the cuts.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn qrs_split_cuts(d: *const u8, dn: usize, b: *const u8, bn: usize) -> usize {
-    unsafe { structural::split_cuts(sl(d, dn), sl(b, bn)) }
-}
-/// K19: its second pass: `total` payload bytes, `cuts + 2` boxed starts in `offs`.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn qrs_split(d: *const u8, dn: usize, b: *const u8, bn: usize, out: *mut u8, total: usize,
-                                   cuts: usize, offs: *mut usize) {
-    unsafe { structural::split(sl(d, dn), sl(b, bn), sl_mut(out, total), sl_mut(offs, cuts + 2)) }
-}
-/// K19: structural.c `reverse_run`: `n` elements of `w` bytes reversed into `out`.
-/// K19: structural.c `ids_place`; `tab` null reads each id as itself, either way an id at or past `nm` reads `0`.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn qrs_ids_place(out: *mut u8, bytes: usize, at: usize, wout: u32, cn: usize, w: u32, pp: *const u8,
-                                       ppn: usize, tab: *const usize, nm: usize) {
-    unsafe {
-        let t = if tab.is_null() { None } else { Some(sl(tab, nm + 1)) };
-        structural::ids_place(sl_mut(out, bytes), at, wout, cn, w, sl(pp, ppn), t, nm)
-    }
-}
-/// K19: structural.c `qlean_structural_concat_ids` past the unboxing: `k` parts, their `counts`, `widths`, part and map
-/// payloads (`ppn[i]`, `mpn[i]` bytes; a map the array does not reach is null).
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn qrs_concat_ids(wout: u32, k: usize, counts: *const usize, widths: *const u32, pp: *const *const u8,
-                                        ppn: *const usize, mp: *const *const u8, mpn: *const usize, out: *mut u8, bytes: usize) {
-    unsafe {
-        let rows = |p: *const *const u8, n: *const usize| -> alloc::vec::Vec<&[u8]> {
-            sl(p, k).iter().zip(sl(n, k)).map(|(&q, &l)| sl(q, l)).collect()
-        };
-        structural::concat_ids(wout, sl(counts, k), sl(widths, k), &rows(mp, mpn), &rows(pp, ppn), sl_mut(out, bytes))
-    }
-}
 /// `n` symbols as `syms`, but an empty dictionary may come with no starts at all (`sym_count`'s case).
 unsafe fn syms0<'a>(blob: *const u8, bytes: usize, offs: *const usize, n: usize) -> Syms<'a> {
     if n == 0 { Syms { blob: &[], offs: &[] } } else { unsafe { syms(blob, bytes, offs, n) } }
@@ -920,35 +814,62 @@ pub unsafe extern "C" fn qrs_sd_probe(t: *const sym::Tab, dict: *mut lean::Objec
         structural::symtab_find(&t.slot, t.mask, &structural::Symview { base: p.syms, d0: d, tb: &[], to: &[] }, d, sl(k, klen))
     }
 }
-/// One part of `qrs_sd_concat`'s input.
-#[repr(C)]
-pub struct CPart { pub dict: *mut lean::Object, pub offs: *mut lean::Object }
-/// What `qrs_sd_concat` answers past the dictionary: the id map of each part (`qrs_sd_map`).
-pub struct Plan(sym::Dicts<Obj>);
-/// K20: structural.c `symdict_concat`'s dictionary half under `sd_mu`, held by the caller. Null declines; else the
-/// joined dictionary and starts (one reference each, the caller's) and its symbol count are written to
-/// `dict`/`offs`/`cnt`, and the answer is the plan whose maps `qrs_sd_map` reads, until `qrs_sd_plan_free`.
+/// The lock of the kept dictionary hashes: held by the C finders between `qrs_sd_lock` and `qrs_sd_unlock` (structural.c's
+/// `symdict_hold` and `symdict_drop`, for search.c's) and by `sd_concat` around its one call into the cache.
+static SD_LOCK: crate::pool::Lock = crate::pool::Lock::new();
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn qrs_sd_concat(parts: *const CPart, k: usize, dict: *mut *mut lean::Object,
-                                       offs: *mut *mut lean::Object, cnt: *mut usize) -> *mut Plan {
+pub extern "C" fn qrs_sd_lock() { SD_LOCK.lock() }
+#[unsafe(no_mangle)]
+pub extern "C" fn qrs_sd_unlock() { SD_LOCK.unlock() }
+/// The pointer of a borrowed object: `lean::B` is `repr(transparent)` over one non-null pointer.
+fn raw(b: lean::B) -> *mut lean::Object {
+    // Safety: same size and meaning, as `syms_of` relies on for an array's elements
+    unsafe { core::mem::transmute(b) }
+}
+/// Part `i` of `Kernel.hashConcat`'s argument `ps`: `(n, (dict, (offs, ids)))`, `n` a boxed `USize`.
+pub struct SdPart<'a> { pub n: usize, pub dict: lean::B<'a>, pub offs: lean::B<'a>, pub ids: lean::B<'a> }
+pub fn sd_part<'a>(ps: lean::B<'a>, i: usize) -> SdPart<'a> {
+    let e = ps.array()[i];
+    let r = e.field(1);
+    let r2 = r.field(1);
+    // Safety: field 0 is a boxed `USize`, a ctor holding the one word
+    SdPart { n: unsafe { lean::unbox_usize(raw(e.field(0))) }, dict: r.field(0), offs: r2.field(0), ids: r2.field(1) }
+}
+/// structural.c `take_ids0`: the first part's ids, owned: moved out of `ps` where every object on the way to them is held only
+/// there (the slot is left `box(0)`), a reference of their own otherwise.
+pub fn take_ids0(ps: &lean::O) -> lean::O {
+    let b = ps.borrow();
+    let (e, r) = (b.array()[0], b.array()[0].field(1));
+    let r2 = r.field(1);
+    // Safety: the four objects are borrowed from `ps`, which is alive; the move happens only where nothing else holds them
     unsafe {
-        let ps: alloc::vec::Vec<_> = sl(parts, k).iter().map(|p| part(p.dict, p.offs)).collect();
-        match (&mut *KEPT.0.get()).concat(&ps) {
-            None => null_mut(),
-            Some(d) => {
-                (*dict, *offs, *cnt) = (d.dict.0, d.offs.0, d.cnt);
-                alloc::boxed::Box::into_raw(alloc::boxed::Box::new(Plan(d)))
-            }
-        }
+        let ids = lean::ctor_get(raw(r2), 1);
+        if lean::is_exclusive(raw(b)) && lean::is_exclusive(raw(e)) && lean::is_exclusive(raw(r)) && lean::is_exclusive(raw(r2)) {
+            lean::ctor_set(raw(r2), 1, lean::box_(0))
+        } else { lean::inc(ids) }
+        lean::O::from_raw(ids)
     }
 }
-/// K20: part `i`'s id map (a 0 past its last), or null for a part whose symbols are the base's own.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn qrs_sd_map(p: *const Plan, i: usize) -> *const usize {
-    unsafe { (&*p).0.maps[i].as_ref().map_or(core::ptr::null(), |m| m.as_ptr()) }
+/// structural.c `symdict_concat`'s dictionary half under the cache lock: the joined dictionary and starts (one reference each),
+/// its symbol count, and for each part past the first the id every one of its symbols has in it (`None` where they are the
+/// base's own); `None` when the base holds a symbol twice or the joined dictionary would not fit 32-bit ids.
+pub fn sd_concat(parts: &[(lean::B, lean::B)]) -> Option<(lean::O, lean::O, usize, alloc::vec::Vec<Option<alloc::vec::Vec<usize>>>)> {
+    // Safety: each part's objects are borrowed for the call and the starts are boxed words, as `part` reads them
+    let ps: alloc::vec::Vec<_> = parts.iter().map(|&(d, o)| unsafe { part(raw(d), raw(o)) }).collect();
+    SD_LOCK.lock();
+    // Safety: `SD_LOCK` is held
+    let r = unsafe { (&mut *KEPT.0.get()).concat(&ps) };
+    SD_LOCK.unlock();
+    // Safety: the cache's answer holds one reference to each, which the caller owns
+    r.map(|d| unsafe { (lean::O::from_raw(d.dict.0), lean::O::from_raw(d.offs.0), d.cnt, d.maps) })
 }
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn qrs_sd_plan_free(p: *mut Plan) { drop(unsafe { alloc::boxed::Box::from_raw(p) }) }
+/// A fresh `Array` of `n` words that `f` writes in place, each already a boxed scalar (`at << 1 | 1`), as the kernels that
+/// fill a table of starts write them.
+pub fn array_boxed(n: usize, f: impl FnOnce(&mut [usize])) -> lean::O {
+    let a = lean::alloc_array(n, n);
+    // Safety: `a` is an array of `n` words, uninitialised until `f` writes every one
+    unsafe { f(sl_mut(lean::array_cptr(a).cast::<usize>(), n)); lean::O::from_raw(a) }
+}
 /// K22: structural.c `amend_index` past the width check; `alloc(ctx, which, words)` makes the Lean array `which` (`AmOut`).
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn qrs_amend_index(run: unsafe extern "C" fn(), n: usize, wi: usize, ranked: u8, compact: c_int, idx: *const u8,
