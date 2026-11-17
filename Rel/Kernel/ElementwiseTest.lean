@@ -43,6 +43,17 @@ example : Ew.monStep Ew.abs Ew.f64 0 0x8000000000000000 = 0 := by decide
 #guard let fs := (Array.range 200).map fun i => (Float.ofNat i / 100).toBits
   let (m, p, a) := Coc.alpEncode64 (dense 8 fs)
   (Ew.mon Ew.neg Ew.f64 0 .float 200 (.alp m p a)).raw .float 200 == fs.map (· ^^^ 0x8000000000000000)
+-- `floor` and `$` over each kind (`Kernel.map`): 200 ALP-encoded `float`s floored to `long`s, a short dense `float`
+-- column floored, and 200 Frame-of-Reference `long`s cast to `int`, `0N` to `0Ni`.
+#guard let fs := (Array.range 200).map fun i => (Float.ofNat i / 4).toBits
+  let (m, p, a) := Coc.alpEncode64 (dense 8 fs)
+  (Ew.floor Ew.f64 .float 200 (.alp m p a)).raw .long 200 == (Array.range 200).map fun i => (i / 4 : Nat).toUInt64
+#guard (Ew.floor Ew.f64 .float 2 (.bytes (dense 8 #[(-2.5 : Float).toBits, Rel.nanBits]))).raw .long 2
+  == #[(-3 : Int64).toUInt64, Int64.minValue.toUInt64]
+#guard let xs := (Array.range 200).map fun i => if i == 7 then Int64.minValue.toUInt64 else (i * 3 : Nat).toUInt64
+  let (m, p) := Coc.encode 8 (dense 8 xs)
+  (Ew.castTo Ew.i64 Ew.i32 Int64.minValue .long .int 200 (.foR m p)).raw .int 200
+    == xs.map fun v => if v == Int64.minValue.toUInt64 then 0x80000000 else v
 -- `floor 0n` is `0N`, and that branch answers before any conversion.
 example : Ew.floorStep Ew.f64 Rel.nanBits = Int64.minValue := by decide
 -- `0Nh+1h` is `0Ni`: the promotion remaps the null rather than converting it.

@@ -516,18 +516,15 @@ pub fn form_of(cls: u8) -> Option<crate::ffi::Form> {
 }
 /// The cost of `mon` an element: a libm call is `QLEAN_COST_MATH`.
 pub fn mon_cost(op: u8, cls: u8) -> u32 { if is_libm(op, cls) { QLEAN_COST_MATH } else { QLEAN_COST_ARITH } }
-/// ew.rs `ew_floor_run`: `floor` at a float class, always a `long`; out of range or a NaN answers `0N`.
-pub fn floor(run: Runner, cls: u8, x: &[u8], n: usize, out: &mut [u8]) {
-    if n == 0 { return }
+/// `Ew.floorStep` over a block at a float class, `o` its `long`s; out of range or a NaN answers `0N`. The one body of
+/// `floor`, which `Map` runs over a column and the chain's stage over a tile.
+pub fn floor_lane(cls: u8, x: &[u8], o: &mut [u8]) {
     if cls != k44::F32 && cls != k44::F64 { ew_unsupported("qlean_ew_floor", 0, cls as u32) }
-    let w = ew_width(cls as u32);
     // the bound is tested on the floored value, exactly as QLean/Eval/Mon.lean's `floorFloats` does
     let long = |v: f64| if v.is_nan() { i64::MIN } else { let f = floor64(v); if ew_outside_long(f) { i64::MIN } else { f as i64 } };
-    run_map(run, out, n, 8, QLEAN_COST_ARITH, 8, &|lo, hi, o| {
-        let (x, o) = (side(x, false, lo, hi, w), rw::<i64>(o));
-        if cls == k44::F32 { for (o, &v) in o.iter_mut().zip(ro::<u32>(x)) { *o = long(f32::from_bits(v) as f64) } }
-        else { for (o, &v) in o.iter_mut().zip(ro::<u64>(x)) { *o = long(f64::from_bits(v)) } }
-    });
+    let o = rw::<i64>(o);
+    if cls == k44::F32 { for (o, &v) in o.iter_mut().zip(ro::<u32>(x)) { *o = long(f32::from_bits(v) as f64) } }
+    else { for (o, &v) in o.iter_mut().zip(ro::<u64>(x)) { *o = long(f64::from_bits(v)) } }
 }
 
 // ---- A45: ew.rs ----
@@ -545,12 +542,10 @@ pub fn cast_round(x: f64) -> i64 {
     };
     if t <= -9223372036854775808.0 { i64::MIN + 1 } else if t >= 9223372036854775808.0 { i64::MAX } else { t as i64 }
 }
-/// ew.rs `ew_cast_run` and its entry `qlean_ew_cast`: class `src` to class `dst`, every element
-/// `Ew.castStep` (the target's clamp or wrap, its null, a float source rounding).
-pub fn cast(run: Runner, src: u8, dst: u8, nul_in: i64, x: &[u8], n: usize, out: &mut [u8]) {
-    if n == 0 { return }
+/// `Ew.castStep` over a block, class `src` to class `dst` (the target's clamp or wrap, its null, a float source
+/// rounding). The one body of `cast`, which `Map` runs over a column and the chain's stage over a tile.
+pub fn cast_lane(src: u8, dst: u8, nul_in: i64, x: &[u8], o: &mut [u8]) {
     if src > k44::F64 || dst > k44::F64 { ew_unsupported("qlean_ew_cast", src as u32, dst as u32) }
-    let (sw, dw) = (ew_width(src as u32), ew_width(dst as u32));
     // `Ew.castBounds` and `Ew.castNul`: U8 keeps the whole range and writes 0, its truncating store being the narrowing
     let (lo, hi, nul_out) = match dst {
         1 => (-32767, 32767, i16::MIN as i64),
@@ -559,27 +554,27 @@ pub fn cast(run: Runner, src: u8, dst: u8, nul_in: i64, x: &[u8], n: usize, out:
         _ => (i64::MIN + 1, i64::MAX, 0),
     };
     // one straight-line pass per (source, target): `ld` reads an element three ways, `em` writes the target's one line
-    fn go<S: Pod, D: Pod>(x: &[u8], l: usize, h: usize, o: &mut [u8], ld: impl Fn(S) -> (i64, f64, bool), em: impl Fn(i64, f64, bool) -> D) {
-        for (o, &v) in rw::<D>(o).iter_mut().zip(ro::<S>(side(x, false, l, h, size_of::<S>()))) { let (i, d, m) = ld(v); *o = em(i, d, m) }
+    fn go<S: Pod, D: Pod>(x: &[u8], o: &mut [u8], ld: impl Fn(S) -> (i64, f64, bool), em: impl Fn(i64, f64, bool) -> D) {
+        for (o, &v) in rw::<D>(o).iter_mut().zip(ro::<S>(x)) { let (i, d, m) = ld(v); *o = em(i, d, m) }
     }
-    fn src_of<D: Pod>(src: u8, nul: i64, x: &[u8], l: usize, h: usize, o: &mut [u8], em: impl Fn(i64, f64, bool) -> D) {
+    fn src_of<D: Pod>(src: u8, nul: i64, x: &[u8], o: &mut [u8], em: impl Fn(i64, f64, bool) -> D) {
         match src {
-            0 => go::<u8, D>(x, l, h, o, |v| (v as i64, v as f64, v as i64 == nul), em),
-            1 => go::<i16, D>(x, l, h, o, |v| (v as i64, v as f64, v as i64 == nul), em),
-            2 => go::<i32, D>(x, l, h, o, |v| (v as i64, v as f64, v as i64 == nul), em),
-            3 => go::<i64, D>(x, l, h, o, |v| (v, v as f64, v == nul), em),
-            4 => go::<u32, D>(x, l, h, o, |v| { let f = f32::from_bits(v) as f64; (cast_round(f), f, f.is_nan()) }, em),
-            _ => go::<u64, D>(x, l, h, o, |v| { let f = f64::from_bits(v); (cast_round(f), f, f.is_nan()) }, em),
+            0 => go::<u8, D>(x, o, |v| (v as i64, v as f64, v as i64 == nul), em),
+            1 => go::<i16, D>(x, o, |v| (v as i64, v as f64, v as i64 == nul), em),
+            2 => go::<i32, D>(x, o, |v| (v as i64, v as f64, v as i64 == nul), em),
+            3 => go::<i64, D>(x, o, |v| (v, v as f64, v == nul), em),
+            4 => go::<u32, D>(x, o, |v| { let f = f32::from_bits(v) as f64; (cast_round(f), f, f.is_nan()) }, em),
+            _ => go::<u64, D>(x, o, |v| { let f = f64::from_bits(v); (cast_round(f), f, f.is_nan()) }, em),
         }
     }
-    crate::c::run_map(run, out, n, dw, crate::QLEAN_COST_CAST, sw.max(dw), &|l, h, o: &mut [u8]| match dst {
-        5 => src_of::<u64>(src, nul_in, x, l, h, o, |_, d, m| if m { NAN64 } else { d.to_bits() }),
-        4 => src_of::<u32>(src, nul_in, x, l, h, o, |_, d, m| if m { NAN32 } else { (d as f32).to_bits() }),
-        0 => src_of::<u8>(src, nul_in, x, l, h, o, |i, _, m| (if m { nul_out } else { cast_clamp(i, lo, hi) }) as u8),
-        1 => src_of::<i16>(src, nul_in, x, l, h, o, |i, _, m| (if m { nul_out } else { cast_clamp(i, lo, hi) }) as i16),
-        2 => src_of::<i32>(src, nul_in, x, l, h, o, |i, _, m| (if m { nul_out } else { cast_clamp(i, lo, hi) }) as i32),
-        _ => src_of::<i64>(src, nul_in, x, l, h, o, |i, _, m| if m { nul_out } else { cast_clamp(i, lo, hi) }),
-    });
+    match dst {
+        5 => src_of::<u64>(src, nul_in, x, o, |_, d, m| if m { NAN64 } else { d.to_bits() }),
+        4 => src_of::<u32>(src, nul_in, x, o, |_, d, m| if m { NAN32 } else { (d as f32).to_bits() }),
+        0 => src_of::<u8>(src, nul_in, x, o, |i, _, m| (if m { nul_out } else { cast_clamp(i, lo, hi) }) as u8),
+        1 => src_of::<i16>(src, nul_in, x, o, |i, _, m| (if m { nul_out } else { cast_clamp(i, lo, hi) }) as i16),
+        2 => src_of::<i32>(src, nul_in, x, o, |i, _, m| (if m { nul_out } else { cast_clamp(i, lo, hi) }) as i32),
+        _ => src_of::<i64>(src, nul_in, x, o, |i, _, m| if m { nul_out } else { cast_clamp(i, lo, hi) }),
+    }
 }
 /// ew.rs `ew_fdiv64`: floor division by a positive divisor.
 pub fn fdiv64(a: i64, b: i64) -> i64 { a / b - (a % b < 0) as i64 }
@@ -1032,11 +1027,11 @@ mod a45 {
     #[test] fn casts_clamp_at_a_null_target_and_wrap_without() {
         let x: Vec<u8> = [70000.0f64, -32768.0, 300.0, f64::NAN].iter().flat_map(|v| v.to_bits().to_le_bytes()).collect();
         let mut o = [0u8; 8];
-        cast(crate::c::qlean_run_c, 5, 1, 0, &x, 4, &mut o);
+        cast_lane(5, 1, 0, &x, &mut o);
         assert_eq!([i16::from_le_bytes([o[0], o[1]]), i16::from_le_bytes([o[2], o[3]]), i16::from_le_bytes([o[4], o[5]]), i16::from_le_bytes([o[6], o[7]])],
                    [32767, -32767, 300, i16::MIN]);
         let mut o = [0u8; 4];
-        cast(crate::c::qlean_run_c, 5, 0, 0, &x, 4, &mut o);
+        cast_lane(5, 0, 0, &x, &mut o);
         assert_eq!(o, [0x70, 0, 0x2c, 0]);
     }
     #[test] fn calendar_round_trips() {
@@ -1401,7 +1396,7 @@ mod tests44 {
     #[test] fn floor_bounds() {
         let x: Vec<u8> = [9.3e18f64, f64::INFINITY, f64::NAN, -2.5, 9.2e18, -9.3e18].iter().flat_map(|v| v.to_bits().to_ne_bytes()).collect();
         let mut o = vec![0u8; 48];
-        floor(qlean_run_c, 5, &x, 6, &mut o);
+        floor_lane(5, &x, &mut o);
         let r: Vec<i64> = o.chunks(8).map(|c| i64::from_ne_bytes(c.try_into().unwrap())).collect();
         assert_eq!(r, [i64::MIN, i64::MIN, i64::MIN, -3, 9_200_000_000_000_000_000, i64::MIN]);
     }
@@ -1425,7 +1420,7 @@ mod tests44 {
                 "floor" => {
                     let (cls, n) = (num(2) as u8, num(4) as usize);
                     let mut o = vec![0u8; n * 8];
-                    floor(qlean_run_c, cls, &hex(f[5]), n, &mut o);
+                    floor_lane(cls, &hex(f[5]), &mut o);
                     if o != hex(f[6]) { bad += 1 }
                 }
                 _ => {

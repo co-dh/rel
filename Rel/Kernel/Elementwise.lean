@@ -537,23 +537,28 @@ def bit (op shape : UInt8) (a b : @& ByteArray) (n : USize) : ByteArray :=
         byte ||| (1 <<< j.toUInt8)
       else byte)
 
+/-- `f` over the `n` elements of the dense payload `x` at class `ci`, written at class `co`: a one-source chain stage
+(`mon`, `floor`, `cast`, `tick`), the `Kernel.map` of a tile, where the extern is `Kernel.map` of a whole column. -/
+def stageMap (ci co : UInt8) (f : UInt64 → UInt64) (x : ByteArray) (n : USize) : ByteArray :=
+  (List.range n.toNat).foldl (init := ByteArray.empty) fun acc i => Column.pushBits acc (f (elem ci x i)) (width co)
+
 /-- `neg`, `abs` and the nine float maps over the `n` elements of `x` at `t`, whatever its kind, answering at `t`:
 `Kernel.map` of `monStep`. `cls` is `t`'s storage class, which is all the answer's form depends on. -/
 @[extern "qlean_ew_mon"]
 def mon (op cls : UInt8) (nul : Int64) (t : QAtomicType) (n : USize) (x : @& Enc) : Enc :=
   Kernel.map t t n (fun v => monStep op cls nul.toUInt64 (v.headD 0)) [x]
 
-/-- Monadic `_` at a float width. -/
+/-- Monadic `_` over the `n` elements of `x` at the float type `t` (class `cls`), whatever its kind, answering
+`long`s: `Kernel.map` of `floorStep`. -/
 @[extern "qlean_ew_floor"]
-def floor (cls : UInt8) (x : @& ByteArray) (n : USize) : ByteArray :=
-  (List.range n.toNat).foldl (init := ByteArray.empty) fun acc i =>
-    Column.pushBits acc (floorStep cls (elem cls x i)).toUInt64 8
+def floor (cls : UInt8) (t : QAtomicType) (n : USize) (x : @& Enc) : Enc :=
+  Kernel.map t .long n (fun v => (floorStep cls (v.headD 0)).toUInt64) [x]
 
-/-- q's `$` over a dense payload, from one class to another. -/
+/-- q's `$` over the `n` elements of `x` at `s` (class `src`), whatever its kind, answering at `t` (class `dst`):
+`Kernel.map` of `castStep`. The answer's form depends on `dst` alone. -/
 @[extern "qlean_ew_cast"]
-def castTo (src dst : UInt8) (nulIn : Int64) (x : @& ByteArray) (n : USize) : ByteArray :=
-  (List.range n.toNat).foldl (init := ByteArray.empty) fun acc i =>
-    Column.pushBits acc (castStep src dst nulIn (elem src x i)) (width dst)
+def castTo (src dst : UInt8) (nulIn : Int64) (s t : QAtomicType) (n : USize) (x : @& Enc) : Enc :=
+  Kernel.map s t n (fun v => castStep src dst nulIn (v.headD 0)) [x]
 
 /-- Nanoseconds in one unit of each temporal code `Kernel.tickCode` hands out, and the one table
 `Kernel.tickOf` reads too. Code `5` is `month`, which has no fixed length and goes through the
@@ -593,12 +598,6 @@ def tickStep (op src dst : UInt8) (nulIn nulOut : Int64) (v : UInt64) : UInt64 :
   if dst == f64 then (Float.ofInt ns / Float.ofInt u).toBits
   else if op &&& 15 == 5 then (Int64.ofInt (monthOfDays (Int.fdiv ns u))).toUInt64
   else (Int64.ofInt (Int.fdiv ns u)).toUInt64
-
-/-- `tickStep` over a payload. Not an export of its own: it is a chain stage, and a one-element
-operand runs it as a one-stage chain. -/
-def tick (op src dst : UInt8) (nulIn nulOut : Int64) (x : @& ByteArray) (n : USize) : ByteArray :=
-  (List.range n.toNat).foldl (init := ByteArray.empty) fun acc i =>
-    Column.pushBits acc (tickStep op src dst nulIn nulOut (elem src x i)) (width dst)
 
 /-- `=` and `<>` between two columns over **one** dictionary: it is distinct, so two ids name one
 symbol exactly when they are equal, and the ids are compared as they lie with no rank read. -/
@@ -704,13 +703,13 @@ def chain (prog : @& ByteArray) (inputs : @& Array ByteArray) (n : USize) : Byte
     outs.push <|
       if st.engine == eVal then val st.op st.cls st.shape st.nul (src st.a) (src st.b) n
       else if st.engine == eCmp then cmp st.op st.cls st.shape (src st.a) (src st.b) n
-      else if st.engine == eMon then (List.range n.toNat).foldl (init := ByteArray.empty) fun acc i =>
-        Column.pushBits acc (monStep st.op st.cls st.nul.toUInt64 (elem st.cls (src st.a) i)) (width st.cls)
+      else if st.engine == eMon then stageMap st.cls st.cls (monStep st.op st.cls st.nul.toUInt64) (src st.a) n
       else if st.engine == eWiden then widen st.cls st.shape st.nul st.nulOut (src st.a) n
       else if st.engine == eBit then bit st.op st.shape (src st.a) (src st.b) n
-      else if st.engine == eFloor then floor st.cls (src st.a) n
-      else if st.engine == eCast then castTo st.cls st.shape st.nul (src st.a) n
-      else if st.engine == eTick then tick st.op st.cls st.shape st.nul st.nulOut (src st.a) n
+      else if st.engine == eFloor then stageMap st.cls i64 (fun v => (floorStep st.cls v).toUInt64) (src st.a) n
+      else if st.engine == eCast then stageMap st.cls st.shape (castStep st.cls st.shape st.nul) (src st.a) n
+      else if st.engine == eTick then
+        stageMap st.cls st.shape (tickStep st.op st.cls st.shape st.nul st.nulOut) (src st.a) n
       else if st.engine == eIds then
         Column.packIds (8 * width st.cls) n.toNat (Column.idAt (src st.a) st.shape.toNat)
       else if st.engine == ePack then
@@ -837,7 +836,7 @@ def operandAt (t : QAtomicType) (m : USize) (e : Ext.Enc X) (dst : UInt8) (nulIn
       | .bits bs => if src == Ew.bits then some bs else none
       | _ => Enc.bytesOf t m e
     some (if promotable t dst then Ew.widen src dst nulIn nulOut raw n
-          else Ew.castTo src dst nulIn raw n)
+          else Ew.stageMap src dst (Ew.castStep src dst nulIn) raw n)
 
 /-- The same operand, as the **stages of a chain** that bring it to `dst`: the decode a `.foR`
 column needs and the promotion a class that is not the engine's needs, each a tile at a time rather

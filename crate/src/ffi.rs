@@ -324,7 +324,7 @@ pub unsafe extern "C" fn qrs_ew_floor_stage(lo: usize, hi: usize, p: *const CPas
     unsafe {
         let p = &*p;
         let (w, n) = (ew::ew_width(p.cls as u32), hi - lo);
-        ew::floor(c::serial, p.cls, tile(p.a, lo, n, w, false), n, sl_mut(p.o.cast::<u8>().add(lo * 8), n * 8))
+        ew::floor_lane(p.cls, tile(p.a, lo, n, w, false), sl_mut(p.o.cast::<u8>().add(lo * 8), n * 8))
     }
 }
 /// ew.rs `ew_bit_stage`: `lo`, `hi` are output bytes, so eight bits each; an atom operand is its one byte.
@@ -341,7 +341,7 @@ pub unsafe extern "C" fn qrs_ew_cast_stage(lo: usize, hi: usize, p: *const CPass
     unsafe {
         let p = &*p;
         let (sw, dw, n) = (ew::ew_width(p.cls as u32), ew::ew_width(p.shape as u32), hi - lo);
-        ew::cast(c::serial, p.cls, p.shape, p.nul, tile(p.a, lo, n, sw, false), n, sl_mut(p.o.cast::<u8>().add(lo * dw), n * dw))
+        ew::cast_lane(p.cls, p.shape, p.nul, tile(p.a, lo, n, sw, false), sl_mut(p.o.cast::<u8>().add(lo * dw), n * dw))
     }
 }
 /// ew.rs `ew_tick_stage`: `op` is the source unit's code times 16 plus the target's, `p.c` the target's null; the

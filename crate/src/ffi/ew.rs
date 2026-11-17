@@ -81,18 +81,20 @@ export! {
 
 
 
-    /// `floor cls x n`: `_` at a float class, answering `long`s, `0N` out of range.
-    fn qlean_ew_floor(cls: u8, x: B, n: usize) -> O {
-        let mut r = answer(n * 8);
-        ew::floor(c::pool(), cls, x.bytes(), n, r.bytes_mut());
-        r.into()
+    /// `floor cls t n x`: `_` over the `n` elements of the `Enc` `x` at a float class, any kind, answering `long`s, `0N`
+    /// out of range (`Kernel.map`). `t` is not read: the source's width is `cls`'s, and the answer's form `long`'s (class 3).
+    fn qlean_ew_floor(cls: u8, _t: u8, n: usize, x: B) -> O {
+        let wi = ew::ew_width(cls as u32);
+        let lane = move |x: &[u8], o: &mut [u8]| ew::floor_lane(cls, x, o);
+        of_raw(n, 8, ew::form_of(3), crate::QLEAN_COST_ARITH, &ew::Map { src: Blocks::of(x, wi, n, "qlean_ew_floor"), wi, lane })
     }
 
-    /// `cast src dst nulIn x n`: `$` from class `src` to `dst`.
-    fn qlean_ew_cast(src: u8, dst: u8, nul_in: u64, x: B, n: usize) -> O {
-        let mut r = answer(n * ew::ew_width(dst as u32));
-        ew::cast(c::pool(), src, dst, nul_in as i64, x.bytes(), n, r.bytes_mut());
-        r.into()
+    /// `cast src dst nulIn s t n x`: `$` over the `n` elements of the `Enc` `x`, any kind, from class `src` to `dst`
+    /// (`Kernel.map`). `s`, `t` are not read: the widths are the classes', and the answer's form `dst`'s (`ew::form_of`).
+    fn qlean_ew_cast(src: u8, dst: u8, nul_in: u64, _s: u8, _t: u8, n: usize, x: B) -> O {
+        let (wi, w) = (ew::ew_width(src as u32), ew::ew_width(dst as u32));
+        let lane = move |x: &[u8], o: &mut [u8]| ew::cast_lane(src, dst, nul_in as i64, x, o);
+        of_raw(n, w, ew::form_of(dst), crate::QLEAN_COST_CAST, &ew::Map { src: Blocks::of(x, wi, n, "qlean_ew_cast"), wi, lane })
     }
 
     /// `widen src dst nulIn nulOut x n`: an operand brought up to the class its verb's result is at, nulls remapped.

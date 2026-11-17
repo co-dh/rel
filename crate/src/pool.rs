@@ -380,10 +380,6 @@ pub mod tests {
         let idx: Vec<i64> = (0..N as i64).collect();
         let mut o8 = vec![0u8; 8 * N];
         big("gather", seen(|| crate::structural::gather(run, 8, 0, &src, &idx, &mut o8)));
-        let x: Vec<u8> = (0..N).flat_map(|i| (i as f64).to_bits().to_le_bytes()).collect();
-        let mut o2 = vec![0u8; 2 * N];
-        big("cast f64 -> i16", seen(|| crate::ew::cast(run, 5, 1, 0, &x, N, &mut o2)));
-        big("floor f64", seen(|| crate::ew::floor(run, 5, &x, N, &mut o8)));
         let w = vec![0x5555_5555_5555_5555u64; N];
         let mut ow = vec![0u64; N];
         big("bitw", seen(|| crate::ew::bitw(run, 0, crate::pod::bytes(&w), crate::pod::bytes(&w), N, crate::pod::bytes_mut(&mut ow))));
