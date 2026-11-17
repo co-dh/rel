@@ -181,8 +181,9 @@ def stepAfter (S T A C : Obj) (d : Bool) (F : Fn d S T) (f : {K : Obj} → (CRel
     literal (`uni_lits`), an object variable's the constant's argument. A result outside `U` has no row. -/
 def succ (U : Fn false .long .long) : Fn true .long .long := fun D =>
   let u := U (); also u.ok (CRel.comp ⟨D, true⟩ (CRel.succ u.rel.key))
-def arith (k : UInt8) (U : Fn false .long .long) : Fn true (.prod .long .long) .long := fun D =>
-  CRel.comp ⟨Alg.arith k D.val, true⟩ (U ())
+def arith (k : UInt8) (U : Fn false .long .long) : Fn true (.prod .long .long) .long :=
+  comp _ _ _ true (dom _ _ true (comp _ _ _ false (outl _ _) U))
+    (comp _ _ _ true (dom _ _ true (comp _ _ _ false (outr _ _) U)) fun D => CRel.comp ⟨Alg.arith k D.val, true⟩ (U ()))
 def leq (U : Fn false .long .long) : Fn false .long .long := fun _ => let u := U (); also u.ok (CRel.leq u.rel.key)
 def lt (U : Fn false .long .long) : Fn false .long .long := fun _ => let u := U (); also u.ok (CRel.lt u.rel.key)
 def fold (E V : Obj) (d : Bool) (e : Fn false V V) (S : Fn d (.prod E V) V) : Fn true (.arr E) V := fun D =>
@@ -207,9 +208,10 @@ def flat (I A B : Obj) (d : Bool) (R : Fn d I (.prod A B)) : Fn true (.prod I A)
   let p := CRel.pair ⟨r.rel°, r.ok⟩ ⟨Alg.outl u.rel, u.ok⟩
   also ro.ok (CRel.comp ⟨D, true⟩ (CRel.comp ⟨p.rel°, p.ok⟩ ⟨Alg.outr u.rel, u.ok⟩))
 
-/-- `νX : φ`: rounds of `φ` from `S` down to the greatest fixed point. -/
+/-- `νX : φ`: rounds of `φ` from `S` down to the greatest fixed point. A strict round drops a row of the
+    distinct-row chain below `S`, so `S`'s row count plus two rounds reach the fixed point (`nu_sound`). -/
 def nu (A B : Obj) (S : Fn false A B) (φ : CRel A B → Fn false A B) : Fn false A B := fun _ =>
-  let s := S (); (CRel.fixOn (s.rel.n.toNat + 1) (fun X => φ X ()) s).1
+  let s := S (); (CRel.fixOn (s.rel.n.toNat + 2) (fun X => φ X ()) s).1
 
 /-- One arc `A\(X C)` of an AC-3 body: `A`, `C`, `𝟙(V)`, `𝟙(D)`. -/
 abbrev Arc (V D : Obj) := Fn false V V × Fn false D D × Fn false V V × Fn false D D

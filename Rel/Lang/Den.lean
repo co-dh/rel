@@ -71,11 +71,17 @@ abbrev leqDen (TU : Den .long .long) : Den .long .long := fun a b => (∃ v, TU 
 /-- `<` on the universe `TU`. -/
 abbrev ltDen (TU : Den .long .long) : Den .long .long := fun a b => (∃ v, TU a v) ∧ (∃ v, TU b v) ∧ a < b
 
-/-- The value verb `k` on the universe `TU`: `Int64`'s step, not the null and, for `+ - *`, not wrapped. -/
-abbrev arithDen (k : UInt8) (TU : Den .long .long) : Den (.prod .long .long) .long :=
-  (fun (p : (Obj.prod .long .long).El) (w : Obj.long.El) => w = Ew.intStep k Alg.nul p.1 p.2 ∧ w ≠ Alg.nul ∧
+/-- The value verb `k` itself (`Alg.arith`): `Int64`'s step, not the null and, for `+ - *`, not wrapped. -/
+abbrev stepDen (k : UInt8) : Den (.prod .long .long) .long :=
+  fun p w => w = Ew.intStep k Alg.nul p.1 p.2 ∧ w ≠ Alg.nul ∧
     (if k == Ew.add then (0 ≤ p.2 ↔ p.1 ≤ w) else if k == Ew.sub then (0 ≤ p.2 ↔ w ≤ p.1)
-     else if k == Ew.mul then (Ew.intStep Ew.idiv Alg.nul w p.1 = p.2 ∨ p.1 = 0) else True) : Den (.prod .long .long) .long) ≫ TU
+     else if k == Ew.mul then (Ew.intStep Ew.idiv Alg.nul w p.1 = p.2 ∨ p.1 = 0) else True)
+
+/-- The value verb `k` on the universe `TU`: both inputs in `TU` (`dom(π₁ TU)`, `dom(π₂ TU)`), as `succDen`'s,
+    then the step, its result in `TU`. The input test makes `(TU×TU) arith = arith` at a coreflexive `TU`. -/
+abbrev arithDen (k : UInt8) (TU : Den .long .long) : Den (.prod .long .long) .long :=
+  (𝟙 _ ∩ (graph Prod.fst ≫ TU) ≫ (graph Prod.fst ≫ TU)°) ≫
+    ((𝟙 _ ∩ (graph Prod.snd ≫ TU) ≫ (graph Prod.snd ≫ TU)°) ≫ (stepDen k ≫ TU))
 
 /-- `fold(e, S)`: a chain of values `ys`, its last from `e`, each the step `S` of the element and the next value. -/
 abbrev foldDen {E V : Obj} (Te : Den V V) (TS : Den (.prod E V) V) : Den (.arr E) V :=
