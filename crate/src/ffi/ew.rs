@@ -1,11 +1,11 @@
-//! elementwise.c's Lean exports: the value verbs (dense and over encoded columns), the comparisons, bitmap verbs and
+//! elementwise.c's Lean exports: the chains (`chain`, `chainEnc`, `statsChain`), guid `=`/`<>`/fill, the value verbs (dense and over encoded columns), the comparisons, bitmap verbs and
 //! bitwise verbs, the symbol ranking, comparison, `like`, `ss`/`ssr` and translate, the monadic verbs, `floor`, casts and
 //! widening. Each unboxes its arguments, allocates the answer and makes one call into `ew.rs`, which owns the loops and the
 //! split over the pool (`c::pool()`). Lean passes `Int64` as C's `uint64_t`.
 #![deny(unsafe_code)]
 use crate::exports::coc::view;
 use crate::exports::reduce::elems;
-use crate::ffi::{encode_fill, syms_of};
+use crate::ffi::{chain_enc, encode_fill, syms_of};
 use crate::lean::{B, O, SArr, arr, boxed, ctor, export};
 use crate::{c, ew, pod};
 
@@ -201,6 +201,42 @@ export! {
     fn qlean_ew_widen(src: u8, dst: u8, nul_in: u64, nul_out: u64, x: B, n: usize) -> O {
         let mut r = answer(n * ew::ew_width(dst as u32));
         ew::widen(c::pool(), src, dst, nul_in as i64, nul_out as i64, x.bytes(), n, r.bytes_mut());
+        r.into()
+    }
+
+    /// `chain prog inputs n`: the fused chain `Ew.chain` specifies, a tile at a time; the last stage's payload.
+    fn qlean_ew_chain(progv: B, inputsv: B, n: usize) -> O {
+        let (prog, ins) = (progv.bytes(), inputsv.array());
+        let mut r = answer(ew::chain_bytes(prog, n));
+        ew::chain(prog, &|i| ins[i as usize].bytes(), n, r.bytes_mut());
+        r.into()
+    }
+
+    /// `chainEnc prog inputs n w`: `Coc.encode w (Ew.chain prog inputs n)`, the chain being the encoder's source above the fusing threshold.
+    fn qlean_ew_chain_enc(progv: B, inputsv: B, n: usize, width: usize) -> O {
+        let ins = inputsv.array();
+        chain_enc(progv.bytes(), &|i| ins[i as usize].bytes(), n, width)
+    }
+
+    /// `statsChain mode prog inputs n sa sb`: `Kernel.moments` (0) or `Kernel.dots` (1, 2 on `real` lanes) as the chain's last stage; 48 bytes.
+    fn qlean_stats_chain(mode: u8, progv: B, inputsv: B, n: usize, sa: u8, sb: u8) -> O {
+        let ins = inputsv.array();
+        let mut r = answer(48);
+        ew::stats_chain(mode, progv.bytes(), &|i| ins[i as usize].bytes(), n, sa, sb, r.bytes_mut());
+        r.into()
+    }
+
+    /// `guidEq a b atom ne n`: bit `i` is `a[i] = b[i]` (`b[0]` when `atom`), or its negation when `ne`, over sixteen-byte elements.
+    fn qlean_guid_eq(a: B, b: B, atom: u8, ne: u8, n: usize) -> O {
+        let mut r = bits(n);
+        ew::guid_eq(a.bytes(), b.bytes(), atom != 0, ne != 0, n, r.bytes_mut());
+        r.into()
+    }
+
+    /// `guidFill a b atom n`: `b`'s element unless it is `0Ng`, and then `a`'s (read at 0 when `atom`).
+    fn qlean_guid_fill(a: B, b: B, atom: u8, n: usize) -> O {
+        let mut r = answer(16 * n);
+        ew::guid_fill(a.bytes(), b.bytes(), atom != 0, n, r.bytes_mut());
         r.into()
     }
 }
