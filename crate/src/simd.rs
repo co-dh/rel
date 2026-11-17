@@ -195,14 +195,13 @@ pub mod v {
         23, 22, 21, 20, 19, 18, 17, 16, 15, 14, 13, 12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1, 0) } }
     /// RES_VUNPACK: a group of 512 / L residuals spans G * w / 8 bytes; lane k's field starts at bit k * w, its two
     /// L-bit byte windows gathered by vpermi2b from the group's 128 bytes and shifted right by (k * w) & 7 by vpshrdv.
-    /// Loads are masked to the block's BLK * w / 8 bytes, so nothing past `p` is read.
+    /// Loads are masked to the block's bytes (`p.len()`), so nothing past `p` is read.
     macro_rules! vunpack {
         ($p:ident, $w:ident, $nb:ident, $l:literal, $mullo:ident, $set1:ident, $add:ident, $srli:ident, $shrdv:ident,
          $iota:expr, $ones:expr, $ramp:expr, |$g:ident, $v:ident| $store:expr) => {{
             let w = $w as usize;
-            let (gn, span_) = (512 / $l, crate::BLK * w / 8);
+            let (gn, span_) = (512 / $l, $p.len());
             let gb = gn * w / 8;
-            assert!($p.len() >= span_, "res_unpack: block of {} bytes, width {w} needs {span_}", $p.len());
             let bit = $mullo($iota, $set1($w as _));
             let sh = _mm512_and_si512(bit, $set1(7));
             let lo = $add($mullo($srli::<3>(bit), $set1($ones)), $set1($ramp));

@@ -13,7 +13,10 @@ use crate::enc::{EncMeta, EncPack};
 use crate::c::Runner;
 use crate::coc::Coc;
 use crate::sym::{sym_eq, sym_hash, Syms};
-use crate::{pod, BLK};
+use crate::pod;
+/// The answer grid every producer here writes: the writer's block size (`DEFAULT_LG`, until the writer picks one). A SOURCE column's
+/// blocks are read at its own `meta.lg`.
+const WBLK: usize = 1 << crate::DEFAULT_LG;
 
 // ---- A34: structural.rs ----
 /// structural.rs `bits64_at`: 64 bits from bit `i`, zeros past the end.
@@ -75,14 +78,14 @@ pub fn rev_fields(x: u8, w: u8) -> u8 {
     }
 }
 /// structural.rs `rev_block`: a full block's `w`-bit residuals reversed.
-pub fn rev_block(dp: &mut [u8], sp: &[u8], w: u8) {
+pub fn rev_block(blk: usize, dp: &mut [u8], sp: &[u8], w: u8) {
     if w == 0 { return }
-    let nbytes = crate::BLK * w as usize / 8;
+    let nbytes = blk * w as usize / 8;
     if w & (w - 1) != 0 {
         // on the stack, as the C packs straight from `res_get`: a heap vector per block was an allocation per block
-        let mut v = [0u64; crate::BLK];
-        for (i, e) in v.iter_mut().enumerate() { *e = crate::res::res_get(sp, w, crate::BLK - 1 - i) }
-        return crate::simd::res_pack(&v, w, crate::BLK, dp);
+        let mut v = pod::Scr::<u64>::new(blk);
+        for (i, e) in v.iter_mut().enumerate() { *e = crate::res::res_get(sp, w, blk - 1 - i) }
+        return crate::simd::res_pack(&v, w, blk, dp);
     }
     // a fixed element size per call, so the copy is one load and one store
     fn rev_el<const E: usize>(dp: &mut [u8], sp: &[u8]) {
@@ -101,7 +104,7 @@ pub fn rev_block(dp: &mut [u8], sp: &[u8], w: u8) {
 /// structural.rs `reverse_foR_run`: every block's residuals reversed into `pack` (the moved column's), threaded.
 /// `c` is the source column; answer block `b` is its block `nb - 1 - b`, and `pack` holds the answer's blocks in order.
 pub fn reverse_enc(run: Runner, c: &Coc, pack: &mut [u8]) {
-    let (nb, blk) = (c.meta.mblk, crate::BLK);
+    let (nb, blk) = (c.meta.mblk, c.meta.blk());
     // the answer's offsets from the reversed widths, `Column.blockStarts`' recomputation
     let ob: alloc::vec::Vec<usize> = core::iter::once(0)
         .chain((0..nb).scan(0, |t, b| { *t += blk * c.meta.width[nb - 1 - b] as usize / 8; Some(*t) })).collect();
@@ -111,7 +114,7 @@ pub fn reverse_enc(run: Runner, c: &Coc, pack: &mut [u8]) {
     // is reversed whole into a scratch and each cut keeps its part
     crate::c::run_map(run, pack, total, 1, crate::QLEAN_COST_COPY, 8, &|lo, hi, o: &mut [u8]| {
         let mut b = ob.partition_point(|&x| x <= lo) - 1;
-        let (mut buf, mut tmp) = ([0u8; crate::BLK * 8], [0u8; crate::BLK * 8]);
+        let (mut buf, mut tmp) = (pod::Scr::<u8, 8192>::new(blk * 8), pod::Scr::<u8, 8192>::new(blk * 8));
         while b < nb && ob[b] < hi {
             let (w, nbytes) = (c.meta.width[nb - 1 - b], ob[b + 1] - ob[b]);
             if nbytes > 0 {
@@ -122,15 +125,15 @@ pub fn reverse_enc(run: Runner, c: &Coc, pack: &mut [u8]) {
                     if avail > 0 { buf[..avail].copy_from_slice(&c.pack[so..so + avail]) } buf[avail..nbytes].fill(0); &buf[..nbytes]
                 };
                 let (s, e) = (ob[b].max(lo), ob[b + 1].min(hi));
-                if s == ob[b] && e == ob[b + 1] { rev_block(&mut o[s - lo..e - lo], sp, w) }
-                else { rev_block(&mut tmp[..nbytes], sp, w); o[s - lo..e - lo].copy_from_slice(&tmp[s - ob[b]..e - ob[b]]) }
+                if s == ob[b] && e == ob[b + 1] { rev_block(blk, &mut o[s - lo..e - lo], sp, w) }
+                else { rev_block(blk, &mut tmp[..nbytes], sp, w); o[s - lo..e - lo].copy_from_slice(&tmp[s - ob[b]..e - ob[b]]) }
             }
             b += 1;
         }
     });
 }
 /// coc.rs's layout over a writer's metadata of `nb` blocks: base, maxv, off, bsum (8 bytes a block each), the
-/// trailer's two words, then the widths.
+/// trailer's three words (sumnul, sumn, lg), then the widths.
 fn meta_parts(m: &mut [u8], nb: usize) -> [&mut [u8]; 6] {
     assert_eq!(m.len(), 33 * nb + 16, "qlean structural: {} metadata bytes for {nb} blocks of 33 and a 16-byte trailer", m.len());
     let (base, m) = m.split_at_mut(8 * nb);
@@ -143,7 +146,7 @@ fn meta_parts(m: &mut [u8], nb: usize) -> [&mut [u8]; 6] {
 fn put64(d: &mut [u8], i: usize, v: u64) { d[8 * i..8 * i + 8].copy_from_slice(&v.to_ne_bytes()) }
 /// structural.rs `reverse_foR_move`'s metadata: the blocks in reverse order, each keeping its base, maximum, width
 /// and sum (a reversed block holds the same elements), `off` recomputed from the widths, the trailer the source's.
-/// `out` is `33 * mblk + 16` bytes; answers the pack's length, `Σ BLK * width / 8`.
+/// `out` is `33 * mblk + 24` bytes; answers the pack's length, `Σ blk * width / 8`.
 pub fn reverse_meta(c: &Coc, out: &mut [u8]) -> usize {
     let (m, nb) = (&c.meta, c.meta.mblk);
     let [base, maxv, off, bsum, sums, width] = meta_parts(out, nb);
@@ -155,33 +158,35 @@ pub fn reverse_meta(c: &Coc, out: &mut [u8]) -> usize {
         put64(bsum, b, m.bsum[s] as u64);
         width[b] = m.width[s];
         put64(off, b, at as u64);
-        at += BLK * m.width[s] as usize / 8;
+        at += m.blk() * m.width[s] as usize / 8;
     }
     put64(sums, 0, m.sumnul as u64);
     put64(sums, 1, m.sumn);
+    put64(sums, 2, m.lg as u64);
     at
 }
 /// structural.rs `concat_foR_move`: the four metadata sections of each part in turn, `off` recomputed from the
 /// concatenated widths, the trailer the writer's for `n` elements of `w` bytes, and the packs end to end.
-/// `mo`/`po` are `33 * Σ nblk + 16` and `Σ pack` bytes.
-pub fn concat_move(ms: &[&[u8]], ps: &[&[u8]], n: usize, w: usize, mo: &mut [u8], po: &mut [u8]) {
+/// `mo`/`po` are `33 * Σ nblk + 24` and `Σ pack` bytes; every part and the answer are at block size `1 << lg`.
+pub fn concat_move(lg: u32, ms: &[&[u8]], ps: &[&[u8]], n: usize, w: usize, mo: &mut [u8], po: &mut [u8]) {
     let nbs: alloc::vec::Vec<usize> = ms.iter().map(|m| m.len() / 33).collect();
     let nb: usize = nbs.iter().sum();
     let [base, maxv, off, bsum, sums, width] = meta_parts(mo, nb);
     let mut at = 0;
     for (m, &k) in ms.iter().zip(&nbs) {
-        assert!(m.len() >= 33 * k + 16, "qlean structural: {} metadata bytes for {k} blocks of 33 and a 16-byte trailer", m.len());
+        assert!(m.len() >= 33 * k + 24, "qlean structural: {} metadata bytes for {k} blocks of 33 and a 24-byte trailer", m.len());
         // the part's own sections are the byte ranges coc.rs gives, so no alignment is asked of them
         base[8 * at..8 * (at + k)].copy_from_slice(&m[..8 * k]);
         maxv[8 * at..8 * (at + k)].copy_from_slice(&m[8 * k..16 * k]);
         bsum[8 * at..8 * (at + k)].copy_from_slice(&m[24 * k..32 * k]);
-        width[at..at + k].copy_from_slice(&m[32 * k + 16..33 * k + 16]);
+        width[at..at + k].copy_from_slice(&m[32 * k + 24..33 * k + 24]);
         at += k;
     }
     put64(sums, 0, crate::enc::coc_sumnul(w, false) as u64);
     put64(sums, 1, n as u64);
+    put64(sums, 2, lg as u64);
     let mut o = 0;
-    for b in 0..nb { put64(off, b, o as u64); o += BLK * width[b] as usize / 8 }
+    for b in 0..nb { put64(off, b, o as u64); o += (1usize << lg) * width[b] as usize / 8 }
     assert_eq!(po.len(), ps.iter().map(|p| p.len()).sum::<usize>(), "qlean structural: concat pack of {} bytes", po.len());
     let mut at = 0;
     for p in ps { po[at..at + p.len()].copy_from_slice(p); at += p.len() }
@@ -190,9 +195,10 @@ pub fn concat_move(ms: &[&[u8]], ps: &[&[u8]], n: usize, w: usize, mo: &mut [u8]
 /// (a patch list's positions and offsets are its own column's; a block past the count or a short pack would carry into
 /// the answer). `part(i)` is part `i`'s view and `ns[i]` its count.
 pub fn cat_aligned<'a>(k: usize, ns: &[u64], w: usize, part: impl Fn(usize) -> Coc<'a>) -> bool {
+    // the blocks move as they are, so the parts must share one block size, which the answer then has
     (0..k).all(|i| {
         let c = part(i);
-        !(i + 1 < k && c.meta.n % BLK != 0) && c.std(ns[i] as usize) && c.pack.len() == c.meta.res_end()
+        c.meta.lg == part(0).meta.lg && !(i + 1 < k && c.meta.n % c.meta.blk() != 0) && c.std(ns[i] as usize) && c.pack.len() == c.meta.res_end()
             && trailer_ok(&c, c.meta.n, w, false)
     })
 }
@@ -202,7 +208,7 @@ pub fn trailer_ok(c: &Coc, n: usize, w: usize, alp: bool) -> bool {
 }
 /// structural.rs `res_bytes`: block `s`'s residuals as whole bytes, from the pack or restored into `buf`.
 pub fn res_bytes<'b>(c: &Coc<'b>, s: usize, buf: &'b mut [u8]) -> &'b [u8] {
-    let (nbytes, so) = (crate::BLK * c.meta.width[s] as usize / 8, c.meta.off[s] as usize);
+    let (nbytes, so) = (c.meta.blk() * c.meta.width[s] as usize / 8, c.meta.off[s] as usize);
     if so + nbytes <= c.pack.len() { return &c.pack[so..so + nbytes] }
     // a pack shorter than its widths claim reads zeros past its end, `Column.resAt`'s convention
     let avail = c.pack.len().saturating_sub(so);
@@ -215,7 +221,7 @@ pub fn res_bytes<'b>(c: &Coc<'b>, s: usize, buf: &'b mut [u8]) -> &'b [u8] {
 pub fn unpack_run(dst: &mut [i64], c: &Coc, s: usize, lo: usize, rev: bool) {
     let (cnt, base) = (dst.len(), c.meta.base[s] as u64);
     if c.blk_nexc(s) > 0 {      // a patched block is decoded, its slots reading as base
-        let mut x = [0i64; crate::BLK];
+        let mut x = pod::Scr::<i64>::new(c.meta.blk());
         c.decode_blk(s, lo + cnt, &mut x);
         for j in 0..cnt { dst[if rev { cnt - 1 - j } else { j }] = x[lo + j] }
         return;
@@ -225,13 +231,13 @@ pub fn unpack_run(dst: &mut [i64], c: &Coc, s: usize, lo: usize, rev: bool) {
         if rev { for (j, d) in dst.iter_mut().rev().enumerate() { *d = base.wrapping_add(f(j)) as i64 } }
         else { for (j, d) in dst.iter_mut().enumerate() { *d = base.wrapping_add(f(j)) as i64 } }
     }
-    let (mut w, mut buf) = (c.meta.width[s], [0u8; crate::BLK * 8]);
+    let (mut w, mut buf) = (c.meta.width[s], pod::Scr::<u8, 8192>::new(c.meta.blk() * 8));
     // a short run at an odd width reads its own fields: lanes would unpack every field before it
     if w & w.wrapping_sub(1) != 0 && cnt * 8 < lo + cnt {
         let q = res_bytes(c, s, &mut buf);
         return put(dst, base, rev, |j| crate::res::res_get(q, w, lo + j));
     }
-    let mut lb = [0u64; crate::BLK];
+    let mut lb = pod::Scr::<u64>::new(c.meta.blk());
     let p = crate::coc::lanes(res_bytes(c, s, &mut buf), &mut w, lo + cnt, crate::pod::bytes_mut(&mut lb));
     match w {
         0 => put(dst, base, rev, |_| 0),
@@ -246,7 +252,7 @@ pub fn unpack_run(dst: &mut [i64], c: &Coc, s: usize, lo: usize, rev: bool) {
 
 // ---- A35: structural.rs, the encoder sources ----
 /// structural.rs `blk_count`: the elements in block `b` of a column of `n`, a full block except the last.
-pub fn blk_count(n: usize, b: usize) -> usize { if (b + 1) * BLK <= n { BLK } else { n - b * BLK } }
+pub fn blk_count(n: usize, b: usize) -> usize { if (b + 1) * WBLK <= n { WBLK } else { n - b * WBLK } }
 
 /// One piece of an answer block: `len` elements from `lo` of block `b` of part `p` landing at `at`, or a hole.
 #[derive(Clone, Copy)]
@@ -256,18 +262,19 @@ enum Seg { Run { p: usize, b: usize, lo: usize, len: usize, at: usize }, Hole { 
 type Walk<'w> = &'w dyn Fn(&mut dyn FnMut(Seg));
 
 /// `reverse`: the answer's element `i` is the source's `n - 1 - i`, so the source indices descend from `n - 1 - i0`.
-fn rev_walk(n: usize, i0: usize, cnt: usize, g: &mut dyn FnMut(Seg)) {
+fn rev_walk(lg: u32, n: usize, i0: usize, cnt: usize, g: &mut dyn FnMut(Seg)) {
+    let blk = 1usize << lg;
     let (mut top, mut k) = (n.wrapping_sub(1 + i0), 0);
     while k < cnt {
-        let take = (top % BLK + 1).min(cnt - k);
-        g(Seg::Run { p: 0, b: top / BLK, lo: top % BLK + 1 - take, len: take, at: k });
+        let take = ((top & (blk - 1)) + 1).min(cnt - k);
+        g(Seg::Run { p: 0, b: top >> lg, lo: (top & (blk - 1)) + 1 - take, len: take, at: k });
         k += take;
         top = top.wrapping_sub(take);
     }
 }
 /// `,`: `start[p]` is where part `p` begins and the last entry is the answer's own count; a binary search finds the
 /// part holding `i0`, and an empty part is stepped over by the test that advances across a full one.
-fn cat_walk(start: &[usize], i0: usize, cnt: usize, g: &mut dyn FnMut(Seg)) {
+fn cat_walk(lg: &dyn Fn(usize) -> u32, start: &[usize], i0: usize, cnt: usize, g: &mut dyn FnMut(Seg)) {
     let (np, mut k) = (start.len() - 1, 0);
     let (mut pi, mut hi) = (0, np);
     while pi + 1 < hi { let mid = (pi + hi) / 2; if start[mid] <= i0 { pi = mid } else { hi = mid } }
@@ -276,27 +283,30 @@ fn cat_walk(start: &[usize], i0: usize, cnt: usize, g: &mut dyn FnMut(Seg)) {
         let mut j = i0 + k - start[pi];
         let mut take = (start[pi + 1] - start[pi] - j).min(cnt - k);
         while take > 0 {
-            let t = (BLK - j % BLK).min(take);
-            g(Seg::Run { p: pi, b: j / BLK, lo: j % BLK, len: t, at: k });
+            let (l, blk) = (lg(pi), 1usize << lg(pi));
+            let t = (blk - (j & (blk - 1))).min(take);
+            g(Seg::Run { p: pi, b: j >> l, lo: j & (blk - 1), len: t, at: k });
             k += t; j += t; take -= t;
         }
     }
 }
 /// The cycling slice `n#x`, `n_x`, `x sublist y` and `rotate` share: the answer's element `j` is the source's
 /// `(off + j) % n`, a run advancing forward and wrapping at most once per lap.
-fn cycle_walk(n: usize, off: usize, i0: usize, cnt: usize, g: &mut dyn FnMut(Seg)) {
+fn cycle_walk(lg: u32, n: usize, off: usize, i0: usize, cnt: usize, g: &mut dyn FnMut(Seg)) {
     if cnt == 0 { return }
+    let blk = 1usize << lg;
     let (mut j, mut k) = ((off + i0) % n, 0);
     while k < cnt {
-        let t = (BLK - j % BLK).min(n - j).min(cnt - k);
-        g(Seg::Run { p: 0, b: j / BLK, lo: j % BLK, len: t, at: k });
+        let t = (blk - (j & (blk - 1))).min(n - j).min(cnt - k);
+        g(Seg::Run { p: 0, b: j >> lg, lo: j & (blk - 1), len: t, at: k });
         k += t; j += t;
         if j == n { j = 0 }
     }
 }
 /// A shift: the answer's element `j` is the source's `j - k`, so what the source can serve of a run is one forward
 /// stretch across at most two blocks and the rest is a hole at both ends.
-fn shift_walk(n: usize, k: i64, i0: usize, cnt: usize, g: &mut dyn FnMut(Seg)) {
+fn shift_walk(lg: u32, n: usize, k: i64, i0: usize, cnt: usize, g: &mut dyn FnMut(Seg)) {
+    let blk = 1usize << lg;
     let from = (i0 as i64).wrapping_sub(k);
     let head = (if from < 0 { from.unsigned_abs() as usize } else { 0 }).min(cnt);
     let mut tail = cnt;
@@ -306,8 +316,8 @@ fn shift_walk(n: usize, k: i64, i0: usize, cnt: usize, g: &mut dyn FnMut(Seg)) {
     if tail < cnt { g(Seg::Hole { at: tail, len: cnt - tail }) }
     let (mut at, mut j) = (head, from.wrapping_add(head as i64) as usize);
     while at < tail {
-        let t = (BLK - j % BLK).min(tail - at);
-        g(Seg::Run { p: 0, b: j / BLK, lo: j % BLK, len: t, at });
+        let t = (blk - (j & (blk - 1))).min(tail - at);
+        g(Seg::Run { p: 0, b: j >> lg, lo: j & (blk - 1), len: t, at });
         at += t; j += t;
     }
 }
@@ -329,28 +339,28 @@ fn fill<'a>(part: &dyn Fn(usize) -> Cocf<'a>, alp: bool, rev: bool, hole: i64, b
 /// structural.rs `rev_fill`: elements `i0 ..` of `reverse c` into `buf`.
 pub fn rev_fill(c: &Coc, buf: &mut [i64], i0: usize) {
     let (f, cnt) = (plain(c), buf.len());
-    fill(&|_| f, false, true, 0, buf, &|g: &mut dyn FnMut(Seg)| rev_walk(c.meta.n, i0, cnt, g))
+    fill(&|_| f, false, true, 0, buf, &|g: &mut dyn FnMut(Seg)| rev_walk(c.meta.lg, c.meta.n, i0, cnt, g))
 }
 /// structural.rs `cycle_fill`: of `m` elements rotated by `off` (already below the count); `m` only a hint asks.
 pub fn cycle_fill(c: &Coc, off: usize, _m: usize, buf: &mut [i64], i0: usize) {
     let (f, cnt) = (plain(c), buf.len());
-    fill(&|_| f, false, false, 0, buf, &|g: &mut dyn FnMut(Seg)| cycle_walk(c.meta.n, off, i0, cnt, g))
+    fill(&|_| f, false, false, 0, buf, &|g: &mut dyn FnMut(Seg)| cycle_walk(c.meta.lg, c.meta.n, off, i0, cnt, g))
 }
 /// structural.rs `shift_fill`: of `c` shifted by `k`, `fill` entering.
 pub fn shift_fill(c: &Coc, k: i64, fill_v: i64, buf: &mut [i64], i0: usize) {
     let (f, cnt) = (plain(c), buf.len());
-    fill(&|_| f, false, false, fill_v, buf, &|g: &mut dyn FnMut(Seg)| shift_walk(c.meta.n, k, i0, cnt, g))
+    fill(&|_| f, false, false, fill_v, buf, &|g: &mut dyn FnMut(Seg)| shift_walk(c.meta.lg, c.meta.n, k, i0, cnt, g))
 }
 /// structural.rs `cat_fill`: of the parts `part(j)` starting at `start[j]`; `start` holds the part count + 1
 /// entries, the last the answer's count. `w` is the element width, which only the take step asks.
 pub fn cat_fill<'a>(part: &dyn Fn(usize) -> Cocf<'a>, start: &[usize], _w: usize, alp: bool, buf: &mut [i64], i0: usize) {
     let cnt = buf.len();
-    fill(part, alp, false, 0, buf, &|g: &mut dyn FnMut(Seg)| cat_walk(start, i0, cnt, g))
+    fill(part, alp, false, 0, buf, &|g: &mut dyn FnMut(Seg)| cat_walk(&|p| part(p).c.meta.lg, start, i0, cnt, g))
 }
 /// structural.rs `alp_run`: the elements' IEEE bits (what the writer's ALP steps read back at `w` bytes) of
 /// elements `lo .. lo + out.len()` of block `b`, restored exceptions included; only the run is restored.
 pub fn alp_run(out: &mut [i64], f: &Cocf, b: usize, lo: usize, rev: bool) {
-    let (len, mut tmp, mut lb) = (out.len(), [0u64; BLK], [0u64; BLK]);
+    let (len, mut tmp, mut lb) = (out.len(), pod::Scr::<u64>::new(f.c.meta.blk()), pod::Scr::<u64>::new(f.c.meta.blk()));
     let (p, w, _) = f.lanes(b, lo + len, pod::bytes_mut(&mut lb));
     let tb = pod::bytes_mut(&mut tmp);
     f.load_range(b, p, w, lo, lo + len, tb);
@@ -396,20 +406,20 @@ fn hint<'a>(part: &dyn Fn(usize) -> Cocf<'a>, lim: &mut u32, walk: Walk) -> i32 
 }
 /// structural.rs `cat_hint`: answer block `b`'s exponent hint and patch limit `lim`; -1 = no hint.
 pub fn cat_hint<'a>(part: &dyn Fn(usize) -> Cocf<'a>, start: &[usize], b: usize, lim: &mut u32) -> i32 {
-    let (s, n) = (b * BLK, start[start.len() - 1]);
-    hint(part, lim, &|g: &mut dyn FnMut(Seg)| cat_walk(start, s, (n - s).min(BLK), g))
+    let (s, n) = (b * WBLK, start[start.len() - 1]);
+    hint(part, lim, &|g: &mut dyn FnMut(Seg)| cat_walk(&|p| part(p).c.meta.lg, start, s, (n - s).min(WBLK), g))
 }
 /// structural.rs `rev_hint`
 pub fn rev_hint(f: &Cocf, b: usize, lim: &mut u32) -> i32 {
-    hint(&|_| *f, lim, &|g: &mut dyn FnMut(Seg)| rev_walk(f.c.meta.n, b * BLK, blk_count(f.c.meta.n, b), g))
+    hint(&|_| *f, lim, &|g: &mut dyn FnMut(Seg)| rev_walk(f.c.meta.lg, f.c.meta.n, b * WBLK, blk_count(f.c.meta.n, b), g))
 }
 /// structural.rs `cycle_hint`: `m` is the answer's count.
 pub fn cycle_hint(f: &Cocf, off: usize, m: usize, b: usize, lim: &mut u32) -> i32 {
-    hint(&|_| *f, lim, &|g: &mut dyn FnMut(Seg)| cycle_walk(f.c.meta.n, off, b * BLK, blk_count(m, b), g))
+    hint(&|_| *f, lim, &|g: &mut dyn FnMut(Seg)| cycle_walk(f.c.meta.lg, f.c.meta.n, off, b * WBLK, blk_count(m, b), g))
 }
 /// structural.rs `shift_hint`
 pub fn shift_hint(f: &Cocf, k: i64, b: usize, lim: &mut u32) -> i32 {
-    hint(&|_| *f, lim, &|g: &mut dyn FnMut(Seg)| shift_walk(f.c.meta.n, k, b * BLK, blk_count(f.c.meta.n, b), g))
+    hint(&|_| *f, lim, &|g: &mut dyn FnMut(Seg)| shift_walk(f.c.meta.lg, f.c.meta.n, k, b * WBLK, blk_count(f.c.meta.n, b), g))
 }
 
 /// The writer's second form of an answer block, `coc_ints`'s outputs: the decimals `d`, `ee[i] < 0` at each exception
@@ -458,25 +468,25 @@ fn ints<'a>(part: &dyn Fn(usize) -> Cocf<'a>, rev: bool, out: Option<&mut Ints>,
 }
 /// structural.rs `cat_ints`: answer block `b` of the concat as decimals; -1 = take the general path.
 pub fn cat_ints<'a>(part: &dyn Fn(usize) -> Cocf<'a>, start: &[usize], b: usize, out: Option<&mut Ints>) -> i32 {
-    let (s, n) = (b * BLK, start[start.len() - 1]);
-    ints(part, false, out, &|g: &mut dyn FnMut(Seg)| cat_walk(start, s, (n - s).min(BLK), g))
+    let (s, n) = (b * WBLK, start[start.len() - 1]);
+    ints(part, false, out, &|g: &mut dyn FnMut(Seg)| cat_walk(&|p| part(p).c.meta.lg, start, s, (n - s).min(WBLK), g))
 }
 /// structural.rs `rev_ints`
 pub fn rev_ints(f: &Cocf, b: usize, out: Option<&mut Ints>) -> i32 {
-    ints(&|_| *f, true, out, &|g: &mut dyn FnMut(Seg)| rev_walk(f.c.meta.n, b * BLK, blk_count(f.c.meta.n, b), g))
+    ints(&|_| *f, true, out, &|g: &mut dyn FnMut(Seg)| rev_walk(f.c.meta.lg, f.c.meta.n, b * WBLK, blk_count(f.c.meta.n, b), g))
 }
 /// structural.rs `cycle_ints`: `m` is the answer's count.
 pub fn cycle_ints(f: &Cocf, off: usize, m: usize, b: usize, out: Option<&mut Ints>) -> i32 {
-    ints(&|_| *f, false, out, &|g: &mut dyn FnMut(Seg)| cycle_walk(f.c.meta.n, off, b * BLK, blk_count(m, b), g))
+    ints(&|_| *f, false, out, &|g: &mut dyn FnMut(Seg)| cycle_walk(f.c.meta.lg, f.c.meta.n, off, b * WBLK, blk_count(m, b), g))
 }
 /// structural.rs `shift_ints`' pass 1. The hole's integer needs `dat` (A9), so C computes it from this exponent
 /// and calls `shift_ints` for pass 2.
 pub fn shift_exp(f: &Cocf, k: i64, b: usize) -> i32 {
-    ints_exp(&|_| *f, &|g: &mut dyn FnMut(Seg)| shift_walk(f.c.meta.n, k, b * BLK, blk_count(f.c.meta.n, b), g))
+    ints_exp(&|_| *f, &|g: &mut dyn FnMut(Seg)| shift_walk(f.c.meta.lg, f.c.meta.n, k, b * WBLK, blk_count(f.c.meta.n, b), g))
 }
 /// structural.rs `shift_ints`' pass 2: a hole is `hole` = (`fill`'s integer at the exponent, its `ee`, `&fill`).
 pub fn shift_ints(f: &Cocf, k: i64, b: usize, hole: (i64, i8, *const u8), out: &mut Ints) {
-    ints_fill(&|_| *f, false, hole, out, &|g: &mut dyn FnMut(Seg)| shift_walk(f.c.meta.n, k, b * BLK, blk_count(f.c.meta.n, b), g))
+    ints_fill(&|_| *f, false, hole, out, &|g: &mut dyn FnMut(Seg)| shift_walk(f.c.meta.lg, f.c.meta.n, k, b * WBLK, blk_count(f.c.meta.n, b), g))
 }
 
 /// structural.rs `shift_ints`: both passes of a shift's `coc_ints`. A hole is `fill`, its integer at the exponent where it is
@@ -495,17 +505,17 @@ pub fn shift_ints_at(f: &Cocf, k: i64, fill: &i64, b: usize, out: Option<&mut In
 /// structural.rs `cat_take`: the part holding block `b` and its block there.
 pub fn cat_take(start: &[usize], b: usize) -> Option<(usize, usize)> {
     let k = start.len().checked_sub(1).filter(|&k| k > 0)?;
-    let (s, n) = (b * BLK, start[k]);
+    let (s, n) = (b * WBLK, start[k]);
     let (mut pi, mut hi) = (0, k);
     while pi + 1 < hi { let mid = (pi + hi) / 2; if start[mid] <= s { pi = mid } else { hi = mid } }
     let j = s - start[pi];
-    if j % BLK != 0 || (s + BLK).min(n) > start[pi + 1] { return None }
-    Some((pi, j / BLK))
+    if j % WBLK != 0 || (s + WBLK).min(n) > start[pi + 1] { return None }
+    Some((pi, j / WBLK))
 }
 /// structural.rs `cat_take`'s test of the part itself: a part moves whole only in the writer's trailer, and a plain
 /// one only when its patch list's elements are the answer's width.
 pub fn cat_part_ok(c: &Coc, w: usize, alp: bool) -> bool {
-    trailer_ok(c, c.meta.n, w, alp) && (alp || c.exc.is_none_or(|x| x.pos.is_empty() || x.esz == w))
+    c.meta.lg == crate::DEFAULT_LG && trailer_ok(c, c.meta.n, w, alp) && (alp || c.exc.is_none_or(|x| x.pos.is_empty() || x.esz == w))
 }
 /// structural.rs `put_res`: `v` minus `base` at `w` bits into `p` from field `lo`.
 pub fn put_res(p: &mut [u8], w: u8, lo: usize, v: &[i64], base: u64) {
@@ -542,23 +552,23 @@ fn die(args: core::fmt::Arguments) -> ! {
 /// holding that `k`, and no count is taken. `Err(k)` = `ix[k]` is not ascending, distinct and below `n`.
 fn cursors(run: Runner, ix: &[u64], n: usize, nblk: usize) -> Result<Vec<AtomicUsize>, usize> {
     let m = ix.len();
-    let at: Vec<AtomicUsize> = (0..n.div_ceil(BLK).max(nblk) + 1).map(|_| AtomicUsize::new(0)).collect();
+    let at: Vec<AtomicUsize> = (0..n.div_ceil(WBLK).max(nblk) + 1).map(|_| AtomicUsize::new(0)).collect();
     let bad = AtomicUsize::new(m);
     crate::c::run_map(run, &mut [], m, 0, crate::QLEAN_COST_COPY, 16, &|lo, hi, _: &mut [u8]| {
         for k in lo..hi {
             if ix[k] >= n as u64 || (k > 0 && ix[k] <= ix[k - 1]) { bad.fetch_min(k, SeqCst); return }
-            for b in (if k > 0 { ix[k - 1] / BLK as u64 + 1 } else { 0 })..=ix[k] / BLK as u64 { at[b as usize].store(k, Relaxed) }
+            for b in (if k > 0 { ix[k - 1] / WBLK as u64 + 1 } else { 0 })..=ix[k] / WBLK as u64 { at[b as usize].store(k, Relaxed) }
         }
     });
     let bad = bad.into_inner();
     if bad < m { return Err(bad) }
-    for b in (if m > 0 { ix[m - 1] as usize / BLK + 1 } else { 0 })..=nblk { at[b].store(m, Relaxed) }
+    for b in (if m > 0 { ix[m - 1] as usize / WBLK + 1 } else { 0 })..=nblk { at[b].store(m, Relaxed) }
     Ok(at)
 }
 /// Block `b`'s writes into a decoded block: `W`-byte values at the positions `ix` names.
 fn put_vals<const W: usize>(out: &mut [u8], b: usize, ix: &[u64], vals: &[u8]) {
     let (o, v) = (out.as_chunks_mut::<W>().0, vals.as_chunks::<W>().0);
-    for (&i, &x) in ix.iter().zip(v) { o[i as usize - b * BLK] = x }
+    for (&i, &x) in ix.iter().zip(v) { o[i as usize - b * WBLK] = x }
 }
 impl<'a> Scatter<'a> {
     /// structural.rs `fsc_scatter`'s views and refusals: metadata `m`, pack `pk`, the ALP part `a` for an ALP column, `n`
@@ -617,7 +627,7 @@ impl<'a> Scatter<'a> {
     pub fn meta(&self, m: &mut EncMeta, b: usize) {
         let nb = self.nb(b);
         if self.kept(b) { crate::enc::move_meta(m, &self.old, b); return }
-        let mut buf = [0u64; BLK];
+        let mut buf = [0u64; WBLK];
         if !self.alp {
             let bytes = pod::bytes_mut(&mut buf);
             self.load(b, nb, bytes);
@@ -627,8 +637,8 @@ impl<'a> Scatter<'a> {
     }
     /// An ALP block with writes: the patch, unless the search's exponent leaves fewer exceptions; each costs its raw bytes
     /// and a position, more than the residual bits a higher exponent adds.
-    fn meta_alp<F: Flt>(&self, m: &mut EncMeta, b: usize, nb: usize, buf: &mut [u64; BLK]) {
-        let (mut d, mut ee) = ([0i64; BLK], [0i8; BLK]);
+    fn meta_alp<F: Flt>(&self, m: &mut EncMeta, b: usize, nb: usize, buf: &mut [u64; WBLK]) {
+        let (mut d, mut ee) = ([0i64; WBLK], [0i8; WBLK]);
         let alt = self.patch::<F>(b, nb, &mut d, &mut ee);
         let np = ee[..nb].iter().filter(|&&e| e < 0).count() as u32;
         self.patched[b].store(1, Relaxed);
@@ -644,21 +654,21 @@ impl<'a> Scatter<'a> {
         }
         *m.nexc = crate::alp::alp_fin_blk(m, self.old.exp[b] as i32, &mut d, &ee, nb);
     }
-    /// structural.rs `fsc_pack` for block `b`; `p` is cut whole (`BLK * width / 8` residual bytes) when `kept(b)`.
+    /// structural.rs `fsc_pack` for block `b`; `p` is cut whole (`WBLK * width / 8` residual bytes) when `kept(b)`.
     pub fn pack(&self, p: &mut EncPack, b: usize) {
         let nb = self.nb(b);
         if self.kept(b) { crate::enc::move_pack(p, &self.old, b, self.alp, self.w); return }
         if self.alp && self.patched[b].load(Relaxed) != 0 {
             return if self.w == 4 { self.pack_patched::<f32>(p, b, nb) } else { self.pack_patched::<f64>(p, b, nb) }
         }
-        let mut buf = [0u64; BLK];
+        let mut buf = [0u64; WBLK];
         let bytes = pod::bytes_mut(&mut buf);
         self.load(b, nb, bytes);
         if self.alp { crate::enc::alp_pack(p, bytes, self.w) } else { crate::enc::for_pack(p, bytes, self.w) }
     }
     /// Pass 2 for a block pass 1 patched at the old exponent, with the same writes.
     fn pack_patched<F: Flt>(&self, p: &mut EncPack, b: usize, nb: usize) {
-        let (mut d, mut ee) = ([0i64; BLK], [0i8; BLK]);
+        let (mut d, mut ee) = ([0i64; WBLK], [0i8; WBLK]);
         self.patch::<F>(b, nb, &mut d, &mut ee);
         let (ix, v) = self.writes::<F>(b);
         let raw = core::mem::take(&mut p.raw);
@@ -671,7 +681,7 @@ mod k23_tests {
     use super::*;
     use crate::c::qlean_run_c;
     fn at(ix: &[u64], n: usize) -> Result<Vec<usize>, usize> {
-        cursors(qlean_run_c, ix, n, n.div_ceil(BLK)).map(|v| v.iter().map(|a| a.load(Relaxed)).collect())
+        cursors(qlean_run_c, ix, n, n.div_ceil(WBLK)).map(|v| v.iter().map(|a| a.load(Relaxed)).collect())
     }
     // Expected values come from running the original C (`fsx_check` and its tail loop, /data/tmp/qrs/K23/diff.c)
     #[test] fn cursors_start_each_block_at_its_first_index() {
@@ -701,7 +711,7 @@ fn check_enc(w: usize, sw: u8, who: &str) {
     assert!(!(sw == 255 && w == 16), "qlean structural: {who} of an encoded column with unequal blocks has no width-16 reader");
 }
 /// structural.rs `GATHER_DECODE`: indices in one block in a row that make decoding the block cheaper than reading each.
-const GATHER_DECODE: usize = crate::BLK / 8;
+const GATHER_DECODE: usize = WBLK / 8;
 /// structural.rs `GATHER_AHEAD`: how far ahead of the index being read the source is prefetched.
 const GATHER_AHEAD: usize = 16;
 /// structural.rs `qlean_structural_all_below`: every index, read unsigned, is below `n`.
@@ -752,16 +762,16 @@ fn flat<const W: usize>(c: &Coc, sw: u8, f: [u8; W], ix: &[i64], o: &mut [u8], r
 // is `GATHER_DECODE` long decodes the block once, a shorter one is read through `get`.
 fn runs<const W: usize>(c: &Coc, f: [u8; W], ix: &[i64], o: &mut [u8]) {
     let sn = c.meta.n;
-    let mut buf = [0u64; crate::BLK];
+    let mut buf = [0u64; WBLK];
     let bb = crate::pod::bytes_mut(&mut buf);
     let d = o.as_chunks_mut::<W>().0;
     let mut j = 0;
     while j < ix.len() {
         let u0 = ix[j] as u64;
         if u0 >= sn as u64 { d[j] = f; j += 1; continue }
-        let (b, blo) = (u0 as usize / crate::BLK, u0 as usize / crate::BLK * crate::BLK);
+        let (b, blo) = (u0 as usize / WBLK, u0 as usize / WBLK * WBLK);
         let mut e = j + 1;
-        while e < ix.len() && ix[e] as u64 / crate::BLK as u64 == b as u64 { e += 1 }
+        while e < ix.len() && ix[e] as u64 / WBLK as u64 == b as u64 { e += 1 }
         if e - j < GATHER_DECODE {
             for k in j..e {
                 if let Some(&a) = ix.get(k + GATHER_AHEAD) { c.prefetch(a as usize) }
@@ -769,7 +779,7 @@ fn runs<const W: usize>(c: &Coc, f: [u8; W], ix: &[i64], o: &mut [u8]) {
                 d[k] = if u < sn as u64 { word(c.get(u as usize) as u64) } else { f };
             }
         } else {
-            load_blk_at(c, b, (sn - blo).min(crate::BLK), W, bb);
+            load_blk_at(c, b, (sn - blo).min(WBLK), W, bb);
             for k in j..e {
                 let u = ix[k] as u64;
                 d[k] = if u < sn as u64 { bb[(u as usize - blo) * W..][..W].try_into().unwrap() } else { f };
@@ -782,7 +792,7 @@ fn runs<const W: usize>(c: &Coc, f: [u8; W], ix: &[i64], o: &mut [u8]) {
 fn enc_w<const W: usize>(c: &Coc, sw: u8, fill: u64, ix: &[i64], o: &mut [u8]) {
     let f = word::<W>(fill);
     let (sb, sp) = (c.meta.base, c.pack);
-    let base = |u: usize| sb[u / crate::BLK] as u64;
+    let base = |u: usize| sb[u / WBLK] as u64;
     let at = |k: usize, n: usize| &sp[k..k + n];
     match sw {
         0 => flat(c, sw, f, ix, o, base),
@@ -822,12 +832,12 @@ pub fn gather_enc_idx(run: Runner, w: usize, fill: u64, c: &Coc, ic: &Coc, out: 
     let sw = c.one_width();
     check_enc(w, sw, "gather_foR");
     crate::c::run_map(run, out, ic.meta.n, w, crate::QLEAN_COST_GATHER, w + 8, &|lo, hi, o: &mut [u8]| {
-        let mut buf = [0i64; crate::BLK];
+        let mut buf = [0i64; WBLK];
         let mut at = lo;
         while at < hi {
-            let blo = at / crate::BLK * crate::BLK;
-            let end = (blo + crate::BLK).min(hi);
-            ic.decode_blk(at / crate::BLK, end - blo, &mut buf);
+            let blo = at / WBLK * WBLK;
+            let end = (blo + WBLK).min(hi);
+            ic.decode_blk(at / WBLK, end - blo, &mut buf);
             enc(w, c, sw, fill, &buf[at - blo..end - blo], &mut o[(at - lo) * w..(end - lo) * w]);
             at = end;
         }
@@ -931,14 +941,14 @@ pub fn gather_ids_enc(run: Runner, w: u32, wout: u32, fill: u64, src: &[u8], n: 
     let (g, m) = (crate::ids::slice_elems(wout), ic.meta.n);
     crate::c::run_map(run, out, m.div_ceil(g), crate::ids::ids_bytes(g, wout), crate::QLEAN_COST_GATHER, g * 9,
                       &|lo8, hi8, o: &mut [u8]| {
-        // a slice starts on a whole byte of the answer and each block of the index on a multiple of `BLK`
+        // a slice starts on a whole byte of the answer and each block of the index on a multiple of `WBLK`
         let (lo, hi) = (lo8 * g, (hi8 * g).min(m));
-        let mut v = [0i64; crate::BLK];
+        let mut v = [0i64; WBLK];
         let mut at = lo;
         while at < hi {
-            let blo = at / crate::BLK * crate::BLK;
-            let end = (blo + crate::BLK).min(hi);
-            ic.decode_blk(at / crate::BLK, end - blo, &mut v);
+            let blo = at / WBLK * WBLK;
+            let end = (blo + WBLK).min(hi);
+            ic.decode_blk(at / WBLK, end - blo, &mut v);
             for j in at..end { crate::ids::id_put(o, wout, j - lo, gathered_id(src, w, n, fill, v[j - blo])) }
             at = end;
         }
@@ -1014,13 +1024,13 @@ pub fn enum_ids(n: usize, d: usize, nullid: usize, w: u32, b: &[u8], out: &mut [
 /// structural.rs `qlean_structural_enum_ids_for`: from an encoded column, a block at a time (a block's ids are whole
 /// bytes at every width, so each packs to its own offset). Elements past the column's own count stay zero.
 pub fn enum_ids_enc(n: usize, d: usize, nullid: usize, w: u32, c: &Coc, out: &mut [u8]) -> usize {
-    let (cn, mut v, mut bad) = (c.meta.n, [0i64; crate::BLK], n);
+    let (cn, mut v, mut bad) = (c.meta.n, [0i64; WBLK], n);
     if cn < n { out.fill(0) }
-    for b in 0..cn.div_ceil(crate::BLK) {
-        let (lo, nb) = (b * crate::BLK, crate::BLK.min(cn - b * crate::BLK));
+    for b in 0..cn.div_ceil(WBLK) {
+        let (lo, nb) = (b * WBLK, WBLK.min(cn - b * WBLK));
         c.decode_blk(b, nb, &mut v);
         if bad == n && v[..nb].iter().fold(false, |a, &x| a | enum_bad(x, d)) { bad = lo + v[..nb].iter().position(|&x| enum_bad(x, d)).unwrap() }
-        crate::ids::pack(&mut out[b * (crate::BLK / 8) * w as usize..], w, nb, |i| enum_id(v[i], nullid));
+        crate::ids::pack(&mut out[b * (WBLK / 8) * w as usize..], w, nb, |i| enum_id(v[i], nullid));
     }
     bad
 }
@@ -1757,12 +1767,12 @@ mod a39_tests {
     }
     #[test] fn enum_ids_enc_is_enum_ids_of_the_decoded_column() {
         let n = 1500;
-        let pack: Vec<u8> = (0..2 * crate::BLK * 2).map(|i| (i * 7 % 251) as u8).collect();
+        let pack: Vec<u8> = (0..2 * WBLK * 2).map(|i| (i * 7 % 251) as u8).collect();
         let (base, z, off, width) = ([10i64, -4], [0i64; 2], [0u64, 2048], [16u8; 2]);
         let meta = crate::coc::Meta { base: &base, maxv: &z, off: &off, bsum: &z, width: &width, sumnul: 0, sumn: 0, n, nblk: 2, mblk: 2 };
         let c = Coc { meta, pack: &pack, exc: None, fdelta: None };
-        let mut v = vec![0i64; 2 * crate::BLK];
-        for b in 0..2 { c.decode_blk(b, crate::BLK, &mut v[b * crate::BLK..]) }
+        let mut v = vec![0i64; 2 * WBLK];
+        for b in 0..2 { c.decode_blk(b, WBLK, &mut v[b * WBLK..]) }
         v.truncate(n);
         let raw: Vec<u8> = v.iter().flat_map(|x| x.to_le_bytes()).collect();
         for w in [8u32, 16, 32] {
@@ -1863,7 +1873,7 @@ mod til_scatter_build_tests {
 mod a34_tests {
     use super::*;
     use crate::res::res_get;
-    use crate::BLK;
+    use WBLK;
     fn rng(s: &mut u64) -> u64 { *s ^= *s << 13; *s ^= *s >> 7; *s ^= *s << 17; *s }
     fn bit(b: &[u8], i: usize) -> bool { b.get(i / 8).is_some_and(|x| x >> (i % 8) & 1 == 1) }
 
@@ -1932,15 +1942,15 @@ mod a34_tests {
         let (m0, m1) = (part(&[10, 20], &[3, 8], 7), part(&[30], &[0], 9));
         let (p0, p1): (Vec<u8>, Vec<u8>) = ((0..384 + 1024).map(|i| i as u8).collect(), vec![]);
         let (mut mo, mut po) = (vec![0u8; 33 * 3 + 16], vec![0u8; p0.len()]);
-        concat_move(&[&m0, &m1], &[&p0, &p1], 3 * BLK, 8, &mut mo, &mut po);
+        concat_move(&[&m0, &m1], &[&p0, &p1], 3 * WBLK, 8, &mut mo, &mut po);
         assert_eq!(po, p0);
         let c = Coc { meta: crate::coc::Meta::new(&mo, usize::MAX).unwrap(), pack: &po, exc: None, fdelta: None };
         assert_eq!((c.meta.base, c.meta.bsum, c.meta.width, c.meta.off), (&[10, 20, 30][..], &[7, 7, 9][..], &[3, 8, 0][..], &[0, 384, 1408][..]));
-        assert_eq!((c.meta.sumnul, c.meta.sumn), (i64::MIN, 3 * BLK as u64));
+        assert_eq!((c.meta.sumnul, c.meta.sumn), (i64::MIN, 3 * WBLK as u64));
         let mut r = vec![0u8; 33 * 3 + 16];
         assert_eq!(reverse_meta(&c, &mut r), 1408);
         let rc = crate::coc::Meta::new(&r, usize::MAX).unwrap();
-        assert_eq!((rc.base, rc.width, rc.off, rc.sumn), (&[30, 20, 10][..], &[0, 8, 3][..], &[0, 0, 1024][..], 3 * BLK as u64));
+        assert_eq!((rc.base, rc.width, rc.off, rc.sumn), (&[30, 20, 10][..], &[0, 8, 3][..], &[0, 0, 1024][..], 3 * WBLK as u64));
     }
     #[test] fn rev_fields_reverses_the_fields_of_a_byte() {
         for w in [1u8, 2, 4] {
@@ -1953,11 +1963,11 @@ mod a34_tests {
     #[test] fn rev_block_reverses_the_residuals_at_every_width() {
         let mut s = 99;
         for w in 1..=64u8 {
-            let nbytes = BLK * w as usize / 8;
+            let nbytes = WBLK * w as usize / 8;
             let sp: Vec<u8> = (0..nbytes).map(|_| rng(&mut s) as u8).collect();
             let mut dp = vec![0u8; nbytes];
             rev_block(&mut dp, &sp, w);
-            for j in 0..BLK { assert_eq!(res_get(&dp, w, j), res_get(&sp, w, BLK - 1 - j), "w {w} j {j}") }
+            for j in 0..WBLK { assert_eq!(res_get(&dp, w, j), res_get(&sp, w, WBLK - 1 - j), "w {w} j {j}") }
         }
     }
     fn column<'a>(base: &'a [i64], off: &'a [u64], width: &'a [u8], z: &'a [i64], pack: &'a [u8], n: usize) -> Coc<'a> {
@@ -1970,33 +1980,33 @@ mod a34_tests {
         for widths in [vec![3u8, 8, 0, 13, 1], vec![16, 16, 16], vec![5], vec![0, 0], vec![2, 64, 4, 7, 32, 9, 12, 6]] {
             let nb = widths.len();
             let (mut off, mut t) = (vec![], 0u64);
-            for &w in &widths { off.push(t); t += (BLK * w as usize / 8) as u64 }
+            for &w in &widths { off.push(t); t += (WBLK * w as usize / 8) as u64 }
             let pack: Vec<u8> = (0..t).map(|_| rng(&mut s) as u8).collect();
             let (base, z) = (vec![0i64; nb], vec![0i64; nb]);
-            let c = column(&base, &off, &widths, &z, &pack, nb * BLK);
+            let c = column(&base, &off, &widths, &z, &pack, nb * WBLK);
             let mut out = vec![0u8; t as usize];
             reverse_enc(crate::c::qlean_run_c, &c, &mut out);
             let mut at = 0;
             for b in 0..nb {
                 let (w, sb) = (widths[nb - 1 - b], nb - 1 - b);
-                for j in 0..BLK {
-                    assert_eq!(res_get(&out[at..], w, j), res_get(&pack[off[sb] as usize..], w, BLK - 1 - j), "{widths:?} b {b} j {j}");
+                for j in 0..WBLK {
+                    assert_eq!(res_get(&out[at..], w, j), res_get(&pack[off[sb] as usize..], w, WBLK - 1 - j), "{widths:?} b {b} j {j}");
                 }
-                at += BLK * w as usize / 8;
+                at += WBLK * w as usize / 8;
             }
         }
     }
     #[test] fn unpack_run_widens_a_run_forward_and_reversed() {
         let mut s = 31;
         for w in [0u8, 1, 2, 3, 4, 5, 8, 11, 16, 24, 32, 47, 64] {
-            let nbytes = BLK * w as usize / 8;
+            let nbytes = WBLK * w as usize / 8;
             let pack: Vec<u8> = (0..nbytes).map(|_| rng(&mut s) as u8).collect();
             let (base, z, off) = ([rng(&mut s) as i64], [0i64], [0u64]);
             let ws = [w];
-            let c = column(&base, &off, &ws, &z, &pack, BLK);
+            let c = column(&base, &off, &ws, &z, &pack, WBLK);
             for _ in 0..40 {
-                let cnt = 1 + rng(&mut s) as usize % BLK;
-                let lo = rng(&mut s) as usize % (BLK - cnt + 1);
+                let cnt = 1 + rng(&mut s) as usize % WBLK;
+                let lo = rng(&mut s) as usize % (WBLK - cnt + 1);
                 for rev in [false, true] {
                     let mut d = vec![0i64; cnt];
                     unpack_run(&mut d, &c, 0, lo, rev);
@@ -2012,10 +2022,10 @@ mod a34_tests {
         let pack = vec![0xffu8; 100];
         let (base, z, off) = ([0i64], [0i64], [60u64]);
         let ws = [8u8];
-        let c = column(&base, &off, &ws, &z, &pack, BLK);
-        let mut buf = [1u8; BLK * 8];
+        let c = column(&base, &off, &ws, &z, &pack, WBLK);
+        let mut buf = [1u8; WBLK * 8];
         let r = res_bytes(&c, 0, &mut buf);
-        assert_eq!((r.len(), r[..40].iter().all(|&x| x == 0xff), r[40..].iter().all(|&x| x == 0)), (BLK, true, true));
+        assert_eq!((r.len(), r[..40].iter().all(|&x| x == 0xff), r[40..].iter().all(|&x| x == 0)), (WBLK, true, true));
     }
     #[test] fn trailer_ok_reads_the_writers_form() {
         let (base, z, off) = ([0i64], [0i64], [0u64]);
@@ -2034,13 +2044,13 @@ mod a35_tests {
     fn cover(cnt: usize, rev: bool, walk: impl Fn(&mut dyn FnMut(Seg)), src: impl Fn(usize) -> Option<(usize, usize)>) {
         let mut seen = vec![0; cnt];
         walk(&mut |s| match s {
-            Seg::Run { p, b, lo, len, at } => for j in 0..len { seen[at + j] += 1; assert_eq!(src(at + j), Some((p, b * BLK + lo + if rev { len - 1 - j } else { j })), "at {}", at + j) },
+            Seg::Run { p, b, lo, len, at } => for j in 0..len { seen[at + j] += 1; assert_eq!(src(at + j), Some((p, b * WBLK + lo + if rev { len - 1 - j } else { j })), "at {}", at + j) },
             Seg::Hole { at, len } => for j in 0..len { seen[at + j] += 1; assert_eq!(src(at + j), None) },
         });
         assert!(seen.iter().all(|&x| x == 1));
     }
     #[test] fn blk_count_is_full_except_the_last() {
-        assert_eq!((blk_count(2048, 0), blk_count(2048, 1), blk_count(2049, 2), blk_count(1, 0)), (BLK, BLK, 1, 1));
+        assert_eq!((blk_count(2048, 0), blk_count(2048, 1), blk_count(2049, 2), blk_count(1, 0)), (WBLK, WBLK, 1, 1));
     }
     #[test] fn walks_serve_every_position_once() {
         let n = 2500;
@@ -2521,21 +2531,21 @@ pub struct Grow {
     /// the block's residual width, where its residuals start in the pack, its base and its sum once grown
     w: u8, s: usize, base: u64, sum: i64,
     /// elements `lo ..` of the grown block are the added ones
-    buf: [i64; BLK],
+    buf: [i64; WBLK],
 }
 /// structural.rs `concat_foR_append`'s decision and block: `Some` only where the writer, asked about the grown block,
 /// keeps its base, maximum and width with no exception, and the first part was the writer's to begin with. `parts` are the
 /// `k >= 1` parts' views, `start` their `k + 1` boundaries, `ew` the element width; `None` is `none`, and the caller re-encodes.
 pub fn append_plan(parts: &[Coc], start: &[usize], ew: usize) -> Option<Grow> {
     let (h, k) = (parts.first()?, parts.len());
-    let (n, lo, b, m) = (h.meta.n, h.meta.n % BLK, h.meta.n / BLK, start[k] - h.meta.n);
+    let (n, lo, b, m) = (h.meta.n, h.meta.n % WBLK, h.meta.n / WBLK, start[k] - h.meta.n);
     // `h.meta.n` is the part's own count wherever `lo != 0`: only a count past the grid is clamped, to a block boundary. The
     // writer's form covers the block; a patch list rides along in the pack's tail untouched where block `b` has no exception,
     // every one then lying before the append point; `put_res` measures from the base, so a block whose frame is above it declines.
-    if lo == 0 || lo + m > BLK || !h.std(n) || h.blk_nexc(b) != 0 || h.frame(b) != h.meta.base[b] as u64 || !trailer_ok(h, n, ew, false) {
+    if lo == 0 || lo + m > WBLK || !h.std(n) || h.blk_nexc(b) != 0 || h.frame(b) != h.meta.base[b] as u64 || !trailer_ok(h, n, ew, false) {
         return None;
     }
-    let mut buf = [0i64; BLK];
+    let mut buf = [0i64; WBLK];
     unpack_run(&mut buf[..lo], h, b, 0, false);
     cat_fill(&|i| plain(&parts[i]), start, ew, false, &mut buf[lo..lo + m], n);
     let (mut mn, mut mx, mut sum, mut w, mut fd, mut nexc) = (0i64, 0i64, 0i64, 0u8, 0u64, 0u32);
@@ -2553,7 +2563,7 @@ impl Grow {
         let (nb, at) = (meta.len() / 33, 24 * (meta.len() / 33) + 8 * self.b);
         meta[at..at + 8].copy_from_slice(&self.sum.to_ne_bytes());
         meta[32 * nb + 8..32 * nb + 16].copy_from_slice(&((self.n + self.m) as u64).to_ne_bytes());
-        put_res(&mut pack[self.s..self.s + BLK * self.w as usize / 8], self.w, self.lo, &self.buf[self.lo..self.lo + self.m], self.base);
+        put_res(&mut pack[self.s..self.s + WBLK * self.w as usize / 8], self.w, self.lo, &self.buf[self.lo..self.lo + self.m], self.base);
     }
 }
 

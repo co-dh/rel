@@ -6,7 +6,9 @@ use alloc::vec;
 use core::sync::atomic::{AtomicI64, Ordering::Relaxed};
 use crate::c::{run_map, run_slices, Runner};
 use crate::ids::{id_at, ids_avail};
-use crate::{simd, BLK};
+use crate::simd;
+/// A dense payload has no column block size; any one groups its sums.
+const BLK: usize = 1 << crate::DEFAULT_LG;
 
 // ---- A12: reduce.rs ----
 /// An element of the four integer classes: read in native order, widened to `i64` as C's `(int64_t)` cast does.

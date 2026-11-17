@@ -13,7 +13,7 @@ use crate::coc::{self, Coc};
 
 use crate::layout::Tail;
 
-use crate::BLK;
+use crate::DEFAULT_LG;
 use crate::alp::Cocf;
 
 use crate::enc::{EncMeta, EncPack, Moves};
@@ -30,6 +30,10 @@ pub struct CCoc {
     pub nexc: usize, pub exc_esz: usize,
 }
 impl CCoc {
+    /// The block size exponent, read from the metadata trailer the `sumnul` slot points into (two words on); a column with
+    /// no trailer slots is the writer's.
+    #[inline(always)]
+    pub fn lg(&self) -> u32 { if self.sumnul.is_null() { DEFAULT_LG } else { unsafe { *self.sumnul.add(2) as u32 } } }
     /// The only place raw `coc` pointers become slices. Safety: every pointer is null or valid for the length
     /// coc.rs documents, for `'a`. Inlined so a caller that reads one field (`qrs_coc_block_start`, called per block)
     /// builds only that slice, not the whole 208-byte view out of line.
@@ -42,7 +46,7 @@ impl CCoc {
             // a null slot is "no sums stored", which coc.rs spells 0
             sumnul: if self.sumnul.is_null() { 0 } else { unsafe { *self.sumnul } },
             sumn: if self.sumn.is_null() { 0 } else { unsafe { *self.sumn } },
-            n: self.n, nblk: self.nblk, mblk: m,
+            n: self.n, nblk: self.nblk, mblk: m, lg: self.lg(),
         };
         let exc = if self.exc_off.is_null() { None } else {
             Some(coc::Exc { off: unsafe { sl(self.exc_off, m + 1) }, pos: unsafe { sl(self.exc_pos, self.nexc) },
@@ -130,7 +134,7 @@ impl CEnc {
                            exp: if self.exp.is_null() { None } else { Some(&mut *self.exp.add(b)) } } }
     }
     /// Block `b`'s pack-pass view, after `coc_enc_layout`: residuals at `off[b]`, patches `exc_off[b]..exc_off[b + 1]`.
-    /// The residual region is the `nb` elements' `ceil(nb * width / 8)` bytes, or with `whole` the full `BLK * width / 8`
+    /// The residual region is the `nb` elements' `ceil(nb * width / 8)` bytes, or with `whole` the full `blk * width / 8`
     /// (`move_pack` copies a whole block). Safety: as `meta_blk`.
     pub unsafe fn pack_blk<'a>(&mut self, b: usize, nb: usize, whole: bool) -> EncPack<'a> {
         let c = &self.c;
@@ -139,7 +143,7 @@ impl CEnc {
             let ne = *self.exc_off.add(b + 1) as usize - at;
             EncPack { b, nb, base, frame: (base as u64).wrapping_add(if c.fdelta.is_null() { 0 } else { *c.fdelta.add(b) }), width: w,
                       exp: if self.exp.is_null() { 0 } else { *self.exp.add(b) },
-                      res: sl_mut(c.pack.add(*c.off.add(b) as usize), (if whole { BLK } else { nb } * w as usize).div_ceil(8)),
+                      res: sl_mut(c.pack.add(*c.off.add(b) as usize), (if whole { 1usize << c.lg() } else { nb } * w as usize).div_ceil(8)),
                       pos: sl_mut(self.exc_pos.add(at), ne), raw: sl_mut(self.exc_raw.add(at * self.width), ne * self.width) }
         }
     }
@@ -169,7 +173,7 @@ impl CCocf {
     pub const EMPTY: CCocf = CCocf {
         c: CCoc { base: null_mut(), maxv: null_mut(), width: null_mut(), off: null_mut(), bsum: null_mut(), sumnul: null_mut(),
                   sumn: null_mut(), pack: null_mut(), n: 0, nblk: 0, packbytes: 0, mblk: 0, exc_off: core::ptr::null(),
-                  exc_pos: core::ptr::null(), exc_raw: core::ptr::null(), fdelta: null_mut(), nexc: 0, exc_esz: 0 },
+                  exc_pos: core::ptr::null(), exc_raw: core::ptr::null(), fdelta: null_mut(), nexc: 0, exc_esz: 0},
         exp: null_mut(), exc_off: null_mut(), exc_pos: null_mut(), exc_raw: null_mut(), nexc: 0, f32: 0 };
 }
 
@@ -189,8 +193,8 @@ pub unsafe extern "C" fn qrs_enc_for_pack(s: *mut CEnc, b: usize, x: *const u8, 
 pub unsafe extern "C" fn qrs_src_copy(out: *mut u8, x: *const u8, bytes: usize) { unsafe { enc::src_copy(sl_mut(out, bytes), sl(x, bytes)) } }
 /// A16: coc.rs `src_bits`, block `b`'s `nb` bytes packed into the `nbytes`-byte bitmap `out`.
 pub unsafe extern "C" fn qrs_src_bits(out: *mut u8, nbytes: usize, b: usize, x: *const u8, nb: usize) {
-    // BLK is a multiple of 8, so block `b` starts on byte `b * BLK / 8`; the slice is its own bytes only (disjoint across blocks)
-    unsafe { let (o, n) = (b * (BLK / 8), nb.div_ceil(8)); assert!(o + n <= nbytes, "qlean src_bits: block {b} of {nb} bytes past the {nbytes}-byte bitmap"); enc::src_bits(sl_mut(out.add(o), n), sl(x, nb)) }
+    // a block is a multiple of 8 elements, so block `b` starts on byte `b * blk / 8`; the slice is its own bytes only (disjoint across blocks)
+    unsafe { let (o, n) = (b * ((1usize << DEFAULT_LG) / 8), nb.div_ceil(8)); assert!(o + n <= nbytes, "qlean src_bits: block {b} of {nb} bytes past the {nbytes}-byte bitmap"); enc::src_bits(sl_mut(out.add(o), n), sl(x, nb)) }
 }
 // A9: the ALP encoder's per-block steps that need nothing of A7. C reaches them through `coc *` and an exponent array
 // the Rust side has no view of (`EncMeta` is A16's), so each is its own entry per element type.
@@ -430,7 +434,7 @@ unsafe extern "C" fn qrs_ew_decode_stage(lo: usize, hi: usize, p: *const CPass) 
     unsafe {
         let p = &*p;
         let (w, cnt) = (ew::ew_width(p.cls as u32), hi - lo);
-        ew::decode_stage(&(*p.a.cast::<CCoc>()).view(), p.at / BLK, cnt, w, sl_mut(p.o.cast::<u8>(), cnt * w))
+        ew::decode_stage(&(*p.a.cast::<CCoc>()).view(), p.at >> (*p.a.cast::<CCoc>()).lg(), cnt, w, sl_mut(p.o.cast::<u8>(), cnt * w))
     }
 }
 /// ew.rs `ew_alp_run`: `Coc.alpDecode` over one tile, the patches the block names applied.
@@ -438,7 +442,7 @@ unsafe extern "C" fn qrs_ew_alp_stage(lo: usize, hi: usize, p: *const CPass) {
     unsafe {
         let (p, cnt) = (&*p, hi - lo);
         let f = &*p.a.cast::<CCocf>();
-        f.view().load_blk(p.at / BLK, cnt, sl_mut(p.o.cast::<u8>(), cnt * if f.f32 != 0 { 4 } else { 8 }))
+        f.view().load_blk(p.at >> f.c.lg(), cnt, sl_mut(p.o.cast::<u8>(), cnt * if f.f32 != 0 { 4 } else { 8 }))
     }
 }
 /// ew.rs `ew_ids_run`: an interned column's ids read where they lie at any lane and written at `cls`.
@@ -459,11 +463,11 @@ unsafe extern "C" fn qrs_ew_pack_stage(lo: usize, hi: usize, p: *const CPass) {
 }
 /// ew.rs `ew_encmeta_run`: the writer's meta step over the tile the chain just computed (`p.o` the `coc_enc`).
 unsafe extern "C" fn qrs_ew_encmeta_stage(lo: usize, hi: usize, p: *const CPass) {
-    unsafe { qrs_enc_for_meta((*p).o.cast(), (*p).at / BLK, (*p).a.cast(), hi - lo) }
+    unsafe { qrs_enc_for_meta((*p).o.cast(), (*p).at >> (*(*p).o.cast::<CEnc>()).c.lg(), (*p).a.cast(), hi - lo) }
 }
 /// ew.rs `ew_encpack_run`: its pack step over the same tile.
 unsafe extern "C" fn qrs_ew_encpack_stage(lo: usize, hi: usize, p: *const CPass) {
-    unsafe { qrs_enc_for_pack((*p).o.cast(), (*p).at / BLK, (*p).a.cast(), hi - lo) }
+    unsafe { qrs_enc_for_pack((*p).o.cast(), (*p).at >> (*(*p).o.cast::<CEnc>()).c.lg(), (*p).a.cast(), hi - lo) }
 }
 /// ew.rs `ew_stage_worker`: the worker of `engine`, chosen once a stage and never per element.
 pub fn stage_worker(engine: u32) -> Worker {
@@ -476,7 +480,7 @@ pub fn stage_worker(engine: u32) -> Worker {
 }
 
 impl CCoc {
-    /// The `coc` that `coc_meta_view` then `coc_attach` build over metadata `m` (`33 * mblk + 16` bytes) and a pack: the
+    /// The `coc` that `coc_meta_view` then `coc_attach` build over metadata `m` (`33 * mblk + 24` bytes) and a pack: the
     /// Rust twins' slices (`Meta::new`, `Coc::attach`) as the raw pointers C reads.
     pub(crate) fn of(c: &Coc, m: *mut u8) -> CCoc {
         let (me, nb) = (&c.meta, c.meta.mblk);
@@ -553,7 +557,7 @@ mod tests {
         let at = |o: i64| if o < 0 { core::ptr::null() } else { unsafe { pk.add(o as usize) } };
         unsafe { CCoc {
             base: m.cast(), maxv: m.add(8 * mblk).cast(), off: m.add(16 * mblk).cast(), bsum: m.add(24 * mblk).cast(),
-            sumnul: m.add(32 * mblk).cast(), sumn: m.add(32 * mblk + 8).cast(), width: m.add(32 * mblk + 16),
+            sumnul: m.add(32 * mblk).cast(), sumn: m.add(32 * mblk + 8).cast(), width: m.add(32 * mblk + 24),
             pack: pk, n, nblk: h[1] as usize, packbytes: pb, mblk,
             exc_off: at(h[6]).cast(), exc_pos: at(h[7]).cast(), exc_raw: at(h[8]), fdelta: at(h[9]).cast_mut().cast(),
             nexc: h[4] as usize, exc_esz: h[5] as usize,
@@ -705,11 +709,13 @@ unsafe fn mk_pair(a: *mut c_void, b: *mut c_void) -> *mut c_void {
 /// coc.rs `coc_meta_view`: the five sections and the trailer over `metabytes` bytes at `m`, the count cut to what they hold.
 unsafe fn meta_view(m: *mut u8, metabytes: usize, n: usize) -> CCoc {
     let nblk = metabytes / 33;
-    let n = n.min(nblk * BLK);
     unsafe {
+        let lg = *m.add(32 * nblk + 16).cast::<u64>();
+        assert!((crate::MIN_LG as u64..=crate::MAX_LG as u64).contains(&lg), "qlean: a column's block size lg {lg} is outside 6 ..= 16");
+        let (lg, n) = (lg as u32, n.min(nblk << lg));
         CCoc { base: m.cast(), maxv: m.add(8 * nblk).cast(), off: m.add(16 * nblk).cast(), bsum: m.add(24 * nblk).cast(),
-               sumnul: m.add(32 * nblk).cast(), sumn: m.add(32 * nblk + 8).cast(), width: m.add(32 * nblk + 16), pack: null_mut(),
-               n, nblk: n.div_ceil(BLK), packbytes: 0, mblk: nblk, exc_off: core::ptr::null(), exc_pos: core::ptr::null(),
+               sumnul: m.add(32 * nblk).cast(), sumn: m.add(32 * nblk + 8).cast(), width: m.add(32 * nblk + 24), pack: null_mut(),
+               n, nblk: n.div_ceil(1 << lg), packbytes: 0, mblk: nblk, exc_off: core::ptr::null(), exc_pos: core::ptr::null(),
                exc_raw: core::ptr::null(), fdelta: null_mut(), nexc: 0, exc_esz: 0 }
     }
 }
@@ -717,12 +723,14 @@ unsafe fn meta_view(m: *mut u8, metabytes: usize, n: usize) -> CCoc {
 /// coc.rs `coc_enc_open`: the metadata sarray and the heap copies the meta pass fills.
 pub unsafe extern "C" fn qrs_coc_enc_open(s: *mut CEnc, n: usize, width: usize, alp: c_int) {
     unsafe {
-        let (nblk, msz) = (n.div_ceil(BLK), 33 * n.div_ceil(BLK) + 16);
+        let (nblk, msz) = (n.div_ceil(1 << DEFAULT_LG), 33 * n.div_ceil(1 << DEFAULT_LG) + 24);
         core::ptr::write_bytes(s, 0, 1);
         (*s).n = n;
         (*s).width = width;
         (*s).alp = alp;
         let meta = lean::alloc_sarray(1, msz, msz);
+        // the trailer's block size, which every reader of this metadata (the encoder's own view first) takes its grid from
+        lean::sarray_cptr(meta).add(32 * nblk + 16).cast::<u64>().write(DEFAULT_LG as u64);
         (*s).meta = meta.cast();
         (*s).c = meta_view(lean::sarray_cptr(meta), msz, n);
         if alp != 0 { (*s).exp = coc_alloc(nblk).cast() } else { (*s).frm_heap = coc_alloc(nblk * 8).cast(); (*s).c.fdelta = (*s).frm_heap }
@@ -737,7 +745,7 @@ pub unsafe extern "C" fn qrs_coc_enc_plan(s: *mut CEnc) -> usize {
         let (nblk, width) = ((*s).c.nblk, (*s).width);
         if (*s).planned == 0 {
             (*s).planned = 1;
-            let at = crate::coc::Meta::offsets(sl((*s).c.width, nblk), nblk, sl_mut((*s).c.off, nblk));
+            let at = crate::coc::Meta::offsets((*s).c.lg(), sl((*s).c.width, nblk), nblk, sl_mut((*s).c.off, nblk));
             (*s).c.packbytes = at as usize;
             (*s).at = at as usize;
             (*s).nexc = crate::alp::alp_offsets(sl_mut((*s).exc_off, nblk + 1), nblk);
@@ -784,9 +792,9 @@ pub unsafe extern "C" fn qrs_coc_enc_layout(s: *mut CEnc) {
         (*s).pack = pack.cast();
         (*s).c.pack = lean::sarray_cptr(pack);
         (*s).c.packbytes = at + tail;
-        // a short last block reserves a full block's room and packs only `n % 1024` residuals into it; the rest is written
+        // a short last block reserves a full block's room and packs only `n % blk` residuals into it; the rest is written
         // here, so equal columns are equal bytes
-        if n % BLK != 0 { core::ptr::write_bytes((*s).c.pack.add(*(*s).c.off.add(nblk - 1) as usize), 0, at - *(*s).c.off.add(nblk - 1) as usize) }
+        if n % (1 << (*s).c.lg()) != 0 { core::ptr::write_bytes((*s).c.pack.add(*(*s).c.off.add(nblk - 1) as usize), 0, at - *(*s).c.off.add(nblk - 1) as usize) }
         let o_frm = l.as_ref().map_or(0, |l| l.tail);
         if let Some(l) = l {
             let t = (*s).c.pack.add(at);
@@ -829,18 +837,18 @@ unsafe extern "C" fn src_run<S: Source>(b0: usize, b1: usize, p: *const CPass) {
     unsafe {
         let (s, job) = ((*p).o.cast::<CEnc>(), &*(*p).a.cast::<Pass<S>>());
         let Some(cur) = job.src.open() else { return };
-        let (n, width, sized) = ((*s).n, (*s).width, job.sized);
+        let (n, width, sized, lg) = ((*s).n, (*s).width, job.sized, (*s).c.lg());
         let (lb, over) = (AtomicUsize::from_ptr(&raw mut (*s).lb), AtomicI32::from_ptr(&raw mut (*s).over));
         // the meta pass under a size test stops once the blocks it has sized already reach it: each block's residuals and its
         // exceptions' bytes are a part of the total `qrs_coc_enc_plan` would answer, so their sum is a lower bound
         let mut mine = 0usize;
         for b in b0..b1 {
-            let (lo, nb) = (b * BLK, if b * BLK + BLK < n { BLK } else { n - b * BLK });
+            let (lo, nb) = (b << lg, if (b + 1) << lg < n { 1 << lg } else { n - (b << lg) });
             let x = job.src.at(cur, lo * width, nb * width);
             if x.is_null() { break }
             (job.blk)(s, b, x, nb);
             if !sized { continue }
-            mine += enc::block_bytes(*(*s).c.width.add(b), *(*s).exc_off.add(b + 1), width);
+            mine += enc::block_bytes(lg, *(*s).c.width.add(b), *(*s).exc_off.add(b + 1), width);
             if (b - b0) % 16 == 15 {
                 if lb.fetch_add(mine, SeqCst) + mine >= (*s).below { over.store(1, SeqCst) }
                 mine = 0;
@@ -857,7 +865,7 @@ unsafe fn src_pass<S: Source>(s: *mut CEnc, src: &S, blk: Blk, meta: bool, cost:
         let job = Pass { src, blk, sized: meta && (*s).below != 0 };
         let (n, w) = ((*s).n, (*s).width);
         let p = CPass { a: (&raw const job).cast(), b: core::ptr::null(), c: core::ptr::null(), o: s.cast(), n, at: 0, r#priv: 0, nul: 0, op: 0, cls: 0, shape: 0 };
-        c::pool()(src_run::<S>, n.div_ceil(BLK), cost, BLK * w, &p);
+        c::pool()(src_run::<S>, n.div_ceil(1 << (*s).c.lg()), cost, w << (*s).c.lg(), &p);
         !src.bad()
     }
 }
@@ -880,7 +888,7 @@ unsafe fn encode<S: Source>(src: &S, n: usize, width: usize, kind: u32, out: &mu
             (*s).width = width;
             (*s).out = lean::sarray_cptr(o);
             let bits = kind == SRC_BITS;
-            let blk = move |s: *mut CEnc, b: usize, x: *const u8, nb: usize| if bits { qrs_src_bits((*s).out, n.div_ceil(8), b, x, nb) } else { qrs_src_copy((*s).out.add(b * BLK * width), x, nb * width) };
+            let blk = move |s: *mut CEnc, b: usize, x: *const u8, nb: usize| if bits { qrs_src_bits((*s).out, n.div_ceil(8), b, x, nb) } else { qrs_src_copy((*s).out.add((b << DEFAULT_LG) * width), x, nb * width) };
             if !src_pass(s, src, &blk, false, crate::QLEAN_COST_COPY) { lean::dec(o); return 0 }
             out.body = o.cast();
             return 1;
@@ -961,11 +969,11 @@ pub trait Producer: Sync {
 /// A closure is a producer with no `take`: the form every kernel that computes an answer a block at a time uses.
 impl<F: Fn(&mut [i64], usize) + Sync> Producer for F { fn fill(&self, buf: &mut [i64], i0: usize) { self(buf, i0) } }
 /// `P` as the writer's source: the cursor and the blocks it claims, as `FillSrc`'s are for a C producer.
-struct ProdSrc<'a, P> { p: &'a P, width: usize }
+struct ProdSrc<'a, P> { p: &'a P, width: usize, lg: u32 }
 impl<P: Producer> Moves for ProdSrc<'_, P> {
     fn take(&self, b: usize) -> Option<(Cocf<'_>, usize)> { self.p.take(b) }
     fn ints(&self, b: usize, nb: usize, d: &mut [i64], ee: &mut [i8], raw: Option<&mut [u8]>) -> Option<i32> {
-        let mut ptrs = [core::ptr::null::<u8>(); BLK];
+        let mut ptrs = alloc::vec![core::ptr::null::<u8>(); nb];
         let mut o = structural::Ints { d: &mut d[..nb], ee: &mut ee[..nb], raw: raw.is_some().then(|| &mut ptrs[..nb]) };
         let e = self.p.ints(b, Some(&mut o));
         if let (Some(raw), true) = (raw, e >= 0) {
@@ -978,14 +986,14 @@ impl<P: Producer> Moves for ProdSrc<'_, P> {
     fn hint(&self, b: usize) -> Option<(i32, u32)> { self.p.hint(b) }
 }
 impl<P: Producer> Source for ProdSrc<'_, P> {
-    unsafe fn open(&self) -> Option<*mut c_void> { Some(unsafe { coc_alloc(BLK * 16) }.cast()) }
+    unsafe fn open(&self) -> Option<*mut c_void> { Some(unsafe { coc_alloc(16 << self.lg) }.cast()) }
     unsafe fn at(&self, cur: *mut c_void, off: usize, len: usize) -> *const u8 {
         unsafe {
-            let (b, w) = (off / self.width / BLK, self.width);
+            let (b, w) = (off / self.width >> self.lg, self.width);
             if self.p.take(b).is_some() || self.p.ints(b, None) >= 0 { return cur.cast() }
             let (v, cnt) = (cur.cast::<i64>(), len / w);
             self.p.fill(sl_mut(v, cnt), off / w);
-            enc::narrow(w, sl(v, cnt), sl_mut(v.add(BLK).cast::<u8>(), cnt * w)).as_ptr()
+            enc::narrow(w, sl(v, cnt), sl_mut(v.add(1 << self.lg).cast::<u8>(), cnt * w)).as_ptr()
         }
     }
     unsafe fn close(&self, cur: *mut c_void) { unsafe { coc_free(cur.cast()) } }
@@ -993,11 +1001,11 @@ impl<P: Producer> Source for ProdSrc<'_, P> {
 }
 /// The (meta, pack) of the `n` elements `p` denotes, `width` bytes each: coc.rs `qlean_coc_encode_fill` for a Rust producer.
 pub fn encode_fill<P: Producer>(n: usize, width: usize, p: &P) -> lean::O {
-    unsafe { lean::O::from_raw(encode_move(n, width, false, &ProdSrc { p, width }).cast()) }
+    unsafe { lean::O::from_raw(encode_move(n, width, false, &ProdSrc { p, width, lg: DEFAULT_LG }).cast()) }
 }
 /// `encode_fill` at ALP: `(meta, (pack, alp))` of the `n` floats of `width` bytes `p` denotes (`qlean_coc_encode_move`, alp 1).
 pub fn encode_alp<P: Producer>(n: usize, width: usize, p: &P) -> lean::O {
-    unsafe { lean::O::from_raw(encode_move(n, width, true, &ProdSrc { p, width }).cast()) }
+    unsafe { lean::O::from_raw(encode_move(n, width, true, &ProdSrc { p, width, lg: DEFAULT_LG }).cast()) }
 }
 /// structural.rs `take_first`: the array `a` back, and its element 0 as an owned reference -- moved out where `a` held the
 /// only reference to it (the slot is left `box(0)`), a reference of its own otherwise -- so an append whose first part

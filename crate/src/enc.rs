@@ -12,7 +12,7 @@ use crate::coc::Coc;
 use crate::pod::Lane;
 
 /// An element type the encoder reads (`COC_T` of coc.rs's encode template): `u8 i16 i32 i64`.
-pub trait Elt: Lane { fn widen(self) -> i64; }
+pub trait Elt: Lane + Default { fn widen(self) -> i64; }
 impl Elt for u8 { fn widen(self) -> i64 { self as i64 } }
 impl Elt for i16 { fn widen(self) -> i64 { self as i64 } }
 impl Elt for i32 { fn widen(self) -> i64 { self as i64 } }
@@ -33,7 +33,7 @@ pub struct EncMeta<'a> {
 pub struct EncPack<'a> {
     pub b: usize, pub nb: usize,
     pub base: i64, pub frame: u64, pub width: u8, pub exp: i8,
-    /// `BLK * width / 8` bytes at `off[b]`
+    /// `blk * width / 8` bytes at `off[b]`
     pub res: &'a mut [u8],
     /// `exc_off[b] .. exc_off[b + 1]`
     pub pos: &'a mut [u16], pub raw: &'a mut [u8],
@@ -60,7 +60,7 @@ pub fn pack_block<T: Elt>(dst: &mut [u8], src: &[T], nb: usize, base: i64, w: u8
             *o = g.iter().enumerate().fold(0u8, |a, (t, v)| a | ((r(v) & ((1 << w) - 1)) << (t * w as usize)) as u8)
         },
         _ => {
-            let mut v = [0u64; crate::BLK];
+            let mut v = crate::pod::Scr::<u64>::new(nb.next_multiple_of(64));
             for (o, x) in v.iter_mut().zip(src) { *o = r(x) }
             crate::simd::res_pack(&v, w, nb, dst)
         }
@@ -138,7 +138,8 @@ pub fn encode_meta_exc_blk<T: Elt>(m: &mut EncMeta, x: &[T], nb: usize) -> u32 {
 pub fn pack_exc_blk<T: Elt>(p: &mut EncPack, x: &[T], ne: u32) {
     let (nul, base, w, x) = (nul::<T>(), p.frame as i64, p.width, &x[..p.nb]);
     if ne == 0 { return pack_block(p.res, x, p.nb, base, w) }
-    let (mut y, mut k) = ([T::wrap(base as u64); crate::BLK], 0);
+    let (mut y, mut k) = (crate::pod::Scr::<T>::new(p.nb), 0);
+    y.fill(T::wrap(base as u64));
     for (i, &v) in x.iter().enumerate() {
         let r = (v.widen() as u64).wrapping_sub(base as u64);
         if v.widen() == nul || (w < 64 && r >> w != 0) {
@@ -152,7 +153,7 @@ pub fn pack_exc_blk<T: Elt>(p: &mut EncPack, x: &[T], ne: u32) {
 }
 /// coc.rs `decode`: the whole column into `out` (`n` long).
 pub fn decode<T: Lane>(c: &Coc, out: &mut [T]) {
-    for (b, o) in out[..c.meta.n].chunks_mut(crate::BLK).enumerate() { c.decode_blk(b, o.len(), o) }
+    for (b, o) in out[..c.meta.n].chunks_mut(c.meta.blk()).enumerate() { c.decode_blk(b, o.len(), o) }
 }
 
 // ---- A16: coc.rs, the block steps of `coc_enc` ----
@@ -219,7 +220,7 @@ pub fn blk_meta(m: &mut EncMeta, v: &[i64], width: usize) -> u32 {
     fn go<T: Elt>(m: &mut EncMeta, x: &[u8], nb: usize) -> u32 {
         encode_meta_exc_blk(m, crate::pod::cast::<T>(x).expect("qlean: narrowed block misaligned"), nb)
     }
-    let mut buf = [0i64; crate::BLK]; // i64 lanes, so the narrowed bytes are aligned for every `T`
+    let mut buf = crate::pod::Scr::<i64>::new(v.len()); // i64 lanes, so the narrowed bytes are aligned for every `T`
     let x = narrow(width, v, crate::pod::bytes_mut(&mut buf));
     match width { 1 => go::<u8>(m, x, v.len()), 2 => go::<i16>(m, x, v.len()), 4 => go::<i32>(m, x, v.len()), _ => go::<i64>(m, x, v.len()) }
 }
@@ -239,12 +240,12 @@ pub fn move_meta(m: &mut EncMeta, f: &Cocf, pb: usize) -> u32 {
     *m.nexc = ne;
     ne
 }
-/// coc.rs `move_pack`, the taken branch: block `pb` of `f`'s residuals (`p.res` is the whole `BLK * width / 8`
+/// coc.rs `move_pack`, the taken branch: block `pb` of `f`'s residuals (`p.res` is the whole `blk * width / 8`
 /// bytes, a pack shorter than its widths claim reading zeros past its end, `Column.resAt`'s convention) and its patch
 /// list, whose positions move unchanged. `esz` is the written column's element size, `alp` its form.
 pub fn move_pack(p: &mut EncPack, f: &Cocf, pb: usize, alp: bool, esz: usize) {
     let c = &f.c;
-    let (bytes, so) = (crate::BLK * c.meta.width[pb] as usize / 8, c.meta.off[pb] as usize);
+    let (bytes, so) = (c.meta.blk() * c.meta.width[pb] as usize / 8, c.meta.off[pb] as usize);
     let src = c.pack.get(so..).unwrap_or(&[]);
     let avail = src.len().min(bytes);
     p.res[..avail].copy_from_slice(&src[..avail]);
@@ -270,7 +271,7 @@ pub fn meta_step(m: &mut EncMeta, x: &[u8], width: usize, nb: usize) {
 /// A block's pack step, as `meta_step`.
 pub fn pack_step(p: &mut EncPack, x: &[u8], width: usize, alp: bool) { if alp { alp_pack(p, x, width) } else { for_pack(p, x, width) } }
 /// coc.rs `src_run`'s lower bound on a sized block's share of the encoded size: its residuals and its patches' bytes.
-pub fn block_bytes(width_b: u8, nexc: u32, width: usize) -> usize { crate::BLK * width_b as usize / 8 + nexc as usize * (width + 2) }
+pub fn block_bytes(lg: u32, width_b: u8, nexc: u32, width: usize) -> usize { (1usize << lg) * width_b as usize / 8 + nexc as usize * (width + 2) }
 /// coc.rs `coc_enc_layout`'s patch list or ALP blob header: `nexc` and `w` in its first 16 bytes, the rest of `t` zero.
 pub fn exc_header(t: &mut [u8], nexc: usize, w: u64) {
     t.fill(0);
@@ -304,7 +305,7 @@ pub fn move_meta_blk<'a>(mv: &impl Moves, m: &mut EncMeta, x: impl FnOnce() -> &
     let (b, alp) = (m.b, m.exp.is_some());
     if let Some((f, pb)) = mv.take(b) { move_meta(m, &f, pb); return }
     if alp {
-        let (mut d, mut ee) = ([0i64; crate::BLK], [0i8; crate::BLK]);
+        let (mut d, mut ee) = (crate::pod::Scr::<i64>::new(nb), crate::pod::Scr::<i8>::new(nb));
         if let Some(e) = mv.ints(b, nb, &mut d, &mut ee, None).filter(|&e| e >= 0) { *m.nexc = alp_fin_blk(m, e, &mut d, &ee, nb); return }
     }
     let x = x();
@@ -320,12 +321,12 @@ pub fn move_meta_blk<'a>(mv: &impl Moves, m: &mut EncMeta, x: impl FnOnce() -> &
     meta_step(m, x, width, nb)
 }
 /// coc.rs `move_pack`: a moved block's residuals and its patch list, whose positions are the block's own and so move unchanged.
-/// `pack(whole)` is block `b`'s `EncPack`, asked once; `whole` for a taken block's full `BLK * width / 8` residual region.
+/// `pack(whole)` is block `b`'s `EncPack`, asked once; `whole` for a taken block's full `blk * width / 8` residual region.
 pub fn move_pack_blk<'a, 'b>(mv: &impl Moves, pack: impl FnOnce(bool) -> EncPack<'b>, x: impl FnOnce() -> &'a [u8], b: usize, nb: usize,
                              width: usize, alp: bool) {
     if let Some((f, pb)) = mv.take(b) { return move_pack(&mut pack(true), &f, pb, alp, width) }
     if alp {
-        let (mut d, mut ee, mut raw) = ([0i64; crate::BLK], [0i8; crate::BLK], [0u64; crate::BLK]);
+        let (mut d, mut ee, mut raw) = (crate::pod::Scr::<i64>::new(nb), crate::pod::Scr::<i8>::new(nb), crate::pod::Scr::<u64>::new(nb));
         let raw = &mut crate::pod::bytes_mut(&mut raw)[..nb * width];
         if mv.ints(b, nb, &mut d, &mut ee, Some(raw)).is_some_and(|e| e >= 0) {
             let p = &mut pack(false);

@@ -7,7 +7,7 @@ fn lanes_of<const L: usize>(p: &[u8], w: usize, nb: usize, out: &mut [u8]) {
         // the last group can reach past the block's bytes: read a zero-padded copy (the window is 16 bytes over)
         let mut t = [0u8; 64 + 16];
         let q: &[u8] = match p.get(g * w..g * w + w + 16) {
-            Some(q) if g * w + w + 9 <= crate::BLK * w / 8 => q,
+            Some(q) if g * w + w + 9 <= p.len() => q,
             _ => { let e = p.len().min(g * w + w); t[..e - g * w].copy_from_slice(&p[g * w..e]); &t }
         };
         for k in 0..8 {
@@ -21,7 +21,7 @@ fn lanes_of<const L: usize>(p: &[u8], w: usize, nb: usize, out: &mut [u8]) {
     }
 }
 
-/// out.len() == BLK * 8; a power-of-two width or one over 64 is a bug, as in C, and aborts.
+/// out.len() == 8 * (block size); a power-of-two width or one over 64 is a bug, as in C, and aborts.
 pub fn res_unpack_scalar(p: &[u8], w: u8, nb: usize, out: &mut [u8]) {
     let w = w as usize;
     match w {

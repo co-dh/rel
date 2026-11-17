@@ -80,17 +80,17 @@ impl<'a> Cocf<'a> {
             if (i0..i1).contains(&at) { out[at * esz..(at + 1) * esz].copy_from_slice(&self.exc_raw[j * esz..(j + 1) * esz]) }
         }
     }
-    /// coc.rs `cocf_lanes`: block `b`'s residuals as whole lanes (`buf`, BLK * 8, when they must be unpacked);
+    /// coc.rs `cocf_lanes`: block `b`'s residuals as whole lanes (`buf`, blk * 8, when they must be unpacked);
     /// answers them, the lane width and the residual width.
     pub fn lanes<'b>(&self, b: usize, nb: usize, buf: &'b mut [u8]) -> (&'b [u8], u8, u8) where 'a: 'b {
         let (w0, at) = (self.c.meta.width[b], self.c.meta.off[b] as usize);
         let mut w = w0;
-        let p = crate::coc::lanes(&self.c.pack[at..at + crate::BLK * w0 as usize / 8], &mut w, nb, buf);
+        let p = crate::coc::lanes(&self.c.pack[at..at + self.c.meta.blk() * w0 as usize / 8], &mut w, nb, buf);
         (p, w, w0)
     }
     /// coc.rs `cocf_load_blk`: block `b`'s first `nb` elements into `out`, patches applied.
     pub fn load_blk(&self, b: usize, nb: usize, out: &mut [u8]) {
-        let mut lb = [0u64; crate::BLK];
+        let mut lb = pod::Scr::<u64>::new(self.c.meta.blk());
         let (p, w, _) = self.lanes(b, nb, pod::bytes_mut(&mut lb));
         self.load_range(b, p, w, 0, nb, out)
     }
@@ -120,7 +120,7 @@ impl Cocf<'_> {
         t
     }
     /// The block's first `nb`-element grid: `(lo, nb)` of block `b`.
-    fn blk(&self, b: usize) -> usize { (self.c.meta.n - b * crate::BLK).min(crate::BLK) }
+    fn blk(&self, b: usize) -> usize { (self.c.meta.n - (b << self.c.meta.lg)).min(self.c.meta.blk()) }
     /// coc.rs `cocf_min`: metadata and the patch list only; NaN loses every comparison, and the `+inf` seed is q's `0w`.
     /// A block of nothing but patches has no base to offer.
     pub fn min(&self) -> f64 {
@@ -144,7 +144,7 @@ impl Cocf<'_> {
         out.fill(0);
         crate::codec::mask_blks(&self.c, crate::cocops::LT, &self.thresholds(v), out);
         for b in 0..self.c.meta.nblk {
-            let at = (b * crate::BLK >> 6).min(out.len());
+            let at = (b << self.c.meta.lg >> 6).min(out.len());
             let w64 = &mut out[at..];
             for j in self.exc_off[b] as usize..self.exc_off[b + 1] as usize {
                 let p = self.exc_pos[j] as usize;
@@ -247,7 +247,7 @@ pub fn dat_blk<F: Flt>(x: &[F], e: i32, d: &mut [i64], ok: &mut [u8]) {
 pub fn alp_exps<F: Flt>(x: &[F], nb: usize, ee: &mut [i8]) -> i32 {
     let (x, ee) = (&x[..nb], &mut ee[..nb]);
     if !F::F32 {
-        let (mut ex, mut maybe) = ([0i64; crate::BLK], [0i64; crate::BLK]);
+        let (mut ex, mut maybe) = (pod::Scr::<i64>::new(nb), pod::Scr::<i64>::new(nb));
         for (m, v) in maybe.iter_mut().zip(x) { *m = !(v.to_f64().abs() < P49) as i64 }
         for e in 1..=MAXE { for (k, v) in ex.iter_mut().zip(x) { *k += (v.to_f64().abs() * POW10[e] < P49) as i64 } }
         for k in 0..3 {
@@ -260,7 +260,7 @@ pub fn alp_exps<F: Flt>(x: &[F], nb: usize, ee: &mut [i8]) -> i32 {
         }
         // `maybe` is 1 + the first trial that hit: a hit at E means the smallest e may be anywhere up to E, so it is
         // searched; a first hit at E + 1 or E + 2 is the smallest, every e <= E failing with E.
-        let (mut at, mut m) = ([0u16; crate::BLK], 0);
+        let (mut at, mut m) = (pod::Scr::<u16>::new(nb), 0);
         for i in 0..nb {
             ee[i] = if maybe[i] > 1 { (ex[i] + maybe[i] - 1) as i8 } else { -1 };
             at[m] = i as u16;
@@ -272,7 +272,7 @@ pub fn alp_exps<F: Flt>(x: &[F], nb: usize, ee: &mut [i8]) -> i32 {
         }
         return ee.iter().fold(0, |be, &e| be.max(e as i32));
     }
-    let (mut d, mut ok) = ([0i64; crate::BLK], [0u8; crate::BLK]);
+    let (mut d, mut ok) = (pod::Scr::<i64>::new(nb), pod::Scr::<u8>::new(nb));
     for (e, &v) in ee.iter_mut().zip(x) { *e = if sent(v) { -2 } else { -1 } }
     let mut left = ee.contains(&-1);
     for e in 0..=MAXE as i8 {
@@ -286,19 +286,19 @@ pub fn alp_exps<F: Flt>(x: &[F], nb: usize, ee: &mut [i8]) -> i32 {
 }
 /// coc.rs `alp_meta_blk`: block metadata (exponent into `m.exp`); answers the patch count.
 pub fn alp_meta_blk<F: Flt>(m: &mut EncMeta, x: &[F], nb: usize) -> u32 {
-    let mut ee = [0i8; crate::BLK];
+    let mut ee = pod::Scr::<i8>::new(nb);
     let be = alp_exps(x, nb, &mut ee);
     alp_meta_at(m, x, nb, be, &mut ee)
 }
 /// `alp_meta_at`'s re-check: `d` at the block exponent `be`, and an element that is not exact there becomes an exception.
 fn recheck<F: Flt>(x: &[F], nb: usize, be: i32, ee: &mut [i8], d: &mut [i64]) {
-    let mut ok = [0u8; crate::BLK];
+    let mut ok = pod::Scr::<u8>::new(nb);
     dat_blk(&x[..nb], be, d, &mut ok);
     for (e, &k) in ee[..nb].iter_mut().zip(&ok) { if k == 0 { *e = -1 } }
 }
 /// coc.rs `alp_meta_at`: the metadata at the given block exponent `be`; per-element exponents into `ee`.
 pub fn alp_meta_at<F: Flt>(m: &mut EncMeta, x: &[F], nb: usize, be: i32, ee: &mut [i8]) -> u32 {
-    let mut d = [0i64; crate::BLK];
+    let mut d = pod::Scr::<i64>::new(nb);
     recheck(x, nb, be, ee, &mut d);
     alp_fin_blk(m, be, &mut d, ee, nb)
 }
@@ -310,7 +310,7 @@ pub fn alp_exc_at<F: Flt>(x: &[F], be: i32, lim: u32) -> u32 {
 }
 /// coc.rs `alp_meta_exp`: `alp_meta_at` for elements not searched: only a sentinel is marked beforehand.
 pub fn alp_meta_exp<F: Flt>(m: &mut EncMeta, x: &[F], nb: usize, be: i32) -> u32 {
-    let mut ee = [0i8; crate::BLK];
+    let mut ee = pod::Scr::<i8>::new(nb);
     exp_marks(x, nb, &mut ee);
     alp_meta_at(m, x, nb, be, &mut ee)
 }
@@ -326,7 +326,7 @@ pub fn alp_patch_blk<F: Flt>(o: &Cocf, b: usize, nb: usize, ix: &[u64], v: &[F],
     ee.fill(0);
     for &i in &o.exc_pos[o.exc_off[b] as usize..o.exc_off[b + 1] as usize] { ee[i as usize] = -1 }
     for (&k, &v) in ix.iter().zip(v) {
-        let i = (k - (b * crate::BLK) as u64) as usize;
+        let i = (k - (b << o.c.meta.lg) as u64) as usize;
         if sent(v) { ee[i] = -2; continue }
         if let Some(r) = dat(v, e) { d[i] = r; ee[i] = 0; continue }
         ee[i] = -2;
@@ -337,7 +337,7 @@ pub fn alp_patch_blk<F: Flt>(o: &Cocf, b: usize, nb: usize, ix: &[u64], v: &[F],
 }
 /// coc.rs `alp_patch_pack`: the pack step for a block `alp_patch_blk` rewrote.
 pub fn alp_patch_pack<F: Flt>(p: &mut EncPack, o: &Cocf, ix: &[u64], v: &[F], d: &mut [i64], ee: &[i8], raw: &mut [F]) {
-    let (b, nb, lo) = (p.b, p.nb, (p.b * crate::BLK) as u64);
+    let (b, nb, lo) = (p.b, p.nb, (p.b << o.c.meta.lg) as u64);
     let oraw = pod::cast::<F>(o.exc_raw).expect("qlean: alp_patch_pack: old patches misaligned");
     let (mut j, mut k, mut q) = (o.exc_off[b] as usize, 0, 0);
     for i in (0..nb).filter(|&i| ee[i] < 0) {
@@ -352,13 +352,13 @@ pub fn alp_patch_pack<F: Flt>(p: &mut EncPack, o: &Cocf, ix: &[u64], v: &[F], d:
 /// coc.rs `alp_pack_blk`: residuals and float patches of one block at exponent `be`. An exception is an element
 /// `dat` refuses at `be`, which is pass 1's set: a sentinel fails `dat` on its magnitude, a non-decimal at every e.
 pub fn alp_pack_blk<F: Flt>(p: &mut EncPack, be: i32, x: &[F], raw: &mut [F]) {
-    let (nb, mut d) = (p.nb, [0i64; crate::BLK]);
+    let (nb, mut d) = (p.nb, pod::Scr::<i64>::new(p.nb));
     holes(&x[..nb], be, p.base, &mut d, p.pos, raw);
     crate::enc::pack_block(&mut *p.res, &d[..nb], nb, p.base, p.width)
 }
 /// `alp_pack_blk` before the pack: the decimals `d` with each exception's residual 0 (`d = base`), its position and bits.
 fn holes<F: Flt>(x: &[F], be: i32, base: i64, d: &mut [i64], pos: &mut [u16], raw: &mut [F]) {
-    let mut ok = [0u8; crate::BLK];
+    let mut ok = pod::Scr::<u8>::new(x.len());
     dat_blk(x, be, d, &mut ok);
     for (j, i) in (0..x.len()).filter(|&i| ok[i] == 0).enumerate() { d[i] = base; pos[j] = i as u16; raw[j] = x[i] }
 }

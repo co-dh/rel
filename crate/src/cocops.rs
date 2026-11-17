@@ -6,7 +6,6 @@ use crate::coc::lanes;
 use crate::pod;
 use crate::res::{res_get, res_get_in, res_min_nonzero, res_sum};
 use crate::simd::prefetch;
-use crate::BLK;
 
 /// coc.rs, the comparison codes in QLean.Kernel.Ew's constructor order
 pub(crate) const EQ: i32 = 0;
@@ -23,7 +22,7 @@ pub struct CocMut<'a> {
     pub base: &'a mut [i64], pub maxv: &'a mut [i64], pub bsum: &'a mut [i64],
     /// null in C = no sums stored
     pub sumnul: Option<&'a mut i64>, pub sumn: Option<&'a mut u64>,
-    pub n: usize, pub nblk: usize,
+    pub n: usize, pub nblk: usize, pub lg: u32,
 }
 
 impl<'a> CocMut<'a> {
@@ -31,17 +30,19 @@ impl<'a> CocMut<'a> {
     /// through: None where `Meta::new` is, misaligned or shorter than its sections.
     pub fn meta_only(m: &'a mut [u8], n: usize) -> Option<Self> {
         let nb = m.len() / 33;
-        if m.len() < 33 * nb + 16 { return None }
+        if m.len() < 33 * nb + 24 { return None }
         let (head, tail) = m.split_at_mut(32 * nb);
         let (base, rest) = head.split_at_mut(8 * nb);
         let (maxv, rest) = rest.split_at_mut(8 * nb);
         let (_, bsum) = rest.split_at_mut(8 * nb);
-        let sums = &mut tail[..16];
-        let (sumnul, sumn) = sums.split_at_mut(8);
-        let n = n.min(nb * BLK);
+        let (sumnul, rest) = tail[..24].split_at_mut(8);
+        let (sumn, lg) = rest.split_at_mut(8);
+        let lg = pod::cast_mut::<u64>(lg)?[0];
+        if !(crate::MIN_LG as u64..=crate::MAX_LG as u64).contains(&lg) { return None }
+        let (lg, n) = (lg as u32, n.min(nb << lg));
         Some(CocMut {
             base: pod::cast_mut(base)?, maxv: pod::cast_mut(maxv)?, bsum: pod::cast_mut(bsum)?,
-            sumnul: Some(&mut pod::cast_mut::<i64>(sumnul)?[0]), sumn: Some(&mut pod::cast_mut::<u64>(sumn)?[0]), n, nblk: n.div_ceil(BLK),
+            sumnul: Some(&mut pod::cast_mut::<i64>(sumnul)?[0]), sumn: Some(&mut pod::cast_mut::<u64>(sumn)?[0]), n, nblk: n.div_ceil(1 << lg), lg,
         })
     }
 }
@@ -53,7 +54,7 @@ impl<'a> CocMut<'a> {
 impl<'a> Coc<'a> {
     /// coc.rs `coc_get`: element `i`, its patch applied. Per element: C keeps its body while a C caller remains.
     pub fn get(&self, i: usize) -> i64 {
-        let (b, j) = (i / BLK, i % BLK);
+        let (b, j) = (i >> self.meta.lg, i & (self.meta.blk() - 1));
         if let Some(e) = self.exc.filter(|e| !e.pos.is_empty()) {
             for x in e.off[b] as usize..e.off[b + 1] as usize { if e.pos[x] as usize == j { return self.exc(x) } }
         }
@@ -62,7 +63,7 @@ impl<'a> Coc<'a> {
     }
     /// coc.rs `coc_get_w`: `get` for a column whose every block has residual width `uw` (`one_width`).
     pub fn get_w(&self, uw: u8, i: usize) -> i64 {
-        let (base, p) = (self.meta.base[i / BLK] as u64, self.pack);
+        let (base, p) = (self.meta.base[i >> self.meta.lg] as u64, self.pack);
         let at = |k: usize, n: usize| &p[k..k + n];
         if self.exc.is_some_and(|e| !e.pos.is_empty()) { return self.get(i) }
         base.wrapping_add(match uw {
@@ -82,9 +83,9 @@ impl<'a> Coc<'a> {
     /// coc.rs `coc_prefetch`: element `i`'s residual into cache.
     pub fn prefetch(&self, i: usize) {
         if i >= self.meta.n { return }
-        let b = i / BLK;
+        let b = i >> self.meta.lg;
         // a hint: an address the pack does not hold is skipped, where C's never faults
-        if let Some(r) = self.pack.get(self.meta.off[b] as usize + (i % BLK) * self.meta.width[b] as usize / 8) { prefetch(r) }
+        if let Some(r) = self.pack.get(self.meta.off[b] as usize + (i & (self.meta.blk() - 1)) * self.meta.width[b] as usize / 8) { prefetch(r) }
     }
     /// coc.rs `coc_one_width`: the width every block shares, as C answers when they differ.
     pub fn one_width(&self) -> u8 {
@@ -100,15 +101,16 @@ impl<'a> Coc<'a> {
         out[..(lo - from) as usize].fill(fill);
         out[(hi - from) as usize..].fill(fill);
         if lo >= hi { return }
-        let (b0, b1) = (lo as usize / BLK, (hi - 1) as usize / BLK);
-        let g = if b1 != b0 && hi as usize - b1 * BLK > b1 * BLK - lo as usize { b1 } else { b0 };
-        let bs = (g * BLK) as i64;
-        let cnt = if (g + 1) * BLK < self.meta.n { BLK } else { self.meta.n - g * BLK };
-        let (s, e) = (bs.max(lo), (bs + BLK as i64).min(hi));
+        let (lg, blk) = (self.meta.lg, self.meta.blk());
+        let (b0, b1) = (lo as usize >> lg, (hi - 1) as usize >> lg);
+        let g = if b1 != b0 && hi as usize - (b1 << lg) > (b1 << lg) - lo as usize { b1 } else { b0 };
+        let bs = (g << lg) as i64;
+        let cnt = if (g + 1) << lg < self.meta.n { blk } else { self.meta.n - (g << lg) };
+        let (s, e) = (bs.max(lo), (bs + blk as i64).min(hi));
         if bs >= from && bs + cnt as i64 <= end {
             self.decode_blk(g, cnt, &mut out[(bs - from) as usize..][..cnt]);
         } else {
-            let mut tmp = [0i64; BLK];
+            let mut tmp = pod::Scr::<i64>::new(blk);
             self.decode_blk(g, (e - bs) as usize, &mut tmp);
             out[(s - from) as usize..(e - from) as usize].copy_from_slice(&tmp[(s - bs) as usize..(e - bs) as usize]);
         }
@@ -117,9 +119,9 @@ impl<'a> Coc<'a> {
 }
 impl<'a> Meta<'a> {
     /// coc.rs `coc_offsets` over the metadata alone: `off[b]` from the widths; answers the residuals' end.
-    pub fn offsets(width: &[u8], nblk: usize, off: &mut [u64]) -> u64 {
+    pub fn offsets(lg: u32, width: &[u8], nblk: usize, off: &mut [u64]) -> u64 {
         let mut at = 0u64;
-        for (o, &w) in off[..nblk].iter_mut().zip(&width[..nblk]) { *o = at; at += (BLK as u64 * w as u64) / 8 }
+        for (o, &w) in off[..nblk].iter_mut().zip(&width[..nblk]) { *o = at; at += ((1u64 << lg) * w as u64) / 8 }
         at
     }
 }
@@ -146,13 +148,15 @@ pub fn res_cmp2(x: &[i64], y: &[i64], op: i32, out: &mut [u64]) {
 /// coc.rs `coc_cmp2_res`: blocks `lo .. hi` of `a op b` into `out`; `deep` lists the blocks whose frames do not
 /// decide the answer. `out[0]` is word `w0` of the whole bitmap (0 for the whole of it).
 pub fn cmp2_res(a: &Coc, b: &Coc, op: i32, out: &mut [u64], deep: &[u32], lo: usize, hi: usize, w0: usize) {
-    let (mut xa, mut xb) = ([0i64; BLK], [0i64; BLK]);
+    assert_eq!(a.meta.lg, b.meta.lg, "coc cmp2: columns of different block sizes");
+    let (lg, blk) = (a.meta.lg, a.meta.blk());
+    let (mut xa, mut xb) = (pod::Scr::<i64>::new(blk), pod::Scr::<i64>::new(blk));
     for &k in &deep[lo..hi] {
         let (k, n) = (k as usize, a.meta.n);
-        let (at, nb) = (k * BLK, if k * BLK + BLK < n { BLK } else { n - k * BLK });
+        let (at, nb) = (k << lg, if (k + 1) << lg < n { blk } else { n - (k << lg) });
         a.decode_blk(k, nb, &mut xa);
         b.decode_blk(k, nb, &mut xb);
-        res_cmp2(&xa[..nb], &xb[..nb], op, &mut out[(at >> 6) - w0..]); // BLK=1024 -> 16 u64 per block
+        res_cmp2(&xa[..nb], &xb[..nb], op, &mut out[(at >> 6) - w0..]); // blk / 64 u64 per block
     }
 }
 
@@ -161,9 +165,9 @@ impl<'a> Coc<'a> {
     /// coc.rs `coc_sum_blk`: block `b`'s first `nb` elements summed, wrapping.
     pub fn sum_blk(&self, b: usize, nb: usize) -> u64 {
         let (mut w, at) = (self.meta.width[b], self.meta.off[b] as usize);
-        let p = &self.pack[at..at + BLK * w as usize / 8];
+        let p = &self.pack[at..at + self.meta.blk() * w as usize / 8];
         let s = if w & w.wrapping_sub(1) == 0 { res_sum(p, nb, w) } else {
-            let mut buf = [0u8; BLK * 8]; // the lanes of an odd width, summed at the lane width `lanes` leaves in `w`
+            let mut buf = pod::Scr::<u8, 8192>::new(self.meta.blk() * 8); // the lanes of an odd width, summed at the lane width `lanes` leaves in `w`
             let q = lanes(p, &mut w, nb, &mut buf);
             res_sum(q, nb, w)
         };
@@ -173,7 +177,7 @@ impl<'a> Coc<'a> {
     /// residual sum nor the count `k` of elements takes in.
     pub fn sum_blk_nulls(&self, b: usize, nb: usize) -> u64 {
         let (w, at) = (self.meta.width[b], self.meta.off[b] as usize);
-        let p = &self.pack[at..at + BLK * w as usize / 8];
+        let p = &self.pack[at..at + self.meta.blk() * w as usize / 8];
         let (mut s, mut k) = (0u64, 0u64);
         for j in 0..nb { let r = res_get(p, w, j); if r != 0 { s = s.wrapping_add(r); k += 1 } }
         k.wrapping_mul(self.frame(b)).wrapping_add(s)
@@ -187,8 +191,9 @@ impl<'a> Coc<'a> {
         // the stored sums are the numbers `sum_blk` and `sum_blk_nulls` compute, at nblk reads rather than n
         if self.sums_ok(nul) { return m.bsum[..m.nblk].iter().fold(0u64, |a, &s| a.wrapping_add(s as u64)) }
         let mut acc = 0u64;
+        let blk = m.blk();
         for b in 0..m.nblk {
-            let nb = if b * BLK + BLK < m.n { BLK } else { m.n - b * BLK };
+            let nb = if (b + 1) << m.lg < m.n { blk } else { m.n - (b << m.lg) };
             acc = acc.wrapping_add(if m.base[b] == nul { self.sum_blk_nulls(b, nb) } else { self.sum_blk(b, nb) });
             // each exception's slot added the frame: take it back and add the element, a null adding nothing
             let Some(e) = self.exc.filter(|e| !e.pos.is_empty()) else { continue };
@@ -216,7 +221,7 @@ impl<'a> Coc<'a> {
     fn blk(&self, b: usize) -> (&'a [u8], usize) {
         let m = &self.meta;
         let at = m.off[b] as usize;
-        (&self.pack[at..at + BLK * m.width[b] as usize / 8], if b * BLK + BLK < m.n { BLK } else { m.n - b * BLK })
+        (&self.pack[at..at + m.blk() * m.width[b] as usize / 8], if (b + 1) << m.lg < m.n { m.blk() } else { m.n - (b << m.lg) })
     }
     /// coc.rs `coc_prd`: product, nulls skipped, wrapping. Every element is read; the accumulator reaching 0
     /// ends the column, a wrapping product being absorbing at 0 as an exact one is.
@@ -226,7 +231,7 @@ impl<'a> Coc<'a> {
             if acc == 0 { break }
             let ((p, nb), base, w) = (self.blk(b), m.base[b] as u64, m.width[b]);
             if self.blk_nexc(b) != 0 {
-                let mut x = [0i64; BLK];
+                let mut x = pod::Scr::<i64>::new(m.blk());
                 self.decode_blk(b, nb, &mut x);
                 for &v in x[..nb].iter().filter(|&&v| v != nul) { acc = acc.wrapping_mul(v as u64) }
             } else if m.base[b] == nul {
@@ -249,7 +254,7 @@ impl<'a> Coc<'a> {
         (0..m.nblk).filter(|&b| !(m.base[b] > 0 || m.maxv[b] < 0)).all(|b| {
             let (p, nb) = self.blk(b);
             if self.blk_nexc(b) != 0 { // a slot reads as base, which may be the zero it is not
-                let mut x = [0i64; BLK];
+                let mut x = pod::Scr::<i64>::new(m.blk());
                 self.decode_blk(b, nb, &mut x);
                 return x[..nb].iter().all(|&v| v != 0)
             }
@@ -310,7 +315,7 @@ impl<'a> Coc<'a> {
         let (mut a, mut z) = (i64::MAX, i64::MIN);
         if (from < 0 || end > n) && fill != i64::MIN { (a, z) = (fill, fill) }
         if l < h {
-            for g in l as usize / BLK..=(h - 1) as usize / BLK {
+            for g in l as usize >> m.lg..=(h - 1) as usize >> m.lg {
                 if self.blk_allnul(g) { continue }
                 (a, z) = (a.min(m.base[g]), z.max(m.maxv[g]));
             }
@@ -324,8 +329,8 @@ impl<'a> Coc<'a> {
         let m = &self.meta;
         if m.nblk != b.meta.nblk { return false }
         for k in 0..m.nblk {
-            let lo = k * BLK;
-            let nb = if lo + BLK < m.n { BLK } else { m.n - lo };
+            let lo = k << m.lg;
+            let nb = if lo + m.blk() < m.n { m.blk() } else { m.n - lo };
             if self.blk_allnul(k) { continue }
             let (ba, ma) = (m.base[k], m.maxv[k]);
             let (bb, mb) = b.shift_bounds(lo, nb, s, fill);
@@ -358,8 +363,8 @@ impl<'a> CocMut<'a> {
             let (bs, mx) = (self.base[b] as u64, self.maxv[b] as u64);
             let (lo, hi) = if neg { ((k as u64).wrapping_sub(mx), (k as u64).wrapping_sub(bs)) }
                            else { (bs.wrapping_add(k as u64), mx.wrapping_add(k as u64)) };
-            let at = b * BLK;
-            let nb = if at + BLK < self.n { BLK } else { self.n - at };
+            let at = b << self.lg;
+            let nb = if at + (1 << self.lg) < self.n { 1 << self.lg } else { self.n - at };
             let s = (nb as u64).wrapping_mul(k as u64);
             if self.base[b] == i64::MIN || lo as i64 == i64::MIN { keep = false }
             (self.base[b], self.maxv[b]) = (lo as i64, hi as i64);
@@ -377,16 +382,16 @@ pub fn vv_fill(a: &Coc, b: &Coc, op: i32, s: i64, fill: i64, i0: usize, xa: &mut
     fn go(xa: &mut [i64], xb: &[i64], f: impl Fn(u64, u64) -> u64) {
         for (a, &b) in xa.iter_mut().zip(xb) { *a = if *a == i64::MIN || b == i64::MIN { i64::MIN } else { f(*a as u64, b as u64) as i64 } }
     }
-    let mut xb = [0i64; BLK];
-    let xb = &mut xb[..xa.len()];
-    a.decode_blk(i0 / BLK, xa.len(), xa);
+    assert_eq!(a.meta.lg, b.meta.lg, "coc vv: columns of different block sizes");
+    let mut xb = pod::Scr::<i64>::new(xa.len());
+    a.decode_blk(i0 >> a.meta.lg, xa.len(), xa);
     b.load_run(i0 as i64 - s, fill, xb);
     // unsigned arithmetic throughout: signed overflow is UB in C even where `coc_vv_ok` has refused it
     match op { 0 => go(xa, xb, u64::wrapping_add), 1 => go(xa, xb, u64::wrapping_sub), _ => go(xa, xb, u64::wrapping_mul) }
 }
 /// coc.rs `scale_fill`: the answer block of `x * k` from `i0` into `buf`, nulls staying the null.
 pub fn scale_fill(a: &Coc, k: i64, i0: usize, buf: &mut [i64]) {
-    a.decode_blk(i0 / BLK, buf.len(), buf);
+    a.decode_blk(i0 >> a.meta.lg, buf.len(), buf);
     for v in buf { if *v != i64::MIN { *v = (*v as u64).wrapping_mul(k as u64) as i64 } }
 }
 

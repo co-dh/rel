@@ -2,18 +2,19 @@
 //! The read views of coc.rs's `coc`: metadata, patch list, and the whole column.
 use crate::layout::{Tail, exc_layout};
 use crate::pod::{self, Lane};
-use crate::BLK;
 use alloc::vec::Vec;
 
 /// coc.rs: bit 8 of the patch list's element size, set when the frames follow
 pub(crate) const COC_EXC_FRM: usize = 0x100;
 
-/// `coc_meta_view`: the 33*mblk + 16 byte buffer.
+/// `coc_meta_view`: the 33*mblk + 24 byte buffer (the trailer: sumnul, sumn, lg, then the widths).
 #[derive(Clone, Copy)]
 pub struct Meta<'a> {
     pub base: &'a [i64], pub maxv: &'a [i64], pub off: &'a [u64], pub bsum: &'a [i64], pub width: &'a [u8],
     /// one slot each, read by value
     pub sumnul: i64, pub sumn: u64,
+    /// the block size is `1 << lg`, `MIN_LG <= lg <= MAX_LG`
+    pub lg: u32,
     /// slices are mblk long; nblk <= mblk is what n reaches
     pub n: usize, pub nblk: usize, pub mblk: usize,
 }
@@ -24,29 +25,33 @@ pub struct Exc<'a> { pub off: &'a [u32], pub pos: &'a [u16], pub raw: &'a [u8], 
 pub struct Coc<'a> { pub meta: Meta<'a>, pub pack: &'a [u8], pub exc: Option<Exc<'a>>, pub fdelta: Option<&'a [u64]> }
 
 impl<'a> Meta<'a> {
-    /// coc.rs; None = misaligned buffer, or one shorter than `33 * (len / 33) + 16` where C reads past it
+    /// coc.rs; None = misaligned buffer, or one shorter than `33 * (len / 33) + 24` where C reads past it, or whose `lg` is outside `MIN_LG ..= MAX_LG`
     pub fn new(m: &'a [u8], n: usize) -> Option<Self> {
         let nb = m.len() / 33;
-        if m.len() < 33 * nb + 16 { return None }
-        let (w, tail) = m.split_at(32 * nb + 16);
+        if m.len() < 33 * nb + 24 { return None }
+        let (w, tail) = m.split_at(32 * nb + 24);
         let (head, sums) = w.split_at(32 * nb);
         let (base, rest) = head.split_at(8 * nb);
         let (maxv, rest) = rest.split_at(8 * nb);
         let (off, bsum) = rest.split_at(8 * nb);
-        let n = n.min(nb * BLK);
+        let lg = pod::cast::<u64>(&sums[16..24])?[0];
+        if !(crate::MIN_LG as u64..=crate::MAX_LG as u64).contains(&lg) { return None }
+        let (lg, n) = (lg as u32, n.min(nb << lg));
         Some(Meta {
             base: pod::cast(base)?, maxv: pod::cast(maxv)?, off: pod::cast(off)?, bsum: pod::cast(bsum)?,
             width: &tail[..nb],
-            sumnul: pod::cast::<i64>(&sums[..8])?[0], sumn: pod::cast::<u64>(&sums[8..16])?[0],
-            n, nblk: n.div_ceil(BLK), mblk: nb,
+            sumnul: pod::cast::<i64>(&sums[..8])?[0], sumn: pod::cast::<u64>(&sums[8..16])?[0], lg,
+            n, nblk: n.div_ceil(1 << lg), mblk: nb,
         })
     }
     /// coc.rs
     pub fn res_end(&self) -> usize {
-        if self.mblk == 0 { 0 } else { self.off[self.mblk - 1] as usize + BLK * self.width[self.mblk - 1] as usize / 8 }
+        if self.mblk == 0 { 0 } else { self.off[self.mblk - 1] as usize + self.blk() * self.width[self.mblk - 1] as usize / 8 }
     }
+    /// the block size
+    pub fn blk(&self) -> usize { 1 << self.lg }
     /// coc.rs
-    pub fn grid(&self, n: usize) -> bool { self.mblk == n.div_ceil(BLK) }
+    pub fn grid(&self, n: usize) -> bool { self.mblk == n.div_ceil(self.blk()) }
 }
 impl<'a> Coc<'a> {
     /// coc.rs; None where C aborts, or where the pack's tail is misaligned for its sections
@@ -78,7 +83,7 @@ impl<'a> Coc<'a> {
     /// coc.rs; off stays absolute into pack
     pub fn blocks(&self, b0: usize, b1: usize) -> Coc<'a> {
         let (m, k) = (&self.meta, b1 - b0);
-        let n = m.n.saturating_sub(b0 * BLK).min(k * BLK);
+        let n = m.n.saturating_sub(b0 << m.lg).min(k << m.lg);
         let meta = Meta { base: &m.base[b0..b1], maxv: &m.maxv[b0..b1], off: &m.off[b0..b1], bsum: &m.bsum[b0..b1],
                           width: &m.width[b0..b1], n, nblk: k, mblk: k, ..*m };
         Coc { meta, pack: self.pack, exc: self.exc.map(|e| Exc { off: &e.off[b0..=b1], ..e }),
@@ -107,10 +112,10 @@ impl<'a> Coc<'a> {
     pub fn decode_blk<T: Lane>(&self, b: usize, nb: usize, out: &mut [T]) {
         let (mut w, base, out) = (self.meta.width[b], self.frame(b), &mut out[..nb]);
         let at = self.meta.off[b] as usize;
-        let p = &self.pack[at..at + crate::BLK * w as usize / 8];
+        let p = &self.pack[at..at + self.meta.blk() * w as usize / 8];
         // an odd width decoded in one pass, the lanes never stored
         if !crate::simd::res_unpack_add(p, w, nb, base, crate::pod::bytes_mut(out), size_of::<T>() as u32) {
-            let mut lb = [0u64; crate::BLK];
+            let mut lb = crate::pod::Scr::<u64>::new(self.meta.blk());
             let p = lanes(p, &mut w, nb, crate::pod::bytes_mut(&mut lb));
             let add = |r: u64| T::wrap(base.wrapping_add(r));
             match w {
@@ -141,9 +146,9 @@ impl Coc<'_> {
         let f = self.frame(b) as i64; // base <= f <= maxv, so f < v wherever the residuals count
         let mut k = if self.meta.maxv[b] < v { nb } else if f >= v { 0 } else {
             let (w0, at) = (self.meta.width[b], self.meta.off[b] as usize);
-            if w0 & w0.wrapping_sub(1) != 0 && buf.is_empty() { buf.resize(crate::BLK, 0) }
+            if w0 & w0.wrapping_sub(1) != 0 && buf.is_empty() { buf.resize(self.meta.blk(), 0) }
             let mut w = w0;
-            let p = lanes(&self.pack[at..at + crate::BLK * w0 as usize / 8], &mut w, nb, pod::bytes_mut(&mut buf[..]));
+            let p = lanes(&self.pack[at..at + self.meta.blk() * w0 as usize / 8], &mut w, nb, pod::bytes_mut(&mut buf[..]));
             crate::res::res_count_lt(p, nb, w, (v as u64).wrapping_sub(f as u64))
         };
         // every case above scored an exception's slot as `frame < v`; the element is scored instead
@@ -157,13 +162,13 @@ impl Coc<'_> {
     /// coc.rs `coc_count_lt`: `((atoms c).filter (· < v)).length`, signed, exact.
     pub fn count_lt(&self, v: i64) -> usize {
         let (n, mut buf) = (self.meta.n, Vec::new());
-        (0..self.meta.nblk).map(|b| self.count_lt_blk(b, (n - b * crate::BLK).min(crate::BLK), v, &mut buf)).sum()
+        (0..self.meta.nblk).map(|b| self.count_lt_blk(b, (n - (b << self.meta.lg)).min(self.meta.blk()), v, &mut buf)).sum()
     }
     /// coc.rs `coc_any_null`: whether an element is `nul`, the smallest value of its type, so `x < nul + 1` is
     /// `x == nul`; stops at the first block that says yes.
     pub fn any_null(&self, nul: i64) -> bool {
         let (n, mut buf) = (self.meta.n, Vec::new());
-        (0..n.div_ceil(crate::BLK)).any(|b| self.count_lt_blk(b, (n - b * crate::BLK).min(crate::BLK), nul.wrapping_add(1), &mut buf) != 0)
+        (0..n.div_ceil(self.meta.blk())).any(|b| self.count_lt_blk(b, (n - (b << self.meta.lg)).min(self.meta.blk()), nul.wrapping_add(1), &mut buf) != 0)
     }
 }
 
@@ -180,7 +185,7 @@ fn load_sub<T: Lane, const W: usize>(p: &[u8], base: u64, out: &mut [T]) {
     for (s, x) in rest.iter_mut().enumerate() { *x = T::wrap(base.wrapping_add(((p[g] >> (s * W)) & m) as u64)) }
 }
 
-/// coc.rs: the residuals of a block at a power-of-two width in place, else unpacked into `buf` (`BLK * 8` bytes)
+/// coc.rs: the residuals of a block at a power-of-two width in place, else unpacked into `buf` (`blk * 8` bytes)
 /// with `*w` raised to the lane it now has.
 pub fn lanes<'b>(p: &'b [u8], w: &mut u8, nb: usize, buf: &'b mut [u8]) -> &'b [u8] {
     if *w & w.wrapping_sub(1) == 0 { return p }
@@ -194,7 +199,7 @@ pub enum ViewErr { Meta, Pack { pack: usize, end: usize, mblk: usize } }
 impl core::fmt::Display for ViewErr {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         match self {
-            ViewErr::Meta => f.write_str("the metadata array is not a column's 33 * nblk + 16 bytes"),
+            ViewErr::Meta => f.write_str("the metadata array is not a column's 33 * nblk + 24 bytes with 6 <= lg <= 16"),
             // coc.rs `coc_attach`'s text
             ViewErr::Pack { pack, end, mblk } => write!(f, "a Frame of Reference pack of {pack} bytes whose residuals end at {end} holds no patch list of {mblk} blocks after them"),
         }
