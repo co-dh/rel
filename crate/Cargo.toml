@@ -18,3 +18,14 @@ doctest = false
 abi = []
 # the lib as a `std` crate, for qrs's unit tests (a no_std lib cannot be built with the test profile's unwinding panics)
 std = []
+
+# A workspace of this crate alone; `rt/` is a package of its own (the Lean runtime of a native Rel program), with its
+# own `[workspace]`.
+[workspace]
+exclude = ["rt"]
+resolver = "3"
+
+[profile.release]
+opt-level = 3
+panic = "abort"
+codegen-units = 1
