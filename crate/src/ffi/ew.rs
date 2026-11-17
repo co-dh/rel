@@ -5,7 +5,7 @@
 #![deny(unsafe_code)]
 use crate::lean::{SArr, export};
 #[cfg(all(feature = "ffi", not(any(test, feature = "std"))))]
-use {crate::exports::coc::view, crate::ffi::chain_enc, crate::lean::{B, O}, crate::{c, ew}};
+use {crate::blocks::Blocks, crate::exports::coc::view, crate::ffi::{chain_enc, of_raw}, crate::lean::{B, O}, crate::{c, ew}};
 
 /// An answer of `n` bytes, undefined until the kernel writes it.
 pub fn answer(n: usize) -> SArr { SArr::new(1, n) }
@@ -71,11 +71,12 @@ export! {
         r.into()
     }
 
-    /// `mon op cls nul x n`: `neg`, `abs` or one of the nine float maps over `n` elements of class `cls`.
-    fn qlean_ew_mon(op: u8, cls: u8, nul: u64, x: B, n: usize) -> O {
-        let mut r = answer(n * ew::ew_width(cls as u32));
-        ew::mon(c::pool(), op, cls, nul as i64, x.bytes(), n, r.bytes_mut());
-        r.into()
+    /// `mon op cls nul t n x`: `neg`, `abs` or one of the nine float maps over the `n` elements of the `Enc` `x`, any kind,
+    /// the answer an `Enc` (`Kernel.map`). `t` is not read: the answer's form is a function of its class `cls` (`ew::form_of`).
+    fn qlean_ew_mon(op: u8, cls: u8, nul: u64, _t: u8, n: usize, x: B) -> O {
+        let w = ew::ew_width(cls as u32);
+        let lane = move |x: &[u8], o: &mut [u8]| ew::mon_lane(op, cls, nul as i64, x, o);
+        of_raw(n, w, ew::form_of(cls), ew::mon_cost(op, cls), &ew::Map { src: Blocks::of(x, w, n, "qlean_ew_mon"), wi: w, lane })
     }
 
 

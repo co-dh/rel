@@ -316,7 +316,7 @@ pub unsafe extern "C" fn qrs_ew_mon_stage(lo: usize, hi: usize, p: *const CPass)
     unsafe {
         let p = &*p;
         let (w, n) = (ew::ew_width(p.cls as u32), hi - lo);
-        ew::mon(c::serial, p.op, p.cls, p.nul, tile(p.a, lo, n, w, false), n, sl_mut(p.o.cast::<u8>().add(lo * w), n * w))
+        ew::mon_lane(p.op, p.cls, p.nul, tile(p.a, lo, n, w, false), sl_mut(p.o.cast::<u8>().add(lo * w), n * w))
     }
 }
 /// ew.rs `ew_floor_stage`: `n` longs out.
@@ -601,7 +601,7 @@ pub unsafe fn enc_free(s: *mut CEnc) {
 
 /// The writer of one answer column (coc plan §3): its grid, its form, and the encoder state its passes fill. Dropped
 /// unfinished (a size test failed), it frees what it allocated.
-pub struct Sink { pub e: CEnc, g: Grid, form: Form }
+pub struct Sink { pub e: CEnc, g: Grid, form: Form, enc: bool }
 /// A pass's step: block `b` (elements `lo .. lo + nb`) of the sink `e`, with the worker's block buffer (`16 << lg` bytes).
 pub type Step<'a> = &'a (dyn Fn(*mut CEnc, usize, usize, usize, &mut [u8]) + Sync);
 struct Pass<'a> { step: Step<'a>, g: Grid, sized: bool }
@@ -636,7 +636,7 @@ impl Sink {
     /// `n` elements of `width` bytes in `form`: coc.rs `coc_enc_open` for an encoded form; for ids the payload, its
     /// capacity whole 64-bit words, as a word kernel (`words`) writes them.
     pub fn new(n: usize, width: usize, form: Form) -> Sink {
-        let mut s = Sink { e: unsafe { core::mem::zeroed() }, g: Grid { n, lg: DEFAULT_LG }, form };
+        let mut s = Sink { e: unsafe { core::mem::zeroed() }, g: Grid { n, lg: DEFAULT_LG }, form, enc: false };
         match form {
             Form::Ids(lw) => {
                 let sz = crate::ids::ids_bytes(n, lw);
@@ -704,12 +704,37 @@ impl Sink {
         let [m, b, a] = [&mut e.meta, &mut e.pack, &mut e.blob].map(|p| core::mem::replace(p, null_mut()));
         (e.exc_heap, e.exp) = (null_mut(), null_mut());
         let o = |p: *mut c_void| unsafe { lean::O::from_raw(p.cast()) };
-        match self.form {
-            Form::For => lean::ctor(0, [o(m), o(b)], &[]),
-            Form::Alp => lean::ctor(0, [o(m), lean::ctor(0, [o(b), o(a)], &[])], &[]),
-            Form::Ids(_) => o(b),
+        match (self.form, self.enc) {
+            (Form::For, false) => lean::ctor(0, [o(m), o(b)], &[]),
+            (Form::Alp, false) => lean::ctor(0, [o(m), lean::ctor(0, [o(b), o(a)], &[])], &[]),
+            (Form::Ids(_), false) => o(b),
+            // `Enc`'s constructors: `bits` 1, `foR` 3, `alp` 4
+            (Form::For, true) => lean::ctor(3, [o(m), o(b)], &[]),
+            (Form::Alp, true) => lean::ctor(4, [o(m), o(b), o(a)], &[]),
+            (Form::Ids(1), true) => lean::ctor(1, [o(b)], &[]),
+            (Form::Ids(lw), true) => panic!("qlean Sink: ids at {lw} bits are an `Enc` only with a dictionary (`enum`)"),
         }
     }
+    /// The sink answering the `Enc` object of its form rather than the form's parts.
+    pub fn enc(mut self) -> Sink { self.enc = true; self }
+}
+
+/// `Enc.encodeMin`: below it an answer stays dense.
+pub const ENCODE_MIN: usize = 64;
+/// `Kernel.ofRaw t n` at a fixed-width `t` of the elements `p` produces at `w` bytes, `Enc.answer`'s rule: from
+/// `ENCODE_MIN` elements on in `form` (`t`'s encoding; `None` where `Column.encodes`/`alpEncodes` have none) where it
+/// shrinks, else the dense payload, written a block at a time on the pool at `cost`.
+pub fn of_raw<P: Producer + ?Sized>(n: usize, w: usize, form: Option<Form>, cost: u32, p: &P) -> lean::O {
+    if let Some(o) = form.filter(|_| n >= ENCODE_MIN).and_then(|f| Sink::new(n, w, f).enc().write(p, true)) { return o }
+    let (g, mut r) = (Grid { n, lg: DEFAULT_LG }, lean::SArr::new(1, n * w));
+    c::run_map(c::pool(), r.bytes_mut(), g.nblk(), g.blk() * w, cost, g.blk() * w, &|b0, b1, o| {
+        let mut buf = crate::pod::uninit::<i64>(2 << g.lg);
+        for b in b0..b1 {
+            let (lo, nb) = g.span(b);
+            o[(lo - g.span(b0).0) * w..][..nb * w].copy_from_slice(p.block(b, lo, nb, w, crate::pod::bytes_mut(&mut buf)));
+        }
+    });
+    lean::ctor(0, [r.into()], &[])
 }
 
 /// `Producer::ints` of a producer whose `ints` answers each exception's bits by address (`structural::Ints`, `f`): the bits
@@ -830,9 +855,9 @@ mod sink_tests {
             let k3: Vec<i64> = x.iter().map(|v| v * 3).collect();
             assert_eq!(pair(&Sink::new(n, 8, Form::For).answer(&|buf: &mut [i64], i0: usize| cocops::scale_fill(&c, 3, i0, buf))), dense(&k3, 8), "scale, n {n}");
             let mut mon = alloc::vec![0u8; n * 8];
-            ew::mon_enc(crate::c::pool(), 0, 3, i64::MIN, &c, &mut mon);
-            let mon_fill = |buf: &mut [i64], i0: usize| ew::mon_fill(0, 3, i64::MIN, &c, buf, i0);
-            assert_eq!(pair(&Sink::new(n, 8, Form::For).answer(&mon_fill)), pair(&Sink::new(n, 8, Form::For).answer(&Blocks::dense(&mon, 8))), "mon, n {n}");
+            ew::mon_lane(0, 3, i64::MIN, pod::bytes(&x), &mut mon);
+            let map = ew::Map { src: Blocks::from(c), wi: 8, lane: |x: &[u8], o: &mut [u8]| ew::mon_lane(0, 3, i64::MIN, x, o) };
+            assert_eq!(pair(&Sink::new(n, 8, Form::For).answer(&map)), pair(&Sink::new(n, 8, Form::For).answer(&Blocks::dense(&mon, 8))), "mon, n {n}");
         }
     }
     // the size test answers exactly where the full encoding is not below the dense bytes, and ALP restores its floats

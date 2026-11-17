@@ -672,8 +672,9 @@ def WF (t : QAtomicType) (n : USize) (e : Enc) : Prop :=
     (t = .real ∨ t = .float ∨ t = .datetime) ∧ n.toNat ≤ blk metadata * nblk metadata ∧ lgOk metadata ∧ alpF32 a = (t.width == some 4)
   | _, _ => False
 
-/-- `atoms`' fixed-width branches before `atomOfBits`: the raw bits of each element. A theorem about a
-numeric column is stated over this, because `atoms`' symbol branch brings `Classical.choice` with it. -/
+/-- `atoms`' fixed-width branches before `atomOfBits`: the raw bits of each element, a boolean's as `0`/`1` and an
+interned symbol column's as its ids (coc plan §3: `bits` is ids at width 1, `enum` ids over a dictionary). A theorem
+about a numeric column is stated over this, because `atoms`' symbol branch brings `Classical.choice` with it. -/
 def raw (t : QAtomicType) (n : USize) (e : Enc) : Array UInt64 :=
   match t, e with
   | .boolean, .bytes _ | .boolean, .foR _ _ => #[]
@@ -689,6 +690,8 @@ def raw (t : QAtomicType) (n : USize) (e : Enc) : Array UInt64 :=
     | some _ =>
       let starts := blockStarts metadata; (Array.range n.toNat).map (alpBits metadata pack a starts)
     | none => #[]
+  | .boolean, .bits b => (Array.range n.toNat).map fun i => if bitAt b i then 1 else 0
+  | .symbol, .enum _ offs ids => (Array.range n.toNat).map fun i => (idAt ids (idWidth offs) i).toUInt64
   | _, _ => #[]
 
 end Enc

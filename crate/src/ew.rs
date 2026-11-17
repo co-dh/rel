@@ -492,19 +492,29 @@ pub fn mon_chk(op: u8, cls: u8) {
 /// The nine float maps are `SQRT ..= ATAN` at `f64` alone (q answers a float whatever the argument's type, so the
 /// dispatch widens first); any other pair of them is unsupported, as `ew_mon_run`'s `default`.
 pub fn is_libm(op: u8, cls: u8) -> bool { (k44::SQRT..=k44::ATAN).contains(&op) && cls == k44::F64 }
-/// ew.rs `ew_mon_run` and its entry: the monadic verbs, `neg` and `abs` and the nine libm maps.
-pub fn mon(run: Runner, op: u8, cls: u8, nul: i64, x: &[u8], n: usize, out: &mut [u8]) {
-    if n == 0 { return }
-    let lib = is_libm(op, cls);
-    if !lib { mon_chk(op, cls) }
-    let w = ew_width(cls as u32);
-    // chosen before the pool starts: the cost is the verb's, and a libm call an element is `QLEAN_COST_MATH`
-    let cost = if lib { QLEAN_COST_MATH } else { QLEAN_COST_ARITH };
-    run_map(run, out, n, w, cost, w, &|lo, hi, o| {
-        let x = side(x, false, lo, hi, w);
-        if lib { mon_libm(op, x, o) } else { mon_slice(op, cls, nul, x, o) }
-    });
+/// `Ew.monStep` over a block, `x` and `o` the same count at `cls`'s width: the monadic verbs, `neg` and `abs` and the
+/// nine libm maps; the one body of `mon`, which `Map` runs over a column and the chain's stage over a tile.
+pub fn mon_lane(op: u8, cls: u8, nul: i64, x: &[u8], o: &mut [u8]) {
+    if is_libm(op, cls) { mon_libm(op, x, o) } else { mon_chk(op, cls); mon_slice(op, cls, nul, x, o) }
 }
+/// The `map` driver's producer (coc plan §3): the source's block read at `wi` bytes an element, through `lane` into the
+/// writer's elements. A `Sink` or `ffi::of_raw` writes it.
+pub struct Map<'a, F> { pub src: Blocks<'a>, pub wi: usize, pub lane: F }
+impl<F: Fn(&[u8], &mut [u8]) + Sync> crate::enc::Producer for Map<'_, F> {
+    fn block<'s>(&'s self, b: usize, lo: usize, nb: usize, w: usize, buf: &'s mut [u8]) -> &'s [u8] {
+        let (x, o) = buf.split_at_mut(8 * nb);
+        (self.lane)(self.src.block(b, lo, nb, self.wi, x), &mut o[..nb * w]);
+        &o[..nb * w]
+    }
+}
+/// The encoding an answer at class `cls` takes: `Column.alpEncodes` holds of every type of a float class and
+/// `Column.encodes` of every type of the classes `i16 ..= i64`; a byte class has none.
+pub fn form_of(cls: u8) -> Option<crate::ffi::Form> {
+    use crate::ffi::Form;
+    match cls { k44::F32 | k44::F64 => Some(Form::Alp), 1..=3 => Some(Form::For), _ => None }
+}
+/// The cost of `mon` an element: a libm call is `QLEAN_COST_MATH`.
+pub fn mon_cost(op: u8, cls: u8) -> u32 { if is_libm(op, cls) { QLEAN_COST_MATH } else { QLEAN_COST_ARITH } }
 /// ew.rs `ew_floor_run`: `floor` at a float class, always a `long`; out of range or a NaN answers `0N`.
 pub fn floor(run: Runner, cls: u8, x: &[u8], n: usize, out: &mut [u8]) {
     if n == 0 { return }
@@ -1380,7 +1390,7 @@ mod tests44 {
     fn hex(s: &str) -> Vec<u8> { (0..s.len() / 2).map(|i| u8::from_str_radix(&s[2 * i..2 * i + 2], 16).unwrap()).collect() }
     fn mon_of(op: u8, cls: u8, nul: i64, x: &[u8], n: usize) -> Vec<u8> {
         let mut o = vec![0u8; n * ew_width(cls as u32)];
-        mon(qlean_run_c, op, cls, nul, x, n, &mut o);
+        mon_lane(op, cls, nul, &x[..n * ew_width(cls as u32)], &mut o);
         o
     }
     #[test] fn neg_abs_edges() {
@@ -1454,17 +1464,14 @@ mod tests44 {
                     dense[b * crate::BLK * w..(b * crate::BLK + cnt) * w].copy_from_slice(&x[..cnt * w]);
                 }
                 let want = mon_of(op, cls, i64::MIN, &dense, n);
-                let mut got = vec![0u8; n * w];
-                mon_enc(qlean_run_c, op, cls, i64::MIN, &c, &mut got);
-                assert_eq!(got, want, "mon_enc cls {cls} op {op}");
-                for b in 0..nblk {
-                    let cnt = (n - b * crate::BLK).min(crate::BLK);
-                    let mut buf = vec![0i64; cnt];
-                    mon_fill(op, cls, i64::MIN, &c, &mut buf, b * crate::BLK);
-                    let ex: Vec<i64> = want[b * crate::BLK * w..(b * crate::BLK + cnt) * w].chunks(w).map(|e| match w {
-                        2 => i16::from_ne_bytes(e.try_into().unwrap()) as i64, 4 => i32::from_ne_bytes(e.try_into().unwrap()) as i64,
-                        _ => i64::from_ne_bytes(e.try_into().unwrap()) }).collect();
-                    assert_eq!(buf, ex, "mon_fill cls {cls} op {op} blk {b}");
+                let map = Map { src: Blocks::from(c), wi: w, lane: |x: &[u8], o: &mut [u8]| mon_lane(op, cls, i64::MIN, x, o) };
+                // the writer's blocks, aligned and (at 100 elements, off the source's grid) cut across the source's
+                for step in [crate::BLK, 100] {
+                    for lo in (0..n).step_by(step) {
+                        let (nb, mut buf) = (step.min(n - lo), vec![0u64; 2 * crate::BLK]);
+                        let got = crate::enc::Producer::block(&map, lo / crate::BLK, lo, nb, w, bytes_mut(&mut buf));
+                        assert_eq!(got, &want[lo * w..(lo + nb) * w], "map cls {cls} op {op} at {lo}");
+                    }
                 }
             }
         }
@@ -1476,7 +1483,7 @@ mod k9 {
     use crate::c::qlean_run_c;
     fn mon_f64(op: u8, x: &[u64]) -> Vec<u64> {
         let mut o = vec![0u64; x.len()];
-        mon(qlean_run_c, op, k44::F64, 0, bytes_mut(&mut x.to_vec()[..]), x.len(), bytes_mut(&mut o[..]));
+        mon_lane(op, k44::F64, 0, bytes_mut(&mut x.to_vec()[..]), bytes_mut(&mut o[..]));
         o
     }
     // expected bits are the C's own answers: `sqrt -1`, `log -1`, `tan 0w` are 0n; `asin 2`, `acos -0w` are the positive NaN
@@ -1492,7 +1499,7 @@ mod k9 {
     #[test] #[should_panic(expected = "qlean_ew_mon: no case for verb 11 at storage class 5")]
     fn a_verb_past_atan_is_refused() { mon_f64(11, &[0]); }
     #[test] #[should_panic(expected = "qlean_ew_mon: no case for verb 2 at storage class 3")]
-    fn a_libm_map_at_long_is_refused() { mon(qlean_run_c, 2, 3, 0, &[0; 8], 1, &mut [0; 8]); }
+    fn a_libm_map_at_long_is_refused() { mon_lane(2, 3, 0, &[0; 8], &mut [0; 8]); }
     // `pack_stage` then `ids_stage` returns every id, whole or cut in two at a point inside a word
     #[test] fn ids_round_trip_cut_anywhere() {
         for w in [0u32, 1, 2, 4, 8, 16, 32, 64] {
@@ -1612,46 +1619,6 @@ pub fn low_zero_enc(run: Runner, c: &Coc, atom: &[u8], out: &mut [u8]) {
             }
         }
     });
-}
-/// ew.rs `ew_mon_foR_run`, `ew_mon_foR_blk`: over an encoded column, the answer dense.
-pub fn mon_enc(run: Runner, op: u8, cls: u8, nul: i64, c: &Coc, out: &mut [u8]) {
-    let n = c.meta.n;
-    if n == 0 { return }
-    mon_chk(op, cls);
-    let w = ew_width(cls as u32);
-    run_map(run, out, n, w, QLEAN_COST_ARITH, w, &|lo, hi, o| {
-        let mut xv = pod_scr(c);
-        for (blk, blo, at, end) in Blocks::from(*c).tiles(lo, hi) {
-            // a slice may start inside a block, so the block is decoded from its own start and entered at `at - blo`
-            let cnt = end - blo;
-            let x = Blocks::from(*c).load_w(blk, cnt, w, bytes_mut(&mut xv));
-            mon_slice(op, cls, nul, &x[(at - blo) * w..cnt * w], &mut o[(at - lo) * w..(end - lo) * w]);
-        }
-    });
-}
-/// ew.rs `ew_mon_fill`: the encoder source of `qlean_coc_ew_mon_enc`. `buf` is the `buf.len()` elements of
-/// the column from element `i0`, mapped at the class's width and widened back to `i64` (`coc_widen`, which reads any width but 2
-/// and 4 as eight bytes).
-pub fn mon_fill(op: u8, cls: u8, nul: i64, c: &Coc, buf: &mut [i64], i0: usize) {
-    let (nb, w) = (buf.len(), ew_width(cls as u32));
-    if nb == 0 { return }
-    mon_chk(op, cls);
-    // the source's blocks need not be the writer's: one pass per source block the span touches (one, whole, at the same size)
-    let (s, mut xv, mut yv) = (Blocks::from(*c), pod_scr(c), pod_scr(c));
-    for (b, blo, lo, end) in s.tiles(i0, i0 + nb) {
-        let (at, o, take) = (lo - i0, lo - blo, end - lo);
-        let x = &s.load_w(b, end - blo, w, bytes_mut(&mut xv))[o * w..];
-        let d = &mut buf[at..at + take];
-        if w == 8 { mon_slice(op, cls, nul, &x[..take * 8], bytes_mut(d)) } else {
-            let y = bytes_mut(&mut yv);
-            mon_slice(op, cls, nul, &x[..take * w], &mut y[..take * w]);
-            match w {
-                2 => for (d, &s) in d.iter_mut().zip(ro::<i16>(&y[..take * 2])) { *d = s as i64 },
-                4 => for (d, &s) in d.iter_mut().zip(ro::<i32>(&y[..take * 4])) { *d = s as i64 },
-                _ => for (d, &s) in d.iter_mut().zip(ro::<u64>(&y[..take * 8])) { *d = s as i64 },
-            }
-        }
-    }
 }
 /// ew.rs `qlean_ew_rank_pair` past the unboxing: each symbol's rank in the merged order of `da`, `db`.
 pub fn rank_pair(da: &Syms, db: &Syms, ra: &mut [i32], rb: &mut [i32]) {
