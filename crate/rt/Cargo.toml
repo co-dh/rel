@@ -1,0 +1,26 @@
+[package]
+name = "qrt"
+version = "0.1.0"
+edition = "2024"
+
+# The out-of-line Lean runtime for a program linked WITHOUT libleanshared (the Rel native backend); never part of
+# libqleankernel.a. A package of its own, not a feature of qrs: a feature would drag every kernel into the object and
+# define each of them twice beside libqleankernel.a. No dependencies, like qrs.
+[dependencies]
+
+[lib]
+path = "src/lib.rs"
+crate-type = ["staticlib"]
+doctest = false
+
+[profile.release]
+opt-level = 3
+panic = "abort"
+codegen-units = 1
+
+# lean.rs's `abi` twins are not built here
+[features]
+abi = []
+
+# not a member of rust/'s workspace
+[workspace]
