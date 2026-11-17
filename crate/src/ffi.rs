@@ -316,9 +316,9 @@ pub fn encode_scatter(w: usize, m: &[u8], pk: &[u8], a: Option<&[u8]>, n: usize,
         let mut e: CEnc = core::mem::zeroed();
         let s = &raw mut e;
         qrs_coc_enc_open(s, n, w, alp as c_int);
-        src_pass(s, &NoElts, &|s, b, _, _| sc.meta(&mut (*s).meta_blk(b), b), true, if alp { crate::QLEAN_COST_MATH } else { crate::QLEAN_COST_ARITH });
+        src_pass(s, (*s).c.lg(), &NoElts, &|s, b, _, _| sc.meta(&mut (*s).meta_blk(b), b), true, if alp { crate::QLEAN_COST_MATH } else { crate::QLEAN_COST_ARITH });
         qrs_coc_enc_layout(s);
-        src_pass(s, &NoElts, &|s, b, _, nb| sc.pack(&mut (*s).pack_blk(b, nb, sc.kept(b)), b), false, crate::QLEAN_COST_ARITH);
+        src_pass(s, (*s).c.lg(), &NoElts, &|s, b, _, nb| sc.pack(&mut (*s).pack_blk(b, nb, sc.kept(b)), b), false, crate::QLEAN_COST_ARITH);
         if !alp { return lean::O::from_raw(qrs_coc_enc_pair(s).cast()) }
         coc_free((*s).exc_heap.cast());
         lean::O::from_raw(mk_pair((*s).meta, mk_pair((*s).pack, (*s).blob)).cast())
@@ -813,7 +813,7 @@ unsafe fn enc_free(s: *mut CEnc) {
 pub unsafe extern "C" fn qrs_coc_enc_pair(s: *mut CEnc) -> *mut c_void { unsafe { coc_free((*s).exc_heap.cast()); mk_pair((*s).meta, (*s).pack) } }
 
 type Blk<'a> = &'a (dyn Fn(*mut CEnc, usize, *const u8, usize) + Sync);
-struct Pass<'a, S> { src: &'a S, blk: Blk<'a>, sized: bool }
+struct Pass<'a, S> { src: &'a S, blk: Blk<'a>, sized: bool, lg: u32 }
 /// coc.rs `src_run`: the blocks `[b0, b1)` through the per-block step; a worker writes only what its block owns (its
 /// metadata entries, its bytes at off[b], its exceptions at exc_off[b]), so any pass may be split.
 unsafe extern "C" fn src_run<S: Source>(b0: usize, b1: usize, p: *const CPass) {
@@ -821,7 +821,7 @@ unsafe extern "C" fn src_run<S: Source>(b0: usize, b1: usize, p: *const CPass) {
     unsafe {
         let (s, job) = ((*p).o.cast::<CEnc>(), &*(*p).a.cast::<Pass<S>>());
         let Some(cur) = job.src.open() else { return };
-        let (n, width, sized, lg) = ((*s).n, (*s).width, job.sized, (*s).c.lg());
+        let (n, width, sized, lg) = ((*s).n, (*s).width, job.sized, job.lg);
         let (lb, over) = (AtomicUsize::from_ptr(&raw mut (*s).lb), AtomicI32::from_ptr(&raw mut (*s).over));
         // the meta pass under a size test stops once the blocks it has sized already reach it: each block's residuals and its
         // exceptions' bytes are a part of the total `qrs_coc_enc_plan` would answer, so their sum is a lower bound
@@ -844,12 +844,12 @@ unsafe extern "C" fn src_run<S: Source>(b0: usize, b1: usize, p: *const CPass) {
     }
 }
 /// coc.rs `src_pass`: `blk` over every block of `src` on the pool; `meta` marks the sizing pass. False when the source failed.
-unsafe fn src_pass<S: Source>(s: *mut CEnc, src: &S, blk: Blk, meta: bool, cost: u32) -> bool {
+unsafe fn src_pass<S: Source>(s: *mut CEnc, lg: u32, src: &S, blk: Blk, meta: bool, cost: u32) -> bool {
     unsafe {
-        let job = Pass { src, blk, sized: meta && (*s).below != 0 };
+        let job = Pass { src, blk, sized: meta && (*s).below != 0, lg };
         let (n, w) = ((*s).n, (*s).width);
         let p = CPass { a: (&raw const job).cast(), b: core::ptr::null(), c: core::ptr::null(), o: s.cast(), n, at: 0, r#priv: 0, nul: 0, op: 0, cls: 0, shape: 0 };
-        c::pool()(src_run::<S>, n.div_ceil(1 << (*s).c.lg()), cost, w << (*s).c.lg(), &p);
+        c::pool()(src_run::<S>, n.div_ceil(1 << lg), cost, w << lg, &p);
         !src.bad()
     }
 }
@@ -873,7 +873,8 @@ unsafe fn encode<S: Source>(src: &S, n: usize, width: usize, kind: u32, out: &mu
             (*s).out = lean::sarray_cptr(o);
             let bits = kind == SRC_BITS;
             let blk = move |s: *mut CEnc, b: usize, x: *const u8, nb: usize| if bits { qrs_src_bits((*s).out, n.div_ceil(8), b, x, nb) } else { qrs_src_copy((*s).out.add((b << DEFAULT_LG) * width), x, nb * width) };
-            if !src_pass(s, src, &blk, false, crate::QLEAN_COST_COPY) { lean::dec(o); return 0 }
+            // a dense answer has no metadata, so no trailer lg: its grid is only the work split the `blk` above copies on
+            if !src_pass(s, DEFAULT_LG, src, &blk, false, crate::QLEAN_COST_COPY) { lean::dec(o); return 0 }
             out.body = o.cast();
             return 1;
         }
@@ -891,12 +892,12 @@ unsafe fn encode<S: Source>(src: &S, n: usize, width: usize, kind: u32, out: &mu
             (*s).below = below - msz;
         }
         let cost = if alp { crate::QLEAN_COST_MATH } else { crate::QLEAN_COST_ARITH };
-        if !src_pass(s, src, &|s, b, x, nb| meta_step(s, b, x, nb), true, cost) { enc_free(s); return 0 }
+        if !src_pass(s, (*s).c.lg(), src, &|s, b, x, nb| meta_step(s, b, x, nb), true, cost) { enc_free(s); return 0 }
         if AtomicI32::from_ptr(&raw mut (*s).over).load(core::sync::atomic::Ordering::SeqCst) != 0 { enc_free(s); return 2 }
         // the size is known here, so a form that does not shrink is never packed
         if qrs_coc_enc_plan(s) >= below { enc_free(s); return 2 }
         qrs_coc_enc_layout(s);
-        if !src_pass(s, src, &|s, b, x, nb| pack_step(s, b, x, nb), false, crate::QLEAN_COST_ARITH) { enc_free(s); return 0 }
+        if !src_pass(s, (*s).c.lg(), src, &|s, b, x, nb| pack_step(s, b, x, nb), false, crate::QLEAN_COST_ARITH) { enc_free(s); return 0 }
         coc_free((*s).exc_heap.cast());
         *out = CParts { meta: (*s).meta, body: (*s).pack, alp: (*s).blob };
         1
@@ -1035,9 +1036,9 @@ unsafe fn encode_move<S: Source + Moves>(n: usize, width: usize, alp: bool, fs: 
         qrs_coc_enc_open(s, n, width, alp as c_int);
         let cost = if alp { crate::QLEAN_COST_MATH } else { crate::QLEAN_COST_ARITH };
         // a fill cannot fail, having no `bad`: a refusal here is the writer's own bug
-        let ok = src_pass(s, fs, &|s, b, x, nb| enc::move_meta_blk(fs, &mut (*s).meta_blk(b), || sl(x, nb * width), width, nb), true, cost) && {
+        let ok = src_pass(s, (*s).c.lg(), fs, &|s, b, x, nb| enc::move_meta_blk(fs, &mut (*s).meta_blk(b), || sl(x, nb * width), width, nb), true, cost) && {
             qrs_coc_enc_layout(s);
-            src_pass(s, fs, &|s, b, x, nb| enc::move_pack_blk(fs, |whole| (*s).pack_blk(b, nb, whole), || sl(x, nb * width), b, nb, width, alp), false, crate::QLEAN_COST_ARITH)
+            src_pass(s, (*s).c.lg(), fs, &|s, b, x, nb| enc::move_pack_blk(fs, |whole| (*s).pack_blk(b, nb, whole), || sl(x, nb * width), b, nb, width, alp), false, crate::QLEAN_COST_ARITH)
         };
         if !ok {
             crate::os::eprint(format_args!("qlean_coc_encode_move: the writer refused {n} elements of {width} bytes from a fill\n")).expect("qlean: stderr");
