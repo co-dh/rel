@@ -274,6 +274,21 @@ theorem test_le {B : Obj} {Q : Fn true (.prod B B) (.prod B B)} {TQ : Den (.prod
   have hk : rep E (a, b) (a, b) := by rw [hE]; exact ⟨rfl, hS⟩
   rw [decide_eq_true_iff]; exact exists_congr fun c => hQ E hC hb _ c hk
 
+/-- `F(R)`, the list relator: arrays of one length, related position by position by `TR`. -/
+theorem map_sound {A B : Obj} {d : Bool} {R : Fn d A B} {TR : Den A B} (hR : Sound R TR) :
+    Sound (elems A B (.arr B) d R CRel.map) (fun xs ys => ys.length = xs.length ∧
+      ∀ t (ht : t < xs.length) (ht' : t < ys.length), TR (xs[t]'ht) (ys[t]'ht')) :=
+  fun D _ hb xs ys hx => by
+    simp only [elems, also] at hb ⊢; have hb' := Bool.and_eq_true_iff.1 hb
+    have hK := CRel.rep_ran _ hb'.1
+    have hs := atKeys hR _ (fun a b h => ((ran_iff _ a b).1 (hK ▸ h)).1) (ok_and hb'.2)
+    have hin : ∀ x ∈ xs, ∀ y, rep (R (Dem.of d (CRel.ran (CRel.mem D.val)).rel)).rel x y ↔ TR x y := fun x hx' y => by
+      have h1 : rep (CRel.mem D.val).rel xs x := (CRel.rep_mem _ (ok_and hb'.1) xs x).2 ⟨keyRow hx, hx'⟩
+      exact hs x y (hK ▸ (ran_iff _ x x).2 ⟨rfl, xs, h1, h1⟩)
+    rw [CRel.rep_map _ _ hb'.2]
+    exact ⟨fun ⟨_, hl, h⟩ => ⟨hl, fun t ht ht' => (hin _ (List.getElem_mem ht) _).1 (h t ht ht')⟩,
+      fun ⟨hl, h⟩ => ⟨keyRow hx, hl, fun t ht ht' => (hin _ (List.getElem_mem ht) _).2 (h t ht ht')⟩⟩
+
 open Classical in
 /-- `merge(Q)` merges by the test `Q` read as an order (`test_le`). -/
 theorem merge_sound {B : Obj} {Q : Fn true (.prod B B) (.prod B B)} {TQ : Den (.prod B B) (.prod B B)}
