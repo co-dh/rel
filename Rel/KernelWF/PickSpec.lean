@@ -21,7 +21,8 @@ theorem get_eq_raw {t : QAtomicType} {w : Nat} (ht : denseWidth t = some w) {n :
   obtain ⟨hw', hb, hs, -, -⟩ := denseWidth_facts ht
   cases e <;> cases t <;>
     simp_all [Enc.get, Enc.raw, Enc.WF, QAtomicType.width, denseWidth, List.getD_eq_getElem?_getD,
-      foRBits_starts, alpBits_starts]
+      foRBits_starts, alpBits_starts] <;>
+    (subst_vars; exact (atomOfBits_mod (by rfl) (by decide) _).symm)
 
 /-- Belongs in qlean. **`x@i` at a fixed-width type, read back**: element `k` of the answer is element
     `i[k]` of `x`, the index read unsigned, where that is below `x`'s count. -/
@@ -52,7 +53,6 @@ theorem gatherColumn_get_dense {t : QAtomicType} {w : Nat} (ht : denseWidth t = 
     List.getElem?_range hk, Option.map_some, Option.getD_some]
   rw [hG k (by omega), if_pos (by omega), hidx,
     List.getElem?_eq_getElem (by simp only [Array.length_toList, hR]; exact hin)]
-  exact congrArg some (atomOfBits_mod hw' hb _)
 
 /-- Belongs in qlean. **`x@i` at `boolean`, read back**: bit `k` of the answer is bit `i[k]` of `x`. -/
 theorem gatherColumn_get_bits {n : USize} {e : Enc} (hw : Enc.WF .boolean n e) {m : USize} {i : ByteArray}

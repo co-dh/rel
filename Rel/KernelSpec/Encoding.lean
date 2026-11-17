@@ -582,7 +582,14 @@ theorem foRBits_encode (lg : Nat) (hlg : 6 ≤ lg ∧ lg ≤ 16) (w : Nat) (hw0 
 
 theorem raw_foR (t : QAtomicType) (w : Nat) (ht : t.width = some w) (hb : t ≠ .boolean)
     (n : USize) (M P : ByteArray) :
-    Enc.raw (X := X) t n (.foR M P) = (Array.range n.toNat).map (Column.foRBits M P (Column.blockStarts M)) := by
+    Enc.raw (X := X) t n (.foR M P) = (Array.range n.toNat).map fun i =>
+      UInt64.ofNat ((Column.foRBits M P (Column.blockStarts M) i).toNat % 2 ^ (8 * w)) := by
+  cases t <;> simp_all [Enc.raw]
+
+theorem raw_alp (t : QAtomicType) (w : Nat) (ht : t.width = some w) (hb : t ≠ .boolean)
+    (n : USize) (M P a : ByteArray) :
+    Enc.raw (X := X) t n (.alp M P a) = (Array.range n.toNat).map fun i =>
+      UInt64.ofNat ((Column.alpBits M P a (Column.blockStarts M) i).toNat % 2 ^ (8 * w)) := by
   cases t <;> simp_all [Enc.raw]
 
 theorem raw_bytes (t : QAtomicType) (w : Nat) (ht : t.width = some w) (hb : t ≠ .boolean)
@@ -633,7 +640,7 @@ theorem xor_top (m n : Nat) (h : n < 2 ^ (m + 1)) :
     rw [e, Nat.add_sub_cancel, ← lo _ (by omega), Nat.xor_assoc, Nat.xor_self, Nat.xor_zero]
 
 /-- The encoded form holds an element sign-extended to 64 bits, so it agrees with the dense bits on
-the element's own `8 * w`, which below eight bytes is all it can. -/
+the element's own `8 * w`, which below eight bytes is all it can; `Enc.raw` reads it cut to those. -/
 theorem unbias_keyAt (w : Nat) (hw1 : 1 < w) (hw : w ≤ 8) (x : ByteArray) (i : Nat) :
     (Kernel.Coc.unbias w (Kernel.Coc.keyAt w x i)).toNat % 2 ^ (8 * w) = (Column.bitsAt x (i * w) w).toNat := by
   have hv := bitsAt_lt x (i * w) w hw
