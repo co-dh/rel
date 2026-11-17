@@ -34,6 +34,13 @@ inductive Tm.Ax : {A B : Obj} → {d e : Bool} → Tm A B d → Tm A B e → Pro
       Tm.Ax (.comp (.join R S) T) (.join (.comp R T) (.comp S T))
   | comp_zero {A B C : Obj} {d : Bool} (R : Tm A B d) : Tm.Ax (.comp R (.zero : Tm B C false)) .zero
   | zero_comp {A B C : Obj} {d : Bool} (R : Tm B C d) : Tm.Ax (.comp (.zero : Tm A B false) R) .zero
+  /-- `μX : φ = φ[μX : φ]` where `X` occurs in `φ` only positively; `refold` has no such law, since its own demand
+      bit is `true` and `X` may occur in `φ` at `false`, where no term stands for it (`Tm.lift`). -/
+  | mu_unfold {A B : Obj} (k : Nat) (what : String) (cap : Nat) (b : Tm A B false) (h : b.pol true k = true) :
+      Tm.Ax (.mu k what cap b) (b.subst [(k, ⟨A, B, .mu k what cap b⟩)])
+  /-- `νX : φ = φ[νX : φ]` where `X` occurs in `φ` only positively. -/
+  | nu_unfold {A B : Obj} (k : Nat) (S b : Tm A B false) (h : b.pol true k = true) :
+      Tm.Ax (.nu k S b) (b.subst [(k, ⟨A, B, .nu k S b⟩)])
 
 /-- The allegory order on terms: the least preorder that holds the equations `Tm.Ax`, makes `∩` the meet, `∪` the
     join and `𝟘` the least element, holds the modular law, and is a congruence for every constructor of `Tm` —
@@ -132,6 +139,10 @@ theorem Tm.Ax.sound {A B : Obj} {d e : Bool} {s : Tm A B d} {t : Tm A B e} (h : 
   | join_comp => exact Core.Rel.union_comp _ _ _
   | comp_zero => exact Core.Rel.comp_zero _
   | zero_comp => exact Core.Rel.zero_comp _
+  | mu_unfold _ _ _ b h =>
+    rw [b.den_subst]; exact (Core.Rel.mu_fix fun _ _ hXY => den_mono h hXY).symm
+  | nu_unfold _ _ b h =>
+    rw [b.den_subst]; exact (Core.Rel.nu_fix fun _ _ hXY => den_mono h hXY).symm
 
 /-- **Soundness**: `Le s t` gives `⟦s⟧ρ ⊑ ⟦t⟧ρ` under every valuation, one case per rule. -/
 theorem Tm.Le.sound {A B : Obj} {d e : Bool} {s : Tm A B d} {t : Tm A B e} (h : Tm.Le s t) :
@@ -177,7 +188,13 @@ theorem Tm.Le.sound {A B : Obj} {d e : Bool} {s : Tm A B d} {t : Tm A B e} (h : 
   | succ _ ih =>
     exact fun ρ => le_iff.2 fun _ _ ⟨⟨v, h⟩, hw, v', h'⟩ =>
       ⟨⟨v, le_iff.1 (ih ρ) _ _ h⟩, hw, v', le_iff.1 (ih ρ) _ _ h'⟩
-  | arith _ _ ih => exact fun ρ => comp_le' (Core.Rel.le_refl _) (ih ρ)
+  | arith _ _ ih =>
+    -- arithDen filters both inputs by ⟦U⟧ and its result through ⟦U⟧: each factor is monotone in ⟦U⟧
+    intro ρ
+    exact comp_le' (inter_le' (Core.Rel.le_refl _) (comp_le' (comp_le' (Core.Rel.le_refl _) (ih ρ))
+        (conv_le' (comp_le' (Core.Rel.le_refl _) (ih ρ)))))
+      (comp_le' (inter_le' (Core.Rel.le_refl _) (comp_le' (comp_le' (Core.Rel.le_refl _) (ih ρ))
+        (conv_le' (comp_le' (Core.Rel.le_refl _) (ih ρ))))) (comp_le' (Core.Rel.le_refl _) (ih ρ)))
   | leq _ ih | lt _ ih =>
     exact fun ρ => le_iff.2 fun _ _ ⟨⟨v, h⟩, ⟨v', h'⟩, hl⟩ =>
       ⟨⟨v, le_iff.1 (ih ρ) _ _ h⟩, ⟨v', le_iff.1 (ih ρ) _ _ h'⟩, hl⟩

@@ -173,6 +173,81 @@ def Tm.fv : {A B : Obj} → {d : Bool} → Tm A B d → List Nat
   | _, _, _, .val _ | _, _, _, .uni _ | _, _, _, .zero | _, _, _, .id | _, _, _, .outl | _, _, _, .outr
   | _, _, _, .nil | _, _, _, .prim _ | _, _, _, .atPos _ | _, _, _, .share .. | _, _, _, .call .. => []
 
+/-! ### Substitution -/
+
+/-- A substitution: each entry `(k, ⟨A, B, s⟩)` puts the closed term `s : A ⟶ B` for the variable `k`, the first
+    entry for `k` winning, and a variable with no entry stays. The syntax side of `Val` (`Tm.Sub.den`). -/
+abbrev Tm.Sub := List (Nat × (A : Obj) × (B : Obj) × Tm A B false)
+
+/-- `s` at demand `d`: `𝟙 s` at `true`, since no constructor lowers a demand bit. -/
+def Tm.lift {A B : Obj} (s : Tm A B false) : (d : Bool) → Tm A B d
+  | false => s
+  | true => .comp .id s
+
+/-- What `σ` puts for the variable `i` used at `A' ⟶ B'`: its entry's term where the objects match, `𝟘` where they
+    do not, as `Val.bind` reads a variable at other objects. -/
+def Tm.Sub.get (i : Nat) {A' B' : Obj} (d : Bool) : Tm.Sub → Tm A' B' d
+  | [] => .var i
+  | (k, ⟨A, B, s⟩) :: σ =>
+    if i = k then (if h : A = A' ∧ B = B' then h.1 ▸ h.2 ▸ s.lift d else Tm.zero.lift d) else Sub.get i d σ
+
+/-- The variables free in the terms of `σ`. -/
+def Tm.Sub.fvs : Tm.Sub → List Nat
+  | [] => []
+  | (_, ⟨_, _, s⟩) :: σ => s.fv ++ fvs σ
+
+/-- A variable above every one of `l`. -/
+def Tm.fresh (l : List Nat) : Nat := l.foldr max 0 + 1
+
+/-- `t` with `σ` put for its free variables. A binder is renamed to a variable `fresh` for its body and `σ`, so no
+    variable of `σ` is captured, whatever `σ` holds. A `share` is closed, so it is kept. -/
+def Tm.subst : Tm.Sub → {A B : Obj} → {d : Bool} → Tm A B d → Tm A B d
+  | σ, _, _, d, .var i => σ.get i d
+  | σ, _, _, _, .top V => .top (V.subst σ)
+  | σ, _, _, _, .comp R S => .comp (R.subst σ) (S.subst σ)
+  | σ, _, _, _, .conv R => .conv (R.subst σ)
+  | σ, _, _, _, .meet R S => .meet (R.subst σ) (S.subst σ)
+  | σ, _, _, _, .join R S => .join (R.subst σ) (S.subst σ)
+  | σ, _, _, _, .diff R S => .diff (R.subst σ) (S.subst σ)
+  | σ, _, _, _, .dom R => .dom (R.subst σ)
+  | σ, _, _, _, .ran R => .ran (R.subst σ)
+  | σ, _, _, _, .ldiv R S U V => .ldiv (R.subst σ) (S.subst σ) (U.subst σ) (V.subst σ)
+  | σ, _, _, _, .rdiv R S U V => .rdiv (R.subst σ) (S.subst σ) (U.subst σ) (V.subst σ)
+  | σ, _, _, _, .pair R S => .pair (R.subst σ) (S.subst σ)
+  | σ, _, _, _, .prod R S => .prod (R.subst σ) (S.subst σ)
+  | σ, _, _, _, .junc R S => .junc (R.subst σ) (S.subst σ)
+  | σ, _, _, _, .juncD R S => .juncD (R.subst σ) (S.subst σ)
+  | σ, _, _, _, .lam R => .lam (R.subst σ)
+  | σ, _, _, _, .E R => .E (R.subst σ)
+  | σ, _, _, _, .est Q => .est (Q.subst σ)
+  | σ, _, _, _, .thin Q => .thin (Q.subst σ)
+  | σ, _, _, _, .own R => .own (R.subst σ)
+  | σ, _, _, _, .succ U => .succ (U.subst σ)
+  | σ, _, _, _, .arith k U => .arith k (U.subst σ)
+  | σ, _, _, _, .leq U => .leq (U.subst σ)
+  | σ, _, _, _, .lt U => .lt (U.subst σ)
+  | σ, _, _, _, .fold e S => .fold (e.subst σ) (S.subst σ)
+  | σ, _, _, _, .foldI e S => .foldI (e.subst σ) (S.subst σ)
+  | σ, _, _, _, .flat R => .flat (R.subst σ)
+  | σ, _, _, _, .arg g x => .arg (g.subst σ) (x.subst σ)
+  | σ, A, B, _, .nu k S b =>
+    .nu (fresh (b.fv ++ σ.fvs)) (S.subst σ) (b.subst ((k, ⟨A, B, .var (fresh (b.fv ++ σ.fvs))⟩) :: σ))
+  | σ, A, B, _, .mu k w n b =>
+    .mu (fresh (b.fv ++ σ.fvs)) w n (b.subst ((k, ⟨A, B, .var (fresh (b.fv ++ σ.fvs))⟩) :: σ))
+  | σ, A, B, _, .refold k w ch b =>
+    .refold (fresh (b.fv ++ σ.fvs)) w (ch.subst σ) (b.subst ((k, ⟨A, B, .var (fresh (b.fv ++ σ.fvs))⟩) :: σ))
+  | _, _, _, _, .val R => .val R
+  | _, _, _, _, .uni U => .uni U
+  | _, _, _, _, .zero => .zero
+  | _, _, _, _, .id => .id
+  | _, _, _, _, .outl => .outl
+  | _, _, _, _, .outr => .outr
+  | _, _, _, _, .nil => .nil
+  | _, _, _, _, .prim r => .prim r
+  | _, _, _, _, .atPos k => .atPos k
+  | _, _, _, _, .share k R => .share k R
+  | _, _, _, _, .call d c os cv => .call d c os cv
+
 /-- `X`, the variable `k`, occurs in `t` only with sign `s` (`true` positive): the one monotonicity check (D5 = J),
     `den_mono`/`den_anti`. A node with no rule below must not mention `k` at all. `ldiv`'s `R` and `rdiv`'s `S`
     occur on both sides (`ldivDen`'s `∀` and its `∃`), so they must be free of `k`. -/
