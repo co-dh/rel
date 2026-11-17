@@ -407,7 +407,7 @@ pub fn runs<const W: usize>(c: &Coc, f: [u8; W], ix: &[i64], o: &mut [u8]) {
                 d[k] = if u < sn as u64 { word(c.get(u as usize) as u64) } else { f };
             }
         } else {
-            let s = Blocks { src: crate::blocks::Src::For(*c), n: sn };
+            let s = Blocks::new(crate::blocks::Src::For(*c), sn);
             s.load_w(b, s.span(b).1, W, bb);
             for k in j..e {
                 let u = ix[k] as u64;

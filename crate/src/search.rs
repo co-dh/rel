@@ -622,7 +622,7 @@ pub fn find_scalar(w: usize, is_float: bool, hay: &[u8], needle: u64) -> usize {
     let kd = kind_of(w, is_float, "find_scalar"); // before dividing by `w`
     let nb = (needle as u128).to_le_bytes();
     let mut r = [0i64];
-    scan_kind(kd, &Blocks { src: Src::Dense(hay), n: hay.len() / w }, &Blocks { src: Src::Dense(&nb[..w]), n: 1 }, &mut r);
+    scan_kind(kd, &Blocks::new(Src::Dense(hay), hay.len() / w), &Blocks::new(Src::Dense(&nb[..w]), 1), &mut r);
     r[0] as usize
 }
 
@@ -666,14 +666,14 @@ mod tests {
     }
     #[test] fn blk_dense_ids_enc() {
         let d: Vec<u8> = (0..2100u32).flat_map(|i| (i as u16).to_le_bytes()).collect();
-        let o = Blocks { src: Src::Dense(&d), n: 2100 };
+        let o = Blocks::new(Src::Dense(&d), 2100);
         let mut buf = [0u64; 1024 * 2 / 8];
         let b = crate::pod::bytes_mut(&mut buf);
         assert_eq!((o.view(2, 2, b).len(), o.view(0, 2, b).len()), (52 * 2, 2048));
         assert_eq!(o.view(2, 2, b)[..4], [0, 8, 1, 8]);
         // ids at 4 bits: id i is i % 16; written at 4-byte keys
         let p: Vec<u8> = (0..1050usize).map(|i| ((2 * i % 16) as u8) | ((((2 * i + 1) % 16) as u8) << 4)).collect();
-        let o = Blocks { src: Src::Ids(&p, 4), n: 2100 };
+        let o = Blocks::new(Src::Ids(&p, 4), 2100);
         let mut buf = vec![0u64; 1024 * 4 / 8];
         let b = crate::pod::bytes_mut(&mut buf);
         let r = o.view(2, 4, b);
@@ -681,7 +681,7 @@ mod tests {
         assert_eq!(&r[..12], &[(2048 % 16) as u8, 0, 0, 0, 1, 0, 0, 0, 2, 0, 0, 0]);
         // a short block of a column of 1 block: base 7 at width 0 is 7 each
         let c = col(&[7], &[7], &[0], &[0], 100, None);
-        let o = Blocks { src: Src::For(c), n: 100 };
+        let o = Blocks::new(Src::For(c), 100);
         let mut buf = vec![0u64; 1024];
         let b = crate::pod::bytes_mut(&mut buf);
         let r = o.view(0, 8, b);
@@ -762,14 +762,14 @@ mod tests {
     fn starts(f: impl FnOnce(&mut [i64]) -> usize, n: usize) -> alloc::vec::Vec<i64> { let mut o = vec![0i64; n + 1]; let g = f(&mut o); o.truncate(g); o }
     #[test] fn run_starts_all_shapes() {
         let d = bytes_of(&[5, 5, 6, 6, 6, 7, 5], 2);
-        assert_eq!(starts(|o| run_starts(&Blocks { src: Src::Dense(&d), n: 7 }, 2, false, o), 7), [0, 2, 5, 6, 7]);
+        assert_eq!(starts(|o| run_starts(&Blocks::new(Src::Dense(&d), 7), 2, false, o), 7), [0, 2, 5, 6, 7]);
         // -0.0 and 0.0 are one value, and every NaN is one value
         let f: alloc::vec::Vec<u8> = [0.0f32, -0.0, f32::NAN, -f32::NAN, 1.0].iter().flat_map(|x| x.to_bits().to_le_bytes()).collect();
-        assert_eq!(starts(|o| run_starts(&Blocks { src: Src::Dense(&f), n: 5 }, 4, true, o), 5), [0, 2, 4, 5]);
-        assert_eq!(starts(|o| run_starts(&Blocks { src: Src::Dense(&[]), n: 0 }, 8, false, o), 0), [0]);
+        assert_eq!(starts(|o| run_starts(&Blocks::new(Src::Dense(&f), 5), 4, true, o), 5), [0, 2, 4, 5]);
+        assert_eq!(starts(|o| run_starts(&Blocks::new(Src::Dense(&[]), 0), 8, false, o), 0), [0]);
         // 1500 elements in blocks of 1024: a run across the block edge is one run
         let big: alloc::vec::Vec<u8> = (0..1500u32).flat_map(|i| u32::from(i >= 1023 && i < 1030).to_le_bytes()).collect();
-        assert_eq!(starts(|o| run_starts(&Blocks { src: Src::Dense(&big), n: 1500 }, 4, false, o), 1500), [0, 1023, 1030, 1500]);
+        assert_eq!(starts(|o| run_starts(&Blocks::new(Src::Dense(&big), 1500), 4, false, o), 1500), [0, 1023, 1030, 1500]);
         // ids at 2 bits: 0 0 1 1 3 3 3 0
         assert_eq!(starts(|o| run_starts_ids(8, 2, &[0b0101_0000, 0b0011_1111], o), 8), [0, 2, 4, 7, 8]);
         let (b, off) = ([b'a', 0, b'a', 0, b'b', 0], [1usize, 2 << 1 | 1, 4 << 1 | 1, 6 << 1 | 1]);
@@ -779,7 +779,7 @@ mod tests {
         assert_eq!(starts(|o| run_starts_bits(70, &[0xff; 9], o), 70), [0, 70]);
         assert_eq!(starts(|o| run_starts_bits(0, &[], o), 0), [0]);
     }
-    fn dense(b: &[u8], w: usize) -> Blocks<'_> { Blocks { src: Src::Dense(b), n: b.len() / w } }
+    fn dense(b: &[u8], w: usize) -> Blocks<'_> { Blocks::new(Src::Dense(b), b.len() / w) }
     fn finds(kd: Kind, h: &[u8], x: &[u8]) -> Vec<i64> {
         let (hh, xx) = (dense(h, kd.width()), dense(x, kd.width()));
         let mut a = vec![0i64; xx.n];
@@ -821,11 +821,11 @@ mod tests {
     }
     // an empty haystack builds nothing, and a dense payload shorter than its `n` is refused by name, never folded to an empty range
     #[test] fn table_of_an_empty_or_short_haystack() {
-        let t = table::<u64>(&Blocks { src: Src::Dense(&[]), n: 0 });
+        let t = table::<u64>(&Blocks::new(Src::Dense(&[]), 0));
         assert_eq!(t.used, 0);
-        let r = std::panic::catch_unwind(|| table::<u32>(&Blocks { src: Src::Dense(&[1, 0, 0, 0]), n: 3 }));
+        let r = std::panic::catch_unwind(|| table::<u32>(&Blocks::new(Src::Dense(&[1, 0, 0, 0]), 3)));
         assert!(r.is_err());
-        let r = std::panic::catch_unwind(|| table::<u8>(&Blocks { src: Src::Dense(&[]), n: 1 }));
+        let r = std::panic::catch_unwind(|| table::<u8>(&Blocks::new(Src::Dense(&[]), 1)));
         assert!(r.is_err());
     }
     #[test] fn member_sets_bits_from_lo() {
@@ -859,7 +859,7 @@ mod tests {
         assert_eq!(srange::<u8>(&dense(&[0xff, 0x7f, 1], 1)), (-1, 127));
         assert_eq!(srange::<u32>(&dense(&[], 4)), (i64::MAX, i64::MIN));
         assert_eq!(srange::<u128>(&dense(&le::<8>(&[1, 0, u64::MAX, 0]), 16)), (-1, 1));
-        assert_eq!(srange::<u16>(&Blocks { src: Src::Ids(&[], 8), n: 0 }), (0, 127));
+        assert_eq!(srange::<u16>(&Blocks::new(Src::Ids(&[], 8), 0)), (0, 127));
     }
     // A31: expected values are search.rs's (4ebc95c) own, which `/data/tmp/qrs/A31/diff` compares on 41026 random cases;
     // the q facts are the ones QLean/Kernel/Search.lean measured
@@ -1321,7 +1321,7 @@ pub fn sym_search(bits: bool, nd: &Syms, hb: &Syms, out: &mut [u8]) {
     // an empty haystack answers `n = 0` for every needle, which sets no bit
     if n > 0 && hb.packs(n) {
         let hk: Vec<u64> = hb.keys(n).collect();
-        let h = Blocks { src: Src::Dense(crate::pod::bytes(&hk)), n };
+        let h = Blocks::new(Src::Dense(crate::pod::bytes(&hk)), n);
         let p = (n > SYM_SCAN_MAX).then(|| Probe::new(Kind::U64, &h));
         let mut buf = [0u64; SYM_KEY_BLOCK];
         let mut at = 0;
@@ -1330,7 +1330,7 @@ pub fn sym_search(bits: bool, nd: &Syms, hb: &Syms, out: &mut [u8]) {
             let blk = Syms { blob: nd.blob, offs: &nd.offs[at..=at + cnt] };
             if !blk.packs(cnt) { break }
             sym_pack(&blk, cnt, &mut buf);
-            let x = Blocks { src: Src::Dense(crate::pod::bytes(&buf[..cnt])), n: cnt };
+            let x = Blocks::new(Src::Dense(crate::pod::bytes(&buf[..cnt])), cnt);
             match &p {
                 Some(p) if bits => p.member(&x, 0, cnt, &mut out[at / 8..]),
                 Some(p) => p.find(&x, 0, cnt, &mut i64s(out)[at..at + cnt]),

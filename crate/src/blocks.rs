@@ -13,9 +13,31 @@ use core::ops::Range;
 /// through its dictionary.
 #[derive(Clone, Copy)]
 pub enum Src<'a> { Dense(&'a [u8]), For(Coc<'a>), Alp(Cocf<'a>), Ids(&'a [u8], u32) }
-/// A block source: `n` elements of `src`, in blocks of `1 << lg()`.
+/// The block grid of a column of `n` elements, `1 << lg` a block: what a source reads by and a `Sink` writes by.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Grid { pub n: usize, pub lg: u32 }
+impl Grid {
+    pub fn lg(&self) -> u32 { self.lg }
+    pub fn blk(&self) -> usize { 1 << self.lg }
+    pub fn nblk(&self) -> usize { self.n.div_ceil(self.blk()) }
+    /// Block `b`'s first element and element count.
+    pub fn span(&self, b: usize) -> (usize, usize) { let lo = b << self.lg; (lo, (self.n - lo).min(self.blk())) }
+    /// Every block in order as `(b, lo, nb)`: the one walk over a column's grid.
+    pub fn walk(&self) -> impl Iterator<Item = (usize, usize, usize)> + use<> {
+        let g = *self;
+        (0..g.nblk()).map(move |b| { let (lo, nb) = g.span(b); (b, lo, nb) })
+    }
+    /// The blocks elements `lo .. hi` cross, as `(b, blo, at, end)`: block `b` starts at element `blo`, and `at .. end` is
+    /// its part of the range; the walk of a slice that may start or stop inside a block.
+    pub fn tiles(&self, lo: usize, hi: usize) -> impl Iterator<Item = (usize, usize, usize, usize)> + use<> {
+        let lg = self.lg;
+        (lo >> lg..hi.div_ceil(1 << lg)).map(move |b| (b, b << lg, lo.max(b << lg), hi.min((b + 1) << lg)))
+    }
+}
+/// A block source: `src` read on its grid `g` (its `n`, `lg`, `span`, `walk`, `tiles` are the grid's).
 #[derive(Clone, Copy)]
-pub struct Blocks<'a> { pub src: Src<'a>, pub n: usize }
+pub struct Blocks<'a> { pub src: Src<'a>, pub g: Grid }
+impl core::ops::Deref for Blocks<'_> { type Target = Grid; fn deref(&self) -> &Grid { &self.g } }
 /// Block metadata: the frame base, the largest element (`None`: not stored, a dense block's is its scan), the sum
 /// (stored for FoR and ALP only), the residual width in bits.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -25,35 +47,23 @@ pub struct BlkMeta { pub base: i64, pub max: Option<i64>, pub sum: Option<i64>, 
 #[derive(Clone)]
 pub struct Res<'a> { pub pack: &'a [u8], pub width: u32, pub base: u64, pub exc: Range<usize>, pub nb: usize }
 
-impl<'a> From<Coc<'a>> for Blocks<'a> { fn from(c: Coc<'a>) -> Self { Blocks { n: c.meta.n, src: Src::For(c) } } }
-impl<'a> From<Cocf<'a>> for Blocks<'a> { fn from(f: Cocf<'a>) -> Self { Blocks { n: f.c.meta.n, src: Src::Alp(f) } } }
+impl<'a> From<Coc<'a>> for Blocks<'a> { fn from(c: Coc<'a>) -> Self { Blocks::new(Src::For(c), c.meta.n) } }
+impl<'a> From<Cocf<'a>> for Blocks<'a> { fn from(f: Cocf<'a>) -> Self { Blocks::new(Src::Alp(f), f.c.meta.n) } }
 impl<'a> Blocks<'a> {
+    /// `n` elements of `src` on its grid: an encoded column's own block size, the writer's for a payload with none.
+    pub fn new(src: Src<'a>, n: usize) -> Self {
+        let lg = match src { Src::For(c) | Src::Alp(Cocf { c, .. }) => c.meta.lg, _ => crate::DEFAULT_LG };
+        Blocks { src, g: Grid { n, lg } }
+    }
     /// A dense payload `p` of `w`-byte elements (`opnd_dense`).
-    pub fn dense(p: &'a [u8], w: usize) -> Self { Blocks { src: Src::Dense(p), n: p.len() / w } }
+    pub fn dense(p: &'a [u8], w: usize) -> Self { Blocks::new(Src::Dense(p), p.len() / w) }
     /// `Column.idsCap`'s count of `n` ids at `lw` bits, which is all `id_at` may read (`opnd_ids`).
     pub fn ids(p: &'a [u8], n: usize, lw: u32) -> Self {
         let n = n.min(ids::ids_avail(p.len(), lw));
-        Blocks { src: Src::Ids(&p[..ids::ids_bytes(n, lw)], lw), n }
+        Blocks::new(Src::Ids(&p[..ids::ids_bytes(n, lw)], lw), n)
     }
     /// A bit column of `n` bits: ids at width 1 (decision B).
     pub fn bits(p: &'a [u8], n: usize) -> Self { Self::ids(p, n, 1) }
-    /// The block size exponent: an encoded column's own, the writer's grid for a payload with none.
-    pub fn lg(&self) -> u32 { match self.src { Src::For(c) | Src::Alp(Cocf { c, .. }) => c.meta.lg, _ => crate::DEFAULT_LG } }
-    pub fn blk(&self) -> usize { 1 << self.lg() }
-    pub fn nblk(&self) -> usize { self.n.div_ceil(self.blk()) }
-    /// Block `b`'s first element and element count.
-    pub fn span(&self, b: usize) -> (usize, usize) { let lo = b << self.lg(); (lo, (self.n - lo).min(self.blk())) }
-    /// Every block in order as `(b, lo, nb)`: the one walk over a column's grid.
-    pub fn walk(&self) -> impl Iterator<Item = (usize, usize, usize)> + use<'a> {
-        let s = *self;
-        (0..s.nblk()).map(move |b| { let (lo, nb) = s.span(b); (b, lo, nb) })
-    }
-    /// The blocks elements `lo .. hi` cross, as `(b, blo, at, end)`: block `b` starts at element `blo`, and `at .. end` is
-    /// its part of the range; the walk of a slice that may start or stop inside a block.
-    pub fn tiles(&self, lo: usize, hi: usize) -> impl Iterator<Item = (usize, usize, usize, usize)> + use<'a> {
-        let lg = self.lg();
-        (lo >> lg..hi.div_ceil(1 << lg)).map(move |b| (b, b << lg, lo.max(b << lg), hi.min((b + 1) << lg)))
-    }
     /// Block `b`'s metadata.
     pub fn meta(&self, b: usize) -> BlkMeta {
         match self.src {

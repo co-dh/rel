@@ -185,15 +185,6 @@ pub fn alp_pack(p: &mut EncPack, x: &[u8], width: usize) {
     if width == 4 { alp_pack_blk(p, be, elts::<f32>(x, "coc_enc_alp_pack"), crate::pod::cast_mut::<f32>(raw).expect("qlean coc_enc_alp_pack: misaligned f32 patch bits")) }
     else { alp_pack_blk(p, be, elts::<f64>(x, "coc_enc_alp_pack"), crate::pod::cast_mut::<f64>(raw).expect("qlean coc_enc_alp_pack: misaligned f64 patch bits")) }
 }
-/// coc.rs `src_copy`: a dense column's block copied into its place in the dense output `out`.
-pub fn src_copy(out: &mut [u8], x: &[u8]) { out[..x.len()].copy_from_slice(x) }
-/// coc.rs `src_bits`: the bytes `x` (0/1) of one block packed into `out`, its own bytes of the bitmap (it starts at bit
-/// `b * BLK`, a byte boundary): bit `i % 8` of byte `i / 8`, a non-zero byte reading as set (`Wire.booleanColumn`'s packing).
-pub fn src_bits(out: &mut [u8], x: &[u8]) {
-    for (o, c) in out.iter_mut().zip(x.chunks(8)) {
-        *o = c.iter().enumerate().fold(0, |w, (j, &v)| w | ((v != 0) as u8) << j)
-    }
-}
 /// coc.rs `coc_sumnul`: the null the writer's block sums skip, which its trailer records: the element type's own,
 /// and a float's integers are an `i64` column.
 pub fn coc_sumnul(width: usize, alp: bool) -> i64 {
@@ -287,21 +278,43 @@ pub fn tail_bytes(alp: bool, nexc: usize, frm: bool, width: usize, nblk: usize) 
     tail.map_or(0, |t| exc_layout(nblk, nexc, width, t).expect("qlean: the exception layout overflows").size)
 }
 
-/// A producer's optional callbacks that move whole blocks (coc.rs `coc_take`, `coc_hint`, `coc_ints`); `None` is no callback
-/// or no answer. The raw pointers of the C callbacks stay in the implementor.
-pub trait Moves {
+/// What a `Sink` (`ffi.rs`) writes, a block of its grid at a time: the block's elements, or, where the answer holds whole
+/// blocks of a column already in the writer's form, the block itself (`take`); ALP's hints have no answer by default.
+pub trait Producer: Sync {
+    /// Elements `lo .. lo + nb` (block `b` of the writer's grid) at `w` bytes each: a slice of the producer's own memory, or
+    /// written into `buf` (`16 * nb` bytes, 8-aligned).
+    fn block<'s>(&'s self, b: usize, lo: usize, nb: usize, w: usize, buf: &'s mut [u8]) -> &'s [u8];
     /// Block `pb` of a column in the writer's own form that answer block `b` equals, with `pb`.
-    fn take(&self, b: usize) -> Option<(Cocf<'_>, usize)>;
+    fn take(&self, _b: usize) -> Option<(Cocf<'_>, usize)> { None }
     /// ALP: block `b`'s decimals `d`, exponents `ee` (negative = exception) of its first `nb` elements, and the block's exponent;
     /// with `raw` also each exception's `width` raw bytes at `raw[i * width..]`. `None` when the producer has no answer.
-    fn ints(&self, b: usize, nb: usize, d: &mut [i64], ee: &mut [i8], raw: Option<&mut [u8]>) -> Option<i32>;
+    fn ints(&self, _b: usize, _nb: usize, _d: &mut [i64], _ee: &mut [i8], _raw: Option<&mut [u8]>) -> Option<i32> { None }
     /// ALP: a block exponent for block `b` and the most exceptions it may leave.
-    fn hint(&self, b: usize) -> Option<(i32, u32)>;
+    fn hint(&self, _b: usize) -> Option<(i32, u32)> { None }
+}
+/// A kernel's `fill` (elements `i0 .. i0 + v.len()` as `i64`) narrowed to the writer's `w` bytes, in `buf`.
+pub fn filled<'s>(fill: impl FnOnce(&mut [i64], usize), lo: usize, nb: usize, w: usize, buf: &'s mut [u8]) -> &'s [u8] {
+    let (v, o) = buf.split_at_mut(8 * nb);
+    let v = crate::pod::cast_mut::<i64>(v).expect("qlean Sink: a block buffer is misaligned for i64");
+    fill(v, lo);
+    narrow(w, v, o)
+}
+/// A closure is a producer with no `take`: the form every kernel that computes an answer a block at a time uses.
+impl<F: Fn(&mut [i64], usize) + Sync> Producer for F {
+    fn block<'s>(&'s self, _: usize, lo: usize, nb: usize, w: usize, buf: &'s mut [u8]) -> &'s [u8] { filled(self, lo, nb, w, buf) }
+}
+/// A column read as the writer's elements: the encoder's input where it is dense, a transcode where it is not. A span on
+/// the column's own grid is read in place where it lies, any other is cut from the blocks it crosses.
+impl Producer for crate::blocks::Blocks<'_> {
+    fn block<'s>(&'s self, _: usize, lo: usize, nb: usize, w: usize, buf: &'s mut [u8]) -> &'s [u8] {
+        let b = lo >> self.lg();
+        if self.span(b) == (lo, nb) { self.view(b, w, buf) } else { self.range(lo, nb, w, buf) }
+    }
 }
 /// coc.rs `move_meta`: a moved block's metadata is its column's and its exception count is what the layout prefix-sums; the
 /// writer's own step would choose exactly these for the same elements. Else the ALP shortcuts (the sources' exponent where it
 /// leaves no more exceptions than they had), else the writer's own step. `x` is read only on the last two paths.
-pub fn move_meta_blk<'a>(mv: &impl Moves, m: &mut EncMeta, x: impl FnOnce() -> &'a [u8], width: usize, nb: usize) {
+pub fn move_meta_blk<'a>(mv: &(impl Producer + ?Sized), m: &mut EncMeta, x: impl FnOnce() -> &'a [u8], width: usize, nb: usize) {
     use crate::alp::{alp_exc_at, alp_fin_blk, alp_meta_exp};
     let (b, alp) = (m.b, m.exp.is_some());
     if let Some((f, pb)) = mv.take(b) { move_meta(m, &f, pb); return }
@@ -323,7 +336,7 @@ pub fn move_meta_blk<'a>(mv: &impl Moves, m: &mut EncMeta, x: impl FnOnce() -> &
 }
 /// coc.rs `move_pack`: a moved block's residuals and its patch list, whose positions are the block's own and so move unchanged.
 /// `pack(whole)` is block `b`'s `EncPack`, asked once; `whole` for a taken block's full `blk * width / 8` residual region.
-pub fn move_pack_blk<'a, 'b>(mv: &impl Moves, pack: impl FnOnce(bool) -> EncPack<'b>, x: impl FnOnce() -> &'a [u8], b: usize, nb: usize,
+pub fn move_pack_blk<'a, 'b>(mv: &(impl Producer + ?Sized), pack: impl FnOnce(bool) -> EncPack<'b>, x: impl FnOnce() -> &'a [u8], b: usize, nb: usize,
                              width: usize, alp: bool) {
     if let Some((f, pb)) = mv.take(b) { return move_pack(&mut pack(true), &f, pb, alp, width) }
     if alp {
@@ -480,20 +493,7 @@ mod a16_tests {
     use super::*;
     // Expected values come from running the original C loops of coc.rs and coc.rs (/data/tmp/qrs/A16/diff.c
     // compares the block steps over 12,000 columns).
-    #[test] fn src_bits_packs_bit_i_of_byte_i_div_8() {
-        let x = [1u8, 0, 7, 0, 0, 0, 0, 0, 255, 0, 0, 1];
-        let mut o = [0xffu8; 3 + 130];
-        src_bits(&mut o[..2], &x);
-        assert_eq!(&o[..2], &[0b101, 0b1001]);
-        // block 1 starts at byte BLK / 8, and a short block writes only its ceil(nb / 8) bytes
-        let mut o = [0u8; 130];
-        src_bits(&mut o[128..130], &x[..9]);
-        assert_eq!((o[127], o[128], o[129]), (0, 0b101, 1));
-    }
-    #[test] fn src_copy_and_sumnul() {
-        let mut o = [9u8; 6];
-        src_copy(&mut o, &[1, 2, 3]);
-        assert_eq!(o, [1, 2, 3, 9, 9, 9]);
+    #[test] fn sumnul() {
         assert_eq!([(1, false), (2, false), (4, false), (8, false), (4, true)].map(|(w, a)| coc_sumnul(w, a)),
                    [i64::MIN, i16::MIN as i64, i32::MIN as i64, i64::MIN, i64::MIN]);
     }
