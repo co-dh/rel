@@ -133,38 +133,51 @@ theorem mem_sound {B : Obj} : Sound (ofVals (.arr B) B CRel.mem) (fun xs x => x 
 
 /-! ### The rows of `prims` -/
 
-/-- A row read on its keys' values computes `T` where its kernel relates each listed value by `T`. -/
+/-- `R` is `rep (idU X) ≫ T` where it relates exactly the values listed in `X`, each by `T`: how a kernel's
+    pointwise lemma reads as the homomorphism form of an `ofVals` row. -/
+theorem idU_ext {A B : Obj} {n : USize} {X : Vals A n} {R T : Den A B}
+    (h : ∀ x y, R x y ↔ (∃ j, X.row j = x) ∧ T x y) : R = rep (idU X) ≫ T :=
+  Core.Rel.ext fun x y => by
+    rw [h, comp_apply, rep_idU]
+    exact ⟨fun ⟨hx, t⟩ => ⟨x, ⟨rfl, hx⟩, t⟩, fun ⟨_, ⟨e, hx⟩, t⟩ => by subst e; exact ⟨hx, t⟩⟩
+
+/-- A row read on its keys' values computes `T` where its kernel is `T` after the coreflexive of the values. -/
 theorem ofVals_sound {A B : Obj} {f : {n : USize} → Vals A n → CRel A B} {T : Den A B}
-    (h : ∀ {n : USize} (X : Vals A n), (f X).ok = true → ∀ x y, rep (f X).rel x y ↔ (∃ j, X.row j = x) ∧ T x y) :
-    Sound (ofVals A B f) T := fun D _ hb x y hx => (h D.val hb x y).trans ⟨And.right, fun t => ⟨keyRow hx, t⟩⟩
+    (h : ∀ {n : USize} (X : Vals A n), (f X).ok = true → rep (f X).rel = rep (idU X) ≫ T) :
+    Sound (ofVals A B f) T := fun D _ hb x y hx => by
+  show rep (f D.val).rel x y ↔ T x y
+  rw [h D.val hb, comp_apply, rep_idU]
+  exact ⟨fun ⟨_, ⟨e, _⟩, t⟩ => by subst e; exact t, fun t => ⟨x, ⟨rfl, keyRow hx⟩, t⟩⟩
 
 /-- A row composed after its keys computes `T` where its kernel is `P` then `T`. -/
 theorem after_sound {A B : Obj} {f : {K : Obj} → CRel K A → CRel K B} {T : Den A B}
-    (h : ∀ {K : Obj} (P : CRel K A), (f P).ok = true → ∀ k y, rep (f P).rel k y ↔ ∃ a, rep P.rel k a ∧ T a y) :
-    Sound (after A B f) T := fun D hD hb x y hx =>
-  (h ⟨D, true⟩ hb x y).trans ⟨fun ⟨_, hk, t⟩ => hD x _ hk ▸ t, fun t => ⟨x, hx, t⟩⟩
+    (h : ∀ {K : Obj} (P : CRel K A), (f P).ok = true → rep (f P).rel = rep P.rel ≫ T) :
+    Sound (after A B f) T := fun D hD hb x y hx => by
+  show rep (f ⟨D, true⟩).rel x y ↔ T x y
+  rw [h ⟨D, true⟩ hb, comp_apply]
+  exact ⟨fun ⟨_, hk, t⟩ => hD x _ hk ▸ t, fun t => ⟨x, hx, t⟩⟩
 
 theorem τ_sound {A : Obj} : Sound (ofVals A (.arr A) fun X => CRel.τ X) (fun a Y => Y = [a]) :=
-  ofVals_sound fun X hb => by
+  ofVals_sound fun X hb => idU_ext <| by
     unfold CRel.τ at hb ⊢; rw [CRel.rep_ofC hb]
     obtain ⟨hX, -, hx, -, hWk, hW, h63⟩ := transposeC_ok (idU X) (CRel.ofC_ok hb).1
     exact rep_tau_list X hX hx hWk hW h63
 
 theorem uncons_sound {B : Obj} :
     Sound (ofVals (.arr B) (.prod B (.arr B)) fun X => CRel.uncons X) (fun xs p => xs = p.1 :: p.2) :=
-  ofVals_sound fun X hb xs _ => CRel.rep_uncons X hb xs _ _
+  ofVals_sound fun X hb => idU_ext fun xs _ => CRel.rep_uncons X hb xs _ _
 
 theorem unsnoc_sound {B : Obj} :
     Sound (ofVals (.arr B) (.prod (.arr B) B) fun X => CRel.unsnoc X) (fun xs p => xs = p.1 ++ [p.2]) :=
-  ofVals_sound fun X hb xs _ => CRel.rep_unsnoc X hb xs _ _
+  ofVals_sound fun X hb => idU_ext fun xs _ => CRel.rep_unsnoc X hb xs _ _
 
 theorem uncat_sound {B : Obj} :
     Sound (ofVals (.arr B) (.prod (.arr B) (.arr B)) fun X => CRel.uncat X) (fun xs p => xs = p.1 ++ p.2) :=
-  ofVals_sound fun X hb xs _ => CRel.rep_uncat X hb xs _ _
+  ofVals_sound fun X hb => idU_ext fun xs _ => CRel.rep_uncat X hb xs _ _
 
 theorem length_sound {B : Obj} :
     Sound (ofVals (.arr B) .long fun X => CRel.length X) (fun xs w => w = Int64.ofNat xs.length) :=
-  ofVals_sound fun X hb => CRel.rep_length X hb
+  ofVals_sound fun X hb => idU_ext <| CRel.rep_length X hb
 
 /-- `sum` adds in `Int64`: its kernel has no row at an array holding `nul` or one whose partial sums leave the
     `Int64` range, so this is its relation, not `foldr (+) 0` on every array. -/
@@ -172,30 +185,30 @@ theorem sum_sound : Sound (ofVals (.arr .long) .long fun X => CRel.Arr.sum X) (f
     (∀ t, t ≤ xs.length → -2 ^ 63 < List.sum (List.map Int64.toInt (List.drop t xs)) ∧
       List.sum (List.map Int64.toInt (List.drop t xs)) < 2 ^ 63) ∧ (∀ x ∈ xs, x ≠ nul) ∧
       w = xs.foldr (· + ·) 0) :=
-  ofVals_sound fun X hb => CRel.Arr.rep_sum X hb
+  ofVals_sound fun X hb => idU_ext <| CRel.Arr.rep_sum X hb
 
 theorem inits_sound {B : Obj} : Sound (ofVals (.arr B) (.arr (.arr B)) fun X => CRel.inits X)
     (fun xs yss => yss = (List.range (xs.length + 1)).map fun k => xs.take k) :=
-  ofVals_sound fun X hb => CRel.rep_inits X hb
+  ofVals_sound fun X hb => idU_ext <| CRel.rep_inits X hb
 
 theorem tails_sound {B : Obj} : Sound (ofVals (.arr B) (.arr (.arr B)) fun X => CRel.tails X)
     (fun xs yss => yss = (List.range (xs.length + 1)).map fun k => xs.drop k) :=
-  ofVals_sound fun X hb => CRel.rep_tails X hb
+  ofVals_sound fun X hb => idU_ext <| CRel.rep_tails X hb
 
 theorem prefix_sound {B : Obj} : Sound (ofVals (.arr B) (.arr B) fun X => CRel.«prefix» X) (fun xs ys => ys <+: xs) :=
-  ofVals_sound fun X hb => CRel.rep_prefix X hb
+  ofVals_sound fun X hb => idU_ext <| CRel.rep_prefix X hb
 
 theorem suffix_sound {B : Obj} : Sound (ofVals (.arr B) (.arr B) fun X => CRel.suffix X) (fun xs ys => ys <:+ xs) :=
-  ofVals_sound fun X hb => CRel.rep_suffix X hb
+  ofVals_sound fun X hb => idU_ext <| CRel.rep_suffix X hb
 
 theorem concat_sound {B : Obj} :
     Sound (ofVals (.arr (.arr B)) (.arr B) fun X => CRel.concat X) (fun xss ys => ys = xss.flatten) :=
-  ofVals_sound fun X hb => CRel.rep_concat X hb
+  ofVals_sound fun X hb => idU_ext <| CRel.rep_concat X hb
 
 open Classical in
 theorem distinct_sound {B : Obj} :
     Sound (ofVals (.arr B) (.arr B) fun X => CRel.distinct X) (fun xs ys => ys = xs.eraseDups) :=
-  ofVals_sound fun X hb xs ys => by
+  ofVals_sound fun X hb => idU_ext fun xs ys => by
     obtain ⟨h1, h2⟩ := CRel.rep_distinct X hb
     refine ⟨h1 xs ys, fun ⟨hx, e⟩ => ?_⟩
     obtain ⟨Y, hY⟩ := (h2 xs).2 hx
@@ -240,27 +253,27 @@ theorem takewhile_sound {B : Obj} {d : Bool} {R : Fn d B B} {TR : Den B B} (hR :
 
 theorem cons_sound {B : Obj} :
     Sound (after (.prod B (.arr B)) (.arr B) fun P => CRel.cons P) (fun p ys => ys = p.1 :: p.2) :=
-  after_sound fun P hb k ys => (CRel.rep_cons P hb k ys).trans
+  after_sound fun P hb => Core.Rel.ext fun k ys => (CRel.rep_cons P hb k ys).trans
     ⟨fun ⟨_, _, h, e⟩ => ⟨_, h, e⟩, fun ⟨_, h, e⟩ => ⟨_, _, h, e⟩⟩
 
 theorem snoc_sound {B : Obj} :
     Sound (after (.prod (.arr B) B) (.arr B) fun P => CRel.snoc P) (fun p ys => ys = p.1 ++ [p.2]) :=
-  after_sound fun P hb k ys => (CRel.rep_snoc P hb k ys).trans
+  after_sound fun P hb => Core.Rel.ext fun k ys => (CRel.rep_snoc P hb k ys).trans
     ⟨fun ⟨_, _, h, e⟩ => ⟨_, h, e⟩, fun ⟨_, h, e⟩ => ⟨_, _, h, e⟩⟩
 
 theorem cat_sound {B : Obj} :
     Sound (after (.prod (.arr B) (.arr B)) (.arr B) fun P => CRel.cat P) (fun p zs => zs = p.1 ++ p.2) :=
-  after_sound fun P hb k zs => (CRel.rep_cat P hb k zs).trans
+  after_sound fun P hb => Core.Rel.ext fun k zs => (CRel.rep_cat P hb k zs).trans
     ⟨fun ⟨_, _, h, e⟩ => ⟨_, h, e⟩, fun ⟨_, h, e⟩ => ⟨_, _, h, e⟩⟩
 
 theorem zip_sound {A B : Obj} :
     Sound (after (.prod (.arr A) (.arr B)) (.arr (.prod A B)) fun P => CRel.zip P) (fun p zs => zs = p.1.zip p.2) :=
-  after_sound fun P hb k zs => (CRel.rep_zip P hb k zs).trans
+  after_sound fun P hb => Core.Rel.ext fun k zs => (CRel.rep_zip P hb k zs).trans
     ⟨fun ⟨_, _, h, e⟩ => ⟨_, h, e⟩, fun ⟨_, h, e⟩ => ⟨_, _, h, e⟩⟩
 
 theorem tic_sound {B : Obj} : Sound (after (.prod B (.arr B)) (.arr (.arr B)) fun P => CRel.tic P)
     (fun p zss => zss = (List.range (p.2.length + 1)).map fun j => (p.1 :: p.2).take (j + 1)) :=
-  after_sound fun P hb k zss => (CRel.rep_tic P hb k zss).trans
+  after_sound fun P hb => Core.Rel.ext fun k zss => (CRel.rep_tic P hb k zss).trans
     ⟨fun ⟨_, _, h, e⟩ => ⟨_, h, e⟩, fun ⟨_, h, e⟩ => ⟨_, _, h, e⟩⟩
 
 open Classical in
@@ -303,7 +316,7 @@ open Classical in
 theorem thinL_sound {B : Obj} {Q : Fn true (.prod B B) (.prod B B)} {TQ : Den (.prod B B) (.prod B B)}
     (hQ : Sound Q TQ) : Sound (testVals B (.arr B) (.arr B) Q fun q X => CRel.thinLOn q X)
       (thinLDen fun a b => decide (∃ c, TQ (a, b) c)) :=
-  ofVals_sound (f := @fun _ X => CRel.thinLOn (fun P => Q P.rel) X) fun X hb =>
+  ofVals_sound (f := @fun _ X => CRel.thinLOn (fun P => Q P.rel) X) fun X hb => idU_ext <|
     CRel.rep_thinLOn _ _ X (test_le hQ) hb
 
 /-- A step run on a round's coreflexive `D` of the pairs `S` (`onKeys`) computes `T` at those pairs: `D` has a
@@ -326,7 +339,7 @@ theorem loop_sound {X Y : Obj} {d : Bool} {F : Fn d (.prod X Y) X} {TF : Den (.p
     Sound (stepAfter (.prod X Y) X (.prod X (.arr Y)) X d F fun G P => CRel.loopOn G P)
       (fun p c => ∃ g : Nat → X.El, g 0 = p.1 ∧ (∀ t (ht : t < p.2.length), TF (g t, p.2[t]'ht) (g (t + 1))) ∧
         c = g p.2.length) :=
-  after_sound (f := @fun _ P => CRel.loopOn (onKeys d F) P) fun P hb k c =>
+  after_sound (f := @fun _ P => CRel.loopOn (onKeys d F) P) fun P hb => Core.Rel.ext fun k c =>
     (CRel.rep_loopOn _ P hb TF (fun D S hD hb' cy c' hS => (onKeys_sound hF D S hD hb' cy c' hS).symm) k c).trans
       ⟨fun ⟨c₀, xs, h, g⟩ => ⟨(c₀, xs), h, g⟩, fun ⟨⟨c₀, xs⟩, h, g⟩ => ⟨c₀, xs, h, g⟩⟩
 
@@ -439,7 +452,7 @@ theorem nil_sound {A B : Obj} : Sound (nil A B) nilDen := fun D _ hb x Y hx => b
   exact ⟨x, ⟨rfl, keyRow hx⟩, Y, trivial, rfl, ⟨0, by simp⟩, by rw [e, nilVal_row]⟩
 
 theorem atPos_sound {B : Obj} (k : Nat) : Sound (atPos B k) (atDen k) :=
-  ofVals_sound (f := fun X => CRel.atPos k X) fun X hb => CRel.rep_atPos k X hb
+  ofVals_sound (f := fun X => CRel.atPos k X) fun X hb => idU_ext <| CRel.rep_atPos k X hb
 
 /-- `succ` on the universe `U`: `u` and its successor both in `U`. -/
 theorem succ_sound {U : Fn false .long .long} {TU : Den .long .long} (hU : Sound U TU) :
