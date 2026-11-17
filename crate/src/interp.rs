@@ -1,4 +1,4 @@
-//! interp.c's two computations, free of Lean objects.
+//! interp.rs's two computations, free of Lean objects.
 #![forbid(unsafe_code)]
 
 /// The key a verb spelling reads its cell under: a spelling of 1 to 7 bytes packs whole into a `u64`, its length in the

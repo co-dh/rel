@@ -1,5 +1,5 @@
 #![forbid(unsafe_code)]
-//! Column (a), coc.h: the ALP (decimal float) column. `Cocf` is the read view of coc.h:1443 `cocf` (A5: view,
+//! Column (a), coc.rs: the ALP (decimal float) column. `Cocf` is the read view of coc.rs `cocf` (A5: view,
 //! block loads, decode, the finishing step); the encoder's per-block steps are A9.
 use crate::coc::{Coc, Meta};
 use crate::layout::{Tail, exc_layout};
@@ -8,7 +8,7 @@ use crate::enc::{EncMeta, EncPack};
 use crate::pod::Pod;
 use alloc::vec::Vec;
 
-/// coc.h:1443 `cocf`: the integer column `c` (the FoR encoding of the decimals `d`) plus each block's exponent and
+/// coc.rs `cocf`: the integer column `c` (the FoR encoding of the decimals `d`) plus each block's exponent and
 /// the float patches. `'a` as `Coc`'s. Built from C by `ffi::CCocf::view`.
 #[derive(Clone, Copy)]
 pub struct Cocf<'a> {
@@ -29,7 +29,7 @@ pub trait Flt: Pod + PartialEq {
     const F32: bool;
     fn to_f64(self) -> f64;
     fn of_f64(v: f64) -> Self;
-    /// coc.h:2567 `bits_f32`/`bits_f64`, widened
+    /// coc.rs `bits_f32`/`bits_f64`, widened
     fn bits(self) -> u64;
 }
 impl Flt for f32 {
@@ -45,18 +45,18 @@ impl Flt for f64 {
     fn bits(self) -> u64 { self.to_bits() }
 }
 
-// ---- A5: coc.h:1341-1437, 1689 ----
-/// coc.h:1303 `POW10`: `10^e`, exact as doubles up to 1e18.
+// ---- A5: coc.rs, 1689 ----
+/// coc.rs `POW10`: `10^e`, exact as doubles up to 1e18.
 pub(crate) const POW10: [f64; 19] = [1e0, 1e1, 1e2, 1e3, 1e4, 1e5, 1e6, 1e7, 1e8, 1e9, 1e10, 1e11, 1e12, 1e13, 1e14, 1e15,
                               1e16, 1e17, 1e18];
-/// coc.h:1341 `alp_offsets`: per-block patch counts in `exc_off[1..=nblk]` into prefix sums; answers the total.
+/// coc.rs `alp_offsets`: per-block patch counts in `exc_off[1..=nblk]` into prefix sums; answers the total.
 pub fn alp_offsets(exc_off: &mut [u32], nblk: usize) -> usize {
     exc_off[0] = 0;
     for b in 0..nblk { exc_off[b + 1] = exc_off[b + 1].wrapping_add(exc_off[b]) }
     exc_off[nblk] as usize
 }
 impl<'a> Cocf<'a> {
-    /// coc.h:1351 `cocf_meta_view`: metadata `m` and the ALP part `a` of an `n`-element column; `None` = misaligned
+    /// coc.rs `cocf_meta_view`: metadata `m` and the ALP part `a` of an `n`-element column; `None` = misaligned
     /// or short. The pack is left empty, as `Coc::attach` leaves it for a column with none: the caller sets `c.pack`.
     pub fn meta_view(m: &'a [u8], a: &'a [u8], n: usize) -> Option<Cocf<'a>> {
         let c = Coc::attach(Meta::new(m, n)?, &[])?;
@@ -70,7 +70,7 @@ impl<'a> Cocf<'a> {
         Some(Cocf { c, exp: pod::cast(&a[l.tail..l.tail + mb])?, exc_off: pod::cast(&a[l.off..l.off + 4 * (mb + 1)])?,
                     exc_pos: pod::cast(&a[l.pos..l.pos + 2 * nexc])?, exc_raw: &a[l.raw..l.raw + nexc * esz], f32 })
     }
-    /// coc.h:1387 `cocf_load_range`: elements `i0 .. i1` of block `b` (residuals `p` at width `w`) into `out` as
+    /// coc.rs `cocf_load_range`: elements `i0 .. i1` of block `b` (residuals `p` at width `w`) into `out` as
     /// `f32`/`f64` bytes, at their own places (`out[i * esz]`).
     pub fn load_range(&self, b: usize, p: &[u8], w: u8, i0: usize, i1: usize, out: &mut [u8]) {
         let (base, p10, esz) = (self.c.meta.base[b] as u64, POW10[self.exp[b] as usize], if self.f32 { 4 } else { 8 });
@@ -80,7 +80,7 @@ impl<'a> Cocf<'a> {
             if (i0..i1).contains(&at) { out[at * esz..(at + 1) * esz].copy_from_slice(&self.exc_raw[j * esz..(j + 1) * esz]) }
         }
     }
-    /// coc.h:1416 `cocf_lanes`: block `b`'s residuals as whole lanes (`buf`, BLK * 8, when they must be unpacked);
+    /// coc.rs `cocf_lanes`: block `b`'s residuals as whole lanes (`buf`, BLK * 8, when they must be unpacked);
     /// answers them, the lane width and the residual width.
     pub fn lanes<'b>(&self, b: usize, nb: usize, buf: &'b mut [u8]) -> (&'b [u8], u8, u8) where 'a: 'b {
         let (w0, at) = (self.c.meta.width[b], self.c.meta.off[b] as usize);
@@ -88,35 +88,26 @@ impl<'a> Cocf<'a> {
         let p = crate::coc::lanes(&self.c.pack[at..at + crate::BLK * w0 as usize / 8], &mut w, nb, buf);
         (p, w, w0)
     }
-    /// coc.h:1421 `cocf_load_blk`: block `b`'s first `nb` elements into `out`, patches applied.
+    /// coc.rs `cocf_load_blk`: block `b`'s first `nb` elements into `out`, patches applied.
     pub fn load_blk(&self, b: usize, nb: usize, out: &mut [u8]) {
         let mut lb = [0u64; crate::BLK];
         let (p, w, _) = self.lanes(b, nb, pod::bytes_mut(&mut lb));
         self.load_range(b, p, w, 0, nb, out)
     }
-    /// coc.h:1432 `cocf_decode`: blocks `b0 .. b1` into `out`, block `b` at `out[b * BLK * esz ..]`.
-    pub fn decode(&self, b0: usize, b1: usize, out: &mut [u8]) {
-        let (n, esz) = (self.c.meta.n, if self.f32 { 4 } else { 8 });
-        for b in b0..b1 {
-            let lo = b * crate::BLK;
-            let nb = if lo + crate::BLK < n { crate::BLK } else { n - lo };
-            self.load_blk(b, nb, &mut out[lo * esz..(lo + nb) * esz])
-        }
-    }
 }
 impl Cocf<'_> {
-    /// coc.h:867 `exc_val`: patch `j` widened to a double, as the reduction layer reads it.
+    /// coc.rs `exc_val`: patch `j` widened to a double, as the reduction layer reads it.
     fn exc_val(&self, j: usize) -> f64 {
         let r = &self.exc_raw;
         if self.f32 { f32::from_ne_bytes(r[j * 4..j * 4 + 4].try_into().unwrap()) as f64 }
         else { f64::from_ne_bytes(r[j * 8..j * 8 + 8].try_into().unwrap()) }
     }
-    /// coc.h:874 `alp_dec`: `d / 10^e`, cast through the column's element type; the decoder's own expression.
+    /// coc.rs `alp_dec`: `d / 10^e`, cast through the column's element type; the decoder's own expression.
     fn dec(&self, d: i64, e: i32) -> f64 {
         let v = d as f64 / POW10[e as usize];
         if self.f32 { v as f32 as f64 } else { v }
     }
-    /// coc.h:883 `alp_thresh`: `x < v` in the value domain is `d < t` in the block's integer domain at exponent `e`, with
+    /// coc.rs `alp_thresh`: `x < v` in the value domain is `d < t` in the block's integer domain at exponent `e`, with
     /// `t = ceil(v * 10^e)` corrected against the decoder. Out of reach either way clamps outside 2^53, so every `d`
     /// counts (or none does): a value a block could hold would answer a different question.
     pub fn thresh(&self, v: f64, e: i32) -> i64 {
@@ -130,14 +121,14 @@ impl Cocf<'_> {
     }
     /// The block's first `nb`-element grid: `(lo, nb)` of block `b`.
     fn blk(&self, b: usize) -> usize { (self.c.meta.n - b * crate::BLK).min(crate::BLK) }
-    /// coc.h:926 `cocf_min`: metadata and the patch list only; NaN loses every comparison, and the `+inf` seed is q's `0w`.
+    /// coc.rs `cocf_min`: metadata and the patch list only; NaN loses every comparison, and the `+inf` seed is q's `0w`.
     /// A block of nothing but patches has no base to offer.
     pub fn min(&self) -> f64 {
         let m = (0..self.c.meta.nblk).filter(|&b| (self.exc_off[b + 1] - self.exc_off[b]) as usize != self.blk(b))
             .fold(f64::INFINITY, |m, b| { let v = self.dec(self.c.meta.base[b], self.exp[b] as i32); if v < m { v } else { m } });
         (0..self.exc_pos.len()).fold(m, |m, j| { let v = self.exc_val(j); if v < m { v } else { m } })
     }
-    /// coc.h:938 `cocf_max`, dually seeded with `-inf`.
+    /// coc.rs `cocf_max`, dually seeded with `-inf`.
     pub fn max(&self) -> f64 {
         let m = (0..self.c.meta.nblk).filter(|&b| (self.exc_off[b + 1] - self.exc_off[b]) as usize != self.blk(b))
             .fold(f64::NEG_INFINITY, |m, b| { let v = self.dec(self.c.meta.maxv[b], self.exp[b] as i32); if v > m { v } else { m } });
@@ -148,21 +139,7 @@ impl Cocf<'_> {
         let t: Vec<i64> = (0..=MAXE as i32).map(|e| self.thresh(v, e)).collect();
         self.exp[..self.c.meta.nblk].iter().map(|&e| t[e as usize]).collect()
     }
-    /// coc.h:954 `cocf_count_lt`: `x < v` with C's rule that `NaN < v` is false, the integral kernel run per block at that
-    /// block's threshold, whole-block skip included.
-    pub fn count_lt(&self, v: f64) -> usize {
-        let (ts, mut buf) = (self.thresholds(v), Vec::new());
-        let mut k = 0usize;
-        for (b, &t) in ts.iter().enumerate() {
-            k = k.wrapping_add(self.c.count_lt_blk(b, self.blk(b), t, &mut buf));
-            let counted = (self.c.meta.base[b] < t) as usize; // what the kernel scored for a residual 0
-            for j in self.exc_off[b] as usize..self.exc_off[b + 1] as usize {
-                k = k.wrapping_add((self.exc_val(j) < v) as usize).wrapping_sub(counted);
-            }
-        }
-        k
-    }
-    /// coc.h:970 `cocf_mask_lt`: `x < v` into `out` (`ceil(n / 64)` words, zeroed here), a patch scored by its own value.
+    /// coc.rs `cocf_mask_lt`: `x < v` into `out` (`ceil(n / 64)` words, zeroed here), a patch scored by its own value.
     pub fn mask_lt(&self, v: f64, out: &mut [u64]) {
         out.fill(0);
         crate::codec::mask_blks(&self.c, crate::cocops::LT, &self.thresholds(v), out);
@@ -194,7 +171,7 @@ fn restore<F: Flt>(base: u64, p10: f64, p: &[u8], w: u8, i0: usize, i1: usize, o
         _ => { let m = (1u64 << w) - 1; put(o, i0, base, p10, |i| (p[(i * w as usize) >> 3] as u64 >> ((i * w as usize) & 7)) & m) }
     }
 }
-/// coc.h:1689 `alp_fin_blk`: block `b`'s decimals `d` (exponents `ee`, first `nb`) at the block exponent `be`
+/// coc.rs `alp_fin_blk`: block `b`'s decimals `d` (exponents `ee`, first `nb`) at the block exponent `be`
 /// into the integer metadata; answers the patch count.
 pub fn alp_fin_blk(m: &mut EncMeta, be: i32, d: &mut [i64], ee: &[i8], nb: usize) -> u32 {
     let nexc = exc_as_base(d, ee, nb);
@@ -212,9 +189,9 @@ fn exc_as_base(d: &mut [i64], ee: &[i8], nb: usize) -> u32 {
     nexc as u32
 }
 
-// ---- A9: coc.h:2441-2600, the ALP encoder per block, one instance per `Flt` ----
+// ---- A9: coc.rs, the ALP encoder per block, one instance per `Flt` ----
 const MAXE: usize = crate::layout::ALP_MAXE as usize;
-/// coc.h:1319 `ALP_P53`: a product at or past 2^53 is not an exact integer.
+/// coc.rs `ALP_P53`: a product at or past 2^53 is not an exact integer.
 const P53: f64 = 9007199254740992.0;
 /// 2^49: `dexp`'s bound, under which three trials decide a double.
 const P49: f64 = 562949953421312.0;
@@ -230,11 +207,11 @@ fn nearest(s: f64) -> i64 {
     let m = ((b & ((1 << 52) - 1)) | 1 << 52) >> 1075u64.wrapping_sub((b >> 52) & 0x7ff).min(63);
     if (b as i64) < 0 { -(m as i64) } else { m as i64 }
 }
-/// coc.h:1703 `COC_SENT`: the exponent field all ones, tested on the raw bits (NaN and infinities).
+/// coc.rs `COC_SENT`: the exponent field all ones, tested on the raw bits (NaN and infinities).
 fn sent<F: Flt>(x: F) -> bool { let (s, m) = if F::F32 { (23, 0xff) } else { (52, 0x7ff) }; x.bits() >> s & m == m }
-/// coc.h:2448 `dec_f64`: `d / 10^e`. It divides, as ALP written with a multiply by 10^-e is another operation.
+/// coc.rs `dec_f64`: `d / 10^e`. It divides, as ALP written with a multiply by 10^-e is another operation.
 pub fn dec(d: i64, e: i32) -> f64 { d as f64 / POW10[e as usize] }
-/// coc.h:2453 `dat_f32`/`dat_f64`: `x` as a decimal at exponent `e`, or `None` when it does not round-trip. The
+/// coc.rs `dat_f32`/`dat_f64`: `x` as a decimal at exponent `e`, or `None` when it does not round-trip. The
 /// comparison is on bits, so -0.0 (which decodes as +0.0) is refused.
 pub fn dat<F: Flt>(x: F, e: i32) -> Option<i64> {
     let s = x.to_f64() * POW10[e as usize];
@@ -242,7 +219,7 @@ pub fn dat<F: Flt>(x: F, e: i32) -> Option<i64> {
     let r = crate::simd::cvt_nearest(s);
     (F::of_f64(dec(r, e)).bits() == x.bits()).then_some(r)
 }
-/// coc.h:2471 `dexp_f32`/`dexp_f64`: the smallest exponent at which `x` round-trips; -1 = none. At `f64` a
+/// coc.rs `dexp_f32`/`dexp_f64`: the smallest exponent at which `x` round-trips; -1 = none. At `f64` a
 /// non-decimal fails three trials from the largest `E` with |x| 10^E < 2^49, and then fails every exponent.
 pub fn dexp<F: Flt>(x: F) -> i32 {
     if !F::F32 {
@@ -252,7 +229,7 @@ pub fn dexp<F: Flt>(x: F) -> i32 {
     }
     (0..=MAXE).find(|&e| dat(x, e as i32).is_some()).map_or(-1, |e| e as i32)
 }
-/// coc.h:2566 `dat_blk`: `dat` at one exponent over a block, branch-free so that it vectorises: `ok[i]`, and `d[i]`
+/// coc.rs `dat_blk`: `dat` at one exponent over a block, branch-free so that it vectorises: `ok[i]`, and `d[i]`
 /// where it is set. A sentinel is never ok, its product being NaN or infinite.
 pub fn dat_blk<F: Flt>(x: &[F], e: i32, d: &mut [i64], ok: &mut [u8]) {
     let p = POW10[e as usize];
@@ -264,7 +241,7 @@ pub fn dat_blk<F: Flt>(x: &[F], e: i32, d: &mut [i64], ok: &mut [u8]) {
         *ok = (inn & (F::of_f64(r as f64 / p).bits() == x.bits())) as u8;
     }
 }
-/// coc.h:2498 `alp_meta_blk`'s search: each element's own exponent into `ee` (-1 = sentinel or not a decimal) and the
+/// coc.rs `alp_meta_blk`'s search: each element's own exponent into `ee` (-1 = sentinel or not a decimal) and the
 /// block exponent, their maximum. At `f64` `dexp`'s three-trial refusal runs over the whole block first, and only
 /// what passes pays the exponent search; at `f32` the trials are `dat_blk` passes, until every element that can hit has.
 pub fn alp_exps<F: Flt>(x: &[F], nb: usize, ee: &mut [i8]) -> i32 {
@@ -307,7 +284,7 @@ pub fn alp_exps<F: Flt>(x: &[F], nb: usize, ee: &mut [i8]) -> i32 {
     for s in ee.iter_mut() { *s = (*s).max(-1) }
     ee.iter().fold(0, |be, &e| be.max(e as i32))
 }
-/// coc.h:2498 `alp_meta_blk`: block metadata (exponent into `m.exp`); answers the patch count.
+/// coc.rs `alp_meta_blk`: block metadata (exponent into `m.exp`); answers the patch count.
 pub fn alp_meta_blk<F: Flt>(m: &mut EncMeta, x: &[F], nb: usize) -> u32 {
     let mut ee = [0i8; crate::BLK];
     let be = alp_exps(x, nb, &mut ee);
@@ -319,19 +296,19 @@ fn recheck<F: Flt>(x: &[F], nb: usize, be: i32, ee: &mut [i8], d: &mut [i64]) {
     dat_blk(&x[..nb], be, d, &mut ok);
     for (e, &k) in ee[..nb].iter_mut().zip(&ok) { if k == 0 { *e = -1 } }
 }
-/// coc.h:2577 `alp_meta_at`: the metadata at the given block exponent `be`; per-element exponents into `ee`.
+/// coc.rs `alp_meta_at`: the metadata at the given block exponent `be`; per-element exponents into `ee`.
 pub fn alp_meta_at<F: Flt>(m: &mut EncMeta, x: &[F], nb: usize, be: i32, ee: &mut [i8]) -> u32 {
     let mut d = [0i64; crate::BLK];
     recheck(x, nb, be, ee, &mut d);
     alp_fin_blk(m, be, &mut d, ee, nb)
 }
-/// coc.h:2588 `alp_exc_at`: the patch count at `be`, stopping past `lim`.
+/// coc.rs `alp_exc_at`: the patch count at `be`, stopping past `lim`.
 pub fn alp_exc_at<F: Flt>(x: &[F], be: i32, lim: u32) -> u32 {
     let mut n = 0;
     for &v in x { if n >= lim { break } n += (sent(v) || dat(v, be).is_none()) as u32 }
     n
 }
-/// coc.h:2596 `alp_meta_exp`: `alp_meta_at` for elements not searched: only a sentinel is marked beforehand.
+/// coc.rs `alp_meta_exp`: `alp_meta_at` for elements not searched: only a sentinel is marked beforehand.
 pub fn alp_meta_exp<F: Flt>(m: &mut EncMeta, x: &[F], nb: usize, be: i32) -> u32 {
     let mut ee = [0i8; crate::BLK];
     exp_marks(x, nb, &mut ee);
@@ -339,7 +316,7 @@ pub fn alp_meta_exp<F: Flt>(m: &mut EncMeta, x: &[F], nb: usize, be: i32) -> u32
 }
 /// `alp_meta_exp`'s marks: only a sentinel is an exception beforehand.
 fn exp_marks<F: Flt>(x: &[F], nb: usize, ee: &mut [i8]) { for (e, &v) in ee.iter_mut().zip(&x[..nb]) { *e = if sent(v) { -1 } else { 0 } } }
-/// coc.h:2619 `alp_patch_blk`: block `b` of `o` with the `ix.len()` writes `ix`/`v` applied, as pass 1 wants it at
+/// coc.rs `alp_patch_blk`: block `b` of `o` with the `ix.len()` writes `ix`/`v` applied, as pass 1 wants it at
 /// the block's OLD exponent, no search: `d` the old decimals patched, `ee[i]` -1 at an old exception not overwritten and
 /// -2 at a new one (a sentinel, or not exact at that exponent). Answers the exponent the search would raise it to, or -1:
 /// only a new value can need more than the old exponent, and the caller keeps whichever leaves fewer exceptions.
@@ -358,7 +335,7 @@ pub fn alp_patch_blk<F: Flt>(o: &Cocf, b: usize, nb: usize, ix: &[u64], v: &[F],
     }
     alt
 }
-/// coc.h:2640 `alp_patch_pack`: the pack step for a block `alp_patch_blk` rewrote.
+/// coc.rs `alp_patch_pack`: the pack step for a block `alp_patch_blk` rewrote.
 pub fn alp_patch_pack<F: Flt>(p: &mut EncPack, o: &Cocf, ix: &[u64], v: &[F], d: &mut [i64], ee: &[i8], raw: &mut [F]) {
     let (b, nb, lo) = (p.b, p.nb, (p.b * crate::BLK) as u64);
     let oraw = pod::cast::<F>(o.exc_raw).expect("qlean: alp_patch_pack: old patches misaligned");
@@ -372,7 +349,7 @@ pub fn alp_patch_pack<F: Flt>(p: &mut EncPack, o: &Cocf, ix: &[u64], v: &[F], d:
     }
     crate::enc::pack_block(&mut *p.res, &d[..nb], nb, p.base, p.width)
 }
-/// coc.h:2659 `alp_pack_blk`: residuals and float patches of one block at exponent `be`. An exception is an element
+/// coc.rs `alp_pack_blk`: residuals and float patches of one block at exponent `be`. An exception is an element
 /// `dat` refuses at `be`, which is pass 1's set: a sentinel fails `dat` on its magnitude, a non-decimal at every e.
 pub fn alp_pack_blk<F: Flt>(p: &mut EncPack, be: i32, x: &[F], raw: &mut [F]) {
     let (nb, mut d) = (p.nb, [0i64; crate::BLK]);
@@ -388,7 +365,7 @@ fn holes<F: Flt>(x: &[F], be: i32, base: i64, d: &mut [i64], pos: &mut [u16], ra
 
 
 impl<'a> Cocf<'a> {
-    /// coc.h `cocf_view`: `meta_view` with the pack `pv` attached; `None` as `meta_view`'s.
+    /// coc.rs `cocf_view`: `meta_view` with the pack `pv` attached; `None` as `meta_view`'s.
     pub fn view(mv: &'a [u8], pv: &'a [u8], av: &'a [u8], n: usize) -> Option<Cocf<'a>> {
         let mut f = Self::meta_view(mv, av, n)?;
         f.c.pack = pv;
@@ -400,7 +377,7 @@ mod tests {
     use super::*;
     use crate::{BLK, pod::bytes_mut};
 
-    // Expected values from coc.h's alp_thresh: the clamps outside 2^53 and the ceil at an exponent
+    // Expected values from coc.rs's alp_thresh: the clamps outside 2^53 and the ceil at an exponent
     #[test] fn thresh_clamps_and_rounds_up() {
         let (z, o, w) = ([0i64], [0u64], [0u8]);
         let meta = Meta { base: &z, maxv: &z, off: &o, bsum: &z, width: &w, sumnul: 0, sumn: 0, n: 1, nblk: 1, mblk: 1 };
@@ -435,7 +412,7 @@ mod tests {
     fn fnv_w(v: &[u64]) -> u64 { fnv(&v.iter().flat_map(|x| x.to_ne_bytes()).collect::<Vec<u8>>()) }
 
     // Expected values come from the original C (cocf_decode, cocf_load_blk, cocf_lanes, cocf_load_range, alp_offsets,
-    // alp_fin_blk, sort.c's keys_blk_alp) on random columns of every residual width, with sentinel patches; the stream is
+    // alp_fin_blk, sort.rs's keys_blk_alp) on random columns of every residual width, with sentinel patches; the stream is
     // made by the generator in /data/tmp/qrs/A5/gen.c. `QRS_A5_CASES` names a bigger one than the committed sample.
     #[test] fn differential() {
         let path = std::env::var("QRS_A5_CASES").unwrap_or_else(|_| concat!(env!("CARGO_MANIFEST_DIR"), "/testdata/alp.bin").into());
@@ -454,7 +431,7 @@ mod tests {
                     f.c.pack = p;
                     let esz = if f32 { 4 } else { 8 };
                     let mut out = vec![0xabababababababab_u64; n + 8];
-                    f.decode(0, f.c.meta.nblk, &mut bytes_mut(&mut out)[..n * esz]);
+                    for b in 0..f.c.meta.nblk { let (lo, nb) = (b * BLK, (n - b * BLK).min(BLK)); f.load_blk(b, nb, &mut bytes_mut(&mut out)[lo * esz..(lo + nb) * esz]) }
                     assert_eq!(fnv(&bytes_mut(&mut out)[..n * esz]), c.u(), "decode n {n}");
                     for b in 0..f.c.meta.nblk {
                         let full = (n - b * BLK).min(BLK);
@@ -495,9 +472,8 @@ mod tests {
                     let (ne, exp, dh) = (c.u(), c.u(), c.u());
                     let (cb, cm, cw) = (c.u() as i64, c.u() as i64, c.u());
                     let (mut base, mut maxv, mut width, mut bsum, mut nexc, mut e) = (0i64, 0i64, 0u8, 0i64, 0u32, 0i8);
-                    let (lb, over) = (core::sync::atomic::AtomicUsize::new(0), core::sync::atomic::AtomicI32::new(0));
                     let mut m = EncMeta { b: 0, base: &mut base, maxv: &mut maxv, width: &mut width, bsum: &mut bsum, frm: None,
-                                          nexc: &mut nexc, exp: Some(&mut e), below: 0, lb: &lb, over: &over };
+                                          nexc: &mut nexc, exp: Some(&mut e) };
                     assert_eq!((alp_fin_blk(&mut m, be as i32, &mut d, &ee, nb) as u64, fnv_w(&d.iter().map(|&x| x as u64).collect::<Vec<_>>())),
                                (ne, dh), "alp_fin_blk nb {nb}");
                     assert_eq!((e as i64 as u64, base, maxv, width as u64), (exp, cb, cm, cw), "alp_fin_blk meta nb {nb}");
@@ -509,7 +485,7 @@ mod tests {
         assert!(cols > 0);
     }
 
-    // The encoder's per-block steps against the original C (coc.h at ec273cf: dat, dexp, dat_blk, alp_exc_at,
+    // The encoder's per-block steps against the original C (coc.rs at ec273cf: dat, dexp, dat_blk, alp_exc_at,
     // alp_meta_blk, alp_meta_exp, alp_pack_blk) on blocks of decimals at every exponent, random bits, sentinels, -0.0,
     // subnormals and values near 2^49 / 2^53, from /data/tmp/qrs/A9/gen.c. `QRS_A9_CASES` names a bigger stream.
     // `encode_meta_blk` and `pack_block` are A7's: base, maxv, width and the pack hash are read past here.

@@ -1,4 +1,4 @@
-//! reduce.c's Lean exports: the reductions over a byte payload, whole, grouped (by id or by segment) and per bit row.
+//! reduce.rs's Lean exports: the reductions over a byte payload, whole, grouped (by id or by segment) and per bit row.
 //! Each unboxes its arguments, allocates the answer and makes one call into `reduce.rs`, which owns the loops and the
 //! split over the pool (`c::pool()`). Lean passes `Int64` as C's `uint64_t` and `Bool` as `uint8_t`.
 #![deny(unsafe_code)]

@@ -1,11 +1,11 @@
 #![forbid(unsafe_code)]
-//! The read views of coc.h's `coc`: metadata, patch list, and the whole column.
+//! The read views of coc.rs's `coc`: metadata, patch list, and the whole column.
 use crate::layout::{Tail, exc_layout};
 use crate::pod::{self, Lane};
 use crate::BLK;
 use alloc::vec::Vec;
 
-/// coc.h:196: bit 8 of the patch list's element size, set when the frames follow
+/// coc.rs: bit 8 of the patch list's element size, set when the frames follow
 pub(crate) const COC_EXC_FRM: usize = 0x100;
 
 /// `coc_meta_view`: the 33*mblk + 16 byte buffer.
@@ -24,7 +24,7 @@ pub struct Exc<'a> { pub off: &'a [u32], pub pos: &'a [u16], pub raw: &'a [u8], 
 pub struct Coc<'a> { pub meta: Meta<'a>, pub pack: &'a [u8], pub exc: Option<Exc<'a>>, pub fdelta: Option<&'a [u64]> }
 
 impl<'a> Meta<'a> {
-    /// coc.h:133; None = misaligned buffer, or one shorter than `33 * (len / 33) + 16` where C reads past it
+    /// coc.rs; None = misaligned buffer, or one shorter than `33 * (len / 33) + 16` where C reads past it
     pub fn new(m: &'a [u8], n: usize) -> Option<Self> {
         let nb = m.len() / 33;
         if m.len() < 33 * nb + 16 { return None }
@@ -41,15 +41,15 @@ impl<'a> Meta<'a> {
             n, nblk: n.div_ceil(BLK), mblk: nb,
         })
     }
-    /// coc.h:222
+    /// coc.rs
     pub fn res_end(&self) -> usize {
         if self.mblk == 0 { 0 } else { self.off[self.mblk - 1] as usize + BLK * self.width[self.mblk - 1] as usize / 8 }
     }
-    /// coc.h:233
+    /// coc.rs
     pub fn grid(&self, n: usize) -> bool { self.mblk == n.div_ceil(BLK) }
 }
 impl<'a> Coc<'a> {
-    /// coc.h:245; None where C aborts, or where the pack's tail is misaligned for its sections
+    /// coc.rs; None where C aborts, or where the pack's tail is misaligned for its sections
     pub fn attach(meta: Meta<'a>, pack: &'a [u8]) -> Option<Self> {
         let e = meta.res_end();
         let c = Coc { meta, pack, exc: None, fdelta: None };
@@ -66,7 +66,7 @@ impl<'a> Coc<'a> {
         let fdelta = if frm != 0 { Some(pod::cast(&t[l.tail..l.tail + 8 * mb])?) } else { None };
         Some(Coc { exc: Some(exc), fdelta, ..c })
     }
-    /// coc.h:234
+    /// coc.rs
     pub fn std(&self, n: usize) -> bool {
         let (m, e) = (&self.meta, self.meta.res_end());
         let pb = self.pack.len();
@@ -75,7 +75,7 @@ impl<'a> Coc<'a> {
         let (nexc, esz) = self.exc.map_or((0, 0), |x| (x.pos.len(), x.esz));
         exc_layout(m.mblk, nexc, esz, if self.fdelta.is_some() { Tail::Frames } else { Tail::None }).is_some_and(|l| pb == e + l.size)
     }
-    /// coc.h:155; off stays absolute into pack
+    /// coc.rs; off stays absolute into pack
     pub fn blocks(&self, b0: usize, b1: usize) -> Coc<'a> {
         let (m, k) = (&self.meta, b1 - b0);
         let n = m.n.saturating_sub(b0 * BLK).min(k * BLK);
@@ -84,11 +84,11 @@ impl<'a> Coc<'a> {
         Coc { meta, pack: self.pack, exc: self.exc.map(|e| Exc { off: &e.off[b0..=b1], ..e }),
               fdelta: self.fdelta.map(|f| &f[b0..b1]) }
     }
-    /// coc.h:217
+    /// coc.rs
     pub fn frame(&self, b: usize) -> u64 {
         (self.meta.base[b] as u64).wrapping_add(self.fdelta.map_or(0, |f| f[b]))
     }
-    /// coc.h:277: exception `j`'s element, sign-extended; one byte zero-extends.
+    /// coc.rs: exception `j`'s element, sign-extended; one byte zero-extends.
     pub fn exc(&self, j: usize) -> i64 {
         let e = self.exc.expect("coc exc: no patch list");
         let r = &e.raw[j * e.esz..(j + 1) * e.esz];
@@ -99,11 +99,11 @@ impl<'a> Coc<'a> {
             _ => i64::from_ne_bytes([r[0], r[1], r[2], r[3], r[4], r[5], r[6], r[7]]),
         }
     }
-    /// coc.h:293
+    /// coc.rs
     pub fn blk_nexc(&self, b: usize) -> usize {
         self.exc.filter(|e| !e.pos.is_empty()).map_or(0, |e| (e.off[b + 1] - e.off[b]) as usize)
     }
-    /// coc.h:2633: block `b`'s first `nb` elements into `out`, the patches applied.
+    /// coc.rs: block `b`'s first `nb` elements into `out`, the patches applied.
     pub fn decode_blk<T: Lane>(&self, b: usize, nb: usize, out: &mut [T]) {
         let (mut w, base, out) = (self.meta.width[b], self.frame(b), &mut out[..nb]);
         let at = self.meta.off[b] as usize;
@@ -133,7 +133,7 @@ impl<'a> Coc<'a> {
 }
 
 impl Coc<'_> {
-    /// coc.h:642 `coc_count_lt_blk`: of block `b`'s first `nb` elements, how many are below `v`. A block with `maxv < v`
+    /// coc.rs `coc_count_lt_blk`: of block `b`'s first `nb` elements, how many are below `v`. A block with `maxv < v`
     /// counts whole and one with its frame `>= v` not at all, neither reading a residual; a straddling one compares
     /// `v - frame` in the encoded domain. `buf` is the lane buffer an odd width unpacks into, sized on first need so a
     /// column that never straddles does not pay for it.
@@ -154,12 +154,12 @@ impl Coc<'_> {
         }
         k
     }
-    /// coc.h:658 `coc_count_lt`: `((atoms c).filter (· < v)).length`, signed, exact.
+    /// coc.rs `coc_count_lt`: `((atoms c).filter (· < v)).length`, signed, exact.
     pub fn count_lt(&self, v: i64) -> usize {
         let (n, mut buf) = (self.meta.n, Vec::new());
         (0..self.meta.nblk).map(|b| self.count_lt_blk(b, (n - b * crate::BLK).min(crate::BLK), v, &mut buf)).sum()
     }
-    /// coc.h:674 `coc_any_null`: whether an element is `nul`, the smallest value of its type, so `x < nul + 1` is
+    /// coc.rs `coc_any_null`: whether an element is `nul`, the smallest value of its type, so `x < nul + 1` is
     /// `x == nul`; stops at the first block that says yes.
     pub fn any_null(&self, nul: i64) -> bool {
         let (n, mut buf) = (self.meta.n, Vec::new());
@@ -167,7 +167,7 @@ impl Coc<'_> {
     }
 }
 
-/// coc.h's `COC_LOAD_SUB`: residuals of `W` < 8 bits, `8 / W` to a byte, the shift a literal per byte so the loop
+/// coc.rs's `COC_LOAD_SUB`: residuals of `W` < 8 bits, `8 / W` to a byte, the shift a literal per byte so the loop
 /// vectorises.
 fn load_sub<T: Lane, const W: usize>(p: &[u8], base: u64, out: &mut [T]) {
     let (per, m) = (8 / W, (1u8 << W) - 1);
@@ -180,7 +180,7 @@ fn load_sub<T: Lane, const W: usize>(p: &[u8], base: u64, out: &mut [T]) {
     for (s, x) in rest.iter_mut().enumerate() { *x = T::wrap(base.wrapping_add(((p[g] >> (s * W)) & m) as u64)) }
 }
 
-/// coc.h:819: the residuals of a block at a power-of-two width in place, else unpacked into `buf` (`BLK * 8` bytes)
+/// coc.rs: the residuals of a block at a power-of-two width in place, else unpacked into `buf` (`BLK * 8` bytes)
 /// with `*w` raised to the lane it now has.
 pub fn lanes<'b>(p: &'b [u8], w: &mut u8, nb: usize, buf: &'b mut [u8]) -> &'b [u8] {
     if *w & w.wrapping_sub(1) == 0 { return p }
@@ -195,12 +195,12 @@ impl core::fmt::Display for ViewErr {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         match self {
             ViewErr::Meta => f.write_str("the metadata array is not a column's 33 * nblk + 16 bytes"),
-            // coc.h `coc_attach`'s text
+            // coc.rs `coc_attach`'s text
             ViewErr::Pack { pack, end, mblk } => write!(f, "a Frame of Reference pack of {pack} bytes whose residuals end at {end} holds no patch list of {mblk} blocks after them"),
         }
     }
 }
-/// coc.h `coc_view` over slices: `mv`, `pv` as a column of at most `n` elements (cut to what the blocks hold).
+/// coc.rs `coc_view` over slices: `mv`, `pv` as a column of at most `n` elements (cut to what the blocks hold).
 pub fn view<'a>(mv: &'a [u8], pv: &'a [u8], n: usize) -> Result<Coc<'a>, ViewErr> {
     let m = Meta::new(mv, n).ok_or(ViewErr::Meta)?;
     Coc::attach(m, pv).ok_or(ViewErr::Pack { pack: pv.len(), end: m.res_end(), mblk: m.mblk })
@@ -231,7 +231,7 @@ mod tests {
         (0..w as usize).map(|k| { let bit = i * w as usize + k; ((p[bit / 8] >> (bit % 8)) & 1) as u64 }).enumerate()
             .fold(0, |a, (k, b)| a | b << k)
     }
-    // expected values: coc.h's coc_attach (aborts) and coc_meta_view at 152d98f
+    // expected values: coc.rs's coc_attach (aborts) and coc_meta_view at 152d98f
     #[test] fn attach_refuses_what_c_aborts_on() {
         let (z, off, width) = ([0i64], [0u64], [8u8]);
         let meta = super::Meta { base: &z, maxv: &z, off: &off, bsum: &z, width: &width, sumnul: 0, sumn: 0, n: 1, nblk: 1, mblk: 1 };

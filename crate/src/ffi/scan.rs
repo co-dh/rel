@@ -1,4 +1,4 @@
-//! scan.c's twelve Lean exports: the running scans, `avg`, `ema` and the moving-window family over a payload or an encoded
+//! scan.rs's twelve Lean exports: the running scans, `avg`, `ema` and the moving-window family over a payload or an encoded
 //! column, each an answer sized by `crate::scan` and filled by it.
 #![deny(unsafe_code)]
 use crate::key::SK_KINDS_N;

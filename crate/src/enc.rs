@@ -1,18 +1,17 @@
 #![forbid(unsafe_code)]
-//! Column (a): the Frame of Reference encoder's per-block steps — coc.h's FoR encode (A7), its patch list and the
-//! whole-column decode (A8), coc.c's block steps of `coc_enc` (A16) and of the fill/move sources (A17).
+//! Column (a): the Frame of Reference encoder's per-block steps — coc.rs's FoR encode (A7), its patch list and the
+//! whole-column decode (A8), coc.rs's block steps of `coc_enc` (A16) and of the fill/move sources (A17).
 //!
-//! `coc_enc` (coc.h:1956) owns three `lean_object*` and calls the source's C callbacks, so its orchestration —
+//! `coc_enc` (coc.rs) owns three `lean_object*` and calls the source's C callbacks, so its orchestration —
 //! `coc_enc_open/plan/layout/pair/free`, `src_pass`, `qlean_coc_encode_src`, `fill_*` — stays C in phase 1 (§1, Lean
 //! boundary), as the pool does. Rust gets one block at a time: `EncMeta` is what the meta pass may write for block
 //! `b`, `EncPack` what the pack pass may write; `ffi::CEnc` cuts them, so parallel blocks hold disjoint borrows.
-use core::sync::atomic::{AtomicI32, AtomicUsize};
 
 use crate::alp::Cocf;
 use crate::coc::Coc;
 use crate::pod::Lane;
 
-/// An element type the encoder reads (`COC_T` of coc.h's encode template): `u8 i16 i32 i64`.
+/// An element type the encoder reads (`COC_T` of coc.rs's encode template): `u8 i16 i32 i64`.
 pub trait Elt: Lane { fn widen(self) -> i64; }
 impl Elt for u8 { fn widen(self) -> i64 { self as i64 } }
 impl Elt for i16 { fn widen(self) -> i64 { self as i64 } }
@@ -23,14 +22,12 @@ impl Elt for i64 { fn widen(self) -> i64 { self } }
 pub struct EncMeta<'a> {
     pub b: usize,
     pub base: &'a mut i64, pub maxv: &'a mut i64, pub width: &'a mut u8, pub bsum: &'a mut i64,
-    /// the frame above `base` (coc.h `fdelta`), when the column keeps frames
+    /// the frame above `base` (coc.rs `fdelta`), when the column keeps frames
     pub frm: Option<&'a mut u64>,
     /// the block's patch count, `exc_off[b + 1]` before the prefix sum
     pub nexc: &'a mut u32,
     /// ALP: the block's exponent
     pub exp: Option<&'a mut i8>,
-    /// `coc_enc`'s early decline: the byte budget (0 = none), the bound reached, whether it was passed
-    pub below: usize, pub lb: &'a AtomicUsize, pub over: &'a AtomicI32,
 }
 /// Block `b`'s output region in a column being written: residuals and patch slots, from the layout's offsets.
 pub struct EncPack<'a> {
@@ -45,10 +42,10 @@ pub struct EncPack<'a> {
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Frame { pub fo: i64, pub wo: u8, pub neo: u32 }
 
-// ---- A7: coc.h:2191-2312 ----
+// ---- A7: coc.rs ----
 /// `COC_NUL` of the element type: `INT16_MIN`, `INT32_MIN`, `INT64_MIN`; `u8` has none, so `INT64_MIN` there never matches.
 fn nul<T: Elt>() -> i64 { if size_of::<T>() == 1 { i64::MIN } else { i64::MIN >> (64 - 8 * size_of::<T>()) } }
-/// coc.h:2191 `pack_block`: `nb` elements of `src` minus `base` into `dst` at `w` bits, the first ⌈nb*w/8⌉ bytes of it.
+/// coc.rs `pack_block`: `nb` elements of `src` minus `base` into `dst` at `w` bits, the first ⌈nb*w/8⌉ bytes of it.
 pub fn pack_block<T: Elt>(dst: &mut [u8], src: &[T], nb: usize, base: i64, w: u8) {
     let r = |v: &T| (v.widen() as u64).wrapping_sub(base as u64);
     let src = &src[..nb];
@@ -69,7 +66,7 @@ pub fn pack_block<T: Elt>(dst: &mut [u8], src: &[T], nb: usize, base: i64, w: u8
         }
     }
 }
-/// coc.h:2240 `encode_meta_blk`: block metadata with no patch list.
+/// coc.rs `encode_meta_blk`: block metadata with no patch list.
 pub fn encode_meta_blk<T: Elt>(m: &mut EncMeta, x: &[T], nb: usize) {
     let x = &x[..nb];
     let (mn, mx) = x.iter().fold((x[0].widen(), x[0].widen()), |(a, b), v| (a.min(v.widen()), b.max(v.widen())));
@@ -78,7 +75,7 @@ pub fn encode_meta_blk<T: Elt>(m: &mut EncMeta, x: &[T], nb: usize) {
     *m.base = mn; *m.maxv = mx; *m.bsum = s;
     *m.width = crate::bits::width_for((mx as u64).wrapping_sub(mn as u64));
 }
-/// coc.h:2275 `frame_pick`: from the sorted sample `smp`, the frame and width minimising bytes at `cost` per patch;
+/// coc.rs `frame_pick`: from the sorted sample `smp`, the frame and width minimising bytes at `cost` per patch;
 /// `None` = keep the plain frame.
 pub fn frame_pick<T: Elt>(smp: &mut [i64], nb: usize, nnul: usize, cost: usize, mn: i64, x: &[T]) -> Option<Frame> {
     let (k, esz, bl) = (smp.len(), size_of::<T>(), |r: i64| crate::bits::width_for(r as u64) as usize);
@@ -108,8 +105,8 @@ pub fn frame_pick<T: Elt>(smp: &mut [i64], nb: usize, nnul: usize, cost: usize, 
     Some(Frame { fo: f, wo: w, neo: ne })
 }
 
-// ---- A8: coc.h:2226-2310 ----
-/// coc.h:2226 `encode_meta_exc_blk`: block metadata with patches; answers the patch count. The frame goes to `frm`.
+// ---- A8: coc.rs ----
+/// coc.rs `encode_meta_exc_blk`: block metadata with patches; answers the patch count. The frame goes to `frm`.
 pub fn encode_meta_exc_blk<T: Elt>(m: &mut EncMeta, x: &[T], nb: usize) -> u32 {
     let (x, nul, esz) = (&x[..nb], nul::<T>(), size_of::<T>());
     let frm = m.frm.as_deref_mut().expect("encode_meta_exc_blk: the column keeps no frames");
@@ -136,7 +133,7 @@ pub fn encode_meta_exc_blk<T: Elt>(m: &mut EncMeta, x: &[T], nb: usize) -> u32 {
     (*m.width, *m.nexc) = (w, ne);
     ne
 }
-/// coc.h:2263 `pack_exc_blk`: residuals and the block's `ne` patches (an element the frame and width cannot hold, or a
+/// coc.rs `pack_exc_blk`: residuals and the block's `ne` patches (an element the frame and width cannot hold, or a
 /// null), their slots set to the frame.
 pub fn pack_exc_blk<T: Elt>(p: &mut EncPack, x: &[T], ne: u32) {
     let (nul, base, w, x) = (nul::<T>(), p.frame as i64, p.width, &x[..p.nb]);
@@ -153,56 +150,56 @@ pub fn pack_exc_blk<T: Elt>(p: &mut EncPack, x: &[T], ne: u32) {
     }
     pack_block(p.res, &y[..p.nb], p.nb, base, w)
 }
-/// coc.h:2320 `decode`: the whole column into `out` (`n` long).
+/// coc.rs `decode`: the whole column into `out` (`n` long).
 pub fn decode<T: Lane>(c: &Coc, out: &mut [T]) {
     for (b, o) in out[..c.meta.n].chunks_mut(crate::BLK).enumerate() { c.decode_blk(b, o.len(), o) }
 }
 
-// ---- A16: coc.c:165-210, the block steps of `coc_enc` ----
+// ---- A16: coc.rs, the block steps of `coc_enc` ----
 /// `x` as `nb` elements of `T`; C read them through a typed pointer, so a misaligned source is a bug there too.
 fn elts<'b, T: crate::pod::Pod>(x: &'b [u8], what: &str) -> &'b [T] {
     crate::pod::cast::<T>(x).unwrap_or_else(|| panic!("qlean {what}: a block of {} bytes is misaligned for {}-byte elements", x.len(), size_of::<T>()))
 }
-/// coc.c:165 `coc_enc_for_meta`: the FoR meta step over block `b`'s `nb` elements `x` at `width` bytes each.
+/// coc.rs `coc_enc_for_meta`: the FoR meta step over block `b`'s `nb` elements `x` at `width` bytes each.
 pub fn for_meta(m: &mut EncMeta, x: &[u8], width: usize, nb: usize) {
     fn go<T: Elt>(m: &mut EncMeta, x: &[u8], nb: usize) { let ne = encode_meta_exc_blk(m, elts::<T>(x, "coc_enc_for_meta"), nb); *m.nexc = ne }
     match width { 1 => go::<u8>(m, x, nb), 2 => go::<i16>(m, x, nb), 4 => go::<i32>(m, x, nb), _ => go::<i64>(m, x, nb) }
 }
-/// coc.c:174 `coc_enc_for_pack`: `p.pos` holds the block's patches, `exc_off[b + 1] - exc_off[b]` of them.
+/// coc.rs `coc_enc_for_pack`: `p.pos` holds the block's patches, `exc_off[b + 1] - exc_off[b]` of them.
 pub fn for_pack(p: &mut EncPack, x: &[u8], width: usize) {
     fn go<T: Elt>(p: &mut EncPack, x: &[u8]) { let ne = p.pos.len() as u32; pack_exc_blk(p, elts::<T>(x, "coc_enc_for_pack"), ne) }
     match width { 1 => go::<u8>(p, x), 2 => go::<i16>(p, x), 4 => go::<i32>(p, x), _ => go::<i64>(p, x) }
 }
-/// coc.c:186 `coc_enc_alp_meta`: `x` is `f32` (`width` 4) or `f64`.
+/// coc.rs `coc_enc_alp_meta`: `x` is `f32` (`width` 4) or `f64`.
 pub fn alp_meta(m: &mut EncMeta, x: &[u8], width: usize, nb: usize) {
     use crate::alp::alp_meta_blk;
     let ne = if width == 4 { alp_meta_blk(m, elts::<f32>(x, "coc_enc_alp_meta"), nb) } else { alp_meta_blk(m, elts::<f64>(x, "coc_enc_alp_meta"), nb) };
     *m.nexc = ne
 }
-/// coc.c:191 `coc_enc_alp_pack`: the block exponent is `p.exp`, its patches' bits go to `p.raw`.
+/// coc.rs `coc_enc_alp_pack`: the block exponent is `p.exp`, its patches' bits go to `p.raw`.
 pub fn alp_pack(p: &mut EncPack, x: &[u8], width: usize) {
     use crate::alp::alp_pack_blk;
     let (be, raw) = (p.exp as i32, core::mem::take(&mut p.raw));
     if width == 4 { alp_pack_blk(p, be, elts::<f32>(x, "coc_enc_alp_pack"), crate::pod::cast_mut::<f32>(raw).expect("qlean coc_enc_alp_pack: misaligned f32 patch bits")) }
     else { alp_pack_blk(p, be, elts::<f64>(x, "coc_enc_alp_pack"), crate::pod::cast_mut::<f64>(raw).expect("qlean coc_enc_alp_pack: misaligned f64 patch bits")) }
 }
-/// coc.c:197 `src_copy`: a dense column's block copied into its place in the dense output `out`.
+/// coc.rs `src_copy`: a dense column's block copied into its place in the dense output `out`.
 pub fn src_copy(out: &mut [u8], x: &[u8]) { out[..x.len()].copy_from_slice(x) }
-/// coc.c:203 `src_bits`: the bytes `x` (0/1) of one block packed into `out`, its own bytes of the bitmap (it starts at bit
+/// coc.rs `src_bits`: the bytes `x` (0/1) of one block packed into `out`, its own bytes of the bitmap (it starts at bit
 /// `b * BLK`, a byte boundary): bit `i % 8` of byte `i / 8`, a non-zero byte reading as set (`Wire.booleanColumn`'s packing).
 pub fn src_bits(out: &mut [u8], x: &[u8]) {
     for (o, c) in out.iter_mut().zip(x.chunks(8)) {
         *o = c.iter().enumerate().fold(0, |w, (j, &v)| w | ((v != 0) as u8) << j)
     }
 }
-/// coc.h:1845 `coc_sumnul`: the null the writer's block sums skip, which its trailer records: the element type's own,
+/// coc.rs `coc_sumnul`: the null the writer's block sums skip, which its trailer records: the element type's own,
 /// and a float's integers are an `i64` column.
 pub fn coc_sumnul(width: usize, alp: bool) -> i64 {
     if alp || width == 1 || width == 8 { i64::MIN } else if width == 2 { i16::MIN as i64 } else { i32::MIN as i64 }
 }
 
-// ---- A17: coc.c:363-490 ----
-/// coc.c:363 `coc_narrow`: `v` narrowed to `width` bytes into `out` (`v` itself when `width` is 8).
+// ---- A17: coc.rs ----
+/// coc.rs `coc_narrow`: `v` narrowed to `width` bytes into `out` (`v` itself when `width` is 8).
 pub fn narrow<'b>(width: usize, v: &'b [i64], out: &'b mut [u8]) -> &'b [u8] {
     fn put<'b, const W: usize>(v: &[i64], out: &'b mut [u8], f: fn(i64) -> [u8; W]) -> &'b [u8] {
         let out = &mut out[..W * v.len()];
@@ -217,7 +214,7 @@ pub fn narrow<'b>(width: usize, v: &'b [i64], out: &'b mut [u8]) -> &'b [u8] {
         _ => panic!("qlean: a Frame of Reference element of {width} bytes; the writer has 1, 2, 4 and 8"),
     }
 }
-/// coc.c:375 `coc_enc_blk_meta`: block metadata from decoded `v`; answers the patch count.
+/// coc.rs `coc_enc_blk_meta`: block metadata from decoded `v`; answers the patch count.
 pub fn blk_meta(m: &mut EncMeta, v: &[i64], width: usize) -> u32 {
     fn go<T: Elt>(m: &mut EncMeta, x: &[u8], nb: usize) -> u32 {
         encode_meta_exc_blk(m, crate::pod::cast::<T>(x).expect("qlean: narrowed block misaligned"), nb)
@@ -226,7 +223,7 @@ pub fn blk_meta(m: &mut EncMeta, v: &[i64], width: usize) -> u32 {
     let x = narrow(width, v, crate::pod::bytes_mut(&mut buf));
     match width { 1 => go::<u8>(m, x, v.len()), 2 => go::<i16>(m, x, v.len()), 4 => go::<i32>(m, x, v.len()), _ => go::<i64>(m, x, v.len()) }
 }
-/// coc.c:418 `move_meta`, the branch where block `pb` of the column `f` is taken whole: its metadata is the block's,
+/// coc.rs `move_meta`, the branch where block `pb` of the column `f` is taken whole: its metadata is the block's,
 /// and its patch count is what the layout prefix-sums. Answers it, and leaves it in `m.nexc`. The branches that call
 /// back into the source (`ints`, `hint`, `fill`) stay C.
 pub fn move_meta(m: &mut EncMeta, f: &Cocf, pb: usize) -> u32 {
@@ -242,7 +239,7 @@ pub fn move_meta(m: &mut EncMeta, f: &Cocf, pb: usize) -> u32 {
     *m.nexc = ne;
     ne
 }
-/// coc.c:450 `move_pack`, the taken branch: block `pb` of `f`'s residuals (`p.res` is the whole `BLK * width / 8`
+/// coc.rs `move_pack`, the taken branch: block `pb` of `f`'s residuals (`p.res` is the whole `BLK * width / 8`
 /// bytes, a pack shorter than its widths claim reading zeros past its end, `Column.resAt`'s convention) and its patch
 /// list, whose positions move unchanged. `esz` is the written column's element size, `alp` its form.
 pub fn move_pack(p: &mut EncPack, f: &Cocf, pb: usize, alp: bool, esz: usize) {
@@ -265,22 +262,22 @@ pub fn move_pack(p: &mut EncPack, f: &Cocf, pb: usize, alp: bool, esz: usize) {
     }
 }
 
-// ---- K24b: coc.c's writer orchestration that needs no raw pointer; ffi.rs keeps the Lean objects, the pool and the C callbacks ----
+// ---- K24b: coc.rs's writer orchestration that needs no raw pointer; ffi.rs keeps the Lean objects, the pool and the C callbacks ----
 /// A block's metadata step: the writer's own choice for the column's form (`m.exp` is the exponent slot of an ALP column).
 pub fn meta_step(m: &mut EncMeta, x: &[u8], width: usize, nb: usize) {
     if m.exp.is_some() { alp_meta(m, x, width, nb) } else { for_meta(m, x, width, nb) }
 }
 /// A block's pack step, as `meta_step`.
 pub fn pack_step(p: &mut EncPack, x: &[u8], width: usize, alp: bool) { if alp { alp_pack(p, x, width) } else { for_pack(p, x, width) } }
-/// coc.c `src_run`'s lower bound on a sized block's share of the encoded size: its residuals and its patches' bytes.
+/// coc.rs `src_run`'s lower bound on a sized block's share of the encoded size: its residuals and its patches' bytes.
 pub fn block_bytes(width_b: u8, nexc: u32, width: usize) -> usize { crate::BLK * width_b as usize / 8 + nexc as usize * (width + 2) }
-/// coc.c `coc_enc_layout`'s patch list or ALP blob header: `nexc` and `w` in its first 16 bytes, the rest of `t` zero.
+/// coc.rs `coc_enc_layout`'s patch list or ALP blob header: `nexc` and `w` in its first 16 bytes, the rest of `t` zero.
 pub fn exc_header(t: &mut [u8], nexc: usize, w: u64) {
     t.fill(0);
     t[..8].copy_from_slice(&(nexc as u64).to_ne_bytes());
     t[8..16].copy_from_slice(&w.to_ne_bytes());
 }
-/// coc.c `coc_enc_plan`'s tail: the bytes after the residuals, the patch list of Frame of Reference (with its frames when
+/// coc.rs `coc_enc_plan`'s tail: the bytes after the residuals, the patch list of Frame of Reference (with its frames when
 /// `frm`) or ALP's blob; 0 for a column with neither.
 pub fn tail_bytes(alp: bool, nexc: usize, frm: bool, width: usize, nblk: usize) -> usize {
     use crate::layout::{exc_layout, Tail};
@@ -288,7 +285,7 @@ pub fn tail_bytes(alp: bool, nexc: usize, frm: bool, width: usize, nblk: usize) 
     tail.map_or(0, |t| exc_layout(nblk, nexc, width, t).expect("qlean: the exception layout overflows").size)
 }
 
-/// A producer's optional callbacks that move whole blocks (coc.h `coc_take`, `coc_hint`, `coc_ints`); `None` is no callback
+/// A producer's optional callbacks that move whole blocks (coc.rs `coc_take`, `coc_hint`, `coc_ints`); `None` is no callback
 /// or no answer. The raw pointers of the C callbacks stay in the implementor.
 pub trait Moves {
     /// Block `pb` of a column in the writer's own form that answer block `b` equals, with `pb`.
@@ -299,7 +296,7 @@ pub trait Moves {
     /// ALP: a block exponent for block `b` and the most exceptions it may leave.
     fn hint(&self, b: usize) -> Option<(i32, u32)>;
 }
-/// coc.c `move_meta`: a moved block's metadata is its column's and its exception count is what the layout prefix-sums; the
+/// coc.rs `move_meta`: a moved block's metadata is its column's and its exception count is what the layout prefix-sums; the
 /// writer's own step would choose exactly these for the same elements. Else the ALP shortcuts (the sources' exponent where it
 /// leaves no more exceptions than they had), else the writer's own step. `x` is read only on the last two paths.
 pub fn move_meta_blk<'a>(mv: &impl Moves, m: &mut EncMeta, x: impl FnOnce() -> &'a [u8], width: usize, nb: usize) {
@@ -322,7 +319,7 @@ pub fn move_meta_blk<'a>(mv: &impl Moves, m: &mut EncMeta, x: impl FnOnce() -> &
     }
     meta_step(m, x, width, nb)
 }
-/// coc.c `move_pack`: a moved block's residuals and its patch list, whose positions are the block's own and so move unchanged.
+/// coc.rs `move_pack`: a moved block's residuals and its patch list, whose positions are the block's own and so move unchanged.
 /// `pack(whole)` is block `b`'s `EncPack`, asked once; `whole` for a taken block's full `BLK * width / 8` residual region.
 pub fn move_pack_blk<'a, 'b>(mv: &impl Moves, pack: impl FnOnce(bool) -> EncPack<'b>, x: impl FnOnce() -> &'a [u8], b: usize, nb: usize,
                              width: usize, alp: bool) {
@@ -363,9 +360,8 @@ mod a17_tests {
     fn narrow_refuses_an_odd_width() { narrow(3, &[0], &mut [0; 8]); }
     fn meta(v: &[i64], width: usize) -> (u32, i64, i64, i64, u8, u64) {
         let (mut base, mut maxv, mut width_, mut bsum, mut nexc, mut frm) = (0, 0, 0, 0, 0, 7u64);
-        let (lb, over) = (AtomicUsize::new(0), AtomicI32::new(0));
         let mut m = EncMeta { b: 0, base: &mut base, maxv: &mut maxv, width: &mut width_, bsum: &mut bsum, frm: Some(&mut frm),
-                              nexc: &mut nexc, exp: None, below: 0, lb: &lb, over: &over };
+                              nexc: &mut nexc, exp: None };
         let ne = blk_meta(&mut m, v, width);
         (ne, base, maxv, bsum, width_, frm)
     }
@@ -416,9 +412,8 @@ mod a7_tests {
     #[test] fn encode_meta_blk_nulls() {
         let x: [i16; 4] = [i16::MIN, 3, 9, -2];
         let (mut base, mut maxv, mut width, mut bsum, mut nexc) = (0, 0, 0, 0, 0);
-        let (lb, over) = (AtomicUsize::new(0), AtomicI32::new(0));
         let mut m = EncMeta { b: 0, base: &mut base, maxv: &mut maxv, width: &mut width, bsum: &mut bsum, frm: None, nexc: &mut nexc,
-                              exp: None, below: 0, lb: &lb, over: &over };
+                              exp: None };
         encode_meta_blk(&mut m, &x, 4);
         // the null is the minimum, so the sum skips it
         assert_eq!((base, maxv, width, bsum), (i16::MIN as i64, 9, 16, 10));
@@ -434,12 +429,11 @@ mod tests {
     fn round<T: Elt + PartialEq + core::fmt::Debug>(x: &[T]) -> u32 {
         let n = x.len();
         let (mut base, mut maxv, mut bsum, mut width, mut frm) = (vec![0i64; 2], vec![0i64; 2], vec![0i64; 2], vec![0u8; 2], vec![0u64; 2]);
-        let (lb, over) = (AtomicUsize::new(0), AtomicI32::new(0));
         let mut ne = vec![0u32; 2];
         for b in 0..n.div_ceil(BLK) {
             let mut nx = 0;
             let mut m = EncMeta { b, base: &mut base[b], maxv: &mut maxv[b], width: &mut width[b], bsum: &mut bsum[b],
-                                  frm: Some(&mut frm[b]), nexc: &mut nx, exp: None, below: 0, lb: &lb, over: &over };
+                                  frm: Some(&mut frm[b]), nexc: &mut nx, exp: None };
             let nb = BLK.min(n - b * BLK);
             ne[b] = encode_meta_exc_blk(&mut m, &x[b * BLK..], nb);
         }
@@ -482,7 +476,7 @@ mod tests {
 #[cfg(test)]
 mod a16_tests {
     use super::*;
-    // Expected values come from running the original C loops of coc.c:197-210 and coc.h:1845 (/data/tmp/qrs/A16/diff.c
+    // Expected values come from running the original C loops of coc.rs and coc.rs (/data/tmp/qrs/A16/diff.c
     // compares the block steps over 12,000 columns).
     #[test] fn src_bits_packs_bit_i_of_byte_i_div_8() {
         let x = [1u8, 0, 7, 0, 0, 0, 0, 0, 255, 0, 0, 1];

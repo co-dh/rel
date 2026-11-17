@@ -17,7 +17,7 @@ unsafe impl Pod for f64 {}
 // packed: no padding, and a key with its element index is any twelve bytes
 unsafe impl Pod for crate::group::KeyAt {}
 
-/// An element type a residual becomes (`COC_T` of coc.h's `decode_blk`): `base + residual` truncated, wrapping.
+/// An element type a residual becomes (`COC_T` of coc.rs's `decode_blk`): `base + residual` truncated, wrapping.
 pub trait Lane: Pod { fn wrap(v: u64) -> Self; }
 impl Lane for u8 { fn wrap(v: u64) -> Self { v as u8 } }
 impl Lane for i16 { fn wrap(v: u64) -> Self { v as i16 } }

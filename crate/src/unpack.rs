@@ -1,5 +1,5 @@
 #![forbid(unsafe_code)]
-//! coc.h:547, the scalar spec of every decode.
+//! coc.rs, the scalar spec of every decode.
 
 /// `W`-bit residuals of the block `p` into `L`-byte lanes of `out`, eight to a group of `W` bytes.
 fn lanes_of<const L: usize>(p: &[u8], w: usize, nb: usize, out: &mut [u8]) {

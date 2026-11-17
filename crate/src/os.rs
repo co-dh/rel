@@ -25,7 +25,7 @@ mod sys {
 use sys::*;
 
 /// The offset from UTC in force at the instant `secs`, in seconds, from libc's zone table -- the table q reads too,
-/// so the two agree on every transition (time.c's note). 0 when `localtime_r` fails, as in C.
+/// so the two agree on every transition (ffi/time.rs's note). 0 when `localtime_r` fails, as in C.
 pub fn utc_offset(secs: i64) -> i64 {
     let mut tm = core::mem::MaybeUninit::<Tm>::uninit();
     unsafe {
@@ -60,8 +60,8 @@ pub const O_APPEND: i32 = 0o2000;
 pub const O_CLOEXEC: i32 = 0o2000000;
 pub const PROT_READ: i32 = 1;
 pub const PROT_WRITE: i32 = 2;
-pub const MAP_SHARED: i32 = 1;
 pub const MAP_PRIVATE: i32 = 2;
+pub const MAP_SHARED: i32 = 1;
 pub const MAP_NORESERVE: i32 = 0x4000;
 pub const RTLD_LAZY: i32 = 1;
 pub const RTLD_NOW: i32 = 2;
@@ -91,7 +91,7 @@ pub struct AddrInfo { pub flags: i32, pub family: i32, pub socktype: i32, pub pr
 // ---------------------------------------------------------------------------------------------------------------------
 // Phase-2 §2.4: files, mappings, shared libraries, sockets, the environment. Each wrapper answers `Result<_, i32>` with
 // the errno, so a caller builds its own message (`strerror`) and nothing is lost between the call and the report.
-// Consumers: File/Map -> B3 (own.c) and B4 (zip.c); Lib -> B4; Sock -> B2 (handle.c); setenv -> B1 (env.c);
+// Consumers: File/Map -> B3 (own.rs) and B4 (zip.rs); Lib -> B4; Sock -> B2 (ffi/handle.rs); setenv -> B1 (ffi/env.rs);
 // eprint/exit -> B1 (`qlean_stop`); getenv/sysconf -> P1 (pool.rs); rename/unlink/realpath/getpid/fchmod -> B3.
 
 use alloc::{string::String, vec::Vec};
@@ -130,13 +130,11 @@ mod sys2 {
     }
 }
 
-/// `errno` after a failed call, for the callers that issue the raw libc call themselves
-pub fn last_errno() -> i32 { errno() }
 
 fn ok(r: i32) -> Result<(), i32> { if r < 0 { Err(errno()) } else { Ok(()) } }
 
 /// `write(2)` until every byte is out. A short write (a pipe or socket whose buffer fills) is continued, `EINTR` retried,
-/// and a write that moves nothing is `EIO`, so a descriptor that will not move cannot spin: handle.c's loop.
+/// and a write that moves nothing is `EIO`, so a descriptor that will not move cannot spin: ffi/handle.rs's loop.
 pub fn write_all(fd: i32, mut p: &[u8]) -> Result<(), i32> {
     while !p.is_empty() {
         let k = unsafe { sys2::write(fd, p.as_ptr(), p.len()) };
@@ -156,7 +154,7 @@ pub struct File(i32);
 pub enum Short { Errno(i32), Eof(usize) }
 
 impl File {
-    /// `open(2)`, retried on `EINTR` as handle.c does
+    /// `open(2)`, retried on `EINTR` as ffi/handle.rs does
     pub fn open(path: &CStr, flags: i32, mode: u32) -> Result<File, i32> {
         loop {
             let fd = unsafe { sys2::open(path.as_ptr(), flags, mode) };
@@ -164,7 +162,6 @@ impl File {
             if errno() != EINTR { return Err(errno()) }
         }
     }
-    pub fn fd(&self) -> i32 { self.0 }
     pub fn into_raw(self) -> i32 { let fd = self.0; core::mem::forget(self); fd }
     /// `close(2)` and its errno; not retried on `EINTR`, because Linux has released the descriptor by then and a second
     /// `close` would shut whatever was opened next
@@ -175,7 +172,7 @@ impl File {
         Ok(unsafe { st.assume_init() })
     }
     pub fn fchmod(&self, mode: u32) -> Result<(), i32> { ok(unsafe { sys2::fchmod(self.0, mode) }) }
-    /// `buf.len()` bytes from offset `off`, looping over short reads and `EINTR` as zip.c's `zpread` does; the end of the
+    /// `buf.len()` bytes from offset `off`, looping over short reads and `EINTR` as zip.rs's `zpread` does; the end of the
     /// file before `buf` is full is `Short::Eof(bytes read so far)`
     pub fn pread_exact(&self, buf: &mut [u8], off: u64) -> Result<(), Short> {
         let mut got = 0;
@@ -207,7 +204,7 @@ pub fn realpath<'a>(path: &CStr, out: &'a mut [u8; PATH_MAX]) -> Result<&'a CStr
 pub fn getpid() -> i32 { unsafe { sys2::getpid() } }
 
 /// A file mapped into memory. `Drop` unmaps and has nowhere to report a failure, so a path that must see `munmap`'s errno
-/// calls `unmap()`; `leak` gives the bytes to the process for good, as own.c's `.own` parts are.
+/// calls `unmap()`; `leak` gives the bytes to the process for good, as own.rs's `.own` parts are.
 pub struct Map { p: *mut u8, len: usize }
 impl Map {
     /// `mmap(NULL, len, prot, flags, fd, 0)`; the descriptor may be closed afterwards, the mapping holds the file
@@ -217,8 +214,6 @@ impl Map {
         Ok(Map { p: p.cast(), len })
     }
     pub fn as_slice(&self) -> &[u8] { unsafe { core::slice::from_raw_parts(self.p, self.len) } }
-    /// the bytes for writing: valid only when mapped with `PROT_WRITE`
-    pub fn as_mut_slice(&mut self) -> &mut [u8] { unsafe { core::slice::from_raw_parts_mut(self.p, self.len) } }
     /// never unmapped: the mapping lives as long as the process (`lean::sarrays_in` takes it)
     pub fn leak(self) -> &'static mut [u8] {
         let s = unsafe { core::slice::from_raw_parts_mut(self.p, self.len) };
@@ -239,7 +234,7 @@ fn dl_error(what: &str) -> String {
     String::from_utf8_lossy(unsafe { CStr::from_ptr(e) }.to_bytes()).into_owned()
 }
 
-/// A shared library from `dlopen`. Never closed: zip.c keeps its four for the life of the process, so there is no `Drop`.
+/// A shared library from `dlopen`. Never closed: zip.rs keeps its four for the life of the process, so there is no `Drop`.
 #[derive(Debug)]
 pub struct Lib(*mut c_void);
 // a dlopen handle is a process-wide token, safe to use from every thread
@@ -251,14 +246,14 @@ impl Lib {
         let h = unsafe { sys2::dlopen(path.as_ptr(), flags) };
         if h.is_null() { Err(dl_error("dlopen")) } else { Ok(Lib(h)) }
     }
-    /// the address of `name`; a null address is a failure, as in zip.c's `zsym`
+    /// the address of `name`; a null address is a failure, as in zip.rs's `zsym`
     pub fn sym(&self, name: &CStr) -> Result<*mut c_void, String> {
         let f = unsafe { sys2::dlsym(self.0, name.as_ptr()) };
         if f.is_null() { Err(dl_error("dlsym")) } else { Ok(f) }
     }
 }
 
-/// A cell the first caller of `set` fills and nobody changes after: zip.c's "the first failure is the one reported",
+/// A cell the first caller of `set` fills and nobody changes after: zip.rs's "the first failure is the one reported",
 /// where workers race to write one message. `is_set` is true from the claim on, `get` waits for the value.
 pub struct First<T> { state: core::sync::atomic::AtomicU8, v: core::cell::UnsafeCell<Option<T>> }
 // the value is written once, by the one caller that moved `state` 0 -> 1, and read only after it reads 2
@@ -286,13 +281,13 @@ impl<T> First<T> {
 }
 impl<T> Default for First<T> { fn default() -> Self { Self::new() } }
 
-/// A library or symbol zip.c needs that `dlopen`/`dlsym` could not give: the library's file name, the symbol the load was
+/// A library or symbol zip.rs needs that `dlopen`/`dlsym` could not give: the library's file name, the symbol the load was
 /// after, and `dlerror`'s text.
 #[derive(Debug)]
 pub struct Missing { pub so: &'static str, pub sym: &'static str, pub why: String }
 
-/// The decompressors zip.c reaches by `dlopen`, as q itself does. Each is loaded once a process and never closed; a failed
-/// load is tried again by the next caller, as zip.c's `zlib_load` did.
+/// The decompressors zip.rs reaches by `dlopen`, as q itself does. Each is loaded once a process and never closed; a failed
+/// load is tried again by the next caller, as zip.rs's `zlib_load` did.
 /// cbindgen:ignore
 mod codecs {
     use super::*;
@@ -348,7 +343,7 @@ mod codecs {
     }
     pub struct Lz4 { decompress_safe: unsafe extern "C" fn(*const u8, *mut u8, c_int, c_int) -> c_int }
     impl Lz4 {
-        /// `LZ4_decompress_safe(src, dst, src.len(), dst.len())`, lengths as C `int`s as zip.c passed them
+        /// `LZ4_decompress_safe(src, dst, src.len(), dst.len())`, lengths as C `int`s as zip.rs passed them
         pub fn uncompress(&self, dst: &mut [u8], src: &[u8]) -> Result<usize, String> {
             let r = unsafe { (self.decompress_safe)(src.as_ptr(), dst.as_mut_ptr(), src.len() as c_int, dst.len() as c_int) };
             if r < 0 { Err("malformed input".into()) } else { Ok(r as usize) }
@@ -430,7 +425,7 @@ pub struct Sock(File);
 struct Addrs(*mut AddrInfo);
 impl Drop for Addrs { fn drop(&mut self) { unsafe { sys2::freeaddrinfo(self.0) } } }
 impl Sock {
-    /// handle.c's `connect`: every address `getaddrinfo` returns for `host` (`localhost` when empty) and `port`, first one
+    /// ffi/handle.rs's `connect`: every address `getaddrinfo` returns for `host` (`localhost` when empty) and `port`, first one
     /// that connects wins, else the last errno (`EHOSTUNREACH` when there is none). Not retried on `EINTR`: the connection
     /// goes on in the background and a second call answers `EALREADY`.
     pub fn connect(host: &CStr, port: i64) -> Result<Sock, Conn> {
@@ -456,10 +451,8 @@ impl Sock {
         }
         Err(Conn::Errno(err))
     }
-    pub fn fd(&self) -> i32 { self.0.fd() }
     /// the descriptor, owned by the caller from here on
     pub fn into_raw(self) -> i32 { self.0.into_raw() }
-    pub fn write_all(&self, p: &[u8]) -> Result<(), i32> { self.0.write_all(p) }
 }
 
 /// `close(2)` of a descriptor the caller holds as a bare integer (Lean's `hclose`); not retried on `EINTR`, see `File::close`
@@ -507,20 +500,6 @@ mod tests {
         assert_eq!(stat(&p).unwrap().size, 14);
         unlink(&p).unwrap();
         assert_eq!(unlink(&p), Err(ENOENT));
-    }
-    #[test] fn private_map_does_not_write_through() {
-        let p = c(&dir().join("priv.bin"));
-        let f = File::open(&p, O_RDWR | O_CREAT, 0o644).unwrap();
-        f.write_all(b"abcdef").unwrap();
-        let mut m = Map::file(&f, 6, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_NORESERVE).unwrap();
-        m.as_mut_slice()[0] = b'X';
-        assert_eq!(m.as_slice(), b"Xbcdef");
-        let mut b = [0u8; 6];
-        f.pread_exact(&mut b, 0).unwrap();
-        assert_eq!(&b, b"abcdef");
-        let s = m.leak();
-        assert_eq!(s[0], b'X');
-        unlink(&p).unwrap();
     }
     #[test] fn errors_are_the_errno() {
         assert_eq!(File::open(&c(&dir().join("absent")), O_RDONLY, 0).err(), Some(ENOENT));
@@ -575,7 +554,7 @@ mod tests {
         let port = l.local_addr().unwrap().port() as i64;
         let s = Sock::connect(c"127.0.0.1", port).unwrap();
         let (mut peer, _) = l.accept().unwrap();
-        s.write_all(b"ping").unwrap();
+        s.0.write_all(b"ping").unwrap();
         let mut b = [0u8; 4];
         std::io::Read::read_exact(&mut peer, &mut b).unwrap();
         assert_eq!(&b, b"ping");

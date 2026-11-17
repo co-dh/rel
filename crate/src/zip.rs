@@ -1,6 +1,6 @@
 #![forbid(unsafe_code)]
-//! A kdb+ column file as a block source (zip.c, moved): the file and its block table, a cursor per worker, and q's IPC
-//! compression. The file layout is the one zip.c's header comment described:
+//! A kdb+ column file as a block source (zip.rs, moved): the file and its block table, a cursor per worker, and q's IPC
+//! compression. The file layout is the one zip.rs's header comment described:
 //!
 //!   bytes 0..8 "kxzipped", the compressed logical blocks, a 32-byte trailer (u8 version 3, 3 pad, u8 algorithm, u8 level, 2 pad,
 //!   u64 uncompressed length, u64 file offset the blocks end at, u64 logical block size), 8 bytes a block (u32 compressed
@@ -17,11 +17,11 @@ use core::ffi::CStr;
 #[derive(Debug, PartialEq)]
 pub enum Fail { Errno(i32), Why(String) }
 
-/// What zip.c's `vsnprintf` into `why[480]` left of a message
+/// What zip.rs's `vsnprintf` into `why[480]` left of a message
 const WHY_MAX: usize = 479;
 const ZNAME: [&str; 6] = ["stored", "kdb+ ipc", "gzip", "snappy", "lz4hc", "zstd"];
 
-/// `n` copies of `v`, or `None` when the allocator refuses: zip.c reports a refused allocation as an error, not an abort
+/// `n` copies of `v`, or `None` when the allocator refuses: zip.rs reports a refused allocation as an error, not an abort
 fn filled<T: Clone>(v: T, n: usize) -> Option<Vec<T>> {
     let mut x = Vec::new();
     x.try_reserve_exact(n).ok()?;

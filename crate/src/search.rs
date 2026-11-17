@@ -1,5 +1,5 @@
 #![forbid(unsafe_code)]
-//! Column (a), search.c: operands (A28), the probe table (A29), find/member (A30), bits and symbols (A31), binary
+//! Column (a), search.rs: operands (A28), the probe table (A29), find/member (A30), bits and symbols (A31), binary
 //! search (A32), run starts (A33). The `qlean_search_*` entries unbox and allocate and stay C (§1).
 use alloc::{vec, vec::Vec};
 
@@ -8,24 +8,24 @@ use crate::coc::Coc;
 use crate::ids;
 use crate::sym::Syms;
 
-/// search.c:114 `opnd`: a dense payload (`enc` 0), an encoded column (1), or ids at `lw` bits (2); `n` elements.
+/// search.rs `opnd`: a dense payload (`enc` 0), an encoded column (1), or ids at `lw` bits (2); `n` elements.
 #[derive(Clone, Copy)]
 pub enum Src<'a> { Dense(&'a [u8]), Enc(Coc<'a>), Ids(&'a [u8], u32) }
 #[derive(Clone, Copy)]
 pub struct Opnd<'a> { pub src: Src<'a>, pub n: usize }
-/// search.c:405 `kind`: the key type, chosen once per operator.
+/// search.rs `kind`: the key type, chosen once per operator.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Kind { U8, U16, U32, U64, F32, F64, U128 }
 
-// ---- A28: search.c:53-180, 407, 818 ----
-/// search.c:53 `coc_exc_within`: every patch of block `b` lies in `lo ..= hi`.
+// ---- A28: search.rs, 407, 818 ----
+/// search.rs `coc_exc_within`: every patch of block `b` lies in `lo ..= hi`.
 pub fn coc_exc_within(c: &Coc, b: usize, lo: i64, hi: i64) -> bool {
     c.exc.filter(|e| !e.pos.is_empty()).is_some_and(|e| (e.off[b] as usize..e.off[b + 1] as usize).any(|j| (lo..=hi).contains(&c.exc(j))))
 }
-/// search.c:142 `ids_top`: one past the largest id at `lw` bits.
+/// search.rs `ids_top`: one past the largest id at `lw` bits.
 pub fn ids_top(lw: u32) -> u64 { if lw >= 64 { !0 } else { (1u64 << lw) - 1 } }
 impl<'a> Opnd<'a> {
-    /// search.c:144 `opnd_blk`: block `b` at key width `w`: a slice of the payload, or restored into `buf`
+    /// search.rs `opnd_blk`: block `b` at key width `w`: a slice of the payload, or restored into `buf`
     /// (BLK * w); the element count is the answer's length / `w`.
     pub fn blk<'b>(&self, b: usize, w: usize, buf: &'b mut [u8]) -> &'b [u8] where 'a: 'b {
         let (at, cnt) = (b * crate::BLK, (self.n - b * crate::BLK).min(crate::BLK));
@@ -59,7 +59,7 @@ impl<'a> Opnd<'a> {
         }
     }
 }
-/// search.c:164 `coc_srange`: the column's value range from its metadata.
+/// search.rs `coc_srange`: the column's value range from its metadata.
 pub fn coc_srange(c: &Coc) -> (i64, i64) {
     let m = &c.meta;
     let nb = m.n.div_ceil(crate::BLK);
@@ -68,9 +68,9 @@ pub fn coc_srange(c: &Coc) -> (i64, i64) {
     for j in 0..c.exc.map_or(0, |e| e.pos.len()) { let v = c.exc(j); a = a.min(v); z = z.max(v) }
     (a, z)
 }
-/// search.c:179 `sext`: the low `w` bytes of `v`, sign-extended.
+/// search.rs `sext`: the low `w` bytes of `v`, sign-extended.
 pub fn sext(v: u64, w: usize) -> i64 { let s = 64 - 8 * w as u32; if s == 0 { v as i64 } else { (v << s) as i64 >> s } }
-/// search.c:407 `kind_of`: aborts naming `who` for a width the dispatch never sends.
+/// search.rs `kind_of`: aborts naming `who` for a width the dispatch never sends.
 pub fn kind_of(w: usize, is_float: bool, who: &str) -> Kind {
     match (w, is_float) {
         (1, false) => Kind::U8, (2, false) => Kind::U16, (4, false) => Kind::U32, (4, true) => Kind::F32,
@@ -79,16 +79,16 @@ pub fn kind_of(w: usize, is_float: bool, who: &str) -> Kind {
     }
 }
 impl Kind {
-    /// search.c:818 `kind_width`
+    /// search.rs `kind_width`
     pub fn width(self) -> usize {
         match self { Kind::U8 => 1, Kind::U16 => 2, Kind::U32 | Kind::F32 => 4, Kind::U64 | Kind::F64 => 8, Kind::U128 => 16 }
     }
 }
 
-// ---- A29: search.c:190-399, the probe table, one instance per key type ----
-/// The build starts a slot's cache line this many keys early (search.c:105 `SEARCH_AHEAD`).
+// ---- A29: search.rs, the probe table, one instance per key type ----
+/// The build starts a slot's cache line this many keys early (search.rs `SEARCH_AHEAD`).
 const AHEAD: usize = 32;
-/// A key the probe table holds: `RAW`/`F32Z`/`F64Z` of search.c:186 (floats compare as that comment says: both zeros
+/// A key the probe table holds: `RAW`/`F32Z`/`F64Z` of search.rs (floats compare as that comment says: both zeros
 /// one value, every NaN one value). `of` reads the key at the start of `b` already normalised, so every use of a key
 /// is the one that table, scan and walk agree on.
 pub trait PKey: Copy + Send + Sync {
@@ -97,7 +97,7 @@ pub trait PKey: Copy + Send + Sync {
     fn of(b: &[u8]) -> Self;
     /// the normalised bits, zero-extended
     fn key(self) -> u128;
-    /// search.c `KEY_HASH`: the key up to eight bytes, a sixteen-byte key's two words folded into one
+    /// search.rs `KEY_HASH`: the key up to eight bytes, a sixteen-byte key's two words folded into one
     fn hash(self) -> u64 { let v = self.key(); v as u64 ^ ((v >> 64) as u64).wrapping_mul(0xc2b2_ae3d_27d4_eb4f) }
 }
 macro_rules! raw_key { ($($t:ty),*) => {$(impl PKey for $t {
@@ -130,7 +130,7 @@ impl PKey for F64 {
 /// the low `8 * W` bits (all 64 from eight bytes up): a direct slot is `key - lo` taken in the key's own width
 fn mask<K: PKey>() -> u64 { if K::W >= 8 { !0 } else { (1u64 << (8 * K::W)) - 1 } }
 
-/// search.c:103 `ptab`: direct (`slot` indexed by key − `lo`) or hashed (`sh`); `tab[g]` the first index + 1.
+/// search.rs `ptab`: direct (`slot` indexed by key − `lo`) or hashed (`sh`); `tab[g]` the first index + 1.
 pub struct Ptab<K> { pub tab: Vec<usize>, pub slot: Vec<u32>, pub key: Vec<K>, pub top: u64, pub lo: u64, pub n: usize,
                      pub used: usize, pub direct: bool, pub sh: u32 }
 
@@ -147,7 +147,7 @@ fn blocks(x: &Opnd, w: usize, lo: usize, hi: usize, mut f: impl FnMut(usize, &[u
     }
 }
 
-/// search.c:251 `table_*`: the table over the haystack `o`, a block at a time, each slot holding the first index its key
+/// search.rs `table_*`: the table over the haystack `o`, a block at a time, each slot holding the first index its key
 /// occurs at plus one. Direct when the keys span at most `4n + 8`; a direct table whose every slot is filled stops there.
 pub fn table<K: PKey>(o: &Opnd) -> Ptab<K> {
     let mut p = Ptab { tab: Vec::new(), slot: Vec::new(), key: Vec::new(), top: 0, lo: 0, n: o.n, used: 0, direct: false, sh: 0 };
@@ -211,13 +211,13 @@ pub fn table<K: PKey>(o: &Opnd) -> Ptab<K> {
     p
 }
 impl<K: PKey> Ptab<K> {
-    /// search.c:195 `dslot_*`: the slot key `k` names, or `usize::MAX` where none can hold it.
+    /// search.rs `dslot_*`: the slot key `k` names, or `usize::MAX` where none can hold it.
     #[inline(always)]
     fn dslot(&self, k: K) -> usize {
         let d = (k.key() as u64).wrapping_sub(self.lo) & mask::<K>();
         if d <= self.top { d as usize } else { usize::MAX }
     }
-    /// search.c:199 `hslot_*`: the key number of `k`, or `usize::MAX`.
+    /// search.rs `hslot_*`: the key number of `k`, or `usize::MAX`.
     #[inline(always)]
     fn hslot(&self, k: K) -> usize {
         let mut s = (k.hash().wrapping_mul(crate::group::PHI64) >> self.sh) as usize;
@@ -230,7 +230,7 @@ impl<K: PKey> Ptab<K> {
     }
     /// the slot of `k`, `usize::MAX` where there is none.
     pub fn slot_of(&self, k: K) -> usize { if self.direct { self.dslot(k) } else { self.hslot(k) } }
-    /// search.c:335 `hits_*`: the haystack `h` walked in order to the first occurrence of each key of a table built over
+    /// search.rs `hits_*`: the haystack `h` walked in order to the first occurrence of each key of a table built over
     /// the needles, `ans[s]` that index plus one; it stops once every key is found. An encoded block whose `[base, maxv]`
     /// misses the needles' `[lo, hi]` is passed over on its metadata.
     pub fn hits(&self, h: &Opnd, lo: i64, hi: i64, ans: &mut [usize]) {
@@ -259,17 +259,17 @@ impl<K: PKey> Ptab<K> {
             else { for (j, c) in q.chunks_exact(K::W).enumerate() { f(at + j, self.hslot(K::of(c))) } }
         })
     }
-    /// search.c:360 `findtab_*`: `x ? hay` for `lo .. hi` into `out[i - lo]`, `ans` the table's own `tab` or the walk's
+    /// search.rs `findtab_*`: `x ? hay` for `lo .. hi` into `out[i - lo]`, `ans` the table's own `tab` or the walk's
     /// `hits`; an absent key answers `n`.
     pub fn find(&self, ans: &[usize], x: &Opnd, lo: usize, hi: usize, out: &mut [i64]) {
         self.each(x, lo, hi, |i, s| out[i - lo] = if s != usize::MAX && ans[s] != 0 { ans[s] as i64 - 1 } else { self.n as i64 })
     }
-    /// search.c:376 `membertab_*`: `x in hay` for `lo .. hi`, bit `i - lo` of `out` (`lo` a multiple of 8) set when found.
+    /// search.rs `membertab_*`: `x in hay` for `lo .. hi`, bit `i - lo` of `out` (`lo` a multiple of 8) set when found.
     pub fn member(&self, ans: &[usize], x: &Opnd, lo: usize, hi: usize, out: &mut [u8]) {
         self.each(x, lo, hi, |i, s| if s != usize::MAX && ans[s] != 0 { out[(i - lo) >> 3] |= 1 << ((i - lo) & 7) })
     }
 }
-/// search.c:182 `scan_*`: the first index of each needle `lo .. hi` of `x` in the dense haystack `h`, or `h.n`; eight
+/// search.rs `scan_*`: the first index of each needle `lo .. hi` of `x` in the dense haystack `h`, or `h.n`; eight
 /// keys at a time so that the comparison vectorises.
 pub fn scan<K: PKey>(h: &Opnd, x: &Opnd, lo: usize, hi: usize, out: &mut [i64]) {
     let Src::Dense(hb) = h.src else { panic!("qlean search: scan reads a dense haystack") };
@@ -287,7 +287,7 @@ pub fn scan<K: PKey>(h: &Opnd, x: &Opnd, lo: usize, hi: usize, out: &mut [i64]) 
         }
     })
 }
-/// search.c:283 `srange_*`: the operand's signed key range, which a walk over an encoded haystack tests each block's
+/// search.rs `srange_*`: the operand's signed key range, which a walk over an encoded haystack tests each block's
 /// metadata against.
 pub fn srange<K: PKey>(o: &Opnd) -> (i64, i64) {
     match o.src {
@@ -316,11 +316,10 @@ macro_rules! any { ($s:expr, $p:ident => $e:expr) => { match $s {
     Any::U8($p) => $e, Any::U16($p) => $e, Any::U32($p) => $e, Any::U64($p) => $e, Any::F32($p) => $e, Any::F64($p) => $e,
     Any::U128($p) => $e,
 } } }
-pub const KINDS: [Kind; 7] = [Kind::U8, Kind::U16, Kind::U32, Kind::U64, Kind::F32, Kind::F64, Kind::U128];
 impl Probe {
     /// the table over the haystack `o`
     pub fn new(kd: Kind, o: &Opnd) -> Probe { by_kind!(kd, K, V => Probe { t: V(table::<K>(o)), hit: None }) }
-    /// search.c:810 `SEARCH_TABLE`'s smaller-side branch: the table over the needles `x`, and the haystack `h` walked to
+    /// search.rs `SEARCH_TABLE`'s smaller-side branch: the table over the needles `x`, and the haystack `h` walked to
     /// the first occurrence of each needle key.
     pub fn over(kd: Kind, h: &Opnd, x: &Opnd) -> Probe {
         by_kind!(kd, K, V => {
@@ -332,7 +331,6 @@ impl Probe {
             Probe { t: V(t), hit: Some(ans) }
         })
     }
-    pub fn width(&self) -> usize { fn w<K: PKey>(_: &Ptab<K>) -> usize { K::W } any!(&self.t, p => w(p)) }
     /// `x ? hay` for `lo .. hi`
     pub fn find(&self, x: &Opnd, lo: usize, hi: usize, out: &mut [i64]) {
         any!(&self.t, p => p.find(self.hit.as_deref().unwrap_or(&p.tab), x, lo, hi, out))
@@ -347,8 +345,8 @@ pub fn scan_kind(kd: Kind, h: &Opnd, x: &Opnd, out: &mut [i64]) {
     by_kind!(kd, K, V => scan::<K>(h, x, 0, x.n, out))
 }
 
-// ---- A30: search.c:829-965 ----
-/// search.c `search` past the allocation: `x ? h` (index, `h.n` when absent; `out` is `8 * x.n` bytes) or `x in h`
+// ---- A30: search.rs ----
+/// search.rs `search` past the allocation: `x ? h` (index, `h.n` when absent; `out` is `8 * x.n` bytes) or `x in h`
 /// (`member`, a bit each, LSB first; `out` is `x.n.div_ceil(8)` bytes) into `out`, threaded. The table goes over the
 /// smaller side, so the haystack is walked to the first occurrence of each needle key when the needles are fewer.
 /// The table is read-only for the whole pass, so slices are disjoint in `out`; a probe is `QLEAN_COST_ARITH` rather than
@@ -368,13 +366,13 @@ pub fn search(run: Runner, kd: Kind, h: &Opnd, x: &Opnd, member: bool, out: &mut
         crate::c::run_map(run, out, m, 8, crate::QLEAN_COST_ARITH, 8, &|lo, hi, o: &mut [u8]| t.find(x, lo, hi, i64s(o)));
     }
 }
-/// search.c `ids_key_width`: bytes an id key takes where one side is at `a` bits and the other at `b`.
+/// search.rs `ids_key_width`: bytes an id key takes where one side is at `a` bits and the other at `b`.
 pub fn ids_key_width(a: usize, b: usize) -> usize { match a.max(b) { ..=8 => 1, ..=16 => 2, ..=32 => 4, _ => 8 } }
 
-// ---- A31: search.c:974-1272 ----
-/// c/coc.h `bit_at`: bit `i` of the payload, 0 past its end.
+// ---- A31: search.rs ----
+/// rust/src/coc.rs `bit_at`: bit `i` of the payload, 0 past its end.
 fn bit_at(b: &[u8], i: usize) -> u8 { b.get(i >> 3).map_or(0, |&x| x >> (i & 7) & 1) }
-/// search.c:980 `word_at`: the 8 payload bytes from byte `i` as one little-endian word, zero past the end.
+/// search.rs `word_at`: the 8 payload bytes from byte `i` as one little-endian word, zero past the end.
 pub fn word_at(b: &[u8], i: usize) -> u64 {
     let src = b.get(i..).unwrap_or(&[]);
     let mut w = [0u8; 8];
@@ -382,7 +380,7 @@ pub fn word_at(b: &[u8], i: usize) -> u64 {
     w[..m].copy_from_slice(&src[..m]);
     u64::from_le_bytes(w)
 }
-/// search.c:990 `find_bit`: the first index of `needle` among `n` bits, whole bytes at a time, `n` when there is none.
+/// search.rs `find_bit`: the first index of `needle` among `n` bits, whole bytes at a time, `n` when there is none.
 pub fn find_bit(b: &[u8], n: usize, needle: u8) -> usize {
     let mut i = 0;
     while i < n {
@@ -394,13 +392,13 @@ pub fn find_bit(b: &[u8], n: usize, needle: u8) -> usize {
     }
     n
 }
-/// search.c:1010 `qlean_search_find_bit_vec` past the unboxing: each needle's first index. Only two answers exist, so
+/// search.rs `qlean_search_find_bit_vec` past the unboxing: each needle's first index. Only two answers exist, so
 /// both are computed once.
 pub fn find_bit_vec(n: usize, hay: &[u8], ndl: &[u8], m: usize, out: &mut [i64]) {
     let at = [find_bit(hay, n, 0) as i64, find_bit(hay, n, 1) as i64];
     for (j, o) in out[..m].iter_mut().enumerate() { *o = at[bit_at(ndl, j) as usize] }
 }
-/// search.c:1023 `bin_bit`: binary search of a sorted bitmap for `k`, with the `-1` of `bin` already applied.
+/// search.rs `bin_bit`: binary search of a sorted bitmap for `k`, with the `-1` of `bin` already applied.
 pub fn bin_bit(b: &[u8], n: usize, k: i32, right: bool) -> i64 {
     let (mut lo, mut hi) = (0, n);
     while lo < hi {
@@ -410,33 +408,33 @@ pub fn bin_bit(b: &[u8], n: usize, k: i32, right: bool) -> i64 {
     }
     if right { lo as i64 } else { lo as i64 - 1 }
 }
-/// search.c:1041 `qlean_search_bin_bits` past the unboxing: two keys exist, so two halvings and a select.
+/// search.rs `qlean_search_bin_bits` past the unboxing: two keys exist, so two halvings and a select.
 pub fn bin_bits(n: usize, hay: &[u8], ndl: &[u8], m: usize, right: bool, out: &mut [i64]) {
     let at = [bin_bit(hay, n, 0, right), bin_bit(hay, n, 1, right)];
     for (j, o) in out[..m].iter_mut().enumerate() { *o = at[bit_at(ndl, j) as usize] }
 }
-/// search.c:1054 `qlean_search_member_bits` past the unboxing: bit `i` of `out` (`m.div_ceil(8)` bytes) is set when
+/// search.rs `qlean_search_member_bits` past the unboxing: bit `i` of `out` (`m.div_ceil(8)` bytes) is set when
 /// `xs`' bit `i` occurs among the first `n` bits of `hay`; the tail bits stay zero.
 pub fn member_bits(m: usize, xs: &[u8], n: usize, hay: &[u8], out: &mut [u8]) {
     let has = [find_bit(hay, n, 0) < n, find_bit(hay, n, 1) < n];
     out.fill(0);
     for i in 0..m { if has[bit_at(xs, i) as usize] { out[i >> 3] |= 1 << (i & 7) } }
 }
-/// search.c:1074 `spread`: the set bits of word `v` (word `i`) as indices into `out` at `at`; answers the new `at`.
+/// search.rs `spread`: the set bits of word `v` (word `i`) as indices into `out` at `at`; answers the new `at`.
 pub fn spread(out: &mut [i64], mut at: usize, i: usize, mut v: u64) -> usize {
     while v != 0 { out[at] = ((i << 6) + v.trailing_zeros() as usize) as i64; at += 1; v &= v - 1 }
     at
 }
 /// the mask of word `i` of `n` bits: the last word (`n >> 6`) keeps the low `n & 63` bits, every other all 64
 fn word_mask(n: usize, i: usize) -> u64 { if i == n >> 6 { if n & 63 != 0 { !0 >> (64 - (n & 63)) } else { 0 } } else { !0 } }
-/// search.c:1107 `qlean_search_where_bits`, the first pass: how many of the first `n` bits are set. A word inside the
+/// search.rs `qlean_search_where_bits`, the first pass: how many of the first `n` bits are set. A word inside the
 /// payload is read straight (`full` of them), the ragged end and the masked tail go through `word_at`.
 pub fn where_count(n: usize, bits: &[u8]) -> usize {
     let (whole, full) = (n >> 6, (bits.len() / 8).min(n >> 6));
     let k: usize = bits[..full * 8].chunks_exact(8).map(|c| u64::from_le_bytes(c.try_into().expect("8 bytes")).count_ones() as usize).sum();
     k + (full..=whole).map(|i| (word_at(bits, i * 8) & word_mask(n, i)).count_ones() as usize).sum::<usize>()
 }
-/// search.c:1107 `qlean_search_where_bits`, the second pass (`out` holds `where_count`): the ascending indices of the set
+/// search.rs `qlean_search_where_bits`, the second pass (`out` holds `where_count`): the ascending indices of the set
 /// bits among the first `n`; answers the count. A clear group of eight words is skipped on one test, as the mask of a
 /// selective `where` is mostly clear.
 pub fn where_bits(n: usize, bits: &[u8], out: &mut [i64]) -> usize {
@@ -450,21 +448,21 @@ pub fn where_bits(n: usize, bits: &[u8], out: &mut [i64]) -> usize {
     for i in i..=whole { at = spread(out, at, i, word_at(bits, i * 8) & word_mask(n, i)) }
     at
 }
-/// Below this a symbol haystack is scanned rather than hashed (search.c:803 `SYM_SCAN_MAX`).
+/// Below this a symbol haystack is scanned rather than hashed (search.rs `SYM_SCAN_MAX`).
 pub const SYM_SCAN_MAX: usize = 8;
-/// The needles are packed and probed this many at a time (c/sym.h `SYM_KEY_BLOCK`).
+/// The needles are packed and probed this many at a time (rust/src/sym.rs `SYM_KEY_BLOCK`).
 const SYM_KEY_BLOCK: usize = 4096;
-/// search.c:1174 `symscan`: a short symbol haystack indexed by first byte. `first[b]` is the lowest index whose first
+/// search.rs `symscan`: a short symbol haystack indexed by first byte. `first[b]` is the lowest index whose first
 /// byte is `b`, plus one; `empty` the index of the empty symbol, a legal element with no first byte.
 pub struct Symscan<'a> { pub hay: Vec<&'a [u8]>, pub empty: usize, pub first: [u8; 256] }
 impl<'a> Symscan<'a> {
-    /// search.c:1176 `symscan_build`: backwards, so the lowest index wins
+    /// search.rs `symscan_build`: backwards, so the lowest index wins
     pub fn build(hay: Vec<&'a [u8]>) -> Self {
         let (mut empty, mut first) = (hay.len(), [0u8; 256]);
         for (i, h) in hay.iter().enumerate().rev() { match h.first() { None => empty = i, Some(&b) => first[b as usize] = (i + 1) as u8 } }
         Symscan { hay, empty, first }
     }
-    /// search.c:1185 `symscan_find`: the first index holding `k`, the count when none does
+    /// search.rs `symscan_find`: the first index holding `k`, the count when none does
     pub fn find(&self, k: &[u8]) -> usize {
         let Some(&b) = k.first() else { return self.empty };
         let c = self.first[b as usize] as usize;
@@ -472,12 +470,12 @@ impl<'a> Symscan<'a> {
         (c - 1..self.hay.len()).find(|&i| crate::sym::sym_eq(self.hay[i], k)).unwrap_or(self.hay.len())
     }
 }
-/// search.c:1209 `sym_pack`: the first `n` symbols as 8-byte keys, big-endian and zero-padded, so `=` on a key is symbol
+/// search.rs `sym_pack`: the first `n` symbols as 8-byte keys, big-endian and zero-padded, so `=` on a key is symbol
 /// equality (a symbol holds no NUL). Every symbol must fit (`Syms::packs`).
 pub fn sym_pack(s: &Syms, n: usize, k: &mut [u64]) {
     for (k, v) in k[..n].iter_mut().zip(s.keys(n)) { *k = v }
 }
-/// search.c:1236 `sym_scan`: the first of the first `n` symbols equal to `k`, or `n`.
+/// search.rs `sym_scan`: the first of the first `n` symbols equal to `k`, or `n`.
 pub fn sym_scan(s: &Syms, n: usize, k: &[u8]) -> usize {
     if n == 0 { return 0 }
     let mut lo = s.off(0);
@@ -489,7 +487,7 @@ pub fn sym_scan(s: &Syms, n: usize, k: &[u8]) -> usize {
     }
     n
 }
-/// search.c:1243 `sym_build`: the hash table `tab` (`mask + 1` slots, zeroed) over the first `n` symbols, each slot the
+/// search.rs `sym_build`: the hash table `tab` (`mask + 1` slots, zeroed) over the first `n` symbols, each slot the
 /// first index holding its symbol, plus one.
 pub fn sym_build(s: &Syms, n: usize, tab: &mut [usize], mask: u64) {
     for i in 0..n {
@@ -499,7 +497,7 @@ pub fn sym_build(s: &Syms, n: usize, tab: &mut [usize], mask: u64) {
         if tab[h] == 0 { tab[h] = i + 1 }
     }
 }
-/// search.c:1253 `sym_probe`: the index `sym_build` stored for `k`, `n` when none.
+/// search.rs `sym_probe`: the index `sym_build` stored for `k`, `n` when none.
 pub fn sym_probe(s: &Syms, tab: &[usize], mask: u64, n: usize, k: &[u8]) -> usize {
     let mut h = (crate::sym::sym_hash(k) & mask) as usize;
     while tab[h] != 0 {
@@ -508,13 +506,13 @@ pub fn sym_probe(s: &Syms, tab: &[usize], mask: u64, n: usize, k: &[u8]) -> usiz
     }
     n
 }
-/// search.c:1266 `qlean_search_find_sym_scalar` past the unboxing and the kept hash: one scan.
+/// search.rs `qlean_search_find_sym_scalar` past the unboxing and the kept hash: one scan.
 pub fn find_sym_scalar(s: &Syms, ndl: &[u8]) -> usize { sym_scan(s, s.count(), ndl) }
 /// The answer for needle `j` is index `idx`, absent being `n`: `out` holds `Int64`s, or bits (set where `idx < n`).
 pub fn sym_put(bits: bool, out: &mut [u8], n: usize, j: usize, idx: usize) {
     if bits { if idx < n { out[j >> 3] |= 1 << (j & 7) } } else { i64s(out)[j] = idx as i64 }
 }
-/// search.c:925 `sym_search`: `needles ? hay` (`bits` false: `out` is `8 * m` bytes of `Int64`s) or `needles in hay` (`bits`
+/// search.rs `sym_search`: `needles ? hay` (`bits` false: `out` is `8 * m` bytes of `Int64`s) or `needles in hay` (`bits`
 /// true: `out` is `m.div_ceil(8)` bytes, zeroed) for symbol columns with no kept hash. A haystack whose symbols fit the
 /// 8-byte key goes through the `u64` probe table (or a scan of up to `SYM_SCAN_MAX` keys), the needles a block at a time;
 /// a block that does not fit abandons that for the byte path, a `Symscan` or a hash table over the bytes.
@@ -559,7 +557,7 @@ pub fn sym_search(bits: bool, nd: &Syms, hb: &Syms, out: &mut [u8]) {
     sym_build(hb, n, &mut tab, cap as u64 - 1);
     for j in 0..m { sym_put(bits, out, n, j, sym_probe(hb, &tab, cap as u64 - 1, n, nd.at(j))) }
 }
-/// search.c `qlean_search_match_ids`'s translation: for each of the `na` entries of `a`, its index in `b` (`nb` when
+/// search.rs `qlean_search_match_ids`'s translation: for each of the `na` entries of `a`, its index in `b` (`nb` when
 /// `b` does not hold it), through one hash table over `b`.
 pub fn sym_translate(a: &Syms, na: usize, b: &Syms, nb: usize, tr: &mut [usize]) {
     let cap = crate::group::cap_for(nb.max(1));
@@ -604,8 +602,8 @@ pub fn match_syms_ids(b: &Syms, n: usize, d: &Syms, ids: &[u8]) -> bool {
     })
 }
 
-// ---- A32: search.c:1497-1716 ----
-/// search.c:1497 `bin_key`: `v` as an unsigned key in the column's order.
+// ---- A32: search.rs ----
+/// search.rs `bin_key`: `v` as an unsigned key in the column's order.
 pub fn bin_key(w: usize, is_float: bool, is_signed: bool, v: u64) -> u64 {
     let mask = if w == 8 { !0 } else { (1u64 << (8 * w)) - 1 };
     let top = 1u64 << (8 * w - 1);
@@ -618,7 +616,7 @@ pub fn bin_key(w: usize, is_float: bool, is_signed: bool, v: u64) -> u64 {
     }
     if is_signed { (v & mask) ^ top } else { v & mask }
 }
-/// search.c:1510 `bin_at`: element `i` of a `w`-byte payload. One fixed-width load per width: a `w`-byte copy into a
+/// search.rs `bin_at`: element `i` of a `w`-byte payload. One fixed-width load per width: a `w`-byte copy into a
 /// `u64` compiles to a `memcpy` call per element, which was most of `runStarts`' pass.
 #[inline(always)]
 pub fn bin_at(p: &[u8], w: usize, i: usize) -> u64 {
@@ -631,7 +629,7 @@ pub fn bin_at(p: &[u8], w: usize, i: usize) -> u64 {
         _ => { let mut b = [0u8; 8]; b[..w].copy_from_slice(&p[i * w..(i + 1) * w]); u64::from_le_bytes(b) }
     }
 }
-/// search.c:1519 `norm_key`
+/// search.rs `norm_key`
 pub fn norm_key(w: usize, is_float: bool, v: u64) -> u64 {
     if !is_float { return v }
     let (low, inf, nan) = if w == 8 { (0x7fff_ffff_ffff_ffffu64, 0x7ff0_0000_0000_0000u64, 0xfff8_0000_0000_0000u64) }
@@ -649,7 +647,7 @@ impl Col<'_> {
 #[derive(Clone, Copy)]
 struct Walk { w: usize, f: bool, s: bool, right: bool }
 impl Walk {
-    /// search.c:1483 `bin_step`: the partition point in `lo .. hi` of key `k`. Branchless, which is what makes the
+    /// search.rs `bin_step`: the partition point in `lo .. hi` of key `k`. Branchless, which is what makes the
     /// timing a property of the code and not of the branch predictor's aliasing (the C comment's measurement).
     /// `ix` is the index payload the walk reads `h` through (`order`), `|i| i` where each position is its own index.
     fn step(self, h: &Col, ix: impl Fn(usize) -> usize, k: u64, mut lo: i64, hi: i64) -> i64 {
@@ -667,11 +665,11 @@ impl Walk {
     /// `bin` for key `k` over `n` elements: the position, `- 1` for `bin` and as is for `binr`.
     fn pos(self, h: &Col, k: u64, n: i64) -> i64 { let at = self.step(h, |i| i, k, 0, n); if self.right { at } else { at - 1 } }
 }
-/// search.c:1661 `kcur`: a worker's view of the needles, the dense payload or the last block restored.
+/// search.rs `kcur`: a worker's view of the needles, the dense payload or the last block restored.
 struct Kcur<'a> { k: Col<'a>, w: usize, b: usize, buf: [u64; crate::BLK] }
 impl<'a> Kcur<'a> {
     fn new(k: Col<'a>, w: usize) -> Self { Kcur { k, w, b: usize::MAX, buf: [0; crate::BLK] } }
-    /// search.c:1668 `kcur_at`
+    /// search.rs `kcur_at`
     fn at(&mut self, j: usize) -> u64 {
         let Some(c) = self.k.c else { return bin_at(self.k.d, self.w, j) };
         let b = j / crate::BLK;
@@ -690,7 +688,7 @@ impl<'a> Kcur<'a> {
         bin_at(crate::pod::bytes(&self.buf), self.w, j % crate::BLK)
     }
 }
-/// search.c:1741 `BIN_TAB_MAX`, `BIN_TAB_SAMPLE`
+/// search.rs `BIN_TAB_MAX`, `BIN_TAB_SAMPLE`
 const BIN_TAB_MAX: u64 = 1 << 16;
 const BIN_TAB_SAMPLE: usize = 4096;
 
@@ -721,7 +719,7 @@ pub fn bin_wide(w: usize, right: bool, hay: &[u8], keys: &[u8], out: &mut [i64])
         (_, true) => walk::<true, _>(n, out, keys.chunks_exact(w), |i| &hay[i * w..(i + 1) * w]),
     }
 }
-/// search.c:1706 `qlean_search_bin` past the unboxing: for each of the `m` keys (dense `keys`, or `kenc`), the
+/// search.rs `qlean_search_bin` past the unboxing: for each of the `m` keys (dense `keys`, or `kenc`), the
 /// binary search position in the sorted haystack (dense `hay`, or `enc`) of `n`, into `out`; threaded
 /// (`bin_run`, `bin_tab_run`, `bin_gather_run`).
 ///
@@ -768,14 +766,14 @@ pub fn bin(run: Runner, w: usize, is_float: bool, is_signed: bool, right: bool, 
     crate::c::run_map(run, ob, m, 8, crate::QLEAN_COST_MATH, 8, &walk);
 }
 
-// ---- A33: search.c:731-740, 1539-1830, 2004-2099: the per-element callers of A32's walk, whole loops in Rust ----
+// ---- A33: search.rs, 1539-1830, 2004-2099: the per-element callers of A32's walk, whole loops in Rust ----
 /// The width switch hoisted out of the loop, as C's `IDS_WIDTHS`: `W` is a constant inside `go`, so `id_at` folds to a shift and a mask.
 fn with_ids_width<R>(w: u32, f: impl IdsFn<R>) -> R {
     match w { 0 => f.go::<0>(), 1 => f.go::<1>(), 2 => f.go::<2>(), 4 => f.go::<4>(), 8 => f.go::<8>(), 16 => f.go::<16>(), 32 => f.go::<32>(), _ => f.go::<64>() }
 }
 trait IdsFn<R> { fn go<const W: u32>(self) -> R; }
 
-/// search.c:1609 `qlean_search_bin_ids` past the unboxing: `binBytes 8 false true right` of the `n` ranks `vals[ids[i]]`
+/// search.rs `qlean_search_bin_ids` past the unboxing: `binBytes 8 false true right` of the `n` ranks `vals[ids[i]]`
 /// (`ids` at `w` bits) for each 8-byte key of `keys`, into `out` (one per key). The ids are the walk's index payload.
 pub fn bin_ids(right: bool, vals: &[u8], n: usize, w: u32, ids: &[u8], keys: &[u8], out: &mut [i64]) {
     struct J<'a> { right: bool, vals: &'a [u8], n: usize, ids: &'a [u8], keys: &'a [u8], out: &'a mut [i64] }
@@ -796,7 +794,7 @@ fn sorted_col<'a>(w: usize, hay: &'a [u8], enc: Option<&'a Coc<'a>>) -> Col<'a> 
     assert!(matches!(w, 1 | 2 | 4 | 8), "qlean search: a sorted-haystack probe got element width {w}; the kernel is instantiated at 1, 2, 4 and 8 bytes");
     Col { d: hay, c: enc, uw: enc.map_or(0, |c| c.one_width()) }
 }
-/// search.c:1651 `sorted_probe`: the least index of the `n`-element sorted haystack whose key equals key `j`'s, `n` where none.
+/// search.rs `sorted_probe`: the least index of the `n`-element sorted haystack whose key equals key `j`'s, `n` where none.
 /// `bin_key` is a bijection on each class once the float fold has run, so key equality is the equality `kind_of`'s
 /// keys give; the walk is `binr`'s (the first index not below the needle).
 fn sorted_probe(wk: Walk, h: &Col, keys: &[u8], n: i64, j: usize) -> i64 {
@@ -804,7 +802,7 @@ fn sorted_probe(wk: Walk, h: &Col, keys: &[u8], n: i64, j: usize) -> i64 {
     let lo = wk.step(h, |i| i, k, 0, n);
     if lo < n && bin_key(wk.w, wk.f, wk.s, h.at(wk.w, lo as usize)) == k { lo } else { n }
 }
-/// search.c:1684-1734 `qlean_search_find_sorted`, `qlean_coc_find_sorted` past the unboxing: each of the `m` dense keys'
+/// search.rs `qlean_search_find_sorted`, `qlean_coc_find_sorted` past the unboxing: each of the `m` dense keys'
 /// first index in the sorted haystack (dense `hay`, or `enc`) of `n`, `n` where absent, into `out`; threaded.
 pub fn find_sorted(run: Runner, w: usize, is_float: bool, is_signed: bool, hay: &[u8], enc: Option<&Coc>, n: i64, keys: &[u8], m: usize, out: &mut [i64]) {
     let (wk, h) = (Walk { w, f: is_float, s: is_signed, right: true }, sorted_col(w, hay, enc));
@@ -812,7 +810,7 @@ pub fn find_sorted(run: Runner, w: usize, is_float: bool, is_signed: bool, hay: 
         for (j, x) in (lo..hi).zip(i64s(o)) { *x = sorted_probe(wk, &h, keys, n, j) }
     });
 }
-/// search.c:1697-1734 `qlean_search_member_sorted`, `qlean_coc_member_sorted` past the unboxing: bit `j` of `out` (LSB
+/// search.rs `qlean_search_member_sorted`, `qlean_coc_member_sorted` past the unboxing: bit `j` of `out` (LSB
 /// first, `m.div_ceil(8)` bytes, the tail bits left zero) is set when key `j` is in the haystack. Threaded by output
 /// byte, so no two slices touch one byte.
 pub fn member_sorted(run: Runner, w: usize, is_float: bool, is_signed: bool, hay: &[u8], enc: Option<&Coc>, n: i64, keys: &[u8], m: usize, out: &mut [u8]) {
@@ -824,7 +822,7 @@ pub fn member_sorted(run: Runner, w: usize, is_float: bool, is_signed: bool, hay
     });
 }
 
-/// search.c:1773 `bin_rows` past the unboxing: for each of the `m` dense keys, the row `binRows` names inside group
+/// search.rs `bin_rows` past the unboxing: for each of the `m` dense keys, the row `binRows` names inside group
 /// `g = gids[j]`: the walk over `bounds[g] .. bounds[g + 1]` reading the haystack (dense `hay` or `enc`) through `order`
 /// (64-bit rows; empty: each position is its own row), then the row at the partition point's predecessor. `miss` where `gids`
 /// has no entry `j`, `g` names no group, or the group holds nothing at or before the key. Threaded.
@@ -844,7 +842,7 @@ pub fn bin_rows(run: Runner, w: usize, is_float: bool, is_signed: bool, right: b
     });
 }
 
-/// search.c:2004 `run_starts` past the allocation: the start of each run of equal elements of `o` (`norm_key`'s equality)
+/// search.rs `run_starts` past the allocation: the start of each run of equal elements of `o` (`norm_key`'s equality)
 /// into `out` (`o.n + 1` long), then `o.n` as the terminator; answers the count with the terminator. The payload is read
 /// a block at a time at width `w`, 1, 2, 4 or 8.
 pub fn run_starts(o: &Opnd, w: usize, is_float: bool, out: &mut [i64]) -> usize {
@@ -865,7 +863,7 @@ pub fn run_starts(o: &Opnd, w: usize, is_float: bool, out: &mut [i64]) -> usize 
         let at = b * crate::BLK;
         // row 0 starts a run whatever its key; the loop then needs no test for it
         let skip = if b == 0 { out[0] = 0; g = 1; prev = norm_key(w, is_float, bin_at(h, w, 0)); 1 } else { 0 };
-        // the width switch hoisted out of the element loop, as search.c's `RS_RUNS` hoists it
+        // the width switch hoisted out of the element loop, as search.rs's `RS_RUNS` hoists it
         match (is_float, w) {
             (true, 1) => blk::<1>(h, at, skip, &mut prev, &mut g, out, |v| norm_key(1, true, v)),
             (true, 2) => blk::<2>(h, at, skip, &mut prev, &mut g, out, |v| norm_key(2, true, v)),
@@ -880,22 +878,22 @@ pub fn run_starts(o: &Opnd, w: usize, is_float: bool, out: &mut [i64]) -> usize 
     out[g] = o.n as i64;
     g + 1
 }
-/// search.c:731 `qlean_search_run_starts_ids`: `runStarts` over `n` ids at `w` bits; the dictionary is distinct, so equal
+/// search.rs `qlean_search_run_starts_ids`: `runStarts` over `n` ids at `w` bits; the dictionary is distinct, so equal
 /// ids are equal elements. `out` is `n + 1` long; answers the count with the terminator `n`.
 pub fn run_starts_ids(n: usize, w: u32, ids: &[u8], out: &mut [i64]) -> usize {
     let g = ids::runs(ids, n, w, usize::MAX, n, out);
     out[g] = n as i64;
     g + 1
 }
-/// search.c:2056 `qlean_search_run_starts_syms`: the run starts of the symbols, then their count. `out` is `count + 1` long.
+/// search.rs `qlean_search_run_starts_syms`: the run starts of the symbols, then their count. `out` is `count + 1` long.
 pub fn run_starts_syms(s: &Syms, out: &mut [i64]) -> usize {
     let (n, mut g, mut prev) = (s.count(), 0, &[][..]);
-    // one `at` per element, the previous symbol carried, as search.c's loop carries `prev`
+    // one `at` per element, the previous symbol carried, as search.rs's loop carries `prev`
     for i in 0..n { let x = s.at(i); if i == 0 || !crate::sym::sym_eq(x, prev) { out[g] = i as i64; g += 1 } prev = x }
     out[g] = n as i64;
     g + 1
 }
-/// search.c:2078 `qlean_search_run_starts_bits`: `runStarts` over `n` booleans packed LSB first, a byte past the end
+/// search.rs `qlean_search_run_starts_bits`: `runStarts` over `n` booleans packed LSB first, a byte past the end
 /// reading 0. A word at a time: bit i of `x ^ (x << 1 | top)` is set where bit i differs from bit i-1, `top` the previous
 /// word's last bit. `out` is `n + 1` long.
 pub fn run_starts_bits(n: usize, bits: &[u8], out: &mut [i64]) -> usize {
@@ -916,8 +914,8 @@ pub fn run_starts_bits(n: usize, bits: &[u8], out: &mut [i64]) -> usize {
     g + 1
 }
 
-// ---- K17: search.c `coc_may_hold64`, `remap_ids_run`, the index's slots (`ix_*`) ----
-/// search.c `coc_may_hold64`: the blocks `[b0, b0 + k)`, `k <= 64`, that may hold `v` as a bit mask: those whose
+// ---- K17: search.rs `coc_may_hold64`, `remap_ids_run`, the index's slots (`ix_*`) ----
+/// search.rs `coc_may_hold64`: the blocks `[b0, b0 + k)`, `k <= 64`, that may hold `v` as a bit mask: those whose
 /// `[base, maxv]` holds it, and a patched block one of whose exceptions is it. The OR reduction first is what vectorises
 /// where the shift by `j` does not, and most chunks hold no candidate.
 pub fn coc_may_hold64(c: &Coc, b0: usize, k: usize, v: i64) -> u64 {
@@ -930,7 +928,7 @@ pub fn coc_may_hold64(c: &Coc, b0: usize, k: usize, v: i64) -> u64 {
     m
 }
 
-/// search.c `qlean_search_remap_ids`' body: `map` (`wout`-bit entries) read at each of the `n` ids of `ids` (`w` bits),
+/// search.rs `qlean_search_remap_ids`' body: `map` (`wout`-bit entries) read at each of the `n` ids of `ids` (`w` bits),
 /// the entry past the map answering a stray id, into `out` at `wout` bits. It is `ids::map`, `idGroups`' pass, over
 /// the map read out once into a dictionary-sized table: `d` entries where the column is millions, which keeps the
 /// map's own width out of the loop.
@@ -945,7 +943,7 @@ pub fn remap_ids(run: Runner, ids: &[u8], n: usize, w: u32, map: &[u8], wout: u3
 /// The slots an index keeps: open addressing over 16-byte slots, a key and the least position holding it, the position
 /// `IX_EMPTY` in an empty slot; then one word, how many rows the slots hash. A table is `2 * cap + 1` words.
 const IX_EMPTY: u64 = u64::MAX;
-/// search.c `ix_slot`: a key below the capacity is its own slot, so needles near each other read slots near each other;
+/// search.rs `ix_slot`: a key below the capacity is its own slot, so needles near each other read slots near each other;
 /// the bits above are mixed (murmur3's fmix64, 0 at 0) before they reach the slot, since xor-folding them kept their
 /// structure.
 #[inline(always)]
@@ -954,7 +952,7 @@ pub fn ix_slot(k: u64, s: u32, mask: u64) -> usize {
     h ^= h >> 33; h = h.wrapping_mul(0xff51afd7ed558ccd); h ^= h >> 33; h = h.wrapping_mul(0xc4ceb9fe1a85ec53); h ^= h >> 33;
     ((k ^ h) & mask) as usize
 }
-/// search.c `ix_alloc`'s size: the capacity is a power of two, at least 16 and 1.5 times the distinct keys.
+/// search.rs `ix_alloc`'s size: the capacity is a power of two, at least 16 and 1.5 times the distinct keys.
 pub fn ix_bytes(distinct: usize) -> usize {
     let mut cap = 16usize;
     while cap < distinct + distinct / 2 { cap <<= 1 }
@@ -965,7 +963,7 @@ fn ix_slots_mut(t: &mut [u64]) -> &mut [[u64; 2]] { let n = t.len() & !1; t[..n]
 /// The shift and mask of a table of `cap` slots (an empty table reads 0 and 0).
 fn ix_geom(cap: usize) -> (u32, u64) { if cap == 0 { (0, 0) } else { (cap.trailing_zeros(), cap as u64 - 1) } }
 fn ix_set_rows(t: &mut [u64], rows: usize) { let n = t.len() & !1; t[n] = rows as u64 }
-/// search.c `ix_alloc`'s fill: every slot empty, no rows hashed.
+/// search.rs `ix_alloc`'s fill: every slot empty, no rows hashed.
 pub fn ix_init(t: &mut [u64]) { let n = t.len() & !1; t[..n].fill(IX_EMPTY); ix_set_rows(t, 0) }
 /// Row `row` under key `k` at the first slot from `ix_slot` that is empty (written) or holds `k` with `same` of its
 /// position (kept: an earlier position holds it).
@@ -1026,7 +1024,7 @@ fn extend_w<const W: u32>(t: &mut [u64], p: &[u8], base: usize, m: usize) {
 }
 /// `qlean_index_hash_extend`'s fill: the `m` keys `p` holds at `w` bits added as rows `base` on.
 pub fn ix_extend(t: &mut [u64], p: &[u8], w: u32, base: usize, m: usize) { ids::by_width!(w, extend_w(t, p, base, m)) }
-/// search.c `ix_room`'s copy: `src`'s slots below `base` rehashed into the fresh `dst`, which then hashes `keys` rows.
+/// search.rs `ix_room`'s copy: `src`'s slots below `base` rehashed into the fresh `dst`, which then hashes `keys` rows.
 /// Where another value has claimed past `base`, its rows are not this value's, and open addressing cannot delete them
 /// from a copy.
 pub fn ix_rehash(dst: &mut [u64], src: &[u64], base: usize, keys: usize) {
@@ -1036,7 +1034,7 @@ pub fn ix_rehash(dst: &mut [u64], src: &[u64], base: usize, keys: usize) {
     ix_set_rows(dst, keys)
 }
 
-/// search.c `ixsyms`: a symbol column as the hash reads it: element `i` is entry `i` of the blob or, interned, the entry
+/// search.rs `ixsyms`: a symbol column as the hash reads it: element `i` is entry `i` of the blob or, interned, the entry
 /// the id `i` names, which keys the interned form by the bytes too.
 pub struct IxSyms<'a> { pub s: Syms<'a>, pub ids: &'a [u8], pub w: u32, pub interned: bool }
 impl IxSyms<'_> {
@@ -1071,7 +1069,7 @@ pub fn ix_find_syms(t: &[u64], v: &IxSyms, nd: &Syms, miss: usize, out: &mut [i6
     }
 }
 
-// ---- B17: search.c's scalar find, the Frame-of-Reference equality walks, the id mask ----
+// ---- B17: search.rs's scalar find, the Frame-of-Reference equality walks, the id mask ----
 /// `qlean_search_find_scalar`'s body: the least `i < hay.len() / w` whose key equals the needle's, `hay.len() / w` when
 /// none does. The needle is `scan`'s one key, the low `w` bytes of `needle` little-endian (zero above, for `w` 16).
 pub fn find_scalar(w: usize, is_float: bool, hay: &[u8], needle: u64) -> usize {
@@ -1082,7 +1080,7 @@ pub fn find_scalar(w: usize, is_float: bool, hay: &[u8], needle: u64) -> usize {
     r[0] as usize
 }
 
-/// search.c `COC_EQ_BLOCKS`: each block of `c` that may hold `v`, in order, decoded into a buffer; `f(at, elems)` sees the
+/// search.rs `COC_EQ_BLOCKS`: each block of `c` that may hold `v`, in order, decoded into a buffer; `f(at, elems)` sees the
 /// block's first row and its elements, and a `Some` ends the walk. `?` at an atom asks about one element, so a block whose
 /// `[base, maxv]` cannot hold the needle is skipped from its 16 bytes of metadata instead of its 8 KB of elements.
 fn eq_blocks<R>(c: &Coc, v: i64, mut f: impl FnMut(usize, &[i64]) -> Option<R>) -> Option<R> {
@@ -1262,7 +1260,7 @@ pub fn coc_match(a: &Opnd, b: &Opnd, w: usize) -> bool {
 mod tests {
     use super::*;
     use crate::coc::{Exc, Meta};
-    // expected values: search.c at 04ecc24 (coc_srange, coc_exc_within, sext, ids_top, kind_of, kind_width, opnd_blk)
+    // expected values: search.rs at 04ecc24 (coc_srange, coc_exc_within, sext, ids_top, kind_of, kind_width, opnd_blk)
     #[test] fn sext_and_ids_top() {
         assert_eq!(sext(0xff, 1), -1); assert_eq!(sext(0x80, 1), -128); assert_eq!(sext(0x7f, 1), 127);
         assert_eq!(sext(0xffff_ffff, 4), -1); assert_eq!(sext(u64::MAX, 8), -1); assert_eq!(sext(5, 8), 5);
@@ -1313,7 +1311,7 @@ mod tests {
         assert_eq!(r.len(), 800);
         assert!(r.chunks_exact(8).all(|x| x == 7i64.to_ne_bytes()));
     }
-    // A32: expected values are search.c's `bin_key` (1439) and `bin_step` (1483), checked against the old C by /data/tmp/qrs/A32/diff.c
+    // A32: expected values are search.rs's `bin_key` (1439) and `bin_step` (1483), checked against the old C by /data/tmp/qrs/A32/diff.c
     #[test] fn bin_keys() {
         assert_eq!((bin_key(1, false, true, 0x80), bin_key(1, false, true, 0x7f), bin_key(1, false, false, 0x1ff)), (0, 0xff, 0xff));
         let (z, nz) = (bin_key(8, true, false, 0), bin_key(8, true, false, 1 << 63));
@@ -1417,7 +1415,7 @@ mod tests {
         a
     }
     fn le<const W: usize>(v: &[u64]) -> Vec<u8> { v.iter().flat_map(|x| x.to_le_bytes()[..W].to_vec()).collect() }
-    // expected values: q (search.c's comments): `1 1 2?1` is 0, `1 1 2?9` is 3; one NaN, one zero (search.c:186)
+    // expected values: q (search.rs's comments): `1 1 2?1` is 0, `1 1 2?9` is 3; one NaN, one zero (search.rs)
     #[test] fn first_index_and_absent() {
         assert_eq!(finds(Kind::U32, &le::<4>(&[1, 1, 2]), &le::<4>(&[1, 2, 9])), [0, 2, 3]);
         assert_eq!(finds(Kind::U8, &[], &[1]), [0]);
@@ -1486,7 +1484,7 @@ mod tests {
         assert_eq!(srange::<u128>(&dense(&le::<8>(&[1, 0, u64::MAX, 0]), 16)), (-1, 1));
         assert_eq!(srange::<u16>(&Opnd { src: Src::Ids(&[], 8), n: 0 }), (0, 127));
     }
-    // A31: expected values are search.c's (4ebc95c) own, which `/data/tmp/qrs/A31/diff` compares on 41026 random cases;
+    // A31: expected values are search.rs's (4ebc95c) own, which `/data/tmp/qrs/A31/diff` compares on 41026 random cases;
     // the q facts are the ones QLean/Kernel/Search.lean measured
     #[test] fn bit_kernels() {
         let b = [0b101u8];
@@ -1646,7 +1644,7 @@ mod tests {
     }
 }
 
-/// search.c `ix_room`'s claim: the table `t` (`2 * cap + 1` words, hashing `base` rows) is large enough for `keys` rows and
+/// search.rs `ix_room`'s claim: the table `t` (`2 * cap + 1` words, hashing `base` rows) is large enough for `keys` rows and
 /// now hashes them, by compare-and-swap of the rows word -- every value sharing the table reads only its own rows, so the
 /// claim is all that is needed. `false` where it is too small or another value claimed it first: the caller copies it.
 pub fn ix_claim(t: &mut [i64], base: usize, keys: usize) -> bool {

@@ -1,5 +1,5 @@
 #![forbid(unsafe_code)]
-//! Column (a), coc.h: the whole-column reads of a `Coc` (A1), its sums (A3), product, any/all, min and max (A4)
+//! Column (a), coc.rs: the whole-column reads of a `Coc` (A1), its sums (A3), product, any/all, min and max (A4)
 //! and the in-place shift (A6), plus `CocMut`, the writable form of the same `coc`.
 use crate::coc::{Coc, Meta};
 use crate::coc::lanes;
@@ -8,7 +8,7 @@ use crate::res::{res_get, res_get_in, res_min_nonzero, res_sum};
 use crate::simd::prefetch;
 use crate::BLK;
 
-/// coc.h:987, the comparison codes in QLean.Kernel.Ew's constructor order
+/// coc.rs, the comparison codes in QLean.Kernel.Ew's constructor order
 pub(crate) const EQ: i32 = 0;
 pub(crate) const NE: i32 = 1;
 pub(crate) const LT: i32 = 2;
@@ -16,20 +16,18 @@ pub(crate) const LE: i32 = 3;
 pub(crate) const GT: i32 = 4;
 pub(crate) const GE: i32 = 5;
 
-/// The writable form of coc.h:103 `coc`, for the operations that rewrite a column in place: `coc_offsets` (A1),
+/// The writable form of coc.rs `coc`, for the operations that rewrite a column in place: `coc_offsets` (A1),
 /// `coc_sums_drop` (A3), `coc_shift` (A6). Lengths as `Coc`'s; the per-block writers of the encoder take
 /// `enc::EncMeta`/`enc::EncPack` instead, which split this by block.
 pub struct CocMut<'a> {
-    pub base: &'a mut [i64], pub maxv: &'a mut [i64], pub off: &'a mut [u64], pub bsum: &'a mut [i64],
-    pub width: &'a mut [u8],
+    pub base: &'a mut [i64], pub maxv: &'a mut [i64], pub bsum: &'a mut [i64],
     /// null in C = no sums stored
     pub sumnul: Option<&'a mut i64>, pub sumn: Option<&'a mut u64>,
-    pub pack: &'a mut [u8],
-    pub n: usize, pub nblk: usize, pub mblk: usize,
+    pub n: usize, pub nblk: usize,
 }
 
 impl<'a> CocMut<'a> {
-    /// `coc_meta_view` (coc.h:139) over writable metadata bytes and no pack, the view `coc_shift` rides the metadata
+    /// `coc_meta_view` (coc.rs) over writable metadata bytes and no pack, the view `coc_shift` rides the metadata
     /// through: None where `Meta::new` is, misaligned or shorter than its sections.
     pub fn meta_only(m: &'a mut [u8], n: usize) -> Option<Self> {
         let nb = m.len() / 33;
@@ -37,24 +35,23 @@ impl<'a> CocMut<'a> {
         let (head, tail) = m.split_at_mut(32 * nb);
         let (base, rest) = head.split_at_mut(8 * nb);
         let (maxv, rest) = rest.split_at_mut(8 * nb);
-        let (off, bsum) = rest.split_at_mut(8 * nb);
-        let (sums, width) = tail.split_at_mut(16);
+        let (_, bsum) = rest.split_at_mut(8 * nb);
+        let sums = &mut tail[..16];
         let (sumnul, sumn) = sums.split_at_mut(8);
         let n = n.min(nb * BLK);
         Some(CocMut {
-            base: pod::cast_mut(base)?, maxv: pod::cast_mut(maxv)?, off: pod::cast_mut(off)?, bsum: pod::cast_mut(bsum)?,
-            width: &mut width[..nb], sumnul: Some(&mut pod::cast_mut::<i64>(sumnul)?[0]), sumn: Some(&mut pod::cast_mut::<u64>(sumn)?[0]),
-            pack: &mut [], n, nblk: n.div_ceil(BLK), mblk: nb,
+            base: pod::cast_mut(base)?, maxv: pod::cast_mut(maxv)?, bsum: pod::cast_mut(bsum)?,
+            sumnul: Some(&mut pod::cast_mut::<i64>(sumnul)?[0]), sumn: Some(&mut pod::cast_mut::<u64>(sumn)?[0]), n, nblk: n.div_ceil(BLK),
         })
     }
 }
 
-// ---- A1: coc.h:139-303, 2043-2165 ----
+// ---- A1: coc.rs, 2043-2165 ----
 
-/// `coc_meta_view` (coc.h:139) and `coc_attach` (coc.h:251) are `Meta::new` and `Coc::attach`; `coc_blocks`
-/// (coc.h:162) is `Coc::blocks`; `coc_res_end`, `coc_grid`, `coc_std` are `Meta::res_end`, `Meta::grid`, `Coc::std`.
+/// `coc_meta_view` (coc.rs) and `coc_attach` (coc.rs) are `Meta::new` and `Coc::attach`; `coc_blocks`
+/// (coc.rs) is `Coc::blocks`; `coc_res_end`, `coc_grid`, `coc_std` are `Meta::res_end`, `Meta::grid`, `Coc::std`.
 impl<'a> Coc<'a> {
-    /// coc.h:2043 `coc_get`: element `i`, its patch applied. Per element: C keeps its body while a C caller remains.
+    /// coc.rs `coc_get`: element `i`, its patch applied. Per element: C keeps its body while a C caller remains.
     pub fn get(&self, i: usize) -> i64 {
         let (b, j) = (i / BLK, i % BLK);
         if let Some(e) = self.exc.filter(|e| !e.pos.is_empty()) {
@@ -63,7 +60,7 @@ impl<'a> Coc<'a> {
         let p = self.pack.get(self.meta.off[b] as usize..).unwrap_or(&[]);
         self.frame(b).wrapping_add(res_get_in(p, self.meta.width[b], j, p.len())) as i64
     }
-    /// coc.h:2078 `coc_get_w`: `get` for a column whose every block has residual width `uw` (`one_width`).
+    /// coc.rs `coc_get_w`: `get` for a column whose every block has residual width `uw` (`one_width`).
     pub fn get_w(&self, uw: u8, i: usize) -> i64 {
         let (base, p) = (self.meta.base[i / BLK] as u64, self.pack);
         let at = |k: usize, n: usize| &p[k..k + n];
@@ -82,20 +79,20 @@ impl<'a> Coc<'a> {
             _ => res_get_in(p, uw, i, p.len()),
         }) as i64
     }
-    /// coc.h:2052 `coc_prefetch`: element `i`'s residual into cache.
+    /// coc.rs `coc_prefetch`: element `i`'s residual into cache.
     pub fn prefetch(&self, i: usize) {
         if i >= self.meta.n { return }
         let b = i / BLK;
         // a hint: an address the pack does not hold is skipped, where C's never faults
         if let Some(r) = self.pack.get(self.meta.off[b] as usize + (i % BLK) * self.meta.width[b] as usize / 8) { prefetch(r) }
     }
-    /// coc.h:2062 `coc_one_width`: the width every block shares, as C answers when they differ.
+    /// coc.rs `coc_one_width`: the width every block shares, as C answers when they differ.
     pub fn one_width(&self) -> u8 {
         let w = &self.meta.width[..self.meta.nblk];
         if self.exc.is_some_and(|e| !e.pos.is_empty()) { return 255 } // a flat read would miss the patch list
         match w.first() { None => 0, Some(&w0) if w.iter().all(|&x| x == w0) => w0, _ => 255 }
     }
-    /// coc.h:2165 `coc_load_run`: elements `from .. from + out.len()` into `out`; positions outside `0..n` are `fill`.
+    /// coc.rs `coc_load_run`: elements `from .. from + out.len()` into `out`; positions outside `0..n` are `fill`.
     pub fn load_run(&self, from: i64, fill: i64, out: &mut [i64]) {
         let (n, end) = (self.meta.n as i64, from + out.len() as i64);
         let lo = from.max(0).min(end);
@@ -119,14 +116,14 @@ impl<'a> Coc<'a> {
     }
 }
 impl<'a> Meta<'a> {
-    /// coc.h:176 `coc_offsets` over the metadata alone: `off[b]` from the widths; answers the residuals' end.
+    /// coc.rs `coc_offsets` over the metadata alone: `off[b]` from the widths; answers the residuals' end.
     pub fn offsets(width: &[u8], nblk: usize, off: &mut [u64]) -> u64 {
         let mut at = 0u64;
         for (o, &w) in off[..nblk].iter_mut().zip(&width[..nblk]) { *o = at; at += (BLK as u64 * w as u64) / 8 }
         at
     }
 }
-/// coc.h:303 `width_exc`: from the histogram `h` of the block's residual bit lengths, the width that minimises
+/// coc.rs `width_exc`: from the histogram `h` of the block's residual bit lengths, the width that minimises
 /// residual plus patch bytes, and the patch count at it.
 pub fn width_exc(h: &[u32], nnul: usize, esz: usize, nb: usize) -> (u8, u32) {
     let (mut best, mut e, mut bw, mut ne) = (usize::MAX, nnul + h[1..=64].iter().map(|&x| x as usize).sum::<usize>(), 64u8, 0u32);
@@ -137,7 +134,7 @@ pub fn width_exc(h: &[u32], nnul: usize, esz: usize, nb: usize) -> (u8, u32) {
     }
     (bw, ne)
 }
-/// coc.h:2102 `res_cmp2`: `nb` decoded pairs compared by `op` into the bit mask `out`.
+/// coc.rs `res_cmp2`: `nb` decoded pairs compared by `op` into the bit mask `out`.
 pub fn res_cmp2(x: &[i64], y: &[i64], op: i32, out: &mut [u64]) {
     let nb = x.len();
     for (k, o) in out[..nb.div_ceil(64)].iter_mut().enumerate() {
@@ -146,7 +143,7 @@ pub fn res_cmp2(x: &[i64], y: &[i64], op: i32, out: &mut [u64]) {
         *o = match op { EQ => bit(i64::eq), NE => bit(i64::ne), LT => bit(i64::lt), LE => bit(i64::le), GT => bit(i64::gt), _ => bit(i64::ge) };
     }
 }
-/// coc.h:2129 `coc_cmp2_res`: blocks `lo .. hi` of `a op b` into `out`; `deep` lists the blocks whose frames do not
+/// coc.rs `coc_cmp2_res`: blocks `lo .. hi` of `a op b` into `out`; `deep` lists the blocks whose frames do not
 /// decide the answer. `out[0]` is word `w0` of the whole bitmap (0 for the whole of it).
 pub fn cmp2_res(a: &Coc, b: &Coc, op: i32, out: &mut [u64], deep: &[u32], lo: usize, hi: usize, w0: usize) {
     let (mut xa, mut xb) = ([0i64; BLK], [0i64; BLK]);
@@ -159,9 +156,9 @@ pub fn cmp2_res(a: &Coc, b: &Coc, op: i32, out: &mut [u64], deep: &[u32], lo: us
     }
 }
 
-// ---- A3: coc.h:858-930 (the residual sums are res.rs) ----
+// ---- A3: coc.rs (the residual sums are res.rs) ----
 impl<'a> Coc<'a> {
-    /// coc.h:858 `coc_sum_blk`: block `b`'s first `nb` elements summed, wrapping.
+    /// coc.rs `coc_sum_blk`: block `b`'s first `nb` elements summed, wrapping.
     pub fn sum_blk(&self, b: usize, nb: usize) -> u64 {
         let (mut w, at) = (self.meta.width[b], self.meta.off[b] as usize);
         let p = &self.pack[at..at + BLK * w as usize / 8];
@@ -172,7 +169,7 @@ impl<'a> Coc<'a> {
         };
         (nb as u64).wrapping_mul(self.frame(b)).wrapping_add(s)
     }
-    /// coc.h:878 `coc_sum_blk_nulls`: as `sum_blk`, nulls skipped. A null is the residual 0, which neither the
+    /// coc.rs `coc_sum_blk_nulls`: as `sum_blk`, nulls skipped. A null is the residual 0, which neither the
     /// residual sum nor the count `k` of elements takes in.
     pub fn sum_blk_nulls(&self, b: usize, nb: usize) -> u64 {
         let (w, at) = (self.meta.width[b], self.meta.off[b] as usize);
@@ -181,10 +178,10 @@ impl<'a> Coc<'a> {
         for j in 0..nb { let r = res_get(p, w, j); if r != 0 { s = s.wrapping_add(r); k += 1 } }
         k.wrapping_mul(self.frame(b)).wrapping_add(s)
     }
-    /// coc.h:893 `coc_sums_ok`: the stored block sums were taken at `nul` and the current `n`. 0 is no type's null,
+    /// coc.rs `coc_sums_ok`: the stored block sums were taken at `nul` and the current `n`. 0 is no type's null,
     /// so "no sums stored" and "taken at another null" are one test.
     pub fn sums_ok(&self, nul: i64) -> bool { self.meta.sumnul == nul && self.meta.sumn == self.meta.n as u64 && nul != 0 }
-    /// coc.h:910 `coc_sum`: the column's sum, nulls `nul` skipped, wrapping.
+    /// coc.rs `coc_sum`: the column's sum, nulls `nul` skipped, wrapping.
     pub fn sum(&self, nul: i64) -> u64 {
         let m = &self.meta;
         // the stored sums are the numbers `sum_blk` and `sum_blk_nulls` compute, at nblk reads rather than n
@@ -204,7 +201,7 @@ impl<'a> Coc<'a> {
     }
 }
 impl<'a> CocMut<'a> {
-    /// coc.h:901 `coc_sums_drop`: mark the stored sums stale. `bsum` is zeroed with the trailer, so two columns of the
+    /// coc.rs `coc_sums_drop`: mark the stored sums stale. `bsum` is zeroed with the trailer, so two columns of the
     /// same elements hold the same bytes.
     pub fn sums_drop(&mut self) {
         self.bsum[..self.nblk].fill(0);
@@ -213,7 +210,7 @@ impl<'a> CocMut<'a> {
     }
 }
 
-// ---- A4: coc.h:934-1050 ----
+// ---- A4: coc.rs ----
 impl<'a> Coc<'a> {
     /// Block `b`'s residual bytes and its element count.
     fn blk(&self, b: usize) -> (&'a [u8], usize) {
@@ -221,7 +218,7 @@ impl<'a> Coc<'a> {
         let at = m.off[b] as usize;
         (&self.pack[at..at + BLK * m.width[b] as usize / 8], if b * BLK + BLK < m.n { BLK } else { m.n - b * BLK })
     }
-    /// coc.h:934 `coc_prd`: product, nulls skipped, wrapping. Every element is read; the accumulator reaching 0
+    /// coc.rs `coc_prd`: product, nulls skipped, wrapping. Every element is read; the accumulator reaching 0
     /// ends the column, a wrapping product being absorbing at 0 as an exact one is.
     pub fn prd(&self, nul: i64) -> u64 {
         let (mut acc, m) = (1u64, &self.meta);
@@ -240,12 +237,12 @@ impl<'a> Coc<'a> {
         }
         acc
     }
-    /// coc.h:964 `coc_any`: base and maxv are attained values, so only a patched block's exceptions need asking too.
+    /// coc.rs `coc_any`: base and maxv are attained values, so only a patched block's exceptions need asking too.
     pub fn any(&self) -> bool {
         let m = &self.meta;
         (0..m.nblk).any(|b| m.base[b] != 0 || m.maxv[b] != 0) || (0..self.exc.map_or(0, |e| e.pos.len())).any(|j| self.exc(j) != 0)
     }
-    /// coc.h:970 `coc_all`: descends only into a block that could hold a zero (base <= 0 <= maxv), where a zero has
+    /// coc.rs `coc_all`: descends only into a block that could hold a zero (base <= 0 <= maxv), where a zero has
     /// the residual `0 - base`.
     pub fn all(&self) -> bool {
         let m = &self.meta;
@@ -260,7 +257,7 @@ impl<'a> Coc<'a> {
             (0..nb).all(|j| res_get(p, m.width[b], j) != t)
         })
     }
-    /// coc.h:1007 `coc_min`: nulls skipped; `!nul` (q's 0W) when every element is null. The first phase is a plain
+    /// coc.rs `coc_min`: nulls skipped; `!nul` (q's 0W) when every element is null. The first phase is a plain
     /// running minimum that vectorises; the null test is asked once afterwards.
     pub fn min(&self, nul: i64) -> i64 {
         let m = &self.meta;
@@ -272,7 +269,7 @@ impl<'a> Coc<'a> {
             (r != 0).then(|| self.frame(b).wrapping_add(r) as i64) // r = 0: every element of the block is null
         }).fold(!nul, i64::min)
     }
-    /// coc.h:1031 `coc_max`: a null is the smallest element, so `maxv` is the answer unless every block is null,
+    /// coc.rs `coc_max`: a null is the smallest element, so `maxv` is the answer unless every block is null,
     /// which is q's -0W.
     pub fn max(&self, nul: i64) -> i64 {
         let m = self.meta.maxv[..self.meta.nblk].iter().fold(nul, |a, &b| a.max(b));
@@ -280,12 +277,12 @@ impl<'a> Coc<'a> {
     }
 }
 
-// ---- A6: coc.h:945-1035 ----
+// ---- A6: coc.rs ----
 impl<'a> Coc<'a> {
-    /// coc.h:945 `coc_blk_allnul`: the writer's whole block of nulls, `base == maxv ==` the null. A `base` alone at the
+    /// coc.rs `coc_blk_allnul`: the writer's whole block of nulls, `base == maxv ==` the null. A `base` alone at the
     /// null is a kernel's own answer from before the writer, and every whole-column verb refuses it.
     pub fn blk_allnul(&self, b: usize) -> bool { self.meta.base[b] == i64::MIN && self.meta.maxv[b] == i64::MIN }
-    /// coc.h:952 `coc_shift_ok`: 0 when `x + k` (`neg`: `k - x`) must be refused (the null as `k`, a block holding a
+    /// coc.rs `coc_shift_ok`: 0 when `x + k` (`neg`: `k - x`) must be refused (the null as `k`, a block holding a
     /// pre-writer null, a frame leaving `i64`), 1 when it rides the metadata, 2 when it needs `coc_fill_nul`.
     pub fn shift_ok(&self, k: i64, neg: bool) -> i32 {
         let m = &self.meta;
@@ -302,7 +299,7 @@ impl<'a> Coc<'a> {
         }
         path
     }
-    /// coc.h `coc_shift_bounds`: an outer bound on what `load_run(lo - s, fill)` of `nb` answers: the extremes of every source
+    /// coc.rs `coc_shift_bounds`: an outer bound on what `load_run(lo - s, fill)` of `nb` answers: the extremes of every source
     /// block it touches, and `fill` where it runs off an end. A null, filled or stored, answers a null, so it bounds
     /// nothing. `(MAX, MIN)` = every operand a null. `lo - s` wraps, as C's does when `s` is at `i64`'s ends.
     pub fn shift_bounds(&self, lo: usize, nb: usize, s: i64, fill: i64) -> (i64, i64) {
@@ -320,7 +317,7 @@ impl<'a> Coc<'a> {
         }
         (a, z)
     }
-    /// coc.h `coc_vv_ok`: whether `self op (b shifted by s, fill off its ends)` rides the encoded form (`op` 0 `+`, 1 `-`,
+    /// coc.rs `coc_vv_ok`: whether `self op (b shifted by s, fill off its ends)` rides the encoded form (`op` 0 `+`, 1 `-`,
     /// else `*`). The bounds are the non-null extremes, a patch list's outliers included, and the fill keeps every null a
     /// null, so only an overflow or a pre-writer null frame is refused.
     pub fn vv_ok(&self, b: &Coc, op: i32, s: i64, fill: i64) -> bool {
@@ -343,7 +340,7 @@ impl<'a> Coc<'a> {
         }
         true
     }
-    /// coc.h `coc_scale_ok`: whether `x * k` rides the encoded form. q's `x*0N` and `0N*0` are `0N`, so a pre-writer null
+    /// coc.rs `coc_scale_ok`: whether `x * k` rides the encoded form. q's `x*0N` and `0N*0` are `0N`, so a pre-writer null
     /// frame and `k` at the null are refused, and so is an overflow of either end of a block.
     pub fn scale_ok(&self, k: i64) -> bool {
         let m = &self.meta;
@@ -352,7 +349,7 @@ impl<'a> Coc<'a> {
     }
 }
 impl<'a> CocMut<'a> {
-    /// coc.h:1023 `coc_shift`: `k + x` (`neg`: `k - x`) on base, maxv and the block sums, in unsigned arithmetic. The
+    /// coc.rs `coc_shift`: `k + x` (`neg`: `k - x`) on base, maxv and the block sums, in unsigned arithmetic. The
     /// guard is `shift_ok`'s, not this function's. The sums come along only where they still say what they said: a block
     /// whose minimum is the null held a null the stored sum left out, and one whose minimum lands on it has made one.
     pub fn shift(&mut self, k: i64, neg: bool) {
@@ -373,8 +370,8 @@ impl<'a> CocMut<'a> {
     }
 }
 
-// ---- K24b: coc.c `vv_fill` and `scale_fill`, the producers of `x op y` and `x * k` ----
-/// coc.c `vv_fill`: the answer block of `x op y` from `i0`, a block start, into `xa` (`op` 0 `+`, 1 `-`, else `*`): `a` decoded
+// ---- K24b: coc.rs `vv_fill` and `scale_fill`, the producers of `x op y` and `x * k` ----
+/// coc.rs `vv_fill`: the answer block of `x op y` from `i0`, a block start, into `xa` (`op` 0 `+`, 1 `-`, else `*`): `a` decoded
 /// there, `b` read from `i0 - s` with `fill` outside it, and a null on either side is the null.
 pub fn vv_fill(a: &Coc, b: &Coc, op: i32, s: i64, fill: i64, i0: usize, xa: &mut [i64]) {
     fn go(xa: &mut [i64], xb: &[i64], f: impl Fn(u64, u64) -> u64) {
@@ -387,7 +384,7 @@ pub fn vv_fill(a: &Coc, b: &Coc, op: i32, s: i64, fill: i64, i0: usize, xa: &mut
     // unsigned arithmetic throughout: signed overflow is UB in C even where `coc_vv_ok` has refused it
     match op { 0 => go(xa, xb, u64::wrapping_add), 1 => go(xa, xb, u64::wrapping_sub), _ => go(xa, xb, u64::wrapping_mul) }
 }
-/// coc.c `scale_fill`: the answer block of `x * k` from `i0` into `buf`, nulls staying the null.
+/// coc.rs `scale_fill`: the answer block of `x * k` from `i0` into `buf`, nulls staying the null.
 pub fn scale_fill(a: &Coc, k: i64, i0: usize, buf: &mut [i64]) {
     a.decode_blk(i0 / BLK, buf.len(), buf);
     for v in buf { if *v != i64::MIN { *v = (*v as u64).wrapping_mul(k as u64) as i64 } }
@@ -396,7 +393,7 @@ pub fn scale_fill(a: &Coc, k: i64, i0: usize, buf: &mut [i64]) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    // expected values: /data/tmp/qrs/A1/ex.c (coc.h's own functions at 152d98f), run; the 24600-case C differential
+    // expected values: /data/tmp/qrs/A1/ex.c (coc.rs's own functions at 152d98f), run; the 24600-case C differential
     // is /data/tmp/qrs/A1/{gen.c,diff_test.rs}
     #[test] fn width_exc_matches_c() {
         let mut h = [0u32; 65];
@@ -454,8 +451,8 @@ mod tests {
         assert_eq!(mk(&base, &bsum, i64::MIN, 3).sum(i64::MIN), 5);
         assert!(mk(&base, &bsum, i64::MIN, 3).sums_ok(i64::MIN));
         assert!(!mk(&base, &bsum, i64::MIN, 4).sums_ok(i64::MIN) && !mk(&base, &bsum, 0, 3).sums_ok(0));
-        let mut m = CocMut { base: &mut base, maxv: &mut [0], off: &mut [0], bsum: &mut bsum, width: &mut [0], sumnul: Some(&mut sn),
-                             sumn: Some(&mut ss), pack: &mut [], n: 3, nblk: 1, mblk: 1 };
+        let mut m = CocMut { base: &mut base, maxv: &mut [0], bsum: &mut bsum, sumnul: Some(&mut sn),
+                             sumn: Some(&mut ss), n: 3, nblk: 1 };
         m.sums_drop();
         assert_eq!((m.bsum[0], *m.sumnul.unwrap(), *m.sumn.unwrap()), (0, 0, 0));
     }
@@ -491,10 +488,10 @@ mod tests {
         assert_eq!(c.shift_ok(i64::MIN + 9, true), 2); // k - maxv lands on the null: the writer patches it
         assert_eq!(cm(&[i64::MIN, 0], &[3, 3]).shift_ok(1, false), 0); // a pre-writer null
         assert_eq!(cm(&[i64::MIN, 0], &[i64::MIN, 3]).shift_ok(1, false), 2); // an all-null block goes through the writer
-        let (mut base, mut maxv, mut off, mut bsum, mut width) = ([1i64, 5], [9i64, 9], [0u64; 2], [10i64, 20], [0u8; 2]);
+        let (mut base, mut maxv, mut bsum) = ([1i64, 5], [9i64, 9], [10i64, 20]);
         let (mut sn, mut sc) = (i64::MIN, 2048u64);
-        let mut m = CocMut { base: &mut base, maxv: &mut maxv, off: &mut off, bsum: &mut bsum, width: &mut width,
-                             sumnul: Some(&mut sn), sumn: Some(&mut sc), pack: &mut [], n: 2048, nblk: 2, mblk: 2 };
+        let mut m = CocMut { base: &mut base, maxv: &mut maxv, bsum: &mut bsum,
+                             sumnul: Some(&mut sn), sumn: Some(&mut sc), n: 2048, nblk: 2 };
         m.shift(3, false);
         assert_eq!((m.base.to_vec(), m.maxv.to_vec(), m.bsum.to_vec()), (vec![4, 8], vec![12, 12], vec![3082, 3092]));
         m.shift(0, true); // `0 - x` turns the blocks round; the sums are told so

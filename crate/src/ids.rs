@@ -1,5 +1,5 @@
 #![forbid(unsafe_code)]
-//! ids.h:19, 25, 40; own.c:231, 245.
+//! ids.rs, 25, 40; own.rs, 245.
 use crate::bits::{lane_width, width_for};
 use crate::QLEAN_COST_ARITH;
 use crate::c::Runner;
@@ -28,7 +28,7 @@ pub fn ids_bytes(n: usize, w: u32) -> usize { n.wrapping_mul(w as usize).wrappin
 pub fn ids_avail(len: usize, w: u32) -> usize { if w == 0 { usize::MAX } else { len.wrapping_mul(8) / w as usize } }
 
 /// `Column.idAt`. Narrow widths share a byte, low field first; eight and above are whole elements. Inlined with a
-/// fixed-width load per arm, as ids.h's `static inline` is: an out-of-line call per element was most of `find` ids.
+/// fixed-width load per arm, as ids.rs's `static inline` is: an out-of-line call per element was most of `find` ids.
 #[inline(always)]
 pub fn id_at(p: &[u8], w: u32, i: usize) -> usize {
     match w {
@@ -46,7 +46,7 @@ pub fn id_at(p: &[u8], w: u32, i: usize) -> usize {
 #[inline(always)]
 fn le<const W: usize>(p: &[u8], i: usize) -> [u8; W] { p[i * W..(i + 1) * W].try_into().unwrap() }
 
-/// `IDS_UNPACK` (ids.h:144): `f(i, &mut out[i], id)` for each element of `out` and the id of the same index at the
+/// `IDS_UNPACK` (ids.rs): `f(i, &mut out[i], id)` for each element of `out` and the id of the same index at the
 /// constant width `W`. Below a byte one word holds `64 / W` ids at constant shifts, a whole-byte lane is a chunked
 /// load, and `out` is walked in step: no per-id bounds test or index shift, which `id_at` at a running index has,
 /// so the loop vectorises as the C's does.
@@ -83,7 +83,7 @@ pub fn each<const W: u32>(p: &[u8], n: usize, mut f: impl FnMut(usize, usize)) {
     unpack::<W, ()>(p, &mut alloc::vec![(); n], |i, _, v| f(i, v))
 }
 
-/// `IDS_PACK` (ids.h:167): `n` fields `val(i)` into `out` at `w` bits, `w` matched once outside the loop. Below a
+/// `IDS_PACK` (ids.rs): `n` fields `val(i)` into `out` at `w` bits, `w` matched once outside the loop. Below a
 /// byte eight output bytes are built in a register a word at a time, where `id_put`'s read-modify-write of a shared
 /// byte per field is a dependent chain through memory.
 #[inline(always)]
@@ -137,7 +137,7 @@ pub fn ids_max(p: &[u8], w: u32, n: usize) -> usize {
     }
 }
 
-/// `ids_firsts` (ids.h:271): each group's first row into `first` (`min(n, nd + 1)` long) and into `slot` (`nd + 1`
+/// `ids_firsts` (ids.rs): each group's first row into `first` (`min(n, nd + 1)` long) and into `slot` (`nd + 1`
 /// entries, all `usize::MAX` on entry) the group of each value `min(id, nd)`; answers the group count.
 pub fn firsts(ids: &[u8], n: usize, w: u32, nd: usize, slot: &mut [usize], first: &mut [usize]) -> usize {
     match w {
@@ -228,7 +228,7 @@ fn wide<const U: usize>(run: Runner, out: &mut [u8], ids: &[u8], w: u32, n: usiz
     });
 }
 
-/// `idGroups`' second pass (sort.c:3283-3315, 3400-3414): row `i`'s group `slot[min(id, nd)]` into `out` at `wo`
+/// `idGroups`' second pass (sort.rs, 3400-3414): row `i`'s group `slot[min(id, nd)]` into `out` at `wo`
 /// bits, `ids_bytes(n, wo)` bytes, the bits past `n` zero; threaded by `c::run_map`.
 pub fn map(run: Runner, ids: &[u8], n: usize, w: u32, nd: usize, slot: &[usize], wo: u32, out: &mut [u8]) {
     let ob = ids_bytes(n, wo);
@@ -274,7 +274,7 @@ pub fn map(run: Runner, ids: &[u8], n: usize, w: u32, nd: usize, slot: &[usize],
     if (n * wo as usize) & 7 != 0 { out[ob - 1] &= ((1u32 << ((n * wo as usize) & 7)) - 1) as u8; }
 }
 
-/// `IDS_PACK` (ids.h:167) in place: `n` ids one byte each in `g` packed to `w < 8` bits from `g[0]`.
+/// `IDS_PACK` (ids.rs) in place: `n` ids one byte each in `g` packed to `w < 8` bits from `g[0]`.
 /// Byte `j` reads the ids at `j·per ..` and lands at `g[j]`, which is at or below them, so ascending order reads
 /// every id before its byte is stored. The last byte's fields past `n` stay zero.
 pub fn pack_in_place(g: &mut [u8], w: u32, n: usize) {
@@ -411,8 +411,8 @@ mod map_tests {
     }
 }
 
-// ---- A10: ids.h:56-281 (per element: C keeps these bodies while a C caller remains) ----
-/// ids.h:56 `id_put`: id `v` at index `i`, `w` bits each; a narrow field is a read-modify-write of its shared byte.
+// ---- A10: ids.rs (per element: C keeps these bodies while a C caller remains) ----
+/// ids.rs `id_put`: id `v` at index `i`, `w` bits each; a narrow field is a read-modify-write of its shared byte.
 #[inline(always)]
 pub fn id_put(p: &mut [u8], w: u32, i: usize, v: u64) {
     // a store of `k` bytes, `k` a constant in each arm once inlined, so no `memcpy` call per element
@@ -431,7 +431,7 @@ pub fn id_put(p: &mut [u8], w: u32, i: usize, v: u64) {
     }
 }
 
-/// ids.h:76 `ids_fill`: `cnt` copies of `v` from index `at`; at a narrow width the aligned middle is a byte pattern.
+/// ids.rs `ids_fill`: `cnt` copies of `v` from index `at`; at a narrow width the aligned middle is a byte pattern.
 pub fn ids_fill(out: &mut [u8], w: u32, at: usize, cnt: usize, v: u64) {
     if w == 0 || cnt == 0 { return; }
     let end = at + cnt;
@@ -457,7 +457,7 @@ fn bitcopy_byte(dst: &mut [u8], db: usize, src: &[u8], sb: usize, bits: usize, i
     i + take
 }
 
-/// ids.h:201 `ids_bitcopy`: `bits` bits of `src` from bit `sb` to bit `db` of `dst`, which arrives zeroed.
+/// ids.rs `ids_bitcopy`: `bits` bits of `src` from bit `sb` to bit `db` of `dst`, which arrives zeroed.
 pub fn bitcopy(dst: &mut [u8], db: usize, src: &[u8], sb: usize, bits: usize) {
     let mut i = 0;
     if db & 7 != 0 && bits != 0 { i = bitcopy_byte(dst, db, src, sb, bits, i); }
@@ -473,7 +473,7 @@ pub fn bitcopy(dst: &mut [u8], db: usize, src: &[u8], sb: usize, bits: usize) {
     while i < bits { i = bitcopy_byte(dst, db, src, sb, bits, i); }
 }
 
-/// ids.h:230 `ids_slice_elems`: elements per copy slice at `w`, a whole byte's worth so two threads never share one.
+/// ids.rs `ids_slice_elems`: elements per copy slice at `w`, a whole byte's worth so two threads never share one.
 pub fn slice_elems(w: u32) -> usize { if w != 0 && w < 8 { (8 / w) as usize } else { 1 } }
 
 fn unpack16_at<const W: u32>(p: &[u8], from: usize, m: usize, dst: &mut [u16]) {
@@ -490,7 +490,7 @@ fn unpack16_at<const W: u32>(p: &[u8], from: usize, m: usize, dst: &mut [u16]) {
     while j < m { dst[j] = id_at(p, W, from + j) as u16; j += 1; }
 }
 
-/// ids.h:251 `ids_unpack16`: `m` ids from `from` widened to u16, whole bytes split by constant shifts.
+/// ids.rs `ids_unpack16`: `m` ids from `from` widened to u16, whole bytes split by constant shifts.
 pub fn unpack16(p: &[u8], w: u32, from: usize, m: usize, dst: &mut [u16]) {
     match w {
         0 => unpack16_at::<0>(p, from, m, dst), 1 => unpack16_at::<1>(p, from, m, dst), 2 => unpack16_at::<2>(p, from, m, dst),
@@ -533,7 +533,7 @@ fn runs_at<const W: u32>(p: &[u8], n: usize, most: usize, mut h: Heads) -> usize
     h.g
 }
 
-/// ids.h:281 `ids_runs`: the run heads of `n` ids, each read as `min(id, nd)`, into `out` (empty: only counted); the
+/// ids.rs `ids_runs`: the run heads of `n` ids, each read as `min(id, nd)`, into `out` (empty: only counted); the
 /// walk stops once there are more than `most`. A sub-byte byte repeating the last field is skipped whole.
 pub fn runs(p: &[u8], n: usize, w: u32, nd: usize, most: usize, out: &mut [i64]) -> usize {
     let h = Heads { out, nd, g: 0, prev: 0 };
@@ -556,7 +556,7 @@ mod a10_tests {
     fn hb(h: &mut u64, b: &[u8]) { for &x in b { *h = (*h ^ x as u64).wrapping_mul(1099511628211); } }
     fn h16(h: &mut u64, d: &[u16]) { for x in d { hb(h, &x.to_le_bytes()); } }
 
-    // The same random walk as the C harness over ids.h at 98305ab: the expected hashes are the C's output.
+    // The same random walk as the C harness over ids.rs at 98305ab: the expected hashes are the C's output.
     #[test]
     fn matches_c() {
         let mut r = Rng(0x9E3779B97F4A7C15);

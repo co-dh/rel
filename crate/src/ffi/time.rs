@@ -1,4 +1,4 @@
-//! time.c's Lean export: the one call `ltime` and `gtime` make into libc's zone table.
+//! ffi/time.rs's Lean export: the one call `ltime` and `gtime` make into libc's zone table.
 #![deny(unsafe_code)]
 use crate::lean::export;
 use crate::os;

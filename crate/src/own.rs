@@ -1,5 +1,5 @@
 #![forbid(unsafe_code)]
-//! qlean's own column file (own.c's `qlean_file_replace`, `qlean_own_write`, `qlean_own_map`), without the Lean objects:
+//! qlean's own column file (own.rs's `qlean_file_replace`, `qlean_own_write`, `qlean_own_map`), without the Lean objects:
 //! the header and its checks, the write-all and the temp-file-and-rename replace, and the mapping of the parts.
 //!
 //! The file: bytes 0..8 `qleancol`; byte 8 the format version (`OWN_VERSION`, `OWN_OLDEST` is read too); byte 9 the q type
@@ -101,7 +101,7 @@ bytes, given kind {} with {} parts and a {}-byte name", kind, np, nl));
     None
 }
 
-/// `qlean_own_write` (own.c:147-179) without the file: the header (`OWN_HEAD + 16 * len.len()` bytes into `head`)
+/// `qlean_own_write` (own.rs) without the file: the header (`OWN_HEAD + 16 * len.len()` bytes into `head`)
 /// and each part's 8-aligned offset after `OWN_ROOM` into `off`; answers the header length. None and `why` filled
 /// when the kind, the part count or the `nl`-byte domain name is refused.
 pub fn write_head(code: u8, attr: u8, kind: u8, count: u64, nl: usize, len: &[usize],
@@ -125,7 +125,7 @@ pub fn write_head(code: u8, attr: u8, kind: u8, count: u64, nl: usize, len: &[us
     Some(OWN_HEAD + 16 * np)
 }
 
-/// own.c `own_check`: what a kernel trusts about the parts and the file could have wrong -- the Frame of Reference block
+/// own.rs `own_check`: what a kernel trusts about the parts and the file could have wrong -- the Frame of Reference block
 /// widths and offsets (`coc_view`: "the stored offsets are trusted"), the ALP sections, and an id past its dictionary.
 /// Residuals and the cached `maxv` and `bsum` cannot make a read leave its part, so they are not checked. False with
 /// `why` filled. `p` are the parts, `kind`'s first `OWN_NPARTS[kind]` of them.
@@ -257,7 +257,7 @@ fn write_segs(f: &File, segs: &[&[u8]]) -> Result<(), i32> { segs.iter().try_for
 /// `r`, else the `close` error: the write's errno is the one reported when both fail.
 fn close_after(f: File, r: Result<(), i32>) -> Result<(), i32> { let c = f.close(); r.and(c) }
 
-/// own.c `own_replace`: the segments as the whole content of `target`: a temporary in the same directory, then `rename`
+/// own.rs `own_replace`: the segments as the whole content of `target`: a temporary in the same directory, then `rename`
 /// (truncating a mapped path would turn the next read of its pages into SIGBUS; the old mapping keeps the old inode).
 /// A link is written through as `open` would, and a device, fifo or socket is written in place: the name is the thing
 /// itself and cannot be renamed over.
@@ -282,7 +282,7 @@ pub fn replace(target: &CStr, segs: &[&[u8]]) -> Result<(), i32> {
     r
 }
 
-/// own.c `qlean_own_write`: the column file of `parts` (the constructor's `ByteArray`s) under `domain`, in the layout the
+/// own.rs `qlean_own_write`: the column file of `parts` (the constructor's `ByteArray`s) under `domain`, in the layout the
 /// header note above describes (the format is `write_head`'s and `head`'s).
 pub fn write(target: &CStr, code: u8, attr: u8, kind: u8, count: u64, domain: &[u8], parts: &[&[u8]]) -> Result<(), Fail> {
     static ZEROS: [u8; OWN_ROOM as usize + 8] = [0; OWN_ROOM as usize + 8];
@@ -307,7 +307,7 @@ pub fn write(target: &CStr, code: u8, attr: u8, kind: u8, count: u64, domain: &[
 /// `(offset, length)` in it; `lean::sarrays_in` turns the parts into `ByteArray`s.
 pub struct Mapped { pub head: Vec<u8>, pub map: &'static mut [u8], pub spans: Vec<(usize, usize)> }
 
-/// own.c `qlean_own_map`: maps `path` (`MAP_PRIVATE`, so the header write of a part copies the page and never reaches the
+/// own.rs `qlean_own_map`: maps `path` (`MAP_PRIVATE`, so the header write of a part copies the page and never reaches the
 /// file) and checks it. The mapping is never unmapped, the lifetime rule of a compact region: a persistent object has no
 /// count to say when the last `ByteArray` into it is gone; a refused file is unmapped.
 pub fn map(path: &CStr) -> Result<Mapped, Fail> {

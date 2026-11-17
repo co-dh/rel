@@ -1,4 +1,4 @@
-//! sort.c's first fourteen Lean exports: the order tests, the inverse, the grade and ranks, the two middle elements, the
+//! sort.rs's first fourteen Lean exports: the order tests, the inverse, the grade and ranks, the two middle elements, the
 //! sorted bits and values and `xrank`, over a dense payload, an encoded column (`meta`, `pack`) or an id lane. Each
 //! unpacks its arguments, sizes the answer and makes one call into `sort.rs`, which owns the loops and the pool split
 //! (`c::pool()`). Lean passes `UInt8`/`Bool` as `uint8_t`, `Nat` counts as `size_t` and `Float` as `double`.
@@ -15,22 +15,22 @@ pub fn die(args: core::fmt::Arguments) -> ! {
     os::eprint(args).expect("qlean: stderr");
     os::exit(1)
 }
-/// coc.h `sk_dense_width`'s stop: the kind is not one of the eight, or is the boolean.
+/// coc.rs `sk_dense_width`'s stop: the kind is not one of the eight, or is the boolean.
 fn no_dense(kind: u8) -> ! {
     die(format_args!("qlean: element kind {kind} has no dense width -- either it is not one of the {SK_KINDS_N} in QLean/Kernel/Scan.lean, or it is the boolean, whose payload is packed bits\n"))
 }
-/// coc.h `sk_avail`, which exits where the kind has no dense width.
+/// coc.rs `sk_avail`, which exits where the kind has no dense width.
 pub fn avail(kind: u8, bytes: usize) -> usize { sort::avail(kind, bytes).unwrap_or_else(|| no_dense(kind)) }
-/// coc.h `sk_dense_width`: the bytes an element of `kind` strides by in a payload, which has none for a bit.
+/// coc.rs `sk_dense_width`: the bytes an element of `kind` strides by in a payload, which has none for a bit.
 pub fn dense_width(kind: u8) -> usize {
     if kind == SK_BIT { no_dense(kind) }
     crate::key::bytes(kind, 1).unwrap_or_else(|| no_dense(kind))
 }
-/// sort.c `sk_write_width`.
+/// sort.rs `sk_write_width`.
 pub fn width(kind: u8) -> usize {
     sort::write_width(kind).unwrap_or_else(|| die(format_args!("qlean sort: element kind {kind} is not one of the {SK_KINDS_N} in QLean/Kernel/Scan.lean\n")))
 }
-/// sort.c `for_kind`: the three kinds Frame of Reference encodes.
+/// sort.rs `for_kind`: the three kinds Frame of Reference encodes.
 fn for_kind(kind: u8) {
     if !matches!(kind, SK_I16 | SK_I32 | SK_I64) {
         die(format_args!("qlean_sort_ascending_foR: kind {kind} is not one Frame of Reference encodes; QLean.Column.encodes names the three that are\n"))
@@ -39,7 +39,7 @@ fn for_kind(kind: u8) {
 /// The answer array's `Int64`s.
 pub fn longs(r: &mut SArr) -> &mut [i64] { pod::cast_mut(r.bytes_mut()).expect("qlean sort: the answer array is not 8-aligned") }
 
-/// sort.c `order_dense`: `grade` and, under `rank`, `ranks` of a dense payload, `n` clamped to what it holds.
+/// sort.rs `order_dense`: `grade` and, under `rank`, `ranks` of a dense payload, `n` clamped to what it holds.
 fn order_dense(kind: u8, desc: bool, rank: bool, n: usize, b: B) -> O {
     let p = b.bytes();
     let m = avail(kind, p.len()).min(n);
@@ -47,7 +47,7 @@ fn order_dense(kind: u8, desc: bool, rank: bool, n: usize, b: B) -> O {
     sort::order(pool(), kind, desc, rank, p, m, longs(&mut r));
     r.into()
 }
-/// sort.c `order_foR`: `order_dense` off the pack.
+/// sort.rs `order_foR`: `order_dense` off the pack.
 fn order_for(who: &str, kind: u8, desc: bool, rank: bool, n: usize, mv: B, pv: B) -> O {
     let c = view(who, mv, pv, n);
     let mut r = SArr::new(1, c.meta.n * 8);

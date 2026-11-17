@@ -1,4 +1,4 @@
-//! sort.c's symbol, id and guid exports from `qlean_sort_grade_syms` to the end: the grades, order tests, distinct, group
+//! sort.rs's symbol, id and guid exports from `qlean_sort_grade_syms` to the end: the grades, order tests, distinct, group
 //! and intern over a symbol column (blob and `Array Nat` of starts), over an interned one (dictionary and packed ids), and
 //! over guids, plus `symOffs` and `thinSweep`. Each unboxes its arguments, sizes the answer and makes one call into
 //! `sort.rs`, which owns the loops. Lean passes `Nat` counts as `size_t` and `Bool` as `uint8_t`.

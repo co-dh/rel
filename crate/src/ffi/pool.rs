@@ -1,4 +1,4 @@
-//! pass.h's Lean export: the pool's counters, which the bench prints per row.
+//! c.rs's Lean export: the pool's counters, which the bench prints per row.
 #![deny(unsafe_code)]
 use crate::lean::{O, Io, export, nat};
 use crate::pool;

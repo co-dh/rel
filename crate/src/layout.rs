@@ -1,5 +1,5 @@
 #![forbid(unsafe_code)]
-//! `exc_layout` / `for_layout` / `alp_layout` (coc.h:199, 209, 1518) as one function, and own.c's `exc_ok`.
+//! `exc_layout` / `for_layout` / `alp_layout` (coc.rs, 209, 1518) as one function, and own.rs's `exc_ok`.
 use crate::why::Why;
 use crate::BLK;
 
@@ -7,7 +7,7 @@ use crate::BLK;
 pub enum Tail { None, Frames, Exps }
 pub struct ExcLayout { pub raw: usize, pub off: usize, pub pos: usize, pub tail: usize, pub size: usize }
 
-pub const ALP_MAXE: i32 = 18; // c/rs.h defines it from here; coc.h has no copy
+pub const ALP_MAXE: i32 = 18; // c/rs.h defines it from here; coc.rs has no copy
 
 fn align8(x: usize) -> Option<usize> { Some(x.checked_add(7)? & !7) }
 

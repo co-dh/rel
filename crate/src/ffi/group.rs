@@ -1,4 +1,4 @@
-//! sort.c's `distinct` and `group` families (`qlean_sort_distinct` .. `qlean_sort_parted_foR`): the first-occurrence and
+//! sort.rs's `distinct` and `group` families (`qlean_sort_distinct` .. `qlean_sort_parted_foR`): the first-occurrence and
 //! bucketed answers over a dense payload, an encoded column (`meta`, `pack`, and ALP's `alp`) or id lanes, the group ids
 //! of one column or of a pair, the segment grouping and the lane helpers. Each unpacks its arguments, sizes the answer and
 //! makes one call into `group.rs` / `sort.rs`, which own the loops and the pool split (`c::pool()`).
@@ -19,17 +19,17 @@ use crate::{ids, sort};
 
 fn empty() -> O { SArr::new(1, 0).into() }
 fn empty_pair() -> O { pair(empty(), empty()) }
-/// sort.c `empty_bounds`: the offsets of no bucket, one `box(0)`.
+/// sort.rs `empty_bounds`: the offsets of no bucket, one `box(0)`.
 fn empty_bounds() -> O { arr([boxed(0)].into_iter()) }
 
-/// sort.c `gather`: the `first.len()` elements of the dense `p` (`m` of `kind`) at their own width.
+/// sort.rs `gather`: the `first.len()` elements of the dense `p` (`m` of `kind`) at their own width.
 fn gather(kind: u8, p: &[u8], m: usize, first: &[usize]) -> O {
     let mut r = SArr::new(1, first.len() * width(kind));
     group::gather(kind, group::dense(kind, p, m), first, r.bytes_mut())
         .unwrap_or_else(|| panic!("gather: gather refused kind {kind} (impossible: outside the enum), n {m}, ng {}", first.len()));
     r.into()
 }
-/// sort.c `buckets`: `(the indices bucket by bucket, the ng + 1 byte offsets that cut them)`, from the group each element fell in
+/// sort.rs `buckets`: `(the indices bucket by bucket, the ng + 1 byte offsets that cut them)`, from the group each element fell in
 /// and how many elements name each group.
 fn buckets(gid: &[u32], cnt: &[u32], ng: usize) -> O {
     let mut ord = SArr::new(1, gid.len() * 8);
@@ -38,7 +38,7 @@ fn buckets(gid: &[u32], cnt: &[u32], ng: usize) -> O {
     group::bucket_scatter(gid, &mut at[..ng], longs(&mut ord));
     pair(ord.into(), bnd)
 }
-/// sort.c `group_answer`: `groupIds`' pair once `g` holds `m` ids at `max(8, id_width(ng))` bits and `first[..ng]` the first
+/// sort.rs `group_answer`: `groupIds`' pair once `g` holds `m` ids at `max(8, id_width(ng))` bits and `first[..ng]` the first
 /// indices: the ids packed in place to `id_width(ng)` when `pack` (else the writer already did) and the size set.
 fn group_answer(mut g: SArr, m: usize, ng: usize, first: &[usize], pack: bool) -> O {
     let w = id_width(ng);
@@ -48,7 +48,7 @@ fn group_answer(mut g: SArr, m: usize, ng: usize, first: &[usize], pack: bool) -
     f.bytes_mut().copy_from_slice(pod::bytes(&first[..ng]));
     pair(sarray_set_size(g.into(), ids_bytes(m, w)), f.into())
 }
-/// sort.c `group_ids_of`: `groupIds`' answer for `m` keys spanning `mn ..= mx`, `numbered` writing the ids and first indices
+/// sort.rs `group_ids_of`: `groupIds`' answer for `m` keys spanning `mn ..= mx`, `numbered` writing the ids and first indices
 /// (`who` names it in the stop). The capacity is for the lane the groups can need at most, `min(span + 1, m)` of them; the size
 /// is set once `ng` is known.
 fn group_ids_of(kind: u8, who: &str, m: usize, mn: u64, mx: u64, numbered: impl FnOnce(&mut [u8], &mut [usize]) -> Option<usize>) -> O {
@@ -59,7 +59,7 @@ fn group_ids_of(kind: u8, who: &str, m: usize, mn: u64, mx: u64, numbered: impl 
     let ng = numbered(g.capacity_mut(), &mut first).unwrap_or_else(|| panic!("group_ids_of: {who} refused kind {kind} (impossible: outside the enum, SK_WIN, a misaligned payload or a short buffer), n {m}, lane {cw}"));
     group_answer(g, m, ng, &first, true)
 }
-/// sort.c `pair_ids`: `groupIds` of the pair `(x[i], y[i])` over `m > 0` rows, `x` and `y` keys in `[mnx, mnx + sx]` and
+/// sort.rs `pair_ids`: `groupIds` of the pair `(x[i], y[i])` over `m > 0` rows, `x` and `y` keys in `[mnx, mnx + sx]` and
 /// `[mny, mny + sy]`, both overwritten. The ids are written at the lane `m` rows can need at most.
 fn pair_ids(mut x: Vec<u64>, mut y: Vec<u64>, mnx: u64, sx: u64, mny: u64, sy: u64) -> O {
     let m = x.len();
@@ -68,7 +68,7 @@ fn pair_ids(mut x: Vec<u64>, mut y: Vec<u64>, mnx: u64, sx: u64, mny: u64, sy: u
     let ng = sort::pair_ids(pool(), &mut x, &mut y, mnx, sx, mny, sy, g.capacity_mut(), &mut first);
     group_answer(g, m, ng, &first, true)
 }
-/// sort.c `pair_ids_narrow`: `groupIdsPairIds` where the two lanes fit a byte together. `ng` is at most the smaller of the rows
+/// sort.rs `pair_ids_narrow`: `groupIdsPairIds` where the two lanes fit a byte together. `ng` is at most the smaller of the rows
 /// and the `2^(wa+wb)` codes, which bounds the width the ids are written at.
 fn pair_ids_narrow(wa: u32, wb: u32, m: usize, pa: &[u8], pb: &[u8]) -> O {
     let (codes, nf) = (1usize << (wa + wb), 1usize << id_width(1 << (wa + wb)));

@@ -1,5 +1,5 @@
 #![forbid(unsafe_code)]
-//! `key_at` (sort.c:132) with the kind switch hoisted by monomorphisation (`SK_EACH`, sort.c:1697): `each` switches
+//! `key_at` (sort.rs) with the kind switch hoisted by monomorphisation (`SK_EACH`, sort.rs): `each` switches
 //! once and hands the pass a `Keys` of one concrete type, so the element loop has no switch.
 
 /// The kinds `key_at` switches on; c/rs.h defines them from here. `SK_C8` reads as `SK_U8`; `SK_KEY` is a payload
@@ -14,7 +14,6 @@ pub const SK_F64: u8 = 6;
 pub const SK_C8: u8 = 7;
 pub const SK_KINDS_N: u8 = SK_C8 + 1;
 pub const SK_KEY: u8 = SK_KINDS_N;
-pub const SK_WIN: u8 = SK_KINDS_N + 1;
 
 /// Element `i`'s key, in the unsigned order q sorts by. `at` takes `&mut self` because a window decodes a block
 /// on first touch; `fork` is a worker's own copy (a fresh window over the same column).
@@ -59,13 +58,13 @@ dense! {
     Key(u64, 1) |s, i| s[i];
 }
 
-/// sort.c:100; NaN payloads to 0, `-0.0` to `+0.0`'s key.
+/// sort.rs; NaN payloads to 0, `-0.0` to `+0.0`'s key.
 pub fn rank32(b: u32) -> u64 {
     if (b >> 23) & 0xff == 0xff && b & 0x7f_ffff != 0 { 0 }
     else if b == 0x8000_0000 { 0x8000_0000 }
     else if b >> 31 != 0 { (!b) as u64 } else { (b | 0x8000_0000) as u64 }
 }
-/// sort.c:106
+/// sort.rs
 pub fn rank64(b: u64) -> u64 {
     if (b >> 52) & 0x7ff == 0x7ff && b & 0xf_ffff_ffff_ffff != 0 { 0 }
     else if b == 0x8000_0000_0000_0000 { b }
@@ -119,7 +118,7 @@ impl Pass for Range {
 #[cfg(test)]
 mod tests {
     use super::*;
-    // expected values: /data/tmp/qrs/B3/drv.c, drv2.c (sort.c's rank32, rank64, key_at, SK_RANGE), run
+    // expected values: /data/tmp/qrs/B3/drv.c, drv2.c (sort.rs's rank32, rank64, key_at, SK_RANGE), run
     #[test]
     fn rank32_c() {
         for (b, r) in [(0u32, 0x8000_0000u64), (1, 0x8000_0001), (0x8000_0000, 0x8000_0000), (0x8000_0001, 0x7fff_fffe),
@@ -146,7 +145,6 @@ mod tests {
         let l = bytes_of(&[5i64, -1, 9], |x| x.to_ne_bytes().to_vec());
         assert_eq!(each(SK_I64, &l, 3, Range), Some((0x7fff_ffff_ffff_ffff, 0x8000_0000_0000_0009)));
         assert_eq!(each(SK_I64, &[], 0, Range), Some((0, 0)));
-        assert_eq!(each(SK_WIN, &[], 0, Range), None);
         assert_eq!(each(SK_I32, &[0; 7], 2, Range), None);
     }
 }

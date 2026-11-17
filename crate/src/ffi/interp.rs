@@ -1,4 +1,4 @@
-//! interp.c's Lean exports: the evaluator's own dispatch key and the guid draw.
+//! interp.rs's Lean exports: the evaluator's own dispatch key and the guid draw.
 #![deny(unsafe_code)]
 use crate::lean::{B, O, SArr, boxed, ctor, export};
 use crate::interp;
