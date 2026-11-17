@@ -140,13 +140,11 @@ pub fn restore<F: Elt>(base: u64, p10: f64, p: &[u8], w: u8, i0: usize, i1: usiz
     fn put<F: Elt>(o: &mut [F], i0: usize, base: u64, p10: f64, get: impl Fn(usize) -> u64) {
         for (k, x) in o.iter_mut().enumerate() { *x = F::of_f(base.wrapping_add(get(i0 + k)) as i64 as f64 / p10) }
     }
-    match w {
-        0 => put(o, i0, base, p10, |_| 0),
-        8 => put(o, i0, base, p10, |i| p[i] as u64),
-        16 => { let q = pod::cast::<u16>(p).expect("qlean: cocf lanes misaligned"); put(o, i0, base, p10, |i| q[i] as u64) }
-        32 => { let q = pod::cast::<u32>(p).expect("qlean: cocf lanes misaligned"); put(o, i0, base, p10, |i| q[i] as u64) }
-        64 => { let q = pod::cast::<u64>(p).expect("qlean: cocf lanes misaligned"); put(o, i0, base, p10, |i| q[i]) }
-        _ => { let m = (1u64 << w) - 1; put(o, i0, base, p10, |i| (p[(i * w as usize) >> 3] as u64 >> ((i * w as usize) & 7)) & m) }
+    fn at<F: Elt, const W: u32>(o: &mut [F], i0: usize, base: u64, p10: f64, p: &[u8]) { put(o, i0, base, p10, |i| crate::ids::lane::<W>(p, i)) }
+    // a lane width through `by_width!`; an odd width below a byte is read where it lies
+    if w & w.wrapping_sub(1) == 0 { crate::by_width!(w, at::<F>(o, i0, base, p10, p)) } else {
+        let m = (1u64 << w) - 1;
+        put(o, i0, base, p10, |i| (p[(i * w as usize) >> 3] as u64 >> ((i * w as usize) & 7)) & m)
     }
 }
 /// coc.rs `alp_fin_blk`: block `b`'s decimals `d` (exponents `ee`, first `nb`) at the block exponent `be`

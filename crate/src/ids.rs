@@ -44,16 +44,31 @@ pub fn ids_avail(len: usize, w: u32) -> usize { if w == 0 { usize::MAX } else { 
 /// `Column.idAt`. Narrow widths share a byte, low field first; eight and above are whole elements. Inlined with a
 /// fixed-width load per arm, as ids.rs's `static inline` is: an out-of-line call per element was most of `find` ids.
 #[inline(always)]
-pub fn id_at(p: &[u8], w: u32, i: usize) -> usize {
-    match w {
+pub fn id_at(p: &[u8], w: u32, i: usize) -> usize { by_width!(w, lane(p, i)) as usize }
+/// Element `i` of `p` at the lane width `W` bits (0, 1, 2, 4, 8, 16, 32, 64): the one reader of a lane, so a width
+/// dispatch is `by_width!` over a function that reads through it, the width a constant inside.
+#[inline(always)]
+pub fn lane<const W: u32>(p: &[u8], i: usize) -> u64 {
+    match W {
         0 => 0,
-        1 => (p[i >> 3] >> (i & 7) & 1) as usize,
-        2 => (p[i >> 2] >> ((i & 3) * 2) & 3) as usize,
-        4 => (p[i >> 1] >> ((i & 1) * 4) & 15) as usize,
-        8 => p[i] as usize,
-        16 => u16::from_le_bytes(le(p, i)) as usize,
-        32 => u32::from_le_bytes(le(p, i)) as usize,
-        _ => u64::from_le_bytes(le(p, i)) as usize,
+        1 | 2 | 4 => (p[i * W as usize >> 3] >> (i * W as usize & 7) & ((1u16 << W) - 1) as u8) as u64,
+        8 => p[i] as u64,
+        16 => u16::from_le_bytes(le(p, i)) as u64,
+        32 => u32::from_le_bytes(le(p, i)) as u64,
+        _ => u64::from_le_bytes(le(p, i)),
+    }
+}
+/// `v` stored as element `i` of `p` at the lane width `W`: `lane`'s inverse; a narrow field is a read-modify-write of
+/// its shared byte.
+#[inline(always)]
+pub fn lane_put<const W: u32>(p: &mut [u8], i: usize, v: u64) {
+    match W {
+        0 => {}
+        1 | 2 | 4 => {
+            let (b, s, m) = (i * W as usize >> 3, (i * W as usize & 7) as u32, ((1u16 << W) - 1) as u8);
+            p[b] = p[b] & !(m << s) | ((v as u8 & m) << s);
+        }
+        _ => { let k = W as usize / 8; p[i * k..i * k + k].copy_from_slice(&v.to_le_bytes()[..k]) }
     }
 }
 /// Element `i` of `p` at `W` bytes.
@@ -116,14 +131,15 @@ pub fn pack(out: &mut [u8], w: u32, n: usize, val: impl Fn(usize) -> u64) {
         if n % per != 0 { out[full] = byte(full, n % per) }
     }
     #[inline(always)]
-    fn whole<const K: usize>(out: &mut [u8], n: usize, val: impl Fn(usize) -> u64) {
-        for (i, c) in out[..n * K].chunks_exact_mut(K).enumerate() { c.copy_from_slice(&val(i).to_le_bytes()[..K]) }
+    fn at<const W: u32>(out: &mut [u8], n: usize, val: impl Fn(usize) -> u64) {
+        let k = W as usize / 8;
+        match W {
+            0 => {}
+            1 | 2 | 4 => sub::<W>(out, n, val),
+            _ => for (i, c) in out[..n * k].chunks_exact_mut(k).enumerate() { c.copy_from_slice(&val(i).to_le_bytes()[..k]) },
+        }
     }
-    match w {
-        0 => {}
-        1 => sub::<1>(out, n, val), 2 => sub::<2>(out, n, val), 4 => sub::<4>(out, n, val),
-        8 => whole::<1>(out, n, val), 16 => whole::<2>(out, n, val), 32 => whole::<4>(out, n, val), _ => whole::<8>(out, n, val),
-    }
+    by_width!(w, at(out, n, val))
 }
 
 // The largest of whole bytes' fields at a constant narrow width: a const generic so the field loop unrolls.
@@ -131,24 +147,19 @@ pub fn narrow_max<const W: u32>(p: &[u8]) -> u8 {
     p.iter().fold(0, |a, &b| (0..8 / W).map(|k| b >> (k * W) & ((1 << W) - 1)).fold(a, u8::max))
 }
 
-pub fn wide_max<const K: usize>(p: &[u8], n: usize) -> usize {
-    p.chunks_exact(K).take(n).map(|c| c.iter().rev().fold(0usize, |a, &b| a << 8 | b as usize)).max().unwrap_or(0)
-}
-
 /// The largest of `n` ids at `w` bits, in one pass.
 pub fn ids_max(p: &[u8], w: u32, n: usize) -> usize {
-    match w {
-        0 => 0,
-        8 => wide_max::<1>(p, n),
-        16 => wide_max::<2>(p, n),
-        32 => wide_max::<4>(p, n),
-        64 => wide_max::<8>(p, n),
-        _ => {
-            let nb = n / (8 / w as usize);
-            let m = match w { 1 => narrow_max::<1>(&p[..nb]), 2 => narrow_max::<2>(&p[..nb]), _ => narrow_max::<4>(&p[..nb]) } as usize;
-            (nb * (8 / w as usize)..n).fold(m, |m, i| m.max(id_at(p, w, i)))
+    fn at<const W: u32>(p: &[u8], n: usize) -> usize {
+        match W {
+            0 => 0,
+            1 | 2 | 4 => {
+                let nb = n / (8 / W as usize);
+                (nb * (8 / W as usize)..n).fold(narrow_max::<W>(&p[..nb]) as usize, |m, i| m.max(lane::<W>(p, i) as usize))
+            }
+            _ => p.chunks_exact(W as usize / 8).take(n).map(word::<W>).max().unwrap_or(0),
         }
     }
+    by_width!(w, at(p, n))
 }
 
 /// `ids_firsts` (ids.rs): each group's first row into `first` (`min(n, nd + 1)` long) and into `slot` (`nd + 1`
@@ -216,25 +227,15 @@ pub fn go<const W: u32>(ids: &[u8], n: usize, nd: usize, slot: &mut [usize], fir
 /// store, which `id_at` and a `copy_from_slice` of a run-time length are not.
 pub fn wide<const U: usize>(run: Runner, out: &mut [u8], ids: &[u8], w: u32, n: usize, nd: usize, slot: &[usize]) {
     #[inline(always)]
-    fn sweep<const U: usize>(o: &mut [u8], lo: usize, hi: usize, nd: usize, slot: &[usize], id: impl Fn(usize) -> usize) {
+    fn sweep<const U: usize, const W: u32>(o: &mut [u8], lo: usize, hi: usize, nd: usize, slot: &[usize], ids: &[u8]) {
         for (i, c) in (lo..hi).zip(o.chunks_exact_mut(U)) {
-            let v = slot[id(i).min(nd)].to_le_bytes();
+            let v = slot[(lane::<W>(ids, i) as usize).min(nd)].to_le_bytes();
             c.copy_from_slice(&v[..U]);
         }
     }
     crate::c::run_map(run, out, n, U, QLEAN_COST_ARITH, WIDE, &|lo, hi, o: &mut [u8]| {
         let (ids, slot) = (ids, slot); // own copies: a captured reference reloads every row past the output stores
-        let le = |k: usize| move |i: usize| ids[i * k..i * k + k].iter().rev().fold(0usize, |a, &b| a << 8 | b as usize);
-        match w {
-            0 => sweep::<U>(o, lo, hi, nd, slot, |_| 0),
-            1 => sweep::<U>(o, lo, hi, nd, slot, |i| (ids[i >> 3] >> (i & 7) & 1) as usize),
-            2 => sweep::<U>(o, lo, hi, nd, slot, |i| (ids[i >> 2] >> ((i & 3) * 2) & 3) as usize),
-            4 => sweep::<U>(o, lo, hi, nd, slot, |i| (ids[i >> 1] >> ((i & 1) * 4) & 15) as usize),
-            8 => sweep::<U>(o, lo, hi, nd, slot, |i| ids[i] as usize),
-            16 => sweep::<U>(o, lo, hi, nd, slot, le(2)),
-            32 => sweep::<U>(o, lo, hi, nd, slot, le(4)),
-            _ => sweep::<U>(o, lo, hi, nd, slot, le(8)),
-        }
+        by_width!(w, sweep::<U>(o, lo, hi, nd, slot, ids))
     });
 }
 
@@ -268,17 +269,14 @@ pub fn map(run: Runner, ids: &[u8], n: usize, w: u32, nd: usize, slot: &[usize],
         let per = 8 / wo as usize;
         // `w >= 8` here: each id a whole element, read at a width fixed outside the byte loop
         #[inline(always)]
-        fn narrow(o: &mut [u8], lo: usize, (per, n, nd, wo): (usize, usize, usize, u32), slot: &[usize], id: impl Fn(usize) -> usize) {
+        fn narrow<const W: u32>(o: &mut [u8], lo: usize, (per, n, nd, wo): (usize, usize, usize, u32), slot: &[usize], ids: &[u8]) {
             for (b, e) in (lo..lo + o.len()).zip(o.iter_mut()) {
                 *e = (0..per).take_while(|t| b * per + t < n)
-                    .fold(0u32, |v, t| v | (slot[id(b * per + t).min(nd)] << (t as u32 * wo)) as u32) as u8;
+                    .fold(0u32, |v, t| v | (slot[(lane::<W>(ids, b * per + t) as usize).min(nd)] << (t as u32 * wo)) as u32) as u8;
             }
         }
         let g = (per, n, nd, wo);
-        crate::c::run_map(run, out, ob, 1, QLEAN_COST_ARITH, WIDE, &|lo, _hi, o: &mut [u8]| match w {
-            8 => narrow(o, lo, g, slot, |i| ids[i] as usize),
-            _ => narrow(o, lo, g, slot, |i| id_at(ids, w, i)),
-        });
+        crate::c::run_map(run, out, ob, 1, QLEAN_COST_ARITH, WIDE, &|lo, _hi, o: &mut [u8]| by_width!(w, narrow(o, lo, g, slot, ids)));
     }
     // the fields past `n` in the last input byte were mapped too; the tail bits stay zero
     if (n * wo as usize) & 7 != 0 { out[ob - 1] &= ((1u32 << ((n * wo as usize) & 7)) - 1) as u8; }
@@ -424,22 +422,7 @@ mod map_tests {
 // ---- A10: ids.rs (per element: C keeps these bodies while a C caller remains) ----
 /// ids.rs `id_put`: id `v` at index `i`, `w` bits each; a narrow field is a read-modify-write of its shared byte.
 #[inline(always)]
-pub fn id_put(p: &mut [u8], w: u32, i: usize, v: u64) {
-    // a store of `k` bytes, `k` a constant in each arm once inlined, so no `memcpy` call per element
-    #[inline(always)]
-    fn put(p: &mut [u8], i: usize, k: usize, v: u64) { p[i * k..i * k + k].copy_from_slice(&v.to_le_bytes()[..k]) }
-    match w {
-        0 => {}
-        1 | 2 | 4 => {
-            let (b, s, m) = (i * w as usize >> 3, (i * w as usize & 7) as u32, (1u8 << w) - 1);
-            p[b] = p[b] & !(m << s) | ((v as u8 & m) << s);
-        }
-        8 => p[i] = v as u8,
-        16 => put(p, i, 2, v),
-        32 => put(p, i, 4, v),
-        _ => put(p, i, 8, v),
-    }
-}
+pub fn id_put(p: &mut [u8], w: u32, i: usize, v: u64) { by_width!(w, lane_put(p, i, v)) }
 
 /// ids.rs `ids_fill`: `cnt` copies of `v` from index `at`; at a narrow width the aligned middle is a byte pattern.
 pub fn ids_fill(out: &mut [u8], w: u32, at: usize, cnt: usize, v: u64) {
