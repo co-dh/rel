@@ -2562,7 +2562,7 @@ pub fn append_plan(parts: &[Coc], start: &[usize], ew: usize) -> Option<Grow> {
     Some(Grow { b, lo, n, m, w, s: h.meta.off[b] as usize, base: mn as u64, sum, buf })
 }
 impl Grow {
-    /// The first part's own metadata and pack (`33 * nblk + 16` bytes, and its pack) with the block's sum and the trailer's
+    /// The first part's own metadata and pack (`33 * nblk + 24` bytes, and its pack) with the block's sum and the trailer's
     /// count brought up to the grown column and the added residuals written into the block.
     pub fn put(&self, meta: &mut [u8], pack: &mut [u8]) {
         let (nb, at) = (meta.len() / 33, 24 * (meta.len() / 33) + 8 * self.b);
