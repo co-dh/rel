@@ -1615,14 +1615,18 @@ impl Compact {
     }
     /// `u` is `count` words, `rk` one word per index.
     pub fn fill(&self, ix: &[u64], u: &mut [u64], rk: &mut [u64]) {
-        let mut j = 0;
+        let mut rest = u;
         for (w, &x) in self.bm.iter().enumerate() {
+            let (dst, r) = rest.split_at_mut(x.count_ones() as usize);
+            rest = r;
             let mut x = x;
-            while x != 0 { u[j] = (w * 64) as u64 + x.trailing_zeros() as u64; j += 1; x &= x - 1 }
+            for d in dst { *d = (w * 64) as u64 + x.trailing_zeros() as u64; x &= x - 1 }
         }
+        // one length for both, so a word index is tested once
+        let (bm, pre) = (&self.bm[..], &self.pre[..self.bm.len()]);
         for (r, &v) in rk.iter_mut().zip(ix) {
-            let (w, below) = ((v >> 6) as usize, (1u64 << (v & 63)) - 1);
-            *r = self.pre[w] + (self.bm[w] & below).count_ones() as u64
+            let w = (v >> 6) as usize;
+            *r = pre[w] + (bm[w] & ((1u64 << (v & 63)) - 1)).count_ones() as u64
         }
     }
 }

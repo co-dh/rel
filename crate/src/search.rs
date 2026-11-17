@@ -1715,20 +1715,29 @@ pub fn ix_first_clean(lo: &[u64], hi: &[u64], p: usize, e: usize, d: &[u64], mis
 /// `qlean_index_unedit_rows`: `a`'s words not among the sorted `d`, merged with `b`'s words `w` read as `d[w]` (else `w + add`
 /// where `d` is empty), ascending; how many words `out` holds.
 pub fn ix_unedit_rows(a: &[u64], b: &[u64], d: &[u64], add: u64, out: &mut [u64]) -> usize {
-    // slices consumed from the front, not indices: no bounds test per word
-    let (mut a, mut b, mut dk, mut o, mut n) = (a, b, d, out.iter_mut(), 0);
-    loop {
-        if let Some(&x) = a.first() {
-            while let Some(&y) = dk.first() { if y < x { dk = &dk[1..] } else { break } }
-            if dk.first() == Some(&x) { a = &a[1..]; continue }
-        } else if b.is_empty() { return n }
-        let y = b.first().map_or(u64::MAX, |&w| if d.is_empty() { w.wrapping_add(add) } else { d[w as usize] });
-        match a.first() {
-            Some(&x) if x < y => { *o.next().expect("ix_unedit_rows: the answer is short") = x; a = &a[1..] }
-            _ => { *o.next().expect("ix_unedit_rows: the answer is short") = y; b = &b[1..] }
+    // the head of `a` that `d` does not hold; slices consumed from the front, not indices: no bounds test per word
+    fn head(a: &mut &[u64], dk: &mut &[u64]) -> Option<u64> {
+        while let Some(&x) = a.first() {
+            while let Some(&y) = dk.first() { if y < x { *dk = &dk[1..] } else { break } }
+            if dk.first() != Some(&x) { return Some(x) }
+            *a = &a[1..];
         }
-        n += 1;
+        None
     }
+    // `y` read from a `b` word is one closure per case, so the loop body does not test `d.is_empty()` per word
+    fn merge(mut a: &[u64], mut b: &[u64], mut dk: &[u64], y: impl Fn(u64) -> u64, out: &mut [u64]) -> usize {
+        let (mut o, mut n, mut x) = (out.iter_mut(), 0, head(&mut a, &mut dk));
+        loop {
+            let w = b.first().map(|&w| y(w));
+            match (x, w) {
+                (None, None) => return n,
+                (Some(h), w) if h < w.unwrap_or(u64::MAX) => { *o.next().expect("ix_unedit_rows: the answer is short") = h; a = &a[1..]; x = head(&mut a, &mut dk) }
+                (_, w) => { *o.next().expect("ix_unedit_rows: the answer is short") = w.unwrap_or(u64::MAX); b = &b[1..] }
+            }
+            n += 1;
+        }
+    }
+    if d.is_empty() { merge(a, b, d, |w| w.wrapping_add(add), out) } else { merge(a, b, d, |w| d[w as usize], out) }
 }
 /// `qlean_index_rows`: how many rows the runs `p..e` of an index hold (`lo`, `hi` each ending in the row count, which is no run).
 pub fn ix_rows_len(lo: &[i64], hi: &[i64], p: usize, e: usize) -> usize {
