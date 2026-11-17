@@ -639,27 +639,28 @@ theorem pldiv_sound {A B C : Obj} {R : Pl false A B} {S : Pl false A C} {UB : Fn
     rw [hB.eq h3, hC.eq h4]
     simp only [ldivDen, r, s]
 
-/-- A closed plan run as bits (`Bits.runC`), its leaves' bits kept: the plan's relation. -/
-theorem runP_sound {A B : Obj} {p : Pl false A B} {T : Den A B} (hp : PSound p T) :
-    Sound (fun _ => also (p ()).2 (CRel.ofC (Bits.runC (p ()).1)) : Fn false A B) T := fun ⟨⟩ _ hb x y _ => by
-  simp only [also, Bool.and_eq_true] at hb ⊢; rw [CRel.rep_ofC hb.2]; replace hb := And.intro hb.1 (CRel.ofC_ok hb.2).1
-  exact (rep_runC _ hb.2 x y).trans (hp () trivial hb.1 x y rfl)
+/-- A plan run as bits (`Bits.runC`), its leaves' bits kept: the plan's relation, on its keys. -/
+theorem ofPl_sound {A B : Obj} {d : Bool} {p : Pl d A B} {T : Den A B} (hp : PSound p T) :
+    Sound (ofPl A B d p) T := fun D hD hb x y hx => by
+  simp only [ofPl, also, Bool.and_eq_true] at hb ⊢; rw [CRel.rep_ofC hb.2]
+  replace hb := And.intro hb.1 (CRel.ofC_ok hb.2).1
+  exact (rep_runC _ hb.2 x y).trans (hp D hD hb.1 x y hx)
 
 theorem compB_sound {A B C : Obj} {e : Bool} {R : Pl false A B} {S : Pl e B C} {TR : Den A B} {TS : Den B C}
     (hR : PSound R TR) (hS : PSound S TS) : Sound (compB A B C e R S) (TR ≫ TS) :=
-  by have h := runP_sound (pcomp_sound hR hS); exact h
+  by have h := ofPl_sound (d := false) (pcomp_sound hR hS); exact h
 
 theorem meetB_sound {A B : Obj} {R S : Pl false A B} {TR TS : Den A B} (hR : PSound R TR) (hS : PSound S TS) :
     Sound (meetB A B R S) (TR ∩ TS) :=
-  by have h := runP_sound (pmeet_sound (d := false) (e := false) hR hS); exact h
+  by have h := ofPl_sound (d := false) (pmeet_sound (d := false) (e := false) hR hS); exact h
 
 theorem diffB_sound {A B : Obj} {R S : Pl false A B} {TR TS : Den A B} (hR : PSound R TR) (hS : PSound S TS) :
     Sound (diffB A B R S) (diffDen TR TS) :=
-  by have h := runP_sound (pdiff_sound (d := false) (e := false) hR hS); exact h
+  by have h := ofPl_sound (d := false) (pdiff_sound (d := false) (e := false) hR hS); exact h
 
 theorem ldivB_sound {A B C : Obj} {R : Pl false A B} {S : Pl false A C} {UB : Fn false B B} {UC : Fn false C C}
     {TR : Den A B} {TS : Den A C} {TB : Den B B} {TC : Den C C} (hR : PSound R TR) (hS : PSound S TS)
     (hB : Sound UB TB) (hC : Sound UC TC) : Sound (ldivB A B C R S UB UC) (ldivDen TR TS TB TC) :=
-  by have h := runP_sound (pldiv_sound hR hS hB hC); exact h
+  by have h := ofPl_sound (d := false) (pldiv_sound hR hS hB hC); exact h
 
 end Rel.Lang.Gen

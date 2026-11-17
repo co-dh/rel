@@ -1,4 +1,5 @@
-import Rel.Lang.CompileSpec
+import Rel.Lang.GenSpec
+import Rel.Run.Lang.Compile
 
 /-! The rows of `prims` with their meanings and lemmas (`doc/rel-denotation-design.md` §1.3): each row's code
     (`RowCode`, in `Compile`) beside the relation it computes, the proof type-checked where the row is written. -/
@@ -114,13 +115,19 @@ def Tm.gap : {A B : Obj} → {d : Bool} → Tm A B d → Option String
   | _, _, _, .call .. => some "call: a generic definition's term waits for stage 5"
   | _, _, _, .juncD .. => some "juncD: a row naming an empty side is not excluded yet (D7, §7.4)"
   | _, _, _, .prim r => if rowGaps.contains r.sym then some s!"{r.sym}: the row has no lemma (rowGaps)" else none
-  | _, _, _, .mu k _ _ b | _, _, _, .nu k _ b =>
-    if b.pol true k then b.gap else some s!"μ/ν: the body is not positive in its variable {k} (D8 = R, §7.3)"
+  | _, _, _, .mu k _ _ b =>
+    if b.pol true k then b.gap else some s!"μ: the body is not positive in its variable {k} (D8 = R, §7.3)"
+  -- the rounds run from `S` down, so they reach `gfp` only where every round is below `S`; neither `Tm.nu` nor the
+  -- elaborator relates the body to `S` (the body is built apart from it), so no case can supply the bound
+  | _, _, _, .nu .. => some "ν: nu_sound needs every round below its bound (∀ X, Φ X ⊑ ⟦S⟧), which no premise states"
+  | _, _, _, .foldI .. => some "foldI: Gen.foldI has no lemma (foldI_sound) yet"
+  -- `share`'s meaning reads no variable while its code reads the environment: the two agree only on a closed part
+  | _, _, _, .share _ R => if R.fv.isEmpty then R.gap else some "share: its part is not closed"
   | _, _, _, .top R | _, _, _, .conv R | _, _, _, .dom R | _, _, _, .ran R | _, _, _, .est R | _, _, _, .own R
-  | _, _, _, .succ R | _, _, _, .arith _ R | _, _, _, .leq R | _, _, _, .lt R | _, _, _, .share _ R
+  | _, _, _, .succ R | _, _, _, .arith _ R | _, _, _, .leq R | _, _, _, .lt R
   | _, _, _, .flat R => R.gap
   | _, _, _, .comp R S | _, _, _, .meet R S | _, _, _, .join R S | _, _, _, .diff R S | _, _, _, .pair R S
-  | _, _, _, .prod R S | _, _, _, .junc R S | _, _, _, .fold R S | _, _, _, .foldI R S | _, _, _, .arg R S =>
+  | _, _, _, .prod R S | _, _, _, .junc R S | _, _, _, .fold R S | _, _, _, .arg R S =>
     R.gap <|> S.gap
   | _, _, _, .ldiv R S U V | _, _, _, .rdiv R S U V => R.gap <|> S.gap <|> U.gap <|> V.gap
   | _, _, _, .val _ | _, _, _, .uni _ | _, _, _, .zero | _, _, _, .id | _, _, _, .outl | _, _, _, .outr
