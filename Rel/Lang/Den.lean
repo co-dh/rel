@@ -233,10 +233,13 @@ noncomputable def Tm.den : Val → {A B : Obj} → {d : Bool} → Tm A B d → D
   | ρ, _, _, _, .refold k _ _ b => Core.Rel.mu fun X => b.den (ρ.bind k X)
 
 /-- The spine `f` of a row given the meanings `ss` of its later arguments: the row's meaning of all of them, in
-    the order `compile` passes their codes; `𝟘` where `f` is not a row under `arg`s. -/
+    the order `compile` passes their codes; `𝟘` where `f` is not a row under `arg`s. `share` and `own` are seen
+    through, as `Tm.gen` passes their part's row on. -/
 noncomputable def Tm.argDen : Val → {A B : Obj} → {d : Bool} → Tm A B d → List Sem → Den A B
   | _, A, B, _, .prim r, ss => Prim.den r A B ss
   | ρ, _, _, _, .arg f x, ss => f.argDen ρ (⟨_, _, x.den ρ⟩ :: ss)
+  | _, _, _, _, .share _ R, ss => R.argDen Val.empty ss
+  | ρ, _, _, _, .own R, ss => R.argDen ρ ss
   | _, _, _, _, _, _ => 𝟘
 end
 
@@ -257,7 +260,11 @@ theorem Tm.den_congr : ∀ {A B : Obj} {d : Bool} (t : Tm A B d) (ρ ρ' : Val),
     have hx := (ihx ρ ρ' fun i hi => h i (by simp [Tm.fv, hi])).1
     have hf := (ihf ρ ρ' fun i hi => h i (by simp [Tm.fv, hi])).2
     exact ⟨by simp only [Tm.den, hx, hf], fun _ => by simp only [Tm.argDen, hx, hf]⟩
-  | conv R ih | dom R ih | ran R ih | own R ih | est R ih | succ R ih | arith _ R ih | leq R ih | lt R ih
+  | own R ih =>
+    intro ρ ρ' h
+    have e := ih ρ ρ' fun i hi => h i (by simp [Tm.fv, hi])
+    exact ⟨by simp only [Tm.den, e.1], fun _ => by simp only [Tm.argDen, e.2]⟩
+  | conv R ih | dom R ih | ran R ih | est R ih | succ R ih | arith _ R ih | leq R ih | lt R ih
   | flat R ih | lam R ih | E R ih | thin R ih =>
     intro ρ ρ' h; exact ⟨by simp only [Tm.den, (ih ρ ρ' fun i hi => h i (by simp [Tm.fv, hi])).1], fun _ => rfl⟩
   | ldiv R S U V ihR ihS ihU ihV | rdiv R S U V ihR ihS ihU ihV =>
@@ -364,6 +371,10 @@ theorem Tm.den_subst : ∀ {A B : Obj} {d : Bool} (t : Tm A B d) (σ : Tm.Sub), 
     have hx := (ihx σ hσ ρ).1
     have hf := (ihf σ hσ ρ).2
     exact ⟨by simp only [Tm.subst, Tm.den, hx, hf], fun _ => by simp only [Tm.subst, Tm.argDen, hx, hf]⟩
+  | own R ih =>
+    intro σ hσ ρ
+    have e := ih σ hσ ρ
+    exact ⟨by simp only [Tm.subst, Tm.den, e.1], fun _ => by simp only [Tm.subst, Tm.argDen, e.2]⟩
   | _ => intro σ hσ ρ; exact ⟨by simp only [Tm.subst, Tm.den, *], fun _ => rfl⟩
 
 /-! ### Monotonicity -/
