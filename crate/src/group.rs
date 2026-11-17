@@ -407,6 +407,21 @@ pub fn group_ids_win(run: Runner, kind: u8, c: Coc, n: usize, mn: u64, mx: u64, 
 /// `lean_box` of the byte offset of element `at` of an `i64` array (`at * 8`): a `QValue.slices` bound.
 fn boxed(at: usize) -> usize { at << 4 | 1 }
 
+/// `buckets`' prefix sum: the first slot of each of the `cnt.len()` buckets in order, and the total after them.
+pub fn bucket_starts(cnt: &[u32]) -> Vec<usize> {
+    let mut at = uninit::<usize>(cnt.len() + 1);
+    let mut run = 0;
+    for (a, c) in at.iter_mut().zip(cnt) { (*a, run) = (run, run + *c as usize) }
+    at[cnt.len()] = run;
+    at
+}
+/// `buckets`' scatter: the indices of `gid` bucket by bucket into `ord`, each bucket ascending (in index order), from the
+/// cursors `at` (`bucket_starts`' first `ng` entries), which end one past each bucket.
+pub fn bucket_scatter(gid: &[u32], at: &mut [usize], ord: &mut [i64]) {
+    assert!(ord.len() == gid.len(), "qlean buckets: {} elements, {} indices to write", gid.len(), ord.len());
+    for (i, &g) in gid.iter().enumerate() { let a = &mut at[g as usize]; ord[*a] = i as i64; *a += 1 }
+}
+
 /// `buckets`: the indices of `gid` bucket by bucket, each bucket ascending, into `ord`, and the `ng + 1` boxed byte offsets
 /// that cut them into `bnd` (`ng = bnd.len() - 1`); `cnt[..ng]` is how many elements name each group. Prefix-sum, then one
 /// scatter in index order.
@@ -414,11 +429,26 @@ pub fn buckets(gid: &[u32], cnt: &[u32], ord: &mut [i64], bnd: &mut [usize]) {
     assert!(!bnd.is_empty() && cnt.len() + 1 >= bnd.len() && ord.len() == gid.len(),
             "qlean buckets: {} elements, {} offsets, {} counts, {} indices to write", gid.len(), bnd.len(), cnt.len(), ord.len());
     let ng = bnd.len() - 1;
-    let mut at = uninit::<usize>(ng);
-    let mut run = 0;
-    for ((a, c), e) in at.iter_mut().zip(cnt).zip(bnd.iter_mut()) { (*a, *e) = (run, boxed(run)); run += *c as usize }
-    bnd[ng] = boxed(run);
-    for (i, &g) in gid.iter().enumerate() { let a = &mut at[g as usize]; ord[*a] = i as i64; *a += 1 }
+    let mut at = bucket_starts(&cnt[..ng]);
+    for (e, &a) in bnd.iter_mut().zip(&at) { *e = boxed(a) }
+    bucket_scatter(gid, &mut at[..ng], ord)
+}
+
+/// The first `n` elements of the dense payload `p` of `kind`, exactly the bytes `key::each` reads. `p` holds at least that
+/// many, which every caller clamped `n` to.
+pub fn dense(kind: u8, p: &[u8], n: usize) -> &[u8] {
+    crate::key::bytes(kind, n).and_then(|b| p.get(..b))
+        .unwrap_or_else(|| panic!("qlean sort: {n} elements of kind {kind} are not in {} bytes (impossible: outside the enum, or a count above what the payload holds)", p.len()))
+}
+/// The dense column's key range, `(0, 0)` for none: sort.c `range_of`.
+pub fn range_dense(kind: u8, p: &[u8], n: usize) -> (u64, u64) {
+    if n == 0 { return (0, 0) }
+    each(kind, dense(kind, p, n), n, Range).unwrap_or_else(|| panic!("range_of: key range refused kind {kind} (impossible: outside the enum or a misaligned payload), n {n}"))
+}
+/// `range_dense`, then `dedup` over the dense column (`first` and `bucket`'s two arrays hold `n` entries): answers `ng`.
+pub fn dedup_dense(kind: u8, p: &[u8], n: usize, bucket: Option<(&mut [u32], &mut [u32])>, first: &mut [usize]) -> usize {
+    let (mn, mx) = range_dense(kind, p, n);
+    each(kind, dense(kind, p, n), n, Dedup { mn, mx, first, bucket }).unwrap_or_else(|| panic!("dedup: refused kind {kind} (impossible: outside the enum or a misaligned payload), n {n}"))
 }
 
 /// `distinct_fill`: the elements of the encoded column `c` at `first` (ascending), as the key under `flip` (`key_flip`: the

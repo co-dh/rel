@@ -11,16 +11,23 @@ use crate::sort::{self, Ksrc};
 use crate::{ids, os, pod};
 
 /// What C's `fprintf(stderr, …); exit(1)` did for a call no Lean body makes.
-fn die(args: core::fmt::Arguments) -> ! {
+pub fn die(args: core::fmt::Arguments) -> ! {
     os::eprint(args).expect("qlean: stderr");
     os::exit(1)
 }
+/// coc.h `sk_dense_width`'s stop: the kind is not one of the eight, or is the boolean.
+fn no_dense(kind: u8) -> ! {
+    die(format_args!("qlean: element kind {kind} has no dense width -- either it is not one of the {SK_KINDS_N} in QLean/Kernel/Scan.lean, or it is the boolean, whose payload is packed bits\n"))
+}
 /// coc.h `sk_avail`, which exits where the kind has no dense width.
-fn avail(kind: u8, bytes: usize) -> usize {
-    sort::avail(kind, bytes).unwrap_or_else(|| die(format_args!("qlean: element kind {kind} has no dense width -- either it is not one of the {SK_KINDS_N} in QLean/Kernel/Scan.lean, or it is the boolean, whose payload is packed bits\n")))
+pub fn avail(kind: u8, bytes: usize) -> usize { sort::avail(kind, bytes).unwrap_or_else(|| no_dense(kind)) }
+/// coc.h `sk_dense_width`: the bytes an element of `kind` strides by in a payload, which has none for a bit.
+pub fn dense_width(kind: u8) -> usize {
+    if kind == SK_BIT { no_dense(kind) }
+    crate::key::bytes(kind, 1).unwrap_or_else(|| no_dense(kind))
 }
 /// sort.c `sk_write_width`.
-fn width(kind: u8) -> usize {
+pub fn width(kind: u8) -> usize {
     sort::write_width(kind).unwrap_or_else(|| die(format_args!("qlean sort: element kind {kind} is not one of the {SK_KINDS_N} in QLean/Kernel/Scan.lean\n")))
 }
 /// sort.c `for_kind`: the three kinds Frame of Reference encodes.
