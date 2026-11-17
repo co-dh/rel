@@ -1,0 +1,83 @@
+import QLean.RelPart.Verify.FindMember
+import QLean.RelPart.Verify.Encoding
+import QLean.RelPart.Kernel.Reduce
+import QLean.RelPart.Value
+import QLean.RelPart.Kernel.Elementwise
+
+/-! The part of `QLean.Verify.Elementwise` the Rel kernels reach; `QLean.Verify.Elementwise` imports it. -/
+
+
+namespace QLean.Verify
+
+open QLean
+
+open QLean.Kernel in
+/-- **`packOf`'s bitmap**: bit `i` is set exactly when `i < n` and `f i`, so the last byte's tail is
+    zero. The byte fold is `memberVec_mem`'s; `Ew.cmp`, `Ew.bit` and `shiftBits` are each this fold. -/
+theorem packOf_bitAt (n : Nat) (f : Nat → Bool) :
+    (packOf n f).size = (n + 7) / 8 ∧
+    ∀ i < 8 * ((n + 7) / 8), Column.bitAt (packOf n f) i = (decide (i < n) && f i) := by
+  let C : Nat → Bool := fun i => decide (i < n) && f i
+  let B : Nat → UInt8 := fun k =>
+    (List.range 8).foldl (fun byte t => if C (k * 8 + t) then byte ||| (1 <<< t.toUInt8) else byte) 0
+  have hf : packOf n f = (List.range ((n + 7) / 8)).foldl (fun acc k => acc.push (B k)) ByteArray.empty := rfl
+  obtain ⟨hs, -, hg⟩ := foldl_push8 B (List.range ((n + 7) / 8)) ByteArray.empty
+  rw [hf]
+  refine ⟨by simpa using hs, fun i hi => ?_⟩
+  have h := hg (i / 8) (by simp; omega)
+  simp only [ByteArray.size_empty, Nat.zero_add, List.getElem_range] at h
+  have hm8 : i % 8 < 8 := Nat.mod_lt _ (by decide)
+  show Column.bitAt _ i = C i
+  simp only [Column.bitAt, h, Option.getD_some]
+  rw [bit_eq_testBit _ _ hm8, foldl_setBit _ _ (fun t ht => List.mem_range.1 ht), UInt8.toNat_zero,
+    Nat.zero_testBit, Bool.false_or]
+  apply Bool.eq_iff_iff.mpr
+  rw [List.any_eq_true]
+  constructor
+  · rintro ⟨t, -, ht⟩
+    rw [Bool.and_eq_true, decide_eq_true_eq] at ht
+    obtain ⟨e, hc⟩ := ht
+    subst e
+    rwa [Nat.mul_comm, Nat.div_add_mod] at hc
+  · intro hc
+    refine ⟨i % 8, List.mem_range.2 hm8, ?_⟩
+    rw [Bool.and_eq_true, decide_eq_true_eq, Nat.mul_comm, Nat.div_add_mod]
+    exact ⟨rfl, hc⟩
+
+open QLean.Kernel in
+/-- **`Ew.cmp`'s bitmap**: bit `i` is set exactly when `i < n` and `cmpStep` holds of the two elements
+    the shape reads at `i`, so the last byte's tail is zero. -/
+theorem cmp_bitAt (op cls shape : UInt8) (a b : ByteArray) (n : USize) :
+    (Ew.cmp op cls shape a b n).size = (n.toNat + 7) / 8 ∧
+    ∀ i < 8 * ((n.toNat + 7) / 8), Column.bitAt (Ew.cmp op cls shape a b n) i =
+      (decide (i < n.toNat) && Ew.cmpStep op cls (Ew.elem cls a (Ew.shapeIdx shape i).1)
+        (Ew.elem cls b (Ew.shapeIdx shape i).2)) :=
+  packOf_bitAt n.toNat fun i =>
+    Ew.cmpStep op cls (Ew.elem cls a (Ew.shapeIdx shape i).1) (Ew.elem cls b (Ew.shapeIdx shape i).2)
+
+open QLean.Kernel in
+/-- **`Ew.bit`'s bitmap**: bit `i` is set exactly when `i < n` and `bitStep` holds of the two bits the
+    shape reads at `i`. -/
+theorem Ew.bit_bitAt (op shape : UInt8) (a b : ByteArray) (n : USize) :
+    (Ew.bit op shape a b n).size = (n.toNat + 7) / 8 ∧
+    ∀ i < 8 * ((n.toNat + 7) / 8), Column.bitAt (Ew.bit op shape a b n) i =
+      (decide (i < n.toNat) && Ew.bitStep op (Column.bitAt a (Ew.shapeIdx shape i).1)
+        (Column.bitAt b (Ew.shapeIdx shape i).2)) :=
+  packOf_bitAt n.toNat fun i =>
+    Ew.bitStep op (Column.bitAt a (Ew.shapeIdx shape i).1) (Column.bitAt b (Ew.shapeIdx shape i).2)
+
+end QLean.Verify
+
+-- `Classical.choice` is the statement's: `Ew.cmpStep` names `Float.ofBits` (via `ord64`, `ord32`,
+-- `QAtom.tolerant`), an opaque whose `Inhabited` witness is choice; the proof adds none.
+/-- info: 'QLean.Verify.cmp_bitAt' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+#guard_msgs in
+#print axioms QLean.Verify.cmp_bitAt
+
+/-- info: 'QLean.Verify.packOf_bitAt' depends on axioms: [propext, Quot.sound] -/
+#guard_msgs in
+#print axioms QLean.Verify.packOf_bitAt
+
+/-- info: 'QLean.Verify.Ew.bit_bitAt' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+#guard_msgs in
+#print axioms QLean.Verify.Ew.bit_bitAt
