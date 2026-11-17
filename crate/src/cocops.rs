@@ -327,7 +327,7 @@ impl<'a> Coc<'a> {
     /// null, so only an overflow or a pre-writer null frame is refused.
     pub fn vv_ok(&self, b: &Coc, op: i32, s: i64, fill: i64) -> bool {
         let m = &self.meta;
-        if m.nblk != b.meta.nblk { return false }
+        if m.nblk != b.meta.nblk || m.lg != b.meta.lg { return false }
         for k in 0..m.nblk {
             let lo = k << m.lg;
             let nb = if lo + m.blk() < m.n { m.blk() } else { m.n - lo };
@@ -385,9 +385,9 @@ pub fn vv_fill(a: &Coc, b: &Coc, op: i32, s: i64, fill: i64, i0: usize, xa: &mut
     assert_eq!(a.meta.lg, b.meta.lg, "coc vv: columns of different block sizes");
     let mut xb = pod::Scr::<i64>::new(xa.len());
     a.decode_blk(i0 >> a.meta.lg, xa.len(), xa);
-    b.load_run(i0 as i64 - s, fill, xb);
+    b.load_run(i0 as i64 - s, fill, &mut xb);
     // unsigned arithmetic throughout: signed overflow is UB in C even where `coc_vv_ok` has refused it
-    match op { 0 => go(xa, xb, u64::wrapping_add), 1 => go(xa, xb, u64::wrapping_sub), _ => go(xa, xb, u64::wrapping_mul) }
+    match op { 0 => go(xa, &xb, u64::wrapping_add), 1 => go(xa, &xb, u64::wrapping_sub), _ => go(xa, &xb, u64::wrapping_mul) }
 }
 /// coc.rs `scale_fill`: the answer block of `x * k` from `i0` into `buf`, nulls staying the null.
 pub fn scale_fill(a: &Coc, k: i64, i0: usize, buf: &mut [i64]) {
@@ -412,7 +412,7 @@ mod tests {
     }
     #[test] fn load_run_fills_both_ends_and_a_run_off_one_end() {
         let (z, base, off, width) = ([0i64], [7i64], [0u64], [0u8]);
-        let meta = Meta { base: &base, maxv: &z, off: &off, bsum: &z, width: &width, sumnul: 0, sumn: 0, n: 3, nblk: 1, mblk: 1 };
+        let meta = Meta { lg: crate::DEFAULT_LG, base: &base, maxv: &z, off: &off, bsum: &z, width: &width, sumnul: 0, sumn: 0, n: 3, nblk: 1, mblk: 1 };
         let c = Coc { meta, pack: &[], exc: None, fdelta: None };
         let mut out = [0i64; 8];
         c.load_run(-2, 99, &mut out);
@@ -424,14 +424,14 @@ mod tests {
     }
     // expected values: the C of 7091572 (/data/tmp/qrs/A4/diff.c: 312000 checks, 0 mismatches)
     #[test] fn folds_of_a_column_with_no_element_are_q_seeds() {
-        let meta = Meta { base: &[], maxv: &[], off: &[], bsum: &[], width: &[], sumnul: 0, sumn: 0, n: 0, nblk: 0, mblk: 0 };
+        let meta = Meta { lg: crate::DEFAULT_LG, base: &[], maxv: &[], off: &[], bsum: &[], width: &[], sumnul: 0, sumn: 0, n: 0, nblk: 0, mblk: 0 };
         let c = Coc { meta, pack: &[], exc: None, fdelta: None };
         assert_eq!((c.prd(i64::MIN), c.min(i64::MIN), c.max(i64::MIN)), (1, i64::MAX, i64::MIN + 1));
         assert_eq!((c.all(), c.any()), (true, false));
     }
     #[test] fn all_null_block_and_all_zero_block() {
         fn mk(v: &[i64; 1]) -> Coc<'_> {
-            Coc { meta: Meta { base: v, maxv: v, off: &[0], bsum: &[0], width: &[0], sumnul: 0, sumn: 0, n: 3, nblk: 1, mblk: 1 }, pack: &[], exc: None, fdelta: None }
+            Coc { meta: Meta { lg: crate::DEFAULT_LG, base: v, maxv: v, off: &[0], bsum: &[0], width: &[0], sumnul: 0, sumn: 0, n: 3, nblk: 1, mblk: 1 }, pack: &[], exc: None, fdelta: None }
         }
         let n = mk(&[i64::MIN]);
         assert_eq!((n.min(i64::MIN), n.max(i64::MIN), n.prd(i64::MIN)), (i64::MAX, i64::MIN + 1, 1));
@@ -444,7 +444,7 @@ mod tests {
         let mut bsum = [5i64];
         let (mut sn, mut ss) = (i64::MIN, 3u64);
         fn mk<'a>(base: &'a [i64], bsum: &'a [i64], sumnul: i64, sumn: u64) -> Coc<'a> {
-            let meta = Meta { base, maxv: &[0], off: &[0], bsum, width: &[0], sumnul, sumn, n: 3, nblk: 1, mblk: 1 };
+            let meta = Meta { lg: crate::DEFAULT_LG, base, maxv: &[0], off: &[0], bsum, width: &[0], sumnul, sumn, n: 3, nblk: 1, mblk: 1 };
             Coc { meta, pack: &[], exc: None, fdelta: None }
         }
         // 3 * i64::MAX wraps; a block whose base is the null sums to 0
@@ -456,7 +456,7 @@ mod tests {
         assert_eq!(mk(&base, &bsum, i64::MIN, 3).sum(i64::MIN), 5);
         assert!(mk(&base, &bsum, i64::MIN, 3).sums_ok(i64::MIN));
         assert!(!mk(&base, &bsum, i64::MIN, 4).sums_ok(i64::MIN) && !mk(&base, &bsum, 0, 3).sums_ok(0));
-        let mut m = CocMut { base: &mut base, maxv: &mut [0], bsum: &mut bsum, sumnul: Some(&mut sn),
+        let mut m = CocMut { lg: crate::DEFAULT_LG, base: &mut base, maxv: &mut [0], bsum: &mut bsum, sumnul: Some(&mut sn),
                              sumn: Some(&mut ss), n: 3, nblk: 1 };
         m.sums_drop();
         assert_eq!((m.bsum[0], *m.sumnul.unwrap(), *m.sumn.unwrap()), (0, 0, 0));
@@ -470,7 +470,7 @@ mod tests {
     }
     // expected values: the C of e16b3fd (/data/tmp/qrs/K26/diff.c: 720000 vv/scale checks, shifts at i64's ends included, 0 mismatches)
     #[test] fn vv_scale_refusals_and_shift_bounds() {
-        let cm = |base: &[i64], maxv: &[i64]| Coc { meta: Meta { base: &base.to_vec().leak()[..], maxv: &maxv.to_vec().leak()[..], off: &[0; 2],
+        let cm = |base: &[i64], maxv: &[i64]| Coc { meta: Meta { lg: crate::DEFAULT_LG, base: &base.to_vec().leak()[..], maxv: &maxv.to_vec().leak()[..], off: &[0; 2],
             bsum: &[0; 2], width: &[0; 2], sumnul: i64::MIN, sumn: 2048, n: 2048, nblk: 2, mblk: 2 }, pack: &[], exc: None, fdelta: None };
         let (a, b) = (cm(&[i64::MAX - 1, 0], &[i64::MAX, 0]), cm(&[2, 2], &[8, 8]));
         assert_eq!((a.vv_ok(&b, 0, 0, 0), a.vv_ok(&b, 1, 0, 0), a.vv_ok(&b, 2, 0, 0)), (false, true, false));
@@ -485,7 +485,7 @@ mod tests {
     }
     // expected values: the C of 336b87b (/data/tmp/qrs/A6b/gen.c: 3000 columns, 63000 comparisons, 0 mismatches)
     #[test] fn shift_refusals_paths_and_sums() {
-        let cm = |base: &[i64], maxv: &[i64]| Coc { meta: Meta { base: &base.to_vec().leak()[..], maxv: &maxv.to_vec().leak()[..], off: &[0; 2],
+        let cm = |base: &[i64], maxv: &[i64]| Coc { meta: Meta { lg: crate::DEFAULT_LG, base: &base.to_vec().leak()[..], maxv: &maxv.to_vec().leak()[..], off: &[0; 2],
             bsum: &[0; 2], width: &[0; 2], sumnul: i64::MIN, sumn: 2048, n: 2048, nblk: 2, mblk: 2 }, pack: &[], exc: None, fdelta: None };
         let c = cm(&[1, 5], &[9, 9]);
         assert_eq!((c.shift_ok(1, false), c.shift_ok(1, true), c.shift_ok(i64::MIN, false)), (1, 2, 0));
@@ -495,7 +495,7 @@ mod tests {
         assert_eq!(cm(&[i64::MIN, 0], &[i64::MIN, 3]).shift_ok(1, false), 2); // an all-null block goes through the writer
         let (mut base, mut maxv, mut bsum) = ([1i64, 5], [9i64, 9], [10i64, 20]);
         let (mut sn, mut sc) = (i64::MIN, 2048u64);
-        let mut m = CocMut { base: &mut base, maxv: &mut maxv, bsum: &mut bsum,
+        let mut m = CocMut { lg: crate::DEFAULT_LG, base: &mut base, maxv: &mut maxv, bsum: &mut bsum,
                              sumnul: Some(&mut sn), sumn: Some(&mut sc), n: 2048, nblk: 2 };
         m.shift(3, false);
         assert_eq!((m.base.to_vec(), m.maxv.to_vec(), m.bsum.to_vec()), (vec![4, 8], vec![12, 12], vec![3082, 3092]));

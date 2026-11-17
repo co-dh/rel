@@ -14,7 +14,8 @@ use crate::simd::prefetch;
 use crate::pod::uninit;
 use crate::alp::Cocf;
 use crate::key::{each, Keys, Pass, Range};
-use crate::BLK;
+/// How many keys `keys_gather` stages at a time: a batch, not a column's block.
+const BATCH: usize = 1 << crate::DEFAULT_LG;
 
 pub const PHI64: u64 = 0x9e3779b97f4a7c15;
 /// How many elements ahead the hashed numbering starts a slot's cache line (sort.rs's `group_prefetch` users). The
@@ -454,31 +455,33 @@ pub fn dedup_dense(kind: u8, p: &[u8], n: usize, bucket: Option<(&mut [u32], &mu
 /// `distinct_fill`: the elements of the encoded column `c` at `first` (ascending), as the key under `flip` (`key_flip`: the
 /// element again at the three kinds Frame of Reference encodes) into `buf`. `first` ascends, so the elements a block of
 /// the column holds are a run of it: each block touched is decoded once, into `k`, and its run read out of it.
-fn fill_keys(kind: u8, c: &Coc, first: &[usize], flip: u64, buf: &mut [i64], k: &mut [u64; BLK]) {
+fn fill_keys(kind: u8, c: &Coc, first: &[usize], flip: u64, buf: &mut [i64], k: &mut [u64]) {
+    let (lg, blk) = (c.meta.lg, c.meta.blk());
     let (n, buf, mut j) = (c.meta.n, &mut buf[..first.len()], 0);
     while j < first.len() {
-        let (b, e) = (first[j] / BLK, first[j] / BLK * BLK + BLK);
-        kwin::keys_blk(kind, c, b, &mut k[..(n - b * BLK).min(BLK)]);
-        while j < first.len() && first[j] < e { buf[j] = (k[first[j] & (BLK - 1)] ^ flip) as i64; j += 1 }
+        let (b, e) = (first[j] >> lg, ((first[j] >> lg) + 1) << lg);
+        kwin::keys_blk(kind, c, b, &mut k[..(n - (b << lg)).min(blk)]);
+        while j < first.len() && first[j] < e { buf[j] = (k[first[j] & (blk - 1)] ^ flip) as i64; j += 1 }
     }
 }
-pub fn distinct_fill(kind: u8, c: &Coc, first: &[usize], buf: &mut [i64]) { fill_keys(kind, c, first, kwin::key_flip(kind), buf, &mut [0; BLK]) }
+pub fn distinct_fill(kind: u8, c: &Coc, first: &[usize], buf: &mut [i64]) { fill_keys(kind, c, first, kwin::key_flip(kind), buf, &mut crate::pod::Scr::<u64>::new(c.meta.blk())) }
 
 /// `distinct_fill_alp`: as `distinct_fill` over an ALP column, the elements restored out of their blocks and not rebuilt from
 /// the key, which at a float folds every NaN and both zeros: q's `distinct` answers the first element as stored. `buf`
 /// takes the f32 bits zero-extended.
 pub fn distinct_fill_alp(f: &Cocf, first: &[usize], buf: &mut [i64]) {
     let (n, w, buf, mut j) = (f.c.meta.n, if f.f32 { 4 } else { 8 }, &mut buf[..first.len()], 0);
-    let mut v = [0u64; BLK];
+    let (lg, blk) = (f.c.meta.lg, f.c.meta.blk());
+    let mut v = crate::pod::Scr::<u64>::new(blk);
     while j < first.len() {
-        let (at, cnt) = (first[j] / BLK * BLK, (n - first[j] / BLK * BLK).min(BLK));
-        f.load_blk(first[j] / BLK, cnt, &mut crate::pod::bytes_mut(&mut v)[..cnt * w]);
-        let e = at + BLK;
+        let (at, cnt) = ((first[j] >> lg) << lg, (n - ((first[j] >> lg) << lg)).min(blk));
+        f.load_blk(first[j] >> lg, cnt, &mut crate::pod::bytes_mut(&mut v)[..cnt * w]);
+        let e = at + blk;
         if f.f32 {
             let v32 = crate::pod::cast::<u32>(crate::pod::bytes(&v)).expect("a u64 array is a u32 array");
-            while j < first.len() && first[j] < e { buf[j] = v32[first[j] & (BLK - 1)] as i64; j += 1 }
+            while j < first.len() && first[j] < e { buf[j] = v32[first[j] & (blk - 1)] as i64; j += 1 }
         } else {
-            while j < first.len() && first[j] < e { buf[j] = v[first[j] & (BLK - 1)] as i64; j += 1 }
+            while j < first.len() && first[j] < e { buf[j] = v[first[j] & (blk - 1)] as i64; j += 1 }
         }
     }
 }
@@ -489,8 +492,8 @@ pub fn keys_gather(kind: u8, c: &Coc, first: &[usize], out: &mut [u8]) {
     let w = (kwin::dense_bits(kind) / 8) as usize;
     assert!(matches!(w, 2 | 4 | 8) && out.len() == first.len() * w,
             "qlean group: {} keys of kind {kind} (width {w}) cannot fill {} bytes", first.len(), out.len());
-    let (flip, mut k, mut buf) = (kwin::key_flip(kind), [0u64; BLK], [0i64; BLK]);
-    for (f, o) in first.chunks(BLK).zip(out.chunks_mut(BLK * w)) {
+    let (flip, mut k, mut buf) = (kwin::key_flip(kind), crate::pod::Scr::<u64>::new(c.meta.blk()), [0i64; BATCH]);
+    for (f, o) in first.chunks(BATCH).zip(out.chunks_mut(BATCH * w)) {
         let buf = &mut buf[..f.len()];
         fill_keys(kind, c, f, flip, buf, &mut k);
         match w {

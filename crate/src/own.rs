@@ -412,12 +412,18 @@ mod tests {
     }
     #[test] fn check_frame_of_reference_metadata() {
         let e: &[u8] = &[];
-        assert_eq!(say(2, 0, [&[0; 20], e, e]).1, "part 0: Frame of Reference metadata of 33 bytes a block and a 16-byte trailer, found 20 bytes");
-        assert_eq!(say(2, 2000, [&[0; 49], e, e]).1, "part 0: blocks for 2000 elements, found 1 blocks of 1024");
-        let mut m = [0u8; 49];
-        m[48] = 65; // block 0's width, past 64 bits
+        assert_eq!(say(2, 0, [&[0; 20], e, e]).1, "part 0: Frame of Reference metadata of 33 bytes a block and a 24-byte trailer, found 20 bytes");
+        let mut m = [0u8; 57];
+        assert_eq!(say(2, 2000, [&m, e, e]).1, "part 0: a block size lg in 6..=16, found 0");
+        for lg in [5u8, 17] { m[48] = lg; assert_eq!(say(2, 10, [&m, e, e]).1, format!("part 0: a block size lg in 6..=16, found {lg}")) }
+        m[48] = 10;
+        assert_eq!(say(2, 2000, [&m, e, e]).1, "part 0: blocks for 2000 elements, found 1 blocks of 1024");
+        m[48] = 6;
+        assert_eq!(say(2, 65, [&m, e, e]).1, "part 0: blocks for 65 elements, found 1 blocks of 64");
+        m[48] = 10;
+        m[56] = 65; // block 0's width, past 64 bits
         assert_eq!(say(2, 10, [&m, &[0; 8], e]).1, "part 0 block 0: a residual width of 0..64 bits, found 65");
-        m[48] = 8; // 1024 residual bytes in an 8-byte pack
+        m[56] = 8; // 1024 residual bytes in an 8-byte pack
         assert_eq!(say(2, 10, [&m, &[0; 8], e]).1, "part 1 block 0: 1024 residual bytes at a pack offset that is a multiple of 8, found offset 0 in a pack of 8 bytes");
     }
 

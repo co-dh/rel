@@ -12,7 +12,7 @@ use crate::coc::{lanes, Coc};
 use crate::key::{self, Keys, Pass, SK_BIT, SK_I16, SK_I32, SK_I64, SK_KINDS_N, SK_U8};
 use crate::ids::by_width;
 use crate::sym::{sym_cmp, sym_hash, sym_msort, Syms};
-use crate::{ids, kwin, pod, BLK, QLEAN_COST_ARITH, QLEAN_COST_COPY};
+use crate::{ids, kwin, pod, QLEAN_COST_ARITH, QLEAN_COST_COPY};
 /// sort.rs `SK_LANE`: kind bit that makes `grade_narrow` read the payload as ids of `kind & 0x7f` bits.
 const SK_LANE: u8 = 0x80;
 
@@ -74,10 +74,12 @@ impl Pass for Blk<'_> {
     fn run<K: Keys>(self, mut s: K, _: usize) { for (j, o) in self.k.iter_mut().enumerate() { *o = s.at(self.at + j) } }
 }
 impl<'a> Ksrc<'a> {
-    /// sort.rs `ksrc_blk`: block `b`'s keys into `k` (BLK long); answers their count. A dense payload of any
+    /// The keys a block of this source holds: the column's own block, or the writer's grid for a dense payload.
+    pub fn blk_len(&self) -> usize { self.c.as_ref().map_or(1 << crate::DEFAULT_LG, |c| c.meta.blk()) }
+    /// sort.rs `ksrc_blk`: block `b`'s keys into `k` (`blk_len` long); answers their count. A dense payload of any
     /// kind that is not an element kind (`SK_KEY`) is read as keys already.
     pub fn blk(&self, b: usize, k: &mut [u64]) -> usize {
-        let (at, cnt) = (b * BLK, (self.n - b * BLK).min(BLK));
+        let (at, cnt) = (b * self.blk_len(), (self.n - b * self.blk_len()).min(self.blk_len()));
         match &self.c {
             Some(c) => kwin::keys_blk(self.kind, c, b, &mut k[..cnt]),
             None => key::each(self.kind, &self.p[..key::bytes(self.kind, self.n).expect("ksrc_blk: dense kind")], self.n, Blk { at, k: &mut k[..cnt] })
@@ -102,10 +104,10 @@ impl<'a> Ksrc<'a> {
 fn ksrc_blocks(s: &Ksrc, mut f: impl FnMut(usize, &[u64])) {
     if s.c.is_none() && s.kind == key::SK_KEY {
         let k = crate::pod::cast::<u64>(s.p).expect("ksrc_blocks: the key array is misaligned");
-        for (b, ch) in k[..s.n].chunks(BLK).enumerate() { f(b * BLK, ch) }
+        for (b, ch) in k[..s.n].chunks(s.blk_len()).enumerate() { f(b * s.blk_len(), ch) }
     } else {
-        let mut kb = [0u64; BLK];
-        for b in 0..s.n.div_ceil(BLK) { let c = s.blk(b, &mut kb); f(b * BLK, &kb[..c]) }
+        let mut kb = pod::Scr::<u64>::new(s.blk_len());
+        for b in 0..s.n.div_ceil(s.blk_len()) { let c = s.blk(b, &mut kb); f(b * s.blk_len(), &kb[..c]) }
     }
 }
 /// `f(i, key)` for every key of `s` in order.
@@ -169,15 +171,15 @@ pub fn grade_count(s: &Ksrc, mn: u64, mx: u64, desc: bool, rank: bool, span: u64
 /// column that is not a permutation exits at its first repeated key. Under `rank` the answer is the narrowed key itself.
 pub fn grade_perm(s: &Ksrc, mn: u64, mx: u64, desc: bool, rank: bool, out: &mut [i64]) -> bool {
     let mut seen = alloc::vec![0u64; s.n.div_ceil(64)];
-    let (mut kb, mut ok) = ([0u64; BLK], true);
-    'blocks: for b in 0..s.n.div_ceil(BLK) {
+    let (mut kb, mut ok, bl) = (pod::Scr::<u64>::new(s.blk_len()), true, s.blk_len());
+    'blocks: for b in 0..s.n.div_ceil(bl) {
         let cnt = s.blk(b, &mut kb);
         for j in 0..cnt {
             let v = if desc { mx - kb[j] } else { kb[j] - mn }; // <= span == n-1, so `seen` holds it
             let w = &mut seen[(v >> 6) as usize];
             if (*w >> (v & 63)) & 1 != 0 { ok = false; break 'blocks }
             *w |= 1 << (v & 63);
-            if rank { out[b * BLK + j] = v as i64 } else { out[v as usize] = (b * BLK + j) as i64 }
+            if rank { out[b * bl + j] = v as i64 } else { out[v as usize] = (b * bl + j) as i64 }
         }
     }
     ok
@@ -215,7 +217,7 @@ fn radix<T: Ix, const D: u32>(s: &Ksrc, wid: u32, bits: u32, xr: u64, base: u64,
     let ixb = 64 - (n as u64 - 1).leading_zeros() as i32; // n >= 2: a run answered above
     let d = |k: u64| (k ^ xr).wrapping_sub(base);
     let mut cnt = alloc::vec![T::default(); nb * np];
-    let v0 = { let mut kb = [0u64; BLK]; s.blk(0, &mut kb); d(kb[0]) };
+    let v0 = { let mut kb = pod::Scr::<u64>::new(s.blk_len()); s.blk(0, &mut kb); d(kb[0]) };
     // one loop per digit over a block that is in L1, not np updates an element: the shift is a constant of its loop
     ksrc_blocks(s, |_, ks| for (p, c) in cnt.chunks_exact_mut(nb).enumerate() {
         for &k in ks { let x = &mut c[((d(k) >> (p as u32 * dig)) & mask) as usize]; *x = T::of(x.to() + 1) }
@@ -605,18 +607,18 @@ pub fn asc_blk(c: &Coc, b: usize, desc: bool, strict: bool) -> Ends {
         });
         if bad { None } else { Some((rd(0), rd(cnt - 1))) }
     }
-    let cnt = (c.meta.n - b * BLK).min(BLK);
+    let cnt = (c.meta.n - (b << c.meta.lg)).min(c.meta.blk());
     // a patched block is decoded and re-biased: residuals compare unsigned, so `v ^ sign` over a base of INT64_MIN
     // keeps signed order, and `base + r` is `v` again
     let (base, r) = if c.blk_nexc(b) > 0 {
-        let mut dec = [0i64; BLK];
+        let mut dec = pod::Scr::<i64>::new(c.meta.blk());
         c.decode_blk(b, cnt, &mut dec);
         (1u64 << 63, walk(cnt, desc, strict, |j| dec[j] as u64 ^ (1 << 63)))
     } else {
         let at = c.meta.off[b] as usize;
         let mut w = c.meta.width[b];
-        let mut lb = [0u64; BLK];
-        let p = lanes(&c.pack[at..at + BLK * w as usize / 8], &mut w, cnt, pod::bytes_mut(&mut lb));
+        let mut lb = pod::Scr::<u64>::new(c.meta.blk());
+        let p = lanes(&c.pack[at..at + c.meta.blk() * w as usize / 8], &mut w, cnt, pod::bytes_mut(&mut lb));
         let r = match w {
             // a zero-width block is its base repeated, which is not a strict order past one element
             0 => if strict && cnt > 1 { None } else { Some((0, 0)) },
@@ -647,7 +649,7 @@ pub fn ascending_enc(run: Runner, kind: u8, desc: bool, strict: bool, c: &Coc) -
     // reached (it stops at its first block out of order) reads as out of order
     let mut e = vec![0u64; 3 * (nb - 1)];
     let rest = c.blocks(1, nb);
-    run_map(run, pod::bytes_mut(&mut e), nb - 1, 24, QLEAN_COST_ARITH, BLK * 8, &|lo, hi, o: &mut [u8]| {
+    run_map(run, pod::bytes_mut(&mut e), nb - 1, 24, QLEAN_COST_ARITH, c.meta.blk() * 8, &|lo, hi, o: &mut [u8]| {
         let o = pod::cast_mut::<u64>(o).expect("ascending_enc: the block ends are misaligned");
         for (k, b) in (lo..hi).enumerate() {
             let r = asc_blk(&rest, b, desc, strict);
@@ -1539,6 +1541,7 @@ mod a23_tests {
 
 #[cfg(test)]
 mod tests_a19 {
+    use crate::BLK;
     use super::*;
     use crate::key::{SK_F64, SK_I16, SK_I64, SK_KEY, SK_U8};
     use crate::pod;
@@ -1673,7 +1676,7 @@ fn radix_values<C: Ix, T: Un, const D: u32>(mut da: Vec<T>, bits: u32, wid: u32,
     let np = bits.div_ceil(dig) as usize;
     let mut cnt = vec![C::default(); nb * np];
     // every digit's histogram in one read of the keys: a loop per digit over a block that is in L1
-    for ch in da.chunks(BLK) {
+    for ch in da.chunks(1 << crate::DEFAULT_LG) {
         for (p, c) in cnt.chunks_exact_mut(nb).enumerate() {
             let sh = p as u32 * dig;
             for &x in ch { let s = &mut c[((x.get() >> sh) & mask) as usize]; *s = C::of(s.to() + 1) }

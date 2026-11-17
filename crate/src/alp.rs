@@ -380,7 +380,7 @@ mod tests {
     // Expected values from coc.rs's alp_thresh: the clamps outside 2^53 and the ceil at an exponent
     #[test] fn thresh_clamps_and_rounds_up() {
         let (z, o, w) = ([0i64], [0u64], [0u8]);
-        let meta = Meta { base: &z, maxv: &z, off: &o, bsum: &z, width: &w, sumnul: 0, sumn: 0, n: 1, nblk: 1, mblk: 1 };
+        let meta = Meta { lg: crate::DEFAULT_LG, base: &z, maxv: &z, off: &o, bsum: &z, width: &w, sumnul: 0, sumn: 0, n: 1, nblk: 1, mblk: 1 };
         let f = Cocf { c: Coc { meta, pack: &[], exc: None, fdelta: None }, exp: &[0], exc_off: &[0, 0], exc_pos: &[], exc_raw: &[], f32: false };
         assert_eq!([f.thresh(f64::NAN, 0), f.thresh(1e300, 0), f.thresh(-1e300, 3), f.thresh(f64::INFINITY, 2)],
                    [i64::MIN / 2, i64::MAX / 2, i64::MIN / 2, i64::MAX / 2]);
@@ -390,7 +390,7 @@ mod tests {
     // patch) patched by [1 -> 1.25, 3 -> 0.1234567], /data/tmp/qrs/A17/one2.c; the random comparison is /data/tmp/qrs/A17/diff.c.
     #[test] fn patch_blk_keeps_the_old_exponent_and_answers_the_one_the_search_would_pick() {
         let (base, maxv, off, bsum, width) = ([150i64], [10000i64], [0u64], [0i64], [14u8]);
-        let meta = Meta { base: &base, maxv: &maxv, off: &off, bsum: &bsum, width: &width, sumnul: 0, sumn: 4, n: 4, nblk: 1, mblk: 1 };
+        let meta = Meta { lg: crate::DEFAULT_LG, base: &base, maxv: &maxv, off: &off, bsum: &bsum, width: &width, sumnul: 0, sumn: 4, n: 4, nblk: 1, mblk: 1 };
         let mut pack = vec![0u8; BLK * 14 / 8];
         pack[..7].copy_from_slice(&[0, 192, 18, 0, 0, 232, 153]); // residuals 0, 75, 0, 9850
         let raw = f64::NAN.to_ne_bytes();
@@ -407,6 +407,15 @@ mod tests {
             let len = self.u() as usize; let k = len.div_ceil(8);
             let v = self.w[self.at..self.at + k].to_vec(); self.at += k; (v, len)
         }
+    }
+    /// A metadata blob of the 33n + 16 byte layout as the 33n + 24 byte one: the word `lg = DEFAULT_LG` after `sumn`, 8-aligned.
+    fn old_trailer(m: &[u8]) -> (Vec<u64>, usize) {
+        let (n, at) = ((m.len() - 16) / 33, 32 * ((m.len() - 16) / 33) + 16);
+        let mut v: Vec<u8> = m[..at].to_vec();
+        v.extend((crate::DEFAULT_LG as u64).to_ne_bytes());
+        v.extend(&m[at..at + n]);
+        let len = v.len();
+        (v.chunks(8).map(|c| { let mut t = [0u8; 8]; t[..c.len()].copy_from_slice(c); u64::from_ne_bytes(t) }).collect(), len)
     }
     fn fnv(b: &[u8]) -> u64 { b.iter().fold(14695981039346656037u64, |h, &x| (h ^ x as u64).wrapping_mul(1099511628211)) }
     fn fnv_w(v: &[u64]) -> u64 { fnv(&v.iter().flat_map(|x| x.to_ne_bytes()).collect::<Vec<u8>>()) }
@@ -425,6 +434,8 @@ mod tests {
                 1 => {
                     let (n, f32) = (c.u() as usize, c.u() != 0);
                     let ((mut m, ml), (mut a, al), (mut p, pl)) = (c.blob(), c.blob(), c.blob());
+                    // alp.bin is the C encoder's dump, made before the trailer carried `lg`: its 16-byte trailer is read as the same column at lg = 10
+                    let (mut m, ml) = old_trailer(&bytes_mut(&mut m)[..ml]);
                     let (m, a, p) = (&bytes_mut(&mut m)[..ml], &bytes_mut(&mut a)[..al], &bytes_mut(&mut p)[..pl]);
                     let mut f = Cocf::meta_view(m, a, n).expect("meta_view");
                     assert_eq!(f.f32, f32);

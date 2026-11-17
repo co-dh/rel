@@ -25,10 +25,27 @@ pub fn coc_exc_within(c: &Coc, b: usize, lo: i64, hi: i64) -> bool {
 /// search.rs `ids_top`: one past the largest id at `lw` bits.
 pub fn ids_top(lw: u32) -> u64 { if lw >= 64 { !0 } else { (1u64 << lw) - 1 } }
 impl<'a> Opnd<'a> {
+    /// The block size exponent of this operand: an encoded column's own, the writer's grid for a payload with none.
+    pub fn lg(&self) -> u32 { match self.src { Src::Enc(c) => c.meta.lg, _ => crate::DEFAULT_LG } }
+    /// Elements `at .. at + cnt` at width `w`, as the slice of `buf` they are restored into: one or more of this operand's own
+    /// blocks, whichever its block size cuts them from.
+    pub fn range<'b>(&self, at: usize, cnt: usize, w: usize, buf: &'b mut [u8]) -> &'b [u8] where 'a: 'b {
+        let (lg, blk) = (self.lg(), 1usize << self.lg());
+        let mut tmp = crate::pod::Scr::<u64, 1024>::new(2 * blk);
+        let mut k = 0;
+        while k < cnt {
+            let (b, o) = ((at + k) >> lg, (at + k) & (blk - 1));
+            let t = (blk - o).min(cnt - k);
+            let x = self.blk(b, w, crate::pod::bytes_mut(&mut tmp));
+            buf[k * w..(k + t) * w].copy_from_slice(&x[o * w..(o + t) * w]);
+            k += t;
+        }
+        &buf[..cnt * w]
+    }
     /// search.rs `opnd_blk`: block `b` at key width `w`: a slice of the payload, or restored into `buf`
-    /// (BLK * w); the element count is the answer's length / `w`.
+    /// (block size * w); the element count is the answer's length / `w`.
     pub fn blk<'b>(&self, b: usize, w: usize, buf: &'b mut [u8]) -> &'b [u8] where 'a: 'b {
-        let (at, cnt) = (b * crate::BLK, (self.n - b * crate::BLK).min(crate::BLK));
+        let (at, cnt) = (b << self.lg(), (self.n - (b << self.lg())).min(1 << self.lg()));
         match self.src {
             Src::Dense(d) => &d[at * w..(at + cnt) * w],
             Src::Ids(p, lw) => {
@@ -62,7 +79,7 @@ impl<'a> Opnd<'a> {
 /// search.rs `coc_srange`: the column's value range from its metadata.
 pub fn coc_srange(c: &Coc) -> (i64, i64) {
     let m = &c.meta;
-    let nb = m.n.div_ceil(crate::BLK);
+    let nb = m.n.div_ceil(m.blk());
     let (mut a, mut z) = (i64::MAX, i64::MIN);
     for b in 0..nb { a = a.min(m.base[b]); z = z.max(m.maxv[b]) }
     for j in 0..c.exc.map_or(0, |e| e.pos.len()) { let v = c.exc(j); a = a.min(v); z = z.max(v) }
@@ -136,12 +153,13 @@ pub struct Ptab<K> { pub tab: Vec<usize>, pub slot: Vec<u32>, pub key: Vec<K>, p
 
 /// The blocks of `x` covering elements `lo .. hi`, each as the slice of those elements starting at element `at`.
 fn blocks(x: &Opnd, w: usize, lo: usize, hi: usize, mut f: impl FnMut(usize, &[u8])) {
-    let mut buf = [0u64; 2 * crate::BLK];
+    let lg = x.lg();
+    let mut buf = crate::pod::Scr::<u64>::new(2 << lg);
     let bb = crate::pod::bytes_mut(&mut buf);
     let mut at = lo;
     while at < hi {
-        let (b, end) = (at / crate::BLK, ((at / crate::BLK + 1) * crate::BLK).min(hi));
-        let blo = b * crate::BLK;
+        let (b, end) = (at >> lg, (((at >> lg) + 1) << lg).min(hi));
+        let blo = b << lg;
         f(at, &x.blk(b, w, bb)[(at - blo) * w..(end - blo) * w]);
         at = end;
     }
@@ -151,9 +169,9 @@ fn blocks(x: &Opnd, w: usize, lo: usize, hi: usize, mut f: impl FnMut(usize, &[u
 /// occurs at plus one. Direct when the keys span at most `4n + 8`; a direct table whose every slot is filled stops there.
 pub fn table<K: PKey>(o: &Opnd) -> Ptab<K> {
     let mut p = Ptab { tab: Vec::new(), slot: Vec::new(), key: Vec::new(), top: 0, lo: 0, n: o.n, used: 0, direct: false, sh: 0 };
-    let mut buf = [0u64; 2 * crate::BLK];
+    let (lg, mut buf) = (o.lg(), crate::pod::Scr::<u64>::new(2 << o.lg()));
     let bb = crate::pod::bytes_mut(&mut buf);
-    let nb = o.n.div_ceil(crate::BLK);
+    let nb = o.n.div_ceil(1 << lg);
     if o.n > 0 && K::W <= 8 {
         let (lo, span) = match o.src {
             Src::Ids(_, lw) => (0, ids_top(lw)),
@@ -173,7 +191,7 @@ pub fn table<K: PKey>(o: &Opnd) -> Ptab<K> {
                 for (j, c) in o.blk(b, K::W, bb).chunks_exact(K::W).enumerate() {
                     let d = ((K::of(c).key() as u64).wrapping_sub(lo) & mask::<K>()) as usize;
                     if p.tab[d] == 0 {
-                        p.tab[d] = b * crate::BLK + j + 1;
+                        p.tab[d] = (b << lg) + j + 1;
                         p.used += 1;
                         if p.used as u64 > span { return p }
                     }
@@ -202,7 +220,7 @@ pub fn table<K: PKey>(o: &Opnd) -> Ptab<K> {
             while p.slot[s] != 0 && p.key[p.slot[s] as usize - 1].key() != k.key() { s = (s + 1) & p.top as usize }
             if p.slot[s] == 0 {
                 p.key.push(k);
-                p.tab.push(b * crate::BLK + j + 1);
+                p.tab.push((b << lg) + j + 1);
                 p.used += 1;
                 p.slot[s] = p.used as u32;
             }
@@ -235,9 +253,10 @@ impl<K: PKey> Ptab<K> {
     /// misses the needles' `[lo, hi]` is passed over on its metadata.
     pub fn hits(&self, h: &Opnd, lo: i64, hi: i64, ans: &mut [usize]) {
         let mut left = self.used;
-        let mut buf = [0u64; 2 * crate::BLK];
+        let lg = h.lg();
+        let mut buf = crate::pod::Scr::<u64>::new(2 << lg);
         let bb = crate::pod::bytes_mut(&mut buf);
-        for b in 0..h.n.div_ceil(crate::BLK) {
+        for b in 0..h.n.div_ceil(1 << lg) {
             if left == 0 { return }
             if let Src::Enc(c) = h.src {
                 if (c.meta.maxv[b] < lo || c.meta.base[b] > hi) && !coc_exc_within(&c, b, lo, hi) { continue }
@@ -245,7 +264,7 @@ impl<K: PKey> Ptab<K> {
             for (j, c) in h.blk(b, K::W, bb).chunks_exact(K::W).enumerate() {
                 let s = self.slot_of(K::of(c));
                 if s != usize::MAX && self.tab[s] != 0 && ans[s] == 0 {
-                    ans[s] = b * crate::BLK + j + 1;
+                    ans[s] = (b << lg) + j + 1;
                     left -= 1;
                     if left == 0 { return }
                 }
@@ -666,16 +685,16 @@ impl Walk {
     fn pos(self, h: &Col, k: u64, n: i64) -> i64 { let at = self.step(h, |i| i, k, 0, n); if self.right { at } else { at - 1 } }
 }
 /// search.rs `kcur`: a worker's view of the needles, the dense payload or the last block restored.
-struct Kcur<'a> { k: Col<'a>, w: usize, b: usize, buf: [u64; crate::BLK] }
+struct Kcur<'a> { k: Col<'a>, w: usize, b: usize, buf: crate::pod::Scr<u64> }
 impl<'a> Kcur<'a> {
-    fn new(k: Col<'a>, w: usize) -> Self { Kcur { k, w, b: usize::MAX, buf: [0; crate::BLK] } }
+    fn new(k: Col<'a>, w: usize) -> Self { Kcur { k, w, b: usize::MAX, buf: crate::pod::Scr::<u64>::new(k.c.map_or(0, |c| c.meta.blk())) } }
     /// search.rs `kcur_at`
     fn at(&mut self, j: usize) -> u64 {
         let Some(c) = self.k.c else { return bin_at(self.k.d, self.w, j) };
-        let b = j / crate::BLK;
+        let b = j >> c.meta.lg;
         if b != self.b {
-            let (at, w) = (b * crate::BLK, self.w);
-            let cnt = (c.meta.n - at).min(crate::BLK);
+            let (at, w) = (b << c.meta.lg, self.w);
+            let cnt = (c.meta.n - at).min(c.meta.blk());
             let o = crate::pod::bytes_mut(&mut self.buf);
             match w {
                 1 => c.decode_blk::<u8>(b, cnt, o),
@@ -685,7 +704,7 @@ impl<'a> Kcur<'a> {
             }
             self.b = b;
         }
-        bin_at(crate::pod::bytes(&self.buf), self.w, j % crate::BLK)
+        bin_at(crate::pod::bytes(&self.buf), self.w, j & (c.meta.blk() - 1))
     }
 }
 /// search.rs `BIN_TAB_MAX`, `BIN_TAB_SAMPLE`
@@ -857,10 +876,10 @@ pub fn run_starts(o: &Opnd, w: usize, is_float: bool, out: &mut [i64]) -> usize 
             if v != *prev { out[*g] = (at + j) as i64; *g += 1; *prev = v }
         }
     }
-    let (mut buf, mut g, mut prev) = ([0u64; crate::BLK], 0, 0u64);
-    for b in 0..o.n.div_ceil(crate::BLK) {
+    let (lg, mut buf, mut g, mut prev) = (o.lg(), crate::pod::Scr::<u64>::new(1 << o.lg()), 0, 0u64);
+    for b in 0..o.n.div_ceil(1 << lg) {
         let h = o.blk(b, w, crate::pod::bytes_mut(&mut buf));
-        let at = b * crate::BLK;
+        let at = b << lg;
         // row 0 starts a run whatever its key; the loop then needs no test for it
         let skip = if b == 0 { out[0] = 0; g = 1; prev = norm_key(w, is_float, bin_at(h, w, 0)); 1 } else { 0 };
         // the width switch hoisted out of the element loop, as search.rs's `RS_RUNS` hoists it
@@ -1084,14 +1103,14 @@ pub fn find_scalar(w: usize, is_float: bool, hay: &[u8], needle: u64) -> usize {
 /// block's first row and its elements, and a `Some` ends the walk. `?` at an atom asks about one element, so a block whose
 /// `[base, maxv]` cannot hold the needle is skipped from its 16 bytes of metadata instead of its 8 KB of elements.
 fn eq_blocks<R>(c: &Coc, v: i64, mut f: impl FnMut(usize, &[i64]) -> Option<R>) -> Option<R> {
-    let (nb, mut buf) = (c.meta.n.div_ceil(crate::BLK), [0i64; crate::BLK]);
+    let (nb, mut buf) = (c.meta.n.div_ceil(c.meta.blk()), crate::pod::Scr::<i64>::new(c.meta.blk()));
     for b0 in (0..nb).step_by(64) {
         let mut m = coc_may_hold64(c, b0, (nb - b0).min(64), v);
         while m != 0 {
-            let at = (b0 + m.trailing_zeros() as usize) * crate::BLK;
+            let at = (b0 + m.trailing_zeros() as usize) << c.meta.lg;
             m &= m - 1;
-            let cnt = (c.meta.n - at).min(crate::BLK);
-            c.decode_blk(at / crate::BLK, cnt, &mut buf);
+            let cnt = (c.meta.n - at).min(c.meta.blk());
+            c.decode_blk(at >> c.meta.lg, cnt, &mut buf);
             if let Some(r) = f(at, &buf[..cnt]) { return Some(r) }
         }
     }
@@ -1108,7 +1127,7 @@ pub fn coc_span(m: &crate::coc::Meta, v: i64) -> usize {
 /// `qlean_coc_rows_eq`'s body: every row of `c` equal to `v`, ascending: `coc_find`'s walk carried past the first hit. A
 /// block's hits are written branch-free into a stack buffer and appended whole, so a hit costs no branch.
 pub fn coc_rows_eq(c: &Coc, v: i64) -> Vec<i64> {
-    let (mut rows, mut t) = (Vec::with_capacity(crate::BLK), [0i64; crate::BLK]);
+    let (mut rows, mut t) = (Vec::with_capacity(c.meta.blk()), crate::pod::Scr::<i64>::new(c.meta.blk()));
     eq_blocks::<()>(c, v, |at, e| {
         let mut k = 0;
         for (i, &x) in e.iter().enumerate() { t[k] = (at + i) as i64; k += (x == v) as usize }
@@ -1253,8 +1272,18 @@ pub fn match_bytes(w: usize, is_float: bool, a: &[u8], b: &[u8]) -> bool {
 /// that differs.
 pub fn coc_match(a: &Opnd, b: &Opnd, w: usize) -> bool {
     if a.n != b.n { return false }
-    let (mut xa, mut xb) = ([0u8; crate::BLK * 8], [0u8; crate::BLK * 8]);
-    (0..a.n.div_ceil(crate::BLK)).all(|k| a.blk(k, w, &mut xa) == b.blk(k, w, &mut xb))
+    let (la, lb) = (a.lg(), b.lg());
+    if la == lb {
+        let (mut xa, mut xb) = (crate::pod::Scr::<u8, 8192>::new(8 << la), crate::pod::Scr::<u8, 8192>::new(8 << la));
+        return (0..a.n.div_ceil(1 << la)).all(|k| a.blk(k, w, &mut xa) == b.blk(k, w, &mut xb));
+    }
+    // blocks of two sizes: each side restores the span the larger block covers, from as many of its own blocks as that takes
+    let l = la.max(lb);
+    let (mut xa, mut xb) = (crate::pod::Scr::<u8, 8192>::new(w << l), crate::pod::Scr::<u8, 8192>::new(w << l));
+    (0..a.n.div_ceil(1 << l)).all(|k| {
+        let cnt = (a.n - (k << l)).min(1 << l);
+        a.range(k << l, cnt, w, &mut xa) == b.range(k << l, cnt, w, &mut xb)
+    })
 }
 #[cfg(test)]
 mod tests {
@@ -1275,7 +1304,7 @@ mod tests {
     fn float_at_two_bytes_aborts() { kind_of(2, true, "find_vec"); }
     fn col<'a>(base: &'a [i64], maxv: &'a [i64], off: &'a [u64], width: &'a [u8], n: usize, exc: Option<Exc<'a>>) -> Coc<'a> {
         let m = base.len();
-        Coc { meta: Meta { base, maxv, off, bsum: base, width, sumnul: 0, sumn: 0, n, nblk: m, mblk: m }, pack: &[], exc, fdelta: None }
+        Coc { meta: Meta { lg: crate::DEFAULT_LG, base, maxv, off, bsum: base, width, sumnul: 0, sumn: 0, n, nblk: m, mblk: m }, pack: &[], exc, fdelta: None }
     }
     #[test] fn srange_and_exc_within() {
         let (raw, pos, off) = ([(-9i64).to_ne_bytes(), 40i64.to_ne_bytes()].concat(), [1u16, 2], [0u32, 0, 2]);

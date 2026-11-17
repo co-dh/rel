@@ -534,6 +534,7 @@ pub fn chain_enc<'a>(prog: &[u8], input: &impl Fn(u8) -> &'a [u8], n: usize, wid
 
 #[cfg(test)]
 mod tests {
+    use crate::BLK;
     use super::*;
     // testdata/drv.c (deleted; in git history) encoded a 3000-element column with the C encoder at each element width and dumped the buffers
     // and what coc.rs's accessors answered (`col<esz>.txt`): the header, then `blk b frame nexc` and `exc j value`.

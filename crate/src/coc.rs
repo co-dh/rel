@@ -220,7 +220,7 @@ mod tests {
         for w in 0..=64u8 {
             let pack: Vec<u8> = (0..BLK * w as usize / 8).map(|_| { s ^= s << 13; s ^= s >> 7; s ^= s << 17; s as u8 }).collect();
             let base = [s as i64]; let (z, off, width) = ([0i64], [0u64], [w]);
-            let meta = super::Meta { base: &base, maxv: &z, off: &off, bsum: &z, width: &width, sumnul: 0, sumn: 0,
+            let meta = super::Meta { lg: crate::DEFAULT_LG, base: &base, maxv: &z, off: &off, bsum: &z, width: &width, sumnul: 0, sumn: 0,
                                      n: BLK, nblk: 1, mblk: 1 };
             let c = super::Coc { meta, pack: &pack, exc: None, fdelta: None };
             for nb in [1, 7, 63, 64, 1023, 1024] {
@@ -239,7 +239,7 @@ mod tests {
     // expected values: coc.rs's coc_attach (aborts) and coc_meta_view at 152d98f
     #[test] fn attach_refuses_what_c_aborts_on() {
         let (z, off, width) = ([0i64], [0u64], [8u8]);
-        let meta = super::Meta { base: &z, maxv: &z, off: &off, bsum: &z, width: &width, sumnul: 0, sumn: 0, n: 1, nblk: 1, mblk: 1 };
+        let meta = super::Meta { lg: crate::DEFAULT_LG, base: &z, maxv: &z, off: &off, bsum: &z, width: &width, sumnul: 0, sumn: 0, n: 1, nblk: 1, mblk: 1 };
         let res = BLK; // one block of width 8
         assert!(super::Coc::attach(meta, &vec![0u8; res]).is_some());
         assert!(super::Coc::attach(meta, &vec![0u8; res + 8]).is_none());
@@ -249,9 +249,10 @@ mod tests {
     }
     #[test] fn meta_new_refuses_a_misaligned_or_short_buffer() {
         let mut v = vec![0u64; 8];
+        v[6] = 10; // lg
         let b = &*crate::pod::bytes_mut(&mut v);
-        assert!(super::Meta::new(&b[..49], 1).is_some()); // 33 + 16
-        assert!(super::Meta::new(&b[1..50], 1).is_none());
+        assert!(super::Meta::new(&b[..57], 1).is_some()); // 33 + 24
+        assert!(super::Meta::new(&b[1..58], 1).is_none());
         assert!(super::Meta::new(&b[..40], 1).is_none());
     }
     #[test] fn decode_blk_every_width() { check::<u8>(1); check::<i16>(2); check::<i32>(3); check::<i64>(4) }

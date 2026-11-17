@@ -5,7 +5,7 @@
 use crate::alp::{Cocf, POW10};
 use crate::coc::Coc;
 use crate::key::{SK_BIT, SK_C8, SK_F32, SK_F64, SK_I16, SK_I32, SK_I64, SK_KINDS_N, SK_U8};
-use crate::{bits, pod, reduce, simd, BLK};
+use crate::{bits, pod, reduce, simd};
 use crate::coc::Meta;
 use alloc::vec::Vec;
 
@@ -271,7 +271,7 @@ pub fn sc_fill_c(out: &mut [u8], cnt: usize, w: usize, acc: i64) {
 /// scan.rs `sc_blk_skip`: block `b` of `c` leaves the accumulator `acc` unchanged under `op`, so its residuals need
 /// not be unpacked. `0N` is the minimum of the type, so a block holding one has `base` there and `mins` declines.
 pub fn sc_blk_skip(op: i32, kind: i32, c: &Coc, b: usize, cnt: usize, acc: i64) -> bool {
-    if cnt != BLK || kind < SK_U8 as i32 || kind > SK_I64 as i32 || c.blk_nexc(b) != 0 { return false }
+    if cnt != c.meta.blk() || kind < SK_U8 as i32 || kind > SK_I64 as i32 || c.blk_nexc(b) != 0 { return false }
     match op {
         SC_MINS => c.meta.base[b] >= acc,
         SC_MAXS => c.meta.maxv[b] <= acc,
@@ -282,7 +282,7 @@ pub fn sc_blk_skip(op: i32, kind: i32, c: &Coc, b: usize, cnt: usize, acc: i64) 
 /// scan.rs `sc_alp_skip`: the ALP twin. A block with an exception is decoded, and only the eight-byte width takes
 /// it: at `real` the quotient is rounded to `float` and the rounding can cross the comparison.
 pub fn sc_alp_skip(op: i32, f: &Cocf, b: usize, cnt: usize, acc: f64) -> bool {
-    if cnt != BLK || f.f32 || f.exc_off[b] != f.exc_off[b + 1] { return false }
+    if cnt != f.c.meta.blk() || f.f32 || f.exc_off[b] != f.exc_off[b + 1] { return false }
     let p10 = POW10[f.exp[b] as usize];
     match op {
         SC_MINS => f.c.meta.base[b] as f64 / p10 >= acc,
@@ -844,7 +844,7 @@ pub fn col_bits(op: u8, n: usize, a: &[u8], out: &mut [u8]) {
 /// The elements of an encoded column of `n` asked for: what its block grid holds.
 fn enc_n(mv: &[u8], n: usize) -> usize { Meta::new(mv, n).map_or(0, |m| m.n) }
 /// coc.rs `coc_load_blk_at`: block `b`'s first `nb` elements at `w` bytes an element into `buf`.
-fn load_blk(c: &Coc, b: usize, nb: usize, w: usize, buf: &mut [u64; BLK]) {
+fn load_blk(c: &Coc, b: usize, nb: usize, w: usize, buf: &mut [u64]) {
     let by = pod::bytes_mut(buf);
     match w {
         1 => c.decode_blk::<u8>(b, nb, pod::cast_mut(by).unwrap()),
@@ -862,9 +862,10 @@ pub fn col_for(op: u8, kind: u8, n: usize, mv: &[u8], pv: &[u8], out: &mut [u8])
     let (op, kind) = (op as i32, kind as i32);
     let c = crate::coc::view(mv, pv, n).unwrap_or_else(|e| panic!("qlean: {e}"));
     let (w, ow) = (dense_width(kind), sc_out_width(op, kind));
-    let (mut buf, mut acc) = ([0u64; BLK], [0u8; 8]);
-    for (b, at) in (0..c.meta.n).step_by(BLK).enumerate() {
-        let cnt = (c.meta.n - at).min(BLK);
+    let blk = c.meta.blk();
+    let (mut buf, mut acc) = (pod::Scr::<u64>::new(blk), [0u8; 8]);
+    for (b, at) in (0..c.meta.n).step_by(blk).enumerate() {
+        let cnt = (c.meta.n - at).min(blk);
         let (o, a) = (&mut out[at * ow..(at + cnt) * ow], i64::from_ne_bytes(acc));
         if at != 0 && sc_blk_skip(op, kind, &c, b, cnt, a) {
             sc_fill_c(o, cnt, ow, a);
@@ -881,9 +882,10 @@ pub fn col_alp(op: u8, kind: u8, n: usize, mv: &[u8], pv: &[u8], av: &[u8], out:
     let (op, kind) = (op as i32, kind as i32);
     let f = Cocf::view(mv, pv, av, n).unwrap_or_else(|| panic!("qlean: the ALP part of {} bytes or its metadata of {} bytes is misaligned or short", av.len(), mv.len()));
     let (w, ow, nn) = (dense_width(kind), sc_out_width(op, kind), f.c.meta.n);
-    let (mut buf, mut lanes, mut acc) = ([0u64; BLK], [0u64; BLK], [0u8; 8]);
-    for (b, at) in (0..nn).step_by(BLK).enumerate() {
-        let cnt = (nn - at).min(BLK);
+    let blk = f.c.meta.blk();
+    let (mut buf, mut lanes, mut acc) = (pod::Scr::<u64>::new(blk), pod::Scr::<u64>::new(blk), [0u8; 8]);
+    for (b, at) in (0..nn).step_by(blk).enumerate() {
+        let cnt = (nn - at).min(blk);
         if at != 0 && sc_alp_skip(op, &f, b, cnt, f64::from_ne_bytes(acc)) {
             sc_fill_c(&mut out[at * ow..(at + cnt) * ow], cnt, ow, i64::from_ne_bytes(acc));
             continue;
@@ -1009,11 +1011,11 @@ pub fn mwin_for_len(op: u8, kind: u8, mv: &[u8], n: usize) -> usize { enc_n(mv, 
 pub fn mwin_for(op: u8, kind: u8, w: usize, n: usize, mv: &[u8], pv: &[u8], out: &mut [u8]) {
     let (op, kind) = (op as i32, kind as i32);
     let c = crate::coc::view(mv, pv, n).unwrap_or_else(|e| panic!("qlean: {e}"));
-    let (ew, ow, mut buf) = (dense_width(kind), mw_out_width(op, kind), [0u64; BLK]);
+    let (ew, ow, mut buf) = (dense_width(kind), mw_out_width(op, kind), pod::Scr::<u64>::new(c.meta.blk()));
     let mut st = MwSt::open(op, kind, w, c.meta.n);
-    for at in (0..c.meta.n).step_by(BLK) {
-        let cnt = (c.meta.n - at).min(BLK);
-        load_blk(&c, at / BLK, cnt, ew, &mut buf);
+    for at in (0..c.meta.n).step_by(c.meta.blk()) {
+        let cnt = (c.meta.n - at).min(c.meta.blk());
+        load_blk(&c, at >> c.meta.lg, cnt, ew, &mut buf);
         st.run(op, kind, pod::bytes(&buf), &mut out[at * ow..(at + cnt) * ow], cnt);
     }
 }
@@ -1023,11 +1025,11 @@ pub fn mwin_alp_len(op: u8, kind: u8, mv: &[u8], n: usize) -> usize { mwin_for_l
 pub fn mwin_alp(op: u8, kind: u8, w: usize, n: usize, mv: &[u8], pv: &[u8], av: &[u8], out: &mut [u8]) {
     let (op, kind) = (op as i32, kind as i32);
     let f = Cocf::view(mv, pv, av, n).unwrap_or_else(|| panic!("qlean: the ALP part of {} bytes or its metadata of {} bytes is misaligned or short", av.len(), mv.len()));
-    let (ow, mut buf) = (mw_out_width(op, kind), [0u64; BLK]);
+    let (ow, mut buf) = (mw_out_width(op, kind), pod::Scr::<u64>::new(f.c.meta.blk()));
     let mut st = MwSt::open(op, kind, w, f.c.meta.n);
-    for at in (0..f.c.meta.n).step_by(BLK) {
-        let cnt = (f.c.meta.n - at).min(BLK);
-        f.load_blk(at / BLK, cnt, pod::bytes_mut(&mut buf));
+    for at in (0..f.c.meta.n).step_by(f.c.meta.blk()) {
+        let cnt = (f.c.meta.n - at).min(f.c.meta.blk());
+        f.load_blk(at >> f.c.meta.lg, cnt, pod::bytes_mut(&mut buf));
         st.run(op, kind, pod::bytes(&buf), &mut out[at * ow..(at + cnt) * ow], cnt);
     }
 }

@@ -375,7 +375,7 @@ mod a17_tests {
     #[test] fn move_pack_zero_pads_a_short_pack() {
         // block 0 of width 8 whose pack holds 3 of its 1024 bytes: the rest reads as zeros, `Column.resAt`'s convention
         let (base, z, off, width) = ([5i64], [0i64], [0u64], [8u8]);
-        let meta = crate::coc::Meta { base: &base, maxv: &z, off: &off, bsum: &z, width: &width, sumnul: 0, sumn: 0, n: 3, nblk: 1, mblk: 1 };
+        let meta = crate::coc::Meta { lg: crate::DEFAULT_LG, base: &base, maxv: &z, off: &off, bsum: &z, width: &width, sumnul: 0, sumn: 0, n: 3, nblk: 1, mblk: 1 };
         let f = Cocf { c: Coc { meta, pack: &[1, 2, 3], exc: None, fdelta: None }, exp: &[], exc_off: &[], exc_pos: &[], exc_raw: &[], f32: false };
         let mut res = [0xa5u8; crate::BLK];
         let mut p = EncPack { b: 0, nb: 3, base: 5, frame: 5, width: 8, exp: 0, res: &mut res, pos: &mut [], raw: &mut [] };
@@ -453,7 +453,7 @@ mod tests {
             at += BLK * width[b] as usize / 8;
         }
         let nbk = n.div_ceil(BLK);
-        let c = Coc { meta: crate::coc::Meta { base: &base, maxv: &maxv, off: &off, bsum: &bsum, width: &width, sumnul: 0, sumn: 0,
+        let c = Coc { meta: crate::coc::Meta { lg: crate::DEFAULT_LG, base: &base, maxv: &maxv, off: &off, bsum: &bsum, width: &width, sumnul: 0, sumn: 0,
                                                 n, nblk: nbk, mblk: 2 },
                       pack: &pack, exc: Some(crate::coc::Exc { off: &eo, pos: &pos, raw: &raw, esz: size_of::<T>() }),
                       fdelta: Some(&frm) };

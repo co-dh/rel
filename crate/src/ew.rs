@@ -84,7 +84,7 @@ use crate::c::run_map;
 use crate::ids::{self, id_at, ids_avail, ids_bytes, pack, unpack};
 use crate::pod::{self, bytes_mut, Lane, Pod};
 use crate::sym::sym_msort;
-use crate::{BLK, QLEAN_COST_ARITH, QLEAN_COST_COPY, QLEAN_COST_MATH};
+use crate::{QLEAN_COST_ARITH, QLEAN_COST_COPY, QLEAN_COST_MATH};
 use alloc::vec;
 use alloc::vec::Vec;
 
@@ -132,8 +132,10 @@ pub fn decode_stage(c: &Coc, b: usize, cnt: usize, w: usize, o: &mut [u8]) {
         _ => c.decode_blk::<i64>(b, cnt, rw(o)),
     }
 }
+/// A block-sized scratch for `c`.
+fn pod_scr(c: &Coc) -> crate::pod::Scr<u64> { crate::pod::Scr::<u64>::new(c.meta.blk()) }
 /// The bytes of `buf` as a block's elements.
-fn block<'a>(c: &Coc, b: usize, cnt: usize, w: usize, buf: &'a mut [u64; BLK]) -> &'a [u8] {
+fn block<'a>(c: &Coc, b: usize, cnt: usize, w: usize, buf: &'a mut [u64]) -> &'a [u8] {
     let o = bytes_mut(buf);
     decode_stage(c, b, cnt, w, o);
     o
@@ -273,14 +275,15 @@ pub fn val(run: Runner, op: u8, cls: u8, shape: u8, nul: i64, a: &[u8], b: &[u8]
 }
 /// ew.rs `ew_val_foR_run`: two encoded columns, the answer dense.
 pub fn val_enc(run: Runner, op: u8, cls: u8, nul: i64, a: &Coc, b: &Coc, out: &mut [u8]) {
-    let (w, n) = (ew_width(cls as u32), a.meta.n);
+    let (w, n, lg) = (ew_width(cls as u32), a.meta.n, a.meta.lg);
+    assert_eq!(lg, b.meta.lg, "qlean ew: two encoded columns at block sizes 1 << {} and 1 << {}; the caller decodes one", lg, b.meta.lg);
     run_map(run, out, n, w, QLEAN_COST_ARITH, w, &|lo, hi, o| {
-        let (mut xa, mut xb) = ([0u64; BLK], [0u64; BLK]);
+        let (mut xa, mut xb) = (pod_scr(a), pod_scr(a));
         let mut at = lo;
         while at < hi {
             // a slice may start inside a block, so the block is decoded from its own start and entered at `at - blo`
-            let (blk, end) = (at / BLK, (at / BLK * BLK + BLK).min(hi));
-            let (blo, cnt) = (blk * BLK, end - blk * BLK);
+            let (blk, end) = (at >> lg, (((at >> lg) + 1) << lg).min(hi));
+            let (blo, cnt) = (blk << lg, end - (blk << lg));
             let (pa, pb) = (block(a, blk, cnt, w, &mut xa), block(b, blk, cnt, w, &mut xb));
             val_slice(op, cls, k::VV, nul, pa, pb, at - blo, cnt, &mut o[(at - lo) * w..(end - lo) * w]);
             at = end;
@@ -289,13 +292,13 @@ pub fn val_enc(run: Runner, op: u8, cls: u8, nul: i64, a: &Coc, b: &Coc, out: &m
 }
 /// ew.rs `ew_val_foR_atom_run`: an encoded column and an atom.
 pub fn val_enc_atom(run: Runner, op: u8, cls: u8, shape: u8, nul: i64, c: &Coc, atom: &[u8], out: &mut [u8]) {
-    let (w, n) = (ew_width(cls as u32), c.meta.n);
+    let (w, n, lg) = (ew_width(cls as u32), c.meta.n, c.meta.lg);
     run_map(run, out, n, w, QLEAN_COST_ARITH, w, &|lo, hi, o| {
-        let mut xv = [0u64; BLK];
+        let mut xv = pod_scr(c);
         let mut at = lo;
         while at < hi {
-            let (blk, end) = (at / BLK, (at / BLK * BLK + BLK).min(hi));
-            let (blo, cnt) = (blk * BLK, end - blk * BLK);
+            let (blk, end) = (at >> lg, (((at >> lg) + 1) << lg).min(hi));
+            let (blo, cnt) = (blk << lg, end - (blk << lg));
             let x = block(c, blk, cnt, w, &mut xv);
             let o = &mut o[(at - lo) * w..(end - lo) * w];
             if shape == k::VA { val_slice(op, cls, shape, nul, x, atom, at - blo, cnt, o) } else { val_slice(op, cls, shape, nul, atom, x, at - blo, cnt, o) }
@@ -368,13 +371,13 @@ pub fn low_zero(run: Runner, a: &[u8], b: &[u8], n: usize, out: &mut [u8]) {
 /// ew.rs `ew_low_zero_foR_run`: a block with `base = maxv` is one value and is answered from its metadata,
 /// any other is restored into a buffer; sliced by output byte, a block's bytes may be split between two slices.
 pub fn low_zero_enc(run: Runner, c: &Coc, atom: &[u8], out: &mut [u8]) {
-    let (n, m) = (c.meta.n, ro::<u64>(side(atom, true, 0, 1, 8))[0]);
-    run_map(run, out, n.div_ceil(8), 1, QLEAN_COST_ARITH, BLK * 8, &|lo, hi, o| {
-        let mut xv = [0u64; BLK];
+    let (n, m, lg) = (c.meta.n, ro::<u64>(side(atom, true, 0, 1, 8))[0], c.meta.lg);
+    run_map(run, out, n.div_ceil(8), 1, QLEAN_COST_ARITH, c.meta.blk() * 8, &|lo, hi, o| {
+        let mut xv = pod_scr(c);
         let mut at = lo;
         while at < hi {
-            let (blk, end) = (at / (BLK / 8), ((at / (BLK / 8) + 1) * (BLK / 8)).min(hi));
-            let (blo, cnt) = (blk * BLK, (n - blk * BLK).min(BLK));
+            let (blk, end) = (at >> (lg - 3), (((at >> (lg - 3)) + 1) << (lg - 3)).min(hi));
+            let (blo, cnt) = (blk << lg, (n - (blk << lg)).min(c.meta.blk()));
             let (e0, e1) = (at * 8, (end * 8).min(blo + cnt));
             let o = &mut o[at - lo..end - lo];
             if c.meta.base[blk] == c.meta.maxv[blk] {
@@ -667,14 +670,14 @@ pub fn mon_enc(run: Runner, op: u8, cls: u8, nul: i64, c: &Coc, out: &mut [u8]) 
     let n = c.meta.n;
     if n == 0 { return }
     mon_chk(op, cls);
-    let w = ew_width(cls as u32);
+    let (w, lg) = (ew_width(cls as u32), c.meta.lg);
     run_map(run, out, n, w, QLEAN_COST_ARITH, w, &|lo, hi, o| {
-        let mut xv = [0u64; BLK];
+        let mut xv = pod_scr(c);
         let mut at = lo;
         while at < hi {
             // a slice may start inside a block, so the block is decoded from its own start and entered at `at - blo`
-            let (blk, end) = (at / BLK, (at / BLK * BLK + BLK).min(hi));
-            let (blo, cnt) = (blk * BLK, end - blk * BLK);
+            let (blk, end) = (at >> lg, (((at >> lg) + 1) << lg).min(hi));
+            let (blo, cnt) = (blk << lg, end - (blk << lg));
             let x = block(c, blk, cnt, w, &mut xv);
             mon_slice(op, cls, nul, &x[(at - blo) * w..cnt * w], &mut o[(at - lo) * w..(end - lo) * w]);
             at = end;
@@ -682,22 +685,31 @@ pub fn mon_enc(run: Runner, op: u8, cls: u8, nul: i64, c: &Coc, out: &mut [u8]) 
     });
 }
 /// ew.rs `ew_mon_fill`: the encoder source of `qlean_coc_ew_mon_enc`. `buf` is the `buf.len()` elements of
-/// block `i0 / BLK`, mapped at the class's width and widened back to `i64` (`coc_widen`, which reads any width but 2
+/// the column from element `i0`, mapped at the class's width and widened back to `i64` (`coc_widen`, which reads any width but 2
 /// and 4 as eight bytes).
 pub fn mon_fill(op: u8, cls: u8, nul: i64, c: &Coc, buf: &mut [i64], i0: usize) {
     let (nb, w) = (buf.len(), ew_width(cls as u32));
     if nb == 0 { return }
     mon_chk(op, cls);
-    let mut xv = [0u64; BLK];
-    let x = block(c, i0 / BLK, nb, w, &mut xv);
-    if w == 8 { return mon_slice(op, cls, nul, &x[..nb * 8], bytes_mut(buf)) }
-    let mut yv = [0u64; BLK];
-    let y = bytes_mut(&mut yv);
-    mon_slice(op, cls, nul, &x[..nb * w], &mut y[..nb * w]);
-    match w {
-        2 => for (d, &s) in buf.iter_mut().zip(ro::<i16>(&y[..nb * 2])) { *d = s as i64 },
-        4 => for (d, &s) in buf.iter_mut().zip(ro::<i32>(&y[..nb * 4])) { *d = s as i64 },
-        _ => for (d, &s) in buf.iter_mut().zip(ro::<u64>(&y[..nb * 8])) { *d = s as i64 },
+    // the source's blocks need not be the writer's: one pass per source block the span touches (one, whole, at the same size)
+    let (lg, blk) = (c.meta.lg, c.meta.blk());
+    let (mut xv, mut yv) = (pod_scr(c), pod_scr(c));
+    let mut at = 0;
+    while at < nb {
+        let (b, o) = ((i0 + at) >> lg, (i0 + at) & (blk - 1));
+        let take = (blk - o).min(nb - at);
+        let x = &block(c, b, o + take, w, &mut xv)[o * w..];
+        let d = &mut buf[at..at + take];
+        if w == 8 { mon_slice(op, cls, nul, &x[..take * 8], bytes_mut(d)) } else {
+            let y = bytes_mut(&mut yv);
+            mon_slice(op, cls, nul, &x[..take * w], &mut y[..take * w]);
+            match w {
+                2 => for (d, &s) in d.iter_mut().zip(ro::<i16>(&y[..take * 2])) { *d = s as i64 },
+                4 => for (d, &s) in d.iter_mut().zip(ro::<i32>(&y[..take * 4])) { *d = s as i64 },
+                _ => for (d, &s) in d.iter_mut().zip(ro::<u64>(&y[..take * 8])) { *d = s as i64 },
+            }
+        }
+        at += take;
     }
 }
 /// ew.rs `ew_floor_run`: `floor` at a float class, always a `long`; out of range or a NaN answers `0N`.
@@ -1530,6 +1542,7 @@ mod a42 {
 
 #[cfg(test)]
 mod tests43 {
+    use crate::BLK;
     use super::*;
     use crate::c::qlean_run_c;
     use crate::coc::Meta;
@@ -1620,7 +1633,7 @@ mod tests43 {
         let n = 2 * BLK + 452;
         let (pack, base, off, _, bsum) = coc_data();
         let (maxv, width) = (vec![base[0] + 255, 77, base[2] + 255], [8u8, 0, 8]);
-        let meta = Meta { base: &base, maxv: &maxv, off: &off, bsum: &bsum, width: &width, sumnul: 0, sumn: 0, n, nblk: 3, mblk: 3 };
+        let meta = Meta { lg: crate::DEFAULT_LG, base: &base, maxv: &maxv, off: &off, bsum: &bsum, width: &width, sumnul: 0, sumn: 0, n, nblk: 3, mblk: 3 };
         let c = Coc { meta, pack: &pack, exc: None, fdelta: None };
         let mut dense = vec![0i64; 3 * BLK];
         for b in 0..3 { c.decode_blk::<i64>(b, if b < 2 { BLK } else { 452 }, &mut dense[b * BLK..]) }
@@ -1746,7 +1759,7 @@ mod tests44 {
         let mut off = [0u64; 3];
         let mut pack: Vec<u8> = vec![];
         for b in 0..nblk { off[b] = pack.len() as u64; pack.extend((0..crate::BLK * width[b] as usize / 8).map(|i| (i * 37 + b * 11) as u8)) }
-        let meta = Meta { base: &base, maxv: &maxv, off: &off, bsum: &bsum, width: &width, sumnul: 0, sumn: 0, n, nblk, mblk: nblk };
+        let meta = Meta { lg: crate::DEFAULT_LG, base: &base, maxv: &maxv, off: &off, bsum: &bsum, width: &width, sumnul: 0, sumn: 0, n, nblk, mblk: nblk };
         let c = Coc { meta, pack: &pack, exc: None, fdelta: None };
         for (cls, w) in [(1u8, 2usize), (2, 4), (3, 8)] {
             for op in 0..2u8 {

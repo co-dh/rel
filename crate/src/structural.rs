@@ -135,12 +135,12 @@ pub fn reverse_enc(run: Runner, c: &Coc, pack: &mut [u8]) {
 /// coc.rs's layout over a writer's metadata of `nb` blocks: base, maxv, off, bsum (8 bytes a block each), the
 /// trailer's three words (sumnul, sumn, lg), then the widths.
 fn meta_parts(m: &mut [u8], nb: usize) -> [&mut [u8]; 6] {
-    assert_eq!(m.len(), 33 * nb + 16, "qlean structural: {} metadata bytes for {nb} blocks of 33 and a 16-byte trailer", m.len());
+    assert_eq!(m.len(), 33 * nb + 24, "qlean structural: {} metadata bytes for {nb} blocks of 33 and a 24-byte trailer", m.len());
     let (base, m) = m.split_at_mut(8 * nb);
     let (maxv, m) = m.split_at_mut(8 * nb);
     let (off, m) = m.split_at_mut(8 * nb);
     let (bsum, m) = m.split_at_mut(8 * nb);
-    let (sums, width) = m.split_at_mut(16);
+    let (sums, width) = m.split_at_mut(24);
     [base, maxv, off, bsum, sums, width]
 }
 fn put64(d: &mut [u8], i: usize, v: u64) { d[8 * i..8 * i + 8].copy_from_slice(&v.to_ne_bytes()) }
@@ -378,17 +378,17 @@ pub fn cat_fill_alp<'a>(part: &dyn Fn(usize) -> Cocf<'a>, start: &[usize], w: us
 /// structural.rs `rev_fill_alp`
 pub fn rev_fill_alp(f: &Cocf, buf: &mut [i64], i0: usize) {
     let cnt = buf.len();
-    fill(&|_| *f, true, true, 0, buf, &|g: &mut dyn FnMut(Seg)| rev_walk(f.c.meta.n, i0, cnt, g))
+    fill(&|_| *f, true, true, 0, buf, &|g: &mut dyn FnMut(Seg)| rev_walk(f.c.meta.lg, f.c.meta.n, i0, cnt, g))
 }
 /// structural.rs `cycle_fill_alp`
 pub fn cycle_fill_alp(f: &Cocf, off: usize, _m: usize, buf: &mut [i64], i0: usize) {
     let cnt = buf.len();
-    fill(&|_| *f, true, false, 0, buf, &|g: &mut dyn FnMut(Seg)| cycle_walk(f.c.meta.n, off, i0, cnt, g))
+    fill(&|_| *f, true, false, 0, buf, &|g: &mut dyn FnMut(Seg)| cycle_walk(f.c.meta.lg, f.c.meta.n, off, i0, cnt, g))
 }
 /// structural.rs `shift_fill_alp`; `fill_v` is the hole's bits (the stub had no such parameter, C's `x->fill`).
 pub fn shift_fill_alp(f: &Cocf, k: i64, fill_v: i64, buf: &mut [i64], i0: usize) {
     let cnt = buf.len();
-    fill(&|_| *f, true, false, fill_v, buf, &|g: &mut dyn FnMut(Seg)| shift_walk(f.c.meta.n, k, i0, cnt, g))
+    fill(&|_| *f, true, false, fill_v, buf, &|g: &mut dyn FnMut(Seg)| shift_walk(f.c.meta.lg, f.c.meta.n, k, i0, cnt, g))
 }
 
 /// structural.rs `HINT_RUN`: the largest exponent among the source blocks answer block is drawn from, and their
@@ -1769,7 +1769,7 @@ mod a39_tests {
         let n = 1500;
         let pack: Vec<u8> = (0..2 * WBLK * 2).map(|i| (i * 7 % 251) as u8).collect();
         let (base, z, off, width) = ([10i64, -4], [0i64; 2], [0u64, 2048], [16u8; 2]);
-        let meta = crate::coc::Meta { base: &base, maxv: &z, off: &off, bsum: &z, width: &width, sumnul: 0, sumn: 0, n, nblk: 2, mblk: 2 };
+        let meta = crate::coc::Meta { lg: crate::DEFAULT_LG, base: &base, maxv: &z, off: &off, bsum: &z, width: &width, sumnul: 0, sumn: 0, n, nblk: 2, mblk: 2 };
         let c = Coc { meta, pack: &pack, exc: None, fdelta: None };
         let mut v = vec![0i64; 2 * WBLK];
         for b in 0..2 { c.decode_blk(b, WBLK, &mut v[b * WBLK..]) }
@@ -1936,18 +1936,19 @@ mod a34_tests {
             for _ in bases { m.extend(0u64.to_ne_bytes()) }
             for _ in bases { m.extend(sum.to_ne_bytes()) }
             m.extend([0u8; 16]);
+            m.extend((crate::DEFAULT_LG as u64).to_ne_bytes());
             m.extend(ws);
             m
         };
         let (m0, m1) = (part(&[10, 20], &[3, 8], 7), part(&[30], &[0], 9));
         let (p0, p1): (Vec<u8>, Vec<u8>) = ((0..384 + 1024).map(|i| i as u8).collect(), vec![]);
-        let (mut mo, mut po) = (vec![0u8; 33 * 3 + 16], vec![0u8; p0.len()]);
-        concat_move(&[&m0, &m1], &[&p0, &p1], 3 * WBLK, 8, &mut mo, &mut po);
+        let (mut mo, mut po) = (vec![0u8; 33 * 3 + 24], vec![0u8; p0.len()]);
+        concat_move(crate::DEFAULT_LG, &[&m0, &m1], &[&p0, &p1], 3 * WBLK, 8, &mut mo, &mut po);
         assert_eq!(po, p0);
         let c = Coc { meta: crate::coc::Meta::new(&mo, usize::MAX).unwrap(), pack: &po, exc: None, fdelta: None };
         assert_eq!((c.meta.base, c.meta.bsum, c.meta.width, c.meta.off), (&[10, 20, 30][..], &[7, 7, 9][..], &[3, 8, 0][..], &[0, 384, 1408][..]));
         assert_eq!((c.meta.sumnul, c.meta.sumn), (i64::MIN, 3 * WBLK as u64));
-        let mut r = vec![0u8; 33 * 3 + 16];
+        let mut r = vec![0u8; 33 * 3 + 24];
         assert_eq!(reverse_meta(&c, &mut r), 1408);
         let rc = crate::coc::Meta::new(&r, usize::MAX).unwrap();
         assert_eq!((rc.base, rc.width, rc.off, rc.sumn), (&[30, 20, 10][..], &[0, 8, 3][..], &[0, 0, 1024][..], 3 * WBLK as u64));
@@ -1966,13 +1967,13 @@ mod a34_tests {
             let nbytes = WBLK * w as usize / 8;
             let sp: Vec<u8> = (0..nbytes).map(|_| rng(&mut s) as u8).collect();
             let mut dp = vec![0u8; nbytes];
-            rev_block(&mut dp, &sp, w);
+            rev_block(WBLK, &mut dp, &sp, w);
             for j in 0..WBLK { assert_eq!(res_get(&dp, w, j), res_get(&sp, w, WBLK - 1 - j), "w {w} j {j}") }
         }
     }
     fn column<'a>(base: &'a [i64], off: &'a [u64], width: &'a [u8], z: &'a [i64], pack: &'a [u8], n: usize) -> Coc<'a> {
         let m = base.len();
-        let meta = crate::coc::Meta { base, maxv: z, off, bsum: z, width, sumnul: i64::MIN, sumn: n as u64, n, nblk: m, mblk: m };
+        let meta = crate::coc::Meta { lg: crate::DEFAULT_LG, base, maxv: z, off, bsum: z, width, sumnul: i64::MIN, sumn: n as u64, n, nblk: m, mblk: m };
         Coc { meta, pack, exc: None, fdelta: None }
     }
     #[test] fn reverse_enc_moves_blocks_and_reverses_residuals() {
@@ -2056,10 +2057,10 @@ mod a35_tests {
         let n = 2500;
         for i0 in [0, 1, 1023, 1024, 2400] {
             let cnt = 100.min(n - i0);
-            cover(cnt, true, |g| rev_walk(n, i0, cnt, g), |a| Some((0, n - 1 - (i0 + a))));
-            cover(cnt, false, |g| cycle_walk(n, 7, i0, cnt, g), |a| Some((0, (7 + i0 + a) % n)));
+            cover(cnt, true, |g| rev_walk(crate::DEFAULT_LG, n, i0, cnt, g), |a| Some((0, n - 1 - (i0 + a))));
+            cover(cnt, false, |g| cycle_walk(crate::DEFAULT_LG, n, 7, i0, cnt, g), |a| Some((0, (7 + i0 + a) % n)));
             for k in [0i64, 1, -1, 3000, -3000, 2499, 2500] {
-                cover(cnt, false, |g| shift_walk(n, k, i0, cnt, g), |a| { let f = (i0 + a) as i64 - k; (0 <= f && f < n as i64).then_some((0, f as usize)) });
+                cover(cnt, false, |g| shift_walk(crate::DEFAULT_LG, n, k, i0, cnt, g), |a| { let f = (i0 + a) as i64 - k; (0 <= f && f < n as i64).then_some((0, f as usize)) });
             }
         }
         // parts of 5, 0, 1030 and 7 elements, an empty one stepped over
@@ -2067,7 +2068,7 @@ mod a35_tests {
         let which = |i: usize| { let p = (0..4).rev().find(|&p| start[p] <= i && start[p + 1] > i).unwrap(); (p, i - start[p]) };
         for i0 in [0, 3, 5, 1000, 1030, 1041] {
             let cnt = 12.min(1042 - i0);
-            cover(cnt, false, |g| cat_walk(&start, i0, cnt, g), |a| Some(which(i0 + a)));
+            cover(cnt, false, |g| cat_walk(&|_| crate::DEFAULT_LG, &start, i0, cnt, g), |a| Some(which(i0 + a)));
         }
     }
 }
@@ -2542,7 +2543,7 @@ pub fn append_plan(parts: &[Coc], start: &[usize], ew: usize) -> Option<Grow> {
     // `h.meta.n` is the part's own count wherever `lo != 0`: only a count past the grid is clamped, to a block boundary. The
     // writer's form covers the block; a patch list rides along in the pack's tail untouched where block `b` has no exception,
     // every one then lying before the append point; `put_res` measures from the base, so a block whose frame is above it declines.
-    if lo == 0 || lo + m > WBLK || !h.std(n) || h.blk_nexc(b) != 0 || h.frame(b) != h.meta.base[b] as u64 || !trailer_ok(h, n, ew, false) {
+    if h.meta.lg != crate::DEFAULT_LG || lo == 0 || lo + m > WBLK || !h.std(n) || h.blk_nexc(b) != 0 || h.frame(b) != h.meta.base[b] as u64 || !trailer_ok(h, n, ew, false) {
         return None;
     }
     let mut buf = [0i64; WBLK];

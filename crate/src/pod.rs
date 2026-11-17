@@ -79,6 +79,14 @@ impl<T: Pod + Default, const N: usize> core::ops::Deref for Scr<T, N> {
 impl<T: Pod + Default, const N: usize> core::ops::DerefMut for Scr<T, N> {
     fn deref_mut(&mut self) -> &mut [T] { if self.len > N { &mut self.heap } else { &mut self.inl[..self.len] } }
 }
+impl<'a, T: Pod + Default, const N: usize> IntoIterator for &'a Scr<T, N> {
+    type Item = &'a T; type IntoIter = core::slice::Iter<'a, T>;
+    fn into_iter(self) -> Self::IntoIter { (**self).iter() }
+}
+impl<'a, T: Pod + Default, const N: usize> IntoIterator for &'a mut Scr<T, N> {
+    type Item = &'a mut T; type IntoIter = core::slice::IterMut<'a, T>;
+    fn into_iter(self) -> Self::IntoIter { (**self).iter_mut() }
+}
 
 /// `bytes` bytes of 64-byte aligned scratch with no initialisation, kept for the next call so that faulting a large buffer in
 /// is paid once (C's `static __thread` chunk of `qlean_alp_sum_f64`). A call takes the kept buffer or allocates one, and puts
