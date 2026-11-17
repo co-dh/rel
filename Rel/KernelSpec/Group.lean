@@ -487,3 +487,61 @@ end Segs
 #guard_msgs in #print axioms overGroups_groupIds
 
 end QLean.Verify
+
+
+namespace QLean.Verify
+
+open QLean QLean.Kernel
+open QLean.Kernel.Scan (Kind)
+
+section Firsts
+
+variable {α : Type} [DecidableEq α] (g : Nat → α) (m : Nat)
+
+end Firsts
+
+/-- Long `j` of an id payload is entry `j` of the ids it reads back as. -/
+theorem ids_get {b : ByteArray} {l : List Nat} (h : ids b = l) {j : Nat} (hj : j < l.length) :
+    (Column.bitsAt b (j * 8) 8).toNat = l[j] := by
+  have hl : j < b.size / 8 := by
+    have := congrArg List.length h; rw [ids, List.length_map, List.length_range] at this; omega
+  have := congrArg (·[j]?) h
+  simp only [ids, List.getElem?_map, List.getElem?_range hl, Option.map_some, List.getElem?_eq_getElem hj,
+    Option.some.injEq] at this
+  exact this
+
+/-- At an integral kind the key is the stored bits, sign bit flipped or not, so two keys agree exactly when
+the elements do. -/
+theorem keyAt_eq_iff {k : Kind} (hk : k = .u8 ∨ k = .c8 ∨ k = .i16 ∨ k = .i32 ∨ k = .i64) (b : ByteArray)
+    (i j : Nat) : Order.keyAt k b i = Order.keyAt k b j ↔
+      Column.bitsAt b (i * k.width) k.width = Column.bitsAt b (j * k.width) k.width := by
+  rcases hk with rfl | rfl | rfl | rfl | rfl
+  · exact Iff.rfl
+  · exact Iff.rfl
+  all_goals exact UInt64.xor_left_inj _
+
+section Over
+
+variable (op : Coc.Over) (cls : UInt8) (nul : Int64) (ng w n : USize) (gid b : ByteArray)
+
+end Over
+
+/-- The bytes `[a, m)` of `s`, read at `o`, are `s` read at `a + o`, wherever the read ends by `m`. -/
+theorem bitsAt_extract (s : ByteArray) {a m o w : Nat} (h : a + o + w ≤ m) :
+    Column.bitsAt (s.extract a m) o w = Column.bitsAt s (a + o) w :=
+  bitsAt_shift _ _ _ _ _ fun k hk => by
+    rw [show (s.extract a m)[o + k]? = (s.extract a m).data[o + k]? from rfl, ByteArray.data_extract,
+      extract_getElem?, show s[a + o + k]? = s.data[a + o + k]? from rfl]
+    split
+    · rw [Nat.add_assoc]
+    · rw [Array.getElem?_eq_none (by have : s.data.size = s.size := rfl; omega)]
+
+section Segs
+
+variable (op : Coc.Over) (cls : UInt8) (nul : Int64) (offs b : ByteArray)
+
+end Segs
+#print axioms keyAt_eq_iff
+#print axioms ids_get
+
+end QLean.Verify

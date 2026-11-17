@@ -357,3 +357,64 @@ end QLean.Column
 namespace QLean.Kernel
 
 end QLean.Kernel
+
+
+namespace QLean.Kernel.Order
+
+open QLean.Kernel.Scan (Kind)
+
+end QLean.Kernel.Order
+
+namespace QLean.Kernel
+
+open QLean.Kernel.Scan (Kind)
+open QLean.Kernel.Order
+
+/-- q's `iasc` and `idesc` when a kernel claims them, which is every type but `guid` (`gradeColumnAll` adds it). `asc` and
+`desc` are this permutation and K5's gather, and `rank` is this permutation graded again; none of
+the three is a kernel of its own, `~/q/q.k` lines 12 and 13 defining them all from `<` and `>`.
+
+The `.bit` guard on the last branch is `Scan.scanColumn`'s: a boolean column is `Column.bits` and a
+`.bytes` payload announced at `boolean` holds no elements at all, so it must not be graded as though
+its bytes were bits.
+
+Under `rank` the answer is q's `rank`, `<<x` — always ascending, so `desc` is not read — and it is
+this same dispatch: where a kernel ranks without building the grade it is asked for the rank, and
+everywhere else the grade is inverted. -/
+def gradeColumn (t : QAtomicType) (desc : Bool) (n : USize) (e : Enc) (rank : Bool := false) : Option Enc :=
+  let inv (p : ByteArray) := if rank then invert p else p
+  match t, e with
+  | .symbol, .syms blob offs => some (.bytes (inv (gradeSyms desc blob offs)))
+  | .symbol, .enum dict dof ids => some (.bytes (inv (gradeIds desc n dict dof ids)))
+  | .boolean, .bits b =>
+    some (.bytes (if rank then ranks .bit n b else grade .bit desc n b))
+  | t, e =>
+    match orderKind t with
+    | none => none
+    | some k =>
+      if k == .bit then none
+      -- the encoded case first, so that `Enc.bytesOf` is never forced underneath the kernel that
+      -- made it unnecessary: the key is `base + residual` biased, and no element is ever restored
+      else match e with
+        | .foR md pk => some (.bytes
+            (if rank then ranksFoR k n md pk else gradeFoR k desc n md pk))
+        -- the answer is at the header's count, so a payload shorter than it is declined, not read past
+        | e => match Enc.bytesOf t n e with
+          | some b => if b.size < n.toNat * k.width then none
+            else some (.bytes (if rank then ranks k n b else grade k desc n b))
+          | none => none
+
+/-- The first `n` ids of a `groupIdsColumn` answer `(ids, firsts)` as `long`s, at the width its
+group count gives. -/
+def groupLongs (n : USize) (p : ByteArray × ByteArray) : ByteArray :=
+  Order.idLongs n (Column.idWidthOf (p.2.size / 8)).toUSize p.1
+
+end QLean.Kernel
+
+namespace QLean.Column
+
+end QLean.Column
+
+namespace QLean.Kernel
+
+end QLean.Kernel

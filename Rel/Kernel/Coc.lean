@@ -480,3 +480,30 @@ def answer (t : QAtomicType) (n : USize) (e : Enc) : Enc :=
     | none, _ => e
 
 end QLean.Enc
+
+
+namespace QLean.Kernel.Coc
+
+end QLean.Kernel.Coc
+
+namespace QLean.Column
+
+end QLean.Column
+
+namespace QLean.Enc
+open Column
+
+/-- The column in ALP form, whatever constructor holds it, and `none` at a type ALP is not the
+encoding for. Unconditional: `admit` is where the decline lives, and `QLean/Eval/Test.lean` forces
+this so that the corpus reaches shapes — an empty column, a block that is all exceptions — a policy
+would keep it away from. -/
+def alpOf (t : QAtomicType) (n : USize) (e : Enc) : Option Enc :=
+  if !alpEncodes t then none else
+  match t.width, bytesOf t n e with
+  | some w, some b =>
+    let (metadata, pack, a) :=
+      if w == 4 then QLean.Kernel.Coc.alpEncode32 b else QLean.Kernel.Coc.alpEncode64 b
+    some (.alp metadata pack a)
+  | _, _ => none
+
+end QLean.Enc

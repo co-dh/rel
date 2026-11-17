@@ -128,3 +128,27 @@ def groupCells (kind : GroupCell) (w ng : USize) (m order : @& ByteArray) : Byte
 
 
 end QLean.Kernel
+
+
+namespace QLean.Kernel
+
+/-- The null of an encoded type as the fold has to skip it, and `none` at a type the encoding is not
+for. The encoded form holds a narrow column's elements sign-extended, so a `short` null is `-32768`
+there and not `Int64.minValue`; the block structure is unchanged, the null still being the smallest
+value the type has. -/
+def Coc.nullOf : QAtomicType → Option Int64
+  | .short => some (-32768)
+  | .int | .month | .date | .minute | .second | .time => some (-2147483648)
+  | .long | .timestamp | .timespan => some Int64.minValue
+  | _ => none
+
+/-- The fold on the encoded form, before the narrowing `sum` and `prd` put on top of it. It is
+separate because `avg` divides *this* one and not the narrowed one: measured, `avg 1000000#3000i` is
+`3000f` where `sum` of the same is `0Ni`. -/
+def overFoR (op : Coc.Over) (t : QAtomicType) (n : USize) (e : Enc) : Option Int64 :=
+  match e with
+  | .foR metadata pack => (Coc.nullOf t).map (Coc.over op · metadata pack n)
+  | _ => none
+
+
+end QLean.Kernel

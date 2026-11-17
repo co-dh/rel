@@ -6,6 +6,8 @@ import QLean.RelPart.Verify.Codes
 import QLean.RelPart.Value
 import QLean.RelPart.Kernel.Search
 import QLean.RelPart.Verify.Assign
+import QLean.RelPart.Kernel.Need
+import QLean.RelPart.Kernel.Structural
 
 /-! The part of `QLean.Verify.SymFind` the Rel kernels reach; `QLean.Verify.SymFind` imports it. -/
 
@@ -308,5 +310,177 @@ theorem symsWF_internSyms (blob : ByteArray) (offs : Array Nat) :
 
 /-- info: 'QLean.Verify.idAt_packIds_idWidthOf' depends on axioms: [propext, Quot.sound] -/
 #guard_msgs in #print axioms idAt_packIds_idWidthOf
+
+end QLean.Verify
+
+
+namespace QLean.Verify
+open QLean QLean.Kernel
+
+theorem toUSize_toNat {n : Nat} (h : n < USize.size) : n.toUSize.toNat = n := USize.toNat_ofNat_of_lt' h
+
+theorem idWidth_toNat (o : Array Nat) : (Column.idWidth o).toUSize.toNat = Column.idWidth o := by
+  have hW := laneWidth_cases (Column.widthFor (o.size - 1 - 1))
+  simp only [show Column.laneWidth (Column.widthFor (o.size - 1 - 1)) = Column.idWidth o from rfl] at hW
+  have hs : 2 ^ 32 ≤ USize.size := USize.le_size
+  exact toUSize_toNat (by omega)
+
+/-- Through a distinct dictionary `(range d).map f`, the first element whose entry is `k` is the first
+whose id is `k`'s index in the dictionary. -/
+theorem map_range_inj {α : Type} {f : Nat → α} {d : Nat} (hD : ((List.range d).map f).Nodup) {i j : Nat}
+    (hi : i < d) (hj : j < d) (e : f i = f j) : i = j := by
+  have hp := List.pairwise_iff_getElem.1 hD
+  rcases Nat.lt_trichotomy i j with h | h | h
+  · exact (hp i j (by simpa) (by simpa) h (by simp only [List.getElem_map, List.getElem_range]; exact e)).elim
+  · exact h
+  · exact (hp j i (by simpa) (by simpa) h (by simp only [List.getElem_map, List.getElem_range]; exact e.symm)).elim
+
+/-- Eight bytes a value, pushed onto an empty array and read back. -/
+theorem bitsAt_foldl8 (m : Nat) (g : Nat → UInt64) (a : ByteArray) (ha : a.size = 0) :
+    ((List.range m).foldl (fun acc j => Column.pushBits acc (g j) 8) a).size = 8 * m ∧
+    ∀ j < m, (Column.bitsAt ((List.range m).foldl (fun acc j => Column.pushBits acc (g j) 8) a) (j * 8) 8).toNat =
+      (g j).toNat := by
+  obtain ⟨hs, -, hb⟩ := foldl_pushBits g 8 (by decide) (List.range m) a
+  refine ⟨by simpa [ha] using hs, fun j hj => ?_⟩
+  have := hb j (by simpa using hj)
+  simp only [ha, Nat.zero_add, List.getElem_range] at this
+  rw [Nat.mul_comm, this, UInt64.toNat_ofNat', Nat.mod_mod, Nat.mod_eq_of_lt (UInt64.toNat_lt _)]
+
+/-- One step of `concatSyms`' fold: the part's starts after its leading `0`, shifted past the blob so far, keep
+every earlier entry and read the part's entry `k` at `k` past the earlier ones. -/
+theorem concatSyms_step {blob b : ByteArray} {offs o : Array Nat} (hA : SymsWF blob offs) (hB : SymsWF b o) :
+    SymsWF (blob ++ b) (offs ++ (o.extract 1 o.size).map (· + blob.size)) ∧
+      (offs ++ (o.extract 1 o.size).map (· + blob.size)).size = offs.size + (o.size - 1) ∧
+      (∀ i < offs.size - 1, symBytes (blob ++ b) (offs ++ (o.extract 1 o.size).map (· + blob.size)) i =
+        symBytes blob offs i) ∧
+      ∀ k < o.size - 1, symBytes (blob ++ b) (offs ++ (o.extract 1 o.size).map (· + blob.size)) (offs.size - 1 + k) =
+        symBytes b o k := by
+  have hsz : (offs ++ (o.extract 1 o.size).map (· + blob.size)).size = offs.size + (o.size - 1) := by
+    rw [Array.size_append, Array.size_map, Array.size_extract, Nat.min_self]
+  have hO : ∀ t, (offs ++ (o.extract 1 o.size).map (· + blob.size))[t]! =
+      if t < offs.size then offs[t]! else if t < offs.size + (o.size - 1) then o[t - offs.size + 1]! + blob.size
+      else 0 := by
+    intro t
+    by_cases h1 : t < offs.size
+    · rw [if_pos h1, getElem!_pos (offs ++ (o.extract 1 o.size).map (· + blob.size)) t (by rw [hsz]; omega),
+        getElem!_pos offs t h1, Array.getElem_append_left h1]
+    · rw [if_neg h1]
+      by_cases h2 : t < offs.size + (o.size - 1)
+      · rw [if_pos h2, getElem!_pos (offs ++ (o.extract 1 o.size).map (· + blob.size)) t (by rw [hsz]; omega),
+          getElem!_pos o (t - offs.size + 1) (by omega), Array.getElem_append_right (by omega)]
+        -- not `Array.getElem_extract`, which is classical
+        have hx := extract_getElem? o 1 o.size (t - offs.size)
+        rw [if_pos (by omega), getElem?_pos (o.extract 1 o.size) (t - offs.size) (by rw [Array.size_extract]; omega),
+          show 1 + (t - offs.size) = t - offs.size + 1 by omega, getElem?_pos o (t - offs.size + 1) (by omega)] at hx
+        rw [Array.getElem_map, Option.some.inj hx]
+      · rw [if_neg h2]; exact getElem!_neg (offs ++ (o.extract 1 o.size).map (· + blob.size)) t (by rw [hsz]; omega)
+  have hl : (blob ++ b).data.toList = blob.data.toList ++ b.data.toList := by
+    rw [ByteArray.data_append, Array.toList_append]
+  have hbl : blob.data.toList.length = blob.size := Array.length_toList
+  have hbs : (blob ++ b).size = blob.size + b.size := ByteArray.size_append
+  have hp := hA.pos
+  refine ⟨⟨by omega, by rw [hO, if_pos hp, hA.first], ?_, fun t _ => ?_, fun t ht => ?_⟩, hsz, fun i hi => ?_,
+    fun k hk => ?_⟩
+  · rw [hsz, hO, hbs]
+    by_cases h0 : o.size - 1 = 0
+    · rw [if_pos (by omega), h0, Nat.add_zero, hA.last]
+      have := hB.last; rw [h0, hB.first] at this; omega
+    · rw [if_neg (by omega), if_pos (by omega), show offs.size + (o.size - 1) - 1 - offs.size + 1 = o.size - 1 by omega,
+        hB.last]; omega
+  · rw [hO, hbs]
+    split
+    · have := hA.le t ‹_›; omega
+    · split
+      · have := hB.le (t - offs.size + 1) (by omega); omega
+      · exact Nat.zero_le _
+  · rw [hsz] at ht
+    rw [hO, hO]
+    by_cases h1 : t + 1 < offs.size
+    · rw [if_pos (by omega), if_pos h1]; exact hA.mono t (by omega)
+    · by_cases h2 : t < offs.size
+      · have e : offs[t]! = blob.size := by rw [show t = offs.size - 1 by omega]; exact hA.last
+        rw [if_pos h2, if_neg h1, if_pos (by omega), e]; omega
+      · have := hB.mono (t - offs.size + 1) (by omega)
+        rw [if_neg h2, if_neg h1, if_pos (by omega), if_pos (by omega),
+          show t + 1 - offs.size + 1 = t - offs.size + 1 + 1 by omega]; omega
+  · unfold symBytes
+    have := hA.le i (by omega); have := hA.le (i + 1) (by omega)
+    rw [hO i, hO (i + 1), if_pos (by omega), if_pos (by omega), hl, List.drop_append_of_le_length (by omega),
+      List.take_append_of_le_length (by rw [List.length_drop]; omega)]
+  · unfold symBytes
+    have hlo : (offs ++ (o.extract 1 o.size).map (· + blob.size))[offs.size - 1 + k]! = blob.size + o[k]! := by
+      rw [hO]
+      by_cases k0 : k = 0
+      · subst k0; rw [if_pos (by omega), Nat.add_zero, hA.last, hB.first, Nat.add_zero]
+      · rw [if_neg (by omega), if_pos (by omega), show offs.size - 1 + k - offs.size + 1 = k by omega]; omega
+    have hhi : (offs ++ (o.extract 1 o.size).map (· + blob.size))[offs.size - 1 + k + 1]! = blob.size + o[k + 1]! := by
+      rw [hO, if_neg (by omega), if_pos (by omega), show offs.size - 1 + k + 1 - offs.size + 1 = k + 1 by omega]; omega
+    rw [hlo, hhi, hl, ← hbl, List.drop_append, Nat.add_sub_add_left, List.drop_eq_nil_of_le (by omega),
+      List.nil_append, Nat.add_sub_cancel_left]
+
+/-- `concatSyms`' fold over a list of well-formed parts from a well-formed blob: well formed, one entry per entry
+of the parts, the blob's own entries kept, and part `p`'s entry `k` past the blob's and the parts' before `p`. -/
+theorem concatSyms_foldl (L : List (ByteArray × Array Nat)) (hL : ∀ x ∈ L, SymsWF x.1 x.2) (acc : ByteArray × Array Nat)
+    (hacc : SymsWF acc.1 acc.2) :
+    SymsWF (L.foldl (fun acc x => (acc.1 ++ x.1, acc.2 ++ (x.2.extract 1 x.2.size).map (· + acc.1.size))) acc).1
+        (L.foldl (fun acc x => (acc.1 ++ x.1, acc.2 ++ (x.2.extract 1 x.2.size).map (· + acc.1.size))) acc).2 ∧
+      (L.foldl (fun acc x => (acc.1 ++ x.1, acc.2 ++ (x.2.extract 1 x.2.size).map (· + acc.1.size))) acc).2.size - 1 =
+        acc.2.size - 1 + (L.map fun x => x.2.size - 1).sum ∧
+      (∀ i < acc.2.size - 1,
+        symBytes (L.foldl (fun acc x => (acc.1 ++ x.1, acc.2 ++ (x.2.extract 1 x.2.size).map (· + acc.1.size))) acc).1
+          (L.foldl (fun acc x => (acc.1 ++ x.1, acc.2 ++ (x.2.extract 1 x.2.size).map (· + acc.1.size))) acc).2 i =
+        symBytes acc.1 acc.2 i) ∧
+      ∀ p (hp : p < L.length), ∀ k < L[p].2.size - 1,
+        symBytes (L.foldl (fun acc x => (acc.1 ++ x.1, acc.2 ++ (x.2.extract 1 x.2.size).map (· + acc.1.size))) acc).1
+          (L.foldl (fun acc x => (acc.1 ++ x.1, acc.2 ++ (x.2.extract 1 x.2.size).map (· + acc.1.size))) acc).2
+          (acc.2.size - 1 + ((L.take p).map fun x => x.2.size - 1).sum + k) = symBytes L[p].1 L[p].2 k := by
+  induction L generalizing acc with
+  | nil => exact ⟨hacc, rfl, fun _ _ => rfl, fun p hp => absurd hp (Nat.not_lt_zero _)⟩
+  | cons x L ih =>
+    obtain ⟨s1, s2, s3, s4⟩ := concatSyms_step hacc (hL x (List.mem_cons_self ..))
+    obtain ⟨i1, i2, i3, i4⟩ := ih (fun y hy => hL y (List.mem_cons_of_mem _ hy))
+      (acc.1 ++ x.1, acc.2 ++ (x.2.extract 1 x.2.size).map (· + acc.1.size)) s1
+    dsimp only at i2 i3 i4
+    have hp := hacc.pos
+    simp only [List.foldl_cons]
+    refine ⟨i1, by rw [i2, s2, List.map_cons, List.sum_cons]; omega, fun i hi => ?_, fun p hp' k hk => ?_⟩
+    · rw [i3 i (by omega), s3 i hi]
+    · cases p with
+      | zero =>
+        simp only [List.take_zero, List.map_nil, List.sum_nil, Nat.add_zero, List.getElem_cons_zero] at hk ⊢
+        rw [i3 _ (by omega), s4 k hk]
+      | succ p =>
+        simp only [List.take_succ_cons, List.map_cons, List.sum_cons, List.getElem_cons_succ] at hk ⊢
+        rw [← i4 p (Nat.lt_of_succ_lt_succ hp') k hk, s2]
+        congr 1; omega
+
+/-- **`,` of symbol blobs keeps every part's entries**: `concatSyms` over well-formed parts answers a well-formed
+blob with one entry per part entry, and part `p`'s entry `k` is the answer's entry `k` past the parts before `p`. -/
+theorem symBytes_concatSyms {parts : Array (ByteArray × Array Nat)} (hw : ∀ x ∈ parts, SymsWF x.1 x.2)
+    {t n a} {b : ByteArray} {o : Array Nat} (h : Kernel.concatSyms parts = .vector t n (.syms b o) a) :
+    SymsWF b o ∧ o.size - 1 = (parts.toList.map fun x => x.2.size - 1).sum ∧
+      ∀ p (hp : p < parts.size), ∀ k < parts[p].2.size - 1,
+        symBytes b o (((parts.toList.take p).map fun x => x.2.size - 1).sum + k) = symBytes parts[p].1 parts[p].2 k := by
+  have hc : Kernel.concatSyms parts = .vector .symbol
+      ((parts.toList.foldl (fun acc x => (acc.1 ++ x.1, acc.2 ++ (x.2.extract 1 x.2.size).map (· + acc.1.size)))
+        (ByteArray.empty, #[0])).2.size - 1 |> fun c => needSize c "concatSyms: symbols" (fun _ => 0) id) (.syms
+      (parts.toList.foldl (fun acc x => (acc.1 ++ x.1, acc.2 ++ (x.2.extract 1 x.2.size).map (· + acc.1.size)))
+        (ByteArray.empty, #[0])).1
+      (parts.toList.foldl (fun acc x => (acc.1 ++ x.1, acc.2 ++ (x.2.extract 1 x.2.size).map (· + acc.1.size)))
+        (ByteArray.empty, #[0])).2) none := by
+    unfold Kernel.concatSyms; rw [Array.foldl_toList]
+  rw [hc] at h
+  injection h with _ _ he _
+  injection he with hb ho
+  subst hb ho
+  obtain ⟨f1, f2, -, f4⟩ := concatSyms_foldl parts.toList (fun x hx => hw x (Array.mem_def.2 hx))
+    (ByteArray.empty, #[0]) ⟨by decide, rfl, rfl,
+      fun k hk => by rw [show k = 0 by simpa using hk]; exact Nat.le_refl _, fun k hk => absurd hk (Nat.not_lt_zero k)⟩
+  refine ⟨f1, by rw [f2]; exact Nat.zero_add _, fun p hp k hk => ?_⟩
+  have := f4 p (by rw [Array.length_toList]; exact hp) k (by rw [Array.getElem_toList]; exact hk)
+  rwa [Array.getElem_toList, show (#[0] : Array Nat).size - 1 = 0 from rfl, Nat.zero_add] at this
+
+/-- info: 'QLean.Verify.symBytes_concatSyms' depends on axioms: [propext, Quot.sound] -/
+#guard_msgs in #print axioms symBytes_concatSyms
 
 end QLean.Verify

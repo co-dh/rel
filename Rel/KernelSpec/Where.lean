@@ -4,6 +4,7 @@ import QLean.RelPart.Kernel.Reduce
 import QLean.RelPart.Value
 import QLean.RelPart.Kernel.Search
 import QLean.RelPart.Kernel.Elementwise
+import QLean.RelPart.Verify.Raw
 
 /-! The part of `QLean.Verify.Where` the Rel kernels reach; `QLean.Verify.Where` imports it. -/
 
@@ -127,5 +128,19 @@ theorem overBytes_add (cls : UInt8) (nul : Int64) (b : ByteArray) :
   have hst : Coc.Over.step .add = (· + ·) := rfl
   rw [hs, hst, foldl_add_int64, Int64.toInt_zero, Int.zero_add]
   simp [Coc.Over.boolCast]
+
+end QLean.Verify
+
+
+namespace QLean.Verify
+open QLean QLean.Kernel
+
+/-- `whereBits`' list: below `n`, ascending, and exactly the indices whose bit is set. -/
+theorem whereBits_indices (n : Nat) (bits : ByteArray) :
+    ((List.range n).filter (Column.bitAt bits)).Pairwise (· < ·) ∧
+    ∀ i, i ∈ (List.range n).filter (Column.bitAt bits) ↔ i < n ∧ Column.bitAt bits i = true :=
+  -- `pairwise_map_range_iff` rather than core's `List.pairwise_lt_range`, which brings `Classical.choice`
+  ⟨List.Pairwise.filter _ (by simpa using (pairwise_map_range_iff (· < ·) id n).mpr fun _ _ h _ => h),
+    fun i => by simp [List.mem_filter, List.mem_range]⟩
 
 end QLean.Verify

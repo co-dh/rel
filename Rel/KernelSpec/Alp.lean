@@ -508,3 +508,16 @@ structure FoRWF (n : Nat) (md pk : ByteArray) : Prop where
   width : ∀ b < Column.nblk md, Column.widthAt md b ≤ 64
 
 end QLean.Verify
+
+
+namespace QLean.Verify
+
+open QLean
+
+/-- **The runtime test is the writer's form**: `Kernel.Coc.foRStd` is `FoRWF`. -/
+theorem foRStd_iff {n : USize} {md pk : ByteArray} : Kernel.Coc.foRStd n md pk = true ↔ FoRWF n.toNat md pk := by
+  simp only [Kernel.Coc.foRStd, Bool.and_eq_true, Bool.or_eq_true, beq_iff_eq, List.all_eq_true,
+    List.mem_range, decide_eq_true_eq]
+  exact ⟨fun ⟨⟨a, b⟩, c⟩ => ⟨a, b, c⟩, fun ⟨a, b, c⟩ => ⟨⟨a, b⟩, c⟩⟩
+
+end QLean.Verify

@@ -579,3 +579,201 @@ def enumIdsFoR (n d nullId w : USize) (metadata pack : @& ByteArray) : ByteArray
   enumIds n d nullId w (Coc.decode 8 metadata pack n)
 
 end QLean.Kernel
+
+
+namespace QLean.Kernel
+
+/-- Eight bytes a count: a list built by `countBytes` holds exactly its array's counts, so no caller
+checks `size = 8 * parts` where the parts are as many as the counts. -/
+theorem countBytes_size (ns : Array USize) : (countBytes ns).size = 8 * ns.size := by
+  suffices h : ∀ (l : List USize) (b : ByteArray),
+      (l.foldl (fun acc n => Column.pushBits acc n.toUInt64 8) b).size = b.size + 8 * l.length by
+    simpa [countBytes, ← Array.foldl_toList] using h ns.toList .empty
+  intro l; induction l with
+  | nil => simp
+  | cons n l ih => intro b; simp [ih, Column.pushBits_size]; omega
+
+/-- Whether a dense answer costs less than re-encoding `s` answer blocks, a dense answer costing the `n`
+elements' `w` bytes and a re-encoded element what `k` of that move's dense bytes do; under 64 blocks
+either is microseconds. `k` is the caller's because the dense answer's cost per byte is the move's own:
+measured (`CLAUDE.md`, "A concat whose parts are mostly off the block grid answers dense") it is 5 at
+Frame of Reference, and at ALP 8 for `,` and a slice and 16 for `reverse` and a shift, whose dense
+answer is a decode and one byte move. At ALP `w` is 8 whatever the element type: the decode is a
+divide in `double` at `real` too, so a `real`'s dense answer costs a `float`'s (measured, dense
+`1_xr` 118 us against `1_xf` 53, re-encoded both 54). The one rule of every whole-column move the
+writer re-encodes: `razeColumn`, `reverseColumn`, `shiftColumn` and `sliceColumn`. -/
+def denseCheaper (k n w s : Nat) : Bool :=
+  64 * 2 ^ Column.lgEnc ≤ n && (n + 2 ^ Column.lgEnc - 1) / 2 ^ Column.lgEnc * w < s * k
+
+/-- The parts of a `,` the encoded form can serve, at a type the encoding is for: Frame of
+Reference's `(meta, pack)` at a type `Column.encodes`, and ALP's `(meta, pack, alp)` at a float, the
+`Bool` saying which and the `alp` blobs empty under Frame of Reference. Whether their
+blocks line up is `concatFoR`'s and `concatALP`'s to decide — the parts that do are moved and the parts that do not are
+re-encoded — so the counts travel with the payloads rather than being a condition here.
+
+A part that is not encoded yet is encoded to meet the ones that are. `Enc.ofAtoms` still answers
+dense bytes, so a one-cell part made from an atom used to send the whole join the other way: every
+encoded part decoded to dense to meet it, which is what made `t upsert (1;2)` widen a million
+elements to append one. Where no part is encoded there is nothing to meet, and the join stays where
+it lies. -/
+def encodedParts (t : QAtomicType) (cs : Array (USize × Enc)) :
+    Option (Bool × Nat × Array USize × Array ByteArray × Array ByteArray × Array ByteArray) := do
+  let alp := Column.alpEncodes t
+  if !(alp || Column.encodes t) || !cs.any (fun c => match c.2 with | .foR .. => !alp | .alp .. => alp | _ => false) then none
+  else
+    let ps ← cs.mapM fun
+      | (n, .foR m p) => if alp then none else some (n, m, p, ByteArray.empty)
+      | (n, .alp m p a) => if alp then some (n, m, p, a) else none
+      | (n, e) =>
+        if alp then (match Enc.alpOf t n e with | some (.alp m p a) => some (n, m, p, a) | _ => none)
+        else match Enc.encode t n e with | .foR m p => some (n, m, p, ByteArray.empty) | _ => none
+    some (alp, ps.foldl (init := 0) (· + ·.1.toNat), ps.map (·.1), ps.map (·.2.1), ps.map (·.2.2.1),
+      ps.map (·.2.2.2))
+
+/-- The answer blocks of a `,` over parts of `ns` elements that no part supplies whole, and so are
+re-encoded: a block moves only when it starts on its part's 1024-element grid and ends inside that
+part, which is `cat_take`'s test in `rust/src/structural.rs`. -/
+def straddles (ns : Array Nat) : Nat :=
+  let total := ns.foldl (· + ·) 0
+  let (_, moved) := ns.foldl (init := (0, 0)) fun (s, mv) n =>
+    (s + n, if s % 2 ^ Column.lgEnc != 0 then mv
+      else mv + if s + n == total then (n + 2 ^ Column.lgEnc - 1) / 2 ^ Column.lgEnc else n / 2 ^ Column.lgEnc)
+  (total + 2 ^ Column.lgEnc - 1) / 2 ^ Column.lgEnc - moved
+
+/-- q's `raze` at one element type, which by `~/q/q.k` line 19's `raze:,/` is also `x,y` at two
+columns of that type. Measured — `raze (1 2;3 4)` is `1 2 3 4`, `raze (0#0;0#0)` is the empty long
+vector, `raze enlist 1 2` is `1 2`, `raze (01b;10b)` is `0110b` and `` raze (`a`b;`c) `` is
+`` `a`b`c ``.
+
+No parts at all is declined: `raze ()` is the general empty list `()` at type `0h`, not a typed empty
+vector, and there is no `t` in it to answer with. -/
+def razeColumn (t : QAtomicType) (cs : Array (USize × Enc)) : Option QValue :=
+  if cs.isEmpty then none
+  else match t with
+    | .boolean =>
+      match cs.mapM (fun | (n, .bits b) => some (n, b) | _ => none) with
+      | some ps => needSize (ps.foldl (init := 0) (fun s p => s + p.1.toNat)) "raze: booleans" (fun _ => none) fun c =>
+        some (.vector .boolean c (.bits (concatBits (countBytes (ps.map (·.1))) (ps.map (·.2)))) none)
+      | none => none
+    | .symbol =>
+      match cs.mapM (fun | (_, .syms b o) => some (b, o) | _ => none) with
+      | some ps => some (concatSyms ps)
+      | none =>
+        -- a part that is not interned yet is interned to meet the ones that are, exactly as
+        -- `encodedParts` encodes one to meet an encoded part; where **no** part is interned the arm
+        -- above joins two blobs and interning them to join them would be the dearer answer. A part
+        -- that is neither is not a symbol payload at all and is what the `none` below is for.
+        match cs.mapM (fun (n, e) => match Column.intern e with
+            | .enum dict offs ids => some (n, dict, offs, ids)
+            | _ => none) with
+        | some ps => some (concatEnum ps)
+        | none => none
+    | t =>
+      let dense := fun (_ : Unit) => match t.width, cs.mapM fun (n, e) => Enc.bytesOf t n e with
+        | some w, some ps =>
+          if (cs.zip ps).any fun ((n, _), b) => b.size < n.toNat * w then none
+          else needSize (cs.foldl (· + ·.1.toNat) 0) "raze: elements" (fun _ => none) fun c =>
+            some (.vector t c (.bytes (concatBytes ps)) none)
+        | _, _ => none
+      match encodedParts t cs, t.width with
+      | some (alp, n, ns, ms, ps, as), some w =>
+        -- the straddling blocks are the ones re-encoded; every other block moves
+        if denseCheaper (if alp then 8 else 5) n (if alp then 8 else w) (straddles (ns.map (·.toNat))) then dense ()
+        else needSize n "raze: elements" (fun _ => none) fun c =>
+        -- `countBytes_size` makes `nb` one count a part exactly where `ns` is; that is `encodedParts`' to hold
+        let nb := countBytes ns
+        need (ns.size = ms.size) (fun _ => s!"raze: {ns.size} counts for {ms.size} parts") (fun _ => none)
+          fun _ =>
+        if alp then
+          match concatALP w.toUSize nb ms ps as with
+          | (m, p, a) => some (.vector t c (Enc.answer t c (.alp m p a)) none)
+        else
+          match concatFoR w.toUSize nb ms ps with
+          | (m, p) => some (.vector t c (Enc.answer t c (.foR m p)) none)
+      | _, _ => dense ()
+
+/-- The type a code column is read at by `keySource`, whether any code is negative, and the greatest
+code. An interned column's ids are in `[0, d)` and pass as they lie, at any lane: the chain's
+`Ew.eIds` stage reads them unsigned a tile at a time, so no lane is widened whole first. Measured at
+1e7 rows, two lanes of 1, 2 or 4 bits: 1.3–2.3 ms a key, against 2.7–4.6 widening them by `remapIds`
+first and 1.0–1.7 for the same codes already dense `u8`, the widening not counted. A bitmap is in
+`[0, 1]` without a read.
+
+A dense column is read by `overBytes`, a fold that skips its `nul` and seeds `min` with `~~~nul`.
+So `min` skipping `-1` is negative exactly when a code other than `-1` is, and `min` skipping `-2`
+when `-1` is — every null being negative, that is the null test too — and `max` skips
+`Int64.minValue`, which is never the greatest of codes in a domain. An encoded column is read from
+its metadata and patch list, no element at all. -/
+def keyOperand (t : QAtomicType) (e : Enc) : Option (QAtomicType × Bool × Int) :=
+  match e with
+  | .enum _ offs _ => some (.symbol, false, ((offs.size - 1 : Nat) : Int) - 1)
+  | .bits _ => if t == .boolean then some (t, false, 1) else none
+  | .bytes b => do
+    guard (t == .byte || t == .short || t == .int || t == .long)
+    let cls ← clsOf t
+    -- two passes for `min`, because at `long` every `nul` is some element: one skipping `-1` and
+    -- one skipping `-2` together see every negative code, at every class
+    some (t, overBytes .lesser cls (-1) b < 0 || overBytes .lesser cls (-2) b < 0,
+      (overBytes .greater cls Int64.minValue b).toInt)
+  | .foR md pk => do
+    guard (t == .short || t == .int || t == .long)
+    -- every block's extremes, and the patch list's values — a null or an outlier is held there and
+    -- not in the extremes — read where `Column.foRExc` reads them, without its position search
+    let e := Column.blockStart md (Column.nblk md)
+    let nexc := if pk.size ≤ e then 0 else (Column.bitsAt pk e 8).toNat
+    let esz := (Column.bitsAt pk (e + 8) 8).toNat % 256
+    let s := (64 - 8 * esz).toUInt64
+    let exc := (List.range nexc).map fun k =>
+      let v := Column.bitsAt pk (e + 16 + k * esz) esz
+      if esz == 1 then v.toInt64 else (v <<< s).toInt64 >>> s.toInt64
+    let bs := List.range (Column.nblk md)
+    let lo := (bs.map fun b => (Column.baseAt md b).toInt64) ++ exc
+    let hi := (bs.map fun b => (Column.maxvAt md b).toInt64) ++ exc
+    some (t, lo.any (· < 0), hi.foldl (init := -1) fun m x => max m x.toInt)
+  | _ => none
+
+/-- `operandSource` at `i64` for a `keyOperand` column of `n` elements, with an interned column's ids
+read where they lie by an `Ew.eIds` stage: an id is a code here, and no class `operandSource` reads
+names it. `none` where the payload holds fewer than `n` ids, which the C would read past. -/
+def keySource (b : Ew.Build) (t : QAtomicType) (e : Enc) (n : USize) : Option (Ew.Build × UInt8) :=
+  match e with
+  | .enum _ offs ids =>
+    let w := Column.idWidth offs
+    if Column.idsCap ids w n.toNat != n.toNat then none else
+      let (b, a) := b.input ids
+      some (b.add { engine := Ew.eIds, cls := Ew.i64, shape := w.toUInt8, a })
+  | e => operandSource b t n e Ew.i64 Int64.minValue Int64.minValue n
+
+/-- The composite key `c₁·d₂ + c₂`, element `i` being `Column.idAt ids w i` at
+`w = Column.idWidthOf (d₁ * d₂)` — the width a dictionary of `d₁·d₂` entries packs its ids at — so a
+key reads where an id does.
+
+One chain, one pass: each operand decoded and promoted to `long` a tile at a time by
+`keySource`, whatever its layout — `u8`, `i16`, `i32`, a bitmap, Frame of Reference, an interned
+id lane — then `*` by the atom, `+`, and an `Ew.ePack` stage writing the key at the lane `w`, sub-byte
+lanes included. No operand, no intermediate and no answer at a wider lane is a whole column.
+Measured at 1e7 rows, two bitmaps: 15.5 ms with the key cast to bytes and then narrowed by
+`remapIds`, against 5.4 ms with that second pass gone.
+
+`none` where the counts differ, `d₁·d₂ ≥ 2⁶³`, or a code is outside its domain — null, negative,
+`c₁ ≥ d₁` or `c₂ ≥ d₂` — which `keyOperand`'s extremes decide before the chain runs. Inside the
+domain no partial value leaves `[0, d₁·d₂)`, so nothing wraps and the key fits `w` bits. -/
+def composeKey (t₁ : QAtomicType) (n : USize) (e₁ : Enc) (d₁ d₂ : Nat) (t₂ : QAtomicType) (n₂ : USize)
+    (e₂ : Enc) : Option ByteArray := do
+  let (u₁, neg₁, hi₁) ← keyOperand t₁ e₁
+  let (u₂, neg₂, hi₂) ← keyOperand t₂ e₂
+  guard (n₂ == n && d₁ * d₂ < 2 ^ 63 &&
+    (n == 0 || (!neg₁ && hi₁ < d₁ && !neg₂ && hi₂ < d₂)))
+  -- no code equals `Int64.minValue` inside the domain, so it is the null of every stage
+  let nul := Int64.minValue
+  let (bld, s₁) ← keySource {} u₁ e₁ n
+  let (bld, k) := bld.input (atomBytes Ew.i64 d₂.toUInt64)
+  let (bld, p) := bld.add
+    { engine := Ew.eVal, op := Ew.mul, cls := Ew.i64, shape := Ew.va, a := s₁, b := k, nul }
+  let (bld, s₂) ← keySource bld u₂ e₂ n
+  let (bld, s) := bld.add
+    { engine := Ew.eVal, op := Ew.add, cls := Ew.i64, shape := Ew.vv, a := p, b := s₂, nul }
+  some (bld.run { engine := Ew.ePack, cls := Ew.i64, shape := (Column.idWidthOf (d₁ * d₂)).toUInt8, a := s }
+    n)
+
+end QLean.Kernel

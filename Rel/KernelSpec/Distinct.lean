@@ -1,5 +1,6 @@
 import QLean.RelPart.Verify.Encoding
 import QLean.RelPart.Value
+import QLean.RelPart.Kernel.Scan
 
 /-! The part of `QLean.Verify.Distinct` the Rel kernels reach; `QLean.Verify.Distinct` imports it. -/
 
@@ -35,5 +36,15 @@ theorem elemsW_foldl {E : Type} (g : E → UInt64) (w : Nat) (hw0 : 0 < w) (hw :
 #guard_msgs in
 #print axioms elemsW_foldl_mod
 #print axioms elemsW_foldl
+
+end QLean.Verify
+
+
+namespace QLean.Verify
+
+open QLean QLean.Kernel
+open QLean.Kernel.Scan (Kind)
+
+theorem kind_width (k : Kind) : 0 < k.width ∧ k.width ≤ 8 := by cases k <;> decide
 
 end QLean.Verify

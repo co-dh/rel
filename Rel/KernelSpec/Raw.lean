@@ -1,3 +1,6 @@
+import QLean.RelPart.Verify.Encoding
+import QLean.RelPart.Value
+
 /-! The part of `QLean.Verify.Raw` the Rel kernels reach; `QLean.Verify.Raw` imports it. -/
 
 
@@ -38,5 +41,25 @@ theorem pairwise_map_range_iff {α : Type} (R : α → α → Prop) (f : Nat →
     · intro h
       exact ⟨fun i j hij hj => h i j hij (by omega), by
         rintro _ ⟨i, hi, rfl⟩ _ rfl; exact h i m hi (by omega)⟩
+
+end QLean.Verify
+
+
+namespace QLean.Verify
+
+open QLean QLean.Column
+
+theorem size_raw {t : QAtomicType} (n : USize) (e : Enc) (hw : Enc.WF t n e) (hb : t ≠ .boolean)
+    (hg : t ≠ .guid) (hs : t ≠ .symbol) (hn : t ≠ .general) : (Enc.raw t n e).size = n.toNat := by
+  cases e <;> cases t <;> simp_all [Enc.raw, Enc.WF, QAtomicType.width]
+
+/-- `atomOfBits` at a type of width `w` reads only the low `8 * w` bits. -/
+theorem atomOfBits_mod {t : QAtomicType} {w : Nat} (ht : t.width = some w) (hb : t ≠ .boolean)
+    (hg : t ≠ .guid) (v : UInt64) : atomOfBits t (UInt64.ofNat (v.toNat % 2 ^ (8 * w))) (QAtomicType.ne_general_of_width ht) = atomOfBits t v (QAtomicType.ne_general_of_width ht) := by
+  have h8 : (UInt64.ofNat (v.toNat % 2 ^ 8)).toUInt8 = v.toUInt8 := UInt8.toNat_inj.1 (by simp)
+  have h16 : (UInt64.ofNat (v.toNat % 2 ^ 16)).toUInt16 = v.toUInt16 := UInt16.toNat_inj.1 (by simp)
+  have h32 : (UInt64.ofNat (v.toNat % 2 ^ 32)).toUInt32 = v.toUInt32 := UInt32.toNat_inj.1 (by simp)
+  cases t <;> simp [QAtomicType.width] at ht <;> subst ht <;>
+    first | exact absurd rfl hb | exact absurd rfl hg | simp only [atomOfBits, Nat.reduceMul, h8, h16, h32, ofNat_toNat_mod64]
 
 end QLean.Verify

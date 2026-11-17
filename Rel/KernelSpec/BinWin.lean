@@ -5,6 +5,8 @@ import QLean.RelPart.Verify.Ids
 import QLean.RelPart.Kernel.Sort
 import QLean.RelPart.Value
 import QLean.RelPart.Kernel.Search
+import QLean.RelPart.Verify.Distinct
+import QLean.RelPart.Kernel.Scan
 
 /-! The part of `QLean.Verify.BinWin` the Rel kernels reach; `QLean.Verify.BinWin` imports it. -/
 
@@ -52,3 +54,23 @@ theorem groupSizes_spec (ng w n : USize) (gid : ByteArray) :
 end QLean.Verify
 #print axioms QLean.Verify.binBytes_last
 #print axioms QLean.Verify.groupSizes_spec
+
+
+namespace QLean.Verify
+
+open QLean QLean.Kernel
+open QLean.Kernel.Scan (Kind)
+
+/-- At an integral kind `ordKey` is the kernel's sort key, signed exactly at the signed widths. -/
+theorem ordKey_keyAt {k : Kind} {s : Bool}
+    (hk : (k = .u8 ∨ k = .c8) ∧ s = false ∨ (k = .i16 ∨ k = .i32 ∨ k = .i64) ∧ s = true) (b : ByteArray)
+    (i : Nat) : ordKey k.width false s (Column.bitsAt b (i * k.width) k.width) = Order.keyAt k b i := by
+  have hw := kind_width k
+  have hm := toNat_and_mask hw.1 hw.2 (Column.bitsAt b (i * k.width) k.width)
+  rw [Nat.mod_eq_of_lt (bitsAt_lt _ _ _ hw.2)] at hm
+  have hm := UInt64.toNat_inj.1 hm
+  rcases hk with ⟨hk | hk, rfl⟩ | ⟨hk | hk | hk, rfl⟩ <;> subst hk <;>
+    simp only [ordKey, Bool.false_eq_true, ↓reduceIte, hm] <;> rfl
+
+end QLean.Verify
+#print axioms QLean.Verify.ordKey_keyAt

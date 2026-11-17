@@ -774,3 +774,119 @@ def atomBytes (cls : UInt8) (v : UInt64) : ByteArray :=
   Column.pushBits ByteArray.empty v (Ew.width cls)
 
 end QLean.Kernel
+
+
+namespace QLean.Kernel.Ew
+def ge : UInt8 := 5
+def eAlp : UInt8 := 8
+
+/-- A payload the chain reads whole, and the source code a stage names it by. -/
+def Build.input (b : Build) (x : ByteArray) : Build × UInt8 :=
+  ({ b with inputs := b.inputs.push x }, b.inputs.size.toUInt8)
+
+/-- A stage, and the source code the next stage names its answer by. -/
+def Build.add (b : Build) (s : Stage) : Build × UInt8 :=
+  ({ b with stages := b.stages.push s }, slot0 + b.stages.size.toUInt8)
+
+end QLean.Kernel.Ew
+
+namespace QLean.Kernel
+
+/-- The storage class a type's dense payload is read at. `none` where there is no dense fixed-width
+payload the kernels are instantiated over: `symbol` has no fixed width and `guid` is sixteen bytes,
+wider than any loop here. -/
+def clsOf : QAtomicType → Option UInt8
+  | .boolean => some Ew.bits
+  | .byte | .char => some Ew.u8
+  | .short => some Ew.i16
+  | .int | .month | .date | .minute | .second | .time => some Ew.i32
+  | .long | .timestamp | .timespan => some Ew.i64
+  | .real => some Ew.f32
+  | .float | .datetime => some Ew.f64
+  | .guid | .symbol | .general => none
+
+/-- Whether `Ew.widen` can bring `t` to `cls`. It promotes upward only — nothing already a float
+reaches an integer target, and nothing at all reaches `u8` or `i16` — and asking it for anything
+else aborts rather than answering, so a dispatch has to test this instead of discovering it. These
+four targets are the four cases `rust/src/ew.rs`'s `ew_widen_run` has. Written as the reachable
+pairs rather than as a width comparison, `Ew.width` answering 8 for a bitmap. -/
+def promotable (t : QAtomicType) (cls : UInt8) : Bool :=
+  match clsOf t with
+  | some src =>
+    let integral := src == Ew.bits || src == Ew.u8 || src == Ew.i16 || src == Ew.i32 || src == Ew.i64
+    if src == cls || cls == Ew.f64 then true
+    else if cls == Ew.f32 || cls == Ew.i64 then integral
+    else if cls == Ew.i32 then src == Ew.bits || src == Ew.u8 || src == Ew.i16
+    else false
+  | none => false
+
+/-- An operand's dense payload at `dst`, decoding a `.foR` payload and unpacking a boolean bitmap on
+the way. Two whole-vector C calls at worst, which is what section 3.1 permits.
+
+Which of the two class engines runs is `promotable`: upward it is `Ew.widen`, which remaps the null
+rather than converting it and is the one `-` hands a flipped NaN to; every other direction is
+`Ew.castTo`, q's `$` and the rule `convertible` states. -/
+def operandAt (t : QAtomicType) (m : USize) (e : Enc) (dst : UInt8) (nulIn nulOut : Int64) (n : USize) :
+    Option ByteArray := do
+  let src ← clsOf t
+  if src == dst then Enc.bytesOf t m e
+  else
+    let raw ← match e with
+      | .bits bs => if src == Ew.bits then some bs else none
+      | _ => Enc.bytesOf t m e
+    some (if promotable t dst then Ew.widen src dst nulIn nulOut raw n
+          else Ew.castTo src dst nulIn raw n)
+
+/-- The same operand, as the **stages of a chain** that bring it to `dst`: the decode a `.foR`
+column needs and the promotion a class that is not the engine's needs, each a tile at a time rather
+than a pass over the column. `operandAt` above is what one of these stages does whole.
+
+An operand whose own count is not the chain's is the atom side of `va`/`av`, and it is brought to
+`dst` by `operandAt` before the chain instead. Every stage of a chain runs at the chain's count, and
+promoting a one-element payload at the vector's count would read past the end of it — the same rule
+`mapPass` and `zipPass` have always followed, now with a boundary to state it at. -/
+def operandSource (b : Ew.Build) (t : QAtomicType) (m : USize) (e : Enc) (dst : UInt8)
+    (nulIn nulOut : Int64) (n : USize) (tk : Option UInt8 := none) : Option (Ew.Build × UInt8) := do
+  let src ← clsOf t
+  -- `tk` is a unit conversion (`tickIn`), which reads the source class itself and so stands in
+  -- for the promotion rather than following it: a `datetime` is re-counted from its float days
+  let tickAt (a : UInt8) (op : UInt8) : Ew.Stage :=
+    { engine := Ew.eTick, op, cls := src, shape := dst, a, nul := nulIn, nulOut }
+  if m != n then
+    some (b.input (← match tk with
+      | some op => (Enc.bytesOf t m e).map fun x =>
+          let (one, a) := ({} : Ew.Build).input x
+          one.run (tickAt a op) m
+      | none => operandAt t m e dst nulIn nulOut m))
+  else
+    let (b, raw) ← match e with
+      | .bytes x => some (b.input x)
+      -- the decode is a stage, so the restored block is the tile the engine reads and is never
+      -- written out; the width test is what makes `Ew.width src` the width `Enc.bytesOf` decodes at
+      | .foR metadata pack =>
+        if t.width == some (Ew.width src) then
+          let (b, mi) := b.input metadata
+          let (b, pi) := b.input pack
+          some (b.add { engine := Ew.eDecode, cls := src, a := mi, b := pi })
+        else none
+      | .bits x => if src == Ew.bits && src != dst then some (b.input x) else none
+      -- the float half of the same stage, and the blob's own width has to agree with the type's:
+      -- the scale and the exceptions are read at `alpF32`, so a blob that disagrees is a malformed
+      -- column and declines here rather than being decoded at one width and written at the other
+      | .alp metadata pack a =>
+        if t.width == some (Ew.width src) && Column.alpF32 a == (src == Ew.f32) then
+          let (b, mi) := b.input metadata
+          let (b, pi) := b.input pack
+          let (b, ai) := b.input a
+          some (b.add { engine := Ew.eAlp, cls := src, a := mi, b := pi, c := ai })
+        else none
+      | _ => none
+    if let some op := tk then some (b.add (tickAt raw op))
+    else if src == dst then some (b, raw)
+    else if promotable t dst then
+      some (b.add { engine := Ew.eWiden, cls := src, shape := dst, a := raw,
+                    nul := nulIn, nulOut := nulOut })
+    -- the narrowing half of the same stage, `operandAt`'s second branch as a tile at a time
+    else some (b.add { engine := Ew.eCast, cls := src, shape := dst, a := raw, nul := nulIn })
+
+end QLean.Kernel

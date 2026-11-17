@@ -3,6 +3,7 @@ import QLean.RelPart.Verify.Encoding
 import QLean.RelPart.Kernel.Reduce
 import QLean.RelPart.Value
 import QLean.RelPart.Kernel.Elementwise
+import QLean.RelPart.Eval.Val
 
 /-! The part of `QLean.Verify.Elementwise` the Rel kernels reach; `QLean.Verify.Elementwise` imports it. -/
 
@@ -81,3 +82,15 @@ end QLean.Verify
 /-- info: 'QLean.Verify.Ew.bit_bitAt' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs in
 #print axioms QLean.Verify.Ew.bit_bitAt
+
+
+namespace QLean.Verify
+
+open QLean QLean.Eval
+
+-- `general` has no atom, so each constructor below takes `h : t ≠ .general`; it is implicit here
+-- because the term on the left already carries it.
+@[simp] theorem nullAtom_type (t : QAtomicType) {h : t ≠ .general} : (nullAtom t h).type = t := by
+  cases t <;> first | exact absurd rfl h | rfl
+
+end QLean.Verify

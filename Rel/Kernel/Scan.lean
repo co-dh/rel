@@ -200,3 +200,33 @@ namespace QLean.Kernel
 open QLean.Kernel.Scan
 
 end QLean.Kernel
+
+
+namespace QLean.Kernel.Scan
+
+namespace Kind
+
+end Kind
+
+private theorem foldSize (w : Nat) (rd : Nat → UInt64) (isNull : UInt64 → Bool)
+    (step : α → UInt64 → α) (emit : α → UInt64) (l : List Nat) (p : ByteArray × α) :
+    (l.foldl (scanStep w rd isNull step emit) p).1.size = p.1.size + l.length * w := by
+  induction l generalizing p with
+  | nil => simp
+  | cons i l ih => simp [ih, scanStep, QLean.Column.pushBits_size, Nat.succ_mul]; omega
+
+/-- A scan answers exactly one element per element, which is what `Column.count` of the answer is
+read off. The dispatch below needs it to be the count of its *argument*, and that step is the
+caller's: `QLean/Kernel/Coc.lean` owns how many elements a `.foR` payload decodes to. -/
+theorem scanOf_size (n w : Nat) (rd : Nat → UInt64) (isNull : UInt64 → Bool)
+    (seed : α) (step : α → UInt64 → α) (emit : α → UInt64) :
+    (scanOf n w rd isNull seed step emit).size = n * w := by
+  simp [scanOf, foldSize]
+
+end QLean.Kernel.Scan
+
+namespace QLean.Kernel
+
+open QLean.Kernel.Scan
+
+end QLean.Kernel
