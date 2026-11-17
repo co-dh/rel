@@ -47,6 +47,7 @@ pub mod exports {
     pub mod search;
     pub mod sort;
     pub mod structural;
+    pub mod structural_tail;
     pub mod symsort;
     pub mod time;
     pub mod zip;
