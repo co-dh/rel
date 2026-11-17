@@ -1310,6 +1310,39 @@ pub fn match_syms_ids(b: &Syms, n: usize, d: &Syms, ids: &[u8]) -> bool {
         crate::sym::sym_eq(b.at(i), if e < nd { d.at(e) } else { &[] })
     })
 }
+/// `qlean_match_bytes`' body: `QAtom.identical` element by element of two dense payloads; at the float widths the two zeros
+/// are one value and every other pattern matches only itself.
+pub fn match_bytes(w: usize, is_float: bool, a: &[u8], b: &[u8]) -> bool {
+    if a.len() != b.len() { return false }
+    // one payload against itself is `x~x`; reading it twice is the whole cost
+    if core::ptr::eq(a, b) { return true }
+    if !is_float { return a == b }
+    fn same<const W: usize>(a: &[u8], b: &[u8], mask: u64) -> bool {
+        a.chunks_exact(W).zip(b.chunks_exact(W)).all(|(x, y)| {
+            let (x, y) = (word::<W>(x), word::<W>(y));
+            x == y || (x | y) & mask == 0
+        })
+    }
+    fn word<const W: usize>(c: &[u8]) -> u64 { let mut v = [0u8; 8]; v[..W].copy_from_slice(c); u64::from_le_bytes(v) }
+    if w == 8 { same::<8>(a, b, 0x7fff_ffff_ffff_ffff) } else { same::<4>(a, b, 0x7fff_ffff) }
+}
+/// `qlean_coc_match`'s body: two operands of `w`-byte elements equal, a block of each at a time, stopping at the first
+/// that differs.
+pub fn coc_match(a: &Opnd, b: &Opnd, w: usize) -> bool {
+    if a.n != b.n { return false }
+    let (la, lb) = (a.lg(), b.lg());
+    if la == lb {
+        let (mut xa, mut xb) = (crate::pod::Scr::<u8, 8192>::new(8 << la), crate::pod::Scr::<u8, 8192>::new(8 << la));
+        return (0..a.n.div_ceil(1 << la)).all(|k| a.blk(k, w, &mut xa) == b.blk(k, w, &mut xb));
+    }
+    // blocks of two sizes: each side restores the span the larger block covers, from as many of its own blocks as that takes
+    let l = la.max(lb);
+    let (mut xa, mut xb) = (crate::pod::Scr::<u8, 8192>::new(w << l), crate::pod::Scr::<u8, 8192>::new(w << l));
+    (0..a.n.div_ceil(1 << l)).all(|k| {
+        let cnt = (a.n - (k << l)).min(1 << l);
+        a.range(k << l, cnt, w, &mut xa) == b.range(k << l, cnt, w, &mut xb)
+    })
+}
 /// search.rs `qlean_search_member_sorted`, `qlean_coc_member_sorted` past the unboxing: bit `j` of `out` (LSB
 /// first, `m.div_ceil(8)` bytes, the tail bits left zero) is set when key `j` is in the haystack. Threaded by output
 /// byte, so no two slices touch one byte.

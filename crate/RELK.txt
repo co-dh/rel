@@ -92,3 +92,8 @@ qlean_structural_shift
 qlean_structural_shift_foR
 qlean_structural_til
 qlean_symdict_concat
+qlean_coc_match
+qlean_match_bytes
+qlean_match_syms
+qlean_search_match_ids
+qlean_search_match_syms_ids
