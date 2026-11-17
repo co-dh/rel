@@ -97,6 +97,25 @@ pub struct Pool {
 // read by the workers after the release of `generation` that published it.
 unsafe impl Sync for Pool {}
 
+/// A mutex on one futex word (0 free, 1 held, 2 held with a sleeper), for the one cache the pool's callers share: no
+/// `pthread_mutex_*`, which would be one more undefined name.
+pub struct Lock(AtomicU32);
+impl Lock {
+    pub const fn new() -> Lock { Lock(AtomicU32::new(0)) }
+    pub fn lock(&self) {
+        if self.0.compare_exchange(0, 1, Acquire, Relaxed).is_ok() { return }
+        while self.0.swap(2, Acquire) != 0 {
+            // Safety: FUTEX_WAIT on a live u32 that outlives the call; a changed value returns EAGAIN at once
+            unsafe { sys::syscall(SYS_FUTEX, self.0.as_ptr(), FUTEX_WAIT_PRIVATE, 2 as c_long, null::<c_void>(), null::<c_void>(), 0 as c_long) };
+        }
+    }
+    pub fn unlock(&self) {
+        if self.0.swap(0, Release) == 2 {
+            // Safety: FUTEX_WAKE on a live u32 that outlives the call
+            unsafe { sys::syscall(SYS_FUTEX, self.0.as_ptr(), FUTEX_WAKE_PRIVATE, 1 as c_long, null::<c_void>(), null::<c_void>(), 0 as c_long) };
+        }
+    }
+}
 /// Slice `k` of `[0, n)` cut `parts` ways, the remainder spread over the first slices.
 pub fn cut(n: usize, parts: u32, k: u32) -> (usize, usize) {
     let (q, r, k) = (n / parts as usize, n % parts as usize, k as usize);

@@ -5,7 +5,8 @@
 use crate::alp::Cocf;
 use crate::coc::Coc;
 use crate::exports::coc::{alp_view, view};
-use crate::ffi::{Producer, concat_own, encode_alp, encode_fill, sarray_room, take_first};
+use crate::exports::reduce::elems;
+use crate::ffi::{Producer, SdPart, array_boxed, concat_own, encode_alp, encode_fill, sarray_room, sd_concat, sd_part, syms_of, take_first, take_ids0};
 use crate::lean::{B, O, SArr, box_usize_o, boxed, ctor, export};
 use crate::{BLK, c, pod, structural};
 use alloc::vec::Vec;
@@ -358,4 +359,200 @@ export! {
         let bad = structural::enum_ids_enc(n, d, nullid, w as u32, &col, ids.bytes_mut());
         pair(ids.into(), box_usize_o(bad))
     }
+}
+
+/// The `Int64`s of an answer payload, written in place.
+fn longs_mut(a: &mut SArr) -> &mut [i64] { pod::cast_mut(a.bytes_mut()).expect("qlean structural: a ByteArray's data is 8-aligned") }
+/// The symbols a dictionary's starts describe: `n + 1` starts are `n` symbols and an empty table is none (sym.h `sym_count`).
+fn sym_count(offs: B) -> usize { offs.array().len().saturating_sub(1) }
+
+export! {
+    /// Spec: `allBelow n idx` -- every index, unsigned, below `n`.
+    fn qlean_structural_all_below(n: usize, idxv: B) -> u8 { structural::all_below(n, elems::<i64>(idxv)) as u8 }
+
+    /// Spec: `gatherBytes w fill src idx` is element `idx[j]` of `src` for each of the `idx.size / 8` little-endian `Int64`s in
+    /// `idx`, and `fill` wherever `gatherAt (src.size / w) idx j` is `none`. One unsigned compare rejects all three of q's
+    /// misses at once: `(til 10)@9 10 -1 0N` is `9 0N 0N 0N`, `0N` being `Int64.minValue`, whose unsigned value is 2^63.
+    fn qlean_structural_gather(w: usize, fill: u64, srcv: B, idxv: B) -> O {
+        let idx = elems::<i64>(idxv);
+        fresh(idx.len() * w, |o| structural::gather(c::pool(), w, fill, srcv.bytes(), idx, o))
+    }
+
+    /// Spec: `gatherFoR w fill smeta spack n idx` is `gatherBytes w fill (Coc.decode w smeta spack n) idx` -- the same answer
+    /// with the source left encoded, a gather reading only the blocks its index names.
+    fn qlean_structural_gather_foR(w: usize, fill: u64, smv: B, spv: B, n: usize, idxv: B) -> O {
+        let src = view("qlean structural", smv, spv, n);
+        let idx = elems::<i64>(idxv);
+        fresh(idx.len() * w, |o| structural::gather_enc(c::pool(), w, fill, &src, idx, o))
+    }
+
+    /// Spec: `gatherFoRIdx w fill smeta spack n imeta ipack m` is `gatherFoR w fill smeta spack n (Coc.decode 8 imeta ipack m)`
+    /// -- the same answer with the index left encoded as well.
+    fn qlean_structural_gather_foR_idx(w: usize, fill: u64, smv: B, spv: B, n: usize, imv: B, ipv: B, count: usize) -> O {
+        let (src, ix) = (view("qlean structural", smv, spv, n), view("qlean structural", imv, ipv, count));
+        fresh(ix.meta.n * w, |o| structural::gather_enc_idx(c::pool(), w, fill, &src, &ix, o))
+    }
+
+    /// Spec: `gatherBits n bits idx` is bit `j` set exactly when `gatherAt n idx j` is `some i` and `Column.bitAt bits i` --
+    /// `101b@0 5` is `10b`, measured, so a miss is `0b` and not a dropped element.
+    fn qlean_structural_gather_bits(n: usize, bitsv: B, idxv: B) -> O {
+        let idx = elems::<i64>(idxv);
+        let mut a = zeroed(idx.len().div_ceil(8));
+        structural::gather_bits(c::pool(), n, bitsv.bytes(), idx, a.bytes_mut());
+        a.into()
+    }
+
+    /// Spec: `splitBytes d b` is `(blob, offs)` for the pieces `b` falls into around the non-overlapping occurrences of `d`,
+    /// left to right -- the separator dropped, no NUL added, and `k` occurrences giving `k + 1` pieces. An empty `d` occurs
+    /// nowhere and answers the whole payload as one piece.
+    fn qlean_structural_split(dv: B, bv: B) -> O {
+        let (d, b) = (dv.bytes(), bv.bytes());
+        let cuts = structural::split_cuts(d, b);
+        let mut nb = SArr::new(1, b.len() - cuts * d.len());
+        let no = array_boxed(cuts + 2, |offs| structural::split(d, b, nb.bytes_mut(), offs));
+        pair(nb.into(), no)
+    }
+
+    /// Spec: `longBytes rows` is those row numbers as little-endian `Int64`s: the one place a row list becomes a payload.
+    fn qlean_structural_longs_of(rowsv: B) -> O {
+        let rows = rowsv.array();
+        let mut a = SArr::new(1, rows.len() * 8);
+        for (i, o) in longs_mut(&mut a).iter_mut().enumerate() { *o = count_at(rows, i) as i64 }
+        a.into()
+    }
+
+    /// Spec: `spreadBytes ws` is index `i` repeated `ws[i]` times, as little-endian `Int64`s.
+    fn qlean_structural_spread(wv: B) -> O {
+        let ws = elems::<u64>(wv);
+        let mut a = SArr::new(1, ws.iter().fold(0usize, |t, &c| t.wrapping_add(c as usize)) * 8);
+        structural::spread(ws, longs_mut(&mut a));
+        a.into()
+    }
+
+    /// Spec: `expandBytes w fill src ws` is `gatherBytes w fill src (spreadBytes ws)` -- element `i` of `src` repeated `ws[i]`
+    /// times (a negative count is a run of none), and `fill` for a run past the end of `src`; the index is never built.
+    fn qlean_structural_expand(w: usize, fill: u64, srcv: B, wv: B) -> O {
+        let ws = elems::<i64>(wv);
+        fresh(ws.iter().map(|&x| x.max(0) as usize).sum::<usize>() * w, |o| structural::expand(c::pool(), w, fill, srcv.bytes(), ws, o))
+    }
+
+    /// Spec: `gaussJordan a aug` is the augmented half of `[a | aug]` once `a` has been reduced to the identity, `n` rows of
+    /// `w` doubles laid out row by row, or that many q float nulls where `a` is singular; `aug` empty is the identity of order
+    /// `n`. Swapping only on an exact-zero pivot is the Lean body's rule, and what finds `inv(1 2 3f;4 5 6f;7 8 9f)` singular.
+    fn qlean_structural_gauss_jordan(av: B, augv: B) -> O {
+        let (a, aug) = (bytes_of(av.array()), bytes_of(augv.array()));
+        let w = structural::gauss_width(&a, &aug);
+        let mut o = SArr::new(1, a.len() * w * 8);
+        structural::gauss_jordan(&a, &aug, w, pod::cast_mut(o.bytes_mut()).expect("qlean gaussJordan: a ByteArray's data is 8-aligned"));
+        o.into()
+    }
+
+    /// Spec: `complementBytes n idx` is the row numbers below `n` that `idx` does not name, in order. Nothing needs `idx`
+    /// sorted, and a row named twice is dropped once.
+    fn qlean_structural_complement(n: usize, bv: B) -> O {
+        let (seen, gone) = structural::complement_seen(n, elems::<i64>(bv));
+        let mut a = SArr::new(1, (n - gone) * 8);
+        structural::complement_fill(&seen, longs_mut(&mut a));
+        a.into()
+    }
+
+    /// Spec: `longRows b` is the inverse of `longBytes`, those little-endian `Int64`s as row numbers. One that does not fit a
+    /// boxed scalar stops rather than being truncated into a valid-looking row.
+    fn qlean_structural_rows_of(bv: B) -> O {
+        let b = bv.bytes();
+        array_boxed(b.len() / 8, |o| { structural::rows_of(b, o); })
+    }
+
+    /// Spec: `gatherSyms blob offs ix` is the blob and offset table of the symbols `ix` names, with a miss answering the empty
+    /// symbol -- `` `a`b@0 5 ``, `` `a`b@0 -1 `` and `` `a`b@0 0N `` are all `` `a` ``.
+    fn qlean_structural_gather_syms(blobv: B, offsv: B, idxv: B) -> O {
+        let (s, idx) = (syms_of(blobv, offsv), elems::<i64>(idxv));
+        let mut nb = SArr::new(1, structural::gather_syms_len(&s, idx));
+        let no = array_boxed(idx.len() + 1, |o| structural::gather_syms(&s, idx, nb.bytes_mut(), o));
+        pair(nb.into(), no)
+    }
+
+    /// Spec: `gatherPacked n w wout fill src idx` is `gatherBytes` over an interned column's ids: the same one unsigned compare
+    /// that folds past-the-end, negative and `0N` into one miss, on a payload of `w`-bit fields. The answer is at `wout`
+    /// because a miss is the empty symbol, which `gatherIds` appends when the dictionary has none and can widen the ids.
+    fn qlean_structural_gather_ids(n: usize, w: usize, wout: usize, fill: u64, srcv: B, idxv: B) -> O {
+        let (src, idx) = (srcv.bytes(), elems::<i64>(idxv));
+        let n = ids_n(n, src, w);
+        let mut a = zeroed(crate::ids::ids_bytes(idx.len(), wout as u32));
+        structural::gather_ids(c::pool(), w as u32, wout as u32, fill, &src[..crate::ids::ids_bytes(n, w as u32)], n, idx, a.bytes_mut());
+        a.into()
+    }
+
+    /// Spec: `gatherPackedFoR n w wout fill src imeta ipack m` is `gatherPacked n w wout fill src (Coc.decode 8 imeta ipack m)`,
+    /// the index left encoded.
+    fn qlean_structural_gather_ids_foR(n: usize, w: usize, wout: usize, fill: u64, srcv: B, imv: B, ipv: B, count: usize) -> O {
+        let src = srcv.bytes();
+        let n = ids_n(n, src, w);
+        let ix = view("qlean structural", imv, ipv, count);
+        let mut a = zeroed(crate::ids::ids_bytes(ix.meta.n, wout as u32));
+        structural::gather_ids_enc(c::pool(), w as u32, wout as u32, fill, &src[..crate::ids::ids_bytes(n, w as u32)], n, &ix, a.bytes_mut());
+        a.into()
+    }
+
+    /// Spec: `concatIds wout counts widths maps parts` is every part's ids read through its own map and laid down end to end,
+    /// packed at `wout`. It reads `min counts.size parts.size` parts; `widths` and `maps` are reached with `!`, so a part
+    /// they do not reach is width `0` and the empty map, both of which answer id `0`.
+    fn qlean_structural_concat_ids(wout: usize, countsv: B, widthsv: B, mapsv: B, partsv: B) -> O {
+        let (counts, parts) = (elems::<usize>(countsv), partsv.array());
+        let k = counts.len().min(parts.len());
+        let widths: Vec<u32> = (0..widthsv.array().len().min(k)).map(|i| count_at(widthsv.array(), i) as u32).collect();
+        let mut a = zeroed(crate::ids::ids_bytes(counts[..k].iter().sum(), wout as u32));
+        structural::concat_ids(wout as u32, &counts[..k], &widths, &bytes_of(mapsv.array()), &bytes_of(&parts[..k]), a.bytes_mut());
+        a.into()
+    }
+
+    /// Spec: `Kernel.hashConcat ps` is `concatEnum`'s interned answer when the first part's dictionary holds no symbol twice,
+    /// and `none` otherwise. The first part's ids are then its own -- the joined dictionary is its dictionary with the new
+    /// symbols after it -- and are copied, or widened when the joined dictionary needs more bits; every other part's go through
+    /// the map its entries resolved to. `ps` is owned and handed back on a decline (`.error ps`), so that the caller's fallback
+    /// needs no reference of its own and the first part's ids, when nothing else holds them, are grown in place.
+    fn qlean_symdict_concat(ps: O) -> O {
+        match symdict_concat(&ps) {
+            None => ctor(0, [ps], &[]),
+            Some(r) => ctor(1, [r], &[]),
+        }
+    }
+}
+
+/// The interned answer `(dict, (offs, ids))` of `ps`, or `None` where the dictionary half declines.
+fn symdict_concat(ps: &O) -> Option<O> {
+    let k = ps.borrow().array().len();
+    if k == 0 { return None }
+    let pt: Vec<SdPart> = (0..k).map(|i| sd_part(ps.borrow(), i)).collect();
+    let total: usize = pt.iter().map(|p| p.n).sum();
+    // the first part's own width: its ids are copied as they are, whichever dictionary is the base
+    let (n0, w0) = (pt[0].n, crate::ids::id_width(sym_count(pt[0].offs)));
+    let sz0 = pt[0].ids.bytes().len();
+    let (db, dbo, cnt, maps) = sd_concat(&pt.iter().map(|p| (p.dict, p.offs)).collect::<Vec<_>>())?;
+    let w = crate::ids::id_width(cnt);
+    let all = crate::ids::ids_bytes(total, w);
+    let mut res = if w == w0 { sarray_room(take_ids0(ps), all) } else { zeroed(all).into() };
+    let out = res.exclusive().expect("qlean symdict_concat: an answer holds one reference");
+    if w == w0 {
+        // the first part's ids are the answer's first `n0`, so they stay where they are; every bit past them is cleared,
+        // which `ids_place` writes over and two equal columns compare
+        let nb = n0 * w as usize;
+        let keep = (nb / 8).min(sz0);
+        if keep < all {
+            let tail = if keep < sz0 && nb % 8 != 0 { out[keep] & ((1u8 << (nb % 8)) - 1) } else { 0 };
+            out[keep..].fill(0);
+            out[keep] = tail;
+        }
+    } else {
+        let p0 = structural::row_at(&[pt[0].ids.bytes()], 0, crate::ids::ids_bytes(n0, w0));
+        structural::ids_place(out, 0, w, n0, w0, &p0, None, usize::MAX);
+    }
+    let mut at = n0;
+    for (i, p) in pt.iter().enumerate().skip(1) {
+        let (wi, nm) = (crate::ids::id_width(sym_count(p.offs)), sym_count(p.offs));
+        let pp = structural::row_at(&[p.ids.bytes()], 0, crate::ids::ids_bytes(p.n, wi));
+        structural::ids_place(out, at, w, p.n, wi, &pp, maps[i].as_deref(), nm);
+        at += p.n;
+    }
+    Some(pair(db, pair(dbo, res)))
 }
