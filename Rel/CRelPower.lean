@@ -3,21 +3,21 @@
   `E`. Each twin's bit is the `&&` of the bits of the twins it runs, and decides every capacity
   premise of the op's read-back (`rep_tau`, `rep_lamOn`, …), so `rep_τC` … `rep_EC` hold under that bit alone.
 -/
-import LeetQ.Rel.CRelRel
-import LeetQ.Run.CRelRelDef
-import LeetQ.Rel.RepEst
-import LeetQ.Run.CRelPowerDef
-import LeetQ.Rel.KernelWF.AscSpec
-import LeetQ.Rel.RepPrim
-import LeetQ.Rel.CRelArith
+import Rel.CRelRel
+import Rel.Run.CRelRelDef
+import Rel.RepEst
+import Rel.Run.CRelPowerDef
+import Rel.KernelWF.AscSpec
+import Rel.RepPrim
+import Rel.CRelArith
 
-namespace LeetQ.Rel
+namespace Rel
 
 namespace Rep
 
-open QLean QLean.Kernel QLean.Verify LeetQ.Rel LeetQ.Rel.Alg LeetQ.Rel.KernelWF
-open scoped LeetQ.Core.Rel
-open LeetQ.Core.Rel hiding id comp recip inter union zero le inl inr junc
+open Rel Rel.Kernel Rel.Verify Rel Rel.Alg Rel.KernelWF
+open scoped Rel.Core.Rel
+open Rel.Core.Rel hiding id comp recip inter union zero le inl inr junc
 open Pow OpsN UnionN
 
 variable {A B K : Obj}
@@ -265,9 +265,9 @@ end Rep
 
 namespace CRel
 
-open QLean QLean.Kernel LeetQ.Rel.Alg LeetQ.Rel.Rep
-open scoped LeetQ.Core.Rel
-open LeetQ.Core.Rel hiding id comp recip inter union zero le inl inr junc
+open Rel Rel.Kernel Rel.Alg Rel.Rep
+open scoped Rel.Core.Rel
+open Rel.Core.Rel hiding id comp recip inter union zero le inl inr junc
 
 variable {A B : Obj}
 
@@ -297,4 +297,4 @@ theorem rep_E {n : USize} (R : CRel A B) (X : Vals (.arr A) n) (hb : (R.E X).ok 
 
 end CRel
 
-end LeetQ.Rel
+end Rel

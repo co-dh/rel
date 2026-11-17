@@ -3,13 +3,13 @@
   value, and the grade of `Code.ofLongs` of longs below `2^63` lists them in a stable sort by those longs — at
   row numbers, each row's cells in one block, rows ascending, the incoming order kept inside a block.
 -/
-import LeetQ.Rel.KernelWF.PlaceSpec
-import LeetQ.Rel.KernelWF.PickRow
-import LeetQ.Rel.KernelWF.CodesRec
+import Rel.KernelWF.PlaceSpec
+import Rel.KernelWF.PickRow
+import Rel.KernelWF.CodesRec
 
-namespace LeetQ.Rel.Alg
+namespace Rel.Alg
 
-open QLean QLean.Kernel QLean.Verify LeetQ.Rel LeetQ.Rel.KernelWF
+open Rel Rel.Kernel Rel.Verify Rel Rel.KernelWF
 
 /-- The `long` key `Order.keyAt .i64` sorts by, read as a number: `2^63` above the value. -/
 theorem key_i64 (a : Int64) : ((a.toUInt64 ^^^ 0x8000000000000000).toNat : Int) = a.toInt + 2 ^ 63 := by
@@ -314,4 +314,4 @@ theorem sortBy_long {m : USize} (cells : Vals (.atom .long) m) :
 #print axioms grade_long
 #print axioms grade_ofLongs
 
-end LeetQ.Rel.Alg
+end Rel.Alg

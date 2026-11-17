@@ -2,12 +2,12 @@
   The slice columns `inits` and `tails` hand `nest`, read back: a `gather`ed start (`longsN`) and a `gather`ed
   start plus a rank (`valCol add`), each as an `Int`.
 -/
-import LeetQ.Rel.KernelWF.PickRow
-import LeetQ.Rel.KernelWF.JoinContent
+import Rel.KernelWF.PickRow
+import Rel.KernelWF.JoinContent
 
-namespace LeetQ.Rel.Alg
+namespace Rel.Alg
 
-open QLean QLean.Kernel QLean.Verify LeetQ.Rel
+open Rel Rel.Kernel Rel.Verify Rel
 
 /-- **A gathered long, as an `Int`**: row `d` of `longsN` over `gather 8 a i` is `a`'s long at `i`'s row `d`,
     that long below `2^63`. -/
@@ -34,7 +34,7 @@ theorem gather_add_toInt {m : USize} {a i r : ByteArray} {d : Nat} (hd : d < m.t
   show (Column.bitsAt (add m (gather 8 a i) r) (d * 8) 8).toInt64.toInt = _
   rw [toInt64_toInt (by rw [add_get hd hb]; exact hb), add_get hd hb, hg]
 
-end LeetQ.Rel.Alg
+end Rel.Alg
 
-#print axioms LeetQ.Rel.Alg.gather_longsN_toInt
-#print axioms LeetQ.Rel.Alg.gather_add_toInt
+#print axioms Rel.Alg.gather_longsN_toInt
+#print axioms Rel.Alg.gather_add_toInt

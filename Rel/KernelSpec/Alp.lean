@@ -1,13 +1,13 @@
-import QLean.RelPart.Verify.Encoding
-import QLean.RelPart.Kernel.Coc
-import QLean.RelPart.Value
+import Rel.KernelSpec.Encoding
+import Rel.Kernel.Coc
+import Rel.Kernel.Value
 
-/-! The part of `QLean.Verify.Alp` the Rel kernels reach; `QLean.Verify.Alp` imports it. -/
+/-! The part of `Rel.Verify.Alp` the Rel kernels reach; `Rel.Verify.Alp` imports it. -/
 
 
-namespace QLean.Verify
+namespace Rel.Verify
 
-open QLean
+open Rel
 
 /-- Five padded sections laid end to end, each read back at its own start. -/
 theorem blob_get (pad : ByteArray → ByteArray) (hp : ∀ b k, k < b.size → (pad b)[k]? = b[k]?)
@@ -507,12 +507,12 @@ structure FoRWF (n : Nat) (md pk : ByteArray) : Prop where
         (Column.blockStart md (Column.nblk md) + ·) = some pk.size
   width : ∀ b < Column.nblk md, Column.widthAt md b ≤ 64
 
-end QLean.Verify
+end Rel.Verify
 
 
-namespace QLean.Verify
+namespace Rel.Verify
 
-open QLean
+open Rel
 
 /-- **The runtime test is the writer's form**: `Kernel.Coc.foRStd` is `FoRWF`. -/
 theorem foRStd_iff {n : USize} {md pk : ByteArray} : Kernel.Coc.foRStd n md pk = true ↔ FoRWF n.toNat md pk := by
@@ -520,4 +520,4 @@ theorem foRStd_iff {n : USize} {md pk : ByteArray} : Kernel.Coc.foRStd n md pk =
     List.mem_range, decide_eq_true_eq]
   exact ⟨fun ⟨⟨a, b⟩, c⟩ => ⟨a, b, c⟩, fun ⟨a, b, c⟩ => ⟨⟨a, b⟩, c⟩⟩
 
-end QLean.Verify
+end Rel.Verify

@@ -2,14 +2,14 @@
   What `pick` CONTAINS: row `k` of `x@i` is row `i[k]` of `x`, the index read unsigned, wherever that
   long is below `x`'s count. Stated over `Enc.get`, the reader `Arr.get` goes through.
 -/
-import LeetQ.Run.Code
-import QLean.RelPart.Dep.Monadic
-import QLean.RelPart.Verify.Gather
-import QLean.RelPart.Verify.SymFind
+import Rel.Run.Code
+import Rel.Kernel.Dep.Monadic
+import Rel.KernelSpec.Gather
+import Rel.KernelSpec.SymFind
 
-namespace LeetQ.Rel.KernelWF
+namespace Rel.KernelWF
 
-open QLean QLean.Kernel QLean.Verify
+open Rel Rel.Kernel Rel.Verify
 
 /-- Belongs in qlean. `Enc.get` at a fixed-width type is `raw`'s element read through `atomOfBits`. -/
 theorem get_eq_raw {t : QAtomicType} {w : Nat} (ht : denseWidth t = some w) {n : USize} {e : Enc}
@@ -544,11 +544,11 @@ theorem gatherColumn_miss {t : QAtomicType} {n : USize} {e : Enc} (hw : Enc.WF t
     | enum d o ids => exact gatherColumn_miss_enum hw (hd d o ids rfl) hm h hk hout
     | _ => all_goals (exfalso; simp [Enc.WF, QAtomicType.width] at hw)
 
-end LeetQ.Rel.KernelWF
+end Rel.KernelWF
 
-namespace LeetQ.Rel.Alg
+namespace Rel.Alg
 
-open QLean QLean.Kernel LeetQ.Rel
+open Rel Rel.Kernel Rel
 
 /-- A general list's element `j` is its `gen` column's. -/
 theorem get_general {n : USize} (x : Arr .general n) {xs : Array QValue} (hc : x.enc = .gen xs)
@@ -655,4 +655,4 @@ theorem pickArr_get_miss {t : QAtomicType} (c : (n : USize) × Arr t n) (i : Byt
 #print axioms pick_get_miss
 #print axioms pickArr_get_miss
 
-end LeetQ.Rel.Alg
+end Rel.Alg

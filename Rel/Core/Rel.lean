@@ -4,7 +4,7 @@
   `LeetQ.Aop` ties each definition to the field of freyd's `RelSet` instance by `rfl`. Imports only the toolchain.
 -/
 
-namespace LeetQ.Core
+namespace Rel.Core
 
 universe u v w x
 
@@ -105,4 +105,4 @@ theorem le_trans {R S T : Rel α β} (h₁ : R ⊑ S) (h₂ : S ⊑ T) : R ⊑ T
 
 end Rel
 
-end LeetQ.Core
+end Rel.Core

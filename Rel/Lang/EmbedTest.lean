@@ -1,10 +1,10 @@
-import LeetQ.Run.Lang.Embed
-import LeetQ.Rel.Programs.Prelude
+import Rel.Run.Lang.Embed
+import Rel.Programs.Prelude
 /-! The Rel language written inside Lean (`Embed`): the grammar's closedness, a Lean term in a body is an
-    error (a keyword in it is a Rel name). The programs written with it are `LeetQ.Rel.Programs`, run by the
+    error (a keyword in it is a Rel name). The programs written with it are `Rel.Programs`, run by the
     `Test*` modules. -/
 
-namespace LeetQ.Rel.Lang.EmbedTest
+namespace Rel.Lang.EmbedTest
 
 open Lean
 
@@ -45,14 +45,14 @@ elab "#rel_parse " s:str : command => do
 #guard_msgs in #rel_parse "f : A ⟶ A ≜ $(fun x => x)"
 /-- error: line 50, col 19: `$` is no term of the Rel language: an antiquotation has no place in a program -/
 #guard_msgs in
-open LeetQ.Rel.Programs.prelude in
+open Rel.Programs.prelude in
 rel_program antiquot where
     f : 1 ⟶ 1 ≜ 𝟙 $x
 
 /-! `theorem n : e = f := calc` (`doc/rel-mss-proof-design.md` §3, §8): each step `_ = x := n` cites a theorem, `≜ n`
     a definition; `on A` evaluates each step as a `check`. -/
 
-open LeetQ.Rel.Programs.prelude in
+open Rel.Programs.prelude in
 rel_program thm where
     obj N = 0…3
     obj K = {a,b}
@@ -72,9 +72,9 @@ rel_program thm where
 #guard (thm.filterMap fun | .«theorem» _ n _ _ _ _ _ _ ss => some (n, ss.length) | _ => none) ==
   [("unit", 0), ("good", 2), ("le", 2)]
 
-/-- error: line 80, col 7: theorem `t`: this step x is LeetQ.Rel.Lang.EmbedTest.thm.K ⟶ LeetQ.Rel.Lang.EmbedTest.thm.N, the statement's two is LeetQ.Rel.Lang.EmbedTest.thm.N ⟶ LeetQ.Rel.Lang.EmbedTest.thm.N -/
+/-- error: line 80, col 7: theorem `t`: this step x is Rel.Lang.EmbedTest.thm.K ⟶ Rel.Lang.EmbedTest.thm.N, the statement's two is Rel.Lang.EmbedTest.thm.N ⟶ Rel.Lang.EmbedTest.thm.N -/
 #guard_msgs in
-open LeetQ.Rel.Programs.prelude thm in
+open Rel.Programs.prelude thm in
 rel_program thmType where
     theorem t : two = two := calc
       _ = x := unit
@@ -82,47 +82,47 @@ rel_program thmType where
 
 /-- error: line 88, col 11: `unit` is a theorem, not a relation -/
 #guard_msgs in
-open LeetQ.Rel.Programs.prelude thm in
+open Rel.Programs.prelude thm in
 rel_program thmAsRel where
     theorem t : two = two := calc
       _ = unit := unit
 
 /-- error: line 95, col 18: `two` is a definition; write `≜ two` -/
 #guard_msgs in
-open LeetQ.Rel.Programs.prelude thm in
+open Rel.Programs.prelude thm in
 rel_program relAsThm where
     theorem t : two = two := calc
       _ = two := two
 
 /-- error: line 102, col 20: `unit` is a theorem, not a definition -/
 #guard_msgs in
-open LeetQ.Rel.Programs.prelude thm in
+open Rel.Programs.prelude thm in
 rel_program thmAsDef where
     theorem t : two = two := calc
       _ = two := ≜ unit
 
 /-- error: line 109, col 18: unknown theorem 'nope' -/
 #guard_msgs in
-open LeetQ.Rel.Programs.prelude thm in
+open Rel.Programs.prelude thm in
 rel_program thmUnknown where
     theorem t : two = two := calc
       _ = two := nope
 
 /-- error: line 116, col 7: the chain of `t` ends at two 𝟙, not at its right side two -/
 #guard_msgs in
-open LeetQ.Rel.Programs.prelude thm in
+open Rel.Programs.prelude thm in
 rel_program thmEnds where
     theorem t : two 𝟙 = two := calc
       _ = two 𝟙 := unit
 
 /-- error: line 123, col 7: `t` states `=`: a step `⊑` proves only `⊑` -/
 #guard_msgs in
-open LeetQ.Rel.Programs.prelude thm in
+open Rel.Programs.prelude thm in
 rel_program thmLe where
     theorem t : up = two := calc
       _ ⊑ two := unit
 
-open LeetQ.Rel.Programs.prelude thm in
+open Rel.Programs.prelude thm in
 rel_program thmData where
     theorem t on x : up = two := calc
       _ = two := unit
@@ -160,4 +160,4 @@ section antiquot
     f : 1 ⟶ 1 ≜ 𝟙 $x
 end antiquot
 
-end LeetQ.Rel.Lang.EmbedTest
+end Rel.Lang.EmbedTest

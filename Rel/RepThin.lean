@@ -4,11 +4,11 @@
   `[a]` when `y` is empty, else with `b` its head `a` replaces `b` when `(a, b)` passes the test, `y` stays when
   `(b, a)` passes, and `a :: y` when neither does. The test is `q` at the pairs the round meets, read as `le`.
 -/
-import LeetQ.Rel.RepMerge
+import Rel.RepMerge
 
-namespace LeetQ.Rel.Rep
+namespace Rel.Rep
 
-open QLean QLean.Kernel QLean.Verify LeetQ.Rel LeetQ.Rel.Alg LeetQ.Rel.KernelWF
+open Rel Rel.Kernel Rel.Verify Rel Rel.Alg Rel.KernelWF
 
 open FoldN OpsN Prim
 
@@ -18,8 +18,8 @@ local notation "SP" => Obj.prod B (.arr B)
 
 section Body
 
-open scoped LeetQ.Core.Rel
-open LeetQ.Core.Rel hiding id comp recip inter union zero le inl inr junc
+open scoped Rel.Core.Rel
+open Rel.Core.Rel hiding id comp recip inter union zero le inl inr junc
 
 /-- **`thinLOn`'s body on a coreflexive `D`, read back from its primitives' read-backs**: `(a, y)` in `D` goes to
     `[a]` when `y` is empty; with `y = b :: bs`, to `a :: bs` when `le a b`, to `y` when `le b a`, and to `a :: y`
@@ -271,6 +271,6 @@ theorem thin_body_set {B : Obj} (le : B.El → B.El → Bool) (D : Rel SP SP) (D
 
 end Body
 
-end LeetQ.Rel.Rep
+end Rel.Rep
 
-#print axioms LeetQ.Rel.Rep.thin_body_set
+#print axioms Rel.Rep.thin_body_set

@@ -1,4 +1,4 @@
-import LeetQ.Rel.Programs.CSP
+import Rel.Programs.CSP
 
 /-! # Sudoku arc consistency (AIMA §6.2.2)
 
@@ -39,9 +39,9 @@ needed to name the empty cells.
 The first round of `ν` keeps {1,2,4} at cell 2. A later round sees cells forced by the one before: cell 62 is
 forced to 4, so its column peer cell 8 loses 4. The rounds stop when one removes nothing. -/
 
-namespace LeetQ.Rel.Programs
+namespace Rel.Programs
 
-open LeetQ.Rel.Programs.prelude csp in
+open Rel.Programs.prelude csp in
 rel_program sudokuac where
     obj Cell = 0…80                               -- the cell in row r, column k is 9r+k
     obj Unit = 0…26                               -- rows 0…8, columns 9…17, boxes 18…26
@@ -66,4 +66,4 @@ rel_program sudokuac where
 
 #guard sudokuac.ok
 
-end LeetQ.Rel.Programs
+end Rel.Programs

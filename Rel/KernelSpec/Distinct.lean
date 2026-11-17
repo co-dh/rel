@@ -1,13 +1,13 @@
-import QLean.RelPart.Verify.Encoding
-import QLean.RelPart.Value
-import QLean.RelPart.Kernel.Scan
+import Rel.KernelSpec.Encoding
+import Rel.Kernel.Value
+import Rel.Kernel.Scan
 
-/-! The part of `QLean.Verify.Distinct` the Rel kernels reach; `QLean.Verify.Distinct` imports it. -/
+/-! The part of `Rel.Verify.Distinct` the Rel kernels reach; `Rel.Verify.Distinct` imports it. -/
 
 
-namespace QLean.Verify
+namespace Rel.Verify
 
-open QLean QLean.Kernel
+open Rel Rel.Kernel
 
 /-- A fold of `w`-byte writes reads back as the values written, each truncated to `8 * w` bits. -/
 theorem elemsW_foldl_mod {E : Type} (g : E → UInt64) (w : Nat) (hw0 : 0 < w) (hw : w ≤ 8) (l : List E) :
@@ -32,19 +32,19 @@ theorem elemsW_foldl {E : Type} (g : E → UInt64) (w : Nat) (hw0 : 0 < w) (hw :
   rw [elemsW_foldl_mod g w hw0 hw l]
   exact List.map_congr_left fun e he => by rw [Nat.mod_eq_of_lt (hg e he), UInt64.ofNat_toNat]
 
-/-- info: 'QLean.Verify.elemsW_foldl_mod' depends on axioms: [propext, Quot.sound] -/
+/-- info: 'Rel.Verify.elemsW_foldl_mod' depends on axioms: [propext, Quot.sound] -/
 #guard_msgs in
 #print axioms elemsW_foldl_mod
 #print axioms elemsW_foldl
 
-end QLean.Verify
+end Rel.Verify
 
 
-namespace QLean.Verify
+namespace Rel.Verify
 
-open QLean QLean.Kernel
-open QLean.Kernel.Scan (Kind)
+open Rel Rel.Kernel
+open Rel.Kernel.Scan (Kind)
 
 theorem kind_width (k : Kind) : 0 < k.width ∧ k.width ≤ 8 := by cases k <;> decide
 
-end QLean.Verify
+end Rel.Verify

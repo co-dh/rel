@@ -1,12 +1,12 @@
-import QLean.RelPart.Verify.Encoding
-import QLean.RelPart.Value
-import QLean.RelPart.Kernel.Search
+import Rel.KernelSpec.Encoding
+import Rel.Kernel.Value
+import Rel.Kernel.Search
 
-/-! The part of `QLean.Verify.FindMember` the Rel kernels reach; `QLean.Verify.FindMember` imports it. -/
+/-! The part of `Rel.Verify.FindMember` the Rel kernels reach; `Rel.Verify.FindMember` imports it. -/
 
 
-namespace QLean.Verify
-open QLean QLean.Kernel
+namespace Rel.Verify
+open Rel Rel.Kernel
 
 /-- A search over `List.range n` answering `n` for "absent" is the position of the first match. -/
 theorem find?_range_getD {α : Type} [BEq α] (f : Nat → α) (y : α) (n : Nat) :
@@ -192,4 +192,4 @@ theorem memberVec_mem (w : USize) (float : Bool) (xs hay : ByteArray)
     rw [find?_range_getD, ← idxOf_lt_length]
     simp only [List.length_map, List.length_range]
 
-end QLean.Verify
+end Rel.Verify

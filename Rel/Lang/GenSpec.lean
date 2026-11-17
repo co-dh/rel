@@ -1,14 +1,14 @@
-import LeetQ.Run.Lang.Gen
-import LeetQ.Rel.Lang.BitsSpecRun
-import LeetQ.Rel.CRelRel
-import LeetQ.Run.CRelRelDef
-import LeetQ.Rel.CRelArith
-import LeetQ.Run.CRelArithDef
-import LeetQ.Rel.CRelFold
-import LeetQ.Run.CRelFoldDef
-import LeetQ.Rel.CRelPower
-import LeetQ.Rel.CRelLoop
-import LeetQ.Rel.CRelEst
+import Rel.Run.Lang.Gen
+import Rel.Lang.BitsSpecRun
+import Rel.CRelRel
+import Rel.Run.CRelRelDef
+import Rel.CRelArith
+import Rel.Run.CRelArithDef
+import Rel.CRelFold
+import Rel.Run.CRelFoldDef
+import Rel.CRelPower
+import Rel.CRelLoop
+import Rel.CRelEst
 
 /-! The code of `Gen` read back: one lemma per combinator, saying that where its ok bit is set its relation is
     the allegory's operation on its parts' relations, so `Expand` assembles the correctness of a definition from
@@ -16,11 +16,11 @@ import LeetQ.Rel.CRelEst
     (§a), so `Sound f T` says that `f` and `T` agree on those keys: `D ≫ rep(f D) = D ≫ T`, pointwise. A closed
     term has no keys, and there it is the equation `rep(f ()) = T` (`Sound.eq`). -/
 
-namespace LeetQ.Rel.Lang.Gen
+namespace Rel.Lang.Gen
 
-open LeetQ.Rel LeetQ.Rel.Alg LeetQ.Rel.Rep QLean.Kernel
-open scoped LeetQ.Core.Rel
-open LeetQ.Core.Rel hiding id comp recip inter union zero le inl inr junc
+open Rel Rel.Alg Rel.Rep Rel.Kernel
+open scoped Rel.Core.Rel
+open Rel.Core.Rel hiding id comp recip inter union zero le inl inr junc
 
 /-- The keys `D` as a relation: the coreflexive itself on demand, `𝟙` for a closed term. -/
 def keys : {d : Bool} → {A : Obj} → Dem d A → Den A A
@@ -488,7 +488,7 @@ theorem fold_sound {E V : Obj} {d : Bool} {e : Fn false V V} {S : Fn d (.prod E 
     exact exists_congr fun ys => exists_congr fun hy => and_congr_left fun _ =>
       (valRow _ _).trans (by rw [he.eq hb.1])
 
-open LeetQ.Rel.KernelWF LeetQ.Rel.Rep.FoldN LeetQ.Rel.Rep.OpsN LeetQ.Rel.Rep.Prim in
+open Rel.KernelWF Rel.Rep.FoldN Rel.Rep.OpsN Rel.Rep.Prim in
 /-- `est(Q)` keeps `b` of `xs` unless some other `c` of `xs` fails `Q` at `(b, c)`; `Q` runs on the pairs of
     values of one array (`estOnC_ok`'s `pair` and `ran` bits read them back). -/
 theorem est_sound {B : Obj} {Q : Fn true (.prod B B) (.prod B B)} {TQ : Den (.prod B B) (.prod B B)}
@@ -633,4 +633,4 @@ theorem ldivB_sound {A B C : Obj} {R : Pl false A B} {S : Pl false A C} {UB : Fn
     (hB : Sound UB TB) (hC : Sound UC TC) : Sound (ldivB A B C R S UB UC) (ldivDen TR TS TB TC) :=
   by have h := runP_sound (pldiv_sound hR hS hB hC); exact h
 
-end LeetQ.Rel.Lang.Gen
+end Rel.Lang.Gen

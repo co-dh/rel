@@ -3,20 +3,20 @@
   atom read-back at the types and encodings proved here; `raze_row` (`RazeFoR`) composes the four constructor
   lemmas (`raze_row_atom`, `_prod`, `_arr`, `_sum`) along the side's shape once `hat_all` covers every atom.
 -/
-import LeetQ.Rel.KernelWF.RazeRowRec
+import Rel.KernelWF.RazeRowRec
 
-namespace LeetQ.Rel.KernelWF
+namespace Rel.KernelWF
 
-open QLean QLean.Kernel QLean.Dep LeetQ.Rel LeetQ.Rel.Alg LeetQ.Rel.Rep
-open scoped LeetQ.Core.Rel
-open LeetQ.Core.Rel hiding id comp recip inter union zero le inl inr junc
+open Rel Rel.Kernel Rel.Dep Rel Rel.Alg Rel.Rep
+open scoped Rel.Core.Rel
+open Rel.Core.Rel hiding id comp recip inter union zero le inl inr junc
 
 /-- The size bounds under which two parts' `raze` reads back row by row (`raze_row`):
     - an atom: the parts' dictionaries, a blob counting its rows, fit a `USize` (`razeTo2_symbol`'s `hD`), and at
       a type ALP encodes the joined count is below `2 ^ 32`, where `concatALP` stores its exception offsets;
     - an array: its flat payloads' counts summed fit a `USize` and stay below `2 ^ 63` (`raze_row_arr`);
     - a sum: each side's held payload counts the same, and both parts' `held` picks fit (`raze_row_sum`). -/
-def _root_.LeetQ.Rel.Vals.RazeFits : (A : Obj) → {n m : USize} → Vals A n → Vals A m → Prop
+def _root_.Rel.Vals.RazeFits : (A : Obj) → {n m : USize} → Vals A n → Vals A m → Prop
   | .atom t, n, m, x, y =>
       (match Arr.enc (t := t) (n := n) x with | .enum _ o _ => o.size - 1 | _ => n.toNat) +
         (match Arr.enc (t := t) (n := m) y with | .enum _ o _ => o.size - 1 | _ => m.toNat) < USize.size ∧
@@ -32,7 +32,7 @@ def _root_.LeetQ.Rel.Vals.RazeFits : (A : Obj) → {n m : USize} → Vals A n �
 
 /-- **`Obj.razeC`'s bit is a fit** for two parts: each clause of `Vals.RazeFits` is a conjunct of the bit, a
     sum's picks by `pickFits_of_fitsN` at all its rows. -/
-theorem _root_.LeetQ.Rel.Obj.razeC_fits : (A : Obj) → {n m : USize} → (x : Vals A n) → (y : Vals A m) →
+theorem _root_.Rel.Obj.razeC_fits : (A : Obj) → {n m : USize} → (x : Vals A n) → (y : Vals A m) →
     (cs : Array (Part A)) → cs.toList = [⟨n, x⟩, ⟨m, y⟩] →
     (hN : (cs.toList.map fun c : Part A => c.1.toNat).sum < USize.size) →
     (Obj.razeC A cs hN).2 = true → Vals.RazeFits A x y
@@ -128,4 +128,4 @@ theorem razeTo2_fits {t : QAtomicType} {n m : USize} (x : Arr t n) (y : Arr t m)
 
 #print axioms razeTo2_fits
 
-end LeetQ.Rel.KernelWF
+end Rel.KernelWF

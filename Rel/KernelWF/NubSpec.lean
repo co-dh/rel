@@ -5,16 +5,16 @@
 
   Every index in a statement here carries its bound explicitly (`xs[k]'hk`).
 -/
-import LeetQ.Rel.Rep
-import LeetQ.Rel.KernelWF.PickRow
-import LeetQ.Rel.KernelWF.MemberSpec
-import LeetQ.Rel.KernelWF.CodesProd
-import LeetQ.Rel.KernelWF.CodesSpec
-import LeetQ.Rel.KernelWF.CodesFloatParts
+import Rel.Rep
+import Rel.KernelWF.PickRow
+import Rel.KernelWF.MemberSpec
+import Rel.KernelWF.CodesProd
+import Rel.KernelWF.CodesSpec
+import Rel.KernelWF.CodesFloatParts
 
-namespace LeetQ.Rel.Alg
+namespace Rel.Alg
 
-open QLean QLean.Kernel QLean.Verify LeetQ.Rel
+open Rel Rel.Kernel Rel.Verify Rel
 
 /-! ## First occurrences -/
 
@@ -327,13 +327,13 @@ end Nub
 #print axioms nub_mem
 #print axioms nub_row
 
-end LeetQ.Rel.Alg
+end Rel.Alg
 
-namespace LeetQ.Rel.Rep
+namespace Rel.Rep
 
-open QLean QLean.Kernel QLean.Verify LeetQ.Rel LeetQ.Rel.Alg
-open scoped LeetQ.Core.Rel
-open LeetQ.Core.Rel hiding id comp recip inter union zero le inl inr junc
+open Rel Rel.Kernel Rel.Verify Rel Rel.Alg
+open scoped Rel.Core.Rel
+open Rel.Core.Rel hiding id comp recip inter union zero le inl inr junc
 open Alg.NubN
 
 /-- **`rep (nub R) = rep R`**: `rep` reads a relation as the set of its pairs, so dropping repeated rows
@@ -371,4 +371,4 @@ theorem rep_nub {k v : Obj} (R : Rel k v)
 
 #print axioms rep_nub
 
-end LeetQ.Rel.Rep
+end Rel.Rep

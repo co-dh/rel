@@ -3,17 +3,17 @@
   moved past the counts before that part, and `cut` reads that back. Then the joint codes of a side of
   several parts, read through `raze`, `groupIdsColumn`, `Code.ofIds` and `cut`.
 -/
-import LeetQ.Rel.KernelWF.CodesSpec
-import LeetQ.Rel.KernelWF.RazeSpec
-import LeetQ.Rel.KernelWF.Lane
-import LeetQ.Rel.KernelWF.ComposeKey
-import QLean.RelPart.Verify.Gather
-import QLean.RelPart.Verify.Search
-import QLean.RelPart.Verify.SymFind
+import Rel.KernelWF.CodesSpec
+import Rel.KernelWF.RazeSpec
+import Rel.KernelWF.Lane
+import Rel.KernelWF.ComposeKey
+import Rel.KernelSpec.Gather
+import Rel.KernelSpec.Search
+import Rel.KernelSpec.SymFind
 
-namespace LeetQ.Rel.Alg
+namespace Rel.Alg
 
-open QLean QLean.Dep QLean.Kernel QLean.Verify LeetQ.Rel
+open Rel Rel.Dep Rel.Kernel Rel.Verify Rel
 
 /-! ## Offsets -/
 
@@ -752,4 +752,4 @@ theorem cat_parts {p : Nat} (cx : Vector Code p) (hp : 0 < p)
   simp only [Vector.getElem_toArray, Vector.toList_toArray] at this
   rw [hw, hl hk hp]; exact this
 
-end LeetQ.Rel.Alg
+end Rel.Alg

@@ -4,11 +4,11 @@
   no equality. `valEq` compares everything but those cells; it is reflexive everywhere and is `=` on a value
   that holds no cell (`cellFree`).
 -/
-import QLean.RelPart.Value
+import Rel.Kernel.Value
 
-namespace LeetQ.Rel
+namespace Rel
 
-open QLean
+open Rel
 
 deriving instance DecidableEq for QAtom
 
@@ -182,4 +182,4 @@ theorem valEq_iff {a b : QValue} (hc : cellFree a = true) : valEq a b = true ↔
 
 #print axioms valEq_iff
 
-end LeetQ.Rel
+end Rel

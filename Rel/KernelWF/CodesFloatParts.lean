@@ -5,11 +5,11 @@
   as `Vals.row` tells them apart. The joint faithfulness across several parts reads the raze back, so it lives
   above `RazeFoR` (`CodesNumParts`); one part needs no read-back.
 -/
-import LeetQ.Rel.KernelWF.CodesProd
+import Rel.KernelWF.CodesProd
 
-namespace LeetQ.Rel.Alg
+namespace Rel.Alg
 
-open QLean QLean.Dep QLean.Kernel QLean.Verify LeetQ.Rel
+open Rel Rel.Dep Rel.Kernel Rel.Verify Rel
 
 /-- A float type's facts: `bitsType` sorts it at an integral kind `k` of its width, its dense payload holds
     `k.width` bytes an element. -/
@@ -145,4 +145,4 @@ theorem codes_float_parts_wf {t : QAtomicType} (ht : t = .real âˆ¨ t = .float âˆ
 #print axioms float_groups
 #print axioms codes_float_parts_wf
 
-end LeetQ.Rel.Alg
+end Rel.Alg

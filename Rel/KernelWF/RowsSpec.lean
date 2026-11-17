@@ -3,12 +3,12 @@
   `[lo, hi)` into the payload `[0, p]` as `Vals.row` does (`Ew.val` lesser, greater, sub), `p` below `2^63`
   where a long reads as its own value.
 -/
-import LeetQ.Rel.KernelWF.JoinContent
-import LeetQ.Rel.KernelWF.CrossSpec
+import Rel.KernelWF.JoinContent
+import Rel.KernelWF.CrossSpec
 
-namespace LeetQ.Rel.Alg
+namespace Rel.Alg
 
-open QLean QLean.Kernel QLean.Verify LeetQ.Rel
+open Rel Rel.Kernel Rel.Verify Rel
 
 /-- `Ew.val` on longs at `va`, element `i` below the count: `valStep` of `a`'s long `i` and `b`'s first. -/
 theorem val_va_get (op : UInt8) (a b : ByteArray) (n : USize) {i : Nat} (hi : i < n.toNat) :
@@ -162,7 +162,7 @@ theorem sublist_flatMap {α β : Type} (f : α → List β) {l₁ l₂ : List α
     the longs `slices`/`sums`/`expand` compute them in, and the payload again at those copies; at a sum,
     the row count (the tags' running count) and both sides' counts below `2^63`, the longs `place` computes in, and each side again at the positions its
     rows read (a miss reading the left side at its count `l`, a miss again). -/
-def _root_.LeetQ.Rel.Vals.PickFits : (A : Obj) → {n : USize} → Vals A n → List Nat → Prop
+def _root_.Rel.Vals.PickFits : (A : Obj) → {n : USize} → Vals A n → List Nat → Prop
   | .atom _, n, x, ps => (∃ k ∈ ps, n.toNat ≤ k) → ∀ d o ids, Arr.enc x = .enum d o ids → o.size - 1 < USize.size
   | .prod a b, _, x, ps => Vals.PickFits a x.1 ps ∧ Vals.PickFits b x.2 ps
   | .arr b, n, ⟨p, lo, hi, f⟩, ps =>
@@ -510,4 +510,4 @@ theorem pick_row_prod {a b : Obj} {n : USize} (x : Vals (.prod a b) n)
     (Vals.pick (.prod a b) x i m h).row q = x.row ⟨_, hin⟩ :=
   Prod.ext (h1 i m h q hin) (h2 i m h q hin)
 
-end LeetQ.Rel.Alg
+end Rel.Alg

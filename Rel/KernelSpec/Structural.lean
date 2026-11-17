@@ -1,17 +1,17 @@
-import QLean.RelPart.Verify.FindMember
-import QLean.RelPart.Verify.Encoding
-import QLean.RelPart.Verify.Group
-import QLean.RelPart.Verify.Distinct
-import QLean.RelPart.Kernel.Structural
-import QLean.RelPart.Kernel.Reduce
-import QLean.RelPart.Value
+import Rel.KernelSpec.FindMember
+import Rel.KernelSpec.Encoding
+import Rel.KernelSpec.Group
+import Rel.KernelSpec.Distinct
+import Rel.Kernel.Structural
+import Rel.Kernel.Reduce
+import Rel.Kernel.Value
 
-/-! The part of `QLean.Verify.Structural` the Rel kernels reach; `QLean.Verify.Structural` imports it. -/
+/-! The part of `Rel.Verify.Structural` the Rel kernels reach; `Rel.Verify.Structural` imports it. -/
 
 
-namespace QLean.Verify
+namespace Rel.Verify
 
-open QLean QLean.Kernel
+open Rel Rel.Kernel
 
 /-- A `copySlice` that fits both arrays: `len` bytes of `src` from `so` at `d`, `dst` everywhere else. -/
 theorem copySlice_getElem? (src dst : ByteArray) (so d len j : Nat) (hd : d + len ≤ dst.size)
@@ -177,9 +177,9 @@ theorem groupCells_til (ng G : USize) (hG : G.toNat < 2 ^ 63) (m : ByteArray) :
   · rw [atI64_eq, UInt64.toUInt64_toInt64]
   · rfl
 
-end QLean.Verify
+end Rel.Verify
 
-#print axioms QLean.Verify.scatterPacked_spec
-#print axioms QLean.Verify.expandBytes_spec
-#print axioms QLean.Verify.tilLongs_spec
-#print axioms QLean.Verify.groupCells_til
+#print axioms Rel.Verify.scatterPacked_spec
+#print axioms Rel.Verify.expandBytes_spec
+#print axioms Rel.Verify.tilLongs_spec
+#print axioms Rel.Verify.groupCells_til

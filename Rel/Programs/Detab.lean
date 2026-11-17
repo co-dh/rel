@@ -1,4 +1,4 @@
-import LeetQ.Rel.Programs.Prelude
+import Rel.Programs.Prelude
 
 /-! # The detab-entab problem
 
@@ -6,9 +6,9 @@ B&dM §10.2 "The detab-entab problem" (diag/aop/10-greedy.typ:79-266): detab, th
 entab ⊑ Λ(detab°)est(R) (entab_laws, 10:148) and the derived program entab = triple assocl π₁ (𝟙×blanks) cat
 (entab_triple, 10:259), on arrays of characters. The μ form of entab_laws is not written: no μ (§d). -/
 
-namespace LeetQ.Rel.Programs
+namespace Rel.Programs
 
-open LeetQ.Rel.Programs.prelude in
+open Rel.Programs.prelude in
 rel_program detab where
     obj Ch = {a,b,c,d,BL,TB,NL}                   -- the characters: letters, the book's BL, TB, NL
     obj N = 0…24                                  -- columns and counts: detab of 5 characters reaches column 20
@@ -81,4 +81,4 @@ rel_program detab where
 
 #guard detab.ok
 
-end LeetQ.Rel.Programs
+end Rel.Programs

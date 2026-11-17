@@ -4,12 +4,12 @@
   over `concatIds`). Each step is read back entry by entry: entry `O_k + i` of the answer has the bytes of
   entry `i` of part `k`, `O_k` the counts of the parts before `k`.
 -/
-import LeetQ.Rel.KernelWF.CodesProd
-import LeetQ.Rel.KernelWF.CodesSym
+import Rel.KernelWF.CodesProd
+import Rel.KernelWF.CodesSym
 
-namespace LeetQ.Rel.KernelWF
+namespace Rel.KernelWF
 
-open QLean QLean.Kernel QLean.Dep LeetQ.Rel LeetQ.Rel.Alg
+open Rel Rel.Kernel Rel.Dep Rel Rel.Alg
 
 /-! ## Positions of a concatenation -/
 
@@ -634,4 +634,4 @@ theorem raze_get_symbol {p : Nat} (cs : Vector (Part (.atom .symbol)) p)
   have := Option.some_inj.1 ho
   rw [this, Arr.getElem_toList]; rfl
 
-end LeetQ.Rel.KernelWF
+end Rel.KernelWF

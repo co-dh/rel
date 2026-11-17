@@ -3,13 +3,13 @@
   part after another. `razeColumn` lays the parts' bytes end to end (`concatBytes`), and an element of a
   dense payload is read off its own `w` bytes only.
 -/
-import LeetQ.Rel.KernelWF.PickSpec
-import QLean.RelPart.Dep.Monadic
-import QLean.RelPart.Verify.AlpConcat
+import Rel.KernelWF.PickSpec
+import Rel.Kernel.Dep.Monadic
+import Rel.KernelSpec.AlpConcat
 
-namespace LeetQ.Rel.KernelWF
+namespace Rel.KernelWF
 
-open QLean QLean.Kernel QLean.Dep LeetQ.Rel LeetQ.Rel.Alg
+open Rel Rel.Kernel Rel.Dep Rel Rel.Alg
 
 /-- A byte read as `bitsAt` reads it, zero past the end. -/
 theorem dite_byte (b : ByteArray) (j : Nat) : (if h : j < b.size then b[j] else 0) = (b.data[j]?).getD 0 := by
@@ -448,4 +448,4 @@ theorem razeTo_toList_boolean (cs : Array ((k : USize) × Arr .boolean k)) {S : 
   rw [List.getElem_map, List.getElem_range, Verify.bitAt_packOf _ _ _ (by simpa [hlen] using h1),
     Array.getElem_toList, Array.getElem?_eq_getElem (by simpa [hlen] using h1), Option.getD_some]
 
-end LeetQ.Rel.KernelWF
+end Rel.KernelWF

@@ -1,9 +1,9 @@
-import QLean.RelPart.Value
+import Rel.Kernel.Value
 
-/-! The part of `QLean.Kernel.Coc` the Rel kernels reach; `QLean.Kernel.Coc` imports it. -/
+/-! The part of `Rel.Kernel.Coc` the Rel kernels reach; `Rel.Kernel.Coc` imports it. -/
 
 
-namespace QLean.Kernel.Coc
+namespace Rel.Kernel.Coc
 
 /-- What is added to a `w`-byte element to make unsigned comparison agree with q's order: half the
 range, which is flipping the sign bit. One byte is the exception and biases by nothing, `byte` and
@@ -13,7 +13,7 @@ def bias (w : Nat) : Nat := if w = 1 then 0 else 2 ^ (8 * w - 1)
 
 /-- Element `i` of a dense payload of `w`-byte elements, biased into unsigned order. -/
 def keyAt (w : Nat) (x : ByteArray) (i : Nat) : Nat :=
-  (QLean.Column.bitsAt x (i * w) w).toNat ^^^ bias w
+  (Rel.Column.bitsAt x (i * w) w).toNat ^^^ bias w
 
 /-- A key written back out as the `int64_t` a block minimum is stored as: the bias taken off again,
 sign-extended to 64 bits. Adding `2 ^ 64 - bias w` is that sign extension — a non-negative element
@@ -45,7 +45,7 @@ def blockOf (B w n b : Nat) (x : ByteArray) : Nat × Nat × UInt64 × Nat :=
   let s := ks.foldl (init := (0 : UInt64)) fun acc k =>
     let v := unbias w k
     if v == nul then acc else acc + v
-  (mn, mx, s, QLean.Column.widthFor (mx - mn))
+  (mn, mx, s, Rel.Column.widthFor (mx - mn))
 
 /-- One block's residual bytes from the residuals themselves, laid out the way `Column.resAt` reads
 them back: residual `j`'s low `w` bits at bits `[j * w, j * w + w)` of a little-endian bit stream,
@@ -71,12 +71,12 @@ would let the metadata and the denotation drift. `rust/src/coc.rs`'s `coc_offset
 the block size's logarithm, `2 ^ lg` elements a block. A caller
 that has no sums to offer passes `0` and `0`, which is what every reader tests for. -/
 def foRMeta (lg : Nat) (nul : UInt64) (sumn : Nat) (bs : Array (UInt64 × UInt64 × UInt64 × Nat)) : ByteArray :=
-  (bs.foldl (init := ByteArray.empty) fun acc b => QLean.Column.pushBits acc b.1 8)
-    ++ (bs.foldl (init := ByteArray.empty) fun acc b => QLean.Column.pushBits acc b.2.1 8)
+  (bs.foldl (init := ByteArray.empty) fun acc b => Rel.Column.pushBits acc b.1 8)
+    ++ (bs.foldl (init := ByteArray.empty) fun acc b => Rel.Column.pushBits acc b.2.1 8)
     ++ (bs.foldl (init := (ByteArray.empty, 0)) fun (acc, pos) b =>
-          (QLean.Column.pushBits acc pos.toUInt64 8, pos + 2 ^ lg * b.2.2.2 / 8)).1
-    ++ (bs.foldl (init := ByteArray.empty) fun acc b => QLean.Column.pushBits acc b.2.2.1 8)
-    ++ QLean.Column.pushBits (QLean.Column.pushBits (QLean.Column.pushBits ByteArray.empty nul 8) sumn.toUInt64 8)
+          (Rel.Column.pushBits acc pos.toUInt64 8, pos + 2 ^ lg * b.2.2.2 / 8)).1
+    ++ (bs.foldl (init := ByteArray.empty) fun acc b => Rel.Column.pushBits acc b.2.2.1 8)
+    ++ Rel.Column.pushBits (Rel.Column.pushBits (Rel.Column.pushBits ByteArray.empty nul 8) sumn.toUInt64 8)
         lg.toUInt64 8
     ++ bs.foldl (init := ByteArray.empty) fun acc b => acc.push b.2.2.2.toUInt8
 
@@ -102,7 +102,7 @@ states the round trip and not the bytes.
 those four element types, `Column.encode` below refuses everything else, and the C aborts rather than
 answering an empty pair, which would drop a column's contents silently. -/
 @[extern "qlean_coc_encode"]
-def encode (width : USize) (x : @& ByteArray) : ByteArray × ByteArray := encodeAt QLean.Column.lgEnc width x
+def encode (width : USize) (x : @& ByteArray) : ByteArray × ByteArray := encodeAt Rel.Column.lgEnc width x
 
 
 /-- The bytes of the patch list whose header is at byte `e` of `pk`, for `nb` blocks: `rust/src/coc.rs`'s
@@ -110,9 +110,9 @@ def encode (width : USize) (x : @& ByteArray) : ByteArray × ByteArray := encode
 then a `u64` frame a block when bit 8 of the width word is set. `none` where that word is not one
 `coc_attach` reads: an element width of 1, 2, 4 or 8 and no bit above the flag. -/
 def foRTail (nb : Nat) (pk : ByteArray) (e : Nat) : Option Nat :=
-  let f := (QLean.Column.bitsAt pk (e + 8) 8).toNat
+  let f := (Rel.Column.bitsAt pk (e + 8) 8).toNat
   if [1, 2, 4, 8].contains (f % 256) && f < 512 then
-    some ((QLean.Column.alpSects nb (QLean.Column.bitsAt pk e 8).toNat (f % 256)).2.2
+    some ((Rel.Column.alpSects nb (Rel.Column.bitsAt pk e 8).toNat (f % 256)).2.2
       + if f < 256 then 0 else 8 * nb)
   else none
 
@@ -125,18 +125,18 @@ pack would put the next part's residuals in its place. A kernel that cannot carr
 declines one on top of this. `Verify.foRStd_iff` is `Verify.FoRWF`, `Verify.foRWF_encode` that
 `encode` establishes it, and `rust/src/coc.rs`'s `coc_std` is the same test. -/
 def foRStd (n : USize) (md pk : ByteArray) : Bool :=
-  QLean.Column.nblk md == (n.toNat + QLean.Column.blk md - 1) / QLean.Column.blk md
-    && (pk.size == QLean.Column.blockStart md (QLean.Column.nblk md)
-      || (foRTail (QLean.Column.nblk md) pk (QLean.Column.blockStart md (QLean.Column.nblk md))).map
-          (QLean.Column.blockStart md (QLean.Column.nblk md) + ·) == some pk.size)
-    && (List.range (QLean.Column.nblk md)).all fun b => QLean.Column.widthAt md b ≤ 64
+  Rel.Column.nblk md == (n.toNat + Rel.Column.blk md - 1) / Rel.Column.blk md
+    && (pk.size == Rel.Column.blockStart md (Rel.Column.nblk md)
+      || (foRTail (Rel.Column.nblk md) pk (Rel.Column.blockStart md (Rel.Column.nblk md))).map
+          (Rel.Column.blockStart md (Rel.Column.nblk md) + ·) == some pk.size)
+    && (List.range (Rel.Column.nblk md)).all fun b => Rel.Column.widthAt md b ≤ 64
 
 /-- The elements as raw bits. Every specification below is a fold over this, `decode` included, so it
 is the one place that mentions `base`, the block starts and the residual layout. `Ew.foRShift` is
 stated over it too, for that reason, which is why it is not `private`. -/
 def elems (metadata pack : ByteArray) (n : USize) : List UInt64 :=
-  let starts := QLean.Column.blockStarts metadata
-  (List.range n.toNat).map (QLean.Column.foRBits metadata pack starts)
+  let starts := Rel.Column.blockStarts metadata
+  (List.range n.toNat).map (Rel.Column.foRBits metadata pack starts)
 
 /-- The dense payload an encoded column denotes: `n` little-endian `width`-byte elements, the `i`th
 being `foRBits` truncated to that width. This is the inverse of `encode`, and the entry every kernel
@@ -150,7 +150,7 @@ routing it through a C decoder would turn it into C against C. -/
 @[extern "qlean_coc_decode"]
 def decode (width : USize) (metadata : @& ByteArray) (pack : @& ByteArray) (n : USize) : ByteArray :=
   (elems metadata pack n).foldl (init := ByteArray.empty) fun acc v =>
-    QLean.Column.pushBits acc v width.toNat
+    Rel.Column.pushBits acc v width.toNat
 
 /-- The six verbs, in the order `rust/src/coc.rs` switches on. A Lean enumeration is passed to C as a
 `uint8_t` in constructor order, so this list and the one in `rust/src/coc.rs` are the same list and cannot be
@@ -229,10 +229,10 @@ and comparing **bits**: comparing values would admit `-0.0`, which decodes as `+
 rests on that: the round trip is what accepts a `d`, so each side accepts only its own `d` and both
 satisfy the specification `alpDecode (alpEncode x) = x`. -/
 def alpDat (f32 : Bool) (x : UInt64) (e : Nat) : Option UInt64 :=
-  let s := alpVal f32 x * QLean.Column.pow10 e
+  let s := alpVal f32 x * Rel.Column.pow10 e
   if s.abs < alpP53 then
     let d := s.round.toInt64.toUInt64
-    if QLean.Column.alpDec d e f32 == x then some d else none
+    if Rel.Column.alpDec d e f32 == x then some d else none
   else none
 
 /-- The smallest exponent at which `x` is a decimal, `none` for a sentinel or for a value that is a
@@ -252,7 +252,7 @@ def alpBlockOf (f32 : Bool) (B w n b : Nat) (x : ByteArray) (own : Array (Option
   let e := js.foldl (init := 0) fun acc j => max acc ((own[lo + j]!).getD 0)
   (e, js.map fun j =>
     if (own[lo + j]!).isNone then none
-    else alpDat f32 (QLean.Column.bitsAt x ((lo + j) * w) w) e)
+    else alpDat f32 (Rel.Column.bitsAt x ((lo + j) * w) w) e)
 
 /-- A section padded up to the multiple of eight the next one starts on. -/
 private def alpPad (b : ByteArray) : ByteArray :=
@@ -263,14 +263,14 @@ private def alpPad (b : ByteArray) : ByteArray :=
 def alpBlob (f32 : Bool) (B w n : Nat) (x : ByteArray) (bs : Array (Nat × Array (Option UInt64))) :
     ByteArray :=
   let exc := (Array.range n).filter fun i => ((bs[i / B]!).2[i % B]!).isNone
-  alpPad (QLean.Column.pushBits (QLean.Column.pushBits ByteArray.empty exc.size.toUInt64 8)
+  alpPad (Rel.Column.pushBits (Rel.Column.pushBits ByteArray.empty exc.size.toUInt64 8)
       (if f32 then 1 else 0) 8)
     ++ alpPad (exc.foldl (init := ByteArray.empty) fun acc i =>
-         QLean.Column.pushBits acc (QLean.Column.bitsAt x (i * w) w) w)
+         Rel.Column.pushBits acc (Rel.Column.bitsAt x (i * w) w) w)
     ++ alpPad ((Array.range (bs.size + 1)).foldl (init := ByteArray.empty) fun acc b =>
-         QLean.Column.pushBits acc (exc.filter (· < b * B)).size.toUInt64 4)
+         Rel.Column.pushBits acc (exc.filter (· < b * B)).size.toUInt64 4)
     ++ alpPad (exc.foldl (init := ByteArray.empty) fun acc i =>
-         QLean.Column.pushBits acc (i % B).toUInt64 2)
+         Rel.Column.pushBits acc (i % B).toUInt64 2)
     ++ alpPad (bs.foldl (init := ByteArray.empty) fun acc be => acc.push be.1.toUInt8)
 
 /-- A dense payload of `w`-byte floats as `(metadata, pack, alp)`. Three passes, the first of them
@@ -280,11 +280,11 @@ known until every one of its elements has been asked for its own.
 Every exception is packed as its block's minimum, i.e. residual zero. It therefore cannot widen the
 pack, and what it wrongly contributes to a reduction is a constant the layer below subtracts back
 out; `encode` recomputes that same minimum from the integers handed to it. -/
-def alpEncodeAt (f32 : Bool) (x : ByteArray) (lg : Nat := QLean.Column.lgEnc) :
+def alpEncodeAt (f32 : Bool) (x : ByteArray) (lg : Nat := Rel.Column.lgEnc) :
     ByteArray × ByteArray × ByteArray :=
   let w := if f32 then 4 else 8
   let n := x.size / w
-  let own := (Array.range n).map fun i => alpOwn f32 (QLean.Column.bitsAt x (i * w) w)
+  let own := (Array.range n).map fun i => alpOwn f32 (Rel.Column.bitsAt x (i * w) w)
   let bs := (Array.range ((n + 2 ^ lg - 1) / 2 ^ lg)).map fun b =>
     alpBlockOf f32 (2 ^ lg) w n b x own
   let ds := bs.foldl (init := ByteArray.empty) fun acc be =>
@@ -292,7 +292,7 @@ def alpEncodeAt (f32 : Bool) (x : ByteArray) (lg : Nat := QLean.Column.lgEnc) :
       | none => m
       | some v => some (match m with | none => v.toInt64.toInt | some a => min a v.toInt64.toInt)
     let base := (Int64.ofInt (mn.getD 0)).toUInt64
-    be.2.foldl (init := acc) fun a d => QLean.Column.pushBits a (d.getD base) 8
+    be.2.foldl (init := acc) fun a d => Rel.Column.pushBits a (d.getD base) 8
   let (metadata, pack) := encodeAt lg 8 ds
   (metadata, pack, alpBlob f32 (2 ^ lg) w n x bs)
 
@@ -331,8 +331,8 @@ def alpEncodeBelow32 (x : @& ByteArray) : Option (ByteArray × ByteArray × Byte
 /-- The elements as raw bits, `elems`' counterpart on this constructor and the one place the block
 starts are hoisted out of the loop. Every specification below is a fold over it. -/
 def alpElems (metadata pack a : ByteArray) (n : USize) : List UInt64 :=
-  let starts := QLean.Column.blockStarts metadata
-  (List.range n.toNat).map (QLean.Column.alpBits metadata pack a starts)
+  let starts := Rel.Column.blockStarts metadata
+  (List.range n.toNat).map (Rel.Column.alpBits metadata pack a starts)
 
 /-- The dense payload an ALP column denotes: `n` little-endian elements. This is the inverse of
 `alpEncode64` and the entry every kernel family written over dense floats reaches an ALP column
@@ -340,12 +340,12 @@ through — `Column.bytesOf` is that call. -/
 @[extern "qlean_alp_decode_f64"]
 def alpDecode64 (metadata pack a : @& ByteArray) (n : USize) : ByteArray :=
   (alpElems metadata pack a n).foldl (init := ByteArray.empty) fun acc v =>
-    QLean.Column.pushBits acc v 8
+    Rel.Column.pushBits acc v 8
 
 @[extern "qlean_alp_decode_f32"]
 def alpDecode32 (metadata pack a : @& ByteArray) (n : USize) : ByteArray :=
   (alpElems metadata pack a n).foldl (init := ByteArray.empty) fun acc v =>
-    QLean.Column.pushBits acc v 4
+    Rel.Column.pushBits acc v 4
 
 /-- `alpElems` as `w`-byte elements, the payload `Column.get` reads an ALP column as at any fixed
 width: the two C decoders at the widths ALP is the encoding for, the fold they implement otherwise.
@@ -354,11 +354,11 @@ fallback never sees one `Kernel.columnHash` cannot key. -/
 def alpDecode (w : USize) (metadata pack a : ByteArray) (n : USize) : ByteArray :=
   if w == 4 then alpDecode32 metadata pack a n else if w == 8 then alpDecode64 metadata pack a n
   else (alpElems metadata pack a n).foldl (init := ByteArray.empty) fun acc v =>
-    QLean.Column.pushBits acc v w.toNat
+    Rel.Column.pushBits acc v w.toNat
 
-end QLean.Kernel.Coc
+end Rel.Kernel.Coc
 
-namespace QLean.Column
+namespace Rel.Column
 
 /-- The types Frame of Reference is the encoding *for*. `CLAUDE.md` settles that the encoded form is
 the representation rather than a fast path, so this is not a policy about when it pays — it is which
@@ -389,9 +389,9 @@ def alpEncodes : QAtomicType → Bool
   | .real | .float | .datetime => true
   | _ => false
 
-end QLean.Column
+end Rel.Column
 
-namespace QLean.Enc
+namespace Rel.Enc
 open Column
 
 /-- The payload as dense bytes, whatever constructor holds it, and `none` at a type whose payload is
@@ -406,11 +406,11 @@ def bytesOf (t : QAtomicType) (n : USize) (e : Enc) : Option ByteArray :=
   match e, t with
   | .bytes b, _ => some b
   | .foR metadata pack, t => t.width.map fun w =>
-    QLean.Kernel.Coc.decode w.toUSize metadata pack n
+    Rel.Kernel.Coc.decode w.toUSize metadata pack n
   -- at every width `Enc.get` reads it at, not only the float ones: a width this declined left
   -- `~` comparing elements while `Kernel.columnHash` keyed every element as 0
   | .alp metadata pack a, t => t.width.map fun w =>
-    QLean.Kernel.Coc.alpDecode w.toUSize metadata pack a n
+    Rel.Kernel.Coc.alpDecode w.toUSize metadata pack a n
   | _, _ => none
 
 /-- The same atoms in the Frame-of-Reference form, or the column unchanged at a type `encodes`
@@ -430,7 +430,7 @@ def encode (t : QAtomicType) (n : USize) (e : Enc) : Enc :=
     if encodes t then
       match bytesOf t n e with
       | some b =>
-        let (metadata, pack) := QLean.Kernel.Coc.encode w.toUSize b
+        let (metadata, pack) := Rel.Kernel.Coc.encode w.toUSize b
         .foR metadata pack
       | none => e
     else e
@@ -466,11 +466,11 @@ def answer (t : QAtomicType) (n : USize) (e : Enc) : Enc :=
     -- `(1000+N?100000)%100` was dense where the same doubles read back from a file were ALP
     -- `shrinks` of `alpOf`, else of `encode`, decided by the encoder after its first pass
       if alpEncodes t then
-        match (if w == 4 then QLean.Kernel.Coc.alpEncodeBelow32 b else QLean.Kernel.Coc.alpEncodeBelow64 b) with
+        match (if w == 4 then Rel.Kernel.Coc.alpEncodeBelow32 b else Rel.Kernel.Coc.alpEncodeBelow64 b) with
         | some (m, p, a) => .alp m p a
         | none => e
       else if encodes t then
-        match QLean.Kernel.Coc.encodeBelow w.toUSize b with
+        match Rel.Kernel.Coc.encodeBelow w.toUSize b with
         | some (m, p) => .foR m p
         | none => e
       else e
@@ -479,18 +479,18 @@ def answer (t : QAtomicType) (n : USize) (e : Enc) : Enc :=
       else match bytesOf t n e with | some b => .bytes b | none => e
     | none, _ => e
 
-end QLean.Enc
+end Rel.Enc
 
 
-namespace QLean.Kernel.Coc
+namespace Rel.Kernel.Coc
 
-end QLean.Kernel.Coc
+end Rel.Kernel.Coc
 
-namespace QLean.Column
+namespace Rel.Column
 
-end QLean.Column
+end Rel.Column
 
-namespace QLean.Enc
+namespace Rel.Enc
 open Column
 
 /-- The column in ALP form, whatever constructor holds it, and `none` at a type ALP is not the
@@ -502,8 +502,8 @@ def alpOf (t : QAtomicType) (n : USize) (e : Enc) : Option Enc :=
   match t.width, bytesOf t n e with
   | some w, some b =>
     let (metadata, pack, a) :=
-      if w == 4 then QLean.Kernel.Coc.alpEncode32 b else QLean.Kernel.Coc.alpEncode64 b
+      if w == 4 then Rel.Kernel.Coc.alpEncode32 b else Rel.Kernel.Coc.alpEncode64 b
     some (.alp metadata pack a)
   | _, _ => none
 
-end QLean.Enc
+end Rel.Enc

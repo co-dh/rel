@@ -3,12 +3,12 @@
   `razeColumn` answers (`raze_len`). Each `_isSome` names the weakest hypothesis under which the kernel
   body answers; each declining input is a hypothesis.
 -/
-import LeetQ.Run.KernelWF.Raze
-import QLean.RelPart.Kernel.Sort
+import Rel.Run.KernelWF.Raze
+import Rel.Kernel.Sort
 
-namespace LeetQ.Rel.KernelWF
+namespace Rel.KernelWF
 
-open QLean QLean.Kernel QLean.Kernel.Order LeetQ.Rel
+open Rel Rel.Kernel Rel.Kernel.Order Rel
 
 private theorem toUSize_small {k : Nat} (h : k ≤ 64) : k.toUSize.toNat = k := by
   simp only [Nat.toUSize]
@@ -127,11 +127,11 @@ theorem gradeColumn_isSome {t : QAtomicType} {desc rank : Bool} {n : USize} {e :
        · obtain ⟨b, hb, hs⟩ := bytesOf_size htb hwk hw
          simp [hb, hs])
 
-end LeetQ.Rel.KernelWF
+end Rel.KernelWF
 
-namespace LeetQ.Rel.Ops
+namespace Rel.Ops
 
-open QLean QLean.Dep QLean.Kernel
+open Rel Rel.Dep Rel.Kernel
 
 variable {t : QAtomicType}
 
@@ -141,4 +141,4 @@ def rank {n : USize} (R : Arr t n) (hg : t ≠ .general) (hu : t ≠ .guid) : Ar
   Arr.mk ((gradeColumn t false n R.enc (rank := true)).get (KernelWF.gradeColumn_isSome R.wf hg hu))
     (KernelWF.gradeColumn_wf R.wf (Option.some_get _).symm)
 
-end LeetQ.Rel.Ops
+end Rel.Ops

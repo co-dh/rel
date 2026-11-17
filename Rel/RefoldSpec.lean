@@ -1,4 +1,4 @@
-import LeetQ.Rel.Lang.GenSpec
+import Rel.Lang.GenSpec
 
 /-! `refold(c, S)` (`Gen.refold`, `Gen.refoldRounds`) computes `μX : c G(X) S`, read on relations as predicates:
     `Φ X = c G(X) S` is monotonic (the elaborator's polarity check) and local — its value at `a` reads `X` only at
@@ -8,10 +8,10 @@ import LeetQ.Rel.Lang.GenSpec
     with nodes pending mean `ch` is not well-founded there (`stuck_not_acc`), the cycle `Gen.refold` reports.
     `Gen.rep_refold` reads the kernel `Gen.refoldRounds` back as `rounds_lfp` on its arrays. -/
 
-namespace LeetQ.Rel.Refold
+namespace Rel.Refold
 
-open scoped LeetQ.Core.Rel
-open LeetQ.Core.Rel hiding id comp recip inter union zero le inl inr junc
+open scoped Rel.Core.Rel
+open Rel.Core.Rel hiding id comp recip inter union zero le inl inr junc
 
 variable {α β : Type}
 
@@ -81,15 +81,15 @@ theorem stuck_not_acc {ch : α → α → Prop} {pend : α → Prop} (hs : ∀ a
   induction hacc with
   | intro a _ ih => exact fun hp => hs a ⟨hp, fun a' hc hp' => ih a' hc hp'⟩
 
-end LeetQ.Rel.Refold
+end Rel.Refold
 
 /-! ### The kernel read back -/
 
-namespace LeetQ.Rel.Lang.Gen
+namespace Rel.Lang.Gen
 
-open LeetQ.Rel LeetQ.Rel.Alg LeetQ.Rel.Rep LeetQ.Rel.Refold
-open scoped LeetQ.Core.Rel
-open LeetQ.Core.Rel hiding id comp recip inter union zero le inl inr junc
+open Rel Rel.Alg Rel.Rep Rel.Refold
+open scoped Rel.Core.Rel
+open Rel.Core.Rel hiding id comp recip inter union zero le inl inr junc
 
 variable {A B : Obj}
 
@@ -189,4 +189,4 @@ theorem rep_refold {chN : CRel A A} {φ : CRel A B → CRel A A → CRel A B}
 
 #print axioms rep_refold
 
-end LeetQ.Rel.Lang.Gen
+end Rel.Lang.Gen

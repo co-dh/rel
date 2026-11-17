@@ -3,16 +3,16 @@
   `.sum`: one recursion on `Obj` over the node theorems (`codes_prod_faithful_wf`, `codes_arr_faithful_wf`,
   `codes_sum_faithful_wf`) and the atoms' several-part theorems.
 -/
-import LeetQ.Rel.KernelWF.CodesArr
-import LeetQ.Rel.KernelWF.CodesSymParts
-import LeetQ.Rel.KernelWF.CodesLongParts
-import LeetQ.Rel.KernelWF.CodesNumParts
-import LeetQ.Rel.KernelWF.CodesGuidParts
-import LeetQ.Rel.KernelWF.CodesGeneral
+import Rel.KernelWF.CodesArr
+import Rel.KernelWF.CodesSymParts
+import Rel.KernelWF.CodesLongParts
+import Rel.KernelWF.CodesNumParts
+import Rel.KernelWF.CodesGuidParts
+import Rel.KernelWF.CodesGeneral
 
-namespace LeetQ.Rel.Alg
+namespace Rel.Alg
 
-open QLean QLean.Dep QLean.Kernel QLean.Verify LeetQ.Rel
+open Rel Rel.Dep Rel.Kernel Rel.Verify Rel
 
 /-- The bounds `Obj.codes` needs at every node of `A`, on the parts it hands that node: each node theorem's
     size bounds and `Vals.PickFits`; at an atom, the kinds a several-part theorem covers — boolean, a small
@@ -20,7 +20,7 @@ open QLean QLean.Dep QLean.Kernel QLean.Verify LeetQ.Rel
     join offsets them, an `.i64` side, its parts and their raze in any encoding,
     a symbol side whose dictionaries summed fit a `USize`, a guid side, a general side whose elements hold no
     `IndexCell` (`cellFree`, where `valEq` is `=`). -/
-def _root_.LeetQ.Rel.Obj.CodesFit : (A : Obj) → {p : Nat} → Vector (Part A) p → Prop
+def _root_.Rel.Obj.CodesFit : (A : Obj) → {p : Nat} → Vector (Part A) p → Prop
   | .atom t, p, cs => (cs.toList.map (·.1.toNat)).sum < USize.size ∧
     (t = .boolean ∨
       (∃ k₀, orderKind t = some k₀ ∧ (k₀ = .u8 ∨ k₀ = .i16 ∨ k₀ = .i32 ∨ k₀ = .f32 ∨ k₀ = .f64) ∧
@@ -242,7 +242,7 @@ theorem codesC_arr_part {b : Obj} (c : Part (.arr b)) (W : Nat)
 
 /-- **`Obj.codesC`'s bit is a fit**: it decides each clause of `Obj.CodesFit` from the counts the pass computes —
     an array's copies by `codesC_arr_part`, a pick by `pickFits_of_fitsN`. -/
-theorem _root_.LeetQ.Rel.Obj.codesC_fits : (A : Obj) → {p : Nat} → (cs : Vector (Part A) p) →
+theorem _root_.Rel.Obj.codesC_fits : (A : Obj) → {p : Nat} → (cs : Vector (Part A) p) →
     (Obj.codesC A cs).2 = true → A.CodesFit cs
   | .atom t, p, cs, hb => by
     simp only [Obj.codesC, Obj.codesC.atomFit, Bool.and_eq_true, Bool.or_eq_true, decide_eq_true_eq] at hb
@@ -320,4 +320,4 @@ theorem _root_.LeetQ.Rel.Obj.codesC_fits : (A : Obj) → {p : Nat} → (cs : Vec
 #print axioms Obj.razeC_fits
 #print axioms Vals.pickC_fits
 
-end LeetQ.Rel.Alg
+end Rel.Alg

@@ -1,8 +1,8 @@
-import LeetQ.Run.Alg
-import LeetQ.Run.Core
+import Rel.Run.Alg
+import Rel.Run.Core
 
 section
-namespace LeetQ.Rel
+namespace Rel
 
 /-- A relation and whether every op that built it ran within capacity. -/
 structure CRel (k v : Obj) where
@@ -11,7 +11,7 @@ structure CRel (k v : Obj) where
 
 namespace Alg
 
-open QLean QLean.Dep QLean.Kernel
+open Rel Rel.Dep Rel.Kernel
 
 /-- `R` in canonical form: its rows ascending by `Obj.lt` on `(key, val)` (`sortByC` of the pair side, the order
     `sortsAsc_all` proves the kernels keep), then the first of each run of equal rows (`nubC`). The bit `&&`s the
@@ -30,13 +30,13 @@ def ofPairs (ps : List (Int64 × Int64)) : Rel .long .long :=
 
 end Alg
 
-end LeetQ.Rel
+end Rel
 end
 
 section
-namespace LeetQ.Rel
+namespace Rel
 namespace CRel
-open QLean QLean.Kernel LeetQ.Rel.Alg
+open Rel Rel.Kernel Rel.Alg
 variable {A B C : Obj}
 
 /-- A twin's answer as a `CRel`, its rows in canonical form (`canonC`): ok where the twin's bit and `canonC`'s are. -/
@@ -60,5 +60,5 @@ def inter (R S : CRel A B) : CRel A B := guard (R.ok && S.ok) fun _ => let r := 
 def union (R S : CRel A B) : CRel A B := guard (R.ok && S.ok) fun _ => ofC (unionC R.rel S.rel)
 
 end CRel
-end LeetQ.Rel
+end Rel
 end

@@ -1,13 +1,13 @@
-import LeetQ.Rel.Programs.Prelude
+import Rel.Programs.Prelude
 
 /-! # The 0/1 knapsack
 
 B&dM §8.4, the 0/1 knapsack (diag/aop/08-thinning.typ, "The knapsack problem"): among the subsequences of the items
 whose total weight is within the capacity, one of greatest total value. -/
 
-namespace LeetQ.Rel.Programs
+namespace Rel.Programs
 
-open LeetQ.Rel.Programs.prelude in
+open Rel.Programs.prelude in
 rel_program knapsack where
     obj N = 0…60                                  -- values, weights and their totals
     obj K = {a,b,c,d}                             -- the instances, each its own items
@@ -61,4 +61,4 @@ rel_program knapsack where
 
 #guard knapsack.ok
 
-end LeetQ.Rel.Programs
+end Rel.Programs

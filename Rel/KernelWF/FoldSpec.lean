@@ -3,14 +3,14 @@
   the rows whose count is greater than `k` (`whereBits` of `Ew.cmp gt`), and `Ew.val sub` of a long less a
   constant.
 -/
-import LeetQ.Rel.KernelWF.SliceSpec
-import LeetQ.Rel.KernelWF.RowsSpec
-import LeetQ.Rel.KernelWF.MemberSpec
-import LeetQ.Rel.KernelWF.SortSpec
+import Rel.KernelWF.SliceSpec
+import Rel.KernelWF.RowsSpec
+import Rel.KernelWF.MemberSpec
+import Rel.KernelWF.SortSpec
 
-namespace LeetQ.Rel.Alg
+namespace Rel.Alg
 
-open QLean QLean.Kernel QLean.Verify LeetQ.Rel
+open Rel Rel.Kernel Rel.Verify Rel
 
 open SliceN
 
@@ -42,7 +42,7 @@ theorem gtConst_bitAt (n : USize) (c : ByteArray) {k : Nat} (hk : k < 2 ^ 63) {i
     (toInt64_toInt (x := k.toUInt64) (by rw [UInt64.toNat_ofNat_of_lt' (Nat.lt_trans hk (by decide))]; exact hk)).trans
       (by rw [UInt64.toNat_ofNat_of_lt' (Nat.lt_trans hk (by decide))])
   rw [(Verify.cmp_bitAt _ _ _ _ _ n).2 i (by omega)]
-  simp only [Ew.elem, hw, hs, decide_eq_true hi, Bool.true_and, Nat.zero_mul, LeetQ.Rel.bitsAt_one]
+  simp only [Ew.elem, hw, hs, decide_eq_true hi, Bool.true_and, Nat.zero_mul, Rel.bitsAt_one]
   have ex := toInt64_toInt hc
   generalize Column.bitsAt c (i * 8) 8 = x at ex ⊢
   simp (config := {decide := true}) only [Ew.cmpStep, Ew.signed, ↓reduceIte]
@@ -78,7 +78,7 @@ theorem addc_get {g : ByteArray} {m : USize} {v q : Nat} (hq : q < m.toNat)
     (Column.bitsAt (addc m g v) (q * 8) 8).toNat = (Column.bitsAt g (q * 8) 8).toNat + v := by
   have ev : (v.toUInt64).toNat = v := UInt64.toNat_ofNat_of_lt' (Nat.lt_of_le_of_lt (Nat.le_add_left v _) (Nat.lt_trans h (by decide)))
   unfold addc
-  rw [val_va_get _ _ _ _ hq, LeetQ.Rel.bitsAt_one, (valStep_add_sub (by omega) (by rw [ev]; omega)).1 (by rw [ev]; exact h), ev]
+  rw [val_va_get _ _ _ _ hq, Rel.bitsAt_one, (valStep_add_sub (by omega) (by rw [ev]; omega)).1 (by rw [ev]; exact h), ev]
   exact UInt64.toNat_ofNat_of_lt' (Nat.lt_trans h (by decide))
 
 /-- **`Ew.val sub` of a long less the constant `v`**, at element `q` below the count: the natural difference,
@@ -88,7 +88,7 @@ theorem subConst_get {g : ByteArray} {m : USize} {v q : Nat} (hq : q < m.toNat)
     (Column.bitsAt (Kernel.Ew.val Ew.sub Ew.i64 Ew.va nul g (one v.toUInt64) m) (q * 8) 8).toNat =
       (Column.bitsAt g (q * 8) 8).toNat - v := by
   have ev : (v.toUInt64).toNat = v := UInt64.toNat_ofNat_of_lt' (Nat.lt_trans (Nat.lt_of_le_of_lt hv hg) (by decide))
-  rw [val_va_get _ _ _ _ hq, LeetQ.Rel.bitsAt_one, (valStep_add_sub hg (by rw [ev]; omega)).2 (by rw [ev]; exact hv), ev]
+  rw [val_va_get _ _ _ _ hq, Rel.bitsAt_one, (valStep_add_sub hg (by rw [ev]; omega)).2 (by rw [ev]; exact hv), ev]
   exact UInt64.toNat_ofNat_of_lt' (Nat.lt_of_le_of_lt (Nat.sub_le _ _) (Nat.lt_trans hg (by decide)))
 
 /-- **Round `k` of `foldRows` picks inside its input**: the rows longer than `k` (`a`, a sublist of the rows, so
@@ -134,9 +134,9 @@ theorem pickFits_round {B : Obj} {m : USize} (K : Vals .long m) (V : Vals (.arr 
   rw [dif_pos hj, List.singleton_sublist, List.mem_range'_1]
   omega
 
-end LeetQ.Rel.Alg
+end Rel.Alg
 
-#print axioms LeetQ.Rel.Alg.slicesOf_get
-#print axioms LeetQ.Rel.Alg.slicesOf_row
-#print axioms LeetQ.Rel.Alg.whereGt_ids
-#print axioms LeetQ.Rel.Alg.subConst_get
+#print axioms Rel.Alg.slicesOf_get
+#print axioms Rel.Alg.slicesOf_row
+#print axioms Rel.Alg.whereGt_ids
+#print axioms Rel.Alg.subConst_get

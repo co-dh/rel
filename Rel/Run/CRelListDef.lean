@@ -1,9 +1,9 @@
-import LeetQ.Run.CRelDef
+import Rel.Run.CRelDef
 
 section
-namespace LeetQ.Rel
+namespace Rel
 namespace CRel
-open QLean QLean.Kernel LeetQ.Rel.Alg
+open Rel Rel.Kernel Rel.Alg
 variable {K A B : Obj} {n : USize}
 
 /-- `cons°` on the arrays `X`, ok where `unconsC` ran within capacity. -/
@@ -58,5 +58,5 @@ def alpha (I : Vals K 1) (P : Vals (.prod B (.arr B)) n) : CRel (.sum K (.prod B
   ofC (alphaC I P)
 
 end CRel
-end LeetQ.Rel
+end Rel
 end

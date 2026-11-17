@@ -3,26 +3,26 @@
   table side computes it under `tableC`'s one bit. The bit side is read at the codes: `Bits.Enc` says a matrix holds,
   at bit `i·w + j`, a relation between the elements `ua i`, `ub j`, and each bit rule maps encodings to encodings.
 -/
-import LeetQ.Run.Lang.Bits
-import LeetQ.Rel.CRelFold
-import LeetQ.Run.CRelFoldDef
-import LeetQ.Rel.KernelWF.BitRows
-import LeetQ.Rel.KernelWF.MemberSpec
-import LeetQ.Rel.RepArith
-import LeetQ.Rel.Lang.Den
+import Rel.Run.Lang.Bits
+import Rel.CRelFold
+import Rel.Run.CRelFoldDef
+import Rel.KernelWF.BitRows
+import Rel.KernelWF.MemberSpec
+import Rel.RepArith
+import Rel.Lang.Den
 
-namespace LeetQ.Rel.Lang.Bits
+namespace Rel.Lang.Bits
 
-open QLean QLean.Kernel QLean.Verify LeetQ.Rel LeetQ.Rel.Alg LeetQ.Rel.Rep
-open scoped LeetQ.Core.Rel
-open LeetQ.Core.Rel hiding id comp recip inter union zero le inl inr junc
+open Rel Rel.Kernel Rel.Verify Rel Rel.Alg Rel.Rep
+open scoped Rel.Core.Rel
+open Rel.Core.Rel hiding id comp recip inter union zero le inl inr junc
 
 variable {ρ : Val}
 
 /-! ### The route's relation -/
 
 /-- A table leaf means its table: the universes of `\` in a route. -/
-theorem _root_.LeetQ.Rel.Lang.Tm.tab_den {A B : Obj} {d : Bool} {t : Tm A B d} (h : t.isVal = true) :
+theorem _root_.Rel.Lang.Tm.tab_den {A B : Obj} {d : Bool} {t : Tm A B d} (h : t.isVal = true) :
     t.den ρ = rep t.tab := by
   cases t <;> first | rfl | exact (Bool.false_ne_true h).elim
 
@@ -436,4 +436,4 @@ theorem rep_leafB {R : Rel A B} {na nb : Nat} {k v : ByteArray} (hl : len v = le
 #print axioms ofCodes_at
 #print axioms rep_leafB
 
-end LeetQ.Rel.Lang.Bits
+end Rel.Lang.Bits

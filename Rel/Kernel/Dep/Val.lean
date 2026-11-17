@@ -1,11 +1,11 @@
-import QLean.RelPart.Value
+import Rel.Kernel.Value
 
-/-! The part of `QLean.Dep.Val` the Rel kernels reach; `QLean.Dep.Val` imports it. -/
+/-! The part of `Rel.Dep.Val` the Rel kernels reach; `Rel.Dep.Val` imports it. -/
 
 
-namespace QLean.Dep
+namespace Rel.Dep
 
-open QLean
+open Rel
 
 /-- The payload an atom of each atomic type carries — the fiber of `QAtom` over `QAtom.type`.
 Types that share a representation share a carrier: a `date` and an `int` are both `Int32`, and
@@ -58,4 +58,4 @@ of the interpreter — always enters the indexed world, and only at the type it 
 theorem Carrier.of?_type (a : QAtom) : (Carrier.of? a.type (.atom a)).isSome := by
   cases a <;> rfl
 
-end QLean.Dep
+end Rel.Dep

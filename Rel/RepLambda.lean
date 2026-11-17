@@ -2,15 +2,15 @@
   `rep` of `Λ(R)` (`transpose`): each key of `R` to the array of its values, read in `Rel(Set)` — the array of a
   key holds exactly the values `R` relates it to, and every key of `R` has a row.
 -/
-import LeetQ.Rel.KernelWF.RunSpec
-import LeetQ.Rel.KernelWF.NubSpec
-import LeetQ.Rel.KernelWF.CrossSpec
+import Rel.KernelWF.RunSpec
+import Rel.KernelWF.NubSpec
+import Rel.KernelWF.CrossSpec
 
-namespace LeetQ.Rel.Rep
+namespace Rel.Rep
 
-open QLean QLean.Kernel QLean.Verify LeetQ.Rel LeetQ.Rel.Alg LeetQ.Rel.KernelWF
-open scoped LeetQ.Core.Rel
-open LeetQ.Core.Rel hiding id comp recip inter union zero le inl inr junc
+open Rel Rel.Kernel Rel.Verify Rel Rel.Alg Rel.KernelWF
+open scoped Rel.Core.Rel
+open Rel.Core.Rel hiding id comp recip inter union zero le inl inr junc
 
 variable {A B : Obj}
 
@@ -546,4 +546,4 @@ theorem rep_transpose_list (R : Rel A B)
 
 #print axioms rep_transpose_list
 
-end LeetQ.Rel.Rep
+end Rel.Rep

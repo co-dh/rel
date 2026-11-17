@@ -1,9 +1,9 @@
-import QLean.RelPart.Value
+import Rel.Kernel.Value
 
-/-! The part of `QLean.Kernel.Scan` the Rel kernels reach; `QLean.Kernel.Scan` imports it. -/
+/-! The part of `Rel.Kernel.Scan` the Rel kernels reach; `Rel.Kernel.Scan` imports it. -/
 
 
-namespace QLean.Kernel.Scan
+namespace Rel.Kernel.Scan
 
 
 /-- The five verbs of `q.k` line 11, in the order `rust/src/scan.rs`'s `SC_*` names them. A Lean
@@ -151,8 +151,8 @@ def fltScan (v : Verb) (k : Kind) (b : ByteArray) (n w : Nat) : ByteArray :=
     | _ => id
   let emit : Float → UInt64 := match k with
     | .f32 => fun x => let u := (Float.toFloat32 x).toBits
-                       (if Bits.f32IsNaN u then QLean.nanBits32 else u).toUInt64
-    | _ => fun x => let u := x.toBits; if Bits.f64IsNaN u then QLean.nanBits else u
+                       (if Bits.f32IsNaN u then Rel.nanBits32 else u).toUInt64
+    | _ => fun x => let u := x.toBits; if Bits.f64IsNaN u then Rel.nanBits else u
   match v with
   | .sums => scanOf n w rd k.isNull 0.0 (fun a x => round (a + val x)) emit
   | .prds => scanOf n w rd k.isNull 1.0 (fun a x => round (a * val x)) emit
@@ -160,7 +160,7 @@ def fltScan (v : Verb) (k : Kind) (b : ByteArray) (n w : Nat) : ByteArray :=
       (fun a x => let y := val x; if y < a then y else a) emit
   | .maxs => scanOf n w rd k.isNull (Float.ofBits 0xfff0000000000000)
       (fun a x => let y := val x; if a < y then y else a) emit
-  | .fills => scanOf n w rd k.isNull (Float.ofBits QLean.nanBits) (fun _ x => val x) emit
+  | .fills => scanOf n w rd k.isNull (Float.ofBits Rel.nanBits) (fun _ x => val x) emit
 
 /-- q's `sums prds mins maxs fills` over a dense payload of `n` elements at layout `k`: `n` elements
 of `(outKind v k).width` bytes each, the `i`th being the accumulator after element `i` of the fold
@@ -193,16 +193,16 @@ def scan (v : Verb) (k : Kind) (n : USize) (b : @& ByteArray) : ByteArray :=
   | .f32 => fltScan v .f32 b m w
   | .f64 => fltScan v .f64 b m w
 
-end QLean.Kernel.Scan
+end Rel.Kernel.Scan
 
-namespace QLean.Kernel
+namespace Rel.Kernel
 
-open QLean.Kernel.Scan
+open Rel.Kernel.Scan
 
-end QLean.Kernel
+end Rel.Kernel
 
 
-namespace QLean.Kernel.Scan
+namespace Rel.Kernel.Scan
 
 namespace Kind
 
@@ -213,7 +213,7 @@ private theorem foldSize (w : Nat) (rd : Nat → UInt64) (isNull : UInt64 → Bo
     (l.foldl (scanStep w rd isNull step emit) p).1.size = p.1.size + l.length * w := by
   induction l generalizing p with
   | nil => simp
-  | cons i l ih => simp [ih, scanStep, QLean.Column.pushBits_size, Nat.succ_mul]; omega
+  | cons i l ih => simp [ih, scanStep, Rel.Column.pushBits_size, Nat.succ_mul]; omega
 
 /-- A scan answers exactly one element per element, which is what `Column.count` of the answer is
 read off. The dispatch below needs it to be the count of its *argument*, and that step is the
@@ -223,10 +223,10 @@ theorem scanOf_size (n w : Nat) (rd : Nat → UInt64) (isNull : UInt64 → Bool)
     (scanOf n w rd isNull seed step emit).size = n * w := by
   simp [scanOf, foldSize]
 
-end QLean.Kernel.Scan
+end Rel.Kernel.Scan
 
-namespace QLean.Kernel
+namespace Rel.Kernel
 
-open QLean.Kernel.Scan
+open Rel.Kernel.Scan
 
-end QLean.Kernel
+end Rel.Kernel

@@ -2,13 +2,13 @@
   The lane facts every code spec reads: which layout `laneKind` names, a lane width as a `USize`, a code
   at a byte lane as its little-endian field, and a payload that holds all its ids.
 -/
-import LeetQ.Run.Code
-import QLean.RelPart.Kernel.Scan
-import QLean.RelPart.Verify.Encoding
+import Rel.Run.Code
+import Rel.Kernel.Scan
+import Rel.KernelSpec.Encoding
 
-namespace LeetQ.Rel.Alg
+namespace Rel.Alg
 
-open QLean QLean.Kernel LeetQ.Rel
+open Rel Rel.Kernel Rel
 
 /-- A lane `laneKind` names is the bitmap at `1`, or an integral byte layout at `8 ×` its width. -/
 theorem laneKind_some {w : Nat} {k : Scan.Kind} (h : laneKind w = some k) :
@@ -32,4 +32,4 @@ theorem idsCap_full {b : ByteArray} {w n : Nat} (hw : 0 < w) (hs : w * n ≤ 8 *
   unfold Column.idsCap
   rw [if_neg (by omega), Nat.min_eq_left ((Nat.le_div_iff_mul_le hw).2 (by rw [Nat.mul_comm]; omega))]
 
-end LeetQ.Rel.Alg
+end Rel.Alg

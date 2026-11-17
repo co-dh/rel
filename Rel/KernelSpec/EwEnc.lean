@@ -1,17 +1,17 @@
-import QLean.RelPart.Verify.Encoding
-import QLean.RelPart.Verify.Elementwise
-import QLean.RelPart.Kernel.Coc
-import QLean.RelPart.Verify.Distinct
-import QLean.RelPart.Kernel.Structural
-import QLean.RelPart.Value
-import QLean.RelPart.Kernel.Elementwise
+import Rel.KernelSpec.Encoding
+import Rel.KernelSpec.Elementwise
+import Rel.Kernel.Coc
+import Rel.KernelSpec.Distinct
+import Rel.Kernel.Structural
+import Rel.Kernel.Value
+import Rel.Kernel.Elementwise
 
-/-! The part of `QLean.Verify.EwEnc` the Rel kernels reach; `QLean.Verify.EwEnc` imports it. -/
+/-! The part of `Rel.Verify.EwEnc` the Rel kernels reach; `Rel.Verify.EwEnc` imports it. -/
 
 
-namespace QLean.Verify
+namespace Rel.Verify
 
-open QLean QLean.Kernel
+open Rel Rel.Kernel
 
 theorem width_bounds (cls : UInt8) : 0 < Ew.width cls ∧ Ew.width cls ≤ 8 := by
   unfold Ew.width
@@ -36,8 +36,8 @@ theorem elemsW_decode_encode (w : Nat) (hw1 : 1 < w) (hw : w ≤ 8) (x : ByteArr
   have hlt : (Column.foRBits (Coc.encode w.toUSize x).1 (Coc.encode w.toUSize x).2
       (Column.blockStarts (Coc.encode w.toUSize x).1) i).toNat % 2 ^ (8 * w) < 2 ^ 64 :=
     Nat.lt_of_lt_of_le (Nat.mod_lt _ (Nat.two_pow_pos _)) (Nat.pow_le_pow_right (by decide) (by omega))
-  unfold QLean.Kernel.Coc.encode at hlt ⊢
-  rw [UInt64.toNat_ofNat', Nat.mod_eq_of_lt hlt, foRBits_encode_bits QLean.Column.lgEnc (by decide) w hw1 hw x i h1]
+  unfold Rel.Kernel.Coc.encode at hlt ⊢
+  rw [UInt64.toNat_ofNat', Nat.mod_eq_of_lt hlt, foRBits_encode_bits Rel.Column.lgEnc (by decide) w hw1 hw x i h1]
 
 theorem eq_of_ite_some {α : Type} {c : Prop} [Decidable c] {x y : α}
     (h : (if c then some x else none) = some y) : x = y := by
@@ -181,83 +181,83 @@ theorem shiftFoR_spec (ew : Nat) (hw1 : 1 < ew) (hw : ew ≤ 8) (md pk : ByteArr
   rw [shiftBytes_size _ (by omega), (decodeW ew.toUSize (by omega) md pk n).1, hwt,
     Nat.mul_div_cancel_left _ (by omega), Nat.mul_div_cancel_left _ (by omega)]
 
-end QLean.Verify
+end Rel.Verify
 
-/-- info: 'QLean.Verify.elemsW_decode_encode' depends on axioms: [propext, Quot.sound] -/
+/-- info: 'Rel.Verify.elemsW_decode_encode' depends on axioms: [propext, Quot.sound] -/
 #guard_msgs in
-#print axioms QLean.Verify.elemsW_decode_encode
+#print axioms Rel.Verify.elemsW_decode_encode
 
-/-- info: 'QLean.Verify.width_bounds' does not depend on any axioms -/
+/-- info: 'Rel.Verify.width_bounds' does not depend on any axioms -/
 #guard_msgs in
-#print axioms QLean.Verify.width_bounds
+#print axioms Rel.Verify.width_bounds
 
-/-- info: 'QLean.Verify.toUSize_toNat_of_le8' depends on axioms: [propext, Quot.sound] -/
+/-- info: 'Rel.Verify.toUSize_toNat_of_le8' depends on axioms: [propext, Quot.sound] -/
 #guard_msgs in
-#print axioms QLean.Verify.toUSize_toNat_of_le8
+#print axioms Rel.Verify.toUSize_toNat_of_le8
 
-/-- info: 'QLean.Verify.eq_of_ite_some' does not depend on any axioms -/
+/-- info: 'Rel.Verify.eq_of_ite_some' does not depend on any axioms -/
 #guard_msgs in
-#print axioms QLean.Verify.eq_of_ite_some
+#print axioms Rel.Verify.eq_of_ite_some
 
-/-- info: 'QLean.Verify.eq_of_ite_none' does not depend on any axioms -/
+/-- info: 'Rel.Verify.eq_of_ite_none' does not depend on any axioms -/
 #guard_msgs in
-#print axioms QLean.Verify.eq_of_ite_none
+#print axioms Rel.Verify.eq_of_ite_none
 
-/-- info: 'QLean.Verify.decode_of_encode8' depends on axioms: [propext, Quot.sound] -/
+/-- info: 'Rel.Verify.decode_of_encode8' depends on axioms: [propext, Quot.sound] -/
 #guard_msgs in
-#print axioms QLean.Verify.decode_of_encode8
+#print axioms Rel.Verify.decode_of_encode8
 
-/-- info: 'QLean.Verify.shiftBytes_size' depends on axioms: [propext, Quot.sound] -/
+/-- info: 'Rel.Verify.shiftBytes_size' depends on axioms: [propext, Quot.sound] -/
 #guard_msgs in
-#print axioms QLean.Verify.shiftBytes_size
+#print axioms Rel.Verify.shiftBytes_size
 
-/-- info: 'QLean.Verify.shiftFoR_spec' depends on axioms: [propext, Quot.sound] -/
+/-- info: 'Rel.Verify.shiftFoR_spec' depends on axioms: [propext, Quot.sound] -/
 #guard_msgs in
-#print axioms QLean.Verify.shiftFoR_spec
+#print axioms Rel.Verify.shiftFoR_spec
 
 -- `Classical.choice` below is each statement's, not its proof's: `Ew.val`, `Ew.cmpStep`, `Build.run`
 -- (a chain names every engine), `Enc.answer` (ALP) and `Eval.arithAtoms` all name a `Float` decode.
 
-/-- info: 'QLean.Verify.runEnc_elems' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+/-- info: 'Rel.Verify.runEnc_elems' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs in
-#print axioms QLean.Verify.runEnc_elems
+#print axioms Rel.Verify.runEnc_elems
 
-/-- info: 'QLean.Verify.answer_foR' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+/-- info: 'Rel.Verify.answer_foR' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs in
-#print axioms QLean.Verify.answer_foR
+#print axioms Rel.Verify.answer_foR
 
-/-- info: 'QLean.Verify.val_spec' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+/-- info: 'Rel.Verify.val_spec' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs in
-#print axioms QLean.Verify.val_spec
+#print axioms Rel.Verify.val_spec
 
-/-- info: 'QLean.Verify.val_size8' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+/-- info: 'Rel.Verify.val_size8' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs in
-#print axioms QLean.Verify.val_size8
+#print axioms Rel.Verify.val_size8
 
-/-- info: 'QLean.Verify.foRVal_spec' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+/-- info: 'Rel.Verify.foRVal_spec' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs in
-#print axioms QLean.Verify.foRVal_spec
+#print axioms Rel.Verify.foRVal_spec
 
-/-- info: 'QLean.Verify.foRValAtom_spec' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+/-- info: 'Rel.Verify.foRValAtom_spec' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs in
-#print axioms QLean.Verify.foRValAtom_spec
+#print axioms Rel.Verify.foRValAtom_spec
 
-/-- info: 'QLean.Verify.foRValVV_spec' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+/-- info: 'Rel.Verify.foRValVV_spec' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs in
-#print axioms QLean.Verify.foRValVV_spec
+#print axioms Rel.Verify.foRValVV_spec
 
-/-- info: 'QLean.Verify.foRShift_spec' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+/-- info: 'Rel.Verify.foRShift_spec' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs in
-#print axioms QLean.Verify.foRShift_spec
+#print axioms Rel.Verify.foRShift_spec
 
-/-- info: 'QLean.Verify.foRScale_spec' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+/-- info: 'Rel.Verify.foRScale_spec' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs in
-#print axioms QLean.Verify.foRScale_spec
+#print axioms Rel.Verify.foRScale_spec
 
-/-- info: 'QLean.Verify.foRCmp_bitAt' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+/-- info: 'Rel.Verify.foRCmp_bitAt' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs in
-#print axioms QLean.Verify.foRCmp_bitAt
+#print axioms Rel.Verify.foRCmp_bitAt
 
-/-- info: 'QLean.Verify.foRCmpVV_bitAt' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+/-- info: 'Rel.Verify.foRCmpVV_bitAt' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs in
-#print axioms QLean.Verify.foRCmpVV_bitAt
+#print axioms Rel.Verify.foRCmpVV_bitAt

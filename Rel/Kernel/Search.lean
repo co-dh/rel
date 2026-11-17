@@ -1,10 +1,10 @@
-import QLean.RelPart.Kernel.Coc
-import QLean.RelPart.Value
+import Rel.Kernel.Coc
+import Rel.Kernel.Value
 
-/-! The part of `QLean.Kernel.Search` the Rel kernels reach; `QLean.Kernel.Search` imports it. -/
+/-! The part of `Rel.Kernel.Search` the Rel kernels reach; `Rel.Kernel.Search` imports it. -/
 
 
-namespace QLean.Kernel
+namespace Rel.Kernel
 
 /-- The key an equality compares, with the values q holds equal folded together: the two zeros onto
 one, and **every NaN onto one**. At a width whose equality is bit equality this is the identity.
@@ -301,10 +301,10 @@ def fewSyms : USize → Enc → Option (ByteArray × Array Nat)
     else none
   | _, _ => none
 
-end QLean.Kernel
+end Rel.Kernel
 
 
-namespace QLean.Kernel
+namespace Rel.Kernel
 
 /-- A search operand as the C reads it where it lies: an encoded column's `metadata` and `pack`
 holding `n` elements, or — under an empty `metadata` — the dense payload `pack` itself. -/
@@ -408,4 +408,4 @@ def matchColumn (t : QAtomicType) (na : USize) (ea : Enc) (nb : USize) (eb : Enc
         | some x, some y => some (matchBytes w.toUSize (foldsZero t) x y)
         | _, _ => none
 
-end QLean.Kernel
+end Rel.Kernel

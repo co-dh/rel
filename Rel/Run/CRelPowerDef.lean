@@ -1,9 +1,9 @@
-import LeetQ.Run.CRelDef
+import Rel.Run.CRelDef
 
 section
-namespace LeetQ.Rel
+namespace Rel
 namespace CRel
-open QLean QLean.Kernel LeetQ.Rel.Alg
+open Rel Rel.Kernel Rel.Alg
 variable {A B : Obj}
 
 /-- `τ` on `X`, ok where `τC` ran within capacity. -/
@@ -24,5 +24,5 @@ def E {n : USize} (R : CRel A B) (X : Vals (.arr A) n) : CRel (.arr A) (.arr B) 
   guard R.ok fun _ => ofC (EC R.rel X)
 
 end CRel
-end LeetQ.Rel
+end Rel
 end

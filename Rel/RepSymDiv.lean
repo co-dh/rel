@@ -4,12 +4,12 @@
   `S`'s, and reads each matching pair's keys at the classes' first rows (`hit`); then adds `⊤` on the elements of
   `Ua` that are no key of `R` and the elements of `Ub` that are no key of `S`.
 -/
-import LeetQ.Rel.RepDiv
-import LeetQ.Rel.KernelWF.SetIdsSpec
+import Rel.RepDiv
+import Rel.KernelWF.SetIdsSpec
 
-namespace LeetQ.Rel.Rep
+namespace Rel.Rep
 
-open QLean QLean.Kernel QLean.Verify LeetQ.Rel LeetQ.Rel.Alg
+open Rel Rel.Kernel Rel.Verify Rel Rel.Alg
 
 variable {A B C : Obj}
 
@@ -763,4 +763,4 @@ theorem rep_symDiv {ma mb : USize} (R : Rel A C) (S : Rel B C) (Ua : Vals A ma) 
 #print axioms block_slice
 #print axioms seg_facts
 
-end LeetQ.Rel.Rep
+end Rel.Rep

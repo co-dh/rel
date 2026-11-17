@@ -2,15 +2,15 @@
   `rep` of the power side's ops built on `Λ` (`transpose`), read in `Rel(Set)`. `Λ` itself is `rep_transpose`
   (`RepLambda`): defined only on `dom R`, a key outside it has no row.
 -/
-import LeetQ.Rel.RepLambda
-import LeetQ.Rel.RepMem
-import LeetQ.Rel.KernelWF.RazeFoR
+import Rel.RepLambda
+import Rel.RepMem
+import Rel.KernelWF.RazeFoR
 
-namespace LeetQ.Rel.Rep
+namespace Rel.Rep
 
-open QLean QLean.Kernel QLean.Verify LeetQ.Rel LeetQ.Rel.Alg LeetQ.Rel.KernelWF
-open scoped LeetQ.Core.Rel
-open LeetQ.Core.Rel hiding id comp recip inter union zero le inl inr junc
+open Rel Rel.Kernel Rel.Verify Rel Rel.Alg Rel.KernelWF
+open scoped Rel.Core.Rel
+open Rel.Core.Rel hiding id comp recip inter union zero le inl inr junc
 
 variable {A : Obj}
 
@@ -69,23 +69,23 @@ theorem rep_tau {n : USize} (X : Vals A n)
 namespace Pow
 -- `lamOn R U`'s parts: `Λ(R)`; the elements of `U` that `R` relates to nothing; each of them to the empty array
 set_option hygiene false in
-scoped notation "lT(" R ")" => LeetQ.Rel.Alg.transpose R
+scoped notation "lT(" R ")" => Rel.Alg.transpose R
 set_option hygiene false in
-scoped notation "lD(" R ", " U ")" => (LeetQ.Rel.Alg.idU U \ LeetQ.Rel.Alg.dom R)
+scoped notation "lD(" R ", " U ")" => (Rel.Alg.idU U \ Rel.Alg.dom R)
 set_option hygiene false in
 scoped notation "lN(" R ", " U ", " B ")" =>
-  LeetQ.Rel.Alg.top (Rel.key (LeetQ.Rel.Alg.idU U \ LeetQ.Rel.Alg.dom R)) (LeetQ.Rel.Alg.nilVal B)
+  Rel.Alg.top (Rel.key (Rel.Alg.idU U \ Rel.Alg.dom R)) (Rel.Alg.nilVal B)
 end Pow
 open Pow
 
 /-- **`rep_top`'s fits at `lamOn R U`'s empty-array part**: its keys are rows of `idU U \ dom R`, which fits where
     `U` does (`diff_pickFits`); the empty array fits anywhere (`pickFits_nilVal`); one value per key. -/
 theorem lamOn_top_fits {B : Obj} {m : USize} (R : Rel A B) (U : Vals A m)
-    (hc : pairsOK(LeetQ.Rel.Alg.idU U, LeetQ.Rel.Alg.dom R)) (hdU : Vals.PickFits A U (List.range m.toNat)) :
+    (hc : pairsOK(Rel.Alg.idU U, Rel.Alg.dom R)) (hdU : Vals.PickFits A U (List.range m.toNat)) :
     (Rel.n (lD(R, U))).toNat * USize.toNat 1 < USize.size ∧
       Vals.PickFits A (Rel.key (lD(R, U)))
         ((List.range ((Rel.n (lD(R, U))).toNat * USize.toNat 1)).map (· / USize.toNat 1)) ∧
-      Vals.PickFits (.arr B) (LeetQ.Rel.Alg.nilVal B)
+      Vals.PickFits (.arr B) (Rel.Alg.nilVal B)
         ((List.range ((Rel.n (lD(R, U))).toNat * USize.toNat 1)).map (· % USize.toNat 1)) := by
   have e : ((List.range ((Rel.n (lD(R, U))).toNat * USize.toNat 1)).map (· / USize.toNat 1)) =
       List.range (Rel.n (lD(R, U))).toNat := by
@@ -113,15 +113,15 @@ theorem rep_lamOn {B : Obj} {m : USize} (R : Rel A B) (U : Vals A m)
     (vp : ByteArray) (hvp : (ids vp).Perm (List.range (Rel.nub R).n.toNat))
     (h63 : (Rel.n R).toNat < 2 ^ 63)
     -- `rep_diff` at `idU U`, `dom R`; two parts coded jointly: a generic `A`'s ALP sum and dictionaries are unbounded
-    (pc : Vector Code 2) (hpc : pc = pairs #v[LeetQ.Rel.Alg.idU U, LeetQ.Rel.Alg.dom R])
-    (hc : codesOK(pc, pcs(LeetQ.Rel.Alg.idU U, LeetQ.Rel.Alg.dom R)))
+    (pc : Vector Code 2) (hpc : pc = pairs #v[Rel.Alg.idU U, Rel.Alg.dom R])
+    (hc : codesOK(pc, pcs(Rel.Alg.idU U, Rel.Alg.dom R)))
     (hdU : Vals.PickFits A U (List.range m.toNat))
     -- `rep_top` at `D.key`, `nilVal B`
     (D : Rel A A) (hD : D = lD(R, U))
     -- `D`'s count is bounded only by `U`'s, a `USize`; `top`'s `cross` needs it below `2^63`
     (ht63 : (Rel.n D).toNat * USize.toNat 1 < 2 ^ 63)
     -- `rep_union_full` at `T`, `N`; `L` their raze
-    (T N : Rel A (.arr B)) (hT : T = transposeRuns (Rel.nub R) kcT(R) vp) (hN0 : N = LeetQ.Rel.Alg.top (Rel.key D) (LeetQ.Rel.Alg.nilVal B))
+    (T N : Rel A (.arr B)) (hT : T = transposeRuns (Rel.nub R) kcT(R) vp) (hN0 : N = Rel.Alg.top (Rel.key D) (Rel.Alg.nilVal B))
     (hN : (Rel.n T).toNat + (Rel.n N).toNat < USize.size)
     (hFk : Vals.RazeFits A (Rel.key T) (Rel.key N)) (hFv : Vals.RazeFits (.arr B) (Rel.val T) (Rel.val N))
     (L : Rel A (.arr B)) (hL : L = Uc(T, N, hN)) (ku vu : Code) (hku : ku = kcR(L)) (hvu : vu = vcR(L))
@@ -137,7 +137,7 @@ theorem rep_lamOn {B : Obj} {m : USize} (R : Rel A B) (U : Vals A m)
   have hu := rep_union_full T (lN(R, U, B)) hN hFk hFv huK huV huk huv
   have hL : ∀ a Y, rep (T ∪ lN(R, U, B)) a Y ↔ rep T a Y ∨ rep (lN(R, U, B)) a Y := fun a Y => by
     rw [hu]; exact Iff.rfl
-  have hd : ∀ a b, rep (LeetQ.Rel.Alg.dom R) a b ↔ a = b ∧ ∃ c, rep R a c := fun a b => by
+  have hd : ∀ a b, rep (Rel.Alg.dom R) a b ↔ a = b ∧ ∃ c, rep R a c := fun a b => by
     rw [rep_dom_corefl R hK hk]; exact Iff.rfl
   have hD : ∀ a, (∃ i, Vals.row (Rel.key (lD(R, U))) i = a) ↔ (∃ i, Vals.row U i = a) ∧ ¬ ∃ c, rep R a c := by
     intro a
@@ -153,8 +153,8 @@ theorem rep_lamOn {B : Obj} {m : USize} (R : Rel A B) (U : Vals A m)
   have hNt : ∀ a Y, rep (lN(R, U, B)) a Y ↔ (∃ i, Vals.row (Rel.key (lD(R, U))) i = a) ∧ Y = [] := fun a Y => by
     rw [rep_top _ _ htN ht63 htA htB]
     show (∃ a', (a = a' ∧ ∃ i, Vals.row (Rel.key (lD(R, U))) i = a) ∧
-      ∃ b', True ∧ (b' = Y ∧ ∃ j, Vals.row (LeetQ.Rel.Alg.nilVal B) j = b')) ↔ _
-    have hnil : (∃ j, Vals.row (LeetQ.Rel.Alg.nilVal B) j = Y) ↔ Y = [] :=
+      ∃ b', True ∧ (b' = Y ∧ ∃ j, Vals.row (Rel.Alg.nilVal B) j = b')) ↔ _
+    have hnil : (∃ j, Vals.row (Rel.Alg.nilVal B) j = Y) ↔ Y = [] :=
       ⟨fun ⟨_, h⟩ => h.symm, fun h => ⟨⟨0, by simp⟩, h.symm⟩⟩
     rw [← hnil]
     exact ⟨fun ⟨_, ⟨rfl, ha⟩, _, _, rfl, hb⟩ => ⟨ha, hb⟩, fun ⟨ha, hb⟩ => ⟨a, ⟨rfl, ha⟩, Y, trivial, rfl, hb⟩⟩
@@ -177,7 +177,7 @@ theorem rep_lamOn {B : Obj} {m : USize} (R : Rel A B) (U : Vals A m)
 namespace Pow
 -- the relation `setify X` makes total: `∋` on `X`
 set_option hygiene false in
-scoped notation "mS(" X ")" => (LeetQ.Rel.Alg.mem X)
+scoped notation "mS(" X ")" => (Rel.Alg.mem X)
 -- `≫`'s two middle parts, their joint codes, the pairs `join` answers and their count (`RepComp`'s `jcs`, `jc`,
 -- `jpairs`, taking `R`, `S`)
 set_option hygiene false in
@@ -230,4 +230,4 @@ theorem rep_tau_list {n : USize} (X : Vals A n)
 
 #print axioms rep_tau_list
 
-end LeetQ.Rel.Rep
+end Rel.Rep

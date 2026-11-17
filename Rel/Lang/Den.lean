@@ -3,16 +3,16 @@
   Total and structural: each node is the `T` its `Gen.*_sound` lemma proves, written with the allegory's operators
   (`≫ ° ∩ ∪ 𝟙 𝟘`, D3 = E); `μ`, `ν` are `Core.Rel.mu`, `nu`, defined for every body, so no monotonicity is assumed here.
 -/
-import LeetQ.Run.Lang.Tm
-import LeetQ.Rel.Rep
-import LeetQ.Rel.ObjOrder
-import LeetQ.Core.Fix
+import Rel.Run.Lang.Tm
+import Rel.Rep
+import Rel.ObjOrder
+import Rel.Core.Fix
 
-namespace LeetQ.Rel.Lang
+namespace Rel.Lang
 
-open QLean.Kernel LeetQ.Rel LeetQ.Rel.Rep
-open scoped LeetQ.Core.Rel
-open LeetQ.Core.Rel hiding id comp recip inter union zero le inl inr junc
+open Rel.Kernel Rel Rel.Rep
+open scoped Rel.Core.Rel
+open Rel.Core.Rel hiding id comp recip inter union zero le inl inr junc
 
 /-- An arrow `A ⟶ B` of `Rel(Set)` between the elements of two objects. -/
 abbrev Den (A B : Obj) := Core.Rel (A.El) (B.El)
@@ -369,4 +369,4 @@ theorem Tm.den_anti {A' B' : Obj} {d : Bool} {t : Tm A' B' d} {k : Nat} (h : t.p
 #print axioms Tm.den_pol
 #print axioms Core.Rel.mu_fix
 
-end LeetQ.Rel.Lang
+end Rel.Lang

@@ -1,11 +1,11 @@
-import QLean.RelPart.Kernel.Coc
-import QLean.RelPart.Value
-import QLean.RelPart.Kernel.Elementwise
+import Rel.Kernel.Coc
+import Rel.Kernel.Value
+import Rel.Kernel.Elementwise
 
-/-! The part of `QLean.Kernel.Reduce` the Rel kernels reach; `QLean.Kernel.Reduce` imports it. -/
+/-! The part of `Rel.Kernel.Reduce` the Rel kernels reach; `Rel.Kernel.Reduce` imports it. -/
 
 
-namespace QLean.Kernel
+namespace Rel.Kernel
 
 /-- The `i`th `Int64`, little-endian. Reads past the end answer `0`: the specification is only
 called under `wellFormed`, where the length is a multiple of the width, and the bounds check
@@ -127,10 +127,10 @@ def groupCells (kind : GroupCell) (w ng : USize) (m order : @& ByteArray) : Byte
         if k == 0 || Bits.f64IsNaN r then nanBits else r) 8
 
 
-end QLean.Kernel
+end Rel.Kernel
 
 
-namespace QLean.Kernel
+namespace Rel.Kernel
 
 /-- The null of an encoded type as the fold has to skip it, and `none` at a type the encoding is not
 for. The encoded form holds a narrow column's elements sign-extended, so a `short` null is `-32768`
@@ -151,4 +151,4 @@ def overFoR (op : Coc.Over) (t : QAtomicType) (n : USize) (e : Enc) : Option Int
   | _ => none
 
 
-end QLean.Kernel
+end Rel.Kernel

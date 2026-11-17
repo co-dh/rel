@@ -3,12 +3,12 @@
   `groupOf` of the codes, the count column `expand` reads is the number of right rows matching each left
   row, and the pairs are every matching `(i, j)` once, by `i` then `j`.
 -/
-import LeetQ.Rel.KernelWF.JoinContent
-import LeetQ.Rel.KernelWF.MemberSpec
+import Rel.KernelWF.JoinContent
+import Rel.KernelWF.MemberSpec
 
-namespace LeetQ.Rel.Alg
+namespace Rel.Alg
 
-open QLean QLean.Kernel QLean.Verify LeetQ.Rel
+open Rel Rel.Kernel Rel.Verify Rel
 
 /-- **`Code.groupIds`' class ids are `groupOf` of the codes**, read at the width of the class count: row
     `i`'s class is the position of its code's first row among the first rows (`groupIds_firsts`), and the
@@ -510,4 +510,4 @@ theorem join_rows (l r : Code)
 
 #print axioms join_rows
 
-end LeetQ.Rel.Alg
+end Rel.Alg

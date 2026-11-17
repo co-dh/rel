@@ -4,17 +4,17 @@
   by `gatherPacked`; code `a` decodes to the row at `a`'s first occurrence (`blockU`), and a row holds code `a`
   exactly when it is that element. This is `rep_leafB`'s premise at every leaf.
 -/
-import LeetQ.Rel.Lang.BitsSpec
-import LeetQ.Rel.KernelWF.CodesAll
-import LeetQ.Rel.KernelWF.CodesProd
-import LeetQ.Rel.KernelWF.JoinAssembly
-import LeetQ.Rel.KernelWF.JoinContent
-import LeetQ.Rel.KernelWF.CodesSpec
-import LeetQ.Rel.KernelWF.RazeRowN
+import Rel.Lang.BitsSpec
+import Rel.KernelWF.CodesAll
+import Rel.KernelWF.CodesProd
+import Rel.KernelWF.JoinAssembly
+import Rel.KernelWF.JoinContent
+import Rel.KernelWF.CodesSpec
+import Rel.KernelWF.RazeRowN
 
-namespace LeetQ.Rel.Lang.Bits
+namespace Rel.Lang.Bits
 
-open QLean QLean.Kernel QLean.Verify LeetQ.Rel LeetQ.Rel.Alg LeetQ.Rel.Rep
+open Rel Rel.Kernel Rel.Verify Rel Rel.Alg Rel.Rep
 
 variable {ρ : Val}
 
@@ -665,4 +665,4 @@ theorem colOK_rep {cs : Array Col} {B : Obj} (R : Rel A B) {bk bv : ByteArray} {
 
 #print axioms colOK_rep
 
-end LeetQ.Rel.Lang.Bits
+end Rel.Lang.Bits

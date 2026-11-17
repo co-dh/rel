@@ -4,14 +4,14 @@
   row count), and `whereEqV` (the positions where two long columns agree). `atCnt (cnt c) k` is `join`'s count
   column, read back by `join_count`.
 -/
-import LeetQ.Rel.KernelWF.JoinAssembly
-import LeetQ.Rel.KernelWF.NubSpec
-import LeetQ.Rel.KernelWF.CrossSpec
-import LeetQ.Rel.KernelWF.SortSpec
+import Rel.KernelWF.JoinAssembly
+import Rel.KernelWF.NubSpec
+import Rel.KernelWF.CrossSpec
+import Rel.KernelWF.SortSpec
 
-namespace LeetQ.Rel.Alg
+namespace Rel.Alg
 
-open QLean QLean.Kernel QLean.Verify LeetQ.Rel
+open Rel Rel.Kernel Rel.Verify Rel
 
 namespace DivN
 
@@ -181,4 +181,4 @@ theorem leftDiv_keep (yc zc rv : Code) (hn : zc.n = yc.n) (hy : codeOK(yc)) (hz 
 #print axioms whereEqV_ids
 #print axioms leftDiv_keep
 
-end LeetQ.Rel.Alg
+end Rel.Alg

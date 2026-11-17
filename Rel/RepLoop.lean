@@ -4,13 +4,13 @@
   `P` is longer than `P`'s payload, so the fuel `P`'s payload plus one always suffices: the result is the left
   fold of `F` along each array of `P`, from its seed.
 -/
-import LeetQ.Rel.RepFold
-import LeetQ.Rel.RepList
+import Rel.RepFold
+import Rel.RepList
 
-namespace LeetQ.Rel.Rep
+namespace Rel.Rep
 
-open QLean QLean.Kernel QLean.Verify LeetQ.Rel LeetQ.Rel.Alg LeetQ.Rel.KernelWF
-open QLean.Dep
+open Rel Rel.Kernel Rel.Verify Rel Rel.Alg Rel.KernelWF
+open Rel.Dep
 
 open FoldN OpsN
 
@@ -154,8 +154,8 @@ theorem loopOn_rounds {K X Y : Obj} (F : Rel (.prod X Y) (.prod X Y) → Rel (.p
 
 section Round
 
-open scoped LeetQ.Core.Rel
-open LeetQ.Core.Rel hiding id comp recip inter union zero le inl inr junc
+open scoped Rel.Core.Rel
+open Rel.Core.Rel hiding id comp recip inter union zero le inl inr junc
 
 /-- **One round of `loopOn`, read back from its primitives' read-backs**: the new states `T.nub` are the states
     `(c, y :: ys)` stepped to `(c', ys)` by `G = F(ran p)`, and the new `out ∪ O` adds the values of the states
@@ -318,8 +318,8 @@ end Prim
 
 open Prim
 
-open scoped LeetQ.Core.Rel
-open LeetQ.Core.Rel hiding id comp recip inter union zero le inl inr junc
+open scoped Rel.Core.Rel
+open Rel.Core.Rel hiding id comp recip inter union zero le inl inr junc
 
 set_option hygiene false in
 /-- `P`'s rows are pairwise distinct: two rows holding one pair are one row (`nub_rows_inj`'s conclusion). -/
@@ -493,4 +493,4 @@ theorem rep_fixOn {A B : Obj} (n : Nat) (φ : Rel A B → Rel A B) (X₀ : Rel A
 #print axioms rows_le_of_inj
 #print axioms rep_fixOn
 
-end LeetQ.Rel.Rep
+end Rel.Rep

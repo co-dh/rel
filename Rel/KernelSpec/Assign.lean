@@ -1,17 +1,17 @@
-import QLean.RelPart.Verify.Encoding
-import QLean.RelPart.Verify.Group
-import QLean.RelPart.Verify.Ids
-import QLean.RelPart.Verify.Structural
-import QLean.RelPart.Kernel.Sort
-import QLean.RelPart.Kernel.Structural
-import QLean.RelPart.Value
+import Rel.KernelSpec.Encoding
+import Rel.KernelSpec.Group
+import Rel.KernelSpec.Ids
+import Rel.KernelSpec.Structural
+import Rel.Kernel.Sort
+import Rel.Kernel.Structural
+import Rel.Kernel.Value
 
-/-! The part of `QLean.Verify.Assign` the Rel kernels reach; `QLean.Verify.Assign` imports it. -/
+/-! The part of `Rel.Verify.Assign` the Rel kernels reach; `Rel.Verify.Assign` imports it. -/
 
 
-namespace QLean.Verify
+namespace Rel.Verify
 
-open QLean QLean.Kernel
+open Rel Rel.Kernel
 
 /-- At a sub-byte lane `w` of `per = 8 / w` fields to a byte, `Column.resAt` at element `i` is field
 `i % per` of byte `i / per`, `0` past the array. -/
@@ -279,25 +279,25 @@ theorem assignSyms_interned (n : USize) (e : Enc) (ny : USize) (ye : Enc) (ix : 
     rw [ea, eb] at this
     exact this
 
-/-- info: 'QLean.Verify.resAt_field' depends on axioms: [propext, Quot.sound] -/
+/-- info: 'Rel.Verify.resAt_field' depends on axioms: [propext, Quot.sound] -/
 #guard_msgs in #print axioms resAt_field
-/-- info: 'QLean.Verify.set_field' depends on axioms: [propext, Quot.sound] -/
+/-- info: 'Rel.Verify.set_field' depends on axioms: [propext, Quot.sound] -/
 #guard_msgs in #print axioms set_field
-/-- info: 'QLean.Verify.set!_getElem?' depends on axioms: [propext] -/
+/-- info: 'Rel.Verify.set!_getElem?' depends on axioms: [propext] -/
 #guard_msgs in #print axioms set!_getElem?
-/-- info: 'QLean.Verify.scatterPacked_sub' depends on axioms: [propext, Quot.sound] -/
+/-- info: 'Rel.Verify.scatterPacked_sub' depends on axioms: [propext, Quot.sound] -/
 #guard_msgs in #print axioms scatterPacked_sub
-/-- info: 'QLean.Verify.scatterPacked_ids' depends on axioms: [propext, Quot.sound] -/
+/-- info: 'Rel.Verify.scatterPacked_ids' depends on axioms: [propext, Quot.sound] -/
 #guard_msgs in #print axioms scatterPacked_ids
-/-- info: 'QLean.Verify.scatterIds_spec' depends on axioms: [propext, Quot.sound] -/
+/-- info: 'Rel.Verify.scatterIds_spec' depends on axioms: [propext, Quot.sound] -/
 #guard_msgs in #print axioms scatterIds_spec
-/-- info: 'QLean.Verify.copySlice_end' depends on axioms: [propext, Quot.sound] -/
+/-- info: 'Rel.Verify.copySlice_end' depends on axioms: [propext, Quot.sound] -/
 #guard_msgs in #print axioms copySlice_end
-/-- info: 'QLean.Verify.push_get!' depends on axioms: [propext, Quot.sound] -/
+/-- info: 'Rel.Verify.push_get!' depends on axioms: [propext, Quot.sound] -/
 #guard_msgs in #print axioms push_get!
-/-- info: 'QLean.Verify.symBytes_push' depends on axioms: [propext, Quot.sound] -/
+/-- info: 'Rel.Verify.symBytes_push' depends on axioms: [propext, Quot.sound] -/
 #guard_msgs in #print axioms symBytes_push
-/-- info: 'QLean.Verify.assignSyms_interned' depends on axioms: [propext, Quot.sound] -/
+/-- info: 'Rel.Verify.assignSyms_interned' depends on axioms: [propext, Quot.sound] -/
 #guard_msgs in #print axioms assignSyms_interned
 
-end QLean.Verify
+end Rel.Verify

@@ -1,12 +1,12 @@
-import LeetQ.Rel.Lang.Test
-import LeetQ.Rel.Programs.Wumpus
+import Rel.Lang.Test
+import Rel.Programs.Wumpus
 
 /-! The Rel language on the Wumpus world, the program `Programs.wumpus`: every view of the KB after each step
     of the route, against the literal tables of the design page. -/
 
-namespace LeetQ.Rel.Lang.TestWumpus
+namespace Rel.Lang.TestWumpus
 
-open LeetQ.Rel LeetQ.Rel.Lang LeetQ.Rel.Lang.Test LeetQ.Rel.Alg QLean
+open Rel Rel.Lang Rel.Lang.Test Rel.Alg Rel
 
 /-- Each table `fₖ` of `given`: its name, and whether its key is `∗ : 1` rather than a cell. -/
 def tables : List (String × Bool) := [("V", false), ("B", false), ("S", false), ("G", false), ("noB", false),
@@ -14,7 +14,7 @@ def tables : List (String × Bool) := [("V", false), ("B", false), ("S", false),
   ("wcand", true), ("wumpus", false), ("noWumpus", false), ("safe", false), ("frontier", false), ("next", false)]
 
 -- one family `fₖ` per table of `tables`, in its order; `next(V,B,S)` printed is the table `page` states
-open LeetQ.Rel.Programs.prelude Programs.wumpus in
+open Rel.Programs.prelude Programs.wumpus in
 rel_program given where
     f0 : N ⟶ C×C ≜ V
     f1 : N ⟶ C×C ≜ B
@@ -107,4 +107,4 @@ def page : List String := [
     ("frontier", "(ran((V adj)) (𝟙 − V))"),
     ("next", "(frontier(V) ∩ safe(V, B, S))")]
 
-end LeetQ.Rel.Lang.TestWumpus
+end Rel.Lang.TestWumpus

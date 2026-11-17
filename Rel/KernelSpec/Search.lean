@@ -1,13 +1,13 @@
-import QLean.RelPart.Verify.Encoding
-import QLean.RelPart.Value
-import QLean.RelPart.Kernel.Search
-import QLean.RelPart.Verify.Raw
+import Rel.KernelSpec.Encoding
+import Rel.Kernel.Value
+import Rel.Kernel.Search
+import Rel.KernelSpec.Raw
 
-/-! The part of `QLean.Verify.Search` the Rel kernels reach; `QLean.Verify.Search` imports it. -/
+/-! The part of `Rel.Verify.Search` the Rel kernels reach; `Rel.Verify.Search` imports it. -/
 
 
-namespace QLean.Verify
-open QLean QLean.Kernel
+namespace Rel.Verify
+open Rel Rel.Kernel
 
 /-- `binStep`'s invariant: everything below `lo` passes the test, nothing from `hi` up to `n` does,
 and the fuel covers the interval. The answer then sits between them with the same two facts. -/
@@ -323,9 +323,9 @@ theorem runStartsIds_one (n : USize) (b : ByteArray) : runStartsIds n 1 b = runS
   unfold runStartsIds runStartsBits
   simp only [h]
 
-end QLean.Verify
+end Rel.Verify
 
-/-- info: 'QLean.Verify.runStartsIds_one' depends on axioms: [propext, Quot.sound] -/
-#guard_msgs in #print axioms QLean.Verify.runStartsIds_one
-#guard QLean.Kernel.runStartsIds 100 1 (QLean.Column.packIds 1 100 fun i => i / 3 % 2) ==
-  QLean.Kernel.runStartsBits 100 (QLean.Column.packIds 1 100 fun i => i / 3 % 2)
+/-- info: 'Rel.Verify.runStartsIds_one' depends on axioms: [propext, Quot.sound] -/
+#guard_msgs in #print axioms Rel.Verify.runStartsIds_one
+#guard Rel.Kernel.runStartsIds 100 1 (Rel.Column.packIds 1 100 fun i => i / 3 % 2) ==
+  Rel.Kernel.runStartsBits 100 (Rel.Column.packIds 1 100 fun i => i / 3 % 2)

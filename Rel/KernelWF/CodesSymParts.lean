@@ -3,11 +3,11 @@
   lane code back into the parts (`Code.cut`), so part `k`'s code at `i` is the razed column's at `O_k + i`, and
   that row is part `k`'s row `i` (`raze_get_symbol`).
 -/
-import LeetQ.Rel.KernelWF.RazeSym
+import Rel.KernelWF.RazeSym
 
-namespace LeetQ.Rel.Alg
+namespace Rel.Alg
 
-open QLean QLean.Dep QLean.Kernel QLean.Verify LeetQ.Rel
+open Rel Rel.Dep Rel.Kernel Rel.Verify Rel
 
 /-- **A symbol side of several parts: its codes are those of its `raze`, cut back**: past the bitmap and
     `rangeOffsets` branches, which a symbol side never takes, `codes` interns the razed column. -/
@@ -94,4 +94,4 @@ theorem codes_symbol_parts_wf {p : Nat} (cs : Vector (Part (.atom .symbol)) p)
   refine ⟨hw, by simp, rfl, fun h8 => ⟨(hid h8).1, fun i hi => ?_⟩⟩
   rw [hik i hi]; exact (hid h8).2 _ (by omega)
 
-end LeetQ.Rel.Alg
+end Rel.Alg

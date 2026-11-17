@@ -1,6 +1,6 @@
-import LeetQ.Run.Lang.Tm
-import QLean.RelPart.Db.Own
-import QLean.RelPart.Kernel.Elementwise
+import Rel.Run.Lang.Tm
+import Rel.Kernel.Db.Own
+import Rel.Kernel.Elementwise
 
 /-! # A program as kernel calls (`doc/rel-native-design.md` §6), stage 1a: `lit`, `call`, `fail`
 
@@ -8,9 +8,9 @@ A plan is first-order data: instructions over numbered registers, each register 
 names an `@[extern]` kernel by its C symbol; `Plan.run` is what a plan means, calling the same kernels through the
 table `kernel%` builds from their declarations, and `relc` (`Rel/Lang/EmitC`) prints the same plan as C. -/
 
-namespace LeetQ.Rel.Lang.Plan
+namespace Rel.Lang.Plan
 
-open Lean Elab Term Meta QLean QLean.Kernel
+open Lean Elab Term Meta Rel Rel.Kernel
 
 /-- A register's type: the argument and result types of the kernels' `@[extern]` declarations. -/
 inductive Ty
@@ -415,4 +415,4 @@ def arithB (op : UInt8) (n u v : Nat) : Bld (Array Nat) := do
   let nf := (Kernel.nullBits .long).getD 0
   return #[r, ← g nf u, ← g nf v, ← g 0 s]
 
-end LeetQ.Rel.Lang.Plan
+end Rel.Lang.Plan

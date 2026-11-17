@@ -1,12 +1,12 @@
 import Lean
-import QLean.RelPart.Kernel.Elementwise
-import LeetQ.Run.CRelDef
-import LeetQ.Run.CRelArithDef
-import LeetQ.Run.CRelRelDef
-import LeetQ.Run.CRelListDef
-import LeetQ.Run.CRelFoldDef
-import LeetQ.Run.CRelPowerDef
-import LeetQ.Run.CRelLoopDef
+import Rel.Kernel.Elementwise
+import Rel.Run.CRelDef
+import Rel.Run.CRelArithDef
+import Rel.Run.CRelRelDef
+import Rel.Run.CRelListDef
+import Rel.Run.CRelFoldDef
+import Rel.Run.CRelPowerDef
+import Rel.Run.CRelLoopDef
 
 /-! The Rel language's surface syntax (`doc/rel-lang-design.md` §c, §h): objects, terms, declarations, each node
     with its source line and column. The builtin operators are one table, `Op.table`, read by the parser (symbol,
@@ -14,9 +14,9 @@ import LeetQ.Run.CRelLoopDef
     builtin run as one `CRel` kernel, given relations or none, is a row of `prims`, its type and relation
     parameters read off that constant (`prim%`). -/
 
-namespace LeetQ.Rel.Lang
+namespace Rel.Lang
 
-deriving instance DecidableEq for LeetQ.Rel.Obj
+deriving instance DecidableEq for Rel.Obj
 
 /-- A source position: line and column, both from 1. -/
 structure Pos where
@@ -70,7 +70,7 @@ inductive OExp
 /-! ### The builtins run as one kernel: one row each, typed by their `CRel` constant -/
 
 section Prim
-open Lean Elab Term Meta LeetQ.Rel.Alg
+open Lean Elab Term Meta Rel.Alg
 
 /-- The object `e` of a `CRel` constant's type as written: an `Obj` binder the variable of its name, `.long` the
     variable `ℕ` (each declared number object is stored as `.long`, F6, so `ℕ` is an object variable too). -/
@@ -82,7 +82,7 @@ partial def objSyn (c : Name) (e : Lean.Expr) : MetaM Term := do
   | some ``Obj.sum, #[a, b] => `(OExp.sum $(← objSyn c a) $(← objSyn c b))
   | some ``Obj.arr, #[a] => `(OExp.list $(← objSyn c a))
   | some ``Obj.atom, #[t] =>
-    if t.isConstOf ``QLean.QAtomicType.long then `(OExp.var {} "ℕ")
+    if t.isConstOf ``Rel.QAtomicType.long then `(OExp.var {} "ℕ")
     else throwError "prim%: `{c}` names the atom `{t}`, which no declared object is stored as"
   | _, _ => throwError "prim%: `{c}` has the object `{e}`, not built by `Obj`'s constructors"
 
@@ -145,65 +145,65 @@ structure Prim where
   deriving Inhabited
 
 def consRow : Prim :=
-  { sym := "cons", sig := prim% CRel.cons, sound := `LeetQ.Rel.Lang.Gen.cons_sound,
+  { sym := "cons", sig := prim% CRel.cons, sound := `Rel.Lang.Gen.cons_sound,
     conv := "uncons", aop := .ok `Freyd.Alg.RelSet.ListRel.cons }
 
 def memRow : Prim :=
-  { sym := "∋", sig := prim% CRel.mem, aop := .ok `Freyd.Alg.PowerAllegory.eps, sound := `LeetQ.Rel.Lang.Gen.mem_sound }
+  { sym := "∋", sig := prim% CRel.mem, aop := .ok `Freyd.Alg.PowerAllegory.eps, sound := `Rel.Lang.Gen.mem_sound }
 
 -- `inl`, `inr`, `F(R)` are written as their `Op`s, which `Calc.toTerm` reads as a coproduct's injections and a relator
-def inlRow : Prim := { sym := "inl", sig := prim% CRel.inl, written := false, sound := `LeetQ.Rel.Lang.Gen.inl_sound }
-def inrRow : Prim := { sym := "inr", sig := prim% CRel.inr, written := false, sound := `LeetQ.Rel.Lang.Gen.inr_sound }
+def inlRow : Prim := { sym := "inl", sig := prim% CRel.inl, written := false, sound := `Rel.Lang.Gen.inl_sound }
+def inrRow : Prim := { sym := "inr", sig := prim% CRel.inr, written := false, sound := `Rel.Lang.Gen.inr_sound }
 def mapRow : Prim := { sym := "F", sig := prim% CRel.map, written := false }
 
 /-- Every builtin run as a kernel on the keys in demand: adding one is adding its row. -/
 def prims : List Prim :=
-  [{ sym := "τ", sig := prim% CRel.τ, sound := `LeetQ.Rel.Lang.Gen.τ_sound,
+  [{ sym := "τ", sig := prim% CRel.τ, sound := `Rel.Lang.Gen.τ_sound,
      aop := .ok `Freyd.Alg.singletonMap }, consRow, memRow, inlRow, inrRow, mapRow,
    -- `filter(p)`, `takewhile(p)` given one relation run as their mask forms (`rep_filterC`, `rep_takewhileC`, `elems_test`)
-   { sym := "filter", sig := prim% CRel.filter, sound := `LeetQ.Rel.Lang.Gen.filter_sound,
-     prelude := `LeetQ.Rel.Programs.prelude.filter },
-   { sym := "takewhile", sig := prim% CRel.takewhile, sound := `LeetQ.Rel.Lang.Gen.takewhile_sound,
-     prelude := `LeetQ.Rel.Programs.prelude.takewhile },
-   { sym := "thinL", sig := prim% CRel.thinLOn, sound := `LeetQ.Rel.Lang.Gen.thinL_sound,
+   { sym := "filter", sig := prim% CRel.filter, sound := `Rel.Lang.Gen.filter_sound,
+     prelude := `Rel.Programs.prelude.filter },
+   { sym := "takewhile", sig := prim% CRel.takewhile, sound := `Rel.Lang.Gen.takewhile_sound,
+     prelude := `Rel.Programs.prelude.takewhile },
+   { sym := "thinL", sig := prim% CRel.thinLOn, sound := `Rel.Lang.Gen.thinL_sound,
      mono := false, aop := .ok `Freyd.Alg.RelSet.ListRel.thinL },
-   { sym := "merge", sig := prim% CRel.mergeOn, sound := `LeetQ.Rel.Lang.Gen.merge_sound,
+   { sym := "merge", sig := prim% CRel.mergeOn, sound := `Rel.Lang.Gen.merge_sound,
      mono := false, aop := .ok `Freyd.Alg.RelSet.ListRel.merge },
-   { sym := "loop", sig := prim% CRel.loopOn, sound := `LeetQ.Rel.Lang.Gen.loop_sound, aop := .error "AOP declares no iteration to a fixed point from the left" },
-   { sym := "uncons", sig := prim% CRel.uncons, sound := `LeetQ.Rel.Lang.Gen.uncons_sound,
+   { sym := "loop", sig := prim% CRel.loopOn, sound := `Rel.Lang.Gen.loop_sound, aop := .error "AOP declares no iteration to a fixed point from the left" },
+   { sym := "uncons", sig := prim% CRel.uncons, sound := `Rel.Lang.Gen.uncons_sound,
      conv := "cons", written := false },
-   { sym := "length", sig := prim% CRel.length, sound := `LeetQ.Rel.Lang.Gen.length_sound,
+   { sym := "length", sig := prim% CRel.length, sound := `Rel.Lang.Gen.length_sound,
      aop := .ok `Freyd.Alg.RelSet.ListRel.length },
-   { sym := "sum", sig := prim% CRel.Arr.sum, sound := `LeetQ.Rel.Lang.Gen.sum_sound,
+   { sym := "sum", sig := prim% CRel.Arr.sum, sound := `Rel.Lang.Gen.sum_sound,
      aop := .ok `Freyd.Alg.RelSet.ListRel.sum },
-   { sym := "inits", sig := prim% CRel.inits, sound := `LeetQ.Rel.Lang.Gen.inits_sound,
+   { sym := "inits", sig := prim% CRel.inits, sound := `Rel.Lang.Gen.inits_sound,
      aop := .ok `Freyd.Alg.RelSet.ListRel.initsR },
    -- the prelude's folds run as their slice forms (`rep_tailsC`, `rep_prefixC`, `rep_suffixC`, `rep_concatC`)
-   { sym := "tails", sig := prim% CRel.tails, sound := `LeetQ.Rel.Lang.Gen.tails_sound,
-     prelude := `LeetQ.Rel.Programs.prelude.tails },
-   { sym := "prefix", sig := prim% CRel.prefix, sound := `LeetQ.Rel.Lang.Gen.prefix_sound,
-     prelude := `LeetQ.Rel.Programs.prelude.prefix },
-   { sym := "suffix", sig := prim% CRel.suffix, sound := `LeetQ.Rel.Lang.Gen.suffix_sound,
-     prelude := `LeetQ.Rel.Programs.prelude.suffix },
-   { sym := "concat", sig := prim% CRel.concat, sound := `LeetQ.Rel.Lang.Gen.concat_sound,
-     prelude := `LeetQ.Rel.Programs.prelude.concat },
-   { sym := "cat", sig := prim% CRel.cat, sound := `LeetQ.Rel.Lang.Gen.cat_sound,
+   { sym := "tails", sig := prim% CRel.tails, sound := `Rel.Lang.Gen.tails_sound,
+     prelude := `Rel.Programs.prelude.tails },
+   { sym := "prefix", sig := prim% CRel.prefix, sound := `Rel.Lang.Gen.prefix_sound,
+     prelude := `Rel.Programs.prelude.prefix },
+   { sym := "suffix", sig := prim% CRel.suffix, sound := `Rel.Lang.Gen.suffix_sound,
+     prelude := `Rel.Programs.prelude.suffix },
+   { sym := "concat", sig := prim% CRel.concat, sound := `Rel.Lang.Gen.concat_sound,
+     prelude := `Rel.Programs.prelude.concat },
+   { sym := "cat", sig := prim% CRel.cat, sound := `Rel.Lang.Gen.cat_sound,
      conv := "uncat", aop := .ok `Freyd.Alg.RelSet.ListRel.cat },
-   { sym := "uncat", sig := prim% CRel.uncat, sound := `LeetQ.Rel.Lang.Gen.uncat_sound,
+   { sym := "uncat", sig := prim% CRel.uncat, sound := `Rel.Lang.Gen.uncat_sound,
      conv := "cat", written := false },
-   { sym := "zip", sig := prim% CRel.zip, sound := `LeetQ.Rel.Lang.Gen.zip_sound,
+   { sym := "zip", sig := prim% CRel.zip, sound := `Rel.Lang.Gen.zip_sound,
      aop := .ok `Freyd.Alg.RelSet.Pointfree.zip },
-   { sym := "snoc", sig := prim% CRel.snoc, sound := `LeetQ.Rel.Lang.Gen.snoc_sound, conv := "unsnoc",
+   { sym := "snoc", sig := prim% CRel.snoc, sound := `Rel.Lang.Gen.snoc_sound, conv := "unsnoc",
      aop := .error "AOP's `snoc` is on snoc lists (`SL.snoc`), not on the cons lists `[α]` reads as" },
-   { sym := "unsnoc", sig := prim% CRel.unsnoc, sound := `LeetQ.Rel.Lang.Gen.unsnoc_sound,
+   { sym := "unsnoc", sig := prim% CRel.unsnoc, sound := `Rel.Lang.Gen.unsnoc_sound,
      conv := "snoc", written := false },
    { sym := "setify", sig := prim% CRel.setify, aop := .ok `Freyd.Alg.RelSet.ListRel.setify },
-   { sym := "distinct", sig := prim% CRel.distinct, sound := `LeetQ.Rel.Lang.Gen.distinct_sound,
+   { sym := "distinct", sig := prim% CRel.distinct, sound := `Rel.Lang.Gen.distinct_sound,
      aop := .error "AOP declares no first-occurrence removal of repeats from a list" },
    -- `asc` sorts each array by `Obj.lt` (`rep_asc`): B&dM's `bagify` with a bag kept as its ascending array
    { sym := "asc", sig := prim% CRel.asc,
      aop := .error "AOP's sorts take their order as a relation (`ISort.sortSpec R`); `asc` sorts by q's" },
-   { sym := "tic", sig := prim% CRel.tic, sound := `LeetQ.Rel.Lang.Gen.tic_sound,
+   { sym := "tic", sig := prim% CRel.tic, sound := `Rel.Lang.Gen.tic_sound,
      aop := .error "AOP declares no non-empty prefixes of `a::xs`" }]
 
 def Prim.find? (s : String) : Option Prim := prims.find? (·.sym == s)
@@ -228,10 +228,10 @@ inductive Op
 def Op.table : List (String × Op × Nat) :=
   [("𝟙", .id, 0), ("𝟘", .zero, 0), ("⊤", .top, 0), ("π₁", .outl, 0),
    ("π₂", .outr, 0), ("inl", .inl, 0), ("inr", .inr, 0), ("≤", .leq, 0), ("<", .lt, 0), ("succ", .succ, 0),
-   ("plus", .arith QLean.Kernel.Ew.add, 0), ("times", .arith QLean.Kernel.Ew.mul, 0),
-   ("minus", .arith QLean.Kernel.Ew.sub, 0), ("div", .arith QLean.Kernel.Ew.idiv, 0),
-   ("mod", .arith QLean.Kernel.Ew.imod, 0), ("max", .arith QLean.Kernel.Ew.greater, 0),
-   ("min", .arith QLean.Kernel.Ew.lesser, 0), ("nil", .nil, 0), ("α", .alpha, 0),
+   ("plus", .arith Rel.Kernel.Ew.add, 0), ("times", .arith Rel.Kernel.Ew.mul, 0),
+   ("minus", .arith Rel.Kernel.Ew.sub, 0), ("div", .arith Rel.Kernel.Ew.idiv, 0),
+   ("mod", .arith Rel.Kernel.Ew.imod, 0), ("max", .arith Rel.Kernel.Ew.greater, 0),
+   ("min", .arith Rel.Kernel.Ew.lesser, 0), ("nil", .nil, 0), ("α", .alpha, 0),
    ("dom", .dom, 1), ("ran", .ran, 1), ("Λ", .lam, 1), ("E", .E, 1),
    ("est", .est, 1), ("thin", .thin, 1), ("F", .map, 1),
    ("refold", .refold, 2),
@@ -445,4 +445,4 @@ def Expr.render (l : Nat) (full : Bool := false) : Expr → String
 
 def Expr.show (e : Expr) : String := e.render 0
 
-end LeetQ.Rel.Lang
+end Rel.Lang

@@ -3,12 +3,12 @@
   `estOn`/`est`, `thinOn`/`thin`. Each headline chains its primitives' read-backs; the intermediates are bound by
   their defining equations and the primitives' hypotheses are `Prim`'s bundles at them.
 -/
-import LeetQ.Rel.RepLoop
-import LeetQ.Rel.RepE
+import Rel.RepLoop
+import Rel.RepE
 
-namespace LeetQ.Rel.Rep
+namespace Rel.Rep
 
-open QLean QLean.Kernel QLean.Verify LeetQ.Rel LeetQ.Rel.Alg LeetQ.Rel.KernelWF
+open Rel Rel.Kernel Rel.Verify Rel Rel.Alg Rel.KernelWF
 
 /-! ## `tail`, `pairsIn`, `swapIn`, `estOn`, `est`, `thinOn`, `thin` -/
 
@@ -275,4 +275,4 @@ end Est
 #print axioms rep_thinOn
 #print axioms rep_thin
 
-end LeetQ.Rel.Rep
+end Rel.Rep

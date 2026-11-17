@@ -1,13 +1,13 @@
 /-
   `setIds vc s`, read back.
 -/
-import LeetQ.Rel.KernelWF.SegSpec
-import LeetQ.Rel.KernelWF.DivSpec
-import LeetQ.Rel.KernelWF.CodesRec
+import Rel.KernelWF.SegSpec
+import Rel.KernelWF.DivSpec
+import Rel.KernelWF.CodesRec
 
-namespace LeetQ.Rel.Alg
+namespace Rel.Alg
 
-open QLean QLean.Kernel QLean.Verify LeetQ.Rel LeetQ.Rel.KernelWF
+open Rel Rel.Kernel Rel.Verify Rel Rel.KernelWF
 
 -- the long `i` of a column `seg`, the key `gradeBy` sorts by first
 set_option hygiene false in
@@ -742,4 +742,4 @@ theorem setIds_spec (vc : Code) (s : ByteArray) {m : Nat}
 #print axioms firsts_lt_iff
 #print axioms eq_of_lt_mem
 
-end LeetQ.Rel.Alg
+end Rel.Alg

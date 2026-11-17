@@ -4,18 +4,18 @@
   code lemmas of `JoinSpec`/`MemberSpec` take (`w` a lane, `b` exactly `⌈n·w/8⌉` bytes, every code below
   `card`, `card` a `USize` below a byte).
 -/
-import LeetQ.Rel.KernelWF.JoinSpec
-import LeetQ.Rel.KernelWF.PickSpec
-import QLean.RelPart.Dep.Monadic
-import QLean.RelPart.Verify.EwEnc
-import QLean.RelPart.Verify.Gather
-import QLean.RelPart.Verify.Ids
-import QLean.RelPart.Verify.ScanOver
-import QLean.RelPart.Verify.Search
+import Rel.KernelWF.JoinSpec
+import Rel.KernelWF.PickSpec
+import Rel.Kernel.Dep.Monadic
+import Rel.KernelSpec.EwEnc
+import Rel.KernelSpec.Gather
+import Rel.KernelSpec.Ids
+import Rel.KernelSpec.ScanOver
+import Rel.KernelSpec.Search
 
-namespace LeetQ.Rel.Alg
+namespace Rel.Alg
 
-open QLean QLean.Dep QLean.Kernel QLean.Verify LeetQ.Rel
+open Rel Rel.Dep Rel.Kernel Rel.Verify Rel
 
 /-! ## Atoms: a boolean side -/
 
@@ -1003,4 +1003,4 @@ theorem codes_guid_wf (x : Part (.atom .guid)) :
 #print axioms codes_guid_faithful
 #print axioms codes_guid_wf
 
-end LeetQ.Rel.Alg
+end Rel.Alg

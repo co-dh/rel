@@ -1,12 +1,12 @@
-import LeetQ.Run.Alg
+import Rel.Run.Alg
 
 /-! # AC-3 (arc consistency, Mackworth's algorithm 3): the delta-round kernel of `νX : s ∩ ⋂ₖ Aₖ\(X Cₖ)`
 
 The run-path definitions only, on `Alg`'s C twins; their agreement with the naive rounds is `AC3.lean`. -/
 
-namespace LeetQ.Rel.Alg
+namespace Rel.Alg
 
-open LeetQ.Rel
+open Rel
 
 /-- One arc `A\(X C)` of an AC-3 body (`A : V ⟶ V`, `C : D ⟶ D`), with `𝟙(D)` for its division. -/
 structure Revise (V D : Obj) where
@@ -63,4 +63,4 @@ def acFixC {V D : Obj} (s : Rel V D) (as : List (Revise V D)) (U : Rel V V) : (R
 /-- `νX : s ∩ ⋂ₖ Aₖ\(X Cₖ)` by delta rounds: `acFixC`'s answer. -/
 def acFix {V D : Obj} (s : Rel V D) (as : List (Revise V D)) (U : Rel V V) : Rel V D × Nat := (acFixC s as U).1
 
-end LeetQ.Rel.Alg
+end Rel.Alg

@@ -3,18 +3,18 @@
   `Arr.mk` takes (`Enc.WF t n e`), and the `isSome` facts that make `codes` total. Gathering kernels (`gatherColumn`, `bytesOf`, `longBytes`, `gens`) are in
   `KernelWF/Gather`.
 -/
-import QLean.RelPart.Verify.Alp
-import QLean.RelPart.Verify.Gather
-import QLean.RelPart.Verify.SymFind
-import LeetQ.Run.Core
+import Rel.KernelSpec.Alp
+import Rel.KernelSpec.Gather
+import Rel.KernelSpec.SymFind
+import Rel.Run.Core
 
 -- the lane widths a `Code` may have: one home for the disjunction every `Code.w` hypothesis states (here, the
 -- earliest module stating it: an id pack's lane is `w = 0 ∨ laneOK(w)`)
 notation "laneOK(" w ")" => (w = 1 ∨ w = 2 ∨ w = 4 ∨ w = 8 ∨ w = 16 ∨ w = 32 ∨ w = 64)
 
-namespace LeetQ.Rel.KernelWF
+namespace Rel.KernelWF
 
-open QLean QLean.Kernel LeetQ.Rel
+open Rel Rel.Kernel Rel
 
 /-! ## Sizes of the folds the kernels are written as -/
 
@@ -1622,4 +1622,4 @@ theorem razeColumn_count {t : QAtomicType} {cs : Array (USize × Enc)}
         cases hv; exact toUSize_toNat hc
       · cases hv
 
-end LeetQ.Rel.KernelWF
+end Rel.KernelWF

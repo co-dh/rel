@@ -1,7 +1,7 @@
-/-! The part of `QLean.Kernel.Need` the Rel kernels reach; `QLean.Kernel.Need` imports it. -/
+/-! The part of `Rel.Kernel.Need` the Rel kernels reach; `Rel.Kernel.Need` imports it. -/
 
 
-namespace QLean.Kernel
+namespace Rel.Kernel
 
 /-- Model: the fallback value. C: prints `msg ()` to stderr and exits 1; it never returns.
 `never_extract`, as core's `panicCore`: without it a call on closed arguments is hoisted into module
@@ -19,4 +19,4 @@ as the `USize` it is under the fits check, so the one `toUSize` on a count is he
 @[macro_inline] def needSize {α : Type} (c : Nat) (what : String) (model : Unit → α) (k : USize → α) : α :=
   need (c < USize.size) (fun _ => s!"{what}: {c} does not fit a USize") model fun _ => k c.toUSize
 
-end QLean.Kernel
+end Rel.Kernel

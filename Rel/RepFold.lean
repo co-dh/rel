@@ -3,14 +3,14 @@
   pending with its element `k` from the end, hand both to the step, `nub` the result, and move the rows that have
   no element `k` to `out`. This file reads one round in `Rel(Set)` and the rounds' `out` by induction.
 -/
-import LeetQ.Rel.RepDiv
-import LeetQ.Rel.KernelWF.FoldSpec
-import LeetQ.Rel.RepLambda
-import LeetQ.Rel.RepMem
+import Rel.RepDiv
+import Rel.KernelWF.FoldSpec
+import Rel.RepLambda
+import Rel.RepMem
 
-namespace LeetQ.Rel.Rep
+namespace Rel.Rep
 
-open QLean QLean.Kernel QLean.Verify LeetQ.Rel LeetQ.Rel.Alg LeetQ.Rel.KernelWF
+open Rel Rel.Kernel Rel.Verify Rel Rel.Alg Rel.KernelWF
 -- `codesOK` is `RepOps`' (`OpsN`); the fold notations below use it
 open OpsN
 
@@ -98,8 +98,8 @@ theorem codesOK_long2 {n m : USize} (x : Vals .long n) (y : Vals .long m) (hN : 
       (#v[⟨n, x⟩, ⟨m, y⟩] : Vector (Part .long) 2)) :=
   (codes_faithful_wf .long _ (codesFit_atom_count _ (by simpa using hN) (.inr (.inl rfl)))).1
 
-open scoped LeetQ.Core.Rel in
-open LeetQ.Core.Rel hiding id comp recip inter union zero le inl inr junc in
+open scoped Rel.Core.Rel in
+open Rel.Core.Rel hiding id comp recip inter union zero le inl inr junc in
 /-- **A round's leftovers, read back**: `(antiJoin pend° (idU el.key))°` holds the pairs of `pend` whose row has
     no element this round, given `antiJoin` read back there (`hA`, `rep_antiJoin`'s or `rep_antiJoinC`'s). -/
 theorem round_out {E V : Obj} (el : Rel .long E) (pend : Rel .long V)
@@ -147,7 +147,7 @@ theorem round_rep {E V : Obj} (el : Rel .long E) (pend P S : Rel .long V)
 
 /-! ## The rounds -/
 
-open QLean.Dep
+open Rel.Dep
 
 /-- **`iter` stops at the first iterate it may**: `iter n done f a` is `f^[j] a` for some `j ≤ n` where the rounds
     ran out (`j = n`) or `done` holds, `done` failing at every iterate before. -/
@@ -272,7 +272,7 @@ theorem rep_elR {E : Obj} (ids : Rel .long (.arr E)) (k : Nat) (hk : k < 2 ^ 63)
   have hR := fun i (hi : i < (Rel.n ids).toNat) => slicesOf_row (Rel.val ids) hp hi
   have hA := whereGt_ids (Rel.n ids) (slicesOf (Rel.val ids)).2 hk fun i hi => by have := (hR i hi).1; omega
   rw [← ha] at hA
-  have hmem : ∀ i, i ∈ QLean.Verify.ids a ↔
+  have hmem : ∀ i, i ∈ Rel.Verify.ids a ↔
       i < (Rel.n ids).toNat ∧ k < (Column.bitsAt (slicesOf (Rel.val ids)).2 (i * 8) 8).toNat := fun i => by
     rw [hA, List.mem_filter, List.mem_range, decide_eq_true_iff]
   have hP2 : len pos = ((len a).toUSize).toNat := by rw [hpos]; exact len_val ..
@@ -286,8 +286,8 @@ theorem rep_elR {E : Obj} (ids : Rel .long (.arr E)) (k : Nat) (hk : k < 2 ^ 63)
           Vals.row (Vals.pick E (Rel.val ids).2.2.2 pos _ h2) ⟨q, by omega⟩ =
             (Vals.row (Rel.val ids) ⟨_, hi⟩)[(Vals.row (Rel.val ids) ⟨_, hi⟩).length - 1 - k]'(by omega) := by
     intro q hq h1 h2
-    have hin : (Column.bitsAt a (q * 8) 8).toNat ∈ QLean.Verify.ids a := by
-      have hq' : q < (QLean.Verify.ids a).length := by rw [← len_eq_ids]; exact hq
+    have hin : (Column.bitsAt a (q * 8) 8).toNat ∈ Rel.Verify.ids a := by
+      have hq' : q < (Rel.Verify.ids a).length := by rw [← len_eq_ids]; exact hq
       rw [← ids_getElem hq']; exact List.getElem_mem hq'
     obtain ⟨hi, hki⟩ := (hmem _).1 hin
     obtain ⟨hLC, hln, hget⟩ := hR _ hi
@@ -419,8 +419,8 @@ theorem rounds_rep {E V : Obj} (pend₀ : Rel .long V) (step : Rel .long E → R
     (fun i _ => roundRB_of_ok pend₀ step elK f hR i) j trivial
   ⟨rounds_count pend₀ step elK f hf j, h.1 trivial, h.2⟩
 
-open scoped LeetQ.Core.Rel in
-open LeetQ.Core.Rel hiding id comp recip inter union zero le inl inr junc in
+open scoped Rel.Core.Rel in
+open Rel.Core.Rel hiding id comp recip inter union zero le inl inr junc in
 /-- **`demandStep Sf`, read back** from `pair` and `≫` read back at its round (`h1`, `h2`: `rep_pair`'s and
     `rep_comp`'s, or their twins'). -/
 theorem step_rep_of {E V : Obj} (el : Rel .long E) (pend : Rel .long V)
@@ -697,8 +697,8 @@ theorem reads_mod_le {A : Obj} {m : USize} (e : Vals A m) : ∀ N : Nat,
     rw [Nat.add_one_mul N m.toNat, List.range_add, List.map_append, hm, Nat.add_one_mul (N + 1)]
     exact Nat.le_trans (reads_append e _ _) (Nat.add_le_add_right (reads_mod_le e N) _)
 
-open scoped LeetQ.Core.Rel in
-open LeetQ.Core.Rel hiding id comp recip inter union zero le inl inr junc in
+open scoped Rel.Core.Rel in
+open Rel.Core.Rel hiding id comp recip inter union zero le inl inr junc in
 /-- **`foldBy`, read back**: an array `xs` of `X` goes to `w` when a chain `ys` of steps runs along `xs` from
     a value of `e` (`ys[|xs|]`) to `w` (`ys[0]`), `ys[t+1]` to `ys[t]` on the element `xs[t]` by `Sr k`,
     `k = |xs| - 1 - t` the round that meets `xs[t]` (rounds run from the end). `foldBy` is `T° ≫ F`: `T`
@@ -872,15 +872,15 @@ theorem foldByC_fst {E V : Obj} {n m : USize} (X : Vals (.arr E) n) (e : Vals V 
     (foldByC X e stepC).1 = foldBy X e (fun el p => (stepC el p).1) := by
   simp only [foldBy, foldByC, foldRowsC_fst]
 
-end LeetQ.Rel.Rep
+end Rel.Rep
 
-#print axioms LeetQ.Rel.Rep.round_rep
-#print axioms LeetQ.Rel.Rep.rep_elR
-#print axioms LeetQ.Rel.Rep.iter_stop
-#print axioms LeetQ.Rel.Rep.foldRows_iter
-#print axioms LeetQ.Rel.Rep.rounds_rep
-#print axioms LeetQ.Rel.Rep.rounds_closed_keep
-#print axioms LeetQ.Rel.Rep.step_rep
-#print axioms LeetQ.Rel.Rep.foldRows_rep_keep
-#print axioms LeetQ.Rel.Rep.rep_foldBy_keep
-#print axioms LeetQ.Rel.Rep.rep_foldBy
+#print axioms Rel.Rep.round_rep
+#print axioms Rel.Rep.rep_elR
+#print axioms Rel.Rep.iter_stop
+#print axioms Rel.Rep.foldRows_iter
+#print axioms Rel.Rep.rounds_rep
+#print axioms Rel.Rep.rounds_closed_keep
+#print axioms Rel.Rep.step_rep
+#print axioms Rel.Rep.foldRows_rep_keep
+#print axioms Rel.Rep.rep_foldBy_keep
+#print axioms Rel.Rep.rep_foldBy

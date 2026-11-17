@@ -1,20 +1,20 @@
-import QLean.RelPart.Verify.Search
-import QLean.RelPart.Verify.Encoding
-import QLean.RelPart.Verify.Group
-import QLean.RelPart.Verify.Ids
-import QLean.RelPart.Kernel.Sort
-import QLean.RelPart.Value
-import QLean.RelPart.Kernel.Search
-import QLean.RelPart.Verify.Distinct
-import QLean.RelPart.Kernel.Scan
+import Rel.KernelSpec.Search
+import Rel.KernelSpec.Encoding
+import Rel.KernelSpec.Group
+import Rel.KernelSpec.Ids
+import Rel.Kernel.Sort
+import Rel.Kernel.Value
+import Rel.Kernel.Search
+import Rel.KernelSpec.Distinct
+import Rel.Kernel.Scan
 
-/-! The part of `QLean.Verify.BinWin` the Rel kernels reach; `QLean.Verify.BinWin` imports it. -/
+/-! The part of `Rel.Verify.BinWin` the Rel kernels reach; `Rel.Verify.BinWin` imports it. -/
 
 
-namespace QLean.Verify
+namespace Rel.Verify
 
-open QLean QLean.Kernel
-open QLean.Kernel.Scan (Kind)
+open Rel Rel.Kernel
+open Rel.Kernel.Scan (Kind)
 
 /-- **`bin` answers the last element not above the needle**: over `n` elements whose `ordKey`s ascend,
 element `j` of the answer, read as an `Int64`, is `r - 1` for the `r` elements whose key is at most
@@ -51,15 +51,15 @@ theorem groupSizes_spec (ng w n : USize) (gid : ByteArray) :
     exact Nat.lt_of_le_of_lt (Nat.le_trans List.countP_le_length
       (by rw [List.length_range]; exact idsCap_le _ _ _)) (usize_lt n)
 
-end QLean.Verify
-#print axioms QLean.Verify.binBytes_last
-#print axioms QLean.Verify.groupSizes_spec
+end Rel.Verify
+#print axioms Rel.Verify.binBytes_last
+#print axioms Rel.Verify.groupSizes_spec
 
 
-namespace QLean.Verify
+namespace Rel.Verify
 
-open QLean QLean.Kernel
-open QLean.Kernel.Scan (Kind)
+open Rel Rel.Kernel
+open Rel.Kernel.Scan (Kind)
 
 /-- At an integral kind `ordKey` is the kernel's sort key, signed exactly at the signed widths. -/
 theorem ordKey_keyAt {k : Kind} {s : Bool}
@@ -72,5 +72,5 @@ theorem ordKey_keyAt {k : Kind} {s : Bool}
   rcases hk with ⟨hk | hk, rfl⟩ | ⟨hk | hk | hk, rfl⟩ <;> subst hk <;>
     simp only [ordKey, Bool.false_eq_true, ↓reduceIte, hm] <;> rfl
 
-end QLean.Verify
-#print axioms QLean.Verify.ordKey_keyAt
+end Rel.Verify
+#print axioms Rel.Verify.ordKey_keyAt

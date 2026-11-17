@@ -1,10 +1,10 @@
-import LeetQ.Rel.Programs.Prelude
+import Rel.Programs.Prelude
 
 /-! # The Wumpus world -/
 
-namespace LeetQ.Rel.Programs
+namespace Rel.Programs
 
-open LeetQ.Rel.Programs.prelude in
+open Rel.Programs.prelude in
 rel_program wumpus where
     obj C = {11,12,13,14,21,22,23,24,31,32,33,34,41,42,43,44}   -- the cells [x,y], written xy
     obj N = 0…5                                   -- the steps of the route
@@ -48,4 +48,4 @@ rel_program wumpus where
 
 #guard wumpus.ok
 
-end LeetQ.Rel.Programs
+end Rel.Programs

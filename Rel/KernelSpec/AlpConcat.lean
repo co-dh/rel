@@ -1,16 +1,16 @@
-import QLean.RelPart.Verify.FindMember
-import QLean.RelPart.Verify.Encoding
-import QLean.RelPart.Kernel.Coc
-import QLean.RelPart.Verify.Gather
-import QLean.RelPart.Kernel.Structural
-import QLean.RelPart.Verify.Alp
-import QLean.RelPart.Value
+import Rel.KernelSpec.FindMember
+import Rel.KernelSpec.Encoding
+import Rel.Kernel.Coc
+import Rel.KernelSpec.Gather
+import Rel.Kernel.Structural
+import Rel.KernelSpec.Alp
+import Rel.Kernel.Value
 
-/-! The part of `QLean.Verify.AlpConcat` the Rel kernels reach; `QLean.Verify.AlpConcat` imports it. -/
+/-! The part of `Rel.Verify.AlpConcat` the Rel kernels reach; `Rel.Verify.AlpConcat` imports it. -/
 
 
-namespace QLean.Verify
-open QLean QLean.Kernel
+namespace Rel.Verify
+open Rel Rel.Kernel
 
 /-- An ALP element is no wider than the blob's element size: an exception is read at it and a
 decimal of a `real` column is narrowed to four bytes. -/
@@ -146,4 +146,4 @@ theorem elemsW_concatALP (ew : USize) (ns : ByteArray) (metas packs alps : Array
   refine ⟨(alpBits_alpEncodeAt (ew == 4) Column.lgEnc (by decide) w hwN X (by rw [hXN]; exact hx)).1, ?_⟩
   rw [← hXN, elemsW_alpDecode_alpEncodeAt (ew == 4) w hwN X (by rw [hXN]; exact hx), hXw]
 
-end QLean.Verify
+end Rel.Verify

@@ -1,10 +1,10 @@
-import QLean.RelPart.Kernel.Coc
-import QLean.RelPart.Value
+import Rel.Kernel.Coc
+import Rel.Kernel.Value
 
-/-! The part of `QLean.Kernel.Elementwise` the Rel kernels reach; `QLean.Kernel.Elementwise` imports it. -/
+/-! The part of `Rel.Kernel.Elementwise` the Rel kernels reach; `Rel.Kernel.Elementwise` imports it. -/
 
 
-namespace QLean.Kernel.Ew
+namespace Rel.Kernel.Ew
 
 /-- Storage classes. `bits` is a `widen` source only: a boolean payload is one bit per element, so
 no arithmetic loop is instantiated over it. -/
@@ -91,7 +91,7 @@ def signed (cls : UInt8) (v : UInt64) : Int64 :=
   else v.toInt64
 
 /-- q's `0n` with its **sign bit cleared**, at both float widths; the null itself is
-`QLean.nanBits`. `1-0n` is `0x7ff8000000000000` and `0n-1` is `0xfff8000000000000` — q subtracts by
+`Rel.nanBits`. `1-0n` is `0x7ff8000000000000` and `0n-1` is `0xfff8000000000000` — q subtracts by
 negating and adding, so a null on the right of `-` comes back positive. Measured at `real` too:
 `1e-0Ne` is `0x7fc00000`. -/
 def pnan64 : UInt64 := 0x7ff8000000000000
@@ -163,9 +163,9 @@ def f64Step (op : UInt8) (x y : UInt64) : UInt64 :=
               else if op == imod then a - b * f
               else if op == pow then a ^ b
               else a / b).toBits
-    if op == idiv && outside then QLean.nanBits
+    if op == idiv && outside then Rel.nanBits
     else if op == imod && outside then pnan64
-    else if Bits.f64IsNaN z then QLean.nanBits else z
+    else if Bits.f64IsNaN z then Rel.nanBits else z
 
 /-- The `real` width, which differs from `f64Step` only in the null patterns and the conversion. -/
 def f32Step (op : UInt8) (x y : UInt32) : UInt32 :=
@@ -186,9 +186,9 @@ def f32Step (op : UInt8) (x y : UInt32) : UInt32 :=
               else if op == imod then a - b * f
               else if op == pow then (a.toFloat ^ b.toFloat).toFloat32
               else a / b).toBits
-    if op == idiv && outside then QLean.nanBits32
+    if op == idiv && outside then Rel.nanBits32
     else if op == imod && outside then pnan32
-    else if Bits.f32IsNaN z then QLean.nanBits32 else z
+    else if Bits.f32IsNaN z then Rel.nanBits32 else z
 
 /-- One element of a value verb, at whichever family the class belongs to. -/
 def valStep (op cls : UInt8) (nul x y : UInt64) : UInt64 :=
@@ -242,10 +242,10 @@ def monStep (op cls : UInt8) (nul v : UInt64) : UInt64 :=
     -- a null argument answers `0n` whichever map it is, its payload never read; out of *domain*
     -- the answer is `0n` too, except that the two arc functions clear the sign bit — measured,
     -- `asin 2` and `acos -0w` are `0x7ff8…` where `sqrt -1`, `log -1` and `tan 0w` are `0xfff8…`
-    else if Bits.f64IsNaN v then QLean.nanBits
+    else if Bits.f64IsNaN v then Rel.nanBits
     else
       let y := (monFloat op (Float.ofBits v)).toBits
-      if Bits.f64IsNaN y then (if op == asin || op == acos then pnan64 else QLean.nanBits) else y
+      if Bits.f64IsNaN y then (if op == asin || op == acos then pnan64 else Rel.nanBits) else y
   else if cls == f64 || cls == f32 then
     let sign : UInt64 := if cls == f64 then 0x8000000000000000 else 0x80000000
     if op == neg then v ^^^ sign else v &&& (sign - 1)
@@ -282,11 +282,11 @@ def widenStep (dst : UInt8) (nulIn nulOut : Int64) (v : Int64) : UInt64 :=
   if dst == f64 then
     (if v == nulIn then nulOut.toUInt64 else
       let b := (Float.ofInt v.toInt).toBits
-      if Bits.f64IsNaN b then QLean.nanBits else b)
+      if Bits.f64IsNaN b then Rel.nanBits else b)
   else if dst == f32 then
     (if v == nulIn then nulOut.toUInt64 else
       (let b := (Float.ofInt v.toInt).toFloat32.toBits
-       if Bits.f32IsNaN b then QLean.nanBits32 else b).toUInt64)
+       if Bits.f32IsNaN b then Rel.nanBits32 else b).toUInt64)
   else (if v == nulIn then nulOut else v).toUInt64
 
 /-- Whether a source element is q's *missing* value. `nulIn` is `verbNull false`, so `byte`,
@@ -315,7 +315,7 @@ def castBounds (dst : UInt8) : Int64 × Int64 :=
 /-- What a cast writes for a missing source, as raw bits at `dst`. `u8` answers `0` rather than a
 null of its own — `Eval.castNull`'s rule, and the reason `` `char$0N `` is `"\000"`. -/
 def castNul (dst : UInt8) : UInt64 :=
-  if dst == f64 then QLean.nanBits else if dst == f32 then QLean.nanBits32.toUInt64
+  if dst == f64 then Rel.nanBits else if dst == f32 then Rel.nanBits32.toUInt64
   else if dst == i16 then 0x8000 else if dst == i32 then 0x80000000
   else if dst == i64 then 0x8000000000000000 else 0
 
@@ -333,10 +333,10 @@ def castStep (src dst : UInt8) (nulIn : Int64) (v : UInt64) : UInt64 :=
   if castMissing src nulIn v then castNul dst
   else if dst == f64 then
     let b := (castFloat src v).toBits
-    if Bits.f64IsNaN b then QLean.nanBits else b
+    if Bits.f64IsNaN b then Rel.nanBits else b
   else if dst == f32 then
     let b := (castFloat src v).toFloat32.toBits
-    (if Bits.f32IsNaN b then QLean.nanBits32 else b).toUInt64
+    (if Bits.f32IsNaN b then Rel.nanBits32 else b).toUInt64
   else
     let n := if src == f64 || src == f32 then castRound (castFloat src v) else signed src v
     let (lo, hi) := castBounds dst
@@ -753,9 +753,9 @@ def Build.run (b : Build) (last : Stage) (n : USize) : ByteArray :=
 def Build.runEnc (b : Build) (last : Stage) (n : USize) (width : USize) : ByteArray × ByteArray :=
   chainEnc (b.prog last) b.inputs n width
 
-end QLean.Kernel.Ew
+end Rel.Kernel.Ew
 
-namespace QLean.Kernel
+namespace Rel.Kernel
 
 /-- The raw bits q's null occupies, and the one table that says so. `none` at `byte` and `boolean`,
 which have none, and at the two types with no dense payload. -/
@@ -773,10 +773,10 @@ kernel and how `null` and `not` reach the comparison engine. -/
 def atomBytes (cls : UInt8) (v : UInt64) : ByteArray :=
   Column.pushBits ByteArray.empty v (Ew.width cls)
 
-end QLean.Kernel
+end Rel.Kernel
 
 
-namespace QLean.Kernel.Ew
+namespace Rel.Kernel.Ew
 def ge : UInt8 := 5
 def eAlp : UInt8 := 8
 
@@ -788,9 +788,9 @@ def Build.input (b : Build) (x : ByteArray) : Build × UInt8 :=
 def Build.add (b : Build) (s : Stage) : Build × UInt8 :=
   ({ b with stages := b.stages.push s }, slot0 + b.stages.size.toUInt8)
 
-end QLean.Kernel.Ew
+end Rel.Kernel.Ew
 
-namespace QLean.Kernel
+namespace Rel.Kernel
 
 /-- The storage class a type's dense payload is read at. `none` where there is no dense fixed-width
 payload the kernels are instantiated over: `symbol` has no fixed width and `guid` is sixteen bytes,
@@ -889,4 +889,4 @@ def operandSource (b : Ew.Build) (t : QAtomicType) (m : USize) (e : Enc) (dst : 
     -- the narrowing half of the same stage, `operandAt`'s second branch as a tile at a time
     else some (b.add { engine := Ew.eCast, cls := src, shape := dst, a := raw, nul := nulIn })
 
-end QLean.Kernel
+end Rel.Kernel

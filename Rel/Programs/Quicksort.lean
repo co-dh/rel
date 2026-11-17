@@ -1,4 +1,4 @@
-import LeetQ.Rel.Programs.Prelude
+import Rel.Programs.Prelude
 
 /-! # Quicksort
 
@@ -6,9 +6,9 @@ B&dM §6.6 "Quicksort" (p.154–156): the specification `perm ordered(≤)` of s
 type `tree A ::= null | fork(tree A, A, tree A)` to `flatten ⦇[nil, split°]⦈°`, an unfold then a fold. The tree is
 never built: the program is the least `X` with `X = c (𝟙 + X×𝟙×X) [nil, join]`, on arrays. -/
 
-namespace LeetQ.Rel.Programs
+namespace Rel.Programs
 
-open LeetQ.Rel.Programs.prelude in
+open Rel.Programs.prelude in
 rel_program quicksort where
     obj N = 0…9                                   -- the elements
 
@@ -43,4 +43,4 @@ rel_program quicksort where
 
 #guard quicksort.ok
 
-end LeetQ.Rel.Programs
+end Rel.Programs

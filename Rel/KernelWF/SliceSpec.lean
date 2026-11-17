@@ -2,11 +2,11 @@
   `slicesOf` read back with the `expand` `mem` runs on it: the copies are the array side's rows' elements, row
   by row in order — copy of row `r`'s element `j` holds the row `r` and the payload position `L r + j`.
 -/
-import LeetQ.Rel.KernelWF.PickRow
+import Rel.KernelWF.PickRow
 
-namespace LeetQ.Rel.Alg
+namespace Rel.Alg
 
-open QLean QLean.Kernel QLean.Verify LeetQ.Rel
+open Rel Rel.Kernel Rel.Verify Rel
 
 namespace SliceN
 -- row `r`'s slice of the array side `x`, its start and end clamped into `[0, x.1]`, as `Vals.row` reads it; one
@@ -246,4 +246,4 @@ theorem pickFits_arr_count {B : Obj} {n : USize} (x : Vals (.arr B) n) (hp : x.1
 #print axioms copies_rows
 #print axioms copies_pos
 
-end LeetQ.Rel.Alg
+end Rel.Alg

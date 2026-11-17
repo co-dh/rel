@@ -5,12 +5,12 @@
   Every index in a statement here carries its bound explicitly (`xs[k]'hk`): left to `get_elem_tactic`,
   the index proofs of this many binders ran Lean out of memory before any tactic.
 -/
-import LeetQ.Rel.KernelWF.CodesRec
-import LeetQ.Rel.KernelWF.SliceSpec
+import Rel.KernelWF.CodesRec
+import Rel.KernelWF.SliceSpec
 
-namespace LeetQ.Rel.Alg
+namespace Rel.Alg
 
-open QLean QLean.Dep QLean.Kernel QLean.Verify LeetQ.Rel
+open Rel Rel.Dep Rel.Kernel Rel.Verify Rel
 
 open SliceN
 -- the copies of row `t` (`slicesOf_copies`' right side), and the copies before row `r`
@@ -530,4 +530,4 @@ theorem codes_arr_faithful_wf {b : Obj} {p : Nat} (cs : Vector (Part (.arr b)) p
 
 #print axioms codes_arr_faithful_wf
 
-end LeetQ.Rel.Alg
+end Rel.Alg

@@ -1,6 +1,6 @@
-import LeetQ.Run.Algebra
-import LeetQ.Run.Lang.Syntax
-import LeetQ.Run.Lang.Tm
+import Rel.Run.Algebra
+import Rel.Run.Lang.Syntax
+import Rel.Run.Lang.Tm
 
 /-! The elaborator of the Rel language (`doc/rel-lang-design.md` §a, §e): names resolved, every term typed
     `A ⟶ B` over the declared objects, definitions expanded, a body whose declared parameter is given a family
@@ -8,16 +8,16 @@ import LeetQ.Run.Lang.Tm
     unified as it goes; `build` reads the solved objects and gives `Tm`, the core term, indexed by its source,
     target and whether it runs on demand, so its expansion (`Expand`) has no error path. -/
 
-namespace LeetQ.Rel.Lang
+namespace Rel.Lang
 
-open LeetQ.Rel LeetQ.Rel.Alg
-open QLean.Kernel (need needSize)
+open Rel Rel.Alg
+open Rel.Kernel (need needSize)
 
 /-! ### Objects as the program names them -/
 
 /-- The declared object `n` as Lean's unifier sees it: one constant per name, so `isDefEq` tells `X` from `N` though
     both are stored as `.long` (F6); irreducible, so the unifier never reads a name as its storage. -/
-@[irreducible] def _root_.LeetQ.Rel.Obj.named (_ : String) : Obj := .long
+@[irreducible] def _root_.Rel.Obj.named (_ : String) : Obj := .long
 
 /-- An object up to its declared names: `X` and `N` are both `long` and still different objects. `[A]` is
     `arr`. `mv` is an object variable of the inference, a Lean metavariable of type `Obj`. -/
@@ -72,7 +72,7 @@ structure ObjInfo where
 
 /-- The atoms no declared object is stored as (every one is `.long`, F6): each the placeholder of one object
     variable while a constant generic over it is built, its binder `(A : Obj)` once emitted. -/
-def varAtoms : List QLean.QAtomicType := [.general, .boolean, .guid, .byte, .short, .int, .real, .float, .char, .symbol,
+def varAtoms : List Rel.QAtomicType := [.general, .boolean, .guid, .byte, .short, .int, .real, .float, .char, .symbol,
   .timestamp, .month, .date, .datetime, .timespan, .minute, .second, .time]
 
 /-- The placeholder of the object variable `k`; none past `varAtoms`, where the variable stays `.long`. -/
@@ -1746,4 +1746,4 @@ end
 
 end Build
 
-end LeetQ.Rel.Lang
+end Rel.Lang

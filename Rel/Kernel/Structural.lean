@@ -1,15 +1,15 @@
-import QLean.RelPart.Kernel.Need
-import QLean.RelPart.Kernel.Sort
-import QLean.RelPart.Kernel.Coc
-import QLean.RelPart.Kernel.Reduce
-import QLean.RelPart.Value
-import QLean.RelPart.Kernel.Search
-import QLean.RelPart.Kernel.Elementwise
+import Rel.Kernel.Need
+import Rel.Kernel.Sort
+import Rel.Kernel.Coc
+import Rel.Kernel.Reduce
+import Rel.Kernel.Value
+import Rel.Kernel.Search
+import Rel.Kernel.Elementwise
 
-/-! The part of `QLean.Kernel.Structural` the Rel kernels reach; `QLean.Kernel.Structural` imports it. -/
+/-! The part of `Rel.Kernel.Structural` the Rel kernels reach; `Rel.Kernel.Structural` imports it. -/
 
 
-namespace QLean.Kernel
+namespace Rel.Kernel
 
 /-- `gatherBytes` over `spreadColumn`'s index, with that index never written: element `i` of `src`
 repeated `widths[i]` times. The two are one operation because the index between them is a run of the
@@ -578,10 +578,10 @@ never holds them dense, which is what reading a partition's symbol column comes 
 def enumIdsFoR (n d nullId w : USize) (metadata pack : @& ByteArray) : ByteArray × USize :=
   enumIds n d nullId w (Coc.decode 8 metadata pack n)
 
-end QLean.Kernel
+end Rel.Kernel
 
 
-namespace QLean.Kernel
+namespace Rel.Kernel
 
 /-- Eight bytes a count: a list built by `countBytes` holds exactly its array's counts, so no caller
 checks `size = 8 * parts` where the parts are as many as the counts. -/
@@ -776,4 +776,4 @@ def composeKey (t₁ : QAtomicType) (n : USize) (e₁ : Enc) (d₁ d₂ : Nat) (
   some (bld.run { engine := Ew.ePack, cls := Ew.i64, shape := (Column.idWidthOf (d₁ * d₂)).toUInt8, a := s }
     n)
 
-end QLean.Kernel
+end Rel.Kernel

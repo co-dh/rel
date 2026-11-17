@@ -1,15 +1,15 @@
-import QLean.RelPart.Kernel.Need
-import QLean.RelPart.Kernel.Coc
-import QLean.RelPart.Kernel.Scan
-import QLean.RelPart.Value
-import QLean.RelPart.Kernel.Search
+import Rel.Kernel.Need
+import Rel.Kernel.Coc
+import Rel.Kernel.Scan
+import Rel.Kernel.Value
+import Rel.Kernel.Search
 
-/-! The part of `QLean.Kernel.Sort` the Rel kernels reach; `QLean.Kernel.Sort` imports it. -/
+/-! The part of `Rel.Kernel.Sort` the Rel kernels reach; `Rel.Kernel.Sort` imports it. -/
 
 
-namespace QLean.Kernel.Order
+namespace Rel.Kernel.Order
 
-open QLean.Kernel.Scan (Kind)
+open Rel.Kernel.Scan (Kind)
 
 /-- q's order on a `float`'s bits, as an unsigned key. Three folds and a monotone map:
 
@@ -268,12 +268,12 @@ def internSyms (blob : @& ByteArray) (offs : @& Array Nat) :
   (db, dof, Column.packIds (Column.idWidth dof) (offs.size - 1) fun i =>
     (findSymScalar db dof (Column.symKey blob offs i)).toNat)
 
-end QLean.Kernel.Order
+end Rel.Kernel.Order
 
-namespace QLean.Kernel
+namespace Rel.Kernel
 
-open QLean.Kernel.Scan (Kind)
-open QLean.Kernel.Order
+open Rel.Kernel.Scan (Kind)
+open Rel.Kernel.Order
 
 /-- The layout a column of this type is ordered at. Every q type but the two that have no key of a
 fixed width is here, `char` included — q orders it by its unsigned byte and the blank is not a null
@@ -325,9 +325,9 @@ def groupIdsColumn (t : QAtomicType) (n : USize) (e : Enc) : Option (ByteArray �
         | .foR md pk => some (groupIdsFoR k n md pk)
         | e => (Enc.bytesOf t n e).map fun b => groupIds k n b
 
-end QLean.Kernel
+end Rel.Kernel
 
-namespace QLean.Column
+namespace Rel.Column
 
 
 /-- The same column interned, and unchanged where it is not a symbol payload. `Column.blobOf` is the
@@ -348,27 +348,27 @@ against sixteen million. -/
 def intern (e : Enc) : Enc :=
   match e with
   | .syms blob offs =>
-    let (db, dof, ids) := QLean.Kernel.Order.internSyms blob offs
+    let (db, dof, ids) := Rel.Kernel.Order.internSyms blob offs
     .enum db dof ids
   | e => e
 
-end QLean.Column
+end Rel.Column
 
-namespace QLean.Kernel
+namespace Rel.Kernel
 
-end QLean.Kernel
+end Rel.Kernel
 
 
-namespace QLean.Kernel.Order
+namespace Rel.Kernel.Order
 
-open QLean.Kernel.Scan (Kind)
+open Rel.Kernel.Scan (Kind)
 
-end QLean.Kernel.Order
+end Rel.Kernel.Order
 
-namespace QLean.Kernel
+namespace Rel.Kernel
 
-open QLean.Kernel.Scan (Kind)
-open QLean.Kernel.Order
+open Rel.Kernel.Scan (Kind)
+open Rel.Kernel.Order
 
 /-- q's `iasc` and `idesc` when a kernel claims them, which is every type but `guid` (`gradeColumnAll` adds it). `asc` and
 `desc` are this permutation and K5's gather, and `rank` is this permutation graded again; none of
@@ -409,12 +409,12 @@ group count gives. -/
 def groupLongs (n : USize) (p : ByteArray × ByteArray) : ByteArray :=
   Order.idLongs n (Column.idWidthOf (p.2.size / 8)).toUSize p.1
 
-end QLean.Kernel
+end Rel.Kernel
 
-namespace QLean.Column
+namespace Rel.Column
 
-end QLean.Column
+end Rel.Column
 
-namespace QLean.Kernel
+namespace Rel.Kernel
 
-end QLean.Kernel
+end Rel.Kernel

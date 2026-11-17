@@ -1,14 +1,14 @@
 /-
   `rep` of `mem` (`∋`) and `num`: each executable op read in `Rel(Set)`, as `RepOps` does the first group.
 -/
-import LeetQ.Rel.Rep
-import LeetQ.Rel.KernelWF.SliceSpec
+import Rel.Rep
+import Rel.KernelWF.SliceSpec
 
-namespace LeetQ.Rel.Rep
+namespace Rel.Rep
 
-open QLean QLean.Kernel LeetQ.Rel LeetQ.Rel.Alg
-open scoped LeetQ.Core.Rel
-open LeetQ.Core.Rel hiding id comp recip inter union zero le inl inr junc
+open Rel Rel.Kernel Rel Rel.Alg
+open scoped Rel.Core.Rel
+open Rel.Core.Rel hiding id comp recip inter union zero le inl inr junc
 
 /-! ## `mem`: each array to each of its elements -/
 
@@ -159,4 +159,4 @@ theorem pickFits_nilVal (B : Obj) (ps : List Nat) : Vals.PickFits (.arr B) (nilV
 #print axioms rep_num
 #print axioms pickFits_nilVal
 
-end LeetQ.Rel.Rep
+end Rel.Rep

@@ -6,16 +6,16 @@
   (`idAt_one`), the packed id at `2`/`4`, the little-endian field at `8`…`64` (`resAt_lane`).
   A well-formed code is the hypothesis pair `w` a lane and `b` exactly `⌈n·w/8⌉` bytes.
 -/
-import LeetQ.Rel.KernelWF.Lane
-import QLean.RelPart.Verify.Elementwise
-import QLean.RelPart.Verify.Ids
-import QLean.RelPart.Verify.Search
-import QLean.RelPart.Verify.Where
+import Rel.KernelWF.Lane
+import Rel.KernelSpec.Elementwise
+import Rel.KernelSpec.Ids
+import Rel.KernelSpec.Search
+import Rel.KernelSpec.Where
 
-namespace LeetQ.Rel.Alg
+namespace Rel.Alg
 
-open QLean QLean.Kernel LeetQ.Rel
-open QLean.Verify (firstsOf ids)
+open Rel Rel.Kernel Rel
+open Rel.Verify (firstsOf ids)
 
 /-! ## Lanes -/
 
@@ -231,13 +231,13 @@ theorem groupIds_sublist (c : Code)
     (ids c.groupIds.2).Sublist (List.range c.n.toNat) := by
   rw [groupIds_firsts c hw hs hcard]; exact List.filter_sublist
 
-/-- info: 'LeetQ.Rel.Alg.member_bit' depends on axioms: [propext, Quot.sound] -/
+/-- info: 'Rel.Alg.member_bit' depends on axioms: [propext, Quot.sound] -/
 #guard_msgs in #print axioms member_bit
-/-- info: 'LeetQ.Rel.Alg.whereBits_ids' depends on axioms: [propext, Quot.sound] -/
+/-- info: 'Rel.Alg.whereBits_ids' depends on axioms: [propext, Quot.sound] -/
 #guard_msgs in #print axioms whereBits_ids
-/-- info: 'LeetQ.Rel.Alg.anti_ids' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+/-- info: 'Rel.Alg.anti_ids' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs in #print axioms anti_ids
-/-- info: 'LeetQ.Rel.Alg.groupIds_classes' depends on axioms: [propext, Quot.sound] -/
+/-- info: 'Rel.Alg.groupIds_classes' depends on axioms: [propext, Quot.sound] -/
 #guard_msgs in #print axioms groupIds_classes
 
-end LeetQ.Rel.Alg
+end Rel.Alg

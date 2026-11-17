@@ -3,12 +3,12 @@
   `sortSet` (`setify°` then `ordered`), each from its primitives' read-backs. `thinL` is read back under its bit
   (`rep_thinLC`).
 -/
-import LeetQ.Rel.RepPerm
-import LeetQ.Rel.RepSubseq
+import Rel.RepPerm
+import Rel.RepSubseq
 
-namespace LeetQ.Rel.Rep
+namespace Rel.Rep
 
-open QLean QLean.Kernel QLean.Verify LeetQ.Rel LeetQ.Rel.Alg LeetQ.Rel.KernelWF
+open Rel Rel.Kernel Rel.Verify Rel Rel.Alg Rel.KernelWF
 
 open FoldN OpsN Prim ListN
 
@@ -210,8 +210,8 @@ theorem rep_sortSet {B : Obj} {n : USize} (Q : Rel B B) (Y : Vals (.arr B) n)
   · rintro ⟨hs, hx, hp⟩
     exact ⟨ys, by rw [rep_conv]; exact hs, (eO ys ys).2 ⟨hx, rfl, hp⟩⟩
 
-end LeetQ.Rel.Rep
+end Rel.Rep
 
-#print axioms LeetQ.Rel.Rep.suffix_pairwise
-#print axioms LeetQ.Rel.Rep.rep_orderedOn
-#print axioms LeetQ.Rel.Rep.rep_sortSet
+#print axioms Rel.Rep.suffix_pairwise
+#print axioms Rel.Rep.rep_orderedOn
+#print axioms Rel.Rep.rep_sortSet

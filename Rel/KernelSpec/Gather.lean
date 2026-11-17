@@ -1,19 +1,19 @@
-import QLean.RelPart.Verify.FindMember
-import QLean.RelPart.Verify.Encoding
-import QLean.RelPart.Kernel.Coc
-import QLean.RelPart.Verify.Distinct
-import QLean.RelPart.Kernel.Structural
-import QLean.RelPart.Kernel.Reduce
-import QLean.RelPart.Verify.Where
-import QLean.RelPart.Value
-import QLean.RelPart.Kernel.Search
-import QLean.RelPart.Kernel.Elementwise
+import Rel.KernelSpec.FindMember
+import Rel.KernelSpec.Encoding
+import Rel.Kernel.Coc
+import Rel.KernelSpec.Distinct
+import Rel.Kernel.Structural
+import Rel.Kernel.Reduce
+import Rel.KernelSpec.Where
+import Rel.Kernel.Value
+import Rel.Kernel.Search
+import Rel.Kernel.Elementwise
 
-/-! The part of `QLean.Verify.Gather` the Rel kernels reach; `QLean.Verify.Gather` imports it. -/
+/-! The part of `Rel.Verify.Gather` the Rel kernels reach; `Rel.Verify.Gather` imports it. -/
 
 
-namespace QLean.Verify
-open QLean QLean.Kernel
+namespace Rel.Verify
+open Rel Rel.Kernel
 
 /-- **`gatherBytes` read back**: element `j` is the source's element at index `j` read unsigned, or
 `fill`, at the low `8 * w` bits. -/
@@ -335,55 +335,55 @@ theorem gatherColumn_syms (n : USize) (blob : ByteArray) (offs : Array Nat) (m :
     simp only [hix, hz, ↓reduceIte, Option.map_some, Option.some.injEq] at h
     exact ⟨ix, elemsW_index m ie hiw ix hix, h.symm⟩
 
-/-- info: 'QLean.Verify.elemsW_gatherBytes' depends on axioms: [propext, Quot.sound] -/
+/-- info: 'Rel.Verify.elemsW_gatherBytes' depends on axioms: [propext, Quot.sound] -/
 #guard_msgs in #print axioms elemsW_gatherBytes
 
-/-- info: 'QLean.Verify.elemsW_decode' depends on axioms: [propext, Quot.sound] -/
+/-- info: 'Rel.Verify.elemsW_decode' depends on axioms: [propext, Quot.sound] -/
 #guard_msgs in #print axioms elemsW_decode
 
-/-- info: 'QLean.Verify.elemsW_alpDecode' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+/-- info: 'Rel.Verify.elemsW_alpDecode' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs in #print axioms elemsW_alpDecode
 
-/-- info: 'QLean.Verify.denseWidth_facts' depends on axioms: [propext] -/
+/-- info: 'Rel.Verify.denseWidth_facts' depends on axioms: [propext] -/
 #guard_msgs in #print axioms denseWidth_facts
 
-/-- info: 'QLean.Verify.foRColumn_some' depends on axioms: [propext] -/
+/-- info: 'Rel.Verify.foRColumn_some' depends on axioms: [propext] -/
 #guard_msgs in #print axioms foRColumn_some
 
-/-- info: 'QLean.Verify.elemsW_bytesOf' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+/-- info: 'Rel.Verify.elemsW_bytesOf' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs in #print axioms elemsW_bytesOf
 
-/-- info: 'QLean.Verify.gatherColumn_fixed_shape' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+/-- info: 'Rel.Verify.gatherColumn_fixed_shape' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs in #print axioms gatherColumn_fixed_shape
 
-/-- info: 'QLean.Verify.byteOf_bit' depends on axioms: [propext, Quot.sound] -/
+/-- info: 'Rel.Verify.byteOf_bit' depends on axioms: [propext, Quot.sound] -/
 #guard_msgs in #print axioms byteOf_bit
 
-/-- info: 'QLean.Verify.bitAt_packOf' depends on axioms: [propext, Quot.sound] -/
+/-- info: 'Rel.Verify.bitAt_packOf' depends on axioms: [propext, Quot.sound] -/
 #guard_msgs in #print axioms bitAt_packOf
 
-/-- info: 'QLean.Verify.bitAt_gatherBits' depends on axioms: [propext, Quot.sound] -/
+/-- info: 'Rel.Verify.bitAt_gatherBits' depends on axioms: [propext, Quot.sound] -/
 #guard_msgs in #print axioms bitAt_gatherBits
 
-/-- info: 'QLean.Verify.elemsW_index' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+/-- info: 'Rel.Verify.elemsW_index' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs in #print axioms elemsW_index
 
-/-- info: 'QLean.Verify.idAt_gatherPacked' depends on axioms: [propext, Quot.sound] -/
+/-- info: 'Rel.Verify.idAt_gatherPacked' depends on axioms: [propext, Quot.sound] -/
 #guard_msgs in #print axioms idAt_gatherPacked
 
-/-- info: 'QLean.Verify.gatherColumn_enum' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+/-- info: 'Rel.Verify.gatherColumn_enum' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs in #print axioms gatherColumn_enum
 
-/-- info: 'QLean.Verify.ba_size_append' depends on axioms: [propext, Quot.sound] -/
+/-- info: 'Rel.Verify.ba_size_append' depends on axioms: [propext, Quot.sound] -/
 #guard_msgs in #print axioms ba_size_append
 
-/-- info: 'QLean.Verify.foldl_symStep' depends on axioms: [propext, Quot.sound] -/
+/-- info: 'Rel.Verify.foldl_symStep' depends on axioms: [propext, Quot.sound] -/
 #guard_msgs in #print axioms foldl_symStep
 
-/-- info: 'QLean.Verify.gatherSyms_spec' depends on axioms: [propext, Quot.sound] -/
+/-- info: 'Rel.Verify.gatherSyms_spec' depends on axioms: [propext, Quot.sound] -/
 #guard_msgs in #print axioms gatherSyms_spec
 
-/-- info: 'QLean.Verify.gatherColumn_syms' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+/-- info: 'Rel.Verify.gatherColumn_syms' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs in #print axioms gatherColumn_syms
 
-end QLean.Verify
+end Rel.Verify

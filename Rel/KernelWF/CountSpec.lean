@@ -1,7 +1,7 @@
 /-
   Counting over position lists, as `leftDiv` counts: a 0/1 term per row, and a filter's length as such a sum.
 -/
-namespace LeetQ.Rel.Alg
+namespace Rel.Alg
 
 /-- At most one position below `n` meets `P` when any two that meet it are one. -/
 theorem filter_range_length_le_one : ∀ {n : Nat} {P : Nat → Bool},
@@ -83,4 +83,4 @@ theorem count_pairs (nR nS : Nat) (e : Nat → Nat → Bool) (p q : Nat → Bool
       omega
     · rfl
 
-end LeetQ.Rel.Alg
+end Rel.Alg

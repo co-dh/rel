@@ -1,13 +1,13 @@
-import LeetQ.Rel.Programs.Prelude
+import Rel.Programs.Prelude
 
 /-! # A full adder
 
 AIMA §8.4.2's one-bit full adder C1. Its three inputs are one array of three bits: the first, second and third
 input are the elements at positions `0`, `1`, `2`. -/
 
-namespace LeetQ.Rel.Programs
+namespace Rel.Programs
 
-open LeetQ.Rel.Programs.prelude in
+open Rel.Programs.prelude in
 rel_program circuit where
     obj B = 0…1                                   -- a bit
 
@@ -33,4 +33,4 @@ rel_program circuit where
 
 #guard circuit.ok
 
-end LeetQ.Rel.Programs
+end Rel.Programs

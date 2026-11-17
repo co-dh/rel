@@ -3,15 +3,15 @@
   `R.key` and `S.val` at the matched rows. `join_spec` reads the join back; the codes must identify rows
   (`CodesSpec`), the counts must fit, and each outer side's `Vals.pick` must read back.
 -/
-import LeetQ.Rel.Rep
-import LeetQ.Rel.KernelWF.JoinAssembly
-import LeetQ.Rel.KernelWF.CodesSpec
-import LeetQ.Rel.KernelWF.CodesProd
-import LeetQ.Rel.KernelWF.PickRow
+import Rel.Rep
+import Rel.KernelWF.JoinAssembly
+import Rel.KernelWF.CodesSpec
+import Rel.KernelWF.CodesProd
+import Rel.KernelWF.PickRow
 
-namespace LeetQ.Rel.Rep
+namespace Rel.Rep
 
-open QLean QLean.Kernel QLean.Verify LeetQ.Rel LeetQ.Rel.Alg
+open Rel Rel.Kernel Rel.Verify Rel Rel.Alg
 
 variable {A B C : Obj}
 
@@ -114,8 +114,8 @@ theorem pickFits_join_snd {A : Obj} {n : USize} (x : Vals A n) {a : Nat} {P : Na
 
 section Comp
 
-open scoped LeetQ.Core.Rel
-open LeetQ.Core.Rel hiding id comp recip inter union zero le inl inr junc
+open scoped Rel.Core.Rel
+open Rel.Core.Rel hiding id comp recip inter union zero le inl inr junc
 
 /-- **`rep (R ≫ S) = rep R ≫ rep S`.** Hypotheses:
     - `hc`, the middle side's joint codes identify rows and are well formed — what `CodesSpec` concludes;
@@ -206,4 +206,4 @@ end Comp
 #print axioms pick_row_prod
 #print axioms rep_comp
 
-end LeetQ.Rel.Rep
+end Rel.Rep

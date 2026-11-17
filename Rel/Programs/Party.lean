@@ -1,4 +1,4 @@
-import LeetQ.Rel.Programs.Prelude
+import Rel.Programs.Prelude
 
 /-! # Planning a company party
 
@@ -6,9 +6,9 @@ B&dM §7.3 (diag/aop/07-optimisation.typ, "Planning a company party"): a party i
 his boss; `party ≜ fold choose` and `best` picks one of greatest total rating. The efficient version carries the cost
 as the relation `c` and recovers the guests with `win` and `guests`. Design: doc/rel-party-design.md. -/
 
-namespace LeetQ.Rel.Programs
+namespace Rel.Programs
 
-open LeetQ.Rel.Programs.prelude in
+open Rel.Programs.prelude in
 rel_program partyPlan where
     obj E = {a,b,c,d,e,f,g,h,i,k,l,m}             -- one forest: exStaff a…f, a chain g h i, a tie k l, one employee m
     obj N = 0…40                                  -- ratings and their totals, non-negative
@@ -58,4 +58,4 @@ rel_program partyPlan where
 
 #guard partyPlan.ok
 
-end LeetQ.Rel.Programs
+end Rel.Programs

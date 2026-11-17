@@ -5,16 +5,16 @@
   is `inl` of `X`'s row `k`, then `inr` of `Y`'s row `k - n`). The `2^63` bounds are where the kernels read a
   position as a signed long: past them `Int64.ofNat` wraps negative and the answers differ.
 -/
-import LeetQ.Run.Alg
-import LeetQ.Rel.KernelWF.RazeSpec
-import QLean.RelPart.Verify.Chain
-import QLean.RelPart.Verify.Elementwise
-import QLean.RelPart.Verify.Gather
-import QLean.RelPart.Verify.Structural
+import Rel.Run.Alg
+import Rel.KernelWF.RazeSpec
+import Rel.KernelSpec.Chain
+import Rel.KernelSpec.Elementwise
+import Rel.KernelSpec.Gather
+import Rel.KernelSpec.Structural
 
-namespace LeetQ.Rel.KernelWF
+namespace Rel.KernelWF
 
-open QLean QLean.Kernel LeetQ.Rel LeetQ.Rel.Alg
+open Rel Rel.Kernel Rel Rel.Alg
 
 /-! ## `til` -/
 
@@ -37,7 +37,7 @@ theorem tilCol_get (n : USize) (i : Fin n.toNat) : (tilCol n).get i = Int64.ofNa
 
 /-- `tilCol n` as a list is `0, 1, …, n - 1`. -/
 theorem tilCol_toList (n : USize) : (tilCol n).toList = (List.range n.toNat).map Int64.ofNat := by
-  apply List.ext_getElem (by rw [LeetQ.Rel.Arr.length_toList, List.length_map, List.length_range])
+  apply List.ext_getElem (by rw [Rel.Arr.length_toList, List.length_map, List.length_range])
   intro j h1 h2
   rw [Arr.getElem_toList, tilCol_get, List.getElem_map, List.getElem_range]
 
@@ -184,4 +184,4 @@ theorem sumVals_row {A B : Obj} {n m : USize} (X : Vals A n) (Y : Vals B m) (hN 
   · have h0 : 0 < m.toNat := by omega
     simp [hk, h0, List.getD_eq_getElem?_getD, List.getElem?_append, show k.1 - n.toNat < m.toNat by omega, clampFin_ofNat (show k.1 - n.toNat < m.toNat by omega) (by omega) h0]
 
-end LeetQ.Rel.KernelWF
+end Rel.KernelWF

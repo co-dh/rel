@@ -1,14 +1,14 @@
 /-
   `rep` of the second group of `Alg` ops: each executable op read in `Rel(Set)`, as `RepOps` does the first.
 -/
-import LeetQ.Rel.RepOps
-import LeetQ.Rel.KernelWF.CodesAll
+import Rel.RepOps
+import Rel.KernelWF.CodesAll
 
-namespace LeetQ.Rel.Rep
+namespace Rel.Rep
 
-open QLean QLean.Kernel LeetQ.Rel LeetQ.Rel.Alg LeetQ.Rel.KernelWF
-open scoped LeetQ.Core.Rel
-open LeetQ.Core.Rel hiding id comp recip inter union zero le inl inr junc
+open Rel Rel.Kernel Rel Rel.Alg Rel.KernelWF
+open scoped Rel.Core.Rel
+open Rel.Core.Rel hiding id comp recip inter union zero le inl inr junc
 
 variable {A B : Obj}
 
@@ -18,7 +18,7 @@ open OpsN
 
 section AntiJoin
 
-open QLean.Verify
+open Rel.Verify
 
 -- the values of `R` and of `T` as parts of `B`, their joint codes, and the rows `anti` keeps, as `antiJoin` names them
 set_option hygiene false in
@@ -79,7 +79,7 @@ end AntiJoin
 
 section Entire
 
-open QLean.Verify
+open Rel.Verify
 
 namespace OpsN
 -- the rows `nub` keeps, named as `NubSpec` names them
@@ -217,4 +217,4 @@ end Entire
 #print axioms rep_simple
 #print axioms rep_injective
 
-end LeetQ.Rel.Rep
+end Rel.Rep

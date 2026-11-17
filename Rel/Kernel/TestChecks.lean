@@ -1,13 +1,13 @@
-import QLean.RelPart.Value
+import Rel.Kernel.Value
 
-/-! The part of `QLean.Kernel.TestChecks` the Rel kernels reach; `QLean.Kernel.TestChecks` imports it. -/
+/-! The part of `Rel.Kernel.TestChecks` the Rel kernels reach; `Rel.Kernel.TestChecks` imports it. -/
 
 
-namespace QLean.Kernel.TestChecks
+namespace Rel.Kernel.TestChecks
 
-open QLean.Kernel
+open Rel.Kernel
 
-def nanF : Float := Float.ofBits QLean.nanBits
+def nanF : Float := Float.ofBits Rel.nanBits
 
 /-- `x + k` against the shift of its decimal integer, which is why `Kernel.Coc` declares no kernel
 for `rust/src/coc.rs`'s `cocf_add_const`: the two are one ulp apart on ordinary prices, and it is the add
@@ -19,7 +19,7 @@ Lean declaration to make a claim about: an element ALP stores as `d` at exponent
 the add as `d / 10 ^ e + k` and from the shift as `(d + k * 10 ^ e) / 10 ^ e`, and those two are
 what is compared here. -/
 def addShift (d e : Nat) (k : Float) : UInt64 × UInt64 :=
-  let p := QLean.Column.pow10 e
+  let p := Rel.Column.pow10 e
   ((Float.ofNat d / p + k).toBits, ((Float.ofNat d + k * p) / p).toBits)
 
-end QLean.Kernel.TestChecks
+end Rel.Kernel.TestChecks

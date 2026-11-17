@@ -2,14 +2,14 @@
   The executable relation algebra `Alg` read in the allegory of sets: `rep R` is the relation `R.Holds` as a
   `Rel(Set)` arrow, and each theorem says `rep` of an `Alg` op is the `Rel(Set)` op on the `rep`s.
 -/
-import LeetQ.Run.Alg
-import LeetQ.Core.Rel
+import Rel.Run.Alg
+import Rel.Core.Rel
 
-namespace LeetQ.Rel.Rep
+namespace Rel.Rep
 
-open LeetQ.Rel
-open scoped LeetQ.Core.Rel
-open LeetQ.Core.Rel hiding id comp recip inter union zero le inl inr junc
+open Rel
+open scoped Rel.Core.Rel
+open Rel.Core.Rel hiding id comp recip inter union zero le inl inr junc
 
 variable {A B C : Obj}
 
@@ -21,7 +21,7 @@ theorem rep_apply (R : Rel A B) (x : A.El) (y : B.El) : rep R x y = R.Holds x y 
 
 section Ops
 
-open LeetQ.Rel.Alg
+open Rel.Alg
 
 /-- `rep (R°) = (rep R)°`: the converse swaps the two fields. -/
 theorem rep_conv (R : Rel A B) : rep (R°) = (rep R)° :=
@@ -60,4 +60,4 @@ end Ops
 #print axioms rep_outl
 #print axioms rep_outr
 
-end LeetQ.Rel.Rep
+end Rel.Rep

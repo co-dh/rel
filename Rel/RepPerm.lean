@@ -2,12 +2,12 @@
   List composites read back: `tic` (`cons`, `inits`, `tail`) and `perm` (`foldBy` at a step built from `uncat`,
   `cat`, `cons`, `pair`), each from its primitives' read-backs.
 -/
-import LeetQ.Rel.RepEst
-import LeetQ.Rel.RepUncat
+import Rel.RepEst
+import Rel.RepUncat
 
-namespace LeetQ.Rel.Rep
+namespace Rel.Rep
 
-open QLean QLean.Kernel QLean.Verify LeetQ.Rel LeetQ.Rel.Alg LeetQ.Rel.KernelWF
+open Rel Rel.Kernel Rel.Verify Rel Rel.Alg Rel.KernelWF
 
 open FoldN OpsN Prim
 
@@ -92,8 +92,8 @@ theorem rep_cat_ok {K B : Obj} (P : Rel K (.prod (.arr B) (.arr B))) (h : catOK(
   exact rep_cat P hVa hVb _ rfl _ rfl hS hU _ rfl _ rfl _ rfl _ rfl _ rfl _ rfl _ rfl _ rfl _ rfl _ rfl _ rfl _ rfl
     _ rfl _ rfl _ rfl _ rfl hKf hRf hFf
 
-open scoped LeetQ.Core.Rel in
-open LeetQ.Core.Rel hiding id comp recip inter union zero le inl inr junc in
+open scoped Rel.Core.Rel in
+open Rel.Core.Rel hiding id comp recip inter union zero le inl inr junc in
 /-- **`α ≜ [nil, cons]`, read back**: the copairing, out of the sum, of `nil` on the elements `I` lists (each to
     the empty array) and `cons` on the pairs `P` lists (`(b, bs)` to `b :: bs`). Hypotheses: `rep_junc_full`'s at
     `nil I`, `cons (idU P)` (`hN`, `h63`, `hF`), `rep_cons`'s at `idU P` (`hc`). -/
@@ -118,8 +118,8 @@ theorem rep_alpha {K B : Obj} {n : USize} (I : Vals K 1) (P : Vals (.prod B (.ar
 
 /-! ## `tic` -/
 
-open scoped LeetQ.Core.Rel in
-open LeetQ.Core.Rel hiding id comp recip inter union zero le inl inr junc in
+open scoped Rel.Core.Rel in
+open Rel.Core.Rel hiding id comp recip inter union zero le inl inr junc in
 /-- **`tic`, read back**: a row `(b, bs)` of `P` goes to the non-empty prefixes of `b :: bs`, shortest first.
     `tic P` is `I ≫ tail I.val`, `I = C ≫ inits C.val`, `C = cons P` (bound by `hC`, `hI`). Hypotheses:
     `rep_cons`'s at `P` (`hc`), `rep_comp`'s at `I` (`h1`) and at the result (`h2`), `rep_inits`'s at `C.val`
@@ -371,10 +371,10 @@ theorem rep_snoc {K B : Obj} (P : Rel K (.prod (.arr B) B))
 
 end Snoc
 
-end LeetQ.Rel.Rep
+end Rel.Rep
 
-#print axioms LeetQ.Rel.Rep.rep_cons_ok
-#print axioms LeetQ.Rel.Rep.rep_cat_ok
-#print axioms LeetQ.Rel.Rep.rep_alpha
-#print axioms LeetQ.Rel.Rep.perm_step_set
-#print axioms LeetQ.Rel.Rep.perm_chain
+#print axioms Rel.Rep.rep_cons_ok
+#print axioms Rel.Rep.rep_cat_ok
+#print axioms Rel.Rep.rep_alpha
+#print axioms Rel.Rep.perm_step_set
+#print axioms Rel.Rep.perm_chain

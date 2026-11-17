@@ -1,19 +1,19 @@
-import QLean.RelPart.Verify.FindMember
-import QLean.RelPart.Verify.Encoding
-import QLean.RelPart.Verify.Group
-import QLean.RelPart.Kernel.Sort
-import QLean.RelPart.Verify.Codes
-import QLean.RelPart.Value
-import QLean.RelPart.Kernel.Search
-import QLean.RelPart.Verify.Assign
-import QLean.RelPart.Kernel.Need
-import QLean.RelPart.Kernel.Structural
+import Rel.KernelSpec.FindMember
+import Rel.KernelSpec.Encoding
+import Rel.KernelSpec.Group
+import Rel.Kernel.Sort
+import Rel.KernelSpec.Codes
+import Rel.Kernel.Value
+import Rel.Kernel.Search
+import Rel.KernelSpec.Assign
+import Rel.Kernel.Need
+import Rel.Kernel.Structural
 
-/-! The part of `QLean.Verify.SymFind` the Rel kernels reach; `QLean.Verify.SymFind` imports it. -/
+/-! The part of `Rel.Verify.SymFind` the Rel kernels reach; `Rel.Verify.SymFind` imports it. -/
 
 
-namespace QLean.Verify
-open QLean QLean.Kernel
+namespace Rel.Verify
+open Rel Rel.Kernel
 
 /-- Symbol `i` of a blob as the kernels compare it: its bytes without the stored NUL. -/
 def symAt (b : ByteArray) (o : Array Nat) (i : Nat) : List UInt8 := (Column.symKey b o i).data.toList
@@ -205,7 +205,7 @@ theorem distinctSyms_eraseDups (blob : ByteArray) (offs : Array Nat) :
       simp_all [symAt]
   rw [Order.distinctSyms, symsAt_spec, hf, firstsOf_eraseDups]; rfl
 
-/-- info: 'QLean.Verify.distinctSyms_eraseDups' depends on axioms: [propext, Quot.sound] -/
+/-- info: 'Rel.Verify.distinctSyms_eraseDups' depends on axioms: [propext, Quot.sound] -/
 #guard_msgs in #print axioms distinctSyms_eraseDups
 
 /-- **An id below the dictionary's count reads back from `packIds` at that count's width.** -/
@@ -302,20 +302,20 @@ theorem symsWF_internSyms (blob : ByteArray) (offs : Array Nat) :
   rw [Nat.sub_eq_zero_of_le (Nat.le_of_lt hc), List.take_zero] at h5k
   exact absurd h5k.symm (by simp)
 
-/-- info: 'QLean.Verify.internSyms_symAt' depends on axioms: [propext, Quot.sound] -/
+/-- info: 'Rel.Verify.internSyms_symAt' depends on axioms: [propext, Quot.sound] -/
 #guard_msgs in #print axioms internSyms_symAt
 
-/-- info: 'QLean.Verify.symsWF_internSyms' depends on axioms: [propext, Quot.sound] -/
+/-- info: 'Rel.Verify.symsWF_internSyms' depends on axioms: [propext, Quot.sound] -/
 #guard_msgs in #print axioms symsWF_internSyms
 
-/-- info: 'QLean.Verify.idAt_packIds_idWidthOf' depends on axioms: [propext, Quot.sound] -/
+/-- info: 'Rel.Verify.idAt_packIds_idWidthOf' depends on axioms: [propext, Quot.sound] -/
 #guard_msgs in #print axioms idAt_packIds_idWidthOf
 
-end QLean.Verify
+end Rel.Verify
 
 
-namespace QLean.Verify
-open QLean QLean.Kernel
+namespace Rel.Verify
+open Rel Rel.Kernel
 
 theorem toUSize_toNat {n : Nat} (h : n < USize.size) : n.toUSize.toNat = n := USize.toNat_ofNat_of_lt' h
 
@@ -480,7 +480,7 @@ theorem symBytes_concatSyms {parts : Array (ByteArray × Array Nat)} (hw : ∀ x
   have := f4 p (by rw [Array.length_toList]; exact hp) k (by rw [Array.getElem_toList]; exact hk)
   rwa [Array.getElem_toList, show (#[0] : Array Nat).size - 1 = 0 from rfl, Nat.zero_add] at this
 
-/-- info: 'QLean.Verify.symBytes_concatSyms' depends on axioms: [propext, Quot.sound] -/
+/-- info: 'Rel.Verify.symBytes_concatSyms' depends on axioms: [propext, Quot.sound] -/
 #guard_msgs in #print axioms symBytes_concatSyms
 
-end QLean.Verify
+end Rel.Verify

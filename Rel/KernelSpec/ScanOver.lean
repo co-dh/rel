@@ -1,14 +1,14 @@
-import QLean.RelPart.Verify.Encoding
-import QLean.RelPart.Kernel.Coc
-import QLean.RelPart.Kernel.Scan
-import QLean.RelPart.Verify.Where
-import QLean.RelPart.Value
+import Rel.KernelSpec.Encoding
+import Rel.Kernel.Coc
+import Rel.Kernel.Scan
+import Rel.KernelSpec.Where
+import Rel.Kernel.Value
 
-/-! The part of `QLean.Verify.ScanOver` the Rel kernels reach; `QLean.Verify.ScanOver` imports it. -/
+/-! The part of `Rel.Verify.ScanOver` the Rel kernels reach; `Rel.Verify.ScanOver` imports it. -/
 
 
-namespace QLean.Verify
-open QLean QLean.Kernel QLean.Kernel.Scan
+namespace Rel.Verify
+open Rel Rel.Kernel Rel.Kernel.Scan
 
 /-- `scanStep` folded over the first `n` indices: the pushed bytes are the accumulator after each
 element, in order, and the accumulator is the null-skipping step folded over the elements read. -/
@@ -92,4 +92,4 @@ theorem over_eq (op : Coc.Over) (nul : Int64) (md pk : ByteArray) (n : USize) :
     simp only [h, bne, Bool.not_true, Bool.not_false, Bool.true_and, Bool.false_and, Bool.true_or,
       Bool.false_or, Bool.false_eq_true, ↓reduceIte]
 
-end QLean.Verify
+end Rel.Verify

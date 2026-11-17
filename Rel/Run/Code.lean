@@ -10,18 +10,18 @@
   The spec of each operator is the List-level relation on `toList`; `#guard`s below hold each one
   on small literal relations, and the laws that the kernels' Lean bodies make reachable are proved.
 -/
-import LeetQ.Run.KernelWF.Gather
-import LeetQ.Run.ValEq
-import QLean.RelPart.Verify.Chain
-import QLean.RelPart.Verify.EwEnc
-import QLean.RelPart.Verify.Grade
-import QLean.RelPart.Verify.Ids
-import QLean.RelPart.Verify.Search
-import LeetQ.Run.KernelWF.Reduce
+import Rel.Run.KernelWF.Gather
+import Rel.Run.ValEq
+import Rel.KernelSpec.Chain
+import Rel.KernelSpec.EwEnc
+import Rel.KernelSpec.Grade
+import Rel.KernelSpec.Ids
+import Rel.KernelSpec.Search
+import Rel.Run.KernelWF.Reduce
 
-namespace LeetQ.Rel.Alg
+namespace Rel.Alg
 
-open QLean QLean.Dep QLean.Kernel LeetQ.Rel
+open Rel Rel.Dep Rel.Kernel Rel
 
 /-! ## Long payloads: the index and count columns every step passes along -/
 
@@ -29,7 +29,7 @@ open QLean QLean.Dep QLean.Kernel LeetQ.Rel
 def len (b : ByteArray) : Nat := b.size / 8
 
 /-- `x` as a part. -/
-def _root_.LeetQ.Rel.Arr.part {t : QAtomicType} {n : USize} (x : Arr t n) : USize × Enc := (n, x.enc)
+def _root_.Rel.Arr.part {t : QAtomicType} {n : USize} (x : Arr t n) : USize × Enc := (n, x.enc)
 
 /-- What a stopped op answers in the logic: no element, `Enc.blank`'s payload. -/
 def blankCol (t : QAtomicType) : (n : USize) × Arr t n := ⟨0, Arr.mk (Enc.blank t 0) (Enc.blank_WF t 0)⟩
@@ -498,7 +498,7 @@ def pickArr (t : QAtomicType) (c : (n : USize) × Arr t n) (i : ByteArray) (m : 
 
 /-- A side's columns picked at the index column `i` of `m` rows: an array's `lo` and `hi` and a sum's tags and
     positions picked, their payloads shared whole; `Vals.pick`'s first step at a sum. -/
-def _root_.LeetQ.Rel.Vals.pickShared : (A : Obj) → {n : USize} → Vals A n → (i : ByteArray) → (m : USize) →
+def _root_.Rel.Vals.pickShared : (A : Obj) → {n : USize} → Vals A n → (i : ByteArray) → (m : USize) →
     len i = m.toNat → Vals A m
   | .atom t, _, x, i, m, h => pickArr t ⟨_, x⟩ i m h
   | .prod a b, _, x, i, m, h => (Vals.pickShared a x.1 i m h, Vals.pickShared b x.2 i m h)
@@ -510,7 +510,7 @@ def _root_.LeetQ.Rel.Vals.pickShared : (A : Obj) → {n : USize} → Vals A n �
 def emptyArr (t : QAtomicType) : Arr t 0 := empty_len t ▸ (empty t).2
 
 /-- No row, column by column (`empty_len`). -/
-def _root_.LeetQ.Rel.Vals.empty : (A : Obj) → Vals A 0
+def _root_.Rel.Vals.empty : (A : Obj) → Vals A 0
   | .atom t => emptyArr t
   | .prod a b => (Vals.empty a, Vals.empty b)
   | .arr b => ⟨0, emptyArr .long, emptyArr .long, Vals.empty b⟩
@@ -579,7 +579,7 @@ def place {n : USize} {A B : Obj} (x : Vals (.sum A B) n) (p₀ p₁ o₀ o₁ :
 /-- Whether `N` rows of `x` pick in range, read off its counts alone: an interned atom's dictionary count fits
     a `USize`, an array's payload count and its `N` copies stay below `2^63`, a sum's two counts and `N` below
     `2^63`; `Vals.PickFits` at any `N` rows (`pickFits_of_fitsN`). -/
-def _root_.LeetQ.Rel.Vals.fitsN : (A : Obj) → {n : USize} → Vals A n → Nat → Bool
+def _root_.Rel.Vals.fitsN : (A : Obj) → {n : USize} → Vals A n → Nat → Bool
   | .atom t, n, x, _ => match Arr.enc (t := t) (n := n) x with
     | .enum _ o _ => decide (o.size - 1 < USize.size) | _ => true
   | .prod a b, _, x, N => Vals.fitsN a x.1 N && Vals.fitsN b x.2 N
@@ -596,7 +596,7 @@ def _root_.LeetQ.Rel.Vals.fitsN : (A : Obj) → {n : USize} → Vals A n → Nat
       the row's new position its rank among the rows of its side (`sums` of the tags);
     - the payloads picked by `Vals.pick` itself, so a nested array or sum is compacted the same way.
     The new offsets' and payloads' counts are reported by `sums`, `expand`, `whereBits`: one `need` on them. -/
-def _root_.LeetQ.Rel.Vals.pick : (A : Obj) → {n : USize} → Vals A n → (i : ByteArray) → (m : USize) →
+def _root_.Rel.Vals.pick : (A : Obj) → {n : USize} → Vals A n → (i : ByteArray) → (m : USize) →
     len i = m.toNat → Vals A m
   | .atom t, _, x, i, m, h => pickArr t ⟨_, x⟩ i m h
   | .prod a b, _, x, i, m, h => (Vals.pick a x.1 i m h, Vals.pick b x.2 i m h)
@@ -632,7 +632,7 @@ def _root_.LeetQ.Rel.Vals.pick : (A : Obj) → {n : USize} → Vals A n → (i :
 
 /-- `Vals.pick` and whether its rows fit (`pickC_fits`): at an array the payload count and the copies `expand`
     counts below `2^63`, the payload fitting those copies by `Vals.fitsN`; elsewhere `Vals.fitsN` at the `m` rows. -/
-def _root_.LeetQ.Rel.Vals.pickC : (A : Obj) → {n : USize} → Vals A n → (i : ByteArray) → (m : USize) →
+def _root_.Rel.Vals.pickC : (A : Obj) → {n : USize} → Vals A n → (i : ByteArray) → (m : USize) →
     len i = m.toNat → Vals A m × Bool
   | .atom t, _, x, i, m, h => (Vals.pick (.atom t) x i m h, Vals.fitsN (.atom t) x m.toNat)
   | .prod a b, _, x, i, m, h => (Vals.pick (.prod a b) x i m h, (Vals.pickC a x.1 i m h).2 && (Vals.pickC b x.2 i m h).2)
@@ -644,22 +644,22 @@ def _root_.LeetQ.Rel.Vals.pickC : (A : Obj) → {n : USize} → Vals A n → (i 
   | .sum a b, _, x, i, m, h => (Vals.pick (.sum a b) x i m h, Vals.fitsN (.sum a b) x m.toNat)
 
 /-- A side's columns picked at the first `m` longs of `i`. -/
-def _root_.LeetQ.Rel.Vals.pickN (A : Obj) {n : USize} (x : Vals A n) (i : ByteArray) (m : USize) (h : m.toNat ≤ len i) :
+def _root_.Rel.Vals.pickN (A : Obj) {n : USize} (x : Vals A n) (i : ByteArray) (m : USize) (h : m.toNat ≤ len i) :
     Vals A m :=
   Vals.pick A x (fit m.toNat i) m (fit_len h)
 
 /-- A side picked at the index column `i`, at the count `len i` where it fits a `USize`. -/
-def _root_.LeetQ.Rel.Vals.pickPart (A : Obj) {n : USize} (x : Vals A n) (i : ByteArray) : Part A :=
+def _root_.Rel.Vals.pickPart (A : Obj) {n : USize} (x : Vals A n) (i : ByteArray) : Part A :=
   need (len i < USize.size) (fun _ => s!"pick: {len i} rows do not fit a USize") (fun _ => ⟨0, Vals.empty A⟩)
     fun h => ⟨(len i).toUSize, Vals.pick A x i _ (USize.toNat_ofNat_of_lt' h).symm⟩
 
 /-- `x` with every payload holding only the cells its rows refer to: `Vals.pick` at `til n` (`len_tilLongs`). -/
-def _root_.LeetQ.Rel.Vals.compact (A : Obj) {n : USize} (x : Vals A n) : Vals A n :=
+def _root_.Rel.Vals.compact (A : Obj) {n : USize} (x : Vals A n) : Vals A n :=
   Vals.pick A x (tilLongs n) n (len_tilLongs n)
 
 /-- The sum column `x` with a value behind every row: where a row is tagged to a side of no values,
     `Vals.compact`, whose gather past that side reads its null as `Vals.row` does; else `x` itself. -/
-def _root_.LeetQ.Rel.Vals.held {A B : Obj} {n : USize} (x : Vals (.sum A B) n) : Vals (.sum A B) n :=
+def _root_.Rel.Vals.held {A B : Obj} {n : USize} (x : Vals (.sum A B) n) : Vals (.sum A B) n :=
   let r := len (whereBits n (tagBits x.2.2.1))
   if (x.1 = 0 ∧ r < n.toNat) ∨ (x.2.1 = 0 ∧ 0 < r) then Vals.compact (.sum A B) x else x
 
@@ -674,7 +674,7 @@ def razeTo (t : QAtomicType) (cs : Array ((n : USize) × Arr t n)) {S : Nat}
     position clamped into its own side and moved past that side's values in the parts before it (`place`),
     so every row still reads its own value. The counts of the rows (`hN`) and of each nested payload (a `need`)
     fit a `USize`. -/
-def _root_.LeetQ.Rel.Obj.raze : (A : Obj) → (cs : Array (Part A)) →
+def _root_.Rel.Obj.raze : (A : Obj) → (cs : Array (Part A)) →
     (cs.toList.map fun c : Part A => c.1.toNat).sum < USize.size →
     Vals A (cs.toList.map fun c : Part A => c.1.toNat).sum.toUSize
   | .atom t, cs, hN => razeTo t cs rfl hN
@@ -721,7 +721,7 @@ def _root_.LeetQ.Rel.Obj.raze : (A : Obj) → (cs : Array (Part A)) →
 /-- `Obj.raze` and whether its parts fit (`razeC_fits`): an atom's dictionaries, a blob counting its rows,
     summed fit a `USize`, and the rows below `2^32` where ALP encodes; an array's payload counts summed below
     `2^63`; a sum's held side counts summed below `2^63` and each part picking in range (`Vals.fitsN`). -/
-def _root_.LeetQ.Rel.Obj.razeC : (A : Obj) → (cs : Array (Part A)) →
+def _root_.Rel.Obj.razeC : (A : Obj) → (cs : Array (Part A)) →
     (cs.toList.map fun c : Part A => c.1.toNat).sum < USize.size →
     Vals A (cs.toList.map fun c : Part A => c.1.toNat).sum.toUSize × Bool
   | .atom t, cs, hN => (Obj.raze (.atom t) cs hN,
@@ -748,7 +748,7 @@ def _root_.LeetQ.Rel.Obj.razeC : (A : Obj) → (cs : Array (Part A)) →
     else false)
 
 /-- The rows of `R` at the index column `i`: `len i` pairs, where that count fits a `USize`. -/
-def _root_.LeetQ.Rel.Rel.rows {k v : Obj} (R : Rel k v) (i : ByteArray) : Rel k v :=
+def _root_.Rel.Rel.rows {k v : Obj} (R : Rel k v) (i : ByteArray) : Rel k v :=
   need (len i < USize.size) (fun _ => s!"rows: {len i} rows do not fit a USize") (fun _ => ⟨0, Vals.empty k, Vals.empty v⟩)
     fun h => ⟨(len i).toUSize, Vals.pick k R.key i _ (USize.toNat_ofNat_of_lt' h).symm,
       Vals.pick v R.val i _ (USize.toNat_ofNat_of_lt' h).symm⟩
@@ -826,7 +826,7 @@ def sliceIds (vc : Code) (o : ByteArray) : ByteArray :=
     columns' codes, so equal tuples are equal codes exactly when every column is; an array's `sliceIds` of
     its elements' joint codes, each row's slice gathered contiguous (`expand` of the clamped counts), so
     equal arrays (equal length, equal elements position by position) are equal codes exactly. -/
-def _root_.LeetQ.Rel.Obj.codes : (A : Obj) → {p : Nat} → Vector (Part A) p → Vector Code p
+def _root_.Rel.Obj.codes : (A : Obj) → {p : Nat} → Vector (Part A) p → Vector Code p
   | .atom t, _, cs => Alg.codes t cs
   | .prod a b, _, cs =>
     tuples (Obj.codes a (cs.map fun c => (⟨c.1, c.2.1⟩ : Part a))) #[Obj.codes b (cs.map fun c => (⟨c.1, c.2.2⟩ : Part b))]
@@ -857,7 +857,7 @@ def _root_.LeetQ.Rel.Obj.codes : (A : Obj) → {p : Nat} → Vector (Part A) p �
     where ALP joins several parts, and a general part holds no `IndexCell` (`cellFree`, scanned only there); an
     array's payload count and the copies `expand` counts per part below `2^63`, their sum too, the payload
     fitting those copies (`Vals.fitsN`); a sum's parts picking in range and its held side counts below `2^61`. -/
-def _root_.LeetQ.Rel.Obj.codesC : (A : Obj) → {p : Nat} → Vector (Part A) p → Vector Code p × Bool
+def _root_.Rel.Obj.codesC : (A : Obj) → {p : Nat} → Vector (Part A) p → Vector Code p × Bool
   | .atom t, _, cs => (Obj.codes (.atom t) cs, atomFit t cs)
   | .prod a b, _, cs => (Obj.codes (.prod a b) cs, decide ((cs.toList.map (·.1.toNat)).sum < USize.size) &&
     (Obj.codesC a (cs.map fun c => (⟨c.1, c.2.1⟩ : Part a))).2 && (Obj.codesC b (cs.map fun c => (⟨c.1, c.2.2⟩ : Part b))).2)
@@ -932,7 +932,7 @@ def arrPass {b : Obj} {n : USize} (c : Vals (.arr b) n) (s : ByteArray × ByteAr
       `Vals.row`'s clamped position, `place`).
     And whether it ran within capacity: the codes' bit of `c` (`sortByC_snd`), at an atom from the counts alone
     (`atomFit`). -/
-def _root_.LeetQ.Rel.Obj.sortByC : (A : Obj) → {n : USize} → Vals A n → ByteArray → ByteArray × Bool
+def _root_.Rel.Obj.sortByC : (A : Obj) → {n : USize} → Vals A n → ByteArray → ByteArray × Bool
   | .atom t, _, c, p =>
     let x := Alg.pick t ⟨_, c⟩ p
     (match gradeColumn t false x.1 x.2.enc with
@@ -953,10 +953,10 @@ def _root_.LeetQ.Rel.Obj.sortByC : (A : Obj) → {n : USize} → Vals A n → By
     else p, (Obj.codesC (.sum a b) #v[⟨_, c⟩]).2)
 
 /-- `p` refined stably by the values of `A`: `sortByC`'s permutation. -/
-def _root_.LeetQ.Rel.Obj.sortBy (A : Obj) {n : USize} (c : Vals A n) (p : ByteArray) : ByteArray := (A.sortByC c p).1
+def _root_.Rel.Obj.sortBy (A : Obj) {n : USize} (c : Vals A n) (p : ByteArray) : ByteArray := (A.sortByC c p).1
 
 /-- A sort twin's bit is the codes' bit of the column it sorts by, at each constructor of the side. -/
-theorem _root_.LeetQ.Rel.Obj.sortByC_snd : (A : Obj) → {n : USize} → (c : Vals A n) → (p : ByteArray) →
+theorem _root_.Rel.Obj.sortByC_snd : (A : Obj) → {n : USize} → (c : Vals A n) → (p : ByteArray) →
     (A.sortByC c p).2 = (A.codesC #v[⟨n, c⟩]).2
   | .atom _, _, _, _ => rfl
   | .prod a b, n, c, p => by
@@ -969,7 +969,7 @@ def pairs {k v : Obj} {p : Nat} (ds : Vector (Rel k v) p) : Vector Code p :=
   tuples (k.codes (ds.map fun R => ⟨R.n, R.key⟩)) #[v.codes (ds.map fun R => ⟨R.n, R.val⟩)]
 
 /-- `R` with each pair once: the first row of each class of `|R|`. -/
-def _root_.LeetQ.Rel.Rel.nub {k v : Obj} (R : Rel k v) : Rel k v :=
+def _root_.Rel.Rel.nub {k v : Obj} (R : Rel k v) : Rel k v :=
   R.rows (tuples.tupleIds (k.codes #v[⟨_, R.key⟩])[0] #[(v.codes #v[⟨_, R.val⟩])[0]]).2
 
 /-- `join(l, r)`: every pair of a left and a right row with equal codes, as two index columns —
@@ -1064,7 +1064,7 @@ def setIdCol (vc : Code) (s : ByteArray) (m : USize) (h : len s = m.toNat) : Arr
 
 section Laws
 
-open QLean.Verify (firstsOf)
+open Rel.Verify (firstsOf)
 
 /-- An `Arr`'s element `i` depends on its payload and on `i`'s value alone. -/
 theorem Arr.get_congr {t : QAtomicType} {n m : USize} {a : Arr t n} {b : Arr t m} (hc : a.part = b.part)
@@ -1434,4 +1434,4 @@ end Laws
 #print axioms shift_elem
 #print axioms offsets_faithful
 
-end LeetQ.Rel.Alg
+end Rel.Alg

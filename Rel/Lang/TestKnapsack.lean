@@ -1,13 +1,13 @@
-import LeetQ.Rel.Lang.Test
-import LeetQ.Rel.Programs.Knapsack
+import Rel.Lang.Test
+import Rel.Programs.Knapsack
 
 /-! The Rel language on B&dM's 0/1 knapsack (§8.4), the program `Programs.knapsack`: the specification `s`
     and its fold `p` against a brute force over `List.sublists` on the same items — the best value of each instance,
     and every printed packing within the capacity and of that value. -/
 
-namespace LeetQ.Rel.Lang.TestKnapsack
+namespace Rel.Lang.TestKnapsack
 
-open LeetQ.Rel LeetQ.Rel.Lang LeetQ.Rel.Lang.Test LeetQ.Rel.Alg QLean
+open Rel Rel.Lang Rel.Lang.Test Rel.Alg Rel
 
 /-- The instances of `X`, `K = {a,b,c,d}` coded `0 … 3`, each its items `(value, weight)`. -/
 def items : List (Int64 × List (Int64 × Int64)) :=
@@ -51,7 +51,7 @@ def agrees (n : String) : Bool := match packs n with
 #guard ((packs "knap").getD []).map (·.1) == [0, 1, 2, 3]
 #guard ((packs "knap").getD []).all ((packs "s").getD []).contains
 
-open LeetQ.Rel.Programs.prelude Programs.knapsack in
+open Rel.Programs.prelude Programs.knapsack in
 rel_program shown where
     print s
     print p
@@ -64,11 +64,11 @@ rel_program shown where
   "p = {(a, (5, 4) (6, 5)), (b, (2, 2) (9, 8)), (c, [(1, 9)]), (d, (5, 4) (5, 5)), (d, (5, 4) (5, 6))}",
   "knap = {(a, (5, 4) (6, 5)), (b, (2, 2) (9, 8)), (c, [(1, 9)]), (d, (5, 4) (5, 5))}"]
 
-open LeetQ.Rel.Programs.prelude Programs.knapsack in
+open Rel.Programs.prelude Programs.knapsack in
 rel_program wrong where
     check p = X subseq
 
 -- a `check` that fails is a failure: the guards above would not see a silently skipped one
 #guard !wrong.ok
 
-end LeetQ.Rel.Lang.TestKnapsack
+end Rel.Lang.TestKnapsack

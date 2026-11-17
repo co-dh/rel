@@ -3,11 +3,11 @@
   `2`/`4` bits, `runStartsBits` at one — are one fold, "push `i` where `f i ≠ f (i-1)`, then push `n`", so it is
   read back once for an arbitrary `f` (`runs_fold`) and instantiated at each lane (`code_runs`).
 -/
-import LeetQ.Rel.KernelWF.SortSpec
+import Rel.KernelWF.SortSpec
 
-namespace LeetQ.Rel.Alg
+namespace Rel.Alg
 
-open QLean QLean.Kernel QLean.Verify LeetQ.Rel LeetQ.Rel.KernelWF
+open Rel Rel.Kernel Rel.Verify Rel Rel.KernelWF
 
 /-- **The run-start fold cuts a column into its runs**, for any `f`: `B` holds `m` starts and then `n`, read
     back as naturals, ascending; where `key` agrees exactly where `f` does and its equal elements stand
@@ -163,4 +163,4 @@ theorem code_runs (c : Code) (hw : laneOK(c.w))
 #print axioms runs_fold
 #print axioms code_runs
 
-end LeetQ.Rel.Alg
+end Rel.Alg

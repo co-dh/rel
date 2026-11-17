@@ -5,13 +5,13 @@
   An atom's read-back is `razeTo`'s list (`razeTo_toList_bytes`, `_boolean`, `_general`); the encodings those do
   not cover stay as the atom lemma's one hypothesis `hA`.
 -/
-import LeetQ.Rel.RepOps
+import Rel.RepOps
 
-namespace LeetQ.Rel.KernelWF
+namespace Rel.KernelWF
 
-open QLean QLean.Kernel QLean.Dep LeetQ.Rel LeetQ.Rel.Alg LeetQ.Rel.Rep
-open scoped LeetQ.Core.Rel
-open LeetQ.Core.Rel hiding id comp recip inter union zero le inl inr junc
+open Rel Rel.Kernel Rel.Dep Rel Rel.Alg Rel.Rep
+open scoped Rel.Core.Rel
+open Rel.Core.Rel hiding id comp recip inter union zero le inl inr junc
 
 /-- A value moved along an equation is the value. -/
 theorem ndrec_heq {α : Sort u} {φ : α → Sort v} {a b : α} (h : a = b) (x : φ a) :
@@ -123,13 +123,13 @@ theorem raze_row_prod {a b : Obj} {n m : USize} (x : Vals (.prod a b) n) (y : Va
   · simp only [dif_pos h]; rfl
   · simp only [dif_neg h]; rfl
 
-end LeetQ.Rel.KernelWF
+end Rel.KernelWF
 
-namespace LeetQ.Rel.Rep
+namespace Rel.Rep
 
-open QLean QLean.Kernel QLean.Verify LeetQ.Rel LeetQ.Rel.Alg LeetQ.Rel.KernelWF
-open scoped LeetQ.Core.Rel
-open LeetQ.Core.Rel hiding id comp recip inter union zero le inl inr junc
+open Rel Rel.Kernel Rel.Verify Rel Rel.Alg Rel.KernelWF
+open scoped Rel.Core.Rel
+open Rel.Core.Rel hiding id comp recip inter union zero le inl inr junc
 
 variable {A B : Obj}
 
@@ -188,4 +188,4 @@ theorem rep_union (R S : Rel A B) (hN : R.n.toNat + S.n.toNat < USize.size)
 
 #print axioms rep_union
 
-end LeetQ.Rel.Rep
+end Rel.Rep

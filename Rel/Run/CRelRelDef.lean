@@ -1,9 +1,9 @@
-import LeetQ.Run.CRelDef
+import Rel.Run.CRelDef
 
 section
-namespace LeetQ.Rel
+namespace Rel
 namespace CRel
-open QLean QLean.Kernel LeetQ.Rel.Alg
+open Rel Rel.Kernel Rel.Alg
 variable {A B C D E : Obj}
 
 /-- `R ≫ ¬ran(T)`, ok where both inputs are and `antiJoinC` ran within capacity. Its rows are a subsequence of `R`'s,
@@ -53,5 +53,5 @@ def symDiv {ma mb : USize} (R : CRel A C) (S : CRel B C) (Ua : Vals A ma) (Ub : 
   guard (R.ok && S.ok) fun _ => ofC (symDivC R.rel S.rel Ua Ub)
 
 end CRel
-end LeetQ.Rel
+end Rel
 end

@@ -1,15 +1,15 @@
-import LeetQ.Run.Lang.Grammar
-import LeetQ.Run.Lang.Expand
+import Rel.Run.Lang.Grammar
+import Rel.Run.Lang.Expand
 import Lean
 
 /-! The command `rel_program n where`: it reads the grammar (`Grammar`) into the AST and defines `n : Program`;
     `Expand.emit` defines what it reads. -/
 
-namespace LeetQ.Rel.Lang.Embed
+namespace Rel.Lang.Embed
 
 open Lean Parser Elab Command
-open LeetQ.Rel.Lang
-open LeetQ.Rel.Lang.Parse (P)
+open Rel.Lang
+open Rel.Lang.Parse (P)
 /-- The parameters `ps` of the definition or theorem `w`, each a name no builtin takes, each once. -/
 def params (s : Syntax) (w : String) (ps : Array Syntax) : C (List Param) := do
   let ps ← ps.toList.mapM fun q => do
@@ -259,4 +259,4 @@ elab "decl_line% " c:ident : term => do
   let some r ← findDeclarationRanges? n | throwErrorAt c "`{n}` has no declaration range to read its line from"
   pure (mkNatLit r.selectionRange.pos.line)
 
-end LeetQ.Rel.Lang.Embed
+end Rel.Lang.Embed

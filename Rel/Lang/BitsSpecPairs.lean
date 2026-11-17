@@ -3,15 +3,15 @@
   and the root (`Bits.table`) picks the elements at their codes. Both rest on `pairs_spec`: the pairs `(i, j)` are
   the set bits `i·w + j`, ascending, as `whereBits` lists them and `÷ w`, `mod w` split them.
 -/
-import LeetQ.Rel.Lang.BitsSpec
-import LeetQ.Rel.KernelWF.CrossSpec
-import LeetQ.Rel.RepSymDiv
+import Rel.Lang.BitsSpec
+import Rel.KernelWF.CrossSpec
+import Rel.RepSymDiv
 
-namespace LeetQ.Rel.Lang.Bits
+namespace Rel.Lang.Bits
 
-open QLean QLean.Kernel QLean.Verify LeetQ.Rel LeetQ.Rel.Alg LeetQ.Rel.Rep
-open scoped LeetQ.Core.Rel
-open LeetQ.Core.Rel hiding id comp recip inter union zero le inl inr junc
+open Rel Rel.Kernel Rel.Verify Rel Rel.Alg Rel.Rep
+open scoped Rel.Core.Rel
+open Rel.Core.Rel hiding id comp recip inter union zero le inl inr junc
 
 variable {ρ : Val}
 
@@ -190,4 +190,4 @@ theorem rep_tableB {ua : Nat → A.El} {ub : Nat → B.El} {r : A.El → B.El �
 
 #print axioms rep_tableB
 
-end LeetQ.Rel.Lang.Bits
+end Rel.Lang.Bits

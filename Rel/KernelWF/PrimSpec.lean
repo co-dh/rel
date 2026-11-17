@@ -1,12 +1,12 @@
 /-
   Kernel content the primitive read-backs of `RepPrim` use: `Ew.val lesser` on longs is their minimum.
 -/
-import LeetQ.Rel.RepArith
-import LeetQ.Rel.KernelWF.JoinContent
+import Rel.RepArith
+import Rel.KernelWF.JoinContent
 
-namespace LeetQ.Rel.KernelWF
+namespace Rel.KernelWF
 
-open QLean QLean.Kernel QLean.Verify LeetQ.Rel LeetQ.Rel.Alg LeetQ.Rel.Rep
+open Rel Rel.Kernel Rel.Verify Rel Rel.Alg Rel.Rep
 
 /-- **`Ew.val lesser` on longs, long `i`**: the lesser of the two longs `i`, both below `2^63`. -/
 theorem lesser_get {n : USize} {a b : ByteArray} {i : Nat} (hi : i < n.toNat)
@@ -37,4 +37,4 @@ theorem lesser_get {n : USize} {a b : ByteArray} {i : Nat} (hi : i < n.toNat)
 
 #print axioms lesser_get
 
-end LeetQ.Rel.KernelWF
+end Rel.KernelWF

@@ -4,13 +4,13 @@
   of parts, each of its three answers), as do the ALP join (`razeTo_join_alp`) and the dense one
   (`razeTo_toList_dense`).
 -/
-import LeetQ.Rel.KernelWF.RazeParts
+import Rel.KernelWF.RazeParts
 
-namespace LeetQ.Rel.KernelWF
+namespace Rel.KernelWF
 
-open QLean QLean.Kernel QLean.Dep LeetQ.Rel LeetQ.Rel.Alg LeetQ.Rel.Rep
-open scoped LeetQ.Core.Rel
-open LeetQ.Core.Rel hiding id comp recip inter union zero le inl inr junc
+open Rel Rel.Kernel Rel.Dep Rel Rel.Alg Rel.Rep
+open scoped Rel.Core.Rel
+open Rel.Core.Rel hiding id comp recip inter union zero le inl inr junc
 
 /-- A type Frame of Reference encodes is two to eight bytes wide, and neither `boolean` nor `guid`. -/
 theorem foR_width {t : QAtomicType} {w : Nat} (he : Column.encodes t = true) (hw : t.width = some w) :
@@ -249,11 +249,11 @@ theorem raze_row : (A : Obj) → {n m : USize} → (x : Vals A n) → (y : Vals 
       raze_row_sum x y hN hF.1 hF.2.1 hF.2.2.1 hF.2.2.2.1 hF.2.2.2.2.1 hF.2.2.2.2.2.1
         (raze_row a _ _ hF.2.2.2.2.2.2.1) (raze_row b _ _ hF.2.2.2.2.2.2.2) k hk
 
-end LeetQ.Rel.KernelWF
+end Rel.KernelWF
 
-namespace LeetQ.Rel.Alg
+namespace Rel.Alg
 
-open QLean QLean.Kernel QLean.Dep QLean.Verify LeetQ.Rel
+open Rel Rel.Kernel Rel.Dep Rel.Verify Rel
 
 /-- **The razed column reads part `k`'s element `i` past the counts before `k`**, on every answer of
     `razeColumn` (dense, FoR, ALP; `razeTo_toList_all`), the ALP join's offsets 32 bits where parts join (`hA`). -/
@@ -304,13 +304,13 @@ theorem codes_small_int_parts_faithful {t : QAtomicType} {k₀ : Scan.Kind} (ht 
     codes_small_int_faithful ht hk₀ _ (hlt k hk i hi) (hlt l hl j hj), Vals.row_atom, Vals.row_atom, Vals.row_atom,
     Vals.row_atom, raze_get hW hB cs hN hA hk hi, raze_get hW hB cs hN hA hl hj]
 
-end LeetQ.Rel.Alg
+end Rel.Alg
 
-namespace LeetQ.Rel.Rep
+namespace Rel.Rep
 
-open QLean QLean.Kernel QLean.Verify LeetQ.Rel LeetQ.Rel.Alg LeetQ.Rel.KernelWF
-open scoped LeetQ.Core.Rel
-open LeetQ.Core.Rel hiding id comp recip inter union zero le inl inr junc
+open Rel Rel.Kernel Rel.Verify Rel Rel.Alg Rel.KernelWF
+open scoped Rel.Core.Rel
+open Rel.Core.Rel hiding id comp recip inter union zero le inl inr junc
 
 variable {A B C : Obj}
 
@@ -355,16 +355,16 @@ theorem rep_union_full (R S : Rel A B) (hN : R.n.toNat + S.n.toNat < USize.size)
 /-- **`rep (junc R S)`**, no hypothesis on the encoding. -/
 theorem rep_junc_full (R : Rel A C) (S : Rel B C) (hN : R.n.toNat + S.n.toNat < USize.size)
     (h63 : R.n.toNat + S.n.toNat ≤ 2 ^ 63) (hF : Vals.RazeFits C R.val S.val) :
-    rep (LeetQ.Rel.Alg.junc R S) = Core.Rel.junc (rep R) (rep S) :=
+    rep (Rel.Alg.junc R S) = Core.Rel.junc (rep R) (rep S) :=
   rep_junc R S hN h63 (raze_row C R.val S.val hF)
 
-end LeetQ.Rel.Rep
+end Rel.Rep
 
-#print axioms LeetQ.Rel.KernelWF.append_reads
-#print axioms LeetQ.Rel.KernelWF.concatFoR_reads
-#print axioms LeetQ.Rel.KernelWF.razeTo_join_foR
-#print axioms LeetQ.Rel.KernelWF.razeTo_toList_all
-#print axioms LeetQ.Rel.KernelWF.hat_all
-#print axioms LeetQ.Rel.KernelWF.raze_row
-#print axioms LeetQ.Rel.Rep.rep_union_full
-#print axioms LeetQ.Rel.Rep.rep_junc_full
+#print axioms Rel.KernelWF.append_reads
+#print axioms Rel.KernelWF.concatFoR_reads
+#print axioms Rel.KernelWF.razeTo_join_foR
+#print axioms Rel.KernelWF.razeTo_toList_all
+#print axioms Rel.KernelWF.hat_all
+#print axioms Rel.KernelWF.raze_row
+#print axioms Rel.Rep.rep_union_full
+#print axioms Rel.Rep.rep_junc_full

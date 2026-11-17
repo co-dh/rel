@@ -5,12 +5,12 @@
   than its side's payload, so the fuel (both payloads plus one) always suffices: the result is core's
   `List.merge` of each pair of `P`, at the test.
 -/
-import LeetQ.Rel.RepPerm
-import LeetQ.Rel.RepLoop
+import Rel.RepPerm
+import Rel.RepLoop
 
-namespace LeetQ.Rel.Rep
+namespace Rel.Rep
 
-open QLean QLean.Kernel QLean.Verify LeetQ.Rel LeetQ.Rel.Alg LeetQ.Rel.KernelWF
+open Rel Rel.Kernel Rel.Verify Rel Rel.Alg Rel.KernelWF
 
 open FoldN OpsN Prim ListN Pow
 
@@ -113,8 +113,8 @@ local notation "SO" => Obj.prod (.prod (.arr B) (.arr B)) (.arr B)
 
 section Round
 
-open scoped LeetQ.Core.Rel
-open LeetQ.Core.Rel hiding id comp recip inter union zero le inl inr junc
+open scoped Rel.Core.Rel
+open Rel.Core.Rel hiding id comp recip inter union zero le inl inr junc
 
 /-- **One round of `mergeOn`, read back from its primitives' read-backs**: the new states `mT` are the states
     with both sides non-empty, stepped by the test `le` on their heads, and `mU` adds to `out` the states with a
@@ -440,8 +440,8 @@ local notation "initOK" =>
 
 section Headline
 
-open scoped LeetQ.Core.Rel
-open LeetQ.Core.Rel hiding id comp recip inter union zero le inl inr junc
+open scoped Rel.Core.Rel
+open Rel.Core.Rel hiding id comp recip inter union zero le inl inr junc
 
 /-- **`mergeOn`, read back from its rounds**: with the first state `I` read back (`h0`) and each round's states and
     `out` read back (`hS`, `hO`, internal: `rep_mergeOn` discharges them from the primitives), `mergeOn q P` takes
@@ -546,4 +546,4 @@ end Headline
 #print axioms merge_init
 #print axioms mergeOn_rounds
 
-end LeetQ.Rel.Rep
+end Rel.Rep

@@ -1,13 +1,13 @@
-import LeetQ.Rel.RepOps2
-import LeetQ.Rel.RepComp
-import LeetQ.Rel.RepDiv
-import LeetQ.Rel.RepMem
-import LeetQ.Rel.RepFold
-import LeetQ.Rel.CRelRel
-import LeetQ.Run.CRelRelDef
-import LeetQ.Rel.CRelLoop
-import LeetQ.Run.CRelLoopDef
-import LeetQ.Run.AC3Def
+import Rel.RepOps2
+import Rel.RepComp
+import Rel.RepDiv
+import Rel.RepMem
+import Rel.RepFold
+import Rel.CRelRel
+import Rel.Run.CRelRelDef
+import Rel.CRelLoop
+import Rel.Run.CRelLoopDef
+import Rel.Run.AC3Def
 
 /-! # AC-3 (arc consistency, Mackworth's algorithm 3): the delta-round kernel (`AC3Def.lean`) and its agreement with the naive rounds -/
 
@@ -17,11 +17,11 @@ import LeetQ.Run.AC3Def
   the invariant. Every op is read back under its twin's bit; the bits of a run are one bit, `fixOnC`'s or `acFixC`'s.
 -/
 
-namespace LeetQ.Rel.AC3
+namespace Rel.AC3
 
-open QLean QLean.Kernel QLean.Verify LeetQ.Rel LeetQ.Rel.Alg LeetQ.Rel.KernelWF LeetQ.Rel.Rep LeetQ.Rel.Rep.OpsN LeetQ.Rel.Rep.FoldN
-open scoped LeetQ.Core.Rel
-open LeetQ.Core.Rel hiding id comp recip inter union zero le inl inr junc
+open Rel Rel.Kernel Rel.Verify Rel Rel.Alg Rel.KernelWF Rel.Rep Rel.Rep.OpsN Rel.Rep.FoldN
+open scoped Rel.Core.Rel
+open Rel.Core.Rel hiding id comp recip inter union zero le inl inr junc
 
 variable {V D : Obj}
 
@@ -435,4 +435,4 @@ theorem acFix_eq_fixOn (s : Rel V D) (as : List (Revise V D)) (U : Rel V V) (n :
 
 #print axioms acFix_eq_fixOn
 
-end LeetQ.Rel.AC3
+end Rel.AC3

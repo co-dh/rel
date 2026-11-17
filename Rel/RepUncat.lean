@@ -2,13 +2,13 @@
   `inits`, `tails` and `uncat` read back. `inits` and `tails` are `nestC`'s relation at two slice kernels:
   `nest_rep` reads it back at any slice kernel whose starts and ends are known per copy.
 -/
-import LeetQ.Rel.RepPrim
-import LeetQ.Rel.RepMem
-import LeetQ.Rel.KernelWF.NestSpec
+import Rel.RepPrim
+import Rel.RepMem
+import Rel.KernelWF.NestSpec
 
-namespace LeetQ.Rel.Rep
+namespace Rel.Rep
 
-open QLean QLean.Kernel QLean.Verify LeetQ.Rel LeetQ.Rel.Alg LeetQ.Rel.KernelWF
+open Rel Rel.Kernel Rel.Verify Rel Rel.Alg Rel.KernelWF
 
 -- `X`'s row `r`: its start and count; the counts plus one `c` before row `r`; copy `d`'s row and rank
 set_option hygiene false in
@@ -548,12 +548,12 @@ theorem rep_uncat {B : Obj} {n : USize} (X : Vals (.arr B) n)
 
 end Uncat
 
-end LeetQ.Rel.Rep
+end Rel.Rep
 
-#print axioms LeetQ.Rel.Rep.nest_rep
-#print axioms LeetQ.Rel.Rep.rep_inits
-#print axioms LeetQ.Rel.Rep.rep_tails
-#print axioms LeetQ.Rel.Rep.nestMem_rep
-#print axioms LeetQ.Rel.Rep.rep_prefix
-#print axioms LeetQ.Rel.Rep.rep_suffix
-#print axioms LeetQ.Rel.Rep.rep_uncat
+#print axioms Rel.Rep.nest_rep
+#print axioms Rel.Rep.rep_inits
+#print axioms Rel.Rep.rep_tails
+#print axioms Rel.Rep.nestMem_rep
+#print axioms Rel.Rep.rep_prefix
+#print axioms Rel.Rep.rep_suffix
+#print axioms Rel.Rep.rep_uncat

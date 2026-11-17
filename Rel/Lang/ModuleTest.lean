@@ -1,12 +1,12 @@
-import LeetQ.Rel.Programs.CSP
+import Rel.Programs.CSP
 
 /-! Rel's module system (`doc/rel-module-design.md` §4): a program's definitions are Lean constants `n.x`, a name
     not the program's own is resolved by Lean (`open`, the namespace, `m.x`) and must be a registered Rel
     definition, and which constants exist never changes how a run of letters is cut. -/
 
-namespace LeetQ.Rel.Programs
+namespace Rel.Programs
 
-open Lean Elab Command LeetQ.Rel.Lang
+open Lean Elab Command Rel.Lang
 
 /-- The `print` terms of the statements `src` read here (the current namespace and `open`s), each composite and
     infix term in parentheses; nothing elaborated. -/
@@ -22,14 +22,14 @@ elab "#rel_read " s:str : command => do
 elab "#has " c:ident : command => do
   discard <| resolveGlobalConstNoOverload c
 
-open LeetQ.Rel.Programs.prelude in
+open Rel.Programs.prelude in
 rel_program mh where
     obj A = 0…2
     f : A ⟶ A ≜ succ
     peer : A ⟶ A ≜ ≠
     ≺ : α ⟶ α ≜ <
 
-open LeetQ.Rel.Programs.prelude in
+open Rel.Programs.prelude in
 rel_program mk where
     obj A = 0…2
     peer : A ⟶ A ≜ 𝟙
@@ -41,7 +41,7 @@ rel_program mk where
 #has prelude.«≠»
 
 /-! Qualified names do not collide: a program defines its own `AC3` beside `csp.AC3` and uses both. -/
-open LeetQ.Rel.Programs.prelude in
+open Rel.Programs.prelude in
 rel_program qual where
     obj A = 0…2
     obj D = 1…3
@@ -54,7 +54,7 @@ rel_program qual where
 
 /-! Selective: `open csp (AC3)` brings `AC3`; without it `AC3` is unknown. -/
 section
-open LeetQ.Rel.Programs.prelude
+open Rel.Programs.prelude
 open csp (AC3)
 rel_program sel where
     obj A = 0…2
@@ -64,13 +64,13 @@ end
 
 /-- error: line 70, col 17: unknown name 'AC3' -/
 #guard_msgs in
-open LeetQ.Rel.Programs.prelude in
+open Rel.Programs.prelude in
 rel_program selNo where
     obj A = 0…2
     s : A ⟶ A ≜ AC3(≠, ≠, 𝟙)
 
 /-! Two `open`s that give one name: ambiguous. -/
-/-- error: line 78, col 17: ambiguous name `peer`: it is [LeetQ.Rel.Programs.mh.peer, LeetQ.Rel.Programs.mk.peer] -/
+/-- error: line 78, col 17: ambiguous name `peer`: it is [Rel.Programs.mh.peer, Rel.Programs.mk.peer] -/
 #guard_msgs in
 open mh mk in
 rel_program amb where
@@ -106,7 +106,7 @@ open Nat in
 
 def fake : CRel .long .long := default
 
-/-- error: line 113, col 17: `fake` is not a Rel definition: Lean resolves it to [LeetQ.Rel.Programs.fake] -/
+/-- error: line 113, col 17: `fake` is not a Rel definition: Lean resolves it to [Rel.Programs.fake] -/
 #guard_msgs in
 rel_program closedType where
     obj A = 0…2
@@ -150,7 +150,7 @@ info: (R mh.f)
 rel_program kf where
     refl(R : α ⟶ α) : α ⟶ α ≜ R ∪ 𝟙
 
-open LeetQ.Rel.Programs.prelude in
+open Rel.Programs.prelude in
 rel_program kfUse where
     obj A = 0…2
     m : [A×A] ⟶ A×A ≜ ∋
@@ -160,8 +160,8 @@ rel_program kfUse where
   [("{(∗, (0, 1) (1, 2))} kf.refl(m) = {(∗, (0, 0)), (∗, (0, 1)), (∗, (1, 1)), (∗, (1, 2)), (∗, (2, 2))}", true)]
 
 run_cmd do
-  let cs := (Expand.relRegistry.getState (← getEnv)).calls.filter (`LeetQ.Rel.Programs.kf.refl.form |>.isPrefixOf ·.1)
+  let cs := (Expand.relRegistry.getState (← getEnv)).calls.filter (`Rel.Programs.kf.refl.form |>.isPrefixOf ·.1)
   unless !cs.isEmpty && cs.all (·.2.kf) do
     throwError "`kf.refl` at a family has no keyed constant: {cs.map (·.1)}"
 
-end LeetQ.Rel.Programs
+end Rel.Programs

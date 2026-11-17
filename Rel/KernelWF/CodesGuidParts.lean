@@ -3,11 +3,11 @@
   bytes (`groupIdsColumn_guid`) and cuts the code back into the parts (`Code.cut`), so part `k`'s code at `i` is
   the razed column's at `O_k + i`, and that row is part `k`'s row `i` (`raze_get`).
 -/
-import LeetQ.Rel.KernelWF.RazeFoR
+import Rel.KernelWF.RazeFoR
 
-namespace LeetQ.Rel.Alg
+namespace Rel.Alg
 
-open QLean QLean.Dep QLean.Kernel QLean.Verify LeetQ.Rel
+open Rel Rel.Dep Rel.Kernel Rel.Verify Rel
 
 /-- **A `guid` side of several parts: its codes are those of its `raze`, cut back** — `guid` is dense, so
     neither a bitmap, nor `rangeOffsets`' long order, nor interned. -/
@@ -75,4 +75,4 @@ theorem codes_guid_parts_wf {p : Nat} (cs : Vector (Part (.atom .guid)) p)
 #print axioms codes_guid_parts_faithful
 #print axioms codes_guid_parts_wf
 
-end LeetQ.Rel.Alg
+end Rel.Alg

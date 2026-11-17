@@ -2,11 +2,11 @@
   `subseq`'s chain and its step's `keep` split, which `rep_subseqC` closes its fold with: the step
   `cons (pair el pend) ∪ pend`, whose `∪ pend` keeps a row's state alive past its array's end.
 -/
-import LeetQ.Rel.RepList
+import Rel.RepList
 
-namespace LeetQ.Rel.Rep
+namespace Rel.Rep
 
-open QLean QLean.Kernel QLean.Verify LeetQ.Rel LeetQ.Rel.Alg LeetQ.Rel.KernelWF
+open Rel Rel.Kernel Rel.Verify Rel Rel.Alg Rel.KernelWF
 
 open FoldN OpsN
 
@@ -75,6 +75,6 @@ theorem subseq_keep {β : Type _} (E : β → Prop) (U : List β → Prop) (v : 
     · exact Or.inr hu
     · exact Or.inr hu
 
-end LeetQ.Rel.Rep
+end Rel.Rep
 
-#print axioms LeetQ.Rel.Rep.subseq_chain
+#print axioms Rel.Rep.subseq_chain

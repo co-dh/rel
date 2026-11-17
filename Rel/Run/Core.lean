@@ -5,13 +5,13 @@
   `Column.get` (qlean's one-element reader over `bitsAt`/`bitAt`/`foRBits`/`symBytes`), never
   `Column.atoms`. Lists exist in proofs only (`toList`).
 -/
-import QLean.RelPart.Dep.Monadic
-import QLean.RelPart.Verify.Alp
-import QLean.RelPart.Verify.SymFind
+import Rel.Kernel.Dep.Monadic
+import Rel.KernelSpec.Alp
+import Rel.KernelSpec.SymFind
 
-namespace LeetQ.Rel
+namespace Rel
 
-open QLean QLean.Dep
+open Rel Rel.Dep
 
 /-- An element of a column of type `t`: qlean's `Carrier`, a `QValue` in a general list. -/
 abbrev El := Carrier
@@ -505,7 +505,7 @@ end Rel
 
 section Payload
 
-open QLean.Kernel
+open Rel.Kernel
 
 /-- One long as an eight-byte payload: the atom operand of an `av`/`va` kernel call. -/
 def one (v : UInt64) : ByteArray := Column.pushBits .empty v 8
@@ -522,7 +522,7 @@ end Payload
 
 section Checks
 
-open QLean.Column
+open Rel.Column
 
 /-- `Enc.WF` of a literal payload at a literal `USize` count: `decide` cannot reduce `USize.toNat` of a
     numeral, so the count is read as a `Nat` numeral first. -/
@@ -555,4 +555,4 @@ end Checks
 #print axioms Arr.get
 #print axioms Rel.holds_iff_mem_toList
 
-end LeetQ.Rel
+end Rel

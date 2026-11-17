@@ -1,15 +1,15 @@
 import Std.Data.HashSet
-import QLean.RelPart.Dep.Val
-import QLean.RelPart.Verify.Elementwise
-import QLean.RelPart.Eval.Val
-import QLean.RelPart.Value
+import Rel.Kernel.Dep.Val
+import Rel.KernelSpec.Elementwise
+import Rel.Kernel.Eval.Val
+import Rel.Kernel.Value
 
-/-! The part of `QLean.Dep.Monadic` the Rel kernels reach; `QLean.Dep.Monadic` imports it. -/
+/-! The part of `Rel.Dep.Monadic` the Rel kernels reach; `Rel.Dep.Monadic` imports it. -/
 
 
-namespace QLean.Dep
+namespace Rel.Dep
 
-open QLean QLean.Eval
+open Rel Rel.Eval
 
 /-- The null of a type, at the index. `Verify.nullAtom_type` is what makes it total: q's null
 of `t` really is an atom of `t`. -/
@@ -25,8 +25,8 @@ out-of-range reads below since that is what q answers for them, and a general li
 instance {t : QAtomicType} : Inhabited (Carrier t) :=
   if hg : t = .general then ⟨hg ▸ (default : QValue)⟩ else ⟨Carrier.null t hg⟩
 
-end QLean.Dep
+end Rel.Dep
 
-namespace QLean.Dep
+namespace Rel.Dep
 
-end QLean.Dep
+end Rel.Dep

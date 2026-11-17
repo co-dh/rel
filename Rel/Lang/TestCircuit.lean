@@ -1,11 +1,11 @@
-import LeetQ.Rel.Lang.Test
-import LeetQ.Rel.Programs.Circuit
+import Rel.Lang.Test
+import Rel.Programs.Circuit
 
 /-! The Rel language on AIMA §8.4.2's full adder, the program `Programs.circuit`. -/
 
-namespace LeetQ.Rel.Lang.TestCircuit
+namespace Rel.Lang.TestCircuit
 
-open LeetQ.Rel LeetQ.Rel.Lang LeetQ.Rel.Alg LeetQ.Rel.Lang.Test QLean
+open Rel Rel.Lang Rel.Alg Rel.Lang.Test Rel
 
 -- row order is not part of a relation, so rows compare sorted; the program's array `a b c` reads as the row
 -- `[a, b, c]`
@@ -13,7 +13,7 @@ def sorted (xs : List (List Int64)) : List (List Int64) := xs.mergeSort fun a b 
 def rowsA {v : Obj} (f : v.El → List Int64) (R : Rel (.arr .long) v) : List (List Int64) :=
   sorted (R.toList.map fun (xs, y) => xs ++ f y)
 
-open LeetQ.Rel.Programs.prelude Programs.circuit in
+open Rel.Programs.prelude Programs.circuit in
 rel_program shown where
     print answer
 
@@ -32,4 +32,4 @@ rel_program shown where
   some ([[0, 0, 0, 0, 0], [0, 0, 1, 1, 0], [0, 1, 0, 1, 0], [0, 1, 1, 0, 1], [1, 0, 0, 1, 0], [1, 0, 1, 0, 1],
     [1, 1, 0, 0, 1], [1, 1, 1, 1, 1]] : List (List Int64))
 
-end LeetQ.Rel.Lang.TestCircuit
+end Rel.Lang.TestCircuit

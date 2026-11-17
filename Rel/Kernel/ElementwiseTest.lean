@@ -1,12 +1,12 @@
-import QLean.RelPart.Value
-import QLean.RelPart.Kernel.Elementwise
+import Rel.Kernel.Value
+import Rel.Kernel.Elementwise
 
-/-! The part of `QLean.Kernel.ElementwiseTest` the Rel kernels reach; `QLean.Kernel.ElementwiseTest` imports it. -/
+/-! The part of `Rel.Kernel.ElementwiseTest` the Rel kernels reach; `Rel.Kernel.ElementwiseTest` imports it. -/
 
 
-namespace QLean.Kernel.ElementwiseTest
+namespace Rel.Kernel.ElementwiseTest
 
-open QLean QLean.Kernel
+open Rel Rel.Kernel
 
 -- `0N+1` is `0N` and `0W+0W` is `-2`: a null operand is answered before the arithmetic, and
 -- everything else wraps.
@@ -19,21 +19,21 @@ example : Ew.intStep Ew.greater Int64.minValue Int64.minValue 1 = 1 := by decide
 example : Ew.intStep Ew.fill Int64.minValue Int64.minValue 1 = 1 := by decide
 example : Ew.intStep Ew.fill Int64.minValue 1 Int64.minValue = 1 := by decide
 -- `1-0n` is `0x7ff8…` where `0n-1` is `0xfff8…`: q subtracts by negating and adding.
-example : Ew.f64Step Ew.sub 0x3ff0000000000000 QLean.nanBits = Ew.pnan64 := by decide
-example : Ew.f64Step Ew.sub QLean.nanBits 0x3ff0000000000000 = QLean.nanBits := by decide
+example : Ew.f64Step Ew.sub 0x3ff0000000000000 Rel.nanBits = Ew.pnan64 := by decide
+example : Ew.f64Step Ew.sub Rel.nanBits 0x3ff0000000000000 = Rel.nanBits := by decide
 -- and the same at `real`: `1e-0Ne` is `0x7fc00000`.
-example : Ew.f32Step Ew.sub 0x3f800000 QLean.nanBits32 = Ew.pnan32 := by decide
+example : Ew.f32Step Ew.sub 0x3f800000 Rel.nanBits32 = Ew.pnan32 := by decide
 -- `0n<1.0` and `0n=0n` are both `1b`: q sorts a null below everything, where C sorts it nowhere.
-#guard Ew.cmpStep Ew.lt Ew.f64 QLean.nanBits 0x3ff0000000000000
-example : Ew.cmpStep Ew.eq Ew.f64 QLean.nanBits QLean.nanBits = true := by decide
+#guard Ew.cmpStep Ew.lt Ew.f64 Rel.nanBits 0x3ff0000000000000
+example : Ew.cmpStep Ew.eq Ew.f64 Rel.nanBits Rel.nanBits = true := by decide
 example : Ew.cmpStep Ew.lt Ew.i64 0x8000000000000000 1 = true := by decide
 -- `neg 0f` is `-0f`, which `0f-0f` is not: the monadic case of `-` flips the sign bit.
 example : Ew.monStep Ew.neg Ew.f64 0 0 = 0x8000000000000000 := by decide
 -- `abs 0n` is the negated null and `abs -0f` is `0f`.
-example : Ew.monStep Ew.abs Ew.f64 0 QLean.nanBits = Ew.pnan64 := by decide
+example : Ew.monStep Ew.abs Ew.f64 0 Rel.nanBits = Ew.pnan64 := by decide
 example : Ew.monStep Ew.abs Ew.f64 0 0x8000000000000000 = 0 := by decide
 -- `floor 0n` is `0N`, and that branch answers before any conversion.
-example : Ew.floorStep Ew.f64 QLean.nanBits = Int64.minValue := by decide
+example : Ew.floorStep Ew.f64 Rel.nanBits = Int64.minValue := by decide
 -- `0Nh+1h` is `0Ni`: the promotion remaps the null rather than converting it.
 example : Ew.widenStep Ew.i32 (-32768) (-2147483648) (-32768) = 0xffffffff80000000 := by decide
 
@@ -54,4 +54,4 @@ def noSums (m : ByteArray) : ByteArray :=
   (List.range 16).foldl (init := m) fun (acc : ByteArray) i =>
     acc.set! (32 * Column.nblk m + i) 0
 
-end QLean.Kernel.ElementwiseTest
+end Rel.Kernel.ElementwiseTest

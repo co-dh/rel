@@ -5,12 +5,12 @@
   Every index in a statement here carries its bound explicitly (`xs[k]'hk`): left to `get_elem_tactic`,
   the index proofs of this many binders ran Lean out of memory before any tactic.
 -/
-import LeetQ.Rel.KernelWF.CodesProdFaithful
-import LeetQ.Rel.KernelWF.RazeRowRec
+import Rel.KernelWF.CodesProdFaithful
+import Rel.KernelWF.RazeRowRec
 
-namespace LeetQ.Rel.Alg
+namespace Rel.Alg
 
-open QLean QLean.Dep QLean.Kernel QLean.Verify LeetQ.Rel
+open Rel Rel.Dep Rel.Kernel Rel.Verify Rel
 
 /-- A long column's dense payload holds its `n` longs. -/
 theorem len_longsOf {n : USize} (x : Arr .long n) : len (longsOf x) = n.toNat := by
@@ -614,4 +614,4 @@ theorem rankSlices_get (w : USize) (v o : ByteArray) (hw : w.toNat ≤ 64) (ho :
 
 #print axioms rankSlices_get
 
-end LeetQ.Rel.Alg
+end Rel.Alg

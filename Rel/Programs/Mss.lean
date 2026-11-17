@@ -1,4 +1,4 @@
-import LeetQ.Rel.Programs.Prelude
+import Rel.Programs.Prelude
 
 /-! # The maximum segment sum
 
@@ -6,9 +6,9 @@ B&dM Ex 7.40, the maximum segment sum: the note diag/aop/07-optimisation.typ §m
 `mss` (:106) and `mss_eq_scan` (:993). The numbers are signed, so a longer segment can sum to less: `oplus` cuts a
 negative running sum back to 0, and an all-negative list has the empty segment's 0. -/
 
-namespace LeetQ.Rel.Programs
+namespace Rel.Programs
 
-open LeetQ.Rel.Programs.prelude in
+open Rel.Programs.prelude in
 rel_program mss where
     obj N = -10…20                                -- the elements and the sums
 
@@ -90,4 +90,4 @@ rel_program mss where
 
 #guard mss.ok
 
-end LeetQ.Rel.Programs
+end Rel.Programs

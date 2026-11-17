@@ -1,12 +1,12 @@
-import LeetQ.Run.Algebra
-import LeetQ.Run.Lang.Syntax
+import Rel.Run.Algebra
+import Rel.Run.Lang.Syntax
 
 /-! The core term `Tm` of the Rel language, indexed by its source, target and whether it runs on demand; the
     elaborator (`Elab`) builds it and `Expand` reads it (`doc/rel-lang-design.md` §a, §e). -/
 
-namespace LeetQ.Rel.Lang
+namespace Rel.Lang
 
-open LeetQ.Rel LeetQ.Rel.Alg
+open Rel Rel.Alg
 
 /-! ### The core term -/
 
@@ -202,4 +202,4 @@ def Tm.pol (s : Bool) (k : Nat) : {A B : Obj} → {d : Bool} → Tm A B d → Bo
   | _, _, _, .val _ | _, _, _, .uni _ | _, _, _, .zero | _, _, _, .id | _, _, _, .outl | _, _, _, .outr
   | _, _, _, .nil | _, _, _, .prim _ | _, _, _, .atPos _ | _, _, _, .share .. | _, _, _, .call .. => true
 
-end LeetQ.Rel.Lang
+end Rel.Lang

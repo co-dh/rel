@@ -4,29 +4,29 @@
   `topC`'s and `compC`'s. Under that one bit every capacity premise of `rep_foldBy_keep` is decided; what stays is
   the step's own spec (`hS`, at the rounds whose step bit is set), not a size bound.
 -/
-import LeetQ.Rel.CRelRel
-import LeetQ.Run.CRelRelDef
-import LeetQ.Rel.RepFold
-import LeetQ.Rel.RepArith
-import LeetQ.Rel.CRelArith
-import LeetQ.Run.CRelArithDef
-import LeetQ.Rel.CRelList
-import LeetQ.Run.CRelListDef
-import LeetQ.Rel.RepSubseq
-import LeetQ.Rel.RepThin
-import LeetQ.Run.CRelFoldDef
-import LeetQ.Rel.CRelOps
-import LeetQ.Rel.RepReduce
-import LeetQ.Rel.KernelWF.JoinSpec
-import LeetQ.Rel.KernelWF.PickRow
+import Rel.CRelRel
+import Rel.Run.CRelRelDef
+import Rel.RepFold
+import Rel.RepArith
+import Rel.CRelArith
+import Rel.Run.CRelArithDef
+import Rel.CRelList
+import Rel.Run.CRelListDef
+import Rel.RepSubseq
+import Rel.RepThin
+import Rel.Run.CRelFoldDef
+import Rel.CRelOps
+import Rel.RepReduce
+import Rel.KernelWF.JoinSpec
+import Rel.KernelWF.PickRow
 
-namespace LeetQ.Rel
+namespace Rel
 
 namespace Rep
 
-open QLean QLean.Kernel QLean.Verify LeetQ.Rel LeetQ.Rel.Alg LeetQ.Rel.KernelWF
-open scoped LeetQ.Core.Rel
-open LeetQ.Core.Rel hiding id comp recip inter union zero le inl inr junc
+open Rel Rel.Kernel Rel.Verify Rel Rel.Alg Rel.KernelWF
+open scoped Rel.Core.Rel
+open Rel.Core.Rel hiding id comp recip inter union zero le inl inr junc
 open OpsN FoldN
 /-- **A round's bit**: its step's, `nubC`'s on the step's relation, `antiJoinC`'s on the pending rows, `unionC`'s on
     the leftovers, at the round's element `el`. -/
@@ -501,9 +501,9 @@ end Rep
 
 namespace CRel
 
-open QLean QLean.Kernel LeetQ.Rel.Alg LeetQ.Rel.Rep FoldN
-open scoped LeetQ.Core.Rel
-open LeetQ.Core.Rel hiding id comp recip inter union zero le inl inr junc
+open Rel Rel.Kernel Rel.Alg Rel.Rep FoldN
+open scoped Rel.Core.Rel
+open Rel.Core.Rel hiding id comp recip inter union zero le inl inr junc
 
 /-- **`CRel.foldBy` read back under its bit**: `rep_foldByC`. -/
 theorem rep_foldBy {E V : Obj} {m n : USize} (e : Vals V m) (X : Vals (.arr E) n)
@@ -630,4 +630,4 @@ theorem canon_diff {A B : Obj} (R S : CRel A B) (hb : (diff R S).ok = true) (hR 
 
 end CRel
 
-end LeetQ.Rel
+end Rel

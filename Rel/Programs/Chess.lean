@@ -1,10 +1,10 @@
-import LeetQ.Rel.Programs.Prelude
+import Rel.Programs.Prelude
 
 /-! # Mate in one -/
 
-namespace LeetQ.Rel.Programs
+namespace Rel.Programs
 
-open LeetQ.Rel.Programs.prelude in
+open Rel.Programs.prelude in
 rel_program chess where
     obj Sq = 0…63                                 -- the squares, a1 = 0, b1 = 1, …, h8 = 63
     obj Pc = {P,N,B,R,Q,K,p,n,b,r,q,k}            -- the pieces, white then black: colour*6 + kind
@@ -63,4 +63,4 @@ rel_program chess where
 
 #guard chess.ok
 
-end LeetQ.Rel.Programs
+end Rel.Programs

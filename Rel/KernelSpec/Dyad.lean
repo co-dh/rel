@@ -1,14 +1,14 @@
-import QLean.RelPart.Verify.Encoding
-import QLean.RelPart.Verify.Distinct
-import QLean.RelPart.Value
-import QLean.RelPart.Kernel.Elementwise
+import Rel.KernelSpec.Encoding
+import Rel.KernelSpec.Distinct
+import Rel.Kernel.Value
+import Rel.Kernel.Elementwise
 
-/-! The part of `QLean.Verify.Dyad` the Rel kernels reach; `QLean.Verify.Dyad` imports it. -/
+/-! The part of `Rel.Verify.Dyad` the Rel kernels reach; `Rel.Verify.Dyad` imports it. -/
 
 
-namespace QLean.Verify
+namespace Rel.Verify
 
-open QLean QLean.Kernel
+open Rel Rel.Kernel
 
 /-- `Ew.val` at `i64` against one long atom: element `i` is `intStep` of element `i` and the atom. -/
 theorem val_i64_va (op : UInt8) (nul : Int64) (b : ByteArray) (c : UInt64) (n : Nat) (hn : n < USize.size) :
@@ -74,28 +74,28 @@ theorem val_add_vv (a b : ByteArray) (n : Nat) (hn : n < USize.size) :
         (if x == Int64.minValue || y == Int64.minValue then Int64.minValue else x + y).toUInt64 := by
   rw [val_i64_vv _ _ _ _ _ hn]; rfl
 
-end QLean.Verify
+end Rel.Verify
 
-/-- info: 'QLean.Verify.val_i64_va' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+/-- info: 'Rel.Verify.val_i64_va' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs in
-#print axioms QLean.Verify.val_i64_va
+#print axioms Rel.Verify.val_i64_va
 
-/-- info: 'QLean.Verify.val_i64_vv' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+/-- info: 'Rel.Verify.val_i64_vv' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs in
-#print axioms QLean.Verify.val_i64_vv
+#print axioms Rel.Verify.val_i64_vv
 
-/-- info: 'QLean.Verify.val_idiv_va' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+/-- info: 'Rel.Verify.val_idiv_va' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs in
-#print axioms QLean.Verify.val_idiv_va
+#print axioms Rel.Verify.val_idiv_va
 
-/-- info: 'QLean.Verify.val_imod_va' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+/-- info: 'Rel.Verify.val_imod_va' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs in
-#print axioms QLean.Verify.val_imod_va
+#print axioms Rel.Verify.val_imod_va
 
-/-- info: 'QLean.Verify.val_mul_va' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+/-- info: 'Rel.Verify.val_mul_va' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs in
-#print axioms QLean.Verify.val_mul_va
+#print axioms Rel.Verify.val_mul_va
 
-/-- info: 'QLean.Verify.val_add_vv' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+/-- info: 'Rel.Verify.val_add_vv' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs in
-#print axioms QLean.Verify.val_add_vv
+#print axioms Rel.Verify.val_add_vv

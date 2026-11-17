@@ -2,18 +2,18 @@
 The bit run's bookkeeping: which columns a route reads (`colsL`), the picked parts `run?` sizes its matrices by
 (`spOf`), and a leaf's matrix from `codeAll`'s codes under `uOf`.
 -/
-import LeetQ.Rel.Lang.BitsSpecLdiv
-import LeetQ.Rel.Lang.BitsSpecPairs
-import LeetQ.Rel.Lang.BitsSpecCode
+import Rel.Lang.BitsSpecLdiv
+import Rel.Lang.BitsSpecPairs
+import Rel.Lang.BitsSpecCode
 
-namespace LeetQ.Rel.Lang.Bits
+namespace Rel.Lang.Bits
 
-open QLean QLean.Kernel QLean.Verify LeetQ.Rel LeetQ.Rel.Alg LeetQ.Rel.Rep
+open Rel Rel.Kernel Rel.Verify Rel Rel.Alg Rel.Rep
 
 variable {ρ : Val}
 
 /-- The columns `Tm.cols` appends, in its order. -/
-def _root_.LeetQ.Rel.Lang.Tm.colsL : {A B : Obj} → {d : Bool} → Tm A B d → List Col
+def _root_.Rel.Lang.Tm.colsL : {A B : Obj} → {d : Bool} → Tm A B d → List Col
   | A, B, _, .val R => [⟨A, ⟨R.n, R.key⟩⟩, ⟨B, ⟨R.n, R.val⟩⟩]
   | _, _, _, .comp R S | _, _, _, .meet R S | _, _, _, .join R S | _, _, _, .diff R S => R.colsL ++ S.colsL
   | _, _, _, .conv R => R.colsL
@@ -506,5 +506,5 @@ theorem bits_table {A B : Obj} {d : Bool} {p : Tm A B d} {R : Rel A B} (hr : run
 #print axioms bits_enc
 #print axioms bits_table
 
-end LeetQ.Rel.Lang.Bits
+end Rel.Lang.Bits
 

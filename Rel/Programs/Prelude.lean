@@ -1,7 +1,7 @@
-import LeetQ.Run.Lang.Embed
+import Rel.Run.Lang.Embed
 /-! # The prelude: definitions every program sees (`rel_program … after prelude`), elaborated before it. A program
     that defines one of these names again gets "already defined … in the prelude". -/
-namespace LeetQ.Rel.Programs
+namespace Rel.Programs
 rel_program prelude where
     obj 1 = {∗}                                   -- the terminal object: its one value
 
@@ -47,9 +47,9 @@ rel_program prelude where
     theorem Ecomp(R : α ⟶ β, S : β ⟶ γ) : E(R S) = E(R)E(S)        -- E is a functor
     theorem estMap(f : α ⟶ β, R : β ⟶ β) if dom(f) = 𝟙, simple(f), 𝟙 ⊑ R : Λ(f)est(R) = f  -- a singleton's R-extreme is itself
 
-end LeetQ.Rel.Programs
+end Rel.Programs
 
-namespace LeetQ.Rel.Lang
+namespace Rel.Lang
 
 /-- The declaration of each definition of the program `src` read after the prelude (`Expand.read`: every
     declaration elaborated, nothing evaluated), in order; with no program, the prelude's. -/
@@ -58,4 +58,4 @@ def typesOf (src : Option Program) : EM (List String) := do
   let _ ← Expand.read (fun _ => none) (if src.isSome then [(`prelude, Programs.prelude)] else []) prog
   pure (prog.filterMap fun | .defn _ n ps _ ty => some (sigOf n ps ty) | _ => none)
 
-end LeetQ.Rel.Lang
+end Rel.Lang

@@ -4,12 +4,12 @@
   (`Code.cut`). Part `k`'s code at `i` is then the razed list's at `O_k + i`, and that element is part `k`'s row
   `i`; on cell-free elements `valEq` is `=` (`valEq_iff`), so equal codes are equal rows.
 -/
-import LeetQ.Rel.KernelWF.CodesArr
-import LeetQ.Rel.KernelWF.CodesProd
+import Rel.KernelWF.CodesArr
+import Rel.KernelWF.CodesProd
 
-namespace LeetQ.Rel.Alg
+namespace Rel.Alg
 
-open QLean QLean.Dep QLean.Kernel QLean.Verify LeetQ.Rel
+open Rel Rel.Dep Rel.Kernel Rel.Verify Rel
 
 /-- **`firstIds` read back**: eight bytes an element, element `i`'s first `valEq` position, below the count. -/
 theorem firstIds_get (l : List QValue) (hl : l.length < 2 ^ 64) :
@@ -142,4 +142,4 @@ theorem codes_general_wf {p : Nat} (cs : Vector (Part (.atom .general)) p)
 #print axioms codes_general_faithful
 #print axioms codes_general_wf
 
-end LeetQ.Rel.Alg
+end Rel.Alg

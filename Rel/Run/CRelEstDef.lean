@@ -1,8 +1,8 @@
-import LeetQ.Run.CRelDef
+import Rel.Run.CRelDef
 
 section
-namespace LeetQ.Rel
-open QLean QLean.Kernel LeetQ.Rel LeetQ.Rel.Alg
+namespace Rel
+open Rel Rel.Kernel Rel Rel.Alg
 namespace Rep
 variable {A B : Obj}
 
@@ -13,12 +13,12 @@ def ordPairs {n : USize} (X : Vals (.arr B) n) : Rel (.prod B B) (.prod B B) :=
   ran (pair (outl D) (outr D ≫ mem (ran (outr D)).val))
 
 end Rep
-end LeetQ.Rel
+end Rel
 end
 
 section
-namespace LeetQ.Rel
-open QLean QLean.Kernel LeetQ.Rel LeetQ.Rel.Alg
+namespace Rel
+open Rel Rel.Kernel Rel Rel.Alg
 namespace CRel
 variable {A B : Obj}
 
@@ -67,5 +67,5 @@ def sortSet (Q : CRel B B) {n : USize} (Y : Vals (.arr B) n) : CRel (.arr B) (.a
   guard Q.ok fun _ => ofC (sortSetC Q.rel Y)
 
 end CRel
-end LeetQ.Rel
+end Rel
 end

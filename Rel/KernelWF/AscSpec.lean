@@ -3,20 +3,20 @@
   (`orderKind t = some k`, the boolean included) the answer lists the rows ascending by `Obj.lt`, ties in the
   order they came in, and a product of two such sides sorts lexicographically.
 -/
-import LeetQ.Rel.KernelWF.SortSpec
-import LeetQ.Rel.KernelWF.FoldSpec
-import LeetQ.Rel.KernelWF.PickSpec
-import LeetQ.Rel.KernelWF.RazeSpec
-import LeetQ.Rel.ObjOrder
-import LeetQ.Rel.KernelWF.PickRow
-import LeetQ.Rel.KernelWF.CodesRec
-import QLean.RelPart.Dep.Monadic
-import QLean.RelPart.Verify.Grade
-import QLean.RelPart.Verify.SymFind
+import Rel.KernelWF.SortSpec
+import Rel.KernelWF.FoldSpec
+import Rel.KernelWF.PickSpec
+import Rel.KernelWF.RazeSpec
+import Rel.ObjOrder
+import Rel.KernelWF.PickRow
+import Rel.KernelWF.CodesRec
+import Rel.Kernel.Dep.Monadic
+import Rel.KernelSpec.Grade
+import Rel.KernelSpec.SymFind
 
-namespace LeetQ.Rel.Alg
+namespace Rel.Alg
 
-open QLean QLean.Dep QLean.Kernel QLean.Verify LeetQ.Rel LeetQ.Rel.KernelWF
+open Rel Rel.Dep Rel.Kernel Rel.Verify Rel Rel.KernelWF
 
 /-- Row `i` of `c` comes no later than row `j` in q's `asc` order, rows of one key ordered by `R`. -/
 def ascBy (A : Obj) {n : USize} (c : Vals A n) (R : Nat → Nat → Prop) (i j : Nat) : Prop :=
@@ -25,7 +25,7 @@ def ascBy (A : Obj) {n : USize} (c : Vals A n) (R : Nat → Nat → Prop) (i j :
 
 /-- Every array payload and sum side of `x` holds fewer than `2^63` values: the longs `place` and `addc`
     compute `Vals.row`'s positions in. `Vals.pickShared` keeps it (`pickShared_small`), sharing the payloads. -/
-def _root_.LeetQ.Rel.Vals.Small : {A : Obj} → {n : USize} → Vals A n → Prop
+def _root_.Rel.Vals.Small : {A : Obj} → {n : USize} → Vals A n → Prop
   | .atom _, _, _ => True
   | .prod _ _, _, x => x.1.Small ∧ x.2.Small
   | .arr _, _, x => x.1.toNat < 2 ^ 63 ∧ x.2.2.2.Small
@@ -820,7 +820,7 @@ A `.general` or `.guid` atom is left out: qlean states no order on it (`orderKin
 and its rows sort by `codes`, an order of one call. -/
 
 /-- `A` holds no `.general` or `.guid` atom: each of its atoms is one qlean's sort kernels order. -/
-def _root_.LeetQ.Rel.Obj.Ordered : Obj → Prop
+def _root_.Rel.Obj.Ordered : Obj → Prop
   | .atom t => t ≠ .general ∧ t ≠ .guid
   | .prod a b => a.Ordered ∧ b.Ordered
   | .arr b => b.Ordered
@@ -829,7 +829,7 @@ def _root_.LeetQ.Rel.Obj.Ordered : Obj → Prop
 /-- **`¬ Obj.lt` is antisymmetric where `Obj.key` is injective**: neither below the other means equal keys
     (`lt_trichotomy`), so equal elements. `Ordered` alone does not give it: a float key (`rank64`) sends every NaN to
     one key and `-0.0` to `+0.0`'s, so distinct elements of an ordered side can share a key. -/
-theorem _root_.LeetQ.Rel.Obj.eq_of_not_lt (A : Obj) (hA : ∀ x y : A.El, A.key x = A.key y → x = y) {x y : A.El}
+theorem _root_.Rel.Obj.eq_of_not_lt (A : Obj) (hA : ∀ x y : A.El, A.key x = A.key y → x = y) {x y : A.El}
     (h1 : ¬ A.lt x y) (h2 : ¬ A.lt y x) : x = y :=
   hA x y (((A.lt_trichotomy x y).resolve_left h1).resolve_right h2)
 
@@ -859,4 +859,4 @@ theorem sortsAsc_all : ∀ A : Obj, A.Ordered → SortsAsc A
 #print axioms sortsAsc_boolean
 #print axioms sortsAsc_sum
 
-end LeetQ.Rel.Alg
+end Rel.Alg

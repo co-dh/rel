@@ -1,10 +1,10 @@
-import LeetQ.Rel.Programs.Prelude
+import Rel.Programs.Prelude
 
 /-! # String edit -/
 
-namespace LeetQ.Rel.Programs
+namespace Rel.Programs
 
-open LeetQ.Rel.Programs.prelude in
+open Rel.Programs.prelude in
 rel_program edit where
     obj A = {a,b}                                 -- the alphabet
     obj Op = A+(A+A)                              -- Op ::= cpy A ∣ del A ∣ ins A
@@ -84,4 +84,4 @@ rel_program edit where
 
 #guard edit.ok
 
-end LeetQ.Rel.Programs
+end Rel.Programs

@@ -4,15 +4,15 @@
   of the decode is the part's element), the ALP join reads the parts' `alpBits` end to end (`Verify.elemsW_concatALP`);
   the Frame-of-Reference join (`concatFoR`) is left open as `hJ`.
 -/
-import LeetQ.Rel.KernelWF.RazeRowAll
-import QLean.RelPart.Dep.Monadic
-import QLean.RelPart.Verify.AlpConcat
+import Rel.KernelWF.RazeRowAll
+import Rel.Kernel.Dep.Monadic
+import Rel.KernelSpec.AlpConcat
 
-namespace LeetQ.Rel.KernelWF
+namespace Rel.KernelWF
 
-open QLean QLean.Kernel QLean.Dep LeetQ.Rel LeetQ.Rel.Alg LeetQ.Rel.Rep
-open scoped LeetQ.Core.Rel
-open LeetQ.Core.Rel hiding id comp recip inter union zero le inl inr junc
+open Rel Rel.Kernel Rel.Dep Rel Rel.Alg Rel.Rep
+open scoped Rel.Core.Rel
+open Rel.Core.Rel hiding id comp recip inter union zero le inl inr junc
 
 -- dup of Raze.need_some (private there)
 private theorem need_some {α : Type} {p : Prop} [Decidable p] {msg : Unit → String} {k : p → Option α} {v : α}
@@ -295,4 +295,4 @@ theorem razeTo_join_alp {t : QAtomicType} {w : Nat} (hw : t.width = some w) (cs 
 
 #print axioms razeTo_join_alp
 
-end LeetQ.Rel.KernelWF
+end Rel.KernelWF

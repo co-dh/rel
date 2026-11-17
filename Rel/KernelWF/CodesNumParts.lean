@@ -3,12 +3,12 @@
   encoding: part `k`'s code at `i` is the razed column's at `O_k + i`, and that row is part `k`'s row `i`
   (`raze_get`, every answer of `razeColumn`). Above `RazeFoR`, which reads every raze back.
 -/
-import LeetQ.Rel.KernelWF.RazeFoR
-import LeetQ.Rel.KernelWF.CodesFloatParts
+import Rel.KernelWF.RazeFoR
+import Rel.KernelWF.CodesFloatParts
 
-namespace LeetQ.Rel.Alg
+namespace Rel.Alg
 
-open QLean QLean.Dep QLean.Kernel QLean.Verify LeetQ.Rel
+open Rel Rel.Dep Rel.Kernel Rel.Verify Rel
 
 /-- **A float side: its codes are faithful jointly across the parts** — equal codes exactly at rows of equal
     bits; the parts and their `raze` in any encoding, the parts' summed count a `USize`, 32 bits where an ALP
@@ -78,4 +78,4 @@ theorem codes_dense_faithful_wf {t : QAtomicType} {k₀ : Scan.Kind} (ht : order
 #print axioms codes_float_parts_faithful
 #print axioms codes_dense_faithful_wf
 
-end LeetQ.Rel.Alg
+end Rel.Alg

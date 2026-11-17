@@ -1,4 +1,4 @@
-import LeetQ.Run.Lang.Parse
+import Rel.Run.Lang.Parse
 import Lean
 
 /-! The Rel language as a closed Lean syntax category, its one grammar: `rel_program n where` and the program's
@@ -8,11 +8,11 @@ import Lean
     Scope (which run of letters is which names, which name takes arguments) is `Parse`'s: a Lean identifier is read
     back by `Parse.name`/`Parse.word`/`Parse.object` in its scope. -/
 
-namespace LeetQ.Rel.Lang.Embed
+namespace Rel.Lang.Embed
 
 open Lean Parser Elab Command
-open LeetQ.Rel.Lang
-open LeetQ.Rel.Lang.Parse (P)
+open Rel.Lang
+open Rel.Lang.Parse (P)
 
 /-! ### The grammar -/
 
@@ -428,4 +428,4 @@ partial def atomOf (s : Syntax) (p : Lang.Pos) (n : String) (app objs pair : Opt
 
 end
 
-end LeetQ.Rel.Lang.Embed
+end Rel.Lang.Embed

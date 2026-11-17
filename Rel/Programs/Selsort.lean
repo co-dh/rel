@@ -1,13 +1,13 @@
-import LeetQ.Rel.Programs.Prelude
+import Rel.Programs.Prelude
 
 /-! # Sorting by selection
 
 B&dM §6.6 "Sorting by selection" (diag/aop/06-recursive.typ:286-344): the specification `perm ordered(≤)` and the
 derived program `X ≜ ⦇[nil, select°]⦈°`, on arrays; B&dM's preorder `R`, fixed for the whole of §6.6, is `≤`. -/
 
-namespace LeetQ.Rel.Programs
+namespace Rel.Programs
 
-open LeetQ.Rel.Programs.prelude in
+open Rel.Programs.prelude in
 rel_program selsort where
     obj N = 0…9                                   -- the elements
 
@@ -39,4 +39,4 @@ rel_program selsort where
 
 #guard selsort.ok
 
-end LeetQ.Rel.Programs
+end Rel.Programs

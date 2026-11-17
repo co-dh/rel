@@ -1,8 +1,8 @@
-import LeetQ.Run.CRelDef
+import Rel.Run.CRelDef
 
 section
-namespace LeetQ.Rel
-open QLean QLean.Kernel LeetQ.Rel LeetQ.Rel.Alg
+namespace Rel
+open Rel Rel.Kernel Rel Rel.Alg
 namespace Rep
 
 /-- The pairs `(c, y)` a round of `loopOn` meets at its states `St`, whose `ran` its step sees. -/
@@ -10,12 +10,12 @@ def loopPairs {K X Y : Obj} (St : Rel K (.prod X (.arr Y))) : Rel (.prod X (.arr
   pair (outl (ran St)) (outl (outr (ran St) ≫ uncons (ran (outr (ran St))).val))
 
 end Rep
-end LeetQ.Rel
+end Rel
 end
 
 section
-namespace LeetQ.Rel
-open QLean QLean.Kernel LeetQ.Rel LeetQ.Rel.Alg
+namespace Rel
+open Rel Rel.Kernel Rel Rel.Alg
 namespace CRel
 variable {K X Y B : Obj}
 
@@ -48,5 +48,5 @@ def fixOn {A : Obj} (n : Nat) (φ : CRel A B → CRel A B) (X₀ : CRel A B) : C
   guard X₀.ok fun _ => let r := fixOnC n (fun D => let s := φ ⟨D, true⟩; (s.rel, s.ok)) X₀.rel; (ofC (r.1.1, r.2), r.1.2)
 
 end CRel
-end LeetQ.Rel
+end Rel
 end

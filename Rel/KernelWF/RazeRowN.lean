@@ -3,13 +3,13 @@
   counts before `l` plus `j` (`raze_rowN`), under `razeC`'s bit. The constructor cases are `RazeRow`'s and
   `RazeRowRec`'s with the second part's offset generalised to the counts before part `l`.
 -/
-import LeetQ.Rel.KernelWF.RazeFoR
+import Rel.KernelWF.RazeFoR
 
-namespace LeetQ.Rel.KernelWF
+namespace Rel.KernelWF
 
-open QLean QLean.Kernel QLean.Dep LeetQ.Rel LeetQ.Rel.Alg LeetQ.Rel.Rep
-open scoped LeetQ.Core.Rel
-open LeetQ.Core.Rel hiding id comp recip inter union zero le inl inr junc
+open Rel Rel.Kernel Rel.Dep Rel Rel.Alg Rel.Rep
+open scoped Rel.Core.Rel
+open Rel.Core.Rel hiding id comp recip inter union zero le inl inr junc
 
 theorem foldl_add_sum' : ∀ (L : List Nat) (s : Nat), L.foldl (· + ·) s = s + L.sum
   | [], s => by simp
@@ -300,4 +300,4 @@ theorem raze_rowN : ∀ (A : Obj) (ps : Array (Part A))
 
 #print axioms raze_rowN
 
-end LeetQ.Rel.KernelWF
+end Rel.KernelWF

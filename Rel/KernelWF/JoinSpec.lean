@@ -4,14 +4,14 @@
   read at its lane, `Column.idAt c.b c.w i`, which is a bit at `1`, a packed id at `2`/`4` and a dense
   little-endian element at `8 … 64` (`idAt_one`, `resAt_lane`).
 -/
-import LeetQ.Rel.KernelWF.Lane
-import QLean.RelPart.Verify.Gather
-import QLean.RelPart.Verify.Search
-import QLean.RelPart.Verify.SymFind
+import Rel.KernelWF.Lane
+import Rel.KernelSpec.Gather
+import Rel.KernelSpec.Search
+import Rel.KernelSpec.SymFind
 
-namespace LeetQ.Rel.Alg
+namespace Rel.Alg
 
-open QLean QLean.Kernel QLean.Verify LeetQ.Rel
+open Rel Rel.Kernel Rel.Verify Rel
 
 /-- An injective `f` keeps every position: `l.map f` finds `f a` where `l` finds `a`. Belongs in qlean. -/
 theorem idxOf_map_inj {α β : Type} [BEq α] [LawfulBEq α] [BEq β] [LawfulBEq β] {f : α → β}
@@ -166,4 +166,4 @@ theorem len_eq_ids (b : ByteArray) : len b = (ids b).length := by simp [len, ids
 #print axioms find_spec
 #print axioms gather_spec
 
-end LeetQ.Rel.Alg
+end Rel.Alg

@@ -3,14 +3,14 @@
   `Int64` order. `lt` compares q's ordinal ranks (`rank_long`) of every pair of positions (`cross`) and drops the
   pairs of one value, which the ranks put apart by position.
 -/
-import LeetQ.Rel.RepArith
-import LeetQ.Rel.KernelWF.RankSpec
-import LeetQ.Rel.KernelWF.RazeFoR
-import LeetQ.Rel.RepList
+import Rel.RepArith
+import Rel.KernelWF.RankSpec
+import Rel.KernelWF.RazeFoR
+import Rel.RepList
 
-namespace LeetQ.Rel.Rep
+namespace Rel.Rep
 
-open QLean QLean.Kernel QLean.Verify LeetQ.Rel LeetQ.Rel.Alg LeetQ.Rel.KernelWF
+open Rel Rel.Kernel Rel.Verify Rel Rel.Alg Rel.KernelWF
 
 /-- `Ew.cmp lt` at `long` on two longs below `2^63`: their order as numbers. -/
 theorem cmp_lt_small {v w : UInt64} (hv : v.toNat < 2 ^ 63) (hw : w.toNat < 2 ^ 63) :
@@ -394,4 +394,4 @@ theorem rep_asc {B : Obj} {n : USize} (X : Vals (.arr B) n) (hp : X.1.toNat < 2 
 #print axioms rep_lt
 #print axioms rep_leq
 
-end LeetQ.Rel.Rep
+end Rel.Rep

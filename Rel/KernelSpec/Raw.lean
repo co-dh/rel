@@ -1,12 +1,12 @@
-import QLean.RelPart.Verify.Encoding
-import QLean.RelPart.Value
+import Rel.KernelSpec.Encoding
+import Rel.Kernel.Value
 
-/-! The part of `QLean.Verify.Raw` the Rel kernels reach; `QLean.Verify.Raw` imports it. -/
+/-! The part of `Rel.Verify.Raw` the Rel kernels reach; `Rel.Verify.Raw` imports it. -/
 
 
-namespace QLean.Verify
+namespace Rel.Verify
 
-open QLean
+open Rel
 
 theorem toInt_toInt64 (x : UInt64) :
     x.toInt64.toInt = if x.toNat < 2 ^ 63 then (x.toNat : Int) else x.toNat - 2 ^ 64 := by
@@ -42,12 +42,12 @@ theorem pairwise_map_range_iff {α : Type} (R : α → α → Prop) (f : Nat →
       exact ⟨fun i j hij hj => h i j hij (by omega), by
         rintro _ ⟨i, hi, rfl⟩ _ rfl; exact h i m hi (by omega)⟩
 
-end QLean.Verify
+end Rel.Verify
 
 
-namespace QLean.Verify
+namespace Rel.Verify
 
-open QLean QLean.Column
+open Rel Rel.Column
 
 theorem size_raw {t : QAtomicType} (n : USize) (e : Enc) (hw : Enc.WF t n e) (hb : t ≠ .boolean)
     (hg : t ≠ .guid) (hs : t ≠ .symbol) (hn : t ≠ .general) : (Enc.raw t n e).size = n.toNat := by
@@ -62,4 +62,4 @@ theorem atomOfBits_mod {t : QAtomicType} {w : Nat} (ht : t.width = some w) (hb :
   cases t <;> simp [QAtomicType.width] at ht <;> subst ht <;>
     first | exact absurd rfl hb | exact absurd rfl hg | simp only [atomOfBits, Nat.reduceMul, h8, h16, h32, ofNat_toNat_mod64]
 
-end QLean.Verify
+end Rel.Verify

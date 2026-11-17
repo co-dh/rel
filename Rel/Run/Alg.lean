@@ -1,13 +1,13 @@
 /-
   The operators of the relation algebra on the core (RelRep design §2.3): each a pipeline of qlean
   kernels over a `Rel`'s two payloads, with the order, the power side, the list functions and the
-  predicates built on them. The codes they compare through are in `LeetQ.Rel.Code`.
+  predicates built on them. The codes they compare through are in `Rel.Code`.
 -/
-import LeetQ.Run.Code
+import Rel.Run.Code
 
-namespace LeetQ.Rel.Alg
+namespace Rel.Alg
 
-open QLean QLean.Dep QLean.Kernel LeetQ.Rel
+open Rel Rel.Dep Rel.Kernel Rel
 
 /-! ## The operators -/
 
@@ -127,7 +127,7 @@ theorem need_fst {α β : Type} {p : Prop} [Decidable p] (msg : Unit → String)
   unfold need stop; split <;> rfl
 
 /-- A codes twin's `.1` is `Obj.codes`, at each constructor of the side. -/
-theorem _root_.LeetQ.Rel.Obj.codesC_fst (X : Obj) {p : Nat} (cs : Vector (Part X) p) : (X.codesC cs).1 = X.codes cs := by
+theorem _root_.Rel.Obj.codesC_fst (X : Obj) {p : Nat} (cs : Vector (Part X) p) : (X.codesC cs).1 = X.codes cs := by
   cases X <;> rfl
 
 /-- The coreflexive on the distinct elements of `x`, `𝟙` on `x` at the first row of each code, and whether it ran
@@ -413,7 +413,7 @@ def prod {A B D E : Obj} (R : Rel A B) (S : Rel D E) : Rel (.prod A D) (.prod B 
 
 /-- An interned atom column's dictionary entry count, `0` unencoded. A def, so `Vals.reads` and the bounds on it
     name one constant rather than each module its own `match` auxiliary, which `omega` sees as distinct atoms. -/
-def _root_.LeetQ.Rel.Arr.dictSize {t : QAtomicType} {n : USize} (x : Arr t n) : Nat :=
+def _root_.Rel.Arr.dictSize {t : QAtomicType} {n : USize} (x : Arr t n) : Nat :=
   match x.enc with | .enum _ o _ => o.size | _ => 0
 
 /-- **What reading `x` at the rows `ps` touches**, the one size measure every fit bound is arithmetic on: the
@@ -421,7 +421,7 @@ def _root_.LeetQ.Rel.Arr.dictSize {t : QAtomicType} {n : USize} (x : Arr t n) : 
     each clause `Vals.PickFits`'s bounds summed, at the same windows (`w`) and side positions (`side`). A payload
     and a side are read at all their rows as well: `raze` takes them whole (`Vals.RazeFits`), rows no parent row
     reaches included. -/
-def _root_.LeetQ.Rel.Vals.reads : (A : Obj) → {n : USize} → Vals A n → List Nat → Nat
+def _root_.Rel.Vals.reads : (A : Obj) → {n : USize} → Vals A n → List Nat → Nat
   | .atom t, n, x, ps => ps.length + Arr.dictSize (t := t) (n := n) x
   | .prod a b, _, x, ps => Vals.reads a x.1 ps + Vals.reads b x.2 ps
   | .arr b, n, ⟨p, lo, hi, f⟩, ps =>
@@ -1615,4 +1615,4 @@ theorem conv_holds {R : Rel A B} (x : El A) (y : El B) : (conv R).Holds y x ↔ 
 #print axioms conv
 #print axioms comp
 
-end LeetQ.Rel.Alg
+end Rel.Alg

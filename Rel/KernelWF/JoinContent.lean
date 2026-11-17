@@ -2,16 +2,16 @@
   The long arithmetic `join` runs on its count and index columns, read back: `add`/`sub` of two longs
   below `2^63`, `sums` as the running total, and `classSizes` as the rows of each class.
 -/
-import LeetQ.Rel.KernelWF.JoinSpec
-import QLean.RelPart.Verify.BinWin
-import QLean.RelPart.Verify.Chain
-import QLean.RelPart.Verify.Grade
-import QLean.RelPart.Verify.ScanOver
-import QLean.RelPart.Verify.Structural
+import Rel.KernelWF.JoinSpec
+import Rel.KernelSpec.BinWin
+import Rel.KernelSpec.Chain
+import Rel.KernelSpec.Grade
+import Rel.KernelSpec.ScanOver
+import Rel.KernelSpec.Structural
 
-namespace LeetQ.Rel.Alg
+namespace Rel.Alg
 
-open QLean QLean.Kernel QLean.Verify LeetQ.Rel
+open Rel Rel.Kernel Rel.Verify Rel
 
 /-- A long below `2^63` reads as its own value at `i64`. -/
 theorem toInt64_toInt {x : UInt64} (hx : x.toNat < 2 ^ 63) : x.toInt64.toInt = x.toNat :=
@@ -413,4 +413,4 @@ theorem grade_ofIds (ng : Nat) (n : USize) (gid : ByteArray) (hng : ng ≤ 2 ^ 6
 #print axioms sums_get
 #print axioms classSizes_ids
 
-end LeetQ.Rel.Alg
+end Rel.Alg

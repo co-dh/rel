@@ -4,12 +4,12 @@
   an id exactly when they share a symbol, because the dictionary has no entry twice and every entry is
   valid UTF-8, where `String.fromUTF8?` answers and is injective.
 -/
-import LeetQ.Rel.KernelWF.CodesSpec
-import LeetQ.Run.KernelWF.Raze
+import Rel.KernelWF.CodesSpec
+import Rel.Run.KernelWF.Raze
 
-namespace LeetQ.Rel.Alg
+namespace Rel.Alg
 
-open QLean QLean.Dep QLean.Kernel QLean.Verify LeetQ.Rel
+open Rel Rel.Dep Rel.Kernel Rel.Verify Rel
 
 /-! ## Lanes -/
 
@@ -295,4 +295,4 @@ theorem codes_symbol_wf (x : Part (.atom .symbol)) :
 #print axioms codes_symbol_faithful
 #print axioms codes_symbol_wf
 
-end LeetQ.Rel.Alg
+end Rel.Alg

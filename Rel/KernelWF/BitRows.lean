@@ -2,11 +2,11 @@
   `bitRowsOver` read back: bit `j` of row `g` of the answer is the `∃` (`∨`) or `∀` (`∧`) over the positions
   `k` of segment `g` of bit `j` of row `idx[k]` of the matrix. The rule `Bits.comp` and `Bits.ldiv` stand on.
 -/
-import QLean.RelPart.Verify.Gather
+import Rel.KernelSpec.Gather
 
-namespace LeetQ.Rel.Alg
+namespace Rel.Alg
 
-open QLean QLean.Kernel QLean.Verify
+open Rel Rel.Kernel Rel.Verify
 
 /-- **`bitRowsOver`, one bit**: for `g` below the segment count and `j < w`, bit `g·w + j` is set iff some
     (`all = false`), resp. every (`all = true`), position `k` of segment `g` (`segRange`) has bit
@@ -37,4 +37,4 @@ theorem bitRowsOver_spec (all : Bool) (w : USize) (offs idx m : ByteArray) (g j 
     · intro h k h1 h2; exact h k ⟨k - lo, by omega, by omega⟩
     · rintro h k ⟨i, hk, rfl⟩; exact h _ (by omega) (by omega)
 
-end LeetQ.Rel.Alg
+end Rel.Alg

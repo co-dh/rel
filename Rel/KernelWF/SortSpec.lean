@@ -2,14 +2,14 @@
   `Obj.sortBy` and `Code.grade`, read back: every grade kernel sorts `til m`, so a grade is a permutation of
   the rows it reads, and `sortBy`'s answer holds the rows it was handed, each once.
 -/
-import LeetQ.Rel.KernelWF.JoinContent
-import LeetQ.Rel.KernelWF.CodesAll
-import LeetQ.Run.KernelWF.Reduce
-import LeetQ.Rel.KernelWF.MemberSpec
+import Rel.KernelWF.JoinContent
+import Rel.KernelWF.CodesAll
+import Rel.Run.KernelWF.Reduce
+import Rel.KernelWF.MemberSpec
 
-namespace LeetQ.Rel.Alg
+namespace Rel.Alg
 
-open QLean QLean.Kernel QLean.Verify LeetQ.Rel LeetQ.Rel.KernelWF
+open Rel Rel.Kernel Rel.Verify Rel Rel.KernelWF
 
 /-- Element `j` of `ids b` is the long `j` of `b`. -/
 theorem ids_getElem {b : ByteArray} {j : Nat} (hj : j < (ids b).length) :
@@ -336,4 +336,4 @@ theorem grade_gather_group (kc : Code)
 #print axioms grade_code
 #print axioms sortBy_perm
 
-end LeetQ.Rel.Alg
+end Rel.Alg

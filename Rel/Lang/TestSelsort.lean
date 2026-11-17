@@ -1,13 +1,13 @@
-import LeetQ.Rel.Lang.Test
-import LeetQ.Rel.Programs.Selsort
+import Rel.Lang.Test
+import Rel.Programs.Selsort
 
 /-! The Rel language on B&dM §6.6 selection sort, the program `Programs.selsort`: the specification
     `perm ordered(≤)` and the derived program `X`, each checked on four arrays in the program, and against
     `List.mergeSort`. -/
 
-namespace LeetQ.Rel.Lang.TestSelsort
+namespace Rel.Lang.TestSelsort
 
-open LeetQ.Rel LeetQ.Rel.Lang LeetQ.Rel.Lang.Test
+open Rel Rel.Lang Rel.Lang.Test
 
 /-- The program's inputs, as Lean lists. -/
 def inputs : List (String × List Nat) := [("x", [3, 1, 2]), ("y", [2, 1, 2]), ("z", [5, 4, 3, 2, 1]), ("e", [])]
@@ -17,7 +17,7 @@ def shown (l : List Nat) : String := "{(∗, " ++ arrText false (l.map toString)
 
 def sorted (l : List Nat) : List Nat := l.mergeSort fun a b => decide (a ≤ b)
 
-open LeetQ.Rel.Programs.prelude Programs.selsort in
+open Rel.Programs.prelude Programs.selsort in
 rel_program given where
     print x
     print y
@@ -27,7 +27,7 @@ rel_program given where
 -- the inputs are the lists above: the program printed with one `print` per input appended
 #guard given.prints == inputs.map fun (n, l) => s!"{n} = {shown l}"
 
-open LeetQ.Rel.Programs.prelude Programs.selsort in
+open Rel.Programs.prelude Programs.selsort in
 rel_program sorts where
     print x perm ordered(≤)
     print y perm ordered(≤)
@@ -46,4 +46,4 @@ rel_program sorts where
   inputs.map (fun (n, l) => s!"{n} perm ordered(≤) = {shown (sorted l)}") ++
   inputs.map (fun (n, l) => s!"{n} X = {shown (sorted l)}")
 
-end LeetQ.Rel.Lang.TestSelsort
+end Rel.Lang.TestSelsort

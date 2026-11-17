@@ -2,11 +2,11 @@
   q's `asc` order on every side `A : Obj`: the order qlean's sort kernels implement (`c/sort.c`,
   `QLean/Kernel/Sort.lean`), lifted from atoms to products, arrays and sums.
 -/
-import LeetQ.Run.Core
+import Rel.Run.Core
 
-namespace LeetQ.Rel
+namespace Rel
 
-open QLean QLean.Dep QLean.Kernel
+open Rel Rel.Dep Rel.Kernel
 
 /-- The key of an element, a list of naturals compared lexicographically (`Obj.lt`). At an atom it is
     the key qlean's grade sorts by (`Order.rank` of the raw bits, `QLean/Kernel/Sort.lean`): a number by
@@ -192,4 +192,4 @@ theorem Obj.lt_cons (b : Obj) (x y : b.El) (xs ys : List b.El) :
 #print axioms Obj.lt_prod
 #print axioms Obj.lt_cons
 
-end LeetQ.Rel
+end Rel

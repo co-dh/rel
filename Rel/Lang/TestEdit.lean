@@ -1,12 +1,12 @@
-import LeetQ.Rel.Programs.Edit
+import Rel.Programs.Edit
 
 /-! The Rel language on B&dM's string edit (§9.2), the program `Programs.edit`: the specification
     `Λ(edit°) est(R)` on every pair of strings of length ≤ 2 over `{a,b}`, its least lengths against the
     edit-distance recursion on `List` below. -/
 
-namespace LeetQ.Rel.Lang.TestEdit
+namespace Rel.Lang.TestEdit
 
-open LeetQ.Rel LeetQ.Rel.Lang
+open Rel Rel.Lang
 
 /-- The least length of an edit sequence of `(xs, ys)`, each of `cpy`, `del`, `ins` costing one: every
     operation that applies at the heads, the cheapest rest taken. A copy is one choice among three, not
@@ -32,7 +32,7 @@ def expected (term : String) : String :=
   s!"{term} = \{" ++ ", ".intercalate (ps.map fun (x, y) => s!"(({word x}, {word y}), {cost x y})") ++ "}"
 
 -- `mle`'s lengths, printed after the program
-open LeetQ.Rel.Programs.prelude Programs.edit in
+open Rel.Programs.prelude Programs.edit in
 rel_program mleLength where
     print D mle length 𝟙(N)
 
@@ -44,4 +44,4 @@ rel_program mleLength where
 -- and `mle`'s lengths printed here are the edit-distance recursion's, on the same 49 pairs
 #guard mleLength.ok && mleLength.prints == [expected "D mle length 𝟙(N)"]
 
-end LeetQ.Rel.Lang.TestEdit
+end Rel.Lang.TestEdit

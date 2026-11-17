@@ -3,11 +3,11 @@
   twice, so equal relations are equal data. The laws are proved in `CRelRel` (`comp_assoc`, `id_comp`, `comp_id`,
   `inter_self`, `union_self`); these checks run them on tables.
 -/
-import LeetQ.Run.CRelRelDef
+import Rel.Run.CRelRelDef
 
-namespace LeetQ.Rel.CanonTest
+namespace Rel.CanonTest
 
-open LeetQ.Rel
+open Rel
 
 /-- A table of pairs, through `ofC` like every op's answer. -/
 def mk (ps : List (Int64 × Int64)) : CRel .long .long := CRel.ofC (Alg.ofPairs ps, true)
@@ -37,4 +37,4 @@ def R : CRel .long .long := mk [(2,7),(1,7),(2,8)]
 -- negative keys sort below positive ones: `Obj.lt` is the atom's own order
 #guard (mk [(3,0),(-1,0),(0,0)]).rel.toList == [(-1,0),(0,0),(3,0)]
 
-end LeetQ.Rel.CanonTest
+end Rel.CanonTest

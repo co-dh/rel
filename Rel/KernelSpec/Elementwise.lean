@@ -1,18 +1,18 @@
-import QLean.RelPart.Verify.FindMember
-import QLean.RelPart.Verify.Encoding
-import QLean.RelPart.Kernel.Reduce
-import QLean.RelPart.Value
-import QLean.RelPart.Kernel.Elementwise
-import QLean.RelPart.Eval.Val
+import Rel.KernelSpec.FindMember
+import Rel.KernelSpec.Encoding
+import Rel.Kernel.Reduce
+import Rel.Kernel.Value
+import Rel.Kernel.Elementwise
+import Rel.Kernel.Eval.Val
 
-/-! The part of `QLean.Verify.Elementwise` the Rel kernels reach; `QLean.Verify.Elementwise` imports it. -/
+/-! The part of `Rel.Verify.Elementwise` the Rel kernels reach; `Rel.Verify.Elementwise` imports it. -/
 
 
-namespace QLean.Verify
+namespace Rel.Verify
 
-open QLean
+open Rel
 
-open QLean.Kernel in
+open Rel.Kernel in
 /-- **`packOf`'s bitmap**: bit `i` is set exactly when `i < n` and `f i`, so the last byte's tail is
     zero. The byte fold is `memberVec_mem`'s; `Ew.cmp`, `Ew.bit` and `shiftBits` are each this fold. -/
 theorem packOf_bitAt (n : Nat) (f : Nat → Bool) :
@@ -45,7 +45,7 @@ theorem packOf_bitAt (n : Nat) (f : Nat → Bool) :
     rw [Bool.and_eq_true, decide_eq_true_eq, Nat.mul_comm, Nat.div_add_mod]
     exact ⟨rfl, hc⟩
 
-open QLean.Kernel in
+open Rel.Kernel in
 /-- **`Ew.cmp`'s bitmap**: bit `i` is set exactly when `i < n` and `cmpStep` holds of the two elements
     the shape reads at `i`, so the last byte's tail is zero. -/
 theorem cmp_bitAt (op cls shape : UInt8) (a b : ByteArray) (n : USize) :
@@ -56,7 +56,7 @@ theorem cmp_bitAt (op cls shape : UInt8) (a b : ByteArray) (n : USize) :
   packOf_bitAt n.toNat fun i =>
     Ew.cmpStep op cls (Ew.elem cls a (Ew.shapeIdx shape i).1) (Ew.elem cls b (Ew.shapeIdx shape i).2)
 
-open QLean.Kernel in
+open Rel.Kernel in
 /-- **`Ew.bit`'s bitmap**: bit `i` is set exactly when `i < n` and `bitStep` holds of the two bits the
     shape reads at `i`. -/
 theorem Ew.bit_bitAt (op shape : UInt8) (a b : ByteArray) (n : USize) :
@@ -67,30 +67,30 @@ theorem Ew.bit_bitAt (op shape : UInt8) (a b : ByteArray) (n : USize) :
   packOf_bitAt n.toNat fun i =>
     Ew.bitStep op (Column.bitAt a (Ew.shapeIdx shape i).1) (Column.bitAt b (Ew.shapeIdx shape i).2)
 
-end QLean.Verify
+end Rel.Verify
 
 -- `Classical.choice` is the statement's: `Ew.cmpStep` names `Float.ofBits` (via `ord64`, `ord32`,
 -- `QAtom.tolerant`), an opaque whose `Inhabited` witness is choice; the proof adds none.
-/-- info: 'QLean.Verify.cmp_bitAt' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+/-- info: 'Rel.Verify.cmp_bitAt' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs in
-#print axioms QLean.Verify.cmp_bitAt
+#print axioms Rel.Verify.cmp_bitAt
 
-/-- info: 'QLean.Verify.packOf_bitAt' depends on axioms: [propext, Quot.sound] -/
+/-- info: 'Rel.Verify.packOf_bitAt' depends on axioms: [propext, Quot.sound] -/
 #guard_msgs in
-#print axioms QLean.Verify.packOf_bitAt
+#print axioms Rel.Verify.packOf_bitAt
 
-/-- info: 'QLean.Verify.Ew.bit_bitAt' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+/-- info: 'Rel.Verify.Ew.bit_bitAt' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs in
-#print axioms QLean.Verify.Ew.bit_bitAt
+#print axioms Rel.Verify.Ew.bit_bitAt
 
 
-namespace QLean.Verify
+namespace Rel.Verify
 
-open QLean QLean.Eval
+open Rel Rel.Eval
 
 -- `general` has no atom, so each constructor below takes `h : t ≠ .general`; it is implicit here
 -- because the term on the left already carries it.
 @[simp] theorem nullAtom_type (t : QAtomicType) {h : t ≠ .general} : (nullAtom t h).type = t := by
   cases t <;> first | exact absurd rfl h | rfl
 
-end QLean.Verify
+end Rel.Verify

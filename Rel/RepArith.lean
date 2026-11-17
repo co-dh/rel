@@ -3,16 +3,16 @@
   the literal columns `col`, `tilCol` — read in `Rel(Set)`, each stating what the kernel computes: q's `long`
   arithmetic at the row's two operands, kept where the answer is not q's null and did not wrap.
 -/
-import LeetQ.Rel.RepFold
-import LeetQ.Rel.KernelWF.PickRow
-import LeetQ.Rel.KernelWF.JoinContent
-import LeetQ.Rel.KernelWF.CodesLongParts
-import LeetQ.Rel.KernelWF.RazeRowRec
-import LeetQ.Rel.KernelWF.CrossSpec
+import Rel.RepFold
+import Rel.KernelWF.PickRow
+import Rel.KernelWF.JoinContent
+import Rel.KernelWF.CodesLongParts
+import Rel.KernelWF.RazeRowRec
+import Rel.KernelWF.CrossSpec
 
-namespace LeetQ.Rel.Rep
+namespace Rel.Rep
 
-open QLean QLean.Kernel QLean.Verify LeetQ.Rel LeetQ.Rel.Alg LeetQ.Rel.KernelWF
+open Rel Rel.Kernel Rel.Verify Rel Rel.Alg Rel.KernelWF
 
 /-! ## The rows `whereBits` keeps -/
 
@@ -351,7 +351,7 @@ theorem col_get (xs : List Int64) (h : xs.length < USize.size) (i : Fin xs.lengt
 
 section FoldOn
 
-open QLean.Dep
+open Rel.Dep
 
 open FoldN OpsN
 
@@ -553,4 +553,4 @@ theorem length_chain (sc : Rel .long .long) (N : Nat)
 
 end FoldOn
 
-end LeetQ.Rel.Rep
+end Rel.Rep

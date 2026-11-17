@@ -2,17 +2,17 @@
   `\` as bits: `Bits.ldiv`'s `∧` of `S`'s rows over `R`'s segments, masked by `ran R ⊗ ⊤ ∪ Ub ⊗ Uc`, holds
   `Tm.ldiv`'s relation. Each part is `enc_rows` (`∧` for the rows, `∨` for each mask through the one point).
 -/
-import LeetQ.Rel.Lang.BitsSpec
-import LeetQ.Rel.KernelWF.SortSpec
-import LeetQ.Rel.KernelWF.BagSpec
-import LeetQ.Rel.KernelWF.JoinContent
-import LeetQ.Rel.KernelWF.RowsSpec
-import LeetQ.Rel.KernelWF.ComposeKey
-import LeetQ.Run.KernelWF.Raze
+import Rel.Lang.BitsSpec
+import Rel.KernelWF.SortSpec
+import Rel.KernelWF.BagSpec
+import Rel.KernelWF.JoinContent
+import Rel.KernelWF.RowsSpec
+import Rel.KernelWF.ComposeKey
+import Rel.Run.KernelWF.Raze
 
-namespace LeetQ.Rel.Lang.Bits
+namespace Rel.Lang.Bits
 
-open QLean QLean.Kernel QLean.Verify LeetQ.Rel LeetQ.Rel.Alg LeetQ.Rel.Rep
+open Rel Rel.Kernel Rel.Verify Rel Rel.Alg Rel.Rep
 
 variable {ρ : Val}
 
@@ -137,4 +137,4 @@ theorem rep_ldivB {R : Tm A B false} {S : Tm A C false} {UB : Tm B B false} {UC 
 
 #print axioms rep_ldivB
 
-end LeetQ.Rel.Lang.Bits
+end Rel.Lang.Bits

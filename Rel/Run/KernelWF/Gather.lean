@@ -3,12 +3,12 @@
   that let `pick`, `longBytes` and `gens` drop their `Except`. Each hypothesis is one a
   caller holding an `Arr` already has: `x.wf`, an index `.bytes i` of `i.size / 8` longs.
 -/
-import QLean.RelPart.Verify.SymFind
-import LeetQ.Run.KernelWF.Raze
+import Rel.KernelSpec.SymFind
+import Rel.Run.KernelWF.Raze
 
-namespace LeetQ.Rel.KernelWF
+namespace Rel.KernelWF
 
-open QLean QLean.Kernel QLean.Verify
+open Rel Rel.Kernel Rel.Verify
 
 /-- A `long` payload is dense bytes or Frame of Reference: `WF` admits no other layout at `long`. -/
 theorem long_cases {n : USize} {e : Enc} (hw : Enc.WF .long n e) :
@@ -426,4 +426,4 @@ theorem gatherColumn_dict {t : QAtomicType} {n : USize} {e : Enc} (hw : Enc.WF t
     | _ => exfalso; simp [Enc.WF, QAtomicType.width] at hw
   | _ => exact Nat.zero_le _
 
-end LeetQ.Rel.KernelWF
+end Rel.KernelWF

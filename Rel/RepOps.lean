@@ -3,18 +3,18 @@
   `rep`s, under true size bounds, the codes' faithfulness where the op compares codes, and `Vals.PickFits` where
   it picks.
 -/
-import LeetQ.Rel.RepComp
-import LeetQ.Core.Fix
-import LeetQ.Rel.KernelWF.NubSpec
-import LeetQ.Rel.KernelWF.CrossSpec
-import LeetQ.Rel.KernelWF.MemberSpec
-import LeetQ.Rel.KernelWF.CodesProdFaithful
+import Rel.RepComp
+import Rel.Core.Fix
+import Rel.KernelWF.NubSpec
+import Rel.KernelWF.CrossSpec
+import Rel.KernelWF.MemberSpec
+import Rel.KernelWF.CodesProdFaithful
 
-namespace LeetQ.Rel.Rep
+namespace Rel.Rep
 
-open QLean QLean.Kernel LeetQ.Rel LeetQ.Rel.Alg LeetQ.Rel.KernelWF
-open scoped LeetQ.Core.Rel
-open LeetQ.Core.Rel hiding id comp recip inter union zero le inl inr junc
+open Rel Rel.Kernel Rel Rel.Alg Rel.KernelWF
+open scoped Rel.Core.Rel
+open Rel.Core.Rel hiding id comp recip inter union zero le inl inr junc
 
 variable {A B C D : Obj}
 
@@ -28,11 +28,11 @@ section Sum
     `𝟘`); `h63`: it is at most `2^63`, where the tags and positions read `til` as nonnegative longs. -/
 theorem rep_sum (R : Rel A C) (S : Rel B D) (hN : R.n.toNat + S.n.toNat < USize.size)
     (h63 : R.n.toNat + S.n.toNat ≤ 2 ^ 63) :
-    rep (LeetQ.Rel.Alg.sum R S) =
+    rep (Rel.Alg.sum R S) =
       ((Core.Rel.inl (α := A.El) (β := B.El))° ≫ rep R ≫ (Core.Rel.inl (α := C.El) (β := D.El))) ∪
       ((Core.Rel.inr (α := A.El) (β := B.El))° ≫ rep S ≫ (Core.Rel.inr (α := C.El) (β := D.El))) := by
-  have e : LeetQ.Rel.Alg.sum R S = ⟨R.n + S.n, sumVals R.key S.key hN, sumVals R.val S.val hN⟩ := by
-    unfold LeetQ.Rel.Alg.sum need; rw [dif_pos hN]; rfl
+  have e : Rel.Alg.sum R S = ⟨R.n + S.n, sumVals R.key S.key hN, sumVals R.val S.val hN⟩ := by
+    unfold Rel.Alg.sum need; rw [dif_pos hN]; rfl
   rw [e]
   refine Core.Rel.ext fun s t => ?_
   show (∃ k, Vals.row (A := .sum A B) (sumVals R.key S.key hN) k = s ∧
@@ -115,7 +115,7 @@ end Sum
 
 section Distinct
 
-open QLean.Verify
+open Rel.Verify
 
 -- the one-part code `distinctCorefl` groups, named as it names it
 set_option hygiene false in
@@ -232,7 +232,7 @@ end Distinct
 
 section Top
 
-open QLean.Verify
+open Rel.Verify
 
 section Cross
 
@@ -352,7 +352,7 @@ theorem rep_top {ma mb : USize} (Ua : Vals A ma) (Ub : Vals B mb) (hN : ma.toNat
     -- discharges them by `pickFits_cross_left`/`_right`
     (hA : Vals.PickFits A Ua ((List.range (ma.toNat * mb.toNat)).map (· / mb.toNat)))
     (hB : Vals.PickFits B Ub ((List.range (ma.toNat * mb.toNat)).map (· % mb.toNat))) :
-    rep (LeetQ.Rel.Alg.top Ua Ub) = corefl (α := A.El) (fun a => ∃ i, Ua.row i = a) ≫
+    rep (Rel.Alg.top Ua Ub) = corefl (α := A.El) (fun a => ∃ i, Ua.row i = a) ≫
       Core.Rel.top ≫ corefl (α := B.El) (fun b => ∃ j, Ub.row j = b) := by
   have hlen : len (cross ma mb).1 < USize.size := by rw [len_eq_ids, (cross_ids hN h63).1]; simpa using hN
   refine Core.Rel.ext fun a b => ?_
@@ -390,7 +390,7 @@ theorem rep_prod (R : Rel A B) (S : Rel C D) (hN : R.n.toNat * S.n.toNat < USize
     (hB : (S.n.toNat + 1) * Vals.reads B R.val (List.range R.n.toNat) < min (2 ^ 63) USize.size)
     (hC : (R.n.toNat + 1) * Vals.reads C S.key (List.range S.n.toNat) < min (2 ^ 63) USize.size)
     (hD : (R.n.toNat + 1) * Vals.reads D S.val (List.range S.n.toNat) < min (2 ^ 63) USize.size) :
-    rep (LeetQ.Rel.Alg.prod R S) = rprodMap (rep R) (rep S) := by
+    rep (Rel.Alg.prod R S) = rprodMap (rep R) (rep S) := by
   replace hA := pickFits_cross_left (mb := S.n) R.key hA
   replace hB := pickFits_cross_left (mb := S.n) R.val hB
   replace hC := pickFits_cross_right (ma := R.n) S.key hC
@@ -437,7 +437,7 @@ end Top
 
 section Pairs
 
-open QLean.Verify
+open Rel.Verify
 
 namespace OpsN
 -- codes `cs` of two parts `ps` faithful and well formed, in `rep_comp`'s `hc` form (`codes_prod_faithful_wf`'s)
@@ -640,7 +640,7 @@ theorem rep_pair (R : Rel A B) (S : Rel A C) (hc : codesOK(kc, kp(R, S))) (hrn :
     -- `pickFits_join_fst`/`_snd`
     (hA : Vals.PickFits A R.key ((kpairs).map Prod.fst)) (hB : Vals.PickFits B R.val ((kpairs).map Prod.fst))
     (hC : Vals.PickFits C S.val ((kpairs).map Prod.snd)) :
-    rep (LeetQ.Rel.Alg.pair R S) = rpair (rep R) (rep S) := by
+    rep (Rel.Alg.pair R S) = rpair (rep R) (rep S) := by
   obtain ⟨hF, hW⟩ := hc
   obtain ⟨hlw, hln, hls, -⟩ := hW (k := 0) (by decide)
   obtain ⟨hrw, hrn', hrs, hrc⟩ := hW (k := 1) (by decide)
@@ -726,9 +726,9 @@ theorem pair_pickFits (R : Rel A B) (S : Rel A C) (hc : codesOK(kc, kp(R, S))) (
     -- `rep_pair`'s fits, kept for its atom callers; an input side discharges them by `pickFits_join_fst`/`_snd`
     (hA : Vals.PickFits A R.key ((kpairs).map Prod.fst)) (hB : Vals.PickFits B R.val ((kpairs).map Prod.fst))
     (hC : Vals.PickFits C S.val ((kpairs).map Prod.snd)) :
-    Vals.PickFits A (Rel.key (LeetQ.Rel.Alg.pair R S)) (List.range (Rel.n (LeetQ.Rel.Alg.pair R S)).toNat) ∧
-    Vals.PickFits B (Rel.val (LeetQ.Rel.Alg.pair R S)).1 (List.range (Rel.n (LeetQ.Rel.Alg.pair R S)).toNat) ∧
-    Vals.PickFits C (Rel.val (LeetQ.Rel.Alg.pair R S)).2 (List.range (Rel.n (LeetQ.Rel.Alg.pair R S)).toNat) := by
+    Vals.PickFits A (Rel.key (Rel.Alg.pair R S)) (List.range (Rel.n (Rel.Alg.pair R S)).toNat) ∧
+    Vals.PickFits B (Rel.val (Rel.Alg.pair R S)).1 (List.range (Rel.n (Rel.Alg.pair R S)).toNat) ∧
+    Vals.PickFits C (Rel.val (Rel.Alg.pair R S)).2 (List.range (Rel.n (Rel.Alg.pair R S)).toNat) := by
   obtain ⟨hF, hW⟩ := hc
   obtain ⟨hlw, hln, hls, -⟩ := hW (k := 0) (by decide)
   obtain ⟨hrw, hrn', hrs, hrc⟩ := hW (k := 1) (by decide)
@@ -755,7 +755,7 @@ theorem pair_pickFits (R : Rel A B) (S : Rel A C) (hc : codesOK(kc, kp(R, S))) (
     unfold Vals.pickN
     exact ⟨pickFits_pick A R.key _ m _ _ hq (hl ▸ hA) (hl ▸ hA), pickFits_pick B R.val _ m _ _ hq (hl ▸ hB) (hl ▸ hB),
       pickFits_pick C S.val _ m hmJ _ hq (hr ▸ hC) (hr ▸ hC)⟩
-  unfold LeetQ.Rel.Alg.pair pairC; dsimp only
+  unfold Rel.Alg.pair pairC; dsimp only
   rw [Obj.codesC_fst]; unfold pairJoinC longCount; rw [need_fst]
   unfold need
   rw [dif_pos hlt]
@@ -834,13 +834,13 @@ theorem rep_junc (R : Rel A C) (S : Rel B C) (hN : R.n.toNat + S.n.toNat < USize
     (hC : ∀ hN' k hk, Vals.row (C.raze #[⟨R.n, R.val⟩, ⟨S.n, S.val⟩] hN') ⟨k, hk⟩ =
       if h : k < R.n.toNat then Vals.row R.val ⟨k, h⟩
       else Vals.row S.val ⟨k - R.n.toNat, by have := raze2_cnt R.val S.val hN'; omega⟩) :
-    rep (LeetQ.Rel.Alg.junc R S) =
+    rep (Rel.Alg.junc R S) =
       Core.Rel.junc (rep R) (rep S) := by
   have hN' : ((#[⟨R.n, R.val⟩, ⟨S.n, S.val⟩] : Array (Part C)).toList.map fun c : Part C => c.1.toNat).sum <
       USize.size := raze2_lt hN
-  have e : LeetQ.Rel.Alg.junc R S = ⟨R.n + S.n, sumVals R.key S.key hN,
+  have e : Rel.Alg.junc R S = ⟨R.n + S.n, sumVals R.key S.key hN,
       toUSize_eq (by rw [toNat_add_fits hN]) ▸ C.raze #[⟨_, R.val⟩, ⟨_, S.val⟩] hN'⟩ := by
-    unfold LeetQ.Rel.Alg.junc juncC; rw [need_fst]; simp only [razeC_fst]
+    unfold Rel.Alg.junc juncC; rw [need_fst]; simp only [razeC_fst]
     unfold need; rw [dif_pos hN]
   rw [e]
   refine Core.Rel.ext fun s c => ?_
@@ -879,4 +879,4 @@ end UnionJunc
 
 #print axioms rep_junc
 
-end LeetQ.Rel.Rep
+end Rel.Rep

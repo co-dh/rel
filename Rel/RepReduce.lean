@@ -3,18 +3,18 @@
   bulk kernel with no round to the cons-list fold `⦇e, (f × 𝟙) ⊕⦈` that specifies it (doc/rel-avoid-cons.md §3).
   `length` is its instance at `f = 1`, `⊕ = +`, and runs as the count column of the slices, `rep_lengthC`.
 -/
-import LeetQ.Rel.Rep
-import LeetQ.Rel.RepLambda
-import LeetQ.Rel.KernelWF.FoldSpec
-import LeetQ.Rel.KernelWF.JoinContent
+import Rel.Rep
+import Rel.RepLambda
+import Rel.KernelWF.FoldSpec
+import Rel.KernelWF.JoinContent
 
-namespace LeetQ.Rel
+namespace Rel
 
 namespace Rep
 
-open QLean QLean.Kernel QLean.Verify LeetQ.Rel LeetQ.Rel.Alg
-open scoped LeetQ.Core.Rel
-open LeetQ.Core.Rel hiding id comp recip inter union zero le inl inr junc
+open Rel Rel.Kernel Rel.Verify Rel Rel.Alg
+open scoped Rel.Core.Rel
+open Rel.Core.Rel hiding id comp recip inter union zero le inl inr junc
 
 section Reduce
 
@@ -88,4 +88,4 @@ theorem rep_lengthC {E : Obj} {n : USize} (X : Vals (.arr E) n)
 
 end Rep
 
-end LeetQ.Rel
+end Rel

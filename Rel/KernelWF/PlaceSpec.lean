@@ -3,12 +3,12 @@
   destinations) grades `Code.ofLongs` of the destinations, and where those are distinct and below their count
   the grade is the inverse permutation — position `d` holds the cell whose destination is `d`.
 -/
-import LeetQ.Rel.KernelWF.SortSpec
-import LeetQ.Rel.KernelWF.SegSpec
+import Rel.KernelWF.SortSpec
+import Rel.KernelWF.SegSpec
 
-namespace LeetQ.Rel.Alg
+namespace Rel.Alg
 
-open QLean QLean.Kernel QLean.Verify LeetQ.Rel LeetQ.Rel.KernelWF
+open Rel Rel.Kernel Rel.Verify Rel Rel.KernelWF
 
 /-- **A sort of distinct keys below their count is the inverse permutation**: `g` lists `til N` sorted by
     `key`, `key` one-to-one on `til N` and below `N`, so the key of `g[d]` is `d`. -/
@@ -112,10 +112,10 @@ theorem block_inj {n : Nat} {P : Nat → Nat} (hPs : ∀ r < n, P r ≤ P (r + 1
   · exact ⟨rfl, by omega⟩
   · have := hle (r' + 1) r (by omega) (by omega); omega
 
-end LeetQ.Rel.Alg
+end Rel.Alg
 
-#print axioms LeetQ.Rel.Alg.block_inj
-#print axioms LeetQ.Rel.Alg.concat2_get
-#print axioms LeetQ.Rel.Alg.sorted_perm_key
-#print axioms LeetQ.Rel.Alg.xor_pow63
-#print axioms LeetQ.Rel.Alg.grade_ofLongs_inv
+#print axioms Rel.Alg.block_inj
+#print axioms Rel.Alg.concat2_get
+#print axioms Rel.Alg.sorted_perm_key
+#print axioms Rel.Alg.xor_pow63
+#print axioms Rel.Alg.grade_ofLongs_inv

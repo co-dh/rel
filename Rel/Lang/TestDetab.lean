@@ -1,12 +1,12 @@
-import LeetQ.Rel.Programs.Detab
+import Rel.Programs.Detab
 
 /-! The Rel language on B&dM §10.2 detab-entab, the program `Programs.detab`: `detab`, the specification
     `Λ(H)est(R)` (`H` = `detab°` on the candidates) and the derived program `entab`, against a direct `detab` on
     lists and a brute-force shortest preimage. -/
 
-namespace LeetQ.Rel.Lang.TestDetab
+namespace Rel.Lang.TestDetab
 
-open LeetQ.Rel LeetQ.Rel.Lang
+open Rel Rel.Lang
 
 /-- The tab width, the program's `m`. -/
 def n : Nat := 4
@@ -41,7 +41,7 @@ def inputs : List (String × List String) :=
   [("p", ["a", "BL", "BL", "BL"]), ("q", ["a", "a", "a", "BL", "a"]), ("y", List.replicate 5 "BL")]
 
 -- the program's eight `check`s turned back into `print`s, one per line, so the values compared are Lean's below
-open LeetQ.Rel.Programs.prelude Programs.detab in
+open Rel.Programs.prelude Programs.detab in
 rel_program out where
     print x detab
     print x detab entab
@@ -66,4 +66,4 @@ rel_program out where
 #guard (shortest (detabL x)).any fun s => out.prints[1]? == some s!"x detab entab = {shown [s]}"
 #guard (out.prints.drop 5).zip inputs |>.all fun (l, v, y) => (shortest y).any fun s => l == s!"{v} entab = {shown [s]}"
 
-end LeetQ.Rel.Lang.TestDetab
+end Rel.Lang.TestDetab

@@ -1,19 +1,19 @@
-import QLean.RelPart.Verify.Encoding
-import QLean.RelPart.Kernel.Sort
-import QLean.RelPart.Kernel.Coc
-import QLean.RelPart.Kernel.Reduce
-import QLean.RelPart.Kernel.Scan
-import QLean.RelPart.Value
-import QLean.RelPart.Verify.Raw
-import QLean.RelPart.Kernel.Elementwise
+import Rel.KernelSpec.Encoding
+import Rel.Kernel.Sort
+import Rel.Kernel.Coc
+import Rel.Kernel.Reduce
+import Rel.Kernel.Scan
+import Rel.Kernel.Value
+import Rel.KernelSpec.Raw
+import Rel.Kernel.Elementwise
 
-/-! The part of `QLean.Verify.Group` the Rel kernels reach; `QLean.Verify.Group` imports it. -/
+/-! The part of `Rel.Verify.Group` the Rel kernels reach; `Rel.Verify.Group` imports it. -/
 
 
-namespace QLean.Verify
+namespace Rel.Verify
 
-open QLean QLean.Kernel
-open QLean.Kernel.Scan (Kind)
+open Rel Rel.Kernel
+open Rel.Kernel.Scan (Kind)
 
 section Firsts
 
@@ -481,18 +481,18 @@ end Segs
 #print axioms overGroups_spec
 #print axioms overGroups_buckets
 #print axioms atI64_eq
-/-- info: 'QLean.Verify.idsCap_packIds' depends on axioms: [propext, Quot.sound] -/
+/-- info: 'Rel.Verify.idsCap_packIds' depends on axioms: [propext, Quot.sound] -/
 #guard_msgs in #print axioms idsCap_packIds
-/-- info: 'QLean.Verify.overGroups_groupIds' depends on axioms: [propext, Quot.sound] -/
+/-- info: 'Rel.Verify.overGroups_groupIds' depends on axioms: [propext, Quot.sound] -/
 #guard_msgs in #print axioms overGroups_groupIds
 
-end QLean.Verify
+end Rel.Verify
 
 
-namespace QLean.Verify
+namespace Rel.Verify
 
-open QLean QLean.Kernel
-open QLean.Kernel.Scan (Kind)
+open Rel Rel.Kernel
+open Rel.Kernel.Scan (Kind)
 
 section Firsts
 
@@ -544,4 +544,4 @@ end Segs
 #print axioms keyAt_eq_iff
 #print axioms ids_get
 
-end QLean.Verify
+end Rel.Verify

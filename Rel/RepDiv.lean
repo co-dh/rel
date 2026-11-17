@@ -3,16 +3,16 @@
   `(y, z)` (the `y` part, as `≫` joins), keeps the first row of each pair whose count equals the count of `y`
   among `R.nub`'s values (`leftDiv_keep`), and adds `⊤` on the values of `Ub` that are no value of `R` and `Uc`.
 -/
-import LeetQ.Rel.RepOps
-import LeetQ.Rel.KernelWF.DivSpec
-import LeetQ.Rel.KernelWF.CountSpec
-import LeetQ.Rel.KernelWF.CodesAll
-import LeetQ.Rel.KernelWF.RazeFoR
-import LeetQ.Rel.RepOps2
+import Rel.RepOps
+import Rel.KernelWF.DivSpec
+import Rel.KernelWF.CountSpec
+import Rel.KernelWF.CodesAll
+import Rel.KernelWF.RazeFoR
+import Rel.RepOps2
 
-namespace LeetQ.Rel.Rep
+namespace Rel.Rep
 
-open QLean QLean.Kernel QLean.Verify LeetQ.Rel LeetQ.Rel.Alg
+open Rel Rel.Kernel Rel.Verify Rel Rel.Alg
 
 variable {A B C : Obj}
 
@@ -508,4 +508,4 @@ theorem rep_rightDiv {ma mb : USize} (R : Rel C A) (S : Rel B A) (Ua : Vals C ma
 #print axioms pickPart_rows
 #print axioms div_vac_holds
 
-end LeetQ.Rel.Rep
+end Rel.Rep

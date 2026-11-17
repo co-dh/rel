@@ -4,20 +4,20 @@
   `rep_unionC` hold under that one bit. `CRel` carries the bit along a program, each op `&&`-ing its inputs' bits
   with its own.
 -/
-import LeetQ.Rel.KernelWF.CodesAll
-import LeetQ.Rel.KernelWF.RazeFoR
-import LeetQ.Rel.KernelWF.AscSpec
-import LeetQ.Rel.KernelWF.NubSpec
-import LeetQ.Rel.OkBit
-import LeetQ.Run.CRelDef
+import Rel.KernelWF.CodesAll
+import Rel.KernelWF.RazeFoR
+import Rel.KernelWF.AscSpec
+import Rel.KernelWF.NubSpec
+import Rel.OkBit
+import Rel.Run.CRelDef
 
-namespace LeetQ.Rel
+namespace Rel
 
 namespace Rep
 
-open QLean QLean.Kernel QLean.Verify LeetQ.Rel LeetQ.Rel.Alg LeetQ.Rel.KernelWF
-open scoped LeetQ.Core.Rel
-open LeetQ.Core.Rel hiding id comp recip inter union zero le inl inr junc
+open Rel Rel.Kernel Rel.Verify Rel Rel.Alg Rel.KernelWF
+open scoped Rel.Core.Rel
+open Rel.Core.Rel hiding id comp recip inter union zero le inl inr junc
 open CompN OpsN
 
 variable {A B C : Obj}
@@ -121,10 +121,10 @@ theorem rep_nubC {k v : Obj} (R : Rel k v) (hb : (nubC R).2 = true) : rep (nubC 
 /-! ## Canonical form: rows strictly ascending by `Obj.lt` on `(key, val)` -/
 
 /-- `A`'s key tells its elements apart: no `.general` atom and no float, whose keys merge NaNs and `±0`. -/
-def _root_.LeetQ.Rel.Obj.KeyInj (A : Obj) : Prop := ∀ x y : A.El, A.key x = A.key y → x = y
+def _root_.Rel.Obj.KeyInj (A : Obj) : Prop := ∀ x y : A.El, A.key x = A.key y → x = y
 
 /-- `R`'s rows strictly ascending by `Obj.lt` on `(key, val)`: sorted, and no row twice. -/
-def _root_.LeetQ.Rel.Rel.Canon {k v : Obj} (R : Rel k v) : Prop := R.toList.Pairwise (Obj.prod k v).lt
+def _root_.Rel.Rel.Canon {k v : Obj} (R : Rel k v) : Prop := R.toList.Pairwise (Obj.prod k v).lt
 
 theorem keyInj_prod {a b : Obj} (ha : a.KeyInj) (hb : b.KeyInj) : (Obj.prod a b).KeyInj := by
   rintro ⟨x, y⟩ ⟨x', y'⟩ h
@@ -283,9 +283,9 @@ end Rep
 
 namespace CRel
 
-open QLean QLean.Kernel LeetQ.Rel.Alg LeetQ.Rel.Rep
-open scoped LeetQ.Core.Rel
-open LeetQ.Core.Rel hiding id comp recip inter union zero le inl inr junc
+open Rel Rel.Kernel Rel.Alg Rel.Rep
+open scoped Rel.Core.Rel
+open Rel.Core.Rel hiding id comp recip inter union zero le inl inr junc
 
 variable {A B C : Obj}
 
@@ -362,4 +362,4 @@ theorem union_self (R : CRel A B) (hb : (R.union R).ok = true) (hR : R.rel.Canon
 
 end CRel
 
-end LeetQ.Rel
+end Rel

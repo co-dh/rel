@@ -1,14 +1,14 @@
 /-
   The primitive array ops of `Alg` with no read-back elsewhere, read back: `nilVal`/`nil`, `atPos`, `unsnoc`.
 -/
-import LeetQ.Rel.RepList
-import LeetQ.Rel.KernelWF.PrimSpec
-import LeetQ.Rel.KernelWF.SliceSpec
-import LeetQ.Rel.KernelWF.MemberSpec
+import Rel.RepList
+import Rel.KernelWF.PrimSpec
+import Rel.KernelWF.SliceSpec
+import Rel.KernelWF.MemberSpec
 
-namespace LeetQ.Rel.Rep
+namespace Rel.Rep
 
-open QLean QLean.Kernel QLean.Verify LeetQ.Rel LeetQ.Rel.Alg LeetQ.Rel.KernelWF
+open Rel Rel.Kernel Rel.Verify Rel Rel.Alg Rel.KernelWF
 
 /-- **`nilVal`, read back**: its one row is the empty array, its payload holding no cell. -/
 theorem nilVal_row (B : Obj) (q : Fin (1 : USize).toNat) : Vals.row (nilVal B) q = [] := by
@@ -44,7 +44,7 @@ theorem rep_atPos {B : Obj} {n : USize} (k : Nat) (X : Vals (.arr B) n)
   have hR := fun j (hj : j < n.toNat) => slicesOf_row X hp hj
   have hA := whereGt_ids n (slicesOf X).2 hk fun j hj => by have := (hR j hj).1; omega
   rw [← hi] at hA
-  have hmem : ∀ j, j ∈ QLean.Verify.ids i ↔
+  have hmem : ∀ j, j ∈ Rel.Verify.ids i ↔
       j < n.toNat ∧ k < (Column.bitsAt (slicesOf X).2 (j * 8) 8).toNat := fun j => by
     rw [hA, List.mem_filter, List.mem_range, decide_eq_true_iff]
   have hs1 : len (slicesOf X).1 = n.toNat := (len_slices _ _ _ _).1
@@ -56,8 +56,8 @@ theorem rep_atPos {B : Obj} {n : USize} (k : Nat) (X : Vals (.arr B) n)
         (Column.bitsAt (slicesOf X).1 ((Column.bitsAt i (q * 8) 8).toNat * 8) 8).toNat + k := by
     intro q hq
     have qb : q < ((len i).toUSize).toNat := by omega
-    have hin : (Column.bitsAt i (q * 8) 8).toNat ∈ QLean.Verify.ids i := by
-      have hq' : q < (QLean.Verify.ids i).length := by rw [← len_eq_ids]; exact hq
+    have hin : (Column.bitsAt i (q * 8) 8).toNat ∈ Rel.Verify.ids i := by
+      have hq' : q < (Rel.Verify.ids i).length := by rw [← len_eq_ids]; exact hq
       rw [← ids_getElem hq']; exact List.getElem_mem hq'
     obtain ⟨hj, hc⟩ := (hmem _).1 hin
     obtain ⟨hLC, -, -⟩ := hR _ hj
@@ -69,7 +69,7 @@ theorem rep_atPos {B : Obj} {n : USize} (k : Nat) (X : Vals (.arr B) n)
     rw [val_va_get _ _ _ _ qb, bitsAt_one, hlq, (valStep_add_sub (by omega) (by omega)).1 (by omega), hk64]
     exact UInt64.toNat_ofNat_of_lt' (Nat.lt_of_lt_of_le (show _ < 2 ^ 63 by omega) (by decide))
   -- the picks are rows of `X` (`whereBits`), and the cells one place inside each picked row's window
-  have hKf : Vals.PickFits (.arr B) X (QLean.Verify.ids i) :=
+  have hKf : Vals.PickFits (.arr B) X (Rel.Verify.ids i) :=
     pickFits_sublist (by rw [hi]; exact whereBits_sublist n _) hX
   have hEf : Vals.PickFits B X.2.2.2 ((List.range (len i)).map fun q => (Column.bitsAt e (q * 8) 8).toNat) := by
     refine pickFits_sublist ?_ (pickFits_payload X hKf).2
@@ -139,7 +139,7 @@ theorem rep_unsnoc {B : Obj} {n : USize} (X : Vals (.arr B) n)
   have hR := fun j (hj : j < n.toNat) => slicesOf_row X hp hj
   have hA := whereGt_ids n (slicesOf X).2 (k := 0) (by decide) fun j hj => by have := (hR j hj).1; omega
   rw [show Nat.toUInt64 0 = 0 from rfl, ← hi] at hA
-  have hmem : ∀ j, j ∈ QLean.Verify.ids i ↔
+  have hmem : ∀ j, j ∈ Rel.Verify.ids i ↔
       j < n.toNat ∧ 0 < (Column.bitsAt (slicesOf X).2 (j * 8) 8).toNat := fun j => by
     rw [hA, List.mem_filter, List.mem_range, decide_eq_true_iff]
   have hs1 : len (slicesOf X).1 = n.toNat := (len_slices _ _ _ _).1
@@ -156,8 +156,8 @@ theorem rep_unsnoc {B : Obj} {n : USize} (X : Vals (.arr B) n)
           (Column.bitsAt (slicesOf X).2 ((Column.bitsAt i (q * 8) 8).toNat * 8) 8).toNat - 1 := by
     intro q hq
     have qb : q < ((len i).toUSize).toNat := by omega
-    have hin : (Column.bitsAt i (q * 8) 8).toNat ∈ QLean.Verify.ids i := by
-      have hq' : q < (QLean.Verify.ids i).length := by rw [← len_eq_ids]; exact hq
+    have hin : (Column.bitsAt i (q * 8) 8).toNat ∈ Rel.Verify.ids i := by
+      have hq' : q < (Rel.Verify.ids i).length := by rw [← len_eq_ids]; exact hq
       rw [← ids_getElem hq']; exact List.getElem_mem hq'
     obtain ⟨hj, hc⟩ := (hmem _).1 hin
     obtain ⟨hLC, -, -⟩ := hR _ hj
@@ -176,7 +176,7 @@ theorem rep_unsnoc {B : Obj} {n : USize} (X : Vals (.arr B) n)
       UInt64.toNat_ofNat_of_lt' (Nat.lt_of_le_of_lt (Nat.sub_le _ _)
         (Nat.lt_trans (show _ < 2 ^ 63 by omega) (by decide))), ha, h1n]
   -- the picks are rows of `X` (`whereBits`); each last cell, and each front's window, inside its row's window
-  have hKf : Vals.PickFits (.arr B) X (QLean.Verify.ids i) :=
+  have hKf : Vals.PickFits (.arr B) X (Rel.Verify.ids i) :=
     pickFits_sublist (by rw [hi]; exact whereBits_sublist n _) hX
   have hEf : Vals.PickFits B X.2.2.2 ((List.range (len i)).map fun q => (Column.bitsAt e (q * 8) 8).toNat) := by
     refine pickFits_sublist ?_ (pickFits_payload X hKf).2
@@ -537,4 +537,4 @@ theorem rep_zip {K A B : Obj} (P : Rel K (.prod (.arr A) (.arr B)))
 #print axioms rep_unsnoc
 #print axioms rep_zip
 
-end LeetQ.Rel.Rep
+end Rel.Rep

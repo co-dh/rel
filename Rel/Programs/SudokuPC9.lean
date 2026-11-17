@@ -1,4 +1,4 @@
-import LeetQ.Rel.Programs.CSP
+import Rel.Programs.CSP
 
 /-! # Sudoku path consistency (AIMA §6.2.3), 9×9
 
@@ -7,9 +7,9 @@ import LeetQ.Rel.Programs.CSP
 each round runs as bit matrices (`Bits`), `sup(X) X` one `bitRowsOver` call where its table has some 10⁸ rows,
 and `π₁\` another. -/
 
-namespace LeetQ.Rel.Programs
+namespace Rel.Programs
 
-open LeetQ.Rel.Programs.prelude csp in
+open Rel.Programs.prelude csp in
 rel_program sudokupc9 where
     obj Cell = 0…80                               -- the cell in row r, column k is 9r+k
     obj Unit = 0…26                               -- rows 0…8, columns 9…17, boxes 18…26
@@ -32,4 +32,4 @@ rel_program sudokupc9 where
 
 #guard sudokupc9.ok
 
-end LeetQ.Rel.Programs
+end Rel.Programs

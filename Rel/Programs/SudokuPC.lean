@@ -1,4 +1,4 @@
-import LeetQ.Rel.Programs.CSP
+import Rel.Programs.CSP
 
 /-! # Sudoku path consistency (AIMA §6.2.3), 4×4
 
@@ -33,9 +33,9 @@ R_cc ∩ R_ca R_ac = {(1,1),(2,2),(3,3)} ∩ {(3,3)}    -- m = a, R_ac = R_ca° 
 Montanari loops over `m` outside the formula; `pc` puts `m` in the key, `(u,m) {sup(X) X} v`, and `π₁\` meets
 over every `m` at once. -/
 
-namespace LeetQ.Rel.Programs
+namespace Rel.Programs
 
-open LeetQ.Rel.Programs.prelude csp in
+open Rel.Programs.prelude csp in
 rel_program sudokupc where
     obj Cell = 0…15                               -- the cell in row r, column k is 4r+k
     obj Unit = 0…11                               -- rows 0…3, columns 4…7, boxes 8…11
@@ -60,4 +60,4 @@ rel_program sudokupc where
 
 #guard sudokupc.ok
 
-end LeetQ.Rel.Programs
+end Rel.Programs

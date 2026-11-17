@@ -1,9 +1,9 @@
-import QLean.RelPart.Kernel.Need
+import Rel.Kernel.Need
 
-/-! The part of `QLean.Value` the Rel kernels reach; `QLean.Value` imports it. -/
+/-! The part of `Rel.Value` the Rel kernels reach; `Rel.Value` imports it. -/
 
 
-namespace QLean
+namespace Rel
 
 /-- The element type of a q list, q's list type codes 0 to 19, in type-code order. `general` is type 0,
 a list of any values. q has no type-0 atom, so `general` is a column type with no atom value: a function
@@ -894,10 +894,10 @@ def daysOfFirst (y m : Int) : Int :=
   let yoe := y - era * 400
   let doy := (153 * ((m + 9) % 12) + 2) / 5
   era * 146097 + (yoe * 365 + yoe / 4 - yoe / 100 + doy) - 730425
-end QLean
+end Rel
 
 
-namespace QLean
+namespace Rel
 
 namespace QAtomicType
 
@@ -1680,4 +1680,4 @@ end QValue
 namespace QValue
 
 end QValue
-end QLean
+end Rel

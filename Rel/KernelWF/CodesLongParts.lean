@@ -2,11 +2,11 @@
   An eight-byte integral side of several parts, dense or `foR`, where `rangeOffsets` declines: its codes are
   the grouping code of its `raze`, cut back, so faithful jointly across the parts and well formed.
 -/
-import LeetQ.Rel.KernelWF.RazeFoR
+import Rel.KernelWF.RazeFoR
 
-namespace LeetQ.Rel.Alg
+namespace Rel.Alg
 
-open QLean QLean.Dep QLean.Kernel QLean.Verify LeetQ.Rel
+open Rel Rel.Dep Rel.Kernel Rel.Verify Rel
 
 /-- **A long side of several parts in any encoding, `rangeOffsets` declining the parts: its codes are the
     grouping code of the `raze`, cut back.** -/
@@ -114,4 +114,4 @@ theorem codes_long_dense_wf {t : QAtomicType} (ht : orderKind t = some .i64) {p 
 #print axioms codes_long_dense_faithful
 #print axioms codes_long_dense_wf
 
-end LeetQ.Rel.Alg
+end Rel.Alg

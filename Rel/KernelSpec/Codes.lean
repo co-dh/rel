@@ -1,19 +1,19 @@
-import QLean.RelPart.Verify.Encoding
-import QLean.RelPart.Verify.Group
-import QLean.RelPart.Kernel.Need
-import QLean.RelPart.Kernel.Sort
-import QLean.RelPart.Kernel.Coc
-import QLean.RelPart.Kernel.Scan
-import QLean.RelPart.Value
-import QLean.RelPart.Kernel.Search
+import Rel.KernelSpec.Encoding
+import Rel.KernelSpec.Group
+import Rel.Kernel.Need
+import Rel.Kernel.Sort
+import Rel.Kernel.Coc
+import Rel.Kernel.Scan
+import Rel.Kernel.Value
+import Rel.Kernel.Search
 
-/-! The part of `QLean.Verify.Codes` the Rel kernels reach; `QLean.Verify.Codes` imports it. -/
+/-! The part of `Rel.Verify.Codes` the Rel kernels reach; `Rel.Verify.Codes` imports it. -/
 
 
-namespace QLean.Verify
+namespace Rel.Verify
 
-open QLean QLean.Kernel
-open QLean.Kernel.Scan (Kind)
+open Rel Rel.Kernel
+open Rel.Kernel.Scan (Kind)
 
 /-- Two indices share a group exactly when they share a key. -/
 theorem groupOf_iff {α : Type} [DecidableEq α] {g : Nat → α} {m i j : Nat} (hi : i < m) (hj : j < m) :
@@ -139,7 +139,7 @@ theorem groupIdsColumn_spec {t : QAtomicType} {n : USize} {e : Enc} {p : ByteArr
             cases Option.some.inj h
             exact Or.inr (Or.inr ⟨_, _, _, rfl, Or.inr (Or.inr (Or.inr ⟨‹_›, rfl⟩)), keyed _ _ _⟩)
 
-/-- info: 'QLean.Verify.groupIdsColumn_spec' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+/-- info: 'Rel.Verify.groupIdsColumn_spec' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs in
 #print axioms groupIdsColumn_spec
 
@@ -153,7 +153,7 @@ theorem groupIdsPair_iff (k₁ k₂ : Kind) (n : USize) (a b : ByteArray) {i j :
   (idsBy_iff (Nat.lt_of_le_of_lt (Nat.min_le_left _ _) (usize_lt n)) (fun i => (Order.keyAt k₁ a i, Order.keyAt k₂ b i))
     hi hj).trans (Iff.of_eq (Prod.mk.injEq _ _ _ _))
 
-/-- info: 'QLean.Verify.groupIdsPair_iff' depends on axioms: [propext, Quot.sound] -/
+/-- info: 'Rel.Verify.groupIdsPair_iff' depends on axioms: [propext, Quot.sound] -/
 #guard_msgs in
 #print axioms groupIdsPair_iff
 
@@ -212,7 +212,7 @@ theorem groupIdsPairIds_iff (wa wb n : USize) (a b : ByteArray) {i j : Nat}
   rw [idsOperand, idsOperand, e8, ga i hia, ga j hja, gb i hib, gb j hjb,
     hr _ _ (lt _ _ _) (lt _ _ _), hr _ _ (lt _ _ _) (lt _ _ _)]
 
-/-- info: 'QLean.Verify.groupIdsPairIds_iff' depends on axioms: [propext, Quot.sound] -/
+/-- info: 'Rel.Verify.groupIdsPairIds_iff' depends on axioms: [propext, Quot.sound] -/
 #guard_msgs in
 #print axioms groupIdsPairIds_iff
 
@@ -223,23 +223,23 @@ theorem ids_idLongs (n w : USize) (x : ByteArray) :
     obtain ⟨k, -, rfl⟩ := List.mem_map.1 hi
     exact (Column.resAt x 0 w.toNat k).toBitVec.isLt
 
-/-- info: 'QLean.Verify.ids_idLongs' depends on axioms: [propext, Quot.sound] -/
+/-- info: 'Rel.Verify.ids_idLongs' depends on axioms: [propext, Quot.sound] -/
 #guard_msgs in
 #print axioms ids_idLongs
-/-- info: 'QLean.Verify.groupOf_iff' depends on axioms: [propext, Quot.sound] -/
+/-- info: 'Rel.Verify.groupOf_iff' depends on axioms: [propext, Quot.sound] -/
 #guard_msgs in
 #print axioms groupOf_iff
-/-- info: 'QLean.Verify.lt_idWidthOf' depends on axioms: [propext, Quot.sound] -/
+/-- info: 'Rel.Verify.lt_idWidthOf' depends on axioms: [propext, Quot.sound] -/
 #guard_msgs in
 #print axioms lt_idWidthOf
-/-- info: 'QLean.Verify.idsBy_spec' depends on axioms: [propext, Quot.sound] -/
+/-- info: 'Rel.Verify.idsBy_spec' depends on axioms: [propext, Quot.sound] -/
 #guard_msgs in
 #print axioms idsBy_spec
-/-- info: 'QLean.Verify.idsBy_iff' depends on axioms: [propext, Quot.sound] -/
+/-- info: 'Rel.Verify.idsBy_iff' depends on axioms: [propext, Quot.sound] -/
 #guard_msgs in
 #print axioms idsBy_iff
-/-- info: 'QLean.Verify.keyAt_packIds64' depends on axioms: [propext, Quot.sound] -/
+/-- info: 'Rel.Verify.keyAt_packIds64' depends on axioms: [propext, Quot.sound] -/
 #guard_msgs in
 #print axioms keyAt_packIds64
 
-end QLean.Verify
+end Rel.Verify

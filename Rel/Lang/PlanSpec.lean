@@ -1,4 +1,4 @@
-import LeetQ.Rel.Lang.EmitC
+import Rel.Lang.EmitC
 
 /-! # A builder's plan means its def (`doc/rel-native-design.md` §13, stage 1b)
 
@@ -8,9 +8,9 @@ builder primitive — `emit1` (so `lit`), `emit` (so `call`, `apply`), `ite`, `d
 instruction run (`runI_call`, `runI_apply`) say what each does; a builder's theorem is a rewrite through them, never
 an unfolding of `runB`. -/
 
-namespace LeetQ.Rel.Lang.Plan
+namespace Rel.Lang.Plan
 
-open QLean QLean.Kernel
+open Rel Rel.Kernel
 
 /-! ### Reading registers -/
 
@@ -371,9 +371,9 @@ theorem push_keep {C rs : Array Val} {x : Val} (h4 : C.size ≤ rs.size) (hr : �
 
 theorem abiOf_decEq : abiOf "lean_usize_dec_eq" = some (kernel% USize.decEq) := by simp [abiOf, abi, List.find?]
 theorem abiOf_add : abiOf "lean_usize_add" = some (kernel% USize.add) := by simp [abiOf, abi, List.find?]
-theorem abiOf_groupIds : abiOf "qlean_sort_group_ids" = some (kernel% QLean.Kernel.Order.groupIds) := by
+theorem abiOf_groupIds : abiOf "qlean_sort_group_ids" = some (kernel% Rel.Kernel.Order.groupIds) := by
   simp [abiOf, abi, List.find?]
-theorem abiOf_idGroups : abiOf "qlean_sort_id_groups" = some (kernel% QLean.Kernel.Order.idGroups) := by
+theorem abiOf_idGroups : abiOf "qlean_sort_id_groups" = some (kernel% Rel.Kernel.Order.idGroups) := by
   simp [abiOf, abi, List.find?]
 
 /-- `groupIdsB.go` on lanes `ks`: `groupIds` at the first lane of the code's width, `idGroups` past the last. -/
@@ -497,8 +497,8 @@ answer. Each lemma is matched by its head only (reducible), so a step that is no
 macro "build_step" : tactic => `(tactic| ((try simp only [bind_assoc, pure_bind, lenB]); (first
   | split
   | with_reducible refine Builds.lit ?_
-  | with_reducible refine Builds.call1 (by with_unfolding_all simp [abiOf, LeetQ.Rel.Lang.Plan.abi, List.find?])
+  | with_reducible refine Builds.call1 (by with_unfolding_all simp [abiOf, Rel.Lang.Plan.abi, List.find?])
                           (by with_unfolding_all rfl) (by with_unfolding_all reads) (by with_unfolding_all rfl) rfl ?_
   | (with_reducible refine Builds.pure ?_); intro; reads)))
 
-end LeetQ.Rel.Lang.Plan
+end Rel.Lang.Plan

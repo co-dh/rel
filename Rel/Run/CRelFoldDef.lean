@@ -1,9 +1,9 @@
-import LeetQ.Run.CRelDef
+import Rel.Run.CRelDef
 
 section
-namespace LeetQ.Rel
+namespace Rel
 namespace CRel
-open QLean QLean.Kernel LeetQ.Rel.Alg
+open Rel Rel.Kernel Rel.Alg
 
 /-- `foldBy` on a step over `CRel`s, ok where every round's step was and `foldByC` ran within capacity. The
     step sees its inputs as ok: their bits are already in the fold's. -/
@@ -52,5 +52,5 @@ def thinLOn {B : Obj} {n : USize} (q : CRel (.prod B B) (.prod B B) → CRel (.p
 def diff {A B : Obj} (R S : CRel A B) : CRel A B := guard (R.ok && S.ok) fun _ => let r := diffC R.rel S.rel; ⟨r.1, r.2⟩
 
 end CRel
-end LeetQ.Rel
+end Rel
 end

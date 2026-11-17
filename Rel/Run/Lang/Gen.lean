@@ -1,13 +1,13 @@
-import LeetQ.Run.AC3Def
-import LeetQ.Run.CRelDef
-import LeetQ.Run.CRelArithDef
-import LeetQ.Run.CRelRelDef
-import LeetQ.Run.CRelListDef
-import LeetQ.Run.CRelFoldDef
-import LeetQ.Run.CRelPowerDef
-import LeetQ.Run.CRelLoopDef
-import LeetQ.Run.CRelEstDef
-import LeetQ.Run.Lang.Bits
+import Rel.Run.AC3Def
+import Rel.Run.CRelDef
+import Rel.Run.CRelArithDef
+import Rel.Run.CRelRelDef
+import Rel.Run.CRelListDef
+import Rel.Run.CRelFoldDef
+import Rel.Run.CRelPowerDef
+import Rel.Run.CRelLoopDef
+import Rel.Run.CRelEstDef
+import Rel.Run.Lang.Bits
 
 /-! The code a `rel_program` definition expands into (`Expand`): one function per core-term constructor, each
     a composition of `CRel` ops, so a definition is an ordinary Lean term over `CRel` and its ok bit is the `&&`
@@ -15,9 +15,9 @@ import LeetQ.Run.Lang.Bits
     `Dem false A = Unit`. A closed term over `≫`/`∩`/`−`/`\` runs as a bit-matrix plan (`Bits.runC`), each node of
     the plan built by the `p*` functions below on the demand its parent gives it. -/
 
-namespace LeetQ.Rel.Lang
+namespace Rel.Lang
 
-open LeetQ.Rel LeetQ.Rel.Alg
+open Rel Rel.Alg
 
 /-- The keys a term reads: a coreflexive when it runs on demand, nothing when it is closed. -/
 @[reducible] def Dem : Bool → Obj → Type
@@ -39,8 +39,8 @@ def Dem.r {A : Obj} : (d e : Bool) → Dem (d || e) A → Dem e A
 
 namespace Gen
 
-open QLean QLean.Dep QLean.Kernel
-open LeetQ.Rel.CRel (ofC)
+open Rel Rel.Dep Rel.Kernel
+open Rel.CRel (ofC)
 
 /-- A term's code: its relation and ok bit on the keys it is given. -/
 abbrev Fn (d : Bool) (A B : Obj) := Dem d A → CRel A B
@@ -281,4 +281,4 @@ def pldiv (A B C : Obj) (R : Pl false A B) (S : Pl false A C) (UB : Fn false B B
 
 end Gen
 
-end LeetQ.Rel.Lang
+end Rel.Lang

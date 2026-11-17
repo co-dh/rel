@@ -1,9 +1,9 @@
-import LeetQ.Run.CRelDef
+import Rel.Run.CRelDef
 
 section
-namespace LeetQ.Rel
+namespace Rel
 namespace CRel
-open QLean QLean.Kernel LeetQ.Rel.Alg
+open Rel Rel.Kernel Rel.Alg
 variable {A B C D : Obj}
 
 /-- `inl` on the universe `X`, ok where `inlC` ran within capacity. -/
@@ -37,5 +37,5 @@ def succ {n : USize} (U : Vals (.atom .long) n) : CRel (.atom .long) (.atom .lon
 def asc {B : Obj} {n : USize} (X : Vals (.arr B) n) : CRel (.arr B) (.arr B) := ofC (ascC X)
 
 end CRel
-end LeetQ.Rel
+end Rel
 end

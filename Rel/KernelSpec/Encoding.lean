@@ -1,12 +1,12 @@
-import QLean.RelPart.Kernel.Coc
-import QLean.RelPart.Value
+import Rel.Kernel.Coc
+import Rel.Kernel.Value
 
-/-! The part of `QLean.Verify.Encoding` the Rel kernels reach; `QLean.Verify.Encoding` imports it. -/
+/-! The part of `Rel.Verify.Encoding` the Rel kernels reach; `Rel.Verify.Encoding` imports it. -/
 
 
-namespace QLean.Verify
+namespace Rel.Verify
 
-open QLean
+open Rel
 
 /-- What an eight-byte read keeps of a value is all of it. -/
 theorem ofNat_toNat_mod64 (v : UInt64) : UInt64.ofNat (v.toNat % 2 ^ 64) = v := by
@@ -818,7 +818,7 @@ theorem idAt_packIds {w n i : Nat} {f : Nat → Nat}
   · exact idAt_packIds_lane 4 n f (by decide) (by decide) hi hf
   · exact idAt_packIds_lane 8 n f (by decide) (by decide) hi hf
 
-end QLean.Verify
+end Rel.Verify
 
-/-- info: 'QLean.Verify.idAt_packIds' depends on axioms: [propext, Quot.sound] -/
-#guard_msgs in #print axioms QLean.Verify.idAt_packIds
+/-- info: 'Rel.Verify.idAt_packIds' depends on axioms: [propext, Quot.sound] -/
+#guard_msgs in #print axioms Rel.Verify.idAt_packIds

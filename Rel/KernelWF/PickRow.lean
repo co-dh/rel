@@ -2,12 +2,12 @@
   `Vals.pick` read back at every shape: row `q` of a side picked at the index column `i` is the side's row
   `i[q]` where that is below the count, else `Obj.dflt` — under `Vals.PickFits` at the rows `i` names.
 -/
-import LeetQ.Rel.KernelWF.RowsSpec
-import LeetQ.Rel.KernelWF.MemberSpec
+import Rel.KernelWF.RowsSpec
+import Rel.KernelWF.MemberSpec
 
-namespace LeetQ.Rel.Alg
+namespace Rel.Alg
 
-open QLean QLean.Kernel QLean.Verify LeetQ.Rel
+open Rel Rel.Kernel Rel.Verify Rel
 
 theorem flatMap_congr {α β : Type} {l : List α} {f g : α → List β} (h : ∀ a ∈ l, f a = g a) :
     l.flatMap f = l.flatMap g := by
@@ -1385,4 +1385,4 @@ theorem reads_pick : (A : Obj) → {n : USize} → (x : Vals A n) → (i : ByteA
 
 #print axioms reads_pick
 
-end LeetQ.Rel.Alg
+end Rel.Alg

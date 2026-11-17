@@ -4,13 +4,13 @@
   firsts are `groupIds`' first rows. The offsets come from `code_runs` on the class ids read along the
   permutation; `runs_prefix` says that runs of a column cut into consecutive nonempty classes are those classes.
 -/
-import LeetQ.Rel.KernelWF.RunSpec
-import LeetQ.Rel.KernelWF.JoinAssembly
+import Rel.KernelWF.RunSpec
+import Rel.KernelWF.JoinAssembly
 
-namespace LeetQ.Rel.Alg
+namespace Rel.Alg
 
-open QLean QLean.Kernel LeetQ.Rel LeetQ.Rel.KernelWF
-open QLean.Verify (ids)
+open Rel Rel.Kernel Rel Rel.KernelWF
+open Rel.Verify (ids)
 
 /-- Running totals `P` of nonempty classes ascend strictly. -/
 theorem prefix_lt {K : Nat} {P : Nat → Nat} (hPs : ∀ t < K, P t < P (t + 1)) :
@@ -291,4 +291,4 @@ theorem segments_spec (c : Code)
 #print axioms groupIds_packed
 #print axioms segments_spec
 
-end LeetQ.Rel.Alg
+end Rel.Alg

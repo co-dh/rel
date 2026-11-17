@@ -5,14 +5,14 @@
   list and the frames read only bytes past the last block (`foRExc_congr`, `foRFrame_congr`), the residuals
   below `lo` read back as they were (`resAt_lt`), and an appended residual adds back to its element.
 -/
-import LeetQ.Rel.KernelWF.RazeEnc
-import QLean.RelPart.Kernel.Structural
-import QLean.RelPart.Verify.Alp
-import QLean.RelPart.Verify.Group
+import Rel.KernelWF.RazeEnc
+import Rel.Kernel.Structural
+import Rel.KernelSpec.Alp
+import Rel.KernelSpec.Group
 
-namespace LeetQ.Rel.KernelWF
+namespace Rel.KernelWF
 
-open QLean QLean.Kernel LeetQ.Rel
+open Rel Rel.Kernel Rel
 
 /-! ### Reading a pack without a patch list -/
 
@@ -276,4 +276,4 @@ theorem append_reads {n0 : USize} {n1 : Nat} {m0 p0 D M P : ByteArray}
     rw [if_pos (by simp only [hj, Bool.and_eq_true, decide_eq_true_eq]; omega), hj, Nat.add_sub_cancel_left,
       Nat.mod_eq_of_lt (hres _ hi'), Nat.toUInt64_eq, UInt64.ofNat_toNat, add_sub_u64]
 
-end LeetQ.Rel.KernelWF
+end Rel.KernelWF

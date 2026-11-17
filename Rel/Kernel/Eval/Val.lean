@@ -1,15 +1,15 @@
 import Std.Data.HashMap
-import QLean.RelPart.Value
-import QLean.RelPart.Kernel.Search
+import Rel.Kernel.Value
+import Rel.Kernel.Search
 
-/-! The part of `QLean.Eval.Val` the Rel kernels reach; `QLean.Eval.Val` imports it. -/
+/-! The part of `Rel.Eval.Val` the Rel kernels reach; `Rel.Eval.Val` imports it. -/
 
 
-namespace QLean
+namespace Rel
 
-end QLean
+end Rel
 
-namespace QLean.Eval
+namespace Rel.Eval
 
 /-- The sentinel q uses for an absent element of each type. Boolean, byte and char have no
 null proper, but `3#0#0b` still has to answer with something, and q answers with these. -/
@@ -79,4 +79,4 @@ def identicalFuel (ae : QAtom → QAtom → Bool) (ce : QAtomicType → USize �
 `matchValue`, the same walk under the comparison tolerance. -/
 def identical (a b : QValue) : Bool := identicalFuel QAtom.identical sameColumn 4096 a b
 
-end QLean.Eval
+end Rel.Eval

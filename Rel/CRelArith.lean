@@ -3,19 +3,19 @@
   `inlC`/`inrC`/`juncC`/`sumC`/`ltC`/`leqC`/`succC`/`ascC` answers its relation and a bit deciding every count
   bound its read-back theorem takes, so `rep_<op>C` holds under that one bit.
 -/
-import LeetQ.Rel.CRel
-import LeetQ.Run.CRelDef
-import LeetQ.Rel.RepOrd
-import LeetQ.Run.CRelArithDef
-import LeetQ.Rel.KernelWF.AscSpec
+import Rel.CRel
+import Rel.Run.CRelDef
+import Rel.RepOrd
+import Rel.Run.CRelArithDef
+import Rel.KernelWF.AscSpec
 
-namespace LeetQ.Rel
+namespace Rel
 
 namespace Rep
 
-open QLean QLean.Kernel QLean.Verify LeetQ.Rel LeetQ.Rel.Alg LeetQ.Rel.KernelWF
-open scoped LeetQ.Core.Rel
-open LeetQ.Core.Rel hiding id comp recip inter union zero le inl inr junc
+open Rel Rel.Kernel Rel.Verify Rel Rel.Alg Rel.KernelWF
+open scoped Rel.Core.Rel
+open Rel.Core.Rel hiding id comp recip inter union zero le inl inr junc
 open OpsN UnionN
 
 variable {A B C D : Obj}
@@ -176,9 +176,9 @@ end Rep
 
 namespace CRel
 
-open QLean QLean.Kernel LeetQ.Rel.Alg LeetQ.Rel.Rep
-open scoped LeetQ.Core.Rel
-open LeetQ.Core.Rel hiding id comp recip inter union zero le inl inr junc
+open Rel Rel.Kernel Rel.Alg Rel.Rep
+open scoped Rel.Core.Rel
+open Rel.Core.Rel hiding id comp recip inter union zero le inl inr junc
 
 variable {A B C D : Obj}
 
@@ -227,4 +227,4 @@ theorem rep_asc {n : USize} (X : Vals (.arr B) n) (hB : B.Ordered) (hb : (asc X)
 
 end CRel
 
-end LeetQ.Rel
+end Rel

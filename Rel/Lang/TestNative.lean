@@ -1,6 +1,6 @@
-import LeetQ.Rel.Lang.EmitC
-import LeetQ.Run.Lang.Embed
-import LeetQ.Rel.Lang.GenSpec
+import Rel.Lang.EmitC
+import Rel.Run.Lang.Embed
+import Rel.Lang.GenSpec
 
 /-! Stage 1a of the native backend (`doc/rel-native-design.md` §13): `x ≜ {…}°`, `output x to "out"`. Its plan is
     literals and `qlean_own_write` calls only: the converse is a register rename. `main` is the `relc-1a` exe:
@@ -8,9 +8,9 @@ import LeetQ.Rel.Lang.GenSpec
     runs the plan in `DIR` (`Plan.run`). The language has no `output` declaration yet (stage 2), so the output is
     stated here, as `planOf`'s arguments. -/
 
-namespace LeetQ.Rel.Lang.TestNative
+namespace Rel.Lang.TestNative
 
-open LeetQ.Rel LeetQ.Rel.Lang LeetQ.Rel.Lang.Plan
+open Rel Rel.Lang Rel.Lang.Plan
 
 rel_program native1a where
     obj X = {A,B,C}
@@ -24,7 +24,7 @@ def plan : Lean.Meta.MetaM (Except String Plan) := planOf [] native1a "x" "out"
     elaborator's unifier finds the objects' constants (`Obj.named`). -/
 def planIO : IO Plan := do
   Lean.initSearchPath (← Lean.findSysroot)
-  let env ← Lean.importModules #[{ module := `LeetQ.Rel.Lang.TestNative }] {}
+  let env ← Lean.importModules #[{ module := `Rel.Lang.TestNative }] {}
   let (r, _) ← plan.run'.toIO { fileName := "relc-1a", fileMap := default } { env }
   IO.ofExcept r
 
@@ -60,9 +60,9 @@ def agrees (c : Alg.Code) : IO Bool := do
 
 #eval show IO Unit from do for c in codes do unless ← agrees c do throw (IO.userError s!"groupIds plan differs at w = {c.w}")
 
-end LeetQ.Rel.Lang.TestNative
+end Rel.Lang.TestNative
 
-open LeetQ.Rel.Lang.Plan LeetQ.Rel.Lang.TestNative in
+open Rel.Lang.Plan Rel.Lang.TestNative in
 /-- The `relc-1a` exe (`lakefile.lean`): `c FILE`, `lean DIR`, `plan DIR`, as the module doc says. -/
 def main (args : List String) : IO UInt32 := do
   try

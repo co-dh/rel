@@ -4,11 +4,11 @@
   parts decoded, joined and encoded again — lists the parts' elements one part after another, to their low `8w`
   bits, which is all `atomOfBits` reads.
 -/
-import LeetQ.Rel.KernelWF.AppendFoR
+import Rel.KernelWF.AppendFoR
 
-namespace LeetQ.Rel.KernelWF
+namespace Rel.KernelWF
 
-open QLean QLean.Kernel QLean.Dep LeetQ.Rel LeetQ.Rel.Alg
+open Rel Rel.Kernel Rel.Dep Rel Rel.Alg
 
 /-- A `UInt64` cut to its low `8w` bits, `w ≤ 8`, keeps that value as a `Nat`. -/
 theorem ofNat_mod_toNat {w : Nat} (hw8 : w ≤ 8) (v : UInt64) :
@@ -325,4 +325,4 @@ theorem concatFoR_reads {w : Nat} (hw1 : 1 < w) (hw8 : w ≤ 8) (q : (USize × B
       exact append_list hw8 ha
     · exact reencode_list hw1 hw8 _ hX
 
-end LeetQ.Rel.KernelWF
+end Rel.KernelWF

@@ -5,20 +5,20 @@
   up to them): each such round's read-back comes from its pieces' `rep_<op>C`. What stays is not a size bound:
   a step's spec (`loopOn`'s `F`, at the rounds whose step bit is set).
 -/
-import LeetQ.Rel.CRelFold
-import LeetQ.Run.CRelFoldDef
-import LeetQ.Rel.CRelList
-import LeetQ.Run.CRelListDef
-import LeetQ.Rel.RepLoop
-import LeetQ.Rel.RepMerge
-import LeetQ.Run.CRelLoopDef
+import Rel.CRelFold
+import Rel.Run.CRelFoldDef
+import Rel.CRelList
+import Rel.Run.CRelListDef
+import Rel.RepLoop
+import Rel.RepMerge
+import Rel.Run.CRelLoopDef
 
-namespace LeetQ.Rel
+namespace Rel
 
-open QLean QLean.Kernel QLean.Verify LeetQ.Rel LeetQ.Rel.Alg LeetQ.Rel.KernelWF
-open scoped LeetQ.Core.Rel
-open LeetQ.Core.Rel hiding id comp recip inter union zero le inl inr junc
-open LeetQ.Rel.Rep LeetQ.Rel.Rep.FoldN LeetQ.Rel.Rep.OpsN LeetQ.Rel.Rep.Prim LeetQ.Rel.Rep.ListN
+open Rel Rel.Kernel Rel.Verify Rel Rel.Alg Rel.KernelWF
+open scoped Rel.Core.Rel
+open Rel.Core.Rel hiding id comp recip inter union zero le inl inr junc
+open Rel.Rep Rel.Rep.FoldN Rel.Rep.OpsN Rel.Rep.Prim Rel.Rep.ListN
 
 namespace Rep
 
@@ -300,4 +300,4 @@ theorem rep_fixOn {A : Obj} (n : Nat) (φ : CRel A B → CRel A B) (X₀ : CRel 
 
 end CRel
 
-end LeetQ.Rel
+end Rel

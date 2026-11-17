@@ -1,5 +1,5 @@
-import LeetQ.Rel.Lang.Test
-import LeetQ.Rel.Programs.Chess
+import Rel.Lang.Test
+import Rel.Programs.Chess
 /- Turned off: it re-runs `Programs.chess` on many boards at every build (about 15 s). Remove this comment
    wrapper to turn it back on.
 
@@ -7,9 +7,9 @@ import LeetQ.Rel.Programs.Chess
     `on` replaced (`rel_program v from Programs.chess`), each variant expanded once; and the program's tables and
     the relations `W`, `P` of its own board, as sets. -/
 
-namespace LeetQ.Rel.Lang.TestChess
+namespace Rel.Lang.TestChess
 
-open LeetQ.Rel LeetQ.Rel.Lang LeetQ.Rel.Alg QLean
+open Rel Rel.Lang Rel.Alg Rel
 
 abbrev SS : Obj := .prod .long .long
 abbrev Bd : Obj := .arr SS
@@ -41,7 +41,7 @@ def fibre (n : String) : Option (Rel .long .long) :=
 
 /-! Mate in one, each against the value its check states. -/
 
-open LeetQ.Rel.Programs.prelude Programs.chess in
+open Rel.Programs.prelude Programs.chess in
 rel_program printM where
     print m
 
@@ -124,5 +124,5 @@ def rewritten (p : Program) : List (String × String) :=
   | .ok q => (rewritten Programs.chess).length == 4 && rewritten Programs.chess == rewritten q
   | .error _ => false
 
-end LeetQ.Rel.Lang.TestChess
+end Rel.Lang.TestChess
 -/

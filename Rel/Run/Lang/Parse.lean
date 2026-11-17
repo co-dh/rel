@@ -1,4 +1,4 @@
-import LeetQ.Run.Lang.Syntax
+import Rel.Run.Lang.Syntax
 
 /-! The scope and the words of the Rel language, read by `Embed` from the tokens of a `rel_program` (§c).
 
@@ -6,9 +6,9 @@ import LeetQ.Run.Lang.Syntax
     `π₁` then `B`), as the note writes composition by juxtaposition; a run no prefix of which is in scope is one
     name, which the elaborator reports. The descent is `partial`: it recurses on the input, never past its end. -/
 
-namespace LeetQ.Rel.Lang.Parse
+namespace Rel.Lang.Parse
 
-open LeetQ.Rel.Lang
+open Rel.Lang
 
 structure S where
   cs : Array Char
@@ -241,4 +241,4 @@ def openAll (homes : List (Lean.Name × Program)) (n : String) : Found :=
   | some (_, e) => .ext e
   | none => .none
 
-end LeetQ.Rel.Lang.Parse
+end Rel.Lang.Parse

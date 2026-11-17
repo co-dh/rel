@@ -6,19 +6,19 @@
   the twin's bit. What stays is not a size bound: the test's own spec, which a caller applies at the test bits each
   `rep_<op>C` hands back.
 -/
-import LeetQ.Rel.CRelLoop
-import LeetQ.Run.CRelLoopDef
-import LeetQ.Rel.CRelPower
-import LeetQ.Run.CRelPowerDef
-import LeetQ.Rel.RepSort
-import LeetQ.Run.CRelEstDef
+import Rel.CRelLoop
+import Rel.Run.CRelLoopDef
+import Rel.CRelPower
+import Rel.Run.CRelPowerDef
+import Rel.RepSort
+import Rel.Run.CRelEstDef
 
-namespace LeetQ.Rel
+namespace Rel
 
-open QLean QLean.Kernel QLean.Verify LeetQ.Rel LeetQ.Rel.Alg LeetQ.Rel.KernelWF
-open scoped LeetQ.Core.Rel
-open LeetQ.Core.Rel hiding id comp recip inter union zero le inl inr junc
-open LeetQ.Rel.Rep LeetQ.Rel.Rep.FoldN LeetQ.Rel.Rep.OpsN LeetQ.Rel.Rep.Prim LeetQ.Rel.Rep.ListN
+open Rel Rel.Kernel Rel.Verify Rel Rel.Alg Rel.KernelWF
+open scoped Rel.Core.Rel
+open Rel.Core.Rel hiding id comp recip inter union zero le inl inr junc
+open Rel.Rep Rel.Rep.FoldN Rel.Rep.OpsN Rel.Rep.Prim Rel.Rep.ListN
 
 namespace Rep
 
@@ -328,4 +328,4 @@ theorem rep_sortSet (Q : CRel B B) {n : USize} (Y : Vals (.arr B) n) (hb : (sort
 
 end CRel
 
-end LeetQ.Rel
+end Rel

@@ -1,16 +1,16 @@
-import QLean.RelPart.Verify.FindMember
-import QLean.RelPart.Verify.Encoding
-import QLean.RelPart.Verify.Group
-import QLean.RelPart.Kernel.Sort
-import QLean.RelPart.Kernel.Structural
-import QLean.RelPart.Value
-import QLean.RelPart.Kernel.Search
+import Rel.KernelSpec.FindMember
+import Rel.KernelSpec.Encoding
+import Rel.KernelSpec.Group
+import Rel.Kernel.Sort
+import Rel.Kernel.Structural
+import Rel.Kernel.Value
+import Rel.Kernel.Search
 
-/-! The part of `QLean.Verify.Ids` the Rel kernels reach; `QLean.Verify.Ids` imports it. -/
+/-! The part of `Rel.Verify.Ids` the Rel kernels reach; `Rel.Verify.Ids` imports it. -/
 
 
-namespace QLean.Verify
-open QLean QLean.Kernel
+namespace Rel.Verify
+open Rel Rel.Kernel
 
 /-- An id read at `w` bits is below `2 ^ w`: each byte's contribution is cut to `w` bits. -/
 theorem idAt_lt (ids : ByteArray) (w i : Nat) (hw : w ≤ 64) : Column.idAt ids w i < 2 ^ w := by
@@ -197,10 +197,10 @@ theorem memberIdsVec_mem (xw hw xn hn : USize) (xs hay : ByteArray)
       (Nat.lt_of_lt_of_le (idAt_lt xs _ i hx64) (Nat.pow_le_pow_right (by decide) hx64)))
   · simp only [hix, decide_false, Bool.false_and]
 
-/-- info: 'QLean.Verify.findIdsVec_idxOf' depends on axioms: [propext, Quot.sound] -/
+/-- info: 'Rel.Verify.findIdsVec_idxOf' depends on axioms: [propext, Quot.sound] -/
 #guard_msgs in #print axioms findIdsVec_idxOf
 
-/-- info: 'QLean.Verify.memberIdsVec_mem' depends on axioms: [propext, Quot.sound] -/
+/-- info: 'Rel.Verify.memberIdsVec_mem' depends on axioms: [propext, Quot.sound] -/
 #guard_msgs in #print axioms memberIdsVec_mem
 
 /-- **`memberBits`' bit `i` is set exactly when `i` is below the needle count and needle bit `i` is
@@ -248,7 +248,7 @@ theorem memberBits_mem (m n : USize) (xs hay : ByteArray) :
   rw [USize.lt_iff_toNat_lt, find?_range_getD, USize.toNat_ofNat_of_lt' (Nat.lt_of_le_of_lt hl n.toNat_lt_size),
     ← idxOf_lt_length, List.length_map, List.length_range]
 
-/-- info: 'QLean.Verify.memberBits_mem' depends on axioms: [propext, Quot.sound] -/
+/-- info: 'Rel.Verify.memberBits_mem' depends on axioms: [propext, Quot.sound] -/
 #guard_msgs in #print axioms memberBits_mem
 
 /-- A search over `List.range n` that answers `n` matched nowhere. -/
@@ -291,7 +291,7 @@ theorem enumIds_idAt (n d nullId w : USize) (b : ByteArray)
     rw [idAt_packIds hw hi (by simp only [hb, Bool.false_eq_true, ↓reduceIte]; exact Nat.lt_of_lt_of_le hlt hd)]
     simp only [hb, hn, Bool.false_eq_true, ↓reduceIte]
 
-/-- info: 'QLean.Verify.enumIds_idAt' depends on axioms: [propext, Quot.sound] -/
+/-- info: 'Rel.Verify.enumIds_idAt' depends on axioms: [propext, Quot.sound] -/
 #guard_msgs in #print axioms enumIds_idAt
 
 /-- An id below `L` fits the width `idWidthOf L` packs at, for any count a `USize` holds. -/
@@ -333,7 +333,7 @@ theorem idGroups_eq_iff (d n w : USize) (ids : ByteArray) {i j : Nat} (hi : i < 
     idAt_packIds hW hj (lt_two_pow_idWidthOf hL (groupOf_lt hj)),
     groupOf_eq_iff (g := Order.idKey d.toNat ids w.toNat) hi (groupOf_lt hj), groupOf_get (g := Order.idKey d.toNat ids w.toNat) hj]
 
-/-- info: 'QLean.Verify.idGroups_eq_iff' depends on axioms: [propext, Quot.sound] -/
+/-- info: 'Rel.Verify.idGroups_eq_iff' depends on axioms: [propext, Quot.sound] -/
 #guard_msgs in #print axioms idGroups_eq_iff
 
-end QLean.Verify
+end Rel.Verify

@@ -1,13 +1,13 @@
-import LeetQ.Rel.Programs.Prelude
+import Rel.Programs.Prelude
 
 /-! # Job-shop scheduling (AIMA §6.1.2)
 
 The car assembly: 15 jobs, each a start time in 0…30; a solution is a map s : Job ⟶ N no two of whose
 assignments are related by bad, the union of the violated binary constraints as one relation on (job, start). -/
 
-namespace LeetQ.Rel.Programs
+namespace Rel.Programs
 
-open LeetQ.Rel.Programs.prelude in
+open Rel.Programs.prelude in
 rel_program jobshop where
     obj Job = {AxleF,AxleB,WheelRF,WheelLF,WheelRB,WheelLB,NutsRF,NutsLF,NutsRB,NutsLB,CapRF,CapLF,CapRB,CapLB,Inspect}
     obj N = 0…30                                  -- start times; plus has no value past 30, so 30 is the deadline
@@ -41,4 +41,4 @@ rel_program jobshop where
 
 #guard jobshop.ok
 
-end LeetQ.Rel.Programs
+end Rel.Programs

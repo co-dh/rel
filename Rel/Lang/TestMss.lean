@@ -1,16 +1,16 @@
-import LeetQ.Rel.Lang.Test
-import LeetQ.Rel.Programs.Mss
+import Rel.Lang.Test
+import Rel.Programs.Mss
 
 /-! The Rel language on B&dM Ex 7.40, the maximum segment sum, the program `Programs.mss`: the
     specification `Λ(segment sum) est(≥)` and the derived fold `⦇k⦈ π₂ est(≥)`, each against a direct `List` computation. -/
 
-namespace LeetQ.Rel.Lang.TestMss
+namespace Rel.Lang.TestMss
 
--- no `open QLean`/`LeetQ.Rel.Alg`: their notation tokens break the `rel_program` lines below ("expected a name" at `Λ`)
-open LeetQ.Rel LeetQ.Rel.Lang LeetQ.Rel.Lang.Test
+-- no `open Rel`/`Rel.Alg`: their notation tokens break the `rel_program` lines below ("expected a name" at `Λ`)
+open Rel Rel.Lang Rel.Lang.Test
 
 -- the specification and the derived fold on every array of `A`, named `s` and `p`; printed, `x mss` and `x` then the fold
-open LeetQ.Rel.Programs.prelude Programs.mss in
+open Rel.Programs.prelude Programs.mss in
 rel_program given where
     s : [N] ⟶ N ≜ A mss
     p : [N] ⟶ N ≜ A scan
@@ -50,4 +50,4 @@ def rows : String := s!"\{(a, {mssL [3,1,4,1,5]}), (b, {mssL [2,0,7]}), (c, {mss
 #guard given.prints == [s!"x mss = {rows}",
   s!"x scan = {rows}"]
 
-end LeetQ.Rel.Lang.TestMss
+end Rel.Lang.TestMss

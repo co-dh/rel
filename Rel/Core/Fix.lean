@@ -2,11 +2,11 @@
   `(μX : φX)` and `(νX : φX)` on a hom-set of relations (B&dM Theorem 6.1), defined for every `φ`: a fixed point
   when `φ` is monotonic. The one copy of the fixed points Rel proper uses; `Gen.mu`, `Gen.nu` compute them.
 -/
-import LeetQ.Core.Rel
+import Rel.Core.Rel
 
-namespace LeetQ.Core.Rel
+namespace Rel.Core.Rel
 
-open LeetQ.Core
+open Rel.Core
 
 variable {α β : Type} {φ ψ : Rel α β → Rel α β} {Y : Rel α β}
 
@@ -41,4 +41,4 @@ theorem mu_mono (h : ∀ X, φ X ⊑ ψ X) : mu φ ⊑ mu ψ :=
 theorem nu_mono (h : ∀ X, φ X ⊑ ψ X) : nu φ ⊑ nu ψ :=
   le_iff.2 fun _ _ ⟨Y, hY, hy⟩ => ⟨Y, le_trans hY (h Y), hy⟩
 
-end LeetQ.Core.Rel
+end Rel.Core.Rel

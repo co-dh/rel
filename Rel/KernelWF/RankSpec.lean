@@ -2,11 +2,11 @@
   `Ops.rank` read back at `long`: q's `rank` (`<<x`) is the ordinal rank of a stable ascending sort, so row
   `p` ranks below row `q` exactly when `p`'s value is below `q`'s, or the two are equal and `p` comes first.
 -/
-import LeetQ.Rel.KernelWF.BagSpec
+import Rel.KernelWF.BagSpec
 
-namespace LeetQ.Rel.Alg
+namespace Rel.Alg
 
-open QLean QLean.Kernel QLean.Verify LeetQ.Rel LeetQ.Rel.KernelWF
+open Rel Rel.Kernel Rel.Verify Rel Rel.KernelWF
 
 /-- **Position in a list sorted by a strict order is that order**: `g` pairwise `R`, `R` asymmetric, so for
     `p q ∈ g` the first `p` stands before the first `q` exactly at `R p q`. -/
@@ -97,4 +97,4 @@ theorem rank_long {n : USize} (x : Arr .long n) (h : QAtomicType.long ≠ .gener
 #print axioms longsOf_rank
 #print axioms rank_long
 
-end LeetQ.Rel.Alg
+end Rel.Alg

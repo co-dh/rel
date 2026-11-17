@@ -4,14 +4,14 @@
   premise left: `leC_ok` reads `leC`'s bit as `rep_le`'s joint pair codes, `domC`'s and `nubC`'s bits give the
   one-part codes and fits.
 -/
-import LeetQ.Rel.CRelRel
-import LeetQ.Run.CRelRelDef
+import Rel.CRelRel
+import Rel.Run.CRelRelDef
 
-namespace LeetQ.Rel.Rep
+namespace Rel.Rep
 
-open QLean QLean.Kernel QLean.Verify LeetQ.Rel LeetQ.Rel.Alg LeetQ.Rel.KernelWF
-open scoped LeetQ.Core.Rel
-open LeetQ.Core.Rel hiding id comp recip inter union zero le inl inr junc
+open Rel Rel.Kernel Rel.Verify Rel Rel.Alg Rel.KernelWF
+open scoped Rel.Core.Rel
+open Rel.Core.Rel hiding id comp recip inter union zero le inl inr junc
 open OpsN
 
 variable {A B : Obj}
@@ -87,4 +87,4 @@ theorem rep_isMapC (R : Rel A B) {m : USize} (U : Vals A m) (hb : (isMapC R U).2
 #print axioms rep_injectiveC
 #print axioms rep_isMapC
 
-end LeetQ.Rel.Rep
+end Rel.Rep

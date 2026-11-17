@@ -1,14 +1,14 @@
-import LeetQ.Run.Lang.Embed
-import LeetQ.Rel.Lang.GenSpec
+import Rel.Run.Lang.Embed
+import Rel.Lang.GenSpec
 
 /-! `Expand.rep n`: the proof that the code of the program `n` computes its terms. `rel_program n` emits only the
     program and records each definition's numbered term with the expansion's constants (`RegEntry.rep`); this
     function reads them back and assembles `n.rep_x : (n.x).ok = true → rep (n.x).rel = ⟦x⟧` from `GenSpec`'s
     lemmas, so a program's module imports no proof; `TestRep` runs it on every program the registry lists. -/
 
-namespace LeetQ.Rel.Lang
+namespace Rel.Lang
 
-open LeetQ.Rel LeetQ.Rel.Alg
+open Rel Rel.Alg
 
 namespace Expand
 
@@ -146,7 +146,7 @@ def rep (n : Name) : MetaM Unit := do
         match ← prf n [] t with
         | some p =>
           let ty ← mkArrow (← mkEq (← mkAppM ``CRel.ok #[kc]) (toExpr true))
-            (← mkEq (← mkAppM ``LeetQ.Rel.Rep.rep #[← mkAppM ``CRel.rel #[kc]]) (← inferType p).appArg!)
+            (← mkEq (← mkAppM ``Rel.Rep.rep #[← mkAppM ``CRel.rel #[kc]]) (← inferType p).appArg!)
           let pv ← mkAppM ``Gen.Sound.eq #[p]
           addDecl (.thmDecl { name := n ++ Name.mkSimple s!"rep_{x}", levelParams := [], type := ty, value := pv })
           pure none
@@ -160,4 +160,4 @@ def rep (n : Name) : MetaM Unit := do
 
 end Expand
 
-end LeetQ.Rel.Lang
+end Rel.Lang

@@ -1,7 +1,7 @@
 import Lean
-import LeetQ.Run.Lang.Gen
-import LeetQ.Run.Lang.Elab
-import LeetQ.Run.Lang.Parse
+import Rel.Run.Lang.Gen
+import Rel.Run.Lang.Elab
+import Rel.Run.Lang.Parse
 
 /-! The expander of `rel_program n`: each closed definition `x ≜ …` becomes the Lean definition `n.x : CRel A B`,
     a composition of `CRel` ops (`Gen`), so its ok bit is the `&&` of the ops it runs. At elaboration time the
@@ -9,9 +9,9 @@ import LeetQ.Run.Lang.Parse
     Lean `Expr` constructor by constructor. Every closed sub-term (no keys, no fixed-point variable) becomes one
     constant `n.c.<i>`, structurally equal ones the same constant, so it is computed once; a fixed point's body is a Lean `fun X => …`; a closed `≫`/`∩`/`−`/`\` runs as a bit-matrix plan. -/
 
-namespace LeetQ.Rel.Lang
+namespace Rel.Lang
 
-open LeetQ.Rel LeetQ.Rel.Alg
+open Rel Rel.Alg
 
 /-- An object variable left in an object. -/
 def OTy.poly : OTy → Bool
@@ -46,7 +46,7 @@ def useDef (c : Lean.Name) (imported : Bool) (d : Def) : Def :=
         if rels.length == as.length && as.length == x.sig.2.1.length then
           pure (.rel (.prim x ((x.sig.2.1.zip rels).map fun ((_, f), (a, s')) => x.pass p f a s') s t) s t)
         else pure (.rel (if imported then q.at p else q) s t)
-      | `LeetQ.Rel.Programs.prelude.perm, .rel q s t, _ => pure (.rel (.own (q.at p)) s t)
+      | `Rel.Programs.prelude.perm, .rel q s t, _ => pure (.rel (.own (q.at p)) s t)
       | _, .rel q s t, _ => pure (.rel (if imported then q.at p else q) s t)
       | _, .fam q i a b, _ => pure (.fam (if imported then q.at p else q) i a b) }
 
@@ -183,8 +183,8 @@ def elabOnce (env : Env) (p : Pos) (n : String) (qs : List Param) (e : Expr) (ty
 
 /-! ### A row of `prims` at its objects -/
 
-open Lean in deriving instance ToExpr for QLean.QAtomicType
-open Lean in deriving instance ToExpr for LeetQ.Rel.Obj
+open Lean in deriving instance ToExpr for Rel.QAtomicType
+open Lean in deriving instance ToExpr for Rel.Obj
 open Lean in deriving instance ToExpr for MVarId
 open Lean in deriving instance ToExpr for OTy
 
@@ -575,7 +575,7 @@ def hex (b : ByteArray) : String :=
 
 /-- An atom column rebuilt from its payload (`Gen.atom`): a fixed-width or boolean one; a symbol, general,
     Frame-of-Reference or ALP payload is not rebuilt, and says so. -/
-def atomE (t : QLean.QAtomicType) (n : USize) (x : Arr t n) : Except String Lean.Expr :=
+def atomE (t : Rel.QAtomicType) (n : USize) (x : Arr t n) : Except String Lean.Expr :=
   match x.enc with
   | .bytes b => pure (g ``Gen.atom #[toExpr t, uE n, toExpr false, mkStrLit (hex b)])
   | .bits b => pure (g ``Gen.atom #[toExpr t, uE n, toExpr true, mkStrLit (hex b)])
@@ -871,4 +871,4 @@ def emit (n : Name) (r : Read) : MetaM Unit := do
 
 end Expand
 
-end LeetQ.Rel.Lang
+end Rel.Lang

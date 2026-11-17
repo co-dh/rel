@@ -1,11 +1,11 @@
-import QLean.RelPart.Value
-import QLean.RelPart.Kernel.Search
+import Rel.Kernel.Value
+import Rel.Kernel.Search
 
-/-! The part of `QLean.Kernel.SearchTest` the Rel kernels reach; `QLean.Kernel.SearchTest` imports it. -/
+/-! The part of `Rel.Kernel.SearchTest` the Rel kernels reach; `Rel.Kernel.SearchTest` imports it. -/
 
 
-namespace QLean.Kernel
-example : normalise 8 true QLean.nanBits = QLean.nanBits := by decide
-example : normalise 4 true QLean.nanBits32.toUInt64 = QLean.nanBits32.toUInt64 := by decide
+namespace Rel.Kernel
+example : normalise 8 true Rel.nanBits = Rel.nanBits := by decide
+example : normalise 4 true Rel.nanBits32.toUInt64 = Rel.nanBits32.toUInt64 := by decide
 
-end QLean.Kernel
+end Rel.Kernel

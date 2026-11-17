@@ -2,16 +2,16 @@
   What `composeKey` CONTAINS: the chain it builds, read back stage by stage. First the program's stage
   count, for a build of any number of stages (qlean's `Verify.prog_one` is the build of none).
 -/
-import QLean.RelPart.Verify.Chain
-import QLean.RelPart.Verify.Ids
-import QLean.RelPart.Verify.Search
-import QLean.RelPart.Verify.Where
-import LeetQ.Rel.KernelWF.Lane
-import LeetQ.Rel.KernelWF.CodesSpec
+import Rel.KernelSpec.Chain
+import Rel.KernelSpec.Ids
+import Rel.KernelSpec.Search
+import Rel.KernelSpec.Where
+import Rel.KernelWF.Lane
+import Rel.KernelWF.CodesSpec
 
-namespace LeetQ.Rel.Alg
+namespace Rel.Alg
 
-open QLean QLean.Kernel QLean.Verify
+open Rel Rel.Kernel Rel.Verify
 
 /-- **A build's program holds its stages and the last one**: `Ew.chain` runs `stages.size + 1` stages. -/
 theorem prog_count (b : Ew.Build) (last : Ew.Stage) :
@@ -707,4 +707,4 @@ theorem composeKey_code (a b : Code)
     (by rw [hn] at hB2; exact hB2) hi
   exact ⟨ePack_idAt _ hi hA hB (by omega) hk1, hA, hB⟩
 
-end LeetQ.Rel.Alg
+end Rel.Alg

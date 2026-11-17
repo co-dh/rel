@@ -2,14 +2,14 @@
   `Obj.raze` of two parts read back at the constructors `RazeRow` leaves: a symbol atom's list (`razeTo2_symbol`),
   an array side (`raze_row_arr`), each taking the read-back of its components as a hypothesis.
 -/
-import LeetQ.Rel.KernelWF.RazeRow
-import LeetQ.Rel.KernelWF.RazeSym
+import Rel.KernelWF.RazeRow
+import Rel.KernelWF.RazeSym
 
-namespace LeetQ.Rel.KernelWF
+namespace Rel.KernelWF
 
-open QLean QLean.Kernel QLean.Dep LeetQ.Rel LeetQ.Rel.Alg LeetQ.Rel.Rep
-open scoped LeetQ.Core.Rel
-open LeetQ.Core.Rel hiding id comp recip inter union zero le inl inr junc
+open Rel Rel.Kernel Rel.Dep Rel Rel.Alg Rel.Rep
+open scoped Rel.Core.Rel
+open Rel.Core.Rel hiding id comp recip inter union zero le inl inr junc
 
 /-- `raze_row_atom`'s `hA` at `symbol` (`razeTo_toList_symbol`); `hD`: the parts' dictionaries, a blob counting
     its rows, fit a `USize`. -/
@@ -431,4 +431,4 @@ theorem raze_row_sum {a b : Obj} {n m : USize} (x : Vals (.sum a b) n) (y : Vals
     · simp only [ht, ↓reduceIte] at hI ⊢
       exact congrArg Sum.inr (side_read_snd _ _ _ hR1 hRB (by rw [hI]; omega) (hs.1 ht))
 
-end LeetQ.Rel.KernelWF
+end Rel.KernelWF

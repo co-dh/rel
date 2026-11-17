@@ -1,4 +1,4 @@
-import LeetQ.Run.Lang.Tm
+import Rel.Run.Lang.Tm
 
 /-! # Bit matrices: a closed term over small objects with no table at its inner nodes
 
@@ -19,9 +19,9 @@ sub-terms evaluated to their tables (`Tm.val`). Every column of the route is cod
 `2²⁷` bits (`Tm.fits`, false at every other constructor), and is evaluated as its tables otherwise. The answer is
 turned back into a table once, at the root. -/
 
-namespace LeetQ.Rel.Lang.Bits
+namespace Rel.Lang.Bits
 
-open QLean QLean.Kernel LeetQ.Rel LeetQ.Rel.Alg
+open Rel Rel.Kernel Rel Rel.Alg
 
 /-! ### The route: a term over its tables -/
 
@@ -30,18 +30,18 @@ def opC {α β γ : Type} (op : α → β → γ × Bool) (r : α × Bool) (s : 
   let c := op r.1 s.1; (c.1, r.2 && s.2 && c.2)
 
 /-- Whether the term is a table, the one leaf a route has. -/
-def _root_.LeetQ.Rel.Lang.Tm.isVal {A B : Obj} {d : Bool} : Tm A B d → Bool
+def _root_.Rel.Lang.Tm.isVal {A B : Obj} {d : Bool} : Tm A B d → Bool
   | .val _ => true
   | _ => false
 
 /-- A table leaf's relation, `𝟘` at any other term: the universes of `\` in a route. -/
-def _root_.LeetQ.Rel.Lang.Tm.tab {A B : Obj} {d : Bool} : Tm A B d → Rel A B
+def _root_.Rel.Lang.Tm.tab {A B : Obj} {d : Bool} : Tm A B d → Rel A B
   | .val R => R
   | _ => Alg.zero
 
 /-- The route as a table and whether every node's op ran within capacity: `Alg`'s C twin at each node, what the expander
     runs for the term. Bit false at a constructor with no bit rule. -/
-def _root_.LeetQ.Rel.Lang.Tm.tableC : {A B : Obj} → {d : Bool} → Tm A B d → Rel A B × Bool
+def _root_.Rel.Lang.Tm.tableC : {A B : Obj} → {d : Bool} → Tm A B d → Rel A B × Bool
   | _, _, _, .val R => (R, true)
   | _, _, _, .comp R S => let r := R.tableC; if r.1.n == 0 then (Alg.zero, r.2) else opC compC r S.tableC
   | _, _, _, .conv R => let r := R.tableC; (r.1°, r.2)
@@ -54,7 +54,7 @@ def _root_.LeetQ.Rel.Lang.Tm.tableC : {A B : Obj} → {d : Bool} → Tm A B d �
   | _, _, _, _ => (Alg.zero, false)
 
 /-- The route as a table: `tableC`'s relation. -/
-def _root_.LeetQ.Rel.Lang.Tm.table {A B : Obj} {d : Bool} (p : Tm A B d) : Rel A B := p.tableC.1
+def _root_.Rel.Lang.Tm.table {A B : Obj} {d : Bool} (p : Tm A B d) : Rel A B := p.tableC.1
 
 /-- A column of some object. -/
 abbrev Col := (X : Obj) × Part X
@@ -62,7 +62,7 @@ abbrev Col := (X : Obj) × Part X
 def relCols {A B : Obj} (R : Rel A B) (cs : Array Col) : Array Col := (cs.push ⟨A, ⟨R.n, R.key⟩⟩).push ⟨B, ⟨R.n, R.val⟩⟩
 
 /-- The tables' columns, two per table, in the order `Tm.bits` reads them back. -/
-def _root_.LeetQ.Rel.Lang.Tm.cols : {A B : Obj} → {d : Bool} → Tm A B d → Array Col → Array Col
+def _root_.Rel.Lang.Tm.cols : {A B : Obj} → {d : Bool} → Tm A B d → Array Col → Array Col
   | _, _, _, .val R, cs => relCols R cs
   | _, _, _, .comp R S, cs | _, _, _, .meet R S, cs | _, _, _, .join R S, cs | _, _, _, .diff R S, cs => S.cols (R.cols cs)
   | _, _, _, .conv R, cs => R.cols cs
@@ -72,7 +72,7 @@ def _root_.LeetQ.Rel.Lang.Tm.cols : {A B : Obj} → {d : Bool} → Tm A B d → 
 /-- Every matrix the route builds at most `2²⁷` bits (16 MB), `sz` each object's code count; false at a constructor with
     no bit rule. The left side of `≫` and `\` is read as its pairs (`Tm.pairs`): a table's from its codes, with no
     matrix. -/
-def _root_.LeetQ.Rel.Lang.Tm.fits (sz : Obj → Nat) : {A B : Obj} → {d : Bool} → Tm A B d → Bool
+def _root_.Rel.Lang.Tm.fits (sz : Obj → Nat) : {A B : Obj} → {d : Bool} → Tm A B d → Bool
   | A, B, _, .val _ => sz A * sz B ≤ 2 ^ 27
   | A, B, _, .meet R S | A, B, _, .join R S | A, B, _, .diff R S => sz A * sz B ≤ 2 ^ 27 && R.fits sz && S.fits sz
   | A, B, _, .comp R S => sz A * sz B ≤ 2 ^ 27 && (R.isVal || R.fits sz) && S.fits sz
@@ -193,7 +193,7 @@ def pairsOf {A B : Obj} {d : Bool} (p : Tm A B d) (x : StateM Nat Bits) (ids : A
   else do let x ← x; pure (if flip then x.conv.pairs else x.pairs)
 
 /-- The route's matrix, one kernel call per node, the tables' code columns read in `Tm.cols`' order. -/
-def _root_.LeetQ.Rel.Lang.Tm.bits (ids : Array ByteArray) (sz : Obj → Nat) : {A B : Obj} → {d : Bool} → Tm A B d →
+def _root_.Rel.Lang.Tm.bits (ids : Array ByteArray) (sz : Obj → Nat) : {A B : Obj} → {d : Bool} → Tm A B d →
     StateM Nat Bits
   | A, B, _, .val _ => do let (k, v) ← take ids; pure (Bits.ofCodes (sz A) (sz B) k v)
   | A, _, _, .comp R S => do
@@ -208,7 +208,7 @@ def _root_.LeetQ.Rel.Lang.Tm.bits (ids : Array ByteArray) (sz : Obj → Nat) : {
   | _, _, _, _ => pure (Bits.const false 0 0)
 
 /-- The route's pairs of codes (`pairsOf` at its matrix). -/
-def _root_.LeetQ.Rel.Lang.Tm.pairs (ids : Array ByteArray) (sz : Obj → Nat) (flip : Bool) {A B : Obj} {d : Bool}
+def _root_.Rel.Lang.Tm.pairs (ids : Array ByteArray) (sz : Obj → Nat) (flip : Bool) {A B : Obj} {d : Bool}
     (p : Tm A B d) : StateM Nat (ByteArray × ByteArray) := pairsOf p (p.bits ids sz) ids flip
 
 /-- The capacities the bit run is proved under, read off counts alone: every column's rows below `2^63` (a table
@@ -253,4 +253,4 @@ def runC {A B : Obj} {d : Bool} (p : Tm A B d) : Rel A B × Bool :=
         if R ⊑ T && T ⊑ R then R else die "LEETQ DIFF: bit path and table path differ" R, true)
     | none => if checkOn == 0 then p.tableC else (dbgTrace "LEETQ table" fun _ => p.table, p.tableC.2)
 
-end LeetQ.Rel.Lang.Bits
+end Rel.Lang.Bits

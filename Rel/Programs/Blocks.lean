@@ -1,10 +1,10 @@
-import LeetQ.Rel.Programs.Prelude
+import Rel.Programs.Prelude
 
 /-! # The blocks world -/
 
-namespace LeetQ.Rel.Programs
+namespace Rel.Programs
 
-open LeetQ.Rel.Programs.prelude in
+open Rel.Programs.prelude in
 rel_program blocks where
     obj X = {A,B,C}                               -- the blocks
     obj N = 0…27                                  -- counts: a bound fixed before the search
@@ -40,4 +40,4 @@ rel_program blocks where
 
 #guard blocks.ok
 
-end LeetQ.Rel.Programs
+end Rel.Programs

@@ -4,11 +4,11 @@
   Every index in a statement here carries its bound explicitly (`xs[k]'hk`): left to `get_elem_tactic`,
   the index proofs of this many binders ran Lean out of memory (`std::bad_alloc` at 20 GB) before any tactic.
 -/
-import LeetQ.Rel.KernelWF.CodesProd
+import Rel.KernelWF.CodesProd
 
-namespace LeetQ.Rel.Alg
+namespace Rel.Alg
 
-open QLean QLean.Dep QLean.Kernel QLean.Verify LeetQ.Rel
+open Rel Rel.Dep Rel.Kernel Rel.Verify Rel
 
 /-- **A product side's codes are faithful and well formed, on one lane**, given its two columns' are, one
     lane each, the parts' summed count a `USize`: `pairCode_spec` of the columns laid end to end
@@ -124,4 +124,4 @@ theorem codes_prod_faithful_wf {a b : Obj} {p : Nat} (cs : Vector (Part (.prod a
 
 #print axioms codes_prod_faithful_wf
 
-end LeetQ.Rel.Alg
+end Rel.Alg

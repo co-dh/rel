@@ -1,16 +1,16 @@
-import QLean.RelPart.Verify.Group
-import QLean.RelPart.Kernel.Sort
-import QLean.RelPart.Kernel.Coc
-import QLean.RelPart.Kernel.Scan
-import QLean.RelPart.Value
+import Rel.KernelSpec.Group
+import Rel.Kernel.Sort
+import Rel.Kernel.Coc
+import Rel.Kernel.Scan
+import Rel.Kernel.Value
 
-/-! The part of `QLean.Verify.Grade` the Rel kernels reach; `QLean.Verify.Grade` imports it. -/
+/-! The part of `Rel.Verify.Grade` the Rel kernels reach; `Rel.Verify.Grade` imports it. -/
 
 
-namespace QLean.Verify
+namespace Rel.Verify
 
-open QLean QLean.Kernel
-open QLean.Kernel.Scan (Kind)
+open Rel Rel.Kernel
+open Rel.Kernel.Scan (Kind)
 open List.MergeSort.Internal
 
 /-- `merge` reads its comparator only at a pair of one element from each side. -/
@@ -141,15 +141,15 @@ theorem gradeLane_spec (desc : Bool) (n w : USize) (ids' : ByteArray) :
   exact ⟨hp, hs.imp fun ⟨h1, h2⟩ => ⟨by cases desc <;> simpa using h1,
     fun h => h2 (by cases desc <;> simpa using h)⟩⟩
 
-end QLean.Verify
+end Rel.Verify
 
-/-- info: 'QLean.Verify.gradeLane_spec' depends on axioms: [propext, Quot.sound] -/
-#guard_msgs in #print axioms QLean.Verify.gradeLane_spec
+/-- info: 'Rel.Verify.gradeLane_spec' depends on axioms: [propext, Quot.sound] -/
+#guard_msgs in #print axioms Rel.Verify.gradeLane_spec
 
-#print axioms QLean.Verify.merge_congr
-#print axioms QLean.Verify.pairwise_lex_mergeSort
-#print axioms QLean.Verify.range_mergeSort
-#print axioms QLean.Verify.grade_spec
-#print axioms QLean.Verify.gradeFoR_spec
-#print axioms QLean.Verify.decode_keyAt
-#print axioms QLean.Verify.groupIdsFoR_spec
+#print axioms Rel.Verify.merge_congr
+#print axioms Rel.Verify.pairwise_lex_mergeSort
+#print axioms Rel.Verify.range_mergeSort
+#print axioms Rel.Verify.grade_spec
+#print axioms Rel.Verify.gradeFoR_spec
+#print axioms Rel.Verify.decode_keyAt
+#print axioms Rel.Verify.groupIdsFoR_spec

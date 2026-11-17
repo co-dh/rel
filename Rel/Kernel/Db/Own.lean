@@ -1,12 +1,12 @@
-import QLean.RelPart.Kernel.Sort
-import QLean.RelPart.Value
+import Rel.Kernel.Sort
+import Rel.Kernel.Value
 
-/-! The part of `QLean.Db.Own` the Rel kernels reach; `QLean.Db.Own` imports it. -/
+/-! The part of `Rel.Db.Own` the Rel kernels reach; `Rel.Db.Own` imports it. -/
 
 
-namespace QLean.Db
+namespace Rel.Db
 
-open QLean
+open Rel
 
 /-- A column as `ownWrite` takes it: the header's fields and the constructor's parts. -/
 structure OwnFile where
@@ -47,6 +47,5 @@ def ownFile (v : QValue) : Option OwnFile :=
   | .vector t n e _ => if t == .general then none else some (column t n e "")
   | _ => none
 
-variable {n : Type → Type} [Monad n] [MonadExceptOf DbError n]
 
-end QLean.Db
+end Rel.Db

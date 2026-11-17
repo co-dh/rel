@@ -2,11 +2,11 @@
   Guards of the relation algebra: every operator against its `toList` spec on small literal relations.
   Nothing imports this file; it is built so a guard that fails fails the build.
 -/
-import LeetQ.Run.CRelDef
+import Rel.Run.CRelDef
 
-namespace LeetQ.Rel.Alg
+namespace Rel.Alg
 
-open QLean QLean.Dep QLean.Kernel LeetQ.Rel
+open Rel Rel.Dep Rel.Kernel Rel
 
 /-! ## Checks against the `toList` specs, on small literal relations -/
 
@@ -720,7 +720,7 @@ private def T4 : Vals (.sum (.atom .symbol) .long) 1 := ⟨0, 1, bF, l0, emptyAr
 private def T5 : Vals (.arr (.sum (.sum .long .long) .long)) 1 := ⟨1, l0, l1, T2⟩
 #guard r0 (Vals.pickPart _ T5 i0) == some (T5.row ⟨0, by simp⟩)
 -- a general cell compared by q's `~`
-private local instance : BEq QValue := ⟨QLean.Eval.identical⟩
+private local instance : BEq QValue := ⟨Rel.Eval.identical⟩
 -- G1: the left side a general column of no values, the row tagged left
 private def G1 : Vals (.sum (.atom .general) .long) 1 := ⟨0, 1, bF, l0, emptyArr .general, l9⟩
 #guard r0 (Vals.pickPart _ G1 i0) == some (G1.row ⟨0, by simp⟩)
@@ -732,4 +732,4 @@ private def G2 : Vals (.sum (.sum (.atom .general) .long) .long) 1 := ⟨0, 1, b
 
 end PickMiss
 
-end LeetQ.Rel.Alg
+end Rel.Alg

@@ -4,23 +4,23 @@
   count bound its read-back theorem takes, so `rep_opC` holds under that one bit, and the `CRel` op `&&`s its
   inputs' bits with it.
 -/
-import LeetQ.Rel.CRel
-import LeetQ.Run.CRelDef
-import LeetQ.Rel.RepMem
-import LeetQ.Rel.RepLambda
-import LeetQ.Rel.RepOps2
-import LeetQ.Rel.RepDiv
-import LeetQ.Rel.RepSymDiv
-import LeetQ.Rel.RepLoop
-import LeetQ.Run.CRelRelDef
+import Rel.CRel
+import Rel.Run.CRelDef
+import Rel.RepMem
+import Rel.RepLambda
+import Rel.RepOps2
+import Rel.RepDiv
+import Rel.RepSymDiv
+import Rel.RepLoop
+import Rel.Run.CRelRelDef
 
-namespace LeetQ.Rel
+namespace Rel
 
 namespace Rep
 
-open QLean QLean.Kernel QLean.Verify LeetQ.Rel LeetQ.Rel.Alg LeetQ.Rel.KernelWF
-open scoped LeetQ.Core.Rel
-open LeetQ.Core.Rel hiding id comp recip inter union zero le inl inr junc
+open Rel Rel.Kernel Rel.Verify Rel Rel.Alg Rel.KernelWF
+open scoped Rel.Core.Rel
+open Rel.Core.Rel hiding id comp recip inter union zero le inl inr junc
 open OpsN
 
 variable {A B C D E : Obj}
@@ -297,9 +297,9 @@ end Rep
 
 namespace CRel
 
-open QLean QLean.Kernel LeetQ.Rel.Alg LeetQ.Rel.Rep
-open scoped LeetQ.Core.Rel
-open LeetQ.Core.Rel hiding id comp recip inter union zero le inl inr junc
+open Rel Rel.Kernel Rel.Alg Rel.Rep
+open scoped Rel.Core.Rel
+open Rel.Core.Rel hiding id comp recip inter union zero le inl inr junc
 
 variable {A B C D E : Obj}
 
@@ -388,4 +388,4 @@ theorem rep_prod (R : CRel A B) (S : CRel D E) (hb : (R.prod S).ok = true) :
 
 end CRel
 
-end LeetQ.Rel
+end Rel

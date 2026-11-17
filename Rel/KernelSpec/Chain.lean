@@ -1,15 +1,15 @@
-import QLean.RelPart.Verify.FindMember
-import QLean.RelPart.Verify.Encoding
-import QLean.RelPart.Kernel.Coc
-import QLean.RelPart.Value
-import QLean.RelPart.Kernel.Elementwise
+import Rel.KernelSpec.FindMember
+import Rel.KernelSpec.Encoding
+import Rel.Kernel.Coc
+import Rel.Kernel.Value
+import Rel.Kernel.Elementwise
 
-/-! The part of `QLean.Verify.Chain` the Rel kernels reach; `QLean.Verify.Chain` imports it. -/
+/-! The part of `Rel.Verify.Chain` the Rel kernels reach; `Rel.Verify.Chain` imports it. -/
 
 
-namespace QLean.Verify
+namespace Rel.Verify
 
-open QLean QLean.Kernel
+open Rel Rel.Kernel
 
 theorem stage_bytes_size (s : Ew.Stage) : s.bytes.size = Ew.stageBytes := by
   simp [Ew.Stage.bytes, Column.pushBits_size, ba_size_push, Ew.stageBytes]
@@ -149,26 +149,26 @@ theorem elemsW_val (op cls shape : UInt8) (nul : Int64) (a b : ByteArray) (n : U
   rw [ByteArray.size_empty, Nat.zero_add, List.getElem_range] at this
   rw [Nat.mul_comm, this]
 
-end QLean.Verify
+end Rel.Verify
 
-/-- info: 'QLean.Verify.stageAt_prog' depends on axioms: [propext, Quot.sound] -/
+/-- info: 'Rel.Verify.stageAt_prog' depends on axioms: [propext, Quot.sound] -/
 #guard_msgs in
-#print axioms QLean.Verify.stageAt_prog
+#print axioms Rel.Verify.stageAt_prog
 
 -- `Classical.choice` is the statement's: `Ew.val` names `valStep`, which names `f64Step` and so
 -- `Float.ofBits`, an opaque whose `Inhabited` witness is choice; the proof adds none.
-/-- info: 'QLean.Verify.run_val' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+/-- info: 'Rel.Verify.run_val' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs in
-#print axioms QLean.Verify.run_val
+#print axioms Rel.Verify.run_val
 
-/-- info: 'QLean.Verify.run_cmp' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+/-- info: 'Rel.Verify.run_cmp' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs in
-#print axioms QLean.Verify.run_cmp
+#print axioms Rel.Verify.run_cmp
 
-/-- info: 'QLean.Verify.elemsW_val' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+/-- info: 'Rel.Verify.elemsW_val' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs in
-#print axioms QLean.Verify.elemsW_val
+#print axioms Rel.Verify.elemsW_val
 
-/-- info: 'QLean.Verify.prog_one' depends on axioms: [propext, Quot.sound] -/
+/-- info: 'Rel.Verify.prog_one' depends on axioms: [propext, Quot.sound] -/
 #guard_msgs in
-#print axioms QLean.Verify.prog_one
+#print axioms Rel.Verify.prog_one

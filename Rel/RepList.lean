@@ -1,12 +1,12 @@
 /-
   The array ops of `Alg` read back: `cons°` (`uncons`), `cons`, and the folds over arrays built from them.
 -/
-import LeetQ.Rel.RepFold
-import LeetQ.Rel.KernelWF.PlaceSpec
+import Rel.RepFold
+import Rel.KernelWF.PlaceSpec
 
-namespace LeetQ.Rel.Rep
+namespace Rel.Rep
 
-open QLean QLean.Kernel QLean.Verify LeetQ.Rel LeetQ.Rel.Alg LeetQ.Rel.KernelWF
+open Rel Rel.Kernel Rel.Verify Rel Rel.Alg Rel.KernelWF
 
 /-- A `valCol` long is its `Ew.val` payload's long. -/
 theorem valCol_get {m : USize} (op sh : UInt8) (a b : ByteArray) (q : Fin m.toNat) :
@@ -43,7 +43,7 @@ theorem rep_uncons {B : Obj} {n : USize} (X : Vals (.arr B) n)
   have hR := fun j (hj : j < n.toNat) => slicesOf_row X hp hj
   have hA := whereGt_ids n (slicesOf X).2 (k := 0) (by decide) fun j hj => by have := (hR j hj).1; omega
   rw [show Nat.toUInt64 0 = 0 from rfl, ← hi] at hA
-  have hmem : ∀ j, j ∈ QLean.Verify.ids i ↔
+  have hmem : ∀ j, j ∈ Rel.Verify.ids i ↔
       j < n.toNat ∧ 0 < (Column.bitsAt (slicesOf X).2 (j * 8) 8).toNat := fun j => by
     rw [hA, List.mem_filter, List.mem_range, decide_eq_true_iff]
   have hs1 : len (slicesOf X).1 = n.toNat := (len_slices _ _ _ _).1
@@ -52,8 +52,8 @@ theorem rep_uncons {B : Obj} {n : USize} (X : Vals (.arr B) n)
   have hrq : ∀ q, q < len i → ∃ hj : (Column.bitsAt i (q * 8) 8).toNat < n.toNat, 0 < Cq ∧
       Column.bitsAt l (q * 8) 8 = Column.bitsAt (slicesOf X).1 ((Column.bitsAt i (q * 8) 8).toNat * 8) 8 := by
     intro q hq
-    have hin : (Column.bitsAt i (q * 8) 8).toNat ∈ QLean.Verify.ids i := by
-      have hq' : q < (QLean.Verify.ids i).length := by rw [← len_eq_ids]; exact hq
+    have hin : (Column.bitsAt i (q * 8) 8).toNat ∈ Rel.Verify.ids i := by
+      have hq' : q < (Rel.Verify.ids i).length := by rw [← len_eq_ids]; exact hq
       rw [← ids_getElem hq']; exact List.getElem_mem hq'
     obtain ⟨hj, hc⟩ := (hmem _).1 hin
     exact ⟨hj, hc, by rw [hl]; exact gather8_get hq (by rw [hs1]; exact hj)⟩
@@ -103,8 +103,8 @@ theorem rep_uncons {B : Obj} {n : USize} (X : Vals (.arr B) n)
           Vals.row (Vals.compact (.arr B) T) ⟨q, by omega⟩ := by
     intro q hq h1 h2
     have qb : q < ((len i).toUSize).toNat := by omega
-    have hin : (Column.bitsAt i (q * 8) 8).toNat ∈ QLean.Verify.ids i := by
-      have hq' : q < (QLean.Verify.ids i).length := by rw [← len_eq_ids]; exact hq
+    have hin : (Column.bitsAt i (q * 8) 8).toNat ∈ Rel.Verify.ids i := by
+      have hq' : q < (Rel.Verify.ids i).length := by rw [← len_eq_ids]; exact hq
       rw [← ids_getElem hq']; exact List.getElem_mem hq'
     obtain ⟨hj, hc⟩ := (hmem _).1 hin
     obtain ⟨hLC, hln, hget⟩ := hR _ hj
@@ -1064,16 +1064,16 @@ open FoldN OpsN
 
 section MapFold
 
-open QLean.Dep
+open Rel.Dep
 
 end MapFold
 
-end LeetQ.Rel.Rep
+end Rel.Rep
 
-#print axioms LeetQ.Rel.Rep.rep_uncons
-#print axioms LeetQ.Rel.Rep.rep_cons
-#print axioms LeetQ.Rel.Rep.map_chain
-#print axioms LeetQ.Rel.Rep.expand_at
-#print axioms LeetQ.Rel.Rep.cat_places
-#print axioms LeetQ.Rel.Rep.cat_row
-#print axioms LeetQ.Rel.Rep.rep_cat
+#print axioms Rel.Rep.rep_uncons
+#print axioms Rel.Rep.rep_cons
+#print axioms Rel.Rep.map_chain
+#print axioms Rel.Rep.expand_at
+#print axioms Rel.Rep.cat_places
+#print axioms Rel.Rep.cat_row
+#print axioms Rel.Rep.rep_cat

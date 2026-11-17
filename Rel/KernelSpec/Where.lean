@@ -1,16 +1,16 @@
-import QLean.RelPart.Verify.Encoding
-import QLean.RelPart.Kernel.Coc
-import QLean.RelPart.Kernel.Reduce
-import QLean.RelPart.Value
-import QLean.RelPart.Kernel.Search
-import QLean.RelPart.Kernel.Elementwise
-import QLean.RelPart.Verify.Raw
+import Rel.KernelSpec.Encoding
+import Rel.Kernel.Coc
+import Rel.Kernel.Reduce
+import Rel.Kernel.Value
+import Rel.Kernel.Search
+import Rel.Kernel.Elementwise
+import Rel.KernelSpec.Raw
 
-/-! The part of `QLean.Verify.Where` the Rel kernels reach; `QLean.Verify.Where` imports it. -/
+/-! The part of `Rel.Verify.Where` the Rel kernels reach; `Rel.Verify.Where` imports it. -/
 
 
-namespace QLean.Verify
-open QLean QLean.Kernel
+namespace Rel.Verify
+open Rel Rel.Kernel
 
 /-- `whereBits n bits` is eight bytes per set bit below `n`, and long `j` is the `j`-th of them. -/
 theorem whereBits_spec (n : USize) (bits : ByteArray) :
@@ -129,11 +129,11 @@ theorem overBytes_add (cls : UInt8) (nul : Int64) (b : ByteArray) :
   rw [hs, hst, foldl_add_int64, Int64.toInt_zero, Int.zero_add]
   simp [Coc.Over.boolCast]
 
-end QLean.Verify
+end Rel.Verify
 
 
-namespace QLean.Verify
-open QLean QLean.Kernel
+namespace Rel.Verify
+open Rel Rel.Kernel
 
 /-- `whereBits`' list: below `n`, ascending, and exactly the indices whose bit is set. -/
 theorem whereBits_indices (n : Nat) (bits : ByteArray) :
@@ -143,4 +143,4 @@ theorem whereBits_indices (n : Nat) (bits : ByteArray) :
   ⟨List.Pairwise.filter _ (by simpa using (pairwise_map_range_iff (· < ·) id n).mpr fun _ _ h _ => h),
     fun i => by simp [List.mem_filter, List.mem_range]⟩
 
-end QLean.Verify
+end Rel.Verify
