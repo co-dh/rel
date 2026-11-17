@@ -131,8 +131,7 @@ end Prim
     `Calc.toTerm` reads over any allegory (`Op.row`); `sig` its `CRel` constant, that constant's relation parameters
     and type (`prim%`), which the elaborator instantiates and the expander applies; `conv` the row of its converse;
     `aop` its AOP reading (`Calc.builtins`) or why it has none; `mono`: it reads its parameters monotonically (§e's
-    fixed points); `sound` its `GenSpec` lemma; `prelude`, `sound` and `aop` named unchecked (`Test`, `RelRep`,
-    `Calc` check them, where they resolve). -/
+    fixed points); `prelude` and `aop` named unchecked (`Test` and `Calc` check them, where they resolve). -/
 structure Prim where
   sym : String
   sig : Lean.Name × List ((OExp × OExp) × Option Bool) × OExp × OExp
@@ -141,69 +140,68 @@ structure Prim where
   prelude : Option Lean.Name := none
   aop : Except String Lean.Name := .error "it is not written"
   mono : Bool := true
-  sound : Option Lean.Name := none
   deriving Inhabited
 
 def consRow : Prim :=
-  { sym := "cons", sig := prim% CRel.cons, sound := `Rel.Lang.Gen.cons_sound,
+  { sym := "cons", sig := prim% CRel.cons,
     conv := "uncons", aop := .ok `Freyd.Alg.RelSet.ListRel.cons }
 
 def memRow : Prim :=
-  { sym := "∋", sig := prim% CRel.mem, aop := .ok `Freyd.Alg.PowerAllegory.eps, sound := `Rel.Lang.Gen.mem_sound }
+  { sym := "∋", sig := prim% CRel.mem, aop := .ok `Freyd.Alg.PowerAllegory.eps }
 
 -- `inl`, `inr`, `F(R)` are written as their `Op`s, which `Calc.toTerm` reads as a coproduct's injections and a relator
-def inlRow : Prim := { sym := "inl", sig := prim% CRel.inl, written := false, sound := `Rel.Lang.Gen.inl_sound }
-def inrRow : Prim := { sym := "inr", sig := prim% CRel.inr, written := false, sound := `Rel.Lang.Gen.inr_sound }
+def inlRow : Prim := { sym := "inl", sig := prim% CRel.inl, written := false }
+def inrRow : Prim := { sym := "inr", sig := prim% CRel.inr, written := false }
 def mapRow : Prim := { sym := "F", sig := prim% CRel.map, written := false }
 
 /-- Every builtin run as a kernel on the keys in demand: adding one is adding its row. -/
 def prims : List Prim :=
-  [{ sym := "τ", sig := prim% CRel.τ, sound := `Rel.Lang.Gen.τ_sound,
+  [{ sym := "τ", sig := prim% CRel.τ,
      aop := .ok `Freyd.Alg.singletonMap }, consRow, memRow, inlRow, inrRow, mapRow,
    -- `filter(p)`, `takewhile(p)` given one relation run as their mask forms (`rep_filterC`, `rep_takewhileC`, `elems_test`)
-   { sym := "filter", sig := prim% CRel.filter, sound := `Rel.Lang.Gen.filter_sound,
+   { sym := "filter", sig := prim% CRel.filter,
      prelude := `Rel.Programs.prelude.filter },
-   { sym := "takewhile", sig := prim% CRel.takewhile, sound := `Rel.Lang.Gen.takewhile_sound,
+   { sym := "takewhile", sig := prim% CRel.takewhile,
      prelude := `Rel.Programs.prelude.takewhile },
-   { sym := "thinL", sig := prim% CRel.thinLOn, sound := `Rel.Lang.Gen.thinL_sound,
+   { sym := "thinL", sig := prim% CRel.thinLOn,
      mono := false, aop := .ok `Freyd.Alg.RelSet.ListRel.thinL },
-   { sym := "merge", sig := prim% CRel.mergeOn, sound := `Rel.Lang.Gen.merge_sound,
+   { sym := "merge", sig := prim% CRel.mergeOn,
      mono := false, aop := .ok `Freyd.Alg.RelSet.ListRel.merge },
-   { sym := "loop", sig := prim% CRel.loopOn, sound := `Rel.Lang.Gen.loop_sound, aop := .error "AOP declares no iteration to a fixed point from the left" },
-   { sym := "uncons", sig := prim% CRel.uncons, sound := `Rel.Lang.Gen.uncons_sound,
+   { sym := "loop", sig := prim% CRel.loopOn, aop := .error "AOP declares no iteration to a fixed point from the left" },
+   { sym := "uncons", sig := prim% CRel.uncons,
      conv := "cons", written := false },
-   { sym := "length", sig := prim% CRel.length, sound := `Rel.Lang.Gen.length_sound,
+   { sym := "length", sig := prim% CRel.length,
      aop := .ok `Freyd.Alg.RelSet.ListRel.length },
-   { sym := "sum", sig := prim% CRel.Arr.sum, sound := `Rel.Lang.Gen.sum_sound,
+   { sym := "sum", sig := prim% CRel.Arr.sum,
      aop := .ok `Freyd.Alg.RelSet.ListRel.sum },
-   { sym := "inits", sig := prim% CRel.inits, sound := `Rel.Lang.Gen.inits_sound,
+   { sym := "inits", sig := prim% CRel.inits,
      aop := .ok `Freyd.Alg.RelSet.ListRel.initsR },
    -- the prelude's folds run as their slice forms (`rep_tailsC`, `rep_prefixC`, `rep_suffixC`, `rep_concatC`)
-   { sym := "tails", sig := prim% CRel.tails, sound := `Rel.Lang.Gen.tails_sound,
+   { sym := "tails", sig := prim% CRel.tails,
      prelude := `Rel.Programs.prelude.tails },
-   { sym := "prefix", sig := prim% CRel.prefix, sound := `Rel.Lang.Gen.prefix_sound,
+   { sym := "prefix", sig := prim% CRel.prefix,
      prelude := `Rel.Programs.prelude.prefix },
-   { sym := "suffix", sig := prim% CRel.suffix, sound := `Rel.Lang.Gen.suffix_sound,
+   { sym := "suffix", sig := prim% CRel.suffix,
      prelude := `Rel.Programs.prelude.suffix },
-   { sym := "concat", sig := prim% CRel.concat, sound := `Rel.Lang.Gen.concat_sound,
+   { sym := "concat", sig := prim% CRel.concat,
      prelude := `Rel.Programs.prelude.concat },
-   { sym := "cat", sig := prim% CRel.cat, sound := `Rel.Lang.Gen.cat_sound,
+   { sym := "cat", sig := prim% CRel.cat,
      conv := "uncat", aop := .ok `Freyd.Alg.RelSet.ListRel.cat },
-   { sym := "uncat", sig := prim% CRel.uncat, sound := `Rel.Lang.Gen.uncat_sound,
+   { sym := "uncat", sig := prim% CRel.uncat,
      conv := "cat", written := false },
-   { sym := "zip", sig := prim% CRel.zip, sound := `Rel.Lang.Gen.zip_sound,
+   { sym := "zip", sig := prim% CRel.zip,
      aop := .ok `Freyd.Alg.RelSet.Pointfree.zip },
-   { sym := "snoc", sig := prim% CRel.snoc, sound := `Rel.Lang.Gen.snoc_sound, conv := "unsnoc",
+   { sym := "snoc", sig := prim% CRel.snoc, conv := "unsnoc",
      aop := .error "AOP's `snoc` is on snoc lists (`SL.snoc`), not on the cons lists `[α]` reads as" },
-   { sym := "unsnoc", sig := prim% CRel.unsnoc, sound := `Rel.Lang.Gen.unsnoc_sound,
+   { sym := "unsnoc", sig := prim% CRel.unsnoc,
      conv := "snoc", written := false },
    { sym := "setify", sig := prim% CRel.setify, aop := .ok `Freyd.Alg.RelSet.ListRel.setify },
-   { sym := "distinct", sig := prim% CRel.distinct, sound := `Rel.Lang.Gen.distinct_sound,
+   { sym := "distinct", sig := prim% CRel.distinct,
      aop := .error "AOP declares no first-occurrence removal of repeats from a list" },
    -- `asc` sorts each array by `Obj.lt` (`rep_asc`): B&dM's `bagify` with a bag kept as its ascending array
    { sym := "asc", sig := prim% CRel.asc,
      aop := .error "AOP's sorts take their order as a relation (`ISort.sortSpec R`); `asc` sorts by q's" },
-   { sym := "tic", sig := prim% CRel.tic, sound := `Rel.Lang.Gen.tic_sound,
+   { sym := "tic", sig := prim% CRel.tic,
      aop := .error "AOP declares no non-empty prefixes of `a::xs`" }]
 
 def Prim.find? (s : String) : Option Prim := prims.find? (·.sym == s)
