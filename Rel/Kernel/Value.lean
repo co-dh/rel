@@ -668,7 +668,7 @@ structure SymsWF (b : ByteArray) (o : Array Nat) : Prop where
   le : ∀ k < o.size, o[k]! ≤ b.size
   mono : ∀ k < o.size - 1, o[k]! ≤ o[k + 1]!
 
-namespace Enc
+namespace Ext.Enc
 open Column
 
 /-- What the header promises about the payload: the layout is one `t` has, and it holds exactly `n`
@@ -679,7 +679,7 @@ ALP the three float layouts; a `foR` or `alp` payload's blocks cover its `n`, an
 pack holds its `n` ids and its dictionary's offsets end at its blob with none past it, so a symbol
 appended to the dictionary leaves every entry before it reading as it did, and no entry is there twice,
 so two ids name the same symbol only where they are equal. -/
-def WF (t : QAtomicType) (n : USize) (e : Enc) : Prop :=
+def WF (t : QAtomicType) (n : USize) (e : Ext.Enc X) : Prop :=
   match t, e with
   | .general, .gen xs => xs.size = n.toNat
   | .boolean, .bits b => b.size = (n.toNat + 7) / 8
@@ -700,7 +700,7 @@ def WF (t : QAtomicType) (n : USize) (e : Enc) : Prop :=
 
 /-- `atoms`' fixed-width branches before `atomOfBits`: the raw bits of each element. A theorem about a
 numeric column is stated over this, because `atoms`' symbol branch brings `Classical.choice` with it. -/
-def raw (t : QAtomicType) (n : USize) (e : Enc) : Array UInt64 :=
+def raw (t : QAtomicType) (n : USize) (e : Ext.Enc X) : Array UInt64 :=
   match t, e with
   | .boolean, .bytes _ | .boolean, .foR _ _ => #[]
   | .boolean, .alp _ _ _ => #[]
@@ -717,10 +717,10 @@ def raw (t : QAtomicType) (n : USize) (e : Enc) : Array UInt64 :=
     | none => #[]
   | _, _ => #[]
 
-end Enc
+end Ext.Enc
 
 namespace Column
-open Enc
+open Ext.Enc
 
 /-- `push` grows the array by one byte. -/
 theorem push_size (b : ByteArray) (x : UInt8) : (b.push x).size = b.size + 1 := by
@@ -974,13 +974,13 @@ A pattern too, written `.general xs _ _`: the count is the header's and `xs.size
 both a match and a construction name it; a construction from a Lean `Array` whose count is not in scope
 goes through `QValue.ofArray`. The attribute is a parameter because a general list carries one in q
 (`` `u#(1;`a) ``), and a pattern that pinned `none` would miss it; a construction defaults it to `none`. -/
-@[match_pattern] abbrev QValue.general (xs : Array QValue) (n : USize)
-    (a : Option (UInt8 × IndexCell) := none) : QValue :=
+@[match_pattern] abbrev Ext.QValue.general (xs : Array (Ext.QValue X)) (n : USize)
+    (a : Option (UInt8 × IndexCell) := none) : Ext.QValue X :=
   .vector .general n (.gen xs) a
 
 /-- A general list over `xs`, its count `xs.size`: the one place a Lean `Array`'s size becomes a
 `USize` count, under the proof that it fits. -/
-def QValue.ofArray (xs : Array QValue) : QValue :=
+def Ext.QValue.ofArray (xs : Array (Ext.QValue X)) : Ext.QValue X :=
   Kernel.needSize xs.size "ofArray: elements" (fun _ => .general #[] 0) fun n => .general xs n
 
 namespace Column
@@ -1053,15 +1053,15 @@ instance (b : ByteArray) (o : Array Nat) : Decidable (SymsWF b o) :=
       ∀ k < o.size - 1, o[k]! ≤ o[k + 1]!)
     ⟨fun h => ⟨h.1, h.2.1, h.2.2.1, h.2.2.2.1, h.2.2.2.2⟩, fun h => ⟨h.pos, h.first, h.last, h.le, h.mono⟩⟩
 
-namespace Enc
+namespace Ext.Enc
 open Column
 
-instance (t : QAtomicType) (n : USize) (e : Enc) : Decidable (WF t n e) := by
+instance (t : QAtomicType) (n : USize) (e : Ext.Enc X) : Decidable (WF t n e) := by
   unfold WF; split <;> (try split) <;> exact inferInstance
 
 /-- `n` elements of `t`, all zero bits, for every `n`: the value a failed `need`'s model answers. It
 needs no bound because a replicated array has the size asked for. -/
-def blank (t : QAtomicType) (n : USize) : Enc :=
+def blank (t : QAtomicType) (n : USize) : Ext.Enc X :=
   match t, t.width with
   | .general, _ => .gen (Array.replicate n.toNat default)
   | .boolean, _ => .bits ⟨Array.replicate ((n.toNat + 7) / 8) 0⟩
@@ -1069,7 +1069,7 @@ def blank (t : QAtomicType) (n : USize) : Enc :=
   | _, some w => .bytes ⟨Array.replicate (n.toNat * w) 0⟩
   | _, none => .gen #[]
 
-theorem blank_WF (t : QAtomicType) (n : USize) : WF t n (blank t n) := by
+theorem blank_WF (t : QAtomicType) (n : USize) : WF t n (blank (X := X) t n) := by
   cases t
   case symbol =>
     have h0 : ∀ k, (Array.replicate (n.toNat + 1) 0)[k]! = 0 := fun k => by
@@ -1096,7 +1096,7 @@ The body used to be `(atoms t c)[i]!`, which materialised the whole column to re
 it — 64 lookups on a vector of a million cost 64 million boxed atoms. It had no caller yet, so
 nothing was slowed by it; `tools/bench-ts.lean` was the first and measured 3.4 µs per element
 before this was fixed. -/
-def get (t : QAtomicType) (n : USize) (e : Enc) (i : Nat) : Option QAtom :=
+def get (t : QAtomicType) (n : USize) (e : Ext.Enc X) (i : Nat) : Option QAtom :=
   if i < n.toNat then
     match t, e with
     | .boolean, .bits b => some (.boolean (bitAt b i))
@@ -1123,7 +1123,7 @@ def get (t : QAtomicType) (n : USize) (e : Enc) (i : Nat) : Option QAtom :=
   else none
 
 /-- Symbols as `blob` plus its offset table. -/
-def symsOf (as : Array QAtom) : Enc :=
+def symsOf (as : Array QAtom) : Ext.Enc X :=
   let bs := as.map fun | .symbol s => s.toUTF8 | _ => ByteArray.empty
   let offs := bs.foldl (init := (#[0], 0)) fun (o, pos) s =>
     (o.push (pos + s.size + 1), pos + s.size + 1)
@@ -1135,7 +1135,7 @@ at `t`. Only the payload, because the header is the caller's arguments: `.vector
 The caller decides what a mismatch means — `Eval.vectorOf` answers with a general list, which is q's
 own behaviour — so this never coerces. -/
 def ofAtoms (t : QAtomicType) (as : Array QAtom) (h : t ≠ .general := by first | decide | assumption) :
-    Option Enc :=
+    Option (Ext.Enc X) :=
   if as.all (·.type == t) then match t with
     | .general => absurd rfl h
     | .boolean => some (.bits (packBits as))
@@ -1147,22 +1147,22 @@ def ofAtoms (t : QAtomicType) (as : Array QAtom) (h : t ≠ .general := by first
       | none => none
   else none
 
-end Enc
+end Ext.Enc
 
 /-- `v` is a vector at `t` holding `n` elements laid out as its type has them. Where a proof needs a
 typed vector it takes `{v : QValue // v.WFAt t n}`. -/
-def QValue.WFAt (t : QAtomicType) (n : USize) : QValue → Prop
+def Ext.QValue.WFAt (t : QAtomicType) (n : USize) : Ext.QValue X → Prop
   | .vector t' n' e _ => t' = t ∧ n' = n ∧ Enc.WF t n e
   | _ => False
 
 namespace Column
-open Enc
+open Ext.Enc
 
 /-- `ofAtoms` fails on exactly one condition, so a caller that already knows its atoms are at `t`
 gets a payload back. Every assembler in `QLean/Eval/` establishes that condition by filtering or
 testing before it commits to a vector, which is what makes its announced type honest. -/
 theorem ofAtoms_isSome {t : QAtomicType} {as : Array QAtom} (hn : t ≠ .general)
-    (h : ∀ a ∈ as, a.type = t) : (ofAtoms t as).isSome := by
+    (h : ∀ a ∈ as, a.type = t) : (ofAtoms (X := X) t as).isSome := by
   unfold ofAtoms
   rw [if_pos (Array.all_eq_true'.mpr fun x hx => by simp [h x hx])]
   cases t <;> first | contradiction | simp [QAtomicType.width]
@@ -1565,7 +1565,7 @@ private theorem symsWF_folds (bs : List ByteArray) :
 
 /-- What `ofAtoms` builds is well formed: its header is the atoms' type and count, and each layout
 holds exactly that many. -/
-theorem ofAtoms_WF {t : QAtomicType} {as : Array QAtom} {e : Enc} {hn : t ≠ .general}
+theorem ofAtoms_WF {t : QAtomicType} {as : Array QAtom} {e : Ext.Enc X} {hn : t ≠ .general}
     (h : ∀ a ∈ as, a.type = t) (hc : ofAtoms t as hn = some e) (hs : as.size < USize.size) :
     WF t as.size.toUSize e := by
   unfold WF; rw [USize.toNat_ofNat_of_lt' hs]
@@ -1602,11 +1602,11 @@ namespace QTable
 
 end QTable
 
-namespace QValue
+namespace Ext.QValue
 
 /-- The attribute a value carries, `0` for none, and the value under it. Every reader but
 `attr`, `meta` and the encoder wants the second half alone. -/
-def marking : QValue → UInt8 × QValue
+def marking : Ext.QValue X → UInt8 × Ext.QValue X
   | vector t n e (some (a, _)) => (a, vector t n e none)
   | enum d (vector t n e (some (a, _))) => (a, enum d (vector t n e none))
   -- a table holds q's whole byte (`62 0N`); a dictionary or a keyed table carries only `` `s ``,
@@ -1616,9 +1616,9 @@ def marking : QValue → UInt8 × QValue
   | @keyed _ k v true ix => (1, @keyed _ k v false ix)
   | v => (0, v)
 
-end QValue
+end Ext.QValue
 
-namespace QValue
+namespace Ext.QValue
 
 /-- The `i`th slice of a `slices` value, as the vector it denotes. Reading one is a copy of its
 bytes and nothing else; reading them all is the loop the constructor exists to avoid, which is why
@@ -1646,8 +1646,8 @@ unchanged (`Coc.encodes` is false there — ALP is the float encoding and reache
 The second case rests on every producer — `group`, `flip`, `string`, `vs`, `cross` — sharing a
 `.bytes` payload. A payload that is not dense has no per-piece cut here and answers the whole column,
 so a producer over an encoded column must cut it where it is built, the way `Kernel.cutFoR` does. -/
-def sliceAt (t : QAtomicType) (n : USize) (e : Enc) (attr : Option (UInt8 × IndexCell))
-    (offs : Array Nat) (i : Nat) : QValue :=
+def sliceAt (t : QAtomicType) (n : USize) (e : Ext.Enc X) (attr : Option (UInt8 × IndexCell))
+    (offs : Array Nat) (i : Nat) : Ext.QValue X :=
   match e with
   -- `offs` are byte offsets, so the slice's count is its bytes over the element width; a type with
   -- no width has no `bytes` layout (`Enc.WF`)
@@ -1660,14 +1660,15 @@ def sliceAt (t : QAtomicType) (n : USize) (e : Enc) (attr : Option (UInt8 × Ind
 /-- Every element of a `slices` value, which is the million-value loop it exists to avoid. Only
 where something genuinely needs them all — `~` against a general list, the wire encoder — and the
 count is small, or the cost is the one the constructor was avoiding. -/
-def slicesExpand (t : QAtomicType) (n : USize) (e : Enc) (attr : Option (UInt8 × IndexCell))
-    (offs : Array Nat) : Array QValue :=
+def slicesExpand (t : QAtomicType) (n : USize) (e : Ext.Enc X) (attr : Option (UInt8 × IndexCell))
+    (offs : Array Nat) : Array (Ext.QValue X) :=
   if offs.isEmpty then #[]
   else (Array.range (offs.size - 1)).map (sliceAt t n e attr offs)
 
-end QValue
+end Ext.QValue
 
 namespace QValue
 
 end QValue
+
 end Rel

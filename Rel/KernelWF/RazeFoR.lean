@@ -6,6 +6,8 @@
 -/
 import Rel.KernelWF.RazeParts
 
+open Rel.Ext
+
 namespace Rel.KernelWF
 
 open Rel Rel.Kernel Rel.Dep Rel Rel.Alg Rel.Rep
@@ -21,16 +23,16 @@ theorem foR_width {t : QAtomicType} {w : Nat} (he : Column.encodes t = true) (hw
     `foRBits`' low `8w` bits (`decodeW`), which `atomOfBits` reads alike (`atomOfBits_mod`). No count bound. -/
 theorem get_answer_foR {t : QAtomicType} {w : Nat} (hw : t.width = some w) (hb : t ≠ .boolean)
     {N : USize} (M P : ByteArray) {i : Nat} (hi : i < N.toNat) :
-    Enc.get t N (Enc.answer t N (.foR M P)) i =
+    Enc.get (X := Empty) t N (Enc.answer t N (.foR M P)) i =
       some (Column.atomOfBits t (Column.foRBits M P (Column.blockStarts M) i) (QAtomicType.ne_general_of_width hw)) := by
   have hw8 := width_le8 hw
   have hwu := toUSize_toNat_le8 hw8
   have hd := (Verify.decodeW w.toUSize (by rw [hwu]; exact hw8) M P N).2 i hi
   rw [hwu] at hd
-  have h1 : Enc.get t N (.bytes (Coc.decode w.toUSize M P N)) i =
+  have h1 : Enc.get (X := Empty) t N (.bytes (Coc.decode w.toUSize M P N)) i =
       some (Column.atomOfBits t (Column.foRBits M P (Column.blockStarts M) i) (QAtomicType.ne_general_of_width hw)) := by
     rw [get_bytes_eq hw hb _ hi, hd, Verify.atomOfBits_mod hw hb]
-  have h2 : Enc.get t N (.foR M P) i =
+  have h2 : Enc.get (X := Empty) t N (.foR M P) i =
       some (Column.atomOfBits t (Column.foRBits M P (Column.blockStarts M) i) (QAtomicType.ne_general_of_width hw)) := by
     rw [get_foR_eq hw hb _ _ hi, foRBits_starts]
   have hbo : Enc.bytesOf t N (.foR M P) = some (Coc.decode w.toUSize M P N) := by simp [Enc.bytesOf, hw]

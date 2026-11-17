@@ -4,6 +4,8 @@
 -/
 import Rel.Run.CRelDef
 
+open Rel.Ext
+
 namespace Rel.Alg
 
 open Rel Rel.Dep Rel.Kernel Rel

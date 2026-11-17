@@ -7,6 +7,8 @@
 -/
 import Rel.KernelWF.CodesProd
 
+open Rel.Ext
+
 namespace Rel.Alg
 
 open Rel Rel.Dep Rel.Kernel Rel.Verify Rel
@@ -16,7 +18,7 @@ open Rel Rel.Dep Rel.Kernel Rel.Verify Rel
 theorem float_facts {t : QAtomicType} (ht : t = .real ∨ t = .float ∨ t = .datetime) {k : Scan.Kind}
     (hk : orderKind (KernelWF.bitsType t) = some k) :
     (k = .i32 ∨ k = .i64) ∧ t.width = some k.width ∧ t ≠ .general ∧ t ≠ .boolean ∧
-      (∀ n b, Enc.WF t n (.bytes b) → b.size = n.toNat * k.width) ∧
+      (∀ n b, Enc.WF (X := Empty) t n (.bytes b) → b.size = n.toNat * k.width) ∧
       ∀ n b, groupIdsColumn (KernelWF.bitsType t) n (.bytes b) = some (Order.groupIds k n b) := by
   rcases ht with rfl | rfl | rfl <;> simp [KernelWF.bitsType, orderKind] at hk <;> subst hk <;>
     exact ⟨by decide, rfl, by decide, by decide, fun n b h => by simpa [Enc.WF, QAtomicType.width] using h,

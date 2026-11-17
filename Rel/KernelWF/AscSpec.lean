@@ -14,6 +14,8 @@ import Rel.Kernel.Dep.Monadic
 import Rel.KernelSpec.Grade
 import Rel.KernelSpec.SymFind
 
+open Rel.Ext
+
 namespace Rel.Alg
 
 open Rel Rel.Dep Rel.Kernel Rel.Verify Rel Rel.KernelWF
@@ -141,7 +143,7 @@ theorem key_get {t : QAtomicType} {k : Scan.Kind} (h : orderKind t = some k) (hk
   have hka : Order.keyAt k b i = Order.rank k (Column.bitsAt b (i * k.width) k.width) := by
     cases k <;> first | exact absurd rfl hk | rfl
   have hv := bitsAt_lt b (i * k.width) k.width (by cases k <;> decide)
-  have hget : Enc.get t n (.bytes b) i = some (Column.atomOfBits t (Column.bitsAt b (i * k.width) k.width) hne) := by
+  have hget : Enc.get (X := Empty) t n (.bytes b) i = some (Column.atomOfBits t (Column.bitsAt b (i * k.width) k.width) hne) := by
     cases t <;> simp only [orderKind, Option.some.injEq, reduceCtorEq] at h <;> subst h <;>
       first | exact absurd rfl hk | (simp only [Enc.get, if_pos hi]; rfl)
   rw [hka, hget]

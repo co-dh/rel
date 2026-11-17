@@ -7,6 +7,8 @@
 import Rel.KernelWF.CodesSpec
 import Rel.Run.KernelWF.Raze
 
+open Rel.Ext
+
 namespace Rel.Alg
 
 open Rel Rel.Dep Rel.Kernel Rel.Verify Rel
@@ -92,7 +94,7 @@ theorem enum_row {n : USize} (x : Arr .symbol n) {d : ByteArray} {o : Array Nat}
     (hlt : ∀ i < n.toNat, Column.idAt ids (Column.idWidth o) i < o.size - 1) (i : Fin n.toNat) :
     (Vals.row (A := .atom .symbol) x i).toUTF8.data.toList = symAt d o (Column.idAt ids (Column.idWidth o) i) := by
   rw [Vals.row_atom, Arr.get_ne x i (by decide), he,
-    show Enc.get .symbol n (.enum d o ids) i = some (.symbol ((String.fromUTF8?
+    show Enc.get (X := Empty) .symbol n (.enum d o ids) i = some (.symbol ((String.fromUTF8?
       (Column.symKey d o (Column.idAt ids (Column.idWidth o) i))).getD "")) by simp only [Enc.get, if_pos i.2]; rfl]
   simp only [Option.bind_some, Carrier.of?, Option.getD_some]
   exact str_bytes ⟨⟨_, hu _ (hlt i i.2)⟩, rfl⟩
@@ -102,7 +104,7 @@ theorem syms_row {n : USize} (x : Arr .symbol n) {b : ByteArray} {o : Array Nat}
     (he : x.enc = .syms b o) (hu : ∀ k < n.toNat, (Column.symKey b o k).IsValidUTF8) (i : Fin n.toNat) :
     (Vals.row (A := .atom .symbol) x i).toUTF8.data.toList = symAt b o i := by
   rw [Vals.row_atom, Arr.get_ne x i (by decide), he,
-    show Enc.get .symbol n (.syms b o) i = some (.symbol ((String.fromUTF8? (Column.symKey b o i)).getD ""))
+    show Enc.get (X := Empty) .symbol n (.syms b o) i = some (.symbol ((String.fromUTF8? (Column.symKey b o i)).getD ""))
       by simp only [Enc.get, if_pos i.2]; rfl]
   simp only [Option.bind_some, Carrier.of?, Option.getD_some]
   exact str_bytes ⟨⟨_, hu _ i.2⟩, rfl⟩

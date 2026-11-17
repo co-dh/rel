@@ -19,6 +19,8 @@ import Rel.KernelSpec.Ids
 import Rel.KernelSpec.Search
 import Rel.Run.KernelWF.Reduce
 
+open Rel.Ext
+
 namespace Rel.Alg
 
 open Rel Rel.Dep Rel.Kernel Rel

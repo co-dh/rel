@@ -7,6 +7,8 @@ import Rel.KernelWF.CodesAll
 import Rel.Run.KernelWF.Reduce
 import Rel.KernelWF.MemberSpec
 
+open Rel.Ext
+
 namespace Rel.Alg
 
 open Rel Rel.Kernel Rel.Verify Rel Rel.KernelWF

@@ -6,6 +6,8 @@
 import Rel.KernelSpec.SymFind
 import Rel.Run.KernelWF.Raze
 
+open Rel.Ext
+
 namespace Rel.KernelWF
 
 open Rel Rel.Kernel Rel.Verify

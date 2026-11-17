@@ -7,6 +7,8 @@ import Rel.KernelWF.PickSpec
 import Rel.Kernel.Dep.Monadic
 import Rel.KernelSpec.AlpConcat
 
+open Rel.Ext
+
 namespace Rel.KernelWF
 
 open Rel Rel.Kernel Rel.Dep Rel Rel.Alg
@@ -29,7 +31,7 @@ theorem bitsAt_congr {b b' : ByteArray} {o o' : Nat} : ∀ {w : Nat}, (∀ j < w
     count it is read at. -/
 theorem get_bytes_congr {t : QAtomicType} {w : Nat} (hw : t.width = some w) {m m' : USize} {b b' : ByteArray}
     {i i' : Nat} (hi : i < m.toNat) (hi' : i' < m'.toNat) (h : ∀ j < w, b.data[i * w + j]? = b'.data[i' * w + j]?) :
-    Enc.get t m (.bytes b) i = Enc.get t m' (.bytes b') i' := by
+    Enc.get (X := Empty) t m (.bytes b) i = Enc.get (X := Empty) t m' (.bytes b') i' := by
   have hB := bitsAt_congr h
   cases t <;> simp only [QAtomicType.width] at hw <;> cases hw <;>
     simp only [Enc.get, hi, hi', ↓reduceIte, QAtomicType.width, hB]
@@ -41,7 +43,7 @@ theorem cast_toList {t : QAtomicType} {a b : USize} (e : a = b) (x : Arr t a) :
 /-- A dense column's list is its elements read off its payload. -/
 theorem toList_bytes {t : QAtomicType} {n : USize} (x : Arr t n) {b : ByteArray} (hx : x.enc = .bytes b)
     (hg : t ≠ .general) :
-    x.toList = ((List.range n.toNat).map fun i => Enc.get t n (.bytes b) i).map
+    x.toList = ((List.range n.toNat).map fun i => Enc.get (X := Empty) t n (.bytes b) i).map
       fun o => (o.bind fun a => Carrier.of? t (.atom a)).getD default := by
   apply List.ext_getElem (by simp [Arr.length_toList])
   intro j h1 h2
@@ -53,9 +55,9 @@ theorem foldl_bytes_get {t : QAtomicType} {w : Nat} (hw : t.width = some w) (S :
     (g : ((n : USize) × Arr t n) → ByteArray) :
     ∀ (l : List ((n : USize) × Arr t n)) (acc : ByteArray) (A : Nat), acc.size = A * w →
       (∀ c ∈ l, (g c).size = c.1.toNat * w) → A + (l.map (·.1.toNat)).sum ≤ S.toNat →
-      (List.range (A + (l.map (·.1.toNat)).sum)).map (fun i => Enc.get t S (.bytes (l.foldl (fun a c => a ++ g c) acc)) i) =
-        (List.range A).map (fun i => Enc.get t S (.bytes acc) i) ++
-          l.flatMap fun c => (List.range c.1.toNat).map fun i => Enc.get t c.1 (.bytes (g c)) i
+      (List.range (A + (l.map (·.1.toNat)).sum)).map (fun i => Enc.get (X := Empty) t S (.bytes (l.foldl (fun a c => a ++ g c) acc)) i) =
+        (List.range A).map (fun i => Enc.get (X := Empty) t S (.bytes acc) i) ++
+          l.flatMap fun c => (List.range c.1.toNat).map fun i => Enc.get (X := Empty) t c.1 (.bytes (g c)) i
   | [], acc, A, _, _, _ => by simp
   | c :: l, acc, A, ha, hl, hS => by
     have hc := hl c (by simp)
@@ -102,7 +104,7 @@ theorem toUSize_toNat_le8 {w : Nat} (hw8 : w ≤ 8) : w.toUSize.toNat = w :=
 /-- A dense element at a type of width `w`, other than `boolean`, is its `w` bytes' atom. -/
 theorem get_bytes_eq {t : QAtomicType} {w : Nat} (hw : t.width = some w) (hb : t ≠ .boolean)
     {n : USize} (b : ByteArray) {i : Nat} (hi : i < n.toNat) :
-    Enc.get t n (.bytes b) i =
+    Enc.get (X := Empty) t n (.bytes b) i =
       some (Column.atomOfBits t (Column.bitsAt b (i * w) w) (QAtomicType.ne_general_of_width hw)) := by
   cases t <;> simp only [QAtomicType.width, reduceCtorEq, Option.some.injEq] at hw <;> (try subst hw) <;>
     first | exact absurd rfl hb |
@@ -111,7 +113,7 @@ theorem get_bytes_eq {t : QAtomicType} {w : Nat} (hw : t.width = some w) (hb : t
 /-- A Frame-of-Reference element is its `foRBits` atom. -/
 theorem get_foR_eq {t : QAtomicType} {w : Nat} (hw : t.width = some w) (hb : t ≠ .boolean)
     {n : USize} (md pk : ByteArray) {i : Nat} (hi : i < n.toNat) :
-    Enc.get t n (.foR md pk) i =
+    Enc.get (X := Empty) t n (.foR md pk) i =
       some (Column.atomOfBits t (Column.foRBits md pk #[] i) (QAtomicType.ne_general_of_width hw)) := by
   cases t <;> simp only [QAtomicType.width, reduceCtorEq, Option.some.injEq] at hw <;> (try subst hw) <;>
     first | exact absurd rfl hb |
@@ -120,7 +122,7 @@ theorem get_foR_eq {t : QAtomicType} {w : Nat} (hw : t.width = some w) (hb : t �
 /-- An ALP element is its `alpBits` atom. -/
 theorem get_alp_eq {t : QAtomicType} {w : Nat} (hw : t.width = some w) (hb : t ≠ .boolean)
     {n : USize} (md pk a : ByteArray) {i : Nat} (hi : i < n.toNat) :
-    Enc.get t n (.alp md pk a) i =
+    Enc.get (X := Empty) t n (.alp md pk a) i =
       some (Column.atomOfBits t (Column.alpBits md pk a #[] i) (QAtomicType.ne_general_of_width hw)) := by
   cases t <;> simp only [QAtomicType.width, reduceCtorEq, Option.some.injEq] at hw <;> (try subst hw) <;>
     first | exact absurd rfl hb |
@@ -136,7 +138,7 @@ theorem alpBits_starts (md pk a : ByteArray) (i : Nat) :
     (`decodeW`), all `atomOfBits` reads (`atomOfBits_mod`), `.alp` to `alpBits` (`elemsW_alpDecode_alpBits`). -/
 theorem get_bytesOf {t : QAtomicType} {w : Nat} (hw : t.width = some w) (hb : t ≠ .boolean) {n : USize}
     {e : Enc} (hwf : Enc.WF t n e) {b : ByteArray} (he : Enc.bytesOf t n e = some b) {i : Nat}
-    (hi : i < n.toNat) : Enc.get t n (.bytes b) i = Enc.get t n e i := by
+    (hi : i < n.toNat) : Enc.get (X := Empty) t n (.bytes b) i = Enc.get t n e i := by
   obtain ⟨b', hb', hs⟩ := bytesOf_size hb hw hwf
   rw [he, Option.some.injEq] at hb'; subst hb'
   cases e
@@ -167,7 +169,7 @@ theorem get_bytesOf {t : QAtomicType} {w : Nat} (hw : t.width = some w) (hb : t 
 /-- A column's list is its elements read off its dense decode `Enc.bytesOf`, at every encoding. -/
 theorem toList_bytesOf {t : QAtomicType} {w : Nat} (hw : t.width = some w) (hb : t ≠ .boolean) {n : USize}
     (x : Arr t n) {b : ByteArray} (hx : Enc.bytesOf t n x.enc = some b) :
-    x.toList = ((List.range n.toNat).map fun i => Enc.get t n (.bytes b) i).map
+    x.toList = ((List.range n.toNat).map fun i => Enc.get (X := Empty) t n (.bytes b) i).map
       fun o => (o.bind fun a => Carrier.of? t (.atom a)).getD default := by
   have hg : t ≠ .general := QAtomicType.ne_general_of_width hw
   apply List.ext_getElem (by simp [Arr.length_toList])

@@ -8,6 +8,8 @@ import Rel.KernelWF.RazeRowAll
 import Rel.Kernel.Dep.Monadic
 import Rel.KernelSpec.AlpConcat
 
+open Rel.Ext
+
 namespace Rel.KernelWF
 
 open Rel Rel.Kernel Rel.Dep Rel Rel.Alg Rel.Rep
@@ -76,7 +78,7 @@ theorem razeTo_toList_of {t : QAtomicType} (hg : t ≠ .general) (cs : Array ((k
 /-- **`Enc.answer` keeps an encoded payload's elements**: it keeps the payload or decodes it (`get_bytesOf`). -/
 theorem get_answer {t : QAtomicType} {w : Nat} (hw : t.width = some w) (hb : t ≠ .boolean) {n : USize} {e : Enc}
     (hwf : Enc.WF t n e) (he : ∀ b, e ≠ .bytes b) {i : Nat} (hi : i < n.toNat) :
-    Enc.get t n (Enc.answer t n e) i = Enc.get t n e i := by
+    Enc.get (X := Empty) t n (Enc.answer t n e) i = Enc.get t n e i := by
   have hg : t ≠ .general := QAtomicType.ne_general_of_width hw
   have hw' := hw
   obtain ⟨b, hbo, -⟩ := bytesOf_size hb hw hwf
@@ -271,7 +273,7 @@ theorem razeTo_join_alp {t : QAtomicType} {w : Nat} (hw : t.width = some w) (cs 
   have hD := Verify.elemsW_alpDecode_alpBits M P A S.toUSize w.toUSize hesz
   rw [toUSize_toNat_le8 hw8, USize.toNat_ofNat_of_lt' hS] at hD
   have hL := hD.symm.trans hR.2
-  have hwfA : Enc.WF t N.toUSize (.alp M P A) :=
+  have hwfA : Enc.WF (X := Empty) t N.toUSize (.alp M P A) :=
     concatALP_wf hX ht hw hms hps has (by rw [USize.toNat_ofNat_of_lt' hNlt]; exact hNv)
   refine razeTo_of_bits hw hb cs hs hS h2 (Column.alpBits M P A (Column.blockStarts M))
     (fun k => (Column.bitsAt (countBytes ns) (8 * k) 8).toNat)

@@ -9,6 +9,8 @@ import Rel.Kernel.Dep.Monadic
 import Rel.KernelSpec.Alp
 import Rel.KernelSpec.SymFind
 
+open Rel.Ext
+
 namespace Rel
 
 open Rel Rel.Dep
@@ -135,7 +137,7 @@ theorem lgOk_encode (width : USize) (hw : width.toNat ≤ 8) (x : ByteArray) :
 
 /-- `xs` Frame-of-Reference encoded is well formed at its count `n`: the checks' `foR` columns, which
     `decide` cannot evaluate through `Coc.encode`. -/
-theorem foRLongs_wf (xs : List Int64) {n : USize} (hn : xs.length = n.toNat) : Enc.WF .long n
+theorem foRLongs_wf (xs : List Int64) {n : USize} (hn : xs.length = n.toNat) : Enc.WF (X := Empty) .long n
     (.foR (Kernel.Coc.encode 8 (packLongs xs)).1 (Kernel.Coc.encode 8 (packLongs xs)).2) := by
   have h := Verify.nblk_encode Column.lgEnc (by decide) 8 (by decide) (by decide) (packLongs xs)
   rw [packLongs_size] at h
@@ -381,13 +383,13 @@ theorem get_sym_bytes {n : USize} {e : Enc} {i : Nat} (d : String) (hw : Enc.WF 
     (((Enc.get .symbol n e i).bind fun a => Carrier.of? .symbol (.atom a)).getD d).toUTF8.data.toList = (Verify.symsOf n.toNat e)[i] := by
   cases e with
   | syms b o =>
-    rw [show Enc.get .symbol n (.syms b o) i = some (.symbol ((String.fromUTF8? (Column.symKey b o i)).getD ""))
+    rw [show Enc.get (X := Empty) .symbol n (.syms b o) i = some (.symbol ((String.fromUTF8? (Column.symKey b o i)).getD ""))
       by simp only [Enc.get, if_pos hi]; rfl]
     simp only [Option.bind_some, Carrier.of?, Option.getD_some, Verify.symsOf, List.getElem_map,
       List.getElem_range, Verify.symAt] at hk ⊢
     exact str_bytes hk
   | enum d o ids =>
-    rw [show Enc.get .symbol n (.enum d o ids) i = some (.symbol ((String.fromUTF8?
+    rw [show Enc.get (X := Empty) .symbol n (.enum d o ids) i = some (.symbol ((String.fromUTF8?
       (Column.symKey d o (Column.idAt ids (Column.idWidth o) i))).getD "")) by simp only [Enc.get, if_pos hi]; rfl]
     simp only [Option.bind_some, Carrier.of?, Option.getD_some, Verify.symsOf, List.getElem_map,
       List.getElem_range, Verify.symAt] at hk ⊢

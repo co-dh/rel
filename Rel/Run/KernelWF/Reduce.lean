@@ -6,6 +6,8 @@
 import Rel.Run.KernelWF.Raze
 import Rel.Kernel.Sort
 
+open Rel.Ext
+
 namespace Rel.KernelWF
 
 open Rel Rel.Kernel Rel.Kernel.Order Rel
@@ -68,7 +70,7 @@ private theorem min_avail_decode {k : Scan.Kind} (hk : k ≠ .bit) {n : USize}
 theorem gradeColumn_wf {t : QAtomicType} {desc rank : Bool} {n : USize} {e v : Enc}
     (hw : Enc.WF t n e) (h : gradeColumn t desc n e rank = some v) :
     Enc.WF .long n v := by
-  have key : ∀ b : ByteArray, b.size = n.toNat * 8 → Enc.WF .long n (.bytes b) :=
+  have key : ∀ b : ByteArray, b.size = n.toNat * 8 → Enc.WF (X := Empty) .long n (.bytes b) :=
     fun b hb => wf_bytes (w := 8) (by decide) rfl hb
   unfold gradeColumn at h
   cases rank <;> simp only [Bool.false_eq_true, ↓reduceIte] at h <;> split at h
