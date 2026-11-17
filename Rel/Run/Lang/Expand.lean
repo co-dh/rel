@@ -211,7 +211,7 @@ def primWrappers : List Lean.Name :=
 open Lean Meta in
 /-- `c` at fresh metavariables: those whose type `sel` picks are `hs` in order (each given with its type), and `ok`
     holds of all of them and the type; none when a type differs or one is left open. The one rule by which `primE`
-    fits a wrapper and a row's constant, and `RelRep.prfNode` a `Sound` lemma. -/
+    fits a wrapper and a row's constant. -/
 def fitConst (c : Lean.Name) (sel : Lean.Expr → MetaM Bool) (hs : Array (Lean.Expr × Lean.Expr))
     (ok : Array Lean.Expr → Lean.Expr → MetaM Bool) : MetaM (Option Lean.Expr) := withoutModifyingState do
   let k ← mkConstWithFreshMVarLevels c

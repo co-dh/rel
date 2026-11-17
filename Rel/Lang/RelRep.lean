@@ -105,17 +105,9 @@ partial def prfNode (pre : Name) (ρ : List (Nat × Lean.Expr)) {A B : Obj} {d :
   | _, _, _, .fold e S => lem ``Gen.fold_sound [← p e, ← p S]
   | _, _, _, .own R | _, _, _, .share _ R => p R
   | _, _, _, _ => match primOf t with
-    -- a row by its lemma, its relations' proofs its `Sound` hypotheses; with none, the gap is its constant
-    | some (r, as) => match r.sound with
-      | some s => do
-        let some hs := (← as.toArray.mapM fun ⟨_, _, _, x⟩ => prf pre ρ x).mapM id | return none
-        -- the lemma's code unified with the node, its `Sound` hypotheses the proofs `hs`
-        let e ← node pre ρ t
-        let some v ← fitConst s (fun t => pure (t.isAppOf ``Gen.Sound)) (← hs.mapM fun h => return (h, ← inferType h))
-            fun _ ty => match ty.getAppArgs[3]? with | some c => isDefEq c e | none => pure false
-          | throwError "Expand.rep: `{s}` given {hs.size} `Sound` proofs is no lemma at the node `{e}`"
-        pure (some v)
-      | none => modify (fun (m, g) => (m, g <|> some r.sig.1)); pure none
+    -- a row's spine is proved by `compile_sound` (`Prim.run_sound`) over `compile`'s code, not this node's: its
+    -- constant is the gap until stage 4 cites that
+    | some (r, _) => modify (fun (m, g) => (m, g <|> some r.sig.1)); pure none
     | none =>
       -- a call is named by its constant, not by the `Gen.ofPl` that runs its plan
       let e ← node pre ρ t
@@ -123,12 +115,6 @@ partial def prfNode (pre : Name) (ρ : List (Nat × Lean.Expr)) {A B : Obj} {d :
       modify fun (m, g) => (m, g <|> f); pure none
 
 end
-
--- `prims` names its soundness lemmas unchecked (Syntax cannot import `GenSpec`), so each is checked here
-run_cmd do
-  for r in prims do
-    if let some s := r.sound then
-      unless (← getEnv).contains s do throwError "prims: the soundness lemma of `{r.sym}` is `{s}`, which is not declared"
 
 /-- The theorems `n.rep_x` of the program `n`, from the terms and constants `emit` recorded, and `n.unproved`:
     the definitions with none, each with the first combinator `GenSpec` has no lemma for. -/

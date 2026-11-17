@@ -79,7 +79,7 @@ theorem codesFit_sum : ∀ (A : Obj) {p : Nat} {cs : Vector (Part A) p}, A.Codes
 /-! ### One object's block of codes -/
 
 /-- One object's parts coded jointly, as `codeAll` codes them: `Code.cat` of `Obj.codes`. -/
-def blockCode (ps : Array (Part A)) : Code := Code.cat (A.codes (p := ps.size) ⟨ps, rfl⟩).toArray
+def blockCode (ps : Array (Part A)) : Alg.Code := Code.cat (A.codes (p := ps.size) ⟨ps, rfl⟩).toArray
 
 /-- The element at code `a` of `blockCode`'s classes: the row at the class's first occurrence. -/
 def blockU (ps : Array (Part A)) (a : Nat) : A.El :=
@@ -91,13 +91,13 @@ theorem idAt_64 (b : ByteArray) (j : Nat) : Column.idAt b 64 j = (Column.bitsAt 
   rw [Column.idAt, show (64 : Nat) = 8 * 8 from rfl, resAt_lane b 8 j (Nat.le_refl _), Nat.mul_comm]
 
 /-- `Code.cat`'s `card` is the parts' largest. -/
-theorem cat_card (cs : Array Code) (hN : (cs.toList.map (·.n.toNat)).sum < USize.size) :
+theorem cat_card (cs : Array Alg.Code) (hN : (cs.toList.map (·.n.toNat)).sum < USize.size) :
     (Code.cat cs).card = cs.toList.foldl (fun m c => max m c.card) 0 := by
   have hS : cs.foldl (fun s c => s + c.n.toNat) 0 = (cs.toList.map (·.n.toNat)).sum := by
-    rw [← Array.foldl_toList, foldl_add_sum (fun c : Code => c.n.toNat), Nat.zero_add]
+    rw [← Array.foldl_toList, foldl_add_sum (fun c : Alg.Code => c.n.toNat), Nat.zero_add]
   unfold Code.cat; simp only [need, hS, hN, ↓reduceDIte, Array.foldl_toList]
 
-theorem foldl_max_ge (l : List Code) : ∀ m₀, (m₀ ≤ l.foldl (fun m c => max m c.card) m₀) ∧
+theorem foldl_max_ge (l : List Alg.Code) : ∀ m₀, (m₀ ≤ l.foldl (fun m c => max m c.card) m₀) ∧
     ∀ c ∈ l, c.card ≤ l.foldl (fun m c => max m c.card) m₀ := by
   induction l with
   | nil => simp
@@ -109,7 +109,7 @@ theorem foldl_max_ge (l : List Code) : ∀ m₀, (m₀ ≤ l.foldl (fun m c => m
     · exact Nat.le_trans (Nat.le_max_right _ _) h1
     · exact h2 c hc
 
-theorem foldl_max_lt (l : List Code) (B : Nat) : ∀ m₀, m₀ < B → (∀ c ∈ l, c.card < B) →
+theorem foldl_max_lt (l : List Alg.Code) (B : Nat) : ∀ m₀, m₀ < B → (∀ c ∈ l, c.card < B) →
     l.foldl (fun m c => max m c.card) m₀ < B := by
   induction l with
   | nil => intro m₀ h _; exact h
