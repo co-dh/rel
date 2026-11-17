@@ -228,7 +228,8 @@ noncomputable def Tm.den : Val → {A B : Obj} → {d : Bool} → Tm A B d → D
   | ρ, A, B, _, .var k => ρ k A B
   | _, _, _, _, .call .. => 𝟘
   | ρ, _, _, _, .arg f x => f.argDen ρ [⟨_, _, x.den ρ⟩]
-  | ρ, _, _, _, .nu k _ b => Core.Rel.nu fun X => b.den (ρ.bind k X)
+  -- the rounds start at `⟦S⟧` and meet each with it (`Gen.nu`), so `S` bounds the greatest fixed point
+  | ρ, _, _, _, .nu k S b => Core.Rel.nu fun X => S.den ρ ∩ b.den (ρ.bind k X)
   | ρ, _, _, _, .mu k _ _ b => Core.Rel.mu fun X => b.den (ρ.bind k X)
   | ρ, _, _, _, .refold k _ _ b => Core.Rel.mu fun X => b.den (ρ.bind k X)
 
@@ -272,7 +273,16 @@ theorem Tm.den_congr : ∀ {A B : Obj} {d : Bool} (t : Tm A B d) (ρ ρ' : Val),
     exact ⟨by simp only [Tm.den, (ihR ρ ρ' fun i hi => h i (by simp [Tm.fv, hi])).1,
       (ihS ρ ρ' fun i hi => h i (by simp [Tm.fv, hi])).1, (ihU ρ ρ' fun i hi => h i (by simp [Tm.fv, hi])).1,
       (ihV ρ ρ' fun i hi => h i (by simp [Tm.fv, hi])).1], fun _ => rfl⟩
-  | nu k _ b _ ih | mu k _ _ b ih | refold k _ _ b _ ih =>
+  | nu k S b ihS ih =>
+    intro ρ ρ' h
+    refine ⟨?_, fun _ => rfl⟩
+    simp only [Tm.den, (ihS ρ ρ' fun i hi => h i (by simp [Tm.fv, hi])).1]
+    congr 1; funext X; congr 1
+    refine (ih _ _ fun i hi => ?_).1
+    by_cases e : i = k
+    · subst e; exact Val.bind_same
+    · rw [Val.bind_ne e, Val.bind_ne e]; exact h i (by simp [Tm.fv, hi, e])
+  | mu k _ _ b ih | refold k _ _ b _ ih =>
     intro ρ ρ' h
     refine ⟨?_, fun _ => rfl⟩
     simp only [Tm.den]
@@ -360,7 +370,14 @@ theorem Tm.den_subst : ∀ {A B : Obj} {d : Bool} (t : Tm A B d) (σ : Tm.Sub), 
   intro A B d t
   induction t with
   | var i => intro σ hσ ρ; exact ⟨Sub.den_get ρ i _ σ, fun _ => Sub.argDen_get i _ σ hσ⟩
-  | nu k _ b _ ih | mu k _ _ b ih | refold k _ _ b _ ih =>
+  | nu k S b ihS ih =>
+    intro σ hσ ρ; refine ⟨?_, fun _ => rfl⟩; simp only [Tm.subst, Tm.den, (ihS σ hσ ρ).1]
+    congr 1; funext X; congr 1
+    refine (ih _ (fun e he ρ ss => ?_) _).1.trans (Sub.den_rename b σ ρ k X)
+    rcases List.mem_cons.1 he with rfl | he
+    · rfl
+    · exact hσ e he ρ ss
+  | mu k _ _ b ih | refold k _ _ b _ ih =>
     intro σ hσ ρ; refine ⟨?_, fun _ => rfl⟩; simp only [Tm.subst, Tm.den]; congr 1; funext X
     refine (ih _ (fun e he ρ ss => ?_) _).1.trans (Sub.den_rename b σ ρ k X)
     rcases List.mem_cons.1 he with rfl | he
@@ -531,7 +548,21 @@ theorem Tm.den_pol (k : Nat) : ∀ {A B : Obj} {d : Bool} (t : Tm A B d) (s : Bo
     intro s ρ ρ' hp g; simp only [Tm.pol, Bool.and_eq_true, Bool.not_eq_true'] at hp
     simp only [Tm.den, g.congr hp.1.1.2]
     exact sle.map3 rdiv_le (ihR s ρ ρ' hp.1.1.1 g) (ihU s ρ ρ' hp.1.2 g) (ihV s ρ ρ' hp.2 g)
-  | nu j _ b _ ih | mu j _ _ b ih | refold j _ _ b _ ih =>
+  | nu j S b ihS ih =>
+    intro s ρ ρ' hp g
+    simp only [Tm.pol, Bool.and_eq_true] at hp
+    simp only [Tm.den]
+    have hS := ihS s ρ ρ' hp.1 g
+    by_cases e : j = k
+    · subst e
+      have hb : ∀ {A' B' : Obj} (X : Den A' B'), ρ.bind j X = ρ'.bind j X := fun X => funext fun i => by
+        by_cases e' : i = j
+        · subst e'; exact Val.bind_same
+        · rw [Val.bind_ne e', Val.bind_ne e', g.2 i e']
+      simp only [hb]; exact sle.gfp fun X => sle.map2 (f := fun X Y => X ∩ Y) inter_le' hS (sle.refl _)
+    · simp only [Bool.or_eq_true, beq_iff_eq, e, false_or] at hp
+      exact sle.gfp fun X => sle.map2 (f := fun X Y => X ∩ Y) inter_le' hS (ih s _ _ hp.2 (g.bind e X))
+  | mu j _ _ b ih | refold j _ _ b _ ih =>
     intro s ρ ρ' hp g
     simp only [Tm.den]
     by_cases e : j = k
@@ -542,9 +573,7 @@ theorem Tm.den_pol (k : Nat) : ∀ {A B : Obj} {d : Bool} (t : Tm A B d) (s : Bo
         · rw [Val.bind_ne e', Val.bind_ne e', g.2 i e']
       simp only [hb]; exact sle.refl _
     · simp only [Tm.pol, Bool.or_eq_true, beq_iff_eq, e, false_or] at hp
-      first
-        | exact sle.lfp fun X => ih s _ _ hp (g.bind e X)
-        | exact sle.gfp fun X => ih s _ _ hp (g.bind e X)
+      exact sle.lfp fun X => ih s _ _ hp (g.bind e X)
   | _ => intro s ρ ρ' hp g; exact sle.of_eq (g.congr (by first | simpa [Tm.pol] using hp | simp [Tm.fv]))
 
 /-- `⟦t⟧` is monotone in `X` where `X` occurs only positively. -/

@@ -117,9 +117,8 @@ def Tm.gap : {A B : Obj} → {d : Bool} → Tm A B d → Option String
   | _, _, _, .prim r => if rowGaps.contains r.sym then some s!"{r.sym}: the row has no lemma (rowGaps)" else none
   | _, _, _, .mu k _ _ b =>
     if b.pol true k then b.gap else some s!"μ: the body is not positive in its variable {k} (D8 = R, §7.3)"
-  -- the rounds run from `S` down, so they reach `gfp` only where every round is below `S`; neither `Tm.nu` nor the
-  -- elaborator relates the body to `S` (the body is built apart from it), so no case can supply the bound
-  | _, _, _, .nu .. => some "ν: nu_sound needs every round below its bound (∀ X, Φ X ⊑ ⟦S⟧), which no premise states"
+  | _, _, _, .nu k S b =>
+    if b.pol true k then S.gap <|> b.gap else some s!"ν: the body is not positive in its variable {k} (D8 = R, §7.3)"
   | _, _, _, .foldI .. => some "foldI: Gen.foldI has no lemma (foldI_sound) yet"
   -- `share`'s meaning reads no variable while its code reads the environment: the two agree only on a closed part
   | _, _, _, .share _ R => if R.fv.isEmpty then R.gap else some "share: its part is not closed"

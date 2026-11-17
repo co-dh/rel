@@ -37,29 +37,37 @@ theorem mu_sound {A B : Obj} {cap : Nat} {φ : CRel A B → Fn false A B} {Φ : 
     (hleast _ (le_iff.2 fun a b h => by rw [rep_zero] at h; exact h.elim) (mu_prefixed hΦ)) (mu_le (by rw [hfx]; exact Core.Rel.le_refl _))
   rw [e]
 
-/-- `νX : φ` by rounds from `S` down: the greatest fixed point of a monotone `Φ` below `⟦S⟧`. The chain of
-    distinct-row tables below `S` is fixed within `S`'s row count plus one (`CRel.rep_fixOn`'s last clause). -/
+/-- `νX : S ∩ φ` by rounds from `S` down, each met with `S`: the greatest fixed point of `X ↦ ⟦S⟧ ∩ Φ X` for a
+    monotone `Φ`. Every round is below `⟦S⟧`, so the chain of distinct-row tables below `S` is fixed within `S`'s
+    row count plus one (`CRel.rep_fixOn`'s last clause). -/
 theorem nu_sound {A B : Obj} {S : Fn false A B} {TS : Den A B} {φ : CRel A B → Fn false A B}
-    {Φ : Den A B → Den A B} (hS : Sound S TS) (hΦ : Monotonic Φ) (hle : ∀ X, Φ X ⊑ TS)
+    {Φ : Den A B → Den A B} (hS : Sound S TS) (hΦ : Monotonic Φ)
     (h : ∀ X : CRel A B, X.ok = true → Sound (φ X) (Φ (rep X.rel))) :
-    Sound (Gen.nu A B S φ) (Core.Rel.nu Φ) := fun ⟨⟩ _ hb x y _ => by
+    Sound (Gen.nu A B S φ) (Core.Rel.nu fun X => TS ∩ Φ X) := fun ⟨⟩ _ hb x y _ => by
   simp only [Gen.nu] at hb ⊢
   have hs : (S ()).ok = true := by
     cases e : (S ()).ok
     · rw [CRel.fixOn, CRel.guard, e] at hb; exact absurd hb Bool.false_ne_true
     · rfl
   have hX : rep (S ()).rel = TS := hS.eq hs
-  have hit : ∀ i, Nat.repeat Φ i (rep (S ()).rel) ⊑ rep (S ()).rel := fun i => by
+  have hΨ : Monotonic fun X => TS ∩ Φ X := fun X Y hXY => inter_le' (Core.Rel.le_refl _) (hΦ X Y hXY)
+  have hle : ∀ X, TS ∩ Φ X ⊑ TS := fun X => Core.Rel.inter_le_left _ _
+  have hit : ∀ i, Nat.repeat (fun X => TS ∩ Φ X) i (rep (S ()).rel) ⊑ rep (S ()).rel := fun i => by
     cases i with
     | zero => exact Core.Rel.le_refl _
-    | succ i => show Φ _ ⊑ _; rw [hX]; exact hle _
-  obtain ⟨j, -, hj, hr, hfix, -, hcnt⟩ := CRel.rep_fixOn _ (fun X => φ X ()) (S ()) Φ hb
-    (fun D hD => (h ⟨D, true⟩ rfl).eq hD) hΦ (Or.inr (hX ▸ hle _))
+    | succ i => show TS ∩ Φ _ ⊑ _; rw [hX]; exact hle _
+  have hφ : ∀ D, (CRel.inter (S ()) (φ ⟨D, true⟩ ())).ok = true →
+      rep (CRel.inter (S ()) (φ ⟨D, true⟩ ())).rel = TS ∩ Φ (rep D) := fun D hD => by
+    have h2 := ok_and hD; rw [Bool.and_eq_true] at h2
+    rw [CRel.rep_inter _ _ hD, hX, (h ⟨D, true⟩ rfl).eq h2.2]
+  obtain ⟨j, -, hj, hr, hfix, -, hcnt⟩ := CRel.rep_fixOn _ (fun X => CRel.inter (S ()) (φ X ())) (S ())
+    (fun X => TS ∩ Φ X) hb hφ hΨ (Or.inr (hX ▸ hle _))
   have hfx := hfix (hcnt _ hit (by omega))
-  have hdown : ∀ i, Core.Rel.nu Φ ⊑ Nat.repeat Φ i (rep (S ()).rel) := fun i => by
+  have hdown : ∀ i, Core.Rel.nu (fun X => TS ∩ Φ X) ⊑ Nat.repeat (fun X => TS ∩ Φ X) i (rep (S ()).rel) :=
+    fun i => by
     induction i with
-    | zero => show _ ⊑ rep (S ()).rel; rw [hX, ← nu_fix hΦ]; exact hle _
-    | succ i ih => show _ ⊑ Φ _; rw [← nu_fix hΦ]; exact hΦ _ _ ih
+    | zero => show _ ⊑ rep (S ()).rel; rw [hX, ← nu_fix hΨ]; exact hle _
+    | succ i ih => show _ ⊑ TS ∩ Φ _; rw [← nu_fix hΨ]; exact hΨ _ _ ih
   have e := Core.Rel.le_antisymm (le_nu (by rw [hfx]; exact Core.Rel.le_refl _)) (hr ▸ hdown j)
   rw [e]
 
@@ -280,5 +288,13 @@ theorem compile_sound {A B : Obj} {d : Bool} (t : Tm A B d) (hg : t.gap = none) 
       refine ⟨Prim.fn_sound (fun g hg => inv [] [] trivial g (by simpa using hg)) d,
         pleaf_sound (Prim.fn_sound (fun g hg => inv [] [] trivial g (by simpa using hg)) d), ?_⟩
       intro r' cs' e'; cases e'; exact inv
-  | lam | E | thin | juncD | foldI | call | nu | refold => simp [Tm.gap] at hg
+  | nu k S b ihS ih =>
+    simp only [Tm.gap] at hg
+    split at hg
+    · rename_i hp
+      obtain ⟨hS, hb⟩ := gap_or hg
+      exact Out.Sound.memo (Out.Sound.leaf (nu_sound (ihS hS η ρ hη).1 (fun X Y h => Tm.den_mono hp h)
+        fun X _ => (ih hb _ _ (hη.bind k X)).1))
+    · cases hg
+  | lam | E | thin | juncD | foldI | call | refold => simp [Tm.gap] at hg
 end Rel.Lang

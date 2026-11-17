@@ -210,10 +210,11 @@ def flat (I A B : Obj) (d : Bool) (R : Fn d I (.prod A B)) : Fn true (.prod I A)
   let p := CRel.pair ⟨r.rel°, r.ok⟩ ⟨Alg.outl u.rel, u.ok⟩
   also ro.ok (CRel.comp ⟨D, true⟩ (CRel.comp ⟨p.rel°, p.ok⟩ ⟨Alg.outr u.rel, u.ok⟩))
 
-/-- `νX : φ`: rounds of `φ` from `S` down to the greatest fixed point. A strict round drops a row of the
-    distinct-row chain below `S`, so `S`'s row count plus two rounds reach the fixed point (`nu_sound`). -/
+/-- `νX : S ∩ φ`: rounds of `S ∩ φ` from `S` down to the greatest fixed point. Each round is met with `S`, so
+    the chain stays below `S` whatever `φ` is: a strict round drops a row of the distinct-row chain below `S`, and
+    `S`'s row count plus two rounds reach the fixed point (`nu_sound`). -/
 def nu (A B : Obj) (S : Fn false A B) (φ : CRel A B → Fn false A B) : Fn false A B := fun _ =>
-  let s := S (); (CRel.fixOn (s.rel.n.toNat + 2) (fun X => φ X ()) s).1
+  let s := S (); (CRel.fixOn (s.rel.n.toNat + 2) (fun X => CRel.inter s (φ X ())) s).1
 
 /-- One arc `A\(X C)` of an AC-3 body: `A`, `C`, `𝟙(V)`, `𝟙(D)`. -/
 abbrev Arc (V D : Obj) := Fn false V V × Fn false D D × Fn false V V × Fn false D D
