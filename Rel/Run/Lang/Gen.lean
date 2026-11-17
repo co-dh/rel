@@ -15,6 +15,8 @@ import Rel.Run.Lang.Bits
     `Dem false A = Unit`. A closed term over `≫`/`∩`/`−`/`\` runs as a bit-matrix plan (`Bits.runC`), each node of
     the plan built by the `p*` functions below on the demand its parent gives it. -/
 
+open Rel.Ext
+
 namespace Rel.Lang
 
 open Rel Rel.Alg

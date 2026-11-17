@@ -5,6 +5,8 @@
 -/
 import Rel.KernelWF.RazeRowRec
 
+open Rel.Ext
+
 namespace Rel.KernelWF
 
 open Rel Rel.Kernel Rel.Dep Rel Rel.Alg Rel.Rep

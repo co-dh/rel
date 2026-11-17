@@ -5,6 +5,8 @@ import Rel.Kernel.Search
 /-! The part of `Rel.Eval.Val` the Rel kernels reach; `Rel.Eval.Val` imports it. -/
 
 
+open Rel.Ext
+
 namespace Rel
 
 end Rel

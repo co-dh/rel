@@ -4,6 +4,8 @@ import Rel.Kernel.Value
 /-! The part of `Rel.Verify.Raw` the Rel kernels reach; `Rel.Verify.Raw` imports it. -/
 
 
+open Rel.Ext
+
 namespace Rel.Verify
 
 open Rel

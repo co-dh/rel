@@ -12,6 +12,8 @@ import Rel.Kernel.Elementwise
 /-! The part of `Rel.Verify.Gather` the Rel kernels reach; `Rel.Verify.Gather` imports it. -/
 
 
+open Rel.Ext
+
 namespace Rel.Verify
 open Rel Rel.Kernel
 
@@ -88,7 +90,7 @@ theorem elemsW_bytesOf {t : QAtomicType} {w : Nat} (ht : t.width = some w) (hb :
     rw [hwU] at e
     rw [e, raw_foR t w ht hb, Array.toList_map, Array.toList_range, Coc.elems]
   | alp M P a =>
-    have hr : Enc.raw t n (.alp M P a) =
+    have hr : Enc.raw (X := Empty) t n (.alp M P a) =
         (Array.range n.toNat).map (Column.alpBits M P a (Column.blockStarts M)) := by
       cases t <;> simp_all [Enc.raw]
     simp only [Enc.bytesOf, ht, Option.map_some, Option.some.injEq] at h

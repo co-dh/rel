@@ -30,9 +30,9 @@ theorem codes_symbol_cut {p : Nat} (cs : Vector (Part (.atom .symbol)) p) (hp : 
   simp only [hro]
   split
   · next d' o' ids' hi =>
-    obtain ⟨rfl, rfl, rfl⟩ := Enc.enum.inj (hI.symm.trans hi)
+    obtain ⟨rfl, rfl, rfl⟩ := Ext.Enc.enum.inj (hI.symm.trans hi)
     rfl
-  all_goals (rename_i hi; exact Enc.noConfusion (hI.symm.trans hi))
+  all_goals (rename_i hi; exact nomatch hI.symm.trans hi)
 
 /-- **A symbol side of several parts: its codes are faithful jointly across the parts.** Part `k`'s code at `i`
     and part `l`'s at `j` agree exactly when the rows do; the parts' summed count, and their dictionaries

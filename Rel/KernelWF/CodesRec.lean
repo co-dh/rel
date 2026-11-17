@@ -8,6 +8,8 @@
 import Rel.KernelWF.CodesProdFaithful
 import Rel.KernelWF.RazeRowRec
 
+open Rel.Ext
+
 namespace Rel.Alg
 
 open Rel Rel.Dep Rel.Kernel Rel.Verify Rel

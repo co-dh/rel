@@ -8,6 +8,8 @@ import Rel.KernelWF.RazeRowAll
 import Rel.Kernel.Dep.Monadic
 import Rel.KernelSpec.AlpConcat
 
+open Rel.Ext
+
 namespace Rel.KernelWF
 
 open Rel Rel.Kernel Rel.Dep Rel Rel.Alg Rel.Rep
@@ -76,7 +78,7 @@ theorem razeTo_toList_of {t : QAtomicType} (hg : t ≠ .general) (cs : Array ((k
 /-- **`Enc.answer` keeps an encoded payload's elements**: it keeps the payload or decodes it (`get_bytesOf`). -/
 theorem get_answer {t : QAtomicType} {w : Nat} (hw : t.width = some w) (hb : t ≠ .boolean) {n : USize} {e : Enc}
     (hwf : Enc.WF t n e) (he : ∀ b, e ≠ .bytes b) {i : Nat} (hi : i < n.toNat) :
-    Enc.get t n (Enc.answer t n e) i = Enc.get t n e i := by
+    Enc.get (X := Empty) t n (Enc.answer t n e) i = Enc.get t n e i := by
   have hg : t ≠ .general := QAtomicType.ne_general_of_width hw
   have hw' := hw
   obtain ⟨b, hbo, -⟩ := bytesOf_size hb hw hwf
@@ -148,7 +150,7 @@ theorem alp_part {t : QAtomicType} {w : Nat} (ht : Column.alpEncodes t = true) (
         cases (w == 4) <;> rfl
       rw [h4] at he
       rcases hX : Coc.alpEncodeAt (w == 4) b with ⟨m', p', a'⟩
-      simp only [hX, Option.some.injEq, Enc.alp.injEq] at he
+      simp only [hX, Option.some.injEq, Ext.Enc.alp.injEq] at he
       obtain ⟨rfl, rfl, rfl⟩ := he; rfl
     have H := Verify.alpBits_alpEncodeAt (w == 4) Column.lgEnc (by decide) w h48 b (by rw [hbs, Nat.mul_div_cancel _ h0]; exact hn)
     simp only [hE] at H
@@ -271,14 +273,14 @@ theorem razeTo_join_alp {t : QAtomicType} {w : Nat} (hw : t.width = some w) (cs 
   have hD := Verify.elemsW_alpDecode_alpBits M P A S.toUSize w.toUSize hesz
   rw [toUSize_toNat_le8 hw8, USize.toNat_ofNat_of_lt' hS] at hD
   have hL := hD.symm.trans hR.2
-  have hwfA : Enc.WF t N.toUSize (.alp M P A) :=
+  have hwfA : Enc.WF (X := Empty) t N.toUSize (.alp M P A) :=
     concatALP_wf hX ht hw hms hps has (by rw [USize.toNat_ofNat_of_lt' hNlt]; exact hNv)
   refine razeTo_of_bits hw hb cs hs hS h2 (Column.alpBits M P A (Column.blockStarts M))
     (fun k => (Column.bitsAt (countBytes ns) (8 * k) 8).toNat)
     (fun k => Column.alpBits ms[k]! ps[k]! as[k]! (Column.blockStarts ms[k]!)) ?_ ?_ ?_
   · intro c E a hv i hi
     obtain ⟨-, hv⟩ := razeColumn_alp hw ht hE hC hX hv
-    simp only [QValue.vector.injEq] at hv
+    simp only [Ext.QValue.vector.injEq] at hv
     obtain ⟨-, rfl, rfl, rfl⟩ := hv
     have hi' : i < N.toUSize.toNat := by rw [hNU]; exact hi
     rw [get_answer hw hb hwfA (by intro _ h; cases h) hi', get_alp_eq hw hb _ _ _ hi', alpBits_starts]

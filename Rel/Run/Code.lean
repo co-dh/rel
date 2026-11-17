@@ -19,6 +19,8 @@ import Rel.KernelSpec.Ids
 import Rel.KernelSpec.Search
 import Rel.Run.KernelWF.Reduce
 
+open Rel.Ext
+
 namespace Rel.Alg
 
 open Rel Rel.Dep Rel.Kernel Rel
@@ -449,7 +451,7 @@ def codes {p : Nat} (t : QAtomicType) (cs : Vector ((n : USize) × Arr t n) p) :
   | .bytes _ | .bits _ | .syms .. | .foR .. | .alp .. | .gen _ =>
     -- at `bitsType t`: a float groups by its bits, not by q's key, which folds the NaNs and the zeros
     let (gid, fs) := (groupIdsColumn (KernelWF.bitsType t) x.1 x.2.enc).get
-      (KernelWF.groupIdsColumn_bitsType_isSome hg x.2.wf fun _ _ _ he => Enc.noConfusion (hi.symm.trans he))
+      (KernelWF.groupIdsColumn_bitsType_isSome hg x.2.wf fun _ _ _ he => nomatch hi.symm.trans he)
     (Code.ofIds (len fs) x.1 gid).cut ns
 
 /-- A long column's dense payload, which always answers (`longBytes_isSome`). -/

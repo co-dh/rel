@@ -7,6 +7,8 @@
 import Rel.KernelWF.CodesProd
 import Rel.KernelWF.CodesSym
 
+open Rel.Ext
+
 namespace Rel.KernelWF
 
 open Rel Rel.Kernel Rel.Dep Rel Rel.Alg

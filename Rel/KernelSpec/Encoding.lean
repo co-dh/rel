@@ -4,6 +4,8 @@ import Rel.Kernel.Value
 /-! The part of `Rel.Verify.Encoding` the Rel kernels reach; `Rel.Verify.Encoding` imports it. -/
 
 
+open Rel.Ext
+
 namespace Rel.Verify
 
 open Rel
@@ -580,12 +582,12 @@ theorem foRBits_encode (lg : Nat) (hlg : 6 ≤ lg ∧ lg ≤ 16) (w : Nat) (hw0 
 
 theorem raw_foR (t : QAtomicType) (w : Nat) (ht : t.width = some w) (hb : t ≠ .boolean)
     (n : USize) (M P : ByteArray) :
-    Enc.raw t n (.foR M P) = (Array.range n.toNat).map (Column.foRBits M P (Column.blockStarts M)) := by
+    Enc.raw (X := X) t n (.foR M P) = (Array.range n.toNat).map (Column.foRBits M P (Column.blockStarts M)) := by
   cases t <;> simp_all [Enc.raw]
 
 theorem raw_bytes (t : QAtomicType) (w : Nat) (ht : t.width = some w) (hb : t ≠ .boolean)
     (n : USize) (x : ByteArray) :
-    Enc.raw t n (.bytes x) = (Array.range n.toNat).map fun i => Column.bitsAt x (i * w) w := by
+    Enc.raw (X := X) t n (.bytes x) = (Array.range n.toNat).map fun i => Column.bitsAt x (i * w) w := by
   cases t <;> simp_all [Enc.raw]
 
 theorem encode_bytes (t : QAtomicType) (w : Nat) (ht : t.width = some w) (he : Column.encodes t = true)

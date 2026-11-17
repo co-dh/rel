@@ -5,6 +5,8 @@
 import Rel.KernelWF.RowsSpec
 import Rel.KernelWF.MemberSpec
 
+open Rel.Ext
+
 namespace Rel.Alg
 
 open Rel Rel.Kernel Rel.Verify Rel

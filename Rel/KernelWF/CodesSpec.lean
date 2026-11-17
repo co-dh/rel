@@ -13,6 +13,8 @@ import Rel.KernelSpec.Ids
 import Rel.KernelSpec.ScanOver
 import Rel.KernelSpec.Search
 
+open Rel.Ext
+
 namespace Rel.Alg
 
 open Rel Rel.Dep Rel.Kernel Rel.Verify Rel
@@ -188,8 +190,8 @@ theorem groupIdsColumn_small_int {t : QAtomicType} {k : Scan.Kind} (ht : orderKi
 /-- A small integral payload's raw word `i`: a dense one's `w` bytes at `i·w`, an encoded one's `foRBits`. -/
 theorem raw_small_int {t : QAtomicType} {k : Scan.Kind} (ht : orderKind t = some k)
     (hk : k = .u8 ∨ k = .i16 ∨ k = .i32) {n : USize} {i : Nat} (hi : i < n.toNat) :
-    (∀ b, (Enc.raw t n (.bytes b)).toList.getD i 0 = Column.bitsAt b (i * k.width) k.width) ∧
-      ∀ md pk, (Enc.raw t n (.foR md pk)).toList.getD i 0 = Column.foRBits md pk (Column.blockStarts md) i := by
+    (∀ b, (Enc.raw (X := Empty) t n (.bytes b)).toList.getD i 0 = Column.bitsAt b (i * k.width) k.width) ∧
+      ∀ md pk, (Enc.raw (X := Empty) t n (.foR md pk)).toList.getD i 0 = Column.foRBits md pk (Column.blockStarts md) i := by
   rcases hk with rfl | rfl | rfl <;> cases t <;> simp [orderKind] at ht <;>
     exact ⟨fun b => by simp [Enc.raw, QAtomicType.width, Scan.Kind.width, List.getD_eq_getElem?_getD, hi],
       fun md pk => by simp [Enc.raw, QAtomicType.width, List.getD_eq_getElem?_getD, hi]⟩
@@ -416,8 +418,8 @@ theorem long_enc {t : QAtomicType} (ht : orderKind t = some .i64) {n : USize} {e
 /-- An eight-byte integral payload's raw word `i`: a dense one's eight bytes at `8i`, an encoded one's
     `foRBits`. -/
 theorem raw_long {t : QAtomicType} (ht : orderKind t = some .i64) {n : USize} {i : Nat} (hi : i < n.toNat) :
-    (∀ b, (Enc.raw t n (.bytes b)).toList.getD i 0 = Column.bitsAt b (i * 8) 8) ∧
-      ∀ md pk, (Enc.raw t n (.foR md pk)).toList.getD i 0 = Column.foRBits md pk (Column.blockStarts md) i := by
+    (∀ b, (Enc.raw (X := Empty) t n (.bytes b)).toList.getD i 0 = Column.bitsAt b (i * 8) 8) ∧
+      ∀ md pk, (Enc.raw (X := Empty) t n (.foR md pk)).toList.getD i 0 = Column.foRBits md pk (Column.blockStarts md) i := by
   cases t <;> simp [orderKind] at ht <;>
     exact ⟨fun b => by simp [Enc.raw, QAtomicType.width, List.getD_eq_getElem?_getD, hi],
       fun md pk => by simp [Enc.raw, QAtomicType.width, List.getD_eq_getElem?_getD, hi]⟩

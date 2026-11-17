@@ -7,6 +7,8 @@
 import Rel.KernelWF.CodesSpec
 import Rel.Run.KernelWF.Raze
 
+open Rel.Ext
+
 namespace Rel.Alg
 
 open Rel Rel.Dep Rel.Kernel Rel.Verify Rel
@@ -92,7 +94,7 @@ theorem enum_row {n : USize} (x : Arr .symbol n) {d : ByteArray} {o : Array Nat}
     (hlt : ∀ i < n.toNat, Column.idAt ids (Column.idWidth o) i < o.size - 1) (i : Fin n.toNat) :
     (Vals.row (A := .atom .symbol) x i).toUTF8.data.toList = symAt d o (Column.idAt ids (Column.idWidth o) i) := by
   rw [Vals.row_atom, Arr.get_ne x i (by decide), he,
-    show Enc.get .symbol n (.enum d o ids) i = some (.symbol ((String.fromUTF8?
+    show Enc.get (X := Empty) .symbol n (.enum d o ids) i = some (.symbol ((String.fromUTF8?
       (Column.symKey d o (Column.idAt ids (Column.idWidth o) i))).getD "")) by simp only [Enc.get, if_pos i.2]; rfl]
   simp only [Option.bind_some, Carrier.of?, Option.getD_some]
   exact str_bytes ⟨⟨_, hu _ (hlt i i.2)⟩, rfl⟩
@@ -102,7 +104,7 @@ theorem syms_row {n : USize} (x : Arr .symbol n) {b : ByteArray} {o : Array Nat}
     (he : x.enc = .syms b o) (hu : ∀ k < n.toNat, (Column.symKey b o k).IsValidUTF8) (i : Fin n.toNat) :
     (Vals.row (A := .atom .symbol) x i).toUTF8.data.toList = symAt b o i := by
   rw [Vals.row_atom, Arr.get_ne x i (by decide), he,
-    show Enc.get .symbol n (.syms b o) i = some (.symbol ((String.fromUTF8? (Column.symKey b o i)).getD ""))
+    show Enc.get (X := Empty) .symbol n (.syms b o) i = some (.symbol ((String.fromUTF8? (Column.symKey b o i)).getD ""))
       by simp only [Enc.get, if_pos i.2]; rfl]
   simp only [Option.bind_some, Carrier.of?, Option.getD_some]
   exact str_bytes ⟨⟨_, hu _ i.2⟩, rfl⟩
@@ -173,7 +175,7 @@ theorem codes_symbol_enum_faithful (x : Part (.atom .symbol)) {d : ByteArray} {o
       Vals.row x.2 ⟨i, hi⟩ = Vals.row x.2 ⟨j, hj⟩ := by
   obtain ⟨d', o', ids', hi', hc⟩ := codes_symbol x
   rw [he] at hi'
-  simp only [Column.intern, Enc.enum.injEq] at hi'
+  simp only [Column.intern, Ext.Enc.enum.injEq] at hi'
   obtain ⟨rfl, rfl, rfl⟩ := hi'
   have hwf := x.2.wf
   rw [he] at hwf
@@ -190,7 +192,7 @@ theorem codes_symbol_enum_wf (x : Part (.atom .symbol)) {d : ByteArray} {o : Arr
       (c.w < 8 → c.card < USize.size ∧ ∀ i < c.n.toNat, Column.idAt c.b c.w i < c.card) := by
   obtain ⟨d', o', ids', hi', hc⟩ := codes_symbol x
   rw [he] at hi'
-  simp only [Column.intern, Enc.enum.injEq] at hi'
+  simp only [Column.intern, Ext.Enc.enum.injEq] at hi'
   obtain ⟨rfl, rfl, rfl⟩ := hi'
   have hwf := x.2.wf
   rw [he] at hwf
@@ -241,7 +243,7 @@ theorem codes_symbol_syms_faithful (x : Part (.atom .symbol)) {b : ByteArray} {o
         Column.idAt (Obj.codes (.atom .symbol) #v[x])[0].b (Obj.codes (.atom .symbol) #v[x])[0].w j ↔
       Vals.row x.2 ⟨i, hi⟩ = Vals.row x.2 ⟨j, hj⟩ := by
   obtain ⟨d', o', ids', hi', hc⟩ := codes_symbol x
-  rw [he, intern_syms, Enc.enum.injEq] at hi'
+  rw [he, intern_syms, Ext.Enc.enum.injEq] at hi'
   obtain ⟨rfl, rfl, rfl⟩ := hi'
   obtain ⟨hlt, hD, hr, -⟩ := internSyms_facts x.2 he
   rw [hc]
@@ -255,7 +257,7 @@ theorem codes_symbol_syms_wf (x : Part (.atom .symbol)) {b : ByteArray} {o : Arr
       c.b.size = (c.n.toNat * c.w + 7) / 8 ∧
       (c.w < 8 → c.card < USize.size ∧ ∀ i < c.n.toNat, Column.idAt c.b c.w i < c.card) := by
   obtain ⟨d', o', ids', hi', hc⟩ := codes_symbol x
-  rw [he, intern_syms, Enc.enum.injEq] at hi'
+  rw [he, intern_syms, Ext.Enc.enum.injEq] at hi'
   obtain ⟨rfl, rfl, rfl⟩ := hi'
   obtain ⟨hlt, -, -, hsz⟩ := internSyms_facts x.2 he
   dsimp only

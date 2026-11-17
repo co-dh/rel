@@ -6,6 +6,8 @@
 import Rel.KernelSpec.SymFind
 import Rel.Run.KernelWF.Raze
 
+open Rel.Ext
+
 namespace Rel.KernelWF
 
 open Rel Rel.Kernel Rel.Verify
@@ -417,7 +419,7 @@ theorem gatherColumn_dict {t : QAtomicType} {n : USize} {e : Enc} (hw : Enc.WF t
       simp [-Nat.not_lt, hz, foRColumn, Enc.bytesOf, denseWidth] at h
       split at h
       · simp at h
-      · simp only [Option.some.injEq, Enc.enum.injEq] at h
+      · simp only [Option.some.injEq, Ext.Enc.enum.injEq] at h
         obtain ⟨-, rfl, -⟩ := h
         exact Nat.le_trans hg (show o.size + 1 ≤ 2 * o.size by omega)
     | syms blob offs =>
