@@ -1,5 +1,7 @@
 import Rel.Kernel.Coc
 
+open Rel.Ext
+
 /-! The four column drivers of the coc plan §3 (`map`, `fold`, `scan`, `permute`), each a model over `Enc.raw`: an
 op is a step function handed to one of them, and its one `@[extern]` takes the `Enc` objects, whatever their kind
 (`crate/src/ffi.rs`'s `Col::of` reads the constructor). `ofRaw` is the answer's form, `Enc.answer`'s rule. -/
