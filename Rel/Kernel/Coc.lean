@@ -372,7 +372,6 @@ types it is the right encoding for at all. Every exclusion is measured or struct
 * `real`, `float` and `datetime` are floats. Frame of Reference over raw IEEE bit patterns is
   lossless and shrinks nothing, patterns not clustering the way the values do; their encoding is
   `alpEncodes`, below;
-* `guid` is sixteen bytes, wider than any kernel instantiation;
 * `symbol` has no fixed width. -/
 def encodes : QAtomicType → Bool
   | .short | .int | .month | .date | .minute | .second | .time

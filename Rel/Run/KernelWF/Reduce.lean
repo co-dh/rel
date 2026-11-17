@@ -96,10 +96,10 @@ theorem gradeColumn_wf {t : QAtomicType} {desc rank : Bool} {n : USize} {e v : E
            simp only [ranks_size, grade_size, min_avail hk' (Nat.le_of_not_lt hlt)]
          · cases h)
 
-/-- **`gradeColumn` answers** every well-formed payload, except a general list's and a guid's: `orderKind` has no
+/-- **`gradeColumn` answers** every well-formed payload, except a general list's: `orderKind` has no
     key for it. -/
 theorem gradeColumn_isSome {t : QAtomicType} {desc rank : Bool} {n : USize} {e : Enc}
-    (hw : Enc.WF t n e) (hg : t ≠ .general) (hu : t ≠ .guid) :
+    (hw : Enc.WF t n e) (hg : t ≠ .general) :
     (gradeColumn t desc n e rank).isSome := by
   unfold gradeColumn
   cases rank <;> simp only [Bool.false_eq_true, ↓reduceIte] <;> split
@@ -107,9 +107,8 @@ theorem gradeColumn_isSome {t : QAtomicType} {desc rank : Bool} {n : USize} {e :
     | rfl
     | (split
        · rename_i hk
-         rcases orderKind_eq_none.1 hk with rfl | rfl | rfl
+         rcases orderKind_eq_none.1 hk with rfl | rfl
          · cases e <;> simp_all [Enc.WF, QAtomicType.width]
-         · exact absurd rfl hu
          · exact absurd rfl hg
        rename_i k hk
        split
@@ -137,8 +136,8 @@ variable {t : QAtomicType}
 
 /-- `rank x` = `<<x`, key kept: the place of each element in the ascending order, on the domain
     `gradeColumn` orders by value (every atom but a general list, the witness `hg`). -/
-def rank {n : USize} (R : Arr t n) (hg : t ≠ .general) (hu : t ≠ .guid) : Arr .long n :=
-  Arr.mk ((gradeColumn t false n R.enc (rank := true)).get (KernelWF.gradeColumn_isSome R.wf hg hu))
+def rank {n : USize} (R : Arr t n) (hg : t ≠ .general) : Arr .long n :=
+  Arr.mk ((gradeColumn t false n R.enc (rank := true)).get (KernelWF.gradeColumn_isSome R.wf hg))
     (KernelWF.gradeColumn_wf R.wf (Option.some_get _).symm)
 
 end Rel.Ops

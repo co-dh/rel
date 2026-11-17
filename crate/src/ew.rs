@@ -1548,35 +1548,6 @@ mod k9 {
         assert_eq!(o, whole);
     }
 }
-#[cfg(test)]
-mod tests_e {
-    use super::*;
-    use std::vec::Vec;
-    fn g(v: &[u8]) -> Vec<u8> { v.iter().flat_map(|&b| (0..16).map(move |k| if k == 15 { b } else { 0 })).collect() }
-    // every length around a byte boundary, an atom and a column on both sides, `=` and `<>`
-    #[test] fn guid_eq_bits_match_the_elements() {
-        for n in 0..20usize {
-            let (x, y): (Vec<u8>, Vec<u8>) = ((0..n).map(|i| (i % 3) as u8).collect(), (0..n).map(|i| (i % 2) as u8).collect());
-            for ne in [false, true] {
-                let mut o = vec![0u8; n.div_ceil(8)];
-                guid_eq(&g(&x), &g(&y), false, ne, n, &mut o);
-                for i in 0..n { assert_eq!(o[i / 8] >> (i % 8) & 1 == 1, (x[i] == y[i]) != ne, "n {n} i {i}") }
-                let mut o = vec![0u8; n.div_ceil(8)];
-                guid_eq(&g(&x), &g(&[1]), true, ne, n, &mut o);
-                for i in 0..n { assert_eq!(o[i / 8] >> (i % 8) & 1 == 1, (x[i] == 1) != ne, "atom n {n} i {i}") }
-                if n % 8 != 0 { assert_eq!(o[n / 8] >> (n % 8), 0, "bits past n stay zero") }
-            }
-        }
-    }
-    #[test] fn guid_fill_takes_the_right_unless_null() {
-        let (x, y) = ([5u8, 6, 7, 8], [0u8, 2, 0, 4]);
-        let mut o = vec![0u8; 64];
-        guid_fill(&g(&x), &g(&y), false, 4, &mut o);
-        assert_eq!(o, g(&[5, 2, 7, 4]));
-        guid_fill(&g(&[9]), &g(&y), true, 4, &mut o);
-        assert_eq!(o, g(&[9, 2, 9, 4]));
-    }
-}
 /// ew.rs `ew_cmp_ids_run` and its entry: `op` between the ranks `ra[id]`, `rb[id]` of the two ids the shape
 /// indexes, read at `wa`, `wb`.
 pub fn cmp_ids(run: Runner, op: u8, shape: u8, ra: &[i32], ia: &[u8], wa: u32, rb: &[i32], ib: &[u8], wb: u32, n: usize,
@@ -1637,34 +1608,6 @@ pub fn fixed_scan(atom: bool, p: &[u8], b: &[u8], o: &mut [i64]) -> usize {
 }
 /// `fixed_width` past `fixed_items`: 0 for all three refusals (`fixed_items`'s, an empty pattern, a `*`), where the caller answers `none`.
 pub fn fixed_width(atom: bool, p: &[u8]) -> usize { Pattern::fixed(atom, p).map_or(0, |q| q.width()) }
-/// `=`, `<>` and `null` at guid: sixteen bytes compared as two words, one bit out per element, the bitmap `bit` writes. `atom` reads `b`'s
-/// one element against every element of `a`.
-pub fn guid_eq(a: &[u8], b: &[u8], atom: bool, ne: bool, n: usize, out: &mut [u8]) {
-    let m = if ne { 0xff } else { 0 };
-    let (a, a_tail) = (&a[..16 * n]).as_chunks::<128>();
-    // eight elements: the xor of both sides is contiguous bytes, and an element is equal when its sixteen xored bytes are all 0
-    let byte = |x: &[u8; 128], y: &[u8; 128]| {
-        let d: [u8; 128] = core::array::from_fn(|k| x[k] ^ y[k]);
-        d.as_chunks::<16>().0.iter().enumerate().fold(0u8, |r, (j, e)| r | ((u128::from_ne_bytes(*e) == 0) as u8) << j) ^ m
-    };
-    let y1: [u8; 128] = core::array::from_fn(|k| if atom && n != 0 { b[k & 15] } else { 0 });
-    if atom { for (o, x) in out.iter_mut().zip(a) { *o = byte(x, &y1) } }
-    else { for ((o, x), y) in out.iter_mut().zip(a).zip(b[..16 * n].as_chunks::<128>().0) { *o = byte(x, y) } }
-    let full = a.len();
-    if !a_tail.is_empty() {
-        let eq = |j: usize| { let y = if atom { &b[..16] } else { &b[16 * (8 * full + j)..][..16] }; a_tail[16 * j..][..16] == *y };
-        out[full] = (0..a_tail.len() / 16).fold(0u8, |r, j| r | ((eq(j) != ne) as u8) << j);
-    }
-}
-/// `x^y` at guid: `y`'s element unless it is `0Ng`, sixteen zero bytes, and then `x`'s, read at 0 when `atom`.
-pub fn guid_fill(a: &[u8], b: &[u8], atom: bool, n: usize, out: &mut [u8]) {
-    let (ac, bc, oc) = (a.as_chunks::<16>().0, &b.as_chunks::<16>().0[..n], out[..16 * n].as_chunks_mut::<16>().0);
-    if atom {
-        for (o, y) in oc.iter_mut().zip(bc) { *o = if *y != [0; 16] { *y } else { ac[0] } }
-    } else {
-        for ((o, y), x) in oc.iter_mut().zip(bc).zip(&ac[..n]) { *o = if *y != [0; 16] { *y } else { *x } }
-    }
-}
 /// `qlean_ew_like_syms` past the allocation: bit `i` of `out` (`⌈n / 8⌉` bytes, all written) is `patMatch` at symbol `i`;
 /// false where `parsePat` refuses, `out` untouched.
 pub fn like_syms(pat: &[u8], s: &Syms, out: &mut [u8]) -> bool {

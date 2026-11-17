@@ -31,11 +31,8 @@ theorem get_bytes_congr {t : QAtomicType} {w : Nat} (hw : t.width = some w) {m m
     {i i' : Nat} (hi : i < m.toNat) (hi' : i' < m'.toNat) (h : ∀ j < w, b.data[i * w + j]? = b'.data[i' * w + j]?) :
     Enc.get t m (.bytes b) i = Enc.get t m' (.bytes b') i' := by
   have hB := bitsAt_congr h
-  have hG : ∀ j < w, b[i * w + j]? = b'[i' * w + j]? := fun j hj => by rw [ba_get?, ba_get?]; exact h j hj
   cases t <;> simp only [QAtomicType.width] at hw <;> cases hw <;>
     simp only [Enc.get, hi, hi', ↓reduceIte, QAtomicType.width, hB]
-  apply congrArg; apply congrArg; apply Vector.ext; intro k hk
-  simp only [Vector.getElem_ofFn]; rw [hG k hk]
 
 /-- An `Arr` moved along a count equation keeps its list. -/
 theorem cast_toList {t : QAtomicType} {a b : USize} (e : a = b) (x : Arr t a) :
@@ -93,40 +90,40 @@ theorem encodedParts_bytes {t : QAtomicType} {cs : Array (USize × Enc)} (hcs : 
   rw [hany _ (fun c _ b hb => by simp [hb])]
   simp
 
-/-- A type with a width other than `guid` is at most eight bytes wide. -/
-theorem width_le8 {t : QAtomicType} {w : Nat} (hw : t.width = some w) (hg : t ≠ .guid) : w ≤ 8 := by
+/-- A type with a width is at most eight bytes wide. -/
+theorem width_le8 {t : QAtomicType} {w : Nat} (hw : t.width = some w) : w ≤ 8 := by
   cases t <;> simp only [QAtomicType.width, reduceCtorEq, Option.some.injEq] at hw <;> (try subst hw) <;>
-    first | exact absurd rfl hg | decide
+    decide
 
 /-- A width up to eight survives `toUSize`. -/
 theorem toUSize_toNat_le8 {w : Nat} (hw8 : w ≤ 8) : w.toUSize.toNat = w :=
   USize.toNat_ofNat_of_lt' (Nat.lt_of_le_of_lt hw8 (Nat.lt_of_lt_of_le (by decide) USize.le_size))
 
-/-- A dense element at a type of width `w`, other than `boolean` and `guid`, is its `w` bytes' atom. -/
+/-- A dense element at a type of width `w`, other than `boolean`, is its `w` bytes' atom. -/
 theorem get_bytes_eq {t : QAtomicType} {w : Nat} (hw : t.width = some w) (hb : t ≠ .boolean)
-    (hg : t ≠ .guid) {n : USize} (b : ByteArray) {i : Nat} (hi : i < n.toNat) :
+    {n : USize} (b : ByteArray) {i : Nat} (hi : i < n.toNat) :
     Enc.get t n (.bytes b) i =
       some (Column.atomOfBits t (Column.bitsAt b (i * w) w) (QAtomicType.ne_general_of_width hw)) := by
   cases t <;> simp only [QAtomicType.width, reduceCtorEq, Option.some.injEq] at hw <;> (try subst hw) <;>
-    first | exact absurd rfl hb | exact absurd rfl hg |
+    first | exact absurd rfl hb |
       (simp only [Enc.get, hi, ↓reduceIte, QAtomicType.width] <;> rfl)
 
 /-- A Frame-of-Reference element is its `foRBits` atom. -/
 theorem get_foR_eq {t : QAtomicType} {w : Nat} (hw : t.width = some w) (hb : t ≠ .boolean)
-    (hg : t ≠ .guid) {n : USize} (md pk : ByteArray) {i : Nat} (hi : i < n.toNat) :
+    {n : USize} (md pk : ByteArray) {i : Nat} (hi : i < n.toNat) :
     Enc.get t n (.foR md pk) i =
       some (Column.atomOfBits t (Column.foRBits md pk #[] i) (QAtomicType.ne_general_of_width hw)) := by
   cases t <;> simp only [QAtomicType.width, reduceCtorEq, Option.some.injEq] at hw <;> (try subst hw) <;>
-    first | exact absurd rfl hb | exact absurd rfl hg |
+    first | exact absurd rfl hb |
       (simp only [Enc.get, hi, ↓reduceIte, QAtomicType.width] <;> rfl)
 
 /-- An ALP element is its `alpBits` atom. -/
 theorem get_alp_eq {t : QAtomicType} {w : Nat} (hw : t.width = some w) (hb : t ≠ .boolean)
-    (hg : t ≠ .guid) {n : USize} (md pk a : ByteArray) {i : Nat} (hi : i < n.toNat) :
+    {n : USize} (md pk a : ByteArray) {i : Nat} (hi : i < n.toNat) :
     Enc.get t n (.alp md pk a) i =
       some (Column.atomOfBits t (Column.alpBits md pk a #[] i) (QAtomicType.ne_general_of_width hw)) := by
   cases t <;> simp only [QAtomicType.width, reduceCtorEq, Option.some.injEq] at hw <;> (try subst hw) <;>
-    first | exact absurd rfl hb | exact absurd rfl hg |
+    first | exact absurd rfl hb |
       (simp only [Enc.get, hi, ↓reduceIte, QAtomicType.width] <;> rfl)
 
 /-- `alpBits` with no hoisted table reads the start `blockStarts` holds (`foRBits_starts`). -/
@@ -145,15 +142,13 @@ theorem get_bytesOf {t : QAtomicType} {w : Nat} (hw : t.width = some w) (hb : t 
   cases e
   case bytes b' => simp only [Enc.bytesOf, Option.some.injEq] at he; subst he; rfl
   case foR md pk =>
-    have hg : t ≠ .guid := by rintro rfl; simp [Enc.WF] at hwf
-    have hwu := toUSize_toNat_le8 (width_le8 hw hg)
+    have hwu := toUSize_toNat_le8 (width_le8 hw)
     simp only [Enc.bytesOf, hw, Option.map_some, Option.some.injEq] at he; subst he
-    have hd := (Verify.decodeW w.toUSize (by rw [hwu]; exact width_le8 hw hg) md pk n).2 i hi
+    have hd := (Verify.decodeW w.toUSize (by rw [hwu]; exact width_le8 hw) md pk n).2 i hi
     rw [hwu] at hd
-    rw [get_bytes_eq hw hb hg _ hi, get_foR_eq hw hb hg _ _ hi, hd, foRBits_starts, Verify.atomOfBits_mod hw hb hg]
+    rw [get_bytes_eq hw hb _ hi, get_foR_eq hw hb _ _ hi, hd, foRBits_starts, Verify.atomOfBits_mod hw hb]
   case alp md pk a =>
-    have hg : t ≠ .guid := by rintro rfl; simp [Enc.WF] at hwf
-    have hwu := toUSize_toNat_le8 (width_le8 hw hg)
+    have hwu := toUSize_toNat_le8 (width_le8 hw)
     have hw0 : 0 < w := by
       cases t <;> simp only [QAtomicType.width, reduceCtorEq, Option.some.injEq] at hw <;> (try subst hw) <;> decide
     have hesz : Column.alpEsz a = w := by
@@ -166,7 +161,7 @@ theorem get_bytesOf {t : QAtomicType} {w : Nat} (hw : t.width = some w) (hb : t 
       simp only [Verify.elemsW, List.length_map, List.length_range, hs, Nat.mul_div_cancel _ hw0]; exact hi
     have hx := List.getElem_of_eq hel h1
     simp only [Verify.elemsW, List.getElem_map, List.getElem_range] at hx
-    rw [get_bytes_eq hw hb hg _ hi, get_alp_eq hw hb hg _ _ _ hi, hx, alpBits_starts]
+    rw [get_bytes_eq hw hb _ hi, get_alp_eq hw hb _ _ _ hi, hx, alpBits_starts]
   all_goals simp [Enc.bytesOf] at he
 
 /-- A column's list is its elements read off its dense decode `Enc.bytesOf`, at every encoding. -/

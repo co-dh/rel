@@ -793,8 +793,7 @@ end Rel.Kernel.Ew
 namespace Rel.Kernel
 
 /-- The storage class a type's dense payload is read at. `none` where there is no dense fixed-width
-payload the kernels are instantiated over: `symbol` has no fixed width and `guid` is sixteen bytes,
-wider than any loop here. -/
+payload the kernels are instantiated over: `symbol` has no fixed width. -/
 def clsOf : QAtomicType → Option UInt8
   | .boolean => some Ew.bits
   | .byte | .char => some Ew.u8
@@ -803,7 +802,7 @@ def clsOf : QAtomicType → Option UInt8
   | .long | .timestamp | .timespan => some Ew.i64
   | .real => some Ew.f32
   | .float | .datetime => some Ew.f64
-  | .guid | .symbol | .general => none
+  | .symbol | .general => none
 
 /-- Whether `Ew.widen` can bring `t` to `cls`. It promotes upward only — nothing already a float
 reaches an integer target, and nothing at all reaches `u8` or `i16` — and asking it for anything

@@ -57,9 +57,9 @@ theorem elemsW_alpDecode (w : USize) (hw0 : 0 < w.toNat) (hw : w.toNat ≤ 8) (M
   rw [alpDecode_eq]; exact elemsW_foldl_mod id w.toNat hw0 hw _
 
 theorem denseWidth_facts {t : QAtomicType} {w : Nat} (ht : denseWidth t = some w) :
-    rowWidth t = some w ∧ t.width = some w ∧ t ≠ .boolean ∧ t ≠ .guid ∧ t ≠ .symbol ∧ 0 < w ∧ w ≤ 8 := by
+    t.width = some w ∧ t ≠ .boolean ∧ t ≠ .symbol ∧ 0 < w ∧ w ≤ 8 := by
   cases t <;> simp only [denseWidth, QAtomicType.width, reduceCtorEq, Option.some.injEq] at ht <;> subst ht <;>
-    exact ⟨rfl, rfl, by decide, by decide, by decide, by decide, by decide⟩
+    exact ⟨rfl, by decide, by decide, by decide, by decide⟩
 
 theorem foRColumn_some {t : QAtomicType} {k : USize} {e : Enc} {n : USize} {M P : ByteArray}
     (h : foRColumn t k e = some (n, M, P)) : k = n ∧ e = .foR M P := by
@@ -68,7 +68,7 @@ theorem foRColumn_some {t : QAtomicType} {k : USize} {e : Enc} {n : USize} {M P 
 /-- **`bytesOf` reads what `raw` reads**, at the low `8 * w` bits: the dense payload a fixed-width
 kernel is handed is the column's elements at its own width. -/
 theorem elemsW_bytesOf {t : QAtomicType} {w : Nat} (ht : t.width = some w) (hb : t ≠ .boolean)
-    (hg : t ≠ .guid) (hw0 : 0 < w) (hw : w ≤ 8) (n : USize) (e : Enc) (hxw : Enc.WF t n e)
+    (hw0 : 0 < w) (hw : w ≤ 8) (n : USize) (e : Enc) (hxw : Enc.WF t n e)
     (src : ByteArray) (h : Enc.bytesOf t n e = some src) :
     elemsW w src = (Enc.raw t n e).toList.map fun v => UInt64.ofNat (v.toNat % 2 ^ (8 * w)) := by
   have hwU : w.toUSize.toNat = w := USize.toNat_ofNat_of_lt' (Nat.lt_of_le_of_lt hw (Nat.lt_of_lt_of_le (by decide) USize.le_size))
@@ -77,7 +77,7 @@ theorem elemsW_bytesOf {t : QAtomicType} {w : Nat} (ht : t.width = some w) (hb :
     have hs : b.size = n.toNat * w := by cases t <;> simp_all [Enc.WF, QAtomicType.width]
     simp only [Enc.bytesOf, Option.some.injEq] at h
     subst h
-    rw [raw_bytes t w ht hb hg, Array.toList_map, Array.toList_range, List.map_map, elemsW, hs,
+    rw [raw_bytes t w ht hb, Array.toList_map, Array.toList_range, List.map_map, elemsW, hs,
       Nat.mul_div_cancel _ hw0]
     exact List.map_congr_left fun i _ => by
       simp only [Function.comp_def]; rw [Nat.mod_eq_of_lt (bitsAt_lt _ _ _ hw), UInt64.ofNat_toNat]
@@ -86,7 +86,7 @@ theorem elemsW_bytesOf {t : QAtomicType} {w : Nat} (ht : t.width = some w) (hb :
     subst h
     have e := elemsW_decode w.toUSize (by omega) (by omega) M P n
     rw [hwU] at e
-    rw [e, raw_foR t w ht hb hg, Array.toList_map, Array.toList_range, Coc.elems]
+    rw [e, raw_foR t w ht hb, Array.toList_map, Array.toList_range, Coc.elems]
   | alp M P a =>
     have hr : Enc.raw t n (.alp M P a) =
         (Array.range n.toNat).map (Column.alpBits M P a (Column.blockStarts M)) := by
@@ -101,7 +101,7 @@ theorem elemsW_bytesOf {t : QAtomicType} {w : Nat} (ht : t.width = some w) (hb :
 /-- The index of a gather as eight-byte longs, read the way `raw` reads the index column. -/
 theorem elemsW_index (m : USize) (ie : Enc) (hiw : Enc.WF .long m ie) (ix : ByteArray)
     (h : Enc.bytesOf .long m ie = some ix) : elemsW 8 ix = (Enc.raw .long m ie).toList := by
-  rw [elemsW_bytesOf (t := .long) rfl (by decide) (by decide) (by decide) (by decide) m ie hiw ix h]
+  rw [elemsW_bytesOf (t := .long) rfl (by decide) (by decide) (by decide) m ie hiw ix h]
   exact (List.map_congr_left fun v _ => ofNat_toNat_mod64 v).trans (List.map_id _)
 
 theorem gatherColumn_fixed_shape {t : QAtomicType} {w : Nat} (ht : denseWidth t = some w) (n : USize) (e : Enc)
@@ -109,7 +109,7 @@ theorem gatherColumn_fixed_shape {t : QAtomicType} {w : Nat} (ht : denseWidth t 
     (h : gatherColumn t n e m ie = some c) :
     ∃ src ix, Enc.bytesOf t n e = some src ∧ Enc.bytesOf .long m ie = some ix ∧
       c = .bytes (gatherBytes w.toUSize ((nullBits t).getD 0) src ix) := by
-  obtain ⟨hr, hw, hb, hg, hs, hw0, hw8⟩ := denseWidth_facts ht
+  obtain ⟨hw, hb, hs, hw0, hw8⟩ := denseWidth_facts ht
   unfold gatherColumn at h
   rw [ht] at h
   split at h
@@ -138,9 +138,8 @@ theorem gatherColumn_fixed_shape {t : QAtomicType} {w : Nat} (ht : denseWidth t 
           subst h
           cases t <;> simp [Column.alpEncodes] at hae <;> simp [QAtomicType.width] at hw <;> subst hw <;>
             exact ⟨_, ix, rfl, rfl, by rw [gatherAlp, show Column.alpF32 _ = _ from hxw.2.2.2]; rfl⟩
-    · simp only [hr] at h
-      split at h
-      · obtain rfl := Option.some.inj ‹some w = some _›
+    · split at h
+      · obtain rfl := Option.some.inj (ht.symm.trans ‹denseWidth t = some _›)
         obtain ⟨rfl, hxe⟩ := foRColumn_some ‹foRColumn t _ _ = some _›
         cases hix : Enc.bytesOf .long m ie with
         | none => simp [hix] at h
@@ -150,7 +149,7 @@ theorem gatherColumn_fixed_shape {t : QAtomicType} {w : Nat} (ht : denseWidth t 
           simp only [hix, hz, ↓reduceIte, Option.map_some, Option.some.injEq] at h
           subst h
           exact ⟨_, ix, by simp [Enc.bytesOf, hxe, hw], rfl, rfl⟩
-      · obtain rfl := Option.some.inj ‹some w = some _›
+      · obtain rfl := Option.some.inj (ht.symm.trans ‹denseWidth t = some _›)
         split at h
         · cases hix : Enc.bytesOf .long m ie with
           | none => simp [hix] at h

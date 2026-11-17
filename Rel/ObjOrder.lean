@@ -11,7 +11,7 @@ open Rel Rel.Dep Rel.Kernel
 /-- The key of an element, a list of naturals compared lexicographically (`Obj.lt`). At an atom it is
     the key qlean's grade sorts by (`Order.rank` of the raw bits, `QLean/Kernel/Sort.lean`): a number by
     its value with every null and NaN lowest and equal, `±0.0` equal; `byte`/`char` unsigned; a symbol by
-    its unsigned bytes, a prefix before what extends it; a guid by its sixteen bytes. Each key is
+    its unsigned bytes, a prefix before what extends it. Each key is
     self-delimiting (`Obj.key_prefix`), so a pair's key is its components' keys side by side and orders
     them lexicographically; an array's elements each follow a `1` and the array ends in `0`, so a proper
     prefix sorts first; a sum's tag leads, `inl` before `inr`. A general atom has no kernel order
@@ -27,7 +27,6 @@ def Obj.key : (A : Obj) → A.El → List Nat
   | .atom .real, x => [(Order.rank .f32 (x : UInt32).toUInt64).toNat]
   | .atom .float, x | .atom .datetime, x => [(Order.rank .f64 (x : UInt64)).toNat]
   | .atom .symbol, x => (x : String).toUTF8.data.toList.map (·.toNat + 1) ++ [0]
-  | .atom .guid, x => (x : Guid).toList.map (·.toNat)
   | .atom .general, _ => []
   | .prod a b, (x, y) => a.key x ++ b.key y
   | .arr b, xs => (xs : List b.El).foldr (fun x k => 1 :: b.key x ++ k) [0]
@@ -90,7 +89,6 @@ theorem Obj.key_prefix : (A : Obj) → (x y : A.El) → (r s : List Nat) →
         (m := (y : String).toUTF8.data.toList.map (·.toNat + 1)) (by simp) (by simp)
         (by simpa only [List.append_assoc] using h)
       rw [this]
-    case guid => exact (List.append_inj h (by simp [Obj.key])).1
     all_goals exact (List.append_inj h (by simp [Obj.key])).1
   | .prod a b, (x, y), (x', y'), r, s, h => by
     simp only [Obj.key, List.append_assoc] at h ⊢

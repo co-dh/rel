@@ -1,6 +1,6 @@
 #![forbid(unsafe_code)]
 //! Column (a), sort.rs: keys and their range (A19), the grades (A20–A22), pair and id grouping (A23–A24), symbol
-//! sorts and groups (A25–A26), guids (A27). The `qlean_sort_*` entries unbox and allocate and stay C (§1).
+//! sorts and groups (A25–A26). The `qlean_sort_*` entries unbox and allocate and stay C (§1).
 //! A grade answers into `out: &mut [i64]` of `n`; `kind` is sort.rs's `SK_*`.
 use alloc::vec;
 use alloc::vec::Vec;

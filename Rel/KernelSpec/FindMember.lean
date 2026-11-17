@@ -60,7 +60,7 @@ theorem findScalar_idxOf (w : USize) (float : Bool) (hay : ByteArray) (k : UInt6
   exact USize.toNat_ofNat_of_lt' (Nat.lt_of_le_of_lt hl hn)
 
 /-- **`findVec`'s answer is one index per needle**, eight bytes each: at a width up to eight the
-`findScalar` index of the needle's key, and above eight — a `guid` — the first haystack element
+`findScalar` index of the needle's key, and above eight the first haystack element
 whose bytes are the needle's, both `List.idxOf` on the decoded haystack. -/
 theorem findVec_idxOf (w : USize) (float : Bool) (hay ndl : ByteArray)
     (hn : hay.size / w.toNat < USize.size) :
@@ -135,7 +135,7 @@ theorem foldl_setBit (c : Nat → Bool) (l : List Nat) (hl : ∀ t ∈ l, t < 8)
 
 /-- **`memberVec`'s bitmap is membership in the decoded haystack**: bit `i` is set exactly when `i` is
 below the needle count and needle `i` is among the haystack's elements, so the last byte's tail bits
-are zero: at a width up to eight compared by key, and above eight — a `guid` — by its bytes whole. -/
+are zero: at a width up to eight compared by key, and above eight by its bytes whole. -/
 theorem memberVec_mem (w : USize) (float : Bool) (xs hay : ByteArray)
     (hn : hay.size / w.toNat < USize.size) :
     (memberVec w float xs hay).size = (xs.size / w.toNat + 7) / 8 ∧

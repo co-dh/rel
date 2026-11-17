@@ -7,7 +7,6 @@ import Rel.KernelWF.CodesArr
 import Rel.KernelWF.CodesSymParts
 import Rel.KernelWF.CodesLongParts
 import Rel.KernelWF.CodesNumParts
-import Rel.KernelWF.CodesGuidParts
 import Rel.KernelWF.CodesGeneral
 
 namespace Rel.Alg
@@ -18,7 +17,7 @@ open Rel Rel.Dep Rel.Kernel Rel.Verify Rel
     size bounds and `Vals.PickFits`; at an atom, the kinds a several-part theorem covers — boolean, a small
     integral or a float side, its parts and their raze in any encoding, the parts' count 32 bits where an ALP
     join offsets them, an `.i64` side, its parts and their raze in any encoding,
-    a symbol side whose dictionaries summed fit a `USize`, a guid side, a general side whose elements hold no
+    a symbol side whose dictionaries summed fit a `USize`, a general side whose elements hold no
     `IndexCell` (`cellFree`, where `valEq` is `=`). -/
 def _root_.Rel.Obj.CodesFit : (A : Obj) → {p : Nat} → Vector (Part A) p → Prop
   | .atom t, p, cs => (cs.toList.map (·.1.toNat)).sum < USize.size ∧
@@ -28,7 +27,6 @@ def _root_.Rel.Obj.CodesFit : (A : Obj) → {p : Nat} → Vector (Part A) p → 
       orderKind t = some .i64 ∨
       (t = .symbol ∧
         (cs.toList.map fun c => match c.2.enc with | .enum _ o _ => o.size - 1 | _ => c.1.toNat).sum < USize.size) ∨
-      t = .guid ∨
       (t = .general ∧ ∀ k (hk : k < p) xs, (cs[k]'hk).2.enc = .gen xs → ∀ x ∈ xs, cellFree x = true))
   | .prod a b, _, cs => (cs.toList.map (·.1.toNat)).sum < USize.size ∧
     Obj.CodesFit a (cs.map fun c => (⟨c.1, c.2.1⟩ : Part a)) ∧ Obj.CodesFit b (cs.map fun c => (⟨c.1, c.2.2⟩ : Part b))
@@ -111,7 +109,7 @@ theorem codes_faithful_wf (A : Obj) : ∀ {p : Nat} (cs : Vector (Part A) p), A.
   induction A with
   | atom t =>
     intro p cs ⟨hN, ht⟩
-    rcases ht with rfl | ⟨k₀, ht, hk₀, hA⟩ | ht | ⟨rfl, hD⟩ | rfl | ⟨rfl, hC⟩
+    rcases ht with rfl | ⟨k₀, ht, hk₀, hA⟩ | ht | ⟨rfl, hD⟩ | ⟨rfl, hC⟩
     · refine ⟨⟨fun hk hl _ _ hi hj => codes_boolean_faithful cs hk hl hi hj, fun hk => ?_⟩, fun hk hl => ?_⟩
       · obtain ⟨h1, h2, h3, h4⟩ := codes_boolean_wf cs hk
         exact ⟨Or.inl h2, h1, h3, h4⟩
@@ -125,9 +123,6 @@ theorem codes_faithful_wf (A : Obj) : ∀ {p : Nat} (cs : Vector (Part A) p), A.
     · refine ⟨⟨fun hk hl _ _ hi hj => codes_symbol_parts_faithful cs hN hD hk hl hi hj,
         fun hk => codes_symbol_parts_wf cs hN hk⟩, fun hk hl => ?_⟩
       rw [codes_symbol_cut cs (by omega)]; exact cut_lane _ _ hk hl
-    · refine ⟨⟨fun hk hl _ _ hi hj => codes_guid_parts_faithful cs hN hk hl hi hj,
-        fun hk => codes_guid_parts_wf cs hN hk⟩, fun hk hl => ?_⟩
-      rw [codes_guid_cut cs (by omega)]; exact cut_lane _ _ hk hl
     · refine ⟨⟨fun hk hl _ _ hi hj => codes_general_faithful cs hN hC hk hl hi hj,
         fun hk => codes_general_wf cs hN hk⟩, fun hk hl => ?_⟩
       rw [codes_general cs]; exact cut_lane _ _ hk hl
@@ -146,26 +141,23 @@ theorem codes_faithful_wf (A : Obj) : ∀ {p : Nat} (cs : Vector (Part A) p), A.
 
 /-- **A one-part atom side fits outright** at every kind whose clause bounds only what one part already
     bounds: a kind with an order layout (boolean, the dense kinds, whose ALP clause reads two parts or more, the
-    64-bit kinds) or a guid. A symbol's dictionaries and a general column's cells are not bounded by a count. -/
-theorem codesFit_atom_one {t : QAtomicType} (x : Part (.atom t)) (ht : orderKind t ≠ none ∨ t = .guid) :
+    64-bit kinds). A symbol's dictionaries and a general column's cells are not bounded by a count. -/
+theorem codesFit_atom_one {t : QAtomicType} (x : Part (.atom t)) (ht : orderKind t ≠ none) :
     Obj.CodesFit (.atom t) #v[x] := by
   unfold Obj.CodesFit
   refine ⟨by simp [x.1.toNat_lt_size], ?_⟩
-  rcases ht with h | rfl
-  · cases t <;> simp [orderKind] at h ⊢
-  · exact .inr (.inr (.inr (.inr (.inl rfl))))
+  cases t <;> simp [orderKind] at ht ⊢
 
 /-- **A several-part atom side fits on its summed count alone** at a kind whose clause bounds nothing else: a
-    boolean, an `.i64` or a guid side. -/
+    boolean or an `.i64` side. -/
 theorem codesFit_atom_count {t : QAtomicType} {p : Nat} (cs : Vector (Part (.atom t)) p)
-    (hN : (cs.toList.map (·.1.toNat)).sum < USize.size) (ht : t = .boolean ∨ orderKind t = some .i64 ∨ t = .guid) :
+    (hN : (cs.toList.map (·.1.toNat)).sum < USize.size) (ht : t = .boolean ∨ orderKind t = some .i64) :
     Obj.CodesFit (.atom t) cs := by
   unfold Obj.CodesFit
   refine ⟨hN, ?_⟩
-  rcases ht with h | h | h
+  rcases ht with h | h
   · exact .inl h
   · exact .inr (.inr (.inl h))
-  · exact .inr (.inr (.inr (.inr (.inl h))))
 
 /-- **An atom side's one-part code is well formed and counts its part, with no premise**: a lane of `1 … 64`
     bits, `⌈n·w/8⌉` bytes, ids below `card` under a byte. One part's count is a `USize`, so the several-part
@@ -181,7 +173,6 @@ theorem codes_atom_wf (t : QAtomicType) (x : Part (.atom t)) :
     exact ⟨Or.inl h2, h1, h3, h4⟩
   all_goals first
     | exact codes_general_wf #v[x] hN Nat.zero_lt_one
-    | exact codes_guid_wf x
     | exact codes_symbol_wf x
     | exact codes_long_one_wf rfl x
     -- the kind disjunctions as terms, not `by`: a deferred tactic fails after `first` has committed
@@ -249,7 +240,7 @@ theorem _root_.Rel.Obj.codesC_fits : (A : Obj) → {p : Nat} → (cs : Vector (P
     obtain ⟨hN, hb⟩ := hb
     unfold Obj.CodesFit
     refine ⟨hN, ?_⟩
-    rcases hb with ((((hb | hb) | hb) | ⟨hs, hd⟩) | hb) | ⟨hg, hc⟩
+    rcases hb with (((hb | hb) | hb) | ⟨hs, hd⟩) | ⟨hg, hc⟩
     · exact Or.inl hb
     · refine Or.inr (Or.inl ?_)
       split at hb
@@ -263,8 +254,7 @@ theorem _root_.Rel.Obj.codesC_fits : (A : Obj) → {p : Nat} → (cs : Vector (P
       · cases hb
     · exact Or.inr (Or.inr (Or.inl hb))
     · exact Or.inr (Or.inr (Or.inr (Or.inl ⟨hs, hd⟩)))
-    · exact Or.inr (Or.inr (Or.inr (Or.inr (Or.inl hb))))
-    · refine Or.inr (Or.inr (Or.inr (Or.inr (Or.inr ⟨hg, fun k hk xs he x hx => ?_⟩))))
+    · refine Or.inr (Or.inr (Or.inr (Or.inr ⟨hg, fun k hk xs he x hx => ?_⟩)))
       have h : (match (cs[k]'hk).2.enc with | .gen xs => xs.all cellFree | _ => true) = true :=
         Array.all_eq_true.1 hc k (by simpa using hk)
       simp only [he] at h

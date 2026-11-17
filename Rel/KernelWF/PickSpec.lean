@@ -15,8 +15,8 @@ open Rel Rel.Kernel Rel.Verify
 theorem get_eq_raw {t : QAtomicType} {w : Nat} (ht : denseWidth t = some w) {n : USize} {e : Enc}
     (hw : Enc.WF t n e) {j : Nat} (hj : j < n.toNat) :
     Enc.get t n e j = some (Column.atomOfBits t ((Enc.raw t n e).toList.getD j 0)
-      (QAtomicType.ne_general_of_width (denseWidth_facts ht).2.1)) := by
-  obtain ⟨-, hw', hb, hg, hs, -, -⟩ := denseWidth_facts ht
+      (QAtomicType.ne_general_of_width (denseWidth_facts ht).1)) := by
+  obtain ⟨hw', hb, hs, -, -⟩ := denseWidth_facts ht
   cases e <;> cases t <;>
     simp_all [Enc.get, Enc.raw, Enc.WF, QAtomicType.width, denseWidth, List.getD_eq_getElem?_getD,
       foRBits_starts, alpBits_starts]
@@ -28,7 +28,7 @@ theorem gatherColumn_get_dense {t : QAtomicType} {w : Nat} (ht : denseWidth t = 
     (h : gatherColumn t n e m (.bytes i) = some e') {k : Nat} (hk : k < m.toNat)
     (hin : (Column.bitsAt i (k * 8) 8).toNat < n.toNat) :
     Enc.get t m e' k = Enc.get t n e (Column.bitsAt i (k * 8) 8).toNat := by
-  obtain ⟨-, hw', hb, hg, hs, hw0, hw8⟩ := denseWidth_facts ht
+  obtain ⟨hw', hb, hs, hw0, hw8⟩ := denseWidth_facts ht
   have hwf' := gatherColumn_wf hw i hm h
   obtain ⟨src, ix, hsrc, hix, rfl⟩ := gatherColumn_fixed_shape ht n e m (.bytes i) _ hw h
   simp only [Enc.bytesOf, Option.some.injEq] at hix; subst hix
@@ -37,20 +37,20 @@ theorem gatherColumn_get_dense {t : QAtomicType} {w : Nat} (ht : denseWidth t = 
   rw [get_eq_raw ht hwf' hk, get_eq_raw ht hw hin]
   obtain ⟨-, hG⟩ := gatherBytes_spec w.toUSize (by omega) ((nullBits t).getD 0) src i
   rw [hwU] at hG
-  have hS := elemsW_bytesOf hw' hb hg hw0 hw8 n e hw src hsrc
-  have hR := size_raw n e hw hb hg hs (QAtomicType.ne_general_of_width hw')
+  have hS := elemsW_bytesOf hw' hb hw0 hw8 n e hw src hsrc
+  have hR := size_raw n e hw hb hs (QAtomicType.ne_general_of_width hw')
   have hsz : src.size / w = n.toNat := by
     have := congrArg List.length hS; simp only [elemsW, List.length_map, List.length_range,
       Array.length_toList] at this; omega
   have hidx := congrArg (·.getD (Column.bitsAt i (k * 8) 8).toNat 0) hS
   simp only [elemsW, List.getD_eq_getElem?_getD, List.getElem?_map, List.getElem?_range (hsz ▸ hin),
     Option.map_some, Option.getD_some] at hidx
-  rw [raw_bytes t w hw' hb hg]
+  rw [raw_bytes t w hw' hb]
   simp only [Array.toList_map, Array.toList_range, List.getD_eq_getElem?_getD, List.getElem?_map,
     List.getElem?_range hk, Option.map_some, Option.getD_some]
   rw [hG k (by omega), if_pos (by omega), hidx,
     List.getElem?_eq_getElem (by simp only [Array.length_toList, hR]; exact hin)]
-  exact congrArg some (atomOfBits_mod hw' hb hg _)
+  exact congrArg some (atomOfBits_mod hw' hb _)
 
 /-- Belongs in qlean. **`x@i` at `boolean`, read back**: bit `k` of the answer is bit `i[k]` of `x`. -/
 theorem gatherColumn_get_bits {n : USize} {e : Enc} (hw : Enc.WF .boolean n e) {m : USize} {i : ByteArray}
@@ -158,47 +158,6 @@ theorem flatMap_range_getElem? {α : Type} (D : Nat → List α) {w : Nat} (hD :
       subst e
       rw [List.getElem?_append_right (by rw [hl]; omega), hl, Nat.add_sub_cancel_left]
 
-/-- Belongs in qlean. **`x@i` at `guid`, read back**: the sixteen bytes of element `k` of the answer are
-    those of element `i[k]` of `x`. -/
-theorem gatherColumn_get_guid {n : USize} {e : Enc} (hw : Enc.WF .guid n e) {m : USize} {i : ByteArray}
-    (hm : m.toNat = i.size / 8) {e' : Enc} (h : gatherColumn .guid n e m (.bytes i) = some e') {k : Nat}
-    (hk : k < m.toNat) (hin : (Column.bitsAt i (k * 8) 8).toNat < n.toNat) :
-    Enc.get .guid m e' k = Enc.get .guid n e (Column.bitsAt i (k * 8) 8).toNat := by
-  have hz : ¬ i.size < m.toNat * 8 := by omega
-  cases e <;> try (exfalso; simp_all [Enc.WF, QAtomicType.width]; done)
-  rename_i b
-  simp only [Enc.WF, QAtomicType.width] at hw
-  simp only [gatherColumn, denseWidth, rowWidth, foRColumn, Enc.bytesOf, hz, if_false, Option.map_some,
-    Option.some.injEq] at h
-  subst h
-  have h16 : (Nat.toUSize 16).toNat = 16 := toNat_small 16 (by decide)
-  let C : Nat → ByteArray := fun j => match gatherAt (b.size / 16) i j with
-    | some p => b.extract (p * 16) (p * 16 + 16)
-    | none => Column.pushBits .empty ((nullBits .guid).getD 0) 16
-  have hG : gatherBytes (Nat.toUSize 16) ((nullBits .guid).getD 0) b i =
-      (List.range (i.size / 8)).foldl (fun acc j => acc ++ C j) .empty := by
-    simp only [gatherBytes, h16]
-    congr 1; funext acc j
-    simp only [C]
-    rcases gatherAt (b.size / 16) i j with _ | p <;> simp [pushBits_append acc]
-  have hC : ∀ j, (C j).data.toList.length = 16 := fun j => by
-    simp only [C, Array.length_toList, ByteArray.size_data]
-    rcases hp : gatherAt (b.size / 16) i j with _ | p
-    · simp [size_pushBits]
-    · simp only [gatherAt] at hp
-      split at hp
-      · cases hp; simp only [ByteArray.size_extract]; omega
-      · cases hp
-  have hCk : C k = b.extract ((Column.bitsAt i (k * 8) 8).toNat * 16)
-      ((Column.bitsAt i (k * 8) 8).toNat * 16 + 16) := by
-    simp only [C, gatherAt]; rw [if_pos (by omega)]
-  simp only [Enc.get, if_pos hk, if_pos hin]
-  congr 2; apply Vector.ext; intro q hq
-  simp only [Vector.getElem_ofFn, ba_get?, ← Array.getElem?_toList, hG, foldl_append_toList]
-  rw [show (ByteArray.empty).data.toList = [] from rfl, List.nil_append,
-    flatMap_range_getElem? _ hC (hm ▸ hk) hq, hCk, Array.getElem?_toList, ByteArray.data_extract,
-    Array.getElem?_extract, ByteArray.size_data, if_pos (by omega), Array.getElem?_toList]
-
 /-- A dictionary's id width grows with its size. -/
 theorem idWidthOf_mono {a b : Nat} (h : a ≤ b) : Column.idWidthOf a ≤ Column.idWidthOf b := by
   have hw : Column.widthFor (a - 1) ≤ Column.widthFor (b - 1) := by
@@ -302,8 +261,6 @@ theorem gatherColumn_get {t : QAtomicType} {n : USize} {e : Enc} (hw : Enc.WF t 
   | none =>
     by_cases hb : t = .boolean
     · subst hb; exact gatherColumn_get_bits hw hm h hk hin
-    by_cases hgu : t = .guid
-    · subst hgu; exact gatherColumn_get_guid hw hm h hk hin
     have hs : t = .symbol := by cases t <;> simp_all [denseWidth, QAtomicType.width]
     subst hs
     cases e with
@@ -324,8 +281,8 @@ theorem gatherColumn_miss_dense {t : QAtomicType} {w : Nat} (ht : denseWidth t =
     (hw : Enc.WF t n e) {m : USize} {i : ByteArray} (hm : m.toNat = i.size / 8) {e' : Enc}
     (h : gatherColumn t n e m (.bytes i) = some e') {k : Nat} (hk : k < m.toNat)
     (hout : n.toNat ≤ (Column.bitsAt i (k * 8) 8).toNat) :
-    Enc.get t m e' k = some (Eval.nullAtom t (QAtomicType.ne_general_of_width (denseWidth_facts ht).2.1)) := by
-  obtain ⟨-, hw', hb, hg, hs, hw0, hw8⟩ := denseWidth_facts ht
+    Enc.get t m e' k = some (Eval.nullAtom t (QAtomicType.ne_general_of_width (denseWidth_facts ht).1)) := by
+  obtain ⟨hw', hb, hs, hw0, hw8⟩ := denseWidth_facts ht
   have hwf' := gatherColumn_wf hw i hm h
   obtain ⟨src, ix, hsrc, hix, rfl⟩ := gatherColumn_fixed_shape ht n e m (.bytes i) _ hw h
   simp only [Enc.bytesOf, Option.some.injEq] at hix; subst hix
@@ -334,12 +291,12 @@ theorem gatherColumn_miss_dense {t : QAtomicType} {w : Nat} (ht : denseWidth t =
   rw [get_eq_raw ht hwf' hk]
   obtain ⟨-, hG⟩ := gatherBytes_spec w.toUSize (by omega) ((nullBits t).getD 0) src i
   rw [hwU] at hG
-  have hS := elemsW_bytesOf hw' hb hg hw0 hw8 n e hw src hsrc
-  have hR := size_raw n e hw hb hg hs (QAtomicType.ne_general_of_width hw')
+  have hS := elemsW_bytesOf hw' hb hw0 hw8 n e hw src hsrc
+  have hR := size_raw n e hw hb hs (QAtomicType.ne_general_of_width hw')
   have hsz : src.size / w = n.toNat := by
     have := congrArg List.length hS; simp only [elemsW, List.length_map, List.length_range,
       Array.length_toList] at this; omega
-  rw [raw_bytes t w hw' hb hg]
+  rw [raw_bytes t w hw' hb]
   simp only [Array.toList_map, Array.toList_range, List.getD_eq_getElem?_getD, List.getElem?_map,
     List.getElem?_range hk, Option.map_some, Option.getD_some]
   rw [hG k (by omega), if_neg (by rw [hsz]; omega)]
@@ -357,45 +314,6 @@ theorem gatherColumn_miss_bits {n : USize} {e : Enc} (hw : Enc.WF .boolean n e) 
   subst h
   simp only [Enc.get, if_pos hk, bitAt_gatherBits _ _ _ _ (hm ▸ hk), if_neg (Nat.not_lt.2 hout)]
   rfl
-
-/-- Belongs in qlean. **`x@i` at `guid`, a miss**: element `k` of the answer is sixteen zero bytes. -/
-theorem gatherColumn_miss_guid {n : USize} {e : Enc} (hw : Enc.WF .guid n e) {m : USize} {i : ByteArray}
-    (hm : m.toNat = i.size / 8) {e' : Enc} (h : gatherColumn .guid n e m (.bytes i) = some e') {k : Nat}
-    (hk : k < m.toNat) (hout : n.toNat ≤ (Column.bitsAt i (k * 8) 8).toNat) :
-    Enc.get .guid m e' k = some (Eval.nullAtom .guid) := by
-  have hz : ¬ i.size < m.toNat * 8 := by omega
-  cases e <;> try (exfalso; simp_all [Enc.WF, QAtomicType.width]; done)
-  rename_i b
-  simp only [Enc.WF, QAtomicType.width] at hw
-  simp only [gatherColumn, denseWidth, rowWidth, foRColumn, Enc.bytesOf, hz, if_false, Option.map_some,
-    Option.some.injEq] at h
-  subst h
-  have h16 : (Nat.toUSize 16).toNat = 16 := toNat_small 16 (by decide)
-  let C : Nat → ByteArray := fun j => match gatherAt (b.size / 16) i j with
-    | some p => b.extract (p * 16) (p * 16 + 16)
-    | none => Column.pushBits .empty ((nullBits .guid).getD 0) 16
-  have hG : gatherBytes (Nat.toUSize 16) ((nullBits .guid).getD 0) b i =
-      (List.range (i.size / 8)).foldl (fun acc j => acc ++ C j) .empty := by
-    simp only [gatherBytes, h16]
-    congr 1; funext acc j
-    simp only [C]
-    rcases gatherAt (b.size / 16) i j with _ | p <;> simp [pushBits_append acc]
-  have hC : ∀ j, (C j).data.toList.length = 16 := fun j => by
-    simp only [C, Array.length_toList, ByteArray.size_data]
-    rcases hp : gatherAt (b.size / 16) i j with _ | p
-    · simp [size_pushBits]
-    · simp only [gatherAt] at hp
-      split at hp
-      · cases hp; simp only [ByteArray.size_extract]; omega
-      · cases hp
-  have hCk : C k = ⟨Array.replicate 16 0⟩ := by
-    simp only [C, gatherAt]; rw [if_neg (by omega)]; rfl
-  simp only [Enc.get, if_pos hk, Eval.nullAtom]
-  congr 2; apply Vector.ext; intro q hq
-  simp only [Vector.getElem_ofFn, ba_get?, ← Array.getElem?_toList, hG, foldl_append_toList]
-  rw [show (ByteArray.empty).data.toList = [] from rfl, List.nil_append,
-    flatMap_range_getElem? _ hC (hm ▸ hk) hq, hCk]
-  simp only [Array.toList_replicate, List.getElem?_replicate, hq, if_true, Option.getD_some, Vector.getElem_replicate]
 
 /-- Belongs in qlean. **`x@i` at a `symbol` blob, a miss**: symbol `k` of the answer is the empty one. -/
 theorem gatherColumn_miss_syms {n : USize} {blob : ByteArray} {offs : Array Nat}
@@ -535,8 +453,6 @@ theorem gatherColumn_miss {t : QAtomicType} {n : USize} {e : Enc} (hw : Enc.WF t
   | none =>
     by_cases hb : t = .boolean
     · subst hb; exact gatherColumn_miss_bits hw hm h hk hout
-    by_cases hgu : t = .guid
-    · subst hgu; exact gatherColumn_miss_guid hw hm h hk hout
     have hs : t = .symbol := by cases t <;> simp_all [denseWidth, QAtomicType.width]
     subst hs
     cases e with

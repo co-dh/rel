@@ -27,7 +27,7 @@ theorem gatherColumn_isSome {t : QAtomicType} {n : USize} {e : Enc} (hw : Enc.WF
   have hz : ¬ i.size < m.toNat * 8 := by omega
   unfold gatherColumn
   cases e <;> cases t <;>
-    simp_all [-Nat.not_lt, Enc.WF, QAtomicType.width, denseWidth, rowWidth, foRColumn, Enc.bytesOf,
+    simp_all [-Nat.not_lt, Enc.WF, QAtomicType.width, denseWidth, foRColumn, Enc.bytesOf,
       Column.alpEncodes] <;> split <;> simp_all [-Nat.not_lt]
 
 /-! ## The answer's size: what `Enc.WF` asks of each gather's payload -/
@@ -349,7 +349,7 @@ theorem gatherColumn_wf {t : QAtomicType} {n : USize} {e : Enc} (hw : Enc.WF t n
   cases e with
   | foR M P =>
     by_cases hc : Column.encodes t = true ∧ M.isEmpty = false <;> cases t <;>
-      simp_all [-Nat.not_lt, Enc.WF, QAtomicType.width, denseWidth, rowWidth, foRColumn, Enc.bytesOf,
+      simp_all [-Nat.not_lt, Enc.WF, QAtomicType.width, denseWidth, foRColumn, Enc.bytesOf,
         Column.encodes, gatherBytes_size, gatherFoR, toNat_small, small_mod] <;> obtain ⟨_, ⟨_, rfl⟩, rfl⟩ := h <;>
       simp [gatherBytes_size, toNat_small, small_mod, hm]
   | enum d o ids =>
@@ -381,12 +381,12 @@ theorem gatherColumn_wf {t : QAtomicType} {n : USize} {e : Enc} (hw : Enc.WF t n
     cases t <;> try (exfalso; simp [Enc.WF] at hw; done)
     obtain ⟨hs, hd, hu⟩ := id hw
     have hU := gatherSyms_utf8 blob offs i hd fun k hk => hu k (by omega)
-    simp [-Nat.not_lt, hz, denseWidth, rowWidth, foRColumn, Enc.bytesOf, QAtomicType.width] at h
+    simp [-Nat.not_lt, hz, denseWidth, foRColumn, Enc.bytesOf, QAtomicType.width] at h
     subst h
     simp only [Enc.WF]
     exact ⟨by rw [gatherSyms_size]; omega, gatherSyms_wf .., fun j hj => hU j (by rw [gatherSyms_size]; omega)⟩
   | _ => cases t <;>
-      simp_all [-Nat.not_lt, Enc.WF, QAtomicType.width, denseWidth, rowWidth, foRColumn, Enc.bytesOf,
+      simp_all [-Nat.not_lt, Enc.WF, QAtomicType.width, denseWidth, foRColumn, Enc.bytesOf,
         Column.alpEncodes, gatherBits_size, gatherBytes_size, gatherAlp_size, gatherSyms_size, gatherSyms_wf,
         gatherIds_wf, toNat_small, small_mod] <;> (try subst h) <;>
       simp_all [gatherBits_size, gatherBytes_size, gatherAlp_size, gatherSyms_size, gatherSyms_wf, gatherIds_wf,

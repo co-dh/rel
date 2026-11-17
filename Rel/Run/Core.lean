@@ -139,7 +139,7 @@ theorem foRLongs_wf (xs : List Int64) {n : USize} (hn : xs.length = n.toNat) : E
     (.foR (Kernel.Coc.encode 8 (packLongs xs)).1 (Kernel.Coc.encode 8 (packLongs xs)).2) := by
   have h := Verify.nblk_encode Column.lgEnc (by decide) 8 (by decide) (by decide) (packLongs xs)
   rw [packLongs_size] at h
-  refine ⟨rfl, by simp, by simp, ?_, ?_⟩
+  refine ⟨rfl, by simp, ?_, ?_⟩
   · show n.toNat ≤ Column.blk (Kernel.Coc.encodeAt Column.lgEnc (8 : Nat).toUSize (packLongs xs)).1 *
       Column.nblk (Kernel.Coc.encodeAt Column.lgEnc (8 : Nat).toUSize (packLongs xs)).1
     rw [h.1, h.2, ← hn]; simp only [Column.lgEnc, Nat.reducePow]; omega
