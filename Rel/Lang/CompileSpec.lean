@@ -12,18 +12,18 @@ open scoped Rel.Core.Rel
 open Rel.Core.Rel hiding id comp recip inter union zero le inl inr junc
 
 /-- Every variable's plan computes its meaning under `ρ`. -/
-def Env.Sound (η : Env) (ρ : Val) : Prop := ∀ k A B d, PSound (η k A B d) (ρ k A B)
+def CodeEnv.Sound (η : CodeEnv) (ρ : Val) : Prop := ∀ k A B d, PSound (η k A B d) (ρ k A B)
 
-/-- Binding `k` to a table keeps `Env.Sound`, the table's meaning bound in `ρ`. -/
-theorem Env.Sound.bind {η : Env} {ρ : Val} (hη : η.Sound ρ) (k : Nat) {A B : Obj} (X : CRel A B) :
+/-- Binding `k` to a table keeps `CodeEnv.Sound`, the table's meaning bound in `ρ`. -/
+theorem CodeEnv.Sound.bind {η : CodeEnv} {ρ : Val} (hη : η.Sound ρ) (k : Nat) {A B : Obj} (X : CRel A B) :
     (η.bind k X).Sound (ρ.bind k (rep X.rel)) := by
   intro j A' B' d D hD hb x y hx
   by_cases e : j = k
   · subst e
     by_cases h : A = A' ∧ B = B'
-    · obtain ⟨rfl, rfl⟩ := h; simp [Env.bind, Val.bind, Tm.den]
-    · simp [Env.bind, Val.bind, h, Tm.den]
-  · simp only [Env.bind, Val.bind, e, if_false] at hb ⊢; exact hη j A' B' d D hD hb x y hx
+    · obtain ⟨rfl, rfl⟩ := h; simp [CodeEnv.bind, Val.bind, Tm.den]
+    · simp [CodeEnv.bind, Val.bind, h, Tm.den]
+  · simp only [CodeEnv.bind, Val.bind, e, if_false] at hb ⊢; exact hη j A' B' d D hD hb x y hx
 
 /-- `μX : φ` by rounds from `𝟘`: where fewer than `cap` rounds ran, the least fixed point of a monotone `Φ`, each
     round sound at an ok table (`CRel.rep_fixOn`). -/
