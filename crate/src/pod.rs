@@ -68,8 +68,14 @@ pub fn bytes_mut<T: Pod>(s: &mut [T]) -> &mut [u8] {
 /// stack array did), on the heap above it. One per call, never per block.
 pub struct Scr<T: Pod + Default, const N: usize = 1024> { inl: [T; N], heap: alloc::vec::Vec<T>, len: usize }
 impl<T: Pod + Default, const N: usize> Scr<T, N> {
+    #[inline(always)]
     pub fn new(len: usize) -> Self {
         Scr { inl: [T::default(); N], heap: if len > N { alloc::vec![T::default(); len] } else { alloc::vec::Vec::new() }, len }
+    }
+    /// `len` copies of `x`, written once (a `new` then `fill` would write the inline array twice)
+    #[inline(always)]
+    pub fn filled(len: usize, x: T) -> Self {
+        Scr { inl: [x; N], heap: if len > N { alloc::vec![x; len] } else { alloc::vec::Vec::new() }, len }
     }
 }
 impl<T: Pod + Default, const N: usize> core::ops::Deref for Scr<T, N> {

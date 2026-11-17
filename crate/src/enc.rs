@@ -138,8 +138,8 @@ pub fn encode_meta_exc_blk<T: Elt>(m: &mut EncMeta, x: &[T], nb: usize) -> u32 {
 pub fn pack_exc_blk<T: Elt>(p: &mut EncPack, x: &[T], ne: u32) {
     let (nul, base, w, x) = (nul::<T>(), p.frame as i64, p.width, &x[..p.nb]);
     if ne == 0 { return pack_block(p.res, x, p.nb, base, w) }
-    let (mut y, mut k) = (crate::pod::Scr::<T>::new(p.nb), 0);
-    y.fill(T::wrap(base as u64));
+    let (mut ys, mut k) = (crate::pod::Scr::<T>::filled(p.nb, T::wrap(base as u64)), 0);
+    let y: &mut [T] = &mut ys; // the one deref, outside the element loop
     for (i, &v) in x.iter().enumerate() {
         let r = (v.widen() as u64).wrapping_sub(base as u64);
         if v.widen() == nul || (w < 64 && r >> w != 0) {
@@ -149,7 +149,7 @@ pub fn pack_exc_blk<T: Elt>(p: &mut EncPack, x: &[T], ne: u32) {
             k += 1;
         } else { y[i] = v }
     }
-    pack_block(p.res, &y[..p.nb], p.nb, base, w)
+    pack_block(p.res, y, p.nb, base, w)
 }
 /// coc.rs `decode`: the whole column into `out` (`n` long).
 pub fn decode<T: Lane>(c: &Coc, out: &mut [T]) {

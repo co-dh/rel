@@ -161,8 +161,9 @@ impl Coc<'_> {
     }
     /// coc.rs `coc_count_lt`: `((atoms c).filter (· < v)).length`, signed, exact.
     pub fn count_lt(&self, v: i64) -> usize {
-        let (n, mut buf) = (self.meta.n, Vec::new());
-        (0..self.meta.nblk).map(|b| self.count_lt_blk(b, (n - (b << self.meta.lg)).min(self.meta.blk()), v, &mut buf)).sum()
+        let (n, lg, mut buf) = (self.meta.n, self.meta.lg, Vec::new());
+        let blk = 1usize << lg;
+        (0..self.meta.nblk).map(|b| self.count_lt_blk(b, (n - (b << lg)).min(blk), v, &mut buf)).sum()
     }
     /// coc.rs `coc_any_null`: whether an element is `nul`, the smallest value of its type, so `x < nul + 1` is
     /// `x == nul`; stops at the first block that says yes.
