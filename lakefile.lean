@@ -112,3 +112,9 @@ target «rel-native» pkg : System.FilePath := do
 lean_exe gates where
   srcDir := "gates"
   root := `Gates
+
+/-- The differential check of `compile` against the generated code (`make compile-diff`). Outside the `Rel` glob,
+    because elaborating it runs every registered program, and every build of `Rel` would pay for that. -/
+lean_lib TestCompile where
+  srcDir := "test"
+  roots := #[`TestCompile]

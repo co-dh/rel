@@ -22,7 +22,7 @@ SQL     := sqlite3 -readonly $(DB)
 # prints the gate's wall time when it ends, pass or fail
 GATE     = SECONDS=0; trap 'echo "[$@] $$SECONDS s, exit $$?"' EXIT; mkdir -p $(T)
 
-GATES_LIST := build crate-test syms native ldd index-complete axioms noreduce panic externs
+GATES_LIST := build compile-diff crate-test syms native ldd index-complete axioms noreduce panic externs
 .PHONY: check index panic-allow $(GATES_LIST)
 check: $(GATES_LIST)
 	$(GATE)
@@ -32,6 +32,11 @@ check: $(GATES_LIST)
 build:
 	$(GATE)
 	CAP_MEM_MB=$(MEM) $(CAP) $(LAKE) build RelCore RelKernel RelRun Rel rel-native
+
+# compile agrees with the code rel_program generated, on every closed definition of every registered program
+compile-diff:
+	$(GATE)
+	CAP_MEM_MB=$(MEM) $(CAP) $(LAKE) build TestCompile
 
 crate-test:
 	$(GATE)
