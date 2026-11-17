@@ -104,8 +104,10 @@ inductive Tm.Le : {A B : Obj} → {d e : Bool} → Tm A B d → Tm A B e → Pro
       Tm.Le s s' → Tm.Le S S' → Tm.Le (.foldI s S) (.foldI s' S')
   | flat {I A B : Obj} {d d' : Bool} {R : Tm I (.prod A B) d} {R' : Tm I (.prod A B) d'} :
       Tm.Le R R' → Tm.Le (.flat R) (.flat R')
-  | arg {A B C D : Obj} {d d' e e' : Bool} {f : Tm A B d} {f' : Tm A B d'} {x : Tm C D e} {x' : Tm C D e'} :
-      Tm.Le f f' → Tm.Le x x' → Tm.Le (.arg f x) (.arg f' x')
+  -- one head `f` and arguments each below the other: a row's meaning of its argument is not monotone (`setify` is
+  -- `Λ`), and two heads with one meaning can be different rows (`Tm.argDen`)
+  | arg {A B C D : Obj} {d e e' : Bool} {f : Tm A B d} {x : Tm C D e} {x' : Tm C D e'} :
+      Tm.Le x x' → Tm.Le x' x → Tm.Le (.arg f x) (.arg f x')
   | nu (k : Nat) {A B : Obj} {S S' b b' : Tm A B false} : Tm.Le S S' → Tm.Le b b' → Tm.Le (.nu k S b) (.nu k S' b')
   | mu (k : Nat) (what : String) (cap : Nat) {A B : Obj} {b b' : Tm A B false} :
       Tm.Le b b' → Tm.Le (.mu k what cap b) (.mu k what cap b')
@@ -140,9 +142,9 @@ theorem Tm.Ax.sound {A B : Obj} {d e : Bool} {s : Tm A B d} {t : Tm A B e} (h : 
   | comp_zero => exact Core.Rel.comp_zero _
   | zero_comp => exact Core.Rel.zero_comp _
   | mu_unfold _ _ _ b h =>
-    rw [b.den_subst]; exact (Core.Rel.mu_fix fun _ _ hXY => den_mono h hXY).symm
+    rw [(b.den_subst _ (fun e he _ _ => by obtain rfl := List.mem_singleton.1 he; rfl) _).1]; exact (Core.Rel.mu_fix fun _ _ hXY => den_mono h hXY).symm
   | nu_unfold _ _ b h =>
-    rw [b.den_subst]; exact (Core.Rel.nu_fix fun _ _ hXY => den_mono h hXY).symm
+    rw [(b.den_subst _ (fun e he _ _ => by obtain rfl := List.mem_singleton.1 he; rfl) _).1]; exact (Core.Rel.nu_fix fun _ _ hXY => den_mono h hXY).symm
 
 /-- **Soundness**: `Le s t` gives `⟦s⟧ρ ⊑ ⟦t⟧ρ` under every valuation, one case per rule. -/
 theorem Tm.Le.sound {A B : Obj} {d e : Bool} {s : Tm A B d} {t : Tm A B e} (h : Tm.Le s t) :
@@ -202,7 +204,8 @@ theorem Tm.Le.sound {A B : Obj} {d e : Bool} {s : Tm A B d} {t : Tm A B e} (h : 
   | share _ _ ih => exact fun _ => ih Val.empty
   | foldI _ _ ih ih' => exact fun ρ => foldIDen_le (ih ρ) (ih' ρ)
   | flat _ ih => exact fun ρ => le_iff.2 fun _ _ h => le_iff.1 (ih ρ) _ _ h
-  | arg _ _ => exact fun _ => Core.Rel.le_refl _
+  | arg _ _ ih ih' =>
+    exact fun ρ => by simp only [Tm.den, Core.Rel.le_antisymm (ih ρ) (ih' ρ)]; exact Core.Rel.le_refl _
   | nu k _ _ _ ih => exact fun ρ => Core.Rel.nu_mono fun X => ih (ρ.bind k X)
   | mu k _ _ _ ih => exact fun ρ => Core.Rel.mu_mono fun X => ih (ρ.bind k X)
   | refold k _ _ _ _ ih => exact fun ρ => Core.Rel.mu_mono fun X => ih (ρ.bind k X)

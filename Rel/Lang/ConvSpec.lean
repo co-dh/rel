@@ -136,10 +136,10 @@ theorem convTm_den (ρ : Val) : ∀ {A B : Obj} {d : Bool} (t : Tm A B d), t.Con
     · by_cases hd : d = false
       · exact conv_false_den ρ hd _ u hu
       rw [convTm, dif_neg hd] at hu
-      have e : R.den ρ = R.den Val.empty := R.den_congr _ _ fun i hi => by simp [hok.1] at hi
+      have e : R.den ρ = R.den Val.empty := (R.den_congr _ _ fun i hi => by simp [hok.1] at hi).1
       exact ((ih hok.2).1 u hu).trans (congrArg (·°) e)
     · cases h; dsimp only at hp ⊢; unfold convProj at hp
-      have e : R.den ρ = R.den Val.empty := R.den_congr _ _ fun i hi => by simp [hok.1] at hi
+      have e : R.den ρ = R.den Val.empty := (R.den_congr _ _ fun i hi => by simp [hok.1] at hi).1
       exact ((ih hok.2).2 _ _ rfl p hp).trans (congrArg (·°) e)
   | @comp _ _ _ d _ R S ihR ihS =>
     refine fun hok => ⟨fun u hu => ?_, fun A₁ A₂ h p hp => ?_⟩
