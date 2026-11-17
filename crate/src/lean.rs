@@ -425,6 +425,15 @@ impl O {
         if !unsafe { is_exclusive(p) } { return None }
         Some(unsafe { core::slice::from_raw_parts_mut(sarray_cptr(p), sarray_size(p) * sarray_elem_size(p) as usize) })
     }
+    /// The bytes of a scalar array that other references may share, to update in place: an index table, which every value
+    /// built over it shares and whose rows word (claimed by compare-and-swap) says which slots each value may read, so a
+    /// write past the claimed rows is invisible to the others. Any other use is a data race; `exclusive` is the checked one.
+    #[allow(clippy::mut_from_ref)]
+    pub fn shared_bytes_mut(&self) -> &mut [u8] {
+        let p = self.0.as_ptr();
+        assert!(!is_scalar(p) && unsafe { ptr_tag(p) } == TAG_SCALAR_ARRAY, "lean::O::shared_bytes_mut: not a scalar array");
+        unsafe { core::slice::from_raw_parts_mut(sarray_cptr(p), sarray_size(p) * sarray_elem_size(p) as usize) }
+    }
     /// A `ByteArray` held alone: itself when exclusive, else `lean_copy_byte_array`'s copy (same size and capacity),
     /// the shared one losing this reference
     pub fn into_exclusive(mut self) -> SArr {
@@ -664,6 +673,13 @@ pub mod abi {
     }
     #[unsafe(no_mangle)] pub unsafe extern "C" fn qrs_abi_into_exclusive(o: *mut Object) -> *mut Object {
         O::from(unsafe { O::from_raw(o) }.into_exclusive()).into_raw()
+    }
+    /// `O::shared_bytes_mut` on a reference the caller keeps: its bytes' address, whatever the count
+    #[unsafe(no_mangle)] pub unsafe extern "C" fn qrs_abi_shared_bytes_mut(o: *mut Object) -> *mut u8 {
+        let x = unsafe { O::from_raw(o) };
+        let r = x.shared_bytes_mut().as_mut_ptr();
+        core::mem::forget(x);
+        r
     }
     /// `sarrays_in` over `len` bytes at `m` (never freed by the caller), spans as `off`/`len` pairs; writes the objects
     #[unsafe(no_mangle)] pub unsafe extern "C" fn qrs_abi_sarrays_in(m: *mut u8, len: usize, spans: *const usize, k: usize, out: *mut *mut Object) {

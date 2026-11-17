@@ -1645,3 +1645,111 @@ mod tests {
         assert_eq!((o, r), ([2, -1, 3], [1, 0, 4]));
     }
 }
+
+/// search.c `ix_room`'s claim: the table `t` (`2 * cap + 1` words, hashing `base` rows) is large enough for `keys` rows and
+/// now hashes them, by compare-and-swap of the rows word -- every value sharing the table reads only its own rows, so the
+/// claim is all that is needed. `false` where it is too small or another value claimed it first: the caller copies it.
+pub fn ix_claim(t: &mut [i64], base: usize, keys: usize) -> bool {
+    use core::sync::atomic::Ordering::{AcqRel, Acquire};
+    let cap = t.len() / 2;
+    if cap < 16 || cap < keys + keys / 2 { return false }
+    crate::pod::atomics(t)[2 * cap].compare_exchange(base as i64, keys as i64, AcqRel, Acquire).is_ok()
+}
+/// `qlean_index_splice`: `a`'s `na` words and `b`'s `nb` words, each plus `add`, merged into `out`: `b`'s word `j` goes before
+/// `a`'s word `i` exactly when `ins[j] < i`. An absent `a` reads word `i` as `i`, an absent `b` word `j` as `na + j`.
+pub fn ix_splice(ins: &[i64], a: Option<&[u64]>, b: Option<&[u64]>, add: u64, out: &mut [u64]) {
+    // iterators and a slice eaten from the front, not indices: no bounds test per word; the four cases of an absent `a` or `b`
+    // are four instances. `b`'s word `j` goes before `a`'s word `i` when `ins[j] < i`, read forward as the C does, so an `ins`
+    // that is not nondecreasing stalls at its first word that is too large.
+    fn go(mut ins: &[i64], na: usize, mut a: impl Iterator<Item = u64>, mut b: impl Iterator<Item = u64>, out: &mut [u64]) {
+        let mut o = out.iter_mut();
+        for i in 0..na as i64 {
+            while let Some((&x, rest)) = ins.split_first() {
+                if x >= i { break }
+                *o.next().expect("ix_splice: the answer is short") = b.next().expect("ix_splice: `b` is short");
+                ins = rest;
+            }
+            *o.next().expect("ix_splice: the answer is short") = a.next().expect("ix_splice: `a` is short");
+        }
+        for x in o { *x = b.next().expect("ix_splice: `b` is short") }
+    }
+    let (na, nb) = (out.len() - ins.len(), ins.len());
+    let (ia, ib) = (0..na as u64, na as u64..(na + nb) as u64);
+    match (a, b) {
+        (Some(a), Some(b)) => go(ins, na, a.iter().copied(), b[..nb].iter().map(|&v| v.wrapping_add(add)), out),
+        (Some(a), None) => go(ins, na, a.iter().copied(), ib, out),
+        (None, Some(b)) => go(ins, na, ia, b[..nb].iter().map(|&v| v.wrapping_add(add)), out),
+        (None, None) => go(ins, na, ia, ib, out),
+    }
+}
+/// `qlean_index_pick`: `pb`'s word where it is below `n`, else `qb`'s plus `n`.
+pub fn ix_pick(pb: &[u64], qb: &[u64], n: u64, out: &mut [u64]) {
+    for ((o, &p), &q) in out.iter_mut().zip(pb).zip(qb) { *o = if p < n { p } else { q.wrapping_add(n) } }
+}
+/// `qlean_index_unedit`: per needle the row, in `out[..m]`, then the positions of the amended needles whose base row may still
+/// be the answer; how many words `out` ends up holding.
+pub fn ix_unedit(pb: &[u64], qb: &[u64], d: &[u64], total: u64, out: &mut [u64]) -> usize {
+    let m = pb.len();
+    let mut left = m;
+    for (i, (&p, &q)) in pb.iter().zip(qb).enumerate() {
+        let r = d.get(q as usize).copied().unwrap_or(total);
+        let lo = d.partition_point(|&x| x < p);
+        let amended = p < total && lo < d.len() && d[lo] == p;
+        out[i] = if p >= total || amended { r } else { p.min(r) };
+        if amended && r > p { out[left] = i as u64; left += 1 }
+    }
+    left
+}
+/// `qlean_index_first_clean`: the first row of the runs `p..=e` (`lo`, `hi` each ending in the row count) that is not among the
+/// sorted words `d`, `miss` where every one is.
+pub fn ix_first_clean(lo: &[u64], hi: &[u64], p: usize, e: usize, d: &[u64], miss: u64) -> u64 {
+    let runs = lo.len().saturating_sub(1);
+    let mut k = 0;
+    for q in p..=e {
+        if q >= runs { break }
+        for r in lo[q]..hi[q] {
+            while k < d.len() && d[k] < r { k += 1 }
+            if k == d.len() || d[k] != r { return r }
+        }
+    }
+    miss
+}
+/// `qlean_index_unedit_rows`: `a`'s words not among the sorted `d`, merged with `b`'s words `w` read as `d[w]` (else `w + add`
+/// where `d` is empty), ascending; how many words `out` holds.
+pub fn ix_unedit_rows(a: &[u64], b: &[u64], d: &[u64], add: u64, out: &mut [u64]) -> usize {
+    // slices consumed from the front, not indices: no bounds test per word
+    let (mut a, mut b, mut dk, mut o, mut n) = (a, b, d, out.iter_mut(), 0);
+    loop {
+        if let Some(&x) = a.first() {
+            while let Some(&y) = dk.first() { if y < x { dk = &dk[1..] } else { break } }
+            if dk.first() == Some(&x) { a = &a[1..]; continue }
+        } else if b.is_empty() { return n }
+        let y = b.first().map_or(u64::MAX, |&w| if d.is_empty() { w.wrapping_add(add) } else { d[w as usize] });
+        match a.first() {
+            Some(&x) if x < y => { *o.next().expect("ix_unedit_rows: the answer is short") = x; a = &a[1..] }
+            _ => { *o.next().expect("ix_unedit_rows: the answer is short") = y; b = &b[1..] }
+        }
+        n += 1;
+    }
+}
+/// `qlean_index_rows`: how many rows the runs `p..e` of an index hold (`lo`, `hi` each ending in the row count, which is no run).
+pub fn ix_rows_len(lo: &[i64], hi: &[i64], p: usize, e: usize) -> usize {
+    let last = e.wrapping_add(1).min(lo.len().saturating_sub(1)); // as C: `e + 1` wraps at `usize::MAX`, which names no run
+    (p..last).map(|q| (hi[q] - lo[q]) as usize).sum()
+}
+/// `qlean_index_rows`: the rows themselves into `out` (`ix_rows_len` of them).
+pub fn ix_rows(lo: &[i64], hi: &[i64], p: usize, e: usize, out: &mut [i64]) {
+    let last = e.wrapping_add(1).min(lo.len().saturating_sub(1));
+    let mut o = out.iter_mut();
+    for q in p..last { for (x, r) in o.by_ref().take((hi[q] - lo[q]) as usize).zip(lo[q]..) { *x = r } }
+}
+/// `qlean_index_by_ids`: `out[i]` is `vals` read at id `i` of `ids` (`w` bits), `out` holding the `n` the caller clamped; an id
+/// past `vals` is a corrupt column and refused, naming the first.
+pub fn ix_by_ids(vals: &[i64], w: u32, ids: &[u8], out: &mut [i64]) {
+    fn go<const W: u32>(vals: &[i64], ids: &[u8], out: &mut [i64], bad: &mut Option<usize>) {
+        ids::unpack::<W, i64>(ids, out, |_, e, u| *e = vals.get(u).copied().unwrap_or_else(|| { bad.get_or_insert(u); 0 }))
+    }
+    let mut bad = None;
+    ids::by_width!(w, go(vals, ids, out, &mut bad));
+    if let Some(k) = bad { panic!("qlean: id {k} past a dictionary of {}", vals.len()) }
+}
