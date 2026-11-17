@@ -91,6 +91,10 @@ theorem le_iff {R S : Rel α β} : R ⊑ S ↔ ∀ a b, R a b → S a b :=
 theorem comp_assoc (R : Rel α β) (S : Rel β γ) (T : Rel γ δ) : (R ≫ S) ≫ T = R ≫ (S ≫ T) :=
   ext fun _ _ => ⟨fun ⟨b, ⟨c, hR, hS⟩, hT⟩ => ⟨c, hR, b, hS, hT⟩, fun ⟨c, hR, b, hS, hT⟩ => ⟨b, ⟨c, hR, hS⟩, hT⟩⟩
 
+theorem id_comp (R : Rel α β) : 𝟙 α ≫ R = R := ext fun _ _ => ⟨fun ⟨_, h, hR⟩ => h ▸ hR, fun hR => ⟨_, rfl, hR⟩⟩
+
+theorem comp_id (R : Rel α β) : R ≫ 𝟙 β = R := ext fun _ _ => ⟨fun ⟨_, hR, h⟩ => h ▸ hR, fun hR => ⟨_, hR, rfl⟩⟩
+
 theorem inter_idem (R : Rel α β) : R ∩ R = R := ext fun _ _ => ⟨And.left, fun h => ⟨h, h⟩⟩
 
 theorem union_idem (R : Rel α β) : R ∪ R = R := ext fun _ _ => ⟨fun h => h.elim (fun h => h) (fun h => h), Or.inl⟩
