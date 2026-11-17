@@ -1634,14 +1634,20 @@ pub fn ix_claim(t: &mut [i64], base: usize, keys: usize) -> bool {
 /// `qlean_index_splice`: `a`'s `na` words and `b`'s `nb` words, each plus `add`, merged into `out`: `b`'s word `j` goes before
 /// `a`'s word `i` exactly when `ins[j] < i`. An absent `a` reads word `i` as `i`, an absent `b` word `j` as `na + j`.
 pub fn ix_splice(ins: &[i64], a: Option<&[u64]>, b: Option<&[u64]>, add: u64, out: &mut [u64]) {
-    // iterators, not indices: no bounds test per word, and the four cases of absent `a` or `b` are four instances
-    fn go(ins: &[i64], na: usize, mut a: impl Iterator<Item = u64>, b: impl Iterator<Item = u64>, out: &mut [u64]) {
-        let (mut bs, mut o) = (ins.iter().zip(b).peekable(), out.iter_mut());
+    // iterators and a slice eaten from the front, not indices: no bounds test per word; the four cases of an absent `a` or `b`
+    // are four instances. `b`'s word `j` goes before `a`'s word `i` when `ins[j] < i`, read forward as the C does, so an `ins`
+    // that is not nondecreasing stalls at its first word that is too large.
+    fn go(mut ins: &[i64], na: usize, mut a: impl Iterator<Item = u64>, mut b: impl Iterator<Item = u64>, out: &mut [u64]) {
+        let mut o = out.iter_mut();
         for i in 0..na as i64 {
-            while let Some((_, v)) = bs.next_if(|&(&x, _)| x < i) { *o.next().expect("ix_splice: the answer is short") = v }
+            while let Some((&x, rest)) = ins.split_first() {
+                if x >= i { break }
+                *o.next().expect("ix_splice: the answer is short") = b.next().expect("ix_splice: `b` is short");
+                ins = rest;
+            }
             *o.next().expect("ix_splice: the answer is short") = a.next().expect("ix_splice: `a` is short");
         }
-        for ((_, v), x) in bs.zip(o) { *x = v }
+        for x in o { *x = b.next().expect("ix_splice: `b` is short") }
     }
     let (na, nb) = (out.len() - ins.len(), ins.len());
     let (ia, ib) = (0..na as u64, na as u64..(na + nb) as u64);
