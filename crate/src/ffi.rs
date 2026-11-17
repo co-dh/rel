@@ -94,21 +94,7 @@ pub unsafe extern "C" fn qrs_ids_map(ids: *const u8, n: usize, w: u32, nd: usize
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn qrs_ids_pack(g: *mut u8, n: usize, w: u32) { unsafe { ids::pack_in_place(sl_mut(g, n), w, n) } }
 
-/// 1 and `*mn`, `*mx` filled; 0 for `SK_WIN` or an unknown kind.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn qrs_key_range(kind: u8, p: *const u8, n: usize, mn: *mut u64, mx: *mut u64) -> c_int {
-    match unsafe { keys(kind, p, n) }.and_then(|b| key::each(kind, b, n, key::Range)) {
-        Some((a, b)) => { unsafe { mn.write(a); mx.write(b) }; 1 }
-        None => 0,
-    }
-}
 
-/// `range_foR`: the key range of C's `kwin` window over `c` (`f` its ALP column, else null).
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn qrs_kwin_range(kind: u8, c: *const CCoc, f: *const CCocf, mn: *mut u64, mx: *mut u64) {
-    let (a, b) = kwin::win_range(kind, &unsafe { (*c).view() }, !f.is_null());
-    unsafe { mn.write(a); mx.write(b) }
-}
 
 /// `kwin_blk`'s decode: block `b` of `c` as keys into `k` (`BLK` long), through `f` when it is not null
 /// (`keys_blk_alp`), else `keys_blk_foR`. Answers the block's key count.
@@ -121,15 +107,6 @@ pub unsafe extern "C" fn qrs_kwin_blk(kind: u8, c: *const CCoc, f: *const CCocf,
     cnt
 }
 
-/// `keys_of`: the `n` keys of the dense payload `p` into `k`, and their range into `*mn`, `*mx` (`0, 0` for none).
-/// 1 = written, 0 = `kind` is not one of the eight element kinds.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn qrs_keys_of(kind: u8, p: *const u8, n: usize, k: *mut u64, mn: *mut u64, mx: *mut u64) -> c_int {
-    if kind >= key::SK_KINDS_N { return 0 }
-    let (a, b) = sort::keys_of(kind, unsafe { sl(p, key::bytes(kind, n).unwrap_or(0)) }, n, unsafe { sl_mut(k, n) });
-    unsafe { mn.write(a); mx.write(b) };
-    1
-}
 
 /// `ids_run` over `dedup`'s tables: `dtab` (`slots` entries) when not null, else `htab` (`cap` entries) and `gkey`
 /// (`ng` entries). `gid` is `n * lane / 8` bytes.  `run` is the pool (`qrs_pool_run`), passed as a `void (*)(void)` and called as `c::Runner`. 1 = written, 0 = refused (a kind outside the enum, `SK_WIN`, a short payload or `gid`, a lane not 8, 16, 32 or 64).
@@ -147,50 +124,9 @@ pub unsafe extern "C" fn qrs_group_fill(kind: u8, p: *const u8, n: usize, mn: u6
     group::fill(unsafe { core::mem::transmute::<unsafe extern "C" fn(), c::Runner>(run) }, kind, b, n, &t, lane, unsafe { sl_mut(gid, n.saturating_mul(lane as usize) / 8) }) as c_int
 }
 
-/// `groupIds` of a dense column: `gid` is `gcap` bytes, `first` `n` entries, `run` the pool (`qrs_pool_run`) as in `qrs_group_fill`. Answers `ng`, or `SIZE_MAX` for
-/// `SK_WIN`, an unknown kind.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn qrs_group_ids(kind: u8, p: *const u8, n: usize, mn: u64, mx: u64, gid: *mut u8, gcap: usize,
-                                       first: *mut usize, run: unsafe extern "C" fn()) -> usize {
-    let Some(b) = (unsafe { keys(kind, p, n) }) else { return usize::MAX };
-    group::group_ids(unsafe { core::mem::transmute::<unsafe extern "C" fn(), c::Runner>(run) }, kind, b, n, mn, mx, unsafe { sl_mut(gid, gcap) }, unsafe { sl_mut(first, n) }).unwrap_or(usize::MAX)
-}
 
-/// `groupIds` of an encoded column (`qlean_sort_group_ids_foR`): as `qrs_group_ids`, `mn`/`mx` from
-/// `qrs_kwin_range`. `SIZE_MAX` = `gid` or `first` too short.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn qrs_group_ids_win(kind: u8, c: *const CCoc, n: usize, mn: u64, mx: u64, gid: *mut u8,
-                                           gcap: usize, first: *mut usize, run: unsafe extern "C" fn()) -> usize {
-    group::group_ids_win(unsafe { core::mem::transmute::<unsafe extern "C" fn(), c::Runner>(run) }, kind, unsafe { (*c).view() }, n, mn, mx, unsafe { sl_mut(gid, gcap) }, unsafe { sl_mut(first, n) }).unwrap_or(usize::MAX)
-}
 
-/// K14: sort.c `dedup` for `distinct` (`gid` null) and `group` (`gid` and `cnt` `n` entries each): `first[..ng]` the
-/// first occurrence of each distinct key in order of first occurrence, answers `ng`. `c` null: a dense column, `kind`
-/// and `p`; else an encoded one read through a window, and `f` its ALP column when not null. `mn`, `mx` the key range.
-/// `SIZE_MAX` = an unknown kind or a misaligned `p`, which C never produces.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn qrs_dedup(kind: u8, p: *const u8, c: *const CCoc, f: *const CCocf, n: usize, mn: u64, mx: u64,
-                                   gid: *mut u32, cnt: *mut u32, first: *mut usize) -> usize {
-    let d = group::Dedup { mn, mx, first: unsafe { sl_mut(first, n) },
-                           bucket: if gid.is_null() { None } else { Some((unsafe { sl_mut(gid, n) }, unsafe { sl_mut(cnt, n) })) } };
-    if c.is_null() {
-        let Some(b) = (unsafe { keys(kind, p, n) }) else { return usize::MAX };
-        return key::each(kind, b, n, d).unwrap_or(usize::MAX);
-    }
-    let cv = unsafe { (*c).view() };
-    use key::Pass;
-    if f.is_null() { d.run(kwin::Kwin::new(kind, cv), n) } else { d.run(kwin::Kwin::with_alp(kind, unsafe { (*f).view() }), n) }
-}
 
-/// K14: sort.c `gather`: the `ng` elements of the dense column `p` (`n` of kind `kind`) at `first`, written at their own
-/// width into `out` (`ng` bytes of a bit or one-byte kind, else `ng` times its width). 0 = an unknown kind, a short
-/// `p`, or an index past `n`.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn qrs_sort_gather(kind: u8, p: *const u8, n: usize, first: *const usize, ng: usize, out: *mut u8) -> c_int {
-    let w = if kind == key::SK_BIT { Some(ng) } else { key::bytes(kind, ng) };
-    let (Some(b), Some(w)) = (unsafe { keys(kind, p, n) }, w) else { return 0 };
-    group::gather(kind, b, unsafe { sl(first, ng) }, unsafe { sl_mut(out, w) }).is_some() as c_int
-}
 
 /// K15: sort.c `buckets`' scatter: `ord` `n` indices, `bnd` `ng + 1` boxed byte offsets (a `lean_object **`), `cnt` `ng` counts.
 #[unsafe(no_mangle)]
@@ -198,49 +134,11 @@ pub unsafe extern "C" fn qrs_buckets(gid: *const u32, n: usize, ng: usize, cnt: 
     unsafe { group::buckets(sl(gid, n), sl(cnt, ng), sl_mut(ord, n), sl_mut(bnd, ng + 1)) }
 }
 
-/// K15: `distinct_fill`'s context: the encoded column `c` and its first-occurrence indices.
-#[repr(C)]
-pub struct CDfill { pub kind: u8, pub c: *const CCoc, pub first: *const usize }
-/// K15: `distinct_fill_alp`'s context.
-#[repr(C)]
-pub struct CDfillAlp { pub f: *const CCocf, pub first: *const usize }
 
-/// K15: sort.c `distinct_fill`, a `FillFn` over a `CDfill`: elements `i0 .. i0 + cnt` of the answer, the keys at `first`.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn qrs_distinct_fill(buf: *mut i64, i0: usize, cnt: usize, ctx: *const c_void) {
-    if cnt == 0 { return }
-    let d = unsafe { &*ctx.cast::<CDfill>() };
-    unsafe { group::distinct_fill(d.kind, &(*d.c).view(), sl(d.first.add(i0), cnt), sl_mut(buf, cnt)) }
-}
 
-/// K15: sort.c `distinct_fill_alp`, a `FillFn` over a `CDfillAlp`.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn qrs_distinct_fill_alp(buf: *mut i64, i0: usize, cnt: usize, ctx: *const c_void) {
-    if cnt == 0 { return }
-    let d = unsafe { &*ctx.cast::<CDfillAlp>() };
-    unsafe { group::distinct_fill_alp(&(*d.f).view(), sl(d.first.add(i0), cnt), sl_mut(buf, cnt)) }
-}
 
-/// K15: sort.c `keys_gather_foR`: the keys at `first[..ng]` of the encoded column `c`, narrowed to the kind's dense width,
-/// into `out` (`ng` times that width, 2, 4 or 8, bytes).
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn qrs_keys_gather_foR(kind: u8, c: *const CCoc, first: *const usize, ng: usize, out: *mut u8) {
-    unsafe { group::keys_gather(kind, &(*c).view(), sl(first, ng), sl_mut(out, ng * (kwin::dense_bits(kind) / 8) as usize)) }
-}
 
-/// K15: sort.c `parted_of` over a dense column: 1 when each key's runs are one contiguous run (`strict`: every run one
-/// element), else 0. `n` keys of `p` (at least `key::bytes(kind, n)` bytes); an unknown kind or `SK_WIN` is a panic.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn qrs_parted(kind: u8, p: *const u8, n: usize, strict: u8) -> u8 {
-    let b = unsafe { keys(kind, p, n) };
-    b.and_then(|b| group::parted(kind, b, n, strict != 0)).unwrap_or_else(|| panic!("qlean sort: parted refused kind {kind} (impossible: outside the enum or a misaligned payload), n {n}")) as u8
-}
 
-/// K15: sort.c `parted_of` over an encoded column `c` read through a window.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn qrs_parted_win(kind: u8, c: *const CCoc, strict: u8) -> u8 {
-    group::parted_win(kind, unsafe { (*c).view() }, strict != 0) as u8
-}
 
 /// `p` is the block's `BLK * *w / 8` bytes, `buf` `BLK * 8`; answers `p` or `buf`.
 #[unsafe(no_mangle)]
@@ -691,20 +589,6 @@ pub unsafe extern "C" fn qrs_alp_meta_exp_f64(c: *mut CCoc, exp: *mut i8, b: usi
 /// A23: sort.c `group_bound`: aborts when `n` rows cannot be numbered in `u32`; for the C callers with no Rust callee.
 #[unsafe(no_mangle)]
 pub extern "C" fn qrs_group_bound(n: usize) { sort::group_bound(n) }
-/// A23: sort.c `ids_keys`: `m` ids at `w` bits as keys into `k` (`m` entries); `*mn`, `*mx` the range.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn qrs_ids_keys(v: *const u8, w: u32, m: usize, k: *mut u64, mn: *mut u64, mx: *mut u64) {
-    let (a, b) = sort::ids_keys(unsafe { sl(v, ids::ids_bytes(m, w)) }, w, m, unsafe { sl_mut(k, m) });
-    unsafe { mn.write(a); mx.write(b) }
-}
-/// A23: sort.c `pair_ids`: the group of each pair `(x[i], y[i])`, `m` of them, into `gid` (`gbytes` bytes) at
-/// `max(8, id_width(ng))` bits; `first` holds `m` entries. Answers `ng`. `x` and `y` are the caller's scratch: both
-/// are overwritten (a side narrowed, then the combined key).
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn qrs_pair_ids(run: unsafe extern "C" fn(), x: *mut u64, y: *mut u64, m: usize, mnx: u64, sx: u64,
-                                      mny: u64, sy: u64, gid: *mut u8, gbytes: usize, first: *mut usize) -> usize {
-    unsafe { sort::pair_ids(rn(run), sl_mut(x, m), sl_mut(y, m), mnx, sx, mny, sy, sl_mut(gid, gbytes), sl_mut(first, m)) }
-}
 /// A23: sort.c:3386 `pair_ids_narrow`.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn qrs_pair_ids_narrow(run: unsafe extern "C" fn(), wa: u32, wb: u32, m: usize, pa: *const u8,
@@ -712,27 +596,6 @@ pub unsafe extern "C" fn qrs_pair_ids_narrow(run: unsafe extern "C" fn(), wa: u3
     unsafe { sort::pair_ids_narrow(rn(run), wa, wb, m, sl(pa, ids::ids_bytes(m, wa)), sl(pb, ids::ids_bytes(m, wb)),
                                    // sort.c:3386-3391: `first` is `ids_slots(1 << wc, m)`'s `min(m, (1 << wc) + 1)`
                                    sl_mut(gid, gbytes), sl_mut(first, m.min((1usize << ids::id_width(1 << (wa + wb))) + 1))) }
-}
-/// A24: sort.c `qlean_sort_rank_slices` past the unboxing.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn qrs_rank_slices(w: usize, v: *const u8, bytes: usize, o: *const i64, ng: usize, out: *mut i64) {
-    // sort.c:2487: the answer is one id per group, `g * 8` bytes with `g = ng`
-    unsafe { sort::rank_slices(w, sl(v, bytes), sl(o, ng + 1), sl_mut(out, ng)) }
-}
-/// A24: sort.c `qlean_sort_group_sizes`: `n` is already clamped to what `gid` holds, `out` is `ng` long.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn qrs_group_sizes(ng: usize, w: u32, n: usize, gid: *const u8, out: *mut i64) {
-    unsafe { sort::group_sizes(ng, w, n, sl(gid, ids::ids_bytes(n, w)), sl_mut(out, ng)) }
-}
-/// A24: sort.c `qlean_sort_group_lasts`, as `qrs_group_sizes`.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn qrs_group_lasts(ng: usize, w: u32, n: usize, gid: *const u8, out: *mut i64) {
-    unsafe { sort::group_lasts(ng, w, n, sl(gid, ids::ids_bytes(n, w)), sl_mut(out, ng)) }
-}
-/// A24: sort.c `qlean_sort_id_longs`: `n` is already clamped to what `ids` holds, `out` is `n` long.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn qrs_id_longs(n: usize, w: u32, ids: *const u8, out: *mut i64) {
-    unsafe { sort::id_longs(n, w, sl(ids, ids::ids_bytes(n, w)), sl_mut(out, n)) }
 }
 /// A25: sort.c `qlean_sort_grade_syms` past the unboxing.
 #[unsafe(no_mangle)]
@@ -2248,6 +2111,16 @@ pub fn sarray_room(o: lean::O, need: usize) -> lean::O {
         core::ptr::copy_nonoverlapping(lean::sarray_cptr(p), lean::sarray_cptr(r), sz.min(need));
         lean::dec(p);
         lean::O::from_raw(r)
+    }
+}
+/// `lean_sarray_set_size`: the fresh `ByteArray` `o` (`rc` 1, allocated with room for `size` bytes) counting `size` bytes. `lean.rs`
+/// has no size setter, which a kernel writing into the capacity before it knows how much it wrote needs.
+pub fn sarray_set_size(o: lean::O, size: usize) -> lean::O {
+    unsafe {
+        let p = o.into_raw();
+        assert!(lean::is_exclusive(p) && size <= lean::sarray_capacity(p), "sarray_set_size: {size} bytes of a shared array or past its capacity {}", lean::sarray_capacity(p));
+        lean::sarray_set_size(p, size);
+        lean::O::from_raw(p)
     }
 }
 /// coc.c `qlean_coc_encode_move` over any source of blocks that also moves them (`alp` answers `(meta, (pack, alp))`).
