@@ -700,14 +700,25 @@ pub fn i64s(o: &mut [u8]) -> &mut [i64] { crate::pod::cast_mut(o).expect("bin: t
 /// `out.len()` keys; `p - 1` when `!right`, `p` when `right`. Sixteen bytes have no `u64` key, so this walk is not `Walk::step`.
 pub fn bin_wide(w: usize, right: bool, hay: &[u8], keys: &[u8], out: &mut [i64]) {
     let n = hay.len() / w;
-    for (k, x) in keys.chunks_exact(w).zip(out) {
-        let (mut lo, mut hi) = (0, n);
-        while lo < hi {
-            let mid = lo + (hi - lo) / 2;
-            let c = hay[mid * w..(mid + 1) * w].cmp(k);
-            if if right { c.is_lt() } else { c.is_le() } { lo = mid + 1 } else { hi = mid }
+    // the halving at a constant `right`, over elements of an ordered type `T` read by `at`
+    fn walk<const R: bool, T: Ord>(n: usize, out: &mut [i64], keys: impl Iterator<Item = T>, at: impl Fn(usize) -> T) {
+        for (k, x) in keys.zip(out) {
+            let (mut lo, mut hi) = (0, n);
+            while lo < hi {
+                let mid = lo + (hi - lo) / 2;
+                let c = at(mid).cmp(&k);
+                if if R { c.is_lt() } else { c.is_le() } { lo = mid + 1 } else { hi = mid }
+            }
+            *x = if R { lo as i64 } else { lo as i64 - 1 }
         }
-        *x = if right { lo as i64 } else { lo as i64 - 1 }
+    }
+    // `memcmp` order on 16 bytes is the order of the big-endian `u128`: one compare, no call
+    let g = |p: &[u8], i: usize| u128::from_be_bytes(p[i * 16..(i + 1) * 16].try_into().unwrap());
+    match (w, right) {
+        (16, false) => walk::<false, _>(n, out, keys.chunks_exact(16).map(|k| g(k, 0)), |i| g(hay, i)),
+        (16, true) => walk::<true, _>(n, out, keys.chunks_exact(16).map(|k| g(k, 0)), |i| g(hay, i)),
+        (_, false) => walk::<false, _>(n, out, keys.chunks_exact(w), |i| &hay[i * w..(i + 1) * w]),
+        (_, true) => walk::<true, _>(n, out, keys.chunks_exact(w), |i| &hay[i * w..(i + 1) * w]),
     }
 }
 /// search.c:1706 `qlean_search_bin` past the unboxing: for each of the `m` keys (dense `keys`, or `kenc`), the
@@ -838,21 +849,32 @@ pub fn bin_rows(run: Runner, w: usize, is_float: bool, is_signed: bool, right: b
 /// a block at a time at width `w`, 1, 2, 4 or 8.
 pub fn run_starts(o: &Opnd, w: usize, is_float: bool, out: &mut [i64]) -> usize {
     assert!(matches!(w, 1 | 2 | 4 | 8), "qlean search: run_starts got element width {w}; the kernel is instantiated at 1, 2, 4 and 8 bytes");
+    // one block at element width `W` from element `skip`: a start is written when the key moves off the previous one
+    #[inline(always)]
+    fn blk<const W: usize>(h: &[u8], at: usize, skip: usize, prev: &mut u64, g: &mut usize, out: &mut [i64], key: impl Fn(u64) -> u64) {
+        for (j, c) in h.chunks_exact(W).enumerate().skip(skip) {
+            let mut b = [0u8; 8];
+            b[..W].copy_from_slice(c);
+            let v = key(u64::from_le_bytes(b));
+            if v != *prev { out[*g] = (at + j) as i64; *g += 1; *prev = v }
+        }
+    }
     let (mut buf, mut g, mut prev) = ([0u64; crate::BLK], 0, 0u64);
     for b in 0..o.n.div_ceil(crate::BLK) {
         let h = o.blk(b, w, crate::pod::bytes_mut(&mut buf));
+        let at = b * crate::BLK;
+        // row 0 starts a run whatever its key; the loop then needs no test for it
+        let skip = if b == 0 { out[0] = 0; g = 1; prev = norm_key(w, is_float, bin_at(h, w, 0)); 1 } else { 0 };
         // the width switch hoisted out of the element loop, as search.c's `RS_RUNS` hoists it
-        let mut runs = |key: &dyn Fn(usize) -> u64| for j in 0..h.len() / w {
-            let v = key(j);
-            if (b | j) == 0 || v != prev { out[g] = (b * crate::BLK + j) as i64; g += 1 }
-            prev = v;
-        };
         match (is_float, w) {
-            (true, _) => runs(&|j| norm_key(w, true, bin_at(h, w, j))),
-            (_, 1) => runs(&|j| bin_at(h, 1, j)),
-            (_, 2) => runs(&|j| bin_at(h, 2, j)),
-            (_, 4) => runs(&|j| bin_at(h, 4, j)),
-            _ => runs(&|j| bin_at(h, 8, j)),
+            (true, 1) => blk::<1>(h, at, skip, &mut prev, &mut g, out, |v| norm_key(1, true, v)),
+            (true, 2) => blk::<2>(h, at, skip, &mut prev, &mut g, out, |v| norm_key(2, true, v)),
+            (true, 4) => blk::<4>(h, at, skip, &mut prev, &mut g, out, |v| norm_key(4, true, v)),
+            (true, _) => blk::<8>(h, at, skip, &mut prev, &mut g, out, |v| norm_key(8, true, v)),
+            (_, 1) => blk::<1>(h, at, skip, &mut prev, &mut g, out, |v| v),
+            (_, 2) => blk::<2>(h, at, skip, &mut prev, &mut g, out, |v| v),
+            (_, 4) => blk::<4>(h, at, skip, &mut prev, &mut g, out, |v| v),
+            _ => blk::<8>(h, at, skip, &mut prev, &mut g, out, |v| v),
         }
     }
     out[g] = o.n as i64;
