@@ -4,6 +4,7 @@
 //! widening (A46a), the fused chain's stage table (A46b; its runner is `c::run_chain`). `op`, `cls`, `shape` are
 //! ew.rs's `EW_*`. The `qlean_ew_*` entries unbox and allocate and stay C (§1).
 use crate::c::Runner;
+use crate::blocks::Blocks;
 use crate::coc::Coc;
 use crate::sym::{sym_eq, sym_msort, Syms};
 use alloc::vec;
@@ -122,23 +123,8 @@ pub fn side<'a>(x: &'a [u8], atom: bool, lo: usize, hi: usize, w: usize) -> &'a 
     let (s, e) = if atom { (0, w) } else { (lo * w, hi * w) };
     x.get(s..e).unwrap_or_else(|| panic!("qlean_ew: elements {}..{} of a {}-byte payload of {w}-byte elements", s / w, e / w, x.len()))
 }
-/// ew.rs `ew_decode_run` (`coc_load_blk_at`): block `b`'s first `cnt` elements, `w` bytes each, into `o`.
-pub fn decode_stage(c: &Coc, b: usize, cnt: usize, w: usize, o: &mut [u8]) {
-    match w {
-        1 => c.decode_blk::<u8>(b, cnt, rw(o)),
-        2 => c.decode_blk::<i16>(b, cnt, rw(o)),
-        4 => c.decode_blk::<i32>(b, cnt, rw(o)),
-        _ => c.decode_blk::<i64>(b, cnt, rw(o)),
-    }
-}
 /// A block-sized scratch for `c`.
 pub fn pod_scr(c: &Coc) -> crate::pod::Scr<u64> { crate::pod::Scr::<u64>::new(c.meta.blk()) }
-/// The bytes of `buf` as a block's elements.
-pub fn block<'a>(c: &Coc, b: usize, cnt: usize, w: usize, buf: &'a mut [u64]) -> &'a [u8] {
-    let o = bytes_mut(buf);
-    decode_stage(c, b, cnt, w, o);
-    o
-}
 
 /// ew.rs `EW_SHAPED`: `o[i] = f(a[ia], b[ib])` with `(ia, ib)` the shape's index pair, an atom a one-element slice.
 #[inline(always)]
@@ -274,34 +260,28 @@ pub fn val(run: Runner, op: u8, cls: u8, shape: u8, nul: i64, a: &[u8], b: &[u8]
 }
 /// ew.rs `ew_val_foR_run`: two encoded columns, the answer dense.
 pub fn val_enc(run: Runner, op: u8, cls: u8, nul: i64, a: &Coc, b: &Coc, out: &mut [u8]) {
-    let (w, n, lg) = (ew_width(cls as u32), a.meta.n, a.meta.lg);
+    let (w, n, lg, s) = (ew_width(cls as u32), a.meta.n, a.meta.lg, Blocks::from(*a));
     assert_eq!(lg, b.meta.lg, "qlean ew: two encoded columns at block sizes 1 << {} and 1 << {}; the caller decodes one", lg, b.meta.lg);
     run_map(run, out, n, w, QLEAN_COST_ARITH, w, &|lo, hi, o| {
         let (mut xa, mut xb) = (pod_scr(a), pod_scr(a));
-        let mut at = lo;
-        while at < hi {
+        for (blk, blo, at, end) in s.tiles(lo, hi) {
             // a slice may start inside a block, so the block is decoded from its own start and entered at `at - blo`
-            let (blk, end) = (at >> lg, (((at >> lg) + 1) << lg).min(hi));
-            let (blo, cnt) = (blk << lg, end - (blk << lg));
-            let (pa, pb) = (block(a, blk, cnt, w, &mut xa), block(b, blk, cnt, w, &mut xb));
+            let cnt = end - blo;
+            let (pa, pb) = (s.load_w(blk, cnt, w, bytes_mut(&mut xa)), Blocks::from(*b).load_w(blk, cnt, w, bytes_mut(&mut xb)));
             val_slice(op, cls, k::VV, nul, pa, pb, at - blo, cnt, &mut o[(at - lo) * w..(end - lo) * w]);
-            at = end;
         }
     });
 }
 /// ew.rs `ew_val_foR_atom_run`: an encoded column and an atom.
 pub fn val_enc_atom(run: Runner, op: u8, cls: u8, shape: u8, nul: i64, c: &Coc, atom: &[u8], out: &mut [u8]) {
-    let (w, n, lg) = (ew_width(cls as u32), c.meta.n, c.meta.lg);
-    run_map(run, out, n, w, QLEAN_COST_ARITH, w, &|lo, hi, o| {
+    let (w, s) = (ew_width(cls as u32), Blocks::from(*c));
+    run_map(run, out, s.n, w, QLEAN_COST_ARITH, w, &|lo, hi, o| {
         let mut xv = pod_scr(c);
-        let mut at = lo;
-        while at < hi {
-            let (blk, end) = (at >> lg, (((at >> lg) + 1) << lg).min(hi));
-            let (blo, cnt) = (blk << lg, end - (blk << lg));
-            let x = block(c, blk, cnt, w, &mut xv);
+        for (blk, blo, at, end) in s.tiles(lo, hi) {
+            let cnt = end - blo;
+            let x = s.load_w(blk, cnt, w, bytes_mut(&mut xv));
             let o = &mut o[(at - lo) * w..(end - lo) * w];
             if shape == k::VA { val_slice(op, cls, shape, nul, x, atom, at - blo, cnt, o) } else { val_slice(op, cls, shape, nul, atom, x, at - blo, cnt, o) }
-            at = end;
         }
     });
 }
@@ -1499,7 +1479,7 @@ mod tests44 {
                 let mut dense = vec![0u8; n * w];
                 for b in 0..nblk {
                     let (cnt, mut xv) = ((n - b * crate::BLK).min(crate::BLK), [0u64; crate::BLK]);
-                    let x = block(&c, b, cnt, w, &mut xv);
+                    let x = Blocks::from(c).load_w(b, cnt, w, bytes_mut(&mut xv));
                     dense[b * crate::BLK * w..(b * crate::BLK + cnt) * w].copy_from_slice(&x[..cnt * w]);
                 }
                 let want = mon_of(op, cls, i64::MIN, &dense, n);
@@ -1703,23 +1683,19 @@ pub fn low_zero(run: Runner, a: &[u8], b: &[u8], n: usize, out: &mut [u8]) {
 /// ew.rs `ew_low_zero_foR_run`: a block with `base = maxv` is one value and is answered from its metadata,
 /// any other is restored into a buffer; sliced by output byte, a block's bytes may be split between two slices.
 pub fn low_zero_enc(run: Runner, c: &Coc, atom: &[u8], out: &mut [u8]) {
-    let (n, m, lg) = (c.meta.n, ro::<u64>(side(atom, true, 0, 1, 8))[0], c.meta.lg);
-    run_map(run, out, n.div_ceil(8), 1, QLEAN_COST_ARITH, c.meta.blk() * 8, &|lo, hi, o| {
+    let (s, m) = (Blocks::from(*c), ro::<u64>(side(atom, true, 0, 1, 8))[0]);
+    run_map(run, out, s.n.div_ceil(8), 1, QLEAN_COST_ARITH, c.meta.blk() * 8, &|lo, hi, o| {
         let mut xv = pod_scr(c);
-        let mut at = lo;
-        while at < hi {
-            let (blk, end) = (at >> (lg - 3), (((at >> (lg - 3)) + 1) << (lg - 3)).min(hi));
-            let (blo, cnt) = (blk << lg, (n - (blk << lg)).min(c.meta.blk()));
-            let (e0, e1) = (at * 8, (end * 8).min(blo + cnt));
-            let o = &mut o[at - lo..end - lo];
+        // a slice of output bytes is the elements `8 lo .. 8 hi`, cut at the column end
+        for (blk, blo, e0, e1) in s.tiles(lo * 8, (hi * 8).min(s.n)) {
+            let (cnt, o) = (s.span(blk).1, &mut o[e0 / 8 - lo..e1.div_ceil(8) - lo]);
             if c.meta.base[blk] == c.meta.maxv[blk] {
                 let all = c.meta.base[blk] as u64 & m == 0;
                 pack_bits(o, e1 - e0, |_| all);
             } else {
-                let x = ro::<u64>(block(c, blk, cnt, 8, &mut xv));
+                let x = ro::<u64>(s.load_w(blk, cnt, 8, bytes_mut(&mut xv)));
                 pack2(k::VA, &x[e0 - blo..e1 - blo], &[m], o, e1 - e0, |x, y| x & y == 0);
             }
-            at = end;
         }
     });
 }
@@ -1728,17 +1704,14 @@ pub fn mon_enc(run: Runner, op: u8, cls: u8, nul: i64, c: &Coc, out: &mut [u8]) 
     let n = c.meta.n;
     if n == 0 { return }
     mon_chk(op, cls);
-    let (w, lg) = (ew_width(cls as u32), c.meta.lg);
+    let w = ew_width(cls as u32);
     run_map(run, out, n, w, QLEAN_COST_ARITH, w, &|lo, hi, o| {
         let mut xv = pod_scr(c);
-        let mut at = lo;
-        while at < hi {
+        for (blk, blo, at, end) in Blocks::from(*c).tiles(lo, hi) {
             // a slice may start inside a block, so the block is decoded from its own start and entered at `at - blo`
-            let (blk, end) = (at >> lg, (((at >> lg) + 1) << lg).min(hi));
-            let (blo, cnt) = (blk << lg, end - (blk << lg));
-            let x = block(c, blk, cnt, w, &mut xv);
+            let cnt = end - blo;
+            let x = Blocks::from(*c).load_w(blk, cnt, w, bytes_mut(&mut xv));
             mon_slice(op, cls, nul, &x[(at - blo) * w..cnt * w], &mut o[(at - lo) * w..(end - lo) * w]);
-            at = end;
         }
     });
 }
@@ -1750,13 +1723,10 @@ pub fn mon_fill(op: u8, cls: u8, nul: i64, c: &Coc, buf: &mut [i64], i0: usize) 
     if nb == 0 { return }
     mon_chk(op, cls);
     // the source's blocks need not be the writer's: one pass per source block the span touches (one, whole, at the same size)
-    let (lg, blk) = (c.meta.lg, c.meta.blk());
-    let (mut xv, mut yv) = (pod_scr(c), pod_scr(c));
-    let mut at = 0;
-    while at < nb {
-        let (b, o) = ((i0 + at) >> lg, (i0 + at) & (blk - 1));
-        let take = (blk - o).min(nb - at);
-        let x = &block(c, b, o + take, w, &mut xv)[o * w..];
+    let (s, mut xv, mut yv) = (Blocks::from(*c), pod_scr(c), pod_scr(c));
+    for (b, blo, lo, end) in s.tiles(i0, i0 + nb) {
+        let (at, o, take) = (lo - i0, lo - blo, end - lo);
+        let x = &s.load_w(b, end - blo, w, bytes_mut(&mut xv))[o * w..];
         let d = &mut buf[at..at + take];
         if w == 8 { mon_slice(op, cls, nul, &x[..take * 8], bytes_mut(d)) } else {
             let y = bytes_mut(&mut yv);
@@ -1767,7 +1737,6 @@ pub fn mon_fill(op: u8, cls: u8, nul: i64, c: &Coc, buf: &mut [i64], i0: usize) 
                 _ => for (d, &s) in d.iter_mut().zip(ro::<u64>(&y[..take * 8])) { *d = s as i64 },
             }
         }
-        at += take;
     }
 }
 /// ew.rs `qlean_ew_rank_pair` past the unboxing: each symbol's rank in the merged order of `da`, `db`.

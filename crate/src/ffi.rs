@@ -374,7 +374,7 @@ pub unsafe extern "C" fn qrs_ew_decode_stage(lo: usize, hi: usize, p: *const CPa
     unsafe {
         let p = &*p;
         let (w, cnt) = (ew::ew_width(p.cls as u32), hi - lo);
-        ew::decode_stage(&(*p.a.cast::<CCoc>()).view(), p.at >> (*p.a.cast::<CCoc>()).lg(), cnt, w, sl_mut(p.o.cast::<u8>(), cnt * w))
+        crate::blocks::Blocks::from((*p.a.cast::<CCoc>()).view()).load_w(p.at >> (*p.a.cast::<CCoc>()).lg(), cnt, w, sl_mut(p.o.cast::<u8>(), cnt * w));
     }
 }
 /// ew.rs `ew_alp_run`: `Coc.alpDecode` over one tile, the patches the block names applied.
@@ -382,7 +382,8 @@ pub unsafe extern "C" fn qrs_ew_alp_stage(lo: usize, hi: usize, p: *const CPass)
     unsafe {
         let (p, cnt) = (&*p, hi - lo);
         let f = &*p.a.cast::<CCocf>();
-        f.view().load_blk(p.at >> f.c.lg(), cnt, sl_mut(p.o.cast::<u8>(), cnt * if f.f32 != 0 { 4 } else { 8 }))
+        let w = if f.f32 != 0 { 4 } else { 8 };
+        crate::blocks::Blocks::from(f.view()).load_w(p.at >> f.c.lg(), cnt, w, sl_mut(p.o.cast::<u8>(), cnt * w));
     }
 }
 /// ew.rs `ew_ids_run`: an interned column's ids read where they lie at any lane and written at `cls`.

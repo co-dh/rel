@@ -119,18 +119,16 @@ impl Cocf<'_> {
         for _ in 0..4 { if self.dec(t, e) < v { t += 1 } else { break } }
         t
     }
-    /// The block's first `nb`-element grid: `(lo, nb)` of block `b`.
-    fn blk(&self, b: usize) -> usize { (self.c.meta.n - (b << self.c.meta.lg)).min(self.c.meta.blk()) }
     /// coc.rs `cocf_min`: metadata and the patch list only; NaN loses every comparison, and the `+inf` seed is q's `0w`.
     /// A block of nothing but patches has no base to offer.
     pub fn min(&self) -> f64 {
-        let m = (0..self.c.meta.nblk).filter(|&b| (self.exc_off[b + 1] - self.exc_off[b]) as usize != self.blk(b))
+        let m = (0..self.c.meta.nblk).filter(|&b| (self.exc_off[b + 1] - self.exc_off[b]) as usize != crate::blocks::Blocks::from(*self).span(b).1)
             .fold(f64::INFINITY, |m, b| { let v = self.dec(self.c.meta.base[b], self.exp[b] as i32); if v < m { v } else { m } });
         (0..self.exc_pos.len()).fold(m, |m, j| { let v = self.exc_val(j); if v < m { v } else { m } })
     }
     /// coc.rs `cocf_max`, dually seeded with `-inf`.
     pub fn max(&self) -> f64 {
-        let m = (0..self.c.meta.nblk).filter(|&b| (self.exc_off[b + 1] - self.exc_off[b]) as usize != self.blk(b))
+        let m = (0..self.c.meta.nblk).filter(|&b| (self.exc_off[b + 1] - self.exc_off[b]) as usize != crate::blocks::Blocks::from(*self).span(b).1)
             .fold(f64::NEG_INFINITY, |m, b| { let v = self.dec(self.c.meta.maxv[b], self.exp[b] as i32); if v > m { v } else { m } });
         (0..self.exc_pos.len()).fold(m, |m, j| { let v = self.exc_val(j); if v > m { v } else { m } })
     }

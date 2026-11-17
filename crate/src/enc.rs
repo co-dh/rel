@@ -153,7 +153,8 @@ pub fn pack_exc_blk<T: Elt>(p: &mut EncPack, x: &[T], ne: u32) {
 }
 /// coc.rs `decode`: the whole column into `out` (`n` long).
 pub fn decode<T: Lane>(c: &Coc, out: &mut [T]) {
-    for (b, o) in out[..c.meta.n].chunks_mut(c.meta.blk()).enumerate() { c.decode_blk(b, o.len(), o) }
+    let s = crate::blocks::Blocks::from(*c);
+    for (b, lo, nb) in s.walk() { s.load(b, nb, &mut out[lo..lo + nb]) }
 }
 
 // ---- A16: coc.rs, the block steps of `coc_enc` ----
