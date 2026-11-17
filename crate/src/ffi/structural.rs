@@ -501,7 +501,9 @@ export! {
         let (counts, parts) = (elems::<usize>(countsv), partsv.array());
         let k = counts.len().min(parts.len());
         let widths: Vec<u32> = (0..widthsv.array().len().min(k)).map(|i| count_at(widthsv.array(), i) as u32).collect();
-        let mut a = zeroed(crate::ids::ids_bytes(counts[..k].iter().sum(), wout as u32));
+        // a whole-byte width is written end to end by the parts, so only a sub-byte one needs the zeroed tail bits
+        let n = crate::ids::ids_bytes(counts[..k].iter().sum(), wout as u32);
+        let mut a = if wout % 8 == 0 { SArr::new(1, n) } else { zeroed(n) };
         structural::concat_ids(wout as u32, &counts[..k], &widths, &bytes_of(mapsv.array()), &bytes_of(&parts[..k]), a.bytes_mut());
         a.into()
     }
