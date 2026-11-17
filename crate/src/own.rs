@@ -19,7 +19,6 @@ use crate::coc::{COC_EXC_FRM, Meta};
 use crate::ids::{id_at, id_width, ids_bytes, ids_max};
 use crate::layout::{Tail, exc_ok};
 use crate::why::Why;
-use crate::BLK;
 use crate::os::{self, File, Map};
 use alloc::{format, string::String, vec, vec::Vec};
 use core::ffi::CStr;
@@ -146,12 +145,18 @@ pub fn check(kind: u8, n: u64, p: [&[u8]; OWN_MAXPARTS], why: &mut Why) -> bool 
 fn check_coc(kind: u8, n: u64, p: [&[u8]; OWN_MAXPARTS], why: &mut Why) -> bool {
     let (m, pk) = (p[0], p[1]);
     let nblk = m.len() / 33;
-    if m.len() != 33 * nblk + 16 {
-        why.say(format_args!("part 0: Frame of Reference metadata of 33 bytes a block and a 16-byte trailer, found {} bytes", m.len()));
+    if m.len() != 33 * nblk + 24 {
+        why.say(format_args!("part 0: Frame of Reference metadata of 33 bytes a block and a 24-byte trailer, found {} bytes", m.len()));
         return false;
     }
-    if n > nblk as u64 * BLK as u64 {
-        why.say(format_args!("part 0: blocks for {} elements, found {} blocks of {}", n, nblk, BLK));
+    let lg = le(m, 32 * nblk + 16, 8);
+    if !(crate::MIN_LG as u64..=crate::MAX_LG as u64).contains(&lg) {
+        why.say(format_args!("part 0: a block size lg in {}..={}, found {}", crate::MIN_LG, crate::MAX_LG, lg));
+        return false;
+    }
+    let blk = 1u64 << lg;
+    if n > nblk as u64 * blk {
+        why.say(format_args!("part 0: blocks for {} elements, found {} blocks of {}", n, nblk, blk));
         return false;
     }
     let Some(meta) = Meta::new(m, n as usize) else {
@@ -162,12 +167,12 @@ fn check_coc(kind: u8, n: u64, p: [&[u8]; OWN_MAXPARTS], why: &mut Why) -> bool 
     let plen = pk.len() as u64;
     let bad = (0..nblk).fold(false, |bad, b| {
         let (wd, o) = (meta.width[b] as u64, meta.off[b]);
-        bad | (wd > 64) | (o % 8 != 0) | (o > plen) | (BLK as u64 * wd / 8 > plen.wrapping_sub(o))
+        bad | (wd > 64) | (o % 8 != 0) | (o > plen) | (blk * wd / 8 > plen.wrapping_sub(o))
     });
     if bad {
         for b in 0..nblk {
             let (wd, o) = (meta.width[b] as u64, meta.off[b]);
-            let need = BLK as u64 * wd / 8;
+            let need = blk * wd / 8;
             if wd > 64 {
                 why.say(format_args!("part 0 block {}: a residual width of 0..64 bits, found {}", b, wd));
                 return false;
@@ -193,7 +198,7 @@ in a pack of {} bytes", b, need, o, plen));
                 why.say(format_args!("part 1: a patch list element width of 1, 2, 4 or 8 bytes, found {}", esz));
                 return false;
             }
-            return exc_ok(t, nblk, nexc, esz as usize, 1, if frm { Tail::Frames } else { Tail::None }, why);
+            return exc_ok(t, blk as usize, nblk, nexc, esz as usize, 1, if frm { Tail::Frames } else { Tail::None }, why);
         }
     } else {
         if pk.len() != e {
@@ -206,7 +211,7 @@ in a pack of {} bytes", b, need, o, plen));
             return false;
         }
         let flags = u64::from_ne_bytes(a[8..16].try_into().unwrap());
-        return exc_ok(a, nblk, u64::from_ne_bytes(a[..8].try_into().unwrap()), if flags & 1 != 0 { 4 } else { 8 }, 2, Tail::Exps, why);
+        return exc_ok(a, blk as usize, nblk, u64::from_ne_bytes(a[..8].try_into().unwrap()), if flags & 1 != 0 { 4 } else { 8 }, 2, Tail::Exps, why);
     }
     true
 }
@@ -407,12 +412,18 @@ mod tests {
     }
     #[test] fn check_frame_of_reference_metadata() {
         let e: &[u8] = &[];
-        assert_eq!(say(2, 0, [&[0; 20], e, e]).1, "part 0: Frame of Reference metadata of 33 bytes a block and a 16-byte trailer, found 20 bytes");
-        assert_eq!(say(2, 2000, [&[0; 49], e, e]).1, "part 0: blocks for 2000 elements, found 1 blocks of 1024");
-        let mut m = [0u8; 49];
-        m[48] = 65; // block 0's width, past 64 bits
+        assert_eq!(say(2, 0, [&[0; 20], e, e]).1, "part 0: Frame of Reference metadata of 33 bytes a block and a 24-byte trailer, found 20 bytes");
+        let mut m = [0u8; 57];
+        assert_eq!(say(2, 2000, [&m, e, e]).1, "part 0: a block size lg in 6..=16, found 0");
+        for lg in [5u8, 17] { m[48] = lg; assert_eq!(say(2, 10, [&m, e, e]).1, format!("part 0: a block size lg in 6..=16, found {lg}")) }
+        m[48] = 10;
+        assert_eq!(say(2, 2000, [&m, e, e]).1, "part 0: blocks for 2000 elements, found 1 blocks of 1024");
+        m[48] = 6;
+        assert_eq!(say(2, 65, [&m, e, e]).1, "part 0: blocks for 65 elements, found 1 blocks of 64");
+        m[48] = 10;
+        m[56] = 65; // block 0's width, past 64 bits
         assert_eq!(say(2, 10, [&m, &[0; 8], e]).1, "part 0 block 0: a residual width of 0..64 bits, found 65");
-        m[48] = 8; // 1024 residual bytes in an 8-byte pack
+        m[56] = 8; // 1024 residual bytes in an 8-byte pack
         assert_eq!(say(2, 10, [&m, &[0; 8], e]).1, "part 1 block 0: 1024 residual bytes at a pack offset that is a multiple of 8, found offset 0 in a pack of 8 bytes");
     }
 

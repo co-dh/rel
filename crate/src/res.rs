@@ -1,7 +1,7 @@
 #![forbid(unsafe_code)]
 //! Column (a), coc.rs: one block's residuals as bits — single fields (A2), the scalar pack (A2; the AVX-512 one is
 //! `simd::res_pack`), the residual sums (A3, `simd::res_sum8` for 8 bits), the smallest nonzero residual (A4).
-//! `p` is always the block's `BLK * w / 8` bytes.
+//! `p` is always the block's `(1 << lg) * w / 8` bytes.
 
 use alloc::{vec, vec::Vec};
 
@@ -102,7 +102,8 @@ pub fn res_count_lt(p: &[u8], nb: usize, w: u8, t: u64) -> usize {
 /// and the one-pass decode agree with them, and `res_pack` of those lanes writes back exactly the stream's first
 /// ⌈nb*w/8⌉ bytes -- its bits past the last field cleared -- and not one byte more.
 pub fn res_unpack_agrees(w: u8, nb: usize) -> bool {
-    use crate::{BLK, simd, unpack};
+    use crate::{simd, unpack};
+    const BLK: usize = 1 << crate::DEFAULT_LG;
     if w & w.wrapping_sub(1) == 0 || w > 64 || nb > BLK { return false }
     let (mut s, mut x) = (vec![0u8; BLK * 8], 0x9e3779b97f4a7c15u64.wrapping_mul(w as u64 + 1).wrapping_add(nb as u64));
     for b in &mut s[..BLK * w as usize / 8] { x ^= x << 13; x ^= x >> 7; x ^= x << 17; *b = x as u8 }

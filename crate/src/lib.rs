@@ -5,7 +5,14 @@
 #![deny(unsafe_op_in_unsafe_fn)]
 extern crate alloc;
 
-pub const BLK: usize = 1024;
+/// The block size every encoder writes, as `lg` in a column's metadata trailer (`blk = 1 << lg`, `MIN_LG <= lg <= MAX_LG`):
+/// the one place 10 is written.
+pub const DEFAULT_LG: u32 = 10;
+/// tests that name the default block by its size
+#[cfg(test)]
+pub const BLK: usize = 1 << DEFAULT_LG;
+pub const MIN_LG: u32 = 6;
+pub const MAX_LG: u32 = 16;
 
 /// Costs per element, named so a call site says why rather than what; the one definition.
 /// one indexed load and one store

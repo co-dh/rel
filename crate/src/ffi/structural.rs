@@ -9,7 +9,7 @@ use crate::exports::reduce::elems;
 use crate::ffi::{Producer, SdPart, amend, concat_own, encode_alp, encode_fill, encode_scatter, sarray_room, sd_concat, sd_part, syms_of, take_first, take_ids0};
 use crate::ids::ids_bytes;
 use crate::lean::{B, O, SArr, box_, box_usize_o, boxed, ctor, export};
-use crate::{BLK, c, lean, pod, structural};
+use crate::{c, lean, pod, structural};
 use crate::structural::{STR_BLK, rows_at};
 use alloc::vec::Vec;
 
@@ -92,16 +92,16 @@ impl Producer for ShiftAlp<'_, '_> {
 /// structural.rs `reverse_foR_move`: the blocks in reverse order, each keeping its base, maximum and width, its residuals
 /// reversed inside it.
 fn reverse_moved(col: &Coc) -> O {
-    let mut mo = SArr::new(1, 33 * col.meta.nblk + 16);
+    let mut mo = SArr::new(1, 33 * col.meta.nblk + 24);
     let mut po = SArr::new(1, structural::reverse_meta(col, mo.bytes_mut()));
     structural::reverse_enc(c::pool(), col, po.bytes_mut());
     pair(mo.into(), po.into())
 }
 /// structural.rs `concat_foR_move`: the parts' four metadata sections in turn and their packs end to end, `n` elements.
 fn concat_moved(ms: &[&[u8]], ps: &[&[u8]], n: usize, w: usize) -> O {
-    let mut mo = SArr::new(1, 33 * ms.iter().map(|m| m.len() / 33).sum::<usize>() + 16);
+    let mut mo = SArr::new(1, 33 * ms.iter().map(|m| m.len() / 33).sum::<usize>() + 24);
     let mut po = SArr::new(1, ps.iter().map(|p| p.len()).sum());
-    structural::concat_move(ms, ps, n, w, mo.bytes_mut(), po.bytes_mut());
+    structural::concat_move(crate::coc::Meta::new(ms[0], 0).map_or(crate::DEFAULT_LG, |m| m.lg), ms, ps, n, w, mo.bytes_mut(), po.bytes_mut());
     pair(mo.into(), po.into())
 }
 /// structural.rs `concat_foR`: the answer, or `Err` of the append `qlean_structural_concat_foR` makes in the first part's own
@@ -130,7 +130,7 @@ export! {
         let col = view("qlean structural", mv, pv, n);
         // a patch list's positions are the block's own, so a patched column is re-encoded, not moved, and so is one with a
         // block past its count, which would come first
-        if n % BLK == 0 && col.std(n) && col.pack.len() == col.meta.res_end() && structural::trailer_ok(&col, col.meta.n, w, false) {
+        if n % col.meta.blk() == 0 && col.std(n) && col.pack.len() == col.meta.res_end() && structural::trailer_ok(&col, col.meta.n, w, false) {
             return reverse_moved(&col);
         }
         encode_fill(col.meta.n, w, &Rev(&col))

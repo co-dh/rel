@@ -38,7 +38,7 @@ pub fn alp_view<'a>(mv: B<'a>, pv: B<'a>, av: B<'a>, n: usize) -> Cocf<'a> {
 export! {
     /// Byte offset in the pack of block `bv`, or the pack's length for the block past the last (`Nat`)
     fn qlean_coc_block_start(mv: B, bv: B) -> O {
-        let Some(m) = Meta::new(mv.bytes(), usize::MAX) else { die(format_args!("qlean_coc_block_start: the metadata array is not a column's 33 * nblk + 16 bytes\n")) };
+        let Some(m) = Meta::new(mv.bytes(), usize::MAX) else { die(format_args!("qlean_coc_block_start: the metadata array is not a column's 33 * nblk + 24 bytes\n")) };
         if !bv.is_scalar() {
             die(format_args!("qlean_coc_block_start: the block index is a bignum; a column is bounded by its byte count and cannot have 2^63 blocks\n"))
         }
@@ -101,7 +101,7 @@ export! {
                 let mut m2 = SArr::new(1, meta.bytes().len());
                 m2.bytes_mut().copy_from_slice(meta.bytes());
                 // the metadata alone, at the count its block sums need
-                CocMut::meta_only(m2.bytes_mut(), src.meta.n).unwrap_or_else(|| die(format_args!("qlean_coc_shift: the metadata array is not a column's 33 * nblk + 16 bytes\n"))).shift(k, false);
+                CocMut::meta_only(m2.bytes_mut(), src.meta.n).unwrap_or_else(|| die(format_args!("qlean_coc_shift: the metadata array is not a column's 33 * nblk + 24 bytes\n"))).shift(k, false);
                 ctor(1, [ctor(0, [m2.into(), pack.to_owned()], &[])], &[])
             }
         }
@@ -112,6 +112,7 @@ export! {
         if op as i32 > GE { die(format_args!("qlean_coc_mask_cmp_vv: verb {op} is not one of the six in QLean.Kernel.Ew\n")) }
         // the shorter of the two decides how far the kernel walks
         a.meta.n = a.meta.n.min(b.meta.n);
+        if a.meta.lg != b.meta.lg { return mask_with(a.meta.n, |out| codec::cmp2_dense(op as i32, &a, &b, out)) }
         let mut deep = pod::uninit::<u32>(a.meta.nblk);
         mask_with(a.meta.n, |out| {
             let nd = codec::cmp_meta(&a, Some(&b), op as i32, 0, out, &mut deep);
@@ -142,7 +143,7 @@ fn mask_with(n: usize, f: impl FnOnce(&mut [u64])) -> O {
 /// to what the blocks can hold. A metadata or ALP array with misaligned or missing sections, which C read past, is a stop.
 fn fview<'a>(who: &str, meta: B<'a>, pack: B<'a>, alp: B<'a>, n: usize) -> Cocf<'a> {
     let mut f = Cocf::meta_view(meta.bytes(), alp.bytes(), n).unwrap_or_else(|| die(format_args!(
-        "{who}: the metadata array is not a column's 33 * nblk + 16 bytes, or the alp array is misaligned or shorter than its header says\n")));
+        "{who}: the metadata array is not a column's 33 * nblk + 24 bytes, or the alp array is misaligned or shorter than its header says\n")));
     f.c.pack = pack.bytes();
     f
 }

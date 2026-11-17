@@ -1,9 +1,7 @@
 #![forbid(unsafe_code)]
 //! sort.rs: an encoded column's keys through a window of two blocks, each decoded on first touch, and the
 //! column's key range from its metadata. The ALP arm (`kwin.f`, sort.rs) is `alp`, `None` for an integral column.
-use alloc::boxed::Box;
 
-use crate::BLK;
 use crate::alp::Cocf;
 use crate::coc::Coc;
 use crate::key::{Keys, SK_C8, SK_F32, SK_F64, SK_I16, SK_I32, SK_I64, SK_U8};
@@ -13,7 +11,7 @@ pub struct Kwin<'a> {
     kind: u8, c: Coc<'a>,
     /// the ALP arm, `kwin.f`: `kwin_blk` and `range_foR` branch on it
     alp: Option<Cocf<'a>>,
-     lo: usize, len: usize, key: Box<[u64; 2 * BLK]> }
+     lo: usize, len: usize, key: alloc::vec::Vec<u64> }
 
 /// `sk_dense_width` (coc.rs) in bits; C exits at the kinds with no dense width, which an encoded column never has.
 pub fn dense_bits(kind: u8) -> u32 {
@@ -30,14 +28,15 @@ impl<'a> Kwin<'a> {
     /// `kwin_init`: an empty window.
     pub fn new(kind: u8, c: Coc<'a>) -> Self {
         dense_bits(kind);
-        Kwin { kind, c, alp: None, lo: 0, len: 0, key: Box::new([0; 2 * BLK]) }
+        Kwin { kind, c, alp: None, lo: 0, len: 0, key: alloc::vec![0; 2 * c.meta.blk()] }
     }
 
     /// `kwin_blk`: block `b` into its slot; answers its key count.
     fn blk(&mut self, b: usize) -> usize {
-        let at = b * BLK;
-        let cnt = (self.c.meta.n - at).min(BLK);
-        let s = (b & 1) * BLK;
+        let blk = self.c.meta.blk();
+        let at = b * blk;
+        let cnt = (self.c.meta.n - at).min(blk);
+        let s = (b & 1) * blk;
         match &self.alp {
             Some(f) => keys_blk_alp(f, b, &mut self.key[s..s + cnt]),
             None => keys_blk(self.kind, &self.c, b, &mut self.key[s..s + cnt]),
@@ -49,9 +48,10 @@ impl<'a> Kwin<'a> {
     #[cold]
     #[inline(never)]
     fn miss(&mut self, i: usize) {
-        let b = i / BLK;
-        if self.len == 2 * BLK && b == self.lo / BLK + 2 { self.lo += BLK; self.len = BLK + self.blk(b); return }
-        self.lo = b * BLK;
+        let (lg, blk) = (self.c.meta.lg, self.c.meta.blk());
+        let b = i >> lg;
+        if self.len == 2 * blk && b == (self.lo >> lg) + 2 { self.lo += blk; self.len = blk + self.blk(b); return }
+        self.lo = b * blk;
         self.len = self.blk(b);
         if self.lo + self.len < self.c.meta.n { self.len += self.blk(b + 1) }
     }
@@ -61,7 +61,7 @@ impl Keys for Kwin<'_> {
     #[inline(always)]
     fn at(&mut self, i: usize) -> u64 {
         if i.wrapping_sub(self.lo) >= self.len { self.miss(i) }
-        self.key[i & (2 * BLK - 1)]
+        self.key[i & (self.key.len() - 1)]
     }
     fn fork(&self) -> Self { self.alp.map_or_else(|| Kwin::new(self.kind, self.c), |f| Kwin::with_alp(self.kind, f)) }
 }
@@ -81,7 +81,7 @@ pub fn keys_blk(kind: u8, c: &Coc, b: usize, k: &mut [u64]) {
     let w = c.meta.width[b];
     // a patched block, and an odd width, are decoded (frame + residual, patches over it); frame is base without patches
     if c.blk_nexc(b) != 0 || !matches!(w, 0 | 8 | 16 | 32 | 64) {
-        let mut dec = [0i64; BLK];
+        let mut dec = crate::pod::Scr::<i64>::new(c.meta.blk());
         c.decode_blk(b, cnt, &mut dec);
         for j in 0..cnt { k[j] = dec[j] as u64 & mask ^ flip }
         return;
@@ -102,7 +102,7 @@ pub fn keys_blk(kind: u8, c: &Coc, b: usize, k: &mut [u64]) {
 pub fn range(kind: u8, c: &Coc) -> (u64, u64) {
     let (mask, flip) = (mask(kind), key_flip(kind));
     let (mut mn, mut mx) = (!0u64, 0u64);
-    for b in 0..c.meta.n.div_ceil(BLK) {
+    for b in 0..c.meta.n.div_ceil(c.meta.blk()) {
         mn = mn.min((c.meta.base[b] as u64 & mask) ^ flip);
         mx = mx.max((c.meta.maxv[b] as u64 & mask) ^ flip);
     }
@@ -126,7 +126,7 @@ mod tests {
 /// sort.rs `keys_blk_alp`: block `b` of `f`, `k.len()` elements restored and each ranked, as sort keys into `k`;
 /// `rank32`/`rank64` are the key at the two float kinds whatever holds the payload.
 pub fn keys_blk_alp(f: &Cocf, b: usize, k: &mut [u64]) {
-    let mut v = [0u64; BLK];
+    let mut v = crate::pod::Scr::<u64>::new(f.c.meta.blk());
     let v = crate::pod::bytes_mut(&mut v);
     f.load_blk(b, k.len(), v);
     if f.f32 { for (x, e) in k.iter_mut().zip(v.chunks_exact(4)) { *x = crate::key::rank32(u32::from_ne_bytes(e.try_into().unwrap())) } }

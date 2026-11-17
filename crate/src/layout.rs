@@ -1,7 +1,6 @@
 #![forbid(unsafe_code)]
 //! `exc_layout` / `for_layout` / `alp_layout` (coc.rs, 209, 1518) as one function, and own.rs's `exc_ok`.
 use crate::why::Why;
-use crate::BLK;
 
 /// `for_layout` frm=0, frm=1, `alp_layout`.
 pub enum Tail { None, Frames, Exps }
@@ -30,7 +29,7 @@ fn u16_at(t: &[u8], o: usize) -> u16 { u16::from_ne_bytes(t[o..o + 2].try_into()
 
 /// The exception ladder at `t` in part `part`: a FoR patch list fills its tail exactly, an ALP blob
 /// (`Tail::Exps`) holds it with a decimal exponent a block after it.
-pub fn exc_ok(t: &[u8], nblk: usize, nexc: u64, esz: usize, part: i32, tail: Tail, why: &mut Why) -> bool {
+pub fn exc_ok(t: &[u8], blk: usize, nblk: usize, nexc: u64, esz: usize, part: i32, tail: Tail, why: &mut Why) -> bool {
     let len = t.len();
     let alp = matches!(tail, Tail::Exps);
     let l = if nexc > len as u64 / (esz as u64 + 2) { None } else { exc_layout(nblk, nexc as usize, esz, tail) };
@@ -57,7 +56,7 @@ pub fn exc_ok(t: &[u8], nblk: usize, nexc: u64, esz: usize, part: i32, tail: Tai
         bad |= u32::from_ne_bytes(a.try_into().unwrap()) > u32::from_ne_bytes(b.try_into().unwrap());
     }
     for &e in exps { bad |= (e as i8) < 0 || e as i8 > ALP_MAXE as i8; }
-    for c in poss.chunks_exact(2) { bad |= u16::from_ne_bytes(c.try_into().unwrap()) as usize >= BLK; }
+    for c in poss.chunks_exact(2) { bad |= u16::from_ne_bytes(c.try_into().unwrap()) as usize >= blk; }
     if !bad { return true; }
     for b in 0..nblk {
         if eo(b) > eo(b + 1) {
@@ -70,8 +69,8 @@ pub fn exc_ok(t: &[u8], nblk: usize, nexc: u64, esz: usize, part: i32, tail: Tai
         }
     }
     for j in 0..nexc as usize {
-        if ep(j) as usize >= BLK {
-            why.say(format_args!("part {part} exception {j}: a position inside its block of {BLK}, found {}", ep(j)));
+        if ep(j) as usize >= blk {
+            why.say(format_args!("part {part} exception {j}: a position inside its block of {blk}, found {}", ep(j)));
             return false;
         }
     }
@@ -96,18 +95,18 @@ mod tests {
         assert!(exc_layout(1, usize::MAX, 8, Tail::None).is_none());
     }
     #[test] fn wrong_size_message() {
-        let (ok, m) = say(|w| exc_ok(&[0; 10], 1, 0, 8, 1, Tail::None, w));
+        let (ok, m) = say(|w| exc_ok(&[0; 10], 1024, 1, 0, 8, 1, Tail::None, w));
         assert!(!ok);
         assert_eq!(m, "part 1: the exception sections of 1 blocks and 0 exceptions of 8 bytes, found 10 bytes");
     }
     #[test] fn empty_ladder_ok_and_alp_slack() {
         let mut t = [0u8; 40]; // nblk 1, nexc 0: off 16, pos 24, exp at 24, size 32
-        assert!(say(|w| exc_ok(&t[..24], 1, 0, 8, 1, Tail::None, w)).0);
-        assert!(say(|w| exc_ok(&t, 1, 0, 8, 2, Tail::Exps, w)).0);
-        assert!(!say(|w| exc_ok(&t, 1, 0, 8, 2, Tail::None, w)).0);
+        assert!(say(|w| exc_ok(&t[..24], 1024, 1, 0, 8, 1, Tail::None, w)).0);
+        assert!(say(|w| exc_ok(&t, 1024, 1, 0, 8, 2, Tail::Exps, w)).0);
+        assert!(!say(|w| exc_ok(&t, 1024, 1, 0, 8, 2, Tail::None, w)).0);
         t[24] = 19;
-        assert_eq!(say(|w| exc_ok(&t, 1, 0, 8, 2, Tail::Exps, w)).1, "part 2 block 0: a decimal exponent in 0..18, found 19");
+        assert_eq!(say(|w| exc_ok(&t, 1024, 1, 0, 8, 2, Tail::Exps, w)).1, "part 2 block 0: a decimal exponent in 0..18, found 19");
         t[24] = 0; t[20] = 1;
-        assert_eq!(say(|w| exc_ok(&t, 1, 0, 8, 2, Tail::Exps, w)).1, "part 2: exception offsets running from 0 to 0, found 0 to 1");
+        assert_eq!(say(|w| exc_ok(&t, 1024, 1, 0, 8, 2, Tail::Exps, w)).1, "part 2: exception offsets running from 0 to 0, found 0 to 1");
     }
 }

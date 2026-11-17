@@ -64,6 +64,36 @@ pub fn bytes_mut<T: Pod>(s: &mut [T]) -> &mut [u8] {
     unsafe { core::slice::from_raw_parts_mut(s.as_mut_ptr().cast::<u8>(), size_of_val(s)) }
 }
 
+/// A zeroed scratch of `len` elements: inline up to `N` (the default block of 1024, so a column at `DEFAULT_LG` pays what a
+/// stack array did), on the heap above it. One per call, never per block.
+pub struct Scr<T: Pod + Default, const N: usize = 1024> { inl: [T; N], heap: alloc::vec::Vec<T>, len: usize }
+impl<T: Pod + Default, const N: usize> Scr<T, N> {
+    #[inline(always)]
+    pub fn new(len: usize) -> Self {
+        Scr { inl: [T::default(); N], heap: if len > N { alloc::vec![T::default(); len] } else { alloc::vec::Vec::new() }, len }
+    }
+    /// `len` copies of `x`, written once (a `new` then `fill` would write the inline array twice)
+    #[inline(always)]
+    pub fn filled(len: usize, x: T) -> Self {
+        Scr { inl: [x; N], heap: if len > N { alloc::vec![x; len] } else { alloc::vec::Vec::new() }, len }
+    }
+}
+impl<T: Pod + Default, const N: usize> core::ops::Deref for Scr<T, N> {
+    type Target = [T];
+    fn deref(&self) -> &[T] { if self.len > N { &self.heap } else { &self.inl[..self.len] } }
+}
+impl<T: Pod + Default, const N: usize> core::ops::DerefMut for Scr<T, N> {
+    fn deref_mut(&mut self) -> &mut [T] { if self.len > N { &mut self.heap } else { &mut self.inl[..self.len] } }
+}
+impl<'a, T: Pod + Default, const N: usize> IntoIterator for &'a Scr<T, N> {
+    type Item = &'a T; type IntoIter = core::slice::Iter<'a, T>;
+    fn into_iter(self) -> Self::IntoIter { (**self).iter() }
+}
+impl<'a, T: Pod + Default, const N: usize> IntoIterator for &'a mut Scr<T, N> {
+    type Item = &'a mut T; type IntoIter = core::slice::IterMut<'a, T>;
+    fn into_iter(self) -> Self::IntoIter { (**self).iter_mut() }
+}
+
 /// `bytes` bytes of 64-byte aligned scratch with no initialisation, kept for the next call so that faulting a large buffer in
 /// is paid once (C's `static __thread` chunk of `qlean_alp_sum_f64`). A call takes the kept buffer or allocates one, and puts
 /// it back unless another call already has; the buffer one call asks for is the size every call asks for.
