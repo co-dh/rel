@@ -4,12 +4,25 @@ use crate::bits::{lane_width, width_for};
 use crate::QLEAN_COST_ARITH;
 use crate::c::Runner;
 
-/// `f::<W>(args)` for the run-time width `w`, so `id_at`'s match folds as the C's `IDS_WIDTHS` does.
+/// The one width dispatch, switched once per column and never per element. `by_width!(w, f::<A…>(args))` is
+/// `f::<A…, W>(args)` at the id width `w` bits, so `id_at`'s match folds as the C's `IDS_WIDTHS` does; `int w` and
+/// `uint w` are `f::<T, A…>(args)` for the element of `w` bytes: the coc storage class (`u8 i16 i32 i64`) or the
+/// unsigned lane (`u8 u16 u32 u64`). `f` may be a method path (`self.load`).
 #[macro_export]
 macro_rules! by_width {
-    ($w:expr, $f:ident($($a:expr),*)) => { match $w {
-        0 => $f::<0>($($a),*), 1 => $f::<1>($($a),*), 2 => $f::<2>($($a),*), 4 => $f::<4>($($a),*),
-        8 => $f::<8>($($a),*), 16 => $f::<16>($($a),*), 32 => $f::<32>($($a),*), _ => $f::<64>($($a),*),
+    (int $w:expr, $($f:ident).+ $(::<$($t:ty),*>)? ($($a:expr),* $(,)?)) => { match $w {
+        1 => $($f).+::<u8 $($(, $t)*)?>($($a),*), 2 => $($f).+::<i16 $($(, $t)*)?>($($a),*),
+        4 => $($f).+::<i32 $($(, $t)*)?>($($a),*), _ => $($f).+::<i64 $($(, $t)*)?>($($a),*),
+    } };
+    (uint $w:expr, $($f:ident).+ $(::<$($t:ty),*>)? ($($a:expr),* $(,)?)) => { match $w {
+        1 => $($f).+::<u8 $($(, $t)*)?>($($a),*), 2 => $($f).+::<u16 $($(, $t)*)?>($($a),*),
+        4 => $($f).+::<u32 $($(, $t)*)?>($($a),*), _ => $($f).+::<u64 $($(, $t)*)?>($($a),*),
+    } };
+    ($w:expr, $($f:ident).+ $(::<$($t:ty),*>)? ($($a:expr),* $(,)?)) => { match $w {
+        0 => $($f).+::<$($($t,)*)? 0>($($a),*), 1 => $($f).+::<$($($t,)*)? 1>($($a),*),
+        2 => $($f).+::<$($($t,)*)? 2>($($a),*), 4 => $($f).+::<$($($t,)*)? 4>($($a),*),
+        8 => $($f).+::<$($($t,)*)? 8>($($a),*), 16 => $($f).+::<$($($t,)*)? 16>($($a),*),
+        32 => $($f).+::<$($($t,)*)? 32>($($a),*), _ => $($f).+::<$($($t,)*)? 64>($($a),*),
     } };
 }
 pub use by_width;
@@ -141,11 +154,7 @@ pub fn ids_max(p: &[u8], w: u32, n: usize) -> usize {
 /// `ids_firsts` (ids.rs): each group's first row into `first` (`min(n, nd + 1)` long) and into `slot` (`nd + 1`
 /// entries, all `usize::MAX` on entry) the group of each value `min(id, nd)`; answers the group count.
 pub fn firsts(ids: &[u8], n: usize, w: u32, nd: usize, slot: &mut [usize], first: &mut [usize]) -> usize {
-    match w {
-        0 => go::<0>(ids, n, nd, slot, first), 1 => go::<1>(ids, n, nd, slot, first), 2 => go::<2>(ids, n, nd, slot, first),
-        4 => go::<4>(ids, n, nd, slot, first), 8 => go::<8>(ids, n, nd, slot, first), 16 => go::<16>(ids, n, nd, slot, first),
-        32 => go::<32>(ids, n, nd, slot, first), _ => go::<64>(ids, n, nd, slot, first),
-    }
+    by_width!(w, go(ids, n, nd, slot, first))
 }
 
 // `W` const so `id_at`'s match folds, as the C's `IDS_WIDTHS` does.
@@ -493,11 +502,7 @@ pub fn unpack16_at<const W: u32>(p: &[u8], from: usize, m: usize, dst: &mut [u16
 
 /// ids.rs `ids_unpack16`: `m` ids from `from` widened to u16, whole bytes split by constant shifts.
 pub fn unpack16(p: &[u8], w: u32, from: usize, m: usize, dst: &mut [u16]) {
-    match w {
-        0 => unpack16_at::<0>(p, from, m, dst), 1 => unpack16_at::<1>(p, from, m, dst), 2 => unpack16_at::<2>(p, from, m, dst),
-        4 => unpack16_at::<4>(p, from, m, dst), 8 => unpack16_at::<8>(p, from, m, dst), 16 => unpack16_at::<16>(p, from, m, dst),
-        32 => unpack16_at::<32>(p, from, m, dst), _ => unpack16_at::<64>(p, from, m, dst),
-    }
+    by_width!(w, unpack16_at(p, from, m, dst))
 }
 
 // The head test of `runs`: field `i` raw value `raw` is a head where `min(raw, nd)` differs from the field before.
@@ -538,11 +543,7 @@ pub fn runs_at<const W: u32>(p: &[u8], n: usize, most: usize, mut h: Heads) -> u
 /// walk stops once there are more than `most`. A sub-byte byte repeating the last field is skipped whole.
 pub fn runs(p: &[u8], n: usize, w: u32, nd: usize, most: usize, out: &mut [i64]) -> usize {
     let h = Heads { out, nd, g: 0, prev: 0 };
-    match w {
-        0 => runs_at::<0>(p, n, most, h), 1 => runs_at::<1>(p, n, most, h), 2 => runs_at::<2>(p, n, most, h),
-        4 => runs_at::<4>(p, n, most, h), 8 => runs_at::<8>(p, n, most, h), 16 => runs_at::<16>(p, n, most, h),
-        32 => runs_at::<32>(p, n, most, h), _ => runs_at::<64>(p, n, most, h),
-    }
+    by_width!(w, runs_at(p, n, most, h))
 }
 
 #[cfg(test)]

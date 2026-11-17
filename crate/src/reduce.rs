@@ -5,37 +5,13 @@ use alloc::vec::Vec;
 use alloc::vec;
 use crate::c::{run_map, run_slices, Runner};
 use crate::ids::{id_at, ids_avail};
+use crate::pod::Elt;
 
 // ---- A12: reduce.rs ----
-/// An element of the four integer classes: read in native order, widened to `i64` as C's `(int64_t)` cast does.
-pub trait Elem: Copy + PartialOrd + Into<i64> + TryFrom<i64> {
-    const W: usize;
-    const ZERO: Self;
-    const ONE: Self;
-    const MAX: Self;
-    const MIN: Self;
-    fn rd(b: &[u8]) -> Self;
-}
-macro_rules! elem {
-    ($t:ty) => {
-        impl Elem for $t {
-            const W: usize = size_of::<$t>();
-            const ZERO: $t = 0;
-            const ONE: $t = 1;
-            const MAX: $t = <$t>::MAX;
-            const MIN: $t = <$t>::MIN;
-            fn rd(b: &[u8]) -> $t { <$t>::from_ne_bytes(b.try_into().unwrap()) }
-        }
-    };
-}
-elem!(u8);
-elem!(i16);
-elem!(i32);
-elem!(i64);
 
 /// reduce.rs `OB_LANES`: `L` accumulators of plain vector ops, a skipped element folding in the identity `id`; every
 /// step is associative with `id` its identity, so the lane split cannot move the answer.
-pub fn lanes<T: Elem, A: Copy, const L: usize>(a: &[u8], id: A, cv: impl Fn(T) -> A, sk: impl Fn(T) -> bool,
+pub fn lanes<T: Elt, A: Copy, const L: usize>(a: &[u8], id: A, cv: impl Fn(T) -> A, sk: impl Fn(T) -> bool,
                                            step: impl Fn(A, A) -> A) -> A {
     let mut r = [id; L];
     let mut c = a[..a.len() / T::W * T::W].chunks_exact(L * T::W);
@@ -49,8 +25,8 @@ pub fn lanes<T: Elem, A: Copy, const L: usize>(a: &[u8], id: A, cv: impl Fn(T) -
 
 /// reduce.rs `OB_VERBS`: the six verbs at element type `T`, the null compared at `T`'s width and skipped only
 /// where `nul` is a value of `T`.
-pub fn verbs<T: Elem, const LI: usize, const LT: usize>(op: u8, nul: i64, n: usize, a: &[u8], seed: i64) -> i64 {
-    let tn = T::try_from(nul).ok();
+pub fn verbs<T: Elt, const LI: usize, const LT: usize>(op: u8, nul: i64, n: usize, a: &[u8], seed: i64) -> i64 {
+    let tn = Some(T::wrap(nul as u64)).filter(|t| t.i() == nul);
     let sk = |v: T| tn == Some(v);
     let none = |_: T| false;
     let add = |a: i64, v: i64| a.wrapping_add(v);
@@ -68,12 +44,12 @@ pub fn verbs<T: Elem, const LI: usize, const LT: usize>(op: u8, nul: i64, n: usi
     // the answer of an empty vector is the seed itself, not its step with `id`
     let fin = |t: i64, step: fn(i64, i64) -> i64| if n == 0 { seed } else { step(seed, t) };
     match op {
-        0 => fin(go!(LI, 0i64, |v: T| v.into(), add), |s, t| s.wrapping_add(t)),
-        1 => fin(go!(LI, 1i64, |v: T| v.into(), mul), |s, t| s.wrapping_mul(t)),
-        2 => fin(go!(LT, T::MAX, lo).into(), |s, t| if s < t { s } else { t }),
-        3 => fin(go!(LT, T::MIN, hi).into(), |s, t| if t < s { s } else { t }),
-        4 => fin(lanes::<T, _, LT>(a, T::ONE, |v| v, none, all).into(), |s, t| if t != 0 { s } else { 0 }),
-        _ => fin(lanes::<T, _, LT>(a, T::ZERO, |v| v, none, any).into(), |s, t| if t != 0 { 1 } else { s }),
+        0 => fin(go!(LI, 0i64, |v: T| v.i(), add), |s, t| s.wrapping_add(t)),
+        1 => fin(go!(LI, 1i64, |v: T| v.i(), mul), |s, t| s.wrapping_mul(t)),
+        2 => fin(go!(LT, T::HI, lo).i(), |s, t| if s < t { s } else { t }),
+        3 => fin(go!(LT, T::LO, hi).i(), |s, t| if t < s { s } else { t }),
+        4 => fin(lanes::<T, _, LT>(a, T::ONE, |v| v, none, all).i(), |s, t| if t != 0 { s } else { 0 }),
+        _ => fin(lanes::<T, _, LT>(a, T::ZERO, |v| v, none, any).i(), |s, t| if t != 0 { 1 } else { s }),
     }
 }
 
@@ -176,12 +152,12 @@ macro_rules! og_verbs {
 /// A worker's block, `[fold, count]` for each group in turn (so one pair is one cache line, not two), at element type
 /// `T` and id width `IW`: rows `from .. to` scattered by their id, an id at or past `ng` dropped. Both are constants
 /// of the loop, as `IDS_WIDTHS` and the class switch hoist them in C.
-pub fn og_loop<T: Elem, const IW: u32, const SK: bool>(init: i64, nul: i64, step: impl Fn(i64, i64) -> i64, ng: usize, gid: &[u8],
+pub fn og_loop<T: Elt, const IW: u32, const SK: bool>(init: i64, nul: i64, step: impl Fn(i64, i64) -> i64, ng: usize, gid: &[u8],
                                                   src: &[u8], from: usize, to: usize, acc: &mut [i64]) {
     for p in acc[..2 * ng].chunks_exact_mut(2) { p[0] = init; p[1] = 0 }
     for (i, b) in (from..to).zip(src[from * T::W..to * T::W].chunks_exact(T::W)) {
         let g = id_at(gid, IW, i);
-        let v: i64 = T::rd(b).into();
+        let v: i64 = T::rd(b).i();
         let live = !(SK && v == nul);
         if g >= ng { continue }
         acc[2 * g] = step(acc[2 * g], if live { v } else { init });
@@ -189,7 +165,7 @@ pub fn og_loop<T: Elem, const IW: u32, const SK: bool>(init: i64, nul: i64, step
     }
 }
 
-pub fn og_at<T: Elem, const IW: u32>(op: u8, nul: i64, lo: i64, hi: i64, ng: usize, gid: &[u8], src: &[u8], from: usize,
+pub fn og_at<T: Elt, const IW: u32>(op: u8, nul: i64, lo: i64, hi: i64, ng: usize, gid: &[u8], src: &[u8], from: usize,
                                  to: usize, acc: &mut [i64]) {
     macro_rules! go { ($init:expr, $sk:tt, $step:expr) => { og_loop::<T, IW, $sk>($init, nul, $step, ng, gid, src, from, to, acc) }; }
     og_verbs!(op, lo, hi, go)
@@ -197,27 +173,13 @@ pub fn og_at<T: Elem, const IW: u32>(op: u8, nul: i64, lo: i64, hi: i64, ng: usi
 
 pub fn og_cls<const IW: u32>(op: u8, cls: u8, nul: i64, ng: usize, gid: &[u8], src: &[u8], from: usize, to: usize, acc: &mut [i64]) {
     let (lo, hi) = if cls == 0 { (0, 255) } else { (nul.wrapping_add(1), !nul) };
-    match cls {
-        0 => og_at::<u8, IW>(op, nul, lo, hi, ng, gid, src, from, to, acc),
-        1 => og_at::<i16, IW>(op, nul, lo, hi, ng, gid, src, from, to, acc),
-        2 => og_at::<i32, IW>(op, nul, lo, hi, ng, gid, src, from, to, acc),
-        _ => og_at::<i64, IW>(op, nul, lo, hi, ng, gid, src, from, to, acc),
-    }
+    crate::by_width!(int 1usize << cls, og_at::<IW>(op, nul, lo, hi, ng, gid, src, from, to, acc))
 }
 
 /// reduce.rs `over_groups`: rows `from .. to`, their ids packed at `iw` bits in `gid`, into `acc` (`2 * ng` slots).
 #[allow(clippy::too_many_arguments)]
 pub fn over_groups_slice(op: u8, cls: u8, nul: i64, ng: usize, iw: u32, gid: &[u8], src: &[u8], from: usize, to: usize, acc: &mut [i64]) {
-    match iw {
-        0 => og_cls::<0>(op, cls, nul, ng, gid, src, from, to, acc),
-        1 => og_cls::<1>(op, cls, nul, ng, gid, src, from, to, acc),
-        2 => og_cls::<2>(op, cls, nul, ng, gid, src, from, to, acc),
-        4 => og_cls::<4>(op, cls, nul, ng, gid, src, from, to, acc),
-        8 => og_cls::<8>(op, cls, nul, ng, gid, src, from, to, acc),
-        16 => og_cls::<16>(op, cls, nul, ng, gid, src, from, to, acc),
-        32 => og_cls::<32>(op, cls, nul, ng, gid, src, from, to, acc),
-        _ => og_cls::<64>(op, cls, nul, ng, gid, src, from, to, acc),
-    }
+    crate::by_width!(iw, og_cls(op, cls, nul, ng, gid, src, from, to, acc))
 }
 
 /// reduce.rs `over_groups_merge`: the blocks in slice order, folds into `res[..ng]`, counts into `res[ng..]`.
@@ -331,20 +293,11 @@ pub fn group_cells(kind: u8, w: usize, ng: usize, m: &[i64], ord: &[u64], out: &
 macro_rules! of_verbs {
     ($op:expr, $go:ident) => { match $op {
         1 => $go!(A::ONE, |a: A, v: A| a * v),
-        2 => $go!(A::INF, |a: A, v: A| if v < a { v } else { a }),
-        3 => $go!(-A::INF, |a: A, v: A| if v > a { v } else { a }),
+        2 => $go!(A::HI, |a: A, v: A| if v < a { v } else { a }),
+        3 => $go!(A::LO, |a: A, v: A| if v > a { v } else { a }),
         _ => $go!(A::ZERO, |a: A, v: A| a + v),
     } };
 }
-/// `f::<T, A, W>(args)` at the id width `w`, as `ids::by_width` does for one parameter.
-#[macro_export]
-macro_rules! by_width_ta {
-    ($w:expr, $f:ident::<$t:ty, $a:ty>($($x:expr),*)) => { match $w {
-        0 => $f::<$t, $a, 0>($($x),*), 1 => $f::<$t, $a, 1>($($x),*), 2 => $f::<$t, $a, 2>($($x),*),
-        4 => $f::<$t, $a, 4>($($x),*), 8 => $f::<$t, $a, 8>($($x),*), 16 => $f::<$t, $a, 16>($($x),*),
-        32 => $f::<$t, $a, 32>($($x),*), _ => $f::<$t, $a, 64>($($x),*),
-    } };
-}
 
 
 
@@ -352,11 +305,3 @@ macro_rules! by_width_ta {
 
 
 
-/// The two float widths `over_f32` and `over_f64` share.
-pub trait Fl: Copy + PartialOrd + core::ops::Add<Output = Self> + core::ops::Mul<Output = Self> + core::ops::Neg<Output = Self> {
-    const ZERO: Self;
-    const ONE: Self;
-    const INF: Self;
-}
-impl Fl for f32 { const ZERO: f32 = 0.0; const ONE: f32 = 1.0; const INF: f32 = f32::INFINITY; }
-impl Fl for f64 { const ZERO: f64 = 0.0; const ONE: f64 = 1.0; const INF: f64 = f64::INFINITY; }

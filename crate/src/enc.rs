@@ -9,14 +9,8 @@
 
 use crate::alp::Cocf;
 use crate::coc::Coc;
-use crate::pod::Lane;
+use crate::pod::Elt;
 
-/// An element type the encoder reads (`COC_T` of coc.rs's encode template): `u8 i16 i32 i64`.
-pub trait Elt: Lane + Default { fn widen(self) -> i64; }
-impl Elt for u8 { fn widen(self) -> i64 { self as i64 } }
-impl Elt for i16 { fn widen(self) -> i64 { self as i64 } }
-impl Elt for i32 { fn widen(self) -> i64 { self as i64 } }
-impl Elt for i64 { fn widen(self) -> i64 { self } }
 
 /// Block `b`'s metadata slots in a column being written: the meta pass's whole output for that block.
 pub struct EncMeta<'a> {
@@ -47,7 +41,7 @@ pub struct Frame { pub fo: i64, pub wo: u8, pub neo: u32 }
 pub fn nul<T: Elt>() -> i64 { if size_of::<T>() == 1 { i64::MIN } else { i64::MIN >> (64 - 8 * size_of::<T>()) } }
 /// coc.rs `pack_block`: `nb` elements of `src` minus `base` into `dst` at `w` bits, the first ⌈nb*w/8⌉ bytes of it.
 pub fn pack_block<T: Elt>(dst: &mut [u8], src: &[T], nb: usize, base: i64, w: u8) {
-    let r = |v: &T| (v.widen() as u64).wrapping_sub(base as u64);
+    let r = |v: &T| (v.i() as u64).wrapping_sub(base as u64);
     let src = &src[..nb];
     match w {
         0 => {}
@@ -69,9 +63,9 @@ pub fn pack_block<T: Elt>(dst: &mut [u8], src: &[T], nb: usize, base: i64, w: u8
 /// coc.rs `encode_meta_blk`: block metadata with no patch list.
 pub fn encode_meta_blk<T: Elt>(m: &mut EncMeta, x: &[T], nb: usize) {
     let x = &x[..nb];
-    let (mn, mx) = x.iter().fold((x[0].widen(), x[0].widen()), |(a, b), v| (a.min(v.widen()), b.max(v.widen())));
-    let s = if mn == nul::<T>() { x.iter().map(|v| v.widen()).filter(|&v| v != nul::<T>()).fold(0i64, i64::wrapping_add) }
-            else { x.iter().fold(0i64, |a, v| a.wrapping_add(v.widen())) };
+    let (mn, mx) = x.iter().fold((x[0].i(), x[0].i()), |(a, b), v| (a.min(v.i()), b.max(v.i())));
+    let s = if mn == nul::<T>() { x.iter().map(|v| v.i()).filter(|&v| v != nul::<T>()).fold(0i64, i64::wrapping_add) }
+            else { x.iter().fold(0i64, |a, v| a.wrapping_add(v.i())) };
     *m.base = mn; *m.maxv = mx; *m.bsum = s;
     *m.width = crate::bits::width_for((mx as u64).wrapping_sub(mn as u64));
 }
@@ -84,7 +78,7 @@ pub fn frame_pick<T: Elt>(smp: &mut [i64], nb: usize, nnul: usize, cost: usize, 
     let c = smp[k / 2];
     // lifting the frame pays only when the minimum lies far below the bulk
     if bl(c.wrapping_sub(mn)) <= bl(smp[k * 3 / 4].wrapping_sub(smp[k / 4])) + 2 { return None }
-    let v = || x[..nb].iter().map(|v| v.widen()).filter(|&v| v != nul::<T>());
+    let v = || x[..nb].iter().map(|v| v.i()).filter(|&v| v != nul::<T>());
     let (mut lo, mut hi) = ([0u32; 65], [0u32; 65]);
     for v in v() { if v < c { lo[bl(c.wrapping_sub(v))] += 1 } else { hi[bl(v.wrapping_sub(c))] += 1 } }
     for i in 1..=64 { lo[i] += lo[i - 1]; hi[i] += hi[i - 1] }
@@ -110,7 +104,7 @@ pub fn frame_pick<T: Elt>(smp: &mut [i64], nb: usize, nnul: usize, cost: usize, 
 pub fn encode_meta_exc_blk<T: Elt>(m: &mut EncMeta, x: &[T], nb: usize) -> u32 {
     let (x, nul, esz) = (&x[..nb], nul::<T>(), size_of::<T>());
     let frm = m.frm.as_deref_mut().expect("encode_meta_exc_blk: the column keeps no frames");
-    let v = || x.iter().map(|v| v.widen()).filter(|&v| v != nul);
+    let v = || x.iter().map(|v| v.i()).filter(|&v| v != nul);
     let nnul = x.len() - v().count();
     *frm = 0;
     if nnul == nb { // all null: the null is the frame at width 0, and nothing is patched
@@ -125,7 +119,7 @@ pub fn encode_meta_exc_blk<T: Elt>(m: &mut EncMeta, x: &[T], nb: usize) -> u32 {
     if w > 1 { // frame_pick is asked only where the median sits high in the window
         let mut smp = [0i64; 5];
         let mut k = 0;
-        for q in 0..5 { let v = x[q * (nb - 1) / 4].widen(); if v != nul { smp[k] = v; k += 1 } }
+        for q in 0..5 { let v = x[q * (nb - 1) / 4].i(); if v != nul { smp[k] = v; k += 1 } }
         if let Some(f) = frame_pick(&mut smp[..k], nb, nnul, (nb * w as usize + 7) / 8 + ne as usize * (2 + esz), mn, x) {
             (w, ne, *frm) = (f.wo, f.neo, (f.fo as u64).wrapping_sub(mn as u64));
         }
@@ -141,8 +135,8 @@ pub fn pack_exc_blk<T: Elt>(p: &mut EncPack, x: &[T], ne: u32) {
     let (mut ys, mut k) = (crate::pod::Scr::<T>::filled(p.nb, T::wrap(base as u64)), 0);
     let y: &mut [T] = &mut ys; // the one deref, outside the element loop
     for (i, &v) in x.iter().enumerate() {
-        let r = (v.widen() as u64).wrapping_sub(base as u64);
-        if v.widen() == nul || (w < 64 && r >> w != 0) {
+        let r = (v.i() as u64).wrapping_sub(base as u64);
+        if v.i() == nul || (w < 64 && r >> w != 0) {
             let mut e = [v];
             p.raw[k * size_of::<T>()..][..size_of::<T>()].copy_from_slice(crate::pod::bytes_mut(&mut e));
             p.pos[k] = i as u16;
@@ -152,7 +146,7 @@ pub fn pack_exc_blk<T: Elt>(p: &mut EncPack, x: &[T], ne: u32) {
     pack_block(p.res, y, p.nb, base, w)
 }
 /// coc.rs `decode`: the whole column into `out` (`n` long).
-pub fn decode<T: Lane>(c: &Coc, out: &mut [T]) {
+pub fn decode<T: Elt>(c: &Coc, out: &mut [T]) {
     let s = crate::blocks::Blocks::from(*c);
     for (b, lo, nb) in s.walk() { s.load(b, nb, &mut out[lo..lo + nb]) }
 }
@@ -165,12 +159,12 @@ pub fn elts<'b, T: crate::pod::Pod>(x: &'b [u8], what: &str) -> &'b [T] {
 /// coc.rs `coc_enc_for_meta`: the FoR meta step over block `b`'s `nb` elements `x` at `width` bytes each.
 pub fn for_meta(m: &mut EncMeta, x: &[u8], width: usize, nb: usize) {
     fn go<T: Elt>(m: &mut EncMeta, x: &[u8], nb: usize) { let ne = encode_meta_exc_blk(m, elts::<T>(x, "coc_enc_for_meta"), nb); *m.nexc = ne }
-    match width { 1 => go::<u8>(m, x, nb), 2 => go::<i16>(m, x, nb), 4 => go::<i32>(m, x, nb), _ => go::<i64>(m, x, nb) }
+    crate::by_width!(int width, go(m, x, nb))
 }
 /// coc.rs `coc_enc_for_pack`: `p.pos` holds the block's patches, `exc_off[b + 1] - exc_off[b]` of them.
 pub fn for_pack(p: &mut EncPack, x: &[u8], width: usize) {
     fn go<T: Elt>(p: &mut EncPack, x: &[u8]) { let ne = p.pos.len() as u32; pack_exc_blk(p, elts::<T>(x, "coc_enc_for_pack"), ne) }
-    match width { 1 => go::<u8>(p, x), 2 => go::<i16>(p, x), 4 => go::<i32>(p, x), _ => go::<i64>(p, x) }
+    crate::by_width!(int width, go(p, x))
 }
 /// coc.rs `coc_enc_alp_meta`: `x` is `f32` (`width` 4) or `f64`.
 pub fn alp_meta(m: &mut EncMeta, x: &[u8], width: usize, nb: usize) {
@@ -214,7 +208,7 @@ pub fn blk_meta(m: &mut EncMeta, v: &[i64], width: usize) -> u32 {
     }
     let mut buf = crate::pod::Scr::<i64>::new(v.len()); // i64 lanes, so the narrowed bytes are aligned for every `T`
     let x = narrow(width, v, crate::pod::bytes_mut(&mut buf));
-    match width { 1 => go::<u8>(m, x, v.len()), 2 => go::<i16>(m, x, v.len()), 4 => go::<i32>(m, x, v.len()), _ => go::<i64>(m, x, v.len()) }
+    crate::by_width!(int width, go(m, x, v.len()))
 }
 /// coc.rs `move_meta`, the branch where block `pb` of the column `f` is taken whole: its metadata is the block's,
 /// and its patch count is what the layout prefix-sums. Answers it, and leaves it in `m.nexc`. The branches that call

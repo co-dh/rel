@@ -58,7 +58,7 @@ export! {
         let c = view("qlean_coc_decode", meta, pack, n);
         // the width is chosen once, outside the block loop
         match width {
-            2 => dec::<i16>(&c), 4 => dec::<i32>(&c), 8 => dec::<i64>(&c),
+            2 | 4 | 8 => crate::by_width!(int width, dec(&c)),
             _ => die(format_args!("qlean_coc_decode: element width {width} is not 2, 4 or 8\n")),
         }
     }
@@ -116,7 +116,7 @@ export! {
 }
 
 /// The column as `n` elements of `T`, by blocks on the pool
-pub fn dec<T: pod::Lane + Send>(c: &Coc) -> O {
+pub fn dec<T: pod::Elt + Send>(c: &Coc) -> O {
     let mut out = SArr::new(1, c.meta.n * size_of::<T>());
     codec::decode(pool(), c, pod::cast_mut::<T>(out.bytes_mut()).expect("qlean_coc_decode: the result array is misaligned for its element"));
     out.into()

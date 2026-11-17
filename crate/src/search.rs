@@ -1486,7 +1486,7 @@ pub const SYM_SCAN_MAX: usize = 8;
 // ---- A33: search.rs, 1539-1830, 2004-2099: the per-element callers of A32's walk, whole loops in Rust ----
 /// The width switch hoisted out of the loop, as C's `IDS_WIDTHS`: `W` is a constant inside `go`, so `id_at` folds to a shift and a mask.
 pub fn with_ids_width<R>(w: u32, f: impl IdsFn<R>) -> R {
-    match w { 0 => f.go::<0>(), 1 => f.go::<1>(), 2 => f.go::<2>(), 4 => f.go::<4>(), 8 => f.go::<8>(), 16 => f.go::<16>(), 32 => f.go::<32>(), _ => f.go::<64>() }
+    crate::by_width!(w, f.go())
 }
 /// Id `u` is inside `nmask` and `mask` has its bit.
 pub fn passes(mask: &[u8], nmask: usize, u: usize) -> bool { u < nmask && mask[u >> 3] >> (u & 7) & 1 != 0 }

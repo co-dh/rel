@@ -85,7 +85,7 @@ pub fn fdiv_magic(g: &Magic, x: i64) -> i64 {
 // ---- A43: ew.rs ----
 use crate::c::run_map;
 use crate::ids::{self, id_at, ids_avail, ids_bytes, pack, unpack};
-use crate::pod::{self, bytes_mut, Lane, Pod};
+use crate::pod::{self, bytes_mut, Elt, Pod};
 use crate::{QLEAN_COST_ARITH, QLEAN_COST_COPY, QLEAN_COST_MATH};
 
 /// `EW_*` codes of ew.rs that this section reads; the two lists cannot change apart.
@@ -104,12 +104,6 @@ pub const PNAN64: u64 = 0x7ff8000000000000;
 pub const NAN32: u32 = 0xffc00000;
 pub const PNAN32: u32 = 0x7fc00000;
 
-/// An integral storage class: `i` is the element as q reads it (zero-extended at `u8`), `wrap` the truncating write.
-pub trait Elt: Lane + Ord { fn i(self) -> i64; }
-impl Elt for u8 { fn i(self) -> i64 { self as i64 } }
-impl Elt for i16 { fn i(self) -> i64 { self as i64 } }
-impl Elt for i32 { fn i(self) -> i64 { self as i64 } }
-impl Elt for i64 { fn i(self) -> i64 { self } }
 
 pub fn ro<T: Pod>(b: &[u8]) -> &[T] {
     pod::cast(b).unwrap_or_else(|| panic!("qlean_ew: a {}-byte payload is not a whole, aligned array of {}-byte elements", b.len(), size_of::<T>()))
@@ -243,10 +237,7 @@ pub fn val_slice(op: u8, cls: u8, shape: u8, nul: i64, a: &[u8], b: &[u8], lo: u
     // the mask path answers the four arithmetic verbs at a float width; every other pair is the loop below
     if VEC && cls >= k::F32 && op <= k::DIV { return crate::simd::ew_val(op, cls, a, b, hi - lo, o) }
     match cls {
-        0 => val_int::<u8>(op, cls, nul, shape, ro(a), ro(b), rw(o)),
-        1 => val_int::<i16>(op, cls, nul, shape, ro(a), ro(b), rw(o)),
-        2 => val_int::<i32>(op, cls, nul, shape, ro(a), ro(b), rw(o)),
-        3 => val_int::<i64>(op, cls, nul, shape, ro(a), ro(b), rw(o)),
+        0..=3 => crate::by_width!(int w, val_int(op, cls, nul, shape, ro(a), ro(b), rw(o))),
         4 => val_f32(op, cls, shape, ro(a), ro(b), rw(o)),
         5 => val_f64(op, cls, shape, ro(a), ro(b), rw(o)),
         _ => ew_unsupported("qlean_ew_val", op as u32, cls as u32),
@@ -324,10 +315,7 @@ pub fn cmp_slice(op: u8, cls: u8, shape: u8, a: &[u8], b: &[u8], n: usize, lo: u
     let m = e1 - e0;
     if VEC && op <= k::GE { return crate::simd::ew_cmp(op, cls, a, b, m, o) }
     match cls {
-        0 => cmp_int::<u8>(op, cls, shape, ro(a), ro(b), o, m),
-        1 => cmp_int::<i16>(op, cls, shape, ro(a), ro(b), o, m),
-        2 => cmp_int::<i32>(op, cls, shape, ro(a), ro(b), o, m),
-        3 => cmp_int::<i64>(op, cls, shape, ro(a), ro(b), o, m),
+        0..=3 => crate::by_width!(int ew_width(cls as u32), cmp_int(op, cls, shape, ro(a), ro(b), o, m)),
         4 => cmp_f32(op, cls, shape, ro(a), ro(b), o, m),
         5 => cmp_f64(op, cls, shape, ro(a), ro(b), o, m),
         _ => ew_unsupported("qlean_ew_cmp", op as u32, cls as u32),
@@ -471,10 +459,7 @@ pub fn mon_int<T: Elt>(op: u8, nul: i64, x: &[T], o: &mut [T]) {
 /// ew.rs `ew_mon_run` over `x`'s elements into `o` (the same count): the pair was checked by `mon_chk`.
 pub fn mon_slice(op: u8, cls: u8, nul: i64, x: &[u8], o: &mut [u8]) {
     match cls {
-        0 => mon_int::<u8>(op, nul, ro(x), rw(o)),
-        1 => mon_int::<i16>(op, nul, ro(x), rw(o)),
-        2 => mon_int::<i32>(op, nul, ro(x), rw(o)),
-        3 => mon_int::<i64>(op, nul, ro(x), rw(o)),
+        0..=3 => crate::by_width!(int ew_width(cls as u32), mon_int(op, nul, ro(x), rw(o))),
         k44::F32 => for (o, &v) in rw::<u32>(o).iter_mut().zip(ro::<u32>(x)) { *o = if op == k44::NEG { v ^ 0x8000_0000 } else { v & 0x7fff_ffff } },
         _ => for (o, &v) in rw::<u64>(o).iter_mut().zip(ro::<u64>(x)) { *o = if op == k44::NEG { v ^ (1 << 63) } else { v & !(1 << 63) } },
     }
@@ -750,7 +735,7 @@ pub fn ids_len(n: usize, w: u32) -> usize {
 /// `cls`'s width. A sub-byte slice may start inside a word, so its ragged head goes id by id and the rest is `ids::unpack`.
 pub fn ids_stage(cls: u8, w: u32, x: &[u8], lo: usize, hi: usize, o: &mut [u8]) {
     #[inline(always)]
-    fn go<const W: u32, T: Lane>(x: &[u8], lo: usize, hi: usize, o: &mut [T]) {
+    fn go<const W: u32, T: Elt>(x: &[u8], lo: usize, hi: usize, o: &mut [T]) {
         let mut i = lo;
         if W != 0 && W < 8 { while i < hi && i % (64 / W as usize) != 0 { o[i] = T::wrap(id_at(x, W, i) as u64); i += 1 } }
         // `i` is a whole word in (or the lane width makes it a whole id), so the byte it starts at is exact
@@ -758,19 +743,14 @@ pub fn ids_stage(cls: u8, w: u32, x: &[u8], lo: usize, hi: usize, o: &mut [u8]) 
         unpack::<W, T>(&x[at..], &mut o[i..hi], |_, e, v| *e = T::wrap(v as u64));
     }
     #[inline(always)]
-    fn by_w<T: Lane>(w: u32, x: &[u8], lo: usize, hi: usize, o: &mut [T]) {
+    fn by_w<T: Elt>(w: u32, x: &[u8], lo: usize, hi: usize, o: &mut [T]) {
         match w {
             0 => go::<0, T>(x, lo, hi, o), 1 => go::<1, T>(x, lo, hi, o), 2 => go::<2, T>(x, lo, hi, o),
             4 => go::<4, T>(x, lo, hi, o), 8 => go::<8, T>(x, lo, hi, o), 16 => go::<16, T>(x, lo, hi, o),
             32 => go::<32, T>(x, lo, hi, o), _ => go::<64, T>(x, lo, hi, o),
         }
     }
-    match ew_width(cls as u32) {
-        1 => by_w::<u8>(w, x, lo, hi, rw(o)),
-        2 => by_w::<i16>(w, x, lo, hi, rw(o)),
-        4 => by_w::<i32>(w, x, lo, hi, rw(o)),
-        _ => by_w::<i64>(w, x, lo, hi, rw(o)),
-    }
+    crate::by_width!(int ew_width(cls as u32), by_w(w, x, lo, hi, rw(o)))
 }
 /// ew.rs `ew_pack_run`: the `n` elements of `x` (class `cls`, zero-extended) written as `w`-bit ids. Below a
 /// byte `[lo, hi)` are output bytes, each built in a register, so no two slices share a byte and the last byte's fields
@@ -786,12 +766,7 @@ pub fn pack_stage(cls: u8, w: u32, x: &[u8], n: usize, lo: usize, hi: usize, o: 
             pack(&mut o[lo * k..hi * k], k as u32 * 8, hi - lo, |i| x[lo + i].into())
         }
     }
-    match ew_width(cls as u32) {
-        1 => go::<u8>(w, x, n, lo, hi, o),
-        2 => go::<u16>(w, x, n, lo, hi, o),
-        4 => go::<u32>(w, x, n, lo, hi, o),
-        _ => go::<u64>(w, x, n, lo, hi, o),
-    }
+    crate::by_width!(uint ew_width(cls as u32), go(w, x, n, lo, hi, o))
 }
 
 // ---- K10: the statistics fold, a chain's last stage (ew.rs `ew_stats_run`, `ew_stats_sum`) ----
@@ -1011,7 +986,7 @@ impl Stats {
 /// ew.rs `ST_FOLD`: one tile into `L` lanes by position, `m` a multiple of `L`. A term of a dropped pair adds a
 /// zero, so an accumulator is never `-0`. Answers the pairs kept and the null right operands among them.
 #[inline(always)]
-pub fn fold<const L: usize, const W: usize, T: Fl>(a: &mut [[T; W]; 3], x: &[f64], y: &[f64], m: usize,
+pub fn fold<const L: usize, const W: usize, T: Elt + core::ops::Add<Output = T>>(a: &mut [[T; W]; 3], x: &[f64], y: &[f64], m: usize,
                                               uv: impl Fn(f64, f64) -> (T, T), t: impl Fn(T, T) -> [T; 3]) -> (usize, usize) {
     let mut acc = [0, 1, 2].map(|k| -> [T; L] { a[k][..L].try_into().unwrap() });
     let (mut kept, mut ykept) = ([0u32; L], [0u32; L]);
@@ -1020,7 +995,7 @@ pub fn fold<const L: usize, const W: usize, T: Fl>(a: &mut [[T; W]; 3], x: &[f64
             let (u, v) = uv(xc[j], yc[j]);
             let (ylive, live) = (v == v, v == v && u == u);
             let t = t(u, v);
-            for k in 0..3 { acc[k][j] = acc[k][j] + if live { t[k] } else { T::Z } }
+            for k in 0..3 { acc[k][j] = acc[k][j] + if live { t[k] } else { T::ZERO } }
             kept[j] += live as u32;
             ykept[j] += ylive as u32;
         }
@@ -1028,10 +1003,6 @@ pub fn fold<const L: usize, const W: usize, T: Fl>(a: &mut [[T; W]; 3], x: &[f64
     for k in 0..3 { a[k][..L].copy_from_slice(&acc[k]) }
     (kept.iter().map(|&c| c as usize).sum(), ykept.iter().map(|&c| c as usize).sum())
 }
-/// A lane's number: `f64` for the double phases, `f32` for `DOTS32`'s real lanes.
-pub trait Fl: Copy + PartialEq + core::ops::Add<Output = Self> { const Z: Self; }
-impl Fl for f64 { const Z: f64 = 0.0; }
-impl Fl for f32 { const Z: f32 = 0.0; }
 /// ew.rs `ew_bitw_run`: `op` is band 0, bor 1, bandnot 2; any other reads as band.
 pub fn bitw(run: Runner, op: u8, a: &[u8], b: &[u8], n: usize, out: &mut [u8]) {
     let (a, b) = (ro::<u64>(side(a, false, 0, n, 8)), ro::<u64>(side(b, false, 0, n, 8)));

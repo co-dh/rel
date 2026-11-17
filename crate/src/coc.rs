@@ -1,7 +1,7 @@
 #![forbid(unsafe_code)]
 //! The read views of coc.rs's `coc`: metadata, patch list, and the whole column.
 use crate::layout::{Tail, exc_layout};
-use crate::pod::{self, Lane};
+use crate::pod::{self, Elt};
 use alloc::vec::Vec;
 
 /// coc.rs: bit 8 of the patch list's element size, set when the frames follow
@@ -109,7 +109,7 @@ impl<'a> Coc<'a> {
         self.exc.filter(|e| !e.pos.is_empty()).map_or(0, |e| (e.off[b + 1] - e.off[b]) as usize)
     }
     /// coc.rs: block `b`'s first `nb` elements into `out`, the patches applied.
-    pub fn decode_blk<T: Lane>(&self, b: usize, nb: usize, out: &mut [T]) {
+    pub fn decode_blk<T: Elt>(&self, b: usize, nb: usize, out: &mut [T]) {
         let (mut w, base, out) = (self.meta.width[b], self.frame(b), &mut out[..nb]);
         let at = self.meta.off[b] as usize;
         let p = &self.pack[at..at + self.meta.blk() * w as usize / 8];
@@ -174,7 +174,7 @@ impl Coc<'_> {
 
 /// coc.rs's `COC_LOAD_SUB`: residuals of `W` < 8 bits, `8 / W` to a byte, the shift a literal per byte so the loop
 /// vectorises.
-pub fn load_sub<T: Lane, const W: usize>(p: &[u8], base: u64, out: &mut [T]) {
+pub fn load_sub<T: Elt, const W: usize>(p: &[u8], base: u64, out: &mut [T]) {
     let (per, m) = (8 / W, (1u8 << W) - 1);
     let g = out.len() / per;
     let mut whole = out.chunks_exact_mut(per);
@@ -216,7 +216,7 @@ mod tests {
     use crate::BLK;
     // decode_blk at every width 0..=64 and element type against B8's scalar unpack plus the frame, on a block of
     // random residuals; the patches are checked against the C decoder in ffi.rs
-    fn check<T: crate::pod::Lane + PartialEq + core::fmt::Debug>(mut s: u64) {
+    fn check<T: crate::pod::Elt + PartialEq + core::fmt::Debug>(mut s: u64) {
         for w in 0..=64u8 {
             let pack: Vec<u8> = (0..BLK * w as usize / 8).map(|_| { s ^= s << 13; s ^= s >> 7; s ^= s << 17; s as u8 }).collect();
             let base = [s as i64]; let (z, off, width) = ([0i64], [0u64], [w]);

@@ -17,12 +17,45 @@ unsafe impl Pod for f64 {}
 // packed: no padding, and a key with its element index is any twelve bytes
 unsafe impl Pod for crate::group::KeyAt {}
 
-/// An element type a residual becomes (`COC_T` of coc.rs's `decode_blk`): `base + residual` truncated, wrapping.
-pub trait Lane: Pod { fn wrap(v: u64) -> Self; }
-impl Lane for u8 { fn wrap(v: u64) -> Self { v as u8 } }
-impl Lane for i16 { fn wrap(v: u64) -> Self { v as i16 } }
-impl Lane for i32 { fn wrap(v: u64) -> Self { v as i32 } }
-impl Lane for i64 { fn wrap(v: u64) -> Self { v as i64 } }
+/// The one element trait: every number a column, a lane or a counter holds, so a kernel is generic over `T: Elt` and
+/// `by_width!` picks `T` once per column. An op's own per-type code (a SIMD register) is a subtrait, never a second one.
+pub trait Elt: Pod + Default + PartialOrd + Send + Sync + 'static {
+    /// bytes an element
+    const W: usize;
+    /// a float: `wrap`/`bits` are its bit pattern, `i` its value truncated
+    const F: bool;
+    const ZERO: Self;
+    const ONE: Self;
+    /// the least and the greatest value, the identities of max and min (`-inf` and `inf` at a float)
+    const LO: Self;
+    const HI: Self;
+    /// the element whose bits are the low `8·W` of `v`: `base + residual` truncated, wrapping (`COC_T` of `decode_blk`)
+    fn wrap(v: u64) -> Self;
+    /// the bits, zero-extended: `wrap(x.bits()) == x`
+    fn bits(self) -> u64;
+    /// the element as q reads it, C's `(int64_t)` cast: zero-extended at an unsigned type, sign-extended at a signed one
+    fn i(self) -> i64;
+    fn f(self) -> f64;
+    fn of_f(v: f64) -> Self;
+    /// the element at the start of `b`, native order
+    fn rd(b: &[u8]) -> Self;
+}
+macro_rules! elt { ($f:literal, $z:literal, $o:literal, $lo:expr, $hi:expr; $($t:ty: $u:ty),*) => {$(impl Elt for $t {
+    const W: usize = size_of::<$t>();
+    const F: bool = $f;
+    const ZERO: $t = $z;
+    const ONE: $t = $o;
+    const LO: $t = $lo;
+    const HI: $t = $hi;
+    #[inline(always)] fn wrap(v: u64) -> $t { <$t>::from_ne_bytes((v as $u).to_ne_bytes()) }
+    #[inline(always)] fn bits(self) -> u64 { <$u>::from_ne_bytes(self.to_ne_bytes()) as u64 }
+    #[inline(always)] fn i(self) -> i64 { self as i64 }
+    #[inline(always)] fn f(self) -> f64 { self as f64 }
+    #[inline(always)] fn of_f(v: f64) -> $t { v as $t }
+    #[inline(always)] fn rd(b: &[u8]) -> $t { <$t>::from_ne_bytes(b[..size_of::<$t>()].try_into().expect("pod::Elt::rd: a short element")) }
+})*} }
+elt!(false, 0, 1, Self::MIN, Self::MAX; u8: u8, u16: u16, i16: u16, u32: u32, i32: u32, u64: u64, i64: u64, usize: usize);
+elt!(true, 0.0, 1.0, Self::NEG_INFINITY, Self::INFINITY; f32: u32, f64: u64);
 
 /// None when `b` is misaligned for `T` or `b.len() % size_of::<T>() != 0`.
 pub fn cast<T: Pod>(b: &[u8]) -> Option<&[T]> {

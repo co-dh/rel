@@ -8,7 +8,8 @@
 
 use alloc::vec::Vec;
 use core::sync::atomic::{AtomicU8, AtomicUsize, Ordering::{Relaxed, SeqCst}};
-use crate::alp::{Cocf, Flt};
+use crate::alp::Cocf;
+use crate::pod::Elt;
 use crate::enc::{EncMeta, EncPack};
 use crate::c::Runner;
 use crate::blocks::Blocks;
@@ -1265,12 +1266,12 @@ impl<'a> Scatter<'a> {
         match self.w { 2 => put_vals::<2>(out, b, ix, v), 4 => put_vals::<4>(out, b, ix, v), _ => put_vals::<8>(out, b, ix, v) }
     }
     /// Block `b`'s writes: the positions and the floats.
-    fn writes<F: Flt>(&self, b: usize) -> (&[u64], &[F]) {
+    fn writes<F: Elt>(&self, b: usize) -> (&[u64], &[F]) {
         let r = self.span(b);
         (&self.ix[r.clone()], pod::cast::<F>(&self.vals[r.start * self.w..r.end * self.w]).expect("qlean scatter: the values are misaligned"))
     }
     /// structural.rs `fsc_patch`: pass 1's integers with the writes at the block's OLD exponent (`alp_patch_blk`).
-    fn patch<F: Flt>(&self, b: usize, nb: usize, d: &mut [i64], ee: &mut [i8]) -> i32 {
+    fn patch<F: Elt>(&self, b: usize, nb: usize, d: &mut [i64], ee: &mut [i8]) -> i32 {
         let (ix, v) = self.writes::<F>(b);
         crate::alp::alp_patch_blk(&self.old, b, nb, ix, v, d, ee)
     }
@@ -1288,7 +1289,7 @@ impl<'a> Scatter<'a> {
     }
     /// An ALP block with writes: the patch, unless the search's exponent leaves fewer exceptions; each costs its raw bytes
     /// and a position, more than the residual bits a higher exponent adds.
-    fn meta_alp<F: Flt>(&self, m: &mut EncMeta, b: usize, nb: usize, buf: &mut [u64; WBLK]) {
+    fn meta_alp<F: Elt>(&self, m: &mut EncMeta, b: usize, nb: usize, buf: &mut [u64; WBLK]) {
         let (mut d, mut ee) = ([0i64; WBLK], [0i8; WBLK]);
         let alt = self.patch::<F>(b, nb, &mut d, &mut ee);
         let np = ee[..nb].iter().filter(|&&e| e < 0).count() as u32;
@@ -1318,7 +1319,7 @@ impl<'a> Scatter<'a> {
         if self.alp { crate::enc::alp_pack(p, bytes, self.w) } else { crate::enc::for_pack(p, bytes, self.w) }
     }
     /// Pass 2 for a block pass 1 patched at the old exponent, with the same writes.
-    fn pack_patched<F: Flt>(&self, p: &mut EncPack, b: usize, nb: usize) {
+    fn pack_patched<F: Elt>(&self, p: &mut EncPack, b: usize, nb: usize) {
         let (mut d, mut ee) = ([0i64; WBLK], [0i8; WBLK]);
         self.patch::<F>(b, nb, &mut d, &mut ee);
         let (ix, v) = self.writes::<F>(b);
