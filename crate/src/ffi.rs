@@ -575,12 +575,6 @@ pub extern "C" fn qrs_ids_top(lw: u32) -> u64 { search::ids_top(lw) }
 pub extern "C" fn qrs_kind_width(k: c_int) -> usize {
     search::KINDS.get(k as usize).map_or(8, |k| k.width())
 }
-/// A31: search.c `sym_scan`: the first of `n` symbols equal to `k`, or `n`.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn qrs_sym_scan(blob: *const u8, bytes: usize, offs: *const usize, n: usize, k: *const u8, klen: usize)
-    -> usize {
-    unsafe { search::sym_scan(&syms0(blob, bytes, offs, n), n, sl(k, klen)) }
-}
 /// `lean_array_size` boxed offsets (`n + 1` for `n` symbols, none for an empty dictionary) as a column.
 unsafe fn symcol<'a>(blob: *const u8, bytes: usize, offs: *const usize, noffs: usize) -> Syms<'a> {
     Syms { blob: unsafe { sl(blob, bytes) }, offs: unsafe { sl(offs, noffs) } }
@@ -592,15 +586,6 @@ pub fn syms_of<'a>(blob: lean::B<'a>, offs: lean::B<'a>) -> Syms<'a> {
     let a = offs.array();
     // Safety: `lean::B` is `repr(transparent)` over one non-null pointer, so `a` is `a.len()` consecutive `usize` words
     Syms { blob: blob.bytes(), offs: unsafe { sl(a.as_ptr().cast::<usize>(), a.len()) } }
-}
-/// A31: search.c `sym_search` past the kept hash: the needle column `nb`/`no` (`nno` offsets) against the haystack `hb`/`ho`
-/// (`nho` offsets), `bits` 0: `out` is `8 * m` bytes of `Int64`s; `bits` 1: `ceil(m / 8)` zeroed bytes.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn qrs_sym_search(bits: c_int, nb: *const u8, nbytes: usize, no: *const usize, nno: usize, hb: *const u8,
-                                        hbytes: usize, ho: *const usize, nho: usize, out: *mut u8) {
-    let (nd, h) = unsafe { (symcol(nb, nbytes, no, nno), symcol(hb, hbytes, ho, nho)) };
-    let m = nd.count();
-    unsafe { search::sym_search(bits != 0, &nd, &h, sl_mut(out, if bits != 0 { m.div_ceil(8) } else { m * 8 })) }
 }
 /// K17: search.c `ix_alloc`'s size: the bytes of a table for `distinct` keys.
 #[unsafe(no_mangle)]
@@ -709,7 +694,7 @@ impl sym::Heap for Obj {
         for (k, v) in it.enumerate() { unsafe { *p.add(k) = lean::box_(v) } }
     }
 }
-/// The one cache of kept dictionary hashes. Safety: structural.c's `sd_mu` is held across every call that reaches it.
+/// The one cache of kept dictionary hashes. Safety: `SD_LOCK` is held across every call that reaches it.
 struct Kept(core::cell::UnsafeCell<sym::Cache<Obj>>);
 unsafe impl Sync for Kept {}
 static KEPT: Kept = Kept(core::cell::UnsafeCell::new(sym::Cache::new()));
@@ -720,33 +705,27 @@ unsafe fn part<'a>(dict: *mut lean::Object, offs: *mut lean::Object) -> sym::Par
                     syms: Syms { blob: sl(lean::sarray_cptr(dict), lean::sarray_size(dict)), offs: sl(lean::array_cptr(offs).cast(), lean::array_size(offs)) } }
     }
 }
-/// K20: structural.c `symdict_hold`'s find, `sd_mu` held by the caller: the kept table of the dictionary `dict`/`offs`
-/// at its own count, or null.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn qrs_sd_find(dict: *mut lean::Object, offs: *mut lean::Object) -> *const sym::Tab {
-    unsafe {
-        let (c, d) = (&mut *KEPT.0.get(), part(dict, offs).syms.count());
-        c.find(Obj(dict), d).map_or(core::ptr::null(), |i| c.table(i))
-    }
+/// The kept hash of the dictionary `dict`/`offs` at its own count, when the cache holds one: `f` gets its probe, the least id
+/// holding the symbol bytes it is given and the symbol count where none does, with `SD_LOCK` held (the lock `sd_concat` takes
+/// too); `None`, lock released, where nothing is kept. A lookup does not build one: a scan of `d` entries is a fraction of the
+/// hashing.
+pub fn sd_kept<R>(dict: lean::B, offs: lean::B, f: impl FnOnce(&dyn Fn(&[u8]) -> usize) -> R) -> Option<R> {
+    // Safety: the objects are borrowed for the call and the starts are boxed words, as `part` reads them
+    let p = unsafe { part(raw(dict), raw(offs)) };
+    let d = p.syms.count();
+    SD_LOCK.lock();
+    // Safety: `SD_LOCK` is held
+    let c = unsafe { &mut *KEPT.0.get() };
+    let r = c.find(Obj(raw(dict)), d).map(|i| {
+        let t = c.table(i).0.borrow();
+        let v = structural::Symview { base: p.syms, d0: d, tb: &[], to: &[] };
+        f(&|k| structural::symtab_find(&t.slot, t.mask, &v, d, k))
+    });
+    SD_LOCK.unlock();
+    r
 }
-/// K20: structural.c `symdict_probe`: the id of `k` in the plain dictionary `dict`/`offs` through the table `t`, or its
-/// symbol count. `sd_mu` is held since `qrs_sd_find` answered `t`.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn qrs_sd_probe(t: *const sym::Tab, dict: *mut lean::Object, offs: *mut lean::Object, k: *const u8,
-                                      klen: usize) -> usize {
-    unsafe {
-        let (t, p) = ((*t).0.borrow(), part(dict, offs));
-        let d = p.syms.count();
-        structural::symtab_find(&t.slot, t.mask, &structural::Symview { base: p.syms, d0: d, tb: &[], to: &[] }, d, sl(k, klen))
-    }
-}
-/// The lock of the kept dictionary hashes: held by the C finders between `qrs_sd_lock` and `qrs_sd_unlock` (structural.c's
-/// `symdict_hold` and `symdict_drop`, for search.c's) and by `sd_concat` around its one call into the cache.
+/// The lock of the kept dictionary hashes: held by `sd_kept` around its probes and by `sd_concat` around its one call into the cache.
 static SD_LOCK: crate::pool::Lock = crate::pool::Lock::new();
-#[unsafe(no_mangle)]
-pub extern "C" fn qrs_sd_lock() { SD_LOCK.lock() }
-#[unsafe(no_mangle)]
-pub extern "C" fn qrs_sd_unlock() { SD_LOCK.unlock() }
 /// The pointer of a borrowed object: `lean::B` is `repr(transparent)` over one non-null pointer.
 fn raw(b: lean::B) -> *mut lean::Object {
     // Safety: same size and meaning, as `syms_of` relies on for an array's elements

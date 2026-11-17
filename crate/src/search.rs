@@ -510,6 +510,10 @@ pub fn sym_probe(s: &Syms, tab: &[usize], mask: u64, n: usize, k: &[u8]) -> usiz
 }
 /// search.c:1266 `qlean_search_find_sym_scalar` past the unboxing and the kept hash: one scan.
 pub fn find_sym_scalar(s: &Syms, ndl: &[u8]) -> usize { sym_scan(s, s.count(), ndl) }
+/// The answer for needle `j` is index `idx`, absent being `n`: `out` holds `Int64`s, or bits (set where `idx < n`).
+pub fn sym_put(bits: bool, out: &mut [u8], n: usize, j: usize, idx: usize) {
+    if bits { if idx < n { out[j >> 3] |= 1 << (j & 7) } } else { i64s(out)[j] = idx as i64 }
+}
 /// search.c:925 `sym_search`: `needles ? hay` (`bits` false: `out` is `8 * m` bytes of `Int64`s) or `needles in hay` (`bits`
 /// true: `out` is `m.div_ceil(8)` bytes, zeroed) for symbol columns with no kept hash. A haystack whose symbols fit the
 /// 8-byte key goes through the `u64` probe table (or a scan of up to `SYM_SCAN_MAX` keys), the needles a block at a time;
@@ -517,10 +521,6 @@ pub fn find_sym_scalar(s: &Syms, ndl: &[u8]) -> usize { sym_scan(s, s.count(), n
 pub fn sym_search(bits: bool, nd: &Syms, hb: &Syms, out: &mut [u8]) {
     let (n, m) = (hb.count(), nd.count());
     if m == 0 { return }
-    // the answer for needle `j` is index `idx`; absent is `n`
-    fn put(bits: bool, out: &mut [u8], n: usize, j: usize, idx: usize) {
-        if bits { if idx < n { out[j >> 3] |= 1 << (j & 7) } } else { i64s(out)[j] = idx as i64 }
-    }
     // an empty haystack answers `n = 0` for every needle, which sets no bit
     if n > 0 && hb.packs(n) {
         let hk: Vec<u64> = hb.keys(n).collect();
@@ -540,7 +540,7 @@ pub fn sym_search(bits: bool, nd: &Syms, hb: &Syms, out: &mut [u8]) {
                 None => {
                     let mut r = vec![0i64; cnt];
                     scan::<u64>(&h, &x, 0, cnt, &mut r);
-                    for (j, &r) in r.iter().enumerate() { put(bits, out, n, at + j, r as usize) }
+                    for (j, &r) in r.iter().enumerate() { sym_put(bits, out, n, at + j, r as usize) }
                 }
             }
             at += cnt;
@@ -551,13 +551,13 @@ pub fn sym_search(bits: bool, nd: &Syms, hb: &Syms, out: &mut [u8]) {
     }
     if n <= SYM_SCAN_MAX {
         let s = Symscan::build(hb.slices(n));
-        for j in 0..m { put(bits, out, n, j, s.find(nd.at(j))) }
+        for j in 0..m { sym_put(bits, out, n, j, s.find(nd.at(j))) }
         return;
     }
     let cap = crate::group::cap_for(n);
     let mut tab = vec![0usize; cap];
     sym_build(hb, n, &mut tab, cap as u64 - 1);
-    for j in 0..m { put(bits, out, n, j, sym_probe(hb, &tab, cap as u64 - 1, n, nd.at(j))) }
+    for j in 0..m { sym_put(bits, out, n, j, sym_probe(hb, &tab, cap as u64 - 1, n, nd.at(j))) }
 }
 /// search.c `qlean_search_match_ids`'s translation: for each of the `na` entries of `a`, its index in `b` (`nb` when
 /// `b` does not hold it), through one hash table over `b`.
@@ -1187,6 +1187,30 @@ pub fn find_ids(n: usize, w: u32, ids: &[u8], needle: usize) -> usize {
     let n = n.min(ids::ids_avail(ids.len(), w));
     match w { 8 => wide::<1>(n, ids, needle), 16 => wide::<2>(n, ids, needle), 32 => wide::<4>(n, ids, needle), 64 => wide::<8>(n, ids, needle),
               _ => ids::by_width!(w, go(n, ids, needle)) }
+}
+/// `qlean_search_find_sym_ids_vec`'s second half over the first `n` ids (clamped by the caller) at `w` bits: each `out[j]`, a
+/// dictionary id `u` (`d` where the needle is absent), becomes the least element holding `u`, and `n` where none does. The
+/// pass runs forward and stops once every asked entry has its first element, so `sy?`c`e` over twenty million ids reads to the
+/// first `e`, not to the end.
+pub fn first_by_ids(n: usize, w: u32, ids: &[u8], d: usize, out: &mut [i64]) {
+    const WANT: usize = usize::MAX; // an entry asked for and not yet seen
+    // a block of ids unpacked at a time (block starts are byte aligned), so the loop has no per-id bounds test
+    fn go<const W: u32>(n: usize, ids: &[u8], first: &mut [usize], mut left: usize) {
+        const BLK: usize = 256;
+        let (d, mut buf, mut at) = (first.len() - 1, [0usize; BLK], 0);
+        while at < n && left > 0 {
+            let c = (n - at).min(BLK);
+            ids::unpack::<W, usize>(&ids[at * W as usize / 8..ids::ids_bytes(at + c, W)], &mut buf[..c], |_, e, u| *e = u);
+            for (k, &u) in buf[..c].iter().enumerate() { if u < d && first[u] == WANT { first[u] = at + k; left -= 1 } }
+            at += c;
+        }
+    }
+    let mut first = vec![n; d + 1];
+    let mut left = 0;
+    for &u in out.iter() { let u = u as usize; if u < d && first[u] == n { first[u] = WANT; left += 1 } }
+    ids::by_width!(w, go(n, ids, &mut first, left));
+    for f in &mut first[..d] { if *f == WANT { *f = n } }
+    for u in out.iter_mut() { *u = first[*u as usize] as i64 }
 }
 /// `qlean_search_longs_by_ids`' body: `out[i]` is `vals` read at id `i` of `ids` (`w` bits), 0 past the first `nvals`;
 /// `out` holds the count the caller clamped.
