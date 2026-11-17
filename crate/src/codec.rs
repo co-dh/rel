@@ -122,6 +122,7 @@ fn mask_blk(c: &Coc, b: usize, nb: usize, op: i32, v: i64, w64: &mut [u64], scra
     match blk_cmp(op, m.base[b], m.maxv[b], v, v) {
         1 => mask_fill(w64, nb),
         0 => {}
+        _ if c.bit_blk(b).is_some_and(|p| { crate::bitblk::mask_cmp(p, nb, op, v, w64); true }) => {}
         _ => {
             let f = c.frame(b) as i64;
             // a frame above v is the one case the window cannot say: every residual is then above it

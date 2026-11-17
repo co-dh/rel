@@ -144,7 +144,7 @@ impl Coc<'_> {
     /// column that never straddles does not pay for it.
     pub fn count_lt_blk(&self, b: usize, nb: usize, v: i64, buf: &mut Vec<u64>) -> usize {
         let f = self.frame(b) as i64; // base <= f <= maxv, so f < v wherever the residuals count
-        let mut k = if self.meta.maxv[b] < v { nb } else if f >= v { 0 } else {
+        let mut k = if self.meta.maxv[b] < v { nb } else if f >= v { 0 } else if let Some(p) = self.bit_blk(b) { crate::bitblk::count_lt(p, nb, v) } else {
             let (w0, at) = (self.meta.width[b], self.meta.off[b] as usize);
             if w0 & w0.wrapping_sub(1) != 0 && buf.is_empty() { buf.resize(self.meta.blk(), 0) }
             let mut w = w0;

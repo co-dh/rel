@@ -65,6 +65,7 @@ pub mod simd;
 pub mod pool;
 
 pub mod bits;
+pub mod bitblk;
 pub mod alp;
 pub mod coc;
 pub mod cocops;
