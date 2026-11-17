@@ -1,4 +1,4 @@
-//! search.c's Lean exports that moved: the finds, the membership and run-start walks over ids and bits, the operand
+//! search.rs's Lean exports that moved: the finds, the membership and run-start walks over ids and bits, the operand
 //! searches, the Frame-of-Reference equality walks, the id mask, and the index cell, an external object holding a value's
 //! index. Each unboxes its arguments, allocates the answer and makes one call into `search.rs`, which owns the loops.
 //! Lean passes `Int64` and `UInt64` as C's `uint64_t`.

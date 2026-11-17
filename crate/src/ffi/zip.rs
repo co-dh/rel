@@ -1,4 +1,4 @@
-//! zip.c's four Lean exports: a column file, compressed or plain, as `IO` results. The logic is `crate::zip`; the encoder it
+//! zip.rs's four Lean exports: a column file, compressed or plain, as `IO` results. The logic is `crate::zip`; the encoder it
 //! feeds is `ffi::encode_zip`.
 #![deny(unsafe_code)]
 use crate::ffi::encode_zip;

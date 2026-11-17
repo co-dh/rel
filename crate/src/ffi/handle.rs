@@ -1,4 +1,4 @@
-//! handle.c's Lean exports: `hopen`, `hclose`, the write an applied handle does, and the text of the errno they answer.
+//! ffi/handle.rs's Lean exports: `hopen`, `hclose`, the write an applied handle does, and the text of the errno they answer.
 //! Every one answers a non-negative result or `-errno`, as an `Int64` (Lean passes and takes it as C's `uint64_t`).
 #![deny(unsafe_code)]
 use crate::lean::{B, O, export, string, string_c};

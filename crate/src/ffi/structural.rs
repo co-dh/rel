@@ -1,4 +1,4 @@
-//! structural.c's Lean exports, and the helpers every other export of that file reads a Lean argument through (the C
+//! structural.rs's Lean exports, and the helpers every other export of that file reads a Lean argument through (the C
 //! `count_at`, `row_at`, `rows_at`, `alp_view`, `mk_pair`; `take_first` and `sarray_room` are `ffi::`'s, which owns the
 //! raw objects). The logic is `crate::structural`; an encoded answer is `ffi::encode_fill` over a `Producer`.
 #![deny(unsafe_code)]
@@ -17,7 +17,7 @@ fn die(args: core::fmt::Arguments) -> ! {
     crate::os::eprint(args).expect("qlean: stderr");
     crate::os::exit(1)
 }
-/// coc.h `mk_pair`: a `Prod`, constructor 0 with two fields.
+/// coc.rs `mk_pair`: a `Prod`, constructor 0 with two fields.
 pub fn pair(a: O, b: O) -> O { ctor(0, [a, b], &[]) }
 /// The bytes of each `ByteArray` of an `Array ByteArray`.
 pub fn bytes_of<'a>(a: &[B<'a>]) -> Vec<&'a [u8]> { a.iter().map(|b| b.bytes()).collect() }
@@ -31,10 +31,10 @@ pub fn count_at(counts: &[B], i: usize) -> usize {
     o.unbox()
 }
 
-/// `reverse` of a column as the writer's producer: structural.c `rev_fill`.
+/// `reverse` of a column as the writer's producer: structural.rs `rev_fill`.
 struct Rev<'a, 'b>(&'a Coc<'b>);
 impl Producer for Rev<'_, '_> { fn fill(&self, buf: &mut [i64], i0: usize) { structural::rev_fill(self.0, buf, i0) } }
-/// `,` of the parts `parts` starting at `start[j]` (`start` holds the part count + 1 entries) of element width `w`: structural.c
+/// `,` of the parts `parts` starting at `start[j]` (`start` holds the part count + 1 entries) of element width `w`: structural.rs
 /// `cat_fill` and `cat_take`.
 struct Cat<'a, 'b> { parts: &'a [Coc<'b>], start: &'a [usize], w: usize }
 impl Producer for Cat<'_, '_> {
@@ -47,16 +47,16 @@ impl Producer for Cat<'_, '_> {
     }
 }
 
-/// The cycling slice of a column: structural.c `cycle_fill`; `off` is below the count.
+/// The cycling slice of a column: structural.rs `cycle_fill`; `off` is below the count.
 struct Cycle<'a, 'b> { c: &'a Coc<'b>, off: usize }
 impl Producer for Cycle<'_, '_> { fn fill(&self, buf: &mut [i64], i0: usize) { structural::cycle_fill(self.c, self.off, 0, buf, i0) } }
-/// A column shifted by `k`, `fill` entering: structural.c `shift_fill`.
+/// A column shifted by `k`, `fill` entering: structural.rs `shift_fill`.
 struct Shift<'a, 'b> { c: &'a Coc<'b>, k: i64, fill: i64 }
 impl Producer for Shift<'_, '_> { fn fill(&self, buf: &mut [i64], i0: usize) { structural::shift_fill(self.c, self.k, self.fill, buf, i0) } }
 
 /// The hint callbacks all answer the exponent and the patch limit the walk leaves in `lim`.
 fn hinted(h: impl FnOnce(&mut u32) -> i32) -> Option<(i32, u32)> { let mut lim = 0; let e = h(&mut lim); Some((e, lim)) }
-/// `,` of ALP parts: structural.c `cat_fill_alp`, `cat_take`, `cat_hint`, `cat_ints`.
+/// `,` of ALP parts: structural.rs `cat_fill_alp`, `cat_take`, `cat_hint`, `cat_ints`.
 struct CatAlp<'a, 'b> { parts: &'a [Cocf<'b>], start: &'a [usize], w: usize }
 impl Producer for CatAlp<'_, '_> {
     fn fill(&self, buf: &mut [i64], i0: usize) { structural::cat_fill_alp(&|i| self.parts[i], self.start, self.w, buf, i0) }
@@ -67,21 +67,21 @@ impl Producer for CatAlp<'_, '_> {
     fn hint(&self, b: usize) -> Option<(i32, u32)> { hinted(|l| structural::cat_hint(&|i| self.parts[i], self.start, b, l)) }
     fn ints(&self, b: usize, out: Option<&mut structural::Ints>) -> i32 { structural::cat_ints(&|i| self.parts[i], self.start, b, out) }
 }
-/// `reverse` of an ALP column: structural.c `rev_fill_alp`, `rev_hint`, `rev_ints`.
+/// `reverse` of an ALP column: structural.rs `rev_fill_alp`, `rev_hint`, `rev_ints`.
 struct RevAlp<'a, 'b>(&'a Cocf<'b>);
 impl Producer for RevAlp<'_, '_> {
     fn fill(&self, buf: &mut [i64], i0: usize) { structural::rev_fill_alp(self.0, buf, i0) }
     fn hint(&self, b: usize) -> Option<(i32, u32)> { hinted(|l| structural::rev_hint(self.0, b, l)) }
     fn ints(&self, b: usize, out: Option<&mut structural::Ints>) -> i32 { structural::rev_ints(self.0, b, out) }
 }
-/// The cycling slice of an ALP column, `m` elements from `off` (below the count): structural.c `cycle_fill_alp` and its hints.
+/// The cycling slice of an ALP column, `m` elements from `off` (below the count): structural.rs `cycle_fill_alp` and its hints.
 struct CycleAlp<'a, 'b> { f: &'a Cocf<'b>, off: usize, m: usize }
 impl Producer for CycleAlp<'_, '_> {
     fn fill(&self, buf: &mut [i64], i0: usize) { structural::cycle_fill_alp(self.f, self.off, self.m, buf, i0) }
     fn hint(&self, b: usize) -> Option<(i32, u32)> { hinted(|l| structural::cycle_hint(self.f, self.off, self.m, b, l)) }
     fn ints(&self, b: usize, out: Option<&mut structural::Ints>) -> i32 { structural::cycle_ints(self.f, self.off, self.m, b, out) }
 }
-/// An ALP column shifted by `k`, `fill` entering: structural.c `shift_fill_alp` and its hints.
+/// An ALP column shifted by `k`, `fill` entering: structural.rs `shift_fill_alp` and its hints.
 struct ShiftAlp<'a, 'b> { f: &'a Cocf<'b>, k: i64, fill: i64 }
 impl Producer for ShiftAlp<'_, '_> {
     fn fill(&self, buf: &mut [i64], i0: usize) { structural::shift_fill_alp(self.f, self.k, self.fill, buf, i0) }
@@ -89,7 +89,7 @@ impl Producer for ShiftAlp<'_, '_> {
     fn ints(&self, b: usize, out: Option<&mut structural::Ints>) -> i32 { structural::shift_ints_at(self.f, self.k, &self.fill, b, out) }
 }
 
-/// structural.c `reverse_foR_move`: the blocks in reverse order, each keeping its base, maximum and width, its residuals
+/// structural.rs `reverse_foR_move`: the blocks in reverse order, each keeping its base, maximum and width, its residuals
 /// reversed inside it.
 fn reverse_moved(col: &Coc) -> O {
     let mut mo = SArr::new(1, 33 * col.meta.nblk + 16);
@@ -97,14 +97,14 @@ fn reverse_moved(col: &Coc) -> O {
     structural::reverse_enc(c::pool(), col, po.bytes_mut());
     pair(mo.into(), po.into())
 }
-/// structural.c `concat_foR_move`: the parts' four metadata sections in turn and their packs end to end, `n` elements.
+/// structural.rs `concat_foR_move`: the parts' four metadata sections in turn and their packs end to end, `n` elements.
 fn concat_moved(ms: &[&[u8]], ps: &[&[u8]], n: usize, w: usize) -> O {
     let mut mo = SArr::new(1, 33 * ms.iter().map(|m| m.len() / 33).sum::<usize>() + 16);
     let mut po = SArr::new(1, ps.iter().map(|p| p.len()).sum());
     structural::concat_move(ms, ps, n, w, mo.bytes_mut(), po.bytes_mut());
     pair(mo.into(), po.into())
 }
-/// structural.c `concat_foR`: the answer, or `Err` of the append `qlean_structural_concat_foR` makes in the first part's own
+/// structural.rs `concat_foR`: the answer, or `Err` of the append `qlean_structural_concat_foR` makes in the first part's own
 /// objects, with their sizes. Nothing here changes an argument, so every view lives only inside it.
 fn concat(w: usize, nsv: B, metasv: &O, packsv: &O) -> Result<O, (structural::Grow, usize, usize)> {
     let (ms, ps, nb) = (metasv.borrow().array(), packsv.borrow().array(), nsv.bytes());
@@ -223,16 +223,16 @@ export! {
     }
 }
 
-/// A fresh payload of `n` bytes, zeroed: structural.c `zeroed_bits` and `ids_alloc`, whose unwritten tail bits must be 0
+/// A fresh payload of `n` bytes, zeroed: structural.rs `zeroed_bits` and `ids_alloc`, whose unwritten tail bits must be 0
 /// for two equal columns to hold the same bytes.
 fn zeroed(n: usize) -> SArr {
     let mut a = SArr::new(1, n);
     a.bytes_mut().fill(0);
     a
 }
-/// The fields `ids` holds at `w` bits, `n` clamped to them: structural.c `ids_avail`, where width 0 holds any count.
+/// The fields `ids` holds at `w` bits, `n` clamped to them: structural.rs `ids_avail`, where width 0 holds any count.
 fn ids_n(n: usize, ids: &[u8], w: usize) -> usize { n.min(if w != 0 { ids.len() * 8 / w } else { usize::MAX }) }
-/// A fresh `ByteArray` of the `n` elements of `w` bytes `f` writes, as structural.c's `lean_alloc_sarray(1, n * w, n * w)`.
+/// A fresh `ByteArray` of the `n` elements of `w` bytes `f` writes, as structural.rs's `lean_alloc_sarray(1, n * w, n * w)`.
 fn fresh(n: usize, f: impl FnOnce(&mut [u8])) -> O {
     let mut a = SArr::new(1, n);
     f(a.bytes_mut());
@@ -365,7 +365,7 @@ export! {
 
 /// The `Int64`s of an answer payload, written in place.
 fn longs_mut(a: &mut SArr) -> &mut [i64] { pod::cast_mut(a.bytes_mut()).expect("qlean structural: a ByteArray's data is 8-aligned") }
-/// The symbols a dictionary's starts describe: `n + 1` starts are `n` symbols and an empty table is none (sym.h `sym_count`).
+/// The symbols a dictionary's starts describe: `n + 1` starts are `n` symbols and an empty table is none (sym.rs `sym_count`).
 fn sym_count(offs: B) -> usize { offs.array().len().saturating_sub(1) }
 
 export! {

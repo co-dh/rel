@@ -494,7 +494,7 @@ impl<T: Ext> Class<T> {
 }
 
 /// A slot that holds one owned object once set: set at most once by compare-and-swap, so two racing writers keep one
-/// answer and drop the other (search.c's `ix`). Dropping the slot drops the object.
+/// answer and drop the other (search.rs's `ix`). Dropping the slot drops the object.
 pub struct Once(core::sync::atomic::AtomicPtr<Object>);
 impl Once {
     pub const fn new() -> Once { Once(core::sync::atomic::AtomicPtr::new(core::ptr::null_mut())) }
@@ -524,7 +524,7 @@ impl Slot {
     }
 }
 
-/// Byte arrays laid inside a mapping that is never unmapped (own.c's parts of a `.own` file): span `(off, len)` gets
+/// Byte arrays laid inside a mapping that is never unmapped (own.rs's parts of a `.own` file): span `(off, len)` gets
 /// its `SArray` header in the `size_of::<SArray>()` bytes before `off`, by `lean_set_non_heap_header_for_big` (`rc` 0,
 /// so Lean never frees it nor updates it in place). Panics when a header would fall outside `m`, overlap another span
 /// or its header, or sit off an 8-byte boundary.

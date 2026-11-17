@@ -1,5 +1,5 @@
-//! qlean's kernels in Rust, linked into `libqleankernel.a` as `rust/qrs.o`. Only `qrs_*` (ffi.rs) leave the
-//! object, beside the Lean externs of `ffi/*.rs`. `unsafe` is confined to c.rs, ffi.rs, lean.rs, lib.rs, os.rs, pod.rs, pool.rs,
+//! qlean's kernels in Rust, linked into `libqleankernel.a` as `rust/qrs.o`. The Lean externs of `ffi/*.rs` leave the
+//! object (`qrs_abi_*` beside them with feature `abi`). `unsafe` is confined to c.rs, ffi.rs, lean.rs, lib.rs, os.rs, pod.rs, pool.rs,
 //! rt.rs, simd.rs; every other module refuses it, and `ffi/*.rs` denies it (their one `allow` comes from `lean::export!`).
 #![cfg_attr(not(test), no_std)]
 #![deny(unsafe_op_in_unsafe_fn)]
@@ -7,7 +7,7 @@ extern crate alloc;
 
 pub const BLK: usize = 1024;
 
-/// Costs per element, named so a call site says why rather than what; the one definition, C reads it through rs.h.
+/// Costs per element, named so a call site says why rather than what; the one definition.
 /// one indexed load and one store
 pub const QLEAN_COST_GATHER: u32 = 1;
 /// a straight-line move, no arithmetic. 3, not 2: a move writes a fresh answer and its page faults are the cost, so

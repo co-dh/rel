@@ -1,8 +1,8 @@
-//! The AVX-512 kernels: coc.h:598, 646; reduce.c:261. Each picks its path by `cfg`, as the C picks by `#if`.
+//! The AVX-512 kernels: coc.rs, 646; reduce.rs. Each picks its path by `cfg`, as the C picks by `#if`.
 // a build without the vector features takes the scalar arm of each function and ignores what only the vector arm reads
 #![cfg_attr(not(all(target_arch = "x86_64", target_feature = "avx512bw")), allow(unused_variables))]
 
-/// reduce.c `MD5_STEP`'s `asm("" : "+r"(t))`: an empty asm that makes `t` opaque, so the optimiser cannot reassociate
+/// reduce.rs `MD5_STEP`'s `asm("" : "+r"(t))`: an empty asm that makes `t` opaque, so the optimiser cannot reassociate
 /// `a + w + k + F` into `((a + F) + w) + k` and put a sixth operation back on md5's critical chain.
 #[inline(always)]
 pub fn keep(t: u32) -> u32 {
@@ -12,7 +12,7 @@ pub fn keep(t: u32) -> u32 {
     t
 }
 
-/// reduce.c `qlean_f32_sum_src`'s lane loop: `acc[j] += x[16 * i + j]` over the whole groups of 16 in `x` (a tail shorter
+/// reduce.rs `qlean_f32_sum_src`'s lane loop: `acc[j] += x[16 * i + j]` over the whole groups of 16 in `x` (a tail shorter
 /// than 16 is left), one `vaddps` a group so every lane adds in element order; answers the NaNs seen.
 pub fn f32_lanes(x: &[f32], acc: &mut [f32; 16]) -> usize {
     #[cfg(all(target_arch = "x86_64", target_feature = "avx512f"))]
@@ -72,7 +72,7 @@ pub fn prefetch<T>(r: &T) {
     unsafe { core::arch::x86_64::_mm_prefetch::<{ core::arch::x86_64::_MM_HINT_T0 }>((r as *const T).cast()) }
 }
 
-/// reduce.c:264 `over_u8_sum`: `+/` of a byte payload; `psadbw` against zero adds eight bytes into one 64-bit lane.
+/// reduce.rs `over_u8_sum`: `+/` of a byte payload; `psadbw` against zero adds eight bytes into one 64-bit lane.
 #[cfg(all(target_arch = "x86_64", target_feature = "avx512bw"))]
 #[target_feature(enable = "avx512f,avx512bw")]
 fn u8_sum512(p: &[u8]) -> i64 {
@@ -98,7 +98,7 @@ pub fn u8_sum(p: &[u8]) -> i64 {
     #[cfg(not(all(target_arch = "x86_64", target_feature = "avx512bw")))]
     u8_sum_scalar(p)
 }
-/// elementwise.c `fixed_scan`'s vector step: bit `k` of the answer is set when `b[s + k] == f` and `b[s + k + w - 1] == g`, for the
+/// ew.rs `fixed_scan`'s vector step: bit `k` of the answer is set when `b[s + k] == f` and `b[s + k + w - 1] == g`, for the
 /// 64 positions `k` of `s`; the caller has seen `s + 63 + w <= b.len()`. Only a build enabling avx512bw has it, as the C's `#if`.
 #[cfg(all(target_arch = "x86_64", target_feature = "avx512f", target_feature = "avx512bw"))]
 #[inline]
@@ -111,11 +111,11 @@ pub fn lit_mask64(b: &[u8], s: usize, w: usize, f: u8, g: u8) -> u64 {
             & (_mm512_cmpeq_epi8_mask(_mm512_set1_epi8(g as i8), _mm512_loadu_si512(y.as_ptr().cast())) as u64)
     }
 }
-/// coc.h's `RES_SIMD`: the build enables every feature the odd-width vector kernels need.
+/// coc.rs's `RES_SIMD`: the build enables every feature the odd-width vector kernels need.
 pub(crate) const RES_SIMD: bool = cfg!(all(target_arch = "x86_64", target_feature = "avx512vbmi", target_feature = "avx512vbmi2",
                                     target_feature = "avx512bw", target_feature = "avx512dq"));
 pub fn res_unpack(p: &[u8], w: u8, nb: usize, out: &mut [u8]) {
-    // coc.h:598's `#if`: the vector path only where the build enables every feature it needs (target-cpu=native)
+    // coc.rs's `#if`: the vector path only where the build enables every feature it needs (target-cpu=native)
     #[cfg(all(target_arch = "x86_64", target_feature = "avx512vbmi", target_feature = "avx512vbmi2",
               target_feature = "avx512bw", target_feature = "avx512dq"))]
     {
@@ -132,7 +132,7 @@ pub fn res_unpack(p: &[u8], w: u8, nb: usize, out: &mut [u8]) {
                   target_feature = "avx512bw", target_feature = "avx512dq")))]
     crate::unpack::res_unpack_scalar(p, w, nb, out)
 }
-/// coc.h's `res_unpack_add`: block residuals widened to `tw`-byte elements with `base` added, wrapping, the first `nb`
+/// coc.rs's `res_unpack_add`: block residuals widened to `tw`-byte elements with `base` added, wrapping, the first `nb`
 /// stored and nothing after; false (nothing written) at a power-of-two width, an element narrower than the lane, or
 /// a build without the vector path.
 pub fn res_unpack_add(p: &[u8], w: u8, nb: usize, base: u64, out: &mut [u8], tw: u32) -> bool {
@@ -158,7 +158,7 @@ pub fn res_unpack_add(p: &[u8], w: u8, nb: usize, base: u64, out: &mut [u8], tw:
     false
 }
 
-/// coc.h's `res_vcmp`: `r - lo <= span` (unsigned, flipped when `inv`) of an odd-width block's residuals, in register, ORed
+/// coc.rs's `res_vcmp`: `r - lo <= span` (unsigned, flipped when `inv`) of an odd-width block's residuals, in register, ORed
 /// into the bitmap `out` (bit `i` of its word `i / 64`), the lanes never stored. Only when [lo, lo + span] lies inside the
 /// L-bit lane, where the lane's wrapping subtraction agrees with the 64-bit one; false (nothing written) otherwise, at a
 /// power-of-two width, or in a build without the vector path.
@@ -179,7 +179,7 @@ pub fn res_vcmp(p: &[u8], w: u8, nb: usize, lo: u64, span: u64, inv: bool, out: 
     false
 }
 
-/// One function per `RES_VUNPACK` instance of coc.h:589-695 (`res_unpack`: B9; `res_unpack_add`: B10). Each names
+/// One function per `RES_VUNPACK` instance of coc.rs (`res_unpack`: B9; `res_unpack_add`: B10). Each names
 /// every intrinsic its C instance uses, so this file compiling on the pinned toolchain is the check that all of
 /// them are stable; the bodies are B9's and B10's.
 #[cfg(target_arch = "x86_64")]
@@ -546,7 +546,7 @@ mod tests {
     }
 }
 
-/// coc.h:690 `res_pack`: the vector pack at an odd width from 9 to 63 where the build enables the vector path (as
+/// coc.rs `res_pack`: the vector pack at an odd width from 9 to 63 where the build enables the vector path (as
 /// `res_unpack`), `res::res_pack_scalar` otherwise. Writes the first ⌈nb*w/8⌉ bytes of `dst`, no more.
 pub fn res_pack(v: &[u64], w: u8, nb: usize, dst: &mut [u8]) {
     #[cfg(all(target_arch = "x86_64", target_feature = "avx512vbmi", target_feature = "avx512vbmi2",
@@ -558,10 +558,10 @@ pub fn res_pack(v: &[u64], w: u8, nb: usize, dst: &mut [u8]) {
     }
     crate::res::res_pack_scalar(v, w, nb, dst)
 }
-/// A3: coc.h:820 `res_sum8`, the vector residual sum.
+/// A3: coc.rs `res_sum8`, the vector residual sum.
 /// The scaffold's `w` is the width `res::res_sum` dispatched on, always 8 here. The bytes are `u8_sum`'s `psadbw`.
 pub fn res_sum8(p: &[u8], nb: usize, w: u8) -> u64 { debug_assert_eq!(w, 8); u8_sum(&p[..nb]) as u64 }
-/// A14: scan.c's vector `scan_fill`: copies the leading 64-byte groups of `p` (`n` elements of the kind) that hold no
+/// A14: scan.rs's vector `scan_fill`: copies the leading 64-byte groups of `p` (`n` elements of the kind) that hold no
 /// null into `out` and returns how many elements that is. The caller (`scan::scan_fill`) does the group that stopped
 /// it, and the tail; without AVX-512 in the build it copies nothing and the caller does everything.
 pub fn scan_fill(kind: i32, p: &[u8], out: &mut [u8], n: usize) -> usize {
@@ -570,7 +570,7 @@ pub fn scan_fill(kind: i32, p: &[u8], out: &mut [u8], n: usize) -> usize {
     #[cfg(not(all(target_arch = "x86_64", target_feature = "avx512f", target_feature = "avx512bw")))]
     { let _ = (kind, p, out, n); 0 }
 }
-/// A14: scan.c's vector `scan_any_null`: `(true, i)` when the 64-byte group at element `i` holds a null, else
+/// A14: scan.rs's vector `scan_any_null`: `(true, i)` when the 64-byte group at element `i` holds a null, else
 /// `(false, k)` with the first `k` elements (whole groups) null-free; the caller tests the tail.
 pub fn any_null(kind: i32, p: &[u8], n: usize) -> (bool, usize) {
     #[cfg(all(target_arch = "x86_64", target_feature = "avx512f", target_feature = "avx512bw"))]
@@ -578,7 +578,7 @@ pub fn any_null(kind: i32, p: &[u8], n: usize) -> (bool, usize) {
     #[cfg(not(all(target_arch = "x86_64", target_feature = "avx512f", target_feature = "avx512bw")))]
     { let _ = (kind, p, n); (false, 0) }
 }
-/// scan.c:268-304 `SCG_*`: whether a 64-byte group holds the kind's null, one `cmp` to a mask. `byte` has none.
+/// scan.rs `SCG_*`: whether a 64-byte group holds the kind's null, one `cmp` to a mask. `byte` has none.
 #[cfg(all(target_arch = "x86_64", target_feature = "avx512f", target_feature = "avx512bw"))]
 mod sc {
     use core::arch::x86_64::*;
@@ -648,7 +648,7 @@ mod sc {
         (hit, i)
     }
 }
-/// A43: elementwise.c `ew_val_avx`: `a op b` of the four arithmetic verbs at a float class (4 f32, 5 f64), all `n`
+/// A43: ew.rs `ew_val_avx`: `a op b` of the four arithmetic verbs at a float class (4 f32, 5 f64), all `n`
 /// elements, the tail under a mask. An operand of one element against `n > 1` is the atom, broadcast. Only the
 /// caller that tested the build for AVX-512 may call it.
 pub fn ew_val(op: u8, cls: u8, a: &[u8], b: &[u8], n: usize, out: &mut [u8]) {
@@ -658,7 +658,7 @@ pub fn ew_val(op: u8, cls: u8, a: &[u8], b: &[u8], n: usize, out: &mut [u8]) {
     #[cfg(not(all(target_arch = "x86_64", target_feature = "avx512f", target_feature = "avx512bw")))]
     panic!("qlean_ew: simd::ew_val without AVX-512 in the build (target-cpu=native); the caller tests the build first")
 }
-/// A43: elementwise.c `ew_cmp_avx`: the six comparisons at the six classes as a mask register stored to `out`, all `n`
+/// A43: ew.rs `ew_cmp_avx`: the six comparisons at the six classes as a mask register stored to `out`, all `n`
 /// elements, the tail under a mask and the bits above `n` zero. Atoms as `ew_val`.
 pub fn ew_cmp(op: u8, cls: u8, a: &[u8], b: &[u8], n: usize, out: &mut [u8]) {
     #[cfg(all(target_arch = "x86_64", target_feature = "avx512f", target_feature = "avx512bw"))]
@@ -667,7 +667,7 @@ pub fn ew_cmp(op: u8, cls: u8, a: &[u8], b: &[u8], n: usize, out: &mut [u8]) {
     #[cfg(not(all(target_arch = "x86_64", target_feature = "avx512f", target_feature = "avx512bw")))]
     panic!("qlean_ew: simd::ew_cmp without AVX-512 in the build (target-cpu=native); the caller tests the build first")
 }
-/// `x - y * f` rounded once where the build has FMA, as GCC contracts it at `-march=native` (elementwise.c:404's `mod` at
+/// `x - y * f` rounded once where the build has FMA, as GCC contracts it at `-march=native` (ew.rs's `mod` at
 /// a float width); two roundings elsewhere.
 pub fn fnma64(x: f64, y: f64, f: f64) -> f64 {
     #[cfg(all(target_arch = "x86_64", target_feature = "fma"))]
@@ -686,7 +686,7 @@ pub fn fnma32(x: f32, y: f32, f: f32) -> f32 {
     return x - y * f;
 }
 
-/// elementwise.c:421-809: the mask-register kernels. A comparison's result is a mask, so packing the bits is one store;
+/// ew.rs: the mask-register kernels. A comparison's result is a mask, so packing the bits is one store;
 /// q's NaN rule is two mask blends over the arithmetic.
 #[cfg(all(target_arch = "x86_64", target_feature = "avx512f", target_feature = "avx512bw"))]
 mod ev {
@@ -845,7 +845,7 @@ mod ev {
     }
 }
 
-/// `(int64_t)nearbyint(s)` for |s| < 2^53 (coc.h `dat`): `cvtsd2si` rounds in the current mode, to nearest even, in one
+/// `(int64_t)nearbyint(s)` for |s| < 2^53 (coc.rs `dat`): `cvtsd2si` rounds in the current mode, to nearest even, in one
 /// instruction and without libm.
 #[inline(always)]
 pub fn cvt_nearest(s: f64) -> i64 {
@@ -862,7 +862,7 @@ pub fn sqrt64(x: f64) -> f64 {
     unsafe { use core::arch::x86_64::*; _mm_cvtsd_f64(_mm_sqrt_sd(_mm_set_sd(x), _mm_set_sd(x))) }
 }
 
-// ---- the moving-window extremes (scan.c `MW_EXT`) ----
+// ---- the moving-window extremes (scan.rs `MW_EXT`) ----
 // The carried `ex = better(v, ex) ? v : ex` is a one-register chain. LLVM lowers a scalar select there to a cmov and its
 // cmov converter turns that into a branch, which mispredicts on random data; gcc keeps the chain in an xmm register as a
 // one-cycle `vpmin`, so the integral kinds do the same, and a float is a branch only because the running extreme is

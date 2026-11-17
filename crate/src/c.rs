@@ -24,7 +24,7 @@ macro_rules! libm {
 // `pow` (both float classes of `ew::val`, the f32 one computed at double width) and the nine float maps of `ew::mon`.
 libm! { pow(x, y); sqrt(x); exp(x); log(x); sin(x); cos(x); tan(x); asin(x); acos(x); atan(x); }
 
-/// elementwise.c `ew_serial`: a runner that runs the whole range on the calling thread and answers one part, for a
+/// ew.rs `ew_serial`: a runner that runs the whole range on the calling thread and answers one part, for a
 /// worker that is already one slice of the pool (a chain tile) and must not enter it again.
 pub unsafe extern "C" fn serial(f: Worker, n: usize, _cost: u32, _wide: usize, p: *const CPass) -> u32 {
     unsafe { f(0, n, p) };
@@ -33,7 +33,7 @@ pub unsafe extern "C" fn serial(f: Worker, n: usize, _cost: u32, _wide: usize, p
 
 pub type Worker = unsafe extern "C" fn(lo: usize, hi: usize, p: *const CPass);
 /// A pass's runner: the pool (`pool::run_c`, `qrs_pool_run` in C) or a serial one C hands a stage already inside a
-/// slice (elementwise.c `ew_serial`), which is why the kernels take it rather than call the pool; F3 makes it `Par`.
+/// slice (ew.rs `ew_serial`), which is why the kernels take it rather than call the pool; F3 makes it `Par`.
 pub type Runner = unsafe extern "C" fn(f: Worker, n: usize, cost: u32, wide: usize, p: *const CPass) -> u32;
 
 /// The runner a Rust export hands its kernel: the process's one pool.
@@ -55,7 +55,7 @@ unsafe extern "C" fn slice<F: Fn(usize, usize, &mut [u8]) + Sync>(lo: usize, hi:
     (j.f)(lo, hi, o)
 }
 
-/// The C pool (pass.h:415) over `units` units of `unit` bytes of `out`: `f(lo, hi, &mut out[lo * unit .. hi * unit])`
+/// The C pool (c.rs) over `units` units of `unit` bytes of `out`: `f(lo, hi, &mut out[lo * unit .. hi * unit])`
 /// once per slice, on as many threads as `qlean_run` splits `units` into at `cost` and `wide`; answers that count.
 pub fn run_map<F: Fn(usize, usize, &mut [u8]) + Sync>(run: Runner, out: &mut [u8], units: usize, unit: usize, cost: u32,
                                                       wide: usize, f: &F) -> u32 {
@@ -195,7 +195,7 @@ mod tests {
     }
 }
 
-/// pass.h:488-491: a stage operand's source code at or above `SLOTS` is a column (re-based per tile) or fixed (one pointer).
+/// c.rs: a stage operand's source code at or above `SLOTS` is a column (re-based per tile) or fixed (one pointer).
 const SLOTS: usize = 10;
 const TILE: usize = 1024;
 const COLUMN: u8 = 254;
@@ -204,7 +204,7 @@ const COLUMN: u8 = 254;
 #[repr(align(64))]
 struct Slot([u8; TILE * 8]);
 
-/// pass.h:502 `qlean_chain_run` over the tiles `[lo, hi)`: every stage over a tile before the next tile starts.
+/// c.rs `qlean_chain_run` over the tiles `[lo, hi)`: every stage over a tile before the next tile starts.
 /// Safety: `cp.a` is the `[CStage; cp.op]` of `run_chain`, whose `f` are live workers and whose bindings reach `cp.n` elements.
 pub unsafe extern "C" fn chain_tiles(lo: usize, hi: usize, cp: *const CPass) {
     let (st, k, n) = unsafe { (core::slice::from_raw_parts((*cp).a.cast::<crate::ffi::CStage>(), (*cp).op as usize), (*cp).op as usize, (*cp).n) };
@@ -232,14 +232,14 @@ pub unsafe extern "C" fn chain_tiles(lo: usize, hi: usize, cp: *const CPass) {
     }
 }
 
-/// pass.h:530 `qlean_run_chain`: the stages of `st` over `n` elements on the pool, one thread or several; answers the
+/// c.rs `qlean_run_chain`: the stages of `st` over `n` elements on the pool, one thread or several; answers the
 /// thread count. `cost` and `wide` are the whole chain's, so the split is decided on the expression, not on one verb.
 /// Safety (of the pointers in `st`): the bindings of every stage reach `n` elements, as `qlean_ew_chain` built them.
 pub fn run_chain(run: Runner, st: &[crate::ffi::CStage], n: usize, cost: u32, wide: usize) -> u32 {
     assert!(!st.is_empty() && st.len() <= SLOTS, "qlean_run_chain: {} stages, and the driver holds {SLOTS}", st.len());
     if let [s] = st {
         // a chain of one pass is that pass: tiling it fuses nothing and costs a call a tile. A comparison is sliced by
-        // output byte, so its widest operand is counted per output bit (pass.h:545)
+        // output byte, so its widest operand is counted per output bit (c.rs)
         let widest = s.abits.max(s.obits).max(s.bbits) as usize;
         let mut one = unsafe { core::ptr::read(&s.p) };
         one.n = n;

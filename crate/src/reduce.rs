@@ -1,5 +1,5 @@
 #![forbid(unsafe_code)]
-//! Column (a), reduce.c: whole-vector reductions of a byte payload (A12; the byte sum is `simd::u8_sum`) and the
+//! Column (a), reduce.rs: whole-vector reductions of a byte payload (A12; the byte sum is `simd::u8_sum`) and the
 //! segmented reductions and bit-row folds (A13).
 use alloc::vec::Vec;
 use alloc::vec;
@@ -8,7 +8,7 @@ use crate::c::{run_map, run_slices, Runner};
 use crate::ids::{id_at, ids_avail};
 use crate::{simd, BLK};
 
-// ---- A12: reduce.c:261-298 ----
+// ---- A12: reduce.rs ----
 /// An element of the four integer classes: read in native order, widened to `i64` as C's `(int64_t)` cast does.
 trait Elem: Copy + PartialOrd + Into<i64> + TryFrom<i64> {
     const W: usize;
@@ -35,7 +35,7 @@ elem!(i16);
 elem!(i32);
 elem!(i64);
 
-/// reduce.c:213 `OB_LANES`: `L` accumulators of plain vector ops, a skipped element folding in the identity `id`; every
+/// reduce.rs `OB_LANES`: `L` accumulators of plain vector ops, a skipped element folding in the identity `id`; every
 /// step is associative with `id` its identity, so the lane split cannot move the answer.
 fn lanes<T: Elem, A: Copy, const L: usize>(a: &[u8], id: A, cv: impl Fn(T) -> A, sk: impl Fn(T) -> bool,
                                            step: impl Fn(A, A) -> A) -> A {
@@ -49,7 +49,7 @@ fn lanes<T: Elem, A: Copy, const L: usize>(a: &[u8], id: A, cv: impl Fn(T) -> A,
     r[1..].iter().fold(r[0], |t, &x| step(t, x))
 }
 
-/// reduce.c:252 `OB_VERBS`: the six verbs at element type `T`, the null compared at `T`'s width and skipped only
+/// reduce.rs `OB_VERBS`: the six verbs at element type `T`, the null compared at `T`'s width and skipped only
 /// where `nul` is a value of `T`.
 fn verbs<T: Elem, const LI: usize, const LT: usize>(op: u8, nul: i64, n: usize, a: &[u8], seed: i64) -> i64 {
     let tn = T::try_from(nul).ok();
@@ -79,7 +79,7 @@ fn verbs<T: Elem, const LI: usize, const LT: usize>(op: u8, nul: i64, n: usize, 
     }
 }
 
-/// reduce.c:277 `qlean_over_bytes` past the unboxing: `op` (sum, prd, min, max, ...) of class `cls` over `a`, nulls
+/// reduce.rs `qlean_over_bytes` past the unboxing: `op` (sum, prd, min, max, ...) of class `cls` over `a`, nulls
 /// `nul` skipped.
 pub fn over_bytes(op: u8, cls: u8, nul: i64, a: &[u8]) -> i64 {
     // a skipped `0` adds what folding it adds, so only a nonzero byte null keeps the lanes
@@ -98,13 +98,13 @@ pub fn over_bytes(op: u8, cls: u8, nul: i64, a: &[u8]) -> i64 {
     }
 }
 
-// ---- A13: reduce.c:488-619 ----
-/// reduce.c:488 `seg_at`: segment `k`'s start (`o` the `n` starts; `k == n` answers the end).
+// ---- A13: reduce.rs ----
+/// reduce.rs `seg_at`: segment `k`'s start (`o` the `n` starts; `k == n` answers the end).
 pub fn seg_at(o: &[i64], n: usize, k: usize) -> usize {
     let x = o[k];
     if x < 0 { 0 } else if x as u64 > n as u64 { n } else { x as usize }
 }
-/// reduce.c:493 `seg_lower`: the segment holding element `i`.
+/// reduce.rs `seg_lower`: the segment holding element `i`.
 pub fn seg_lower(o: &[i64], n: usize, ng: usize, i: usize) -> usize {
     let (mut a, mut b) = (0, ng);
     while a < b { let m = a + (b - a) / 2; if seg_at(o, n, m) < i { a = m + 1 } else { b = m } }
@@ -149,13 +149,13 @@ fn fold_cls(op: u8, cls: u8, nul: i64, lo: i64, hi: i64, n: usize, offs: &[i64],
     }
 }
 
-/// reduce.c:516 `over_segments`: elements `from .. to` of `src` (class `cls`) folded by `op` into the
+/// reduce.rs `over_segments`: elements `from .. to` of `src` (class `cls`) folded by `op` into the
 /// segment results `res`, segments `lo .. hi`.
 pub fn over_segments(op: u8, cls: u8, nul: i64, lo: i64, hi: i64, ng: usize, n: usize, offs: &[i64], src: &[u8],
                      from: usize, to: usize, res: &mut [i64]) {
     fold_cls(op, cls, nul, lo, hi, n, offs, src, from, to, &mut |r, a, k| { res[r] = a; res[ng + r] = k })
 }
-/// reduce.c:537 `qlean_over_segments` past the unboxing: one result per segment into `res` (`2 * ng` long, the folds
+/// reduce.rs `qlean_over_segments` past the unboxing: one result per segment into `res` (`2 * ng` long, the folds
 /// then the live counts), threaded (`over_segments_pass`).
 pub fn segments(run: Runner, op: u8, cls: u8, nul: i64, offs: &[i64], src: &[u8], n: usize, res: &mut [i64]) {
     let ng = offs.len().saturating_sub(1);
@@ -178,7 +178,7 @@ pub fn segments(run: Runner, op: u8, cls: u8, nul: i64, offs: &[i64], src: &[u8]
     for (d, s) in res.iter_mut().zip(&acc) { *d = s.load(Relaxed) }
 }
 
-/// reduce.c:560 `br_load`: 64 bits of the bit matrix `m` (`nb` bytes) from bit `bit`.
+/// reduce.rs `br_load`: 64 bits of the bit matrix `m` (`nb` bytes) from bit `bit`.
 pub fn br_load(m: &[u8], bit: usize) -> u64 {
     let (b, s) = (bit >> 3, bit & 7);
     let mut x = [0u8; 8];
@@ -190,13 +190,13 @@ pub fn br_load(m: &[u8], bit: usize) -> u64 {
     let hi = if b + 8 < m.len() { m[b + 8] as u64 } else { 0 };
     (lo >> s) | (hi << (64 - s))
 }
-/// reduce.c:570 `br_store`: the low `nbits` of `v` at bit `bit`.
+/// reduce.rs `br_store`: the low `nbits` of `v` at bit `bit`.
 pub fn br_store(o: &mut [u8], bit: usize, v: u64, nbits: u32) {
     let (b, s) = (bit >> 3, (bit & 7) as u32);
     let x = (v as u128) << s;
     for t in 0..(s + nbits).div_ceil(8) as usize { o[b + t] |= (x >> (8 * t)) as u8 }
 }
-/// reduce.c:606 `qlean_bit_rows_over` past the unboxing: per row of `w` bits, the AND (`all`) or OR of the rows
+/// reduce.rs `qlean_bit_rows_over` past the unboxing: per row of `w` bits, the AND (`all`) or OR of the rows
 /// `idx[offs[g] .. offs[g + 1]]` of `m`, into `out`; threaded (`bit_rows_pass`).
 pub fn bit_rows(run: Runner, all: bool, w: usize, offs: &[i64], idx: &[i64], m: &[u8], out: &mut [u8]) {
     let ng = offs.len().saturating_sub(1);
@@ -230,7 +230,7 @@ pub fn bit_rows(run: Runner, all: bool, w: usize, offs: &[i64], idx: &[i64], m: 
     out[..bytes].copy_from_slice(&buf[..bytes]);
 }
 
-// ---- K1: reduce.c:271-386, the grouped fold ----
+// ---- K1: reduce.rs, the grouped fold ----
 /// `OB_VERBS`' six verbs as `go!(identity, skips-nul, step)` calls: `lo`/`hi` are the min/max identities. `all` and
 /// `any` skip nothing, so their element count is every element.
 macro_rules! og_verbs {
@@ -278,7 +278,7 @@ fn og_cls<const IW: u32>(op: u8, cls: u8, nul: i64, ng: usize, gid: &[u8], src: 
     }
 }
 
-/// reduce.c:306 `over_groups`: rows `from .. to`, their ids packed at `iw` bits in `gid`, into `acc` (`2 * ng` slots).
+/// reduce.rs `over_groups`: rows `from .. to`, their ids packed at `iw` bits in `gid`, into `acc` (`2 * ng` slots).
 #[allow(clippy::too_many_arguments)]
 pub fn over_groups_slice(op: u8, cls: u8, nul: i64, ng: usize, iw: u32, gid: &[u8], src: &[u8], from: usize, to: usize, acc: &mut [i64]) {
     match iw {
@@ -293,7 +293,7 @@ pub fn over_groups_slice(op: u8, cls: u8, nul: i64, ng: usize, iw: u32, gid: &[u
     }
 }
 
-/// reduce.c:339 `over_groups_merge`: the blocks in slice order, folds into `res[..ng]`, counts into `res[ng..]`.
+/// reduce.rs `over_groups_merge`: the blocks in slice order, folds into `res[..ng]`, counts into `res[ng..]`.
 fn og_merge(op: u8, lo: i64, hi: i64, ng: usize, blocks: &[(usize, Vec<i64>)], res: &mut [i64]) {
     macro_rules! go {
         ($init:expr, $sk:tt, $step:expr) => {{
@@ -313,11 +313,11 @@ fn og_merge(op: u8, lo: i64, hi: i64, ng: usize, blocks: &[(usize, Vec<i64>)], r
 /// A block's first slot: a worker's block sits between 64 bytes of padding on each side, so no cache line of it is
 /// shared with another allocation (C's `qlean_priv_alloc` aligns each block to its own lines).
 const OG_PAD: usize = 8;
-/// reduce.c:355: above this many groups a worker's block (`2 * ng` slots, 128 KB at the limit) no longer sits in its
+/// reduce.rs: above this many groups a worker's block (`2 * ng` slots, 128 KB at the limit) no longer sits in its
 /// own cache beside the payload it reads, so the split is declined (`wide = 0`).
 const OG_MAX_GROUPS: usize = 8192;
 
-/// reduce.c:358 `qlean_over_groups` past the unboxing: `op` of class `cls` over the first `rows` elements of `src`,
+/// reduce.rs `qlean_over_groups` past the unboxing: `op` of class `cls` over the first `rows` elements of `src`,
 /// grouped by the ids in `gid` (packed at `iw` bits), into `res` (`2 * ng` slots: the folds, then the live counts).
 /// Threaded: each slice folds into a block of its own, and the blocks combine in slice order.
 #[allow(clippy::too_many_arguments)]
@@ -338,7 +338,7 @@ pub fn over_groups(run: Runner, op: u8, cls: u8, nul: i64, ng: usize, iw: u32, r
     og_merge(op, lo, hi, ng, &blocks, res)
 }
 
-// ---- K2: reduce.c md5, `groupCells`, float payloads ----
+// ---- K2: reduce.rs md5, `groupCells`, float payloads ----
 const MD5_K: [u32; 64] = [
     0xd76aa478, 0xe8c7b756, 0x242070db, 0xc1bdceee, 0xf57c0faf, 0x4787c62a, 0xa8304613, 0xfd469501,
     0x698098d8, 0x8b44f7af, 0xffff5bb1, 0x895cd7be, 0x6b901122, 0xfd987193, 0xa679438e, 0x49b40821,
@@ -356,7 +356,7 @@ fn md5_g(b: u32, c: u32, d: u32) -> u32 { (b & d) | (c & !d) }
 fn md5_h(b: u32, c: u32, d: u32) -> u32 { b ^ c ^ d }
 fn md5_i(b: u32, c: u32, d: u32) -> u32 { c ^ (b | !d) }
 
-/// reduce.c `md5_block`: one 64-byte block into `h`. A message is one serial chain, so the cost is the round's critical
+/// reduce.rs `md5_block`: one 64-byte block into `h`. A message is one serial chain, so the cost is the round's critical
 /// path; `simd::keep` holds `a + w + k` as its own addend, which is what takes the sixth operation off that chain.
 fn md5_block(h: &mut [u32; 4], p: &[u8; 64]) {
     let m: [u32; 16] = core::array::from_fn(|j| u32::from_le_bytes([p[4 * j], p[4 * j + 1], p[4 * j + 2], p[4 * j + 3]]));
@@ -380,7 +380,7 @@ fn md5_block(h: &mut [u32; 4], p: &[u8; 64]) {
     h[3] = h[3].wrapping_add(d);
 }
 
-/// reduce.c:114 `qlean_md5` past the unboxing: RFC 1321's digest of `msg`, read where it lies; only the last block or
+/// reduce.rs `qlean_md5` past the unboxing: RFC 1321's digest of `msg`, read where it lies; only the last block or
 /// two are copied out (128 bytes of stack, not a padded copy of the message).
 pub fn md5(msg: &[u8]) -> [u8; 16] {
     let mut h = [0x67452301u32, 0xefcdab89, 0x98badcfe, 0x10325476];
@@ -398,7 +398,7 @@ pub fn md5(msg: &[u8]) -> [u8; 16] {
     o
 }
 
-// reduce.c `GC_*`: the cell kinds of `groupCells`.
+// reduce.rs `GC_*`: the cell kinds of `groupCells`.
 // kind 0 (wrap) is every kind the arms below do not name
 const GC_CLAMP: u8 = 1;
 const GC_AVG_INT: u8 = 2;
@@ -406,7 +406,7 @@ const GC_FLOAT: u8 = 3;
 const GC_AVG_FLOAT: u8 = 4;
 const GC_NAN: u64 = 0xfff8000000000000;
 
-/// reduce.c:`GC_LOOP`: cell `i` is `cell(sum, count)` of group `ord[i]`, written as its low `W` bytes; an id at or past
+/// reduce.rs:`GC_LOOP`: cell `i` is `cell(sum, count)` of group `ord[i]`, written as its low `W` bytes; an id at or past
 /// `ng` reads zero slots. `m` is the `2 * ng` slots, folds then counts.
 fn cells<const W: usize>(m: &[i64], ord: &[u64], out: &mut [u8], cell: impl Fn(i64, i64) -> u64) {
     assert_eq!(out.len(), ord.len() * W, "group_cells: {} output bytes for {} cells of width {W}", out.len(), ord.len());
@@ -419,7 +419,7 @@ fn cells<const W: usize>(m: &[i64], ord: &[u64], out: &mut [u8], cell: impl Fn(i
 }
 fn clamped(s: i64) -> i64 { if s > -2147483648 && s < 2147483648 { s } else { -2147483648 } }
 
-/// reduce.c:`qlean_group_cells` past the unboxing and its width check: `out` is `ord.len()` cells of `w` bytes (eight for
+/// reduce.rs:`qlean_group_cells` past the unboxing and its width check: `out` is `ord.len()` cells of `w` bytes (eight for
 /// the two averages), the kind switch outside the loop so each arm is one gather of the slots by `ord`.
 pub fn group_cells(kind: u8, w: usize, ng: usize, m: &[i64], ord: &[u64], out: &mut [u8]) {
     let m = &m[..2 * ng];
@@ -461,7 +461,7 @@ impl<T> Blocks<T> for Dense<'_, T> {
     fn at<'a>(&'a mut self, b: usize, _: usize, _: &'a mut [T]) -> &'a [T] { &self.0[b * BLK..] }
 }
 
-/// reduce.c `qlean_f32_sum_src`, q's `real` sum, measured on 20M two-decimal prices: sixteen `float` lanes over the full
+/// reduce.rs `qlean_f32_sum_src`, q's `real` sum, measured on 20M two-decimal prices: sixteen `float` lanes over the full
 /// groups, an eight-wide `float` group when eight or more remain, the last few in double, all combined in double (`sum`
 /// rounds that once to `real`, `avg` divides it unrounded). `blk` is a multiple of 16, so element i is in lane i % 16
 /// whatever the source and only the last block has a tail. A NaN poisons its lane and is counted; any at all and the
@@ -494,7 +494,7 @@ pub fn f32_sum<S: Blocks<f32>>(src: &mut S, n: usize, blk: usize, buf: &mut [f32
     s + s8 + rest
 }
 
-/// reduce.c `qlean_f64_sum_src`, `sumF64Total`, the one order of a `float` sum and `avg` at every encoding: serial below
+/// reduce.rs `qlean_f64_sum_src`, `sumF64Total`, the one order of a `float` sum and `avg` at every encoding: serial below
 /// two full groups, else eight lanes over the full groups folded left to right and the tail added after. `blk` is a
 /// multiple of 8, so element i is in lane i % 8 whatever the source. On a column holding a null `sum` is one serial
 /// accumulator over the live elements and `avg` two lanes by position over the even prefix, then the last.
@@ -544,7 +544,7 @@ pub trait Fl: Copy + PartialOrd + core::ops::Add<Output = Self> + core::ops::Mul
 impl Fl for f32 { const ZERO: f32 = 0.0; const ONE: f32 = 1.0; const INF: f32 = f32::INFINITY; }
 impl Fl for f64 { const ZERO: f64 = 0.0; const ONE: f64 = 1.0; const INF: f64 = f64::INFINITY; }
 
-/// reduce.c `qlean_over_sv`: `acc * base + digit` down the longs of `a`, mod 2^64, which is a monoid, so the chain splits
+/// reduce.rs `qlean_over_sv`: `acc * base + digit` down the longs of `a`, mod 2^64, which is a monoid, so the chain splits
 /// into `SV_LANES` interleaved ones (lane `j` folds elements `j, j + L, ..` under `base^L`) that recombine by one more
 /// Horner: bit-identical to the serial fold. 24 lanes: where the pass stops multiplying and starts reading memory
 /// (serial 711us at a million longs, 4 lanes 222, 8 111, 16 56, 24 49.6, 32 49.4). No null case: q's `sv` runs
@@ -582,7 +582,7 @@ macro_rules! by_width_ta {
     } };
 }
 
-/// reduce.c `OGF_LOOP`: one group per id, one accumulator each, rows in order, NaN (q's null) skipped.
+/// reduce.rs `OGF_LOOP`: one group per id, one accumulator each, rows in order, NaN (q's null) skipped.
 fn og_float<T: Copy + PartialEq + Into<A>, A: Fl, const IW: u32>(op: u8, ids: &[u8], x: &[T], acc: &mut [A], cnt: &mut [i64]) {
     let ng = acc.len();
     macro_rules! go { ($seed:expr, $step:expr) => {{
@@ -595,7 +595,7 @@ fn og_float<T: Copy + PartialEq + Into<A>, A: Fl, const IW: u32>(op: u8, ids: &[
     of_verbs!(op, go)
 }
 
-/// reduce.c `qlean_over_groups_float` past the unboxing: `res` is `16 * ng` bytes, the folds as double bits then the
+/// reduce.rs `qlean_over_groups_float` past the unboxing: `res` is `16 * ng` bytes, the folds as double bits then the
 /// live counts. q's `select sum x by g` over floats is one left fold per group in row order, not the verb per group
 /// (whose `sum` runs lanes), so one serial pass with no split: a slice's partial would be a reassociation. A `real` fold
 /// rounds to `real` at each step, a `real` avg folds in double.
@@ -623,7 +623,7 @@ pub fn over_groups_float(op: u8, f32: bool, avg: bool, ng: usize, iw: usize, row
     }
 }
 
-/// reduce.c `OSF_LOOP`: `og_float`'s fold, seeds and steps over each segment's rows (`seg_at`: the offsets clamped into
+/// reduce.rs `OSF_LOOP`: `og_float`'s fold, seeds and steps over each segment's rows (`seg_at`: the offsets clamped into
 /// `[0, n]`, empty where they descend) into one accumulator of type `A`.
 fn os_float<T: Copy + PartialEq + Into<A>, A: Fl + Into<f64>>(op: u8, offs: &[i64], x: &[T], s: &mut [f64], cnt: &mut [i64]) {
     let n = x.len();
@@ -638,7 +638,7 @@ fn os_float<T: Copy + PartialEq + Into<A>, A: Fl + Into<f64>>(op: u8, offs: &[i6
     of_verbs!(op, go)
 }
 
-/// reduce.c `qlean_over_segments_float` past the unboxing: `offs.len() - 1` segments into `res` (`16 * ng` bytes: the
+/// reduce.rs `qlean_over_segments_float` past the unboxing: `offs.len() - 1` segments into `res` (`16 * ng` bytes: the
 /// folds as double bits, then the live counts). Serial, as the id form is.
 pub fn over_segments_float(op: u8, f32: bool, avg: bool, offs: &[i64], a: &[u8], res: &mut [u8]) {
     let ng = offs.len().saturating_sub(1);
@@ -654,7 +654,7 @@ pub fn over_segments_float(op: u8, f32: bool, avg: bool, offs: &[i64], a: &[u8],
     }
 }
 
-/// reduce.c:`OVER_MINMAX_CASE`, the AVX-512 arm: `min`/`max` over `L` lanes (one `__m512`). Below one group it is the
+/// reduce.rs:`OVER_MINMAX_CASE`, the AVX-512 arm: `min`/`max` over `L` lanes (one `__m512`). Below one group it is the
 /// serial fold with `stepk`, which keeps its accumulator on a tie (q answers the FIRST of a `+0`/`-0` tie there); at or
 /// above it the lanes take `step`, where the later wins, the tail lanes folding nothing, then the horizontal `step`.
 /// A NaN is skipped by its own lane (the mask), and the count is the elements that were not.
@@ -677,7 +677,7 @@ fn minmax<T: Fl, const L: usize>(p: &[T], id: T, step: impl Fn(T, T) -> T, stepk
     (r, cn.iter().sum::<u64>() as usize)
 }
 
-/// reduce.c:`OVER_ENGINE`: the verb switch outside the loop. `add` is the verb-0 fold (a block-wise sum). `prd` is not
+/// reduce.rs:`OVER_ENGINE`: the verb switch outside the loop. `add` is the verb-0 fold (a block-wise sum). `prd` is not
 /// lane-split (`(1e200;1e200),(1000000#1f),(1e-200;1e-200)` is `0w`, the overflow surviving as a left fold leaves it);
 /// verbs past `max` answer 0 and count nothing. `live` is the count of elements the fold stepped on.
 fn over<T: Fl, const L: usize>(op: u8, p: &[T], live: Option<&mut usize>, add: impl FnOnce(&[T], Option<&mut usize>) -> T) -> T {
@@ -696,18 +696,18 @@ fn over<T: Fl, const L: usize>(op: u8, p: &[T], live: Option<&mut usize>, add: i
     if let Some(l) = live { *l = seen }
     r
 }
-/// reduce.c `over_f64`: `op` over doubles, `live` the non-null count.
+/// reduce.rs `over_f64`: `op` over doubles, `live` the non-null count.
 pub fn over_f64(op: u8, p: &[f64], live: Option<&mut usize>) -> f64 {
     over::<f64, 8>(op, p, live, |p, l| f64_sum(&mut Dense(p), p.len(), BLK, &mut [], l, false))
 }
-/// reduce.c `over_f32`: `op` over floats; `sum` is the double total rounded once to `real`.
+/// reduce.rs `over_f32`: `op` over floats; `sum` is the double total rounded once to `real`.
 pub fn over_f32(op: u8, p: &[f32], live: Option<&mut usize>) -> f32 {
     over::<f32, 16>(op, p, live, |p, l| f32_sum(&mut Dense(p), p.len(), BLK, &mut [], l) as f32)
 }
-/// reduce.c `qlean_over_f64_sum`: the total `avg` divides and its count out of the same pass; with no null it is
+/// reduce.rs `qlean_over_f64_sum`: the total `avg` divides and its count out of the same pass; with no null it is
 /// `sum`'s to the bit, with one it is the two lanes where `sum` is serial.
 pub fn over_f64_sum(p: &[f64], live: Option<&mut usize>) -> f64 { f64_sum(&mut Dense(p), p.len(), BLK, &mut [], live, true) }
-/// reduce.c `qlean_over_f32_sum`.
+/// reduce.rs `qlean_over_f32_sum`.
 pub fn over_f32_sum(p: &[f32], live: Option<&mut usize>) -> f64 { f32_sum(&mut Dense(p), p.len(), BLK, &mut [], live) }
 
 #[cfg(test)]

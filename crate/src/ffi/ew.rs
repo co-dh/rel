@@ -1,4 +1,4 @@
-//! elementwise.c's Lean exports: the chains (`chain`, `chainEnc`, `statsChain`), guid `=`/`<>`/fill, the value verbs (dense and over encoded columns), the comparisons, bitmap verbs and
+//! ew.rs's Lean exports: the chains (`chain`, `chainEnc`, `statsChain`), guid `=`/`<>`/fill, the value verbs (dense and over encoded columns), the comparisons, bitmap verbs and
 //! bitwise verbs, the symbol ranking, comparison, `like`, `ss`/`ssr` and translate, the monadic verbs, `floor`, casts and
 //! widening. Each unboxes its arguments, allocates the answer and makes one call into `ew.rs`, which owns the loops and the
 //! split over the pool (`c::pool()`). Lean passes `Int64` as C's `uint64_t`.

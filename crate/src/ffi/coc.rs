@@ -1,5 +1,5 @@
-//! coc.c's first ten Lean exports, over `lean.rs` types: the encoder, the decoder, the reductions and the comparisons
-//! of an encoded integral column (`meta`, `pack`, `n`; the layout is documented at the top of c/coc.c and c/coc.h).
+//! coc.rs's first ten Lean exports, over `lean.rs` types: the encoder, the decoder, the reductions and the comparisons
+//! of an encoded integral column (`meta`, `pack`, `n`; the layout is documented at the top of rust/src/coc.rs and rust/src/coc.rs).
 //! Each unpacks the two byte arrays into a `Coc`, makes one call into a kernel and packs the answer.
 #![deny(unsafe_code)]
 use crate::c::pool;
@@ -16,7 +16,7 @@ fn die(args: core::fmt::Arguments) -> ! {
     os::exit(1)
 }
 
-/// coc.h `coc_view`: the column `meta`, `pack` hold, its count cut to what the blocks can hold. A pack whose patch
+/// coc.rs `coc_view`: the column `meta`, `pack` hold, its count cut to what the blocks can hold. A pack whose patch
 /// list does not fit is C's `coc_attach` abort; a metadata array with misaligned or missing sections (which C read
 /// past) is the same stop.
 pub fn view<'a>(who: &str, meta: B<'a>, pack: B<'a>, n: usize) -> Coc<'a> {
@@ -25,11 +25,11 @@ pub fn view<'a>(who: &str, meta: B<'a>, pack: B<'a>, n: usize) -> Coc<'a> {
         ViewErr::Pack { .. } => die(format_args!("qlean: {e}\n")),
     })
 }
-/// coc.h `coc_meta_view`: the metadata alone, as `view`'s metadata stop.
+/// coc.rs `coc_meta_view`: the metadata alone, as `view`'s metadata stop.
 pub fn meta<'a>(who: &str, mv: B<'a>, n: usize) -> Meta<'a> {
     Meta::new(mv.bytes(), n).unwrap_or_else(|| die(format_args!("{who}: {}\n", ViewErr::Meta)))
 }
-/// structural.c `alp_view`: an ALP column's metadata, blob and pack, `n` clamped to what the blocks hold.
+/// structural.rs `alp_view`: an ALP column's metadata, blob and pack, `n` clamped to what the blocks hold.
 pub fn alp_view<'a>(mv: B<'a>, pv: B<'a>, av: B<'a>, n: usize) -> Cocf<'a> {
     Cocf::view(mv.bytes(), pv.bytes(), av.bytes(), n).unwrap_or_else(|| die(format_args!(
         "qlean: an ALP column's metadata of {} bytes or its blob of {} are short or misaligned\n", mv.bytes().len(), av.bytes().len())))
@@ -129,7 +129,7 @@ fn dec<T: pod::Lane + Send>(c: &Coc) -> O {
 
 
 
-/// coc.c `mask_alloc` and the kernel that fills it: a `Column.bits` payload of `ceil(n / 8)` bytes inside the `ceil(n / 64)`
+/// coc.rs `mask_alloc` and the kernel that fills it: a `Column.bits` payload of `ceil(n / 8)` bytes inside the `ceil(n / 64)`
 /// words the kernels write (the bits between `n` and the last word's end are the kernel's to set to 0); `f` gets the
 /// words, any contents.
 fn mask_with(n: usize, f: impl FnOnce(&mut [u64])) -> O {
@@ -138,7 +138,7 @@ fn mask_with(n: usize, f: impl FnOnce(&mut [u64])) -> O {
     a.into()
 }
 
-/// coc.h `cocf_meta_view` with the pack set (c/coc.c's `cocf_view`): the ALP column `meta`, `pack`, `alp` hold, its count cut
+/// coc.rs `cocf_meta_view` with the pack set (rust/src/coc.rs's `cocf_view`): the ALP column `meta`, `pack`, `alp` hold, its count cut
 /// to what the blocks can hold. A metadata or ALP array with misaligned or missing sections, which C read past, is a stop.
 fn fview<'a>(who: &str, meta: B<'a>, pack: B<'a>, alp: B<'a>, n: usize) -> Cocf<'a> {
     let mut f = Cocf::meta_view(meta.bytes(), alp.bytes(), n).unwrap_or_else(|| die(format_args!(
@@ -147,7 +147,7 @@ fn fview<'a>(who: &str, meta: B<'a>, pack: B<'a>, alp: B<'a>, n: usize) -> Cocf<
     f
 }
 
-/// c/coc.c `coc_val_vv`: `some (meta, pack)` of `a op b` (`b` read from `s` elements back, `fill` off its ends) as the writer
+/// rust/src/coc.rs `coc_val_vv`: `some (meta, pack)` of `a op b` (`b` read from `s` elements back, `fill` off its ends) as the writer
 /// encodes what the dense engine writes, `none` where `Coc::vv_ok` refuses; `s = 0` is `x op y`, and `a = b` the prior form.
 fn val_vv(op: u8, a: &Coc, b: &Coc, s: i64, fill: i64) -> O {
     if op > 2 { die(format_args!("coc_val_vv: verb {op} is not one of the three in QLean.Kernel.Ew\n")) }

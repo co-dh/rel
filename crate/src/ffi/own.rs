@@ -1,4 +1,4 @@
-//! own.c's Lean exports: the whole-file replace, the column writer and the column mapper (`own.rs` holds the file format and
+//! own.rs's Lean exports: the whole-file replace, the column writer and the column mapper (`own.rs` holds the file format and
 //! the logic). Each is an `IO` extern, so none takes a world argument in Lean 4.28; a failure is an errno the Lean side reports
 //! as `path. OS reports: <strerror>`, or the text of a refusal.
 #![deny(unsafe_code)]

@@ -1,5 +1,5 @@
 #![forbid(unsafe_code)]
-//! sort.c's `dedup` (the numbering of `distinct` and `group`, three engines: bitmap, direct, hashed, and the radix
+//! sort.rs's `dedup` (the numbering of `distinct` and `group`, three engines: bitmap, direct, hashed, and the radix
 //! partition), `gather`, and `groupIds`: `number` the groups on one thread, then `fill` each element's id threaded at the lane
 //! `ng` fixes.
 use alloc::borrow::Cow;
@@ -17,15 +17,15 @@ use crate::key::{each, Keys, Pass, Range};
 use crate::BLK;
 
 pub const PHI64: u64 = 0x9e3779b97f4a7c15;
-/// How many elements ahead the hashed numbering starts a slot's cache line (sort.c's `group_prefetch` users). The
+/// How many elements ahead the hashed numbering starts a slot's cache line (sort.rs's `group_prefetch` users). The
 /// sweep is flat -- 4.74 ms unprefetched at a million distinct longs, 4.03 at 32, 3.98 at 64 -- so 32 is where it
 /// stops paying.
 pub const SK_AHEAD: usize = 32;
 
-/// `cap_for` (coc.h:387): the least power of two, at least 8, holding `n` keys at load 1/2.
+/// `cap_for` (coc.rs): the least power of two, at least 8, holding `n` keys at load 1/2.
 pub fn cap_for(n: usize) -> usize { n.saturating_mul(2).next_power_of_two().max(8) }
 
-/// `group_find` (sort.c:1985): a key the numbering has already put in the table.
+/// `group_find` (sort.rs): a key the numbering has already put in the table.
 fn find(slot: &[usize], gkey: &[u64], sh: u32, key: u64) -> usize {
     let mask = slot.len() - 1;
     let mut s = (key.wrapping_mul(PHI64) >> sh) as usize & mask;
@@ -83,7 +83,7 @@ impl Table<'_> {
     }
 }
 
-/// What a numbering pass does with the group an element fell in -- the consumer's shape (sort.c's `SK_GID_*` and
+/// What a numbering pass does with the group an element fell in -- the consumer's shape (sort.rs's `SK_GID_*` and
 /// `SK_NEW_*`), a type and not a test in the loop: `Nothing` for `distinct`, `Bucket` for `group`, whose `gid` is
 /// scratch of four bytes an element and whose `cnt` is counted by the pass that numbers the groups.
 pub trait Put {
@@ -275,7 +275,7 @@ fn part<K: Keys, const GID: bool>(mut k: K, n: usize, first: &mut [usize], gid: 
 }
 
 /// Calling it marks the branch it is in unlikely, which rustc 1.93 has no stable hint for: it puts the word switch out of
-/// the way of the run of keys in one word, as sort.c's loop is laid out.
+/// the way of the run of keys in one word, as sort.rs's loop is laid out.
 #[cold] #[inline(never)] fn cold() {}
 
 /// The `distinct` engine over a range of at most 64 slots an element: the table is a bitmap, a 64th of the direct table's
@@ -388,7 +388,7 @@ pub fn group_ids(run: Runner, kind: u8, p: &[u8], n: usize, mn: u64, mx: u64, gi
     fill(run, kind, p, n, &t, id_width(ng).max(8), gid).then_some(ng)
 }
 
-/// `group_ids` over an encoded column's keys, read through `kwin::Kwin` (`qlean_sort_group_ids_foR`, sort.c:2685);
+/// `group_ids` over an encoded column's keys, read through `kwin::Kwin` (`qlean_sort_group_ids_foR`, sort.rs);
 /// `mn`, `mx` from `kwin::range`. `gid` holds `n` ids at the lane `max(8, id_width(ng))` fixes. A refusal (`gid` too
 /// short for that lane, `first` shorter than `n`) is None: C aborts.
 pub fn group_ids_win(run: Runner, kind: u8, c: Coc, n: usize, mn: u64, mx: u64, gid: &mut [u8], first: &mut [usize])
@@ -402,7 +402,7 @@ pub fn group_ids_win(run: Runner, kind: u8, c: Coc, n: usize, mn: u64, mx: u64, 
     Some(ng)
 }
 
-// ---- K15: sort.c's `buckets`, `distinct_fill[_alp]`, `keys_gather_foR` and `parted_of` ----
+// ---- K15: sort.rs's `buckets`, `distinct_fill[_alp]`, `keys_gather_foR` and `parted_of` ----
 
 /// `lean_box` of the byte offset of element `at` of an `i64` array (`at * 8`): a `QValue.slices` bound.
 fn boxed(at: usize) -> usize { at << 4 | 1 }
@@ -440,7 +440,7 @@ pub fn dense(kind: u8, p: &[u8], n: usize) -> &[u8] {
     crate::key::bytes(kind, n).and_then(|b| p.get(..b))
         .unwrap_or_else(|| panic!("qlean sort: {n} elements of kind {kind} are not in {} bytes (impossible: outside the enum, or a count above what the payload holds)", p.len()))
 }
-/// The dense column's key range, `(0, 0)` for none: sort.c `range_of`.
+/// The dense column's key range, `(0, 0)` for none: sort.rs `range_of`.
 pub fn range_dense(kind: u8, p: &[u8], n: usize) -> (u64, u64) {
     if n == 0 { return (0, 0) }
     each(kind, dense(kind, p, n), n, Range).unwrap_or_else(|| panic!("range_of: key range refused kind {kind} (impossible: outside the enum or a misaligned payload), n {n}"))
@@ -558,7 +558,7 @@ pub fn parted_win(kind: u8, c: Coc, strict: bool) -> bool {
 mod tests {
     use super::*;
     use crate::key::SK_KEY;
-    // expected values: /data/tmp/qrs/B4/drv.c (sort.c's group_find over the slot table it prints), run
+    // expected values: /data/tmp/qrs/B4/drv.c (sort.rs's group_find over the slot table it prints), run
     const K: [u64; 8] = [30, 10, 30, 20, 10, 1_000_000_007, 20, 1_000_000_007];
     const IDS: [usize; 8] = [0, 1, 0, 2, 1, 3, 2, 3];
     fn keys() -> Vec<u8> { K.iter().flat_map(|k| k.to_ne_bytes()).collect() }
@@ -607,9 +607,8 @@ mod tests {
         assert_eq!(group_ids(crate::c::qlean_run_c, SK_KEY, &k, 5, 10, 30, &mut g, &mut first), Some(3));
         assert_eq!(g, [0, 1, 0, 2, 1]);
         assert_eq!(group_ids(crate::c::qlean_run_c, SK_KEY, &[], 0, 0, 0, &mut [], &mut []), Some(0));
-        assert_eq!(group_ids(crate::c::qlean_run_c, crate::key::SK_WIN, &k, 5, 10, 30, &mut g, &mut first), None);
     }
-    // expected values: sort.c's `distinct 3 1 3 2 1` is `3 1 2` and `group 9 1 9` is `9 1!(0 2;,1)` (the C's comments)
+    // expected values: sort.rs's `distinct 3 1 3 2 1` is `3 1 2` and `group 9 1 9` is `9 1!(0 2;,1)` (the C's comments)
     fn dd(k: &[u64], mn: u64, mx: u64, bucket: bool) -> (usize, Vec<usize>, Vec<u32>, Vec<u32>) {
         let b = crate::pod::bytes(k);
         let (mut first, mut gid, mut cnt) = (vec![usize::MAX; k.len()], vec![u32::MAX; k.len()], vec![u32::MAX; k.len()]);
@@ -664,14 +663,12 @@ mod tests {
         assert!(!parted_of(&[1, 2, 1], false));
         assert!(!parted_of(&[1, 1 << 40, 1], false)); // the hashed table, not the direct one
         assert!(parted_of(&[5, 1 << 40, 7 << 20], true));
-        assert_eq!(parted(crate::key::SK_WIN, &[], 0, false), None);
     }
     #[test] fn refuses() {
         let mut g = vec![0u8; 64];
         assert!(!fill(crate::c::qlean_run_c, SK_KEY, &keys(), 8, &hashed(), 24, &mut g));       // lane
         assert!(!fill(crate::c::qlean_run_c, SK_KEY, &keys(), 8, &hashed(), 64, &mut g[..63])); // gid short
         assert!(!fill(crate::c::qlean_run_c, 99, &keys(), 8, &hashed(), 8, &mut g));            // unknown kind
-        assert!(!fill(crate::c::qlean_run_c, crate::key::SK_WIN, &keys(), 8, &hashed(), 8, &mut g));
     }
     #[test] fn many_rows_split_across_workers() {
         let n = 300_000usize;

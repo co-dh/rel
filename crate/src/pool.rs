@@ -1,4 +1,4 @@
-//! The thread pool every whole-column pass splits on, C's and Rust's alike (phase-2 §2.3): pass.h's algorithm and
+//! The thread pool every whole-column pass splits on, C's and Rust's alike (phase-2 §2.3): c.rs's algorithm and
 //! constants, each of them measured there, carried over unchanged. The slice index `k` is an argument, not a
 //! thread-local: slice `k` is the `k`-th contiguous range of `[0, n)`, so combining per-slice answers in `k` order
 //! combines the rows in column order, which a fold whose step is not associative (`+` over floats) needs.
@@ -9,7 +9,6 @@
 //! two passes of one expression, short enough that a displaced worker gets its CPU back (a 240 us window turned `copy`
 //! of a million longs from 37 us into 208 with one other runnable thread). Where a worker runs is left to the
 //! scheduler: pinning worker `k` to a die cost up to 3x against the evaluator, whose buffers never sit still.
-use alloc::vec::Vec;
 use core::cell::UnsafeCell;
 use core::ffi::{c_int, c_long, c_void};
 use core::hint::spin_loop;
@@ -292,6 +291,7 @@ impl Pool {
     }
 
     /// `f(k, lo, hi)` over the slices of `[0, n)` (see `enter`); answers the slice count.
+    #[cfg(test)]
     pub fn run<F: Fn(u32, usize, usize) + Sync>(&'static self, n: usize, cost: u32, wide: usize, f: &F) -> u32 {
         // Safety: `ctx` is the `&F` below, alive until `enter` returns, which is after every slice
         unsafe fn call<F: Fn(u32, usize, usize) + Sync>(ctx: *const (), _: *const (), k: u32, lo: usize, hi: usize) { unsafe { (*ctx.cast::<F>())(k, lo, hi) } }
@@ -305,23 +305,7 @@ fn nop(_: *const (), _: *const (), _: u32, _: usize, _: usize) {}
 /// The one pool of the process: one, not one per C translation unit (three statics once made 69 threads).
 static THE: Pool = Pool::new(if cfg!(test) { 3 } else { 0 });
 
-/// `f(k, lo, hi)` over the slices of `[0, n)` on the pool; answers the slice count (`Pool::enter`).
-pub fn run<F: Fn(u32, usize, usize) + Sync>(n: usize, cost: u32, wide: usize, f: &F) -> u32 { THE.run(n, cost, wide, f) }
 
-/// `run` whose slices each answer one `T`: `(parts, answers)`, the answers `(lo, t)` in slice order, none for a slice
-/// `cut` leaves empty (the declined pass, `n = 0` included, answers `(0, f(0, n))`).
-pub fn slices<T: Send, F: Fn(usize, usize) -> T + Sync>(n: usize, cost: u32, wide: usize, f: &F) -> (u32, Vec<(usize, T)>) {
-    struct Slots<T>(*mut Option<(usize, T)>);
-    // Safety: slice `k` writes slot `k` only, and `k < MAX_THREADS`
-    unsafe impl<T: Send> Sync for Slots<T> {}
-    let mut v: Vec<Option<(usize, T)>> = (0..MAX_THREADS).map(|_| None).collect();
-    let s = Slots(v.as_mut_ptr());
-    let parts = run(n, cost, wide, &|k, lo, hi| {
-        let s = &s;
-        unsafe { *s.0.add(k as usize) = Some((lo, f(lo, hi))) }
-    });
-    (parts, v.into_iter().flatten().collect())
-}
 
 /// C's `qlean_run`: worker `f` over `p` on the pool (`c::Runner`, and `qrs_pool_run` under its C name).
 /// Safety: `f(lo, hi, p)` is sound on any thread for every slice of `[0, n)`, concurrently for disjoint slices.

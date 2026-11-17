@@ -1,5 +1,5 @@
 #![forbid(unsafe_code)]
-//! Column (a), sym.h (A11): a symbol column as a byte blob plus the `Array Nat` of starts. Rust never sees a
+//! Column (a), sym.rs (A11): a symbol column as a byte blob plus the `Array Nat` of starts. Rust never sees a
 //! `lean_object`: C passes `lean_array_cptr(offs)` as `*const usize`, the boxed words themselves, and `Syms`
 //! unboxes them (`w >> 1`; an unboxed word, a bignum pointer, aborts as `off_at` does).
 use alloc::rc::Rc;
@@ -15,25 +15,22 @@ use crate::structural::{self, Symtab, Symview, symtab_build};
 pub struct Syms<'a> { pub blob: &'a [u8], pub offs: &'a [usize] }
 
 impl<'a> Syms<'a> {
-    /// sym.h:28 `off_at`: start `i`, unboxed. Per element: C keeps its body while a C caller remains.
+    /// sym.rs `off_at`: start `i`, unboxed. Per element: C keeps its body while a C caller remains.
     #[inline]
     pub fn off(&self, i: usize) -> usize { {
         let w = self.offs[i];
         if w & 1 == 0 { panic!("qlean: symbol offset {i} is a bignum; an offset is bounded by the blob's byte count and cannot reach 2^63") }
         w >> 1
     } }
-    /// sym.h:40 `sym_at`
+    /// sym.rs `sym_at`
     #[inline]
     pub fn at(&self, i: usize) -> &'a [u8] { {
         let (lo, hi) = (self.off(i), self.off(i + 1));
         let n = hi.saturating_sub(lo + 1); // an empty symbol never reads the blob, as C's `sym_at` does not (`dof` may point past an empty dictionary)
         if n == 0 { &self.blob[..0] } else { &self.blob[lo..lo + n] }
     } }
-    /// sym.h:47 `sym_count`: the symbol count, `offs.len() - 1` (0 for an empty `offs`).
+    /// sym.rs `sym_count`: the symbol count, `offs.len() - 1` (0 for an empty `offs`).
     pub fn count(&self) -> usize { self.offs.len().saturating_sub(1) }
-    /// sym.h `sym_pad` + the load of search.c `sym_pack`: symbol `i` (at most 8 bytes) as a big-endian key, zero padded.
-    #[inline]
-    pub fn key(&self, i: usize) -> u64 { self.key_of(self.off(i), self.off(i + 1)) }
     /// `key` of the symbol at the unboxed starts `lo`, `hi`: one 8-byte load and a mask while the load stays inside the
     /// blob (the C `whole` prefix), the bytes folded for the last few; a loop over a column carries `lo`, as C does.
     #[inline]
@@ -54,9 +51,9 @@ impl<'a> Syms<'a> {
     pub fn key_whole(&self, lo: usize, len: usize) -> u64 {
         u64::from_be_bytes(self.blob[lo..lo + 8].try_into().unwrap()) & (!0u64 << (8 * (8 - len)))
     }
-    /// sym.h:106 `sym_slices`: the first `n` symbols.
+    /// sym.rs `sym_slices`: the first `n` symbols.
     pub fn slices(&self, n: usize) -> Vec<&'a [u8]> { (0..n).map(|i| self.at(i)).collect() }
-    /// sym.h:146 `sym_packs`: every symbol of the first `n` fits the 8-byte key `sym_pack` makes.
+    /// sym.rs `sym_packs`: every symbol of the first `n` fits the 8-byte key `sym_pack` makes.
     pub fn packs(&self, n: usize) -> bool { {
         let (mut tags, mut wide) = (self.offs[n], false);
         for i in 0..n {
@@ -66,7 +63,7 @@ impl<'a> Syms<'a> {
         tags & 1 != 0 && !wide && self.offs[n] >> 1 <= self.blob.len()
     } }
 }
-/// sym.h:68 `sym_eq`: length first, then the bytes in overlapping loads (8, 4, 2, 1), so a short symbol is a few
+/// sym.rs `sym_eq`: length first, then the bytes in overlapping loads (8, 4, 2, 1), so a short symbol is a few
 /// compares and never a `bcmp` call (`[u8] ==` is one, and a symbol is two to six bytes).
 #[inline]
 pub fn sym_eq(a: &[u8], b: &[u8]) -> bool {
@@ -83,11 +80,11 @@ pub fn sym_eq(a: &[u8], b: &[u8]) -> bool {
     else if n >= 2 { h(a, 0) == h(b, 0) && h(a, n - 2) == h(b, n - 2) }
     else { n == 0 || a[0] == b[0] }
 }
-/// sym.h:77 `sym_cmp`: q's symbol order (bytes unsigned, then length), which is `[u8]`'s.
+/// sym.rs `sym_cmp`: q's symbol order (bytes unsigned, then length), which is `[u8]`'s.
 pub fn sym_cmp(a: &[u8], b: &[u8]) -> Ordering { a.cmp(b) }
-/// sym.h:120 `sym_hash`: FNV-1a.
+/// sym.rs `sym_hash`: FNV-1a.
 pub fn sym_hash(s: &[u8]) -> u64 { s.iter().fold(0xcbf29ce484222325, |h, &b| (h ^ b as u64).wrapping_mul(0x100000001b3)) }
-/// sym.h:89 `sym_msort`: the indices `a` (`v.len()` of them) stably sorted by `v[a[i]]`; `tmp` is scratch, as long.
+/// sym.rs `sym_msort`: the indices `a` (`v.len()` of them) stably sorted by `v[a[i]]`; `tmp` is scratch, as long.
 pub fn sym_msort(v: &[&[u8]], a: &mut [usize], tmp: &mut [usize]) { {
     let n = a.len();
     let mut w = 1;
@@ -110,8 +107,8 @@ pub fn sym_msort(v: &[&[u8]], a: &mut [usize], tmp: &mut [usize]) { {
     }
 } }
 
-// ---- K20: the kept dictionary hashes and `symdict_concat`'s dictionary half (structural.c `symtab_*`, `sd_*`) ----
-/// One hash of a chain of dictionaries, each a prefix of the next (structural.c's `symtab`): `slot` is `mask + 1`
+// ---- K20: the kept dictionary hashes and `symdict_concat`'s dictionary half (structural.rs `symtab_*`, `sd_*`) ----
+/// One hash of a chain of dictionaries, each a prefix of the next (structural.rs's `symtab`): `slot` is `mask + 1`
 /// ids + 1, `stale` the slots a fork copied that hold another chain's entry. The reference count is the `Rc`'s.
 pub struct Htab { pub cnt: usize, pub mask: usize, pub stale: usize, pub slot: Vec<u32> }
 /// The shared handle: the cache's slots and the one concat in flight hold it; the table is written in place.
@@ -126,7 +123,7 @@ impl Htab {
         (self.cnt, self.stale) = (s.cnt, s.stale);
         r
     }
-    /// structural.c `symtab_fit`: half full at most with the stale slots counted; the entries are re-hashed from
+    /// structural.rs `symtab_fit`: half full at most with the stale slots counted; the entries are re-hashed from
     /// the dictionary `v` that holds all of them, which drops the stale ones.
     fn fit(&mut self, v: &Symview, n: usize) {
         if 2 * (n + self.stale) <= self.mask + 1 { return }
@@ -135,14 +132,14 @@ impl Htab {
         (self.stale, self.slot, self.mask) = (0, vec![0; cap], cap - 1);
         self.with(|s| s.fill(v));
     }
-    /// structural.c `symtab_build`: a table over the `d` entries of the plain dictionary `v`, `None` when one repeats
+    /// structural.rs `symtab_build`: a table over the `d` entries of the plain dictionary `v`, `None` when one repeats
     /// an earlier one (the joined dictionary is then not the base's with symbols after it, and `concatEnum` interns).
     fn build(v: &Symview, d: usize) -> Option<Tab> {
         let mut t = Htab { cnt: 0, mask: 15, stale: 0, slot: vec![0; 16] };
         t.fit(v, d);
         t.with(|s| symtab_build(s, v, d)).then(|| Tab(RefCell::new(t)))
     }
-    /// structural.c `symtab_fork`: the table of the dictionary `d` entries into `s`'s chain, its slots copied (a
+    /// structural.rs `symtab_fork`: the table of the dictionary `d` entries into `s`'s chain, its slots copied (a
     /// memcpy of 4 bytes a slot against a hash and a missed line a symbol); entries at or past `d` count as stale.
     fn fork(s: &Htab, d: usize) -> Htab {
         let mut t = Htab { cnt: d, mask: s.mask, stale: 0, slot: pod::uninit(s.mask + 1) };
@@ -174,7 +171,7 @@ pub trait Heap: Copy + PartialEq {
 
 const SLOTS: usize = 16;
 struct Slot<H> { dict: H, offs: H, t: Rc<Tab>, d: usize, used: u64 }
-/// structural.c's `sd[]`: the last 16 dictionaries kept with their table at their count. Not thread safe: the
+/// structural.rs's `sd[]`: the last 16 dictionaries kept with their table at their count. Not thread safe: the
 /// caller holds one lock around every call (C's `sd_mu`).
 pub struct Cache<H> { slots: [Option<Slot<H>>; SLOTS], clock: u64 }
 
@@ -238,7 +235,7 @@ impl<H: Heap> Cache<H> {
         self.slots[at] = Some(Slot { dict, offs, t, d, used: self.clock });
     }
 
-    /// structural.c `symdict_concat`'s dictionary half, over the first part's dictionary as the base (or a later
+    /// structural.rs `symdict_concat`'s dictionary half, over the first part's dictionary as the base (or a later
     /// part's, when it is longer and in the same chain): `None` when the base holds a symbol twice or the joined
     /// dictionary would not fit 32-bit ids, `Spec: Kernel.hashConcat`'s decline.
     pub fn concat(&mut self, parts: &[Part<H>]) -> Option<Dicts<H>> {
@@ -358,7 +355,7 @@ mod tests {
         assert!(!Syms { blob: &b, offs: &o }.packs(1));
         assert_eq!(sym_hash(b""), 0xcbf29ce484222325);
     }
-    // the specification is sym.h's byte loops (`sym_eq`) and `memcmp` then lengths (`sym_cmp`): every length 0..20, bytes from both
+    // the specification is sym.rs's byte loops (`sym_eq`) and `memcmp` then lengths (`sym_cmp`): every length 0..20, bytes from both
     // halves of the byte range (q's order is unsigned), and pairs that share a prefix or differ in the last byte only
     #[test] fn eq_and_cmp_match_the_byte_loops() {
         let mut s = 0x9E3779B97F4A7C15u64;

@@ -1,4 +1,4 @@
-//! env.c's Lean exports.
+//! ffi/env.rs's Lean exports.
 #![deny(unsafe_code)]
 use crate::lean::{B, Io, O, apply, boxed, box_u64, export};
 use crate::os;

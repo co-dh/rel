@@ -1,5 +1,5 @@
 #![forbid(unsafe_code)]
-//! Column (a), scan.c:309-505 (A14): the running scans (sums, prds, mins, maxs, fills) over a dense payload and
+//! Column (a), scan.rs (A14): the running scans (sums, prds, mins, maxs, fills) over a dense payload and
 //! the block skips over an encoded one. `scan_fill` and `scan_any_null` are AVX-512 in C: their vector bodies are in
 //! `simd.rs`, which this module calls and finishes (the groups that hold a null, the tail).
 use crate::alp::{Cocf, POW10};
@@ -19,7 +19,7 @@ const SC_VERBS_N: i32 = 5;
 /// q's `0n` and `0Ne`: a result NaN is written as these patterns, whatever the FPU left behind
 const SC_NAN64: u64 = 0xfff8_0000_0000_0000;
 const SC_NAN32: u32 = 0xffc0_0000;
-/// scan.c `SCAN_CHUNK`: elements whose "did any beat the accumulator" test is one or-reduction
+/// scan.rs `SCAN_CHUNK`: elements whose "did any beat the accumulator" test is one or-reduction
 const SCAN_CHUNK: usize = 64;
 
 /// The accumulator of a scan, held in the 8-byte `carry` between pieces. Integers accumulate at 64 bits and wrap, as q
@@ -148,12 +148,12 @@ fn verbs<A: Acc, const WE: usize, const WW: usize>(
     }
 }
 
-/// scan.c:309 `sc_bad_kind`: the abort for a kind the Lean dispatch never sends.
+/// scan.rs `sc_bad_kind`: the abort for a kind the Lean dispatch never sends.
 pub fn sc_bad_kind(kind: i32) -> ! {
     // C exits 1 after this text; no_std has no exit, so the panic handler prints it and aborts
     panic!("qlean_scan: element kind {kind} is not one of the {SK_KINDS_N} in QLean/Kernel/Scan.lean")
 }
-/// coc.h:335 `sk_dense_width`: an element's bytes in a dense payload; the boolean has none, its payload is packed bits.
+/// coc.rs `sk_dense_width`: an element's bytes in a dense payload; the boolean has none, its payload is packed bits.
 fn dense_width(kind: i32) -> usize {
     match u8::try_from(kind).unwrap_or(u8::MAX) {
         SK_U8 | SK_C8 => 1,
@@ -191,7 +191,7 @@ fn fill<A: Acc, const W: usize>(kind: i32, p: &[u8], out: &mut [u8], n: usize, c
     if !carry.is_empty() { acc.put(carry) }
 }
 
-/// scan.c:322 `scan_fill`: `fills` over `n` elements of `p` into `out`; `carry` (one element) is the last non-null
+/// scan.rs `scan_fill`: `fills` over `n` elements of `p` into `out`; `carry` (one element) is the last non-null
 /// seen, read when `resume`. `fills` seeds with the null, and at the two kinds that have none the seed is unreachable.
 pub fn scan_fill(kind: i32, p: &[u8], out: &mut [u8], n: usize, carry: &mut [u8], resume: bool) {
     match u8::try_from(kind).unwrap_or(u8::MAX) {
@@ -209,7 +209,7 @@ pub fn scan_fill(kind: i32, p: &[u8], out: &mut [u8], n: usize, carry: &mut [u8]
     }
 }
 
-/// scan.c:346 `scan_any_null`: whether the payload holds a null in its first `n` elements. `fills` over one that does
+/// scan.rs `scan_any_null`: whether the payload holds a null in its first `n` elements. `fills` over one that does
 /// not is the identity, so the answer can be the argument itself.
 pub fn scan_any_null(kind: i32, p: &[u8], n: usize) -> bool {
     let k = u8::try_from(kind).unwrap_or(u8::MAX);
@@ -226,7 +226,7 @@ pub fn scan_any_null(kind: i32, p: &[u8], n: usize) -> bool {
     })
 }
 
-/// scan.c:366 `scan_run`: scan `op` over `n` elements, `carry` the running accumulator.
+/// scan.rs `scan_run`: scan `op` over `n` elements, `carry` the running accumulator.
 pub fn scan_run(op: i32, kind: i32, p: &[u8], out: &mut [u8], n: usize, carry: &mut [u8], resume: bool) {
     if op >= SC_VERBS_N { panic!("qlean_scan: verb {op} is not one of the {SC_VERBS_N} in QLean/Kernel/Scan.lean") }
     if op == SC_FILLS { return scan_fill(kind, p, out, n, carry, resume) }
@@ -249,14 +249,14 @@ pub fn scan_run(op: i32, kind: i32, p: &[u8], out: &mut [u8], n: usize, carry: &
     }
 }
 
-/// scan.c:411 `sc_out_width`: `sums` and `prds` answer at the aggregate's accumulator type (everything below `int`
+/// scan.rs `sc_out_width`: `sums` and `prds` answer at the aggregate's accumulator type (everything below `int`
 /// widens to `int`), the other three at the element's own width; a boolean answers one byte per element.
 pub fn sc_out_width(op: i32, kind: i32) -> usize {
     if op == SC_SUMS || op == SC_PRDS { return if kind == SK_I64 as i32 || kind == SK_F64 as i32 { 8 } else { 4 } }
     if kind == SK_BIT as i32 { 1 } else { dense_width(kind) }
 }
 
-/// scan.c:420 `sc_fill_c`: `cnt` copies of `acc` at `w` bytes: what a `mins` or `maxs` writes over a run that never
+/// scan.rs `sc_fill_c`: `cnt` copies of `acc` at `w` bytes: what a `mins` or `maxs` writes over a run that never
 /// moves its accumulator.
 pub fn sc_fill_c(out: &mut [u8], cnt: usize, w: usize, acc: i64) {
     let (out, b) = (&mut out[..cnt * w], acc.to_le_bytes());
@@ -268,7 +268,7 @@ pub fn sc_fill_c(out: &mut [u8], cnt: usize, w: usize, acc: i64) {
     }
 }
 
-/// scan.c:435 `sc_blk_skip`: block `b` of `c` leaves the accumulator `acc` unchanged under `op`, so its residuals need
+/// scan.rs `sc_blk_skip`: block `b` of `c` leaves the accumulator `acc` unchanged under `op`, so its residuals need
 /// not be unpacked. `0N` is the minimum of the type, so a block holding one has `base` there and `mins` declines.
 pub fn sc_blk_skip(op: i32, kind: i32, c: &Coc, b: usize, cnt: usize, acc: i64) -> bool {
     if cnt != BLK || kind < SK_U8 as i32 || kind > SK_I64 as i32 || c.blk_nexc(b) != 0 { return false }
@@ -279,7 +279,7 @@ pub fn sc_blk_skip(op: i32, kind: i32, c: &Coc, b: usize, cnt: usize, acc: i64) 
     }
 }
 
-/// scan.c:453 `sc_alp_skip`: the ALP twin. A block with an exception is decoded, and only the eight-byte width takes
+/// scan.rs `sc_alp_skip`: the ALP twin. A block with an exception is decoded, and only the eight-byte width takes
 /// it: at `real` the quotient is rounded to `float` and the rounding can cross the comparison.
 pub fn sc_alp_skip(op: i32, f: &Cocf, b: usize, cnt: usize, acc: f64) -> bool {
     if cnt != BLK || f.f32 || f.exc_off[b] != f.exc_off[b + 1] { return false }
@@ -291,7 +291,7 @@ pub fn sc_alp_skip(op: i32, f: &Cocf, b: usize, cnt: usize, acc: f64) -> bool {
     }
 }
 
-// ---- K3 (scan.c `sc_bits_run`, `ema_*`, `mw_sent`, `mw_seed`, `mw_open`, `mw_close`) ----
+// ---- K3 (scan.rs `sc_bits_run`, `ema_*`, `mw_sent`, `mw_seed`, `mw_open`, `mw_close`) ----
 
 /// One word of `sc_bits_run`: once a set bit is seen every later bit is set, so the answer of a word is its bits from the
 /// lowest set bit upward, `-(w & -w)`; `carry` is "a set bit was seen before this word".
@@ -305,7 +305,7 @@ fn bits_word(carry: &mut bool, w: u64, inv: u64) -> u64 {
     };
     o ^ inv
 }
-/// scan.c `sc_bits_run`: the prefix fold at the bit layout over `out.len()` bytes of `p`, a word at a time; `inv` is
+/// scan.rs `sc_bits_run`: the prefix fold at the bit layout over `out.len()` bytes of `p`, a word at a time; `inv` is
 /// all ones for `mins` (prefix AND is prefix OR on the complement) and zero for `maxs` and `fills`. The bytes of the
 /// last word past `out` are read as zero and not written, so the bits above `n` are the caller's to clear.
 pub fn bits_run(out: &mut [u8], p: &[u8], inv: u64) {
@@ -333,7 +333,7 @@ fn ema_add(x: f64, y: f64) -> f64 { if x != x { x } else if y != y { y } else { 
 /// The doubles of a payload, as `n = len / 8` elements.
 #[inline(always)]
 fn f64s(p: &[u8]) -> impl Iterator<Item = f64> + Clone + '_ { elts::<8, f64>(p, p.len() / 8, f64::from_ne_bytes) }
-/// scan.c `qlean_scan_ema`'s loop: `out[i] = (1-a)*out[i-1] + a*y[i]`, `1-a` as q forms it (a NaN `a` keeps its sign bit
+/// scan.rs `qlean_scan_ema`'s loop: `out[i] = (1-a)*out[i-1] + a*y[i]`, `1-a` as q forms it (a NaN `a` keeps its sign bit
 /// cleared, by negating the bits), and the first element is `(1-a)*y[0] + a*y[0]` and not `y[0]`, so `0n ema 1 2 3f` is
 /// `0n` there too. Serial, and no step a fused multiply-add. `out` is `y.len() / 8` doubles.
 pub fn ema(abits: u64, y: &[u8], out: &mut [u8]) {
@@ -346,7 +346,7 @@ pub fn ema(abits: u64, y: &[u8], out: &mut [u8]) {
         o.copy_from_slice(&acc.to_ne_bytes());
     }
 }
-/// scan.c `qlean_scan_ema_v`'s loop: `out[i] = co[i]*out[i-1] + xy[i]` seeded at `out[-1] = seed`; the product is handed
+/// scan.rs `qlean_scan_ema_v`'s loop: `out[i] = co[i]*out[i-1] + xy[i]` seeded at `out[-1] = seed`; the product is handed
 /// in already formed, so this is not `ema` with a branch.
 pub fn ema_v(xy: &[u8], co: &[u8], seedbits: u64, out: &mut [u8]) {
     let mut acc = f64::from_bits(seedbits);
@@ -356,7 +356,7 @@ pub fn ema_v(xy: &[u8], co: &[u8], seedbits: u64, out: &mut [u8]) {
     }
 }
 
-// the moving-window verbs, as `QLean/Kernel/Scan.lean`'s `MOp` in constructor order (rs.h hands them to scan.c)
+// the moving-window verbs, as `QLean/Kernel/Scan.lean`'s `MOp` in constructor order (rs.h hands them to scan.rs)
 pub const MW_MSUM: i32 = 0;
 pub const MW_MCOUNT: i32 = 1;
 pub const MW_MAVG: i32 = 2;
@@ -368,7 +368,7 @@ pub const MW_OPS_N: i32 = 6;
 /// element into.
 pub const MW_TILE: usize = 1024;
 
-/// scan.c `mw_out_width`, `MOp.width`: bytes one element of the answer occupies. `msum` answers at `sums`'s width,
+/// scan.rs `mw_out_width`, `MOp.width`: bytes one element of the answer occupies. `msum` answers at `sums`'s width,
 /// `mavg` and `mdev` eight, `mcount` four, the extremes at the operand's own width.
 pub fn mw_out_width(op: i32, kind: i32) -> usize {
     match op {
@@ -378,7 +378,7 @@ pub fn mw_out_width(op: i32, kind: i32) -> usize {
         _ => 8,
     }
 }
-/// scan.c `mw_sent`: the extreme of no elements, as bits at the element's own width. `mmax` at a float takes q's `0n`
+/// scan.rs `mw_sent`: the extreme of no elements, as bits at the element's own width. `mmax` at a float takes q's `0n`
 /// and not `-0w` (`|` ignores a null, so the null is its identity); at the signed widths `0N` already is the extreme.
 fn mw_sent(op: i32, kind: i32) -> u64 {
     let mn = op == MW_MMIN;
@@ -392,7 +392,7 @@ fn mw_sent(op: i32, kind: i32) -> u64 {
         _ => if mn { 0x7ff0_0000_0000_0000 } else { SC_NAN64 },
     }
 }
-/// scan.c `mw_seed`, `MOp.seed`: the identity q's each-prior `&':` and `|':` start from, which each of the first `w - 1`
+/// scan.rs `mw_seed`, `MOp.seed`: the identity q's each-prior `&':` and `|':` start from, which each of the first `w - 1`
 /// windows also holds. `3 mmax 0N 0N 0N 1` is `-0W -0W 0N 1`. The seed of `mmin` is the type's top.
 fn mw_seed(op: i32, kind: i32) -> u64 {
     let mn = op == MW_MMIN;
@@ -428,9 +428,9 @@ pub fn mw_prime(sufx: &mut [u8], op: i32, kind: i32, ew: usize) -> u64 {
 }
 
 
-// ---- the moving-window engine: scan.c `mw_run` and its window macros (K4) ----
+// ---- the moving-window engine: scan.rs `mw_run` and its window macros (K4) ----
 
-/// The engine state of scan.c's `mwin` (rs.h `CMwin`), as safe slices: `qrs_mw_run` builds it from the C struct, runs
+/// The engine state of scan.rs's `mwin` (rs.h `CMwin`), as safe slices: `qrs_mw_run` builds it from the C struct, runs
 /// one piece and writes the scalars back, so a column resumes across tiles and blocks. A ring an op does not read is
 /// empty.
 pub struct Mw<'a> {
@@ -676,7 +676,7 @@ fn avg<K: Kd>(st: &mut Mw, p: &[u8], o: &mut [u8], n: usize) {
 
 /// `mdev:{sqrt mavg[x;y*y]-m*m:mavg[x;y:"f"$y]}` -- the third accumulator joins the other two. The square is taken of
 /// the *filled* value. A negative variance and an empty window both reach `sqrt` as q's `0n`. No step is a fused
-/// multiply-add: Rust never contracts, which is scan.c's `-ffp-contract=off`.
+/// multiply-add: Rust never contracts, which is scan.rs's `-ffp-contract=off`.
 #[inline(always)]
 fn dev<K: Kd>(st: &mut Mw, p: &[u8], o: &mut [u8], n: usize) {
     let (mut s, mut q, mut c) = (st.fsum, st.fsq, st.cnt);
@@ -782,7 +782,7 @@ fn ops<K: Kd, const EW: usize>(st: &mut Mw, op: i32, p: &[u8], o: &mut [u8], n: 
     }
 }
 
-/// scan.c `mw_run`: the window verb `op` over `n` elements of `p` at `kind`, resuming where `st` stopped. A boolean
+/// scan.rs `mw_run`: the window verb `op` over `n` elements of `p` at `kind`, resuming where `st` stopped. A boolean
 /// reads one bit an element, so `p` must be the whole bitmap from element 0 of the piece.
 pub fn mw_run(st: &mut Mw, op: i32, kind: i32, p: &[u8], o: &mut [u8], n: usize) {
     if op >= MW_OPS_N {
@@ -805,11 +805,11 @@ pub fn mw_run(st: &mut Mw, op: i32, kind: i32, p: &[u8], o: &mut [u8], n: usize)
 pub fn mw_in_bytes(kind: i32, n: usize) -> usize {
     if kind == SK_BIT as i32 { n.div_ceil(8) } else { n * dense_width(kind) }
 }
-// ---- B7/B8: the column entry points of scan.c's twelve Lean exports (ffi/scan.rs), over the payloads' bytes ----
+// ---- B7/B8: the column entry points of scan.rs's twelve Lean exports (ffi/scan.rs), over the payloads' bytes ----
 
-/// scan.c `SC_TILE`: the elements of an ALP block a scan restores, runs and leaves in L1 before the next.
+/// scan.rs `SC_TILE`: the elements of an ALP block a scan restores, runs and leaves in L1 before the next.
 const SC_TILE: usize = 128;
-/// coc.h:349 `sk_avail`: how many elements `bytes` hold (the boolean's payload is packed bits).
+/// coc.rs `sk_avail`: how many elements `bytes` hold (the boolean's payload is packed bits).
 fn avail(kind: i32, bytes: usize) -> usize { if kind == SK_BIT as i32 { bytes * 8 } else { bytes / dense_width(kind) } }
 /// `n` clamped to what a payload of `bytes` holds: getting `n` wrong would otherwise read past it.
 fn clamp(kind: i32, n: usize, bytes: usize) -> usize { n.min(avail(kind, bytes)) }
@@ -843,7 +843,7 @@ pub fn col_bits(op: u8, n: usize, a: &[u8], out: &mut [u8]) {
 
 /// The elements of an encoded column of `n` asked for: what its block grid holds.
 fn enc_n(mv: &[u8], n: usize) -> usize { Meta::new(mv, n).map_or(0, |m| m.n) }
-/// coc.h:829 `coc_load_blk_at`: block `b`'s first `nb` elements at `w` bytes an element into `buf`.
+/// coc.rs `coc_load_blk_at`: block `b`'s first `nb` elements at `w` bytes an element into `buf`.
 fn load_blk(c: &Coc, b: usize, nb: usize, w: usize, buf: &mut [u64; BLK]) {
     let by = pod::bytes_mut(buf);
     match w {
@@ -936,14 +936,14 @@ pub fn col_avg(kind: u8, n: usize, a: &[u8]) -> Option<u64> {
 /// `qlean_scan_ema` / `qlean_scan_ema_v`: the doubles a recurrence over `bytes` bytes answers.
 pub fn ema_n(bytes: usize) -> usize { bytes / 8 }
 
-/// The window engine's state, owned: scan.c's `mwin` (the rings an op reads and no more, so a window wider than the
+/// The window engine's state, owned: scan.rs's `mwin` (the rings an op reads and no more, so a window wider than the
 /// column costs one array and not six). Zeroed as C's `calloc` was.
 pub struct MwSt {
     w: usize, cu: usize, cap: usize, tl: usize, t: usize, isum: u64, fsum: f64, fsq: f64, cnt: i64, extbits: u64, sent: u64,
     ri: Vec<u64>, rf: Vec<f64>, rq: Vec<f64>, rc: Vec<i64>, phase: Vec<u8>, sufx: Vec<u8>,
 }
 impl MwSt {
-    /// scan.c `mw_open`: sized for window `w` over `n` elements.
+    /// scan.rs `mw_open`: sized for window `w` over `n` elements.
     pub fn open(op: i32, kind: i32, w: usize, n: usize) -> MwSt {
         let d = mw_dims(op, kind, w, n);
         let mut s = MwSt { w: d.w, cu: 0, cap: d.cap, tl: d.tl, t: 0, isum: 0, fsum: 0.0, fsq: 0.0, cnt: 0, extbits: 0, sent: 0,
@@ -964,7 +964,7 @@ impl MwSt {
         }
         s
     }
-    /// scan.c `mw_run` on a piece of the column: `p` holds `n` elements at `kind` (a boolean's is the bitmap from element 0 of
+    /// scan.rs `mw_run` on a piece of the column: `p` holds `n` elements at `kind` (a boolean's is the bitmap from element 0 of
     /// the piece), `o` their answers; the scalars are kept so the next piece resumes.
     pub fn run(&mut self, op: i32, kind: i32, p: &[u8], o: &mut [u8], n: usize) {
         let mut m = Mw { w: self.w, cu: self.cu, cap: self.cap, tl: self.tl, t: self.t, isum: self.isum, fsum: self.fsum, fsq: self.fsq,

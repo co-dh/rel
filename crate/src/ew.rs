@@ -1,19 +1,19 @@
 #![forbid(unsafe_code)]
-//! Column (a), elementwise.c: scalar helpers (A42), the two-operand verbs and comparisons (A43; `ew_val_avx` and
+//! Column (a), ew.rs: scalar helpers (A42), the two-operand verbs and comparisons (A43; `ew_val_avx` and
 //! `ew_cmp_avx` are `simd::ew_val`/`simd::ew_cmp`), bit verbs and the monadic ones (A44), casts and time (A45),
 //! widening (A46a), the fused chain's stage table (A46b; its runner is `c::run_chain`). `op`, `cls`, `shape` are
-//! elementwise.c:86-100's `EW_*`. The `qlean_ew_*` entries unbox and allocate and stay C (§1).
+//! ew.rs's `EW_*`. The `qlean_ew_*` entries unbox and allocate and stay C (§1).
 use crate::c::Runner;
 use crate::coc::Coc;
 use crate::sym::{sym_eq, Syms};
 
-// ---- A42: elementwise.c:140-299 (per element: C keeps these bodies while a C caller remains) ----
-/// elementwise.c:140 `ew_unsupported`: the abort naming the engine, `op` and `cls`.
+// ---- A42: ew.rs (per element: C keeps these bodies while a C caller remains) ----
+/// ew.rs `ew_unsupported`: the abort naming the engine, `op` and `cls`.
 pub fn ew_unsupported(engine: &str, op: u32, cls: u32) -> ! {
     // C exits 1 after this text; no_std has no exit, so the panic handler prints it and aborts
     panic!("{engine}: no case for verb {op} at storage class {cls}. The dispatch in QLean/Kernel/Elementwise.lean is the only caller and must not claim this pair; answering anything here would be a wrong column rather than a fallback.")
 }
-/// elementwise.c:149 `ew_width`: an element's bytes in class `cls`.
+/// ew.rs `ew_width`: an element's bytes in class `cls`.
 pub fn ew_width(cls: u32) -> usize {
     match cls {
         0 => 1,
@@ -23,30 +23,30 @@ pub fn ew_width(cls: u32) -> usize {
         _ => panic!("qlean_ew: storage class {cls} has no dense element width"),
     }
 }
-// q's order on floats as two predicates: a null (a NaN) below everything, two nulls equal (elementwise.c:177)
+// q's order on floats as two predicates: a null (a NaN) below everything, two nulls equal (ew.rs)
 fn lt64(x: u64, y: u64) -> bool { if f64::from_bits(x).is_nan() { !f64::from_bits(y).is_nan() } else { f64::from_bits(x) < f64::from_bits(y) } }
 fn lt32(x: u32, y: u32) -> bool { if f32::from_bits(x).is_nan() { !f32::from_bits(y).is_nan() } else { f32::from_bits(x) < f32::from_bits(y) } }
-/// elementwise.c:195 `ew_tol`: q's tolerant float equality.
+/// ew.rs `ew_tol`: q's tolerant float equality.
 pub fn ew_tol(x: f64, y: f64) -> bool {
     let (ax, ay) = (x.abs(), y.abs());
     (x - y).abs() < 1.0 / (1u64 << 43) as f64 * if ax < ay { ax } else { ay }
 }
-/// elementwise.c:203 `ew_ord64`: a double's bits as an order-preserving key.
+/// ew.rs `ew_ord64`: a double's bits as an order-preserving key.
 pub fn ew_ord64(x: u64, y: u64) -> i32 { if lt64(x, y) { -1 } else if lt64(y, x) { 1 } else { 0 } }
-/// elementwise.c:207 `ew_ord32`
+/// ew.rs `ew_ord32`
 pub fn ew_ord32(x: u32, y: u32) -> i32 { if lt32(x, y) { -1 } else if lt32(y, x) { 1 } else { 0 } }
-/// elementwise.c:240 `ew_outside_long`: `f` has no long.
+/// ew.rs `ew_outside_long`: `f` has no long.
 pub fn ew_outside_long(f: f64) -> bool { f <= -9223372036854775808.0 || f >= 9223372036854775808.0 }
-/// elementwise.c:250 `ew_fdiv`: floor division, q's nulls.
+/// ew.rs `ew_fdiv`: floor division, q's nulls.
 pub fn ew_fdiv(x: i64, y: i64) -> i64 {
     // the caller excluded y = 0 and the null x, the one dividend whose quotient by -1 overflows
     let (q, r) = (x.wrapping_div(y), x.wrapping_rem(y));
     q - ((r ^ y) < 0 && r != 0) as i64
 }
-/// elementwise.c:263 `ew_magic`: a divisor's multiply-shift form.
+/// ew.rs `ew_magic`: a divisor's multiply-shift form.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Magic { pub m: i64, pub d: i64, pub sh: u32, pub add: bool }
-/// elementwise.c:265 `ew_magic_of`; `None` where C answers 0.
+/// ew.rs `ew_magic_of`; `None` where C answers 0.
 pub fn magic_of(d: i64) -> Option<Magic> {
     const TWO63: u64 = 1 << 63;
     let ad = d.unsigned_abs();
@@ -70,7 +70,7 @@ pub fn magic_of(d: i64) -> Option<Magic> {
     // C's `add` is 1, -1 or 0; the -1 only arises for d < 0, so `fdiv_magic` reads its sign from d
     Some(Magic { m, d, sh: p - 64, add: (d > 0 && m < 0) || (d < 0 && m > 0) })
 }
-/// elementwise.c:293 `ew_fdiv_magic`: `ew_fdiv(x, g.d)` by the magic.
+/// ew.rs `ew_fdiv_magic`: `ew_fdiv(x, g.d)` by the magic.
 pub fn fdiv_magic(g: &Magic, x: i64) -> i64 {
     let add = if !g.add { 0 } else if g.d > 0 { x } else { x.wrapping_neg() };
     let mut q = (((g.m as i128 * x as i128) >> 64) as i64).wrapping_add(add) >> g.sh;
@@ -79,7 +79,7 @@ pub fn fdiv_magic(g: &Magic, x: i64) -> i64 {
     q - ((rem ^ g.d) < 0 && rem != 0) as i64
 }
 
-// ---- A43: elementwise.c:482-1092 ----
+// ---- A43: ew.rs ----
 use crate::c::run_map;
 use crate::ids::{self, id_at, ids_avail, ids_bytes, pack, unpack};
 use crate::pod::{self, bytes_mut, Lane, Pod};
@@ -88,7 +88,7 @@ use crate::{BLK, QLEAN_COST_ARITH, QLEAN_COST_COPY, QLEAN_COST_MATH};
 use alloc::vec;
 use alloc::vec::Vec;
 
-/// `EW_*` codes of elementwise.c:86-100 that this section reads; the two lists cannot change apart.
+/// `EW_*` codes of ew.rs that this section reads; the two lists cannot change apart.
 pub mod k {
     pub const I16: u8 = 1; pub const I32: u8 = 2; pub const I64: u8 = 3;
     pub const F32: u8 = 4; pub const BITS: u8 = 6; pub const ABS: u8 = 1;
@@ -97,7 +97,7 @@ pub mod k {
     pub const EQ: u8 = 0; pub const NE: u8 = 1; pub const LT: u8 = 2; pub const LE: u8 = 3; pub const GT: u8 = 4; pub const GE: u8 = 5;
     pub const VV: u8 = 0; pub const VA: u8 = 1; pub const AV: u8 = 2;
 }
-/// elementwise.c:436's `#if`: the mask paths exist only where the build enables the instructions they use.
+/// ew.rs's `#if`: the mask paths exist only where the build enables the instructions they use.
 const VEC: bool = cfg!(all(target_arch = "x86_64", target_feature = "avx512f", target_feature = "avx512bw"));
 const NAN64: u64 = 0xfff8000000000000;
 const PNAN64: u64 = 0x7ff8000000000000;
@@ -123,7 +123,7 @@ fn side<'a>(x: &'a [u8], atom: bool, lo: usize, hi: usize, w: usize) -> &'a [u8]
     let (s, e) = if atom { (0, w) } else { (lo * w, hi * w) };
     x.get(s..e).unwrap_or_else(|| panic!("qlean_ew: elements {}..{} of a {}-byte payload of {w}-byte elements", s / w, e / w, x.len()))
 }
-/// elementwise.c:1269 `ew_decode_run` (`coc_load_blk_at`): block `b`'s first `cnt` elements, `w` bytes each, into `o`.
+/// ew.rs `ew_decode_run` (`coc_load_blk_at`): block `b`'s first `cnt` elements, `w` bytes each, into `o`.
 pub fn decode_stage(c: &Coc, b: usize, cnt: usize, w: usize, o: &mut [u8]) {
     match w {
         1 => c.decode_blk::<u8>(b, cnt, rw(o)),
@@ -139,7 +139,7 @@ fn block<'a>(c: &Coc, b: usize, cnt: usize, w: usize, buf: &'a mut [u64; BLK]) -
     o
 }
 
-/// elementwise.c:226 `EW_SHAPED`: `o[i] = f(a[ia], b[ib])` with `(ia, ib)` the shape's index pair, an atom a one-element slice.
+/// ew.rs `EW_SHAPED`: `o[i] = f(a[ia], b[ib])` with `(ia, ib)` the shape's index pair, an atom a one-element slice.
 #[inline(always)]
 fn zip2<T: Copy, U: Copy>(shape: u8, a: &[T], b: &[T], o: &mut [U], f: impl Fn(T, T) -> U) {
     if o.is_empty() { return }
@@ -149,7 +149,7 @@ fn zip2<T: Copy, U: Copy>(shape: u8, a: &[T], b: &[T], o: &mut [U], f: impl Fn(T
         _ => { let x = a[0]; for (o, &y) in o.iter_mut().zip(b) { *o = f(x, y) } }
     }
 }
-/// elementwise.c:626 `EW_CMP_SHAPED`: the `m` bits LSB-first, the bits of the last byte above `m` zero.
+/// ew.rs `EW_CMP_SHAPED`: the `m` bits LSB-first, the bits of the last byte above `m` zero.
 #[inline(always)]
 fn pack_bits(o: &mut [u8], m: usize, ev: impl Fn(usize) -> bool) {
     for (k, byte) in o.iter_mut().enumerate() {
@@ -168,7 +168,7 @@ fn pack2<T: Copy>(shape: u8, a: &[T], b: &[T], o: &mut [u8], m: usize, p: impl F
     }
 }
 
-/// elementwise.c:305 `EW_VAL_INT`: the wrap is the truncation the write does; `&` and `|` need no null test, q's
+/// ew.rs `EW_VAL_INT`: the wrap is the truncation the write does; `&` and `|` need no null test, q's
 /// null being the least value of the type.
 fn val_int<T: Elt>(op: u8, cls: u8, nul: i64, shape: u8, a: &[T], b: &[T], o: &mut [T]) {
     let nulv = T::wrap(nul as u64);
@@ -182,7 +182,7 @@ fn val_int<T: Elt>(op: u8, cls: u8, nul: i64, shape: u8, a: &[T], b: &[T], o: &m
         k::LESSER => zip2(shape, a, b, o, |x, y| if x < y { x } else { y }),
         k::GREATER => zip2(shape, a, b, o, |x, y| if y < x { x } else { y }),
         k::IDIV | k::IMOD => {
-            // a constant divisor (elementwise.c:253) takes the multiply-shift form instead of a 64-bit divide
+            // a constant divisor (ew.rs) takes the multiply-shift form instead of a 64-bit divide
             let g = if shape == k::VA && !o.is_empty() && !isn(b[0]) { magic_of(b[0].i()) } else { None };
             let md = op == k::IMOD;
             let q = |x: i64, y: i64| if md { (x as u64).wrapping_sub((y as u64).wrapping_mul(ew_fdiv(x, y) as u64)) } else { ew_fdiv(x, y) as u64 };
@@ -216,7 +216,7 @@ fn eq32(x: u32, y: u32) -> bool { if f32::from_bits(x).is_nan() { f32::from_bits
 fn tol64(x: u64, y: u64) -> bool { ew_tol(f64::from_bits(x), f64::from_bits(y)) }
 fn tol32(_: u32, _: u32) -> bool { false }
 
-/// elementwise.c:366 `EW_VAL_FLT`: a NaN operand is answered before any conversion and comes back as it is, the left
+/// ew.rs `EW_VAL_FLT`: a NaN operand is answered before any conversion and comes back as it is, the left
 /// one first; the right one of `-` comes back with its sign flipped (q subtracts by negating and adding).
 macro_rules! val_flt { ($name:ident, $B:ty, $F:ty, $nanq:expr, $nanp:expr, $ord:ident, $floor:ident, $fnma:ident, $pow:expr) => {
     fn $name(op: u8, cls: u8, shape: u8, a: &[$B], b: &[$B], o: &mut [$B]) {
@@ -238,7 +238,7 @@ macro_rules! val_flt { ($name:ident, $B:ty, $F:ty, $nanq:expr, $nanp:expr, $ord:
                 let f = $floor(tof(x) / tof(y));
                 if isn(x) || isn(y) { $nanq } else if ew_outside_long(f as f64) { $nanp } else { tob($fnma(tof(x), tof(y), f)) }
             }),
-            // elementwise.c `EW_POW`: a NaN operand is `0n`; the power is libm's, at double width (the float class narrows it)
+            // ew.rs `EW_POW`: a NaN operand is `0n`; the power is libm's, at double width (the float class narrows it)
             k::POW => zip2(shape, a, b, o, |x, y| if isn(x) || isn(y) { $nanq } else { tob($pow(tof(x), tof(y))) }),
             _ => ew_unsupported("qlean_ew_val", op as u32, cls as u32),
         }
@@ -249,7 +249,7 @@ val_flt!(val_f32, u32, f32, NAN32, PNAN32, ew_ord32, floor32, fnma32, |x: f32, y
 fn fnma64(x: f64, y: f64, f: f64) -> f64 { crate::simd::fnma64(x, y, f) }
 fn fnma32(x: f32, y: f32, f: f32) -> f32 { crate::simd::fnma32(x, y, f) }
 
-/// elementwise.c:501 `ew_val_run` over the elements `[lo, hi)` of `a`, `b` (an atom is one element): into `o`.
+/// ew.rs `ew_val_run` over the elements `[lo, hi)` of `a`, `b` (an atom is one element): into `o`.
 fn val_slice(op: u8, cls: u8, shape: u8, nul: i64, a: &[u8], b: &[u8], lo: usize, hi: usize, o: &mut [u8]) {
     let w = ew_width(cls as u32);
     let (a, b) = (side(a, shape == k::AV, lo, hi, w), side(b, shape == k::VA, lo, hi, w));
@@ -266,12 +266,12 @@ fn val_slice(op: u8, cls: u8, shape: u8, nul: i64, a: &[u8], b: &[u8], lo: usize
     }
 }
 
-/// elementwise.c:501 `ew_val_run` and its entry: `a op b` of class `cls` (`shape` vector/atom) into `out`, `n` long.
+/// ew.rs `ew_val_run` and its entry: `a op b` of class `cls` (`shape` vector/atom) into `out`, `n` long.
 pub fn val(run: Runner, op: u8, cls: u8, shape: u8, nul: i64, a: &[u8], b: &[u8], n: usize, out: &mut [u8]) {
     let w = ew_width(cls as u32);
     run_map(run, out, n, w, QLEAN_COST_ARITH, w, &|lo, hi, o| val_slice(op, cls, shape, nul, a, b, lo, hi, o));
 }
-/// elementwise.c:539 `ew_val_foR_run`: two encoded columns, the answer dense.
+/// ew.rs `ew_val_foR_run`: two encoded columns, the answer dense.
 pub fn val_enc(run: Runner, op: u8, cls: u8, nul: i64, a: &Coc, b: &Coc, out: &mut [u8]) {
     let (w, n) = (ew_width(cls as u32), a.meta.n);
     run_map(run, out, n, w, QLEAN_COST_ARITH, w, &|lo, hi, o| {
@@ -287,7 +287,7 @@ pub fn val_enc(run: Runner, op: u8, cls: u8, nul: i64, a: &Coc, b: &Coc, out: &m
         }
     });
 }
-/// elementwise.c:562 `ew_val_foR_atom_run`: an encoded column and an atom.
+/// ew.rs `ew_val_foR_atom_run`: an encoded column and an atom.
 pub fn val_enc_atom(run: Runner, op: u8, cls: u8, shape: u8, nul: i64, c: &Coc, atom: &[u8], out: &mut [u8]) {
     let (w, n) = (ew_width(cls as u32), c.meta.n);
     run_map(run, out, n, w, QLEAN_COST_ARITH, w, &|lo, hi, o| {
@@ -304,7 +304,7 @@ pub fn val_enc_atom(run: Runner, op: u8, cls: u8, shape: u8, nul: i64, c: &Coc, 
     });
 }
 
-/// elementwise.c:648 `EW_CMP_INT`: no null case, q's null being the least value of the type (a byte and a char compare
+/// ew.rs `EW_CMP_INT`: no null case, q's null being the least value of the type (a byte and a char compare
 /// by their byte).
 fn cmp_int<T: Elt>(op: u8, cls: u8, shape: u8, a: &[T], b: &[T], o: &mut [u8], m: usize) {
     match op {
@@ -317,7 +317,7 @@ fn cmp_int<T: Elt>(op: u8, cls: u8, shape: u8, a: &[T], b: &[T], o: &mut [u8], m
         _ => ew_unsupported("qlean_ew_cmp", op as u32, cls as u32),
     }
 }
-/// elementwise.c:661 `EW_CMP_FLT`: q's order (a null below everything) with its tolerance, which `<` excludes.
+/// ew.rs `EW_CMP_FLT`: q's order (a null below everything) with its tolerance, which `<` excludes.
 macro_rules! cmp_flt { ($name:ident, $B:ty, $lt:ident, $le:ident, $eq:ident, $tol:ident) => {
     fn $name(op: u8, cls: u8, shape: u8, a: &[$B], b: &[$B], o: &mut [u8], m: usize) {
         match op {
@@ -334,7 +334,7 @@ macro_rules! cmp_flt { ($name:ident, $B:ty, $lt:ident, $le:ident, $eq:ident, $to
 cmp_flt!(cmp_f64, u64, lt64, le64, eq64, tol64);
 cmp_flt!(cmp_f32, u32, lt32, le32, eq32, tol32);
 
-/// elementwise.c:820 `ew_cmp_run` over the output bytes `[lo, hi)`: the elements `8 lo ..` of `a`, `b`, `n` in all.
+/// ew.rs `ew_cmp_run` over the output bytes `[lo, hi)`: the elements `8 lo ..` of `a`, `b`, `n` in all.
 fn cmp_slice(op: u8, cls: u8, shape: u8, a: &[u8], b: &[u8], n: usize, lo: usize, hi: usize, o: &mut [u8]) {
     let w = ew_width(cls as u32);
     let (e0, e1) = (lo * 8, (hi * 8).min(n));
@@ -351,13 +351,13 @@ fn cmp_slice(op: u8, cls: u8, shape: u8, a: &[u8], b: &[u8], n: usize, lo: usize
         _ => ew_unsupported("qlean_ew_cmp", op as u32, cls as u32),
     }
 }
-/// elementwise.c:820 `ew_cmp_run` and its entry: a byte per comparison.
+/// ew.rs `ew_cmp_run` and its entry: a byte per comparison.
 pub fn cmp(run: Runner, op: u8, cls: u8, shape: u8, a: &[u8], b: &[u8], n: usize, out: &mut [u8]) {
     let nb = n.div_ceil(8);
     // sliced by output byte, so eight elements move together and no two threads share one
     run_map(run, out, nb, 1, QLEAN_COST_ARITH, 8 * ew_width(cls as u32), &|lo, hi, o| cmp_slice(op, cls, shape, a, b, n, lo, hi, o));
 }
-/// elementwise.c:867 `ew_low_zero_run`: bit `i` is `(a[i] & b[0]) = 0`.
+/// ew.rs `ew_low_zero_run`: bit `i` is `(a[i] & b[0]) = 0`.
 pub fn low_zero(run: Runner, a: &[u8], b: &[u8], n: usize, out: &mut [u8]) {
     let (a, b) = (side(a, false, 0, n, 8), side(b, true, 0, 1, 8));
     run_map(run, out, n.div_ceil(8), 1, QLEAN_COST_ARITH, 64, &|lo, hi, o| {
@@ -365,7 +365,7 @@ pub fn low_zero(run: Runner, a: &[u8], b: &[u8], n: usize, out: &mut [u8]) {
         pack2(k::VA, ro::<u64>(&a[e0 * 8..e1 * 8]), ro::<u64>(b), o, e1 - e0, |x, y| x & y == 0)
     });
 }
-/// elementwise.c:888 `ew_low_zero_foR_run`: a block with `base = maxv` is one value and is answered from its metadata,
+/// ew.rs `ew_low_zero_foR_run`: a block with `base = maxv` is one value and is answered from its metadata,
 /// any other is restored into a buffer; sliced by output byte, a block's bytes may be split between two slices.
 pub fn low_zero_enc(run: Runner, c: &Coc, atom: &[u8], out: &mut [u8]) {
     let (n, m) = (c.meta.n, ro::<u64>(side(atom, true, 0, 1, 8))[0]);
@@ -388,7 +388,7 @@ pub fn low_zero_enc(run: Runner, c: &Coc, atom: &[u8], out: &mut [u8]) {
         }
     });
 }
-/// elementwise.c:927 `ew_bitw_run`: `op` is band 0, bor 1, bandnot 2; any other reads as band.
+/// ew.rs `ew_bitw_run`: `op` is band 0, bor 1, bandnot 2; any other reads as band.
 pub fn bitw(run: Runner, op: u8, a: &[u8], b: &[u8], n: usize, out: &mut [u8]) {
     let (a, b) = (ro::<u64>(side(a, false, 0, n, 8)), ro::<u64>(side(b, false, 0, n, 8)));
     run_map(run, out, n, 8, QLEAN_COST_ARITH, 8, &|lo, hi, o| {
@@ -401,7 +401,7 @@ pub fn bitw(run: Runner, op: u8, a: &[u8], b: &[u8], n: usize, out: &mut [u8]) {
         }
     });
 }
-/// elementwise.c:970 `qlean_ew_rank_pair` past the unboxing: each symbol's rank in the merged order of `da`, `db`.
+/// ew.rs `qlean_ew_rank_pair` past the unboxing: each symbol's rank in the merged order of `da`, `db`.
 pub fn rank_pair(da: &Syms, db: &Syms, ra: &mut [i32], rb: &mut [i32]) {
     let (na, n) = (da.count(), da.count() + db.count());
     if n == 0 { return }
@@ -434,7 +434,7 @@ fn verb_bits(op: u8, x: &[i64], y: &[i64], c: usize) -> u64 {
         k::LE => f(|x, y| x <= y), k::GT => f(|x, y| x > y), _ => f(|x, y| x >= y),
     }
 }
-/// elementwise.c `EW_CMP_IDS`: the `m` bits for elements `[e0, e0 + m)` of the shape's two id streams, a block of
+/// ew.rs `EW_CMP_IDS`: the `m` bits for elements `[e0, e0 + m)` of the shape's two id streams, a block of
 /// `IDB` at a time. `get(a, p, out)` unpacks side `a`'s (`true` = left) ids from `p`; `map(a, id)` is the key compared
 /// (the id's rank, or the id). An atom side is its element 0, mapped once. `e0` is a multiple of 8, so a slice starts
 /// on a byte at every width.
@@ -483,18 +483,18 @@ fn ids_pair(run: Runner, cost: u32, wide: usize, op: u8, shape: u8, ia: &[u8], w
         }
     });
 }
-/// elementwise.c `ew_eq_ids_run` and its entry: bit `i` is whether the two ids the shape indexes, both read at `w`,
+/// ew.rs `ew_eq_ids_run` and its entry: bit `i` is whether the two ids the shape indexes, both read at `w`,
 /// are equal (`op` = `=`) or differ (`<>`).
 pub fn eq_ids(run: Runner, op: u8, shape: u8, ia: &[u8], ib: &[u8], w: u32, n: usize, out: &mut [u8]) {
     ids_pair(run, QLEAN_COST_COPY, 2 * w as usize, op, shape, ia, w, ib, w, n, None, out)
 }
-/// elementwise.c `ew_cmp_ids_run` and its entry: `op` between the ranks `ra[id]`, `rb[id]` of the two ids the shape
+/// ew.rs `ew_cmp_ids_run` and its entry: `op` between the ranks `ra[id]`, `rb[id]` of the two ids the shape
 /// indexes, read at `wa`, `wb`.
 pub fn cmp_ids(run: Runner, op: u8, shape: u8, ra: &[i32], ia: &[u8], wa: u32, rb: &[i32], ib: &[u8], wb: u32, n: usize,
                out: &mut [u8]) {
     ids_pair(run, QLEAN_COST_ARITH, 8 * 4, op, shape, ia, wa, ib, wb, n, Some((ra, rb)), out)
 }
-/// elementwise.c `ew_cmp_key_run` and its entry: an interned column against one symbol. `e` is the key's entry (`usize::MAX`
+/// ew.rs `ew_cmp_key_run` and its entry: an interned column against one symbol. `e` is the key's entry (`usize::MAX`
 /// when the dictionary of `d` entries does not hold it), `past` whether the key is the empty symbol, which every id
 /// past the dictionary reads as; `tab` is the verdict per entry, the last (`d`) for every id past the dictionary,
 /// where the verb is an ordering. An element at or past `na` reads id 0 (`Column.idAt`'s convention).
@@ -532,7 +532,7 @@ pub fn cmp_key(run: Runner, op: u8, ids: &[u8], w: u32, n: usize, na: usize, e: 
     });
 }
 
-/// elementwise.c `qlean_ew_eq_ids` / `qlean_ew_cmp_ids`: `n` clamped to what the vector sides hold (an atom side is read at
+/// ew.rs `qlean_ew_eq_ids` / `qlean_ew_cmp_ids`: `n` clamped to what the vector sides hold (an atom side is read at
 /// index 0 only, so an empty one leaves nothing to compare); `ba`, `bb` are the id payloads' byte counts.
 pub fn ids_n(shape: u8, n: usize, ba: usize, wa: u32, bb: usize, wb: u32) -> usize {
     let (aa, ab) = (ids_avail(ba, wa), ids_avail(bb, wb));
@@ -540,7 +540,7 @@ pub fn ids_n(shape: u8, n: usize, ba: usize, wa: u32, bb: usize, wb: u32) -> usi
     let n = if shape != k::AV { n.min(aa) } else { n };
     if shape != k::VA { n.min(ab) } else { n }
 }
-/// elementwise.c `qlean_ew_cmp_ids_key` past the unboxing: bit `i` is `op` between the symbol element `i`'s id names in
+/// ew.rs `qlean_ew_cmp_ids_key` past the unboxing: bit `i` is `op` between the symbol element `i`'s id names in
 /// `dict` and `key`, in q's order. A key no entry holds answers one bit throughout where the verb is `=`/`<>` and no id
 /// is read; an ordering is a verdict per entry (the last, past the dictionary, is the empty symbol's).
 pub fn cmp_ids_key(run: Runner, op: u8, dict: &Syms, ids: &[u8], w: u32, key: &[u8], n: usize, out: &mut [u8]) {
@@ -562,8 +562,8 @@ pub fn cmp_ids_key(run: Runner, op: u8, dict: &Syms, ids: &[u8], w: u32, key: &[
     }
     cmp_key(run, op, ids, w, n, na, e, d, past, tab.as_deref(), out)
 }
-// ---- A44: elementwise.c:1569-1813 ----
-/// `EW_*` codes of elementwise.c:86-100 this section reads (the verbs `k` does not hold).
+// ---- A44: ew.rs ----
+/// `EW_*` codes of ew.rs this section reads (the verbs `k` does not hold).
 mod k44 {
     pub(super) const BITS: u32 = 6; pub(super) const F32: u8 = 4; pub(super) const F64: u8 = 5;
     pub(super) const NEG: u8 = 0; pub(super) const ABS: u8 = 1; pub(super) const SQRT: u8 = 2; pub(super) const ATAN: u8 = 10;
@@ -571,7 +571,7 @@ mod k44 {
     pub(super) const BEQ: u8 = 16; pub(super) const BNE: u8 = 17; pub(super) const BLT: u8 = 18;
     pub(super) const BLE: u8 = 19; pub(super) const BGT: u8 = 20; pub(super) const BGE: u8 = 21;
 }
-/// elementwise.c:1569 `ew_bit_run` and its entry: bitmap verbs. `out` is the `⌈n / 8⌉` bytes, the bits above `n` zero;
+/// ew.rs `ew_bit_run` and its entry: bitmap verbs. `out` is the `⌈n / 8⌉` bytes, the bits above `n` zero;
 /// an atom operand is one bit, widened to a byte before the loop.
 pub fn bit(run: Runner, op: u8, shape: u8, a: &[u8], b: &[u8], n: usize, out: &mut [u8]) {
     let nb = n.div_ceil(8);
@@ -610,7 +610,7 @@ fn mon_int<T: Elt>(op: u8, nul: i64, x: &[T], o: &mut [T]) {
         *o = if v.i() == nul { nulv } else if op == k44::NEG || v.i() < 0 { T::wrap(0u64.wrapping_sub(v.i() as u64)) } else { v };
     }
 }
-/// elementwise.c:1665 `ew_mon_run` over `x`'s elements into `o` (the same count): the pair was checked by `mon_chk`.
+/// ew.rs `ew_mon_run` over `x`'s elements into `o` (the same count): the pair was checked by `mon_chk`.
 fn mon_slice(op: u8, cls: u8, nul: i64, x: &[u8], o: &mut [u8]) {
     match cls {
         0 => mon_int::<u8>(op, nul, ro(x), rw(o)),
@@ -621,7 +621,7 @@ fn mon_slice(op: u8, cls: u8, nul: i64, x: &[u8], o: &mut [u8]) {
         _ => for (o, &v) in rw::<u64>(o).iter_mut().zip(ro::<u64>(x)) { *o = if op == k44::NEG { v ^ (1 << 63) } else { v & !(1 << 63) } },
     }
 }
-/// The nine float maps' answer at `f64`, elementwise.c `EW_MON_MAP`: a NaN operand answers `0n` before libm sees it, and
+/// The nine float maps' answer at `f64`, ew.rs `EW_MON_MAP`: a NaN operand answers `0n` before libm sees it, and
 /// a NaN result is `nanout` (`0n`, except the two arc functions' positive one: measured, `asin 2` and `acos -0w`).
 #[inline(always)]
 fn mon_map(x: &[u64], o: &mut [u64], nanout: u64, f: impl Fn(f64) -> f64) {
@@ -632,7 +632,7 @@ fn mon_map(x: &[u64], o: &mut [u64], nanout: u64, f: impl Fn(f64) -> f64) {
         };
     }
 }
-/// elementwise.c:1039 `ew_mon_run`'s switch, outside the loop: one straight libm loop per map.
+/// ew.rs `ew_mon_run`'s switch, outside the loop: one straight libm loop per map.
 fn mon_libm(op: u8, x: &[u8], o: &mut [u8]) {
     use crate::c as m;
     let (x, o) = (ro::<u64>(x), rw::<u64>(o));
@@ -649,7 +649,7 @@ fn mon_chk(op: u8, cls: u8) {
 /// The nine float maps are `SQRT ..= ATAN` at `f64` alone (q answers a float whatever the argument's type, so the
 /// dispatch widens first); any other pair of them is unsupported, as `ew_mon_run`'s `default`.
 fn is_libm(op: u8, cls: u8) -> bool { (k44::SQRT..=k44::ATAN).contains(&op) && cls == k44::F64 }
-/// elementwise.c:1039 `ew_mon_run` and its entry: the monadic verbs, `neg` and `abs` and the nine libm maps.
+/// ew.rs `ew_mon_run` and its entry: the monadic verbs, `neg` and `abs` and the nine libm maps.
 pub fn mon(run: Runner, op: u8, cls: u8, nul: i64, x: &[u8], n: usize, out: &mut [u8]) {
     if n == 0 { return }
     let lib = is_libm(op, cls);
@@ -662,7 +662,7 @@ pub fn mon(run: Runner, op: u8, cls: u8, nul: i64, x: &[u8], n: usize, out: &mut
         if lib { mon_libm(op, x, o) } else { mon_slice(op, cls, nul, x, o) }
     });
 }
-/// elementwise.c:1708-1765 `ew_mon_foR_run`, `ew_mon_foR_blk`: over an encoded column, the answer dense.
+/// ew.rs `ew_mon_foR_run`, `ew_mon_foR_blk`: over an encoded column, the answer dense.
 pub fn mon_enc(run: Runner, op: u8, cls: u8, nul: i64, c: &Coc, out: &mut [u8]) {
     let n = c.meta.n;
     if n == 0 { return }
@@ -681,7 +681,7 @@ pub fn mon_enc(run: Runner, op: u8, cls: u8, nul: i64, c: &Coc, out: &mut [u8]) 
         }
     });
 }
-/// elementwise.c:1743 `ew_mon_fill`: the encoder source of `qlean_coc_ew_mon_enc`. `buf` is the `buf.len()` elements of
+/// ew.rs `ew_mon_fill`: the encoder source of `qlean_coc_ew_mon_enc`. `buf` is the `buf.len()` elements of
 /// block `i0 / BLK`, mapped at the class's width and widened back to `i64` (`coc_widen`, which reads any width but 2
 /// and 4 as eight bytes).
 pub fn mon_fill(op: u8, cls: u8, nul: i64, c: &Coc, buf: &mut [i64], i0: usize) {
@@ -700,7 +700,7 @@ pub fn mon_fill(op: u8, cls: u8, nul: i64, c: &Coc, buf: &mut [i64], i0: usize) 
         _ => for (d, &s) in buf.iter_mut().zip(ro::<u64>(&y[..nb * 8])) { *d = s as i64 },
     }
 }
-/// elementwise.c:1789 `ew_floor_run`: `floor` at a float class, always a `long`; out of range or a NaN answers `0N`.
+/// ew.rs `ew_floor_run`: `floor` at a float class, always a `long`; out of range or a NaN answers `0N`.
 pub fn floor(run: Runner, cls: u8, x: &[u8], n: usize, out: &mut [u8]) {
     if n == 0 { return }
     if cls != k44::F32 && cls != k44::F64 { ew_unsupported("qlean_ew_floor", 0, cls as u32) }
@@ -714,10 +714,10 @@ pub fn floor(run: Runner, cls: u8, x: &[u8], n: usize, out: &mut [u8]) {
     });
 }
 
-// ---- A45: elementwise.c:1469-1610 ----
-/// elementwise.c:1469 `ew_cast_clamp`
+// ---- A45: ew.rs ----
+/// ew.rs `ew_cast_clamp`
 pub fn cast_clamp(v: i64, lo: i64, hi: i64) -> i64 { if v < lo { lo } else if v > hi { hi } else { v } }
-/// elementwise.c:1476 `ew_cast_round`: q's round half away from zero; a value `long` cannot hold saturates (to `-0W`
+/// ew.rs `ew_cast_round`: q's round half away from zero; a value `long` cannot hold saturates (to `-0W`
 /// below), and a NaN is the caller's to test first. `core` has no `round`, which would be a libm call anyway.
 pub fn cast_round(x: f64) -> i64 {
     // from 2^52 on every double is its own round; below, `a - trunc(a)` is exact, so the half test is too
@@ -729,7 +729,7 @@ pub fn cast_round(x: f64) -> i64 {
     };
     if t <= -9223372036854775808.0 { i64::MIN + 1 } else if t >= 9223372036854775808.0 { i64::MAX } else { t as i64 }
 }
-/// elementwise.c:1508 `ew_cast_run` and its entry `qlean_ew_cast`: class `src` to class `dst`, every element
+/// ew.rs `ew_cast_run` and its entry `qlean_ew_cast`: class `src` to class `dst`, every element
 /// `Ew.castStep` (the target's clamp or wrap, its null, a float source rounding).
 pub fn cast(run: Runner, src: u8, dst: u8, nul_in: i64, x: &[u8], n: usize, out: &mut [u8]) {
     if n == 0 { return }
@@ -765,14 +765,14 @@ pub fn cast(run: Runner, src: u8, dst: u8, nul_in: i64, x: &[u8], n: usize, out:
         _ => src_of::<i64>(src, nul_in, x, l, h, o, |i, _, m| if m { nul_out } else { cast_clamp(i, lo, hi) }),
     });
 }
-/// elementwise.c:1547 `ew_fdiv64`: floor division by a positive divisor.
+/// ew.rs `ew_fdiv64`: floor division by a positive divisor.
 pub fn fdiv64(a: i64, b: i64) -> i64 { a / b - (a % b < 0) as i64 }
 /// `fdiv64` by one of the tick units `U`, each divisor a constant.
 #[inline(always)]
 fn fdiv_unit(a: i64, u: i64) -> i64 {
     match u { 1000000 => fdiv64(a, 1000000), 1000000000 => fdiv64(a, 1000000000), 60000000000 => fdiv64(a, 60000000000), _ => fdiv64(a, 86400000000000) }
 }
-/// elementwise.c:1551 `ew_days_of_first`: days from 2000.01.01 to the first of month `m`. Wrapping, as the C is at
+/// ew.rs `ew_days_of_first`: days from 2000.01.01 to the first of month `m`. Wrapping, as the C is at
 /// the extremes of `long`.
 pub fn days_of_first(m: i64) -> i64 {
     let (y, mo) = (2000i64.wrapping_add(fdiv64(m, 12)), 1 + m.wrapping_sub(12i64.wrapping_mul(fdiv64(m, 12))));
@@ -782,7 +782,7 @@ pub fn days_of_first(m: i64) -> i64 {
     let doy = fdiv64(153 * ((mo + 9) % 12) + 2, 5);
     era.wrapping_mul(146097).wrapping_add(yoe * 365 + fdiv64(yoe, 4) - fdiv64(yoe, 100) + doy).wrapping_sub(730425)
 }
-/// elementwise.c:1561 `ew_month_of_days`: the month from 2000.01 holding day `d` from 2000.01.01.
+/// ew.rs `ew_month_of_days`: the month from 2000.01 holding day `d` from 2000.01.01.
 pub fn month_of_days(d: i64) -> i64 {
     let z = d.wrapping_add(730425);
     let era = fdiv64(if z >= 0 { z } else { z.wrapping_sub(146096) }, 146097);
@@ -792,7 +792,7 @@ pub fn month_of_days(d: i64) -> i64 {
     let m = mp + if mp < 10 { 3 } else { -9 };
     era.wrapping_mul(400).wrapping_add(yoe).wrapping_add((m <= 2) as i64).wrapping_mul(12).wrapping_sub(24000).wrapping_add(m - 1)
 }
-/// elementwise.c:1577 `ew_tick_run`: a temporal operand re-counted in its result's unit (`op` is the source unit's
+/// ew.rs `ew_tick_run`: a temporal operand re-counted in its result's unit (`op` is the source unit's
 /// code times 16 plus the target's; `nul_in` the source null, `nul_out` the target's). The nanosecond count is 128 bits
 /// and the wrap to the target's width is the store. A source is `i32`, `f64` (days) or else `i64`; a target `f64`,
 /// `i32` or else `i64`.
@@ -832,7 +832,7 @@ pub fn tick(run: Runner, op: u8, src: u8, dst: u8, nul_in: i64, nul_out: i64, x:
 #[cfg(test)]
 mod a45 {
     use super::*;
-    // expected values are the C's comments (elementwise.c "Eval.castAtom ... measured against q 4.1") and its helpers
+    // expected values are the C's comments (ew.rs "Eval.castAtom ... measured against q 4.1") and its helpers
     #[test] fn round_is_half_away_and_saturates() {
         assert_eq!((cast_round(2.5), cast_round(-2.5), cast_round(0.49999999999999994)), (3, -3, 0));
         assert_eq!((cast_round(1e19), cast_round(-1e19), cast_round(f64::INFINITY)), (i64::MAX, i64::MIN + 1, i64::MAX));
@@ -861,16 +861,16 @@ mod a45 {
     }
 }
 
-// ---- A46a: elementwise.c:2007-2150 ----
-/// elementwise.c:2007 `ew_widen_run`'s refusal: widening goes up to `int`, `long`, `real` or `float`, and a float only to `float`.
+// ---- A46a: ew.rs ----
+/// ew.rs `ew_widen_run`'s refusal: widening goes up to `int`, `long`, `real` or `float`, and a float only to `float`.
 fn widen_chk(src: u8, dst: u8) {
     if !matches!(dst, 2..=5) || (dst != 5 && matches!(src, 4 | 5)) { ew_unsupported("qlean_ew_widen", src as u32, dst as u32) }
 }
-/// elementwise.c:2007 `ew_widen_run` over elements `[lo, hi)` of the whole source `x` (a bit source indexed from its own
+/// ew.rs `ew_widen_run` over elements `[lo, hi)` of the whole source `x` (a bit source indexed from its own
 /// bit 0, so a slice may start inside a byte) into `o`, the `hi - lo` answers. The pair was checked by `widen_chk`.
 fn widen_slice(src: u8, dst: u8, nul_in: i64, nul_out: i64, x: &[u8], lo: usize, hi: usize, o: &mut [u8]) {
     const PNAN64: u64 = 0x7ff8000000000000;
-    // the source class is chosen outside the loop, so each pair is its own straight-line pass (elementwise.c:2023)
+    // the source class is chosen outside the loop, so each pair is its own straight-line pass (ew.rs)
     fn pass<const W: usize>(src: u8, lo: usize, hi: usize, x: &[u8], o: &mut [u8], f: impl Fn(i64) -> [u8; W]) {
         let os = o.chunks_exact_mut(W);
         match src {
@@ -887,7 +887,7 @@ fn widen_slice(src: u8, dst: u8, nul_in: i64, nul_out: i64, x: &[u8], lo: usize,
         4 => pass(src, lo, hi, x, o, |v| (if v == nul_in { nul_out as u32 } else { (v as f32).to_bits() }).to_le_bytes()),
         _ if src == 4 => for (c, b) in o.chunks_exact_mut(8).zip(x[lo * 4..hi * 4].chunks_exact(4)) {
             let f = u32::from_le_bytes([b[0], b[1], b[2], b[3]]);
-            // a real null is q's `0n` at double width, the sign kept (elementwise.c:2070)
+            // a real null is q's `0n` at double width, the sign kept (ew.rs)
             let r = if f32::from_bits(f).is_nan() { ((f >> 31) as u64) << 63 | PNAN64 } else { (f32::from_bits(f) as f64).to_bits() };
             c.copy_from_slice(&r.to_le_bytes())
         },
@@ -895,13 +895,13 @@ fn widen_slice(src: u8, dst: u8, nul_in: i64, nul_out: i64, x: &[u8], lo: usize,
         _ => pass(src, lo, hi, x, o, |v| (if v == nul_in { nul_out as u64 } else { (v as f64).to_bits() }).to_le_bytes()),
     }
 }
-/// elementwise.c:2007 `ew_widen_run` and its entry: class `src` widened to `dst`, nulls mapped.
+/// ew.rs `ew_widen_run` and its entry: class `src` widened to `dst`, nulls mapped.
 pub fn widen(run: Runner, src: u8, dst: u8, nul_in: i64, nul_out: i64, x: &[u8], n: usize, out: &mut [u8]) {
     if n > 0 { widen_chk(src, dst) }
     let w = if matches!(dst, 2..=5) { ew_width(dst as u32) } else { 1 };
     crate::c::run_map(run, out, n, w, crate::QLEAN_COST_COPY, w, &|lo, hi, o: &mut [u8]| widen_slice(src, dst, nul_in, nul_out, x, lo, hi, o));
 }
-/// elementwise.c:1214 `ew_widen_stage`: elements `[lo, hi)` of a chain tile (or of a column of one stage) of `n`
+/// ew.rs `ew_widen_stage`: elements `[lo, hi)` of a chain tile (or of a column of one stage) of `n`
 /// elements, on the calling thread. A bit source may be cut inside a byte; `widen_slice` indexes bits from the tile's own.
 pub fn widen_stage(src: u8, dst: u8, nul_in: i64, nul_out: i64, x: &[u8], lo: usize, hi: usize, out: &mut [u8]) {
     if lo == hi { return }
@@ -926,7 +926,7 @@ mod a46a {
     }
 }
 
-// ---- K8: elementwise.c `like_*`, `fixed_*`, `ew_cmp_syms_run` (symbol patterns, fixed-width search, symbol comparisons) ----
+// ---- K8: ew.rs `like_*`, `fixed_*`, `ew_cmp_syms_run` (symbol patterns, fixed-width search, symbol comparisons) ----
 /// `Order.symCmp` over two symbols: q's order (bytes unsigned, then length). Overlapping big-endian windows of 8, 4, 2, 1 bytes
 /// (the last window ends at the shorter length), so a short symbol is a few compares and never a `memcmp` call (`[u8]::cmp` is one).
 /// When the first window differs it decides; when it is equal the last one's first difference is the first of the bytes beyond it.
@@ -960,7 +960,7 @@ fn pack_syms(shape: u8, a: &Syms, b: &Syms, o: &mut [u8], e0: usize, m: usize, p
         _ => { let x = a.at(0); pack_bits(o, m, |i| p(x, b.at(e0 + i))) }
     }
 }
-/// elementwise.c:640 `ew_cmp_syms_run` and its entry: bit `i` is `op` of the two symbols the shape indexes; sliced by output
+/// ew.rs `ew_cmp_syms_run` and its entry: bit `i` is `op` of the two symbols the shape indexes; sliced by output
 /// byte, so the whole answer is written here (the C zeroed it first and or-ed).
 pub fn cmp_syms(run: Runner, op: u8, shape: u8, a: &Syms, b: &Syms, n: usize, out: &mut [u8]) {
     use core::cmp::Ordering::{Greater, Less};
@@ -977,10 +977,10 @@ pub fn cmp_syms(run: Runner, op: u8, shape: u8, a: &Syms, b: &Syms, n: usize, ou
     });
 }
 
-/// elementwise.c `pat_item`: one parsed item of a `like` pattern; a set's ranges are `Pattern::rng[lo .. lo + 2 * n]`, pairs.
+/// ew.rs `pat_item`: one parsed item of a `like` pattern; a set's ranges are `Pattern::rng[lo .. lo + 2 * n]`, pairs.
 #[derive(Clone, Copy)]
 enum Item { Star, Any, Lit(u8), Set { neg: bool, lo: usize, n: usize } }
-/// elementwise.c `pattern`: the items and the ranges of every set, packed end to end.
+/// ew.rs `pattern`: the items and the ranges of every set, packed end to end.
 pub struct Pattern { its: Vec<Item>, rng: Vec<u8> }
 impl Pattern {
     /// `like_parse`, `parsePat` transcribed: `None` for two `*` in a row (q's `'nyi`) and a class that never closes (q's `'[`);
@@ -1062,7 +1062,7 @@ pub fn like_syms(pat: &[u8], s: &Syms, out: &mut [u8]) -> bool {
 }
 /// `fixed_width` past `fixed_items`: 0 for all three refusals (`fixed_items`'s, an empty pattern, a `*`), where the caller answers `none`.
 pub fn fixed_width(atom: bool, p: &[u8]) -> usize { Pattern::fixed(atom, p).map_or(0, |q| q.width()) }
-/// elementwise.c `fixed_scan` (`atom`, `p` as `fixed_width`'s): every non-overlapping match start, in order, into `o`
+/// ew.rs `fixed_scan` (`atom`, `p` as `fixed_width`'s): every non-overlapping match start, in order, into `o`
 /// (`b.len() / w + 1` entries, `w` the answer of `fixed_width`); answers how many. One walk for `ss` and `ssr`, so they cannot
 /// disagree. A literal needle takes 64 positions at a time where the build has avx512bw: its first and last byte give the mask
 /// of positions where both sit, and only those are compared in full.
@@ -1143,7 +1143,7 @@ fn each_sym<'a>(s: &Syms<'a>, mut f: impl FnMut(usize, &'a [u8])) {
 fn keeps_prefix(pre: &[u8], tab: &[u8; 256], x: &[u8]) -> bool {
     x.is_empty() || (pre.len() <= x.len() && x.iter().zip(pre).all(|(&c, &p)| tab[c as usize] == p))
 }
-/// elementwise.c `qlean_ew_translate_syms`'s starts: `0`, then the offset just past each symbol's NUL in the answer blob
+/// ew.rs `qlean_ew_translate_syms`'s starts: `0`, then the offset just past each symbol's NUL in the answer blob
 /// (`pre` in front of every symbol that does not keep it, its bytes, its NUL), so the last is the blob's byte count.
 pub fn translate_ends<'a>(pre: &'a [u8], tab: &'a [u8; 256], s: Syms<'a>) -> impl ExactSizeIterator<Item = usize> + 'a {
     let mut tot = 0;
@@ -1261,8 +1261,8 @@ mod tests_k8 {
     }
 }
 
-// ---- A46b: elementwise.c:2150-2310 (the stage workers stay C until `c::run_chain` calls Rust ones) ----
-/// elementwise.c:2242 `ew_stage_bits`: a stage's bits per element of `a`, `b`, `o`; answers the cost.
+// ---- A46b: ew.rs (the stage workers stay C until `c::run_chain` calls Rust ones) ----
+/// ew.rs `ew_stage_bits`: a stage's bits per element of `a`, `b`, `o`; answers the cost.
 pub fn stage_bits(engine: u32, op: u32, cls: u32, shape: u32) -> (u32, u16, u16, u16) {
     use crate::{QLEAN_COST_ARITH as ARITH, QLEAN_COST_CAST as CAST, QLEAN_COST_COPY as COPY, QLEAN_COST_MATH as MATH};
     let bits = |c: u32| (8 * ew_width(c)) as u16;
@@ -1283,13 +1283,13 @@ pub fn stage_bits(engine: u32, op: u32, cls: u32, shape: u32) -> (u32, u16, u16,
         _ => (COPY, 0, 0, bits(cls)),
     }
 }
-/// elementwise.c:2294 `ew_stage_fixed`: operand `left` of the stage is not re-based per tile.
+/// ew.rs `ew_stage_fixed`: operand `left` of the stage is not re-based per tile.
 pub fn stage_fixed(engine: u32, shape: u32, left: bool) -> bool {
     if engine == eng::DECODE || engine == eng::ALP { return true }
     if !matches!(engine, eng::VAL | eng::CMP | eng::BIT) { return !left }
     if left { shape == k::AV as u32 } else { shape == k::VA as u32 }
 }
-/// elementwise.c:2150's engine codes, the `Ew.Engine` constants of QLean/Kernel/Elementwise.lean.
+/// ew.rs's engine codes, the `Ew.Engine` constants of QLean/Kernel/Elementwise.lean.
 pub mod eng {
     pub const VAL: u32 = 0; pub const CMP: u32 = 1; pub const MON: u32 = 2; pub const WIDEN: u32 = 3;
     pub const BIT: u32 = 4; pub const FLOOR: u32 = 5; pub const CAST: u32 = 6; pub const DECODE: u32 = 7;
@@ -1297,13 +1297,13 @@ pub mod eng {
     pub const IDS: u32 = 12; pub const PACK: u32 = 13;
 }
 
-// ---- K9: the chain's tile workers over a packed id column (elementwise.c:1288 `ew_ids_run`, :1315 `ew_pack_run`) ----
+// ---- K9: the chain's tile workers over a packed id column (ew.rs `ew_ids_run`, :1315 `ew_pack_run`) ----
 /// Bytes of `n` ids at `w` bits as the two stages see them: a width the table does not list is the 64-bit lane, as in
 /// `IDS_WIDTHS`' `default`.
 pub fn ids_len(n: usize, w: u32) -> usize {
     match w { 0 => 0, 1 | 2 | 4 => ids_bytes(n, w), 8 => n, 16 => 2 * n, 32 => 4 * n, _ => 8 * n }
 }
-/// elementwise.c:1288 `ew_ids_run`: ids `[lo, hi)` of the packed payload `x` (`w` bits each) written into `o` at class
+/// ew.rs `ew_ids_run`: ids `[lo, hi)` of the packed payload `x` (`w` bits each) written into `o` at class
 /// `cls`'s width. A sub-byte slice may start inside a word, so its ragged head goes id by id and the rest is `ids::unpack`.
 pub fn ids_stage(cls: u8, w: u32, x: &[u8], lo: usize, hi: usize, o: &mut [u8]) {
     #[inline(always)]
@@ -1329,7 +1329,7 @@ pub fn ids_stage(cls: u8, w: u32, x: &[u8], lo: usize, hi: usize, o: &mut [u8]) 
         _ => by_w::<i64>(w, x, lo, hi, rw(o)),
     }
 }
-/// elementwise.c:1315 `ew_pack_run`: the `n` elements of `x` (class `cls`, zero-extended) written as `w`-bit ids. Below a
+/// ew.rs `ew_pack_run`: the `n` elements of `x` (class `cls`, zero-extended) written as `w`-bit ids. Below a
 /// byte `[lo, hi)` are output bytes, each built in a register, so no two slices share a byte and the last byte's fields
 /// past `n` stay zero; at a byte and up they are elements. `o` is `ids_len(n, w)` bytes.
 pub fn pack_stage(cls: u8, w: u32, x: &[u8], n: usize, lo: usize, hi: usize, o: &mut [u8]) {
@@ -1351,19 +1351,19 @@ pub fn pack_stage(cls: u8, w: u32, x: &[u8], n: usize, lo: usize, hi: usize, o: 
     }
 }
 
-// ---- K10: the statistics fold, a chain's last stage (elementwise.c `ew_stats_run`, `ew_stats_sum`) ----
-/// elementwise.c:1019's `ST_*`: the five phases, each one pass over the column.
+// ---- K10: the statistics fold, a chain's last stage (ew.rs `ew_stats_run`, `ew_stats_sum`) ----
+/// ew.rs's `ST_*`: the five phases, each one pass over the column.
 pub mod st { pub const SUMS: u8 = 0; pub const CENTRED: u8 = 1; pub const DOTS: u8 = 2; pub const DOTS32: u8 = 3; pub const SERIAL: u8 = 4; }
 /// A lane's number: `f64` for the double phases, `f32` for `DOTS32`'s real lanes.
 trait Fl: Copy + PartialEq + core::ops::Add<Output = Self> { const Z: Self; }
 impl Fl for f64 { const Z: f64 = 0.0; }
 impl Fl for f32 { const Z: f32 = 0.0; }
-/// elementwise.c:1010 `ew_stats`: the accumulators of one phase. `l` and `lf` are `lanes` wide, row `k` the sum `k`.
+/// ew.rs `ew_stats`: the accumulators of one phase. `l` and `lf` are `lanes` wide, row `k` the sum `k`.
 pub struct Stats {
     pub phase: u8, pub lanes: usize, nt: usize, full: usize, pub cnt: usize, pub bad: usize, pub mx: f64, pub my: f64,
     tail: [[f64; 8]; 3], l: [[f64; 8]; 3], lf: [[f32; 4]; 3],
 }
-/// elementwise.c `ST_FOLD`: one tile into `L` lanes by position, `m` a multiple of `L`. A term of a dropped pair adds a
+/// ew.rs `ST_FOLD`: one tile into `L` lanes by position, `m` a multiple of `L`. A term of a dropped pair adds a
 /// zero, so an accumulator is never `-0`. Answers the pairs kept and the null right operands among them.
 #[inline(always)]
 fn fold<const L: usize, const W: usize, T: Fl>(a: &mut [[T; W]; 3], x: &[f64], y: &[f64], m: usize,
@@ -1385,7 +1385,7 @@ fn fold<const L: usize, const W: usize, T: Fl>(a: &mut [[T; W]; 3], x: &[f64], y
 }
 impl Stats {
     pub fn new() -> Stats { Stats { phase: 0, lanes: 1, nt: 0, full: 0, cnt: 0, bad: 0, mx: 0.0, my: 0.0, tail: [[0.0; 8]; 3], l: [[0.0; 8]; 3], lf: [[0.0; 4]; 3] } }
-    /// elementwise.c `ew_stats_pass`'s set-up: `phase` over a column of `n`, before the chain runs.
+    /// ew.rs `ew_stats_pass`'s set-up: `phase` over a column of `n`, before the chain runs.
     pub fn begin(&mut self, phase: u8, n: usize) {
         self.phase = phase;
         self.lanes = [2, 2, 8, 4, 1][phase as usize];
@@ -1396,7 +1396,7 @@ impl Stats {
         self.l = [[0.0; 8]; 3];
         self.lf = [[0.0; 4]; 3];
     }
-    /// elementwise.c `ew_stats_run`: one tile `x`, `y` at element `at` of the column, in order on the calling thread.
+    /// ew.rs `ew_stats_run`: one tile `x`, `y` at element `at` of the column, in order on the calling thread.
     /// q rounds each product before it adds it, which Rust never contracts into a fused multiply-add.
     pub fn run(&mut self, x: &[f64], y: &[f64], at: usize) {
         let n = x.len();
@@ -1451,7 +1451,7 @@ impl Stats {
         self.cnt += c;
         self.bad += bad;
     }
-    /// elementwise.c `ew_stats_sum`: sum `k` of the phase just run, the lanes in order and then the tail, which is q's order.
+    /// ew.rs `ew_stats_sum`: sum `k` of the phase just run, the lanes in order and then the tail, which is q's order.
     pub fn sum(&self, k: usize) -> f64 {
         let mut r = 0.0;
         for j in 0..self.lanes { r += if self.phase == st::DOTS32 { self.lf[k][j] as f64 } else { self.l[k][j] } }
@@ -1463,7 +1463,7 @@ impl Stats {
 #[cfg(test)]
 mod a46b {
     use super::*;
-    // expected values are elementwise.c's `ew_stage_bits` / `ew_stage_fixed` read off the C switch
+    // expected values are ew.rs's `ew_stage_bits` / `ew_stage_fixed` read off the C switch
     #[test] fn stage_costs_and_widths() {
         use crate::{QLEAN_COST_ARITH as A, QLEAN_COST_COPY as C, QLEAN_COST_MATH as M};
         assert_eq!(stage_bits(eng::VAL, k::POW as u32, 5, 0), (M, 64, 64, 64));
@@ -1489,7 +1489,7 @@ mod a46b {
 mod a42 {
     use super::*;
     fn h(s: &str) -> u64 { u64::from_str_radix(s, 16).unwrap() }
-    /// Replays vectors dumped by elementwise.c's own bodies (testdata/ew_a42.vec); `EW_A42_VEC` names a bigger dump.
+    /// Replays vectors dumped by ew.rs's own bodies (testdata/ew_a42.vec); `EW_A42_VEC` names a bigger dump.
     fn replay(text: &str) -> usize {
         let mut gm: Option<Magic> = None;
         let mut n = 0;
@@ -1824,7 +1824,7 @@ mod k9 {
     }
 }
 
-// ---- E: the fused chain's program, its builder and its two folds (elementwise.c `ew_chain_build`, `qlean_ew_chain*`, `qlean_stats_chain`) ----
+// ---- E: the fused chain's program, its builder and its two folds (ew.rs `ew_chain_build`, `qlean_ew_chain*`, `qlean_stats_chain`) ----
 use crate::c::{chain_in_order, pool, run_chain};
 use crate::coc::Meta;
 use crate::alp::Cocf;
@@ -1832,19 +1832,19 @@ use crate::ffi::{stage_worker, qrs_ew_stats_stage, CCoc, CCocf, CPass, CStage};
 use core::cell::RefCell;
 use core::ffi::c_void;
 
-/// pass.h's `QLEAN_SLOTS`: the most stages a chain holds, and the first source code that is a column, a fixed operand or a slot.
+/// c.rs's `QLEAN_SLOTS`: the most stages a chain holds, and the first source code that is a column, a fixed operand or a slot.
 pub const SLOTS: usize = 10;
 pub const COLUMN: u8 = 254;
 const FIXED: u8 = 255;
-/// elementwise.c `EW_SLOT0`: a source code from here is the answer of the stage that many places along.
+/// ew.rs `EW_SLOT0`: a source code from here is the answer of the stage that many places along.
 const SLOT0: u8 = 128;
-/// elementwise.c `EW_STAGE_BYTES`: one record of the program `Ew.Stage.bytes` writes.
+/// ew.rs `EW_STAGE_BYTES`: one record of the program `Ew.Stage.bytes` writes.
 const STAGE_BYTES: usize = 24;
 
 /// The number of stages of `prog`, none refused: the chain is built in QLean/Kernel/Elementwise.lean and every one holds at most `SLOTS`.
 pub fn stages(prog: &[u8]) -> usize { prog.len() / STAGE_BYTES }
 fn checked(k: usize) -> usize {
-    assert!(k != 0 && k <= SLOTS, "qlean_ew_chain: {k} stages, and the driver holds {SLOTS}. The chain is built in QLean/Kernel/Elementwise.lean and every one of them is shorter than that; a longer one needs QLEAN_SLOTS in c/pass.h raised with it.");
+    assert!(k != 0 && k <= SLOTS, "qlean_ew_chain: {k} stages, and the driver holds {SLOTS}. The chain is built in QLean/Kernel/Elementwise.lean and every one of them is shorter than that; a longer one needs QLEAN_SLOTS in rust/src/c.rs raised with it.");
     k
 }
 /// One record of a program: `engine op cls shape`, the two operand codes (a third for ALP's float sections), the stage's null and the
@@ -1876,7 +1876,7 @@ fn stage_view(i: usize, alp: bool, m: &[u8], pk: &[u8], a: &[u8], n: usize) -> C
         None => CCocf { c: cc, ..CCocf::EMPTY },
     }
 }
-/// elementwise.c `ew_chain_build`: the `st[..k]` the `k`-record program `prog` describes, every stage writing its own slot, the caller
+/// ew.rs `ew_chain_build`: the `st[..k]` the `k`-record program `prog` describes, every stage writing its own slot, the caller
 /// re-binding the last one's output. `input(code)` is the payload a source code names; `views` is the caller's array because a decode
 /// stage's `p.a` points into it (a `cocf` serves both decode engines: its first member is the integral view). Answers the whole chain's
 /// cost and widest element in bytes. `st` and `views` stay in place from here until the chain has run, and every binding reaches `n` elements.
@@ -1938,7 +1938,7 @@ pub fn enc_cls(width: usize, obits: usize) -> u32 {
             "qlean_ew_chain_enc: the result type is {width} bytes wide and the chain's last stage answers {obits} bits. `Kernel.payload` passes `QAtomicType.width`, so the two disagree only if a builder named a stage whose class is not the result type's.");
     match width { 2 => k::I16 as u32, 4 => k::I32 as u32, _ => k::I64 as u32 }
 }
-/// elementwise.c `qlean_ew_chain_enc`'s appended stage: stage `k` is the encoder's meta step (`pack` false) or pack step over the tile stage
+/// ew.rs `qlean_ew_chain_enc`'s appended stage: stage `k` is the encoder's meta step (`pack` false) or pack step over the tile stage
 /// `k - 1` wrote, `enc` the `coc_enc` it writes through, at class `cls`. It answers no slot (`osrc` fixed), and its cost is added to `cost`
 /// the first time.
 pub fn enc_stage(st: &mut [CStage], k: usize, cls: u32, enc: *mut c_void, pack: bool, cost: &mut u32) {

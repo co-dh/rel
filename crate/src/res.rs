@@ -1,12 +1,12 @@
 #![forbid(unsafe_code)]
-//! Column (a), coc.h: one block's residuals as bits — single fields (A2), the scalar pack (A2; the AVX-512 one is
+//! Column (a), coc.rs: one block's residuals as bits — single fields (A2), the scalar pack (A2; the AVX-512 one is
 //! `simd::res_pack`), the residual sums (A3, `simd::res_sum8` for 8 bits), the smallest nonzero residual (A4).
 //! `p` is always the block's `BLK * w / 8` bytes.
 
 use alloc::{vec, vec::Vec};
 
-// ---- A2: coc.h:446-518, 678-760 ----
-/// coc.h:446 `res_get`: field `j` of width `w`. Per element: C keeps its body while a C caller remains.
+// ---- A2: coc.rs, 678-760 ----
+/// coc.rs `res_get`: field `j` of width `w`. Per element: C keeps its body while a C caller remains.
 #[inline]
 pub fn res_get(p: &[u8], w: u8, j: usize) -> u64 {
     if w == 0 { return 0 }
@@ -26,7 +26,7 @@ pub fn res_get(p: &[u8], w: u8, j: usize) -> u64 {
     if nby > 8 { v |= (p[o + 8] as u64) << (64 - sh) }
     if w == 64 { v } else { v & ((1u64 << w) - 1) }
 }
-/// coc.h:460 `res_get_in`: as `res_get`, never reading at or past byte `end`.
+/// coc.rs `res_get_in`: as `res_get`, never reading at or past byte `end`.
 pub fn res_get_in(p: &[u8], w: u8, j: usize, end: usize) -> u64 {
     let (bit, w) = (j * w as usize, w as usize);
     let (o, sh) = (bit >> 3, bit & 7);
@@ -34,14 +34,14 @@ pub fn res_get_in(p: &[u8], w: u8, j: usize, end: usize) -> u64 {
     let v = u64::from_le_bytes(p[o..o + 8].try_into().unwrap()) >> sh;
     if w >= 64 { v } else { v & ((1u64 << w) - 1) }
 }
-/// coc.h:470 `res_put`
+/// coc.rs `res_put`
 pub fn res_put(p: &mut [u8], w: u8, j: usize, v: u64) {
     for k in 0..w as usize {
         let bit = j * w as usize + k;
         p[bit >> 3] = (p[bit >> 3] & !(1u8 << (bit & 7))) | ((((v >> k) & 1) as u8) << (bit & 7));
     }
 }
-/// coc.h:503 `res_pack_scalar`: the low `w` bits of each of `nb` values of `v` into the first ⌈nb*w/8⌉ bytes of `dst`,
+/// coc.rs `res_pack_scalar`: the low `w` bits of each of `nb` values of `v` into the first ⌈nb*w/8⌉ bytes of `dst`,
 /// each group of 8 built in words before it is stored; no byte past those is written. Panics at a power-of-two or
 /// over-64 width, as `res_unpack_scalar` does.
 pub fn res_pack_scalar(v: &[u64], w: u8, nb: usize, dst: &mut [u8]) {
@@ -73,10 +73,10 @@ pub fn res_pack_scalar(v: &[u64], w: u8, nb: usize, dst: &mut [u8]) {
     }
 }
 
-// ---- A3: coc.h:790-856 ----
-/// coc.h:802 `res_count_lt8`: of `nb` 8-bit residuals, how many are below `t`.
+// ---- A3: coc.rs ----
+/// coc.rs `res_count_lt8`: of `nb` 8-bit residuals, how many are below `t`.
 pub fn res_count_lt8(p: &[u8], nb: usize, t: u64) -> usize { p[..nb].iter().filter(|&&x| (x as u64) < t).count() }
-/// coc.h:623 `res_count_lt`: of a block's `nb` residuals at width `w`, how many are below `t`. `p` is the lanes
+/// coc.rs `res_count_lt`: of a block's `nb` residuals at width `w`, how many are below `t`. `p` is the lanes
 /// `coc::lanes` answers, so `w` is a power of two; 1, 2 and 4 are read a byte at a time.
 pub fn res_count_lt(p: &[u8], nb: usize, w: u8, t: u64) -> usize {
     fn sub<const W: usize>(p: &[u8], nb: usize, t: u64) -> usize {
@@ -97,7 +97,7 @@ pub fn res_count_lt(p: &[u8], nb: usize, w: u8, t: u64) -> usize {
         _ => panic!("qlean: res_count_lt asked for width {w}, which is not a lane"),
     }
 }
-/// coc.h:517 `res_unpack_agrees`: over one block of pseudo-random stream bytes at width `w` and `nb` residuals, whether
+/// coc.rs `res_unpack_agrees`: over one block of pseudo-random stream bytes at width `w` and `nb` residuals, whether
 /// `simd::res_unpack` answers what `unpack::res_unpack_scalar` does on every lane below `nb`, the in-register compare
 /// and the one-pass decode agree with them, and `res_pack` of those lanes writes back exactly the stream's first
 /// ⌈nb*w/8⌉ bytes -- its bits past the last field cleared -- and not one byte more.
@@ -143,7 +143,7 @@ pub fn res_unpack_agrees(w: u8, nb: usize) -> bool {
     if nb * w as usize % 8 != 0 { s[len - 1] &= ((1u32 << (nb * w as usize % 8)) - 1) as u8 }
     c[..len] == s[..len] && c[len] == 0xc3
 }
-/// coc.h:825 `res_sum`: `nb` residuals of width `w` summed, wrapping. `w` is a lane width (`coc::lanes` has run) or
+/// coc.rs `res_sum`: `nb` residuals of width `w` summed, wrapping. `w` is a lane width (`coc::lanes` has run) or
 /// 1, 2, 4; like C, any other width reads one byte per residual, so a field crossing a byte is cut.
 pub fn res_sum(p: &[u8], nb: usize, w: u8) -> u64 {
     fn lanes<const N: usize>(p: &[u8], nb: usize, f: fn([u8; N]) -> u64) -> u64 {
@@ -159,8 +159,8 @@ pub fn res_sum(p: &[u8], nb: usize, w: u8) -> u64 {
     }
 }
 
-// ---- A4: coc.h:993 ----
-/// coc.h:993 `res_min_nonzero`: the smallest nonzero residual of the block, 0 when every element is null.
+// ---- A4: coc.rs ----
+/// coc.rs `res_min_nonzero`: the smallest nonzero residual of the block, 0 when every element is null.
 pub fn res_min_nonzero(p: &[u8], nb: usize, w: u8) -> u64 { (0..nb).map(|j| res_get(p, w, j)).filter(|&r| r != 0).min().unwrap_or(0) }
 
 #[cfg(test)]
@@ -168,7 +168,7 @@ mod tests {
     use super::*;
     use crate::BLK;
     fn rng(s: &mut u64) -> u64 { *s ^= *s << 13; *s ^= *s >> 7; *s ^= *s << 17; *s }
-    // the reference: residual j is bits [j*w, j*w+w) of the stream, the spec of coc.h:440
+    // the reference: residual j is bits [j*w, j*w+w) of the stream, the spec of coc.rs
     fn bit(p: &[u8], i: usize) -> u64 { (p[i >> 3] >> (i & 7)) as u64 & 1 }
     fn spec(p: &[u8], w: usize, j: usize) -> u64 { (0..w).map(|k| bit(p, j * w + k) << k).sum() }
     // res_count_lt against the spec at every lane width coc::lanes leaves, thresholds below, inside and past the lane; the
@@ -185,7 +185,7 @@ mod tests {
             }
         }
     }
-    // coc.h's self-check holds at every width it is asked at, and refuses a power of two, a width over 64 and a long block
+    // coc.rs's self-check holds at every width it is asked at, and refuses a power of two, a width over 64 and a long block
     #[test] fn unpack_agrees_at_every_odd_width() {
         for w in 3..=63u8 { for nb in [0, 1, 7, 63, 64, 65, 1000, BLK] { assert_eq!(res_unpack_agrees(w, nb), !w.is_power_of_two(), "w {w} nb {nb}") } }
         assert!(!res_unpack_agrees(64, 10) && !res_unpack_agrees(65, 10) && !res_unpack_agrees(5, BLK + 1));
