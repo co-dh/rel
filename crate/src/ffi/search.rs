@@ -5,7 +5,7 @@
 #![deny(unsafe_code)]
 use crate::coc::Coc;
 use crate::exports::coc::{meta, view};
-use crate::ffi::{sarray_room, syms_of};
+use crate::ffi::{sarray_room, sd_kept, syms_of};
 use crate::exports::reduce::elems;
 use crate::lean::{B, Class, Ext, Io, O, Once, SArr, Slot, apply, box_usize_o, boxed, export};
 use crate::search::{Kind, Opnd, Src};
@@ -69,6 +69,23 @@ impl Ext for Cell {
 }
 static CELL: Class<Cell> = Class::new();
 
+/// `needles ? hay` (`bits` false: `out` is `8 * m` bytes of `Int64`s) or `needles in hay` (bits, `out` zeroed) for symbol
+/// columns: through the haystack's kept hash where it is an interned dictionary that keeps one (`m` probes, no table built),
+/// else `search::sym_search`.
+fn sym_search(bits: bool, nb: B, no: B, hb: B, ho: B, out: &mut [u8]) {
+    let (nd, h) = (syms_of(nb, no), syms_of(hb, ho));
+    let (m, n) = (nd.count(), h.count());
+    if m == 0 { return }
+    let kept = sd_kept(hb, ho, |probe| for j in 0..m { search::sym_put(bits, out, n, j, probe(nd.at(j))) });
+    if kept.is_none() { search::sym_search(bits, &nd, &h, out) }
+}
+/// `findSymVec hb ho nb no`: `Int64`s, one per needle symbol.
+fn find_sym(hb: B, ho: B, nb: B, no: B) -> SArr {
+    let mut r = SArr::new(1, syms_of(nb, no).count() * 8);
+    sym_search(false, nb, no, hb, ho, r.bytes_mut());
+    r
+}
+
 /// The index `c` holds, built now if `c` was made before a builder was registered; `none` (box 0) when there is
 /// nothing to build from.
 fn ready(cell: B, c: &Cell) -> O {
@@ -80,6 +97,37 @@ fn ready(cell: B, c: &Cell) -> O {
 }
 
 export! {
+
+    /// Spec: `findSymScalar blob offs ndl` is the least `i` whose `Column.symBytes` slice equals `ndl`, and the symbol count
+    /// when there is none. `ndl` is the needle's UTF-8 bytes *without* the trailing NUL, the form `Column.symBytes` reports
+    /// and `String.toUTF8` produces.
+    fn qlean_search_find_sym_scalar(blob: B, offs: B, ndl: B) -> usize {
+        let k = ndl.bytes();
+        sd_kept(blob, offs, |probe| probe(k)).unwrap_or_else(|| search::find_sym_scalar(&syms_of(blob, offs), k))
+    }
+
+    /// Spec: `findSymVec hb ho nb no` is `findSymScalar hb ho` at each symbol of the needle column, as little-endian `Int64`s.
+    fn qlean_search_find_sym_vec(hb: B, ho: B, nb: B, no: B) -> O { find_sym(hb, ho, nb, no).into() }
+
+    /// Spec: `findSymIdsVec n w dict dof ids nb no` is `findSymVec` against an *interned* haystack: the least element holding
+    /// each needle symbol, and the element count where none does. The ids are read at most once however many needles there
+    /// are, and the needles are looked up in the dictionary, `d` keys and not `n`; the entry at `d` is the answer for a needle
+    /// the dictionary does not hold, which is what `find_sym_vec` reports it as.
+    fn qlean_search_find_sym_ids_vec(n: usize, w: usize, dict: B, dof: B, idsv: B, nb: B, no: B) -> O {
+        let mut r = find_sym(dict, dof, nb, no);
+        let n = n.min(ids::ids_avail(idsv.bytes().len(), w as u32));
+        search::first_by_ids(n, w as u32, idsv.bytes(), syms_of(dict, dof).count(), search::i64s(r.bytes_mut()));
+        r.into()
+    }
+
+    /// Spec: `memberSymVec xb xo hb ho` is bit `i` set exactly when `findSymScalar hb ho xs[i]` is below the haystack's symbol
+    /// count -- `? < count` again, packed LSB first with a zero tail.
+    fn qlean_search_member_sym_vec(xb: B, xo: B, hb: B, ho: B) -> O {
+        let mut r = SArr::new(1, syms_of(xb, xo).count().div_ceil(8));
+        r.bytes_mut().fill(0);
+        sym_search(true, xb, xo, hb, ho, r.bytes_mut());
+        r.into()
+    }
     /// Spec: `remapIds map n w wout ids` is `map` read at each element's id, at the new dictionary's width; `map` and the
     /// answer are ids of the new dictionary, read and written at `wout`, the argument is at `w`.
     fn qlean_search_remap_ids(mapv: B, n: usize, w: usize, wout: usize, idsv: B) -> O {
