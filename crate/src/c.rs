@@ -250,3 +250,12 @@ pub fn run_chain(run: Runner, st: &[crate::ffi::CStage], n: usize, cost: u32, wi
                     op: st.len() as u8, cls: 0, shape: 0 };
     unsafe { run(chain_tiles, n.div_ceil(TILE), cost, wide * TILE, &p) }
 }
+
+/// The stages of `st` over `n` elements one tile at a time, in order, on the calling thread: for a fold whose lanes are
+/// positional, where a split across threads (or one whole-column call of a single stage) would be another sum.
+pub fn chain_in_order(st: &[crate::ffi::CStage], n: usize) {
+    let p = CPass { a: st.as_ptr().cast(), b: null(), c: null(), o: core::ptr::null_mut(), n, at: 0, r#priv: 0, nul: 0,
+                    op: st.len() as u8, cls: 0, shape: 0 };
+    // `st` outlives the call and its bindings reach `n` elements, as `chain_tiles` requires
+    unsafe { chain_tiles(0, n.div_ceil(TILE), &p) }
+}

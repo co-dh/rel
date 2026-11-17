@@ -374,6 +374,23 @@ pub struct CStage {
 }
 const _: () = assert!(size_of::<CCocf>() == 192 && size_of::<CSrc>() == 40 && size_of::<CEnc>() == 320);
 const _: () = assert!(size_of::<CSym>() == 16 && size_of::<CStage>() == 96);
+impl CPass {
+    /// Every pointer null, every count zero: what a stage is before the builder binds it.
+    pub const EMPTY: CPass = CPass { a: core::ptr::null(), b: core::ptr::null(), c: core::ptr::null(), o: null_mut(), n: 0, at: 0,
+                                     r#priv: 0, nul: 0, op: 0, cls: 0, shape: 0 };
+}
+impl CStage {
+    /// A stage with no worker, for the arrays the chain builder fills in place.
+    pub const EMPTY: CStage = CStage { f: None, p: CPass::EMPTY, asrc: 0, bsrc: 0, osrc: 0, abits: 0, bbits: 0, obits: 0, bytewise: 0 };
+}
+impl CCocf {
+    /// A view over nothing, for the arrays the chain builder fills in place.
+    pub const EMPTY: CCocf = CCocf {
+        c: CCoc { base: null_mut(), maxv: null_mut(), width: null_mut(), off: null_mut(), bsum: null_mut(), sumnul: null_mut(),
+                  sumn: null_mut(), pack: null_mut(), n: 0, nblk: 0, packbytes: 0, mblk: 0, exc_off: core::ptr::null(),
+                  exc_pos: core::ptr::null(), exc_raw: core::ptr::null(), fdelta: null_mut(), nexc: 0, exc_esz: 0 },
+        exp: null_mut(), exc_off: null_mut(), exc_pos: null_mut(), exc_raw: null_mut(), nexc: 0, f32: 0 };
+}
 
 impl CCoc {
     /// The writable view the in-place verbs (A3 `sums_drop`, A6 `shift`) take. Safety: as `view`, and no other
@@ -1326,52 +1343,29 @@ impl Source for NoElts {
     unsafe fn close(&self, _: *mut c_void) {}
     unsafe fn bad(&self) -> bool { false }
 }
-/// A43: elementwise.c `ew_val_run`.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn qrs_ew_val(run: unsafe extern "C" fn(), op: u8, cls: u8, shape: u8, nul: i64, a: *const u8,
-                                    abytes: usize, b: *const u8, bbytes: usize, n: usize, out: *mut u8, obytes: usize) {
-    unsafe { ew::val(rn(run), op, cls, shape, nul, sl(a, abytes), sl(b, bbytes), n, sl_mut(out, obytes)) }
-}
-/// A45: elementwise.c `ew_tick_run`, the chain's time-unit stage: `op` is the source unit's code times 16 plus the
-/// target's, `src`/`dst` the two classes, `nul_in`/`nul_out` the two nulls.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn qrs_ew_tick(run: unsafe extern "C" fn(), op: u8, src: u8, dst: u8, nul_in: i64, nul_out: i64,
-                                     x: *const u8, xbytes: usize, n: usize, out: *mut u8, obytes: usize) {
-    unsafe { ew::tick(rn(run), op, src, dst, nul_in, nul_out, sl(x, xbytes), n, sl_mut(out, obytes)) }
-}
 /// P1: pass.h's `qlean_run`, worker `f` (a `qlean_worker`) over its `qlean_pass` `p` on the pool (`pool::run_c`);
 /// answers the slice count. `f` and `p` are untyped so pass.h, which comes before `CPass`, declares this prototype.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn qrs_pool_run(f: unsafe extern "C" fn(), n: usize, cost: u32, wide: usize, p: *const c_void) -> u32 {
     unsafe { crate::pool::run_c(core::mem::transmute::<unsafe extern "C" fn(), c::Worker>(f), n, cost, wide, p.cast()) }
 }
-/// K9: elementwise.c `ew_serial`, the runner of every stage worker (`c::serial` with the worker's type erased).
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn qrs_serial(f: unsafe extern "C" fn(), n: usize, cost: u32, wide: usize, p: *const CPass) -> u32 {
-    // Safety: `f` is a `qlean_worker`, which every caller of a runner passes
-    unsafe { c::serial(core::mem::transmute::<unsafe extern "C" fn(), c::Worker>(f), n, cost, wide, p) }
-}
-/// A46b: pass.h:502 `qlean_chain_run`'s driver over `k` stages and `n` elements.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn qrs_run_chain(run: unsafe extern "C" fn(), st: *const CStage, k: usize, n: usize, cost: u32,
-                                       wide: usize) -> u32 {
-    unsafe { c::run_chain(rn(run), sl(st, k), n, cost, wide) }
-}
-
 // ---- K10: the chain's stage table and builder (elementwise.c `ew_stage_worker`, `ew_chain_build`) and the statistics fold ----
-type Worker = unsafe extern "C" fn(usize, usize, *const CPass);
-#[cfg(not(test))]
-unsafe extern "C" {
-    /// elementwise.c: the value verbs of one tile; C keeps it for the two Frame-of-Reference runs that call it too.
-    fn ew_val_run(lo: usize, hi: usize, p: *const CPass);
-}
-/// Under `cargo test` there is no C: the stage table needs a name for it, and no test runs a value stage.
-#[cfg(test)]
-unsafe extern "C" fn ew_val_run(_lo: usize, _hi: usize, _p: *const CPass) { unreachable!("ew_val_run is C's") }
-
+pub type Worker = unsafe extern "C" fn(usize, usize, *const CPass);
 /// `p`'s operand at `lo` elements of `w` bytes, `n` of them, unless it is an atom (`one`), which is `w` bytes at its start.
 unsafe fn tile<'a>(q: *const c_void, lo: usize, n: usize, w: usize, one: bool) -> &'a [u8] {
     unsafe { if one { sl(q.cast::<u8>(), w) } else { sl(q.cast::<u8>().add(lo * w), n * w) } }
+}
+/// elementwise.c `ew_val_run`: the value verbs over one tile, an atom operand its one element; the runner is serial because a
+/// chain tile is already one pool slice.
+#[unsafe(no_mangle)]
+unsafe extern "C" fn qrs_ew_val_stage(lo: usize, hi: usize, p: *const CPass) {
+    unsafe {
+        let p = &*p;
+        let (w, n) = (ew::ew_width(p.cls as u32), hi - lo);
+        let (av, va) = (p.shape == ew::k::AV, p.shape == ew::k::VA);
+        ew::val(c::serial, p.op, p.cls, p.shape, p.nul, tile(p.a, lo, n, w, av), tile(p.b, lo, n, w, va), n,
+                sl_mut(p.o.cast::<u8>().add(lo * w), n * w))
+    }
 }
 /// elementwise.c `ew_cmp_stage`: `lo`, `hi` are output bytes, so eight elements each and no two slices share one.
 #[unsafe(no_mangle)]
@@ -1490,10 +1484,10 @@ unsafe extern "C" fn qrs_ew_encpack_stage(lo: usize, hi: usize, p: *const CPass)
     unsafe { qrs_enc_for_pack((*p).o.cast(), (*p).at / BLK, (*p).a.cast(), hi - lo) }
 }
 /// elementwise.c `ew_stage_worker`: the worker of `engine`, chosen once a stage and never per element.
-fn stage_worker(engine: u32) -> Worker {
+pub fn stage_worker(engine: u32) -> Worker {
     use ew::eng::*;
     match engine {
-        ENCMETA => qrs_ew_encmeta_stage, ENCPACK => qrs_ew_encpack_stage, VAL => ew_val_run, CMP => qrs_ew_cmp_stage, MON => qrs_ew_mon_stage,
+        ENCMETA => qrs_ew_encmeta_stage, ENCPACK => qrs_ew_encpack_stage, VAL => qrs_ew_val_stage, CMP => qrs_ew_cmp_stage, MON => qrs_ew_mon_stage,
         WIDEN => qrs_ew_widen_stage, BIT => qrs_ew_bit_stage, FLOOR => qrs_ew_floor_stage, CAST => qrs_ew_cast_stage, DECODE => qrs_ew_decode_stage,
         TICK => qrs_ew_tick_stage, IDS => qrs_ew_ids_stage, PACK => qrs_ew_pack_stage, _ => qrs_ew_alp_stage,
     }
@@ -1502,7 +1496,7 @@ fn stage_worker(engine: u32) -> Worker {
 impl CCoc {
     /// The `coc` that `coc_meta_view` then `coc_attach` build over metadata `m` (`33 * mblk + 16` bytes) and a pack: the
     /// Rust twins' slices (`Meta::new`, `Coc::attach`) as the raw pointers C reads.
-    fn of(c: &Coc, m: *mut u8) -> CCoc {
+    pub(crate) fn of(c: &Coc, m: *mut u8) -> CCoc {
         let (me, nb) = (&c.meta, c.meta.mblk);
         let (eo, ep, er, esz) = c.exc.map_or((core::ptr::null(), core::ptr::null(), core::ptr::null(), 0), |e| (e.off.as_ptr(), e.pos.as_ptr(), e.raw.as_ptr(), e.esz));
         CCoc {
@@ -1515,162 +1509,42 @@ impl CCoc {
         }
     }
 }
-/// A decode or ALP stage's view: metadata `m`, pack `pk`, and for ALP the float sections `a`. Where C's `coc_attach` aborts
-/// or a buffer is misaligned or short, the stage names it.
-unsafe fn stage_view(i: usize, alp: bool, m: (*mut u8, usize), pk: (*mut u8, usize), a: (*mut u8, usize), n: usize) -> CCocf {
-    unsafe {
-        let ms = sl(m.0.cast_const(), m.1);
-        let me = coc::Meta::new(ms, n).unwrap_or_else(|| panic!("qlean_ew_chain: stage {i}'s metadata is misaligned or short"));
-        let cocf = if alp { Some(Cocf::meta_view(ms, sl(a.0.cast_const(), a.1), n).unwrap_or_else(|| panic!("qlean_ew_chain: stage {i}'s ALP sections are misaligned or short"))) } else { None };
-        let c = Coc::attach(cocf.as_ref().map_or(me, |f| f.c.meta), sl(pk.0.cast_const(), pk.1)).unwrap_or_else(|| {
-            panic!("qlean: a Frame of Reference pack of {} bytes whose residuals end at {} holds no patch list of {} blocks after them", pk.1, me.res_end(), me.mblk)
-        });
-        let cc = CCoc::of(&c, m.0);
-        match cocf {
-            Some(f) => CCocf { c: cc, exp: f.exp.as_ptr().cast_mut(), exc_off: f.exc_off.as_ptr().cast_mut(), exc_pos: f.exc_pos.as_ptr().cast_mut(),
-                               exc_raw: f.exc_raw.as_ptr().cast_mut().cast(), nexc: f.exc_pos.len(), f32: f.f32 as c_int },
-            None => CCocf { c: cc, exp: null_mut(), exc_off: null_mut(), exc_pos: null_mut(), exc_raw: null_mut(), nexc: 0, f32: 0 },
-        }
-    }
-}
-
-/// pass.h's `QLEAN_SLOTS`, `QLEAN_COLUMN`, `QLEAN_FIXED`, and elementwise.c's `EW_SLOT0`, `EW_STAGE_BYTES`.
-const SLOTS: usize = 10;
-const COLUMN: u8 = 254;
-const FIXED: u8 = 255;
-const SLOT0: u8 = 128;
-const STAGE_BYTES: usize = 24;
-/// elementwise.c `ew_chain_build`: the `st[]` the `k`-record program `prog` describes, every stage writing its own slot, the
-/// caller re-binding the last one's output. `views` is the caller's array because a decode stage's `p.a` points into it (a
-/// `cocf` serves both decode engines: its first member is the integral view). `cost` and `wide` come back as the whole chain's.
-/// Safety: `prog` is `k` records, `inputs` the payloads they name (sarrays), `st` and `views` `SLOTS` entries of room.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn qrs_ew_chain_build(prog: *const u8, k: usize, inputs: *const *mut c_void, n: usize, st: *mut CStage,
-                                            views: *mut CCocf, costp: *mut u32, widep: *mut usize) {
-    use ew::eng::*;
-    assert!(k != 0 && k <= SLOTS, "qlean_ew_chain: {k} stages, and the driver holds {SLOTS}. The chain is built in QLean/Kernel/Elementwise.lean and every one of them is shorter than that; a longer one needs QLEAN_SLOTS in c/pass.h raised with it.");
-    let (mut cost, mut wide) = (0u32, 1usize);
-    let input = |i: u8| unsafe { (*inputs.add(i as usize)).cast::<lean::Object>() };
-    for i in 0..k {
-        unsafe {
-            let rec = sl(prog.add(i * STAGE_BYTES), STAGE_BYTES);
-            let (engine, op, cls, shape) = (rec[0] as u32, rec[1], rec[2], rec[3]);
-            let nul = i64::from_ne_bytes(rec[8..16].try_into().unwrap());
-            let nul_out = i64::from_ne_bytes(rec[16..24].try_into().unwrap());
-            let (c, ab, bb, ob) = ew::stage_bits(engine, op as u32, cls as u32, shape as u32);
-            let mut s = CStage {
-                f: Some(stage_worker(engine)),
-                p: CPass { a: core::ptr::null(), b: core::ptr::null(), c: nul_out as isize as *const c_void, o: null_mut(), n: 0, at: 0, r#priv: 0, nul, op, cls, shape },
-                asrc: 0, bsrc: 0, osrc: i as u8, abits: ab, bbits: bb, obits: ob,
-                bytewise: (engine == CMP || engine == BIT || (engine == PACK && shape != 0 && shape < 8)) as u8,
-            };
-            cost += c;
-            wide = wide.max(ab as usize / 8).max(ob as usize / 8);
-            // an operand names either a slot, the answer of the stage that many places along (already tile-local), or one
-            // of the payloads handed in
-            for side in 0..2 {
-                let code = rec[4 + side];
-                let (bind, src) = if side == 0 { (&mut s.p.a, &mut s.asrc) } else { (&mut s.p.b, &mut s.bsrc) };
-                // a monadic engine has no right operand, which is where `bbits` is zero
-                if side == 1 && bb == 0 && engine != DECODE && engine != ALP { *bind = core::ptr::null(); *src = FIXED; continue }
-                if code >= SLOT0 { *src = code - SLOT0; continue }
-                *bind = lean::sarray_cptr(input(code)).cast();
-                *src = if ew::stage_fixed(engine, shape as u32, side == 0) { FIXED } else { COLUMN };
-            }
-            if engine == DECODE || engine == ALP {
-                // the metadata and the pack become one view for the run, with an ALP column's float sections read out of the
-                // third payload beside them
-                let (mo, po) = (input(rec[4]), input(rec[5]));
-                let alp = engine == ALP;
-                let ao = if alp { input(rec[6]) } else { null_mut() };
-                let a = if alp { (lean::sarray_cptr(ao), lean::sarray_size(ao)) } else { (null_mut(), 0) };
-                let v = views.add(i);
-                v.write(stage_view(i, alp, (lean::sarray_cptr(mo), lean::sarray_size(mo)), (lean::sarray_cptr(po), lean::sarray_size(po)), a, n));
-                s.p.a = if alp { v.cast_const().cast() } else { (&raw const (*v).c).cast() };
-                s.p.b = core::ptr::null();
-            }
-            st.add(i).write(s);
-        }
-    }
-    unsafe { (*costp, *widep) = (cost, wide) }
-}
-
-/// elementwise.c `qlean_ew_chain_enc`'s appended stage: stage `k` is the encoder's meta step (`pack` 0) or pack step over the
-/// tile stage `k - 1` wrote, `c` the `coc_enc` it writes through, at class `cls`. It answers no slot (`osrc` fixed), and its cost
-/// is added to `*cost`.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn qrs_ew_enc_stage(st: *mut CStage, k: usize, cls: u32, c: *mut CEnc, pack: c_int, cost: *mut u32) {
-    use ew::eng::*;
-    let (cs, ab, bb, ob) = ew::stage_bits(ENCMETA, 0, cls, 0);
-    unsafe {
-        st.add(k).write(CStage {
-            f: Some(stage_worker(if pack != 0 { ENCPACK } else { ENCMETA })),
-            p: CPass { a: core::ptr::null(), b: core::ptr::null(), c: core::ptr::null(), o: c.cast(), n: 0, at: 0, r#priv: 0, nul: 0, op: 0, cls: cls as u8, shape: 0 },
-            asrc: (k - 1) as u8, bsrc: FIXED, osrc: FIXED, abits: ab, bbits: bb, obits: ob, bytewise: 0,
-        });
-        if pack == 0 { *cost += cs }
-    }
-}
-
 /// The stats stage's worker: its fold over the two tiles, `p.o` the `Stats` of the phase running.
 #[unsafe(no_mangle)]
-unsafe extern "C" fn qrs_ew_stats_stage(lo: usize, hi: usize, p: *const CPass) {
+pub(crate) unsafe extern "C" fn qrs_ew_stats_stage(lo: usize, hi: usize, p: *const CPass) {
     unsafe {
         let (p, n) = (&*p, hi - lo);
         (*p.o.cast::<ew::Stats>()).run(sl(p.a.cast::<f64>(), n), sl(p.b.cast::<f64>(), n), p.at)
     }
 }
-/// elementwise.c `qlean_stats_chain`'s body after `ew_chain_build`: `Kernel.moments` (`mode` 0) or `Kernel.dots` (1, and 2 on
-/// `real` lanes) over the two payloads source codes `sa`, `sb` name, the fold as the chain's last stage `st[k]` (`k` stages
-/// built, none when 0). Writes the answer's 48 bytes: five doubles and the pairs kept as a long.
-/// Safety: as `qrs_ew_chain_build`, with `st` holding `k + 1` entries and `out` 48 bytes.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn qrs_ew_stats_chain(mode: u8, st: *mut CStage, k: usize, inputs: *const *mut c_void, n: usize, sa: u8, sb: u8,
-                                            out: *mut u8) {
-    let mut st0 = ew::Stats::new();
-    let sp: *mut ew::Stats = &mut st0;
-    let s = || unsafe { &mut *sp };
-    let mut fold = CStage { f: Some(qrs_ew_stats_stage), p: CPass { a: core::ptr::null(), b: core::ptr::null(), c: core::ptr::null(), o: sp.cast(),
-                            n: 0, at: 0, r#priv: 0, nul: 0, op: 0, cls: 0, shape: 0 }, asrc: 0, bsrc: 0, osrc: FIXED, abits: 64, bbits: 64, obits: 0, bytewise: 0 };
-    for (side, code) in [sa, sb].into_iter().enumerate() {
-        let slot = code >= SLOT0;
-        let at = if slot { (code - SLOT0) as usize } else { code as usize };
-        let col = if slot { null_mut() } else { unsafe { (*inputs.add(at)).cast::<lean::Object>() } };
-        if if slot { at >= k || unsafe { (*st.add(at)).obits } != 64 } else { (unsafe { lean::sarray_size(col) }) < n * 8 } {
-            panic!("qlean_stats_chain: operand {side}, source code {code} of a {k}-stage chain, is not {n} doubles. `Kernel.statsColumns` brings both operands to `Ew.f64` through `operandSource`, so this means that builder named another class.");
-        }
-        let (bind, src) = if slot { (core::ptr::null(), at as u8) } else { (unsafe { lean::sarray_cptr(col) }.cast_const().cast(), COLUMN) };
-        if side == 1 { fold.p.b = bind; fold.bsrc = src } else { fold.p.a = bind; fold.asrc = src }
+
+/// elementwise.c `qlean_ew_chain_enc`: `Coc.encode w (Ew.chain prog inputs n)`, the Frame-of-Reference encoder over the chain's
+/// answer. Below `qlean_worth_fusing` (the answer's bytes in L3) the chain runs once into a dense buffer; above it the chain
+/// is the encoder's source and runs twice, the encoder's sizing pass and then its packing pass, so the dense answer is never
+/// built. The encoder's meta step and pack step are stages `k` of the chain, writing through the `CEnc` `c`.
+pub fn chain_enc<'a>(prog: &[u8], input: &impl Fn(u8) -> &'a [u8], n: usize, width: usize) -> lean::O {
+    let k = ew::stages(prog);
+    let mut st = [const { CStage::EMPTY }; ew::SLOTS + 1];
+    let mut views = [const { CCocf::EMPTY }; ew::SLOTS];
+    let (mut cost, wide) = ew::chain_build(prog, k, input, n, &mut st, &mut views);
+    let cls = ew::enc_cls(width, st[k - 1].obits as usize);
+    if n * width < 33554432 {
+        let mut dense = lean::SArr::new(1, n * width);
+        st[k - 1].p.o = dense.bytes_mut().as_mut_ptr().cast();
+        st[k - 1].osrc = ew::COLUMN;
+        if n != 0 { c::run_chain(c::pool(), &st[..k], n, cost, wide); }
+        let z = encode_dense(dense.bytes_mut(), width, false, usize::MAX).expect("qlean_ew_chain_enc: a dense buffer cannot fail");
+        return z.into_pair();
     }
-    unsafe { st.add(k).write(fold) };
-    let cp = CPass { a: st.cast_const().cast(), b: core::ptr::null(), c: core::ptr::null(), o: null_mut(), n, at: 0, r#priv: 0, nul: 0,
-                     op: (k + 1) as u8, cls: 0, shape: 0 };
-    // one phase over the whole column, on the calling thread and in order: the lanes are positional, so a split across
-    // threads would be another sum
-    let pass = |phase: u8| {
-        s().begin(phase, n);
-        if n != 0 { unsafe { c::chain_tiles(0, n.div_ceil(crate::BLK), &cp) } }
-    };
-    let mut o = [0f64; 5];
-    let cnt;
-    if mode == 0 {
-        pass(ew::st::SUMS);
-        (o[3], o[4]) = (s().sum(0), s().sum(1));
-        cnt = s().cnt;
-        (s().mx, s().my) = (o[3] / cnt as f64, o[4] / cnt as f64);
-        pass(ew::st::CENTRED);
-        (o[0], o[1], o[2]) = (s().sum(0), s().sum(1), s().sum(2));
-    } else {
-        pass(if mode >= 2 { ew::st::DOTS32 } else { ew::st::DOTS });
-        // a null anywhere and q's sum is one accumulator over the live pairs; under `real` lanes an integral left operand's
-        // null (mode 3) is a zero weight instead, and only a null right operand is that accumulator: any inside the lanes,
-        // and past them one under a live left
-        if if mode == 3 { s().bad != 0 } else { s().cnt != n } { pass(ew::st::SERIAL) }
-        (o[0], o[3]) = (s().sum(0), s().sum(1));
-        cnt = s().cnt;
-    }
-    let r = unsafe { sl_mut(out, 48) };
-    for (d, v) in r.chunks_exact_mut(8).zip(o.iter().map(|v| v.to_ne_bytes()).chain([(cnt as i64).to_ne_bytes()])) { d.copy_from_slice(&v) }
+    let mut e: CEnc = unsafe { core::mem::zeroed() };
+    let ep: *mut CEnc = &mut e;
+    unsafe { qrs_coc_enc_open(ep, n, width, 0) };
+    ew::enc_stage(&mut st, k, cls, ep.cast(), false, &mut cost);
+    if n != 0 { c::run_chain(c::pool(), &st[..=k], n, cost, wide); }
+    unsafe { qrs_coc_enc_layout(ep) };
+    ew::enc_stage(&mut st, k, cls, ep.cast(), true, &mut cost);
+    if n != 0 { c::run_chain(c::pool(), &st[..=k], n, cost, wide); }
+    unsafe { lean::O::from_raw(qrs_coc_enc_pair(ep).cast()) }
 }
 
 #[cfg(test)]

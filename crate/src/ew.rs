@@ -90,7 +90,7 @@ use alloc::vec::Vec;
 
 /// `EW_*` codes of elementwise.c:86-100 that this section reads; the two lists cannot change apart.
 pub mod k {
-    pub const I32: u8 = 2;
+    pub const I16: u8 = 1; pub const I32: u8 = 2; pub const I64: u8 = 3;
     pub const F32: u8 = 4; pub const BITS: u8 = 6; pub const ABS: u8 = 1;
     pub const ADD: u8 = 0; pub const SUB: u8 = 1; pub const MUL: u8 = 2; pub const DIV: u8 = 3; pub const FILL: u8 = 4;
     pub const LESSER: u8 = 5; pub const GREATER: u8 = 6; pub const IDIV: u8 = 7; pub const IMOD: u8 = 8; pub const POW: u8 = 9;
@@ -1821,5 +1821,201 @@ mod k9 {
         widen_stage(6, 2, 7, 9, &x, 0, 3, &mut o);
         widen_stage(6, 2, 7, 9, &x, 3, 10, &mut o);
         assert_eq!(o, whole);
+    }
+}
+
+// ---- E: the fused chain's program, its builder and its two folds (elementwise.c `ew_chain_build`, `qlean_ew_chain*`, `qlean_stats_chain`) ----
+use crate::c::{chain_in_order, pool, run_chain};
+use crate::coc::Meta;
+use crate::alp::Cocf;
+use crate::ffi::{stage_worker, qrs_ew_stats_stage, CCoc, CCocf, CPass, CStage};
+use core::cell::RefCell;
+use core::ffi::c_void;
+
+/// pass.h's `QLEAN_SLOTS`: the most stages a chain holds, and the first source code that is a column, a fixed operand or a slot.
+pub const SLOTS: usize = 10;
+pub const COLUMN: u8 = 254;
+const FIXED: u8 = 255;
+/// elementwise.c `EW_SLOT0`: a source code from here is the answer of the stage that many places along.
+const SLOT0: u8 = 128;
+/// elementwise.c `EW_STAGE_BYTES`: one record of the program `Ew.Stage.bytes` writes.
+const STAGE_BYTES: usize = 24;
+
+/// The number of stages of `prog`, none refused: the chain is built in QLean/Kernel/Elementwise.lean and every one holds at most `SLOTS`.
+pub fn stages(prog: &[u8]) -> usize { prog.len() / STAGE_BYTES }
+fn checked(k: usize) -> usize {
+    assert!(k != 0 && k <= SLOTS, "qlean_ew_chain: {k} stages, and the driver holds {SLOTS}. The chain is built in QLean/Kernel/Elementwise.lean and every one of them is shorter than that; a longer one needs QLEAN_SLOTS in c/pass.h raised with it.");
+    k
+}
+/// One record of a program: `engine op cls shape`, the two operand codes (a third for ALP's float sections), the stage's null and the
+/// target's null.
+struct Rec { engine: u32, op: u8, cls: u8, shape: u8, code: [u8; 3], nul: i64, nul_out: i64 }
+fn rec(prog: &[u8], i: usize) -> Rec {
+    let r = &prog[i * STAGE_BYTES..(i + 1) * STAGE_BYTES];
+    Rec { engine: r[0] as u32, op: r[1], cls: r[2], shape: r[3], code: [r[4], r[5], r[6]],
+          nul: i64::from_ne_bytes(r[8..16].try_into().unwrap()), nul_out: i64::from_ne_bytes(r[16..24].try_into().unwrap()) }
+}
+
+/// The bytes of the answer of the `n`-element chain `prog`: its last stage's bits per element over `n`, rounded up to a byte.
+pub fn chain_bytes(prog: &[u8], n: usize) -> usize {
+    let r = rec(prog, checked(stages(prog)) - 1);
+    (n * stage_bits(r.engine, r.op as u32, r.cls as u32, r.shape as u32).3 as usize).div_ceil(8)
+}
+/// A decode or ALP stage's view: metadata `m`, pack `pk`, and for ALP the float sections `a`. Where C's `coc_attach` aborts or a
+/// buffer is misaligned or short, the stage names it.
+fn stage_view(i: usize, alp: bool, m: &[u8], pk: &[u8], a: &[u8], n: usize) -> CCocf {
+    let me = Meta::new(m, n).unwrap_or_else(|| panic!("qlean_ew_chain: stage {i}'s metadata is misaligned or short"));
+    let cocf = alp.then(|| Cocf::meta_view(m, a, n).unwrap_or_else(|| panic!("qlean_ew_chain: stage {i}'s ALP sections are misaligned or short")));
+    let c = Coc::attach(cocf.as_ref().map_or(me, |f| f.c.meta), pk).unwrap_or_else(|| {
+        panic!("qlean: a Frame of Reference pack of {} bytes whose residuals end at {} holds no patch list of {} blocks after them", pk.len(), me.res_end(), me.mblk)
+    });
+    let cc = CCoc::of(&c, m.as_ptr().cast_mut());
+    match cocf {
+        Some(f) => CCocf { c: cc, exp: f.exp.as_ptr().cast_mut(), exc_off: f.exc_off.as_ptr().cast_mut(), exc_pos: f.exc_pos.as_ptr().cast_mut(),
+                           exc_raw: f.exc_raw.as_ptr().cast_mut().cast(), nexc: f.exc_pos.len(), f32: f.f32 as core::ffi::c_int },
+        None => CCocf { c: cc, ..CCocf::EMPTY },
+    }
+}
+/// elementwise.c `ew_chain_build`: the `st[..k]` the `k`-record program `prog` describes, every stage writing its own slot, the caller
+/// re-binding the last one's output. `input(code)` is the payload a source code names; `views` is the caller's array because a decode
+/// stage's `p.a` points into it (a `cocf` serves both decode engines: its first member is the integral view). Answers the whole chain's
+/// cost and widest element in bytes. `st` and `views` stay in place from here until the chain has run, and every binding reaches `n` elements.
+pub fn chain_build<'a>(prog: &[u8], k: usize, input: &impl Fn(u8) -> &'a [u8], n: usize, st: &mut [CStage], views: &mut [CCocf]) -> (u32, usize) {
+    checked(k);
+    let (mut cost, mut wide) = (0u32, 1usize);
+    for i in 0..k {
+        let r = rec(prog, i);
+        let (engine, shape) = (r.engine, r.shape);
+        let (c, ab, bb, ob) = stage_bits(engine, r.op as u32, r.cls as u32, shape as u32);
+        let mut s = CStage {
+            f: Some(stage_worker(engine)),
+            p: CPass { c: r.nul_out as isize as *const c_void, nul: r.nul, op: r.op, cls: r.cls, shape, ..CPass::EMPTY },
+            asrc: 0, bsrc: 0, osrc: i as u8, abits: ab, bbits: bb, obits: ob,
+            bytewise: (engine == eng::CMP || engine == eng::BIT || (engine == eng::PACK && shape != 0 && shape < 8)) as u8,
+        };
+        cost += c;
+        wide = wide.max(ab as usize / 8).max(ob as usize / 8);
+        // an operand names either a slot, the answer of the stage that many places along (already tile-local), or one of the payloads handed in
+        for side in 0..2 {
+            let code = r.code[side];
+            let (bind, src) = if side == 0 { (&mut s.p.a, &mut s.asrc) } else { (&mut s.p.b, &mut s.bsrc) };
+            // a monadic engine has no right operand, which is where `bbits` is zero
+            if side == 1 && bb == 0 && engine != eng::DECODE && engine != eng::ALP { *bind = core::ptr::null(); *src = FIXED; continue }
+            if code >= SLOT0 { *src = code - SLOT0; continue }
+            *bind = input(code).as_ptr().cast();
+            *src = if stage_fixed(engine, shape as u32, side == 0) { FIXED } else { COLUMN };
+        }
+        if engine == eng::DECODE || engine == eng::ALP {
+            // the metadata and the pack become one view for the run, with an ALP column's float sections read out of the third payload
+            let alp = engine == eng::ALP;
+            views[i] = stage_view(i, alp, input(r.code[0]), input(r.code[1]), if alp { input(r.code[2]) } else { &[] }, n);
+            s.p.a = if alp { (&raw const views[i]).cast() } else { (&raw const views[i].c).cast() };
+            s.p.b = core::ptr::null();
+        }
+        st[i] = s;
+    }
+    (cost, wide)
+}
+
+/// `Ew.chain prog inputs n`: stage `k` is its engine over the payloads its source codes name, at the whole count `n`; `out` is the last
+/// stage's answer (`chain_bytes` of them), computed a tile at a time so every intermediate stays in L1.
+pub fn chain<'a>(prog: &[u8], input: &impl Fn(u8) -> &'a [u8], n: usize, out: &mut [u8]) {
+    let k = stages(prog);
+    let mut st = [const { CStage::EMPTY }; SLOTS + 1];
+    let mut views = [const { CCocf::EMPTY }; SLOTS];
+    let (cost, wide) = chain_build(prog, k, input, n, &mut st, &mut views);
+    let (bytes, obits) = (out.len(), st[k - 1].obits as usize);
+    st[k - 1].p.o = out.as_mut_ptr().cast();
+    st[k - 1].osrc = COLUMN;
+    // an empty column is answered without entering a worker, `bit`'s own guard: a stage that broadcasts an atom reads its operand's first byte first
+    if n != 0 { run_chain(pool(), &st[..k], n, cost, wide); }
+    // the last byte of a `&`/`|`/`^` over two bitmaps belongs to no element past `n`, as `bit` fixes it up outside its own worker
+    if st[k - 1].bytewise != 0 && bytes != 0 && (n * obits & 7) != 0 { out[bytes - 1] &= ((1u32 << (n * obits & 7)) - 1) as u8 }
+}
+/// `chainEnc`'s result class at `width` bytes: the encoder stage reads `width`-byte integers, and the chain's last stage must answer exactly those.
+pub fn enc_cls(width: usize, obits: usize) -> u32 {
+    assert!(8 * width == obits && matches!(width, 2 | 4 | 8),
+            "qlean_ew_chain_enc: the result type is {width} bytes wide and the chain's last stage answers {obits} bits. `Kernel.payload` passes `QAtomicType.width`, so the two disagree only if a builder named a stage whose class is not the result type's.");
+    match width { 2 => k::I16 as u32, 4 => k::I32 as u32, _ => k::I64 as u32 }
+}
+/// elementwise.c `qlean_ew_chain_enc`'s appended stage: stage `k` is the encoder's meta step (`pack` false) or pack step over the tile stage
+/// `k - 1` wrote, `enc` the `coc_enc` it writes through, at class `cls`. It answers no slot (`osrc` fixed), and its cost is added to `cost`
+/// the first time.
+pub fn enc_stage(st: &mut [CStage], k: usize, cls: u32, enc: *mut c_void, pack: bool, cost: &mut u32) {
+    let (cs, ab, bb, ob) = stage_bits(eng::ENCMETA, 0, cls, 0);
+    st[k] = CStage { f: Some(stage_worker(if pack { eng::ENCPACK } else { eng::ENCMETA })), p: CPass { o: enc, cls: cls as u8, ..CPass::EMPTY },
+                     asrc: (k - 1) as u8, bsrc: FIXED, osrc: FIXED, abits: ab, bbits: bb, obits: ob, bytewise: 0 };
+    if !pack { *cost += cs }
+}
+
+/// `Kernel.statsChain mode prog inputs n sa sb`: `Kernel.moments` (`mode` 0) or `Kernel.dots` (1, and 2 on `real` lanes) over the two payloads
+/// the source codes `sa`, `sb` name, the fold as the chain's last stage so neither operand is ever a dense column. Writes the answer's 48
+/// bytes: five doubles and the pairs kept as a long.
+pub fn stats_chain<'a>(mode: u8, prog: &[u8], input: &impl Fn(u8) -> &'a [u8], n: usize, sa: u8, sb: u8, out: &mut [u8]) {
+    let k = stages(prog);
+    let mut st = [const { CStage::EMPTY }; SLOTS + 1];
+    let mut views = [const { CCocf::EMPTY }; SLOTS];
+    // two dense float columns need no stage before the fold, and the build refuses none
+    if k != 0 { chain_build(prog, k, input, n, &mut st, &mut views); }
+    // the fold's phase state: the worker reaches it through `p.o` while the passes below set it up and read it, which a `RefCell`'s
+    // `as_ptr` allows without either side invalidating the other
+    let acc = RefCell::new(Stats::new());
+    let mut fold = CStage { f: Some(qrs_ew_stats_stage), p: CPass { o: acc.as_ptr().cast(), ..CPass::EMPTY }, asrc: 0, bsrc: 0, osrc: FIXED,
+                            abits: 64, bbits: 64, obits: 0, bytewise: 0 };
+    for (side, code) in [sa, sb].into_iter().enumerate() {
+        let slot = code >= SLOT0;
+        let at = if slot { (code - SLOT0) as usize } else { code as usize };
+        if if slot { at >= k || st[at].obits != 64 } else { input(code).len() < n * 8 } {
+            panic!("qlean_stats_chain: operand {side}, source code {code} of a {k}-stage chain, is not {n} doubles. `Kernel.statsColumns` brings both operands to `Ew.f64` through `operandSource`, so this means that builder named another class.");
+        }
+        let (bind, src) = if slot { (core::ptr::null(), at as u8) } else { (input(code).as_ptr().cast(), COLUMN) };
+        if side == 1 { fold.p.b = bind; fold.bsrc = src } else { fold.p.a = bind; fold.asrc = src }
+    }
+    st[k] = fold;
+    // one phase over the whole column, on the calling thread and in order: the lanes are positional, so a split across threads would be another sum
+    let pass = |phase: u8| {
+        acc.borrow_mut().begin(phase, n);
+        if n != 0 { chain_in_order(&st[..=k], n) }
+    };
+    let s = || acc.borrow();
+    let mut o = [0f64; 5];
+    let cnt;
+    if mode == 0 {
+        pass(st::SUMS);
+        (o[3], o[4]) = (s().sum(0), s().sum(1));
+        cnt = s().cnt;
+        { let mut a = acc.borrow_mut(); (a.mx, a.my) = (o[3] / cnt as f64, o[4] / cnt as f64) }
+        pass(st::CENTRED);
+        (o[0], o[1], o[2]) = (s().sum(0), s().sum(1), s().sum(2));
+    } else {
+        pass(if mode >= 2 { st::DOTS32 } else { st::DOTS });
+        // a null anywhere and q's sum is one accumulator over the live pairs; under `real` lanes an integral left operand's null (mode 3) is a zero
+        // weight instead, and only a null right operand is that accumulator: any inside the lanes, and past them one under a live left
+        if if mode == 3 { s().bad != 0 } else { s().cnt != n } { pass(st::SERIAL) }
+        (o[0], o[3]) = (s().sum(0), s().sum(1));
+        cnt = s().cnt;
+    }
+    for (d, v) in out[..48].chunks_exact_mut(8).zip(o.iter().map(|v| v.to_ne_bytes()).chain([(cnt as i64).to_ne_bytes()])) { d.copy_from_slice(&v) }
+}
+
+/// `=`, `<>` and `null` at guid: sixteen bytes compared as one word, one bit out per element, the bitmap `bit` writes. `atom` reads `b`'s
+/// one element against every element of `a`.
+pub fn guid_eq(a: &[u8], b: &[u8], atom: bool, ne: bool, n: usize, out: &mut [u8]) {
+    let ac = &a.as_chunks::<16>().0[..n];
+    // one byte of the bitmap from up to eight elements and what each is compared to
+    fn byte<F: Fn(usize) -> [u8; 16]>(x: &[[u8; 16]], ne: bool, y: F) -> u8 { x.iter().enumerate().fold(0u8, |m, (j, e)| m | (((*e == y(j)) != ne) as u8) << j) }
+    if atom {
+        let b0 = if n != 0 { b.as_chunks::<16>().0[0] } else { [0; 16] };
+        for (o, x) in out.iter_mut().zip(ac.chunks(8)) { *o = byte(x, ne, |_| b0) }
+    } else {
+        let bc = &b.as_chunks::<16>().0[..n];
+        for ((o, x), y) in out.iter_mut().zip(ac.chunks(8)).zip(bc.chunks(8)) { *o = byte(x, ne, |j| y[j]) }
+    }
+}
+/// `x^y` at guid: `y`'s element unless it is `0Ng`, sixteen zero bytes, and then `x`'s, read at 0 when `atom`.
+pub fn guid_fill(a: &[u8], b: &[u8], atom: bool, n: usize, out: &mut [u8]) {
+    let (ac, bc) = (a.as_chunks::<16>().0, &b.as_chunks::<16>().0[..n]);
+    for (i, (o, y)) in out[..16 * n].chunks_exact_mut(16).zip(bc).enumerate() {
+        o.copy_from_slice(if *y != [0; 16] { y } else { &ac[if atom { 0 } else { i }] });
     }
 }
