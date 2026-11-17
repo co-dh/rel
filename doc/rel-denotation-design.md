@@ -275,24 +275,46 @@ theorem compile_sound {η : Env} {ρ : Val} (hη : η.Sound ρ) {A B : Obj} {d :
 
 ```lean
 -- Rel/Lang/Syn.lean
-/-- Two terms with one meaning under every valuation. -/
-def Tm.Eqv (s : (d : Bool) × Tm A B d) (t : (d : Bool) × Tm A B d) : Prop := ∀ ρ, (⟦s.2⟧ρ) = ⟦t.2⟧ρ
+inductive Tm.Ax : Tm A B d → Tm A B e → Prop     -- the equational axioms, read both ways by `Le`
+inductive Tm.Le : Tm A B d → Tm A B e → Prop     -- the least preorder holding the axioms, a congruence
+def Tm.Eqv (s t : (d : Bool) × Tm A B d) : Prop := s.2.Le t.2 ∧ t.2.Le s.2
 def Syn := Obj
-instance : Cat Syn where
-  Hom A B := Quot (Tm.Eqv (A := A) (B := B))
-  id A    := Quot.mk _ ⟨true, .id⟩
-  comp    := Quot.lift₂ (fun R S => Quot.mk _ ⟨R.1, .comp R.2 S.2⟩) …
-def Syn.den (ρ : Val) : Freyd.Functor Syn RelSet.{0}      -- `obj A = ⟨A.El⟩`, `map = Quot.lift (⟦·⟧ρ)`
+def Syn.Hom A B := Quotient (Tm.setoid A B)      -- `RelAop.Syn` makes it freyd's `Cat Syn`
+theorem Tm.Le.sound (h : Tm.Le s t) : ∀ ρ, ⟦s⟧ρ ⊑ ⟦t⟧ρ
 ```
 
-- `Syn` is a category and `Syn.den ρ` a functor, faithful jointly over `ρ`. It is the image of `⟦−⟧`, presented
-  as a quotient of terms.
+- `Syn` is presented by axioms: a hom is a term modulo `Tm.Eqv`, the equivalence `Tm.Le` generates. The category
+  laws `Syn.id_comp`, `comp_id`, `assoc` are `Quotient.sound` of an axiom, not equalities of meanings.
+- The axioms (Freyd §2.1, §2.21), each at the demand bits the constructors allow:
+
+  | axiom                                            | rule                                                    |
+  |--------------------------------------------------|---------------------------------------------------------|
+  | `𝟙 R = R`, `R 𝟙 = R`, `(R S) T = R (S T)`        | `Ax.id_comp`, `comp_id`, `assoc`                        |
+  | `R°° = R`, `(R S)° = S° R°` (`R`, `S` closed)    | `Ax.conv_conv`, `conv_comp`                             |
+  | `R ∩ (S ∪ T) = R ∩ S ∪ R ∩ T`                    | `Ax.meet_join`                                          |
+  | `R (S ∪ T) = R S ∪ R T`, `(R ∪ S) T = R T ∪ S T` | `Ax.comp_join`, `join_comp`                             |
+  | `R 𝟘 = 𝟘`, `𝟘 R = 𝟘`                             | `Ax.comp_zero`, `zero_comp`                             |
+  | `∩` the meet                                     | `Le.meet_left`, `meet_right`, `le_meet`                 |
+  | `∪` the join, `𝟘 ⊑ R`                            | `Le.join_left`, `join_right`, `join_le`, `zero_le`      |
+  | `R S ∩ T ⊑ (R ∩ T S°) S` (`S` closed)            | `Le.modular`                                            |
+  | a preorder holding `Ax` both ways                | `Le.refl`, `trans`, `ax`, `ax_symm`                     |
+  | antitone: the `S` of `R − S`                     | `Le.diff`                                               |
+  | an `Eqv`-congruence only                         | `Le.lam`, `E`, `thin`, `ldiv` (its `R`), `rdiv` (its `S`) |
+
+  Every other constructor is monotone in each argument, as `⟦−⟧` is: `Le.comp`, `conv`, `top`, `dom`, `ran`,
+  `pair`, `prod`, `junc`, `juncD`, `est`, `own`, `succ`, `arith`, `leq`, `lt`, `fold`, `foldI`, `flat`, `share`,
+  `arg`, `nu`, `mu`, `refold`.
+
+- No power law: `Tm` has no `∋`, and `lamDen` would not satisfy `Λ(R) ∋ = R` (no list for an infinite image) nor
+  the uniqueness of `Λ` (a list is not a set). No `μ`-unfold: `den_mu` is stated with `ρ.bind`, and `Tm` has no
+  substitution to state `μX : φ = φ[μX : φ]` syntactically.
+- `⟦−⟧ρ` is well defined on `Syn` by `Tm.Le.sound`, and keeps `𝟙`, composition, `∩`, `∪`, `𝟘`, `Λ`
+  (`Syn.Hom.den_id`, `den_comp`, `den_meet`, `den_join`, `den_zero`, `den_lam`), and `°` on a closed term
+  (`den_conv`).
+- Completeness — `⟦s⟧ρ = ⟦t⟧ρ` for every `ρ` implies `Tm.Eqv s t` — is open and not claimed.
 - `Syn` is not an allegory, and this is a fact about `Tm`: `conv` exists only at `d = false`, and `id` only at
   `d = true`. The fragment that is an allegory is the closed terms between declared finite objects, with
   `uni U` as the identity of `(A, U)`. `AllegoryFunctor` is the existing concept for that fragment (D4).
-- The free allegory in the sense of `doc/rel-semantics.typ` (terms modulo the allegory axioms, with the
-  program's `⊑`-tests and theorems as extra inequations) needs an inductive provable-equality relation with
-  about 20 rules. It is not in the staged plan (D4).
 
 ### 4.2 The laws
 
