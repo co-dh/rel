@@ -878,8 +878,14 @@ pub fn run_starts(o: &Opnd, w: usize, is_float: bool, out: &mut [i64]) -> usize 
     }
     let (lg, mut buf, mut g, mut prev) = (o.lg(), crate::pod::Scr::<u64>::new(1 << o.lg()), 0, 0u64);
     for b in 0..o.n.div_ceil(1 << lg) {
-        let h = o.blk(b, w, crate::pod::bytes_mut(&mut buf));
         let at = b << lg;
+        // a bit block runs the word algorithm of `run_starts_bits`, the key being the bit itself
+        if let (false, Src::Enc(c)) = (is_float, &o.src) { if let Some(p) = c.bit_blk(b) {
+            if b == 0 { out[0] = 0; g = 1; prev = (p[0] & 1) as u64 }
+            crate::bitblk::run_starts(p, (o.n - at).min(1 << lg), at, &mut prev, &mut g, out);
+            continue
+        } }
+        let h = o.blk(b, w, crate::pod::bytes_mut(&mut buf));
         // row 0 starts a run whatever its key; the loop then needs no test for it
         let skip = if b == 0 { out[0] = 0; g = 1; prev = norm_key(w, is_float, bin_at(h, w, 0)); 1 } else { 0 };
         // the width switch hoisted out of the element loop, as search.rs's `RS_RUNS` hoists it
@@ -1099,10 +1105,10 @@ pub fn find_scalar(w: usize, is_float: bool, hay: &[u8], needle: u64) -> usize {
     r[0] as usize
 }
 
-/// search.rs `COC_EQ_BLOCKS`: each block of `c` that may hold `v`, in order, decoded into a buffer; `f(at, elems)` sees the
-/// block's first row and its elements, and a `Some` ends the walk. `?` at an atom asks about one element, so a block whose
+/// search.rs `COC_EQ_BLOCKS`: each block of `c` that may hold `v`, in order, handed to `f(b, at, cnt, buf)` (block, first row, row count, a
+/// scratch to decode into; a bit block is read in place), and a `Some` ends the walk. `?` at an atom asks about one element, so a block whose
 /// `[base, maxv]` cannot hold the needle is skipped from its 16 bytes of metadata instead of its 8 KB of elements.
-fn eq_blocks<R>(c: &Coc, v: i64, mut f: impl FnMut(usize, &[i64]) -> Option<R>) -> Option<R> {
+fn eq_blocks<R>(c: &Coc, v: i64, mut f: impl FnMut(usize, usize, usize, &mut [i64]) -> Option<R>) -> Option<R> {
     let (nb, mut buf) = (c.meta.n.div_ceil(c.meta.blk()), crate::pod::Scr::<i64>::new(c.meta.blk()));
     for b0 in (0..nb).step_by(64) {
         let mut m = coc_may_hold64(c, b0, (nb - b0).min(64), v);
@@ -1110,15 +1116,17 @@ fn eq_blocks<R>(c: &Coc, v: i64, mut f: impl FnMut(usize, &[i64]) -> Option<R>) 
             let at = (b0 + m.trailing_zeros() as usize) << c.meta.lg;
             m &= m - 1;
             let cnt = (c.meta.n - at).min(c.meta.blk());
-            c.decode_blk(at >> c.meta.lg, cnt, &mut buf);
-            if let Some(r) = f(at, &buf[..cnt]) { return Some(r) }
+            if let Some(r) = f(at >> c.meta.lg, at, cnt, &mut buf) { return Some(r) }
         }
     }
     None
 }
 /// `qlean_coc_find_scalar`'s body: the least row of `c` holding `v`, `c.meta.n` when none does.
 pub fn coc_find(c: &Coc, v: i64) -> usize {
-    eq_blocks(c, v, |at, e| e.iter().position(|&x| x == v).map(|i| at + i)).unwrap_or(c.meta.n)
+    eq_blocks(c, v, |b, at, cnt, buf| match c.bit_blk(b) {
+        Some(p) => crate::bitblk::find(p, cnt, v).map(|i| at + i),
+        None => { c.decode_blk(b, cnt, buf); buf[..cnt].iter().position(|&x| x == v).map(|i| at + i) }
+    }).unwrap_or(c.meta.n)
 }
 /// `qlean_coc_span`'s body: how many of the first `nblk` blocks have `[base, maxv]` holding `v`, off the metadata alone.
 pub fn coc_span(m: &crate::coc::Meta, v: i64) -> usize {
@@ -1128,9 +1136,11 @@ pub fn coc_span(m: &crate::coc::Meta, v: i64) -> usize {
 /// block's hits are written branch-free into a stack buffer and appended whole, so a hit costs no branch.
 pub fn coc_rows_eq(c: &Coc, v: i64) -> Vec<i64> {
     let (mut rows, mut t) = (Vec::with_capacity(c.meta.blk()), crate::pod::Scr::<i64>::new(c.meta.blk()));
-    eq_blocks::<()>(c, v, |at, e| {
+    eq_blocks::<()>(c, v, |b, at, cnt, buf| {
+        if let Some(p) = c.bit_blk(b) { crate::bitblk::rows_eq(p, cnt, at, v, &mut rows); return None }
+        c.decode_blk(b, cnt, buf);
         let mut k = 0;
-        for (i, &x) in e.iter().enumerate() { t[k] = (at + i) as i64; k += (x == v) as usize }
+        for (i, &x) in buf[..cnt].iter().enumerate() { t[k] = (at + i) as i64; k += (x == v) as usize }
         rows.extend_from_slice(&t[..k]);
         None
     });

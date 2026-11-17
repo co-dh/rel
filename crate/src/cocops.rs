@@ -154,6 +154,7 @@ pub fn cmp2_res(a: &Coc, b: &Coc, op: i32, out: &mut [u64], deep: &[u32], lo: us
     for &k in &deep[lo..hi] {
         let (k, n) = (k as usize, a.meta.n);
         let (at, nb) = (k << lg, if (k + 1) << lg < n { blk } else { n - (k << lg) });
+        if let (Some(pa), Some(pb)) = (a.bit_blk(k), b.bit_blk(k)) { crate::bitblk::cmp2(pa, pb, nb, op, &mut out[(at >> 6) - w0..]); continue }
         a.decode_blk(k, nb, &mut xa);
         b.decode_blk(k, nb, &mut xb);
         res_cmp2(&xa[..nb], &xb[..nb], op, &mut out[(at >> 6) - w0..]); // blk / 64 u64 per block
@@ -164,9 +165,10 @@ pub fn cmp2_res(a: &Coc, b: &Coc, op: i32, out: &mut [u64], deep: &[u32], lo: us
 impl<'a> Coc<'a> {
     /// coc.rs `coc_sum_blk`: block `b`'s first `nb` elements summed, wrapping.
     pub fn sum_blk(&self, b: usize, nb: usize) -> u64 {
+        if let Some(p) = self.bit_blk(b) { return crate::bitblk::ones(p, nb) as u64 }
         let (mut w, at) = (self.meta.width[b], self.meta.off[b] as usize);
         let p = &self.pack[at..at + self.meta.blk() * w as usize / 8];
-        let s = if w & w.wrapping_sub(1) == 0 { res_sum(p, nb, w) } else {
+        let s = if w &w.wrapping_sub(1) == 0 { res_sum(p, nb, w) } else {
             let mut buf = pod::Scr::<u8, 8192>::new(self.meta.blk() * 8); // the lanes of an odd width, summed at the lane width `lanes` leaves in `w`
             let q = lanes(p, &mut w, nb, &mut buf);
             res_sum(q, nb, w)
@@ -258,6 +260,7 @@ impl<'a> Coc<'a> {
                 self.decode_blk(b, nb, &mut x);
                 return x[..nb].iter().all(|&v| v != 0)
             }
+            if let Some(p) = self.bit_blk(b) { return crate::bitblk::all_set(p, nb) }
             let t = 0u64.wrapping_sub(m.base[b] as u64);
             (0..nb).all(|j| res_get(p, m.width[b], j) != t)
         })
