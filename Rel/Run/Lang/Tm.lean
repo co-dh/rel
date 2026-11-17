@@ -268,7 +268,7 @@ def Tm.pol (s : Bool) (k : Nat) : {A B : Obj} → {d : Bool} → Tm A B d → Bo
   | _, _, _, .junc R S => R.pol s k && S.pol s k
   | _, _, _, .juncD R S => R.pol s k && S.pol s k
   | _, _, _, .own R => R.pol s k
-  | _, _, _, .nu j _ b => j == k || b.pol s k
+  | _, _, _, .nu j S b => S.pol s k && (j == k || b.pol s k)
   | _, _, _, .mu j _ _ b => j == k || b.pol s k
   | _, _, _, .refold j _ _ b => j == k || b.pol s k
   | _, _, _, t@(.lam _) | _, _, _, t@(.E _) | _, _, _, t@(.est _) | _, _, _, t@(.thin _) | _, _, _, t@(.succ _)

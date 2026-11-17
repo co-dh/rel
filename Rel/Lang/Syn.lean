@@ -38,9 +38,9 @@ inductive Tm.Ax : {A B : Obj} → {d e : Bool} → Tm A B d → Tm A B e → Pro
       bit is `true` and `X` may occur in `φ` at `false`, where no term stands for it (`Tm.lift`). -/
   | mu_unfold {A B : Obj} (k : Nat) (what : String) (cap : Nat) (b : Tm A B false) (h : b.pol true k = true) :
       Tm.Ax (.mu k what cap b) (b.subst [(k, ⟨A, B, .mu k what cap b⟩)])
-  /-- `νX : φ = φ[νX : φ]` where `X` occurs in `φ` only positively. -/
+  /-- `νX : S ∩ φ = S ∩ φ[νX : S ∩ φ]` where `X` occurs in `φ` only positively; `S` is outside the binder. -/
   | nu_unfold {A B : Obj} (k : Nat) (S b : Tm A B false) (h : b.pol true k = true) :
-      Tm.Ax (.nu k S b) (b.subst [(k, ⟨A, B, .nu k S b⟩)])
+      Tm.Ax (.nu k S b) (.meet S (b.subst [(k, ⟨A, B, .nu k S b⟩)]))
 
 /-- The allegory order on terms: the least preorder that holds the equations `Tm.Ax`, makes `∩` the meet, `∪` the
     join and `𝟘` the least element, holds the modular law, and is a congruence for every constructor of `Tm` —
@@ -143,8 +143,10 @@ theorem Tm.Ax.sound {A B : Obj} {d e : Bool} {s : Tm A B d} {t : Tm A B e} (h : 
   | zero_comp => exact Core.Rel.zero_comp _
   | mu_unfold _ _ _ b h =>
     rw [(b.den_subst _ (fun e he _ _ => by obtain rfl := List.mem_singleton.1 he; rfl) _).1]; exact (Core.Rel.mu_fix fun _ _ hXY => den_mono h hXY).symm
-  | nu_unfold _ _ b h =>
-    rw [(b.den_subst _ (fun e he _ _ => by obtain rfl := List.mem_singleton.1 he; rfl) _).1]; exact (Core.Rel.nu_fix fun _ _ hXY => den_mono h hXY).symm
+  | nu_unfold _ S b h =>
+    show _ = S.den ρ ∩ _
+    rw [(b.den_subst _ (fun e he _ _ => by obtain rfl := List.mem_singleton.1 he; rfl) _).1]
+    exact (Core.Rel.nu_fix fun _ _ hXY => inter_le' (Core.Rel.le_refl _) (den_mono h hXY)).symm
 
 /-- **Soundness**: `Le s t` gives `⟦s⟧ρ ⊑ ⟦t⟧ρ` under every valuation, one case per rule. -/
 theorem Tm.Le.sound {A B : Obj} {d e : Bool} {s : Tm A B d} {t : Tm A B e} (h : Tm.Le s t) :
@@ -206,7 +208,7 @@ theorem Tm.Le.sound {A B : Obj} {d e : Bool} {s : Tm A B d} {t : Tm A B e} (h : 
   | flat _ ih => exact fun ρ => le_iff.2 fun _ _ h => le_iff.1 (ih ρ) _ _ h
   | arg _ _ ih ih' =>
     exact fun ρ => by simp only [Tm.den, Core.Rel.le_antisymm (ih ρ) (ih' ρ)]; exact Core.Rel.le_refl _
-  | nu k _ _ _ ih => exact fun ρ => Core.Rel.nu_mono fun X => ih (ρ.bind k X)
+  | nu k _ _ ihS ih => exact fun ρ => Core.Rel.nu_mono fun X => inter_le' (ihS ρ) (ih (ρ.bind k X))
   | mu k _ _ _ ih => exact fun ρ => Core.Rel.mu_mono fun X => ih (ρ.bind k X)
   | refold k _ _ _ _ ih => exact fun ρ => Core.Rel.mu_mono fun X => ih (ρ.bind k X)
 
@@ -333,8 +335,8 @@ theorem den_mu {k cap : Nat} {what : String} {b : Tm A B false} (h : b.pol true 
   (Core.Rel.mu_fix fun _ _ hXY => den_mono h hXY).symm
 
 theorem den_nu {k : Nat} {S b : Tm A B false} (h : b.pol true k = true) :
-    (nu k S b).den ρ = b.den (ρ.bind k ((nu k S b).den ρ)) :=
-  (Core.Rel.nu_fix fun _ _ hXY => den_mono h hXY).symm
+    (nu k S b).den ρ = S.den ρ ∩ b.den (ρ.bind k ((nu k S b).den ρ)) :=
+  (Core.Rel.nu_fix fun _ _ hXY => inter_le' (Core.Rel.le_refl _) (den_mono h hXY)).symm
 
 theorem den_refold {k : Nat} {what : String} {ch : Tm A A d} {b : Tm A B e} (h : b.pol true k = true) :
     (refold k what ch b).den ρ = b.den (ρ.bind k ((refold k what ch b).den ρ)) :=
