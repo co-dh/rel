@@ -294,6 +294,8 @@ theorem Tm.Le.sound (h : Tm.Le s t) : ∀ ρ, ⟦s⟧ρ ⊑ ⟦t⟧ρ
   | `R ∩ (S ∪ T) = R ∩ S ∪ R ∩ T`                    | `Ax.meet_join`                                          |
   | `R (S ∪ T) = R S ∪ R T`, `(R ∪ S) T = R T ∪ S T` | `Ax.comp_join`, `join_comp`                             |
   | `R 𝟘 = 𝟘`, `𝟘 R = 𝟘`                             | `Ax.comp_zero`, `zero_comp`                             |
+  | `μX : φ = φ[μX : φ]` (`X` positive in `φ`)       | `Ax.mu_unfold`                                          |
+  | `νX : φ = φ[νX : φ]` (`X` positive in `φ`)       | `Ax.nu_unfold`                                          |
   | `∩` the meet                                     | `Le.meet_left`, `meet_right`, `le_meet`                 |
   | `∪` the join, `𝟘 ⊑ R`                            | `Le.join_left`, `join_right`, `join_le`, `zero_le`      |
   | `R S ∩ T ⊑ (R ∩ T S°) S` (`S` closed)            | `Le.modular`                                            |
@@ -306,8 +308,10 @@ theorem Tm.Le.sound (h : Tm.Le s t) : ∀ ρ, ⟦s⟧ρ ⊑ ⟦t⟧ρ
   `arg`, `nu`, `mu`, `refold`.
 
 - No power law: `Tm` has no `∋`, and `lamDen` would not satisfy `Λ(R) ∋ = R` (no list for an infinite image) nor
-  the uniqueness of `Λ` (a list is not a set). No `μ`-unfold: `den_mu` is stated with `ρ.bind`, and `Tm` has no
-  substitution to state `μX : φ = φ[μX : φ]` syntactically.
+  the uniqueness of `Λ` (a list is not a set).
+- The unfold laws substitute by `Tm.subst` (`Run/Lang/Tm.lean`): simultaneous, each binder renamed to a `fresh`
+  variable, so nothing is captured; sound by `Tm.den_subst`, `⟦t σ⟧ρ = ⟦t⟧(⟦σ⟧ρ)`. `refold` has none: its demand
+  bit is `true`, and its variable may occur at `false`, where no term stands for it.
 - `⟦−⟧ρ` is well defined on `Syn` by `Tm.Le.sound`, and keeps `𝟙`, composition, `∩`, `∪`, `𝟘`, `Λ`
   (`Syn.Hom.den_id`, `den_comp`, `den_meet`, `den_join`, `den_zero`, `den_lam`), and `°` on a closed term
   (`den_conv`).

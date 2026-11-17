@@ -192,6 +192,69 @@ theorem Tm.den_congr : ∀ {A B : Obj} {d : Bool} (t : Tm A B d) (ρ ρ' : Val),
     · rw [Val.bind_ne e, Val.bind_ne e]; exact h i (by simp [Tm.fv, hi, e])
   | _ => intro ρ ρ' _; rfl
 
+/-! ### Substitution -/
+
+/-- `σ` read under `ρ`: each entry binds its variable to its term's meaning, the first entry outermost. -/
+noncomputable def Tm.Sub.den (ρ : Val) : Tm.Sub → Val
+  | [] => ρ
+  | (k, ⟨_, _, s⟩) :: σ => (Sub.den ρ σ).bind k (s.den ρ)
+
+theorem Tm.den_lift (ρ : Val) (s : Tm A B false) : ∀ d, (s.lift d).den ρ = s.den ρ
+  | false => rfl
+  | true => Core.Rel.id_comp _
+
+theorem Tm.Sub.den_get (ρ : Val) (i : Nat) {A' B' : Obj} (d : Bool) :
+    ∀ σ : Tm.Sub, (σ.get i d : Tm A' B' d).den ρ = σ.den ρ i A' B'
+  | [] => rfl
+  | (k, ⟨A, B, s⟩) :: σ => by
+    by_cases e : i = k
+    · subst e
+      by_cases h : A = A' ∧ B = B'
+      · obtain ⟨rfl, rfl⟩ := h; simp [Sub.get, Sub.den, Val.bind, den_lift]
+      · simp [Sub.get, Sub.den, Val.bind, h, den_lift, Tm.den]
+    · simp only [Sub.get, Sub.den, if_neg e, Val.bind_ne e]; exact den_get ρ i d σ
+
+theorem Tm.lt_fresh : ∀ {l : List Nat} {i : Nat}, i ∈ l → i < Tm.fresh l
+  | a :: l, i, h => by
+    rcases List.mem_cons.1 h with rfl | h
+    · exact Nat.lt_succ_of_le (Nat.le_max_left _ _)
+    · exact Nat.lt_of_lt_of_le (lt_fresh h) (Nat.succ_le_succ (Nat.le_max_right _ _))
+
+/-- Binding a variable `k` no term of `σ` mentions changes `σ`'s meaning only at `k`. -/
+theorem Tm.Sub.den_bind {ρ : Val} {k : Nat} {A B : Obj} {X : Den A B} :
+    ∀ σ : Tm.Sub, (∀ j ∈ σ.fvs, j ≠ k) → ∀ i, i ≠ k → σ.den (ρ.bind k X) i = σ.den ρ i
+  | [], _, _, hi => Val.bind_ne hi
+  | (j, ⟨_, _, s⟩) :: σ, h, i, hi => by
+    simp only [Sub.den, s.den_congr (ρ.bind k X) ρ fun l hl => Val.bind_ne (h l (by simp [Sub.fvs, hl]))]
+    by_cases e : i = j
+    · subst e; exact Val.bind_same
+    · rw [Val.bind_ne e, Val.bind_ne e]; exact den_bind σ (fun l hl => h l (by simp [Sub.fvs, hl])) i hi
+
+/-- Under a binder `k` renamed to `k'`, fresh for the body `b` and `σ`: the substituted body read with `k'` bound
+    to `X` is the body read with `k` bound to `X` over `σ`'s meaning. -/
+theorem Tm.Sub.den_rename {A B A' B' : Obj} {d : Bool} (b : Tm A' B' d) (σ : Tm.Sub) (ρ : Val) (k : Nat)
+    (X : Den A B) : b.den (Sub.den (ρ.bind (fresh (b.fv ++ σ.fvs)) X)
+      ((k, ⟨A, B, .var (fresh (b.fv ++ σ.fvs))⟩) :: σ)) = b.den ((σ.den ρ).bind k X) := by
+  refine b.den_congr _ _ fun i hi => ?_
+  have hv : (Tm.var (fresh (b.fv ++ σ.fvs)) : Tm A B false).den (ρ.bind (fresh (b.fv ++ σ.fvs)) X) = X := by
+    simp [Tm.den, Val.bind]
+  simp only [Sub.den, hv]
+  by_cases e : i = k
+  · subst e; exact Val.bind_same
+  · rw [Val.bind_ne e, Val.bind_ne e]
+    exact den_bind σ (fun j hj => Nat.ne_of_lt (lt_fresh (List.mem_append_right _ hj))) i
+      (Nat.ne_of_lt (lt_fresh (List.mem_append_left _ hi)))
+
+/-- **Substitution lemma**: `⟦t σ⟧ρ = ⟦t⟧(⟦σ⟧ρ)`. -/
+theorem Tm.den_subst : ∀ {A B : Obj} {d : Bool} (t : Tm A B d) (σ : Tm.Sub) (ρ : Val),
+    (t.subst σ).den ρ = t.den (σ.den ρ) := by
+  intro A B d t
+  induction t with
+  | var i => intro σ ρ; exact Sub.den_get ρ i _ σ
+  | nu k _ b _ ih | mu k _ _ b ih | refold k _ _ b _ ih =>
+    intro σ ρ; simp only [Tm.subst, Tm.den, ih]; congr 1; funext X; exact Sub.den_rename b σ ρ k X
+  | _ => intro σ ρ; simp only [Tm.subst, Tm.den, *]
+
 /-! ### Monotonicity -/
 
 /-- `ρ'` grows `ρ` at the variable `k` and agrees with it at every other. -/
