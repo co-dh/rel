@@ -1549,6 +1549,124 @@ pub fn untranspose(w: usize, n: usize, k: usize, src: &[u8], out: &mut [u8]) {
     }
 }
 
+// ---- T2: structural.c from `qlean_structural_til_foR` to the end, past the unboxing ----
+/// `untranspose`'s shape test: the stride `count(1)` that the `n + 1` starts `count(0 ..= n)` are the multiples of, a whole number
+/// of `w`-byte cells and `n` rows of them in `bytes`; the cell count `k` of a row, or `None` for a ragged slices value. `count`
+/// is evaluated in the order the checks run, so the first bad start is the one that stops a bignum (`count_at`'s abort).
+pub fn uniform_stride(w: usize, n: usize, bytes: usize, count: impl Fn(usize) -> usize) -> Option<usize> {
+    let stride = count(1);
+    if stride == 0 || stride % w != 0 || count(0) != 0 || bytes != n * stride { return None }
+    (2..=n).all(|i| count(i) == i * stride).then_some(stride / w)
+}
+/// `qlean_structural_cross`: row `i * m + j` of `out` is the `w` bytes of element `i` of `l` then those of element `j` of `r`, so
+/// the pair is read from the operands where they lie and the pass the size of the answer is this copy. One instance per common width
+/// so the two stores are moves.
+pub fn cross(w: usize, n: usize, m: usize, l: &[u8], r: &[u8], out: &mut [u8]) {
+    #[inline(always)]
+    fn go(w: usize, n: usize, m: usize, l: &[u8], r: &[u8], out: &mut [u8]) {
+        let r = &r[..m * w];
+        for (lv, rows) in l[..n * w].chunks_exact(w).zip(out.chunks_exact_mut(2 * w * m)) {
+            for (o, rv) in rows.chunks_exact_mut(2 * w).zip(r.chunks_exact(w)) { o[..w].copy_from_slice(lv); o[w..].copy_from_slice(rv) }
+        }
+    }
+    if w == 0 || m == 0 { return }
+    match w { 1 => go(1, n, m, l, r, out), 2 => go(2, n, m, l, r, out), 4 => go(4, n, m, l, r, out), 8 => go(8, n, m, l, r, out), _ => go(w, n, m, l, r, out) }
+}
+/// `qlean_structural_scatter` past the objects: `scatter` at byte widths, and below a byte the fields are `wb` bits packed low field
+/// first. A source too short for what it is asked for, or an element width the kernels are not instantiated at, is the caller's bug
+/// and stops with the text C printed.
+pub fn scatter_packed(wb: usize, dst: &mut [u8], idx: &[i64], src: &[u8], soff: usize, bcast: bool) {
+    let (m, cap, have) = (idx.len(), dst.len() * 8 / wb, src.len() * 8 / wb);
+    if m != 0 && (if bcast { soff >= have } else { soff + m > have }) {
+        die(format_args!("qlean scatter: {} fields from {soff} asked of a source of {have}\n", if bcast { 1 } else { m }))
+    }
+    if wb >= 8 {
+        let w = wb / 8;
+        if !matches!(w, 1 | 2 | 4 | 8 | 16) {
+            die(format_args!("qlean structural: scatter got element width {w}; the kernels are instantiated at 1, 2, 4, 8 and 16 bytes\n"))
+        }
+        scatter(w, dst, idx, src, soff, bcast);
+        return;
+    }
+    let (mask, per) = ((1u8 << wb) - 1, 8 / wb);
+    for (k, &x) in idx.iter().enumerate() {
+        let u = x as u64 as usize;
+        if u >= cap { continue }
+        let e = soff + if bcast { 0 } else { k };
+        let v = (src[e / per] >> ((e % per) * wb)) & mask;
+        let sh = (u % per) * wb;
+        dst[u / per] = dst[u / per] & !(mask << sh) | v << sh;
+    }
+}
+/// `scatterIds`' widening: the `n` ids of `ids` at `wa` bits as `wb` bits into `out`, an id past the payload reading `0`
+/// (`Column.idAt`'s convention).
+pub fn widen_ids(n: usize, wa: u32, wb: u32, ids: &[u8], out: &mut [u8]) {
+    let have = crate::ids::ids_avail(ids.len(), wa);
+    crate::ids::pack(out, wb, n, |i| if i < have { crate::ids::id_at(ids, wa, i) as u64 } else { 0 })
+}
+/// `qlean_structural_amend_compact`: a bitmap of `n` bits over the indices and a popcount prefix a word, which give `amendCompact`'s
+/// `u` (the distinct indices ascending) and `rk` (each index's position in `u`) without a sort.
+pub struct Compact { bm: Vec<u64>, pre: Vec<u64>, pub count: usize }
+impl Compact {
+    /// `Err(k)`: `ix[k]` is the first index not below `n`, which `amendRounds` raised before it could reach here.
+    pub fn new(n: usize, ix: &[u64]) -> Result<Compact, usize> {
+        let mut bm = alloc::vec![0u64; n.div_ceil(64)];
+        for (k, &v) in ix.iter().enumerate() {
+            if v >= n as u64 { return Err(k) }
+            bm[(v >> 6) as usize] |= 1 << (v & 63);
+        }
+        let mut count = 0;
+        let pre = bm.iter().map(|w| { let c = count; count += w.count_ones() as usize; c as u64 }).collect();
+        Ok(Compact { bm, pre, count })
+    }
+    /// `u` is `count` words, `rk` one word per index.
+    pub fn fill(&self, ix: &[u64], u: &mut [u64], rk: &mut [u64]) {
+        let mut j = 0;
+        for (w, &x) in self.bm.iter().enumerate() {
+            let mut x = x;
+            while x != 0 { u[j] = (w * 64) as u64 + x.trailing_zeros() as u64; j += 1; x &= x - 1 }
+        }
+        for (r, &v) in rk.iter_mut().zip(ix) {
+            let (w, below) = ((v >> 6) as usize, (1u64 << (v & 63)) - 1);
+            *r = self.pre[w] + (self.bm[w] & below).count_ones() as u64
+        }
+    }
+}
+/// `qlean_structural_scatter_syms`' first pass: for each of the `n` symbols the position of the last index that writes it
+/// (`usize::MAX`: none), which names the symbol of `y` it takes (`0` under `bcast`). One that `y` does not have is the caller's bug.
+pub fn scatter_sources(n: usize, ny: usize, ix: &[u64], bcast: bool) -> Vec<usize> {
+    let mut src = alloc::vec![usize::MAX; n];
+    for (k, &v) in ix.iter().enumerate() {
+        if v >= n as u64 { continue }
+        let e = if bcast { 0 } else { k };
+        if e >= ny { die(format_args!("qlean scatter: symbol {e} asked of a source of {ny}\n")) }
+        src[v as usize] = e;
+    }
+    src
+}
+/// Symbol `i` of the answer: whether it comes from `y`, and its byte range in that column's blob.
+fn syms_span(src: &[usize], o: &Syms, y: &Syms, i: usize) -> (bool, usize, usize) {
+    let from_y = src[i] != usize::MAX;
+    let (s, e) = if from_y { (y, src[i]) } else { (o, i) };
+    let lo = s.off(e);
+    (from_y, lo, s.off(e + 1).max(lo))
+}
+/// The blob bytes of the answer `scatter_sources` plans.
+pub fn scatter_syms_total(src: &[usize], o: &Syms, y: &Syms) -> usize {
+    (0..src.len()).map(|i| { let (_, lo, hi) = syms_span(src, o, y, i); hi - lo }).sum()
+}
+/// The answer: `blob` is `scatter_syms_total` bytes, `offs` the `n + 1` boxed starts.
+pub fn scatter_syms_write(src: &[usize], o: &Syms, y: &Syms, blob: &mut [u8], offs: &mut [usize]) {
+    let mut at = 0;
+    offs[0] = 1;
+    for i in 0..src.len() {
+        let (from_y, lo, hi) = syms_span(src, o, y, i);
+        blob[at..at + hi - lo].copy_from_slice(&(if from_y { y } else { o }).blob[lo..hi]);
+        at += hi - lo;
+        offs[i + 1] = at << 1 | 1;
+    }
+}
+
 #[cfg(test)]
 mod symtab_tests {
     use super::*;

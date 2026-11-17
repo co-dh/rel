@@ -264,8 +264,6 @@ impl CCoc {
     }
 }
 
-/// the pool (`qrs_pool_run`) as the Rust `Runner`, the one cast every column (a) shim makes.
-unsafe fn rn(run: unsafe extern "C" fn()) -> c::Runner { unsafe { core::mem::transmute::<unsafe extern "C" fn(), c::Runner>(run) } }
 /// `n` symbols: `blob` and C's boxed `lean_array_cptr(offs)`, unboxed by `Syms`.
 unsafe fn syms<'a>(blob: *const u8, bytes: usize, offs: *const usize, n: usize) -> Syms<'a> {
     Syms { blob: unsafe { sl(blob, bytes) }, offs: unsafe { sl(offs, n + 1) } }
@@ -798,78 +796,42 @@ pub fn array_boxed(n: usize, f: impl FnOnce(&mut [usize])) -> lean::O {
     // Safety: `a` is an array of `n` words, uninitialised until `f` writes every one
     unsafe { f(sl_mut(lean::array_cptr(a).cast::<usize>(), n)); lean::O::from_raw(a) }
 }
-/// K22: structural.c `amend_index` past the width check; `alloc(ctx, which, words)` makes the Lean array `which` (`AmOut`).
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn qrs_amend_index(run: unsafe extern "C" fn(), n: usize, wi: usize, ranked: u8, compact: c_int, idx: *const u8,
-                                         bytes: usize, alloc: unsafe extern "C" fn(*mut c_void, c_int, usize) -> *mut i64, ctx: *mut c_void) {
-    structural::amend_index(unsafe { rn(run) }, n, wi, ranked != 0, compact != 0, unsafe { sl(idx, bytes) },
-                            &mut |o, w| unsafe { sl_mut(alloc(ctx, o as c_int, w), w) })
+/// K22: structural.c `amend_index` past the width check, the answer's three Lean arrays allocated as the kernel asks for them:
+/// `Res`, and, when `compact` and no index misses, `Dom` and `Rank` (`None` otherwise). The kernel writes into each while the
+/// others are alive, so each is held here by its `SArr` and the slice handed out is of its own payload.
+pub fn amend(n: usize, wi: usize, ranked: bool, compact: bool, idx: &[u8]) -> (lean::O, Option<lean::O>, Option<lean::O>) {
+    let mut out: [Option<lean::SArr>; 3] = [None, None, None];
+    structural::amend_index(c::pool(), n, wi, ranked, compact, idx, &mut |which, words| {
+        let mut a = lean::SArr::new(1, words * 8);
+        let p = a.bytes_mut().as_mut_ptr().cast::<i64>();
+        out[which as usize] = Some(a);
+        // Safety: `p` is the payload of the array just stored in `out`, `words` of 8-aligned `Int64`s, which `out` keeps alive
+        // until the kernel returns and which nothing else names
+        unsafe { sl_mut(p, words) }
+    });
+    let [dom, rank, res] = out;
+    (res.expect("amend_index: the answer is allocated last").into(), dom.map(Into::into), rank.map(Into::into))
 }
-/// A41b: structural.c `scatter`; 0 when an index is out of range.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn qrs_scatter(wb: usize, dst: *mut u8, nd: usize, idx: *const i64, n: usize, src: *const u8,
-                                     soff: usize, bcast: c_int) -> c_int {
-    // `wb` is in BYTES here: structural.c calls with `w = wb / 8` from its own bit width; the source holds `soff` + 1 or n
-    let ns = soff + if bcast != 0 { 1 } else { n };
-    unsafe { structural::scatter(wb, sl_mut(dst, wb * nd), sl(idx, n), sl(src, wb * ns), soff, bcast != 0) as c_int }
-}
-/// K21: structural.c `til_fill`, the encoder's block producer for `til`: `buf[j] = i0 + j`.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn qrs_til_fill(buf: *mut i64, i0: usize, cnt: usize, _ctx: *const c_void) { unsafe { structural::til_fill(sl_mut(buf, cnt), i0) } }
-/// K21: structural.c `qlean_structural_string_digits`' count pass over `n` integers of `w` (2, 4 or 8) bytes; `at` has
-/// `ceil(n / 4096) + 1` words, the first of which answer where each block's spellings start and the last the blob's length, returned.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn qrs_str_count(w: usize, src: *const u8, n: usize, at: *mut usize) -> usize {
-    unsafe { structural::str_count(c::pool(), w, sl(src, n * w), n, sl_mut(at, n.div_ceil(structural::STR_BLK) + 1)) }
-}
-/// K21: the write pass: `blob` is the `at[ceil(n / 4096)]` bytes `qrs_str_count` counted, `offs` `n + 1` boxed offsets.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn qrs_str_write(w: usize, src: *const u8, n: usize, at: *const usize, blob: *mut u8, offs: *mut usize) {
+/// K23: `scatterFoR` (`a` is `None`) and `scatterALP` (`a` the exponents): `(meta, pack)` or `(meta, (pack, alp))`, the writer's
+/// parts as the Lean declaration types them. The blocks come from `structural::Scatter`, not from a source, so `NoElts`
+/// stands in for the element cursor `src_pass` hands each step.
+#[allow(clippy::too_many_arguments)]
+pub fn encode_scatter(w: usize, m: &[u8], pk: &[u8], a: Option<&[u8]>, n: usize, ix: &[u8], vals: &[u8]) -> lean::O {
     unsafe {
-        let at = sl(at, n.div_ceil(structural::STR_BLK) + 1);
-        structural::str_write(c::pool(), w, sl(src, n * w), n, at, sl_mut(blob, at[at.len() - 1]), sl_mut(offs, n + 1))
-    }
-}
-/// K21: structural.c `qlean_structural_mmu`'s products: `a` the `n` rows of `m` doubles, `b` the `m` rows of `p`, `out` room for
-/// `ceil(n / 4) * 4` rows of `p`.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn qrs_mmu(a: *const *const u8, n: usize, b: *const *const u8, m: usize, p: usize, out: *mut f64) {
-    unsafe {
-        let rows = |r: *const *const u8, k: usize, len: usize| sl(r, k).iter().map(|&x| sl(x.cast::<f64>(), len)).collect::<alloc::vec::Vec<_>>();
-        structural::mmu(&rows(a, n, m), &rows(b, m, p), p, sl_mut(out, n.div_ceil(4) * 4 * p))
-    }
-}
-/// K21: structural.c `qlean_structural_transpose`'s copy: `cols` the `k` columns of `n` cells of `w` bytes, `out` `n * k * w` bytes.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn qrs_transpose(w: usize, n: usize, cols: *const *const u8, k: usize, out: *mut u8) {
-    unsafe { structural::transpose(w, n, &sl(cols, k).iter().map(|&c| sl(c, n * w)).collect::<alloc::vec::Vec<_>>(), sl_mut(out, n * k * w)) }
-}
-/// K21: structural.c `qlean_structural_untranspose`'s copy: `src` the `n` rows of `k` cells of `w` bytes into `out`.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn qrs_untranspose(w: usize, n: usize, k: usize, src: *const u8, out: *mut u8) {
-    unsafe { structural::untranspose(w, n, k, sl(src, n * k * w), sl_mut(out, n * k * w)) }
-}
-/// K23: structural.c `qlean_structural_scatter_for` / `_alp` past the unboxing (`a` null = Frame of Reference): the writer's
-/// parts as the Lean declaration types them, `(meta, pack)` or `(meta, (pack, alp))`. The blocks come from `structural::Scatter`,
-/// not from a source, so `NoElts` stands in for the element cursor `src_pass` hands each step.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn qrs_structural_scatter(w: usize, m: *const u8, msz: usize, pk: *const u8, pksz: usize, a: *const u8, asz: usize,
-                                                n: usize, ix: *const u8, ixsz: usize, vals: *const u8, vsz: usize) -> *mut c_void {
-    unsafe {
-        let alp = !a.is_null();
-        let sc = structural::Scatter::new(c::pool(), w, sl(m, msz), sl(pk, pksz), alp.then(|| sl(a, asz)), n, sl(ix, ixsz), sl(vals, vsz));
+        let alp = a.is_some();
+        let sc = structural::Scatter::new(c::pool(), w, m, pk, a, n, ix, vals);
         let mut e: CEnc = core::mem::zeroed();
         let s = &raw mut e;
         qrs_coc_enc_open(s, n, w, alp as c_int);
         src_pass(s, &NoElts, &|s, b, _, _| sc.meta(&mut (*s).meta_blk(b), b), true, if alp { crate::QLEAN_COST_MATH } else { crate::QLEAN_COST_ARITH });
         qrs_coc_enc_layout(s);
         src_pass(s, &NoElts, &|s, b, _, nb| sc.pack(&mut (*s).pack_blk(b, nb, sc.kept(b)), b), false, crate::QLEAN_COST_ARITH);
-        if !alp { return qrs_coc_enc_pair(s) }
+        if !alp { return lean::O::from_raw(qrs_coc_enc_pair(s).cast()) }
         coc_free((*s).exc_heap.cast());
-        mk_pair((*s).meta, mk_pair((*s).pack, (*s).blob))
+        lean::O::from_raw(mk_pair((*s).meta, mk_pair((*s).pack, (*s).blob)).cast())
     }
 }
-/// K23: `qrs_structural_scatter` has no elements, only block numbers.
+/// K23: `encode_scatter` has no elements, only block numbers.
 struct NoElts;
 impl Source for NoElts {
     unsafe fn open(&self) -> Option<*mut c_void> { Some(null_mut()) }
