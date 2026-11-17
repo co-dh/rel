@@ -40,7 +40,7 @@ def nullAtom (t : QAtomicType) (h : t ≠ .general := by first | decide | assump
 at a fixed width, symbol by symbol at a blob, since a gather leaves the same symbols in a different
 blob — and folds the two signed zeros, which are the one pair `QAtom.identical` calls equal with
 different bits. The element read below is what a shape it does not claim still needs. -/
-def sameColumn (t : QAtomicType) (na : USize) (ea : Enc) (nb : USize) (eb : Enc) : Bool :=
+def sameColumn (t : QAtomicType) (na : USize) (ea : Ext.Enc X) (nb : USize) (eb : Ext.Enc X) : Bool :=
   match Kernel.matchColumn t na ea nb eb with
   | some r => r
   | none => (List.range na.toNat).all fun i =>
@@ -49,8 +49,8 @@ def sameColumn (t : QAtomicType) (na : USize) (ea : Enc) (nb : USize) (eb : Enc)
     | _, _ => false
 
 /-- q's `~`, which compares bit patterns, so a null matches a null and `1~1b` is false. -/
-def identicalFuel (ae : QAtom → QAtom → Bool) (ce : QAtomicType → USize → Enc → USize → Enc → Bool) :
-    Nat → QValue → QValue → Bool
+def identicalFuel [ValueExt X] (ae : QAtom → QAtom → Bool) (ce : QAtomicType → USize → Ext.Enc X → USize → Ext.Enc X → Bool) :
+    Nat → Ext.QValue X → Ext.QValue X → Bool
   | 0, _, _ => false
   -- `~` does not see an attribute: measured, `` (`s#1 2 3)~1 2 3 `` is `1b`
   -- the domain is part of the value: measured, `(`d$`b)~`b` is `0b`
@@ -74,10 +74,11 @@ def identicalFuel (ae : QAtom → QAtom → Bool) (ce : QAtomicType → USize �
       identicalFuel ae ce fuel (.table ka) (.table kb) && identicalFuel ae ce fuel (.table va) (.table vb)
   | fuel + 1, .func ca a, .func cb b => ca == cb && identicalFuel ae ce fuel (.ofArray a) (.ofArray b)
   | _ + 1, .err a, .err b => a == b
+  | _ + 1, .ext a, .ext b => ValueExt.identical a b
   | _ + 1, _, _ => false
 
 /-- q identity: what keys, `?`, `distinct`, `group` and the joins read, bit for bit. `~` is
 `matchValue`, the same walk under the comparison tolerance. -/
-def identical (a b : QValue) : Bool := identicalFuel QAtom.identical sameColumn 4096 a b
+def identical [ValueExt X] (a b : Ext.QValue X) : Bool := identicalFuel QAtom.identical sameColumn 4096 a b
 
 end Rel.Eval

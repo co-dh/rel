@@ -63,14 +63,14 @@ theorem denseWidth_facts {t : QAtomicType} {w : Nat} (ht : denseWidth t = some w
   cases t <;> simp only [denseWidth, QAtomicType.width, reduceCtorEq, Option.some.injEq] at ht <;> subst ht <;>
     exact ⟨rfl, by decide, by decide, by decide, by decide⟩
 
-theorem foRColumn_some {t : QAtomicType} {k : USize} {e : Enc} {n : USize} {M P : ByteArray}
+theorem foRColumn_some {t : QAtomicType} {k : USize} {e : Ext.Enc X} {n : USize} {M P : ByteArray}
     (h : foRColumn t k e = some (n, M, P)) : k = n ∧ e = .foR M P := by
   cases e <;> simp [foRColumn] at h; obtain ⟨_, rfl, rfl, rfl⟩ := h; exact ⟨rfl, rfl⟩
 
 /-- **`bytesOf` reads what `raw` reads**, at the low `8 * w` bits: the dense payload a fixed-width
 kernel is handed is the column's elements at its own width. -/
 theorem elemsW_bytesOf {t : QAtomicType} {w : Nat} (ht : t.width = some w) (hb : t ≠ .boolean)
-    (hw0 : 0 < w) (hw : w ≤ 8) (n : USize) (e : Enc) (hxw : Enc.WF t n e)
+    (hw0 : 0 < w) (hw : w ≤ 8) (n : USize) (e : Ext.Enc X) (hxw : Enc.WF t n e)
     (src : ByteArray) (h : Enc.bytesOf t n e = some src) :
     elemsW w src = (Enc.raw t n e).toList.map fun v => UInt64.ofNat (v.toNat % 2 ^ (8 * w)) := by
   have hwU : w.toUSize.toNat = w := USize.toNat_ofNat_of_lt' (Nat.lt_of_le_of_lt hw (Nat.lt_of_lt_of_le (by decide) USize.le_size))
@@ -90,7 +90,7 @@ theorem elemsW_bytesOf {t : QAtomicType} {w : Nat} (ht : t.width = some w) (hb :
     rw [hwU] at e
     rw [e, raw_foR t w ht hb, Array.toList_map, Array.toList_range, Coc.elems]
   | alp M P a =>
-    have hr : Enc.raw (X := Empty) t n (.alp M P a) =
+    have hr : Enc.raw (X := X) t n (.alp M P a) =
         (Array.range n.toNat).map (Column.alpBits M P a (Column.blockStarts M)) := by
       cases t <;> simp_all [Enc.raw]
     simp only [Enc.bytesOf, ht, Option.map_some, Option.some.injEq] at h
@@ -101,13 +101,13 @@ theorem elemsW_bytesOf {t : QAtomicType} {w : Nat} (ht : t.width = some w) (hb :
   | _ => simp [Enc.bytesOf] at h
 
 /-- The index of a gather as eight-byte longs, read the way `raw` reads the index column. -/
-theorem elemsW_index (m : USize) (ie : Enc) (hiw : Enc.WF .long m ie) (ix : ByteArray)
+theorem elemsW_index (m : USize) (ie : Ext.Enc X) (hiw : Enc.WF .long m ie) (ix : ByteArray)
     (h : Enc.bytesOf .long m ie = some ix) : elemsW 8 ix = (Enc.raw .long m ie).toList := by
   rw [elemsW_bytesOf (t := .long) rfl (by decide) (by decide) (by decide) m ie hiw ix h]
   exact (List.map_congr_left fun v _ => ofNat_toNat_mod64 v).trans (List.map_id _)
 
-theorem gatherColumn_fixed_shape {t : QAtomicType} {w : Nat} (ht : denseWidth t = some w) (n : USize) (e : Enc)
-    (m : USize) (ie c : Enc) (hxw : Enc.WF t n e)
+theorem gatherColumn_fixed_shape {t : QAtomicType} {w : Nat} (ht : denseWidth t = some w) (n : USize) (e : Ext.Enc X)
+    (m : USize) (ie c : Ext.Enc X) (hxw : Enc.WF t n e)
     (h : gatherColumn t n e m ie = some c) :
     ∃ src ix, Enc.bytesOf t n e = some src ∧ Enc.bytesOf .long m ie = some ix ∧
       c = .bytes (gatherBytes w.toUSize ((nullBits t).getD 0) src ix) := by
@@ -221,7 +221,7 @@ theorem idAt_gatherPacked (n w wout : USize) (fill : UInt64) (src idx : ByteArra
 /-- **`x@i` at an interned `symbol` column** gathers the ids and leaves the dictionary to
 `gatherIds`: the answer holds as many elements as the index, and its ids are `gatherPacked` of the
 source's at the index — which `idAt_gatherPacked` reads back. An empty index answers before this. -/
-theorem gatherColumn_enum (n : USize) (dict : ByteArray) (dof : Array Nat) (ids : ByteArray) (m : USize) (ie c : Enc)
+theorem gatherColumn_enum (n : USize) (dict : ByteArray) (dof : Array Nat) (ids : ByteArray) (m : USize) (ie c : Ext.Enc X)
     (hiw : Enc.WF .long m ie) (hm : m ≠ 0)
     (h : gatherColumn .symbol n (.enum dict dof ids) m ie = some c) :
     ∃ ix inRange db dbo nids, elemsW 8 ix = (Enc.raw .long m ie).toList ∧
@@ -323,7 +323,7 @@ theorem gatherSyms_spec (blob : ByteArray) (offs : Array Nat) (ix : ByteArray) :
 
 /-- **`x@i` at a `symbol` blob** answers a blob, its symbols those `gatherSyms_spec` reads back at
 the index column's elements. -/
-theorem gatherColumn_syms (n : USize) (blob : ByteArray) (offs : Array Nat) (m : USize) (ie c : Enc)
+theorem gatherColumn_syms (n : USize) (blob : ByteArray) (offs : Array Nat) (m : USize) (ie c : Ext.Enc X)
     (hiw : Enc.WF .long m ie) (h : gatherColumn .symbol n (.syms blob offs) m ie = some c) :
     ∃ ix, elemsW 8 ix = (Enc.raw .long m ie).toList ∧
       c = .syms (gatherSyms blob offs ix).1 (gatherSyms blob offs ix).2 := by

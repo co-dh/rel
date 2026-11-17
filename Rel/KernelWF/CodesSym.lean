@@ -113,7 +113,7 @@ theorem syms_row {n : USize} (x : Arr .symbol n) {b : ByteArray} {o : Array Nat}
 
 /-- `Column.intern` of a `syms` payload, by its components. -/
 theorem intern_syms (b : ByteArray) (o : Array Nat) :
-    Column.intern (.syms b o) =
+    Column.intern (X := X) (.syms b o) =
       .enum (Order.internSyms b o).1 (Order.internSyms b o).2.1 (Order.internSyms b o).2.2 := rfl
 
 /-- **One part of a symbol side is coded by its interned ids** at their lane, `Code.ofLane`. -/
@@ -226,7 +226,7 @@ theorem internSyms_facts {n : USize} (x : Arr .symbol n) {b : ByteArray} {o : Ar
         (findSymScalar (Order.distinctSyms b o).1 (Order.distinctSyms b o).2
           (Column.symKey b o j)).toNat) := rfl
   refine ⟨fun i hi => (internSyms_symAt b o hU (by omega)).1, ?_, fun i => ?_, fun h0 => ?_⟩
-  · have hD := distinctSyms_eraseDups b o
+  · have hD := distinctSyms_eraseDups (X := Empty) b o
     dsimp only [symsOf] at hD
     simp only [← firstsOf_eraseDups] at hD
     rw [e]; dsimp only

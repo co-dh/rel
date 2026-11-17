@@ -10,6 +10,7 @@ import Rel.Kernel.Search
 /-! The part of `Rel.Verify.Codes` the Rel kernels reach; `Rel.Verify.Codes` imports it. -/
 
 
+open Rel.Ext
 namespace Rel.Verify
 
 open Rel Rel.Kernel
@@ -76,7 +77,7 @@ the width `groupLongs` reads them: an interned column's ids (`idKey`, the dictio
 blob's ids once interned, and otherwise `Order.keyAt` over the payload `groupIds` numbers — the bitmap,
 a Frame of Reference column decoded, or the dense bytes. At every integral kind
 `keyAt_eq_iff` says two keys agree exactly when the stored bits do. -/
-theorem groupIdsColumn_spec {t : QAtomicType} {n : USize} {e : Enc} {p : ByteArray × ByteArray}
+theorem groupIdsColumn_spec {t : QAtomicType} {n : USize} {e : Ext.Enc X} {p : ByteArray × ByteArray}
     (h : groupIdsColumn t n e = some p) :
     (∃ d dof ids, e = .enum d dof ids ∧ ∀ i < n.toNat, ∀ j < n.toNat,
       (Column.idAt p.1 (Column.idWidthOf (p.2.size / 8)) i = Column.idAt p.1 (Column.idWidthOf (p.2.size / 8)) j ↔

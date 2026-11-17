@@ -98,7 +98,7 @@ theorem mapM_getElem {α β : Type} {f : α → Option β} {cs : Array α} {qs :
 /-- **`concatSyms` read back**: entry `O_p + k` of the joined blob, `O_p` the entries of the parts before `p`,
     is entry `k` of part `p`. -/
 theorem concatSyms_symAt {parts : Array (ByteArray × Array Nat)} (hw : ∀ x ∈ parts, SymsWF x.1 x.2)
-    {t n a} {b : ByteArray} {o : Array Nat} (h : concatSyms parts = .vector t n (.syms b o) a)
+    {t n a} {b : ByteArray} {o : Array Nat} (h : concatSyms (X := X) parts = .vector t n (.syms b o) a)
     (p : Nat) (hp : p < parts.size) (k : Nat) (hk : k < (parts[p]'hp).2.size - 1) :
     ((parts.toList.take p).map fun x => x.2.size - 1).sum + k < o.size - 1 ∧
     Verify.symAt b o (((parts.toList.take p).map fun x => x.2.size - 1).sum + k) =
@@ -228,7 +228,7 @@ theorem internConcat_symAt (qs : Array (USize × ByteArray × Array Nat × ByteA
   obtain rfl : ds = qs.map fun p => (p.2.1, p.2.2.1) := by
     rw [← hds]
   obtain ⟨n', cb, co, hC⟩ : ∃ n' cb co,
-      concatSyms (qs.map fun p => (p.2.1, p.2.2.1)) = .vector .symbol n' (.syms cb co) none :=
+      concatSyms (X := Empty) (qs.map fun p => (p.2.1, p.2.2.1)) = .vector .symbol n' (.syms cb co) none :=
     ⟨_, _, _, rfl⟩
   simp only [hC]
   generalize hws : (Array.map _ (qs.map fun p => (p.2.1, p.2.2.1)) : Array Nat) = ws
@@ -297,7 +297,7 @@ theorem fewSyms_fold (d : ByteArray) (dof : Array Nat) (e : Nat → Nat) :
 /-- **`fewSyms` read back**: its entry `i` has the bytes of the dictionary entry element `i`'s id names. -/
 theorem fewSyms_symAt {n : USize} {d : ByteArray} {dof : Array Nat} {ids b : ByteArray} {bo : Array Nat}
     (hd : SymsWF d dof) (hi : ∀ i < n.toNat, Column.idAt ids (Column.idWidth dof) i < dof.size - 1)
-    (h : fewSyms n (.enum d dof ids) = some (b, bo)) (i : Nat) (hin : i < n.toNat) :
+    (h : fewSyms (X := X) n (.enum d dof ids) = some (b, bo)) (i : Nat) (hin : i < n.toNat) :
     Verify.symAt b bo i = Verify.symAt d dof (Column.idAt ids (Column.idWidth dof) i) := by
   unfold fewSyms at h
   dsimp only at h
@@ -313,7 +313,7 @@ theorem fewSyms_symAt {n : USize} {d : ByteArray} {dof : Array Nat} {ids b : Byt
 
 /-- `fewSyms` answers only where the element count is below an eighth of the dictionary's. -/
 theorem fewSyms_lt {n : USize} {d : ByteArray} {dof : Array Nat} {ids b : ByteArray} {bo : Array Nat}
-    (h : fewSyms n (.enum d dof ids) = some (b, bo)) : 8 * n.toNat < dof.size - 1 := by
+    (h : fewSyms (X := X) n (.enum d dof ids) = some (b, bo)) : 8 * n.toNat < dof.size - 1 := by
   unfold fewSyms at h
   dsimp only at h
   split at h
@@ -323,7 +323,7 @@ theorem fewSyms_lt {n : USize} {d : ByteArray} {dof : Array Nat} {ids b : ByteAr
 /-- `internSyms` answers no more entries than its source has. -/
 theorem internSyms_card_le (b : ByteArray) (o : Array Nat) :
     (Order.internSyms b o).2.1.size - 1 ≤ o.size - 1 := by
-  have hD := Verify.distinctSyms_eraseDups b o
+  have hD := Verify.distinctSyms_eraseDups (X := Empty) b o
   simp only [Verify.symsOf, ← Verify.firstsOf_eraseDups] at hD
   have := congrArg List.length hD
   simp only [List.length_map, List.length_range] at this
@@ -411,7 +411,7 @@ theorem few_part (c : (k : USize) × Arr .symbol k) {q : USize × ByteArray × A
       (∀ i (hi : i < c.1.toNat), Verify.symAt q.2.1 q.2.2.1 (Column.idAt q.2.2.2 (Column.idWidth q.2.2.1) i) =
         (c.2.get ⟨i, hi⟩).toUTF8.data.toList) ∧
       q.2.2.1.size - 1 ≤ (match c.2.enc with | .enum _ o _ => o.size - 1 | _ => c.1.toNat))
-    {b : ByteArray} {bo : Array Nat} (hf : fewSyms q.1 (.enum q.2.1 q.2.2.1 q.2.2.2) = some (b, bo)) :
+    {b : ByteArray} {bo : Array Nat} (hf : fewSyms (X := X) q.1 (.enum q.2.1 q.2.2.1 q.2.2.2) = some (b, bo)) :
     let r : USize × ByteArray × Array Nat × ByteArray :=
       (q.1, b, bo, Column.packIds (Column.idWidth bo) q.1.toNat fun j => j)
     r.1 = c.1 ∧ SymsWF r.2.1 r.2.2.1 ∧ (∀ j < r.2.2.1.size - 1, (Column.symKey r.2.1 r.2.2.1 j).IsValidUTF8) ∧
@@ -525,7 +525,11 @@ theorem razeColumn_symbol_toList (l : List ((k : USize) × Arr .symbol k)) {N : 
       intro k hk
       have := hf k (by simpa using hk)
       simp only [Array.getElem_map, List.getElem_toArray, Arr.part] at this
-      exact intern_part (l[k]'hk) this
+      -- split, not `exact`: `this` holds `razeColumn`'s matcher, generic in `X`, and `intern_part` its own at `Empty`
+      apply intern_part (l[k]'hk)
+      split at this
+      · rename_i heq; simpa [heq] using this
+      · simp at this
     unfold concatEnum at hV
     dsimp only at hV
     generalize hq : Array.mapIdx _ qs0 = qs at hV

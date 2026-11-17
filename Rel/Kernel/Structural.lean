@@ -9,6 +9,7 @@ import Rel.Kernel.Elementwise
 /-! The part of `Rel.Kernel.Structural` the Rel kernels reach; `Rel.Kernel.Structural` imports it. -/
 
 
+open Rel.Ext
 namespace Rel.Kernel
 
 /-- `gatherBytes` over `spreadColumn`'s index, with that index never written: element `i` of `src`
@@ -333,7 +334,7 @@ def concatBits (counts : @& ByteArray) (parts : @& Array ByteArray) : ByteArray 
 `offs[n] = blob.size`, so each part after the first contributes its starts *without* its leading `0`,
 shifted past the blob built so far. Pure Lean: `++` on a `ByteArray` is one `copySlice`, and the
 offsets are `Nat`s, which are tagged scalars rather than allocations. -/
-def concatSyms (parts : Array (ByteArray × Array Nat)) : QValue :=
+def concatSyms (parts : Array (ByteArray × Array Nat)) : Ext.QValue X :=
   let p := parts.foldl (init := (ByteArray.empty, #[0])) fun (blob, offs) (b, o) =>
     (blob ++ b, offs ++ (o.extract 1 o.size).map (· + blob.size))
   .vector .symbol (needSize (p.2.size - 1) "concatSyms: symbols" (fun _ => 0) id) (.syms p.1 p.2) none
@@ -384,7 +385,7 @@ already distinct answers the identity map, and the pass over the ids is the one 
 either way. -/
 def internConcat (ps : Array (USize × ByteArray × Array Nat × ByteArray)) : ByteArray × Array Nat × ByteArray :=
   let ds := ps.map fun (_, dict, offs, _) => (dict, offs)
-  let (cb, co) := match concatSyms ds with | .vector _ _ (.syms b o) _ => (b, o) | _ => (ByteArray.empty, #[0])
+  let (cb, co) := match concatSyms (X := Empty) ds with | .vector _ _ (.syms b o) _ => (b, o) | _ => (ByteArray.empty, #[0])
   let (db, dbo, dmap) := Order.internSyms cb co
   let w := Column.idWidth dbo
   let bases := ds.foldl (init := #[0]) fun acc (_, o) => acc.push (acc[acc.size - 1]! + o.size - 1)
@@ -415,9 +416,9 @@ part's ids in place. A part after the first that names few of its dictionary's e
 joins as its own symbols, its ids counting them: the entries it does not name are no value of the
 answer, and resolving them was a pass over a whole dictionary — a row read off a million-symbol key
 column — per append. -/
-def concatEnum (ps : Array (USize × ByteArray × Array Nat × ByteArray)) : QValue :=
+def concatEnum (ps : Array (USize × ByteArray × Array Nat × ByteArray)) : Ext.QValue X :=
   let ps := ps.mapIdx fun i p => if i == 0 then p else match p with
-    | (n, d, o, ids) => match fewSyms n (.enum d o ids) with
+    | (n, d, o, ids) => match fewSyms (X := Empty) n (.enum d o ids) with
       | some (b, bo) => (n, b, bo, Column.packIds (Column.idWidth bo) n.toNat fun j => j)
       | none => p
   -- the count first: read after the kernel, it kept `ps` alive across it and its ids shared
@@ -460,7 +461,7 @@ interned the other is interned to meet it. `y` then resolves through `e`'s kept 
 `e`'s dictionary object and table stay where `y` adds nothing. A dictionary `hashConcat` declines (one
 holding a repeat) is joined by `concatEnum` instead and re-interned by a gather over `til n`. `none`:
 a payload that is no symbol column. -/
-def assignSyms (n : USize) (e : Enc) (ny : USize) (ye : Enc) (ix : ByteArray) (bcast : Bool) : Option Enc :=
+def assignSyms (n : USize) (e : Ext.Enc X) (ny : USize) (ye : Ext.Enc X) (ix : ByteArray) (bcast : Bool) : Option (Ext.Enc X) :=
   match e, ye with
   | .syms b o, .syms yb yo => match scatterSyms b o ix yb yo bcast with | (b', o') => some (.syms b' o')
   | e, ye => match Column.intern e, Column.intern ye with
@@ -468,7 +469,7 @@ def assignSyms (n : USize) (e : Enc) (ny : USize) (ye : Enc) (ix : ByteArray) (b
       match hashConcat #[(0, d, o, .empty), (ny, yd, yo, yi)] with
       | .ok (db, dbo, yids) =>
         some (.enum db dbo (scatterIds (Column.idWidth o).toUSize (Column.idWidth dbo).toUSize n ids ix yids bcast))
-      | .error _ => match concatEnum #[(n, d, o, ids), (ny, yd, yo, yi)] with
+      | .error _ => match concatEnum (X := Empty) #[(n, d, o, ids), (ny, yd, yo, yi)] with
         | .vector _ _ (.enum db dbo all) _ =>
           let all := scatterPacked (Column.idWidth dbo).toUSize all ix all n bcast
           let (gb, gbo, gids) := gatherIds db dbo (fun _ => true) fun w wo e =>
@@ -516,7 +517,7 @@ without materialising anything.
 
 An empty index answers the empty vector at `t`: `1 2 3@0#0` is `` `long$() ``, and `(0#0)@0 1` is
 `0N 0N`, so an empty *source* is not a decline either — every index simply misses. -/
-def gatherColumn (t : QAtomicType) (n : USize) (e : Enc) (m : USize) (ie : Enc) : Option Enc :=
+def gatherColumn (t : QAtomicType) (n : USize) (e : Ext.Enc X) (m : USize) (ie : Ext.Enc X) : Option (Ext.Enc X) :=
   -- both encoded is the representation's own case and reads neither operand into dense bytes; every
   -- other pairing brings the index to dense bytes and leaves the source where it is
   match denseWidth t, foRColumn t n e, foRColumn .long m ie with
@@ -544,7 +545,7 @@ def gatherColumn (t : QAtomicType) (n : USize) (e : Enc) (m : USize) (ie : Enc) 
       let inRange (_ : Unit) : Bool := match idx () with
         | some ix => allBelow n ix
         | none => false
-      let ans (gather : USize → USize → UInt64 → ByteArray) : Enc :=
+      let ans (gather : USize → USize → UInt64 → ByteArray) : Ext.Enc X :=
         let (db, dbo, nids) := gatherIds dict dof inRange gather
         .enum db dbo nids
       match foRColumn .long m ie with
@@ -616,7 +617,7 @@ dense bytes, so a one-cell part made from an atom used to send the whole join th
 encoded part decoded to dense to meet it, which is what made `t upsert (1;2)` widen a million
 elements to append one. Where no part is encoded there is nothing to meet, and the join stays where
 it lies. -/
-def encodedParts (t : QAtomicType) (cs : Array (USize × Enc)) :
+def encodedParts (t : QAtomicType) (cs : Array (USize × Ext.Enc X)) :
     Option (Bool × Nat × Array USize × Array ByteArray × Array ByteArray × Array ByteArray) := do
   let alp := Column.alpEncodes t
   if !(alp || Column.encodes t) || !cs.any (fun c => match c.2 with | .foR .. => !alp | .alp .. => alp | _ => false) then none
@@ -647,7 +648,7 @@ vector, `raze enlist 1 2` is `1 2`, `raze (01b;10b)` is `0110b` and `` raze (`a`
 
 No parts at all is declined: `raze ()` is the general empty list `()` at type `0h`, not a typed empty
 vector, and there is no `t` in it to answer with. -/
-def razeColumn (t : QAtomicType) (cs : Array (USize × Enc)) : Option QValue :=
+def razeColumn (t : QAtomicType) (cs : Array (USize × Ext.Enc X)) : Option (Ext.QValue X) :=
   if cs.isEmpty then none
   else match t with
     | .boolean =>
@@ -704,7 +705,7 @@ So `min` skipping `-1` is negative exactly when a code other than `-1` is, and `
 when `-1` is — every null being negative, that is the null test too — and `max` skips
 `Int64.minValue`, which is never the greatest of codes in a domain. An encoded column is read from
 its metadata and patch list, no element at all. -/
-def keyOperand (t : QAtomicType) (e : Enc) : Option (QAtomicType × Bool × Int) :=
+def keyOperand (t : QAtomicType) (e : Ext.Enc X) : Option (QAtomicType × Bool × Int) :=
   match e with
   | .enum _ offs _ => some (.symbol, false, ((offs.size - 1 : Nat) : Int) - 1)
   | .bits _ => if t == .boolean then some (t, false, 1) else none
@@ -735,7 +736,7 @@ def keyOperand (t : QAtomicType) (e : Enc) : Option (QAtomicType × Bool × Int)
 /-- `operandSource` at `i64` for a `keyOperand` column of `n` elements, with an interned column's ids
 read where they lie by an `Ew.eIds` stage: an id is a code here, and no class `operandSource` reads
 names it. `none` where the payload holds fewer than `n` ids, which the C would read past. -/
-def keySource (b : Ew.Build) (t : QAtomicType) (e : Enc) (n : USize) : Option (Ew.Build × UInt8) :=
+def keySource (b : Ew.Build) (t : QAtomicType) (e : Ext.Enc X) (n : USize) : Option (Ew.Build × UInt8) :=
   match e with
   | .enum _ offs ids =>
     let w := Column.idWidth offs
@@ -758,8 +759,8 @@ Measured at 1e7 rows, two bitmaps: 15.5 ms with the key cast to bytes and then n
 `none` where the counts differ, `d₁·d₂ ≥ 2⁶³`, or a code is outside its domain — null, negative,
 `c₁ ≥ d₁` or `c₂ ≥ d₂` — which `keyOperand`'s extremes decide before the chain runs. Inside the
 domain no partial value leaves `[0, d₁·d₂)`, so nothing wraps and the key fits `w` bits. -/
-def composeKey (t₁ : QAtomicType) (n : USize) (e₁ : Enc) (d₁ d₂ : Nat) (t₂ : QAtomicType) (n₂ : USize)
-    (e₂ : Enc) : Option ByteArray := do
+def composeKey (t₁ : QAtomicType) (n : USize) (e₁ : Ext.Enc X) (d₁ d₂ : Nat) (t₂ : QAtomicType) (n₂ : USize)
+    (e₂ : Ext.Enc X) : Option ByteArray := do
   let (u₁, neg₁, hi₁) ← keyOperand t₁ e₁
   let (u₂, neg₂, hi₂) ← keyOperand t₂ e₂
   guard (n₂ == n && d₁ * d₂ < 2 ^ 63 &&

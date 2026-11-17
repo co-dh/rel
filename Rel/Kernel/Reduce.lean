@@ -145,7 +145,7 @@ def Coc.nullOf : QAtomicType → Option Int64
 /-- The fold on the encoded form, before the narrowing `sum` and `prd` put on top of it. It is
 separate because `avg` divides *this* one and not the narrowed one: measured, `avg 1000000#3000i` is
 `3000f` where `sum` of the same is `0Ni`. -/
-def overFoR (op : Coc.Over) (t : QAtomicType) (n : USize) (e : Enc) : Option Int64 :=
+def overFoR (op : Coc.Over) (t : QAtomicType) (n : USize) (e : Ext.Enc X) : Option Int64 :=
   match e with
   | .foR metadata pack => (Coc.nullOf t).map (Coc.over op · metadata pack n)
   | _ => none

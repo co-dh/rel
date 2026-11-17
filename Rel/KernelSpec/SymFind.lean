@@ -20,7 +20,7 @@ def symAt (b : ByteArray) (o : Array Nat) (i : Nat) : List UInt8 := (Column.symK
 
 /-- The symbols of a symbol payload in element order: a blob's own, an interned column's dictionary
 entry at each id. -/
-def symsOf (n : Nat) : Enc → List (List UInt8)
+def symsOf (n : Nat) : Ext.Enc X → List (List UInt8)
   | .syms b o => (List.range (o.size - 1)).map (symAt b o)
   | .enum d o ids => (List.range n).map fun i => symAt d o (Column.idAt ids (Column.idWidth o) i)
   | _ => []
@@ -182,7 +182,7 @@ theorem symsAt_inv (blob : ByteArray) (offs : Array Nat) (is : List Nat) :
 
 /-- `symsAt` lays the chosen symbols out as a blob that reads back as them. -/
 theorem symsAt_spec (blob : ByteArray) (offs : Array Nat) (is : List Nat) :
-    symsOf ((Order.symsAt blob offs is).2.size - 1) (.syms (Order.symsAt blob offs is).1 (Order.symsAt blob offs is).2) =
+    symsOf (X := X) ((Order.symsAt blob offs is).2.size - 1) (.syms (Order.symsAt blob offs is).1 (Order.symsAt blob offs is).2) =
       is.map (symAt blob offs) := by
   obtain ⟨h1, -, -, h4, h5⟩ := symsAt_inv blob offs is
   simp only [symsOf, h1, Nat.add_sub_cancel]
@@ -194,9 +194,9 @@ theorem symsAt_spec (blob : ByteArray) (offs : Array Nat) (is : List Nat) :
 
 /-- **`distinctSyms` answers the column's symbols with their repeats erased**, first occurrences in order. -/
 theorem distinctSyms_eraseDups (blob : ByteArray) (offs : Array Nat) :
-    symsOf ((Order.distinctSyms blob offs).2.size - 1)
+    symsOf (X := X) ((Order.distinctSyms blob offs).2.size - 1)
       (.syms (Order.distinctSyms blob offs).1 (Order.distinctSyms blob offs).2) =
-      (symsOf (offs.size - 1) (.syms blob offs)).eraseDups := by
+      (symsOf (X := X) (offs.size - 1) (.syms blob offs)).eraseDups := by
   have hf : Order.symFirsts blob offs = firstsOf (symAt blob offs) (offs.size - 1) := by
     unfold Order.symFirsts firstsOf
     refine List.filter_congr fun i _ => List.all_congr rfl fun j => ?_
@@ -260,7 +260,7 @@ theorem internSyms_symAt (blob : ByteArray) (offs : Array Nat) (h : offs.size - 
       symAt (Order.internSyms blob offs).1 (Order.internSyms blob offs).2.1
           (Column.idAt (Order.internSyms blob offs).2.2 (Column.idWidth (Order.internSyms blob offs).2.1) i) =
         symAt blob offs i := by
-  have hD := distinctSyms_eraseDups blob offs
+  have hD := distinctSyms_eraseDups (X := Empty) blob offs
   have e : Order.internSyms blob offs = ((Order.distinctSyms blob offs).1, (Order.distinctSyms blob offs).2,
       Column.packIds (Column.idWidth (Order.distinctSyms blob offs).2) (offs.size - 1) fun j =>
         (findSymScalar (Order.distinctSyms blob offs).1 (Order.distinctSyms blob offs).2
@@ -457,11 +457,11 @@ theorem concatSyms_foldl (L : List (ByteArray × Array Nat)) (hL : ∀ x ∈ L, 
 /-- **`,` of symbol blobs keeps every part's entries**: `concatSyms` over well-formed parts answers a well-formed
 blob with one entry per part entry, and part `p`'s entry `k` is the answer's entry `k` past the parts before `p`. -/
 theorem symBytes_concatSyms {parts : Array (ByteArray × Array Nat)} (hw : ∀ x ∈ parts, SymsWF x.1 x.2)
-    {t n a} {b : ByteArray} {o : Array Nat} (h : Kernel.concatSyms parts = .vector t n (.syms b o) a) :
+    {t n a} {b : ByteArray} {o : Array Nat} (h : Kernel.concatSyms (X := X) parts = .vector t n (.syms b o) a) :
     SymsWF b o ∧ o.size - 1 = (parts.toList.map fun x => x.2.size - 1).sum ∧
       ∀ p (hp : p < parts.size), ∀ k < parts[p].2.size - 1,
         symBytes b o (((parts.toList.take p).map fun x => x.2.size - 1).sum + k) = symBytes parts[p].1 parts[p].2 k := by
-  have hc : Kernel.concatSyms parts = .vector .symbol
+  have hc : Kernel.concatSyms (X := X) parts = .vector .symbol
       ((parts.toList.foldl (fun acc x => (acc.1 ++ x.1, acc.2 ++ (x.2.extract 1 x.2.size).map (· + acc.1.size)))
         (ByteArray.empty, #[0])).2.size - 1 |> fun c => needSize c "concatSyms: symbols" (fun _ => 0) id) (.syms
       (parts.toList.foldl (fun acc x => (acc.1 ++ x.1, acc.2 ++ (x.2.extract 1 x.2.size).map (· + acc.1.size)))

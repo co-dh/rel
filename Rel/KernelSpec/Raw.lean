@@ -51,7 +51,7 @@ namespace Rel.Verify
 
 open Rel Rel.Column
 
-theorem size_raw {t : QAtomicType} (n : USize) (e : Enc) (hw : Enc.WF t n e) (hb : t ≠ .boolean)
+theorem size_raw {t : QAtomicType} (n : USize) (e : Ext.Enc X) (hw : Enc.WF t n e) (hb : t ≠ .boolean)
     (hs : t ≠ .symbol) (hn : t ≠ .general) : (Enc.raw t n e).size = n.toNat := by
   cases e <;> cases t <;> simp_all [Enc.raw, Enc.WF, QAtomicType.width]
 

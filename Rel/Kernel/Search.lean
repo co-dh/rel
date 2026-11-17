@@ -4,6 +4,7 @@ import Rel.Kernel.Value
 /-! The part of `Rel.Kernel.Search` the Rel kernels reach; `Rel.Kernel.Search` imports it. -/
 
 
+open Rel.Ext
 namespace Rel.Kernel
 
 /-- The key an equality compares, with the values q holds equal folded together: the two zeros onto
@@ -274,7 +275,7 @@ column over where it lies made `~` read its pack while `Column.bytesOf`, and wit
 it. Declined, it is read through `bytesOf` like any other column, so `operandBytes ∘ operand` is
 `bytesOf` on every column. `t` is the header the payload sits under, so the C and `bytesOf` read the
 pack at one width. -/
-def foRColumn (t : QAtomicType) (n : USize) (e : Enc) : Option (USize × ByteArray × ByteArray) :=
+def foRColumn (t : QAtomicType) (n : USize) (e : Ext.Enc X) : Option (USize × ByteArray × ByteArray) :=
   match e with
   | .foR m p => if Column.encodes t && !m.isEmpty then some (n, m, p) else none
   | _ => none
@@ -282,7 +283,7 @@ def foRColumn (t : QAtomicType) (n : USize) (e : Enc) : Option (USize × ByteArr
 /-- An interned needle naming few of its dictionary's entries — one record typed against a
 million-symbol key column — as the blob of its own `n` symbols, so a search asks `n` questions and
 not the `d` its dictionary holds. `none` where asking the dictionary costs no more. -/
-def fewSyms : USize → Enc → Option (ByteArray × Array Nat)
+def fewSyms : USize → Ext.Enc X → Option (ByteArray × Array Nat)
   | n, .enum dict dof ids =>
     if 8 * n.toNat < dof.size - 1 then
       let w := Column.idWidth dof
@@ -311,7 +312,7 @@ def foldsZero : QAtomicType → Bool
 
 /-- A column as `operandBytes` reads it: encoded where it lies, and otherwise its dense payload under
 an empty metadata. -/
-def operand (t : QAtomicType) (n : USize) (e : Enc) : Option (USize × ByteArray × ByteArray) :=
+def operand (t : QAtomicType) (n : USize) (e : Ext.Enc X) : Option (USize × ByteArray × ByteArray) :=
   match foRColumn t n e with
   | some s => some s
   | none => (Enc.bytesOf t n e).map fun b => (0, ByteArray.empty, b)
@@ -367,7 +368,7 @@ metadata and pack denote equal columns; the converse fails — `Ew.foRShift` mov
 without re-encoding — so a mismatch here says nothing and the caller decodes. Both are read under
 one header, the caller's: one pack read at an `int`'s width and at a `long`'s is two different
 columns. -/
-def sameEncoded (na : USize) (ea : Enc) (nb : USize) (eb : Enc) : Bool :=
+def sameEncoded (na : USize) (ea : Ext.Enc X) (nb : USize) (eb : Ext.Enc X) : Bool :=
   match ea, eb with
   | .foR ma pa, .foR mb pb => na == nb && matchBytes 1 false ma mb && matchBytes 1 false pa pb
   | .alp ma pa aa, .alp mb pb ab =>
@@ -377,7 +378,7 @@ def sameEncoded (na : USize) (ea : Enc) (nb : USize) (eb : Enc) : Bool :=
 /-- q's `x~y` between two columns both at `t`, and `none` where no kernel reads the pair. A `bits`
 payload is compared as bytes because `QLean/Value.lean` requires the bits above the count to be zero,
 so two boolean columns of one length hold the same bytes exactly when they hold the same booleans. -/
-def matchColumn (t : QAtomicType) (na : USize) (ea : Enc) (nb : USize) (eb : Enc) : Option Bool :=
+def matchColumn (t : QAtomicType) (na : USize) (ea : Ext.Enc X) (nb : USize) (eb : Ext.Enc X) : Option Bool :=
   match ea, eb with
   | .bits x, .bits y => some (na == nb && matchBytes 1 false x y)
   | .syms ba oa, .syms bb ob => some (matchSyms ba oa bb ob)

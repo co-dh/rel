@@ -85,13 +85,14 @@ rel function that recurses through `gen`, `dict` or `table` must do at an `ext`:
 ```lean
 class Rel.ValueExt (X : Type) where
   identical : X → X → Bool      -- q's `~`, read by `Eval.identicalFuel`
-  WF : X → Prop                 -- read by `QValue.WFAt`
-instance : Rel.ValueExt Empty := ⟨nofun, nofun⟩
+instance : Rel.ValueExt Empty := ⟨nofun⟩
 ```
 
 The QValue-recursive functions of the kernel layer are `Eval.identicalFuel`, `QValue.WFAt`, `QValue.marking`,
 `Dep.Carrier.of?`, `Db.ownFile`, `Kernel.internConcat`, `QValue.slicesExpand` (the 7 arms); only the first two act
-on an `ext`. A field is added when another one must.
+on an `ext`, and only `identicalFuel` reads the class: `QValue.WFAt` is `False` at an `ext`, because rel's
+well-formedness is a fact about rel's own payloads and an extension states its own. A field is added when another
+function must read one.
 
 ## 3. What becomes generic, and why requirement 3 holds by the types
 
@@ -114,21 +115,42 @@ on an `ext`. A field is added when another one must.
 ## 4. What qlean writes
 
 ```lean
+import Rel.Kernel.Eval.Val
+
 namespace QLean
 open Rel Rel.Ext
 structure Guid where (hi lo : UInt64) deriving DecidableEq
 inductive GuidExt                                    -- X: a guid atom, or a packed column of 16 * n bytes
   | atom (g : Guid)
   | vector (n : USize) (b : ByteArray) (attr : Option (UInt8 × IndexCell))
-instance : ValueExt GuidExt := ⟨GuidExt.identical, GuidExt.WF⟩     -- `identical` is an `@[extern "qrs_guid_…"]`
+def GuidExt.identical : GuidExt → GuidExt → Bool    -- in qlean an `@[extern "qrs_guid_…"]`
+  | .atom g, .atom h => g == h
+  | .vector n b _, .vector m c _ => n == m && b.data == c.data
+  | _, _ => false
+instance : ValueExt GuidExt := ⟨GuidExt.identical⟩
 abbrev QValue := Ext.QValue GuidExt                  -- shadows Rel.QValue inside QLean: no signature changes
-abbrev QTable := Ext.QTable GuidExt;  abbrev Enc := Ext.Enc GuidExt
+abbrev QTable := Ext.QTable GuidExt
+abbrev Enc := Ext.Enc GuidExt
 @[match_pattern] abbrev QValue.guid (g : Guid) : QValue := .ext (.atom g)
 @[match_pattern] abbrev QValue.guids (n : USize) (b : ByteArray) (a : Option (UInt8 × IndexCell)) : QValue :=
   .ext (.vector n b a)
 abbrev Atom := QAtom ⊕ Guid                          -- requirement 1: rel's atoms plus guid, no constructor copied
 abbrev AtomTy := QAtomicType ⊕ Unit
 def AtomTy.code : AtomTy → Int8 := Sum.elim QAtomicType.code fun _ => 2
+
+-- a qlean verb: guid first, then rel's own constructors, by the names rel uses
+def kind : QValue → String
+  | .guid _ => "guid"
+  | .guids n _ _ => s!"guids {n}"
+  | .atom (.long _) => "long"
+  | QValue.vector t _ (Enc.bytes _) _ => s!"vector {repr t}"
+  | .table (.mk ns _ _) => s!"table {ns.size}"
+  | _ => "other"
+-- rel's generic functions, reached on a qlean value by dot notation and by name
+def wfLong (v : QValue) : Prop := v.WFAt .long 3
+def bare (v : QValue) : QValue := v.marking.2
+def encWF (e : Enc) : Prop := Enc.WF .long 3 e
+def oneGuid : QValue := QValue.ofArray #[QValue.guid ⟨1, 2⟩]   -- `.guid` here would not resolve: `ofArray` is generic
 end QLean
 ```
 

@@ -4,6 +4,7 @@ import Rel.Kernel.Value
 /-! The part of `Rel.Kernel.Elementwise` the Rel kernels reach; `Rel.Kernel.Elementwise` imports it. -/
 
 
+open Rel.Ext
 namespace Rel.Kernel.Ew
 
 /-- Storage classes. `bits` is a `widen` source only: a boolean payload is one bit per element, so
@@ -825,7 +826,7 @@ the way. Two whole-vector C calls at worst, which is what section 3.1 permits.
 Which of the two class engines runs is `promotable`: upward it is `Ew.widen`, which remaps the null
 rather than converting it and is the one `-` hands a flipped NaN to; every other direction is
 `Ew.castTo`, q's `$` and the rule `convertible` states. -/
-def operandAt (t : QAtomicType) (m : USize) (e : Enc) (dst : UInt8) (nulIn nulOut : Int64) (n : USize) :
+def operandAt (t : QAtomicType) (m : USize) (e : Ext.Enc X) (dst : UInt8) (nulIn nulOut : Int64) (n : USize) :
     Option ByteArray := do
   let src ← clsOf t
   if src == dst then Enc.bytesOf t m e
@@ -844,7 +845,7 @@ An operand whose own count is not the chain's is the atom side of `va`/`av`, and
 `dst` by `operandAt` before the chain instead. Every stage of a chain runs at the chain's count, and
 promoting a one-element payload at the vector's count would read past the end of it — the same rule
 `mapPass` and `zipPass` have always followed, now with a boundary to state it at. -/
-def operandSource (b : Ew.Build) (t : QAtomicType) (m : USize) (e : Enc) (dst : UInt8)
+def operandSource (b : Ew.Build) (t : QAtomicType) (m : USize) (e : Ext.Enc X) (dst : UInt8)
     (nulIn nulOut : Int64) (n : USize) (tk : Option UInt8 := none) : Option (Ew.Build × UInt8) := do
   let src ← clsOf t
   -- `tk` is a unit conversion (`tickIn`), which reads the source class itself and so stands in

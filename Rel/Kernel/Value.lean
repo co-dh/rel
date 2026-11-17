@@ -277,8 +277,7 @@ inductive Enc (X : Type)
   `QAtomicType.general`: the pattern `QValue.general`. Under an atom type it is a mismatch,
   `Column.mismatch`, as a typed payload under `general` is.
 
-  Last, so the constructor tags of the six before it are unchanged: `rust/src/structural.rs` builds a
-  `bytes` payload as constructor 0 with one field. -/
+  Last, so the constructor tags of the six before it are unchanged. -/
   | gen : Array (QValue X) → Enc X
   deriving Inhabited
 
@@ -300,10 +299,8 @@ another such function must. -/
 class ValueExt (X : Type) where
   /-- q's `~` on two extension values, read by `Eval.identicalFuel`. -/
   identical : X → X → Bool
-  /-- An extension value's own well-formedness, read by `QValue.WFAt`. -/
-  WF : X → Prop
 
-instance : ValueExt Empty := ⟨nofun, nofun⟩
+instance : ValueExt Empty := ⟨nofun⟩
 
 namespace Column
 

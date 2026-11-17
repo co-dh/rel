@@ -35,7 +35,7 @@ theorem get_answer_foR {t : QAtomicType} {w : Nat} (hw : t.width = some w) (hb :
   have h2 : Enc.get (X := Empty) t N (.foR M P) i =
       some (Column.atomOfBits t (Column.foRBits M P (Column.blockStarts M) i) (QAtomicType.ne_general_of_width hw)) := by
     rw [get_foR_eq hw hb _ _ hi, foRBits_starts]
-  have hbo : Enc.bytesOf t N (.foR M P) = some (Coc.decode w.toUSize M P N) := by simp [Enc.bytesOf, hw]
+  have hbo : Enc.bytesOf (X := Empty) t N (.foR M P) = some (Coc.decode w.toUSize M P N) := by simp [Enc.bytesOf, hw]
   have hw' := hw
   cases t <;> simp only [QAtomicType.width, reduceCtorEq, Option.some.injEq] at hw' <;> (try subst hw') <;>
     first | exact absurd rfl hg | exact absurd rfl hb |

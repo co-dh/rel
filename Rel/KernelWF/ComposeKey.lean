@@ -226,7 +226,7 @@ theorem overBytes_extreme (cls : UInt8) (nul : Int64) (b : ByteArray) {i : Nat} 
 
 /-- **`keyOperand` on a dense column: every element is in `[0, hi]`** when it reports no negative code. -/
 theorem keyOperand_bytes {t u : QAtomicType} {b : ByteArray} {hi : Int}
-    (h : keyOperand t (.bytes b) = some (u, false, hi)) :
+    (h : keyOperand (X := X) t (.bytes b) = some (u, false, hi)) :
     u = t ∧ ∃ cls, clsOf t = some cls ∧ ∀ i < b.size / Ew.width cls,
       0 ≤ (Ew.signed cls (Ew.elem cls b i)).toInt ∧ (Ew.signed cls (Ew.elem cls b i)).toInt ≤ hi := by
   simp only [keyOperand, bind, Option.bind] at h
@@ -403,7 +403,7 @@ theorem widen_code {cls : UInt8} (hc : cls = Ew.u8 ∨ cls = Ew.i16 ∨ cls = Ew
 
 /-- `keyOperand` on a dense column keeps the column's type. -/
 theorem keyOperand_bytes_type {t u : QAtomicType} {b : ByteArray} {neg : Bool} {hi : Int}
-    (h : keyOperand t (.bytes b) = some (u, neg, hi)) : u = t := by
+    (h : keyOperand (X := X) t (.bytes b) = some (u, neg, hi)) : u = t := by
   simp only [keyOperand, bind, Option.bind] at h
   split at h
   · simp at h

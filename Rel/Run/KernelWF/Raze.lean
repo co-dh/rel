@@ -344,7 +344,7 @@ theorem fold_inv {α : Type} {N : Nat} (f : (i : Nat) → i < N → α → α) (
 theorem utf8_distinctSyms (b : ByteArray) (o : Array Nat) (hu : ∀ i < o.size - 1, (Column.symKey b o i).IsValidUTF8) :
     ∀ j < (Order.distinctSyms b o).2.size - 1,
       (Column.symKey (Order.distinctSyms b o).1 (Order.distinctSyms b o).2 j).IsValidUTF8 := by
-  have hD := Verify.distinctSyms_eraseDups b o
+  have hD := Verify.distinctSyms_eraseDups (X := Empty) b o
   simp only [Verify.symsOf, ← Verify.firstsOf_eraseDups] at hD
   intro j hj
   have hm : Verify.symAt (Order.distinctSyms b o).1 (Order.distinctSyms b o).2 j ∈
@@ -383,9 +383,9 @@ theorem utf8_concatSyms_foldl (L : List (ByteArray × Array Nat))
 /-- **`concatSyms` writes only valid UTF-8** where every part is well formed and holds only valid UTF-8. -/
 theorem utf8_concatSyms {parts : Array (ByteArray × Array Nat)}
     (hw : ∀ x ∈ parts, SymsWF x.1 x.2 ∧ ∀ i < x.2.size - 1, (Column.symKey x.1 x.2 i).IsValidUTF8)
-    {t n a} {b : ByteArray} {o : Array Nat} (h : Kernel.concatSyms parts = .vector t n (.syms b o) a) :
+    {t n a} {b : ByteArray} {o : Array Nat} (h : Kernel.concatSyms (X := Empty) parts = .vector t n (.syms b o) a) :
     ∀ i < o.size - 1, (Column.symKey b o i).IsValidUTF8 := by
-  have hc : Kernel.concatSyms parts = .vector .symbol
+  have hc : Kernel.concatSyms (X := Empty) parts = .vector .symbol
       ((parts.toList.foldl (fun acc x => (acc.1 ++ x.1, acc.2 ++ (x.2.extract 1 x.2.size).map (· + acc.1.size)))
         (ByteArray.empty, #[0])).2.size - 1 |> fun c => needSize c "concatSyms: symbols" (fun _ => 0) id) (.syms
       (parts.toList.foldl (fun acc x => (acc.1 ++ x.1, acc.2 ++ (x.2.extract 1 x.2.size).map (· + acc.1.size)))
@@ -405,7 +405,7 @@ theorem utf8_concatSyms {parts : Array (ByteArray × Array Nat)}
 theorem fewSyms_utf8 {n : USize} {d : ByteArray} {dof : Array Nat} {ids b : ByteArray} {bo : Array Nat}
     (hd : SymsWF d dof) (hi : ∀ i < n.toNat, Column.idAt ids (Column.idWidth dof) i < dof.size - 1)
     (hu : ∀ i < dof.size - 1, (Column.symKey d dof i).IsValidUTF8)
-    (h : fewSyms n (.enum d dof ids) = some (b, bo)) :
+    (h : fewSyms (X := Empty) n (.enum d dof ids) = some (b, bo)) :
     SymsWF b bo ∧ ∀ j < bo.size - 1, (Column.symKey b bo j).IsValidUTF8 := by
   unfold fewSyms at h
   dsimp only at h
@@ -427,9 +427,9 @@ theorem fewSyms_utf8 {n : USize} {d : ByteArray} {dof : Array Nat} {ids b : Byte
 theorem concatSyms_wf (parts : Array (ByteArray × Array Nat)) (hw : ∀ x ∈ parts, SymsWF x.1 x.2)
     (hu : ∀ x ∈ parts, ∀ i < x.2.size - 1, (Column.symKey x.1 x.2 i).IsValidUTF8)
     (hN : (parts.map fun p => p.2.size - 1).toList.sum < USize.size) :
-    ∃ n e, concatSyms parts = .vector .symbol n e none ∧ Enc.WF .symbol n e := by
+    ∃ n e, concatSyms (X := Empty) parts = .vector .symbol n e none ∧ Enc.WF .symbol n e := by
   refine ⟨_, _, rfl, ?_⟩
-  have hS := (Verify.symBytes_concatSyms hw rfl).1
+  have hS := (Verify.symBytes_concatSyms (X := Empty) hw rfl).1
   have hU := utf8_concatSyms (fun x hx => ⟨hw x hx, hu x hx⟩) (parts := parts) rfl
   simp only [Enc.WF]
   generalize hp : Array.foldl _ (ByteArray.empty, #[0]) parts = p at hS hU ⊢
@@ -694,7 +694,7 @@ theorem lt_idWidthOf_64 {x n : Nat} (hx : x < n) (h64 : x < 2 ^ 64) : x < 2 ^ Co
 theorem internSyms_lt (blob : ByteArray) (offs : Array Nat) {y : Nat} (hy : y < offs.size - 1) :
     Column.idAt (Order.internSyms blob offs).2.2 (Column.idWidth (Order.internSyms blob offs).2.1) y <
       (Order.internSyms blob offs).2.1.size - 1 := by
-  have hD := Verify.distinctSyms_eraseDups blob offs
+  have hD := Verify.distinctSyms_eraseDups (X := Empty) blob offs
   have e : Order.internSyms blob offs = ((Order.distinctSyms blob offs).1, (Order.distinctSyms blob offs).2,
       Column.packIds (Column.idWidth (Order.distinctSyms blob offs).2) (offs.size - 1) fun j =>
         (findSymScalar (Order.distinctSyms blob offs).1 (Order.distinctSyms blob offs).2
@@ -894,7 +894,7 @@ theorem internConcat_wf (qs : Array (USize × ByteArray × Array Nat × ByteArra
   have hn : ((List.range ((internConcat qs).2.1.size - 1)).map
       (Verify.symAt (internConcat qs).1 (internConcat qs).2.1)).Nodup := by
     rw [h1, h2]
-    have hD := Verify.distinctSyms_eraseDups b o
+    have hD := Verify.distinctSyms_eraseDups (X := Empty) b o
     simp only [Verify.symsOf, ← Verify.firstsOf_eraseDups] at hD
     show ((List.range ((Order.distinctSyms b o).2.size - 1)).map
       (Verify.symAt (Order.distinctSyms b o).1 (Order.distinctSyms b o).2)).Nodup
@@ -939,7 +939,7 @@ private theorem fold_snd_size {N : Nat} (f : (i : Nat) → i < N → ByteArray �
 
 /-- `fewSyms` answers one entry per element. -/
 theorem fewSyms_size {n : USize} {d : ByteArray} {o : Array Nat} {ids b : ByteArray} {bo : Array Nat}
-    (h : fewSyms n (.enum d o ids) = some (b, bo)) : bo.size = n.toNat + 1 := by
+    (h : fewSyms (X := Empty) n (.enum d o ids) = some (b, bo)) : bo.size = n.toNat + 1 := by
   unfold fewSyms at h
   dsimp only at h
   by_cases hc : 8 * n.toNat < o.size - 1
@@ -1130,7 +1130,7 @@ theorem concatEnum_wf (ps : Array (USize × ByteArray × Array Nat × ByteArray)
     (hw : ∀ p ∈ ps, 0 < p.2.2.1.size ∧
       ∀ i < p.1.toNat, Column.idAt p.2.2.2 (Column.idWidth p.2.2.1) i < p.2.2.1.size - 1)
     (hu : ∀ p ∈ ps, SymsWF p.2.1 p.2.2.1 ∧ ∀ i < p.2.2.1.size - 1, (Column.symKey p.2.1 p.2.2.1 i).IsValidUTF8) :
-    ∃ n e, concatEnum ps = .vector .symbol n e none ∧ Enc.WF .symbol n e := by
+    ∃ n e, concatEnum (X := Empty) ps = .vector .symbol n e none ∧ Enc.WF .symbol n e := by
   unfold concatEnum
   dsimp only
   generalize hq : Array.mapIdx _ ps = qs
@@ -1150,7 +1150,7 @@ theorem concatEnum_wf (ps : Array (USize × ByteArray × Array Nat × ByteArray)
     by_cases h0 : (i == 0) = true
     · simp only [h0, if_true]; exact hp'
     · simp only [h0, if_false, Bool.false_eq_true]
-      cases hf : fewSyms n (.enum d o ids) with
+      cases hf : fewSyms (X := Empty) n (.enum d o ids) with
       | none => exact hp'
       | some r =>
         obtain ⟨b, bo⟩ := r
@@ -1170,7 +1170,7 @@ theorem concatEnum_wf (ps : Array (USize × ByteArray × Array Nat × ByteArray)
     by_cases h0 : (i == 0) = true
     · simp only [h0, if_true]; exact hp
     · simp only [h0, if_false, Bool.false_eq_true]
-      cases hf : fewSyms n (.enum d o ids) with
+      cases hf : fewSyms (X := Empty) n (.enum d o ids) with
       | none => exact hp
       | some r =>
         obtain ⟨b, bo⟩ := r

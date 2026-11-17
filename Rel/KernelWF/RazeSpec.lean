@@ -394,10 +394,6 @@ theorem razeTo_toList_boolean (cs : Array ((k : USize) × Arr .boolean k)) {S : 
     rw [hk, hsum]; exact hS
   unfold need; rw [dif_pos hf]
   let ps : Array (USize × ByteArray) := (List.toArray l).map fun c => (c.1, tagBits c.2)
-  have hm : ((List.toArray l).map (·.2.part)).mapM
-      (fun | ((n : USize), Enc.bits b) => some (n, b) | _ => none) = some ps := by
-    rw [Array.mapM_map]
-    exact mapM_some _ fun c _ => by simp only [Function.comp, Arr.part, enc_tagBits c.2]
   have hps : ps.foldl (fun s (p : USize × ByteArray) => s + p.1.toNat) 0 = (l.map (·.1.toNat)).sum := by
     have e : ∀ (a : Nat) (l : List ((n : USize) × Arr .boolean n)),
         (l.map fun c => (c.1, tagBits c.2)).foldl (fun s (p : USize × ByteArray) => s + p.1.toNat) a =
@@ -412,10 +408,13 @@ theorem razeTo_toList_boolean (cs : Array ((k : USize) × Arr .boolean k)) {S : 
     rw [if_neg (by simpa using h0)]
     dsimp only
     split
+    -- `show _`: the mapM's matcher is `razeColumn`'s own, generic in `X`, which a local `fun | …` at `Empty` is not
     next ps' heq =>
-      obtain rfl : ps' = ps := Option.some_inj.1 (heq.symm.trans hm)
+      obtain rfl : ps' = ps := Option.some_inj.1 (heq.symm.trans (show _ = some ps by
+        rw [Array.mapM_map]; exact mapM_some _ fun c _ => by simp only [Function.comp, Arr.part, enc_tagBits c.2]))
       simp only [needSize, need]; rw [dif_pos (by rw [hps, hsum]; exact hS)]
-    next heq => cases heq.symm.trans hm
+    next heq => cases heq.symm.trans (show _ = some ps by
+        rw [Array.mapM_map]; exact mapM_some _ fun c _ => by simp only [Function.comp, Arr.part, enc_tagBits c.2])
   refine (toList_bits _ (b := concatBits (countBytes (ps.map (·.1))) (ps.map (·.2)))
     (by simp only [Arr.enc, hv])).trans ?_
   have hN : (((List.toArray l).map (·.2.part)).foldl (fun s (c : USize × Enc) => s + c.1.toNat) 0).toUSize.toNat =

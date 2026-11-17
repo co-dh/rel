@@ -235,8 +235,8 @@ theorem Arr.dense_long {m : USize} (x : Arr .long m) {ws : List UInt64} (h : lon
     (`foRBits_encode_bits`). -/
 theorem longWords_answer {m : USize} (b : ByteArray) (hm : b.size / 8 = m.toNat) :
     longWords m (Enc.answer .long m (.bytes b)) = some (Verify.elemsW 8 b) := by
-  have ha : Enc.answer .long m (.bytes b) = .bytes b ∨
-      Enc.answer .long m (.bytes b) =
+  have ha : Enc.answer (X := Empty) .long m (.bytes b) = .bytes b ∨
+      Enc.answer (X := Empty) .long m (.bytes b) =
       .foR (Kernel.Coc.encode (8 : Nat).toUSize b).1 (Kernel.Coc.encode (8 : Nat).toUSize b).2 := by
     simp only [Enc.answer, QAtomicType.width, show Column.alpEncodes .long = false from rfl,
       show Column.encodes .long = true from rfl, Kernel.Coc.encodeBelow]
@@ -316,8 +316,8 @@ theorem Arr.dense_float {m : USize} (x : Arr .float m) {ws : List UInt64} (h : f
     encoded (`alpBits_alpEncodeAt`, below `2³²` elements). -/
 theorem floatWords_answer {m : USize} (b : ByteArray) (h32 : b.size / 8 < 2 ^ 32) (hm : b.size / 8 = m.toNat) :
     floatWords m (Enc.answer .float m (.bytes b)) = some (Verify.elemsW 8 b) := by
-  have ha : Enc.answer .float m (.bytes b) = .bytes b ∨
-      Enc.answer .float m (.bytes b) =
+  have ha : Enc.answer (X := Empty) .float m (.bytes b) = .bytes b ∨
+      Enc.answer (X := Empty) .float m (.bytes b) =
       .alp (Kernel.Coc.alpEncode64 b).1 (Kernel.Coc.alpEncode64 b).2.1 (Kernel.Coc.alpEncode64 b).2.2 := by
     simp only [Enc.answer, QAtomicType.width, show Column.alpEncodes .float = true from rfl,
       Kernel.Coc.alpEncodeBelow64]
@@ -334,8 +334,8 @@ theorem floatWords_answer {m : USize} (b : ByteArray) (h32 : b.size / 8 < 2 ^ 32
 theorem toList_answer_int {m : USize} (x : Arr .int m) {b : ByteArray} (hm : b.size / 4 = m.toNat)
     (hc : x.enc = Enc.answer .int m (.bytes b)) :
     x.toList = (List.range m.toNat).map fun i => (Column.bitsAt b (i * 4) 4).toUInt32.toInt32 := by
-  have ha : Enc.answer .int m (.bytes b) = .bytes b ∨
-      Enc.answer .int m (.bytes b) =
+  have ha : Enc.answer (X := Empty) .int m (.bytes b) = .bytes b ∨
+      Enc.answer (X := Empty) .int m (.bytes b) =
       .foR (Kernel.Coc.encode (4 : Nat).toUSize b).1 (Kernel.Coc.encode (4 : Nat).toUSize b).2 := by
     simp only [Enc.answer, QAtomicType.width, show Column.alpEncodes .int = false from rfl,
       show Column.encodes .int = true from rfl, Kernel.Coc.encodeBelow]

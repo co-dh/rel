@@ -22,7 +22,7 @@ structure OwnFile where
 first: its `offs` is an `Array Nat` with no bytes to write, where an interned column's per-element
 payload is `ids`. The `syms` arm is what `intern` never answers, and the writer refuses its no
 parts. -/
-def ownParts (e : Enc) : UInt8 × Array ByteArray :=
+def ownParts (e : Ext.Enc X) : UInt8 × Array ByteArray :=
   match Column.intern e with
   | .bytes b => (0, #[b])
   | .bits b => (1, #[b])
@@ -36,9 +36,9 @@ def ownParts (e : Enc) : UInt8 × Array ByteArray :=
 /-- The file a value is written as when it is a column: a vector, an enumeration's indices under
 their domain's name, and either wearing an attribute. `none` is every other value, which keeps the
 serialized-object form. -/
-def ownFile (v : QValue) : Option OwnFile :=
+def ownFile (v : Ext.QValue X) : Option OwnFile :=
   let (attr, w) := v.marking
-  let column (t : QAtomicType) (n : USize) (e : Enc) (domain : String) : OwnFile :=
+  let column (t : QAtomicType) (n : USize) (e : Ext.Enc X) (domain : String) : OwnFile :=
     let (kind, parts) := ownParts e
     { code := t.code.toUInt8, attr, kind, count := n, domain, parts }
   match w with

@@ -390,7 +390,7 @@ def alpEncodes : QAtomicType → Bool
 
 end Rel.Column
 
-namespace Rel.Enc
+namespace Rel.Ext.Enc
 open Column
 
 /-- The payload as dense bytes, whatever constructor holds it, and `none` at a type whose payload is
@@ -401,7 +401,7 @@ and the one place an encoded column is decoded for them: `.bytes` already is it,
 Not `Column.dense`, which reads the payload back through `Column.atoms` and boxes every element on the
 way. That one stays where it is used, because `QLean/Kernel/Test.lean`'s round trip holds the C
 *encoder* against the *Lean* reader, and routing it through a C decoder would make it C against C. -/
-def bytesOf (t : QAtomicType) (n : USize) (e : Enc) : Option ByteArray :=
+def bytesOf (t : QAtomicType) (n : USize) (e : Ext.Enc X) : Option ByteArray :=
   match e, t with
   | .bytes b, _ => some b
   | .foR metadata pack, t => t.width.map fun w =>
@@ -422,7 +422,7 @@ million longs is a min/max scan and a bit-pack, which `xl+xl` pays inside its ow
 ALP exponent search is per element and up to nineteen trial round trips — 6.6 ms a million doubles,
 five hundred times what the add it would follow costs. So a float result stays dense here and a float
 column takes its encoded form where it enters, which is where it is read many times over. -/
-def encode (t : QAtomicType) (n : USize) (e : Enc) : Enc :=
+def encode (t : QAtomicType) (n : USize) (e : Ext.Enc X) : Ext.Enc X :=
   -- a general column has no width and so lands on `none`
   match t.width with
   | some w =>
@@ -437,7 +437,7 @@ def encode (t : QAtomicType) (n : USize) (e : Enc) : Enc :=
 
 /-- Whether the encoded form is smaller than the `n * w` dense bytes it replaces: the one size rule
 for both encodings, `CLAUDE.md`'s "nothing is encoded that the encoding does not shrink". -/
-def shrinks (w : Nat) (n : USize) (e : Enc) : Bool :=
+def shrinks (w : Nat) (n : USize) (e : Ext.Enc X) : Bool :=
   match e with
   | .foR metadata pack => metadata.size + pack.size < n.toNat * w
   | .alp metadata pack blob => metadata.size + pack.size + blob.size < n.toNat * w
@@ -456,7 +456,7 @@ encoded kernel on a three-element column.
 Per column and not per block: the constructors hold one form a column, and a block already takes the
 narrowest residual width its range allows, so all a 64-bit block costs over dense is its metadata —
 and only the whole column's total against `n * w` says whether the narrow blocks paid that back. -/
-def answer (t : QAtomicType) (n : USize) (e : Enc) : Enc :=
+def answer (t : QAtomicType) (n : USize) (e : Ext.Enc X) : Ext.Enc X :=
   match t with
   | .general => e
   | t => match t.width, e with
@@ -478,7 +478,7 @@ def answer (t : QAtomicType) (n : USize) (e : Enc) : Enc :=
       else match bytesOf t n e with | some b => .bytes b | none => e
     | none, _ => e
 
-end Rel.Enc
+end Rel.Ext.Enc
 
 
 namespace Rel.Kernel.Coc
@@ -489,14 +489,14 @@ namespace Rel.Column
 
 end Rel.Column
 
-namespace Rel.Enc
+namespace Rel.Ext.Enc
 open Column
 
 /-- The column in ALP form, whatever constructor holds it, and `none` at a type ALP is not the
 encoding for. Unconditional: `admit` is where the decline lives, and `QLean/Eval/Test.lean` forces
 this so that the corpus reaches shapes — an empty column, a block that is all exceptions — a policy
 would keep it away from. -/
-def alpOf (t : QAtomicType) (n : USize) (e : Enc) : Option Enc :=
+def alpOf (t : QAtomicType) (n : USize) (e : Ext.Enc X) : Option (Ext.Enc X) :=
   if !alpEncodes t then none else
   match t.width, bytesOf t n e with
   | some w, some b =>
@@ -505,4 +505,4 @@ def alpOf (t : QAtomicType) (n : USize) (e : Enc) : Option Enc :=
     some (.alp metadata pack a)
   | _, _ => none
 
-end Rel.Enc
+end Rel.Ext.Enc

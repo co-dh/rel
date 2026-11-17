@@ -246,7 +246,7 @@ symbols against `x`'s dictionary `d` (`yids`, ids of the joined dictionary `db`)
 widened to `db`'s width with `yids` written at `ix` — id `i` is `y`'s id of the last index naming `i`, and
 `x`'s own id `i` where no index does. Assumed, not derived: `db` is no shorter than `d` (`hab`), `x` holds
 its `n` ids (`hcap`), and `yids` holds the ids read (`hy`). -/
-theorem assignSyms_interned (n : USize) (e : Enc) (ny : USize) (ye : Enc) (ix : ByteArray)
+theorem assignSyms_interned (n : USize) (e : Ext.Enc X) (ny : USize) (ye : Ext.Enc X) (ix : ByteArray)
     (bcast : Bool) (hns : ¬ ∃ b o yb yo, e = .syms b o ∧ ye = .syms yb yo)
     {d ids yd yi db yids : ByteArray} {o yo dbo : Array Nat}
     (hc : Column.intern e = .enum d o ids) (hyc : Column.intern ye = .enum yd yo yi)

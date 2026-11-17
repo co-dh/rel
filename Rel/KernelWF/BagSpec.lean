@@ -7,6 +7,7 @@ import Rel.KernelWF.PlaceSpec
 import Rel.KernelWF.PickRow
 import Rel.KernelWF.CodesRec
 
+open Rel.Ext
 namespace Rel.Alg
 
 open Rel Rel.Kernel Rel.Verify Rel Rel.KernelWF

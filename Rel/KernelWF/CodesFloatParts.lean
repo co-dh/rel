@@ -19,7 +19,7 @@ theorem float_facts {t : QAtomicType} (ht : t = .real ∨ t = .float ∨ t = .da
     (hk : orderKind (KernelWF.bitsType t) = some k) :
     (k = .i32 ∨ k = .i64) ∧ t.width = some k.width ∧ t ≠ .general ∧ t ≠ .boolean ∧
       (∀ n b, Enc.WF (X := Empty) t n (.bytes b) → b.size = n.toNat * k.width) ∧
-      ∀ n b, groupIdsColumn (KernelWF.bitsType t) n (.bytes b) = some (Order.groupIds k n b) := by
+      ∀ n b, groupIdsColumn (X := Empty) (KernelWF.bitsType t) n (.bytes b) = some (Order.groupIds k n b) := by
   rcases ht with rfl | rfl | rfl <;> simp [KernelWF.bitsType, orderKind] at hk <;> subst hk <;>
     exact ⟨by decide, rfl, by decide, by decide, fun n b h => by simpa [Enc.WF, QAtomicType.width] using h,
       fun n b => by simp [KernelWF.bitsType, groupIdsColumn, orderKind, Enc.bytesOf]⟩
@@ -67,14 +67,14 @@ theorem float_groups {t : QAtomicType} (ht : t = .real ∨ t = .float ∨ t = .d
     rw [hgc, Option.some_inj] at hq; subst hq
     exact ⟨_, hk, hB, hspec.1, by rw [len_eq_ids, hspec.2], fun _ _ => rfl⟩
   case alp md pk a =>
-    have hf : groupIdsColumn (KernelWF.bitsType t) n (.alp md pk a) = some (Order.groupIds k n B) := by
+    have hf : groupIdsColumn (X := Empty) (KernelWF.bitsType t) n (.alp md pk a) = some (Order.groupIds k n B) := by
       rcases ht with rfl | rfl | rfl <;> simp [KernelWF.bitsType, orderKind] at hk <;> subst hk <;>
         simp [Enc.bytesOf, QAtomicType.width] at hB <;>
         simp [KernelWF.bitsType, groupIdsColumn, orderKind, Enc.bytesOf, QAtomicType.width, hB]
     rw [hf, Option.some_inj] at hq; subst hq
     exact ⟨_, hk, hB, hspec.1, by rw [len_eq_ids, hspec.2], fun _ _ => rfl⟩
   case foR md pk =>
-    have hf : groupIdsColumn (KernelWF.bitsType t) n (.foR md pk) = some (Order.groupIdsFoR k n md pk) := by
+    have hf : groupIdsColumn (X := Empty) (KernelWF.bitsType t) n (.foR md pk) = some (Order.groupIdsFoR k n md pk) := by
       rcases ht with rfl | rfl | rfl <;> simp [KernelWF.bitsType, orderKind] at hk <;> subst hk <;>
         simp [KernelWF.bitsType, groupIdsColumn, orderKind]
     rw [hf, Option.some_inj] at hq; subst hq

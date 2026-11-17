@@ -592,7 +592,7 @@ theorem raw_bytes (t : QAtomicType) (w : Nat) (ht : t.width = some w) (hb : t â‰
 
 theorem encode_bytes (t : QAtomicType) (w : Nat) (ht : t.width = some w) (he : Column.encodes t = true)
     (n : USize) (x : ByteArray) :
-    Enc.encode t n (.bytes x) = .foR (Kernel.Coc.encode w.toUSize x).1 (Kernel.Coc.encode w.toUSize x).2 := by
+    Enc.encode (X := X) t n (.bytes x) = .foR (Kernel.Coc.encode w.toUSize x).1 (Kernel.Coc.encode w.toUSize x).2 := by
   simp [Enc.encode, ht, he, Enc.bytesOf]
 
 theorem bitsAt_lt (b : ByteArray) (o w : Nat) (hw : w â‰¤ 8) : (Column.bitsAt b o w).toNat < 2 ^ (8 * w) := by

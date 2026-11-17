@@ -7,6 +7,7 @@ import Rel.Kernel.Search
 /-! The part of `Rel.Kernel.Sort` the Rel kernels reach; `Rel.Kernel.Sort` imports it. -/
 
 
+open Rel.Ext
 namespace Rel.Kernel.Order
 
 open Rel.Kernel.Scan (Kind)
@@ -296,7 +297,7 @@ same rows.
 
 Every layout `findColumn` takes is claimed, so the ids are `x?x` renumbered densely by first
 appearance: they span `[0, distinct)` where `x?x`'s positions span `[0, n)`. -/
-def groupIdsColumn (t : QAtomicType) (n : USize) (e : Enc) : Option (ByteArray × ByteArray) :=
+def groupIdsColumn (t : QAtomicType) (n : USize) (e : Ext.Enc X) : Option (ByteArray × ByteArray) :=
   match t, e with
   -- interned: the groups are the ids' groups, an id being one symbol, exactly as `groupColumn` reads
   -- an `.enum`
@@ -339,7 +340,7 @@ dictionary back to a blob. With `#`, `reverse`, `=`, `~`, the gather and the two
 arms it wins every line: `reverse` 817ms→3.0, `hsym` 50→3.6, `lower` 35→3.7, `=` 24→6.2, `like`
 21→5.9, `asc` 100→43. The maps are where the win is — they run on the *dictionary*, three entries
 against sixteen million. -/
-def intern (e : Enc) : Enc :=
+def intern (e : Ext.Enc X) : Ext.Enc X :=
   match e with
   | .syms blob offs =>
     let (db, dof, ids) := Rel.Kernel.Order.internSyms blob offs
@@ -375,7 +376,7 @@ its bytes were bits.
 Under `rank` the answer is q's `rank`, `<<x` — always ascending, so `desc` is not read — and it is
 this same dispatch: where a kernel ranks without building the grade it is asked for the rank, and
 everywhere else the grade is inverted. -/
-def gradeColumn (t : QAtomicType) (desc : Bool) (n : USize) (e : Enc) (rank : Bool := false) : Option Enc :=
+def gradeColumn (t : QAtomicType) (desc : Bool) (n : USize) (e : Ext.Enc X) (rank : Bool := false) : Option (Ext.Enc X) :=
   let inv (p : ByteArray) := if rank then invert p else p
   match t, e with
   | .symbol, .syms blob offs => some (.bytes (inv (gradeSyms desc blob offs)))

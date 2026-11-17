@@ -9,6 +9,7 @@ import Rel.Kernel.Elementwise
 /-! The part of `Rel.Verify.EwEnc` the Rel kernels reach; `Rel.Verify.EwEnc` imports it. -/
 
 
+open Rel.Ext
 namespace Rel.Verify
 
 open Rel Rel.Kernel
@@ -67,8 +68,8 @@ theorem runEnc_elems (b : Ew.Build) (last : Ew.Stage) (n : USize) (w : Nat) (hw1
 
 /-- **`Enc.answer` on an encoded column** keeps it or decodes it: either way the same elements. -/
 theorem answer_foR (t : QAtomicType) (w : Nat) (k : USize) (M P : ByteArray) (ht : t.width = some w) :
-    Enc.answer t k (.foR M P) = .foR M P ∨
-      Enc.answer t k (.foR M P) = .bytes (Coc.decode w.toUSize M P k) := by
+    Enc.answer (X := X) t k (.foR M P) = .foR M P ∨
+      Enc.answer (X := X) t k (.foR M P) = .bytes (Coc.decode w.toUSize M P k) := by
   simp only [Enc.answer]
   split
   · exact .inl rfl

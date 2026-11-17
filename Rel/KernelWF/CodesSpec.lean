@@ -182,8 +182,8 @@ theorem groupOf_eq_groupOf {g : Nat → UInt64} {m i j : Nat} (hi : i < m) (hj :
     `groupIdsFoR`. -/
 theorem groupIdsColumn_small_int {t : QAtomicType} {k : Scan.Kind} (ht : orderKind t = some k)
     (hk : k = .u8 ∨ k = .i16 ∨ k = .i32) (n : USize) :
-    (∀ b, groupIdsColumn t n (.bytes b) = some (Order.groupIds k n b)) ∧
-      ∀ md pk, groupIdsColumn t n (.foR md pk) = some (Order.groupIdsFoR k n md pk) := by
+    (∀ b, groupIdsColumn (X := X) t n (.bytes b) = some (Order.groupIds k n b)) ∧
+      ∀ md pk, groupIdsColumn (X := X) t n (.foR md pk) = some (Order.groupIdsFoR k n md pk) := by
   rcases hk with rfl | rfl | rfl <;> cases t <;> simp [orderKind] at ht <;>
     exact ⟨fun b => by simp [groupIdsColumn, orderKind, Enc.bytesOf], fun md pk => by simp [groupIdsColumn, orderKind]⟩
 
@@ -772,8 +772,8 @@ integral types — `groupIds .i64` over a dense payload, `groupIdsFoR .i64` over
 /-- `groupIdsColumn` of an eight-byte integral payload: a dense one by `groupIds`, an encoded one by
     `groupIdsFoR`. -/
 theorem groupIdsColumn_long {t : QAtomicType} (ht : orderKind t = some .i64) (n : USize) :
-    (∀ b, groupIdsColumn t n (.bytes b) = some (Order.groupIds .i64 n b)) ∧
-      ∀ md pk, groupIdsColumn t n (.foR md pk) = some (Order.groupIdsFoR .i64 n md pk) := by
+    (∀ b, groupIdsColumn (X := X) t n (.bytes b) = some (Order.groupIds .i64 n b)) ∧
+      ∀ md pk, groupIdsColumn (X := X) t n (.foR md pk) = some (Order.groupIdsFoR .i64 n md pk) := by
   cases t <;> simp [orderKind] at ht <;>
     exact ⟨fun b => by simp [groupIdsColumn, orderKind, Enc.bytesOf], fun md pk => by simp [groupIdsColumn, orderKind]⟩
 
