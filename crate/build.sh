@@ -1,13 +1,11 @@
 #!/bin/sh
-# Builds rust/relk.o and rust/qrs.o (the two crates partial-linked) and regenerates c/rs.h from both with the cbindgen CLI.
-#   relk.o: every symbol of relk's own object stays global (qrs.o calls them) except what the crate pulled from core/alloc;
-#           the Lean externs it defines are the 94 `qlean_*` of relk.
-#   qrs.o:  libqrs.a bundles the relk object too; that member is deleted first, so qrs.o defines only its own `qrs_*` and
-#           `qlean_*` and leaves relk's names undefined, to be resolved by relk.o. Everything else in it is local.
+# Builds rust/qrs.o and regenerates c/rs.h from both crates (relk, qrs) with the cbindgen CLI.
+#   qrs.o: libqrs.a (qrs plus relk, which it links as a library) partial-linked into ONE object; only the `qrs_*` and
+#          `qlean_*` exports stay global, everything else is local. One object, because a second one for relk duplicated
+#          the DWARF comdat (`DW.ref.rust_eh_personality`, discarded-section relocation at the libqleankernel.so link).
 # Lake's `qrs.o` target runs this before any C object is compiled, so no C file ever compiles against a header older than
 # the Rust. Any failing step stops the script.
-# `build.sh symbols` compares what the two objects leave undefined (less what they define) with UNDEF.txt, exactly, and
-# fails when both define a name.
+# `build.sh symbols` compares what qrs.o leaves undefined (less what it defines) with UNDEF.txt, exactly.
 # `build.sh abi` instead builds $CARGO_TARGET_DIR/qrs-abi.o: both crates with feature `abi` (the lean.rs twins test/abi.c
 # calls) as ONE object, never part of the library.
 # `build.sh relk-syms` builds relk ALONE and prints the diff between its staticlib's defined `qlean_*` and rust/RELK.txt.
