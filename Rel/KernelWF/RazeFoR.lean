@@ -54,7 +54,7 @@ theorem foR_part {t : QAtomicType} {w : Nat} (hen : Column.encodes t = true) (hw
       unfold Enc.encode at he
       simp only [hw, hen, ↓reduceIte, hbo] at he
       rcases hX : Coc.encode w.toUSize b with ⟨m', p'⟩
-      simp only [hX, Enc.foR.injEq] at he
+      simp only [hX, Ext.Enc.foR.injEq] at he
       obtain ⟨rfl, rfl⟩ := he; rfl
     intro i hi
     have hib : i < b.size / w := by rw [hbs, Nat.mul_div_cancel _ (by omega)]; exact hi
@@ -166,7 +166,7 @@ theorem razeTo_join_foR {t : QAtomicType} {w : Nat} (hw : t.width = some w) (cs 
     (fun k => Column.foRBits ms[k]! ps[k]! (Column.blockStarts ms[k]!)) ?_ ?_ hRd
   · intro c E a hv i hi
     obtain ⟨-, hv⟩ := razeColumn_foR hw hen hE hC hX hv
-    simp only [QValue.vector.injEq] at hv
+    simp only [Ext.QValue.vector.injEq] at hv
     obtain ⟨-, rfl, rfl, rfl⟩ := hv
     exact get_answer_foR hw hb M P (by rw [hNU]; exact hi)
   · intro k hk

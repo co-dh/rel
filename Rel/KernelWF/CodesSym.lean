@@ -173,7 +173,7 @@ theorem codes_symbol_enum_faithful (x : Part (.atom .symbol)) {d : ByteArray} {o
       Vals.row x.2 ⟨i, hi⟩ = Vals.row x.2 ⟨j, hj⟩ := by
   obtain ⟨d', o', ids', hi', hc⟩ := codes_symbol x
   rw [he] at hi'
-  simp only [Column.intern, Enc.enum.injEq] at hi'
+  simp only [Column.intern, Ext.Enc.enum.injEq] at hi'
   obtain ⟨rfl, rfl, rfl⟩ := hi'
   have hwf := x.2.wf
   rw [he] at hwf
@@ -190,7 +190,7 @@ theorem codes_symbol_enum_wf (x : Part (.atom .symbol)) {d : ByteArray} {o : Arr
       (c.w < 8 → c.card < USize.size ∧ ∀ i < c.n.toNat, Column.idAt c.b c.w i < c.card) := by
   obtain ⟨d', o', ids', hi', hc⟩ := codes_symbol x
   rw [he] at hi'
-  simp only [Column.intern, Enc.enum.injEq] at hi'
+  simp only [Column.intern, Ext.Enc.enum.injEq] at hi'
   obtain ⟨rfl, rfl, rfl⟩ := hi'
   have hwf := x.2.wf
   rw [he] at hwf
@@ -241,7 +241,7 @@ theorem codes_symbol_syms_faithful (x : Part (.atom .symbol)) {b : ByteArray} {o
         Column.idAt (Obj.codes (.atom .symbol) #v[x])[0].b (Obj.codes (.atom .symbol) #v[x])[0].w j ↔
       Vals.row x.2 ⟨i, hi⟩ = Vals.row x.2 ⟨j, hj⟩ := by
   obtain ⟨d', o', ids', hi', hc⟩ := codes_symbol x
-  rw [he, intern_syms, Enc.enum.injEq] at hi'
+  rw [he, intern_syms, Ext.Enc.enum.injEq] at hi'
   obtain ⟨rfl, rfl, rfl⟩ := hi'
   obtain ⟨hlt, hD, hr, -⟩ := internSyms_facts x.2 he
   rw [hc]
@@ -255,7 +255,7 @@ theorem codes_symbol_syms_wf (x : Part (.atom .symbol)) {b : ByteArray} {o : Arr
       c.b.size = (c.n.toNat * c.w + 7) / 8 ∧
       (c.w < 8 → c.card < USize.size ∧ ∀ i < c.n.toNat, Column.idAt c.b c.w i < c.card) := by
   obtain ⟨d', o', ids', hi', hc⟩ := codes_symbol x
-  rw [he, intern_syms, Enc.enum.injEq] at hi'
+  rw [he, intern_syms, Ext.Enc.enum.injEq] at hi'
   obtain ⟨rfl, rfl, rfl⟩ := hi'
   obtain ⟨hlt, -, -, hsz⟩ := internSyms_facts x.2 he
   dsimp only

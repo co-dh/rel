@@ -1256,7 +1256,7 @@ private theorem lgOk_of_encode {t : QAtomicType} {n : USize} {e : Enc} {m p : By
         have h8 : w ≤ 8 := by cases t <;> simp_all [QAtomicType.width, Column.encodes] <;> omega
         generalize hE : Coc.encode w.toUSize b = E at h
         rcases E with ⟨md, pk⟩
-        simp only [Enc.foR.injEq] at h
+        simp only [Ext.Enc.foR.injEq] at h
         obtain ⟨rfl, rfl⟩ := h
         have := lgOk_encode w.toUSize (by rw [toUSize_toNat (lt_usize (by omega))]; exact h8) b
         rw [hE] at this; exact this

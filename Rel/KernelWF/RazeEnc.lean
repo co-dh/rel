@@ -148,7 +148,7 @@ theorem alp_part {t : QAtomicType} {w : Nat} (ht : Column.alpEncodes t = true) (
         cases (w == 4) <;> rfl
       rw [h4] at he
       rcases hX : Coc.alpEncodeAt (w == 4) b with ⟨m', p', a'⟩
-      simp only [hX, Option.some.injEq, Enc.alp.injEq] at he
+      simp only [hX, Option.some.injEq, Ext.Enc.alp.injEq] at he
       obtain ⟨rfl, rfl, rfl⟩ := he; rfl
     have H := Verify.alpBits_alpEncodeAt (w == 4) Column.lgEnc (by decide) w h48 b (by rw [hbs, Nat.mul_div_cancel _ h0]; exact hn)
     simp only [hE] at H
@@ -278,7 +278,7 @@ theorem razeTo_join_alp {t : QAtomicType} {w : Nat} (hw : t.width = some w) (cs 
     (fun k => Column.alpBits ms[k]! ps[k]! as[k]! (Column.blockStarts ms[k]!)) ?_ ?_ ?_
   · intro c E a hv i hi
     obtain ⟨-, hv⟩ := razeColumn_alp hw ht hE hC hX hv
-    simp only [QValue.vector.injEq] at hv
+    simp only [Ext.QValue.vector.injEq] at hv
     obtain ⟨-, rfl, rfl, rfl⟩ := hv
     have hi' : i < N.toUSize.toNat := by rw [hNU]; exact hi
     rw [get_answer hw hb hwfA (by intro _ h; cases h) hi', get_alp_eq hw hb _ _ _ hi', alpBits_starts]
