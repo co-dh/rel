@@ -191,12 +191,13 @@ def lt (U : Fn false .long .long) : Fn false .long .long := fun _ => let u := U 
 def fold (E V : Obj) (d : Bool) (e : Fn false V V) (S : Fn d (.prod E V) V) : Fn true (.arr E) V := fun D =>
   let v := e (); also v.ok (CRel.foldOn v.rel.val (onKeys d S) D.val)
 
-/-- The pairs `(i, xs)` in demand, one fold row each, starting from its own key's seeds `(i,v)` from `e`. -/
+/-- The pairs `(i, xs)` in demand, one fold row each, starting from its own key's seeds `(i,v)` from `e`: `v` the
+    value side of `e i`'s pairs, as `fold` seeds from `e`'s values (`foldIDen`). -/
 def foldI (I E V : Obj) (d d' : Bool) (e : Fn d I (.prod V V)) (S : Fn d' (.prod E (.prod I V)) (.prod I V)) :
     Fn true (.prod I (.arr E)) V := fun D =>
   let ro := ofC (ranC (Alg.outl D)); let es := e (Dem.of d ro.rel)
   let res := CRel.ran es
-  let iv := CRel.pair (CRel.dom es) (CRel.comp es ⟨Alg.outl res.rel, res.ok⟩)
+  let iv := CRel.pair (CRel.dom es) (CRel.comp es ⟨Alg.outr res.rel, res.ok⟩)
   let r := CRel.num ⟨D, true⟩ 0
   let ci := CRel.comp ⟨Alg.outl r.rel, r.ok⟩ iv
   let G := ofC (foldRowsC (Alg.outr r.rel) ci.rel
@@ -240,10 +241,13 @@ def onNodes {A B : Obj} : (d : Bool) → Fn d A B → CRel A A → CRel A B
   | true, F, P => if P.rel.n == 0 then ⟨Alg.zero, P.ok⟩ else also P.ok (F P.rel)
   | false, F, P => if P.rel.n == 0 then ⟨Alg.zero, P.ok⟩ else CRel.comp P (F ())
 
-/-- `[R,S]` on the sum values in demand: `R` on the left values they hold, `S` on the right, joined with them. -/
+/-- `[R,S]` on the sum values in demand: `R` on the left values they hold, `S` on the right, joined with them. A
+    demand row whose tag names a side with no values reads that side's `dflt` (`Vals.row`), a value the demand does
+    not hold, so one scan of the tags clears the ok bit there (D7 = P). -/
 def juncD (A B C : Obj) (d e : Bool) (R : Fn d A C) (S : Fn e B C) : Fn true (.sum A B) C := fun D =>
-  let ⟨_, _, _, _, x, y⟩ := D.val
-  CRel.comp ⟨D, true⟩ (CRel.junc (onNodes d R ⟨idU x, true⟩) (onNodes e S ⟨idU y, true⟩))
+  let ⟨l, r, tag, _, x, y⟩ := D.val
+  also ((List.finRange D.n.toNat).all fun i => if tag.get i then decide (0 < r.toNat) else decide (0 < l.toNat))
+    (CRel.comp ⟨D, true⟩ (CRel.junc (onNodes d R ⟨idU x, true⟩) (onNodes e S ⟨idU y, true⟩)))
 
 /-- `refold`'s rounds, at most `f`, from the nodes `pend` not yet valued and the values `X` so far: the nodes
     of `pend` with no child in `pend` (`chN`, each node's children) are ready, valued by `φ X` there and leave

@@ -100,6 +100,59 @@ theorem flat_sound {I A B : Obj} {d : Bool} {R : Fn d I (.prod A B)} {TR : Den I
     have hr := (hRk x.1 _ hi).2 t
     exact ⟨x, hx, (x.2, b), ⟨hr, (x.2, b), ⟨rfl, x.1, hr, hr⟩, rfl⟩, (x.2, b), ⟨rfl, x.1, hr, hr⟩, rfl⟩
 
+/-- `F` read at the nodes `U` (`onNodes`): at a value of `U`, what `F` computes there. -/
+theorem onNodes_sound {A B : Obj} {d : Bool} {F : Fn d A B} {T : Den A B} {m : USize} (hF : Sound F T)
+    (U : Vals A m) (hok : (onNodes d F ⟨idU U, true⟩).ok = true) (a : A.El) (ha : ∃ i, U.row i = a) (c : B.El) :
+    rep (onNodes d F ⟨idU U, true⟩).rel a c ↔ T a c := by
+  have hk : rep (idU U) a a := by rw [rep_idU]; exact ⟨rfl, ha⟩
+  have hc : ∀ x y, rep (idU U) x y → x = y := fun x y h => by rw [rep_idU] at h; exact h.1
+  have h0 : ((idU U).n == 0) = false := by
+    obtain ⟨j, -⟩ := hk
+    cases h : (idU U).n == 0
+    · rfl
+    · have : (idU U).n.toNat = 0 := by simp [beq_iff_eq.1 h]
+      exact absurd j.2 (by omega)
+  cases d
+  · simp only [onNodes, h0, Bool.false_eq_true, if_false] at hok ⊢
+    have hf := ok_and hok; rw [Bool.and_eq_true] at hf
+    rw [CRel.rep_comp _ _ hok, hF.eq hf.2]
+    exact ⟨fun ⟨w, h1, h2⟩ => hc a w h1 ▸ h2, fun h => ⟨a, hk, h⟩⟩
+  · simp only [onNodes, h0, Bool.false_eq_true, if_false, also, Bool.true_and] at hok ⊢
+    exact hF (idU U) hc hok a c hk
+
+/-- `[R,S]` on the sum values in demand (`juncD`): each side's part run on that side's values; the scan's bit
+    excludes a demand row that names a side with no values (D7 = P). -/
+theorem juncD_sound {A B C : Obj} {d e : Bool} {R : Fn d A C} {S : Fn e B C} {TR : Den A C} {TS : Den B C}
+    (hR : Sound R TR) (hS : Sound S TS) : Sound (juncD A B C d e R S) (Core.Rel.junc TR TS) := by
+  rintro ⟨n, key, l, r, tag, idx, xv, yv⟩ hD hb x z hx
+  obtain ⟨hscan, hc⟩ := (Bool.and_eq_true _ _).mp hb
+  show rep (CRel.comp _ _).rel x z ↔ _
+  have h1 := ok_and hc; rw [Bool.and_eq_true] at h1
+  have h2 := ok_and h1.2; rw [Bool.and_eq_true] at h2
+  rw [CRel.rep_comp _ _ hc, CRel.rep_junc _ _ h1.2]
+  have hx' : rep _ x x := hx
+  refine (show (∃ w, _ ∧ _) ↔ _ from ⟨fun ⟨w, h, j⟩ => (hD x w h) ▸ j, fun j => ⟨x, hx', j⟩⟩).trans ?_
+  obtain ⟨p, hp⟩ := keyRow hx'
+  have hrow := List.all_eq_true.1 hscan p (List.mem_finRange p)
+  simp only [Vals.row] at hp
+  split at hp <;> rename_i ht
+  · simp only [ht, if_true, if_false, Bool.false_eq_true, decide_eq_true_eq] at hrow
+    rw [dif_pos hrow] at hp; subst hp
+    simp only [Core.Rel.junc, Core.Rel.inl, Core.Rel.inr, graph, union_apply, comp_apply, recip_apply,
+      reduceCtorEq, false_and, exists_false, false_or, Sum.inr.injEq, exists_eq_left', exists_eq_left]
+    first
+      | exact onNodes_sound hS yv h2.2 _ ⟨_, rfl⟩ z
+      | exact ⟨fun ⟨_, e, h⟩ => e ▸ (onNodes_sound hS yv h2.2 _ ⟨_, rfl⟩ z).1 h,
+          fun h => ⟨_, rfl, (onNodes_sound hS yv h2.2 _ ⟨_, rfl⟩ z).2 h⟩⟩
+  · simp only [ht, if_true, if_false, Bool.false_eq_true, decide_eq_true_eq] at hrow
+    rw [dif_pos hrow] at hp; subst hp
+    simp only [Core.Rel.junc, Core.Rel.inl, Core.Rel.inr, graph, union_apply, comp_apply, recip_apply,
+      reduceCtorEq, false_and, exists_false, or_false, Sum.inl.injEq, exists_eq_left', exists_eq_left]
+    first
+      | exact onNodes_sound hR xv h2.1 _ ⟨_, rfl⟩ z
+      | exact ⟨fun ⟨_, e, h⟩ => e ▸ (onNodes_sound hR xv h2.1 _ ⟨_, rfl⟩ z).1 h,
+          fun h => ⟨_, rfl, (onNodes_sound hR xv h2.1 _ ⟨_, rfl⟩ z).2 h⟩⟩
+
 /-! ### The rows of `prims` -/
 
 /-- Every row of `rowDens` not in `rowGaps` has its `Row`. -/
@@ -296,5 +349,8 @@ theorem compile_sound {A B : Obj} {d : Bool} (t : Tm A B d) (hg : t.gap = none) 
       exact Out.Sound.memo (Out.Sound.leaf (nu_sound (ihS hS η ρ hη).1 (fun X Y h => Tm.den_mono hp h)
         fun X _ => (ih hb _ _ (hη.bind k X)).1))
     · cases hg
-  | lam | E | thin | juncD | foldI | call | refold => simp [Tm.gap] at hg
+  | juncD R S ihR ihS =>
+    obtain ⟨hR, hS⟩ := gap_or hg
+    exact Out.Sound.memo (Out.Sound.leaf (juncD_sound (ihR hR η ρ hη).1 (ihS hS η ρ hη).1))
+  | lam | E | thin | foldI | call | refold => simp [Tm.gap] at hg
 end Rel.Lang
