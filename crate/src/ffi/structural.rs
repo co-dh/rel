@@ -1,16 +1,17 @@
 //! structural.rs's Lean exports, and the helpers every other export of that file reads a Lean argument through (the C
 //! `count_at`, `row_at`, `rows_at`, `alp_view`, `mk_pair`; `take_first` and `sarray_room` are `ffi::`'s, which owns the
-//! raw objects). The logic is `crate::structural`; an encoded answer is `ffi::encode_fill` over a `Producer`.
+//! raw objects). The logic is `crate::structural`; an encoded answer is a `ffi::Sink` over an `enc::Producer`.
 #![deny(unsafe_code)]
 use crate::alp::Cocf;
 use crate::coc::Coc;
 use crate::exports::coc::view;
-use crate::ffi::{Producer, SdPart, encode_fill, sarray_room, sd_concat, sd_part, take_ids0};
+use crate::enc::{Producer, filled};
+use crate::ffi::{Form, SdPart, Sink, ints_at, sarray_room, sd_concat, sd_part, take_ids0};
 use crate::lean::{B, O, SArr, ctor, export};
 use crate::{pod, structural};
 use alloc::vec::Vec;
 #[cfg(all(feature = "ffi", not(any(test, feature = "std"))))]
-use {crate::exports::coc::alp_view, crate::exports::reduce::elems, crate::ffi::{concat_own, encode_alp, syms_of, take_first}, crate::ids::ids_bytes, crate::lean::box_usize_o, crate::{c, lean}};
+use {crate::exports::coc::alp_view, crate::exports::reduce::elems, crate::ffi::{concat_own, syms_of, take_first}, crate::ids::ids_bytes, crate::lean::box_usize_o, crate::{c, lean}};
 
 pub fn die(args: core::fmt::Arguments) -> ! {
     crate::os::eprint(args).expect("qlean: stderr");
@@ -34,8 +35,8 @@ pub fn count_at(counts: &[B], i: usize) -> usize {
 /// `cat_fill` and `cat_take`.
 pub struct Cat<'a, 'b> { parts: &'a [Coc<'b>], start: &'a [usize], w: usize }
 impl Producer for Cat<'_, '_> {
-    fn fill(&self, buf: &mut [i64], i0: usize) {
-        structural::cat_fill(&|i| structural::plain(&self.parts[i]), self.start, self.w, false, buf, i0)
+    fn block<'s>(&'s self, _: usize, lo: usize, nb: usize, w: usize, buf: &'s mut [u8]) -> &'s [u8] {
+        filled(|v, i0| structural::cat_fill(&|i| structural::plain(&self.parts[i]), self.start, self.w, false, v, i0), lo, nb, w, buf)
     }
     fn take(&self, b: usize) -> Option<(Cocf<'_>, usize)> {
         let (p, j) = structural::cat_take(self.start, b)?;
@@ -45,20 +46,26 @@ impl Producer for Cat<'_, '_> {
 
 /// A column shifted by `k`, `fill` entering: structural.rs `shift_fill`.
 pub struct Shift<'a, 'b> { c: &'a Coc<'b>, k: i64, fill: i64 }
-impl Producer for Shift<'_, '_> { fn fill(&self, buf: &mut [i64], i0: usize) { structural::shift_fill(self.c, self.k, self.fill, buf, i0) } }
+impl Producer for Shift<'_, '_> {
+    fn block<'s>(&'s self, _: usize, lo: usize, nb: usize, w: usize, buf: &'s mut [u8]) -> &'s [u8] { filled(|v, i0| structural::shift_fill(self.c, self.k, self.fill, v, i0), lo, nb, w, buf) }
+}
 
 /// The hint callbacks all answer the exponent and the patch limit the walk leaves in `lim`.
 pub fn hinted(h: impl FnOnce(&mut u32) -> i32) -> Option<(i32, u32)> { let mut lim = 0; let e = h(&mut lim); Some((e, lim)) }
 /// `,` of ALP parts: structural.rs `cat_fill_alp`, `cat_take`, `cat_hint`, `cat_ints`.
 pub struct CatAlp<'a, 'b> { parts: &'a [Cocf<'b>], start: &'a [usize], w: usize }
 impl Producer for CatAlp<'_, '_> {
-    fn fill(&self, buf: &mut [i64], i0: usize) { structural::cat_fill_alp(&|i| self.parts[i], self.start, self.w, buf, i0) }
+    fn block<'s>(&'s self, _: usize, lo: usize, nb: usize, w: usize, buf: &'s mut [u8]) -> &'s [u8] {
+        filled(|v, i0| structural::cat_fill_alp(&|i| self.parts[i], self.start, self.w, v, i0), lo, nb, w, buf)
+    }
     fn take(&self, b: usize) -> Option<(Cocf<'_>, usize)> {
         let (p, j) = structural::cat_take(self.start, b)?;
         structural::cat_part_ok(&self.parts[p].c, self.w, true).then(|| (self.parts[p], j))
     }
     fn hint(&self, b: usize) -> Option<(i32, u32)> { hinted(|l| structural::cat_hint(&|i| self.parts[i], self.start, b, l)) }
-    fn ints(&self, b: usize, out: Option<&mut structural::Ints>) -> i32 { structural::cat_ints(&|i| self.parts[i], self.start, b, out) }
+    fn ints(&self, b: usize, nb: usize, d: &mut [i64], ee: &mut [i8], raw: Option<&mut [u8]>) -> Option<i32> {
+        ints_at(|o| structural::cat_ints(&|i| self.parts[i], self.start, b, o), nb, self.w, d, ee, raw)
+    }
 }
 
 /// structural.rs `concat_foR_move`: the parts' four metadata sections in turn and their packs end to end, `n` elements.
@@ -82,7 +89,7 @@ pub fn concat(w: usize, nsv: B, metasv: &O, packsv: &O) -> Result<O, (structural
     let (mb, pb) = (bytes_of(&ms[..k]), bytes_of(&ps[..k]));
     if structural::cat_aligned(k, ns, w, |i| parts[i]) { return Ok(concat_moved(&mb, &pb, start[k], w)) }
     if let Some(g) = structural::append_plan(&parts, &start, w) { return Err((g, mb[0].len(), pb[0].len())) }
-    Ok(encode_fill(start[k], w, &Cat { parts: &parts, start: &start, w }))
+    Ok(Sink::new(start[k], w, Form::For).answer(&Cat { parts: &parts, start: &start, w }))
 }
 
 export! {
@@ -133,7 +140,7 @@ export! {
         let (mut start, mut at) = (Vec::with_capacity(k + 1), 0);
         for p in &parts { start.push(at); at += p.c.meta.n }
         start.push(at);
-        encode_alp(at, w, &CatAlp { parts: &parts, start: &start, w })
+        Sink::new(at, w, Form::Alp).answer(&CatAlp { parts: &parts, start: &start, w })
     }
 
 
@@ -142,7 +149,7 @@ export! {
     /// aligned-move case: a shift lines the 1024-element grid up only when `k` is a multiple of 1024.
     fn qlean_structural_shift_foR(w: usize, mv: B, pv: B, n: usize, k: u64, fill: u64) -> O {
         let col = view("qlean structural", mv, pv, n);
-        encode_fill(col.meta.n, w, &Shift { c: &col, k: k as i64, fill: fill as i64 })
+        Sink::new(col.meta.n, w, Form::For).answer(&Shift { c: &col, k: k as i64, fill: fill as i64 })
     }
 
 

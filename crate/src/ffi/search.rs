@@ -223,5 +223,5 @@ pub fn sym_search(bits: bool, nb: B, no: B, hb: B, ho: B, out: &mut [u8]) {
 pub fn opnd_of<'a>(who: &str, mv: B<'a>, pv: B<'a>, n: usize, w: usize) -> Blocks<'a> {
     if mv.bytes().is_empty() { return Blocks::dense(pv.bytes(), w) }
     let c = view(who, mv, pv, n);
-    Blocks { n: c.meta.n, src: Src::For(c) }
+    Blocks::new(Src::For(c), c.meta.n)
 }

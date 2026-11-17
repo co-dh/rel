@@ -75,7 +75,7 @@ impl Pass for Blk<'_> {
 }
 impl<'a> Ksrc<'a> {
     /// This source's grid: the column's own blocks, or the writer's for a dense payload.
-    pub fn grid(&self) -> Blocks<'a> { self.c.map_or(Blocks { src: Src::Dense(self.p), n: self.n }, Blocks::from) }
+    pub fn grid(&self) -> Blocks<'a> { self.c.map_or(Blocks::new(Src::Dense(self.p), self.n), Blocks::from) }
     /// sort.rs `ksrc_blk`: block `b`'s keys into `k` (`grid().blk()` long); answers their count. A dense payload of any
     /// kind that is not an element kind (`SK_KEY`) is read as keys already.
     pub fn blk(&self, b: usize, k: &mut [u64]) -> usize {

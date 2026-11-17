@@ -6,7 +6,8 @@ use crate::c::pool;
 use crate::alp::Cocf;
 use crate::coc::{self, Coc, Meta, ViewErr};
 use crate::cocops;
-use crate::ffi::{encode_dense, encode_fill};
+use crate::blocks::Blocks;
+use crate::ffi::{Form, Sink};
 use crate::lean::{B, O, SArr, boxed, ctor, export};
 use crate::{codec, os, pod};
 #[cfg(all(feature = "ffi", not(any(test, feature = "std"))))]
@@ -45,13 +46,12 @@ export! {
     /// `(meta, pack)` of the dense column `x` of elements `width` bytes wide (2, 4 or 8)
     fn qlean_coc_encode(width: usize, x: B) -> O {
         if !matches!(width, 2 | 4 | 8) { die(format_args!("qlean_coc_encode: element width {width} is not 2, 4 or 8\n")) }
-        encode_dense(x.bytes(), width, false, usize::MAX).expect("qlean_coc_encode: a dense buffer cannot fail").into_pair()
+        encode(x, width, Form::For, false)
     }
     /// `qlean_coc_encode` as `some`, or `none` when the encoded form would not be shorter than `x`
     fn qlean_coc_encode_below(width: usize, x: B) -> O {
         if !matches!(width, 2 | 4 | 8) { die(format_args!("qlean_coc_encode_below: element width {width} is not 2, 4 or 8\n")) }
-        // the encoded form must be shorter than the whole elements it replaces
-        match encode_dense(x.bytes(), width, false, x.bytes().len() / width * width) { Some(p) => ctor(1, [p.into_pair()], &[]), None => boxed(0) }
+        encode(x, width, Form::For, true)
     }
     /// The column restored: `n` elements of `width` bytes, little-endian
     fn qlean_coc_decode(width: usize, meta: B, pack: B, n: usize) -> O {
@@ -81,7 +81,7 @@ export! {
         let v = v as i64;
         let c = view("qlean_coc_mask_cmp", meta, pack, n);
         if op as i32 > GE { die(format_args!("qlean_coc_mask_cmp: verb {op} is not one of the six in QLean.Kernel.Ew\n")) }
-        mask_with(c.meta.n, |out| codec::mask_cmp(pool(), op, v, &c, out))
+        Sink::new(c.meta.n, 1, Form::Ids(1)).words(|out| codec::mask_cmp(pool(), op, v, &c, out))
     }
     /// `k + x` (`neg`: `k - x`) as `some (meta, pack)`, or `none` where the column cannot take it. A shift the metadata
     /// absorbs keeps the pack (shared) and rewrites a copy of the metadata; any other goes back through the writer.
@@ -90,7 +90,7 @@ export! {
         let src = view("qlean_coc_shift", meta, pack, n);
         match src.shift_ok(k, neg != 0) {
             0 => boxed(0),
-            2 => ctor(1, [encode_fill(src.meta.n, 8, &|buf: &mut [i64], i0: usize| codec::shift_fill(&src, k, neg != 0, i64::MIN, buf, i0))], &[]),
+            2 => ctor(1, [Sink::new(src.meta.n, 8, Form::For).answer(&|buf: &mut [i64], i0: usize| codec::shift_fill(&src, k, neg != 0, i64::MIN, buf, i0))], &[]),
             _ => {
                 let mut m2 = SArr::new(1, meta.bytes().len());
                 m2.bytes_mut().copy_from_slice(meta.bytes());
@@ -106,9 +106,9 @@ export! {
         if op as i32 > GE { die(format_args!("qlean_coc_mask_cmp_vv: verb {op} is not one of the six in QLean.Kernel.Ew\n")) }
         // the shorter of the two decides how far the kernel walks
         a.meta.n = a.meta.n.min(b.meta.n);
-        if a.meta.lg != b.meta.lg { return mask_with(a.meta.n, |out| codec::cmp2_dense(op as i32, &a, &b, out)) }
+        if a.meta.lg != b.meta.lg { return Sink::new(a.meta.n, 1, Form::Ids(1)).words(|out| codec::cmp2_dense(op as i32, &a, &b, out)) }
         let mut deep = pod::uninit::<u32>(a.meta.nblk);
-        mask_with(a.meta.n, |out| {
+        Sink::new(a.meta.n, 1, Form::Ids(1)).words(|out| {
             let nd = codec::cmp_meta(&a, Some(&b), op as i32, 0, out, &mut deep);
             codec::cmp2(pool(), op as i32, &a, &b, &deep[..nd], out)
         })
@@ -124,14 +124,6 @@ pub fn dec<T: pod::Lane + Send>(c: &Coc) -> O {
 
 
 
-/// coc.rs `mask_alloc` and the kernel that fills it: a `Column.bits` payload of `ceil(n / 8)` bytes inside the `ceil(n / 64)`
-/// words the kernels write (the bits between `n` and the last word's end are the kernel's to set to 0); `f` gets the
-/// words, any contents.
-pub fn mask_with(n: usize, f: impl FnOnce(&mut [u64])) -> O {
-    let mut a = SArr::with_capacity(1, n.div_ceil(8), n.div_ceil(64) * 8);
-    f(pod::cast_mut::<u64>(a.capacity_mut()).expect("a bitmap array is misaligned for its 64-bit words"));
-    a.into()
-}
 
 /// coc.rs `cocf_meta_view` with the pack set (rust/src/coc.rs's `cocf_view`): the ALP column `meta`, `pack`, `alp` hold, its count cut
 /// to what the blocks can hold. A metadata or ALP array with misaligned or missing sections, which C read past, is a stop.
@@ -147,7 +139,7 @@ pub fn fview<'a>(who: &str, meta: B<'a>, pack: B<'a>, alp: B<'a>, n: usize) -> C
 pub fn val_vv(op: u8, a: &Coc, b: &Coc, s: i64, fill: i64) -> O {
     if op > 2 { die(format_args!("coc_val_vv: verb {op} is not one of the three in QLean.Kernel.Ew\n")) }
     if !a.vv_ok(b, op as i32, s, fill) { return boxed(0) }
-    ctor(1, [encode_fill(a.meta.n, 8, &|buf: &mut [i64], i0: usize| cocops::vv_fill(a, b, op as i32, s, fill, i0, buf))], &[])
+    ctor(1, [Sink::new(a.meta.n, 8, Form::For).answer(&|buf: &mut [i64], i0: usize| cocops::vv_fill(a, b, op as i32, s, fill, i0, buf))], &[])
 }
 
 export! {
@@ -160,16 +152,16 @@ export! {
         let k = k as i64;
         let c = view("qlean_coc_scale", meta, pack, n);
         if !c.scale_ok(k) { return boxed(0) }
-        ctor(1, [encode_fill(c.meta.n, 8, &|buf: &mut [i64], i0: usize| cocops::scale_fill(&c, k, i0, buf))], &[])
+        ctor(1, [Sink::new(c.meta.n, 8, Form::For).answer(&|buf: &mut [i64], i0: usize| cocops::scale_fill(&c, k, i0, buf))], &[])
     }
     /// `(meta, (pack, alp))` of the dense `f64` column `x`
-    fn qlean_alp_encode_f64(x: B) -> O { alp_encode(x, 8) }
+    fn qlean_alp_encode_f64(x: B) -> O { encode(x, 8, Form::Alp, false) }
     /// `(meta, (pack, alp))` of the dense `f32` column `x`
-    fn qlean_alp_encode_f32(x: B) -> O { alp_encode(x, 4) }
+    fn qlean_alp_encode_f32(x: B) -> O { encode(x, 4, Form::Alp, false) }
     /// `qlean_alp_encode_f64` as `some`, or `none` when the three parts would not be shorter than `x`
-    fn qlean_alp_encode_below_f64(x: B) -> O { alp_encode_below(x, 8) }
+    fn qlean_alp_encode_below_f64(x: B) -> O { encode(x, 8, Form::Alp, true) }
     /// `qlean_alp_encode_f32` as `some`, or `none` when the three parts would not be shorter than `x`
-    fn qlean_alp_encode_below_f32(x: B) -> O { alp_encode_below(x, 4) }
+    fn qlean_alp_encode_below_f32(x: B) -> O { encode(x, 4, Form::Alp, true) }
     /// The column restored: `n` little-endian `f64`
     fn qlean_alp_decode_f64(meta: B, pack: B, alp: B, n: usize) -> O { alp_dec(8, fview("qlean_alp_decode_f64", meta, pack, alp, n)) }
     /// The column restored: `n` little-endian `f32`
@@ -185,13 +177,12 @@ export! {
     }
 }
 
-/// `qlean_alp_encode_{f64,f32}`: the three parts of the dense column of `w`-byte elements
-pub fn alp_encode(x: B, w: usize) -> O {
-    encode_dense(x.bytes(), w, true, usize::MAX).expect("qlean_alp_encode: a dense buffer cannot fail").into_triple()
-}
-/// `qlean_coc_encode_below`'s rule at ALP: the three parts against the dense bytes
-pub fn alp_encode_below(x: B, w: usize) -> O {
-    match encode_dense(x.bytes(), w, true, x.bytes().len() / w * w) { Some(p) => ctor(1, [p.into_triple()], &[]), None => boxed(0) }
+/// The dense column `x` of `w`-byte elements through a `Sink` of `form`: the answer, or with `shrinks` `some` of it, `none`
+/// where the encoded form is not shorter than `x` (the `*_below` exports).
+pub fn encode(x: B, w: usize, form: Form, shrinks: bool) -> O {
+    let (s, p) = (Sink::new(x.bytes().len() / w, w, form), Blocks::dense(x.bytes(), w));
+    if !shrinks { return s.answer(&p) }
+    s.write(&p, true).map_or_else(|| boxed(0), |a| ctor(1, [a], &[]))
 }
 /// The ALP column as `f.c.meta.n` elements of `w` bytes, by blocks on the pool
 pub fn alp_dec(w: usize, f: Cocf) -> O {
