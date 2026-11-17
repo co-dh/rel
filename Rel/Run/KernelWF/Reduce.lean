@@ -107,9 +107,8 @@ theorem gradeColumn_isSome {t : QAtomicType} {desc rank : Bool} {n : USize} {e :
     | rfl
     | (split
        · rename_i hk
-         rcases orderKind_eq_none.1 hk with rfl | rfl | rfl
+         rcases orderKind_eq_none.1 hk with rfl | rfl
          · cases e <;> simp_all [Enc.WF, QAtomicType.width]
-         · exact absurd rfl hu
          · exact absurd rfl hg
        rename_i k hk
        split

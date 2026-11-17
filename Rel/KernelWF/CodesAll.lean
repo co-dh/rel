@@ -17,7 +17,7 @@ open Rel Rel.Dep Rel.Kernel Rel.Verify Rel
     size bounds and `Vals.PickFits`; at an atom, the kinds a several-part theorem covers — boolean, a small
     integral or a float side, its parts and their raze in any encoding, the parts' count 32 bits where an ALP
     join offsets them, an `.i64` side, its parts and their raze in any encoding,
-    a symbol side whose dictionaries summed fit a `USize`, a guid side, a general side whose elements hold no
+    a symbol side whose dictionaries summed fit a `USize`, a general side whose elements hold no
     `IndexCell` (`cellFree`, where `valEq` is `=`). -/
 def _root_.Rel.Obj.CodesFit : (A : Obj) → {p : Nat} → Vector (Part A) p → Prop
   | .atom t, p, cs => (cs.toList.map (·.1.toNat)).sum < USize.size ∧
@@ -240,7 +240,7 @@ theorem _root_.Rel.Obj.codesC_fits : (A : Obj) → {p : Nat} → (cs : Vector (P
     obtain ⟨hN, hb⟩ := hb
     unfold Obj.CodesFit
     refine ⟨hN, ?_⟩
-    rcases hb with ((((hb | hb) | hb) | ⟨hs, hd⟩) | hb) | ⟨hg, hc⟩
+    rcases hb with (((hb | hb) | hb) | ⟨hs, hd⟩) | ⟨hg, hc⟩
     · exact Or.inl hb
     · refine Or.inr (Or.inl ?_)
       split at hb
@@ -254,8 +254,7 @@ theorem _root_.Rel.Obj.codesC_fits : (A : Obj) → {p : Nat} → (cs : Vector (P
       · cases hb
     · exact Or.inr (Or.inr (Or.inl hb))
     · exact Or.inr (Or.inr (Or.inr (Or.inl ⟨hs, hd⟩)))
-    · exact Or.inr (Or.inr (Or.inr (Or.inr (Or.inl hb))))
-    · refine Or.inr (Or.inr (Or.inr (Or.inr (Or.inr ⟨hg, fun k hk xs he x hx => ?_⟩))))
+    · refine Or.inr (Or.inr (Or.inr (Or.inr ⟨hg, fun k hk xs he x hx => ?_⟩)))
       have h : (match (cs[k]'hk).2.enc with | .gen xs => xs.all cellFree | _ => true) = true :=
         Array.all_eq_true.1 hc k (by simpa using hk)
       simp only [he] at h

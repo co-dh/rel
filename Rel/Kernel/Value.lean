@@ -150,7 +150,7 @@ inductive QTable
 /-- A vector's payload, one constructor per layout. No constructor stores the element count: it is
 the header's `n` on `QValue.vector`, one source for it. -/
 inductive Enc
-  /-- Fixed-width types other than boolean, guid's 16 bytes included: q's own layout, little-endian,
+  /-- Fixed-width types other than boolean: q's own layout, little-endian,
   byte for byte the same as the IPC wire format and a splayed column file. Booleans are `bits`, not
   this. -/
   | bytes : ByteArray → Enc
@@ -217,7 +217,7 @@ inductive Enc
   question is asked.
 
   The element count is the header's for the reason `bits`' is: `nblk` only bounds it to a multiple
-  of `blk`. Only fixed-width types other than `boolean` and `guid` can be encoded (`Column.WF`). A
+  of `blk`. Only fixed-width types other than `boolean` can be encoded (`Column.WF`). A
   `float` column is legal here and lossless, but it is Frame of Reference over raw IEEE *bit
   patterns*, which compresses nothing -- the encoding that does is ALP, and it is a separate
   constructor. -/
@@ -648,7 +648,7 @@ open Column
 /-- What the header promises about the payload: the layout is one `t` has, and it holds exactly `n`
 elements. The conditions `count`, `admit` and `mismatch` used to encode between them, stated once;
 every reader trusts the header, so a vector that fails this is a bug where it was built. Booleans are
-`bits` and never `bytes`; Frame of Reference takes every fixed-width type but `boolean` and `guid`,
+`bits` and never `bytes`; Frame of Reference takes every fixed-width type but `boolean`,
 ALP the three float layouts; a `foR` or `alp` payload's blocks cover its `n`, and an `enum` payload's
 pack holds its `n` ids and its dictionary's offsets end at its blob with none past it, so a symbol
 appended to the dictionary leaves every entry before it reading as it did, and no entry is there twice,

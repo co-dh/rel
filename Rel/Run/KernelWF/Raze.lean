@@ -623,11 +623,11 @@ theorem answer_wf {t : QAtomicType} {n : USize} {e : Enc}
         have h0 : 0 < w ∧ w ≤ 8 := by
           cases t <;> simp_all [QAtomicType.width, Column.encodes] <;> omega
         have hmp := encodeBelow_eq heq
-        have hk := Verify.nblk_encode Column.lgEnc (by decide) w h0.1 h0.2.1 b
+        have hk := Verify.nblk_encode Column.lgEnc (by decide) w h0.1 h0.2 b
         change Column.nblk (Coc.encode _ b).1 = _ ∧ Column.blk (Coc.encode _ b).1 = _ at hk
         rw [← hmp] at hk
         simp only [hs, Nat.mul_div_cancel _ h0.1] at hk
-        refine wf_foR (by simp [hW]) hb h0.2.2 ?_ ?_
+        refine wf_foR (by simp [hW]) hb ?_ ?_
         · rw [hk.1, hk.2]; simp only [Column.lgEnc, Nat.reducePow]; omega
         · rw [show m = _ from congrArg Prod.fst hmp]
           exact lgOk_encode _ (by rw [toUSize_toNat (lt_usize (by omega))]; omega) b
@@ -1286,7 +1286,7 @@ theorem encodedParts_lgOk {t : QAtomicType} {cs : Array (USize × Enc)} {alp : B
       have hw := hwf _ hc
       cases e <;> simp only [ha, Bool.false_eq_true, if_false] at hx <;>
         first
-        | (cases hx; simp only [Enc.WF] at hw; exact decide_eq_true hw.2.2.2.2)
+        | (cases hx; simp only [Enc.WF] at hw; exact decide_eq_true hw.2.2.2)
         | cases hx
         | (split at hx
            · rename_i heq; cases hx; exact decide_eq_true (lgOk_of_encode (by intro _ _ h; cases h) heq)
@@ -1474,7 +1474,7 @@ theorem razeColumn_wf {t : QAtomicType} {cs : Array (USize × Enc)}
           simp only [Column.alpEncodes, Bool.false_eq_true, if_false, if_true] at hv
           cases hv
           first
-            | exact ⟨_, _, rfl, answer_wf (wf_foR rfl (by decide) (by decide)
+            | exact ⟨_, _, rfl, answer_wf (wf_foR rfl (by decide)
                 (by rw [toUSize_toNat hc]; exact (concatFoR_nblk rfl (by decide) (by decide) hms hps
                   (encodedParts_lgOk h rfl ‹encodedParts _ _ = some _›)).1)
                 (concatFoR_nblk rfl (by decide) (by decide) hms hps

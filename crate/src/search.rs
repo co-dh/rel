@@ -49,7 +49,7 @@ impl<'a> Opnd<'a> {
         match self.src {
             Src::Dense(d) => &d[at * w..(at + cnt) * w],
             Src::Ids(p, lw) => {
-                // `ids_key_width` answers at most 8; the clamp is for the `guid` instantiation, never run
+                // `ids_key_width` answers at most 8; the clamp is for a key wider than eight bytes, never run
                 let out = &mut buf[..cnt * w];
                 if matches!(w, 1 | 2 | 4 | 8) {
                     // `id_put` at `8w` bits is the fixed-width store; a `w`-byte copy here was a `memcpy` call per id

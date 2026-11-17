@@ -96,7 +96,7 @@ open FoldN
 theorem codesOK_long2 {n m : USize} (x : Vals .long n) (y : Vals .long m) (hN : n.toNat + m.toNat < USize.size) :
     codesOK(Obj.codes .long (#v[⟨n, x⟩, ⟨m, y⟩] : Vector (Part .long) 2),
       (#v[⟨n, x⟩, ⟨m, y⟩] : Vector (Part .long) 2)) :=
-  (codes_faithful_wf .long _ (codesFit_atom_count _ (by simpa using hN) (.inr (.inl rfl)))).1
+  (codes_faithful_wf .long _ (codesFit_atom_count _ (by simpa using hN) (.inr rfl))).1
 
 open scoped Rel.Core.Rel in
 open Rel.Core.Rel hiding id comp recip inter union zero le inl inr junc in
@@ -136,14 +136,14 @@ theorem round_rep {E V : Obj} (el : Rel .long E) (pend P S : Rel .long V)
   -- a one-part `.long` side fits outright (`codesFit_atom_one`), and is picked outright at its rows (`pickFits_atom`)
   have hr : ∀ {n : USize} (x : Vals .long n), Vals.PickFits .long x (List.range n.toNat) :=
     fun x => pickFits_atom x fun _ h => List.mem_range.1 h
-  refine ⟨rep_nub S (one_ok _ (codesFit_atom_one _ (.inl (Option.some_ne_none _)))) (one_ok _ hSV) (hr _) hSv,
+  refine ⟨rep_nub S (one_ok _ (codesFit_atom_one _ (Option.some_ne_none _))) (one_ok _ hSV) (hr _) hSv,
     fun r v => ?_⟩
-  rw [rep_union_full P Q hU (razeFits_atom_count _ _ hU (by decide) rfl) hFv (one_ok _ (codesFit_atom_one _ (.inl (Option.some_ne_none _))))
+  rw [rep_union_full P Q hU (razeFits_atom_count _ _ hU (by decide) rfl) hFv (one_ok _ (codesFit_atom_one _ (Option.some_ne_none _)))
     (one_ok _ hUV) (hr _) hUv]
   show rep P r v ∨ rep Q r v ↔ _
   subst hQ
   exact or_congr Iff.rfl (round_out el pend (rep_antiJoin (pend°) (idU (Rel.key el))
-    (codes_faithful_wf .long _ (codesFit_atom_count _ hjf (.inr (.inl rfl)))).1 hJk (hr _)) r v)
+    (codes_faithful_wf .long _ (codesFit_atom_count _ hjf (.inr rfl))).1 hJk (hr _)) r v)
 
 /-! ## The rounds -/
 

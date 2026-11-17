@@ -74,8 +74,7 @@ kinds only), so `codes` interns nothing and groups: `groupIdsColumn`, ids by fir
 /-- The integral sort kinds below eight bytes. -/
 theorem small_int_width {t : QAtomicType} {k : Scan.Kind} (ht : orderKind t = some k)
     (hk : k = .u8 ∨ k = .i16 ∨ k = .i32) :
-    t.width = some k.width ∧ denseWidth t = some k.width ∧ t ≠ .general ∧ t ≠ .boolean ∧ t ≠ .symbol ∧
-      t ≠ .guid := by
+    t.width = some k.width ∧ denseWidth t = some k.width ∧ t ≠ .general ∧ t ≠ .boolean ∧ t ≠ .symbol := by
   cases t <;> simp [orderKind] at ht <;> subst ht <;> simp_all [QAtomicType.width, denseWidth, Scan.Kind.width]
 
 /-- **The atom a small integral column reads is its low `8·w` bits**: two raw words read as one element
@@ -120,7 +119,7 @@ theorem codes_small_int {t : QAtomicType} {k : Scan.Kind} (ht : orderKind t = so
     (hk : k = .u8 ∨ k = .i16 ∨ k = .i32) (x : Part (.atom t)) :
     ∃ p, groupIdsColumn t x.1 x.2.enc = some p ∧
       (Obj.codes (.atom t) #v[x])[0] = Code.ofIds (len p.2) x.1 p.1 := by
-  obtain ⟨hw, -, hg, hb, hs, hgu⟩ := small_int_width ht hk
+  obtain ⟨hw, -, hg, hb, hs⟩ := small_int_width ht hk
   have hne : ∀ d o ids, x.2.enc ≠ .enum d o ids := fun d o ids he => by
     have := x.2.wf; rw [he] at this; cases t <;> simp_all [Enc.WF]
   have hnb : ∀ b, x.2.enc ≠ .bits b := fun b he => by

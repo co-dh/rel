@@ -844,7 +844,7 @@ theorem sortsAsc_ordered_atom {t : QAtomicType} (h : t ≠ .general) : SortsAsc 
 /-- **Every ordered side sorts stably by `Obj.lt`**: atoms by their kernels, products and sums and arrays (the
     LSD passes of `Obj.sortByC`) from their parts. -/
 theorem sortsAsc_all : ∀ A : Obj, A.Ordered → SortsAsc A
-  | .atom _, ⟨h, hu⟩ => sortsAsc_ordered_atom h hu
+  | .atom _, h => sortsAsc_ordered_atom h
   | .prod a b, ⟨ha, hb⟩ => sortsAsc_prod (sortsAsc_all a ha) (sortsAsc_all b hb)
   | .arr b, h => sortsAsc_arr (sortsAsc_all b h)
   | .sum a b, ⟨ha, hb⟩ => sortsAsc_sum (sortsAsc_all a ha) (sortsAsc_all b hb)

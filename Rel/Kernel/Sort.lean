@@ -364,7 +364,7 @@ namespace Rel.Kernel
 open Rel.Kernel.Scan (Kind)
 open Rel.Kernel.Order
 
-/-- q's `iasc` and `idesc` when a kernel claims them, which is every type but `guid` (`gradeColumnAll` adds it). `asc` and
+/-- q's `iasc` and `idesc` when a kernel claims them. `asc` and
 `desc` are this permutation and K5's gather, and `rank` is this permutation graded again; none of
 the three is a kernel of its own, `~/q/q.k` lines 12 and 13 defining them all from `<` and `>`.
 

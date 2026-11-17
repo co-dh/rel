@@ -31,11 +31,8 @@ theorem get_bytes_congr {t : QAtomicType} {w : Nat} (hw : t.width = some w) {m m
     {i i' : Nat} (hi : i < m.toNat) (hi' : i' < m'.toNat) (h : ∀ j < w, b.data[i * w + j]? = b'.data[i' * w + j]?) :
     Enc.get t m (.bytes b) i = Enc.get t m' (.bytes b') i' := by
   have hB := bitsAt_congr h
-  have hG : ∀ j < w, b[i * w + j]? = b'[i' * w + j]? := fun j hj => by rw [ba_get?, ba_get?]; exact h j hj
   cases t <;> simp only [QAtomicType.width] at hw <;> cases hw <;>
     simp only [Enc.get, hi, hi', ↓reduceIte, QAtomicType.width, hB]
-  apply congrArg; apply congrArg; apply Vector.ext; intro k hk
-  simp only [Vector.getElem_ofFn]; rw [hG k hk]
 
 /-- An `Arr` moved along a count equation keeps its list. -/
 theorem cast_toList {t : QAtomicType} {a b : USize} (e : a = b) (x : Arr t a) :

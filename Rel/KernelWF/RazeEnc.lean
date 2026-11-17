@@ -137,7 +137,7 @@ theorem alp_part {t : QAtomicType} {w : Nat} (ht : Column.alpEncodes t = true) (
   · have hesz : Column.alpEsz a = w := by
       cases t <;> simp only [QAtomicType.width, reduceCtorEq, Option.some.injEq] at hw <;> (try subst hw) <;>
         simp_all [Enc.WF, Column.alpEsz, QAtomicType.width]
-    refine ⟨?_, fun i hi => by rw [get_alp_eq hw hb hg _ _ _ hi, alpBits_starts]⟩
+    refine ⟨?_, fun i hi => by rw [get_alp_eq hw hb _ _ _ hi, alpBits_starts]⟩
     unfold Column.alpEsz at hesz
     cases hf : Column.alpF32 a <;> simp [hf] at hesz <;> subst hesz <;> decide
   · obtain ⟨b, hbo, hbs⟩ := bytesOf_size hb hw hwf
@@ -153,7 +153,7 @@ theorem alp_part {t : QAtomicType} {w : Nat} (ht : Column.alpEncodes t = true) (
     have H := Verify.alpBits_alpEncodeAt (w == 4) Column.lgEnc (by decide) w h48 b (by rw [hbs, Nat.mul_div_cancel _ h0]; exact hn)
     simp only [hE] at H
     refine ⟨H.1, fun i hi => ?_⟩
-    rw [← get_bytesOf hw hb hwf hbo hi, get_bytes_eq hw hb hg _ hi,
+    rw [← get_bytesOf hw hb hwf hbo hi, get_bytes_eq hw hb _ hi,
       H.2 i (by rw [hbs, Nat.mul_div_cancel _ h0]; exact hi)]
 
 /-- `razeColumn`'s ALP join: the vector of the parts' total count whose payload is `Enc.answer` of
@@ -196,7 +196,7 @@ theorem razeTo_of_bits {t : QAtomicType} {w : Nat} (hw : t.width = some w) (hb :
   let Gn : Nat → Carrier t := fun v =>
     ((some (Column.atomOfBits t (UInt64.ofNat v) hg)).bind fun a => Carrier.of? t (.atom a)).getD default
   have hG : ∀ u : UInt64, ((some (Column.atomOfBits t u hg)).bind fun a => Carrier.of? t (.atom a)).getD default =
-      Gn (u.toNat % 2 ^ (8 * w)) := fun u => by simp only [Gn, Verify.atomOfBits_mod hw hb hg8]
+      Gn (u.toNat % 2 ^ (8 * w)) := fun u => by simp only [Gn, Verify.atomOfBits_mod hw hb]
   have hR : cs.toList.map (·.2.toList) = (List.range cs.size).map fun k =>
       ((List.range (cnt k)).map fun i => (fs k i).toNat % 2 ^ (8 * w)).map Gn := by
     apply List.ext_getElem (by simp)
@@ -273,7 +273,7 @@ theorem razeTo_join_alp {t : QAtomicType} {w : Nat} (hw : t.width = some w) (cs 
   have hL := hD.symm.trans hR.2
   have hwfA : Enc.WF t N.toUSize (.alp M P A) :=
     concatALP_wf hX ht hw hms hps has (by rw [USize.toNat_ofNat_of_lt' hNlt]; exact hNv)
-  refine razeTo_of_bits hw hb hg8 cs hs hS h2 (Column.alpBits M P A (Column.blockStarts M))
+  refine razeTo_of_bits hw hb cs hs hS h2 (Column.alpBits M P A (Column.blockStarts M))
     (fun k => (Column.bitsAt (countBytes ns) (8 * k) 8).toNat)
     (fun k => Column.alpBits ms[k]! ps[k]! as[k]! (Column.blockStarts ms[k]!)) ?_ ?_ ?_
   · intro c E a hv i hi
@@ -281,7 +281,7 @@ theorem razeTo_join_alp {t : QAtomicType} {w : Nat} (hw : t.width = some w) (cs 
     simp only [QValue.vector.injEq] at hv
     obtain ⟨-, rfl, rfl, rfl⟩ := hv
     have hi' : i < N.toUSize.toNat := by rw [hNU]; exact hi
-    rw [get_answer hw hb hwfA (by intro _ h; cases h) hi', get_alp_eq hw hb hg8 _ _ _ hi', alpBits_starts]
+    rw [get_answer hw hb hwfA (by intro _ h; cases h) hi', get_alp_eq hw hb _ _ _ hi', alpBits_starts]
   · intro k hk
     obtain ⟨hk', hp', ha', he⟩ := encodedParts_alp ht hE k (by simpa using hk)
     refine ⟨hb8 k hk, ?_⟩

@@ -49,7 +49,7 @@ def findVec (w : USize) (float : Bool) (hay : @& ByteArray) (ndl : @& ByteArray)
   let sl (b : ByteArray) (i : Nat) := (b.extract (i * w.toNat) (i * w.toNat + w.toNat)).data
   (List.range (ndl.size / w.toNat)).foldl (init := ByteArray.empty) fun acc j =>
     Column.pushBits acc
-      -- a `guid`'s sixteen bytes do not fit the `UInt64` a `findScalar` needle is, so above eight
+      -- an element wider than eight bytes does not fit the `UInt64` a `findScalar` needle is, so above eight
       -- the element is compared whole, which is what the C probe's two-word equality is
       (if w.toNat ≤ 8 then (findScalar w float hay (Column.bitsAt ndl (j * w.toNat) w.toNat)).toNat
        else ((List.range (hay.size / w.toNat)).find? (sl hay · == sl ndl j)).getD
@@ -68,7 +68,7 @@ def gatherAt (n : Nat) (idx : ByteArray) (j : Nat) : Option Nat :=
 
 /-- q's `x@i` at a dense payload: element `idx[j]` of `src`, or `fill` where `gatherAt` declines.
 Here beside `findVec` rather than with the rest of `x@i` in `QLean/Kernel/Structural.lean` because
-`distinct` and `group` at `guid` are a probe and this gather, and `QLean/Kernel/Sort.lean` sits below
+`distinct` and `group` over an element wider than eight bytes are a probe and this gather, and `QLean/Kernel/Sort.lean` sits below
 that module.
 
 `fill` is the type's null as raw bits, and it is `Kernel.nullBits` and no second table — measured,
@@ -78,7 +78,7 @@ that module.
 def gatherBytes (w : USize) (fill : UInt64) (src : @& ByteArray) (idx : @& ByteArray) : ByteArray :=
   (List.range (idx.size / 8)).foldl (init := ByteArray.empty) fun acc j =>
     match gatherAt (src.size / w.toNat) idx j with
-    -- above eight bytes — a `guid` — the element does not fit a `UInt64` and is copied whole
+    -- above eight bytes the element does not fit a `UInt64` and is copied whole
     | some i => if w.toNat ≤ 8 then Column.pushBits acc (Column.bitsAt src (i * w.toNat) w.toNat) w.toNat
                 else acc ++ src.extract (i * w.toNat) (i * w.toNat + w.toNat)
     | none => Column.pushBits acc fill w.toNat
@@ -96,7 +96,7 @@ def memberVec (w : USize) (float : Bool) (xs : @& ByteArray) (hay : @& ByteArray
   (List.range ((m + 7) / 8)).foldl (init := ByteArray.empty) fun acc b =>
     acc.push ((List.range 8).foldl (init := (0 : UInt8)) fun byte t =>
       let i := b * 8 + t
-      -- above eight bytes — a `guid` — the element is compared whole, as in `findVec`
+      -- above eight bytes the element is compared whole, as in `findVec`
       if i < m && (if w.toNat ≤ 8 then findScalar w float hay (Column.bitsAt xs (i * w.toNat) w.toNat) < n.toUSize
                    else ((List.range n).find? (sl hay · == sl xs i)).getD n < n)
       then byte ||| (1 <<< t.toUInt8) else byte)
@@ -317,8 +317,7 @@ def operand (t : QAtomicType) (n : USize) (e : Enc) : Option (USize × ByteArray
   | none => (Enc.bytesOf t n e).map fun b => (0, ByteArray.empty, b)
 
 /-- Two dense payloads. Byte equality unless `float`, which folds `±0` together and is passed only at
-`real`, `float` and `datetime` — `w` is read at all only there, and it is why `guid`'s sixteen bytes
-need no instantiation. -/
+`real`, `float` and `datetime` — `w` is read at all only there. -/
 @[extern "qlean_match_bytes"]
 def matchBytes (w : USize) (float : Bool) (a b : @& ByteArray) : Bool :=
   a.size == b.size &&
