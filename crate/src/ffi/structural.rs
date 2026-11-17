@@ -6,10 +6,10 @@ use crate::alp::Cocf;
 use crate::coc::Coc;
 use crate::exports::coc::{alp_view, view};
 use crate::exports::reduce::elems;
-use crate::ffi::{Producer, SdPart, amend, array_boxed, concat_own, encode_alp, encode_fill, encode_scatter, sarray_room, sd_concat, sd_part, syms_of, take_first, take_ids0};
+use crate::ffi::{Producer, SdPart, amend, concat_own, encode_alp, encode_fill, encode_scatter, sarray_room, sd_concat, sd_part, syms_of, take_first, take_ids0};
 use crate::ids::ids_bytes;
 use crate::lean::{B, O, SArr, box_, box_usize_o, boxed, ctor, export};
-use crate::{BLK, c, pod, structural};
+use crate::{BLK, c, lean, pod, structural};
 use crate::structural::{STR_BLK, rows_at};
 use alloc::vec::Vec;
 
@@ -411,7 +411,7 @@ export! {
         let (d, b) = (dv.bytes(), bv.bytes());
         let cuts = structural::split_cuts(d, b);
         let mut nb = SArr::new(1, b.len() - cuts * d.len());
-        let no = array_boxed(cuts + 2, |offs| structural::split(d, b, nb.bytes_mut(), offs));
+        let no = lean::arr_words(cuts + 2, |offs| structural::split(d, b, nb.bytes_mut(), offs));
         pair(nb.into(), no)
     }
 
@@ -462,7 +462,7 @@ export! {
     /// boxed scalar stops rather than being truncated into a valid-looking row.
     fn qlean_structural_rows_of(bv: B) -> O {
         let b = bv.bytes();
-        array_boxed(b.len() / 8, |o| { structural::rows_of(b, o); })
+        lean::arr_words(b.len() / 8, |o| { structural::rows_of(b, o); })
     }
 
     /// Spec: `gatherSyms blob offs ix` is the blob and offset table of the symbols `ix` names, with a miss answering the empty
@@ -470,7 +470,7 @@ export! {
     fn qlean_structural_gather_syms(blobv: B, offsv: B, idxv: B) -> O {
         let (s, idx) = (syms_of(blobv, offsv), elems::<i64>(idxv));
         let mut nb = SArr::new(1, structural::gather_syms_len(&s, idx));
-        let no = array_boxed(idx.len() + 1, |o| structural::gather_syms(&s, idx, nb.bytes_mut(), o));
+        let no = lean::arr_words(idx.len() + 1, |o| structural::gather_syms(&s, idx, nb.bytes_mut(), o));
         pair(nb.into(), no)
     }
 
@@ -564,7 +564,7 @@ fn symdict_concat(ps: &O) -> Option<O> {
 // ---- T2: from `qlean_structural_til_foR` to the end: `til`, `string`, `mmu`, the transposes, the amends and the scatters ----
 /// A `Nat` array of the `n` values `f(i)`, as tagged scalars (a count below 2^63).
 fn boxed_array(n: usize, f: impl Fn(usize) -> usize) -> O {
-    array_boxed(n, |o| for (i, x) in o.iter_mut().enumerate() { *x = box_(f(i)) as usize })
+    lean::arr_words(n, |o| for (i, x) in o.iter_mut().enumerate() { *x = box_(f(i)) as usize })
 }
 /// The `Int64`s of an index column, `size / 8` of them.
 fn longs<'a, T: pod::Pod>(b: B<'a>) -> &'a [T] {
@@ -593,7 +593,7 @@ export! {
         let mut at = alloc::vec![0usize; n.div_ceil(STR_BLK) + 1];
         let total = structural::str_count(c::pool(), w, src, n, &mut at);
         let mut blob = SArr::new(1, total);
-        let offs = array_boxed(n + 1, |o| structural::str_write(c::pool(), w, src, n, &at, blob.bytes_mut(), o));
+        let offs = lean::arr_words(n + 1, |o| structural::str_write(c::pool(), w, src, n, &at, blob.bytes_mut(), o));
         pair(blob.into(), offs)
     }
 
@@ -691,7 +691,7 @@ export! {
         let (b, y) = (syms_of(bv, ov), syms_of(ybv, yov));
         let src = structural::scatter_sources(b.count(), y.count(), longs::<u64>(idxv), bcast != 0);
         let mut blob = SArr::new(1, structural::scatter_syms_total(&src, &b, &y));
-        let offs = array_boxed(src.len() + 1, |o| structural::scatter_syms_write(&src, &b, &y, blob.bytes_mut(), o));
+        let offs = lean::arr_words(src.len() + 1, |o| structural::scatter_syms_write(&src, &b, &y, blob.bytes_mut(), o));
         pair(blob.into(), offs)
     }
 

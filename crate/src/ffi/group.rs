@@ -8,7 +8,7 @@ use crate::c::pool;
 use crate::exports::coc::{alp_view, view};
 use crate::exports::sort::{avail, dense_width, longs, width};
 use crate::exports::structural::pair;
-use crate::ffi::{encode_alp, encode_fill, sarray_set_size};
+use crate::ffi::{encode_alp, encode_fill};
 use crate::group::{self, Dedup};
 use crate::ids::{id_width, ids_avail, ids_bytes};
 use crate::key::Pass;
@@ -46,7 +46,8 @@ fn group_answer(mut g: SArr, m: usize, ng: usize, first: &[usize], pack: bool) -
     if pack && w < 8 { ids::pack_in_place(&mut g.capacity_mut()[..m], w, m) }
     let mut f = SArr::new(1, ng * 8);
     f.bytes_mut().copy_from_slice(pod::bytes(&first[..ng]));
-    pair(sarray_set_size(g.into(), ids_bytes(m, w)), f.into())
+    g.set_size(ids_bytes(m, w));
+    pair(g.into(), f.into())
 }
 /// sort.rs `group_ids_of`: `groupIds`' answer for `m` keys spanning `mn ..= mx`, `numbered` writing the ids and first indices
 /// (`who` names it in the stop). The capacity is for the lane the groups can need at most, `min(span + 1, m)` of them; the size

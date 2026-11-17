@@ -316,6 +316,12 @@ impl<'a> B<'a> {
         assert!(!self.is_scalar() && unsafe { ptr_tag(self.p()) } == TAG_ARRAY, "lean::B::array: not an Array");
         unsafe { core::slice::from_raw_parts(array_cptr(self.p()).cast(), array_size(self.p())) }
     }
+    /// the words of an `Array` as they lie, no copy: a boxed scalar is the word `n << 1 | 1`, an even word a pointer, which a
+    /// reader of the value refuses (`Syms::off`); the words are only read, never followed
+    pub fn words(self) -> &'a [usize] {
+        assert!(!self.is_scalar() && unsafe { ptr_tag(self.p()) } == TAG_ARRAY, "lean::B::words: not an Array");
+        unsafe { core::slice::from_raw_parts(array_cptr(self.p()).cast(), array_size(self.p())) }
+    }
     /// the bytes of a scalar array (`ByteArray`, `FloatArray`): `size · elem_size` of them
     pub fn bytes(self) -> &'a [u8] {
         assert!(!self.is_scalar() && unsafe { ptr_tag(self.p()) } == TAG_SCALAR_ARRAY, "lean::B::bytes: not a scalar array");
@@ -333,6 +339,8 @@ impl SArr {
         assert!(n <= cap, "lean::SArr::with_capacity: size {n} is above capacity {cap}");
         SArr(unsafe { O::from_raw(alloc_sarray(elem, n, cap)) })
     }
+    /// `lean_sarray_set_size`: count `n` elements, `n <= capacity`; the array is fresh, so held alone
+    pub fn set_size(&mut self, n: usize) { self.0.set_size(n) }
     pub fn bytes_mut(&mut self) -> &mut [u8] {
         let p = self.0.0.as_ptr();
         unsafe { core::slice::from_raw_parts_mut(sarray_cptr(p), sarray_size(p) * sarray_elem_size(p) as usize) }
@@ -350,6 +358,13 @@ pub fn ctor<const N: usize>(tag: u8, objs: [O; N], scalars: &[u8]) -> O {
     let o = alloc_ctor(tag, N as u32, scalars.len() as u32);
     for (i, f) in objs.into_iter().enumerate() { unsafe { ctor_set(o, i as u32, f.into_raw()) } }
     unsafe { core::ptr::copy_nonoverlapping(scalars.as_ptr(), ctor_scalar_cptr(o), scalars.len()); O::from_raw(o) }
+}
+/// A fresh `Array` of `n` words that `f` writes in place, each already a boxed scalar (`at << 1 | 1`), as the kernels that
+/// fill a table of starts write them; a word `f` leaves unwritten is a pointer nobody owns, so `f` writes all `n`.
+pub fn arr_words(n: usize, f: impl FnOnce(&mut [usize])) -> O {
+    let a = alloc_array(n, n);
+    // `a` is held by nothing yet, so a panic in `f` leaks it and frees nothing
+    unsafe { f(core::slice::from_raw_parts_mut(array_cptr(a).cast(), n)); O::from_raw(a) }
 }
 /// An `Array` of `items`, size = capacity = their count
 pub fn arr<I: ExactSizeIterator<Item = O>>(items: I) -> O {
@@ -433,6 +448,13 @@ impl O {
         let p = self.0.as_ptr();
         assert!(!is_scalar(p) && unsafe { ptr_tag(p) } == TAG_SCALAR_ARRAY, "lean::O::shared_bytes_mut: not a scalar array");
         unsafe { core::slice::from_raw_parts_mut(sarray_cptr(p), sarray_size(p) * sarray_elem_size(p) as usize) }
+    }
+    /// `lean_sarray_set_size` of a scalar array this reference holds alone: `n` elements, `n <= capacity`; the rest unwritten
+    pub fn set_size(&mut self, n: usize) {
+        let p = self.0.as_ptr();
+        assert!(!is_scalar(p) && unsafe { ptr_tag(p) } == TAG_SCALAR_ARRAY, "lean::O::set_size: not a scalar array");
+        assert!(unsafe { is_exclusive(p) && n <= sarray_capacity(p) }, "lean::O::set_size: {n} elements of a shared array or past its capacity");
+        unsafe { sarray_set_size(p, n) }
     }
     /// A `ByteArray` held alone: itself when exclusive, else `lean_copy_byte_array`'s copy (same size and capacity),
     /// the shared one losing this reference

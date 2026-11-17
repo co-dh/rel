@@ -195,13 +195,8 @@ pub unsafe extern "C" fn qrs_src_bits(out: *mut u8, nbytes: usize, b: usize, x: 
 // A9: the ALP encoder's per-block steps that need nothing of A7. C reaches them through `coc *` and an exponent array
 // the Rust side has no view of (`EncMeta` is A16's), so each is its own entry per element type.
 /// The symbol column `blob` and `offs` (an `Array` of boxed starts) names, read where it lies: no copy of the starts, which a
-/// per-element kernel would pay as a second pass. A boxed start is the object word itself; a bignum is an even word, which
-/// `Syms::off` refuses when it is read. Lean has no `lean.rs` accessor for an array's words yet.
-pub fn syms_of<'a>(blob: lean::B<'a>, offs: lean::B<'a>) -> Syms<'a> {
-    let a = offs.array();
-    // Safety: `lean::B` is `repr(transparent)` over one non-null pointer, so `a` is `a.len()` consecutive `usize` words
-    Syms { blob: blob.bytes(), offs: unsafe { sl(a.as_ptr().cast::<usize>(), a.len()) } }
-}
+/// per-element kernel would pay as a second pass; a bignum start is refused by `Syms::off` when it is read.
+pub fn syms_of<'a>(blob: lean::B<'a>, offs: lean::B<'a>) -> Syms<'a> { Syms { blob: blob.bytes(), offs: offs.words() } }
 /// K20: a dictionary or starts object as `sym::Heap` sees it, the lean.rs inlines under the names lean.h gives them.
 #[derive(Clone, Copy, PartialEq)]
 struct Obj(*mut lean::Object);
@@ -226,19 +221,15 @@ struct Kept(core::cell::UnsafeCell<sym::Cache<Obj>>);
 unsafe impl Sync for Kept {}
 static KEPT: Kept = Kept(core::cell::UnsafeCell::new(sym::Cache::new()));
 /// `dict`/`offs` as a part: the bytes and the boxed starts, in place.
-unsafe fn part<'a>(dict: *mut lean::Object, offs: *mut lean::Object) -> sym::Part<'a, Obj> {
-    unsafe {
-        sym::Part { dict: Obj(dict), offs: Obj(offs),
-                    syms: Syms { blob: sl(lean::sarray_cptr(dict), lean::sarray_size(dict)), offs: sl(lean::array_cptr(offs).cast(), lean::array_size(offs)) } }
-    }
+fn part<'a>(dict: lean::B<'a>, offs: lean::B<'a>) -> sym::Part<'a, Obj> {
+    sym::Part { dict: Obj(raw(dict)), offs: Obj(raw(offs)), syms: syms_of(dict, offs) }
 }
 /// The kept hash of the dictionary `dict`/`offs` at its own count, when the cache holds one: `f` gets its probe, the least id
 /// holding the symbol bytes it is given and the symbol count where none does, with `SD_LOCK` held (the lock `sd_concat` takes
 /// too); `None`, lock released, where nothing is kept. A lookup does not build one: a scan of `d` entries is a fraction of the
 /// hashing.
 pub fn sd_kept<R>(dict: lean::B, offs: lean::B, f: impl FnOnce(&dyn Fn(&[u8]) -> usize) -> R) -> Option<R> {
-    // Safety: the objects are borrowed for the call and the starts are boxed words, as `part` reads them
-    let p = unsafe { part(raw(dict), raw(offs)) };
+    let p = part(dict, offs);
     let d = p.syms.count();
     SD_LOCK.lock();
     // Safety: `SD_LOCK` is held
@@ -255,7 +246,7 @@ pub fn sd_kept<R>(dict: lean::B, offs: lean::B, f: impl FnOnce(&dyn Fn(&[u8]) ->
 static SD_LOCK: crate::pool::Lock = crate::pool::Lock::new();
 /// The pointer of a borrowed object: `lean::B` is `repr(transparent)` over one non-null pointer.
 fn raw(b: lean::B) -> *mut lean::Object {
-    // Safety: same size and meaning, as `syms_of` relies on for an array's elements
+    // Safety: same size and meaning, as `lean::B` is a pointer
     unsafe { core::mem::transmute(b) }
 }
 /// Part `i` of `Kernel.hashConcat`'s argument `ps`: `(n, (dict, (offs, ids)))`, `n` a boxed `USize`.
@@ -286,21 +277,13 @@ pub fn take_ids0(ps: &lean::O) -> lean::O {
 /// its symbol count, and for each part past the first the id every one of its symbols has in it (`None` where they are the
 /// base's own); `None` when the base holds a symbol twice or the joined dictionary would not fit 32-bit ids.
 pub fn sd_concat(parts: &[(lean::B, lean::B)]) -> Option<(lean::O, lean::O, usize, alloc::vec::Vec<Option<alloc::vec::Vec<usize>>>)> {
-    // Safety: each part's objects are borrowed for the call and the starts are boxed words, as `part` reads them
-    let ps: alloc::vec::Vec<_> = parts.iter().map(|&(d, o)| unsafe { part(raw(d), raw(o)) }).collect();
+    let ps: alloc::vec::Vec<_> = parts.iter().map(|&(d, o)| part(d, o)).collect();
     SD_LOCK.lock();
     // Safety: `SD_LOCK` is held
     let r = unsafe { (&mut *KEPT.0.get()).concat(&ps) };
     SD_LOCK.unlock();
     // Safety: the cache's answer holds one reference to each, which the caller owns
     r.map(|d| unsafe { (lean::O::from_raw(d.dict.0), lean::O::from_raw(d.offs.0), d.cnt, d.maps) })
-}
-/// A fresh `Array` of `n` words that `f` writes in place, each already a boxed scalar (`at << 1 | 1`), as the kernels that
-/// fill a table of starts write them.
-pub fn array_boxed(n: usize, f: impl FnOnce(&mut [usize])) -> lean::O {
-    let a = lean::alloc_array(n, n);
-    // Safety: `a` is an array of `n` words, uninitialised until `f` writes every one
-    unsafe { f(sl_mut(lean::array_cptr(a).cast::<usize>(), n)); lean::O::from_raw(a) }
 }
 /// K22: structural.rs `amend_index` past the width check, the answer's three Lean arrays allocated as the kernel asks for them:
 /// `Res`, and, when `compact` and no index misses, `Dom` and `Rank` (`None` otherwise). The kernel writes into each while the
@@ -1028,21 +1011,11 @@ pub fn sarray_room(o: lean::O, need: usize) -> lean::O {
     unsafe {
         let p = o.into_raw();
         let (sz, ex) = (lean::sarray_size(p), lean::is_exclusive(p));
-        if ex && lean::sarray_capacity(p) >= need { lean::sarray_set_size(p, need); return lean::O::from_raw(p) }
+        if ex && lean::sarray_capacity(p) >= need { let mut o = lean::O::from_raw(p); o.set_size(need); return o }
         let r = lean::alloc_sarray(1, need, if ex { 2 * need } else { need });
         core::ptr::copy_nonoverlapping(lean::sarray_cptr(p), lean::sarray_cptr(r), sz.min(need));
         lean::dec(p);
         lean::O::from_raw(r)
-    }
-}
-/// `lean_sarray_set_size`: the fresh `ByteArray` `o` (`rc` 1, allocated with room for `size` bytes) counting `size` bytes. `lean.rs`
-/// has no size setter, which a kernel writing into the capacity before it knows how much it wrote needs.
-pub fn sarray_set_size(o: lean::O, size: usize) -> lean::O {
-    unsafe {
-        let p = o.into_raw();
-        assert!(lean::is_exclusive(p) && size <= lean::sarray_capacity(p), "sarray_set_size: {size} bytes of a shared array or past its capacity {}", lean::sarray_capacity(p));
-        lean::sarray_set_size(p, size);
-        lean::O::from_raw(p)
     }
 }
 /// coc.rs `qlean_coc_encode_move` over any source of blocks that also moves them (`alp` answers `(meta, (pack, alp))`).
