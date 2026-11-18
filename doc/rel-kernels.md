@@ -235,7 +235,7 @@ A caller is a reached declaration with a `dep` edge to an R export; one 6.10 ste
   widening conversion (`f32 → f64`) for `Ew.widen`'s `real → float` case.
 - **`asc` on `arr` of any atom**: `Order.rankSlices` compares `i64` segments lexicographically; the design names
   only `arr char`.
-- **`scatter` must drop an index ≥ `n`**: WHERE and LOOKUP send unselected rows there; the design's
-  `scatter(ix, e, n, fill)` does not state what an out-of-range index does.
+- **`scatter` and an index ≥ `n`** (settled, owner 2026-11-18): it is an error naming the index, its row and `n`,
+  never dropped; WHERE and LOOKUP send an unselected row to a spare cell and cut that cell off (`Kernel.kscatter`).
 - **Fused kernels without a theorem today**: `Ew.chain` (a list of maps) and `hashConcat` (intern by a kept hash
   table, `Except` fallback). Under §4 each is either dropped for its recipe or kept with `k = recipe`.

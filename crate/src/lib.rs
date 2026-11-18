@@ -49,6 +49,7 @@ pub mod exports {
     pub mod own;
     pub mod reduce;
     pub mod scan;
+    pub mod scatter;
     pub mod search;
     pub mod sort;
     pub mod structural;
@@ -85,6 +86,8 @@ pub mod reduce;
 pub mod res;
 /// cbindgen:ignore
 pub mod scan;
+/// cbindgen:ignore
+pub mod scatter;
 /// cbindgen:ignore
 pub mod search;
 /// cbindgen:ignore

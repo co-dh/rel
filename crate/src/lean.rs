@@ -311,6 +311,11 @@ impl<'a> B<'a> {
         assert!(!self.is_scalar() && unsafe { is_ctor(self.p()) && i < ctor_num_objs(self.p()) }, "lean::B::field {i}: not a field");
         B(unsafe { NonNull::new_unchecked(ctor_get(self.p(), i)) }, PhantomData)
     }
+    /// the `UInt8` at byte `off` past a ctor's object fields (`lean_ctor_get_uint8(o, N·8 + off)`); panics on anything else
+    pub fn u8_at(self, off: u32) -> u8 {
+        assert!(!self.is_scalar() && unsafe { is_ctor(self.p()) }, "lean::B::u8_at {off}: not a ctor");
+        unsafe { *ctor_scalar_cptr(self.p()).add(off as usize) }
+    }
     /// the elements of an `Array`
     pub fn array(self) -> &'a [B<'a>] {
         assert!(!self.is_scalar() && unsafe { ptr_tag(self.p()) } == TAG_ARRAY, "lean::B::array: not an Array");
