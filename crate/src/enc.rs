@@ -162,6 +162,17 @@ fn plan<T: Elt>(x: &[T], mn: i64, top: usize, esz: usize) -> (usize, i64, usize)
             s.sort_unstable(); // an LSD radix sort measured no faster
             s
         });
+        // `need` patches close `d`. If every `nb - need + 1` consecutive sorted keys spread at least `2 ^ e`, no window
+        // of `2 ^ e` holds that many, so width `e` patches at least `need`: `need` subtractions close every such `e`
+        let need = if d < pick.0 { (best - bits(d)) / pc + 1 } else { (best - bits(d)).div_ceil(pc) };
+        if need <= nb {
+            let k = nb - need;
+            let spread = (0..need).map(|i| s[i + k] - s[i]).min().unwrap_or(0);
+            if spread >> d != 0 {
+                for e in 0..64 - spread.leading_zeros() as usize { lo[e] = lo[e].max(need) }
+                continue
+            }
+        }
         let (f, np) = frame_at(&s[..], d);
         let c = bits(d) + np * pc;
         if c < best || c == best && d < pick.0 { (best, pick) = (c, (d, (f as i64).wrapping_add(mn), np)) }
@@ -530,13 +541,15 @@ mod tests {
         let mut n = 0;
         for k in 0..=64u32 {
             for nb in [1usize, 2, 3, 5, 9, 17, 64, 100, 1000, BLK] {
-                for kind in 0..6 {
+                for kind in 0..7 {
                     let m = if k == 64 { u64::MAX } else { (1u64 << k) - 1 };
                     let base = rnd();
-                    let mut x: Vec<u64> = (0..nb).map(|_| base.wrapping_add(match kind {
+                    let mut x: Vec<u64> = (0..nb).map(|i| base.wrapping_add(match kind {
                         0 => rnd() & m,                                        // random over 2 ^ k
                         1 => rnd() & m & 7,                                    // few values: ties
                         2 => 0,                                                // constant
+                        // a ramp with far outliers, as a scatter into timestamps: the histogram bounds only wide widths
+                        6 => if rnd() % 100 == 0 { rnd() & m } else { ((i as u64) << 4 | rnd() & 15) & m },
                         _ => if rnd() % [0, 0, 0, 3, 40, 300][kind] == 0 { rnd() & m } else { rnd() & 15 }, // outliers
                     })).collect();
                     if kind == 4 { x.sort_unstable() }
