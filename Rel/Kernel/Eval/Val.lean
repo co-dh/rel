@@ -27,14 +27,9 @@ def nullAtom (t : QAtomicType) (h : t ≠ .general := by first | decide | assump
   | .f64 => .f64 0xfff8000000000000
   | .char => .char 32
   | .sym => .sym ""
-  | .timestamp => .timestamp Int64.minValue
-  | .month => .month Int32.minValue
   | .date => .date Int32.minValue
-  | .datetime => .datetime 0xfff8000000000000
-  | .timespan => .timespan Int64.minValue
-  | .minute => .minute Int32.minValue
-  | .second => .second Int32.minValue
-  | .time => .time Int32.minValue
+  | .datetime => .datetime Int64.minValue
+  | .i8 => .i8 Int8.minValue
 
 /-- q's `~`, which compares bit patterns, so a null matches a null and `1~1b` is false. -/
 def identicalFuel [ValueExt X] (ae : QAtom → QAtom → Bool) (ce : QAtomicType → USize → Ext.Enc X → USize → Ext.Enc X → Bool) :

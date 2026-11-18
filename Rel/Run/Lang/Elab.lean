@@ -73,7 +73,7 @@ structure ObjInfo where
 /-- The atoms no declared object is stored as (every one is `.long`, F6): each the placeholder of one object
     variable while a constant generic over it is built, its binder `(A : Obj)` once emitted. -/
 def varAtoms : List Rel.QAtomicType := [.general, .u1, .u8, .i16, .i32, .f32, .f64, .char, .sym,
-  .timestamp, .month, .date, .datetime, .timespan, .minute, .second, .time]
+  .i8, .date, .datetime]
 
 /-- The placeholder of the object variable `k`; none past `varAtoms`, where the variable stays `.long`. -/
 def varObj (k : Nat) : Option Obj := varAtoms[k]?.map .atom

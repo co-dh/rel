@@ -20,12 +20,12 @@ def Obj.key : (A : Obj) → A.El → List Nat
   | .atom .u1, x => [if (x : Bool) then 1 else 0]
   | .atom .u8, x | .atom .char, x => [(x : UInt8).toNat]
   | .atom .i16, x => [(Order.rank .i16 (x : Int16).toUInt16.toUInt64).toNat]
-  | .atom .i32, x | .atom .month, x | .atom .date, x | .atom .minute, x | .atom .second, x
-  | .atom .time, x => [(Order.rank .i32 (x : Int32).toUInt32.toUInt64).toNat]
-  | .atom .i64, x | .atom .timestamp, x | .atom .timespan, x =>
+  | .atom .i8, x => [((x : Int8).toUInt8 ^^^ 0x80).toNat]
+  | .atom .i32, x | .atom .date, x => [(Order.rank .i32 (x : Int32).toUInt32.toUInt64).toNat]
+  | .atom .i64, x | .atom .datetime, x =>
     [(Order.rank .i64 (x : Int64).toUInt64).toNat]
   | .atom .f32, x => [(Order.rank .f32 (x : UInt32).toUInt64).toNat]
-  | .atom .f64, x | .atom .datetime, x => [(Order.rank .f64 (x : UInt64)).toNat]
+  | .atom .f64, x => [(Order.rank .f64 (x : UInt64)).toNat]
   | .atom .sym, x => (x : String).toUTF8.data.toList.map (·.toNat + 1) ++ [0]
   | .atom .general, _ => []
   | .prod a b, (x, y) => a.key x ++ b.key y

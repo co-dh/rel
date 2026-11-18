@@ -56,7 +56,7 @@ example : view (u 3) (kasc (u 3) []) = .inr ([], [0, 1, 2]) := by decide +kernel
 
 -- the errors, the first in the order of `es`: a type with no order, then `foRWords`' (a form other than `foR`, a `foR`
 -- whose blocks hold fewer than `m` elements)
-def gen : String ⊕ (List (List UInt64) × List UInt64) := .inl "asc: type 0 has no fixed-width order"
+def gen : String ⊕ (List (List UInt64) × List UInt64) := .inl "asc: type 12 has no fixed-width order"
 example : view (u 2) (kasc (u 2) [(.general, col [0, 1]), (.i64, .bytes .empty)]) = gen := by decide +kernel
 #guard view (u 2) (kasc (u 2) [(.general, col [0, 1]), (.i64, .bytes .empty)]) == gen
 def dense : String ⊕ (List (List UInt64) × List UInt64) := .inl "asc: constructor 0 is not foR"

@@ -834,7 +834,7 @@ mod kscan_tests {
     #[test] fn kscan_agrees_with_its_rows() {
         for n in [0usize, 1, 1000, 2500] {
             let segs = [vec![1u64; n], vec![0; n], (0..n as u64).map(|i| (i % 1000 == 0 || i % 37 == 3) as u64).collect()];
-            for (s, w) in [(7u8, 8usize), (6, 4), (3, 2)] {
+            for (s, w) in [(6u8, 8usize), (5, 4), (2, 2)] {
                 let m = |v: Vec<u64>| -> Vec<u64> { v.into_iter().map(|x| if w == 8 { x } else { x & ((1 << (8 * w)) - 1) }).collect() };
                 let (x, y, c) = (m(column(n, 3)), m(column(n, 5)), m(vec![column(n.max(3), 3)[2]; n]));
                 let col = |v: &Vec<u64>| (enc_for(v, w), v.clone());
@@ -844,25 +844,25 @@ mod kscan_tests {
                 let sv: Vec<u64> = (0..n).map(|i| (0..w).fold(0u64, |a, k| a | (cut.get(i * w + k).copied().unwrap_or(0) as u64) << (8 * k))).collect();
                 for op in [0u8, 1, 2, 3, 5, 6, 9, 10, 11, 12, 13, 14, 15, 18, 19, 20, 25, 39, 41, 45] {
                     for g in &segs {
-                        for t in [QT_BOOLEAN, 7] {
+                        for t in [QT_BOOLEAN, 6] {
                             check(op, s, t, n, g, &[col(&c), col(&x)]);
                             check(op, s, t, n, g, &[col(&x), col(&c)]);
                         }
-                        check(op, s, 7, n, g, &[col(&y), col(&x)]);
-                        check(op, s, 7, n, g, &[col(&c), col(&x), (enc_dense(&p), y.clone())]);
-                        check(op, s, 7, n, g, &[(enc_dense(&cut), sv.clone()), col(&x)]);
-                        check(op, s, 7, n, g, &[col(&x)]);
+                        check(op, s, 6, n, g, &[col(&y), col(&x)]);
+                        check(op, s, 6, n, g, &[col(&c), col(&x), (enc_dense(&p), y.clone())]);
+                        check(op, s, 6, n, g, &[(enc_dense(&cut), sv.clone()), col(&x)]);
+                        check(op, s, 6, n, g, &[col(&x)]);
                     }
                 }
-                check(0, s, 7, n, &segs[0], &[]);
-                check(0, s, 0, n, &segs[0], &[col(&x)]);
+                check(0, s, 6, n, &segs[0], &[]);
+                check(0, s, 12, n, &segs[0], &[col(&x)]);
             }
             // `div` by a 0 anywhere fails; a dense column read as booleans holds no raw elements
             let z: Vec<u64> = (0..n as u64).map(|i| (i != n as u64 / 2) as u64 * 7).collect();
-            check(3, 7, 7, n, &segs[0], &[(enc_for(&z, 8), z.clone()), (enc_for(&z, 8), z.clone())]);
+            check(3, 6, 6, n, &segs[0], &[(enc_for(&z, 8), z.clone()), (enc_for(&z, 8), z.clone())]);
             if n > 0 {
                 let e = enc_dense(&bytes(&z, 1));
-                assert_eq!(kscan(0, QT_BOOLEAN, 7, n, enc_bits(&segs[0]).borrow(), &[e.borrow()]).map(|o| parts(&o)),
+                assert_eq!(kscan(0, QT_BOOLEAN, 6, n, enc_bits(&segs[0]).borrow(), &[e.borrow()]).map(|o| parts(&o)),
                            Err(format!("kscan: a column holds 0 raw elements, not {n}")));
             }
             let (a, b): (Vec<u64>, Vec<u64>) = ((0..n as u64).map(|i| i % 3 & 1).collect(), (0..n as u64).map(|i| i % 5 & 1).collect());

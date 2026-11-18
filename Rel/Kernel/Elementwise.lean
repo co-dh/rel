@@ -603,11 +603,12 @@ namespace Rel.Kernel
 which have none, and at the two types with no dense payload. -/
 def nullBits : QAtomicType → Option UInt64
   | .i16 => some 0x8000
-  | .i32 | .month | .date | .minute | .second | .time => some 0x80000000
-  | .i64 | .timestamp | .timespan => some 0x8000000000000000
+  | .i32 | .date => some 0x80000000
+  | .i64 | .datetime => some 0x8000000000000000
+  | .i8 => some 0x80
   | .char => some 32
   | .f32 => some 0xffc00000
-  | .f64 | .datetime => some 0xfff8000000000000
+  | .f64 => some 0xfff8000000000000
   | _ => none
 
 /-- A one-element payload holding those bits at `cls`, which is how an atom operand reaches a
@@ -640,11 +641,12 @@ def clsOf : QAtomicType → Option UInt8
   | .u1 => some Ew.bits
   | .u8 | .char => some Ew.u8
   | .i16 => some Ew.i16
-  | .i32 | .month | .date | .minute | .second | .time => some Ew.i32
-  | .i64 | .timestamp | .timespan => some Ew.i64
+  | .i32 | .date => some Ew.i32
+  | .i64 | .datetime => some Ew.i64
   | .f32 => some Ew.f32
-  | .f64 | .datetime => some Ew.f64
-  | .sym | .general => none
+  | .f64 => some Ew.f64
+  -- no Ew class reads a signed byte: i8 has no elementwise kernel yet
+  | .i8 | .sym | .general => none
 
 /-- Whether `Ew.widen` can bring `t` to `cls`. It promotes upward only — nothing already a float
 reaches an integer target, and nothing at all reaches `u8` or `i16` — and asking it for anything

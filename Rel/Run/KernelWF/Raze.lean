@@ -109,7 +109,7 @@ theorem groupIdsColumn_isSome {t : QAtomicType} {n : USize} {e : Enc} (hg : t �
     float cell (`Carrier`) is its bits; the integral key of the same width is the bits. -/
 def bitsType : QAtomicType → QAtomicType
   | .f32 => .i32
-  | .f64 | .datetime => .i64
+  | .f64 => .i64
   | t => t
 
 /-- `groupIdsColumn` at `bitsType t` codes every well-formed payload of `t` but a general list's: a float
@@ -118,7 +118,7 @@ theorem groupIdsColumn_bitsType_isSome {t : QAtomicType} {n : USize} {e : Enc} (
     (h : Enc.WF t n e) (hd : ∀ d o ids, Column.intern e = .enum d o ids → o.size - 1 < USize.size) :
     (groupIdsColumn (bitsType t) n e).isSome := by
   cases t
-  case f32 | f64 | datetime =>
+  case f32 | f64 =>
     cases e <;> simp_all [Enc.WF, groupIdsColumn, orderKind, Enc.bytesOf, QAtomicType.width, bitsType]
   all_goals exact groupIdsColumn_isSome hg h hd
 

@@ -307,7 +307,7 @@ def operandBytes (w : USize) (metadata pack : ByteArray) (n : USize) : ByteArray
 /-- The types whose equality folds `-0.0` onto `0.0`. `datetime` is one: it is an eight-byte IEEE
 value and `QAtom.identical` treats it exactly as `float`. -/
 def foldsZero : QAtomicType → Bool
-  | .f32 | .f64 | .datetime => true
+  | .f32 | .f64 => true
   | _ => false
 
 /-- A column as `operandBytes` reads it: encoded where it lies, and otherwise its dense payload under

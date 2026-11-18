@@ -284,11 +284,12 @@ def orderKind : QAtomicType → Option Kind
   | .u1 => some .bit
   | .u8 | .char => some .u8
   | .i16 => some .i16
-  | .i32 | .month | .date | .minute | .second | .time => some .i32
-  | .i64 | .timestamp | .timespan => some .i64
+  | .i32 | .date => some .i32
+  | .i64 | .datetime => some .i64
   | .f32 => some .f32
-  | .f64 | .datetime => some .f64
-  | .sym | .general => none
+  | .f64 => some .f64
+  -- `Scan.Kind` has no signed byte yet (PLAN 6.9 folds it into `QAtomicType`)
+  | .i8 | .sym | .general => none
 
 /-- `groupColumn`'s groups as a grouped reduction reads them: the group of every row, and the row
 each group was first seen at, which is where its key lies. The key column itself is a gather of the

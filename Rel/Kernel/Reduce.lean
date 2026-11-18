@@ -93,8 +93,8 @@ there and not `Int64.minValue`; the block structure is unchanged, the null still
 value the type has. -/
 def Coc.nullOf : QAtomicType → Option Int64
   | .i16 => some (-32768)
-  | .i32 | .month | .date | .minute | .second | .time => some (-2147483648)
-  | .i64 | .timestamp | .timespan => some Int64.minValue
+  | .i32 | .date => some (-2147483648)
+  | .i64 | .datetime => some Int64.minValue
   | _ => none
 
 /-- The fold on the encoded form, before the narrowing `sum` and `prd` put on top of it. It is

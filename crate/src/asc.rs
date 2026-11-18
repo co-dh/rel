@@ -192,16 +192,16 @@ mod tests {
         let mut rnd = move || { s ^= s << 13; s ^= s >> 7; s ^= s << 17; s };
         for m in [0usize, 1, 2, 5, 1000, 3000] {
             let cols: Vec<(u8, Vec<i64>)> = vec![
-                (5, (0..m as i64).collect()),
-                (5, (0..m as i64).rev().collect()),
-                (5, (0..m).map(|_| (rnd() % 7) as i64).collect()),
-                (5, (0..m).map(|i| if i % 97 == 5 { rnd() as i64 } else { (rnd() % 1000) as i64 }).collect()),
-                (4, (0..m).map(|_| rnd() as i64).collect()),
-                (4, (0..m).map(|_| (rnd() % 50) as i64 - 25).collect()),
-                (7, (0..m).map(|i| [f64::NAN, -0.0, 0.0, -1.5, 2.5, (i % 5) as f64][rnd() as usize % 6].to_bits() as i64).collect()),
-                (7, (0..m).map(|i| (i as f64).to_bits() as i64).collect()),
-                (1, (0..m).map(|_| (rnd() % 300) as i64).collect()),
-                (13, (0..m).map(|_| rnd() as i64).collect()),
+                (4, (0..m as i64).collect()),
+                (4, (0..m as i64).rev().collect()),
+                (4, (0..m).map(|_| (rnd() % 7) as i64).collect()),
+                (4, (0..m).map(|i| if i % 97 == 5 { rnd() as i64 } else { (rnd() % 1000) as i64 }).collect()),
+                (3, (0..m).map(|_| rnd() as i64).collect()),
+                (3, (0..m).map(|_| (rnd() % 50) as i64 - 25).collect()),
+                (6, (0..m).map(|i| [f64::NAN, -0.0, 0.0, -1.5, 2.5, (i % 5) as f64][rnd() as usize % 6].to_bits() as i64).collect()),
+                (6, (0..m).map(|i| (i as f64).to_bits() as i64).collect()),
+                (0, (0..m).map(|_| (rnd() % 300) as i64).collect()),
+                (6, (0..m).map(|_| rnd() as i64).collect()),
             ];
             let enc: Vec<(u8, [Vec<u8>; 2])> = cols.iter().map(|(t, x)| {
                 let o = Sink::new(m, 8, Form::For).answer(&Blocks::dense(pod::bytes(x), 8));

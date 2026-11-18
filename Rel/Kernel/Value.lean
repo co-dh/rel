@@ -5,15 +5,16 @@ import Rel.Kernel.Need
 
 namespace Rel
 
-/-- The element type of a q list, q's list type codes 0 to 19 less guid's 2, in type-code order. `general` is type 0,
-a list of any values. q has no type-0 atom, so `general` is a column type with no atom value: a function
-that reads or builds an atom (`atomOfBits`, `Column.ofAtoms`) takes `t ≠ .general`. A general list's
-null is not a function of its type either: it depends on the value (its first item's typed null, its
-empty vector, or `()`). -/
+/-- The element type of a column. The constructor index is the tag the Rust kernels read: the fixed-width
+types come first, so `u1`..`i8` (0..8) are `crate/src/key.rs`'s `SK_*` kinds, then `sym`, `date` (i32 days),
+`datetime` (i64 ns) and `general`. `code` gives q's type code. `general` is q's type 0, a list of any values;
+q has no type-0 atom, so `general` is a column type with no atom value: a function that reads or builds an
+atom (`atomOfBits`, `Column.ofAtoms`) takes `t ≠ .general`. A general list's null is not a function of its
+type either: it depends on the value (its first item's typed null, its empty vector, or `()`). -/
 inductive QAtomicType
+  | u1 | u8 | i16 | i32 | i64 | f32 | f64 | char | i8
+  | sym | date | datetime
   | general
-  | u1 | u8 | i16 | i32 | i64 | f32 | f64 | char | sym
-  | timestamp | month | date | datetime | timespan | minute | second | time
   deriving Repr, DecidableEq, Inhabited, Hashable
 
 namespace QAtomicType
@@ -24,10 +25,10 @@ it before ever consulting this; anything reading a `Column` through `width` is a
 variable width (NUL-terminated) and so have no fixed size, and a general list's elements are values,
 not bytes. -/
 def width : QAtomicType → Option Nat
-  | u1 | u8 | char => some 1
+  | u1 | u8 | char | i8 => some 1
   | i16 => some 2
-  | i32 | f32 | month | date | minute | second | time => some 4
-  | i64 | f64 | timestamp | datetime | timespan => some 8
+  | i32 | f32 | date => some 4
+  | i64 | f64 | datetime => some 8
   | sym | general => none
 
 end QAtomicType
@@ -50,15 +51,10 @@ inductive QAtom
   | f32 : UInt32 → QAtom
   | f64 : UInt64 → QAtom
   | char : UInt8 → QAtom
+  | i8 : Int8 → QAtom
   | sym : String → QAtom
-  | timestamp : Int64 → QAtom
-  | month : Int32 → QAtom
   | date : Int32 → QAtom
-  | datetime : UInt64 → QAtom
-  | timespan : Int64 → QAtom
-  | minute : Int32 → QAtom
-  | second : Int32 → QAtom
-  | time : Int32 → QAtom
+  | datetime : Int64 → QAtom
   deriving Repr, Inhabited
 
 namespace QAtom
@@ -692,7 +688,7 @@ def WF (t : QAtomicType) (n : USize) (e : Ext.Enc X) : Prop :=
   | t, .foR metadata _ =>
     t.width.isSome ∧ t ≠ .u1 ∧ n.toNat ≤ blk metadata * nblk metadata ∧ lgOk metadata
   | t, .alp metadata _ a =>
-    (t = .f32 ∨ t = .f64 ∨ t = .datetime) ∧ n.toNat ≤ blk metadata * nblk metadata ∧ lgOk metadata ∧ alpF32 a = (t.width == some 4)
+    (t = .f32 ∨ t = .f64) ∧ n.toNat ≤ blk metadata * nblk metadata ∧ lgOk metadata ∧ alpF32 a = (t.width == some 4)
   | _, _ => False
 
 /-- `atoms`' fixed-width branches before `atomOfBits`: the raw bits of each element, a boolean's as `0`/`1` and an
@@ -925,14 +921,13 @@ namespace Rel
 
 namespace QAtomicType
 
-/-- The q type code of the *vector* form; the atom form is its negation. Codes 2 (guid, which Rel does not
-carry) and 3 are unused, and code 0, the general list, has no atom form. -/
+/-- The q type code of the *vector* form; the atom form is its negation. Code 2 (guid, which Rel does not
+carry) is unused, and code 0, the general list, has no atom form. `datetime` is q type 12 (timestamp, i64 ns since the
+epoch) and `date` type 14 (i32 days); q types 13 and 15 to 19 are not carried. -/
 def code : QAtomicType → Int8
   | general => 0
-  | u1 => 1 | u8 => 4 | i16 => 5 | i32 => 6 | i64 => 7
-  | f32 => 8 | f64 => 9 | char => 10 | sym => 11 | timestamp => 12
-  | month => 13 | date => 14 | datetime => 15 | timespan => 16 | minute => 17
-  | second => 18 | time => 19
+  | u1 => 1 | i8 => 3 | u8 => 4 | i16 => 5 | i32 => 6 | i64 => 7
+  | f32 => 8 | f64 => 9 | char => 10 | sym => 11 | datetime => 12 | date => 14
 
 /-- A type with a fixed width has atoms: how a reader that has matched `width` reaches a function
 that takes `t ≠ .general`. -/
@@ -950,23 +945,22 @@ namespace QAtom
 def type : QAtom → QAtomicType
   | u1 _ => .u1 | u8 _ => .u8 | i16 _ => .i16
   | i32 _ => .i32 | i64 _ => .i64 | f32 _ => .f32 | f64 _ => .f64
-  | char _ => .char | sym _ => .sym | timestamp _ => .timestamp
-  | month _ => .month | date _ => .date | datetime _ => .datetime
-  | timespan _ => .timespan | minute _ => .minute | second _ => .second | time _ => .time
+  | char _ => .char | i8 _ => .i8 | sym _ => .sym
+  | date _ => .date | datetime _ => .datetime
 
 /-- q's `~` on atoms: bit-pattern identity, so a null matches a null. -/
 def identical : QAtom → QAtom → Bool
   | u1 a, u1 b => a == b
   | u8 a, u8 b | char a, char b => a == b
   | i16 a, i16 b => a == b
-  | i32 a, i32 b | month a, month b | date a, date b
-  | minute a, minute b | second a, second b | time a, time b => a == b
-  | i64 a, i64 b | timestamp a, timestamp b | timespan a, timespan b => a == b
+  | i32 a, i32 b | date a, date b => a == b
+  | i64 a, i64 b | datetime a, datetime b => a == b
+  | i8 a, i8 b => a == b
   -- the two zeros are one value to `~` even though their bit patterns differ: measured,
   -- `-0.0~0.0` and `-0.0e~0.0e` are both `1b`, and `distinct -0.0 0.0` is the single `,-0f`.
   -- Everything else stays bit equality, which is what keeps `0n~0n` true.
   | f32 a, f32 b => a == b || (a &&& 0x7fffffff == 0 && b &&& 0x7fffffff == 0)
-  | f64 a, f64 b | datetime a, datetime b =>
+  | f64 a, f64 b =>
     a == b || (a &&& 0x7fffffffffffffff == 0 && b &&& 0x7fffffffffffffff == 0)
   | sym a, sym b => a == b
   | _, _ => false
@@ -998,10 +992,11 @@ def bitsOf : QAtom → UInt64
   | .u1 x => if x then 1 else 0
   | .u8 x | .char x => x.toUInt64
   | .i16 x => x.toUInt16.toUInt64
-  | .i32 x | .month x | .date x | .minute x | .second x | .time x => x.toUInt32.toUInt64
-  | .i64 x | .timestamp x | .timespan x => x.toUInt64
+  | .i32 x | .date x => x.toUInt32.toUInt64
+  | .i64 x | .datetime x => x.toUInt64
+  | .i8 x => x.toUInt8.toUInt64
   | .f32 x => x.toUInt64
-  | .f64 x | .datetime x => x
+  | .f64 x => x
   | .sym _ => 0
 
 /-- The atom of type `t` those raw bits denote. Total, and its type is `t` by construction, which is
@@ -1016,17 +1011,12 @@ def atomOfBits (t : QAtomicType) (v : UInt64) (h : t ≠ .general := by first | 
   | .char => .char v.toUInt8
   | .i16 => .i16 v.toUInt16.toInt16
   | .i32 => .i32 v.toUInt32.toInt32
-  | .month => .month v.toUInt32.toInt32
   | .date => .date v.toUInt32.toInt32
-  | .minute => .minute v.toUInt32.toInt32
-  | .second => .second v.toUInt32.toInt32
-  | .time => .time v.toUInt32.toInt32
+  | .i8 => .i8 v.toUInt8.toInt8
   | .i64 => .i64 v.toInt64
-  | .timestamp => .timestamp v.toInt64
-  | .timespan => .timespan v.toInt64
+  | .datetime => .datetime v.toInt64
   | .f32 => .f32 v.toUInt32
   | .f64 => .f64 v
-  | .datetime => .datetime v
   | .sym => .sym ""
 
 /-- Booleans packed eight to a byte, LSB first. The unused tail bits of the last byte stay `0`, so
@@ -1593,9 +1583,7 @@ theorem ofAtoms_WF {t : QAtomicType} {as : Array QAtom} {e : Ext.Enc X} {hn : t 
       Array.getElem_map]
     cases as[i] <;> first | exact String.isValidUTF8 _ | exact (by decide : ByteArray.empty.IsValidUTF8)
   | .u8, _, _, hc | .char, _, _, hc | .i16, _, _, hc | .i32, _, _, hc | .i64, _, _, hc
-  | .f32, _, _, hc | .f64, _, _, hc | .timestamp, _, _, hc | .month, _, _, hc | .date, _, _, hc
-  | .datetime, _, _, hc | .timespan, _, _, hc | .minute, _, _, hc | .second, _, _, hc
-  | .time, _, _, hc =>
+  | .f32, _, _, hc | .f64, _, _, hc | .i8, _, _, hc | .date, _, _, hc | .datetime, _, _, hc =>
     cases hc
     simp only [WF, QAtomicType.width]
     rw [← Array.foldl_toList, foldl_pushBits_size, h0]; simp <;> omega

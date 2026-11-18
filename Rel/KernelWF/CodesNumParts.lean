@@ -13,7 +13,7 @@ open Tab Rel.Dep Rel.Kernel Rel.Verify Rel
 /-- **A float side: its codes are faithful jointly across the parts** — equal codes exactly at rows of equal
     bits; the parts and their `raze` in any encoding, the parts' summed count a `USize`, 32 bits where an ALP
     join offsets it (`hA`). -/
-theorem codes_float_parts_faithful {t : QAtomicType} (ht : t = .f32 ∨ t = .f64 ∨ t = .datetime) {p : Nat}
+theorem codes_float_parts_faithful {t : QAtomicType} (ht : t = .f32 ∨ t = .f64) {p : Nat}
     (cs : Vector (Part (.atom t)) p) (hN : (cs.toList.map (·.1.toNat)).sum < USize.size)
     (hA : 2 ≤ p → Column.alpEncodes t = true → (cs.toList.map (·.1.toNat)).sum < 2 ^ 32)
     {k l : Nat} (hk : k < p) (hl : l < p) {i j : Nat} (hi : i < (cs[k]'hk).1.toNat) (hj : j < (cs[l]'hl).1.toNat) :
@@ -65,7 +65,7 @@ theorem codes_dense_faithful_wf {t : QAtomicType} {k₀ : Scan.Kind} (ht : order
   rcases hk₀ with hk₀ | hk₀ | hk₀ | hk₀ | hk₀
   -- a float side groups by its bits (`bitsType`)
   all_goals try
-    have hf : t = .f32 ∨ t = .f64 ∨ t = .datetime := by
+    have hf : t = .f32 ∨ t = .f64 := by
       clear hA hN; cases t <;> simp [orderKind] at ht <;> simp_all
     exact ⟨⟨fun hk hl _ _ hi hj => codes_float_parts_faithful hf cs hN hA hk hl hi hj,
       fun hk => (codes_float_parts_wf hf cs hN hk).1⟩, fun hk hl => (codes_float_parts_wf hf cs hN hk).2 hl⟩
