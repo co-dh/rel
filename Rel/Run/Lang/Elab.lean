@@ -152,9 +152,9 @@ inductive Pre
       its argument's form (`Form`): closed (`none`), run on demand (`some false`), tested on pairs and never run
       (`some true`). -/
   | var (pos : Pos) (k : Nat) (a b : OTy) (tst : Option Bool)
-  /-- `μX : body` (`least`) or `νX : body`, `X` the variable `k`; `S` the meet of `body`'s conjuncts that do not
-      mention `X`, a `ν`'s start. -/
-  | fix (pos : Pos) (least : Bool) (k : Nat) (S : Option Pre) (body : Pre) (a b : OTy)
+  /-- `μX : body` (`least`) or `νX : body`, `X` the variable `k` written `x`; `S` the meet of `body`'s conjuncts that
+      do not mention `X`, a `ν`'s start. -/
+  | fix (pos : Pos) (least : Bool) (k : Nat) (x : String) (S : Option Pre) (body : Pre) (a b : OTy)
   /-- `hylo(c, S)`, `c` at `pos`, where a cycle of `c` is reported: `body` the `μX : c G(X) S` it is, `X` the variable `k`; `ch : a ⟶ a` the children
       `c` gives a node, `c` then `G`'s membership. -/
   | hylo (pos : Pos) (k : Nat) (ch body : Pre) (a b : OTy)
@@ -300,7 +300,7 @@ def Pre.traverse {m : Type → Type} [Monad m] (fp : Pos → m Pos) (f : Option 
   | .lit q a b ps => return .lit (← fp q) a b ps
   | .close q x a why => return .close (← fp q) (← mo x) a why
   | .var q k a b t => return .var (← fp q) k a b t
-  | .fix q l k S x a b => return .fix (← fp q) l k (← S.mapM (f none)) (← mo x) a b
+  | .fix q l k x S y a b => return .fix (← fp q) l k x (← S.mapM (f none)) (← mo y) a b
   | .hylo q k ch x a b => return .hylo (← fp q) k (← mo ch) (← mo x) a b
   | .call q c us xs ts alt a b d cv tst => return .call (← fp q) c us (← xs.mapM (f none)) ts (← mo alt) a b d cv tst
   | x => pure x
@@ -1032,7 +1032,7 @@ def elabE (env : Env) (m : Option OTy) : Expr → M Arg
     let S := q.bound k
     if !least && S.isNone then
       throw ⟨p, s!"{fx} needs a bound: write S ∩ φ with S not mentioning {x} (⊤(A,B) for the whole object)"⟩
-    pure (.rel (.fix p least k S q a c) a c)
+    pure (.rel (.fix p least k x S q a c) a c)
 
 def elabArgs (env : Env) (m : Option OTy) : List Expr → M (List Arg)
   | [] => pure []
@@ -1660,12 +1660,15 @@ def build : Pre → Except Err Res
     let os ← (us.filter (·.2.1)).mapM fun (u, _) => toObj objs mc dp u
     pure ⟨A, B, d, ← callArgs pos c us xs ts (Tm.call (A := A) (B := B) d c os cv)⟩
   -- the body read whole each round, on its source's universe when it needs keys
-  | .fix p least k S q a b => do
+  | .fix p least k x S q a b => do
     let A ← toObj objs mc dp a; let B ← toObj objs mc dp b
     let why := s!"{if least then "μ" else "ν"}'s body is read whole each round"
     let body ← closed? dp (A := A) (B := B) (← closeRes objs mc dp p a why (← build q))
     unless body.pol true k do
-      throw ⟨p, s!"{if least then "μ" else "ν"} at {p}: its body does not use {k} positively"⟩
+      -- `Tm.pol` answers a Bool and `Tm.var` holds no position, so the source term gives the first occurrence
+      let some o := q.occ k | internal dp s!"{x} is not positive in {if least then "μ" else "ν"}{x} at {p} but does not occur"
+      throw ⟨p, s!"{if least then "μ" else "ν"}{x} at {p.line}:{p.col}: {x} first occurs at {o.line}:{o.col}, and the " ++
+        s!"body does not use {x} positively (it reads {x} on both sides, or holds it whole)"⟩
     if least then
       -- a chain from `𝟘` on universes of `n` and `m` elements stops within `n·m+1` rounds, so their `cap` never
       -- fails a monotonic body; an array object has no such bound, and `muCap` only guards termination
