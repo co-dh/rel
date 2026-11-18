@@ -1,18 +1,18 @@
 //! distinct.rs's Lean export, `Kernel.kdistinct` (Rel/Kernel/Distinct.lean): `foR` columns in, a `foR` answer out; the
-//! columns are read by `ffi::scatter::for_words_of`, the answer written by `ffi::scan::for_words`.
+//! columns are checked by `ffi::scatter::for_view` and read a block at a time by `distinct::blocks`, which writes the answer.
 #![deny(unsafe_code)]
 use crate::lean::export;
 #[cfg(all(feature = "ffi", not(any(test, feature = "std"))))]
-use {alloc::{format, string::String, vec::Vec}, crate::{distinct, exports::{scan::for_words, scatter::{except, for_words_of}},
+use {alloc::{format, string::String, vec::Vec}, crate::{blocks::Blocks, distinct, exports::scatter::{except, for_view},
     lean::{B, O, ctor, nat}}};
 
 /// `kdistinct`'s body in its order of failure: each of `es` left to right, its place in `es` naming it.
 #[cfg(all(feature = "ffi", not(any(test, feature = "std"))))]
 fn kdistinct(n: usize, es: B) -> Result<O, String> {
     let (mut cs, mut l) = (Vec::new(), es);
-    while !l.is_scalar() { cs.push(for_words_of(&format!("distinct: es[{}]", cs.len()), n, l.field(0))?); l = l.field(1) }
-    let o = distinct::words(&cs, n);
-    Ok(ctor(0, [nat(o.len()), for_words(&o)], &[]))
+    while !l.is_scalar() { cs.push(Blocks::from(for_view(&format!("distinct: es[{}]", cs.len()), n, l.field(0))?)); l = l.field(1) }
+    let (k, o) = distinct::blocks(&cs, n);
+    Ok(ctor(0, [nat(k), o], &[]))
 }
 
 export! {
