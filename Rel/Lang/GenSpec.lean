@@ -8,6 +8,7 @@ import Rel.CRelFold
 import Rel.Run.CRelFoldDef
 import Rel.CRelPower
 import Rel.CRelLoop
+import Rel.CRelThin
 import Rel.CRelEst
 
 /-! The code of `Gen` read back: one lemma per combinator, saying that where its ok bit is set its relation is

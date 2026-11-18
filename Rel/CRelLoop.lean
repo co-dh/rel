@@ -22,14 +22,14 @@ open Rel.Rep Rel.Rep.FoldN Rel.Rep.OpsN Rel.Rep.Prim Rel.Rep.ListN
 
 namespace Rep
 
-/-- **`tic` under `ticC`'s bit**: `tic_of` at its pieces' read-backs, `rep_consC`, `rep_compC`, `rep_initsC`,
+/-- **`tic` under `ticC`'s bit**: `tic_of` at its pieces' read-backs, `rep_consCatC`, `rep_compC`, `rep_initsC`,
     `rep_tailC`. -/
 theorem rep_ticC {K B : Obj} (P : Rel K (.prod B (.arr B))) (hb : (ticC P).2 = true) :
     ∀ k zss, rep (ticC P).1 k zss ↔ ∃ b bs, rep P k (b, bs) ∧
       zss = (List.range (bs.length + 1)).map fun j => (b :: bs).take (j + 1) := by
   simp only [ticC, Bool.and_eq_true] at hb
   obtain ⟨⟨⟨⟨hC, hN⟩, hI⟩, hT⟩, hr⟩ := hb
-  exact tic_of P _ rfl _ rfl (rep_consC P hC) (rep_compC _ _ hI) (rep_initsC _ hN) (rep_compC _ _ hr)
+  exact tic_of P _ rfl _ rfl (rep_consCatC P hC) (rep_compC _ _ hI) (rep_initsC _ hN) (rep_compC _ _ hr)
     (rep_tailC _ hT)
 
 
