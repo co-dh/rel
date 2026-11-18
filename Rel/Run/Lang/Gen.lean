@@ -141,10 +141,18 @@ def compT {A B C : Obj} : CRel A B → Rel B C → Rel A C
   | some r, .lazy g => if r.n == 0 then .tab (some Alg.zero) else
     .lazy fun K => .tab (CRel.comp (some r) ((Rel.lazy g).run ⟨some ⟨r.n, r.val⟩, K.ran⟩))
 
-/-- `R S`: a lazy `R` runs on the domain its context knows, then `compT`. -/
+/-- `R s`, `s` the table of `S`: the mirror of `compT`, `R` run knowing its range is `s`'s key column. -/
+def compS {A B C : Obj} (R : Rel A B) : CRel B C → Rel A C
+  | none => .tab none
+  | some s => .tab (CRel.comp (R.run ⟨none, some ⟨s.n, s.key⟩⟩) (some s))
+
+/-- `R S`: a lazy `R` starts from the side its context knows — the domain, then `compT`; only the range, `S`
+    first on it, then `compS` — since `R` run on neither side enumerates its universe. -/
 def comp (A B C : Obj) (e : Bool) (R : Fn true A B) (S : Fn e B C) : Fn true A C := match R with
   | .tab r => compT r S
-  | .lazy f => .lazy fun K => compT ((Rel.lazy f).run ⟨K.dom, none⟩) S
+  | .lazy f => .lazy fun
+    | ⟨none, some L⟩ => compS (.lazy f) (S.run ⟨none, some L⟩)
+    | K => compT ((Rel.lazy f).run ⟨K.dom, none⟩) S
 
 /-- An op on one table: a table now, or lazy, its argument run on what `k` makes of the context. -/
 def lift1 {A B C D : Obj} (f : CRel A B → CRel C D) (k : Known C D → Known A B) : Rel A B → Rel C D

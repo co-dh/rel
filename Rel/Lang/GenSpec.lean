@@ -523,8 +523,31 @@ theorem comp_sound {A B C : Obj} {e : Bool} {R : Fn true A B} {S : Fn e B C} {TR
         have : r.n.toNat = 0 := by simp [beq_iff_eq.1 h0]
         exact absurd i.2 (by omega)
       · exact reps_ok (ag (hr r rfl))
+  -- Only the range known: `s` agrees with `TS` on it, `R` with `TR` on `s`'s keys, so `R s` with `TR ≫ TS`.
+  have hS' : ∀ {L : (n : USize) × Vals C n} {c : CRel B C}, (∀ t, c = some t → Agree ⟨none, some L⟩ (rep t) TS) →
+      (compS R c).Reps ⟨none, some L⟩ (TR ≫ TS) := by
+    intro L c hs
+    cases c with
+    | none => trivial
+    | some s =>
+    refine reps_ok fun hb x z _ hz => ?_
+    have hc := CRel.guard_ok_left hb; rw [Bool.and_eq_true] at hc
+    have hr := hR.agree hc.1
+    have hs := hs s rfl
+    have kk : ∀ {y}, rep s y z → rep (idU s.key) y y := fun h =>
+      (idU_holds s.key _ _).2 ⟨rfl, let ⟨i, e, _⟩ := h; ⟨i, e⟩⟩
+    rw [CRel.rep_comp _ _ hb]
+    exact ⟨fun ⟨y, h1, h2⟩ => ⟨y, (hr x y rfl (kk h2)).1 h1, (hs y z rfl hz).1 h2⟩,
+      fun ⟨y, h1, h2⟩ => have h2' := (hs y z rfl hz).2 h2; ⟨y, (hr x y rfl (kk h2')).2 h1, h2'⟩⟩
   intro K
-  cases R <;> exact hT fun _ e => hR.agree_some (K := ⟨K.dom, none⟩) e
+  cases R with
+  | tab r => exact hT fun _ e => hR.agree_some (K := ⟨K.dom, none⟩) e
+  | lazy f =>
+    rcases K with ⟨_ | D, _ | L⟩
+    · exact hT fun _ e => hR.agree_some (K := ⟨none, none⟩) e
+    · exact hS' fun _ e => hS.agree_some e
+    · exact hT fun _ e => hR.agree_some (K := ⟨some D, none⟩) e
+    · exact hT fun _ e => hR.agree_some (K := ⟨some D, none⟩) e
 
 theorem conv_sound {A B : Obj} {R : Fn false A B} {T : Den A B} (hR : Sound R T) : Sound (conv A B R) T° :=
   fun _ => lift1_reps <| reps_ok fun hb y x hy hx => by
