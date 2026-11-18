@@ -85,448 +85,97 @@ Size：S = 一步，少于 20 次 tool call；M = 一到三步；L = 多于三�
 
 ## 2. Phases
 
-顺序：P0 → P1 → P2 → P3 → P4 → P5 → P7，P6（kernels）在 Lean 层面独立于 P2-P5，
-只有浮点序例外（5.2 等待 6.9）。P1 和 P2 的各步可以与 P6 同时运行。
-
-### P0 Baseline（1 步）
-
-**0.1 sonnet.** `make -C /home/dh/repo/rel index`，然后 `make -C /home/dh/repo/rel check > /data/tmp/p0.log 2>&1`。
-从 log 中取出 compile-diff 那一行（"compile agrees … on N definitions; not ok on …"），连同
-`git -C /home/dh/repo/rel rev-parse HEAD` 记入本文件末尾的 "Baseline" 一节。
-Done：exit 0 且文件存在。
-之后每个 phase gate 都拿自己的 compile-diff 行与这一行比较。
-
-### P1 Syn 移除（3 步；先 1.1 后 1.2；1.3 与 1.2 在同一次合并）
-
-**1.1 sonnet — `Tm.Ax` 写成等式。** 文件 `Rel/Lang/Den.lean`，追加在 `den_anti`（585-592 行）之后。
-对 `Tm.Ax` 的 12 个 constructor（`Rel/Lang/Syn.lean` 21-42：`id_comp comp_id assoc conv_conv conv_comp
-meet_join comp_join join_comp comp_zero zero_comp mu_unfold nu_unfold`）各加一条 theorem
-
-```
-theorem Tm.den_<ctor> <the constructor's binders, copied> (ρ : Val) : (<lhs>).den ρ = (<rhs>).den ρ := <term>
-```
-
-其中 `<lhs>`、`<rhs>` 是 constructor 结果类型 `Tm.Ax lhs rhs` 的两个下标，constructor 的每个假设
-成为 theorem 的假设，`<term>` 是 `Tm.Ax.sound`（`Syn.lean` 131-148）中对应 case 的右端（它们用
-`Core.Rel.id_comp comp_id comp_assoc recip_recip recip_comp inter_union comp_union union_comp
-comp_zero zero_comp mu_fix nu_fix`、`Tm.den_subst`、`Tm.den_mono`）。Build
-`B Rel.Lang.Den`。Done：12 条新 theorem，build 通过。如果某个拷贝来的 term 不通过检查，停下并报告（opus）。
-
-**1.2 sonnet — 删除 `Rel/Lang/Syn.lean`。** 删除之前，先 `LR uses Rel.Lang.foldDen_le` 和
-`LR uses Rel.Lang.foldIDen_le`：预期使用者只在 `Rel.Lang.Syn` 中；如果别的 module 用了其中一个，
-先 `LR move-decl Rel.Lang.Den <name> --apply`。`rfl` 引理 `Tm.den_comp … Tm.den_own`（315-328）、
-`den_mu`、`den_nu`、`den_refold`（333-341）在 index 中没有使用者，随文件一起删除。然后
-`git rm Rel/Lang/Syn.lean`；没有 rel module import 它。Build `B Rel`。Done：`LR index` 之后
-`select count(*) from decl_info where
-module='Rel.Lang.Syn'` 为 0。
-
-**1.3 sonnet — freyd 一侧。** 只有 `/home/dh/repo/freyd/relaop/RelAop/Syn.lean`（39 行：`instance : Cat Syn`、
-`def den : Functor Syn RelSet`、`den_outl`、`den_outr`）import `Rel.Lang.Syn`；没有 relaop 文件 import
-`RelAop.Syn`。方案 A（默认）：`git -C /home/dh/repo/freyd rm relaop/RelAop/Syn.lean`。方案 B（如果
-owner 对 Q1 回答 "保留 functor"）：在 1.2 之前，把 `Rel/Lang/Syn.lean` 的 44-303 行（`Tm.Le` … 
-`Syn.assoc`）拷到 `RelAop/Syn.lean` 顶部，把其中的 `import Rel.Lang.Syn` 换成 `import Rel.Lang.Den`，
-跳过 `Tm.Ax` 的各 case（把 `Tm.Le.ax` 的使用换成 1.1 的等式：opus）。Done：第 0 节的 relaop gate。
-
-### P2 不依赖 `Rel` 类型的工作（6 步；除 2.2 先于 2.3 之外，全部在 worktree 中并行）
-
-**2.1 sonnet — refold → hylo。** 名字列表：运行
-`select name from decl_info where internal=0 and lower(name) like '%refold%' and module not like 'Rel.Programs.%'
-and module not like 'Rel.Lang.Test%' and name not like 'Rel.Lang.Pre.%' and name not like 'Rel.Lang.Expr.%'`。
-对每个名字 N 传入一对 `N N'`，N' 把 `refold` 换成 `hylo`、`Refold` 换成 `Hylo`（必须包含
-`Rel.Lang.Tm.refold`、`Rel.Lang.Gen.refold`、`Rel.Lang.Gen.refoldRounds`、`Gen.rep_refold`、`refoldRounds_ok`、
-`Rel/RefoldSpec.lean` 的 `Refold.*` 名字）：`LR rename N N' … --apply`；然后改 module：
-`LR rename Rel.RefoldSpec Rel.HyloSpec --apply`。表层 constructor `Pre.refold`（Elab 160、304、915、1636）
-保留原名（Q2）。手工检查 rename 工具可能漏掉的三处：`Expand.lean:735`
-（`mkConst ``Gen.refold`）、`Rows.lean:114`（gap 字符串）、`Elab.lean:1640`。Build `B RelRun Rel`。Done：上面的
-查询只返回生成 module 中的名字；build 通过。
-
-**2.2 opus — `flatDen` 是一个复合。** 文件 `Rel/Lang/Den.lean`，在 `flatDen`（103 行）之后。加入
-
-```
-theorem flatDen_eq (T : Den I (.prod A B)) :
-    flatDen T = ((graph Prod.fst ≫ T) ∩ (graph Prod.snd ≫ (graph Prod.fst)°)) ≫ graph Prod.snd
-```
-
-三个投影的写法要与 `Tm.den` 的 `.outl`、`.outr` 两个 case 的右端（`Den.lean` 191-234）完全一致，
-这样 4.2 步用它改写之后可以由 `rfl` 关闭。按点读：`(i,a)` 到
-`(a',b)`，条件是 `T i (a',b)` 且 `a' = a`，再到 `b`。Build `B Rel.Lang.Den`。
-
-**2.3 opus — `foldIDen` 是一个 `foldDen`。** 同一文件，在 `foldIDen`（98 行）之后。加入
-
-```
-theorem foldIDen_eq (Te : Den I (.prod V V)) (TS : Den (.prod E (.prod I V)) (.prod I V)) :
-    foldIDen Te TS =
-      ((π₁ ≫ π₁°) ∩ (π₂ ≫ foldDen (ranD ⟨𝟙, Te ≫ π₂⟩) (TS ∩ (π₂ ≫ π₁ ≫ π₁°)))) ≫ π₂
-```
-
-其中 `π₁`、`π₂`、`ranD`、`⟨_,_⟩`、`𝟙` 是 `Tm.den` 分别赋给 `.outl`、`.outr`、`.ran`、
-`.pair`、`.id` 的 Core 算子。carrier 是 `I × V`；meet `TS ∩ (π₂ ≫ π₁ ≫ π₁°)` 让下标保持不变，
-`foldIDen` 的做法是在 `TS` 两侧都写 `p.1`。没有这个 meet，等式就是假的。沿用
-`foldDen_le` 风格对 `foldDen`（`Den.lean:89`）展开。Build `B Rel.Lang.Den`。
-
-**2.4 sonnet — elaboration 时的 positivity 错误。** 文件 `Rel/Run/Lang/Elab.lean`，`.fix` case，1655-1670 行。
-在 `let body ← closed? …` 这一行之后插入一个检查：以 μ 和 ν 两个 case 在 `Tm.gap`（`Rel/Lang/Rows.lean` 116-119）
-中传入的完全相同的参数调用 `Tm.pol`（`Rel/Run/Lang/Tm.lean:254`），失败时
-`throw ⟨p, s!"{if least then "μ" else "ν"} at {p}: its body does not use {k} positively"⟩`。不要动
-`Tm.gap`（见 R2）。Build `B RelRun Rel`。Done：build 通过（树里今天没有任何程序是非正的：
-compile-diff 行等于 baseline）；在 `Rel/Lang/Test.lean` 中为这个新错误加一个 `#guard_msgs` 测试。
-
-**2.5 opus — 对称除法的含义。** 文件 `Rel/Lang/Den.lean`，在 `rdivDen`（49-70 行）之后。加入
-`def symDivDen (UA : Den A A) (UB : Den B B) (R : Den A C) (S : Den B C) : Den A B`，point-free，由
-`ldivDen`/`rdivDen` 和 converse 构造，宇宙的取法与那两个相同；在 `Rel/CRelRel.lean` 中 `rep_symDiv`（306 行）
-之后加一条 theorem：`rep_symDiv` 的右端
-（`(∀ c, R x c ↔ S y c) ∧ ((∃ c, R x c) ∨ (x ∈ Ua ∧ y ∈ Ub))`）就是 `symDivDen (corefl Ua) (corefl Ub) R S x y`。
-Build `B Rel.Lang.Den Rel.CRelRel`。
-
-**2.6 opus（分析，不编辑）— prim row 写成 fold/hylo。** 对 `Compile.lean` 77-112 的 28 行中的每一行
-（`tau cons mem inl inr map filter takewhile thinL merge loop uncons length sum inits tails prefix suffix concat
-cat uncat zip snoc unsnoc setify distinct asc tic`），在 `doc/rel-rows.md` 中写一行：它等于的 `Tm`
-（只使用目标 `Tm` 的 constructor），或者 "primitive" 加上理由。`Syntax.lean` 150-192 已经用 `prelude :=` 定义
-标出了 `filter takewhile tails prefix suffix concat`。输出供 Q5 使用；不改代码。
-Done（`doc/rel-rows.md`）。Owner 的决定：array 只由 `snoc` 构造，绝不由 `cons` 构造（追加使用
-array 的剩余容量），所以默认的 `fold` 消去 `[nil, snoc]`（4.5 步），`cons`、`uncons` 是只用于读取的
-definition（`cons° = uncons`）；在含义允许的地方 array 从左向右读，所以右 fold 只留给 `sum` 和 `thinL`，
-它们的含义是从右到左（保留）；Q5 答 L（每个有 slice 代码的 row 仍是融合 kernel，它的 definition 是
-规约，`⟦row⟧ = ⟦def⟧`）。
-
-### P3 `Rel` 类型（13 步；在一个分支 `rel-lazy` 上串行，标注处除外）
-
-分阶段规则：名字保留，先改类型，最后才去掉下标。phase gate 在分支上通过之前，不动 master。
-
-**3.1 sonnet — 结构 `Rel.Rel` 变成 `Rel.Tab`。** 从 index 取配对：
-`select name || ' Rel.Tab' || substr(name, 8) from decl_info where internal=0 and (name='Rel.Rel' or name like
-'Rel.Rel.%')`（结构、字段 `n key val`、`mk`、`Holds`、`toList`、`Canon`、…）。`LR rename <pairs> --apply`。
-Build `B RelCore RelKernel RelRun Rel`。Done：不再有名为 `Rel.Rel` 或 `Rel.Rel.*` 的 declaration。（Q3：设计也把
-带三个字段的结构叫 `Tab`，因为 2128 个 declaration 投影 `.n .key .val`。）
-
-**3.2 opus — `CRel` 是 `Option (Tab A B)`。** 文件 `Rel/Run/CRelDef.lean` 8-64 行。把结构替换为
-
-```
-abbrev CRel (k v : Obj) := Option (Tab k v)
-def CRel.ok (c : CRel k v) : Bool := c.isSome            -- temporary, removed in 3.12
-def CRel.rel (c : CRel k v) : Tab k v := c.getD default   -- temporary, removed in 3.12
-def CRel.mk (r : Tab k v) (ok : Bool) : CRel k v := if ok then some r else none   -- temporary
-```
-
-删除 `instance : Inhabited (CRel A B)`（46 行；`Option` 已有一个，值为 `none`），经 `CRel.mk` 重述 `CRel.guard`（50）、
-`comp`（53）、`inter`（57）、`union`（60）、`CRel.ofC`（43）。然后按 import 顺序逐个 module 修复使用 `CRel.mk` 的
-16 个 module（92 个 declaration）以及每处 `{ c with … }`/匿名构造子的使用：
-`select use_module, group_concat(l1+1) from use_site where name='Rel.CRel.mk' group by 1`。形如
-`(X).ok = true → … (X).rel …` 的语句保持原文。超出预算时按 library 拆分：3.2a `RelRun`
-（`Run/CRel*Def.lean`、`Gen.lean`、`Expand.lean`），3.2b `Rel/CRel*.lean`，3.2c `Rel/Lang/*`。Build
-`B RelRun Rel`。Done：build 通过；compile-diff 行；列出每一个期望值改变了的 `#guard`（R1）。
-
-**3.3 opus — `Known`、`Rel`、`Reps`。** 新文件 `Rel/Run/Lang/Lazy.lean`（import `Rel.Run.CRelDef`），把它加到
-`Rel/Run/Lang/Gen.lean` 的 import：
-
-```
-structure Known (A B : Obj) where
-  dom : Option ((n : USize) × Vals A n) := none
-  ran : Option ((n : USize) × Vals B n) := none
-inductive Rel (A B : Obj) where
-  | tab (t : Option (Tab A B))
-  | lazy (f : Known A B → Rel A B)
-def Rel.run : Rel A B → Known A B → Option (Tab A B)      -- tab t ↦ t;  lazy f ↦ (f K).run K
-```
-
-并在 `Rel/Rep.lean` 中 `Rep.rep`（17 行）之后：
-
-```
-def Known.den (K : Known A B) : Core.Rel A.El A.El × Core.Rel B.El B.El     -- none ↦ 𝟙, some c ↦ corefl (∈ c)
-def Rel.Reps : Rel A B → Core.Rel A.El B.El → Prop
-  | .tab none, _ => True
-  | .tab (some t), R => Rep.rep t = R
-  | .lazy f, R => ∀ K, (f K).Reps (K.den.1 ≫ R ≫ K.den.2)
-```
-
-这是把设计中的 `rep (lazy f) = R ⇔ ∀ K L, rep (f ⟨K,L⟩) = K ≫ R ≫ L` 读成谓词；R1
-说明了它为什么不是函数。只有当后面某一步引用时，才去证 `Reps.tab_some`、`Reps.lazy_iff`。Build
-`B Rel.Run.Lang.Lazy Rel.Rep`。
-
-**3.4 opus — 与旧函数类型之间的桥。** 文件 `Rel/Lang/GenSpec.lean`，在 `Gen.Sound`（37 行）之后：
-
-```
-def Gen.Fn.toRel : {d : Bool} → Gen.Fn d A B → Rel A B     -- false: tab (f ()); true: lazy fun K => dom-keyed call
-theorem Gen.Sound.reps {f : Gen.Fn d A B} {T} (h : Gen.Sound f T) : (Gen.Fn.toRel f).Reps T
-```
-
-（`toRel` 本身放在 `Gen.lean` 的 48 行之后。）当 `d = true` 且 `K.dom = none` 时，结果是 `tab none`。
-复用 `keys`、`Cor`（`GenSpec.lean` 26、31）、`Sound.eq`（41）。这一步证明 3.3 的谓词由今天的
-soundness 蕴含；如果证不出来，就停下：3.3 的定义是错的，Q4 仍然悬而未决。
-Build `B Rel.Lang.GenSpec`。
-
-**3.5 opus — `Gen.Fn d A B := Rel A B`（phantom `d`），叶子。** `Rel/Run/Lang/Gen.lean`：把 48 行改为
-`abbrev Gen.Fn (_d : Bool) (A B : Obj) := Rel A B`；重写叶子（66-89 行），让 `d = false` 的叶子
-返回 `.tab …`，`d = true` 的叶子返回 `.lazy fun K => …`，在原来读 `Dem` 的地方读 `K.dom`（`leq`、`lt`、
-`top` 还读 `K.ran`：`tab (K ≫ leq ≫ L)`、`K × L`）。`Dem`（25 行）保留到 3.12，供 plan 路径使用。
-把 `Gen.Sound`（`GenSpec.lean:37`）重述为 `def Gen.Sound (f : Rel A B) (T) : Prop := f.Reps T`，并重证
-叶子引理 `const_sound … mem_sound`（`GenSpec.lean` 89-145）。Build `B Rel.Run.Lang.Gen`；145 行以下的 `GenSpec`
-在 3.7 之前可以是红的。
-
-**3.6 opus — 二元和一元组合子。** `Gen.lean` 93-190（`comp conv meet join diff dom ran pair prod junc
-ldiv rdiv` 以及 `…B` 位矩阵形式）：每个都变成按 `tab`/`lazy` 分 case 的 `Rel` 上的函数。规则：
-旧代码在 `d = false` 时运行的 body 是 `tab, tab` 的 case；它在 `d = true` 时运行的 body 放在
-`.lazy fun K =>` 之下，其中 `Dem.of`/`Dem.l`/`Dem.r`（29-40）换成 `K.dom`；`tab r ≫ lazy g`
-调用 `g ⟨some r.val-column, K.ran⟩`。`comp` 不得读取 `none` 的 `r.n`（109 行今天就在读）。引理
-`comp_sound`（348）… `rdiv_sound`（555）、`compB_sound … ldivB_sound`（649-661）。Build `B Rel.Run.Lang.Gen`。
-
-**3.7 opus — fold 和不动点。** `Gen.lean` 191-270（`fold foldI flat nu nuAC mu onNodes juncD
-refoldRounds refold`）以及 `GenSpec.lean` 495-548、`CompileSpec.lean` 29-125（`mu_sound nu_sound flat_sound
-onNodes_sound juncD_sound`）、`Rel/HyloSpec.lean`。`mu` 在触到上限时返回 `tab none`（今天：带 `ok = false`
-的被截断的链）。Build `B RelRun Rel.Lang.GenSpec Rel.Lang.CompileSpec`。
-
-**3.8 opus — `Compile`、`Expand`、测试迁到新的 `Fn`。** `Rel/Run/Lang/Compile.lean`：`CodeEnv`（13）、`bind`
-（17）、`Out`（155）、`Out.memo`（162）、`Tm.gen`（169-232）去掉 `()`/`Dem` 的应用。`Expand.lean`：
-`printText`（100）和 `checkErr`（104）接受 `Rel A B` 并读取 `Rel.run r {}`；`share`（621）、`body`（670）、
-`node`（676-746）在原来发出 `CRel A B` 的地方发出 `Rel A B`。`Rel/Lang/Test.lean` 的 `get`、`test/TestCompile.lean`
-的 `differs` 比较 `Option (Tab A B)`。`Rel/Lang/CompileSpec.lean` 212-355 改为在 `Reps` 上重述；
-`Rel/Lang/RelRep.lean` 的 `prf pprf prfNode`（31-67）随之改动。Build `B RelCore RelKernel RelRun Rel TestCompile`。
-Done：phase 式检查 `make check`；compile-diff 行等于 baseline，R1 能解释的条目除外。
-
-**3.9 sonnet — 从 `Tm` 去掉下标。** `Rel/Run/Lang/Tm.lean`：15 行变为
-`inductive Tm : Obj → Obj → Type`；从每个 constructor（15-91）、`Res`（94：
-`(A) × (B) × Tm A B`）、`Tm.mapM parts fv Sub lift Sub.get fresh subst pol`（100-278）中删去 `Bool` 下标；`Tm.call` 失去
-第一个参数 `d`，`cv : Option (Lean.Name × Bool)` 变成 `Option Lean.Name`。然后 `Gen.Fn` 失去它的参数：
-`LR remove-arg Rel.Lang.Gen.Fn 0 --apply`（在预览中核对参数下标）。按 constructor 列出的使用者在
-第 4 节的 anchor 列表里。Build `B Rel.Run.Lang.Tm Rel.Run.Lang.Bits Rel.Run.Lang.Plan Rel.Run.Lang.Gen
-Rel.Run.Lang.Compile`。
-
-**3.10 opus — 没有 demand bit 的 Elab。** `Rel/Run/Lang/Elab.lean`：`swapTm pairTest Proj Proj.pre Proj.meet
-convTm convProj onPairs divTest`（1247-1385）、`at?`（1401）、`closed?`（1405，变成 `at?`）、`uniPart uniTm numU`
-（1412-1433）、`corAt`（1489）、`closeRes`（1493：今天它在 `d = true` 时给宇宙加前缀；没有 `d` 之后，
-前缀加在 `Tm.fv`/形状要求的地方 — Q6）、`build`（1507-1670）、`callArgs`（1675）。Build `B RelRun`。
-
-**3.11 opus — 没有 demand bit 的 Expand。** `Expand.lean`：`closed`（526，`!d && t.fv.isEmpty`）、`number`
-（530-534）、`free`（538）、`varComp`（541）、`arcs`（548）、`code`（607-618）、`plan?`（629）、`planOr`（657）、`spine`
-（663）、`node`。位矩阵路径（`Bits.runC`，`Bits.lean:249`）原来在 `d = false` 时被选中；改为在
-`Gen.comp`/`meet`/`diff`/`ldiv` 内部当 "两个操作数都是 `tab`" 时选中（3.6 已经有这个 case 拆分），
-并且如果 `compB meetB diffB ldivB` 已经没有调用者，就把它们作为独立名字删除。Build `B RelCore RelKernel RelRun Rel
-TestCompile`。
-
-**3.12 sonnet — 删除临时物。** `LR unused` 必须列出 `Gen.Dem`、`Dem.of`、`Dem.l`、`Dem.r`、
-`Gen.Fn.toRel`、`Gen.Sound.reps`、`CRel.mk`；对每个 `LR remove <each> --apply`。对 `CRel.ok`、`CRel.rel`（454 + 479
-个 declaration，大多是生成的）：逐个 module 把手写语句 `(X).ok = true → P (X).rel` 重写为
-`∀ r, X = some r → P r`（如果某个证明破了，用 opus）；然后 `LR remove`。`LR fold-abbrev` 不是
-`CRel` 所需要的逆操作：读完它的 `--help` 之后，用 `LR retype Rel.CRel …` 把 `CRel A B` 换成 `Option (Tab A B)`
-（确切形式以手册为准）。Build 全部四个 library。
-
-**3.13 sonnet — inline `Den`。** `Den A B`（`Den.lean:20`）被 `Den GenSpec Rows
-ConvSpec CompileSpec BitsSpecRun BitsSpec` 中的 274 个 declaration 使用。`LR` 没有 "unfold abbrev" 命令（Q7）。
-在它出现之前：这一步被阻塞；不要用 regex 去做。
-
-### P4 `Tm` 的 constructor 变更（5 步；串行，它们共用同样的 match 分支）
-
-对每个被移除的 constructor，在下列位置删除它的分支：`Tm.lean`（`mapM fv subst pol`）、`Den.lean`（`den`、`den_congr`、
-`den_subst`、`den_pol`）、`Rows.lean`（`gap`）、`Compile.lean`（`gen`）、`CompileSpec.lean`、`ConvSpec.lean`、
-`BitsSpec.lean`、`BitsSpecRun.lean`、`Elab.lean`（`convTm`、`build`）、`Expand.lean`（`node`）。Anchor：第 4 节。
-
-**4.1 opus — `inl`、`inr` constructor；`junc` 成为 definition；`juncD` 删除。** `Tm.lean`：加入
-`| inl : Tm A (.sum A B)` 和 `| inr : Tm B (.sum A B)`；把 constructor `junc`（35）替换为
-
-```
-def Tm.junc (R : Tm A C) (S : Tm B C) : Tm (.sum A B) C := .join (.comp (.conv .inl) R) (.comp (.conv .inr) S)
-```
-
-删除 `juncD`（38）。`.inl`/`.inr` 的 `den` 是 `Core.Rel.inl`/`Core.Rel.inr`，所以 `(Tm.junc R S).den ρ =
-Core.Rel.junc (R.den ρ) (S.den ρ)` 由 `rfl`（`Core/Rel.lean:70`）成立。`.inl`/`.inr` 的 `gen` 是提升后的
-`CRel.inl`/`CRel.inr`；soundness 来自 `inl_sound`（120）、`inr_sound`（125）。删除 prim 第 3、4 行（`inlRow`、`inrRow`，
-`Syntax.lean` 150-151；`Compile.lean` 的行；`Rows.lean` 的行），使只剩一份 definition（R9）。删除 `Gen.junc`、
-`Gen.juncD`（247）、`junc_sound`（438）、`juncD_sound`（`CompileSpec:125`）、`Expand.node` 的 701、737 行；Elab 1292、
-1422、1578-1587 构造 `Tm.junc`。Build 全部四个 library + `TestCompile`。Done：`Quicksort`、`TestRefold`、`Test`
-（`Gen.juncD` 的使用者）的 `#guard` 结果不变；报告 `Rel.Programs.Quicksort` 的计时（R3）。
-
-**4.2 opus — `flat` 成为 definition。** 把 constructor `flat`（`Tm.lean:72`）替换为
-`def Tm.flat (R : Tm I (.prod A B)) : Tm (.prod I A) B := .comp (.meet (.comp .outl R) (.comp .outr (.conv .outl)))
-.outr`；由 2.2，`den` 等于 `flatDen`。删除 `Gen.flat`（209-212）、`flat_sound`（`CompileSpec:75`）、
-`Expand.node:717`。生成代码中 `Gen.flat` 的使用者：`Test` 20、`Chess` 9、`TestWumpus` 7、`Blocks` 3、
-`Edit` 2、`Wumpus`、`Knapsack`、`ModuleTest`。Done 同 4.1，报告 `Rel.Programs.Chess` 的计时。
-
-**4.3 opus — `foldI` 成为 definition。** 把 constructor `foldI`（`Tm.lean:68`）替换为 `den` 等于
-`foldIDen_eq`（2.3）右端的那个 `Tm`。删除 `Gen.foldI`（196-206）、`foldIDen_le`、`foldI` 的 gap 分支
-（`Rows.lean:121`）、`Expand.node:715`。使用者：`Edit`、`Knapsack`、`Test`、`TestKnapsack`、`TestEdit`。gap
-"foldI: no foldI_sound" 随分支一起消失。Done 同 4.1。
-
-**4.4 opus — `symDiv` constructor。** `Tm.lean` 在 `rdiv` 之后：`| symDiv (UA : Tm A A) (UB : Tm B B) (R : Tm A C)
-(S : Tm B C) : Tm A B`（仿照 `ldiv` 的宇宙参数；Q8）。`den := symDivDen`（2.5）；`gen` 经由
-`CRel.symDiv`（`Run/CRelRelDef.lean:52`）；soundness 来自 `CRel.rep_symDiv`（`CRelRel.lean:306`）和 2.5。给
-P4 开头列出的每个函数加上分支。`Grammar`/`Elab` 中的表层语法是另一个决定（Q8）。
-
-**4.5 opus — 以 `[nil, snoc]` 上的左 fold 为默认；只用 `snoc` 构造。** 今天 `fold` 只是 `[nil, cons]` 上的
-右 fold：`foldDen`（`Den.lean:107-113`）设 `ys[n]` 为种子，令 `ys[t] = S(xs[t], ys[t+1])` 并返回
-`ys[0]`；kernel 的第 `k` 轮从末尾读第 `k` 个元素（`Alg.foldRound`，`Run/Alg.lean:686-700`）。规则
-（`doc/rel-rows.md` 开头）：在含义允许的地方从左向右读，只有含义需要时才从右向左；
-array 只通过追加来构造。没有 row 的含义改变，所以没有 `rowDens` 条目，也没有 `#guard` 结果改变。
-- 加入左 fold，步 `S : V×E ⟶ V` 读 `(acc, x)`，先读下标 0（`scan` 运行的顺序），作为 `Tm.fold`；
-  今天的 constructor 保留为 `Tm.foldr`，含义不变。含义：`foldDen` 变成 `foldrDen`，旁边加一个左
-  `foldDen`（种子 `ys[0]`，`ys[t+1] = S(ys[t], xs[t])`，结果 `ys[n]`）；`foldIDen`、`foldIDen_eq`
-  （115-157）移到左 fold（meet 变成 `π₁ ≫ π₁ ≫ π₁°`）；`fold_le`、`foldI_le`（550-558）两种都要；
-  两个 constructor 的分支都加到 P4 开头列出的每个函数里。
-- 代码：`foldRound` 接受读取顺序（第 `k` 个元素从开头数，或像今天那样从末尾数）；
-  `demandStepC`（733-736）对左 fold 配对 `(pend, el)`，对右 fold 配对 `(el, pend)`；`foldOnC`（743-748）、
-  `CRel.foldOn`（`Run/CRelFoldDef.lean:16`）、`Gen.fold`（`Gen.lean:191-192`）旁边加 `Gen.foldr`、
-  `Gen.foldI`（如果 4.3 还没有移除它）、`Expand.node:713`。
-- 右 fold 只保留在含义是从右到左的地方：`Arr.sumC`（`Alg.lean:1546`；`sum` 的附带条件
-  约束后缀和）和 `thinLOnC` 的第一遍（1393；`thinLDen` 是从末尾开始的链）。其余每个
-  `foldOnC` 调用者都移到左 fold。
-- 前置 → 追加：每条由 `consC`（`Alg.lean:656`）构造的输出路径改为由 `snocC` 构造：`thinBodyC`（1377）
-  变成 `doc/rel-rows.md` 的两遍 `thinA`/`thinK`（动作从右向左追加，然后保留的
-  元素从左向右追加；`thinLDen`、`rep_thinLOnC`（`CRelFold.lean:469`）及它们的 `#guard` 保持原来的
-  语句）、`mapFoldC`（771）、`alphaC`（896）、`permC`（1242）、`subseqC`（1347）、`ticC`（1531）。`consC` 和
-  `CRel.cons`（`Run/CRelListDef.lean:44`）只作为 `cons` 行的代码保留，直到 2.6 删除该行；
-  `mergeRound`（1408）已经是追加。
-- 引理：`rep_foldOnC`（`CRelFold.lean:133-181`）、`CRel.rep_foldOn`（533-557）、`foldRows_iter`、
-  `foldRows_rep_keep`（`RepFold.lean:328-347`、`575-669`）、`Gen.fold_sound`（`GenSpec.lean:493-518`），各对两种
-  读取顺序都成立；以及上述 kernel 的 `rep_*C` 引理。
-- 程序：每个左 fold 的步翻转它的 pair，原来 cons 的步改为 snoc，使输出保持
-  原来的顺序；每个 prelude definition 取 `doc/rel-rows.md` §2 中的形式：`prefix`、`subseq`、`tails`、
-  `filter`、`takewhile`、`perm`（它的 `add`）、`sort`（`Rel/Programs/Prelude.lean`）；生成代码
-  调用 `Gen.fold` 的程序（`Selsort Mss Detab Blocks Edit Party Knapsack Quicksort`）以及测试（`Test TestHylo
-  TestSelsort TestKnapsack TestEdit TestMss`）。含义为从右到左的 fold 变成 `foldr`。
-
-Build 全部四个 library + `TestCompile`。Done：compile-diff 不变（241 / 25），每个 `#guard` 结果不变。
-
-### P5 按既定顺序关闭 gap（8 步；5.4a-c 并行，其余串行）
-
-**5.1 opus — share。** `Tm.gap` 分支 `Rows.lean:125`、`compile_sound` 分支 `CompileSpec.lean:305`、den
-`Den.lean:225`（`R.den Val.empty`）、`Expand.number` 530-534（只包裹 `closed` 的子 term）、`convTm` 的 share 分支
-`Elab.lean:1325`、`convProj` `:1361`。先通过对 `relRegistry` 做 `#eval`（如 `test/TestCompile.lean` 所做）
-找出哪些已注册的 term 含有 `R.fv ≠ []` 的 `.share k R`；报告该列表。然后修 producer，使它不再
-发出这种 term。gap 分支作为 well-formedness 条件保留（R2）。
-
-**5.2 opus — setify、asc 行。** `Rows.lean`：在下标 24（`setify`）和 26（`asc`）加 `Row` 条目，分别来自
-`CRel.rep_setify`（`CRelPower.lean:283`）和 `CRel.rep_asc`（`CRelArith.lean:221`，一个方向，假设
-`B.Ordered`）；`rep_asc` 的逆方向需要 `Obj.KeyInj`（`CRel.lean:124`），它今天在浮点 atom 上为假
-（R7）。从 `rowGaps`（107）中删去这两个名字，并从 `Tm.gap` 中删去 `prim` 分支。如果浮点
-key 改变，则等待 6.9。
-
-**5.3 opus — hylo。** 在 `Rel/Lang/Den.lean` 中新增：
-`theorem Tm.den_local (b : Tm A B) (k) (ch : Core.Rel …) (h : <b has the shape c ≫ G(X) ≫ S>) : (∀ y, ch x y →
-X y = X' y) → b.den (ρ.bind k X) x = b.den (ρ.bind k X') x`，写法见 `doc/rel-denotation-design.md` §7.2；
-然后在 `CompileSpec.lean` 中由 `Gen.rep_hylo`（`HyloSpec.lean:124`，假设 `Monotonic Φ` 来自
-`Tm.den_mono`，`Local` 来自 `den_local`）
-得到 `hylo_sound`。删除 `Tm.gap` 的 hylo 分支（`Rows.lean:114`）。Q9：hylo 的 `Tm.den`
-忽略 `ch`；把 `ch` 与 body 联系起来的前提在设计中没有。
-
-**5.4a / 5.4b / 5.4c opus — `lam_sound`、`E_sound`、`thin_sound`。** `GenSpec.lean`，各一条 theorem，分别针对
-`lamDen`（`Den.lean:111`）、`EDen`、`thinDen`；复用 `Rel.Tab.Canon`、`canon_ofC`（`CRel.lean:310`）、`canon_comp`
-（330）、`canon_inter`（335）、`canon_union`（341）、`canon_diff`（`CRelFold:627`）、`canon_antiJoin`（`CRelRel:329`）、
-`Obj.lt_*`（`ObjOrder.lean` 41-49、145）。每条都需要元素 object 的 `Ordered` 和 `KeyInj` 作为假设；
-它们在 `compile_sound` 中从哪里来是 Q10。然后是 `compile_sound` 和 `Tm.gap` 的三个分支。
-
-**5.5 opus — call（stage 5）。** `Tm.call`（`Tm.lean:79`）、den `𝟘`（`Den.lean:229`）、`none'`（`Compile.lean:221`）、
-Elab 1335、1652、1702，Expand 637、666、746。设计只给出了 stage 的名字，没有给出机制（Q11）；这一步
-以一份书面提案开始，而不是代码。
-
-**5.6 sonnet — 删除 `Tm.gap`。** 当 `Tm.gap` 的每个分支（`Rows.lean` 111-134）除 R2 的
-well-formedness 分支外都返回 `none` 时：rename 剩下的部分（`LR rename Rel.Lang.Tm.gap Rel.Lang.Tm.illFormed --apply`），
-删除 `rowGaps`、`gap_or`（`CompileSpec:233`）、`compile_sound` 的最后一行（355）。Build 全部 + `TestCompile`。
-Done：compile-diff 报告 0 个 "not ok"。
-
-### P6 Kernel（调研 + 12 步；同一个 kernel 的 Rust 和 Lean 两半串行，不同 kernel 并行）
-
-**6.0 opus（分析，不编辑）— 替换表。** 对 `/data/tmp/rel-gates/rel/extern.tsv` 的 99 行中的每一行
-（namespace：`Rel.Kernel` 51、`Ew` 17、`Order` 18、`Coc` 10、`Scan` 1、
-`Column` 1、`Db` 1）：
-给出 Lean 使用者（`use_site`），并归入以下之一：{`scan op`、`scatter`、`gather`、`asc`、`distinct`、
-"q-only: delete"、"no target: R4"}。输出 `/data/tmp/rel-kernels.md`。6.8-6.11 步由这张表切分而来；
-在它存在之前无法切分。Done：`doc/rel-kernels.md`（由 owner 缩小范围：class R = 从
-Rel 的 runtime 或程序可达，77 个；class Q = 不可达，22 个；五个 kernel 的表只覆盖 R）。
-
-**6.0a sonnet — 删除 class Q。** 删除 `doc/rel-kernels.md` §2 的 22 个 class-Q extern 及其 cone
-（47 个 declaration，那里按 module 列出）、它点名的 `#guard`/`decide` 命令位置、`crate/RELK.txt` 的 22 行，
-以及没有调用者的 Rust export 和文件（`crate/src/ffi/*`）。Rel 只需要 Rel 用到的东西；
-qlean 保留自己的拷贝（`qlean-base`）。build 之后重新检查 `Verify.overStep_fold`（`KernelSpec.Group`）。
-Gate：`B RelCore RelKernel RelRun Rel`、`RELK.txt` 为 77 行时的 `sh crate/build.sh syms`、
-`make externs`、`make panic`。在 6.1 之前；碰到证明的 sonnet 步骤停下并报告。
-
-**6.1 sonnet — `Op`。** 在 `RelKernel` 中新增 `Rel/Kernel/Op.lean`：
-`inductive Rel.Kernel.Op | add | sub | mul | min | max | eq | lt | and | or | not | first | fadd | fmul | fdiv |
-flt`（按设计 §4 补全列表）、`def Op.readsAcc : Op → Bool`、`def Op.assoc : Op → Bool`、
-`def Op.eval : Op → UInt64 → UInt64 → UInt64`，作用在原始 word 上。名字 `Rel.Lang.Op`（`Syntax.lean`）已经
-存在：kernel 的那个放在 `Rel.Kernel`。要映射的现有 op code：`Ew.add … Ew.acos`（`Elementwise.lean`
-22-65）、`Scan.Verb`（`Scan.lean:11`）。
-**6.2 / 6.3 已弃用 — `packed`。** 曾设想新增 `Ext.Enc.packed` 与 `crate/src/pack.rs`；owner（2026-11-18）改为弃用，
-唯一保留的编码是现有的 `Ext.Enc.foR`。`packed` 就是去掉缓存的 `foR`：两者的元素语义相同（base 加回绕的残差，每块
-LSB 优先，每块预留 $2^"lg" · w / 8$ 字节，`lg` 每列一个，存在 `foR` 的 trailer 中）。`foR` 多保留的缓存是 `maxv`（谓词跳过整块）、
-`bsum`/`sumnul`/`sumn`（O(nblk) 求和）、`off`（块起点）；语义从不读它们（`Rel/Kernel/Value.lean` ~202），所以证明零成本。
-归约在 `foR` 上同样成立：`bits` = base 0 宽度 1，`bytes` = 退化的 `foR`，常量 = 宽度 0，enum id 用同样的残差打包，
-`alp` 挂在 `foR` 的元数据上（float 的 fast path）。已做：删除 `crate/src/pack.rs` 和 `Own` 的文件类型 6；`scan`、`scatter`、
-`gather` 经 `Rel.Kernel.foRWords`（检查 `lgOk` 与 `foRStd`）读 `foR`，答 `.foR (Coc.encode 8 …)`；位的打包/解包用 coc 现有的
-SIMD 编解码。往返定理 `raw_encodeAt`（`Rel/KernelSpec/Raw.lean`）：经 `raw` 读 `.foR (encodeAt lg w x)` 等于读 `.bytes x`。
-
-**6.4 / 6.5 opus — `scan`、`scatter`（并行）。** Lean（`Rel/Kernel/Scan.lean`，新增 `Rel/Kernel/Scatter.lean`）：
-
-```
-@[extern "qlean_k_scan"]    def Kernel.kscan (op : Op) (seg : @& Enc) (es : @& List Enc) : Enc := <model on raw>
-@[extern "qlean_k_scatter"] def Kernel.kscatter (ix e : @& Enc) (n : USize) (fill : UInt64) : Enc := <model>
-theorem raw_scan …    theorem raw_scatter …       -- Rel/KernelSpec/, statements from §4 of the design
-```
-
-各带一对 `decide`-beside-`#guard`；Rust `crate/src/scan.rs`（已存在，扩展）、`scatter.rs`（新增）、
-`ffi/scan.rs`、`ffi/structural.rs`；把这两个符号加进 `crate/RELK.txt`。临时用 `k` 名字，因为
-`qlean_scan`（`Scan.scan`，`Scan.lean:179`）和 `Kernel.scan`（`Driver.lean:33`）已经存在；在 6.11 改名。
-模型用 `Op.eval` 陈述，绝不用 Lean 闭包。下标 ≥ `n` 是错误，绝不丢弃（owner，
-2026-11-18：不得静默出错）：模型返回 `Except`，Rust 把错误返回给 Lean，需要丢弃某一行的
-复合把它送到一个多余的 cell，之后再把该 cell 截掉（WHERE，`doc/rel-kernels.md`）。
-Gate：`B RelKernel`、`sh crate/build.sh syms`、
-`make externs`。
-
-**6.6 / 6.7 / 6.8 opus — `gather`、`asc`、`distinct`（并行，在 6.4 和 6.5 之后）。** 6.6 `gather` 已完成（23b65e0，`raw_kgather`）。
-6.7 `asc` 已完成（76388c2，`asc_sorted` + `asc_perm`；走共享的 `foRWords`，`gather` 用它的 `ascGrade` 排序）；未做：`arr` 键的 MSD，浮点暂用 `ordKey` 直到 6.9。
-
-```
-@[extern "qlean_k_gather"]   def Kernel.kgather (ix e : @& Enc) (fill : UInt64) : Enc
-@[extern "qlean_k_asc"]      def Kernel.kasc (es : @& List Enc) : Enc × Enc          -- values, permutation
-@[extern "qlean_k_distinct"] def Kernel.kdistinct (es : @& List Enc) : Enc
-```
-
-定律 `raw_permute`、`asc_sorted` + `asc_perm`、`distinct_first` + `distinct_cover`，以及各一条 "= `kscan` 与
-`kscatter` 的复合" 的 theorem，取自设计的复合表（distinct = scan → scatter；asc =
-radix scan → scatter，`arr` 字节用 MSD；gather = concat → asc → scan fill → scatter）。Lean 的 body 就是
-这个复合；Rust 是融合形式。现有材料：`gatherPacked`（`Structural.lean:34`）、`scatterPacked`
-（240）、`Order.grade`（`Sort.lean:69`）、`gradeLane`（96）、`runStarts`（`Search.lean:233`）、`Alg.nubC`（`Alg:202`）。
-
-**6.9 opus — atom 和保序编码。** `QAtomicType`（`Value.lean:13`）用 `LR rename` 改名：
-`boolean→u1 long→i64 int→i32 short→i16 byte→i8 real→f32 float→f64 symbol→sym`（`char` 保留原名）；
-然后浮点 atom 处的 `Obj.key`（`ObjOrder.lean:19`）变成保序的位映射。移除 `general` 和时间类 atom：按 R5，`.sum` 的 tag
-变成 `Arr .u1`；`Obj.general` 消失，`Obj.Ordered` 失去它的 `t ≠ .general` 前提。
-
-**6.10 opus，多步 — 迁移使用者。** 按 6.0 的表每组一步：每个调用旧 extern 的 `Alg`/`Code`/`CRel*Def` definition
-在这五个 kernel 上重述，它的 `KernelSpec`/`KernelWF` 引理由新定律重证。
-`Rel/KernelSpec/*`（约 5700 行）和 `Rel/KernelWF/*`（约 16000 行）
-是针对今天的 kernel 陈述的；步数在 6.0 之后才知道。
-
-**6.11 sonnet — 删除旧物。** 不删 `coc.rs`、`codec.rs`、`ids.rs`、`res.rs`、`simd.rs`、`unpack.rs` 中的 SIMD 编解码函数：
-它们是 `foR` 的位打包实现（6.2 / 6.3）。「一种编码」= `foR`：删除 `bytes` `bits` `syms` `enum` `gen` 这五个 `Ext.Enc` constructor，`alp` 保留；再移除旧 extern、driver
-`Kernel.map fold scan permute`（`Driver.lean`；分别有 5、2、2、2 个使用者）、没有调用者的 Rust 文件；用 `LR rename`
-把 `k` 名字改成 `Kernel.scan gather scatter asc distinct`，把符号改成 `qlean_scan …`；`crate/RELK.txt`；
-`panic-allow.txt`。Gate：`syms`、`externs`、`panic`、`crate-test`。
-
-**6.12 opus — native gate。** `Rel/Lang/EmitC.lean:16` 的 `abi` 列出 `Db.ownWrite`、`Order.groupIds`、`idGroups`、
-`Ew.val cmp bit`、`whereBits`、`gatherBytes`；`relc`/`rel-native` 用 `qlean_own_write` 写 column。把
-`abi` 重述到这五个 kernel 加上 R4 保留的东西；`lake build rel-native` 以及 `out/key`、`out/val` 的比较。
-
-### P7 Plan A（4 步；串行）
-
-**7.1 opus — library 边界。** `compile` 在 `RelRun`（precompiled）；`Tm.den`（`Rel/Lang/Den.lean`，
-noncomputable，`Classical`）和每个 `*_sound` 在 `Rel`。要么 `Den.lean`、`GenSpec.lean`、
-`CompileSpec.lean`、`Rows.lean` 及它们的 import（`CRel*`、`KernelWF`）移到 `Rel/Run/` 之下，要么 `compile` 移到
-`Rel/Lang/`，且 `rel_program`（它在 elaboration 时运行它）import `Rel`。由 Q12 决定；这一步
-被它阻塞。
-
-**7.2 opus — subtype。**
-`def compile (η : CodeEnv) (ρ : Val) (hη : η.Sound ρ) (t : Tm A B) (hw : t.illFormed = none) :
-{r : Rel A B // r.Reps (t.den ρ)}`，由 `Tm.gen`（`Compile.lean` 169-232）的递归构造，每个分支的
-证明就是 `compile_sound`（`CompileSpec.lean` 238-355）的对应分支。删除 `compile_sound`、`Out.Sound`、
-`Code.Sound`。
-
-**7.3 opus — `rel_program` 发出 `compile t`（设计文档 §5.1 stage 4）。** 从 `Expand.lean` 删除：`code node
-plan? planOr spine body share primE fitConst primWrappers`；从 `Rel/Lang/RelRep.lean` 删除：`prf pprf prfNode lem
-lemO rep`；`Rel/Lang/TestRep.lean`。`test/TestCompile.lean` 和 `compile-diff` gate 失去它们的对象
-（没有第二个东西可比较）：用程序的 `#guard` 取代该 gate。
-
-**7.4 sonnet — 清理。** 对 `Rel/Lang/*` 和 `Rel/Run/Lang/*` 运行 `LR unused`、`LR unused-simp`、`LR remove-import`；
-更新 `CLAUDE.md` 的 Layout/Gates 文字和 `Makefile`（`compile-diff`）。
+顺序：P0 → P1 → P2 → P3 → P4 → P5 → P7；P6（kernels）在 Lean 层面独立于 P2-P5，只有浮点序例外（5.2 等待 6.9）。
+状态：✅ 完成，🔄 进行中，⬜ 未开始，✖ 弃用。每步的旧文本（文件、行号、`LR` 命令、Done 条件）在 commit
+178da18 的 `PLAN.md` §2：`git show 178da18:PLAN.md`。行号已过时，先用 index 重新定位。
+
+进度：21 / 53 步（约 40%）。
+
+| Phase                | 完成 / 步数 | %    |
+|----------------------|-------------|------|
+| P0 baseline          | 1 / 1       | 100% |
+| P1 删除 `Syn`        | 3 / 3       | 100% |
+| P2 不依赖 `Rel` 类型 | 6 / 6       | 100% |
+| P3 `Rel` 类型        | 1 / 13      | 8%   |
+| P4 `Tm` constructor  | 1 / 5       | 20%  |
+| P5 关闭 gap          | 0 / 8       | 0%   |
+| P6 kernels           | 9 / 13      | 69%  |
+| P7 Plan A            | 0 / 4       | 0%   |
+
+### P0 baseline — 1/1
+
+- ✅ 0.1 建 index，`make check` 定 baseline：compile-diff 241 个 definition，25 个 not ok。
+
+### P1 删除 `Syn` — 3/3
+
+- ✅ 1.1 `Tm.Ax` 写成等式 `⟦lhs⟧ = ⟦rhs⟧`。
+- ✅ 1.2 删除 `Rel/Lang/Syn.lean`。
+- ✅ 1.3 freyd 一侧删除 `relaop/RelAop/Syn.lean`。
+
+### P2 不依赖 `Rel` 类型 — 6/6
+
+- ✅ 2.1 `refold` → `hylo`。
+- ✅ 2.2 `flatDen` 是一个复合。
+- ✅ 2.3 `foldIDen` 是一个 `foldDen`。
+- ✅ 2.4 elaboration 时的 positivity 错误。剩余：错误信息要写出变量名。
+- ✅ 2.5 对称除法的含义。
+- ✅ 2.6 分析：28 个 prim row 能否写成 fold/hylo（不编辑）。
+
+### P3 `Rel` 类型 — 1/13（在分支 `rel-lazy` 上串行；phase gate 通过之前不动 master）
+
+- ✅ 3.1 结构 `Rel.Rel` → `Rel.Tab`。
+- 🔄 3.2 `CRel` 是 `Option (Tab A B)`。3.2a（3c41c45）：`RelRun` 与 `CRel*` 六个 module 已通过；
+  剩 `Rel/Lang/*`（GenSpec 起）、HyloSpec、CanonTest。
+- ✅ 3.3 `Known`、`Rel`（`tab | lazy`）、`Reps`，新文件 `Rel/Run/Lang/Lazy.lean`（3a00d75，`rel-lazy`）。
+- ⬜ 3.4 新旧函数类型之间的桥（`GenSpec.lean`，`Gen.Sound` 之后）。
+- ⬜ 3.5 `Gen.Fn d A B := Rel A B`（phantom `d`）：叶子。
+- ⬜ 3.6 二元和一元组合子。
+- ⬜ 3.7 fold 和不动点。
+- ⬜ 3.8 `Compile`、`Expand`、测试迁到新的 `Fn`。
+- ⬜ 3.9 从 `Tm` 去掉下标。
+- ⬜ 3.10 没有 demand bit 的 `Elab`。
+- ⬜ 3.11 没有 demand bit 的 `Expand`。
+- ⬜ 3.12 删除临时物（`CRel.ok/rel/mk`、`Gen.Dem`、…）。
+- ⬜ 3.13 inline `Den`。
+
+### P4 `Tm` 的 constructor 变更 — 1/5（串行，共用同样的 match 分支）
+
+- ⬜ 4.1 加 `inl`、`inr`；`junc` 成为 definition；删除 `juncD`。
+- ⬜ 4.2 `flat` 成为 definition。
+- ⬜ 4.3 `foldI` 成为 definition。
+- ⬜ 4.4 加 `symDiv` constructor。
+- ✅ 4.5 默认是 `[nil, snoc]` 上的左 fold；只用 `snoc` 构造。
+
+### P5 按既定顺序关闭 gap — 0/8（5.4a-c 并行，其余串行）
+
+- ⬜ 5.1 share。
+- ⬜ 5.2 setify、asc 行；浮点 key 等 6.9。
+- ⬜ 5.3 hylo：`den_local`，得到 `hylo_sound`。
+- ⬜ 5.4a / 5.4b / 5.4c `lam_sound`、`E_sound`、`thin_sound`。
+- ⬜ 5.5 call（stage 5）：先写书面提案，不写代码（Q11）。
+- ⬜ 5.6 删除 `Tm.gap`；Done：compile-diff 0 个 not ok。
+
+### P6 kernels — 9/13
+
+- ✅ 6.0 替换表：每个旧 extern 由哪些新 kernel 组成（分析）。
+- ✅ 6.0a 删除 class Q 的 22 个 extern。
+- ✅ 6.1 `Op`。
+- ✖ 6.2 / 6.3 `packed`：owner 选 `foR` 为唯一编码。
+- ✅ 6.4 / 6.5 `scan`、`scatter`；唯一的 foR 读取是 `Rel.Kernel.foRWords`。
+- ✅ 6.6 / 6.7 / 6.8 `gather`、`asc`、`distinct`；写入是 `wordsFoR`。6.7 剩余：`arr` key 的 MSD；浮点用 `ordKey`
+  直到 6.9。
+- 🔄 计划外：foR 含 patch 与 frame，Lean `Coc.encode` 为规格，Rust 逐字节相同（owner 选 B）。
+- ⬜ 6.9 atom 和保序编码：`QAtomicType` → `u1 char i8 i16 i32 i64 f32 f64 sym`，用 `LR rename`，全仓串行。
+- ⬜ 6.10 迁移使用者，按 6.0 的表每组一步。
+- ⬜ 6.11 删除旧 extern 与旧 constructor；保留 SIMD 编解码函数。
+- ⬜ 6.12 native gate。
+
+### P7 Plan A — 0/4（串行）
+
+- ⬜ 7.1 library 边界。
+- ⬜ 7.2 subtype。
+- ⬜ 7.3 `rel_program` 发出 `compile t`，从 `Expand.lean` 删除旧路径。
+- ⬜ 7.4 清理：`LR unused`、`unused-simp`、`remove-import`。
 
 ## 3. 各 phase 的并行与串行
 
