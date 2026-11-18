@@ -18,10 +18,10 @@ pub fn for_words(ws: &[u64]) -> O {
 
 /// `kscan` (`crate::scan::kscan`) of the Lean list `es`.
 #[cfg(all(feature = "ffi", not(any(test, feature = "std"))))]
-fn kscan(op: u8, s: u8, t: u8, n: usize, seg: B, es: B) -> Result<O, String> {
+fn kscan(op: u8, rev: bool, s: u8, t: u8, n: usize, seg: B, es: B) -> Result<O, String> {
     let (mut v, mut l) = (Vec::new(), es);
     while !l.is_scalar() { v.push(l.field(0)); l = l.field(1) }
-    scan::kscan(op, s, t, n, seg, &v)
+    scan::kscan(op, rev, s, t, n, seg, &v)
 }
 
 /// A fresh answer of `n` bytes, filled by `fill`.
@@ -41,10 +41,10 @@ export! {
         answer(scan::col_len(op, kind, n, p.len()), |o| scan::col(op, kind, n, p, o))
     }
 
-    /// `Kernel.kscan op s t n seg es` (Rel/Kernel/Scan.lean): `Except String Enc`, the error (tag 0) carrying the
-    /// model's text, the answer (tag 1) an `Enc.bits` (tag 1) at a boolean `t` and an `Enc.foR` (tag 3) otherwise.
-    fn qlean_k_scan(op: u8, s: u8, t: u8, n: usize, seg: B, es: B) -> O {
-        match kscan(op, s, t, n, seg, es) { Ok(e) => ctor(1, [e], &[]), Err(m) => ctor(0, [string(&m)], &[]) }
+    /// `Kernel.kscan op rev s t n seg es` (Rel/Kernel/Scan.lean): `Except String Enc`, the error (tag 0) carrying the
+    /// model's text, the answer (tag 1) an `Enc.foR` (tag 3) at every `t`, a boolean one a `foR` of `u1`.
+    fn qlean_k_scan(op: u8, rev: u8, s: u8, t: u8, n: usize, seg: B, es: B) -> O {
+        match kscan(op, rev != 0, s, t, n, seg, es) { Ok(e) => ctor(1, [e], &[]), Err(m) => ctor(0, [string(&m)], &[]) }
     }
 
 

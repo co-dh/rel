@@ -201,7 +201,7 @@ namespace Rel.Kernel
 open Rel.Kernel.Scan
 
 /-- `e`'s `n` raw words at `t`, or how many it holds instead: `Enc.raw` answers none at a type the form does not hold
-(a `syms` or `gen` column, a `bits` one read at a non-boolean type), and `kscan` reads every column at all `n` rows. -/
+(a `syms` or `gen` column, a `bits` one read at a non-boolean type, an `alp` one at a boolean), and `kscan` reads every column at all `n` rows. -/
 def rawAll (t : QAtomicType) (n : USize) (e : Enc) : Except String (Array UInt64) :=
   if (e.raw t n).size = n.toNat then .ok (e.raw t n)
   else .error s!"kscan: a column holds {(e.raw t n).size} raw elements, not {n.toNat}"
@@ -218,25 +218,29 @@ def kscanRow (op : Op) (seg seed : Array UInt64) (xs : List (Array UInt64)) (out
 at `s`. `seg`, read as booleans, marks the rows that start a segment; the first column of `es` is the seed a segment
 starts from and the others are folded into each row. So a map is every row a segment (`out[i] = op(a[i], b[i])`), a
 scan one segment from a seed column, a fold a scan's last row, and `es = [e]` fills `e` forward from the marked rows.
-The answer is `foR` at `t`, the words encoded whole by `Coc.encode` at 8 bytes and read back by `Enc.raw` cut to `t`'s
-width; a boolean `t` answers `bits`, each word's low bit, because `Enc.WF` admits `foR` at no boolean. An `Op.eval`
-error, a column short of `n` raw words, an empty `es` or a `t` of no width is the `.error`, never a default. Temporary
-name until 6.11: `Kernel.scan` (`Driver.lean`) and `qlean_scan` exist. -/
+With `rev` it is the same scan run from the last row back (van Herk's backward pass): the forward scan of every column
+reversed, `seg` included, then reversed, so `seg` marks the row a segment starts at walking backwards (its last row in
+forward order) and the last row always starts one.
+The answer is `foR` at every `t`, the words encoded whole by `Coc.encode` at 8 bytes and read back by `Enc.raw` cut to
+`t`'s width; at a boolean `t` each word is cut to its low bit first, a `foR` of `u1` being what `Enc.WF` admits there.
+An `Op.eval` error, a column short of `n` raw words, an empty `es` or a `t` of no width is the `.error`, never a default.
+Temporary name until 6.11: `Kernel.scan` (`Driver.lean`) and `qlean_scan` exist. -/
 @[extern "qlean_k_scan"]
-def kscan (op : Op) (s t : QAtomicType) (n : USize) (seg : @& Enc) (es : @& List Enc) : Except String Enc := do
+def kscan (op : Op) (rev : Bool) (s t : QAtomicType) (n : USize) (seg : @& Enc) (es : @& List Enc) :
+    Except String Enc := do
+  let rv := fun a : Array UInt64 => if rev then a.reverse else a
   let g ← rawAll .boolean n seg
   match ← es.mapM (rawAll s n) with
   | [] => .error "kscan: es is empty; its first column is the seed"
   | seed :: xs =>
-    let out ← (List.range n.toNat).foldlM (kscanRow op g seed xs) #[]
+    let out ← (List.range n.toNat).foldlM (kscanRow op (rv g) (rv seed) (xs.map rv)) #[]
     match t.width with
     | none => .error "kscan: the answer type has no fixed width"
     | some _ =>
-      if t = .boolean then pure (.bits (Column.packIds 1 n.toNat fun i => (out[i]?.getD 0).toNat % 2))
-      else
-        -- `ofNat32`, not the literal `8`, whose `toNat` is `8 % 2 ^ numBits` and stops `decide` at the opaque `numBits`
-        let r := Coc.encode (USize.ofNat32 8 (by decide)) (out.foldl (init := .empty) fun acc w => Column.pushBits acc w 8)
-        pure (.foR r.1 r.2)
+      let ws := (rv out).map fun v => if t = .boolean then v % 2 else v
+      -- `ofNat32`, not the literal `8`, whose `toNat` is `8 % 2 ^ numBits` and stops `decide` at the opaque `numBits`
+      let r := Coc.encode (USize.ofNat32 8 (by decide)) (ws.foldl (init := .empty) fun acc w => Column.pushBits acc w 8)
+      pure (.foR r.1 r.2)
 
 end Rel.Kernel
 
