@@ -9,7 +9,8 @@ Owner decisions on section 5 (taken as the recommended defaults; the owner may o
   come from the failing node, never from a truncated table.
 - R4: "kernel" (5) differs from "runtime export": `stop`, `Coc.encode`/`decode` stay as runtime exports;
   `own_write` and the group-id kernels are rewritten with `EmitC`.
-- R5: atoms are `u1 char i8 i16 i32 i64 f32 f64 sym` (nine). Truth values are `u1` (width 1), no `bool`; the tag `Arr .u1`
+- R5: atoms are `u1 char i8 i16 i32 i64 f32 f64 sym` (nine). Truth values are `u1` (width 1), no `bool`;
+  the tag is `Arr .u1`
   (from `.boolean`); `char` is 8-bit and strings are `arr char`; boxed `general` and the temporal atoms
   are deleted.
 - R7: floats are canonicalised (one NaN, `-0 ↦ +0`) before the order-preserving bit map; equality = bit equality
