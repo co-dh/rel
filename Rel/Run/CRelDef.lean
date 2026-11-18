@@ -19,8 +19,8 @@ def CRel.mk {k v : Obj} (r : Tab k v) (ok : Bool) : CRel k v := if ok then some 
 /-- Where its bit is set, `mk`'s table is the one given. -/
 @[simp] theorem CRel.mk_rel {k v : Obj} (r : Tab k v) : (CRel.mk r true).rel = r := rfl
 
-theorem CRel.mk_rel_of {k v : Obj} {r : Tab k v} {b : Bool} (h : (CRel.mk r b).ok = true) :
-    (CRel.mk r b).rel = r := by cases b <;> first | rfl | exact absurd h Bool.false_ne_true
+/-- Where its bit is set, `mk` is the table, present. -/
+theorem CRel.mk_true {k v : Obj} {r : Tab k v} {b : Bool} (h : b = true) : CRel.mk r b = some r := by subst h; rfl
 
 namespace Alg
 

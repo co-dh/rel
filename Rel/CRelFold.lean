@@ -519,13 +519,13 @@ theorem rep_foldBy {E V : Obj} {m n : USize} (e : Vals V m) (X : Vals (.arr E) n
     (hb : (foldBy X e stepK).ok = true)
     (T : Tab .long (.arr E)) (hT : T = Alg.num (idU X) 0)
     (pend₀ : Tab .long V) (hpend : pend₀ = Alg.top (A := .long) (Tab.key T) e)
-    (step : Tab .long E → Tab .long V → Tab .long V) (hstep : ∀ el p, step el p = (stepK ⟨el, true⟩ ⟨p, true⟩).rel)
+    (step : Tab .long E → Tab .long V → Tab .long V) (hstep : ∀ el p, step el p = (stepK (some el) (some p)).rel)
     (Sr : Nat → E.El × V.El → V.El → Prop)
     (elK : Nat → Tab .long E) (hE : ∀ k, elK k = foldEl false T k)
     (f : Tab .long V × Tab .long V × Nat → Tab .long V × Tab .long V × Nat) (hf : ∀ st, f st = rnd(st))
     (keep : Prop)
     (hS : ∀ i, i ≤ (val T).1.toNat → ne(i + 1) →
-      (stepK ⟨elK i, true⟩ ⟨(f^[i] (pend₀, Alg.zero, 0)).1, true⟩).ok = true →
+      (stepK (some (elK i)) (some (f^[i] (pend₀, Alg.zero, 0)).1)).ok = true →
       ∀ r v, rep (step (elK i) (f^[i] (pend₀, Alg.zero, 0)).1) r v ↔
       (∃ e u, rep (elK i) r e ∧ rep (f^[i] (pend₀, Alg.zero, 0)).1 r u ∧ Sr i (e, u) v) ∨
         (keep ∧ (¬ ∃ e, rep (elK i) r e) ∧ rep (f^[i] (pend₀, Alg.zero, 0)).1 r v)) :
@@ -548,16 +548,16 @@ theorem rep_foldOn {E V P : Obj} {m n : USize} (l : Bool) (pr : Tab .long E → 
     (T : Tab .long (.arr E)) (hT : T = Alg.num (idU X) 0)
     (pend₀ : Tab .long V) (hpend : pend₀ = Alg.top (A := .long) (Tab.key T) e)
     (step : Tab .long E → Tab .long V → Tab .long V)
-    (hstep : ∀ el p, step el p = (demandStepC pr (fun D => ((S ⟨D, true⟩).rel, (S ⟨D, true⟩).ok)) el p).1)
+    (hstep : ∀ el p, step el p = (demandStepC pr (fun D => ((S (some D)).rel, (S (some D)).ok)) el p).1)
     (elK : Nat → Tab .long E) (hE : ∀ k, elK k = elR(T, k))
     (f : Tab .long V × Tab .long V × Nat → Tab .long V × Tab .long V × Nat) (hf : ∀ st, f st = rnd(st))
     (D : Nat → Tab P P)
     (hD : ∀ k, D k = Alg.ran (pr (elK k) (f^[k] (pend₀, Alg.zero, 0)).1).1)
     (Sr : Nat → P.El → V.El → Prop)
     (hSr : ∀ i, i ≤ (val T).1.toNat → ne(i + 1) →
-      (demandStepC pr (fun D => ((S ⟨D, true⟩).rel, (S ⟨D, true⟩).ok)) (elK i) (f^[i] (pend₀, Alg.zero, 0)).1).2 =
+      (demandStepC pr (fun D => ((S (some D)).rel, (S (some D)).ok)) (elK i) (f^[i] (pend₀, Alg.zero, 0)).1).2 =
         true → ∀ p w, (∃ a, rep (D i) a p) → (∀ a b, rep (D i) a b → a = b) →
-          (rep (S ⟨D i, true⟩).rel p w ↔ Sr i p w)) :
+          (rep (S (some (D i))).rel p w ↔ Sr i p w)) :
     ∀ (xs : List E.El) w, rep (foldOn l pr e S X).rel xs w ↔ (∃ i, X.row i = xs) ∧
       ∃ ys : List V.El, ∃ hy : ys.length = (ordL l xs).length + 1,
         (∃ p, e.row p = ys[(ordL l xs).length]'(Nat.lt_of_lt_of_eq (Nat.lt_succ_self _) hy.symm)) ∧
@@ -622,12 +622,14 @@ theorem rep_subseq {B : Obj} {n : USize} (X : Vals (.arr B) n)
 /-- **`CRel.diff` read back under its bit**: `rep_diffC`. -/
 theorem rep_diff {A B : Obj} (R S : CRel A B) (hb : (diff R S).ok = true) (a : A.El) (b : B.El) :
     rep (diff R S).rel a b ↔ rep R.rel a b ∧ ¬ rep S.rel a b := by
-  have e : diff R S = _ := guard_eq ok hb; rw [e] at hb ⊢; exact rep_diffC R.rel S.rel hb a b
+  have e : diff R S = _ := guard_eq ok hb; rw [e] at hb ⊢
+  obtain ⟨h, e'⟩ := mk_ok_rel (r := diffC R.rel S.rel) hb; rw [e']; exact rep_diffC R.rel S.rel h a b
 
 /-- **`CRel.diff` is canonical where `R` is**: `canon_diffC`. -/
 theorem canon_diff {A B : Obj} (R S : CRel A B) (hb : (diff R S).ok = true) (hR : R.rel.Canon) :
     (diff R S).rel.Canon := by
-  have e : diff R S = _ := guard_eq ok hb; rw [e] at hb ⊢; exact canon_diffC R.rel S.rel hb hR
+  have e : diff R S = _ := guard_eq ok hb; rw [e] at hb ⊢
+  obtain ⟨h, e'⟩ := mk_ok_rel (r := diffC R.rel S.rel) hb; rw [e']; exact canon_diffC R.rel S.rel h hR
 
 end CRel
 
