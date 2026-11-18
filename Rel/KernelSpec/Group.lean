@@ -332,42 +332,6 @@ theorem idsCap_packIds {W : Nat} (m : Nat) (f : Nat → Nat)
 
 end Over
 
-/-- `Array.extract`'s loop: `bs`, then up to `i` elements of `a` from `j`. Core's `Array.getElem?_extract`
-carries `Classical.choice`, so the read is taken from the loop here. -/
-theorem extract_loop_getElem? {α : Type} (a bs : Array α) (i j k : Nat) :
-    (Array.extract.loop a i j bs)[k]? = if k < bs.size then bs[k]? else
-      if k - bs.size < i then if j + (k - bs.size) < a.size then a[j + (k - bs.size)]? else none else none := by
-  induction i generalizing j bs with
-  | zero =>
-    rw [show Array.extract.loop a 0 j bs = bs by unfold Array.extract.loop; split <;> rfl]
-    by_cases hk : k < bs.size
-    · rw [if_pos hk]
-    · rw [if_neg hk, if_neg (Nat.not_lt_zero _), Array.getElem?_eq_none (by omega)]
-  | succ i ih =>
-    unfold Array.extract.loop
-    split
-    · rename_i h
-      show (Array.extract.loop a i (j + 1) (bs.push a[j]))[k]? = _
-      rw [ih, Array.size_push, getElem?_push]
-      repeat' split
-      all_goals first | rfl | (exfalso; omega) | (congr 1; omega) | (simp only [show j + (k - bs.size) = j by omega, Array.getElem?_eq_getElem h])
-    · rename_i h
-      by_cases hk : k < bs.size
-      · rw [if_pos hk]
-      · rw [if_neg hk, Array.getElem?_eq_none (by omega)]
-        by_cases hi : k - bs.size < i + 1
-        · rw [if_pos hi, if_neg (by omega)]
-        · rw [if_neg hi]
-
-theorem extract_getElem? {α : Type} (a : Array α) (s e k : Nat) :
-    (a.extract s e)[k]? = if k < min e a.size - s then a[s + k]? else none := by
-  unfold Array.extract
-  have h0 : ∀ c, (Array.emptyWithCapacity (α := α) c).size = 0 := fun _ => rfl
-  rw [extract_loop_getElem?, h0, if_neg (Nat.not_lt_zero _), Nat.sub_zero, Nat.sub_eq]
-  by_cases hk : k < min e a.size - s
-  · rw [if_pos hk, if_pos hk, if_pos (by rw [Nat.lt_sub_iff_add_lt, Nat.lt_min] at hk; omega)]
-  · rw [if_neg hk, if_neg hk]
-
 theorem get!_eq (b : ByteArray) (k : Nat) : b.get! k = b[k]?.getD 0 := by
   rcases b with ⟨a⟩
   by_cases h : k < a.size
@@ -434,16 +398,6 @@ section Over
 variable (op : Coc.Over) (cls : UInt8) (nul : Int64) (ng w n : USize) (gid b : ByteArray)
 
 end Over
-
-/-- The bytes `[a, m)` of `s`, read at `o`, are `s` read at `a + o`, wherever the read ends by `m`. -/
-theorem bitsAt_extract (s : ByteArray) {a m o w : Nat} (h : a + o + w ≤ m) :
-    Column.bitsAt (s.extract a m) o w = Column.bitsAt s (a + o) w :=
-  bitsAt_shift _ _ _ _ _ fun k hk => by
-    rw [show (s.extract a m)[o + k]? = (s.extract a m).data[o + k]? from rfl, ByteArray.data_extract,
-      extract_getElem?, show s[a + o + k]? = s.data[a + o + k]? from rfl]
-    split
-    · rw [Nat.add_assoc]
-    · rw [Array.getElem?_eq_none (by have : s.data.size = s.size := rfl; omega)]
 
 section Segs
 

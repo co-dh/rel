@@ -678,7 +678,8 @@ open Column
 /-- Byte offset in a `packed` payload of each block's residuals, `nb + 1` entries: the prefix sum of
 `2 ^ lg * w_b / 8`, the same sum `Column.blockStarts` takes over `foR`'s widths. -/
 def packedStarts (lg : Nat) (widths : ByteArray) : Array Nat :=
-  widths.foldl (init := #[0]) fun s w => s.push (s.back?.getD 0 + 2 ^ lg * w.toNat / 8)
+  -- over `data`: core has the lemmas for `Array.foldl` and none for `ByteArray.foldl`
+  widths.data.foldl (init := #[0]) fun s w => s.push (s.back?.getD 0 + 2 ^ lg * w.toNat / 8)
 
 /-- Why `bases widths payload` at `2 ^ lg` a block do not hold `n` elements, or `none` when they do. `3 ≤ lg`
 makes `2 ^ lg * w / 8` exact at every width, so each block starts on a byte; `lg ≤ 16` is `foR`'s cap. -/
@@ -688,8 +689,8 @@ def packedErr (lg : UInt8) (bases widths payload : ByteArray) (n : Nat) : Option
   if lg.toNat < 3 ∨ 16 < lg.toNat then some s!"packed: lg {lg} outside 3 .. 16"
   else if widths.size ≠ nb then some s!"packed: {widths.size} widths for {nb} blocks of 2^{lg} at n = {n}"
   else if bases.size ≠ 8 * nb then some s!"packed: {bases.size} base bytes for {nb} blocks, need {8 * nb}"
-  else match widths.toList.findIdx? (64 < ·.toNat) with
-    | some b => some s!"packed: block {b} has width {widths.toList[b]?.getD 0} > 64"
+  else match widths.data.toList.findIdx? (64 < ·.toNat) with
+    | some b => some s!"packed: block {b} has width {widths[b]?.getD 0} > 64"
     | none => if payload.size ≠ need then some s!"packed: payload {payload.size} bytes, widths need {need}"
       else none
 

@@ -1,4 +1,5 @@
 import Rel.Kernel.Scatter
+import Rel.KernelSpec.Raw
 
 /-! `scatter`'s law (design §4: `out[ix[k]] = e[k]`), on the words `Enc.raw` reads from its arguments. -/
 
@@ -85,20 +86,21 @@ theorem packedWords_raw (what : String) (m : USize) (e : Enc) (ws : Array UInt64
       simp [raw, unpack, hp]
   · cases h
 
-/-- Design §4's `scatter` law: an answer of `kscatter` is `Coc.packedOf` at `lgEnc` of `n` words `ws`, read from the
-`m` words `is` and `es` that `Enc.raw` reads from `ix` and `e`: every index is below `n`, a cell no row names is
-`fill`, and `ws[is[k]] = es[k]` for every row `k` no later row overrides. -/
+/-- Design §4's `scatter` law, on words: the `n` words `ws` `Enc.raw` reads from an answer of `kscatter`, against the
+`m` words `is` and `es` it reads from `ix` and `e`: every index is below `n`, a cell no row names is `fill`, and
+`ws[is[k]] = es[k]` for every row `k` no later row overrides. The answer is `Coc.packedOf` at `lgEnc` of `ws`. -/
 theorem raw_scatter (m : USize) (ix e : Enc) (n : USize) (fill : UInt64) (o : Enc)
     (h : kscatter m ix e n fill = .ok o) :
     let is := raw .long m ix
     let es := raw .long m e
-    ∃ ws : Array UInt64, o = Coc.packedOf Column.lgEnc 8 (ws.foldl (init := .empty) fun acc w => Column.pushBits acc w 8) ∧
+    let ws := raw .long n o
+    o = Coc.packedOf Column.lgEnc 8 (ws.foldl (init := .empty) fun acc w => Column.pushBits acc w 8) ∧
       is.size = m.toNat ∧ es.size = m.toNat ∧ ws.size = n.toNat ∧
       (∀ k < m.toNat, (is[k]?.getD 0).toNat < n.toNat) ∧
       (∀ j < n.toNat, (∀ k < m.toNat, (is[k]?.getD 0).toNat ≠ j) → ws[j]? = some fill) ∧
       ∀ k < m.toNat, (∀ k', k < k' → k' < m.toNat → is[k']?.getD 0 ≠ is[k]?.getD 0) →
         ws[(is[k]?.getD 0).toNat]? = some (es[k]?.getD 0) := by
-  intro is es
+  intro is es ws'
   unfold kscatter at h
   cases hi : packedWords "scatter: ix" m ix with
   | error s => simp [hi, bind, Except.bind] at h
@@ -117,7 +119,20 @@ theorem raw_scatter (m : USize) (ix e : Enc) (n : USize) (fill : UInt64) (o : En
         obtain ⟨hx, hok⟩ := scatterWords_spec (raw .long m ix) (raw .long m e) n.toNat fill
         obtain ⟨hs, hfix, hlast⟩ := hok ws hw
         have hall := hx.1 ⟨ws, hw⟩
-        refine ⟨ws, (Except.ok.inj h).symm, hisz, hesz, hs, fun k hk => hall k (by omega), fun j hj hn => hfix j hj
+        have ho := (Except.ok.inj h).symm
+        -- the answer reads back the words it packs
+        obtain ⟨hxs, -, hxg⟩ := foldl_pushBits (fun v => v) 8 (by decide) ws.toList ByteArray.empty
+        rw [Array.foldl_toList] at hxs hxg
+        simp only [show ByteArray.empty.size = 0 from rfl, Nat.zero_add, Array.length_toList] at hxs hxg
+        have hraw : ws' = ws := by
+          show raw .long n o = ws
+          rw [ho, raw_packedOf .long 8 rfl (by decide) Column.lgEnc (by decide) 8 (by simp) _ n (by rw [hxs]; omega)
+            (by rw [hxs, show 8 * ws.size / 8 = n.toNat by omega]), raw_bytes .long 8 rfl (by decide)]
+          refine Array.ext (by simp [hs]) fun i h1 _ => ?_
+          simp only [Array.getElem_map, Array.getElem_range]
+          rw [Nat.mul_comm, hxg i (by simp at h1; omega), ofNat_toNat_mod64, Array.getElem_toList]
+        rw [hraw]
+        refine ⟨ho, hisz, hesz, hs, fun k hk => hall k (by omega), fun j hj hn => hfix j hj
           fun k hk => hn k (by omega), fun k hk hl => hlast k (by omega) fun k' a b hc => hl k' a (by omega) ?_⟩
         exact UInt64.toNat_inj.mp hc
 
