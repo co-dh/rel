@@ -1,0 +1,292 @@
+#import "@preview/fletcher:0.5.8" as fletcher: diagram, node, edge
+
+// palette: one colour per layer, reused in diagrams, tables and headings
+#let c-syn = rgb("#2f5d9e")   // syntax
+#let c-sem = rgb("#7a3e9d")   // semantics
+#let c-run = rgb("#2e7d4f")   // run-time / compiler
+#let c-rs  = rgb("#b5541c")   // Rust
+#let ink   = rgb("#222831")
+#let soft(c) = c.lighten(88%)
+
+#set document(title: "Rel 架构")
+#set page(width: 25.2cm, height: 29.7cm, margin: (x: 1.8cm, y: 1.6cm), fill: rgb("#fcfbf8"),
+  header: context if counter(page).get().first() > 1 [
+    #set text(8pt, fill: gray.darken(20%)); Rel 架构 #h(1fr) master 059f46c · 2026-11-18 ],
+  footer: context align(center, text(8pt, fill: gray)[#counter(page).display()]))
+#set text(font: ("Libertinus Serif", "Noto Serif CJK SC", "Noto Sans CJK SC"), size: 10pt, fill: ink, lang: "zh", region: "cn")
+#set par(justify: false, leading: 0.75em)
+#show raw: set text(font: ("JuliaMono", "Noto Sans CJK SC"), size: 8.6pt)
+#show raw.where(block: false): it => box(fill: luma(240), inset: (x: 2.5pt), outset: (y: 2.5pt), radius: 2pt, it)
+#show raw.where(block: true): it => block(width: 100%, fill: rgb("#f3f1ea"), inset: 9pt, radius: 4pt,
+  stroke: (left: 2.5pt + c-run), it)
+#set heading(numbering: "1.1")
+#show heading: set text(font: ("Noto Sans CJK SC"), weight: "bold")
+#show heading.where(level: 1): it => block(above: 1.4em, below: 0.8em)[
+  #text(15pt, fill: c-syn, it) #v(-0.5em) #line(length: 100%, stroke: 0.8pt + c-syn.lighten(50%))]
+#show heading.where(level: 2): set text(12pt, fill: c-sem)
+#set list(marker: text(fill: c-syn)[▸])
+
+// striped table with a coloured header
+#let tbl(color, cols, head, ..cells) = table(
+  columns: cols, stroke: none, inset: (x: 6pt, y: 4.5pt),
+  fill: (_, y) => if y == 0 { color } else if calc.even(y) { soft(color) } else { white },
+  table.header(..head.map(h => text(fill: white, weight: "bold", font: "Noto Sans CJK SC", h))),
+  ..cells, table.hline(stroke: 0.8pt + color))
+#let card(color, title, body) = block(width: 100%, fill: soft(color), stroke: (left: 3pt + color),
+  inset: 9pt, radius: (right: 4pt))[#text(weight: "bold", fill: color, font: "Noto Sans CJK SC", title) \ #body]
+
+// ───────────────────────────── title
+#align(center)[
+  #text(24pt, weight: "bold", font: "Noto Sans CJK SC", fill: c-syn)[Rel 架构] \
+  #v(2pt) #text(11pt, fill: gray.darken(30%))[从 allegory 语法，到语义映射，到最小 kernel] \
+  #v(2pt) #text(9pt, fill: gray)[master 059f46c · 2026-11-18]
+]
+#v(6pt)
+
+// ───────────────────────────── overview diagram
+#let bx(c, body) = (fill: soft(c), stroke: 1pt + c, corner-radius: 4pt, inset: 8pt)
+#figure(
+  diagram(spacing: (18mm, 14mm), node-stroke: 1pt, edge-stroke: 0.9pt, label-size: 8.5pt,
+    node((0, 0), [`.rel` 源码], fill: luma(235), stroke: gray, corner-radius: 4pt),
+    edge("-|>", [Parse / Elab]),
+    node((1, 0), [*`Tm A B`* \ #text(8pt)[程序（语法树）]], ..bx(c-syn, none)),
+    edge("-|>", [`compile`], label-side: left),
+    node((3, 0), [*`Rel A B`* \ #text(8pt)[`tab` 有限表 ┃ `lazy` 等边界]], ..bx(c-run, none)),
+    edge((1, 0), (2, 1), "-|>", [`⟦−⟧ρ`], label-side: right),
+    edge((3, 0), (2, 1), "-|>", [`rep`], label-side: left),
+    node((2, 1), [*`Core.Rel A.El B.El`* \ #text(8pt)[语义：谓词]], ..bx(c-sem, none)),
+    node((4, 0), [*Rust `relk`* \ #text(8pt)[5 个 kernel]], ..bx(c-rs, none)),
+    edge((3, 0), (4, 0), "<|-|>", stroke: c-rs, [`@[extern]`], label-side: left),
+  ),
+  caption: [#text(fill: c-syn)[程序] 与 #text(fill: c-run)[值] 映到同一个 #text(fill: c-sem)[关系]，三角形交换：
+    `rep ∘ compile = ⟦−⟧`，方案 A 中写在 `compile` 的类型里。],
+)
+
+// ───────────────────────────── glossary
+#tbl(c-syn, (auto, auto, 1fr), ([名字], [全称], [是什么]),
+  [`Tm A B`], [term], [程序本身：一个 allegory 表达式（语法树），类型是 arrow `A ⟶ B`],
+  [`⟦t⟧ρ`], [`Tm.den`], [语义映射：把项 `t` 映到它的关系 `Core.Rel A.El B.El`（`A.El × B.El` 上的谓词）；`ρ` 给自由变量赋值],
+  [`ρ`], [environment], [`Val := Nat → (A B : Obj) → Core.Rel A.El B.El`：给自由变量 `var k` 指定关系；编号不带类型，所以 `ρ k A B` 按 `var k : Tm A B` 自己的类型查。`μ` `ν` `hylo` 绑定变量时扩展它：`⟦μ k b⟧ρ = lfp (X ↦ ⟦b⟧(ρ[k ↦ X]))`；闭项从 `Val.empty` 开始],
+  [`η`], [code environment], [代码侧的 `ρ`：给同一批变量可执行的值；`compile` 的前提 `η.Sound ρ` = 每个变量 `rep (η k) = ρ k`],
+)
+
+// ───────────────────────────── 3
+= 类型与运行时关系：`Obj`、`Rel A B`、`compile`
+
+```
+inductive Obj                           -- 类型的代码；A B 都是 Obj
+  | atom (t : Atom)                     -- i8 i16 i32 i64 f32 f64 sym（目标：从 QAtomicType 收窄，见 §4.3）
+  | prod (a b : Obj)                    -- 积：多列
+  | arr  (b : Obj)                      -- 每格一个数组：平铺 payload + lo/hi
+  | sum  (a b : Obj)                    -- 和：tag 列 + 各分支位置
+
+Obj.El : Obj → Type                     -- 解码：atom ↦ 原子的 Lean 类型，prod ↦ ×，arr ↦ List，sum ↦ ⊕
+
+structure Known (A B : Obj) where
+  dom : Option (Σ n, Vals A n)          -- 已知的定义域 K
+  ran : Option (Σ n, Vals B n)          -- 已知的值域 L
+
+inductive Rel (A B : Obj)
+  | tab  (t : Option (Σ n, Vals A n × Vals B n))   -- 两列等长数组；none = 失败（原 CRel 的 ok = false）
+  | lazy (f : Known A B → Rel A B)                -- 边界够了返回 tab，不够返回 lazy 等更多边界
+
+compile η t : {r : Rel A B // rep r = ⟦t⟧ρ}       -- 方案 A：规格在类型里
+```
+
+#grid(columns: (1fr, 1fr), gutter: 8pt,
+  card(c-run, [为什么是 `lazy`])[`succ`、`arith`、`leq`、`⊤` 是无限关系，只能在边界已知后求值；
+    它们和有限表一样是 `Rel` 的值，不是编译器的特例。复合时自动传播：`tab ≫ lazy` 把左表的值域作为 `dom` 交给右边。],
+  card(c-run, [需要几侧边界])[`succ`（函数）：`dom` 已知即返回 `tab`。`leq`：`Λ(leq)(3) = {3,4,…}` 无限，
+    `dom` 与 `ran` 都已知才返回 `tab (K ≫ leq ≫ L)`。`⊤`：`K × L`。],
+)
+
+- 删除的类型：`CRel`（`ok` 并入 `tab` 的 `Option`）、`Fn`、`Dem`（定义域就是 `Known.dom`）、`Den`（直接写 `Core.Rel`）。
+- `Obj` 是可检查的数据，编译器按它分派（`Vals A n` 几列、哪个宽度的 kernel）；Lean 的 `Type` 不能模式匹配，所以程序用 `Obj`、数学用 `.El`。
+- `Tab` 不另起名字：`tab` 的内容就是原来 `Rel k v` 的 `{n, key, val}`，即 data frame。
+- 新的组合子加 `Known` 的字段，不加 `Rel` 的构造子。
+
+#card(c-sem, [`rep` 与 `compile`（规格写在类型里）])[
+  `rep (tab (some t))` = 表读成的谓词；`rep (lazy f) = R` ⇔ 对任意 `K`、`L`，`rep (f ⟨K, L⟩) = K ≫ R ≫ L`（缺的一侧取 `𝟙`）。\
+  `compile : (t : Tm A B) → η.Sound ρ → {r : Rel A B // rep r = ⟦t⟧ρ}` —— 返回值带着自己的证明，没有单独的
+  `compile_sound`；每个节点的 `Gen.*_sound` 引理是 `compile` 定义的一部分，证明在编译时被擦掉。
+  前提是 gap 全部清零（见 §7 TODO）；在此之前，现有的 `compile` + `compile_sound`（带 `t.gap = none`）保留。]
+
+#card(c-rs, [Lean 证明不到的边界])[
+  证明连到 Lean 定义为止。`@[extern]` kernel 的 Rust 实现只由 `decide`（kernel 中用 Lean body 算）与 `#guard`
+  （运行编译后的 Rust）成对测试；Lean 编译器本身是信任基。kernel 越少，这条只有测试的边界越窄。]
+
+
+// ───────────────────────────── 1
+= 语法：allegory 的项 `Tm : Obj → Obj → Type`
+
+- 前端：`Parse` → `Elab`（得到 `Tm`）→ `Expand`（`rel_program`，elaboration 时编号 `share`、产出代码）。
+
+#tbl(c-syn, (auto, 1fr), ([组], [构造子]),
+  [allegory], [`id` `comp` `conv` `meet` `dom` `ran`],
+  [distributive allegory], [`zero` `join` `top`],
+  [division allegory], [`ldiv` `rdiv`；symmetric division 只有运行时的 `Alg.symDiv`，`Tm` 中缺构造子],
+  [Boolean（有补）], [`diff`：需要补，不属于一般 allegory],
+  [product / sum], [`outl` `outr` `pair` `prod`；`junc` = `[R,S]`（目标：加 `inl` `inr`，`[R,S] = inl° ≫ R ∪ inr° ≫ S` 成为定义；`juncD` 随 lazy `Rel` 消失）],
+  [power], [`lam`（Λ） `E` `est` `thin` `nil` `atPos`],
+  [数据], [`val R` `uni U` `succ` `arith` `leq` `lt`],
+  [递归], [`mu` `nu` `fold`（`⦇e,S⦈`，catamorphism） `hylo`（`μX. c ≫ G(X) ≫ S`，原 `refold`）],
+  [绑定 / 复用], [`var` `share` `own` `call` `arg`],
+  [库原语], [`prim r`：`prims` 表的一行（`inits` `tails` `prefix` `concat` `zip` …；`asc` `distinct` 改为 kernel），在某个类型上实例化，参数由 `arg` 给出],
+)
+
+#card(c-syn, [改写引理（原 `Tm.Ax`）])[category 律、`°°`、`(RS)° = S°R°`、分配律、`𝟘`、`μ`/`ν` 展开（`ν = S ∩ b[ν]`）：每条写成 `⟦lhs⟧ρ = ⟦rhs⟧ρ`，由 `Rel/Core/` 中 `Core.Rel` 的定理证明；改写 `t₁` 为 `t₂` 只需 `⟦t₁⟧ρ = ⟦t₂⟧ρ`。Rel 只在 `Rel(Set)` 上运行，所以 `Tm.Le`、`Syn`、`Hom.den` 去掉。]
+
+// ───────────────────────────── 2
+= 语义映射 `⟦−⟧`：`Tm.den ρ : Core.Rel A.El B.El`
+
+- 按结构递归、全函数、point-free：每个节点是若干关系的复合，与该节点的 `Gen.*_sound` 引理一致。
+  例：`⟦nu k S b⟧ρ = Core.Rel.nu (X ↦ ⟦S⟧ρ ∩ ⟦b⟧(ρ[k ↦ X]))`（最大不动点）。
+- 与 `Tm.argDen` 互递归：一行 `arg` 脊的含义（`rowDens`）。
+- `Rel.Core` 只用 `{propext, Quot.sound}`（构造性），freyd bridge 把它按 `rfl` 映到 freyd 的 `RelSet`。
+
+// ───────────────────────────── 4
+= 最小 kernel（目标设计）
+
+#card(c-rs, [现状 → 目标])[
+  现状：99 个 `qlean_*` 导出，7 种编码，其中大半服务于 q 的语义。它们已冻结在 qlean 自己的副本里（rel tag
+  `qlean-base` = `e024297`，`qlean/.lake/packages/rel`）。目标：rel 只保留 *一种编码* 和 *5 个 kernel*；
+  allegory 的每个运算、每个不动点都是它们的复合。Rel 要支持 data frame，所以原子有 i8 i16 i32 i64 f32 f64 sym。]
+
+== 移出 rel 的 q 语义
+
+#tbl(c-rs, (auto, 1fr), ([移出], [原因]),
+  [`gen`（boxed）], [不在 kernel 里处理 boxed 值；boxed 值先编成 code 再进 Rel],
+  [`til` `cycle` `cast` `floor` `widen`], [q verb，不是 allegory 运算],
+  [`find` `bin search` `member` `match`], [q 的查找 verb；Rel 中是 `≫`（join）的特例],
+  [`own_write` `md5` 等], [q 运行时的需要],
+)
+
+== 剩下的唯一编码：packed（分块 frame of reference）
+
+#figure(
+  diagram(spacing: (2mm, 8mm), edge-stroke: 0.8pt, label-size: 8pt,
+    node((0, 0), [列：$n$ 个 code], ..bx(c-run, none)),
+    edge((0, 0), (0, 1), "-|>", [每 $2^"lg"$ 个一块，`lg` 每列自选], label-side: left),
+    node((0, 1), grid(columns: 3, gutter: 0pt,
+      box(fill: c-sem.lighten(70%), inset: 5pt, stroke: 0.6pt + c-sem)[base $b$],
+      box(fill: c-syn.lighten(75%), inset: 5pt, stroke: 0.6pt + c-syn)[宽度 $w ∈ 0..64$],
+      box(fill: c-run.lighten(80%), inset: 5pt, stroke: 0.6pt + c-run)[$2^"lg"$ 个 $w$ 位偏移，紧密打包])),
+  ),
+  caption: [第 $i$ 个元素 $= b + "offset"_w [i]$；`ofRaw` 对每块取 $w = "bitwidth"(max − min)$。
+    `lg` 是列的参数（如 0..16）：值域变化快的列用小块（每块 $w$ 更窄），平稳的列用大块（base 和宽度的开销更少）。],
+)
+
+#tbl(c-run, (auto, auto, 1fr), ([旧形式], [在 packed 中], [说明]),
+  [`bits`（bitmap）], [$b = 0$，$w = 1$], [布尔列、mask],
+  [`enum` / ids], [$b = 0$，$w = ⌈log_2 "card"⌉$], [code 列的常态],
+  [`foR`], [一般情形], [不变],
+  [常量列], [$w = 0$], [只存 base],
+  [`bytes`（dense）], [不再是一种形式], [只在某块值域确实需要 $w = 8k$ 时出现，是 packed 的退化块，不单独实现],
+)
+
+- 结论：*一种编码*。`Enc := packed {lg, bases, widths, payload}`；`Enc.raw` 只有一个解码，所有 kernel 的模型仍写在 `raw` 上。
+- 每个 kernel 读 packed、写 packed；写出由共享的 `Producer::block_into` 逐块完成，不经过稠密中间数组。
+
+== 原子类型：都是 packed 的 code
+
+#tbl(c-syn, (auto, 1.2fr, 1fr), ([原子], [存成什么 code], [比较 / 运算]),
+  [`i8` `i16` `i32` `i64`], [翻转符号位，得到同宽的无符号数（保序）；再按块 foR], [`asc`、`scan(lt)` 直接在 code 上；算术按声明宽度回绕],
+  [`f32` `f64`], [保序位映射：正数翻转符号位，负数翻转全部位，得到 `UInt32` / `UInt64`], [code 的序 = 浮点的全序（NaN 也有位置）；`fadd` `fmul` `flt` 等先还原再算],
+  [`sym`], [保序字典 id：字典 = 排好序、无重复的字符串表（`arr byte`），列存 id], [id 的序 = 字符串的序，所以 `asc`、join、`∩` 都只看 id],
+)
+
+- 原子的宽度只决定 code 的值域上限（`i8` ≤ 8 位 …）；块的宽度 $w$ 仍按数据选，常常比声明宽度窄。
+
+- data frame = `Rel A B` 的 `tab`，`B` 是若干原子列的 `prod`：struct of arrays，每列一个 packed `Enc`。
+- `alp`（浮点小数压缩）不再是一种形式；需要时作为 float 列的 fast path，配一条定理说明 decode 后等于保序位映射。
+- intern（建字典）= `asc ≫ distinct`：字符串排序、去重得字典；每个字符串的 id = 它在字典中的位置（`asc` 的排列经
+  `scan` 编号再 `scatter` 回原位）。两个 `sym` 列合并（`∪`、join 两侧字典不同）时对字典的并做一次 intern、重映射 id。不是 kernel。
+
+== 5 个 kernel：2 个原语 + 3 个优化
+
+#tbl(c-rs, (auto, 1.4fr, auto, 1fr), ([kernel], [形状（输入输出都是 packed）], [定律], [现有 driver]),
+  [`scan`], [`(op : Op) (seg : Enc) (es : List Enc) : Enc`，分段前缀折叠；含 map 与 fold], [`raw_scan`], [`scan` `map` `fold`],
+  [`gather`], [`(ix : Enc) (e : Enc) (fill) : Enc`，`out[i] = e[ix[i]]`], [`raw_permute`], [`permute`],
+  [`scatter`], [`(ix : Enc) (e : Enc) (n) (fill) : Enc`，`out[ix[i]] = e[i]`], [`raw_scatter`（新）], [—],
+  [`asc`], [`(es : List Enc) : Enc × Enc`，按若干列字典序稳定排序：排好的值 + 排列；`arr byte` 列按字节字典序], [`asc_sorted` + `asc_perm`（新）], [—],
+  [`distinct`], [`(es : List Enc) : Enc`，有序输入上每组相等行的第一行的位置], [`distinct_first` + `distinct_cover`（新）], [—],
+)
+
+- *map 与 fold 都是 scan*：map = 步骤不读累加值的 scan（`op` 只看当前元素）；fold = scan 的最后一个值
+  （分段时取每段最后一个）。`Op` 标明自己是否读累加值、是否结合，Rust 据此并行：不读累加值或结合的 `op` 分块并行，其余顺序扫。
+- `asc` 返回排列，因为排一列时要带着同一行的其它列走（`gather`）。
+#tbl(c-rs, (auto, auto, 1fr, auto), ([层], [kernel], [由原语写出（定理）], [单独实现的理由]),
+  [原语], [`scan`], [—：唯一做计算的], [—],
+  [原语], [`scatter`], [—：唯一把数据写到计算出的位置的], [—],
+  [优化], [`distinct`], [`scan`（相邻比较）→ `scatter`（压缩）], [省一遍扫描；`∩ ∪ − ≫ dom ran` 都以它结尾],
+  [优化], [`asc`], [radix sort：每一位 `scan`（直方图、前缀偏移）→ `scatter`；`arr byte` 用 MSD], [比较排序常数小],
+  [优化], [`gather`], [`(ix[i], i)` 与 `(j, e[j])` 拼接 → `asc` → `scan` 向后填 `e` → `scatter` 回 `i`], [O(n)，不必排序],
+)
+- Lean body 只需信任两个原语；每个优化 kernel 配一条定理 `k = 上表中的复合`，所以它的 Lean body 可以就是那个复合，
+  Rust 实现仍由 `decide`/`#guard` 对它测试。
+- `Op` 是有限枚举（`add` `sub` `mul` `min` `max` `eq` `lt` `and` `or` `not` `first`，及 float 的 `fadd` `fmul` `fdiv` `flt` …），而不是 Lean 闭包：Rust 只能执行固定的运算集，
+  Lean body 用 `Op.eval` 解释它，所以 `decide`/`#guard` 的检查方式不变。
+
+== allegory 运算 → kernel
+
+#tbl(c-sem, (auto, 1fr), ([运算], [由哪些 kernel 复合]),
+  [`°`], [交换 key / val 两列，无 kernel],
+  [code（相等 ⇔ code 相等）], [`asc` → `distinct` → `scan`（编号）→ `scatter`（写回原位）],
+  [`∪`], [两表拼接 → `asc`（key, val 两列）→ `distinct`],
+  [`∩` `−`], [两表拼接、带来源标记 → `asc` → 每组相等行数 `scan` → 保留出现在两侧（`∩`）或只在左侧（`−`）的组],
+  [`≫`], [两侧按中间列 `asc`、取组边界（`distinct`）、组内展开（`scan` 偏移、`scatter` 组头、`scan(max)` 填充）、`gather` 取行、`asc` + `distinct`],
+  [`dom` `ran`], [取一列 → `asc` → `distinct`],
+  [`R\S` `R/S` 对称除], [不求补：按组比较「R 的 b 的个数」与「其中满足 S 的个数」，即分段 `scan`],
+  [Λ（`arr` 侧）], [`asc` + 组边界（`distinct`）给出 `lo`/`hi`],
+  [`μ` `ν` `fold` `hylo`], [Lean 中的循环（`fixOn`），每轮调用上面的运算，行数不变即停；semi-naive 只多一个 `−`],
+)
+
+== Rust 侧
+
+#grid(columns: (1fr, 1fr), gutter: 8pt,
+  card(c-rs, [crate 结构])[`scan.rs` `gather.rs` `scatter.rs` `asc.rs` `distinct.rs` 各一个导出；`pack.rs` 是分块编解码（不导出）；
+    `pod::Elt`、`by_width!`（i8–i64、f32、f64）、`pool` 保留。`RELK.txt` 从 99 行变为 5 行。],
+  card(c-rs, [融合 kernel])[如 join、intern、group ids：只是优化，每个配一条定理说明它等于上表中的某个复合；
+    在第二个真实需要出现前不加。],
+)
+// ───────────────────────────── 5
+= 分层（目录 = Lake library）
+
+#tbl(c-syn, (auto, auto, auto, 1fr, auto), ([层], [目录], [lib], [内容], [axiom]),
+  text(fill: c-sem)[core], [`Rel/Core/`], [RelCore], [`Core.Rel α β`，`≫ ° ∩ ∪ 𝟙 𝟘`，`mu`，`nu`], [`propext` `Quot.sound`],
+  text(fill: c-run)[kernel], [`Rel/Kernel/`], [RelKernel], [`Enc`（packed）、5 个 extern、driver], [Classical],
+  text(fill: c-run)[kernel spec], [`Rel/KernelSpec/`], [RelKernel], [其余部分引用的 kernel 引理], [],
+  text(fill: c-run)[run-time], [`Rel/Run/`], [RelRun], [`Obj` `Vals` `Rel` `Known` `Alg` `Tm` `Gen` `compile`], [precompiled],
+  text(fill: c-syn)[证明 + 语言], [`Rel/`、`Rel/Lang/`], [Rel], [`Rep*` 律、`KernelWF`、`Lang.Den`（语义）、`CompileSpec`], [],
+  text(fill: c-rs)[Rust], [`crate/`], [`relk`], [5 个 `qlean_*`], [—],
+  text(fill: c-rs)[native rt], [`crate/rt/`], [独立 package], [替代 `libleanshared` 的 Lean runtime], [—],
+)
+
+= Gate
+
+`make check` = #box[build] · compile-diff（`compile` 对 `rel_program` 差分）· crate-test · syms · native · ldd · index ·
+index-complete · axioms · noreduce · panic · externs；另加 `lake -d freyd/relaop build RelAop -R -K rel=…`。
+
+// ───────────────────────────── 7
+= TODO：清零 gap，然后把 `compile` 改成带证明的类型
+
+按依赖顺序；全部完成后删去 `Tm.gap` 与前提 `t.gap = none`（`Rel/Lang/Rows.lean:102-134`）。
+
+#tbl(c-run, (auto, auto, 1fr, auto), ([序], [gap], [缺什么], [能否证明]),
+  [1], [`foldI`], [改为由 `fold` 定义（见下）；其正确性由 `fold` 的引理得出，不再需要 `foldI_sound`], [能：随定义消失],
+  [2], [`share` 含自由变量], [共享部分必须是闭项；开项在每次绑定下重算是代码的错], [能：改 `Expand` 不共享开项，无需新证明],
+  [3], [`setify` / `asc` 行], [`asc`、`distinct` 改为 kernel 后，缺的是它们的定律：float 不满足 `Obj.Ordered`（NaN）；缺「排序后的排列唯一」（`¬ lt` 反对称）], [能：float 用保序位映射后有全序；反对称是常规证明。与 float 编码同批做],
+  [4], [`hylo`], [按轮迭代 = lfp，需要 `den_local`（body 在一组 key 上的输出只依赖这组 key）], [多半能（positive body）；可能要加 locality 前提],
+  [5], [`lam` `E` `thin`], [同一集合有多种数组表示；需要 D2 canonical table（有序、无重复）], [能：先实现 canonical 形式（`doc/rel-denotation-design.md` §7.1）],
+  [6], [`call`], [泛型定义还没有语义（stage 5）], [能：语义 = 展开成定义的项],
+  [—], [body 非 positive 的 `μ` / `ν`], [非单调函数的不动点，Knaster–Tarski 不适用，迭代可能振荡], [不能；改为 elaboration 时报错，不再是 gap],
+)
+
+其它 TODO：
+- `Tm` 加 `inl` `inr`；`junc` 改为定义 `inl° ≫ R ∪ inr° ≫ S`；删 `juncD`（demand 由 lazy `Rel` 在运行时处理）。
+- 逐个检查 `prims` 的行能否写成 `fold`/`hylo`（如 `inits` `tails`），能写的改为定义，只留真正的 kernel 级原语。
+- `foldI`、`flat` 不再是构造子：`flat R` 由 `pair` `outl` `outr` 加相等测试写出（`(i,a) ↦ b` ⇔ `i R (a,b)`），`foldI` 是 carrier 为 `I × V` 的 `fold`（初值依赖 key）；先验证两者确实可写出，再删构造子及其 `Gen`、`den` 分支。`refold` 改名 `hylo`。
+- 去掉 `Syn`、`Tm.Le`、`Tm.Eqv`、`Hom.den`（`Rel/Lang/Syn.lean`）与 #9；`Tm.Ax` 改为改写引理 `⟦lhs⟧ρ = ⟦rhs⟧ρ`；freyd 需要的范畴在 `relaop` 自建。
+- `Tm` 加 symmetric division 构造子（运行时已有 `Alg.symDiv`）。
+- 改名：去掉 `Den` `Dem` `Fn` `CRel`，`Rel k v` 改为 `Rel A B`（`tab` ┃ `lazy`），`Tm` 去掉 `d`。
+- kernel 缩到 5 个：原语 `scan` `scatter`，优化 `gather` `asc` `distinct`（各配「= 原语复合」的定理）、编码只留 packed（块长 `lg` 每列可选）、原子 i8–i64 f32 f64 sym；q 专用 kernel 留在 qlean 的副本（tag `qlean-base`）。
