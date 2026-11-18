@@ -1,5 +1,6 @@
 import Rel.Lang.Test
 import Rel.Programs.Mss
+import Rel.Lang.Rows
 
 /-! The Rel language on B&dM Ex 7.40, the maximum segment sum, the program `Programs.mss`: the
     specification `Λ(segment sum) est(≥)` and the derived fold `⦇k⦈ π₂ est(≥)`, each against a direct `List` computation. -/
@@ -49,5 +50,9 @@ def rows : String := s!"\{(a, {mssL [3,1,4,1,5]}), (b, {mssL [2,0,7]}), (c, {mss
 #guard Programs.mss.ok && Programs.mss.prints == []
 #guard given.prints == [s!"x mss = {rows}",
   s!"x scan = {rows}"]
+
+-- `Rel.Lang.Rows` (the rows' lemmas, `Tm.gap`) loads beside a module that runs a `rel_program`: no declaration of
+-- the elaborator's (`Rel.Run.Lang.Elab`) shares a name with one of its
+#guard (Tm.comp (Tm.id (A := .long)) .id).gap == none && (Tm.lam (Tm.id (A := .long))).gap.isSome
 
 end Rel.Lang.TestMss

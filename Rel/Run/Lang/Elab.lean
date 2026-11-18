@@ -507,12 +507,12 @@ end Shapes
 
 /-- A row of §e: its shape at the index `I`, the place `q`, the parts `R S` and the objects `a b c d`, and its keyed
     form from the holes recognising it binds, `K` keying a part at its objects, `a b` the family's. -/
-structure Row where
+structure LiftRow where
   shape : {τ : Type} → [S : Shape τ] → S.ω → S.π → τ → τ → S.ω → S.ω → S.ω → S.ω → τ
   keyed : (Pre → OTy → OTy → Pre) → OTy → OTy → Holes → Option Pre
 
 /-- The holes `x` binds when it has `r`'s shape. -/
-def Row.match? (r : Row) (x : Pre) : Option Holes :=
+def LiftRow.match? (r : LiftRow) (x : Pre) : Option Holes :=
   (r.shape (τ := Pre → Pat) (fun _ => pure ())
     (fun v => modify fun h => { h with q := h.q <|> some v })
     (fun v => modify fun h => { h with R := h.R <|> some v }) (fun v => modify fun h => { h with S := h.S <|> some v })
@@ -540,7 +540,7 @@ def famOf : Arg → M (Pre × OTy × OTy)
   | .rel q s t => pure (liftConst I p q s t)
 
 /-- The rows whose fibre at a source reads only that source, in the order `keyed` tries them. -/
-def rows : List Row := [
+def liftRows : List LiftRow := [
   ⟨fun _ _ R S _ _ _ _ => Shape.join R S, fun K a b h => return join (K (← h.R) a b) (K (← h.S) a b)⟩,
   ⟨fun _ _ R S _ _ _ _ => Shape.meet R S, fun K a b h => return meet (K (← h.R) a b) (K (← h.S) a b)⟩,
   ⟨fun _ _ R S _ _ _ _ => Shape.diff R S, fun K a b h => return diff (K (← h.R) a b) (K (← h.S) a b)⟩,
@@ -573,7 +573,7 @@ def rows : List Row := [
     Any other family is read whole at each key and cut to the source, `⟨π₁R,π₂⟩dom(π₁π₁ ∩ π₂)π₁π₂`: every part
     runs on the keys in demand, so `I` needs no universe (a converse or `ran` here would close over all of `I`). -/
 partial def keyed (R : Pre) (a b : OTy) : Pre :=
-  ((rows I).findSome? fun r => r.match? R >>= r.keyed (keyed · · ·) a b).getD (flat R)
+  ((liftRows I).findSome? fun r => r.match? R >>= r.keyed (keyed · · ·) a b).getD (flat R)
 
 def lComp : Pre × OTy × OTy → Pre × OTy × OTy → M (Pre × OTy × OTy)
   | (R, a, b), (S, b', c) => do
