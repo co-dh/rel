@@ -13,10 +13,12 @@ q's own `type` is what tells them apart, exactly as in `QAtom`.
 
 Reducible so that instance search sees through it: without that, `(2 : Carrier .short)` fails
 to find `OfNat` and every literal has to be written at its representation type instead of at
-its q type, which defeats the point of indexing by the q type. -/
-@[reducible] def Carrier : QAtomicType → Type
+its q type, which defeats the point of indexing by the q type.
+
+`X` is `Ext.QValue`'s extension: it reaches only `general`, whose element is any value. -/
+@[reducible] def Ext.Carrier (X : Type) : QAtomicType → Type
   -- a general list's element is any value, boxed: the `xs` of `.general xs`
-  | .general => QValue
+  | .general => Ext.QValue X
   | .boolean => Bool
   | .byte | .char => UInt8
   | .short => Int16
@@ -26,11 +28,15 @@ its q type, which defeats the point of indexing by the q type. -/
   | .float | .datetime => UInt64
   | .symbol => String
 
+/-- rel's own carriers, at no extension, as `QValue` is `Ext.QValue Empty`. -/
+abbrev Carrier := Ext.Carrier Empty
+
 /-- The payload of a value already known to be at `t`; `none` at any other type. A general
-list's element is any value, so at `general` it is the value itself. The partiality is the price
-of reading an *unindexed* value, and it is paid only at the boundary — inside `QLean/Dep/` the
-index travels with the value. -/
-def Carrier.of? : (t : QAtomicType) → QValue → Option (Carrier t)
+list's element is any value, so at `general` it is the value itself; an extension value (`.ext`)
+is no atom, so at every other type it is `none`. The partiality is the price of reading an
+*unindexed* value, and it is paid only at the boundary — inside `QLean/Dep/` the index travels
+with the value. -/
+def Carrier.of? {X : Type} : (t : QAtomicType) → Ext.QValue X → Option (Ext.Carrier X t)
   | .general, v => some v
   | .boolean, .atom (.boolean x) => some x
   | .byte, .atom (.byte x) => some x
@@ -53,7 +59,7 @@ def Carrier.of? : (t : QAtomicType) → QValue → Option (Carrier t)
 
 /-- Every atom is readable at its own type: a value that arrived untyped — off the wire, out
 of the interpreter — always enters the indexed world, and only at the type it already had. -/
-theorem Carrier.of?_type (a : QAtom) : (Carrier.of? a.type (.atom a)).isSome := by
+theorem Carrier.of?_type {X : Type} (a : QAtom) : (Carrier.of? (X := X) a.type (.atom a)).isSome := by
   cases a <;> rfl
 
 end Rel.Dep

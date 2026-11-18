@@ -442,16 +442,18 @@ pub fn sum_flt<K: Kd, const EW: usize>(st: &mut Mw, p: &[u8], o: &mut [u8], n: u
 /// ends are tested rather than the elements (`2 msum 2147483647 0N 1i` is `0W 0W 0Ni`).
 #[inline(always)]
 pub fn sum_int<K: KInt, O: Reg<B = [u8; OW]>, const OW: usize>(st: &mut Mw, p: &[u8], o: &mut [u8], n: usize) {
-    let mut acc = st.isum;
+    // a history slot holds the prefix sign-extended (`i`), so its null is too: `O::LO.bits()` is zero-extended and
+    // equals it only at 64 bits
+    let (mut acc, nul) = (st.isum, O::LO.i() as u64);
     chunks(st, n, |i, k, cu, rp, st| {
         for (h, e) in st.ri[cu..cu + k].iter_mut().zip(K::run(p, i, k)) {
             if !K::nul(e) { acc = acc.wrapping_add(K::int(e) as u64) }
             let s = acc as i64;
-            *h = (if s == O::wrap(s as u64).i() { s } else { O::LO.i() }) as u64;
+            *h = if s == O::wrap(s as u64).i() { s as u64 } else { nul };
         }
         let (hd, bk) = (&st.ri[cu..cu + k], &st.ri[rp..rp + k]);
         for ((c, &a), &b) in out::<OW>(o, i, k).iter_mut().zip(hd).zip(bk) {
-            *c = O::wrap(if a == O::LO.bits() || b == O::LO.bits() { O::LO.bits() } else { a.wrapping_sub(b) }).to_b();
+            *c = O::wrap(if a == nul || b == nul { nul } else { a.wrapping_sub(b) }).to_b();
         }
     });
     st.isum = acc;
@@ -476,3 +478,28 @@ pub fn chunks(st: &mut Mw, n: usize, mut body: impl FnMut(usize, usize, usize, u
 /// The first `k` answer slots of `o` from element `i`, `W` bytes each.
 #[inline(always)]
 pub fn out<const W: usize>(o: &mut [u8], i: usize, k: usize) -> &mut [[u8; W]] { o[i * W..(i + k) * W].as_chunks_mut::<W>().0 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use alloc::{vec, vec::Vec};
+
+    /// `w msum x` through `sum` over a fresh ring of `2w` zeroed slots (the prefix before the start is 0), in chunks
+    /// that wrap it, answered at `O`.
+    fn msum<E: Reg, O: Reg<B = [u8; OW]>, const OW: usize>(w: usize, x: &[E], sum: fn(&mut Mw, &[u8], &mut [u8], usize)) -> Vec<O> {
+        let p: Vec<u8> = x.iter().flat_map(|e| e.bits().to_ne_bytes()[..E::W].to_vec()).collect();
+        let (mut ri, mut o) = (vec![0u64; 2 * w], vec![0u8; x.len() * OW]);
+        let mut st = Mw { w, cu: 0, cap: 2 * w, tl: w, t: 0, isum: 0, fsum: 0.0, fsq: 0.0, cnt: 0, extbits: 0, sent: 0,
+            ri: &mut ri, rf: &mut [], rq: &mut [], rc: &mut [], phase: &mut [], sufx: &mut [] };
+        sum(&mut st, &p, &mut o, x.len());
+        o.chunks_exact(OW).map(O::rd).collect()
+    }
+
+    // `2 msum 0W 0N 1 5 7`: the prefix past `O`'s range is null and stays null at both ends of the window; at 64 bits
+    // the prefix wraps instead, onto the null and then past it
+    #[test] fn msum_int_null_ends() {
+        assert_eq!(msum::<i32, i32, 4>(2, &[i32::MAX, i32::MIN, 1, 5, 7], KI32::msum), [i32::MAX, i32::MAX, i32::MIN, i32::MIN, i32::MIN]);
+        assert_eq!(msum::<i16, i16, 2>(2, &[i16::MAX, i16::MIN, 1, 5, 7], sum_int::<KI16, i16, 2>), [i16::MAX, i16::MAX, i16::MIN, i16::MIN, i16::MIN]);
+        assert_eq!(msum::<i64, i64, 8>(2, &[i64::MAX, i64::MIN, 1, 5, 7], KI64::msum), [i64::MAX, i64::MAX, i64::MIN, 6, i64::MIN]);
+    }
+}

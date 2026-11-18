@@ -380,7 +380,7 @@ theorem str_bytes {B : ByteArray} (h : ∃ s : String, s.toUTF8.data.toList = B.
 theorem get_sym_bytes {n : USize} {e : Enc} {i : Nat} (d : String) (hw : Enc.WF .symbol n e)
     (hi : i < n.toNat) (h2 : i < (Verify.symsOf n.toNat e).length)
     (hk : ∃ s : String, s.toUTF8.data.toList = (Verify.symsOf n.toNat e)[i]) :
-    (((Enc.get .symbol n e i).bind fun a => Carrier.of? .symbol (.atom a)).getD d).toUTF8.data.toList = (Verify.symsOf n.toNat e)[i] := by
+    (((Enc.get .symbol n e i).bind fun a => Carrier.of? (X := Empty) .symbol (.atom a)).getD d).toUTF8.data.toList = (Verify.symsOf n.toNat e)[i] := by
   cases e with
   | syms b o =>
     rw [show Enc.get (X := Empty) .symbol n (.syms b o) i = some (.symbol ((String.fromUTF8? (Column.symKey b o i)).getD ""))
