@@ -9,14 +9,14 @@ open Tab Rel.Kernel Rel.Alg
     step sees its inputs as ok: their bits are already in the fold's. -/
 def foldBy {E V : Obj} {n m : USize} (X : Vals (.arr E) n) (e : Vals V m)
     (step : CRel .long E → CRel .long V → CRel .long V) : CRel (.arr E) V :=
-  ofC (foldByC false X e fun el p => let s := step ⟨el, true⟩ ⟨p, true⟩; (s.rel, s.ok))
+  ofC (foldByC false X e fun el p => let s := step (some el) (some p); (s.rel, s.ok))
 
 /-- `foldOn` on a family over `CRel`s, ok where every round's family member was and `foldOnC` ran within
     capacity; `l`, `pr` the reading order and the step's pair, as `foldOnC`'s. The family sees the round's pairs
     as ok: their bits are already in the fold's. -/
 def foldOn {E V P : Obj} {m n : USize} (l : Bool) (pr : Tab .long E → Tab .long V → Tab .long P × Bool)
     (e : Vals V m) (S : CRel P P → CRel P V) (X : Vals (.arr E) n) : CRel (.arr E) V :=
-  ofC (foldOnC l pr e (fun D => ((S ⟨D, true⟩).rel, (S ⟨D, true⟩).ok)) X)
+  ofC (foldOnC l pr e (fun D => ((S (some D)).rel, (S (some D)).ok)) X)
 
 /-- `fold` of one `CRel` step, ok where `S` is and `foldC` ran within capacity. -/
 def fold {E V : Obj} {m n : USize} (e : Vals V m) (S : CRel (.prod E V) V) (X : Vals (.arr E) n) : CRel (.arr E) V :=
@@ -46,11 +46,11 @@ def subseq {B : Obj} {n : USize} (X : Vals (.arr B) n) : CRel (.arr B) (.arr B) 
     test sees the round's pairs as ok: their bits are already in the fold's. -/
 def thinLOn {B : Obj} {n : USize} (q : CRel (.prod B B) (.prod B B) → CRel (.prod B B) (.prod B B))
     (X : Vals (.arr B) n) : CRel (.arr B) (.arr B) :=
-  ofC (thinLOnC (fun D => ((q ⟨D, true⟩).rel, (q ⟨D, true⟩).ok)) X)
+  ofC (thinLOnC (fun D => ((q (some D)).rel, (q (some D)).ok)) X)
 
 /-- `R − S`, ok where both inputs are and `diffC` ran within capacity. Its rows are a subsequence of `R`'s, canonical
     where `R` is (`canon_diff`), so it skips `canonC`. -/
-def diff {A B : Obj} (R S : CRel A B) : CRel A B := guard (R.ok && S.ok) fun _ => let r := diffC R.rel S.rel; ⟨r.1, r.2⟩
+def diff {A B : Obj} (R S : CRel A B) : CRel A B := guard (R.ok && S.ok) fun _ => let r := diffC R.rel S.rel; mk r.1 r.2
 
 end CRel
 end Rel

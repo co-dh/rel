@@ -254,8 +254,8 @@ theorem rep_tic (P : CRel K (.prod B (.arr B))) (hb : (tic P).ok = true) :
 theorem rep_loopOn (F : CRel (.prod X Y) (.prod X Y) → CRel (.prod X Y) X) (P : CRel K (.prod X (.arr Y)))
     (hb : (loopOn F P).ok = true) (Fr : X.El × Y.El → X.El → Prop)
     (hS : ∀ (D : Tab (.prod X Y) (.prod X Y)) (S : (Obj.prod X Y).El → Prop),
-      rep D = corefl (α := (Obj.prod X Y).El) S → (F ⟨D, true⟩).ok = true →
-      ∀ cy c', S cy → (Fr cy c' ↔ rep (F ⟨D, true⟩).rel cy c')) :
+      rep D = corefl (α := (Obj.prod X Y).El) S → (F (some D)).ok = true →
+      ∀ cy c', S cy → (Fr cy c' ↔ rep (F (some D)).rel cy c')) :
     ∀ k c, rep (loopOn F P).rel k c ↔ ∃ c₀ xs, rep P.rel k (c₀, xs) ∧ ∃ g : Nat → X.El, g 0 = c₀ ∧
       (∀ t (ht : t < xs.length), Fr (g t, xs[t]'ht) (g (t + 1))) ∧ c = g xs.length := by
   have e : loopOn F P = _ := guard_eq ok hb; rw [e] at hb ⊢; rw [rep_ofC hb]; replace hb := (ofC_ok hb).1; exact rep_loopOnC _ P.rel hb Fr hS
@@ -269,8 +269,8 @@ theorem rep_loop (F : CRel (.prod X Y) X) (P : CRel K (.prod X (.arr Y))) (hb : 
 theorem rep_mergeOn (q : CRel (.prod B B) (.prod B B) → CRel (.prod B B) (.prod B B))
     (P : CRel K (.prod (.arr B) (.arr B))) (le : B.El → B.El → Bool)
     (hq : ∀ (D : Tab (.prod B B) (.prod B B)) (S : (Obj.prod B B).El → Prop),
-      rep D = corefl (α := (Obj.prod B B).El) S → (q ⟨D, true⟩).ok = true →
-      ∀ a b, S (a, b) → ((∃ c, rep (q ⟨D, true⟩).rel (a, b) c) ↔ le a b = true))
+      rep D = corefl (α := (Obj.prod B B).El) S → (q (some D)).ok = true →
+      ∀ a b, S (a, b) → ((∃ c, rep (q (some D)).rel (a, b) c) ↔ le a b = true))
     (hb : (mergeOn q P).ok = true) :
     ∀ k zs, rep (mergeOn q P).rel k zs ↔ ∃ xs ys, rep P.rel k (xs, ys) ∧ zs = List.merge xs ys le := by
   have e : mergeOn q P = _ := guard_eq ok hb; rw [e] at hb ⊢; rw [rep_ofC hb]; replace hb := (ofC_ok hb).1; exact rep_mergeOnC _ P.rel le hq hb
@@ -284,7 +284,7 @@ theorem rep_merge (Q : CRel B B) (P : CRel K (.prod (.arr B) (.arr B))) (le : B.
 /-- `hφ` the step's spec where its bit is set; `hm`, `hch` the chain (`rep_fixOn`'s). -/
 theorem rep_fixOn {A : Obj} (n : Nat) (φ : CRel A B → CRel A B) (X₀ : CRel A B)
     (Φ : type_of% (rep X₀.rel) → type_of% (rep X₀.rel)) (hb : (fixOn n φ X₀).1.ok = true)
-    (hφ : ∀ D, (φ ⟨D, true⟩).ok = true → rep (φ ⟨D, true⟩).rel = Φ (rep D))
+    (hφ : ∀ D, (φ (some D)).ok = true → rep (φ (some D)).rel = Φ (rep D))
     (hm : ∀ x y : type_of% (rep X₀.rel), x ⊑ y → Φ x ⊑ Φ y)
     (hch : rep X₀.rel ⊑ Φ (rep X₀.rel) ∨ Φ (rep X₀.rel) ⊑ rep X₀.rel) :
     ∃ j ≤ n, (fixOn n φ X₀).2 = j ∧ rep (fixOn n φ X₀).1.rel = Φ^[j] (rep X₀.rel) ∧

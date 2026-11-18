@@ -57,7 +57,7 @@ def entry (n : String) (A B : Obj) (c : CRel A B) : String × Gv := (n, ⟨A, B,
 
 
 /-- `r` with the bits `b` of the ops that computed its inputs outside it. -/
-def also {A B : Obj} (b : Bool) (r : CRel A B) : CRel A B := ⟨r.rel, b && r.ok⟩
+def also {A B : Obj} (b : Bool) (r : CRel A B) : CRel A B := CRel.mk r.rel (b && r.ok)
 
 /-! ### Leaves: the values `build` put in the term, rebuilt from their payloads -/
 
@@ -92,8 +92,8 @@ def relV (A B : Obj) (n : USize) (k : Vals A n × Bool) (v : Vals B n × Bool) :
 
 def const (A B : Obj) (c : CRel A B) : Fn false A B := fun _ => c
 def val (A B : Obj) (R : Tab A B × Bool) : Fn false A B := fun _ => ofC R
-def uni (A : Obj) (m : USize) (U : Vals A m × Bool) : Fn false A A := fun _ => ⟨idU U.1, U.2⟩
-def zero (A B : Obj) : Fn false A B := fun _ => ⟨Alg.zero, true⟩
+def uni (A : Obj) (m : USize) (U : Vals A m × Bool) : Fn false A A := fun _ => CRel.mk (idU U.1) U.2
+def zero (A B : Obj) : Fn false A B := fun _ => some Alg.zero
 def id (A : Obj) : Fn true A A := fun D => ofC (D, true)
 def top (A B : Obj) (V : Fn false B B) : Fn true A B := fun D => let v := V (); also v.ok (ofC (topC D.val v.rel.val))
 def outl (A B : Obj) : Fn true (.prod A B) A := fun D => ofC (Alg.outl D, true)
@@ -108,7 +108,7 @@ def demP {A B : Obj} : (e : Bool) → Tm A B false → Dem e B × Bool
 /-- `R S` on demand: `S` runs on `ran(R)`, and not at all where `R` has no row. -/
 def comp (A B C : Obj) (e : Bool) (R : Fn true A B) (S : Fn e B C) : Fn true A C := fun D =>
   let r := R D
-  if r.rel.n == 0 then ⟨Alg.zero, r.ok⟩ else
+  if r.rel.n == 0 then CRel.mk Alg.zero r.ok else
   let k := CRel.ran r; also k.ok (CRel.comp r (S (Dem.of e k.rel)))
 
 /-- A closed `R S`, `R ∩ S`, `R − S`, `R\S` as bit matrices where its plan's objects are small (`Bits.runC`). -/
@@ -155,7 +155,7 @@ def est (B : Obj) (Q : Fn true (.prod B B) (.prod B B)) : Fn true (.arr B) B := 
   CRel.estOn (fun P => Q P.rel) (CRel.mem D.val)
 def thin (B : Obj) (Q : Fn true (.prod B B) (.prod B B)) : Fn true (.arr B) (.arr B) := fun D =>
   let T := CRel.thinOn (fun P => Q P.rel) (CRel.mem D.val)
-  let df := CRel.diff ⟨D, true⟩ (CRel.dom T)
+  let df := CRel.diff (some D) (CRel.dom T)
   CRel.union (CRel.transpose T) (also df.ok (ofC (topC df.rel.key (nilVal _))))
 def nil (A B : Obj) : Fn true A (.arr B) := fun D => ofC (topC D.val (nilVal _))
 /-- A row of `prims` (`Tm.prim`) on the keys in demand, `f` its constant at the objects (`Expand.primE`): read on
@@ -163,29 +163,29 @@ def nil (A B : Obj) : Fn true A (.arr B) := fun D => ofC (topC D.val (nilVal _))
     arrays in demand (`elems`), as its pair test (`testVals`, `testAfter`), or on the keys each round meets
     (`stepAfter`). -/
 def ofVals (A B : Obj) (f : {n : USize} → Vals A n → CRel A B) : Fn true A B := fun D => f D.val
-def after (A B : Obj) (f : {K : Obj} → CRel K A → CRel K B) : Fn true A B := fun D => f ⟨D, true⟩
+def after (A B : Obj) (f : {K : Obj} → CRel K A → CRel K B) : Fn true A B := fun D => f (some D)
 def testVals (B A C : Obj) (Q : Fn true (.prod B B) (.prod B B))
     (f : {n : USize} → (CRel (.prod B B) (.prod B B) → CRel (.prod B B) (.prod B B)) → Vals A n → CRel A C) :
     Fn true A C := fun D => f (fun P => Q P.rel) D.val
 def testAfter (B A C : Obj) (Q : Fn true (.prod B B) (.prod B B))
     (f : {K : Obj} → (CRel (.prod B B) (.prod B B) → CRel (.prod B B) (.prod B B)) → CRel K A → CRel K C) :
-    Fn true A C := fun D => f (fun P => Q P.rel) ⟨D, true⟩
+    Fn true A C := fun D => f (fun P => Q P.rel) (some D)
 def atPos (B : Obj) (k : Nat) : Fn true (.arr B) B := fun D => CRel.atPos k D.val
 
 /-- A step run on a round's pairs `P`, where its value is read only composed after rows into `P`: with no key,
     nothing reads it, so it is not run — the last round of a fold or loop meets no pair. -/
 def onKeys {A B : Obj} (d : Bool) (F : Fn d A B) (P : CRel A A) : CRel A B :=
-  if P.rel.n == 0 then ⟨Alg.zero, true⟩ else F (Dem.of d P.rel)
+  if P.rel.n == 0 then some Alg.zero else F (Dem.of d P.rel)
 
 def stepAfter (S T A C : Obj) (d : Bool) (F : Fn d S T) (f : {K : Obj} → (CRel S S → CRel S T) → CRel K A → CRel K C) :
-    Fn true A C := fun D => f (onKeys d F) ⟨D, true⟩
+    Fn true A C := fun D => f (onKeys d F) (some D)
 /-- `succ`, a value verb, `≤`, `<` on the universe `U`: its keys. A declared object's universe is `uni` of its
     literal (`uni_lits`), an object variable's the constant's argument. A result outside `U` has no row. -/
 def succ (U : Fn false .long .long) : Fn true .long .long := fun D =>
-  let u := U (); also u.ok (CRel.comp ⟨D, true⟩ (CRel.succ u.rel.key))
+  let u := U (); also u.ok (CRel.comp (some D) (CRel.succ u.rel.key))
 def arith (k : UInt8) (U : Fn false .long .long) : Fn true (.prod .long .long) .long :=
   comp _ _ _ true (dom _ _ true (comp _ _ _ false (outl _ _) U))
-    (comp _ _ _ true (dom _ _ true (comp _ _ _ false (outr _ _) U)) fun D => CRel.comp ⟨Alg.arith k D.val, true⟩ (U ()))
+    (comp _ _ _ true (dom _ _ true (comp _ _ _ false (outr _ _) U)) fun D => CRel.comp (some (Alg.arith k D.val)) (U ()))
 def leq (U : Fn false .long .long) : Fn false .long .long := fun _ => let u := U (); also u.ok (CRel.leq u.rel.key)
 def lt (U : Fn false .long .long) : Fn false .long .long := fun _ => let u := U (); also u.ok (CRel.lt u.rel.key)
 def foldr (E V : Obj) (d : Bool) (e : Fn false V V) (S : Fn d (.prod E V) V) : Fn true (.arr E) V := fun D =>
@@ -202,19 +202,19 @@ def foldI (I E V : Obj) (d d' : Bool) (e : Fn d I (.prod V V)) (S : Fn d' (.prod
     Fn true (.prod I (.arr E)) V := fun D =>
   let ro := ofC (ranC (Alg.outl D)); let es := e (Dem.of d ro.rel)
   let res := CRel.ran es
-  let iv := CRel.pair (CRel.dom es) (CRel.comp es ⟨Alg.outr res.rel, res.ok⟩)
-  let r := CRel.num ⟨D, true⟩ 0
-  let ci := CRel.comp ⟨Alg.outl r.rel, r.ok⟩ iv
+  let iv := CRel.pair (CRel.dom es) (CRel.comp es (CRel.mk (Alg.outr res.rel) res.ok))
+  let r := CRel.num (some D) 0
+  let ci := CRel.comp (CRel.mk (Alg.outl r.rel) r.ok) iv
   let G := ofC (foldRowsC true (Alg.outr r.rel) ci.rel
-    (demandStepC (fun el p => pairC p el) fun A => let s := onKeys d' S ⟨A, true⟩; (s.rel, s.ok)))
+    (demandStepC (fun el p => pairC p el) fun A => let s := onKeys d' S (some A); (s.rel, s.ok)))
   let rg := CRel.ran G
-  also (ro.ok && ci.ok) (CRel.comp ⟨r.rel°, r.ok⟩ (CRel.comp G ⟨Alg.outr rg.rel, rg.ok⟩))
+  also (ro.ok && ci.ok) (CRel.comp (CRel.mk r.rel° r.ok) (CRel.comp G (CRel.mk (Alg.outr rg.rel) rg.ok)))
 
 /-- `R` at the keys of the pairs, its rows `(i,(a,b))` re-keyed as `((i,a),b)`, a join with the pairs. -/
 def flat (I A B : Obj) (d : Bool) (R : Fn d I (.prod A B)) : Fn true (.prod I A) B := fun D =>
   let ro := ofC (ranC (Alg.outl D)); let r := R (Dem.of d ro.rel); let u := CRel.ran r
-  let p := CRel.pair ⟨r.rel°, r.ok⟩ ⟨Alg.outl u.rel, u.ok⟩
-  also ro.ok (CRel.comp ⟨D, true⟩ (CRel.comp ⟨p.rel°, p.ok⟩ ⟨Alg.outr u.rel, u.ok⟩))
+  let p := CRel.pair (CRel.mk r.rel° r.ok) (CRel.mk (Alg.outl u.rel) u.ok)
+  also ro.ok (CRel.comp (some D) (CRel.comp (CRel.mk p.rel° p.ok) (CRel.mk (Alg.outr u.rel) u.ok)))
 
 /-- `νX : S ∩ φ`: rounds of `S ∩ φ` from `S` down to the greatest fixed point. Each round is met with `S`, so
     the chain stays below `S` whatever `φ` is: a strict round drops a row of the distinct-row chain below `S`, and
@@ -232,19 +232,19 @@ def nuAC (V D : Obj) (S : Fn false V D) (a : Arc V D) (as : List (Arc V D)) : Fn
   let ok := rs.all fun (x, c, uv, ud) => x.ok && c.ok && uv.ok && ud.ok
   let rv := rs.map fun (x, c, uv, ud) => (⟨x.rel, c.rel, uv.rel, ud.rel⟩ : Revise V D)
   let r := acFixC s.rel rv (a.2.2.1 ()).rel
-  ⟨r.1.1, s.ok && ok && r.2⟩
+  CRel.mk r.1.1 (s.ok && ok && r.2)
 
 /-- `μX : φ`: rounds of `φ` from `𝟘` up to the least fixed point, at most `cap`. Fewer than `cap` rounds run means a
     round left the row count, so the chain reached its fixed point; `cap` rounds run is not ok, never a truncated
     chain passed off as the answer. -/
 def mu (A B : Obj) (cap : Nat) (φ : CRel A B → Fn false A B) : Fn false A B := fun _ =>
-  let r := CRel.fixOn cap (fun X => φ X ()) ⟨Alg.zero, true⟩
+  let r := CRel.fixOn cap (fun X => φ X ()) (some Alg.zero)
   also (decide (r.2 < cap)) r.1
 
 /-- `F` read only at the nodes `P`: run on their keys, or closed and composed after `P`; not run on none. -/
 def onNodes {A B : Obj} : (d : Bool) → Fn d A B → CRel A A → CRel A B
-  | true, F, P => if P.rel.n == 0 then ⟨Alg.zero, P.ok⟩ else also P.ok (F P.rel)
-  | false, F, P => if P.rel.n == 0 then ⟨Alg.zero, P.ok⟩ else CRel.comp P (F ())
+  | true, F, P => if P.rel.n == 0 then CRel.mk Alg.zero P.ok else also P.ok (F P.rel)
+  | false, F, P => if P.rel.n == 0 then CRel.mk Alg.zero P.ok else CRel.comp P (F ())
 
 /-- `[R,S]` on the sum values in demand: `R` on the left values they hold, `S` on the right, joined with them. A
     demand row whose tag names a side with no values reads that side's `dflt` (`Vals.row`), a value the demand does
@@ -252,7 +252,7 @@ def onNodes {A B : Obj} : (d : Bool) → Fn d A B → CRel A A → CRel A B
 def juncD (A B C : Obj) (d e : Bool) (R : Fn d A C) (S : Fn e B C) : Fn true (.sum A B) C := fun D =>
   let ⟨l, r, tag, _, x, y⟩ := D.val
   also ((List.finRange D.n.toNat).all fun i => if tag.get i then decide (0 < r.toNat) else decide (0 < l.toNat))
-    (CRel.comp ⟨D, true⟩ (CRel.junc (onNodes d R ⟨idU x, true⟩) (onNodes e S ⟨idU y, true⟩)))
+    (CRel.comp (some D) (CRel.junc (onNodes d R (some (idU x))) (onNodes e S (some (idU y)))))
 
 /-- `hylo`'s rounds, at most `f`, from the nodes `pend` not yet valued and the values `X` so far: the nodes
     of `pend` with no child in `pend` (`chN`, each node's children) are ready, valued by `φ X` there and leave
@@ -270,9 +270,9 @@ def hyloRounds {A B : Obj} (chN : CRel A A) (φ : CRel A B → CRel A A → CRel
     (no universe read), then `hyloRounds` over them, each node valued once by `φ` after its children, so no
     intermediate structure of `G` is built. Not ok where the reach did not settle or `ch` has a cycle on `N`. -/
 def hylo (A B : Obj) (d e : Bool) (ch : Fn d A A) (φ : CRel A B → Fn e A B) : Fn true A B := fun D =>
-  let N := CRel.fixOn USize.size (fun N => CRel.union N (CRel.ran (onNodes d ch N))) ⟨D, true⟩
-  let r := hyloRounds (onNodes d ch N.1) (fun X P => onNodes e (φ X) P) (N.1.rel.n.toNat + 1) N.1 ⟨Alg.zero, true⟩
-  also (decide (N.2 < USize.size) && r.2) (CRel.comp ⟨D, true⟩ r.1)
+  let N := CRel.fixOn USize.size (fun N => CRel.union N (CRel.ran (onNodes d ch N))) (some D)
+  let r := hyloRounds (onNodes d ch N.1) (fun X P => onNodes e (φ X) P) (N.1.rel.n.toNat + 1) N.1 (some Alg.zero)
+  also (decide (N.2 < USize.size) && r.2) (CRel.comp (some D) r.1)
 
 /-! ### Plans: terms with the bit-rule nodes kept, every other sub-term its table (`Tm.val`) -/
 

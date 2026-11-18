@@ -25,7 +25,7 @@ variable {A B : Obj}
 /-- A test over `CRel`s as a twin's test: it sees its input as ok, whose bit is already in the op's. -/
 def testC (q : CRel (.prod B B) (.prod B B) → CRel (.prod B B) (.prod B B)) :
     Tab (.prod B B) (.prod B B) → Tab (.prod B B) (.prod B B) × Bool :=
-  fun D => let s := q ⟨D, true⟩; (s.rel, s.ok)
+  fun D => let s := q (some D); (s.rel, s.ok)
 
 /-- `pairsIn Q D`, ok where `Q`, `D` are and `pairsInC` ran within capacity. -/
 def pairsIn (Q : CRel B B) (D : CRel (.prod B B) (.prod B B)) : CRel (.prod B B) (.prod B B) :=
