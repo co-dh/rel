@@ -8,6 +8,7 @@ import Rel.Run.CRelPowerDef
 import Rel.Run.CRelLoopDef
 import Rel.Run.CRelEstDef
 import Rel.Run.Lang.Bits
+import Rel.Run.Lang.Lazy
 
 /-! The code a `rel_program` definition expands into (`Expand`): one function per core-term constructor, each
     a composition of `CRel` ops, so a definition is an ordinary Lean term over `CRel` and its ok bit is the `&&`

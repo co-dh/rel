@@ -4,6 +4,7 @@
 -/
 import Rel.Run.Alg
 import Rel.Core.Rel
+import Rel.Run.Lang.Lazy
 
 namespace Rel.Rep
 
@@ -15,6 +16,19 @@ variable {A B C : Obj}
 
 /-- The `Rel(Set)` arrow a `Rel` denotes: `x` to `y` when some row holds `(x, y)`. -/
 def rep (R : Tab A B) : Core.Rel (A.El) (B.El) := R.Holds
+
+/-- The coreflexives `K` confines a relation's two sides to: `𝟙` on an unknown side, `rep (idU c)` (the
+    coreflexive on `c`'s values, `rep_idU`) on a known one. -/
+def _root_.Rel.Known.den (K : Known A B) : Core.Rel A.El A.El × Core.Rel B.El B.El :=
+  (K.dom.elim (𝟙 _) fun c => rep (Alg.idU c.2), K.ran.elim (𝟙 _) fun c => rep (Alg.idU c.2))
+
+/-- `r` represents `R`: a table by `rep`, a lazy relation in every context `K` by `R` cut to `K`'s sides; a
+    `tab none` (a run past capacity) represents anything. A predicate, not a `rep` function, since a lazy `r`
+    fixes `R` only on the sides some `K` confines it to. -/
+def _root_.Rel.Rel.Reps : Rel A B → Core.Rel A.El B.El → Prop
+  | .tab none, _ => True
+  | .tab (some t), R => rep t = R
+  | .lazy f, R => ∀ K, (f K).Reps (K.den.1 ≫ R ≫ K.den.2)
 
 /-- `rep R x y` is `R.Holds x y`, by definition. -/
 theorem rep_apply (R : Tab A B) (x : A.El) (y : B.El) : rep R x y = R.Holds x y := rfl
