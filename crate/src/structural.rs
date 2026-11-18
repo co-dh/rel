@@ -654,7 +654,22 @@ pub fn enum_ids_enc(n: usize, d: usize, nullid: usize, w: u32, c: &Coc, out: &mu
     }
     bad
 }
-/// structural.rs `ids_place`: `cn` ids at `w` bits from `pp`, each read through `tab` (`nm + 1` entries, the last `0`, so an id at or past `nm` reads `0` with no branch;
+/// structural.rs `qlean_structural_bits_of_for`: a `u1` column's low bits into the zeroed bitmap `out`, a block at a time.
+/// A width-1, frame-0, unpatched block is its own bitmap and is copied; any other (constant, framed, patched) is
+/// decoded into one block of L1 scratch, never the column whole. Rows past the blocks stay zero.
+pub fn bits_of_enc(c: &Coc, out: &mut [u8]) {
+    let mut v = pod::Scr::<u8>::new(c.meta.blk());
+    for (b, lo, nb) in Blocks::from(*c).walk() {
+        match c.bit_blk(b) {
+            Some(p) => copy_bits(out, lo, p, 0, nb),
+            None => {
+                c.decode_blk(b, nb, &mut v);
+                for (j, &x) in v[..nb].iter().enumerate() { out[(lo + j) / 8] |= (x & 1) << ((lo + j) % 8) }
+            }
+        }
+    }
+}
+/// structural.rs `ids_place`:`cn` ids at `w` bits from `pp`, each read through `tab` (`nm + 1` entries, the last `0`, so an id at or past `nm` reads `0` with no branch;
 /// `None` reads each id as itself: a part whose dictionary is a prefix of the answer's), packed at `wout` into `out`
 /// from field `at`. A part that lands byte aligned is packed straight into the answer; one that does not is packed
 /// into its own buffer and then bit-copied, so no store crosses into the part before it.

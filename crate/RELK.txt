@@ -59,6 +59,7 @@ qlean_sort_ranks_foR
 qlean_sort_rank_slices
 qlean_stop
 qlean_structural_all_below
+qlean_structural_bits_of_for
 qlean_structural_concat
 qlean_structural_concat_alp
 qlean_structural_concat_bits

@@ -212,6 +212,15 @@ export! {
         structural::concat_bits(cs, &bytes_of(&ps[..k]), a.bytes_mut());
         a.into()
     }
+
+    /// Spec: `bitsOfFoR meta pack n` is `packOf n` of each element's low bit, the rows past the blocks `0`: a boolean
+    /// `foR` (`u1`) as the bitmap `concatBits` joins, read a block at a time.
+    fn qlean_structural_bits_of_for(mv: B, pv: B, n: usize) -> O {
+        let c = view("qlean_structural_bits_of_for", mv, pv, n);
+        let mut a = zeroed(n.div_ceil(8));
+        structural::bits_of_enc(&c, a.bytes_mut());
+        a.into()
+    }
 }
 
 export! {

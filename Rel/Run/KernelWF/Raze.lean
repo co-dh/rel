@@ -592,15 +592,16 @@ private theorem alp_width {t : QAtomicType} {w : Nat} (ht : Column.alpEncodes t 
     `alpEncodeBelow` or `encodeBelow`, or decodes it to `n · w` bytes. -/
 theorem answer_wf {t : QAtomicType} {n : USize} {e : Enc}
     (hwf : Enc.WF t n e) : Enc.WF (X := Empty) t n (Enc.answer t n e) := by
-  have hdec : ∀ {w}, t.width = some w → ∀ {b}, Enc.bytesOf t n e = some b → Enc.WF (X := Empty) t n (.bytes b) := by
-    intro w hw b hbo
-    by_cases hb : t = .boolean
-    · subst hb; cases e <;> simp_all [Enc.WF, Enc.bytesOf]
+  -- not at a boolean, which has no dense bytes: `answer` keeps a boolean as it is
+  have hdec : t ≠ .boolean → ∀ {w}, t.width = some w → ∀ {b}, Enc.bytesOf t n e = some b →
+      Enc.WF (X := Empty) t n (.bytes b) := by
+    intro hb w hw b hbo
     obtain ⟨b', hb', hs⟩ := bytesOf_size hb hw hwf
     rw [hbo] at hb'; cases hb'
     exact wf_bytes hb hw hs
   unfold Enc.answer
   split
+  · exact hwf
   · exact hwf
   rcases hW : t.width with _ | w
   · exact hwf
@@ -642,7 +643,7 @@ theorem answer_wf {t : QAtomicType} {n : USize} {e : Enc}
     split
     · exact hwf
     split
-    · rename_i b hbo; exact hdec hW hbo
+    · rename_i b hbo; exact hdec (fun h => by subst h; simp_all) hW hbo
     · exact hwf
 
 /-! ## The `enum` branch: `concatEnum` -/
@@ -1511,7 +1512,8 @@ theorem razeColumn_isSome {t : QAtomicType} {cs : Array (USize × Enc)} (hne : c
   cases t
   case general => exact absurd rfl hg
   case boolean =>
-    rw [mapM_some (fun c => (c.1, match c.2 with | .bits b => b | _ => .empty)) fun c hc => ?_]
+    rw [mapM_some (fun c => (c.1, match c.2 with | .bits b => b | .foR m p => bitsOfFoR m p c.1 | _ => .empty))
+      fun c hc => ?_]
     · dsimp only; rw [Array.foldl_map, needSize_fits hN]; rfl
     · have := h c hc; rcases c with ⟨n, e⟩; cases e <;> simp [Enc.WF] at this ⊢
   case symbol =>
@@ -1559,7 +1561,7 @@ theorem razeColumn_count {t : QAtomicType} {cs : Array (USize × Enc)}
       obtain ⟨hc, hv⟩ := needSize_some hv
       cases hv
       have hk := mapM_key (key' := fun p : USize × ByteArray => p.1) (key := fun c : USize × Enc => c.1)
-        (fun c _ x hx => by rcases c with ⟨k, e'⟩; cases e' <;> simp at hx; subst hx; rfl) hps
+        (fun c _ x hx => by rcases c with ⟨k, e'⟩; cases e' <;> simp at hx <;> (subst hx; rfl)) hps
       rw [toUSize_toNat hc, foldl_toNat, foldl_toNat, hk]
     · cases hv
   case symbol =>
