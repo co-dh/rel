@@ -430,7 +430,15 @@ Done: compile-diff reports 0 "not ok".
 `/data/tmp/rel-gates/rel/extern.tsv` (namespaces: `Rel.Kernel` 51, `Ew` 17, `Order` 18, `Coc` 10, `Scan` 1,
 `Column` 1, `Db` 1): the Lean users (`use_site`), and one of {`scan op`, `scatter`, `gather`, `asc`, `distinct`,
 "q-only: delete", "no target: R4"}. Output `/data/tmp/rel-kernels.md`. Steps 6.8-6.11 are cut from this table;
-they cannot be cut before it exists.
+they cannot be cut before it exists. Done: `doc/rel-kernels.md` (rescoped by the owner: class R = reached from
+Rel's runtime or programs, 77; class Q = not, 22; the five-kernel table covers R only).
+
+**6.0a sonnet — delete class Q.** Delete the 22 class-Q externs of `doc/rel-kernels.md` §2 and their cones
+(47 declarations, listed there by module), the `#guard`/`decide` command sites it names, the 22 lines of
+`crate/RELK.txt`, and the Rust exports and files left without a caller (`crate/src/ffi/*`). Rel needs only what
+Rel uses; qlean keeps its own copy (`qlean-base`). Re-check `Verify.overStep_fold` (`KernelSpec.Group`) after
+the build. Gates: `B RelCore RelKernel RelRun Rel`, `sh crate/build.sh syms` with `RELK.txt` at 77 lines,
+`make externs`, `make panic`. Before 6.1; a sonnet step that hits a proof stops and reports.
 
 **6.1 sonnet — `Op`.** New `Rel/Kernel/Op.lean` in `RelKernel`:
 `inductive Rel.Kernel.Op | add | sub | mul | min | max | eq | lt | and | or | not | first | fadd | fmul | fdiv |
