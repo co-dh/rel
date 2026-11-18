@@ -18,9 +18,9 @@ pub struct Meta<'a> {
     /// slices are mblk long; nblk <= mblk is what n reaches
     pub n: usize, pub nblk: usize, pub mblk: usize,
 }
-/// nexc = pos.len()
+/// nexc = pos.len(); `asc`: every block's positions strictly ascending (`ascending`), so `Coc::get` binary-searches them
 #[derive(Clone, Copy)]
-pub struct Exc<'a> { pub off: &'a [u32], pub pos: &'a [u16], pub raw: &'a [u8], pub esz: usize }
+pub struct Exc<'a> { pub off: &'a [u32], pub pos: &'a [u16], pub raw: &'a [u8], pub esz: usize, pub asc: bool }
 #[derive(Clone, Copy)]
 pub struct Coc<'a> { pub meta: Meta<'a>, pub pack: &'a [u8], pub exc: Option<Exc<'a>>, pub fdelta: Option<&'a [u64]> }
 
@@ -66,7 +66,8 @@ impl<'a> Coc<'a> {
         let (nexc, esz, mb) = (nexc as usize, esz as usize, meta.mblk);
         let l = exc_layout(mb, nexc, esz, if frm != 0 { Tail::Frames } else { Tail::None })?;
         if l.size != t.len() { return None }
-        let exc = Exc { off: pod::cast(&t[l.off..l.off + 4 * (mb + 1)])?, pos: pod::cast(&t[l.pos..l.pos + 2 * nexc])?,
+        let (off, pos) = (pod::cast(&t[l.off..l.off + 4 * (mb + 1)])?, pod::cast(&t[l.pos..l.pos + 2 * nexc])?);
+        let exc = Exc { off, pos, asc: ascending(off, pos),
                         raw: &t[l.raw..l.raw + nexc * esz], esz };
         let fdelta = if frm != 0 { Some(pod::cast(&t[l.tail..l.tail + 8 * mb])?) } else { None };
         Some(Coc { exc: Some(exc), fdelta, ..c })
@@ -193,6 +194,13 @@ pub fn lanes<'b>(p: &'b [u8], w: &mut u8, nb: usize, buf: &'b mut [u8]) -> &'b [
     buf
 }
 
+/// Whether each block's patch positions `pos[off[b] .. off[b + 1]]` lie in `pos` and strictly ascend, as the writer
+/// lays them. Lean's `foRExc` reads the first match in any order and `Enc.WF` does not state the order, so an order
+/// that fails this is still a column: `Coc::get` scans it.
+pub fn ascending(off: &[u32], pos: &[u16]) -> bool {
+    off.windows(2).all(|r| r[0] <= r[1] && r[1] as usize <= pos.len() && pos[r[0] as usize..r[1] as usize].windows(2).all(|p| p[0] < p[1]))
+}
+
 /// Why a metadata array and a pack are no column.
 pub enum ViewErr { Meta, Pack { pack: usize, end: usize, mblk: usize } }
 impl core::fmt::Display for ViewErr {
@@ -245,6 +253,18 @@ mod tests {
         let mut p = vec![0u64; (res + 16 + 8) / 8];
         p[res / 8] = 1; p[res / 8 + 1] = 3; // nexc 1, esz 3
         assert!(super::Coc::attach(meta, &crate::pod::bytes_mut(&mut p)[..res + 24]).is_none());
+    }
+    // `get` binary-searches ascending positions and scans any other order, the first match winning either way
+    #[test] fn get_finds_the_first_patch_in_any_order() {
+        let (base, off, width, raw) = ([100i64], [0u64], [0u8], [7i64, 8, 9].map(i64::to_ne_bytes).concat());
+        let meta = super::Meta { lg: crate::DEFAULT_LG, base: &base, maxv: &base, off: &off, bsum: &base, width: &width, sumnul: 0, sumn: 0, n: 20, nblk: 1, mblk: 1 };
+        for (pos, want) in [([2u16, 5, 9], [100, 7, 100, 8, 9]), ([5, 2, 5], [100, 8, 100, 7, 100]), ([9, 5, 2], [100, 9, 100, 8, 7])] {
+            let exc = super::Exc { off: &[0, 3], pos: &pos, raw: &raw, esz: 8, asc: super::ascending(&[0, 3], &pos) };
+            assert_eq!(exc.asc, pos == [2, 5, 9]);
+            let c = super::Coc { meta, pack: &[], exc: Some(exc), fdelta: None };
+            assert_eq!([0, 2, 3, 5, 9].map(|i| c.get(i)), want, "pos {pos:?}");
+        }
+        assert!(!super::ascending(&[0, 4], &[1, 2, 3])); // a block offset past the list
     }
     #[test] fn meta_new_refuses_a_misaligned_or_short_buffer() {
         let mut v = vec![0u64; 8];

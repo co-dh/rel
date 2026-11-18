@@ -51,6 +51,8 @@ impl CCoc {
         };
         let exc = if self.exc_off.is_null() { None } else {
             Some(coc::Exc { off: unsafe { sl(self.exc_off, m + 1) }, pos: unsafe { sl(self.exc_pos, self.nexc) },
+                            // a C view is built per block (`qrs_coc_block_start`), so its order is not scanned; `get` scans
+                            asc: false,
                             raw: unsafe { sl(self.exc_raw, self.nexc * self.exc_esz) }, esz: self.exc_esz })
         };
         let fdelta = if self.fdelta.is_null() { None } else { Some(unsafe { sl(self.fdelta.cast_const(), m) }) };
@@ -139,17 +141,48 @@ impl CEnc {
     /// The residual region is the `nb` elements' `ceil(nb * width / 8)` bytes, or with `whole` the full `blk * width / 8`
     /// (`move_pack` copies a whole block). Safety: as `meta_blk`.
     pub unsafe fn pack_blk<'a>(&mut self, b: usize, nb: usize, whole: bool) -> EncPack<'a> {
+        unsafe {
+            let at = *self.exc_off.add(b) as usize;
+            self.pack_at(b, nb, whole, self.c.pack.add(*self.c.off.add(b) as usize), self.exc_pos.add(at), self.exc_raw.add(at * self.width),
+                         *self.exc_off.add(b + 1) as usize - at)
+        }
+    }
+    /// Block `b`'s pack view with its residuals at `res`, its `ne` patches at `pos` and `raw`: `pack_blk`'s, or after the
+    /// meta pass (`exc_off[b + 1]` still the block's count) a `Staged` block's. Safety: as `meta_blk`, the three regions large enough.
+    unsafe fn pack_at<'a>(&self, b: usize, nb: usize, whole: bool, res: *mut u8, pos: *mut u16, raw: *mut u8, ne: usize) -> EncPack<'a> {
         let c = &self.c;
         unsafe {
-            let (base, w, at) = (*c.base.add(b), *c.width.add(b), *self.exc_off.add(b) as usize);
-            let ne = *self.exc_off.add(b + 1) as usize - at;
+            let (base, w) = (*c.base.add(b), *c.width.add(b));
             EncPack { b, nb, base, frame: (base as u64).wrapping_add(if c.fdelta.is_null() { 0 } else { *c.fdelta.add(b) }), width: w,
                       exp: if self.exp.is_null() { 0 } else { *self.exp.add(b) },
-                      res: sl_mut(c.pack.add(*c.off.add(b) as usize), (if whole { 1usize << c.lg() } else { nb } * w as usize).div_ceil(8)),
-                      pos: sl_mut(self.exc_pos.add(at), ne), raw: sl_mut(self.exc_raw.add(at * self.width), ne * self.width) }
+                      res: sl_mut(res, (if whole { 1usize << c.lg() } else { nb } * w as usize).div_ceil(8)),
+                      pos: sl_mut(pos, ne), raw: sl_mut(raw, ne * self.width) }
+        }
+    }
+    /// Block `b` packed in the meta pass, into `st`: its full residual room (`Meta::offsets`' share, zeroed, as
+    /// `coc_enc_layout` zeroes a short last block's) and its patches.
+    /// The answer is `move_pack_blk`'s `pack`.
+    unsafe fn stage<'a>(&'a self, b: usize, nb: usize, st: &'a mut Staged) -> impl FnOnce(bool) -> EncPack<'a> + 'a {
+        let (w, ne) = unsafe { (*self.c.width.add(b), *self.exc_off.add(b + 1) as usize) };
+        *st = Staged { res: alloc::vec![0; (1usize << self.c.lg()) * w as usize / 8], pos: alloc::vec![0; ne], raw: alloc::vec![0; ne * self.width] };
+        move |whole| unsafe { self.pack_at(b, nb, whole, st.res.as_mut_ptr(), st.pos.as_mut_ptr(), st.raw.as_mut_ptr(), ne) }
+    }
+    /// A `Staged` block copied to where `coc_enc_layout` put block `b`. Safety: after `coc_enc_layout`, `st` block `b`'s.
+    unsafe fn place(&mut self, b: usize, st: &Staged) {
+        unsafe {
+            let at = *self.exc_off.add(b) as usize;
+            sl_mut(self.c.pack.add(*self.c.off.add(b) as usize), st.res.len()).copy_from_slice(&st.res);
+            if !st.pos.is_empty() {
+                sl_mut(self.exc_pos.add(at), st.pos.len()).copy_from_slice(&st.pos);
+                sl_mut(self.exc_raw.add(at * self.width), st.raw.len()).copy_from_slice(&st.raw);
+            }
         }
     }
 }
+/// A block a `Sink`'s meta pass packed, kept until the layout says where it goes, so its producer runs once: its residuals
+/// and its patch positions and raw elements.
+#[derive(Default)]
+pub struct Staged { res: alloc::vec::Vec<u8>, pos: alloc::vec::Vec<u16>, raw: alloc::vec::Vec<u8> }
 /// A symbol: its bytes and length.
 #[repr(C)]
 pub struct CSym { pub p: *const u8, pub len: usize }
@@ -680,13 +713,25 @@ impl Sink {
         let msz = unsafe { lean::sarray_size(self.e.meta.cast()) };
         if below != usize::MAX { if below <= msz { return None } self.e.below = below - msz }
         let cost = if alp { crate::QLEAN_COST_MATH } else { crate::QLEAN_COST_ARITH };
-        self.each(true, cost, &|s, b, lo, nb, buf| unsafe { enc::move_meta_blk(p, &mut (*s).meta_blk(b), || p.block(b, lo, nb, w, buf), w, nb) });
-        // the size is known here, so a form that does not shrink is never packed
+        // a block's pack goes at the prefix sum of every earlier block's widths and patch counts, known only after the meta
+        // pass; so the meta pass packs each block into its own `Staged` while the producer's block is at hand, and a copy
+        // places it, rather than a second pass running the producer again
+        let mut st: alloc::vec::Vec<Staged> = (0..self.g.nblk()).map(|_| Staged::default()).collect();
+        let sp = st.as_mut_ptr() as usize;
+        self.each(true, cost, &|s, b, lo, nb, buf| unsafe {
+            let (buf, got) = (core::cell::Cell::new(Some(buf)), core::cell::Cell::new(None));
+            let x = || got.get().unwrap_or_else(|| {
+                let v = p.block(b, lo, nb, w, buf.take().expect("qlean Sink: a block's buffer is lent once"));
+                got.set(Some(v));
+                v
+            });
+            enc::move_meta_blk(p, &mut (*s).meta_blk(b), &x, w, nb);
+            enc::move_pack_blk(p, (*s).stage(b, nb, &mut *(sp as *mut Staged).add(b)), &x, b, nb, w, alp);
+        });
+        // the size is known here, so a form that does not shrink is never laid out
         if self.e.over != 0 || unsafe { qrs_coc_enc_plan(&mut self.e) } >= below { return None }
         unsafe { qrs_coc_enc_layout(&mut self.e) };
-        self.each(false, crate::QLEAN_COST_ARITH, &|s, b, lo, nb, buf| unsafe {
-            enc::move_pack_blk(p, |whole| (*s).pack_blk(b, nb, whole), || p.block(b, lo, nb, w, buf), b, nb, w, alp)
-        });
+        self.each(false, crate::QLEAN_COST_COPY, &|s, b, _, _, _| unsafe { (*s).place(b, &*(sp as *const Staged).add(b)) });
         Some(self.finish())
     }
     /// `write` with no size test: the answer of a kernel whose form is decided.
