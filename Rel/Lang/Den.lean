@@ -112,6 +112,47 @@ abbrev foldDen {E V : Obj} (Te : Den V V) (TS : Den (.prod E V) V) : Den (.arr E
       (ys[t]'(Nat.lt_of_lt_of_eq (Nat.lt_succ_of_lt ht) hy.symm))) ∧
     w = ys[0]'(Nat.lt_of_lt_of_eq (Nat.zero_lt_succ _) hy.symm)
 
+/-- The left fold `⦇e, S⦈` over `[nil, snoc]`: a chain of values `ys`, its first from `e`, each the step `S` of the
+    value before and the element (`(acc, x)`, index 0 first), the result its last. -/
+abbrev foldlDen {E V : Obj} (Te : Den V V) (TS : Den (.prod V E) V) : Den (.arr E) V :=
+  fun xs w => ∃ ys : List V.El, ∃ hy : ys.length = xs.length + 1,
+    (∃ a, Te a (ys[0]'(by omega))) ∧
+    (∀ t (ht : t < xs.length), TS (ys[t]'(by omega), xs[t]'ht) (ys[t + 1]'(by omega))) ∧
+    w = ys[xs.length]'(by omega)
+
+/-- The left fold read from the back: `foldlDen` on `xs` is the chain `rep_foldOnC` reads at `l` (`ordL`), the
+    right fold's chain on `xs.reverse`, the pair `(acc, x)` and `ys` reversed. -/
+theorem foldlDen_rev {E V : Obj} (Te : Den V V) (TS : Den (.prod V E) V) (xs : List E.El) (w : V.El) :
+    foldlDen Te TS xs w ↔ ∃ ys : List V.El, ∃ hy : ys.length = xs.reverse.length + 1,
+      (∃ a, Te a (ys[xs.reverse.length]'(by omega))) ∧
+      (∀ t (ht : t < xs.reverse.length), TS (ys[t + 1]'(by omega), xs.reverse[t]'ht) (ys[t]'(by omega))) ∧
+      w = ys[0]'(by omega) := by
+  -- `ys ↦ ys.reverse` both ways: chain position `s` of one is `|xs| - s` of the other
+  have rv : ∀ (zs : List V.El) (hz : zs.length = xs.length + 1) (i j : Nat) (hi : i < zs.reverse.length)
+      (hj : j < zs.length), j = xs.length - i → zs.reverse[i] = zs[j] := by
+    intro zs hz i j hi hj he; rw [List.getElem_reverse]; congr 1; simp only [List.length_reverse] at hi; omega
+  have rx : ∀ (i j : Nat) (hi : i < xs.reverse.length) (hj : j < xs.length), j = xs.length - 1 - i →
+      xs.reverse[i] = xs[j] := by
+    intro i j hi hj he; rw [List.getElem_reverse]; congr 1; simp only [List.length_reverse] at hi; omega
+  constructor
+  · rintro ⟨ys, hy, ⟨a, ha⟩, hS, rfl⟩
+    refine ⟨ys.reverse, by simp [hy], ⟨a, by rw [rv ys hy _ 0 _ (by omega) (by simp)]; exact ha⟩, fun t ht => ?_,
+      by rw [rv ys hy 0 xs.length _ (by omega) (by simp)]⟩
+    simp only [List.length_reverse] at ht
+    rw [rv ys hy (t + 1) (xs.length - 1 - t) _ (by omega) (by omega), rv ys hy t (xs.length - 1 - t + 1) _ (by omega)
+      (by omega), rx t (xs.length - 1 - t) _ (by omega) rfl]
+    exact hS _ (by omega)
+  · rintro ⟨ys, hy, ⟨a, ha⟩, hS, rfl⟩
+    simp only [List.length_reverse] at hy ha hS
+    refine ⟨ys.reverse, by simp [hy], ⟨a, ?_⟩, fun t ht => ?_, ?_⟩
+    · rw [rv ys hy 0 xs.length _ (by omega) (by simp)]; exact ha
+    · have h := hS (xs.length - 1 - t) (by omega)
+      rw [rx _ t _ ht (by omega)] at h
+      rw [rv ys hy t (xs.length - 1 - t + 1) _ (by omega) (by omega),
+        rv ys hy (t + 1) (xs.length - 1 - t) _ (by omega) (by omega)]
+      exact h
+    · rw [rv ys hy xs.length 0 _ (by omega) (by simp)]
+
 /-- `fold(e, S)` given a family: at the key `i`, the fold whose start is the fibre of `e` at `i` and whose step is
     `S` at `i`, keeping the key. -/
 abbrev foldIDen {I E V : Obj} (Te : Den I (.prod V V)) (TS : Den (.prod E (.prod I V)) (.prod I V)) :
