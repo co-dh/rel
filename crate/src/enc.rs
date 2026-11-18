@@ -22,6 +22,9 @@ pub struct EncMeta<'a> {
     pub nexc: &'a mut u32,
     /// ALP: the block's exponent
     pub exp: Option<&'a mut i8>,
+    /// whether the block may patch, Lean `Coc.encodeAt`'s `patch && n < 2 ^ 32`: a column of `2 ^ 32` elements or more
+    /// has no patch list, its block offsets being `u32`
+    pub patch: bool,
 }
 /// Block `b`'s output region in a column being written: residuals and patch slots, from the layout's offsets.
 pub struct EncPack<'a> {
@@ -109,10 +112,15 @@ pub fn for_meta(m: &mut EncMeta, x: &[u8], width: usize, nb: usize) {
 }
 /// The writer's FoR block, Lean `Coc.planOf`: of the widths `d` in `0 ..= W` (`W` the bit length of `max - min`), the
 /// one whose cost `⌈nb·d/8⌉ + (2 + esz)·patches` is least, the narrower on a tie, at the frame patching fewest, the
-/// lowest of those; answers the patch count.
+/// lowest of those; answers the patch count. With `m.patch` off, `W` from the minimum, which patches nothing.
 pub fn for_blk<T: Elt>(m: &mut EncMeta, x: &[T], nb: usize) -> u32 {
     encode_meta_blk(m, x, nb);
     let (mn, top, esz) = (*m.base, *m.width as usize, size_of::<T>());
+    if !m.patch {
+        *m.frm.as_deref_mut().expect("for_blk: a Frame of Reference column keeps its frames") = 0;
+        *m.nexc = 0;
+        return 0
+    }
     let mut s = crate::pod::Scr::<i64>::new(nb);
     for (o, v) in s.iter_mut().zip(&x[..nb]) { *o = v.i() }
     s.sort_unstable();
@@ -354,7 +362,7 @@ mod a17_tests {
     fn meta(v: &[i64], width: usize) -> (u32, i64, i64, i64, u8, u64) {
         let (mut base, mut maxv, mut width_, mut bsum, mut nexc, mut frm) = (0, 0, 0, 0, 0, 7u64);
         let mut m = EncMeta { b: 0, base: &mut base, maxv: &mut maxv, width: &mut width_, bsum: &mut bsum, frm: Some(&mut frm),
-                              nexc: &mut nexc, exp: None };
+                              nexc: &mut nexc, exp: None, patch: true };
         let ne = blk_meta(&mut m, v, width);
         (ne, base, maxv, bsum, width_, frm)
     }
@@ -403,15 +411,20 @@ mod a7_tests {
         let x: [i64; 1000] = core::array::from_fn(|i| if i < 24 { 0 } else { 100000 + (i & 255) as i64 });
         let (mut base, mut maxv, mut width, mut bsum, mut nexc, mut frm) = (0, 0, 0, 0, 0, 0u64);
         let mut m = EncMeta { b: 0, base: &mut base, maxv: &mut maxv, width: &mut width, bsum: &mut bsum, frm: Some(&mut frm),
-                              nexc: &mut nexc, exp: None };
+                              nexc: &mut nexc, exp: None, patch: true };
         assert_eq!(for_blk(&mut m, &x, 1000), 24);
         assert_eq!((base, width, frm), (0, 8, 100000));
+        // patching off (a column of `2 ^ 32` elements or more): width 17 from the minimum, no patch, no frame
+        let mut m = EncMeta { b: 0, base: &mut base, maxv: &mut maxv, width: &mut width, bsum: &mut bsum, frm: Some(&mut frm),
+                              nexc: &mut nexc, exp: None, patch: false };
+        assert_eq!(for_blk(&mut m, &x, 1000), 0);
+        assert_eq!((base, width, frm, nexc), (0, 17, 0, 0));
     }
     #[test] fn encode_meta_blk_nulls() {
         let x: [i16; 4] = [i16::MIN, 3, 9, -2];
         let (mut base, mut maxv, mut width, mut bsum, mut nexc) = (0, 0, 0, 0, 0);
         let mut m = EncMeta { b: 0, base: &mut base, maxv: &mut maxv, width: &mut width, bsum: &mut bsum, frm: None, nexc: &mut nexc,
-                              exp: None };
+                              exp: None, patch: true };
         encode_meta_blk(&mut m, &x, 4);
         // the null is the minimum, so the sum skips it
         assert_eq!((base, maxv, width, bsum), (i16::MIN as i64, 9, 16, 10));
@@ -431,7 +444,7 @@ mod tests {
         for b in 0..n.div_ceil(BLK) {
             let mut nx = 0;
             let mut m = EncMeta { b, base: &mut base[b], maxv: &mut maxv[b], width: &mut width[b], bsum: &mut bsum[b],
-                                  frm: Some(&mut frm[b]), nexc: &mut nx, exp: None };
+                                  frm: Some(&mut frm[b]), nexc: &mut nx, exp: None, patch: true };
             let nb = BLK.min(n - b * BLK);
             ne[b] = for_blk(&mut m, &x[b * BLK..], nb);
         }

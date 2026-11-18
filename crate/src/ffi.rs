@@ -132,7 +132,8 @@ impl CEnc {
         let c = &self.c;
         unsafe { EncMeta { b, base: &mut *c.base.add(b), maxv: &mut *c.maxv.add(b), width: &mut *c.width.add(b), bsum: &mut *c.bsum.add(b),
                            frm: if c.fdelta.is_null() { None } else { Some(&mut *c.fdelta.add(b)) }, nexc: &mut *self.exc_off.add(b + 1),
-                           exp: if self.exp.is_null() { None } else { Some(&mut *self.exp.add(b)) } } }
+                           exp: if self.exp.is_null() { None } else { Some(&mut *self.exp.add(b)) },
+                           patch: (self.n as u64) < 1 << 32 } }
     }
     /// Block `b`'s pack-pass view, after `coc_enc_layout`: residuals at `off[b]`, patches `exc_off[b]..exc_off[b + 1]`.
     /// The residual region is the `nb` elements' `ceil(nb * width / 8)` bytes, or with `whole` the full `blk * width / 8`
