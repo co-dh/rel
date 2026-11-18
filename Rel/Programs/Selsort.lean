@@ -3,7 +3,8 @@ import Rel.Programs.Prelude
 /-! # Sorting by selection
 
 B&dM §6.6 "Sorting by selection" (diag/aop/06-recursive.typ:286-344): the specification `perm ordered(≤)` and the
-derived program `X ≜ ⦇[nil, select°]⦈°`, on arrays; B&dM's preorder `R`, fixed for the whole of §6.6, is `≤`. -/
+derived program `X ≜ ⦇[nil, select°]⦈°`, on arrays built by snoc, so `select` takes the largest element last;
+B&dM's preorder `R`, fixed for the whole of §6.6, is `≤`. -/
 
 namespace Rel.Programs
 
@@ -18,8 +19,8 @@ rel_program selsort where
     z : 1 ⟶ [N] ≜ {(∗,5 4 3 2 1)}
     e : 1 ⟶ [N] ≜ nil                             -- the empty array
 
-    ok : α×[α] ⟶ α×[α] ≜ cor(≤/∋)                 -- (a, xs) with a ≤ every element of xs (Lean `ok`)
-    select : [α] ⟶ α×[α] ≜ perm cons° ok          -- Lean `selectC`: a::y a permutation of x, a ≤ every element of y
+    ok : [α]×α ⟶ [α]×α ≜ ⟨π₂,π₁⟩cor(≥/∋)⟨π₂,π₁⟩   -- (xs, a) with every element of xs ≤ a (Lean `ok`, read from the end)
+    select : [α] ⟶ [α]×α ≜ perm snoc° ok          -- Lean `selectC` on snoc: y⧺[a] a permutation of x, a ≥ every element of y
 
     /- The converse of a fold needs the arrays it folds: `C`, every rearrangement of an input. -/
 
