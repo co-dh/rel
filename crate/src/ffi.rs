@@ -137,18 +137,9 @@ impl CEnc {
                            exp: if self.exp.is_null() { None } else { Some(&mut *self.exp.add(b)) },
                            patch: (self.n as u64) < 1 << 32 } }
     }
-    /// Block `b`'s pack-pass view, after `coc_enc_layout`: residuals at `off[b]`, patches `exc_off[b]..exc_off[b + 1]`.
-    /// The residual region is the `nb` elements' `ceil(nb * width / 8)` bytes, or with `whole` the full `blk * width / 8`
-    /// (`move_pack` copies a whole block). Safety: as `meta_blk`.
-    pub unsafe fn pack_blk<'a>(&mut self, b: usize, nb: usize, whole: bool) -> EncPack<'a> {
-        unsafe {
-            let at = *self.exc_off.add(b) as usize;
-            self.pack_at(b, nb, whole, self.c.pack.add(*self.c.off.add(b) as usize), self.exc_pos.add(at), self.exc_raw.add(at * self.width),
-                         *self.exc_off.add(b + 1) as usize - at)
-        }
-    }
-    /// Block `b`'s pack view with its residuals at `res`, its `ne` patches at `pos` and `raw`: `pack_blk`'s, or after the
-    /// meta pass (`exc_off[b + 1]` still the block's count) a `Staged` block's. Safety: as `meta_blk`, the three regions large enough.
+    /// Block `b`'s pack view after its meta step (`exc_off[b + 1]` still the block's count), its residuals at `res`, its `ne`
+    /// patches at `pos` and `raw`: the `nb` elements' `ceil(nb * width / 8)` residual bytes, or with `whole` the full
+    /// `blk * width / 8` (`move_pack` copies a whole block). Safety: as `meta_blk`, the three regions large enough.
     unsafe fn pack_at<'a>(&self, b: usize, nb: usize, whole: bool, res: *mut u8, pos: *mut u16, raw: *mut u8, ne: usize) -> EncPack<'a> {
         let c = &self.c;
         unsafe {
@@ -161,11 +152,14 @@ impl CEnc {
     }
     /// Block `b` packed in the meta pass, into `st`: its full residual room (`Meta::offsets`' share, zeroed, as
     /// `coc_enc_layout` zeroes a short last block's) and its patches.
-    /// The answer is `move_pack_blk`'s `pack`.
+    /// The answer is the `pack` of `move_blk` and `Scatter::write`, which reads the block's width and patch count when it is
+    /// called, so it is called after block `b`'s meta step.
     unsafe fn stage<'a>(&'a self, b: usize, nb: usize, st: &'a mut Staged) -> impl FnOnce(bool) -> EncPack<'a> + 'a {
-        let (w, ne) = unsafe { (*self.c.width.add(b), *self.exc_off.add(b + 1) as usize) };
-        *st = Staged { res: alloc::vec![0; (1usize << self.c.lg()) * w as usize / 8], pos: alloc::vec![0; ne], raw: alloc::vec![0; ne * self.width] };
-        move |whole| unsafe { self.pack_at(b, nb, whole, st.res.as_mut_ptr(), st.pos.as_mut_ptr(), st.raw.as_mut_ptr(), ne) }
+        move |whole| unsafe {
+            let (w, ne) = (*self.c.width.add(b), *self.exc_off.add(b + 1) as usize);
+            *st = Staged { res: alloc::vec![0; (1usize << self.c.lg()) * w as usize / 8], pos: alloc::vec![0; ne], raw: alloc::vec![0; (ne * self.width).div_ceil(8)] };
+            self.pack_at(b, nb, whole, st.res.as_mut_ptr(), st.pos.as_mut_ptr(), st.raw.as_mut_ptr().cast(), ne)
+        }
     }
     /// A `Staged` block copied to where `coc_enc_layout` put block `b`. Safety: after `coc_enc_layout`, `st` block `b`'s.
     unsafe fn place(&mut self, b: usize, st: &Staged) {
@@ -174,15 +168,16 @@ impl CEnc {
             sl_mut(self.c.pack.add(*self.c.off.add(b) as usize), st.res.len()).copy_from_slice(&st.res);
             if !st.pos.is_empty() {
                 sl_mut(self.exc_pos.add(at), st.pos.len()).copy_from_slice(&st.pos);
-                sl_mut(self.exc_raw.add(at * self.width), st.raw.len()).copy_from_slice(&st.raw);
+                let raw = &crate::pod::bytes(&st.raw)[..st.pos.len() * self.width];
+                sl_mut(self.exc_raw.add(at * self.width), raw.len()).copy_from_slice(raw);
             }
         }
     }
 }
 /// A block a `Sink`'s meta pass packed, kept until the layout says where it goes, so its producer runs once: its residuals
-/// and its patch positions and raw elements.
+/// and its patch positions and raw elements (in words, so a float patch list is aligned for its floats).
 #[derive(Default)]
-pub struct Staged { res: alloc::vec::Vec<u8>, pos: alloc::vec::Vec<u16>, raw: alloc::vec::Vec<u8> }
+pub struct Staged { res: alloc::vec::Vec<u8>, pos: alloc::vec::Vec<u16>, raw: alloc::vec::Vec<u64> }
 /// A symbol: its bytes and length.
 #[repr(C)]
 pub struct CSym { pub p: *const u8, pub len: usize }
@@ -216,14 +211,6 @@ impl CCoc {
 }
 
 
-/// A16: coc.rs `coc_enc_for_meta`, C's `blk` step.
-pub unsafe extern "C" fn qrs_enc_for_meta(s: *mut CEnc, b: usize, x: *const u8, nb: usize) {
-    unsafe { let w = (*s).width; enc::for_meta(&mut (*s).meta_blk(b), sl(x, nb * w), w, nb) }
-}
-/// A16: coc.rs `coc_enc_for_pack`.
-pub unsafe extern "C" fn qrs_enc_for_pack(s: *mut CEnc, b: usize, x: *const u8, nb: usize) {
-    unsafe { let w = (*s).width; enc::for_pack(&mut (*s).pack_blk(b, nb, false), sl(x, nb * w), w) }
-}
 // A9: the ALP encoder's per-block steps that need nothing of A7. C reaches them through `coc *` and an exponent array
 // the Rust side has no view of (`EncMeta` is A16's), so each is its own entry per element type.
 /// The symbol column `blob` and `offs` (an `Array` of boxed starts) names, read where it lies: no copy of the starts, which a
@@ -430,19 +417,22 @@ pub unsafe extern "C" fn qrs_ew_pack_stage(lo: usize, hi: usize, p: *const CPass
         ew::pack_stage(p.cls, w, sl(p.a.cast::<u8>(), p.n * ew::ew_width(p.cls as u32)), p.n, lo, hi, sl_mut(p.o.cast::<u8>(), ew::ids_len(p.n, w)))
     }
 }
-/// ew.rs `ew_encmeta_run`: the writer's meta step over the tile the chain just computed (`p.o` the `coc_enc`).
-pub unsafe extern "C" fn qrs_ew_encmeta_stage(lo: usize, hi: usize, p: *const CPass) {
-    unsafe { qrs_enc_for_meta((*p).o.cast(), (*p).at >> (*(*p).o.cast::<CEnc>()).c.lg(), (*p).a.cast(), hi - lo) }
-}
-/// ew.rs `ew_encpack_run`: its pack step over the same tile.
-pub unsafe extern "C" fn qrs_ew_encpack_stage(lo: usize, hi: usize, p: *const CPass) {
-    unsafe { qrs_enc_for_pack((*p).o.cast(), (*p).at >> (*(*p).o.cast::<CEnc>()).c.lg(), (*p).a.cast(), hi - lo) }
+/// ew.rs `ew_encmeta_run` and `ew_encpack_run` in one: the writer's Frame of Reference steps over the tile (one block) the
+/// chain just computed, `p.o` the `CEnc` and `p.b` its `[Staged]`: the block's metadata, and its pack staged, as `Sink::staged`.
+pub unsafe extern "C" fn qrs_ew_enc_stage(lo: usize, hi: usize, p: *const CPass) {
+    unsafe {
+        let (s, nb) = ((*p).o.cast::<CEnc>(), hi - lo);
+        let (b, w) = ((*p).at >> (*s).c.lg(), (*s).width);
+        let x = sl((*p).a.cast::<u8>(), nb * w);
+        enc::for_meta(&mut (*s).meta_blk(b), x, w, nb);
+        enc::for_pack(&mut (*s).stage(b, nb, &mut *(*p).b.cast::<Staged>().cast_mut().add(b))(false), x, w)
+    }
 }
 /// ew.rs `ew_stage_worker`: the worker of `engine`, chosen once a stage and never per element.
 pub fn stage_worker(engine: u32) -> Worker {
     use ew::eng::*;
     match engine {
-        ENCMETA => qrs_ew_encmeta_stage, ENCPACK => qrs_ew_encpack_stage, VAL => qrs_ew_val_stage, CMP => qrs_ew_cmp_stage, MON => qrs_ew_mon_stage,
+        ENC => qrs_ew_enc_stage, VAL => qrs_ew_val_stage, CMP => qrs_ew_cmp_stage, MON => qrs_ew_mon_stage,
         WIDEN => qrs_ew_widen_stage, BIT => qrs_ew_bit_stage, FLOOR => qrs_ew_floor_stage, CAST => qrs_ew_cast_stage, DECODE => qrs_ew_decode_stage,
         TICK => qrs_ew_tick_stage, IDS => qrs_ew_ids_stage, PACK => qrs_ew_pack_stage, _ => qrs_ew_alp_stage,
     }
@@ -467,8 +457,8 @@ impl CCoc {
 
 /// ew.rs `qlean_ew_chain_enc`: `Coc.encode w (Ew.chain prog inputs n)`, the Frame-of-Reference encoder over the chain's
 /// answer. Below `qlean_worth_fusing` (the answer's bytes in L3) the chain runs once into a dense buffer that the `Sink`
-/// reads; above it the chain is the sink's source and runs twice, the sizing pass and then the packing pass, so the dense
-/// answer is never built. The sink's meta step and pack step are stages `k` of the chain, writing through its `CEnc`.
+/// reads; above it the chain is the sink's source, so the dense answer is never built: stage `k` is the sink's meta step,
+/// which stages each block's pack as `Sink::staged` does, so the chain runs once here too.
 pub fn chain_enc<'a>(prog: &[u8], input: &impl Fn(u8) -> &'a [u8], n: usize, width: usize) -> lean::O {
     let k = ew::stages(prog);
     let mut st = [const { CStage::EMPTY }; ew::SLOTS + 1];
@@ -483,12 +473,10 @@ pub fn chain_enc<'a>(prog: &[u8], input: &impl Fn(u8) -> &'a [u8], n: usize, wid
         return Sink::new(n, width, Form::For).answer(&Blocks::dense(dense.bytes_mut(), width));
     }
     let mut s = Sink::new(n, width, Form::For);
-    let ep: *mut CEnc = &raw mut s.e;
-    ew::enc_stage(&mut st, k, cls, ep.cast(), false, &mut cost);
+    let mut sv = s.staging();
+    ew::enc_stage(&mut st, k, cls, (&raw mut s.e).cast(), sv.as_mut_ptr().cast(), &mut cost);
     if n != 0 { c::run_chain(c::pool(), &st[..=k], n, cost, wide); }
-    unsafe { qrs_coc_enc_layout(ep) };
-    ew::enc_stage(&mut st, k, cls, ep.cast(), true, &mut cost);
-    if n != 0 { c::run_chain(c::pool(), &st[..=k], n, cost, wide); }
+    s.lay(&sv, usize::MAX).expect("qlean_ew_chain_enc: a write with no size test is laid out");
     s.finish()
 }
 
@@ -713,26 +701,31 @@ impl Sink {
         let msz = unsafe { lean::sarray_size(self.e.meta.cast()) };
         if below != usize::MAX { if below <= msz { return None } self.e.below = below - msz }
         let cost = if alp { crate::QLEAN_COST_MATH } else { crate::QLEAN_COST_ARITH };
-        // a block's pack goes at the prefix sum of every earlier block's widths and patch counts, known only after the meta
-        // pass; so the meta pass packs each block into its own `Staged` while the producer's block is at hand, and a copy
-        // places it, rather than a second pass running the producer again
-        let mut st: alloc::vec::Vec<Staged> = (0..self.g.nblk()).map(|_| Staged::default()).collect();
+        self.staged(cost, below, &|s, b, lo, nb, buf, st| unsafe {
+            enc::move_blk(p, &mut (*s).meta_blk(b), (*s).stage(b, nb, st), || p.block(b, lo, nb, w, buf), nb, w)
+        })?;
+        Some(self.finish())
+    }
+    /// One `Staged` a block of the grid.
+    fn staging(&self) -> alloc::vec::Vec<Staged> { (0..self.g.nblk()).map(|_| Staged::default()).collect() }
+    /// The one pass of an encoded form: `step` writes block `b`'s metadata and packs it into the `Staged` it is handed, then
+    /// `lay`. A block's pack goes at the prefix sum of every earlier block's widths and patch counts, known only after every
+    /// meta step, so staging it while its elements are at hand is what spares a second pass computing them again.
+    pub fn staged(&mut self, cost: u32, below: usize, step: &(dyn Fn(*mut CEnc, usize, usize, usize, &mut [u8], &mut Staged) + Sync)) -> Option<()> {
+        let mut st = self.staging();
         let sp = st.as_mut_ptr() as usize;
-        self.each(true, cost, &|s, b, lo, nb, buf| unsafe {
-            let (buf, got) = (core::cell::Cell::new(Some(buf)), core::cell::Cell::new(None));
-            let x = || got.get().unwrap_or_else(|| {
-                let v = p.block(b, lo, nb, w, buf.take().expect("qlean Sink: a block's buffer is lent once"));
-                got.set(Some(v));
-                v
-            });
-            enc::move_meta_blk(p, &mut (*s).meta_blk(b), &x, w, nb);
-            enc::move_pack_blk(p, (*s).stage(b, nb, &mut *(sp as *mut Staged).add(b)), &x, b, nb, w, alp);
-        });
-        // the size is known here, so a form that does not shrink is never laid out
+        // each block's `Staged` is that block's alone, as its metadata entries are
+        self.each(true, cost, &|s, b, lo, nb, buf| step(s, b, lo, nb, buf, unsafe { &mut *(sp as *mut Staged).add(b) }));
+        self.lay(&st, below)
+    }
+    /// The layout of a column whose blocks are staged in `st`, each copied to its place; `None`, and nothing laid out, where
+    /// the size test fails (`over`, or a size at or past `below`).
+    fn lay(&mut self, st: &[Staged], below: usize) -> Option<()> {
         if self.e.over != 0 || unsafe { qrs_coc_enc_plan(&mut self.e) } >= below { return None }
         unsafe { qrs_coc_enc_layout(&mut self.e) };
+        let sp = st.as_ptr() as usize;
         self.each(false, crate::QLEAN_COST_COPY, &|s, b, _, _, _| unsafe { (*s).place(b, &*(sp as *const Staged).add(b)) });
-        Some(self.finish())
+        Some(())
     }
     /// `write` with no size test: the answer of a kernel whose form is decided.
     pub fn answer<P: Producer + ?Sized>(self, p: &P) -> lean::O { self.write(p, false).expect("qlean Sink: a write with no size test has an answer") }
@@ -846,15 +839,15 @@ pub fn amend(n: usize, wi: usize, ranked: bool, compact: bool, idx: &[u8]) -> (l
     (res.expect("amend_index: the answer is allocated last").into(), dom.map(Into::into), rank.map(Into::into))
 }
 /// K23: `scatterFoR` (`a` is `None`) and `scatterALP` (`a` the exponents): `(meta, pack)` or `(meta, (pack, alp))`, the sink's
-/// answer. The blocks come from `structural::Scatter`, not from a producer, so its steps write each block themselves.
+/// answer. The blocks come from `structural::Scatter`, not from a producer, so its step writes each block itself.
 #[allow(clippy::too_many_arguments)]
 pub fn encode_scatter(w: usize, m: &[u8], pk: &[u8], a: Option<&[u8]>, n: usize, ix: &[u8], vals: &[u8]) -> lean::O {
     let alp = a.is_some();
     let sc = structural::Scatter::new(c::pool(), w, m, pk, a, n, ix, vals);
     let mut s = Sink::new(n, w, if alp { Form::Alp } else { Form::For });
-    s.each(true, if alp { crate::QLEAN_COST_MATH } else { crate::QLEAN_COST_ARITH }, &|e, b, _, _, _| unsafe { sc.meta(&mut (*e).meta_blk(b), b) });
-    unsafe { qrs_coc_enc_layout(&mut s.e) };
-    s.each(false, crate::QLEAN_COST_ARITH, &|e, b, _, nb, _| unsafe { sc.pack(&mut (*e).pack_blk(b, nb, sc.kept(b)), b) });
+    s.staged(if alp { crate::QLEAN_COST_MATH } else { crate::QLEAN_COST_ARITH }, usize::MAX,
+             &|e, b, _, nb, _, st| unsafe { sc.write(&mut (*e).meta_blk(b), (*e).stage(b, nb, st), b) })
+        .expect("qlean scatter: a write with no size test is laid out");
     s.finish()
 }
 /// The stats stage's worker: its fold over the two tiles, `p.o` the `Stats` of the phase running.
