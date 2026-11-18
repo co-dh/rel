@@ -77,7 +77,7 @@ ldd: native
 index:
 	$(GATE)
 	CAP_MEM_MB=$(MEM) $(CAP) $(LAKE) build RelCore RelKernel RelRun Rel
-	$(LR) index
+	CAP_MEM_MB=$(MEM) $(LR) index
 
 # the index gates read `dep`: a module missing from the index would pass them without being read
 index-complete: index
