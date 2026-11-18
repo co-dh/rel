@@ -387,7 +387,10 @@ def gradeColumn (t : QAtomicType) (desc : Bool) (n : USize) (e : Ext.Enc X) (ran
     match orderKind t with
     | none => none
     | some k =>
-      if k == .bit then none
+      -- a boolean `foR` is `u1`, every element 0 or 1, so its key is the `u8` one; `Kind.bit` reads only a bitmap
+      if k == .bit then match e with
+        | .foR md pk => some (.bytes (if rank then ranksFoR .u8 n md pk else gradeFoR .u8 desc n md pk))
+        | _ => none
       -- the encoded case first, so that `Enc.bytesOf` is never forced underneath the kernel that
       -- made it unnecessary: the key is `base + residual` biased, and no element is ever restored
       else match e with
