@@ -175,7 +175,12 @@ Size：S = 一步，少于 20 次 tool call；M = 一到三步；L = 多于三�
   码，按整数比较和排序（owner 经 dataframe 会话提出）。
 - ⬜ 6.10 迁移使用者，按 6.0 的表每组一步；同时让 `scan`/`scatter`/`gather`/`asc`/`distinct` 直接在 foR 块上计算，
   去掉 `foRWords` 解码与 `wordsFoR` 重编码（CLAUDE.md 规则：解码需 owner 批准）。vortex 1M 复测：relk 多数格输给 q，
-  主因就是这层解码/编码；`asc` 的 kern 本身也慢（38 ms 对 q 6 ms）。
+  主因就是这层解码/编码；`asc` 的 kern 本身也慢（38 ms 对 q 6 ms）。分析 `/data/tmp/p610-blocks.md`。
+  owner 批准（每个 kernel 的 doc comment 记下）：一次只把一块解码进 L1 scratch（8 KiB）算是按块计算，处处允许（S）；
+  `kscatter` 乱序下标先按输出块分组、扫两遍，不开整列数组（V）；`kasc` 一般 grade 用排列工作数组，宽 key 或多列 key
+  另加整列序码数组（X）。默认：带 patch 的源按地址随机读，先测；不做输入块原样透传，重跑编码器块步骤，Lean 不改。
+  顺序：`scan` → `gather` → `asc` → `scatter` → `distinct`；复用未 export 的旧 Rust（`codec::mask_cmp`、`cmp2`、
+  `ffi/coc.rs` `val_vv`、`gather_enc`、`sort::order_enc`、`encode_scatter`），经 `Sink` 写出。等计划外的 foR B 合并。
 - ⬜ 6.11 删除旧 extern 与旧 constructor；保留 SIMD 编解码函数。
 - ⬜ 6.12 native gate。
 - ⬜ 6.13（未决，owner 经 dataframe 会话决定）虚拟行号 key：frame 的行号对象 `I` 只存 `n`，磁盘与内存都不物化；
