@@ -472,6 +472,7 @@ Gate：`B RelKernel`、`sh crate/build.sh syms`、
 `make externs`。
 
 **6.6 / 6.7 / 6.8 opus — `gather`、`asc`、`distinct`（并行，在 6.4 和 6.5 之后）。** 6.6 `gather` 已完成（23b65e0，`raw_kgather`）。
+6.7 `asc` 已完成（76388c2，`asc_sorted` + `asc_perm`；走共享的 `foRWords`，`gather` 用它的 `ascGrade` 排序）；未做：`arr` 键的 MSD，浮点暂用 `ordKey` 直到 6.9。
 
 ```
 @[extern "qlean_k_gather"]   def Kernel.kgather (ix e : @& Enc) (fill : UInt64) : Enc

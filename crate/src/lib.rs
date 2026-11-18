@@ -42,6 +42,7 @@ pub mod os;
 /// the same names.
 #[path = "ffi"]
 pub mod exports {
+    pub mod asc;
     pub mod coc;
     pub mod distinct;
     pub mod env;
@@ -72,6 +73,8 @@ pub mod blocks;
 pub mod bitblk;
 /// cbindgen:ignore
 pub mod alp;
+/// cbindgen:ignore
+pub mod asc;
 /// cbindgen:ignore
 pub mod coc;
 /// cbindgen:ignore
