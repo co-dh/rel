@@ -99,8 +99,54 @@ abbrev foldIDen {I E V : Obj} (Te : Den I (.prod V V)) (TS : Den (.prod E (.prod
     Den (.prod I (.arr E)) V :=
   fun p w => foldDen (fun a b => Te p.1 (a, b)) (fun q v => TS (q.1, (p.1, q.2)) (p.1, v)) p.2 w
 
+/-- `foldIDen` is one `foldDen` on the carrier `I×V`: start `ran⟨𝟙, Te ≫ π₂⟩`, step `TS` met with
+    `π₂ ≫ π₁ ≫ π₁°` (the step keeps the index), its result's index met with the key's, then `π₂`. -/
+theorem foldIDen_eq {I E V : Obj} (Te : Den I (.prod V V)) (TS : Den (.prod E (.prod I V)) (.prod I V)) :
+    foldIDen Te TS =
+      ((graph Prod.fst ≫ (graph Prod.fst)°) ∩
+        (graph Prod.snd ≫ foldDen (E := E) (V := .prod I V)
+          (𝟙 _ ∩ (rpair (𝟙 _) (Te ≫ graph Prod.snd))° ≫ (rpair (𝟙 _) (Te ≫ graph Prod.snd))°°)
+          (TS ∩ (graph Prod.snd ≫ graph Prod.fst ≫ (graph Prod.fst)°)))) ≫ graph Prod.snd := by
+  refine Core.Rel.ext fun p w => ?_
+  simp only [foldIDen, foldDen, Core.Rel.comp, Core.Rel.inter, Core.Rel.recip, Core.Rel.graph, Core.Rel.rpair,
+    Core.Rel.id]
+  constructor
+  · rintro ⟨ys, hy, ⟨a, ha⟩, hS, rfl⟩
+    refine ⟨(p.1, ys[0]), ⟨⟨_, rfl, rfl⟩, _, rfl, ys.map (p.1, ·), by simp [hy],
+      ⟨_, rfl, p.1, ⟨?_, _, ha, ?_⟩, ?_, _, ha, ?_⟩, fun t ht => ⟨?_, _, rfl, _, rfl, ?_⟩, ?_⟩, rfl⟩
+    all_goals simp
+    simpa using hS t (by simpa using ht)
+  · rintro ⟨q, ⟨⟨i, rfl, hq⟩, xs, rfl, zs, hz, ⟨_, rfl, j, ⟨rfl, b, hb, hb2⟩, -, -⟩, hS, rfl⟩, rfl⟩
+    -- the step keeps the index, so every value of the chain carries the key's
+    have hidx : ∀ t (ht : t < zs.length), zs[t].1 = p.1 := by
+      intro t
+      induction t with
+      | zero => intro _; exact hq.symm
+      | succ t ih =>
+        intro ht
+        obtain ⟨-, _, rfl, _, rfl, he⟩ := hS t (by omega)
+        exact he.trans (ih (by omega))
+    refine ⟨zs.map Prod.snd, by simp [hz], ⟨b.1, ?_⟩, fun t ht => ?_, by simp⟩
+    · have e := hidx p.2.length (by omega)
+      simp only [List.getElem_map, hb2, ← e]
+      exact hb
+    · obtain ⟨h, -⟩ := hS t ht
+      have h1 : ((p.1, zs[t + 1].2) : (I.prod V).El) = zs[t + 1] := Prod.ext (hidx (t + 1) (by omega)).symm rfl
+      have h0 : ((p.1, zs[t].2) : (I.prod V).El) = zs[t] := Prod.ext (hidx t (by omega)).symm rfl
+      simp only [List.getElem_map]
+      rw [h1, h0]
+      exact h
+
 /-- `Rᴵ`: the family `R : I ⟶ A×B` as one relation of the key and the source. -/
 abbrev flatDen {I A B : Obj} (T : Den I (.prod A B)) : Den (.prod I A) B := fun x b => T x.1 (x.2, b)
+
+/-- `flatDen` is a composition: `(π₁ ≫ T) ∩ (π₂ ≫ π₁°)` keeps the `(a', b)` of `T` at the key with `a'` the
+    source, then `π₂`. -/
+theorem flatDen_eq {I A B : Obj} (T : Den I (.prod A B)) :
+    flatDen T = ((graph Prod.fst ≫ T) ∩ (graph Prod.snd ≫ (graph Prod.fst)°)) ≫ graph Prod.snd :=
+  Core.Rel.ext fun x b => ⟨fun h => ⟨(x.2, b), ⟨⟨x.1, rfl, h⟩, x.2, rfl, rfl⟩, rfl⟩,
+    fun ⟨⟨_, _⟩, ⟨⟨_, hi, hT⟩, _, ha, ha'⟩, hb⟩ => by
+      simp only [Core.Rel.recip, Core.Rel.graph, flatDen] at *; subst hi ha ha' hb; exact hT⟩
 
 /-- `est(Q)` keeps `b` of `xs` unless some other `c` of `xs` fails `Q` at `(b, c)`. -/
 abbrev estDen (TQ : Den (.prod B B) (.prod B B)) : Den (.arr B) B :=
