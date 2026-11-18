@@ -546,6 +546,9 @@ pub fn op_word(op: u8, a: u64, x: u64) -> u64 {
     let (i, f, w, fw) = (|v: u64| v as i64, f64::from_bits, |b: bool| b as u64, f64::to_bits);
     // a NaN is the least value (`Op.fle'`), so `fmin`/`fmax` choose under a total order
     let fle = |a: u64, x: u64| f(a).is_nan() || (!f(x).is_nan() && f(a) <= f(x));
+    // which NaN operand `+ - * /` return is unspecified (LLVM commutes `fadd`/`fmul` freely, so release and debug
+    // differ): fixed here as IEEE 754's recommendation and x86's scalar rule, the first NaN operand quieted
+    let ar = |r: f64| if !r.is_nan() { fw(r) } else if f(a).is_nan() { a | 1 << 51 } else if f(x).is_nan() { x | 1 << 51 } else { fw(r) };
     match op {
         0 => a.wrapping_add(x), 1 => a.wrapping_sub(x), 2 => a.wrapping_mul(x),
         3 => fdivmod(i(a), i(x) | (x == 0) as i64).0,
@@ -554,7 +557,7 @@ pub fn op_word(op: u8, a: u64, x: u64) -> u64 {
         7 => x.wrapping_neg(), 8 => if i(x) < 0 { x.wrapping_neg() } else { x },
         9 => w(a == x), 10 => w(a != x), 11 => w(i(a) < i(x)), 12 => w(i(a) <= i(x)), 13 => w(i(x) < i(a)), 14 => w(i(x) <= i(a)),
         15 => a & x, 16 => a | x, 17 => x ^ 1, 18 => a, 19 => x,
-        20 => fw(f(a) + f(x)), 21 => fw(f(a) - f(x)), 22 => fw(f(a) * f(x)), 23 => fw(f(a) / f(x)), 24 => fw(m::pow(f(a), f(x))),
+        20 => ar(f(a) + f(x)), 21 => ar(f(a) - f(x)), 22 => ar(f(a) * f(x)), 23 => ar(f(a) / f(x)), 24 => fw(m::pow(f(a), f(x))),
         25 => if fle(a, x) { a } else { x }, 26 => if fle(a, x) { x } else { a },
         27 => x ^ 0x8000_0000_0000_0000, 28 => x & 0x7fff_ffff_ffff_ffff,
         29 => fw(m::sqrt(f(x))), 30 => fw(m::exp(f(x))), 31 => fw(m::log(f(x))), 32 => fw(m::sin(f(x))), 33 => fw(m::cos(f(x))),
