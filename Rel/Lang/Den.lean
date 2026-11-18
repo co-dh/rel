@@ -586,6 +586,20 @@ theorem Tm.den_anti {A' B' : Obj} {d : Bool} {t : Tm A' B' d} {k : Nat} (h : t.p
     {X Y : Den A B} (hXY : X ⊑ Y) : t.den (ρ.bind k Y) ⊑ t.den (ρ.bind k X) :=
   t.den_pol k false _ _ h (Val.Grow.of_le hXY)
 
+/-- `μX : φ = φ[μX : φ]` where `X` occurs in `φ` only positively. -/
+theorem Tm.den_mu_unfold {A B : Obj} (k : Nat) (what : String) (cap : Nat) (b : Tm A B false)
+    (h : b.pol true k = true) (ρ : Val) :
+    (Tm.mu k what cap b).den ρ = (b.subst [(k, ⟨A, B, .mu k what cap b⟩)]).den ρ := by
+  rw [(b.den_subst _ (fun e he _ _ => by obtain rfl := List.mem_singleton.1 he; rfl) _).1]
+  exact (Core.Rel.mu_fix fun _ _ hXY => den_mono h hXY).symm
+
+/-- `νX : S ∩ φ = S ∩ φ[νX : S ∩ φ]` where `X` occurs in `φ` only positively; `S` is outside the binder. -/
+theorem Tm.den_nu_unfold {A B : Obj} (k : Nat) (S b : Tm A B false) (h : b.pol true k = true) (ρ : Val) :
+    (Tm.nu k S b).den ρ = (Tm.meet S (b.subst [(k, ⟨A, B, .nu k S b⟩)])).den ρ := by
+  show _ = S.den ρ ∩ _
+  rw [(b.den_subst _ (fun e he _ _ => by obtain rfl := List.mem_singleton.1 he; rfl) _).1]
+  exact (Core.Rel.nu_fix fun _ _ hXY => inter_le' (Core.Rel.le_refl _) (den_mono h hXY)).symm
+
 #print axioms Tm.den_pol
 #print axioms Core.Rel.mu_fix
 
