@@ -57,6 +57,25 @@ abbrev ldivDen (TR : Den A B) (TS : Den A C) (TB : Den B B) (TC : Den C C) : Den
 abbrev rdivDen (TR : Den A C) (TS : Den B C) (TA : Den A A) (TB : Den B B) : Den A B :=
   fun x y => (∀ c, TS y c → TR x c) ∧ ((∃ c, TS y c) ∨ ((∃ a, TA a x) ∧ ∃ b, TB b y))
 
+/-- `R÷S = R/S ∩ (S/R)°` within the universes `UA`, `UB`: `x` to `y` when `R x` and `S y` are one image. -/
+abbrev symDivDen (TA : Den A A) (TB : Den B B) (TR : Den A C) (TS : Den B C) : Den A B :=
+  rdivDen TR TS TA TB ∩ (rdivDen TS TR TB TA)°
+
+/-- `rep_symDiv` is `symDivDen` with the universes the coreflexives of `Ua`, `Ub`. It sits here, not in
+    `Rel.CRelRel`, because this module imports that one. -/
+theorem rep_symDiv_den {ma mb : USize} (R : CRel A C) (S : CRel B C) (Ua : Vals A ma) (Ub : Vals B mb)
+    (hb : (R.symDiv S Ua Ub).ok = true) :
+    rep (R.symDiv S Ua Ub).rel = symDivDen (corefl fun x => ∃ p, Ua.row p = x) (corefl fun y => ∃ j, Ub.row j = y)
+      (rep R.rel) (rep S.rel) := by
+  funext x y; apply propext; rw [CRel.rep_symDiv R S Ua Ub hb x y]
+  simp only [symDivDen, rdivDen, Core.Rel.inter, Core.Rel.recip, Core.Rel.corefl, exists_eq_left]
+  constructor
+  · rintro ⟨h, ⟨c, hc⟩ | hu⟩
+    · exact ⟨⟨fun c => (h c).2, .inl ⟨c, (h c).1 hc⟩⟩, fun c => (h c).1, .inl ⟨c, hc⟩⟩
+    · exact ⟨⟨fun c => (h c).2, .inr hu⟩, fun c => (h c).1, .inr hu.symm⟩
+  · rintro ⟨⟨h2, -⟩, h1, hu⟩
+    exact ⟨fun c => ⟨h1 c, h2 c⟩, hu.imp id And.symm⟩
+
 /-- `nil`: every source to the empty array. -/
 abbrev nilDen : Den A (.arr B) := fun _ Y => Y = []
 
@@ -99,8 +118,54 @@ abbrev foldIDen {I E V : Obj} (Te : Den I (.prod V V)) (TS : Den (.prod E (.prod
     Den (.prod I (.arr E)) V :=
   fun p w => foldDen (fun a b => Te p.1 (a, b)) (fun q v => TS (q.1, (p.1, q.2)) (p.1, v)) p.2 w
 
+/-- `foldIDen` is one `foldDen` on the carrier `I×V`: start `ran⟨𝟙, Te ≫ π₂⟩`, step `TS` met with
+    `π₂ ≫ π₁ ≫ π₁°` (the step keeps the index), its result's index met with the key's, then `π₂`. -/
+theorem foldIDen_eq {I E V : Obj} (Te : Den I (.prod V V)) (TS : Den (.prod E (.prod I V)) (.prod I V)) :
+    foldIDen Te TS =
+      ((graph Prod.fst ≫ (graph Prod.fst)°) ∩
+        (graph Prod.snd ≫ foldDen (E := E) (V := .prod I V)
+          (𝟙 _ ∩ (rpair (𝟙 _) (Te ≫ graph Prod.snd))° ≫ (rpair (𝟙 _) (Te ≫ graph Prod.snd))°°)
+          (TS ∩ (graph Prod.snd ≫ graph Prod.fst ≫ (graph Prod.fst)°)))) ≫ graph Prod.snd := by
+  refine Core.Rel.ext fun p w => ?_
+  simp only [foldIDen, foldDen, Core.Rel.comp, Core.Rel.inter, Core.Rel.recip, Core.Rel.graph, Core.Rel.rpair,
+    Core.Rel.id]
+  constructor
+  · rintro ⟨ys, hy, ⟨a, ha⟩, hS, rfl⟩
+    refine ⟨(p.1, ys[0]), ⟨⟨_, rfl, rfl⟩, _, rfl, ys.map (p.1, ·), by simp [hy],
+      ⟨_, rfl, p.1, ⟨?_, _, ha, ?_⟩, ?_, _, ha, ?_⟩, fun t ht => ⟨?_, _, rfl, _, rfl, ?_⟩, ?_⟩, rfl⟩
+    all_goals simp
+    simpa using hS t (by simpa using ht)
+  · rintro ⟨q, ⟨⟨i, rfl, hq⟩, xs, rfl, zs, hz, ⟨_, rfl, j, ⟨rfl, b, hb, hb2⟩, -, -⟩, hS, rfl⟩, rfl⟩
+    -- the step keeps the index, so every value of the chain carries the key's
+    have hidx : ∀ t (ht : t < zs.length), zs[t].1 = p.1 := by
+      intro t
+      induction t with
+      | zero => intro _; exact hq.symm
+      | succ t ih =>
+        intro ht
+        obtain ⟨-, _, rfl, _, rfl, he⟩ := hS t (by omega)
+        exact he.trans (ih (by omega))
+    refine ⟨zs.map Prod.snd, by simp [hz], ⟨b.1, ?_⟩, fun t ht => ?_, by simp⟩
+    · have e := hidx p.2.length (by omega)
+      simp only [List.getElem_map, hb2, ← e]
+      exact hb
+    · obtain ⟨h, -⟩ := hS t ht
+      have h1 : ((p.1, zs[t + 1].2) : (I.prod V).El) = zs[t + 1] := Prod.ext (hidx (t + 1) (by omega)).symm rfl
+      have h0 : ((p.1, zs[t].2) : (I.prod V).El) = zs[t] := Prod.ext (hidx t (by omega)).symm rfl
+      simp only [List.getElem_map]
+      rw [h1, h0]
+      exact h
+
 /-- `Rᴵ`: the family `R : I ⟶ A×B` as one relation of the key and the source. -/
 abbrev flatDen {I A B : Obj} (T : Den I (.prod A B)) : Den (.prod I A) B := fun x b => T x.1 (x.2, b)
+
+/-- `flatDen` is a composition: `(π₁ ≫ T) ∩ (π₂ ≫ π₁°)` keeps the `(a', b)` of `T` at the key with `a'` the
+    source, then `π₂`. -/
+theorem flatDen_eq {I A B : Obj} (T : Den I (.prod A B)) :
+    flatDen T = ((graph Prod.fst ≫ T) ∩ (graph Prod.snd ≫ (graph Prod.fst)°)) ≫ graph Prod.snd :=
+  Core.Rel.ext fun x b => ⟨fun h => ⟨(x.2, b), ⟨⟨x.1, rfl, h⟩, x.2, rfl, rfl⟩, rfl⟩,
+    fun ⟨⟨_, _⟩, ⟨⟨_, hi, hT⟩, _, ha, ha'⟩, hb⟩ => by
+      simp only [Core.Rel.recip, Core.Rel.graph, flatDen] at *; subst hi ha ha' hb; exact hT⟩
 
 /-- `est(Q)` keeps `b` of `xs` unless some other `c` of `xs` fails `Q` at `(b, c)`. -/
 abbrev estDen (TQ : Den (.prod B B) (.prod B B)) : Den (.arr B) B :=
@@ -585,6 +650,20 @@ theorem Tm.den_mono {A' B' : Obj} {d : Bool} {t : Tm A' B' d} {k : Nat} (h : t.p
 theorem Tm.den_anti {A' B' : Obj} {d : Bool} {t : Tm A' B' d} {k : Nat} (h : t.pol false k = true) {ρ : Val}
     {X Y : Den A B} (hXY : X ⊑ Y) : t.den (ρ.bind k Y) ⊑ t.den (ρ.bind k X) :=
   t.den_pol k false _ _ h (Val.Grow.of_le hXY)
+
+/-- `μX : φ = φ[μX : φ]` where `X` occurs in `φ` only positively. -/
+theorem Tm.den_mu_unfold {A B : Obj} (k : Nat) (what : String) (cap : Nat) (b : Tm A B false)
+    (h : b.pol true k = true) (ρ : Val) :
+    (Tm.mu k what cap b).den ρ = (b.subst [(k, ⟨A, B, .mu k what cap b⟩)]).den ρ := by
+  rw [(b.den_subst _ (fun e he _ _ => by obtain rfl := List.mem_singleton.1 he; rfl) _).1]
+  exact (Core.Rel.mu_fix fun _ _ hXY => den_mono h hXY).symm
+
+/-- `νX : S ∩ φ = S ∩ φ[νX : S ∩ φ]` where `X` occurs in `φ` only positively; `S` is outside the binder. -/
+theorem Tm.den_nu_unfold {A B : Obj} (k : Nat) (S b : Tm A B false) (h : b.pol true k = true) (ρ : Val) :
+    (Tm.nu k S b).den ρ = (Tm.meet S (b.subst [(k, ⟨A, B, .nu k S b⟩)])).den ρ := by
+  show _ = S.den ρ ∩ _
+  rw [(b.den_subst _ (fun e he _ _ => by obtain rfl := List.mem_singleton.1 he; rfl) _).1]
+  exact (Core.Rel.nu_fix fun _ _ hXY => inter_le' (Core.Rel.le_refl _) (den_mono h hXY)).symm
 
 #print axioms Tm.den_pol
 #print axioms Core.Rel.mu_fix
