@@ -94,7 +94,7 @@ theorem _root_.Rel.Obj.razeC_fits : (A : Obj) → {n m : USize} → (x : Vals A 
     `enum` only at `symbol`) and no ALP layout: the clause's other bounds are then about the counts themselves.
     At `symbol` the dictionaries, at `.arr`/`.sum` the payloads, are not bounded by the row counts. -/
 theorem razeFits_atom_count {t : QAtomicType} {n m : USize} (x : Arr t n) (y : Arr t m)
-    (hN : n.toNat + m.toNat < USize.size) (hs : t ≠ .symbol) (ha : Column.alpEncodes t = false) :
+    (hN : n.toNat + m.toNat < USize.size) (hs : t ≠ .sym) (ha : Column.alpEncodes t = false) :
     Vals.RazeFits (.atom t) x y := by
   have no : ∀ {k : USize} (z : Arr t k) d o i, Arr.enc z ≠ .enum d o i := fun z d o i he => by
     have hw := z.wf; rw [he] at hw; cases t <;> simp_all [Enc.WF]
@@ -113,7 +113,7 @@ theorem razeTo2_fits {t : QAtomicType} {n m : USize} (x : Arr t n) (y : Arr t m)
     (hN : ((#[⟨n, x⟩, ⟨m, y⟩] : Array (Part (.atom t))).toList.map fun c : Part (.atom t) => c.1.toNat).sum <
       USize.size)
     (hF : Vals.RazeFits (.atom t) x y)
-    (ht : t = .boolean ∨ t = .general ∨ t = .symbol ∨
+    (ht : t = .u1 ∨ t = .general ∨ t = .sym ∨
       ((∃ b, x.enc = .bytes b) ∧ ∃ b, y.enc = .bytes b)) :
     (razeTo t #[⟨n, x⟩, ⟨m, y⟩] rfl hN).toList = x.toList ++ y.toList := by
   rcases ht with rfl | rfl | rfl | ⟨hx, hy⟩

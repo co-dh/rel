@@ -412,7 +412,7 @@ def arithB (op : UInt8) (n u v : Nat) : Bld (Array Nat) := do
   let r ← lenB k
   let w ← lit (.size 8)
   let g (fill : UInt64) (x : Nat) := do call1 (kernel% Kernel.gatherBytes) #[w, ← lit (.u64 fill), x, k]
-  let nf := (Kernel.nullBits .long).getD 0
+  let nf := (Kernel.nullBits .i64).getD 0
   return #[r, ← g nf u, ← g nf v, ← g 0 s]
 
 end Rel.Lang.Plan

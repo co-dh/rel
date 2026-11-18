@@ -55,10 +55,10 @@ theorem gatherColumn_get_dense {t : QAtomicType} {w : Nat} (ht : denseWidth t = 
     List.getElem?_eq_getElem (by simp only [Array.length_toList, hR]; exact hin)]
 
 /-- Belongs in qlean. **`x@i` at `boolean`, read back**: bit `k` of the answer is bit `i[k]` of `x`. -/
-theorem gatherColumn_get_bits {n : USize} {e : Enc} (hw : Enc.WF .boolean n e) {m : USize} {i : ByteArray}
-    (hm : m.toNat = i.size / 8) {e' : Enc} (h : gatherColumn .boolean n e m (.bytes i) = some e') {k : Nat}
+theorem gatherColumn_get_bits {n : USize} {e : Enc} (hw : Enc.WF .u1 n e) {m : USize} {i : ByteArray}
+    (hm : m.toNat = i.size / 8) {e' : Enc} (h : gatherColumn .u1 n e m (.bytes i) = some e') {k : Nat}
     (hk : k < m.toNat) (hin : (Column.bitsAt i (k * 8) 8).toNat < n.toNat) :
-    Enc.get .boolean m e' k = Enc.get .boolean n e (Column.bitsAt i (k * 8) 8).toNat := by
+    Enc.get .u1 m e' k = Enc.get .u1 n e (Column.bitsAt i (k * 8) 8).toNat := by
   have hz : ¬ i.size < m.toNat * 8 := by omega
   cases e <;> try (exfalso; simp_all [Enc.WF, QAtomicType.width]; done)
   simp only [gatherColumn, denseWidth, foRColumn, Enc.bytesOf, hz, if_false, Option.map_some,
@@ -84,10 +84,10 @@ theorem extract_upto (b : ByteArray) (lo hi : Nat) :
 /-- Belongs in qlean. **`x@i` at a `symbol` blob, read back**: symbol `k` of the answer is symbol `i[k]`
     of `x`. -/
 theorem gatherColumn_get_syms {n : USize} {blob : ByteArray} {offs : Array Nat}
-    (hw : Enc.WF (X := Empty) .symbol n (.syms blob offs)) {m : USize} {i : ByteArray}
-    (hm : m.toNat = i.size / 8) {e' : Enc} (h : gatherColumn .symbol n (.syms blob offs) m (.bytes i) = some e')
+    (hw : Enc.WF (X := Empty) .sym n (.syms blob offs)) {m : USize} {i : ByteArray}
+    (hm : m.toNat = i.size / 8) {e' : Enc} (h : gatherColumn .sym n (.syms blob offs) m (.bytes i) = some e')
     {k : Nat} (hk : k < m.toNat) (hin : (Column.bitsAt i (k * 8) 8).toNat < n.toNat) :
-    Enc.get .symbol m e' k = Enc.get (X := Empty) .symbol n (.syms blob offs) (Column.bitsAt i (k * 8) 8).toNat := by
+    Enc.get .sym m e' k = Enc.get (X := Empty) .sym n (.syms blob offs) (Column.bitsAt i (k * 8) 8).toNat := by
   have hz : ¬ i.size < m.toNat * 8 := by omega
   simp only [gatherColumn, denseWidth, foRColumn, Enc.bytesOf, hz, if_false, Option.map_some,
     Option.some.injEq] at h
@@ -216,10 +216,10 @@ theorem symKey_push {d : ByteArray} {o : Array Nat} (hl : o[o.size - 1]! = d.siz
 /-- Belongs in qlean. **`x@i` at an interned symbol column, read back**: symbol `k` of the answer is
     symbol `i[k]` of `x`, the empty symbol a miss would point at appended past every entry. -/
 theorem gatherColumn_get_enum {n : USize} {d : ByteArray} {o : Array Nat} {ids : ByteArray}
-    (hw : Enc.WF (X := Empty) .symbol n (.enum d o ids)) {m : USize} {i : ByteArray} (hm : m.toNat = i.size / 8)
-    {e' : Enc} (h : gatherColumn .symbol n (.enum d o ids) m (.bytes i) = some e') {k : Nat}
+    (hw : Enc.WF (X := Empty) .sym n (.enum d o ids)) {m : USize} {i : ByteArray} (hm : m.toNat = i.size / 8)
+    {e' : Enc} (h : gatherColumn .sym n (.enum d o ids) m (.bytes i) = some e') {k : Nat}
     (hk : k < m.toNat) (hin : (Column.bitsAt i (k * 8) 8).toNat < n.toNat) :
-    Enc.get .symbol m e' k = Enc.get (X := Empty) .symbol n (.enum d o ids) (Column.bitsAt i (k * 8) 8).toNat := by
+    Enc.get .sym m e' k = Enc.get (X := Empty) .sym n (.enum d o ids) (Column.bitsAt i (k * 8) 8).toNat := by
   have hz : ¬ i.size < m.toNat * 8 := by omega
   have hm0 : (m == 0) = false := by
     rw [beq_eq_false_iff_ne]; rintro rfl; simp at hk
@@ -248,7 +248,7 @@ theorem gatherColumn_get_enum {n : USize} {d : ByteArray} {o : Array Nat} {ids :
     have hpow : 2 ^ Column.idWidth o ≤ 2 ^ Column.idWidth (o.push (d.size + 1)) :=
       Nat.pow_le_pow_right (by decide) (idWidthOf_mono (by simp only [Array.size_push]; omega))
     rw [hread (Column.idWidth (o.push (d.size + 1))) _ (Verify.laneWidth_cases _) hpow ?_]
-    · exact congrArg (fun b => some (QAtom.symbol ((String.fromUTF8? b).getD ""))) (symKey_push hl hle _)
+    · exact congrArg (fun b => some (QAtom.sym ((String.fromUTF8? b).getD ""))) (symKey_push hl hle _)
     · simp only [hg]
 
 /-- Belongs in qlean. **`x@i` read back** at every atom type but `general`: element `k` of the answer is
@@ -261,9 +261,9 @@ theorem gatherColumn_get {t : QAtomicType} {n : USize} {e : Enc} (hw : Enc.WF t 
   cases hd : denseWidth t with
   | some w => exact gatherColumn_get_dense hd hw hm h hk hin
   | none =>
-    by_cases hb : t = .boolean
+    by_cases hb : t = .u1
     · subst hb; exact gatherColumn_get_bits hw hm h hk hin
-    have hs : t = .symbol := by cases t <;> simp_all [denseWidth, QAtomicType.width]
+    have hs : t = .sym := by cases t <;> simp_all [denseWidth, QAtomicType.width]
     subst hs
     cases e with
     | syms b o => exact gatherColumn_get_syms hw hm h hk hin
@@ -305,10 +305,10 @@ theorem gatherColumn_miss_dense {t : QAtomicType} {w : Nat} (ht : denseWidth t =
   exact congrArg some (atomOfBits_fill ht _)
 
 /-- Belongs in qlean. **`x@i` at `boolean`, a miss**: bit `k` of the answer is `0b`. -/
-theorem gatherColumn_miss_bits {n : USize} {e : Enc} (hw : Enc.WF .boolean n e) {m : USize} {i : ByteArray}
-    (hm : m.toNat = i.size / 8) {e' : Enc} (h : gatherColumn .boolean n e m (.bytes i) = some e') {k : Nat}
+theorem gatherColumn_miss_bits {n : USize} {e : Enc} (hw : Enc.WF .u1 n e) {m : USize} {i : ByteArray}
+    (hm : m.toNat = i.size / 8) {e' : Enc} (h : gatherColumn .u1 n e m (.bytes i) = some e') {k : Nat}
     (hk : k < m.toNat) (hout : n.toNat ≤ (Column.bitsAt i (k * 8) 8).toNat) :
-    Enc.get .boolean m e' k = some (Eval.nullAtom .boolean) := by
+    Enc.get .u1 m e' k = some (Eval.nullAtom .u1) := by
   have hz : ¬ i.size < m.toNat * 8 := by omega
   cases e <;> try (exfalso; simp_all [Enc.WF, QAtomicType.width]; done)
   simp only [gatherColumn, denseWidth, foRColumn, Enc.bytesOf, hz, if_false, Option.map_some,
@@ -319,10 +319,10 @@ theorem gatherColumn_miss_bits {n : USize} {e : Enc} (hw : Enc.WF .boolean n e) 
 
 /-- Belongs in qlean. **`x@i` at a `symbol` blob, a miss**: symbol `k` of the answer is the empty one. -/
 theorem gatherColumn_miss_syms {n : USize} {blob : ByteArray} {offs : Array Nat}
-    (hw : Enc.WF (X := Empty) .symbol n (.syms blob offs)) {m : USize} {i : ByteArray}
-    (hm : m.toNat = i.size / 8) {e' : Enc} (h : gatherColumn .symbol n (.syms blob offs) m (.bytes i) = some e')
+    (hw : Enc.WF (X := Empty) .sym n (.syms blob offs)) {m : USize} {i : ByteArray}
+    (hm : m.toNat = i.size / 8) {e' : Enc} (h : gatherColumn .sym n (.syms blob offs) m (.bytes i) = some e')
     {k : Nat} (hk : k < m.toNat) (hout : n.toNat ≤ (Column.bitsAt i (k * 8) 8).toNat) :
-    Enc.get .symbol m e' k = some (Eval.nullAtom .symbol) := by
+    Enc.get .sym m e' k = some (Eval.nullAtom .sym) := by
   have hz : ¬ i.size < m.toNat * 8 := by omega
   simp only [gatherColumn, denseWidth, foRColumn, Enc.bytesOf, hz, if_false, Option.map_some,
     Option.some.injEq] at h
@@ -415,10 +415,10 @@ theorem gatherIds_miss {dict : ByteArray} {dof : Array Nat} {inRange : Unit → 
 /-- Belongs in qlean. **`x@i` at an interned symbol column, a miss**: symbol `k` of the answer is the empty
     one, the dictionary's own empty entry or one appended; the dictionary's count fits a `USize` (`ho`). -/
 theorem gatherColumn_miss_enum {n : USize} {d : ByteArray} {o : Array Nat} {ids : ByteArray}
-    (hw : Enc.WF (X := Empty) .symbol n (.enum d o ids)) (ho : o.size - 1 < USize.size) {m : USize} {i : ByteArray}
-    (hm : m.toNat = i.size / 8) {e' : Enc} (h : gatherColumn .symbol n (.enum d o ids) m (.bytes i) = some e')
+    (hw : Enc.WF (X := Empty) .sym n (.enum d o ids)) (ho : o.size - 1 < USize.size) {m : USize} {i : ByteArray}
+    (hm : m.toNat = i.size / 8) {e' : Enc} (h : gatherColumn .sym n (.enum d o ids) m (.bytes i) = some e')
     {k : Nat} (hk : k < m.toNat) (hout : n.toNat ≤ (Column.bitsAt i (k * 8) 8).toNat) :
-    Enc.get .symbol m e' k = some (Eval.nullAtom .symbol) := by
+    Enc.get .sym m e' k = some (Eval.nullAtom .sym) := by
   have hz : ¬ i.size < m.toNat * 8 := by omega
   have hm0 : (m == 0) = false := by
     rw [beq_eq_false_iff_ne]; intro h0; rw [h0] at hk; simp at hk
@@ -434,8 +434,8 @@ theorem gatherColumn_miss_enum {n : USize} {d : ByteArray} {o : Array Nat} {ids 
   have H := gatherIds_miss (inRange := fun _ => allBelow n i) (ids := ids) hw.2.1 ho (by omega) hmiss hin
   have hg : ∀ (db : ByteArray) (dbo : Array Nat) (nids : ByteArray),
       Column.symKey db dbo (Column.idAt nids (Column.idWidth dbo) k) = ByteArray.empty →
-      Enc.get (X := Empty) .symbol m (.enum db dbo nids) k = some (Eval.nullAtom .symbol) := fun db dbo nids hE => by
-    rw [show Enc.get (X := Empty) .symbol m (.enum db dbo nids) k = some (.symbol ((String.fromUTF8?
+      Enc.get (X := Empty) .sym m (.enum db dbo nids) k = some (Eval.nullAtom .sym) := fun db dbo nids hE => by
+    rw [show Enc.get (X := Empty) .sym m (.enum db dbo nids) k = some (.sym ((String.fromUTF8?
       (Column.symKey db dbo (Column.idAt nids (Column.idWidth dbo) k))).getD "")) by
         simp only [Enc.get, if_pos hk]; rfl, hE]
     rfl
@@ -453,9 +453,9 @@ theorem gatherColumn_miss {t : QAtomicType} {n : USize} {e : Enc} (hw : Enc.WF t
   cases hdw : denseWidth t with
   | some w => exact gatherColumn_miss_dense hdw hw hm h hk hout
   | none =>
-    by_cases hb : t = .boolean
+    by_cases hb : t = .u1
     · subst hb; exact gatherColumn_miss_bits hw hm h hk hout
-    have hs : t = .symbol := by cases t <;> simp_all [denseWidth, QAtomicType.width]
+    have hs : t = .sym := by cases t <;> simp_all [denseWidth, QAtomicType.width]
     subst hs
     cases e with
     | syms b o => exact gatherColumn_miss_syms hw hm h hk hout

@@ -22,7 +22,7 @@ open Tab Rel.Dep Rel.Kernel Rel.Verify Rel
 /-! ## Atoms: a boolean side -/
 
 /-- A boolean column's payload is its bitmap, `tagBits`. -/
-theorem enc_tagBits {n : USize} (x : Arr .boolean n) : x.enc = .bits (tagBits x) := by
+theorem enc_tagBits {n : USize} (x : Arr .u1 n) : x.enc = .bits (tagBits x) := by
   have key : ∀ (e : Enc) (o : Option ByteArray), (o = match e with | .bits b => some b | _ => none) →
       ∀ h : o.isSome, e = .bits (o.get h) := by
     intro e o ho h; subst ho; cases e <;> first | rfl | simp at h
@@ -30,21 +30,21 @@ theorem enc_tagBits {n : USize} (x : Arr .boolean n) : x.enc = .bits (tagBits x)
 
 /-- **A boolean side's codes are its bitmaps**: every part's payload is `bits` (`Enc.WF .boolean`), so
     `codes` takes its first branch, each part its own code a bit wide. -/
-theorem codes_boolean {p : Nat} (cs : Vector (Part (.atom .boolean)) p) :
-    Obj.codes (.atom .boolean) cs = cs.map fun c => (⟨1, c.1, 2, tagBits c.2⟩ : Code) := by
-  show Alg.codes .boolean cs = _
+theorem codes_boolean {p : Nat} (cs : Vector (Part (.atom .u1)) p) :
+    Obj.codes (.atom .u1) cs = cs.map fun c => (⟨1, c.1, 2, tagBits c.2⟩ : Code) := by
+  show Alg.codes .u1 cs = _
   unfold Alg.codes
   rw [dif_neg (by decide)]
-  have e : (cs.mapM fun c : Part (.atom .boolean) => some (⟨1, c.1, 2, tagBits c.2⟩ : Code)) =
+  have e : (cs.mapM fun c : Part (.atom .u1) => some (⟨1, c.1, 2, tagBits c.2⟩ : Code)) =
       some (cs.map fun c => (⟨1, c.1, 2, tagBits c.2⟩ : Code)) := Vector.mapM_pure _
   simp only [enc_tagBits, e]
 
 /-- **A boolean side's codes are faithful, jointly across its parts**: part `k`'s code at `i` and part `l`'s
     at `j` agree exactly when the rows do. -/
-theorem codes_boolean_faithful {p : Nat} (cs : Vector (Part (.atom .boolean)) p) {k l : Nat}
+theorem codes_boolean_faithful {p : Nat} (cs : Vector (Part (.atom .u1)) p) {k l : Nat}
     (hk : k < p) (hl : l < p) {i j : Nat} (hi : i < cs[k].1.toNat) (hj : j < cs[l].1.toNat) :
-    Column.idAt (Obj.codes (.atom .boolean) cs)[k].b (Obj.codes (.atom .boolean) cs)[k].w i =
-        Column.idAt (Obj.codes (.atom .boolean) cs)[l].b (Obj.codes (.atom .boolean) cs)[l].w j ↔
+    Column.idAt (Obj.codes (.atom .u1) cs)[k].b (Obj.codes (.atom .u1) cs)[k].w i =
+        Column.idAt (Obj.codes (.atom .u1) cs)[l].b (Obj.codes (.atom .u1) cs)[l].w j ↔
       Vals.row cs[k].2 ⟨i, hi⟩ = Vals.row cs[l].2 ⟨j, hj⟩ := by
   simp only [codes_boolean, Vector.getElem_map]
   rw [idAt_one, idAt_one, Vals.row_atom, Vals.row_atom, Arr.get_bool_bits cs[k].2 (enc_tagBits _),
@@ -53,14 +53,14 @@ theorem codes_boolean_faithful {p : Nat} (cs : Vector (Part (.atom .boolean)) p)
 
 /-- **A boolean side's codes are well formed**: a bit wide, `⌈n/8⌉` bytes, every code `0` or `1`, below
     `card = 2`. -/
-theorem codes_boolean_wf {p : Nat} (cs : Vector (Part (.atom .boolean)) p) {k : Nat} (hk : k < p) :
-    (Obj.codes (.atom .boolean) cs)[k].n = cs[k].1 ∧ (Obj.codes (.atom .boolean) cs)[k].w = 1 ∧
-      (Obj.codes (.atom .boolean) cs)[k].b.size =
-        ((Obj.codes (.atom .boolean) cs)[k].n.toNat * (Obj.codes (.atom .boolean) cs)[k].w + 7) / 8 ∧
-      ((Obj.codes (.atom .boolean) cs)[k].w < 8 → (Obj.codes (.atom .boolean) cs)[k].card < USize.size ∧
-        ∀ i < (Obj.codes (.atom .boolean) cs)[k].n.toNat,
-          Column.idAt (Obj.codes (.atom .boolean) cs)[k].b (Obj.codes (.atom .boolean) cs)[k].w i <
-            (Obj.codes (.atom .boolean) cs)[k].card) := by
+theorem codes_boolean_wf {p : Nat} (cs : Vector (Part (.atom .u1)) p) {k : Nat} (hk : k < p) :
+    (Obj.codes (.atom .u1) cs)[k].n = cs[k].1 ∧ (Obj.codes (.atom .u1) cs)[k].w = 1 ∧
+      (Obj.codes (.atom .u1) cs)[k].b.size =
+        ((Obj.codes (.atom .u1) cs)[k].n.toNat * (Obj.codes (.atom .u1) cs)[k].w + 7) / 8 ∧
+      ((Obj.codes (.atom .u1) cs)[k].w < 8 → (Obj.codes (.atom .u1) cs)[k].card < USize.size ∧
+        ∀ i < (Obj.codes (.atom .u1) cs)[k].n.toNat,
+          Column.idAt (Obj.codes (.atom .u1) cs)[k].b (Obj.codes (.atom .u1) cs)[k].w i <
+            (Obj.codes (.atom .u1) cs)[k].card) := by
   rw [codes_boolean, Vector.getElem_map]
   have hw := cs[k].2.wf
   rw [enc_tagBits] at hw
@@ -76,7 +76,7 @@ kinds only), so `codes` interns nothing and groups: `groupIdsColumn`, ids by fir
 /-- The integral sort kinds below eight bytes. -/
 theorem small_int_width {t : QAtomicType} {k : Scan.Kind} (ht : orderKind t = some k)
     (hk : k = .u8 ∨ k = .i16 ∨ k = .i32) :
-    t.width = some k.width ∧ denseWidth t = some k.width ∧ t ≠ .general ∧ t ≠ .boolean ∧ t ≠ .symbol := by
+    t.width = some k.width ∧ denseWidth t = some k.width ∧ t ≠ .general ∧ t ≠ .u1 ∧ t ≠ .sym := by
   cases t <;> simp [orderKind] at ht <;> subst ht <;> simp_all [QAtomicType.width, denseWidth, Scan.Kind.width]
 
 /-- **The atom a small integral column reads is its low `8·w` bits**: two raw words read as one element
@@ -877,9 +877,9 @@ theorem codes_long_one_wf {t : QAtomicType} (ht : orderKind t = some .i64) (x : 
 
 -- -1, 0W, 0N past 2^32 rows: the span 0W - (-1) = 2^63 is no `Int64` offset (it would wrap onto 0N's
 -- code), so `rangeOffsets` declines and `codes` groups; -1, 5, 0N still answers
-#guard (rangeOffsets .long #v[((3 : USize), Enc.bytes (one (-1 : Int64).toUInt64 ++ one Int64.maxValue.toUInt64 ++
+#guard (rangeOffsets .i64 #v[((3 : USize), Enc.bytes (one (-1 : Int64).toUInt64 ++ one Int64.maxValue.toUInt64 ++
   one Int64.minValue.toUInt64))] (2 ^ 33)).isNone
-#guard (rangeOffsets .long #v[((3 : USize), Enc.bytes (one (-1 : Int64).toUInt64 ++ one (5 : Int64).toUInt64 ++
+#guard (rangeOffsets .i64 #v[((3 : USize), Enc.bytes (one (-1 : Int64).toUInt64 ++ one (5 : Int64).toUInt64 ++
   one Int64.minValue.toUInt64))] (2 ^ 33)).isSome
 
 #print axioms codes_long_faithful

@@ -79,14 +79,14 @@ columns after the first at row `i`, from the previous row's word, or from the fi
 a segment there (row 0 always); every column held `n` raw words. -/
 theorem raw_kscan (op : Op) (s t : QAtomicType) (w : Nat) (ht : t.width = some w) (n : USize) (seg : Enc)
     (es : List Enc) (e : Enc) (h : kscan op s t n seg es = .ok e) :
-    (seg.raw .boolean n).size = n.toNat ∧ (∀ x ∈ es, (x.raw s n).size = n.toNat) ∧
+    (seg.raw .u1 n).size = n.toNat ∧ (∀ x ∈ es, (x.raw s n).size = n.toNat) ∧
     ∃ c cs, es = c :: cs ∧ ∃ out : Array UInt64, out.size = n.toNat ∧
-      e.raw t n = out.map (fun v => UInt64.ofNat (v.toNat % 2 ^ (if t = .boolean then 1 else 8 * w))) ∧
+      e.raw t n = out.map (fun v => UInt64.ofNat (v.toNat % 2 ^ (if t = .u1 then 1 else 8 * w))) ∧
       ∀ i (hi : i < out.size), (cs.map (·.raw s n)).foldlM (fun a x => op.eval a (x[i]?.getD 0))
-        (if 0 < i ∧ (seg.raw .boolean n)[i]?.getD 0 = 0 then out[i - 1]?.getD 0 else (c.raw s n)[i]?.getD 0) =
+        (if 0 < i ∧ (seg.raw .u1 n)[i]?.getD 0 = 0 then out[i - 1]?.getD 0 else (c.raw s n)[i]?.getD 0) =
           .ok out[i] := by
   unfold kscan at h
-  cases hg : rawAll .boolean n seg with
+  cases hg : rawAll .u1 n seg with
   | error m => simp [hg, bind, Except.bind] at h
   | ok g =>
     obtain ⟨rfl, hgs⟩ := rawAll_ok hg
@@ -97,14 +97,14 @@ theorem raw_kscan (op : Op) (s t : QAtomicType) (w : Nat) (ht : t.width = some w
       cases es with
       | nil => simp [hg, hc, bind, Except.bind] at h
       | cons c es =>
-        cases hf : (List.range n.toNat).foldlM (kscanRow op (seg.raw .boolean n) (c.raw s n)
+        cases hf : (List.range n.toNat).foldlM (kscanRow op (seg.raw .u1 n) (c.raw s n)
             (es.map (·.raw s n))) #[] with
         | error m => simp [hg, hc, hf, bind, Except.bind] at h
         | ok out =>
           obtain ⟨hos, hrow⟩ := foldlM_kscanRow _ _ _ _ _ _ hf
           simp only [hg, hc, hf, bind, Except.bind, List.map_cons, ht, pure, Except.pure] at h
           refine ⟨hgs, hsz, c, es, rfl, out, hos, ?_, hrow⟩
-          by_cases hb : t = .boolean
+          by_cases hb : t = .u1
           · subst hb
             simp only [if_true] at h
             cases h

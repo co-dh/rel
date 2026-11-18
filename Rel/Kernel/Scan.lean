@@ -224,7 +224,7 @@ error, a column short of `n` raw words, an empty `es` or a `t` of no width is th
 name until 6.11: `Kernel.scan` (`Driver.lean`) and `qlean_scan` exist. -/
 @[extern "qlean_k_scan"]
 def kscan (op : Op) (s t : QAtomicType) (n : USize) (seg : @& Enc) (es : @& List Enc) : Except String Enc := do
-  let g ← rawAll .boolean n seg
+  let g ← rawAll .u1 n seg
   match ← es.mapM (rawAll s n) with
   | [] => .error "kscan: es is empty; its first column is the seed"
   | seed :: xs =>
@@ -232,7 +232,7 @@ def kscan (op : Op) (s t : QAtomicType) (n : USize) (seg : @& Enc) (es : @& List
     match t.width with
     | none => .error "kscan: the answer type has no fixed width"
     | some _ =>
-      if t = .boolean then pure (.bits (Column.packIds 1 n.toNat fun i => (out[i]?.getD 0).toNat % 2))
+      if t = .u1 then pure (.bits (Column.packIds 1 n.toNat fun i => (out[i]?.getD 0).toNat % 2))
       else
         -- `ofNat32`, not the literal `8`, whose `toNat` is `8 % 2 ^ numBits` and stops `decide` at the opaque `numBits`
         let r := Coc.encode (USize.ofNat32 8 (by decide)) (out.foldl (init := .empty) fun acc w => Column.pushBits acc w 8)

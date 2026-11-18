@@ -454,7 +454,7 @@ def bitsOf (x : Bool) (n : USize) : ByteArray :=
 /-- The tag column of parts `ps`, each `(count, tag)`, `m` the summed count: `concatBits` of constant bit
     columns, of the summed count whatever the parts' payloads hold (`concatBits_wf`). -/
 def tags (ps : Array (USize × Bool)) (m : USize) (h : ps.foldl (fun s p => s + p.1.toNat) 0 = m.toNat := by simp) :
-    Arr .boolean m :=
+    Arr .u1 m :=
   let bs : Array (USize × ByteArray) := ps.map fun p => (p.1, bitsOf p.2 p.1)
   have hb : m.toNat = bs.foldl (fun s p => s + p.1.toNat) 0 := by rw [Array.foldl_map]; exact h.symm
   -- the payload is read off `concatBits_wf`'s statement: `.bits (concatBits (countBytes …) …)`
@@ -469,7 +469,7 @@ theorem toNat_add_fits {n m : USize} (h : n.toNat + m.toNat < USize.size) : (n +
 def sumVals {A B : Obj} {n m : USize} (X : Vals A n) (Y : Vals B m) (hN : n.toNat + m.toNat < USize.size) :
     Vals (.sum A B) (n + m) :=
   ⟨n, m, tags #[(n, false), (m, true)] (n + m) (by simp [toNat_add_fits hN]),
-    toUSize_eq (toNat_add_fits hN).symm ▸ razeTo .long #[⟨n, tilCol n⟩, ⟨m, tilCol m⟩] (by simp) hN, X, Y⟩
+    toUSize_eq (toNat_add_fits hN).symm ▸ razeTo .i64 #[⟨n, tilCol n⟩, ⟨m, tilCol m⟩] (by simp) hN, X, Y⟩
 
 /-- `inl : A ⟶ A + B` on the universe `X`: each `x` to `inl x`, the sum side's left payload `X` itself. -/
 def inl {A B : Obj} {n : USize} (X : Vals A n) : Tab A (.sum A B) := ⟨n, X, ⟨n, 0, tags #[(n, false)] n, tilCol n, X, Vals.empty B⟩⟩
@@ -896,14 +896,14 @@ def leq {t : QAtomicType} {n : USize} (U : Vals (.atom t) n) (h : t ≠ .general
     is in `U`, so the range stays in `U` and the top of `U` goes to nothing. `Ew.val` add, then the rows whose
     sum is a `member` of `U` (`whereBits`), key and sum gathered there. Whether it ran within capacity: the bit of
     its codes (`codesC`); the picks of atoms stay plain. -/
-def succC {n : USize} (U : Vals (.atom .long) n) : Tab (.atom .long) (.atom .long) × Bool :=
-  let s : Arr .long n := valCol Ew.add Ew.va (longsOf U) (one 1)
-  let c := (Obj.atom .long).codesC #v[⟨_, s⟩, ⟨_, U⟩]
+def succC {n : USize} (U : Vals (.atom .i64) n) : Tab (.atom .i64) (.atom .i64) × Bool :=
+  let s : Arr .i64 n := valCol Ew.add Ew.va (longsOf U) (one 1)
+  let c := (Obj.atom .i64).codesC #v[⟨_, s⟩, ⟨_, U⟩]
   let k := whereBits n (c.1[0].member c.1[1])
-  (longCount "succ" k fun r hr => ⟨r, Vals.pick _ U k r hr, Vals.pick (.atom .long) s k r hr⟩, c.2)
+  (longCount "succ" k fun r hr => ⟨r, Vals.pick _ U k r hr, Vals.pick (.atom .i64) s k r hr⟩, c.2)
 
 /-- `succ : long ⟶ long` on `U`: `succC`'s relation. -/
-def succ {n : USize} (U : Vals (.atom .long) n) : Tab (.atom .long) (.atom .long) := (succC U).1
+def succ {n : USize} (U : Vals (.atom .i64) n) : Tab (.atom .i64) (.atom .i64) := (succC U).1
 
 /-- The integral value verb `op` (`Ew.add`, `sub`, `mul`, `idiv`, `imod`) as a relation `long × long ⟶ long` on
     the pairs `W`: each `(u, v)` to `u op v` where that is a `long` other than q's null, and to nothing elsewhere.
@@ -912,8 +912,8 @@ def succ {n : USize} (U : Vals (.atom .long) n) : Tab (.atom .long) (.atom .long
     wrapped `+`/`-` is the one whose order against `u` disagrees with `v`'s sign, a wrapped `*` the one that
     `idiv u` does not take back to `v`. `idiv`/`imod` floor, as q's `div`/`mod`, and cannot wrap on non-null
     operands. So the relation is partial at a zero divisor and at overflow, never a default value. -/
-def arith (op : UInt8) {n : USize} (W : Vals (.prod (.atom .long) (.atom .long)) n) :
-    Tab (.prod (.atom .long) (.atom .long)) (.atom .long) :=
+def arith (op : UInt8) {n : USize} (W : Vals (.prod (.atom .i64) (.atom .i64)) n) :
+    Tab (.prod (.atom .i64) (.atom .i64)) (.atom .i64) :=
   let m := n
   let u := longsOf W.1; let v := longsOf W.2
   let s := Kernel.Ew.val op Ew.i64 Ew.vv nul u v m
@@ -933,15 +933,15 @@ def arith (op : UInt8) {n : USize} (W : Vals (.prod (.atom .long) (.atom .long))
     ⟨r, Vals.pick _ W k r hr, longsN r (gather 8 s k) (Nat.le_of_eq ((gather_len _ _).trans hr).symm)⟩
 
 /-- `plus : long × long ⟶ long` on the pairs `W` (`plus`, AOP/A5_6_ListCombinators.lean:339): `u + v`. -/
-def plus {n : USize} (W : Vals (.prod (.atom .long) (.atom .long)) n) := arith Ew.add W
+def plus {n : USize} (W : Vals (.prod (.atom .i64) (.atom .i64)) n) := arith Ew.add W
 /-- `times` on the pairs `W`: `u · v`. -/
-def times {n : USize} (W : Vals (.prod (.atom .long) (.atom .long)) n) := arith Ew.mul W
+def times {n : USize} (W : Vals (.prod (.atom .i64) (.atom .i64)) n) := arith Ew.mul W
 /-- `minus` on the pairs `W`: `u - v`, the converse reading of `plus` (`(u, v) minus w ⟺ (w, v) plus u`). -/
-def minus {n : USize} (W : Vals (.prod (.atom .long) (.atom .long)) n) := arith Ew.sub W
+def minus {n : USize} (W : Vals (.prod (.atom .i64) (.atom .i64)) n) := arith Ew.sub W
 /-- `div` on the pairs `W`: `⌊u / v⌋`, q's `div`; no row where `v = 0`. -/
-def div {n : USize} (W : Vals (.prod (.atom .long) (.atom .long)) n) := arith Ew.idiv W
+def div {n : USize} (W : Vals (.prod (.atom .i64) (.atom .i64)) n) := arith Ew.idiv W
 /-- `mod` on the pairs `W`: `u - v · ⌊u / v⌋`, q's `mod`, the sign of `v`; no row where `v = 0`. -/
-def mod {n : USize} (W : Vals (.prod (.atom .long) (.atom .long)) n) := arith Ew.imod W
+def mod {n : USize} (W : Vals (.prod (.atom .i64) (.atom .i64)) n) := arith Ew.imod W
 
 /-- `τ : A ⟶ arr A` on `X`, each element to the array holding it alone: `Λ(𝟙)` (`Λ_id_eq_singletonMap`,
     AOP/A5_7_PowerBeads.lean:171, of `singletonMap`, Freyd/S2_40.lean:170; the note's
@@ -1008,11 +1008,11 @@ def tailC {B : Obj} {n : USize} (X : Vals (.arr B) n) : Tab (.arr B) (.arr B) ×
 /-- `length ≜ ⦇[zero,π₂ succ]⦈` on the arrays `X` (diag/aop/09-dynamic.typ:506; `length`,
     AOP/A5_6_ListCombinators.lean:328), no round: each array to the count of its clamped slice, `hi − lo`
     (`slicesOf`); `rep_lengthC` ties it to the fold (`length_eq_reduce`). -/
-def lengthC {E : Obj} {n : USize} (X : Vals (.arr E) n) : Tab (.arr E) (.atom .long) × Bool :=
+def lengthC {E : Obj} {n : USize} (X : Vals (.arr E) n) : Tab (.arr E) (.atom .i64) × Bool :=
   (⟨n, X, longsN n (slicesOf X).2 (Nat.le_of_eq (len_slices ..).2.symm)⟩, decide (X.1.toNat < 2 ^ 63))
 
 /-- `length`: `lengthC`'s relation; the bit the payload's count below `2^63`, so no count reads as negative. -/
-def length {E : Obj} {n : USize} (X : Vals (.arr E) n) : Tab (.arr E) (.atom .long) := (lengthC X).1
+def length {E : Obj} {n : USize} (X : Vals (.arr E) n) : Tab (.arr E) (.atom .i64) := (lengthC X).1
 
 
 /-- `iter` on a round that also answers a bit, carrying the `&&` of the bits of the rounds it ran. -/
@@ -1040,7 +1040,7 @@ def fixOnC {A B : Obj} (n : Nat) (φC : Tab A B → Tab A B × Bool) (X₀ : Tab
     the pick that compacts the slices (`pickC`): the slices of one row overlap in `X`'s payload, so their total
     is known only once they are laid out. -/
 def nestC {B : Obj} {n : USize} (X : Vals (.arr B) n)
-    (f : (m : USize) → ByteArray × ByteArray → (i r : ByteArray) → len i = m.toNat → Arr .long m × Arr .long m) :
+    (f : (m : USize) → ByteArray × ByteArray → (i r : ByteArray) → len i = m.toNat → Arr .i64 m × Arr .i64 m) :
     Tab (.arr B) (.arr (.arr B)) × Bool :=
   let s := slicesOf X
   let c := addc n s.2 1
@@ -1054,12 +1054,12 @@ def nestC {B : Obj} {n : USize} (X : Vals (.arr B) n)
 
 /-- `inits`' slice kernel for `nestC`: copy `(row, k)` is `[lo, lo + k)`. -/
 def initsK (m : USize) (s : ByteArray × ByteArray) (i r : ByteArray) (h : len i = m.toNat) :
-    Arr .long m × Arr .long m :=
+    Arr .i64 m × Arr .i64 m :=
   let l := gather 8 s.1 i; (longsN m l (Nat.le_of_eq ((gather_len _ _).trans h).symm), valCol Ew.add Ew.vv l r)
 
 /-- `tails`' slice kernel for `nestC` over `n` arrays: copy `(row, k)` is `[lo + k, hi)`. -/
 def tailsK (n m : USize) (s : ByteArray × ByteArray) (i r : ByteArray) (h : len i = m.toNat) :
-    Arr .long m × Arr .long m :=
+    Arr .i64 m × Arr .i64 m :=
   (valCol Ew.add Ew.vv (gather 8 s.1 i) r,
     longsN m (gather 8 (add n s.1 s.2) i) (Nat.le_of_eq ((gather_len _ _).trans h).symm))
 
@@ -1084,7 +1084,7 @@ def tails {B : Obj} {n : USize} (X : Vals (.arr B) n) : Tab (.arr B) (.arr (.arr
     its slices, which `memC` would then copy once per slice; here no cell is copied but the key's and the slice's.
     The bit `nestC`'s, `&&` the key pick's. -/
 def nestMemC {B : Obj} {n : USize} (X : Vals (.arr B) n)
-    (f : (m : USize) → ByteArray × ByteArray → (i r : ByteArray) → len i = m.toNat → Arr .long m × Arr .long m) :
+    (f : (m : USize) → ByteArray × ByteArray → (i r : ByteArray) → len i = m.toNat → Arr .i64 m × Arr .i64 m) :
     Tab (.arr B) (.arr B) × Bool :=
   let s := slicesOf X
   let c := addc n s.2 1
@@ -1174,7 +1174,7 @@ def takewhile {B : Obj} {n : USize} (P : Tab B B) (X : Vals (.arr B) n) : Tab (.
 def concatC {B : Obj} {n : USize} (X : Vals (.arr (.arr B)) n) : Tab (.arr (.arr B)) (.arr B) × Bool :=
   let z := Vals.pickC (.arr B) X.2.2.2 (tilLongs X.1) X.1 (len_tilLongs X.1)
   let s := slicesOf X
-  let ends (k : ByteArray) : Arr .long n :=
+  let ends (k : ByteArray) : Arr .i64 n :=
     let i := Kernel.Ew.val Ew.sub Ew.i64 Ew.va nul k (one 1) n
     longsN n (gather 8 (longsOf z.1.2.2.1) i) (Nat.le_of_eq ((gather_len _ _).trans (len_val ..)).symm)
   (⟨n, X, ⟨z.1.1, ends s.1, ends (add n s.1 s.2), z.1.2.2.2⟩⟩, decide (X.1.toNat < 2 ^ 63) && z.2)
@@ -1593,11 +1593,11 @@ namespace Arr
 
 /-- `sum ≜ ⦇[zero, plus]⦈` on the arrays of longs `X` (`sum`, AOP/A5_6_ListCombinators.lean:323), each round's
     `plus` on the pairs it meets. Named `Arr.sum` because `sum` is `R + S`'s. -/
-def sumC {n : USize} (X : Vals (.arr (.atom .long)) n) : Tab (.arr (.atom .long)) (.atom .long) × Bool :=
+def sumC {n : USize} (X : Vals (.arr (.atom .i64)) n) : Tab (.arr (.atom .i64)) (.atom .i64) × Bool :=
   foldOnC false pairC (col [0]) (fun D => (plus D.val, true)) X
 
 /-- `sum`: `sumC`'s relation; `plus` has no capacity of its own, so the bit is `foldOnC`'s. -/
-def sum {n : USize} (X : Vals (.arr (.atom .long)) n) : Tab (.arr (.atom .long)) (.atom .long) := (sumC X).1
+def sum {n : USize} (X : Vals (.arr (.atom .i64)) n) : Tab (.arr (.atom .i64)) (.atom .i64) := (sumC X).1
 
 end Arr
 

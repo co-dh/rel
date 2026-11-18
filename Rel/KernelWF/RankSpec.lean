@@ -49,18 +49,18 @@ theorem ids_invert (p : ByteArray) (hm : len p < 2 ^ 64) :
   exact Nat.lt_of_le_of_lt (Nat.le_trans List.idxOf_le_length (Nat.le_of_eq (len_eq_ids p).symm)) hm
 
 /-- `Ops.rank` at `long` is the kernel's `ranks` over the column's dense payload, on either encoding. -/
-theorem longsOf_rank {n : USize} (x : Arr .long n) (h : QAtomicType.long ≠ .general) :
+theorem longsOf_rank {n : USize} (x : Arr .i64 n) (h : QAtomicType.i64 ≠ .general) :
     longsOf (Ops.rank x h) = Order.ranks .i64 n (longsOf x) := by
   obtain ⟨_, he⟩ := Option.eq_some_iff_get_eq.1 (gradeColumn_long x true)
   have hb : longBytes n (Ops.rank x h).enc = some (Order.ranks .i64 n (longsOf x)) := by
-    show longBytes n ((gradeColumn .long false n x.enc (rank := true)).get _) = _
+    show longBytes n ((gradeColumn .i64 false n x.enc (rank := true)).get _) = _
     rw [he]; rfl
   exact Option.some_inj.1 ((Option.some_get _).trans hb)
 
 /-- **q's `rank` at `long`, read back**: for rows `p q` below the count, each rank is below the count, and row
     `p` ranks below row `q` exactly when its value is below `q`'s, or the values are equal and `p` comes first —
     the ordinal rank of a stable ascending sort, q's null `0N` (the least `Int64`) below every other value. -/
-theorem rank_long {n : USize} (x : Arr .long n) (h : QAtomicType.long ≠ .general) {p q : Nat}
+theorem rank_long {n : USize} (x : Arr .i64 n) (h : QAtomicType.i64 ≠ .general) {p q : Nat}
     (hp : p < n.toNat) (hq : q < n.toNat) :
     (Column.bitsAt (longsOf (Ops.rank x h)) (p * 8) 8).toNat < n.toNat ∧
       ((Column.bitsAt (longsOf (Ops.rank x h)) (p * 8) 8).toNat <

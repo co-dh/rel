@@ -21,11 +21,11 @@ open Tab Rel.Dep Rel.Kernel Rel.Verify Rel
     `IndexCell` (`cellFree`, where `valEq` is `=`). -/
 def _root_.Rel.Obj.CodesFit : (A : Obj) → {p : Nat} → Vector (Part A) p → Prop
   | .atom t, p, cs => (cs.toList.map (·.1.toNat)).sum < USize.size ∧
-    (t = .boolean ∨
+    (t = .u1 ∨
       (∃ k₀, orderKind t = some k₀ ∧ (k₀ = .u8 ∨ k₀ = .i16 ∨ k₀ = .i32 ∨ k₀ = .f32 ∨ k₀ = .f64) ∧
         (2 ≤ p → Column.alpEncodes t = true → (cs.toList.map (·.1.toNat)).sum < 2 ^ 32)) ∨
       orderKind t = some .i64 ∨
-      (t = .symbol ∧
+      (t = .sym ∧
         (cs.toList.map fun c => match c.2.enc with | .enum _ o _ => o.size - 1 | _ => c.1.toNat).sum < USize.size) ∨
       (t = .general ∧ ∀ k (hk : k < p) xs, (cs[k]'hk).2.enc = .gen xs → ∀ x ∈ xs, cellFree x = true))
   | .prod a b, _, cs => (cs.toList.map (·.1.toNat)).sum < USize.size ∧
@@ -151,7 +151,7 @@ theorem codesFit_atom_one {t : QAtomicType} (x : Part (.atom t)) (ht : orderKind
 /-- **A several-part atom side fits on its summed count alone** at a kind whose clause bounds nothing else: a
     boolean or an `.i64` side. -/
 theorem codesFit_atom_count {t : QAtomicType} {p : Nat} (cs : Vector (Part (.atom t)) p)
-    (hN : (cs.toList.map (·.1.toNat)).sum < USize.size) (ht : t = .boolean ∨ orderKind t = some .i64) :
+    (hN : (cs.toList.map (·.1.toNat)).sum < USize.size) (ht : t = .u1 ∨ orderKind t = some .i64) :
     Obj.CodesFit (.atom t) cs := by
   unfold Obj.CodesFit
   refine ⟨hN, ?_⟩
@@ -168,7 +168,7 @@ theorem codes_atom_wf (t : QAtomicType) (x : Part (.atom t)) :
       (c.w < 8 → c.card < USize.size ∧ ∀ i < c.n.toNat, Column.idAt c.b c.w i < c.card) := by
   have hN : (#v[x].toList.map (·.1.toNat)).sum < USize.size := by simp [x.1.toNat_lt_size]
   cases t
-  case boolean =>
+  case u1 =>
     obtain ⟨h1, h2, h3, h4⟩ := codes_boolean_wf #v[x] Nat.zero_lt_one
     exact ⟨Or.inl h2, h1, h3, h4⟩
   all_goals first

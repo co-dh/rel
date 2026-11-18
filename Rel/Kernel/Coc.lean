@@ -430,8 +430,8 @@ types it is the right encoding for at all. Every exclusion is measured or struct
   `alpEncodes`, below;
 * `symbol` has no fixed width. -/
 def encodes : QAtomicType → Bool
-  | .short | .int | .month | .date | .minute | .second | .time
-  | .long | .timestamp | .timespan => true
+  | .i16 | .i32 | .month | .date | .minute | .second | .time
+  | .i64 | .timestamp | .timespan => true
   | _ => false
 
 /-- The types ALP is the encoding for: q's three float types and no others. `real` is four bytes and
@@ -441,7 +441,7 @@ goes through the `_f32` kernels, `float` and `datetime` are eight and go through
 `datetime` is a float in q and not a separate thing: its payload is a `double` count of days, which
 is a decimal on a tick like any price, so nothing about it wants a different encoding. -/
 def alpEncodes : QAtomicType → Bool
-  | .real | .float | .datetime => true
+  | .f32 | .f64 | .datetime => true
   | _ => false
 
 end Rel.Column

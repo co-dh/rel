@@ -53,7 +53,7 @@ theorem rep_sumC (R : Tab A C) (S : Tab B D) (hb : (sumC R S).2 = true) :
 /-- **`rep (lt U)` under `ltC`'s bit**: the decided bounds are `rep_lt`'s `hN`, `h63`, the diff's pair codes' bit
     its `hc` (`codesC_fits`, `codes_faithful_wf`, `pairs_eq_codes`), the `fitsN` bits its `hk`, `hv`
     (`pickFits_of_fitsN`). -/
-theorem rep_ltC {n : USize} (U : Vals (.atom .long) n) (h : QAtomicType.long ≠ .general)
+theorem rep_ltC {n : USize} (U : Vals (.atom .i64) n) (h : QAtomicType.i64 ≠ .general)
     (hb : (ltC U h).2 = true) (a b : Int64) :
     rep (ltC U h).1 a b ↔ (∃ i, U.row i = a) ∧ (∃ j, U.row j = b) ∧ a < b := by
   simp only [ltC, diffC, okbit] at hb
@@ -65,7 +65,7 @@ theorem rep_ltC {n : USize} (U : Vals (.atom .long) n) (h : QAtomicType.long ≠
 /-- **`rep (leq U)` under `leqC`'s bit**: `ltC`'s bit gives `rep_leq`'s `rep_lt` hypotheses as in `rep_ltC`;
     `unionC`'s guard its `hNU`, its codes' bits `huK`, `huV` (`codesC_fits`, `codes_faithful_wf`), its `fitsN`
     bits `huk`, `huv`. The razes' bits go unused: `rep_leq` razes atoms, which fit by their count. -/
-theorem rep_leqC {n : USize} (U : Vals (.atom .long) n) (h : QAtomicType.long ≠ .general)
+theorem rep_leqC {n : USize} (U : Vals (.atom .i64) n) (h : QAtomicType.i64 ≠ .general)
     (hb : (leqC U h).2 = true) (a b : Int64) :
     rep (leqC U h).1 a b ↔ (∃ i, U.row i = a) ∧ (∃ j, U.row j = b) ∧ a ≤ b := by
   change ((ltC U h).2 && (unionC (lt U h) (idU U)).2) = true at hb
@@ -88,10 +88,10 @@ theorem rep_leqC {n : USize} (U : Vals (.atom .long) n) (h : QAtomicType.long �
 
 /-- **`rep (succ U)` under `succC`'s bit**: the codes' bit gives `rep_succ`'s `hc` (`codesC_fits`,
     `codes_faithful_wf`, less its `w < 8` clause). -/
-theorem rep_succC {n : USize} (U : Vals (.atom .long) n) (hb : (succC U).2 = true) (u w : Int64) :
+theorem rep_succC {n : USize} (U : Vals (.atom .i64) n) (hb : (succC U).2 = true) (u w : Int64) :
     rep (succC U).1 u w ↔ (∃ i, U.row i = u) ∧ w = Ew.intStep Ew.add nul u 1 ∧ ∃ j, U.row j = w := by
-  have hc := (codes_faithful_wf (.atom .long) #v[⟨n, valCol Ew.add Ew.va (longsOf U) (one 1)⟩, ⟨n, U⟩]
-    (Obj.codesC_fits (.atom .long) _ hb)).1
+  have hc := (codes_faithful_wf (.atom .i64) #v[⟨n, valCol Ew.add Ew.va (longsOf U) (one 1)⟩, ⟨n, U⟩]
+    (Obj.codesC_fits (.atom .i64) _ hb)).1
   exact rep_succ U _ rfl _ rfl
     ⟨@fun _ _ hk hl _ _ hi hj => hc.1 hk hl hi hj, fun hk => ⟨(hc.2 hk).1, (hc.2 hk).2.1, (hc.2 hk).2.2.1⟩⟩ u w
 
@@ -135,7 +135,7 @@ theorem rep_ascC_by {n : USize} (X : Vals (.arr B) n) (hb : (ascC X).2 = true)
 /-- **`rep (asc X)` at `long`**: an array of `X` goes to `ys` exactly when `ys` is a permutation of it,
     ascending — the one sorted member of its `perm` class (`rep_ascC_by` at `sortBy_long`, unique by
     `≤`'s antisymmetry). -/
-theorem rep_ascC_long {n : USize} (X : Vals (.arr (.atom .long)) n) (hb : (ascC X).2 = true) :
+theorem rep_ascC_long {n : USize} (X : Vals (.arr (.atom .i64)) n) (hb : (ascC X).2 = true) :
     ∀ xs ys, rep (ascC X).1 xs ys ↔ (∃ j, X.row j = xs) ∧ ys.Perm xs ∧ ys.Pairwise (· ≤ ·) := by
   obtain ⟨hf, hd⟩ := rep_ascC_by X hb
     (fun c i j => ∀ (hc : i < _) (hc' : j < _), c.get ⟨i, hc⟩ < c.get ⟨j, hc'⟩ ∨
@@ -202,19 +202,19 @@ theorem rep_sum (R : CRel A C) (S : CRel B D) (hb : (R.sum S).ok = true) :
       ((Core.Rel.inr (α := A.El) (β := B.El))° ≫ rep S.rel ≫ (Core.Rel.inr (α := C.El) (β := D.El))) := by
   have e : R.sum S = _ := guard_eq ok hb; rw [e] at hb ⊢; rw [rep_ofC hb]; replace hb := (ofC_ok hb).1; exact rep_sumC R.rel S.rel hb
 
-theorem rep_lt {n : USize} (U : Vals (.atom .long) n) (h : QAtomicType.long ≠ .general) (hb : (lt U h).ok = true)
+theorem rep_lt {n : USize} (U : Vals (.atom .i64) n) (h : QAtomicType.i64 ≠ .general) (hb : (lt U h).ok = true)
     (a b : Int64) : rep (lt U h).rel a b ↔ (∃ i, U.row i = a) ∧ (∃ j, U.row j = b) ∧ a < b :=
   by unfold CRel.lt at hb ⊢; rw [rep_ofC hb]; exact rep_ltC U h (ofC_ok hb).1 a b
 
-theorem rep_leq {n : USize} (U : Vals (.atom .long) n) (h : QAtomicType.long ≠ .general) (hb : (leq U h).ok = true)
+theorem rep_leq {n : USize} (U : Vals (.atom .i64) n) (h : QAtomicType.i64 ≠ .general) (hb : (leq U h).ok = true)
     (a b : Int64) : rep (leq U h).rel a b ↔ (∃ i, U.row i = a) ∧ (∃ j, U.row j = b) ∧ a ≤ b :=
   by unfold CRel.leq at hb ⊢; rw [rep_ofC hb]; exact rep_leqC U h (ofC_ok hb).1 a b
 
-theorem rep_succ {n : USize} (U : Vals (.atom .long) n) (hb : (succ U).ok = true) (u w : Int64) :
+theorem rep_succ {n : USize} (U : Vals (.atom .i64) n) (hb : (succ U).ok = true) (u w : Int64) :
     rep (succ U).rel u w ↔ (∃ i, U.row i = u) ∧ w = Ew.intStep Ew.add nul u 1 ∧ ∃ j, U.row j = w :=
   by unfold CRel.succ at hb ⊢; rw [rep_ofC hb]; exact rep_succC U (ofC_ok hb).1 u w
 
-theorem rep_asc_long {n : USize} (X : Vals (.arr (.atom .long)) n) (hb : (asc X).ok = true) :
+theorem rep_asc_long {n : USize} (X : Vals (.arr (.atom .i64)) n) (hb : (asc X).ok = true) :
     ∀ xs ys, rep (asc X).rel xs ys ↔ (∃ j, X.row j = xs) ∧ ys.Perm xs ∧ ys.Pairwise (· ≤ ·) :=
   by unfold CRel.asc at hb ⊢; rw [rep_ofC hb]; exact rep_ascC_long X (ofC_ok hb).1
 

@@ -281,14 +281,14 @@ fixed width is here, `char` included — q orders it by its unsigned byte and th
 to a comparison, which is `Eval.missing`'s split read from the ordering side. `symbol` has its own
 three entry points. -/
 def orderKind : QAtomicType → Option Kind
-  | .boolean => some .bit
-  | .byte | .char => some .u8
-  | .short => some .i16
-  | .int | .month | .date | .minute | .second | .time => some .i32
-  | .long | .timestamp | .timespan => some .i64
-  | .real => some .f32
-  | .float | .datetime => some .f64
-  | .symbol | .general => none
+  | .u1 => some .bit
+  | .u8 | .char => some .u8
+  | .i16 => some .i16
+  | .i32 | .month | .date | .minute | .second | .time => some .i32
+  | .i64 | .timestamp | .timespan => some .i64
+  | .f32 => some .f32
+  | .f64 | .datetime => some .f64
+  | .sym | .general => none
 
 /-- `groupColumn`'s groups as a grouped reduction reads them: the group of every row, and the row
 each group was first seen at, which is where its key lies. The key column itself is a gather of the
@@ -301,16 +301,16 @@ def groupIdsColumn (t : QAtomicType) (n : USize) (e : Ext.Enc X) : Option (ByteA
   match t, e with
   -- interned: the groups are the ids' groups, an id being one symbol, exactly as `groupColumn` reads
   -- an `.enum`
-  | .symbol, .enum _ dof ids => needSize (dof.size - 1) "groupIdsColumn: dictionary entries" (fun _ => none)
+  | .sym, .enum _ dof ids => needSize (dof.size - 1) "groupIdsColumn: dictionary entries" (fun _ => none)
     fun nd => some (idGroups nd n (Column.idWidth dof).toUSize ids)
   -- a blob is interned first: its ids are already numbered by first appearance, and `idGroups` adds
   -- the first rows off a direct table
-  | .symbol, .syms blob offs =>
+  | .sym, .syms blob offs =>
     let (_, dof, ids) := internSyms blob offs
     needSize (dof.size - 1) "groupIdsColumn: dictionary entries" (fun _ => none)
       fun nd => some (idGroups nd n (Column.idWidth dof).toUSize ids)
   -- `dedup` reads a bitmap a bit an element at `Kind.bit`, so the bitmap is the payload as it lies
-  | .boolean, .bits b => some (groupIds .bit n b)
+  | .u1, .bits b => some (groupIds .bit n b)
   | t, e =>
     match orderKind t with
     | none => none
@@ -379,9 +379,9 @@ everywhere else the grade is inverted. -/
 def gradeColumn (t : QAtomicType) (desc : Bool) (n : USize) (e : Ext.Enc X) (rank : Bool := false) : Option (Ext.Enc X) :=
   let inv (p : ByteArray) := if rank then invert p else p
   match t, e with
-  | .symbol, .syms blob offs => some (.bytes (inv (gradeSyms desc blob offs)))
-  | .symbol, .enum dict dof ids => some (.bytes (inv (gradeIds desc n dict dof ids)))
-  | .boolean, .bits b =>
+  | .sym, .syms blob offs => some (.bytes (inv (gradeSyms desc blob offs)))
+  | .sym, .enum dict dof ids => some (.bytes (inv (gradeIds desc n dict dof ids)))
+  | .u1, .bits b =>
     some (.bytes (if rank then ranks .bit n b else grade .bit desc n b))
   | t, e =>
     match orderKind t with

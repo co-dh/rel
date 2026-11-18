@@ -162,7 +162,7 @@ theorem rep_catC {K B : Obj} (P : Tab K (.prod (.arr B) (.arr B))) (hb : (catC P
     (`len_expand_sum`, every count plus one below `2^63` by the payload bound), and the slices' compacting pick
     fitting at the `m` copies `expand` makes (`pickC_fits`). -/
 theorem nestC_bits {B : Obj} {n : USize} (X : Vals (.arr B) n)
-    (f : (m : USize) → ByteArray × ByteArray → (i r : ByteArray) → len i = m.toNat → Arr .long m × Arr .long m)
+    (f : (m : USize) → ByteArray × ByteArray → (i r : ByteArray) → len i = m.toNat → Arr .i64 m × Arr .i64 m)
     (hb : (nestC X f).2 = true) :
     ((List.range n.toNat).map fun u => (Column.bitsAt (slicesOf X).2 (u * 8) 8).toNat).sum + n.toNat < 2 ^ 63 ∧
     ((List.range n.toNat).map fun u => (Column.bitsAt (slicesOf X).2 (u * 8) 8).toNat).sum + n.toNat < USize.size ∧
@@ -219,7 +219,7 @@ theorem rep_tailsC {B : Obj} {n : USize} (X : Vals (.arr B) n) (hb : (tailsC X).
 /-- **`nestMemC`'s bit is `nestC`'s, and the keys' pick fitting**: the two run the one `expand` with the one
     slice pick; `nestMemC` adds the keys' pick at the copies (`pickC_fits`). -/
 theorem nestMemC_bits {B : Obj} {n : USize} (X : Vals (.arr B) n)
-    (f : (m : USize) → ByteArray × ByteArray → (i r : ByteArray) → len i = m.toNat → Arr .long m × Arr .long m)
+    (f : (m : USize) → ByteArray × ByteArray → (i r : ByteArray) → len i = m.toNat → Arr .i64 m × Arr .i64 m)
     (hb : (nestMemC X f).2 = true) :
     (nestC X f).2 = true ∧ Vals.PickFits (.arr B) X
       ((List.range (len (expandBytes 8 0 (tilLongs n) (addc n (slicesOf X).2 1))).toUSize.toNat).map fun q =>

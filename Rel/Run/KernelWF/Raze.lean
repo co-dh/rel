@@ -29,7 +29,7 @@ theorem foldl_size {α σ : Type} (sz : σ → Nat) (g : σ → α → σ) (w : 
     simp only [List.foldl, List.length_cons]; rw [foldl_size sz g w hg l, hg]; simp [Nat.succ_mul]; omega
 
 /-- A dense payload of `n` elements of a type with a width, other than boolean, is well formed. -/
-theorem wf_bytes {t : QAtomicType} {w : Nat} {n : USize} {b : ByteArray} (hb : t ≠ .boolean)
+theorem wf_bytes {t : QAtomicType} {w : Nat} {n : USize} {b : ByteArray} (hb : t ≠ .u1)
     (hw : t.width = some w) (hs : b.size = n.toNat * w) : Enc.WF (X := Empty) t n (.bytes b) := by
   cases t <;> simp_all [Enc.WF, QAtomicType.width]
 
@@ -86,7 +86,7 @@ theorem countBytes_get (xs : Array USize) (k : Nat) (h : k < xs.size) :
 
 /-- `orderKind` has no sort layout exactly at symbol and the general list. -/
 theorem orderKind_eq_none {t : QAtomicType} :
-    orderKind t = none ↔ t = .symbol ∨ t = .general := by
+    orderKind t = none ↔ t = .sym ∨ t = .general := by
   cases t <;> simp [orderKind]
 
 /-- `groupIdsColumn` codes every well-formed payload except a general list's, where the interned
@@ -95,7 +95,7 @@ theorem groupIdsColumn_isSome {t : QAtomicType} {n : USize} {e : Enc} (hg : t �
     (h : Enc.WF t n e) (hd : ∀ d o ids, Column.intern e = .enum d o ids → o.size - 1 < USize.size) :
     (groupIdsColumn t n e).isSome := by
   cases t
-  case symbol =>
+  case sym =>
     cases e
     case syms blob offs =>
       have hf := hd (Order.internSyms blob offs).1 (Order.internSyms blob offs).2.1 (Order.internSyms blob offs).2.2 rfl
@@ -108,8 +108,8 @@ theorem groupIdsColumn_isSome {t : QAtomicType} {n : USize} {e : Enc} (hg : t �
     type itself. q's float key (`Order.rank32`/`rank64`) folds the NaNs and the two zeros together, where a
     float cell (`Carrier`) is its bits; the integral key of the same width is the bits. -/
 def bitsType : QAtomicType → QAtomicType
-  | .real => .int
-  | .float | .datetime => .long
+  | .f32 => .i32
+  | .f64 | .datetime => .i64
   | t => t
 
 /-- `groupIdsColumn` at `bitsType t` codes every well-formed payload of `t` but a general list's: a float
@@ -118,7 +118,7 @@ theorem groupIdsColumn_bitsType_isSome {t : QAtomicType} {n : USize} {e : Enc} (
     (h : Enc.WF t n e) (hd : ∀ d o ids, Column.intern e = .enum d o ids → o.size - 1 < USize.size) :
     (groupIdsColumn (bitsType t) n e).isSome := by
   cases t
-  case real | float | datetime =>
+  case f32 | f64 | datetime =>
     cases e <;> simp_all [Enc.WF, groupIdsColumn, orderKind, Enc.bytesOf, QAtomicType.width, bitsType]
   all_goals exact groupIdsColumn_isSome hg h hd
 
@@ -180,12 +180,12 @@ theorem foldl_inv {α σ : Type} (P : σ → Prop) (g : σ → α → σ) (hg : 
 /-- `concatBits` of parts `ps` holds their summed count, as `razeColumn` counts it. -/
 theorem concatBits_wf (ps : Array (USize × ByteArray)) {c : USize}
     (hc : c.toNat = ps.foldl (fun s p => s + p.1.toNat) 0) :
-    Enc.WF (X := Empty) .boolean c (.bits (concatBits (countBytes (ps.map (·.1))) (ps.map (·.2)))) := by
+    Enc.WF (X := Empty) .u1 c (.bits (concatBits (countBytes (ps.map (·.1))) (ps.map (·.2)))) := by
   simp only [Enc.WF, concatBits, packOf_size, hc, foldl_toNat]
   rw [flatMap_counts _ _ (by simp)]
 
 /-- `til n` as `tilLongs`: `n` longs. -/
-theorem tilLongs_wf (n : USize) : Enc.WF (X := Empty) .long n (.bytes (tilLongs n)) :=
+theorem tilLongs_wf (n : USize) : Enc.WF (X := Empty) .i64 n (.bytes (tilLongs n)) :=
   wf_bytes (w := 8) (by decide) rfl (by
     simp only [tilLongs]; rw [foldl_size ByteArray.size _ 8 (fun _ _ => Column.pushBits_size ..)]; simp)
 
@@ -229,7 +229,7 @@ theorem mapM_some {α β : Type} {f : α → Option β} (g : α → β) :
 
 /-- The dense layout of a well-formed payload of a type with a width, other than boolean, holds its `n`
     elements, `w` bytes each; an encoded `n` fits a `USize`, the count every decoding kernel reads. -/
-theorem bytesOf_size {t : QAtomicType} {n : USize} {w : Nat} {e : Enc} (hb : t ≠ .boolean)
+theorem bytesOf_size {t : QAtomicType} {n : USize} {w : Nat} {e : Enc} (hb : t ≠ .u1)
     (hw : t.width = some w) (h : Enc.WF t n e) :
     ∃ b, Enc.bytesOf t n e = some b ∧ b.size = n.toNat * w := by
   have hwu : w.toUSize.toNat = w := by
@@ -258,7 +258,7 @@ theorem bytesOf_size {t : QAtomicType} {n : USize} {w : Nat} {e : Enc} (hb : t �
 /-- `razeColumn`'s dense pass over well-formed parts, each read at its count as the `USize` it is: every
     part answers its dense layout, `n · w` bytes. -/
 private theorem dense_parts {t : QAtomicType} {cs : Array (USize × Enc)} {w : Nat}
-    (h : ∀ c ∈ cs, Enc.WF t c.1 c.2) (hw : t.width = some w) (hb : t ≠ .boolean) {ps : Array ByteArray}
+    (h : ∀ c ∈ cs, Enc.WF t c.1 c.2) (hw : t.width = some w) (hb : t ≠ .u1) {ps : Array ByteArray}
     (hps : cs.mapM (fun c => Enc.bytesOf t c.1 c.2) = some ps) :
     ps.size = cs.size ∧ ∀ i (hi : i < cs.size) (hp : i < ps.size), ps[i].size = cs[i].1.toNat * w := by
   have hm := mapM_some (f := fun c : USize × Enc => Enc.bytesOf t c.1 c.2)
@@ -385,7 +385,7 @@ theorem utf8_concatSyms {parts : Array (ByteArray × Array Nat)}
     (hw : ∀ x ∈ parts, SymsWF x.1 x.2 ∧ ∀ i < x.2.size - 1, (Column.symKey x.1 x.2 i).IsValidUTF8)
     {t n a} {b : ByteArray} {o : Array Nat} (h : Kernel.concatSyms (X := Empty) parts = .vector t n (.syms b o) a) :
     ∀ i < o.size - 1, (Column.symKey b o i).IsValidUTF8 := by
-  have hc : Kernel.concatSyms (X := Empty) parts = .vector .symbol
+  have hc : Kernel.concatSyms (X := Empty) parts = .vector .sym
       ((parts.toList.foldl (fun acc x => (acc.1 ++ x.1, acc.2 ++ (x.2.extract 1 x.2.size).map (· + acc.1.size)))
         (ByteArray.empty, #[0])).2.size - 1 |> fun c => needSize c "concatSyms: symbols" (fun _ => 0) id) (.syms
       (parts.toList.foldl (fun acc x => (acc.1 ++ x.1, acc.2 ++ (x.2.extract 1 x.2.size).map (· + acc.1.size)))
@@ -427,7 +427,7 @@ theorem fewSyms_utf8 {n : USize} {d : ByteArray} {dof : Array Nat} {ids b : Byte
 theorem concatSyms_wf (parts : Array (ByteArray × Array Nat)) (hw : ∀ x ∈ parts, SymsWF x.1 x.2)
     (hu : ∀ x ∈ parts, ∀ i < x.2.size - 1, (Column.symKey x.1 x.2 i).IsValidUTF8)
     (hN : (parts.map fun p => p.2.size - 1).toList.sum < USize.size) :
-    ∃ n e, concatSyms (X := Empty) parts = .vector .symbol n e none ∧ Enc.WF .symbol n e := by
+    ∃ n e, concatSyms (X := Empty) parts = .vector .sym n e none ∧ Enc.WF .sym n e := by
   refine ⟨_, _, rfl, ?_⟩
   have hS := (Verify.symBytes_concatSyms (X := Empty) hw rfl).1
   have hU := utf8_concatSyms (fun x hx => ⟨hw x hx, hu x hx⟩) (parts := parts) rfl
@@ -444,7 +444,7 @@ theorem concatSyms_wf (parts : Array (ByteArray × Array Nat)) (hw : ∀ x ∈ p
 
 /-- The dense branch of `razeColumn`: parts of `cs.1 · w` bytes each, joined, hold the summed count. -/
 theorem concatBytes_wf {t : QAtomicType} {w : Nat} {cs : Array (USize × Enc)} {ps : Array ByteArray}
-    (hb : t ≠ .boolean) (hw : t.width = some w) (hsz : ps.size = cs.size)
+    (hb : t ≠ .u1) (hw : t.width = some w) (hsz : ps.size = cs.size)
     (hps : ∀ i (hi : i < cs.size) (hp : i < ps.size), ps[i].size = cs[i].1.toNat * w)
     {c : USize} (hc : c.toNat = cs.foldl (fun s p => s + p.1.toNat) 0) :
     Enc.WF (X := Empty) t c (.bytes (concatBytes ps)) := by
@@ -476,7 +476,7 @@ theorem decode_size (w : USize) (M P : ByteArray) (n : USize) :
 
 /-- A Frame-of-Reference payload is well formed at a fixed-width type other than boolean
     exactly when its blocks cover its count and its metadata records a block size the layout admits. -/
-theorem wf_foR {t : QAtomicType} {n : USize} {m p : ByteArray} (hw : t.width.isSome) (hb : t ≠ .boolean)
+theorem wf_foR {t : QAtomicType} {n : USize} {m p : ByteArray} (hw : t.width.isSome) (hb : t ≠ .u1)
     (h : n.toNat ≤ Column.blk m * Column.nblk m) (hl : Column.lgOk m = true) :
     Enc.WF (X := Empty) t n (.foR m p) := by
   cases t <;> simp_all [Enc.WF]
@@ -594,7 +594,7 @@ theorem answer_wf {t : QAtomicType} {n : USize} {e : Enc}
     (hwf : Enc.WF t n e) : Enc.WF (X := Empty) t n (Enc.answer t n e) := by
   have hdec : ∀ {w}, t.width = some w → ∀ {b}, Enc.bytesOf t n e = some b → Enc.WF (X := Empty) t n (.bytes b) := by
     intro w hw b hbo
-    by_cases hb : t = .boolean
+    by_cases hb : t = .u1
     · subst hb; cases e <;> simp_all [Enc.WF, Enc.bytesOf]
     obtain ⟨b', hb', hs⟩ := bytesOf_size hb hw hwf
     rw [hbo] at hb'; cases hb'
@@ -606,7 +606,7 @@ theorem answer_wf {t : QAtomicType} {n : USize} {e : Enc}
   · exact hwf
   cases e
   case bytes b =>
-    have hb : t ≠ .boolean := by rintro rfl; simp [Enc.WF] at hwf
+    have hb : t ≠ .u1 := by rintro rfl; simp [Enc.WF] at hwf
     have hs : b.size = n.toNat * w := by simpa [Enc.WF, hW] using hwf
     simp only
     split
@@ -878,14 +878,14 @@ theorem internConcat_wf (qs : Array (USize × ByteArray × Array Nat × ByteArra
     (hq : ∀ p ∈ qs, 0 < p.2.2.1.size ∧
       ∀ i < p.1.toNat, Column.idAt p.2.2.2 (Column.idWidth p.2.2.1) i < p.2.2.1.size - 1)
     (hu : ∀ p ∈ qs, SymsWF p.2.1 p.2.2.1 ∧ ∀ i < p.2.2.1.size - 1, (Column.symKey p.2.1 p.2.2.1 i).IsValidUTF8) :
-    Enc.WF (X := Empty) .symbol c (.enum (internConcat qs).1 (internConcat qs).2.1 (internConcat qs).2.2) := by
+    Enc.WF (X := Empty) .sym c (.enum (internConcat qs).1 (internConcat qs).2.1 (internConcat qs).2.2) := by
   have hi := internConcat_ids_lt qs hq
   rw [← hc] at hi
   -- the dictionary is `distinctSyms` of the parts' dictionaries joined, so its entries are theirs
   have hv : ∀ j < (internConcat qs).2.1.size - 1,
       (Column.symKey (internConcat qs).1 (internConcat qs).2.1 j).IsValidUTF8 := by
     obtain ⟨n', cb, co, hcs, e1, e2⟩ : ∃ n' cb co, concatSyms (qs.map fun p => (p.2.1, p.2.2.1)) =
-        .vector .symbol n' (.syms cb co) none ∧ (internConcat qs).1 = (Order.internSyms cb co).1 ∧
+        .vector .sym n' (.syms cb co) none ∧ (internConcat qs).1 = (Order.internSyms cb co).1 ∧
         (internConcat qs).2.1 = (Order.internSyms cb co).2.1 := ⟨_, _, _, rfl, rfl, rfl⟩
     rw [e1, e2]
     exact utf8_distinctSyms cb co (utf8_concatSyms (fun x hx => by
@@ -917,7 +917,7 @@ private theorem hashJoin_wf (qs : Array (USize × ByteArray × Array Nat × Byte
     (hq : ∀ p ∈ qs, 0 < p.2.2.1.size ∧
       ∀ i < p.1.toNat, Column.idAt p.2.2.2 (Column.idWidth p.2.2.1) i < p.2.2.1.size - 1)
     (hu : ∀ p ∈ qs, SymsWF p.2.1 p.2.2.1 ∧ ∀ i < p.2.2.1.size - 1, (Column.symKey p.2.1 p.2.2.1 i).IsValidUTF8) :
-    Enc.WF (X := Empty) .symbol c (match hashConcat qs with
+    Enc.WF (X := Empty) .sym c (match hashConcat qs with
       | .ok (db, dbo, ids) => .enum db dbo ids
       | .error ps => match internConcat ps with | (db, dbo, ids) => .enum db dbo ids) := by
   split
@@ -1132,7 +1132,7 @@ theorem concatEnum_wf (ps : Array (USize × ByteArray × Array Nat × ByteArray)
     (hw : ∀ p ∈ ps, 0 < p.2.2.1.size ∧
       ∀ i < p.1.toNat, Column.idAt p.2.2.2 (Column.idWidth p.2.2.1) i < p.2.2.1.size - 1)
     (hu : ∀ p ∈ ps, SymsWF p.2.1 p.2.2.1 ∧ ∀ i < p.2.2.1.size - 1, (Column.symKey p.2.1 p.2.2.1 i).IsValidUTF8) :
-    ∃ n e, concatEnum (X := Empty) ps = .vector .symbol n e none ∧ Enc.WF .symbol n e := by
+    ∃ n e, concatEnum (X := Empty) ps = .vector .sym n e none ∧ Enc.WF .sym n e := by
   unfold concatEnum
   dsimp only
   generalize hq : Array.mapIdx _ ps = qs
@@ -1344,7 +1344,7 @@ theorem concatALP_wf {t : QAtomicType} {w : Nat} {ns : Array USize} {ms ps as : 
 theorem razeColumn_wf {t : QAtomicType} {cs : Array (USize × Enc)}
     (h : ∀ c ∈ cs, Enc.WF t c.1 c.2) (hN : cs.foldl (fun s c => s + c.1.toNat) 0 < USize.size)
     {v : QValue} (hv : razeColumn t cs = some v) : ∃ n e, v = .vector t n e none ∧ Enc.WF t n e := by
-  have hdense : ∀ {w}, t.width = some w → t ≠ .boolean → ∀ {ps},
+  have hdense : ∀ {w}, t.width = some w → t ≠ .u1 → ∀ {ps},
       cs.mapM (fun (n, e) => Enc.bytesOf t n e) = some ps → ∀ {c : USize},
       c.toNat = cs.foldl (fun s c => s + c.1.toNat) 0 → Enc.WF (X := Empty) t c (.bytes (concatBytes ps)) := by
     intro w hw hb ps hps c hc
@@ -1354,13 +1354,13 @@ theorem razeColumn_wf {t : QAtomicType} {cs : Array (USize × Enc)}
   split at hv
   · cases hv
   cases t
-  case boolean =>
+  case u1 =>
     dsimp only at hv
     split at hv
     · obtain ⟨hc, hv⟩ := needSize_some hv
       cases hv; exact ⟨_, _, rfl, concatBits_wf _ (toUSize_toNat hc)⟩
     · cases hv
-  case symbol =>
+  case sym =>
     dsimp only at hv
     split at hv
     · rename_i ps hps
@@ -1496,7 +1496,7 @@ theorem razeColumn_isSome {t : QAtomicType} {cs : Array (USize × Enc)} (hne : c
     (hg : t ≠ .general) (h : ∀ c ∈ cs, Enc.WF t c.1 c.2)
     (hN : cs.foldl (fun s c => s + c.1.toNat) 0 < USize.size) :
     (razeColumn t cs).isSome := by
-  have hdense : ∀ w, t.width = some w → t ≠ .boolean →
+  have hdense : ∀ w, t.width = some w → t ≠ .u1 →
       ∃ ps, cs.mapM (fun c => Enc.bytesOf t c.1 c.2) = some ps ∧ ps.size = cs.size ∧
         ∀ i (hi : i < cs.size) (hp : i < ps.size), ps[i].size = cs[i].1.toNat * w := by
     intro w hw hb
@@ -1510,11 +1510,11 @@ theorem razeColumn_isSome {t : QAtomicType} {cs : Array (USize × Enc)} (hne : c
   rw [if_neg (by simpa [Array.isEmpty] using hne)]
   cases t
   case general => exact absurd rfl hg
-  case boolean =>
+  case u1 =>
     rw [mapM_some (fun c => (c.1, match c.2 with | .bits b => b | _ => .empty)) fun c hc => ?_]
     · dsimp only; rw [Array.foldl_map, needSize_fits hN]; rfl
     · have := h c hc; rcases c with ⟨n, e⟩; cases e <;> simp [Enc.WF] at this ⊢
-  case symbol =>
+  case sym =>
     dsimp only
     split
     · rfl
@@ -1552,7 +1552,7 @@ theorem razeColumn_count {t : QAtomicType} {cs : Array (USize × Enc)}
   split at hv
   · cases hv
   cases t
-  case boolean =>
+  case u1 =>
     dsimp only at hv
     split at hv
     · rename_i ps hps
@@ -1562,7 +1562,7 @@ theorem razeColumn_count {t : QAtomicType} {cs : Array (USize × Enc)}
         (fun c _ x hx => by rcases c with ⟨k, e'⟩; cases e' <;> simp at hx; subst hx; rfl) hps
       rw [toUSize_toNat hc, foldl_toNat, foldl_toNat, hk]
     · cases hv
-  case symbol =>
+  case sym =>
     dsimp only at hv
     split at hv
     · rename_i ps hps

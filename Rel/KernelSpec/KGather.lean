@@ -223,8 +223,8 @@ theorem gatherWords_error (is es : Array UInt64) (k : Nat) (hk : k < is.size) (h
 /-- Design §4's `gather` law (`raw_permute`): an answer of `kgather` is `wordsFoR` of `es[is[i]]` for each of the `m`
 words `is` that `Enc.raw` reads from `ix`, `es` being the `n` words it reads from `e`; every index is below `n`. -/
 theorem raw_kgather (m : USize) (ix : Enc) (n : USize) (e : Enc) (o : Enc) (h : kgather m ix n e = .ok o) :
-    let is := raw .long m ix
-    let es := raw .long n e
+    let is := raw .i64 m ix
+    let es := raw .i64 n e
     is.size = m.toNat ∧ es.size = n.toNat ∧ (∀ k < m.toNat, (is[k]?.getD 0).toNat < n.toNat) ∧
       o = wordsFoR (is.map fun i => es[i.toNat]?.getD 0) := by
   dsimp only
@@ -238,8 +238,8 @@ theorem raw_kgather (m : USize) (ix : Enc) (n : USize) (e : Enc) (o : Enc) (h : 
       simp only [hi, he, bind, Except.bind] at h
       obtain ⟨rfl, hisz⟩ := foRWords_raw _ _ _ _ hi
       obtain ⟨rfl, hesz⟩ := foRWords_raw _ _ _ _ he
-      generalize raw .long m ix = is at h hisz ⊢
-      generalize raw .long n e = es at h hesz ⊢
+      generalize raw .i64 m ix = is at h hisz ⊢
+      generalize raw .i64 n e = es at h hesz ⊢
       have hall : ∀ k < m.toNat, (is[k]?.getD 0).toNat < n.toNat := by
         intro k hk
         refine Nat.lt_of_not_le fun hle => ?_

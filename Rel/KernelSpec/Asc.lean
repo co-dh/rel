@@ -96,7 +96,7 @@ theorem mapM_ok {α β ε : Type} {f : α → Except ε β} :
         | succ i => simp only [List.getElem?_cons_succ] at h1 h2; exact hf i a' b' h1 h2
 
 theorem ascCol_ok {m : USize} {c : QAtomicType × Enc} {x k : Array UInt64} (h : ascCol m c = .ok (x, k)) :
-    x = raw .long m c.2 ∧ x.size = m.toNat ∧ ∃ f, ascOrd c.1 = some f ∧ k = x.map f := by
+    x = raw .i64 m c.2 ∧ x.size = m.toNat ∧ ∃ f, ascOrd c.1 = some f ∧ k = x.map f := by
   unfold ascCol at h
   cases ho : ascOrd c.1 with
   | none => simp [ho] at h
@@ -111,7 +111,7 @@ theorem ascCol_ok {m : USize} {c : QAtomicType × Enc} {x k : Array UInt64} (h :
 
 /-- The order codes `kasc` sorts by: each column's words (`foRWords`) through its type's `ascOrd`. -/
 def ascKeys (m : USize) (es : List (QAtomicType × Enc)) : List (Array UInt64) :=
-  es.map fun e => (raw .long m e.2).map ((ascOrd e.1).getD id)
+  es.map fun e => (raw .i64 m e.2).map ((ascOrd e.1).getD id)
 
 /-- `scatterWords` twice through a permutation `ps` of `til M`: `til M` through `ps` puts `k` at `ps[k]`, and `x`
 through that puts `x[ps[k]]` at `k`. -/
@@ -209,7 +209,7 @@ theorem asc_perm (m : USize) (es : List (QAtomicType × Enc)) (vs : List Enc) (p
     ∃ ps : List Nat, p = wordsFoR (ps.map Nat.toUInt64).toArray ∧ ps.Perm (List.range m.toNat) ∧
       vs.length = es.length ∧ ∀ (c : Nat) e v, es[c]? = some e → vs[c]? = some v →
         ∃ ws : Array UInt64, v = wordsFoR ws ∧ ws.size = m.toNat ∧
-          ∀ k (hk : k < ps.length), ws[k]? = (raw .long m e.2)[ps[k]]? := by
+          ∀ k (hk : k < ps.length), ws[k]? = (raw .i64 m e.2)[ps[k]]? := by
   obtain ⟨cs, hc, r, hr, wss, hw, rfl, rfl⟩ := kasc_ok h
   obtain ⟨hlen, hf⟩ := mapM_ok hc
   obtain ⟨wlen, wf⟩ := mapM_ok hw

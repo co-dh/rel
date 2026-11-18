@@ -29,7 +29,7 @@ local notation "rk(" d ")" => (Column.bitsAt xr (d * 8) 8).toNat
     `L ix(d) rk(d)` and `H ix(d) rk(d)` (`hL`, `hH`). The counts plus one `c`, `expand`'s index and rank columns
     `xi`, `xr` (at `m` copies) are bound by their equations. Hypotheses: the counts plus one summed below `2^63` and a `USize`; `Vals.PickFits` where `X` and the slices are picked. -/
 theorem nest_rep {B : Obj} {n : USize} (X : Vals (.arr B) n)
-    (f : (m : USize) → ByteArray × ByteArray → (i r : ByteArray) → len i = m.toNat → Arr .long m × Arr .long m)
+    (f : (m : USize) → ByteArray × ByteArray → (i r : ByteArray) → len i = m.toNat → Arr .i64 m × Arr .i64 m)
     (c : ByteArray) (hc : c = addc n (slicesOf X).2 1)
     (hS : pn(n.toNat) + n.toNat < 2 ^ 63) (hU : pn(n.toNat) + n.toNat < USize.size)
     (xi : ByteArray) (hxi : xi = expandBytes 8 0 (tilLongs n) c)
@@ -158,7 +158,7 @@ theorem nest_rep {B : Obj} {n : USize} (X : Vals (.arr B) n)
     `pick_row` at `xi`) beside the slice `[L r t, H r t)`, the `t`-th of the list `nest_rep` gives row `r`.
     Hypotheses: `nest_rep`'s, and `Vals.PickFits` of `X` at the copies' rows (the keys). -/
 theorem nestMem_rep {B : Obj} {n : USize} (X : Vals (.arr B) n)
-    (f : (m : USize) → ByteArray × ByteArray → (i r : ByteArray) → len i = m.toNat → Arr .long m × Arr .long m)
+    (f : (m : USize) → ByteArray × ByteArray → (i r : ByteArray) → len i = m.toNat → Arr .i64 m × Arr .i64 m)
     (c : ByteArray) (hc : c = addc n (slicesOf X).2 1)
     (hS : pn(n.toNat) + n.toNat < 2 ^ 63) (hU : pn(n.toNat) + n.toNat < USize.size)
     (xi : ByteArray) (hxi : xi = expandBytes 8 0 (tilLongs n) c)

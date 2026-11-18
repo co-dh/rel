@@ -138,7 +138,7 @@ theorem key_get {t : QAtomicType} {k : Scan.Kind} (h : orderKind t = some k) (hk
     (Obj.atom t).key (x.get ⟨i, hi⟩) = [(Order.keyAt k b i).toNat] := by
   have hw := width_num h hk
   have hne : t ≠ .general := by rintro rfl; simp [orderKind] at h
-  have hnb : t ≠ .boolean := by rintro rfl; simp only [orderKind, Option.some.injEq] at h; exact hk h.symm
+  have hnb : t ≠ .u1 := by rintro rfl; simp only [orderKind, Option.some.injEq] at h; exact hk h.symm
   rw [Arr.get_ne _ _ hne, ← get_bytesOf hw hnb x.wf hb hi]
   have hka : Order.keyAt k b i = Order.rank k (Column.bitsAt b (i * k.width) k.width) := by
     cases k <;> first | exact absurd rfl hk | rfl
@@ -162,7 +162,7 @@ theorem grade_num {t : QAtomicType} {k : Scan.Kind} (h : orderKind t = some k) (
     (x : Arr t n) : ∃ g, gradeColumn t false n x.enc = some (.bytes g) ∧
       (ids g).Perm (List.range n.toNat) ∧ (ids g).Pairwise (ascBy (.atom t) (n := n) x (· < ·)) := by
   have hw := width_num h hk
-  have hnb : t ≠ .boolean := by rintro rfl; simp only [orderKind, Option.some.injEq] at h; exact hk h.symm
+  have hnb : t ≠ .u1 := by rintro rfl; simp only [orderKind, Option.some.injEq] at h; exact hk h.symm
   obtain ⟨b, hb, hs⟩ := bytesOf_size hnb hw x.wf
   have hk0 : 0 < k.width := by cases k <;> decide
   rw [gradeColumn_num h hk]
@@ -193,8 +193,8 @@ theorem sortsAsc_num {t : QAtomicType} {k : Scan.Kind} (h : orderKind t = some k
 
 /-! ## The boolean: `grade .bit` -/
 
-theorem grade_boolean {n : USize} (x : Arr .boolean n) : ∃ g, gradeColumn .boolean false n x.enc = some (.bytes g) ∧
-    (ids g).Perm (List.range n.toNat) ∧ (ids g).Pairwise (ascBy (.atom .boolean) (n := n) x (· < ·)) := by
+theorem grade_boolean {n : USize} (x : Arr .u1 n) : ∃ g, gradeColumn .u1 false n x.enc = some (.bytes g) ∧
+    (ids g).Perm (List.range n.toNat) ∧ (ids g).Pairwise (ascBy (.atom .u1) (n := n) x (· < ·)) := by
   have hwf := x.wf
   cases he : x.enc
   case bits b =>
@@ -209,7 +209,7 @@ theorem grade_boolean {n : USize} (x : Arr .boolean n) : ∃ g, gradeColumn .boo
     split <;> rfl
   all_goals rw [he] at hwf; simp [Enc.WF] at hwf
 
-theorem sortsAsc_boolean : SortsAsc (.atom .boolean) := sortsAsc_atom .boolean grade_boolean
+theorem sortsAsc_boolean : SortsAsc (.atom .u1) := sortsAsc_atom .u1 grade_boolean
 
 /-! ## Bytes compared by `symCmp`: the lexicographic order of their symbol keys -/
 
@@ -330,21 +330,21 @@ theorem symKey_lt_iff : ∀ (a b : List UInt8), a.length = b.length →
 
 /-- Row `i` of a symbol column that `Enc.get` decodes from valid UTF-8 bytes `s`: its `Obj.key` is `s`'s symbol
     key, the decode-then-`toUTF8` round trip returning the bytes. -/
-theorem key_symAt {n : USize} (x : Arr .symbol n) {i : Nat} (hi : i < n.toNat) {s : ByteArray}
-    (hs : s.IsValidUTF8) (hg : Enc.get .symbol n x.enc i = some (.symbol ((String.fromUTF8? s).getD ""))) :
-    (Obj.atom .symbol).key (x.get ⟨i, hi⟩) = s.data.toList.map (·.toNat + 1) ++ [0] := by
+theorem key_symAt {n : USize} (x : Arr .sym n) {i : Nat} (hi : i < n.toNat) {s : ByteArray}
+    (hs : s.IsValidUTF8) (hg : Enc.get .sym n x.enc i = some (.sym ((String.fromUTF8? s).getD ""))) :
+    (Obj.atom .sym).key (x.get ⟨i, hi⟩) = s.data.toList.map (·.toNat + 1) ++ [0] := by
   rw [Arr.get_ne _ _ (by decide), hg]
   simp only [Option.bind_some, Carrier.of?, Option.getD_some, Obj.key, String.fromUTF8?, dif_pos hs]
   rfl
 
 /-- **`gradeSyms` sorts a `.syms` column by `Obj.lt`**, stable. -/
-theorem grade_syms {n : USize} (x : Arr .symbol n) {blob : ByteArray} {offs : Array Nat}
-    (he : x.enc = .syms blob offs) : ∃ g, gradeColumn .symbol false n x.enc = some (.bytes g) ∧
-      (ids g).Perm (List.range n.toNat) ∧ (ids g).Pairwise (ascBy (.atom .symbol) (n := n) x (· < ·)) := by
+theorem grade_syms {n : USize} (x : Arr .sym n) {blob : ByteArray} {offs : Array Nat}
+    (he : x.enc = .syms blob offs) : ∃ g, gradeColumn .sym false n x.enc = some (.bytes g) ∧
+      (ids g).Perm (List.range n.toNat) ∧ (ids g).Pairwise (ascBy (.atom .sym) (n := n) x (· < ·)) := by
   have hwf := x.wf; rw [he] at hwf
   obtain ⟨hsz, -, hv⟩ := hwf
   have hs : offs.size - 1 = n.toNat := by omega
-  have hk : ∀ i (hi : i < n.toNat), (Obj.atom .symbol).key (x.get ⟨i, hi⟩) =
+  have hk : ∀ i (hi : i < n.toNat), (Obj.atom .sym).key (x.get ⟨i, hi⟩) =
       (Column.symKey blob offs i).data.toList.map (·.toNat + 1) ++ [0] := fun i hi =>
     key_symAt x hi (hv i hi) (by rw [he]; simp only [Enc.get, if_pos hi]; rfl)
   obtain ⟨hp, hsrt⟩ := range_mergeSort
@@ -359,7 +359,7 @@ theorem grade_syms {n : USize} (x : Arr .symbol n) {blob : ByteArray} {offs : Ar
   rw [ids_indices _ hm]
   refine ⟨hp, ascBy_of_le x _ (fun i j hi hj => ?_) hsrt⟩
   rw [symCmp_ne_gt]
-  show ¬ _ < _ ↔ ¬ (Obj.atom .symbol).key _ < (Obj.atom .symbol).key _
+  show ¬ _ < _ ↔ ¬ (Obj.atom .sym).key _ < (Obj.atom .sym).key _
   rw [hk j hj, hk i hi]
 
 /-- A count grows strictly under a weaker predicate that holds, where the stronger fails, on some member. -/
@@ -398,15 +398,15 @@ theorem rank_le_iff {dict : ByteArray} {dof : Array Nat} (a : Nat) {b : Nat} (hb
         List.not_lt.2 (List.le_trans (List.not_lt.1 h) (List.not_lt.1 hn)) hj
 
 /-- **`gradeIds` sorts an `.enum` column by `Obj.lt`**, stable. -/
-theorem grade_ids {n : USize} (x : Arr .symbol n) {dict : ByteArray} {dof : Array Nat} {ids' : ByteArray}
-    (he : x.enc = .enum dict dof ids') : ∃ g, gradeColumn .symbol false n x.enc = some (.bytes g) ∧
-      (ids g).Perm (List.range n.toNat) ∧ (ids g).Pairwise (ascBy (.atom .symbol) (n := n) x (· < ·)) := by
+theorem grade_ids {n : USize} (x : Arr .sym n) {dict : ByteArray} {dof : Array Nat} {ids' : ByteArray}
+    (he : x.enc = .enum dict dof ids') : ∃ g, gradeColumn .sym false n x.enc = some (.bytes g) ∧
+      (ids g).Perm (List.range n.toNat) ∧ (ids g).Pairwise (ascBy (.atom .sym) (n := n) x (· < ·)) := by
   have hwf := x.wf; rw [he] at hwf
   obtain ⟨-, -, hin, -, hv⟩ := hwf
   let w := Column.idWidth dof
   let rank (i : Nat) : Nat := (List.range (dof.size - 1)).countP fun j =>
     Column.symCmp (Column.symKey dict dof j) (Column.symKey dict dof (Column.idAt ids' w i)) == .lt
-  have hk : ∀ i (hi : i < n.toNat), (Obj.atom .symbol).key (x.get ⟨i, hi⟩) =
+  have hk : ∀ i (hi : i < n.toNat), (Obj.atom .sym).key (x.get ⟨i, hi⟩) =
       (Column.symKey dict dof (Column.idAt ids' w i)).data.toList.map (·.toNat + 1) ++ [0] := fun i hi =>
     key_symAt x hi (hv _ (hin i hi)) (by rw [he]; simp only [Enc.get, if_pos hi]; rfl)
   obtain ⟨hp, hsrt⟩ := range_mergeSort (le := fun i j => decide (rank i ≤ rank j))
@@ -419,11 +419,11 @@ theorem grade_ids {n : USize} (x : Arr .symbol n) {dict : ByteArray} {dof : Arra
   rw [ids_indices _ hm]
   refine ⟨hp, ascBy_of_le x _ (fun i j hi hj => ?_) hsrt⟩
   rw [decide_eq_true_iff, rank_le_iff _ (hin j hj), symCmp_ne_gt]
-  show ¬ _ < _ ↔ ¬ (Obj.atom .symbol).key _ < (Obj.atom .symbol).key _
+  show ¬ _ < _ ↔ ¬ (Obj.atom .sym).key _ < (Obj.atom .sym).key _
   rw [hk j hj, hk i hi]
 
 /-- **The symbol sorts stably by `Obj.lt`**, on both of its encodings. -/
-theorem sortsAsc_symbol : SortsAsc (.atom .symbol) := sortsAsc_atom .symbol fun x => by
+theorem sortsAsc_symbol : SortsAsc (.atom .sym) := sortsAsc_atom .sym fun x => by
   cases he : x.enc
   case syms blob offs => exact he ▸ grade_syms x he
   case enum dict dof ids' => exact he ▸ grade_ids x he
@@ -544,7 +544,7 @@ theorem sortsAsc_sum {a b : Obj} (ha : SortsAsc a) (hb : SortsAsc b) : SortsAsc 
   have hm : ((len p).toUSize).toNat = len p := USize.toNat_ofNat_of_lt' hl
   have hcl : ∀ {g : ByteArray}, len (gather 8 p (whereBits (len p).toUSize g)) < USize.size := fun {g} => by
     rw [len_eq_ids]; exact Nat.lt_of_le_of_lt (where_sublist hl).length_le (by rw [← len_eq_ids]; exact hl)
-  let tb := tagBits (pickArr .boolean ⟨n, tag⟩ p (len p).toUSize hm.symm)
+  let tb := tagBits (pickArr .u1 ⟨n, tag⟩ p (len p).toUSize hm.symm)
   let ps := longsOf (place (A := a) (B := b) ⟨l, r, tag, idx, x, y⟩ ((l.toNat : Int) - 1) ((r.toNat : Int) - l.toNat) 0 0)
   -- a kept row: a row of `p`, its tag the side's, its position `Vals.row`'s
   have hside : ∀ (s : Bool) {g : ByteArray}, (∀ k < len p, Column.bitAt g k = true → Column.bitAt tb k = s) →
@@ -838,8 +838,8 @@ theorem _root_.Rel.Obj.eq_of_not_lt (A : Obj) (hA : ∀ x y : A.El, A.key x = A.
 /-- **Every atom but `.general` sorts stably by `Obj.lt`.** -/
 theorem sortsAsc_ordered_atom {t : QAtomicType} (h : t ≠ .general) : SortsAsc (.atom t) := by
   cases t
-  case boolean => exact sortsAsc_boolean
-  case symbol => exact sortsAsc_symbol
+  case u1 => exact sortsAsc_boolean
+  case sym => exact sortsAsc_symbol
   case general => exact absurd rfl h
   all_goals exact sortsAsc_num rfl (by decide)
 

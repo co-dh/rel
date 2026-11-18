@@ -17,16 +17,16 @@ open Tab Rel.Dep Rel.Kernel
     prefix sorts first; a sum's tag leads, `inl` before `inr`. A general atom has no kernel order
     (`orderKind .general = none`) and keys as `[]`: all general atoms tie. -/
 def Obj.key : (A : Obj) → A.El → List Nat
-  | .atom .boolean, x => [if (x : Bool) then 1 else 0]
-  | .atom .byte, x | .atom .char, x => [(x : UInt8).toNat]
-  | .atom .short, x => [(Order.rank .i16 (x : Int16).toUInt16.toUInt64).toNat]
-  | .atom .int, x | .atom .month, x | .atom .date, x | .atom .minute, x | .atom .second, x
+  | .atom .u1, x => [if (x : Bool) then 1 else 0]
+  | .atom .u8, x | .atom .char, x => [(x : UInt8).toNat]
+  | .atom .i16, x => [(Order.rank .i16 (x : Int16).toUInt16.toUInt64).toNat]
+  | .atom .i32, x | .atom .month, x | .atom .date, x | .atom .minute, x | .atom .second, x
   | .atom .time, x => [(Order.rank .i32 (x : Int32).toUInt32.toUInt64).toNat]
-  | .atom .long, x | .atom .timestamp, x | .atom .timespan, x =>
+  | .atom .i64, x | .atom .timestamp, x | .atom .timespan, x =>
     [(Order.rank .i64 (x : Int64).toUInt64).toNat]
-  | .atom .real, x => [(Order.rank .f32 (x : UInt32).toUInt64).toNat]
-  | .atom .float, x | .atom .datetime, x => [(Order.rank .f64 (x : UInt64)).toNat]
-  | .atom .symbol, x => (x : String).toUTF8.data.toList.map (·.toNat + 1) ++ [0]
+  | .atom .f32, x => [(Order.rank .f32 (x : UInt32).toUInt64).toNat]
+  | .atom .f64, x | .atom .datetime, x => [(Order.rank .f64 (x : UInt64)).toNat]
+  | .atom .sym, x => (x : String).toUTF8.data.toList.map (·.toNat + 1) ++ [0]
   | .atom .general, _ => []
   | .prod a b, (x, y) => a.key x ++ b.key y
   | .arr b, xs => (xs : List b.El).foldr (fun x k => 1 :: b.key x ++ k) [0]
@@ -83,7 +83,7 @@ theorem Obj.key_prefix : (A : Obj) → (x y : A.El) → (r s : List Nat) →
     A.key x ++ r = A.key y ++ s → A.key x = A.key y
   | .atom t, x, y, r, s, h => by
     cases t
-    case symbol =>
+    case sym =>
       simp only [Obj.key, List.append_assoc] at h ⊢
       have := key_term (l := (x : String).toUTF8.data.toList.map (·.toNat + 1))
         (m := (y : String).toUTF8.data.toList.map (·.toNat + 1)) (by simp) (by simp)
@@ -182,9 +182,9 @@ theorem Obj.lt_cons (b : Obj) (x y : b.El) (xs ys : List b.El) :
 
 #guard (Obj.arr .long).key ([] : List Int64) < (Obj.arr .long).key ([1] : List Int64)
 #guard (Obj.arr .long).key ([1] : List Int64) < (Obj.arr .long).key ([1, 0] : List Int64)
-#guard (Obj.atom .long).key (-1 : Int64) < (Obj.atom .long).key (0 : Int64)
-#guard (Obj.atom .symbol).key "a" < (Obj.atom .symbol).key "aa"
-#guard (Obj.atom .symbol).key "aa" < (Obj.atom .symbol).key "ab"
+#guard (Obj.atom .i64).key (-1 : Int64) < (Obj.atom .i64).key (0 : Int64)
+#guard (Obj.atom .sym).key "a" < (Obj.atom .sym).key "aa"
+#guard (Obj.atom .sym).key "aa" < (Obj.atom .sym).key "ab"
 
 #print axioms Obj.lt_trichotomy
 #print axioms Obj.lt_prod
