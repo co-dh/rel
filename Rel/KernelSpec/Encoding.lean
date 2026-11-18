@@ -819,6 +819,25 @@ theorem exc_find (B : Nat) (hB : 0 < B) (exc : Array Nat) (hs : exc.toList.Pairw
     rw [List.find?_eq_none] at hn
     exact hn k (by rw [List.mem_range'_1]; exact ⟨by omega, by omega⟩) (by rw [hpos k hks, hki, beq_iff_eq])
 
+/-- `Coc.excBlob` as its five sections, each through a `pad` that keeps its bytes and rounds its size up to 8, at
+any count: the sections' layout owes nothing to the arguments. -/
+theorem excBlob_eq (word : UInt64) (B w nb : Nat) (x : ByteArray) (exc : Array Nat) (last : ByteArray) :
+    ∃ pad : ByteArray → ByteArray, (∀ b k, k < b.size → (pad b)[k]? = b[k]?) ∧
+      (∀ b, (pad b).size = (b.size + 7) / 8 * 8) ∧
+      Kernel.Coc.excBlob word B w nb x exc last =
+        pad (Column.pushBits (Column.pushBits ByteArray.empty exc.size.toUInt64 8) word 8)
+        ++ pad (exc.foldl (init := ByteArray.empty) fun acc i => Column.pushBits acc (Column.bitsAt x (i * w) w) w)
+        ++ pad ((Array.range (nb + 1)).foldl (init := ByteArray.empty) fun acc b =>
+             Column.pushBits acc (exc.filter (· < b * B)).size.toUInt64 4)
+        ++ pad (exc.foldl (init := ByteArray.empty) fun acc i => Column.pushBits acc (i % B).toUInt64 2)
+        ++ pad last := by
+  refine ⟨_, fun b k h => ?_, fun b => ?_, rfl⟩
+  · exact ba_append_left _ _ _ h
+  · show (b ++ ⟨Array.replicate ((8 - b.size % 8) % 8) 0⟩).size = _
+    simp only [ByteArray.size_append]
+    show b.size + (Array.replicate ((8 - b.size % 8) % 8) (0 : UInt8)).size = _
+    rw [Array.size_replicate]; omega
+
 /-- What each reader of an exception ladder answers on `Coc.excBlob`'s bytes, laid at offset `e` of `P`: the count,
 the word, each listed element's bits, the block offsets, the places in the block and the last section. -/
 theorem excBlob_reads (word : UInt64) (B : Nat) (hB : 0 < B ∧ B ≤ 65536) (w : Nat) (hw : w ≤ 8) (nb : Nat)
@@ -837,21 +856,7 @@ theorem excBlob_reads (word : UInt64) (B : Nat) (hB : 0 < B ∧ B ≤ 65536) (w 
     have := List.length_filter_le p exc.toList
     rw [← Array.toList_filter, Array.length_toList, Array.length_toList] at this; exact this
   have e0 : ByteArray.empty.size = 0 := rfl
-  obtain ⟨pad, hpg, hps, hA⟩ : ∃ pad : ByteArray → ByteArray, (∀ b k, k < b.size → (pad b)[k]? = b[k]?) ∧
-      (∀ b, (pad b).size = (b.size + 7) / 8 * 8) ∧
-      Kernel.Coc.excBlob word B w nb x exc last =
-        pad (Column.pushBits (Column.pushBits ByteArray.empty exc.size.toUInt64 8) word 8)
-        ++ pad (exc.foldl (init := ByteArray.empty) fun acc i => Column.pushBits acc (Column.bitsAt x (i * w) w) w)
-        ++ pad ((Array.range (nb + 1)).foldl (init := ByteArray.empty) fun acc b =>
-             Column.pushBits acc (exc.filter (· < b * B)).size.toUInt64 4)
-        ++ pad (exc.foldl (init := ByteArray.empty) fun acc i => Column.pushBits acc (i % B).toUInt64 2)
-        ++ pad last := by
-    refine ⟨_, fun b k h => ?_, fun b => ?_, rfl⟩
-    · exact ba_append_left _ _ _ h
-    · show (b ++ ⟨Array.replicate ((8 - b.size % 8) % 8) 0⟩).size = _
-      simp only [ByteArray.size_append]
-      show b.size + (Array.replicate ((8 - b.size % 8) % 8) (0 : UInt8)).size = _
-      rw [Array.size_replicate]; omega
+  obtain ⟨pad, hpg, hps, hA⟩ := excBlob_eq word B w nb x exc last
   rw [hA] at hP ⊢
   generalize hS0 : Column.pushBits (Column.pushBits ByteArray.empty exc.size.toUInt64 8) word 8 = S0 at hP ⊢
   generalize hS1 : exc.foldl (init := ByteArray.empty)

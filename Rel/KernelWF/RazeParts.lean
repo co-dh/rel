@@ -277,7 +277,7 @@ theorem reencode_list {w : Nat} (hw1 : 1 < w) (hw8 : w ≤ 8) (l : List ((USize 
     simpa [Verify.elemsW, List.length_flatten, Function.comp_def] using congrArg List.length hE
   have hR : ∀ i < X.size / w, (Column.foRBits M P (Column.blockStarts M) i).toNat % 2 ^ (8 * w) =
       (Column.bitsAt X (i * w) w).toNat := by
-    intro i hi; have := Verify.foRBits_encode_bits Column.lgEnc (by decide) w hw1 hw8 X i hi
+    intro i hi; have := Verify.foRBits_encode_bits Column.lgEnc (by decide) w hw1 hw8 X i hi (patch := true)
     rw [show Coc.encodeAt Column.lgEnc w.toUSize X = (M, P) from hX] at this; exact this
   have h2 : (List.range (X.size / w)).map (fun i => (Column.foRBits M P (Column.blockStarts M) i).toNat % 2 ^ (8 * w)) =
       (Verify.elemsW w X).map (·.toNat) := by

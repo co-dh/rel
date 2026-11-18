@@ -516,8 +516,10 @@ private theorem encodeBelow_eq {w : USize} {x : ByteArray} {mp : ByteArray × By
 /-- `alpBlob`'s header declares the width it was handed, at any count: byte 8 is the flag. -/
 theorem alpF32_alpBlob (f32 : Bool) (K w n : Nat) (x : ByteArray) (bs : Array (Nat × Array (Option UInt64))) :
     Column.alpF32 (Coc.alpBlob f32 K w n x bs) = f32 := by
-  obtain ⟨pad, hpg, hps, hA⟩ := Verify.alpBlob_eq f32 K w n x bs _ rfl
-  rw [hA]
+  obtain ⟨pad, hpg, hps, hA⟩ := Verify.excBlob_eq (if f32 then 1 else 0) K w bs.size x
+    ((Array.range n).filter fun i => ((bs[i / K]!).2[i % K]!).isNone)
+    (bs.foldl (init := ByteArray.empty) fun acc be => acc.push be.1.toUInt8)
+  unfold Coc.alpBlob; rw [hA]
   unfold Column.alpF32
   generalize hS : Column.pushBits ByteArray.empty _ 8 = S
   have hS8 : S.size = 8 := by rw [← hS, Column.pushBits_size]; rfl
@@ -535,8 +537,8 @@ theorem nblk_alpEncodeAt (f32 : Bool) (x : ByteArray) :
   unfold Coc.alpEncodeAt
   simp only []
   rw [show (8 : USize) = (8 : Nat).toUSize from rfl,
-    (Verify.nblk_encode Column.lgEnc (by decide) 8 (by decide) (by decide) _).1,
-    (Verify.nblk_encode Column.lgEnc (by decide) 8 (by decide) (by decide) _).2, Verify.blocks_size]
+    (Verify.nblk_encode Column.lgEnc (by decide) 8 (by decide) (by decide) _ (patch := false)).1,
+    (Verify.nblk_encode Column.lgEnc (by decide) 8 (by decide) (by decide) _ (patch := false)).2, Verify.blocks_size]
   simp only [Array.toList_map, Array.toList_range, List.map_map, Function.comp_def, Coc.alpBlockOf,
     Array.size_map, Array.size_range]
   rw [Verify.sum_blocks]
@@ -544,11 +546,11 @@ theorem nblk_alpEncodeAt (f32 : Bool) (x : ByteArray) :
   simp only [Column.lgEnc, Nat.reducePow] at *
   omega
 
-/-- `alpEncodeAt`'s metadata is `encode`'s, so it passes `Enc.WF`'s `lgOk`. -/
+/-- `alpEncodeAt`'s metadata is `encodeAt`'s at `lgEnc`, unpatched, so it passes `Enc.WF`'s `lgOk`. -/
 theorem lgOk_alpEncodeAt (f32 : Bool) (x : ByteArray) : Column.lgOk (Coc.alpEncodeAt f32 x).1 = true := by
   unfold Coc.alpEncodeAt
   simp only []
-  exact lgOk_encode 8 (by simp) _
+  rw [Column.lgOk, lgAt_encodeAt _ (by decide) _ (by simp) _ (patch := false)]; rfl
 
 /-- `Coc.alpDecode` holds `n` elements of `w` bytes, as `decodeW` says of `Coc.decode`. -/
 theorem alpDecode_size (w : USize) (hw : w.toNat ≤ 8) (M P a : ByteArray) (n : USize) :
@@ -625,7 +627,7 @@ theorem answer_wf {t : QAtomicType} {n : USize} {e : Enc}
         have h0 : 0 < w ∧ w ≤ 8 := by
           cases t <;> simp_all [QAtomicType.width, Column.encodes] <;> omega
         have hmp := encodeBelow_eq heq
-        have hk := Verify.nblk_encode Column.lgEnc (by decide) w h0.1 h0.2 b
+        have hk := Verify.nblk_encode Column.lgEnc (by decide) w h0.1 h0.2 b (patch := true)
         change Column.nblk (Coc.encode _ b).1 = _ ∧ Column.blk (Coc.encode _ b).1 = _ at hk
         rw [← hmp] at hk
         simp only [hs, Nat.mul_div_cancel _ h0.1] at hk
