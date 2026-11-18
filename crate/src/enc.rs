@@ -121,29 +121,63 @@ pub fn for_blk<T: Elt>(m: &mut EncMeta, x: &[T], nb: usize) -> u32 {
         *m.nexc = 0;
         return 0
     }
-    let mut s = crate::pod::Scr::<i64>::new(nb);
-    for (o, v) in s.iter_mut().zip(&x[..nb]) { *o = v.i() }
-    s.sort_unstable();
-    // `Coc.frameAt`: a window of `2 ^ d` from each distinct key, its far end `j` only moving forward
-    let frame = |d: usize| -> (i64, usize) {
-        let (mut best, mut j) = ((mn, usize::MAX), 0);
-        for i in 0..nb {
-            if i > 0 && s[i] == s[i - 1] { continue }
-            while j < nb && (d >= 64 || (s[j] as u64).wrapping_sub(s[i] as u64) >> d == 0) { j += 1 }
-            if nb - (j - i) < best.1 { best = (s[i], nb - (j - i)) }
-        }
-        best
-    };
-    let (mut best, mut pick) = (usize::MAX, (0usize, mn, 0usize));
-    for d in 0..=top {
-        let (f, np) = frame(d);
-        let c = (nb * d).div_ceil(8) + np * (2 + esz);
-        if c < best { (best, pick) = (c, (d, f, np)) }
-    }
-    let (d, f, np) = pick;
+    let (d, f, np) = plan(&x[..nb], mn, top, esz);
     *m.frm.as_deref_mut().expect("for_blk: a Frame of Reference column keeps its frames") = (f as u64).wrapping_sub(mn as u64);
     (*m.width, *m.nexc) = (d as u8, np as u32);
     np as u32
+}
+/// `Coc.planOf`'s width, frame and patch count for the keys `x` of minimum `mn`, `top` the bit length of their range:
+/// the least `(cost, d)`. A width is searched with `frame_at` only while a lower bound on its cost does not already
+/// lose to the best found, so a random block costs a histogram and no sort.
+fn plan<T: Elt>(x: &[T], mn: i64, top: usize, esz: usize) -> (usize, i64, usize) {
+    let (nb, pc) = (x.len(), 2 + esz);
+    let bits = |d: usize| (nb * d).div_ceil(8);
+    // lo[d] <= the patches at width d. Residuals in buckets of 2 ^ b, at most 64: a window of 2 ^ d >= 2 ^ b from a
+    // key spans at most `span` buckets, so leaves at least the keys outside the fullest run of `span`
+    let b = top.saturating_sub(6);
+    let nbk = 1usize << (top - b);
+    let mut h = [0usize; 65];
+    for v in x { h[1 + ((v.i() as u64).wrapping_sub(mn as u64) >> b) as usize] += 1 }
+    for k in 1..=nbk { h[k] += h[k - 1] } // prefix sums
+    let mut lo = [0usize; 65];
+    for d in b..top {
+        let span = ((((1u64 << d) + (1u64 << b) - 2) >> b) as usize + 1).min(nbk);
+        lo[d] = nb - (span..=nbk).map(|e| h[e] - h[e - span]).max().unwrap_or(nb);
+    }
+    for d in 0..b { lo[d] = lo[b] } // patches only grow as the width narrows
+    // the widest width patches nothing at frame `mn`; widths `a .. z` are still open
+    let (mut best, mut pick, mut a, mut z, mut up) = (bits(top), (top, mn, 0usize), 0, top, false);
+    let mut s: Option<crate::pod::Scr<u64>> = None;
+    loop {
+        let open = |d: usize, lo: &[usize; 65]| { let c = bits(d) + lo[d] * pc; c < best || c == best && d < pick.0 };
+        while a < z && !open(a, &lo) { a += 1 }
+        while z > a && !open(z - 1, &lo) { z -= 1 }
+        if a >= z { return pick }
+        // alternate ends: a narrow width lowers `best`, a wide one's patches bound every narrower width's
+        let d = if up { a } else { z - 1 };
+        up = !up;
+        let s = s.get_or_insert_with(|| {
+            let mut s = crate::pod::Scr::<u64>::new(nb);
+            for (o, v) in s.iter_mut().zip(x) { *o = (v.i() as u64).wrapping_sub(mn as u64) }
+            s.sort_unstable(); // an LSD radix sort measured no faster
+            s
+        });
+        let (f, np) = frame_at(&s[..], d);
+        let c = bits(d) + np * pc;
+        if c < best || c == best && d < pick.0 { (best, pick) = (c, (d, (f as i64).wrapping_add(mn), np)) }
+        for e in 0..=d { lo[e] = lo[e].max(np) }
+    }
+}
+/// `Coc.frameAt` over the sorted residuals `s`: a window of `2 ^ d` from each distinct one, its far end `j` only moving
+/// forward; answers the frame's residual and the patches it leaves.
+fn frame_at(s: &[u64], d: usize) -> (u64, usize) {
+    let (nb, mut best, mut j) = (s.len(), (s[0], usize::MAX), 0);
+    for i in 0..nb {
+        if i > 0 && s[i] == s[i - 1] { continue }
+        while j < nb && (d >= 64 || (s[j] - s[i]) >> d == 0) { j += 1 }
+        if nb - (j - i) < best.1 { best = (s[i], nb - (j - i)) }
+    }
+    best
 }
 /// coc.rs `coc_enc_for_pack`: `p.pos` holds the block's patches, `exc_off[b + 1] - exc_off[b]` of them.
 pub fn for_pack(p: &mut EncPack, x: &[u8], width: usize) {
@@ -465,13 +499,64 @@ mod tests {
         let nbk = n.div_ceil(BLK);
         let c = Coc { meta: crate::coc::Meta { lg: crate::DEFAULT_LG, base: &base, maxv: &maxv, off: &off, bsum: &bsum, width: &width, sumnul: 0, sumn: 0,
                                                 n, nblk: nbk, mblk: 2 },
-                      pack: &pack, exc: Some(crate::coc::Exc { off: &eo, pos: &pos, raw: &raw, esz: size_of::<T>() }),
+                      pack: &pack, exc: Some(crate::coc::Exc { off: &eo, pos: &pos, raw: &raw, esz: size_of::<T>(), asc: crate::coc::ascending(&eo, &pos) }),
                       fdelta: Some(&frm) };
         let mut out = vec![T::wrap(0); n];
         decode(&c, &mut out);
         assert_eq!(out, x);
         ne.iter().sum()
     }
+    /// The search `plan` replaced: `frame_at` at every width `0 ..= top`, the first least cost winning.
+    fn plan_ref<T: Elt>(x: &[T], top: usize) -> (usize, i64, usize) {
+        // the old `Coc.frameAt` over the sorted keys
+        fn frame(s: &[i64], d: usize) -> (i64, usize) {
+            let (nb, mut best, mut j) = (s.len(), (s[0], usize::MAX), 0);
+            for i in 0..nb {
+                if i > 0 && s[i] == s[i - 1] { continue }
+                while j < nb && (d >= 64 || (s[j] as u64).wrapping_sub(s[i] as u64) >> d == 0) { j += 1 }
+                if nb - (j - i) < best.1 { best = (s[i], nb - (j - i)) }
+            }
+            best
+        }
+        let mut s: Vec<i64> = x.iter().map(|v| v.i()).collect();
+        s.sort_unstable();
+        let (mut best, mut pick) = (usize::MAX, (0, s[0], 0));
+        for d in 0..=top {
+            let (f, np) = frame(&s, d);
+            let c = (x.len() * d).div_ceil(8) + np * (2 + size_of::<T>());
+            if c < best { (best, pick) = (c, (d, f, np)) }
+        }
+        pick
+    }
+    // `plan` against `plan_ref` on random, sorted, outlier, constant and few-valued blocks of every element type and
+    // of short lengths, where cost ties between widths are common
+    fn plans<T: Elt>(seed: u64) -> usize {
+        let mut s = seed;
+        let mut rnd = || { s ^= s << 13; s ^= s >> 7; s ^= s << 17; s };
+        let mut n = 0;
+        for k in 0..=64u32 {
+            for nb in [1usize, 2, 3, 5, 9, 17, 64, 100, 1000, BLK] {
+                for kind in 0..6 {
+                    let m = if k == 64 { u64::MAX } else { (1u64 << k) - 1 };
+                    let base = rnd();
+                    let mut x: Vec<u64> = (0..nb).map(|_| base.wrapping_add(match kind {
+                        0 => rnd() & m,                                        // random over 2 ^ k
+                        1 => rnd() & m & 7,                                    // few values: ties
+                        2 => 0,                                                // constant
+                        _ => if rnd() % [0, 0, 0, 3, 40, 300][kind] == 0 { rnd() & m } else { rnd() & 15 }, // outliers
+                    })).collect();
+                    if kind == 4 { x.sort_unstable() }
+                    let x: Vec<T> = x.into_iter().map(T::wrap).collect();
+                    let (mn, mx) = x.iter().fold((i64::MAX, i64::MIN), |(a, b), v| (a.min(v.i()), b.max(v.i())));
+                    let top = crate::bits::width_for((mx as u64).wrapping_sub(mn as u64)) as usize;
+                    assert_eq!(plan(&x, mn, top, size_of::<T>()), plan_ref(&x, top), "k {k} nb {nb} kind {kind} x {:?}", &x.iter().map(|v| v.i()).collect::<Vec<_>>()[..nb.min(20)]);
+                    n += 1;
+                }
+            }
+        }
+        n
+    }
+    #[test] fn plan_is_the_full_search() { assert!(plans::<u8>(1) + plans::<i16>(2) + plans::<i32>(3) + plans::<i64>(4) + plans::<i64>(5) > 0) }
     #[test] fn decode_round_trip_with_patches() {
         let mut x: Vec<i64> = (0..BLK as i64 + 300).map(|i| 1_000_000 + (i * 37) % 500).collect();
         x[3] = -5; x[900] = 1 << 40; x[1100] = i64::MIN; x[1200] = 7;

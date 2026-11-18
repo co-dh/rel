@@ -57,7 +57,10 @@ impl<'a> Coc<'a> {
     pub fn get(&self, i: usize) -> i64 {
         let (b, j) = (i >> self.meta.lg, i & (self.meta.blk() - 1));
         if let Some(e) = self.exc.filter(|e| !e.pos.is_empty()) {
-            for x in e.off[b] as usize..e.off[b + 1] as usize { if e.pos[x] as usize == j { return self.exc(x) } }
+            let r = e.off[b] as usize..e.off[b + 1] as usize;
+            // the first patch at `j`, Lean `foRExc`'s `find?`: in ascending positions it is the only one
+            let x = if e.asc { e.pos[r.clone()].binary_search(&(j as u16)).ok().map(|k| r.start + k) } else { r.clone().find(|&x| e.pos[x] as usize == j) };
+            if let Some(x) = x { return self.exc(x) }
         }
         let p = self.pack.get(self.meta.off[b] as usize..).unwrap_or(&[]);
         self.frame(b).wrapping_add(res_get_in(p, self.meta.width[b], j, p.len())) as i64

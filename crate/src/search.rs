@@ -656,7 +656,7 @@ mod tests {
     }
     #[test] fn srange_and_exc_within() {
         let (raw, pos, off) = ([(-9i64).to_ne_bytes(), 40i64.to_ne_bytes()].concat(), [1u16, 2], [0u32, 0, 2]);
-        let e = Exc { off: &off, pos: &pos, raw: &raw, esz: 8 };
+        let e = Exc { off: &off, pos: &pos, raw: &raw, esz: 8, asc: crate::coc::ascending(&off, &pos) };
         let c = col(&[10, 20], &[15, 30], &[0, 0], &[0, 0], 1025, Some(e));
         assert_eq!(coc_srange(&c), (-9, 40));
         assert!(!coc_exc_within(&c, 0, -100, 100) && coc_exc_within(&c, 1, -9, -9) && coc_exc_within(&c, 1, 40, 41));

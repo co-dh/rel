@@ -51,6 +51,8 @@ impl CCoc {
         };
         let exc = if self.exc_off.is_null() { None } else {
             Some(coc::Exc { off: unsafe { sl(self.exc_off, m + 1) }, pos: unsafe { sl(self.exc_pos, self.nexc) },
+                            // a C view is built per block (`qrs_coc_block_start`), so its order is not scanned; `get` scans
+                            asc: false,
                             raw: unsafe { sl(self.exc_raw, self.nexc * self.exc_esz) }, esz: self.exc_esz })
         };
         let fdelta = if self.fdelta.is_null() { None } else { Some(unsafe { sl(self.fdelta.cast_const(), m) }) };
