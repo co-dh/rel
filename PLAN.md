@@ -89,7 +89,7 @@ Size：S = 一步，少于 20 次 tool call；M = 一到三步；L = 多于三�
 状态：✅ 完成，🔄 进行中，⬜ 未开始，✖ 弃用。每步的旧文本（文件、行号、`LR` 命令、Done 条件）在 commit
 178da18 的 `PLAN.md` §2：`git show 178da18:PLAN.md`。行号已过时，先用 index 重新定位。
 
-进度：23 / 53 步（约 43%）。
+进度：23 / 54 步（约 43%）。
 
 | Phase                | 完成 / 步数 | %    |
 |----------------------|-------------|------|
@@ -99,7 +99,7 @@ Size：S = 一步，少于 20 次 tool call；M = 一到三步；L = 多于三�
 | P3 `Rel` 类型        | 3 / 13      | 23%  |
 | P4 `Tm` constructor  | 1 / 5       | 20%  |
 | P5 关闭 gap          | 0 / 8       | 0%   |
-| P6 kernels           | 9 / 13      | 69%  |
+| P6 kernels           | 9 / 14      | 64%  |
 | P7 Plan A            | 0 / 4       | 0%   |
 
 ### P0 baseline — 1/1
@@ -156,7 +156,7 @@ Size：S = 一步，少于 20 次 tool call；M = 一到三步；L = 多于三�
   实现排在 P3、P4 之后（改 `Tm.call`）。
 - ⬜ 5.6 删除 `Tm.gap`；Done：compile-diff 0 个 not ok。
 
-### P6 kernels — 9/13
+### P6 kernels — 9/14
 
 - ✅ 6.0 替换表：每个旧 extern 由哪些新 kernel 组成（分析）。
 - ✅ 6.0a 删除 class Q 的 22 个 extern。
@@ -172,6 +172,11 @@ Size：S = 一步，少于 20 次 tool call；M = 一到三步；L = 多于三�
 - ⬜ 6.10 迁移使用者，按 6.0 的表每组一步。
 - ⬜ 6.11 删除旧 extern 与旧 constructor；保留 SIMD 编解码函数。
 - ⬜ 6.12 native gate。
+- ⬜ 6.13（未决，owner 经 dataframe 会话决定）虚拟行号 key：frame 的行号对象 `I` 只存 `n`，磁盘与内存都不物化；
+  `Tab` 的 key 增加一种"位置 0..n-1"，每个 kernel 把它当恒等（位置即循环下标）。不是 `Enc.gen`，也不退回 `til n` 数组。
+  估计涉及：`Rel.Tab.key`（index：45 个 module 中 556 处使用）改为两种 key 的类型；`scan`/`scatter`/`gather`/`asc`/`distinct`
+  的 Lean 签名、规格与 Rust 入口各加一条恒等 key 的路径；`Plan` 与 C emitter 发出这种 key；`Known.den`（3.3）与 `Reps`
+  的 key 读法。与 P3（`Rel` 类型）同改 `Tab`，排在 3.13 之后、6.10 迁移之前定设计。
 
 ### P7 Plan A — 0/4（串行）
 
