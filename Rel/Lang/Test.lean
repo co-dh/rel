@@ -1105,6 +1105,10 @@ rel_program muGrow where
   "νX: X occurs under Λ at 2:30; Λ is not monotonic in its argument, so the fixed point need not exist"
 #eval errAt "obj B = 0…1\nr : B ⟶ B ≜ {(0,1)}\nf : B ⟶ B ≜ μX : r ∪ X\\r\n" 3
   "μX: X occurs in the left operand of \\ at 3:22 (antitone); X must occur only in monotonic positions"
+-- `X` under two antitone places reads positively to `Pre.polarity`, but `\`'s left operand is read on both sides
+-- (`ldivDen`'s `∀` and `∃`), so `Tm.pol` refuses it
+#eval errAt "obj B = 0…1\nr : B ⟶ B ≜ {(0,1)}\nf : B ⟶ B ≜ μX : r ∪ ((X\\r)\\r)\n" 3
+  "μ at line 3, col 13: its body does not use 0 positively"
 #eval errAt "obj B = 0…1\nr : B ⟶ B ≜ {(0,1)}\nf : B ⟶ B ≜ νX : r X\n" 3
   "νX needs a bound: write S ∩ φ with S not mentioning X (⊤(A,B) for the whole object)"
 #eval errAt "obj X = {A,B,C}\nobj St = [X×X]\nL(S : X ⟶ X) : X ⟶ X ≜ νZ : S ∩ Z\nf : St ⟶ X×X ≜ L(∋)\n" 3

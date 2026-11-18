@@ -528,7 +528,73 @@ theorem junc_le {X X' : Den A C} {Y Y' : Den B C} (hX : X ⊑ X') (hY : Y ⊑ Y'
     simp only [Core.Rel.junc, union_apply, comp_apply] at h ⊢
     exact h.imp (fun ⟨b, h1, h2⟩ => ⟨b, h1, le_iff.1 hX _ _ h2⟩) (fun ⟨b, h1, h2⟩ => ⟨b, h1, le_iff.1 hY _ _ h2⟩)
 
+-- `est` drops `b` only where `Q` fails, so a larger `Q` drops fewer
+theorem est_le {Q Q' : Den (.prod B B) (.prod B B)} (hQ : Q ⊑ Q') : estDen Q ⊑ estDen Q' :=
+  le_iff.2 fun _ _ h => ⟨h.1, fun ⟨c, hc, hne, hq⟩ => h.2 ⟨c, hc, hne, fun h' => hq (le_iff.1 hQ _ _ h')⟩⟩
+
+theorem succ_le {U U' : Den .long .long} (hU : U ⊑ U') : succDen U ⊑ succDen U' :=
+  le_iff.2 fun _ _ ⟨⟨v, hv⟩, e, v', hv'⟩ => ⟨⟨v, le_iff.1 hU _ _ hv⟩, e, v', le_iff.1 hU _ _ hv'⟩
+
+theorem leq_le {U U' : Den .long .long} (hU : U ⊑ U') : leqDen U ⊑ leqDen U' :=
+  le_iff.2 fun _ _ ⟨⟨v, hv⟩, ⟨v', hv'⟩, e⟩ => ⟨⟨v, le_iff.1 hU _ _ hv⟩, ⟨v', le_iff.1 hU _ _ hv'⟩, e⟩
+
+theorem lt_le {U U' : Den .long .long} (hU : U ⊑ U') : ltDen U ⊑ ltDen U' :=
+  le_iff.2 fun _ _ ⟨⟨v, hv⟩, ⟨v', hv'⟩, e⟩ => ⟨⟨v, le_iff.1 hU _ _ hv⟩, ⟨v', le_iff.1 hU _ _ hv'⟩, e⟩
+
+theorem arith_le {k : UInt8} {U U' : Den .long .long} (hU : U ⊑ U') : arithDen k U ⊑ arithDen k U' :=
+  comp_le' (inter_le' (Core.Rel.le_refl _) (comp_le' (comp_le' (Core.Rel.le_refl _) hU)
+      (conv_le' (comp_le' (Core.Rel.le_refl _) hU))))
+    (comp_le' (inter_le' (Core.Rel.le_refl _) (comp_le' (comp_le' (Core.Rel.le_refl _) hU)
+      (conv_le' (comp_le' (Core.Rel.le_refl _) hU)))) (comp_le' (Core.Rel.le_refl _) hU))
+
+theorem fold_le {e e' : Den B B} {S S' : Den (.prod A B) B} (he : e ⊑ e') (hS : S ⊑ S') :
+    foldDen e S ⊑ foldDen e' S' :=
+  le_iff.2 fun _ _ ⟨ys, hy, ⟨a, ha⟩, hs, hw⟩ =>
+    ⟨ys, hy, ⟨a, le_iff.1 he _ _ ha⟩, fun t ht => le_iff.1 hS _ _ (hs t ht), hw⟩
+
+theorem foldI_le {e e' : Den C (.prod B B)} {S S' : Den (.prod A (.prod C B)) (.prod C B)} (he : e ⊑ e')
+    (hS : S ⊑ S') : foldIDen e S ⊑ foldIDen e' S' :=
+  le_iff.2 fun _ _ h => le_iff.1 (fold_le (le_iff.2 fun _ _ h => le_iff.1 he _ _ h)
+    (le_iff.2 fun _ _ h => le_iff.1 hS _ _ h)) _ _ h
+
+theorem flat_le {T T' : Den C (.prod A B)} (hT : T ⊑ T') : flatDen T ⊑ flatDen T' :=
+  le_iff.2 fun _ _ h => le_iff.1 hT _ _ h
+
 end ops
+
+theorem Sem.one_mono {X Y A B X' Y' : Obj} {D : Den X Y → Den A B} (hD : ∀ {T T'}, T ⊑ T' → D T ⊑ D T')
+    {T T' : Den X' Y'} (h : T ⊑ T') : Sem.one D [⟨X', Y', T⟩] ⊑ Sem.one D [⟨X', Y', T'⟩] := by
+  simp only [Sem.one]
+  by_cases hh : X' = X ∧ Y' = Y
+  · simp only [dif_pos hh]; obtain ⟨rfl, rfl⟩ := hh; exact hD h
+  · simp only [dif_neg hh]; exact Core.Rel.le_refl _
+
+/-- Every row its `prims` entry marks `mono` reads its one relation argument monotonically: the fact `Tm.pol`'s
+    rule for a row applied to an argument rests on. -/
+theorem rowDens_mono : ∀ e ∈ rowDens, (Prim.find? e.1.sym).any (·.mono) = true →
+    ∀ σ {X Y : Obj} {T T' : Den X Y}, T ⊑ T' → e.2 σ [⟨X, Y, T⟩] ⊑ e.2 σ [⟨X, Y, T'⟩] := by
+  intro e he hm σ X Y T T' h
+  simp only [rowDens, List.mem_cons, List.not_mem_nil, or_false] at he
+  rcases he with rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl |
+    rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl
+  all_goals first | exact Core.Rel.le_refl _ | exact absurd hm (by decide) | skip
+  · dsimp only; refine Sem.one_mono (fun hT => le_iff.2 fun _ _ hm => ?_) h
+    exact ⟨hm.1, fun t ht ht' => le_iff.1 hT _ _ (hm.2 t ht ht')⟩
+  · dsimp only; refine Sem.one_mono (fun hT => le_iff.2 fun _ _ hm => ?_) h
+    obtain ⟨g, h0, hs, hc⟩ := hm
+    exact ⟨g, h0, fun t ht => le_iff.1 hT _ _ (hs t ht), hc⟩
+
+theorem Prim.den_mono {r : Prim} (hr : (Prim.find? r.sym).any (·.mono) = true) {A B X Y : Obj} {T T' : Den X Y}
+    (h : T ⊑ T') : Prim.den r A B [⟨X, Y, T⟩] ⊑ Prim.den r A B [⟨X, Y, T'⟩] := by
+  unfold Prim.den
+  split
+  next c D σ hf _ =>
+    have hc : c.sym = r.sym := by simpa using List.find?_some hf
+    have hm := rowDens_mono ⟨c, D⟩ (List.mem_of_find?_eq_some hf) (by rw [hc]; exact hr) σ h
+    by_cases hh : (c.ty σ).1 = A ∧ (c.ty σ).2 = B
+    · simp only [dif_pos hh]; obtain ⟨rfl, rfl⟩ := hh; exact hm
+    · simp only [dif_neg hh]; exact Core.Rel.le_refl _
+  next => exact Core.Rel.le_refl _
 
 theorem sle.refl {s : Bool} (X : Den A B) : sle s X X := by cases s <;> exact Core.Rel.le_refl X
 
@@ -639,6 +705,31 @@ theorem Tm.den_pol (k : Nat) : ∀ {A B : Obj} {d : Bool} (t : Tm A B d) (s : Bo
       simp only [hb]; exact sle.refl _
     · simp only [Tm.pol, Bool.or_eq_true, beq_iff_eq, e, false_or] at hp
       exact sle.lfp fun X => ih s _ _ hp (g.bind e X)
+  | est Q ih => intro s ρ ρ' hp g; exact sle.map1 est_le (ih s ρ ρ' hp g)
+  | succ U ih => intro s ρ ρ' hp g; exact sle.map1 succ_le (ih s ρ ρ' hp g)
+  | arith _ U ih => intro s ρ ρ' hp g; exact sle.map1 arith_le (ih s ρ ρ' hp g)
+  | leq U ih => intro s ρ ρ' hp g; exact sle.map1 leq_le (ih s ρ ρ' hp g)
+  | lt U ih => intro s ρ ρ' hp g; exact sle.map1 lt_le (ih s ρ ρ' hp g)
+  | flat R ih => intro s ρ ρ' hp g; exact sle.map1 flat_le (ih s ρ ρ' hp g)
+  | fold e S ihe ihS =>
+    intro s ρ ρ' hp g; simp only [Tm.pol, Bool.and_eq_true] at hp
+    exact sle.map2 fold_le (ihe s ρ ρ' hp.1 g) (ihS s ρ ρ' hp.2 g)
+  | foldI e S ihe ihS =>
+    intro s ρ ρ' hp g; simp only [Tm.pol, Bool.and_eq_true] at hp
+    exact sle.map2 foldI_le (ihe s ρ ρ' hp.1 g) (ihS s ρ ρ' hp.2 g)
+  | arg f x _ ihx =>
+    intro s ρ ρ' hp g
+    by_cases hc : (Tm.arg f x).fv.contains k = false
+    · exact sle.of_eq (g.congr hc)
+    · have hc : k ∈ (Tm.arg f x).fv := by simpa using hc
+      cases f with
+      | prim r =>
+        have hp : (Prim.find? r.sym).any (·.mono) = true ∧ x.pol s k = true := by simpa [Tm.pol, hc] using hp
+        exact sle.map1 (f := fun T => Prim.den r _ _ [⟨_, _, T⟩]) (Prim.den_mono hp.1) (ihx s ρ ρ' hp.2 g)
+      -- a spine whose demand bit is `d || e` reduces `Tm.pol`'s match only once the two bits are known
+      | @meet _ _ d₁ e₁ _ _ | @join _ _ d₁ e₁ _ _ | @diff _ _ d₁ e₁ _ _ | @pair _ _ _ d₁ e₁ _ _ =>
+        revert hp; cases d₁ <;> cases e₁ <;> simp [Tm.pol, hc]
+      | _ => simp [Tm.pol, hc] at hp
   | _ => intro s ρ ρ' hp g; exact sle.of_eq (g.congr (by first | simpa [Tm.pol] using hp | simp [Tm.fv]))
 
 /-- `⟦t⟧` is monotone in `X` where `X` occurs only positively. -/
