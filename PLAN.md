@@ -93,7 +93,8 @@ the float order (5.2 waits for 6.9). P1 and the steps of P2 can run while P6 run
 
 **0.1 sonnet.** `make -C /home/dh/repo/rel index` then `make -C /home/dh/repo/rel check > /data/tmp/p0.log 2>&1`.
 Record from the log the compile-diff line ("compile agrees … on N definitions; not ok on …") into
-section "Baseline" at the end of this file with `git -C /home/dh/repo/rel rev-parse HEAD`. Done: exit 0 and the file exists.
+section "Baseline" at the end of this file with `git -C /home/dh/repo/rel rev-parse HEAD`.
+Done: exit 0 and the file exists.
 Every later phase gate compares its compile-diff line with this one.
 
 ### P1 Syn removal (3 steps; 1.1 then 1.2; 1.3 in the same merge as 1.2)
@@ -532,7 +533,8 @@ Total: 8 phases, 52 steps (6.10 counted once; it expands after 6.0). Opus 38, so
 - **R4 "RELK.txt has 5 lines" contradicts the gates.** `rel-native` and `relc` call `qlean_own_write` and the
   group-id kernels (`EmitC.lean:16`); `qlean_stop` (`Kernel.stop`) is the capacity abort; `Coc.encode`/`decode`,
   `Column.blockStart` are externs with no place among the five. `externs`, `syms` and `panic` gates read the list.
-- **R5 (decided above) Nine atoms remove types the core uses.** `Vals (.sum A B)` keeps its tag in `Arr .boolean`; `Obj.general`
+- **R5 (decided above) Nine atoms remove types the core uses.** `Vals (.sum A B)` keeps its tag in
+  `Arr .boolean`; `Obj.general`
   and `Obj.Ordered (t ≠ .general)` name `.general`; `Arr .long` holds `lo`/`hi` of `Obj.arr`. The design does not
   say what the tag column becomes (i8, or packed width 1) or whether boxed columns remain. 1718 declarations
   depend on `QAtomicType`; `KernelSpec` + `KernelWF` (about 21700 lines) are stated on today's kernels and
