@@ -109,7 +109,7 @@ Size：S = 一步，少于 20 次 tool call；M = 一到三步；L = 多于三�
 - ✅ D.2 F17(2) Rust 与 Lean 的宽度平局：foR B（f0f9171）后 `Coc.encode` 就是 Rust 的代价选择，平局取较窄宽度，
   `CocTest` 的 `decide`/`#guard` 逐字节比较。gate 3 的文件字节两边相同。
 - 🔄 D.3 6.9 atom（含 `date`、`datetime`、`u8`）：Rust tag 表 WIP，Lean rename 排在 3.8 之后（见 6.9）。
-  执行约束：机器 30 GB，`cap` 的 20000 MB 是每个进程的虚拟地址上限（`ulimit -v`），不是占用；限不住多个 build 的总 RSS，所以 Lean build 一次只跑一个（并发时全部被杀过）。合并后把 sha 告诉 dataframe 会话，stage 1 rebase 到它上面。
+  执行约束：机器 30 GB，`cap` 的 20000 MB 是每个进程的虚拟地址上限（`ulimit -v`），不是占用；限不住多个 build 的总 RSS，所以重的命令（全量 build、`lean-refactor`）前加 `cc-guard/bin/admit`：只在可用内存够时启动，不加锁，CPU 让调度器分。合并后把 sha 告诉 dataframe 会话，stage 1 rebase 到它上面。
 - ⬜ D.4 6.13a 虚拟行号 `Enc.pos`：6.9 合并后立即开始（两者都改 `Value.lean`，不能并行）。
   验收（dataframe F-d）：排序编码要的位置 `til n` 直接读 `pos`，不再用 `gather(invert(p), p)` 绕。
 - ⬜ D.5 F17(1) 布尔 `foR`：把 6.11 中「`bits` 是宽度 1 的 `foR`」这一项提前，`Enc.WF` 接受 `u1` 的 `foR`，`scan` 的布尔结果
