@@ -126,7 +126,7 @@ Size：S = 一步，少于 20 次 tool call；M = 一到三步；L = 多于三�
 - ✅ 3.1 结构 `Rel.Rel` → `Rel.Tab`。
 - ✅ 3.2 `CRel` 是 `Option (Tab A B)`（90e753d）；与 3.3 合于 `rel-lazy` bee2ce2，`make check` 通过，241 / 25。
 - ✅ 3.3 `Known`、`Rel`（`tab | lazy`）、`Reps`，新文件 `Rel/Run/Lang/Lazy.lean`（3a00d75，`rel-lazy`）。
-- ⛔ 3.4 新旧函数类型之间的桥（`GenSpec.lean`，`Gen.Sound` 之后）。停在 bee2ce2，未提交：`Gen.Sound.reps` 对计划中的
+- 🔄 3.4（owner 选 A：`Reps` 只在 `K` 两侧之内比较，3.3 的 `Reps` 随之改）新旧函数类型之间的桥（`GenSpec.lean`，`Gen.Sound` 之后）。停在 bee2ce2，未提交：`Gen.Sound.reps` 对计划中的
   `toRel` 不成立。反例：`Gen.id`，`T = 𝟙`，`K = {dom := [a], ran := []}`，代码给出 `{(a,a)}`，`Reps` 要求 `𝟘`；
   代码不读 `K.ran`，也可输出 key 不在 `K.dom` 中的行。等 owner 选（Q4）：A 改 `Reps` 为
   `K.dom ≫ rep t ≫ K.ran = K.dom ≫ T ≫ K.ran`（推荐，零运行时开销）；B 保留 `Reps`，每次 lazy 调用在运行时按 `K` 切两次。
@@ -280,7 +280,7 @@ Size：S = 一步，少于 20 次 tool call；M = 一到三步；L = 多于三�
 | Q1  | freyd：删除 `RelAop/Syn.lean`，还是把商移到 relaop 以保留 `Functor Syn RelSet`？                  |
 | Q2  | 表层关键字 / `Pre.refold` 是否也变成 hylo？                                                       |
 | Q3  | 答 M：`tab` 持有 `Option (Tab A B)`，`Tab` 是结构 `{n, key, val}`（3.1 的 rename）                |
-| Q4  | `Reps` 是否只在 `K` 两侧之内比较（A），还是要求 `rep t` 等于限制后的关系（B）？见 3.4              |
+| Q4  | 答 A：`Reps` 为 `K.dom ≫ rep t ≫ K.ran = K.dom ≫ T ≫ K.ran`；`tab none ↦ True`                    |
 | Q5  | 答 L：`snoc`、`asc` 是 primitive；2.6 中每个 `+ slice` 行都是融合 kernel，由 `⟦row⟧ = ⟦def⟧` 联系 |
 | Q6  | 没有 `d` 之后，Elab 在哪里插入今天由 `closeRes` 插入的宇宙前缀？                                  |
 | Q7  | `Den` 的 inline：给 lean-refactor 加一个 unfold-abbrev 命令，还是把 `Den` 保留为 notation？       |
