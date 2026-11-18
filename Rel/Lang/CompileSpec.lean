@@ -292,6 +292,9 @@ theorem compile_sound {A B : Obj} {d : Bool} (t : Tm A B d) (hg : t.gap = none) 
   | foldr e S ihe ihS =>
     obtain ⟨he, hS⟩ := gap_or hg
     exact Out.Sound.memo (Out.Sound.leaf (foldr_sound (ihe he η ρ hη).1 (ihS hS η ρ hη).1))
+  | fold e S ihe ihS =>
+    obtain ⟨he, hS⟩ := gap_or hg
+    exact Out.Sound.memo (Out.Sound.leaf (fold_sound (ihe he η ρ hη).1 (ihS hS η ρ hη).1))
   | ldiv R S U V ihR ihS ihU ihV =>
     obtain ⟨hR, h⟩ := gap_or hg; obtain ⟨hS, h⟩ := gap_or h; obtain ⟨hU, hV⟩ := gap_or h
     have iR := ihR hR η ρ hη; have iS := ihS hS η ρ hη; have iU := ihU hU η ρ hη; have iV := ihV hV η ρ hη

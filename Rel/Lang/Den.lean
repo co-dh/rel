@@ -153,41 +153,43 @@ theorem foldDen_rev {E V : Obj} (Te : Den V V) (TS : Den (.prod V E) V) (xs : Li
       exact h
     · rw [rv ys hy xs.length 0 _ (by omega) (by simp)]
 
-/-- `fold(e, S)` given a family: at the key `i`, the fold whose start is the fibre of `e` at `i` and whose step is
-    `S` at `i`, keeping the key. -/
-abbrev foldIDen {I E V : Obj} (Te : Den I (.prod V V)) (TS : Den (.prod E (.prod I V)) (.prod I V)) :
+/-- `fold(e, S)` given a family: at the key `i`, the left fold whose start is the fibre of `e` at `i` and whose step
+    is `S` at `i`, keeping the key. -/
+abbrev foldIDen {I E V : Obj} (Te : Den I (.prod V V)) (TS : Den (.prod (.prod I V) E) (.prod I V)) :
     Den (.prod I (.arr E)) V :=
-  fun p w => foldrDen (fun a b => Te p.1 (a, b)) (fun q v => TS (q.1, (p.1, q.2)) (p.1, v)) p.2 w
+  fun p w => foldDen (fun a b => Te p.1 (a, b)) (fun q v => TS ((p.1, q.1), q.2) (p.1, v)) p.2 w
 
 /-- `foldIDen` is one `foldDen` on the carrier `I×V`: start `ran⟨𝟙, Te ≫ π₂⟩`, step `TS` met with
-    `π₂ ≫ π₁ ≫ π₁°` (the step keeps the index), its result's index met with the key's, then `π₂`. -/
-theorem foldIDen_eq {I E V : Obj} (Te : Den I (.prod V V)) (TS : Den (.prod E (.prod I V)) (.prod I V)) :
+    `π₁ ≫ π₁ ≫ π₁°` (the step keeps the index), its result's index met with the key's, then `π₂`. -/
+theorem foldIDen_eq {I E V : Obj} (Te : Den I (.prod V V)) (TS : Den (.prod (.prod I V) E) (.prod I V)) :
     foldIDen Te TS =
       ((graph Prod.fst ≫ (graph Prod.fst)°) ∩
-        (graph Prod.snd ≫ foldrDen (E := E) (V := .prod I V)
+        (graph Prod.snd ≫ foldDen (E := E) (V := .prod I V)
           (𝟙 _ ∩ (rpair (𝟙 _) (Te ≫ graph Prod.snd))° ≫ (rpair (𝟙 _) (Te ≫ graph Prod.snd))°°)
-          (TS ∩ (graph Prod.snd ≫ graph Prod.fst ≫ (graph Prod.fst)°)))) ≫ graph Prod.snd := by
+          (TS ∩ (graph Prod.fst ≫ graph Prod.fst ≫ (graph Prod.fst)°)))) ≫ graph Prod.snd := by
   refine Core.Rel.ext fun p w => ?_
-  simp only [foldIDen, foldrDen, Core.Rel.comp, Core.Rel.inter, Core.Rel.recip, Core.Rel.graph, Core.Rel.rpair,
+  simp only [foldIDen, foldDen, Core.Rel.comp, Core.Rel.inter, Core.Rel.recip, Core.Rel.graph, Core.Rel.rpair,
     Core.Rel.id]
   constructor
   · rintro ⟨ys, hy, ⟨a, ha⟩, hS, rfl⟩
-    refine ⟨(p.1, ys[0]), ⟨⟨_, rfl, rfl⟩, _, rfl, ys.map (p.1, ·), by simp [hy],
+    refine ⟨(p.1, ys[p.2.length]), ⟨⟨_, rfl, rfl⟩, _, rfl, ys.map (p.1, ·), by simp [hy],
       ⟨_, rfl, p.1, ⟨?_, _, ha, ?_⟩, ?_, _, ha, ?_⟩, fun t ht => ⟨?_, _, rfl, _, rfl, ?_⟩, ?_⟩, rfl⟩
     all_goals simp
     simpa using hS t (by simpa using ht)
   · rintro ⟨q, ⟨⟨i, rfl, hq⟩, xs, rfl, zs, hz, ⟨_, rfl, j, ⟨rfl, b, hb, hb2⟩, -, -⟩, hS, rfl⟩, rfl⟩
-    -- the step keeps the index, so every value of the chain carries the key's
-    have hidx : ∀ t (ht : t < zs.length), zs[t].1 = p.1 := by
+    -- the step keeps the index, so every value of the chain carries the seed's, which the result's is the key's
+    have hz0 : ∀ t (ht : t < zs.length), zs[t].1 = zs[0].1 := by
       intro t
       induction t with
-      | zero => intro _; exact hq.symm
+      | zero => intro _; rfl
       | succ t ih =>
         intro ht
         obtain ⟨-, _, rfl, _, rfl, he⟩ := hS t (by omega)
-        exact he.trans (ih (by omega))
+        exact he.symm.trans (ih (by omega))
+    have hidx : ∀ t (ht : t < zs.length), zs[t].1 = p.1 := fun t ht =>
+      (hz0 t ht).trans ((hz0 p.2.length (by omega)).symm.trans hq.symm)
     refine ⟨zs.map Prod.snd, by simp [hz], ⟨b.1, ?_⟩, fun t ht => ?_, by simp⟩
-    · have e := hidx p.2.length (by omega)
+    · have e := hidx 0 (by omega)
       simp only [List.getElem_map, hb2, ← e]
       exact hb
     · obtain ⟨h, -⟩ := hS t ht
@@ -196,6 +198,7 @@ theorem foldIDen_eq {I E V : Obj} (Te : Den I (.prod V V)) (TS : Den (.prod E (.
       simp only [List.getElem_map]
       rw [h1, h0]
       exact h
+
 
 /-- `Rᴵ`: the family `R : I ⟶ A×B` as one relation of the key and the source. -/
 abbrev flatDen {I A B : Obj} (T : Den I (.prod A B)) : Den (.prod I A) B := fun x b => T x.1 (x.2, b)
@@ -328,6 +331,7 @@ noncomputable def Tm.den : Val → {A B : Obj} → {d : Bool} → Tm A B d → D
   | ρ, _, _, _, .leq U => leqDen (U.den ρ)
   | ρ, _, _, _, .lt U => ltDen (U.den ρ)
   | ρ, _, _, _, .foldr e S => foldrDen (e.den ρ) (S.den ρ)
+  | ρ, _, _, _, .fold e S => foldDen (e.den ρ) (S.den ρ)
   | _, _, _, _, .share _ R => R.den Val.empty
   | ρ, _, _, _, .foldI e S => foldIDen (e.den ρ) (S.den ρ)
   | ρ, _, _, _, .flat R => flatDen (R.den ρ)
@@ -358,7 +362,7 @@ theorem Tm.den_congr : ∀ {A B : Obj} {d : Bool} (t : Tm A B d) (ρ ρ' : Val),
   | var k => intro ρ ρ' h; exact ⟨by simp only [Tm.den, h k (by simp [Tm.fv])], fun _ => rfl⟩
   | top V ih => intro ρ ρ' h; exact ⟨by simp only [Tm.den, (ih ρ ρ' fun i hi => h i (by simp [Tm.fv, hi])).1], fun _ => rfl⟩
   | comp R S ihR ihS | meet R S ihR ihS | join R S ihR ihS | diff R S ihR ihS | pair R S ihR ihS
-  | prod R S ihR ihS | junc R S ihR ihS | juncD R S ihR ihS | foldr R S ihR ihS | foldI R S ihR ihS =>
+  | prod R S ihR ihS | junc R S ihR ihS | juncD R S ihR ihS | foldr R S ihR ihS | fold R S ihR ihS | foldI R S ihR ihS =>
     intro ρ ρ' h
     exact ⟨by simp only [Tm.den, (ihR ρ ρ' fun i hi => h i (by simp [Tm.fv, hi])).1,
       (ihS ρ ρ' fun i hi => h i (by simp [Tm.fv, hi])).1], fun _ => rfl⟩
@@ -593,9 +597,14 @@ theorem foldr_le {e e' : Den B B} {S S' : Den (.prod A B) B} (he : e ⊑ e') (hS
   le_iff.2 fun _ _ ⟨ys, hy, ⟨a, ha⟩, hs, hw⟩ =>
     ⟨ys, hy, ⟨a, le_iff.1 he _ _ ha⟩, fun t ht => le_iff.1 hS _ _ (hs t ht), hw⟩
 
-theorem foldI_le {e e' : Den C (.prod B B)} {S S' : Den (.prod A (.prod C B)) (.prod C B)} (he : e ⊑ e')
+theorem fold_le {e e' : Den B B} {S S' : Den (.prod B A) B} (he : e ⊑ e') (hS : S ⊑ S') :
+    foldDen e S ⊑ foldDen e' S' :=
+  le_iff.2 fun _ _ ⟨ys, hy, ⟨a, ha⟩, hs, hw⟩ =>
+    ⟨ys, hy, ⟨a, le_iff.1 he _ _ ha⟩, fun t ht => le_iff.1 hS _ _ (hs t ht), hw⟩
+
+theorem foldI_le {e e' : Den C (.prod B B)} {S S' : Den (.prod (.prod C B) A) (.prod C B)} (he : e ⊑ e')
     (hS : S ⊑ S') : foldIDen e S ⊑ foldIDen e' S' :=
-  le_iff.2 fun _ _ h => le_iff.1 (foldr_le (le_iff.2 fun _ _ h => le_iff.1 he _ _ h)
+  le_iff.2 fun _ _ h => le_iff.1 (fold_le (le_iff.2 fun _ _ h => le_iff.1 he _ _ h)
     (le_iff.2 fun _ _ h => le_iff.1 hS _ _ h)) _ _ h
 
 theorem flat_le {T T' : Den C (.prod A B)} (hT : T ⊑ T') : flatDen T ⊑ flatDen T' :=
@@ -755,6 +764,9 @@ theorem Tm.den_pol (k : Nat) : ∀ {A B : Obj} {d : Bool} (t : Tm A B d) (s : Bo
   | foldr e S ihe ihS =>
     intro s ρ ρ' hp g; simp only [Tm.pol, Bool.and_eq_true] at hp
     exact sle.map2 foldr_le (ihe s ρ ρ' hp.1 g) (ihS s ρ ρ' hp.2 g)
+  | fold e S ihe ihS =>
+    intro s ρ ρ' hp g; simp only [Tm.pol, Bool.and_eq_true] at hp
+    exact sle.map2 fold_le (ihe s ρ ρ' hp.1 g) (ihS s ρ ρ' hp.2 g)
   | foldI e S ihe ihS =>
     intro s ρ ρ' hp g; simp only [Tm.pol, Bool.and_eq_true] at hp
     exact sle.map2 foldI_le (ihe s ρ ρ' hp.1 g) (ihS s ρ ρ' hp.2 g)

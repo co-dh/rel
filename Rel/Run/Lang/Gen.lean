@@ -198,15 +198,15 @@ def fold (E V : Obj) (d : Bool) (e : Fn false V V) (S : Fn d (.prod V E) V) : Fn
 
 /-- The pairs `(i, xs)` in demand, one fold row each, starting from its own key's seeds `(i,v)` from `e`: `v` the
     value side of `e i`'s pairs, as `fold` seeds from `e`'s values (`foldIDen`). -/
-def foldI (I E V : Obj) (d d' : Bool) (e : Fn d I (.prod V V)) (S : Fn d' (.prod E (.prod I V)) (.prod I V)) :
+def foldI (I E V : Obj) (d d' : Bool) (e : Fn d I (.prod V V)) (S : Fn d' (.prod (.prod I V) E) (.prod I V)) :
     Fn true (.prod I (.arr E)) V := fun D =>
   let ro := ofC (ranC (Alg.outl D)); let es := e (Dem.of d ro.rel)
   let res := CRel.ran es
   let iv := CRel.pair (CRel.dom es) (CRel.comp es ⟨Alg.outr res.rel, res.ok⟩)
   let r := CRel.num ⟨D, true⟩ 0
   let ci := CRel.comp ⟨Alg.outl r.rel, r.ok⟩ iv
-  let G := ofC (foldRowsC false (Alg.outr r.rel) ci.rel
-    (demandStepC pairC fun A => let s := onKeys d' S ⟨A, true⟩; (s.rel, s.ok)))
+  let G := ofC (foldRowsC true (Alg.outr r.rel) ci.rel
+    (demandStepC (fun el p => pairC p el) fun A => let s := onKeys d' S ⟨A, true⟩; (s.rel, s.ok)))
   let rg := CRel.ran G
   also (ro.ok && ci.ok) (CRel.comp ⟨r.rel°, r.ok⟩ (CRel.comp G ⟨Alg.outr rg.rel, rg.ok⟩))
 

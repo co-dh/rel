@@ -103,6 +103,7 @@ partial def prfNode (pre : Name) (ρ : List (Nat × Lean.Expr)) {A B : Obj} {d :
     | some h => lemO ``Gen.arith_sound #[toExpr k, none, none, h]
     | none => pure none
   | _, _, _, .foldr e S => lem ``Gen.foldr_sound [← p e, ← p S]
+  | _, _, _, .fold e S => lem ``Gen.fold_sound [← p e, ← p S]
   | _, _, _, .own R | _, _, _, .share _ R => p R
   | _, _, _, _ => match primOf t with
     -- a row's spine is proved by `compile_sound` (`Prim.run_sound`) over `compile`'s code, not this node's: its

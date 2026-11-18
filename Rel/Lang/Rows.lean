@@ -127,7 +127,8 @@ def Tm.gap : {A B : Obj} → {d : Bool} → Tm A B d → Option String
   | _, _, _, .succ R | _, _, _, .arith _ R | _, _, _, .leq R | _, _, _, .lt R
   | _, _, _, .flat R => R.gap
   | _, _, _, .comp R S | _, _, _, .meet R S | _, _, _, .join R S | _, _, _, .diff R S | _, _, _, .pair R S
-  | _, _, _, .prod R S | _, _, _, .junc R S | _, _, _, .juncD R S | _, _, _, .foldr R S | _, _, _, .arg R S =>
+  | _, _, _, .prod R S | _, _, _, .junc R S | _, _, _, .juncD R S | _, _, _, .foldr R S | _, _, _, .fold R S
+  | _, _, _, .arg R S =>
     R.gap <|> S.gap
   | _, _, _, .ldiv R S U V | _, _, _, .rdiv R S U V => R.gap <|> S.gap <|> U.gap <|> V.gap
   | _, _, _, .val _ | _, _, _, .uni _ | _, _, _, .zero | _, _, _, .id | _, _, _, .outl | _, _, _, .outr

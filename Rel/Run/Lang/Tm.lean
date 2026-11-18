@@ -58,14 +58,16 @@ inductive Tm : Obj → Obj → Bool → Type where
   | arith (k : UInt8) (U : Tm .long .long false) : Tm (.prod .long .long) .long true
   | leq (U : Tm .long .long false) : Tm .long .long false
   | lt (U : Tm .long .long false) : Tm .long .long false
-  /-- `⦇e,S⦈` on the arrays in demand, `S` run on the pairs each round meets. -/
+  /-- `⦇e,S⦈ʳ`, the right fold, on the arrays in demand: each read from its end, `S` on `(x, acc)`. -/
   | foldr {E V : Obj} {d : Bool} (e : Tm V V false) (S : Tm (.prod E V) V d) : Tm (.arr E) V true
+  /-- `⦇e,S⦈`, the left fold, on the arrays in demand: each read from index 0, `S` on `(acc, x)`. -/
+  | fold {E V : Obj} {d : Bool} (e : Tm V V false) (S : Tm (.prod V E) V d) : Tm (.arr E) V true
   /-- `R`, closed, numbered `k` among the expansion's sub-terms (`Expand.number`): its code is built once
       (`Expand.code`). -/
   | share {A B : Obj} {d : Bool} (k : Nat) (R : Tm A B d) : Tm A B d
   /-- `⦇e,S⦈` given a family (§e), on the pairs (key, array) in demand: one fold with carrier `I×V`, seeded at
-      each key by the fibre of `e` there, its step `S` given `(x,(i,v))` and carrying the key `i`. -/
-  | foldI {I E V : Obj} {d d' : Bool} (e : Tm I (.prod V V) d) (S : Tm (.prod E (.prod I V)) (.prod I V) d') :
+      each key by the fibre of `e` there, its step `S` given `((i,v),x)` and carrying the key `i`. -/
+  | foldI {I E V : Obj} {d d' : Bool} (e : Tm I (.prod V V) d) (S : Tm (.prod (.prod I V) E) (.prod I V) d') :
       Tm (.prod I (.arr E)) V true
   /-- `Rᴵ`, the family `R : I ⟶ A×B` as one relation of the key and the source, on the pairs (key, source) in
       demand: `R` at their keys, each row `(i,(a,b))` re-keyed as `((i,a),b)`, then joined with the pairs. -/
@@ -123,6 +125,7 @@ def Tm.mapM {m : Type → Type} [Monad m] (f : {A B : Obj} → {d : Bool} → Tm
   | _, _, _, .leq U => return .leq (← f U)
   | _, _, _, .lt U => return .lt (← f U)
   | _, _, _, .foldr e S => return .foldr (← f e) (← f S)
+  | _, _, _, .fold e S => return .fold (← f e) (← f S)
   | _, _, _, .foldI e S => return .foldI (← f e) (← f S)
   | _, _, _, .flat R => return .flat (← f R)
   | _, _, _, .arg g x => return .arg (← f g) (← f x)
@@ -162,7 +165,7 @@ def Tm.fv : {A B : Obj} → {d : Bool} → Tm A B d → List Nat
   | _, _, _, .arith _ U => U.fv
   | _, _, _, .leq U => U.fv
   | _, _, _, .lt U => U.fv
-  | _, _, _, .foldr e S => e.fv ++ S.fv
+  | _, _, _, .foldr e S | _, _, _, .fold e S => e.fv ++ S.fv
   | _, _, _, .foldI e S => e.fv ++ S.fv
   | _, _, _, .flat R => R.fv
   | _, _, _, .arg g x => g.fv ++ x.fv
@@ -227,6 +230,7 @@ def Tm.subst : Tm.Sub → {A B : Obj} → {d : Bool} → Tm A B d → Tm A B d
   | σ, _, _, _, .leq U => .leq (U.subst σ)
   | σ, _, _, _, .lt U => .lt (U.subst σ)
   | σ, _, _, _, .foldr e S => .foldr (e.subst σ) (S.subst σ)
+  | σ, _, _, _, .fold e S => .fold (e.subst σ) (S.subst σ)
   | σ, _, _, _, .foldI e S => .foldI (e.subst σ) (S.subst σ)
   | σ, _, _, _, .flat R => .flat (R.subst σ)
   | σ, _, _, _, .arg g x => .arg (g.subst σ) (x.subst σ)
@@ -275,7 +279,7 @@ def Tm.pol (s : Bool) (k : Nat) : {A B : Obj} → {d : Bool} → Tm A B d → Bo
   | _, _, _, .hylo j _ _ b => j == k || b.pol s k
   | _, _, _, .est Q => Q.pol s k
   | _, _, _, .succ U | _, _, _, .arith _ U | _, _, _, .leq U | _, _, _, .lt U => U.pol s k
-  | _, _, _, .foldr e S | _, _, _, .foldI e S => e.pol s k && S.pol s k
+  | _, _, _, .foldr e S | _, _, _, .fold e S | _, _, _, .foldI e S => e.pol s k && S.pol s k
   | _, _, _, .flat R => R.pol s k
   | _, _, _, t@(.arg (.prim r) x) => (Prim.find? r.sym).any (·.mono) && x.pol s k || !t.fv.contains k
   | _, _, _, t@(.lam _) | _, _, _, t@(.E _) | _, _, _, t@(.thin _) | _, _, _, t@(.arg ..) => !t.fv.contains k

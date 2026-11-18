@@ -162,8 +162,10 @@ syntax:max (name := rAppPair) relHead noWs "⟨" rel "," rel "⟩" : rel
 syntax (name := rParen) "(" rel ")" : rel
 syntax (name := rPair) "⟨" rel "," rel "⟩" : rel
 syntax (name := rJunc) "[" rel "," rel "]" : rel
--- the book's fold `⦇R⦈`, `R : 1 + E×V ⟶ V`: on arrays a program reads it from `inl R`, `inr R` (`elabE`)
+-- the left fold `⦇R⦈`, `R : 1 + V×E ⟶ V`, index 0 first: on arrays a program reads it from `inl R`, `inr R` (`elabE`)
 syntax (name := rFold1) "⦇" rel "⦈" : rel
+-- the right fold `⦇R⦈ʳ`, `R : 1 + E×V ⟶ V`, the array read from its end: for a row whose meaning runs right to left
+syntax (name := rFoldR) "⦇" rel "⦈ʳ" : rel
 syntax (name := rLit) "{" relLit,+ "}" : rel
 syntax:max (name := rCompl) "∼" rel:max : rel
 syntax:max (name := rConv) rel:max "°" : rel
@@ -338,7 +340,8 @@ partial def prim (s : Syntax) : C (List Lang.Expr) := do
     pure [.fix p (c == 'μ') x b]
   | ``rPair => pure [.pair p (← expr s[1]) (← expr s[3])]
   | ``rJunc => pure [.junc p (← expr s[1]) (← expr s[3])]
-  | ``rFold1 => pure [.fold p (← expr s[1])]
+  | ``rFold1 => pure [.fold p false (← expr s[1])]
+  | ``rFoldR => pure [.fold p true (← expr s[1])]
   | ``rLit => pure [.lit p (← s[1].getSepArgs.toList.mapM fun r => do match ← litItem r with
       | .pair a b => pure (a, b)
       | _ => failAt r "expected '('")]

@@ -143,7 +143,7 @@ inductive Pre
   | arith (pos : Pos) (k : UInt8) (n : OTy)
   | leq (pos : Pos) (n : OTy)
   | lt (pos : Pos) (n : OTy)
-  | fold (e s : Pre)
+  | fold (right : Bool) (e s : Pre)
   | foldI (e s : Pre)
   | flat (p : Pre)
   | lit (pos : Pos) (a b : OTy) (ps : List (Tup × Tup))
@@ -294,7 +294,7 @@ def Pre.traverse {m : Type → Type} [Monad m] (fp : Pos → m Pos) (f : Option 
   | .arith q k n => return .arith (← fp q) k n
   | .leq q n => return .leq (← fp q) n
   | .lt q n => return .lt (← fp q) n
-  | .fold e s => return .fold (← mo e) (← mo s)
+  | .fold d e s => return .fold d (← mo e) (← mo s)
   | .foldI e s => return .foldI (← mo e) (← mo s)
   | .flat x => return .flat (← mo x)
   | .lit q a b ps => return .lit (← fp q) a b ps
@@ -632,18 +632,18 @@ def lJunc : Pre × OTy × OTy → Pre × OTy × OTy → M (Pre × OTy × OTy)
 def lLam (S : Option Pre) : Pre × OTy × OTy → Pre × OTy × OTy
   | (R, a, b) => (comp (pair (id I) (S.getD (comp R (outl a b)))) (pair (outr I a) (lam (keyed I R a b))), a, .arr b)
 
-/-- `X⦇e,S⦈` lifted, `X : I ⟶ a×[x]`, `e : I ⟶ v×v`, `S : I ⟶ (x×v)×v`: `⟨𝟙,X⟩⟨π₂π₁,⟨π₁,π₂π₂⟩⦇e,S'⦈ᴵ⟩`, where
-    `⦇e,S'⦈ᴵ : I×[x] ⟶ v` folds each array at its key, carrier `I×v`, `S' ≜ ⟨π₂π₁,⟨π₁,π₂π₂⟩⟩⟨π₁,Sᴵ⟩`. -/
+/-- `X⦇e,S⦈` lifted, `X : I ⟶ a×[x]`, `e : I ⟶ v×v`, `S : I ⟶ (v×x)×v`: `⟨𝟙,X⟩⟨π₂π₁,⟨π₁,π₂π₂⟩⦇e,S'⦈ᴵ⟩`, where
+    `⦇e,S'⦈ᴵ : I×[x] ⟶ v` left-folds each array at its key, carrier `I×v`, `S' ≜ ⟨π₁π₁,⟨π₁π₂,π₂⟩⟩⟨π₁,Sᴵ⟩`. -/
 def lFold : Pre × OTy × OTy → Pre × OTy × OTy → Pre × OTy × OTy → M (Pre × OTy × OTy)
-  | (X, a, xs), (e, v, v'), (S, xv, w) => do
+  | (X, a, xs), (e, v, v'), (S, vx, w) => do
     unify p "the fold's start, a coreflexive" v' v
     let x ← fresh
-    unify p "the source of the fold's step" xv (.prod x v)
+    unify p "the source of the fold's step" vx (.prod v x)
     unify p "the target of the fold's step" w v
     unify p "the arrays a fold runs on" xs (.arr x)
-    let iv := OTy.prod I v; let xv := OTy.prod x v
-    let S' := comp (pair (comp (outr x iv) (outl I v)) (pair (outl x iv) (comp (outr x iv) (outr I v))))
-      (pair (outl I xv) (keyed I S xv v))
+    let iv := OTy.prod I v; let vx := OTy.prod v x
+    let S' := comp (pair (comp (outl iv x) (outl I v)) (pair (comp (outl iv x) (outr I v)) (outr iv x)))
+      (pair (outl I vx) (keyed I S vx v))
     pure (compSh I a (.arr x) X (foldI e S'), a, v)
 
 end Rows
@@ -944,7 +944,7 @@ def elabE (env : Env) (m : Option OTy) : Expr → M Arg
     let est := match b with | .op _ .est _ _ => true | _ => false
     -- `X⦇R⦈` with `R` a family: the fold keyed by the index, on the arrays `X` gives each key (§e)
     let fold? ← match m, b with
-      | some _, .fold _ r => do
+      | some _, .fold _ false r => do
         let (y, z) ← foldParts env m p (← match r with
           | .junc _ a s => do pure (.inl (← elabE env m a, ← elabE env m s))
           | r => do pure (.inr (← elabE env m r)))
@@ -1004,18 +1004,18 @@ def elabE (env : Env) (m : Option OTy) : Expr → M Arg
       unify p "the target of the case's second part" t' t
       let w := "[R,S] reads its parts whole"
       pure (.rel (.junc (.close p q s w) (.close p r s' w)) (.sum s s') t)
-  | .fold p r => do
+  | .fold p d r => do
     let (x, y) ← foldParts env m p (← match r with
       | .junc _ a s => do pure (.inl (← elabE env m a, ← elabE env m s))
       | r => do pure (.inr (← elabE env m r)))
     if x.isFam || y.isFam then
-      throw ⟨p, "⦇R⦈ given a family is not liftable on its own: its arrays come from its left, X⦇R⦈ (§e)"⟩
+      throw ⟨p, "⦇R⦈ given a family is not liftable on its own: its arrays come from its left, X⦇R⦈ (§e), a left fold"⟩
     let (q, v, v') := x.plain; let (r, ev, w) := y.plain
     unify p "the fold's start, a coreflexive" v' v
     let e ← fresh
-    unify p "the source of the fold's step" ev (.prod e v)
+    unify p "the source of the fold's step" ev (if d then .prod e v else .prod v e)
     unify p "the target of the fold's step" w v
-    pure (.rel (.fold (.close p q v "the fold's start is read whole") r) (.arr e) v)
+    pure (.rel (.fold d (.close p q v "the fold's start is read whole") r) (.arr e) v)
   | .lit p ps => do
     let a ← litTy env.objs p (ps.map (·.1)); let b ← litTy env.objs p (ps.map (·.2))
     pure (.rel (.lit p a b ps) a b)
@@ -1347,7 +1347,8 @@ def convTm {A B : Obj} {d : Bool} (t : Tm A B d) : Except String ((e : Bool) × 
   | .hylo .. => throw "hylo( )"
   | .juncD .. => throw "[R,S]"
   | .atPos k => throw s!"at({k})"
-  | .foldr .. => throw "⦇e,S⦈"
+  | .foldr .. => throw "⦇e,S⦈ʳ"
+  | .fold .. => throw "⦇e,S⦈"
   | .foldI .. => throw "a lifted fold"
   | .flat _ => throw "a lifted family"
 
@@ -1605,7 +1606,7 @@ def build : Pre → Except Err Res
   | .arith p k n => return ⟨_, _, true, .arith k (← numU objs mc p n (Op.arith k).sym)⟩
   | .leq p n => return ⟨_, _, false, .leq (← numU objs mc p n "≤")⟩
   | .lt p n => return ⟨_, _, false, .lt (← numU objs mc p n "<")⟩
-  | .fold e s => do
+  | .fold true e s => do
     let r ← build e; let ⟨V, _, _, _⟩ := r
     match ← build s with
     | ⟨.prod E V', V'', _, S⟩ =>
@@ -1613,13 +1614,21 @@ def build : Pre → Except Err Res
         pure ⟨.arr E, V, true, .foldr (← closed? dp (A := V) (B := V) r) (h.1 ▸ h.2 ▸ S)⟩
       else internal dp "the fold's objects"
     | _ => internal dp "the fold's step"
+  | .fold false e s => do
+    let r ← build e; let ⟨V, _, _, _⟩ := r
+    match ← build s with
+    | ⟨.prod V' E, V'', _, S⟩ =>
+      if h : V' = V ∧ V'' = V then
+        pure ⟨.arr E, V, true, .fold (← closed? dp (A := V) (B := V) r) (h.1 ▸ h.2 ▸ S)⟩
+      else internal dp "the fold's objects"
+    | _ => internal dp "the fold's step"
   | .foldI e s => do
     let r ← build e; let ⟨I, VV, _, _⟩ := r
     let sr ← build s
     match VV, sr with
-    | .prod V _, ⟨.prod E _, _, _, _⟩ => do
+    | .prod V _, ⟨.prod _ E, _, _, _⟩ => do
       let ⟨_, et⟩ ← at? dp (A := I) (B := .prod V V) r
-      let ⟨_, S⟩ ← at? dp (A := .prod E (.prod I V)) (B := .prod I V) sr
+      let ⟨_, S⟩ ← at? dp (A := .prod (.prod I V) E) (B := .prod I V) sr
       pure ⟨_, _, _, .foldI et S⟩
     | _, _ => internal dp "the lifted fold's objects"
   | .flat p => do
