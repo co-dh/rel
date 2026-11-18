@@ -453,6 +453,9 @@ constructor 保留到 6.11。
 
 **6.3 opus — `crate/src/pack.rs`。** `packed` 的块 encode/decode，基于 `pod::Elt`（`pod.rs:22`）、`by_width!`
 （`ids.rs:12`）、`Producer::block_into`（`enc.rs:284`）、`pool`。在 `crate/` 中 `cargo test`。
+位的打包和解包复用 coc 已有的 SIMD 例程（`ids::unpack`、`res::res_unpack`、`res_pack`、`codec::res_mask_cmp`，
+在 `coc.rs`、`codec.rs`、`ids.rs`、`res.rs`、`simd.rs`、`unpack.rs`）：`packed` 的 payload 与 coc FoR 的逐字节相同，
+只有元数据不同（`packed` 每块 9 B）。逐元素的 `res_at` 只作为测试 SIMD 的标量参照（Vortex spike，`doc/vortex.md`）。
 
 **6.4 / 6.5 opus — `scan`、`scatter`（并行）。** Lean（`Rel/Kernel/Scan.lean`，新增 `Rel/Kernel/Scatter.lean`）：
 
@@ -495,7 +498,8 @@ radix scan → scatter，`arr` 字节用 MSD；gather = concat → asc → scan 
 `Rel/KernelSpec/*`（约 5700 行）和 `Rel/KernelWF/*`（约 16000 行）
 是针对今天的 kernel 陈述的；步数在 6.0 之后才知道。
 
-**6.11 sonnet — 删除旧物。** 移除六个旧的 `Ext.Enc` constructor、旧 extern、driver
+**6.11 sonnet — 删除旧物。** 不删 `coc.rs`、`codec.rs`、`ids.rs`、`res.rs`、`simd.rs`、`unpack.rs` 中的 SIMD 编解码函数：
+它们是 `packed` 的实现（6.3）。移除六个旧的 `Ext.Enc` constructor、旧 extern、driver
 `Kernel.map fold scan permute`（`Driver.lean`；分别有 5、2、2、2 个使用者）、没有调用者的 Rust 文件；用 `LR rename`
 把 `k` 名字改成 `Kernel.scan gather scatter asc distinct`，把符号改成 `qlean_scan …`；`crate/RELK.txt`；
 `panic-allow.txt`。Gate：`syms`、`externs`、`panic`、`crate-test`。
