@@ -348,8 +348,6 @@ pub fn check_enc(w: usize, sw: u8, who: &str) {
     check_w(w, who);
     assert!(!(sw == 255 && w == 16), "qlean structural: {who} of an encoded column with unequal blocks has no width-16 reader");
 }
-/// structural.rs `GATHER_DECODE`: indices in one block in a row that make decoding the block cheaper than reading each.
-pub const GATHER_DECODE: usize = WBLK / 8;
 /// structural.rs `GATHER_AHEAD`: how far ahead of the index being read the source is prefetched.
 pub const GATHER_AHEAD: usize = 16;
 /// structural.rs `qlean_structural_all_below`: every index, read unsigned, is below `n`.
@@ -388,20 +386,20 @@ pub fn flat<const W: usize>(c: &Coc, sw: u8, f: [u8; W], ix: &[i64], o: &mut [u8
     }
 }
 // A column whose blocks disagree, or that carries a patch list, has no flat form: a run of indices in one block that
-// is `GATHER_DECODE` long decodes the block once, a shorter one is read through `get`.
+// is an eighth of a block long decodes the block once into the scratch (on the source's own grid, whatever its `lg`;
+// allocated at the first such run, so a gather of short runs never zeroes it), a shorter one is read through `get`.
 pub fn runs<const W: usize>(c: &Coc, f: [u8; W], ix: &[i64], o: &mut [u8]) {
-    let sn = c.meta.n;
-    let mut buf = [0u64; WBLK];
-    let bb = crate::pod::bytes_mut(&mut buf);
+    let (sn, lg) = (c.meta.n, c.meta.lg);
+    let mut buf: Option<crate::pod::Scr<u64>> = None;
     let d = o.as_chunks_mut::<W>().0;
     let mut j = 0;
     while j < ix.len() {
         let u0 = ix[j] as u64;
         if u0 >= sn as u64 { d[j] = f; j += 1; continue }
-        let (b, blo) = (u0 as usize / WBLK, u0 as usize / WBLK * WBLK);
+        let (b, blo) = (u0 as usize >> lg, u0 as usize >> lg << lg);
         let mut e = j + 1;
-        while e < ix.len() && ix[e] as u64 / WBLK as u64 == b as u64 { e += 1 }
-        if e - j < GATHER_DECODE {
+        while e < ix.len() && ix[e] as u64 >> lg == b as u64 { e += 1 }
+        if e - j < c.meta.blk() / 8 {
             for k in j..e {
                 if let Some(&a) = ix.get(k + GATHER_AHEAD) { c.prefetch(a as usize) }
                 let u = ix[k] as u64;
@@ -409,7 +407,7 @@ pub fn runs<const W: usize>(c: &Coc, f: [u8; W], ix: &[i64], o: &mut [u8]) {
             }
         } else {
             let s = Blocks::new(crate::blocks::Src::For(*c), sn);
-            s.load_w(b, s.span(b).1, W, bb);
+            let bb = s.load_w(b, s.span(b).1, W, crate::pod::bytes_mut(buf.get_or_insert_with(|| crate::pod::Scr::new(c.meta.blk() * W.div_ceil(8)))));
             for k in j..e {
                 let u = ix[k] as u64;
                 d[k] = if u < sn as u64 { bb[(u as usize - blo) * W..][..W].try_into().unwrap() } else { f };
@@ -421,8 +419,9 @@ pub fn runs<const W: usize>(c: &Coc, f: [u8; W], ix: &[i64], o: &mut [u8]) {
 // One slice of `gather_enc`: `sw` is the source's one width, decided by the entry once rather than per slice.
 pub fn enc_w<const W: usize>(c: &Coc, sw: u8, fill: u64, ix: &[i64], o: &mut [u8]) {
     let f = word::<W>(fill);
-    let (sb, sp) = (c.meta.base, c.pack);
-    let base = |u: usize| sb[u / WBLK] as u64;
+    // the block of `u` on the source's own grid: a column of any `lg` the layout admits
+    let (sb, sp, lg) = (c.meta.base, c.pack, c.meta.lg);
+    let base = |u: usize| sb[u >> lg] as u64;
     let at = |k: usize, n: usize| &sp[k..k + n];
     match sw {
         0 => flat(c, sw, f, ix, o, base),

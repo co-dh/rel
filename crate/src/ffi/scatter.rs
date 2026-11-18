@@ -15,11 +15,15 @@ pub const QT_LONG: u8 = 5;
 /// at `m` (`coc::view` and `Coc::std`), else the model's error text.
 #[cfg(all(feature = "ffi", not(any(test, feature = "std"))))]
 pub fn for_words_of(what: &str, m: usize, e: B) -> Result<Vec<u64>, String> {
+    for_view(what, m, e)?;
+    raw(QT_LONG, m, e).ok_or_else(|| format!("{what}: a foR column of {m} elements has no raw words at long"))
+}
+/// `for_words_of`'s layout test and error text, answering the column as `Coc` for a kernel that reads it block by block.
+#[cfg(all(feature = "ffi", not(any(test, feature = "std"))))]
+pub fn for_view<'a>(what: &str, m: usize, e: B<'a>) -> Result<coc::Coc<'a>, String> {
     if e.tag() != FOR { return Err(format!("{what}: constructor {} is not foR", e.tag())) }
     let (md, pk) = (e.field(0).bytes(), e.field(1).bytes());
-    if coc::view(md, pk, m).is_ok_and(|c| c.std(m)) {
-        return raw(QT_LONG, m, e).ok_or_else(|| format!("{what}: a foR column of {m} elements has no raw words at long"))
-    }
+    if let Ok(c) = coc::view(md, pk, m) && c.std(m) { return Ok(c) }
     // `Column.nblk` and `Column.lgAt`: a byte past the metadata reads 0, as `bitsAt` does
     let nb = md.len() / 33;
     let lg = (0..8).fold(0u64, |v, k| v | (md.get(32 * nb + 16 + k).copied().unwrap_or(0) as u64) << (8 * k));
