@@ -466,7 +466,9 @@ theorem raw_scan …    theorem raw_scatter …       -- Rel/KernelSpec/, statem
 each with its `decide`-beside-`#guard` pair; Rust `crate/src/scan.rs` (exists, extend), `scatter.rs` (new),
 `ffi/scan.rs`, `ffi/structural.rs`; add the two symbols to `crate/RELK.txt`. Temporary `k` names because
 `qlean_scan` (`Scan.scan`, `Scan.lean:179`) and `Kernel.scan` (`Driver.lean:33`) exist; renamed in 6.11. The
-models are stated with `Op.eval`, never with a Lean closure. Gates: `B RelKernel`, `sh crate/build.sh syms`,
+models are stated with `Op.eval`, never with a Lean closure. An index ≥ `n` is an error, never dropped (owner,
+2026-11-18: no silent error): the model returns `Except`, the Rust returns the error to Lean, and a composition that
+needs to discard a row sends it to a spare cell it then cuts off (WHERE, `doc/rel-kernels.md`). Gates: `B RelKernel`, `sh crate/build.sh syms`,
 `make externs`.
 
 **6.6 / 6.7 / 6.8 opus — `gather`, `asc`, `distinct` (parallel, after 6.4 and 6.5).**

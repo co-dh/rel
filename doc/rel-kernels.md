@@ -90,7 +90,8 @@ to `scan`/`scatter` as in §4 of the design):
 | LOOKUP  | concat `(hay, j)` and `(needle, i)` → `asc` → `scan(first)` fills the hay position forward →         |
 |         | `scatter` back to `i`; absent needles keep the fill (the hay count): the `gather` recipe, i.e. a `≫` |
 | EXPAND  | `scan(add)` of the widths → `scatter(i)` at the run starts → `scan(max)` fills → `gather` the source |
-| WHERE   | `scan(add)` of the bits → `scatter(count − 1, til)`, a `0` bit sent to an index ≥ the output length  |
+| WHERE   | `scan(add)` of the bits → `scatter(count − 1, til)` into `count + 1` cells, every `0` bit sent to    |
+|         | the spare cell `count`, which is then cut off (`scatter` refuses an index ≥ its output length)       |
 | SEGFOLD | `gather` the rows → segmented `scan(op)` → last element of each segment                              |
 
 Class `encoding` = removed by the one `packed` encoding (6.2, 6.3): the operation is `Enc.raw`/`ofRaw` or a
