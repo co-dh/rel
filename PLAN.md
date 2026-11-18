@@ -9,8 +9,8 @@ Owner decisions on section 5 (taken as the recommended defaults; the owner may o
   come from the failing node, never from a truncated table.
 - R4: "kernel" (5) differs from "runtime export": `stop`, `Coc.encode`/`decode` stay as runtime exports;
   `own_write` and the group-id kernels are rewritten with `EmitC`.
-- R5: atoms are `bool char i8 i16 i32 i64 f32 f64 sym` (nine). The `sum` tag column stays `Arr .bool`
-  (renamed from `.boolean`); `char` is 8-bit and strings are `arr char`; boxed `general` and the temporal atoms
+- R5: atoms are `u1 char i8 i16 i32 i64 f32 f64 sym` (nine). Truth values are `u1` (width 1), no `bool`; the tag `Arr .u1`
+  (from `.boolean`); `char` is 8-bit and strings are `arr char`; boxed `general` and the temporal atoms
   are deleted.
 - R7: floats are canonicalised (one NaN, `-0 ↦ +0`) before the order-preserving bit map; equality = bit equality
   after canonicalisation.
@@ -436,10 +436,10 @@ composition; the Rust is the fused form. Existing material: `gatherPacked` (`Str
 (240), `Order.grade` (`Sort.lean:69`), `gradeLane` (96), `runStarts` (`Search.lean:233`), `Alg.nubC` (`Alg:202`).
 
 **6.9 opus — atoms and order-preserving codes.** `QAtomicType` (`Value.lean:13`) renames by `LR rename`:
-`boolean→bool long→i64 int→i32 short→i16 byte→i8 real→f32 float→f64 symbol→sym` (`char` keeps its name);
+`boolean→u1 long→i64 int→i32 short→i16 byte→i8 real→f32 float→f64 symbol→sym` (`char` keeps its name);
 then `Obj.key` (`ObjOrder.lean:19`) at float
 atoms becomes the order-preserving bit map. Removing `general` and the temporal atoms: per R5, the `.sum` tag
-stays `Arr .bool`; `Obj.general` goes and `Obj.Ordered` loses its `t ≠ .general` premise.
+becomes `Arr .u1`; `Obj.general` goes and `Obj.Ordered` loses its `t ≠ .general` premise.
 
 **6.10 opus, many — migrate users.** One step per group of 6.0's table: each `Alg`/`Code`/`CRel*Def` definition
 that calls an old extern is restated on the five, with its `KernelSpec`/`KernelWF` lemma re-proved from the new

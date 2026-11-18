@@ -75,7 +75,7 @@
 
 ```
 inductive Obj                           -- 类型的代码；A B 都是 Obj
-  | atom (t : Atom)                     -- bool char i8 i16 i32 i64 f32 f64 sym（目标：从 QAtomicType 收窄，见 §4.3）
+  | atom (t : Atom)                     -- u1 char i8 i16 i32 i64 f32 f64 sym（目标：从 QAtomicType 收窄，见 §4.3）
   | prod (a b : Obj)                    -- 积：多列
   | arr  (b : Obj)                      -- 每格一个数组：平铺 payload + lo/hi
   | sum  (a b : Obj)                    -- 和：tag 列 + 各分支位置
@@ -150,7 +150,7 @@ compile η t : {r : Rel A B // rep r = ⟦t⟧ρ}       -- 方案 A：规格在�
 #card(c-rs, [现状 → 目标])[
   现状：99 个 `qlean_*` 导出，7 种编码，其中大半服务于 q 的语义。它们已冻结在 qlean 自己的副本里（rel tag
   `qlean-base` = `e024297`，`qlean/.lake/packages/rel`）。目标：rel 只保留 *一种编码* 和 *5 个 kernel*；
-  allegory 的每个运算、每个不动点都是它们的复合。Rel 要支持 data frame，所以原子有 bool char i8 i16 i32 i64 f32 f64 sym。]
+  allegory 的每个运算、每个不动点都是它们的复合。Rel 要支持 data frame，所以原子有 u1 char i8 i16 i32 i64 f32 f64 sym。]
 
 == 移出 rel 的 q 语义
 
@@ -190,7 +190,7 @@ compile η t : {r : Rel A B // rep r = ⟦t⟧ρ}       -- 方案 A：规格在�
 == 原子类型：都是 packed 的 code
 
 #tbl(c-syn, (auto, 1.2fr, 1fr), ([原子], [存成什么 code], [比较 / 运算]),
-  [`bool`], [1 位 code（false = 0, true = 1）；sum 的 tag 列也是 `bool` 列], [`asc`、`scan(and/or/not)` 直接在 code 上],
+  [`u1`], [宽度 1 的无符号 code（0 或 1），真假值就是 `u1`，不另设 `bool`；sum 的 tag 列也是 `u1` 列], [`asc`、`scan(and/or/not)` 直接在 code 上],
   [`char`], [8 位无符号 code（字节值，保序）；字符串 = `arr char`], [`asc` 按字节序；`arr char` 按字典序],
   [`i8` `i16` `i32` `i64`], [翻转符号位，得到同宽的无符号数（保序）；再按块 foR], [`asc`、`scan(lt)` 直接在 code 上；算术按声明宽度回绕],
   [`f32` `f64`], [保序位映射：正数翻转符号位，负数翻转全部位，得到 `UInt32` / `UInt64`], [code 的序 = 浮点的全序（NaN 也有位置）；`fadd` `fmul` `flt` 等先还原再算],
@@ -247,7 +247,7 @@ compile η t : {r : Rel A B // rep r = ⟦t⟧ρ}       -- 方案 A：规格在�
 
 #grid(columns: (1fr, 1fr), gutter: 8pt,
   card(c-rs, [crate 结构])[`scan.rs` `gather.rs` `scatter.rs` `asc.rs` `distinct.rs` 各一个导出；`pack.rs` 是分块编解码（不导出）；
-    `pod::Elt`、`by_width!`（bool、char、i8–i64、f32、f64）、`pool` 保留。`RELK.txt` 从 99 行变为 5 行。],
+    `pod::Elt`、`by_width!`（u1、char、i8–i64、f32、f64）、`pool` 保留。`RELK.txt` 从 99 行变为 5 行。],
   card(c-rs, [融合 kernel])[如 join、intern、group ids：只是优化，每个配一条定理说明它等于上表中的某个复合；
     在第二个真实需要出现前不加。],
 )
@@ -291,4 +291,4 @@ index-complete · axioms · noreduce · panic · externs；另加 `lake -d freyd
 - 去掉 `Syn`、`Tm.Le`、`Tm.Eqv`、`Hom.den`（`Rel/Lang/Syn.lean`）与 #9；`Tm.Ax` 改为改写引理 `⟦lhs⟧ρ = ⟦rhs⟧ρ`；freyd 需要的范畴在 `relaop` 自建。
 - `Tm` 加 symmetric division 构造子（运行时已有 `Alg.symDiv`）。
 - 改名：去掉 `Den` `Dem` `Fn` `CRel`，`Rel k v` 改为 `Rel A B`（`tab` ┃ `lazy`），`Tm` 去掉 `d`。
-- kernel 缩到 5 个：原语 `scan` `scatter`，优化 `gather` `asc` `distinct`（各配「= 原语复合」的定理）、编码只留 packed（块长 `lg` 每列可选）、原子 bool char i8–i64 f32 f64 sym；q 专用 kernel 留在 qlean 的副本（tag `qlean-base`）。
+- kernel 缩到 5 个：原语 `scan` `scatter`，优化 `gather` `asc` `distinct`（各配「= 原语复合」的定理）、编码只留 packed（块长 `lg` 每列可选）、原子 u1 char i8–i64 f32 f64 sym；q 专用 kernel 留在 qlean 的副本（tag `qlean-base`）。
