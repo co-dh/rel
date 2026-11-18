@@ -278,7 +278,7 @@ theorem raze_get {t : QAtomicType} {w : Nat} (hw : t.width = some w) (hb : t ≠
 /-- **A small integral side: its codes are faithful jointly across the parts.** Part `k`'s code at `i` and
     part `l`'s at `j` agree exactly when the rows do; the parts in any encoding, their summed count a `USize`. -/
 theorem codes_small_int_parts_faithful {t : QAtomicType} {k₀ : Scan.Kind} (ht : orderKind t = some k₀)
-    (hk₀ : k₀ = .u8 ∨ k₀ = .i16 ∨ k₀ = .i32) {p : Nat} (cs : Vector (Part (.atom t)) p)
+    (hk₀ : k₀ = .u8 ∨ k₀ = .c8 ∨ k₀ = .i8 ∨ k₀ = .i16 ∨ k₀ = .i32) {p : Nat} (cs : Vector (Part (.atom t)) p)
     (hN : (cs.toList.map (·.1.toNat)).sum < USize.size)
     {k l : Nat} (hk : k < p) (hl : l < p) {i j : Nat} (hi : i < cs[k].1.toNat) (hj : j < cs[l].1.toNat) :
     Column.idAt (Obj.codes (.atom t) cs)[k].b (Obj.codes (.atom t) cs)[k].w i =
@@ -286,7 +286,7 @@ theorem codes_small_int_parts_faithful {t : QAtomicType} {k₀ : Scan.Kind} (ht 
       Vals.row cs[k].2 ⟨i, hi⟩ = Vals.row cs[l].2 ⟨j, hj⟩ := by
   obtain ⟨hW, -, -, hB, -⟩ := small_int_width ht hk₀
   have hA : 2 ≤ p → Column.alpEncodes t = true → (cs.toList.map (·.1.toNat)).sum < 2 ^ 32 := fun _ h => by
-    rcases hk₀ with rfl | rfl | rfl <;> cases t <;> simp [orderKind] at ht <;> simp [Column.alpEncodes] at h
+    rcases hk₀ with rfl | rfl | rfl | rfl | rfl <;> cases t <;> simp [orderKind] at ht <;> simp [Column.alpEncodes] at h
   have hX := raze_len t cs.toArray hN
   obtain ⟨hw, hn, -, -⟩ := codes_small_int_wf ht hk₀ (raze t cs.toArray)
   have hs : (((cs.map (·.1)).toList).map (·.toNat)).sum = (Obj.codes (.atom t) #v[raze t cs.toArray])[0].n.toNat := by

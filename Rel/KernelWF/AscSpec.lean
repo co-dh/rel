@@ -156,6 +156,7 @@ theorem key_get {t : QAtomicType} {k : Scan.Kind} (h : orderKind t = some k) (hk
     | (congr 3; simp; done)
     | ((try congr 2) <;> (try apply UInt64.toNat_inj.1) <;> simp at hv ⊢ <;> omega)
     | rw [show v.toUInt32.toUInt64.toUInt32 = v.toUInt32 from UInt32.toNat_inj.1 (by simp <;> omega)]
+    | (simp only [UInt8.toNat_xor, UInt64.toNat_xor]; simp; rw [Nat.mod_eq_of_lt (by simpa using hv)])
 
 /-- **`gradeColumn` at a numeric type sorts by `Obj.lt`**, stable, on every encoding. -/
 theorem grade_num {t : QAtomicType} {k : Scan.Kind} (h : orderKind t = some k) (hk : k ≠ .bit) {n : USize}

@@ -22,7 +22,7 @@ open Tab Rel.Dep Rel.Kernel Rel.Verify Rel
 def _root_.Rel.Obj.CodesFit : (A : Obj) → {p : Nat} → Vector (Part A) p → Prop
   | .atom t, p, cs => (cs.toList.map (·.1.toNat)).sum < USize.size ∧
     (t = .u1 ∨
-      (∃ k₀, orderKind t = some k₀ ∧ (k₀ = .u8 ∨ k₀ = .i16 ∨ k₀ = .i32 ∨ k₀ = .f32 ∨ k₀ = .f64) ∧
+      (∃ k₀, orderKind t = some k₀ ∧ (k₀ = .u8 ∨ k₀ = .c8 ∨ k₀ = .i8 ∨ k₀ = .i16 ∨ k₀ = .i32 ∨ k₀ = .f32 ∨ k₀ = .f64) ∧
         (2 ≤ p → Column.alpEncodes t = true → (cs.toList.map (·.1.toNat)).sum < 2 ^ 32)) ∨
       orderKind t = some .i64 ∨
       (t = .sym ∧
@@ -178,10 +178,11 @@ theorem codes_atom_wf (t : QAtomicType) (x : Part (.atom t)) :
     -- the kind disjunctions as terms, not `by`: a deferred tactic fails after `first` has committed
     | exact codes_small_int_wf rfl (Or.inl rfl) x
     | exact codes_small_int_wf rfl (Or.inr (Or.inl rfl)) x
-    | exact codes_small_int_wf rfl (Or.inr (Or.inr rfl)) x
+    | exact codes_small_int_wf rfl (Or.inr (Or.inr (Or.inl rfl))) x
+    | exact codes_small_int_wf rfl (Or.inr (Or.inr (Or.inr (Or.inl rfl)))) x
+    | exact codes_small_int_wf rfl (Or.inr (Or.inr (Or.inr (Or.inr rfl)))) x
     | exact (codes_float_parts_wf (Or.inl rfl) #v[x] hN Nat.zero_lt_one).1
-    | exact (codes_float_parts_wf (Or.inr (Or.inl rfl)) #v[x] hN Nat.zero_lt_one).1
-    | exact (codes_float_parts_wf (Or.inr (Or.inr rfl)) #v[x] hN Nat.zero_lt_one).1
+    | exact (codes_float_parts_wf (Or.inr rfl) #v[x] hN Nat.zero_lt_one).1
 
 #print axioms codes_atom_wf
 

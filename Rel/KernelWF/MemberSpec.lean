@@ -192,7 +192,7 @@ theorem groupIds_firsts (c : Code)
           Nat.mul_div_cancel _ hk0, Nat.min_self]
       rw [hm, e]
       refine (Verify.groups_congr _ _ fun i _ j _ => ?_).1
-      rw [Verify.keyAt_eq_iff hki, idAt_lane _ hk8, idAt_lane _ hk8]
+      rw [Verify.keyAt_eq_iff (by revert hki; cases k <;> decide), idAt_lane _ hk8, idAt_lane _ hk8]
       exact ⟨fun h => by rw [h], fun h => UInt64.toNat_inj.1 h⟩
   · rename_i hk
     have h24 := laneKind_none hk hw

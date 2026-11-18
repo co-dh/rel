@@ -874,7 +874,7 @@ where
     decide ((cs.toList.map (·.1.toNat)).sum < USize.size) &&
     (decide (t = .u1) ||
       (match orderKind t with
-        | some k₀ => decide (k₀ = .u8 ∨ k₀ = .i16 ∨ k₀ = .i32 ∨ k₀ = .f32 ∨ k₀ = .f64) &&
+        | some k₀ => decide (k₀ = .u8 ∨ k₀ = .c8 ∨ k₀ = .i8 ∨ k₀ = .i16 ∨ k₀ = .i32 ∨ k₀ = .f32 ∨ k₀ = .f64) &&
           (decide (p < 2) || !Column.alpEncodes t || decide ((cs.toList.map (·.1.toNat)).sum < 2 ^ 32))
         | none => false) ||
       decide (orderKind t = some .i64) ||
@@ -1268,7 +1268,7 @@ theorem grade_mono (k : Scan.Kind) (n : USize) (b : ByteArray) {s t : Nat} (hst 
 theorem key_eq_iff_keyAt {k : Scan.Kind} (hk : k = .u8 ∨ k = .c8 ∨ k = .i16 ∨ k = .i32 ∨ k = .i64)
     (b : ByteArray) (i j : Nat) :
     Kernel.key k.width false b i = Kernel.key k.width false b j ↔ Order.keyAt k b i = Order.keyAt k b j := by
-  rw [Verify.keyAt_eq_iff hk]
+  rw [Verify.keyAt_eq_iff (by revert hk; cases k <;> decide)]
   simp only [Kernel.key, Kernel.normalise, Bool.not_false, if_true]
 
 
