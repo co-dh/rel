@@ -75,7 +75,7 @@
 
 ```
 inductive Obj                           -- 类型的代码；A B 都是 Obj
-  | atom (t : Atom)                     -- i8 i16 i32 i64 f32 f64 sym（目标：从 QAtomicType 收窄，见 §4.3）
+  | atom (t : Atom)                     -- bool char i8 i16 i32 i64 f32 f64 sym（目标：从 QAtomicType 收窄，见 §4.3）
   | prod (a b : Obj)                    -- 积：多列
   | arr  (b : Obj)                      -- 每格一个数组：平铺 payload + lo/hi
   | sum  (a b : Obj)                    -- 和：tag 列 + 各分支位置
@@ -150,7 +150,7 @@ compile η t : {r : Rel A B // rep r = ⟦t⟧ρ}       -- 方案 A：规格在�
 #card(c-rs, [现状 → 目标])[
   现状：99 个 `qlean_*` 导出，7 种编码，其中大半服务于 q 的语义。它们已冻结在 qlean 自己的副本里（rel tag
   `qlean-base` = `e024297`，`qlean/.lake/packages/rel`）。目标：rel 只保留 *一种编码* 和 *5 个 kernel*；
-  allegory 的每个运算、每个不动点都是它们的复合。Rel 要支持 data frame，所以原子有 i8 i16 i32 i64 f32 f64 sym。]
+  allegory 的每个运算、每个不动点都是它们的复合。Rel 要支持 data frame，所以原子有 bool char i8 i16 i32 i64 f32 f64 sym。]
 
 == 移出 rel 的 q 语义
 
@@ -190,9 +190,11 @@ compile η t : {r : Rel A B // rep r = ⟦t⟧ρ}       -- 方案 A：规格在�
 == 原子类型：都是 packed 的 code
 
 #tbl(c-syn, (auto, 1.2fr, 1fr), ([原子], [存成什么 code], [比较 / 运算]),
+  [`bool`], [1 位 code（false = 0, true = 1）；sum 的 tag 列也是 `bool` 列], [`asc`、`scan(and/or/not)` 直接在 code 上],
+  [`char`], [8 位无符号 code（字节值，保序）；字符串 = `arr char`], [`asc` 按字节序；`arr char` 按字典序],
   [`i8` `i16` `i32` `i64`], [翻转符号位，得到同宽的无符号数（保序）；再按块 foR], [`asc`、`scan(lt)` 直接在 code 上；算术按声明宽度回绕],
   [`f32` `f64`], [保序位映射：正数翻转符号位，负数翻转全部位，得到 `UInt32` / `UInt64`], [code 的序 = 浮点的全序（NaN 也有位置）；`fadd` `fmul` `flt` 等先还原再算],
-  [`sym`], [保序字典 id：字典 = 排好序、无重复的字符串表（`arr byte`），列存 id], [id 的序 = 字符串的序，所以 `asc`、join、`∩` 都只看 id],
+  [`sym`], [保序字典 id：字典 = 排好序、无重复的字符串表（`arr char`），列存 id], [id 的序 = 字符串的序，所以 `asc`、join、`∩` 都只看 id],
 )
 
 - 原子的宽度只决定 code 的值域上限（`i8` ≤ 8 位 …）；块的宽度 $w$ 仍按数据选，常常比声明宽度窄。
@@ -208,7 +210,7 @@ compile η t : {r : Rel A B // rep r = ⟦t⟧ρ}       -- 方案 A：规格在�
   [`scan`], [`(op : Op) (seg : Enc) (es : List Enc) : Enc`，分段前缀折叠；含 map 与 fold], [`raw_scan`], [`scan` `map` `fold`],
   [`gather`], [`(ix : Enc) (e : Enc) (fill) : Enc`，`out[i] = e[ix[i]]`], [`raw_permute`], [`permute`],
   [`scatter`], [`(ix : Enc) (e : Enc) (n) (fill) : Enc`，`out[ix[i]] = e[i]`], [`raw_scatter`（新）], [—],
-  [`asc`], [`(es : List Enc) : Enc × Enc`，按若干列字典序稳定排序：排好的值 + 排列；`arr byte` 列按字节字典序], [`asc_sorted` + `asc_perm`（新）], [—],
+  [`asc`], [`(es : List Enc) : Enc × Enc`，按若干列字典序稳定排序：排好的值 + 排列；`arr char` 列按字节字典序], [`asc_sorted` + `asc_perm`（新）], [—],
   [`distinct`], [`(es : List Enc) : Enc`，有序输入上每组相等行的第一行的位置], [`distinct_first` + `distinct_cover`（新）], [—],
 )
 
@@ -219,7 +221,7 @@ compile η t : {r : Rel A B // rep r = ⟦t⟧ρ}       -- 方案 A：规格在�
   [原语], [`scan`], [—：唯一做计算的], [—],
   [原语], [`scatter`], [—：唯一把数据写到计算出的位置的], [—],
   [优化], [`distinct`], [`scan`（相邻比较）→ `scatter`（压缩）], [省一遍扫描；`∩ ∪ − ≫ dom ran` 都以它结尾],
-  [优化], [`asc`], [radix sort：每一位 `scan`（直方图、前缀偏移）→ `scatter`；`arr byte` 用 MSD], [比较排序常数小],
+  [优化], [`asc`], [radix sort：每一位 `scan`（直方图、前缀偏移）→ `scatter`；`arr char` 用 MSD], [比较排序常数小],
   [优化], [`gather`], [`(ix[i], i)` 与 `(j, e[j])` 拼接 → `asc` → `scan` 向后填 `e` → `scatter` 回 `i`], [O(n)，不必排序],
 )
 - Lean body 只需信任两个原语；每个优化 kernel 配一条定理 `k = 上表中的复合`，所以它的 Lean body 可以就是那个复合，
@@ -245,7 +247,7 @@ compile η t : {r : Rel A B // rep r = ⟦t⟧ρ}       -- 方案 A：规格在�
 
 #grid(columns: (1fr, 1fr), gutter: 8pt,
   card(c-rs, [crate 结构])[`scan.rs` `gather.rs` `scatter.rs` `asc.rs` `distinct.rs` 各一个导出；`pack.rs` 是分块编解码（不导出）；
-    `pod::Elt`、`by_width!`（i8–i64、f32、f64）、`pool` 保留。`RELK.txt` 从 99 行变为 5 行。],
+    `pod::Elt`、`by_width!`（bool、char、i8–i64、f32、f64）、`pool` 保留。`RELK.txt` 从 99 行变为 5 行。],
   card(c-rs, [融合 kernel])[如 join、intern、group ids：只是优化，每个配一条定理说明它等于上表中的某个复合；
     在第二个真实需要出现前不加。],
 )
@@ -289,4 +291,4 @@ index-complete · axioms · noreduce · panic · externs；另加 `lake -d freyd
 - 去掉 `Syn`、`Tm.Le`、`Tm.Eqv`、`Hom.den`（`Rel/Lang/Syn.lean`）与 #9；`Tm.Ax` 改为改写引理 `⟦lhs⟧ρ = ⟦rhs⟧ρ`；freyd 需要的范畴在 `relaop` 自建。
 - `Tm` 加 symmetric division 构造子（运行时已有 `Alg.symDiv`）。
 - 改名：去掉 `Den` `Dem` `Fn` `CRel`，`Rel k v` 改为 `Rel A B`（`tab` ┃ `lazy`），`Tm` 去掉 `d`。
-- kernel 缩到 5 个：原语 `scan` `scatter`，优化 `gather` `asc` `distinct`（各配「= 原语复合」的定理）、编码只留 packed（块长 `lg` 每列可选）、原子 i8–i64 f32 f64 sym；q 专用 kernel 留在 qlean 的副本（tag `qlean-base`）。
+- kernel 缩到 5 个：原语 `scan` `scatter`，优化 `gather` `asc` `distinct`（各配「= 原语复合」的定理）、编码只留 packed（块长 `lg` 每列可选）、原子 bool char i8–i64 f32 f64 sym；q 专用 kernel 留在 qlean 的副本（tag `qlean-base`）。

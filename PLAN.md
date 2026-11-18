@@ -9,7 +9,9 @@ Owner decisions on section 5 (taken as the recommended defaults; the owner may o
   come from the failing node, never from a truncated table.
 - R4: "kernel" (5) differs from "runtime export": `stop`, `Coc.encode`/`decode` stay as runtime exports;
   `own_write` and the group-id kernels are rewritten with `EmitC`.
-- R5: the `sum` tag column is a packed column of width 1, not an atom; boxed `general` is deleted.
+- R5: atoms are `bool char i8 i16 i32 i64 f32 f64 sym` (nine). The `sum` tag column stays `Arr .bool`
+  (renamed from `.boolean`); `char` is 8-bit and strings are `arr char`; boxed `general` and the temporal atoms
+  are deleted.
 - R7: floats are canonicalised (one NaN, `-0 ↦ +0`) before the order-preserving bit map; equality = bit equality
   after canonicalisation.
 - R8: 1.1 writes only the equations that are not a restatement of one `Core.Rel` law (`mu_unfold`, `nu_unfold`);
@@ -78,7 +80,7 @@ Size: S = one step under 20 tool calls, M = one to three steps, L = more than th
 | 23 | scan, scatter primitives   | drivers, `Kernel/Driver.lean:25-38`   | `Op`, `Op.eval`, two laws           | L    |
 | 24 | gather, asc, distinct      | `gatherPacked`, `Order.grade`, `nubC` | externs, laws, "= composition"      | L    |
 | 25 | one encoding `packed`      | `Ext.Enc`, 7 ctors, `Value.lean`      | 460 decls depend on `Enc`           | L    |
-| 26 | seven atoms                | `QAtomicType`, 18 ctors, `Value:13`   | 1718 decls; boolean, general; R5    | L    |
+| 26 | nine atoms                 | `QAtomicType`, 18 ctors, `Value:13`   | 1718 decls; boolean, general; R5    | L    |
 | 27 | RELK.txt 99 → 5            | `crate/RELK.txt`, `crate/src/ffi/`    | native gate needs more; R4          | L    |
 | 28 | q-only kernels leave       | 99 externs (`extern.tsv`)             | qlean pinned to e024297: no work    | S    |
 
@@ -433,9 +435,10 @@ composition; the Rust is the fused form. Existing material: `gatherPacked` (`Str
 (240), `Order.grade` (`Sort.lean:69`), `gradeLane` (96), `runStarts` (`Search.lean:233`), `Alg.nubC` (`Alg:202`).
 
 **6.9 opus — atoms and order-preserving codes.** `QAtomicType` (`Value.lean:13`) renames by `LR rename`:
-`long→i64 int→i32 short→i16 byte→i8 real→f32 float→f64 symbol→sym`; then `Obj.key` (`ObjOrder.lean:19`) at float
-atoms becomes the order-preserving bit map. Removing `boolean general char` and the temporal atoms is blocked on
-R5 (the `Vals` tag of `.sum` is `Arr .boolean`; `Obj.general` and `Obj.Ordered` name `.general`).
+`boolean→bool long→i64 int→i32 short→i16 byte→i8 real→f32 float→f64 symbol→sym` (`char` keeps its name);
+then `Obj.key` (`ObjOrder.lean:19`) at float
+atoms becomes the order-preserving bit map. Removing `general` and the temporal atoms: per R5, the `.sum` tag
+stays `Arr .bool`; `Obj.general` goes and `Obj.Ordered` loses its `t ≠ .general` premise.
 
 **6.10 opus, many — migrate users.** One step per group of 6.0's table: each `Alg`/`Code`/`CRel*Def` definition
 that calls an old extern is restated on the five, with its `KernelSpec`/`KernelWF` lemma re-proved from the new
@@ -529,7 +532,7 @@ Total: 8 phases, 52 steps (6.10 counted once; it expands after 6.0). Opus 38, so
 - **R4 "RELK.txt has 5 lines" contradicts the gates.** `rel-native` and `relc` call `qlean_own_write` and the
   group-id kernels (`EmitC.lean:16`); `qlean_stop` (`Kernel.stop`) is the capacity abort; `Coc.encode`/`decode`,
   `Column.blockStart` are externs with no place among the five. `externs`, `syms` and `panic` gates read the list.
-- **R5 Seven atoms remove types the core uses.** `Vals (.sum A B)` keeps its tag in `Arr .boolean`; `Obj.general`
+- **R5 (decided above) Nine atoms remove types the core uses.** `Vals (.sum A B)` keeps its tag in `Arr .boolean`; `Obj.general`
   and `Obj.Ordered (t ≠ .general)` name `.general`; `Arr .long` holds `lo`/`hi` of `Obj.arr`. The design does not
   say what the tag column becomes (i8, or packed width 1) or whether boxed columns remain. 1718 declarations
   depend on `QAtomicType`; `KernelSpec` + `KernelWF` (about 21700 lines) are stated on today's kernels and
@@ -571,3 +574,9 @@ Questions for the owner:
 | Q10 | Where do `Ordered`/`KeyInj` hypotheses of lam/E/thin come from in `compile`'s type?                       |
 | Q11 | Meaning of `call` in `Tm.den` (stage 5): inline the callee's term, or an environment of definitions?      |
 | Q12 | Library boundary for plan A: proofs into `RelRun`, or `compile` out of it?                                |
+
+## Baseline
+
+At `e78e922`, `make check` exit 0. compile-diff: "compile agrees with the generated code on 241 definitions; not ok
+on 25" (`sudokuac.s`, `Test.given.q{R,M,F,h}`, `Test.orders.Of`, `Test.muGrow.g`, `TestWumpus.given.f0`-`f16`,
+`TestRefold.refoldCycle.bad`). Every phase gate must reproduce 241 / 25 or explain the difference.
