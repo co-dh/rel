@@ -818,9 +818,12 @@ def emit (n : Name) (r : Read) : MetaM Unit := do
     pure ((ds, ps, cs), fs) : StateM Nat ((List (String × Res) × List (String × Top) × List Chk) × List Once)).run 0
   addConst (n ++ `objs) (mkConst ``Objs) (← objsE objs)
   let os := mkConst (n ++ `objs)
-  -- a closed term's table: its code run in the empty context `{}`, which knows neither side
-  let app (A B : Obj) (t : Lean.Expr) := g ``Rel.Rel.run #[oE A, oE B, t,
-    g ``Rel.Known.mk #[oE A, oE B, g ``Rel.Known.dom._default #[oE A, oE B], g ``Rel.Known.ran._default #[oE A, oE B]]]
+  -- a closed term's table: its code run in the empty context `{}`, which knows neither side; each side a `none`
+  -- at its field's type, read off the field's default (which has no executable code of its own)
+  let app (A B : Obj) (t : Lean.Expr) : MetaM Lean.Expr := do
+    let none' (f : Name) := return mkApp (mkConst ``Option.none [0]) (← inferType (g f #[oE A, oE B])).appArg!
+    pure (g ``Rel.Rel.run #[oE A, oE B, t,
+      g ``Rel.Known.mk #[oE A, oE B, ← none' ``Rel.Known.dom._default, ← none' ``Rel.Known.ran._default]])
   let ((entries, printed, checked), st) ← (do
     -- each definition elaborated once: `n.x : (A₁ … : Obj) → Pl U₁ → … → Pl R₁ → … → Pl d A B`, generic over the
     -- objects of its generic variables, then plans in and out, the universes it reads then its parameters, so a
@@ -849,13 +852,13 @@ def emit (n : Name) (r : Read) : MetaM Unit := do
       let v ← code n [] t
       let k := Parse.constOf n x
       unless !d do throwError "rel_program expansion: internal: `{x}` needs keys"
-      addConst k (mkApp2 (mkConst ``CRel) (oE A) (oE B)) (app A B v)
+      addConst k (mkApp2 (mkConst ``CRel) (oE A) (oE B)) (← app A B v)
       es := es ++ [g ``Gen.entry #[toExpr x, oE A, oE B, mkConst k]]
     let ps ← ps.mapM fun (x, ⟨A, B, t⟩, s, u) => do
-      pure (g ``printText #[oE A, oE B, os, toExpr x, toExpr s, toExpr u, app A B (← code n [] t)])
+      pure (g ``printText #[oE A, oE B, os, toExpr x, toExpr s, toExpr u, ← app A B (← code n [] t)])
     let cs ← cs.mapM fun (p, x, y, eq, s, u, ⟨A, B, R, S⟩) => do
       pure (g ``checkErr #[oE A, oE B, os, toExpr p, toExpr x, toExpr y, toExpr eq, toExpr s, toExpr u,
-        app A B (← code n [] R), app A B (← code n [] S)])
+        ← app A B (← code n [] R), ← app A B (← code n [] S)])
     pure (es, ps, cs) : RM (List Lean.Expr × List Lean.Expr × List Lean.Expr)).run ({}, {})
   -- what `Expand.rep` proves from: the numbered definitions, and `code`'s constants so it adds none of them again
   modifyEnv (relRegistry.addEntry · (.rep n ds st.1.toArray st.2.toArray))
