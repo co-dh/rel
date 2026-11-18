@@ -298,11 +298,14 @@ relk 线程池空转 2 526（与前三项重叠）。
 - ✅ W.1 `Makefile`：gate 从 lake 列 module，不再依赖 `index`；整包目标在 worktree 中拒绝运行；compile-diff 排最后（5aba864）。
 - ✅ W.2 cc-guard worktree 派发写明 build 命令：只 build 编辑过的 module 及其测试（6940c8d）。
 - ✅ W.3 lean-refactor 扫描时 elaborate `#guard`/`#eval` 而不运行（4810844）。
-- 🔄 W.4 lean-refactor：仍有一条路径运行 `librelk`（找到调用者并去掉）；`env.header.moduleNames` 移出循环。
+- ✅ W.4 lean-refactor：`index` 为每个过时 module 起的 `syntax-rows` 子进程仍运行 relk，改为所有 elaboration 路径共用
+  `Elaborate.headerEnv` 的不运行表（6706c7e）；`moduleNames` 移出循环（7406671）。6 个过时 module 的 `index`：
+  105.4 s → 22.6 s wall，270 → 30 CPU-s。
 - 🔄 W.5 compile-diff 只用 `SPLIT` 以下的输入，并加一个计数 gate 检查（owner 选 D）。
 - 🔄 W.6 elaboration 时 `QLEAN_THREADS=1`，只设一处；先测 `make check` 前后的 wall 与 `user+sys`，不变慢才提交（owner 选 E）。
-- 🔄 W.7 `-Wl,--build-id`：lean-refactor、rel lakefile、`crate/build.sh`、cc-guard（owner 选 F）；cap 的 build-id
-  缓存已在 947fbca。部署是 owner 的步骤。
+- ✅ W.7 `-Wl,--build-id`（owner 选 F）：rel lakefile 52b6203（gates、relc、librelk.so、两个 precompiled lib），
+  cc-guard 8d08fa4（已部署），lean-refactor 22bc2aa；`crate/build.sh` 只出 `.o`，不需要。lake 不跟踪 extern_lib 的
+  link 参数，旧的 librelk.so 要重链接才带 build-id。cap 的 build-id 缓存在 947fbca。
 - ⬜ W.8 调查：Lean 的 module 系统（`module` + `public import`）能否让只改 kernel body 时不重建下游。
 - ✖ W.9 `SubagentStart` hook：首条命令被拒 0.4%，不值得多一个 hook（owner 选 B）。
 
