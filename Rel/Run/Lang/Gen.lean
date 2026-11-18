@@ -133,44 +133,51 @@ def demP {A B : Obj} : (e : Bool) → Tm A B false → Dem e B × Bool
   | false, _ => ((), true)
   | true, r => let x := Bits.runC r; let k := ranC x.1; (k.1, x.2 && k.2)
 
-/-- `R S` on demand: `S` runs on `ran(R)`, and not at all where `R` has no row. -/
-def comp (A B C : Obj) (e : Bool) (R : Fn true A B) (S : Fn e B C) : Fn true A C := Fn.ofDem (d := true) fun D =>
-  let r := R.at D
-  if r.rel.n == 0 then CRel.mk Alg.zero r.ok else
-  let k := CRel.ran r; also k.ok (CRel.comp r (S.at (Dem.of e k.rel)))
+/-- `r S`, `r` the table of `R`: a table `S` is composed now; a lazy one runs knowing its domain is `r`'s value
+    column, and not at all where `r` has no row. -/
+def compT {A B C : Obj} : CRel A B → Rel B C → Rel A C
+  | none, _ => .tab none
+  | some r, .tab s => .tab (CRel.comp (some r) s)
+  | some r, .lazy g => if r.n == 0 then .tab (some Alg.zero) else
+    .lazy fun K => .tab (CRel.comp (some r) ((Rel.lazy g).run ⟨some ⟨r.n, r.val⟩, K.ran⟩))
 
-/-- A closed `R S`, `R ∩ S`, `R − S`, `R\S` as bit matrices where its plan's objects are small (`Bits.runC`). -/
-def compB (A B C : Obj) (e : Bool) (R : Pl false A B) (S : Pl e B C) : Fn false A C := Fn.ofDem (d := false) fun _ =>
-  let r := R (); let k := demP e r.1; let s := S k.1; also (r.2 && k.2 && s.2) (ofC (Bits.runC (.comp r.1 s.1)))
-def meetB (A B : Obj) (R S : Pl false A B) : Fn false A B := Fn.ofDem (d := false) fun _ =>
-  let r := R (); let s := S (); also (r.2 && s.2) (ofC (Bits.runC (.meet r.1 s.1)))
-def diffB (A B : Obj) (R S : Pl false A B) : Fn false A B := Fn.ofDem (d := false) fun _ =>
-  let r := R (); let s := S (); also (r.2 && s.2) (ofC (Bits.runC (.diff r.1 s.1)))
-def ldivB (A B C : Obj) (R : Pl false A B) (S : Pl false A C) (UB : Fn false B B) (UC : Fn false C C) :
-    Fn false B C := Fn.ofDem (d := false) fun _ =>
-  let r := R (); let s := S (); let ub := UB.at (); let uc := UC.at ()
-  also (r.2 && s.2 && ub.ok && uc.ok) (ofC (Bits.runC (.ldiv r.1 s.1 (.val ub.rel) (.val uc.rel))))
+/-- `R S`: a lazy `R` runs on the domain its context knows, then `compT`. -/
+def comp (A B C : Obj) (e : Bool) (R : Fn true A B) (S : Fn e B C) : Fn true A C := match R with
+  | .tab r => compT r S
+  | .lazy f => .lazy fun K => compT ((Rel.lazy f).run ⟨K.dom, none⟩) S
 
-def conv (A B : Obj) (R : Fn false A B) : Fn false B A := Fn.ofDem (d := false) fun _ =>
-  let r := R.at (); ofC (r.rel°, r.ok)
-def meet (A B : Obj) (d e : Bool) (R : Fn d A B) (S : Fn e A B) : Fn (d || e) A B := Fn.ofDem (d := d || e) fun D =>
-  CRel.inter (R.at (Dem.l d e D)) (S.at (Dem.r d e D))
-def join (A B : Obj) (d e : Bool) (R : Fn d A B) (S : Fn e A B) : Fn (d || e) A B := Fn.ofDem (d := d || e) fun D =>
-  CRel.union (R.at (Dem.l d e D)) (S.at (Dem.r d e D))
-def diff (A B : Obj) (d e : Bool) (R : Fn d A B) (S : Fn e A B) : Fn (d || e) A B := Fn.ofDem (d := d || e) fun D =>
-  CRel.diff (R.at (Dem.l d e D)) (S.at (Dem.r d e D))
-def dom (A B : Obj) (d : Bool) (R : Fn d A B) : Fn d A A := Fn.ofDem (d := d) fun D => CRel.dom (R.at D)
-def ran (A B : Obj) (R : Fn false A B) : Fn false B B := Fn.ofDem (d := false) fun _ => CRel.ran (R.at ())
+/-- An op on one table: a table now, or lazy, its argument run on what `k` makes of the context. -/
+def lift1 {A B C D : Obj} (f : CRel A B → CRel C D) (k : Known C D → Known A B) : Rel A B → Rel C D
+  | .tab r => .tab (f r)
+  | R => .lazy fun K => .tab (f (R.run (k K)))
+
+/-- An op on two tables: a table where both are, else lazy, each run on what `kl`, `kr` make of the context. -/
+def lift2 {A B C D E F : Obj} (f : CRel A B → CRel C D → CRel E F) (kl : Known E F → Known A B)
+    (kr : Known E F → Known C D) : Rel A B → Rel C D → Rel E F
+  | .tab r, .tab s => .tab (f r s)
+  | R, S => .lazy fun K => .tab (f (R.run (kl K)) (S.run (kr K)))
+
+def conv (A B : Obj) (R : Fn false A B) : Fn false B A :=
+  lift1 (fun r => ofC (r.rel°, r.ok)) (fun K => ⟨K.ran, K.dom⟩) R
+def meet (A B : Obj) (d e : Bool) (R : Fn d A B) (S : Fn e A B) : Fn (d || e) A B :=
+  lift2 CRel.inter (fun K => K) (fun K => K) R S
+def join (A B : Obj) (d e : Bool) (R : Fn d A B) (S : Fn e A B) : Fn (d || e) A B :=
+  lift2 CRel.union (fun K => K) (fun K => K) R S
+def diff (A B : Obj) (d e : Bool) (R : Fn d A B) (S : Fn e A B) : Fn (d || e) A B :=
+  lift2 CRel.diff (fun K => K) (fun K => K) R S
+def dom (A B : Obj) (d : Bool) (R : Fn d A B) : Fn d A A := lift1 CRel.dom (fun K => ⟨K.dom, none⟩) R
+def ran (A B : Obj) (R : Fn false A B) : Fn false B B := lift1 CRel.ran (fun K => ⟨none, K.dom⟩) R
+/-- `R/S` reads both sides whole, with the universes `UA`, `UB`. -/
 def rdiv (A B C : Obj) (R : Fn false A C) (S : Fn false B C) (UA : Fn false A A) (UB : Fn false B B) :
-    Fn false A B := Fn.ofDem (d := false) fun _ =>
-  let ua := UA.at (); let ub := UB.at ()
-  also (ua.ok && ub.ok) (CRel.rightDiv (R.at ()) (S.at ()) ua.rel.val ub.rel.val)
+    Fn false A B :=
+  lift2 (fun r s => let ua : CRel A A := UA.run {}; let ub : CRel B B := UB.run {}
+    also (ua.ok && ub.ok) (CRel.rightDiv r s ua.rel.val ub.rel.val)) (fun _ => {}) (fun _ => {}) R S
 def pair (A B C : Obj) (d e : Bool) (R : Fn d A B) (S : Fn e A C) : Fn (d || e) A (.prod B C) :=
-  Fn.ofDem (d := d || e) fun D => CRel.pair (R.at (Dem.l d e D)) (S.at (Dem.r d e D))
+  lift2 CRel.pair (fun K => ⟨K.dom, none⟩) (fun K => ⟨K.dom, none⟩) R S
 def prod (A B C D : Obj) (R : Fn false A B) (S : Fn false C D) : Fn false (.prod A C) (.prod B D) :=
-  Fn.ofDem (d := false) fun _ => CRel.prod (R.at ()) (S.at ())
+  lift2 CRel.prod (fun _ => {}) (fun _ => {}) R S
 def junc (A B C : Obj) (R : Fn false A C) (S : Fn false B C) : Fn false (.sum A B) C :=
-  Fn.ofDem (d := false) fun _ => CRel.junc (R.at ()) (S.at ())
+  lift2 CRel.junc (fun _ => {}) (fun _ => {}) R S
 /-- `Λ(R)` total on the keys `D`: `[]` at a key `R` relates to nothing (`CRel.lamOn`, `rep_lamOn`). -/
 def lam (A B : Obj) (d : Bool) (R : Fn d A B) : Fn true A (.arr B) := Fn.ofDem (d := true) fun D =>
   CRel.lamOn (R.at (Dem.of d D)) D.val
@@ -330,6 +337,17 @@ def pldiv (A B C : Obj) (R : Pl false A B) (S : Pl false A C) (UB : Fn false B B
     Pl false B C := fun _ =>
   let r := R (); let s := S (); let ub := UB.at (); let uc := UC.at ()
   (.ldiv r.1 s.1 (.val ub.rel) (.val uc.rel), r.2 && s.2 && ub.ok && uc.ok)
+
+/-- A closed plan run as bits (`Bits.runC`), its leaves' bit kept. -/
+def runPl {A B : Obj} (p : Tm A B false × Bool) : CRel A B := also p.2 (ofC (Bits.runC p.1))
+
+/-- A closed `R S`, `R ∩ S`, `R − S`, `R\S` as bit matrices where its plan's objects are small (`Bits.runC`). -/
+def compB (A B C : Obj) (e : Bool) (R : Pl false A B) (S : Pl e B C) : Fn false A C :=
+  .tab (runPl (pcomp A B C false e R S ()))
+def meetB (A B : Obj) (R S : Pl false A B) : Fn false A B := .tab (runPl (pmeet A B false false R S ()))
+def diffB (A B : Obj) (R S : Pl false A B) : Fn false A B := .tab (runPl (pdiff A B false false R S ()))
+def ldivB (A B C : Obj) (R : Pl false A B) (S : Pl false A C) (UB : Fn false B B) (UC : Fn false C C) :
+    Fn false B C := .tab (runPl (pldiv A B C R S UB UC ()))
 
 end Gen
 
