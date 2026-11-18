@@ -62,7 +62,7 @@ structure ObjInfo where
   ty : OTy
   elems : List String := []
   range : Option (Int × Int) := none
-  uni : Option ((m : USize) × Arr .long m) := none
+  uni : Option ((m : USize) × Arr .i64 m) := none
   /-- An object variable of a definition elaborated once: its universe is the variable `k`, an argument of the
       definition's constant. -/
   uniVar : Option Nat := none
@@ -72,8 +72,8 @@ structure ObjInfo where
 
 /-- The atoms no declared object is stored as (every one is `.long`, F6): each the placeholder of one object
     variable while a constant generic over it is built, its binder `(A : Obj)` once emitted. -/
-def varAtoms : List Rel.QAtomicType := [.general, .boolean, .byte, .short, .int, .real, .float, .char, .symbol,
-  .timestamp, .month, .date, .datetime, .timespan, .minute, .second, .time]
+def varAtoms : List Rel.QAtomicType := [.general, .u1, .u8, .i16, .i32, .f32, .f64, .char, .sym,
+  .i8, .date, .datetime]
 
 /-- The placeholder of the object variable `k`; none past `varAtoms`, where the variable stays `.long`. -/
 def varObj (k : Nat) : Option Obj := varAtoms[k]?.map .atom
@@ -1435,7 +1435,7 @@ def numU (p : Pos) (o : OTy) (op : String) : Except Err (Tm .long .long false) :
   match zonk mc o with
   | .base n => match objs.lookup n with
     | some { uni := some ⟨_, U⟩, .. } => pure (.uni (A := .long) U)
-    | some { uniVar := some k, obj := .atom .long, .. } => pure (.var k)
+    | some { uniVar := some k, obj := .atom .i64, .. } => pure (.var k)
     | some { uniVar := some _, .. } => throw ⟨p, s!"{op} on {n}: a number object, which its constant is not generic over"⟩
     | _ => throw ⟨p, s!"{op} on {n}: no universe"⟩
   | o => throw ⟨p, s!"{op} runs on a declared object, found {o}"⟩
@@ -1471,20 +1471,20 @@ def litCol (p : Pos) (n : USize) (o : OTy) (rows : List Tup) : Except Err ((A : 
     let ends := (ts.foldl (fun (k, acc) t => (k + t.length, (k + t.length) :: acc)) (0, ([] : List Nat))).2.reverse
     let hi := ends.map Int64.ofNat; let lo := (ends.zip ts).map fun (e, t) => Int64.ofNat (e - t.length)
     if h : lo.length.toUSize = n ∧ hi.length.toUSize = n then
-      (let l : Arr .long n := h.1 ▸ col lo; let r : Arr .long n := h.2 ▸ col hi; pure ⟨.arr B, ⟨_, l, r, v⟩⟩)
+      (let l : Arr .i64 n := h.1 ▸ col lo; let r : Arr .i64 n := h.2 ▸ col hi; pure ⟨.arr B, ⟨_, l, r, v⟩⟩)
     else internal dp "literal array rows"
   | .mv _ => throw (litOpen objs p rows)
   -- a sum only the context gives, to an empty array's elements: no rows to read
   | .sum x y =>
     if h : n = 0 ∧ rows.isEmpty then h.1 ▸ (do
       let ⟨A, u⟩ ← litCol p 0 x []; let ⟨B, v⟩ ← litCol p 0 y []
-      pure ⟨.sum A B, ⟨0, 0, emptyArr .boolean, emptyArr .long, u, v⟩⟩ : Except Err ((A : Obj) × Vals A 0))
+      pure ⟨.sum A B, ⟨0, 0, emptyArr .u1, emptyArr .i64, u, v⟩⟩ : Except Err ((A : Obj) × Vals A 0))
     else throw ⟨p, s!"a literal relates elements of declared objects, found {o}"⟩
   | o => do
     let cs ← rows.mapM fun
       | .leaf w => code objs mc p o w
       | r => throw ⟨p, s!"a literal's element of {o} is a word, found {r.show}"⟩
-    if h : cs.length.toUSize = n then (let c : Arr .long n := h ▸ col cs; pure ⟨.long, c⟩) else internal dp "literal rows"
+    if h : cs.length.toUSize = n then (let c : Arr .i64 n := h ▸ col cs; pure ⟨.long, c⟩) else internal dp "literal rows"
 
 /-- A pair test at the objects `A×B`. -/
 def corAt (A B : Obj) : Cor → Except Err (Tm (.prod A B) (.prod A B) true)

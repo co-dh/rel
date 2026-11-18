@@ -9,7 +9,7 @@ use core::sync::atomic::Ordering::Relaxed;
 
 use crate::c::{run_map, run_slices, Runner};
 use crate::coc::{lanes, Coc};
-use crate::key::{self, Keys, Pass, SK_BIT, SK_I16, SK_I32, SK_I64, SK_KINDS_N, SK_U8};
+use crate::key::{self, Keys, Pass, SK_BIT, SK_C8, SK_I8, SK_I16, SK_I32, SK_I64, SK_KINDS_N, SK_U8};
 use crate::ids::by_width;
 use crate::pod::Elt;
 use crate::sym::{sym_hash, sym_msort, Syms};
@@ -324,14 +324,15 @@ pub fn grade_bits(p: &[u8], n: usize, desc: bool, rank: bool, out: &mut [i64]) {
 
 /// sort.rs `SK_NARROW_NB`: the table of a narrow kind, one count per key.
 pub fn narrow_nb(kind: u8) -> usize {
-    if kind == SK_U8 { 256 } else if kind & SK_LANE != 0 { 1 << (kind & 0x7f) } else { 1 << 16 }
+    if matches!(kind, SK_U8 | SK_C8 | SK_I8) { 256 } else if kind & SK_LANE != 0 { 1 << (kind & 0x7f) } else { 1 << 16 }
 }
 /// sort.rs `SK_NARROW_RUN`: `f(i, key)` at each row `i` of `[lo, hi)` with its narrow key, unsigned: a byte is its own
-/// key, a `short` flips its sign bit (`key_at`'s rule), a lane is the id `id_at` reads, unpacked a chunk at a time.
+/// key and a signed byte or `short` flips its sign bit (`key_at`'s rule), a lane is the id `id_at` reads, unpacked a chunk at a time.
 #[inline(always)]
 pub fn each_key(kind: u8, p: &[u8], lo: usize, hi: usize, mut f: impl FnMut(usize, usize)) {
-    if kind == SK_U8 {
-        for (i, &x) in p[lo..hi].iter().enumerate() { f(lo + i, x as usize) }
+    if matches!(kind, SK_U8 | SK_C8 | SK_I8) {
+        let fl = crate::kwin::key_flip(kind) as u8;
+        for (i, &x) in p[lo..hi].iter().enumerate() { f(lo + i, (x ^ fl) as usize) }
     } else if kind & SK_LANE != 0 {
         let mut kb = [0u16; 1024];
         for c in (lo..hi).step_by(kb.len()) {
@@ -514,7 +515,7 @@ pub fn order(run: Runner, kind: u8, desc: bool, rank: bool, p: &[u8], n: usize, 
     if n == 0 { return }
     let p = &p[..key::bytes(kind, n).unwrap_or_else(|| panic!("qlean_sort_grade: kind {kind} is not a dense kind"))];
     if kind == SK_BIT { return grade_bits(p, n, desc, rank, out) }
-    if kind == SK_U8 || kind == SK_I16 { return grade_narrow(run, kind, p, n, desc, rank, out) }
+    if matches!(kind, SK_U8 | SK_C8 | SK_I8 | SK_I16) { return grade_narrow(run, kind, p, n, desc, rank, out) }
     let a = ascending(kind, desc, false, p, n);
     if !order_runs(a, !a && ascending(kind, !desc, true, p, n), out) {
         let s = Ksrc { kind, p, c: None, n };

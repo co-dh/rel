@@ -42,7 +42,7 @@ def ownFile (v : Ext.QValue X) : Option OwnFile :=
     let (kind, parts) := ownParts e
     { code := t.code.toUInt8, attr, kind, count := n, domain, parts }
   match w with
-  | .enum d (.vector .long n e _) => if d.isEmpty then none else some (column .long n e d)
+  | .enum d (.vector .i64 n e _) => if d.isEmpty then none else some (column .i64 n e d)
   | .vector _ _ (.gen _) _ => none
   | .vector t n e _ => if t == .general then none else some (column t n e "")
   | _ => none

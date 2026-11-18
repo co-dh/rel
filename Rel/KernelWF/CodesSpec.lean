@@ -22,7 +22,7 @@ open Tab Rel.Dep Rel.Kernel Rel.Verify Rel
 /-! ## Atoms: a boolean side -/
 
 /-- A boolean column's payload is its bitmap, `tagBits`. -/
-theorem enc_tagBits {n : USize} (x : Arr .boolean n) : x.enc = .bits (tagBits x) := by
+theorem enc_tagBits {n : USize} (x : Arr .u1 n) : x.enc = .bits (tagBits x) := by
   have key : ∀ (e : Enc) (o : Option ByteArray), (o = match e with | .bits b => some b | _ => none) →
       ∀ h : o.isSome, e = .bits (o.get h) := by
     intro e o ho h; subst ho; cases e <;> first | rfl | simp at h
@@ -30,21 +30,21 @@ theorem enc_tagBits {n : USize} (x : Arr .boolean n) : x.enc = .bits (tagBits x)
 
 /-- **A boolean side's codes are its bitmaps**: every part's payload is `bits` (`Enc.WF .boolean`), so
     `codes` takes its first branch, each part its own code a bit wide. -/
-theorem codes_boolean {p : Nat} (cs : Vector (Part (.atom .boolean)) p) :
-    Obj.codes (.atom .boolean) cs = cs.map fun c => (⟨1, c.1, 2, tagBits c.2⟩ : Code) := by
-  show Alg.codes .boolean cs = _
+theorem codes_boolean {p : Nat} (cs : Vector (Part (.atom .u1)) p) :
+    Obj.codes (.atom .u1) cs = cs.map fun c => (⟨1, c.1, 2, tagBits c.2⟩ : Code) := by
+  show Alg.codes .u1 cs = _
   unfold Alg.codes
   rw [dif_neg (by decide)]
-  have e : (cs.mapM fun c : Part (.atom .boolean) => some (⟨1, c.1, 2, tagBits c.2⟩ : Code)) =
+  have e : (cs.mapM fun c : Part (.atom .u1) => some (⟨1, c.1, 2, tagBits c.2⟩ : Code)) =
       some (cs.map fun c => (⟨1, c.1, 2, tagBits c.2⟩ : Code)) := Vector.mapM_pure _
   simp only [enc_tagBits, e]
 
 /-- **A boolean side's codes are faithful, jointly across its parts**: part `k`'s code at `i` and part `l`'s
     at `j` agree exactly when the rows do. -/
-theorem codes_boolean_faithful {p : Nat} (cs : Vector (Part (.atom .boolean)) p) {k l : Nat}
+theorem codes_boolean_faithful {p : Nat} (cs : Vector (Part (.atom .u1)) p) {k l : Nat}
     (hk : k < p) (hl : l < p) {i j : Nat} (hi : i < cs[k].1.toNat) (hj : j < cs[l].1.toNat) :
-    Column.idAt (Obj.codes (.atom .boolean) cs)[k].b (Obj.codes (.atom .boolean) cs)[k].w i =
-        Column.idAt (Obj.codes (.atom .boolean) cs)[l].b (Obj.codes (.atom .boolean) cs)[l].w j ↔
+    Column.idAt (Obj.codes (.atom .u1) cs)[k].b (Obj.codes (.atom .u1) cs)[k].w i =
+        Column.idAt (Obj.codes (.atom .u1) cs)[l].b (Obj.codes (.atom .u1) cs)[l].w j ↔
       Vals.row cs[k].2 ⟨i, hi⟩ = Vals.row cs[l].2 ⟨j, hj⟩ := by
   simp only [codes_boolean, Vector.getElem_map]
   rw [idAt_one, idAt_one, Vals.row_atom, Vals.row_atom, Arr.get_bool_bits cs[k].2 (enc_tagBits _),
@@ -53,14 +53,14 @@ theorem codes_boolean_faithful {p : Nat} (cs : Vector (Part (.atom .boolean)) p)
 
 /-- **A boolean side's codes are well formed**: a bit wide, `⌈n/8⌉` bytes, every code `0` or `1`, below
     `card = 2`. -/
-theorem codes_boolean_wf {p : Nat} (cs : Vector (Part (.atom .boolean)) p) {k : Nat} (hk : k < p) :
-    (Obj.codes (.atom .boolean) cs)[k].n = cs[k].1 ∧ (Obj.codes (.atom .boolean) cs)[k].w = 1 ∧
-      (Obj.codes (.atom .boolean) cs)[k].b.size =
-        ((Obj.codes (.atom .boolean) cs)[k].n.toNat * (Obj.codes (.atom .boolean) cs)[k].w + 7) / 8 ∧
-      ((Obj.codes (.atom .boolean) cs)[k].w < 8 → (Obj.codes (.atom .boolean) cs)[k].card < USize.size ∧
-        ∀ i < (Obj.codes (.atom .boolean) cs)[k].n.toNat,
-          Column.idAt (Obj.codes (.atom .boolean) cs)[k].b (Obj.codes (.atom .boolean) cs)[k].w i <
-            (Obj.codes (.atom .boolean) cs)[k].card) := by
+theorem codes_boolean_wf {p : Nat} (cs : Vector (Part (.atom .u1)) p) {k : Nat} (hk : k < p) :
+    (Obj.codes (.atom .u1) cs)[k].n = cs[k].1 ∧ (Obj.codes (.atom .u1) cs)[k].w = 1 ∧
+      (Obj.codes (.atom .u1) cs)[k].b.size =
+        ((Obj.codes (.atom .u1) cs)[k].n.toNat * (Obj.codes (.atom .u1) cs)[k].w + 7) / 8 ∧
+      ((Obj.codes (.atom .u1) cs)[k].w < 8 → (Obj.codes (.atom .u1) cs)[k].card < USize.size ∧
+        ∀ i < (Obj.codes (.atom .u1) cs)[k].n.toNat,
+          Column.idAt (Obj.codes (.atom .u1) cs)[k].b (Obj.codes (.atom .u1) cs)[k].w i <
+            (Obj.codes (.atom .u1) cs)[k].card) := by
   rw [codes_boolean, Vector.getElem_map]
   have hw := cs[k].2.wf
   rw [enc_tagBits] at hw
@@ -75,19 +75,22 @@ kinds only), so `codes` interns nothing and groups: `groupIdsColumn`, ids by fir
 
 /-- The integral sort kinds below eight bytes. -/
 theorem small_int_width {t : QAtomicType} {k : Scan.Kind} (ht : orderKind t = some k)
-    (hk : k = .u8 ∨ k = .i16 ∨ k = .i32) :
-    t.width = some k.width ∧ denseWidth t = some k.width ∧ t ≠ .general ∧ t ≠ .boolean ∧ t ≠ .symbol := by
+    (hk : k = .u8 ∨ k = .c8 ∨ k = .i8 ∨ k = .i16 ∨ k = .i32) :
+    t.width = some k.width ∧ denseWidth t = some k.width ∧ t ≠ .general ∧ t ≠ .u1 ∧ t ≠ .sym := by
   cases t <;> simp [orderKind] at ht <;> subst ht <;> simp_all [QAtomicType.width, denseWidth, Scan.Kind.width]
 
 /-- **The atom a small integral column reads is its low `8·w` bits**: two raw words read as one element
     exactly when they agree below `2^(8w)`. -/
 theorem small_int_read {t : QAtomicType} {k : Scan.Kind} (ht : orderKind t = some k)
-    (hk : k = .u8 ∨ k = .i16 ∨ k = .i32) (d : Carrier t) (v u : UInt64) :
+    (hk : k = .u8 ∨ k = .c8 ∨ k = .i8 ∨ k = .i16 ∨ k = .i32) (d : Carrier t) (v u : UInt64) :
     (Carrier.of? t (.atom (Column.atomOfBits t v (small_int_width ht hk).2.2.1))).getD d =
         (Carrier.of? t (.atom (Column.atomOfBits t u (small_int_width ht hk).2.2.1))).getD d ↔
       v.toNat % 2 ^ (8 * k.width) = u.toNat % 2 ^ (8 * k.width) := by
   have e8 : ∀ a b : UInt64, a.toUInt8 = b.toUInt8 ↔ a.toNat % 2 ^ 8 = b.toNat % 2 ^ 8 := fun a b =>
     ⟨fun h => by simpa using congrArg UInt8.toNat h, fun h => UInt8.toNat_inj.1 (by simpa using h)⟩
+  have e8s : ∀ a b : UInt64, a.toUInt8.toInt8 = b.toUInt8.toInt8 ↔ a.toNat % 2 ^ 8 = b.toNat % 2 ^ 8 :=
+    fun a b => ⟨fun h => by simpa using congrArg (fun z : Int8 => z.toUInt8.toNat) h,
+      fun h => congrArg UInt8.toInt8 (UInt8.toNat_inj.1 (by simpa using h))⟩
   have e16 : ∀ a b : UInt64, a.toUInt16.toInt16 = b.toUInt16.toInt16 ↔ a.toNat % 2 ^ 16 = b.toNat % 2 ^ 16 :=
     fun a b => ⟨fun h => by simpa using congrArg (fun z : Int16 => z.toUInt16.toNat) h,
       fun h => congrArg UInt16.toInt16 (UInt16.toNat_inj.1 (by simpa using h))⟩
@@ -96,29 +99,29 @@ theorem small_int_read {t : QAtomicType} {k : Scan.Kind} (ht : orderKind t = som
       fun h => congrArg UInt32.toInt32 (UInt32.toNat_inj.1 (by simpa using h))⟩
   cases t <;> simp [orderKind] at ht <;> subst ht <;>
     simp only [Column.atomOfBits, Carrier.of?, Option.getD_some, Scan.Kind.width] <;>
-    first | exact e8 v u | exact e16 v u | exact e32 v u | simp at hk
+    first | exact e8 v u | exact e8s v u | exact e16 v u | exact e32 v u | simp at hk
 
 /-- A small integral column's element `i` is its raw word `i` read as an atom (`get_eq_raw`). -/
 theorem small_int_get {t : QAtomicType} {k : Scan.Kind} (ht : orderKind t = some k)
-    (hk : k = .u8 ∨ k = .i16 ∨ k = .i32) {n : USize} (x : Arr t n) (i : Fin n.toNat) :
+    (hk : k = .u8 ∨ k = .c8 ∨ k = .i8 ∨ k = .i16 ∨ k = .i32) {n : USize} (x : Arr t n) (i : Fin n.toNat) :
     x.get i = (Carrier.of? t (.atom (Column.atomOfBits t ((Enc.raw t n x.enc).toList.getD i 0)
       (small_int_width ht hk).2.2.1))).getD default := by
   rw [Arr.get_ne x i (small_int_width ht hk).2.2.1, KernelWF.get_eq_raw (small_int_width ht hk).2.1 x.wf i.2]; rfl
 
 /-- A small integral column is dense or Frame-of-Reference encoded (`Enc.WF`). -/
 theorem small_int_enc {t : QAtomicType} {k : Scan.Kind} (ht : orderKind t = some k)
-    (hk : k = .u8 ∨ k = .i16 ∨ k = .i32) {n : USize} (x : Arr t n) :
+    (hk : k = .u8 ∨ k = .c8 ∨ k = .i8 ∨ k = .i16 ∨ k = .i32) {n : USize} (x : Arr t n) :
     (∃ b, x.enc = .bytes b) ∨ ∃ md pk, x.enc = .foR md pk := by
   have hwf := x.wf
   revert hwf
   cases x.enc with
   | bytes b => exact fun _ => .inl ⟨b, rfl⟩
   | foR md pk => exact fun _ => .inr ⟨md, pk, rfl⟩
-  | _ => intro hwf; exfalso; rcases hk with rfl | rfl | rfl <;> cases t <;> simp_all [Enc.WF, orderKind, QAtomicType.width]
+  | _ => intro hwf; exfalso; rcases hk with rfl | rfl | rfl | rfl | rfl <;> cases t <;> simp_all [Enc.WF, orderKind, QAtomicType.width]
 
 /-- **One part of a small integral side is coded by `groupIdsColumn`**, read by `Code.ofIds`. -/
 theorem codes_small_int {t : QAtomicType} {k : Scan.Kind} (ht : orderKind t = some k)
-    (hk : k = .u8 ∨ k = .i16 ∨ k = .i32) (x : Part (.atom t)) :
+    (hk : k = .u8 ∨ k = .c8 ∨ k = .i8 ∨ k = .i16 ∨ k = .i32) (x : Part (.atom t)) :
     ∃ p, groupIdsColumn t x.1 x.2.enc = some p ∧
       (Obj.codes (.atom t) #v[x])[0] = Code.ofIds (len p.2) x.1 p.1 := by
   obtain ⟨hw, -, hg, hb, hs⟩ := small_int_width ht hk
@@ -138,7 +141,7 @@ theorem codes_small_int {t : QAtomicType} {k : Scan.Kind} (ht : orderKind t = so
   rename_i t' n' e a
   obtain ⟨h1, h2, hwf⟩ := hv
   subst h1 h2
-  rcases hk with rfl | rfl | rfl <;> cases t' <;> simp [orderKind] at ht <;>
+  rcases hk with rfl | rfl | rfl | rfl | rfl <;> cases t' <;> simp [orderKind] at ht <;>
     cases e <;> simp [Enc.WF, QAtomicType.width] at hwf <;>
     simp [Obj.codes, Alg.codes, rangeOffsets, orderKind, raze, Column.intern, Code.cut, vmapM_one, Column.encodes, Arr.enc,
       KernelWF.bitsType]
@@ -181,35 +184,35 @@ theorem groupOf_eq_groupOf {g : Nat → UInt64} {m i j : Nat} (hi : i < m) (hj :
 /-- `groupIdsColumn` of a small integral payload: a dense one by `groupIds`, an encoded one by
     `groupIdsFoR`. -/
 theorem groupIdsColumn_small_int {t : QAtomicType} {k : Scan.Kind} (ht : orderKind t = some k)
-    (hk : k = .u8 ∨ k = .i16 ∨ k = .i32) (n : USize) :
+    (hk : k = .u8 ∨ k = .c8 ∨ k = .i8 ∨ k = .i16 ∨ k = .i32) (n : USize) :
     (∀ b, groupIdsColumn (X := X) t n (.bytes b) = some (Order.groupIds k n b)) ∧
       ∀ md pk, groupIdsColumn (X := X) t n (.foR md pk) = some (Order.groupIdsFoR k n md pk) := by
-  rcases hk with rfl | rfl | rfl <;> cases t <;> simp [orderKind] at ht <;>
+  rcases hk with rfl | rfl | rfl | rfl | rfl <;> cases t <;> simp [orderKind] at ht <;>
     exact ⟨fun b => by simp [groupIdsColumn, orderKind, Enc.bytesOf], fun md pk => by simp [groupIdsColumn, orderKind]⟩
 
 /-- A small integral payload's raw word `i`: a dense one's `w` bytes at `i·w`, an encoded one's `foRBits` cut to
     `8 * w` bits. -/
 theorem raw_small_int {t : QAtomicType} {k : Scan.Kind} (ht : orderKind t = some k)
-    (hk : k = .u8 ∨ k = .i16 ∨ k = .i32) {n : USize} {i : Nat} (hi : i < n.toNat) :
+    (hk : k = .u8 ∨ k = .c8 ∨ k = .i8 ∨ k = .i16 ∨ k = .i32) {n : USize} {i : Nat} (hi : i < n.toNat) :
     (∀ b, (Enc.raw (X := Empty) t n (.bytes b)).toList.getD i 0 = Column.bitsAt b (i * k.width) k.width) ∧
       ∀ md pk, (Enc.raw (X := Empty) t n (.foR md pk)).toList.getD i 0 =
         UInt64.ofNat ((Column.foRBits md pk (Column.blockStarts md) i).toNat % 2 ^ (8 * k.width)) := by
-  rcases hk with rfl | rfl | rfl <;> cases t <;> simp [orderKind] at ht <;>
+  rcases hk with rfl | rfl | rfl | rfl | rfl <;> cases t <;> simp [orderKind] at ht <;>
     exact ⟨fun b => by simp [Enc.raw, QAtomicType.width, Scan.Kind.width, List.getD_eq_getElem?_getD, hi],
       fun md pk => by simp [Enc.raw, QAtomicType.width, Scan.Kind.width, List.getD_eq_getElem?_getD, hi]⟩
 
 /-- **One part of a small integral side: its codes are faithful.** Part `0`'s codes at `i` and `j` agree
     exactly when the rows do, the part dense or Frame-of-Reference encoded. -/
 theorem codes_small_int_faithful {t : QAtomicType} {k : Scan.Kind} (ht : orderKind t = some k)
-    (hk : k = .u8 ∨ k = .i16 ∨ k = .i32) (x : Part (.atom t)) {i j : Nat} (hi : i < x.1.toNat)
+    (hk : k = .u8 ∨ k = .c8 ∨ k = .i8 ∨ k = .i16 ∨ k = .i32) (x : Part (.atom t)) {i j : Nat} (hi : i < x.1.toNat)
     (hj : j < x.1.toNat) :
     Column.idAt (Obj.codes (.atom t) #v[x])[0].b (Obj.codes (.atom t) #v[x])[0].w i =
         Column.idAt (Obj.codes (.atom t) #v[x])[0].b (Obj.codes (.atom t) #v[x])[0].w j ↔
       Vals.row x.2 ⟨i, hi⟩ = Vals.row x.2 ⟨j, hj⟩ := by
   obtain ⟨p, hp, hc⟩ := codes_small_int ht hk x
   have hn64 : x.1.toNat < 2 ^ 64 := Verify.usize_lt x.1
-  have hk0 : k ≠ .bit := by rcases hk with rfl | rfl | rfl <;> decide
-  have hkw : k.width ≤ 8 := by rcases hk with rfl | rfl | rfl <;> decide
+  have hk0 : k ≠ .bit := by rcases hk with rfl | rfl | rfl | rfl | rfl <;> decide
+  have hkw : k.width ≤ 8 := by rcases hk with rfl | rfl | rfl | rfl | rfl <;> decide
   have hM : 2 ^ (8 * k.width) ≤ 2 ^ 64 := Nat.pow_le_pow_right (by decide) (by omega)
   rw [hc, Vals.row_atom, Vals.row_atom, small_int_get ht hk, small_int_get ht hk, small_int_read ht hk]
   obtain ⟨b, he⟩ | ⟨md, pk, he⟩ := small_int_enc ht hk x.2
@@ -217,13 +220,13 @@ theorem codes_small_int_faithful {t : QAtomicType} {k : Scan.Kind} (ht : orderKi
     subst hp
     have hav : min x.1.toNat (k.avail b) = x.1.toNat := by
       have hs := x.2.wf; rw [he] at hs
-      rcases hk with rfl | rfl | rfl <;> cases t <;> simp [orderKind] at ht <;>
+      rcases hk with rfl | rfl | rfl | rfl | rfl <;> cases t <;> simp [orderKind] at ht <;>
         simp_all [Enc.WF, QAtomicType.width, Scan.Kind.avail, Scan.Kind.width]
     have hspec := Verify.groupIds_spec k x.1 b
     rw [hav] at hspec
     rw [ofIds_groupOf (Order.keyAt k b) x.1 hn64 hspec.1 (by rw [len_eq_ids, hspec.2]) hi,
       ofIds_groupOf (Order.keyAt k b) x.1 hn64 hspec.1 (by rw [len_eq_ids, hspec.2]) hj,
-      groupOf_eq_groupOf hi hj, Verify.keyAt_eq_iff (by rcases hk with rfl | rfl | rfl <;> simp) b i j, he,
+      groupOf_eq_groupOf hi hj, Verify.keyAt_eq_iff (by rcases hk with rfl | rfl | rfl | rfl | rfl <;> simp) b i j, he,
       (raw_small_int ht hk hi).1 b, (raw_small_int ht hk hj).1 b,
       Nat.mod_eq_of_lt (Verify.bitsAt_lt _ _ _ hkw), Nat.mod_eq_of_lt (Verify.bitsAt_lt _ _ _ hkw)]
     exact UInt64.toNat_inj.symm
@@ -235,7 +238,7 @@ theorem codes_small_int_faithful {t : QAtomicType} {k : Scan.Kind} (ht : orderKi
       groupOf_eq_groupOf hi hj, he, (raw_small_int ht hk hi).2 md pk, (raw_small_int ht hk hj).2 md pk]
     simp only [foRKey]
     have hrank : ∀ a c : UInt64, Order.rank k a = Order.rank k c ↔ a = c := fun a c => by
-      rcases hk with rfl | rfl | rfl <;> simp only [Order.rank] <;> first | exact Iff.rfl | exact UInt64.xor_left_inj _
+      rcases hk with rfl | rfl | rfl | rfl | rfl <;> simp only [Order.rank] <;> first | exact Iff.rfl | exact UInt64.xor_left_inj _
     have hlt : ∀ v : UInt64, (UInt64.ofNat (v.toNat % 2 ^ (8 * k.width))).toNat < 2 ^ (8 * k.width) := fun v => by
       rw [UInt64.toNat_ofNat', Nat.mod_eq_of_lt (Nat.lt_of_lt_of_le (Nat.mod_lt _ (Nat.two_pow_pos _)) hM)]
       exact Nat.mod_lt _ (Nat.two_pow_pos _)
@@ -290,20 +293,20 @@ theorem ofIds_groupOf_wf (g : Nat → UInt64) (n : USize) {ids fs : ByteArray}
 /-- **One part of a small integral side: its code is well formed** — dense or Frame-of-Reference
     encoded, `groupIdsColumn`'s ids read by `Code.ofIds`. -/
 theorem codes_small_int_wf {t : QAtomicType} {k : Scan.Kind} (ht : orderKind t = some k)
-    (hk : k = .u8 ∨ k = .i16 ∨ k = .i32) (x : Part (.atom t)) :
+    (hk : k = .u8 ∨ k = .c8 ∨ k = .i8 ∨ k = .i16 ∨ k = .i32) (x : Part (.atom t)) :
     let c := (Obj.codes (.atom t) #v[x])[0]
     laneOK(c.w) ∧ c.n = x.1 ∧
       c.b.size = (c.n.toNat * c.w + 7) / 8 ∧
       (c.w < 8 → c.card < USize.size ∧ ∀ i < c.n.toNat, Column.idAt c.b c.w i < c.card) := by
   obtain ⟨p, hp, hc⟩ := codes_small_int ht hk x
-  have hk0 : k ≠ .bit := by rcases hk with rfl | rfl | rfl <;> decide
+  have hk0 : k ≠ .bit := by rcases hk with rfl | rfl | rfl | rfl | rfl <;> decide
   rw [hc]
   obtain ⟨b, he⟩ | ⟨md, pk, he⟩ := small_int_enc ht hk x.2
   · rw [he, (groupIdsColumn_small_int ht hk x.1).1 b, Option.some_inj] at hp
     subst hp
     have hav : min x.1.toNat (k.avail b) = x.1.toNat := by
       have hs := x.2.wf; rw [he] at hs
-      rcases hk with rfl | rfl | rfl <;> cases t <;> simp [orderKind] at ht <;>
+      rcases hk with rfl | rfl | rfl | rfl | rfl <;> cases t <;> simp [orderKind] at ht <;>
         simp_all [Enc.WF, QAtomicType.width, Scan.Kind.avail, Scan.Kind.width]
     have hspec := Verify.groupIds_spec k x.1 b
     rw [hav] at hspec
@@ -877,9 +880,9 @@ theorem codes_long_one_wf {t : QAtomicType} (ht : orderKind t = some .i64) (x : 
 
 -- -1, 0W, 0N past 2^32 rows: the span 0W - (-1) = 2^63 is no `Int64` offset (it would wrap onto 0N's
 -- code), so `rangeOffsets` declines and `codes` groups; -1, 5, 0N still answers
-#guard (rangeOffsets .long #v[((3 : USize), Enc.bytes (one (-1 : Int64).toUInt64 ++ one Int64.maxValue.toUInt64 ++
+#guard (rangeOffsets .i64 #v[((3 : USize), Enc.bytes (one (-1 : Int64).toUInt64 ++ one Int64.maxValue.toUInt64 ++
   one Int64.minValue.toUInt64))] (2 ^ 33)).isNone
-#guard (rangeOffsets .long #v[((3 : USize), Enc.bytes (one (-1 : Int64).toUInt64 ++ one (5 : Int64).toUInt64 ++
+#guard (rangeOffsets .i64 #v[((3 : USize), Enc.bytes (one (-1 : Int64).toUInt64 ++ one (5 : Int64).toUInt64 ++
   one Int64.minValue.toUInt64))] (2 ^ 33)).isSome
 
 #print axioms codes_long_faithful

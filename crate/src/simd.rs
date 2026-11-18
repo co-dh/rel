@@ -581,12 +581,13 @@ pub fn any_null(kind: i32, p: &[u8], n: usize) -> (bool, usize) {
 #[cfg(all(target_arch = "x86_64", target_feature = "avx512f", target_feature = "avx512bw"))]
 mod sc {
     use core::arch::x86_64::*;
-    use crate::key::{SK_C8, SK_F32, SK_F64, SK_I16, SK_I32, SK_I64, SK_U8};
+    use crate::key::{SK_C8, SK_I8, SK_F32, SK_F64, SK_I16, SK_I32, SK_I64, SK_U8};
 
     #[target_feature(enable = "avx512f,avx512bw")]
     fn has_null<const K: u8>(g: __m512i) -> bool {
         match K {
             SK_C8 => _mm512_cmpeq_epi8_mask(g, _mm512_set1_epi8(0x20)) != 0,
+            SK_I8 => _mm512_cmpeq_epi8_mask(g, _mm512_set1_epi8(i8::MIN)) != 0,
             SK_I16 => _mm512_cmpeq_epi16_mask(g, _mm512_set1_epi16(i16::MIN)) != 0,
             SK_I32 => _mm512_cmpeq_epi32_mask(g, _mm512_set1_epi32(i32::MIN)) != 0,
             SK_I64 => _mm512_cmpeq_epi64_mask(g, _mm512_set1_epi64(i64::MIN)) != 0,
@@ -596,7 +597,7 @@ mod sc {
         }
     }
     /// the element's bytes at kind `K`
-    const fn width<const K: u8>() -> usize { match K { SK_U8 | SK_C8 => 1, SK_I16 => 2, SK_I32 | SK_F32 => 4, _ => 8 } }
+    const fn width<const K: u8>() -> usize { match K { SK_U8 | SK_C8 | SK_I8 => 1, SK_I16 => 2, SK_I32 | SK_F32 => 4, _ => 8 } }
 
     /// Leading null-free groups: `(i, hit)`, `hit` when the group at element `i` holds a null. `STORE` copies each
     /// null-free group to `out`.
@@ -621,6 +622,7 @@ mod sc {
             match u8::try_from(kind).unwrap_or(u8::MAX) {
                 SK_U8 => groups::<SK_U8, true>(p, out, n).0,
                 SK_C8 => groups::<SK_C8, true>(p, out, n).0,
+                SK_I8 => groups::<SK_I8, true>(p, out, n).0,
                 SK_I16 => groups::<SK_I16, true>(p, out, n).0,
                 SK_I32 => groups::<SK_I32, true>(p, out, n).0,
                 SK_I64 => groups::<SK_I64, true>(p, out, n).0,
@@ -636,6 +638,7 @@ mod sc {
         let (i, hit) = unsafe {
             match u8::try_from(kind).unwrap_or(u8::MAX) {
                 SK_C8 => groups::<SK_C8, false>(p, o, n),
+                SK_I8 => groups::<SK_I8, false>(p, o, n),
                 SK_I16 => groups::<SK_I16, false>(p, o, n),
                 SK_I32 => groups::<SK_I32, false>(p, o, n),
                 SK_I64 => groups::<SK_I64, false>(p, o, n),

@@ -15,7 +15,7 @@ namespace Rel.Alg
 open Tab Rel.Dep Rel.Kernel Rel.Verify Rel
 
 /-- A long column's dense payload holds its `n` longs. -/
-theorem len_longsOf {n : USize} (x : Arr .long n) : len (longsOf x) = n.toNat := by
+theorem len_longsOf {n : USize} (x : Arr .i64 n) : len (longsOf x) = n.toNat := by
   obtain ⟨ws, hws⟩ : ∃ ws, longWords n x.enc = some ws := by
     rcases KernelWF.long_cases x.wf with ⟨b, h⟩ | ⟨M, P, h⟩ <;> simp [longWords, h]
   obtain ⟨B, hB, -, -, hS⟩ := Arr.dense_long x hws
@@ -162,7 +162,7 @@ theorem sum_part_codes {a b : Obj} {n : USize} (x : Vals (.sum a b) n) (cl cr : 
           (-(x.2.1.toNat : Int))))).b cr.w q =
         (if Column.bitAt (tagBits x.2.2.1) q then
           Column.idAt cr.b cr.w (min (max (x.2.2.2.1.get ⟨q, hq⟩).toInt 0).toNat (x.2.1.toNat - 1)) else 0) := by
-  have hlen : ∀ P : Arr .long n, len (longsOf P) < USize.size := fun P => by
+  have hlen : ∀ P : Arr .i64 n, len (longsOf P) < USize.size := fun P => by
     rw [len_longsOf]; exact n.toNat_lt_size
   have hbl : 8 ≤ cl.w → 8 * cl.b.size = cl.w * cl.n.toNat := fun h => by
     rw [hls]; rcases hlw with h' | h' | h' | h' | h' | h' | h' <;> rw [h'] at h ⊢ <;> omega

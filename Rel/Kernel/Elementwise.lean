@@ -602,12 +602,13 @@ namespace Rel.Kernel
 /-- The raw bits q's null occupies, and the one table that says so. `none` at `byte` and `boolean`,
 which have none, and at the two types with no dense payload. -/
 def nullBits : QAtomicType → Option UInt64
-  | .short => some 0x8000
-  | .int | .month | .date | .minute | .second | .time => some 0x80000000
-  | .long | .timestamp | .timespan => some 0x8000000000000000
+  | .i16 => some 0x8000
+  | .i32 | .date => some 0x80000000
+  | .i64 | .datetime => some 0x8000000000000000
+  | .i8 => some 0x80
   | .char => some 32
-  | .real => some 0xffc00000
-  | .float | .datetime => some 0xfff8000000000000
+  | .f32 => some 0xffc00000
+  | .f64 => some 0xfff8000000000000
   | _ => none
 
 /-- A one-element payload holding those bits at `cls`, which is how an atom operand reaches a
@@ -637,14 +638,15 @@ namespace Rel.Kernel
 /-- The storage class a type's dense payload is read at. `none` where there is no dense fixed-width
 payload the kernels are instantiated over: `symbol` has no fixed width. -/
 def clsOf : QAtomicType → Option UInt8
-  | .boolean => some Ew.bits
-  | .byte | .char => some Ew.u8
-  | .short => some Ew.i16
-  | .int | .month | .date | .minute | .second | .time => some Ew.i32
-  | .long | .timestamp | .timespan => some Ew.i64
-  | .real => some Ew.f32
-  | .float | .datetime => some Ew.f64
-  | .symbol | .general => none
+  | .u1 => some Ew.bits
+  | .u8 | .char => some Ew.u8
+  | .i16 => some Ew.i16
+  | .i32 | .date => some Ew.i32
+  | .i64 | .datetime => some Ew.i64
+  | .f32 => some Ew.f32
+  | .f64 => some Ew.f64
+  -- no Ew class reads a signed byte: i8 has no elementwise kernel yet
+  | .i8 | .sym | .general => none
 
 /-- Whether `Ew.widen` can bring `t` to `cls`. It promotes upward only — nothing already a float
 reaches an integer target, and nothing at all reaches `u8` or `i16` — and asking it for anything

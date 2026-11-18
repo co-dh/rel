@@ -260,7 +260,7 @@ about the dense *engine* and not about what a kernel can answer — `binColumn` 
 by its own payload — so this gate is never the place to add one. Everything else has
 a width of 1, 2, 4 or 8, so adding a q type is an entry in `QAtomicType.width` and nothing here. -/
 def denseWidth : QAtomicType → Option Nat
-  | .boolean | .symbol => none
+  | .u1 | .sym => none
   | t => t.width
 
 /-- An encoded column at a type the encoding is *for*, which is what every kernel that reads one
@@ -307,7 +307,7 @@ def operandBytes (w : USize) (metadata pack : ByteArray) (n : USize) : ByteArray
 /-- The types whose equality folds `-0.0` onto `0.0`. `datetime` is one: it is an eight-byte IEEE
 value and `QAtom.identical` treats it exactly as `float`. -/
 def foldsZero : QAtomicType → Bool
-  | .real | .float | .datetime => true
+  | .f32 | .f64 => true
   | _ => false
 
 /-- A column as `operandBytes` reads it: encoded where it lies, and otherwise its dense payload under

@@ -312,7 +312,7 @@ theorem fnOn_self {A : Obj} {D : Tab A A} (hD : ∀ s s', rep D s s' → s = s')
   ⟨fun h => ⟨by obtain rfl := hD _ _ h; exact h, (hD _ _ h).symm⟩, fun ⟨h, e⟩ => e ▸ h⟩
 
 /-- The one row of `col [k]`. -/
-theorem col_one_row (k b : Int64) : (∃ j, Vals.row (A := .atom .long) (col [k]) j = b) ↔ b = k := by
+theorem col_one_row (k b : Int64) : (∃ j, Vals.row (A := .atom .i64) (col [k]) j = b) ↔ b = k := by
   have h1 : ([k] : List Int64).length < USize.size := by
     show 1 < USize.size; rcases USize.size_eq with e | e <;> omega
   constructor
@@ -326,7 +326,7 @@ theorem fnOn_compK {A : Obj} {R : Tab A .long} {P : A.El → Prop} {f : A.El →
     FnOn (compC R (idU (col [k]))).1 (fun s => P s ∧ f s = k) f :=
   fnOn_comp hR (fun s _ z => by
     rw [rep_idU]
-    show f s = z ∧ (∃ i, Vals.row (A := .atom .long) (col [k]) i = f s) ↔ _
+    show f s = z ∧ (∃ i, Vals.row (A := .atom .i64) (col [k]) i = f s) ↔ _
     rw [col_one_row]
     exact ⟨fun ⟨e, h⟩ => ⟨h, e.symm⟩, fun ⟨h, e⟩ => ⟨e.symm, h⟩⟩) hb
 
@@ -434,9 +434,9 @@ theorem thinAC_rep {B : Obj}
   -- `x` pushed or replacing: `h` becomes `[x]`; the action appended: 0 (`lone`), 1 (`up`), 2 (`down`)
   have hSG := fnOn_snoc (fnOn_pair (fnOn_top (Tab.key D) (nilVal B) ([] : List B.El) hNil hN)
     (fnOn_comp (fnOn_union hLone hUp hpu) (fun s _ => hx s) hpa) hnp) hsg
-  have hC0 := fnOn_comp hLone (fun s _ => fnOn_top (B := .atom .long) (Tab.key D) (col [(0 : Int64)]) 0 (col_one_row 0) hK0 s) hc0
-  have hC1 := fnOn_comp hUp (fun s _ => fnOn_top (B := .atom .long) (Tab.key D) (col [(1 : Int64)]) 1 (col_one_row 1) hK1 s) hc1
-  have hC2 := fnOn_comp hDn (fun s _ => fnOn_top (B := .atom .long) (Tab.key D) (col [(2 : Int64)]) 2 (col_one_row 2) hK2 s) hc2
+  have hC0 := fnOn_comp hLone (fun s _ => fnOn_top (B := .atom .i64) (Tab.key D) (col [(0 : Int64)]) 0 (col_one_row 0) hK0 s) hc0
+  have hC1 := fnOn_comp hUp (fun s _ => fnOn_top (B := .atom .i64) (Tab.key D) (col [(1 : Int64)]) 1 (col_one_row 1) hK1 s) hc1
+  have hC2 := fnOn_comp hDn (fun s _ => fnOn_top (B := .atom .i64) (Tab.key D) (col [(2 : Int64)]) 2 (col_one_row 2) hK2 s) hc2
   have hO2 := fnOn_pair (fnOn_comp hDn (fun s _ => hh s) hdh) (fnOn_snoc (fnOn_pair has hC2 hdc) hsd) ho2
   -- `up` and `lone` are disjoint, so the action of the first branch is 0 on `lone`, else 1
   have hUL : ∀ s : (Obj.prod B (.prod (.arr B) (.arr .long))).El,
@@ -509,7 +509,7 @@ theorem rep_thinLOnC {B : Obj} {n : USize} (q : Tab (.prod B B) (.prod B B) → 
   have hNil : ∀ b, (∃ j, (nilVal B).row j = b) ↔ b = [] :=
     fun b => ⟨fun ⟨j, h⟩ => by rw [← h, nilVal_row], fun h => ⟨⟨0, by simp⟩, by rw [nilVal_row, h]⟩⟩
   have hNC := fnOn_pair (fnOn_top X (nilVal B) ([] : List B.El) hNil hN)
-    (fnOn_top (B := .atom .long) X (col [(0 : Int64)]) 0 (col_one_row 0) hC) hnc
+    (fnOn_top (B := .atom .i64) X (col [(0 : Int64)]) 0 (col_one_row 0) hC) hnc
   have hLoop := rep_loopOnC thinKC _ hL (fun s v => s.1.2 ≠ [] ∧ v = thinK s)
     (fun D S hD hb cy c' hS => by
       have hDc : rep D cy cy := by rw [hD]; exact ⟨rfl, hS⟩

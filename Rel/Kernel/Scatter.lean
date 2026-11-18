@@ -15,7 +15,7 @@ open Ext.Enc
 `Coc.foRStd` refuses at `m`, or a form other than `foR`, which no kernel of design §4 reads. -/
 def foRWords (what : String) (m : USize) (e : Enc) : Except String (Array UInt64) :=
   match e with
-  | .foR md pk => if Column.lgOk md && Coc.foRStd m md pk then .ok (Ext.Enc.raw .long m e)
+  | .foR md pk => if Column.lgOk md && Coc.foRStd m md pk then .ok (Ext.Enc.raw .i64 m e)
     else .error s!"{what}: foR: {Column.nblk md} blocks of 2^{Column.lgAt md} and a {pk.size}-byte pack are not the layout of {m} elements"
   | _ => .error s!"{what}: constructor {e.ctorIdx} is not foR"
 

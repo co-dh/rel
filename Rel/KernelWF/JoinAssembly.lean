@@ -58,7 +58,7 @@ theorem groupIds_groupOf (c : Code)
           rw [Nat.mul_left_comm], show (8 * (c.n.toNat * k.width) + 7) / 8 = c.n.toNat * k.width by omega,
           Nat.mul_div_cancel _ hk0, Nat.min_self]
       refine hP _ _ (fun i _ j _ => ?_) (by rw [(groupIds_spec k c.n c.b).1, hm])
-      rw [keyAt_eq_iff hki, e, idAt_lane _ hk8, idAt_lane _ hk8]
+      rw [keyAt_eq_iff (by revert hki; cases k <;> decide), e, idAt_lane _ hk8, idAt_lane _ hk8]
       exact ⟨fun h => by rw [h], fun h => UInt64.toNat_inj.1 h⟩
   · rename_i hk
     have h24 := laneKind_none hk hw

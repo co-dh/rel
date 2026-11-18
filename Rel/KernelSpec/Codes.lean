@@ -89,7 +89,7 @@ theorem groupIdsColumn_spec {t : QAtomicType} {n : USize} {e : Ext.Enc X} {p : B
         Order.idKey (dof.size - 1) ids (Column.idWidth dof).toUSize.toNat i =
           Order.idKey (dof.size - 1) ids (Column.idWidth dof).toUSize.toNat j)) ∨
     (∃ k u b, p = Order.groupIds k u b ∧
-      ((t = .boolean ∧ k = .bit ∧ e = .bits b) ∨
+      ((t = .u1 ∧ k = .bit ∧ e = .bits b) ∨
         (orderKind t = some k ∧ ∃ md pk, e = .foR md pk ∧ b = Coc.decode k.width.toUSize md pk n) ∨
         (orderKind t = some k ∧ Enc.bytesOf t n e = some b)) ∧
       ∀ i < min u.toNat (k.avail b), ∀ j < min u.toNat (k.avail b),

@@ -228,7 +228,7 @@ theorem internConcat_symAt (qs : Array (USize × ByteArray × Array Nat × ByteA
   obtain rfl : ds = qs.map fun p => (p.2.1, p.2.2.1) := by
     rw [← hds]
   obtain ⟨n', cb, co, hC⟩ : ∃ n' cb co,
-      concatSyms (X := Empty) (qs.map fun p => (p.2.1, p.2.2.1)) = .vector .symbol n' (.syms cb co) none :=
+      concatSyms (X := Empty) (qs.map fun p => (p.2.1, p.2.2.1)) = .vector .sym n' (.syms cb co) none :=
     ⟨_, _, _, rfl⟩
   simp only [hC]
   generalize hws : (Array.map _ (qs.map fun p => (p.2.1, p.2.2.1)) : Array Nat) = ws
@@ -335,13 +335,13 @@ theorem internSyms_card_le (b : ByteArray) (o : Array Nat) :
 
 /-- A symbol column whose row `j` has the bytes `G j` lists the parts' rows in turn, when `G` at part `k`'s
     offset `O_k + i` gives the bytes of that part's row `i`. -/
-theorem symbol_toList_eq {N : USize} (X : Arr .symbol N) (G : Nat → List UInt8)
+theorem symbol_toList_eq {N : USize} (X : Arr .sym N) (G : Nat → List UInt8)
     (hX : ∀ j (hj : j < N.toNat), (X.get ⟨j, hj⟩).toUTF8.data.toList = G j)
-    (l : List ((k : USize) × Arr .symbol k)) (hN : N.toNat = (l.map (·.1.toNat)).sum)
+    (l : List ((k : USize) × Arr .sym k)) (hN : N.toNat = (l.map (·.1.toNat)).sum)
     (h : ∀ k (hk : k < l.length) i (hi : i < (l[k]'hk).1.toNat),
       G (((l.take k).map (·.1.toNat)).sum + i) = ((l[k]'hk).2.get ⟨i, hi⟩).toUTF8.data.toList) :
     X.toList = l.flatMap (·.2.toList) := by
-  have hlen : (fun c : (k : USize) × Arr .symbol k => c.2.toList.length) = (·.1.toNat) :=
+  have hlen : (fun c : (k : USize) × Arr .sym k => c.2.toList.length) = (·.1.toNat) :=
     funext fun c => Arr.length_toList c.2
   apply eq_flatMap_of_offset
   · rw [hlen, Arr.length_toList, hN]
@@ -356,14 +356,14 @@ theorem symbol_toList_eq {N : USize} (X : Arr .symbol N) (G : Nat → List UInt8
 /-! ## A part's encoding, read as bytes -/
 
 /-- A blob column's row `j` has the bytes of entry `j`. -/
-theorem syms_get {n : USize} (x : Arr .symbol n) {b : ByteArray} {o : Array Nat} (he : x.enc = .syms b o)
+theorem syms_get {n : USize} (x : Arr .sym n) {b : ByteArray} {o : Array Nat} (he : x.enc = .syms b o)
     (j : Nat) (hj : j < n.toNat) : (x.get ⟨j, hj⟩).toUTF8.data.toList = Verify.symAt b o j := by
   have hwf := x.wf; rw [he] at hwf
   obtain ⟨-, -, hu⟩ := hwf
   rw [← Vals.row_atom]; exact syms_row x he hu ⟨j, hj⟩
 
 /-- An interned column's row `j` has the bytes of the entry its id `j` names. -/
-theorem enum_get {n : USize} (x : Arr .symbol n) {d : ByteArray} {o : Array Nat} {ids : ByteArray}
+theorem enum_get {n : USize} (x : Arr .sym n) {d : ByteArray} {o : Array Nat} {ids : ByteArray}
     (he : x.enc = .enum d o ids) (j : Nat) (hj : j < n.toNat) :
     (x.get ⟨j, hj⟩).toUTF8.data.toList = Verify.symAt d o (Column.idAt ids (Column.idWidth o) j) := by
   have hwf := x.wf; rw [he] at hwf
@@ -373,7 +373,7 @@ theorem enum_get {n : USize} (x : Arr .symbol n) {d : ByteArray} {o : Array Nat}
 /-- **A part through `Column.intern`**: its count, a dictionary laid out as `SymsWF` says and of valid UTF-8, ids
     below the dictionary's count, row `i`'s bytes the entry id `i` names, and a dictionary no larger than the
     part's own (its count, for a blob). -/
-theorem intern_part (c : (k : USize) × Arr .symbol k) {q : USize × ByteArray × Array Nat × ByteArray}
+theorem intern_part (c : (k : USize) × Arr .sym k) {q : USize × ByteArray × Array Nat × ByteArray}
     (h : (match Column.intern c.2.enc with | .enum d o ids => some (c.1, d, o, ids) | _ => none) = some q) :
     q.1 = c.1 ∧ SymsWF q.2.1 q.2.2.1 ∧ (∀ j < q.2.2.1.size - 1, (Column.symKey q.2.1 q.2.2.1 j).IsValidUTF8) ∧
     (∀ i < c.1.toNat, Column.idAt q.2.2.2 (Column.idWidth q.2.2.1) i < q.2.2.1.size - 1) ∧
@@ -404,7 +404,7 @@ theorem intern_part (c : (k : USize) × Arr .symbol k) {q : USize × ByteArray �
 
 /-- **A part through `fewSyms`** keeps what `intern_part` says of it: the blob of its own symbols, its ids
     counting them. -/
-theorem few_part (c : (k : USize) × Arr .symbol k) {q : USize × ByteArray × Array Nat × ByteArray}
+theorem few_part (c : (k : USize) × Arr .sym k) {q : USize × ByteArray × Array Nat × ByteArray}
     (hq : q.1 = c.1 ∧ SymsWF q.2.1 q.2.2.1 ∧
       (∀ j < q.2.2.1.size - 1, (Column.symKey q.2.1 q.2.2.1 j).IsValidUTF8) ∧
       (∀ i < c.1.toNat, Column.idAt q.2.2.2 (Column.idWidth q.2.2.1) i < q.2.2.1.size - 1) ∧
@@ -465,10 +465,10 @@ theorem hashConcat_error' {qs : Array (USize × ByteArray × Array Nat × ByteAr
 
 /-- **`razeColumn` at `symbol` lists its parts' rows in turn**, whether every part is a blob (`concatSyms`) or
     some part is interned (`concatEnum`); the parts' dictionaries, a blob counting its rows, fit a `USize`. -/
-theorem razeColumn_symbol_toList (l : List ((k : USize) × Arr .symbol k)) {N : USize} (X : Arr .symbol N)
+theorem razeColumn_symbol_toList (l : List ((k : USize) × Arr .sym k)) {N : USize} (X : Arr .sym N)
     (hN : N.toNat = (l.map (·.1.toNat)).sum)
     (hD : (l.map fun c => match c.2.enc with | .enum _ o _ => o.size - 1 | _ => c.1.toNat).sum < USize.size)
-    (hl : l ≠ []) (hV : razeColumn .symbol (l.toArray.map (·.2.part)) = some X.1) :
+    (hl : l ≠ []) (hV : razeColumn .sym (l.toArray.map (·.2.part)) = some X.1) :
     X.toList = l.flatMap (·.2.toList) := by
   unfold razeColumn at hV
   rw [if_neg (by simpa using hl)] at hV
@@ -496,7 +496,7 @@ theorem razeColumn_symbol_toList (l : List ((k : USize) × Arr .symbol k)) {N : 
       have hwf := (l[k]'(by omega)).2.wf
       rw [hpk k (by omega)] at hwf
       exact hwf.2.1
-    obtain ⟨n', b, o, hC⟩ : ∃ n' b o, concatSyms ps = .vector .symbol n' (.syms b o) none := ⟨_, _, _, rfl⟩
+    obtain ⟨n', b, o, hC⟩ : ∃ n' b o, concatSyms ps = .vector .sym n' (.syms b o) none := ⟨_, _, _, rfl⟩
     have he : X.enc = .syms b o := by
       rw [hC, Option.some.injEq] at hV
       rw [Arr.enc, ← hV]
@@ -592,17 +592,17 @@ theorem razeColumn_symbol_toList (l : List ((k : USize) × Arr .symbol k)) {N : 
 /-- **`razeTo` at `symbol`**: the razed column lists its parts' symbols one part after another, whether every
     part is a blob or some part is interned. The parts' dictionaries, a blob counting its rows, fit a `USize`:
     the joined dictionary is counted in one. -/
-theorem razeTo_toList_symbol (cs : Array ((k : USize) × Arr .symbol k)) {S : Nat}
+theorem razeTo_toList_symbol (cs : Array ((k : USize) × Arr .sym k)) {S : Nat}
     (hs : (cs.toList.map (·.1.toNat)).sum = S) (hS : S < USize.size)
     (hD : (cs.toList.map fun c => match c.2.enc with | .enum _ o _ => o.size - 1 | _ => c.1.toNat).sum <
       USize.size) :
-    (razeTo .symbol cs hs hS).toList = cs.toList.flatMap (·.2.toList) := by
+    (razeTo .sym cs hs hS).toList = cs.toList.flatMap (·.2.toList) := by
   unfold razeTo; rw [cast_toList]
   rcases cs with ⟨l⟩
   unfold raze
   by_cases h0 : l = []
   · subst h0
-    have e0 : ({ toList := [] } : Array ((k : USize) × Arr .symbol k)).size = 0 := rfl
+    have e0 : ({ toList := [] } : Array ((k : USize) × Arr .sym k)).size = 0 := rfl
     rw [dif_pos e0]
     exact (List.eq_nil_of_length_eq_zero (by rw [Arr.length_toList, empty_len]; rfl)).trans rfl
   rw [dif_neg (by simpa using h0), dif_neg (by decide)]
@@ -610,7 +610,7 @@ theorem razeTo_toList_symbol (cs : Array ((k : USize) × Arr .symbol k)) {S : Na
   · obtain ⟨c, rfl⟩ := List.length_eq_one_iff.1 h1; simp
   rw [dif_neg (by simpa using h1)]
   dsimp only
-  have key : ∀ (a : Nat) (l : List ((n : USize) × Arr .symbol n)),
+  have key : ∀ (a : Nat) (l : List ((n : USize) × Arr .sym n)),
       (l.map fun x => (x.1, x.2.enc)).foldl (fun s c => s + c.1.toNat) a = a + (l.map (·.1.toNat)).sum := by
     intro a l; induction l generalizing a <;> simp_all [Nat.add_assoc]
   have hk : ((List.toArray l).map (·.2.part)).foldl (fun s c => s + c.1.toNat) 0 = (l.map (·.1.toNat)).sum := by
@@ -622,17 +622,17 @@ theorem razeTo_toList_symbol (cs : Array ((k : USize) × Arr .symbol k)) {S : Na
   exact razeColumn_symbol_toList l _ (by rw [USize.toNat_ofNat_of_lt' hf, hk]) hD h0 (Option.some_get _).symm
 
 /-- The razed symbol column reads part `k`'s element `i` past the counts before `k`. -/
-theorem raze_get_symbol {p : Nat} (cs : Vector (Part (.atom .symbol)) p)
+theorem raze_get_symbol {p : Nat} (cs : Vector (Part (.atom .sym)) p)
     (hN : (cs.toList.map (·.1.toNat)).sum < USize.size)
     (hD : (cs.toList.map fun c => match c.2.enc with | .enum _ o _ => o.size - 1 | _ => c.1.toNat).sum <
       USize.size)
     {k : Nat} (hk : k < p) {i : Nat} (hi : i < cs[k].1.toNat)
-    (hO : ((cs.toList.take k).map (·.1.toNat)).sum + i < (raze .symbol cs.toArray).1.toNat) :
-    (raze .symbol cs.toArray).2.get ⟨_, hO⟩ = cs[k].2.get ⟨i, hi⟩ := by
+    (hO : ((cs.toList.take k).map (·.1.toNat)).sum + i < (raze .sym cs.toArray).1.toNat) :
+    (raze .sym cs.toArray).2.get ⟨_, hO⟩ = cs[k].2.get ⟨i, hi⟩ := by
   have hl := razeTo_toList_symbol cs.toArray rfl hN hD
   unfold razeTo at hl
   rw [KernelWF.cast_toList] at hl
-  have ho := flatMap_offset (fun c : Part (.atom .symbol) => c.2.toList) (·.1.toNat) (fun c => Arr.length_toList _)
+  have ho := flatMap_offset (fun c : Part (.atom .sym) => c.2.toList) (·.1.toNat) (fun c => Arr.length_toList _)
     cs.toList (k := k) (by simpa using hk) (i := i) (by simpa using hi)
   simp only [Vector.toList_toArray] at hl
   rw [← hl, List.getElem?_eq_getElem (by rw [Arr.length_toList]; exact hO), Arr.getElem_toList,

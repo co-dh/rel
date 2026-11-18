@@ -171,7 +171,7 @@ theorem sumVals_row {A B : Obj} {n m : USize} (X : Vals A n) (Y : Vals B m) (hN 
   simp only [sumVals, Vals.row, tags_get _ _ _ hc k]
   have hl : ((tilCol n).toList ++ (tilCol m).toList).length = n.toNat + m.toNat := by
     simp [tilCol_toList]
-  have hidx : ∀ (x : Arr .long (n + m)), x.toList = (tilCol n).toList ++ (tilCol m).toList →
+  have hidx : ∀ (x : Arr .i64 (n + m)), x.toList = (tilCol n).toList ++ (tilCol m).toList →
       x.get k = Int64.ofNat (if k.1 < n.toNat then k.1 else k.1 - n.toNat) := fun x hx => by
     rw [← Arr.getElem_toList x k.1 (by rw [hx, hl]; exact hk2)]
     simp only [hx, tilCol_toList, List.getElem_append, List.length_map, List.length_range]

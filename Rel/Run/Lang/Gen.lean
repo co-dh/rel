@@ -80,9 +80,9 @@ def atom (t : QAtomicType) (n : USize) (bits : Bool) (s : String) : Arr t n × B
 /-- A rebuilt column from its rebuilt parts, its bit the `&&` of theirs. -/
 def pairV (A B : Obj) (n : USize) (x : Vals A n × Bool) (y : Vals B n × Bool) : Vals (.prod A B) n × Bool :=
   ((x.1, y.1), x.2 && y.2)
-def arrV (B : Obj) (n m : USize) (lo hi : Arr .long n × Bool) (p : Vals B m × Bool) : Vals (.arr B) n × Bool :=
+def arrV (B : Obj) (n m : USize) (lo hi : Arr .i64 n × Bool) (p : Vals B m × Bool) : Vals (.arr B) n × Bool :=
   (⟨m, lo.1, hi.1, p.1⟩, lo.2 && hi.2 && p.2)
-def sumV (A B : Obj) (n l r : USize) (tag : Arr .boolean n × Bool) (idx : Arr .long n × Bool) (x : Vals A l × Bool)
+def sumV (A B : Obj) (n l r : USize) (tag : Arr .u1 n × Bool) (idx : Arr .i64 n × Bool) (x : Vals A l × Bool)
     (y : Vals B r × Bool) : Vals (.sum A B) n × Bool :=
   (⟨l, r, tag.1, idx.1, x.1, y.1⟩, tag.2 && idx.2 && x.2 && y.2)
 def relV (A B : Obj) (n : USize) (k : Vals A n × Bool) (v : Vals B n × Bool) : Tab A B × Bool :=

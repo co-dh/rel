@@ -13,7 +13,7 @@ namespace Rel.KernelWF
 open Tab Rel.Kernel Rel.Verify
 
 /-- A `long` payload is dense bytes or Frame of Reference: `WF` admits no other layout at `long`. -/
-theorem long_cases {n : USize} {e : Enc} (hw : Enc.WF .long n e) :
+theorem long_cases {n : USize} {e : Enc} (hw : Enc.WF .i64 n e) :
     (∃ b, e = .bytes b) ∨ ∃ M P, e = .foR M P := by
   cases e <;> simp_all [Enc.WF, QAtomicType.width]
 

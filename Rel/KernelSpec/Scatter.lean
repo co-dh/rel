@@ -74,7 +74,7 @@ theorem scatterWords_spec (is es : Array UInt64) (n : Nat) (fill : UInt64) :
 
 /-- What `foRWords` answers is `Enc.raw` at a 64-bit column, `m` words of it. -/
 theorem foRWords_raw (what : String) (m : USize) (e : Enc) (ws : Array UInt64)
-    (h : foRWords what m e = .ok ws) : ws = raw .long m e ∧ ws.size = m.toNat := by
+    (h : foRWords what m e = .ok ws) : ws = raw .i64 m e ∧ ws.size = m.toNat := by
   unfold foRWords at h
   split at h
   · split at h
@@ -88,9 +88,9 @@ theorem foRWords_raw (what : String) (m : USize) (e : Enc) (ws : Array UInt64)
 `ws[is[k]] = es[k]` for every row `k` no later row overrides. The answer is `foR`, `Coc.encode` of `ws` at 8 bytes. -/
 theorem raw_scatter (m : USize) (ix e : Enc) (n : USize) (fill : UInt64) (o : Enc)
     (h : kscatter m ix e n fill = .ok o) :
-    let is := raw .long m ix
-    let es := raw .long m e
-    let ws := raw .long n o
+    let is := raw .i64 m ix
+    let es := raw .i64 m e
+    let ws := raw .i64 n o
     o = .foR (Coc.encode 8 (ws.foldl (init := .empty) fun acc w => Column.pushBits acc w 8)).1
       (Coc.encode 8 (ws.foldl (init := .empty) fun acc w => Column.pushBits acc w 8)).2 ∧
       is.size = m.toNat ∧ es.size = m.toNat ∧ ws.size = n.toNat ∧
@@ -108,13 +108,13 @@ theorem raw_scatter (m : USize) (ix e : Enc) (n : USize) (fill : UInt64) (o : En
     | ok es' =>
       obtain ⟨rfl, hisz⟩ := foRWords_raw _ _ _ _ hi
       obtain ⟨rfl, hesz⟩ := foRWords_raw _ _ _ _ he
-      cases hw : scatterWords (raw .long m ix) (raw .long m e) n.toNat fill with
+      cases hw : scatterWords (raw .i64 m ix) (raw .i64 m e) n.toNat fill with
       | error s => simp [hi, he, hw, bind, Except.bind] at h
       | ok ws =>
         simp only [hi, he, hw, bind, Except.bind, pure, Except.pure] at h
         have h8 : USize.ofNat32 8 (by decide) = 8 := USize.toNat_inj.mp (by simp)
         rw [h8] at h
-        obtain ⟨hx, hok⟩ := scatterWords_spec (raw .long m ix) (raw .long m e) n.toNat fill
+        obtain ⟨hx, hok⟩ := scatterWords_spec (raw .i64 m ix) (raw .i64 m e) n.toNat fill
         obtain ⟨hs, hfix, hlast⟩ := hok ws hw
         have hall := hx.1 ⟨ws, hw⟩
         have ho := (Except.ok.inj h).symm
@@ -123,10 +123,10 @@ theorem raw_scatter (m : USize) (ix e : Enc) (n : USize) (fill : UInt64) (o : En
         rw [Array.foldl_toList] at hxs hxg
         simp only [show ByteArray.empty.size = 0 from rfl, Nat.zero_add, Array.length_toList] at hxs hxg
         have hraw : ws' = ws := by
-          show raw .long n o = ws
+          show raw .i64 n o = ws
           have h88 : (8 : USize) = (8 : Nat).toUSize := rfl
-          rw [ho, Coc.encode, h88, raw_encodeAt .long 8 rfl (by decide) Column.lgEnc (by decide) _ n (by rw [hxs]; omega),
-            raw_bytes .long 8 rfl (by decide)]
+          rw [ho, Coc.encode, h88, raw_encodeAt .i64 8 rfl (by decide) Column.lgEnc (by decide) _ n (by rw [hxs]; omega),
+            raw_bytes .i64 8 rfl (by decide)]
           refine Array.ext (by simp [hs]) fun i h1 _ => ?_
           simp only [Array.getElem_map, Array.getElem_range]
           rw [Nat.mul_comm, hxg i (by simp at h1; omega), ofNat_toNat_mod64, Array.getElem_toList]

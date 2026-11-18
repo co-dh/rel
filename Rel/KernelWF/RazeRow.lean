@@ -63,10 +63,10 @@ theorem razeTo2_bytes {t : QAtomicType} {n m : USize} (x : Arr t n) (y : Arr t m
     · exact hy)
 
 /-- `raze_row_atom`'s `hA` at `boolean` (`razeTo_toList_boolean`). -/
-theorem razeTo2_boolean {n m : USize} (x : Arr .boolean n) (y : Arr .boolean m)
-    (hN : ((#[⟨n, x⟩, ⟨m, y⟩] : Array (Part (.atom .boolean))).toList.map
-      fun c : Part (.atom .boolean) => c.1.toNat).sum < USize.size) :
-    (razeTo .boolean #[⟨n, x⟩, ⟨m, y⟩] rfl hN).toList = x.toList ++ y.toList :=
+theorem razeTo2_boolean {n m : USize} (x : Arr .u1 n) (y : Arr .u1 m)
+    (hN : ((#[⟨n, x⟩, ⟨m, y⟩] : Array (Part (.atom .u1))).toList.map
+      fun c : Part (.atom .u1) => c.1.toNat).sum < USize.size) :
+    (razeTo .u1 #[⟨n, x⟩, ⟨m, y⟩] rfl hN).toList = x.toList ++ y.toList :=
   razeTo2_toList x y hN (razeTo_toList_boolean _ rfl hN)
 
 /-- `raze_row_atom`'s `hA` at `general` (`razeTo_toList_general`). -/
