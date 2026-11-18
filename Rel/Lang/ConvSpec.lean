@@ -131,7 +131,8 @@ theorem convTm_den (ρ : Val) : ∀ {A B : Obj} {d : Bool} (t : Tm A B d), t.Con
   | val _ | uni _ | zero | conv _ _ | ran _ _ | ldiv _ _ _ _ _ _ _ _ | rdiv _ _ _ _ _ _ _ _ | prod _ _ _ _
   | junc _ _ _ _ | leq _ _ | lt _ _ | nu _ _ _ _ _ | mu _ _ _ _ _ =>
     exact fun _ => ⟨conv_false_den ρ rfl _, by noproj⟩
-  | top _ _ | lam _ _ | E _ _ | est _ _ | thin _ _ | nil | atPos _ | fold _ _ _ _ | foldI _ _ _ _ | flat _ _
+  | top _ _ | lam _ _ | E _ _ | est _ _ | thin _ _ | nil | atPos _ | foldr _ _ _ _ | fold _ _ _ _ | foldI _ _ _ _
+  | flat _ _
   | juncD _ _ _ _ | hylo _ _ _ _ _ _ => exact fun _ => ⟨by noconv, by noproj⟩
   | id =>
     refine fun _ => ⟨fun u hu => ?_, by noproj⟩

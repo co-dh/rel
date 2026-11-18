@@ -212,6 +212,7 @@ def Tm.gen (η : CodeEnv) {A B : Obj} {d : Bool} (t : Tm A B d) : Out d A B := O
   | η, _, _, _, .arith k U => leaf (Gen.arith k (U.gen η).fn)
   | η, _, _, _, .leq U => leaf (Gen.leq (U.gen η).fn)
   | η, _, _, _, .lt U => leaf (Gen.lt (U.gen η).fn)
+  | η, _, V, _, .foldr (E := X) (d := d) e S => leaf (Gen.foldr X V d (e.gen η).fn (S.gen η).fn)
   | η, _, V, _, .fold (E := X) (d := d) e S => leaf (Gen.fold X V d (e.gen η).fn (S.gen η).fn)
   | η, _, _, _, .share _ R => R.gen η
   | η, _, V, _, .foldI (I := I) (E := X) (d := d) (d' := d') e S =>

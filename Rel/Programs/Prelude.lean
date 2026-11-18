@@ -24,18 +24,21 @@ rel_program prelude where
     tail : [α] ⟶ [α] ≜ cat° dom(π₁ (at(0)τ ∩ 𝟙))π₂                -- B&dM p.149 tail = outr cons°
     init : [α] ⟶ [α] ≜ cat° dom(π₂ (at(0)τ ∩ 𝟙))π₁                -- B&dM p.249 init = outl snoc°
     last : [α] ⟶ α ≜ cat° π₂ (at(0)τ ∩ 𝟙)at(0)                    -- B&dM p.267 last = outr snoc°
-    prefix : [α] ⟶ [α] ≜ ⦇[nil, nil ∪ cons]⦈                -- B&dM p.126
+    -- `⦇[a, S]⦈` is the left fold, `S` on (acc, x), building by snoc; `⦇[a, S]⦈ʳ` the right fold, `S` on (x, acc),
+    -- kept where the meaning reads the input from its end (doc/rel-rows.md, column `reads`).
+
+    prefix : [α] ⟶ [α] ≜ cat° π₁                                  -- B&dM p.126 prefix: x ⧺ y ↦ x
     suffix : [α] ⟶ [α] ≜ cat° π₂                                  -- B&dM p.127 suffix, dual to prefix: x ⧺ y ↦ y
     concat : [[α]] ⟶ [α] ≜ ⦇[nil, cat]⦈                    -- B&dM p.129
-    subseq : [α] ⟶ [α] ≜ ⦇[nil, cons ∪ π₂]⦈                -- B&dM p.123
-    tails : [α] ⟶ [[α]] ≜ ⦇[nil τ, ⟨⟨π₁,π₂head⟩cons,π₂⟩cons]⦈   -- B&dM p.127 tails = ⦇[wrap nil, extend]⦈
-    filter(p : α ⟶ α) : [α] ⟶ [α] ≜ ⦇[nil, dom(π₁p)cons ∪ ((𝟙 − dom(π₁p))π₂)]⦈      -- B&dM p.66 ⦇[nil, p outl → cons, outr]⦈
-    takewhile(p : α ⟶ α) : [α] ⟶ [α] ≜ ⦇[nil, dom(π₁p)cons ∪ ((𝟙 − dom(π₁p))nil)]⦈  -- B&dM p.174 (7.39) ⦇[nil, p outl → cons, nil]⦈
+    subseq : [α] ⟶ [α] ≜ ⦇[nil, snoc ∪ π₁]⦈                -- B&dM p.123, on snoc lists
+    tails : [α] ⟶ [[α]] ≜ ⦇[nil τ, ⟨⟨π₁,π₂head⟩cons,π₂⟩cons]⦈ʳ   -- B&dM p.127 tails = ⦇[wrap nil, extend]⦈
+    filter(p : α ⟶ α) : [α] ⟶ [α] ≜ ⦇[nil, dom(π₂p)snoc ∪ ((𝟙 − dom(π₂p))π₁)]⦈      -- B&dM p.66 ⦇[nil, p outl → cons, outr]⦈
+    takewhile(p : α ⟶ α) : [α] ⟶ [α] ≜ ⦇[nil, dom(π₁p)cons ∪ ((𝟙 − dom(π₁p))nil)]⦈ʳ  -- B&dM p.174 (7.39) ⦇[nil, p outl → cons, nil]⦈
 
-    -- B&dM p.130 `perm ≜ ⦇[nil, add]⦈`: add puts the head anywhere in the tail. Its converse is itself, a rule the
-    -- language keeps for this one name (`Tm.own`), because `perm° = perm` cannot be derived from the fold.
+    -- B&dM p.130 `perm ≜ ⦇[nil, add]⦈`: add puts the new element anywhere in the array so far. Its converse is
+    -- itself, a rule the language keeps for this one name (`Tm.own`), because `perm° = perm` cannot be derived.
 
-    perm : [α] ⟶ [α] ≜ ⦇[nil, add]⦈ where add ≜ (𝟙×cat°)⟨π₂π₁,⟨π₁,π₂π₂⟩cons⟩cat
+    perm : [α] ⟶ [α] ≜ ⦇[nil, add]⦈ where add ≜ (cat°×𝟙)⟨⟨π₁π₁,π₂⟩snoc,π₁π₂⟩cat
     ordered(Q : α ⟶ α) : [α] ⟶ [α] ≜ 𝟙 − dom(tails ∋ ⟨at(0),tail⟩(π₁∼Q ∩ (π₂∋)))   -- every element is Q-related to each later one
     sort(Q : α ⟶ α) : [α] ⟶ [α] ≜ perm ordered(Q)
 

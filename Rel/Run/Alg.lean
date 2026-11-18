@@ -676,21 +676,28 @@ def consC {K B : Obj} (P : Rel K (.prod B (.arr B))) : Rel K (.arr B) × Bool :=
 /-- `cons`: `consC`'s relation. -/
 def cons {K B : Obj} (P : Rel K (.prod B (.arr B))) : Rel K (.arr B) := (consC P).1
 
-/-- The rounds of a fold over the rows of `ids : row ⟶ [E]`, from each array's last element to its first:
-    the state `pend : row ⟶ V` starts as given, each row from its own values, so two rows of one array may
-    start apart; round `k` pairs the rows longer than `k` with their element `k` from the end (`el`) and hands
-    both to `step`, and moves the rows not longer to `out`. A row is never longer than the payload, so its
-    size plus one rounds end every row (`iter`). The result is keyed by the row ids.
+/-- Round `k`'s element: each row of `ids` longer than `k` to its array's element `k` from the start (`l`, the
+    left fold's order) or from the end (the right fold's). Either is a slice position, `lo + k` or `hi - 1 - k`. -/
+def foldEl {E : Obj} (l : Bool) (ids : Rel .long (.arr E)) (k : Nat) : Rel .long E :=
+  let s := slicesOf ids.val
+  let a := whereBits ids.n (Ew.cmp Ew.gt Ew.i64 Ew.va s.2 (one k.toUInt64) ids.n)
+  longCount "foldRows" a fun r hr =>
+    -- the start `+ k`, or the end `- (k + 1)`: one elementwise op, so the position's count is `len_val`'s
+    let pos := Kernel.Ew.val (bif l then Ew.add else Ew.sub) Ew.i64 Ew.va nul
+      (gather 8 (bif l then s.1 else add ids.n s.1 s.2) a) (one (bif l then k else k + 1).toUInt64) r
+    ⟨r, Vals.pick .long ids.key a r hr, Vals.pick E ids.val.2.2.2 pos r (len_val ..)⟩
+
+/-- The rounds of a fold over the rows of `ids : row ⟶ [E]`, reading each array from its first element (`l`) or
+    from its last: the state `pend : row ⟶ V` starts as given, each row from its own values, so two rows of one
+    array may start apart; round `k` pairs the rows longer than `k` with their element `k` in that order (`foldEl`)
+    and hands both to `step`, and moves the rows not longer to `out`. A row is never longer than the payload, so
+    its size plus one rounds end every row (`iter`). The result is keyed by the row ids.
     `foldRound` is round `k` on the state `(pend, out, k)`, and whether it ran within capacity: the step's own bit
     `&&` the bits of the round's `nub`, `antiJoin` and `∪` (`nubC`, `antiJoinC`, `unionC`). -/
-def foldRound {E V : Obj} (ids : Rel .long (.arr E)) (step : Rel .long E → Rel .long V → Rel .long V × Bool)
+def foldRound {E V : Obj} (l : Bool) (ids : Rel .long (.arr E))
+    (step : Rel .long E → Rel .long V → Rel .long V × Bool)
     (st : Rel .long V × Rel .long V × Nat) : (Rel .long V × Rel .long V × Nat) × Bool :=
-  let s := slicesOf ids.val
-  let ends := add ids.n s.1 s.2
-  let a := whereBits ids.n (Ew.cmp Ew.gt Ew.i64 Ew.va s.2 (one st.2.2.toUInt64) ids.n)
-  let el : Rel .long E := longCount "foldRows" a fun r hr =>
-    let pos := Kernel.Ew.val Ew.sub Ew.i64 Ew.va nul (gather 8 ends a) (one (st.2.2 + 1).toUInt64) r
-    ⟨r, Vals.pick .long ids.key a r hr, Vals.pick E ids.val.2.2.2 pos r (len_val ..)⟩
+  let el := foldEl l ids st.2.2
   -- `≫` keeps row multiplicity, so a step reaching a value along two paths doubles its rows: `nub` each round,
   -- or the rows of `pend` grow as the paths do (`2^k` for `π₂ ∪ π₂ succ`), not as the pairs
   let S := step el st.1
@@ -701,62 +708,60 @@ def foldRound {E V : Obj} (ids : Rel .long (.arr E)) (step : Rel .long E → Rel
 
 /-- `foldRows` and whether it ran within capacity: the `&&` of the bits of the rounds it ran, carried in the
     loop state from `true`. -/
-def foldRowsC {E V : Obj} (ids : Rel .long (.arr E)) (pend : Rel .long V)
+def foldRowsC {E V : Obj} (l : Bool) (ids : Rel .long (.arr E)) (pend : Rel .long V)
     (step : Rel .long E → Rel .long V → Rel .long V × Bool) : Rel .long V × Bool :=
   let r := iter (ids.val.1.toNat + 1) (fun st : (Rel .long V × Rel .long V × Nat) × Bool => st.1.1.n == 0)
-    (fun st => let g := foldRound ids step st.1; (g.1, st.2 && g.2)) ((pend, zero, 0), true)
+    (fun st => let g := foldRound l ids step st.1; (g.1, st.2 && g.2)) ((pend, zero, 0), true)
   (r.1.2.1, r.2)
 
 /-- `foldRows`: `foldRowsC`'s relation, the step one with no bit of its own. -/
-def foldRows {E V : Obj} (ids : Rel .long (.arr E)) (pend : Rel .long V)
+def foldRows {E V : Obj} (l : Bool) (ids : Rel .long (.arr E)) (pend : Rel .long V)
     (step : Rel .long E → Rel .long V → Rel .long V) : Rel .long V :=
-  (foldRowsC ids pend fun el p => (step el p, true)).1
+  (foldRowsC l ids pend fun el p => (step el p, true)).1
 
 /-- `foldRows` on the arrays of `X`, every row starting from every value of `e`, read back at the arrays by
     `num`'s row ids; and whether it ran within capacity: the bits of `num`, `⊤`, the rounds and `≫`. -/
-def foldByC {E V : Obj} {n m : USize} (X : Vals (.arr E) n) (e : Vals V m)
+def foldByC {E V : Obj} {n m : USize} (l : Bool) (X : Vals (.arr E) n) (e : Vals V m)
     (step : Rel .long E → Rel .long V → Rel .long V × Bool) : Rel (.arr E) V × Bool :=
   let ids := numC (idU X) 0
   let p := topC (A := .long) (B := V) ids.1.key e
-  let F := foldRowsC ids.1 p.1 step
+  let F := foldRowsC l ids.1 p.1 step
   let c := compC ids.1° F.1
   (c.1, ids.2 && p.2 && F.2 && c.2)
 
 /-- `foldBy`: `foldByC`'s relation, the step one with no bit of its own. -/
-def foldBy {E V : Obj} {n m : USize} (X : Vals (.arr E) n) (e : Vals V m)
+def foldBy {E V : Obj} {n m : USize} (l : Bool) (X : Vals (.arr E) n) (e : Vals V m)
     (step : Rel .long E → Rel .long V → Rel .long V) : Rel (.arr E) V :=
-  (foldByC X e fun el p => (step el p, true)).1
+  (foldByC l X e fun el p => (step el p, true)).1
 
-/-- A fold step in demand form: `S` runs on the pairs (element, value) the round meets, `S D` for the
-    coreflexive `D` on them, so a carrier with no universe folds too. `S` a twin family; the bit the `&&` of
-    `pairC`'s, `ranC`'s, `S`'s and `compC`'s. -/
-def demandStepC {E V : Obj} (S : Rel (.prod E V) (.prod E V) → Rel (.prod E V) V × Bool) (el : Rel .long E)
-    (pend : Rel .long V) : Rel .long V × Bool :=
-  let p := pairC el pend; let d := ranC p.1; let s := S d.1; let c := compC p.1 s.1
+/-- A fold step in demand form: `S` runs on the pairs `P` the round meets, `pr` of its element and value
+    (`pairC el pend` for the right fold's `(x, acc)`, `pairC pend el` for the left fold's `(acc, x)`), `S D` for
+    the coreflexive `D` on them, so a carrier with no universe folds too. `S` a twin family; the bit the `&&` of
+    `pr`'s, `ranC`'s, `S`'s and `compC`'s. -/
+def demandStepC {E V P : Obj} (pr : Rel .long E → Rel .long V → Rel .long P × Bool) (S : Rel P P → Rel P V × Bool)
+    (el : Rel .long E) (pend : Rel .long V) : Rel .long V × Bool :=
+  let p := pr el pend; let d := ranC p.1; let s := S d.1; let c := compC p.1 s.1
   (c.1, p.2 && d.2 && s.2 && c.2)
 
 /-- `demandStep`: `demandStepC`'s relation, the family one with no bit of its own. -/
-def demandStep {E V : Obj} (S : Rel (.prod E V) (.prod E V) → Rel (.prod E V) V) (el : Rel .long E)
-    (pend : Rel .long V) : Rel .long V :=
-  (demandStepC (fun D => (S D, true)) el pend).1
+def demandStep {E V P : Obj} (pr : Rel .long E → Rel .long V → Rel .long P × Bool) (S : Rel P P → Rel P V)
+    (el : Rel .long E) (pend : Rel .long V) : Rel .long V :=
+  (demandStepC pr (fun D => (S D, true)) el pend).1
 
-/-- `⦇e, S⦈` on the arrays `X`, the fold of cons-lists, `S` a twin family in demand form (`demandStepC`), and
-    whether it ran within capacity. `[]` to each value of `e`, `cons(x, xs)` to `w` when `xs` goes to `v` and
-    `(x, v) S(D) w`. -/
-def foldOnC {E V : Obj} {m n : USize} (e : Vals V m) (S : Rel (.prod E V) (.prod E V) → Rel (.prod E V) V × Bool)
-    (X : Vals (.arr E) n) : Rel (.arr E) V × Bool :=
-  foldByC X e (demandStepC S)
+/-- `⦇e, S⦈` on the arrays `X`, `S` a twin family in demand form (`demandStepC`) on the pairs `pr` makes, the
+    arrays read from the start (`l`) or from the end; and whether it ran within capacity. The right fold
+    (`pairC`): `[]` to each value of `e`, `cons(x, xs)` to `w` when `xs` goes to `v` and `(x, v) S(D) w`; the left
+    fold (`pairC pend el`): `[]` to each value of `e`, `snoc(xs, x)` to `w` when `xs` goes to `v` and
+    `(v, x) S(D) w`. -/
+def foldOnC {E V P : Obj} {m n : USize} (l : Bool) (pr : Rel .long E → Rel .long V → Rel .long P × Bool)
+    (e : Vals V m) (S : Rel P P → Rel P V × Bool) (X : Vals (.arr E) n) : Rel (.arr E) V × Bool :=
+  foldByC l X e (demandStepC pr S)
 
-/-- `foldOn`: `foldOnC`'s relation, the family one with no bit of its own. -/
-def foldOn {E V : Obj} {m n : USize} (e : Vals V m) (S : Rel (.prod E V) (.prod E V) → Rel (.prod E V) V)
-    (X : Vals (.arr E) n) : Rel (.arr E) V :=
-  (foldOnC e (fun D => (S D, true)) X).1
-
-/-- `⦇e, S⦈` on the arrays of `X`, `S` one relation: `foldOnC` with `S` whatever pairs a round meets, and whether
-    it ran within capacity. An array may have several results or none. -/
+/-- `⦇e, S⦈ʳ` on the arrays of `X`, `S` one relation: the right fold `foldOnC` with `S` whatever pairs a round
+    meets, and whether it ran within capacity. An array may have several results or none. -/
 def foldC {E V : Obj} {m n : USize} (e : Vals V m) (S : Rel (.prod E V) V) (X : Vals (.arr E) n) :
     Rel (.arr E) V × Bool :=
-  foldOnC e (fun _ => (S, true)) X
+  foldOnC false pairC e (fun _ => (S, true)) X
 
 /-- `fold`: `foldC`'s relation. -/
 def fold {E V : Obj} {m n : USize} (e : Vals V m) (S : Rel (.prod E V) V) (X : Vals (.arr E) n) : Rel (.arr E) V :=
@@ -769,7 +774,7 @@ def nilVal (B : Obj) : Vals (.arr B) 1 := ⟨0, col [0], col [0], Vals.empty B�
     with `xs[i] R ys[i]` at each `i` — `⦇[], (R × 𝟙) ≫ cons⦈`, each round pairing every image of the element with
     every array so far. `mapC` runs it for an `R` that is not simple. -/
 def mapFoldC {A B : Obj} {n : USize} (R : Rel A B) (X : Vals (.arr A) n) : Rel (.arr A) (.arr B) × Bool :=
-  foldByC X (nilVal B) fun el pend =>
+  foldByC false X (nilVal B) fun el pend =>
     let q := compC el R; let p := pairC q.1 pend; let c := consC p.1
     (c.1, q.2 && p.2 && c.2)
 
@@ -1240,7 +1245,7 @@ def uncat {B : Obj} {n : USize} (X : Vals (.arr B) n) : Rel (.arr B) (.prod (.ar
     `(a, (ys, zs))` a round meets are distinct keys (`ran`), so `⟨…⟩` on them keeps one row each. Whether it ran
     within capacity: `foldByC`'s, each round's the `&&` of its twins' bits. -/
 def permC {B : Obj} {n : USize} (X : Vals (.arr B) n) : Rel (.arr B) (.arr B) × Bool :=
-  foldByC X (nilVal B) fun el pend =>
+  foldByC false X (nilVal B) fun el pend =>
     let Dp := ranC pend; let un := uncatC Dp.1.val; let U := compC pend un.1; let q := pairC el U.1
     let D := ranC q.1; let W := pairC (outl D.1) (outr (outr D.1)); let Cn := consC W.1
     let V := pairC (outl (outr D.1)) Cn.1; let Ct := catC V.1; let R := compC q.1 Ct.1
@@ -1345,7 +1350,7 @@ def sortSet {B : Obj} {n : USize} (Q : Rel B B) (Y : Vals (.arr B) n) : Rel (.ar
     AOP/A5_6_ListCombinators.lean:127): a head kept or dropped. Whether it ran within capacity: `foldByC`'s, each
     round's the `&&` of `pairC`'s, `consC`'s and `unionC`'s. -/
 def subseqC {B : Obj} {n : USize} (X : Vals (.arr B) n) : Rel (.arr B) (.arr B) × Bool :=
-  foldByC X (nilVal B) fun el pend =>
+  foldByC false X (nilVal B) fun el pend =>
     let p := pairC el pend; let c := consC p.1; let u := unionC c.1 pend
     (u.1, p.2 && c.2 && u.2)
 
@@ -1392,7 +1397,7 @@ def thinBodyC {B : Obj} (q : Rel (.prod B B) (.prod B B) → Rel (.prod B B) (.p
 /-- `thinLOn` and whether it ran within capacity: `foldOnC` at `thinBodyC q`, `q` a twin family. -/
 def thinLOnC {B : Obj} {n : USize} (q : Rel (.prod B B) (.prod B B) → Rel (.prod B B) (.prod B B) × Bool)
     (X : Vals (.arr B) n) : Rel (.arr B) (.arr B) × Bool :=
-  foldOnC (nilVal B) (thinBodyC q) X
+  foldOnC false pairC (nilVal B) (thinBodyC q) X
 
 /-- `thinLOn`: `thinLOnC`'s relation, the test one with no bit of its own. -/
 def thinLOn {B : Obj} {n : USize} (q : Rel (.prod B B) (.prod B B) → Rel (.prod B B) (.prod B B))
@@ -1544,7 +1549,7 @@ namespace Arr
 /-- `sum ≜ ⦇[zero, plus]⦈` on the arrays of longs `X` (`sum`, AOP/A5_6_ListCombinators.lean:323), each round's
     `plus` on the pairs it meets. Named `Arr.sum` because `sum` is `R + S`'s. -/
 def sumC {n : USize} (X : Vals (.arr (.atom .long)) n) : Rel (.arr (.atom .long)) (.atom .long) × Bool :=
-  foldOnC (col [0]) (fun D => (plus D.val, true)) X
+  foldOnC false pairC (col [0]) (fun D => (plus D.val, true)) X
 
 /-- `sum`: `sumC`'s relation; `plus` has no capacity of its own, so the bit is `foldOnC`'s. -/
 def sum {n : USize} (X : Vals (.arr (.atom .long)) n) : Rel (.arr (.atom .long)) (.atom .long) := (sumC X).1
