@@ -1,6 +1,6 @@
 import Rel.Kernel.Gather
-import Rel.KernelSpec.Scatter
--- `Scatter` for `scatterWords_spec`, the law of the composition's `scatter` step
+import Rel.KernelSpec.Asc
+-- `Asc` for `ascGrade_spec`, the law of the composition's sort step; it imports `Scatter`'s `scatterWords_spec`
 
 /-! `gather`'s laws (design §4: `out[i] = e[ix[i]]`), on the words `Enc.raw` reads from its arguments:
 `gatherWords_eq`, the composition concat → asc → scan fill → scatter equals the fused one-read-per-row form that
@@ -9,45 +9,41 @@ import Rel.KernelSpec.Scatter
 namespace Rel.Verify
 open Rel.Kernel Ext.Enc
 
-private theorem rowLe_trans (a b c : GatherRow) (h₁ : a.le b) (h₂ : b.le c) : a.le c := by
-  obtain ⟨a1, a2, a3, a4⟩ := a; obtain ⟨b1, b2, b3, b4⟩ := b; obtain ⟨c1, c2, c3, c4⟩ := c
-  simp only [GatherRow.le, Bool.or_eq_true, Bool.and_eq_true, decide_eq_true_eq, beq_iff_eq] at *; omega
+/-- The lexicographic order on a row's `(key, tag, idx)`: the order `compose` needs of the sorted rows. -/
+private def rowLe (a b : GatherRow) : Bool :=
+  a.1 < b.1 || (a.1 == b.1 && (a.2.1 < b.2.1 || (a.2.1 == b.2.1 && a.2.2.1 ≤ b.2.2.1)))
 
-private theorem rowLe_total (a b : GatherRow) (h : ¬ a.le b) : b.le a := by
-  obtain ⟨a1, a2, a3, a4⟩ := a; obtain ⟨b1, b2, b3, b4⟩ := b
-  simp only [GatherRow.le, Bool.or_eq_true, Bool.and_eq_true, decide_eq_true_eq, beq_iff_eq] at *; omega
+/-- Row `t` of the concatenation: a source row below `es.size`, a query row from there. -/
+private theorem rows_get (is es : Array UInt64) (t : Nat) (ht : t < (gatherRows is es).length) :
+    (t < es.size ∧ (gatherRows is es)[t] = (t, 0, t, es[t]?.getD 0)) ∨
+      (es.size ≤ t ∧ (gatherRows is es)[t] = ((is[t - es.size]?.getD 0).toNat, 1, t - es.size, 0)) := by
+  by_cases h : t < es.size
+  · exact .inl ⟨h, by simp [gatherRows, h]⟩
+  · exact .inr ⟨by omega, by simp [gatherRows, List.getElem_append, h]⟩
 
-private theorem ins_perm (x : GatherRow) : ∀ l, (GatherRow.ins x l).Perm (x :: l)
-  | [] => .refl _
-  | y :: ys => by
-    unfold GatherRow.ins; split
-    · exact .refl _
-    · exact ((ins_perm x ys).cons y).trans (.swap x y ys)
-
-private theorem asc_perm : ∀ l, (GatherRow.asc l).Perm l
-  | [] => .refl _
-  | x :: xs => (ins_perm x _).trans ((asc_perm xs).cons x)
-
-private theorem ins_sorted (x : GatherRow) : ∀ l, l.Pairwise (fun a b => a.le b) →
-    (GatherRow.ins x l).Pairwise (fun a b => a.le b)
-  | [] => fun _ => List.pairwise_singleton _ _
-  | y :: ys => fun h => by
-    rw [List.pairwise_cons] at h
-    unfold GatherRow.ins; split
-    · rename_i hxy
-      refine List.Pairwise.cons (fun z hz => ?_) (List.Pairwise.cons h.1 h.2)
-      rcases List.mem_cons.mp hz with rfl | hz
-      · exact hxy
-      · exact rowLe_trans _ _ _ hxy (h.1 z hz)
-    · rename_i hxy
-      refine List.Pairwise.cons (fun z hz => ?_) (ins_sorted x ys h.2)
-      rcases List.mem_cons.mp ((ins_perm x ys).mem_iff.mp hz) with rfl | hz
-      · exact rowLe_total _ _ hxy
-      · exact h.1 z hz
-
-private theorem asc_sorted : ∀ l, (GatherRow.asc l).Pairwise (fun a b => a.le b)
-  | [] => .nil
-  | x :: xs => ins_sorted x _ (asc_sorted xs)
+/-- `gatherAsc` is a `rowLe`-sorted permutation of the rows: `ascGrade_spec` on `key` and `tag`, whose ties keep row
+order, and row order within one `(key, tag)` is `idx` order. -/
+private theorem gatherAsc_spec (is es : Array UInt64) (he : es.size < 2 ^ 64) :
+    (gatherAsc (gatherRows is es)).Perm (gatherRows is es) ∧
+      (gatherAsc (gatherRows is es)).Pairwise fun a b => rowLe a b := by
+  obtain ⟨hp, hs⟩ := ascGrade_spec (gatherRows is es).length
+    [((gatherRows is es).map (·.1.toUInt64)).toArray, ((gatherRows is es).map (·.2.1.toUInt64)).toArray]
+  refine ⟨(hp.map _).trans (.of_eq (List.ext_getElem (by simp) fun n h1 h2 => by simp [List.getElem?_eq_getElem h2])), ?_⟩
+  refine List.pairwise_map.2 (hs.imp_of_mem fun {i j} hi hj hij => ?_)
+  have hi' := List.mem_range.1 (hp.mem_iff.1 hi)
+  have hj' := List.mem_range.1 (hp.mem_iff.1 hj)
+  obtain ⟨h1, h2⟩ := hij
+  simp only [lexLe, List.getElem?_toArray, List.getElem?_map, List.getElem?_eq_getElem hi',
+    List.getElem?_eq_getElem hj', Option.map_some, Option.getD_some, Bool.and_true, Bool.or_eq_true,
+    Bool.and_eq_true, decide_eq_true_eq, beq_iff_eq, UInt64.lt_iff_toNat_lt, ← UInt64.toNat_inj,
+    Nat.toUInt64_eq, UInt64.toNat_ofNat'] at h1 h2 ⊢
+  have bi := UInt64.toNat_lt (is[i - es.size]?.getD 0)
+  have bj := UInt64.toNat_lt (is[j - es.size]?.getD 0)
+  rcases rows_get is es i hi' with ⟨a1, a2⟩ | ⟨a1, a2⟩ <;> rcases rows_get is es j hj' with ⟨b1, b2⟩ | ⟨b1, b2⟩ <;>
+    rw [a2, b2] at h1 h2 ⊢ <;>
+    simp only [rowLe, Bool.or_eq_true, Bool.and_eq_true, decide_eq_true_eq, beq_iff_eq, Decidable.imp_iff_not_or,
+      Nat.lt_irrefl, Nat.zero_mod, and_true, true_and, or_true, false_or] at h1 h2 ⊢ <;>
+    omega
 
 /-- The fill `gatherWords` runs: `kscanRow` with no column to fold keeps a segment start's seed and copies the row before
 otherwise. -/
@@ -105,11 +101,11 @@ private theorem mem_rows {is es : Array UInt64} {r : GatherRow} (h : r ∈ gathe
   · exact .inl ⟨rfl, hj, rfl⟩
   · exact .inr ⟨rfl, hi, rfl⟩
 
-/-- The composition on any sorted permutation `L` of the rows (`GatherRow.asc` is one): each query row's filled value is
+/-- The composition on any sorted permutation `L` of the rows (`gatherAsc` is one): each query row's filled value is
 the source row its index names, written to its own cell. -/
 private theorem compose (is es : Array UInt64) (hm : is.size < 2 ^ 64)
     (hall : ∀ k < is.size, (is[k]?.getD 0).toNat < es.size) (L : List GatherRow)
-    (hP : L.Perm (gatherRows is es)) (hS : L.Pairwise fun a b => a.le b) :
+    (hP : L.Perm (gatherRows is es)) (hS : L.Pairwise fun a b => rowLe a b) :
     (do
       let F ← (List.range L.length).foldlM (kscanRow .first (L.map fun r => if r.2.1 = 0 then (1 : UInt64) else 0).toArray
         (L.map (·.2.2.2)).toArray []) #[]
@@ -118,7 +114,7 @@ private theorem compose (is es : Array UInt64) (hm : is.size < 2 ^ 64)
       pure (o.extract 0 is.size) : Except String (Array UInt64)) = .ok (is.map fun i => es[i.toNat]?.getD 0) := by
   have hN := hP.nodup_iff.mpr (rows_nodup is es)
   have memL : ∀ {r}, r ∈ L → _ := fun {r} h => mem_rows (hP.mem_iff.mp h)
-  have ord : ∀ a b (ha : a < L.length) (hb : b < L.length), a < b → L[a].le L[b] :=
+  have ord : ∀ a b (ha : a < L.length) (hb : b < L.length), a < b → rowLe L[a] L[b] :=
     fun a b ha hb hab => List.pairwise_iff_getElem.mp hS a b ha hb hab
   let seg := (L.map fun r => if r.2.1 = 0 then (1 : UInt64) else 0).toArray
   let seed := (L.map (·.2.2.2)).toArray
@@ -163,7 +159,7 @@ private theorem compose (is es : Array UInt64) (hm : is.size < 2 ^ 64)
     rcases Nat.lt_trichotomy q p with h | rfl | h
     · exact h
     · rw [hLp] at hLq; simp at hLq
-    · have := ord p q hp hq h; rw [hLp, hLq] at this; simp [GatherRow.le] at this
+    · have := ord p q hp hq h; rw [hLp, hLq] at this; simp [rowLe] at this
   -- every row strictly between them is a query naming the same source
   have hbetween : ∀ t, q < t → t ≤ p → seg[t]?.getD 0 = 0 := by
     intro t a b
@@ -172,15 +168,15 @@ private theorem compose (is es : Array UInt64) (hm : is.size < 2 ^ 64)
     rcases memL (List.getElem_mem ht) with ⟨h0, hj, hr⟩ | ⟨h1, -⟩
     · exfalso
       have k1 := ord q t hq ht a
-      have k2 : L[t].le L[p] := by
+      have k2 : rowLe L[t] L[p] := by
         rcases Nat.lt_or_eq_of_le b with b | rfl
         · exact ord t p ht hp b
-        · simp [GatherRow.le]
+        · simp [rowLe]
       rw [hLq] at k1; rw [hLp] at k2
       have hkey : L[t].1 = (is[i]?.getD 0).toNat := by
         generalize L[t] = r at k1 k2 h0 ⊢
         obtain ⟨t1, t2, t3, t4⟩ := r
-        simp only [GatherRow.le, Bool.or_eq_true, Bool.and_eq_true, decide_eq_true_eq, beq_iff_eq] at k1 k2 h0
+        simp only [rowLe, Bool.or_eq_true, Bool.and_eq_true, decide_eq_true_eq, beq_iff_eq] at k1 k2 h0
         omega
       have : L[t] = L[q] := by rw [hLq, hr, hkey]
       exact absurd (nodup_idx hN _ _ this) (by omega)
@@ -209,12 +205,12 @@ private theorem compose (is es : Array UInt64) (hm : is.size < 2 ^ 64)
 
 /-- **gather = its composition** (design §4's table): when every index is below `es.size`, the composition
 `gatherWords` runs — concatenate, `asc`, fill forward, `scatter` — answers the fused form, one read per row. -/
-theorem gatherWords_eq (is es : Array UInt64) (hm : is.size < 2 ^ 64)
+theorem gatherWords_eq (is es : Array UInt64) (hm : is.size < 2 ^ 64) (he : es.size < 2 ^ 64)
     (hall : ∀ k < is.size, (is[k]?.getD 0).toNat < es.size) :
     gatherWords is es = .ok (is.map fun i => es[i.toNat]?.getD 0) := by
   unfold gatherWords
   rw [(List.find?_eq_none.mpr fun k hk => by simpa using hall k (List.mem_range.mp hk))]
-  exact compose is es hm hall _ (asc_perm _) (asc_sorted _)
+  exact compose is es hm hall _ (gatherAsc_spec is es he).1 (gatherAsc_spec is es he).2
 
 /-- An index not below `es.size` is `gatherWords`' error, never a fill. -/
 theorem gatherWords_error (is es : Array UInt64) (k : Nat) (hk : k < is.size) (h : es.size ≤ (is[k]?.getD 0).toNat) :
@@ -224,15 +220,13 @@ theorem gatherWords_error (is es : Array UInt64) (k : Nat) (hk : k < is.size) (h
   | some k' => exact ⟨_, rfl⟩
   | none => exact absurd (by simpa using List.find?_eq_none.mp hf k (List.mem_range.mpr hk)) (by omega)
 
-/-- Design §4's `gather` law (`raw_permute`): an answer of `kgather` is the `foR` that `Coc.encodeAt` at `lgEnc` writes
-of `es[is[i]]` for each of the `m` words `is` that `Enc.raw` reads from `ix`, `es` being the `n` words it reads from
-`e`; every index is below `n`. -/
+/-- Design §4's `gather` law (`raw_permute`): an answer of `kgather` is `wordsFoR` of `es[is[i]]` for each of the `m`
+words `is` that `Enc.raw` reads from `ix`, `es` being the `n` words it reads from `e`; every index is below `n`. -/
 theorem raw_kgather (m : USize) (ix : Enc) (n : USize) (e : Enc) (o : Enc) (h : kgather m ix n e = .ok o) :
     let is := raw .long m ix
     let es := raw .long n e
-    let p := Coc.encodeAt Column.lgEnc 8 ((is.map fun i => es[i.toNat]?.getD 0).foldl (init := .empty)
-        fun acc w => Column.pushBits acc w 8)
-    is.size = m.toNat ∧ es.size = n.toNat ∧ (∀ k < m.toNat, (is[k]?.getD 0).toNat < n.toNat) ∧ o = .foR p.1 p.2 := by
+    is.size = m.toNat ∧ es.size = n.toNat ∧ (∀ k < m.toNat, (is[k]?.getD 0).toNat < n.toNat) ∧
+      o = wordsFoR (is.map fun i => es[i.toNat]?.getD 0) := by
   dsimp only
   unfold kgather at h
   cases hi : foRWords "gather: ix" m ix with
@@ -250,12 +244,11 @@ theorem raw_kgather (m : USize) (ix : Enc) (n : USize) (e : Enc) (o : Enc) (h : 
         intro k hk
         refine Nat.lt_of_not_le fun hle => ?_
         obtain ⟨s, hs⟩ := gatherWords_error is es k (by omega) (by omega)
-        simp [hs] at h
+        simp [hs, Functor.map, Except.map] at h
       have hm : is.size < 2 ^ 64 := hisz ▸ Nat.lt_of_lt_of_le m.toNat_lt_size USize.size_le
-      rw [gatherWords_eq is es hm fun k hk => by have := hall k (by omega); omega] at h
-      simp only [pure, Except.pure] at h
-      have h8 : USize.ofNat32 8 (by decide) = 8 := USize.toNat_inj.mp (by simp)
-      rw [h8] at h
+      have he : es.size < 2 ^ 64 := hesz ▸ Nat.lt_of_lt_of_le n.toNat_lt_size USize.size_le
+      rw [gatherWords_eq is es hm he fun k hk => by have := hall k (by omega); omega] at h
+      simp only [Functor.map, Except.map] at h
       exact ⟨hisz, hesz, hall, (Except.ok.inj h).symm⟩
 
 end Rel.Verify

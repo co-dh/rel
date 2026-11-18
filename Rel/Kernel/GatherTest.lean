@@ -9,10 +9,8 @@ open Ext.Enc
 /-- `k` as a `USize` whose `toNat` the kernel reduces: a literal's is `k % 2 ^ numBits`, and `numBits` is opaque. -/
 def u (k : Nat) (h : k < 4294967296 := by decide) : USize := USize.ofNat32 k h
 
-/-- `xs` as a `foR` column of 8-byte elements, the way `Coc.encode` writes one. -/
-def col (xs : List UInt64) : Enc :=
-  let p := Coc.encodeAt Column.lgEnc (u 8) (xs.foldl (init := .empty) fun acc w => Column.pushBits acc w 8)
-  .foR p.1 p.2
+/-- `xs` as the `foR` column the kernels answer (`wordsFoR`). -/
+def col (xs : List UInt64) : Enc := wordsFoR xs.toArray
 
 /-- An answer as its error, or its metadata and pack bytes: equal to `col`'s of the expected words, caches included. -/
 def view : Except String Enc → String ⊕ (List UInt8 × List UInt8)

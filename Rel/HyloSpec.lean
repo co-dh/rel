@@ -114,7 +114,7 @@ theorem hyloRounds_ok {chN : CRel A A} {φ : CRel A B → CRel A A → CRel A B}
       · rw [if_pos h1] at h; exact absurd h Bool.false_ne_true
       · rw [if_neg h1] at h hx
         obtain ⟨hp, hx'⟩ := hyloRounds_ok f _ _ h hx
-        have hp' := ok_and hp; have hx'' := ok_and hx'; rw [Bool.and_eq_true] at hp' hx''
+        have hp' := CRel.guard_ok_left hp; have hx'' := CRel.guard_ok_left hx'; rw [Bool.and_eq_true] at hp' hx''
         exact ⟨hp'.1, hx''.1⟩
 
 /-- **`hyloRounds` read back** (`rounds_lfp` on arrays): from the nodes `N` (a coreflexive closed under the
@@ -128,16 +128,16 @@ theorem rep_hylo {chN : CRel A A} {φ : CRel A B → CRel A A → CRel A B}
       ∀ a b, (rep (φ X P).rel a b ↔ rep P.rel a a ∧ Φ (fun a b => rep X.rel a b) a b))
     {N : CRel A A} (hc : ∀ x y, rep N.rel x y → x = y)
     (hN : ∀ a a', rep N.rel a a → rep chN.rel a a' → rep N.rel a' a') (f : Nat)
-    (hb : (hyloRounds chN φ f N ⟨Alg.zero, true⟩).2 = true)
-    (hx : (hyloRounds chN φ f N ⟨Alg.zero, true⟩).1.ok = true) :
-    ∀ a, rep N.rel a a → ∀ b, (rep (hyloRounds chN φ f N ⟨Alg.zero, true⟩).1.rel a b ↔ Core.Rel.mu Φ a b) := by
+    (hb : (hyloRounds chN φ f N (some Alg.zero)).2 = true)
+    (hx : (hyloRounds chN φ f N (some Alg.zero)).1.ok = true) :
+    ∀ a, rep N.rel a a → ∀ b, (rep (hyloRounds chN φ f N (some Alg.zero)).1.rel a b ↔ Core.Rel.mu Φ a b) := by
   suffices h : ∀ f (pend : CRel A A) (X : CRel A B), (hyloRounds chN φ f pend X).2 = true →
       (hyloRounds chN φ f pend X).1.ok = true → (∀ x y, rep pend.rel x y → x = y) →
       Inv (fun a a' => rep chN.rel a a') Φ (fun a => rep N.rel a a) (fun a => rep pend.rel a a)
         (fun a b => rep X.rel a b) →
       ∀ a, rep N.rel a a → ∀ b, (rep (hyloRounds chN φ f pend X).1.rel a b ↔ Core.Rel.mu Φ a b) from
     h f N _ hb hx hc ⟨fun _ h => h, fun _ h hn => absurd h hn,
-      fun _ _ _ h => by rw [rep_zero] at h; exact h, fun _ _ h hn => absurd h hn⟩
+      fun _ _ _ h => by rw [CRel.some_rel, rep_zero] at h; exact h, fun _ _ h hn => absurd h hn⟩
   intro f
   induction f with
   | zero => intro _ _ h; simp [hyloRounds] at h
@@ -152,11 +152,11 @@ theorem rep_hylo {chN : CRel A A} {φ : CRel A B → CRel A A → CRel A B}
       · rw [if_pos h1] at h; exact absurd h Bool.false_ne_true
       · rw [if_neg h1] at h hx ⊢
         obtain ⟨hp, hxo⟩ := hyloRounds_ok f _ _ h hx
-        have hpr := ok_and hp; rw [Bool.and_eq_true] at hpr
-        have hxr := ok_and hxo; rw [Bool.and_eq_true] at hxr
-        have hro := ok_and hpr.2; rw [Bool.and_eq_true] at hro
-        have hdo := ok_and hro.2
-        have hc1 := ok_and hdo; rw [Bool.and_eq_true] at hc1
+        have hpr := CRel.guard_ok_left hp; rw [Bool.and_eq_true] at hpr
+        have hxr := CRel.guard_ok_left hxo; rw [Bool.and_eq_true] at hxr
+        have hro := CRel.guard_ok_left hpr.2; rw [Bool.and_eq_true] at hro
+        have hdo := CRel.guard_ok_left hro.2
+        have hc1 := CRel.guard_ok_left hdo; rw [Bool.and_eq_true] at hc1
         -- the pending nodes' arcs into pending nodes: `pend ≫ chN ≫ pend`, `pend` coreflexive
         have hC : ∀ a y, rep (CRel.comp (CRel.comp pend chN) pend).rel a y ↔
             rep pend.rel a a ∧ rep chN.rel a y ∧ rep pend.rel y y := fun a y => by

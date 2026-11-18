@@ -279,24 +279,24 @@ theorem rep_pairsIn (Q : CRel B B) (D : CRel (.prod B B) (.prod B B)) (hb : (pai
 theorem rep_swapIn (q : CRel (.prod B B) (.prod B B) → CRel (.prod B B) (.prod B B)) (D : CRel (.prod B B) (.prod B B))
     (hb : (swapIn q D).ok = true) :
     ∀ p p', rep (swapIn q D).rel p p' ↔ p = p' ∧ ∃ u v w, ((∃ y, rep D.rel p (y, u)) ∧ ∃ z, rep D.rel p (v, z)) ∧
-      rep (q ⟨Alg.ran (Alg.pair (outr D.rel) (outl D.rel)), true⟩).rel (u, v) w := by
+      rep (q (some (Alg.ran (Alg.pair (outr D.rel) (outl D.rel))))).rel (u, v) w := by
   have e : swapIn q D = _ := guard_eq ok hb; rw [e] at hb ⊢; rw [rep_ofC hb]; replace hb := (ofC_ok hb).1; exact rep_swapInC (testC q) D.rel hb
 
 /-- The test's spec applies where `(q ⟨D, true⟩).ok`, the first conjunct. -/
 theorem rep_estOn (q : CRel (.prod B B) (.prod B B) → CRel (.prod B B) (.prod B B)) (G : CRel A B)
     (hb : (estOn q G).ok = true) :
-    (q ⟨Alg.ran (Alg.pair G.rel G.rel), true⟩).ok = true ∧ ∀ a b, rep (estOn q G).rel a b ↔ rep G.rel a b ∧
-      ¬ ∃ c, rep G.rel a c ∧ c ≠ b ∧ ¬ rep (q ⟨Alg.ran (Alg.pair G.rel G.rel), true⟩).rel (b, c) (b, c) := by
+    (q (some (Alg.ran (Alg.pair G.rel G.rel)))).ok = true ∧ ∀ a b, rep (estOn q G).rel a b ↔ rep G.rel a b ∧
+      ¬ ∃ c, rep G.rel a c ∧ c ≠ b ∧ ¬ rep (q (some (Alg.ran (Alg.pair G.rel G.rel)))).rel (b, c) (b, c) := by
   have e : estOn q G = _ := guard_eq ok hb; rw [e] at hb ⊢; rw [rep_ofC hb]; replace hb := (ofC_ok hb).1; exact rep_estOnC (testC q) G.rel hb
 
 /-- The test's spec applies where `(q ⟨D, true⟩).ok`, the first conjunct; `swapIn`'s bit reads it back
     (`rep_swapInC`). -/
 theorem rep_thinOn (q : CRel (.prod B B) (.prod B B) → CRel (.prod B B) (.prod B B)) (G : CRel A B)
     (hb : (thinOn q G).ok = true) :
-    (q ⟨Alg.ran (Alg.pair G.rel G.rel), true⟩).ok = true ∧
+    (q (some (Alg.ran (Alg.pair G.rel G.rel)))).ok = true ∧
       (swapInC (testC q) (Alg.ran (Alg.pair G.rel G.rel))).2 = true ∧ ∀ a c, rep (thinOn q G).rel a c ↔
       rep G.rel a c ∧ ¬ ∃ b b' y, rep G.rel a b ∧ rep G.rel a b' ∧
-        rep (q ⟨Alg.ran (Alg.pair G.rel G.rel), true⟩).rel (b, b') (y, c) ∧
+        rep (q (some (Alg.ran (Alg.pair G.rel G.rel)))).rel (b, b') (y, c) ∧
         ¬ rep (swapInC (testC q) (Alg.ran (Alg.pair G.rel G.rel))).1 (b, b') (y, c) := by
   have e : thinOn q G = _ := guard_eq ok hb; rw [e] at hb ⊢; rw [rep_ofC hb]; replace hb := (ofC_ok hb).1; exact rep_thinOnC (testC q) G.rel hb
 
@@ -311,10 +311,10 @@ theorem rep_thin (Q : CRel B B) (G : CRel A B) (hb : (thin Q G).ok = true) :
 /-- The test's spec applies where `(q ⟨ordPairs X, true⟩).ok`, the first conjunct. -/
 theorem rep_orderedOn (q : CRel (.prod B B) (.prod B B) → CRel (.prod B B) (.prod B B)) {n : USize}
     (X : Vals (.arr B) n) (hb : (orderedOn q X).ok = true) :
-    (q ⟨ordPairs X, true⟩).ok = true ∧
+    (q (some (ordPairs X))).ok = true ∧
       (∀ xs y zs z, (∃ i, X.row i = xs) → (y :: zs) <:+ xs → z ∈ zs → rep (ordPairs X) (y, z) (y, z)) ∧
       ∀ xs ys, rep (orderedOn q X).rel xs ys ↔ (∃ i, X.row i = xs) ∧ ys = xs ∧
-        ∀ y zs, (y :: zs) <:+ xs → ∀ z ∈ zs, ∃ w, rep (q ⟨ordPairs X, true⟩).rel w (y, z) :=
+        ∀ y zs, (y :: zs) <:+ xs → ∀ z ∈ zs, ∃ w, rep (q (some (ordPairs X))).rel w (y, z) :=
   by unfold CRel.orderedOn at hb ⊢; rw [rep_ofC hb]; exact rep_orderedOnC (testC q) X (ofC_ok hb).1
 
 theorem rep_ordered (Q : CRel B B) {n : USize} (X : Vals (.arr B) n) (hb : (ordered Q X).ok = true) :

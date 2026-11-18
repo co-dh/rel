@@ -290,31 +290,49 @@ open Rel.Core.Rel hiding id comp recip inter union zero le inl inr junc
 variable {A B C : Obj}
 
 /-- A guarded op's bit: the inputs' bits and the op's own. -/
-@[simp] theorem guard_ok (b : Bool) (k : Unit → CRel A B) : (guard b k).ok = (b && (k ()).ok) := by cases b <;> rfl
+@[simp] theorem guard_ok (b : Bool) (k : Unit → CRel A B) : (guard b k).ok = (b && (k ()).ok) := by
+  cases b
+  · rw [guard_false]; rfl
+  · rw [guard_true]; rfl
 
 /-- Where a bit `p` read off the result is set, the guard ran its op: `default`'s bit is false. -/
 theorem guard_eq {α : Type} [Inhabited α] {b : Bool} {k : Unit → α} (p : α → Bool) (h : p (guard b k) = true)
     (hd : p default = false := by rfl) : guard b k = k () := by
   cases b
-  · exact absurd (hd ▸ h) Bool.false_ne_true
-  · rfl
+  · rw [guard_false] at h; exact absurd (hd ▸ h) Bool.false_ne_true
+  · exact guard_true k
 
 /-- `ofC`'s bit: the twin's and `canonC`'s. -/
 theorem ofC_ok {r : Tab A B × Bool} (hb : (ofC r).ok = true) : r.2 = true ∧ (canonC r.1).2 = true := by
-  simpa only [ofC, Bool.and_eq_true] using hb
+  simpa only [ofC, CRel.mk_ok, Bool.and_eq_true] using hb
 
-theorem rep_ofC {r : Tab A B × Bool} (hb : (ofC r).ok = true) : rep (ofC r).rel = rep r.1 :=
-  rep_canonC r.1 (ofC_ok hb).2
+/-- Where `ofC` is ok, its table is `canonC`'s. -/
+theorem ofC_rel {r : Tab A B × Bool} (hb : (ofC r).ok = true) : (ofC r).rel = (canonC r.1).1 := by
+  have h := ofC_ok hb; show (CRel.mk _ (r.2 && (canonC r.1).2)).rel = _; rw [CRel.mk_true (by simp [h])]; rfl
+
+/-- A present table's bit and table. -/
+@[simp] theorem some_ok (r : Tab A B) : CRel.ok (some r) = true := rfl
+@[simp] theorem some_rel (r : Tab A B) : CRel.rel (some r) = r := rfl
+@[simp] theorem none_ok : CRel.ok (none : CRel A B) = false := rfl
+@[simp] theorem mk_false (r : Tab A B) : CRel.mk r false = none := rfl
+
+/-- Where `mk r b` is ok, its bit `b` is set and its table is `r`. -/
+theorem mk_ok_rel {r : Tab A B} {b : Bool} (hb : (CRel.mk r b).ok = true) : b = true ∧ (CRel.mk r b).rel = r :=
+  have h : b = true := by simpa only [CRel.mk_ok] using hb
+  ⟨h, by rw [CRel.mk_true h]; rfl⟩
+
+theorem rep_ofC {r : Tab A B × Bool} (hb : (ofC r).ok = true) : rep (ofC r).rel = rep r.1 := by
+  rw [ofC_rel hb]; exact rep_canonC r.1 (ofC_ok hb).2
 
 /-- **Every op through `ofC` answers a canonical table** where it ran within capacity. -/
 theorem canon_ofC {r : Tab A B × Bool} (hb : (ofC r).ok = true) (ho : (Obj.prod A B).Ordered)
-    (hi : (Obj.prod A B).KeyInj) : (ofC r).rel.Canon :=
-  canon_canonC r.1 (ofC_ok hb).2 ho hi
+    (hi : (Obj.prod A B).KeyInj) : (ofC r).rel.Canon := by
+  rw [ofC_rel hb]; exact canon_canonC r.1 (ofC_ok hb).2 ho hi
 
 /-- A guarded op's inputs ran ok where it did. -/
 theorem guard_ok_left {b : Bool} {k : Unit → CRel A B} (h : (guard b k).ok = true) : b = true := by
   cases b
-  · exact absurd h Bool.false_ne_true
+  · rw [guard_false] at h; exact absurd h Bool.false_ne_true
   · rfl
 
 theorem rep_comp (R : CRel A B) (S : CRel B C) (hb : (R.comp S).ok = true) :
@@ -322,7 +340,8 @@ theorem rep_comp (R : CRel A B) (S : CRel B C) (hb : (R.comp S).ok = true) :
   have e : R.comp S = _ := guard_eq ok hb; rw [e] at hb ⊢; rw [rep_ofC hb]; replace hb := (ofC_ok hb).1; exact rep_compC R.rel S.rel hb
 
 theorem rep_inter (R S : CRel A B) (hb : (R.inter S).ok = true) : rep (R.inter S).rel = rep R.rel ∩ rep S.rel := by
-  have e : R.inter S = _ := guard_eq ok hb; rw [e] at hb ⊢; exact rep_interC R.rel S.rel hb
+  have e : R.inter S = _ := guard_eq ok hb; rw [e] at hb ⊢
+  obtain ⟨h, e'⟩ := mk_ok_rel hb; rw [e']; exact rep_interC R.rel S.rel h
 
 theorem rep_union (R S : CRel A B) (hb : (R.union S).ok = true) : rep (R.union S).rel = rep R.rel ∪ rep S.rel := by
   have e : R.union S = _ := guard_eq ok hb; rw [e] at hb ⊢; rw [rep_ofC hb]; replace hb := (ofC_ok hb).1; exact rep_unionC R.rel S.rel hb
@@ -334,7 +353,7 @@ theorem canon_comp (R : CRel A B) (S : CRel B C) (hb : (R.comp S).ok = true) (ho
 /-- **`∩` is canonical where `R` is**: it keeps the rows of `R` that `whereBits` picks (`whereBits_sublist`). -/
 theorem canon_inter (R S : CRel A B) (hb : (R.inter S).ok = true) (hR : R.rel.Canon) : (R.inter S).rel.Canon := by
   have e : R.inter S = _ := guard_eq ok hb; rw [e] at hb ⊢
-  replace hb : (interC R.rel S.rel).2 = true := hb
+  obtain ⟨hb, e'⟩ := mk_ok_rel hb; rw [e']
   simp only [interC, Bool.and_eq_true] at hb
   exact canon_rows R.rel hR _ (whereBits_sublist _ _) hb.1.2 hb.2
 

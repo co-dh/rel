@@ -34,8 +34,6 @@ column that is not a standard `foR` of `n` elements is the error, naming its pla
 @[extern "qlean_k_distinct"]
 def kdistinct (n : USize) (es : @& List Enc) : Except String (Nat × Enc) := do
   let (k, o) ← distinctWords n.toNat (← es.zipIdx.mapM fun p => foRWords s!"distinct: es[{p.2}]" n p.1)
-  -- `ofNat32`, not the literal `8`, whose `toNat` is `8 % 2 ^ numBits` and stops `decide` at the opaque `numBits`
-  let (md, pk) := Coc.encodeAt Column.lgEnc (USize.ofNat32 8 (by decide)) (o.foldl (init := .empty) fun acc w => Column.pushBits acc w 8)
-  pure (k, .foR md pk)
+  pure (k, wordsFoR o)
 
 end Rel.Kernel
