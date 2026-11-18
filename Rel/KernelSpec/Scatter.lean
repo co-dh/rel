@@ -72,29 +72,27 @@ theorem scatterWords_spec (is es : Array UInt64) (n : Nat) (fill : UInt64) :
   refine ⟨by simpa using hs, fun j hj hn => by rw [hfix j hn]; simp [hj], fun k hk hl => hlast k hk hl ?_⟩
   simpa using hall k hk
 
-/-- What `packedWords` answers is `Enc.raw` at a 64-bit column, `m` words of it. -/
-theorem packedWords_raw (what : String) (m : USize) (e : Enc) (ws : Array UInt64)
-    (h : packedWords what m e = .ok ws) : ws = raw .long m e ∧ ws.size = m.toNat := by
-  unfold packedWords at h
+/-- What `foRWords` answers is `Enc.raw` at a 64-bit column, `m` words of it. -/
+theorem foRWords_raw (what : String) (m : USize) (e : Enc) (ws : Array UInt64)
+    (h : foRWords what m e = .ok ws) : ws = raw .long m e ∧ ws.size = m.toNat := by
+  unfold foRWords at h
   split at h
-  · rename_i lg bases widths payload
-    split at h
+  · split at h
     · cases h
-    · rename_i hp
-      cases h
-      refine ⟨rfl, ?_⟩
-      simp [raw, unpack, hp]
+      exact ⟨rfl, by simp [raw, QAtomicType.width]⟩
+    · cases h
   · cases h
 
 /-- Design §4's `scatter` law, on words: the `n` words `ws` `Enc.raw` reads from an answer of `kscatter`, against the
 `m` words `is` and `es` it reads from `ix` and `e`: every index is below `n`, a cell no row names is `fill`, and
-`ws[is[k]] = es[k]` for every row `k` no later row overrides. The answer is `Coc.packedOf` at `lgEnc` of `ws`. -/
+`ws[is[k]] = es[k]` for every row `k` no later row overrides. The answer is `foR`, `Coc.encode` of `ws` at 8 bytes. -/
 theorem raw_scatter (m : USize) (ix e : Enc) (n : USize) (fill : UInt64) (o : Enc)
     (h : kscatter m ix e n fill = .ok o) :
     let is := raw .long m ix
     let es := raw .long m e
     let ws := raw .long n o
-    o = Coc.packedOf Column.lgEnc 8 (ws.foldl (init := .empty) fun acc w => Column.pushBits acc w 8) ∧
+    o = .foR (Coc.encode 8 (ws.foldl (init := .empty) fun acc w => Column.pushBits acc w 8)).1
+      (Coc.encode 8 (ws.foldl (init := .empty) fun acc w => Column.pushBits acc w 8)).2 ∧
       is.size = m.toNat ∧ es.size = m.toNat ∧ ws.size = n.toNat ∧
       (∀ k < m.toNat, (is[k]?.getD 0).toNat < n.toNat) ∧
       (∀ j < n.toNat, (∀ k < m.toNat, (is[k]?.getD 0).toNat ≠ j) → ws[j]? = some fill) ∧
@@ -102,14 +100,14 @@ theorem raw_scatter (m : USize) (ix e : Enc) (n : USize) (fill : UInt64) (o : En
         ws[(is[k]?.getD 0).toNat]? = some (es[k]?.getD 0) := by
   intro is es ws'
   unfold kscatter at h
-  cases hi : packedWords "scatter: ix" m ix with
+  cases hi : foRWords "scatter: ix" m ix with
   | error s => simp [hi, bind, Except.bind] at h
   | ok is' =>
-    cases he : packedWords "scatter: e" m e with
+    cases he : foRWords "scatter: e" m e with
     | error s => simp [hi, he, bind, Except.bind] at h
     | ok es' =>
-      obtain ⟨rfl, hisz⟩ := packedWords_raw _ _ _ _ hi
-      obtain ⟨rfl, hesz⟩ := packedWords_raw _ _ _ _ he
+      obtain ⟨rfl, hisz⟩ := foRWords_raw _ _ _ _ hi
+      obtain ⟨rfl, hesz⟩ := foRWords_raw _ _ _ _ he
       cases hw : scatterWords (raw .long m ix) (raw .long m e) n.toNat fill with
       | error s => simp [hi, he, hw, bind, Except.bind] at h
       | ok ws =>
@@ -126,8 +124,9 @@ theorem raw_scatter (m : USize) (ix e : Enc) (n : USize) (fill : UInt64) (o : En
         simp only [show ByteArray.empty.size = 0 from rfl, Nat.zero_add, Array.length_toList] at hxs hxg
         have hraw : ws' = ws := by
           show raw .long n o = ws
-          rw [ho, raw_packedOf .long 8 rfl (by decide) Column.lgEnc (by decide) 8 (by simp) _ n (by rw [hxs]; omega)
-            (by rw [hxs, show 8 * ws.size / 8 = n.toNat by omega]), raw_bytes .long 8 rfl (by decide)]
+          have h88 : (8 : USize) = (8 : Nat).toUSize := rfl
+          rw [ho, Coc.encode, h88, raw_encodeAt .long 8 rfl (by decide) Column.lgEnc (by decide) _ n (by rw [hxs]; omega),
+            raw_bytes .long 8 rfl (by decide)]
           refine Array.ext (by simp [hs]) fun i h1 _ => ?_
           simp only [Array.getElem_map, Array.getElem_range]
           rw [Nat.mul_comm, hxg i (by simp at h1; omega), ofNat_toNat_mod64, Array.getElem_toList]

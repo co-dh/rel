@@ -4,11 +4,11 @@
 //!
 //! The file: bytes 0..8 `qleancol`; byte 8 the format version (`OWN_VERSION`, `OWN_OLDEST` is read too); byte 9 the q type
 //! code of the elements; byte 10 the attribute (0 none, 1 `s#, 2 `u#, 3 `p#, 4 `g#); byte 11 the constructor kind (0 bytes,
-//! 1 bits, 2 foR, 3 alp, 4 enum, 6 packed; 5 is `gen`, which `Db.ownFile` never writes as a column); bytes 12..14 the u16 part count (`OWN_NPARTS`); bytes 14..16 the u16 byte length of the
+//! 1 bits, 2 foR, 3 alp, 4 enum); bytes 12..14 the u16 part count (`OWN_NPARTS`); bytes 14..16 the u16 byte length of the
 //! enumeration domain name; bytes 16..24 the u64 element count; then 16 bytes a part (u64 offset, u64 length), the domain name,
 //! and each part after zeros up to an offset that is a multiple of 8 and leaves `OWN_ROOM` zero bytes before it; then
 //! `OWN_ROOM` zero bytes. The parts are the dense bytes; the bitmap; `metadata`, `pack`; `metadata`, `pack`, `alp`; `dict`,
-//! `ids`; the one byte `lg`, `bases`, `widths`, `payload` (pack.rs). Nothing is transformed in either direction.
+//! `ids`. Nothing is transformed in either direction.
 //!
 //! A mapped part is a `ByteArray` of rc 0 (persistent: `lean_inc_ref`/`lean_dec_ref` do nothing, never exclusive, so every
 //! in-place update copies first, as for an `.olean` compact region), its header written into the `OWN_ROOM` bytes before it;
@@ -22,28 +22,19 @@ use core::ffi::CStr;
 use core::sync::atomic::{AtomicUsize, Ordering};
 
 
-/// the most parts any kind has
-pub const OWN_MAXPARTS: usize = {
-    let (mut m, mut k) = (0, 0);
-    while k < OWN_NPARTS.len() { if let Some(p) = OWN_NPARTS[k] { if p > m { m = p } } k += 1 }
-    m
-};
+pub const OWN_MAXPARTS: usize = 3;
 
 pub const OWN_ROOM: u64 = 32;
 pub const OWN_HEAD: usize = 24;
 pub const OWN_VERSION: u8 = 4;
-/// Parts a column of each kind has, as `Db.ownParts` lists them; none at a kind that is never a column file.
-pub const OWN_NPARTS: [Option<usize>; 7] = [Some(1), Some(1), Some(2), Some(3), Some(2), None, Some(4)];
+pub const OWN_NPARTS: [usize; 5] = [1, 1, 2, 3, 2];
 
 
 
 /// The refusal `write_head` gives a bad kind, part count or name length; None, so a caller returns it.
 pub fn refuse_head(kind: u8, np: usize, nl: usize, why: &mut Why) -> Option<usize> {
-    match OWN_NPARTS.get(kind as usize).copied().flatten() {
-        Some(want) => why.say(format_args!("a column of kind {kind} has {want} parts and a domain name under 65536 bytes, \
-given {np} parts and a {nl}-byte name")),
-        None => why.say(format_args!("kind {kind} is no column file (`Db.ownParts` numbers them), given {np} parts")),
-    }
+    why.say(format_args!("a column of kind 0..4 with its parts and a domain name under 65536 \
+bytes, given kind {} with {} parts and a {}-byte name", kind, np, nl));
     None
 }
 
@@ -53,7 +44,7 @@ given {np} parts and a {nl}-byte name")),
 pub fn write_head(code: u8, attr: u8, kind: u8, count: u64, nl: usize, len: &[usize],
                   head: &mut [u8], off: &mut [usize], why: &mut Why) -> Option<usize> {
     let np = len.len();
-    if OWN_NPARTS.get(kind as usize).copied().flatten() != Some(np) || nl > 0xffff { return refuse_head(kind, np, nl, why) }
+    if kind > 4 || np != OWN_NPARTS[kind as usize] || nl > 0xffff { return refuse_head(kind, np, nl, why) }
     head[..8].copy_from_slice(b"qleancol");
     head[8..12].copy_from_slice(&[OWN_VERSION, code, attr, kind]);
     head[12..14].copy_from_slice(&(np as u16).to_le_bytes());
@@ -136,24 +127,6 @@ pub fn write(target: &CStr, code: u8, attr: u8, kind: u8, count: u64, domain: &[
     }
     segs.push(&ZEROS[..OWN_ROOM as usize]);
     Ok(replace(target, &segs)?)
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    fn head(kind: u8, len: &[usize]) -> Result<usize, String> {
-        let (mut h, mut off, mut buf) = ([0u8; OWN_HEAD + 16 * OWN_MAXPARTS], [0usize; OWN_MAXPARTS], [0u8; 160]);
-        let r = write_head(9, 0, kind, 13, 0, len, &mut h[..OWN_HEAD + 16 * len.len()], &mut off[..len.len()], &mut Why::new(&mut buf));
-        r.ok_or_else(|| text(&buf))
-    }
-    // `Db.ownParts`' `packed`: `lg`, `bases`, `widths`, `payload`
-    #[test] fn packed_has_four_parts() {
-        assert_eq!(OWN_MAXPARTS, 4);
-        assert_eq!(head(6, &[1, 16, 2, 2]), Ok(OWN_HEAD + 64));
-        assert_eq!(head(6, &[1, 16, 2]), Err("a column of kind 6 has 4 parts and a domain name under 65536 bytes, given 3 parts and a 0-byte name".into()));
-        assert_eq!(head(5, &[]), Err("kind 5 is no column file (`Db.ownParts` numbers them), given 0 parts".into()));
-        assert!(head(7, &[1]).is_err());
-    }
 }
 
 

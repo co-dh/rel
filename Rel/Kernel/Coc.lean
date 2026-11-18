@@ -92,40 +92,6 @@ def encodeAt (lg : Nat) (width : USize) (x : ByteArray) : ByteArray × ByteArray
     (acc ++ packRes (2 ^ lg) wd fun j => (if lo + j < n then keyAt w x (lo + j) - mn else 0).toUInt64, b + 1)).1
   (foRMeta lg (sumNul w) n (bs.map fun (mn, mx, s, wd) => (unbias w mn, unbias w mx, s, wd)), pack)
 
-/-- `encodeAt`'s answer as `Enc.packed`: its pack is already that payload, and its metadata's first section
-and last are the bases and the widths. -/
-def packedOf (lg : Nat) (width : USize) (x : ByteArray) : Ext.Enc X :=
-  let (md, pk) := encodeAt lg width x
-  let nb := Rel.Column.nblk md
-  .packed lg.toUInt8 (md.extract 0 (8 * nb)) (md.extract (32 * nb + 24) (33 * nb + 24)) pk
-
-/-- `n` elements at one `width` bits each, `f i` the `i`th, base `0`, in blocks of `2 ^ lg`: `packRes` per block. -/
-def packedAt (lg width n : Nat) (f : Nat → UInt64) : Ext.Enc X :=
-  let nb := (n + 2 ^ lg - 1) / 2 ^ lg
-  .packed lg.toUInt8 ⟨Array.replicate (8 * nb) 0⟩ ⟨Array.replicate nb width.toUInt8⟩
-    ((Array.range nb).foldl (init := .empty) fun acc b =>
-      acc ++ packRes (2 ^ lg) width fun j => if b * 2 ^ lg + j < n then f (b * 2 ^ lg + j) else 0)
-
--- a dense column through `encodeAt`, at a block size `foR` never takes
-#guard let x := ([5, -3, 1000, 7, -70000, 0, 2, 2, 9, 11, -1].foldl (init := ByteArray.empty)
-    fun acc (v : Int) => Rel.Column.pushBits acc (Int64.ofInt v).toUInt64 8)
-  Ext.Enc.raw (X := Unit) .long 11 (packedOf 3 8 x) == Ext.Enc.raw (X := Unit) .long 11 (.bytes x)
--- `bits` is base 0 width 1
-#guard let b : ByteArray := ⟨#[0b10110101, 0b00010110]⟩
-  [3, 6].all fun lg => Ext.Enc.raw (X := Unit) .boolean 13 (packedAt lg 1 13 fun i => if Rel.Column.bitAt b i then 1 else 0)
-    == Ext.Enc.raw (X := Unit) .boolean 13 (.bits b)
--- `enum`'s ids at `⌈log2 card⌉` bits, 3 for 5 symbols, where `enum` packs them at `idWidth`, 4
-#guard let ids := [4, 0, 3, 1, 1, 2, 4, 4, 0, 3]
-  let offs := #[0, 2, 4, 6, 8, 10]
-  Ext.Enc.raw (X := Unit) .symbol 10 (packedAt 3 (Rel.Column.widthFor (offs.size - 2)) 10 fun i => (ids[i]?.getD 0).toUInt64)
-    == Ext.Enc.raw (X := Unit) .symbol 10 (.enum "a\x00b\x00c\x00d\x00e\x00".toUTF8 offs
-      (Rel.Column.packIds (Rel.Column.idWidth offs) 10 fun i => ids[i]?.getD 0))
--- a constant is width 0 and no payload; `-7` sign-extended in the base, cut to the `int`'s 32 bits
-#guard Ext.Enc.raw (X := Unit) .int 9 (.packed 3 (Rel.Column.pushBits (Rel.Column.pushBits .empty (-7 : Int64).toUInt64 8) (-7 : Int64).toUInt64 8) ⟨#[0, 0]⟩ .empty)
-  == Ext.Enc.raw (X := Unit) .int 9 (.bytes ((List.replicate 9 ()).foldl (init := .empty) fun acc _ => Rel.Column.pushBits acc (-7 : Int32).toUInt32.toUInt64 4))
--- a payload one byte off the widths' sum is refused, not read
-#guard match Ext.Enc.unpack 3 ⟨Array.replicate 16 0⟩ ⟨#[1, 1]⟩ ⟨#[0, 0, 0]⟩ 13 with | .error _ => true | .ok _ => false
-
 /-- A dense payload of `width`-byte elements as `(metadata, pack)`.
 
 The obligation is `Column.atoms t (.foR n metadata pack) = Column.atoms t (.bytes x)` — encoding is a

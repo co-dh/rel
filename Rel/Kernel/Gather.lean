@@ -50,15 +50,6 @@ def gatherWords (is es : Array UInt64) : Except String (Array UInt64) :=
     let o ← scatterWords (L.map fun r => UInt64.ofNat (if r.2.1 = 0 then is.size else r.2.2.1)).toArray F (is.size + 1) 0
     pure (o.extract 0 is.size)
 
-/-- The `m` raw words of a `foR` argument, as `Enc.raw` reads a 64-bit column, or why it does not hold them: a layout
-that `Coc.foRStd` rejects at `m` (`crate/src/coc.rs`'s `std`), or a form other than `foR`. `m` is a parameter because
-`foR`'s blocks bound the count only to a multiple of the block size. -/
-def foRWords (what : String) (m : USize) (e : Enc) : Except String (Array UInt64) :=
-  match e with
-  | .foR md pk => if Coc.foRStd m md pk then .ok (raw .long m e)
-    else .error s!"{what}: foR layout does not hold {m.toNat} elements"
-  | _ => .error s!"{what}: constructor {e.ctorIdx} is not foR"
-
 /-- `gather` of `m` indices `ix` into `n` words `e`, both `foR`: `gatherWords` of their words (`foRWords`), encoded
 as `foR` by `Coc.encodeAt` at `lgEnc` over 8-byte elements, caches included. The first error in the order `ix`, `e`,
 the indices is the answer. -/

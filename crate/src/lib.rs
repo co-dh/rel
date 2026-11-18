@@ -112,8 +112,6 @@ pub mod layout;
 /// cbindgen:ignore
 pub mod own;
 /// cbindgen:ignore
-pub mod pack;
-/// cbindgen:ignore
 pub mod unpack;
 /// cbindgen:ignore
 pub mod why;

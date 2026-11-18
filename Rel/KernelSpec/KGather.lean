@@ -224,16 +224,6 @@ theorem gatherWords_error (is es : Array UInt64) (k : Nat) (hk : k < is.size) (h
   | some k' => exact ⟨_, rfl⟩
   | none => exact absurd (by simpa using List.find?_eq_none.mp hf k (List.mem_range.mpr hk)) (by omega)
 
-/-- What `foRWords` answers is `Enc.raw` at a 64-bit column, `m` words of it. -/
-theorem foRWords_raw (what : String) (m : USize) (e : Enc) (ws : Array UInt64)
-    (h : foRWords what m e = .ok ws) : ws = raw .long m e ∧ ws.size = m.toNat := by
-  unfold foRWords at h
-  split at h
-  · split at h
-    · cases h; exact ⟨rfl, by simp [raw, QAtomicType.width]⟩
-    · cases h
-  · cases h
-
 /-- Design §4's `gather` law (`raw_permute`): an answer of `kgather` is the `foR` that `Coc.encodeAt` at `lgEnc` writes
 of `es[is[i]]` for each of the `m` words `is` that `Enc.raw` reads from `ix`, `es` being the `n` words it reads from
 `e`; every index is below `n`. -/
