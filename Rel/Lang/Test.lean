@@ -101,7 +101,7 @@ rel_program foldLaw where
     obj K = 0…2
     obj L = 5…6
     ℓ : 1 ⟶ [L] ≜ Λ(⊤(1,L))
-    p(R : X ⟶ X) : X×X ⟶ X×X ≜ ran(ℓ⦇[⟨𝟙,𝟙⟩, π₂ ∪ (π₂ (𝟙×R))]⦈)
+    p(R : X ⟶ X) : X×X ⟶ X×X ≜ ran(ℓ⦇[⟨𝟙,𝟙⟩, π₁ ∪ (π₁ (𝟙×R))]⦈)
     R₀ : X ⟶ X ≜ {(A,B)}
     R₁ : X ⟶ X ≜ {(A,B),(B,C)}
     R₂ : X ⟶ X ≜ {(A,B),(B,C),(C,A)}
@@ -132,7 +132,7 @@ rel_program foldClosed where
     obj L = 5…6
     ℓ : 1 ⟶ [L] ≜ Λ(⊤(1,L))
     G : X ⟶ X ≜ {(A,B),(C,C)}
-    p(R : X ⟶ X) : X×X ⟶ X×X ≜ ran(ℓ⦇[⟨𝟙,𝟙⟩, π₂ (𝟙×G) ∪ (π₂ (𝟙×(∼R ∩ G))) ∪ (π₂ (𝟙×dom(R))) ∪ (π₂⟨π₁,π₁⟩)]⦈)
+    p(R : X ⟶ X) : X×X ⟶ X×X ≜ ran(ℓ⦇[⟨𝟙,𝟙⟩, π₁ (𝟙×G) ∪ (π₁ (𝟙×(∼R ∩ G))) ∪ (π₁ (𝟙×dom(R))) ∪ (π₁⟨π₁,π₁⟩)]⦈)
     R₀ : X ⟶ X ≜ {(A,B)}
     R₁ : X ⟶ X ≜ {(A,B),(B,C)}
     R₂ : X ⟶ X ≜ {(A,B),(B,C),(C,A)}
@@ -568,21 +568,21 @@ rel_program digits where
     r : N ⟶ [K] ≜ xΛ(⊤(N,K))
     nz : N ⟶ N ≜ 𝟙(N) − {(0,0)}
     step : N×[N] ⟶ N×[N] ≜ ⟨π₁{(0,0)},π₂⟩ ∪ ⟨π₁ nz op° π₁,⟨π₁ nz op° π₂,π₂⟩cons⟩
-    ds : N ⟶ [N] ≜ r⦇[x⟨𝟙,nil⟩, π₂ step]⦈π₂
+    ds : N ⟶ [N] ≜ r⦇[x⟨𝟙,nil⟩, π₁ step]⦈π₂
     print ds
 
 #guard digits.ok && digits.prints == ["ds = {(107, 1 0 7)}"]
 
 open Rel.Programs.prelude in
 /-- `⦇R⦈` with `R` not written as `[a,S]`, a name and a composite: read through `inl R`, `inr R`, the fold of
-    `[nil, cons]` is `𝟙` on the arrays `As` over `X` of length at most 2. -/
+    `[nil, snoc]` is `𝟙` on the arrays `As` over `X` of length at most 2. -/
 rel_program foldNamed where
     obj X = {A,B}
-    R : 1+(X×[X]) ⟶ [X] ≜ [nil, cons]
-    As : [X] ⟶ [X] ≜ ran(Λ(⊤(1,X))⦇[⊤(1,1)nil, π₂ ∪ (⟨⊤,π₂⟩cons)]⦈)
+    R : 1+([X]×X) ⟶ [X] ≜ [nil, snoc]
+    As : [X] ⟶ [X] ≜ ran(Λ(⊤(1,X))⦇[⊤(1,1)nil, π₁ ∪ (⟨π₁,⊤⟩snoc)]⦈)
     check As⦇R⦈ = As
     check As⦇R 𝟙⦈ = As
-    check As⦇[nil, cons]⦈ = As
+    check As⦇[nil, snoc]⦈ = As
 
 #guard foldNamed.ok
 
@@ -1002,7 +1002,7 @@ def afterErr (pre src : String) : CM Err := do
     ("t", "(c Λ(⇝))"),
     ("s₀", "ran(Λ((⊤(X, X) ⟨𝟙, S₀⟩)))"),
     ("r", "(dom(s₀) Λ(⊤))"),
-    ("L", "ran((r ⦇[⟨D, ((D ⊤) {(0, 0)})⟩, (π₂ ∪ (π₂ ⟨(π₁ B), (π₂ succ)⟩))]⦈))"),
+    ("L", "ran((r ⦇[⟨D, ((D ⊤) {(0, 0)})⟩, (π₁ ∪ (π₁ ⟨(π₁ B), (π₂ succ)⟩))]⦈))"),
     ("Q", "ran((L(s₀, t) π₁))"),
     ("H", "(Q h(∋))"),
     ("C", "L(H, (Q t)°)"),

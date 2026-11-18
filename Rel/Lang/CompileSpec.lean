@@ -289,6 +289,9 @@ theorem compile_sound {A B : Obj} {d : Bool} (t : Tm A B d) (hg : t.gap = none) 
   | junc R S ihR ihS =>
     obtain ⟨hR, hS⟩ := gap_or hg
     exact Out.Sound.memo (Out.Sound.leaf (junc_sound (ihR hR η ρ hη).1 (ihS hS η ρ hη).1))
+  | foldr e S ihe ihS =>
+    obtain ⟨he, hS⟩ := gap_or hg
+    exact Out.Sound.memo (Out.Sound.leaf (foldr_sound (ihe he η ρ hη).1 (ihS hS η ρ hη).1))
   | fold e S ihe ihS =>
     obtain ⟨he, hS⟩ := gap_or hg
     exact Out.Sound.memo (Out.Sound.leaf (fold_sound (ihe he η ρ hη).1 (ihS hS η ρ hη).1))

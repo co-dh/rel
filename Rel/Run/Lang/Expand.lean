@@ -710,6 +710,7 @@ partial def node (pre : Name) (ρ : List (Nat × Lean.Expr)) {A B : Obj} {d : Bo
   | _, _, _, .arith k U => return g ``Gen.arith #[toExpr k, ← c U]
   | _, _, _, .leq U => return g ``Gen.leq #[← c U]
   | _, _, _, .lt U => return g ``Gen.lt #[← c U]
+  | .arr E, V, _, .foldr (d := d) e S => return g ``Gen.foldr #[oE E, oE V, bE d, ← c e, ← c S]
   | .arr E, V, _, .fold (d := d) e S => return g ``Gen.fold #[oE E, oE V, bE d, ← c e, ← c S]
   | _, _, _, .share _ R => c R
   | .prod I (.arr E), V, _, .foldI (d := d) (d' := d') e S =>

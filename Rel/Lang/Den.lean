@@ -105,48 +105,91 @@ abbrev arithDen (k : UInt8) (TU : Den .long .long) : Den (.prod .long .long) .lo
     ((𝟙 _ ∩ (graph Prod.snd ≫ TU) ≫ (graph Prod.snd ≫ TU)°) ≫ (stepDen k ≫ TU))
 
 /-- `fold(e, S)`: a chain of values `ys`, its last from `e`, each the step `S` of the element and the next value. -/
-abbrev foldDen {E V : Obj} (Te : Den V V) (TS : Den (.prod E V) V) : Den (.arr E) V :=
+abbrev foldrDen {E V : Obj} (Te : Den V V) (TS : Den (.prod E V) V) : Den (.arr E) V :=
   fun xs w => ∃ ys : List V.El, ∃ hy : ys.length = xs.length + 1,
     (∃ a, Te a (ys[xs.length]'(Nat.lt_of_lt_of_eq (Nat.lt_succ_self _) hy.symm))) ∧
     (∀ t (ht : t < xs.length), TS (xs[t]'ht, ys[t + 1]'(Nat.lt_of_lt_of_eq (Nat.succ_lt_succ ht) hy.symm))
       (ys[t]'(Nat.lt_of_lt_of_eq (Nat.lt_succ_of_lt ht) hy.symm))) ∧
     w = ys[0]'(Nat.lt_of_lt_of_eq (Nat.zero_lt_succ _) hy.symm)
 
-/-- `fold(e, S)` given a family: at the key `i`, the fold whose start is the fibre of `e` at `i` and whose step is
-    `S` at `i`, keeping the key. -/
-abbrev foldIDen {I E V : Obj} (Te : Den I (.prod V V)) (TS : Den (.prod E (.prod I V)) (.prod I V)) :
+/-- The left fold `⦇e, S⦈` over `[nil, snoc]`: a chain of values `ys`, its first from `e`, each the step `S` of the
+    value before and the element (`(acc, x)`, index 0 first), the result its last. -/
+abbrev foldDen {E V : Obj} (Te : Den V V) (TS : Den (.prod V E) V) : Den (.arr E) V :=
+  fun xs w => ∃ ys : List V.El, ∃ hy : ys.length = xs.length + 1,
+    (∃ a, Te a (ys[0]'(by omega))) ∧
+    (∀ t (ht : t < xs.length), TS (ys[t]'(by omega), xs[t]'ht) (ys[t + 1]'(by omega))) ∧
+    w = ys[xs.length]'(by omega)
+
+/-- The left fold read from the back: `foldlDen` on `xs` is the chain `rep_foldOnC` reads at `l` (`ordL`), the
+    right fold's chain on `xs.reverse`, the pair `(acc, x)` and `ys` reversed. -/
+theorem foldDen_rev {E V : Obj} (Te : Den V V) (TS : Den (.prod V E) V) (xs : List E.El) (w : V.El) :
+    foldDen Te TS xs w ↔ ∃ ys : List V.El, ∃ hy : ys.length = xs.reverse.length + 1,
+      (∃ a, Te a (ys[xs.reverse.length]'(by omega))) ∧
+      (∀ t (ht : t < xs.reverse.length), TS (ys[t + 1]'(by omega), xs.reverse[t]'ht) (ys[t]'(by omega))) ∧
+      w = ys[0]'(by omega) := by
+  -- `ys ↦ ys.reverse` both ways: chain position `s` of one is `|xs| - s` of the other
+  have rv : ∀ (zs : List V.El) (hz : zs.length = xs.length + 1) (i j : Nat) (hi : i < zs.reverse.length)
+      (hj : j < zs.length), j = xs.length - i → zs.reverse[i] = zs[j] := by
+    intro zs hz i j hi hj he; rw [List.getElem_reverse]; congr 1; simp only [List.length_reverse] at hi; omega
+  have rx : ∀ (i j : Nat) (hi : i < xs.reverse.length) (hj : j < xs.length), j = xs.length - 1 - i →
+      xs.reverse[i] = xs[j] := by
+    intro i j hi hj he; rw [List.getElem_reverse]; congr 1; simp only [List.length_reverse] at hi; omega
+  constructor
+  · rintro ⟨ys, hy, ⟨a, ha⟩, hS, rfl⟩
+    refine ⟨ys.reverse, by simp [hy], ⟨a, by rw [rv ys hy _ 0 _ (by omega) (by simp)]; exact ha⟩, fun t ht => ?_,
+      by rw [rv ys hy 0 xs.length _ (by omega) (by simp)]⟩
+    simp only [List.length_reverse] at ht
+    rw [rv ys hy (t + 1) (xs.length - 1 - t) _ (by omega) (by omega), rv ys hy t (xs.length - 1 - t + 1) _ (by omega)
+      (by omega), rx t (xs.length - 1 - t) _ (by omega) rfl]
+    exact hS _ (by omega)
+  · rintro ⟨ys, hy, ⟨a, ha⟩, hS, rfl⟩
+    simp only [List.length_reverse] at hy ha hS
+    refine ⟨ys.reverse, by simp [hy], ⟨a, ?_⟩, fun t ht => ?_, ?_⟩
+    · rw [rv ys hy 0 xs.length _ (by omega) (by simp)]; exact ha
+    · have h := hS (xs.length - 1 - t) (by omega)
+      rw [rx _ t _ ht (by omega)] at h
+      rw [rv ys hy t (xs.length - 1 - t + 1) _ (by omega) (by omega),
+        rv ys hy (t + 1) (xs.length - 1 - t) _ (by omega) (by omega)]
+      exact h
+    · rw [rv ys hy xs.length 0 _ (by omega) (by simp)]
+
+/-- `fold(e, S)` given a family: at the key `i`, the left fold whose start is the fibre of `e` at `i` and whose step
+    is `S` at `i`, keeping the key. -/
+abbrev foldIDen {I E V : Obj} (Te : Den I (.prod V V)) (TS : Den (.prod (.prod I V) E) (.prod I V)) :
     Den (.prod I (.arr E)) V :=
-  fun p w => foldDen (fun a b => Te p.1 (a, b)) (fun q v => TS (q.1, (p.1, q.2)) (p.1, v)) p.2 w
+  fun p w => foldDen (fun a b => Te p.1 (a, b)) (fun q v => TS ((p.1, q.1), q.2) (p.1, v)) p.2 w
 
 /-- `foldIDen` is one `foldDen` on the carrier `I×V`: start `ran⟨𝟙, Te ≫ π₂⟩`, step `TS` met with
-    `π₂ ≫ π₁ ≫ π₁°` (the step keeps the index), its result's index met with the key's, then `π₂`. -/
-theorem foldIDen_eq {I E V : Obj} (Te : Den I (.prod V V)) (TS : Den (.prod E (.prod I V)) (.prod I V)) :
+    `π₁ ≫ π₁ ≫ π₁°` (the step keeps the index), its result's index met with the key's, then `π₂`. -/
+theorem foldIDen_eq {I E V : Obj} (Te : Den I (.prod V V)) (TS : Den (.prod (.prod I V) E) (.prod I V)) :
     foldIDen Te TS =
       ((graph Prod.fst ≫ (graph Prod.fst)°) ∩
         (graph Prod.snd ≫ foldDen (E := E) (V := .prod I V)
           (𝟙 _ ∩ (rpair (𝟙 _) (Te ≫ graph Prod.snd))° ≫ (rpair (𝟙 _) (Te ≫ graph Prod.snd))°°)
-          (TS ∩ (graph Prod.snd ≫ graph Prod.fst ≫ (graph Prod.fst)°)))) ≫ graph Prod.snd := by
+          (TS ∩ (graph Prod.fst ≫ graph Prod.fst ≫ (graph Prod.fst)°)))) ≫ graph Prod.snd := by
   refine Core.Rel.ext fun p w => ?_
   simp only [foldIDen, foldDen, Core.Rel.comp, Core.Rel.inter, Core.Rel.recip, Core.Rel.graph, Core.Rel.rpair,
     Core.Rel.id]
   constructor
   · rintro ⟨ys, hy, ⟨a, ha⟩, hS, rfl⟩
-    refine ⟨(p.1, ys[0]), ⟨⟨_, rfl, rfl⟩, _, rfl, ys.map (p.1, ·), by simp [hy],
+    refine ⟨(p.1, ys[p.2.length]), ⟨⟨_, rfl, rfl⟩, _, rfl, ys.map (p.1, ·), by simp [hy],
       ⟨_, rfl, p.1, ⟨?_, _, ha, ?_⟩, ?_, _, ha, ?_⟩, fun t ht => ⟨?_, _, rfl, _, rfl, ?_⟩, ?_⟩, rfl⟩
     all_goals simp
     simpa using hS t (by simpa using ht)
   · rintro ⟨q, ⟨⟨i, rfl, hq⟩, xs, rfl, zs, hz, ⟨_, rfl, j, ⟨rfl, b, hb, hb2⟩, -, -⟩, hS, rfl⟩, rfl⟩
-    -- the step keeps the index, so every value of the chain carries the key's
-    have hidx : ∀ t (ht : t < zs.length), zs[t].1 = p.1 := by
+    -- the step keeps the index, so every value of the chain carries the seed's, which the result's is the key's
+    have hz0 : ∀ t (ht : t < zs.length), zs[t].1 = zs[0].1 := by
       intro t
       induction t with
-      | zero => intro _; exact hq.symm
+      | zero => intro _; rfl
       | succ t ih =>
         intro ht
         obtain ⟨-, _, rfl, _, rfl, he⟩ := hS t (by omega)
-        exact he.trans (ih (by omega))
+        exact he.symm.trans (ih (by omega))
+    have hidx : ∀ t (ht : t < zs.length), zs[t].1 = p.1 := fun t ht =>
+      (hz0 t ht).trans ((hz0 p.2.length (by omega)).symm.trans hq.symm)
     refine ⟨zs.map Prod.snd, by simp [hz], ⟨b.1, ?_⟩, fun t ht => ?_, by simp⟩
-    · have e := hidx p.2.length (by omega)
+    · have e := hidx 0 (by omega)
       simp only [List.getElem_map, hb2, ← e]
       exact hb
     · obtain ⟨h, -⟩ := hS t ht
@@ -155,6 +198,7 @@ theorem foldIDen_eq {I E V : Obj} (Te : Den I (.prod V V)) (TS : Den (.prod E (.
       simp only [List.getElem_map]
       rw [h1, h0]
       exact h
+
 
 /-- `Rᴵ`: the family `R : I ⟶ A×B` as one relation of the key and the source. -/
 abbrev flatDen {I A B : Obj} (T : Den I (.prod A B)) : Den (.prod I A) B := fun x b => T x.1 (x.2, b)
@@ -286,6 +330,7 @@ noncomputable def Tm.den : Val → {A B : Obj} → {d : Bool} → Tm A B d → D
   | ρ, _, _, _, .arith k U => arithDen k (U.den ρ)
   | ρ, _, _, _, .leq U => leqDen (U.den ρ)
   | ρ, _, _, _, .lt U => ltDen (U.den ρ)
+  | ρ, _, _, _, .foldr e S => foldrDen (e.den ρ) (S.den ρ)
   | ρ, _, _, _, .fold e S => foldDen (e.den ρ) (S.den ρ)
   | _, _, _, _, .share _ R => R.den Val.empty
   | ρ, _, _, _, .foldI e S => foldIDen (e.den ρ) (S.den ρ)
@@ -317,7 +362,7 @@ theorem Tm.den_congr : ∀ {A B : Obj} {d : Bool} (t : Tm A B d) (ρ ρ' : Val),
   | var k => intro ρ ρ' h; exact ⟨by simp only [Tm.den, h k (by simp [Tm.fv])], fun _ => rfl⟩
   | top V ih => intro ρ ρ' h; exact ⟨by simp only [Tm.den, (ih ρ ρ' fun i hi => h i (by simp [Tm.fv, hi])).1], fun _ => rfl⟩
   | comp R S ihR ihS | meet R S ihR ihS | join R S ihR ihS | diff R S ihR ihS | pair R S ihR ihS
-  | prod R S ihR ihS | junc R S ihR ihS | juncD R S ihR ihS | fold R S ihR ihS | foldI R S ihR ihS =>
+  | prod R S ihR ihS | junc R S ihR ihS | juncD R S ihR ihS | foldr R S ihR ihS | fold R S ihR ihS | foldI R S ihR ihS =>
     intro ρ ρ' h
     exact ⟨by simp only [Tm.den, (ihR ρ ρ' fun i hi => h i (by simp [Tm.fv, hi])).1,
       (ihS ρ ρ' fun i hi => h i (by simp [Tm.fv, hi])).1], fun _ => rfl⟩
@@ -547,12 +592,17 @@ theorem arith_le {k : UInt8} {U U' : Den .long .long} (hU : U ⊑ U') : arithDen
     (comp_le' (inter_le' (Core.Rel.le_refl _) (comp_le' (comp_le' (Core.Rel.le_refl _) hU)
       (conv_le' (comp_le' (Core.Rel.le_refl _) hU)))) (comp_le' (Core.Rel.le_refl _) hU))
 
-theorem fold_le {e e' : Den B B} {S S' : Den (.prod A B) B} (he : e ⊑ e') (hS : S ⊑ S') :
+theorem foldr_le {e e' : Den B B} {S S' : Den (.prod A B) B} (he : e ⊑ e') (hS : S ⊑ S') :
+    foldrDen e S ⊑ foldrDen e' S' :=
+  le_iff.2 fun _ _ ⟨ys, hy, ⟨a, ha⟩, hs, hw⟩ =>
+    ⟨ys, hy, ⟨a, le_iff.1 he _ _ ha⟩, fun t ht => le_iff.1 hS _ _ (hs t ht), hw⟩
+
+theorem fold_le {e e' : Den B B} {S S' : Den (.prod B A) B} (he : e ⊑ e') (hS : S ⊑ S') :
     foldDen e S ⊑ foldDen e' S' :=
   le_iff.2 fun _ _ ⟨ys, hy, ⟨a, ha⟩, hs, hw⟩ =>
     ⟨ys, hy, ⟨a, le_iff.1 he _ _ ha⟩, fun t ht => le_iff.1 hS _ _ (hs t ht), hw⟩
 
-theorem foldI_le {e e' : Den C (.prod B B)} {S S' : Den (.prod A (.prod C B)) (.prod C B)} (he : e ⊑ e')
+theorem foldI_le {e e' : Den C (.prod B B)} {S S' : Den (.prod (.prod C B) A) (.prod C B)} (he : e ⊑ e')
     (hS : S ⊑ S') : foldIDen e S ⊑ foldIDen e' S' :=
   le_iff.2 fun _ _ h => le_iff.1 (fold_le (le_iff.2 fun _ _ h => le_iff.1 he _ _ h)
     (le_iff.2 fun _ _ h => le_iff.1 hS _ _ h)) _ _ h
@@ -711,6 +761,9 @@ theorem Tm.den_pol (k : Nat) : ∀ {A B : Obj} {d : Bool} (t : Tm A B d) (s : Bo
   | leq U ih => intro s ρ ρ' hp g; exact sle.map1 leq_le (ih s ρ ρ' hp g)
   | lt U ih => intro s ρ ρ' hp g; exact sle.map1 lt_le (ih s ρ ρ' hp g)
   | flat R ih => intro s ρ ρ' hp g; exact sle.map1 flat_le (ih s ρ ρ' hp g)
+  | foldr e S ihe ihS =>
+    intro s ρ ρ' hp g; simp only [Tm.pol, Bool.and_eq_true] at hp
+    exact sle.map2 foldr_le (ihe s ρ ρ' hp.1 g) (ihS s ρ ρ' hp.2 g)
   | fold e S ihe ihS =>
     intro s ρ ρ' hp g; simp only [Tm.pol, Bool.and_eq_true] at hp
     exact sle.map2 fold_le (ihe s ρ ρ' hp.1 g) (ihS s ρ ρ' hp.2 g)
