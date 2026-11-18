@@ -123,24 +123,28 @@ def planOf (patch : Bool) (ks : Array Nat) (mn mx w : Nat) : Nat × Nat :=
     (frameAt ks mn d, d)
   else (mn, Rel.Column.widthFor (mx - mn))
 
+/-- Block `b` of `n` `w`-byte elements at blocks of `2 ^ lg`: `blockOf`'s extremes and sum, then `planOf`'s frame and
+width for its keys. -/
+def planBlock (lg w n : Nat) (patch : Bool) (x : ByteArray) (b : Nat) : Nat × Nat × UInt64 × Nat × Nat :=
+  let (mn, mx, s, _) := blockOf (2 ^ lg) w n b x
+  let lo := b * 2 ^ lg
+  let (f, d) := planOf patch ((Array.range (min (lo + 2 ^ lg) n - lo)).map fun j => keyAt w x (lo + j)) mn mx w
+  (mn, mx, s, f, d)
+
 /-- `encode` at blocks of `2 ^ lg` elements: the model every theorem about the encoder is stated
 over, at any `lg` the layout admits, `6 .. 16`. `encode` is this at `Column.lgEnc`.
 
 Block `b` is `blockOf`'s extremes and sum with `planOf`'s frame `f` and width `d`: an element whose key `outside`
 leaves is patched — its residual 0, its bits in the patch list `excBlob` lays after the residuals — and every other
 is its key less `f` at `d` bits. The patch list exists where a block patches, its frames (`f - mn` a block) where
-one is not its minimum; `rust/src/enc.rs`'s `for_blk` and `pack_exc_blk` write the same bytes. -/
+one is not its minimum; `rust/src/enc.rs`'s `for_blk` and `pack_exc_blk` write the same bytes. A column of `2 ^ 32`
+elements or more patches nothing: the list's block offsets are `u32`. -/
 def encodeAt (lg : Nat) (width : USize) (x : ByteArray) (patch : Bool := true) : ByteArray × ByteArray :=
   let w := width.toNat
   let n := x.size / w
-  let bs := (Array.range ((n + 2 ^ lg - 1) / 2 ^ lg)).map fun b =>
-    let (mn, mx, s, _) := blockOf (2 ^ lg) w n b x
-    let lo := b * 2 ^ lg
-    let (f, d) := planOf patch ((Array.range (min (lo + 2 ^ lg) n - lo)).map fun j => keyAt w x (lo + j)) mn mx w
-    (mn, mx, s, f, d)
-  let kept (i : Nat) := match bs[i / 2 ^ lg]? with
-    | some (_, _, _, f, d) => !outside f d (keyAt w x i)
-    | none => true
+  let blk := planBlock lg w n (patch && decide (n < 2 ^ 32)) x
+  let bs := (Array.range ((n + 2 ^ lg - 1) / 2 ^ lg)).map blk
+  let kept (i : Nat) := !outside (blk (i / 2 ^ lg)).2.2.2.1 (blk (i / 2 ^ lg)).2.2.2.2 (keyAt w x i)
   let pack := (bs.foldl (init := (ByteArray.empty, 0)) fun (acc, b) (_, _, _, f, d) =>
     let lo := b * 2 ^ lg
     (acc ++ packRes (2 ^ lg) d fun j =>
