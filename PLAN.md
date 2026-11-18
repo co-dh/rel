@@ -183,11 +183,18 @@ Size：S = 一步，少于 20 次 tool call；M = 一到三步；L = 多于三�
   `ffi/coc.rs` `val_vv`、`gather_enc`、`sort::order_enc`、`encode_scatter`），经 `Sink` 写出。等计划外的 foR B 合并。
 - ⬜ 6.11 删除旧 extern 与旧 constructor；保留 SIMD 编解码函数。
 - ⬜ 6.12 native gate。
-- ⬜ 6.13（未决，owner 经 dataframe 会话决定）虚拟行号 key：frame 的行号对象 `I` 只存 `n`，磁盘与内存都不物化；
-  `Tab` 的 key 增加一种"位置 0..n-1"，每个 kernel 把它当恒等（位置即循环下标）。不是 `Enc.gen`，也不退回 `til n` 数组。
-  估计涉及：`Rel.Tab.key`（index：45 个 module 中 556 处使用）改为两种 key 的类型；`scan`/`scatter`/`gather`/`asc`/`distinct`
-  的 Lean 签名、规格与 Rust 入口各加一条恒等 key 的路径；`Plan` 与 C emitter 发出这种 key；`Known.den`（3.3）与 `Reps`
-  的 key 读法。与 P3（`Rel` 类型）同改 `Tab`，排在 3.13 之后、6.10 迁移之前定设计。
+- ⬜ 6.13 虚拟行号（owner 经 dataframe 会话决定）：frame 的行号对象 `I` 只存 `n`，磁盘与内存都不物化；每个 kernel 把它
+  当恒等（位置即循环下标）。不是 `Enc.gen`，也不退回 `til n` 数组。设计 `/data/tmp/p613-design.md`，按规则定：
+  - 放在列上：`Enc.pos`，无 payload 的 constructor，`Enc.get .long n .pos i = some (.long i)`（DRY：列已有编码的概念；
+    放在 `Tab.key` 上则第一次取逆 `R°` 就要物化）。`Tab`、`rep`、`Reps` 不变，`Rel.Tab.key` 的 562 处使用不改。
+  - 只给 `i64`；只表示 `0…n-1`，不做 `a + s·i`（没有第二个实例之前不加抽象）。
+  - `WF` 在 6.10 去掉 `longsOf` 的可执行调用者之前为 `False`（不退回 `til n`）。
+  - 数据算出的下标 `scatter`：`kscatter` 检查每格恰写一次，出错时报出格号（不吞错）。
+  - 磁盘：`pos` 一侧没有文件，`n` 从另一侧读；两侧都是 `pos` 时 `output` 拒绝（内存即磁盘结构）。
+  - 结果的编码只由参数的编码决定，kernel 不因检测到恰为行号就返回 `pos`。
+  - 顺序：与 P3 无依赖。6.13a 在 6.10 开头（constructor、Lean 与 Rust 读取分支、定律、测试；改 `Value.lean`，全量重建，
+    一次提交进 master 后并入 `rel-lazy`）；6.13b 在 6.10 末尾（`WF := True`，删 `tilCol`，gate：def 中 0 个 `tilLongs`）；
+    6.13c `Plan` 与 C emitter，随 6.12。
 
 ### P7 Plan A — 0/4（串行）
 
