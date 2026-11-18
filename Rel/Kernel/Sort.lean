@@ -315,10 +315,10 @@ def groupIdsColumn (t : QAtomicType) (n : USize) (e : Ext.Enc X) : Option (ByteA
     match orderKind t with
     | none => none
     | some k =>
-      if k == .bit then none
-      else match e with
-        | .foR md pk => some (groupIdsFoR k n md pk)
-        | e => (Enc.bytesOf t n e).map fun b => groupIds k n b
+      match e with
+      -- a boolean `foR` is `u1`, every element 0 or 1, so its key is the `u8` one; `Kind.bit` reads only a bitmap
+      | .foR md pk => some (groupIdsFoR (if k == .bit then .u8 else k) n md pk)
+      | e => if k == .bit then none else (Enc.bytesOf t n e).map fun b => groupIds k n b
 
 end Rel.Kernel
 

@@ -514,7 +514,8 @@ narrowest residual width its range allows, so all a 64-bit block costs over dens
 and only the whole column's total against `n * w` says whether the narrow blocks paid that back. -/
 def answer (t : QAtomicType) (n : USize) (e : Ext.Enc X) : Ext.Enc X :=
   match t with
-  | .general => e
+  -- a boolean has no dense bytes to decode to: its bitmap or `u1` `foR` is kept as it is
+  | .general | .boolean => e
   | t => match t.width, e with
     | some w, .bytes b => if n < encodeMin then e else
     -- ALP first at a float, as on entry: a float answer encoded with `encode` alone stayed dense, so
