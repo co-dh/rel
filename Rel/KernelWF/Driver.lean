@@ -42,8 +42,14 @@ theorem dense_bits (w : Nat) (hw : w ≤ 8) (xs : Array UInt64) :
 /-- The raw elements of a boolean `bits` column are `0` or `1`. -/
 theorem raw_boolean_le (n : USize) (e : Enc) : ∀ v ∈ e.raw .boolean n, v ≤ 1 := by
   intro v hv
-  cases e <;> simp only [Enc.raw, Array.mem_map, Array.mem_range, Array.not_mem_empty] at hv
-  obtain ⟨i, -, rfl⟩ := hv; split <;> decide
+  cases e
+  case packed =>
+    simp only [Enc.raw] at hv; split at hv
+    · obtain ⟨x, -, rfl⟩ := Array.mem_map.1 hv
+      exact UInt64.le_iff_toNat_le.2 (by simp [UInt64.toNat_mod]; omega)
+    · simp at hv
+  all_goals simp only [Enc.raw, Array.mem_map, Array.mem_range, Array.not_mem_empty] at hv
+  all_goals obtain ⟨i, -, rfl⟩ := hv; split <;> decide
 
 /-- **The rule `Enc.raw` keeps**: an element of a `w`-byte type is below `2 ^ (8 * w)`, in every form. -/
 theorem raw_lt (t : QAtomicType) (w : Nat) (ht : t.width = some w) (n : USize) (e : Enc) :
@@ -63,6 +69,10 @@ theorem raw_lt (t : QAtomicType) (w : Nat) (ht : t.width = some w) (n : USize) (
     rw [Verify.raw_bytes t w ht hb] at hv; obtain ⟨i, -, rfl⟩ := Array.mem_map.1 hv; exact Verify.bitsAt_lt _ _ _ hw8
   | foR M P => rw [Verify.raw_foR t w ht hb] at hv; obtain ⟨i, -, rfl⟩ := Array.mem_map.1 hv; exact hmod _
   | alp M P a => rw [Verify.raw_alp t w ht hb] at hv; obtain ⟨i, -, rfl⟩ := Array.mem_map.1 hv; exact hmod _
+  | packed =>
+    simp only [Enc.raw] at hv; split at hv
+    · obtain ⟨x, -, rfl⟩ := Array.mem_map.1 hv; simp only [if_neg hb, ht]; exact hmod _
+    · simp at hv
   | _ => cases t <;> simp_all [Enc.raw, QAtomicType.width]
 
 /-- **The driver law**: `ofRaw t n xs` read back by `Enc.raw` at `t` is `xs`, each element below `2 ^ (8 * w)` — a

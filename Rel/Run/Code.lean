@@ -442,7 +442,7 @@ def codes {p : Nat} (t : QAtomicType) (cs : Vector ((n : USize) × Arr t n) p) :
   match hi : Column.intern x.2.enc with
   | .enum _ dof ids => (Code.ofLane (Column.idWidth dof) x.1 (dof.size - 1) ids).cut ns
   -- every other constructor by name, so `hi` refutes `groupIdsColumn`'s interned-dictionary premise
-  | .bytes _ | .bits _ | .syms .. | .foR .. | .alp .. | .gen _ =>
+  | .bytes _ | .bits _ | .syms .. | .foR .. | .alp .. | .gen _ | .packed .. =>
     -- at `bitsType t`: a float groups by its bits, not by q's key, which folds the NaNs and the zeros
     let (gid, fs) := (groupIdsColumn (KernelWF.bitsType t) x.1 x.2.enc).get
       (KernelWF.groupIdsColumn_bitsType_isSome hg x.2.wf fun _ _ _ he => nomatch hi.symm.trans he)

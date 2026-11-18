@@ -279,6 +279,13 @@ inductive Enc (X : Type)
 
   Last, so the constructor tags of the six before it are unchanged. -/
   | gen : Array (QValue X) → Enc X
+  /-- The one encoding the six above reduce to (`doc/rel-architecture.zh.typ`): blocks of `2 ^ lg` elements,
+  block `b` holding `base_b : UInt64` (LE, `bases[8b .. 8b+8)`) and `w_b = widths[b] ≤ 64`, its residuals
+  bit-packed at `w_b` from byte `Σ_{c<b} 2 ^ lg * w_c / 8` of `payload`, read by `Column.resAt`. Element `i`
+  is `base + residual` wrapping, in block `i >>> lg` at slot `i % 2 ^ lg`. `bits` is base 0 width 1, `enum`'s ids
+  width `⌈log2 card⌉`, a constant width 0; `unpack` is the decode and `packedErr` the layout it refuses.
+  After `gen`, so every earlier constructor tag is unchanged. -/
+  | packed : (lg : UInt8) → (bases widths payload : ByteArray) → Enc X
   deriving Inhabited
 
 end
@@ -668,6 +675,35 @@ structure SymsWF (b : ByteArray) (o : Array Nat) : Prop where
 namespace Ext.Enc
 open Column
 
+/-- Byte offset in a `packed` payload of each block's residuals, `nb + 1` entries: the prefix sum of
+`2 ^ lg * w_b / 8`, the same sum `Column.blockStarts` takes over `foR`'s widths. -/
+def packedStarts (lg : Nat) (widths : ByteArray) : Array Nat :=
+  widths.foldl (init := #[0]) fun s w => s.push (s.back?.getD 0 + 2 ^ lg * w.toNat / 8)
+
+/-- Why `bases widths payload` at `2 ^ lg` a block do not hold `n` elements, or `none` when they do. `3 ≤ lg`
+makes `2 ^ lg * w / 8` exact at every width, so each block starts on a byte; `lg ≤ 16` is `foR`'s cap. -/
+def packedErr (lg : UInt8) (bases widths payload : ByteArray) (n : Nat) : Option String :=
+  let nb := (n + 2 ^ lg.toNat - 1) / 2 ^ lg.toNat
+  let need := (packedStarts lg.toNat widths).back?.getD 0
+  if lg.toNat < 3 ∨ 16 < lg.toNat then some s!"packed: lg {lg} outside 3 .. 16"
+  else if widths.size ≠ nb then some s!"packed: {widths.size} widths for {nb} blocks of 2^{lg} at n = {n}"
+  else if bases.size ≠ 8 * nb then some s!"packed: {bases.size} base bytes for {nb} blocks, need {8 * nb}"
+  else match widths.toList.findIdx? (64 < ·.toNat) with
+    | some b => some s!"packed: block {b} has width {widths.toList[b]?.getD 0} > 64"
+    | none => if payload.size ≠ need then some s!"packed: payload {payload.size} bytes, widths need {need}"
+      else none
+
+/-- The `n` raw words a `packed` payload holds, or the layout error `packedErr` names. The decode
+`Enc.raw`'s `packed` arm is and `crate/src/pack.rs` implements. -/
+def unpack (lg : UInt8) (bases widths payload : ByteArray) (n : Nat) : Except String (Array UInt64) :=
+  match packedErr lg bases widths payload n with
+  | some e => .error e
+  | none =>
+    let s := packedStarts lg.toNat widths
+    -- `b < nb` by `packedErr`, so the two `getD` never answer
+    .ok <| (Array.range n).map fun i => let b := i / 2 ^ lg.toNat
+      bitsAt bases (8 * b) 8 + resAt payload (s[b]?.getD 0) (widths[b]?.getD 0).toNat (i % 2 ^ lg.toNat)
+
 /-- What the header promises about the payload: the layout is one `t` has, and it holds exactly `n`
 elements. The conditions `count`, `admit` and `mismatch` used to encode between them, stated once;
 every reader trusts the header, so a vector that fails this is a bug where it was built. Booleans are
@@ -693,6 +729,9 @@ def WF (t : QAtomicType) (n : USize) (e : Ext.Enc X) : Prop :=
     t.width.isSome ∧ t ≠ .boolean ∧ n.toNat ≤ blk metadata * nblk metadata ∧ lgOk metadata
   | t, .alp metadata _ a =>
     (t = .real ∨ t = .float ∨ t = .datetime) ∧ n.toNat ≤ blk metadata * nblk metadata ∧ lgOk metadata ∧ alpF32 a = (t.width == some 4)
+  -- no kernel reads `packed` yet (6.4 .. 6.11), and `WF` is what every kernel theorem trusts; its layout is
+  -- `packedErr = none`, which `unpack` reports, and becomes this arm when the kernels read it
+  | _, .packed .. => False
   | _, _ => False
 
 /-- `atoms`' fixed-width branches before `atomOfBits`: the raw bits of each element, a boolean's as `0`/`1` and an
@@ -719,6 +758,13 @@ def raw (t : QAtomicType) (n : USize) (e : Ext.Enc X) : Array UInt64 :=
     | none => #[]
   | .boolean, .bits b => (Array.range n.toNat).map fun i => if bitAt b i then 1 else 0
   | .symbol, .enum _ offs ids => (Array.range n.toNat).map fun i => (idAt ids (idWidth offs) i).toUInt64
+  -- a boolean word is its low bit, as `bits` reads one; the `.error` arm is outside `WF` (`packedErr = none`),
+  -- and `unpack` is what reports it
+  | t, .packed lg bases widths payload => match unpack lg bases widths payload n.toNat with
+    | .ok a => a.map fun v => if t = .boolean then v % 2 else match t.width with
+      | some w => UInt64.ofNat (v.toNat % 2 ^ (8 * w))
+      | none => v
+    | .error _ => #[]
   | _, _ => #[]
 
 end Ext.Enc

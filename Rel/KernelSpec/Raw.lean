@@ -53,7 +53,7 @@ open Rel Rel.Column
 
 theorem size_raw {t : QAtomicType} (n : USize) (e : Ext.Enc X) (hw : Enc.WF t n e) (hb : t ≠ .boolean)
     (hs : t ≠ .symbol) (hn : t ≠ .general) : (Enc.raw t n e).size = n.toNat := by
-  cases e <;> cases t <;> simp_all [Enc.raw, Enc.WF, QAtomicType.width]
+  cases e <;> cases t <;> simp_all [Enc.raw, Enc.WF, QAtomicType.width, Enc.unpack]
 
 /-- `atomOfBits` at a type of width `w` reads only the low `8 * w` bits. -/
 theorem atomOfBits_mod {t : QAtomicType} {w : Nat} (ht : t.width = some w) (hb : t ≠ .boolean)
