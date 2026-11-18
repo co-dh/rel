@@ -42,7 +42,11 @@ def gatherWords (is es : Array UInt64) : Except String (Array UInt64) :=
 
 /-- `gather` of `m` indices `ix` into `n` words `e`, both `foR`: `gatherWords` of their words (`foRWords`), encoded
 as `foR` by `Coc.encodeAt` at `lgEnc` over 8-byte elements, caches included. The first error in the order `ix`, `e`,
-the indices is the answer. -/
+the indices is the answer.
+
+The Rust (`crate/src/gather.rs`) reads `e` by address on the encoded column, and decodes the source once when
+#idx ≥ #src and the source is not flat (approved 2026-11-18: the decode is O(n) ≤ the O(m) output, and a flat column
+already reads in one load). -/
 @[extern "qlean_k_gather"]
 def kgather (m : USize) (ix : @& Enc) (n : USize) (e : @& Enc) : Except String Enc := do
   wordsFoR <$> gatherWords (← foRWords "gather: ix" m ix) (← foRWords "gather: e" n e)
