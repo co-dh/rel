@@ -29,12 +29,16 @@ theorem CodeEnv.Sound.bind {η : CodeEnv} {ρ : Val} (hη : η.Sound ρ) (k : Na
 theorem mu_sound {A B : Obj} {cap : Nat} {φ : CRel A B → Fn false A B} {Φ : Den A B → Den A B}
     (hΦ : Monotonic Φ) (h : ∀ X : CRel A B, X.ok = true → Sound (φ X) (Φ (rep X.rel))) :
     Sound (Gen.mu A B cap φ) (Core.Rel.mu Φ) := fun ⟨⟩ _ hb x y _ => by
-  simp only [Gen.mu, also, Bool.and_eq_true, decide_eq_true_eq] at hb ⊢
-  obtain ⟨j, -, hj, -, hfix, hleast, -⟩ := CRel.rep_fixOn cap (fun X => φ X ()) ⟨Alg.zero, true⟩ Φ hb.2
-    (fun D hD => (h ⟨D, true⟩ rfl).eq hD) hΦ (Or.inl (le_iff.2 fun a b h => by rw [rep_zero] at h; exact h.elim))
-  have hfx := hfix (hj ▸ hb.1)
+  simp only [Gen.mu] at hb ⊢
+  obtain ⟨⟨hlt, hok⟩, e⟩ := also_ok_rel hb
+  rw [e]
+  obtain ⟨j, -, hj, -, hfix, hleast, -⟩ := CRel.rep_fixOn cap (fun X => φ X ()) (some Alg.zero) Φ hok
+    (fun D hD => (h (some D) rfl).eq hD) hΦ
+    (Or.inl (le_iff.2 fun a b h => by rw [CRel.some_rel, rep_zero] at h; exact h.elim))
+  have hfx := hfix (hj ▸ of_decide_eq_true hlt)
   have e := Core.Rel.le_antisymm
-    (hleast _ (le_iff.2 fun a b h => by rw [rep_zero] at h; exact h.elim) (mu_prefixed hΦ)) (mu_le (by rw [hfx]; exact Core.Rel.le_refl _))
+    (hleast _ (le_iff.2 fun a b h => by rw [CRel.some_rel, rep_zero] at h; exact h.elim) (mu_prefixed hΦ))
+    (mu_le (by rw [hfx]; exact Core.Rel.le_refl _))
   rw [e]
 
 /-- `νX : S ∩ φ` by rounds from `S` down, each met with `S`: the greatest fixed point of `X ↦ ⟦S⟧ ∩ Φ X` for a
@@ -56,10 +60,10 @@ theorem nu_sound {A B : Obj} {S : Fn false A B} {TS : Den A B} {φ : CRel A B �
     cases i with
     | zero => exact Core.Rel.le_refl _
     | succ i => show TS ∩ Φ _ ⊑ _; rw [hX]; exact hle _
-  have hφ : ∀ D, (CRel.inter (S ()) (φ ⟨D, true⟩ ())).ok = true →
-      rep (CRel.inter (S ()) (φ ⟨D, true⟩ ())).rel = TS ∩ Φ (rep D) := fun D hD => by
-    have h2 := ok_and hD; rw [Bool.and_eq_true] at h2
-    rw [CRel.rep_inter _ _ hD, hX, (h ⟨D, true⟩ rfl).eq h2.2]
+  have hφ : ∀ D, (CRel.inter (S ()) (φ (some D) ())).ok = true →
+      rep (CRel.inter (S ()) (φ (some D) ())).rel = TS ∩ Φ (rep D) := fun D hD => by
+    have h2 := CRel.guard_ok_left hD; rw [Bool.and_eq_true] at h2
+    rw [CRel.rep_inter _ _ hD, hX, (h (some D) rfl).eq h2.2, CRel.some_rel]
   obtain ⟨j, -, hj, hr, hfix, -, hcnt⟩ := CRel.rep_fixOn _ (fun X => CRel.inter (S ()) (φ X ())) (S ())
     (fun X => TS ∩ Φ X) hb hφ hΨ (Or.inr (hX ▸ hle _))
   have hfx := hfix (hcnt _ hit (by omega))
@@ -74,21 +78,25 @@ theorem nu_sound {A B : Obj} {S : Fn false A B} {TS : Den A B} {φ : CRel A B �
 /-- `flat(R)`: `(i, a)` to `b` where `R` relates `i` to `(a, b)`, `R` run on the `i` in demand. -/
 theorem flat_sound {I A B : Obj} {d : Bool} {R : Fn d I (.prod A B)} {TR : Den I (.prod A B)} (hR : Sound R TR) :
     Sound (flat I A B d R) (flatDen TR) := fun D hD hb x b hx => by
-  simp only [flat, also, Bool.and_eq_true] at hb ⊢
-  obtain ⟨hro, hc⟩ := hb
-  have h1 := ok_and hc; rw [Bool.and_eq_true] at h1
-  have h2 := ok_and h1.2; rw [Bool.and_eq_true] at h2
-  have h3 := ok_and h2.1; rw [Bool.and_eq_true] at h3
+  simp only [flat] at hb ⊢
+  obtain ⟨⟨hro, hc⟩, e⟩ := also_ok_rel hb
+  rw [e]
+  have h1 := CRel.guard_ok_left hc; rw [Bool.and_eq_true] at h1
+  have h2 := CRel.guard_ok_left h1.2; rw [Bool.and_eq_true] at h2
+  obtain ⟨hp, ep⟩ := CRel.mk_ok_rel h2.1
+  obtain ⟨hu, eu⟩ := CRel.mk_ok_rel h2.2
+  have h3 := CRel.guard_ok_left hp; rw [Bool.and_eq_true] at h3
+  obtain ⟨hr, er⟩ := CRel.mk_ok_rel h3.1
+  obtain ⟨-, el⟩ := CRel.mk_ok_rel h3.2
   have hK := (CRel.rep_ofC hro).trans (rep_ranC (Alg.outl D) (CRel.ofC_ok hro).1)
   have hRk : ∀ i v, rep (CRel.ofC (ranC (Alg.outl D))).rel i i →
       (rep (R (Dem.of d (CRel.ofC (ranC (Alg.outl D))).rel)).rel i v ↔ TR i v) :=
-    fun i v h => atKeys hR _ (fun a b h => by rw [hK] at h; exact h.1) h3.1 i v h
+    fun i v h => atKeys hR _ (fun a b h => by rw [hK] at h; exact h.1) hr i v h
   have hi : rep (CRel.ofC (ranC (Alg.outl D))).rel x.1 x.1 := by
     have ho : rep (Alg.outl D) x x.1 := by rw [rep_outl]; exact ⟨x, hx, rfl⟩
     rw [hK]; exact ⟨rfl, x, ho, ho⟩
-  dsimp only at h1 h2 h3 ⊢
-  rw [CRel.rep_comp _ _ hc, CRel.rep_comp _ _ h1.2, rep_conv, CRel.rep_pair _ _ h2.1, rep_conv, rep_outl, rep_outr,
-    CRel.rep_ran _ h3.2]
+  rw [CRel.rep_comp _ _ hc, CRel.rep_comp _ _ h1.2, ep, eu, rep_conv, CRel.rep_pair _ _ hp, er, el, rep_conv,
+    rep_outl, rep_outr, CRel.rep_ran _ hu]
   constructor
   · rintro ⟨x', hd, q, ⟨hr, z, ⟨e1, -⟩, ez⟩, z', ⟨e2, -⟩, ez'⟩
     obtain rfl := hD x x' hd
@@ -102,8 +110,8 @@ theorem flat_sound {I A B : Obj} {d : Bool} {R : Fn d I (.prod A B)} {TR : Den I
 
 /-- `F` read at the nodes `U` (`onNodes`): at a value of `U`, what `F` computes there. -/
 theorem onNodes_sound {A B : Obj} {d : Bool} {F : Fn d A B} {T : Den A B} {m : USize} (hF : Sound F T)
-    (U : Vals A m) (hok : (onNodes d F ⟨idU U, true⟩).ok = true) (a : A.El) (ha : ∃ i, U.row i = a) (c : B.El) :
-    rep (onNodes d F ⟨idU U, true⟩).rel a c ↔ T a c := by
+    (U : Vals A m) (hok : (onNodes d F (some (idU U))).ok = true) (a : A.El) (ha : ∃ i, U.row i = a) (c : B.El) :
+    rep (onNodes d F (some (idU U))).rel a c ↔ T a c := by
   have hk : rep (idU U) a a := by rw [rep_idU]; exact ⟨rfl, ha⟩
   have hc : ∀ x y, rep (idU U) x y → x = y := fun x y h => by rw [rep_idU] at h; exact h.1
   have h0 : ((idU U).n == 0) = false := by
@@ -113,22 +121,24 @@ theorem onNodes_sound {A B : Obj} {d : Bool} {F : Fn d A B} {T : Den A B} {m : U
     · have : (idU U).n.toNat = 0 := by simp [beq_iff_eq.1 h]
       exact absurd j.2 (by omega)
   cases d
-  · simp only [onNodes, h0, Bool.false_eq_true, if_false] at hok ⊢
-    have hf := ok_and hok; rw [Bool.and_eq_true] at hf
+  · simp only [onNodes, CRel.some_rel, h0, Bool.false_eq_true, if_false] at hok ⊢
+    have hf := CRel.guard_ok_left hok; rw [Bool.and_eq_true] at hf
     rw [CRel.rep_comp _ _ hok, hF.eq hf.2]
     exact ⟨fun ⟨w, h1, h2⟩ => hc a w h1 ▸ h2, fun h => ⟨a, hk, h⟩⟩
-  · simp only [onNodes, h0, Bool.false_eq_true, if_false, also, Bool.true_and] at hok ⊢
-    exact hF (idU U) hc hok a c hk
+  · simp only [onNodes, CRel.some_rel, h0, Bool.false_eq_true, if_false] at hok ⊢
+    obtain ⟨⟨-, hok⟩, e⟩ := also_ok_rel hok
+    rw [e]; exact hF (idU U) hc hok a c hk
 
 /-- `[R,S]` on the sum values in demand (`juncD`): each side's part run on that side's values; the scan's bit
     excludes a demand row that names a side with no values (D7 = P). -/
 theorem juncD_sound {A B C : Obj} {d e : Bool} {R : Fn d A C} {S : Fn e B C} {TR : Den A C} {TS : Den B C}
     (hR : Sound R TR) (hS : Sound S TS) : Sound (juncD A B C d e R S) (Core.Rel.junc TR TS) := by
   rintro ⟨n, key, l, r, tag, idx, xv, yv⟩ hD hb x z hx
-  obtain ⟨hscan, hc⟩ := (Bool.and_eq_true _ _).mp hb
-  show rep (CRel.comp _ _).rel x z ↔ _
-  have h1 := ok_and hc; rw [Bool.and_eq_true] at h1
-  have h2 := ok_and h1.2; rw [Bool.and_eq_true] at h2
+  simp only [juncD] at hb ⊢
+  obtain ⟨⟨hscan, hc⟩, e⟩ := also_ok_rel hb
+  rw [e]
+  have h1 := CRel.guard_ok_left hc; rw [Bool.and_eq_true] at h1
+  have h2 := CRel.guard_ok_left h1.2; rw [Bool.and_eq_true] at h2
   rw [CRel.rep_comp _ _ hc, CRel.rep_junc _ _ h1.2]
   have hx' : rep _ x x := hx
   refine (show (∃ w, _ ∧ _) ↔ _ from ⟨fun ⟨w, h, j⟩ => (hD x w h) ▸ j, fun j => ⟨x, hx', j⟩⟩).trans ?_

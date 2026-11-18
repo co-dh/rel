@@ -324,13 +324,13 @@ theorem rep_rightDiv {ma mb : USize} (R : CRel C A) (S : CRel B A) (Ua : Vals C 
 theorem rep_antiJoin (R : CRel A B) (T : CRel B B) (hb : (R.antiJoin T).ok = true) :
     rep (R.antiJoin T).rel = rep R.rel ≫ corefl (α := B.El) fun b => ¬ ∃ y, rep T.rel y b := by
   have e : R.antiJoin T = _ := guard_eq ok hb; rw [e] at hb ⊢
-  obtain ⟨h, e'⟩ := mk_ok_rel (r := antiJoinC R.rel T.rel) hb; rw [e']; exact rep_antiJoinC R.rel T.rel h
+  obtain ⟨h, e'⟩ := mk_ok_rel hb; rw [e']; exact rep_antiJoinC R.rel T.rel h
 
 /-- **`CRel.antiJoin` is canonical where `R` is**: `canon_antiJoinC`. -/
 theorem canon_antiJoin (R : CRel A B) (T : CRel B B) (hb : (R.antiJoin T).ok = true) (hR : R.rel.Canon) :
     (R.antiJoin T).rel.Canon := by
   have e : R.antiJoin T = _ := guard_eq ok hb; rw [e] at hb ⊢
-  obtain ⟨h, e'⟩ := mk_ok_rel (r := antiJoinC R.rel T.rel) hb; rw [e']; exact canon_antiJoinC R.rel T.rel h hR
+  obtain ⟨h, e'⟩ := mk_ok_rel hb; rw [e']; exact canon_antiJoinC R.rel T.rel h hR
 
 theorem rep_top {ma mb : USize} (Ua : Vals A ma) (Ub : Vals B mb) (hb : (top Ua Ub).ok = true) :
     rep (top Ua Ub).rel = corefl (α := A.El) (fun a => ∃ i, Ua.row i = a) ≫

@@ -57,7 +57,12 @@ def ofC (r : Tab A B × Bool) : CRel A B := let c := canonC r.1; mk c.1 (r.2 && 
 
 /-- Runs the op `k` only where its inputs' bits `b` are all set; otherwise stops at `default` (`none` for a `CRel`)
     without running it, since an op on a bad input answers nothing worth its cost. -/
-def guard {α : Type} [Inhabited α] (b : Bool) (k : Unit → α) : α := if b then k () else default
+@[irreducible] def guard {α : Type} [Inhabited α] (b : Bool) (k : Unit → α) : α := if b then k () else default
+
+/- `guard` is read through these two: unfolded, `(guard ?b ?k).ok` meets an op's `.ok` as a stuck `if` on `?b`
+   before the op itself is unfolded, so `guard_ok_left hb` would not elaborate on `hb : (op …).ok = true`. -/
+theorem guard_true {α : Type} [Inhabited α] (k : Unit → α) : guard true k = k () := by unfold guard; rfl
+theorem guard_false {α : Type} [Inhabited α] (k : Unit → α) : guard false k = default := by unfold guard; rfl
 
 /-- `R ≫ S`, ok where both inputs are and `compC` ran within capacity. -/
 def comp (R : CRel A B) (S : CRel B C) : CRel A C := guard (R.ok && S.ok) fun _ => ofC (compC R.rel S.rel)

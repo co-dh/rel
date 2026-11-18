@@ -623,13 +623,13 @@ theorem rep_subseq {B : Obj} {n : USize} (X : Vals (.arr B) n)
 theorem rep_diff {A B : Obj} (R S : CRel A B) (hb : (diff R S).ok = true) (a : A.El) (b : B.El) :
     rep (diff R S).rel a b ↔ rep R.rel a b ∧ ¬ rep S.rel a b := by
   have e : diff R S = _ := guard_eq ok hb; rw [e] at hb ⊢
-  obtain ⟨h, e'⟩ := mk_ok_rel (r := diffC R.rel S.rel) hb; rw [e']; exact rep_diffC R.rel S.rel h a b
+  obtain ⟨h, e'⟩ := mk_ok_rel hb; rw [e']; exact rep_diffC R.rel S.rel h a b
 
 /-- **`CRel.diff` is canonical where `R` is**: `canon_diffC`. -/
 theorem canon_diff {A B : Obj} (R S : CRel A B) (hb : (diff R S).ok = true) (hR : R.rel.Canon) :
     (diff R S).rel.Canon := by
   have e : diff R S = _ := guard_eq ok hb; rw [e] at hb ⊢
-  obtain ⟨h, e'⟩ := mk_ok_rel (r := diffC R.rel S.rel) hb; rw [e']; exact canon_diffC R.rel S.rel h hR
+  obtain ⟨h, e'⟩ := mk_ok_rel hb; rw [e']; exact canon_diffC R.rel S.rel h hR
 
 end CRel
 
