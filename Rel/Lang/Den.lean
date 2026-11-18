@@ -105,7 +105,7 @@ abbrev arithDen (k : UInt8) (TU : Den .long .long) : Den (.prod .long .long) .lo
     ((𝟙 _ ∩ (graph Prod.snd ≫ TU) ≫ (graph Prod.snd ≫ TU)°) ≫ (stepDen k ≫ TU))
 
 /-- `fold(e, S)`: a chain of values `ys`, its last from `e`, each the step `S` of the element and the next value. -/
-abbrev foldDen {E V : Obj} (Te : Den V V) (TS : Den (.prod E V) V) : Den (.arr E) V :=
+abbrev foldrDen {E V : Obj} (Te : Den V V) (TS : Den (.prod E V) V) : Den (.arr E) V :=
   fun xs w => ∃ ys : List V.El, ∃ hy : ys.length = xs.length + 1,
     (∃ a, Te a (ys[xs.length]'(Nat.lt_of_lt_of_eq (Nat.lt_succ_self _) hy.symm))) ∧
     (∀ t (ht : t < xs.length), TS (xs[t]'ht, ys[t + 1]'(Nat.lt_of_lt_of_eq (Nat.succ_lt_succ ht) hy.symm))
@@ -114,7 +114,7 @@ abbrev foldDen {E V : Obj} (Te : Den V V) (TS : Den (.prod E V) V) : Den (.arr E
 
 /-- The left fold `⦇e, S⦈` over `[nil, snoc]`: a chain of values `ys`, its first from `e`, each the step `S` of the
     value before and the element (`(acc, x)`, index 0 first), the result its last. -/
-abbrev foldlDen {E V : Obj} (Te : Den V V) (TS : Den (.prod V E) V) : Den (.arr E) V :=
+abbrev foldDen {E V : Obj} (Te : Den V V) (TS : Den (.prod V E) V) : Den (.arr E) V :=
   fun xs w => ∃ ys : List V.El, ∃ hy : ys.length = xs.length + 1,
     (∃ a, Te a (ys[0]'(by omega))) ∧
     (∀ t (ht : t < xs.length), TS (ys[t]'(by omega), xs[t]'ht) (ys[t + 1]'(by omega))) ∧
@@ -122,8 +122,8 @@ abbrev foldlDen {E V : Obj} (Te : Den V V) (TS : Den (.prod V E) V) : Den (.arr 
 
 /-- The left fold read from the back: `foldlDen` on `xs` is the chain `rep_foldOnC` reads at `l` (`ordL`), the
     right fold's chain on `xs.reverse`, the pair `(acc, x)` and `ys` reversed. -/
-theorem foldlDen_rev {E V : Obj} (Te : Den V V) (TS : Den (.prod V E) V) (xs : List E.El) (w : V.El) :
-    foldlDen Te TS xs w ↔ ∃ ys : List V.El, ∃ hy : ys.length = xs.reverse.length + 1,
+theorem foldDen_rev {E V : Obj} (Te : Den V V) (TS : Den (.prod V E) V) (xs : List E.El) (w : V.El) :
+    foldDen Te TS xs w ↔ ∃ ys : List V.El, ∃ hy : ys.length = xs.reverse.length + 1,
       (∃ a, Te a (ys[xs.reverse.length]'(by omega))) ∧
       (∀ t (ht : t < xs.reverse.length), TS (ys[t + 1]'(by omega), xs.reverse[t]'ht) (ys[t]'(by omega))) ∧
       w = ys[0]'(by omega) := by
@@ -157,18 +157,18 @@ theorem foldlDen_rev {E V : Obj} (Te : Den V V) (TS : Den (.prod V E) V) (xs : L
     `S` at `i`, keeping the key. -/
 abbrev foldIDen {I E V : Obj} (Te : Den I (.prod V V)) (TS : Den (.prod E (.prod I V)) (.prod I V)) :
     Den (.prod I (.arr E)) V :=
-  fun p w => foldDen (fun a b => Te p.1 (a, b)) (fun q v => TS (q.1, (p.1, q.2)) (p.1, v)) p.2 w
+  fun p w => foldrDen (fun a b => Te p.1 (a, b)) (fun q v => TS (q.1, (p.1, q.2)) (p.1, v)) p.2 w
 
 /-- `foldIDen` is one `foldDen` on the carrier `I×V`: start `ran⟨𝟙, Te ≫ π₂⟩`, step `TS` met with
     `π₂ ≫ π₁ ≫ π₁°` (the step keeps the index), its result's index met with the key's, then `π₂`. -/
 theorem foldIDen_eq {I E V : Obj} (Te : Den I (.prod V V)) (TS : Den (.prod E (.prod I V)) (.prod I V)) :
     foldIDen Te TS =
       ((graph Prod.fst ≫ (graph Prod.fst)°) ∩
-        (graph Prod.snd ≫ foldDen (E := E) (V := .prod I V)
+        (graph Prod.snd ≫ foldrDen (E := E) (V := .prod I V)
           (𝟙 _ ∩ (rpair (𝟙 _) (Te ≫ graph Prod.snd))° ≫ (rpair (𝟙 _) (Te ≫ graph Prod.snd))°°)
           (TS ∩ (graph Prod.snd ≫ graph Prod.fst ≫ (graph Prod.fst)°)))) ≫ graph Prod.snd := by
   refine Core.Rel.ext fun p w => ?_
-  simp only [foldIDen, foldDen, Core.Rel.comp, Core.Rel.inter, Core.Rel.recip, Core.Rel.graph, Core.Rel.rpair,
+  simp only [foldIDen, foldrDen, Core.Rel.comp, Core.Rel.inter, Core.Rel.recip, Core.Rel.graph, Core.Rel.rpair,
     Core.Rel.id]
   constructor
   · rintro ⟨ys, hy, ⟨a, ha⟩, hS, rfl⟩
@@ -327,7 +327,7 @@ noncomputable def Tm.den : Val → {A B : Obj} → {d : Bool} → Tm A B d → D
   | ρ, _, _, _, .arith k U => arithDen k (U.den ρ)
   | ρ, _, _, _, .leq U => leqDen (U.den ρ)
   | ρ, _, _, _, .lt U => ltDen (U.den ρ)
-  | ρ, _, _, _, .fold e S => foldDen (e.den ρ) (S.den ρ)
+  | ρ, _, _, _, .foldr e S => foldrDen (e.den ρ) (S.den ρ)
   | _, _, _, _, .share _ R => R.den Val.empty
   | ρ, _, _, _, .foldI e S => foldIDen (e.den ρ) (S.den ρ)
   | ρ, _, _, _, .flat R => flatDen (R.den ρ)
@@ -358,7 +358,7 @@ theorem Tm.den_congr : ∀ {A B : Obj} {d : Bool} (t : Tm A B d) (ρ ρ' : Val),
   | var k => intro ρ ρ' h; exact ⟨by simp only [Tm.den, h k (by simp [Tm.fv])], fun _ => rfl⟩
   | top V ih => intro ρ ρ' h; exact ⟨by simp only [Tm.den, (ih ρ ρ' fun i hi => h i (by simp [Tm.fv, hi])).1], fun _ => rfl⟩
   | comp R S ihR ihS | meet R S ihR ihS | join R S ihR ihS | diff R S ihR ihS | pair R S ihR ihS
-  | prod R S ihR ihS | junc R S ihR ihS | juncD R S ihR ihS | fold R S ihR ihS | foldI R S ihR ihS =>
+  | prod R S ihR ihS | junc R S ihR ihS | juncD R S ihR ihS | foldr R S ihR ihS | foldI R S ihR ihS =>
     intro ρ ρ' h
     exact ⟨by simp only [Tm.den, (ihR ρ ρ' fun i hi => h i (by simp [Tm.fv, hi])).1,
       (ihS ρ ρ' fun i hi => h i (by simp [Tm.fv, hi])).1], fun _ => rfl⟩
@@ -588,14 +588,14 @@ theorem arith_le {k : UInt8} {U U' : Den .long .long} (hU : U ⊑ U') : arithDen
     (comp_le' (inter_le' (Core.Rel.le_refl _) (comp_le' (comp_le' (Core.Rel.le_refl _) hU)
       (conv_le' (comp_le' (Core.Rel.le_refl _) hU)))) (comp_le' (Core.Rel.le_refl _) hU))
 
-theorem fold_le {e e' : Den B B} {S S' : Den (.prod A B) B} (he : e ⊑ e') (hS : S ⊑ S') :
-    foldDen e S ⊑ foldDen e' S' :=
+theorem foldr_le {e e' : Den B B} {S S' : Den (.prod A B) B} (he : e ⊑ e') (hS : S ⊑ S') :
+    foldrDen e S ⊑ foldrDen e' S' :=
   le_iff.2 fun _ _ ⟨ys, hy, ⟨a, ha⟩, hs, hw⟩ =>
     ⟨ys, hy, ⟨a, le_iff.1 he _ _ ha⟩, fun t ht => le_iff.1 hS _ _ (hs t ht), hw⟩
 
 theorem foldI_le {e e' : Den C (.prod B B)} {S S' : Den (.prod A (.prod C B)) (.prod C B)} (he : e ⊑ e')
     (hS : S ⊑ S') : foldIDen e S ⊑ foldIDen e' S' :=
-  le_iff.2 fun _ _ h => le_iff.1 (fold_le (le_iff.2 fun _ _ h => le_iff.1 he _ _ h)
+  le_iff.2 fun _ _ h => le_iff.1 (foldr_le (le_iff.2 fun _ _ h => le_iff.1 he _ _ h)
     (le_iff.2 fun _ _ h => le_iff.1 hS _ _ h)) _ _ h
 
 theorem flat_le {T T' : Den C (.prod A B)} (hT : T ⊑ T') : flatDen T ⊑ flatDen T' :=
@@ -752,9 +752,9 @@ theorem Tm.den_pol (k : Nat) : ∀ {A B : Obj} {d : Bool} (t : Tm A B d) (s : Bo
   | leq U ih => intro s ρ ρ' hp g; exact sle.map1 leq_le (ih s ρ ρ' hp g)
   | lt U ih => intro s ρ ρ' hp g; exact sle.map1 lt_le (ih s ρ ρ' hp g)
   | flat R ih => intro s ρ ρ' hp g; exact sle.map1 flat_le (ih s ρ ρ' hp g)
-  | fold e S ihe ihS =>
+  | foldr e S ihe ihS =>
     intro s ρ ρ' hp g; simp only [Tm.pol, Bool.and_eq_true] at hp
-    exact sle.map2 fold_le (ihe s ρ ρ' hp.1 g) (ihS s ρ ρ' hp.2 g)
+    exact sle.map2 foldr_le (ihe s ρ ρ' hp.1 g) (ihS s ρ ρ' hp.2 g)
   | foldI e S ihe ihS =>
     intro s ρ ρ' hp g; simp only [Tm.pol, Bool.and_eq_true] at hp
     exact sle.map2 foldI_le (ihe s ρ ρ' hp.1 g) (ihS s ρ ρ' hp.2 g)

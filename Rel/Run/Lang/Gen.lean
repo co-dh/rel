@@ -188,12 +188,12 @@ def arith (k : UInt8) (U : Fn false .long .long) : Fn true (.prod .long .long) .
     (comp _ _ _ true (dom _ _ true (comp _ _ _ false (outr _ _) U)) fun D => CRel.comp ⟨Alg.arith k D.val, true⟩ (U ()))
 def leq (U : Fn false .long .long) : Fn false .long .long := fun _ => let u := U (); also u.ok (CRel.leq u.rel.key)
 def lt (U : Fn false .long .long) : Fn false .long .long := fun _ => let u := U (); also u.ok (CRel.lt u.rel.key)
-def fold (E V : Obj) (d : Bool) (e : Fn false V V) (S : Fn d (.prod E V) V) : Fn true (.arr E) V := fun D =>
+def foldr (E V : Obj) (d : Bool) (e : Fn false V V) (S : Fn d (.prod E V) V) : Fn true (.arr E) V := fun D =>
   let v := e (); also v.ok (CRel.foldOn false pairC v.rel.val (onKeys d S) D.val)
 
 /-- The left fold `⦇e, S⦈` over `[nil, snoc]`, `S` on `(acc, x)`: each array read from its start (`foldOnC true`),
     the round's pair the value before the element (`pairC p el`). -/
-def foldl (E V : Obj) (d : Bool) (e : Fn false V V) (S : Fn d (.prod V E) V) : Fn true (.arr E) V := fun D =>
+def fold (E V : Obj) (d : Bool) (e : Fn false V V) (S : Fn d (.prod V E) V) : Fn true (.arr E) V := fun D =>
   let v := e (); also v.ok (CRel.foldOn true (fun el p => pairC p el) v.rel.val (onKeys d S) D.val)
 
 /-- The pairs `(i, xs)` in demand, one fold row each, starting from its own key's seeds `(i,v)` from `e`: `v` the

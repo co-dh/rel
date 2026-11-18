@@ -1347,7 +1347,7 @@ def convTm {A B : Obj} {d : Bool} (t : Tm A B d) : Except String ((e : Bool) × 
   | .hylo .. => throw "hylo( )"
   | .juncD .. => throw "[R,S]"
   | .atPos k => throw s!"at({k})"
-  | .fold .. => throw "⦇e,S⦈"
+  | .foldr .. => throw "⦇e,S⦈"
   | .foldI .. => throw "a lifted fold"
   | .flat _ => throw "a lifted family"
 
@@ -1610,7 +1610,7 @@ def build : Pre → Except Err Res
     match ← build s with
     | ⟨.prod E V', V'', _, S⟩ =>
       if h : V' = V ∧ V'' = V then
-        pure ⟨.arr E, V, true, .fold (← closed? dp (A := V) (B := V) r) (h.1 ▸ h.2 ▸ S)⟩
+        pure ⟨.arr E, V, true, .foldr (← closed? dp (A := V) (B := V) r) (h.1 ▸ h.2 ▸ S)⟩
       else internal dp "the fold's objects"
     | _ => internal dp "the fold's step"
   | .foldI e s => do

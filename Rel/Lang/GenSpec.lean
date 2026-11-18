@@ -506,10 +506,10 @@ theorem onKeys_round {P V : Obj} {d : Bool} {S : Fn d P V} {TS : Den P V} (hS : 
 
 /-- `fold(e, S)`: a chain of values `ys`, its last from `e`, each the step `S` of the element and the next value
     (`rep_foldOn`, `S` run on each round's pairs by `onKeys`). -/
-theorem fold_sound {E V : Obj} {d : Bool} {e : Fn false V V} {S : Fn d (.prod E V) V} {Te : Den V V}
+theorem foldr_sound {E V : Obj} {d : Bool} {e : Fn false V V} {S : Fn d (.prod E V) V} {Te : Den V V}
     {TS : Den (.prod E V) V} (he : Sound e Te) (hS : Sound S TS) :
-    Sound (fold E V d e S) (foldDen Te TS) := fun D _ hb xs w hx => by
-  simp only [fold, also, Bool.and_eq_true] at hb ⊢
+    Sound (foldr E V d e S) (foldrDen Te TS) := fun D _ hb xs w hx => by
+  simp only [foldr, also, Bool.and_eq_true] at hb ⊢
   refine (CRel.rep_foldOn false pairC Prod.mk Rep.pairC_pt _ _ _ hb.2 _ rfl _ rfl _ (fun _ _ => rfl) _ (fun _ => rfl) _
     (fun _ => rfl) _ (fun _ => rfl) (fun _ => TS) ?_ xs w).trans ?_
   · intro i _ _ hbi p w hp hc
@@ -521,10 +521,10 @@ theorem fold_sound {E V : Obj} {d : Bool} {e : Fn false V V} {S : Fn d (.prod E 
 
 /-- `⦇e, S⦈`, the left fold: `rep_foldOn` from the start (`l = true`), the round's pair `(acc, x)`, is the right
     chain over `xs.reverse` (`foldlDen_rev`). -/
-theorem foldl_sound {E V : Obj} {d : Bool} {e : Fn false V V} {S : Fn d (.prod V E) V} {Te : Den V V}
+theorem fold_sound {E V : Obj} {d : Bool} {e : Fn false V V} {S : Fn d (.prod V E) V} {Te : Den V V}
     {TS : Den (.prod V E) V} (he : Sound e Te) (hS : Sound S TS) :
-    Sound (foldl E V d e S) (foldlDen Te TS) := fun D _ hb xs w hx => by
-  simp only [foldl, also, Bool.and_eq_true] at hb ⊢
+    Sound (fold E V d e S) (foldDen Te TS) := fun D _ hb xs w hx => by
+  simp only [fold, also, Bool.and_eq_true] at hb ⊢
   refine (CRel.rep_foldOn true (fun el p => pairC p el) (fun e u => (u, e))
     (fun el p h r q => (Rep.pairC_pt p el h r q).trans
       ⟨fun ⟨u, e, hu, he, hq⟩ => ⟨e, u, he, hu, hq⟩, fun ⟨e, u, he, hu, hq⟩ => ⟨u, e, hu, he, hq⟩⟩)
@@ -533,7 +533,7 @@ theorem foldl_sound {E V : Obj} {d : Bool} {e : Fn false V V} {S : Fn d (.prod V
   · intro i _ _ hbi p w hp hc
     simp only [demandStepC, Bool.and_eq_true] at hbi
     exact onKeys_round hS _ p w hp hc hbi.1.2
-  · rw [and_iff_right (keyRow hx), foldlDen_rev]; simp only [ordL, cond_true]
+  · rw [and_iff_right (keyRow hx), foldDen_rev]; simp only [ordL, cond_true]
     exact exists_congr fun ys => exists_congr fun hy => and_congr_left fun _ =>
       (valRow _ _).trans (by rw [he.eq hb.1])
 
