@@ -736,6 +736,25 @@ impl Sink {
         f(unsafe { sl_mut(self.e.out.cast::<u64>(), crate::ids::ids_bytes(self.g.n, lw).div_ceil(8)) });
         self.finish()
     }
+    /// The `u1` Frame of Reference column of `n` booleans, Lean `Coc.encodeAt lgEnc 1 _ false` of their 0/1 bytes, a block
+    /// at a time: `f(lo, hi, o)` sets in the zeroed `o` the bits of elements `lo .. hi` that hold. A mixed block's
+    /// residuals are its bitmap at width 1; an all-0 or all-1 block is width 0 at base 0 or 1 and stores no residual.
+    pub fn bools(mut self, cost: u32, f: &(dyn Fn(usize, usize, &mut [u8]) + Sync)) -> lean::O {
+        assert!(self.form == Form::For && self.e.width == 1, "qlean Sink::bools: a {:?} sink of {}-byte elements is not a u1 Frame of Reference", self.form, self.e.width);
+        let blk = self.g.blk();
+        self.staged(cost, usize::MAX, &|s, b, lo, nb, _, st| {
+            let mut res = alloc::vec![0u8; blk / 8];
+            f(lo, lo + nb, &mut res[..nb.div_ceil(8)]);
+            if nb & 7 != 0 { res[nb >> 3] &= (1u8 << (nb & 7)) - 1 }
+            let pc = res.iter().map(|x| x.count_ones() as usize).sum::<usize>();
+            let mixed = pc != 0 && pc != nb;
+            let m = unsafe { (*s).meta_blk(b) };
+            (*m.base, *m.maxv, *m.bsum, *m.width, *m.nexc) = ((pc == nb) as i64, (pc != 0) as i64, pc as i64, mixed as u8, 0);
+            if let Some(fr) = m.frm { *fr = 0 }
+            *st = Staged { res: if mixed { res } else { alloc::vec::Vec::new() }, ..Staged::default() };
+        }).expect("qlean Sink::bools: a write with no size test has an answer");
+        self.finish()
+    }
     /// The finished parts as the form's Lean answer, handed over: the writer's scratch freed, nothing left for `drop`.
     fn finish(mut self) -> lean::O {
         let e = &mut self.e;

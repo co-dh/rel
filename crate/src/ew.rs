@@ -423,6 +423,21 @@ pub fn bit(run: Runner, op: u8, shape: u8, a: &[u8], b: &[u8], n: usize, out: &m
     let nb = n.div_ceil(8);
     if nb == 0 { return }
     // chosen before the pool starts: a panic inside a worker cannot unwind through the C pool
+    let f = bit_verb(op, shape, a, b, n);
+    run_map(run, out, nb, 1, QLEAN_COST_COPY, 1, &|lo, hi, o| bit_slice(f, shape, a, b, lo, hi, o));
+    // the tail byte belongs to whoever wrote the last slice, so it is cleared here and not in a worker
+    if n & 7 != 0 { out[nb - 1] &= ((1u16 << (n & 7)) - 1) as u8 }
+}
+/// Output bytes `[lo, hi)` of the bitmap verb `f`, an atom side (`shape`) its bit 0 widened to a byte; the bits past
+/// the count in the last byte are the caller's to clear.
+pub fn bit_slice(f: fn(u8, u8) -> u8, shape: u8, a: &[u8], b: &[u8], lo: usize, hi: usize, o: &mut [u8]) {
+    let wide = |x: &[u8]| if x.first().is_some_and(|v| v & 1 == 1) { 0xffu8 } else { 0 };
+    let (ac, bc) = (wide(a), wide(b));
+    for (k, ob) in (lo..hi).zip(o) { *ob = f(if shape == k::AV { ac } else { a[k] }, if shape == k::VA { bc } else { b[k] }) }
+}
+/// `qlean_ew_bit`'s verb `op` as a byte function, its operands checked to hold `n` bits: the stops a worker cannot make.
+pub fn bit_verb(op: u8, shape: u8, a: &[u8], b: &[u8], n: usize) -> fn(u8, u8) -> u8 {
+    let nb = n.div_ceil(8);
     let f: fn(u8, u8) -> u8 = match op {
         k::LESSER => |x, y| x & y,
         k::GREATER => |x, y| x | y,
@@ -437,15 +452,7 @@ pub fn bit(run: Runner, op: u8, shape: u8, a: &[u8], b: &[u8], n: usize, out: &m
     };
     assert!(shape == k::AV || a.len() >= nb, "qlean_ew_bit: a {}-byte operand for {n} bits", a.len());
     assert!(shape == k::VA || b.len() >= nb, "qlean_ew_bit: a {}-byte operand for {n} bits", b.len());
-    let wide = |x: &[u8]| if x.first().is_some_and(|v| v & 1 == 1) { 0xffu8 } else { 0 };
-    let (ac, bc) = (wide(a), wide(b));
-    run_map(run, out, nb, 1, QLEAN_COST_COPY, 1, &|lo, hi, o| {
-        for (k, ob) in (lo..hi).zip(o) {
-            *ob = f(if shape == k::AV { ac } else { a[k] }, if shape == k::VA { bc } else { b[k] });
-        }
-    });
-    // the tail byte belongs to whoever wrote the last slice, so it is cleared here and not in a worker
-    if n & 7 != 0 { out[nb - 1] &= ((1u16 << (n & 7)) - 1) as u8 }
+    f
 }
 
 /// `neg` and `abs` over the class's elements: a null stays itself (q's null is the least value, so `abs` needs no case

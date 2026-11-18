@@ -5,7 +5,7 @@
 #![deny(unsafe_code)]
 use crate::lean::{SArr, export};
 #[cfg(all(feature = "ffi", not(any(test, feature = "std"))))]
-use {crate::lean::{B, O}, crate::{c, ew}};
+use {crate::lean::{B, O}, crate::{c, ew}, crate::ffi::{Form, Sink}};
 
 /// An answer of `n` bytes, undefined until the kernel writes it.
 pub fn answer(n: usize) -> SArr { SArr::new(1, n) }
@@ -20,22 +20,21 @@ export! {
         r.into()
     }
 
-    /// `cmp op cls shape a b n`: the `Column.bits` payload of the comparison, the bits above `n` zero.
+    /// `cmp op cls shape a b n`: the comparison as a `u1` Frame of Reference column, a block of bits at a time.
     fn qlean_ew_cmp(op: u8, cls: u8, shape: u8, a: B, b: B, n: usize) -> O {
-        let mut r = bits(n);
-        ew::cmp(c::pool(), op, cls, shape, a.bytes(), b.bytes(), n, r.bytes_mut());
-        r.into()
+        let (a, b) = (a.bytes(), b.bytes());
+        Sink::new(n, 1, Form::For).bools(crate::QLEAN_COST_ARITH, &|lo, hi, o| ew::cmp_slice(op, cls, shape, a, b, n, lo / 8, hi.div_ceil(8), o))
     }
 
 
 
 
 
-    /// `bit op shape a b n`: a verb of two bitmaps (`&`, `|`, fill, the six comparisons), the bits above `n` zero.
+    /// `bit op shape a b n`: a verb of two bitmaps (`&`, `|`, fill, the six comparisons) as a `u1` Frame of Reference column.
     fn qlean_ew_bit(op: u8, shape: u8, a: B, b: B, n: usize) -> O {
-        let mut r = bits(n);
-        ew::bit(c::pool(), op, shape, a.bytes(), b.bytes(), n, r.bytes_mut());
-        r.into()
+        let (a, b) = (a.bytes(), b.bytes());
+        let f = ew::bit_verb(op, shape, a, b, n);
+        Sink::new(n, 1, Form::For).bools(crate::QLEAN_COST_COPY, &|lo, hi, o| ew::bit_slice(f, shape, a, b, lo / 8, hi.div_ceil(8), o))
     }
 
     /// `widen src dst nulIn nulOut x n`: an operand brought up to the class its verb's result is at, nulls remapped.

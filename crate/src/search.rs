@@ -273,6 +273,8 @@ macro_rules! any { ($s:expr, $p:ident => $e:expr) => { match $s {
     Any::U128($p) => $e,
 } } }
 impl Probe {
+    /// the table over the smaller side: the needles `x` where they are fewer than the haystack `h`
+    pub fn of(kd: Kind, h: &Blocks, x: &Blocks) -> Probe { if x.n < h.n { Probe::over(kd, h, x) } else { Probe::new(kd, h) } }
     /// the table over the haystack `o`
     pub fn new(kd: Kind, o: &Blocks) -> Probe { by_kind!(kd, K, V => Probe { t: V(table::<K>(o)), hit: None }) }
     /// search.rs `SEARCH_TABLE`'s smaller-side branch: the table over the needles `x`, and the haystack `h` walked to
@@ -310,7 +312,7 @@ pub fn scan_kind(kd: Kind, h: &Blocks, x: &Blocks, out: &mut [i64]) {
 pub fn search(run: Runner, kd: Kind, h: &Blocks, x: &Blocks, member: bool, out: &mut [u8]) {
     let m = x.n;
     if m == 0 { return }
-    let t = if m < h.n { Probe::over(kd, h, x) } else { Probe::new(kd, h) };
+    let t = Probe::of(kd, h, x);
     if member {
         out.fill(0); // `member` ORs bits in
         // a unit is a byte of the answer, so no two slices touch the same byte
@@ -357,9 +359,14 @@ pub fn find_bit_vec(n: usize, hay: &[u8], ndl: &[u8], m: usize, out: &mut [i64])
 /// search.rs `qlean_search_member_bits` past the unboxing: bit `i` of `out` (`m.div_ceil(8)` bytes) is set when
 /// `xs`' bit `i` occurs among the first `n` bits of `hay`; the tail bits stay zero.
 pub fn member_bits(m: usize, xs: &[u8], n: usize, hay: &[u8], out: &mut [u8]) {
-    let has = [find_bit(hay, n, 0) < n, find_bit(hay, n, 1) < n];
     out.fill(0);
-    for i in 0..m { if has[bit_at(xs, i) as usize] { out[i >> 3] |= 1 << (i & 7) } }
+    member_bits_at(bits_held(n, hay), xs, 0, m, out)
+}
+/// Which of 0 and 1 occur among the first `n` bits of `hay`.
+pub fn bits_held(n: usize, hay: &[u8]) -> [bool; 2] { [find_bit(hay, n, 0) < n, find_bit(hay, n, 1) < n] }
+/// `member_bits` over elements `lo .. hi` (`lo` a multiple of 8) into the zeroed `out`, its bit 0 element `lo`.
+pub fn member_bits_at(has: [bool; 2], xs: &[u8], lo: usize, hi: usize, out: &mut [u8]) {
+    for i in lo..hi { if has[bit_at(xs, i) as usize] { out[(i - lo) >> 3] |= 1 << (i & 7) } }
 }
 /// search.rs `spread`: the set bits of word `v` (word `i`) as indices into `out` at `at`; answers the new `at`.
 pub fn spread(out: &mut [i64], mut at: usize, i: usize, mut v: u64) -> usize {
