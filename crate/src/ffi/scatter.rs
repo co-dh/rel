@@ -8,8 +8,8 @@ use {alloc::{format, vec::Vec}, crate::{coc, exports::scan::{for_words, raw}, le
 
 /// `Ext.Enc.foR`'s constructor tag (Rel/Kernel/Value.lean: `bytes bits syms foR ..`).
 pub const FOR: u32 = 3;
-/// `QAtomicType.long`'s constructor index, the 64-bit column `Kernel.foRWords` reads its argument as.
-pub const QT_LONG: u8 = 5;
+/// `QAtomicType.i64`'s constructor index, the 64-bit column `Kernel.foRWords` reads its argument as.
+pub const QT_LONG: u8 = 4;
 
 /// `Kernel.foRWords what m e`: the `m` raw words of a `foR` argument whose layout `Column.lgOk` and `Coc.foRStd` admit
 /// at `m` (`coc::view` and `Coc::std`), else the model's error text.

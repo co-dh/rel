@@ -23,15 +23,16 @@ pub fn ord_key(w: usize, float: bool, signed: bool, v: u64) -> u64 {
 }
 
 /// `Kernel.ascOrd` at the `QAtomicType` constructor index `t` (Rel/Kernel/Value.lean's order): `ordKey`'s width, float
-/// and signed flags at `orderKind t`; `None` at `general` (0) and `symbol` (9).
+/// and signed flags at `orderKind t`; `None` at `sym` (9) and `general` (12).
 pub fn order(t: u8) -> Option<(usize, bool, bool)> {
     match t {
-        1 | 2 | 8 => Some((1, false, false)),
-        3 => Some((2, false, true)),
-        4 | 11 | 12 | 15 | 16 | 17 => Some((4, false, true)),
-        5 | 10 | 14 => Some((8, false, true)),
-        6 => Some((4, true, false)),
-        7 | 13 => Some((8, true, false)),
+        0 | 1 | 7 => Some((1, false, false)),
+        8 => Some((1, false, true)),
+        2 => Some((2, false, true)),
+        3 | 10 => Some((4, false, true)),
+        4 | 11 => Some((8, false, true)),
+        5 => Some((4, true, false)),
+        6 => Some((8, true, false)),
         _ => None,
     }
 }

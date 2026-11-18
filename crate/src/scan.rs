@@ -507,11 +507,11 @@ mod tests {
 // ---------------------------------------------------------------- `kscan` (Rel/Kernel/Scan.lean, design §4)
 
 /// `QAtomicType`'s constructor indices `kscan` tells apart (Rel/Kernel/Value.lean's order).
-pub const QT_BOOLEAN: u8 = 1;
+pub const QT_BOOLEAN: u8 = 0;
 pub const QT_SYMBOL: u8 = 9;
-/// `QAtomicType.width` at the constructor index `t`: `None` at `general` (0) and `symbol` (9).
+/// `QAtomicType.width` at the constructor index `t`: `None` at `sym` (9) and `general` (12).
 pub fn qtype_width(t: u8) -> Option<usize> {
-    match t { 1 | 2 | 8 => Some(1), 3 => Some(2), 4 | 6 | 11 | 12 | 15 | 16 | 17 => Some(4), 5 | 7 | 10 | 13 | 14 => Some(8), _ => None }
+    match t { 0 | 1 | 7 | 8 => Some(1), 2 => Some(2), 3 | 5 | 10 => Some(4), 4 | 6 | 11 => Some(8), _ => None }
 }
 
 /// `Int.fdiv` and `Int.fmod` cut to 64 bits (`Int64.ofInt`): floored, so `i64::MIN / -1` wraps to `i64::MIN`; `y != 0`.
