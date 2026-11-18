@@ -92,13 +92,14 @@ theorem subConst_get {g : ByteArray} {m : USize} {v q : Nat} (hq : q < m.toNat)
   exact UInt64.toNat_ofNat_of_lt' (Nat.lt_of_le_of_lt (Nat.sub_le _ _) (Nat.lt_trans hg (by decide)))
 
 /-- **Round `k` of `foldRows` picks inside its input**: the rows longer than `k` (`a`, a sublist of the rows, so
-    every key fits) and their element `k` from the end (`pos`, one place inside each picked row's window), so
-    the fit of the array side at all its rows is a fit at both picks. -/
-theorem pickFits_round {B : Obj} {m : USize} (K : Vals .long m) (V : Vals (.arr B) m)
+    every key fits) and their element `k` from the start (`l`) or from the end (`pos`, one place inside each
+    picked row's window), so the fit of the array side at all its rows is a fit at both picks. -/
+theorem pickFits_round {B : Obj} {m : USize} (l : Bool) (K : Vals .long m) (V : Vals (.arr B) m)
     (hV : Vals.PickFits (.arr B) V (List.range m.toNat)) {k : Nat} (hk : k ≤ V.1.toNat) (a : ByteArray)
     (ha : a = whereBits m (Ew.cmp Ew.gt Ew.i64 Ew.va (slicesOf V).2 (one k.toUInt64) m)) (pos : ByteArray)
-    (hpos : pos = Kernel.Ew.val Ew.sub Ew.i64 Ew.va nul (gather 8 (add m (slicesOf V).1 (slicesOf V).2) a)
-      (one (k + 1).toUInt64) (len a).toUSize) :
+    (hpos : pos = Kernel.Ew.val (bif l then Ew.add else Ew.sub) Ew.i64 Ew.va nul
+      (gather 8 (bif l then (slicesOf V).1 else add m (slicesOf V).1 (slicesOf V).2) a)
+      (one (bif l then k else k + 1).toUInt64) (len a).toUSize) :
     Vals.PickFits .long K ((List.range (len a)).map fun q => (Column.bitsAt a (q * 8) 8).toNat) ∧
     Vals.PickFits B V.2.2.2 ((List.range (len a)).map fun q => (Column.bitsAt pos (q * 8) 8).toNat) := by
   have hp := (pickFits_payload V hV).1
@@ -127,12 +128,19 @@ theorem pickFits_round {B : Obj} {m : USize} (K : Vals .long m) (V : Vals (.arr 
         (Column.bitsAt (slicesOf V).2 ((Column.bitsAt a (q * 8) 8).toNat * 8) 8).toNat :=
     add_get hj (by omega)
   have hg := gather8_get (src := add m (slicesOf V).1 (slicesOf V).2) hq' (by unfold add; rw [len_val]; exact hj)
-  have hpq := subConst_get (g := gather 8 (add m (slicesOf V).1 (slicesOf V).2) a) (m := (len a).toUSize)
-    (v := k + 1) (q := q) (by rw [hm]; exact hq') (by rw [hg, hadd]; omega) (by rw [hg, hadd]; omega)
-  rw [← hpos, hg, hadd] at hpq
+  have hlo := gather8_get (src := (slicesOf V).1) hq' (by rw [(len_slices ..).1]; exact hj)
   dsimp only
   rw [dif_pos hj, List.singleton_sublist, List.mem_range'_1]
-  omega
+  cases l <;> simp only [cond_false, cond_true] at hpos
+  · have hpq := subConst_get (g := gather 8 (add m (slicesOf V).1 (slicesOf V).2) a) (m := (len a).toUSize)
+      (v := k + 1) (q := q) (by rw [hm]; exact hq') (by rw [hg, hadd]; omega) (by rw [hg, hadd]; omega)
+    rw [← hpos, hg, hadd] at hpq
+    omega
+  · have hpq := addc_get (g := gather 8 (slicesOf V).1 a) (m := (len a).toUSize) (v := k) (q := q)
+      (by rw [hm]; exact hq') (by rw [hlo]; omega)
+    unfold addc at hpq
+    rw [← hpos, hlo] at hpq
+    omega
 
 end Rel.Alg
 
