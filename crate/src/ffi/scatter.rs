@@ -4,21 +4,13 @@
 use alloc::string::String;
 use crate::lean::{O, ctor, export, string};
 #[cfg(all(feature = "ffi", not(any(test, feature = "std"))))]
-use {alloc::{format, vec::Vec}, crate::{blocks::Blocks, coc, exports::scan::raw, lean::B, scatter}};
+use {alloc::format, crate::{blocks::Blocks, coc, lean::B, scatter}};
 
 /// `Ext.Enc.foR`'s constructor tag (Rel/Kernel/Value.lean: `bytes bits syms foR ..`).
 pub const FOR: u32 = 3;
-/// `QAtomicType.long`'s constructor index, the 64-bit column `Kernel.foRWords` reads its argument as.
-pub const QT_LONG: u8 = 5;
 
 /// `Kernel.foRWords what m e`'s layout test: the `foR` argument `e` as the block source of its `m` words where
 /// `Column.lgOk` and `Coc.foRStd` admit it at `m` (`coc::view` and `Coc::std`), else the model's error text.
-#[cfg(all(feature = "ffi", not(any(test, feature = "std"))))]
-pub fn for_words_of(what: &str, m: usize, e: B) -> Result<Vec<u64>, String> {
-    for_view(what, m, e)?;
-    raw(QT_LONG, m, e).ok_or_else(|| format!("{what}: a foR column of {m} elements has no raw words at long"))
-}
-/// `for_words_of`'s layout test and error text, answering the column as `Coc` for a kernel that reads it block by block.
 #[cfg(all(feature = "ffi", not(any(test, feature = "std"))))]
 pub fn for_view<'a>(what: &str, m: usize, e: B<'a>) -> Result<coc::Coc<'a>, String> {
     if e.tag() != FOR { return Err(format!("{what}: constructor {} is not foR", e.tag())) }

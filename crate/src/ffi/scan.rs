@@ -6,31 +6,7 @@ use crate::lean::{O, SArr, export};
 use {crate::lean::B, crate::scan};
 
 #[cfg(all(feature = "ffi", not(any(test, feature = "std"))))]
-use {crate::{blocks::Blocks, ffi::{Form, Sink}, ids, lean::{ctor, string}}, alloc::{string::String, vec, vec::Vec}};
-
-/// `Enc.raw t n e` (Rel/Kernel/Value.lean), arm for arm: `None` where `raw` is `#[]`, a form `t` does not read. A dense,
-/// bit or id payload short of `n` reads 0 past its end, as `bitsAt`, `bitAt` and `idAt` do.
-#[cfg(all(feature = "ffi", not(any(test, feature = "std"))))]
-pub fn raw(t: u8, n: usize, e: B) -> Option<Vec<u64>> {
-    let rd = |p: &[u8], o: usize, w: usize| (0..w).fold(0u64, |v, k| v | (p.get(o + k).copied().unwrap_or(0) as u64) << (8 * k));
-    let (w, boolean) = (scan::qtype_width(t), t == scan::QT_BOOLEAN);
-    match (e.tag(), w) {
-        (0, Some(w)) if !boolean => { let p = e.field(0).bytes(); Some((0..n).map(|i| rd(p, i * w, w)).collect()) }
-        (1, _) if boolean => { let p = e.field(0).bytes(); Some((0..n).map(|i| p.get(i >> 3).map_or(0, |b| (b >> (i & 7)) as u64 & 1)).collect()) }
-        (3 | 4, Some(w)) if !boolean => {
-            let (bl, mut v) = (Blocks::of(e, w, n, "qlean_k_scan"), Vec::with_capacity(n));
-            let mut buf = vec![0u8; bl.blk() * w];
-            for (b, _, nb) in bl.walk() { v.extend(bl.load_w(b, nb, w, &mut buf).chunks_exact(w).map(|c| rd(c, 0, w))) }
-            Some(v)
-        }
-        (5, _) if t == scan::QT_SYMBOL => {
-            let (p, lw) = (e.field(2).bytes(), ids::id_width(e.field(1).words().len().saturating_sub(1)));
-            let cap = ids::ids_avail(p.len(), lw);
-            Some((0..n).map(|i| if lw == 0 || i >= cap { 0 } else { ids::id_at(p, lw, i) as u64 }).collect())
-        }
-        _ => None,
-    }
-}
+use {crate::{blocks::Blocks, ffi::{Form, Sink}, lean::{ctor, string}}, alloc::{string::String, vec::Vec}};
 
 /// `Coc.encode 8` of the words `ws` as an `Enc.foR`, every cache filled: the answer of a design-§4 kernel at a
 /// fixed-width type other than `boolean`, which `Enc.raw` reads back cut to that type's width.
