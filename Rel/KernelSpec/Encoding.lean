@@ -754,7 +754,8 @@ theorem planBlock_bounds (lg w n : Nat) (hw : w ≤ 8) (pl : Bool) (x : ByteArra
   rw [hp hpl]
   have := hbo i h1 h2 h3
   simp only [Kernel.Coc.outside, Bool.or_eq_false_iff, decide_eq_false_iff_not]
-  omega
+  -- one `omega` per conjunct: on a conjunction goal `omega` brings in `Classical.choice`
+  exact ⟨by omega, by omega⟩
 
 /-- Indices of a strictly increasing list below its count of entries under `m` are those whose entries are. -/
 theorem lt_count (L : List Nat) (hL : L.Pairwise (· < ·)) (m k : Nat) (hk : k < L.length) :
@@ -816,7 +817,7 @@ theorem exc_find (B : Nat) (hB : 0 < B) (exc : Array Nat) (hs : exc.toList.Pairw
     simp only [Array.getElem_toList] at hki
     have hb := (hrun k hks).2 (by rw [hki]; exact ⟨hi1, hi2⟩)
     rw [List.find?_eq_none] at hn
-    exact hn k (by rw [List.mem_range'_1]; omega) (by rw [hpos k hks, hki, beq_self_eq_true])
+    exact hn k (by rw [List.mem_range'_1]; exact ⟨by omega, by omega⟩) (by rw [hpos k hks, hki, beq_iff_eq])
 
 /-- What each reader of an exception ladder answers on `Coc.excBlob`'s bytes, laid at offset `e` of `P`: the count,
 the word, each listed element's bits, the block offsets, the places in the block and the last section. -/
@@ -949,19 +950,24 @@ theorem sext_unbias (w : Nat) (hw0 : 0 < w) (hw : w ≤ 8) (v : UInt64) (hv : v.
     unfold Kernel.Coc.unbias Kernel.Coc.bias
     apply UInt64.toNat_inj.1
     simp only [Nat.reduceMul, Nat.reducePow] at hv
-    simp
+    show v.toNat = _
+    rw [if_pos rfl, Nat.xor_zero, Nat.sub_zero, Nat.toUInt64_eq, UInt64.toNat_ofNat']
+    omega
   rw [if_neg (by simpa using h1)]
   apply UInt64.toNat_inj.1
+  -- through `toInt` and `Int` division: `BitVec.toNat_sshiftRight` carries `Classical.choice`
   rw [UInt64.toNat, Int64.toBitVec_toUInt64, Int64.toBitVec_shiftRight, UInt64.toBitVec_toInt64,
     UInt64.toBitVec_shiftLeft, BitVec.sshiftRight_eq']
+  unfold BitVec.sshiftRight
+  rw [BitVec.toNat_ofInt, BitVec.toInt_eq_toNat_cond, BitVec.shiftLeft_eq', BitVec.toNat_shiftLeft]
   unfold Kernel.Coc.unbias Kernel.Coc.bias
   rw [if_neg h1]
   have hb := xor_top (8 * w - 1) v.toNat (by rw [show 8 * w - 1 + 1 = 8 * w by omega]; exact hv)
-  rw [BitVec.toNat_sshiftRight, BitVec.msb_eq_decide, BitVec.shiftLeft_eq', BitVec.toNat_shiftLeft, hb]
+  rw [hb]
   rcases (by omega : w = 2 ∨ w = 3 ∨ w = 4 ∨ w = 5 ∨ w = 6 ∨ w = 7 ∨ w = 8) with rfl | rfl | rfl | rfl | rfl | rfl | rfl
   all_goals
-    simp only [Nat.reduceMul, Nat.reduceSub, Nat.reducePow] at hv ⊢
-    simp [Nat.shiftLeft_eq, Nat.shiftRight_eq_div_pow]
+    simp only [Nat.reduceMul, Nat.reduceSub, Nat.reducePow, Int.shiftRight_eq_div_pow] at hv ⊢
+    simp [Nat.shiftLeft_eq]
     split <;> split <;> omega
 
 /-- `Column.foRExc` on a pack whose patch list `Coc.excBlob` wrote after the residuals: element `i`'s own bits,
@@ -992,10 +998,15 @@ theorem foRExc_excBlob (M pack : ByteArray) (B : Nat) (hBM : Column.blk M = B) (
     simp only [Option.map]
     rw [hraw k hk1, hk2]
     exact congrArg some (sext_unbias w hw0 hw _ (bitsAt_lt _ _ _ hw))
-  · rw [if_neg hm, Option.map_eq_none_iff, Option.eq_none_iff_forall_ne_some]
-    intro k hk
-    obtain ⟨hk1, hk2⟩ := f1 k hk
-    exact hm (hk2 ▸ Array.getElem_mem_toList _)
+  · -- by cases, not `Option.eq_none_iff_forall_ne_some`, which carries `Classical.choice`
+    rw [if_neg hm, Option.map_eq_none_iff]
+    revert f1
+    cases (List.range' _ _).find? _ with
+    | none => intro _; rfl
+    | some k =>
+      intro f1
+      obtain ⟨hk1, hk2⟩ := f1 k rfl
+      exact absurd (hk2 ▸ Array.getElem_mem_toList _) hm
 
 /-- `Column.foRFrame` on a pack whose patch list `Coc.excBlob` wrote after the residuals: block `b`'s entry of the
 frames `fs` the list ends in when bit 8 of its word says so, and `0` otherwise. -/
@@ -1013,7 +1024,8 @@ theorem foRFrame_excBlob (M pack : ByteArray) (B : Nat) (hB : 0 < B ∧ B ≤ 65
   unfold Column.foRFrame
   simp only [he, ByteArray.size_append, hwd, hword, hc, Column.alpSects]
   rcases Nat.mod_two_eq_zero_or_one (word.toNat / 256) with h1 | h1
-  · simp [h1]
+  · -- `rw`, not `simp [h1]`: deciding `0 = 1` by `simp` brings in `Classical.choice`
+    rw [h1, if_neg Nat.zero_ne_one]; exact if_pos (Bool.or_true _)
   have W := foldl_pushBits (fun v : UInt64 => v) 8 (by decide) fs.toList ByteArray.empty
   rw [Array.foldl_toList, ← hl h1] at W
   have hlz : last.size = 8 * fs.size := by rw [W.1]; simp
