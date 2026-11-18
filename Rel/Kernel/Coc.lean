@@ -172,6 +172,12 @@ answering an empty pair, which would drop a column's contents silently. -/
 @[extern "qlean_coc_encode"]
 def encode (width : USize) (x : @& ByteArray) : ByteArray × ByteArray := encodeAt Rel.Column.lgEnc width x
 
+/-- The `u1` Frame of Reference column of the `n` booleans `p`, the form every boolean writer answers: `encodeAt` of
+their 0/1 bytes, unpatched, so a mixed block's residuals are its bitmap at width 1 and an all-0 or all-1 block is
+width 0 at base 0 or 1 with no residual. `rust/src/ffi.rs`'s `Sink::bools` writes it a block at a time. -/
+def bools (n : Nat) (p : Nat → Bool) : ByteArray × ByteArray :=
+  encodeAt Rel.Column.lgEnc (USize.ofNat32 1 (by decide)) (Rel.Column.packIds 8 n fun i => (p i).toNat) false
+
 
 /-- The bytes of the patch list whose header is at byte `e` of `pk`, for `nb` blocks: `rust/src/coc.rs`'s
 `for_layout` of the header's count, element width and frame flag — the ladder `Column.alpSects` gives,

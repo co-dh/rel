@@ -138,8 +138,8 @@ below the needle count and needle `i` is among the haystack's elements, so the l
 are zero: at a width up to eight compared by key, and above eight by its bytes whole. -/
 theorem memberVec_mem (w : USize) (float : Bool) (xs hay : ByteArray)
     (hn : hay.size / w.toNat < USize.size) :
-    (memberVec w float xs hay).size = (xs.size / w.toNat + 7) / 8 ∧
-    ∀ i < 8 * ((xs.size / w.toNat + 7) / 8), Column.bitAt (memberVec w float xs hay) i =
+    (memberVecBitmap w float xs hay).size = (xs.size / w.toNat + 7) / 8 ∧
+    ∀ i < 8 * ((xs.size / w.toNat + 7) / 8), Column.bitAt (memberVecBitmap w float xs hay) i =
       (decide (i < xs.size / w.toNat) &&
         if w.toNat ≤ 8 then decide (normalise w.toNat float (Column.bitsAt xs (i * w.toNat) w.toNat) ∈
           (elemsW w.toNat hay).map (normalise w.toNat float))
@@ -153,7 +153,7 @@ theorem memberVec_mem (w : USize) (float : Bool) (xs hay : ByteArray)
         == (xs.extract (i * w.toNat) (i * w.toNat + w.toNat)).data.toList).getD (hay.size / w.toNat) < hay.size / w.toNat)
   let B : Nat → UInt8 := fun b =>
     (List.range 8).foldl (fun byte t => if C (b * 8 + t) then byte ||| (1 <<< t.toUInt8) else byte) 0
-  have hf : memberVec w float xs hay =
+  have hf : memberVecBitmap w float xs hay =
       (List.range ((xs.size / w.toNat + 7) / 8)).foldl (fun acc b => acc.push (B b)) ByteArray.empty := rfl
   obtain ⟨hs, -, hg⟩ := foldl_push8 B (List.range ((xs.size / w.toNat + 7) / 8)) ByteArray.empty
   rw [hf]

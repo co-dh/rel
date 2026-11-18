@@ -944,4 +944,43 @@ mod sink_tests {
             assert_eq!(Sink::new(n, 2, Form::Ids(lw)).answer(&Blocks::dense(pod::bytes(&x), 2)).borrow().bytes(), &want[..], "lw {lw}");
         }
     }
+    // `bools` against its rule: a mixed block width 1 with the bitmap as residuals, a uniform block width 0 at base 0 or 1
+    // and no residual, the elements decoding back; uniform runs crossing block edges, a short last block, no element
+    #[test] fn bools_is_u1_for() {
+        for n in [0usize, 5, 1024, 1025, 3000, 5000] {
+            let pats: [&(dyn Fn(usize) -> bool + Sync); 4] = [&|_| false, &|_| true, &|i| i % 3 == 0, &|i| (i / 1500) % 2 == 1 || i == 2100];
+            for (k, p) in pats.iter().enumerate() {
+                let o = Sink::new(n, 1, Form::For).bools(crate::QLEAN_COST_COPY, &|lo, hi, out| for i in lo..hi { if p(i) { out[(i - lo) >> 3] |= 1 << (i & 7) } });
+                let (mv, pv) = (o.borrow().field(0).bytes().to_vec(), o.borrow().field(1).bytes().to_vec());
+                let c = crate::coc::view(&mv, &pv, n).unwrap_or_else(|e| panic!("n {n} pattern {k}: {e}"));
+                let s = Blocks::from(c);
+                let mut res = 0;
+                for (b, lo, nb) in s.walk() {
+                    let pc = (lo..lo + nb).filter(|&i| p(i)).count();
+                    let mixed = pc != 0 && pc != nb;
+                    assert_eq!((c.meta.width[b], c.meta.base[b], c.meta.maxv[b], c.meta.bsum[b]), (mixed as u8, (pc == nb) as i64, (pc != 0) as i64, pc as i64), "n {n} pattern {k} block {b}");
+                    let mut x = alloc::vec![0u8; nb];
+                    s.load(b, nb, &mut x);
+                    assert!(x.iter().enumerate().all(|(j, &v)| v == p(lo + j) as u8), "n {n} pattern {k} block {b}");
+                    res += mixed as usize * s.blk() / 8;
+                }
+                assert_eq!(pv.len(), res, "n {n} pattern {k}: the pack is the mixed blocks' bitmaps alone");
+            }
+        }
+    }
+    /// `qlean_ew_cmp` at 1M longs against an atom, the bitmap (`ew::cmp`) against the `u1` column (`bools`), per input:
+    /// `cargo test --release --features std --lib bools_bench -- --ignored --nocapture`, `QLEAN_THREADS=1 taskset -c 0`
+    #[test] #[ignore] fn bools_bench() {
+        let n = 1usize << 20;
+        let ins: [(&str, alloc::vec::Vec<i64>); 3] = [("random", (0..n as i64).map(|i| i.wrapping_mul(0x9E3779B97F4A7C15u64 as i64) >> 1).collect()),
+            ("sorted", (0..n as i64).collect()), ("constant", alloc::vec![7; n])];
+        for (name, x) in &ins {
+            let (a, b) = (pod::bytes(x), pod::bytes(&[0i64]));
+            let best = |f: &dyn Fn() -> usize| (0..20).map(|_| { let t = std::time::Instant::now(); let s = f(); (t.elapsed(), s) }).min().expect("20 runs");
+            let (tb, sb) = best(&|| { let mut o = alloc::vec![0u8; n.div_ceil(8)]; crate::ew::cmp(crate::c::pool(), 2, 3, 1, a, b, n, &mut o); o.len() });
+            let (tf, sf) = best(&|| { let o = Sink::new(n, 1, Form::For).bools(crate::QLEAN_COST_ARITH, &|lo, hi, out| crate::ew::cmp_slice(2, 3, 1, a, b, n, lo / 8, hi.div_ceil(8), out));
+                                       o.borrow().field(0).bytes().len() + o.borrow().field(1).bytes().len() });
+            std::println!("{name}: bitmap {:.3} ms {sb} B, u1 FoR {:.3} ms {sf} B", tb.as_secs_f64() * 1e3, tf.as_secs_f64() * 1e3);
+        }
+    }
 }
