@@ -128,7 +128,7 @@ theorem pickFits_round {B : Obj} {m : USize} (l : Bool) (K : Vals .long m) (V : 
         (Column.bitsAt (slicesOf V).2 ((Column.bitsAt a (q * 8) 8).toNat * 8) 8).toNat :=
     add_get hj (by omega)
   have hg := gather8_get (src := add m (slicesOf V).1 (slicesOf V).2) hq' (by unfold add; rw [len_val]; exact hj)
-  have hlo := gather8_get (src := (slicesOf V).1) hq' (by rw [(len_slices ..).1]; exact hj)
+  have hlo := gather8_get (src := (slicesOf V).1) hq' (by unfold slicesOf; rw [(len_slices ..).1]; exact hj)
   dsimp only
   rw [dif_pos hj, List.singleton_sublist, List.mem_range'_1]
   cases l <;> simp only [cond_false, cond_true] at hpos
