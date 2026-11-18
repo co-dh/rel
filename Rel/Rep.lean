@@ -30,6 +30,13 @@ def _root_.Rel.Rel.Reps (K : Known A B) : Rel A B → Core.Rel A.El B.El → Pro
   | .tab (some t), R => K.den.1 ≫ rep t ≫ K.den.2 = K.den.1 ≫ R ≫ K.den.2
   | .lazy f, R => (f K).Reps K R
 
+/-- What `r` computes in `K` agrees with `R` on `K`'s sides, where `r` represents `R` there. -/
+theorem _root_.Rel.Rel.Reps.run {K : Known A B} : ∀ {r : Rel A B} {R : Core.Rel A.El B.El} {t : Tab A B},
+    r.Reps K R → r.run K = some t → K.den.1 ≫ rep t ≫ K.den.2 = K.den.1 ≫ R ≫ K.den.2
+  | .tab none, _, _, _, e => by simp [Rel.run] at e
+  | .tab (some _), _, _, h, e => by simp only [Rel.run, Option.some.injEq] at e; subst e; exact h
+  | .lazy f, _, _, h, e => Rel.Reps.run (r := f K) h e
+
 /-- `rep R x y` is `R.Holds x y`, by definition. -/
 theorem rep_apply (R : Tab A B) (x : A.El) (y : B.El) : rep R x y = R.Holds x y := rfl
 

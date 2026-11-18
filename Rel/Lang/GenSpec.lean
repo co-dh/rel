@@ -33,41 +33,79 @@ def Cor : {d : Bool} → {A : Obj} → Dem d A → Prop
   | true, _, D => ∀ x y, rep D x y → x = y
   | false, _, _ => True
 
-/-- `f` computes `T` on its keys: given a coreflexive `D` and its ok bit, `x {rep(f D)} y ↔ x {T} y` at each key
-    `x` of `D`. -/
-def Sound {d : Bool} {A B : Obj} (f : Fn d A B) (T : Den A B) : Prop :=
-  ∀ D : Dem d A, Cor D → (f D).ok = true → ∀ x y, keys D x x → (rep (f D).rel x y ↔ T x y)
+/-- `f` computes `T` in every context: what it computes there agrees with `T` on the sides the context knows. -/
+def Sound {A B : Obj} (f : Rel A B) (T : Den A B) : Prop := ∀ K, f.Reps K T
 
-/-- A closed term's `Sound` is the equation of its relation. -/
-theorem Sound.eq {A B : Obj} {f : Fn false A B} {T : Den A B} (h : Sound f T) (hb : (f ()).ok = true) :
-    rep (f ()).rel = T :=
-  Core.Rel.ext fun x y => h () trivial hb x y rfl
+/-- Code on keys computes `T` there: given a coreflexive `D` and its ok bit, `x {rep(g D)} y ↔ x {T} y` at each
+    key `x` of `D`. The form the combinators are proved in until 3.6 (`KSound.reps`, `Sound.at`). -/
+def KSound {d : Bool} {A B : Obj} (g : Dem d A → CRel A B) (T : Den A B) : Prop :=
+  ∀ D : Dem d A, Cor D → (g D).ok = true → ∀ x y, keys D x x → (rep (g D).rel x y ↔ T x y)
 
-/-- A `Sound` term's `Rel` represents its relation in every context: a closed one by `Sound.eq`; one on demand,
-    run on the keys `idU U` of a known domain, agrees with `T` after `rep (idU U)`, then after `K.den.2` too. -/
-theorem Sound.reps {d : Bool} {A B : Obj} {f : Fn d A B} {T : Den A B} (h : Sound f T) (K : Known A B) :
-    (Fn.toRel f).Reps K T := by
-  cases d
-  · show Rel.Reps K (.tab (f ())) T
-    match e : f () with
+/-- `idU X` is a coreflexive: composed with itself it is itself. -/
+theorem idU_idem {A : Obj} {m : USize} (X : Vals A m) : rep (idU X) ≫ rep (idU X) = rep (idU X) :=
+  Core.Rel.ext fun x y => ⟨fun ⟨z, h, k⟩ => ((idU_holds X x z).1 h).1 ▸ k,
+    fun h => ⟨x, (idU_holds X x x).2 ⟨rfl, ((idU_holds X x y).1 h).2⟩, h⟩⟩
+
+/-- Where `P ≫ R ≫ 𝟙 = P ≫ S ≫ 𝟙` and `x` is a key of the coreflexive `P`, `R` and `S` agree at `x`. -/
+theorem atKey {A B : Obj} {P : Den A A} {R S : Den A B} (hP : ∀ x y, P x y → x = y)
+    (E : P ≫ R ≫ 𝟙 _ = P ≫ S ≫ 𝟙 _) {x : A.El} (hx : P x x) (y : B.El) : R x y ↔ S x y := by
+  have f : ∀ R' S' : Den A B, P ≫ R' ≫ 𝟙 _ = P ≫ S' ≫ 𝟙 _ → R' x y → S' x y := by
+    intro R' S' E' r
+    have h : (P ≫ R' ≫ 𝟙 _) x y := ⟨x, hx, y, r, rfl⟩
+    rw [E'] at h; obtain ⟨z, p, w, s, e⟩ := h; cases hP x z p; cases (e : w = y); exact s
+  exact ⟨f R S E, f S R E.symm⟩
+
+/-- A closed leaf is `Sound` where its table, when ok, is `T`. -/
+theorem const_sound {A B : Obj} {c : CRel A B} {T : Den A B} (h : c.ok = true → rep c.rel = T) :
+    Sound (const A B c) T := fun K => by
+  match c, h with
+  | none, _ => trivial
+  | some t, h => exact congrArg (fun R => K.den.1 ≫ R ≫ K.den.2) (h rfl)
+
+/-- A leaf on demand is `Sound` where, on the coreflexive of the values `X` it is given, its table is `T`. -/
+theorem ofVals_sound {A B : Obj} {f : {n : USize} → Vals A n → CRel A B} {T : Den A B}
+    (h : ∀ {n : USize} (X : Vals A n), (f X).ok = true → rep (idU X) ≫ rep (f X).rel = rep (idU X) ≫ T) :
+    Sound (ofVals A B f) T := fun K => by
+  rcases K with ⟨_ | ⟨n, X⟩, L⟩
+  · trivial
+  · show Rel.Reps _ (.tab (f X)) T
+    match e : f X with
     | none => trivial
     | some t =>
-      have := Sound.eq h (by rw [e]; rfl); rw [e] at this
-      exact congrArg (fun R => K.den.1 ≫ R ≫ K.den.2) this
-  · show Rel.Reps K (K.dom.elim (.tab none) fun c => .tab (f (Alg.idU c.2))) T
-    rcases K with ⟨_ | ⟨n, U⟩, ran⟩
-    · trivial
-    · show Rel.Reps _ (.tab (f (idU U))) T
-      match e : f (idU U) with
-      | none => trivial
-      | some t =>
-        have hc : ∀ x y, rep (idU U) x y → x = y := fun x y k => ((idU_holds U x y).1 k).1
-        have ht : ∀ z y, rep (idU U) z z → (rep t z y ↔ T z y) := fun z y k => by
-          have := h (idU U) hc (by rw [e]; rfl) z y k; rw [e] at this; exact this
-        have hD : rep (idU U) ≫ rep t = rep (idU U) ≫ T := Core.Rel.ext fun x y =>
-          ⟨fun ⟨z, k, r⟩ => ⟨z, k, (ht z y (hc x z k ▸ k)).1 r⟩, fun ⟨z, k, r⟩ => ⟨z, k, (ht z y (hc x z k ▸ k)).2 r⟩⟩
-        show rep (idU U) ≫ rep t ≫ _ = rep (idU U) ≫ T ≫ _
-        rw [← comp_assoc, ← comp_assoc, hD]
+      have ht : rep (idU X) ≫ rep t = rep (idU X) ≫ T := by have := h X (by rw [e]; rfl); rwa [e] at this
+      show rep (idU X) ≫ rep t ≫ _ = rep (idU X) ≫ T ≫ _
+      rw [← comp_assoc, ← comp_assoc, ht]
+
+/-- The bridge from the combinators' form: code on keys that computes `T` there is `Sound` as a `Fn` — closed,
+    its equation; on demand, run on the keys `idU X` of a known domain, it agrees with `T` after `rep (idU X)`. -/
+theorem KSound.reps {d : Bool} {A B : Obj} {g : Dem d A → CRel A B} {T : Den A B} (h : KSound g T) :
+    Sound (Fn.ofDem g) T := by
+  cases d
+  · exact const_sound fun hb => Core.Rel.ext fun x y => h () trivial hb x y rfl
+  · show Sound (ofVals A B fun X => g (idU X)) T
+    refine ofVals_sound fun X hb => ?_
+    have hc : ∀ x y, rep (idU X) x y → x = y := fun x y k => ((idU_holds X x y).1 k).1
+    exact Core.Rel.ext fun x y =>
+      ⟨fun ⟨z, k, r⟩ => ⟨z, k, (h (idU X) hc hb z y (hc x z k ▸ k)).1 r⟩,
+       fun ⟨z, k, r⟩ => ⟨z, k, (h (idU X) hc hb z y (hc x z k ▸ k)).2 r⟩⟩
+
+/-- The converse view: a `Sound` term computes `T` on any keys it is given (`Fn.at`). -/
+theorem Sound.at {d : Bool} {A B : Obj} {f : Fn d A B} {T : Den A B} (h : Sound f T) : KSound (Fn.at f) T := by
+  cases d
+  · intro ⟨⟩ _ hb x y _
+    obtain ⟨t, e⟩ := Option.isSome_iff_exists.1 hb
+    rw [show Fn.at f () = some t from e]
+    exact atKey (P := 𝟙 _) (fun _ _ e => e) (Rel.Reps.run (h {}) e) rfl y
+  · intro D _ hb x y hx
+    obtain ⟨t, e⟩ := Option.isSome_iff_exists.1 hb
+    rw [show Fn.at f D = some t from e]
+    exact atKey (fun x y k => ((idU_holds D.val x y).1 k).1) (Rel.Reps.run (h ⟨some ⟨D.n, D.val⟩, none⟩) e)
+      ((idU_holds D.val x x).2 ⟨rfl, let ⟨i, _, e⟩ := hx; ⟨i, e⟩⟩) y
+
+/-- A closed term's `Sound` is the equation of its relation. -/
+theorem Sound.eq {A B : Obj} {f : Fn false A B} {T : Den A B} (h : Sound f T) (hb : (f.at ()).ok = true) :
+    rep (f.at ()).rel = T :=
+  Core.Rel.ext fun x y => Sound.at (d := false) h () trivial hb x y rfl
 
 /-- A plan computes `T` on its keys, read by `⟦−⟧` at `Val.empty` (a plan is closed). -/
 def PSound {d : Bool} {A B : Obj} (p : Pl d A B) (T : Den A B) : Prop :=
@@ -88,11 +126,11 @@ theorem demR {A : Obj} : ∀ (d e : Bool) (D : Dem (d || e) A) (x : A.El), Cor D
 
 /-- A coreflexive `K` given as the keys of `S`: `S` agrees with `T` at every key of `K`. -/
 theorem atKeys {B C : Obj} {e : Bool} {S : Fn e B C} {T : Den B C} (hS : Sound S T) (K : Tab B B)
-    (hc : ∀ x y, rep K x y → x = y) (hb : (S (Dem.of e K)).ok = true) :
-    ∀ b c, rep K b b → (rep (S (Dem.of e K)).rel b c ↔ T b c) := by
+    (hc : ∀ x y, rep K x y → x = y) (hb : (S.at (Dem.of e K)).ok = true) :
+    ∀ b c, rep K b b → (rep (S.at (Dem.of e K)).rel b c ↔ T b c) := by
   cases e
-  · exact fun b c _ => hS () trivial hb b c rfl
-  · exact fun b c hk => hS K hc hb b c hk
+  · exact fun b c _ => hS.at () trivial hb b c rfl
+  · exact fun b c hk => hS.at K hc hb b c hk
 
 /-- A coreflexive's row values: on the keys of `D`, every key is one of `D.val`'s rows. -/
 theorem keyRow {A : Obj} {D : Tab A A} {x : A.El} (h : rep D x x) : ∃ i, D.val.row i = x :=
@@ -115,71 +153,53 @@ theorem also_ok_rel {A B : Obj} {b : Bool} {r : CRel A B} (h : (also b r).ok = t
 
 /-! ### Leaves -/
 
-theorem const_sound {A B : Obj} {c : CRel A B} {T : Den A B} (h : c.ok = true → rep c.rel = T) :
-    Sound (const A B c) T := fun ⟨⟩ _ hb x y _ => by rw [show (const A B c ()) = c from rfl, h hb] at *
-
 theorem val_sound {A B : Obj} (R : Tab A B × Bool) : Sound (val A B R) (rep R.1) :=
-  fun _ _ hb _ _ _ => by simp only [Gen.val] at hb ⊢; rw [CRel.rep_ofC hb]
+  const_sound CRel.rep_ofC
 
 theorem uni_sound {A : Obj} {m : USize} (U : Vals A m × Bool) : Sound (uni A m U) (rep (idU U.1)) :=
-  fun _ _ hb _ _ _ => by simp only [uni] at hb ⊢; rw [(CRel.mk_ok_rel hb).2]
+  const_sound fun hb => congrArg rep (CRel.mk_ok_rel hb).2
 
 /-- `succ`, `arith`, `≤`, `<` on a declared object's universe `uni` read its literal `U` directly: the one
     definition of each is also the literal form, so no second copy can drift from it. -/
-theorem uni_lits {m : USize} (U : Vals .long m × Bool) (k : UInt8) :
-    succ (uni .long m U) = (fun D => also U.2 (CRel.comp (some D) (CRel.succ U.1))) ∧
-    leq (uni .long m U) = (fun _ => also U.2 (CRel.leq U.1)) ∧
-    lt (uni .long m U) = (fun _ => also U.2 (CRel.lt U.1)) := by
+theorem uni_lits {m : USize} (U : Vals .long m × Bool) :
+    succ (uni .long m U) = ofVals _ _ (fun X => also U.2 (CRel.comp (some (idU X)) (CRel.succ U.1))) ∧
+    leq (uni .long m U) = .lazy (fun K => .tab (also U.2 (cut K (CRel.leq U.1)))) ∧
+    lt (uni .long m U) = .lazy (fun K => .tab (also U.2 (cut K (CRel.lt U.1)))) := by
   obtain ⟨U, b⟩ := U
-  refine ⟨funext fun _ => ?_, funext fun _ => ?_, funext fun _ => ?_⟩ <;> cases b <;>
-    simp only [uni, succ, leq, lt, also, CRel.mk_ok, CRel.mk_rel, CRel.mk_false, CRel.none_ok, Bool.false_and,
-      Bool.true_and] <;> rfl
+  cases b <;> refine ⟨?_, ?_, ?_⟩ <;>
+    simp only [uni, const, succ, leq, lt, Fn.at, Rel.run, also, CRel.mk_ok, CRel.mk_rel, CRel.mk_false,
+      CRel.none_ok, Bool.false_and, Bool.true_and] <;> rfl
 
-theorem zero_sound {A B : Obj} : Sound (zero A B) 𝟘 := fun _ _ _ x y _ => by
-  show rep (Alg.zero : Tab A B) x y ↔ _; rw [rep_zero]
+theorem zero_sound {A B : Obj} : Sound (zero A B) 𝟘 := const_sound fun _ => rep_zero
 
-theorem id_sound {A : Obj} : Sound (id A) (𝟙 _) := fun D hD hb x y hx =>
-  by simp only [Gen.id] at hb ⊢; rw [CRel.rep_ofC hb]; exact ⟨fun h => hD x y h, fun e => e ▸ hx⟩
-
-theorem outl_sound {A B : Obj} : Sound (outl A B) (graph Prod.fst) := fun D hD hb x y hx => by
-  simp only [Gen.outl] at hb ⊢; rw [CRel.rep_ofC hb, rep_outl]
-  exact ⟨fun ⟨z, h, e⟩ => (hD x z h) ▸ e, fun e => ⟨x, hx, e⟩⟩
-
-theorem outr_sound {A B : Obj} : Sound (outr A B) (graph Prod.snd) := fun D hD hb x y hx => by
-  simp only [Gen.outr] at hb ⊢; rw [CRel.rep_ofC hb, rep_outr]
-  exact ⟨fun ⟨z, h, e⟩ => (hD x z h) ▸ e, fun e => ⟨x, hx, e⟩⟩
-
-theorem inl_sound {A B : Obj} : Sound (ofVals A (.sum A B) CRel.inl) (Core.Rel.inl (α := A.El) (β := B.El)) :=
-    fun D _ hb x y hx => by
-  show rep (CRel.inl (B := B) D.val).rel x y ↔ _; rw [CRel.rep_inl _ hb]
-  exact ⟨fun ⟨z, ⟨e, _⟩, h⟩ => e ▸ h, fun h => ⟨x, ⟨rfl, keyRow hx⟩, h⟩⟩
-
-theorem inr_sound {A B : Obj} : Sound (ofVals B (.sum A B) CRel.inr) (Core.Rel.inr (α := A.El) (β := B.El)) :=
-    fun D _ hb x y hx => by
-  show rep (CRel.inr (A := A) D.val).rel x y ↔ _; rw [CRel.rep_inr _ hb]
-  exact ⟨fun ⟨z, ⟨e, _⟩, h⟩ => e ▸ h, fun h => ⟨x, ⟨rfl, keyRow hx⟩, h⟩⟩
-
-theorem mem_sound {B : Obj} : Sound (ofVals (.arr B) B CRel.mem) (fun xs x => x ∈ xs) := fun D _ hb xs x hx => by
-  show rep (CRel.mem D.val).rel xs x ↔ _; rw [CRel.rep_mem _ hb]
-  exact ⟨fun h => h.2, fun h => ⟨keyRow hx, h⟩⟩
-
-/-! ### The rows of `prims` -/
-
-/-- `R` is `rep (idU X) ≫ T` where it relates exactly the values listed in `X`, each by `T`: how a kernel's
-    pointwise lemma reads as the homomorphism form of an `ofVals` row. -/
+/-- `R` relates exactly the values listed in `X`, each by `T`, so on them it is `T`: how a kernel's pointwise
+    lemma reads as the form `ofVals_sound` takes. -/
 theorem idU_ext {A B : Obj} {n : USize} {X : Vals A n} {R T : Den A B}
-    (h : ∀ x y, R x y ↔ (∃ j, X.row j = x) ∧ T x y) : R = rep (idU X) ≫ T :=
-  Core.Rel.ext fun x y => by
+    (h : ∀ x y, R x y ↔ (∃ j, X.row j = x) ∧ T x y) : rep (idU X) ≫ R = rep (idU X) ≫ T := by
+  have e : R = rep (idU X) ≫ T := Core.Rel.ext fun x y => by
     rw [h, comp_apply, rep_idU]
     exact ⟨fun ⟨hx, t⟩ => ⟨x, ⟨rfl, hx⟩, t⟩, fun ⟨_, ⟨e, hx⟩, t⟩ => by subst e; exact ⟨hx, t⟩⟩
+  rw [e, ← comp_assoc, idU_idem]
 
-/-- A row read on its keys' values computes `T` where its kernel is `T` after the coreflexive of the values. -/
-theorem ofVals_sound {A B : Obj} {f : {n : USize} → Vals A n → CRel A B} {T : Den A B}
-    (h : ∀ {n : USize} (X : Vals A n), (f X).ok = true → rep (f X).rel = rep (idU X) ≫ T) :
-    Sound (ofVals A B f) T := fun D _ hb x y hx => by
-  show rep (f D.val).rel x y ↔ T x y
-  rw [h D.val hb, comp_apply, rep_idU]
-  exact ⟨fun ⟨_, ⟨e, _⟩, t⟩ => by subst e; exact t, fun t => ⟨x, ⟨rfl, keyRow hx⟩, t⟩⟩
+theorem id_sound {A : Obj} : Sound (id A) (𝟙 _) := ofVals_sound fun X hb => by
+  rw [CRel.rep_ofC hb, comp_id]; exact idU_idem X
+
+theorem outl_sound {A B : Obj} : Sound (outl A B) (graph Prod.fst) := ofVals_sound fun X hb => by
+  rw [CRel.rep_ofC hb]; show _ ≫ rep (Alg.outl (idU X)) = _; rw [rep_outl, ← comp_assoc, idU_idem]
+
+theorem outr_sound {A B : Obj} : Sound (outr A B) (graph Prod.snd) := ofVals_sound fun X hb => by
+  rw [CRel.rep_ofC hb]; show _ ≫ rep (Alg.outr (idU X)) = _; rw [rep_outr, ← comp_assoc, idU_idem]
+
+theorem inl_sound {A B : Obj} : Sound (ofVals A (.sum A B) CRel.inl) (Core.Rel.inl (α := A.El) (β := B.El)) :=
+  ofVals_sound fun X hb => by rw [CRel.rep_inl X hb, ← rep_idU, ← comp_assoc, idU_idem]
+
+theorem inr_sound {A B : Obj} : Sound (ofVals B (.sum A B) CRel.inr) (Core.Rel.inr (α := A.El) (β := B.El)) :=
+  ofVals_sound fun X hb => by rw [CRel.rep_inr X hb, ← rep_idU, ← comp_assoc, idU_idem]
+
+theorem mem_sound {B : Obj} : Sound (ofVals (.arr B) B CRel.mem) (fun xs x => x ∈ xs) :=
+  ofVals_sound fun X hb => idU_ext fun xs x => CRel.rep_mem X hb xs x
+
+/-! ### The rows of `prims` -/
 
 /-- A row composed after its keys computes `T` where its kernel is `P` then `T`. -/
 theorem after_sound {A B : Obj} {f : {K : Obj} → CRel K A → CRel K B} {T : Den A B}
