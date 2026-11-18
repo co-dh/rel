@@ -250,7 +250,9 @@ def Tm.subst : Tm.Sub → {A B : Obj} → {d : Bool} → Tm A B d → Tm A B d
 
 /-- `X`, the variable `k`, occurs in `t` only with sign `s` (`true` positive): the one monotonicity check (D5 = J),
     `den_mono`/`den_anti`. A node with no rule below must not mention `k` at all. `ldiv`'s `R` and `rdiv`'s `S`
-    occur on both sides (`ldivDen`'s `∀` and its `∃`), so they must be free of `k`. -/
+    occur on both sides (`ldivDen`'s `∀` and its `∃`), so they must be free of `k`; `Λ`, `E`, `thin` hold an image
+    whole (`lamDen`'s `↔`), so their part must be too. A row passes its argument's sign where its `prims` entry is
+    `mono` (`rowDens_mono`), `F(X)` among them. -/
 def Tm.pol (s : Bool) (k : Nat) : {A B : Obj} → {d : Bool} → Tm A B d → Bool
   | _, _, _, .var j => if j == k then s else true
   | _, _, _, .top V => V.pol s k
@@ -271,9 +273,12 @@ def Tm.pol (s : Bool) (k : Nat) : {A B : Obj} → {d : Bool} → Tm A B d → Bo
   | _, _, _, .nu j S b => S.pol s k && (j == k || b.pol s k)
   | _, _, _, .mu j _ _ b => j == k || b.pol s k
   | _, _, _, .refold j _ _ b => j == k || b.pol s k
-  | _, _, _, t@(.lam _) | _, _, _, t@(.E _) | _, _, _, t@(.est _) | _, _, _, t@(.thin _) | _, _, _, t@(.succ _)
-  | _, _, _, t@(.arith ..) | _, _, _, t@(.leq _) | _, _, _, t@(.lt _) | _, _, _, t@(.fold ..) | _, _, _, t@(.foldI ..)
-  | _, _, _, t@(.flat _) | _, _, _, t@(.arg ..) => !t.fv.contains k
+  | _, _, _, .est Q => Q.pol s k
+  | _, _, _, .succ U | _, _, _, .arith _ U | _, _, _, .leq U | _, _, _, .lt U => U.pol s k
+  | _, _, _, .fold e S | _, _, _, .foldI e S => e.pol s k && S.pol s k
+  | _, _, _, .flat R => R.pol s k
+  | _, _, _, t@(.arg (.prim r) x) => (Prim.find? r.sym).any (·.mono) && x.pol s k || !t.fv.contains k
+  | _, _, _, t@(.lam _) | _, _, _, t@(.E _) | _, _, _, t@(.thin _) | _, _, _, t@(.arg ..) => !t.fv.contains k
   | _, _, _, .val _ | _, _, _, .uni _ | _, _, _, .zero | _, _, _, .id | _, _, _, .outl | _, _, _, .outr
   | _, _, _, .nil | _, _, _, .prim _ | _, _, _, .atPos _ | _, _, _, .share .. | _, _, _, .call .. => true
 

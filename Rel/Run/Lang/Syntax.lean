@@ -158,11 +158,12 @@ def mapRow : Prim := { sym := "F", sig := prim% CRel.map, written := false }
 def prims : List Prim :=
   [{ sym := "τ", sig := prim% CRel.τ,
      aop := .ok `Freyd.Alg.singletonMap }, consRow, memRow, inlRow, inrRow, mapRow,
-   -- `filter(p)`, `takewhile(p)` given one relation run as their mask forms (`rep_filterC`, `rep_takewhileC`, `elems_test`)
+   -- `filter(p)`, `takewhile(p)` given one relation run as their mask forms (`rep_filterC`, `rep_takewhileC`, `elems_test`);
+   -- not `mono`: a larger `p` keeps more elements, a different list, not a superset of pairs (`rowDens`)
    { sym := "filter", sig := prim% CRel.filter,
-     prelude := `Rel.Programs.prelude.filter },
+     mono := false, prelude := `Rel.Programs.prelude.filter },
    { sym := "takewhile", sig := prim% CRel.takewhile,
-     prelude := `Rel.Programs.prelude.takewhile },
+     mono := false, prelude := `Rel.Programs.prelude.takewhile },
    { sym := "thinL", sig := prim% CRel.thinLOn,
      mono := false, aop := .ok `Freyd.Alg.RelSet.ListRel.thinL },
    { sym := "merge", sig := prim% CRel.mergeOn,

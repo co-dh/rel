@@ -1655,6 +1655,8 @@ def build : Pre → Except Err Res
     let A ← toObj objs mc dp a; let B ← toObj objs mc dp b
     let why := s!"{if least then "μ" else "ν"}'s body is read whole each round"
     let body ← closed? dp (A := A) (B := B) (← closeRes objs mc dp p a why (← build q))
+    unless body.pol true k do
+      throw ⟨p, s!"{if least then "μ" else "ν"} at {p}: its body does not use {k} positively"⟩
     if least then
       -- a chain from `𝟘` on universes of `n` and `m` elements stops within `n·m+1` rounds, so their `cap` never
       -- fails a monotonic body; an array object has no such bound, and `muCap` only guards termination
