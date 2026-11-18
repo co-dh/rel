@@ -306,6 +306,11 @@ impl<'a> B<'a> {
     pub fn unbox(self) -> usize { unbox(self.p()) }
     /// `lean_obj_tag`: the ctor tag of a heap object, the value of a scalar
     pub fn tag(self) -> u32 { unsafe { obj_tag(self.p()) } }
+    /// the `u8` at byte `off` of a ctor's scalars (`lean_ctor_get_uint8` past its object fields); panics on a non-ctor
+    pub fn scalar_u8(self, off: u32) -> u8 {
+        assert!(!self.is_scalar() && unsafe { is_ctor(self.p()) }, "lean::B::scalar_u8 {off}: not a ctor");
+        unsafe { ctor_get_scalar(self.p(), ctor_num_objs(self.p()) * size_of::<*mut Object>() as u32 + off) }
+    }
     /// field `i` of a ctor; panics on anything else or an index past its fields
     pub fn field(self, i: u32) -> B<'a> {
         assert!(!self.is_scalar() && unsafe { is_ctor(self.p()) && i < ctor_num_objs(self.p()) }, "lean::B::field {i}: not a field");

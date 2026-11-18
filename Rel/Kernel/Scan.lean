@@ -1,4 +1,5 @@
 import Rel.Kernel.Value
+import Rel.Kernel.Op
 
 /-! The part of `Rel.Kernel.Scan` the Rel kernels reach; `Rel.Kernel.Scan` imports it. -/
 
@@ -198,6 +199,41 @@ end Rel.Kernel.Scan
 namespace Rel.Kernel
 
 open Rel.Kernel.Scan
+
+/-- `e`'s `n` raw words at `t`, or how many it holds instead: `Enc.raw` answers none at a type the form does not hold
+(a `syms` or `gen` column, a `bits` one read at a non-boolean type), and `kscan` reads every column at all `n` rows. -/
+def rawAll (t : QAtomicType) (n : USize) (e : Enc) : Except String (Array UInt64) :=
+  if (e.raw t n).size = n.toNat then .ok (e.raw t n)
+  else .error s!"kscan: a column holds {(e.raw t n).size} raw elements, not {n.toNat}"
+
+/-- Row `i` of `kscan` after the rows before it, `out`: the carry is the previous row's answer, or the seed's row `i`
+where `seg` starts a segment (and at row 0); `op` then folds every other column's row `i` into it, left to right. -/
+def kscanRow (op : Op) (seg seed : Array UInt64) (xs : List (Array UInt64)) (out : Array UInt64) (i : Nat) :
+    Except String (Array UInt64) :=
+  -- every array holds `n` words (`rawAll`) and `i < n`, so no `getD` here answers its default
+  out.push <$> xs.foldlM (fun a x => op.eval a (x[i]?.getD 0))
+    (if 0 < i ∧ seg[i]?.getD 0 = 0 then out[i - 1]?.getD 0 else seed[i]?.getD 0)
+
+/-- **The scan primitive** (design §4, `raw_kscan`): the segmented prefix fold of `op` over the `n` rows of `es`, read
+at `s`. `seg`, read as booleans, marks the rows that start a segment; the first column of `es` is the seed a segment
+starts from and the others are folded into each row. So a map is every row a segment (`out[i] = op(a[i], b[i])`), a
+scan one segment from a seed column, a fold a scan's last row, and `es = [e]` fills `e` forward from the marked rows.
+The answer is written at `t`, each word cut to `t`'s width (a boolean's to its low bit); an `Op.eval` error, a column
+short of `n` raw words, an empty `es` or a `t` of no width is the `.error`, never a default. Temporary name until 6.11:
+`Kernel.scan` (`Driver.lean`) and `qlean_scan` exist. -/
+@[extern "qlean_k_scan"]
+def kscan (op : Op) (s t : QAtomicType) (n : USize) (seg : @& Enc) (es : @& List Enc) : Except String Enc := do
+  let g ← rawAll .boolean n seg
+  match ← es.mapM (rawAll s n) with
+  | [] => .error "kscan: es is empty; its first column is the seed"
+  | seed :: xs =>
+    let out ← (List.range n.toNat).foldlM (kscanRow op g seed xs) #[]
+    match t.width with
+    | none => .error "kscan: the answer type has no fixed width"
+    | some w =>
+      let W := if t = .boolean then 1 else 8 * w
+      let p := Column.packIds W n.toNat fun i => (out[i]?.getD 0).toNat % 2 ^ W
+      pure (if t = .boolean then .bits p else .bytes p)
 
 end Rel.Kernel
 

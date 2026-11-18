@@ -503,3 +503,105 @@ mod tests {
         assert_eq!(msum::<i64, i64, 8>(2, &[i64::MAX, i64::MIN, 1, 5, 7], KI64::msum), [i64::MAX, i64::MAX, i64::MIN, 6, i64::MIN]);
     }
 }
+
+// ---------------------------------------------------------------- `kscan` (Rel/Kernel/Scan.lean, design §4)
+
+/// `QAtomicType`'s constructor indices `kscan` tells apart (Rel/Kernel/Value.lean's order).
+pub const QT_BOOLEAN: u8 = 1;
+pub const QT_SYMBOL: u8 = 9;
+/// `QAtomicType.width` at the constructor index `t`: `None` at `general` (0) and `symbol` (9).
+pub fn qtype_width(t: u8) -> Option<usize> {
+    match t { 1 | 2 | 8 => Some(1), 3 => Some(2), 4 | 6 | 11 | 12 | 15 | 16 | 17 => Some(4), 5 | 7 | 10 | 13 | 14 => Some(8), _ => None }
+}
+
+/// `Int.fdiv` and `Int.fmod` cut to 64 bits (`Int64.ofInt`): floored, so `i64::MIN / -1` wraps to `i64::MIN`; `y != 0`.
+fn fdivmod(x: i64, y: i64) -> (u64, u64) {
+    let (x, y) = (x as i128, y as i128);
+    let q = x / y - if x % y != 0 && (x < 0) != (y < 0) { 1 } else { 0 };
+    (q as i64 as u64, (x - y * q) as i64 as u64)
+}
+/// `Op.widen32`: an `f32` word widened, a NaN keeping its sign as the quiet `f64` NaN.
+fn widen32(x: u64) -> u64 {
+    let b = x as u32;
+    let v = f32::from_bits(b);
+    if v.is_nan() { ((b >> 31) as u64) << 63 | 0x7ff8_0000_0000_0000 } else { (v as f64).to_bits() }
+}
+
+/// `Op.eval` (Rel/Kernel/Op.lean) at the constructor index `op`, one scan step on raw words: the integer ops on `i64`
+/// wrapping, the `f` ops on `f64` bits, a boolean the word 0 or 1. `Err` is the Lean `.error` text, word for word.
+pub fn op_eval(op: u8, a: u64, x: u64) -> Result<u64, &'static str> {
+    use crate::c as m;
+    let (i, f, w, fw) = (|v: u64| v as i64, f64::from_bits, |b: bool| b as u64, f64::to_bits);
+    // a NaN is the least value (`Op.fle'`), so `fmin`/`fmax` choose under a total order
+    let fle = |a: u64, x: u64| f(a).is_nan() || (!f(x).is_nan() && f(a) <= f(x));
+    Ok(match op {
+        0 => a.wrapping_add(x), 1 => a.wrapping_sub(x), 2 => a.wrapping_mul(x),
+        3 => if x == 0 { return Err("Op.div: integer division by 0") } else { fdivmod(i(a), i(x)).0 },
+        4 => if x == 0 { return Err("Op.mod: integer remainder by 0") } else { fdivmod(i(a), i(x)).1 },
+        5 => if i(x) < i(a) { x } else { a }, 6 => if i(a) < i(x) { x } else { a },
+        7 => x.wrapping_neg(), 8 => if i(x) < 0 { x.wrapping_neg() } else { x },
+        9 => w(a == x), 10 => w(a != x), 11 => w(i(a) < i(x)), 12 => w(i(a) <= i(x)), 13 => w(i(x) < i(a)), 14 => w(i(x) <= i(a)),
+        15 => a & x, 16 => a | x, 17 => x ^ 1, 18 => a, 19 => x,
+        20 => fw(f(a) + f(x)), 21 => fw(f(a) - f(x)), 22 => fw(f(a) * f(x)), 23 => fw(f(a) / f(x)), 24 => fw(m::pow(f(a), f(x))),
+        25 => if fle(a, x) { a } else { x }, 26 => if fle(a, x) { x } else { a },
+        27 => x ^ 0x8000_0000_0000_0000, 28 => x & 0x7fff_ffff_ffff_ffff,
+        29 => fw(m::sqrt(f(x))), 30 => fw(m::exp(f(x))), 31 => fw(m::log(f(x))), 32 => fw(m::sin(f(x))), 33 => fw(m::cos(f(x))),
+        34 => fw(m::tan(f(x))), 35 => fw(m::asin(f(x))), 36 => fw(m::acos(f(x))), 37 => fw(m::atan(f(x))),
+        38 => fw(crate::ew::floor64(f(x))),
+        39 => w(f(a) == f(x)), 40 => w(f(a) != f(x)), 41 => w(f(a) < f(x)), 42 => w(f(a) <= f(x)), 43 => w(f(x) < f(a)), 44 => w(f(x) <= f(a)),
+        // 45, `f32to64`: the last constructor, and Lean passes no other index
+        _ => widen32(x),
+    })
+}
+
+/// `kscan`'s rows (`kscanRow` folded over `0 .. n`): row `i` starts from `seed[i]` where `i == 0` or `seg[i] != 0`, else
+/// from row `i - 1`'s answer, and folds each column of `xs` at row `i` into it through `op`; the first error stops it.
+/// Every slice holds `seed.len()` words.
+pub fn kscan_rows(op: u8, seg: &[u64], seed: &[u64], xs: &[alloc::vec::Vec<u64>]) -> Result<alloc::vec::Vec<u64>, &'static str> {
+    let mut out = alloc::vec::Vec::with_capacity(seed.len());
+    for i in 0..seed.len() {
+        let mut a = if i > 0 && seg[i] == 0 { out[i - 1] } else { seed[i] };
+        for x in xs { a = op_eval(op, a, x[i])? }
+        out.push(a);
+    }
+    Ok(out)
+}
+
+/// `kscan`'s answer payload, `Column.packIds W n (v % 2^W)`: at `W = 1` one bit a word, LSB first and the tail bits 0;
+/// else `W / 8` little-endian bytes a word.
+pub fn kscan_pack(wb: usize, out: &[u64]) -> alloc::vec::Vec<u8> {
+    if wb == 1 {
+        let mut b = alloc::vec![0u8; out.len().div_ceil(8)];
+        for (i, v) in out.iter().enumerate() { b[i >> 3] |= ((v & 1) as u8) << (i & 7) }
+        b
+    } else {
+        let mut b = alloc::vec::Vec::with_capacity(out.len() * wb / 8);
+        for v in out { b.extend_from_slice(&v.to_le_bytes()[..wb / 8]) }
+        b
+    }
+}
+
+#[cfg(test)]
+mod kscan_tests {
+    use super::*;
+    #[test] fn op_eval_floors_and_types_its_errors() {
+        assert_eq!(op_eval(3, -1i64 as u64, 2), Ok(-1i64 as u64));
+        assert_eq!(op_eval(4, -7i64 as u64, 3), Ok(2));
+        assert_eq!(op_eval(4, 7, -3i64 as u64), Ok(-2i64 as u64));
+        assert_eq!(op_eval(3, i64::MIN as u64, -1i64 as u64), Ok(i64::MIN as u64));
+        assert_eq!(op_eval(3, 7, 0), Err("Op.div: integer division by 0"));
+        assert_eq!(op_eval(4, 7, 0), Err("Op.mod: integer remainder by 0"));
+        assert_eq!(op_eval(45, 0, 0x3fc0_0000), Ok(0x3ff8_0000_0000_0000));
+        assert_eq!(op_eval(25, f64::NAN.to_bits(), 1f64.to_bits()), Ok(f64::NAN.to_bits()));
+        assert_eq!(op_eval(38, 0, 2.5f64.to_bits()), Ok(2f64.to_bits()));
+    }
+    #[test] fn kscan_rows_restart_at_segments_and_stop_at_an_error() {
+        let (seg, seed) = ([1, 0, 1, 0], [100, 100, 100, 100]);
+        assert_eq!(kscan_rows(0, &seg, &seed, &[alloc::vec![1, 2, 3, 4]]), Ok(alloc::vec![101, 103, 103, 107]));
+        // `es = [e]` fills `e` forward from the marked rows
+        assert_eq!(kscan_rows(0, &[0, 0, 1, 0], &[5, 6, 7, 8], &[]), Ok(alloc::vec![5, 5, 7, 7]));
+        assert_eq!(kscan_rows(3, &seg, &seed, &[alloc::vec![1, 0, 1, 1]]), Err("Op.div: integer division by 0"));
+        assert_eq!(kscan_pack(1, &[1, 0, 3, 2, 1]), [0b10101]);
+        assert_eq!(kscan_pack(16, &[0x1_0203, 4]), [3, 2, 4, 0]);
+    }
+}
