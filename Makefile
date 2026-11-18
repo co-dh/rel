@@ -12,7 +12,9 @@ export CARGO_TARGET_DIR ?= /data/tmp/relk/target/$(notdir $(CURDIR))
 CAP     := /home/dh/repo/freyd/scripts/cap
 LR      := /home/dh/repo/lean-refactor/scripts/lean-refactor
 MEM     := 20000
-LAKE    := lake -d $(CURDIR)
+# -R: lib `Rel` lists its modules by reading `Rel/` at configure time and lake caches that list in .lake/config,
+# so a renamed or deleted module stays listed until reconfigure (about 1 s)
+LAKE    := lake -R -d $(CURDIR)
 DB      := $(CURDIR)/.lake/build/refactor-index.db
 T       := /data/tmp/rel-gates/$(notdir $(CURDIR))
 GATES   := $(CURDIR)/.lake/build/bin/gates
