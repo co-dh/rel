@@ -429,7 +429,7 @@ def codes {p : Nat} (t : QAtomicType) (cs : Vector ((n : USize) × Arr t n) p) :
     subst hg
     exact let all := (gens (raze .general cs.toArray).2).toList; (pack all.length (firstIds all)).cut (cs.map (·.1))
   else
-  match cs.mapM (fun c => match c.2.enc with | .bits b => some (⟨1, c.1, 2, b⟩ : Code) | _ => none) with
+  match cs.mapM (fun c => (boolBits t c.1 c.2.enc).map fun b => (⟨1, c.1, 2, b⟩ : Code)) with
   | some bs => bs
   | none =>
   let ns := cs.map (·.1)
@@ -555,11 +555,6 @@ theorem len_tilLongs (n : USize) : len (tilLongs n) = n.toNat := by
   have w := KernelWF.tilLongs_wf n
   simp only [Enc.WF, QAtomicType.width] at w
   simp [len, w]
-
-/-- A boolean column's bitmap: `bits` is the one payload `Enc.WF .boolean` admits. -/
-def tagBits {n : USize} (x : Arr .boolean n) : ByteArray :=
-  (match x.enc with | .bits b => some b | _ => none).get (by
-    have hw := x.wf; revert hw; cases x.enc <;> simp [Enc.WF])
 
 /-- The long `z` as a one-element payload, the scalar operand of `Ew.val … va`. -/
 def int (z : Int) : ByteArray := one (Int64.ofInt z).toUInt64

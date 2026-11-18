@@ -275,6 +275,14 @@ def bitsOfFoR (metadata pack : @& ByteArray) (n : USize) : ByteArray :=
   packOf n.toNat fun i =>
     i < Column.blk metadata * Column.nblk metadata && (Column.foRBits metadata pack starts i).toNat % 2 == 1
 
+/-- A boolean payload as its bitmap, whichever of the two forms `Enc.WF .boolean` admits it is in (a `u1` `foR`
+through `bitsOfFoR`); `none` at any other type or form. The one boolean read every bitmap consumer goes through. -/
+def boolBits (t : QAtomicType) (n : USize) (e : Ext.Enc X) : Option ByteArray :=
+  match t, e with
+  | .boolean, .bits b => some b
+  | .boolean, .foR m p => some (bitsOfFoR m p n)
+  | _, _ => none
+
 /-- `,` and `raze` at bit payloads. Measured — `101b,11b` is `10111b` and `raze (11111111b;1b)` is
 `111111111b`, so a part starts wherever the one before it ended and not on a byte.
 
@@ -463,7 +471,7 @@ def gatherColumn (t : QAtomicType) (n : USize) (e : Ext.Enc X) (m : USize) (ie :
       | some ix => if ix.size < m.toNat * 8 then none else some ix
       | none => none
     match t, e with
-    | .boolean, .bits b => (idx ()).map fun ix => .bits (gatherBits n b ix)
+    | .boolean, e => (boolBits .boolean n e).bind fun b => (idx ()).map fun ix => .bits (gatherBits n b ix)
     | .symbol, .syms blob offs =>
       (idx ()).map fun ix => let (nb, no) := gatherSyms blob offs ix; .syms nb no
     -- interned: `asc` is a grade and this gather, and the grade was already the ids' — leaving this
@@ -585,7 +593,7 @@ def razeColumn (t : QAtomicType) (cs : Array (USize × Ext.Enc X)) : Option (Ext
   else match t with
     | .boolean =>
       -- a `u1` `foR` part is brought to the bitmap the others are, a block at a time
-      match cs.mapM (fun | (n, .bits b) => some (n, b) | (n, .foR m p) => some (n, bitsOfFoR m p n) | _ => none) with
+      match cs.mapM (fun (n, e) => (boolBits .boolean n e).map (n, ·)) with
       | some ps => needSize (ps.foldl (init := 0) (fun s p => s + p.1.toNat)) "raze: booleans" (fun _ => none) fun c =>
         some (.vector .boolean c (.bits (concatBits (countBytes (ps.map (·.1))) (ps.map (·.2)))) none)
       | none => none

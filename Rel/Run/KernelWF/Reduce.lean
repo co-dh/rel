@@ -83,7 +83,10 @@ theorem gradeColumn_wf {t : QAtomicType} {desc rank : Bool} {n : USize} {e v : E
        · cases h
        rename_i k hk
        split at h
-       · cases h
+       · split at h
+         · cases h; apply key
+           simp only [ranksFoR, gradeFoR, ranks_size, grade_size, min_avail_decode (k := .u8) (by decide)]
+         · cases h
        rename_i hbit
        have hk' : k ≠ .bit := fun e => by simp [e] at hbit
        split at h

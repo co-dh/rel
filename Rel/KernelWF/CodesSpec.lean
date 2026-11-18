@@ -21,14 +21,7 @@ open Tab Rel.Dep Rel.Kernel Rel.Verify Rel
 
 /-! ## Atoms: a boolean side -/
 
-/-- A boolean column's payload is its bitmap, `tagBits`. -/
-theorem enc_tagBits {n : USize} (x : Arr .boolean n) : x.enc = .bits (tagBits x) := by
-  have key : ∀ (e : Enc) (o : Option ByteArray), (o = match e with | .bits b => some b | _ => none) →
-      ∀ h : o.isSome, e = .bits (o.get h) := by
-    intro e o ho h; subst ho; cases e <;> first | rfl | simp at h
-  exact key x.enc _ rfl _
-
-/-- **A boolean side's codes are its bitmaps**: every part's payload is `bits` (`Enc.WF .boolean`), so
+/-- **A boolean side's codes are its bitmaps**: every part's payload reads as one (`enc_tagBits`), so
     `codes` takes its first branch, each part its own code a bit wide. -/
 theorem codes_boolean {p : Nat} (cs : Vector (Part (.atom .boolean)) p) :
     Obj.codes (.atom .boolean) cs = cs.map fun c => (⟨1, c.1, 2, tagBits c.2⟩ : Code) := by

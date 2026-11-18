@@ -1512,10 +1512,10 @@ theorem razeColumn_isSome {t : QAtomicType} {cs : Array (USize × Enc)} (hne : c
   cases t
   case general => exact absurd rfl hg
   case boolean =>
-    rw [mapM_some (fun c => (c.1, match c.2 with | .bits b => b | .foR m p => bitsOfFoR m p c.1 | _ => .empty))
+    rw [mapM_some (fun c => (c.1, (boolBits .boolean c.1 c.2).getD .empty))
       fun c hc => ?_]
     · dsimp only; rw [Array.foldl_map, needSize_fits hN]; rfl
-    · have := h c hc; rcases c with ⟨n, e⟩; cases e <;> simp [Enc.WF] at this ⊢
+    · have := h c hc; rcases c with ⟨n, e⟩; cases e <;> simp [Enc.WF, boolBits] at this ⊢
   case symbol =>
     dsimp only
     split
@@ -1561,7 +1561,7 @@ theorem razeColumn_count {t : QAtomicType} {cs : Array (USize × Enc)}
       obtain ⟨hc, hv⟩ := needSize_some hv
       cases hv
       have hk := mapM_key (key' := fun p : USize × ByteArray => p.1) (key := fun c : USize × Enc => c.1)
-        (fun c _ x hx => by rcases c with ⟨k, e'⟩; cases e' <;> simp at hx <;> (subst hx; rfl)) hps
+        (fun c _ x hx => by rcases c with ⟨k, e'⟩; cases e' <;> simp [boolBits] at hx <;> (subst hx; rfl)) hps
       rw [toUSize_toNat hc, foldl_toNat, foldl_toNat, hk]
     · cases hv
   case symbol =>
