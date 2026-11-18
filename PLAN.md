@@ -89,17 +89,17 @@ Size：S = 一步，少于 20 次 tool call；M = 一到三步；L = 多于三�
 状态：✅ 完成，🔄 进行中，⬜ 未开始，✖ 弃用。每步的旧文本（文件、行号、`LR` 命令、Done 条件）在 commit
 178da18 的 `PLAN.md` §2：`git show 178da18:PLAN.md`。行号已过时，先用 index 重新定位。
 
-进度：21 / 53 步（约 40%）。
+进度：23 / 54 步（约 43%）。
 
 | Phase                | 完成 / 步数 | %    |
 |----------------------|-------------|------|
 | P0 baseline          | 1 / 1       | 100% |
 | P1 删除 `Syn`        | 3 / 3       | 100% |
 | P2 不依赖 `Rel` 类型 | 6 / 6       | 100% |
-| P3 `Rel` 类型        | 1 / 13      | 8%   |
+| P3 `Rel` 类型        | 3 / 13      | 23%  |
 | P4 `Tm` constructor  | 1 / 5       | 20%  |
 | P5 关闭 gap          | 0 / 8       | 0%   |
-| P6 kernels           | 9 / 13      | 69%  |
+| P6 kernels           | 9 / 14      | 64%  |
 | P7 Plan A            | 0 / 4       | 0%   |
 
 ### P0 baseline — 1/1
@@ -121,13 +121,15 @@ Size：S = 一步，少于 20 次 tool call；M = 一到三步；L = 多于三�
 - ✅ 2.5 对称除法的含义。
 - ✅ 2.6 分析：28 个 prim row 能否写成 fold/hylo（不编辑）。
 
-### P3 `Rel` 类型 — 1/13（在分支 `rel-lazy` 上串行；phase gate 通过之前不动 master）
+### P3 `Rel` 类型 — 3/13（在分支 `rel-lazy` 上串行；phase gate 通过之前不动 master）
 
 - ✅ 3.1 结构 `Rel.Rel` → `Rel.Tab`。
-- 🔄 3.2 `CRel` 是 `Option (Tab A B)`。3.2a（3c41c45）：`RelRun` 与 `CRel*` 六个 module 已通过；
-  剩 `Rel/Lang/*`（GenSpec 起）、HyloSpec、CanonTest。
+- ✅ 3.2 `CRel` 是 `Option (Tab A B)`（90e753d）；与 3.3 合于 `rel-lazy` bee2ce2，`make check` 通过，241 / 25。
 - ✅ 3.3 `Known`、`Rel`（`tab | lazy`）、`Reps`，新文件 `Rel/Run/Lang/Lazy.lean`（3a00d75，`rel-lazy`）。
-- ⬜ 3.4 新旧函数类型之间的桥（`GenSpec.lean`，`Gen.Sound` 之后）。
+- 🔄 3.4（owner 选 A：`Reps` 只在 `K` 两侧之内比较，3.3 的 `Reps` 随之改）新旧函数类型之间的桥（`GenSpec.lean`，`Gen.Sound` 之后）。停在 bee2ce2，未提交：`Gen.Sound.reps` 对计划中的
+  `toRel` 不成立。反例：`Gen.id`，`T = 𝟙`，`K = {dom := [a], ran := []}`，代码给出 `{(a,a)}`，`Reps` 要求 `𝟘`；
+  代码不读 `K.ran`，也可输出 key 不在 `K.dom` 中的行。等 owner 选（Q4）：A 改 `Reps` 为
+  `K.dom ≫ rep t ≫ K.ran = K.dom ≫ T ≫ K.ran`（推荐，零运行时开销）；B 保留 `Reps`，每次 lazy 调用在运行时按 `K` 切两次。
 - ⬜ 3.5 `Gen.Fn d A B := Rel A B`（phantom `d`）：叶子。
 - ⬜ 3.6 二元和一元组合子。
 - ⬜ 3.7 fold 和不动点。
@@ -157,7 +159,7 @@ Size：S = 一步，少于 20 次 tool call；M = 一到三步；L = 多于三�
   实现排在 P3、P4 之后（改 `Tm.call`）。
 - ⬜ 5.6 删除 `Tm.gap`；Done：compile-diff 0 个 not ok。
 
-### P6 kernels — 9/13
+### P6 kernels — 9/14
 
 - ✅ 6.0 替换表：每个旧 extern 由哪些新 kernel 组成（分析）。
 - ✅ 6.0a 删除 class Q 的 22 个 extern。
@@ -167,12 +169,22 @@ Size：S = 一步，少于 20 次 tool call；M = 一到三步；L = 多于三�
 - ✅ 6.6 / 6.7 / 6.8 `gather`、`asc`、`distinct`；写入是 `wordsFoR`。6.7 剩余：`arr` key 的 MSD；浮点用 `ordKey`
   直到 6.9。
 - 🔄 计划外：foR 含 patch 与 frame，Lean `Coc.encode` 为规格，Rust 逐字节相同（owner 选 B）。
-- ⬜ 6.9 atom 和保序编码：`QAtomicType` → `u1 char i8 i16 i32 i64 f32 f64 sym date datetime`，用 `LR rename`，全仓串行。
+- ⬜ 6.9 atom 和保序编码：`QAtomicType` → `u1 char u8 i8 i16 i32 i64 f32 f64 sym date datetime`，用 `LR rename`，全仓串行。
+  owner 定：`QAtom` 的 constructor 同名改（`.i64 x`、`.i32 x`，不再用 `long`、`int`）；`i8` 有符号（排序翻符号位 `0x80`，
+  同 `i16`/`i32`/`i64`），另加无符号字节 `u8`（今天的 `byte`）；`Scan.Kind` 并入 `QAtomicType`，由它推出，不再单独定义
+  （`orderKind`、`clsOf` 随之删除或变成恒等）。
   `date`（自 epoch 的天数，存为 i32）与 `datetime`（自 epoch 的纳秒，存为 i64，即 q 的 timestamp），都不带时区；存为 foR
   码，按整数比较和排序（owner 经 dataframe 会话提出）。
-- ⬜ 6.10 迁移使用者，按 6.0 的表每组一步。
+- ⬜ 6.10 迁移使用者，按 6.0 的表每组一步；同时让 `scan`/`scatter`/`gather`/`asc`/`distinct` 直接在 foR 块上计算，
+  去掉 `foRWords` 解码与 `wordsFoR` 重编码（CLAUDE.md 规则：解码需 owner 批准）。vortex 1M 复测：relk 多数格输给 q，
+  主因就是这层解码/编码；`asc` 的 kern 本身也慢（38 ms 对 q 6 ms）。
 - ⬜ 6.11 删除旧 extern 与旧 constructor；保留 SIMD 编解码函数。
 - ⬜ 6.12 native gate。
+- ⬜ 6.13（未决，owner 经 dataframe 会话决定）虚拟行号 key：frame 的行号对象 `I` 只存 `n`，磁盘与内存都不物化；
+  `Tab` 的 key 增加一种"位置 0..n-1"，每个 kernel 把它当恒等（位置即循环下标）。不是 `Enc.gen`，也不退回 `til n` 数组。
+  估计涉及：`Rel.Tab.key`（index：45 个 module 中 556 处使用）改为两种 key 的类型；`scan`/`scatter`/`gather`/`asc`/`distinct`
+  的 Lean 签名、规格与 Rust 入口各加一条恒等 key 的路径；`Plan` 与 C emitter 发出这种 key；`Known.den`（3.3）与 `Reps`
+  的 key 读法。与 P3（`Rel` 类型）同改 `Tab`，排在 3.13 之后、6.10 迁移之前定设计。
 
 ### P7 Plan A — 0/4（串行）
 
@@ -271,7 +283,7 @@ Size：S = 一步，少于 20 次 tool call；M = 一到三步；L = 多于三�
 | Q1  | freyd：删除 `RelAop/Syn.lean`，还是把商移到 relaop 以保留 `Functor Syn RelSet`？                  |
 | Q2  | 表层关键字 / `Pre.refold` 是否也变成 hylo？                                                       |
 | Q3  | 答 M：`tab` 持有 `Option (Tab A B)`，`Tab` 是结构 `{n, key, val}`（3.1 的 rename）                |
-| Q4  | `Reps`（谓词，`tab none ↦ True`）是不是想要的 `rep`？如果不是，`rep (tab none)` 是什么？          |
+| Q4  | 答 A：`Reps` 为 `K.dom ≫ rep t ≫ K.ran = K.dom ≫ T ≫ K.ran`；`tab none ↦ True`                    |
 | Q5  | 答 L：`snoc`、`asc` 是 primitive；2.6 中每个 `+ slice` 行都是融合 kernel，由 `⟦row⟧ = ⟦def⟧` 联系 |
 | Q6  | 没有 `d` 之后，Elab 在哪里插入今天由 `closeRes` 插入的宇宙前缀？                                  |
 | Q7  | `Den` 的 inline：给 lean-refactor 加一个 unfold-abbrev 命令，还是把 `Den` 保留为 notation？       |
@@ -280,6 +292,25 @@ Size：S = 一步，少于 20 次 tool call；M = 一到三步；L = 多于三�
 | Q10 | lam/E/thin 的 `Ordered`/`KeyInj` 假设在 `compile` 的类型中从哪里来？                              |
 | Q11 | `Tm.den` 中 `call` 的含义（stage 5）：inline 被调用者的 term，还是一个 definition 的环境？        |
 | Q12 | plan A 的 library 边界：证明移进 `RelRun`，还是把 `compile` 移出它？                              |
+
+## 6. 构建与工作流（perf 会话，`/data/tmp/perf-report.md`）
+
+2026-11-18 13:00–16:00 共 34 223 CPU-s：kernel 改动的重建范围 19 110，lean-refactor 7 887，compile-diff 4 211，
+relk 线程池空转 2 526（与前三项重叠）。
+
+- ✅ W.1 `Makefile`：gate 从 lake 列 module，不再依赖 `index`；整包目标在 worktree 中拒绝运行；compile-diff 排最后（5aba864）。
+- ✅ W.2 cc-guard worktree 派发写明 build 命令：只 build 编辑过的 module 及其测试（6940c8d）。
+- ✅ W.3 lean-refactor 扫描时 elaborate `#guard`/`#eval` 而不运行（4810844）。
+- ✅ W.4 lean-refactor：`index` 为每个过时 module 起的 `syntax-rows` 子进程仍运行 relk，改为所有 elaboration 路径共用
+  `Elaborate.headerEnv` 的不运行表（6706c7e）；`moduleNames` 移出循环（7406671）。6 个过时 module 的 `index`：
+  105.4 s → 22.6 s wall，270 → 30 CPU-s。
+- 🔄 W.5 compile-diff 只用 `SPLIT` 以下的输入，并加一个计数 gate 检查（owner 选 D）。
+- 🔄 W.6 elaboration 时 `QLEAN_THREADS=1`，只设一处；先测 `make check` 前后的 wall 与 `user+sys`，不变慢才提交（owner 选 E）。
+- ✅ W.7 `-Wl,--build-id`（owner 选 F）：rel lakefile 52b6203（gates、relc、librelk.so、两个 precompiled lib），
+  cc-guard 8d08fa4（已部署），lean-refactor 22bc2aa；`crate/build.sh` 只出 `.o`，不需要。lake 不跟踪 extern_lib 的
+  link 参数，旧的 librelk.so 要重链接才带 build-id。cap 的 build-id 缓存在 947fbca。
+- ⬜ W.8 调查：Lean 的 module 系统（`module` + `public import`）能否让只改 kernel body 时不重建下游。
+- ✖ W.9 `SubagentStart` hook：首条命令被拒 0.4%，不值得多一个 hook（owner 选 B）。
 
 ## Baseline
 

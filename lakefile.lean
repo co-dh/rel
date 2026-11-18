@@ -11,6 +11,9 @@ Lean rather than TOML because a TOML configuration cannot declare an `extern_lib
 
 package rel where
   leanOptions := #[⟨`relaxedAutoImplicit, false⟩]
+  -- every executable and shared library carries a build-id, so a perf profile resolves against the binary it ran
+  -- (cap keeps them by build-id) and not the one rebuilt since; ld.lld writes none unless asked
+  moreLinkArgs := #["-Wl,--build-id"]
 
 /-- The concrete allegory core: toolchain only, choice-free (`CLAUDE.md`). -/
 lean_lib RelCore where
