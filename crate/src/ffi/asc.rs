@@ -1,35 +1,40 @@
-//! asc.rs's Lean export, `Kernel.kasc` (Rel/Kernel/Asc.lean): each key column read through
-//! `ffi::scatter::for_words_of`, the grade, and every answer column written by `ffi::scan::for_words`.
+//! asc.rs's Lean export, `Kernel.kasc` (Rel/Kernel/Asc.lean): each key column taken as its encoded blocks
+//! (`ffi::scatter::coc_of`), the grade (`asc::grade`), and every answer column written a block at a time through a
+//! `Sink`, the encoder's own block step, so the bytes are `Coc.encode`'s.
 #![deny(unsafe_code)]
 use crate::lean::export;
 #[cfg(all(feature = "ffi", not(any(test, feature = "std"))))]
-use {crate::{asc, exports::{scan::for_words, scatter::{except, for_words_of}}, lean::{B, O, boxed, ctor}},
+use {crate::{asc, blocks::Blocks, c::pool, exports::scatter::{coc_of, except}, ffi::{Form, Sink}, lean::{B, O, boxed, ctor}, pod},
     alloc::{format, string::String, vec::Vec}};
 
-/// `Kernel.ascCol`: the `m` words of the `foR` column `e` and their codes at the type `t`, or the model's error.
-#[cfg(all(feature = "ffi", not(any(test, feature = "std"))))]
-fn col(t: u8, e: B, m: usize) -> Result<(Vec<u64>, Vec<u64>), String> {
-    let (w, f, s) = asc::order(t).ok_or_else(|| format!("asc: type {t} has no fixed-width order"))?;
-    let x = for_words_of("asc", m, e)?;
-    let k = x.iter().map(|&v| asc::ord_key(w, f, s, v)).collect();
-    Ok((x, k))
-}
-
-/// `kasc`'s body in its order of failure: the columns left to right, then the grade and the answers.
+/// `kasc`'s body in its order of failure: the columns left to right (`ascCol`: the type, then the layout), then the
+/// grade and the answers. Where the rows are already in order (`None`) each column is its own blocks re-encoded and
+/// the permutation `til m`; else answer row `i` is input row `p[i]`, read at its address (`Coc::get_w`).
 #[cfg(all(feature = "ffi", not(any(test, feature = "std"))))]
 fn kasc(m: usize, es: B) -> Result<O, String> {
-    let (mut xs, mut ks, mut l) = (Vec::new(), Vec::new(), es);
+    let (mut ks, mut l) = (Vec::new(), es);
     while !l.is_scalar() {
-        let e = l.field(0);
-        let (x, k) = col(e.field(0).unbox() as u8, e.field(1), m)?;
-        xs.push(x);
-        ks.push(k);
+        let (e, t) = (l.field(0), l.field(0).field(0).unbox() as u8);
+        let o = asc::order(t).ok_or_else(|| format!("asc: type {t} has no fixed-width order"))?;
+        ks.push(asc::Key::new(coc_of("asc", m, e.field(1))?, o));
         l = l.field(1);
     }
-    let p = asc::grade(&ks, m);
+    let p = asc::grade(pool(), &ks, m);
+    let sink = || Sink::new(m, 8, Form::For).enc();
+    let col = |k: &asc::Key| match &p {
+        None => sink().answer(&Blocks::from(k.c)),
+        Some(p) => {
+            let uw = k.c.one_width();
+            sink().answer(&|buf: &mut [i64], i0: usize| for (o, &i) in buf.iter_mut().zip(&p[i0..]) { *o = k.c.get_w(uw, i as usize) })
+        }
+    };
     // the `List Enc` of sorted columns, built from its end
-    let vs = xs.iter().rev().fold(boxed(0), |vs, x| ctor(1, [for_words(&p.iter().map(|&i| x[i]).collect::<Vec<_>>()), vs], &[]));
-    Ok(ctor(0, [vs, for_words(&p.iter().map(|&i| i as u64).collect::<Vec<_>>())], &[]))
+    let vs = ks.iter().rev().fold(boxed(0), |vs, k| ctor(1, [col(k), vs], &[]));
+    let pe = match &p {
+        None => sink().answer(&|buf: &mut [i64], i0: usize| for (j, o) in buf.iter_mut().enumerate() { *o = (i0 + j) as i64 }),
+        Some(p) => sink().answer(&Blocks::dense(pod::bytes(p), 8)),
+    };
+    Ok(ctor(0, [vs, pe], &[]))
 }
 
 export! {
