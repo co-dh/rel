@@ -55,25 +55,25 @@ def liftedBytes : List UInt8 × List UInt8 :=
 example : enc lifted = liftedBytes := by decide +kernel
 #guard enc lifted == liftedBytes
 
-/-- `xs` encoded, decoded back by `Coc.decode`. -/
-def decoded (xs : List UInt64) : List UInt8 :=
+/-- `xs` (`n` elements) encoded, decoded back by `Coc.decode`. -/
+def decoded (xs : List UInt64) (n : USize) : List UInt8 :=
   let r := Coc.encode (u 8) (dense xs)
-  (Coc.decode (u 8) r.1 r.2 (u xs.length (by decide))).data.toList
+  (Coc.decode (u 8) r.1 r.2 n).data.toList
 
-example : decoded outlier = (dense outlier).data.toList := by decide +kernel
-#guard decoded outlier == (dense outlier).data.toList
-example : decoded lifted = (dense lifted).data.toList := by decide +kernel
-#guard decoded lifted == (dense lifted).data.toList
+example : decoded outlier (u 11) = (dense outlier).data.toList := by decide +kernel
+#guard decoded outlier (u 11) == (dense outlier).data.toList
+example : decoded lifted (u 17) = (dense lifted).data.toList := by decide +kernel
+#guard decoded lifted (u 17) == (dense lifted).data.toList
 
-/-- `xs` encoded, summed by `Coc.over`. -/
-def summed (xs : List UInt64) : Int64 :=
+/-- `xs` (`n` elements) encoded, summed by `Coc.over`. -/
+def summed (xs : List UInt64) (n : USize) : Int64 :=
   let r := Coc.encode (u 8) (dense xs)
-  Coc.over .add Int64.minValue r.1 r.2 (u xs.length (by decide))
+  Coc.over .add Int64.minValue r.1 r.2 n
 
-example : summed outlier = 255 := by decide +kernel
-#guard summed outlier == 255
-example : summed lifted = 16120 := by decide +kernel
-#guard summed lifted == 16120
+example : summed outlier (u 11) = 255 := by decide +kernel
+#guard summed outlier (u 11) == 255
+example : summed lifted (u 17) = 16120 := by decide +kernel
+#guard summed lifted (u 17) == 16120
 
 /-- `xs` as a `foR` column. -/
 def col (xs : List UInt64) : Enc := let r := Coc.encode (u 8) (dense xs); .foR r.1 r.2

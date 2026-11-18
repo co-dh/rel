@@ -495,6 +495,8 @@ radix scan → scatter，`arr` 字节用 MSD；gather = concat → asc → scan 
 `Rel/KernelSpec/*`（约 5700 行）和 `Rel/KernelWF/*`（约 16000 行）
 是针对今天的 kernel 陈述的；步数在 6.0 之后才知道。
 
+已定：foR 含 patch 与 frame，Lean `Coc.encode` 为规格（`Coc.planOf`；Rust `enc::for_blk` 逐字节等同）。
+
 **6.11 sonnet — 删除旧物。** 不删 `coc.rs`、`codec.rs`、`ids.rs`、`res.rs`、`simd.rs`、`unpack.rs` 中的 SIMD 编解码函数：
 它们是 `foR` 的位打包实现（6.2 / 6.3）。「一种编码」= `foR`：删除 `bytes` `bits` `syms` `enum` `gen` 这五个 `Ext.Enc` constructor，`alp` 保留；再移除旧 extern、driver
 `Kernel.map fold scan permute`（`Driver.lean`；分别有 5、2、2、2 个使用者）、没有调用者的 Rust 文件；用 `LR rename`
