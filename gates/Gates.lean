@@ -12,9 +12,11 @@ def allowed : List Name := [`propext, `Quot.sound]
 
 /-- Every constant of the imported environment whose defining module is one of `mods`, internal ones included. -/
 def declsOf (env : Environment) (mods : Array Name) : Array Name :=
+  -- `moduleNames` maps the header's module array on every call: read once, not once per constant
+  let names := env.header.moduleNames
   env.constants.map₁.fold (init := #[]) fun acc n _ =>
     match env.getModuleIdxFor? n with
-    | some i => if mods.contains env.header.moduleNames[i]! then acc.push n else acc
+    | some i => if mods.contains names[i]! then acc.push n else acc
     | none => acc
 
 def axiomsOf (env : Environment) (n : Name) : Array Name :=

@@ -24,19 +24,29 @@ SQL     := sqlite3 -readonly $(DB)
 # prints the gate's wall time when it ends, pass or fail
 GATE     = SECONDS=0; trap 'echo "[$@] $$SECONDS s, exit $$?"' EXIT; mkdir -p $(T)
 
-GATES_LIST := build compile-diff crate-test syms native ldd index-complete axioms noreduce panic externs
-.PHONY: check index panic-allow $(GATES_LIST)
-check: $(GATES_LIST)
+# cheapest first: compile-diff takes minutes, so a gate that fails in seconds is reported before it starts
+GATES_LIST := build crate-test syms native ldd index-complete axioms noreduce panic externs compile-diff
+.PHONY: check main-only index panic-allow $(GATES_LIST)
+check: main-only $(GATES_LIST)
 	$(GATE)
 	echo "make check: every gate passed"
 
+# A target that builds the whole package runs once, in the main checkout before the merge; a linked worktree builds
+# only the modules it edited, because every Rel.Kernel module has most of the package downstream of it.
+COMMON  = $$(git -C $(CURDIR) rev-parse --path-format=absolute --git-common-dir)
+main-only:
+	if [ "$$(git -C $(CURDIR) rev-parse --absolute-git-dir)" != "$(COMMON)" ]; then
+	  echo "make $(MAKECMDGOALS): $(CURDIR) is a linked worktree; the main thread runs this in $$(dirname $(COMMON)) before the merge. Here build only the modules you edited and their tests: cap lake build <Mod> <ModTest> ..." >&2
+	  exit 1
+	fi
+
 # the compile: every #guard and decide pair, 0 error, 0 sorryAx
-build:
+build: main-only
 	$(GATE)
 	CAP_MEM_MB=$(MEM) $(CAP) $(LAKE) build RelCore RelKernel RelRun Rel rel-native
 
 # compile agrees with the code rel_program generated, on every closed definition of every registered program
-compile-diff:
+compile-diff: main-only
 	$(GATE)
 	CAP_MEM_MB=$(MEM) $(CAP) $(LAKE) build TestCompile
 
@@ -79,10 +89,10 @@ index-complete: index
 	test ! -s $(T)/unindexed.txt
 
 # every declaration of Rel.Core.* depends on {propext, Quot.sound} at most
-axioms: index
+axioms:
 	$(GATE)
 	$(LAKE) build RelCore gates
-	$(SQL) "select name from module where name = 'Rel.Core' or name like 'Rel.Core.%'" | xargs $(LAKE) env $(GATES) axioms
+	$(LAKE) query RelCore:modules | xargs $(LAKE) env $(GATES) axioms
 
 # `dep` records a use of a constant by the declaration that mentions it, so a missing sorry or reduceBool is an absent row
 noreduce: index
@@ -108,10 +118,10 @@ panic-allow: index
 	$(SQL) "$(PANICS)" > panic-allow.txt
 
 # every @[extern] name declared in RelKernel is defined in librelk.a
-externs: index
+externs:
 	$(GATE)
 	$(LAKE) build RelKernel gates
-	$(SQL) "select name from module where name like 'Rel.Kernel.%' or name like 'Rel.KernelSpec.%'" | xargs $(LAKE) env $(GATES) externs > $(T)/extern.tsv
+	$(LAKE) query RelKernel:modules | xargs $(LAKE) env $(GATES) externs > $(T)/extern.tsv
 	cut -f1 $(T)/extern.tsv | sort -u > $(T)/extern.names
 	nm -g --defined-only --format=just-symbols $(RELKA) | sort -u > $(T)/relk.defined
 	comm -23 $(T)/extern.names $(T)/relk.defined > $(T)/extern.missing
