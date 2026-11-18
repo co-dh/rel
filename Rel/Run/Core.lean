@@ -115,31 +115,31 @@ def colFn (n : USize) (f : Fin n.toNat → Int64) : Arr .long n :=
     show _ = n.toNat * 8; rw [← Array.foldl_toList]
     show (packLongs (Array.ofFn f).toList).size = n.toNat * 8; rw [packLongs_size]; simp [Nat.mul_comm])
 
-/-- `encodeAt lg` records `lg` in its metadata: `foRMeta_reads` at the block widths `blockOf_bounds` caps
+/-- `encodeAt lg` records `lg` in its metadata: `foRMeta_reads` at the block widths `planBlock_bounds` caps
     at 64, the step `Verify.foRWF_encode` takes inside its proof. -/
-theorem lgAt_encodeAt (lg : Nat) (hlg : lg < 2 ^ 64) (width : USize) (hw : width.toNat ≤ 8) (x : ByteArray) :
-    Column.lgAt (Kernel.Coc.encodeAt lg width x).1 = lg := by
+theorem lgAt_encodeAt (lg : Nat) (hlg : lg < 2 ^ 64) (width : USize) (hw : width.toNat ≤ 8) (x : ByteArray)
+    {patch : Bool} : Column.lgAt (Kernel.Coc.encodeAt lg width x patch).1 = lg := by
   have hKp : 0 < 2 ^ lg := Nat.two_pow_pos lg
   simp only [Kernel.Coc.encodeAt]
   generalize width.toNat = w at hw ⊢
   generalize x.size / w = n
   refine (Verify.foRMeta_reads lg hlg _ n _ fun b h => ?_).2.1
   simp only [Array.size_map, Array.size_range] at h
-  have := (Verify.blockOf_bounds (2 ^ lg) w n b hw x (b * 2 ^ lg) (Nat.le_refl _) (by omega)
-    (Verify.mul_lt_of_lt_cdiv hKp h)).2.2
   simp only [Array.getElem_map, Verify.getElem_range]
-  revert this; rcases Kernel.Coc.blockOf (2 ^ lg) w n b x with ⟨_, _, _, _⟩; simp; omega
+  exact Nat.lt_of_le_of_lt (Verify.planBlock_bounds lg w n hw _ x b (Verify.mul_lt_of_lt_cdiv hKp h)).2.2.1
+    (by decide)
 
 /-- `encode`'s metadata passes `Enc.WF`'s `lgOk`: it is `encodeAt` at `Column.lgEnc`. -/
 theorem lgOk_encode (width : USize) (hw : width.toNat ≤ 8) (x : ByteArray) :
     Column.lgOk (Kernel.Coc.encode width x).1 = true := by
-  rw [Kernel.Coc.encode, Column.lgOk, lgAt_encodeAt _ (by decide) _ hw]; rfl
+  rw [Kernel.Coc.encode, Column.lgOk, lgAt_encodeAt _ (by decide) _ hw (patch := true)]; rfl
 
 /-- `xs` Frame-of-Reference encoded is well formed at its count `n`: the checks' `foR` columns, which
     `decide` cannot evaluate through `Coc.encode`. -/
 theorem foRLongs_wf (xs : List Int64) {n : USize} (hn : xs.length = n.toNat) : Enc.WF (X := Empty) .long n
     (.foR (Kernel.Coc.encode 8 (packLongs xs)).1 (Kernel.Coc.encode 8 (packLongs xs)).2) := by
   have h := Verify.nblk_encode Column.lgEnc (by decide) 8 (by decide) (by decide) (packLongs xs)
+    (patch := true)
   rw [packLongs_size] at h
   refine ⟨rfl, by simp, ?_, ?_⟩
   · show n.toNat ≤ Column.blk (Kernel.Coc.encodeAt Column.lgEnc (8 : Nat).toUSize (packLongs xs)).1 *

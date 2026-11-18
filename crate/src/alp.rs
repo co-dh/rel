@@ -460,7 +460,7 @@ mod tests {
                     let (cb, cm, cw) = (c.u() as i64, c.u() as i64, c.u());
                     let (mut base, mut maxv, mut width, mut bsum, mut nexc, mut e) = (0i64, 0i64, 0u8, 0i64, 0u32, 0i8);
                     let mut m = EncMeta { b: 0, base: &mut base, maxv: &mut maxv, width: &mut width, bsum: &mut bsum, frm: None,
-                                          nexc: &mut nexc, exp: Some(&mut e) };
+                                          nexc: &mut nexc, exp: Some(&mut e), patch: false };
                     assert_eq!((alp_fin_blk(&mut m, be as i32, &mut d, &ee, nb) as u64, fnv_w(&d.iter().map(|&x| x as u64).collect::<Vec<_>>())),
                                (ne, dh), "alp_fin_blk nb {nb}");
                     assert_eq!((e as i64 as u64, base, maxv, width as u64), (exp, cb, cm, cw), "alp_fin_blk meta nb {nb}");

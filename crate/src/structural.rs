@@ -973,7 +973,7 @@ pub fn append_plan(parts: &[Coc], start: &[usize], ew: usize) -> Option<Grow> {
     cat_fill(&|i| plain(&parts[i]), start, ew, false, &mut buf[lo..lo + m], n);
     let (mut mn, mut mx, mut sum, mut w, mut fd, mut nexc) = (0i64, 0i64, 0i64, 0u8, 0u64, 0u32);
     let mut meta = EncMeta { b: 0, base: &mut mn, maxv: &mut mx, width: &mut w, bsum: &mut sum, frm: Some(&mut fd), nexc: &mut nexc,
-                             exp: None };
+                             exp: None, patch: (n as u64) < 1 << 32 };
     if crate::enc::blk_meta(&mut meta, &buf[..lo + m], ew) != 0 || fd != 0 || mn != h.meta.base[b] || mx != h.meta.maxv[b] || w != h.meta.width[b] {
         return None;
     }
