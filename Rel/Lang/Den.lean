@@ -57,6 +57,25 @@ abbrev ldivDen (TR : Den A B) (TS : Den A C) (TB : Den B B) (TC : Den C C) : Den
 abbrev rdivDen (TR : Den A C) (TS : Den B C) (TA : Den A A) (TB : Den B B) : Den A B :=
   fun x y => (∀ c, TS y c → TR x c) ∧ ((∃ c, TS y c) ∨ ((∃ a, TA a x) ∧ ∃ b, TB b y))
 
+/-- `R÷S = R/S ∩ (S/R)°` within the universes `UA`, `UB`: `x` to `y` when `R x` and `S y` are one image. -/
+abbrev symDivDen (TA : Den A A) (TB : Den B B) (TR : Den A C) (TS : Den B C) : Den A B :=
+  rdivDen TR TS TA TB ∩ (rdivDen TS TR TB TA)°
+
+/-- `rep_symDiv` is `symDivDen` with the universes the coreflexives of `Ua`, `Ub`. It sits here, not in
+    `Rel.CRelRel`, because this module imports that one. -/
+theorem rep_symDiv_den {ma mb : USize} (R : CRel A C) (S : CRel B C) (Ua : Vals A ma) (Ub : Vals B mb)
+    (hb : (R.symDiv S Ua Ub).ok = true) :
+    rep (R.symDiv S Ua Ub).rel = symDivDen (corefl fun x => ∃ p, Ua.row p = x) (corefl fun y => ∃ j, Ub.row j = y)
+      (rep R.rel) (rep S.rel) := by
+  funext x y; apply propext; rw [CRel.rep_symDiv R S Ua Ub hb x y]
+  simp only [symDivDen, rdivDen, Core.Rel.inter, Core.Rel.recip, Core.Rel.corefl, exists_eq_left]
+  constructor
+  · rintro ⟨h, ⟨c, hc⟩ | hu⟩
+    · exact ⟨⟨fun c => (h c).2, .inl ⟨c, (h c).1 hc⟩⟩, fun c => (h c).1, .inl ⟨c, hc⟩⟩
+    · exact ⟨⟨fun c => (h c).2, .inr hu⟩, fun c => (h c).1, .inr hu.symm⟩
+  · rintro ⟨⟨h2, -⟩, h1, hu⟩
+    exact ⟨fun c => ⟨h1 c, h2 c⟩, hu.imp id And.symm⟩
+
 /-- `nil`: every source to the empty array. -/
 abbrev nilDen : Den A (.arr B) := fun _ Y => Y = []
 
