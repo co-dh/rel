@@ -689,9 +689,9 @@ theorem planOf_bounds (pl : Bool) (ks : Array Nat) (mn mx w : Nat) :
       dsimp only; split
       · exact Or.inr hk
       · exact ha
-  · show List.foldl _ 0 _ ≤ _
-    exact foldl_pick (· ≤ Column.widthFor (mx - mn)) _ _ _ (Nat.zero_le _) fun a ha c hc => by
-      dsimp only; split
+  · show (List.foldl _ (0, _) _).1 ≤ _
+    exact foldl_pick (fun p : Nat × Nat => p.1 ≤ Column.widthFor (mx - mn)) _ _ _ (Nat.zero_le _) fun ⟨a, _⟩ ha c hc => by
+      dsimp only at ha ⊢; split
       · exact Nat.lt_succ_iff.1 (List.mem_range.1 hc)
       · exact ha
 
@@ -1071,21 +1071,26 @@ theorem foRBits_encode (lg : Nat) (hlg : 6 ≤ lg ∧ lg ≤ 16) (w : Nat) (hw0 
   have hBM : Column.blk M = 2 ^ lg := by rw [blk_of_lgAt M ⟨hlgM ▸ hlg.1, hlgM ▸ hlg.2⟩, hlgM]
   simp only [Array.size_map] at hnb hMb
   -- the patch list
-  have hexs : (Array.filter (fun i => !!Kernel.Coc.outside (blk (i / 2 ^ lg)).2.2.2.1 (blk (i / 2 ^ lg)).2.2.2.2
-      (Kernel.Coc.keyAt w x i)) (Array.range n)).toList.Pairwise (· < ·) := by
+  -- the patch list reads each plan from `bs`, which is `blk` at every element's block
+  have hbg : ∀ j < n, bs.getD (j / 2 ^ lg) default = blk (j / 2 ^ lg) := fun j hj => by
+    have h : j / 2 ^ lg < bs.size := hbsz ▸ lt_cdiv hBp hj
+    unfold Array.getD; rw [dif_pos h]; exact hbget _ h
+  have hexs : (Array.filter (fun i => Kernel.Coc.outside (bs.getD (i / 2 ^ lg) default).2.2.2.1
+      (bs.getD (i / 2 ^ lg) default).2.2.2.2 (Kernel.Coc.keyAt w x i)) (Array.range n)).toList.Pairwise (· < ·) := by
     -- by index, not `List.pairwise_lt_range`, which carries `Classical.choice`
     rw [Array.toList_filter, toList_range]
     exact (List.pairwise_iff_getElem.2 fun i j _ _ h => by rw [List.getElem_range, List.getElem_range]; exact h).filter _
-  have hmem : ∀ j, j ∈ (Array.filter (fun i => !!Kernel.Coc.outside (blk (i / 2 ^ lg)).2.2.2.1
-      (blk (i / 2 ^ lg)).2.2.2.2 (Kernel.Coc.keyAt w x i)) (Array.range n)).toList ↔
+  have hmem : ∀ j, j ∈ (Array.filter (fun i => Kernel.Coc.outside (bs.getD (i / 2 ^ lg) default).2.2.2.1
+      (bs.getD (i / 2 ^ lg) default).2.2.2.2 (Kernel.Coc.keyAt w x i)) (Array.range n)).toList ↔
       j < n ∧ Kernel.Coc.outside (blk (j / 2 ^ lg)).2.2.2.1 (blk (j / 2 ^ lg)).2.2.2.2 (Kernel.Coc.keyAt w x j) = true := by
-    intro j; rw [Array.toList_filter, toList_range, List.mem_filter, List.mem_range, Bool.not_not]
-  have hen : (Array.filter (fun i => !!Kernel.Coc.outside (blk (i / 2 ^ lg)).2.2.2.1 (blk (i / 2 ^ lg)).2.2.2.2
-      (Kernel.Coc.keyAt w x i)) (Array.range n)).size ≤ n := by
+    intro j; rw [Array.toList_filter, toList_range, List.mem_filter, List.mem_range]
+    exact and_congr_right fun h => by rw [hbg j h]
+  have hen : (Array.filter (fun i => Kernel.Coc.outside (bs.getD (i / 2 ^ lg) default).2.2.2.1
+      (bs.getD (i / 2 ^ lg) default).2.2.2.2 (Kernel.Coc.keyAt w x i)) (Array.range n)).size ≤ n := by
     rw [← Array.length_toList, Array.toList_filter, toList_range]
     exact Nat.le_trans (List.length_filter_le _ _) (by simp)
-  generalize Array.filter (fun i => !!Kernel.Coc.outside (blk (i / 2 ^ lg)).2.2.2.1 (blk (i / 2 ^ lg)).2.2.2.2
-      (Kernel.Coc.keyAt w x i)) (Array.range n) = exc at hexs hmem hen ⊢
+  generalize Array.filter (fun i => Kernel.Coc.outside (bs.getD (i / 2 ^ lg) default).2.2.2.1
+      (bs.getD (i / 2 ^ lg) default).2.2.2.2 (Kernel.Coc.keyAt w x i)) (Array.range n) = exc at hexs hmem hen ⊢
   have hnil : exc.size = 0 → exc.toList = [] := fun h => by
     rw [← Array.length_toList] at h; exact List.eq_nil_of_length_eq_zero h
   -- a list is written only with patching on, so below `2 ^ 32` elements
@@ -1122,12 +1127,11 @@ theorem foRBits_encode (lg : Nat) (hlg : 6 ≤ lg ∧ lg ≤ 16) (w : Nat) (hw0 
   -- the residuals
   have hQ := pack_fold0 (fun (a : ByteArray × Nat) (e : Nat × Nat × UInt64 × Nat × Nat) =>
       (a.1 ++ Kernel.Coc.packRes (2 ^ lg) e.2.2.2.2 fun j => (if (decide (a.2 * 2 ^ lg + j < n) &&
-        !Kernel.Coc.outside (blk ((a.2 * 2 ^ lg + j) / 2 ^ lg)).2.2.2.1 (blk ((a.2 * 2 ^ lg + j) / 2 ^ lg)).2.2.2.2
-          (Kernel.Coc.keyAt w x (a.2 * 2 ^ lg + j))) = true then
+        !Kernel.Coc.outside e.2.2.2.1 e.2.2.2.2 (Kernel.Coc.keyAt w x (a.2 * 2 ^ lg + j))) = true then
         Kernel.Coc.keyAt w x (a.2 * 2 ^ lg + j) - e.2.2.2.1 else 0).toUInt64, a.2 + 1))
     (fun m (e : Nat × Nat × UInt64 × Nat × Nat) => Kernel.Coc.packRes (2 ^ lg) e.2.2.2.2 fun j =>
-      (if (decide (m * 2 ^ lg + j < n) && !Kernel.Coc.outside (blk ((m * 2 ^ lg + j) / 2 ^ lg)).2.2.2.1
-        (blk ((m * 2 ^ lg + j) / 2 ^ lg)).2.2.2.2 (Kernel.Coc.keyAt w x (m * 2 ^ lg + j))) = true then
+      (if (decide (m * 2 ^ lg + j < n) && !Kernel.Coc.outside e.2.2.2.1 e.2.2.2.2
+        (Kernel.Coc.keyAt w x (m * 2 ^ lg + j))) = true then
         Kernel.Coc.keyAt w x (m * 2 ^ lg + j) - e.2.2.2.1 else 0).toUInt64)
     (fun a m e => rfl) (Column.blockStart M) bs.toList rfl (fun c h => by
       rw [packRes_size, blockStart_succ, hBM, (hMb c (by simpa using h)).2]; simp)
@@ -1176,8 +1180,7 @@ theorem foRBits_encode (lg : Nat) (hlg : 6 ≤ lg ∧ lg ≤ 16) (w : Nat) (hw0 
     obtain ⟨hx, hfr⟩ := hx
     rw [foRBits_of M (pack ++ tail) i (2 ^ lg) hBM _ _ (blk (i / 2 ^ lg)).2.2.2.2 (fun j =>
       (if (decide (i / 2 ^ lg * 2 ^ lg + j < n) && !Kernel.Coc.outside
-        (blk ((i / 2 ^ lg * 2 ^ lg + j) / 2 ^ lg)).2.2.2.1 (blk ((i / 2 ^ lg * 2 ^ lg + j) / 2 ^ lg)).2.2.2.2
-          (Kernel.Coc.keyAt w x (i / 2 ^ lg * 2 ^ lg + j))) = true then
+        (blk (i / 2 ^ lg)).2.2.2.1 (blk (i / 2 ^ lg)).2.2.2.2 (Kernel.Coc.keyAt w x (i / 2 ^ lg * 2 ^ lg + j))) = true then
         Kernel.Coc.keyAt w x (i / 2 ^ lg * 2 ^ lg + j) - (blk (i / 2 ^ lg)).2.2.2.1 else 0).toUInt64)
       (by omega) hd64 h2 h3 ?h4 hx hfr]
     · rw [Nat.div_add_mod']

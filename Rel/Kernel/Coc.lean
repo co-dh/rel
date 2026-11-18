@@ -118,8 +118,10 @@ its `frameAt`; `W`, the bit length of `mx - mn`, patches nothing, and a wider wi
 off — ALP's integers, whose exceptions are its own blob's — the width is `W` and the frame `mn`. -/
 def planOf (patch : Bool) (ks : Array Nat) (mn mx w : Nat) : Nat × Nat :=
   if patch then
-    let d := (List.range (Rel.Column.widthFor (mx - mn) + 1)).foldl (init := 0) fun d c =>
-      if cost ks mn w c < cost ks mn w d then c else d
+    -- the best width's cost rides in the accumulator: recomputing it is a `frameAt` search per width
+    let d := ((List.range (Rel.Column.widthFor (mx - mn) + 1)).foldl (init := (0, cost ks mn w 0)) fun (d, cd) c =>
+      let cc := cost ks mn w c
+      if cc < cd then (c, cc) else (d, cd)).1
     (frameAt ks mn d, d)
   else (mn, Rel.Column.widthFor (mx - mn))
 
@@ -144,12 +146,13 @@ def encodeAt (lg : Nat) (width : USize) (x : ByteArray) (patch : Bool := true) :
   let n := x.size / w
   let blk := planBlock lg w n (patch && decide (n < 2 ^ 32)) x
   let bs := (Array.range ((n + 2 ^ lg - 1) / 2 ^ lg)).map blk
-  let kept (i : Nat) := !outside (blk (i / 2 ^ lg)).2.2.2.1 (blk (i / 2 ^ lg)).2.2.2.2 (keyAt w x i)
+  -- every per-element read of a plan goes to `bs`, never `blk`: each `blk` call reruns the block's width search
   let pack := (bs.foldl (init := (ByteArray.empty, 0)) fun (acc, b) (_, _, _, f, d) =>
     let lo := b * 2 ^ lg
     (acc ++ packRes (2 ^ lg) d fun j =>
-      (if lo + j < n && kept (lo + j) then keyAt w x (lo + j) - f else 0).toUInt64, b + 1)).1
-  let exc := (Array.range n).filter fun i => !kept i
+      (if lo + j < n && !outside f d (keyAt w x (lo + j)) then keyAt w x (lo + j) - f else 0).toUInt64, b + 1)).1
+  let exc := (Array.range n).filter fun i =>
+    outside (bs.getD (i / 2 ^ lg) default).2.2.2.1 (bs.getD (i / 2 ^ lg) default).2.2.2.2 (keyAt w x i)
   let fs := bs.map fun (mn, _, _, f, _) => (f - mn).toUInt64
   let frm := fs.any (· != 0)
   let tail := if exc.size = 0 then ByteArray.empty else
