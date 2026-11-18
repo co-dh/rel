@@ -329,16 +329,6 @@ theorem distinctWords_spec (n : Nat) (hn : n < 2 ^ 64) (xs : List (Array UInt64)
         rw [← Nat.add_assoc, ← hd'] at r2
         exact r1.trans r2.symm
 
-/-- What `foRWords` answers is `Enc.raw` at a 64-bit column, `n` words of it. -/
-theorem foRWords_raw (what : String) (n : USize) (e : Enc) (ws : Array UInt64) (h : foRWords what n e = .ok ws) :
-    ws = raw .long n e ∧ ws.size = n.toNat := by
-  unfold foRWords at h
-  split at h
-  · split at h
-    · cases h; exact ⟨rfl, by simp [raw, QAtomicType.width]⟩
-    · cases h
-  · cases h
-
 private theorem mapM_foRWords (n : USize) : ∀ (l : List (Enc × Nat)) (cs : List (Array UInt64)),
     l.mapM (fun p => foRWords s!"distinct: es[{p.2}]" n p.1) = .ok cs →
       cs = l.map (fun p => raw .long n p.1) ∧ ∀ p ∈ l, (raw .long n p.1).size = n.toNat

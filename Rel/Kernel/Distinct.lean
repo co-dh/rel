@@ -10,14 +10,6 @@ the two primitives, `scan` (adjacent compare) then `scatter` (compact), each by 
 namespace Rel.Kernel
 open Ext.Enc
 
-/-- The `n` raw words of a `foR` argument, as `Enc.raw` reads a 64-bit column, or why it does not hold them: a layout
-`Coc.foRStd` refuses at `n`, or a form other than `foR`. `n` is a parameter because the header, not `foR`, holds it. -/
-def foRWords (what : String) (n : USize) (e : Enc) : Except String (Array UInt64) :=
-  match e with
-  | .foR md pk => if Coc.foRStd n md pk then .ok (raw .long n e)
-    else .error s!"{what}: not a standard foR layout of {n.toNat} elements"
-  | _ => .error s!"{what}: constructor {e.ctorIdx} is not foR"
-
 /-- `distinct` on the `n` words of each column of `xs`: the number `k` of runs and the `k` words holding each run's
 first row. Every step is a scan but the last, which scatters:
 - `ne` of each column and the column one row back (row 0 reads itself, so it compares equal), every row a segment;

@@ -35,7 +35,7 @@ def dense : String ⊕ (Nat × List UInt64) := .inl "distinct: es[1]: constructo
 example : view (u 0) (kdistinct (u 2) [col [0, 1], .bytes (ByteArray.mk (Array.replicate 16 0))]) = dense := by
   decide +kernel
 #guard view (u 0) (kdistinct (u 2) [col [0, 1], .bytes (ByteArray.mk (Array.replicate 16 0))]) == dense
-def short : String ⊕ (Nat × List UInt64) := .inl "distinct: es[0]: not a standard foR layout of 2000 elements"
+def short : String ⊕ (Nat × List UInt64) := .inl "distinct: es[0]: foR: 1 blocks of 2^10 and a 128-byte pack are not the layout of 2000 elements"
 example : view (u 0) (kdistinct (u 2000) [col [0, 1]]) = short := by decide +kernel
 #guard view (u 0) (kdistinct (u 2000) [col [0, 1]]) == short
 
