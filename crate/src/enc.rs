@@ -32,9 +32,6 @@ pub struct EncPack<'a> {
     /// `exc_off[b] .. exc_off[b + 1]`
     pub pos: &'a mut [u16], pub raw: &'a mut [u8],
 }
-/// `frame_pick`'s answer: the frame, the residual width, the patch count at it.
-#[derive(Clone, Copy, Debug, PartialEq)]
-pub struct Frame { pub fo: i64, pub wo: u8, pub neo: u32 }
 
 // ---- A7: coc.rs ----
 /// `COC_NUL` of the element type: `INT16_MIN`, `INT32_MIN`, `INT64_MIN`; `u8` has none, so `INT64_MIN` there never matches.
@@ -74,75 +71,18 @@ pub fn encode_meta_blk<T: Elt>(m: &mut EncMeta, x: &[T], nb: usize) {
     *m.base = mn; *m.maxv = mx; *m.bsum = s;
     *m.width = crate::bits::width_for((mx as u64).wrapping_sub(mn as u64));
 }
-/// coc.rs `frame_pick`: from the sorted sample `smp`, the frame and width minimising bytes at `cost` per patch;
-/// `None` = keep the plain frame.
-pub fn frame_pick<T: Elt>(smp: &mut [i64], nb: usize, nnul: usize, cost: usize, mn: i64, x: &[T]) -> Option<Frame> {
-    let (k, esz, bl) = (smp.len(), size_of::<T>(), |r: i64| crate::bits::width_for(r as u64) as usize);
-    if k == 0 { return None }
-    smp.sort_unstable();
-    let c = smp[k / 2];
-    // lifting the frame pays only when the minimum lies far below the bulk
-    if bl(c.wrapping_sub(mn)) <= bl(smp[k * 3 / 4].wrapping_sub(smp[k / 4])) + 2 { return None }
-    let v = || x[..nb].iter().map(|v| v.i()).filter(|&v| v != nul::<T>());
-    let (mut lo, mut hi) = ([0u32; 65], [0u32; 65]);
-    for v in v() { if v < c { lo[bl(c.wrapping_sub(v))] += 1 } else { hi[bl(v.wrapping_sub(c))] += 1 } }
-    for i in 1..=64 { lo[i] += lo[i - 1]; hi[i] += hi[i - 1] }
-    let (mut best, mut ba) = (cost, 65);
-    for w in 0..64usize {
-        let m = w.saturating_sub(1);
-        for (pa, pb) in [(0, w), (m, m), (w, 0)] {
-            let bytes = (nb * w + 7) / 8 + (nb - lo[pa] as usize - hi[pb] as usize) * (2 + esz);
-            if bytes < best { best = bytes; ba = pa }
-        }
-    }
-    if ba == 65 { return None }
-    let f = v().filter(|&v| v >= c || bl(c.wrapping_sub(v)) <= ba).fold(i64::MAX, i64::min);
-    let (mut h, mut below) = ([0u32; 65], 0usize);
-    for v in v() { if v < f { below += 1 } else { h[bl(v.wrapping_sub(f))] += 1 } }
-    let (w, ne) = crate::cocops::width_exc(&h, nnul + below, esz, nb);
-    if (nb * w as usize + 7) / 8 + ne as usize * (2 + esz) >= cost { return None }
-    Some(Frame { fo: f, wo: w, neo: ne })
-}
-
 // ---- A8: coc.rs ----
-/// coc.rs `encode_meta_exc_blk`: block metadata with patches; answers the patch count. The frame goes to `frm`. The
-/// writer no longer takes it (`for_blk`); it builds the patched columns a reader still has to read, in the tests.
-pub fn encode_meta_exc_blk<T: Elt>(m: &mut EncMeta, x: &[T], nb: usize) -> u32 {
-    let (x, nul, esz) = (&x[..nb], nul::<T>(), size_of::<T>());
-    let frm = m.frm.as_deref_mut().expect("encode_meta_exc_blk: the column keeps no frames");
-    let v = || x.iter().map(|v| v.i()).filter(|&v| v != nul);
-    let nnul = x.len() - v().count();
-    *frm = 0;
-    if nnul == nb { // all null: the null is the frame at width 0, and nothing is patched
-        (*m.base, *m.maxv, *m.bsum, *m.width, *m.nexc) = (nul, nul, 0, 0, 0);
-        return 0;
-    }
-    let (mn, mx) = v().fold((i64::MAX, i64::MIN), |(a, b), v| (a.min(v), b.max(v)));
-    let mut h = [0u32; 65];
-    for v in v() { h[crate::bits::width_for((v as u64).wrapping_sub(mn as u64)) as usize] += 1 }
-    (*m.base, *m.maxv, *m.bsum) = (mn, mx, v().fold(0i64, i64::wrapping_add));
-    let (mut w, mut ne) = crate::cocops::width_exc(&h, nnul, esz, nb);
-    if w > 1 { // frame_pick is asked only where the median sits high in the window
-        let mut smp = [0i64; 5];
-        let mut k = 0;
-        for q in 0..5 { let v = x[q * (nb - 1) / 4].i(); if v != nul { smp[k] = v; k += 1 } }
-        if let Some(f) = frame_pick(&mut smp[..k], nb, nnul, (nb * w as usize + 7) / 8 + ne as usize * (2 + esz), mn, x) {
-            (w, ne, *frm) = (f.wo, f.neo, (f.fo as u64).wrapping_sub(mn as u64));
-        }
-    }
-    (*m.width, *m.nexc) = (w, ne);
-    ne
-}
-/// coc.rs `pack_exc_blk`: residuals and the block's `ne` patches (an element the frame and width cannot hold, or a
-/// null), their slots set to the frame.
+/// coc.rs `pack_exc_blk`: residuals and the block's `ne` patches — an element below the frame or past `2 ^ width` above
+/// it, Lean `Coc.outside` — their slots set to the frame.
 pub fn pack_exc_blk<T: Elt>(p: &mut EncPack, x: &[T], ne: u32) {
-    let (nul, base, w, x) = (nul::<T>(), p.frame as i64, p.width, &x[..p.nb]);
+    let (base, w, x) = (p.frame as i64, p.width, &x[..p.nb]);
     if ne == 0 { return pack_block(p.res, x, p.nb, base, w) }
     let (mut ys, mut k) = (crate::pod::Scr::<T>::filled(p.nb, T::wrap(base as u64)), 0);
     let y: &mut [T] = &mut ys; // the one deref, outside the element loop
     for (i, &v) in x.iter().enumerate() {
+        // below the frame, `r` wraps past every width but 64, where the frame is the minimum
         let r = (v.i() as u64).wrapping_sub(base as u64);
-        if v.i() == nul || (w < 64 && r >> w != 0) {
+        if w < 64 && r >> w != 0 {
             let mut e = [v];
             p.raw[k * size_of::<T>()..][..size_of::<T>()].copy_from_slice(crate::pod::bytes_mut(&mut e));
             p.pos[k] = i as u16;
@@ -167,13 +107,35 @@ pub fn for_meta(m: &mut EncMeta, x: &[u8], width: usize, nb: usize) {
     fn go<T: Elt>(m: &mut EncMeta, x: &[u8], nb: usize) { for_blk(m, elts::<T>(x, "coc_enc_for_meta"), nb); }
     crate::by_width!(int width, go(m, x, nb))
 }
-/// The writer's FoR block, Lean `Coc.blockOf`: the width of `max - min`, no frame and no patch; answers the patch count, 0.
-/// Not `encode_meta_exc_blk`'s cheapest width with patches: `Coc.encode` is the spec, and it writes neither.
+/// The writer's FoR block, Lean `Coc.planOf`: of the widths `d` in `0 ..= W` (`W` the bit length of `max - min`), the
+/// one whose cost `⌈nb·d/8⌉ + (2 + esz)·patches` is least, the narrower on a tie, at the frame patching fewest, the
+/// lowest of those; answers the patch count.
 pub fn for_blk<T: Elt>(m: &mut EncMeta, x: &[T], nb: usize) -> u32 {
     encode_meta_blk(m, x, nb);
-    if let Some(f) = m.frm.as_deref_mut() { *f = 0 }
-    *m.nexc = 0;
-    0
+    let (mn, top, esz) = (*m.base, *m.width as usize, size_of::<T>());
+    let mut s = crate::pod::Scr::<i64>::new(nb);
+    for (o, v) in s.iter_mut().zip(&x[..nb]) { *o = v.i() }
+    s.sort_unstable();
+    // `Coc.frameAt`: a window of `2 ^ d` from each distinct key, its far end `j` only moving forward
+    let frame = |d: usize| -> (i64, usize) {
+        let (mut best, mut j) = ((mn, usize::MAX), 0);
+        for i in 0..nb {
+            if i > 0 && s[i] == s[i - 1] { continue }
+            while j < nb && (d >= 64 || (s[j] as u64).wrapping_sub(s[i] as u64) >> d == 0) { j += 1 }
+            if nb - (j - i) < best.1 { best = (s[i], nb - (j - i)) }
+        }
+        best
+    };
+    let (mut best, mut pick) = (usize::MAX, (0usize, mn, 0usize));
+    for d in 0..=top {
+        let (f, np) = frame(d);
+        let c = (nb * d).div_ceil(8) + np * (2 + esz);
+        if c < best { (best, pick) = (c, (d, f, np)) }
+    }
+    let (d, f, np) = pick;
+    *m.frm.as_deref_mut().expect("for_blk: a Frame of Reference column keeps its frames") = (f as u64).wrapping_sub(mn as u64);
+    (*m.width, *m.nexc) = (d as u8, np as u32);
+    np as u32
 }
 /// coc.rs `coc_enc_for_pack`: `p.pos` holds the block's patches, `exc_off[b + 1] - exc_off[b]` of them.
 pub fn for_pack(p: &mut EncPack, x: &[u8], width: usize) {
@@ -398,8 +360,11 @@ mod a17_tests {
     }
     #[test] fn blk_meta_at_each_width() {
         let u = [i16::MIN as i64, 3, 9, -2];
-        assert_eq!(meta(&u, 2), (0, -32768, 9, 10, 16, 0)); // the null is the minimum, as in `Coc.blockOf`
-        assert_eq!(meta(&[500, 100000, 100003], 4), (0, 500, 100003, 200503, 17, 0)); // the bit length, not a tie's wider width
+        // the null is the minimum, as in `Coc.blockOf`, and patched at 4 bytes: width 4 from frame -2, 2 + 4 bytes
+        assert_eq!(meta(&u, 2), (1, -32768, 9, 10, 4, 32766));
+        // width 2 from frame 100000 and width 17 from 500 both cost 7 bytes: the narrower wins
+        assert_eq!(meta(&[500, 100000, 100003], 4), (1, 500, 100003, 200503, 2, 99500));
+        // at 8 bytes a patch costs 10, more than width 16's 8 bytes
         assert_eq!(meta(&u, 8), (0, -32768, 9, -32758, 16, 0));
     }
     #[test] fn move_pack_zero_pads_a_short_pack() {
@@ -432,13 +397,15 @@ mod a7_tests {
         pack_block(&mut d, &x, 10, 5, 16);
         assert_eq!(d, [0, 0, 1, 0, 2, 0, 3, 0, 4, 0, 5, 0, 6, 0, 7, 0, 8, 0, 9, 0]);
     }
-    #[test] fn frame_pick_lifts_over_low_outliers() {
+    #[test] fn for_blk_lifts_over_low_outliers() {
+        // 24 zeros under 100000 .. 100255: width 8 from frame 100000 and 24 patches (1000 + 240 bytes), not width 17
+        // from 0 (2125 bytes)
         let x: [i64; 1000] = core::array::from_fn(|i| if i < 24 { 0 } else { 100000 + (i & 255) as i64 });
-        let mut smp = [100001, 100130, 100200, 100050, 100100];
-        // plain frame at the minimum 0: width 17, no patches
-        let cost = (1000 * 17 + 7) / 8;
-        assert_eq!(frame_pick(&mut smp, 1000, 0, cost, 0, &x), Some(Frame { fo: 100000, wo: 8, neo: 24 }));
-        assert_eq!(smp, [100001, 100050, 100100, 100130, 100200]);
+        let (mut base, mut maxv, mut width, mut bsum, mut nexc, mut frm) = (0, 0, 0, 0, 0, 0u64);
+        let mut m = EncMeta { b: 0, base: &mut base, maxv: &mut maxv, width: &mut width, bsum: &mut bsum, frm: Some(&mut frm),
+                              nexc: &mut nexc, exp: None };
+        assert_eq!(for_blk(&mut m, &x, 1000), 24);
+        assert_eq!((base, width, frm), (0, 8, 100000));
     }
     #[test] fn encode_meta_blk_nulls() {
         let x: [i16; 4] = [i16::MIN, 3, 9, -2];
@@ -466,7 +433,7 @@ mod tests {
             let mut m = EncMeta { b, base: &mut base[b], maxv: &mut maxv[b], width: &mut width[b], bsum: &mut bsum[b],
                                   frm: Some(&mut frm[b]), nexc: &mut nx, exp: None };
             let nb = BLK.min(n - b * BLK);
-            ne[b] = encode_meta_exc_blk(&mut m, &x[b * BLK..], nb);
+            ne[b] = for_blk(&mut m, &x[b * BLK..], nb);
         }
         let (mut off, mut pack, mut at) = (vec![0u64; 2], vec![0u8; 2 * BLK * 8], 0usize);
         let (mut pos, mut raw) = (vec![0u16; ne.iter().sum::<u32>() as usize], vec![0u8; ne.iter().sum::<u32>() as usize * size_of::<T>()]);
