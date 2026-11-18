@@ -152,7 +152,9 @@ Size：S = 一步，少于 20 次 tool call；M = 一到三步；L = 多于三�
 - ⬜ 5.2 setify、asc 行；浮点 key 等 6.9。
 - ⬜ 5.3 hylo：`den_local`，得到 `hylo_sound`。
 - ⬜ 5.4a / 5.4b / 5.4c `lam_sound`、`E_sound`、`thin_sound`。
-- ⬜ 5.5 call（stage 5）：先写书面提案，不写代码（Q11）。
+- 🔄 5.5 call（stage 5）：提案 `doc/call-stage5.zh.pdf`（69a8e5d）。owner 定 B D F H J：保留按 form 的常量作共享代码，
+  与调用点 `rfl` 相等；`Tm.instObj` 实例化对象；`Code` 带实参的 `Pl`；`cv` 存逆的 body；registry 存 body `Res`。
+  实现排在 P3、P4 之后（改 `Tm.call`）。
 - ⬜ 5.6 删除 `Tm.gap`；Done：compile-diff 0 个 not ok。
 
 ### P6 kernels — 9/13
