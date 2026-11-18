@@ -25,7 +25,7 @@ def η₀ : CodeEnv := fun _ _ _ _ _ => (.zero, false)
     nothing, `some true` where they differ. -/
 unsafe def differs (k : Name) {A B : Obj} (t : Tm A B false) : CommandElabM (Option Bool) := do
   let g ← IO.ofExcept ((← getEnv).evalConst (CRel A B) (← getOptions) k)
-  let c := (compile η₀ t).run {}
+  let c : CRel A B := (compile η₀ t).run {}
   pure (if !c.ok then some false else if g.ok && g.rel == c.rel then none else some true)
 
 run_cmd do

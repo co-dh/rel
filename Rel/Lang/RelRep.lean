@@ -17,10 +17,27 @@ open Lean Meta Elab Command
 /-- The theorem of each shared constant (`n.c.c<i>.rep`), and the first combinator met with no lemma. -/
 abbrev PM := StateT (Std.HashMap Name Name × Option Name) RM
 
-/-- The lemma `n` at the proofs `hs` of its parts, its objects inferred from them; none where a part has none. -/
-def lem (n : Name) (hs : List (Option Lean.Expr)) : PM (Option Lean.Expr) := do
+/-- The lemma `n` at the proofs `hs` of its parts, each with its term's `d`, its objects inferred from them; none
+    where a part has none. `Fn d A B` is `Rel A B`, so no proof's type names `d`: each part's comes from its term. -/
+def lem (n : Name) (hs : List (Option (Lean.Expr × Bool))) : PM (Option Lean.Expr) := do
   let some as := hs.mapM id | return none
-  some <$> mkAppM n as.toArray
+  let c ← mkConstWithFreshMVarLevels n
+  let (xs, bs, _) ← forallMetaTelescope (← inferType c)
+  let ex := (xs.zip bs).filterMap fun (x, b) => if b.isExplicit then some x else none
+  unless ex.size == as.length do throwError "Expand.lem: `{n}` takes {ex.size} parts, given {as.length}"
+  for (x, a, d) in ex.toList.zip as do
+    -- the part `R : Fn ?d A B` that `x : Sound R T` is about: its `d` is the term's
+    for r in (← inferType x).getAppArgs do
+      let rt ← inferType r
+      if r.isMVar && rt.isAppOfArity ``Gen.Fn 3 then
+        unless ← isDefEq rt.appFn!.appFn!.appArg! (bE d) do
+          throwError "Expand.lem: `{n}`: the part {a} is at d = {d}, its binder at {rt}"
+    unless ← isDefEq (← inferType x) (← inferType a) do
+      throwError "Expand.lem: `{n}`: the part {a} : {← inferType a} does not fit {← inferType x}"
+    x.mvarId!.assign a
+  let e ← instantiateMVars (mkAppN c xs)
+  if e.hasExprMVar then throwError "Expand.lem: `{n}`: arguments left open in {e}"
+  pure (some e)
 
 /-- A leaf lemma `n` whose objects only the term gives. -/
 def lemO (n : Name) (as : Array (Option Lean.Expr)) : PM (Option Lean.Expr) := do some <$> mkAppOptM n as
@@ -46,12 +63,12 @@ partial def prf (pre : Name) (ρ : List (Nat × Lean.Expr)) {A B : Obj} {d : Boo
 /-- A proof of `Gen.PSound (planOr t) T`, following `planOr`. -/
 partial def pprf (pre : Name) (ρ : List (Nat × Lean.Expr)) {A B : Obj} {d : Bool} (t : Tm A B d) :
     PM (Option Lean.Expr) := do
-  let p {X Y : Obj} {e : Bool} (u : Tm X Y e) := prf pre ρ u
-  let q {X Y : Obj} {e : Bool} (u : Tm X Y e) := pprf pre ρ u
+  let p {X Y : Obj} {e : Bool} (u : Tm X Y e) : PM (Option (Lean.Expr × Bool)) := return (← prf pre ρ u).map (·, e)
+  let q {X Y : Obj} {e : Bool} (u : Tm X Y e) : PM (Option (Lean.Expr × Bool)) := return (← pprf pre ρ u).map (·, e)
   if closed t then return ← lem ``Gen.pleaf_sound [← p t]
   match A, B, d, t with
-  | _, _, _, .val _ | _, _, _, .uni _ | _, _, _, .var _ => lem ``Gen.pleaf_sound [← prfNode pre ρ t]
-  | _, _, _, .share _ R | _, _, _, .own R => q R
+  | _, _, _, .val _ | _, _, _, .uni _ | _, _, _, .var _ => lem ``Gen.pleaf_sound [(← prfNode pre ρ t).map (·, d)]
+  | _, _, _, .share _ R | _, _, _, .own R => return (← q R).map (·.1)
   | _, _, _, .comp R S => lem ``Gen.pcomp_sound [← q R, ← q S]
   | _, _, _, .conv R => lem ``Gen.pconv_sound [← q R]
   | _, _, _, .meet R S => lem ``Gen.pmeet_sound [← q R, ← q S]
@@ -63,15 +80,15 @@ partial def pprf (pre : Name) (ρ : List (Nat × Lean.Expr)) {A B : Obj} {d : Bo
 /-- A proof of `Gen.Sound (node t) T`, one `GenSpec` lemma per node, following `node`. -/
 partial def prfNode (pre : Name) (ρ : List (Nat × Lean.Expr)) {A B : Obj} {d : Bool} (t : Tm A B d) :
     PM (Option Lean.Expr) := do
-  let p {X Y : Obj} {e : Bool} (u : Tm X Y e) := prf pre ρ u
-  let q {X Y : Obj} {e : Bool} (u : Tm X Y e) := pprf pre ρ u
+  let p {X Y : Obj} {e : Bool} (u : Tm X Y e) : PM (Option (Lean.Expr × Bool)) := return (← prf pre ρ u).map (·, e)
+  let q {X Y : Obj} {e : Bool} (u : Tm X Y e) : PM (Option (Lean.Expr × Bool)) := return (← pprf pre ρ u).map (·, e)
   match A, B, d, t with
-  | _, _, _, .val R => lem ``Gen.val_sound [some (← liftE (relE R))]
+  | _, _, _, .val R => lem ``Gen.val_sound [some (← liftE (relE R), false)]
   | A, _, _, .uni (m := m) U => lemO ``Gen.uni_sound #[oE A, uE m, ← liftE (valsE A m U)]
   | A, B, _, .zero => lemO ``Gen.zero_sound #[oE A, oE B]
   | A, _, _, .id => lemO ``Gen.id_sound #[oE A]
   | A, _, _, .top V => match ← p V with
-    | some h => lemO ``Gen.top_sound #[oE A, none, none, none, h]
+    | some (h, _) => lemO ``Gen.top_sound #[oE A, none, none, none, h]
     | none => pure none
   | .prod A B, _, _, .outl => lemO ``Gen.outl_sound #[oE A, oE B]
   | .prod A B, _, _, .outr => lemO ``Gen.outr_sound #[oE A, oE B]
@@ -97,11 +114,11 @@ partial def prfNode (pre : Name) (ρ : List (Nat × Lean.Expr)) {A B : Obj} {d :
   | _, _, _, .leq U => lem ``Gen.leq_sound [← p U]
   | _, _, _, .lt U => lem ``Gen.lt_sound [← p U]
   | _, _, _, .arith k U => match ← p U with
-    | some h => lemO ``Gen.arith_sound #[toExpr k, none, none, h]
+    | some (h, _) => lemO ``Gen.arith_sound #[toExpr k, none, none, h]
     | none => pure none
   | _, _, _, .foldr e S => lem ``Gen.foldr_sound [← p e, ← p S]
   | _, _, _, .fold e S => lem ``Gen.fold_sound [← p e, ← p S]
-  | _, _, _, .own R | _, _, _, .share _ R => p R
+  | _, _, _, .own R | _, _, _, .share _ R => return (← p R).map (·.1)
   | _, _, _, _ => match primOf t with
     -- a row's spine is proved by `compile_sound` (`Prim.run_sound`) over `compile`'s code, not this node's: its
     -- constant is the gap until stage 4 cites that
