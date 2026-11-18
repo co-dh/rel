@@ -347,12 +347,11 @@ private theorem mapM_foRWords (n : USize) : ∀ (l : List (Enc × Nat)) (cs : Li
         exact ⟨rfl, by simpa [hs] using hr⟩
 
 /-- An answer of `kdistinct` is `distinctWords` of the words `Enc.raw` reads from its columns, `n` a column, encoded
-as the `foR` `Coc.encode` writes at 8 bytes. -/
+as `wordsFoR`. -/
 theorem kdistinct_words (n : USize) (es : List Enc) (k : Nat) (o : Enc) (h : kdistinct n es = .ok (k, o)) :
     ∃ ws : Array UInt64, distinctWords n.toNat (es.map (raw .long n)) = .ok (k, ws) ∧
       (∀ x ∈ es.map (raw .long n), x.size = n.toNat) ∧
-      o = .foR (Coc.encodeAt Column.lgEnc 8 (ws.foldl (init := .empty) fun acc w => Column.pushBits acc w 8)).1
-        (Coc.encodeAt Column.lgEnc 8 (ws.foldl (init := .empty) fun acc w => Column.pushBits acc w 8)).2 := by
+      o = wordsFoR ws := by
   unfold kdistinct at h
   cases hc : es.zipIdx.mapM (fun p => foRWords s!"distinct: es[{p.2}]" n p.1) with
   | error s => simp [hc, bind, Except.bind] at h
@@ -365,8 +364,7 @@ theorem kdistinct_words (n : USize) (es : List Enc) (k : Nat) (o : Enc) (h : kdi
     | error s => simp [hc, hw, bind, Except.bind] at h
     | ok kw =>
       obtain ⟨k', ws⟩ := kw
-      have h8 : USize.ofNat32 8 (by decide) = 8 := USize.toNat_inj.mp (by simp)
-      simp only [hc, hw, bind, Except.bind, pure, Except.pure, h8] at h
+      simp only [hc, hw, bind, Except.bind, pure, Except.pure] at h
       obtain ⟨rfl, rfl⟩ := Prod.mk.inj (Except.ok.inj h)
       refine ⟨ws, rfl, fun x hx => ?_, rfl⟩
       rw [← hm] at hx
@@ -379,8 +377,7 @@ ascending: on a sorted input, the first occurrence of each row, in input order. 
 theorem distinct_first (n : USize) (es : List Enc) (k : Nat) (o : Enc) (h : kdistinct n es = .ok (k, o)) :
     let row := fun q => (es.map (raw .long n)).map (·[q]?.getD 0)
     ∃ ws : Array UInt64,
-      o = .foR (Coc.encodeAt Column.lgEnc 8 (ws.foldl (init := .empty) fun acc w => Column.pushBits acc w 8)).1
-        (Coc.encodeAt Column.lgEnc 8 (ws.foldl (init := .empty) fun acc w => Column.pushBits acc w 8)).2 ∧
+      o = wordsFoR ws ∧
       ws.size = k ∧
       (∀ j (hj : j < ws.size), ws[j].toNat < n.toNat ∧ (ws[j].toNat = 0 ∨ row ws[j].toNat ≠ row (ws[j].toNat - 1))) ∧
       ∀ j j' (hj : j < ws.size) (hj' : j' < ws.size), j < j' → ws[j] < ws[j'] := by
@@ -393,8 +390,7 @@ answer, and every row from `ws[j]` to `i` equals row `i`: no row is lost, and ea
 theorem distinct_cover (n : USize) (es : List Enc) (k : Nat) (o : Enc) (h : kdistinct n es = .ok (k, o)) :
     let row := fun q => (es.map (raw .long n)).map (·[q]?.getD 0)
     ∃ ws : Array UInt64,
-      o = .foR (Coc.encodeAt Column.lgEnc 8 (ws.foldl (init := .empty) fun acc w => Column.pushBits acc w 8)).1
-        (Coc.encodeAt Column.lgEnc 8 (ws.foldl (init := .empty) fun acc w => Column.pushBits acc w 8)).2 ∧
+      o = wordsFoR ws ∧
       ws.size = k ∧
       ∀ i < n.toNat, ∃ j, ∃ hj : j < ws.size, ws[j].toNat ≤ i ∧ ∀ q, ws[j].toNat ≤ q → q ≤ i → row q = row i := by
   obtain ⟨ws, hw, hx, ho⟩ := kdistinct_words n es k o h
