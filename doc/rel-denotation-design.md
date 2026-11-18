@@ -83,7 +83,7 @@ becomes one named definition that both the clause and the lemma cite (`ldivDen` 
 | `foldI`, `flat`               | `foldIDen …`, `flatDen ⟦R⟧`                              | missing                          |
 | `prim r` under `arg`s         | `Row.den` of the row `r` at `A`, `B`, `as` (1.3)         | the row's `sound` field          |
 | `var k`                       | `ρ k A B`                                                | the hypothesis `Env.Sound`       |
-| `mu k _ _ b`, `refold k _ _ b` | `lfp fun X => ⟦b⟧(ρ.bind k X)`                          | new, from `CRel.rep_fixOn`       |
+| `mu k _ _ b`, `hylo k _ _ b` | `lfp fun X => ⟦b⟧(ρ.bind k X)`                          | new, from `CRel.rep_fixOn`       |
 | `nu k S b`                    | `gfp fun X => ⟦b⟧(ρ.bind k X)`                           | new, from `CRel.rep_fixOn`       |
 
 ### 1.3 The rows of `prims`
@@ -305,12 +305,12 @@ theorem Tm.Le.sound (h : Tm.Le s t) : ∀ ρ, ⟦s⟧ρ ⊑ ⟦t⟧ρ
 
   Every other constructor is monotone in each argument, as `⟦−⟧` is: `Le.comp`, `conv`, `top`, `dom`, `ran`,
   `pair`, `prod`, `junc`, `juncD`, `est`, `own`, `succ`, `arith`, `leq`, `lt`, `fold`, `foldI`, `flat`, `share`,
-  `arg`, `nu`, `mu`, `refold`.
+  `arg`, `nu`, `mu`, `hylo`.
 
 - No power law: `Tm` has no `∋`, and `lamDen` would not satisfy `Λ(R) ∋ = R` (no list for an infinite image) nor
   the uniqueness of `Λ` (a list is not a set).
 - The unfold laws substitute by `Tm.subst` (`Run/Lang/Tm.lean`): simultaneous, each binder renamed to a `fresh`
-  variable, so nothing is captured; sound by `Tm.den_subst`, `⟦t σ⟧ρ = ⟦t⟧(⟦σ⟧ρ)`. `refold` has none: its demand
+  variable, so nothing is captured; sound by `Tm.den_subst`, `⟦t σ⟧ρ = ⟦t⟧(⟦σ⟧ρ)`. `hylo` has none: its demand
   bit is `true`, and its variable may occur at `false`, where no term stands for it.
 - `⟦−⟧ρ` is well defined on `Syn` by `Tm.Le.sound`, and keeps `𝟙`, composition, `∩`, `∪`, `𝟘`, `Λ`
   (`Syn.Hom.den_id`, `den_comp`, `den_meet`, `den_join`, `den_zero`, `den_lam`), and `°` on a closed term
@@ -410,13 +410,13 @@ No new term language: `Tm` stays the only core.
 ## 7. The nodes `prfNode` could not cover
 
 The per-node wiring is finished for `nil atPos est succ leq lt arith fold`. What it left, by count of `unproved`
-nodes: `Gen.lam` 36, `mu` 5, `refold` 2, `nu` 2, `nuAC` 1; plus `E`, `thin`, `juncD`, `flat`, `var`. Each has a
+nodes: `Gen.lam` 36, `mu` 5, `hylo` 2, `nu` 2, `nuAC` 1; plus `E`, `thin`, `juncD`, `flat`, `var`. Each has a
 different cause, and the total `⟦−⟧` with `compile_sound` answers each differently.
 
 | node                        | why `prfNode` stops                                           | what the design does          |
 |-----------------------------|---------------------------------------------------------------|-------------------------------|
 | `lam`, `E`, `thin`          | the output list is fixed only up to its elements              | 7.1: canonical tables (D2 = C) |
-| `var`, `mu`, `nu`, `refold` | `prfNode` builds closed proofs; the body's must be parametric | 7.2: `∀ η ρ` in the induction |
+| `var`, `mu`, `nu`, `hylo` | `prfNode` builds closed proofs; the body's must be parametric | 7.2: `∀ η ρ` in the induction |
 | `mu`, `nu`                  | `CRel.rep_fixOn` needs the body monotone (`hm`)               | 7.3: `Tm.pol`, `den_mono`     |
 | `juncD`                     | `Vals.row` returns `dflt` on a row that names an empty side   | 7.4: the ok bit               |
 | `flat`                      | `isDefEq` timeout in `TestRep` (`chess.mate`)                 | 7.5: no per-program unification |
@@ -474,7 +474,7 @@ def EDen   (T : Den A B) : Den (.arr A) (.arr B) := fun xs ys => Canon ys ∧ �
 | `var k`       | `compile η (.var k) = Gen.ofPl (η k A B d)`; sound by `hη k A B d`                           |
 | `mu k _ cap b` | below                                                                                       |
 | `nu k S b`    | as `mu`, from `⟦S⟧` downward, `gfp`                                                          |
-| `refold`      | `mu`'s clause plus locality (below)                                                          |
+| `hylo`      | `mu`'s clause plus locality (below)                                                          |
 | `nuAC`        | `Gen.nuAC … = Gen.nu …` as one lemma about the two codes; the case is then `nu`'s            |
 
 ```lean
@@ -488,10 +488,10 @@ theorem mu_sound {φ : CRel A B → Fn false A B} {Φ : Den A B → Den A B} (h�
 - In the `mu` case `Φ Y = ⟦b⟧(ρ.bind k Y)`. Hypothesis `h` is the induction hypothesis of `b` at
   `η.bind k X`, `ρ.bind k (rep X.rel)`, given `Env.Sound.bind`. `mu_sound` is `CRel.rep_fixOn` with `lfp_le`.
 - A round whose table is not ok clears the result's ok bit (`also`), so `h` is needed only at ok tables.
-- `refold` computes each node's value once, after its children. That equals `lfp` at the demanded keys only if
+- `hylo` computes each node's value once, after its children. That equals `lfp` at the demanded keys only if
   the body reads `X` at the children of the key and nowhere else. The clause needs
   `den_local : (∀ y, ⟦ch⟧ x y → X y = X' y) → ⟦b⟧(ρ.bind k X) x = ⟦b⟧(ρ.bind k X') x`. Nothing states it today;
-  `refold` stays in `gap` until it is proved for the shape `c G(X) S` the elaborator builds.
+  `hylo` stays in `gap` until it is proved for the shape `c G(X) S` the elaborator builds.
 - `nuAC` needs the correctness of the arc-consistency rounds against plain rounds. It is a lemma about `Gen`
   alone and can be proved before any of this lands.
 
@@ -520,7 +520,7 @@ theorem Tm.den_anti (h : t.pol false k) (hXY : X ⊑ Y) : (⟦t⟧ρ.bind k Y) �
 | `lam`, `E`, `est`, `thin`, `atPos`, `nil`  | `k ∉ fv t`: a map's value changes, it does not grow               |
 | `fold`, `foldI`, `flat`                    | `k ∉ fv t` until its `Den` has a monotonicity lemma               |
 | `prim r` under `arg`s                      | `r.mono` and `pol s` of every argument, else `k ∉ fv t`           |
-| an inner `mu`, `nu`, `refold` on `j ≠ k`   | `pol s` of the body (`lfp`, `gfp` are monotone in a parameter)    |
+| an inner `mu`, `nu`, `hylo` on `j ≠ k`   | `pol s` of the body (`lfp`, `gfp` are monotone in a parameter)    |
 
 - `Tm.pol` replaces the `Tm.Pos` of section 2; `den_mono` and `den_anti` are one mutual induction.
 - `Prim.mono : Bool` exists already. `Row` gains the proof: `mono : r.mono = true → ∀ …, ss ⊑ ss' → den A B ss ⊑
@@ -567,7 +567,7 @@ theorem Tm.den_anti (h : t.pol false k) (hXY : X ⊑ Y) : (⟦t⟧ρ.bind k Y) �
 |-------|---------------------------------------------------------------------------------------------------------|
 | 1     | `Tm.pol`, `den_anti` beside `den_mono`; `Obj.lt`, `Canon`, `lamDen`, `EDen` (D2 = C; about +60 lines)   |
 | 3     | `mu_sound`, `nu_sound`, `Env.Sound.bind`; `nuAC = nu`; `flat_sound` from the patch; `juncD` per D7      |
-| 3     | `lam`, `E`, `thin` cases only after the canonical tables of D2 land; `refold` only after `den_local`    |
+| 3     | `lam`, `E`, `thin` cases only after the canonical tables of D2 land; `hylo` only after `den_local`    |
 
-- After stage 4 with D7 = P, D8 = R, the expected content of `Tm.gap` is `refold` (2 nodes) and the rows
+- After stage 4 with D7 = P, D8 = R, the expected content of `Tm.gap` is `hylo` (2 nodes) and the rows
   with no lemma (`filter takewhile thinL loop asc`), against 46 `unproved` nodes today.

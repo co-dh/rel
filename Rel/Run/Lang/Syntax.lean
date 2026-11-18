@@ -214,9 +214,9 @@ inductive Op
   | id | zero | top | outl | outr | inl | inr | leq | lt | succ | arith (k : UInt8)
   | nil | alpha | prim (s : String)
   | dom | ran | lam | E | est | thin | map
-  /-- `refold(c, S)`: an unfold by `c : A ⟶ G(A)` then a fold by `S : G(B) ⟶ B`, `μX : c G(X) S`; `fold` is a
-      name programs define (Party), so the builtin is `refold`. -/
-  | refold
+  /-- `hylo(c, S)`: an unfold by `c : A ⟶ G(A)` then a fold by `S : G(B) ⟶ B`, `μX : c G(X) S`; `fold` is a
+      name programs define (Party), so the builtin is `hylo`. -/
+  | hylo
   /-- `at(i)`, the element at position `i` from `0`; `i` a number literal, read by `Embed.atomOf`. -/
   | index (i : Nat)
   deriving Repr, BEq, Inhabited
@@ -232,7 +232,7 @@ def Op.table : List (String × Op × Nat) :=
    ("min", .arith Rel.Kernel.Ew.lesser, 0), ("nil", .nil, 0), ("α", .alpha, 0),
    ("dom", .dom, 1), ("ran", .ran, 1), ("Λ", .lam, 1), ("E", .E, 1),
    ("est", .est, 1), ("thin", .thin, 1), ("F", .map, 1),
-   ("refold", .refold, 2),
+   ("hylo", .hylo, 2),
    ("at", .index 0, 0)] ++
   (prims.filter fun r => r.written && r.prelude.isNone).map fun r => (r.sym, .prim r.sym, r.sig.2.1.length)
 

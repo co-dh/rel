@@ -518,7 +518,7 @@ open Lean Meta
 /-- The `μ`s in `t`, each as the failure it reports when its rounds reach the cap. -/
 partial def mus : {A B : Obj} → {d : Bool} → Tm A B d → List String
   | _, _, _, .mu _ w n b => s!"{w} ran its cap of {n} rounds without reaching a fixed point" :: mus b
-  | _, _, _, .refold _ w ch b =>
+  | _, _, _, .hylo _ w ch b =>
     s!"{w} reaches a node from itself, so it is not well-founded there" :: mus ch ++ mus b
   | _, _, _, t => t.parts.flatMap fun ⟨_, _, _, c⟩ => mus c
 
@@ -732,8 +732,8 @@ partial def node (pre : Name) (ρ : List (Nat × Lean.Expr)) {A B : Obj} {d : Bo
       return g ``Gen.nuAC #[oE A, oE B, ← c S, ← arc a, ← mkListLit arcTy (← as.mapM arc)]
     | _ => return g ``Gen.nu #[oE A, oE B, ← c S, ← body pre ρ A B k b]
   | A, B, _, .mu k _ n b => return g ``Gen.mu #[oE A, oE B, toExpr n, ← body pre ρ A B k b]
-  | A, B, _, .refold (d := d) (e := e) k _ ch b =>
-    return g ``Gen.refold #[oE A, oE B, bE d, bE e, ← c ch, ← body pre ρ A B k b]
+  | A, B, _, .hylo (d := d) (e := e) k _ ch b =>
+    return g ``Gen.hylo #[oE A, oE B, bE d, bE e, ← c ch, ← body pre ρ A B k b]
   | .sum A B, C, _, .juncD (d := d) (e := e) R S => return g ``Gen.juncD #[oE A, oE B, oE C, bE d, bE e, ← c R, ← c S]
   -- `d` the outer one: `prim`'s is `true`, so the two alternatives cannot bind it alike
   | A, B, _, t@(.prim _) | A, B, _, t@(.arg ..) => match primOf t with

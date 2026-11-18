@@ -296,7 +296,7 @@ noncomputable def Tm.den : Val → {A B : Obj} → {d : Bool} → Tm A B d → D
   -- the rounds start at `⟦S⟧` and meet each with it (`Gen.nu`), so `S` bounds the greatest fixed point
   | ρ, _, _, _, .nu k S b => Core.Rel.nu fun X => S.den ρ ∩ b.den (ρ.bind k X)
   | ρ, _, _, _, .mu k _ _ b => Core.Rel.mu fun X => b.den (ρ.bind k X)
-  | ρ, _, _, _, .refold k _ _ b => Core.Rel.mu fun X => b.den (ρ.bind k X)
+  | ρ, _, _, _, .hylo k _ _ b => Core.Rel.mu fun X => b.den (ρ.bind k X)
 
 /-- The spine `f` of a row given the meanings `ss` of its later arguments: the row's meaning of all of them, in
     the order `compile` passes their codes; `𝟘` where `f` is not a row under `arg`s. `share` and `own` are seen
@@ -347,7 +347,7 @@ theorem Tm.den_congr : ∀ {A B : Obj} {d : Bool} (t : Tm A B d) (ρ ρ' : Val),
     by_cases e : i = k
     · subst e; exact Val.bind_same
     · rw [Val.bind_ne e, Val.bind_ne e]; exact h i (by simp [Tm.fv, hi, e])
-  | mu k _ _ b ih | refold k _ _ b _ ih =>
+  | mu k _ _ b ih | hylo k _ _ b _ ih =>
     intro ρ ρ' h
     refine ⟨?_, fun _ => rfl⟩
     simp only [Tm.den]
@@ -442,7 +442,7 @@ theorem Tm.den_subst : ∀ {A B : Obj} {d : Bool} (t : Tm A B d) (σ : Tm.Sub), 
     rcases List.mem_cons.1 he with rfl | he
     · rfl
     · exact hσ e he ρ ss
-  | mu k _ _ b ih | refold k _ _ b _ ih =>
+  | mu k _ _ b ih | hylo k _ _ b _ ih =>
     intro σ hσ ρ; refine ⟨?_, fun _ => rfl⟩; simp only [Tm.subst, Tm.den]; congr 1; funext X
     refine (ih _ (fun e he ρ ss => ?_) _).1.trans (Sub.den_rename b σ ρ k X)
     rcases List.mem_cons.1 he with rfl | he
@@ -627,7 +627,7 @@ theorem Tm.den_pol (k : Nat) : ∀ {A B : Obj} {d : Bool} (t : Tm A B d) (s : Bo
       simp only [hb]; exact sle.gfp fun X => sle.map2 (f := fun X Y => X ∩ Y) inter_le' hS (sle.refl _)
     · simp only [Bool.or_eq_true, beq_iff_eq, e, false_or] at hp
       exact sle.gfp fun X => sle.map2 (f := fun X Y => X ∩ Y) inter_le' hS (ih s _ _ hp.2 (g.bind e X))
-  | mu j _ _ b ih | refold j _ _ b _ ih =>
+  | mu j _ _ b ih | hylo j _ _ b _ ih =>
     intro s ρ ρ' hp g
     simp only [Tm.den]
     by_cases e : j = k

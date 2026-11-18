@@ -111,7 +111,7 @@ def rowGaps : List String := ["setify", "asc"]
 def Tm.gap : {A B : Obj} → {d : Bool} → Tm A B d → Option String
   | _, _, _, .lam _ | _, _, _, .E _ | _, _, _, .thin _ =>
     some "Λ, E, thin: the list a set is held as waits for D2's canonical tables (§7.1)"
-  | _, _, _, .refold .. => some "refold: its rounds equal lfp only by den_local, which is not proved (§7.2)"
+  | _, _, _, .hylo .. => some "hylo: its rounds equal lfp only by den_local, which is not proved (§7.2)"
   | _, _, _, .call .. => some "call: a generic definition's term waits for stage 5"
   | _, _, _, .prim r => if rowGaps.contains r.sym then some s!"{r.sym}: the row has no lemma (rowGaps)" else none
   | _, _, _, .mu k _ _ b =>

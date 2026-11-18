@@ -85,10 +85,10 @@ inductive Tm : Obj → Obj → Bool → Type where
   /-- `μX : φ`: rounds of `body` from `𝟘` up to the least fixed point, at most `cap`; `what` names the `μ` in the
       failure a run that reaches `cap` first reports. -/
   | mu {A B : Obj} (k : Nat) (what : String) (cap : Nat) (body : Tm A B false) : Tm A B false
-  /-- `refold(c, S)` = `μX : c G(X) S`, `X` the variable `k`, on the keys in demand: bottom-up over the nodes `ch`
+  /-- `hylo(c, S)` = `μX : c G(X) S`, `X` the variable `k`, on the keys in demand: bottom-up over the nodes `ch`
       (`c` then `G`'s membership) reaches from them, each node's value `body` run once its children have theirs;
       `what` names the coalgebra `c`, where the failure a cycle of `ch` reports is. -/
-  | refold {A B : Obj} {d e : Bool} (k : Nat) (what : String) (ch : Tm A A d) (body : Tm A B e) : Tm A B true
+  | hylo {A B : Obj} {d e : Bool} (k : Nat) (what : String) (ch : Tm A A d) (body : Tm A B e) : Tm A B true
 
 /-- A built term with its objects. -/
 abbrev Res := (A : Obj) × (B : Obj) × (d : Bool) × Tm A B d
@@ -128,14 +128,14 @@ def Tm.mapM {m : Type → Type} [Monad m] (f : {A B : Obj} → {d : Bool} → Tm
   | _, _, _, .arg g x => return .arg (← f g) (← f x)
   | _, _, _, .nu k S b => return .nu k (← f S) (← f b)
   | _, _, _, .mu k w n b => return .mu k w n (← f b)
-  | _, _, _, .refold k w ch b => return .refold k w (← f ch) (← f b)
+  | _, _, _, .hylo k w ch b => return .hylo k w (← f ch) (← f b)
   | _, _, _, t => pure t
 
 /-- The parts of `t`, in `Tm.mapM`'s order. -/
 def Tm.parts {A B : Obj} {d : Bool} (t : Tm A B d) : List Res :=
   (Id.run ((t.mapM (m := StateM (List Res)) fun c => do modify (· ++ [⟨_, _, _, c⟩]); pure c).run [])).2
 
-/-- The variables free in `t`: a binder (`μ`, `ν`, `refold`) drops its own, and a `share` is closed. Structural,
+/-- The variables free in `t`: a binder (`μ`, `ν`, `hylo`) drops its own, and a `share` is closed. Structural,
     so `den_congr` can be stated with it. -/
 def Tm.fv : {A B : Obj} → {d : Bool} → Tm A B d → List Nat
   | _, _, _, .var k => [k]
@@ -168,7 +168,7 @@ def Tm.fv : {A B : Obj} → {d : Bool} → Tm A B d → List Nat
   | _, _, _, .arg g x => g.fv ++ x.fv
   | _, _, _, .nu k S b => S.fv ++ b.fv.filter (· != k)
   | _, _, _, .mu k _ _ b => b.fv.filter (· != k)
-  | _, _, _, .refold k _ ch b => ch.fv ++ b.fv.filter (· != k)
+  | _, _, _, .hylo k _ ch b => ch.fv ++ b.fv.filter (· != k)
   -- every leaf listed: a wildcard makes the equation lemmas of this 40-constructor family slow to build
   | _, _, _, .val _ | _, _, _, .uni _ | _, _, _, .zero | _, _, _, .id | _, _, _, .outl | _, _, _, .outr
   | _, _, _, .nil | _, _, _, .prim _ | _, _, _, .atPos _ | _, _, _, .share .. | _, _, _, .call .. => []
@@ -234,8 +234,8 @@ def Tm.subst : Tm.Sub → {A B : Obj} → {d : Bool} → Tm A B d → Tm A B d
     .nu (fresh (b.fv ++ σ.fvs)) (S.subst σ) (b.subst ((k, ⟨A, B, .var (fresh (b.fv ++ σ.fvs))⟩) :: σ))
   | σ, A, B, _, .mu k w n b =>
     .mu (fresh (b.fv ++ σ.fvs)) w n (b.subst ((k, ⟨A, B, .var (fresh (b.fv ++ σ.fvs))⟩) :: σ))
-  | σ, A, B, _, .refold k w ch b =>
-    .refold (fresh (b.fv ++ σ.fvs)) w (ch.subst σ) (b.subst ((k, ⟨A, B, .var (fresh (b.fv ++ σ.fvs))⟩) :: σ))
+  | σ, A, B, _, .hylo k w ch b =>
+    .hylo (fresh (b.fv ++ σ.fvs)) w (ch.subst σ) (b.subst ((k, ⟨A, B, .var (fresh (b.fv ++ σ.fvs))⟩) :: σ))
   | _, _, _, _, .val R => .val R
   | _, _, _, _, .uni U => .uni U
   | _, _, _, _, .zero => .zero
@@ -270,7 +270,7 @@ def Tm.pol (s : Bool) (k : Nat) : {A B : Obj} → {d : Bool} → Tm A B d → Bo
   | _, _, _, .own R => R.pol s k
   | _, _, _, .nu j S b => S.pol s k && (j == k || b.pol s k)
   | _, _, _, .mu j _ _ b => j == k || b.pol s k
-  | _, _, _, .refold j _ _ b => j == k || b.pol s k
+  | _, _, _, .hylo j _ _ b => j == k || b.pol s k
   | _, _, _, t@(.lam _) | _, _, _, t@(.E _) | _, _, _, t@(.est _) | _, _, _, t@(.thin _) | _, _, _, t@(.succ _)
   | _, _, _, t@(.arith ..) | _, _, _, t@(.leq _) | _, _, _, t@(.lt _) | _, _, _, t@(.fold ..) | _, _, _, t@(.foldI ..)
   | _, _, _, t@(.flat _) | _, _, _, t@(.arg ..) => !t.fv.contains k

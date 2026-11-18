@@ -4,7 +4,7 @@ import Rel.Lang.TestWumpus
 import Rel.Lang.TestSelsort
 import Rel.Lang.TestKnapsack
 import Rel.Lang.TestCircuit
-import Rel.Lang.TestRefold
+import Rel.Lang.TestHylo
 import Rel.Lang.TestDetab
 import Rel.Lang.TestEdit
 import Rel.Run.Lang.Compile

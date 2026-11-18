@@ -225,8 +225,8 @@ def Tm.gen (η : CodeEnv) {A B : Obj} {d : Bool} (t : Tm A B d) : Out d A B := O
     | none => leaf (none' A B d)
   | η, A, B, _, .nu k S b => leaf (Gen.nu A B (S.gen η).fn fun X => (b.gen (η.bind k X)).fn)
   | η, A, B, _, .mu k _ cap b => leaf (Gen.mu A B cap fun X => (b.gen (η.bind k X)).fn)
-  | η, A, B, _, .refold (d := d) (e := e) k _ ch b =>
-    leaf (Gen.refold A B d e (ch.gen η).fn fun X => (b.gen (η.bind k X)).fn)
+  | η, A, B, _, .hylo (d := d) (e := e) k _ ch b =>
+    leaf (Gen.hylo A B d e (ch.gen η).fn fun X => (b.gen (η.bind k X)).fn)
 where
   /-- A node with no bit rule: its plan is its table. -/
   leaf {A B : Obj} {d : Bool} (f : Fn d A B) : Out d A B := ⟨f, pleaf A B d f, none⟩
