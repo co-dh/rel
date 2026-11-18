@@ -112,8 +112,7 @@ theorem codes_float_cut {t : QAtomicType} (ht : t = .real ∨ t = .float ∨ t =
     ∃ q, groupIdsColumn (KernelWF.bitsType t) (raze t cs.toArray).1 (raze t cs.toArray).2.enc = some q ∧
       Obj.codes (.atom t) cs = (Code.ofIds (len q.2) (raze t cs.toArray).1 q.1).cut (cs.map (·.1)) :=
   codes_raze_cut (by rcases ht with rfl | rfl | rfl <;> decide) cs hp
-    (fun j hj b he => by
-      have hwf := (cs[j]'hj).2.wf; rw [he] at hwf; rcases ht with rfl | rfl | rfl <;> simp [Enc.WF] at hwf)
+    (by rcases ht with rfl | rfl | rfl <;> decide)
     (by unfold rangeOffsets; rcases ht with rfl | rfl | rfl <;> simp [orderKind])
     (float_intern ht (raze t cs.toArray).2)
 

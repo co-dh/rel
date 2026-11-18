@@ -75,7 +75,7 @@ theorem place_lin_get {a b : Obj} {n : USize} (x : Vals (.sum a b) n) {p₀ p₁
   rw [Arr.get_long_bytes _ rfl]
   dsimp only
   simp only [val_vv_get _ _ _ _ k.2, val_va_get _ _ _ _ k.2, widen_bits_get _ _ k.2, longsOf_get _ k.2,
-    ← Arr.get_bool_bits _ (KernelWF.enc_tagBits tag) k]
+    ← Arr.get_bool_bits _ (Alg.enc_tagBits tag) k]
   have e0 := int_bits_toInt p₀ (by omega) (by omega)
   have e1 := int_bits_toInt p₁ (by omega) (by omega)
   have ez := int_bits_toInt 0 (by decide) (by decide)

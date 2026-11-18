@@ -212,13 +212,13 @@ theorem held_side {a b : Obj} {n : USize} (x : Vals (.sum a b) n) (k : Fin n.toN
       rw [dif_pos hk]
       dsimp only
       rw [USize.toNat_ofNat_of_lt' hk.1, USize.toNat_ofNat_of_lt' hk.2, gather_len, gather_len,
-        Arr.get_bool_bits _ (KernelWF.enc_tagBits _) k]
+        Arr.get_bool_bits _ (Alg.enc_tagBits _) k]
       exact whereBits_pos _ k.2
     · rename_i hk
       exact absurd ⟨by rw [gather_len]; exact Nat.lt_of_le_of_lt (len_whereBits_le _ n) n.toNat_lt_size,
         by rw [gather_len]; exact Nat.lt_of_le_of_lt (len_whereBits_le _ n) n.toNat_lt_size⟩ hk
   · rename_i hC
-    rw [if_neg hC, Arr.get_bool_bits _ (KernelWF.enc_tagBits _) k]
+    rw [if_neg hC, Arr.get_bool_bits _ (Alg.enc_tagBits _) k]
     obtain ⟨h1, h2⟩ := whereBits_pos (tagBits x.2.2.1) k.2
     obtain ⟨hs, -⟩ := Verify.whereBits_spec n (tagBits x.2.2.1)
     have hR : len (whereBits n (tagBits x.2.2.1)) < n.toNat ∨ ∀ k', k' < n.toNat → Column.bitAt (tagBits x.2.2.1) k' = true := by
@@ -253,7 +253,7 @@ theorem place_off_get {a b : Obj} {n : USize} (x : Vals (.sum a b) n) {dl dr : N
   rw [Arr.get_long_bytes _ rfl]
   dsimp only
   simp only [val_vv_get _ _ _ _ k.2, val_va_get _ _ _ _ k.2, widen_bits_get _ _ k.2, longsOf_get _ k.2,
-    ← Arr.get_bool_bits _ (KernelWF.enc_tagBits tag) k]
+    ← Arr.get_bool_bits _ (Alg.enc_tagBits tag) k]
   have e0 := int_bits_toInt ((l.toNat : Int) - 1) (by omega) (by omega)
   have e1 := int_bits_toInt ((r.toNat : Int) - l.toNat) (by omega) (by omega)
   have ez := int_bits_toInt 0 (by decide) (by decide)
