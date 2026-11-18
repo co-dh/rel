@@ -32,6 +32,7 @@ def ownParts (e : Ext.Enc X) : UInt8 × Array ByteArray :=
   | .syms _ _ => (4, #[])
   -- `ownFile` sends a general column to the serialized-object form, whose encoder names it
   | .gen _ => (5, #[])
+  | .packed lg bases widths payload => (6, #[⟨#[lg]⟩, bases, widths, payload])
 
 /-- The file a value is written as when it is a column: a vector, an enumeration's indices under
 their domain's name, and either wearing an attribute. `none` is every other value, which keeps the
