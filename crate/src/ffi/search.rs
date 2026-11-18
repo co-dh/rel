@@ -163,24 +163,6 @@ export! {
 
 
 
-    /// Spec: `matchBytes w float a b` is `QAtom.identical` element by element over two dense payloads.
-    fn qlean_match_bytes(w: usize, is_float: u8, av: B, bv: B) -> u8 { search::match_bytes(w, is_float != 0, av.bytes(), bv.bytes()) as u8 }
-    /// Spec: `foRMatch w am ap an bm bp bn` is `matchBytes w false` over the two operands' bytes.
-    fn qlean_coc_match(w: usize, amv: B, apv: B, an: usize, bmv: B, bpv: B, bn: usize) -> u8 {
-        search::coc_match(&opnd_of("qlean_coc_match", amv, apv, an, w), &opnd_of("qlean_coc_match", bmv, bpv, bn, w), w) as u8
-    }
-    /// Spec: `matchSyms ba oa bb ob` is `Column.symKey` equal at every index.
-    fn qlean_match_syms(bav: B, oav: B, bbv: B, obv: B) -> u8 { search::match_syms(&syms_of(bav, oav), &syms_of(bbv, obv)) as u8 }
-    /// Spec: `matchIds da doa ia db dob ib` is `Column.symKey` equal at every position, the ids read through their own
-    /// dictionaries.
-    fn qlean_search_match_ids(n: usize, m: usize, dav: B, doav: B, iav: B, dbv: B, dobv: B, ibv: B) -> u8 {
-        search::match_ids(n, m, &syms_of(dav, doav), iav.bytes(), &syms_of(dbv, dobv), ibv.bytes()) as u8
-    }
-    /// Spec: `matchSymsIds b o n d dof ids` is `Column.symKey` equal at every position, element `i` of the blob against
-    /// entry `ids[i]` of the dictionary; an id past the dictionary reads the empty symbol.
-    fn qlean_search_match_syms_ids(bv: B, ov: B, n: usize, dv: B, dofv: B, idsv: B) -> u8 {
-        search::match_syms_ids(&syms_of(bv, ov), n, &syms_of(dv, dofv), idsv.bytes()) as u8
-    }
 }
 
 

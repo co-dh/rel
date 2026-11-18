@@ -216,11 +216,6 @@ def overStep : Array Int64 × Array Int64 → Nat → Array Int64 × Array Int64
 def slots (fold live : Array Int64) : ByteArray :=
   (fold ++ live).foldl (init := ByteArray.empty) fun acc v => Column.pushBits acc v.toUInt64 8
 
-theorem overGroups_eq : overGroups op cls nul ng w n gid b =
-    let r := (List.range (Column.idsCap gid w.toNat (min n.toNat (b.size / Ew.width cls)))).foldl (overStep op cls nul ng w gid b)
-      (Array.replicate ng.toNat (op.denseSeed cls nul), Array.replicate ng.toNat 0)
-    slots r.1 r.2 := rfl
-
 theorem set!_get! (a : Array Int64) (g j : Nat) (v : Int64) (hj : j < a.size) :
     (a.set! g v)[j]! = if g = j then v else a[j]! := by
   rw [getElem!_pos (a.set! g v) j (by rw [Array.set!_eq_setIfInBounds, Array.size_setIfInBounds]; exact hj),
@@ -296,65 +291,6 @@ theorem slots_spec (fold live : Array Int64) :
   rw [slots, e, show 8 * 8 = 64 from rfl, Nat.mod_eq_of_lt (UInt64.toNat_lt _), UInt64.ofNat_toNat,
     Int64.toInt64_toUInt64, Array.getElem_toList]
 
-/-- **`overGroups` answers, per group `j < ng`, `Over.step` folded from `Over.denseSeed` over `rowsOf j` —
-the rows with id `j` whose element is not the null, every row at `.all`/`.any` — and then how many rows that
-is**, each an `Int64` read at slot `j` and slot `ng + j`. The step is `Coc.Over.step`, so `.add` wraps at 64
-bits. -/
-theorem overGroups_spec :
-    (overGroups op cls nul ng w n gid b).size = 16 * ng.toNat ∧ ∀ j < ng.toNat,
-      (Column.bitsAt (overGroups op cls nul ng w n gid b) (j * 8) 8).toInt64 =
-          (rowsOf op cls nul w n gid b j).foldl (fun acc i => op.step acc (valAt cls b i)) (op.denseSeed cls nul) ∧
-      (Column.bitsAt (overGroups op cls nul ng w n gid b) ((ng.toNat + j) * 8) 8).toInt64 =
-          Int64.ofNat (rowsOf op cls nul w n gid b j).length := by
-  obtain ⟨h1, h2, h3⟩ := overStep_fold op cls nul ng w gid b (List.range (Column.idsCap gid w.toNat (min n.toNat (b.size / Ew.width cls))))
-    (Array.replicate ng.toNat (op.denseSeed cls nul)) (Array.replicate ng.toNat 0) Array.size_replicate
-    Array.size_replicate
-  rw [overGroups_eq]
-  dsimp only
-  generalize List.foldl (overStep op cls nul ng w gid b) (Array.replicate ng.toNat (op.denseSeed cls nul),
-    Array.replicate ng.toNat 0) (List.range (Column.idsCap gid w.toNat (min n.toNat (b.size / Ew.width cls)))) = r at h1 h2 h3 ⊢
-  obtain ⟨hs, hg⟩ := slots_spec r.1 r.2
-  refine ⟨by rw [hs, h1, h2]; omega, fun j hj => ?_⟩
-  obtain ⟨ha, hc⟩ := h3 j hj
-  have hl : ∀ a : Array Int64, a.size = ng.toNat → j < a.size := fun a e => e ▸ hj
-  refine ⟨?_, ?_⟩
-  · rw [hg j (by rw [Array.size_append, h1]; omega), Array.getElem_append_left (by rw [h1]; exact hj),
-      ← getElem!_pos r.1 j (hl _ h1), ha,
-      getElem!_pos (Array.replicate ng.toNat (op.denseSeed cls nul)) j (hl _ Array.size_replicate),
-      Array.getElem_replicate]
-    rfl
-  · rw [hg (ng.toNat + j) (by rw [Array.size_append, h1, h2]; omega),
-      Array.getElem_append_right (by rw [h1]; omega)]
-    simp only [h1, Nat.add_sub_cancel_left]
-    rw [← getElem!_pos r.2 j (hl _ h2), hc,
-      getElem!_pos (Array.replicate ng.toNat (0 : Int64)) j (hl _ Array.size_replicate), Array.getElem_replicate,
-      Int64.zero_add]
-    rfl
-
-/-- **`overGroups` over ids that read back as `groupOf g m`** (`groupIds_spec`, `groupIdsFoR_spec`): slot `j`
-folds the non-null rows of the `j`-th bucket, and slot `ng + j` counts them. -/
-theorem overGroups_buckets {α : Type} [DecidableEq α] {g : Nat → α} {m j : Nat}
-    (hg : idsW w.toNat (min n.toNat (b.size / Ew.width cls)) gid =(List.range m).map (groupOf g m)) (hj : j < ng.toNat)
-    (hf : j < (firstsOf g m).length) :
-    (Column.bitsAt (overGroups op cls nul ng w n gid b) (j * 8) 8).toInt64 =
-        ((bucketOf g m (firstsOf g m)[j]).filter fun i => op.boolCast || valAt cls b i != nul).foldl
-          (fun acc i => op.step acc (valAt cls b i)) (op.denseSeed cls nul) ∧
-      (Column.bitsAt (overGroups op cls nul ng w n gid b) ((ng.toNat + j) * 8) 8).toInt64 =
-        Int64.ofNat ((bucketOf g m (firstsOf g m)[j]).filter fun i => op.boolCast || valAt cls b i != nul).length := by
-  have hl : Column.idsCap gid w.toNat (min n.toNat (b.size / Ew.width cls)) = m := by
-    have := congrArg List.length hg
-    rwa [idsW, List.length_map, List.length_range, List.length_map, List.length_range] at this
-  have key : rowsOf op cls nul w n gid b j = (bucketOf g m (firstsOf g m)[j]).filter
-      fun i => op.boolCast || valAt cls b i != nul := by
-    rw [rowsOf, hl, ← rows_groupOf g m hf, List.filter_filter]
-    exact List.filter_congr fun i hi => by
-      have e := congrArg (·[i]?) hg
-      simp only [idsW, hl, List.getElem?_map, List.getElem?_range (List.mem_range.1 hi), Option.map_some,
-        Option.some.injEq] at e
-      rw [gidAt, e, Bool.and_comm]
-  rw [← key]
-  exact (overGroups_spec op cls nul ng w n gid b).2 j hj
-
 /-- `laneWidth` answers one of the eight lanes. -/
 theorem laneWidth_cases (x : Nat) : Column.laneWidth x = 0 ∨ Column.laneWidth x = 1 ∨
     Column.laneWidth x = 2 ∨ Column.laneWidth x = 4 ∨ Column.laneWidth x = 8 ∨ Column.laneWidth x = 16 ∨
@@ -393,29 +329,6 @@ theorem idsCap_packIds {W : Nat} (m : Nat) (f : Nat → Nat)
   all_goals first
     | rw [if_neg (by decide), hnar _ (by decide) (by decide)]; omega
     | rw [if_neg (by decide), hwide _ (by decide) (by decide)]; omega
-
-/-- **`overGroups` over the ids `groupIds` answers, at the width it packs them at: slot `j` folds the
-non-null rows whose key is the `j`-th group's key, slot `ng + j` counts them.** No width hypothesis but
-`hw`, that `idAt` reads back what `packIds` wrote (`idAt_packIds`); `m` keys, at most the payload's rows. -/
-theorem overGroups_groupIds (k : Kind) (kn : USize) (kb : ByteArray) {m : USize} {j : Nat}
-    (hm : min kn.toNat (k.avail kb) = m.toNat) (hng : ng.toNat = (firstsOf (Order.keyAt k kb) m.toNat).length)
-    (hwu : w.toNat = Column.idWidthOf ng.toNat)
-    (hw : ∀ i < m.toNat, Column.idAt (Column.packIds w.toNat m.toNat (groupOf (Order.keyAt k kb) m.toNat)) w.toNat i =
-      groupOf (Order.keyAt k kb) m.toNat i)
-    (hb : m.toNat ≤ b.size / Ew.width cls) (hf : j < (firstsOf (Order.keyAt k kb) m.toNat).length) :
-    (Column.bitsAt (overGroups op cls nul ng w m (Order.groupIds k kn kb).1 b) (j * 8) 8).toInt64 =
-        ((bucketOf (Order.keyAt k kb) m.toNat (firstsOf (Order.keyAt k kb) m.toNat)[j]).filter
-          fun i => op.boolCast || valAt cls b i != nul).foldl (fun acc i => op.step acc (valAt cls b i))
-          (op.denseSeed cls nul) ∧
-      (Column.bitsAt (overGroups op cls nul ng w m (Order.groupIds k kn kb).1 b) ((ng.toNat + j) * 8) 8).toInt64 =
-        Int64.ofNat ((bucketOf (Order.keyAt k kb) m.toNat (firstsOf (Order.keyAt k kb) m.toNat)[j]).filter
-          fun i => op.boolCast || valAt cls b i != nul).length := by
-  have hgid : (Order.groupIds k kn kb).1 = Column.packIds w.toNat m.toNat (groupOf (Order.keyAt k kb) m.toNat) := by
-    rw [(groupIds_spec k kn kb).1, hm, hwu, hng]
-  refine overGroups_buckets op cls nul ng w m _ b ?_ (hng ▸ hf) hf
-  rw [Nat.min_eq_left hb, idsW, hgid,
-    idsCap_packIds (W := w.toNat) m.toNat _ (by rw [hwu]; exact laneWidth_cases _)]
-  exact List.map_congr_left fun i hi => hw i (List.mem_range.1 hi)
 
 end Over
 
@@ -478,13 +391,9 @@ end Segs
 #print axioms groups_congr
 #print axioms groupIds_spec
 #print axioms groupIdsFoR_spec
-#print axioms overGroups_spec
-#print axioms overGroups_buckets
 #print axioms atI64_eq
 /-- info: 'Rel.Verify.idsCap_packIds' depends on axioms: [propext, Quot.sound] -/
 #guard_msgs in #print axioms idsCap_packIds
-/-- info: 'Rel.Verify.overGroups_groupIds' depends on axioms: [propext, Quot.sound] -/
-#guard_msgs in #print axioms overGroups_groupIds
 
 end Rel.Verify
 

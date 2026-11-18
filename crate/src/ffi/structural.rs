@@ -11,7 +11,7 @@ use crate::lean::{B, O, SArr, ctor, export};
 use crate::{pod, structural};
 use alloc::vec::Vec;
 #[cfg(all(feature = "ffi", not(any(test, feature = "std"))))]
-use {crate::exports::coc::alp_view, crate::exports::reduce::elems, crate::ffi::{concat_own, syms_of, take_first}, crate::ids::ids_bytes, crate::lean::box_usize_o, crate::{c, lean}};
+use {crate::exports::coc::alp_view, crate::exports::reduce::elems, crate::ffi::{concat_own, syms_of, take_first}, crate::lean::box_usize_o, crate::{c, lean}};
 
 pub fn die(args: core::fmt::Arguments) -> ! {
     crate::os::eprint(args).expect("qlean: stderr");
@@ -146,16 +146,6 @@ export! {
     }
 
 
-    /// Spec: `shiftFoR metadata pack n k fill` is the round trip `Coc.encode 8 (shiftBytes 8 fill k (Coc.decode 8 metadata
-    /// pack n))` -- the answer's element `j` is the source's `j - k`, and `fill` where that is off either end. No
-    /// aligned-move case: a shift lines the 1024-element grid up only when `k` is a multiple of 1024.
-    fn qlean_structural_shift_foR(w: usize, mv: B, pv: B, n: usize, k: u64, fill: u64) -> O {
-        let col = view("qlean structural", mv, pv, n);
-        Sink::new(col.meta.n, w, Form::For).answer(&Shift { c: &col, k: k as i64, fill: fill as i64 })
-    }
-
-
-
 }
 
 /// A fresh payload of `n` bytes, zeroed: structural.rs `zeroed_bits` and `ids_alloc`, whose unwritten tail bits must be 0
@@ -182,16 +172,6 @@ export! {
         let mut a = zeroed(crate::ids::ids_bytes(m, w as u32));
         structural::cycle_ids(ids_n(n, idsv.bytes(), w), off, m, w as u32, idsv.bytes(), a.bytes_mut());
         a.into()
-    }
-
-
-
-
-    /// Spec: `shiftBytes w fill k b` is element `j - k` of `b` at each `j`, and `fill` where `j - k` is outside `[0, n)`. `k`
-    /// is signed on the way in because `xprev` takes it from q and both signs are ordinary there.
-    fn qlean_structural_shift(w: usize, fill: u64, k: u64, bv: B) -> O {
-        let n = bv.bytes().len() / w;
-        fresh(n * w, |o| structural::shift(c::pool(), w, fill, k as i64, &bv.bytes()[..n * w], n, o))
     }
 
 
@@ -430,32 +410,6 @@ export! {
     fn qlean_structural_scatter(wb: usize, dst: O, idxv: B, srcv: B, soff: usize, bcast: u8) -> O {
         scatter(wb, dst, idxv, srcv, soff, bcast)
     }
-
-    /// Spec: `scatterIds wa wb n ids idx yids bcast` is `scatterPacked wb` of the `n` ids widened from `wa` bits to `wb` -- an id
-    /// past the payload reading `0`, `Column.idAt`'s convention -- and the ids themselves where the widths agree, which `scatter`
-    /// writes in place when nothing else holds them.
-    fn qlean_structural_scatter_ids(wa: usize, wb: usize, n: usize, ids: O, idxv: B, yv: B, bcast: u8) -> O {
-        let ids = if wa == wb { ids } else {
-            let mut o = SArr::new(1, ids_bytes(n, wb as u32));
-            structural::widen_ids(n, wa as u32, wb as u32, ids.borrow().bytes(), o.bytes_mut());
-            drop(ids); // as the C `lean_dec`: the wider copy is the only one the scatter holds
-            o.into()
-        };
-        scatter(wb, ids, idxv, yv, 0, bcast)
-    }
-
-    /// Spec: `scatterSyms b o idx yb yo bcast` -- element `idx[k]` of the blob replaced, in order, by symbol `k` of `y` (`0` under
-    /// `bcast`), the last write to a repeated index kept. Symbols have no fixed width, so the blob is rebuilt rather than written
-    /// in place.
-    fn qlean_structural_scatter_syms(bv: B, ov: B, idxv: B, ybv: B, yov: B, bcast: u8) -> O {
-        let (b, y) = (syms_of(bv, ov), syms_of(ybv, yov));
-        let src = structural::scatter_sources(b.count(), y.count(), longs::<u64>(idxv), bcast != 0);
-        let mut blob = SArr::new(1, structural::scatter_syms_total(&src, &b, &y));
-        let offs = lean::arr_words(src.len() + 1, |o| structural::scatter_syms_write(&src, &b, &y, blob.bytes_mut(), o));
-        pair(blob.into(), offs)
-    }
-
-
 
 }
 

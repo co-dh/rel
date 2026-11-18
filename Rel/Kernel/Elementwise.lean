@@ -371,21 +371,6 @@ def cmp (op cls shape : UInt8) (a b : @& ByteArray) (n : USize) : ByteArray :=
         byte ||| (1 <<< j.toUInt8)
       else byte)
 
-/-- The six comparisons at `long` against an atom, read off the encoded form: a block whose whole
-`[base, maxv]` range falls one side of `v` is filled from its metadata without a residual being
-touched. No null case, and that is not an omission — q's `0N` is the least `long` there is and the
-signed comparison already puts it there, `0N<5` and `0N=0N` both being `1b`, measured.
-
-**Every column is claimed; what the range decides is the cost, not the answer.** A block whose range
-straddles `v` is *deep* and its residuals are read, and nothing above chooses between the two — so
-the condition to hold in mind is how many blocks are deep, which no type or shape test can see.
-Measured at a million longs: `xl<500000`, one deep block in 977, 2.3us; `xg<500`, all 977 deep, 12us.
-The C splits the deep blocks across the worker pool and counts *them* rather than the elements to
-decide whether to, which is what keeps the first figure where it is. -/
-@[extern "qlean_coc_mask_cmp"]
-def foRCmp (op : UInt8) (v : Int64) (metadata pack : @& ByteArray) (n : USize) : ByteArray :=
-  cmp op i64 va (Coc.decode 8 metadata pack n) (Column.pushBits ByteArray.empty v.toUInt64 8) n
-
 /-- `k + x`, and `k - x` when `neg`, at `long` on the encoded form: the answer is the same column
 with every block's minimum moved by `k` — turned round, for `k - x`, the residuals with it — which
 is 33 bytes a block against a pass over `n` elements, and it stays encoded for whatever runs next.
@@ -426,102 +411,6 @@ def foRShift (neg : Bool) (k : Int64) (metadata pack : @& ByteArray) (n : USize)
 extremes leave it: q wraps there, and a wrapped `base` is no longer the block's own minimum. -/
 def inI64 (x : Int) : Bool := Int64.minValue.toInt ≤ x && x ≤ Int64.maxValue.toInt
 
-/-- The six comparisons at `long` between two encoded vectors of the same count. The block grids line
-up, both being `Column.blk` elements (`foRPairVV` declines two sizes), so block `b` of one meets block `b` of the other and a pair
-whose `[base, maxv]` ranges do not overlap is decided whole — which is the whole of `xl<xd`. Where
-they overlap, `base_a + res_a` is compared against `base_b + res_b`. No null case, for `foRCmp`'s
-reason.
-
-**Every pair of encoded operands is claimed, and the two branches are three orders of magnitude apart
-per element.** `foRPairVV`'s conditions — both `.foR`, both at `i64`, equal counts — say only that
-the kernel *answers*; what it costs is how many block pairs overlap, and no operand shape shows that.
-Measured at a million longs: `xl<xd`, one deep block pair in 977, 2.3us; `xl<xl`, all 977 deep, 24us
-against the 12us the dense engine takes on the same values *in cache*. Out of cache the sign turns
-over — at 16M `xg<>yg` is 0.38ms here against 4.2ms dense, this reading a quarter of the bytes — so
-the claim is right and it is the deep branch that had to be made to scale, which the C does by
-splitting the deep blocks across the worker pool. -/
-@[extern "qlean_coc_mask_cmp_vv"]
-def foRCmpVV (op : UInt8) (ma pa mb pb : @& ByteArray) (n : USize) : ByteArray :=
-  cmp op i64 vv (Coc.decode 8 ma pa n) (Coc.decode 8 mb pb n) n
-
-/-- `x + y`, `x - y` and `x * y` at `long` between two encoded vectors of the same count: the answer's
-base and maximum are the results' own extremes and its residual width is what their difference needs,
-so it is a pass over the two packs and not over the two dense payloads.
-
-`none` is `foRShift`'s two refusals read one operand at a time — a block whose minimum is
-`Int64.minValue` holds q's `0N`, which `0N+1` and `0N*2` keep a null, and extremes that leave `Int64`
-would leave `base` and `maxv` no longer the block's own. They are stated over the block extremes and
-not over the elements because that is what the C can ask before it has read anything: `base_a+base_b`
-can leave `Int64` where no element pair does, the two minima needing not fall at the same index.
-
-`*` asks the **four corner products** instead of two combined extremes. A product is monotone in each
-argument once the other's sign is fixed, so every `x*y` over `[base_a, maxv_a] × [base_b, maxv_b]`
-lies between the least and the greatest corner, and corners that fit make every element fit. -/
-@[extern "qlean_coc_val_vv"]
-def foRValVV (op : UInt8) (ma pa mb pb : @& ByteArray) (n : USize) :
-    Option (ByteArray × ByteArray) :=
-  let ok := Column.nblk ma == Column.nblk mb && (List.range (Column.nblk ma)).all fun b =>
-    let ba := (Column.baseAt ma b).toInt64.toInt
-    let xa := (Column.maxvAt ma b).toInt64.toInt
-    let bb := (Column.baseAt mb b).toInt64.toInt
-    let xb := (Column.maxvAt mb b).toInt64.toInt
-    ba != Int64.minValue.toInt && bb != Int64.minValue.toInt &&
-      (if op == mul then [ba * bb, ba * xb, xa * bb, xa * xb].all inI64
-       else if op == sub then inI64 (ba - xb) && inI64 (xa - bb)
-       else inI64 (ba + bb) && inI64 (xa + xb))
-  if ok then
-    -- the answer is the dense engine's, re-encoded, byte for byte: the C computes each block's
-    -- extremes and its width by the encoder's own rule, block by block
-    some (Coc.encode 8 (val op i64 vv Int64.minValue
-      (Coc.decode 8 ma pa n) (Coc.decode 8 mb pb n) n))
-  else none
-
-/-- `x <op> y` between two encoded vectors of the same count, answering the **dense** payload `val`
-answers: one block of each side is restored into a buffer that stays in L1 and the same verb table
-runs on it, so neither operand is decoded whole.
-
-This is where the verbs `foRValVV` cannot answer encoded go — `&`, `|` and `^`, which have no rule
-for the answer's own block extremes cheaper than computing them — and where `+`, `-` and `*` go on
-the blocks it declines. `cls` is the integral class both operands and the result sit at; a pack holds
-integers, so the float classes never reach here. -/
-@[extern "qlean_coc_ew_val"]
-def foRVal (op cls : UInt8) (nul : Int64) (ma pa mb pb : @& ByteArray) (n : USize) : ByteArray :=
-  val op cls vv nul (Coc.decode (width cls).toUSize ma pa n)
-    (Coc.decode (width cls).toUSize mb pb n) n
-
-/-- `x <op> k` and `k <op> x` between an encoded vector and an atom, answering the dense payload
-`val` answers: the vector is restored a block at a time into a buffer that stays in L1 and the atom
-is a fixed pointer, so the operand is never decoded whole.
-
-The two shapes are one kernel because only one side has blocks — `shape` says which side of the
-engine the atom stands on, and the engine broadcasts it as it does for a dense atom. This is where
-`&`, `|` and `^` against an atom go, and where `x+k` and `x*k` go on a column `foRShift` and
-`foRScale` decline. -/
-@[extern "qlean_coc_ew_val_atom"]
-def foRValAtom (op cls shape : UInt8) (nul : Int64) (metadata pack : @& ByteArray) (n : USize)
-    (atom : @& ByteArray) : ByteArray :=
-  let dense := Coc.decode (width cls).toUSize metadata pack n
-  if shape == va then val op cls shape nul dense atom n else val op cls shape nul atom dense n
-
-/-- `x * k` at `long` on the encoded form. Scaling is monotone, so a block's extremes are its own
-scaled — the order turning round for a negative `k` — and the residuals scale with them. That is a
-pass over the pack, unlike `x + k`, which leaves the residuals where they are; it is still an eighth
-of the bytes the dense payload is at a residual width of eight bits.
-
-`none` is `foRShift`'s refusals again: `k` or a block minimum being `Int64.minValue` is q's `x*0N`
-and `0N*0`, both `0N`, measured, and a scaled extreme that leaves `Int64` is the other. -/
-@[extern "qlean_coc_scale"]
-def foRScale (k : Int64) (metadata pack : @& ByteArray) (n : USize) :
-    Option (ByteArray × ByteArray) :=
-  let ok := k != Int64.minValue && (List.range (Column.nblk metadata)).all fun b =>
-    let base := (Column.baseAt metadata b).toInt64.toInt
-    let maxv := (Column.maxvAt metadata b).toInt64.toInt
-    base != Int64.minValue.toInt && inI64 (base * k.toInt) && inI64 (maxv * k.toInt)
-  if ok then
-    some (Coc.encode 8 (val mul i64 va Int64.minValue (Coc.decode 8 metadata pack n)
-      (Column.pushBits ByteArray.empty k.toUInt64 8) n))
-  else none
-
 /-- `&`, `|` and `^` over two boolean bitmaps — the one value result that is not a dense payload,
 and the reason `x within (lo;hi)` no longer boxes: the two comparisons it is built from already
 reach `cmp`, and it was this last `&` between their bitmaps that fell to atoms. Both operands are
@@ -541,24 +430,6 @@ def bit (op shape : UInt8) (a b : @& ByteArray) (n : USize) : ByteArray :=
 (`mon`, `floor`, `cast`, `tick`), the `Kernel.map` of a tile, where the extern is `Kernel.map` of a whole column. -/
 def stageMap (ci co : UInt8) (f : UInt64 → UInt64) (x : ByteArray) (n : USize) : ByteArray :=
   (List.range n.toNat).foldl (init := ByteArray.empty) fun acc i => Column.pushBits acc (f (elem ci x i)) (width co)
-
-/-- `neg`, `abs` and the nine float maps over the `n` elements of `x` at `t`, whatever its kind, answering at `t`:
-`Kernel.map` of `monStep`. `cls` is `t`'s storage class, which is all the answer's form depends on. -/
-@[extern "qlean_ew_mon"]
-def mon (op cls : UInt8) (nul : Int64) (t : QAtomicType) (n : USize) (x : @& Enc) : Enc :=
-  Kernel.map t t n (fun v => monStep op cls nul.toUInt64 (v.headD 0)) [x]
-
-/-- Monadic `_` over the `n` elements of `x` at the float type `t` (class `cls`), whatever its kind, answering
-`long`s: `Kernel.map` of `floorStep`. -/
-@[extern "qlean_ew_floor"]
-def floor (cls : UInt8) (t : QAtomicType) (n : USize) (x : @& Enc) : Enc :=
-  Kernel.map t .long n (fun v => (floorStep cls (v.headD 0)).toUInt64) [x]
-
-/-- q's `$` over the `n` elements of `x` at `s` (class `src`), whatever its kind, answering at `t` (class `dst`):
-`Kernel.map` of `castStep`. The answer's form depends on `dst` alone. -/
-@[extern "qlean_ew_cast"]
-def castTo (src dst : UInt8) (nulIn : Int64) (s t : QAtomicType) (n : USize) (x : @& Enc) : Enc :=
-  Kernel.map s t n (fun v => castStep src dst nulIn (v.headD 0)) [x]
 
 /-- Nanoseconds in one unit of each temporal code `Kernel.tickCode` hands out, and the one table
 `Kernel.tickOf` reads too. Code `5` is `month`, which has no fixed length and goes through the
@@ -598,17 +469,6 @@ def tickStep (op src dst : UInt8) (nulIn nulOut : Int64) (v : UInt64) : UInt64 :
   if dst == f64 then (Float.ofInt ns / Float.ofInt u).toBits
   else if op &&& 15 == 5 then (Int64.ofInt (monthOfDays (Int.fdiv ns u))).toUInt64
   else (Int64.ofInt (Int.fdiv ns u)).toUInt64
-
-/-- `=` and `<>` between two columns over **one** dictionary: it is distinct, so two ids name one
-symbol exactly when they are equal, and the ids are compared as they lie with no rank read. -/
-@[extern "qlean_ew_eq_ids"]
-def eqIds (op shape : UInt8) (ia ib : @& ByteArray) (w n : USize) : ByteArray :=
-  cmp op i64 vv
-    ((List.range n.toNat).foldl (init := ByteArray.empty) fun acc j =>
-      Column.pushBits acc (Column.idAt ia w.toNat (shapeIdx shape j).1).toUInt64 8)
-    ((List.range n.toNat).foldl (init := ByteArray.empty) fun acc j =>
-      Column.pushBits acc (Column.idAt ib w.toNat (shapeIdx shape j).2).toUInt64 8)
-    n
 
 /-- An operand brought to the class its verb's result is at. `real` to `float` is written out rather
 than converted so that the sign bit, which is what makes q's null the *negative* NaN, cannot be lost
@@ -721,22 +581,6 @@ def chain (prog : @& ByteArray) (inputs : @& Array ByteArray) (n : USize) : Byte
       else Coc.alpDecode64 (src st.a) (src st.b) (src st.c) n
   outs[k - 1]!
 
-/-- The same chain, and its answer in the Frame-of-Reference form `Coc.encode` puts it in. Stated as
-that composition because it is the equation the pair has to satisfy; the C never materialises the
-dense payload named in the middle of it.
-
-`rust/src/c.rs`'s `QLEAN_TILE` is `BLK`, so a chain's tile is exactly one encoded block: the tile the last
-stage wrote is the block the encoder wants, and the chain runs as the encoder's source rather than
-into a column between them. What that saves, at 64M elements: every chain whose answer is an integral
-type measured 52.7 ms and every one whose answer is a float 23.8 ms, whatever the verb — `floor xf`
-and `` `long$xf `` to the microsecond — the difference being 512 MB of dense bytes written and then
-read twice, to size the blocks and to pack them. The encoder's two passes stay two, so the chain runs
-twice; its stages are element-wise maps and the arithmetic is free next to that traffic. -/
-@[extern "qlean_ew_chain_enc"]
-def chainEnc (prog : @& ByteArray) (inputs : @& Array ByteArray) (n : USize) (width : USize) :
-    ByteArray × ByteArray :=
-  Coc.encode width (chain prog inputs n)
-
 /-- A chain under construction: the stages named so far and the payloads they read. -/
 structure Build where
   stages : Array Stage := #[]
@@ -750,10 +594,6 @@ def Build.prog (b : Build) (last : Stage) : ByteArray :=
 /-- That program's answer as the dense payload it computes. -/
 def Build.run (b : Build) (last : Stage) (n : USize) : ByteArray :=
   chain (b.prog last) b.inputs n
-
-/-- And in the Frame-of-Reference form, which is what a result at a type `Column.encodes` becomes. -/
-def Build.runEnc (b : Build) (last : Stage) (n : USize) (width : USize) : ByteArray × ByteArray :=
-  chainEnc (b.prog last) b.inputs n width
 
 end Rel.Kernel.Ew
 

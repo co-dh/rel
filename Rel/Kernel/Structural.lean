@@ -55,21 +55,6 @@ def shiftAt (n : Nat) (k : Int) (j : Nat) : Option Nat :=
   let i := (j : Int) - k
   if 0 ≤ i && i < (n : Int) then some i.toNat else none
 
-/-- q's shift at a dense payload: element `j - k`, or `fill` where that is off either end. A positive
-`k` moves elements later, which is `prev`.
-
-`fill` is the type's null, exactly as `gatherBytes` takes it, and the family that uses this is why the
-null and not a zero: measured, `prev "abc"` is `" ab"` and `prev 0x0105` is `0x0001`, the blank at
-`char` and zero at `byte` being what `Kernel.nullBits` already says for each. -/
-@[extern "qlean_structural_shift"]
-def shiftBytes (w : USize) (fill : UInt64) (k : Int64) (b : @& ByteArray) : ByteArray :=
-  let n := b.size / w.toNat
-  (List.range n).foldl (init := ByteArray.empty) fun acc j =>
-    Column.pushBits acc
-      (match shiftAt n k.toInt j with
-        | some i => Column.bitsAt b (i * w.toNat) w.toNat
-        | none => fill) w.toNat
-
 /-- `,` and `raze` at a dense payload, which at one element type is concatenation.
 
 One kernel for both and not a fold of a two-argument join: folding `++` copies the accumulated prefix
@@ -190,18 +175,6 @@ def concatFoR (ew : USize) (ns : @& ByteArray) (metas : Array ByteArray) (packs 
 def countBytes (ns : Array USize) : ByteArray :=
   ns.foldl (init := ByteArray.empty) fun acc n => Column.pushBits acc n.toUInt64 8
 
-/-- A shift at a Frame-of-Reference payload, re-encoded rather than moved. `reverse` and `,` have a
-move case and this has none: a shift keeps the 1024-element grid aligned only when `k` is a multiple
-of 1024, and the family that uses it — `deltas`, `prev`, `next`, `mavg` — shifts by one.
-
-Decoding instead is what made `deltas xl` 124ms at 64M against q's 97: the shift materialised 512MB
-and the subtraction then decoded its other operand as well. The C walks the pack a block at a time.
-`ew` is `reverseFoR`'s. -/
-@[extern "qlean_structural_shift_foR"]
-def shiftFoR (ew : USize) (metadata : @& ByteArray) (pack : @& ByteArray) (n : USize) (k : Int64)
-    (fill : UInt64) : ByteArray × ByteArray :=
-  Coc.encode ew (shiftBytes ew fill k (Coc.decode ew metadata pack n))
-
 /-- `x@i` with the source left encoded: `n` elements at width `w` in it, and a dense `long` index.
 The answer is dense, as the dense gather's is.
 
@@ -252,31 +225,6 @@ def scatterPacked (wb : USize) (dst : ByteArray) (idx : @& ByteArray) (src : @& 
       let mask : UInt8 := (1 <<< wb.toUInt8) - 1
       acc.set! (u / per) ((acc.get! (u / per) &&& ~~~(mask <<< sh)) |||
         ((Column.resAt src 0 wb e).toUInt8 <<< sh))
-
-/-- `scatterPacked` at an interned column's `n` ids, `wa` bits each, whose dictionary has grown to
-one whose ids take `wb`: the ids are widened first — copied where `wa = wb`, in place when nothing
-else holds them — and `yids`, already ids of the grown dictionary, are written at `idx` in order, so
-the last write to a repeated index stays. -/
-@[extern "qlean_structural_scatter_ids"]
-def scatterIds (wa wb n : USize) (ids : ByteArray) (idx : @& ByteArray) (yids : @& ByteArray) (bcast : Bool) :
-    ByteArray :=
-  scatterPacked wb (if wa == wb then ids else Column.packIds wb.toNat n.toNat (Column.idAt ids wa.toNat ·))
-    idx yids 0 bcast
-
-/-- `scatterPacked` at a symbol blob: element `idx[k]` of `b`/`o` replaced, in order, by symbol `k`
-of `yb`/`yo` — symbol `0` under `bcast` — so the last write to a repeated index stays. An index past
-the column writes nothing, `amendRounds` having raised it already. -/
-@[extern "qlean_structural_scatter_syms"]
-def scatterSyms (b : @& ByteArray) (o : @& Array Nat) (idx : @& ByteArray) (yb : @& ByteArray)
-    (yo : @& Array Nat) (bcast : Bool) : ByteArray × Array Nat :=
-  let n := o.size - 1
-  let src := (List.range (idx.size / 8)).foldl (init := Array.replicate n none) fun acc k =>
-    let u := (Column.bitsAt idx (k * 8) 8).toNat
-    if u < n then acc.set! u (some (if bcast then 0 else k)) else acc
-  Nat.fold n (init := (ByteArray.empty, #[0])) fun i _ (ob, oo) =>
-    let (sb, so, e) := match src[i]! with | some k => (yb, yo, k) | none => (b, o, i)
-    let ob := sb.copySlice so[e]! ob ob.size (so[e + 1]! - so[e]!)
-    (ob, oo.push ob.size)
 
 /-- q's `til`, as little-endian `Int64`s. Measured — `til 5` is `0 1 2 3 4`, `til 0` is the empty long
 vector, `type til 5` is `7h` and `til 2h` is `0 1`, so the answer is `long` whatever the count's own
@@ -452,31 +400,6 @@ over an enumerated column — 160 MB written at 20M rows for a pass that reads e
 def gatherPackedFoR (n w wout : USize) (fill : UInt64) (src : @& ByteArray)
     (imeta ipack : @& ByteArray) (m : USize) : ByteArray :=
   gatherPacked n w wout fill src (Coc.decode 8 imeta ipack m)
-
-/-- `:` of `y`'s symbols at the rows `ix` of the `n`-element symbol column `e` — field `k` of the
-`ny`-element `ye` at `ix[k]`, field `0` at every one under `bcast`, the last write to a repeated row
-kept — under `,`'s policy (`razeColumn`): two blobs scatter as a blob, and where either side is
-interned the other is interned to meet it. `y` then resolves through `e`'s kept dictionary hash
-(`hashConcat`), its new symbols appended, so `e`'s ids are widened at most and never remapped, and
-`e`'s dictionary object and table stay where `y` adds nothing. A dictionary `hashConcat` declines (one
-holding a repeat) is joined by `concatEnum` instead and re-interned by a gather over `til n`. `none`:
-a payload that is no symbol column. -/
-def assignSyms (n : USize) (e : Ext.Enc X) (ny : USize) (ye : Ext.Enc X) (ix : ByteArray) (bcast : Bool) : Option (Ext.Enc X) :=
-  match e, ye with
-  | .syms b o, .syms yb yo => match scatterSyms b o ix yb yo bcast with | (b', o') => some (.syms b' o')
-  | e, ye => match Column.intern e, Column.intern ye with
-    | .enum d o ids, .enum yd yo yi =>
-      match hashConcat #[(0, d, o, .empty), (ny, yd, yo, yi)] with
-      | .ok (db, dbo, yids) =>
-        some (.enum db dbo (scatterIds (Column.idWidth o).toUSize (Column.idWidth dbo).toUSize n ids ix yids bcast))
-      | .error _ => match concatEnum (X := Empty) #[(n, d, o, ids), (ny, yd, yo, yi)] with
-        | .vector _ _ (.enum db dbo all) _ =>
-          let all := scatterPacked (Column.idWidth dbo).toUSize all ix all n bcast
-          let (gb, gbo, gids) := gatherIds db dbo (fun _ => true) fun w wo e =>
-            gatherPacked (n + ny) w wo e all (tilLongs n)
-          some (.enum gb gbo gids)
-        | _ => none
-    | _, _ => none
 
 /-- The symbol a gather's index names, and the empty symbol — which is `symbol`'s null — where it
 misses. Measured: `` `a`b@0 5 ``, `` `a`b@0 -1 `` and `` `a`b@0 0N `` are all `` `a` ``, the same

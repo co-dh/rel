@@ -5,7 +5,7 @@
 #![deny(unsafe_code)]
 use crate::lean::{SArr, export};
 #[cfg(all(feature = "ffi", not(any(test, feature = "std"))))]
-use {crate::blocks::Blocks, crate::exports::coc::view, crate::ffi::{chain_enc, of_raw}, crate::lean::{B, O}, crate::{c, ew}};
+use {crate::lean::{B, O}, crate::{c, ew}};
 
 /// An answer of `n` bytes, undefined until the kernel writes it.
 pub fn answer(n: usize) -> SArr { SArr::new(1, n) }
@@ -20,23 +20,6 @@ export! {
         r.into()
     }
 
-    /// `foRValAtom op cls shape nul m p n atom`: `val` over the decoded column and `atom` (`ew_width(cls)` bytes).
-    fn qlean_coc_ew_val_atom(op: u8, cls: u8, shape: u8, nul: u64, mv: B, pv: B, n: usize, av: B) -> O {
-        let w = ew::ew_width(cls as u32);
-        let col = view("qlean_coc_ew_val_atom", mv, pv, n);
-        let mut r = answer(n * w);
-        ew::val_enc_atom(c::pool(), op, cls, shape, nul as i64, &col, &av.bytes()[..w], r.bytes_mut());
-        r.into()
-    }
-
-    /// `foRVal op cls nul ma pa mb pb n`: `val` over the two decoded columns.
-    fn qlean_coc_ew_val(op: u8, cls: u8, nul: u64, ma: B, pa: B, mb: B, pb: B, n: usize) -> O {
-        let (ca, cb) = (view("qlean_coc_ew_val", ma, pa, n), view("qlean_coc_ew_val", mb, pb, n));
-        let mut r = answer(n * ew::ew_width(cls as u32));
-        ew::val_enc(c::pool(), op, cls, nul as i64, &ca, &cb, r.bytes_mut());
-        r.into()
-    }
-
     /// `cmp op cls shape a b n`: the `Column.bits` payload of the comparison, the bits above `n` zero.
     fn qlean_ew_cmp(op: u8, cls: u8, shape: u8, a: B, b: B, n: usize) -> O {
         let mut r = bits(n);
@@ -48,53 +31,11 @@ export! {
 
 
 
-    /// `eqIds op shape ia ib w n`: bit `i` is whether the two ids the shape indexes, both read at `w`, are equal (`=`) or differ.
-    fn qlean_ew_eq_ids(op: u8, shape: u8, iav: B, ibv: B, w: usize, n: usize) -> O {
-        let (w, iab, ibb) = (w as u32, iav.bytes(), ibv.bytes());
-        let n = ew::ids_n(shape, n, iab.len(), w, ibb.len(), w);
-        let mut r = bits(n);
-        ew::eq_ids(c::pool(), op, shape, iab, ibb, w, n, r.bytes_mut());
-        r.into()
-    }
-
-
-
-
-
-
-
-
     /// `bit op shape a b n`: a verb of two bitmaps (`&`, `|`, fill, the six comparisons), the bits above `n` zero.
     fn qlean_ew_bit(op: u8, shape: u8, a: B, b: B, n: usize) -> O {
         let mut r = bits(n);
         ew::bit(c::pool(), op, shape, a.bytes(), b.bytes(), n, r.bytes_mut());
         r.into()
-    }
-
-    /// `mon op cls nul t n x`: `neg`, `abs` or one of the nine float maps over the `n` elements of the `Enc` `x`, any kind,
-    /// the answer an `Enc` (`Kernel.map`). `t` is not read: the answer's form is a function of its class `cls` (`ew::form_of`).
-    fn qlean_ew_mon(op: u8, cls: u8, nul: u64, _t: u8, n: usize, x: B) -> O {
-        let w = ew::ew_width(cls as u32);
-        let lane = move |x: &[u8], o: &mut [u8]| ew::mon_lane(op, cls, nul as i64, x, o);
-        of_raw(n, w, ew::form_of(cls), ew::mon_cost(op, cls), &ew::Map { src: Blocks::of(x, w, n, "qlean_ew_mon"), wi: w, lane })
-    }
-
-
-
-    /// `floor cls t n x`: `_` over the `n` elements of the `Enc` `x` at a float class, any kind, answering `long`s, `0N`
-    /// out of range (`Kernel.map`). `t` is not read: the source's width is `cls`'s, and the answer's form `long`'s (class 3).
-    fn qlean_ew_floor(cls: u8, _t: u8, n: usize, x: B) -> O {
-        let wi = ew::ew_width(cls as u32);
-        let lane = move |x: &[u8], o: &mut [u8]| ew::floor_lane(cls, x, o);
-        of_raw(n, 8, ew::form_of(3), crate::QLEAN_COST_ARITH, &ew::Map { src: Blocks::of(x, wi, n, "qlean_ew_floor"), wi, lane })
-    }
-
-    /// `cast src dst nulIn s t n x`: `$` over the `n` elements of the `Enc` `x`, any kind, from class `src` to `dst`
-    /// (`Kernel.map`). `s`, `t` are not read: the widths are the classes', and the answer's form `dst`'s (`ew::form_of`).
-    fn qlean_ew_cast(src: u8, dst: u8, nul_in: u64, _s: u8, _t: u8, n: usize, x: B) -> O {
-        let (wi, w) = (ew::ew_width(src as u32), ew::ew_width(dst as u32));
-        let lane = move |x: &[u8], o: &mut [u8]| ew::cast_lane(src, dst, nul_in as i64, x, o);
-        of_raw(n, w, ew::form_of(dst), crate::QLEAN_COST_CAST, &ew::Map { src: Blocks::of(x, wi, n, "qlean_ew_cast"), wi, lane })
     }
 
     /// `widen src dst nulIn nulOut x n`: an operand brought up to the class its verb's result is at, nulls remapped.
@@ -111,13 +52,5 @@ export! {
         ew::chain(prog, &|i| ins[i as usize].bytes(), n, r.bytes_mut());
         r.into()
     }
-
-    /// `chainEnc prog inputs n w`: `Coc.encode w (Ew.chain prog inputs n)`, the chain being the encoder's source above the fusing threshold.
-    fn qlean_ew_chain_enc(progv: B, inputsv: B, n: usize, width: usize) -> O {
-        let ins = inputsv.array();
-        chain_enc(progv.bytes(), &|i| ins[i as usize].bytes(), n, width)
-    }
-
-
 
 }

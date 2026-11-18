@@ -11,7 +11,7 @@ use crate::ffi::{Form, Sink};
 use crate::lean::{B, O, SArr, boxed, ctor, export};
 use crate::{codec, os, pod};
 #[cfg(all(feature = "ffi", not(any(test, feature = "std"))))]
-use {crate::cocops::{CocMut, GE}, crate::lean::nat};
+use {crate::cocops::CocMut, crate::lean::nat};
 
 /// What C's `fprintf(stderr, …); exit(1)` did for a call no Lean body makes.
 pub fn die(args: core::fmt::Arguments) -> ! {
@@ -76,13 +76,6 @@ export! {
             _ => die(format_args!("qlean_coc_over: verb {op} is not one of the six in QLean.Kernel.Coc.Over\n")),
         }
     }
-    /// `x op v` as a `Column.bits` payload
-    fn qlean_coc_mask_cmp(op: u8, v: u64, meta: B, pack: B, n: usize) -> O {
-        let v = v as i64;
-        let c = view("qlean_coc_mask_cmp", meta, pack, n);
-        if op as i32 > GE { die(format_args!("qlean_coc_mask_cmp: verb {op} is not one of the six in QLean.Kernel.Ew\n")) }
-        Sink::new(c.meta.n, 1, Form::Ids(1)).words(|out| codec::mask_cmp(pool(), op, v, &c, out))
-    }
     /// `k + x` (`neg`: `k - x`) as `some (meta, pack)`, or `none` where the column cannot take it. A shift the metadata
     /// absorbs keeps the pack (shared) and rewrites a copy of the metadata; any other goes back through the writer.
     fn qlean_coc_shift(neg: u8, k: u64, meta: B, pack: B, n: usize) -> O {
@@ -99,19 +92,6 @@ export! {
                 ctor(1, [ctor(0, [m2.into(), pack.to_owned()], &[])], &[])
             }
         }
-    }
-    /// `a op b` over the shorter of the two as a `Column.bits` payload
-    fn qlean_coc_mask_cmp_vv(op: u8, ma: B, pa: B, mb: B, pb: B, n: usize) -> O {
-        let (mut a, b) = (view("qlean_coc_mask_cmp_vv", ma, pa, n), view("qlean_coc_mask_cmp_vv", mb, pb, n));
-        if op as i32 > GE { die(format_args!("qlean_coc_mask_cmp_vv: verb {op} is not one of the six in QLean.Kernel.Ew\n")) }
-        // the shorter of the two decides how far the kernel walks
-        a.meta.n = a.meta.n.min(b.meta.n);
-        if a.meta.lg != b.meta.lg { return Sink::new(a.meta.n, 1, Form::Ids(1)).words(|out| codec::cmp2_dense(op as i32, &a, &b, out)) }
-        let mut deep = pod::uninit::<u32>(a.meta.nblk);
-        Sink::new(a.meta.n, 1, Form::Ids(1)).words(|out| {
-            let nd = codec::cmp_meta(&a, Some(&b), op as i32, 0, out, &mut deep);
-            codec::cmp2(pool(), op as i32, &a, &b, &deep[..nd], out)
-        })
     }
 }
 
@@ -143,17 +123,6 @@ pub fn val_vv(op: u8, a: &Coc, b: &Coc, s: i64, fill: i64) -> O {
 }
 
 export! {
-    /// `Option (ByteArray × ByteArray)`: the new (meta, pack) of `x + y`, `x - y` or `x * y`
-    fn qlean_coc_val_vv(op: u8, ma: B, pa: B, mb: B, pb: B, n: usize) -> O {
-        val_vv(op, &view("qlean_coc_val_vv", ma, pa, n), &view("qlean_coc_val_vv", mb, pb, n), 0, 0)
-    }
-    /// `Option (ByteArray × ByteArray)`: the new (meta, pack) of `x * k`, `none` where `Coc::scale_ok` refuses
-    fn qlean_coc_scale(k: u64, meta: B, pack: B, n: usize) -> O {
-        let k = k as i64;
-        let c = view("qlean_coc_scale", meta, pack, n);
-        if !c.scale_ok(k) { return boxed(0) }
-        ctor(1, [Sink::new(c.meta.n, 8, Form::For).answer(&|buf: &mut [i64], i0: usize| cocops::scale_fill(&c, k, i0, buf))], &[])
-    }
     /// `(meta, (pack, alp))` of the dense `f64` column `x`
     fn qlean_alp_encode_f64(x: B) -> O { encode(x, 8, Form::Alp, false) }
     /// `(meta, (pack, alp))` of the dense `f32` column `x`

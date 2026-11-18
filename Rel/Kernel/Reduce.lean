@@ -41,31 +41,6 @@ def overBytes (op : Coc.Over) (cls : UInt8) (nul : Int64) (b : @& ByteArray) : I
     let x := Ew.signed cls (Ew.elem cls b i)
     if !op.boolCast && x == nul then acc else op.step acc x
 
-/-- q's `f/` over every group of a dense payload at once, as `2 * ng` little-endian `Int64` slots:
-each group's fold, then how many elements it stepped on — `~/q/q.k` line 11's `+\~^x`, which is what
-`avg` divides by.
-
-`Over.denseSeed`, `Over.step` and `Over.boolCast` are `overBytes`' own three and `gid` chooses the
-accumulator, so a group's answer *is* `overBytes` over that group's elements.
-
-An id at or past `ng` names no group and is dropped. Nothing `Kernel.Order.groupIds` answers is one;
-the kernel is what has to hold when the payload did not come from there.
-
-Only the first `n` rows are read, `n` being how many the ids cover: at width `0` the ids store nothing
-and at 1, 2 and 4 the last byte's padding reads as id `0`, so without it rows past the key fall in group 0. -/
-@[extern "qlean_over_groups"]
-def overGroups (op : Coc.Over) (cls : UInt8) (nul : Int64) (ng w n : USize) (gid : @& ByteArray)
-    (b : @& ByteArray) : ByteArray :=
-  let (fold, live) := (List.range (Column.idsCap gid w.toNat (min n.toNat (b.size / Ew.width cls)))).foldl
-      (init := (Array.replicate ng.toNat (op.denseSeed cls nul),
-        Array.replicate ng.toNat (0 : Int64)))
-      fun (fold, live) i =>
-        let g := Column.idAt gid w.toNat i
-        let x := Ew.signed cls (Ew.elem cls b i)
-        if g ≥ ng.toNat || (!op.boolCast && x == nul) then (fold, live)
-        else (fold.set! g (op.step fold[g]! x), live.set! g (live[g]! + 1))
-  (fold ++ live).foldl (init := ByteArray.empty) fun acc v => Column.pushBits acc v.toUInt64 8
-
 /-- Segment `r`'s rows `[lo, hi)` among `n`: the offsets clamped into `[0, n]`, and empty where they
 descend, so every offsets payload names some rows and the kernel never reads past the payload. -/
 def segRange (offs : ByteArray) (n r : Nat) : Nat × Nat :=
@@ -106,26 +81,6 @@ inductive GroupCell where
   /-- `s / k`, `s` float bits, `0n` at `k = 0` or a NaN quotient: a float `avg` -/
   | avgFloat
   deriving BEq
-
-/-- One grouped aggregate's answer column, the groups in `order` (a `long` payload of group ids):
-each cell read off `overGroups`' or `overGroupsFloat`'s `2 * ng` slots by `kind`, written at `w`
-bytes. Every grouped aggregate's answer is built here, in one pass — one `pushBits` per group in the
-evaluator was 30% of `select sum x by g` at 100k groups. An id at or past `ng` reads `0` slots. -/
-@[extern "qlean_group_cells"]
-def groupCells (kind : GroupCell) (w ng : USize) (m order : @& ByteArray) : ByteArray :=
-  (List.range (order.size / 8)).foldl (init := ByteArray.empty) fun acc i =>
-    let g := (atI64 order i).toNatClampNeg
-    let (s, k) := if g < ng.toNat then (atI64 m g, atI64 m (ng.toNat + g)) else (0, 0)
-    match kind with
-    | .wrap => Column.pushBits acc s.toUInt64 w.toNat
-    | .clamp => Column.pushBits acc
-        (if -2147483648 < s && s < 2147483648 then s else -2147483648).toUInt64 w.toNat
-    | .avgInt => Column.pushBits acc (if k == 0 then nanBits else (s.toFloat / k.toFloat).toBits) 8
-    | .float => if w == 4 then Column.pushBits acc (Float.ofBits s.toUInt64).toFloat32.toBits.toUInt64 4
-        else Column.pushBits acc s.toUInt64 8
-    | .avgFloat => Column.pushBits acc (let r := (Float.ofBits s.toUInt64 / k.toFloat).toBits
-        if k == 0 || Bits.f64IsNaN r then nanBits else r) 8
-
 
 end Rel.Kernel
 

@@ -595,9 +595,9 @@ theorem setIds_spec (vc : Code) (s : ByteArray) {m : Nat}
     fun t ht => by
       simp only
       rw [gather8_get (by omega) (by rw [hsl]; exact hL t ht), hGL t ht, hBw, hBid t (by omega)]
-  -- the matcher `setIds` elaborated its lane match to (shared with `Code.eqAt`); a `match` written here
+  -- the matcher `setIds` elaborated its lane match to (`setIds.match_1`); a `match` written here
   -- elaborates to another one, which `generalize` would not find in the goal
-  generalize hX : Code.eqAt.match_1 (fun _ => ByteArray × ByteArray) vc.kind
+  generalize hX : setIds.match_1 (fun _ => ByteArray × ByteArray) vc.kind
     (fun k => Order.groupIdsPair .i64 k vc.n (gather 8 seg p) (vc.gather p).b)
     (fun _ => Order.groupIdsPairIds 64 vc.w.toUSize vc.n (gather 8 seg p) (vc.gather p).b) = r
   obtain ⟨q, fs⟩ := r

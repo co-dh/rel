@@ -172,12 +172,6 @@ def member (x c : Code) : ByteArray :=
     else memberIdsVec x.w.toUSize x.b x.n c.w.toUSize c.b c.n
   | _, _ => memberIdsVec x.w.toUSize x.b x.n c.w.toUSize c.b c.n
 
-/-- The positions where `a` and `b` (one lane) hold one code: `Ew.cmp` at the codes' class, `eqIds` at
-    `2`/`4` bits. -/
-def eqAt (a b : Code) : ByteArray := whereBits a.n <| match a.kind with
-  | some k => Ew.cmp Ew.eq (cls k) Ew.vv a.b b.b a.n
-  | none => Kernel.Ew.eqIds Ew.eq Ew.vv a.b b.b a.w.toUSize a.n
-
 /-- Each row's class, numbered by first occurrence, and each class's first row: `groupIds` at the layout,
     `idGroups` (a direct table of `card` entries) at `2`/`4` bits. -/
 def groupIds (c : Code) : ByteArray × ByteArray := match c.kind with

@@ -397,7 +397,6 @@ private def c2 : Code := ⟨2, 6, 3, Column.packIds 2 6 ([2, 0, 1, 2, 0, 2][·]!
 #guard c2.grade == packLongs [1, 4, 2, 0, 3, 5]
 #guard c2.groupIds.2 == packLongs [0, 1, 2]
 #guard c2.find ⟨2, 2, 3, Column.packIds 2 2 ([1, 2][·]!)⟩ == packLongs [2, 0]
-#guard c2.eqAt ⟨2, 6, 3, Column.packIds 2 6 ([2, 1, 1, 0, 0, 2][·]!)⟩ == packLongs [0, 2, 4, 5]
 -- two foR parts of different bases, one negative: rebased (`foRShift`), equal elements equal codes
 private def Lneg : LL := ⟨4, U4, Arr.mk (.foR (Coc.encode 8 (packLongs [9, -3, 5, 5])).1 (Coc.encode 8 (packLongs [9, -3, 5, 5])).2) (foRLongs_wf [9, -3, 5, 5] (by simp))⟩
 #guard seteq (Lneg ≫ Lf°).toList
@@ -722,7 +721,6 @@ private def T4 : Vals (.sum (.atom .symbol) .long) 1 := ⟨0, 1, bF, l0, emptyAr
 private def T5 : Vals (.arr (.sum (.sum .long .long) .long)) 1 := ⟨1, l0, l1, T2⟩
 #guard r0 (Vals.pickPart _ T5 i0) == some (T5.row ⟨0, by simp⟩)
 -- a general cell compared by q's `~`
-private local instance : BEq QValue := ⟨Rel.Eval.identical⟩
 -- G1: the left side a general column of no values, the row tagged left
 private def G1 : Vals (.sum (.atom .general) .long) 1 := ⟨0, 1, bF, l0, emptyArr .general, l9⟩
 #guard r0 (Vals.pickPart _ G1 i0) == some (G1.row ⟨0, by simp⟩)

@@ -142,44 +142,8 @@ theorem tilLongs_spec (n : USize) : (elemsW 8 (tilLongs n)).map UInt64.toNat = L
   simp only [List.getElem_map, List.getElem_range, Function.comp]
   rw [show (Int64.ofNat j).toUInt64 = UInt64.ofNat j from rfl, UInt64.toNat_ofNat_of_lt' (by have := usize_lt n; exact Nat.lt_trans h2 this)]
 
-/-- **`groupCells .wrap 8` in the order `til G`**: cell `j` is slot `j`'s eight bytes, or `0` past `ng`. -/
-theorem groupCells_til (ng G : USize) (hG : G.toNat < 2 ^ 63) (m : ByteArray) :
-    (groupCells .wrap 8 ng m (tilLongs G)).size = 8 * G.toNat ∧
-      elemsW 8 (groupCells .wrap 8 ng m (tilLongs G)) =
-        (List.range G.toNat).map fun j => if j < ng.toNat then Column.bitsAt m (j * 8) 8 else 0 := by
-  obtain ⟨ts', -, tg'⟩ := foldl_pushBits (fun i : Nat => (Int64.ofNat i).toUInt64) 8 (by decide)
-    (List.range G.toNat) ByteArray.empty
-  have ts : (tilLongs G).size = 8 * G.toNat := by rw [tilLongs, ts', List.length_range]; exact Nat.zero_add _
-  have tg : ∀ i < G.toNat, atI64 (tilLongs G) i = Int64.ofNat i := fun i hi => by
-    have e := tg' i (by rw [List.length_range]; exact hi)
-    rw [show ByteArray.empty.size + 8 * i = i * 8 by rw [show ByteArray.empty.size = 0 from rfl, Nat.zero_add, Nat.mul_comm], List.getElem_range] at e
-    rw [atI64_eq, tilLongs, e, show 8 * 8 = 64 from rfl, Nat.mod_eq_of_lt (UInt64.toNat_lt _), UInt64.ofNat_toNat,
-      Int64.toInt64_toUInt64]
-  have h8 : (8 : USize).toNat = 8 := USize.toNat_ofNat_of_lt' (Nat.lt_of_lt_of_le (by decide) USize.le_size)
-  let F : Nat → UInt64 := fun i =>
-    if (atI64 (tilLongs G) i).toNatClampNeg < ng.toNat then (atI64 m (atI64 (tilLongs G) i).toNatClampNeg).toUInt64 else 0
-  have e : groupCells .wrap 8 ng m (tilLongs G) =
-      (List.range G.toNat).foldl (init := ByteArray.empty) fun acc i => Column.pushBits acc (F i) 8 := by
-    rw [groupCells, ts, Nat.mul_div_cancel_left _ (by decide)]
-    congr 1; funext acc i; simp only [F, h8]; split <;> rfl
-  obtain ⟨hs, -, hg⟩ := foldl_pushBits F 8 (by decide) (List.range G.toNat) ByteArray.empty
-  refine ⟨by rw [e, hs, List.length_range]; exact Nat.zero_add _, ?_⟩
-  rw [elemsW, e, hs]
-  apply List.ext_getElem (by simp only [List.length_map, List.length_range]; rw [show ByteArray.empty.size = 0 from rfl, Nat.zero_add, Nat.mul_div_cancel_left _ (by decide)])
-  intro j h1 h2
-  have hj : j < G.toNat := by rw [List.length_map, List.length_range] at h2; exact h2
-  have := hg j (by rw [List.length_range]; exact hj)
-  rw [show ByteArray.empty.size + 8 * j = j * 8 by rw [show ByteArray.empty.size = 0 from rfl, Nat.zero_add, Nat.mul_comm], List.getElem_range] at this
-  simp only [List.getElem_map, List.getElem_range]
-  rw [this, show 8 * 8 = 64 from rfl, Nat.mod_eq_of_lt (UInt64.toNat_lt _), UInt64.ofNat_toNat]
-  simp only [F, tg j hj, Int64.toNatClampNeg_ofNat_of_lt (by omega : j < 2 ^ 63)]
-  split
-  · rw [atI64_eq, UInt64.toUInt64_toInt64]
-  · rfl
-
 end Rel.Verify
 
 #print axioms Rel.Verify.scatterPacked_spec
 #print axioms Rel.Verify.expandBytes_spec
 #print axioms Rel.Verify.tilLongs_spec
-#print axioms Rel.Verify.groupCells_til
