@@ -169,7 +169,10 @@ Size：S = 一步，少于 20 次 tool call；M = 一到三步；L = 多于三�
 - ✅ 6.6 / 6.7 / 6.8 `gather`、`asc`、`distinct`；写入是 `wordsFoR`。6.7 剩余：`arr` key 的 MSD；浮点用 `ordKey`
   直到 6.9。
 - 🔄 计划外：foR 含 patch 与 frame，Lean `Coc.encode` 为规格，Rust 逐字节相同（owner 选 B）。
-- ⬜ 6.9 atom 和保序编码：`QAtomicType` → `u1 char i8 i16 i32 i64 f32 f64 sym date datetime`，用 `LR rename`，全仓串行。
+- ⬜ 6.9 atom 和保序编码：`QAtomicType` → `u1 char u8 i8 i16 i32 i64 f32 f64 sym date datetime`，用 `LR rename`，全仓串行。
+  owner 定：`QAtom` 的 constructor 同名改（`.i64 x`、`.i32 x`，不再用 `long`、`int`）；`i8` 有符号（排序翻符号位 `0x80`，
+  同 `i16`/`i32`/`i64`），另加无符号字节 `u8`（今天的 `byte`）；`Scan.Kind` 并入 `QAtomicType`，由它推出，不再单独定义
+  （`orderKind`、`clsOf` 随之删除或变成恒等）。
   `date`（自 epoch 的天数，存为 i32）与 `datetime`（自 epoch 的纳秒，存为 i64，即 q 的 timestamp），都不带时区；存为 foR
   码，按整数比较和排序（owner 经 dataframe 会话提出）。
 - ⬜ 6.10 迁移使用者，按 6.0 的表每组一步；同时让 `scan`/`scatter`/`gather`/`asc`/`distinct` 直接在 foR 块上计算，
