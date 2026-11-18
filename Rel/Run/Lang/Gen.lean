@@ -45,14 +45,15 @@ namespace Gen
 open Rel Rel.Dep Rel.Kernel
 open Rel.CRel (ofC)
 
-/-- A term's code: its relation and ok bit on the keys it is given. -/
-abbrev Fn (d : Bool) (A B : Obj) := Dem d A → CRel A B
+/-- A term's code: its relation, a table run now or a function of what its context knows of its sides. `d` is
+    phantom: the combinators still dispatch on it until they match on `tab`/`lazy` (3.6). -/
+abbrev Fn (_d : Bool) (A B : Obj) := Rel A B
 
-/-- A term's code as a `Rel`: a closed term is its table; one on demand is run on the keys its context knows
-    of its domain, and is a run past capacity where its domain is unknown. -/
-def Fn.toRel {A B : Obj} : {d : Bool} → Fn d A B → Rel A B
-  | false, f => .tab (f ())
-  | true, f => .lazy fun K => K.dom.elim (.tab none) fun c => .tab (f (Alg.idU c.2))
+/-- The table `f` computes closed, or on the keys `D` (its domain known as `D`'s values): the view the
+    combinators read until 3.6. -/
+def Fn.at {A B : Obj} : {d : Bool} → Fn d A B → Dem d A → CRel A B
+  | false, f, _ => f.run {}
+  | true, f, D => f.run ⟨some ⟨D.n, D.val⟩, none⟩
 
 /-- A term's bit-matrix plan on the keys it is given, and the ok bit of the tables at its leaves. -/
 abbrev Pl (d : Bool) (A B : Obj) := Dem d A → Tm A B false × Bool
@@ -97,14 +98,34 @@ def relV (A B : Obj) (n : USize) (k : Vals A n × Bool) (v : Vals B n × Bool) :
 
 /-! ### Code -/
 
-def const (A B : Obj) (c : CRel A B) : Fn false A B := fun _ => c
-def val (A B : Obj) (R : Tab A B × Bool) : Fn false A B := fun _ => ofC R
-def uni (A : Obj) (m : USize) (U : Vals A m × Bool) : Fn false A A := fun _ => CRel.mk (idU U.1) U.2
-def zero (A B : Obj) : Fn false A B := fun _ => some Alg.zero
-def id (A : Obj) : Fn true A A := fun D => ofC (D, true)
-def top (A B : Obj) (V : Fn false B B) : Fn true A B := fun D => let v := V (); also v.ok (ofC (topC D.val v.rel.val))
-def outl (A B : Obj) : Fn true (.prod A B) A := fun D => ofC (Alg.outl D, true)
-def outr (A B : Obj) : Fn true (.prod A B) B := fun D => ofC (Alg.outr D, true)
+/-- A closed leaf: its table, run now whatever its context knows. -/
+def const (A B : Obj) (c : CRel A B) : Fn false A B := .tab c
+def val (A B : Obj) (R : Tab A B × Bool) : Fn false A B := const A B (ofC R)
+def uni (A : Obj) (m : USize) (U : Vals A m × Bool) : Fn false A A := const A A (CRel.mk (idU U.1) U.2)
+def zero (A B : Obj) : Fn false A B := const A B (some Alg.zero)
+
+/-- A leaf on demand: `f` on the values its context knows its domain to hold, a run past capacity where the
+    domain is unknown. Every leaf on demand is one, a row of `prims` read on its keys' values included. -/
+def ofVals (A B : Obj) (f : {n : USize} → Vals A n → CRel A B) : Fn true A B :=
+  .lazy fun K => K.dom.elim (.tab none) fun c => .tab (f c.2)
+
+/-- Code on the keys `D` as a `Fn`: closed, its table; on demand, run on the coreflexive of the domain's known
+    values. The form the combinators keep until 3.6 (`GenSpec.KSound.reps`). -/
+def Fn.ofDem {A B : Obj} : {d : Bool} → (Dem d A → CRel A B) → Fn d A B
+  | false, g => const A B (g ())
+  | true, g => ofVals A B fun X => g (idU X)
+
+/-- `r` cut to the values `K` knows of its sides, `idU X ≫ r ≫ idU L`, a side left whole where it is unknown. -/
+def cut {A B : Obj} (K : Known A B) (r : CRel A B) : CRel A B :=
+  let l := K.dom.elim r fun c => CRel.comp (some (idU c.2)) r
+  K.ran.elim l fun c => CRel.comp l (some (idU c.2))
+
+def id (A : Obj) : Fn true A A := ofVals A A fun X => ofC (idU X, true)
+/-- `X × L`: the known domain values by `V`'s universe cut to the known range. -/
+def top (A B : Obj) (V : Fn false B B) : Fn true A B := .lazy fun K => K.dom.elim (.tab none) fun c =>
+  let v := cut ⟨none, K.ran⟩ (V.at ()); .tab (also v.ok (ofC (topC c.2 v.rel.val)))
+def outl (A B : Obj) : Fn true (.prod A B) A := ofVals _ _ fun X => ofC (Alg.outl (idU X), true)
+def outr (A B : Obj) : Fn true (.prod A B) B := ofVals _ _ fun X => ofC (Alg.outr (idU X), true)
 
 /-- The demand of `S` in `R S`: `ran(R)` where `S` takes one, `R`'s plan run for it, `ranC`'s bit kept so the
     demand is proved a coreflexive on `R`'s range (`GenSpec.demP_spec`). -/
@@ -113,101 +134,107 @@ def demP {A B : Obj} : (e : Bool) → Tm A B false → Dem e B × Bool
   | true, r => let x := Bits.runC r; let k := ranC x.1; (k.1, x.2 && k.2)
 
 /-- `R S` on demand: `S` runs on `ran(R)`, and not at all where `R` has no row. -/
-def comp (A B C : Obj) (e : Bool) (R : Fn true A B) (S : Fn e B C) : Fn true A C := fun D =>
-  let r := R D
+def comp (A B C : Obj) (e : Bool) (R : Fn true A B) (S : Fn e B C) : Fn true A C := Fn.ofDem (d := true) fun D =>
+  let r := R.at D
   if r.rel.n == 0 then CRel.mk Alg.zero r.ok else
-  let k := CRel.ran r; also k.ok (CRel.comp r (S (Dem.of e k.rel)))
+  let k := CRel.ran r; also k.ok (CRel.comp r (S.at (Dem.of e k.rel)))
 
 /-- A closed `R S`, `R ∩ S`, `R − S`, `R\S` as bit matrices where its plan's objects are small (`Bits.runC`). -/
-def compB (A B C : Obj) (e : Bool) (R : Pl false A B) (S : Pl e B C) : Fn false A C := fun _ =>
+def compB (A B C : Obj) (e : Bool) (R : Pl false A B) (S : Pl e B C) : Fn false A C := Fn.ofDem (d := false) fun _ =>
   let r := R (); let k := demP e r.1; let s := S k.1; also (r.2 && k.2 && s.2) (ofC (Bits.runC (.comp r.1 s.1)))
-def meetB (A B : Obj) (R S : Pl false A B) : Fn false A B := fun _ =>
+def meetB (A B : Obj) (R S : Pl false A B) : Fn false A B := Fn.ofDem (d := false) fun _ =>
   let r := R (); let s := S (); also (r.2 && s.2) (ofC (Bits.runC (.meet r.1 s.1)))
-def diffB (A B : Obj) (R S : Pl false A B) : Fn false A B := fun _ =>
+def diffB (A B : Obj) (R S : Pl false A B) : Fn false A B := Fn.ofDem (d := false) fun _ =>
   let r := R (); let s := S (); also (r.2 && s.2) (ofC (Bits.runC (.diff r.1 s.1)))
 def ldivB (A B C : Obj) (R : Pl false A B) (S : Pl false A C) (UB : Fn false B B) (UC : Fn false C C) :
-    Fn false B C := fun _ =>
-  let r := R (); let s := S (); let ub := UB (); let uc := UC ()
+    Fn false B C := Fn.ofDem (d := false) fun _ =>
+  let r := R (); let s := S (); let ub := UB.at (); let uc := UC.at ()
   also (r.2 && s.2 && ub.ok && uc.ok) (ofC (Bits.runC (.ldiv r.1 s.1 (.val ub.rel) (.val uc.rel))))
 
-def conv (A B : Obj) (R : Fn false A B) : Fn false B A := fun _ => let r := R (); ofC (r.rel°, r.ok)
-def meet (A B : Obj) (d e : Bool) (R : Fn d A B) (S : Fn e A B) : Fn (d || e) A B := fun D =>
-  CRel.inter (R (Dem.l d e D)) (S (Dem.r d e D))
-def join (A B : Obj) (d e : Bool) (R : Fn d A B) (S : Fn e A B) : Fn (d || e) A B := fun D =>
-  CRel.union (R (Dem.l d e D)) (S (Dem.r d e D))
-def diff (A B : Obj) (d e : Bool) (R : Fn d A B) (S : Fn e A B) : Fn (d || e) A B := fun D =>
-  CRel.diff (R (Dem.l d e D)) (S (Dem.r d e D))
-def dom (A B : Obj) (d : Bool) (R : Fn d A B) : Fn d A A := fun D => CRel.dom (R D)
-def ran (A B : Obj) (R : Fn false A B) : Fn false B B := fun _ => CRel.ran (R ())
+def conv (A B : Obj) (R : Fn false A B) : Fn false B A := Fn.ofDem (d := false) fun _ =>
+  let r := R.at (); ofC (r.rel°, r.ok)
+def meet (A B : Obj) (d e : Bool) (R : Fn d A B) (S : Fn e A B) : Fn (d || e) A B := Fn.ofDem (d := d || e) fun D =>
+  CRel.inter (R.at (Dem.l d e D)) (S.at (Dem.r d e D))
+def join (A B : Obj) (d e : Bool) (R : Fn d A B) (S : Fn e A B) : Fn (d || e) A B := Fn.ofDem (d := d || e) fun D =>
+  CRel.union (R.at (Dem.l d e D)) (S.at (Dem.r d e D))
+def diff (A B : Obj) (d e : Bool) (R : Fn d A B) (S : Fn e A B) : Fn (d || e) A B := Fn.ofDem (d := d || e) fun D =>
+  CRel.diff (R.at (Dem.l d e D)) (S.at (Dem.r d e D))
+def dom (A B : Obj) (d : Bool) (R : Fn d A B) : Fn d A A := Fn.ofDem (d := d) fun D => CRel.dom (R.at D)
+def ran (A B : Obj) (R : Fn false A B) : Fn false B B := Fn.ofDem (d := false) fun _ => CRel.ran (R.at ())
 def rdiv (A B C : Obj) (R : Fn false A C) (S : Fn false B C) (UA : Fn false A A) (UB : Fn false B B) :
-    Fn false A B := fun _ =>
-  let ua := UA (); let ub := UB (); also (ua.ok && ub.ok) (CRel.rightDiv (R ()) (S ()) ua.rel.val ub.rel.val)
-def pair (A B C : Obj) (d e : Bool) (R : Fn d A B) (S : Fn e A C) : Fn (d || e) A (.prod B C) := fun D =>
-  CRel.pair (R (Dem.l d e D)) (S (Dem.r d e D))
-def prod (A B C D : Obj) (R : Fn false A B) (S : Fn false C D) : Fn false (.prod A C) (.prod B D) := fun _ =>
-  CRel.prod (R ()) (S ())
-def junc (A B C : Obj) (R : Fn false A C) (S : Fn false B C) : Fn false (.sum A B) C := fun _ =>
-  CRel.junc (R ()) (S ())
+    Fn false A B := Fn.ofDem (d := false) fun _ =>
+  let ua := UA.at (); let ub := UB.at ()
+  also (ua.ok && ub.ok) (CRel.rightDiv (R.at ()) (S.at ()) ua.rel.val ub.rel.val)
+def pair (A B C : Obj) (d e : Bool) (R : Fn d A B) (S : Fn e A C) : Fn (d || e) A (.prod B C) :=
+  Fn.ofDem (d := d || e) fun D => CRel.pair (R.at (Dem.l d e D)) (S.at (Dem.r d e D))
+def prod (A B C D : Obj) (R : Fn false A B) (S : Fn false C D) : Fn false (.prod A C) (.prod B D) :=
+  Fn.ofDem (d := false) fun _ => CRel.prod (R.at ()) (S.at ())
+def junc (A B C : Obj) (R : Fn false A C) (S : Fn false B C) : Fn false (.sum A B) C :=
+  Fn.ofDem (d := false) fun _ => CRel.junc (R.at ()) (S.at ())
 /-- `Λ(R)` total on the keys `D`: `[]` at a key `R` relates to nothing (`CRel.lamOn`, `rep_lamOn`). -/
-def lam (A B : Obj) (d : Bool) (R : Fn d A B) : Fn true A (.arr B) := fun D => CRel.lamOn (R (Dem.of d D)) D.val
+def lam (A B : Obj) (d : Bool) (R : Fn d A B) : Fn true A (.arr B) := Fn.ofDem (d := true) fun D =>
+  CRel.lamOn (R.at (Dem.of d D)) D.val
 /-- `f` on `R` read at the elements of `D`'s arrays, `ran(∋)` at `D`: the one form of `E` and the rows
     given a relation on elements (`F`, `filter`, `takewhile`). -/
 def elems (A B C : Obj) (d : Bool) (R : Fn d A B) (f : {n : USize} → CRel A B → Vals (.arr A) n → CRel (.arr A) C) :
-    Fn true (.arr A) C := fun D =>
-  let k := CRel.ran (CRel.mem D.val); also k.ok (f (R (Dem.of d k.rel)) D.val)
+    Fn true (.arr A) C := Fn.ofDem (d := true) fun D =>
+  let k := CRel.ran (CRel.mem D.val); also k.ok (f (R.at (Dem.of d k.rel)) D.val)
 def E (A B : Obj) (d : Bool) (R : Fn d A B) : Fn true (.arr A) (.arr B) := elems A B (.arr B) d R CRel.E
 
 /-- An order held as its pair test, run on the pairs the operator compares. -/
-def est (B : Obj) (Q : Fn true (.prod B B) (.prod B B)) : Fn true (.arr B) B := fun D =>
-  CRel.estOn (fun P => Q P.rel) (CRel.mem D.val)
-def thin (B : Obj) (Q : Fn true (.prod B B) (.prod B B)) : Fn true (.arr B) (.arr B) := fun D =>
-  let T := CRel.thinOn (fun P => Q P.rel) (CRel.mem D.val)
+def est (B : Obj) (Q : Fn true (.prod B B) (.prod B B)) : Fn true (.arr B) B := Fn.ofDem (d := true) fun D =>
+  CRel.estOn (fun P => Q.at P.rel) (CRel.mem D.val)
+def thin (B : Obj) (Q : Fn true (.prod B B) (.prod B B)) : Fn true (.arr B) (.arr B) := Fn.ofDem (d := true) fun D =>
+  let T := CRel.thinOn (fun P => Q.at P.rel) (CRel.mem D.val)
   let df := CRel.diff (some D) (CRel.dom T)
   CRel.union (CRel.transpose T) (also df.ok (ofC (topC df.rel.key (nilVal _))))
-def nil (A B : Obj) : Fn true A (.arr B) := fun D => ofC (topC D.val (nilVal _))
+def nil (A B : Obj) : Fn true A (.arr B) := ofVals _ _ fun X => ofC (topC X (nilVal _))
 /-- A row of `prims` (`Tm.prim`) on the keys in demand, `f` its constant at the objects (`Expand.primE`): read on
     their values (`ofVals`) or composed after them (`after`); given a relation `R`, `R` run on the elements of the
     arrays in demand (`elems`), as its pair test (`testVals`, `testAfter`), or on the keys each round meets
     (`stepAfter`). -/
-def ofVals (A B : Obj) (f : {n : USize} → Vals A n → CRel A B) : Fn true A B := fun D => f D.val
-def after (A B : Obj) (f : {K : Obj} → CRel K A → CRel K B) : Fn true A B := fun D => f (some D)
+def after (A B : Obj) (f : {K : Obj} → CRel K A → CRel K B) : Fn true A B := ofVals A B fun X => f (some (idU X))
 def testVals (B A C : Obj) (Q : Fn true (.prod B B) (.prod B B))
     (f : {n : USize} → (CRel (.prod B B) (.prod B B) → CRel (.prod B B) (.prod B B)) → Vals A n → CRel A C) :
-    Fn true A C := fun D => f (fun P => Q P.rel) D.val
+    Fn true A C := Fn.ofDem (d := true) fun D => f (fun P => Q.at P.rel) D.val
 def testAfter (B A C : Obj) (Q : Fn true (.prod B B) (.prod B B))
     (f : {K : Obj} → (CRel (.prod B B) (.prod B B) → CRel (.prod B B) (.prod B B)) → CRel K A → CRel K C) :
-    Fn true A C := fun D => f (fun P => Q P.rel) (some D)
-def atPos (B : Obj) (k : Nat) : Fn true (.arr B) B := fun D => CRel.atPos k D.val
+    Fn true A C := Fn.ofDem (d := true) fun D => f (fun P => Q.at P.rel) (some D)
+def atPos (B : Obj) (k : Nat) : Fn true (.arr B) B := ofVals _ _ fun X => CRel.atPos k X
 
 /-- A step run on a round's pairs `P`, where its value is read only composed after rows into `P`: with no key,
     nothing reads it, so it is not run — the last round of a fold or loop meets no pair. -/
 def onKeys {A B : Obj} (d : Bool) (F : Fn d A B) (P : CRel A A) : CRel A B :=
-  if P.rel.n == 0 then some Alg.zero else F (Dem.of d P.rel)
+  if P.rel.n == 0 then some Alg.zero else F.at (Dem.of d P.rel)
 
 def stepAfter (S T A C : Obj) (d : Bool) (F : Fn d S T) (f : {K : Obj} → (CRel S S → CRel S T) → CRel K A → CRel K C) :
-    Fn true A C := fun D => f (onKeys d F) (some D)
+    Fn true A C := Fn.ofDem (d := true) fun D => f (onKeys d F) (some D)
 /-- `succ`, a value verb, `≤`, `<` on the universe `U`: its keys. A declared object's universe is `uni` of its
     literal (`uni_lits`), an object variable's the constant's argument. A result outside `U` has no row. -/
-def succ (U : Fn false .long .long) : Fn true .long .long := fun D =>
-  let u := U (); also u.ok (CRel.comp (some D) (CRel.succ u.rel.key))
+def succ (U : Fn false .long .long) : Fn true .long .long := ofVals _ _ fun X =>
+  let u := U.at (); also u.ok (CRel.comp (some (idU X)) (CRel.succ u.rel.key))
 def arith (k : UInt8) (U : Fn false .long .long) : Fn true (.prod .long .long) .long :=
   comp _ _ _ true (dom _ _ true (comp _ _ _ false (outl _ _) U))
-    (comp _ _ _ true (dom _ _ true (comp _ _ _ false (outr _ _) U)) fun D => CRel.comp (some (Alg.arith k D.val)) (U ()))
-def leq (U : Fn false .long .long) : Fn false .long .long := fun _ => let u := U (); also u.ok (CRel.leq u.rel.key)
-def lt (U : Fn false .long .long) : Fn false .long .long := fun _ => let u := U (); also u.ok (CRel.lt u.rel.key)
-def foldr (E V : Obj) (d : Bool) (e : Fn false V V) (S : Fn d (.prod E V) V) : Fn true (.arr E) V := fun D =>
-  let v := e (); also v.ok (CRel.foldOn false pairC v.rel.val (onKeys d S) D.val)
+    (comp _ _ _ true (dom _ _ true (comp _ _ _ false (outr _ _) U))
+      (ofVals _ _ fun X => CRel.comp (some (Alg.arith k X)) (U.at ())))
+/-- `X ≫ ≤ ≫ L` on `U`'s universe, `X` and `L` what the context knows of the two sides. -/
+def leq (U : Fn false .long .long) : Fn false .long .long := .lazy fun K =>
+  let u := U.at (); .tab (also u.ok (cut K (CRel.leq u.rel.key)))
+def lt (U : Fn false .long .long) : Fn false .long .long := .lazy fun K =>
+  let u := U.at (); .tab (also u.ok (cut K (CRel.lt u.rel.key)))
+def foldr (E V : Obj) (d : Bool) (e : Fn false V V) (S : Fn d (.prod E V) V) : Fn true (.arr E) V :=
+  Fn.ofDem (d := true) fun D => let v := e.at (); also v.ok (CRel.foldOn false pairC v.rel.val (onKeys d S) D.val)
 
 /-- The left fold `⦇e, S⦈` over `[nil, snoc]`, `S` on `(acc, x)`: each array read from its start (`foldOnC true`),
     the round's pair the value before the element (`pairC p el`). -/
-def fold (E V : Obj) (d : Bool) (e : Fn false V V) (S : Fn d (.prod V E) V) : Fn true (.arr E) V := fun D =>
-  let v := e (); also v.ok (CRel.foldOn true (fun el p => pairC p el) v.rel.val (onKeys d S) D.val)
+def fold (E V : Obj) (d : Bool) (e : Fn false V V) (S : Fn d (.prod V E) V) : Fn true (.arr E) V :=
+  Fn.ofDem (d := true) fun D => let v := e.at (); also v.ok (CRel.foldOn true (fun el p => pairC p el) v.rel.val (onKeys d S) D.val)
 
 /-- The pairs `(i, xs)` in demand, one fold row each, starting from its own key's seeds `(i,v)` from `e`: `v` the
     value side of `e i`'s pairs, as `fold` seeds from `e`'s values (`foldIDen`). -/
 def foldI (I E V : Obj) (d d' : Bool) (e : Fn d I (.prod V V)) (S : Fn d' (.prod (.prod I V) E) (.prod I V)) :
-    Fn true (.prod I (.arr E)) V := fun D =>
-  let ro := ofC (ranC (Alg.outl D)); let es := e (Dem.of d ro.rel)
+    Fn true (.prod I (.arr E)) V := Fn.ofDem (d := true) fun D =>
+  let ro := ofC (ranC (Alg.outl D)); let es := e.at (Dem.of d ro.rel)
   let res := CRel.ran es
   let iv := CRel.pair (CRel.dom es) (CRel.comp es (CRel.mk (Alg.outr res.rel) res.ok))
   let r := CRel.num (some D) 0
@@ -218,45 +245,47 @@ def foldI (I E V : Obj) (d d' : Bool) (e : Fn d I (.prod V V)) (S : Fn d' (.prod
   also (ro.ok && ci.ok) (CRel.comp (CRel.mk r.rel° r.ok) (CRel.comp G (CRel.mk (Alg.outr rg.rel) rg.ok)))
 
 /-- `R` at the keys of the pairs, its rows `(i,(a,b))` re-keyed as `((i,a),b)`, a join with the pairs. -/
-def flat (I A B : Obj) (d : Bool) (R : Fn d I (.prod A B)) : Fn true (.prod I A) B := fun D =>
-  let ro := ofC (ranC (Alg.outl D)); let r := R (Dem.of d ro.rel); let u := CRel.ran r
+def flat (I A B : Obj) (d : Bool) (R : Fn d I (.prod A B)) : Fn true (.prod I A) B := Fn.ofDem (d := true) fun D =>
+  let ro := ofC (ranC (Alg.outl D)); let r := R.at (Dem.of d ro.rel); let u := CRel.ran r
   let p := CRel.pair (CRel.mk r.rel° r.ok) (CRel.mk (Alg.outl u.rel) u.ok)
   also ro.ok (CRel.comp (some D) (CRel.comp (CRel.mk p.rel° p.ok) (CRel.mk (Alg.outr u.rel) u.ok)))
 
 /-- `νX : S ∩ φ`: rounds of `S ∩ φ` from `S` down to the greatest fixed point. Each round is met with `S`, so
     the chain stays below `S` whatever `φ` is: a strict round drops a row of the distinct-row chain below `S`, and
     `S`'s row count plus two rounds reach the fixed point (`nu_sound`). -/
-def nu (A B : Obj) (S : Fn false A B) (φ : CRel A B → Fn false A B) : Fn false A B := fun _ =>
-  let s := S (); (CRel.fixOn (s.rel.n.toNat + 2) (fun X => CRel.inter s (φ X ())) s).1
+def nu (A B : Obj) (S : Fn false A B) (φ : CRel A B → Fn false A B) : Fn false A B := Fn.ofDem (d := false) fun _ =>
+  let s := S.at (); (CRel.fixOn (s.rel.n.toNat + 2) (fun X => CRel.inter s ((φ X).at ())) s).1
 
 /-- One arc `A\(X C)` of an AC-3 body: `A`, `C`, `𝟙(V)`, `𝟙(D)`. -/
 abbrev Arc (V D : Obj) := Fn false V V × Fn false D D × Fn false V V × Fn false D D
 
 /-- `νX : s ∩ ⋂ₖ Aₖ\(X Cₖ)` by AC-3's delta rounds (`acFixC`), its arcs `a :: as`. -/
-def nuAC (V D : Obj) (S : Fn false V D) (a : Arc V D) (as : List (Arc V D)) : Fn false V D := fun _ =>
-  let s := S ()
-  let rs := (a :: as).map fun (x, c, uv, ud) => (x (), c (), uv (), ud ())
+def nuAC (V D : Obj) (S : Fn false V D) (a : Arc V D) (as : List (Arc V D)) : Fn false V D :=
+  Fn.ofDem (d := false) fun _ =>
+  let s := S.at ()
+  let rs := (a :: as).map fun (x, c, uv, ud) => (x.at (), c.at (), uv.at (), ud.at ())
   let ok := rs.all fun (x, c, uv, ud) => x.ok && c.ok && uv.ok && ud.ok
   let rv := rs.map fun (x, c, uv, ud) => (⟨x.rel, c.rel, uv.rel, ud.rel⟩ : Revise V D)
-  let r := acFixC s.rel rv (a.2.2.1 ()).rel
+  let r := acFixC s.rel rv (a.2.2.1.at ()).rel
   CRel.mk r.1.1 (s.ok && ok && r.2)
 
 /-- `μX : φ`: rounds of `φ` from `𝟘` up to the least fixed point, at most `cap`. Fewer than `cap` rounds run means a
     round left the row count, so the chain reached its fixed point; `cap` rounds run is not ok, never a truncated
     chain passed off as the answer. -/
-def mu (A B : Obj) (cap : Nat) (φ : CRel A B → Fn false A B) : Fn false A B := fun _ =>
-  let r := CRel.fixOn cap (fun X => φ X ()) (some Alg.zero)
+def mu (A B : Obj) (cap : Nat) (φ : CRel A B → Fn false A B) : Fn false A B := Fn.ofDem (d := false) fun _ =>
+  let r := CRel.fixOn cap (fun X => (φ X).at ()) (some Alg.zero)
   also (decide (r.2 < cap)) r.1
 
 /-- `F` read only at the nodes `P`: run on their keys, or closed and composed after `P`; not run on none. -/
 def onNodes {A B : Obj} : (d : Bool) → Fn d A B → CRel A A → CRel A B
-  | true, F, P => if P.rel.n == 0 then CRel.mk Alg.zero P.ok else also P.ok (F P.rel)
-  | false, F, P => if P.rel.n == 0 then CRel.mk Alg.zero P.ok else CRel.comp P (F ())
+  | true, F, P => if P.rel.n == 0 then CRel.mk Alg.zero P.ok else also P.ok (F.at P.rel)
+  | false, F, P => if P.rel.n == 0 then CRel.mk Alg.zero P.ok else CRel.comp P (F.at ())
 
 /-- `[R,S]` on the sum values in demand: `R` on the left values they hold, `S` on the right, joined with them. A
     demand row whose tag names a side with no values reads that side's `dflt` (`Vals.row`), a value the demand does
     not hold, so one scan of the tags clears the ok bit there (D7 = P). -/
-def juncD (A B C : Obj) (d e : Bool) (R : Fn d A C) (S : Fn e B C) : Fn true (.sum A B) C := fun D =>
+def juncD (A B C : Obj) (d e : Bool) (R : Fn d A C) (S : Fn e B C) : Fn true (.sum A B) C :=
+  Fn.ofDem (d := true) fun D =>
   let ⟨l, r, tag, _, x, y⟩ := D.val
   also ((List.finRange D.n.toNat).all fun i => if tag.get i then decide (0 < r.toNat) else decide (0 < l.toNat))
     (CRel.comp (some D) (CRel.junc (onNodes d R (some (idU x))) (onNodes e S (some (idU y)))))
@@ -276,16 +305,18 @@ def hyloRounds {A B : Obj} (chN : CRel A A) (φ : CRel A B → CRel A A → CRel
 /-- `hylo(c, S)` = `μX : c G(X) S` on the keys `D`, bottom-up: the nodes `N` the children `ch` reach from `D`
     (no universe read), then `hyloRounds` over them, each node valued once by `φ` after its children, so no
     intermediate structure of `G` is built. Not ok where the reach did not settle or `ch` has a cycle on `N`. -/
-def hylo (A B : Obj) (d e : Bool) (ch : Fn d A A) (φ : CRel A B → Fn e A B) : Fn true A B := fun D =>
+def hylo (A B : Obj) (d e : Bool) (ch : Fn d A A) (φ : CRel A B → Fn e A B) : Fn true A B :=
+  Fn.ofDem (d := true) fun D =>
   let N := CRel.fixOn USize.size (fun N => CRel.union N (CRel.ran (onNodes d ch N))) (some D)
   let r := hyloRounds (onNodes d ch N.1) (fun X P => onNodes e (φ X) P) (N.1.rel.n.toNat + 1) N.1 (some Alg.zero)
   also (decide (N.2 < USize.size) && r.2) (CRel.comp (some D) r.1)
 
 /-! ### Plans: terms with the bit-rule nodes kept, every other sub-term its table (`Tm.val`) -/
 
-def pleaf (A B : Obj) (d : Bool) (f : Fn d A B) : Pl d A B := fun D => let r := f D; (.val r.rel, r.ok)
+def pleaf (A B : Obj) (d : Bool) (f : Fn d A B) : Pl d A B := fun D => let r := f.at D; (.val r.rel, r.ok)
 /-- The plan `P` run to its relation: a constant's result or argument read where a table is wanted. -/
-def ofPl (A B : Obj) (d : Bool) (P : Pl d A B) : Fn d A B := fun D => let r := P D; also r.2 (ofC (Bits.runC r.1))
+def ofPl (A B : Obj) (d : Bool) (P : Pl d A B) : Fn d A B := Fn.ofDem (d := d) fun D =>
+  let r := P D; also r.2 (ofC (Bits.runC r.1))
 def pcomp (A B C : Obj) (d e : Bool) (R : Pl d A B) (S : Pl e B C) : Pl d A C := fun D =>
   let r := R D; let k := demP e r.1; let s := S k.1; (.comp r.1 s.1, r.2 && k.2 && s.2)
 def pconv (A B : Obj) (R : Pl false A B) : Pl false B A := fun _ => let r := R (); (.conv r.1, r.2)
@@ -297,7 +328,7 @@ def pdiff (A B : Obj) (d e : Bool) (R : Pl d A B) (S : Pl e A B) : Pl (d || e) A
   let r := R (Dem.l d e D); let s := S (Dem.r d e D); (.diff r.1 s.1, r.2 && s.2)
 def pldiv (A B C : Obj) (R : Pl false A B) (S : Pl false A C) (UB : Fn false B B) (UC : Fn false C C) :
     Pl false B C := fun _ =>
-  let r := R (); let s := S (); let ub := UB (); let uc := UC ()
+  let r := R (); let s := S (); let ub := UB.at (); let uc := UC.at ()
   (.ldiv r.1 s.1 (.val ub.rel) (.val uc.rel), r.2 && s.2 && ub.ok && uc.ok)
 
 end Gen

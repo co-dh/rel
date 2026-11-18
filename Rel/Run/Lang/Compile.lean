@@ -66,7 +66,7 @@ def RowCode.test (sym : String) (ty : List Obj → Obj × Obj)
   RowCode.unary sym ty (fun σ => (.prod (σ.headD .long) (σ.headD .long), .prod (σ.headD .long) (σ.headD .long)))
     fun σ e q => match e, q with
       | true, q => f σ q
-      | false, _ => fun _ => Option.none
+      | false, _ => .tab Option.none
 
 /-- The first and second object variables. -/
 abbrev σ₁ (σ : List Obj) : Obj := σ.headD .long
@@ -126,7 +126,7 @@ def OExp.inst (σ : List (String × Obj)) : OExp → Obj
   | .sum a b => .sum (a.inst σ) (b.inst σ)
   | .list a => .arr (a.inst σ)
 /-- A code that vouches for nothing: its ok bit is false. -/
-def none' (A B : Obj) (d : Bool) : Fn d A B := fun _ => Option.none
+def none' (A B : Obj) (d : Bool) : Fn d A B := .tab Option.none
 
 /-- The row `r` at `A ⟶ B` given its relation arguments' codes `cs`, where its code fits them. -/
 def Prim.run (r : Prim) (A B : Obj) (cs : List Code) : Option (Fn true A B) := do
@@ -160,7 +160,7 @@ structure Out (d : Bool) (A B : Obj) where
 /-- A closed node's table and plan computed once, where the `Gen` combinators would recompute it at every call
     (each round of a fold over it): the sharing `rel_program` gets from Lean hoisting closed terms. -/
 def Out.memo {A B : Obj} : {d : Bool} → Out d A B → Out d A B
-  | false, o => let r := o.fn (); let p := o.pl (); ⟨fun _ => r, fun _ => p, o.row⟩
+  | false, o => let r := o.fn.at (); let p := o.pl (); ⟨const A B r, fun _ => p, o.row⟩
   | true, o => o
 
 /-- `t`'s code and plan, one `Gen` combinator per constructor, as `Expand.node` and `Expand.plan?` build them. The
