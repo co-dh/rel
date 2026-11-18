@@ -89,14 +89,14 @@ Size：S = 一步，少于 20 次 tool call；M = 一到三步；L = 多于三�
 状态：✅ 完成，🔄 进行中，⬜ 未开始，✖ 弃用。每步的旧文本（文件、行号、`LR` 命令、Done 条件）在 commit
 178da18 的 `PLAN.md` §2：`git show 178da18:PLAN.md`。行号已过时，先用 index 重新定位。
 
-进度：24 / 54 步（约 44%）。
+进度：25 / 54 步（约 46%）。
 
 | Phase                | 完成 / 步数 | %    |
 |----------------------|-------------|------|
 | P0 baseline          | 1 / 1       | 100% |
 | P1 删除 `Syn`        | 3 / 3       | 100% |
 | P2 不依赖 `Rel` 类型 | 6 / 6       | 100% |
-| P3 `Rel` 类型        | 4 / 13      | 31%  |
+| P3 `Rel` 类型        | 5 / 13      | 38%  |
 | P4 `Tm` constructor  | 1 / 5       | 20%  |
 | P5 关闭 gap          | 0 / 8       | 0%   |
 | P6 kernels           | 9 / 14      | 64%  |
@@ -121,15 +121,16 @@ Size：S = 一步，少于 20 次 tool call；M = 一到三步；L = 多于三�
 - ✅ 2.5 对称除法的含义。
 - ✅ 2.6 分析：28 个 prim row 能否写成 fold/hylo（不编辑）。
 
-### P3 `Rel` 类型 — 4/13（在分支 `rel-lazy` 上串行；phase gate 通过之前不动 master）
+### P3 `Rel` 类型 — 5/13（在分支 `rel-lazy` 上串行；phase gate 通过之前不动 master）
 
 - ✅ 3.1 结构 `Rel.Rel` → `Rel.Tab`。
 - ✅ 3.2 `CRel` 是 `Option (Tab A B)`（90e753d）；与 3.3 合于 `rel-lazy` bee2ce2，`make check` 通过，241 / 25。
 - ✅ 3.3 `Known`、`Rel`（`tab | lazy`）、`Reps`，新文件 `Rel/Run/Lang/Lazy.lean`（3a00d75，`rel-lazy`）。
 - ✅ 3.4 新旧函数类型之间的桥（891dee8，`rel-lazy`）：`Gen.Fn.toRel`，`Gen.Sound.reps`。owner 选 Q4 = A：`Reps K` 只在 `K` 两侧之内比较
   （`K.dom ≫ rep t ≫ K.ran = K.dom ≫ T ≫ K.ran`），`Reps` 以 `K` 为参数，同 `Rel.run`。
-- ⬜ 3.5 `Gen.Fn d A B := Rel A B`（phantom `d`）：叶子。
-- ⬜ 3.6 二元和一元组合子。
+- ✅ 3.5 `Gen.Fn d A B := Rel A B`（phantom `d`）：叶子（8ee7433，`rel-lazy`）。组合子暂由 `Fn.ofDem`/`Fn.at` 包旧体；
+  `Sound f T := ∀ K, f.Reps K T`，旧谓词留作 `KSound`。
+- 🔄 3.6 二元和一元组合子（3.6a 组合子，3.6b 行与叶子引理，并行）。
 - ⬜ 3.7 fold 和不动点。
 - ⬜ 3.8 `Compile`、`Expand`、测试迁到新的 `Fn`。
 - ⬜ 3.9 从 `Tm` 去掉下标。
