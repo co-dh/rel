@@ -88,11 +88,6 @@ def expand {α : Type} (n : USize) (cnt : ByteArray) (model : Unit → α)
 /-- The first `n` longs and the rest. -/
 def split (b : ByteArray) (n : Nat) : ByteArray × ByteArray := (b.extract 0 (8 * n), b.extract (8 * n) b.size)
 
-/-- The elementwise class of a sort layout. -/
-def cls : Scan.Kind → UInt8
-  | .bit => Ew.bits | .u8 | .c8 => Ew.u8 | .i16 => Ew.i16 | .i32 => Ew.i32 | .i64 => Ew.i64
-  | .f32 => Ew.f32 | .f64 => Ew.f64
-
 /-! ## Codes: equal elements equal codes, at the layout that already is one -/
 
 /-- `n` codes at `w` bits: a bitmap at `1`, packed ids at `2`/`4` (`Column.idAt`'s lanes, which a bitmap is

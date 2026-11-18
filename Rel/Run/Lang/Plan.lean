@@ -59,11 +59,11 @@ instance : Reg String := ⟨.str, fun | .str s => some s | _ => none, .str⟩
 instance : Reg (Array ByteArray) := ⟨.parts, fun | .parts bs => some bs | _ => none, .parts⟩
 instance : Reg UInt64 := ⟨.u64, fun | .u64 x => some x | _ => none, .u64⟩
 instance : Reg Int64 := ⟨.i64, fun | .i64 x => some x | _ => none, .i64⟩
-/-- A layout is an enum, which the C ABI passes as its constructor index in a byte. -/
+/-- A layout is an enum, which the C ABI passes as its constructor index in a byte. `Kind.ofNat` clamps, so the
+    round trip through `ctorIdx` is what refuses a byte that is no index. -/
 instance : Reg Scan.Kind := ⟨.u8, fun
-  | .u8 0 => some .bit | .u8 1 => some .u8 | .u8 2 => some .i16 | .u8 3 => some .i32 | .u8 4 => some .i64
-  | .u8 5 => some .f32 | .u8 6 => some .f64 | .u8 7 => some .c8 | _ => none,
-  fun k => .u8 (match k with | .bit => 0 | .u8 => 1 | .i16 => 2 | .i32 => 3 | .i64 => 4 | .f32 => 5 | .f64 => 6 | .c8 => 7)⟩
+  | .u8 b => let k := Scan.Kind.ofNat b.toNat; if k.ctorIdx == b.toNat then some k else none
+  | _ => none, fun k => .u8 k.ctorIdx.toUInt8⟩
 
 /-- A kernel as its `@[extern]` declaration states it (`kernel%`): the C symbol, each argument's type and whether
     it is borrowed (`@&`), the result's types (a product flattened), whether the toolchain declares it (so `lean.h`

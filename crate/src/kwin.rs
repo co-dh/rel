@@ -4,7 +4,7 @@
 
 use crate::alp::Cocf;
 use crate::coc::Coc;
-use crate::key::{Keys, SK_C8, SK_F32, SK_F64, SK_I16, SK_I32, SK_I64, SK_U8};
+use crate::key::{Keys, SK_C8, SK_I8, SK_F32, SK_F64, SK_I16, SK_I32, SK_I64, SK_U8};
 
 /// `kwin` (sort.rs): keys `lo .. lo + len` are in `key`; block `b` is in slot `b & 1`.
 pub struct Kwin<'a> {
@@ -16,7 +16,7 @@ pub struct Kwin<'a> {
 /// `sk_dense_width` (coc.rs) in bits; C exits at the kinds with no dense width, which an encoded column never has.
 pub fn dense_bits(kind: u8) -> u32 {
     match kind {
-        SK_U8 | SK_C8 => 8,
+        SK_U8 | SK_C8 | SK_I8 => 8,
         SK_I16 => 16,
         SK_I32 | SK_F32 => 32,
         SK_I64 | SK_F64 => 64,
@@ -66,7 +66,7 @@ impl Keys for Kwin<'_> {
 
 /// sort.rs: the bit `keys_of` flips at `kind`'s width.
 pub fn key_flip(kind: u8) -> u64 {
-    match kind { SK_I16 => 0x8000, SK_I32 => 0x8000_0000, SK_I64 => 0x8000_0000_0000_0000, _ => 0 }
+    match kind { SK_I8 => 0x80, SK_I16 => 0x8000, SK_I32 => 0x8000_0000, SK_I64 => 0x8000_0000_0000_0000, _ => 0 }
 }
 
 pub fn mask(kind: u8) -> u64 { let w = dense_bits(kind); if w == 64 { !0 } else { (1 << w) - 1 } }
@@ -111,7 +111,7 @@ pub fn range(kind: u8, c: &Coc) -> (u64, u64) {
 mod tests {
     use super::*;
     #[test] fn flip() {
-        assert_eq!([SK_U8, SK_I16, SK_I32, SK_I64, SK_F32].map(key_flip), [0, 0x8000, 0x8000_0000, 1 << 63, 0]);
+        assert_eq!([SK_U8, SK_I8, SK_I16, SK_I32, SK_I64, SK_F32].map(key_flip), [0, 0x80, 0x8000, 0x8000_0000, 1 << 63, 0]);
     }
 }
 

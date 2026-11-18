@@ -41,6 +41,7 @@ already their own key; the float widths rank. A `.bit` is `0` or `1` and needs n
 def rank (k : Kind) (v : UInt64) : UInt64 :=
   match k with
   | .bit | .u8 | .c8 => v
+  | .i8 => v ^^^ 0x80
   | .i16 => v ^^^ 0x8000
   | .i32 => v ^^^ 0x80000000
   | .i64 => v ^^^ 0x8000000000000000
@@ -277,19 +278,21 @@ open Rel.Kernel.Scan (Kind)
 open Rel.Kernel.Order
 
 /-- The layout a column of this type is ordered at. Every q type but the two that have no key of a
-fixed width is here, `char` included — q orders it by its unsigned byte and the blank is not a null
+fixed width is here, at the layout whose tag is its own (`date` and `datetime` aside, read at `i32` and
+`i64`); `char` is at `c8`, whose key is its unsigned byte — the blank is not a null
 to a comparison, which is `Eval.missing`'s split read from the ordering side. `symbol` has its own
 three entry points. -/
 def orderKind : QAtomicType → Option Kind
   | .u1 => some .bit
-  | .u8 | .char => some .u8
+  | .u8 => some .u8
+  | .char => some .c8
+  | .i8 => some .i8
   | .i16 => some .i16
   | .i32 | .date => some .i32
   | .i64 | .datetime => some .i64
   | .f32 => some .f32
   | .f64 => some .f64
-  -- `Scan.Kind` has no signed byte yet (PLAN 6.9 folds it into `QAtomicType`)
-  | .i8 | .sym | .general => none
+  | .sym | .general => none
 
 /-- `groupColumn`'s groups as a grouped reduction reads them: the group of every row, and the row
 each group was first seen at, which is where its key lies. The key column itself is a gather of the

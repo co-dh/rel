@@ -2,7 +2,7 @@
 //! Column (a), scan.rs (A14): the running scans (sums, prds, mins, maxs, fills) over a dense payload and
 //! the block skips over an encoded one. `scan_fill` and `scan_any_null` are AVX-512 in C: their vector bodies are in
 //! `simd.rs`, which this module calls and finishes (the groups that hold a null, the tail).
-use crate::key::{SK_BIT, SK_C8, SK_F32, SK_F64, SK_I16, SK_I32, SK_I64, SK_KINDS_N, SK_U8};
+use crate::key::{SK_BIT, SK_C8, SK_I8, SK_F32, SK_F64, SK_I16, SK_I32, SK_I64, SK_KINDS_N, SK_U8};
 use crate::simd;
 use crate::pod::{self, Elt};
 use crate::blocks::{Blocks, Grid, Src};
@@ -51,6 +51,7 @@ acc!(f64, 0.0, 1.0, |a, v| a + v, |a, v| a * v);
 // ---- readers: the signed widths sign-extend and `byte` zero-extends; a boolean is one bit, LSB first ----
 pub fn rd_bit(p: &[u8], i: usize) -> i64 { ((p[i >> 3] >> (i & 7)) & 1) as i64 }
 pub fn rd_u8(p: &[u8], i: usize) -> i64 { p[i] as i64 }
+pub fn rd_i8(p: &[u8], i: usize) -> i64 { p[i] as i8 as i64 }
 pub fn rd_i16(p: &[u8], i: usize) -> i64 { i16::from_ne_bytes(p[2 * i..2 * i + 2].try_into().unwrap()) as i64 }
 pub fn rd_i32(p: &[u8], i: usize) -> i64 { i32::from_ne_bytes(p[4 * i..4 * i + 4].try_into().unwrap()) as i64 }
 pub fn rd_i64(p: &[u8], i: usize) -> i64 { i64::from_ne_bytes(p[8 * i..8 * i + 8].try_into().unwrap()) }
@@ -60,6 +61,7 @@ pub fn rd_f64(p: &[u8], i: usize) -> f64 { f64::from_ne_bytes(p[8 * i..8 * i + 8
 // ---- null tests: `0N` is the minimum of each signed width, byte and boolean have none, `char`'s is the blank ----
 pub fn nul_no(_: i64) -> bool { false }
 pub fn nul_chr(v: i64) -> bool { v == 0x20 }
+pub fn nul_i8(v: i64) -> bool { v == i8::MIN as i64 }
 pub fn nul_i16(v: i64) -> bool { v == i16::MIN as i64 }
 pub fn nul_i32(v: i64) -> bool { v == i32::MIN as i64 }
 pub fn nul_i64(v: i64) -> bool { v == i64::MIN }
@@ -158,7 +160,7 @@ pub fn sc_bad_kind(kind: i32) -> ! {
 /// coc.rs `sk_dense_width`: an element's bytes in a dense payload; the boolean has none, its payload is packed bits.
 pub fn dense_width(kind: i32) -> usize {
     match u8::try_from(kind).unwrap_or(u8::MAX) {
-        SK_U8 | SK_C8 => 1,
+        SK_U8 | SK_C8 | SK_I8 => 1,
         SK_I16 => 2,
         SK_I32 | SK_F32 => 4,
         SK_I64 | SK_F64 => 8,
@@ -200,6 +202,7 @@ pub fn scan_fill(kind: i32, p: &[u8], out: &mut [u8], n: usize, carry: &mut [u8]
         // the one kind that stays on the loop: a bit read, a byte written, so a group is not a group of its bytes
         SK_BIT => lp(out, n, carry, resume, 0i64, (0..n).map(|i| rd_bit(p, i)), nul_no, |_, v| v, wr_i8),
         SK_U8 => fill(kind, p, out, n, carry, resume, 0i64, rd_u8, nul_no, wr_i8),
+        SK_I8 => fill(kind, p, out, n, carry, resume, i8::MIN as i64, rd_i8, nul_i8, wr_i8),
         SK_I16 => fill(kind, p, out, n, carry, resume, i16::MIN as i64, rd_i16, nul_i16, wr_i16),
         SK_I32 => fill(kind, p, out, n, carry, resume, i32::MIN as i64, rd_i32, nul_i32, wr_i32),
         SK_I64 => fill(kind, p, out, n, carry, resume, i64::MIN, rd_i64, nul_i64, wr_i64),
@@ -216,9 +219,10 @@ pub fn scan_fill(kind: i32, p: &[u8], out: &mut [u8], n: usize, carry: &mut [u8]
 pub fn scan_any_null(kind: i32, p: &[u8], n: usize) -> bool {
     let k = u8::try_from(kind).unwrap_or(u8::MAX);
     if matches!(k, SK_BIT | SK_U8) { return false } // neither layout has a null
-    if !matches!(k, SK_I16 | SK_I32 | SK_I64 | SK_F32 | SK_F64 | SK_C8) { sc_bad_kind(kind) }
+    if !matches!(k, SK_I8 | SK_I16 | SK_I32 | SK_I64 | SK_F32 | SK_F64 | SK_C8) { sc_bad_kind(kind) }
     let (hit, i) = simd::any_null(kind, p, n);
     hit || (i..n).any(|j| match k {
+        SK_I8 => nul_i8(rd_i8(p, j)),
         SK_I16 => nul_i16(rd_i16(p, j)),
         SK_I32 => nul_i32(rd_i32(p, j)),
         SK_I64 => nul_i64(rd_i64(p, j)),
@@ -235,6 +239,8 @@ pub fn scan_run(op: i32, kind: i32, p: &[u8], out: &mut [u8], n: usize, carry: &
     match u8::try_from(kind).unwrap_or(u8::MAX) {
         SK_BIT => verbs(op, out, n, carry, resume, 1i64, 0, (0..n).map(|i| rd_bit(p, i)), nul_no, wr_i8, wr_i32, ws_i32),
         SK_U8 => verbs(op, out, n, carry, resume, 0xffi64, 0, elts(p, n, |b: [u8; 1]| b[0] as i64), nul_no, wr_i8, wr_i32, ws_i32),
+        SK_I8 => verbs(op, out, n, carry, resume, i8::MAX as i64, -(i8::MAX as i64), elts(p, n, |b: [u8; 1]| b[0] as i8 as i64), nul_i8,
+                       wr_i8, wr_i32, ws_i32),
         SK_I16 => verbs(op, out, n, carry, resume, i16::MAX as i64, -(i16::MAX as i64), elts(p, n, |b| i16::from_ne_bytes(b) as i64), nul_i16,
                         wr_i16, wr_i32, ws_i32),
         SK_I32 => verbs(op, out, n, carry, resume, i32::MAX as i64, -(i32::MAX as i64), elts(p, n, |b| i32::from_ne_bytes(b) as i64), nul_i32,

@@ -18,7 +18,7 @@ apart — which of them q answers a given scan at — is the caller's business a
 
 A layout is a **width and a null test**, which is why `c8` stands beside `u8` rather than being the
 same entry: both read one unsigned byte, and `char`'s null is the blank where `byte` has none. -/
-inductive Kind | bit | u8 | i16 | i32 | i64 | f32 | f64 | c8
+inductive Kind | bit | u8 | i16 | i32 | i64 | f32 | f64 | c8 | i8
   deriving DecidableEq, Repr, Inhabited
 
 namespace Kind
@@ -27,7 +27,7 @@ namespace Kind
 width the three element-typed verbs would *write* at, and `scanColumn` declines them there rather
 than letting this stand in for a `Column.bits` result. `avail` below does not read it. -/
 def width : Kind → Nat
-  | .bit | .u8 | .c8 => 1
+  | .bit | .u8 | .c8 | .i8 => 1
   | .i16 => 2
   | .i32 | .f32 => 4
   | .i64 | .f64 => 8
@@ -57,6 +57,7 @@ false is what says so.
 `mcount` over `"a b"` at any window is `1 1 1i`. -/
 def isNull : Kind → UInt64 → Bool
   | .bit, _ | .u8, _ => false
+  | .i8, u => u.toUInt8.toInt8 == Int8.minValue
   | .c8, u => u == 32
   | .i16, u => u.toUInt16.toInt16 == Int16.minValue
   | .i32, u => u.toUInt32.toInt32 == Int32.minValue
@@ -70,6 +71,7 @@ signed integer, which is what those bits are — nothing calls it there, the flo
 own accumulator, and it is total rather than a `panic!` because a specification has to reduce. -/
 def signed : Kind → UInt64 → Int64
   | .bit, u | .u8, u | .c8, u => u.toInt64
+  | .i8, u => u.toUInt8.toInt8.toInt64
   | .i16, u => u.toUInt16.toInt16.toInt64
   | .i32, u => u.toUInt32.toInt32.toInt64
   | .i64, u | .f32, u | .f64, u => u.toInt64
@@ -89,7 +91,7 @@ is the accumulator type of the matching aggregate; the other three stay at the e
 `rust/src/scan.rs`'s `sc_out_width` is this function composed with `Kind.width`. -/
 def outKind : Verb → Kind → Kind
   | .sums, k | .prds, k => match k with
-    | .bit | .u8 | .i16 => .i32
+    | .bit | .u8 | .i8 | .i16 => .i32
     -- `c8` is not among them: q's `sums "ab"` and `prds "ab"` are `'type`, so no caller ever asks
     -- for a `char` scan at another layout and the identity here is what declines them
     | k => k
@@ -186,6 +188,7 @@ def scan (v : Verb) (k : Kind) (n : USize) (b : @& ByteArray) : ByteArray :=
   -- the same byte and the same two extreme seeds as `u8`; the third is `fills`'s, and at `char`
   -- alone it is reachable, the blank being the null: `fills " ab"` is `" ab"`, not `"aab"`
   | .c8 => intScan v .c8 b m w 255 0 32
+  | .i8 => intScan v .i8 b m w Int8.maxValue.toInt64 (-Int8.maxValue.toInt64) Int8.minValue.toInt64
   | .i16 => intScan v .i16 b m w Int16.maxValue.toInt64 (-Int16.maxValue.toInt64)
       Int16.minValue.toInt64
   | .i32 => intScan v .i32 b m w Int32.maxValue.toInt64 (-Int32.maxValue.toInt64)
