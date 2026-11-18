@@ -8,6 +8,7 @@
 import Rel.Kernel.Dep.Monadic
 import Rel.KernelSpec.Alp
 import Rel.KernelSpec.SymFind
+import Rel.KernelSpec.Gather
 
 open Rel.Ext
 
@@ -369,23 +370,29 @@ def Alg.tagBits {n : USize} (x : Arr .boolean n) : ByteArray :=
 theorem Alg.enc_tagBits {n : USize} (x : Arr .boolean n) : Kernel.boolBits .boolean n x.enc = some (Alg.tagBits x) :=
   (Option.some_get _).symm
 
-/-- Under `wf`, a boolean column's element `i` is bit `i` of its bitmap `tagBits`, at either form: a `u1` `foR`
-    element is `0` or `1` (`Enc.WF`), so its low bit, which `bitsOfFoR` keeps, is whether it is nonzero. -/
-theorem Arr.get_bool_bits {m : USize} (x : Arr .boolean m) (i : Fin m.toNat) :
-    x.get i = Column.bitAt (Alg.tagBits x) i.1 := by
-  have ht := Alg.enc_tagBits x
-  have hw := x.wf
-  rw [Arr.get_ne x i (by decide)]
-  generalize Alg.tagBits x = b at ht
+/-- Under `Enc.WF`, a boolean payload's element `j` is bit `j` of the bitmap `boolBits` reads, at either form: a
+    `u1` `foR` element is `0` or `1`, so its low bit, which `bitsOfFoR` keeps, is whether it is nonzero. -/
+theorem get_boolBits {n : USize} {e : Enc} (hw : Enc.WF .boolean n e) {b : ByteArray}
+    (ht : Kernel.boolBits .boolean n e = some b) {j : Nat} (hj : j < n.toNat) :
+    Enc.get .boolean n e j = some (.boolean (Column.bitAt b j)) := by
   revert ht hw
-  cases x.enc <;> simp only [Kernel.boolBits, Enc.WF, reduceCtorEq, false_implies, Option.some.injEq]
-  · rintro - rfl; simp only [Enc.get, if_pos i.2]; rfl
-  · rintro ⟨-, hl, hn, -⟩ rfl
-    simp only [Enc.get, if_pos i.2, QAtomicType.width, Kernel.bitsOfFoR, Verify.bitAt_packOf _ _ _ i.2,
-      foRBits_starts, Column.atomOfBits, show i.1 < Column.blk _ * Column.nblk _ from Nat.lt_of_lt_of_le i.2 hn]
-    have h2 := hl i.1 i.2
-    show (Column.foRBits _ _ _ i.1 != 0) = (true && _)
-    rcases Nat.lt_succ_iff.1 h2 |>.lt_or_eq with h | h <;> simp_all [UInt64.ne_iff_toNat_ne]
+  cases e <;> simp only [Kernel.boolBits, Enc.WF, reduceCtorEq, false_implies, true_implies, implies_true, Option.some.injEq]
+  · rintro - rfl; simp only [Enc.get, if_pos hj]
+  · rename_i md pk
+    rintro ⟨-, hl, hn, -⟩ rfl
+    have h2 := hl j hj
+    have hb : j < Column.blk md * Column.nblk md := Nat.lt_of_lt_of_le hj hn
+    simp only [Enc.get, if_pos hj, QAtomicType.width, Kernel.bitsOfFoR, Verify.bitAt_packOf _ _ _ hj,
+      foRBits_starts, decide_eq_true hb, Bool.true_and]
+    generalize Column.foRBits md pk (Column.blockStarts md) j = v at h2
+    rcases (show v.toNat = 0 ∨ v.toNat = 1 by omega) with h | h
+    · obtain rfl : v = 0 := UInt64.toNat_inj.1 h; rfl
+    · obtain rfl : v = 1 := UInt64.toNat_inj.1 h; rfl
+
+/-- A boolean column's element `i` is bit `i` of its bitmap (`get_boolBits`). -/
+theorem Arr.get_bool_bits {m : USize} (x : Arr .boolean m) {b : ByteArray}
+    (ht : Kernel.boolBits .boolean m x.enc = some b) (i : Fin m.toNat) : x.get i = Column.bitAt b i.1 := by
+  rw [Arr.get_ne x i (by decide), get_boolBits x.wf ht i.2]; rfl
 
 /-- The `str` bridge: bytes that are some string's UTF-8, read as a string the way `Column.get` reads a
     symbol (`fromUTF8?`, `""` at invalid bytes), write back out as themselves. -/

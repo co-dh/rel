@@ -21,6 +21,16 @@ open Tab Rel.Dep Rel.Kernel Rel.Verify Rel
 
 /-! ## Atoms: a boolean side -/
 
+/-- A boolean column's bitmap holds its `n` bits, at either form. -/
+theorem tagBits_size {n : USize} (x : Arr .boolean n) : (tagBits x).size = (n.toNat + 7) / 8 := by
+  have ht := enc_tagBits x
+  have hw := x.wf
+  revert ht hw
+  generalize tagBits x = b
+  cases x.enc <;> simp only [Kernel.boolBits, Enc.WF, reduceCtorEq, false_implies, true_implies, Option.some.injEq]
+  · rintro rfl h; exact h
+  · rintro rfl -; exact KernelWF.packOf_size ..
+
 /-- **A boolean side's codes are its bitmaps**: every part's payload reads as one (`enc_tagBits`), so
     `codes` takes its first branch, each part its own code a bit wide. -/
 theorem codes_boolean {p : Nat} (cs : Vector (Part (.atom .boolean)) p) :
@@ -30,7 +40,7 @@ theorem codes_boolean {p : Nat} (cs : Vector (Part (.atom .boolean)) p) :
   rw [dif_neg (by decide)]
   have e : (cs.mapM fun c : Part (.atom .boolean) => some (⟨1, c.1, 2, tagBits c.2⟩ : Code)) =
       some (cs.map fun c => (⟨1, c.1, 2, tagBits c.2⟩ : Code)) := Vector.mapM_pure _
-  simp only [enc_tagBits, e]
+  simp only [enc_tagBits, Option.map_some, e]
 
 /-- **A boolean side's codes are faithful, jointly across its parts**: part `k`'s code at `i` and part `l`'s
     at `j` agree exactly when the rows do. -/

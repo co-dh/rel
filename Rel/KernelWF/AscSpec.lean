@@ -204,9 +204,20 @@ theorem grade_boolean {n : USize} (x : Arr .boolean n) : ∃ g, gradeColumn .boo
       simp only [Scan.Kind.avail]; simp only [Enc.WF] at hwf; omega
     rw [hav] at hp
     refine ⟨_, rfl, hp, ascBy_of_keyOrd x _ (fun i hi => ?_) hsrt⟩
-    rw [Arr.get_bool_bits x he]
+    rw [Arr.get_bool_bits x (by rw [he]; rfl)]
     simp only [Obj.key, Order.keyAt, Scan.Kind.bitsAt, Order.rank]
     split <;> rfl
+  -- a `u1` `foR` is graded at the `u8` key (`gradeColumn`), which is its 0/1 element itself
+  case foR md pk =>
+    rw [he] at hwf
+    obtain ⟨hp, hsrt⟩ := gradeFoR_spec .u8 (by decide) false n md pk
+    refine ⟨_, rfl, hp, ascBy_of_keyOrd x (foRKey .u8 md pk) (fun i hi => ?_) hsrt⟩
+    rw [Arr.get_bool_bits x (b := bitsOfFoR md pk n) (by rw [he]; rfl)]
+    have h2 := hwf.2.1 i hi
+    simp only [bitsOfFoR, Verify.bitAt_packOf _ _ _ hi, foRKey, Order.rank, Obj.key, Scan.Kind.width,
+      decide_eq_true (Nat.lt_of_lt_of_le hi hwf.2.2.1), Bool.true_and]
+    generalize Column.foRBits md pk (Column.blockStarts md) i = v at h2
+    rcases (show v.toNat = 0 ∨ v.toNat = 1 by omega) with h | h <;> simp [h]
   all_goals rw [he] at hwf; simp [Enc.WF] at hwf
 
 theorem sortsAsc_boolean : SortsAsc (.atom .boolean) := sortsAsc_atom .boolean grade_boolean

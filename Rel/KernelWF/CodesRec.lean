@@ -327,9 +327,7 @@ theorem codes_sum_faithful_wf {a b : Obj} {p : Nat} (cs₀ : Vector (Part (.sum 
     fun {k} hk => by
       rw [hTk k hk]
       refine ⟨Or.inl rfl, ?_, fun _ i _ => ?_⟩
-      · have hw := (cs[k]'hk).2.2.2.1.wf
-        rw [enc_tagBits] at hw
-        simpa [Enc.WF] using hw
+      · simpa using tagBits_size (cs[k]'hk).2.2.2.1
       · show Column.idAt _ 1 i < max 2 1
         rw [idAt_one]; split <;> decide
   have hlGL : ∀ {k l : Nat} (hk : k < p) (hl : l < p), (GL[k]'hk).w = (GL[l]'hl).w := fun {k l} hk hl => by

@@ -60,10 +60,11 @@ theorem gatherColumn_get_bits {n : USize} {e : Enc} (hw : Enc.WF .boolean n e) {
     (hk : k < m.toNat) (hin : (Column.bitsAt i (k * 8) 8).toNat < n.toNat) :
     Enc.get .boolean m e' k = Enc.get .boolean n e (Column.bitsAt i (k * 8) 8).toNat := by
   have hz : ¬ i.size < m.toNat * 8 := by omega
-  cases e <;> try (exfalso; simp_all [Enc.WF, QAtomicType.width]; done)
-  simp only [gatherColumn, denseWidth, foRColumn, Enc.bytesOf, hz, if_false, Option.map_some,
-    Option.some.injEq] at h
-  subst h
+  obtain ⟨b, hb⟩ : ∃ b, boolBits .boolean n e = some b := by cases e <;> simp_all [Enc.WF, boolBits]
+  have hg : gatherColumn .boolean n e m (.bytes i) = some (.bits (gatherBits n b i)) := by
+    cases e <;> simp_all [gatherColumn, denseWidth, foRColumn, Enc.bytesOf, boolBits]
+  cases h.symm.trans hg
+  rw [get_boolBits hw hb hin]
   simp only [Enc.get, if_pos hk, bitAt_gatherBits _ _ _ _ (hm ▸ hk), if_pos hin]
 
 /-- `extract` of a range that ends where it starts, or before, is empty. -/
@@ -310,10 +311,10 @@ theorem gatherColumn_miss_bits {n : USize} {e : Enc} (hw : Enc.WF .boolean n e) 
     (hk : k < m.toNat) (hout : n.toNat ≤ (Column.bitsAt i (k * 8) 8).toNat) :
     Enc.get .boolean m e' k = some (Eval.nullAtom .boolean) := by
   have hz : ¬ i.size < m.toNat * 8 := by omega
-  cases e <;> try (exfalso; simp_all [Enc.WF, QAtomicType.width]; done)
-  simp only [gatherColumn, denseWidth, foRColumn, Enc.bytesOf, hz, if_false, Option.map_some,
-    Option.some.injEq] at h
-  subst h
+  obtain ⟨b, hb⟩ : ∃ b, boolBits .boolean n e = some b := by cases e <;> simp_all [Enc.WF, boolBits]
+  have hg : gatherColumn .boolean n e m (.bytes i) = some (.bits (gatherBits n b i)) := by
+    cases e <;> simp_all [gatherColumn, denseWidth, foRColumn, Enc.bytesOf, boolBits]
+  cases h.symm.trans hg
   simp only [Enc.get, if_pos hk, bitAt_gatherBits _ _ _ _ (hm ▸ hk), if_neg (Nat.not_lt.2 hout)]
   rfl
 
