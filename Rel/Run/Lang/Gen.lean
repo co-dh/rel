@@ -139,7 +139,8 @@ def compT {A B C : Obj} : CRel A B → Rel B C → Rel A C
   | none, _ => .tab none
   | some r, .tab s => .tab (CRel.comp (some r) s)
   | some r, .lazy g => if r.n == 0 then .tab (some Alg.zero) else
-    .lazy fun K => .tab (CRel.comp (some r) ((Rel.lazy g).run ⟨some ⟨r.n, r.val⟩, K.ran⟩))
+    .lazy fun K => let d := ranC r
+      .tab (also d.2 (CRel.comp (some r) ((Rel.lazy g).run ⟨some ⟨d.1.n, d.1.key⟩, K.ran⟩)))
 
 /-- `R s`, `s` the table of `S`: the mirror of `compT`, `R` run knowing its range is `s`'s key column. -/
 def compS {A B C : Obj} (R : Rel A B) : CRel B C → Rel A C

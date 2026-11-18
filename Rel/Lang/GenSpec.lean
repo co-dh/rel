@@ -493,14 +493,13 @@ theorem loop_sound {X Y : Obj} {d : Bool} {F : Fn d (.prod X Y) X} {TF : Den (.p
 theorem comp_sound {A B C : Obj} {e : Bool} {R : Fn true A B} {S : Fn e B C} {TR : Den A B} {TS : Den B C}
     (hR : Sound R TR) (hS : Sound S TS) : Sound (comp A B C e R S) (TR ≫ TS) := by
   -- `r` agrees with `TR` on `K`'s domain, `S` on `r`'s values and `K`'s range: so `r S` with `TR ≫ TS` on `K`.
-  have ag : ∀ {K : Known A C} {r : Tab A B}, Agree ⟨K.dom, none⟩ (rep r) TR →
-      (CRel.comp (some r) (S.run ⟨some ⟨r.n, r.val⟩, K.ran⟩)).ok = true →
-      Agree K (rep (CRel.comp (some r) (S.run ⟨some ⟨r.n, r.val⟩, K.ran⟩)).rel) (TR ≫ TS) :=
-    fun {K r} hr hb x z hx hz => by
+  have ag : ∀ {K : Known A C} {r : Tab A B} (D : (n : USize) × Vals B n),
+      (∀ {x y}, rep r x y → rep (idU D.2) y y) → Agree ⟨K.dom, none⟩ (rep r) TR →
+      (CRel.comp (some r) (S.run ⟨some D, K.ran⟩)).ok = true →
+      Agree K (rep (CRel.comp (some r) (S.run ⟨some D, K.ran⟩)).rel) (TR ≫ TS) :=
+    fun {K r} D vk hr hb x z hx hz => by
       have hc := CRel.guard_ok_left hb; rw [Bool.and_eq_true] at hc
       have hs := hS.agree hc.2
-      have vk : ∀ {y}, rep r x y → rep (idU r.val) y y := fun h =>
-        (idU_holds r.val _ _).2 ⟨rfl, let ⟨i, _, e⟩ := h; ⟨i, e⟩⟩
       rw [CRel.rep_comp _ _ hb]
       exact ⟨fun ⟨y, h1, h2⟩ => ⟨y, (hr x y hx rfl).1 h1, (hs y z (vk h1) hz).1 h2⟩,
         fun ⟨y, h1, h2⟩ => have h1' := (hr x y hx rfl).2 h1; ⟨y, h1', (hs y z (vk h1') hz).2 h2⟩⟩
@@ -511,7 +510,8 @@ theorem comp_sound {A B C : Obj} {e : Bool} {R : Fn true A B} {S : Fn e B C} {TR
     | none => trivial
     | some r =>
     cases S with
-    | tab s => exact reps_ok (ag (hr r rfl))
+    | tab s => exact reps_ok (ag ⟨r.n, r.val⟩ (fun h =>
+        (idU_holds r.val _ _).2 ⟨rfl, let ⟨i, _, e⟩ := h; ⟨i, e⟩⟩) (hr r rfl))
     | lazy g =>
       simp only [compT]; split
       · rename_i h0
@@ -522,7 +522,12 @@ theorem comp_sound {A B C : Obj} {e : Bool} {R : Fn true A B} {S : Fn e B C} {TR
         obtain ⟨i, -⟩ := (hr r rfl x y hx rfl).2 hy
         have : r.n.toNat = 0 := by simp [beq_iff_eq.1 h0]
         exact absurd i.2 (by omega)
-      · exact reps_ok (ag (hr r rfl))
+      · refine reps_ok fun hb => ?_
+        obtain ⟨⟨hd, hc⟩, e⟩ := also_ok_rel hb
+        rw [e]
+        refine ag _ (fun {x y} h => (idU_holds _ _ _).2 ⟨rfl, ?_⟩) (hr r rfl) hc
+        have h' : rep (ranC r).1 y y := by rw [rep_ranC r hd]; exact ⟨rfl, x, h, h⟩
+        exact let ⟨i, e, _⟩ := h'; ⟨i, e⟩
   -- Only the range known: `s` agrees with `TS` on it, `R` with `TR` on `s`'s keys, so `R s` with `TR ≫ TS`.
   have hS' : ∀ {L : (n : USize) × Vals C n} {c : CRel B C}, (∀ t, c = some t → Agree ⟨none, some L⟩ (rep t) TS) →
       (compS R c).Reps ⟨none, some L⟩ (TR ≫ TS) := by
