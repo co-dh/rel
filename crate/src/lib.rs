@@ -43,6 +43,7 @@ pub mod os;
 #[path = "ffi"]
 pub mod exports {
     pub mod coc;
+    pub mod distinct;
     pub mod env;
     pub mod group;
     pub mod ew;
@@ -76,6 +77,8 @@ pub mod coc;
 pub mod cocops;
 /// cbindgen:ignore
 pub mod codec;
+/// cbindgen:ignore
+pub mod distinct;
 /// cbindgen:ignore
 pub mod enc;
 /// cbindgen:ignore
