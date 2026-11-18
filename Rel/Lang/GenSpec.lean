@@ -508,14 +508,15 @@ theorem fold_sound {E V : Obj} {d : Bool} {e : Fn false V V} {S : Fn d (.prod E 
         exact absurd j.2 (by omega)
     simp only [onKeys, h0, Bool.false_eq_true, if_false] at hok ⊢
     exact atKeys hS K hc hok p w (hc a p ha ▸ ha)
-  refine (CRel.rep_foldOn _ _ _ hb.2 _ rfl _ rfl _ (fun _ _ => rfl) _ (fun _ => rfl) _ (fun _ => rfl) _
+  refine (CRel.rep_foldOn false pairC Prod.mk Rep.pairC_pt _ _ _ hb.2 _ rfl _ rfl _ (fun _ _ => rfl) _ (fun _ => rfl) _
+    (fun _ => rfl) _
     (fun _ => rfl) (fun _ => TS) ?_ xs w).trans ?_
   · intro i _ _ hbi p w hp hc
     simp only [demandStepC, Bool.and_eq_true] at hbi
     exact hon _ p w hp hc hbi.1.2
   · rw [and_iff_right (keyRow hx)]
     exact exists_congr fun ys => exists_congr fun hy => and_congr_left fun _ =>
-      (valRow _ _).trans (by rw [he.eq hb.1])
+      (valRow _ _).trans (by rw [he.eq hb.1]; exact Iff.rfl)
 
 open Rel.KernelWF Rel.Rep.FoldN Rel.Rep.OpsN Rel.Rep.Prim in
 /-- `est(Q)` keeps `b` of `xs` unless some other `c` of `xs` fails `Q` at `(b, c)`; `Q` runs on the pairs of
