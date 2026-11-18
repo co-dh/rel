@@ -1,4 +1,4 @@
-import Rel.Kernel.Value
+import Rel.Kernel.Coc
 import Rel.Kernel.Op
 
 /-! The part of `Rel.Kernel.Scan` the Rel kernels reach; `Rel.Kernel.Scan` imports it. -/
@@ -218,9 +218,10 @@ def kscanRow (op : Op) (seg seed : Array UInt64) (xs : List (Array UInt64)) (out
 at `s`. `seg`, read as booleans, marks the rows that start a segment; the first column of `es` is the seed a segment
 starts from and the others are folded into each row. So a map is every row a segment (`out[i] = op(a[i], b[i])`), a
 scan one segment from a seed column, a fold a scan's last row, and `es = [e]` fills `e` forward from the marked rows.
-The answer is written at `t`, each word cut to `t`'s width (a boolean's to its low bit); an `Op.eval` error, a column
-short of `n` raw words, an empty `es` or a `t` of no width is the `.error`, never a default. Temporary name until 6.11:
-`Kernel.scan` (`Driver.lean`) and `qlean_scan` exist. -/
+The answer is `foR` at `t`, the words encoded whole by `Coc.encode` at 8 bytes and read back by `Enc.raw` cut to `t`'s
+width; a boolean `t` answers `bits`, each word's low bit, because `Enc.WF` admits `foR` at no boolean. An `Op.eval`
+error, a column short of `n` raw words, an empty `es` or a `t` of no width is the `.error`, never a default. Temporary
+name until 6.11: `Kernel.scan` (`Driver.lean`) and `qlean_scan` exist. -/
 @[extern "qlean_k_scan"]
 def kscan (op : Op) (s t : QAtomicType) (n : USize) (seg : @& Enc) (es : @& List Enc) : Except String Enc := do
   let g ← rawAll .boolean n seg
@@ -230,10 +231,12 @@ def kscan (op : Op) (s t : QAtomicType) (n : USize) (seg : @& Enc) (es : @& List
     let out ← (List.range n.toNat).foldlM (kscanRow op g seed xs) #[]
     match t.width with
     | none => .error "kscan: the answer type has no fixed width"
-    | some w =>
-      let W := if t = .boolean then 1 else 8 * w
-      let p := Column.packIds W n.toNat fun i => (out[i]?.getD 0).toNat % 2 ^ W
-      pure (if t = .boolean then .bits p else .bytes p)
+    | some _ =>
+      if t = .boolean then pure (.bits (Column.packIds 1 n.toNat fun i => (out[i]?.getD 0).toNat % 2))
+      else
+        -- `ofNat32`, not the literal `8`, whose `toNat` is `8 % 2 ^ numBits` and stops `decide` at the opaque `numBits`
+        let r := Coc.encode (USize.ofNat32 8 (by decide)) (out.foldl (init := .empty) fun acc w => Column.pushBits acc w 8)
+        pure (.foR r.1 r.2)
 
 end Rel.Kernel
 

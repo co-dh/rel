@@ -6,13 +6,12 @@ use crate::lean::{O, SArr, export};
 use {crate::lean::B, crate::scan};
 
 #[cfg(all(feature = "ffi", not(any(test, feature = "std"))))]
-use {crate::{blocks::Blocks, c, ids, lean::{ctor, string}, pack}, alloc::{format, string::String, vec, vec::Vec}};
+use {crate::{blocks::Blocks, ffi::{Form, Sink}, ids, lean::{ctor, string}}, alloc::{format, string::String, vec, vec::Vec}};
 
-/// `Enc.raw t n e` (Rel/Kernel/Value.lean), arm for arm: `None` where `raw` is `#[]`, a form `t` does not read or a
-/// `packed` layout `Enc.packedErr` refuses. A dense, bit or id payload short of `n` reads 0 past its end, as `bitsAt`,
-/// `bitAt` and `idAt` do.
+/// `Enc.raw t n e` (Rel/Kernel/Value.lean), arm for arm: `None` where `raw` is `#[]`, a form `t` does not read. A dense,
+/// bit or id payload short of `n` reads 0 past its end, as `bitsAt`, `bitAt` and `idAt` do.
 #[cfg(all(feature = "ffi", not(any(test, feature = "std"))))]
-fn raw(t: u8, n: usize, e: B) -> Option<Vec<u64>> {
+pub fn raw(t: u8, n: usize, e: B) -> Option<Vec<u64>> {
     let rd = |p: &[u8], o: usize, w: usize| (0..w).fold(0u64, |v, k| v | (p.get(o + k).copied().unwrap_or(0) as u64) << (8 * k));
     let (w, boolean) = (scan::qtype_width(t), t == scan::QT_BOOLEAN);
     match (e.tag(), w) {
@@ -29,16 +28,16 @@ fn raw(t: u8, n: usize, e: B) -> Option<Vec<u64>> {
             let cap = ids::ids_avail(p.len(), lw);
             Some((0..n).map(|i| if lw == 0 || i >= cap { 0 } else { ids::id_at(p, lw, i) as u64 }).collect())
         }
-        (7, _) => {
-            // `lg` is the one scalar, after the three ByteArray fields; a boolean word is its low bit
-            let p = pack::Packed { lg: e.scalar_u8(0), bases: e.field(0).bytes(), widths: e.field(1).bytes(), payload: e.field(2).bytes() };
-            let ww = if boolean { 1 } else { w.unwrap_or(8) };
-            let mut o = vec![0u8; n * ww];
-            pack::decode_w(c::pool(), &p, n, ww, &mut o).ok()?;
-            Some(o.chunks_exact(ww).map(|c| if boolean { rd(c, 0, 1) & 1 } else { rd(c, 0, ww) }).collect())
-        }
         _ => None,
     }
+}
+
+/// `Coc.encode 8` of the words `ws` as an `Enc.foR`, every cache filled: the answer of a design-§4 kernel at a
+/// fixed-width type other than `boolean`, which `Enc.raw` reads back cut to that type's width.
+#[cfg(all(feature = "ffi", not(any(test, feature = "std"))))]
+pub fn for_words(ws: &[u64]) -> O {
+    let b: Vec<u8> = ws.iter().flat_map(|v| v.to_le_bytes()).collect();
+    Sink::new(ws.len(), 8, Form::For).enc().answer(&Blocks::dense(&b, 8))
 }
 
 /// `kscan`'s body (Rel/Kernel/Scan.lean) in its order of failure: `seg`, each of `es` left to right, the rows, the width.
@@ -54,11 +53,12 @@ fn kscan(op: u8, s: u8, t: u8, n: usize, seg: B, es: B) -> Result<O, String> {
     while !l.is_scalar() { cols.push(all(s, l.field(0))?); l = l.field(1) }
     let Some((seed, xs)) = cols.split_first() else { return Err("kscan: es is empty; its first column is the seed".into()) };
     let out = scan::kscan_rows(op, &g, seed, xs)?;
-    let w = scan::qtype_width(t).ok_or("kscan: the answer type has no fixed width")?;
-    let p = scan::kscan_pack(if t == scan::QT_BOOLEAN { 1 } else { 8 * w }, &out);
+    scan::qtype_width(t).ok_or("kscan: the answer type has no fixed width")?;
+    if t != scan::QT_BOOLEAN { return Ok(for_words(&out)) }
+    let p = scan::kscan_pack(1, &out);
     let mut a = SArr::new(1, p.len());
     a.bytes_mut().copy_from_slice(&p);
-    Ok(ctor(if t == scan::QT_BOOLEAN { 1 } else { 0 }, [a.into()], &[]))
+    Ok(ctor(1, [a.into()], &[]))
 }
 
 /// A fresh answer of `n` bytes, filled by `fill`.
@@ -79,7 +79,7 @@ export! {
     }
 
     /// `Kernel.kscan op s t n seg es` (Rel/Kernel/Scan.lean): `Except String Enc`, the error (tag 0) carrying the
-    /// model's text, the answer (tag 1) an `Enc.bits` (tag 1) at a boolean `t` and an `Enc.bytes` (tag 0) otherwise.
+    /// model's text, the answer (tag 1) an `Enc.bits` (tag 1) at a boolean `t` and an `Enc.foR` (tag 3) otherwise.
     fn qlean_k_scan(op: u8, s: u8, t: u8, n: usize, seg: B, es: B) -> O {
         match kscan(op, s, t, n, seg, es) { Ok(e) => ctor(1, [e], &[]), Err(m) => ctor(0, [string(&m)], &[]) }
     }

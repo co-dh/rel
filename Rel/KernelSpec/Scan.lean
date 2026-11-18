@@ -103,28 +103,42 @@ theorem raw_kscan (op : Op) (s t : QAtomicType) (w : Nat) (ht : t.width = some w
         | ok out =>
           obtain ⟨hos, hrow⟩ := foldlM_kscanRow _ _ _ _ _ _ hf
           simp only [hg, hc, hf, bind, Except.bind, List.map_cons, ht, pure, Except.pure] at h
-          cases h
           refine ⟨hgs, hsz, c, es, rfl, out, hos, ?_, hrow⟩
-          have hw : 1 ≤ w ∧ w ≤ 8 := by cases t <;> simp [QAtomicType.width] at ht <;> omega
-          apply Array.ext (by
-            by_cases hb : t = .boolean
-            · subst hb; simp [Enc.raw, hos]
-            · simp only [hb, if_false]; rw [Verify.raw_bytes t w ht hb]; simp [hos])
-          intro i h1 h2
-          have hi : i < n.toNat := by simpa [hos] using h2
-          have hget : out[i]? = some out[i] := Array.getElem?_eq_getElem (by simpa using h2)
           by_cases hb : t = .boolean
           · subst hb
+            simp only [if_true] at h
+            cases h
+            apply Array.ext (by simp [Enc.raw, hos])
+            intro i h1 h2
+            have hi : i < n.toNat := by simpa [hos] using h2
+            have hget : out[i]? = some out[i] := Array.getElem?_eq_getElem (by simpa using h2)
             have hp := Verify.idAt_packIds_sub (w := 1) (n := n.toNat) (i := i)
-              (f := fun i => (out[i]?.getD 0).toNat % 2 ^ 1) (.inl rfl) hi (Nat.mod_lt _ (by decide))
+              (f := fun i => (out[i]?.getD 0).toNat % 2) (.inl rfl) hi (Nat.mod_lt _ (by decide))
             rw [Verify.idAt_one] at hp
             simp only [hget, Option.getD_some] at hp
             simp only [if_true, Enc.raw, Array.getElem_map, Array.getElem_range]
             apply UInt64.toNat_inj.1
             split at hp <;> rename_i hbit <;> simp only [hbit] <;> simp [← hp]
-          · simp only [hb, if_false, Verify.raw_bytes t w ht hb, Array.getElem_map, Array.getElem_range]
-            rw [(Verify.packIds_bytes w n.toNat _ hw.1 hw.2).2 i hi (Nat.mod_lt _ (Nat.two_pow_pos _))]
-            simp [hget]
+          · simp only [hb, if_false] at h
+            cases h
+            -- the words, encoded whole at 8 bytes, read back exactly (`foRBits_encode`), then cut to `t`'s width
+            have h8 : USize.ofNat32 8 (by decide) = (8 : Nat).toUSize := USize.toNat_inj.mp (by
+              rcases System.Platform.numBits_eq with h | h <;> simp [h])
+            generalize hX : out.foldl (init := ByteArray.empty) (fun acc w => Column.pushBits acc w 8) = X
+            obtain ⟨hxs, -, hxg⟩ := Verify.foldl_pushBits (fun v => v) 8 (by decide) out.toList ByteArray.empty
+            rw [Array.foldl_toList, hX] at hxs hxg
+            simp only [show ByteArray.empty.size = 0 from rfl, Nat.zero_add, Array.length_toList] at hxs hxg
+            rw [Verify.raw_foR t w ht hb]
+            apply Array.ext (by simp [hos])
+            intro i h1 h2
+            have hi : i < out.size := by simpa [hos] using h1
+            have hu : Coc.unbias 8 (Coc.keyAt 8 X i) = out[i] := by
+              have h1 := Verify.unbias_keyAt 8 (by decide) (by decide) X i
+              rw [Nat.mod_eq_of_lt (UInt64.toNat_lt _), Nat.mul_comm, hxg i (by simpa using hi),
+                Verify.ofNat_toNat_mod64, Array.getElem_toList] at h1
+              exact UInt64.toNat_inj.mp h1
+            simp only [Array.getElem_map, Array.getElem_range, hb, if_false, h8, Coc.encode]
+            rw [Verify.foRBits_encode Column.lgEnc (by decide) 8 (by decide) (by decide) X i (by rw [hxs]; omega), hu]
 
 end Rel.Kernel
 
