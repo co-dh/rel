@@ -172,7 +172,9 @@ Size：S = 一步，少于 20 次 tool call；M = 一到三步；L = 多于三�
 - ⬜ 6.9 atom 和保序编码：`QAtomicType` → `u1 char i8 i16 i32 i64 f32 f64 sym date datetime`，用 `LR rename`，全仓串行。
   `date`（自 epoch 的天数，存为 i32）与 `datetime`（自 epoch 的纳秒，存为 i64，即 q 的 timestamp），都不带时区；存为 foR
   码，按整数比较和排序（owner 经 dataframe 会话提出）。
-- ⬜ 6.10 迁移使用者，按 6.0 的表每组一步。
+- ⬜ 6.10 迁移使用者，按 6.0 的表每组一步；同时让 `scan`/`scatter`/`gather`/`asc`/`distinct` 直接在 foR 块上计算，
+  去掉 `foRWords` 解码与 `wordsFoR` 重编码（CLAUDE.md 规则：解码需 owner 批准）。vortex 1M 复测：relk 多数格输给 q，
+  主因就是这层解码/编码；`asc` 的 kern 本身也慢（38 ms 对 q 6 ms）。
 - ⬜ 6.11 删除旧 extern 与旧 constructor；保留 SIMD 编解码函数。
 - ⬜ 6.12 native gate。
 - ⬜ 6.13（未决，owner 经 dataframe 会话决定）虚拟行号 key：frame 的行号对象 `I` 只存 `n`，磁盘与内存都不物化；
