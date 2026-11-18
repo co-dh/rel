@@ -111,7 +111,7 @@ theorem raw_kscan (op : Op) (rev : Bool) (s t : QAtomicType) (w : Nat) (ht : t.w
           refine ⟨hgs, hsz, c, es, rfl, out, hos, ?_, hrow⟩
           cases h
           -- every `foR` is read cut to `t`'s width, a boolean's being one bit
-          have hraw : ∀ M P : ByteArray, Enc.raw t n (.foR M P) = (Array.range n.toNat).map fun i =>
+          have hraw : ∀ M P : ByteArray, (Enc.foR M P : Enc).raw t n = (Array.range n.toNat).map fun i =>
               UInt64.ofNat ((Column.foRBits M P (Column.blockStarts M) i).toNat % 2 ^ (if t = .boolean then 1 else 8 * w)) := by
             intro M P
             by_cases hb : t = .boolean

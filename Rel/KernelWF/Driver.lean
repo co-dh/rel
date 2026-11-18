@@ -39,11 +39,19 @@ theorem dense_bits (w : Nat) (hw : w ≤ 8) (xs : Array UInt64) :
     Array.foldl_toList] at hs hb
   exact ⟨by rw [dense, hs], fun i h => by rw [dense, Nat.mul_comm, hb i h]⟩
 
-/-- The raw elements of a boolean `bits` column are `0` or `1`. -/
+/-- The raw elements of a boolean column, `bits` or a `foR` of `u1`, are `0` or `1`. -/
 theorem raw_boolean_le (n : USize) (e : Enc) : ∀ v ∈ e.raw .boolean n, v ≤ 1 := by
   intro v hv
   cases e <;> simp only [Enc.raw, Array.mem_map, Array.mem_range, Array.not_mem_empty] at hv
-  obtain ⟨i, -, rfl⟩ := hv; split <;> decide
+  all_goals obtain ⟨i, -, rfl⟩ := hv
+  case foR m p =>
+    have h2 := Nat.mod_lt ((foRBits m p (blockStarts m) i).toNat) (show 0 < 2 by decide)
+    generalize (foRBits m p (blockStarts m) i).toNat % 2 = k at h2 ⊢
+    rcases k with _ | _ | k
+    · decide
+    · decide
+    · omega
+  all_goals split <;> decide
 
 /-- **The rule `Enc.raw` keeps**: an element of a `w`-byte type is below `2 ^ (8 * w)`, in every form. -/
 theorem raw_lt (t : QAtomicType) (w : Nat) (ht : t.width = some w) (n : USize) (e : Enc) :

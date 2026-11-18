@@ -73,11 +73,13 @@ example : kwords ((List.range 4).foldlM (kscanRow .gt #[0, 1, 0, 1] #[100, 100, 
 -- a boolean answer cut to its low bit: `add` of `1 2 3 4` from 100 at rows 0 and 2 is `101 103 103 107`
 #guard kbool (kscan .add false .long .boolean 4 kseg kcols) = [1, 1, 1, 1]
 -- a `foR` boolean is a `seg` and a boolean column: the compare's own answer `1 0 1 0` segments as `kseg` does, and
--- `or` of it with itself, from itself, is itself
+-- reversed, `or` of it with itself carries row 2's `1` back into row 1: rows `0 | 1|1, 1|0 | 1|1`
 #guard kread (kscan .gt false .long .boolean 4 kseg kcols >>= fun g => kscan .add false .long .long 4 g kcols) =
   [101, 103, 103, 107]
+example : kwords ((List.range 4).foldlM (kscanRow .or #[0, 1, 0, 1] #[0, 1, 0, 1] [#[0, 1, 0, 1]]) #[]) =
+    [0, 1, 1, 1] := by decide
 #guard kbool (kscan .gt false .long .boolean 4 kseg kcols >>= fun g => kscan .or true .boolean .boolean 4 g [g, g]) =
-  [1, 0, 1, 0]
+  [1, 1, 1, 0]
 
 end Rel.Kernel
 

@@ -112,9 +112,10 @@ Size：S = 一步，少于 20 次 tool call；M = 一到三步；L = 多于三�
   执行约束：机器 30 GB，每个 cap build 20 GB，Lean build 一次只跑一个（并发时全部被杀过）。合并后把 sha 告诉 dataframe 会话，stage 1 rebase 到它上面。
 - ⬜ D.4 6.13a 虚拟行号 `Enc.pos`：6.9 合并后立即开始（两者都改 `Value.lean`，不能并行）。
   验收（dataframe F-d）：排序编码要的位置 `til n` 直接读 `pos`，不再用 `gather(invert(p), p)` 绕。
-- ⬜ D.5 F17(1) 布尔 `foR`：把 6.11 中「`bits` 是宽度 1 的 `foR`」这一项提前，`Enc.WF` 接受 `u1` 的 `foR`，`scan` 的布尔结果
-  答 `foR`。在 6.10 的 `scan` agent 合并之后（同一个 kernel）。
-- ⬜ D.6 `scan` 的方向参数（反向扫描，van Herk）：`kscan` 的扩展，不是新 kernel。与 D.5 同一个 agent，在 `scan` 合并之后。
+- ✅ D.5 F17(1) 布尔 `foR`：把 6.11 中「`bits` 是宽度 1 的 `foR`」这一项提前，`Enc.WF` 接受 `u1` 的 `foR`（每个元素 < 2），
+  `Enc.raw` 读其最低位；`kscan` 在每个 `t` 都答 `foR`，布尔先截到最低位。Rust 的 `seg` 与布尔列都可以是 `foR`。
+- ✅ D.6 `scan` 的方向参数（反向扫描，van Herk）：`kscan op rev …`，`rev` 的规格是各列（含 `seg`）反转后正向扫描再反转；
+  Rust 反向走块、块内从尾到头，不反转任何列。
 - ⬜ D.7 stage 2 存储的 runtime 部分：export 把 column 目录 mmap 成 `Tab`（目录 = 表，文件 = 一列的 foR `Enc`，`.d` 列序，
   共享 sym 字典文件；`pos` 一侧不落盘，按 6.13）。只动 `crate/rt` 与 `Rel.Kernel`，6.9 合并后与 D.4 并行。
   同一 agent 补 dataframe F-e：`relc`/`rel-native` 跑不了算出来的程序，缺两条 plan 指令：把算出的 buffer 交给
