@@ -117,7 +117,7 @@ Size：S = 一步，少于 20 次 tool call；M = 一到三步；L = 多于三�
 - ✅ 2.1 `refold` → `hylo`。
 - ✅ 2.2 `flatDen` 是一个复合。
 - ✅ 2.3 `foldIDen` 是一个 `foldDen`。
-- ✅ 2.4 elaboration 时的 positivity 错误。剩余：错误信息要写出变量名。
+- ✅ 2.4 elaboration 时的 positivity 错误，错误信息写出变量名和位置（9d9c061）。
 - ✅ 2.5 对称除法的含义。
 - ✅ 2.6 分析：28 个 prim row 能否写成 fold/hylo（不编辑）。
 
