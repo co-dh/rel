@@ -6,7 +6,7 @@ use crate::lean::{O, SArr, export};
 use {crate::lean::B, crate::scan};
 
 #[cfg(all(feature = "ffi", not(any(test, feature = "std"))))]
-use {crate::{blocks::Blocks, ffi::{Form, Sink}, ids, lean::{ctor, string}}, alloc::{format, string::String, vec, vec::Vec}};
+use {crate::{blocks::Blocks, ffi::{Form, Sink}, ids, lean::{ctor, string}}, alloc::{string::String, vec, vec::Vec}};
 
 /// `Enc.raw t n e` (Rel/Kernel/Value.lean), arm for arm: `None` where `raw` is `#[]`, a form `t` does not read. A dense,
 /// bit or id payload short of `n` reads 0 past its end, as `bitsAt`, `bitAt` and `idAt` do.
@@ -40,25 +40,12 @@ pub fn for_words(ws: &[u64]) -> O {
     Sink::new(ws.len(), 8, Form::For).enc().answer(&Blocks::dense(&b, 8))
 }
 
-/// `kscan`'s body (Rel/Kernel/Scan.lean) in its order of failure: `seg`, each of `es` left to right, the rows, the width.
+/// `kscan` (`crate::scan::kscan`) of the Lean list `es`.
 #[cfg(all(feature = "ffi", not(any(test, feature = "std"))))]
 fn kscan(op: u8, s: u8, t: u8, n: usize, seg: B, es: B) -> Result<O, String> {
-    // `None` is `raw`'s `#[]`, its size 0: `rawAll`'s test, not a read that failed
-    let all = |t: u8, e: B| -> Result<Vec<u64>, String> {
-        let v = raw(t, n, e).unwrap_or_default();
-        if v.len() == n { Ok(v) } else { Err(format!("kscan: a column holds {} raw elements, not {n}", v.len())) }
-    };
-    let g = all(scan::QT_BOOLEAN, seg)?;
-    let (mut cols, mut l) = (Vec::new(), es);
-    while !l.is_scalar() { cols.push(all(s, l.field(0))?); l = l.field(1) }
-    let Some((seed, xs)) = cols.split_first() else { return Err("kscan: es is empty; its first column is the seed".into()) };
-    let out = scan::kscan_rows(op, &g, seed, xs)?;
-    scan::qtype_width(t).ok_or("kscan: the answer type has no fixed width")?;
-    if t != scan::QT_BOOLEAN { return Ok(for_words(&out)) }
-    let p = scan::kscan_pack(1, &out);
-    let mut a = SArr::new(1, p.len());
-    a.bytes_mut().copy_from_slice(&p);
-    Ok(ctor(1, [a.into()], &[]))
+    let (mut v, mut l) = (Vec::new(), es);
+    while !l.is_scalar() { v.push(l.field(0)); l = l.field(1) }
+    scan::kscan(op, s, t, n, seg, &v)
 }
 
 /// A fresh answer of `n` bytes, filled by `fill`.
