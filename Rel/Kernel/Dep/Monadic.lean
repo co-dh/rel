@@ -16,7 +16,7 @@ of `t` really is an atom of `t`. -/
 def Carrier.null (t : QAtomicType) (hn : t ≠ .general := by first | decide | assumption) :
     Carrier t :=
   (Carrier.of? t (.atom (nullAtom t))).get (by
-    have h := Carrier.of?_type (nullAtom t)
+    have h := Carrier.of?_type (X := Empty) (nullAtom t)
     rwa [Verify.nullAtom_type] at h)
 
 /-- Every carrier is inhabited: by its q null, which is also the right default for the
