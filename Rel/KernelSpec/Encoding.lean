@@ -1073,7 +1073,9 @@ theorem foRBits_encode (lg : Nat) (hlg : 6 ≤ lg ∧ lg ≤ 16) (w : Nat) (hw0 
   -- the patch list
   have hexs : (Array.filter (fun i => !!Kernel.Coc.outside (blk (i / 2 ^ lg)).2.2.2.1 (blk (i / 2 ^ lg)).2.2.2.2
       (Kernel.Coc.keyAt w x i)) (Array.range n)).toList.Pairwise (· < ·) := by
-    rw [Array.toList_filter, toList_range]; exact List.pairwise_lt_range.filter _
+    -- by index, not `List.pairwise_lt_range`, which carries `Classical.choice`
+    rw [Array.toList_filter, toList_range]
+    exact (List.pairwise_iff_getElem.2 fun i j _ _ h => by rw [List.getElem_range, List.getElem_range]; exact h).filter _
   have hmem : ∀ j, j ∈ (Array.filter (fun i => !!Kernel.Coc.outside (blk (i / 2 ^ lg)).2.2.2.1
       (blk (i / 2 ^ lg)).2.2.2.2 (Kernel.Coc.keyAt w x i)) (Array.range n)).toList ↔
       j < n ∧ Kernel.Coc.outside (blk (j / 2 ^ lg)).2.2.2.1 (blk (j / 2 ^ lg)).2.2.2.2 (Kernel.Coc.keyAt w x j) = true := by
@@ -1089,9 +1091,13 @@ theorem foRBits_encode (lg : Nat) (hlg : 6 ≤ lg ∧ lg ≤ 16) (w : Nat) (hw0 
   -- a list is written only with patching on, so below `2 ^ 32` elements
   have h32' : exc.size ≠ 0 → exc.size < 2 ^ 32 := fun h => by
     cases hpl : pl
-    · have he : exc.toList = [] := List.eq_nil_iff_forall_not_mem.2 fun j hj => by
-        have := (hmem j).1 hj
-        rw [(hkeys j this.1).2 hpl] at this; exact Bool.false_ne_true this.2
+    · -- by cases on the list, not `List.eq_nil_iff_forall_not_mem`, which carries `Classical.choice`
+      have he : exc.toList = [] := by
+        cases hl : exc.toList with
+        | nil => rfl
+        | cons j t =>
+          have := (hmem j).1 (hl ▸ List.mem_cons_self)
+          rw [(hkeys j this.1).2 hpl] at this; exact absurd this.2 Bool.false_ne_true
       exact absurd (by rw [← Array.length_toList, he]; rfl) h
     · exact Nat.lt_of_le_of_lt hen (h32 hpl)
   -- the frames
