@@ -331,38 +331,23 @@ impl Producer for crate::blocks::Blocks<'_> {
         if self.span(b) == (lo, nb) { self.view(b, w, buf) } else { self.range(lo, nb, w, buf) }
     }
 }
-/// coc.rs `move_meta`: a moved block's metadata is its column's and its exception count is what the layout prefix-sums; the
-/// writer's own step would choose exactly these for the same elements. Else the ALP shortcuts (the sources' exponent where it
-/// leaves no more exceptions than they had), else the writer's own step. `x` is read only on the last two paths.
-pub fn move_meta_blk<'a>(mv: &(impl Producer + ?Sized), m: &mut EncMeta, x: impl FnOnce() -> &'a [u8], width: usize, nb: usize) {
+/// coc.rs `move_meta` then `move_pack`: block `m.b` of the producer `mv`, its metadata into `m`, then its residuals and patches
+/// into `pack(whole)` (asked once, after `m` is written; `whole` for a taken block's full `blk * width / 8` residual region),
+/// so whatever the producer computes for the block it computes once. A moved block's metadata, residuals and patch list are its
+/// column's (the positions are the block's own), which the writer's own step would choose for the same elements. Else the ALP
+/// shortcuts: the producer's decimals (`ints`), or the sources' exponent where it leaves no more exceptions than they had
+/// (`hint`); else the writer's own steps. `x` is read only on the last two paths.
+pub fn move_blk<'a, 'b>(mv: &(impl Producer + ?Sized), m: &mut EncMeta, pack: impl FnOnce(bool) -> EncPack<'b>, x: impl FnOnce() -> &'a [u8],
+                        nb: usize, width: usize) {
     use crate::alp::{alp_exc_at, alp_fin_blk, alp_meta_exp};
     let (b, alp) = (m.b, m.exp.is_some());
-    if let Some((f, pb)) = mv.take(b) { move_meta(m, &f, pb); return }
-    if alp {
-        let (mut d, mut ee) = (crate::pod::Scr::<i64>::new(nb), crate::pod::Scr::<i8>::new(nb));
-        if let Some(e) = mv.ints(b, nb, &mut d, &mut ee, None).filter(|&e| e >= 0) { *m.nexc = alp_fin_blk(m, e, &mut d, &ee, nb); return }
-    }
-    let x = x();
-    if let Some((e, lim)) = if alp { mv.hint(b).filter(|&(e, _)| e >= 0) } else { None } {
-        // the search's up to 19 trials an element were what re-encoding a part off the grid cost
-        let f64s = width != 4;
-        let kept = if f64s { alp_exc_at(elts::<f64>(x, "move_meta"), e, lim + 1) } else { alp_exc_at(elts::<f32>(x, "move_meta"), e, lim + 1) };
-        if kept <= lim {
-            *m.nexc = if f64s { alp_meta_exp(m, elts::<f64>(x, "move_meta"), nb, e) } else { alp_meta_exp(m, elts::<f32>(x, "move_meta"), nb, e) };
-            return;
-        }
-    }
-    meta_step(m, x, width, nb)
-}
-/// coc.rs `move_pack`: a moved block's residuals and its patch list, whose positions are the block's own and so move unchanged.
-/// `pack(whole)` is block `b`'s `EncPack`, asked once; `whole` for a taken block's full `blk * width / 8` residual region.
-pub fn move_pack_blk<'a, 'b>(mv: &(impl Producer + ?Sized), pack: impl FnOnce(bool) -> EncPack<'b>, x: impl FnOnce() -> &'a [u8], b: usize, nb: usize,
-                             width: usize, alp: bool) {
-    if let Some((f, pb)) = mv.take(b) { return move_pack(&mut pack(true), &f, pb, alp, width) }
+    if let Some((f, pb)) = mv.take(b) { move_meta(m, &f, pb); return move_pack(&mut pack(true), &f, pb, alp, width) }
     if alp {
         let (mut d, mut ee, mut raw) = (crate::pod::Scr::<i64>::new(nb), crate::pod::Scr::<i8>::new(nb), crate::pod::Scr::<u64>::new(nb));
         let raw = &mut crate::pod::bytes_mut(&mut raw)[..nb * width];
-        if mv.ints(b, nb, &mut d, &mut ee, Some(raw)).is_some_and(|e| e >= 0) {
+        if let Some(e) = mv.ints(b, nb, &mut d, &mut ee, Some(raw)).filter(|&e| e >= 0) {
+            // `alp_fin_blk` moves only the exceptions' decimals, which the pack sets to the base below
+            *m.nexc = alp_fin_blk(m, e, &mut d, &ee, nb);
             let p = &mut pack(false);
             let (base, wd) = (p.base, p.width);
             // an exception's decimal packs as the block's base, residual 0, its raw bits in the patch list
@@ -375,7 +360,16 @@ pub fn move_pack_blk<'a, 'b>(mv: &(impl Producer + ?Sized), pack: impl FnOnce(bo
             return;
         }
     }
-    pack_step(&mut pack(false), x(), width, alp)
+    let x = x();
+    let hinted = if alp { mv.hint(b).filter(|&(e, _)| e >= 0) } else { None }.is_some_and(|(e, lim)| {
+        // the search's up to 19 trials an element were what re-encoding a part off the grid cost
+        let f64s = width != 4;
+        let kept = if f64s { alp_exc_at(elts::<f64>(x, "move_meta"), e, lim + 1) } else { alp_exc_at(elts::<f32>(x, "move_meta"), e, lim + 1) };
+        if kept <= lim { *m.nexc = if f64s { alp_meta_exp(m, elts::<f64>(x, "move_meta"), nb, e) } else { alp_meta_exp(m, elts::<f32>(x, "move_meta"), nb, e) } }
+        kept <= lim
+    });
+    if !hinted { meta_step(m, x, width, nb) }
+    pack_step(&mut pack(false), x, width, alp)
 }
 
 #[cfg(test)]

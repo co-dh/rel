@@ -7,7 +7,7 @@
 //! callback keeps a one-line body that unpacks its `ctx` and calls the `qrs_*` shim.
 
 use alloc::vec::Vec;
-use core::sync::atomic::{AtomicU8, AtomicUsize, Ordering::{Relaxed, SeqCst}};
+use core::sync::atomic::{AtomicUsize, Ordering::{Relaxed, SeqCst}};
 use crate::alp::Cocf;
 use crate::pod::Elt;
 use crate::enc::{EncMeta, EncPack};
@@ -1214,8 +1214,6 @@ pub struct Scatter<'a> {
     old: Cocf<'a>, alp: bool, w: usize, keep: bool, ix: &'a [u64], vals: &'a [u8],
     /// block `b`'s writes are `ix[at[b] .. at[b + 1]]`; written once each by the slice that holds the first index of `b`
     at: Vec<AtomicUsize>,
-    /// ALP: pass 1 kept the old exponent and patched the block, so pass 2 takes the same road
-    patched: Vec<AtomicU8>,
 }
 impl<'a> Scatter<'a> {
     /// structural.rs `fsc_scatter`'s views and refusals: metadata `m`, pack `pk`, the ALP part `a` for an ALP column, `n`
@@ -1246,8 +1244,7 @@ impl<'a> Scatter<'a> {
             "qlean scatter: index {} at {k} is not ascending, distinct and below {n}\n", ix[k])));
         let c = &old.c;
         let keep = c.meta.sumnul == crate::enc::coc_sumnul(w, alp) && c.meta.sumn == n as u64 && c.exc.is_none_or(|e| e.pos.is_empty() || e.esz == w);
-        let patched = (0..if alp { c.meta.nblk } else { 0 }).map(|_| AtomicU8::new(0)).collect();
-        Scatter { old, alp, w, keep, ix, vals, at, patched }
+        Scatter { old, alp, w, keep, ix, vals, at }
     }
     /// A block no index lands in, whose old entries are the new ones.
     pub fn kept(&self, b: usize) -> bool { self.keep && self.span(b).is_empty() }
@@ -1270,54 +1267,39 @@ impl<'a> Scatter<'a> {
         let (ix, v) = self.writes::<F>(b);
         crate::alp::alp_patch_blk(&self.old, b, nb, ix, v, d, ee)
     }
-    /// structural.rs `fsc_meta` for block `b`: what the meta pass writes into `m`.
-    pub fn meta(&self, m: &mut EncMeta, b: usize) {
+    /// structural.rs `fsc_meta` then `fsc_pack` for block `b`, the block decoded and patched once: its metadata into `m`, then
+    /// its residuals and patches into `pack(whole)` (asked once, after `m`; `whole` when `kept(b)`, the full `WBLK * width / 8`
+    /// residual bytes).
+    pub fn write<'p>(&self, m: &mut EncMeta, pack: impl FnOnce(bool) -> EncPack<'p>, b: usize) {
         let nb = self.nb(b);
-        if self.kept(b) { crate::enc::move_meta(m, &self.old, b); return }
+        if self.kept(b) { crate::enc::move_meta(m, &self.old, b); return crate::enc::move_pack(&mut pack(true), &self.old, b, self.alp, self.w) }
         let mut buf = [0u64; WBLK];
         if !self.alp {
             let bytes = pod::bytes_mut(&mut buf);
             self.load(b, nb, bytes);
-            return crate::enc::for_meta(m, bytes, self.w, nb)
+            crate::enc::for_meta(m, bytes, self.w, nb);
+            return crate::enc::for_pack(&mut pack(false), bytes, self.w)
         }
-        if self.w == 4 { self.meta_alp::<f32>(m, b, nb, &mut buf) } else { self.meta_alp::<f64>(m, b, nb, &mut buf) }
+        if self.w == 4 { self.write_alp::<f32>(m, pack, b, nb, &mut buf) } else { self.write_alp::<f64>(m, pack, b, nb, &mut buf) }
     }
-    /// An ALP block with writes: the patch, unless the search's exponent leaves fewer exceptions; each costs its raw bytes
-    /// and a position, more than the residual bits a higher exponent adds.
-    fn meta_alp<F: Elt>(&self, m: &mut EncMeta, b: usize, nb: usize, buf: &mut [u64; WBLK]) {
+    /// An ALP block with writes: the patch at the old exponent, unless the search's exponent leaves fewer exceptions; each
+    /// costs its raw bytes and a position, more than the residual bits a higher exponent adds.
+    fn write_alp<'p, F: Elt>(&self, m: &mut EncMeta, pack: impl FnOnce(bool) -> EncPack<'p>, b: usize, nb: usize, buf: &mut [u64; WBLK]) {
         let (mut d, mut ee) = ([0i64; WBLK], [0i8; WBLK]);
         let alt = self.patch::<F>(b, nb, &mut d, &mut ee);
         let np = ee[..nb].iter().filter(|&&e| e < 0).count() as u32;
-        self.patched[b].store(1, Relaxed);
         if alt >= 0 {
             let bytes = pod::bytes_mut(buf);
             self.load(b, nb, bytes);
             let x = pod::cast::<F>(&bytes[..nb * self.w]).expect("qlean scatter: the block buffer is misaligned");
             if crate::alp::alp_exc_at(x, alt, np) < np {
-                self.patched[b].store(0, Relaxed);
                 *m.nexc = crate::alp::alp_meta_exp(m, x, nb, alt);
-                return;
+                return crate::enc::alp_pack(&mut pack(false), bytes, self.w);
             }
         }
+        // `alp_fin_blk` moves only the exceptions' decimals, which `alp_patch_pack` sets to the base
         *m.nexc = crate::alp::alp_fin_blk(m, self.old.exp[b] as i32, &mut d, &ee, nb);
-    }
-    /// structural.rs `fsc_pack` for block `b`; `p` is cut whole (`WBLK * width / 8` residual bytes) when `kept(b)`.
-    pub fn pack(&self, p: &mut EncPack, b: usize) {
-        let nb = self.nb(b);
-        if self.kept(b) { crate::enc::move_pack(p, &self.old, b, self.alp, self.w); return }
-        if self.alp && self.patched[b].load(Relaxed) != 0 {
-            return if self.w == 4 { self.pack_patched::<f32>(p, b, nb) } else { self.pack_patched::<f64>(p, b, nb) }
-        }
-        let mut buf = [0u64; WBLK];
-        let bytes = pod::bytes_mut(&mut buf);
-        self.load(b, nb, bytes);
-        if self.alp { crate::enc::alp_pack(p, bytes, self.w) } else { crate::enc::for_pack(p, bytes, self.w) }
-    }
-    /// Pass 2 for a block pass 1 patched at the old exponent, with the same writes.
-    fn pack_patched<F: Elt>(&self, p: &mut EncPack, b: usize, nb: usize) {
-        let (mut d, mut ee) = ([0i64; WBLK], [0i8; WBLK]);
-        self.patch::<F>(b, nb, &mut d, &mut ee);
-        let (ix, v) = self.writes::<F>(b);
+        let (p, (ix, v)) = (&mut pack(false), self.writes::<F>(b));
         let raw = core::mem::take(&mut p.raw);
         crate::alp::alp_patch_pack(p, &self.old, ix, v, &mut d, &ee, pod::cast_mut::<F>(raw).expect("qlean scatter: misaligned patch bits"))
     }

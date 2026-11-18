@@ -86,7 +86,7 @@ and the two encoded runs (K6) call; `qlean_ew_val` calls `qrs_ew_val` for every 
 run directly under gdb, no `cap`, since gdb does not follow `cap`'s exec): `qrs_ew_val hit 1171930`; `qlean-test`:
 `qrs_ew_val hit 904260`, `ew_val_run hit 904260`, `qrs_ew_val` with `op = 9` (pow) hit.
 
-## Task K9 (the nine float maps, `ew_serial`, the chain's widen/decode/alp/ids/pack/encmeta/encpack workers)
+## Task K9 (the nine float maps, `ew_serial`, the chain's widen/decode/alp/ids/pack/enc workers)
 
 Symbols gate, allowed undefined: K5's list plus the libm names the nine maps call, `acos asin atan cos exp log sin tan`
 (`sqrt` is the instruction `sqrtsd`, so it is not an undefined name). All ten libm names are declared by one `libm!`
