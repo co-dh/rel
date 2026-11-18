@@ -64,6 +64,11 @@ instance : Reg Scan.Kind := ⟨.u8, fun
   | .u8 0 => some .bit | .u8 1 => some .u8 | .u8 2 => some .i16 | .u8 3 => some .i32 | .u8 4 => some .i64
   | .u8 5 => some .f32 | .u8 6 => some .f64 | .u8 7 => some .c8 | _ => none,
   fun k => .u8 (match k with | .bit => 0 | .u8 => 1 | .i16 => 2 | .i32 => 3 | .i64 => 4 | .f32 => 5 | .f64 => 6 | .c8 => 7)⟩
+/-- A scan's verb is an enum too: its constructor index in a byte. -/
+instance : Reg Scan.Verb := ⟨.u8, fun
+  | .u8 0 => some .sums | .u8 1 => some .prds | .u8 2 => some .mins | .u8 3 => some .maxs | .u8 4 => some .fills
+  | _ => none,
+  fun v => .u8 (match v with | .sums => 0 | .prds => 1 | .mins => 2 | .maxs => 3 | .fills => 4)⟩
 
 /-- A kernel as its `@[extern]` declaration states it (`kernel%`): the C symbol, each argument's type and whether
     it is borrowed (`@&`), the result's types (a product flattened), whether the toolchain declares it (so `lean.h`
@@ -414,5 +419,40 @@ def arithB (op : UInt8) (n u v : Nat) : Bld (Array Nat) := do
   let g (fill : UInt64) (x : Nat) := do call1 (kernel% Kernel.gatherBytes) #[w, ← lit (.u64 fill), x, k]
   let nf := (Kernel.nullBits .long).getD 0
   return #[r, ← g nf u, ← g nf v, ← g 0 s]
+
+/-! ### The dataframe recipes (`doc/dataframe-design.zh.typ` §3.3), on columns of dense longs -/
+
+/-- Recipe WHERE, `filter(p)` given its mask: the rows of the columns `cs` (`n` dense longs each) whose bit in `mask`
+    is set, in their order: the count and the gathered columns. -/
+def whereB (n mask : Nat) (cs : Array Nat) : Bld (Nat × Array Nat) := do
+  let k ← call1 (kernel% Kernel.whereBits) #[n, mask]
+  let w ← lit (.size 8); let nf ← lit (.u64 ((Kernel.nullBits .long).getD 0))
+  return (← lenB k, ← cs.mapM fun c => call1 (kernel% Kernel.gatherBytes) #[w, nf, c, k])
+
+/-- Recipes CODE and SEGFOLD, `Λ(groups(π₁)) ≫ F(𝟙 × (F(π₂) ≫ sum))` on the key column `k` and value column `v` of
+    `n` dense longs: the keys that occur, ascending, each with the sum of its values. CODE sorts (`grade`, stable)
+    and cuts runs where a key differs from its neighbour; SEGFOLD is one `sums` scan, a run's sum being the prefix
+    sum at its last row minus the one before its first. Registers: the run count, the keys, the sums. -/
+def groupSumB (n k v : Nat) : Bld (Array Nat) := do
+  let i64 ← lit (.u8 Ew.i64); let vv ← lit (.u8 Ew.vv); let va ← lit (.u8 Ew.va); let nl ← lit (.i64 Alg.nul)
+  let w ← lit (.size 8); let nf ← lit (.u64 ((Kernel.nullBits .long).getD 0)); let z ← lit (.u64 0)
+  let o ← lit (.bytes (one 1)); let lane ← lit (Reg.put Scan.Kind.i64)
+  let g (fill src idx : Nat) := call1 (kernel% Kernel.gatherBytes) #[w, fill, src, idx]
+  let val (op : UInt8) (sh x y m : Nat) := do call1 (kernel% Kernel.Ew.val) #[← lit (.u8 op), i64, sh, nl, x, y, m]
+  let p ← call1 (kernel% Kernel.Order.grade) #[lane, ← lit (.bit false), n, k]
+  let ks ← g nf k p; let vs ← g nf v p
+  -- `til n` as the inverse permutation read at `p`: no kernel of the ABI answers the positions directly
+  let t ← g nf (← call1 (kernel% Kernel.Order.invert) #[p]) p
+  -- a run starts where its key differs from the row before and ends where it differs from the row after; past
+  -- either end the gather answers the null, which differs from every key
+  let cut (op : UInt8) := do
+    let nb ← g nf ks (← val op va t o n)
+    call1 (kernel% Kernel.whereBits) #[n, ← call1 (kernel% Kernel.Ew.cmp) #[← lit (.u8 Ew.ne), i64, vv, ks, nb, n]]
+  let firsts ← cut Ew.sub; let lasts ← cut Ew.add
+  let r ← lenB firsts
+  let cs ← call1 (kernel% Kernel.Scan.scan) #[← lit (Reg.put Scan.Verb.sums), lane, n, vs]
+  -- the prefix sum before a run's first row; before row 0 the gather answers its fill, `0`
+  let before ← g z cs (← val Ew.sub va firsts o r)
+  return #[r, ← g nf ks firsts, ← val Ew.sub vv (← g z cs lasts) before r]
 
 end Rel.Lang.Plan

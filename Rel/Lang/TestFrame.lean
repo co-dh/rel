@@ -40,29 +40,35 @@ rel_program frame where
 -- duplicate rows count twice: a frame is a list, not the set of its rows.
 #guard frame.ok && frame.prints == ["𝟙(1, 1) out = {(∗, (A, 13) (B, 10))}"]
 
-open Rel.Lang Tab in
-partial def sh : {A B : Obj} → {d : Bool} → Tm A B d → String
-  | _, _, _, .val _ => "val" | _, _, _, .comp R S => s!"({sh R} ≫ {sh S})" | _, _, _, .conv R => s!"{sh R}°"
-  | _, _, _, .share k R => s!"share{k}[{sh R}]" | _, _, _, .prim r => r.sym | _, _, _, .arg f x => s!"{sh f}<{sh x}>"
-  | _, _, _, .lam R => s!"Λ({sh R})" | _, _, _, .dom R => s!"dom({sh R})" | _, _, _, .outl => "π₁" | _, _, _, .outr => "π₂"
-  | _, _, _, .id => "𝟙" | _, _, _, .prod R S => s!"({sh R} × {sh S})" | _, _, _, .pair R S => s!"⟨{sh R},{sh S}⟩"
-  | _, _, _, .fold e S => s!"fold[{sh e},{sh S}]" | _, _, _, .lt U => s!"lt[{sh U}]" | _, _, _, .leq U => s!"leq[{sh U}]"
-  | _, _, _, .meet R S => s!"({sh R} ∩ {sh S})" | _, _, _, .join R S => s!"({sh R} ∪ {sh S})" | _, _, _, .diff R S => s!"({sh R} − {sh S})"
-  | _, _, _, .uni _ => "uni" | _, _, _, .call d c _ _ => s!"call{d}:{c}" | _, _, _, .arith k _ => s!"arith{k}" | _, _, _, .top V => s!"⊤[{sh V}]"
-  | _, _, _, .E R => s!"E({sh R})" | _, _, _, .ran R => s!"ran({sh R})" | _, _, _, .nil => "nil" | _, _, _, _ => "?"
+/-! Stage 1b. `out`'s term has no node a recipe is keyed on: `filter` is the prelude's fold, and `Λ(groups)` is `Λ` of
+    the key-seeded fold `sel`, not `Λ(groups(k))`, which the language cannot write. So `Plan.ofTm` is not extended; the
+    recipes are built here on `x`'s element columns, `big` as its mask (`x > 2`), and checked against `out`. -/
 
-open Rel.Lang Tab in
-#eval show Lean.Meta.MetaM Unit from do
-  let r ← (Expand.read (fun _ => none) [(`prelude, Rel.Programs.prelude)] frame).run
-  match r with
-  | .ok (ds, _) => for (n, ⟨_, _, _, t⟩) in ds do if n == "out" then IO.println s!"{n}: {sh t}"
-  | .error e => throwError s!"{repr e}"
+open Rel.Lang.Plan Rel.Kernel in
+/-- WHERE on `big`'s mask, then CODE and SEGFOLD: the registers of the group count, the keys, the sums. -/
+def gsB : Bld (Array Nat) := do
+  let some #[.size n, _, _, .bytes k, .bytes v] := valsRegs _ frame.x.rel.val
+    | throw "frame.x: its element columns are not dense"
+  let n ← lit (.size n); let k ← lit (.bytes k); let v ← lit (.bytes v)
+  let big ← call1 (kernel% Kernel.Ew.cmp)
+    #[← lit (.u8 Ew.gt), ← lit (.u8 Ew.i64), ← lit (.u8 Ew.va), v, ← lit (.bytes (Rel.one 2)), n]
+  let (m, cs) ← whereB n big #[k, v]
+  let #[k, v] := cs | throw "whereB: two columns in, two out"
+  groupSumB m k v
 
-open Rel.Lang Tab in
-#eval (Plan.cols _ frame.x.rel.val "").map fun (p, v) =>
-  (p, (Db.ownFile v).map fun (f : Db.OwnFile) => (f.code, f.kind, f.count, f.parts.map fun (b : ByteArray) => b.data))
-open Rel.Lang Tab in
-#eval (Plan.cols _ frame.out.rel.val "").map fun (p, v) =>
-  (p, (Db.ownFile v).map fun (f : Db.OwnFile) => (f.code, f.kind, f.count, f.parts.map fun (b : ByteArray) => b.data))
+open Rel.Lang.Plan in
+def gsPlan : Except String Plan := Bld.plan (discard gsB)
+
+open Rel.Lang.Plan in
+/-- `Plan.run` of `gsPlan` answers `out`'s count, keys and sums, byte for byte. -/
+def gsAgrees : Except String Bool := do
+  let (rs, _) ← gsPlan >>= (·.run abiOf)
+  let (out, _) ← gsB.run (#[], 0, #[], #[])
+  let some #[.size g, _, _, .bytes ks, .bytes ss] := valsRegs _ frame.out.rel.val | throw "frame.out: not dense"
+  match out.toList.map fun (i : Nat) => (rs[i]? : Option Val) with
+  | [some (.size r), some (.bytes a), some (.bytes b)] => pure (r == g && a.data == ks.data && b.data == ss.data)
+  | _ => throw "gsPlan: its result registers are not a size and two buffers"
+
+#eval show IO Unit from do unless ← IO.ofExcept gsAgrees do throw (IO.userError "gsPlan: its registers differ from frame.out")
 
 end Rel.Lang.TestFrame
