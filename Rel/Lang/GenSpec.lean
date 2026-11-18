@@ -458,18 +458,18 @@ theorem thinL_sound {B : Obj} {Q : Fn true (.prod B B) (.prod B B)} {TQ : Den (.
     CRel.rep_thinLOn _ _ X (test_le hQ) hb
 
 /-- A round's pairs `K` have a row, so `onKeys` runs `S` on their values, where it agrees with `TS`. -/
-theorem onKeys_round {P V : Obj} {S : Rel P V} {TS : Den P V} (hS : Sound S TS) (K : Tab P P) (p w)
-    (hp : ∃ a, rep K a p) (hc : ∀ a b, rep K a b → a = b) (hok : (onKeys S (some K)).ok = true) :
-    rep (onKeys S (some K)).rel p w ↔ TS p w := by
+theorem onKeys_round {P V : Obj} {S : Rel P V} {TS : Den P V} (hS : Sound S TS) (K : CRel P P) (p w)
+    (hp : ∃ a, rep K.rel a p) (hc : ∀ a b, rep K.rel a b → a = b) (hok : (onKeys S K).ok = true) :
+    rep (onKeys S K).rel p w ↔ TS p w := by
   obtain ⟨a, ha⟩ := hp
-  have h0 : (K.n == 0) = false := by
+  have h0 : (K.rel.n == 0) = false := by
     obtain ⟨j, -⟩ := ha
-    cases h : K.n == 0
+    cases h : K.rel.n == 0
     · rfl
-    · have : K.n.toNat = 0 := by simp [beq_iff_eq.1 h]
+    · have : K.rel.n.toNat = 0 := by simp [beq_iff_eq.1 h]
       exact absurd j.2 (by omega)
-  simp only [onKeys, CRel.some_rel, h0, Bool.false_eq_true, if_false] at hok ⊢
-  exact hS.agree hok p w ((idU_holds K.val p p).2 ⟨rfl, keyRow (hc a p ha ▸ ha)⟩) rfl
+  simp only [onKeys, h0, Bool.false_eq_true, if_false] at hok ⊢
+  exact hS.agree hok p w ((idU_holds K.rel.val p p).2 ⟨rfl, keyRow (hc a p ha ▸ ha)⟩) rfl
 
 /-- A step run on a round's coreflexive `D` of the pairs `S` (`onKeys`) computes `T` at those pairs: `D` has a
     row, so the step ran. -/
@@ -477,7 +477,7 @@ theorem onKeys_sound {A B : Obj} {F : Rel A B} {T : Den A B} (hF : Sound F T) (D
     (S : A.El → Prop) (hD : rep D = corefl (α := A.El) S) (hb : (onKeys F (some D)).ok = true) :
     ∀ x y, S x → (rep (onKeys F (some D)).rel x y ↔ T x y) := fun x y hx =>
   have hk : rep D x x := by rw [hD]; exact ⟨rfl, hx⟩
-  onKeys_round hF D x y ⟨x, hk⟩ (fun a b h => (show corefl S a b by rw [← hD]; exact h).1) hb
+  onKeys_round hF (some D) x y ⟨x, hk⟩ (fun a b h => (show corefl S a b by rw [← hD]; exact h).1) hb
 
 /-- `loop(F)` folds the step `F` along each array from the left, from the seed. -/
 theorem loop_sound {X Y : Obj} {d : Bool} {F : Fn d (.prod X Y) X} {TF : Den (.prod X Y) X} (hF : Sound F TF) :

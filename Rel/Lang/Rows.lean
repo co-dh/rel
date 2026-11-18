@@ -80,7 +80,7 @@ def Row.test (i : Fin rowDens.length) {sym : String} {ty : List Obj → Obj × O
     (h : ∀ σ Q T, Gen.Sound Q T → Gen.Sound (f σ Q) (D σ T)) : Row :=
   .unary i e fun σ e Q T hQ => by
     cases e
-    · exact fun _ _ hb => absurd hb Bool.false_ne_true
+    · exact fun _ => trivial
     · exact h σ Q T hQ
 
 /-- Every row of `prims` with a lemma, by its index in `rowDens`. `rowGaps` lists the rest. -/

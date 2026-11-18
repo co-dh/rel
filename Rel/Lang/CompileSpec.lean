@@ -28,18 +28,16 @@ theorem CodeEnv.Sound.bind {η : CodeEnv} {ρ : Val} (hη : η.Sound ρ) (k : Na
     round sound at an ok table (`CRel.rep_fixOn`). -/
 theorem mu_sound {A B : Obj} {cap : Nat} {φ : CRel A B → Fn false A B} {Φ : Den A B → Den A B}
     (hΦ : Monotonic Φ) (h : ∀ X : CRel A B, X.ok = true → Sound (φ X) (Φ (rep X.rel))) :
-    Sound (Gen.mu A B cap φ) (Core.Rel.mu Φ) := fun ⟨⟩ _ hb x y _ => by
-  simp only [Gen.mu] at hb ⊢
+    Sound (Gen.mu A B cap φ) (Core.Rel.mu Φ) := const_sound fun hb => by
   obtain ⟨⟨hlt, hok⟩, e⟩ := also_ok_rel hb
   rw [e]
-  obtain ⟨j, -, hj, -, hfix, hleast, -⟩ := CRel.rep_fixOn cap (fun X => φ X ()) (some Alg.zero) Φ hok
-    (fun D hD => (h (some D) rfl).eq hD) hΦ
+  obtain ⟨j, -, hj, -, hfix, hleast, -⟩ := CRel.rep_fixOn cap (fun X => (φ X).run {}) (some Alg.zero) Φ hok
+    (fun D hD => (h (some D) rfl).run_eq hD) hΦ
     (Or.inl (le_iff.2 fun a b h => by rw [CRel.some_rel, rep_zero] at h; exact h.elim))
   have hfx := hfix (hj ▸ of_decide_eq_true hlt)
-  have e := Core.Rel.le_antisymm
+  exact Core.Rel.le_antisymm
     (hleast _ (le_iff.2 fun a b h => by rw [CRel.some_rel, rep_zero] at h; exact h.elim) (mu_prefixed hΦ))
     (mu_le (by rw [hfx]; exact Core.Rel.le_refl _))
-  rw [e]
 
 /-- `νX : S ∩ φ` by rounds from `S` down, each met with `S`: the greatest fixed point of `X ↦ ⟦S⟧ ∩ Φ X` for a
     monotone `Φ`. Every round is below `⟦S⟧`, so the chain of distinct-row tables below `S` is fixed within `S`'s
@@ -47,38 +45,37 @@ theorem mu_sound {A B : Obj} {cap : Nat} {φ : CRel A B → Fn false A B} {Φ : 
 theorem nu_sound {A B : Obj} {S : Fn false A B} {TS : Den A B} {φ : CRel A B → Fn false A B}
     {Φ : Den A B → Den A B} (hS : Sound S TS) (hΦ : Monotonic Φ)
     (h : ∀ X : CRel A B, X.ok = true → Sound (φ X) (Φ (rep X.rel))) :
-    Sound (Gen.nu A B S φ) (Core.Rel.nu fun X => TS ∩ Φ X) := fun ⟨⟩ _ hb x y _ => by
-  simp only [Gen.nu] at hb ⊢
-  have hs : (S ()).ok = true := by
-    cases e : (S ()).ok
+    Sound (Gen.nu A B S φ) (Core.Rel.nu fun X => TS ∩ Φ X) := const_sound fun hb => by
+  have hs : CRel.ok (S.run {}) = true := by
+    cases e : CRel.ok (S.run {})
     · rw [CRel.fixOn, CRel.guard, e] at hb; exact absurd hb Bool.false_ne_true
     · rfl
-  have hX : rep (S ()).rel = TS := hS.eq hs
+  have hX : rep (CRel.rel (S.run {})) = TS := hS.run_eq hs
   have hΨ : Monotonic fun X => TS ∩ Φ X := fun X Y hXY => inter_le' (Core.Rel.le_refl _) (hΦ X Y hXY)
   have hle : ∀ X, TS ∩ Φ X ⊑ TS := fun X => Core.Rel.inter_le_left _ _
-  have hit : ∀ i, Nat.repeat (fun X => TS ∩ Φ X) i (rep (S ()).rel) ⊑ rep (S ()).rel := fun i => by
+  have hit : ∀ i, Nat.repeat (fun X => TS ∩ Φ X) i (rep (CRel.rel (S.run {}))) ⊑ rep (CRel.rel (S.run {})) :=
+    fun i => by
     cases i with
     | zero => exact Core.Rel.le_refl _
     | succ i => show TS ∩ Φ _ ⊑ _; rw [hX]; exact hle _
-  have hφ : ∀ D, (CRel.inter (S ()) (φ (some D) ())).ok = true →
-      rep (CRel.inter (S ()) (φ (some D) ())).rel = TS ∩ Φ (rep D) := fun D hD => by
+  have hφ : ∀ D, (CRel.inter (S.run {}) ((φ (some D)).run {})).ok = true →
+      rep (CRel.inter (S.run {}) ((φ (some D)).run {})).rel = TS ∩ Φ (rep D) := fun D hD => by
     have h2 := CRel.guard_ok_left hD; rw [Bool.and_eq_true] at h2
-    rw [CRel.rep_inter _ _ hD, hX, (h (some D) rfl).eq h2.2, CRel.some_rel]
-  obtain ⟨j, -, hj, hr, hfix, -, hcnt⟩ := CRel.rep_fixOn _ (fun X => CRel.inter (S ()) (φ X ())) (S ())
-    (fun X => TS ∩ Φ X) hb hφ hΨ (Or.inr (hX ▸ hle _))
+    rw [CRel.rep_inter _ _ hD, hX, (h (some D) rfl).run_eq h2.2, CRel.some_rel]
+  obtain ⟨j, -, hj, hr, hfix, -, hcnt⟩ := CRel.rep_fixOn _ (fun X => CRel.inter (S.run {}) ((φ X).run {}))
+    (S.run {}) (fun X => TS ∩ Φ X) hb hφ hΨ (Or.inr (hX ▸ hle _))
   have hfx := hfix (hcnt _ hit (by omega))
-  have hdown : ∀ i, Core.Rel.nu (fun X => TS ∩ Φ X) ⊑ Nat.repeat (fun X => TS ∩ Φ X) i (rep (S ()).rel) :=
-    fun i => by
+  have hdown : ∀ i, Core.Rel.nu (fun X => TS ∩ Φ X) ⊑
+      Nat.repeat (fun X => TS ∩ Φ X) i (rep (CRel.rel (S.run {}))) := fun i => by
     induction i with
-    | zero => show _ ⊑ rep (S ()).rel; rw [hX, ← nu_fix hΨ]; exact hle _
+    | zero => show _ ⊑ rep (CRel.rel (S.run {})); rw [hX, ← nu_fix hΨ]; exact hle _
     | succ i ih => show _ ⊑ TS ∩ Φ _; rw [← nu_fix hΨ]; exact hΨ _ _ ih
-  have e := Core.Rel.le_antisymm (le_nu (by rw [hfx]; exact Core.Rel.le_refl _)) (hr ▸ hdown j)
-  rw [e]
+  exact Core.Rel.le_antisymm (le_nu (by rw [hfx]; exact Core.Rel.le_refl _)) (hr ▸ hdown j)
 
 /-- `flat(R)`: `(i, a)` to `b` where `R` relates `i` to `(a, b)`, `R` run on the `i` in demand. -/
 theorem flat_sound {I A B : Obj} {d : Bool} {R : Fn d I (.prod A B)} {TR : Den I (.prod A B)} (hR : Sound R TR) :
-    Sound (flat I A B d R) (flatDen TR) := fun D hD hb x b hx => by
-  simp only [flat] at hb ⊢
+    Sound (flat I A B d R) (flatDen TR) := ofVals_keys fun X hb x b hx => by
+  dsimp only at hb ⊢
   obtain ⟨⟨hro, hc⟩, e⟩ := also_ok_rel hb
   rw [e]
   have h1 := CRel.guard_ok_left hc; rw [Bool.and_eq_true] at h1
@@ -88,18 +85,18 @@ theorem flat_sound {I A B : Obj} {d : Bool} {R : Fn d I (.prod A B)} {TR : Den I
   have h3 := CRel.guard_ok_left hp; rw [Bool.and_eq_true] at h3
   obtain ⟨hr, er⟩ := CRel.mk_ok_rel h3.1
   obtain ⟨-, el⟩ := CRel.mk_ok_rel h3.2
-  have hK := (CRel.rep_ofC hro).trans (rep_ranC (Alg.outl D) (CRel.ofC_ok hro).1)
-  have hRk : ∀ i v, rep (CRel.ofC (ranC (Alg.outl D))).rel i i →
-      (rep (R (Dem.of d (CRel.ofC (ranC (Alg.outl D))).rel)).rel i v ↔ TR i v) :=
-    fun i v h => atKeys hR _ (fun a b h => by rw [hK] at h; exact h.1) hr i v h
-  have hi : rep (CRel.ofC (ranC (Alg.outl D))).rel x.1 x.1 := by
-    have ho : rep (Alg.outl D) x x.1 := by rw [rep_outl]; exact ⟨x, hx, rfl⟩
+  have hK := (CRel.rep_ofC hro).trans (rep_ranC (Alg.outl (idU X)) (CRel.ofC_ok hro).1)
+  have hRk : ∀ i v, rep (CRel.ofC (ranC (Alg.outl (idU X)))).rel i i →
+      (rep (onKeys R (CRel.ofC (ranC (Alg.outl (idU X))))).rel i v ↔ TR i v) :=
+    fun i v h => onKeys_round hR _ i v ⟨i, h⟩ (fun a b h => by rw [hK] at h; exact h.1) hr
+  have hi : rep (CRel.ofC (ranC (Alg.outl (idU X)))).rel x.1 x.1 := by
+    have ho : rep (Alg.outl (idU X)) x x.1 := by rw [rep_outl]; exact ⟨x, hx, rfl⟩
     rw [hK]; exact ⟨rfl, x, ho, ho⟩
   rw [CRel.rep_comp _ _ hc, CRel.rep_comp _ _ h1.2, ep, eu, rep_conv, CRel.rep_pair _ _ hp, er, el, rep_conv,
     rep_outl, rep_outr, CRel.rep_ran _ hu]
   constructor
   · rintro ⟨x', hd, q, ⟨hr, z, ⟨e1, -⟩, ez⟩, z', ⟨e2, -⟩, ez'⟩
-    obtain rfl := hD x x' hd
+    obtain rfl := ((idU_holds X x x').1 hd).1
     subst e1 e2
     have e : q = (x.2, b) := Prod.ext (by first | exact ez | exact ez.symm) (by first | exact ez' | exact ez'.symm)
     subst e
@@ -109,40 +106,45 @@ theorem flat_sound {I A B : Obj} {d : Bool} {R : Fn d I (.prod A B)} {TR : Den I
     exact ⟨x, hx, (x.2, b), ⟨hr, (x.2, b), ⟨rfl, x.1, hr, hr⟩, rfl⟩, (x.2, b), ⟨rfl, x.1, hr, hr⟩, rfl⟩
 
 /-- `F` read at the nodes `U` (`onNodes`): at a value of `U`, what `F` computes there. -/
-theorem onNodes_sound {A B : Obj} {d : Bool} {F : Fn d A B} {T : Den A B} {m : USize} (hF : Sound F T)
-    (U : Vals A m) (hok : (onNodes d F (some (idU U))).ok = true) (a : A.El) (ha : ∃ i, U.row i = a) (c : B.El) :
-    rep (onNodes d F (some (idU U))).rel a c ↔ T a c := by
+theorem onNodes_sound {A B : Obj} {F : Rel A B} {T : Den A B} {m : USize} (hF : Sound F T)
+    (U : Vals A m) (hok : (onNodes F (some (idU U))).ok = true) (a : A.El) (ha : ∃ i, U.row i = a) (c : B.El) :
+    rep (onNodes F (some (idU U))).rel a c ↔ T a c := by
   have hk : rep (idU U) a a := by rw [rep_idU]; exact ⟨rfl, ha⟩
   have hc : ∀ x y, rep (idU U) x y → x = y := fun x y h => by rw [rep_idU] at h; exact h.1
-  have h0 : ((idU U).n == 0) = false := by
-    obtain ⟨j, -⟩ := hk
-    cases h : (idU U).n == 0
-    · rfl
-    · have : (idU U).n.toNat = 0 := by simp [beq_iff_eq.1 h]
-      exact absurd j.2 (by omega)
-  cases d
-  · simp only [onNodes, CRel.some_rel, h0, Bool.false_eq_true, if_false] at hok ⊢
+  cases F with
+  | tab f =>
+    have h0 : ((idU U).n == 0) = false := by
+      obtain ⟨j, -⟩ := hk
+      cases h : (idU U).n == 0
+      · rfl
+      · have : (idU U).n.toNat = 0 := by simp [beq_iff_eq.1 h]
+        exact absurd j.2 (by omega)
+    simp only [onNodes, CRel.some_rel, h0, Bool.false_eq_true, if_false] at hok ⊢
     have hf := CRel.guard_ok_left hok; rw [Bool.and_eq_true] at hf
-    rw [CRel.rep_comp _ _ hok, hF.eq hf.2]
+    have ef : rep (CRel.rel f) = T := hF.run_eq hf.2
+    rw [CRel.rep_comp _ _ hok, ef]
     exact ⟨fun ⟨w, h1, h2⟩ => hc a w h1 ▸ h2, fun h => ⟨a, hk, h⟩⟩
-  · simp only [onNodes, CRel.some_rel, h0, Bool.false_eq_true, if_false] at hok ⊢
+  | lazy g =>
+    simp only [onNodes] at hok ⊢
     obtain ⟨⟨-, hok⟩, e⟩ := also_ok_rel hok
-    rw [e]; exact hF (idU U) hc hok a c hk
+    rw [e]; exact onKeys_round hF (some (idU U)) a c ⟨a, hk⟩ hc hok
 
 /-- `[R,S]` on the sum values in demand (`juncD`): each side's part run on that side's values; the scan's bit
     excludes a demand row that names a side with no values (D7 = P). -/
 theorem juncD_sound {A B C : Obj} {d e : Bool} {R : Fn d A C} {S : Fn e B C} {TR : Den A C} {TS : Den B C}
     (hR : Sound R TR) (hS : Sound S TS) : Sound (juncD A B C d e R S) (Core.Rel.junc TR TS) := by
-  rintro ⟨n, key, l, r, tag, idx, xv, yv⟩ hD hb x z hx
-  simp only [juncD] at hb ⊢
+  refine ofVals_keys fun {n} X hb x z hx => ?_
+  obtain ⟨l, r, tag, idx, xv, yv⟩ := X
+  dsimp only at hb ⊢
   obtain ⟨⟨hscan, hc⟩, e⟩ := also_ok_rel hb
   rw [e]
   have h1 := CRel.guard_ok_left hc; rw [Bool.and_eq_true] at h1
   have h2 := CRel.guard_ok_left h1.2; rw [Bool.and_eq_true] at h2
   rw [CRel.rep_comp _ _ hc, CRel.rep_junc _ _ h1.2]
   have hx' : rep _ x x := hx
-  refine (show (∃ w, _ ∧ _) ↔ _ from ⟨fun ⟨w, h, j⟩ => (hD x w h) ▸ j, fun j => ⟨x, hx', j⟩⟩).trans ?_
-  obtain ⟨p, hp⟩ := keyRow hx'
+  refine (show (∃ w, _ ∧ _) ↔ _ from
+    ⟨fun ⟨w, h, j⟩ => ((idU_holds _ x w).1 h).1 ▸ j, fun j => ⟨x, hx', j⟩⟩).trans ?_
+  obtain ⟨p, hp⟩ := ((idU_holds _ x x).1 hx).2
   have hrow := List.all_eq_true.1 hscan p (List.mem_finRange p)
   simp only [Vals.row] at hp
   split at hp <;> rename_i ht
@@ -170,7 +172,7 @@ theorem rows_cover : ∀ i : Fin rowDens.length, rowGaps.contains rowDens[i].1.s
   decide
 
 theorem none'_sound {A B : Obj} {d : Bool} {T : Den A B} : Sound (none' A B d) T :=
-  fun _ _ hb => absurd hb Bool.false_ne_true
+  fun _ => trivial
 
 /-- The row `r` run on sound arguments: `Prim.run` finds the code of the `rowDens` entry `Prim.den` reads
     (`rowDens_codes`), and that entry's `Row` is in `rows`. -/
@@ -211,7 +213,7 @@ theorem Prim.fn_sound {r : Prim} {A B : Obj} {cs : List Code} {T : Den A B}
     cases e : r.run A B cs with
     | none => simp only [Prim.fn, e, Option.getD_none]; exact none'_sound
     | some f => simp only [Prim.fn, e, Option.getD_some]; exact h f e
-  | false => none'_sound
+  | false => none'_sound (d := false)
 
 /-! ### `compile_sound` -/
 
