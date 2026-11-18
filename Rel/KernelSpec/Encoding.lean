@@ -320,6 +320,24 @@ theorem foldl_pair_size {E : Type} (f : ByteArray × Nat → E → ByteArray × 
   | nil => simp
   | cons e l ih => simp only [List.foldl_cons, ih, hf, List.length_cons]; omega
 
+/-- `Coc.foRMeta`'s size: 33 bytes a block and the 24-byte trailer. -/
+theorem foRMeta_size (lg : Nat) (nul : UInt64) (sumn : Nat) (bs : Array (UInt64 × UInt64 × UInt64 × Nat)) :
+    (Kernel.Coc.foRMeta lg nul sumn bs).size = 33 * bs.size + 24 := by
+  have e0 : ByteArray.empty.size = 0 := rfl
+  obtain ⟨s1, -, -⟩ := foldl_pushBits (fun b : UInt64 × UInt64 × UInt64 × Nat => b.1) 8 (by decide) bs.toList ByteArray.empty
+  obtain ⟨s2, -, -⟩ := foldl_pushBits (fun b : UInt64 × UInt64 × UInt64 × Nat => b.2.1) 8 (by decide) bs.toList ByteArray.empty
+  obtain ⟨s4, -, -⟩ := foldl_pushBits (fun b : UInt64 × UInt64 × UInt64 × Nat => b.2.2.1) 8 (by decide) bs.toList ByteArray.empty
+  obtain ⟨s6, -, -⟩ := foldl_push8 (fun b : UInt64 × UInt64 × UInt64 × Nat => b.2.2.2.toUInt8) bs.toList ByteArray.empty
+  have sT : (Column.pushBits (Column.pushBits (Column.pushBits ByteArray.empty nul 8) sumn.toUInt64 8)
+      lg.toUInt64 8).size = 24 := by
+    simp only [Column.pushBits_size, e0]
+  have s3 := foldl_pair_size (fun (x : ByteArray × Nat) (b : UInt64 × UInt64 × UInt64 × Nat) =>
+    (Column.pushBits x.fst x.snd.toUInt64 8, x.snd + 2 ^ lg * b.snd.snd.snd / 8))
+    (fun _ _ => by simp only [Column.pushBits_size]) bs.toList (ByteArray.empty, 0)
+  simp only [e0, Nat.zero_add, Array.length_toList] at s1 s2 s3 s4 s6
+  unfold Kernel.Coc.foRMeta
+  simp only [← Array.foldl_toList, ByteArray.size_append, s1, s2, s3, s4, s6, sT]; omega
+
 theorem foRMeta_reads (lg : Nat) (hlg : lg < 2 ^ 64) (nul : UInt64) (sumn : Nat)
     (bs : Array (UInt64 × UInt64 × UInt64 × Nat)) (hw : ∀ b (h : b < bs.size), bs[b].2.2.2 < 256) :
     Column.nblk (Kernel.Coc.foRMeta lg nul sumn bs) = bs.size ∧ Column.lgAt (Kernel.Coc.foRMeta lg nul sumn bs) = lg ∧
@@ -341,8 +359,7 @@ theorem foRMeta_reads (lg : Nat) (hlg : lg < 2 ^ 64) (nul : UInt64) (sumn : Nat)
     (fun _ _ => by simp only [Column.pushBits_size]) bs.toList (ByteArray.empty, 0)
   simp only [e0, Array.length_toList, Nat.zero_add] at s3
   have hn : Column.nblk (Kernel.Coc.foRMeta lg nul sumn bs) = bs.size := by
-    unfold Kernel.Coc.foRMeta
-    simp only [← Array.foldl_toList, Column.nblk, ByteArray.size_append, s1, s2, s3, s4, s6, sT]; omega
+    rw [Column.nblk, foRMeta_size]; omega
   refine ⟨hn, ?_, fun b hb => ⟨?_, ?_⟩⟩
   · unfold Column.lgAt
     rw [hn]
@@ -641,11 +658,17 @@ theorem xor_top (m n : Nat) (h : n < 2 ^ (m + 1)) :
 
 /-- The encoded form holds an element sign-extended to 64 bits, so it agrees with the dense bits on
 the element's own `8 * w`, which below eight bytes is all it can; `Enc.raw` reads it cut to those. -/
-theorem unbias_keyAt (w : Nat) (hw1 : 1 < w) (hw : w ≤ 8) (x : ByteArray) (i : Nat) :
+theorem unbias_keyAt (w : Nat) (hw0 : 0 < w) (hw : w ≤ 8) (x : ByteArray) (i : Nat) :
     (Kernel.Coc.unbias w (Kernel.Coc.keyAt w x i)).toNat % 2 ^ (8 * w) = (Column.bitsAt x (i * w) w).toNat := by
   have hv := bitsAt_lt x (i * w) w hw
   unfold Kernel.Coc.unbias Kernel.Coc.keyAt Kernel.Coc.bias
-  rw [if_neg (by omega)]
+  by_cases h1 : w = 1
+  · -- one byte is not biased: the key is the byte itself
+    subst h1
+    rw [if_pos rfl, Nat.xor_zero, Nat.toUInt64_eq, UInt64.toNat_ofNat']
+    generalize (Column.bitsAt x (i * 1) 1).toNat = v at hv ⊢
+    simp only [Nat.reducePow, Nat.reduceMul, Nat.sub_zero] at hv ⊢; omega
+  rw [if_neg h1]
   generalize (Column.bitsAt x (i * w) w).toNat = v at hv
   obtain ⟨m, hm⟩ : ∃ m, 8 * w = m + 1 := ⟨8 * w - 1, by omega⟩
   obtain ⟨d, hd⟩ : ∃ d, 64 = d + (m + 1) := ⟨64 - (m + 1), by omega⟩
@@ -668,7 +691,7 @@ theorem foRBits_encode_bits (lg : Nat) (hlg : 6 ≤ lg ∧ lg ≤ 16) (w : Nat) 
     (i : Nat) (hi : i < x.size / w) :
     (Column.foRBits (Kernel.Coc.encodeAt lg w.toUSize x).1 (Kernel.Coc.encodeAt lg w.toUSize x).2
       (Column.blockStarts (Kernel.Coc.encodeAt lg w.toUSize x).1) i).toNat % 2 ^ (8 * w) = (Column.bitsAt x (i * w) w).toNat := by
-  rw [foRBits_encode lg hlg w (by omega) hw x i hi, unbias_keyAt w hw1 hw]
+  rw [foRBits_encode lg hlg w (by omega) hw x i hi, unbias_keyAt w (by omega) hw]
 
 /-- At a whole-byte lane `8c`, `Column.resAt` at element `j` is the `c` bytes from `c·j`, as
 `Column.bitsAt` reads them: each byte's term is that byte shifted into place, nothing cut off. -/
