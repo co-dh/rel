@@ -9,7 +9,7 @@ import Rel.Lang.TestEdit
 import Rel.Lang.TestKnapsack
 import Rel.Lang.TestMss
 import Rel.Lang.TestNative
-import Rel.Lang.TestRefold
+import Rel.Lang.TestHylo
 import Rel.Lang.TestSelsort
 import Rel.Lang.TestWumpus
 import Rel.Programs.JobShop

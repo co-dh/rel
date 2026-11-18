@@ -9,7 +9,7 @@ the code still shows, with the old number.
 Two limits on the evidence:
 
 - The index `.lake/build/refactor-index.db` is older than `HEAD`: it predates rows 191 (`prims` table) and 204
-  (`Route` deleted), has no `Aop.Prelude`, `Aop.Mss`, `Rel.RefoldSpec`, `Rel.Lang.PlanSpec`. Every `module_need`
+  (`Route` deleted), has no `Aop.Prelude`, `Aop.Mss`, `Rel.HyloSpec`, `Rel.Lang.PlanSpec`. Every `module_need`
   figure below was checked against the source; where the two disagree the source is quoted.
 - A claim marked PLAUSIBLE was not carried through to a compiled change.
 
@@ -56,7 +56,7 @@ EmitC    → Plan
 PlanSpec → EmitC
 BitsSpec* (5 modules) → Bits, Rel.KernelWF.*, Rel.Rep*
 GenSpec  → Gen, BitsSpecRun, Rel.CRelRel, Rel.CRelArith, Rel.CRelFold
-RefoldSpec → GenSpec
+HyloSpec → GenSpec
 Programs.Prelude → Embed, GenSpec
 Aop.Calc → Embed, 12 Freyd/AOP modules
 Aop.RelAop → Aop.Calc, AOP.A6_ConsList
@@ -96,7 +96,7 @@ Transitive import counts from the index (stale for `Syntax`, which then imported
   `Gen` imports `Bits` (`Pl` carries a `Tm`), `GenSpec` and the five `BitsSpec*` modules import those. So the
   generated runtime code and 1936 lines of bit-matrix proofs sit downstream of the elaborator.
 - `Elab.lean` had 38 commits in the last 30 days, `Bits.lean` 3. Each of those 38 rebuilt `Bits`, `BitsSpec`,
-  `BitsSpecCode`, `BitsSpecLdiv`, `BitsSpecPairs`, `BitsSpecRun`, `Gen`, `GenSpec`, `RefoldSpec`, `Plan`.
+  `BitsSpecCode`, `BitsSpecLdiv`, `BitsSpecPairs`, `BitsSpecRun`, `Gen`, `GenSpec`, `HyloSpec`, `Plan`.
 - Cut: move lines 19–106 to `Run/Lang/Tm.lean` (imports `Run.Algebra` and `Syntax`, for `Prim` in `Tm.prim`).
   `Bits` and `Plan` import it instead of `Elab`. No declaration changes name or namespace.
 - Effect: an elaborator edit no longer rebuilds those 10 modules. `Syntax.lean:18`
@@ -155,7 +155,7 @@ stated at each stage:
   since the audit and stays, because `Tm` is indexed by objects that `Pre` does not have yet.
 - New here: the traversals that list every constructor again.
   - `Pre.parts` (`Elab.lean:410–426`) is already the children function. `Pre.nilSrcs` (382–391) returns the same
-    children at every constructor (`.call` its alternative, `.fix` its body, `.refold` coalgebra and body, `.top`
+    children at every constructor (`.call` its alternative, `.fix` its body, `.hylo` coalgebra and body, `.top`
     its target), so it is `| .nil a _ => [a] | x => x.parts.flatMap (·.1.nilSrcs)`: ≈ −8 lines, checked by
     reading both.
   - `Pre.at` (277–317, 41 lines) is a third list of the same children, PLAUSIBLE instance of `parts`.

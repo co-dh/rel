@@ -28,7 +28,7 @@ rel_program quicksort where
     /- The coalgebra sends [] to the leaf and a non-empty array to (smaller ones, pivot, the rest). -/
 
     c : [N] ⟶ 1+(([N]×N)×[N]) ≜ (ran(nil)⊤ inl) ∪ (split inr)
-    sort' : [N] ⟶ [N] ≜ refold(c, [nil, join])    -- p.155 X = (nil nil°) ∪ (join (X×id×X) split°)
+    sort' : [N] ⟶ [N] ≜ hylo(c, [nil, join])    -- p.155 X = (nil nil°) ∪ (join (X×id×X) split°)
 
     /- The arrays sorted in the check: every rearrangement of an input. -/
 

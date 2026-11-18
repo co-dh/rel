@@ -71,7 +71,7 @@ $ D ::= & "obj" w = {w_1, …, w_k} | "obj" w = w_"lo" … w_"hi" | "obj" w = A 
 $ "Tm" : "Obj" → "Obj" → "Bool" → "Type" $
 核心 term `Tm A B d` 按 source $A$、target $B$ 和 demand 位 $d$ 编号；$d = "true"$ 表示它只在左侧上下文
 提供的 key 上求值，$d = "false"$ 表示 closed。构造子：
-`val uni zero id top outl outr inl inr comp conv meet join diff dom ran ldiv rdiv pair prod junc juncD lam E map est thin nil prim atPos own succ arith leq lt fold share foldI flat var call arg nu mu refold`。
+`val uni zero id top outl outr inl inr comp conv meet join diff dom ran ldiv rdiv pair prod junc juncD lam E map est thin nil prim atPos own succ arith leq lt fold share foldI flat var call arg nu mu hylo`。
 例如 `comp : Tm A B d → Tm B C e → Tm A C d`，`conv : Tm A B false → Tm B A false`，
 `meet : Tm A B d → Tm A B e → Tm A B (d || e)`。]
 
@@ -152,7 +152,7 @@ morphism）这件事 #nolp。]
 
 #rmk("operators without a node lemma", lean("Expand.prfNode", "Expand.rep"))[
 下列 `Tm` 节点在 `prfNode` 中没有 lemma，所以其意义在 Lean 中没有给出 #nolp：
-`lam`（$Λ$）、`E`、`thin`、`foldI`、`flat`、`var`、`call`、`arg`、`nu`、`mu`、`refold`、`juncD`，
+`lam`（$Λ$）、`E`、`thin`、`foldI`、`flat`、`var`、`call`、`arg`、`nu`、`mu`、`hylo`、`juncD`，
 以及 prim 行 setify、asc。用到它们的 definition 不产生 `rep_x`，而在 `n.unproved` 中记下第一个缺 lemma 的 combinator。]
 
 == 与 arXiv:1711.08699 的关系
@@ -252,9 +252,9 @@ lemma #nolp，所以使用它们的程序没有 `rep_x`。]
 == 证明了什么，没证明什么
 
 - 证明的：在 ok 位为真时，结果在 demand 的 key 上等于意义（`Sound`）；closed 时整体相等（`rep_x`）。
-- 没证明 totality：没有任何定理给出某个输入上 ok 位为真 #nolp。$μ$ 跑满 1024 轮、`refold` 遇到环时 ok 为假。
+- 没证明 totality：没有任何定理给出某个输入上 ok 位为真 #nolp。$μ$ 跑满 1024 轮、`hylo` 遇到环时 ok 为假。
 - 没证明 termination 的语义版本：`Gen` 的每个 combinator 是 Lean 中的 total 函数（`fixOn` 有轮数上限，
-  `refoldRounds` 对 `Nat` 结构递归），所以求值总会返回；但"上限足够"#nolp，C kernel 的终止 #nolp。
+  `hyloRounds` 对 `Nat` 结构递归），所以求值总会返回；但"上限足够"#nolp，C kernel 的终止 #nolp。
 - 没证明 `rep_x` 的意义 $⟦x⟧$ 与 AOP 中同名构造一致：`Calc.builtins` 只按名字连到 `Freyd.Alg`
   的常量 #nolp。
 
@@ -268,7 +268,7 @@ lemma #nolp，所以使用它们的程序没有 `rep_x`。]
   [Sound: 18 prim rows（τ cons uncons length sum inits tails prefix suffix concat cat uncat zip snoc unsnoc distinct tic merge）],
     [proved], lean("Gen.ofVals_sound", "Gen.after_sound", "Gen.cons_sound", "…"),
   [Sound: prim rows filter, takewhile, thinL, loop, setify, asc], [missing], [`sound := none` #nolp],
-  [Sound: $Λ$, $E$, map, est, thin, fold, foldI, flat, $μ$, $ν$, refold, juncD, nil, atPos, succ, arith, $≤$, $<$, call/arg/var],
+  [Sound: $Λ$, $E$, map, est, thin, fold, foldI, flat, $μ$, $ν$, hylo, juncD, nil, atPos, succ, arith, $≤$, $<$, call/arg/var],
     [partial], [CRel-level `rep_*` lemma for most（`rep_lamOn`, `rep_E`, `rep_fold`, `rep_fixOn` …）；no `Gen` lemma #nolp],
   [program soundness], [proved per program], [`n.rep_x`, ok-conditional; gaps in `n.unproved`],
   [compositionality], [partial], [per-node clauses; $⟦−⟧$ as function, functoriality #nolp],

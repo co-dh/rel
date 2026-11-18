@@ -129,7 +129,7 @@ compile η t : {r : Rel A B // rep r = ⟦t⟧ρ}       -- 方案 A：规格在�
   [product / sum], [`outl` `outr` `pair` `prod`；`junc` = `[R,S]`（目标：加 `inl` `inr`，`[R,S] = inl° ≫ R ∪ inr° ≫ S` 成为定义；`juncD` 随 lazy `Rel` 消失）],
   [power], [`lam`（Λ） `E` `est` `thin` `nil` `atPos`],
   [数据], [`val R` `uni U` `succ` `arith` `leq` `lt`],
-  [递归], [`mu` `nu` `fold`（`⦇e,S⦈`，catamorphism） `hylo`（`μX. c ≫ G(X) ≫ S`，原 `refold`）],
+  [递归], [`mu` `nu` `fold`（`⦇e,S⦈`，catamorphism） `hylo`（`μX. c ≫ G(X) ≫ S`，原 `hylo`）],
   [绑定 / 复用], [`var` `share` `own` `call` `arg`],
   [库原语], [`prim r`：`prims` 表的一行（`inits` `tails` `prefix` `concat` `zip` …；`asc` `distinct` 改为 kernel），在某个类型上实例化，参数由 `arg` 给出],
 )
@@ -287,7 +287,7 @@ index-complete · axioms · noreduce · panic · externs；另加 `lake -d freyd
 其它 TODO：
 - `Tm` 加 `inl` `inr`；`junc` 改为定义 `inl° ≫ R ∪ inr° ≫ S`；删 `juncD`（demand 由 lazy `Rel` 在运行时处理）。
 - 逐个检查 `prims` 的行能否写成 `fold`/`hylo`（如 `inits` `tails`），能写的改为定义，只留真正的 kernel 级原语。
-- `foldI`、`flat` 不再是构造子：`flat R` 由 `pair` `outl` `outr` 加相等测试写出（`(i,a) ↦ b` ⇔ `i R (a,b)`），`foldI` 是 carrier 为 `I × V` 的 `fold`（初值依赖 key）；先验证两者确实可写出，再删构造子及其 `Gen`、`den` 分支。`refold` 改名 `hylo`。
+- `foldI`、`flat` 不再是构造子：`flat R` 由 `pair` `outl` `outr` 加相等测试写出（`(i,a) ↦ b` ⇔ `i R (a,b)`），`foldI` 是 carrier 为 `I × V` 的 `fold`（初值依赖 key）；先验证两者确实可写出，再删构造子及其 `Gen`、`den` 分支。`hylo` 改名 `hylo`。
 - 去掉 `Syn`、`Tm.Le`、`Tm.Eqv`、`Hom.den`（`Rel/Lang/Syn.lean`）与 #9；`Tm.Ax` 改为改写引理 `⟦lhs⟧ρ = ⟦rhs⟧ρ`；freyd 需要的范畴在 `relaop` 自建。
 - `Tm` 加 symmetric division 构造子（运行时已有 `Alg.symDiv`）。
 - 改名：去掉 `Den` `Dem` `Fn` `CRel`，`Rel k v` 改为 `Rel A B`（`tab` ┃ `lazy`），`Tm` 去掉 `d`。

@@ -74,14 +74,14 @@
 
 - `Pre`(已定型,对象是带元变量的 `OTy`):`tm res`;代数部分 `zero id top outl outr inl inr comp conv meet join
   diff dom ran ldiv rdiv pair prod junc lam E map est thin nil`;`prim r args s t`;`atPos own succ arith leq lt fold
-  foldI flat lit`;`close p x a why`;`var p k a b tst`;`fix`;`refold`;`call p c us args ts alt a b d cv tst`
+  foldI flat lit`;`close p x a why`;`var p k a b tst`;`fix`;`hylo`;`call p c us args ts alt a b d cv tst`
   (`alt` 是展开式,分析读它,`build` 不读)。
 - `Tm : Obj → Obj → Bool → Type`(`d`:按 demand 运行):`Pre` 的代数部分加 `val uni juncD share var call arg nu
   mu`;`prim r : Tm A B true` 的关系参数由 `arg` 给。`Res := (A B : Obj) × (d : Bool) × Tm A B d`。
 - `Sig`:`const demand vars conv tst kf`。`Once`:`key const gen params res tst kf`;`Sig` 由 `sigOf` 算出。
 - `Prim`:`sym`、`sig`(由 `prim% c` 读出:常量、带 form 的关系参数、source、target)、`conv`、`written`、
   `prelude`、`aop`、`mono`、`sound`。`prims` 共 25 行。
-- `Op`:`id zero top outl outr inl inr leq lt succ arith nil alpha prim dom ran lam E P est thin map refold
+- `Op`:`id zero top outl outr inl inr leq lt succ arith nil alpha prim dom ran lam E P est thin map hylo
   index`;`Op.table` = 固定行 ++ 所有 `written && !prelude` 的 row。`Bin`:`meet join diff rdiv ldiv prod`。
 
 == 5. 各阶段
@@ -111,7 +111,7 @@
 - `id outl outr top comp pair meet join diff`:`Shape` 用它们构造并识别 lifted row(`keyed`)。
 - `dom ran lam E`:参数是 family 时由 `appliedL` lift;其它 builtin 拿到 family 时是 `notLiftable`。
 - `succ arith leq lt`:带一个 universe `U : Tm .long .long false`,`prim%` 不读这种 binder。
-- `nil`(`settleNil` 把它的 source 定为 `1`)、`alpha`(= `[nil, cons]`)、`refold`/`fix`(绑定变量)、
+- `nil`(`settleNil` 把它的 source 定为 `1`)、`alpha`(= `[nil, cons]`)、`hylo`/`fix`(绑定变量)、
   `own`(`prelude.perm`,自身的 converse)。
 - `est thin map`:代码里没有写原因。
 
