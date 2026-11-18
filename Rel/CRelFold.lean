@@ -335,27 +335,77 @@ theorem rep_mapSimpleC {A B : Obj} {n : USize} (R : Rel A B) (X : Vals (.arr A) 
     refine hs _ _ _ (hxt ▸ hcell _) (hR t ht h2) |>.symm ▸ ?_
     rfl
 
-/-- **`F(R)` as the fold under `mapFoldC`'s bit**: `rep_foldByC` at the step `consC (pairC (compC el R) pend)`, each
-    round's three bits read it back (`rep_consC`, `rep_pairC`, `rep_compC`), then `map_chain`. -/
+/-- **A chain from `[]` read through `reverse`**: the chain over `L` whose step `P` takes `ys[t+1]` to `ys[t]`,
+    ending at `w`, is, each list reversed, the chain whose step `Q` takes the reversals, ending at `w.reverse`; so a
+    left fold's `snoc` steps become the `cons` steps the right fold's chain lemmas read. -/
+theorem chain_reverse {α β : Type _} (L : List α) (w : List β) (P Q : α → List β → List β → Prop)
+    (hPQ : ∀ a u v, P a u v ↔ Q a u.reverse v.reverse) :
+    (∃ ys : List (List β), ∃ hy : ys.length = L.length + 1,
+      ys[L.length]'(Nat.lt_of_lt_of_eq (Nat.lt_succ_self _) hy.symm) = [] ∧
+      (∀ t (ht : t < L.length), P (L[t]'ht) (ys[t+1]'(Nat.lt_of_lt_of_eq (Nat.succ_lt_succ ht) hy.symm))
+        (ys[t]'(Nat.lt_of_lt_of_eq (Nat.lt_succ_of_lt ht) hy.symm))) ∧
+      w = ys[0]'(Nat.lt_of_lt_of_eq (Nat.succ_pos _) hy.symm)) ↔
+    (∃ ys : List (List β), ∃ hy : ys.length = L.length + 1,
+      ys[L.length]'(Nat.lt_of_lt_of_eq (Nat.lt_succ_self _) hy.symm) = [] ∧
+      (∀ t (ht : t < L.length), Q (L[t]'ht) (ys[t+1]'(Nat.lt_of_lt_of_eq (Nat.succ_lt_succ ht) hy.symm))
+        (ys[t]'(Nat.lt_of_lt_of_eq (Nat.lt_succ_of_lt ht) hy.symm))) ∧
+      w.reverse = ys[0]'(Nat.lt_of_lt_of_eq (Nat.succ_pos _) hy.symm)) := by
+  constructor
+  · rintro ⟨ys, hy, h0, hs, rfl⟩
+    refine ⟨ys.map List.reverse, by rw [List.length_map, hy], ?_, fun t ht => ?_, ?_⟩
+    · simp only [List.getElem_map, h0, List.reverse_nil]
+    · simp only [List.getElem_map]; exact (hPQ _ _ _).1 (hs t ht)
+    · simp only [List.getElem_map]
+  · rintro ⟨ys, hy, h0, hs, hw⟩
+    refine ⟨ys.map List.reverse, by rw [List.length_map, hy], ?_, fun t ht => ?_, ?_⟩
+    · simp only [List.getElem_map, h0, List.reverse_nil]
+    · simp only [List.getElem_map]
+      exact (hPQ _ _ _).2 (by simpa only [List.reverse_reverse] using hs t ht)
+    · simp only [List.getElem_map, ← hw, List.reverse_reverse]
+
+/-- **A pointwise relation between two lists, read on their reversals**: position `t` of the reversals is position
+    `length - 1 - t` of the lists. -/
+theorem forall_zip_reverse {α β : Type _} (R : α → β → Prop) (xs : List α) (ws : List β) :
+    (ws.reverse.length = xs.reverse.length ∧ ∀ t (ht : t < xs.reverse.length) (ht' : t < ws.reverse.length),
+      R (xs.reverse[t]'ht) (ws.reverse[t]'ht')) ↔
+    (ws.length = xs.length ∧ ∀ t (ht : t < xs.length) (ht' : t < ws.length), R (xs[t]'ht) (ws[t]'ht')) := by
+  simp only [List.length_reverse, List.getElem_reverse]
+  refine and_congr_right fun hl => ⟨fun h t ht ht' => ?_, fun h t ht ht' => ?_⟩
+  · have h' := h (xs.length - 1 - t) (by omega) (by omega)
+    have e1 : xs.length - 1 - (xs.length - 1 - t) = t := by omega
+    have e2 : ws.length - 1 - (xs.length - 1 - t) = t := by omega
+    simp only [e1, e2] at h'
+    exact h'
+  · have e : ws.length - 1 - t = xs.length - 1 - t := by omega
+    simp only [e]
+    exact h _ _ _
+
+/-- **`F(R)` as the fold under `mapFoldC`'s bit**: `rep_foldByC` at the left read and the step
+    `snocC (pairC pend (compC el R))`, each round's three bits read it back (`rep_snocC`, `rep_pairC`, `rep_compC`),
+    then `chain_reverse` onto `map_chain` at the reversals. -/
 theorem rep_mapFoldC {A B : Obj} {n : USize} (R : Rel A B) (X : Vals (.arr A) n)
     (hb : (mapFoldC R X).2 = true) :
     ∀ (xs : List A.El) ys, rep (mapFoldC R X).1 xs ys ↔ (∃ i, X.row i = xs) ∧ ys.length = xs.length ∧
       ∀ t (ht : t < xs.length) (ht' : t < ys.length), rep R (xs[t]'ht) (ys[t]'ht') := by
   intro xs ys; unfold mapFoldC at hb ⊢
-  refine (rep_foldByC false (nilVal B) X _ hb _ rfl _ rfl _ (fun _ _ => rfl)
-    (fun _ eu v => ∃ b, rep R eu.1 b ∧ v = b :: eu.2) _ (fun _ => rfl) _ (fun _ => rfl) False
+  refine (rep_foldByC true (nilVal B) X _ hb _ rfl _ rfl _ (fun _ _ => rfl)
+    (fun _ eu v => ∃ b, rep R eu.1 b ∧ v = eu.2 ++ [b]) _ (fun _ => rfl) _ (fun _ => rfl) False
     (fun i _ _ hbi r v => ?_) xs ys).trans ?_
   · simp only [Bool.and_eq_true] at hbi
     obtain ⟨⟨hq, hp⟩, hc⟩ := hbi
     simp only [false_and, or_false]
-    refine (rep_consC _ hc r v).trans ?_
+    refine (rep_snocC _ hc r v).trans ?_
     rw [rep_pairC _ _ hp, rep_compC _ _ hq]
     constructor
-    · rintro ⟨b, bs, ⟨⟨e, he, hR⟩, hu⟩, rfl⟩; exact ⟨e, bs, he, hu, b, hR, rfl⟩
-    · rintro ⟨e, u, he, hu, b, hR, rfl⟩; exact ⟨b, u, ⟨⟨e, he, hR⟩, hu⟩, rfl⟩
+    · rintro ⟨bs, b, ⟨hu, ⟨e, he, hR⟩⟩, rfl⟩; exact ⟨e, bs, he, hu, b, hR, rfl⟩
+    · rintro ⟨e, u, he, hu, b, hR, rfl⟩; exact ⟨u, b, ⟨hu, ⟨e, he, hR⟩⟩, rfl⟩
   -- `nilVal B`'s one row is `[]`
   exact and_congr Iff.rfl ((exists_congr fun zs => exists_congr fun _ => and_congr
-    ⟨fun ⟨_, h⟩ => h.symm, fun h => ⟨⟨0, by simp⟩, h.symm⟩⟩ Iff.rfl).trans (map_chain (rep R) xs ys))
+    ⟨fun ⟨_, h⟩ => h.symm, fun h => ⟨⟨0, by simp⟩, h.symm⟩⟩ Iff.rfl).trans
+    ((chain_reverse xs.reverse ys (fun a u v => ∃ b, rep R a b ∧ v = u ++ [b])
+      (fun a u v => ∃ b, rep R a b ∧ v = b :: u) fun a u v => exists_congr fun b =>
+        and_congr Iff.rfl (List.reverse_inj.symm.trans (by rw [List.reverse_append]; exact Iff.rfl))).trans
+      ((map_chain (rep R) xs.reverse ys.reverse).trans (forall_zip_reverse (rep R) xs ys))))
 
 /-- **`F(R)` under `mapC`'s bit**: a decided-simple `R` runs as `mapSimpleC` (`rep_mapSimpleC`, simplicity read back
     by `rep_simpleC`), any other as the fold (`rep_mapFoldC`); both read back as `map_chain`'s right side. -/
@@ -372,24 +422,24 @@ theorem rep_mapC {A B : Obj} {n : USize} (R : Rel A B) (X : Vals (.arr A) n)
     rw [e] at hb ⊢
     exact rep_mapFoldC R X hb
 
-/-- **`perm` under `permC`'s bit**: `rep_foldByC` at `permC`'s step, each round's ten bits reading its pieces back
-    (`rep_ranC`, `rep_uncatC`, `rep_compC`, `rep_pairC`, `rep_consC`, `rep_catC`) into `perm_step_set`, then
-    `perm_chain`. -/
+/-- **`perm` under `permC`'s bit**: `rep_foldByC` at the left read and `permC`'s step, each round's ten bits
+    reading its pieces back (`rep_ranC`, `rep_uncatC`, `rep_compC`, `rep_pairC`, `rep_snocC`, `rep_catC`) into
+    `perm_step_set`, then `perm_chain` at the reversal, a permutation of `xs`. -/
 theorem rep_permC {B : Obj} {n : USize} (X : Vals (.arr B) n)
     (hb : (permC X).2 = true) :
     ∀ (xs : List B.El) ys, rep (permC X).1 xs ys ↔ (∃ i, X.row i = xs) ∧ ys.Perm xs := by
   intro xs ys; unfold permC at hb ⊢
-  refine (rep_foldByC false (nilVal B) X _ hb _ rfl _ rfl _ (fun _ _ => rfl)
+  refine (rep_foldByC true (nilVal B) X _ hb _ rfl _ rfl _ (fun _ _ => rfl)
     (fun _ eu v => ∃ ys zs, eu.2 = ys ++ zs ∧ v = ys ++ eu.1 :: zs) _ (fun _ => rfl) _ (fun _ => rfl) False
     (fun i _ _ hbi r v => ?_) xs ys).trans ?_
   · simp only [Bool.and_eq_true] at hbi
-    obtain ⟨hDp, hun, hU, hq, hD, hW, hCn, hV, hCt, hR⟩ := hbi
+    obtain ⟨hDp, hun, hU, hq, hD, hW, hSn, hV, hCt, hR⟩ := hbi
     simp only [false_and, or_false]
     have eDp := (rep_ranC _ hDp).trans (dom_corefl _)
     refine perm_step_set _ _ _ _ _ _ _ _ _ _ (fun r ys zs => ?_)
       (fun r e p => Iff.of_eq (congrFun (congrFun (rep_pairC _ _ hq) r) (e, p)))
       (fun t t' => Iff.of_eq (congrFun (congrFun ((rep_ranC _ hD).trans (dom_corefl _)) t) t'))
-      (fun t a b => Iff.of_eq (congrFun (congrFun (rep_pairC _ _ hW) t) (a, b))) (rep_consC _ hCn)
+      (fun t xs a => Iff.of_eq (congrFun (congrFun (rep_pairC _ _ hW) t) (xs, a))) (rep_snocC _ hSn)
       (fun t xs ys => Iff.of_eq (congrFun (congrFun (rep_pairC _ _ hV) t) (xs, ys))) (rep_catC _ hCt)
       (fun r v => Iff.of_eq (congrFun (congrFun (rep_compC _ _ hR) r) v)) r v
     rw [rep_compC _ _ hU, Core.Rel.comp_apply]
@@ -400,64 +450,37 @@ theorem rep_permC {B : Obj} {n : USize} (X : Vals (.arr B) n)
     exact ⟨j, hj⟩
   -- `nilVal B`'s one row is `[]`
   exact and_congr Iff.rfl ((exists_congr fun zs => exists_congr fun _ => and_congr
-    ⟨fun ⟨_, h⟩ => h.symm, fun h => ⟨⟨0, by simp⟩, h.symm⟩⟩ Iff.rfl).trans (perm_chain xs ys))
+    ⟨fun ⟨_, h⟩ => h.symm, fun h => ⟨⟨0, by simp⟩, h.symm⟩⟩ Iff.rfl).trans ((perm_chain xs.reverse ys).trans
+      ⟨fun h => h.trans (List.reverse_perm xs), fun h => h.trans (List.reverse_perm xs).symm⟩))
 
-/-- **`subseq` under `subseqC`'s bit**: `rep_foldByC` at `keep := True`, each round's step read back by
-    `rep_unionC`, `rep_consC`, `rep_pairC` and split by `subseq_keep`, then `subseq_chain`. -/
+/-- **`subseq` under `subseqC`'s bit**: `rep_foldByC` at the left read and `keep := True`, each round's step read
+    back by `rep_unionC`, `rep_snocC`, `rep_pairC` and split by `subseq_keep`, then `chain_reverse` onto
+    `subseq_chain` at the reversals. -/
 theorem rep_subseqC {B : Obj} {n : USize} (X : Vals (.arr B) n)
     (hb : (subseqC X).2 = true) :
     ∀ (xs : List B.El) ys, rep (subseqC X).1 xs ys ↔ (∃ i, X.row i = xs) ∧ ys.Sublist xs := by
   intro xs ys; unfold subseqC at hb ⊢
-  refine (rep_foldByC false (nilVal B) X _ hb _ rfl _ rfl _ (fun _ _ => rfl)
-    (fun _ eu v => v = eu.1 :: eu.2 ∨ v = eu.2) _ (fun _ => rfl) _ (fun _ => rfl) True
+  refine (rep_foldByC true (nilVal B) X _ hb _ rfl _ rfl _ (fun _ _ => rfl)
+    (fun _ eu v => v = eu.2 ++ [eu.1] ∨ v = eu.2) _ (fun _ => rfl) _ (fun _ => rfl) True
     (fun i _ _ hbi r v => ?_) xs ys).trans ?_
   · simp only [Bool.and_eq_true] at hbi
     obtain ⟨⟨hp, hc⟩, hu⟩ := hbi
-    refine subseq_keep _ _ v _ ?_
+    refine subseq_keep (fun e u => u ++ [e]) _ _ v _ ?_
     show rep (unionC _ _).1 r v ↔ _
     rw [rep_unionC _ _ hu]
     show _ ∨ _ ↔ _
-    rw [rep_consC _ hc, rep_pairC _ _ hp]
-    exact or_congr ⟨fun ⟨b, bs, ⟨he, hu⟩, e⟩ => ⟨b, bs, he, hu, e⟩, fun ⟨b, bs, he, hu, e⟩ => ⟨b, bs, ⟨he, hu⟩, e⟩⟩
+    rw [rep_snocC _ hc, rep_pairC _ _ hp]
+    exact or_congr ⟨fun ⟨bs, b, ⟨hu, he⟩, e⟩ => ⟨b, bs, he, hu, e⟩, fun ⟨b, bs, he, hu, e⟩ => ⟨bs, b, ⟨hu, he⟩, e⟩⟩
       Iff.rfl
   -- `nilVal B`'s one row is `[]`
   exact and_congr Iff.rfl ((exists_congr fun zs => exists_congr fun _ => and_congr
-    ⟨fun ⟨_, h⟩ => h.symm, fun h => ⟨⟨0, by simp⟩, h.symm⟩⟩ Iff.rfl).trans (subseq_chain xs ys))
-
-/-- **`thinBodyC`'s body on a coreflexive `D`, read back under its bit**: `thin_body_set` with each piece read
-    back by its twin's lemma, `swapInC`'s pieces by theirs. `hq` is the test's own spec: where `q`'s bit is set, `q` on a
-    coreflexive keeps the pairs of it `le` holds of. -/
-theorem thinBodyC_rep {B : Obj}
-    (q : Rel (.prod B B) (.prod B B) → Rel (.prod B B) (.prod B B) × Bool) (le : B.El → B.El → Bool)
-    (hq : ∀ (D : Rel (.prod B B) (.prod B B)) (S : (Obj.prod B B).El → Prop),
-      rep D = corefl (α := (Obj.prod B B).El) S → (q D).2 = true →
-      ∀ a b, S (a, b) → ((∃ c, rep (q D).1 (a, b) c) ↔ le a b = true))
-    (D : Rel (.prod B (.arr B)) (.prod B (.arr B))) (hD : ∀ s s', rep D s s' → s = s')
-    (hb : (thinBodyC q D).2 = true) :
-    ∀ a (y v : List B.El), rep (thinBodyC q D).1 (a, y) v ↔ rep D (a, y) (a, y) ∧ ((y = [] ∧ v = [a]) ∨
-      ∃ b bs, y = b :: bs ∧ ((le a b = true ∧ v = a :: bs) ∨ (le b a = true ∧ v = y) ∨
-        (le a b = false ∧ le b a = false ∧ v = a :: y))) := by
-  simp only [thinBodyC, Bool.and_eq_true] at hb
-  obtain ⟨hun, hu, hab, hrab, hG1, hq1, hup, hsw, hq3, hdown, hdu, hl1, hl2, hl3, hlone, hc1,
-    hua, huu, hru, hut, hpu, hc2, hdy, hb1, hbody⟩ := hb
-  -- `swapInC`'s bit, its pieces' bits
-  simp only [swapInC, okbit] at hsw
-  obtain ⟨⟨⟨⟨hss, hrs⟩, hG2⟩, hq2⟩, hsw⟩ := hsw
-  have eD : rep D = corefl (α := (Obj.prod B (.arr B)).El) fun s => rep D s s :=
-    Core.Rel.ext fun s s' => ⟨fun h => ⟨hD s s' h, by obtain rfl := hD s s' h; exact h⟩, fun ⟨e, h⟩ => e ▸ h⟩
-  have eab := (rep_ranC _ hrab).trans (dom_corefl _); have ers := (rep_ranC _ hrs).trans (dom_corefl _)
-  exact thin_body_set le D _ eD _ rfl _ rfl _ (rep_unconsC _ hun) (rep_compC _ _ hu) _ (rep_pairC _ _ hab)
-    _ eab _ (fun a b h => hq _ _ eab hG1 a b (by rw [eab] at h; exact h.2)) _ (rep_compC _ _ hq1)
-    _ ((rep_domC _ hup).trans (dom_corefl _)) _ (rep_pairC _ _ hss) _ ers
-    _ (fun a b h => hq _ _ ers hG2 b a (by rw [ers] at h; exact h.2)) _ (rep_compC _ _ hq2) _ ((rep_domC _ hsw).trans (dom_corefl _))
-    _ (rep_compC _ _ hq3) _ ((rep_domC _ hdown).trans (dom_corefl _)) _ ((rep_domC _ hdu).trans (dom_corefl _))
-    _ (rep_diffC _ _ hl1) _ (rep_diffC _ _ hl2) _ (rep_diffC _ _ hl3) _ (rep_unionC _ _ hlone)
-    _ (rep_consC _ hc1) _ (rep_compC _ _ hua) _ (rep_compC _ _ huu) _ ((rep_ranC _ hru).trans (dom_corefl _))
-    _ (rep_compC _ _ hut) _ (rep_pairC _ _ hpu) _ (rep_consC _ hc2) _ (rep_compC _ _ hdy)
-    _ (rep_unionC _ _ hb1) _ (rep_unionC _ _ hbody)
+    ⟨fun ⟨_, h⟩ => h.symm, fun h => ⟨⟨0, by simp⟩, h.symm⟩⟩ Iff.rfl).trans
+    ((chain_reverse xs.reverse ys (fun a u v => v = u ++ [a] ∨ v = u) (fun a u v => v = a :: u ∨ v = u)
+      fun a u v => or_congr (List.reverse_inj.symm.trans (by rw [List.reverse_append]; exact Iff.rfl))
+        List.reverse_inj.symm).trans ((subseq_chain xs.reverse ys.reverse).trans List.reverse_sublist)))
 
 /-- What `thinLOn` computes from one array `xs`, `le` its test read as an order: the chain `ys` from `[]`, each
-    `ys[t]` the element `xs[t]` bumped into `ys[t+1]` (`thinBodyC_rep`), `w` its head. -/
+    `ys[t]` the element `xs[t]` bumped into `ys[t+1]`, `w` its head. -/
 def thinLDen {B : Obj} (le : B.El → B.El → Bool) (xs w : List B.El) : Prop :=
       ∃ ys : List (Obj.arr B).El, ∃ hy : ys.length = xs.length + 1,
         (∃ p, (nilVal B).row p = ys[xs.length]'(Nat.lt_of_lt_of_eq (Nat.lt_succ_self _) hy.symm)) ∧
@@ -473,33 +496,9 @@ def thinLDen {B : Obj} (le : B.El → B.El → Bool) (xs w : List B.El) : Prop :
                   xs[t]'ht :: ys[t + 1]'(Nat.lt_of_lt_of_eq (Nat.succ_lt_succ ht) hy.symm)))) ∧
         w = ys[0]'(Nat.lt_of_lt_of_eq (Nat.zero_lt_succ _) hy.symm)
 
-/-- **`thinLOn` under `thinLOnC`'s bit**: `rep_foldOnC` at `thinBodyC q`, each round's body read back on its pairs
-    by `thinBodyC_rep`. What stays: `hq`, the test's own spec on the coreflexives it is run on. -/
-theorem rep_thinLOnC {B : Obj} {n : USize} (q : Rel (.prod B B) (.prod B B) → Rel (.prod B B) (.prod B B) × Bool)
-    (le : B.El → B.El → Bool) (X : Vals (.arr B) n)
-    (hq : ∀ (D : Rel (.prod B B) (.prod B B)) (S : (Obj.prod B B).El → Prop),
-      rep D = corefl (α := (Obj.prod B B).El) S → (q D).2 = true →
-      ∀ a b, S (a, b) → ((∃ c, rep (q D).1 (a, b) c) ↔ le a b = true))
-    (hb : (thinLOnC q X).2 = true) :
-    ∀ (xs : List B.El) w, rep (thinLOnC q X).1 xs w ↔ (∃ i, X.row i = xs) ∧ thinLDen le xs w :=
-  rep_foldOnC (E := B) (V := .arr B) (m := 1) false pairC Prod.mk pairC_pt (nilVal B) (thinBodyC q) X hb _ rfl _ rfl _ (fun _ _ => rfl)
-    _ (fun _ => rfl) _ (fun _ => rfl) _ (fun _ => rfl)
-    (fun _ (p : B.El × List B.El) v => (p.2 = [] ∧ v = [p.1]) ∨ ∃ b bs, p.2 = b :: bs ∧
-      ((le p.1 b = true ∧ v = p.1 :: bs) ∨ (le b p.1 = true ∧ v = p.2) ∨
-        (le p.1 b = false ∧ le b p.1 = false ∧ v = p.1 :: p.2)))
-    (fun _ _ _ hbi p w hp hcor => by
-      obtain ⟨a, y⟩ := p
-      simp only [demandStepC, Bool.and_eq_true] at hbi
-      refine (thinBodyC_rep q le hq _ hcor hbi.1.2 a y w).trans (and_iff_right ?_)
-      obtain ⟨s, hs⟩ := hp
-      obtain rfl := hcor _ _ hs
-      exact hs)
-
 #print axioms rep_permC
 #print axioms rep_subseqC
 #print axioms rep_diffC
-#print axioms thinBodyC_rep
-#print axioms rep_thinLOnC
 #print axioms rep_foldOnC
 #print axioms rep_foldC
 #print axioms rep_mapC
@@ -614,22 +613,11 @@ theorem rep_subseq {B : Obj} {n : USize} (X : Vals (.arr B) n)
     ∀ (xs : List B.El) ys, rep (subseq X).rel xs ys ↔ (∃ i, X.row i = xs) ∧ ys.Sublist xs :=
   by unfold CRel.subseq at hb ⊢; rw [rep_ofC hb]; exact rep_subseqC X (ofC_ok hb).1
 
-/-- **`CRel.thinLOn` read back under its bit**: `rep_thinLOnC`. -/
-theorem rep_thinLOn {B : Obj} {n : USize} (q : CRel (.prod B B) (.prod B B) → CRel (.prod B B) (.prod B B))
-    (le : B.El → B.El → Bool) (X : Vals (.arr B) n)
-    (hq : ∀ (D : Rel (.prod B B) (.prod B B)) (S : (Obj.prod B B).El → Prop),
-      rep D = corefl (α := (Obj.prod B B).El) S → (q ⟨D, true⟩).ok = true →
-      ∀ a b, S (a, b) → ((∃ c, rep (q ⟨D, true⟩).rel (a, b) c) ↔ le a b = true))
-    (hb : (thinLOn q X).ok = true) :
-    ∀ (xs : List B.El) w, rep (thinLOn q X).rel xs w ↔ (∃ i, X.row i = xs) ∧ thinLDen le xs w :=
-  by unfold CRel.thinLOn at hb ⊢; rw [rep_ofC hb]; exact rep_thinLOnC _ le X hq (ofC_ok hb).1
-
 #print axioms Arr.rep_sum
 #print axioms rep_length
 #print axioms rep_map
 #print axioms rep_perm
 #print axioms rep_subseq
-#print axioms rep_thinLOn
 
 /-- **`CRel.diff` read back under its bit**: `rep_diffC`. -/
 theorem rep_diff {A B : Obj} (R S : CRel A B) (hb : (diff R S).ok = true) (a : A.El) (b : B.El) :

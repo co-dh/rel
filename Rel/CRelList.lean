@@ -120,26 +120,6 @@ theorem rep_consC {K B : Obj} (P : Rel K (.prod B (.arr B))) (hb : (consC P).2 =
     ∀ k ys, rep (consC P).1 k ys ↔ ∃ b bs, rep P k (b, bs) ∧ ys = b :: bs := by
   exact rep_cons_ok P (consC_ok P hb)
 
-open scoped Rel.Core.Rel in
-open Rel.Core.Rel hiding id comp recip inter union zero le inl inr junc in
-/-- **`rep (α)` under `alphaC`'s bit**: `need`'s guard is `rep_alpha`'s `hN`, the decided bound its `h63`, the
-    raze's bit its `hF` (`razeC_fits`), `consC`'s bit its `hc` (`consC_ok`). -/
-theorem rep_alphaC {K B : Obj} {n : USize} (I : Vals K 1) (P : Vals (.prod B (.arr B)) n)
-    (hb : (alphaC I P).2 = true) :
-    rep (alphaC I P).1 = Core.Rel.junc
-      (corefl (α := K.El) (fun u => ∃ i, I.row i = u) ≫
-        (graph (fun _ => []) :Core.Rel (K.El) (List B.El)))
-      (corefl (α := B.El × List B.El) (fun p => ∃ i, P.row i = p) ≫
-        (graph (fun p => p.1 :: p.2) :Core.Rel (B.El × List B.El) (List B.El))) := by
-  simp only [alphaC, okbit] at hb
-  obtain ⟨hj, hcb⟩ := hb
-  simp only [juncC, need] at hj
-  split at hj
-  · rename_i hN
-    simp only [okbit] at hj
-    exact rep_alpha I P hN hj.1 (Obj.razeC_fits (.arr B) _ _ _ (by rfl) _ hj.2) (consC_ok _ hcb)
-  · exact absurd hj Bool.false_ne_true
-
 /-- **`catC`'s bit is `rep_cat`'s premises** (`catOK`), as `consC_ok`: the two copies' counts `ka + kb` decided its
     `hS`, `need`'s guard its `hU`, each a side's counts summed (`len_expand_slicesOf`). -/
 theorem catC_ok {K B : Obj} (P : Rel K (.prod (.arr B) (.arr B))) (hb : (catC P).2 = true) : catOK(K, B, P) := by
@@ -313,6 +293,86 @@ theorem rep_snocC {K B : Obj} (P : Rel K (.prod (.arr B) B)) (hb : (snocC P).2 =
   refine ⟨compC_cmpOK _ _ hM, ?_⟩
   rintro M rfl
   exact catC_ok _ hr
+
+/-- **`cons` built by appending, under `consCatC`'s bit**: each piece read back by its twin's lemma (`rep_ranC`,
+    `rep_topC`, `rep_pairC`, `rep_snocC`, `rep_compC`, `rep_catC`); `nilVal`'s one row is `[]`. -/
+theorem rep_consCatC {K B : Obj} (P : Rel K (.prod B (.arr B))) (hb : (consCatC P).2 = true) :
+    ∀ k ys, rep (consCatC P).1 k ys ↔ ∃ b bs, rep P k (b, bs) ∧ ys = b :: bs := by
+  simp only [consCatC, Bool.and_eq_true] at hb
+  obtain ⟨⟨⟨⟨⟨⟨hD, hN⟩, hS⟩, hs⟩, hQ⟩, hM⟩, hr⟩ := hb
+  -- `ran P`: each pair `P` reaches, to itself
+  have eD : ∀ t t', rep (ranC P).1 t t' ↔ t = t' ∧ ∃ k, rep P k t :=
+    fun t t' => Iff.of_eq (congrFun (congrFun ((rep_ranC _ hD).trans (dom_corefl _)) t) t')
+  have eN : ∀ t x, rep (topC (A := .prod B (.arr B)) (ranC P).1.key (nilVal B)).1 t x ↔
+      (∃ i, (ranC P).1.key.row i = t) ∧ x = [] := by
+    intro t x
+    rw [rep_topC _ _ hN]
+    constructor
+    · rintro ⟨_, ⟨rfl, hk⟩, _, -, rfl, _, hj⟩
+      exact ⟨hk, hj.symm⟩
+    · rintro ⟨hk, hx⟩
+      exact ⟨t, ⟨rfl, hk⟩, x, trivial, rfl, ⟨0, by simp⟩, hx.symm⟩
+  -- `⟨nil, π₁⟩ ≫ snoc` on `ran P`: a pair to its head alone
+  have eS : ∀ t xs, rep (snocC (pairC (topC (A := .prod B (.arr B)) (ranC P).1.key (nilVal B)).1
+      (outl (ranC P).1)).1).1 t xs ↔ (∃ k, rep P k t) ∧ xs = [t.1] := by
+    intro t xs
+    rw [rep_snocC _ hs]
+    constructor
+    · rintro ⟨ns, a, hp, rfl⟩
+      rw [rep_pairC _ _ hS] at hp
+      obtain ⟨hn, ha⟩ := hp
+      obtain ⟨-, rfl⟩ := (eN _ _).1 hn
+      obtain ⟨z, hz⟩ := (outl_holds _ t a).1 ha
+      obtain ⟨e, hk⟩ := (eD _ _).1 hz
+      subst e
+      exact ⟨hk, rfl⟩
+    · rintro ⟨hk, rfl⟩
+      have ht : rep (ranC P).1 t t := (eD t t).2 ⟨rfl, hk⟩
+      obtain ⟨i, hi, -⟩ := id ht
+      refine ⟨[], t.1, ?_, rfl⟩
+      rw [rep_pairC _ _ hS]
+      exact ⟨(eN _ _).2 ⟨⟨i, hi⟩, rfl⟩, (outl_holds _ t t.1).2 ⟨t.2, ht⟩⟩
+  intro k ys
+  simp only [consCatC]
+  rw [rep_catC _ hr]
+  constructor
+  · rintro ⟨xs, zs, hm, rfl⟩
+    rw [rep_compC _ _ hM] at hm
+    obtain ⟨t, hk, hq⟩ := hm
+    rw [rep_pairC _ _ hQ] at hq
+    obtain ⟨hx, hz⟩ := hq
+    obtain ⟨-, rfl⟩ := (eS _ _).1 hx
+    obtain ⟨x, hx'⟩ := (outr_holds _ t zs).1 hz
+    obtain ⟨e, -⟩ := (eD _ _).1 hx'
+    subst e
+    exact ⟨x, zs, hk, rfl⟩
+  · rintro ⟨b, bs, hk, rfl⟩
+    have ht : rep (ranC P).1 (b, bs) (b, bs) := (eD _ _).2 ⟨rfl, k, hk⟩
+    refine ⟨[b], bs, ?_, rfl⟩
+    rw [rep_compC _ _ hM]
+    refine ⟨(b, bs), hk, ?_⟩
+    rw [rep_pairC _ _ hQ]
+    exact ⟨(eS _ _).2 ⟨⟨k, hk⟩, rfl⟩, (outr_holds _ _ bs).2 ⟨b, ht⟩⟩
+
+open scoped Rel.Core.Rel in
+open Rel.Core.Rel hiding id comp recip inter union zero le inl inr junc in
+/-- **`rep (α)` under `alphaC`'s bit**: `need`'s guard is `rep_alpha`'s `hN`, the decided bound its `h63`, the
+    raze's bit its `hF` (`razeC_fits`), `consCatC`'s read-back its `hc` (`rep_consCatC`). -/
+theorem rep_alphaC {K B : Obj} {n : USize} (I : Vals K 1) (P : Vals (.prod B (.arr B)) n)
+    (hb : (alphaC I P).2 = true) :
+    rep (alphaC I P).1 = Core.Rel.junc
+      (corefl (α := K.El) (fun u => ∃ i, I.row i = u) ≫
+        (graph (fun _ => []) :Core.Rel (K.El) (List B.El)))
+      (corefl (α := B.El × List B.El) (fun p => ∃ i, P.row i = p) ≫
+        (graph (fun p => p.1 :: p.2) :Core.Rel (B.El × List B.El) (List B.El))) := by
+  simp only [alphaC, okbit] at hb
+  obtain ⟨hj, hcb⟩ := hb
+  simp only [juncC, need] at hj
+  split at hj
+  · rename_i hN
+    simp only [okbit] at hj
+    exact rep_alpha I P hN hj.1 (Obj.razeC_fits (.arr B) _ _ _ (by rfl) _ hj.2) (rep_consCatC _ hcb)
+  · exact absurd hj Bool.false_ne_true
 
 /-- **`gather 8 src idx` misses**: long `j` reads `0` where its index is past `src`'s count. -/
 theorem gather8_miss {src idx : ByteArray} {j : Nat} (hj : j < len idx)

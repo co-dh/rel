@@ -96,23 +96,23 @@ open scoped Rel.Core.Rel in
 open Rel.Core.Rel hiding id comp recip inter union zero le inl inr junc in
 /-- **`α ≜ [nil, cons]`, read back**: the copairing, out of the sum, of `nil` on the elements `I` lists (each to
     the empty array) and `cons` on the pairs `P` lists (`(b, bs)` to `b :: bs`). Hypotheses: `rep_junc_full`'s at
-    `nil I`, `cons (idU P)` (`hN`, `h63`, `hF`), `rep_cons`'s at `idU P` (`hc`). -/
+    `nil I`, `(consCatC (idU P)).1` (`hN`, `h63`, `hF`), that relation's read-back (`hc`). -/
 theorem rep_alpha {K B : Obj} {n : USize} (I : Vals K 1) (P : Vals (.prod B (.arr B)) n)
-    (hN : (Alg.nil (B := B) I).n.toNat + (cons (idU P)).n.toNat < USize.size)
-    (h63 : (Alg.nil (B := B) I).n.toNat + (cons (idU P)).n.toNat ≤ 2 ^ 63)
-    (hF : Vals.RazeFits (.arr B) (Alg.nil (B := B) I).val (cons (idU P)).val)
-    (hc : consOK(.prod B (.arr B), B, idU P)) :
+    (hN : (Alg.nil (B := B) I).n.toNat + (consCatC (idU P)).1.n.toNat < USize.size)
+    (h63 : (Alg.nil (B := B) I).n.toNat + (consCatC (idU P)).1.n.toNat ≤ 2 ^ 63)
+    (hF : Vals.RazeFits (.arr B) (Alg.nil (B := B) I).val (consCatC (idU P)).1.val)
+    (hc : ∀ p ys, rep (consCatC (idU P)).1 p ys ↔ ∃ b bs, rep (idU P) p (b, bs) ∧ ys = b :: bs) :
     rep (alpha I P) = Core.Rel.junc
       (corefl (α := K.El) (fun u => ∃ i, I.row i = u) ≫
         (graph (fun _ => []) :Core.Rel (K.El) (List B.El)))
       (corefl (α := B.El × List B.El) (fun p => ∃ i, P.row i = p) ≫
         (graph (fun p => p.1 :: p.2) :Core.Rel (B.El × List B.El) (List B.El))) := by
-  rw [show alpha I P = junc (nil I) (cons (idU P)) from rfl, rep_junc_full _ _ hN h63 hF, ← rep_idU P]
+  rw [show alpha I P = junc (nil I) (consCatC (idU P)).1 from rfl, rep_junc_full _ _ hN h63 hF, ← rep_idU P]
   congr 1
   · refine Core.Rel.ext fun u xs => (rep_nil I u xs).trans ⟨?_, ?_⟩
     · rintro ⟨h, rfl⟩; exact ⟨u, ⟨rfl, h⟩, rfl⟩
     · rintro ⟨v, ⟨rfl, h⟩, rfl⟩; exact ⟨h, rfl⟩
-  · refine Core.Rel.ext fun p ys => (rep_cons_ok _ hc p ys).trans ⟨?_, ?_⟩
+  · refine Core.Rel.ext fun p ys => (hc p ys).trans ⟨?_, ?_⟩
     · rintro ⟨b, bs, h, rfl⟩; exact ⟨(b, bs), h, rfl⟩
     · rintro ⟨⟨b, bs⟩, h, rfl⟩; exact ⟨b, bs, h, rfl⟩
 
@@ -121,12 +121,12 @@ theorem rep_alpha {K B : Obj} {n : USize} (I : Vals K 1) (P : Vals (.prod B (.ar
 open scoped Rel.Core.Rel in
 open Rel.Core.Rel hiding id comp recip inter union zero le inl inr junc in
 /-- **`tic`, read back**: a row `(b, bs)` of `P` goes to the non-empty prefixes of `b :: bs`, shortest first.
-    `tic P` is `I ≫ tail I.val`, `I = C ≫ inits C.val`, `C = cons P` (bound by `hC`, `hI`). Hypotheses:
-    `rep_cons`'s at `P` (`hc`), `rep_comp`'s at `I` (`h1`) and at the result (`h2`), `rep_inits`'s at `C.val`
-    (`hi`), `rep_tail`'s at `I.val` (`ht`). -/
-theorem tic_of {K B : Obj} (P : Rel K (.prod B (.arr B))) (C : Rel K (.arr B)) (hC : C = cons P)
+    `tic P` is `I ≫ tail I.val`, `I = C ≫ inits C.val`, `C` the `cons` of `consCatC P` (bound by `hC`, `hI`).
+    Hypotheses: `C`'s read-back (`eC`), `rep_comp`'s at `I` (`e1`) and at the result (`e2`), `rep_inits`'s at
+    `C.val` (`eN`), `rep_tail`'s at `I.val` (`eT`). -/
+theorem tic_of {K B : Obj} (P : Rel K (.prod B (.arr B))) (C : Rel K (.arr B)) (hC : C = (consCatC P).1)
     (I : Rel K (.arr (.arr B))) (hI : I = C ≫ inits (Rel.val C))
-    (eC : ∀ k ys, rep (cons P) k ys ↔ ∃ b bs, rep P k (b, bs) ∧ ys = b :: bs)
+    (eC : ∀ k ys, rep (consCatC P).1 k ys ↔ ∃ b bs, rep P k (b, bs) ∧ ys = b :: bs)
     (e1 : rep (C ≫ inits (Rel.val C)) = rep C ≫ rep (inits (Rel.val C)))
     (eN : ∀ xs yss, rep (inits (Rel.val C)) xs yss ↔ (∃ j, (Rel.val C).row j = xs) ∧
       yss = (List.range (xs.length + 1)).map fun k => xs.take k)
@@ -170,20 +170,20 @@ theorem tic_of {K B : Obj} (P : Rel K (.prod B (.arr B))) (C : Rel K (.arr B)) (
 
 /-- `perm`'s step on relations: given what each piece relates, `q ≫ cat V` takes row `r`'s element `e` and list
     `u = ys ++ zs` to `ys ++ e :: zs`. The pieces are as `perm` builds them: `U = pend ≫ uncat`, `q = ⟨el, U⟩`,
-    `D = ran q`, `W = ⟨π₁ D, π₂ π₂ D⟩`, `Cn = cons W`, `V = ⟨π₁ π₂ D, Cn⟩`, `Ct = cat V`, `R = q ≫ Ct`. -/
+    `D = ran q`, `W = ⟨π₁ π₂ D, π₁ D⟩`, `Sn = snoc W`, `V = ⟨Sn, π₂ π₂ D⟩`, `Ct = cat V`, `R = q ≫ Ct`. -/
 theorem perm_step_set {B : Obj} (el : Rel .long B) (pend : Rel .long (.arr B))
     (U : Rel .long (.prod (.arr B) (.arr B))) (q : Rel .long (.prod B (.prod (.arr B) (.arr B))))
     (D : Rel (.prod B (.prod (.arr B) (.arr B))) (.prod B (.prod (.arr B) (.arr B))))
-    (W : Rel (.prod B (.prod (.arr B) (.arr B))) (.prod B (.arr B)))
-    (Cn : Rel (.prod B (.prod (.arr B) (.arr B))) (.arr B))
+    (W : Rel (.prod B (.prod (.arr B) (.arr B))) (.prod (.arr B) B))
+    (Sn : Rel (.prod B (.prod (.arr B) (.arr B))) (.arr B))
     (V : Rel (.prod B (.prod (.arr B) (.arr B))) (.prod (.arr B) (.arr B)))
     (Ct : Rel (.prod B (.prod (.arr B) (.arr B))) (.arr B)) (R : Rel .long (.arr B))
     (hU : ∀ r ys zs, rep U r (ys, zs) ↔ ∃ u, rep pend r u ∧ u = ys ++ zs)
     (hq : ∀ r e p, rep q r (e, p) ↔ rep el r e ∧ rep U r p)
     (hD : ∀ t t', rep D t t' ↔ t = t' ∧ ∃ r, rep q r t)
-    (hW : ∀ t a b, rep W t (a, b) ↔ rep (outl D) t a ∧ rep (outr (outr D)) t b)
-    (hCn : ∀ t ys, rep Cn t ys ↔ ∃ a b, rep W t (a, b) ∧ ys = a :: b)
-    (hV : ∀ t xs ys, rep V t (xs, ys) ↔ rep (outl (outr D)) t xs ∧ rep Cn t ys)
+    (hW : ∀ t xs a, rep W t (xs, a) ↔ rep (outl (outr D)) t xs ∧ rep (outl D) t a)
+    (hSn : ∀ t ys, rep Sn t ys ↔ ∃ xs a, rep W t (xs, a) ∧ ys = xs ++ [a])
+    (hV : ∀ t xs ys, rep V t (xs, ys) ↔ rep Sn t xs ∧ rep (outr (outr D)) t ys)
     (hCt : ∀ t zs, rep Ct t zs ↔ ∃ xs ys, rep V t (xs, ys) ∧ zs = xs ++ ys)
     (hR : ∀ r v, rep R r v ↔ ∃ t, rep q r t ∧ rep Ct t v) :
     ∀ r v, rep R r v ↔ ∃ e u, rep el r e ∧ rep pend r u ∧ ∃ ys zs, u = ys ++ zs ∧ v = ys ++ e :: zs := by
@@ -213,15 +213,15 @@ theorem perm_step_set {B : Obj} (el : Rel .long B) (pend : Rel .long (.arr B))
     constructor
     · rintro ⟨xs, ys, hv, rfl⟩
       obtain ⟨hx, hy⟩ := (hV _ _ _).1 hv
-      obtain ⟨rfl, -⟩ := (hlr _ _).1 hx
-      obtain ⟨a, b, hw, rfl⟩ := (hCn _ _).1 hy
-      obtain ⟨ha, hb⟩ := (hW _ _ _).1 hw
+      obtain ⟨zs, a, hw, rfl⟩ := (hSn _ _).1 hx
+      obtain ⟨hz, ha⟩ := (hW _ _ _).1 hw
+      obtain ⟨rfl, -⟩ := (hlr _ _).1 hz
       obtain ⟨rfl, -⟩ := (hl _ _).1 ha
-      obtain ⟨rfl, -⟩ := (hrr _ _).1 hb
-      rfl
+      obtain ⟨rfl, -⟩ := (hrr _ _).1 hy
+      simp only [List.append_assoc, List.singleton_append]
     · rintro rfl
-      exact ⟨_, _, (hV _ _ _).2 ⟨(hlr _ _).2 ⟨rfl, ht⟩, (hCn _ _).2
-        ⟨_, _, (hW _ _ _).2 ⟨(hl _ _).2 ⟨rfl, ht⟩, (hrr _ _).2 ⟨rfl, ht⟩⟩, rfl⟩⟩, rfl⟩
+      exact ⟨_, _, (hV _ _ _).2 ⟨(hSn _ _).2 ⟨_, _, (hW _ _ _).2 ⟨(hlr _ _).2 ⟨rfl, ht⟩, (hl _ _).2 ⟨rfl, ht⟩⟩, rfl⟩,
+        (hrr _ _).2 ⟨rfl, ht⟩⟩, by simp only [List.append_assoc, List.singleton_append]⟩
   intro r v
   rw [hR]
   constructor
