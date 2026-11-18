@@ -160,7 +160,7 @@ Size：S = 一步，少于 20 次 tool call；M = 一到三步；L = 多于三�
   `comp` 不再对 `R` 的结果做 `ranC`，`S` 直接拿 `R` 的值列。
 - ✅ 3.7 fold 和不动点（d1a45f0）：`foldr fold foldI flat hylo juncD` 是 `ofVals` 叶子，`nu nuAC mu` 是闭合体的 `.tab`；
   `onNodes` 分 tab/lazy 两种。`Fn.ofDem`、`Fn.at`、`KSound`、`Sound.at` 仍有调用者，3.12 删。
-- 🔄 3.8 `Compile`、`Expand`、测试迁到新的 `Fn`。红：`Out.memo_eq`；`rel_program` 展开出 "function expected"。
+- ✅ 3.8 `Compile`、`Expand`、测试迁到新的 `Fn`（rel-lazy 867370d，全量 build、compile-diff 241/25、native 都绿）。Quicksort OOM：`compT` 把表的整列值（含重复）交给后面的 lazy 部分，改为 `ranC r`（faf139b）；`Expand.lem` 从项取每个部分的 `d`。
 - ⬜ 3.9 从 `Tm` 去掉下标。
 - ⬜ 3.10 没有 demand bit 的 `Elab`。
 - ⬜ 3.11 没有 demand bit 的 `Expand`。
