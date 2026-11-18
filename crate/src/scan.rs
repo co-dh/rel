@@ -573,7 +573,7 @@ macro_rules! by_op { ($op:expr, $k:ident => $body:expr) => { by_op!(@ $op, $k, $
     (@ $op:expr, $k:ident, $body:expr; $($n:literal)*) => { match $op { $($n => { const $k: u8 = $n; $body })* _ => { const $k: u8 = 45; $body } } } }
 
 /// The writer's block size, `kscan`'s answer grid: a block of rows is computed whole in one scratch of this many words.
-const BLK: usize = crate::BLK;
+const BLK: usize = 1 << crate::DEFAULT_LG;
 /// A block's `seg` bits as words.
 type Seg = [u64; BLK / 64];
 

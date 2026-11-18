@@ -6,7 +6,7 @@ use crate::lean::{O, SArr, export};
 use {crate::lean::B, crate::scan};
 
 #[cfg(all(feature = "ffi", not(any(test, feature = "std"))))]
-use {crate::{blocks::Blocks, ffi::{Form, Sink}, ids, lean::{ctor, string}}, alloc::{format, string::String, vec, vec::Vec}};
+use {crate::{blocks::Blocks, ffi::{Form, Sink}, ids, lean::{ctor, string}}, alloc::{string::String, vec, vec::Vec}};
 
 /// `Enc.raw t n e` (Rel/Kernel/Value.lean), arm for arm: `None` where `raw` is `#[]`, a form `t` does not read. A dense,
 /// bit or id payload short of `n` reads 0 past its end, as `bitsAt`, `bitAt` and `idAt` do.
