@@ -5,12 +5,12 @@ import Rel.Programs.Circuit
 
 namespace Rel.Lang.TestCircuit
 
-open Rel Rel.Lang Rel.Alg Rel.Lang.Test Rel
+open Tab Rel.Lang Rel.Alg Rel.Lang.Test Rel
 
 -- row order is not part of a relation, so rows compare sorted; the program's array `a b c` reads as the row
 -- `[a, b, c]`
 def sorted (xs : List (List Int64)) : List (List Int64) := xs.mergeSort fun a b => decide (a ≤ b)
-def rowsA {v : Obj} (f : v.El → List Int64) (R : Rel (.arr .long) v) : List (List Int64) :=
+def rowsA {v : Obj} (f : v.El → List Int64) (R : Tab (.arr .long) v) : List (List Int64) :=
   sorted (R.toList.map fun (xs, y) => xs ++ f y)
 
 open Rel.Programs.prelude Programs.circuit in

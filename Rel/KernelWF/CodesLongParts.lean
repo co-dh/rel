@@ -6,7 +6,7 @@ import Rel.KernelWF.RazeFoR
 
 namespace Rel.Alg
 
-open Rel Rel.Dep Rel.Kernel Rel.Verify Rel
+open Tab Rel.Dep Rel.Kernel Rel.Verify Rel
 
 /-- **A long side of several parts in any encoding, `rangeOffsets` declining the parts: its codes are the
     grouping code of the `raze`, cut back.** -/

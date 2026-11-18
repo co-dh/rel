@@ -6,7 +6,7 @@ import Rel.RepList
 
 namespace Rel.Rep
 
-open Rel Rel.Kernel Rel.Verify Rel Rel.Alg Rel.KernelWF
+open Tab Rel.Kernel Rel.Verify Rel Rel.Alg Rel.KernelWF
 
 open FoldN OpsN
 

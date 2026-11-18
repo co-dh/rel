@@ -13,7 +13,7 @@ import Rel.Lang.Den
 
 namespace Rel.Lang.Bits
 
-open Rel Rel.Kernel Rel.Verify Rel Rel.Alg Rel.Rep
+open Tab Rel.Kernel Rel.Verify Rel Rel.Alg Rel.Rep
 open scoped Rel.Core.Rel
 open Rel.Core.Rel hiding id comp recip inter union zero le inl inr junc
 
@@ -426,7 +426,7 @@ theorem ofCodes_at {na w : Nat} {k v : ByteArray} (hl : len v = len k) (hk : ∀
 
 /-- **A leaf as bits**: where `R`'s pairs at codes `a < na`, `b < nb` are the rows holding the codes `(a, b)`, the
     scattered code pairs hold `R`. -/
-theorem rep_leafB {R : Rel A B} {na nb : Nat} {k v : ByteArray} (hl : len v = len k) (hk : ∀ x ∈ ids k, x < na)
+theorem rep_leafB {R : Tab A B} {na nb : Nat} {k v : ByteArray} (hl : len v = len k) (hk : ∀ x ∈ ids k, x < na)
     (hv : ∀ x ∈ ids v, x < nb) (hfit : na * nb ≤ 2 ^ 27) (hm : len k < USize.size)
     (hR : ∀ a < na, ∀ b < nb, rep R (ua a) (ub b) ↔
       ∃ (r : Nat) (h1 : r < (ids k).length) (h2 : r < (ids v).length), (ids k)[r]'h1 = a ∧ (ids v)[r]'h2 = b) :

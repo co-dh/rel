@@ -12,7 +12,7 @@ import Rel.KernelWF.CodesProdFaithful
 
 namespace Rel.Rep
 
-open Rel Rel.Kernel Rel Rel.Alg Rel.KernelWF
+open Tab Rel.Kernel Rel Rel.Alg Rel.KernelWF
 open scoped Rel.Core.Rel
 open Rel.Core.Rel hiding id comp recip inter union zero le inl inr junc
 
@@ -26,7 +26,7 @@ section Sum
     (`sumCop`). The key side is `sumVals R.key S.key` and the value side shares its tags and positions, so it is
     `sumVals R.val S.val`: `sumVals_row` reads both. `hN`: the row count fits a `USize` (past it `R + S` answers
     `𝟘`); `h63`: it is at most `2^63`, where the tags and positions read `til` as nonnegative longs. -/
-theorem rep_sum (R : Rel A C) (S : Rel B D) (hN : R.n.toNat + S.n.toNat < USize.size)
+theorem rep_sum (R : Tab A C) (S : Tab B D) (hN : R.n.toNat + S.n.toNat < USize.size)
     (h63 : R.n.toNat + S.n.toNat ≤ 2 ^ 63) :
     rep (Rel.Alg.sum R S) =
       ((Core.Rel.inl (α := A.El) (β := B.El))° ≫ rep R ≫ (Core.Rel.inl (α := C.El) (β := D.El))) ∪
@@ -129,10 +129,10 @@ theorem distinct_holds (t : Obj) {n : USize} (x : Vals t n) (I : ByteArray) (g :
     (hF : ∀ {i j : Nat} (hi : i < n.toNat) (hj : j < n.toNat), g i = g j → x.row ⟨i, hi⟩ = x.row ⟨j, hj⟩)
     (hp : Vals.PickFits t x (ids I)) (a b : t.El) :
     ((idU x).rows I).Holds a b ↔ a = b ∧ ∃ i, x.row i = a := by
-  unfold Rel.rows need
+  unfold rows need
   rw [dif_pos hlen]
   suffices H : ∀ (m : USize) (hm : len I = m.toNat),
-      (⟨m, Vals.pick t x I m hm, Vals.pick t x I m hm⟩ : Rel t t).Holds a b ↔ a = b ∧ ∃ i, x.row i = a from H _ _
+      (⟨m, Vals.pick t x I m hm, Vals.pick t x I m hm⟩ : Tab t t).Holds a b ↔ a = b ∧ ∃ i, x.row i = a from H _ _
   intro m hm
   have e : ((List.range m.toNat).map fun q => (Column.bitsAt I (q * 8) 8).toNat) = ids I := by rw [← hm]; rfl
   have hrow : ∀ q : Fin m.toNat, ∃ hin : (Column.bitsAt I (q.1 * 8) 8).toNat < n.toNat,
@@ -141,7 +141,7 @@ theorem distinct_holds (t : Obj) {n : USize} (x : Vals t n) (I : ByteArray) (g :
       rw [← e]; exact List.mem_map.2 ⟨q.1, List.mem_range.2 q.2, rfl⟩
     have hin : (Column.bitsAt I (q.1 * 8) 8).toNat < n.toNat := hlt _ hq
     exact ⟨hin, by rw [pick_row t x _ m hm (e ▸ hp) q, dif_pos hin]⟩
-  simp only [Rel.Holds]
+  simp only [Holds]
   constructor
   · rintro ⟨q, ha, hb⟩
     obtain ⟨hin, hr⟩ := hrow q
@@ -201,7 +201,7 @@ theorem dom_corefl {X Y : Type} (S : Core.Rel X Y) : 𝟙 X ∩ S ≫ S° = core
 
 /-- **`rep (dom R) = 𝟙 ∩ rep R (rep R)°`**, the allegory's `dom` (§2.122): `dom R` is `distinctCorefl` of the
     keys, whose elements are the `a` with a pair (`dom_corefl`). Hypotheses: `rep_distinctCorefl`'s at `R.key`. -/
-theorem rep_dom (R : Rel A B) (hK : oneOK(A, R.n, R.key))
+theorem rep_dom (R : Tab A B) (hK : oneOK(A, R.n, R.key))
     (hp : Vals.PickFits A R.key (List.range R.n.toNat)) :
     rep (dom R) = 𝟙 _ ∩ rep R ≫ (rep R)° := by
   rw [dom_corefl, show dom R = distinctCorefl A R.key from rfl, rep_distinctCorefl A R.key hK hp]
@@ -209,19 +209,19 @@ theorem rep_dom (R : Rel A B) (hK : oneOK(A, R.n, R.key))
 
 /-- **`rep (ran R) = 𝟙 ∩ (rep R)° (rep R)°°`**, the allegory's `ran S ≜ dom S°`: `ran R` is `dom R°`, so
     `rep_dom` at `R°` read through `rep_conv`. Hypotheses: `rep_dom`'s at `R°`, whose keys are `R.val`. -/
-theorem rep_ran (R : Rel A B) (hK : oneOK(B, R.n, R.val))
+theorem rep_ran (R : Tab A B) (hK : oneOK(B, R.n, R.val))
     (hp : Vals.PickFits B R.val (List.range R.n.toNat)) :
     rep (ran R) = 𝟙 _ ∩ (rep R)° ≫ (rep R)°° := by
   rw [← rep_conv]; exact rep_dom (R°) hK hp
 
 /-- `rep_dom` read pointwise, `{(a, a) ∣ ∃ b, rep R(a, b)}` (`dom_corefl`). -/
-theorem rep_dom_corefl (R : Rel A B) (hK : oneOK(A, R.n, R.key))
+theorem rep_dom_corefl (R : Tab A B) (hK : oneOK(A, R.n, R.key))
     (hp : Vals.PickFits A R.key (List.range R.n.toNat)) :
     rep (dom R) = corefl (α := A.El) fun a => ∃ b, rep R a b :=
   (rep_dom R hK hp).trans (dom_corefl _)
 
 /-- `rep_ran` read pointwise, `{(b, b) ∣ ∃ a, rep R(a, b)}` (`dom_corefl`). -/
-theorem rep_ran_corefl (R : Rel A B) (hK : oneOK(B, R.n, R.val))
+theorem rep_ran_corefl (R : Tab A B) (hK : oneOK(B, R.n, R.val))
     (hp : Vals.PickFits B R.val (List.range R.n.toNat)) :
     rep (ran R) = corefl (α := B.El) fun b => ∃ a, rep R a b :=
   (rep_ran R hK hp).trans (dom_corefl _)
@@ -357,17 +357,17 @@ theorem rep_top {ma mb : USize} (Ua : Vals A ma) (Ub : Vals B mb) (hN : ma.toNat
   have hlen : len (cross ma mb).1 < USize.size := by rw [len_eq_ids, (cross_ids hN h63).1]; simpa using hN
   refine Core.Rel.ext fun a b => ?_
   show (longCount "⊤" (cross ma mb).1 fun m h => (⟨m, Vals.pick A Ua (cross ma mb).1 m h,
-      Vals.pick B Ub (cross ma mb).2 m ((cross_len ma mb).trans h)⟩ : Rel A B)).Holds a b ↔
+      Vals.pick B Ub (cross ma mb).2 m ((cross_len ma mb).trans h)⟩ : Tab A B)).Holds a b ↔
     ∃ a', (a = a' ∧ ∃ i, Ua.row i = a) ∧ ∃ b', True ∧ (b' = b ∧ ∃ j, Ub.row j = b')
   unfold longCount need
   rw [dif_pos hlen]
   suffices H : ∀ (m : USize) (hm : len (cross ma mb).1 = m.toNat),
       (⟨m, Vals.pick A Ua (cross ma mb).1 m hm, Vals.pick B Ub (cross ma mb).2 m ((cross_len ma mb).trans hm)⟩ :
-        Rel A B).Holds a b ↔ ∃ a', (a = a' ∧ ∃ i, Ua.row i = a) ∧ ∃ b', True ∧ (b' = b ∧ ∃ j, Ub.row j = b')
+        Tab A B).Holds a b ↔ ∃ a', (a = a' ∧ ∃ i, Ua.row i = a) ∧ ∃ b', True ∧ (b' = b ∧ ∃ j, Ub.row j = b')
     from H _ _
   intro m hm
   have hmn := cross_count hN h63 hm
-  simp only [Rel.Holds]
+  simp only [Holds]
   constructor
   · rintro ⟨⟨q, hq⟩, ha, hb⟩
     obtain ⟨_, hr1⟩ := pick_cross_left Ua hN h63 hA hm q hq
@@ -384,7 +384,7 @@ theorem rep_top {ma mb : USize} (Ua : Vals A ma) (Ub : Vals B mb) (hN : ma.toNat
     `k` of `cross R.n S.n` the pair `(k / S.n, k % S.n)`. Hypotheses: `rep_top`'s counts at `R.n`, `S.n`, and each
     of the four columns read at all its rows, once per row of the other side and once more, below `2^63` and a
     `USize` (`pickFits_cross_left`, `pickFits_cross_right`). -/
-theorem rep_prod (R : Rel A B) (S : Rel C D) (hN : R.n.toNat * S.n.toNat < USize.size)
+theorem rep_prod (R : Tab A B) (S : Tab C D) (hN : R.n.toNat * S.n.toNat < USize.size)
     (h63 : R.n.toNat * S.n.toNat < 2 ^ 63)
     (hA : (S.n.toNat + 1) * Vals.reads A R.key (List.range R.n.toNat) < min (2 ^ 63) USize.size)
     (hB : (S.n.toNat + 1) * Vals.reads B R.val (List.range R.n.toNat) < min (2 ^ 63) USize.size)
@@ -400,13 +400,13 @@ theorem rep_prod (R : Rel A B) (S : Rel C D) (hN : R.n.toNat * S.n.toNat < USize
   show (longCount "×" (cross R.n S.n).1 fun m h => (⟨m,
       (Vals.pick A R.key (cross R.n S.n).1 m h, Vals.pick C S.key (cross R.n S.n).2 m ((cross_len R.n S.n).trans h)),
       (Vals.pick B R.val (cross R.n S.n).1 m h, Vals.pick D S.val (cross R.n S.n).2 m ((cross_len R.n S.n).trans h))⟩ :
-        Rel (.prod A C) (.prod B D))).Holds p p' ↔ R.Holds p.1 p'.1 ∧ S.Holds p.2 p'.2
+        Tab (.prod A C) (.prod B D))).Holds p p' ↔ R.Holds p.1 p'.1 ∧ S.Holds p.2 p'.2
   unfold longCount need
   rw [dif_pos hlen]
   suffices H : ∀ (m : USize) (hm : len (cross R.n S.n).1 = m.toNat), (⟨m,
       (Vals.pick A R.key (cross R.n S.n).1 m hm, Vals.pick C S.key (cross R.n S.n).2 m ((cross_len R.n S.n).trans hm)),
       (Vals.pick B R.val (cross R.n S.n).1 m hm, Vals.pick D S.val (cross R.n S.n).2 m ((cross_len R.n S.n).trans hm))⟩ :
-        Rel (.prod A C) (.prod B D)).Holds p p' ↔ R.Holds p.1 p'.1 ∧ S.Holds p.2 p'.2 from H _ _
+        Tab (.prod A C) (.prod B D)).Holds p p' ↔ R.Holds p.1 p'.1 ∧ S.Holds p.2 p'.2 from H _ _
   intro m hm
   have hmn := cross_count hN h63 hm
   have hm2 := (cross_len R.n S.n).trans hm
@@ -455,7 +455,7 @@ scoped notation "codesOK(" cs ", " ps ")" => ((∀ {k l : Nat} (hk : k < 2) (hl 
 -- projected: `R.n` would be one identifier, not the parameter `R`)
 set_option hygiene false in
 scoped notation "pcs(" R ", " S ")" =>
-  (#v[⟨Rel.n R, (Rel.key R, Rel.val R)⟩, ⟨Rel.n S, (Rel.key S, Rel.val S)⟩] : Vector (Part (.prod _ _)) 2)
+  (#v[⟨Rel.Tab.n R, (Rel.Tab.key R, Rel.Tab.val R)⟩, ⟨Rel.Tab.n S, (Rel.Tab.key S, Rel.Tab.val S)⟩] : Vector (Part (.prod _ _)) 2)
 -- the joint pair codes `pairs #v[R, S]` faithful and well formed
 set_option hygiene false in
 scoped notation "pairsOK(" R ", " S ")" => codesOK(pairs #v[R, S], pcs(R, S))
@@ -467,16 +467,16 @@ end OpsN
 open OpsN
 
 /-- `pairs` is the product side's codes (`Obj.codes`) of the relations' pairs. -/
-theorem pairs_eq_codes {p : Nat} (ds : Vector (Rel A B) p) :
+theorem pairs_eq_codes {p : Nat} (ds : Vector (Tab A B) p) :
     pairs ds = Obj.codes (.prod A B) (ds.map fun R => (⟨R.n, (R.key, R.val)⟩ : Part (.prod A B))) := by
   simp only [pairs, Obj.codes, Vector.map_map]; rfl
 
 /-- The joint pair codes `interC`, `diffC` take (`codesC` of the `pairPart`s) are `pairs`. -/
-theorem pairs_codesC (R S : Rel A B) : ((Obj.prod A B).codesC #v[pairPart R, pairPart S]).1 = pairs #v[R, S] := by
+theorem pairs_codesC (R S : Tab A B) : ((Obj.prod A B).codesC #v[pairPart R, pairPart S]).1 = pairs #v[R, S] := by
   rw [Obj.codesC_fst, pairs_eq_codes]; simp [pairPart]
 
 /-- `R − S` is the rows `misses(R, S)` of `R`: `diffC`'s codes read as `pairs` (`pairs_codesC`). -/
-theorem diff_eq_misses (R S : Rel A B) : R \ S = R.rows (misses(R, S)) :=
+theorem diff_eq_misses (R S : Tab A B) : R \ S = R.rows (misses(R, S)) :=
   congrArg (fun c : Vector Code 2 => R.rows (anti c[0] c[1])) (pairs_codesC R S)
 
 -- the rows of `R` whose pair is a pair of `S`, as `∩` and `⊑` compute them
@@ -484,7 +484,7 @@ set_option hygiene false in
 local notation "hits" => whereBits R.n (((pairs #v[R, S])[0]'Nat.zero_lt_two).member ((pairs #v[R, S])[1]'Nat.one_lt_two))
 
 /-- Row `i` of `R` is marked by `member` exactly when its pair is a pair of `S` (`member_bit`, the codes faithful). -/
-theorem pairs_member (R S : Rel A B) (hc : pairsOK(R, S)) {i : Nat} (hi : i < R.n.toNat) :
+theorem pairs_member (R S : Tab A B) (hc : pairsOK(R, S)) {i : Nat} (hi : i < R.n.toNat) :
     Column.bitAt (((pairs #v[R, S])[0]'Nat.zero_lt_two).member ((pairs #v[R, S])[1]'Nat.one_lt_two)) i = true ↔
       ∃ j, S.key.row j = R.key.row ⟨i, hi⟩ ∧ S.val.row j = R.val.row ⟨i, hi⟩ := by
   obtain ⟨hF, hW⟩ := hc
@@ -503,7 +503,7 @@ theorem pairs_member (R S : Rel A B) (hc : pairsOK(R, S)) {i : Nat} (hi : i < R.
 
 /-- `R.rows I`, `I` the ascending rows of `R` a bit `f` keeps, holds `R`'s pairs at those rows — what `∩`
     (`member`) and `−` (`anti`) read back to, by `rows_spec`. Hypotheses: `R`'s columns pick back at the rows. -/
-theorem rows_keep (R : Rel A B) (I : ByteArray) (f : Nat → Bool) (hI : ids I = (List.range R.n.toNat).filter f)
+theorem rows_keep (R : Tab A B) (I : ByteArray) (f : Nat → Bool) (hI : ids I = (List.range R.n.toNat).filter f)
     (hk : Vals.PickFits A R.key (List.range R.n.toNat)) (hv : Vals.PickFits B R.val (List.range R.n.toNat))
     (a : A.El) (b : B.El) :
     (R.rows I).Holds a b ↔ ∃ i : Fin R.n.toNat, R.key.row i = a ∧ R.val.row i = b ∧ f i.1 = true := by
@@ -541,7 +541,7 @@ theorem rows_keep (R : Rel A B) (I : ByteArray) (f : Nat → Bool) (hI : ids I =
 /-- **`rep (R ∩ S) = rep R ∩ rep S`**: `∩` keeps the rows of `R` whose pair `S` holds (`pairs_member`,
     `whereBits_ids`), read back by `rows_keep`. Hypotheses: the joint pair codes faithful and well formed (`hc`),
     and `R`'s two columns picking back at the kept rows. -/
-theorem rep_inter (R S : Rel A B) (hc : pairsOK(R, S)) (hk : Vals.PickFits A R.key (List.range R.n.toNat))
+theorem rep_inter (R S : Tab A B) (hc : pairsOK(R, S)) (hk : Vals.PickFits A R.key (List.range R.n.toNat))
     (hv : Vals.PickFits B R.val (List.range R.n.toNat)) : rep (R ∩ S) = rep R ∩ rep S :=
   Core.Rel.ext fun a b => by
     rw [show R ∩ S = R.rows (hits) from
@@ -558,7 +558,7 @@ theorem rep_inter (R S : Rel A B) (hc : pairsOK(R, S)) (hk : Vals.PickFits A R.k
 /-- **`rep (R − S) = rep R − rep S`**, pointwise (`Rel(Set)` names no difference): `−` keeps the rows of `R` whose
     pair `S` does not hold (`anti_ids`, `pairs_member`), read back by `rows_keep` as `∩`. Hypotheses: `rep_inter`'s,
     at the rows `anti` keeps. -/
-theorem rep_diff (R S : Rel A B) (hc : pairsOK(R, S)) (hk : Vals.PickFits A R.key (List.range R.n.toNat))
+theorem rep_diff (R S : Tab A B) (hc : pairsOK(R, S)) (hk : Vals.PickFits A R.key (List.range R.n.toNat))
     (hv : Vals.PickFits B R.val (List.range R.n.toNat)) (a : A.El) (b : B.El) :
     rep (R \ S) a b ↔ rep R a b ∧ ¬ rep S a b := by
   obtain ⟨hw0, hn0, hs0, -⟩ := hc.2 (k := 0) (by decide)
@@ -581,7 +581,7 @@ theorem rep_diff (R S : Rel A B) (hc : pairsOK(R, S)) (hk : Vals.PickFits A R.ke
 
 /-- **`R \ S` fits at all its rows where `R` does**: `−` keeps a sublist of `R`'s rows (`anti_sublist`,
     `rows_pickFits`). -/
-theorem diff_pickFits (R S : Rel A B) (hc : pairsOK(R, S)) (hk : Vals.PickFits A R.key (List.range R.n.toNat))
+theorem diff_pickFits (R S : Tab A B) (hc : pairsOK(R, S)) (hk : Vals.PickFits A R.key (List.range R.n.toNat))
     (hv : Vals.PickFits B R.val (List.range R.n.toNat)) :
     Vals.PickFits A (R \ S).key (List.range (R \ S).n.toNat) ∧
       Vals.PickFits B (R \ S).val (List.range (R \ S).n.toNat) := by
@@ -596,7 +596,7 @@ theorem diff_pickFits (R S : Rel A B) (hc : pairsOK(R, S)) (hk : Vals.PickFits A
 /-- **`(R ⊑ S) = true ↔ rep R ⊑ rep S`**: `⊑` counts the rows of `R` whose pair `S` holds (`pairs_member`), all
     `R.n` of them exactly when every pair of `R` is one of `S`. Hypothesis: the joint pair codes (`hc`); nothing is
     picked. -/
-theorem rep_le (R S : Rel A B) (hc : pairsOK(R, S)) : (R ⊑ S) = true ↔ rep R ⊑ rep S := by
+theorem rep_le (R S : Tab A B) (hc : pairsOK(R, S)) : (R ⊑ S) = true ↔ rep R ⊑ rep S := by
   obtain ⟨hI, -, -⟩ := whereBits_ids R.n (((pairs #v[R, S])[0]'Nat.zero_lt_two).member ((pairs #v[R, S])[1]'Nat.one_lt_two))
   rw [show (R ⊑ S) = (len (hits) == R.n.toNat) from congrArg
     (fun c : Vector Code 2 => len (whereBits R.n (c[0].member c[1])) == R.n.toNat) (pairs_codesC R S)]
@@ -613,7 +613,7 @@ theorem rep_le (R S : Rel A B) (hc : pairsOK(R, S)) : (R ⊑ S) = true ↔ rep R
 
 /-- **`(R == S) = true ↔ rep R = rep S`**: `==` is `⊑` both ways (`rep_le` twice). Hypotheses: the joint pair codes
     in both orders, `pairs #v[R, S]` and `pairs #v[S, R]` — two code spaces, neither a permutation of the other. -/
-theorem rep_eq (R S : Rel A B) (hc : pairsOK(R, S)) (hc' : pairsOK(S, R)) : (R == S) = true ↔ rep R = rep S := by
+theorem rep_eq (R S : Tab A B) (hc : pairsOK(R, S)) (hc' : pairsOK(S, R)) : (R == S) = true ↔ rep R = rep S := by
   show ((R ⊑ S) && (S ⊑ R)) = true ↔ _
   rw [Bool.and_eq_true, rep_le R S hc, rep_le S R hc', le_iff, le_iff]
   exact ⟨fun ⟨h1, h2⟩ => Core.Rel.ext fun a b => ⟨h1 a b, h2 a b⟩,
@@ -623,7 +623,7 @@ theorem rep_eq (R S : Rel A B) (hc : pairsOK(R, S)) (hc' : pairsOK(S, R)) : (R =
 
 -- the keys `⟨R, S⟩` joins on, their codes, and the pairs the join answers, named as `pair` names them
 set_option hygiene false in
-local notation "kp(" R ", " S ")" => (#v[⟨Rel.n R, Rel.key R⟩, ⟨Rel.n S, Rel.key S⟩] : Vector (Part A) 2)
+local notation "kp(" R ", " S ")" => (#v[⟨Rel.Tab.n R, Rel.Tab.key R⟩, ⟨Rel.Tab.n S, Rel.Tab.key S⟩] : Vector (Part A) 2)
 set_option hygiene false in
 local notation "kc" => Obj.codes A kp(R, S)
 set_option hygiene false in
@@ -634,7 +634,7 @@ local notation "kpairs" => ((List.range R.n.toNat).flatMap fun i => ((List.range
 /-- **`rep ⟨R, S⟩ = ⟨rep R, rep S⟩`** (`rpair`): `pair` joins the keys (`join_rows`) and picks `R.key`, `R.val` at
     the left rows, `S.val` at the right ones. Hypotheses: `rep_comp`'s, at the keys' joint codes (`hc`) and the
     three picked columns. -/
-theorem rep_pair (R : Rel A B) (S : Rel A C) (hc : codesOK(kc, kp(R, S))) (hrn : S.n.toNat < 2 ^ 63)
+theorem rep_pair (R : Tab A B) (S : Tab A C) (hc : codesOK(kc, kp(R, S))) (hrn : S.n.toNat < 2 ^ 63)
     (hM : R.n.toNat * S.n.toNat < min (2 ^ 63) USize.size)
     -- fits, not reads bounds: an atom side fits outright (`pickFits_atom_fst`); an input side discharges them by
     -- `pickFits_join_fst`/`_snd`
@@ -662,7 +662,7 @@ theorem rep_pair (R : Rel A B) (S : Rel A C) (hc : codesOK(kc, kp(R, S))) (hrn :
         (Vals.pickN B R.val (join (kc[0]'Nat.zero_lt_two) (kc[1]'Nat.one_lt_two)).1 m
           (hmJ ▸ join_len (kc[0]'Nat.zero_lt_two) (kc[1]'Nat.one_lt_two)),
          Vals.pick C S.val (join (kc[0]'Nat.zero_lt_two) (kc[1]'Nat.one_lt_two)).2 m hmJ)⟩ :
-        Rel A (.prod B C)).Holds a p ↔ R.Holds a p.1 ∧ S.Holds a p.2 from H _ _
+        Tab A (.prod B C)).Holds a p ↔ R.Holds a p.1 ∧ S.Holds a p.2 from H _ _
   intro m hmJ
   have e := hZ m hmJ
   rw [hln, hrn'] at e
@@ -721,14 +721,14 @@ theorem rep_pair (R : Rel A B) (S : Rel A C) (hc : codesOK(kc, kp(R, S))) (hrn :
 
 /-- **`pair`'s columns fit at all its rows** where the inputs fit at the matched rows: each is an input column
     picked at the join's hits (`pickFits_pick`). Hypotheses: `rep_pair`'s. -/
-theorem pair_pickFits (R : Rel A B) (S : Rel A C) (hc : codesOK(kc, kp(R, S))) (hrn : S.n.toNat < 2 ^ 63)
+theorem pair_pickFits (R : Tab A B) (S : Tab A C) (hc : codesOK(kc, kp(R, S))) (hrn : S.n.toNat < 2 ^ 63)
     (hM : R.n.toNat * S.n.toNat < min (2 ^ 63) USize.size)
     -- `rep_pair`'s fits, kept for its atom callers; an input side discharges them by `pickFits_join_fst`/`_snd`
     (hA : Vals.PickFits A R.key ((kpairs).map Prod.fst)) (hB : Vals.PickFits B R.val ((kpairs).map Prod.fst))
     (hC : Vals.PickFits C S.val ((kpairs).map Prod.snd)) :
-    Vals.PickFits A (Rel.key (Rel.Alg.pair R S)) (List.range (Rel.n (Rel.Alg.pair R S)).toNat) ∧
-    Vals.PickFits B (Rel.val (Rel.Alg.pair R S)).1 (List.range (Rel.n (Rel.Alg.pair R S)).toNat) ∧
-    Vals.PickFits C (Rel.val (Rel.Alg.pair R S)).2 (List.range (Rel.n (Rel.Alg.pair R S)).toNat) := by
+    Vals.PickFits A (Tab.key (Rel.Alg.pair R S)) (List.range (n (Rel.Alg.pair R S)).toNat) ∧
+    Vals.PickFits B (val (Rel.Alg.pair R S)).1 (List.range (n (Rel.Alg.pair R S)).toNat) ∧
+    Vals.PickFits C (val (Rel.Alg.pair R S)).2 (List.range (n (Rel.Alg.pair R S)).toNat) := by
   obtain ⟨hF, hW⟩ := hc
   obtain ⟨hlw, hln, hls, -⟩ := hW (k := 0) (by decide)
   obtain ⟨hrw, hrn', hrs, hrc⟩ := hW (k := 1) (by decide)
@@ -805,12 +805,12 @@ theorem row_heq {X : Obj} {a b : USize} (v : Vals X a) (w : Vals X b) (i : Fin a
 
 /-- A relation whose key and value columns read, row by row, `R`'s rows and then `S`'s holds exactly the pairs
     of `R` and of `S`. -/
-theorem holds_two {N : USize} (K : Vals A N) (V : Vals B N) (R S : Rel A B) (hn : N.toNat = R.n.toNat + S.n.toNat)
+theorem holds_two {N : USize} (K : Vals A N) (V : Vals B N) (R S : Tab A B) (hn : N.toNat = R.n.toNat + S.n.toNat)
     (hK : ∀ k (hk : k < N.toNat), Vals.row K ⟨k, hk⟩ =
       if h : k < R.n.toNat then Vals.row R.key ⟨k, h⟩ else Vals.row S.key ⟨k - R.n.toNat, by omega⟩)
     (hV : ∀ k (hk : k < N.toNat), Vals.row V ⟨k, hk⟩ =
       if h : k < R.n.toNat then Vals.row R.val ⟨k, h⟩ else Vals.row S.val ⟨k - R.n.toNat, by omega⟩)
-    (a : A.El) (b : B.El) : (⟨N, K, V⟩ : Rel A B).Holds a b ↔ R.Holds a b ∨ S.Holds a b := by
+    (a : A.El) (b : B.El) : (⟨N, K, V⟩ : Tab A B).Holds a b ↔ R.Holds a b ∨ S.Holds a b := by
   constructor
   · rintro ⟨⟨k, hk⟩, ha, hb⟩
     rw [hK k hk] at ha; rw [hV k hk] at hb
@@ -829,7 +829,7 @@ theorem holds_two {N : USize} (K : Vals A N) (V : Vals B N) (R S : Rel A B) (hn 
 /-- **`rep [R, S] = [rep R, rep S]`**, the mediating relation of `Rel(Set)`'s coproduct (`sumCop`). The keys are
     `sumVals R.key S.key` (`sumVals_row`), the values `C.raze` of `R.val` and `S.val`, read back by `hC`
     (`RazeRow`). `hN`: the row count fits a `USize` (past it `[R, S]` answers `𝟘`); `h63`: it is at most `2^63`. -/
-theorem rep_junc (R : Rel A C) (S : Rel B C) (hN : R.n.toNat + S.n.toNat < USize.size)
+theorem rep_junc (R : Tab A C) (S : Tab B C) (hN : R.n.toNat + S.n.toNat < USize.size)
     (h63 : R.n.toNat + S.n.toNat ≤ 2 ^ 63)
     (hC : ∀ hN' k hk, Vals.row (C.raze #[⟨R.n, R.val⟩, ⟨S.n, S.val⟩] hN') ⟨k, hk⟩ =
       if h : k < R.n.toNat then Vals.row R.val ⟨k, h⟩

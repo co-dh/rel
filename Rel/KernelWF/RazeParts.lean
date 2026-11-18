@@ -8,7 +8,7 @@ import Rel.KernelWF.AppendFoR
 
 namespace Rel.KernelWF
 
-open Rel Rel.Kernel Rel.Dep Rel Rel.Alg
+open Tab Rel.Kernel Rel.Dep Rel Rel.Alg
 
 /-- A `UInt64` cut to its low `8w` bits, `w ≤ 8`, keeps that value as a `Nat`. -/
 theorem ofNat_mod_toNat {w : Nat} (hw8 : w ≤ 8) (v : UInt64) :

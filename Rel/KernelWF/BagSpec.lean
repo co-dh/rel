@@ -10,7 +10,7 @@ import Rel.KernelWF.CodesRec
 open Rel.Ext
 namespace Rel.Alg
 
-open Rel Rel.Kernel Rel.Verify Rel Rel.KernelWF
+open Tab Rel.Kernel Rel.Verify Rel Rel.KernelWF
 
 /-- The `long` key `Order.keyAt .i64` sorts by, read as a number: `2^63` above the value. -/
 theorem key_i64 (a : Int64) : ((a.toUInt64 ^^^ 0x8000000000000000).toNat : Int) = a.toInt + 2 ^ 63 := by

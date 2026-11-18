@@ -3,7 +3,7 @@ import Rel.Run.CRelDef
 section
 namespace Rel
 namespace CRel
-open Rel Rel.Kernel Rel.Alg
+open Tab Rel.Kernel Rel.Alg
 variable {A B : Obj}
 
 /-- `τ` on `X`, ok where `τC` ran within capacity. -/

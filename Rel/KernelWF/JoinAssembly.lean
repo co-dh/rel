@@ -8,7 +8,7 @@ import Rel.KernelWF.MemberSpec
 
 namespace Rel.Alg
 
-open Rel Rel.Kernel Rel.Verify Rel
+open Tab Rel.Kernel Rel.Verify Rel
 
 /-- **`Code.groupIds`' class ids are `groupOf` of the codes**, read at the width of the class count: row
     `i`'s class is the position of its code's first row among the first rows (`groupIds_firsts`), and the

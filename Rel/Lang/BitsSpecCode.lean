@@ -14,7 +14,7 @@ import Rel.KernelWF.RazeRowN
 
 namespace Rel.Lang.Bits
 
-open Rel Rel.Kernel Rel.Verify Rel Rel.Alg Rel.Rep
+open Tab Rel.Kernel Rel.Verify Rel Rel.Alg Rel.Rep
 
 variable {ρ : Val}
 
@@ -628,7 +628,7 @@ theorem codeAll_row (cs : Array Col) {out : Array ByteArray} {sps : Array Col} (
 /-- **A leaf's codes as bits**: where `codeAll` coded the columns `j`, `j'` holding `R`'s key and value, the scattered
     code pairs at the counts `na`, `nb` of the two objects' picks hold `R` under `uOf`. -/
 theorem codeAll_leaf (cs : Array Col) {out : Array ByteArray} {sps : Array Col} (h : codeAll cs = some (out, sps))
-    {A B : Obj} (R : Rel A B) {j j' : Nat} (hj : j < cs.size) (hj' : j' < cs.size)
+    {A B : Obj} (R : Tab A B) {j j' : Nat} (hj : j < cs.size) (hj' : j' < cs.size)
     (ek : cs[j] = ⟨A, ⟨R.n, R.key⟩⟩) (ev : cs[j'] = ⟨B, ⟨R.n, R.val⟩⟩) :
     ∃ qa qb, sps.find? (·.1 == A) = some ⟨A, qa⟩ ∧ sps.find? (·.1 == B) = some ⟨B, qb⟩ ∧
       (qa.1.toNat * qb.1.toNat ≤ 2 ^ 27 → (Bits.ofCodes qa.1.toNat qb.1.toNat (out.getD j .empty)
@@ -654,7 +654,7 @@ theorem codeAll_leaf (cs : Array Col) {out : Array ByteArray} {sps : Array Col} 
 
 /-- **A coded leaf relates only decoded elements**: each end of a pair of `R` is `uOf` at a code below its pick's
     count — the code `codeAll` wrote at that pair's row. Faithfulness below the count is `pickOf_inj`. -/
-theorem colOK_rep {cs : Array Col} {B : Obj} (R : Rel A B) {bk bv : ByteArray} {qa : Part A} {qb : Part B}
+theorem colOK_rep {cs : Array Col} {B : Obj} (R : Tab A B) {bk bv : ByteArray} {qa : Part A} {qb : Part B}
     (hk : ColOK cs (A := A) ⟨R.n, R.key⟩ bk qa) (hv : ColOK cs (A := B) ⟨R.n, R.val⟩ bv qb) {a : A.El} {b : B.El}
     (h : rep R a b) : (∃ i < qa.1.toNat, uOf cs A i = a) ∧ ∃ i < qb.1.toNat, uOf cs B i = b := by
   rw [rep_apply] at h

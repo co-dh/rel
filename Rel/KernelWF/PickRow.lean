@@ -9,7 +9,7 @@ open Rel.Ext
 
 namespace Rel.Alg
 
-open Rel Rel.Kernel Rel.Verify Rel
+open Tab Rel.Kernel Rel.Verify Rel
 
 theorem flatMap_congr {α β : Type} {l : List α} {f g : α → List β} (h : ∀ a ∈ l, f a = g a) :
     l.flatMap f = l.flatMap g := by

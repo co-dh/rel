@@ -11,7 +11,7 @@ open Rel.Ext
 
 namespace Rel.KernelWF
 
-open Rel Rel.Kernel Rel.Dep Rel Rel.Alg
+open Tab Rel.Kernel Rel.Dep Rel Rel.Alg
 
 /-- A byte read as `bitsAt` reads it, zero past the end. -/
 theorem dite_byte (b : ByteArray) (j : Nat) : (if h : j < b.size then b[j] else 0) = (b.data[j]?).getD 0 := by

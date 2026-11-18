@@ -19,7 +19,7 @@ import Rel.Run.AC3Def
 
 namespace Rel.AC3
 
-open Rel Rel.Kernel Rel.Verify Rel Rel.Alg Rel.KernelWF Rel.Rep Rel.Rep.OpsN Rel.Rep.FoldN
+open Tab Rel.Kernel Rel.Verify Rel Rel.Alg Rel.KernelWF Rel.Rep Rel.Rep.OpsN Rel.Rep.FoldN
 open scoped Rel.Core.Rel
 open Rel.Core.Rel hiding id comp recip inter union zero le inl inr junc
 
@@ -29,9 +29,9 @@ variable {V D : Obj}
 
 /-- **`rep (foldlC step as Y) = rep Y ∩ ⋂ₐ M a`** under its bit, each step denoting the relation before it met with
     `M a` under the step's bit; by induction on the arcs, from any carried bit. -/
-theorem rep_foldlC {γ : Type} (step : Rel V D → γ → Rel V D × Bool) (M : γ → V.El → D.El → Prop)
+theorem rep_foldlC {γ : Type} (step : Tab V D → γ → Tab V D × Bool) (M : γ → V.El → D.El → Prop)
     (h : ∀ Y a, (step Y a).2 = true → ∀ x d, rep (step Y a).1 x d ↔ rep Y x d ∧ M a x d) :
-    ∀ (as : List γ) (Y : Rel V D) (b : Bool),
+    ∀ (as : List γ) (Y : Tab V D) (b : Bool),
       (as.foldl (fun p a => let r := step p.1 a; (r.1, p.2 && r.2)) (Y, b)).2 = true →
       b = true ∧ ∀ x d, rep (as.foldl (fun p a => let r := step p.1 a; (r.1, p.2 && r.2)) (Y, b)).1 x d ↔
         rep Y x d ∧ ∀ a ∈ as, M a x d
@@ -56,20 +56,20 @@ def Dl (a : Revise V D) (X : V.El → D.El → Prop) (Δ : V.El → V.El → Pro
   ∀ w, Δ w w → rep a.A w x → ∃ e, X w e ∧ rep a.C e d
 
 /-- The naive body read in `Rel(Set)`, on a predicate `X`: `s ∩ ⋂ₐ Aₐ\(X Cₐ)`. -/
-def body (s : Rel V D) (as : List (Revise V D)) (X : V.El → D.El → Prop) (x : V.El) (d : D.El) : Prop :=
+def body (s : Tab V D) (as : List (Revise V D)) (X : V.El → D.El → Prop) (x : V.El) (d : D.El) : Prop :=
   rep s x d ∧ ∀ a ∈ as, Nv a X x d
 
 /-- **`body` is monotone in `X`**: `Nv` is. -/
-theorem body_mono (s : Rel V D) (as : List (Revise V D)) {X Y : V.El → D.El → Prop} (h : ∀ x d, X x d → Y x d) :
+theorem body_mono (s : Tab V D) (as : List (Revise V D)) {X Y : V.El → D.El → Prop} (h : ∀ x d, X x d → Y x d) :
     ∀ x d, body s as X x d → body s as Y x d := fun _ _ ⟨hs, hN⟩ =>
   ⟨hs, fun a ha => ⟨fun w hA => let ⟨e, hX, hC⟩ := (hN a ha).1 w hA; ⟨e, h w e hX, hC⟩, (hN a ha).2⟩⟩
 
-theorem body_congr (s : Rel V D) (as : List (Revise V D)) {X Y : V.El → D.El → Prop} (h : ∀ x d, X x d ↔ Y x d) :
+theorem body_congr (s : Tab V D) (as : List (Revise V D)) {X Y : V.El → D.El → Prop} (h : ∀ x d, X x d ↔ Y x d) :
     ∀ x d, body s as X x d ↔ body s as Y x d := fun x d =>
   ⟨body_mono s as (fun x d => (h x d).1) x d, body_mono s as (fun x d => (h x d).2) x d⟩
 
 /-- **The naive arc step under its bit**: `rep_interC`, `rep_leftDivC`, `rep_compC`. -/
-theorem rep_naiveStepC (X Y : Rel V D) (a : Revise V D) (hb : (naiveStepC X Y a).2 = true) (x : V.El) (d : D.El) :
+theorem rep_naiveStepC (X Y : Tab V D) (a : Revise V D) (hb : (naiveStepC X Y a).2 = true) (x : V.El) (d : D.El) :
     rep (naiveStepC X Y a).1 x d ↔ rep Y x d ∧ Nv a (rep X) x d := by
   simp only [naiveStepC, Bool.and_eq_true] at hb ⊢
   obtain ⟨⟨hc, hL⟩, hi⟩ := hb
@@ -80,7 +80,7 @@ theorem rep_naiveStepC (X Y : Rel V D) (a : Revise V D) (hb : (naiveStepC X Y a)
 /-- **The delta arc step under its bit**, `Δ` coreflexive: `rep_unionC`, `rep_antiJoinC`, `rep_ranC`, `rep_interC`,
     `rep_leftDivC`, `rep_compC`. The vacuous part of `(Δ A)\…` matters only off `ran(Δ A)`, where the anti-join side
     already holds; on `Δ`, `Δ w v` is `w = v`. -/
-theorem rep_deltaStepC (X : Rel V D) (Δ : Rel V V) (hΔ : ∀ w v, rep Δ w v → w = v) (Y : Rel V D)
+theorem rep_deltaStepC (X : Tab V D) (Δ : Tab V V) (hΔ : ∀ w v, rep Δ w v → w = v) (Y : Tab V D)
     (a : Revise V D) (hb : (deltaStepC X Δ Y a).2 = true) (x : V.El) (d : D.El) :
     rep (deltaStepC X Δ Y a).1 x d ↔ rep Y x d ∧ Dl a (rep X) (rep Δ) x d := by
   classical
@@ -114,7 +114,7 @@ theorem rep_deltaStepC (X : Rel V D) (Δ : Rel V V) (hΔ : ∀ w v, rep Δ w v �
 /-- The state `(X, Δ)` of the delta rounds for the body `s ∩ ⋂ₐ Aₐ\(X Cₐ)`: `Δ` coreflexive; `X ⊑ s`; `X` inside
     every arc's vacuous part; `X ⊒` the naive round on `X`; and every pair of `X` supported, at each predecessor
     outside `Δ`, as the naive round asks — so only the predecessors in `Δ` need checking. -/
-def AcInv (s : Rel V D) (as : List (Revise V D)) (X : V.El → D.El → Prop) (Δ : V.El → V.El → Prop) : Prop :=
+def AcInv (s : Tab V D) (as : List (Revise V D)) (X : V.El → D.El → Prop) (Δ : V.El → V.El → Prop) : Prop :=
   (∀ w v, Δ w v → w = v) ∧ (∀ x d, X x d → rep s x d) ∧ (∀ a ∈ as, ∀ x d, X x d → Vac a x d) ∧
     (∀ x d, rep s x d → (∀ a ∈ as, Nv a X x d) → X x d) ∧
     ∀ a ∈ as, ∀ x d, X x d → ∀ w, ¬ Δ w w → rep a.A w x → ∃ e, X w e ∧ rep a.C e d
@@ -122,18 +122,18 @@ def AcInv (s : Rel V D) (as : List (Revise V D)) (X : V.El → D.El → Prop) (�
 -- `𝟙_X`, the coreflexive on the pairs of `X`; the pairs of `X` not in `X′`, as
 -- `acDeltaC` names them (fields applied, not projected: `X.key` would be one identifier, not the parameter `X`)
 set_option hygiene false in
-local notation "pairsU(" X ")" => idU (t := Obj.prod V D) (Rel.key X, Rel.val X)
+local notation "pairsU(" X ")" => idU (t := Obj.prod V D) (Rel.Tab.key X, Rel.Tab.val X)
 set_option hygiene false in
 local notation "gone(" X ", " X' ")" => antiJoinC (pairsU(X)) (pairsU(X'))
 
 /-- `rep 𝟙_X` is `𝟙` on the pairs of `X` (`idU_holds`). -/
-theorem rep_idU_pairs (X : Rel V D) (p q : V.El × D.El) : rep (pairsU(X)) p q ↔ p = q ∧ rep X p.1 p.2 := by
+theorem rep_idU_pairs (X : Tab V D) (p q : V.El × D.El) : rep (pairsU(X)) p q ↔ p = q ∧ rep X p.1 p.2 := by
   rw [rep_apply, idU_holds]
   exact and_congr Iff.rfl ⟨fun ⟨i, e⟩ => by subst e; exact ⟨i, rfl, rfl⟩, fun ⟨i, e1, e2⟩ => ⟨i, Prod.ext e1 e2⟩⟩
 
 /-- **`Δ′ = ran(outl(antiJoin(𝟙_X, 𝟙_X′)))` is the variables with a pair of `X` not in `X′`**, under the bits of
     `antiJoinC` and `ranC`: `rep_ranC`, `outl_holds`, `rep_antiJoinC`, `rep_idU_pairs`. -/
-theorem rep_dPrime (X X' : Rel V D) (hg : (gone(X, X')).2 = true) (hr : (ranC (outl (gone(X, X')).1)).2 = true)
+theorem rep_dPrime (X X' : Tab V D) (hg : (gone(X, X')).2 = true) (hr : (ranC (outl (gone(X, X')).1)).2 = true)
     (w v : V.El) : rep (ranC (outl (gone(X, X')).1)).1 w v ↔ w = v ∧ ∃ e, rep X w e ∧ ¬ rep X' w e := by
   have hJ : ∀ a b, rep (gone(X, X')).1 a b ↔ ∃ y, rep (pairsU(X)) a y ∧ y = b ∧ ¬ ∃ x, rep (pairsU(X')) x y :=
     fun a b => by rw [rep_antiJoinC _ _ hg]; exact Iff.rfl
@@ -155,7 +155,7 @@ theorem rep_dPrime (X X' : Rel V D) (hg : (gone(X, X')).2 = true) (hr : (ranC (o
 /-- **One delta round is one naive round, and keeps the invariant**: from `AcInv s as (rep X) (rep Δ)`, under the
     round's bit, `rep (acDelta as (X, Δ)).1 = body s as (rep X)`, and `AcInv` holds of the new `X′` with the new
     `Δ′` (`rep_foldlC` at `rep_deltaStepC`, `rep_dPrime`). -/
-theorem acDelta_round (s : Rel V D) (as : List (Revise V D)) (X : Rel V D) (Δ : Rel V V)
+theorem acDelta_round (s : Tab V D) (as : List (Revise V D)) (X : Tab V D) (Δ : Tab V V)
     (hI : AcInv s as (rep X) (rep Δ)) (hb : (acDeltaC as (X, Δ)).2 = true) :
     (∀ x d, rep (acDelta as (X, Δ)).1 x d ↔ body s as (rep X) x d) ∧
       AcInv s as (rep (acDelta as (X, Δ)).1) (rep (acDelta as (X, Δ)).2) := by
@@ -190,7 +190,7 @@ theorem acDelta_round (s : Rel V D) (as : List (Revise V D)) (X : Rel V D) (Δ :
 /-- **The first state satisfies the invariant**: `X₀` denoting `s`, `U` coreflexive and holding every predecessor
     of every arc, and `s` inside every arc's vacuous part (its keys and values in the universes, or keyed by a
     successor). -/
-theorem acInv_init (s : Rel V D) (as : List (Revise V D)) (X₀ : Rel V D) (U : Rel V V) (hX₀ : rep X₀ = rep s)
+theorem acInv_init (s : Tab V D) (as : List (Revise V D)) (X₀ : Tab V D) (U : Tab V V) (hX₀ : rep X₀ = rep s)
     (hU : ∀ w v, rep U w v → w = v) (hUA : ∀ a ∈ as, ∀ w x, rep a.A w x → rep U w w)
     (hsV : ∀ a ∈ as, ∀ x d, rep s x d → Vac a x d) : AcInv s as (rep X₀) (rep U) := by
   rw [hX₀]
@@ -199,21 +199,21 @@ theorem acInv_init (s : Rel V D) (as : List (Revise V D)) (X₀ : Rel V D) (U : 
 /-! ## The naive iterates in `Rel(Set)` -/
 
 /-- The `k`-th iterate of the naive body from `s`. -/
-def naive (s : Rel V D) (as : List (Revise V D)) : Nat → V.El → D.El → Prop
+def naive (s : Tab V D) (as : List (Revise V D)) : Nat → V.El → D.El → Prop
   | 0 => fun x d => rep s x d
   | k + 1 => body s as (naive s as k)
 
-theorem naive_le (s : Rel V D) (as : List (Revise V D)) : ∀ k x d, naive s as k x d → rep s x d
+theorem naive_le (s : Tab V D) (as : List (Revise V D)) : ∀ k x d, naive s as k x d → rep s x d
   | 0, _, _, h => h
   | _ + 1, _, _, h => h.1
 
 /-- **The iterates decrease**: `body ⊑ s`, and `body` is monotone. -/
-theorem naive_anti (s : Rel V D) (as : List (Revise V D)) : ∀ k x d, naive s as (k + 1) x d → naive s as k x d
+theorem naive_anti (s : Tab V D) (as : List (Revise V D)) : ∀ k x d, naive s as (k + 1) x d → naive s as k x d
   | 0, x, d, h => naive_le s as 1 x d h
   | k + 1, x, d, h => body_mono s as (naive_anti s as k) x d h
 
 /-- **From a fixed iterate on, the iterates stay**. -/
-theorem naive_stable (s : Rel V D) (as : List (Revise V D)) {c : Nat}
+theorem naive_stable (s : Tab V D) (as : List (Revise V D)) {c : Nat}
     (hc : ∀ x d, naive s as (c + 1) x d ↔ naive s as c x d) : ∀ k, c ≤ k → ∀ x d, naive s as k x d ↔ naive s as c x d := by
   intro k hk
   obtain ⟨m, rfl⟩ := Nat.exists_eq_add_of_le hk
@@ -223,7 +223,7 @@ theorem naive_stable (s : Rel V D) (as : List (Revise V D)) {c : Nat}
   | succ m ih => exact fun x d => (body_congr s as ih x d).trans (hc x d)
 
 /-- **Two fixed iterates are one**: the later is the earlier by `naive_stable`. -/
-theorem naive_fixed_eq (s : Rel V D) (as : List (Revise V D)) {c j : Nat}
+theorem naive_fixed_eq (s : Tab V D) (as : List (Revise V D)) {c j : Nat}
     (hc : ∀ x d, naive s as (c + 1) x d ↔ naive s as c x d) (hj : ∀ x d, naive s as (j + 1) x d ↔ naive s as j x d) :
     ∀ x d, naive s as j x d ↔ naive s as c x d := by
   rcases Nat.le_total c j with h | h
@@ -233,11 +233,11 @@ theorem naive_fixed_eq (s : Rel V D) (as : List (Revise V D)) {c j : Nat}
 /-! ## Row counts -/
 
 /-- The rows of `R` are distinct pairs. -/
-def RowsInj {A B : Obj} (R : Rel A B) : Prop :=
+def RowsInj {A B : Obj} (R : Tab A B) : Prop :=
   ∀ {t t' : Fin R.n.toNat}, R.key.row t = R.key.row t' → R.val.row t = R.val.row t' → t = t'
 
 /-- **`nubC`'s answer has distinct rows under its bit**: `nub_rows_inj` at the premises `rep_nubC` reads. -/
-theorem rowsInj_nubC {A B : Obj} (R : Rel A B) (hb : (nubC R).2 = true) : RowsInj (nubC R).1 := by
+theorem rowsInj_nubC {A B : Obj} (R : Tab A B) (hb : (nubC R).2 = true) : RowsInj (nubC R).1 := by
   simp only [nubC, Bool.and_eq_true] at hb
   obtain ⟨⟨⟨hK, hV⟩, hk⟩, hv⟩ := hb
   rw [nubC_fst]
@@ -245,11 +245,11 @@ theorem rowsInj_nubC {A B : Obj} (R : Rel A B) (hb : (nubC R).2 = true) : RowsIn
     (pickFits_of_fitsN A R.key _ hk _ (by simp)) (pickFits_of_fitsN B R.val _ hv _ (by simp))
 
 /-- The pairs of `R`, one per row. -/
-def prs {A B : Obj} (R : Rel A B) : List (A.El × B.El) := (List.finRange R.n.toNat).map fun t => (R.key.row t, R.val.row t)
+def prs {A B : Obj} (R : Tab A B) : List (A.El × B.El) := (List.finRange R.n.toNat).map fun t => (R.key.row t, R.val.row t)
 
-theorem mem_prs {A B : Obj} (R : Rel A B) (p : A.El × B.El) : p ∈ prs R ↔ rep R p.1 p.2 := by
+theorem mem_prs {A B : Obj} (R : Tab A B) (p : A.El × B.El) : p ∈ prs R ↔ rep R p.1 p.2 := by
   obtain ⟨x, y⟩ := p
-  simp [prs, rep_apply, Rel.Holds]
+  simp [prs, rep_apply, Holds]
 
 /-- An injective family of `a` values, all in `l`, needs `a ≤ |l|`. -/
 theorem fin_len_le {β : Type} [DecidableEq β] : ∀ (a : Nat) (f : Fin a → β), (∀ {i j}, f i = f j → i = j) →
@@ -265,7 +265,7 @@ theorem fin_len_le {β : Type} [DecidableEq β] : ∀ (a : Nat) (f : Fin a → �
     omega
 
 /-- **A duplicate-free `R` inside `S` has at most `S`'s rows, and fewer when it misses a pair of `S`.** -/
-theorem count_lt {A B : Obj} (R S : Rel A B) (hR : RowsInj R) (hle : ∀ x y, rep R x y → rep S x y) :
+theorem count_lt {A B : Obj} (R S : Tab A B) (hR : RowsInj R) (hle : ∀ x y, rep R x y → rep S x y) :
     R.n.toNat ≤ S.n.toNat ∧ ((∃ x y, rep S x y ∧ ¬ rep R x y) → R.n.toNat < S.n.toNat) := by
   classical
   have hf : ∀ {t t' : Fin R.n.toNat}, (R.key.row t, R.val.row t) = (R.key.row t', R.val.row t') → t = t' :=
@@ -284,11 +284,11 @@ theorem count_lt {A B : Obj} (R S : Rel A B) (hR : RowsInj R) (hle : ∀ x y, re
   omega
 
 /-- A relation has no row iff it holds no pair. -/
-theorem n_eq_zero_iff {A B : Obj} (R : Rel A B) : R.n = 0 ↔ ∀ x y, ¬ rep R x y := by
+theorem n_eq_zero_iff {A B : Obj} (R : Tab A B) : R.n = 0 ↔ ∀ x y, ¬ rep R x y := by
   rw [← USize.toNat_inj, USize.toNat_zero]
   refine ⟨fun h x y hr => ?_, fun h => Nat.eq_zero_of_not_pos fun hp => h (R.key.row ⟨0, hp⟩) (R.val.row ⟨0, hp⟩) ?_⟩
   · obtain ⟨i, -⟩ := hr; have := i.2; omega
-  · show R.Holds _ _; unfold Rel.Holds; exact ⟨⟨0, hp⟩, rfl, rfl⟩
+  · show R.Holds _ _; unfold Holds; exact ⟨⟨0, hp⟩, rfl, rfl⟩
 
 /-- A weaker test counts fewer, and strictly fewer where it misses an element the stronger one takes. -/
 theorem countP_lt {β : Type} (p q : β → Bool) : ∀ l : List β, (∀ x ∈ l, p x = true → q x = true) →
@@ -307,7 +307,7 @@ theorem countP_lt {β : Type} (p q : β → Bool) : ∀ l : List β, (∀ x ∈ 
 
 /-- **The naive iterates are fixed within `|s.nub|` rounds**: each earlier one drops a pair of `s.nub`'s rows
     (`countP_lt`). -/
-theorem exists_fixed (s : Rel V D) (as : List (Revise V D)) (hsn : ∀ x d, rep s.nub x d ↔ rep s x d) :
+theorem exists_fixed (s : Tab V D) (as : List (Revise V D)) (hsn : ∀ x d, rep s.nub x d ↔ rep s x d) :
     ∃ c ≤ s.nub.n.toNat, ∀ x d, naive s as (c + 1) x d ↔ naive s as c x d := by
   classical
   let cnt : Nat → Nat := fun k => (prs s.nub).countP fun p => decide (naive s as k p.1 p.2)
@@ -336,7 +336,7 @@ theorem exists_fixed (s : Rel V D) (as : List (Revise V D)) (hsn : ∀ x d, rep 
     Capacity is the two runs' bits, `fixOnC`'s and `acFixC`'s. Hypothesis: `n` at least
     `|s.nub| + 1`; `U` coreflexive, holding every arc's predecessors, and `s` inside every arc's vacuous part
     (`acInv_init`). -/
-theorem acFix_eq_fixOn (s : Rel V D) (as : List (Revise V D)) (U : Rel V V) (n : Nat)
+theorem acFix_eq_fixOn (s : Tab V D) (as : List (Revise V D)) (U : Tab V V) (n : Nat)
     (hn : s.nub.n.toNat + 1 ≤ n)
     (hU : ∀ w v, rep U w v → w = v) (hUA : ∀ a ∈ as, ∀ w x, rep a.A w x → rep U w w)
     (hsV : ∀ a ∈ as, ∀ x d, rep s x d → Vac a x d)
@@ -351,15 +351,15 @@ theorem acFix_eq_fixOn (s : Rel V D) (as : List (Revise V D)) (U : Rel V V) (n :
   have hcnt : (nubC s).1.n.toNat = s.nub.n.toNat := by rw [nubC_fst]
   obtain ⟨c, hc, hcF⟩ := exists_fixed s as (by rw [← nubC_fst]; exact hs0)
   -- the naive run: `fixOnC`'s rounds, the state `(count before, X, round)`
-  let fr : Nat × Rel V D × Nat → Nat × Rel V D × Nat := fun st =>
+  let fr : Nat × Tab V D × Nat → Nat × Tab V D × Nat := fun st =>
     (st.2.1.n.toNat, (nubC (acRoundC s as st.2.1).1).1, st.2.2 + 1)
-  let a₀ : Nat × Rel V D × Nat := ((nubC s).1.n.toNat + 1, (nubC s).1, 0)
+  let a₀ : Nat × Tab V D × Nat := ((nubC s).1.n.toNat + 1, (nubC s).1, 0)
   have hB : ∀ x d, rep (fixOn n (acRound s as) s).1 x d ↔ naive s as c x d := by
     have e : (fixOn n (acRound s as) s).1 = (iter n (fun st => st.1 == st.2.1.n.toNat) fr a₀).2.1 := by
       rw [show fixOn n (acRound s as) s = (fixOnC n (acRoundC s as) s).1 from (fixOnC_fst n (acRoundC s as) s).symm]
-      show (iterC (α := Nat × Rel V D × Nat) n _ _ _).1.2.1 = _
+      show (iterC (α := Nat × Tab V D × Nat) n _ _ _).1.2.1 = _
       rw [iterC_fst]
-    obtain ⟨J, hJ, he, hst, hlt⟩ := iter_stop (fun st : Nat × Rel V D × Nat => st.1 == st.2.1.n.toNat) fr n a₀
+    obtain ⟨J, hJ, he, hst, hlt⟩ := iter_stop (fun st : Nat × Tab V D × Nat => st.1 == st.2.1.n.toNat) fr n a₀
     have hrun : ∀ i < J, (acRoundC s as (fr^[i] a₀).2.1).2 = true ∧
         (nubC (acRoundC s as (fr^[i] a₀).2.1).1).2 = true := fun i hi =>
       have h := iterC_run _ _ _ _ hbit i (by omega) fun i' hi' => hlt i' (by omega); Eq.mp (Bool.and_eq_true _ _) h
@@ -395,15 +395,15 @@ theorem acFix_eq_fixOn (s : Rel V D) (as : List (Revise V D)) (U : Rel V V) (n :
             omega⟩
         exact (hfix x d).trans (naive_fixed_eq s as hcF hfix x d)
   -- the delta run: `acFixC`'s rounds, the state `(X, Δ, round)`
-  let fd : Rel V D × Rel V V × Nat → Rel V D × Rel V V × Nat := fun st =>
+  let fd : Tab V D × Tab V V × Nat → Tab V D × Tab V V × Nat := fun st =>
     ((acDeltaC as (st.1, st.2.1)).1.1, (acDeltaC as (st.1, st.2.1)).1.2, st.2.2 + 1)
-  let b₀ : Rel V D × Rel V V × Nat := ((nubC s).1, U, 0)
+  let b₀ : Tab V D × Tab V V × Nat := ((nubC s).1, U, 0)
   have hA : ∀ x d, rep (acFix s as U).1 x d ↔ naive s as c x d := by
     have e : (acFix s as U).1 = (iter ((nubC s).1.n.toNat + 1) (fun st => st.2.1.n == 0) fd b₀).1 := by
-      show (iterC (α := Rel V D × Rel V V × Nat) _ _ _ _).1.1 = _
+      show (iterC (α := Tab V D × Tab V V × Nat) _ _ _ _).1.1 = _
       rw [iterC_fst]
     obtain ⟨K, hK, he, hst, hlt⟩ :=
-      iter_stop (fun st : Rel V D × Rel V V × Nat => st.2.1.n == 0) fd ((nubC s).1.n.toNat + 1) b₀
+      iter_stop (fun st : Tab V D × Tab V V × Nat => st.2.1.n == 0) fd ((nubC s).1.n.toNat + 1) b₀
     have hrun : ∀ i < K, (acDeltaC as ((fd^[i] b₀).1, (fd^[i] b₀).2.1)).2 = true := fun i hi =>
       have h := iterC_run _ _ _ _ hdbit i (by omega) fun i' hi' => hlt i' (by omega); h
     have hZ : ∀ k ≤ K, AcInv s as (rep (fd^[k] b₀).1) (rep (fd^[k] b₀).2.1) ∧

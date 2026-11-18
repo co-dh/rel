@@ -10,7 +10,7 @@ import Rel.Run.Lang.Tm
 
 namespace Rel.Lang
 
-open Rel Rel.Alg
+open Tab Rel.Alg
 open Rel.Kernel (need needSize)
 
 /-! ### Objects as the program names them -/

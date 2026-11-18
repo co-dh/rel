@@ -8,7 +8,7 @@ import Rel.KernelWF.RazeFoR
 
 namespace Rel.Rep
 
-open Rel Rel.Kernel Rel.Verify Rel Rel.Alg Rel.KernelWF
+open Tab Rel.Kernel Rel.Verify Rel Rel.Alg Rel.KernelWF
 open scoped Rel.Core.Rel
 open Rel.Core.Rel hiding id comp recip inter union zero le inl inr junc
 
@@ -23,10 +23,10 @@ scoped notation:70 (priority := high) x:70 " \\ " y:71 => SDiff.sdiff x y
 -- `transpose`'s pieces at a relation `R` (`RepLambda`'s `kcT`, `pT`, `loT`, as notations taking `R`)
 set_option hygiene false in
 scoped notation "kcT(" R ")" =>
-  (Obj.codes _ (#v[⟨(Rel.nub R).n, (Rel.nub R).key⟩] : Vector (Part _) 1))[0]'Nat.zero_lt_one
+  (Obj.codes _ (#v[⟨(Rel.Tab.nub R).n, (Rel.Tab.nub R).key⟩] : Vector (Part _) 1))[0]'Nat.zero_lt_one
 set_option hygiene false in
-scoped notation "pT(" R ")" => gather 8 (Obj.sortBy _ (Rel.nub R).val (tilLongs (Rel.nub R).n))
-  (Code.gather (kcT(R)) (Obj.sortBy _ (Rel.nub R).val (tilLongs (Rel.nub R).n))).grade
+scoped notation "pT(" R ")" => gather 8 (Obj.sortBy _ (Rel.Tab.nub R).val (tilLongs (Rel.Tab.nub R).n))
+  (Code.gather (kcT(R)) (Obj.sortBy _ (Rel.Tab.nub R).val (tilLongs (Rel.Tab.nub R).n))).grade
 set_option hygiene false in
 scoped notation "loT(" R ")" => ByteArray.extract (Code.runStarts (Code.gather (kcT(R)) (pT(R)))) 0
   (ByteArray.size (Code.runStarts (Code.gather (kcT(R)) (pT(R)))) - 8)
@@ -49,8 +49,8 @@ theorem rep_tau {n : USize} (X : Vals A n)
           ∀ i < (kcX(X)).n.toNat, Column.idAt (kcX(X)).b (kcX(X)).w i < (kcX(X)).card))
     (hx : Vals.PickFits A X (List.range n.toNat))
     -- generic `A`: the nub copies `X`'s cells, whose dictionaries, general cells, nested payloads no `X` fact bounds
-    (hWk : A.CodesFit (#v[⟨(Rel.nub (idU X)).n, (Rel.nub (idU X)).key⟩] : Vector (Part A) 1))
-    (hW : A.CodesFit (#v[⟨(Rel.nub (idU X)).n, (Rel.nub (idU X)).val⟩] : Vector (Part A) 1))
+    (hWk : A.CodesFit (#v[⟨(nub (idU X)).n, (nub (idU X)).key⟩] : Vector (Part A) 1))
+    (hW : A.CodesFit (#v[⟨(nub (idU X)).n, (nub (idU X)).val⟩] : Vector (Part A) 1))
     (h63 : n.toNat < 2 ^ 63) :
     (∀ a Y, rep (τ X) a Y → ∀ x, x ∈ Y ↔ x = a) ∧ (∀ a, (∃ Y, rep (τ X) a Y) ↔ ∃ i, Vals.row X i = a) := by
   obtain ⟨h1, h2⟩ := rep_transpose (idU X) hX hX hx hx hWk _ (sortBy_nub_perm _ hW) _ (transpose_eq _) h63
@@ -74,23 +74,23 @@ set_option hygiene false in
 scoped notation "lD(" R ", " U ")" => (Rel.Alg.idU U \ Rel.Alg.dom R)
 set_option hygiene false in
 scoped notation "lN(" R ", " U ", " B ")" =>
-  Rel.Alg.top (Rel.key (Rel.Alg.idU U \ Rel.Alg.dom R)) (Rel.Alg.nilVal B)
+  Rel.Alg.top (Rel.Tab.key (Rel.Alg.idU U \ Rel.Alg.dom R)) (Rel.Alg.nilVal B)
 end Pow
 open Pow
 
 /-- **`rep_top`'s fits at `lamOn R U`'s empty-array part**: its keys are rows of `idU U \ dom R`, which fits where
     `U` does (`diff_pickFits`); the empty array fits anywhere (`pickFits_nilVal`); one value per key. -/
-theorem lamOn_top_fits {B : Obj} {m : USize} (R : Rel A B) (U : Vals A m)
+theorem lamOn_top_fits {B : Obj} {m : USize} (R : Tab A B) (U : Vals A m)
     (hc : pairsOK(Rel.Alg.idU U, Rel.Alg.dom R)) (hdU : Vals.PickFits A U (List.range m.toNat)) :
-    (Rel.n (lD(R, U))).toNat * USize.toNat 1 < USize.size ∧
-      Vals.PickFits A (Rel.key (lD(R, U)))
-        ((List.range ((Rel.n (lD(R, U))).toNat * USize.toNat 1)).map (· / USize.toNat 1)) ∧
+    (n (lD(R, U))).toNat * USize.toNat 1 < USize.size ∧
+      Vals.PickFits A (Tab.key (lD(R, U)))
+        ((List.range ((n (lD(R, U))).toNat * USize.toNat 1)).map (· / USize.toNat 1)) ∧
       Vals.PickFits (.arr B) (Rel.Alg.nilVal B)
-        ((List.range ((Rel.n (lD(R, U))).toNat * USize.toNat 1)).map (· % USize.toNat 1)) := by
-  have e : ((List.range ((Rel.n (lD(R, U))).toNat * USize.toNat 1)).map (· / USize.toNat 1)) =
-      List.range (Rel.n (lD(R, U))).toNat := by
+        ((List.range ((n (lD(R, U))).toNat * USize.toNat 1)).map (· % USize.toNat 1)) := by
+  have e : ((List.range ((n (lD(R, U))).toNat * USize.toNat 1)).map (· / USize.toNat 1)) =
+      List.range (n (lD(R, U))).toNat := by
     simp
-  refine ⟨by simpa using USize.toNat_lt_size (Rel.n (lD(R, U))), ?_, pickFits_nilVal B _⟩
+  refine ⟨by simpa using USize.toNat_lt_size (n (lD(R, U))), ?_, pickFits_nilVal B _⟩
   rw [e]
   exact (diff_pickFits _ _ hc hdU hdU).1
 
@@ -101,33 +101,33 @@ theorem lamOn_top_fits {B : Obj} {m : USize} (R : Rel A B) (U : Vals A m)
     relates `a` to, it has a row at `a` exactly when `R` has a pair at `a` or `U` lists `a`, and each row is `T`'s or the empty array.
     `rep_union_full` splits it into `Λ(R)` (`rep_transpose`) and `⊤` (`rep_top`) from the `U`-rows outside
     `dom R` (`rep_diff`, `rep_dom`) to the empty array. Hypotheses: those of each, at the parts named above. -/
-theorem rep_lamOn {B : Obj} {m : USize} (R : Rel A B) (U : Vals A m)
+theorem rep_lamOn {B : Obj} {m : USize} (R : Tab A B) (U : Vals A m)
     -- `rep_transpose` at `R`
     (kc vc : Code) (hkc : kc = kcR(R)) (hvc : vc = vcR(R))
-    (hK : cOK(kc, Rel.n R, Rel.key R)) (hV : cOK(vc, Rel.n R, Rel.val R))
-    (hk : Vals.PickFits A (Rel.key R) (List.range (Rel.n R).toNat))
-    (hv : Vals.PickFits B (Rel.val R) (List.range (Rel.n R).toNat))
+    (hK : cOK(kc, n R, Tab.key R)) (hV : cOK(vc, n R, val R))
+    (hk : Vals.PickFits A (Tab.key R) (List.range (n R).toNat))
+    (hv : Vals.PickFits B (val R) (List.range (n R).toNat))
     -- generic sides: the nub copies `R`'s cells, whose dictionaries, general cells, nested payloads no `R` fact bounds
-    (hWk : A.CodesFit (#v[⟨(Rel.nub R).n, (Rel.nub R).key⟩] : Vector (Part A) 1))
+    (hWk : A.CodesFit (#v[⟨(nub R).n, (nub R).key⟩] : Vector (Part A) 1))
     -- the order `transpose` lists the nub's rows in, each once (`sortBy_nub_perm` at the values' sort)
-    (vp : ByteArray) (hvp : (ids vp).Perm (List.range (Rel.nub R).n.toNat))
-    (h63 : (Rel.n R).toNat < 2 ^ 63)
+    (vp : ByteArray) (hvp : (ids vp).Perm (List.range (nub R).n.toNat))
+    (h63 : (n R).toNat < 2 ^ 63)
     -- `rep_diff` at `idU U`, `dom R`; two parts coded jointly: a generic `A`'s ALP sum and dictionaries are unbounded
     (pc : Vector Code 2) (hpc : pc = pairs #v[Rel.Alg.idU U, Rel.Alg.dom R])
     (hc : codesOK(pc, pcs(Rel.Alg.idU U, Rel.Alg.dom R)))
     (hdU : Vals.PickFits A U (List.range m.toNat))
     -- `rep_top` at `D.key`, `nilVal B`
-    (D : Rel A A) (hD : D = lD(R, U))
+    (D : Tab A A) (hD : D = lD(R, U))
     -- `D`'s count is bounded only by `U`'s, a `USize`; `top`'s `cross` needs it below `2^63`
-    (ht63 : (Rel.n D).toNat * USize.toNat 1 < 2 ^ 63)
+    (ht63 : (n D).toNat * USize.toNat 1 < 2 ^ 63)
     -- `rep_union_full` at `T`, `N`; `L` their raze
-    (T N : Rel A (.arr B)) (hT : T = transposeRuns (Rel.nub R) kcT(R) vp) (hN0 : N = Rel.Alg.top (Rel.key D) (Rel.Alg.nilVal B))
-    (hN : (Rel.n T).toNat + (Rel.n N).toNat < USize.size)
-    (hFk : Vals.RazeFits A (Rel.key T) (Rel.key N)) (hFv : Vals.RazeFits (.arr B) (Rel.val T) (Rel.val N))
-    (L : Rel A (.arr B)) (hL : L = Uc(T, N, hN)) (ku vu : Code) (hku : ku = kcR(L)) (hvu : vu = vcR(L))
-    (huK : cOK(ku, Rel.n L, Rel.key L)) (huV : cOK(vu, Rel.n L, Rel.val L))
-    (huk : Vals.PickFits A (Rel.key L) (List.range (Rel.n L).toNat))
-    (huv : Vals.PickFits (.arr B) (Rel.val L) (List.range (Rel.n L).toNat)) :
+    (T N : Tab A (.arr B)) (hT : T = transposeRuns (nub R) kcT(R) vp) (hN0 : N = Rel.Alg.top (Tab.key D) (Rel.Alg.nilVal B))
+    (hN : (n T).toNat + (n N).toNat < USize.size)
+    (hFk : Vals.RazeFits A (Tab.key T) (Tab.key N)) (hFv : Vals.RazeFits (.arr B) (val T) (val N))
+    (L : Tab A (.arr B)) (hL : L = Uc(T, N, hN)) (ku vu : Code) (hku : ku = kcR(L)) (hvu : vu = vcR(L))
+    (huK : cOK(ku, n L, Tab.key L)) (huV : cOK(vu, n L, val L))
+    (huk : Vals.PickFits A (Tab.key L) (List.range (n L).toNat))
+    (huv : Vals.PickFits (.arr B) (val L) (List.range (n L).toNat)) :
     (∀ a Y, rep (T ∪ N) a Y → ∀ y, y ∈ Y ↔ rep R a y) ∧
       (∀ a, (∃ Y, rep (T ∪ N) a Y) ↔ (∃ b, rep R a b) ∨ ∃ i, Vals.row U i = a) ∧
       ∀ a Y, rep (T ∪ N) a Y → rep T a Y ∨ Y = [] := by
@@ -139,7 +139,7 @@ theorem rep_lamOn {B : Obj} {m : USize} (R : Rel A B) (U : Vals A m)
     rw [hu]; exact Iff.rfl
   have hd : ∀ a b, rep (Rel.Alg.dom R) a b ↔ a = b ∧ ∃ c, rep R a c := fun a b => by
     rw [rep_dom_corefl R hK hk]; exact Iff.rfl
-  have hD : ∀ a, (∃ i, Vals.row (Rel.key (lD(R, U))) i = a) ↔ (∃ i, Vals.row U i = a) ∧ ¬ ∃ c, rep R a c := by
+  have hD : ∀ a, (∃ i, Vals.row (Tab.key (lD(R, U))) i = a) ↔ (∃ i, Vals.row U i = a) ∧ ¬ ∃ c, rep R a c := by
     intro a
     constructor
     · rintro ⟨i, hi⟩
@@ -150,9 +150,9 @@ theorem rep_lamOn {B : Obj} {m : USize} (R : Rel A B) (U : Vals A m)
       obtain ⟨i, hi, -⟩ := (rep_diff _ _ hc hdU hdU a a).2
         ⟨(idU_holds U a a).2 ⟨rfl, hU⟩, fun h => hR ((hd a a).1 h).2⟩
       exact ⟨i, hi⟩
-  have hNt : ∀ a Y, rep (lN(R, U, B)) a Y ↔ (∃ i, Vals.row (Rel.key (lD(R, U))) i = a) ∧ Y = [] := fun a Y => by
+  have hNt : ∀ a Y, rep (lN(R, U, B)) a Y ↔ (∃ i, Vals.row (Tab.key (lD(R, U))) i = a) ∧ Y = [] := fun a Y => by
     rw [rep_top _ _ htN ht63 htA htB]
-    show (∃ a', (a = a' ∧ ∃ i, Vals.row (Rel.key (lD(R, U))) i = a) ∧
+    show (∃ a', (a = a' ∧ ∃ i, Vals.row (Tab.key (lD(R, U))) i = a) ∧
       ∃ b', True ∧ (b' = Y ∧ ∃ j, Vals.row (Rel.Alg.nilVal B) j = b')) ↔ _
     have hnil : (∃ j, Vals.row (Rel.Alg.nilVal B) j = Y) ↔ Y = [] :=
       ⟨fun ⟨_, h⟩ => h.symm, fun h => ⟨⟨0, by simp⟩, h.symm⟩⟩
@@ -181,12 +181,12 @@ scoped notation "mS(" X ")" => (Rel.Alg.mem X)
 -- `≫`'s two middle parts, their joint codes, the pairs `join` answers and their count (`RepComp`'s `jcs`, `jc`,
 -- `jpairs`, taking `R`, `S`)
 set_option hygiene false in
-scoped notation "jcs(" R ", " S ")" => (#v[⟨Rel.n R, Rel.val R⟩, ⟨Rel.n S, Rel.key S⟩] : Vector (Part _) 2)
+scoped notation "jcs(" R ", " S ")" => (#v[⟨Rel.Tab.n R, Rel.Tab.val R⟩, ⟨Rel.Tab.n S, Rel.Tab.key S⟩] : Vector (Part _) 2)
 set_option hygiene false in
 scoped notation "jc(" R ", " S ")" => Obj.codes _ (jcs(R, S))
 set_option hygiene false in
-scoped notation "jpairs(" R ", " S ")" => ((List.range (Rel.n R).toNat).flatMap fun i =>
-  ((List.range (Rel.n S).toNat).filter fun j =>
+scoped notation "jpairs(" R ", " S ")" => ((List.range (Rel.Tab.n R).toNat).flatMap fun i =>
+  ((List.range (Rel.Tab.n S).toNat).filter fun j =>
     Column.idAt ((jc(R, S))[1]'Nat.one_lt_two).b ((jc(R, S))[1]'Nat.one_lt_two).w j ==
       Column.idAt ((jc(R, S))[0]'Nat.zero_lt_two).b ((jc(R, S))[0]'Nat.zero_lt_two).w i).map (i, ·))
 end Pow
@@ -204,8 +204,8 @@ theorem rep_tau_list {n : USize} (X : Vals A n)
           ∀ i < (kcX(X)).n.toNat, Column.idAt (kcX(X)).b (kcX(X)).w i < (kcX(X)).card))
     (hx : Vals.PickFits A X (List.range n.toNat))
     -- generic `A`: the nub copies `X`'s cells, whose dictionaries, general cells, nested payloads no `X` fact bounds
-    (hWk : A.CodesFit (#v[⟨(Rel.nub (idU X)).n, (Rel.nub (idU X)).key⟩] : Vector (Part A) 1))
-    (hW : A.CodesFit (#v[⟨(Rel.nub (idU X)).n, (Rel.nub (idU X)).val⟩] : Vector (Part A) 1))
+    (hWk : A.CodesFit (#v[⟨(nub (idU X)).n, (nub (idU X)).key⟩] : Vector (Part A) 1))
+    (hW : A.CodesFit (#v[⟨(nub (idU X)).n, (nub (idU X)).val⟩] : Vector (Part A) 1))
     (h63 : n.toNat < 2 ^ 63) :
     ∀ a Y, rep (τ X) a Y ↔ (∃ i, Vals.row X i = a) ∧ Y = [a] := by
   obtain ⟨h1, h2⟩ := rep_transpose_list (idU X) hX hX hx hx hWk _ (sortBy_nub_perm _ hW) _ (transpose_eq _) h63

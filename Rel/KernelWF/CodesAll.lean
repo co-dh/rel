@@ -11,7 +11,7 @@ import Rel.KernelWF.CodesGeneral
 
 namespace Rel.Alg
 
-open Rel Rel.Dep Rel.Kernel Rel.Verify Rel
+open Tab Rel.Dep Rel.Kernel Rel.Verify Rel
 
 /-- The bounds `Obj.codes` needs at every node of `A`, on the parts it hands that node: each node theorem's
     size bounds and `Vals.PickFits`; at an atom, the kinds a several-part theorem covers — boolean, a small

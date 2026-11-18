@@ -6,7 +6,7 @@ import Rel.KernelWF.CodesAll
 
 namespace Rel.Rep
 
-open Rel Rel.Kernel Rel Rel.Alg Rel.KernelWF
+open Tab Rel.Kernel Rel Rel.Alg Rel.KernelWF
 open scoped Rel.Core.Rel
 open Rel.Core.Rel hiding id comp recip inter union zero le inl inr junc
 
@@ -23,7 +23,7 @@ open Rel.Verify
 -- the values of `R` and of `T` as parts of `B`, their joint codes, and the rows `anti` keeps, as `antiJoin` names them
 set_option hygiene false in
 notation "avp(" B ", " R ", " T ")" =>
-  (#v[⟨Rel.n R, Rel.val R⟩, ⟨Rel.n T, Rel.val T⟩] : Vector (Part B) 2)
+  (#v[⟨Rel.Tab.n R, Rel.Tab.val R⟩, ⟨Rel.Tab.n T, Rel.Tab.val T⟩] : Vector (Part B) 2)
 set_option hygiene false in
 notation "avc(" B ", " R ", " T ")" => Obj.codes B avp(B, R, T)
 set_option hygiene false in
@@ -31,7 +31,7 @@ notation "amiss(" B ", " R ", " T ")" =>
   anti ((avc(B, R, T))[0]'Nat.zero_lt_two) ((avc(B, R, T))[1]'Nat.one_lt_two)
 
 /-- Row `i` of `R` is marked by `member` on the joint value codes exactly when its value is a value of `T`. -/
-theorem vals_member (R : Rel A B) (T : Rel B B) (hc : codesOK(avc(B, R, T), avp(B, R, T))) {i : Nat}
+theorem vals_member (R : Tab A B) (T : Tab B B) (hc : codesOK(avc(B, R, T), avp(B, R, T))) {i : Nat}
     (hi : i < R.n.toNat) :
     Column.bitAt (((avc(B, R, T))[0]'Nat.zero_lt_two).member ((avc(B, R, T))[1]'Nat.one_lt_two)) i = true ↔
       ∃ j, T.val.row j = R.val.row ⟨i, hi⟩ := by
@@ -49,7 +49,7 @@ theorem vals_member (R : Rel A B) (T : Rel B B) (hc : codesOK(avc(B, R, T), avp(
 /-- **`rep (antiJoin R T) = rep R ≫ ¬ran(rep T)`**, the coreflexive on the values no pair of `T` reaches: `anti` keeps
     the rows of `R` whose value is no value of `T` (`anti_ids`, `vals_member`), read back by `rows_keep`.
     Hypotheses: the joint value codes faithful and well formed (`hc`), `R`'s columns picking back at the kept rows. -/
-theorem rep_antiJoin (R : Rel A B) (T : Rel B B) (hc : codesOK(avc(B, R, T), avp(B, R, T)))
+theorem rep_antiJoin (R : Tab A B) (T : Tab B B) (hc : codesOK(avc(B, R, T), avp(B, R, T)))
     (hk : Vals.PickFits A R.key (List.range R.n.toNat)) (hv : Vals.PickFits B R.val (List.range R.n.toNat)) :
     rep (antiJoin R T) = rep R ≫ corefl (α := B.El) fun b => ¬ ∃ y, rep T y b :=
   Core.Rel.ext fun a b => by
@@ -85,13 +85,13 @@ namespace OpsN
 -- the rows `nub` keeps, named as `NubSpec` names them
 set_option hygiene false in
 scoped notation "nubI(" X ", " Y ", " R ")" =>
-  (tuples.tupleIds (c1(X, Rel.n R, Rel.key R)) #[c1(Y, Rel.n R, Rel.val R)]).2
+  (tuples.tupleIds (c1(X, Rel.Tab.n R, Rel.Tab.key R)) #[c1(Y, Rel.Tab.n R, Rel.Tab.val R)]).2
 -- `∪`'s razed relation of `P` and `Q` (`rep_union_full`'s `Uc`); unhygienic: captures `P`, `Q` and `hU`, the
 -- row-count bound `P.n + Q.n < USize.size`
 set_option hygiene false in
 scoped notation "PQ(" Y ", " Z ")" =>
-  (⟨_, Obj.raze Y #[⟨Rel.n P, Rel.key P⟩, ⟨Rel.n Q, Rel.key Q⟩] (raze2_lt hU),
-    Obj.raze Z #[⟨Rel.n P, Rel.val P⟩, ⟨Rel.n Q, Rel.val Q⟩] (raze2_lt hU)⟩ : Rel Y Z)
+  (⟨_, Obj.raze Y #[⟨Rel.Tab.n P, Rel.Tab.key P⟩, ⟨Rel.Tab.n Q, Rel.Tab.key Q⟩] (raze2_lt hU),
+    Obj.raze Z #[⟨Rel.Tab.n P, Rel.Tab.val P⟩, ⟨Rel.Tab.n Q, Rel.Tab.val Q⟩] (raze2_lt hU)⟩ : Rel.Tab Y Z)
 end OpsN
 open OpsN
 
@@ -104,7 +104,7 @@ theorem corefl_le_dom {X Y : Type} (P : X → Prop) (S : Core.Rel X Y) :
 /-- **`entire R U = true ↔ U? ⊑ dom (rep R)`**: every element `U` lists has an image under `rep R`. `entire` is
     `idU U ⊑ dom R` (`rep_le`, `rep_idU`, `rep_dom`). Hypotheses: `rep_le`'s joint pair codes of `idU U` and
     `dom R`, `rep_dom`'s on `R.key`. -/
-theorem rep_entire (R : Rel A B) {m : USize} (U : Vals A m)
+theorem rep_entire (R : Tab A B) {m : USize} (U : Vals A m)
     -- two parts coded jointly: a generic `A`'s ALP sum and dictionaries at `U`, `dom R` no `R` fact bounds
     (hc : codesOK(pairs #v[idU U, dom R], pcs(idU U, dom R))) (hK : oneOK(A, R.n, R.key))
     (hp : Vals.PickFits A R.key (List.range R.n.toNat)) :
@@ -115,7 +115,7 @@ theorem rep_entire (R : Rel A B) {m : USize} (U : Vals A m)
 
 /-- **`surjective R U = true ↔ U? ⊑ ran (rep R)`**: `entire R° U` (`rep_entire`, `convArr_holds`). Hypotheses:
     `rep_entire`'s at `R°`, whose keys are `R.val`. -/
-theorem rep_surjective (R : Rel A B) {m : USize} (U : Vals B m)
+theorem rep_surjective (R : Tab A B) {m : USize} (U : Vals B m)
     -- two parts coded jointly: a generic `B`'s ALP sum and dictionaries at `U`, `ran R` no `R` fact bounds
     (hc : codesOK(pairs #v[idU U, dom (R°)], pcs(idU U, dom (R°)))) (hK : oneOK(B, R.n, R.val))
     (hp : Vals.PickFits B R.val (List.range R.n.toNat)) :
@@ -150,7 +150,7 @@ theorem firsts_length_iff {α : Type} [DecidableEq α] (g : Nat → α) (m : Nat
 
 /-- Two rows of `R.nub` holding one pair are one row: `nub` keeps the first occurrence of each pair (`nub_row`,
     `nodup_firsts`). Hypotheses: `rep_nub`'s. -/
-theorem nub_rows_inj (R : Rel A B) (hK : oneOK(A, R.n, R.key)) (hV : oneOK(B, R.n, R.val))
+theorem nub_rows_inj (R : Tab A B) (hK : oneOK(A, R.n, R.key)) (hV : oneOK(B, R.n, R.val))
     (hk : Vals.PickFits A R.key (List.range R.n.toNat)) (hv : Vals.PickFits B R.val (List.range R.n.toNat))
     {t t' : Fin R.nub.n.toNat} (h1 : R.nub.key.row t = R.nub.key.row t') (h2 : R.nub.val.row t = R.nub.val.row t') :
     t = t' := by
@@ -175,7 +175,7 @@ theorem nub_rows_inj (R : Rel A B) (hK : oneOK(A, R.n, R.key)) (hV : oneOK(B, R.
 /-- **`simple R = true ↔ rep R° ≫ rep R ⊑ 𝟙`**, pointwise: `simple` counts `R.nub`'s distinct keys
     (`groupIds_firsts`) against its rows, all distinct exactly when no key holds two values (`firsts_length_iff`,
     `nub_rows_inj`, `rep_nub`). Hypotheses: `rep_nub`'s, and the key code of `R.nub` that `simple` groups. -/
-theorem rep_simple (R : Rel A B) (hK : oneOK(A, R.n, R.key)) (hV : oneOK(B, R.n, R.val))
+theorem rep_simple (R : Tab A B) (hK : oneOK(A, R.n, R.key)) (hV : oneOK(B, R.n, R.val))
     (hk : Vals.PickFits A R.key (List.range R.n.toNat)) (hv : Vals.PickFits B R.val (List.range R.n.toNat))
     -- generic `A`: the nub copies `R`'s keys, whose dictionaries, general cells, nested payloads no `R` fact bounds
     (hS : A.CodesFit (#v[⟨R.nub.n, R.nub.key⟩] : Vector (Part A) 1)) :
@@ -198,10 +198,10 @@ theorem rep_simple (R : Rel A B) (hK : oneOK(A, R.n, R.key)) (hV : oneOK(B, R.n,
 
 /-- **`injective R = true ↔ rep R ≫ rep R° ⊑ 𝟙`**, pointwise: `simple R°` (`rep_simple`, `convArr_holds`).
     Hypotheses: `rep_simple`'s at `R°`, whose keys are `R.val`. -/
-theorem rep_injective (R : Rel A B) (hK : oneOK(B, R.n, R.val)) (hV : oneOK(A, R.n, R.key))
+theorem rep_injective (R : Tab A B) (hK : oneOK(B, R.n, R.val)) (hV : oneOK(A, R.n, R.key))
     (hk : Vals.PickFits B R.val (List.range R.n.toNat)) (hv : Vals.PickFits A R.key (List.range R.n.toNat))
     -- generic `B`: the nub copies `R`'s values, whose dictionaries, general cells, nested payloads no `R` fact bounds
-    (hS : B.CodesFit (#v[⟨(Rel.nub (R°)).n, (Rel.nub (R°)).key⟩] : Vector (Part B) 1)) :
+    (hS : B.CodesFit (#v[⟨(nub (R°)).n, (nub (R°)).key⟩] : Vector (Part B) 1)) :
     injective R = true ↔ ∀ a a' b, rep R a b → rep R a' b → a = a' := by
   refine (rep_simple (R°) hK hV hk hv hS).trans ⟨fun h a a' b h1 h2 => h b a a' ?_ ?_, fun h b a a' h1 h2 => h a a' b ?_ ?_⟩
   · exact (convArr_holds R.key R.val a b).2 h1

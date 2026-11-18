@@ -16,7 +16,7 @@ open Rel.Ext
 
 namespace Rel.KernelWF
 
-open Rel Rel.Kernel Rel
+open Tab Rel.Kernel Rel
 
 /-! ## Sizes of the folds the kernels are written as -/
 

@@ -2,11 +2,11 @@ import Rel.Run.CRelDef
 
 section
 namespace Rel
-open Rel Rel.Kernel Rel Rel.Alg
+open Tab Rel.Kernel Rel Rel.Alg
 namespace Rep
 
 /-- The pairs `(c, y)` a round of `loopOn` meets at its states `St`, whose `ran` its step sees. -/
-def loopPairs {K X Y : Obj} (St : Rel K (.prod X (.arr Y))) : Rel (.prod X (.arr Y)) (.prod X Y) :=
+def loopPairs {K X Y : Obj} (St : Tab K (.prod X (.arr Y))) : Tab (.prod X (.arr Y)) (.prod X Y) :=
   pair (outl (ran St)) (outl (outr (ran St) ≫ uncons (ran (outr (ran St))).val))
 
 end Rep
@@ -15,7 +15,7 @@ end
 
 section
 namespace Rel
-open Rel Rel.Kernel Rel Rel.Alg
+open Tab Rel.Kernel Rel Rel.Alg
 namespace CRel
 variable {K X Y B : Obj}
 

@@ -7,7 +7,7 @@ import Rel.Run.Code
 
 namespace Rel.Alg
 
-open Rel Rel.Dep Rel.Kernel Rel
+open Tab Rel.Dep Rel.Kernel Rel
 
 /-! ## The operators -/
 
@@ -17,108 +17,108 @@ variable {A B C : Obj}
 
 /-- A relation's keys as a part. A function of the relation, not `⟨R.n, R.key⟩`: there `simp` cannot rewrite `R`,
     the `Vals`' count depending on it, so a twin's `_fst` would not reach a part a body codes. -/
-def keyPart {k v : Obj} (R : Rel k v) : Part k := ⟨R.n, R.key⟩
+def keyPart {k v : Obj} (R : Tab k v) : Part k := ⟨R.n, R.key⟩
 
 /-- A relation's values as a part, as `keyPart`. -/
-def valPart {k v : Obj} (R : Rel k v) : Part v := ⟨R.n, R.val⟩
+def valPart {k v : Obj} (R : Tab k v) : Part v := ⟨R.n, R.val⟩
 
 /-- A relation's rows sorted by value, and the bit: `sortByC` at `til`, a function of the relation as `keyPart`. -/
-def valSortC {k v : Obj} (R : Rel k v) : ByteArray × Bool := v.sortByC R.val (tilLongs R.n)
+def valSortC {k v : Obj} (R : Tab k v) : ByteArray × Bool := v.sortByC R.val (tilLongs R.n)
 
 /-- A relation's pairs as a part of the product side, as `keyPart`: what `pairs` codes. -/
-def pairPart {k v : Obj} (R : Rel k v) : Part (.prod k v) := ⟨R.n, (R.key, R.val)⟩
+def pairPart {k v : Obj} (R : Tab k v) : Part (.prod k v) := ⟨R.n, (R.key, R.val)⟩
 
 /-- `R ⊑ S`, `member` of `|R|` in `|S|` on the joint pair codes (`codesC` of the product side), all set, and whether
     it ran within capacity: the codes' bit. -/
-def leC (R S : Rel A B) : Bool × Bool :=
+def leC (R S : Tab A B) : Bool × Bool :=
   let c := (Obj.prod A B).codesC #v[pairPart R, pairPart S]
   (len (whereBits R.n (c.1[0].member c.1[1])) == R.n.toNat, c.2)
 
 /-- `R ⊑ S`: `leC`'s answer. -/
-private def le (R S : Rel A B) : Bool := (leC R S).1
+private def le (R S : Tab A B) : Bool := (leC R S).1
 
 /-- `R ∩ S`, the semi-join on pairs — `member` of the joint pair codes (`codesC` of the product side, which `pairs`
     is), `whereBits`, `gatherColumn` — and whether it ran within capacity: the codes' bit `&&` `R`'s two sides
     fitting at all its rows (`fitsN`), the picks `rows` makes being among them. -/
-def interC (R S : Rel A B) : Rel A B × Bool :=
+def interC (R S : Tab A B) : Tab A B × Bool :=
   let c := (Obj.prod A B).codesC #v[pairPart R, pairPart S]
   (R.rows (whereBits R.n (c.1[0].member c.1[1])), c.2 && Vals.fitsN A R.key R.n.toNat && Vals.fitsN B R.val R.n.toNat)
 
 /-- `R ∩ S`: `interC`'s relation. -/
-private def inter (R S : Rel A B) : Rel A B := (interC R S).1
+private def inter (R S : Tab A B) : Tab A B := (interC R S).1
 
 /-- `𝟘`: no pair. -/
-def zero : Rel A B := ⟨0, Vals.empty A, Vals.empty B⟩
+def zero : Tab A B := ⟨0, Vals.empty A, Vals.empty B⟩
 
 /-- A stopped run's model relation. -/
-instance : Inhabited (Rel A B) := ⟨zero⟩
+instance : Inhabited (Tab A B) := ⟨zero⟩
 
 /-- `R ∪ S`: `razeColumn` of keys and of vals, both at the summed count (`Obj.raze`), the first row of each pair;
     the summed count fits a `USize`. Whether it ran within capacity: the summed count's bound (`need`'s guard) and
     the bits of the two razes and of `nub`'s two codes (`razeC`, `codesC`), `&&` the razed sides fitting at all their
     rows (`fitsN`). -/
-def unionC (R S : Rel A B) : Rel A B × Bool :=
+def unionC (R S : Tab A B) : Tab A B × Bool :=
   need (R.n.toNat + S.n.toNat < USize.size) (fun _ => s!"∪: {R.n} + {S.n} rows do not fit a USize")
     (fun _ => (zero, false)) fun h =>
   let k := A.razeC #[⟨_, R.key⟩, ⟨_, S.key⟩] (by simpa using h)
   let v := B.razeC #[⟨_, R.val⟩, ⟨_, S.val⟩] (by simpa using h)
-  let U : Rel A B := ⟨_, k.1, v.1⟩
+  let U : Tab A B := ⟨_, k.1, v.1⟩
   let kc := A.codesC #v[⟨_, U.key⟩]; let vc := B.codesC #v[⟨_, U.val⟩]
   (U.rows (tuples.tupleIds kc.1[0] #[vc.1[0]]).2,
     k.2 && v.2 && kc.2 && vc.2 && Vals.fitsN A U.key U.n.toNat && Vals.fitsN B U.val U.n.toNat)
 
 /-- `R ∪ S`: `unionC`'s relation. -/
-private def union (R S : Rel A B) : Rel A B := (unionC R S).1
+private def union (R S : Tab A B) : Tab A B := (unionC R S).1
 
 /-- `⊤` on the universes `Ua`, `Ub`: `cross`, its two index columns of one length (`cross_len`). -/
-def top {ma mb : USize} (Ua : Vals A ma) (Ub : Vals B mb) : Rel A B :=
+def top {ma mb : USize} (Ua : Vals A ma) (Ub : Vals B mb) : Tab A B :=
   let c := cross ma mb
   longCount "⊤" c.1 fun m h => ⟨m, Vals.pick A Ua c.1 m h, Vals.pick B Ub c.2 m ((cross_len ma mb).trans h)⟩
 
 /-- `⊤` and whether it ran within capacity: `rep_top`'s pair count decided, `&&` each universe fitting at the
     `ma · mb` rows `cross` picks it at (`fitsN`), the form `rep_top` takes them in; `top` itself runs. -/
-def topC {ma mb : USize} (Ua : Vals A ma) (Ub : Vals B mb) : Rel A B × Bool :=
+def topC {ma mb : USize} (Ua : Vals A ma) (Ub : Vals B mb) : Tab A B × Bool :=
   (top Ua Ub, decide (ma.toNat * mb.toNat < USize.size) && decide (ma.toNat * mb.toNat < 2 ^ 63) &&
     Vals.fitsN A Ua (ma.toNat * mb.toNat) && Vals.fitsN B Ub (ma.toNat * mb.toNat))
 
 /-- `𝟙` on `U`: key and val the one column, shared. -/
-def idU {t : Obj} {m : USize} (U : Vals t m) : Rel t t := ⟨m, U, U⟩
+def idU {t : Obj} {m : USize} (U : Vals t m) : Tab t t := ⟨m, U, U⟩
 
 theorem idU_holds {t : Obj} {m : USize} (U : Vals t m) (x y : t.El) :
     (idU U).Holds x y ↔ x = y ∧ ∃ i, U.row i = x := by
-  simp only [Rel.Holds, idU]
+  simp only [Holds, idU]
   exact ⟨fun ⟨i, h1, h2⟩ => ⟨h1 ▸ h2, i, h1⟩, fun ⟨h, i, h1⟩ => ⟨i, h1, h ▸ h1⟩⟩
 
 /-- `R°`: the two fields swap, nothing runs. -/
-def convArr {k v : Obj} {n : USize} (key : Vals k n) (val : Vals v n) : Rel v k := ⟨n, val, key⟩
+def convArr {k v : Obj} {n : USize} (key : Vals k n) (val : Vals v n) : Tab v k := ⟨n, val, key⟩
 
 theorem convArr_holds {k v : Obj} {n : USize} (key : Vals k n) (val : Vals v n) (x : k.El) (y : v.El) :
-    (convArr key val).Holds y x ↔ (⟨n, key, val⟩ : Rel k v).Holds x y := by
-  simp only [Rel.Holds, convArr]
+    (convArr key val).Holds y x ↔ (⟨n, key, val⟩ : Tab k v).Holds x y := by
+  simp only [Holds, convArr]
   exact ⟨fun ⟨i, h1, h2⟩ => ⟨i, h2, h1⟩, fun ⟨i, h1, h2⟩ => ⟨i, h2, h1⟩⟩
 
 /-- `R°`: `convArr`. -/
-private def conv (R : Rel A B) : Rel B A := convArr R.key R.val
+private def conv (R : Tab A B) : Tab B A := convArr R.key R.val
 
 /-- The joined rows of `op` (`≫`, `\`, `/ₛ`) over the codes `l`, `k`: `join`, the left index column read at the
     right's count (`fit`, `join_len`), `x`'s rows beside `z`'s; the bit is the two picks' (`pickC`). On the codes
     as arguments: inside the picks' proofs a twin's `.1` is rewritten by neither `simp` nor `rw`. -/
-def joinC (op : String) (x : Part A) (z : Part C) (l k : Code) : Rel A C × Bool :=
+def joinC (op : String) (x : Part A) (z : Part C) (l k : Code) : Tab A C × Bool :=
   let ij := join l k
   longCount op ij.2 fun m h =>
     let a := Vals.pickC A x.2 (fit m.toNat ij.1) m (fit_len (h ▸ join_len l k))
     let c := Vals.pickC C z.2 ij.2 m h
-    ((⟨m, a.1, c.1⟩ : Rel A C), a.2 && c.2)
+    ((⟨m, a.1, c.1⟩ : Tab A C), a.2 && c.2)
 
 /-- `R ≫ S`, `join` on `R.val = S.key` (`joinC`, `R`'s keys beside `S`'s values), and whether it ran within
     capacity: `rep_comp`'s count bounds decided, `&&` the bits of the codes and of the two picks (`codesC`, `joinC`). -/
-def compC (R : Rel A B) (S : Rel B C) : Rel A C × Bool :=
+def compC (R : Tab A B) (S : Tab B C) : Tab A C × Bool :=
   let c := B.codesC #v[⟨_, R.val⟩, ⟨_, S.key⟩]
   let r := joinC "≫" (keyPart R) (valPart S) c.1[0] c.1[1]
   (r.1, c.2 && decide (S.n.toNat < 2 ^ 63) && decide (R.n.toNat * S.n.toNat < min (2 ^ 63) USize.size) && r.2)
 
 /-- `R ≫ S`: `compC`'s relation. -/
-private def comp (R : Rel A B) (S : Rel B C) : Rel A C := (compC R S).1
+private def comp (R : Tab A B) (S : Tab B C) : Tab A C := (compC R S).1
 
 /-- A twin's `.1` through `need` (so through `longCount`, `expand`): each branch's `.1`; a `split` of the test at a
     twin would decide it by evaluating the kernels that produce the count. -/
@@ -133,49 +133,49 @@ theorem _root_.Rel.Obj.codesC_fst (X : Obj) {p : Nat} (cs : Vector (Part X) p) :
 /-- The coreflexive on the distinct elements of `x`, `𝟙` on `x` at the first row of each code, and whether it ran
     within capacity: the one-part code's bit (`codesC`) `&&` `x` fitting at all its rows (`fitsN`), the first rows
     picked being among them. -/
-def distinctCoreflC (t : Obj) {n : USize} (x : Vals t n) : Rel t t × Bool :=
+def distinctCoreflC (t : Obj) {n : USize} (x : Vals t n) : Tab t t × Bool :=
   let c := t.codesC #v[⟨n, x⟩]
   ((idU x).rows c.1[0].groupIds.2, c.2 && Vals.fitsN t x n.toNat)
 
 /-- The coreflexive on the distinct elements of `x`: `distinctCoreflC`'s relation. -/
-def distinctCorefl (t : Obj) {n : USize} (x : Vals t n) : Rel t t := (distinctCoreflC t x).1
+def distinctCorefl (t : Obj) {n : USize} (x : Vals t n) : Tab t t := (distinctCoreflC t x).1
 
 /-- `dom R`: the coreflexive on the distinct keys. -/
-def dom (R : Rel A B) : Rel A A := distinctCorefl A R.key
+def dom (R : Tab A B) : Tab A A := distinctCorefl A R.key
 
 /-- `dom` and whether it ran within capacity: `distinctCoreflC` of the keys. -/
-def domC (R : Rel A B) : Rel A A × Bool := distinctCoreflC A R.key
+def domC (R : Tab A B) : Tab A A × Bool := distinctCoreflC A R.key
 
 /-- `ran R`: the coreflexive on the distinct vals. -/
-def ran (R : Rel A B) : Rel B B := distinctCorefl B R.val
+def ran (R : Tab A B) : Tab B B := distinctCorefl B R.val
 
 /-- `ran` and whether it ran within capacity: `distinctCoreflC` of the vals. -/
-def ranC (R : Rel A B) : Rel B B × Bool := distinctCoreflC B R.val
+def ranC (R : Tab A B) : Tab B B × Bool := distinctCoreflC B R.val
 
 /-- `R ≫ corNeg(C)`, the anti-join: the rows of `R` whose value is no value of `C` (`anti` on one joint coding), and
     whether it ran within capacity: the joint value codes' bit (`codesC`) `&&` `R`'s two sides fitting at all its rows
     (`fitsN`), the kept rows being among them. -/
-def antiJoinC (R : Rel A B) (C : Rel B B) : Rel A B × Bool :=
+def antiJoinC (R : Tab A B) (C : Tab B B) : Tab A B × Bool :=
   let vc := B.codesC #v[⟨_, R.val⟩, ⟨_, C.val⟩]
   (R.rows (anti vc.1[0] vc.1[1]), vc.2 && Vals.fitsN A R.key R.n.toNat && Vals.fitsN B R.val R.n.toNat)
 
 /-- `R ≫ corNeg(C)`: `antiJoinC`'s relation. -/
-def antiJoin (R : Rel A B) (C : Rel B B) : Rel A B := (antiJoinC R C).1
+def antiJoin (R : Tab A B) (C : Tab B B) : Tab A B := (antiJoinC R C).1
 
 /-- `R − S`, the rows of `R` whose pair is no pair of `S` — `interC`'s joint pair codes, `anti` in place of
     `member` — and whether it ran within capacity, as `interC`. -/
-def diffC (R S : Rel A B) : Rel A B × Bool :=
+def diffC (R S : Tab A B) : Tab A B × Bool :=
   let c := (Obj.prod A B).codesC #v[pairPart R, pairPart S]
   (R.rows (anti c.1[0] c.1[1]), c.2 && Vals.fitsN A R.key R.n.toNat && Vals.fitsN B R.val R.n.toNat)
 
 /-- `R − S`: `diffC`'s relation. -/
-private def diff (R S : Rel A B) : Rel A B := (diffC R S).1
+private def diff (R S : Tab A B) : Tab A B := (diffC R S).1
 
 /-! ## The ops as binary operators: the only way a program writes them -/
 
-instance : Inter (Rel A B) := ⟨inter⟩
-instance : Union (Rel A B) := ⟨union⟩
-instance : SDiff (Rel A B) := ⟨diff⟩
+instance : Inter (Tab A B) := ⟨inter⟩
+instance : Union (Tab A B) := ⟨union⟩
+instance : SDiff (Tab A B) := ⟨diff⟩
 /-- `R ≫ S`: composition in diagram order, first `R` then `S`. -/
 scoped infixl:80 " ≫ " => comp
 /-- `R°`: the converse. -/
@@ -183,7 +183,7 @@ scoped postfix:max "°" => conv
 /-- `R ⊑ S`: inclusion, decided. -/
 scoped infix:50 " ⊑ " => le
 /-- `R = S` as `R ⊑ S ∧ S ⊑ R`: the same pairs, whatever the row order and multiplicity. -/
-instance : BEq (Rel A B) := ⟨fun R S => R ⊑ S && S ⊑ R⟩
+instance : BEq (Tab A B) := ⟨fun R S => R ⊑ S && S ⊑ R⟩
 
 /-- The elements of the object `A` in this program: what `𝟙` and `⊤` range over. -/
 class Univ (A : Obj) where
@@ -199,12 +199,12 @@ scoped notation:max "∼" R:max => ⊤ \ R
 
 /-- `R.nub` and whether it ran within capacity: the bits of its two one-part codes (`codesC`) `&&` `R`'s sides
     fitting at all its rows (`fitsN`), `rep_nub`'s premises. -/
-def nubC {k v : Obj} (R : Rel k v) : Rel k v × Bool :=
+def nubC {k v : Obj} (R : Tab k v) : Tab k v × Bool :=
   let kc := k.codesC #v[⟨_, R.key⟩]; let vc := v.codesC #v[⟨_, R.val⟩]
   (R.rows (tuples.tupleIds kc.1[0] #[vc.1[0]]).2,
     kc.2 && vc.2 && Vals.fitsN k R.key R.n.toNat && Vals.fitsN v R.val R.n.toNat)
 
-theorem nubC_fst {k v : Obj} (R : Rel k v) : (nubC R).1 = R.nub := by
+theorem nubC_fst {k v : Obj} (R : Tab k v) : (nubC R).1 = R.nub := by
   show R.rows (tuples.tupleIds (k.codesC _).1[0] #[(v.codesC _).1[0]]).2 = _
   rw [Obj.codesC_fst, Obj.codesC_fst]; rfl
 
@@ -213,8 +213,8 @@ theorem nubC_fst {k v : Obj} (R : Rel k v) : (nubC R).1 = R.nub := by
     `∪`'s. A def of its own, on the codes as arguments: the kept rows' `longCount` binds a proof about the codes, so
     a twin's `.1` inside it is rewritten by neither `simp` (dependent binder) nor `rw` (whose defeq checks then
     evaluate the kernels); as an argument here it is. -/
-def divTailC {mb mc : USize} (Ub : Vals B mb) (Uc : Vals C mc) (y : Rel B C) (ycs : Vector Code 3)
-    (zc : Vector Code 1) : Rel B C × Bool :=
+def divTailC {mb mc : USize} (Ub : Vals B mb) (Uc : Vals C mc) (y : Tab B C) (ycs : Vector Code 3)
+    (zc : Vector Code 1) : Tab B C × Bool :=
   -- projected, not matched: `.2` of a `match` would hide the bit from `Bool.and_eq_true`
   let t := tuples.tupleIds ycs[0] #[zc[0]]
   let keep := longCount "\\" t.2 fun g _ =>
@@ -227,7 +227,7 @@ def divTailC {mb mc : USize} (Ub : Vals B mb) (Uc : Vals C mc) (y : Rel B C) (yc
     `cnt(y, z)` against `cnt(R.val)` `at` `y`; the vacuous `y ∉ ran R` with every `z` from the
     universes `Ub`, `Uc`: `⊤` on `anti(Ub, ran R)` and `Uc`. The two parts are disjoint (a counted `y` is in
     `ran R`) and meet by `∪`, whose counts are proved where a `raze` of the parts would need its own. -/
-def leftDivC {mb mc : USize} (R : Rel A B) (S : Rel A C) (Ub : Vals B mb) (Uc : Vals C mc) : Rel B C × Bool :=
+def leftDivC {mb mc : USize} (R : Tab A B) (S : Tab A C) (Ub : Vals B mb) (Uc : Vals C mc) : Tab B C × Bool :=
   let r := nubC R; let s := nubC S
   let kc := A.codesC #v[keyPart r.1, keyPart s.1]
   let y := joinC "\\" (valPart r.1) (valPart s.1) kc.1[0] kc.1[1]
@@ -239,17 +239,17 @@ def leftDivC {mb mc : USize} (R : Rel A B) (S : Rel A C) (Ub : Vals B mb) (Uc : 
     decide (mb.toNat * mc.toNat < min (2 ^ 63) USize.size) && u.2)
 
 /-- `R \ S`: `leftDivC`'s relation. -/
-def leftDiv {mb mc : USize} (R : Rel A B) (S : Rel A C) (Ub : Vals B mb) (Uc : Vals C mc) : Rel B C :=
+def leftDiv {mb mc : USize} (R : Tab A B) (S : Tab A C) (Ub : Vals B mb) (Uc : Vals C mc) : Tab B C :=
   (leftDivC R S Ub Uc).1
 
 /-- `R / S = (S° \ R°)°` (`R : a ⟶ c`, `S : b ⟶ c`); its vacuous term is `⊤` on `Ua` and `anti(Ub, dom S)`. The bit
     is `leftDivC`'s. -/
-def rightDivC {ma mb : USize} (R : Rel A C) (S : Rel B C) (Ua : Vals A ma) (Ub : Vals B mb) : Rel A B × Bool :=
+def rightDivC {ma mb : USize} (R : Tab A C) (S : Tab B C) (Ua : Vals A ma) (Ub : Vals B mb) : Tab A B × Bool :=
   let r := leftDivC (conv S) (conv R) Ub Ua
   (conv r.1, r.2)
 
 /-- `R / S`: `rightDivC`'s relation. -/
-def rightDiv {ma mb : USize} (R : Rel A C) (S : Rel B C) (Ua : Vals A ma) (Ub : Vals B mb) : Rel A B :=
+def rightDiv {ma mb : USize} (R : Tab A C) (S : Tab B C) (Ua : Vals A ma) (Ub : Vals B mb) : Tab A B :=
   (rightDivC R S Ua Ub).1
 
 /-! `R /ₛ S` (`R : a ⟶ c`, `S : b ⟶ c`), equal fibres: the fibres of `R` and of `S` as `segments`
@@ -268,15 +268,15 @@ def symDivIds (v0 v1 : Code) (pr orr ps os : ByteArray) (nR : Nat) : ByteArray :
 /-- `/ₛ`'s rows from the joined rows `hit` on: `∪` the vacuous `⊤` on `anti(Ua, dom R)` and `anti(Ub, dom S)` (`uac`,
     `rk` the codes of `Ua`, `R.key`; `ubc`, `sk` of `Ub`, `S.key`); the bit is `⊤`'s and `∪`'s. A def on the codes as
     arguments, as `divTailC`: the picked parts' counts are types of `⊤`'s arguments. -/
-def symDivTailC {ma mb : USize} (Ua : Vals A ma) (Ub : Vals B mb) (rk uac sk ubc : Code) (hit : Rel A B) :
-    Rel A B × Bool :=
+def symDivTailC {ma mb : USize} (Ua : Vals A ma) (Ub : Vals B mb) (rk uac sk ubc : Code) (hit : Tab A B) :
+    Tab A B × Bool :=
   let q := topC (Vals.pickPart A Ua (anti uac rk)).2 (Vals.pickPart B Ub (anti ubc sk)).2
   let u := unionC hit q.1
   (u.1, q.2 && u.2)
 
 /-- `/ₛ` and whether it ran within capacity: the codes' bits (`codesC`), `rep_symDiv`'s count bounds decided, the
     keys and universes fitting at all their rows (`fitsN`), the join picks' bit (`joinC`), `⊤`'s and `∪`'s. -/
-def symDivC {ma mb : USize} (R : Rel A C) (S : Rel B C) (Ua : Vals A ma) (Ub : Vals B mb) : Rel A B × Bool :=
+def symDivC {ma mb : USize} (R : Tab A C) (S : Tab B C) (Ua : Vals A ma) (Ub : Vals B mb) : Tab A B × Bool :=
   let vc := C.codesC #v[valPart R, valPart S]
   let ac := A.codesC #v[keyPart R, ⟨_, Ua⟩]; let bc := B.codesC #v[keyPart S, ⟨_, Ub⟩]
   let sr := segments ac.1[0]; let sq := segments bc.1[0]
@@ -290,7 +290,7 @@ def symDivC {ma mb : USize} (R : Rel A C) (S : Rel B C) (Ua : Vals A ma) (Ub : V
     Vals.fitsN B Ub mb.toNat && decide (ma.toNat * mb.toNat < min (2 ^ 63) USize.size) && u.2)
 
 /-- `R /ₛ S`: `symDivC`'s relation. -/
-def symDiv {ma mb : USize} (R : Rel A C) (S : Rel B C) (Ua : Vals A ma) (Ub : Vals B mb) : Rel A B :=
+def symDiv {ma mb : USize} (R : Tab A C) (S : Tab B C) (Ua : Vals A ma) (Ub : Vals B mb) : Tab A B :=
   (symDivC R S Ua Ub).1
 
 /-- `Λ(R) : A ⟶ arr B`: one row per distinct key of `R`, its cell the ARRAY of the key's values, each once,
@@ -298,7 +298,7 @@ def symDiv {ma mb : USize} (R : Rel A C) (S : Rel B C) (Ua : Vals A ma) (Ub : Va
     relations too, where `sortBy` orders by value. `Rel.nub`, the values sorted, then the keys' codes
     graded stably: each key one run, whose start and end (`runStarts`) are its row's `lo`, `hi`. `vp` is `d`'s
     rows sorted by value (`sortBy` at `til`), passed in so `transposeC` takes it with its bit from one pass. -/
-def transposeRuns (d : Rel A B) (kc : Code) (vp : ByteArray) : Rel A (.arr B) :=
+def transposeRuns (d : Tab A B) (kc : Code) (vp : ByteArray) : Tab A (.arr B) :=
   let p := gather 8 vp (kc.gather vp).grade
   let o := (kc.gather p).runStarts
   let lo := o.extract 0 (o.size - 8)
@@ -310,7 +310,7 @@ def transposeRuns (d : Rel A B) (kc : Code) (vp : ByteArray) : Rel A (.arr B) :=
 /-- `Λ(R)` with each key's values in the order `o` lists the nub's rows, and whether it ran within capacity:
     `transposeRuns` on `nubC`'s relation, its key codes (`codesC`) and `o` of it, the bit `nubC`'s `&&` those
     codes' `&&` `o`'s `&&` `rep_transpose`'s count decided. -/
-def transposeByC (o : Rel A B → ByteArray × Bool) (R : Rel A B) : Rel A (.arr B) × Bool :=
+def transposeByC (o : Tab A B → ByteArray × Bool) (R : Tab A B) : Tab A (.arr B) × Bool :=
   let d := nubC R
   let kc := A.codesC #v[keyPart d.1]
   let vp := o d.1
@@ -318,19 +318,19 @@ def transposeByC (o : Rel A B → ByteArray × Bool) (R : Rel A B) : Rel A (.arr
 
 /-- `Λ(R)` and whether it ran within capacity: `transposeByC` with the values sorted (`valSortC`), whose bit is the
     nub values' codes' (`sortByC_snd`, from the one pass that sorts by them). -/
-def transposeC (R : Rel A B) : Rel A (.arr B) × Bool := transposeByC valSortC R
+def transposeC (R : Tab A B) : Tab A (.arr B) × Bool := transposeByC valSortC R
 
 /-- `Λ(R)`: `transposeC`'s relation. -/
-def transpose (R : Rel A B) : Rel A (.arr B) := (transposeC R).1
+def transpose (R : Tab A B) : Tab A (.arr B) := (transposeC R).1
 
 /-- `Λ(R)` is `transposeRuns` on `R.nub`, its key codes and its values sorted: `nubC`'s and the codes twin's `.1`
     read as their ops. -/
-theorem transpose_eq (R : Rel A B) :
+theorem transpose_eq (R : Tab A B) :
     transpose R = transposeRuns R.nub (A.codes #v[⟨_, R.nub.key⟩])[0] (B.sortBy R.nub.val (tilLongs R.nub.n)) := by
   simp only [transpose, transposeC, transposeByC, nubC_fst, Obj.codesC_fst]; simp only [keyPart, valSortC, Obj.sortBy]
 
 /-- `transposeByC o R`'s relation is `transposeRuns` on `R.nub`, its key codes and `o`'s order of its rows. -/
-theorem transposeBy_eq (o : Rel A B → ByteArray × Bool) (R : Rel A B) :
+theorem transposeBy_eq (o : Tab A B → ByteArray × Bool) (R : Tab A B) :
     (transposeByC o R).1 = transposeRuns R.nub (A.codes #v[⟨_, R.nub.key⟩])[0] (o R.nub).1 := by
   simp only [transposeByC, nubC_fst, Obj.codesC_fst]; simp only [keyPart]
 
@@ -339,20 +339,20 @@ theorem transposeBy_eq (o : Rel A B → ByteArray × Bool) (R : Rel A B) :
     added to its slice's start; both read at the copies' count `expand` hands on. Whether it ran within capacity:
     the keys' pick bit (`pickC`), at the copies `expand` makes, `&&` `X` fitting at all its rows (`fitsN`), which
     the values' windows are read through. -/
-def memC {n : USize} (X : Vals (.arr B) n) : Rel (.arr B) B × Bool :=
+def memC {n : USize} (X : Vals (.arr B) n) : Tab (.arr B) B × Bool :=
   let s := slicesOf X
   let r := expand n s.2 (fun _ => default) fun m i r hi _ =>
     let k := Vals.pickC (.arr B) X i m hi
-    ((⟨m, k.1, Vals.pick B X.2.2.2 (add m (gather 8 s.1 i) r) m (len_val ..)⟩ : Rel (.arr B) B), k.2)
+    ((⟨m, k.1, Vals.pick B X.2.2.2 (add m (gather 8 s.1 i) r) m (len_val ..)⟩ : Tab (.arr B) B), k.2)
   (r.1, r.2 && Vals.fitsN (.arr B) X n.toNat)
 
 /-- `∋` on the arrays `X`: `memC`'s relation. -/
-def mem {n : USize} (X : Vals (.arr B) n) : Rel (.arr B) B := (memC X).1
+def mem {n : USize} (X : Vals (.arr B) n) : Tab (.arr B) B := (memC X).1
 
 /-- `Λ(R) : A ⟶ arr B`, each key of `R` to the array of its values. -/
 scoped notation:max "Λ(" R ")" => transpose R
 /-- `∋(R) : arr B ⟶ B`, `mem` on the arrays of `Λ(R)`: `Λ(R) ≫ ∋(R) = R`. -/
-scoped notation:max "∋(" R ")" => mem (Rel.val (transpose R))
+scoped notation:max "∋(" R ")" => mem (Rel.Tab.val (transpose R))
 
 end Gen
 
@@ -360,52 +360,52 @@ variable {A B C : QAtomicType}
 
 /-- `⟨R, S⟩`'s joined rows over the key codes `l`, `k`, as `joinC`: rows `(x, (y, z))`, `R`'s keys and values
     picked at the left rows, `S`'s values at the right ones; the bit is the three picks' (`pickC`). -/
-def pairJoinC {A B C : Obj} (R : Rel A B) (S : Rel A C) (l k : Code) : Rel A (.prod B C) × Bool :=
+def pairJoinC {A B C : Obj} (R : Tab A B) (S : Tab A C) (l k : Code) : Tab A (.prod B C) × Bool :=
   let ij := join l k
   longCount "⟨R,S⟩" ij.2 fun m hm =>
     let x := Vals.pickC A R.key (fit m.toNat ij.1) m (fit_len (hm ▸ join_len l k))
     let y := Vals.pickC B R.val (fit m.toNat ij.1) m (fit_len (hm ▸ join_len l k))
     let z := Vals.pickC C S.val ij.2 m hm
-    ((⟨m, x.1, (y.1, z.1)⟩ : Rel A (.prod B C)), x.2 && y.2 && z.2)
+    ((⟨m, x.1, (y.1, z.1)⟩ : Tab A (.prod B C)), x.2 && y.2 && z.2)
 
 /-- `⟨R, S⟩`, `join` on the keys (`pairJoinC`), both value sides kept under one `n` as the columns of one product
     side, and whether it ran within capacity: `rep_pair`'s count bounds decided, `&&` the bits of the keys' codes and
     of the three picks (`codesC`, `pairJoinC`), as `compC`. -/
-def pairC {A B C : Obj} (R : Rel A B) (S : Rel A C) : Rel A (.prod B C) × Bool :=
+def pairC {A B C : Obj} (R : Tab A B) (S : Tab A C) : Tab A (.prod B C) × Bool :=
   let kc := A.codesC #v[⟨_, R.key⟩, ⟨_, S.key⟩]
   let r := pairJoinC R S kc.1[0] kc.1[1]
   (r.1, kc.2 && decide (S.n.toNat < 2 ^ 63) && decide (R.n.toNat * S.n.toNat < min (2 ^ 63) USize.size) && r.2)
 
 /-- `⟨R, S⟩`: `pairC`'s relation. -/
-def pair {A B C : Obj} (R : Rel A B) (S : Rel A C) : Rel A (.prod B C) := (pairC R S).1
+def pair {A B C : Obj} (R : Tab A B) (S : Tab A C) : Tab A (.prod B C) := (pairC R S).1
 
 /-- `outl`: the first component's columns, nothing runs. -/
-def outl {k v w : Obj} (T : Rel k (.prod v w)) : Rel k v := ⟨T.n, T.key, T.val.1⟩
+def outl {k v w : Obj} (T : Tab k (.prod v w)) : Tab k v := ⟨T.n, T.key, T.val.1⟩
 /-- `outr`: the second component's columns. -/
-def outr {k v w : Obj} (T : Rel k (.prod v w)) : Rel k w := ⟨T.n, T.key, T.val.2⟩
+def outr {k v w : Obj} (T : Tab k (.prod v w)) : Tab k w := ⟨T.n, T.key, T.val.2⟩
 
 /-- The rows of `R` numbered from `k`: row `i` keyed by `k + i`, its value kept — `Ew.val` add on `til`
     at the count `m`, which the row index is too (`Ew.val_size`). Row order enters here, as in `enum`. -/
-def num {A B : Obj} (R : Rel A B) (k : USize) : Rel .long B :=
+def num {A B : Obj} (R : Tab A B) (k : USize) : Tab .long B :=
   let m := R.n
   ⟨m, valCol Ew.add Ew.va (tilLongs m) (one k.toUInt64), Vals.pick B R.val (tilLongs m) m (len_tilLongs m)⟩
 
 /-- `num` and whether it ran within capacity: `rep_num`'s key bound decided, `&&` the values fitting at all their
     rows (`fitsN`), which `til` picks; `num` itself runs. -/
-def numC {A B : Obj} (R : Rel A B) (k : USize) : Rel .long B × Bool :=
+def numC {A B : Obj} (R : Tab A B) (k : USize) : Tab .long B × Bool :=
   (num R k, decide (k.toNat + R.n.toNat < 2 ^ 63) && Vals.fitsN B R.val R.n.toNat)
 
-theorem outl_holds {k v w : Obj} (T : Rel k (.prod v w)) (x : k.El) (y : v.El) :
+theorem outl_holds {k v w : Obj} (T : Tab k (.prod v w)) (x : k.El) (y : v.El) :
     (outl T).Holds x y ↔ ∃ z, T.Holds x (y, z) :=
   ⟨fun ⟨i, h1, h2⟩ => ⟨T.val.2.row i, i, h1, by subst h2; rfl⟩, fun ⟨_, i, h1, h2⟩ => ⟨i, h1, congrArg Prod.fst h2⟩⟩
 
-theorem outr_holds {k v w : Obj} (T : Rel k (.prod v w)) (x : k.El) (z : w.El) :
+theorem outr_holds {k v w : Obj} (T : Tab k (.prod v w)) (x : k.El) (z : w.El) :
     (outr T).Holds x z ↔ ∃ y, T.Holds x (y, z) :=
   ⟨fun ⟨i, h1, h2⟩ => ⟨T.val.1.row i, i, h1, by subst h2; rfl⟩, fun ⟨_, i, h1, h2⟩ => ⟨i, h1, congrArg Prod.snd h2⟩⟩
 
 /-- `R × S` as a relation of its own, `(x, x') ⟶ (y, y')`: `cross` of the rows of `R` and of `S`.
     `Δ(R)` is `prod R R`. Its two index columns have one length (`cross_len`). -/
-def prod {A B D E : Obj} (R : Rel A B) (S : Rel D E) : Rel (.prod A D) (.prod B E) :=
+def prod {A B D E : Obj} (R : Tab A B) (S : Tab D E) : Tab (.prod A D) (.prod B E) :=
   let c := cross R.n S.n
   longCount "×" c.1 fun m h =>
     ⟨m, (Vals.pick A R.key c.1 m h, Vals.pick D S.key c.2 m ((cross_len R.n S.n).trans h)),
@@ -440,7 +440,7 @@ def _root_.Rel.Vals.reads : (A : Obj) → {n : USize} → Vals A n → List Nat 
 
 /-- `R × S` and whether it ran within capacity: `rep_prod`'s bounds decided as it states them, the pair count and
     each column's reads repeated once per row of the other side; `prod` itself runs. -/
-def prodC {A B D E : Obj} (R : Rel A B) (S : Rel D E) : Rel (.prod A D) (.prod B E) × Bool :=
+def prodC {A B D E : Obj} (R : Tab A B) (S : Tab D E) : Tab (.prod A D) (.prod B E) × Bool :=
   (prod R S, decide (R.n.toNat * S.n.toNat < USize.size) && decide (R.n.toNat * S.n.toNat < 2 ^ 63) &&
     decide ((S.n.toNat + 1) * Vals.reads A R.key (List.range R.n.toNat) < min (2 ^ 63) USize.size) &&
     decide ((S.n.toNat + 1) * Vals.reads B R.val (List.range R.n.toNat) < min (2 ^ 63) USize.size) &&
@@ -472,22 +472,22 @@ def sumVals {A B : Obj} {n m : USize} (X : Vals A n) (Y : Vals B m) (hN : n.toNa
     toUSize_eq (toNat_add_fits hN).symm ▸ razeTo .long #[⟨n, tilCol n⟩, ⟨m, tilCol m⟩] (by simp) hN, X, Y⟩
 
 /-- `inl : A ⟶ A + B` on the universe `X`: each `x` to `inl x`, the sum side's left payload `X` itself. -/
-def inl {A B : Obj} {n : USize} (X : Vals A n) : Rel A (.sum A B) := ⟨n, X, ⟨n, 0, tags #[(n, false)] n, tilCol n, X, Vals.empty B⟩⟩
+def inl {A B : Obj} {n : USize} (X : Vals A n) : Tab A (.sum A B) := ⟨n, X, ⟨n, 0, tags #[(n, false)] n, tilCol n, X, Vals.empty B⟩⟩
 
 /-- `inl` and whether it ran within capacity: `rep_inl`'s count bound decided; it calls no capacity helper. -/
-def inlC {A B : Obj} {n : USize} (X : Vals A n) : Rel A (.sum A B) × Bool := (inl X, decide (n.toNat ≤ 2 ^ 63))
+def inlC {A B : Obj} {n : USize} (X : Vals A n) : Tab A (.sum A B) × Bool := (inl X, decide (n.toNat ≤ 2 ^ 63))
 
 /-- `inr : B ⟶ A + B` on the universe `Y`: each `y` to `inr y`. -/
-def inr {A B : Obj} {n : USize} (Y : Vals B n) : Rel B (.sum A B) := ⟨n, Y, ⟨0, n, tags #[(n, true)] n, tilCol n, Vals.empty A, Y⟩⟩
+def inr {A B : Obj} {n : USize} (Y : Vals B n) : Tab B (.sum A B) := ⟨n, Y, ⟨0, n, tags #[(n, true)] n, tilCol n, Vals.empty A, Y⟩⟩
 
 /-- `inr` and whether it ran within capacity: `rep_inr`'s count bound decided. -/
-def inrC {A B : Obj} {n : USize} (Y : Vals B n) : Rel B (.sum A B) × Bool := (inr Y, decide (n.toNat ≤ 2 ^ 63))
+def inrC {A B : Obj} {n : USize} (Y : Vals B n) : Tab B (.sum A B) × Bool := (inr Y, decide (n.toNat ≤ 2 ^ 63))
 
 /-- `[R, S] : A + B ⟶ C`: `inl x` to what `R` relates `x` to, `inr y` to what `S` relates `y` to. The keys are
     the two key payloads as they are (`sumVals`), the values razed (`Obj.raze`), `R.n + S.n` rows, which fit a
     `USize`. Whether it ran within capacity: `need`'s guard, `rep_junc`'s `2^63` bound decided, `&&` the bit of the
     values' raze (`razeC`). -/
-def juncC {A B C : Obj} (R : Rel A C) (S : Rel B C) : Rel (.sum A B) C × Bool :=
+def juncC {A B C : Obj} (R : Tab A C) (S : Tab B C) : Tab (.sum A B) C × Bool :=
   need (R.n.toNat + S.n.toNat < USize.size) (fun _ => s!"[R,S]: {R.n} + {S.n} rows do not fit a USize")
     (fun _ => (zero, false)) fun hN =>
   let v := C.razeC #[⟨_, R.val⟩, ⟨_, S.val⟩] (by simpa using hN)
@@ -495,19 +495,19 @@ def juncC {A B C : Obj} (R : Rel A C) (S : Rel B C) : Rel (.sum A B) C × Bool :
     decide (R.n.toNat + S.n.toNat ≤ 2 ^ 63) && v.2)
 
 /-- `[R, S] : A + B ⟶ C`: `juncC`'s relation. -/
-def junc {A B C : Obj} (R : Rel A C) (S : Rel B C) : Rel (.sum A B) C := (juncC R S).1
+def junc {A B C : Obj} (R : Tab A C) (S : Tab B C) : Tab (.sum A B) C := (juncC R S).1
 
 /-- `R + S ≜ [R inl, S inr] : A + B ⟶ C + D`, built directly: the key and the value sides share one tag and one
     position column over the payloads of `R` and of `S` as they are, where the composites would join each
     relation with an injection and raze the values (the guard below holds it equal to that term). -/
-def sum {A B C D : Obj} (R : Rel A C) (S : Rel B D) : Rel (.sum A B) (.sum C D) :=
+def sum {A B C D : Obj} (R : Tab A C) (S : Tab B D) : Tab (.sum A B) (.sum C D) :=
   need (R.n.toNat + S.n.toNat < USize.size) (fun _ => s!"R + S: {R.n} + {S.n} rows do not fit a USize")
     (fun _ => zero) fun hN =>
   let k := sumVals R.key S.key hN
   ⟨R.n + S.n, k, ⟨R.n, S.n, k.2.2.1, k.2.2.2.1, R.val, S.val⟩⟩
 
 /-- `R + S` and whether it ran within capacity: `rep_sum`'s two count bounds decided; it calls no capacity helper. -/
-def sumC {A B C D : Obj} (R : Rel A C) (S : Rel B D) : Rel (.sum A B) (.sum C D) × Bool :=
+def sumC {A B C D : Obj} (R : Tab A C) (S : Tab B D) : Tab (.sum A B) (.sum C D) × Bool :=
   (sum R S, decide (R.n.toNat + S.n.toNat < USize.size) && decide (R.n.toNat + S.n.toNat ≤ 2 ^ 63))
 
 /-- An unfold then a fold: Lean's loop, rounds of `step` until `done`, each round kernels. It ends because
@@ -527,25 +527,25 @@ def iter {α : Type} (n : Nat) (done : α → Bool) (f : α → α) (a : α) : �
 /-- A fixed point of `φ` from `X₀`: rounds `X ↦ nub(φ(X))`, at most `n`, until a round leaves the row count as
     it was, with the rounds run. On a chain (`φ` monotonic, `X₀ ⊑ φ(X₀)` or `φ(X₀) ⊑ X₀`) an equal count is an
     equal relation, so the stop is the fixed point; `n` bounds the rounds, as the chain's length does. -/
-def fixOn {A B : Obj} (n : Nat) (φ : Rel A B → Rel A B) (X₀ : Rel A B) : Rel A B × Nat :=
+def fixOn {A B : Obj} (n : Nat) (φ : Tab A B → Tab A B) (X₀ : Tab A B) : Tab A B × Nat :=
   let x := X₀.nub
   let r := iter n (fun (p, x, _) => p == x.n.toNat) (fun (_, x, k) => (x.n.toNat, (φ x).nub, k + 1))
     (x.n.toNat + 1, x, 0)
   (r.2.1, r.2.2)
 
 /-- `pairsIn Q D` and whether it ran within capacity: `compC`'s bit. -/
-def pairsInC {B : Obj} (Q : Rel B B) (D : Rel (.prod B B) (.prod B B)) : Rel (.prod B B) (.prod B B) × Bool :=
+def pairsInC {B : Obj} (Q : Tab B B) (D : Tab (.prod B B) (.prod B B)) : Tab (.prod B B) (.prod B B) × Bool :=
   compC D (idU (Q.key, Q.val))
 
 /-- The order `Q` as a test of pairs:the pairs of the coreflexive `D` that are pairs of `Q`. Every op that
     takes an order runs it as such a test, on the pairs it compares (`estOn`, …); `Q` closed is this test. -/
-def pairsIn {B : Obj} (Q : Rel B B) (D : Rel (.prod B B) (.prod B B)) : Rel (.prod B B) (.prod B B) :=
+def pairsIn {B : Obj} (Q : Tab B B) (D : Tab (.prod B B) (.prod B B)) : Tab (.prod B B) (.prod B B) :=
   (pairsInC Q D).1
 
 /-- The pairs `(b, c)` of the coreflexive `D` whose swap `(c, b)` passes the test `qC`, and whether it ran within
     capacity: the `&&` of `pairC`'s, `ranC`'s, the test's, `compC`'s and `domC`'s bits. -/
-def swapInC {B : Obj} (qC : Rel (.prod B B) (.prod B B) → Rel (.prod B B) (.prod B B) × Bool)
-    (D : Rel (.prod B B) (.prod B B)) : Rel (.prod B B) (.prod B B) × Bool :=
+def swapInC {B : Obj} (qC : Tab (.prod B B) (.prod B B) → Tab (.prod B B) (.prod B B) × Bool)
+    (D : Tab (.prod B B) (.prod B B)) : Tab (.prod B B) (.prod B B) × Bool :=
   let s := pairC (outr D) (outl D)
   let E := ranC s.1
   let t := qC E.1
@@ -554,20 +554,20 @@ def swapInC {B : Obj} (qC : Rel (.prod B B) (.prod B B) → Rel (.prod B B) (.pr
   (d.1, s.2 && E.2 && t.2 && M.2 && d.2)
 
 /-- The pairs `(b, c)` of the coreflexive `D` whose swap `(c, b)` passes the test `q`: `swapInC`'s relation. -/
-def swapIn {B : Obj} (q : Rel (.prod B B) (.prod B B) → Rel (.prod B B) (.prod B B))
-    (D : Rel (.prod B B) (.prod B B)) : Rel (.prod B B) (.prod B B) :=
+def swapIn {B : Obj} (q : Tab (.prod B B) (.prod B B) → Tab (.prod B B) (.prod B B))
+    (D : Tab (.prod B B) (.prod B B)) : Tab (.prod B B) (.prod B B) :=
   (swapInC (fun r => (q r, true)) D).1
 
 /-- **`swapInC`'s relation, written out**: each twin's `.1` is its op, so the body is `dom (s ≫ q (ran s))`. -/
-theorem swapInC_fst {B : Obj} (qC : Rel (.prod B B) (.prod B B) → Rel (.prod B B) (.prod B B) × Bool)
-    (D : Rel (.prod B B) (.prod B B)) :
+theorem swapInC_fst {B : Obj} (qC : Tab (.prod B B) (.prod B B) → Tab (.prod B B) (.prod B B) × Bool)
+    (D : Tab (.prod B B) (.prod B B)) :
     (swapInC qC D).1 = dom (pair (outr D) (outl D) ≫ (qC (ran (pair (outr D) (outl D)))).1) := rfl
 
 /-- `thin(Q)` per key, `Q` the test `q` run on the pairs `⟨G,G⟩` of values of one key, never on every pair of
     `ran G`: `(a, c)` dropped when some value `b` of `a` passes `(b, c)` and not `(c, b)`. `thin Q` is this at
     `pairsIn Q`. `thinOnC`'s bit is the `&&` of its pieces' and the test's (twice: on `D` and inside `swapInC`). -/
-def thinOnC {A B : Obj} (qC : Rel (.prod B B) (.prod B B) → Rel (.prod B B) (.prod B B) × Bool) (G : Rel A B) :
-    Rel A B × Bool :=
+def thinOnC {A B : Obj} (qC : Tab (.prod B B) (.prod B B) → Tab (.prod B B) (.prod B B) × Bool) (G : Tab A B) :
+    Tab A B × Bool :=
   let P := pairC G G
   let D := ranC P.1
   let t := qC D.1
@@ -578,14 +578,14 @@ def thinOnC {A B : Obj} (qC : Rel (.prod B B) (.prod B B) → Rel (.prod B B) (.
   (r.1, P.2 && D.2 && t.2 && S.2 && Y.2 && M.2 && r.2)
 
 /-- `thinOn q G`: `thinOnC`'s relation at the test `q` with no bit of its own. -/
-def thinOn {A B : Obj} (q : Rel (.prod B B) (.prod B B) → Rel (.prod B B) (.prod B B)) (G : Rel A B) :
-    Rel A B := (thinOnC (fun r => (q r, true)) G).1
+def thinOn {A B : Obj} (q : Tab (.prod B B) (.prod B B) → Tab (.prod B B) (.prod B B)) (G : Tab A B) :
+    Tab A B := (thinOnC (fun r => (q r, true)) G).1
 
 /-- `est(Q)` per key, `Q` the test `q` run on the pairs `⟨G,G⟩` of values of one key: `(a, b)` dropped when
     some other value `c` of `a` fails `(b, c)`. `est Q` is this at `pairsIn Q`. `estOnC`'s bit is the `&&` of its
     pieces' and the test's. -/
-def estOnC {A B : Obj} (qC : Rel (.prod B B) (.prod B B) → Rel (.prod B B) (.prod B B) × Bool) (G : Rel A B) :
-    Rel A B × Bool :=
+def estOnC {A B : Obj} (qC : Tab (.prod B B) (.prod B B) → Tab (.prod B B) (.prod B B) × Bool) (G : Tab A B) :
+    Tab A B × Bool :=
   let P := pairC G G
   let D := ranC P.1
   let V := ranC G
@@ -599,25 +599,25 @@ def estOnC {A B : Obj} (qC : Rel (.prod B B) (.prod B B) → Rel (.prod B B) (.p
   (r.1, P.2 && D.2 && V.2 && t.2 && Y.2 && W.2 && N.2 && Z.2 && M.2 && r.2)
 
 /-- `estOn q G`: `estOnC`'s relation at the test `q` with no bit of its own. -/
-def estOn {A B : Obj} (q : Rel (.prod B B) (.prod B B) → Rel (.prod B B) (.prod B B)) (G : Rel A B) :
-    Rel A B := (estOnC (fun r => (q r, true)) G).1
+def estOn {A B : Obj} (q : Tab (.prod B B) (.prod B B) → Tab (.prod B B) (.prod B B)) (G : Tab A B) :
+    Tab A B := (estOnC (fun r => (q r, true)) G).1
 
 /-- `est Q G` and whether it ran within capacity: `estOnC` at the test `pairsInC Q`. -/
-def estC {A B : Obj} (Q : Rel B B) (G : Rel A B) : Rel A B × Bool := estOnC (pairsInC Q) G
+def estC {A B : Obj} (Q : Tab B B) (G : Tab A B) : Tab A B × Bool := estOnC (pairsInC Q) G
 
 /-- `thin Q G` and whether it ran within capacity: `thinOnC` at the test `pairsInC Q`. -/
-def thinC {A B : Obj} (Q : Rel B B) (G : Rel A B) : Rel A B × Bool := thinOnC (pairsInC Q) G
+def thinC {A B : Obj} (Q : Tab B B) (G : Tab A B) : Tab A B × Bool := thinOnC (pairsInC Q) G
 
 /-- `est(Q)` per key of the family `G : A ⟶ B`, the `Q`-least values, `∋ ∩ (∈ \ Q°)`: the rows `(a, b)` of
     `G` with `b Q c` for every other value `c` of `a`. The pairs `(a, b)` it drops are those with a value `c`
     of `a`, `c ≠ b`, and no `b Q c`, so `est`, as `thin`, reads `Q` up to its reflexive closure, and a strict
     linear order answers as its reflexive one. -/
-def est {A B : Obj} (Q : Rel B B) (G : Rel A B) : Rel A B := (estC Q G).1
+def est {A B : Obj} (Q : Tab B B) (G : Tab A B) : Tab A B := (estC Q G).1
 
 /-- `thin(Q)` per key of the family `G : A ⟶ B`, the `Q`-minimal values: the rows `(a, b)` of `G` with no
     `(a, c)` of `G` where `c` is strictly `Q`-below `b`, the strict part being `Q \ Q°` (`Q` itself when
     strict). -/
-def thin {A B : Obj} (Q : Rel B B) (G : Rel A B) : Rel A B := (thinC Q G).1
+def thin {A B : Obj} (Q : Tab B B) (G : Tab A B) : Tab A B := (thinC Q G).1
 
 /-- A pick twin's `.1` is the pick, at each constructor of the side. -/
 theorem pickC_fst (A : Obj) {n : USize} (x : Vals A n) (i : ByteArray) (m : USize) (h : len i = m.toNat) :
@@ -632,7 +632,7 @@ theorem razeC_fst (A : Obj) (cs : Array (Part A)) (h) : (Obj.razeC A cs h).1 = O
     The rows with a clamped count above `0` (`whereBits`); the rest `lo + 1`, `hi` the clamped end, its payload
     then cut to the cells it refers to (`Vals.compact`), every column at the count of the rows kept. The bit is
     the pick of `X` at the non-empty rows (`pickC`), `rep_uncons`'s one fit. -/
-def unconsC {B : Obj} {n : USize} (X : Vals (.arr B) n) : Rel (.arr B) (.prod B (.arr B)) × Bool :=
+def unconsC {B : Obj} {n : USize} (X : Vals (.arr B) n) : Tab (.arr B) (.prod B (.arr B)) × Bool :=
   let s := slicesOf X
   let i := whereBits n (Ew.cmp Ew.gt Ew.i64 Ew.va s.2 (one 0) n)
   longCount "cons°" i fun r hr =>
@@ -643,7 +643,7 @@ def unconsC {B : Obj} {n : USize} (X : Vals (.arr B) n) : Rel (.arr B) (.prod B 
     x.2)
 
 /-- `cons°`: `unconsC`'s relation. -/
-def uncons {B : Obj} {n : USize} (X : Vals (.arr B) n) : Rel (.arr B) (.prod B (.arr B)) := (unconsC X).1
+def uncons {B : Obj} {n : USize} (X : Vals (.arr B) n) : Tab (.arr B) (.prod B (.arr B)) := (unconsC X).1
 
 /-- `cons : B × arr B ⟶ arr B` on the rows of `P`: each `(y, ys)` to the array `y` then `ys`, under its key.
     The new arrays are laid out one after another (`sums` of the counts plus one); the tails gathered from
@@ -653,7 +653,7 @@ def uncons {B : Obj} {n : USize} (X : Vals (.arr B) n) : Rel (.arr B) (.prod B (
     rows (`fitsN`), `&&`, out of `expand` in the pair, `rep_cons`'s count bound decided on the copies' count `k` plus the rows (`k` is the
     tails' counts summed, `len_expand_slicesOf`; `need` already bounds it by a `USize`) and the bits of the raze
     and of the last pick (`razeC`, `pickC`). -/
-def consC {K B : Obj} (P : Rel K (.prod B (.arr B))) : Rel K (.arr B) × Bool :=
+def consC {K B : Obj} (P : Tab K (.prod B (.arr B))) : Tab K (.arr B) × Bool :=
   let n := P.n
   let T := P.val.2
   let s := slicesOf T
@@ -670,11 +670,11 @@ def consC {K B : Obj} (P : Rel K (.prod B (.arr B))) : Rel K (.arr B) × Bool :=
     longCount "cons" perm fun p hp =>
     let v := Vals.pickC B flat.1 perm p hp
     ((⟨n, Vals.compact K P.key, ⟨p, valCol Ew.sub Ew.vv hi c1, longsN n hi (sums_le (len_val ..)), v.1⟩⟩ :
-      Rel K (.arr B)), decide (k.toNat + n.toNat < 2 ^ 63) && flat.2 && v.2)
+      Tab K (.arr B)), decide (k.toNat + n.toNat < 2 ^ 63) && flat.2 && v.2)
   (r.1, Vals.fitsN (.arr B) T n.toNat && Vals.fitsN K P.key n.toNat && r.2)
 
 /-- `cons`: `consC`'s relation. -/
-def cons {K B : Obj} (P : Rel K (.prod B (.arr B))) : Rel K (.arr B) := (consC P).1
+def cons {K B : Obj} (P : Tab K (.prod B (.arr B))) : Tab K (.arr B) := (consC P).1
 
 /-- `cat : arr B × arr B ⟶ arr B` on the rows of `P`, each `(xs, ys)` to `xs` then `ys` under its key (`cat`,
     AOP/A5_6_ListCombinators.lean:224, the graph of `cappend`). `cons` with an array for a head: the new arrays
@@ -683,7 +683,7 @@ def cons {K B : Obj} (P : Rel K (.prod B (.arr B))) : Rel K (.arr B) := (consC P
     at all their rows (`fitsN`), `&&`, out of the two `expand`s in the pair, `rep_cat`'s count bound decided on the two copies' counts `ka + kb` (each
     a side's counts summed, `len_expand_slicesOf`; `need` already bounds it by a `USize`) and the bits of the raze
     and of the last pick (`razeC`, `pickC`). -/
-def catC {K B : Obj} (P : Rel K (.prod (.arr B) (.arr B))) : Rel K (.arr B) × Bool :=
+def catC {K B : Obj} (P : Tab K (.prod (.arr B) (.arr B))) : Tab K (.arr B) × Bool :=
   let n := P.n
   let x := P.val.1
   let y := P.val.2
@@ -703,16 +703,16 @@ def catC {K B : Obj} (P : Rel K (.prod (.arr B) (.arr B))) : Rel K (.arr B) × B
     longCount "cat" perm fun p hp =>
     let v := Vals.pickC B flat.1 perm p hp
     ((⟨n, Vals.compact K P.key, ⟨p, valCol Ew.sub Ew.vv hi c, longsN n hi (sums_le (len_val ..)), v.1⟩⟩ :
-      Rel K (.arr B)), decide (ka.toNat + kb.toNat < 2 ^ 63) && flat.2 && v.2)
+      Tab K (.arr B)), decide (ka.toNat + kb.toNat < 2 ^ 63) && flat.2 && v.2)
   (r.1, Vals.fitsN (.arr B) x n.toNat && Vals.fitsN (.arr B) y n.toNat && Vals.fitsN K P.key n.toNat && r.2)
 
 /-- `cat`: `catC`'s relation. -/
-def cat {K B : Obj} (P : Rel K (.prod (.arr B) (.arr B))) : Rel K (.arr B) := (catC P).1
+def cat {K B : Obj} (P : Tab K (.prod (.arr B) (.arr B))) : Tab K (.arr B) := (catC P).1
 
 /-- `snoc ≜ (𝟙 × τ) cat` on the rows of `P` (`snoc`, AOP/A9_3_Bracket.lean:933): `(xs, a)` to `xs` then `a`.
     `𝟙 × τ` is `⟨π₁, π₂ τ⟩` on the distinct pairs of `P`, one row each, so `P` keeps its rows. Written on the twins
     of its pieces (`τ` is `Λ(idU ·)`), the bit the `&&` of theirs. -/
-def snocC {K B : Obj} (P : Rel K (.prod (.arr B) B)) : Rel K (.arr B) × Bool :=
+def snocC {K B : Obj} (P : Tab K (.prod (.arr B) B)) : Tab K (.arr B) × Bool :=
   let D := ranC P
   let t := transposeC (idU (outr D.1).val)
   let T := compC (outr D.1) t.1
@@ -722,7 +722,7 @@ def snocC {K B : Obj} (P : Rel K (.prod (.arr B) B)) : Rel K (.arr B) × Bool :=
   (r.1, D.2 && t.2 && T.2 && Q.2 && M.2 && r.2)
 
 /-- `snoc`: `snocC`'s relation. -/
-def snoc {K B : Obj} (P : Rel K (.prod (.arr B) B)) : Rel K (.arr B) := (snocC P).1
+def snoc {K B : Obj} (P : Tab K (.prod (.arr B) B)) : Tab K (.arr B) := (snocC P).1
 
 /-- The one-row side holding the empty array. -/
 def nilVal (B : Obj) : Vals (.arr B) 1 := ⟨0, col [0], col [0], Vals.empty B⟩
@@ -730,7 +730,7 @@ def nilVal (B : Obj) : Vals (.arr B) 1 := ⟨0, col [0], col [0], Vals.empty B�
 /-- `cons ≜ ⟨⟨nil, π₁⟩ ≫ snoc, π₂⟩ ≫ cat` on the rows of `P`: `(b, bs)` to `[] ++ [b]`, then `bs` appended — the
     pair `cons` relates, built by appending where `consC` prepends. On the distinct pairs of `P` (`ran`), one row
     each, as `snocC`; the bit the `&&` of its twins'. -/
-def consCatC {K B : Obj} (P : Rel K (.prod B (.arr B))) : Rel K (.arr B) × Bool :=
+def consCatC {K B : Obj} (P : Tab K (.prod B (.arr B))) : Tab K (.arr B) × Bool :=
   let D := ranC P
   let N := topC (A := .prod B (.arr B)) D.1.key (nilVal B)
   let S := pairC N.1 (outl D.1)
@@ -742,7 +742,7 @@ def consCatC {K B : Obj} (P : Rel K (.prod B (.arr B))) : Rel K (.arr B) × Bool
 
 /-- Round `k`'s element: each row of `ids` longer than `k` to its array's element `k` from the start (`l`, the
     left fold's order) or from the end (the right fold's). Either is a slice position, `lo + k` or `hi - 1 - k`. -/
-def foldEl {E : Obj} (l : Bool) (ids : Rel .long (.arr E)) (k : Nat) : Rel .long E :=
+def foldEl {E : Obj} (l : Bool) (ids : Tab .long (.arr E)) (k : Nat) : Tab .long E :=
   let s := slicesOf ids.val
   let a := whereBits ids.n (Ew.cmp Ew.gt Ew.i64 Ew.va s.2 (one k.toUInt64) ids.n)
   longCount "foldRows" a fun r hr =>
@@ -758,9 +758,9 @@ def foldEl {E : Obj} (l : Bool) (ids : Rel .long (.arr E)) (k : Nat) : Rel .long
     its size plus one rounds end every row (`iter`). The result is keyed by the row ids.
     `foldRound` is round `k` on the state `(pend, out, k)`, and whether it ran within capacity: the step's own bit
     `&&` the bits of the round's `nub`, `antiJoin` and `∪` (`nubC`, `antiJoinC`, `unionC`). -/
-def foldRound {E V : Obj} (l : Bool) (ids : Rel .long (.arr E))
-    (step : Rel .long E → Rel .long V → Rel .long V × Bool)
-    (st : Rel .long V × Rel .long V × Nat) : (Rel .long V × Rel .long V × Nat) × Bool :=
+def foldRound {E V : Obj} (l : Bool) (ids : Tab .long (.arr E))
+    (step : Tab .long E → Tab .long V → Tab .long V × Bool)
+    (st : Tab .long V × Tab .long V × Nat) : (Tab .long V × Tab .long V × Nat) × Bool :=
   let el := foldEl l ids st.2.2
   -- `≫` keeps row multiplicity, so a step reaching a value along two paths doubles its rows: `nub` each round,
   -- or the rows of `pend` grow as the paths do (`2^k` for `π₂ ∪ π₂ succ`), not as the pairs
@@ -772,21 +772,21 @@ def foldRound {E V : Obj} (l : Bool) (ids : Rel .long (.arr E))
 
 /-- `foldRows` and whether it ran within capacity: the `&&` of the bits of the rounds it ran, carried in the
     loop state from `true`. -/
-def foldRowsC {E V : Obj} (l : Bool) (ids : Rel .long (.arr E)) (pend : Rel .long V)
-    (step : Rel .long E → Rel .long V → Rel .long V × Bool) : Rel .long V × Bool :=
-  let r := iter (ids.val.1.toNat + 1) (fun st : (Rel .long V × Rel .long V × Nat) × Bool => st.1.1.n == 0)
+def foldRowsC {E V : Obj} (l : Bool) (ids : Tab .long (.arr E)) (pend : Tab .long V)
+    (step : Tab .long E → Tab .long V → Tab .long V × Bool) : Tab .long V × Bool :=
+  let r := iter (ids.val.1.toNat + 1) (fun st : (Tab .long V × Tab .long V × Nat) × Bool => st.1.1.n == 0)
     (fun st => let g := foldRound l ids step st.1; (g.1, st.2 && g.2)) ((pend, zero, 0), true)
   (r.1.2.1, r.2)
 
 /-- `foldRows`: `foldRowsC`'s relation, the step one with no bit of its own. -/
-def foldRows {E V : Obj} (l : Bool) (ids : Rel .long (.arr E)) (pend : Rel .long V)
-    (step : Rel .long E → Rel .long V → Rel .long V) : Rel .long V :=
+def foldRows {E V : Obj} (l : Bool) (ids : Tab .long (.arr E)) (pend : Tab .long V)
+    (step : Tab .long E → Tab .long V → Tab .long V) : Tab .long V :=
   (foldRowsC l ids pend fun el p => (step el p, true)).1
 
 /-- `foldRows` on the arrays of `X`, every row starting from every value of `e`, read back at the arrays by
     `num`'s row ids; and whether it ran within capacity: the bits of `num`, `⊤`, the rounds and `≫`. -/
 def foldByC {E V : Obj} {n m : USize} (l : Bool) (X : Vals (.arr E) n) (e : Vals V m)
-    (step : Rel .long E → Rel .long V → Rel .long V × Bool) : Rel (.arr E) V × Bool :=
+    (step : Tab .long E → Tab .long V → Tab .long V × Bool) : Tab (.arr E) V × Bool :=
   let ids := numC (idU X) 0
   let p := topC (A := .long) (B := V) ids.1.key e
   let F := foldRowsC l ids.1 p.1 step
@@ -795,21 +795,21 @@ def foldByC {E V : Obj} {n m : USize} (l : Bool) (X : Vals (.arr E) n) (e : Vals
 
 /-- `foldBy`: `foldByC`'s relation, the step one with no bit of its own. -/
 def foldBy {E V : Obj} {n m : USize} (l : Bool) (X : Vals (.arr E) n) (e : Vals V m)
-    (step : Rel .long E → Rel .long V → Rel .long V) : Rel (.arr E) V :=
+    (step : Tab .long E → Tab .long V → Tab .long V) : Tab (.arr E) V :=
   (foldByC l X e fun el p => (step el p, true)).1
 
 /-- A fold step in demand form: `S` runs on the pairs `P` the round meets, `pr` of its element and value
     (`pairC el pend` for the right fold's `(x, acc)`, `pairC pend el` for the left fold's `(acc, x)`), `S D` for
     the coreflexive `D` on them, so a carrier with no universe folds too. `S` a twin family; the bit the `&&` of
     `pr`'s, `ranC`'s, `S`'s and `compC`'s. -/
-def demandStepC {E V P : Obj} (pr : Rel .long E → Rel .long V → Rel .long P × Bool) (S : Rel P P → Rel P V × Bool)
-    (el : Rel .long E) (pend : Rel .long V) : Rel .long V × Bool :=
+def demandStepC {E V P : Obj} (pr : Tab .long E → Tab .long V → Tab .long P × Bool) (S : Tab P P → Tab P V × Bool)
+    (el : Tab .long E) (pend : Tab .long V) : Tab .long V × Bool :=
   let p := pr el pend; let d := ranC p.1; let s := S d.1; let c := compC p.1 s.1
   (c.1, p.2 && d.2 && s.2 && c.2)
 
 /-- `demandStep`: `demandStepC`'s relation, the family one with no bit of its own. -/
-def demandStep {E V P : Obj} (pr : Rel .long E → Rel .long V → Rel .long P × Bool) (S : Rel P P → Rel P V)
-    (el : Rel .long E) (pend : Rel .long V) : Rel .long V :=
+def demandStep {E V P : Obj} (pr : Tab .long E → Tab .long V → Tab .long P × Bool) (S : Tab P P → Tab P V)
+    (el : Tab .long E) (pend : Tab .long V) : Tab .long V :=
   (demandStepC pr (fun D => (S D, true)) el pend).1
 
 /-- `⦇e, S⦈` on the arrays `X`, `S` a twin family in demand form (`demandStepC`) on the pairs `pr` makes, the
@@ -817,24 +817,24 @@ def demandStep {E V P : Obj} (pr : Rel .long E → Rel .long V → Rel .long P �
     (`pairC`): `[]` to each value of `e`, `cons(x, xs)` to `w` when `xs` goes to `v` and `(x, v) S(D) w`; the left
     fold (`pairC pend el`): `[]` to each value of `e`, `snoc(xs, x)` to `w` when `xs` goes to `v` and
     `(v, x) S(D) w`. -/
-def foldOnC {E V P : Obj} {m n : USize} (l : Bool) (pr : Rel .long E → Rel .long V → Rel .long P × Bool)
-    (e : Vals V m) (S : Rel P P → Rel P V × Bool) (X : Vals (.arr E) n) : Rel (.arr E) V × Bool :=
+def foldOnC {E V P : Obj} {m n : USize} (l : Bool) (pr : Tab .long E → Tab .long V → Tab .long P × Bool)
+    (e : Vals V m) (S : Tab P P → Tab P V × Bool) (X : Vals (.arr E) n) : Tab (.arr E) V × Bool :=
   foldByC l X e (demandStepC pr S)
 
 /-- `⦇e, S⦈ʳ` on the arrays of `X`, `S` one relation: the right fold `foldOnC` with `S` whatever pairs a round
     meets, and whether it ran within capacity. An array may have several results or none. -/
-def foldC {E V : Obj} {m n : USize} (e : Vals V m) (S : Rel (.prod E V) V) (X : Vals (.arr E) n) :
-    Rel (.arr E) V × Bool :=
+def foldC {E V : Obj} {m n : USize} (e : Vals V m) (S : Tab (.prod E V) V) (X : Vals (.arr E) n) :
+    Tab (.arr E) V × Bool :=
   foldOnC false pairC e (fun _ => (S, true)) X
 
 /-- `fold`: `foldC`'s relation. -/
-def fold {E V : Obj} {m n : USize} (e : Vals V m) (S : Rel (.prod E V) V) (X : Vals (.arr E) n) : Rel (.arr E) V :=
+def fold {E V : Obj} {m n : USize} (e : Vals V m) (S : Tab (.prod E V) V) (X : Vals (.arr E) n) : Tab (.arr E) V :=
   (foldC e S X).1
 
 /-- `F(R)`, the list functor on the arrays of `X`, as the fold that specifies it: `xs` to every `ys` of its length
     with `xs[i] R ys[i]` at each `i` — `⦇[], (𝟙 × R) ≫ snoc⦈`, read from the start, each round pairing every array
     so far with every image of the element. `mapC` runs it for an `R` that is not simple. -/
-def mapFoldC {A B : Obj} {n : USize} (R : Rel A B) (X : Vals (.arr A) n) : Rel (.arr A) (.arr B) × Bool :=
+def mapFoldC {A B : Obj} {n : USize} (R : Tab A B) (X : Vals (.arr A) n) : Tab (.arr A) (.arr B) × Bool :=
   foldByC true X (nilVal B) fun el pend =>
     let q := compC el R; let p := pairC pend q.1; let c := snocC p.1
     (c.1, q.2 && p.2 && c.2)
@@ -842,7 +842,7 @@ def mapFoldC {A B : Obj} {n : USize} (R : Rel A B) (X : Vals (.arr A) n) : Rel (
 /-- `F(R)` for a simple `R` on the arrays of `X`, no round: each payload cell to `R`'s value at the first key equal
     to it (`find` on the joint codes of `R`'s keys and the payload, `R.n` at a miss), each array keeping `X`'s `lo`,
     `hi`. The bit: the codes', the pick's, and every cell's `find` landing on a key. -/
-def mapSimpleC {A B : Obj} {n : USize} (R : Rel A B) (X : Vals (.arr A) n) : Rel (.arr A) (.arr B) × Bool :=
+def mapSimpleC {A B : Obj} {n : USize} (R : Tab A B) (X : Vals (.arr A) n) : Tab (.arr A) (.arr B) × Bool :=
   let c := A.codesC #v[⟨_, R.key⟩, ⟨_, X.2.2.2⟩]
   let f := c.1[0].find c.1[1]
   need (X.1.toNat ≤ len f) (fun _ => s!"map: find answered {len f} of {X.1} cells") (fun _ => (default, false))
@@ -859,7 +859,7 @@ def mapSimpleC {A B : Obj} {n : USize} (R : Rel A B) (X : Vals (.arr A) n) : Rel
     `cross` of the positions, `Ew.cmp <` of their ranks. The domain is the types `gradeColumn` orders by value:
     every atom but a general list, whose witness `decide` discharges. -/
 def ltRows {t : QAtomicType} {n : USize} (U : Vals (.atom t) n) (_h : t ≠ .general := by decide) :
-    Rel (.atom t) (.atom t) :=
+    Tab (.atom t) (.atom t) :=
   let r := longsOf (Ops.rank (t := t) U _h)
   let c := cross n n
   longCount "<" c.1 fun nn _ =>
@@ -872,38 +872,38 @@ def ltRows {t : QAtomicType} {n : USize} (U : Vals (.atom t) n) (_h : t ≠ .gen
     ran within capacity: `diffC`'s bit `&&` `rep_lt`'s two count bounds decided. The picks of `U` stay plain: an
     atom's rows read back with no fit (`pick_row_atom`). -/
 def ltC {t : QAtomicType} {n : USize} (U : Vals (.atom t) n) (h : t ≠ .general := by decide) :
-    Rel (.atom t) (.atom t) × Bool :=
+    Tab (.atom t) (.atom t) × Bool :=
   let d := diffC (ltRows U h) (idU U)
   (d.1, d.2 && decide (n.toNat * n.toNat < USize.size) && decide (n.toNat * n.toNat < 2 ^ 63))
 
 /-- `<` on the elements of `U`: `ltC`'s relation. -/
 def lt {t : QAtomicType} {n : USize} (U : Vals (.atom t) n) (_h : t ≠ .general := by decide) :
-    Rel (.atom t) (.atom t) :=
+    Tab (.atom t) (.atom t) :=
   (ltC U _h).1
 
 /-- `≤` on the elements of `U` (`leRel`, AOP/A7_2_RelSet.lean:160), `lt U ∪ 𝟙`, and whether it ran within
     capacity: `ltC`'s bit `&&` `unionC`'s. -/
 def leqC {t : QAtomicType} {n : USize} (U : Vals (.atom t) n) (h : t ≠ .general := by decide) :
-    Rel (.atom t) (.atom t) × Bool :=
+    Tab (.atom t) (.atom t) × Bool :=
   let l := ltC U h; let u := unionC l.1 (idU U); (u.1, l.2 && u.2)
 
 /-- `≤` on the elements of `U`: `leqC`'s relation. -/
 def leq {t : QAtomicType} {n : USize} (U : Vals (.atom t) n) (h : t ≠ .general := by decide) :
-    Rel (.atom t) (.atom t) :=
+    Tab (.atom t) (.atom t) :=
   (leqC U h).1
 
 /-- `succ : long ⟶ long` on `U` (`succ`, AOP/A5_6_ListCombinators.lean:343): each `u` to `u + 1` where `u + 1`
     is in `U`, so the range stays in `U` and the top of `U` goes to nothing. `Ew.val` add, then the rows whose
     sum is a `member` of `U` (`whereBits`), key and sum gathered there. Whether it ran within capacity: the bit of
     its codes (`codesC`); the picks of atoms stay plain. -/
-def succC {n : USize} (U : Vals (.atom .long) n) : Rel (.atom .long) (.atom .long) × Bool :=
+def succC {n : USize} (U : Vals (.atom .long) n) : Tab (.atom .long) (.atom .long) × Bool :=
   let s : Arr .long n := valCol Ew.add Ew.va (longsOf U) (one 1)
   let c := (Obj.atom .long).codesC #v[⟨_, s⟩, ⟨_, U⟩]
   let k := whereBits n (c.1[0].member c.1[1])
   (longCount "succ" k fun r hr => ⟨r, Vals.pick _ U k r hr, Vals.pick (.atom .long) s k r hr⟩, c.2)
 
 /-- `succ : long ⟶ long` on `U`: `succC`'s relation. -/
-def succ {n : USize} (U : Vals (.atom .long) n) : Rel (.atom .long) (.atom .long) := (succC U).1
+def succ {n : USize} (U : Vals (.atom .long) n) : Tab (.atom .long) (.atom .long) := (succC U).1
 
 /-- The integral value verb `op` (`Ew.add`, `sub`, `mul`, `idiv`, `imod`) as a relation `long × long ⟶ long` on
     the pairs `W`: each `(u, v)` to `u op v` where that is a `long` other than q's null, and to nothing elsewhere.
@@ -913,7 +913,7 @@ def succ {n : USize} (U : Vals (.atom .long) n) : Rel (.atom .long) (.atom .long
     `idiv u` does not take back to `v`. `idiv`/`imod` floor, as q's `div`/`mod`, and cannot wrap on non-null
     operands. So the relation is partial at a zero divisor and at overflow, never a default value. -/
 def arith (op : UInt8) {n : USize} (W : Vals (.prod (.atom .long) (.atom .long)) n) :
-    Rel (.prod (.atom .long) (.atom .long)) (.atom .long) :=
+    Tab (.prod (.atom .long) (.atom .long)) (.atom .long) :=
   let m := n
   let u := longsOf W.1; let v := longsOf W.2
   let s := Kernel.Ew.val op Ew.i64 Ew.vv nul u v m
@@ -947,35 +947,35 @@ def mod {n : USize} (W : Vals (.prod (.atom .long) (.atom .long)) n) := arith Ew
     AOP/A5_7_PowerBeads.lean:171, of `singletonMap`, Freyd/S2_40.lean:170; the note's
     `τ≜⟨𝟙,⊸ nil⟩ cons`, diag/aop/07-optimisation.typ:694), and whether it ran within capacity: `transposeC`'s
     bit at `idU X`. -/
-def τC {A : Obj} {n : USize} (X : Vals A n) : Rel A (.arr A) × Bool := transposeC (idU X)
+def τC {A : Obj} {n : USize} (X : Vals A n) : Tab A (.arr A) × Bool := transposeC (idU X)
 
 /-- `τ` on `X`: `τC`'s relation. -/
-def τ {A : Obj} {n : USize} (X : Vals A n) : Rel A (.arr A) := (τC X).1
+def τ {A : Obj} {n : USize} (X : Vals A n) : Tab A (.arr A) := (τC X).1
 
 /-- `nil : K ⟶ arr B` on the one-row side `I`: its element to the empty array (`nil`,
     AOP/A1_7_Pointfree.lean:36; the note's `nil ≜ []`, diag/aop/07-optimisation.typ:443). -/
-def nil {K B : Obj} (I : Vals K 1) : Rel K (.arr B) := ⟨1, I, nilVal B⟩
+def nil {K B : Obj} (I : Vals K 1) : Tab K (.arr B) := ⟨1, I, nilVal B⟩
 
 /-- `α ≜ [nil, cons] : K + B × arr B ⟶ arr B`, `nil` on the one-row `I`, `cons` on the pairs `P` (the note's
     `α ≜ [nil,cons]`, diag/aop/07-optimisation.typ:449; `alphaR_eq_junc`, AOP/A5_6_ListCombinators.lean:727),
     on the twins `juncC`, `consCatC`; the bit the `&&` of theirs. -/
 def alphaC {K B : Obj} {n : USize} (I : Vals K 1) (P : Vals (.prod B (.arr B)) n) :
-    Rel (.sum K (.prod B (.arr B))) (.arr B) × Bool :=
+    Tab (.sum K (.prod B (.arr B))) (.arr B) × Bool :=
   let c := consCatC (idU P)
   let j := juncC (nil I) c.1
   (j.1, j.2 && c.2)
 
 /-- `α`: `alphaC`'s relation, `junc (nil I) (cons (idU P))` once `juncC`'s `.1` is `junc` (`juncC_fst`). -/
 def alpha {K B : Obj} {n : USize} (I : Vals K 1) (P : Vals (.prod B (.arr B)) n) :
-    Rel (.sum K (.prod B (.arr B))) (.arr B) :=
+    Tab (.sum K (.prod B (.arr B))) (.arr B) :=
   (alphaC I P).1
 
 /-- `Λ(R)` total on `U`, each array in the order `o` lists the nub's rows (`transposeByC`): each element of `U` that
     `R` relates to nothing goes to the empty array, which `Λ(R)`, one row per key of `R`, has no row for: `Λ(R) ∪ ⊤`
     from `(idU U − dom R)`'s keys to `nilVal B`. Whether it ran within capacity: the `&&` of the bits of the twins it
     runs (`transposeByC`, `domC`, `diffC`, `topC`, `unionC`). -/
-def lamOnByC {A B : Obj} {m : USize} (o : Rel A B → ByteArray × Bool) (R : Rel A B) (U : Vals A m) :
-    Rel A (.arr B) × Bool :=
+def lamOnByC {A B : Obj} {m : USize} (o : Tab A B → ByteArray × Bool) (R : Tab A B) (U : Vals A m) :
+    Tab A (.arr B) × Bool :=
   let t := transposeByC o R; let d := domC R
   let D := diffC (idU U) d.1
   let N := topC D.1.key (nilVal B)
@@ -983,36 +983,36 @@ def lamOnByC {A B : Obj} {m : USize} (o : Rel A B → ByteArray × Bool) (R : Re
   (u.1, t.2 && d.2 && D.2 && N.2 && u.2)
 
 /-- `Λ(R)` total on `U`, each array ascending: `lamOnByC` with the values sorted (`valSortC`). -/
-def lamOnC {A B : Obj} {m : USize} (R : Rel A B) (U : Vals A m) : Rel A (.arr B) × Bool := lamOnByC valSortC R U
+def lamOnC {A B : Obj} {m : USize} (R : Tab A B) (U : Vals A m) : Tab A (.arr B) × Bool := lamOnByC valSortC R U
 
 /-- `Λ(R)` total on `U`: `lamOnC`'s relation. -/
-def lamOn {A B : Obj} {m : USize} (R : Rel A B) (U : Vals A m) : Rel A (.arr B) := (lamOnC R U).1
+def lamOn {A B : Obj} {m : USize} (R : Tab A B) (U : Vals A m) : Tab A (.arr B) := (lamOnC R U).1
 
 /-- `E(R) : arr A ⟶ arr B` on the arrays `X`, the existential image, the note's `E(R)≜frac(∋R,∋)`
     (diag/aop/07-optimisation.typ:718), `existsImage R ≜ Λ(∋ ≫ R)` (AOP/A4_6.lean:95): `Λ(∋R)` total on `X`, and
     whether it ran within capacity: the bits of `memC`, `compC`, `lamOnC`. -/
-def EC {A B : Obj} {n : USize} (R : Rel A B) (X : Vals (.arr A) n) : Rel (.arr A) (.arr B) × Bool :=
+def EC {A B : Obj} {n : USize} (R : Tab A B) (X : Vals (.arr A) n) : Tab (.arr A) (.arr B) × Bool :=
   let m := memC X; let c := compC m.1 R; let l := lamOnC c.1 X
   (l.1, m.2 && c.2 && l.2)
 
 /-- `E(R)` on the arrays `X`: `EC`'s relation. -/
-def E {A B : Obj} {n : USize} (R : Rel A B) (X : Vals (.arr A) n) : Rel (.arr A) (.arr B) := (EC R X).1
+def E {A B : Obj} {n : USize} (R : Tab A B) (X : Vals (.arr A) n) : Tab (.arr A) (.arr B) := (EC R X).1
 
 /-- `tail ≜ cons° π₂` on the arrays `X` (diag/aop/05-datatypes.typ:561). -/
-def tail {B : Obj} {n : USize} (X : Vals (.arr B) n) : Rel (.arr B) (.arr B) := outr (uncons X)
+def tail {B : Obj} {n : USize} (X : Vals (.arr B) n) : Tab (.arr B) (.arr B) := outr (uncons X)
 
 /-- `tail` and `unconsC`'s bit, `rep_tail`'s one fit being `rep_uncons`'s. -/
-def tailC {B : Obj} {n : USize} (X : Vals (.arr B) n) : Rel (.arr B) (.arr B) × Bool :=
+def tailC {B : Obj} {n : USize} (X : Vals (.arr B) n) : Tab (.arr B) (.arr B) × Bool :=
   let u := unconsC X; (outr u.1, u.2)
 
 /-- `length ≜ ⦇[zero,π₂ succ]⦈` on the arrays `X` (diag/aop/09-dynamic.typ:506; `length`,
     AOP/A5_6_ListCombinators.lean:328), no round: each array to the count of its clamped slice, `hi − lo`
     (`slicesOf`); `rep_lengthC` ties it to the fold (`length_eq_reduce`). -/
-def lengthC {E : Obj} {n : USize} (X : Vals (.arr E) n) : Rel (.arr E) (.atom .long) × Bool :=
+def lengthC {E : Obj} {n : USize} (X : Vals (.arr E) n) : Tab (.arr E) (.atom .long) × Bool :=
   (⟨n, X, longsN n (slicesOf X).2 (Nat.le_of_eq (len_slices ..).2.symm)⟩, decide (X.1.toNat < 2 ^ 63))
 
 /-- `length`: `lengthC`'s relation; the bit the payload's count below `2^63`, so no count reads as negative. -/
-def length {E : Obj} {n : USize} (X : Vals (.arr E) n) : Rel (.arr E) (.atom .long) := (lengthC X).1
+def length {E : Obj} {n : USize} (X : Vals (.arr E) n) : Tab (.arr E) (.atom .long) := (lengthC X).1
 
 
 /-- `iter` on a round that also answers a bit, carrying the `&&` of the bits of the rounds it ran. -/
@@ -1022,7 +1022,7 @@ def iterC {α : Type} (n : Nat) (done : α → Bool) (r : α → α × Bool) (a 
 /-- `fixOn` on a step twin `φC` and whether it ran within capacity: `nubC`'s bit at `X₀` `&&` `iterC`'s, each round's
     the step's `&&` `nubC`'s. `fixOn` keeps its own written-out body: `AC3` reads its `iter` rounds by unfolding it;
     `fixOnC_fst` ties the two. -/
-def fixOnC {A B : Obj} (n : Nat) (φC : Rel A B → Rel A B × Bool) (X₀ : Rel A B) : (Rel A B × Nat) × Bool :=
+def fixOnC {A B : Obj} (n : Nat) (φC : Tab A B → Tab A B × Bool) (X₀ : Tab A B) : (Tab A B × Nat) × Bool :=
   let x := nubC X₀
   let r := iterC n (fun s => s.1 == s.2.1.n.toNat)
     (fun s => let y := φC s.2.1; let z := nubC y.1; ((s.2.1.n.toNat, z.1, s.2.2 + 1), y.2 && z.2))
@@ -1041,7 +1041,7 @@ def fixOnC {A B : Obj} (n : Nat) (φC : Rel A B → Rel A B × Bool) (X₀ : Rel
     is known only once they are laid out. -/
 def nestC {B : Obj} {n : USize} (X : Vals (.arr B) n)
     (f : (m : USize) → ByteArray × ByteArray → (i r : ByteArray) → len i = m.toNat → Arr .long m × Arr .long m) :
-    Rel (.arr B) (.arr (.arr B)) × Bool :=
+    Tab (.arr B) (.arr (.arr B)) × Bool :=
   let s := slicesOf X
   let c := addc n s.2 1
   let hi := sums n c
@@ -1049,7 +1049,7 @@ def nestC {B : Obj} {n : USize} (X : Vals (.arr B) n)
     let b := f m s i r hi'
     let v := Vals.pickC (.arr B) ⟨X.1, b.1, b.2, X.2.2.2⟩ (tilLongs m) m (len_tilLongs m)
     ((⟨n, Vals.compact (.arr B) X, ⟨m, valCol Ew.sub Ew.vv hi c, longsN n hi (sums_le (len_val ..)), v.1⟩⟩ :
-      Rel (.arr B) (.arr (.arr B))), decide (m.toNat < 2 ^ 63) && v.2)
+      Tab (.arr B) (.arr (.arr B))), decide (m.toNat < 2 ^ 63) && v.2)
   (r.1, decide (X.1.toNat + 1 < 2 ^ 63) && Vals.fitsN (.arr B) X n.toNat && r.2)
 
 /-- `inits`' slice kernel for `nestC`: copy `(row, k)` is `[lo, lo + k)`. -/
@@ -1065,19 +1065,19 @@ def tailsK (n m : USize) (s : ByteArray × ByteArray) (i r : ByteArray) (h : len
 
 /-- `inits : arr B ⟶ arr (arr B)` on the arrays `X`, the prefixes by increasing length, `[]` first (`initsFn`,
     AOP/A5_6_ListCombinators.lean:847; B&dM §5.6 p.130): the `k`-th is `[lo, lo + k)`; the bit `nestC`'s. -/
-def initsC {B : Obj} {n : USize} (X : Vals (.arr B) n) : Rel (.arr B) (.arr (.arr B)) × Bool :=
+def initsC {B : Obj} {n : USize} (X : Vals (.arr B) n) : Tab (.arr B) (.arr (.arr B)) × Bool :=
   nestC X initsK
 
 /-- `inits`: `initsC`'s relation. -/
-def inits {B : Obj} {n : USize} (X : Vals (.arr B) n) : Rel (.arr B) (.arr (.arr B)) := (initsC X).1
+def inits {B : Obj} {n : USize} (X : Vals (.arr B) n) : Tab (.arr B) (.arr (.arr B)) := (initsC X).1
 
 /-- `tails : arr B ⟶ arr (arr B)` on the arrays `X`, the suffixes by decreasing length, `[]` last (`tailsFn`,
     AOP/A5_6_ListCombinators.lean:857; B&dM §5.6 p.130): the `k`-th is `[lo + k, hi)`; the bit `nestC`'s. -/
-def tailsC {B : Obj} {n : USize} (X : Vals (.arr B) n) : Rel (.arr B) (.arr (.arr B)) × Bool :=
+def tailsC {B : Obj} {n : USize} (X : Vals (.arr B) n) : Tab (.arr B) (.arr (.arr B)) × Bool :=
   nestC X (tailsK n)
 
 /-- `tails`: `tailsC`'s relation. -/
-def tails {B : Obj} {n : USize} (X : Vals (.arr B) n) : Rel (.arr B) (.arr (.arr B)) := (tailsC X).1
+def tails {B : Obj} {n : USize} (X : Vals (.arr B) n) : Tab (.arr B) (.arr (.arr B)) := (tailsC X).1
 
 /-- `nestC X f ∋` with no nest: each array of `X` to each slice `f` cuts from it, one row per copy `expand` makes,
     the key picked at the copy's row as `memC` picks it. `nestC`'s relation keys each array by the whole list of
@@ -1085,29 +1085,29 @@ def tails {B : Obj} {n : USize} (X : Vals (.arr B) n) : Rel (.arr B) (.arr (.arr
     The bit `nestC`'s, `&&` the key pick's. -/
 def nestMemC {B : Obj} {n : USize} (X : Vals (.arr B) n)
     (f : (m : USize) → ByteArray × ByteArray → (i r : ByteArray) → len i = m.toNat → Arr .long m × Arr .long m) :
-    Rel (.arr B) (.arr B) × Bool :=
+    Tab (.arr B) (.arr B) × Bool :=
   let s := slicesOf X
   let c := addc n s.2 1
   let r := expand n c (fun _ => default) fun m i r hi' _ =>
     let b := f m s i r hi'
     let v := Vals.pickC (.arr B) ⟨X.1, b.1, b.2, X.2.2.2⟩ (tilLongs m) m (len_tilLongs m)
     let k := Vals.pickC (.arr B) X i m hi'
-    ((⟨m, k.1, v.1⟩ : Rel (.arr B) (.arr B)), decide (m.toNat < 2 ^ 63) && v.2 && k.2)
+    ((⟨m, k.1, v.1⟩ : Tab (.arr B) (.arr B)), decide (m.toNat < 2 ^ 63) && v.2 && k.2)
   (r.1, decide (X.1.toNat + 1 < 2 ^ 63) && Vals.fitsN (.arr B) X n.toNat && r.2)
 
 /-- `prefix : arr E ⟶ arr E` on the arrays `X`, each array to each of its initial segments (`prefix`, B&dM p.126):
     `inits ∋`, the slices `[lo, lo + k)`. -/
-def prefixC {E : Obj} {n : USize} (X : Vals (.arr E) n) : Rel (.arr E) (.arr E) × Bool := nestMemC X initsK
+def prefixC {E : Obj} {n : USize} (X : Vals (.arr E) n) : Tab (.arr E) (.arr E) × Bool := nestMemC X initsK
 
 /-- `prefix`: `prefixC`'s relation. -/
-def «prefix» {E : Obj} {n : USize} (X : Vals (.arr E) n) : Rel (.arr E) (.arr E) := (prefixC X).1
+def «prefix» {E : Obj} {n : USize} (X : Vals (.arr E) n) : Tab (.arr E) (.arr E) := (prefixC X).1
 
 /-- `suffix : arr E ⟶ arr E` on the arrays `X`, each array to each of its final segments (`suffix`,
     AOP/A5_6_ListCombinators.lean:221): `tails ∋`, the slices `[lo + k, hi)`. -/
-def suffixC {E : Obj} {n : USize} (X : Vals (.arr E) n) : Rel (.arr E) (.arr E) × Bool := nestMemC X (tailsK n)
+def suffixC {E : Obj} {n : USize} (X : Vals (.arr E) n) : Tab (.arr E) (.arr E) × Bool := nestMemC X (tailsK n)
 
 /-- `suffix`: `suffixC`'s relation. -/
-def suffix {E : Obj} {n : USize} (X : Vals (.arr E) n) : Rel (.arr E) (.arr E) := (suffixC X).1
+def suffix {E : Obj} {n : USize} (X : Vals (.arr E) n) : Tab (.arr E) (.arr E) := (suffixC X).1
 /-! ## Keeping cells by a predicate: masks on the payload, no round -/
 
 /-- `src@idx` on longs, an index past `src` reading `t`: one long per index (`gatherBytes_size`). -/
@@ -1119,7 +1119,7 @@ theorem len_gatherT (t : Nat) (src idx : ByteArray) : len (gatherT t src idx) = 
 
 /-- The cells of the payload `F` whose value is a key of `P`, as `M` bits, and whether the joint codes ran within
     capacity: `member` on the codes of `F` and of `P`'s keys, coded together (`codesC`). -/
-def keyBitsC {B : Obj} {M : USize} (F : Vals B M) (P : Rel B B) : ByteArray × Bool :=
+def keyBitsC {B : Obj} {M : USize} (F : Vals B M) (P : Tab B B) : ByteArray × Bool :=
   let c := B.codesC #v[⟨M, F⟩, ⟨_, P.key⟩]; (c.1[0].member c.1[1], c.2)
 
 /-- The set bits of `b` before each cell of `M`, read at the positions `idx`: `sums` of the bits less the bits, a
@@ -1132,7 +1132,7 @@ def countBefore (M : USize) (b : ByteArray) (t : Nat) (idx : ByteArray) : ByteAr
     array to its cells that are keys of `P`. One mask on the payload (`keyBitsC`), its kept cells picked once
     (`whereBits`), each row's slice bounds moved to the kept cells before them (`countBefore`). The bit: the codes',
     the payload count below `2^63`, the pick's (`pickC`). -/
-def filterC {B : Obj} {n : USize} (P : Rel B B) (X : Vals (.arr B) n) : Rel (.arr B) (.arr B) × Bool :=
+def filterC {B : Obj} {n : USize} (P : Tab B B) (X : Vals (.arr B) n) : Tab (.arr B) (.arr B) × Bool :=
   let k := keyBitsC X.2.2.2 P
   let K := whereBits X.1 k.1
   let s := slicesOf X
@@ -1141,29 +1141,29 @@ def filterC {B : Obj} {n : USize} (P : Rel B B) (X : Vals (.arr B) n) : Rel (.ar
     let lo := countBefore X.1 k.1 (len K) s.1
     let hi := countBefore X.1 k.1 (len K) (add n s.1 s.2)
     ((⟨n, X, ⟨(len K).toUSize, longsN n lo (by show n.toNat ≤ len (gatherT _ _ (slicesOf X).1); rw [len_gatherT]; exact Nat.le_of_eq (len_slices ..).1.symm),
-      longsN n hi (by show n.toNat ≤ len (gatherT _ _ (add n _ _)); rw [len_gatherT]; exact Nat.le_of_eq (len_val ..).symm), v.1⟩⟩ : Rel (.arr B) (.arr B)),
+      longsN n hi (by show n.toNat ≤ len (gatherT _ _ (add n _ _)); rw [len_gatherT]; exact Nat.le_of_eq (len_val ..).symm), v.1⟩⟩ : Tab (.arr B) (.arr B)),
       k.2 && decide (X.1.toNat < 2 ^ 63) && Vals.fitsN (.arr B) X n.toNat && v.2)
 
 /-- `filter`: `filterC`'s relation. -/
-def filter {B : Obj} {n : USize} (P : Rel B B) (X : Vals (.arr B) n) : Rel (.arr B) (.arr B) := (filterC P X).1
+def filter {B : Obj} {n : USize} (P : Tab B B) (X : Vals (.arr B) n) : Tab (.arr B) (.arr B) := (filterC P X).1
 
 /-- `takewhile(p) : arr B ⟶ arr B` on the arrays `X`, `P` the relation `p` (B&dM p.174 `⦇[nil, p outl → cons, nil]⦈`):
     each array to its longest prefix of keys of `P`. The cells failing the mask (`keyBitsC`, `notBits`) listed once
     (`whereBits`, the payload count after them); a row's first failing cell at or after its start is that list
     read at the failing cells before the start (`countBefore`), its end the lesser of that cell and its own end.
     No cell copied: the payload is shared. The bit: the codes', the payload count below `2^63`. -/
-def takewhileC {B : Obj} {n : USize} (P : Rel B B) (X : Vals (.arr B) n) : Rel (.arr B) (.arr B) × Bool :=
+def takewhileC {B : Obj} {n : USize} (P : Tab B B) (X : Vals (.arr B) n) : Tab (.arr B) (.arr B) × Bool :=
   let k := keyBitsC X.2.2.2 P
   let f := Ew.notBits X.1 k.1
   let fp := whereBits X.1 f
   let s := slicesOf X
   let hi := Kernel.Ew.val Ew.lesser Ew.i64 Ew.vv nul (add n s.1 s.2) (gatherT X.1.toNat fp (countBefore X.1 f (len fp) s.1)) n
   ((⟨n, X, ⟨X.1, longsN n s.1 (by show n.toNat ≤ len (slicesOf X).1; exact Nat.le_of_eq (len_slices ..).1.symm),
-    longsN n hi (by rw [len_val]; exact Nat.le_refl _), X.2.2.2⟩⟩ : Rel (.arr B) (.arr B)),
+    longsN n hi (by rw [len_val]; exact Nat.le_refl _), X.2.2.2⟩⟩ : Tab (.arr B) (.arr B)),
     k.2 && decide (X.1.toNat < 2 ^ 63) && Vals.fitsN (.arr B) X n.toNat)
 
 /-- `takewhile`: `takewhileC`'s relation. -/
-def takewhile {B : Obj} {n : USize} (P : Rel B B) (X : Vals (.arr B) n) : Rel (.arr B) (.arr B) := (takewhileC P X).1
+def takewhile {B : Obj} {n : USize} (P : Tab B B) (X : Vals (.arr B) n) : Tab (.arr B) (.arr B) := (takewhileC P X).1
 /-- `concat : arr (arr B) ⟶ arr B` on the arrays of arrays `X`, each to its arrays one after another (B&dM p.129):
     no round, no `cons`. The inner arrays compacted (`Vals.pickC` at `til`) lie
     end to end, inner array `j` ending at `hi j` (`pick_row_arr`), so outer row `i`, the inner arrays `[a, a + c)`
@@ -1171,7 +1171,7 @@ def takewhile {B : Obj} {n : USize} (P : Rel B B) (X : Vals (.arr B) n) : Rel (.
     missing the gather and reading `0`. The inner arrays are not contiguous in general (`tails` overlaps them), so
     the compaction is the one copy; the key is `X` itself. The bit: `X`'s inner count below `2^63` and the
     compaction's (`pickC`). -/
-def concatC {B : Obj} {n : USize} (X : Vals (.arr (.arr B)) n) : Rel (.arr (.arr B)) (.arr B) × Bool :=
+def concatC {B : Obj} {n : USize} (X : Vals (.arr (.arr B)) n) : Tab (.arr (.arr B)) (.arr B) × Bool :=
   let z := Vals.pickC (.arr B) X.2.2.2 (tilLongs X.1) X.1 (len_tilLongs X.1)
   let s := slicesOf X
   let ends (k : ByteArray) : Arr .long n :=
@@ -1180,14 +1180,14 @@ def concatC {B : Obj} {n : USize} (X : Vals (.arr (.arr B)) n) : Rel (.arr (.arr
   (⟨n, X, ⟨z.1.1, ends s.1, ends (add n s.1 s.2), z.1.2.2.2⟩⟩, decide (X.1.toNat < 2 ^ 63) && z.2)
 
 /-- `concat`: `concatC`'s relation. -/
-def concat {B : Obj} {n : USize} (X : Vals (.arr (.arr B)) n) : Rel (.arr (.arr B)) (.arr B) := (concatC X).1
+def concat {B : Obj} {n : USize} (X : Vals (.arr (.arr B)) n) : Tab (.arr (.arr B)) (.arr B) := (concatC X).1
 
 /-- `zip : arr A × arr B ⟶ arr (A × B)` on the rows of `P`, the two arrays position by position up to the
     shorter (`czip`, AOP/A1_7_Pointfree.lean:27; B&dM p.20): the counts' `Ew.val` lesser, laid out by `sums`,
     each side's cell `k` gathered at its own start plus `k`. The bit: both sides and the keys fitting at all
     their rows (`fitsN`), `&&`, out of `expand` in the pair, `rep_zip`'s count bound decided on the copies' count `m` (the lesser counts summed,
     `len_expand_sum`; `need` already bounds it by a `USize`); no pick of `zip` needs a bit of its own. -/
-def zipC {K A B : Obj} (P : Rel K (.prod (.arr A) (.arr B))) : Rel K (.arr (.prod A B)) × Bool :=
+def zipC {K A B : Obj} (P : Tab K (.prod (.arr A) (.arr B))) : Tab K (.arr (.prod A B)) × Bool :=
   let x := P.val.1
   let y := P.val.2
   let n := P.n
@@ -1199,16 +1199,16 @@ def zipC {K A B : Obj} (P : Rel K (.prod (.arr A) (.arr B))) : Rel K (.arr (.pro
     ((⟨n, Vals.compact K P.key,
       ⟨m, valCol Ew.sub Ew.vv hi c, longsN n hi (sums_le (len_val ..)),
         (Vals.pick A x.2.2.2 (add m (gather 8 a.1 i) r) m (len_val ..),
-          Vals.pick B y.2.2.2 (add m (gather 8 b.1 i) r) m (len_val ..))⟩⟩ : Rel K (.arr (.prod A B))),
+          Vals.pick B y.2.2.2 (add m (gather 8 b.1 i) r) m (len_val ..))⟩⟩ : Tab K (.arr (.prod A B))),
       decide (m.toNat < 2 ^ 63))
   (r.1, Vals.fitsN (.arr A) x n.toNat && Vals.fitsN (.arr B) y n.toNat && Vals.fitsN K P.key n.toNat && r.2)
 
 /-- `zip`: `zipC`'s relation. -/
-def zip {K A B : Obj} (P : Rel K (.prod (.arr A) (.arr B))) : Rel K (.arr (.prod A B)) := (zipC P).1
+def zip {K A B : Obj} (P : Tab K (.prod (.arr A) (.arr B))) : Tab K (.arr (.prod A B)) := (zipC P).1
 
 /-- `snoc° : arr B ⟶ arr B × B` on the arrays of `X`, `uncons` from the other end: each non-empty row to
     all but its last element (`[lo, hi - 1)`, a slice of the same payload) and its last element. -/
-def unsnoc {B : Obj} {n : USize} (X : Vals (.arr B) n) : Rel (.arr B) (.prod (.arr B) B) :=
+def unsnoc {B : Obj} {n : USize} (X : Vals (.arr B) n) : Tab (.arr B) (.prod (.arr B) B) :=
   let s := slicesOf X
   let i := whereBits n (Ew.cmp Ew.gt Ew.i64 Ew.va s.2 (one 0) n)
   longCount "snoc°" i fun r hr =>
@@ -1220,12 +1220,12 @@ def unsnoc {B : Obj} {n : USize} (X : Vals (.arr B) n) : Rel (.arr B) (.prod (.a
       Vals.pick B X.2.2.2 e r (len_val ..))⟩
 
 /-- `snoc°` and whether it ran within capacity: `X` fitting at all its rows (`fitsN`), `rep_unsnoc`'s one fit. -/
-def unsnocC {B : Obj} {n : USize} (X : Vals (.arr B) n) : Rel (.arr B) (.prod (.arr B) B) × Bool :=
+def unsnocC {B : Obj} {n : USize} (X : Vals (.arr B) n) : Tab (.arr B) (.prod (.arr B) B) × Bool :=
   (unsnoc X, Vals.fitsN (.arr B) X n.toNat)
 
 /-- `at(k) : arr B ⟶ B` on the arrays of `X`, positions from `0`: each row longer than `k` to the cell at
     `lo + k` of the payload, read in place as `uncons` reads the head; a row of `k` or fewer cells has no pair. -/
-def atPos {B : Obj} {n : USize} (k : Nat) (X : Vals (.arr B) n) : Rel (.arr B) B :=
+def atPos {B : Obj} {n : USize} (k : Nat) (X : Vals (.arr B) n) : Tab (.arr B) B :=
   let s := slicesOf X
   let i := whereBits n (Ew.cmp Ew.gt Ew.i64 Ew.va s.2 (one k.toUInt64) n)
   longCount "at" i fun r hr =>
@@ -1233,13 +1233,13 @@ def atPos {B : Obj} {n : USize} (k : Nat) (X : Vals (.arr B) n) : Rel (.arr B) B
 
 /-- `at(k)` and whether it ran within capacity: `k` below `2^63` and `X` fitting at all its rows (`fitsN`),
     `rep_atPos`'s premises. -/
-def atPosC {B : Obj} {n : USize} (k : Nat) (X : Vals (.arr B) n) : Rel (.arr B) B × Bool :=
+def atPosC {B : Obj} {n : USize} (k : Nat) (X : Vals (.arr B) n) : Tab (.arr B) B × Bool :=
   (atPos k X, decide (k < 2 ^ 63) && Vals.fitsN (.arr B) X n.toNat)
 
 /-- `cat° : arr B ⟶ arr B × arr B` on the arrays `X`, each array to every way of cutting it in two: the
     `k`-th prefix beside the `k`-th suffix, `⟨inits, tails⟩ zip ∋`, on the twins of its pieces, the bit the `&&`
     of theirs. -/
-def uncatC {B : Obj} {n : USize} (X : Vals (.arr B) n) : Rel (.arr B) (.prod (.arr B) (.arr B)) × Bool :=
+def uncatC {B : Obj} {n : USize} (X : Vals (.arr B) n) : Tab (.arr B) (.prod (.arr B) (.arr B)) × Bool :=
   let i := initsC X
   let t := tailsC X
   let p := pairC i.1 t.1
@@ -1249,7 +1249,7 @@ def uncatC {B : Obj} {n : USize} (X : Vals (.arr B) n) : Rel (.arr B) (.prod (.a
   (r.1, i.2 && t.2 && p.2 && z.2 && v.2 && r.2)
 
 /-- `cat°`: `uncatC`'s relation. -/
-def uncat {B : Obj} {n : USize} (X : Vals (.arr B) n) : Rel (.arr B) (.prod (.arr B) (.arr B)) := (uncatC X).1
+def uncat {B : Obj} {n : USize} (X : Vals (.arr B) n) : Tab (.arr B) (.prod (.arr B) (.arr B)) := (uncatC X).1
 
 /-! ## Permutations, sets and order (ch. 6, 8) -/
 
@@ -1257,7 +1257,7 @@ def uncat {B : Obj} {n : USize} (X : Vals (.arr B) n) : Rel (.arr B) (.prod (.ar
     the element anywhere: `(a, xs)` to `snoc(ys, a)` then `zs` for every `(ys, zs)` of `cat°(xs)`, read from the
     start. The tuples `(a, (ys, zs))` a round meets are distinct keys (`ran`), so `⟨…⟩` on them keeps one row each.
     Whether it ran within capacity: `foldByC`'s, each round's the `&&` of its twins' bits. -/
-def permC {B : Obj} {n : USize} (X : Vals (.arr B) n) : Rel (.arr B) (.arr B) × Bool :=
+def permC {B : Obj} {n : USize} (X : Vals (.arr B) n) : Tab (.arr B) (.arr B) × Bool :=
   foldByC true X (nilVal B) fun el pend =>
     let Dp := ranC pend; let un := uncatC Dp.1.val; let U := compC pend un.1; let q := pairC el U.1
     let D := ranC q.1; let W := pairC (outl (outr D.1)) (outl D.1); let Sn := snocC W.1
@@ -1265,28 +1265,28 @@ def permC {B : Obj} {n : USize} (X : Vals (.arr B) n) : Rel (.arr B) (.arr B) ×
     (R.1, Dp.2 && (un.2 && (U.2 && (q.2 && (D.2 && (W.2 && (Sn.2 && (V.2 && (Ct.2 && R.2)))))))))
 
 /-- `perm`: `permC`'s relation. -/
-def perm {B : Obj} {n : USize} (X : Vals (.arr B) n) : Rel (.arr B) (.arr B) := (permC X).1
+def perm {B : Obj} {n : USize} (X : Vals (.arr B) n) : Tab (.arr B) (.arr B) := (permC X).1
 
 /-- `setify : arr B ⟶ P B` on the arrays `X`, each array to the set of its elements (`setify`,
     AOP/A5_6_ListCombinators.lean:49, `Λ(inlist)`; B&dM §7.3 p.177): `Λ(∋)` total on `X`, and whether it ran
     within capacity: the bits of `memC`, `lamOnC`. -/
-def setifyC {B : Obj} {n : USize} (X : Vals (.arr B) n) : Rel (.arr B) (.arr B) × Bool :=
+def setifyC {B : Obj} {n : USize} (X : Vals (.arr B) n) : Tab (.arr B) (.arr B) × Bool :=
   let m := memC X; let l := lamOnC m.1 X
   (l.1, m.2 && l.2)
 
 /-- `setify` on the arrays `X`: `setifyC`'s relation. -/
-def setify {B : Obj} {n : USize} (X : Vals (.arr B) n) : Rel (.arr B) (.arr B) := (setifyC X).1
+def setify {B : Obj} {n : USize} (X : Vals (.arr B) n) : Tab (.arr B) (.arr B) := (setifyC X).1
 
 /-- `distinct : arr B ⟶ arr B` on the arrays `X`, each array to its values in first-occurrence order, each once
     (`List.eraseDups`): `setifyC`'s `Λ(∋)` total on `X`, the nub's rows in row order (`til`) instead of sorted —
     `∋`'s rows list each array's copies in position order, so each key's run keeps first occurrences in order.
     Whether it ran within capacity: the bits of `memC`, `lamOnByC`. -/
-def distinctC {B : Obj} {n : USize} (X : Vals (.arr B) n) : Rel (.arr B) (.arr B) × Bool :=
+def distinctC {B : Obj} {n : USize} (X : Vals (.arr B) n) : Tab (.arr B) (.arr B) × Bool :=
   let m := memC X; let l := lamOnByC (fun d => (tilLongs d.n, true)) m.1 X
   (l.1, m.2 && l.2)
 
 /-- `distinct` on the arrays `X`: `distinctC`'s relation. -/
-def distinct {B : Obj} {n : USize} (X : Vals (.arr B) n) : Rel (.arr B) (.arr B) := (distinctC X).1
+def distinct {B : Obj} {n : USize} (X : Vals (.arr B) n) : Tab (.arr B) (.arr B) := (distinctC X).1
 
 /-- `asc : arr B ⟶ arr B` on the arrays `X`, each array sorted ascending — B&dM's `bagify`
     (AOP/A10_3_Tardy.lean:232, the quotient map of `perm`) with a bag kept as its sorted array. A bag is the `arr` of its elements ascending in `Obj.sortBy`'s order, repeats kept: the one member
@@ -1296,7 +1296,7 @@ def distinct {B : Obj} {n : USize} (X : Vals (.arr B) n) : Rel (.arr B) (.arr B)
     and, out of `expand` in the pair, the copies' count `m` (the windows' counts summed, `len_expand_slicesOf`;
     `need` already bounds it by a `USize`) — `&&` the fits of `X` at its rows and of its payload at the `m` copies
     (`fitsN`), which a nested or interned `B` needs. -/
-def ascC {B : Obj} {n : USize} (X : Vals (.arr B) n) : Rel (.arr B) (.arr B) × Bool :=
+def ascC {B : Obj} {n : USize} (X : Vals (.arr B) n) : Tab (.arr B) (.arr B) × Bool :=
   let s := slicesOf X
   let hi := sums n s.2
   let e := expand n s.2 (fun _ => default) fun m i r _ _ =>
@@ -1305,18 +1305,18 @@ def ascC {B : Obj} {n : USize} (X : Vals (.arr B) n) : Rel (.arr B) (.arr B) × 
     let p := gather 8 v (Code.ofLongs (gather 8 i v)).grade
     ((longCount "asc" p fun q hq => (⟨n, Vals.compact (.arr B) X,
       ⟨q, valCol Ew.sub Ew.vv hi s.2, longsN n hi (sums_le (len_slices ..).2), Vals.pick B cells p q hq⟩⟩ :
-        Rel (.arr B) (.arr B))), decide (m.toNat < 2 ^ 63) && Vals.fitsN B X.2.2.2 m.toNat)
+        Tab (.arr B) (.arr B))), decide (m.toNat < 2 ^ 63) && Vals.fitsN B X.2.2.2 m.toNat)
   (e.1, decide (X.1.toNat < 2 ^ 63) && decide (n.toNat < 2 ^ 63) && Vals.fitsN (.arr B) X n.toNat && e.2)
 
 /-- `asc : arr B ⟶ arr B` on the arrays `X`: `ascC`'s relation. -/
-def asc {B : Obj} {n : USize} (X : Vals (.arr B) n) : Rel (.arr B) (.arr B) := (ascC X).1
+def asc {B : Obj} {n : USize} (X : Vals (.arr B) n) : Tab (.arr B) (.arr B) := (ascC X).1
 
 /-- `ordered(Q)`, the coreflexive on the arrays `X` that are `Q`-ordered, each element `Q`-below every later
     one (`orderedP`, AOP/A5_6_ListCombinators.lean:162): the arrays with no non-empty suffix `y :: ys` and `z`
     of `ys` outside `y Q z`. `cons°` of the suffixes, the pairs `(y, z)`, those no pair of `Q` (`antiJoin`).
     `orderedOnC`'s bit is the `&&` of its pieces' and the test's. -/
-def orderedOnC {B : Obj} {n : USize} (qC : Rel (.prod B B) (.prod B B) → Rel (.prod B B) (.prod B B) × Bool)
-    (X : Vals (.arr B) n) : Rel (.arr B) (.arr B) × Bool :=
+def orderedOnC {B : Obj} {n : USize} (qC : Tab (.prod B B) (.prod B B) → Tab (.prod B B) (.prod B B) × Bool)
+    (X : Vals (.arr B) n) : Tab (.arr B) (.arr B) × Bool :=
   let S := suffixC X
   let W := ranC S.1
   let u := unconsC W.1.val
@@ -1337,18 +1337,18 @@ def orderedOnC {B : Obj} {n : USize} (qC : Rel (.prod B B) (.prod B B) → Rel (
     dC.2 && r.2)
 
 /-- `orderedOn q X`: `orderedOnC`'s relation at the test `q` with no bit of its own. -/
-def orderedOn {B : Obj} {n : USize} (q : Rel (.prod B B) (.prod B B) → Rel (.prod B B) (.prod B B))
-    (X : Vals (.arr B) n) : Rel (.arr B) (.arr B) := (orderedOnC (fun r => (q r, true)) X).1
+def orderedOn {B : Obj} {n : USize} (q : Tab (.prod B B) (.prod B B) → Tab (.prod B B) (.prod B B))
+    (X : Vals (.arr B) n) : Tab (.arr B) (.arr B) := (orderedOnC (fun r => (q r, true)) X).1
 
 /-- `ordered Q X` and whether it ran within capacity: `orderedOnC` at the test `pairsInC Q`. -/
-def orderedC {B : Obj} {n : USize} (Q : Rel B B) (X : Vals (.arr B) n) : Rel (.arr B) (.arr B) × Bool :=
+def orderedC {B : Obj} {n : USize} (Q : Tab B B) (X : Vals (.arr B) n) : Tab (.arr B) (.arr B) × Bool :=
   orderedOnC (pairsInC Q) X
 
 /-- `ordered(Q)`, `Q` closed: `orderedOn` at `pairsIn Q`, the test run on the pairs `(y, z)` it compares. -/
-def ordered {B : Obj} {n : USize} (Q : Rel B B) (X : Vals (.arr B) n) : Rel (.arr B) (.arr B) := (orderedC Q X).1
+def ordered {B : Obj} {n : USize} (Q : Tab B B) (X : Vals (.arr B) n) : Tab (.arr B) (.arr B) := (orderedC Q X).1
 
 /-- `sortSet Q Y` and whether it ran within capacity: the `&&` of `setifyC`'s, `orderedC`'s and `compC`'s bits. -/
-def sortSetC {B : Obj} {n : USize} (Q : Rel B B) (Y : Vals (.arr B) n) : Rel (.arr B) (.arr B) × Bool :=
+def sortSetC {B : Obj} {n : USize} (Q : Tab B B) (Y : Vals (.arr B) n) : Tab (.arr B) (.arr B) × Bool :=
   let s := setifyC Y
   let o := orderedC Q Y
   let c := compC (s.1)° o.1
@@ -1357,23 +1357,23 @@ def sortSetC {B : Obj} {n : USize} (Q : Rel B B) (Y : Vals (.arr B) n) : Rel (.a
 /-- `sort(Q) ≜ setify° ordered(Q) : P B ⟶ arr B` (`sortRel`, AOP/A8_3.lean:77; B&dM p.201, "sorting sets"):
     a set to its `Q`-ordered listings among the arrays `Y`. A relation into lists has no finite image without
     a universe (`[1, 1, 2]` lists `{1, 2}` under `≤`), so the lists range over `Y`, as `P`'s do. -/
-def sortSet {B : Obj} {n : USize} (Q : Rel B B) (Y : Vals (.arr B) n) : Rel (.arr B) (.arr B) := (sortSetC Q Y).1
+def sortSet {B : Obj} {n : USize} (Q : Tab B B) (Y : Vals (.arr B) n) : Tab (.arr B) (.arr B) := (sortSetC Q Y).1
 
 /-- `subseq ≜ ⦇[nil, snoc ∪ π₁]⦈` on the arrays `X`, each array to each of its subsequences (`subseq`,
     AOP/A5_6_ListCombinators.lean:127): each element, read from the start, appended or dropped. Whether it ran within
     capacity: `foldByC`'s, each round's the `&&` of `pairC`'s, `snocC`'s and `unionC`'s. -/
-def subseqC {B : Obj} {n : USize} (X : Vals (.arr B) n) : Rel (.arr B) (.arr B) × Bool :=
+def subseqC {B : Obj} {n : USize} (X : Vals (.arr B) n) : Tab (.arr B) (.arr B) × Bool :=
   foldByC true X (nilVal B) fun el pend =>
     let p := pairC pend el; let c := snocC p.1; let u := unionC c.1 pend
     (u.1, p.2 && c.2 && u.2)
 
 /-- `subseq`: `subseqC`'s relation. -/
-def subseq {B : Obj} {n : USize} (X : Vals (.arr B) n) : Rel (.arr B) (.arr B) := (subseqC X).1
+def subseq {B : Obj} {n : USize} (X : Vals (.arr B) n) : Tab (.arr B) (.arr B) := (subseqC X).1
 
 /-- `thinL Q X` and whether it ran within capacity: the `&&` of its pieces' twins' bits, `subseqC`'s first. With `Y`
     the subsequences (`ranC`), `S` their sets (`setifyC`), `T = (∋ / ∋) ∩ (∈ \ Q°∈)` on `S`, the result is
     `(setify Y ≫ T ≫ (setify Y)°) ∩ subseq X`. -/
-def thinLC {B : Obj} {n : USize} (Q : Rel B B) (X : Vals (.arr B) n) : Rel (.arr B) (.arr B) × Bool :=
+def thinLC {B : Obj} {n : USize} (Q : Tab B B) (X : Vals (.arr B) n) : Tab (.arr B) (.arr B) × Bool :=
   let U := subseqC X; let W := ranC U.1; let s := setifyC W.1.val; let m := memC s.1.val
   let QS := compC (Q°) (m.1°)
   let Rd := rightDivC m.1 m.1 s.1.val s.1.val; let Ld := leftDivC (m.1°) QS.1 s.1.val s.1.val
@@ -1383,7 +1383,7 @@ def thinLC {B : Obj} {n : USize} (Q : Rel B B) (X : Vals (.arr B) n) : Rel (.arr
 /-- `thinL(Q) ≜ setify thin(Q) setify° ∩ subseq` on the arrays `X` (`thinL`, AOP/A8_3.lean:567; B&dM p.200,
     binary thinning), `thin(Q) ≜ ⊇ ∩ (∈ \ Q°∈)` on the sets of `Y`, the subsequences of `X` (`thinRel`,
     AOP/A8_1.lean:71); `thinL ⊑ subseq`, so `Y` holds every target. `⊇` is `∋ / ∋`. -/
-def thinL {B : Obj} {n : USize} (Q : Rel B B) (X : Vals (.arr B) n) : Rel (.arr B) (.arr B) := (thinLC Q X).1
+def thinL {B : Obj} {n : USize} (Q : Tab B B) (X : Vals (.arr B) n) : Tab (.arr B) (.arr B) := (thinLC Q X).1
 
 /-- Binary thinning, the note's implementation of `thinL(Q)` (`bumpFold_le_thinL`,
     AOP/A8_3.lean:629, `⦇[τ, bump(Q)]⦈ ⊑ thinL(Q)`): each element `a` bumped into the thinned rest `ys` —
@@ -1394,9 +1394,9 @@ def thinL {B : Obj} {n : USize} (Q : Rel B B) (X : Vals (.arr B) n) : Rel (.arr 
 -- the last element pushed (`[]` before any), `as` the actions so far: `x` pushed (`lone`: `h` empty or neither
 -- test passes, action 0) or replacing `b` (`up`: `x Q b`, action 1) makes `h` `[x]`; dropped (`down`: `b Q x`,
 -- action 2) keeps `h`; the action appended to `as`. `q` a twin family; the bit the `&&` of every twin's
-def thinAC {B : Obj} (q : Rel (.prod B B) (.prod B B) → Rel (.prod B B) (.prod B B) × Bool)
-    (D : Rel (.prod B (.prod (.arr B) (.arr .long))) (.prod B (.prod (.arr B) (.arr .long)))) :
-    Rel (.prod B (.prod (.arr B) (.arr .long))) (.prod (.arr B) (.arr .long)) × Bool :=
+def thinAC {B : Obj} (q : Tab (.prod B B) (.prod B B) → Tab (.prod B B) (.prod B B) × Bool)
+    (D : Tab (.prod B (.prod (.arr B) (.arr .long))) (.prod B (.prod (.arr B) (.arr .long)))) :
+    Tab (.prod B (.prod (.arr B) (.arr .long))) (.prod (.arr B) (.arr .long)) × Bool :=
   let a := outl D; let h := outl (outr D); let as := outr (outr D)
   let un := unconsC h.val; let u := compC h un.1; let ab := pairC a (outl u.1); let rab := ranC ab.1
   let G1 := q rab.1; let q1 := compC ab.1 G1.1; let up := domC q1.1
@@ -1419,9 +1419,9 @@ def thinAC {B : Obj} (q : Rel (.prod B B) (.prod B B) → Rel (.prod B B) (.prod
 -- last (`snoc°`): action 2 drops `x`; any other appends `x` to `o` when `c = 0` and becomes `c`. The bit the `&&`
 -- of every twin's
 def thinKC {B : Obj}
-    (D : Rel (.prod (.prod (.prod (.arr B) .long) (.arr .long)) B)
+    (D : Tab (.prod (.prod (.prod (.arr B) .long) (.arr .long)) B)
       (.prod (.prod (.prod (.arr B) .long) (.arr .long)) B)) :
-    Rel (.prod (.prod (.prod (.arr B) .long) (.arr .long)) B) (.prod (.prod (.arr B) .long) (.arr .long)) × Bool :=
+    Tab (.prod (.prod (.prod (.arr B) .long) (.arr .long)) B) (.prod (.prod (.arr B) .long) (.arr .long)) × Bool :=
   let oc := outl (outl D); let o := outl oc; let c := outr oc; let as := outr (outl D); let x := outr D
   let un := unsnocC as.val; let u := compC as un.1; let a := outr u.1; let a' := outl u.1
   let a2 := compC a (idU (col [2])); let dr := domC a2.1; let du := domC u.1; let nd := diffC du.1 dr.1
@@ -1439,9 +1439,9 @@ def thinKC {B : Obj}
     the state ends as `acc` then `x` then `y`. A round shortens `x` or `y`, so the cells of both payloads
     plus one bound the rounds. A round on `(out, St)` answers `(out ∪ St flushed, St stepped)` and its bit, the
     `&&` of its twins' bits and the test's. -/
-def mergeRound {K B : Obj} (q : Rel (.prod B B) (.prod B B) → Rel (.prod B B) (.prod B B) × Bool)
-    (st : Rel K (.arr B) × Rel K (.prod (.prod (.arr B) (.arr B)) (.arr B))) :
-    (Rel K (.arr B) × Rel K (.prod (.prod (.arr B) (.arr B)) (.arr B))) × Bool :=
+def mergeRound {K B : Obj} (q : Tab (.prod B B) (.prod B B) → Tab (.prod B B) (.prod B B) × Bool)
+    (st : Tab K (.arr B) × Tab K (.prod (.prod (.arr B) (.arr B)) (.arr B))) :
+    (Tab K (.arr B) × Tab K (.prod (.prod (.arr B) (.arr B)) (.arr B))) × Bool :=
   let D := ranC st.2
   let x := outl (outl D.1)
   let y := outr (outl D.1)
@@ -1484,8 +1484,8 @@ def mergeRound {K B : Obj} (q : Rel (.prod B B) (.prod B B) → Rel (.prod B B) 
 
 /-- `mergeOn`'s first state, each pair of `P` beside the empty `acc`, and its bit: `ranC`'s, `topC`'s, `pairC`'s,
     `compC`'s. -/
-def mergeInitC {K B : Obj} (P : Rel K (.prod (.arr B) (.arr B))) :
-    Rel K (.prod (.prod (.arr B) (.arr B)) (.arr B)) × Bool :=
+def mergeInitC {K B : Obj} (P : Tab K (.prod (.arr B) (.arr B))) :
+    Tab K (.prod (.prod (.arr B) (.arr B)) (.arr B)) × Bool :=
   let R := ranC P
   let T := topC R.1.val (nilVal B)
   let Q := pairC (idU R.1.val) T.1
@@ -1494,24 +1494,24 @@ def mergeInitC {K B : Obj} (P : Rel K (.prod (.arr B) (.arr B))) :
 
 /-- `mergeOn` on a test answering a bit, and whether it ran within capacity: the first state's bit `&&` the bits
     of the rounds it ran (`iterC`). -/
-def mergeOnC {K B : Obj} (q : Rel (.prod B B) (.prod B B) → Rel (.prod B B) (.prod B B) × Bool)
-    (P : Rel K (.prod (.arr B) (.arr B))) : Rel K (.arr B) × Bool :=
+def mergeOnC {K B : Obj} (q : Tab (.prod B B) (.prod B B) → Tab (.prod B B) (.prod B B) × Bool)
+    (P : Tab K (.prod (.arr B) (.arr B))) : Tab K (.arr B) × Bool :=
   let I := mergeInitC P
   let r := iterC (P.val.1.1.toNat + P.val.2.1.toNat + 1) (fun s => s.2.n == 0) (mergeRound q) (zero, I.1)
   (r.1.1, I.2 && r.2)
 
 /-- `mergeOn`: `mergeOnC`'s relation, the test one with no bit of its own. -/
-def mergeOn {K B : Obj} (q : Rel (.prod B B) (.prod B B) → Rel (.prod B B) (.prod B B))
-    (P : Rel K (.prod (.arr B) (.arr B))) : Rel K (.arr B) :=
+def mergeOn {K B : Obj} (q : Tab (.prod B B) (.prod B B) → Tab (.prod B B) (.prod B B))
+    (P : Tab K (.prod (.arr B) (.arr B))) : Tab K (.arr B) :=
   (mergeOnC (fun D => (q D, true)) P).1
 
 /-- `merge(Q)`, `Q` closed, and whether it ran within capacity: `mergeOnC` at `pairsIn Q` run as `compC`, the
     test run on the pairs of heads it compares. -/
-def mergeC {K B : Obj} (Q : Rel B B) (P : Rel K (.prod (.arr B) (.arr B))) : Rel K (.arr B) × Bool :=
+def mergeC {K B : Obj} (Q : Tab B B) (P : Tab K (.prod (.arr B) (.arr B))) : Tab K (.arr B) × Bool :=
   mergeOnC (fun D => compC D (idU (Q.key, Q.val))) P
 
 /-- `merge(Q)`: `mergeC`'s relation. -/
-def merge {K B : Obj} (Q : Rel B B) (P : Rel K (.prod (.arr B) (.arr B))) : Rel K (.arr B) := (mergeC Q P).1
+def merge {K B : Obj} (Q : Tab B B) (P : Tab K (.prod (.arr B) (.arr B))) : Tab K (.arr B) := (mergeC Q P).1
 
 /-- `loop(F) : X × arr Y ⟶ X` on the rows of `P` (`loop`, AOP/A9_3_Bracket.lean:1686; B&dM Appendix), `F`
     folded along the array from the left, in demand form as `foldOn`'s step: rounds of `iter` taking
@@ -1519,8 +1519,8 @@ def merge {K B : Obj} (Q : Rel B B) (P : Rel K (.prod (.arr B) (.arr B))) : Rel 
     meets, so a state with no universe loops too; a state whose array is empty ends at its `c`. The states
     are `nub`bed each round, as `foldBy`'s, or a value reached along two paths doubles its rows each round
     after. The cells of the arrays' payload plus one bound the rounds. -/
-def loopRound {K X Y : Obj} (F : Rel (.prod X Y) (.prod X Y) → Rel (.prod X Y) X × Bool)
-    (st : Rel K X × Rel K (.prod X (.arr Y))) : (Rel K X × Rel K (.prod X (.arr Y))) × Bool :=
+def loopRound {K X Y : Obj} (F : Tab (.prod X Y) (.prod X Y) → Tab (.prod X Y) X × Bool)
+    (st : Tab K X × Tab K (.prod X (.arr Y))) : (Tab K X × Tab K (.prod X (.arr Y))) × Bool :=
   let D := ranC st.2
   let W := ranC (outr D.1)
   -- `uncons` on the distinct arrays: on `(outr D).val`, an array held by `k` states gives each of them `k`
@@ -1543,42 +1543,42 @@ def loopRound {K X Y : Obj} (F : Rel (.prod X Y) (.prod X Y) → Rel (.prod X Y)
 
 /-- `loopOn` on a step answering a bit, and whether it ran within capacity: the `&&` of the bits of the rounds it
     ran (`iterC`), each round's the step's and its primitives' (`loopRound`). -/
-def loopOnC {K X Y : Obj} (F : Rel (.prod X Y) (.prod X Y) → Rel (.prod X Y) X × Bool)
-    (P : Rel K (.prod X (.arr Y))) : Rel K X × Bool :=
+def loopOnC {K X Y : Obj} (F : Tab (.prod X Y) (.prod X Y) → Tab (.prod X Y) X × Bool)
+    (P : Tab K (.prod X (.arr Y))) : Tab K X × Bool :=
   let r := iterC (P.val.2.1.toNat + 1) (fun s => s.2.n == 0) (loopRound F) (zero, P); (r.1.1, r.2)
 
 /-- `loopOn`: `loopOnC`'s relation, the step one with no bit of its own. -/
-def loopOn {K X Y : Obj} (F : Rel (.prod X Y) (.prod X Y) → Rel (.prod X Y) X) (P : Rel K (.prod X (.arr Y))) :
-    Rel K X :=
+def loopOn {K X Y : Obj} (F : Tab (.prod X Y) (.prod X Y) → Tab (.prod X Y) X) (P : Tab K (.prod X (.arr Y))) :
+    Tab K X :=
   (loopOnC (fun D => (F D, true)) P).1
 
 /-- `loop(F)` with `F` one relation, and whether it ran within capacity: `loopOnC` with `F` whatever pairs a round
     meets, a relation with no bit of its own. -/
-def loopC {K X Y : Obj} (F : Rel (.prod X Y) X) (P : Rel K (.prod X (.arr Y))) : Rel K X × Bool :=
+def loopC {K X Y : Obj} (F : Tab (.prod X Y) X) (P : Tab K (.prod X (.arr Y))) : Tab K X × Bool :=
   loopOnC (fun _ => (F, true)) P
 
 /-- `loop(F)`: `loopC`'s relation. -/
-def loop {K X Y : Obj} (F : Rel (.prod X Y) X) (P : Rel K (.prod X (.arr Y))) : Rel K X := (loopC F P).1
+def loop {K X Y : Obj} (F : Tab (.prod X Y) X) (P : Tab K (.prod X (.arr Y))) : Tab K X := (loopC F P).1
 
 /-- `thinLOn` and whether it ran within capacity: `thinL(Q) = ⟨⟨⟨nil, c₀⟩, thinF(Q)⟩, 𝟙⟩ ≫ loop(thinK) ≫ π₁ ≫ π₁`
     (doc/rel-rows.md §1), `thinF(Q) = ⦇e₀ × e₀, thinA(Q)⦈ʳ ≫ π₂` the right fold of `thinAC q`, `q` a twin family.
     Two passes, because an element `thinA` pushes is removed only by the next one pushed to its left. -/
-def thinLOnC {B : Obj} {n : USize} (q : Rel (.prod B B) (.prod B B) → Rel (.prod B B) (.prod B B) × Bool)
-    (X : Vals (.arr B) n) : Rel (.arr B) (.arr B) × Bool :=
+def thinLOnC {B : Obj} {n : USize} (q : Tab (.prod B B) (.prod B B) → Tab (.prod B B) (.prod B B) × Bool)
+    (X : Vals (.arr B) n) : Tab (.arr B) (.arr B) × Bool :=
   let F := foldOnC false pairC ((nilVal B, nilVal .long) : Vals (.prod (.arr B) (.arr .long)) 1) (thinAC q) X
   let N := topC X (nilVal B); let C := topC X (col [0]); let nc := pairC N.1 C.1
   let s0 := pairC nc.1 (outr F.1); let P := pairC s0.1 (idU X); let L := loopOnC thinKC P.1
   (outl (outl L.1), F.2 && N.2 && C.2 && nc.2 && s0.2 && P.2 && L.2)
 
 /-- `thinLOn`: `thinLOnC`'s relation, the test one with no bit of its own. -/
-def thinLOn {B : Obj} {n : USize} (q : Rel (.prod B B) (.prod B B) → Rel (.prod B B) (.prod B B))
-    (X : Vals (.arr B) n) : Rel (.arr B) (.arr B) :=
+def thinLOn {B : Obj} {n : USize} (q : Tab (.prod B B) (.prod B B) → Tab (.prod B B) (.prod B B))
+    (X : Vals (.arr B) n) : Tab (.arr B) (.arr B) :=
   (thinLOnC (fun D => (q D, true)) X).1
 
 /-- `tic ≜ cons inits tail : B × arr B ⟶ arr (arr B)` on the rows of `P` (`tic`, AOP/A9_3_Bracket.lean:1845;
     B&dM p.235): the non-empty prefixes of `a :: xs`, on the twins of its pieces (`a :: xs` by `consCatC`), the bit
     the `&&` of theirs. -/
-def ticC {K B : Obj} (P : Rel K (.prod B (.arr B))) : Rel K (.arr (.arr B)) × Bool :=
+def ticC {K B : Obj} (P : Tab K (.prod B (.arr B))) : Tab K (.arr (.arr B)) × Bool :=
   let C := consCatC P
   let N := initsC C.1.val
   let I := compC C.1 N.1
@@ -1587,71 +1587,71 @@ def ticC {K B : Obj} (P : Rel K (.prod B (.arr B))) : Rel K (.arr (.arr B)) × B
   (r.1, C.2 && N.2 && I.2 && T.2 && r.2)
 
 /-- `tic`: `ticC`'s relation. -/
-def tic {K B : Obj} (P : Rel K (.prod B (.arr B))) : Rel K (.arr (.arr B)) := (ticC P).1
+def tic {K B : Obj} (P : Tab K (.prod B (.arr B))) : Tab K (.arr (.arr B)) := (ticC P).1
 
 namespace Arr
 
 /-- `sum ≜ ⦇[zero, plus]⦈` on the arrays of longs `X` (`sum`, AOP/A5_6_ListCombinators.lean:323), each round's
     `plus` on the pairs it meets. Named `Arr.sum` because `sum` is `R + S`'s. -/
-def sumC {n : USize} (X : Vals (.arr (.atom .long)) n) : Rel (.arr (.atom .long)) (.atom .long) × Bool :=
+def sumC {n : USize} (X : Vals (.arr (.atom .long)) n) : Tab (.arr (.atom .long)) (.atom .long) × Bool :=
   foldOnC false pairC (col [0]) (fun D => (plus D.val, true)) X
 
 /-- `sum`: `sumC`'s relation; `plus` has no capacity of its own, so the bit is `foldOnC`'s. -/
-def sum {n : USize} (X : Vals (.arr (.atom .long)) n) : Rel (.arr (.atom .long)) (.atom .long) := (sumC X).1
+def sum {n : USize} (X : Vals (.arr (.atom .long)) n) : Tab (.arr (.atom .long)) (.atom .long) := (sumC X).1
 
 end Arr
 
 /-- `Entire R` on the universe `U`: `𝟙 ⊑ R R°`, written `𝟙 ⊑ dom R` since `dom R = 𝟙 ∩ R R°`, and whether it ran
     within capacity: `domC`'s bit `&&` `leC`'s. -/
-def entireC {A B : Obj} {m : USize} (R : Rel A B) (U : Vals A m) : Bool × Bool :=
+def entireC {A B : Obj} {m : USize} (R : Tab A B) (U : Vals A m) : Bool × Bool :=
   let d := domC R; let l := leC (idU U) d.1; (l.1, d.2 && l.2)
 
 /-- `Entire R` on `U`: `entireC`'s answer. -/
-def entire {A B : Obj} {m : USize} (R : Rel A B) (U : Vals A m) : Bool := (entireC R U).1
+def entire {A B : Obj} {m : USize} (R : Tab A B) (U : Vals A m) : Bool := (entireC R U).1
 
 /-- `Simple R`, `R° R ⊑ 𝟙`: in `R` with each pair once, every key distinct (`groupIds` count of the key codes),
     linear where `R° ≫ R` is a join quadratic in a key's values; and whether it ran within capacity: `nubC`'s bit
     `&&` the key codes'. -/
-def simpleC {A B : Obj} (R : Rel A B) : Bool × Bool :=
+def simpleC {A B : Obj} (R : Tab A B) : Bool × Bool :=
   let r := nubC R
   let c := A.codesC #v[⟨_, r.1.key⟩]
   (len c.1[0].groupIds.2 == r.1.n.toNat, r.2 && c.2)
 
 /-- `Simple R`: `simpleC`'s answer. -/
-def simple {A B : Obj} (R : Rel A B) : Bool := (simpleC R).1
+def simple {A B : Obj} (R : Tab A B) : Bool := (simpleC R).1
 
 /-- `F(R)` on the arrays of `X`: `mapSimpleC`, one payload join, where `simpleC` answers that `R` is simple within
     capacity and every cell of `X` lies in `dom R`; the fold `mapFoldC` otherwise. -/
-def mapC {A B : Obj} {n : USize} (R : Rel A B) (X : Vals (.arr A) n) : Rel (.arr A) (.arr B) × Bool :=
+def mapC {A B : Obj} {n : USize} (R : Tab A B) (X : Vals (.arr A) n) : Tab (.arr A) (.arr B) × Bool :=
   let s := mapSimpleC R X
   if (simpleC R).1 && (simpleC R).2 && s.2 then s else mapFoldC R X
 
 /-- `F(R)`: `mapC`'s relation. -/
-def map {A B : Obj} {n : USize} (R : Rel A B) (X : Vals (.arr A) n) : Rel (.arr A) (.arr B) := (mapC R X).1
+def map {A B : Obj} {n : USize} (R : Tab A B) (X : Vals (.arr A) n) : Tab (.arr A) (.arr B) := (mapC R X).1
 
 /-- `R` a map on `U`, entire and simple, and whether it ran within capacity: the `&&` of `entireC`'s and `simpleC`'s
     bits. -/
-def isMapC {A B : Obj} {m : USize} (R : Rel A B) (U : Vals A m) : Bool × Bool :=
+def isMapC {A B : Obj} {m : USize} (R : Tab A B) (U : Vals A m) : Bool × Bool :=
   let e := entireC R U; let s := simpleC R; (e.1 && s.1, e.2 && s.2)
 
 /-- `R` a map on `U`: `isMapC`'s answer. -/
-def isMap {A B : Obj} {m : USize} (R : Rel A B) (U : Vals A m) : Bool := (isMapC R U).1
+def isMap {A B : Obj} {m : USize} (R : Tab A B) (U : Vals A m) : Bool := (isMapC R U).1
 
 /-- `Injective R` = `Simple R°`, and whether it ran within capacity: `simpleC`'s at `R°`. -/
-def injectiveC {A B : Obj} (R : Rel A B) : Bool × Bool := simpleC R°
+def injectiveC {A B : Obj} (R : Tab A B) : Bool × Bool := simpleC R°
 
 /-- `Injective R`: `injectiveC`'s answer. -/
-def injective {A B : Obj} (R : Rel A B) : Bool := (injectiveC R).1
+def injective {A B : Obj} (R : Tab A B) : Bool := (injectiveC R).1
 
 /-- `Surjective R` = `Entire R°` on the universe `U` of `b`, and whether it ran within capacity: `entireC`'s at
     `R°`. -/
-def surjectiveC {A B : Obj} {m : USize} (R : Rel A B) (U : Vals B m) : Bool × Bool := entireC R° U
+def surjectiveC {A B : Obj} {m : USize} (R : Tab A B) (U : Vals B m) : Bool × Bool := entireC R° U
 
 /-- `Surjective R` on `U`: `surjectiveC`'s answer. -/
-def surjective {A B : Obj} {m : USize} (R : Rel A B) (U : Vals B m) : Bool := (surjectiveC R U).1
+def surjective {A B : Obj} {m : USize} (R : Tab A B) (U : Vals B m) : Bool := (surjectiveC R U).1
 
 /-- **`R°` swaps the pairs**: the two fields swap (`convArr_holds`). -/
-theorem conv_holds {R : Rel A B} (x : El A) (y : El B) : (conv R).Holds y x ↔ R.Holds x y :=
+theorem conv_holds {R : Tab A B} (x : El A) (y : El B) : (conv R).Holds y x ↔ R.Holds x y :=
   convArr_holds R.key R.val x y
 
 #print axioms conv_holds

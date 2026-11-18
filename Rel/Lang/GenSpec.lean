@@ -19,7 +19,7 @@ import Rel.CRelEst
 
 namespace Rel.Lang.Gen
 
-open Rel Rel.Alg Rel.Rep Rel.Kernel
+open Tab Rel.Alg Rel.Rep Rel.Kernel
 open scoped Rel.Core.Rel
 open Rel.Core.Rel hiding id comp recip inter union zero le inl inr junc
 
@@ -61,7 +61,7 @@ theorem demR {A : Obj} : ∀ (d e : Bool) (D : Dem (d || e) A) (x : A.El), Cor D
   | _, false, _, _, _, _ => ⟨trivial, rfl⟩
 
 /-- A coreflexive `K` given as the keys of `S`: `S` agrees with `T` at every key of `K`. -/
-theorem atKeys {B C : Obj} {e : Bool} {S : Fn e B C} {T : Den B C} (hS : Sound S T) (K : Rel B B)
+theorem atKeys {B C : Obj} {e : Bool} {S : Fn e B C} {T : Den B C} (hS : Sound S T) (K : Tab B B)
     (hc : ∀ x y, rep K x y → x = y) (hb : (S (Dem.of e K)).ok = true) :
     ∀ b c, rep K b b → (rep (S (Dem.of e K)).rel b c ↔ T b c) := by
   cases e
@@ -69,10 +69,10 @@ theorem atKeys {B C : Obj} {e : Bool} {S : Fn e B C} {T : Den B C} (hS : Sound S
   · exact fun b c hk => hS K hc hb b c hk
 
 /-- A coreflexive's row values: on the keys of `D`, every key is one of `D.val`'s rows. -/
-theorem keyRow {A : Obj} {D : Rel A A} {x : A.El} (h : rep D x x) : ∃ i, D.val.row i = x :=
+theorem keyRow {A : Obj} {D : Tab A A} {x : A.El} (h : rep D x x) : ∃ i, D.val.row i = x :=
   let ⟨i, _, e⟩ := h; ⟨i, e⟩
 
-theorem rowKey {A : Obj} {D : Rel A A} (hD : ∀ x y, rep D x y → x = y) {x : A.El} :
+theorem rowKey {A : Obj} {D : Tab A A} (hD : ∀ x y, rep D x y → x = y) {x : A.El} :
     (∃ i, D.val.row i = x) → rep D x x := by
   rintro ⟨i, rfl⟩
   have h : rep D (D.key.row i) (D.val.row i) := ⟨i, rfl, rfl⟩
@@ -90,7 +90,7 @@ theorem ok_and {A B : Obj} {b : Bool} {k : Unit → CRel A B} (h : (CRel.guard b
 theorem const_sound {A B : Obj} {c : CRel A B} {T : Den A B} (h : c.ok = true → rep c.rel = T) :
     Sound (const A B c) T := fun ⟨⟩ _ hb x y _ => by rw [show (const A B c ()) = c from rfl, h hb] at *
 
-theorem val_sound {A B : Obj} (R : Rel A B × Bool) : Sound (val A B R) (rep R.1) :=
+theorem val_sound {A B : Obj} (R : Tab A B × Bool) : Sound (val A B R) (rep R.1) :=
   fun _ _ hb _ _ _ => by simp only [Gen.val] at hb ⊢; rw [CRel.rep_ofC hb]
 
 theorem uni_sound {A : Obj} {m : USize} (U : Vals A m × Bool) : Sound (uni A m U) (rep (idU U.1)) :=
@@ -105,7 +105,7 @@ theorem uni_lits {m : USize} (U : Vals .long m × Bool) (k : UInt8) :
   ⟨rfl, rfl, rfl⟩
 
 theorem zero_sound {A B : Obj} : Sound (zero A B) 𝟘 := fun _ _ _ x y _ => by
-  show rep (Alg.zero : Rel A B) x y ↔ _; rw [rep_zero]
+  show rep (Alg.zero : Tab A B) x y ↔ _; rw [rep_zero]
 
 theorem id_sound {A : Obj} : Sound (id A) (𝟙 _) := fun D hD hb x y hx =>
   by simp only [Gen.id] at hb ⊢; rw [CRel.rep_ofC hb]; exact ⟨fun h => hD x y h, fun e => e ▸ hx⟩
@@ -218,7 +218,7 @@ theorem distinct_sound {B : Obj} :
 open Classical in
 /-- `elems`' relation run on the elements of the arrays in demand: at every element of a key `xs`, its test (some
     `y` related) is `TR`'s. -/
-theorem elems_test {B C : Obj} {d : Bool} {R : Fn d B C} {TR : Den B C} (hR : Sound R TR) (D : Rel (.arr B) (.arr B))
+theorem elems_test {B C : Obj} {d : Bool} {R : Fn d B C} {TR : Den B C} (hR : Sound R TR) (D : Tab (.arr B) (.arr B))
     (hk : (CRel.ran (CRel.mem D.val)).ok = true) (hr : (R (Dem.of d (CRel.ran (CRel.mem D.val)).rel)).ok = true)
     {xs : (Obj.arr B).El} (hx : rep D xs xs) : ∀ x ∈ xs,
       decide (∃ y, rep (R (Dem.of d (CRel.ran (CRel.mem D.val)).rel)).rel x y) = decide (∃ y, TR x y) :=
@@ -281,7 +281,7 @@ open Classical in
 /-- A test `Q` read as an order on the coreflexives a kernel runs it on: `a` before `b` where `Q` relates `(a, b)` to
     something. -/
 theorem test_le {B : Obj} {Q : Fn true (.prod B B) (.prod B B)} {TQ : Den (.prod B B) (.prod B B)} (hQ : Sound Q TQ) :
-    ∀ (E : Rel (.prod B B) (.prod B B)) (S : (Obj.prod B B).El → Prop),
+    ∀ (E : Tab (.prod B B) (.prod B B)) (S : (Obj.prod B B).El → Prop),
       rep E = corefl (α := (Obj.prod B B).El) S → (Q E).ok = true →
       ∀ a b, S (a, b) → ((∃ c, rep (Q E).rel (a, b) c) ↔ decide (∃ c, TQ (a, b) c) = true) := fun E S hE hb a b hS => by
   have hC : Cor (d := true) E := fun u v h => (show corefl S u v by rw [← hE]; exact h).1
@@ -322,7 +322,7 @@ theorem thinL_sound {B : Obj} {Q : Fn true (.prod B B) (.prod B B)} {TQ : Den (.
 
 /-- A step run on a round's coreflexive `D` of the pairs `S` (`onKeys`) computes `T` at those pairs: `D` has a
     row, so the step ran. -/
-theorem onKeys_sound {A B : Obj} {d : Bool} {F : Fn d A B} {T : Den A B} (hF : Sound F T) (D : Rel A A)
+theorem onKeys_sound {A B : Obj} {d : Bool} {F : Fn d A B} {T : Den A B} (hF : Sound F T) (D : Tab A A)
     (S : A.El → Prop) (hD : rep D = corefl (α := A.El) S) (hb : (onKeys d F ⟨D, true⟩).ok = true) :
     ∀ x y, S x → (rep (onKeys d F ⟨D, true⟩).rel x y ↔ T x y) := fun x y hx => by
   have hk : rep D x x := by rw [hD]; exact ⟨rfl, hx⟩
@@ -353,7 +353,7 @@ theorem comp_sound {A B C : Obj} {e : Bool} {R : Fn true A B} {S : Fn e B C} {TR
   unfold comp at hb ⊢
   by_cases h0 : ((R D).rel.n == 0) = true
   · rw [if_pos h0] at hb ⊢
-    show rep (Alg.zero : Rel A C) x z ↔ _
+    show rep (Alg.zero : Tab A C) x z ↔ _
     rw [rep_zero]
     refine ⟨False.elim, fun ⟨y, hy, _⟩ => ?_⟩
     obtain ⟨i, -⟩ := (hr hb x y hx).2 hy
@@ -443,7 +443,7 @@ theorem junc_sound {A B C : Obj} {R : Fn false A C} {S : Fn false B C} {TR : Den
   show rep (CRel.junc _ _).rel x y ↔ _; rw [CRel.rep_junc _ _ hb, hR.eq hc.1, hS.eq hc.2]
 
 /-- A relation's key rows are the keys its `rep` relates. -/
-theorem keyRowRep {A B : Obj} (U : Rel A B) (a : A.El) : (∃ p, U.key.row p = a) ↔ ∃ b, rep U a b :=
+theorem keyRowRep {A B : Obj} (U : Tab A B) (a : A.El) : (∃ p, U.key.row p = a) ↔ ∃ b, rep U a b :=
   ⟨fun ⟨p, e⟩ => ⟨U.val.row p, p, e, rfl⟩, fun ⟨_, p, e, _⟩ => ⟨p, e⟩⟩
 
 theorem nil_sound {A B : Obj} : Sound (nil A B) nilDen := fun D _ hb x Y hx => by
@@ -492,7 +492,7 @@ theorem arith_sound (k : UInt8) {U : Fn false .long .long} {TU : Den .long .long
   exact comp_sound (dom_sound (comp_sound outl_sound hU)) (comp_sound (dom_sound (comp_sound outr_sound hU)) hs)
 
 /-- A fold round's pairs have a row, so `onKeys` runs `S` on them: `S`'s spec on a nonempty coreflexive. -/
-theorem onKeys_round {P V : Obj} {d : Bool} {S : Fn d P V} {TS : Den P V} (hS : Sound S TS) (K : Rel P P) (p w)
+theorem onKeys_round {P V : Obj} {d : Bool} {S : Fn d P V} {TS : Den P V} (hS : Sound S TS) (K : Tab P P) (p w)
     (hp : ∃ a, rep K a p) (hc : ∀ a b, rep K a b → a = b) (hok : (onKeys d S ⟨K, true⟩).ok = true) :
     rep (onKeys d S ⟨K, true⟩).rel p w ↔ TS p w := by
   obtain ⟨a, ha⟩ := hp

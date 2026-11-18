@@ -9,7 +9,7 @@ import Rel.Run.CRelRelDef
 
 namespace Rel.Rep
 
-open Rel Rel.Kernel Rel.Verify Rel Rel.Alg Rel.KernelWF
+open Tab Rel.Kernel Rel.Verify Rel Rel.Alg Rel.KernelWF
 open scoped Rel.Core.Rel
 open Rel.Core.Rel hiding id comp recip inter union zero le inl inr junc
 open OpsN
@@ -18,18 +18,18 @@ variable {A B : Obj}
 
 /-- **`leC`'s bit, read as `rep_le`'s premise**: the joint pair codes' bit (`codesC_fits`, `codes_faithful_wf`,
     `pairs_eq_codes`). -/
-theorem leC_ok (R S : Rel A B) (hb : (leC R S).2 = true) : pairsOK(R, S) := by
+theorem leC_ok (R S : Tab A B) (hb : (leC R S).2 = true) : pairsOK(R, S) := by
   simp only [leC] at hb
   have hc := (codes_faithful_wf (.prod A B) _ (Obj.codesC_fits (.prod A B) _ hb)).1
   have e : ∀ {α β : Type} (f : α → β) (a b : α), #v[a, b].map f = #v[f a, f b] := fun _ _ _ => by simp
   rw [pairs_eq_codes, e]; exact hc
 
 /-- **`R ⊑ S` under `leC`'s bit**: `rep_le` at `leC_ok`. -/
-theorem rep_leC (R S : Rel A B) (hb : (leC R S).2 = true) : (leC R S).1 = true ↔ rep R ⊑ rep S :=
+theorem rep_leC (R S : Tab A B) (hb : (leC R S).2 = true) : (leC R S).1 = true ↔ rep R ⊑ rep S :=
   rep_le R S (leC_ok R S hb)
 
 /-- **`entire` under `entireC`'s bit**: `rep_entire` at `leC_ok` and `domC`'s code and `fitsN` bits. -/
-theorem rep_entireC (R : Rel A B) {m : USize} (U : Vals A m) (hb : (entireC R U).2 = true) :
+theorem rep_entireC (R : Tab A B) {m : USize} (U : Vals A m) (hb : (entireC R U).2 = true) :
     (entireC R U).1 = true ↔ ∀ a, (∃ i, U.row i = a) → ∃ b, rep R a b := by
   simp only [entireC, Bool.and_eq_true] at hb
   obtain ⟨hd, hl⟩ := hb
@@ -37,7 +37,7 @@ theorem rep_entireC (R : Rel A B) {m : USize} (U : Vals A m) (hb : (entireC R U)
   exact rep_entire R U (leC_ok _ _ hl) (oneOK_of_codesC A R.key hd.1) (pickFits_of_fitsN _ _ _ hd.2 _ (by simp))
 
 /-- **`surjective` under `surjectiveC`'s bit**: `rep_surjective` at `leC_ok` and `domC`'s bits at `R°`. -/
-theorem rep_surjectiveC (R : Rel A B) {m : USize} (U : Vals B m) (hb : (surjectiveC R U).2 = true) :
+theorem rep_surjectiveC (R : Tab A B) {m : USize} (U : Vals B m) (hb : (surjectiveC R U).2 = true) :
     (surjectiveC R U).1 = true ↔ ∀ b, (∃ i, U.row i = b) → ∃ a, rep R a b := by
   simp only [surjectiveC, entireC, Bool.and_eq_true] at hb
   obtain ⟨hd, hl⟩ := hb
@@ -45,7 +45,7 @@ theorem rep_surjectiveC (R : Rel A B) {m : USize} (U : Vals B m) (hb : (surjecti
   exact rep_surjective R U (leC_ok _ _ hl) (oneOK_of_codesC B R.val hd.1) (pickFits_of_fitsN _ _ _ hd.2 _ (by simp <;> exact Nat.le_refl _))
 
 /-- **`simpleC`'s bit, read as `rep_simple`'s premises**: `nubC`'s code and `fitsN` bits, the nub's key code bit. -/
-theorem simpleC_ok (R : Rel A B) (hb : (simpleC R).2 = true) :
+theorem simpleC_ok (R : Tab A B) (hb : (simpleC R).2 = true) :
     oneOK(A, R.n, R.key) ∧ oneOK(B, R.n, R.val) ∧ Vals.PickFits A R.key (List.range R.n.toNat) ∧
       Vals.PickFits B R.val (List.range R.n.toNat) ∧
       A.CodesFit (#v[⟨R.nub.n, R.nub.key⟩] : Vector (Part A) 1) := by
@@ -60,17 +60,17 @@ theorem simpleC_ok (R : Rel A B) (hb : (simpleC R).2 = true) :
     pickFits_of_fitsN B R.val _ hv _ (by simp), hS⟩
 
 /-- **`simple` under `simpleC`'s bit**: `rep_simple` at `simpleC_ok`. -/
-theorem rep_simpleC (R : Rel A B) (hb : (simpleC R).2 = true) :
+theorem rep_simpleC (R : Tab A B) (hb : (simpleC R).2 = true) :
     simple R = true ↔ ∀ a b b', rep R a b → rep R a b' → b = b' :=
   let h := simpleC_ok R hb; rep_simple R h.1 h.2.1 h.2.2.1 h.2.2.2.1 h.2.2.2.2
 
 /-- **`injective` under `injectiveC`'s bit**: `rep_injective` at `simpleC_ok` at `R°`. -/
-theorem rep_injectiveC (R : Rel A B) (hb : (injectiveC R).2 = true) :
+theorem rep_injectiveC (R : Tab A B) (hb : (injectiveC R).2 = true) :
     injective R = true ↔ ∀ a a' b, rep R a b → rep R a' b → a = a' :=
   let h := simpleC_ok (R°) hb; rep_injective R h.1 h.2.1 h.2.2.1 h.2.2.2.1 h.2.2.2.2
 
 /-- **`isMap` under `isMapC`'s bit**: `rep_entireC` and `rep_simpleC` at its two halves. -/
-theorem rep_isMapC (R : Rel A B) {m : USize} (U : Vals A m) (hb : (isMapC R U).2 = true) :
+theorem rep_isMapC (R : Tab A B) {m : USize} (U : Vals A m) (hb : (isMapC R U).2 = true) :
     (isMapC R U).1 = true ↔
       (∀ a, (∃ i, U.row i = a) → ∃ b, rep R a b) ∧ ∀ a b b', rep R a b → rep R a b' → b = b' := by
   simp only [isMapC, Bool.and_eq_true] at hb

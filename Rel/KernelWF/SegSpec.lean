@@ -9,7 +9,7 @@ import Rel.KernelWF.JoinAssembly
 
 namespace Rel.Alg
 
-open Rel Rel.Kernel Rel Rel.KernelWF
+open Tab Rel.Kernel Rel Rel.KernelWF
 open Rel.Verify (ids)
 
 /-- Running totals `P` of nonempty classes ascend strictly. -/

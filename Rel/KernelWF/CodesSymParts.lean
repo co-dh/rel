@@ -7,7 +7,7 @@ import Rel.KernelWF.RazeSym
 
 namespace Rel.Alg
 
-open Rel Rel.Dep Rel.Kernel Rel.Verify Rel
+open Tab Rel.Dep Rel.Kernel Rel.Verify Rel
 
 /-- **A symbol side of several parts: its codes are those of its `raze`, cut back**: past the bitmap and
     `rangeOffsets` branches, which a symbol side never takes, `codes` interns the razed column. -/

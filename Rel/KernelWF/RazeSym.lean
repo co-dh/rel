@@ -11,7 +11,7 @@ open Rel.Ext
 
 namespace Rel.KernelWF
 
-open Rel Rel.Kernel Rel.Dep Rel Rel.Alg
+open Tab Rel.Kernel Rel.Dep Rel Rel.Alg
 
 /-! ## Positions of a concatenation -/
 

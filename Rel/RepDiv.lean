@@ -12,7 +12,7 @@ import Rel.RepOps2
 
 namespace Rel.Rep
 
-open Rel Rel.Kernel Rel.Verify Rel Rel.Alg
+open Tab Rel.Kernel Rel.Verify Rel Rel.Alg
 
 variable {A B C : Obj}
 
@@ -29,8 +29,8 @@ scoped notation "jp(" l ", " r ")" => ((List.range (Code.n l).toNat).flatMap fun
 -- The objects are arguments, not captured, so a notation that expands to this one passes its own
 set_option quotPrecheck false in
 scoped notation "yJ(" B ", " C ", " r ", " s ", " l ", " k ")" => (longCount "\\" (join l k).2 fun m h =>
-  (⟨m, Vals.pickN B (Rel.val r) (join l k).1 m (h ▸ join_len l k), Vals.pick C (Rel.val s) (join l k).2 m h⟩ :
-    Rel B C))
+  (⟨m, Vals.pickN B (Rel.Tab.val r) (join l k).1 m (h ▸ join_len l k), Vals.pick C (Rel.Tab.val s) (join l k).2 m h⟩ :
+    Rel.Tab B C))
 -- `leftDiv`'s vacuous side at its joint codes `ycs`, the universe `Ub`
 set_option quotPrecheck false in
 scoped notation "vacY(" B ", " Ub ", " ycs ")" =>
@@ -44,7 +44,7 @@ open Rep.DivN Alg.DivN OpsN
     `\`'s value parts it is `yJ`. -/
 theorem joinC_fst (op : String) (x : Part A) (z : Part C) (l k : Code) :
     (joinC op x z l k).1 = longCount op (join l k).2 fun m h =>
-      (⟨m, Vals.pickN A x.2 (join l k).1 m (h ▸ join_len l k), Vals.pick C z.2 (join l k).2 m h⟩ : Rel A C) := by
+      (⟨m, Vals.pickN A x.2 (join l k).1 m (h ▸ join_len l k), Vals.pick C z.2 (join l k).2 m h⟩ : Tab A C) := by
   unfold joinC longCount; dsimp only; rw [need_fst]; simp only [pickC_fst]; rfl
 
 /-- **`leftDiv`'s joined rows, read back**: one row per pair `(i, j)` of `join l r`, in its order, `x`'s row `i`
@@ -96,7 +96,7 @@ theorem div_y_rows {n₁ n₂ : USize} (l r : Code) (x : Vals B n₁) (z : Vals 
     exact congrArg z.row (Fin.ext (congrArg Prod.snd hq').symm)
 
 /-- **`leftDiv`'s `y`, read back**: `div_y_rows` at the count `longCount` enters with, which `join_rows` bounds. -/
-theorem div_y_holds (r : Rel A B) (s : Rel A C) (l k : Code) (hln : l.n = r.n) (hkn : k.n = s.n)
+theorem div_y_holds (r : Tab A B) (s : Tab A C) (l k : Code) (hln : l.n = r.n) (hkn : k.n = s.n)
     (hlw : laneOK(l.w))
     (hls : l.b.size = (l.n.toNat * l.w + 7) / 8)
     (hrw : laneOK(k.w))
@@ -124,7 +124,7 @@ open Alg.DivN
     value`)`, kept at `leftDiv_keep`'s rows, holds `(b, c)` exactly when every `a` that `r` takes to `b` `s` takes to
     `c`, and some `a` is taken to `b`. Hypotheses: `l`, `k` code `r.key`, `s.key` jointly; `yc`, `zc` code `y`'s
     sides, `rv` codes `r.val` jointly with `yc`; `s`'s rows are distinct; `y` picks back at the kept rows. -/
-theorem div_keep_holds (r : Rel A B) (s : Rel A C) (y : Rel B C) (l k yc zc rv : Code) (I : ByteArray)
+theorem div_keep_holds (r : Tab A B) (s : Tab A C) (y : Tab B C) (l k yc zc rv : Code) (I : ByteArray)
     (hy : y.n.toNat = (jp(l, k)).length ∧ ∀ (q : Nat) (hq : q < y.n.toNat), ∃ (hJ : q < (jp(l, k)).length)
       (hi : ((jp(l, k))[q]'hJ).1 < r.n.toNat) (hj : ((jp(l, k))[q]'hJ).2 < s.n.toNat),
       y.key.row ⟨q, hq⟩ = r.val.row ⟨_, hi⟩ ∧ y.val.row ⟨q, hq⟩ = s.val.row ⟨_, hj⟩)
@@ -281,7 +281,7 @@ local notation "vac" => Vals.pickPart B Ub (anti ubc rvc)
     Hypotheses: `ubc`, `rvc` code `Ub`, `r.val` jointly and well formed (`anti_ids`); `Ub` picks back at the kept
     positions; the product of the universes' counts fits (`rep_top`'s bounds, `anti` keeping at most `Ub`'s
     rows); `rep_top`'s fits. -/
-theorem div_vac_holds (r : Rel A B) {mb mc : USize} (Ub : Vals B mb) (Uc : Vals C mc) (ubc rvc : Code)
+theorem div_vac_holds (r : Tab A B) {mb mc : USize} (Ub : Vals B mb) (Uc : Vals C mc) (ubc rvc : Code)
     (hxw : laneOK(ubc.w))
     (hyw : laneOK(rvc.w))
     (hxs : ubc.b.size = (ubc.n.toNat * ubc.w + 7) / 8) (hys : rvc.b.size = (rvc.n.toNat * rvc.w + 7) / 8)
@@ -328,7 +328,7 @@ theorem one_ok {X : Obj} {n : USize} (x : Vals X n) (h : X.CodesFit (#v[⟨n, x�
 
 /-- **`R.nub` counts at most `R`'s rows**: it keeps the first occurrences (`nub_row`, `firstsOf_length_le`).
     Hypotheses: `rep_nub`'s. -/
-theorem nub_count_le (R : Rel A B) (hK : oneOK(A, R.n, R.key)) (hV : oneOK(B, R.n, R.val))
+theorem nub_count_le (R : Tab A B) (hK : oneOK(A, R.n, R.key)) (hV : oneOK(B, R.n, R.val))
     (hk : Vals.PickFits A R.key (List.range R.n.toNat)) (hv : Vals.PickFits B R.val (List.range R.n.toNat)) :
     R.nub.n.toNat ≤ R.n.toNat := by
   rw [(nub_row R hK hV hk hv).1, nub_ids R hK hV]; exact firstsOf_length_le _ _
@@ -340,23 +340,23 @@ theorem nub_count_le (R : Rel A B) (hK : oneOK(A, R.n, R.key)) (hV : oneOK(B, R.
     `Ub`'s and `Uc`'s multiplied); `Vals.PickFits` of the inputs at all their rows; the output-size facts:
     `Vals.PickFits` at the rows the join and `⊤` repeat, the result's row count, `Vals.RazeFits` and
     `Obj.CodesFit` of `∪`'s raze. -/
-theorem rep_leftDiv {mb mc : USize} (R : Rel A B) (S : Rel A C) (Ub : Vals B mb) (Uc : Vals C mc)
+theorem rep_leftDiv {mb mc : USize} (R : Tab A B) (S : Tab A C) (Ub : Vals B mb) (Uc : Vals C mc)
     (hRK : A.CodesFit (#v[⟨R.n, R.key⟩] : Vector (Part A) 1)) (hRV : B.CodesFit (#v[⟨R.n, R.val⟩] : Vector (Part B) 1))
     (hRk : Vals.PickFits A R.key (List.range R.n.toNat)) (hRv : Vals.PickFits B R.val (List.range R.n.toNat))
     (hSK : A.CodesFit (#v[⟨S.n, S.key⟩] : Vector (Part A) 1)) (hSV : C.CodesFit (#v[⟨S.n, S.val⟩] : Vector (Part C) 1))
     (hSk : Vals.PickFits A S.key (List.range S.n.toNat)) (hSv : Vals.PickFits C S.val (List.range S.n.toNat))
     (kc : Vector Code 2)
-    (hkc : kc = A.codes #v[⟨(Rel.nub R).n, (Rel.nub R).key⟩, ⟨(Rel.nub S).n, (Rel.nub S).key⟩])
+    (hkc : kc = A.codes #v[⟨(nub R).n, (nub R).key⟩, ⟨(nub S).n, (nub S).key⟩])
     -- output size: `nub`'s keys coded jointly; no theorem yet carries `Obj.CodesFit` from a part to its pick
-    (hfk : A.CodesFit #v[⟨(Rel.nub R).n, (Rel.nub R).key⟩, ⟨(Rel.nub S).n, (Rel.nub S).key⟩])
+    (hfk : A.CodesFit #v[⟨(nub R).n, (nub R).key⟩, ⟨(nub S).n, (nub S).key⟩])
     (hSn : S.n.toNat < 2 ^ 63) (hRS : R.n.toNat * S.n.toNat < min (2 ^ 63) USize.size)
     -- output size: the join repeats a class's row once per matching row, so an `.arr` value copies its window
-    (hB : Vals.PickFits B (Rel.nub R).val ((jp(kc[0]'Nat.zero_lt_two, kc[1]'Nat.one_lt_two)).map Prod.fst))
-    (hC : Vals.PickFits C (Rel.nub S).val ((jp(kc[0]'Nat.zero_lt_two, kc[1]'Nat.one_lt_two)).map Prod.snd))
-    (y : Rel B C) (hy : y = yJ(B, C, Rel.nub R,Rel.nub S, kc[0]'Nat.zero_lt_two, kc[1]'Nat.one_lt_two))
-    (ycs : Vector Code 3) (hycs : ycs = B.codes #v[⟨y.n, y.key⟩, ⟨(Rel.nub R).n, (Rel.nub R).val⟩, ⟨mb, Ub⟩])
+    (hB : Vals.PickFits B (nub R).val ((jp(kc[0]'Nat.zero_lt_two, kc[1]'Nat.one_lt_two)).map Prod.fst))
+    (hC : Vals.PickFits C (nub S).val ((jp(kc[0]'Nat.zero_lt_two, kc[1]'Nat.one_lt_two)).map Prod.snd))
+    (y : Tab B C) (hy : y = yJ(B, C, nub R,nub S, kc[0]'Nat.zero_lt_two, kc[1]'Nat.one_lt_two))
+    (ycs : Vector Code 3) (hycs : ycs = B.codes #v[⟨y.n, y.key⟩, ⟨(nub R).n, (nub R).val⟩, ⟨mb, Ub⟩])
     -- output size: the joined rows `y` coded with `nub`'s values and `Ub`, and alone; the join repeats rows
-    (hfy : B.CodesFit #v[⟨y.n, y.key⟩, ⟨(Rel.nub R).n, (Rel.nub R).val⟩, ⟨mb, Ub⟩])
+    (hfy : B.CodesFit #v[⟨y.n, y.key⟩, ⟨(nub R).n, (nub R).val⟩, ⟨mb, Ub⟩])
     (zc : Vector Code 1) (hzc : zc = C.codes #v[⟨y.n, y.val⟩]) (hfz : C.CodesFit #v[⟨y.n, y.val⟩])
     (I : ByteArray)
     (hI : I = longCount "\\" (tuples.tupleIds (ycs[0]'(Nat.zero_lt_succ 2)) #[zc[0]'Nat.zero_lt_one]).2 fun g _ =>
@@ -369,7 +369,7 @@ theorem rep_leftDiv {mb mc : USize} (R : Rel A B) (S : Rel A C) (Ub : Vals B mb)
     -- output size: `⊤` repeats each side's row once per row of the other, so an `.arr` side copies its window
     (hA : Vals.PickFits B (vacY(B, Ub, ycs)).2 ((List.range ((vacY(B, Ub, ycs)).1.toNat * mc.toNat)).map (· / mc.toNat)))
     (hBc : Vals.PickFits C Uc ((List.range ((vacY(B, Ub, ycs)).1.toNat * mc.toNat)).map (· % mc.toNat)))
-    (P Q : Rel B C) (hPe : P = y.rows I) (hQe : Q = top (vacY(B, Ub, ycs)).2 Uc)
+    (P Q : Tab B C) (hPe : P = y.rows I) (hQe : Q = top (vacY(B, Ub, ycs)).2 Uc)
     -- output size: the result's row count, which the razed output `PQ(B, C)` below is built with
     (hU : P.n.toNat + Q.n.toNat < USize.size)
     -- output size: generic-type parts (symbol dictionaries, ALP, `.arr`/`.sum` payloads) razed and coded together
@@ -407,9 +407,9 @@ theorem rep_leftDiv {mb mc : USize} (R : Rel A B) (S : Rel A C) (Ub : Vals B mb)
   -- the counted part; `nub` keeps at most the input's rows, so the input bounds bound the join
   have nR := nub_count_le R (one_ok _ hRK) (one_ok _ hRV) hRk hRv
   have nS := nub_count_le S (one_ok _ hSK) (one_ok _ hSV) hSk hSv
-  have hM : (Rel.nub R).n.toNat * (Rel.nub S).n.toNat < min (2 ^ 63) USize.size :=
+  have hM : (nub R).n.toNat * (nub S).n.toNat < min (2 ^ 63) USize.size :=
     Nat.lt_of_le_of_lt (Nat.mul_le_mul nR nS) hRS
-  have hY := div_y_holds (Rel.nub R) (Rel.nub S) (kc[0]'Nat.zero_lt_two) (kc[1]'Nat.one_lt_two) hln hkn hlw hls hrw hrs
+  have hY := div_y_holds (nub R) (nub S) (kc[0]'Nat.zero_lt_two) (kc[1]'Nat.one_lt_two) hln hkn hlw hls hrw hrs
     hrc (by rw [hkn]; exact Nat.lt_of_le_of_lt nS hSn) (by rw [hln, hkn]; exact hM) hB hC
   rw [← hy] at hY
   obtain ⟨hyl, hyr, hk, hv⟩ := hY
@@ -418,7 +418,7 @@ theorem rep_leftDiv {mb mc : USize} (R : Rel A B) (S : Rel A C) (Ub : Vals B mb)
     ⟨y0w, y0s, fun h i hi => Nat.lt_of_lt_of_le ((y0c h).2 i hi) (Nat.le_max_left _ _)⟩
     ⟨z0w, z0s, fun h i hi => Nat.lt_of_lt_of_le ((z0c h).2 i hi) (Nat.le_max_left _ _)⟩ y1w y1s y1c
   rw [← hI] at hI'
-  have hdk := div_keep_holds (Rel.nub R) (Rel.nub S) y (kc[0]'Nat.zero_lt_two) (kc[1]'Nat.one_lt_two)
+  have hdk := div_keep_holds (nub R) (nub S) y (kc[0]'Nat.zero_lt_two) (kc[1]'Nat.one_lt_two)
     (ycs[0]'(Nat.zero_lt_succ 2)) (zc[0]'Nat.zero_lt_one) (ycs[1]'(Nat.succ_lt_succ (Nat.zero_lt_succ 1))) I hy' hln hkn
     (fun hi hj => eq_comm.trans (kF (k := 0) (l := 1) (by decide) (by decide) hi hj))
     (fun j j' h1 h2 => nub_rows_inj S (one_ok _ hSK) (one_ok _ hSV) hSk hSv h1 h2) y0n
@@ -426,12 +426,12 @@ theorem rep_leftDiv {mb mc : USize} (R : Rel A B) (S : Rel A C) (Ub : Vals B mb)
     (fun hq hq' => zF (k := 0) (l := 0) (by decide) (by decide) hq hq') y1n
     (fun hj hq => yF (k := 1) (l := 0) (by decide) (by decide) hj hq) hI' hk hv b c
   -- the vacuous part
-  have hdv := div_vac_holds (Rel.nub R) Ub Uc (ycs[2]'(Nat.lt_add_one 2)) (ycs[1]'(Nat.succ_lt_succ (Nat.zero_lt_succ 1))) y2w y1w y2s y1s y2n y1n
+  have hdv := div_vac_holds (nub R) Ub Uc (ycs[2]'(Nat.lt_add_one 2)) (ycs[1]'(Nat.succ_lt_succ (Nat.zero_lt_succ 1))) y2w y1w y2s y1s y2n y1n
     (fun hj hp => yF (k := 1) (l := 2) (by decide) (by decide) hj hp) hP hUbc hA hBc b c
   refine (or_congr hdk hdv).trans ?_
-  have eR : ∀ a, (Rel.nub R).Holds a b ↔ rep R a b := fun a =>
+  have eR : ∀ a, (nub R).Holds a b ↔ rep R a b := fun a =>
     Iff.of_eq (congrFun (congrFun (rep_nub R (one_ok _ hRK) (one_ok _ hRV) hRk hRv) a) b)
-  have eS : ∀ a, (Rel.nub S).Holds a c ↔ rep S a c := fun a =>
+  have eS : ∀ a, (nub S).Holds a c ↔ rep S a c := fun a =>
     Iff.of_eq (congrFun (congrFun (rep_nub S (one_ok _ hSK) (one_ok _ hSV) hSk hSv) a) c)
   simp only [eR, eS]
   constructor
@@ -450,7 +450,7 @@ theorem rep_leftDiv {mb mc : USize} (R : Rel A B) (S : Rel A C) (Ub : Vals B mb)
     takes `y` somewhere, or `x` and `y` are elements of the universes `Ua`, `Ub`. `rightDiv R S Ua Ub` is
     `(S° \ R°)°` on `Ub`, `Ua`, so this is `rep_leftDiv` there, its hypotheses at `S°`, `R°`, read through
     `rep_conv`. The objects are named as `leftDiv`'s there: `R : Rel C A`, `S : Rel B A`. -/
-theorem rep_rightDiv {ma mb : USize} (R : Rel C A) (S : Rel B A) (Ua : Vals C ma) (Ub : Vals B mb)
+theorem rep_rightDiv {ma mb : USize} (R : Tab C A) (S : Tab B A) (Ua : Vals C ma) (Ub : Vals B mb)
     (hRK : A.CodesFit (#v[⟨(S°).n, (S°).key⟩] : Vector (Part A) 1))
     (hRV : B.CodesFit (#v[⟨(S°).n, (S°).val⟩] : Vector (Part B) 1))
     (hRk : Vals.PickFits A (S°).key (List.range S.n.toNat)) (hRv : Vals.PickFits B (S°).val (List.range S.n.toNat))
@@ -458,18 +458,18 @@ theorem rep_rightDiv {ma mb : USize} (R : Rel C A) (S : Rel B A) (Ua : Vals C ma
     (hSV : C.CodesFit (#v[⟨(R°).n, (R°).val⟩] : Vector (Part C) 1))
     (hSk : Vals.PickFits A (R°).key (List.range R.n.toNat)) (hSv : Vals.PickFits C (R°).val (List.range R.n.toNat))
     (kc : Vector Code 2)
-    (hkc : kc = A.codes #v[⟨(Rel.nub (S°)).n, (Rel.nub (S°)).key⟩, ⟨(Rel.nub (R°)).n, (Rel.nub (R°)).key⟩])
+    (hkc : kc = A.codes #v[⟨(nub (S°)).n, (nub (S°)).key⟩, ⟨(nub (R°)).n, (nub (R°)).key⟩])
     -- output size: `nub`'s keys coded jointly; no theorem yet carries `Obj.CodesFit` from a part to its pick
-    (hfk : A.CodesFit #v[⟨(Rel.nub (S°)).n, (Rel.nub (S°)).key⟩, ⟨(Rel.nub (R°)).n, (Rel.nub (R°)).key⟩])
+    (hfk : A.CodesFit #v[⟨(nub (S°)).n, (nub (S°)).key⟩, ⟨(nub (R°)).n, (nub (R°)).key⟩])
     (hSn : R.n.toNat < 2 ^ 63) (hRS : S.n.toNat * R.n.toNat < min (2 ^ 63) USize.size)
     -- output size: the join repeats a class's row once per matching row, so an `.arr` value copies its window
-    (hB : Vals.PickFits B (Rel.nub (S°)).val ((jp(kc[0]'Nat.zero_lt_two, kc[1]'Nat.one_lt_two)).map Prod.fst))
-    (hC : Vals.PickFits C (Rel.nub (R°)).val ((jp(kc[0]'Nat.zero_lt_two, kc[1]'Nat.one_lt_two)).map Prod.snd))
-    (yd : Rel B C) (hy : yd = yJ(B, C, Rel.nub (S°),Rel.nub (R°), kc[0]'Nat.zero_lt_two, kc[1]'Nat.one_lt_two))
+    (hB : Vals.PickFits B (nub (S°)).val ((jp(kc[0]'Nat.zero_lt_two, kc[1]'Nat.one_lt_two)).map Prod.fst))
+    (hC : Vals.PickFits C (nub (R°)).val ((jp(kc[0]'Nat.zero_lt_two, kc[1]'Nat.one_lt_two)).map Prod.snd))
+    (yd : Tab B C) (hy : yd = yJ(B, C, nub (S°),nub (R°), kc[0]'Nat.zero_lt_two, kc[1]'Nat.one_lt_two))
     (ycs : Vector Code 3)
-    (hycs : ycs = B.codes #v[⟨yd.n, yd.key⟩, ⟨(Rel.nub (S°)).n, (Rel.nub (S°)).val⟩, ⟨mb, Ub⟩])
+    (hycs : ycs = B.codes #v[⟨yd.n, yd.key⟩, ⟨(nub (S°)).n, (nub (S°)).val⟩, ⟨mb, Ub⟩])
     -- output size: the joined rows `yd` coded with `nub`'s values and `Ub`, and alone; the join repeats rows
-    (hfy : B.CodesFit #v[⟨yd.n, yd.key⟩, ⟨(Rel.nub (S°)).n, (Rel.nub (S°)).val⟩, ⟨mb, Ub⟩])
+    (hfy : B.CodesFit #v[⟨yd.n, yd.key⟩, ⟨(nub (S°)).n, (nub (S°)).val⟩, ⟨mb, Ub⟩])
     (zc : Vector Code 1) (hzc : zc = C.codes #v[⟨yd.n, yd.val⟩]) (hfz : C.CodesFit #v[⟨yd.n, yd.val⟩])
     (I : ByteArray)
     (hI : I = longCount "\\" (tuples.tupleIds (ycs[0]'(Nat.zero_lt_succ 2)) #[zc[0]'Nat.zero_lt_one]).2 fun g _ =>
@@ -482,7 +482,7 @@ theorem rep_rightDiv {ma mb : USize} (R : Rel C A) (S : Rel B A) (Ua : Vals C ma
     -- output size: `⊤` repeats each side's row once per row of the other, so an `.arr` side copies its window
     (hA : Vals.PickFits B (vacY(B, Ub, ycs)).2 ((List.range ((vacY(B, Ub, ycs)).1.toNat * ma.toNat)).map (· / ma.toNat)))
     (hBc : Vals.PickFits C Ua ((List.range ((vacY(B, Ub, ycs)).1.toNat * ma.toNat)).map (· % ma.toNat)))
-    (P Q : Rel B C) (hPe : P = yd.rows I) (hQe : Q = top (vacY(B, Ub, ycs)).2 Ua)
+    (P Q : Tab B C) (hPe : P = yd.rows I) (hQe : Q = top (vacY(B, Ub, ycs)).2 Ua)
     -- output size: the result's row count, which the razed output `PQ(B, C)` below is built with
     (hU : P.n.toNat + Q.n.toNat < USize.size)
     -- output size: generic-type parts (symbol dictionaries, ALP, `.arr`/`.sum` payloads) razed and coded together

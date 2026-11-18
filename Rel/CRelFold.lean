@@ -24,21 +24,21 @@ namespace Rel
 
 namespace Rep
 
-open Rel Rel.Kernel Rel.Verify Rel Rel.Alg Rel.KernelWF
+open Tab Rel.Kernel Rel.Verify Rel Rel.Alg Rel.KernelWF
 open scoped Rel.Core.Rel
 open Rel.Core.Rel hiding id comp recip inter union zero le inl inr junc
 open OpsN FoldN
 /-- **A round's bit**: its step's, `nubC`'s on the step's relation, `antiJoinC`'s on the pending rows, `unionC`'s on
     the leftovers, at the round's element `el`. -/
-theorem foldRound_snd {E V : Obj} (l : Bool) (ids : Rel .long (.arr E)) (stepC : Rel .long E → Rel .long V → Rel .long V × Bool)
-    (st : Rel .long V × Rel .long V × Nat) (el : Rel .long E) (hel : el = elR(ids, st.2.2)) :
+theorem foldRound_snd {E V : Obj} (l : Bool) (ids : Tab .long (.arr E)) (stepC : Tab .long E → Tab .long V → Tab .long V × Bool)
+    (st : Tab .long V × Tab .long V × Nat) (el : Tab .long E) (hel : el = elR(ids, st.2.2)) :
     (foldRound l ids stepC st).2 = ((stepC el st.1).2 && (nubC (stepC el st.1).1).2 &&
-      (antiJoinC (st.1°) (idU (Rel.key el))).2 && (unionC st.2.1 (antiJoinC (st.1°) (idU (Rel.key el))).1°).2) := by
+      (antiJoinC (st.1°) (idU (Tab.key el))).2 && (unionC st.2.1 (antiJoinC (st.1°) (idU (Tab.key el))).1°).2) := by
   subst hel; rfl
 
 /-- **The rounds' bits**: where the carried bit is set after `j` rounds, each of the first `j` rounds' is. -/
-theorem round_bits {E V : Obj} (l : Bool) (ids : Rel .long (.arr E)) (stepC : Rel .long E → Rel .long V → Rel .long V × Bool)
-    (G : (Rel .long V × Rel .long V × Nat) × Bool → (Rel .long V × Rel .long V × Nat) × Bool)
+theorem round_bits {E V : Obj} (l : Bool) (ids : Tab .long (.arr E)) (stepC : Tab .long E → Tab .long V → Tab .long V × Bool)
+    (G : (Tab .long V × Tab .long V × Nat) × Bool → (Tab .long V × Tab .long V × Nat) × Bool)
     (hG : ∀ y, G y = ((foldRound l ids stepC y.1).1, y.2 && (foldRound l ids stepC y.1).2)) (x) :
     ∀ j, (G^[j] x).2 = true → ∀ i < j, (foldRound l ids stepC (G^[i] x).1).2 = true
   | 0, _, _, hi => absurd hi (Nat.not_lt_zero _)
@@ -55,16 +55,16 @@ theorem round_bits {E V : Obj} (l : Bool) (ids : Rel .long (.arr E)) (stepC : Re
     `rep_unionC`, `round_out`); `compC`'s gives `hC`. What stays: `step`'s spec `hS` at the rounds whose step bit
     is set. `T`, `pend₀`, `step`, `elK`, `f` are bound by their equations. -/
 theorem rep_foldByC {E V : Obj} {m n : USize} (l : Bool) (e : Vals V m) (X : Vals (.arr E) n)
-    (stepC : Rel .long E → Rel .long V → Rel .long V × Bool)
+    (stepC : Tab .long E → Tab .long V → Tab .long V × Bool)
     (hb : (foldByC l X e stepC).2 = true)
-    (T : Rel .long (.arr E)) (hT : T = num (idU X) 0)
-    (pend₀ : Rel .long V) (hpend : pend₀ = top (A := .long) (Rel.key T) e)
-    (step : Rel .long E → Rel .long V → Rel .long V) (hstep : ∀ el p, step el p = (stepC el p).1)
+    (T : Tab .long (.arr E)) (hT : T = num (idU X) 0)
+    (pend₀ : Tab .long V) (hpend : pend₀ = top (A := .long) (Tab.key T) e)
+    (step : Tab .long E → Tab .long V → Tab .long V) (hstep : ∀ el p, step el p = (stepC el p).1)
     (Sr : Nat → E.El × V.El → V.El → Prop)
-    (elK : Nat → Rel .long E) (hE : ∀ k, elK k = elR(T, k))
-    (f : Rel .long V × Rel .long V × Nat → Rel .long V × Rel .long V × Nat) (hf : ∀ st, f st = rnd(st))
+    (elK : Nat → Tab .long E) (hE : ∀ k, elK k = elR(T, k))
+    (f : Tab .long V × Tab .long V × Nat → Tab .long V × Tab .long V × Nat) (hf : ∀ st, f st = rnd(st))
     (keep : Prop)
-    (hS : ∀ i, i ≤ (Rel.val T).1.toNat → ne(i + 1) → (stepC (elK i) (f^[i] (pend₀, Alg.zero, 0)).1).2 = true →
+    (hS : ∀ i, i ≤ (val T).1.toNat → ne(i + 1) → (stepC (elK i) (f^[i] (pend₀, Alg.zero, 0)).1).2 = true →
       ∀ r v, rep (step (elK i) (f^[i] (pend₀, Alg.zero, 0)).1) r v ↔
       (∃ e u, rep (elK i) r e ∧ rep (f^[i] (pend₀, Alg.zero, 0)).1 r u ∧ Sr i (e, u) v) ∨
         (keep ∧ (¬ ∃ e, rep (elK i) r e) ∧ rep (f^[i] (pend₀, Alg.zero, 0)).1 r v)) :
@@ -80,17 +80,17 @@ theorem rep_foldByC {E V : Obj} {m n : USize} (l : Bool) (e : Vals V m) (X : Val
   obtain ⟨⟨⟨⟨hnb, hvb⟩, ⟨⟨hN, h63⟩, -⟩, hBb⟩, hFb⟩, hcb⟩ := hb
   have hstep' : step = fun el p => (stepC el p).1 := funext fun el => funext (hstep el)
   -- the rounds `foldRowsC` runs: the state `f^[i]` beside the carried bit
-  have hGf : ∀ y : (Rel .long V × Rel .long V × Nat) × Bool,
-      ((let g := foldRound l T stepC y.1; (g.1, y.2 && g.2)) : (Rel .long V × Rel .long V × Nat) × Bool).1 = f y.1 :=
+  have hGf : ∀ y : (Tab .long V × Tab .long V × Nat) × Bool,
+      ((let g := foldRound l T stepC y.1; (g.1, y.2 && g.2)) : (Tab .long V × Tab .long V × Nat) × Bool).1 = f y.1 :=
     fun y => by dsimp only; exact foldRound_fst l T stepC step hstep elK hE f hf y.1
-  obtain ⟨j, hj, he, hs, -⟩ := iter_stop (fun st : (Rel .long V × Rel .long V × Nat) × Bool => st.1.1.n == 0)
-    (fun st => let g := foldRound l T stepC st.1; (g.1, st.2 && g.2)) ((Rel.val T).1.toNat + 1)
+  obtain ⟨j, hj, he, hs, -⟩ := iter_stop (fun st : (Tab .long V × Tab .long V × Nat) × Bool => st.1.1.n == 0)
+    (fun st => let g := foldRound l T stepC st.1; (g.1, st.2 && g.2)) ((val T).1.toNat + 1)
     ((pend₀, Alg.zero, 0), true)
   have hπ := repeat_map f Prod.fst _ hGf ((pend₀, Alg.zero, 0), true)
   have hbits := round_bits l T stepC _ (fun _ => rfl) ((pend₀, Alg.zero, 0), true) j
     (by rw [← he]; exact hFb)
   -- every round before a stop has its bit set
-  have hround : ∀ i, i ≤ (Rel.val T).1.toNat → ne(i + 1) →
+  have hround : ∀ i, i ≤ (val T).1.toNat → ne(i + 1) →
       (foldRound l T stepC (f^[i] (pend₀, Alg.zero, 0))).2 = true := by
     intro i hi hne
     have hij : i < j := by
@@ -102,18 +102,18 @@ theorem rep_foldByC {E V : Obj} {m n : USize} (l : Bool) (e : Vals V m) (X : Val
         exact absurd hs (by simp only [h0, Bool.false_eq_true, not_false_eq_true])
     have h := hbits i hij
     rwa [hπ i] at h
-  have hbit : ∀ i, i ≤ (Rel.val T).1.toNat → ne(i + 1) →
+  have hbit : ∀ i, i ≤ (val T).1.toNat → ne(i + 1) →
       (stepC (elK i) (f^[i] (pend₀, Alg.zero, 0)).1).2 = true ∧
         (nubC (stepC (elK i) (f^[i] (pend₀, Alg.zero, 0)).1).1).2 = true ∧
-        (antiJoinC ((f^[i] (pend₀, Alg.zero, 0)).1°) (idU (Rel.key (elK i)))).2 = true ∧
+        (antiJoinC ((f^[i] (pend₀, Alg.zero, 0)).1°) (idU (Tab.key (elK i)))).2 = true ∧
         (unionC (f^[i] (pend₀, Alg.zero, 0)).2.1
-          (antiJoinC ((f^[i] (pend₀, Alg.zero, 0)).1°) (idU (Rel.key (elK i)))).1°).2 = true := by
+          (antiJoinC ((f^[i] (pend₀, Alg.zero, 0)).1°) (idU (Tab.key (elK i)))).1°).2 = true := by
     intro i hi hne
     have h := hround i hi hne
     rw [foldRound_snd l T stepC _ (elK i) (by rw [rounds_count pend₀ step elK f hf i]; exact hE i)] at h
     simp only [Bool.and_eq_true] at h
     exact ⟨h.1.1.1, h.1.1.2, h.1.2, h.2⟩
-  have hone : ∀ i, i ≤ (Rel.val T).1.toNat → ne(i + 1) → roundRB(i) := by
+  have hone : ∀ i, i ≤ (val T).1.toNat → ne(i + 1) → roundRB(i) := by
     intro i hi hne
     obtain ⟨-, hNb, hJb, hUb⟩ := hbit i hi hne
     refine ⟨by rw [hstep, ← nubC_fst]; exact rep_nubC _ hNb, fun r v => ?_⟩
@@ -132,7 +132,7 @@ theorem rep_foldByC {E V : Obj} {m n : USize} (l : Bool) (e : Vals V m) (X : Val
 
 /-- **`pairC`'s rows in point form**: an element and a value of the row, paired; `rep_foldOnC`'s `hpr` at the right
     fold's `pairC`, and, read the other way, at the left fold's `pairC pend el`. -/
-theorem pairC_pt {E V : Obj} (el : Rel .long E) (pend : Rel .long V) (h : (pairC el pend).2 = true) (r q) :
+theorem pairC_pt {E V : Obj} (el : Tab .long E) (pend : Tab .long V) (h : (pairC el pend).2 = true) (r q) :
     rep (pairC el pend).1 r q ↔ ∃ e u, rep el r e ∧ rep pend r u ∧ q = (e, u) := by
   rw [rep_pairC _ _ h]
   exact ⟨fun h => ⟨_, _, h.1, h.2, rfl⟩, fun ⟨_, _, he, hu, hq⟩ => hq ▸ ⟨he, hu⟩⟩
@@ -142,20 +142,20 @@ theorem pairC_pt {E V : Obj} (el : Rel .long E) (pend : Rel .long V) (h : (pairC
     and value) and `rep_compC` (the step bit's) as `(SC (D i)).1` on the pairs the round meets — `Sr i` there (`hSr`,
     at the rounds whose step bit is set, which holds `ranC`'s and `SC`'s bits at `D i`). What stays: `hSr`, the
     family's own spec. `T`, `pend₀`, `step`, `elK`, `f`, `D` are bound by their equations. -/
-theorem rep_foldOnC {E V P : Obj} {m n : USize} (l : Bool) (pr : Rel .long E → Rel .long V → Rel .long P × Bool)
+theorem rep_foldOnC {E V P : Obj} {m n : USize} (l : Bool) (pr : Tab .long E → Tab .long V → Tab .long P × Bool)
     (mk : E.El → V.El → P.El)
     (hpr : ∀ el pend, (pr el pend).2 = true → ∀ r q,
       rep (pr el pend).1 r q ↔ ∃ e u, rep el r e ∧ rep pend r u ∧ q = mk e u)
-    (e : Vals V m) (SC : Rel P P → Rel P V × Bool) (X : Vals (.arr E) n)
+    (e : Vals V m) (SC : Tab P P → Tab P V × Bool) (X : Vals (.arr E) n)
     (hb : (foldOnC l pr e SC X).2 = true)
-    (T : Rel .long (.arr E)) (hT : T = num (idU X) 0)
-    (pend₀ : Rel .long V) (hpend : pend₀ = top (A := .long) (Rel.key T) e)
-    (step : Rel .long E → Rel .long V → Rel .long V) (hstep : ∀ el p, step el p = (demandStepC pr SC el p).1)
-    (elK : Nat → Rel .long E) (hE : ∀ k, elK k = elR(T, k))
-    (f : Rel .long V × Rel .long V × Nat → Rel .long V × Rel .long V × Nat) (hf : ∀ st, f st = rnd(st))
-    (D : Nat → Rel P P) (hD : ∀ k, D k = ran (pr (elK k) (f^[k] (pend₀, Alg.zero, 0)).1).1)
+    (T : Tab .long (.arr E)) (hT : T = num (idU X) 0)
+    (pend₀ : Tab .long V) (hpend : pend₀ = top (A := .long) (Tab.key T) e)
+    (step : Tab .long E → Tab .long V → Tab .long V) (hstep : ∀ el p, step el p = (demandStepC pr SC el p).1)
+    (elK : Nat → Tab .long E) (hE : ∀ k, elK k = elR(T, k))
+    (f : Tab .long V × Tab .long V × Nat → Tab .long V × Tab .long V × Nat) (hf : ∀ st, f st = rnd(st))
+    (D : Nat → Tab P P) (hD : ∀ k, D k = ran (pr (elK k) (f^[k] (pend₀, Alg.zero, 0)).1).1)
     (Sr : Nat → P.El → V.El → Prop)
-    (hSr : ∀ i, i ≤ (Rel.val T).1.toNat → ne(i + 1) →
+    (hSr : ∀ i, i ≤ (val T).1.toNat → ne(i + 1) →
       (demandStepC pr SC (elK i) (f^[i] (pend₀, Alg.zero, 0)).1).2 = true → ∀ p w, (∃ a, rep (D i) a p) →
         (∀ a b, rep (D i) a b → a = b) → (rep (SC (D i)).1 p w ↔ Sr i p w)) :
     ∀ (xs : List E.El) w, rep (foldOnC l pr e SC X).1 xs w ↔ (∃ i, X.row i = xs) ∧
@@ -190,7 +190,7 @@ theorem rep_foldOnC {E V P : Obj} {m n : USize} (l : Bool) (pr : Rel .long E →
         ⟨fun ⟨he, hu, h⟩ => ⟨he, hu, (hS' e u he hu).1 h⟩, fun ⟨he, hu, h⟩ => ⟨he, hu, (hS' e u he hu).2 h⟩⟩)
 
 /-- **`fold` under `foldC`'s bit**: `rep_foldOnC` at the constant family `S`, read back as `rep S` outright. -/
-theorem rep_foldC {E V : Obj} {m n : USize} (e : Vals V m) (S : Rel (.prod E V) V) (X : Vals (.arr E) n)
+theorem rep_foldC {E V : Obj} {m n : USize} (e : Vals V m) (S : Tab (.prod E V) V) (X : Vals (.arr E) n)
     (hb : (foldC e S X).2 = true) :
     ∀ (xs : List E.El) w, rep (foldC e S X).1 xs w ↔ (∃ i, X.row i = xs) ∧
       ∃ ys : List V.El, ∃ hy : ys.length = xs.length + 1,
@@ -222,7 +222,7 @@ theorem Arr.rep_sumC {n : USize} (X : Vals (.arr .long) n)
 
 open CompN in
 /-- `diffC`'s bit taken apart: the joint pair codes (as `rep_interC`) and `R`'s `fitsN` bits. -/
-theorem diffC_bits {A B : Obj} (R S : Rel A B) (hb : (diffC R S).2 = true) :
+theorem diffC_bits {A B : Obj} (R S : Tab A B) (hb : (diffC R S).2 = true) :
     pairsOK(R, S) ∧ Vals.fitsN A R.key R.n.toNat = true ∧ Vals.fitsN B R.val R.n.toNat = true := by
   simp only [diffC, Bool.and_eq_true] at hb
   obtain ⟨⟨hcb, hk⟩, hv⟩ := hb
@@ -230,13 +230,13 @@ theorem diffC_bits {A B : Obj} (R S : Rel A B) (hb : (diffC R S).2 = true) :
     hk, hv⟩
 
 /-- **`rep (R \ S)` under `diffC`'s bit**: `rep_diff` at `diffC_bits`. -/
-theorem rep_diffC {A B : Obj} (R S : Rel A B) (hb : (diffC R S).2 = true) (a : A.El) (b : B.El) :
+theorem rep_diffC {A B : Obj} (R S : Tab A B) (hb : (diffC R S).2 = true) (a : A.El) (b : B.El) :
     rep (diffC R S).1 a b ↔ rep R a b ∧ ¬ rep S a b :=
   let ⟨hp, hk, hv⟩ := diffC_bits R S hb; rep_diff R S hp (pickFits_range A _ hk) (pickFits_range B _ hv) a b
 
 open CompN in
 /-- **`−` is canonical where `R` is**: it keeps the rows of `R` that `anti` picks (`anti_sublist`). -/
-theorem canon_diffC {A B : Obj} (R S : Rel A B) (hb : (diffC R S).2 = true) (hR : R.Canon) : (diffC R S).1.Canon := by
+theorem canon_diffC {A B : Obj} (R S : Tab A B) (hb : (diffC R S).2 = true) (hR : R.Canon) : (diffC R S).1.Canon := by
   obtain ⟨hp, hk, hv⟩ := diffC_bits R S hb
   obtain ⟨-, hn0, -⟩ := hp.2 (k := 0) (by decide)
   replace hn0 : ((pairs #v[R, S])[0]'Nat.zero_lt_two).n = R.n := hn0
@@ -267,7 +267,7 @@ theorem lane_sizes {w n s : Nat} (hl : laneOK(w)) (hs : s = (n * w + 7) / 8) :
 /-- **A cell whose `find` lands on a key picks an `R`-image of itself**: `find` on the joint codes lands on the first
     key whose code is the cell's (`find_spec`), equal codes are equal values (`codes_faithful_wf`), and the pick of
     `R.val` there (`pick_row`) is that key's value. -/
-theorem find_pick_found {A B : Obj} (R : Rel A B) {m : USize} (P : Vals A m)
+theorem find_pick_found {A B : Obj} (R : Tab A B) {m : USize} (P : Vals A m)
     (hc : (A.codesC #v[⟨_, R.key⟩, ⟨_, P⟩]).2 = true)
     (hf : m.toNat ≤ len ((A.codesC #v[⟨_, R.key⟩, ⟨_, P⟩]).1[0].find (A.codesC #v[⟨_, R.key⟩, ⟨_, P⟩]).1[1]))
     (hy : (Vals.pickC B R.val (fit m.toNat ((A.codesC #v[⟨_, R.key⟩, ⟨_, P⟩]).1[0].find
@@ -301,7 +301,7 @@ theorem find_pick_found {A B : Obj} (R : Rel A B) {m : USize} (P : Vals A m)
 /-- **`F(R)` for a simple `R` under `mapSimpleC`'s bit**: row `i` of `⟨X, Y⟩` reads one list of payload positions in
     `X` and in `Y` (`row_repay`), and every cell, its `find` landing on a key by the bit, reads in `Y` an `R`-image
     (`find_pick_found`), the only one as `R` is simple. -/
-theorem rep_mapSimpleC {A B : Obj} {n : USize} (R : Rel A B) (X : Vals (.arr A) n)
+theorem rep_mapSimpleC {A B : Obj} {n : USize} (R : Tab A B) (X : Vals (.arr A) n)
     (hs : ∀ a b b', rep R a b → rep R a b' → b = b') (hb : (mapSimpleC R X).2 = true) :
     ∀ (xs : List A.El) ys, rep (mapSimpleC R X).1 xs ys ↔ (∃ i, X.row i = xs) ∧ ys.length = xs.length ∧
       ∀ t (ht : t < xs.length) (ht' : t < ys.length), rep R (xs[t]'ht) (ys[t]'ht') := by
@@ -383,7 +383,7 @@ theorem forall_zip_reverse {α β : Type _} (R : α → β → Prop) (xs : List 
 /-- **`F(R)` as the fold under `mapFoldC`'s bit**: `rep_foldByC` at the left read and the step
     `snocC (pairC pend (compC el R))`, each round's three bits read it back (`rep_snocC`, `rep_pairC`, `rep_compC`),
     then `chain_reverse` onto `map_chain` at the reversals. -/
-theorem rep_mapFoldC {A B : Obj} {n : USize} (R : Rel A B) (X : Vals (.arr A) n)
+theorem rep_mapFoldC {A B : Obj} {n : USize} (R : Tab A B) (X : Vals (.arr A) n)
     (hb : (mapFoldC R X).2 = true) :
     ∀ (xs : List A.El) ys, rep (mapFoldC R X).1 xs ys ↔ (∃ i, X.row i = xs) ∧ ys.length = xs.length ∧
       ∀ t (ht : t < xs.length) (ht' : t < ys.length), rep R (xs[t]'ht) (ys[t]'ht') := by
@@ -409,7 +409,7 @@ theorem rep_mapFoldC {A B : Obj} {n : USize} (R : Rel A B) (X : Vals (.arr A) n)
 
 /-- **`F(R)` under `mapC`'s bit**: a decided-simple `R` runs as `mapSimpleC` (`rep_mapSimpleC`, simplicity read back
     by `rep_simpleC`), any other as the fold (`rep_mapFoldC`); both read back as `map_chain`'s right side. -/
-theorem rep_mapC {A B : Obj} {n : USize} (R : Rel A B) (X : Vals (.arr A) n)
+theorem rep_mapC {A B : Obj} {n : USize} (R : Tab A B) (X : Vals (.arr A) n)
     (hb : (mapC R X).2 = true) :
     ∀ (xs : List A.El) ys, rep (mapC R X).1 xs ys ↔ (∃ i, X.row i = xs) ∧ ys.length = xs.length ∧
       ∀ t (ht : t < xs.length) (ht' : t < ys.length), rep R (xs[t]'ht) (ys[t]'ht') := by
@@ -509,7 +509,7 @@ end Rep
 
 namespace CRel
 
-open Rel Rel.Kernel Rel.Alg Rel.Rep FoldN
+open Tab Rel.Kernel Rel.Alg Rel.Rep FoldN
 open scoped Rel.Core.Rel
 open Rel.Core.Rel hiding id comp recip inter union zero le inl inr junc
 
@@ -517,14 +517,14 @@ open Rel.Core.Rel hiding id comp recip inter union zero le inl inr junc
 theorem rep_foldBy {E V : Obj} {m n : USize} (e : Vals V m) (X : Vals (.arr E) n)
     (stepK : CRel .long E → CRel .long V → CRel .long V)
     (hb : (foldBy X e stepK).ok = true)
-    (T : Rel .long (.arr E)) (hT : T = Alg.num (idU X) 0)
-    (pend₀ : Rel .long V) (hpend : pend₀ = Alg.top (A := .long) (Rel.key T) e)
-    (step : Rel .long E → Rel .long V → Rel .long V) (hstep : ∀ el p, step el p = (stepK ⟨el, true⟩ ⟨p, true⟩).rel)
+    (T : Tab .long (.arr E)) (hT : T = Alg.num (idU X) 0)
+    (pend₀ : Tab .long V) (hpend : pend₀ = Alg.top (A := .long) (Tab.key T) e)
+    (step : Tab .long E → Tab .long V → Tab .long V) (hstep : ∀ el p, step el p = (stepK ⟨el, true⟩ ⟨p, true⟩).rel)
     (Sr : Nat → E.El × V.El → V.El → Prop)
-    (elK : Nat → Rel .long E) (hE : ∀ k, elK k = foldEl false T k)
-    (f : Rel .long V × Rel .long V × Nat → Rel .long V × Rel .long V × Nat) (hf : ∀ st, f st = rnd(st))
+    (elK : Nat → Tab .long E) (hE : ∀ k, elK k = foldEl false T k)
+    (f : Tab .long V × Tab .long V × Nat → Tab .long V × Tab .long V × Nat) (hf : ∀ st, f st = rnd(st))
     (keep : Prop)
-    (hS : ∀ i, i ≤ (Rel.val T).1.toNat → ne(i + 1) →
+    (hS : ∀ i, i ≤ (val T).1.toNat → ne(i + 1) →
       (stepK ⟨elK i, true⟩ ⟨(f^[i] (pend₀, Alg.zero, 0)).1, true⟩).ok = true →
       ∀ r v, rep (step (elK i) (f^[i] (pend₀, Alg.zero, 0)).1) r v ↔
       (∃ e u, rep (elK i) r e ∧ rep (f^[i] (pend₀, Alg.zero, 0)).1 r u ∧ Sr i (e, u) v) ∨
@@ -539,22 +539,22 @@ theorem rep_foldBy {E V : Obj} {m n : USize} (e : Vals V m) (X : Vals (.arr E) n
   by unfold CRel.foldBy at hb ⊢; rw [rep_ofC hb]; exact rep_foldByC false e X _ (ofC_ok hb).1 T hT pend₀ hpend step hstep Sr elK hE f hf keep hS
 
 /-- **`CRel.foldOn` read back under its bit**: `rep_foldOnC`. -/
-theorem rep_foldOn {E V P : Obj} {m n : USize} (l : Bool) (pr : Rel .long E → Rel .long V → Rel .long P × Bool)
+theorem rep_foldOn {E V P : Obj} {m n : USize} (l : Bool) (pr : Tab .long E → Tab .long V → Tab .long P × Bool)
     (mk : E.El → V.El → P.El)
     (hpr : ∀ el pend, (pr el pend).2 = true → ∀ r q,
       rep (pr el pend).1 r q ↔ ∃ e u, rep el r e ∧ rep pend r u ∧ q = mk e u)
     (e : Vals V m) (S : CRel P P → CRel P V) (X : Vals (.arr E) n)
     (hb : (foldOn l pr e S X).ok = true)
-    (T : Rel .long (.arr E)) (hT : T = Alg.num (idU X) 0)
-    (pend₀ : Rel .long V) (hpend : pend₀ = Alg.top (A := .long) (Rel.key T) e)
-    (step : Rel .long E → Rel .long V → Rel .long V)
+    (T : Tab .long (.arr E)) (hT : T = Alg.num (idU X) 0)
+    (pend₀ : Tab .long V) (hpend : pend₀ = Alg.top (A := .long) (Tab.key T) e)
+    (step : Tab .long E → Tab .long V → Tab .long V)
     (hstep : ∀ el p, step el p = (demandStepC pr (fun D => ((S ⟨D, true⟩).rel, (S ⟨D, true⟩).ok)) el p).1)
-    (elK : Nat → Rel .long E) (hE : ∀ k, elK k = elR(T, k))
-    (f : Rel .long V × Rel .long V × Nat → Rel .long V × Rel .long V × Nat) (hf : ∀ st, f st = rnd(st))
-    (D : Nat → Rel P P)
+    (elK : Nat → Tab .long E) (hE : ∀ k, elK k = elR(T, k))
+    (f : Tab .long V × Tab .long V × Nat → Tab .long V × Tab .long V × Nat) (hf : ∀ st, f st = rnd(st))
+    (D : Nat → Tab P P)
     (hD : ∀ k, D k = Alg.ran (pr (elK k) (f^[k] (pend₀, Alg.zero, 0)).1).1)
     (Sr : Nat → P.El → V.El → Prop)
-    (hSr : ∀ i, i ≤ (Rel.val T).1.toNat → ne(i + 1) →
+    (hSr : ∀ i, i ≤ (val T).1.toNat → ne(i + 1) →
       (demandStepC pr (fun D => ((S ⟨D, true⟩).rel, (S ⟨D, true⟩).ok)) (elK i) (f^[i] (pend₀, Alg.zero, 0)).1).2 =
         true → ∀ p w, (∃ a, rep (D i) a p) → (∀ a b, rep (D i) a b → a = b) →
           (rep (S ⟨D i, true⟩).rel p w ↔ Sr i p w)) :

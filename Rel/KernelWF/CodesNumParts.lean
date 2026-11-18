@@ -8,7 +8,7 @@ import Rel.KernelWF.CodesFloatParts
 
 namespace Rel.Alg
 
-open Rel Rel.Dep Rel.Kernel Rel.Verify Rel
+open Tab Rel.Dep Rel.Kernel Rel.Verify Rel
 
 /-- **A float side: its codes are faithful jointly across the parts** — equal codes exactly at rows of equal
     bits; the parts and their `raze` in any encoding, the parts' summed count a `USize`, 32 bits where an ALP

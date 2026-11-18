@@ -12,7 +12,7 @@ namespace Rel
 
 namespace Rep
 
-open Rel Rel.Kernel Rel.Verify Rel Rel.Alg
+open Tab Rel.Kernel Rel.Verify Rel Rel.Alg
 open scoped Rel.Core.Rel
 open Rel.Core.Rel hiding id comp recip inter union zero le inl inr junc
 

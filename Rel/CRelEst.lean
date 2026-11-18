@@ -15,7 +15,7 @@ import Rel.Run.CRelEstDef
 
 namespace Rel
 
-open Rel Rel.Kernel Rel.Verify Rel Rel.Alg Rel.KernelWF
+open Tab Rel.Kernel Rel.Verify Rel Rel.Alg Rel.KernelWF
 open scoped Rel.Core.Rel
 open Rel.Core.Rel hiding id comp recip inter union zero le inl inr junc
 open Rel.Rep Rel.Rep.FoldN Rel.Rep.OpsN Rel.Rep.Prim Rel.Rep.ListN
@@ -27,23 +27,23 @@ variable {A B : Obj}
 /-! ## A piece's bit as the bundle the plain read-backs take -/
 
 /-- `ranC`'s bit is `rep_ran_corefl`'s premises (`oneFit`). -/
-theorem ranC_oneFit (R : Rel A B) (hb : (ranC R).2 = true) : oneFit(B, Rel.n R, Rel.val R) := by
+theorem ranC_oneFit (R : Tab A B) (hb : (ranC R).2 = true) : oneFit(B, n R, val R) := by
   simp only [ranC, distinctCoreflC, Bool.and_eq_true] at hb
   exact ⟨Obj.codesC_fits B _ hb.1, pickFits_of_fitsN B R.val _ hb.2 _ (by simp)⟩
 
 /-- `domC`'s bit is `rep_dom_corefl`'s premises (`oneFit`). -/
-theorem domC_oneFit (R : Rel A B) (hb : (domC R).2 = true) : oneFit(A, Rel.n R, Rel.key R) := by
+theorem domC_oneFit (R : Tab A B) (hb : (domC R).2 = true) : oneFit(A, n R, Tab.key R) := by
   simp only [domC, distinctCoreflC, Bool.and_eq_true] at hb
   exact ⟨Obj.codesC_fits A _ hb.1, pickFits_of_fitsN A R.key _ hb.2 _ (by simp)⟩
 
 /-- `diffC`'s bit is `rep_diff`'s premises (`diffOK`): `diffC_bits`, the `fitsN` bits read as picks. -/
-theorem diffC_ok (R S : Rel A B) (hb : (diffC R S).2 = true) : diffOK(A, B, R, S) :=
+theorem diffC_ok (R S : Tab A B) (hb : (diffC R S).2 = true) : diffOK(A, B, R, S) :=
   let ⟨hp, hk, hv⟩ := diffC_bits R S hb
   fun _ e' => by subst e'; exact ⟨hp, pickFits_range A _ hk, pickFits_range B _ hv⟩
 
 
 /-- `antiJoinC`'s bit is `rep_antiJoin`'s premises (`ajOK`), as `rep_antiJoinC`'s. -/
-theorem antiJoinC_ok (R : Rel A B) (T : Rel B B) (hb : (antiJoinC R T).2 = true) : ajOK(B, R, T) := by
+theorem antiJoinC_ok (R : Tab A B) (T : Tab B B) (hb : (antiJoinC R T).2 = true) : ajOK(B, R, T) := by
   simp only [antiJoinC, Bool.and_eq_true] at hb
   obtain ⟨⟨hcb, hk⟩, hv⟩ := hb
   exact ⟨Obj.codesC_fits B _ hcb, pickFits_of_fitsN A R.key _ hk _ (by simp),
@@ -52,27 +52,27 @@ theorem antiJoinC_ok (R : Rel A B) (T : Rel B B) (hb : (antiJoinC R T).2 = true)
 /-! ## `pairsIn`, `swapIn` -/
 
 /-- **`pairsIn` under `pairsInC`'s bit**: `rep_pairsIn` at `compC`'s (`compC_cmpOK`). -/
-theorem rep_pairsInC (Q : Rel B B) (D : Rel (.prod B B) (.prod B B)) (hb : (pairsInC Q D).2 = true) :
+theorem rep_pairsInC (Q : Tab B B) (D : Tab (.prod B B) (.prod B B)) (hb : (pairsInC Q D).2 = true) :
     ∀ p p', rep (pairsInC Q D).1 p p' ↔ rep D p p' ∧ rep Q p'.1 p'.2 :=
   rep_pairsIn Q D (compC_cmpOK _ _ hb)
 
 /-- **`swapInC`'s bit is `rep_swapIn`'s premises** at the test `(qC ·).1`, `ranC`'s `oneFit` at the swapped pairs, and
     the test's own bit at the pairs it sees. -/
-theorem swapInC_ok (qC : Rel (.prod B B) (.prod B B) → Rel (.prod B B) (.prod B B) × Bool)
-    (D : Rel (.prod B B) (.prod B B)) (hb : (swapInC qC D).2 = true) :
+theorem swapInC_ok (qC : Tab (.prod B B) (.prod B B) → Tab (.prod B B) (.prod B B) × Bool)
+    (D : Tab (.prod B B) (.prod B B)) (hb : (swapInC qC D).2 = true) :
     pairOK(.prod B B, outr D, outl D) ∧
-      oneFit(.prod B B, Rel.n (pair (outr D) (outl D)), Rel.val (pair (outr D) (outl D))) ∧
+      oneFit(.prod B B, n (pair (outr D) (outl D)), val (pair (outr D) (outl D))) ∧
       (qC (ran (pair (outr D) (outl D)))).2 = true ∧
       cmpOK(.prod B B, pair (outr D) (outl D), (qC (ran (pair (outr D) (outl D)))).1) ∧
-      oneFit(.prod B B, Rel.n (pair (outr D) (outl D) ≫ (qC (ran (pair (outr D) (outl D)))).1),
-        Rel.key (pair (outr D) (outl D) ≫ (qC (ran (pair (outr D) (outl D)))).1)) := by
+      oneFit(.prod B B, n (pair (outr D) (outl D) ≫ (qC (ran (pair (outr D) (outl D)))).1),
+        Tab.key (pair (outr D) (outl D) ≫ (qC (ran (pair (outr D) (outl D)))).1)) := by
   simp only [swapInC, Bool.and_eq_true] at hb
   obtain ⟨⟨⟨⟨hs, hE⟩, ht⟩, hM⟩, hd⟩ := hb
   exact ⟨pairC_ok _ _ hs, ranC_oneFit _ hE, ht, compC_cmpOK _ _ hM, domC_oneFit _ hd⟩
 
 /-- **`swapIn` under `swapInC`'s bit**: `rep_swapIn` at `swapInC_ok`. -/
-theorem rep_swapInC (qC : Rel (.prod B B) (.prod B B) → Rel (.prod B B) (.prod B B) × Bool)
-    (D : Rel (.prod B B) (.prod B B)) (hb : (swapInC qC D).2 = true) :
+theorem rep_swapInC (qC : Tab (.prod B B) (.prod B B) → Tab (.prod B B) (.prod B B) × Bool)
+    (D : Tab (.prod B B) (.prod B B)) (hb : (swapInC qC D).2 = true) :
     ∀ p p', rep (swapInC qC D).1 p p' ↔ p = p' ∧ ∃ u v w, ((∃ y, rep D p (y, u)) ∧ ∃ z, rep D p (v, z)) ∧
       rep (qC (ran (pair (outr D) (outl D)))).1 (u, v) w := by
   obtain ⟨hs, -, -, hM, hd⟩ := swapInC_ok qC D hb
@@ -81,14 +81,14 @@ theorem rep_swapInC (qC : Rel (.prod B B) (.prod B B) → Rel (.prod B B) (.prod
 /-! ## `estOn`, `est`, `thinOn`, `thin` -/
 
 /-- **`estOnC`'s bit is the test's at `D = ran ⟨G,G⟩` and `rep_estOn`'s premises** at the test `(qC ·).1`. -/
-theorem estOnC_ok (qC : Rel (.prod B B) (.prod B B) → Rel (.prod B B) (.prod B B) × Bool) (G : Rel A B)
+theorem estOnC_ok (qC : Tab (.prod B B) (.prod B B) → Tab (.prod B B) (.prod B B) × Bool) (G : Tab A B)
     (hb : (estOnC qC G).2 = true)
-    (P : Rel A (.prod B B)) (hP : P = pair G G) (D : Rel (.prod B B) (.prod B B)) (hD : D = ran P)
-    (V : Rel B B) (hV : V = ran G) (W : Rel B (.prod B B)) (hW : W = pair V V)
-    (N : Rel (.prod B B) (.prod B B)) (hN : N = ran W) (Y : Rel (.prod B B) (.prod B B)) (hY : Y = D \ (qC D).1)
-    (Z : Rel (.prod B B) (.prod B B)) (hZ : Z = Y \ N) (M : Rel A B) (hM : M = P ≫ outl Z) :
-    (qC D).2 = true ∧ pairOK(A, G, G) ∧ oneFit(.prod B B, Rel.n P, Rel.val P) ∧ oneFit(B, Rel.n G, Rel.val G) ∧
-      pairOK(B, V, V) ∧ oneFit(.prod B B, Rel.n W, Rel.val W) ∧ diffOK(.prod B B, .prod B B, D, (qC D).1) ∧
+    (P : Tab A (.prod B B)) (hP : P = pair G G) (D : Tab (.prod B B) (.prod B B)) (hD : D = ran P)
+    (V : Tab B B) (hV : V = ran G) (W : Tab B (.prod B B)) (hW : W = pair V V)
+    (N : Tab (.prod B B) (.prod B B)) (hN : N = ran W) (Y : Tab (.prod B B) (.prod B B)) (hY : Y = D \ (qC D).1)
+    (Z : Tab (.prod B B) (.prod B B)) (hZ : Z = Y \ N) (M : Tab A B) (hM : M = P ≫ outl Z) :
+    (qC D).2 = true ∧ pairOK(A, G, G) ∧ oneFit(.prod B B, n P, val P) ∧ oneFit(B, n G, val G) ∧
+      pairOK(B, V, V) ∧ oneFit(.prod B B, n W, val W) ∧ diffOK(.prod B B, .prod B B, D, (qC D).1) ∧
       diffOK(.prod B B, .prod B B, Y, N) ∧ cmpOK(.prod B B, P, outl Z) ∧ diffOK(A, B, G, M) := by
   subst hP hD hV hW hN hY hZ hM
   simp only [estOnC, Bool.and_eq_true] at hb
@@ -97,7 +97,7 @@ theorem estOnC_ok (qC : Rel (.prod B B) (.prod B B) → Rel (.prod B B) (.prod B
     diffC_ok _ _ hY, diffC_ok _ _ hZ, compC_cmpOK _ _ hM, diffC_ok _ _ hr⟩
 
 /-- **`estOn` under `estOnC`'s bit**: `rep_estOn` at `estOnC_ok`, with the test's bit at `D` for its spec. -/
-theorem rep_estOnC (qC : Rel (.prod B B) (.prod B B) → Rel (.prod B B) (.prod B B) × Bool) (G : Rel A B)
+theorem rep_estOnC (qC : Tab (.prod B B) (.prod B B) → Tab (.prod B B) (.prod B B) × Bool) (G : Tab A B)
     (hb : (estOnC qC G).2 = true) :
     (qC (ran (pair G G))).2 = true ∧ ∀ a b, rep (estOnC qC G).1 a b ↔ rep G a b ∧
       ¬ ∃ c, rep G a c ∧ c ≠ b ∧ ¬ rep (qC (ran (pair G G))).1 (b, c) (b, c) := by
@@ -105,17 +105,17 @@ theorem rep_estOnC (qC : Rel (.prod B B) (.prod B B) → Rel (.prod B B) (.prod 
   exact ⟨ht, rep_estOn (fun r => (qC r).1) G _ rfl _ rfl _ rfl _ rfl _ rfl _ rfl _ rfl _ rfl h⟩
 
 /-- **`est(Q)` under `estC`'s bit**: `rep_est` at `estOnC_ok`, the test's bit its `hq` (`compC_cmpOK`). -/
-theorem rep_estC (Q : Rel B B) (G : Rel A B) (hb : (estC Q G).2 = true) :
+theorem rep_estC (Q : Tab B B) (G : Tab A B) (hb : (estC Q G).2 = true) :
     ∀ a b, rep (estC Q G).1 a b ↔ rep G a b ∧ ∀ c, rep G a c → c ≠ b → rep Q b c := by
   obtain ⟨ht, h⟩ := estOnC_ok (pairsInC Q) G hb _ rfl _ rfl _ rfl _ rfl _ rfl _ rfl _ rfl _ rfl
   exact rep_est Q G _ rfl _ rfl _ rfl _ rfl _ rfl _ rfl _ rfl _ rfl h (compC_cmpOK _ _ ht)
 
 /-- **`thinOnC`'s bit is the test's and `swapInC`'s at `D = ran ⟨G,G⟩`, `ranC`'s `oneFit` at `⟨G,G⟩`, and
     `rep_thinOn`'s premises** at the test `(qC ·).1`. -/
-theorem thinOnC_ok (qC : Rel (.prod B B) (.prod B B) → Rel (.prod B B) (.prod B B) × Bool) (G : Rel A B)
+theorem thinOnC_ok (qC : Tab (.prod B B) (.prod B B) → Tab (.prod B B) (.prod B B) × Bool) (G : Tab A B)
     (hb : (thinOnC qC G).2 = true) :
     (qC (ran (pair G G))).2 = true ∧ (swapInC qC (ran (pair G G))).2 = true ∧
-      oneFit(.prod B B, Rel.n (pair G G), Rel.val (pair G G)) ∧
+      oneFit(.prod B B, n (pair G G), val (pair G G)) ∧
       (pairOK(A, G, G) ∧
         diffOK(.prod B B, .prod B B, (qC (ran (pair G G))).1, (swapInC qC (ran (pair G G))).1) ∧
         cmpOK(.prod B B, pair G G, outr ((qC (ran (pair G G))).1 \ (swapInC qC (ran (pair G G))).1)) ∧
@@ -126,7 +126,7 @@ theorem thinOnC_ok (qC : Rel (.prod B B) (.prod B B) → Rel (.prod B B) (.prod 
 
 /-- **`thinOn` under `thinOnC`'s bit**: `rep_thinOn` at `thinOnC_ok`, with the test's and `swapInC`'s bits at `D`
     (`rep_swapInC`) for the test's spec. -/
-theorem rep_thinOnC (qC : Rel (.prod B B) (.prod B B) → Rel (.prod B B) (.prod B B) × Bool) (G : Rel A B)
+theorem rep_thinOnC (qC : Tab (.prod B B) (.prod B B) → Tab (.prod B B) (.prod B B) × Bool) (G : Tab A B)
     (hb : (thinOnC qC G).2 = true) :
     (qC (ran (pair G G))).2 = true ∧ (swapInC qC (ran (pair G G))).2 = true ∧ ∀ a c, rep (thinOnC qC G).1 a c ↔
       rep G a c ∧ ¬ ∃ b b' y, rep G a b ∧ rep G a b' ∧ rep (qC (ran (pair G G))).1 (b, b') (y, c) ∧
@@ -136,7 +136,7 @@ theorem rep_thinOnC (qC : Rel (.prod B B) (.prod B B) → Rel (.prod B B) (.prod
 
 /-- **`thin(Q)` under `thinC`'s bit**: `rep_thin` at `thinOnC_ok` and `swapInC_ok`, the two test bits its `hqD`,
     `hqE` (`compC_cmpOK`). -/
-theorem rep_thinC (Q : Rel B B) (G : Rel A B) (hb : (thinC Q G).2 = true) :
+theorem rep_thinC (Q : Tab B B) (G : Tab A B) (hb : (thinC Q G).2 = true) :
     ∀ a c, rep (thinC Q G).1 a c ↔ rep G a c ∧ ¬ ∃ b, rep G a b ∧ rep Q b c ∧ ¬ rep Q c b := by
   obtain ⟨ht, hS, hDf, h⟩ := thinOnC_ok (pairsInC Q) G hb
   obtain ⟨hs, hEf, hqE, hM, hd⟩ := swapInC_ok (pairsInC Q) _ hS
@@ -148,7 +148,7 @@ theorem rep_thinC (Q : Rel B B) (G : Rel A B) (hb : (thinC Q G).2 = true) :
 /-- **`orderedOn` under `orderedOnC`'s bit**: `rep_orderedOn` at its pieces' bits — `suffix` by `rep_suffixC`, then
     `ranC_oneFit`, `unconsC_fits`, `compC_cmpOK`, `memC_ok`, `pairC_ok`, `antiJoinC_ok`, `domC_oneFit` — with the
     test's bit at `ordPairs X` for its spec. -/
-theorem rep_orderedOnC (qC : Rel (.prod B B) (.prod B B) → Rel (.prod B B) (.prod B B) × Bool) {n : USize}
+theorem rep_orderedOnC (qC : Tab (.prod B B) (.prod B B) → Tab (.prod B B) (.prod B B) × Bool) {n : USize}
     (X : Vals (.arr B) n) (hb : (orderedOnC qC X).2 = true) :
     (qC (ordPairs X)).2 = true ∧
       (∀ xs y zs z, (∃ i, X.row i = xs) → (y :: zs) <:+ xs → z ∈ zs → rep (ordPairs X) (y, z) (y, z)) ∧
@@ -165,13 +165,13 @@ theorem rep_orderedOnC (qC : Rel (.prod B B) (.prod B B) → Rel (.prod B B) (.p
 
 /-- **`ordered(Q)` under `orderedC`'s bit**: `rep_orderedOnC` at `pairsInC Q`, in `Pairwise` form
     (`pairwise_of_orderedOn`), the test's bit its `hq` (`compC_cmpOK`). -/
-theorem rep_orderedC (Q : Rel B B) {n : USize} (X : Vals (.arr B) n) (hb : (orderedC Q X).2 = true) :
+theorem rep_orderedC (Q : Tab B B) {n : USize} (X : Vals (.arr B) n) (hb : (orderedC Q X).2 = true) :
     ∀ xs ys, rep (orderedC Q X).1 xs ys ↔ (∃ i, X.row i = xs) ∧ ys = xs ∧ xs.Pairwise (fun y z => rep Q y z) := by
   obtain ⟨ht, h1, h2⟩ := rep_orderedOnC (pairsInC Q) X hb
   exact pairwise_of_orderedOn Q X _ (ordPairs X) (compC_cmpOK (ordPairs X) _ ht) h1 h2
 
 /-- **`sortSet(Q)` under `sortSetC`'s bit**: `rep_sortSet` at `rep_orderedC` and `compC`'s bit (`compC_cmpOK`). -/
-theorem rep_sortSetC (Q : Rel B B) {n : USize} (Y : Vals (.arr B) n) (hb : (sortSetC Q Y).2 = true) :
+theorem rep_sortSetC (Q : Tab B B) {n : USize} (Y : Vals (.arr B) n) (hb : (sortSetC Q Y).2 = true) :
     ∀ s ys, rep (sortSetC Q Y).1 s ys ↔
       rep (setify Y) ys s ∧ (∃ i, Y.row i = ys) ∧ ys.Pairwise (fun y z => rep Q y z) := by
   simp only [sortSetC, Bool.and_eq_true] at hb
@@ -181,7 +181,7 @@ theorem rep_sortSetC (Q : Rel B B) {n : USize} (Y : Vals (.arr B) n) (hb : (sort
     sublist of `xs` and each element of `xs` is `Q`-above some element of `ys`. Each piece read back by its twin
     (`rep_subseqC`, `ranC_oneFit`, `rep_setifyC`, `rep_memC`, `rep_compC`, `rep_rightDivC`, `rep_leftDivC`,
     `rep_interC`), each piece named once read. -/
-theorem rep_thinLC (Q : Rel B B) {n : USize} (X : Vals (.arr B) n) (hb : (thinLC Q X).2 = true) :
+theorem rep_thinLC (Q : Tab B B) {n : USize} (X : Vals (.arr B) n) (hb : (thinLC Q X).2 = true) :
     ∀ xs ys, rep (thinLC Q X).1 xs ys ↔ (∃ i, X.row i = xs) ∧ ys.Sublist xs ∧ ∀ a ∈ xs, ∃ y ∈ ys, rep Q y a := by
   simp only [thinLC, okbit] at hb ⊢
   obtain ⟨⟨⟨⟨⟨⟨⟨⟨⟨⟨hU, hW⟩, hs⟩, hm⟩, hQS⟩, hRd⟩, hLd⟩, hT⟩, hH⟩, hG⟩, hr⟩ := hb

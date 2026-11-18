@@ -7,7 +7,7 @@ import Rel.Run.Lang.Gen
 
 namespace Rel.Lang
 
-open Rel Rel.Alg Gen
+open Tab Rel.Alg Gen
 
 /-- The plan each variable `k` is bound to, at the objects and demand bit the term asks for. -/
 abbrev CodeEnv := Nat → (A B : Obj) → (d : Bool) → Pl d A B

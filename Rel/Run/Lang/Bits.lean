@@ -21,7 +21,7 @@ turned back into a table once, at the root. -/
 
 namespace Rel.Lang.Bits
 
-open Rel Rel.Kernel Rel Rel.Alg
+open Tab Rel.Kernel Rel Rel.Alg
 
 /-! ### The route: a term over its tables -/
 
@@ -35,13 +35,13 @@ def _root_.Rel.Lang.Tm.isVal {A B : Obj} {d : Bool} : Tm A B d → Bool
   | _ => false
 
 /-- A table leaf's relation, `𝟘` at any other term: the universes of `\` in a route. -/
-def _root_.Rel.Lang.Tm.tab {A B : Obj} {d : Bool} : Tm A B d → Rel A B
+def _root_.Rel.Lang.Tm.tab {A B : Obj} {d : Bool} : Tm A B d → Tab A B
   | .val R => R
   | _ => Alg.zero
 
 /-- The route as a table and whether every node's op ran within capacity: `Alg`'s C twin at each node, what the expander
     runs for the term. Bit false at a constructor with no bit rule. -/
-def _root_.Rel.Lang.Tm.tableC : {A B : Obj} → {d : Bool} → Tm A B d → Rel A B × Bool
+def _root_.Rel.Lang.Tm.tableC : {A B : Obj} → {d : Bool} → Tm A B d → Tab A B × Bool
   | _, _, _, .val R => (R, true)
   | _, _, _, .comp R S => let r := R.tableC; if r.1.n == 0 then (Alg.zero, r.2) else opC compC r S.tableC
   | _, _, _, .conv R => let r := R.tableC; (r.1°, r.2)
@@ -54,12 +54,12 @@ def _root_.Rel.Lang.Tm.tableC : {A B : Obj} → {d : Bool} → Tm A B d → Rel 
   | _, _, _, _ => (Alg.zero, false)
 
 /-- The route as a table: `tableC`'s relation. -/
-def _root_.Rel.Lang.Tm.table {A B : Obj} {d : Bool} (p : Tm A B d) : Rel A B := p.tableC.1
+def _root_.Rel.Lang.Tm.table {A B : Obj} {d : Bool} (p : Tm A B d) : Tab A B := p.tableC.1
 
 /-- A column of some object. -/
 abbrev Col := (X : Obj) × Part X
 
-def relCols {A B : Obj} (R : Rel A B) (cs : Array Col) : Array Col := (cs.push ⟨A, ⟨R.n, R.key⟩⟩).push ⟨B, ⟨R.n, R.val⟩⟩
+def relCols {A B : Obj} (R : Tab A B) (cs : Array Col) : Array Col := (cs.push ⟨A, ⟨R.n, R.key⟩⟩).push ⟨B, ⟨R.n, R.val⟩⟩
 
 /-- The tables' columns, two per table, in the order `Tm.bits` reads them back. -/
 def _root_.Rel.Lang.Tm.cols : {A B : Obj} → {d : Bool} → Tm A B d → Array Col → Array Col
@@ -176,7 +176,7 @@ def Bits.ldiv (nb : Nat) (y a : ByteArray) (s : Bits) (ub uc : ByteArray) : Bits
   d.meet (ran.join vac)
 
 /-- A relation from its matrix and its objects' elements at the codes: the pairs' codes picked. -/
-def Bits.table {A B : Obj} (x : Bits) (ua : Part A) (ub : Part B) : Rel A B :=
+def Bits.table {A B : Obj} (x : Bits) (ua : Part A) (ub : Part B) : Tab A B :=
   let (i, j) := x.pairs
   let k := Vals.pickPart A ua.2 i
   if h : k.1.toNat ≤ len j then ⟨k.1, k.2, Vals.pickN B ub.2 j k.1 h⟩ else zero
@@ -220,7 +220,7 @@ def capsOK {A B : Obj} (cs sps : Array Col) (pa : Part A) (pb : Part B) : Bool :
 
 /-- The route run as bit matrices and turned into a table at the root; `none` where a coding did not run within
     capacity, a node's matrix is over `2²⁷` bits, or the counts fail `capsOK`. -/
-def run? {A B : Obj} {d : Bool} (p : Tm A B d) : Option (Rel A B) := do
+def run? {A B : Obj} {d : Bool} (p : Tm A B d) : Option (Tab A B) := do
   let (ids, sps) ← codeAll (p.cols #[])
   let sp (X : Obj) : Part X := match sps.find? (·.1 == X) with
     | some ⟨Y, q⟩ => if h : Y = X then h ▸ q else ⟨0, Vals.empty X⟩
@@ -246,7 +246,7 @@ unsafe def checkOnU : Nat := match unsafeBaseIO (IO.getEnv "LEETQ_CHECK") with |
 /-- The route's relation with its bit: `run?`'s answer, bit set, or the table with `tableC.2` where it does not run as
     bits (`codeAll`, `fits`, `capsOK` failed). In check mode both paths run, the path taken is traced
     (`LEETQ bits` / `LEETQ table`), and `R ⊑ T ∧ T ⊑ R` failing stops the process. -/
-def runC {A B : Obj} {d : Bool} (p : Tm A B d) : Rel A B × Bool :=
+def runC {A B : Obj} {d : Bool} (p : Tm A B d) : Tab A B × Bool :=
   if p.isVal then p.tableC else match run? p with
     | some R => (if checkOn == 0 then R else dbgTrace "LEETQ bits" fun _ => if checkOn == 1 then R else
         let T := p.table

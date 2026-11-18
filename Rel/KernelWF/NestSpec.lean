@@ -7,7 +7,7 @@ import Rel.KernelWF.JoinContent
 
 namespace Rel.Alg
 
-open Rel Rel.Kernel Rel.Verify Rel
+open Tab Rel.Kernel Rel.Verify Rel
 
 /-- **A gathered long, as an `Int`**: row `d` of `longsN` over `gather 8 a i` is `a`'s long at `i`'s row `d`,
     that long below `2^63`. -/

@@ -12,7 +12,7 @@ import Rel.KernelSpec.Group
 
 namespace Rel.KernelWF
 
-open Rel Rel.Kernel Rel
+open Tab Rel.Kernel Rel
 
 /-! ### Reading a pack without a patch list -/
 

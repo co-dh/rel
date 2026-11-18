@@ -3,7 +3,7 @@ import Rel.Run.CRelDef
 section
 namespace Rel
 namespace CRel
-open Rel Rel.Kernel Rel.Alg
+open Tab Rel.Kernel Rel.Alg
 variable {A B C D : Obj}
 
 /-- `inl` on the universe `X`, ok where `inlC` ran within capacity. -/

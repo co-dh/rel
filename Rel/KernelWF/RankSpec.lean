@@ -6,7 +6,7 @@ import Rel.KernelWF.BagSpec
 
 namespace Rel.Alg
 
-open Rel Rel.Kernel Rel.Verify Rel Rel.KernelWF
+open Tab Rel.Kernel Rel.Verify Rel Rel.KernelWF
 
 /-- **Position in a list sorted by a strict order is that order**: `g` pairwise `R`, `R` asymmetric, so for
     `p q ∈ g` the first `p` stands before the first `q` exactly at `R p q`. -/

@@ -10,7 +10,7 @@ open Rel.Ext
 
 namespace Rel.KernelWF
 
-open Rel Rel.Kernel Rel.Verify
+open Tab Rel.Kernel Rel.Verify
 
 /-- A `long` payload is dense bytes or Frame of Reference: `WF` admits no other layout at `long`. -/
 theorem long_cases {n : USize} {e : Enc} (hw : Enc.WF .long n e) :

@@ -18,7 +18,7 @@ namespace Rel
 
 namespace Rep
 
-open Rel Rel.Kernel Rel.Verify Rel Rel.Alg Rel.KernelWF
+open Tab Rel.Kernel Rel.Verify Rel Rel.Alg Rel.KernelWF
 open scoped Rel.Core.Rel
 open Rel.Core.Rel hiding id comp recip inter union zero le inl inr junc
 open OpsN
@@ -33,25 +33,25 @@ theorem rep_distinctCoreflC (t : Obj) {n : USize} (x : Vals t n) (hb : (distinct
   exact rep_distinctCorefl t x (oneOK_of_codesC t x hb.1) (pickFits_range _ _ hb.2)
 
 /-- **`rep (dom R) = 𝟙 ∩ rep R (rep R)°` under `domC`'s bit**: `rep_dom`'s premises as `rep_distinctCoreflC`'s. -/
-theorem rep_domC (R : Rel A B) (hb : (domC R).2 = true) : rep (domC R).1 = 𝟙 _ ∩ rep R ≫ (rep R)° := by
+theorem rep_domC (R : Tab A B) (hb : (domC R).2 = true) : rep (domC R).1 = 𝟙 _ ∩ rep R ≫ (rep R)° := by
   simp only [domC, distinctCoreflC, okbit] at hb
   exact rep_dom R (oneOK_of_codesC A R.key hb.1) (pickFits_range _ _ hb.2)
 
 /-- **`rep (ran R) = 𝟙 ∩ (rep R)° (rep R)°°` under `ranC`'s bit**: `rep_ran`'s premises as `rep_domC`'s. -/
-theorem rep_ranC (R : Rel A B) (hb : (ranC R).2 = true) : rep (ranC R).1 = 𝟙 _ ∩ (rep R)° ≫ (rep R)°° := by
+theorem rep_ranC (R : Tab A B) (hb : (ranC R).2 = true) : rep (ranC R).1 = 𝟙 _ ∩ (rep R)° ≫ (rep R)°° := by
   simp only [ranC, distinctCoreflC, okbit] at hb
   exact rep_ran R (oneOK_of_codesC B R.val hb.1) (pickFits_range _ _ hb.2)
 
 /-- **`rep (antiJoin R T) = rep R ≫ ¬ran(rep T)` under `antiJoinC`'s bit**: the joint codes' bit gives `hc`
     (`codesC_fits`, `codes_faithful_wf`), the `fitsN` bits `hk`, `hv`. -/
-theorem rep_antiJoinC (R : Rel A B) (T : Rel B B) (hb : (antiJoinC R T).2 = true) :
+theorem rep_antiJoinC (R : Tab A B) (T : Tab B B) (hb : (antiJoinC R T).2 = true) :
     rep (antiJoinC R T).1 = rep R ≫ corefl (α := B.El) fun b => ¬ ∃ y, rep T y b := by
   simp only [antiJoinC, okbit] at hb
   refine rep_antiJoin R T (codes_faithful_wf B _ (Obj.codesC_fits B _ hb.1.1)).1 ?_ ?_ <;> simp only [okbit, hb]
 
 /-- **The anti-join is canonical where `R` is**: it keeps the rows of `R` that `anti` picks (`anti_sublist`), `anti`
     running over the first joint code, whose count is `R`'s (`codes_faithful_wf`). -/
-theorem canon_antiJoinC (R : Rel A B) (T : Rel B B) (hb : (antiJoinC R T).2 = true) (hR : R.Canon) :
+theorem canon_antiJoinC (R : Tab A B) (T : Tab B B) (hb : (antiJoinC R T).2 = true) (hR : R.Canon) :
     (antiJoinC R T).1.Canon := by
   simp only [antiJoinC, Bool.and_eq_true] at hb
   obtain ⟨-, hn0, -⟩ := (codes_faithful_wf B _ (Obj.codesC_fits B _ hb.1.1)).1.2 (k := 0) (by decide)
@@ -68,12 +68,12 @@ theorem rep_topC {ma mb : USize} (Ua : Vals A ma) (Ub : Vals B mb) (hb : (topC U
   simp only [topC, okbit] at hb; apply rep_top <;> simp only [okbit, hb]
 
 /-- **`rep (num R k)` under `numC`'s bit**: the decided bound is `hk`, the `fitsN` bit `hv`. -/
-theorem rep_numC (R : Rel A B) (k : USize) (hb : (numC R k).2 = true) (a : Obj.long.El) (y : B.El) :
+theorem rep_numC (R : Tab A B) (k : USize) (hb : (numC R k).2 = true) (a : Obj.long.El) (y : B.El) :
     rep (numC R k).1 a y ↔ ∃ i : Fin R.n.toNat, a = Int64.ofNat (k.toNat + i.1) ∧ R.val.row i = y := by
   simp only [numC, okbit] at hb; apply rep_num <;> simp only [okbit, hb]
 
 /-- **`rep (R × S) = rep R × rep S` under `prodC`'s bit**: every premise of `rep_prod` decided. -/
-theorem rep_prodC (R : Rel A B) (S : Rel D E) (hb : (prodC R S).2 = true) :
+theorem rep_prodC (R : Tab A B) (S : Tab D E) (hb : (prodC R S).2 = true) :
     rep (prodC R S).1 = rprodMap (rep R) (rep S) := by
   simp only [prodC, okbit] at hb; apply rep_prod <;> simp only [okbit, hb]
 
@@ -101,7 +101,7 @@ theorem rep_memC {n : USize} (X : Vals (.arr B) n) (hb : (memC X).2 = true) (xs 
 open Prim FoldN in
 /-- **`pairC`'s bit is `rep_pair`'s premises** (`pairOK`), as `compC_ok`: the keys' codes fitting, the decided
     bounds, and the three picks' bits read at the join's rows (`join_rows`, `pickC_fits`). -/
-theorem pairC_ok {A B C : Obj} (R : Rel A B) (S : Rel A C) (hb : (pairC R S).2 = true) : pairOK(A, R, S) := by
+theorem pairC_ok {A B C : Obj} (R : Tab A B) (S : Tab A C) (hb : (pairC R S).2 = true) : pairOK(A, R, S) := by
   simp only [pairC, Bool.and_eq_true, decide_eq_true_eq] at hb
   obtain ⟨⟨⟨hcb, hrn⟩, hM⟩, hp⟩ := hb
   have hcf := Obj.codesC_fits A _ hcb
@@ -131,7 +131,7 @@ theorem pairC_ok {A B C : Obj} (R : Rel A B) (S : Rel A C) (hb : (pairC R S).2 =
   · exact absurd hp Bool.false_ne_true
 
 /-- **`rep ⟨R, S⟩ = ⟨rep R, rep S⟩` under `pairC`'s bit**: `rep_pair` at `pairC_ok`'s premises. -/
-theorem rep_pairC (R : Rel A B) (S : Rel A C) (hb : (pairC R S).2 = true) :
+theorem rep_pairC (R : Tab A B) (S : Tab A C) (hb : (pairC R S).2 = true) :
     rep (pairC R S).1 = rpair (rep R) (rep S) := by
   obtain ⟨hcf, h⟩ := pairC_ok R S hb
   obtain ⟨hrn, hM, hA, hB, hC⟩ := h _ rfl
@@ -141,11 +141,11 @@ theorem rep_pairC (R : Rel A B) (S : Rel A C) (hb : (pairC R S).2 = true) :
     (`oneOK_of_codesC`), the `fitsN` bits `hk`, `hv`; the nub keys' codes bit `hWk` (`codesC_fits`, `nubC`'s `.1`
     read as `nub` by `simp`, the twin sitting as an argument of `keyPart`); `o`'s own bit at the nub; the decided
     count `h63`. -/
-theorem transposeByC_ok (o : Rel A B → ByteArray × Bool) (R : Rel A B) (hb : (transposeByC o R).2 = true) :
+theorem transposeByC_ok (o : Tab A B → ByteArray × Bool) (R : Tab A B) (hb : (transposeByC o R).2 = true) :
     oneOK(A, R.n, R.key) ∧ oneOK(B, R.n, R.val) ∧ Vals.PickFits A R.key (List.range R.n.toNat) ∧
       Vals.PickFits B R.val (List.range R.n.toNat) ∧
-      A.CodesFit (#v[⟨(Rel.nub R).n, (Rel.nub R).key⟩] : Vector (Part A) 1) ∧
-      (o (Rel.nub R)).2 = true ∧ R.n.toNat < 2 ^ 63 := by
+      A.CodesFit (#v[⟨(nub R).n, (nub R).key⟩] : Vector (Part A) 1) ∧
+      (o (nub R)).2 = true ∧ R.n.toNat < 2 ^ 63 := by
   simp only [transposeByC, nubC_fst] at hb
   simp only [keyPart, nubC, okbit] at hb
   exact ⟨oneOK_of_codesC A R.key (by simp only [hb]), oneOK_of_codesC B R.val (by simp only [hb]),
@@ -153,25 +153,25 @@ theorem transposeByC_ok (o : Rel A B → ByteArray × Bool) (R : Rel A B) (hb : 
 
 /-- **`valSortC`'s bit makes its order a permutation of the rows**: the bit is the values' codes' (`sortByC_snd`),
     which `sortBy_nub_perm` takes as their fit (`codesC_fits`). -/
-theorem valSortC_perm (d : Rel A B) (hb : (valSortC d).2 = true) :
+theorem valSortC_perm (d : Tab A B) (hb : (valSortC d).2 = true) :
     (ids (valSortC d).1).Perm (List.range d.n.toNat) := by
   simp only [valSortC, Obj.sortByC_snd] at hb
   exact sortBy_nub_perm d (Obj.codesC_fits B _ hb)
 
 /-- **`transposeC`'s bit gives `rep_transpose`'s premises**: `transposeByC_ok` at `valSortC`, whose bit is the nub
     values' codes' (`sortByC_snd`), their fit `hW` (`codesC_fits`). -/
-theorem transposeC_ok (R : Rel A B) (hb : (transposeC R).2 = true) :
+theorem transposeC_ok (R : Tab A B) (hb : (transposeC R).2 = true) :
     oneOK(A, R.n, R.key) ∧ oneOK(B, R.n, R.val) ∧ Vals.PickFits A R.key (List.range R.n.toNat) ∧
       Vals.PickFits B R.val (List.range R.n.toNat) ∧
-      A.CodesFit (#v[⟨(Rel.nub R).n, (Rel.nub R).key⟩] : Vector (Part A) 1) ∧
-      B.CodesFit (#v[⟨(Rel.nub R).n, (Rel.nub R).val⟩] : Vector (Part B) 1) ∧ R.n.toNat < 2 ^ 63 := by
+      A.CodesFit (#v[⟨(nub R).n, (nub R).key⟩] : Vector (Part A) 1) ∧
+      B.CodesFit (#v[⟨(nub R).n, (nub R).val⟩] : Vector (Part B) 1) ∧ R.n.toNat < 2 ^ 63 := by
   obtain ⟨hK, hV, hk, hv, hWk, ho, h63⟩ := transposeByC_ok valSortC R hb
   simp only [valSortC, Obj.sortByC_snd] at ho
   exact ⟨hK, hV, hk, hv, hWk, Obj.codesC_fits B _ ho, h63⟩
 
 /-- **`rep (Λ(R))` is the power transpose of `rep R` under `transposeC`'s bit**: `rep_transpose` at
     `transposeC_ok`. -/
-theorem rep_transposeC (R : Rel A B) (hb : (transposeC R).2 = true) :
+theorem rep_transposeC (R : Tab A B) (hb : (transposeC R).2 = true) :
     (∀ a X, rep (transposeC R).1 a X → ∀ x, x ∈ X ↔ rep R a x) ∧
       (∀ a, (∃ X, rep (transposeC R).1 a X) ↔ ∃ b, rep R a b) := by
   obtain ⟨hK, hV, hk, hv, hWk, hW, h63⟩ := transposeC_ok R hb
@@ -182,7 +182,7 @@ theorem rep_transposeC (R : Rel A B) (hb : (transposeC R).2 = true) :
     and `⊤`'s). The codes' bits give `hfv`, `hfa`, `hfb` (`codesC_fits`), the decided counts `hNU`, `hN63`, `hRS`,
     `hUab`, the `fitsN` bits `hRk`, `hSk`, `hPa`, `hPb`, `topC`'s `hA`, `hBv`, `unionC`'s `hU`…`hUv` (as
     `rep_leftDivC`); the join picks' bit is `rep_symDiv`'s own. -/
-theorem rep_symDivC {ma mb : USize} (R : Rel A C) (S : Rel B C) (Ua : Vals A ma) (Ub : Vals B mb)
+theorem rep_symDivC {ma mb : USize} (R : Tab A C) (S : Tab B C) (Ua : Vals A ma) (Ub : Vals B mb)
     (hb : (symDivC R S Ua Ub).2 = true) (x : A.El) (y : B.El) :
     rep (symDivC R S Ua Ub).1 x y ↔
       (∀ c, rep R x c ↔ rep S y c) ∧ ((∃ c, rep R x c) ∨ ((∃ p, Ua.row p = x) ∧ ∃ j, Ub.row j = y)) := by
@@ -210,13 +210,13 @@ theorem rep_symDivC {ma mb : USize} (R : Rel A C) (S : Rel B C) (Ua : Vals A ma)
 
 -- the keys `leftDiv` joins: `nub`'s, coded jointly
 set_option hygiene false in
-local notation "dks" => (#v[⟨(Rel.nub R).n, (Rel.nub R).key⟩, ⟨(Rel.nub S).n, (Rel.nub S).key⟩] : Vector (Part A) 2)
+local notation "dks" => (#v[⟨(Rel.Tab.nub R).n, (Rel.Tab.nub R).key⟩, ⟨(Rel.Tab.nub S).n, (Rel.Tab.nub S).key⟩] : Vector (Part A) 2)
 
 /-- **`rep (R \ S)` under `leftDivC`'s bit**: `rep_leftDiv` at the intermediates `leftDivC` builds (each twin's `.1`
     read as its op by `simp`, the twins sitting as arguments of `divTailC`/`keyPart`: `nubC_fst`, `codesC_fst`, `joinC_fst`). `nubC`'s bits give `hRK`…`hSv`
     (`codesC_fits`, `pickFits_of_fitsN`), the codes' bits `hfk`, `hfy`, `hfz`, the join picks' bits, read at the
     join's rows (`join_rows`), `hB`, `hC`, `topC`'s `hA`, `hBc`, `unionC`'s `hU`…`hUv` (as `rep_unionC`). -/
-theorem rep_leftDivC {mb mc : USize} (R : Rel A B) (S : Rel A C) (Ub : Vals B mb) (Uc : Vals C mc)
+theorem rep_leftDivC {mb mc : USize} (R : Tab A B) (S : Tab A C) (Ub : Vals B mb) (Uc : Vals C mc)
     (hb : (leftDivC R S Ub Uc).2 = true) (b : B.El) (c : C.El) :
     rep (leftDivC R S Ub Uc).1 b c ↔
       (∀ a, rep R a b → rep S a c) ∧ ((∃ a, rep R a b) ∨ ((∃ p, Ub.row p = b) ∧ ∃ j, Uc.row j = c)) := by
@@ -232,13 +232,13 @@ theorem rep_leftDivC {mb mc : USize} (R : Rel A B) (S : Rel A C) (Ub : Vals B mb
   -- the join's rows, as `rep_compC`; `nub` keeps at most the input's rows
   have nR := nub_count_le R (one_ok _ hRK') (one_ok _ hRV') hRk' hRv'
   have nS := nub_count_le S (one_ok _ hSK') (one_ok _ hSV') hSk' hSv'
-  have hM : (Rel.nub R).n.toNat * (Rel.nub S).n.toNat < min (2 ^ 63) USize.size :=
+  have hM : (nub R).n.toNat * (nub S).n.toNat < min (2 ^ 63) USize.size :=
     Nat.lt_of_le_of_lt (Nat.mul_le_mul nR nS) hRS
   have hc := (codes_faithful_wf A _ hfk).1
   obtain ⟨hlw, hln, hls, -⟩ := hc.2 (k := 0) (by decide)
   obtain ⟨hrw, hrn', hrs, hrc⟩ := hc.2 (k := 1) (by decide)
-  replace hln : ((A.codes dks)[0]'Nat.zero_lt_two).n = (Rel.nub R).n := hln
-  replace hrn' : ((A.codes dks)[1]'Nat.one_lt_two).n = (Rel.nub S).n := hrn'
+  replace hln : ((A.codes dks)[0]'Nat.zero_lt_two).n = (nub R).n := hln
+  replace hrn' : ((A.codes dks)[1]'Nat.one_lt_two).n = (nub S).n := hrn'
   obtain ⟨-, hZ⟩ := join_rows _ _ hlw hls hrw hrs hrc (by rw [hrn']; exact Nat.lt_of_le_of_lt nS hSn)
     (by rw [hln, hrn']; exact hM)
   unfold joinC longCount need at hy; dsimp only at hy
@@ -269,7 +269,7 @@ theorem rep_leftDivC {mb mc : USize} (R : Rel A B) (S : Rel A C) (Ub : Vals B mb
 
 /-- **`rep (R / S)` under `rightDivC`'s bit**, which is `leftDivC`'s at `S°`, `R°`: `rep_leftDivC` there, read through
     `rep_conv`. The objects are named as in `rep_rightDiv`. -/
-theorem rep_rightDivC {ma mb : USize} (R : Rel C A) (S : Rel B A) (Ua : Vals C ma) (Ub : Vals B mb)
+theorem rep_rightDivC {ma mb : USize} (R : Tab C A) (S : Tab B A) (Ua : Vals C ma) (Ub : Vals B mb)
     (hb : (rightDivC R S Ua Ub).2 = true) (x : C.El) (y : B.El) :
     rep (rightDivC R S Ua Ub).1 x y ↔
       (∀ c, rep S y c → rep R x c) ∧ ((∃ c, rep S y c) ∨ ((∃ p, Ua.row p = x) ∧ ∃ j, Ub.row j = y)) := by
@@ -297,7 +297,7 @@ end Rep
 
 namespace CRel
 
-open Rel Rel.Kernel Rel.Alg Rel.Rep
+open Tab Rel.Kernel Rel.Alg Rel.Rep
 open scoped Rel.Core.Rel
 open Rel.Core.Rel hiding id comp recip inter union zero le inl inr junc
 

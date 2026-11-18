@@ -11,7 +11,7 @@ import Rel.Run.Lang.Parse
 
 namespace Rel.Lang
 
-open Rel Rel.Alg
+open Tab Rel.Alg
 
 /-- An object variable left in an object. -/
 def OTy.poly : OTy → Bool
@@ -89,7 +89,7 @@ def cmpEl (objs : Objs) : OTy → (A : Obj) → A.El → A.El → Ordering
   | s, A, x, y => compare (showEl objs false s A x) (showEl objs false s A y)
 
 /-- A relation printed as its set of pairs, sorted by `cmpEl`. -/
-def showRel (objs : Objs) (s t : OTy) {A B : Obj} (R : Rel A B) : String :=
+def showRel (objs : Objs) (s t : OTy) {A B : Obj} (R : Tab A B) : String :=
   let ps := R.nub.toList.mergeSort fun (x, y) (x', y') => ((cmpEl objs s A x x').then (cmpEl objs t B y y')) != .gt
   "{" ++ ", ".intercalate (ps.map fun (x, y) => s!"({showEl objs false s A x}, {showEl objs false t B y})") ++ "}"
 
@@ -592,7 +592,7 @@ def valsE : (A : Obj) → (n : USize) → Vals A n → Except String Lean.Expr
     pure (g ``Gen.sumV #[oE a, oE b, uE n, uE l, uE r, ← atomE .boolean n tag, ← atomE .long n idx,
       ← valsE a l x, ← valsE b r y])
 
-def relE {A B : Obj} (R : Rel A B) : Except String Lean.Expr := do
+def relE {A B : Obj} (R : Tab A B) : Except String Lean.Expr := do
   pure (g ``Gen.relV #[oE A, oE B, uE R.n, ← valsE A R.n R.key, ← valsE B R.n R.val])
 
 def liftE {α : Type} (x : Except String α) : RM α := match x with

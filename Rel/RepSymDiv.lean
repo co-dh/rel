@@ -9,7 +9,7 @@ import Rel.KernelWF.SetIdsSpec
 
 namespace Rel.Rep
 
-open Rel Rel.Kernel Rel.Verify Rel Rel.Alg
+open Tab Rel.Kernel Rel.Verify Rel Rel.Alg
 
 variable {A B C : Obj}
 
@@ -388,7 +388,7 @@ theorem pickPart_row {n : USize} (x : Vals B n) (I : ByteArray) (hL : len I < US
     jointly faithfully; `rf`, `sf`, `hit` by their defining equations; `R.key`, `S.key` pick back at all their
     rows, the product of `R`'s and `S`'s counts fits; the join picks' bit (`joinC`), which gives the sides
     picking back at the join's pairs. -/
-theorem sym_hit_holds (R : Rel A C) (S : Rel B C) (rk sk v0 v1 : Code)
+theorem sym_hit_holds (R : Tab A C) (S : Tab B C) (rk sk v0 v1 : Code)
     (rkw : laneOK(rk.w))
     (rks : rk.b.size = (rk.n.toNat * rk.w + 7) / 8)
     (rkc : rk.w < 8 → rk.card < USize.size ∧ ∀ i < rk.n.toNat, Column.idAt rk.b rk.w i < rk.card)
@@ -421,9 +421,9 @@ theorem sym_hit_holds (R : Rel A C) (S : Rel B C) (rk sk v0 v1 : Code)
     (hRS : R.n.toNat * S.n.toNat < min (2 ^ 63) USize.size)
     -- output size: the join repeats a class's first row once per matching class, so an `.arr` key copies its window
     (hh : (joinC "/ₛ" rf sf lc rc).2 = true)
-    (hit : Rel A B)
+    (hit : Tab A B)
     (hhit : hit = longCount "/ₛ" (join lc rc).2 fun m h => (⟨m, Vals.pickN A rf.2 (join lc rc).1 m
-      (Nat.le_trans (Nat.le_of_eq h.symm) (join_len lc rc)), Vals.pick B sf.2 (join lc rc).2 m h⟩ : Rel A B))
+      (Nat.le_trans (Nat.le_of_eq h.symm) (join_len lc rc)), Vals.pick B sf.2 (join lc rc).2 m h⟩ : Tab A B))
     (x : A.El) (y : B.El) :
     hit.Holds x y ↔ (∃ c, R.Holds x c) ∧ ∀ c, R.Holds x c ↔ S.Holds y c := by
   classical
@@ -511,7 +511,7 @@ theorem sym_hit_holds (R : Rel A C) (S : Rel B C) (rk sk v0 v1 : Code)
     have hm : len (join lc rc).2 = ((len (join lc rc).2).toUSize).toNat := (USize.toNat_ofNat_of_lt' hlt).symm
     obtain ⟨hlen, hrow, -⟩ := div_y_rows lc rc rf.2 sf.2 hln hrn' hlw ls hrw rs hrc' hrn63 hM hB hC _ hm
       (Nat.le_trans (Nat.le_of_eq hm.symm) (join_len lc rc))
-    unfold Rel.Holds
+    unfold Holds
     dsimp only
     constructor
     · rintro ⟨⟨q, hq⟩, ex, ey⟩
@@ -608,7 +608,7 @@ local notation "vacB" => Vals.pickPart B Ub (anti ubc sk)
 /-- **`symDiv`'s vacuous part, read back**: `⊤` on the elements of `Ua` that are no key of `R` and the elements
     of `Ub` that are no key of `S`. Hypotheses: `anti_pick_rows`' on each side; the product of the universes'
     counts fits (`rep_top`'s bounds, `anti` keeping at most those rows); `rep_top`'s fits. -/
-theorem sym_vac_holds (R : Rel A C) (S : Rel B C) {ma mb : USize} (Ua : Vals A ma) (Ub : Vals B mb)
+theorem sym_vac_holds (R : Tab A C) (S : Tab B C) {ma mb : USize} (Ua : Vals A ma) (Ub : Vals B mb)
     (uac rk ubc sk : Code)
     (uaw : laneOK(uac.w))
     (rkw : laneOK(rk.w))
@@ -658,7 +658,7 @@ open OpsN
     fit (`R`'s and `S`'s summed and multiplied, `Ua`'s and `Ub`'s multiplied); `Vals.PickFits` of the inputs at
     all their rows; the join picks' bit (`joinC`); the output-size facts: `Vals.PickFits` at the rows `⊤`
     repeats, the result's row count, `Vals.RazeFits` and `Obj.CodesFit` of `∪`'s raze. -/
-theorem rep_symDiv {ma mb : USize} (R : Rel A C) (S : Rel B C) (Ua : Vals A ma) (Ub : Vals B mb)
+theorem rep_symDiv {ma mb : USize} (R : Tab A C) (S : Tab B C) (Ua : Vals A ma) (Ub : Vals B mb)
     (vc : Vector Code 2) (hvc : vc = C.codes #v[⟨R.n, R.val⟩, ⟨S.n, S.val⟩])
     (hfv : C.CodesFit #v[⟨R.n, R.val⟩, ⟨S.n, S.val⟩])
     (ac : Vector Code 2) (hac : ac = A.codes #v[⟨R.n, R.key⟩, ⟨ma, Ua⟩]) (hfa : A.CodesFit #v[⟨R.n, R.key⟩, ⟨ma, Ua⟩])
@@ -685,9 +685,9 @@ theorem rep_symDiv {ma mb : USize} (R : Rel A C) (S : Rel B C) (Ua : Vals A ma) 
     -- output size: `⊤` repeats each side's row once per row of the other, so an `.arr` side copies its window
     (hA : Vals.PickFits A (vacA).2 ((List.range ((vacA).1.toNat * (vacB).1.toNat)).map (· / (vacB).1.toNat)))
     (hBv : Vals.PickFits B (vacB).2 ((List.range ((vacA).1.toNat * (vacB).1.toNat)).map (· % (vacB).1.toNat)))
-    (P Q : Rel A B)
+    (P Q : Tab A B)
     (hPe : P = longCount "/ₛ" (join lc rc).2 fun m h => (⟨m, Vals.pickN A rf.2 (join lc rc).1 m
-      (Nat.le_trans (Nat.le_of_eq h.symm) (join_len lc rc)), Vals.pick B sf.2 (join lc rc).2 m h⟩ : Rel A B))
+      (Nat.le_trans (Nat.le_of_eq h.symm) (join_len lc rc)), Vals.pick B sf.2 (join lc rc).2 m h⟩ : Tab A B))
     (hQe : Q = top (vacA).2 (vacB).2)
     -- output size: the result's row count, which the razed output `PQ(A, B)` below is built with
     (hU : P.n.toNat + Q.n.toNat < USize.size)

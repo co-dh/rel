@@ -9,7 +9,7 @@ import Rel.RepSymDiv
 
 namespace Rel.Lang.Bits
 
-open Rel Rel.Kernel Rel.Verify Rel Rel.Alg Rel.Rep
+open Tab Rel.Kernel Rel.Verify Rel Rel.Alg Rel.Rep
 open scoped Rel.Core.Rel
 open Rel.Core.Rel hiding id comp recip inter union zero le inl inr junc
 
@@ -149,11 +149,11 @@ theorem rep_tableB {ua : Nat → A.El} {ub : Nat → B.El} {r : A.El → B.El �
   have ht : x.table pa pb = ⟨K.1, K.2, Vals.pick B pb.2 x.pairs.2 K.1 hkj'⟩ := by
     show (if h : (Vals.pickPart A pa.2 x.pairs.1).1.toNat ≤ len x.pairs.2 then
       (⟨(Vals.pickPart A pa.2 x.pairs.1).1, (Vals.pickPart A pa.2 x.pairs.1).2,
-        Vals.pickN B pb.2 x.pairs.2 (Vals.pickPart A pa.2 x.pairs.1).1 h⟩ : Rel A B) else zero) = _
+        Vals.pickN B pb.2 x.pairs.2 (Vals.pickPart A pa.2 x.pairs.1).1 h⟩ : Tab A B) else zero) = _
     rw [hK, dif_pos hkj]
     have key : ∀ (i i' : ByteArray) (ei : i = i') h1 h2,
         Vals.pick B pb.2 i K.1 h1 = Vals.pick B pb.2 i' K.1 h2 := by intros; subst_vars; rfl
-    exact congrArg (fun v => (⟨K.1, K.2, v⟩ : Rel A B))
+    exact congrArg (fun v => (⟨K.1, K.2, v⟩ : Tab A B))
       (key _ _ (by unfold fit; rw [if_pos hkj']) _ _)
   have hfitB : Vals.PickFits B pb.2
       ((List.range K.1.toNat).map fun q => (Column.bitsAt x.pairs.2 (q * 8) 8).toNat) := by

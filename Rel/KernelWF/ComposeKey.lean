@@ -11,7 +11,7 @@ import Rel.KernelWF.CodesSpec
 
 namespace Rel.Alg
 
-open Rel Rel.Kernel Rel.Verify
+open Tab Rel.Kernel Rel.Verify
 
 /-- **A build's program holds its stages and the last one**: `Ew.chain` runs `stages.size + 1` stages. -/
 theorem prog_count (b : Ew.Build) (last : Ew.Stage) :

@@ -18,7 +18,7 @@ open Rel.Ext
 
 namespace Rel.Alg
 
-open Rel Rel.Dep Rel.Kernel Rel.Verify Rel Rel.KernelWF
+open Tab Rel.Dep Rel.Kernel Rel.Verify Rel Rel.KernelWF
 
 /-- Row `i` of `c` comes no later than row `j` in q's `asc` order, rows of one key ordered by `R`. -/
 def ascBy (A : Obj) {n : USize} (c : Vals A n) (R : Nat → Nat → Prop) (i j : Nat) : Prop :=

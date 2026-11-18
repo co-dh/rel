@@ -6,14 +6,14 @@ import Rel.RepPower
 
 namespace Rel.Rep
 
-open Rel Rel.Kernel Rel.Verify Rel Rel.Alg Rel.KernelWF
+open Tab Rel.Kernel Rel.Verify Rel Rel.Alg Rel.KernelWF
 open Pow OpsN UnionN
 
 variable {A : Obj}
 
 /-- **`rep (∋ ≫ R)` on `X`**: `∋` on `X` followed by `R` relates `xs` to `y` exactly when `X` lists `xs` and some
     element of `xs` `R`-relates to `y`. `rep_comp` at `mS(X)`, `R`, then `rep_mem`. Hypotheses: those of each. -/
-theorem rep_memComp {B : Obj} {n : USize} (R : Rel A B) (X : Vals (.arr A) n)
+theorem rep_memComp {B : Obj} {n : USize} (R : Tab A B) (X : Vals (.arr A) n)
     -- `rep_mem` at `X`
     (hmv : Vals.PickFits (.arr A) X (List.range n.toNat))
     -- each row repeated once per element: a repeat count is a row's length, which no input count here bounds
@@ -23,10 +23,10 @@ theorem rep_memComp {B : Obj} {n : USize} (R : Rel A B) (X : Vals (.arr A) n)
     -- `mS(X)`'s values are coded jointly with `R`'s keys: a `CodesFit` of the computed `mS(X)`, kept
     (hcc : codesOK(jc(mS(X), R), jcs(mS(X), R)))
     -- `mS(X)`'s count is `X`'s element total, a computed count
-    (hcrn : (Rel.n R).toNat < 2 ^ 63) (hcM : (Rel.n (mS(X))).toNat * (Rel.n R).toNat < min (2 ^ 63) USize.size)
+    (hcrn : (Tab.n R).toNat < 2 ^ 63) (hcM : (Tab.n (mS(X))).toNat * (Tab.n R).toNat < min (2 ^ 63) USize.size)
     -- `mS(X)`'s key is `X` picked once per element, not an input: its fit at the join's rows needs `mem`'s output reads
-    (hcA : Vals.PickFits (.arr A) (Rel.key mS(X)) ((jpairs(mS(X), R)).map Prod.fst))
-    (hcC : ((Rel.n (mS(X))).toNat + 1) * Vals.reads B (Rel.val R) (List.range (Rel.n R).toNat) <
+    (hcA : Vals.PickFits (.arr A) (Tab.key mS(X)) ((jpairs(mS(X), R)).map Prod.fst))
+    (hcC : ((Tab.n (mS(X))).toNat + 1) * Vals.reads B (val R) (List.range (Tab.n R).toNat) <
       min (2 ^ 63) USize.size) (xs : (Obj.arr A).El) (y : B.El) :
     rep (Rel.Alg.mem X ≫ R) xs y ↔ (∃ i, Vals.row X i = xs) ∧ ∃ x ∈ xs, rep R x y := by
   rw [rep_comp (Rel.Alg.mem X) R hcc hcrn hcM hcA (pickFits_join_snd _ hcC)]
@@ -40,32 +40,32 @@ theorem rep_memComp {B : Obj} {n : USize} (R : Rel A B) (X : Vals (.arr A) n)
     `y` some element of `xs` `R`-relates to, and `E R X` has a row at `xs` exactly when `X` lists `xs`.
     `rep_lamOn` at `M := ∋ ≫ R` (`hM`, `rep_memComp`), `U := X`. Hypotheses: `rep_lamOn`'s at `M`, `X`, each
     code, relation and row list it builds bound to a variable by its defining equation; then `rep_memComp`'s. -/
-theorem rep_E {B : Obj} {n : USize} (R : Rel A B) (X : Vals (.arr A) n) (M : Rel (.arr A) B)
+theorem rep_E {B : Obj} {n : USize} (R : Tab A B) (X : Vals (.arr A) n) (M : Tab (.arr A) B)
     -- `rep_lamOn` at `M`, `X`
     (kc vc : Code) (hkc : kc = kcR(M)) (hvc : vc = vcR(M))
     -- `M = mem X ≫ R` is a join of the computed `mS(X)`: its codes and fits need `mem`'s output reads, kept
-    (hK : cOK(kc, Rel.n M, Rel.key M)) (hV : cOK(vc, Rel.n M, Rel.val M))
-    (hk : Vals.PickFits (.arr A) (Rel.key M) (List.range (Rel.n M).toNat))
-    (hv : Vals.PickFits B (Rel.val M) (List.range (Rel.n M).toNat))
+    (hK : cOK(kc, Tab.n M, Tab.key M)) (hV : cOK(vc, Tab.n M, val M))
+    (hk : Vals.PickFits (.arr A) (Tab.key M) (List.range (Tab.n M).toNat))
+    (hv : Vals.PickFits B (val M) (List.range (Tab.n M).toNat))
     -- the nub copies `X`'s arrays: their nested payloads and `B`'s dictionaries, general cells no input fact bounds
-    (hWk : (Obj.arr A).CodesFit (#v[⟨(Rel.nub M).n, (Rel.nub M).key⟩] : Vector (Part (.arr A)) 1))
-    (hW : B.CodesFit (#v[⟨(Rel.nub M).n, (Rel.nub M).val⟩] : Vector (Part B) 1))
-    (h63 : (Rel.n M).toNat < 2 ^ 63)
+    (hWk : (Obj.arr A).CodesFit (#v[⟨(nub M).n, (nub M).key⟩] : Vector (Part (.arr A)) 1))
+    (hW : B.CodesFit (#v[⟨(nub M).n, (nub M).val⟩] : Vector (Part B) 1))
+    (h63 : (Tab.n M).toNat < 2 ^ 63)
     -- two parts coded jointly: a generic `A`'s ALP sum and dictionaries are unbounded by `X`
     (pc : Vector Code 2) (hpc : pc = pairs #v[Rel.Alg.idU X, Rel.Alg.dom M])
-    (hc : codesOK(pc, pcs(Rel.Alg.idU X, Rel.Alg.dom M)))    (D : Rel (.arr A) (.arr A)) (hD : D = lD(M, X))
+    (hc : codesOK(pc, pcs(Rel.Alg.idU X, Rel.Alg.dom M)))    (D : Tab (.arr A) (.arr A)) (hD : D = lD(M, X))
     -- `D`'s count is bounded only by `X`'s, a `USize`; `top`'s `cross` needs it below `2^63`
-    (ht63 : (Rel.n D).toNat * USize.toNat 1 < 2 ^ 63)
-    (T N : Rel (.arr A) (.arr B)) (hT : T = lT(M))
-    (hN0 : N = Rel.Alg.top (Rel.key D) (Rel.Alg.nilVal B))
-    (hN : (Rel.n T).toNat + (Rel.n N).toNat < USize.size)
-    (hFk : Vals.RazeFits (.arr A) (Rel.key T) (Rel.key N))
-    (hFv : Vals.RazeFits (.arr B) (Rel.val T) (Rel.val N))
-    (L : Rel (.arr A) (.arr B)) (hL : L = Uc(T, N, hN))
+    (ht63 : (Tab.n D).toNat * USize.toNat 1 < 2 ^ 63)
+    (T N : Tab (.arr A) (.arr B)) (hT : T = lT(M))
+    (hN0 : N = Rel.Alg.top (Tab.key D) (Rel.Alg.nilVal B))
+    (hN : (Tab.n T).toNat + (Tab.n N).toNat < USize.size)
+    (hFk : Vals.RazeFits (.arr A) (Tab.key T) (Tab.key N))
+    (hFv : Vals.RazeFits (.arr B) (val T) (val N))
+    (L : Tab (.arr A) (.arr B)) (hL : L = Uc(T, N, hN))
     (ku vu : Code) (hku : ku = kcR(L)) (hvu : vu = vcR(L))
-    (huK : cOK(ku, Rel.n L, Rel.key L)) (huV : cOK(vu, Rel.n L, Rel.val L))
-    (huk : Vals.PickFits (.arr A) (Rel.key L) (List.range (Rel.n L).toNat))
-    (huv : Vals.PickFits (.arr B) (Rel.val L) (List.range (Rel.n L).toNat))
+    (huK : cOK(ku, Tab.n L, Tab.key L)) (huV : cOK(vu, Tab.n L, val L))
+    (huk : Vals.PickFits (.arr A) (Tab.key L) (List.range (Tab.n L).toNat))
+    (huv : Vals.PickFits (.arr B) (val L) (List.range (Tab.n L).toNat))
     (hM : M = Rel.Alg.mem X ≫ R)
     -- `rep_memComp` at `R`, `X`
     (hmv : Vals.PickFits (.arr A) X (List.range n.toNat))
@@ -75,10 +75,10 @@ theorem rep_E {B : Obj} {n : USize} (R : Rel A B) (X : Vals (.arr A) n) (M : Rel
     -- `mS(X)`'s values are coded jointly with `R`'s keys: a `CodesFit` of the computed `mS(X)`, kept
     (hcc : codesOK(jc(mS(X), R), jcs(mS(X), R)))
     -- `mS(X)`'s count is `X`'s element total, a computed count
-    (hcrn : (Rel.n R).toNat < 2 ^ 63) (hcM : (Rel.n (mS(X))).toNat * (Rel.n R).toNat < min (2 ^ 63) USize.size)
+    (hcrn : (Tab.n R).toNat < 2 ^ 63) (hcM : (Tab.n (mS(X))).toNat * (Tab.n R).toNat < min (2 ^ 63) USize.size)
     -- `mS(X)`'s key is `X` picked once per element, not an input: its fit at the join's rows needs `mem`'s output reads
-    (hcA : Vals.PickFits (.arr A) (Rel.key mS(X)) ((jpairs(mS(X), R)).map Prod.fst))
-    (hcC : ((Rel.n (mS(X))).toNat + 1) * Vals.reads B (Rel.val R) (List.range (Rel.n R).toNat) <
+    (hcA : Vals.PickFits (.arr A) (Tab.key mS(X)) ((jpairs(mS(X), R)).map Prod.fst))
+    (hcC : ((Tab.n (mS(X))).toNat + 1) * Vals.reads B (val R) (List.range (Tab.n R).toNat) <
       min (2 ^ 63) USize.size) :
     (∀ xs Y, rep (Rel.Alg.E R X) xs Y → (∃ i, Vals.row X i = xs) ∧ ∀ y, y ∈ Y ↔ ∃ x ∈ xs, rep R x y) ∧
       (∀ xs, (∃ Y, rep (Rel.Alg.E R X) xs Y) ↔ ∃ i, Vals.row X i = xs) := by

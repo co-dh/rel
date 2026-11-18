@@ -10,7 +10,7 @@ import Rel.RepLoop
 
 namespace Rel.Rep
 
-open Rel Rel.Kernel Rel.Verify Rel Rel.Alg Rel.KernelWF
+open Tab Rel.Kernel Rel.Verify Rel Rel.Alg Rel.KernelWF
 
 open FoldN OpsN Prim ListN Pow
 
@@ -121,21 +121,21 @@ open Rel.Core.Rel hiding id comp recip inter union zero le inl inr junc
     side empty, flushed as `acc ++ x ++ y`. Each hypothesis is one primitive's read-back at this round's values
     (`rep_ran`, `rep_uncons`, `rep_comp`, `rep_pair`, `rep_dom`, `rep_snoc`, `rep_antiJoin`, `rep_union_full`,
     `rep_cat_ok`); `htest` reads the test `G` on the pairs of heads `mrh` the round meets. -/
-theorem merge_round_set {K B : Obj} (le : B.El → B.El → Bool) (out : Rel K (.arr B)) (St : Rel K SO)
-    (mD : Rel SO SO) (mx my macc : Rel SO (.arr B)) (mux muy : Rel SO (.prod B (.arr B)))
-    (mpu : Rel SO (.prod (.prod B (.arr B)) (.prod B (.arr B)))) (mboth : Rel SO SO) (mh : Rel SO (.prod B B))
-    (mrh G : Rel (.prod B B) (.prod B B)) (mhq : Rel SO (.prod B B)) (ml : Rel SO SO)
-    (mA1 mA2 : Rel SO (.prod (.arr B) (.arr B))) (mS1 mS2 : Rel SO (.prod (.arr B) B)) (mN1 mN2 : Rel SO (.arr B))
-    (mP1 mP2 mL1 mL2 mnb mtk mfl : Rel SO SO) (mT mSf : Rel K SO) (mc1 mc2 : Rel SO (.prod (.arr B) (.arr B)))
-    (mC1 mC2 : Rel SO (.arr B)) (mO mU : Rel K (.arr B))
+theorem merge_round_set {K B : Obj} (le : B.El → B.El → Bool) (out : Tab K (.arr B)) (St : Tab K SO)
+    (mD : Tab SO SO) (mx my macc : Tab SO (.arr B)) (mux muy : Tab SO (.prod B (.arr B)))
+    (mpu : Tab SO (.prod (.prod B (.arr B)) (.prod B (.arr B)))) (mboth : Tab SO SO) (mh : Tab SO (.prod B B))
+    (mrh G : Tab (.prod B B) (.prod B B)) (mhq : Tab SO (.prod B B)) (ml : Tab SO SO)
+    (mA1 mA2 : Tab SO (.prod (.arr B) (.arr B))) (mS1 mS2 : Tab SO (.prod (.arr B) B)) (mN1 mN2 : Tab SO (.arr B))
+    (mP1 mP2 mL1 mL2 mnb mtk mfl : Tab SO SO) (mT mSf : Tab K SO) (mc1 mc2 : Tab SO (.prod (.arr B) (.arr B)))
+    (mC1 mC2 : Tab SO (.arr B)) (mO mU : Tab K (.arr B))
     (hD : rep mD = corefl (α := (SO).El) fun s => ∃ k, rep St k s)
     (hx : mx = outl (outl mD)) (hy : my = outr (outl mD)) (hacc : macc = outr mD)
-    (hUx : ∀ (xs : List B.El) b bs, rep (uncons (Rel.val mx)) xs (b, bs) ↔
-      (∃ j, (Rel.val mx).row j = xs) ∧ xs = b :: bs)
-    (hux : rep mux = rep mx ≫ rep (uncons (Rel.val mx)))
-    (hUy : ∀ (xs : List B.El) b bs, rep (uncons (Rel.val my)) xs (b, bs) ↔
-      (∃ j, (Rel.val my).row j = xs) ∧ xs = b :: bs)
-    (huy : rep muy = rep my ≫ rep (uncons (Rel.val my)))
+    (hUx : ∀ (xs : List B.El) b bs, rep (uncons (val mx)) xs (b, bs) ↔
+      (∃ j, (val mx).row j = xs) ∧ xs = b :: bs)
+    (hux : rep mux = rep mx ≫ rep (uncons (val mx)))
+    (hUy : ∀ (xs : List B.El) b bs, rep (uncons (val my)) xs (b, bs) ↔
+      (∃ j, (val my).row j = xs) ∧ xs = b :: bs)
+    (huy : rep muy = rep my ≫ rep (uncons (val my)))
     (hpu : rep mpu = rpair (rep mux) (rep muy))
     (hboth : rep mboth = corefl (α := (SO).El) fun s => ∃ p, rep mpu s p)
     (hh : rep mh = rpair (rep (outl mux)) (rep (outl muy)))
@@ -415,7 +415,7 @@ end Round
 
 -- the fuel of `mergeOn q P`: both sides' payloads plus one
 set_option hygiene false in
-local notation "fuelP" => (Rel.val P).1.1.toNat + (Rel.val P).2.1.toNat + 1
+local notation "fuelP" => (Rel.Tab.val P).1.1.toNat + (Rel.Tab.val P).2.1.toNat + 1
 -- the first state of `mergeOn q P`: nothing out, each pair of `P` with the empty `acc`
 set_option hygiene false in
 local notation "initP" => (Alg.zero, P ≫ pair (idU (ran P).val) (Alg.top (ran P).val (nilVal B)))
@@ -423,7 +423,7 @@ local notation "initP" => (Alg.zero, P ≫ pair (idU (ran P).val) (Alg.top (ran 
 set_option hygiene false in
 local notation "mergeF(" q ")" =>
   ∀ out St D, D = ran St → ∀ x, x = outl (outl D) → ∀ y, y = outr (outl D) → ∀ acc, acc = outr D →
-    ∀ ux, ux = x ≫ uncons (Rel.val x) → ∀ uy, uy = y ≫ uncons (Rel.val y) → ∀ both, both = dom (pair ux uy) →
+    ∀ ux, ux = x ≫ uncons (Rel.Tab.val x) → ∀ uy, uy = y ≫ uncons (Rel.Tab.val y) → ∀ both, both = dom (pair ux uy) →
     ∀ h, h = pair (outl ux) (outl uy) → ∀ l, l = dom (h ≫ q (ran h)) →
     f (out, St) = (out ∪ St ≫ antiJoin D both ≫ cat (pair (cat (pair acc x)) y),
       St ≫ (l ≫ pair (pair (outr ux) y) (snoc (pair acc (outl ux))) ∪
@@ -432,11 +432,11 @@ local notation "mergeF(" q ")" =>
 -- and `rep_comp`'s at `P ≫ ⟨idU, top⟩`; `top`'s `USize` count and the `nilVal` fit hold outright (`rep_mergeOn`)
 set_option hygiene false in
 local notation "initOK" =>
-  (oneFit(.prod (.arr B) (.arr B), Rel.n P, Rel.val P) ∧ (Rel.n (ran P)).toNat * (1 : USize).toNat < 2 ^ 63 ∧
-    Vals.PickFits (.prod (.arr B) (.arr B)) (Rel.val (ran P))
-      ((List.range ((Rel.n (ran P)).toNat * (1 : USize).toNat)).map (· / (1 : USize).toNat)) ∧
-    pairOK(.prod (.arr B) (.arr B), idU (Rel.val (ran P)), Alg.top (Rel.val (ran P)) (nilVal B)) ∧
-    cmpOK(.prod (.arr B) (.arr B), P, pair (idU (Rel.val (ran P))) (Alg.top (Rel.val (ran P)) (nilVal B))))
+  (oneFit(.prod (.arr B) (.arr B), Rel.Tab.n P, Rel.Tab.val P) ∧ (Rel.Tab.n (ran P)).toNat * (1 : USize).toNat < 2 ^ 63 ∧
+    Vals.PickFits (.prod (.arr B) (.arr B)) (Rel.Tab.val (ran P))
+      ((List.range ((Rel.Tab.n (ran P)).toNat * (1 : USize).toNat)).map (· / (1 : USize).toNat)) ∧
+    pairOK(.prod (.arr B) (.arr B), idU (Rel.Tab.val (ran P)), Alg.top (Rel.Tab.val (ran P)) (nilVal B)) ∧
+    cmpOK(.prod (.arr B) (.arr B), P, pair (idU (Rel.Tab.val (ran P))) (Alg.top (Rel.Tab.val (ran P)) (nilVal B))))
 
 section Headline
 
@@ -446,10 +446,10 @@ open Rel.Core.Rel hiding id comp recip inter union zero le inl inr junc
 /-- **`mergeOn`, read back from its rounds**: with the first state `I` read back (`h0`) and each round's states and
     `out` read back (`hS`, `hO`, internal: `rep_mergeOn` discharges them from the primitives), `mergeOn q P` takes
     `k` to the merges, at `le`, of `k`'s pairs in `P`. The round `f` is bound by its defining equation (`hf`). -/
-theorem mergeOn_rounds {K B : Obj} (q : Rel (.prod B B) (.prod B B) → Rel (.prod B B) (.prod B B))
-    (P : Rel K (.prod (.arr B) (.arr B))) (le : B.El → B.El → Bool)
-    (f : Rel K (.arr B) × Rel K SO → Rel K (.arr B) × Rel K SO) (hf : mergeF(q))
-    (I : Rel K SO) (hI : I = P ≫ pair (idU (ran P).val) (Alg.top (ran P).val (nilVal B)))
+theorem mergeOn_rounds {K B : Obj} (q : Tab (.prod B B) (.prod B B) → Tab (.prod B B) (.prod B B))
+    (P : Tab K (.prod (.arr B) (.arr B))) (le : B.El → B.El → Bool)
+    (f : Tab K (.arr B) × Tab K SO → Tab K (.arr B) × Tab K SO) (hf : mergeF(q))
+    (I : Tab K SO) (hI : I = P ≫ pair (idU (ran P).val) (Alg.top (ran P).val (nilVal B)))
     (h0 : ∀ k x y acc, rep I k ((x, y), acc) ↔ rep P k (x, y) ∧ acc = [])
     -- each round `iter` runs: below the fuel, `done` failing at every iterate up to it
     (hS : ∀ i, i < fuelP → (∀ i' ≤ i, ((f^[i'] (Alg.zero, I)).2.n == 0) = false) →
@@ -460,21 +460,21 @@ theorem mergeOn_rounds {K B : Obj} (q : Rel (.prod B B) (.prod B B) → Rel (.pr
       ∀ k z, rep (f^[i + 1] (Alg.zero, I)).1 k z ↔ rep (f^[i] (Alg.zero, I)).1 k z ∨
       ∃ x y acc, rep (f^[i] (Alg.zero, I)).2 k ((x, y), acc) ∧ (x = [] ∨ y = []) ∧ z = acc ++ x ++ y) :
     ∀ k zs, rep (mergeOn q P) k zs ↔ ∃ xs ys, rep P k (xs, ys) ∧ zs = List.merge xs ys le := by
-  obtain ⟨j, hj, he, hs, hm⟩ := iter_stop (fun s : Rel K (.arr B) × Rel K SO => s.2.n == 0) f fuelP (Alg.zero, I)
+  obtain ⟨j, hj, he, hs, hm⟩ := iter_stop (fun s : Tab K (.arr B) × Tab K SO => s.2.n == 0) f fuelP (Alg.zero, I)
   have hl : mergeOn q P = (f^[j] (Alg.zero, I)).1 := by
     rw [← he, hI]
     show (iterC fuelP (fun s => s.2.n == 0) (mergeRound fun D => (q D, true)) initP).1.1 = _
     rw [iterC_fst]
-    refine congrArg (fun g : Rel K (.arr B) × Rel K SO → Rel K (.arr B) × Rel K SO =>
+    refine congrArg (fun g : Tab K (.arr B) × Tab K SO → Tab K (.arr B) × Tab K SO =>
       (iter fuelP (fun s => s.2.n == 0) g initP).1) (funext fun st => ?_)
     obtain ⟨o, S⟩ := st
     exact Eq.trans (by rfl) (hf o S _ rfl _ rfl _ rfl _ rfl _ rfl _ rfl _ rfl _ rfl _ rfl).symm
   have hN : ∀ k (s : List B.El × List B.El), rep P k s →
-      s.1.length + s.2.length ≤ (Rel.val P).1.1.toNat + (Rel.val P).2.1.toNat := by
+      s.1.length + s.2.length ≤ (val P).1.1.toNat + (val P).2.1.toNat := by
     rintro k s ⟨i, -, hi⟩
     rw [← hi]
-    exact Nat.add_le_add (arr_row_length (Rel.val P).1 i) (arr_row_length (Rel.val P).2 i)
-  have hstop : (Rel.val P).1.1.toNat + (Rel.val P).2.1.toNat < j ∨
+    exact Nat.add_le_add (arr_row_length (val P).1 i) (arr_row_length (val P).2 i)
+  have hstop : (val P).1.1.toNat + (val P).2.1.toNat < j ∨
       ∀ k (s : (List B.El × List B.El) × List B.El), ¬ rep (f^[j] (Alg.zero, I)).2 k s := by
     rcases hs with hs | hs
     · exact Or.inl (by omega)
@@ -488,34 +488,34 @@ theorem mergeOn_rounds {K B : Obj} (q : Rel (.prod B B) (.prod B B) → Rel (.pr
   exact merge_chain le (fun k s => rep P k s) (fun i k s => rep (f^[i] (Alg.zero, I)).2 k s)
     (fun i k z => rep (f^[i] (Alg.zero, I)).1 k z) j h0 (fun i hi => hS i (by omega) fun i' _ => hm i' (by omega))
     (fun _ _ ⟨i, _⟩ => i.elim0) (fun i hi => hO i (by omega) fun i' _ => hm i' (by omega))
-    ((Rel.val P).1.1.toNat + (Rel.val P).2.1.toNat) j (Nat.le_refl _) hN hstop k zs
+    ((val P).1.1.toNat + (val P).2.1.toNat) j (Nat.le_refl _) hN hstop k zs
 
 /-- **`mergeOnC`'s relation is `mergeOn`'s** at the test's relation: `iterC_fst`. -/
-theorem mergeOnC_fst {K B : Obj} (q : Rel (.prod B B) (.prod B B) → Rel (.prod B B) (.prod B B) × Bool)
-    (P : Rel K (.prod (.arr B) (.arr B))) : (mergeOnC q P).1 = mergeOn (fun D => (q D).1) P := by
+theorem mergeOnC_fst {K B : Obj} (q : Tab (.prod B B) (.prod B B) → Tab (.prod B B) (.prod B B) × Bool)
+    (P : Tab K (.prod (.arr B) (.arr B))) : (mergeOnC q P).1 = mergeOn (fun D => (q D).1) P := by
   simp only [mergeOnC, mergeOn, iterC_fst]; rfl
 
 /-- **`mergeOn`'s first state, read back** under its hypotheses `initOK`: each pair of `P` beside the empty `acc`. -/
-theorem merge_init {K B : Obj} (P : Rel K (.prod (.arr B) (.arr B))) (h0 : initOK) :
+theorem merge_init {K B : Obj} (P : Tab K (.prod (.arr B) (.arr B))) (h0 : initOK) :
     ∀ k x y acc, rep (P ≫ pair (idU (ran P).val) (Alg.top (ran P).val (nilVal B))) k ((x, y), acc) ↔
       rep P k (x, y) ∧ acc = [] := by
   obtain ⟨⟨Pf, Pp⟩, t2, t3, ⟨qf, qp⟩, ⟨mf, mp⟩⟩ := h0
   obtain ⟨q1, q2, q3, q4, q5⟩ := qp _ rfl
   obtain ⟨m1, m2, m3, m4⟩ := mp _ rfl
   have eR := rep_ran_corefl P (one_ok _ Pf) (Pp)
-  have t1 : (Rel.n (ran P)).toNat * (1 : USize).toNat < USize.size := by
-    simpa using (Rel.n (ran P)).toNat_lt_size
-  have eT := rep_top (Rel.val (ran P)) (nilVal B) t1 t2 t3 (pickFits_nilVal B _)
+  have t1 : (n (ran P)).toNat * (1 : USize).toNat < USize.size := by
+    simpa using (n (ran P)).toNat_lt_size
+  have eT := rep_top (val (ran P)) (nilVal B) t1 t2 t3 (pickFits_nilVal B _)
   have eQ := rep_pair _ _ (codes_faithful_wf _ _ qf).1 q1 q2 q3 q4 q5
   have eM := rep_comp _ _ (codes_faithful_wf _ _ mf).1 m1 m2 m3 m4
   -- a pair of `P` is a row of `ran P`'s values
-  have hrow : ∀ k p, rep P k p → ∃ i, (Rel.val (ran P)).row i = p := by
+  have hrow : ∀ k p, rep P k p → ∃ i, (val (ran P)).row i = p := by
     intro k p hp
     have h : rep (ran P) p p := by rw [eR]; exact ⟨rfl, k, hp⟩
     obtain ⟨i, -, hi⟩ := h
     exact ⟨i, hi⟩
-  have eTop : ∀ p acc, rep (Alg.top (Rel.val (ran P)) (nilVal B)) p acc ↔
-      (∃ i, (Rel.val (ran P)).row i = p) ∧ acc = [] := by
+  have eTop : ∀ p acc, rep (Alg.top (val (ran P)) (nilVal B)) p acc ↔
+      (∃ i, (val (ran P)).row i = p) ∧ acc = [] := by
     intro p acc
     rw [eT, comp_apply]
     constructor

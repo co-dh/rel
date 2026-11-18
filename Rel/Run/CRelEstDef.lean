@@ -2,13 +2,13 @@ import Rel.Run.CRelDef
 
 section
 namespace Rel
-open Rel Rel.Kernel Rel Rel.Alg
+open Tab Rel.Kernel Rel Rel.Alg
 namespace Rep
 variable {A B : Obj}
 
 /-- The pairs `(y, z)` `orderedOn` compares on `X`, `y` heading a suffix of an array of `X` and `z` in its rest: the
     coreflexive its test runs on. -/
-def ordPairs {n : USize} (X : Vals (.arr B) n) : Rel (.prod B B) (.prod B B) :=
+def ordPairs {n : USize} (X : Vals (.arr B) n) : Tab (.prod B B) (.prod B B) :=
   let D := ran (suffix X ≫ uncons (ran (suffix X)).val)
   ran (pair (outl D) (outr D ≫ mem (ran (outr D)).val))
 
@@ -18,13 +18,13 @@ end
 
 section
 namespace Rel
-open Rel Rel.Kernel Rel Rel.Alg
+open Tab Rel.Kernel Rel Rel.Alg
 namespace CRel
 variable {A B : Obj}
 
 /-- A test over `CRel`s as a twin's test: it sees its input as ok, whose bit is already in the op's. -/
 def testC (q : CRel (.prod B B) (.prod B B) → CRel (.prod B B) (.prod B B)) :
-    Rel (.prod B B) (.prod B B) → Rel (.prod B B) (.prod B B) × Bool :=
+    Tab (.prod B B) (.prod B B) → Tab (.prod B B) (.prod B B) × Bool :=
   fun D => let s := q ⟨D, true⟩; (s.rel, s.ok)
 
 /-- `pairsIn Q D`, ok where `Q`, `D` are and `pairsInC` ran within capacity. -/

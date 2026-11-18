@@ -11,7 +11,7 @@ import Rel.KernelSpec.SymFind
 
 namespace Rel.Alg
 
-open Rel Rel.Kernel Rel.Verify Rel
+open Tab Rel.Kernel Rel.Verify Rel
 
 /-- An injective `f` keeps every position: `l.map f` finds `f a` where `l` finds `a`. Belongs in qlean. -/
 theorem idxOf_map_inj {α β : Type} [BEq α] [LawfulBEq α] [BEq β] [LawfulBEq β] {f : α → β}

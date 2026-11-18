@@ -16,7 +16,7 @@ import Rel.Run.Lang.Compile
 
 namespace Rel.Lang.TestCompile
 
-open Lean Elab Command Rel Rel.Lang Rel.Lang.Expand
+open Lean Elab Command Tab Rel.Lang Rel.Lang.Expand
 
 /-- No variable bound: a closed definition reads none, and a use of one vouches for nothing. -/
 def η₀ : CodeEnv := fun _ _ _ _ _ => (.zero, false)

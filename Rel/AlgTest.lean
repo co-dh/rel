@@ -8,14 +8,14 @@ open Rel.Ext
 
 namespace Rel.Alg
 
-open Rel Rel.Dep Rel.Kernel Rel
+open Tab Rel.Dep Rel.Kernel Rel
 
 /-! ## Checks against the `toList` specs, on small literal relations -/
 
 section Checks
 
 private abbrev L := QAtomicType.long
-private abbrev LL := Rel .long .long
+private abbrev LL := Tab .long .long
 
 private def seteq {α : Type} [BEq α] (xs ys : List α) : Bool := xs.all ys.contains && ys.all xs.contains
 
@@ -68,7 +68,7 @@ private def fib (R : LL) (x : Int64) : List Int64 := R.toList.filterMap fun (x',
 
 /-- The facts of `Λ(R)`: (1) `Λ(R) ≫ ∋(R) = R`; (2) one row per distinct key of `R`; (3) each cell is the
     key's values, each once; (4) `Λ(R) ≫ Λ(R)°` relates two keys iff they have one set of values. -/
-private def lamOk {A B : Obj} [BEq A.El] [BEq B.El] (R : Rel A B) : Bool :=
+private def lamOk {A B : Obj} [BEq A.El] [BEq B.El] (R : Tab A B) : Bool :=
   let Lm := Λ(R)
   let r := R.toList; let l : List (A.El × List B.El) := Lm.toList
   let fibr (x : A.El) := r.filterMap fun (x', z) => if x == x' then some z else none
@@ -80,8 +80,8 @@ private def lamOk {A B : Obj} [BEq A.El] [BEq B.El] (R : Rel A B) : Bool :=
 
 /-- Arrays across two relations: `Λ(R₁) ≫ Λ(R₂)°` relates a key of `R₁` to a key of `R₂` iff their sets of
     values are one, and `ran (Λ(R₁) ∪ Λ(R₂))` holds each distinct set once. -/
-private def crossOk {A B : Obj} [BEq A.El] [BEq B.El] (R₁ R₂ : Rel A B) : Bool :=
-  let f (R : Rel A B) (x : A.El) : List B.El := R.toList.filterMap fun (x', z) => if x == x' then some z else none
+private def crossOk {A B : Obj} [BEq A.El] [BEq B.El] (R₁ R₂ : Tab A B) : Bool :=
+  let f (R : Tab A B) (x : A.El) : List B.El := R.toList.filterMap fun (x', z) => if x == x' then some z else none
   let k₁ := (R₁.toList.map (·.1)).eraseDups; let k₂ := (R₂.toList.map (·.1)).eraseDups
   let rel := (Λ(R₁) ≫ Λ(R₂)°).toList
   let sets := k₁.map (f R₁) ++ k₂.map (f R₂)
@@ -117,7 +117,7 @@ private def G : LL := ⟨3, (Arr.mk (.bytes <| packLongs [1, 1, 2]) (by wf_lit))
 -- an array column built by hand: `[1 2] [2 1] [1 1] [1 2]`, equal as arrays only where equal position by
 -- position, so rows 0 and 3 alone; `∋` one row per element, a repeat twice
 private def Xs : Vals (.arr L) 4 := ⟨8, col [0, 2, 4, 6], col [2, 4, 6, 8], col [1, 2, 2, 1, 1, 1, 1, 2]⟩
-private def K : Rel L (.arr L) := ⟨4, U4, Xs⟩
+private def K : Tab L (.arr L) := ⟨4, U4, Xs⟩
 #guard (K.toList.map (·.2) : List (List Int64)) == [[1, 2], [2, 1], [1, 1], [1, 2]]
 #guard seteq (K ≫ K°).toList [(0, 0), (0, 3), (3, 0), (3, 3), (1, 1), (2, 2)] && (ran K).n == 3
 #guard ((mem Xs).toList : List (List Int64 × Int64)) ==
@@ -143,11 +143,11 @@ private def ordOn (p : Int64 → Int64 → Bool) : LL :=
 private def LE := ordOn (· ≤ ·)
 private def LT := ordOn (· < ·)
 /-- `thin`'s spec: the rows `(a, b)` of `G` with no `(a, c)` of `G` where `c Q b` and not `b Q c`. -/
-private def thinSpec {A B : Obj} [BEq A.El] [BEq B.El] (Q : Rel B B) (G : Rel A B) : List (A.El × B.El) :=
+private def thinSpec {A B : Obj} [BEq A.El] [BEq B.El] (Q : Tab B B) (G : Tab A B) : List (A.El × B.El) :=
   let q := Q.toList; let g := G.toList
   g.filter fun (a, b) => g.all fun (a', c) => a' != a || !(q.contains (c, b) && !q.contains (b, c))
 /-- `est`'s spec: the rows `(a, b)` of `G` with `b Q c` for every other `(a, c)` of `G`. -/
-private def estSpec {A B : Obj} [BEq A.El] [BEq B.El] (Q : Rel B B) (G : Rel A B) : List (A.El × B.El) :=
+private def estSpec {A B : Obj} [BEq A.El] [BEq B.El] (Q : Tab B B) (G : Tab A B) : List (A.El × B.El) :=
   let q := Q.toList; let g := G.toList
   g.filter fun (a, b) => g.all fun (a', c) => a' != a || c == b || q.contains (b, c)
 #guard seteq (est LE R).toList [(1, 10), (2, 10), (3, 30)] && est LT R == est LE R && thin LT R == est LE R
@@ -167,16 +167,16 @@ private def tens := ordOn fun a b => a / 10 ≤ b / 10
 #guard thin (prod LT LT) (pair R S) == pair R S && (est (prod LT LT) (pair R S)).n == 0
 #guard seteq (est (prod LE LE) (pair R S)).toList [(1, 10, 10), (2, 10, 10)] && est (prod LE LE) (pair R S) == thin (prod LE LE) (pair R S)
 -- where `≤×≤` is partial they differ: `{(10,20) (20,10) (20,20)}` has two minimal values and no least one
-private def Gp : Rel L (.prod L L) := ⟨5, col [1, 1, 1, 2, 2], (col [10, 20, 20, 10, 20], col [20, 10, 20, 10, 20])⟩
+private def Gp : Tab L (.prod L L) := ⟨5, col [1, 1, 1, 2, 2], (col [10, 20, 20, 10, 20], col [20, 10, 20, 10, 20])⟩
 #guard seteq (thin (prod LE LE) Gp).toList [(1, 10, 20), (1, 20, 10), (2, 10, 10)] &&
   seteq (thin (prod LE LE) Gp).toList (thinSpec (prod LE LE) Gp)
 #guard seteq (est (prod LE LE) Gp).toList [(2, 10, 10)] && seteq (est (prod LE LE) Gp).toList (estSpec (prod LE LE) Gp)
 
 -- sums, `LS = L + L`: `inl`, `inr`, `[R, S]`, `R + S` against their pairs
 private abbrev LS : Obj := .sum L L
-private def J : Rel LS L := junc R S
-private def J' : Rel LS L := junc S R
-private def Ps : Rel LS LS := sum R T
+private def J : Tab LS L := junc R S
+private def J' : Tab LS L := junc S R
+private def Ps : Tab LS LS := sum R T
 #guard ((inl (B := L) Ua).toList : List (Int64 × (Int64 ⊕ Int64))) == Ua.toList.map fun x => (x, .inl x)
 #guard ((inr (A := L) Ub).toList : List (Int64 × (Int64 ⊕ Int64))) == Ub.toList.map fun x => (x, .inr x)
 #guard (J.toList : List ((Int64 ⊕ Int64) × Int64)) ==
@@ -189,7 +189,7 @@ private def Ps : Rel LS LS := sum R T
 #guard inl (B := L) Ua ≫ J == idU Ua ≫ R && inr (A := L) Ua ≫ J == idU Ua ≫ S
 #guard ((inl (B := L) Ua)° ≫ inl Ua) ∪ ((inr (A := L) Ub)° ≫ inr Ub) == idU (sumVals Ua Ub (by fits_lit))
 -- `∩ ∪ \ ≫ dom` with a sum key; `J2` holds `J`'s rows over other payloads (razed), so equal by value
-private def J2 : Rel LS L := junc R (zero (A := L) (B := L)) ∪ junc (zero (A := L) (B := L)) S
+private def J2 : Tab LS L := junc R (zero (A := L) (B := L)) ∪ junc (zero (A := L) (B := L)) S
 #guard J2 == J && seteq J2.toList J.toList && (J2 ∩ J).n == J2.n && (J2 \ J).n == 0
 #guard seteq (J ∩ J').toList (J.toList.filter J'.toList.contains) &&
   seteq (J \ J').toList (J.toList.filter fun p => !J'.toList.contains p)
@@ -205,7 +205,7 @@ private def J2 : Rel LS L := junc R (zero (A := L) (B := L)) ∪ junc (zero (A :
   (J.toList.flatMap fun (x, y) => J'.toList.filterMap fun (x', z) => if x == x' then some (x, y, z) else none)
 #guard seteq (est (sum LE LE) Ps).toList (estSpec (sum LE LE) Ps) && seteq (thin (sum LT LT) Ps).toList (thinSpec (sum LT LT) Ps)
 -- a sum of a product and an array, as key
-private def M : Rel (.sum (.prod L L) (.arr L)) LS := sum (pair R S)° K°
+private def M : Tab (.sum (.prod L L) (.arr L)) LS := sum (pair R S)° K°
 #guard lamOk M && lamOk (M°) && crossOk M (M ∪ M) && M ∩ (M ∪ M) == M &&
   (dom M).n.toNat == (M.toList.map (·.1)).eraseDups.length && (dom M).n == 6
 -- a sum column by hand: tags `0110`, positions `-5 7 0 9` into `[1 2]` and `[10 20 30]`, read clamped into
@@ -251,7 +251,7 @@ private def Yn : Vals LS 2 := ⟨2, 0, tags #[(2, false)] 2, col [0, 1], col [7,
 #guard idU Xel == idU (Vals.compact LS Xel) && idU Xer == idU (Vals.compact LS Xer) &&
   ((idU Yn ∩ idU Xel).toList.map (·.1) : List (Int64 ⊕ Int64)) == [.inl Int64.minValue]
 -- `α ≜ [nil, cons] : 1 + L × arr L ⟶ arr L`, the one point `0` standing for `1`
-private def nilR : Rel L (.arr L) := ⟨1, col [0], ⟨0, col [0], col [0], Vals.empty .long⟩⟩
+private def nilR : Tab L (.arr L) := ⟨1, col [0], ⟨0, col [0], col [0], Vals.empty .long⟩⟩
 private def XP : Vals (.prod L (.arr L)) 2 := (col [5, 6], ⟨2, col [0, 2], col [2, 2], col [1, 2]⟩)
 #guard seteq ((junc nilR (cons (idU XP))).toList : List ((Int64 ⊕ (Int64 × List Int64)) × List Int64))
   [(.inl 0, []), (.inr (5, [1, 2]), [5, 1, 2]), (.inr (6, []), [6])]
@@ -263,7 +263,7 @@ private def unconsSpec (xss : List (List Int64)) : List (List Int64 × Int64 × 
 /-- `⦇e, S⦈` of one list, `S` read as its pairs. -/
 private def foldSpec (e : List Int64) (S : List ((Int64 × Int64) × Int64)) (xs : List Int64) : List Int64 :=
   xs.foldr (fun x acc => acc.flatMap fun v => S.filterMap fun ((x', v'), w) => if x' == x && v' == v then some w else none) e
-private def foldOk {n m : USize} (e : Arr L m) (S : Rel (.prod L L) L) (X : Vals (.arr L) n) : Bool :=
+private def foldOk {n m : USize} (e : Arr L m) (S : Tab (.prod L L) L) (X : Vals (.arr L) n) : Bool :=
   seteq ((fold e S X).toList : List (List Int64 × Int64))
     ((arrs X).flatMap fun xs => (foldSpec e.toList S.toList xs).map (xs, ·))
 /-- `F(R)` of one list: every choice of an image at each position. -/
@@ -272,7 +272,7 @@ private def mapSpec (R : List (Int64 × Int64)) (xs : List Int64) : List (List I
 private def mapOk {n : USize} (R : LL) (X : Vals (.arr L) n) : Bool :=
   seteq ((map R X).toList : List (List Int64 × List Int64)) ((arrs X).flatMap fun xs => (mapSpec R.toList xs).map (xs, ·))
 /-- The table of `f` on `xs × vs`, as a relation `(x, v) ⟶ f x v`. -/
-private def tab (xs vs : List Int64) (f : Int64 → Int64 → Int64) : Rel (.prod L L) L :=
+private def tab (xs vs : List Int64) (f : Int64 → Int64 → Int64) : Tab (.prod L L) L :=
   let ps := xs.flatMap fun x => vs.map fun v => (x, v, f x v)
   ⟨ps.length.toUSize, (List.length_map _ ▸ col (ps.map (·.1)), List.length_map _ ▸ col (ps.map (·.2.1))),
     List.length_map _ ▸ col (ps.map (·.2.2))⟩
@@ -342,9 +342,9 @@ private def Ua3 : Vals L 3 := (Arr.mk (.bytes <| packLongs [3, 1, 2]) (by wf_lit
 /-! ### Every other encoding: the list `i ↦ x i` of four elements in each, against its own spec -/
 
 /-- A column of four as a relation from its positions, `U4` the key. -/
-private def lst {t : QAtomicType} (x : Arr t 4) : Rel L t := ⟨4, U4, x⟩
+private def lst {t : QAtomicType} (x : Arr t 4) : Tab L t := ⟨4, U4, x⟩
 /-- `L ≫ L°`: the pairs of positions holding one element. -/
-private def same {t : QAtomicType} (X Y : Rel L t) : LL := X ≫ Y°
+private def same {t : QAtomicType} (X Y : Tab L t) : LL := X ≫ Y°
 -- the positions of `(p q p r)` paired with equal elements: `(0 2)` share, `1` and `3` alone
 private def pqpr : List (Int64 × Int64) := [(0, 0), (0, 2), (2, 0), (2, 2), (1, 1), (3, 3)]
 
@@ -447,7 +447,7 @@ error: Tactic `decide` proved that the proposition
   QAtomicType.general ≠ QAtomicType.general
 is false
 ---
-info: lt gs ⋯ : Rel (Obj.atom QAtomicType.general) (Obj.atom QAtomicType.general) -/
+info: lt gs ⋯ : Tab (Obj.atom QAtomicType.general) (Obj.atom QAtomicType.general) -/
 #guard_msgs in #check lt gs
 
 -- `succ`, `plus` on their universes
@@ -476,7 +476,7 @@ private def XX : Vals (.arr (.arr L)) 4 := ⟨3, col [0, 1, 0, 3], col [2, 3, 0,
 #guard ((idU XX).toList.map (·.1) : List (List (List Int64))) == [[[1], [1, 2]], [[1, 2], []], [], []]
 -- `∪` of a relation with itself, again and again: its payloads hold the cells its rows refer to and no more,
 -- for a nested array, an array of sums and a sum (`Vals.pick`)
-private def selfU {A : Obj} (R : Rel A A) : Nat → Rel A A | 0 => R | k + 1 => selfU R k ∪ selfU R k
+private def selfU {A : Obj} (R : Tab A A) : Nat → Tab A A | 0 => R | k + 1 => selfU R k ∪ selfU R k
 #guard let b := selfU (idU XX) 4; b == idU XX && (b.val.1, b.val.2.2.2.1) == (4, 5)
 #guard let b := selfU (idU Xa) 4; b == idU Xa && (b.val.1, b.val.2.2.2.1, b.val.2.2.2.2.1) == (5, 2, 3)
 #guard let b := selfU (idU Xo) 4; b == idU Xo && (b.val.1, b.val.2.1) == (2, 2)
@@ -485,7 +485,7 @@ private def selfU {A : Obj} (R : Rel A A) : Nat → Rel A A | 0 => R | k + 1 => 
 #guard alpha zero1 XP == junc nilR (cons (idU XP))
 -- `tail`, `length`, `Arr.sum`, `suffix` against `List`
 #guard seteq ((tail Xs).toList : List (List Int64 × List Int64)) ((unconsSpec (arrs Xs)).map fun (a, _, t) => (a, t))
-private def onArrs {n : USize} {B : Obj} [BEq B.El] (X : Vals (.arr L) n) (R : Rel (.arr L) B) (f : List Int64 → List B.El) : Bool :=
+private def onArrs {n : USize} {B : Obj} [BEq B.El] (X : Vals (.arr L) n) (R : Tab (.arr L) B) (f : List Int64 → List B.El) : Bool :=
   let r : List (List Int64 × B.El) := R.toList
   seteq r ((arrs X).flatMap fun xs => (f xs).map (xs, ·))
 #guard onArrs Xl (length Xl) (fun xs => [Int64.ofNat xs.length]) && onArrs Xc (length Xc) (fun xs => [Int64.ofNat xs.length])

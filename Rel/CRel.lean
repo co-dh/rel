@@ -15,7 +15,7 @@ namespace Rel
 
 namespace Rep
 
-open Rel Rel.Kernel Rel.Verify Rel Rel.Alg Rel.KernelWF
+open Tab Rel.Kernel Rel.Verify Rel Rel.Alg Rel.KernelWF
 open scoped Rel.Core.Rel
 open Rel.Core.Rel hiding id comp recip inter union zero le inl inr junc
 open CompN OpsN
@@ -43,7 +43,7 @@ attribute [okbit] Bool.and_eq_true decide_eq_true_eq Obj.codesC_fits and_self an
 /-- **`compC`'s bit is `rep_comp`'s premises**: the codes' bit gives the middle side's codes fitting (`codesC_fits`,
     whence `rep_comp`'s `hc` by `codes_faithful_wf`), the decided bounds its `hrn`, `hM`, and the picks' bits, read
     at the join's rows (`join_rows`), its `hA`, `hC` (`pickC_fits`). -/
-theorem compC_ok (R : Rel A B) (S : Rel B C) (hb : (compC R S).2 = true) :
+theorem compC_ok (R : Tab A B) (S : Tab B C) (hb : (compC R S).2 = true) :
     Obj.CodesFit B jcs ∧ S.n.toNat < 2 ^ 63 ∧ R.n.toNat * S.n.toNat < min (2 ^ 63) USize.size ∧
       Vals.PickFits A R.key ((jpairs).map Prod.fst) ∧ Vals.PickFits C S.val ((jpairs).map Prod.snd) := by
   simp only [compC, okbit] at hb
@@ -74,7 +74,7 @@ theorem compC_ok (R : Rel A B) (S : Rel B C) (hb : (compC R S).2 = true) :
   · exact absurd hp Bool.false_ne_true
 
 /-- **`rep (R ≫ S) = rep R ≫ rep S` under `compC`'s bit**: `rep_comp` at `compC_ok`'s premises. -/
-theorem rep_compC (R : Rel A B) (S : Rel B C) (hb : (compC R S).2 = true) :
+theorem rep_compC (R : Tab A B) (S : Tab B C) (hb : (compC R S).2 = true) :
     rep (compC R S).1 = rep R ≫ rep S :=
   let ⟨hcf, hrn, hM, hA, hC⟩ := compC_ok R S hb; rep_comp R S (codes_faithful_wf B _ hcf).1 hrn hM hA hC
 
@@ -82,7 +82,7 @@ theorem rep_compC (R : Rel A B) (S : Rel B C) (hb : (compC R S).2 = true) :
 
 /-- **`rep (R ∩ S) = rep R ∩ rep S` under `interC`'s bit**: the product codes' bit gives `rep_inter`'s `hc`
     (`codesC_fits`, `codes_faithful_wf`, `pairs_eq_codes`), the `fitsN` bits its `hk`, `hv` (`pickFits_of_fitsN`). -/
-theorem rep_interC (R S : Rel A B) (hb : (interC R S).2 = true) : rep (interC R S).1 = rep R ∩ rep S := by
+theorem rep_interC (R S : Tab A B) (hb : (interC R S).2 = true) : rep (interC R S).1 = rep R ∩ rep S := by
   simp only [interC, okbit] at hb
   exact rep_inter R S (by rw [pairs_eq_codes, map_pair]; exact (codes_faithful_wf _ _ (Obj.codesC_fits _ _ hb.1.1)).1)
     (by simp only [okbit, hb]) (by simp only [okbit, hb])
@@ -92,7 +92,7 @@ theorem rep_interC (R S : Rel A B) (hb : (interC R S).2 = true) : rep (interC R 
 /-- **`rep (R ∪ S) = rep R ∪ rep S` under `unionC`'s bit**: `need`'s guard is `rep_union`'s `hN`, the razes' bits
     its `hA`, `hB` (`razeC_fits`, `raze_row`), the codes' bits its `hK`, `hV` (`codesC_fits`, `codes_faithful_wf`),
     the `fitsN` bits its `hk`, `hv` (`pickFits_of_fitsN`). -/
-theorem rep_unionC (R S : Rel A B) (hb : (unionC R S).2 = true) : rep (unionC R S).1 = rep R ∪ rep S := by
+theorem rep_unionC (R S : Tab A B) (hb : (unionC R S).2 = true) : rep (unionC R S).1 = rep R ∪ rep S := by
   unfold unionC need at hb
   split at hb
   · rename_i hN
@@ -111,7 +111,7 @@ theorem rep_unionC (R S : Rel A B) (hb : (unionC R S).2 = true) : rep (unionC R 
 
 /-- **`rep (nub R) = rep R` under `nubC`'s bit**: the codes' bits give `rep_nub`'s `hK`, `hV` (`oneOK_of_codesC`),
     the `fitsN` bits its picks. -/
-theorem rep_nubC {k v : Obj} (R : Rel k v) (hb : (nubC R).2 = true) : rep (nubC R).1 = rep R := by
+theorem rep_nubC {k v : Obj} (R : Tab k v) (hb : (nubC R).2 = true) : rep (nubC R).1 = rep R := by
   simp only [nubC, Bool.and_eq_true] at hb
   obtain ⟨⟨⟨hK, hV⟩, hk⟩, hv⟩ := hb
   rw [nubC_fst]
@@ -124,7 +124,7 @@ theorem rep_nubC {k v : Obj} (R : Rel k v) (hb : (nubC R).2 = true) : rep (nubC 
 def _root_.Rel.Obj.KeyInj (A : Obj) : Prop := ∀ x y : A.El, A.key x = A.key y → x = y
 
 /-- `R`'s rows strictly ascending by `Obj.lt` on `(key, val)`: sorted, and no row twice. -/
-def _root_.Rel.Rel.Canon {k v : Obj} (R : Rel k v) : Prop := R.toList.Pairwise (Obj.prod k v).lt
+def _root_.Rel.Tab.Canon {k v : Obj} (R : Tab k v) : Prop := R.toList.Pairwise (Obj.prod k v).lt
 
 theorem keyInj_prod {a b : Obj} (ha : a.KeyInj) (hb : b.KeyInj) : (Obj.prod a b).KeyInj := by
   rintro ⟨x, y⟩ ⟨x', y'⟩ h
@@ -159,38 +159,38 @@ theorem eq_of_pairwise {α : Type} {r : α → α → Prop} (irr : ∀ a, ¬ r a
     rw [eq_of_pairwise irr tr hl.2 hm.2 hlm]
 
 /-- **Canonical tables of one `rep` are one table**: the data a canonical relation holds is fixed by what it denotes. -/
-theorem canon_eq {k v : Obj} {R S : Rel k v} (hR : R.Canon) (hS : S.Canon) (h : rep R = rep S) :
+theorem canon_eq {k v : Obj} {R S : Tab k v} (hR : R.Canon) (hS : S.Canon) (h : rep R = rep S) :
     R.toList = S.toList :=
   eq_of_pairwise (Obj.lt_irrefl _) (Obj.lt_trans _) hR hS fun ⟨x, y⟩ => by
-    rw [← Rel.holds_iff_mem_toList, ← Rel.holds_iff_mem_toList, ← rep_apply, ← rep_apply, h]
+    rw [← holds_iff_mem_toList, ← holds_iff_mem_toList, ← rep_apply, ← rep_apply, h]
 
 /-- Row `t` of `R` as a pair, the default pair past its count: what `rows_spec` reads a pick as. -/
-def rowAt {k v : Obj} (R : Rel k v) (t : Nat) : k.El × v.El :=
+def rowAt {k v : Obj} (R : Tab k v) (t : Nat) : k.El × v.El :=
   if h : t < R.n.toNat then (R.key.row ⟨t, h⟩, R.val.row ⟨t, h⟩) else (k.dflt, v.dflt)
 
-theorem toList_rowAt {k v : Obj} (R : Rel k v) : R.toList = (List.range R.n.toNat).map (rowAt R) :=
-  List.ext_getElem (by simp [Rel.toList]) fun q h1 h2 => by
-    simp only [Rel.toList, List.getElem_ofFn, List.getElem_map, List.getElem_range, rowAt]
-    rw [dif_pos (by simpa [Rel.toList] using h1)]
+theorem toList_rowAt {k v : Obj} (R : Tab k v) : R.toList = (List.range R.n.toNat).map (rowAt R) :=
+  List.ext_getElem (by simp [toList]) fun q h1 h2 => by
+    simp only [toList, List.getElem_ofFn, List.getElem_map, List.getElem_range, rowAt]
+    rw [dif_pos (by simpa [toList] using h1)]
 
 /-- **`rows R i` as a list is `R`'s rows at the positions `i` names** (`rows_spec`). -/
-theorem rows_toList {k v : Obj} (R : Rel k v) (i : ByteArray) (hl : len i < USize.size)
+theorem rows_toList {k v : Obj} (R : Tab k v) (i : ByteArray) (hl : len i < USize.size)
     (hk : Vals.PickFits k R.key (ids i)) (hv : Vals.PickFits v R.val (ids i)) :
     (R.rows i).toList = (ids i).map (rowAt R) := by
   obtain ⟨hn, hrow⟩ := rows_spec R i hl hk hv
-  refine List.ext_getElem (by simp [Rel.toList, hn, len_eq_ids]) fun q h1 h2 => ?_
-  simp only [Rel.toList, List.getElem_ofFn, List.getElem_map, ids_getElem, rowAt]
+  refine List.ext_getElem (by simp [toList, hn, len_eq_ids]) fun q h1 h2 => ?_
+  simp only [toList, List.getElem_ofFn, List.getElem_map, ids_getElem, rowAt]
   exact hrow q _
 
 /-- `canonC`'s bit, taken apart: the sort's, the two `fitsN` bits, `nubC`'s. -/
-theorem canonC_bits {k v : Obj} (R : Rel k v) (hb : (canonC R).2 = true) :
+theorem canonC_bits {k v : Obj} (R : Tab k v) (hb : (canonC R).2 = true) :
     ((Obj.prod k v).sortByC (pairPart R).2 (tilLongs R.n)).2 = true ∧ Vals.fitsN k R.key R.n.toNat = true ∧
       Vals.fitsN v R.val R.n.toNat = true ∧
       (nubC (R.rows ((Obj.prod k v).sortByC (pairPart R).2 (tilLongs R.n)).1)).2 = true := by
   simp only [canonC, Bool.and_eq_true] at hb; exact ⟨hb.1.1.1, hb.1.1.2, hb.1.2, hb.2⟩
 
 /-- The sorted rows `canonC` reads: `R`'s rows in the sort's order, a permutation of them. -/
-theorem canonC_sorted {k v : Obj} (R : Rel k v) (hb : (canonC R).2 = true) :
+theorem canonC_sorted {k v : Obj} (R : Tab k v) (hb : (canonC R).2 = true) :
     let s := ((Obj.prod k v).sortByC (pairPart R).2 (tilLongs R.n)).1
     (ids s).Perm (List.range R.n.toNat) ∧ (R.rows s).toList = (ids s).map (rowAt R) := by
   obtain ⟨hs, hfk, hfv, -⟩ := canonC_bits R hb
@@ -204,16 +204,16 @@ theorem canonC_sorted {k v : Obj} (R : Rel k v) (hb : (canonC R).2 = true) :
   rw [len_eq_ids]; exact Nat.lt_of_le_of_lt hlen R.n.toNat_lt_size
 
 /-- **`rep (canon R) = rep R` under `canonC`'s bit**: a permutation of the rows, then `nub`. -/
-theorem rep_canonC {k v : Obj} (R : Rel k v) (hb : (canonC R).2 = true) : rep (canonC R).1 = rep R := by
+theorem rep_canonC {k v : Obj} (R : Tab k v) (hb : (canonC R).2 = true) : rep (canonC R).1 = rep R := by
   obtain ⟨hp, hS⟩ := canonC_sorted R hb
   rw [show (canonC R).1 = (nubC (R.rows _)).1 from rfl, rep_nubC _ (canonC_bits R hb).2.2.2]
   refine Core.Rel.ext fun x y => ?_
-  rw [rep_apply, rep_apply, Rel.holds_iff_mem_toList, Rel.holds_iff_mem_toList, hS, toList_rowAt]
+  rw [rep_apply, rep_apply, holds_iff_mem_toList, holds_iff_mem_toList, hS, toList_rowAt]
   exact (hp.map _).mem_iff
 
 /-- **`canonC`'s answer is canonical** on a side whose atoms the kernels order (`Ordered`) and whose key tells
     elements apart (`KeyInj`): sorted by `sortBy_asc`, the first of each run of equal rows kept by `nub_mem`. -/
-theorem canon_canonC {k v : Obj} (R : Rel k v) (hb : (canonC R).2 = true) (ho : (Obj.prod k v).Ordered)
+theorem canon_canonC {k v : Obj} (R : Tab k v) (hb : (canonC R).2 = true) (ho : (Obj.prod k v).Ordered)
     (hi : (Obj.prod k v).KeyInj) : (canonC R).1.Canon := by
   obtain ⟨-, hfk, hfv, hN⟩ := canonC_bits R hb
   obtain ⟨hp, hS⟩ := canonC_sorted R hb
@@ -247,7 +247,7 @@ theorem canon_canonC {k v : Obj} (R : Rel k v) (hb : (canonC R).2 = true) (ho : 
   have hle : (ids (tuples.tupleIds (k.codes #v[⟨T.n, T.key⟩])[0] #[(v.codes #v[⟨T.n, T.val⟩])[0]]).2).Sublist
       (List.range T.n.toNat) := by
     rw [nub_ids T hK hV]; exact List.filter_sublist
-  unfold Rel.Canon
+  unfold Canon
   rw [show T.nub = T.rows _ from rfl, rows_toList T _ hlN (pickFits_sublist hle hk) (pickFits_sublist hle hv),
     List.pairwise_map]
   rw [toList_rowAt, List.pairwise_map] at hsort
@@ -266,10 +266,10 @@ theorem canon_canonC {k v : Obj} (R : Rel k v) (hb : (canonC R).2 = true) (ho : 
 
 /-- **A subsequence of a canonical table is canonical**: the rows `i` names, ascending among `R`'s positions, keep
     `R`'s order, so an op that only drops rows of `R` (`∩`, `−`, the anti-join) needs no `canonC`. -/
-theorem canon_rows {k v : Obj} (R : Rel k v) (hR : R.Canon) (i : ByteArray) (hsub : (ids i).Sublist (List.range R.n.toNat))
+theorem canon_rows {k v : Obj} (R : Tab k v) (hR : R.Canon) (i : ByteArray) (hsub : (ids i).Sublist (List.range R.n.toNat))
     (hk : Vals.fitsN k R.key R.n.toNat = true) (hv : Vals.fitsN v R.val R.n.toNat = true) : (R.rows i).Canon := by
   have hlen := hsub.length_le; rw [List.length_range] at hlen
-  unfold Rel.Canon at hR ⊢
+  unfold Canon at hR ⊢
   rw [rows_toList R i (by rw [len_eq_ids]; exact Nat.lt_of_le_of_lt hlen R.n.toNat_lt_size)
     (pickFits_sublist hsub (pickFits_range k _ hk)) (pickFits_sublist hsub (pickFits_range v _ hv))]
   rw [toList_rowAt] at hR
@@ -283,7 +283,7 @@ end Rep
 
 namespace CRel
 
-open Rel Rel.Kernel Rel.Alg Rel.Rep
+open Tab Rel.Kernel Rel.Alg Rel.Rep
 open scoped Rel.Core.Rel
 open Rel.Core.Rel hiding id comp recip inter union zero le inl inr junc
 
@@ -300,14 +300,14 @@ theorem guard_eq {α : Type} [Inhabited α] {b : Bool} {k : Unit → α} (p : α
   · rfl
 
 /-- `ofC`'s bit: the twin's and `canonC`'s. -/
-theorem ofC_ok {r : Rel A B × Bool} (hb : (ofC r).ok = true) : r.2 = true ∧ (canonC r.1).2 = true := by
+theorem ofC_ok {r : Tab A B × Bool} (hb : (ofC r).ok = true) : r.2 = true ∧ (canonC r.1).2 = true := by
   simpa only [ofC, Bool.and_eq_true] using hb
 
-theorem rep_ofC {r : Rel A B × Bool} (hb : (ofC r).ok = true) : rep (ofC r).rel = rep r.1 :=
+theorem rep_ofC {r : Tab A B × Bool} (hb : (ofC r).ok = true) : rep (ofC r).rel = rep r.1 :=
   rep_canonC r.1 (ofC_ok hb).2
 
 /-- **Every op through `ofC` answers a canonical table** where it ran within capacity. -/
-theorem canon_ofC {r : Rel A B × Bool} (hb : (ofC r).ok = true) (ho : (Obj.prod A B).Ordered)
+theorem canon_ofC {r : Tab A B × Bool} (hb : (ofC r).ok = true) (ho : (Obj.prod A B).Ordered)
     (hi : (Obj.prod A B).KeyInj) : (ofC r).rel.Canon :=
   canon_canonC r.1 (ofC_ok hb).2 ho hi
 

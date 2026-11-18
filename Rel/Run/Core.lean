@@ -482,26 +482,26 @@ def Vals.row : {A : Obj} → {n : USize} → Vals A n → Fin n.toNat → A.El
 
 /-- A relation from `k` to `v`: `n` positions, a key and a value at each — q's dict, two arrays at atoms,
     one column per atom of a product side, so `B×C` stored as two columns IS one side of pairs. -/
-structure Rel (k v : Obj) where
+structure Tab (k v : Obj) where
   n : USize
   key : Vals k n
   val : Vals v n
 
-namespace Rel
+namespace Tab
 
 variable {k v : Obj}
 
 /-- The relation `R` denotes: `R x y ↔ ∃ i, key.row i = x ∧ val.row i = y`. -/
-def Holds (R : Rel k v) (x : k.El) (y : v.El) : Prop := ∃ i, R.key.row i = x ∧ R.val.row i = y
+def Holds (R : Tab k v) (x : k.El) (y : v.El) : Prop := ∃ i, R.key.row i = x ∧ R.val.row i = y
 
 /-- The pairs, in position order, for proofs only. -/
-def toList (R : Rel k v) : List (k.El × v.El) := List.ofFn fun i => (R.key.row i, R.val.row i)
+def toList (R : Tab k v) : List (k.El × v.El) := List.ofFn fun i => (R.key.row i, R.val.row i)
 
 -- Kept with no caller: what a `Rel` holds, read off its `List` of pairs.
-theorem holds_iff_mem_toList (R : Rel k v) (x : k.El) (y : v.El) : R.Holds x y ↔ (x, y) ∈ R.toList := by
+theorem holds_iff_mem_toList (R : Tab k v) (x : k.El) (y : v.El) : R.Holds x y ↔ (x, y) ∈ R.toList := by
   simp [Holds, toList, List.mem_ofFn]
 
-end Rel
+end Tab
 
 /-! ## Payload helpers on qlean kernels -/
 
@@ -555,6 +555,6 @@ example : ss.Holds 1 "a" := ⟨⟨1, by simp⟩, rfl, by simp only [Arr.get_ne _
 end Checks
 
 #print axioms Arr.get
-#print axioms Rel.holds_iff_mem_toList
+#print axioms Tab.holds_iff_mem_toList
 
 end Rel

@@ -3,7 +3,7 @@ import Rel.Run.CRelDef
 section
 namespace Rel
 namespace CRel
-open Rel Rel.Kernel Rel.Alg
+open Tab Rel.Kernel Rel.Alg
 variable {A B C D E : Obj}
 
 /-- `R ≫ ¬ran(T)`, ok where both inputs are and `antiJoinC` ran within capacity. Its rows are a subsequence of `R`'s,

@@ -14,7 +14,7 @@ import Rel.KernelSpec.Where
 
 namespace Rel.Alg
 
-open Rel Rel.Kernel Rel
+open Tab Rel.Kernel Rel
 open Rel.Verify (firstsOf ids)
 
 /-! ## Lanes -/

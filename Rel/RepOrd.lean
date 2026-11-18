@@ -10,7 +10,7 @@ import Rel.RepList
 
 namespace Rel.Rep
 
-open Rel Rel.Kernel Rel.Verify Rel Rel.Alg Rel.KernelWF
+open Tab Rel.Kernel Rel.Verify Rel Rel.Alg Rel.KernelWF
 
 /-- `Ew.cmp lt` at `long` on two longs below `2^63`: their order as numbers. -/
 theorem cmp_lt_small {v w : UInt64} (hv : v.toNat < 2 ^ 63) (hw : w.toNat < 2 ^ 63) :
@@ -46,7 +46,7 @@ attribute [local irreducible] whereBits gather cross Ew.cmp longsOf Ops.rank
     ranks ascend — by value, ties by position (`rank_long`). Hypotheses: the pair count fits a `USize` and is
     below `2^63` (`cross_ids`'s). -/
 theorem lt_rows_holds {n : USize} (U : Vals (.atom .long) n) (h : QAtomicType.long ≠ .general)
-    (hN : n.toNat * n.toNat < USize.size) (h63 : n.toNat * n.toNat < 2 ^ 63) (L : Rel (.atom .long) (.atom .long))
+    (hN : n.toNat * n.toNat < USize.size) (h63 : n.toNat * n.toNat < 2 ^ 63) (L : Tab (.atom .long) (.atom .long))
     (hL : L = longCount "<" (cross n n).1 fun nn _ =>
       longCount "<" (whereBits nn (Ew.cmp Ew.lt Ew.i64 Ew.vv (gather 8 (longsOf (Ops.rank U h)) (cross n n).1)
           (gather 8 (longsOf (Ops.rank U h)) (cross n n).2) nn)) fun k hk =>
@@ -137,7 +137,7 @@ open OpsN UnionN
     Hypotheses: the pair count fits a `USize` and is below `2^63`; `L` names the rows before the diff;
     `rep_diff`'s, at `L` and `idU U`. -/
 theorem rep_lt {n : USize} (U : Vals (.atom .long) n) (h : QAtomicType.long ≠ .general)
-    (hN : n.toNat * n.toNat < USize.size) (h63 : n.toNat * n.toNat < 2 ^ 63) (L : Rel (.atom .long) (.atom .long))
+    (hN : n.toNat * n.toNat < USize.size) (h63 : n.toNat * n.toNat < 2 ^ 63) (L : Tab (.atom .long) (.atom .long))
     (hL : L = longCount "<" (cross n n).1 fun nn _ =>
       longCount "<" (whereBits nn (Ew.cmp Ew.lt Ew.i64 Ew.vv (gather 8 (longsOf (Ops.rank U h)) (cross n n).1)
           (gather 8 (longsOf (Ops.rank U h)) (cross n n).2) nn)) fun k hk =>
@@ -162,7 +162,7 @@ theorem rep_lt {n : USize} (U : Vals (.atom .long) n) (h : QAtomicType.long ≠ 
     `rep_union_full`, then `rep_lt` and `idU_holds`. Hypotheses: `rep_lt`'s; `rep_union_full`'s at `lt U h`,
     `idU U`, with `V` naming the razed union. -/
 theorem rep_leq {n : USize} (U : Vals (.atom .long) n) (h : QAtomicType.long ≠ .general)
-    (hN : n.toNat * n.toNat < USize.size) (h63 : n.toNat * n.toNat < 2 ^ 63) (L : Rel (.atom .long) (.atom .long))
+    (hN : n.toNat * n.toNat < USize.size) (h63 : n.toNat * n.toNat < 2 ^ 63) (L : Tab (.atom .long) (.atom .long))
     (hL : L = longCount "<" (cross n n).1 fun nn _ =>
       longCount "<" (whereBits nn (Ew.cmp Ew.lt Ew.i64 Ew.vv (gather 8 (longsOf (Ops.rank U h)) (cross n n).1)
           (gather 8 (longsOf (Ops.rank U h)) (cross n n).2) nn)) fun k hk =>
@@ -174,11 +174,11 @@ theorem rep_leq {n : USize} (U : Vals (.atom .long) n) (h : QAtomicType.long ≠
             k ((gather_len _ _).trans hk)⟩)
     (hc : pairsOK(L, idU U)) (hk : Vals.PickFits (.atom .long) L.key (List.range L.n.toNat))
     (hv : Vals.PickFits (.atom .long) L.val (List.range L.n.toNat))
-    (hNU : (Rel.n (lt U h)).toNat + (Rel.n (idU U)).toNat < USize.size)
-    (V : Rel (.atom .long) (.atom .long)) (hV : V = Uc(lt U h, idU U, hNU))
-    (huK : cOK(kcR(V), Rel.n V, Rel.key V)) (huV : cOK(vcR(V), Rel.n V, Rel.val V))
-    (huk : Vals.PickFits (.atom .long) (Rel.key V) (List.range (Rel.n V).toNat))
-    (huv : Vals.PickFits (.atom .long) (Rel.val V) (List.range (Rel.n V).toNat)) (a b : Int64) :
+    (hNU : (Tab.n (lt U h)).toNat + (Tab.n (idU U)).toNat < USize.size)
+    (V : Tab (.atom .long) (.atom .long)) (hV : V = Uc(lt U h, idU U, hNU))
+    (huK : cOK(kcR(V), Tab.n V, Tab.key V)) (huV : cOK(vcR(V), Tab.n V, val V))
+    (huk : Vals.PickFits (.atom .long) (Tab.key V) (List.range (Tab.n V).toNat))
+    (huv : Vals.PickFits (.atom .long) (val V) (List.range (Tab.n V).toNat)) (a b : Int64) :
     rep (leq U h) a b ↔ (∃ i, U.row i = a) ∧ (∃ j, U.row j = b) ∧ a ≤ b := by
   subst hV
   have e : leq U h = lt U h ∪ idU U := rfl

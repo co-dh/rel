@@ -11,7 +11,7 @@ import Rel.KernelWF.PickRow
 
 namespace Rel.Rep
 
-open Rel Rel.Kernel Rel.Verify Rel Rel.Alg
+open Tab Rel.Kernel Rel.Verify Rel Rel.Alg
 
 variable {A B C : Obj}
 
@@ -125,7 +125,7 @@ open Rel.Core.Rel hiding id comp recip inter union zero le inl inr junc
       right ones, which `pick_row` reads back under; a side of atoms and products fits outright
       (`pickFits_atom_fst`, `pickFits_atom_snd`, `pickFits_prod`).
     At a middle side `B` with `B.CodesFit jcs`, `hc` is `(codes_faithful_wf B jcs _).1`. -/
-theorem rep_comp (R : Rel A B) (S : Rel B C)
+theorem rep_comp (R : Tab A B) (S : Tab B C)
     (hc : (∀ {k l : Nat} (hk : k < 2) (hl : l < 2) {i j : Nat} (hi : i < (jcs[k]'hk).1.toNat)
         (hj : j < (jcs[l]'hl).1.toNat),
         Column.idAt (jc[k]'hk).b (jc[k]'hk).w i = Column.idAt (jc[l]'hl).b (jc[l]'hl).w j ↔
@@ -158,7 +158,7 @@ theorem rep_comp (R : Rel A B) (S : Rel B C)
   -- the relation at whatever count `m` the join's length enters as
   suffices H : ∀ (m : USize) (hmJ : len (join (jc[0]'Nat.zero_lt_two) (jc[1]'Nat.one_lt_two)).2 = m.toNat),
       (⟨m, Vals.pickN A R.key (join (jc[0]'Nat.zero_lt_two) (jc[1]'Nat.one_lt_two)).1 m (hmJ ▸ join_len (jc[0]'Nat.zero_lt_two) (jc[1]'Nat.one_lt_two)),
-        Vals.pick C S.val (join (jc[0]'Nat.zero_lt_two) (jc[1]'Nat.one_lt_two)).2 m hmJ⟩ : Rel A C).Holds a c ↔ ∃ b, R.Holds a b ∧ S.Holds b c from H _ _
+        Vals.pick C S.val (join (jc[0]'Nat.zero_lt_two) (jc[1]'Nat.one_lt_two)).2 m hmJ⟩ : Tab A C).Holds a c ↔ ∃ b, R.Holds a b ∧ S.Holds b c from H _ _
   intro m hmJ
   have e := hZ m hmJ
   rw [hln, hrn'] at e
@@ -174,7 +174,7 @@ theorem rep_comp (R : Rel A B) (S : Rel B C)
       (hin : (Column.bitsAt (fit m.toNat (join (jc[0]'Nat.zero_lt_two) (jc[1]'Nat.one_lt_two)).1) (q.1 * 8) 8).toNat < R.n.toNat),
       (Vals.pickN A R.key (join (jc[0]'Nat.zero_lt_two) (jc[1]'Nat.one_lt_two)).1 m h).row q = R.key.row ⟨_, hin⟩ :=
     fun h q hin => by unfold Vals.pickN; rw [pick_row A R.key _ m _ hfA q, dif_pos hin]
-  simp only [Rel.Holds]
+  simp only [Holds]
   constructor
   · rintro ⟨q, hqa, hqc⟩
     have hq : ((Column.bitsAt (fit m.toNat (join (jc[0]'Nat.zero_lt_two) (jc[1]'Nat.one_lt_two)).1) (q.1 * 8) 8).toNat,

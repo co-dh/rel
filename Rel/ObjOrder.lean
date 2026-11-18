@@ -6,7 +6,7 @@ import Rel.Run.Core
 
 namespace Rel
 
-open Rel Rel.Dep Rel.Kernel
+open Tab Rel.Dep Rel.Kernel
 
 /-- The key of an element, a list of naturals compared lexicographically (`Obj.lt`). At an atom it is
     the key qlean's grade sorts by (`Order.rank` of the raw bits, `QLean/Kernel/Sort.lean`): a number by

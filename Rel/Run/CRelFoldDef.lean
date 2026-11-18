@@ -3,7 +3,7 @@ import Rel.Run.CRelDef
 section
 namespace Rel
 namespace CRel
-open Rel Rel.Kernel Rel.Alg
+open Tab Rel.Kernel Rel.Alg
 
 /-- `foldBy` on a step over `CRel`s, ok where every round's step was and `foldByC` ran within capacity. The
     step sees its inputs as ok: their bits are already in the fold's. -/
@@ -14,7 +14,7 @@ def foldBy {E V : Obj} {n m : USize} (X : Vals (.arr E) n) (e : Vals V m)
 /-- `foldOn` on a family over `CRel`s, ok where every round's family member was and `foldOnC` ran within
     capacity; `l`, `pr` the reading order and the step's pair, as `foldOnC`'s. The family sees the round's pairs
     as ok: their bits are already in the fold's. -/
-def foldOn {E V P : Obj} {m n : USize} (l : Bool) (pr : Rel .long E → Rel .long V → Rel .long P × Bool)
+def foldOn {E V P : Obj} {m n : USize} (l : Bool) (pr : Tab .long E → Tab .long V → Tab .long P × Bool)
     (e : Vals V m) (S : CRel P P → CRel P V) (X : Vals (.arr E) n) : CRel (.arr E) V :=
   ofC (foldOnC l pr e (fun D => ((S ⟨D, true⟩).rel, (S ⟨D, true⟩).ok)) X)
 

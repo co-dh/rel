@@ -10,7 +10,7 @@ open Rel.Ext
 
 namespace Rel.KernelWF
 
-open Rel Rel.Kernel Rel.Dep Rel Rel.Alg Rel.Rep
+open Tab Rel.Kernel Rel.Dep Rel Rel.Alg Rel.Rep
 open scoped Rel.Core.Rel
 open Rel.Core.Rel hiding id comp recip inter union zero le inl inr junc
 
@@ -254,7 +254,7 @@ end Rel.KernelWF
 
 namespace Rel.Alg
 
-open Rel Rel.Kernel Rel.Dep Rel.Verify Rel
+open Tab Rel.Kernel Rel.Dep Rel.Verify Rel
 
 /-- **The razed column reads part `k`'s element `i` past the counts before `k`**, on every answer of
     `razeColumn` (dense, FoR, ALP; `razeTo_toList_all`), the ALP join's offsets 32 bits where parts join (`hA`). -/
@@ -309,7 +309,7 @@ end Rel.Alg
 
 namespace Rel.Rep
 
-open Rel Rel.Kernel Rel.Verify Rel Rel.Alg Rel.KernelWF
+open Tab Rel.Kernel Rel.Verify Rel Rel.Alg Rel.KernelWF
 open scoped Rel.Core.Rel
 open Rel.Core.Rel hiding id comp recip inter union zero le inl inr junc
 
@@ -327,34 +327,34 @@ scoped notation "cOK(" c ", " m ", " x ")" => ((∀ {i j : Nat} (hi : i < USize.
     ((c).w < 8 → (c).card < USize.size ∧ ∀ i < (c).n.toNat, Column.idAt (c).b (c).w i < (c).card))
 -- `rep_nub`'s codes of a relation `R`, and the rows `nub` keeps
 set_option hygiene false in
-scoped notation "kcR(" R ")" => (Obj.codes _ (#v[⟨Rel.n R, Rel.key R⟩] : Vector (Part _) 1))[0]'Nat.zero_lt_one
+scoped notation "kcR(" R ")" => (Obj.codes _ (#v[⟨Rel.Tab.n R, Rel.Tab.key R⟩] : Vector (Part _) 1))[0]'Nat.zero_lt_one
 set_option hygiene false in
-scoped notation "vcR(" R ")" => (Obj.codes _ (#v[⟨Rel.n R, Rel.val R⟩] : Vector (Part _) 1))[0]'Nat.zero_lt_one
+scoped notation "vcR(" R ")" => (Obj.codes _ (#v[⟨Rel.Tab.n R, Rel.Tab.val R⟩] : Vector (Part _) 1))[0]'Nat.zero_lt_one
 set_option hygiene false in
 scoped notation "nubR(" R ")" => (tuples.tupleIds (kcR(R)) #[vcR(R)]).2
 -- `∪`'s two key parts and two value parts, and their raze, `hN` the row-count bound (`raze2_lt`)
 set_option hygiene false in
-scoped notation "pk(" R ", " S ")" => (#[⟨Rel.n R, Rel.key R⟩, ⟨Rel.n S, Rel.key S⟩] : Array (Part _))
+scoped notation "pk(" R ", " S ")" => (#[⟨Rel.Tab.n R, Rel.Tab.key R⟩, ⟨Rel.Tab.n S, Rel.Tab.key S⟩] : Array (Part _))
 set_option hygiene false in
-scoped notation "pv(" R ", " S ")" => (#[⟨Rel.n R, Rel.val R⟩, ⟨Rel.n S, Rel.val S⟩] : Array (Part _))
+scoped notation "pv(" R ", " S ")" => (#[⟨Rel.Tab.n R, Rel.Tab.val R⟩, ⟨Rel.Tab.n S, Rel.Tab.val S⟩] : Array (Part _))
 set_option hygiene false in
 scoped notation "Uc(" R ", " S ", " hN ")" =>
-  (⟨_, Obj.raze _ (pk(R, S)) (raze2_lt hN), Obj.raze _ (pv(R, S)) (raze2_lt hN)⟩ : Rel _ _)
+  (⟨_, Obj.raze _ (pk(R, S)) (raze2_lt hN), Obj.raze _ (pv(R, S)) (raze2_lt hN)⟩ : Rel.Tab _ _)
 end UnionN
 open UnionN
 
 /-- **`rep (R ∪ S) = rep R ∪ rep S`**, no hypothesis on the encoding. -/
-theorem rep_union_full (R S : Rel A B) (hN : R.n.toNat + S.n.toNat < USize.size)
+theorem rep_union_full (R S : Tab A B) (hN : R.n.toNat + S.n.toNat < USize.size)
     (hFk : Vals.RazeFits A R.key S.key) (hFv : Vals.RazeFits B R.val S.val)
-    (hK : cOK(kcR(Uc(R, S, hN)), Rel.n (Uc(R, S, hN)), Rel.key (Uc(R, S, hN))))
-    (hV : cOK(vcR(Uc(R, S, hN)), Rel.n (Uc(R, S, hN)), Rel.val (Uc(R, S, hN))))
-    (hk : Vals.PickFits A (Rel.key (Uc(R, S, hN))) (List.range (Rel.n (Uc(R, S, hN))).toNat))
-    (hv : Vals.PickFits B (Rel.val (Uc(R, S, hN))) (List.range (Rel.n (Uc(R, S, hN))).toNat)) :
+    (hK : cOK(kcR(Uc(R, S, hN)), n (Uc(R, S, hN)), Tab.key (Uc(R, S, hN))))
+    (hV : cOK(vcR(Uc(R, S, hN)), n (Uc(R, S, hN)), val (Uc(R, S, hN))))
+    (hk : Vals.PickFits A (Tab.key (Uc(R, S, hN))) (List.range (n (Uc(R, S, hN))).toNat))
+    (hv : Vals.PickFits B (val (Uc(R, S, hN))) (List.range (n (Uc(R, S, hN))).toNat)) :
     rep (R ∪ S) = rep R ∪ rep S :=
   rep_union R S hN (raze_row A R.key S.key hFk _) (raze_row B R.val S.val hFv _) hK hV hk hv
 
 /-- **`rep (junc R S)`**, no hypothesis on the encoding. -/
-theorem rep_junc_full (R : Rel A C) (S : Rel B C) (hN : R.n.toNat + S.n.toNat < USize.size)
+theorem rep_junc_full (R : Tab A C) (S : Tab B C) (hN : R.n.toNat + S.n.toNat < USize.size)
     (h63 : R.n.toNat + S.n.toNat ≤ 2 ^ 63) (hF : Vals.RazeFits C R.val S.val) :
     rep (Rel.Alg.junc R S) = Core.Rel.junc (rep R) (rep S) :=
   rep_junc R S hN h63 (raze_row C R.val S.val hF)

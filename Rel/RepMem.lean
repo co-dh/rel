@@ -6,7 +6,7 @@ import Rel.KernelWF.SliceSpec
 
 namespace Rel.Rep
 
-open Rel Rel.Kernel Rel Rel.Alg
+open Tab Rel.Kernel Rel Rel.Alg
 open scoped Rel.Core.Rel
 open Rel.Core.Rel hiding id comp recip inter union zero le inl inr junc
 
@@ -36,7 +36,7 @@ theorem rep_mem {n : USize} (X : Vals (.arr B) n) (hv : Vals.PickFits (.arr B) X
   simp only [Alg.mem, memC, expand, need_fst, pickC_fst]
   simp only [need]
   rw [dif_pos hEU]
-  simp only [Rel.Holds]
+  simp only [Holds]
   constructor
   · rintro ⟨t, hkey, hval⟩
     have ht : t.1 < len (expandBytes 8 0 (tilLongs n) (slicesOf X).2) :=
@@ -117,7 +117,7 @@ end Mem
 /-- **`rep (num R k) a y ↔ ∃ i, a = k + i ∧ R.val[i] = y`**: row `i` of `R` keyed by `k + i`, its value kept
     (`val_va_get` of `Ew.add` at the scalar `k` on `til`, `pick_row` at `til`). Hypotheses: `k + |R|` below
     `2^63`, so no key wraps or reads q's null; `Vals.PickFits` of `R.val` at its rows. -/
-theorem rep_num {A B : Obj} (R : Rel A B) (k : USize) (hk : k.toNat + R.n.toNat < 2 ^ 63)
+theorem rep_num {A B : Obj} (R : Tab A B) (k : USize) (hk : k.toNat + R.n.toNat < 2 ^ 63)
     (hv : Vals.PickFits B R.val (List.range R.n.toNat)) (a : Obj.long.El) (y : B.El) :
     rep (num R k) a y ↔ ∃ i : Fin R.n.toNat, a = Int64.ofNat (k.toNat + i.1) ∧ R.val.row i = y := by
   have hkey : ∀ i : Fin R.n.toNat,

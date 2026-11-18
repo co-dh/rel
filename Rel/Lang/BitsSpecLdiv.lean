@@ -12,7 +12,7 @@ import Rel.Run.KernelWF.Raze
 
 namespace Rel.Lang.Bits
 
-open Rel Rel.Kernel Rel.Verify Rel Rel.Alg Rel.Rep
+open Tab Rel.Kernel Rel.Verify Rel Rel.Alg Rel.Rep
 
 variable {ρ : Val}
 

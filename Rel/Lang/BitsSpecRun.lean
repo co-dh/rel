@@ -8,7 +8,7 @@ import Rel.Lang.BitsSpecCode
 
 namespace Rel.Lang.Bits
 
-open Rel Rel.Kernel Rel.Verify Rel Rel.Alg Rel.Rep
+open Tab Rel.Kernel Rel.Verify Rel Rel.Alg Rel.Rep
 
 variable {ρ : Val}
 
@@ -45,14 +45,14 @@ theorem run?_eq {A B : Obj} {d : Bool} (p : Tm A B d) : run? p = (do
     pure ((Id.run ((p.bits ids fun X => (spOf sps X).1.toNat).run' 0)).table (spOf sps A) (spOf sps B))) := rfl
 
 /-- A leaf's matrix reads the two code columns at the state and moves it by two. -/
-theorem bits_leaf (ids : Array ByteArray) (sz : Obj → Nat) {A B : Obj} (R : Rel A B) (n : Nat) :
+theorem bits_leaf (ids : Array ByteArray) (sz : Obj → Nat) {A B : Obj} (R : Tab A B) (n : Nat) :
     ((Tm.val R).bits ids sz).run n = (Bits.ofCodes (sz A) (sz B) (ids.getD n .empty) (ids.getD (n + 1) .empty), n + 2) :=
   by rw [Tm.bits]; rfl
 
 /-- **A leaf at position `n` of the coded columns** holds `Tm.val R`'s relation under `uOf`, its shape the objects'
     picked counts. -/
 theorem enc_leaf (cs : Array Col) {out : Array ByteArray} {sps : Array Col} (h : codeAll cs = some (out, sps))
-    {A B : Obj} (R : Rel A B) {n : Nat} (hj : n + 1 < cs.size) (ek : cs[n] = ⟨A, ⟨R.n, R.key⟩⟩)
+    {A B : Obj} (R : Tab A B) {n : Nat} (hj : n + 1 < cs.size) (ek : cs[n] = ⟨A, ⟨R.n, R.key⟩⟩)
     (ev : cs[n + 1] = ⟨B, ⟨R.n, R.val⟩⟩)
     (hfit : (spOf sps A).1.toNat * (spOf sps B).1.toNat ≤ 2 ^ 27) :
     let x := (((Tm.val R).bits out fun X => (spOf sps X).1.toNat).run n).1
@@ -65,7 +65,7 @@ theorem enc_leaf (cs : Array Col) {out : Array ByteArray} {sps : Array Col} (h :
 
 /-! ### What `run?`'s success leaves: the coding, the fits and the capacities -/
 
-theorem run?_some {A B : Obj} {d : Bool} {p : Tm A B d} {R : Rel A B} (h : run? p = some R) :
+theorem run?_some {A B : Obj} {d : Bool} {p : Tm A B d} {R : Tab A B} (h : run? p = some R) :
     ∃ out sps, codeAll (p.cols #[]) = some (out, sps) ∧ (p.fits fun X => (spOf sps X).1.toNat) = true ∧
       capsOK (p.cols #[]) sps (spOf sps A) (spOf sps B) = true := by
   rw [run?_eq] at h
@@ -205,7 +205,7 @@ theorem pairsOK_node (ids : Array ByteArray) (sz : Obj → Nat) {d : Bool} {p : 
   exact ⟨pairsOK_bits hx hfit, pairsOK_bits (rep_convB hx hfit) (by rw [Nat.mul_comm]; exact hfit)⟩
 
 /-- A table's pairs read the two code columns at the state, sorted, and move it by two. -/
-theorem pairs_leaf (ids : Array ByteArray) (sz : Obj → Nat) (flip : Bool) (R : Rel A B) (n : Nat) :
+theorem pairs_leaf (ids : Array ByteArray) (sz : Obj → Nat) (flip : Bool) (R : Tab A B) (n : Nat) :
     ((Tm.val R).pairs ids sz flip).run n = (if flip then sortBy (ids.getD (n + 1) .empty) (ids.getD n .empty)
       else sortBy (ids.getD n .empty) (ids.getD (n + 1) .empty), n + 2) := by
   rfl
@@ -213,7 +213,7 @@ theorem pairs_leaf (ids : Array ByteArray) (sz : Obj → Nat) (flip : Bool) (R :
 /-- **A table at position `n` of the coded columns, as code pairs**: in `rep_compB`'s form, and under `flip` in
     `rep_ldivB`'s, under `uOf`, the codes below the objects' picked counts, at most `2²⁷` of them. -/
 theorem pairsOK_leaf (cs : Array Col) {out : Array ByteArray} {sps : Array Col} (h : codeAll cs = some (out, sps))
-    (sz : Obj → Nat) (R : Rel A B) {n : Nat} (hj : n + 1 < cs.size) (ek : cs[n] = ⟨A, ⟨R.n, R.key⟩⟩)
+    (sz : Obj → Nat) (R : Tab A B) {n : Nat} (hj : n + 1 < cs.size) (ek : cs[n] = ⟨A, ⟨R.n, R.key⟩⟩)
     (ev : cs[n + 1] = ⟨B, ⟨R.n, R.val⟩⟩) (hm : R.n.toNat < 2 ^ 63) (ha27 : (spOf sps A).1.toNat ≤ 2 ^ 27)
     (hb27 : (spOf sps B).1.toNat ≤ 2 ^ 27) :
     PairsOK (uOf cs A) (uOf cs B) (spOf sps A).1.toNat (spOf sps B).1.toNat (Tm.den ρ (Tm.val R))
@@ -482,7 +482,7 @@ theorem bits_enc {A B : Obj} {d : Bool} (p : Tm A B d) : ∀ pre post, cs.toList
 end
 
 /-- **The bit run is the route's relation**: where `run?` answers, its table relates exactly what the route does. -/
-theorem bits_table {A B : Obj} {d : Bool} {p : Tm A B d} {R : Rel A B} (hr : run? p = some R) (a : A.El) (b : B.El) :
+theorem bits_table {A B : Obj} {d : Bool} {p : Tm A B d} {R : Tab A B} (hr : run? p = some R) (a : A.El) (b : B.El) :
     rep R a b ↔ p.den Val.empty a b := by
   obtain ⟨out, sps, hc, hf, hcap⟩ := run?_some hr
   have e : R = (((p.bits out (szOf sps)).run 0).1).table (spOf sps A) (spOf sps B) := by

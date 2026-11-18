@@ -10,7 +10,7 @@ import Rel.KernelWF.SliceSpec
 
 namespace Rel.Alg
 
-open Rel Rel.Dep Rel.Kernel Rel.Verify Rel
+open Tab Rel.Dep Rel.Kernel Rel.Verify Rel
 
 open SliceN
 -- the copies of row `t` (`slicesOf_copies`' right side), and the copies before row `r`

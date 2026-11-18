@@ -7,7 +7,7 @@ import Rel.RepUncat
 
 namespace Rel.Rep
 
-open Rel Rel.Kernel Rel.Verify Rel Rel.Alg Rel.KernelWF
+open Tab Rel.Kernel Rel.Verify Rel Rel.Alg Rel.KernelWF
 
 open FoldN OpsN Prim
 
@@ -17,57 +17,57 @@ namespace ListN
 -- `rep_cons`'s hypotheses at `P`, its pieces bound by their equations
 set_option hygiene false in
 scoped notation "consOK(" K ", " B ", " P ")" =>
-  (Vals.PickFits (.arr B) (Rel.val P).2 (List.range (Rel.n P).toNat) ∧
-    ∀ s : ByteArray × ByteArray, s = slicesOf (Rel.val P).2 →
-    ((List.range (Rel.n P).toNat).map fun r => (Column.bitsAt s.2 (r * 8) 8).toNat).sum + (Rel.n P).toNat <
+  (Vals.PickFits (.arr B) (Rel.Tab.val P).2 (List.range (Rel.Tab.n P).toNat) ∧
+    ∀ s : ByteArray × ByteArray, s = slicesOf (Rel.Tab.val P).2 →
+    ((List.range (Rel.Tab.n P).toNat).map fun r => (Column.bitsAt s.2 (r * 8) 8).toNat).sum + (Rel.Tab.n P).toNat <
       2 ^ 63 ∧
-    ((List.range (Rel.n P).toNat).map fun r => (Column.bitsAt s.2 (r * 8) 8).toNat).sum + (Rel.n P).toNat <
+    ((List.range (Rel.Tab.n P).toNat).map fun r => (Column.bitsAt s.2 (r * 8) 8).toNat).sum + (Rel.Tab.n P).toNat <
       USize.size ∧
-    ∀ xi : ByteArray, xi = expandBytes 8 0 (tilLongs (Rel.n P)) s.2 →
+    ∀ xi : ByteArray, xi = expandBytes 8 0 (tilLongs (Rel.Tab.n P)) s.2 →
     ∀ m : USize, m = (len xi).toUSize →
-    ∀ xr : ByteArray, xr = sub m (tilLongs m) (gather 8 (sub (Rel.n P) (sums (Rel.n P) s.2) s.2) xi) →
+    ∀ xr : ByteArray, xr = sub m (tilLongs m) (gather 8 (sub (Rel.Tab.n P) (sums (Rel.Tab.n P) s.2) s.2) xi) →
     ∀ j : ByteArray, j = add m (gather 8 s.1 xi) xr →
-    ∀ tl : Vals B m, tl = Vals.pick B (Rel.val P).2.2.2.2 (add m (gather 8 s.1 xi) xr) m
+    ∀ tl : Vals B m, tl = Vals.pick B (Rel.Tab.val P).2.2.2.2 (add m (gather 8 s.1 xi) xr) m
       (len_val Ew.add Ew.vv (gather 8 s.1 xi) xr m) →
-    ∀ c1 : ByteArray, c1 = addc (Rel.n P) s.2 1 → ∀ hi : ByteArray, hi = sums (Rel.n P) c1 →
-    ∀ lo : ByteArray, lo = sub (Rel.n P) hi c1 →
+    ∀ c1 : ByteArray, c1 = addc (Rel.Tab.n P) s.2 1 → ∀ hi : ByteArray, hi = sums (Rel.Tab.n P) c1 →
+    ∀ lo : ByteArray, lo = sub (Rel.Tab.n P) hi c1 →
     ∀ dst : ByteArray, dst = addc m (add m (gather 8 lo xi) xr) 1 →
     ∀ g : ByteArray, g = (Code.ofLongs (concatBytes #[dst, lo])).grade →
-    Vals.PickFits K (Rel.key P)
-      ((List.range (Rel.n P).toNat).map fun q => (Column.bitsAt (tilLongs (Rel.n P)) (q * 8) 8).toNat) ∧
-    Vals.RazeFits B tl (Rel.val P).1 ∧
-    ∀ hN, Vals.PickFits B (Obj.raze B #[⟨m, tl⟩, ⟨Rel.n P, (Rel.val P).1⟩] hN)
+    Vals.PickFits K (Rel.Tab.key P)
+      ((List.range (Rel.Tab.n P).toNat).map fun q => (Column.bitsAt (tilLongs (Rel.Tab.n P)) (q * 8) 8).toNat) ∧
+    Vals.RazeFits B tl (Rel.Tab.val P).1 ∧
+    ∀ hN, Vals.PickFits B (Obj.raze B #[⟨m, tl⟩, ⟨Rel.Tab.n P, (Rel.Tab.val P).1⟩] hN)
       ((List.range (len g)).map fun q => (Column.bitsAt g (q * 8) 8).toNat))
 -- `rep_cat`'s hypotheses at `P`, its pieces bound by their equations
 set_option hygiene false in
 scoped notation "catOK(" K ", " B ", " P ")" =>
-  (Vals.PickFits (.arr B) (Rel.val P).1 (List.range (Rel.n P).toNat) ∧
-    Vals.PickFits (.arr B) (Rel.val P).2 (List.range (Rel.n P).toNat) ∧
-    ∀ sa : ByteArray × ByteArray, sa = slicesOf (Rel.val P).1 →
-    ∀ sb : ByteArray × ByteArray, sb = slicesOf (Rel.val P).2 →
-    ((List.range (Rel.n P).toNat).map fun r => (Column.bitsAt sa.2 (r * 8) 8).toNat).sum +
-      ((List.range (Rel.n P).toNat).map fun r => (Column.bitsAt sb.2 (r * 8) 8).toNat).sum < 2 ^ 63 ∧
-    ((List.range (Rel.n P).toNat).map fun r => (Column.bitsAt sa.2 (r * 8) 8).toNat).sum +
-      ((List.range (Rel.n P).toNat).map fun r => (Column.bitsAt sb.2 (r * 8) 8).toNat).sum < USize.size ∧
-    ∀ xa : ByteArray, xa = expandBytes 8 0 (tilLongs (Rel.n P)) sa.2 →
+  (Vals.PickFits (.arr B) (Rel.Tab.val P).1 (List.range (Rel.Tab.n P).toNat) ∧
+    Vals.PickFits (.arr B) (Rel.Tab.val P).2 (List.range (Rel.Tab.n P).toNat) ∧
+    ∀ sa : ByteArray × ByteArray, sa = slicesOf (Rel.Tab.val P).1 →
+    ∀ sb : ByteArray × ByteArray, sb = slicesOf (Rel.Tab.val P).2 →
+    ((List.range (Rel.Tab.n P).toNat).map fun r => (Column.bitsAt sa.2 (r * 8) 8).toNat).sum +
+      ((List.range (Rel.Tab.n P).toNat).map fun r => (Column.bitsAt sb.2 (r * 8) 8).toNat).sum < 2 ^ 63 ∧
+    ((List.range (Rel.Tab.n P).toNat).map fun r => (Column.bitsAt sa.2 (r * 8) 8).toNat).sum +
+      ((List.range (Rel.Tab.n P).toNat).map fun r => (Column.bitsAt sb.2 (r * 8) 8).toNat).sum < USize.size ∧
+    ∀ xa : ByteArray, xa = expandBytes 8 0 (tilLongs (Rel.Tab.n P)) sa.2 →
     ∀ ma : USize, ma = (len xa).toUSize →
-    ∀ ra : ByteArray, ra = sub ma (tilLongs ma) (gather 8 (sub (Rel.n P) (sums (Rel.n P) sa.2) sa.2) xa) →
-    ∀ xb : ByteArray, xb = expandBytes 8 0 (tilLongs (Rel.n P)) sb.2 →
+    ∀ ra : ByteArray, ra = sub ma (tilLongs ma) (gather 8 (sub (Rel.Tab.n P) (sums (Rel.Tab.n P) sa.2) sa.2) xa) →
+    ∀ xb : ByteArray, xb = expandBytes 8 0 (tilLongs (Rel.Tab.n P)) sb.2 →
     ∀ mb : USize, mb = (len xb).toUSize →
-    ∀ rb : ByteArray, rb = sub mb (tilLongs mb) (gather 8 (sub (Rel.n P) (sums (Rel.n P) sb.2) sb.2) xb) →
+    ∀ rb : ByteArray, rb = sub mb (tilLongs mb) (gather 8 (sub (Rel.Tab.n P) (sums (Rel.Tab.n P) sb.2) sb.2) xb) →
     ∀ ja : ByteArray, ja = add ma (gather 8 sa.1 xa) ra →
     ∀ jb : ByteArray, jb = add mb (gather 8 sb.1 xb) rb →
-    ∀ ta : Vals B ma, ta = Vals.pick B (Rel.val P).1.2.2.2 (add ma (gather 8 sa.1 xa) ra) ma
+    ∀ ta : Vals B ma, ta = Vals.pick B (Rel.Tab.val P).1.2.2.2 (add ma (gather 8 sa.1 xa) ra) ma
       (len_val Ew.add Ew.vv (gather 8 sa.1 xa) ra ma) →
-    ∀ tb : Vals B mb, tb = Vals.pick B (Rel.val P).2.2.2.2 (add mb (gather 8 sb.1 xb) rb) mb
+    ∀ tb : Vals B mb, tb = Vals.pick B (Rel.Tab.val P).2.2.2.2 (add mb (gather 8 sb.1 xb) rb) mb
       (len_val Ew.add Ew.vv (gather 8 sb.1 xb) rb mb) →
-    ∀ c : ByteArray, c = add (Rel.n P) sa.2 sb.2 → ∀ hi : ByteArray, hi = sums (Rel.n P) c →
-    ∀ lo : ByteArray, lo = sub (Rel.n P) hi c →
+    ∀ c : ByteArray, c = add (Rel.Tab.n P) sa.2 sb.2 → ∀ hi : ByteArray, hi = sums (Rel.Tab.n P) c →
+    ∀ lo : ByteArray, lo = sub (Rel.Tab.n P) hi c →
     ∀ da : ByteArray, da = add ma (gather 8 lo xa) ra →
     ∀ db : ByteArray, db = add mb (add mb (gather 8 lo xb) (gather 8 sa.2 xb)) rb →
     ∀ g : ByteArray, g = (Code.ofLongs (concatBytes #[da, db])).grade →
-    Vals.PickFits K (Rel.key P)
-      ((List.range (Rel.n P).toNat).map fun q => (Column.bitsAt (tilLongs (Rel.n P)) (q * 8) 8).toNat) ∧
+    Vals.PickFits K (Rel.Tab.key P)
+      ((List.range (Rel.Tab.n P).toNat).map fun q => (Column.bitsAt (tilLongs (Rel.Tab.n P)) (q * 8) 8).toNat) ∧
     Vals.RazeFits B ta tb ∧
     ∀ hN, Vals.PickFits B (Obj.raze B #[⟨ma, ta⟩, ⟨mb, tb⟩] hN)
       ((List.range (len g)).map fun q => (Column.bitsAt g (q * 8) 8).toNat))
@@ -75,7 +75,7 @@ end ListN
 open ListN
 
 /-- `rep_cons` with its hypotheses as the bundle `consOK`. -/
-theorem rep_cons_ok {K B : Obj} (P : Rel K (.prod B (.arr B))) (h : consOK(K, B, P)) :
+theorem rep_cons_ok {K B : Obj} (P : Tab K (.prod B (.arr B))) (h : consOK(K, B, P)) :
     ∀ k ys, rep (cons P) k ys ↔ ∃ b bs, rep P k (b, bs) ∧ ys = b :: bs := by
   obtain ⟨hV, hs⟩ := h
   obtain ⟨hS, hU, hx⟩ := hs _ rfl
@@ -83,7 +83,7 @@ theorem rep_cons_ok {K B : Obj} (P : Rel K (.prod B (.arr B))) (h : consOK(K, B,
   exact rep_cons P hV _ rfl hS hU _ rfl _ rfl _ rfl _ rfl _ rfl _ rfl _ rfl _ rfl _ rfl _ rfl hKf hRf hFf
 
 /-- `rep_cat` with its hypotheses as the bundle `catOK`. -/
-theorem rep_cat_ok {K B : Obj} (P : Rel K (.prod (.arr B) (.arr B))) (h : catOK(K, B, P)) :
+theorem rep_cat_ok {K B : Obj} (P : Tab K (.prod (.arr B) (.arr B))) (h : catOK(K, B, P)) :
     ∀ k zs, rep (cat P) k zs ↔ ∃ xs ys, rep P k (xs, ys) ∧ zs = xs ++ ys := by
   obtain ⟨hVa, hVb, h1⟩ := h
   obtain ⟨hS, hU, h2⟩ := h1 _ rfl _ rfl
@@ -124,14 +124,14 @@ open Rel.Core.Rel hiding id comp recip inter union zero le inl inr junc in
     `tic P` is `I ≫ tail I.val`, `I = C ≫ inits C.val`, `C` the `cons` of `consCatC P` (bound by `hC`, `hI`).
     Hypotheses: `C`'s read-back (`eC`), `rep_comp`'s at `I` (`e1`) and at the result (`e2`), `rep_inits`'s at
     `C.val` (`eN`), `rep_tail`'s at `I.val` (`eT`). -/
-theorem tic_of {K B : Obj} (P : Rel K (.prod B (.arr B))) (C : Rel K (.arr B)) (hC : C = (consCatC P).1)
-    (I : Rel K (.arr (.arr B))) (hI : I = C ≫ inits (Rel.val C))
+theorem tic_of {K B : Obj} (P : Tab K (.prod B (.arr B))) (C : Tab K (.arr B)) (hC : C = (consCatC P).1)
+    (I : Tab K (.arr (.arr B))) (hI : I = C ≫ inits (val C))
     (eC : ∀ k ys, rep (consCatC P).1 k ys ↔ ∃ b bs, rep P k (b, bs) ∧ ys = b :: bs)
-    (e1 : rep (C ≫ inits (Rel.val C)) = rep C ≫ rep (inits (Rel.val C)))
-    (eN : ∀ xs yss, rep (inits (Rel.val C)) xs yss ↔ (∃ j, (Rel.val C).row j = xs) ∧
+    (e1 : rep (C ≫ inits (val C)) = rep C ≫ rep (inits (val C)))
+    (eN : ∀ xs yss, rep (inits (val C)) xs yss ↔ (∃ j, (val C).row j = xs) ∧
       yss = (List.range (xs.length + 1)).map fun k => xs.take k)
-    (e2 : rep (I ≫ tail (Rel.val I)) = rep I ≫ rep (tail (Rel.val I)))
-    (eT : ∀ xs bs, rep (tail (Rel.val I)) xs bs ↔ (∃ j, (Rel.val I).row j = xs) ∧ ∃ b, xs = b :: bs) :
+    (e2 : rep (I ≫ tail (val I)) = rep I ≫ rep (tail (val I)))
+    (eT : ∀ xs bs, rep (tail (val I)) xs bs ↔ (∃ j, (val I).row j = xs) ∧ ∃ b, xs = b :: bs) :
     ∀ k zss, rep (tic P) k zss ↔ ∃ b bs, rep P k (b, bs) ∧
       zss = (List.range (bs.length + 1)).map fun j => (b :: bs).take (j + 1) := by
   -- `I`: a row `(b, bs)` to every prefix of `b :: bs`
@@ -155,7 +155,7 @@ theorem tic_of {K B : Obj} (P : Rel K (.prod B (.arr B))) (C : Rel K (.arr B)) (
     rw [List.length_cons, List.range_succ_eq_map, List.map_cons, List.map_map]
     rfl
   intro k zss
-  rw [show tic P = I ≫ tail (Rel.val I) by rw [hI, hC]; rfl, e2, Core.Rel.comp_apply]
+  rw [show tic P = I ≫ tail (val I) by rw [hI, hC]; rfl, e2, Core.Rel.comp_apply]
   constructor
   · rintro ⟨yss, hy, ht⟩
     obtain ⟨-, y, e⟩ := (eT yss zss).1 ht
@@ -171,13 +171,13 @@ theorem tic_of {K B : Obj} (P : Rel K (.prod B (.arr B))) (C : Rel K (.arr B)) (
 /-- `perm`'s step on relations: given what each piece relates, `q ≫ cat V` takes row `r`'s element `e` and list
     `u = ys ++ zs` to `ys ++ e :: zs`. The pieces are as `perm` builds them: `U = pend ≫ uncat`, `q = ⟨el, U⟩`,
     `D = ran q`, `W = ⟨π₁ π₂ D, π₁ D⟩`, `Sn = snoc W`, `V = ⟨Sn, π₂ π₂ D⟩`, `Ct = cat V`, `R = q ≫ Ct`. -/
-theorem perm_step_set {B : Obj} (el : Rel .long B) (pend : Rel .long (.arr B))
-    (U : Rel .long (.prod (.arr B) (.arr B))) (q : Rel .long (.prod B (.prod (.arr B) (.arr B))))
-    (D : Rel (.prod B (.prod (.arr B) (.arr B))) (.prod B (.prod (.arr B) (.arr B))))
-    (W : Rel (.prod B (.prod (.arr B) (.arr B))) (.prod (.arr B) B))
-    (Sn : Rel (.prod B (.prod (.arr B) (.arr B))) (.arr B))
-    (V : Rel (.prod B (.prod (.arr B) (.arr B))) (.prod (.arr B) (.arr B)))
-    (Ct : Rel (.prod B (.prod (.arr B) (.arr B))) (.arr B)) (R : Rel .long (.arr B))
+theorem perm_step_set {B : Obj} (el : Tab .long B) (pend : Tab .long (.arr B))
+    (U : Tab .long (.prod (.arr B) (.arr B))) (q : Tab .long (.prod B (.prod (.arr B) (.arr B))))
+    (D : Tab (.prod B (.prod (.arr B) (.arr B))) (.prod B (.prod (.arr B) (.arr B))))
+    (W : Tab (.prod B (.prod (.arr B) (.arr B))) (.prod (.arr B) B))
+    (Sn : Tab (.prod B (.prod (.arr B) (.arr B))) (.arr B))
+    (V : Tab (.prod B (.prod (.arr B) (.arr B))) (.prod (.arr B) (.arr B)))
+    (Ct : Tab (.prod B (.prod (.arr B) (.arr B))) (.arr B)) (R : Tab .long (.arr B))
     (hU : ∀ r ys zs, rep U r (ys, zs) ↔ ∃ u, rep pend r u ∧ u = ys ++ zs)
     (hq : ∀ r e p, rep q r (e, p) ↔ rep el r e ∧ rep U r p)
     (hD : ∀ t t', rep D t t' ↔ t = t' ∧ ∃ r, rep q r t)
@@ -288,23 +288,23 @@ scoped notation "tauOK(" A ", " cnt ", " X ")" =>
         ∀ i < (kcX(X)).n.toNat, Column.idAt (kcX(X)).b (kcX(X)).w i < (kcX(X)).card)) ∧
   Vals.PickFits A X (List.range (cnt).toNat) ∧
   -- generic `A`: the nub copies `X`'s cells, whose dictionaries, general cells, nested payloads no `X` fact bounds
-  Obj.CodesFit A (#v[⟨(Rel.nub (idU X)).n, (Rel.nub (idU X)).key⟩] : Vector (Part A) 1) ∧
-  Obj.CodesFit A (#v[⟨(Rel.nub (idU X)).n, (Rel.nub (idU X)).val⟩] : Vector (Part A) 1) ∧
+  Obj.CodesFit A (#v[⟨(Rel.Tab.nub (idU X)).n, (Rel.Tab.nub (idU X)).key⟩] : Vector (Part A) 1) ∧
+  Obj.CodesFit A (#v[⟨(Rel.Tab.nub (idU X)).n, (Rel.Tab.nub (idU X)).val⟩] : Vector (Part A) 1) ∧
   (cnt).toNat < 2 ^ 63)
 
 -- every primitive's hypotheses in `snoc P`, `P : Rel K (B* × B)`, each piece bound by its equation as `snoc`
 -- builds it
 set_option hygiene false in
 scoped notation "snocOK(" K ", " B ", " P ")" =>
-  (oneFit(.prod (.arr B) B, Rel.n P, Rel.val P) ∧
-    ∀ D : Rel (.prod (.arr B) B) (.prod (.arr B) B), D = ran P →
-    ∀ X : Vals B (Rel.n (outr D)), X = Rel.val (outr D) →
-    tauOK(B, Rel.n (outr D), X) ∧ cmpOK(B, outr D, τ X) ∧
-    ∀ T : Rel (.prod (.arr B) B) (.arr B), T = outr D ≫ τ X →
+  (oneFit(.prod (.arr B) B, Rel.Tab.n P, Rel.Tab.val P) ∧
+    ∀ D : Rel.Tab (.prod (.arr B) B) (.prod (.arr B) B), D = ran P →
+    ∀ X : Vals B (Rel.Tab.n (outr D)), X = Rel.Tab.val (outr D) →
+    tauOK(B, Rel.Tab.n (outr D), X) ∧ cmpOK(B, outr D, τ X) ∧
+    ∀ T : Rel.Tab (.prod (.arr B) B) (.arr B), T = outr D ≫ τ X →
     pairOK(.prod (.arr B) B, outl D, T) ∧
-    ∀ Q : Rel (.prod (.arr B) B) (.prod (.arr B) (.arr B)), Q = pair (outl D) T →
+    ∀ Q : Rel.Tab (.prod (.arr B) B) (.prod (.arr B) (.arr B)), Q = pair (outl D) T →
     cmpOK(.prod (.arr B) B, P, Q) ∧
-    ∀ M : Rel K (.prod (.arr B) (.arr B)), M = P ≫ Q → catOK(K, B, M))
+    ∀ M : Rel.Tab K (.prod (.arr B) (.arr B)), M = P ≫ Q → catOK(K, B, M))
 end ListN
 open ListN
 
@@ -313,7 +313,7 @@ open ListN
     Hypotheses: every primitive's at the pieces (`snocOK`): `rep_ran`'s at
     `P`, `rep_tau_list`'s at `(outr D).val`, `rep_comp`'s at `outr D ≫ τ` and at `P ≫ Q`, `rep_pair`'s at `Q`,
     `rep_cat`'s at the result. -/
-theorem rep_snoc {K B : Obj} (P : Rel K (.prod (.arr B) B))
+theorem rep_snoc {K B : Obj} (P : Tab K (.prod (.arr B) B))
     (h : snocOK(K, B, P)) :
     ∀ k ys, rep (snoc P) k ys ↔ ∃ bs b, rep P k (bs, b) ∧ ys = bs ++ [b] := by
   obtain ⟨⟨hPf, hPp⟩, h1⟩ := h
@@ -348,7 +348,7 @@ theorem rep_snoc {K B : Obj} (P : Rel K (.prod (.arr B) B))
       exact ⟨p.2, hb, (eτ _ _).2 ⟨⟨i, hi⟩, rfl⟩⟩
   intro k ys
   -- `transposeC`'s `.1` named, so the goal closes syntactically: a defeq check through it evaluates `cat`
-  have ht : ∀ R : Rel B B, (transposeC R).1 = transpose R := fun _ => rfl
+  have ht : ∀ R : Tab B B, (transposeC R).1 = transpose R := fun _ => rfl
   rw [show snoc P = cat (P ≫ pair (outl (ran P)) (outr (ran P) ≫ τ (outr (ran P)).val)) by
     unfold snoc snocC ranC ran τ cat; dsimp only; rw [ht]; rfl, eC]
   constructor

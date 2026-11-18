@@ -6,14 +6,14 @@ import Rel.Run.Lang.Syntax
 
 namespace Rel.Lang
 
-open Rel Rel.Alg
+open Tab Rel.Alg
 
 /-! ### The core term -/
 
 /-- A core term `A ⟶ B` over `Alg`. `d` says it runs on DEMAND (§a): its value is read only at the keys the
     coreflexive its left context supplies. A term with `d = false` needs no keys: a closed term. -/
 inductive Tm : Obj → Obj → Bool → Type where
-  | val {A B : Obj} (R : Rel A B) : Tm A B false
+  | val {A B : Obj} (R : Tab A B) : Tm A B false
   | uni {A : Obj} {m : USize} (U : Vals A m) : Tm A A false
   | zero {A B : Obj} : Tm A B false
   | id {A : Obj} : Tm A A true

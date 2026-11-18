@@ -10,7 +10,7 @@ import Rel.Lang.GenSpec
 
 namespace Rel.Lang.TestNative
 
-open Rel Rel.Lang Rel.Lang.Plan
+open Tab Rel.Lang Rel.Lang.Plan
 
 rel_program native1a where
     obj X = {A,B,C}

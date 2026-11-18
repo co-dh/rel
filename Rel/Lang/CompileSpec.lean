@@ -6,7 +6,7 @@ import Rel.Lang.Rows
 
 namespace Rel.Lang
 
-open Rel Rel.Alg Rel.Rep Rel.Kernel Gen
+open Tab Rel.Alg Rel.Rep Rel.Kernel Gen
 open scoped Rel.Core.Rel
 open Rel.Core.Rel hiding id comp recip inter union zero le inl inr junc
 

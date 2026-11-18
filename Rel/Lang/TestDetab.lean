@@ -6,7 +6,7 @@ import Rel.Programs.Detab
 
 namespace Rel.Lang.TestDetab
 
-open Rel Rel.Lang
+open Tab Rel.Lang
 
 /-- The tab width, the program's `m`. -/
 def n : Nat := 4

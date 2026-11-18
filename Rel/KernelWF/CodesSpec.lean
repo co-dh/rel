@@ -17,7 +17,7 @@ open Rel.Ext
 
 namespace Rel.Alg
 
-open Rel Rel.Dep Rel.Kernel Rel.Verify Rel
+open Tab Rel.Dep Rel.Kernel Rel.Verify Rel
 
 /-! ## Atoms: a boolean side -/
 

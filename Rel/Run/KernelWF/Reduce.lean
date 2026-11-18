@@ -10,7 +10,7 @@ open Rel.Ext
 
 namespace Rel.KernelWF
 
-open Rel Rel.Kernel Rel.Kernel.Order Rel
+open Tab Rel.Kernel Rel.Kernel.Order Rel
 
 private theorem toUSize_small {k : Nat} (h : k ≤ 64) : k.toUSize.toNat = k := by
   simp only [Nat.toUSize]
@@ -132,7 +132,7 @@ end Rel.KernelWF
 
 namespace Rel.Ops
 
-open Rel Rel.Dep Rel.Kernel
+open Tab Rel.Dep Rel.Kernel
 
 variable {t : QAtomicType}
 

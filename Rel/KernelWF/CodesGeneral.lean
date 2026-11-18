@@ -9,7 +9,7 @@ import Rel.KernelWF.CodesProd
 
 namespace Rel.Alg
 
-open Rel Rel.Dep Rel.Kernel Rel.Verify Rel
+open Tab Rel.Dep Rel.Kernel Rel.Verify Rel
 
 /-- **`firstIds` read back**: eight bytes an element, element `i`'s first `valEq` position, below the count. -/
 theorem firstIds_get (l : List QValue) (hl : l.length < 2 ^ 64) :

@@ -23,7 +23,7 @@ open Rel.Ext
 
 namespace Rel.Alg
 
-open Rel Rel.Dep Rel.Kernel Rel
+open Tab Rel.Dep Rel.Kernel Rel
 
 /-! ## Long payloads: the index and count columns every step passes along -/
 
@@ -744,7 +744,7 @@ def _root_.Rel.Obj.razeC : (A : Obj) → (cs : Array (Part A)) →
     else false)
 
 /-- The rows of `R` at the index column `i`: `len i` pairs, where that count fits a `USize`. -/
-def _root_.Rel.Rel.rows {k v : Obj} (R : Rel k v) (i : ByteArray) : Rel k v :=
+def _root_.Rel.Tab.rows {k v : Obj} (R : Tab k v) (i : ByteArray) : Tab k v :=
   need (len i < USize.size) (fun _ => s!"rows: {len i} rows do not fit a USize") (fun _ => ⟨0, Vals.empty k, Vals.empty v⟩)
     fun h => ⟨(len i).toUSize, Vals.pick k R.key i _ (USize.toNat_ofNat_of_lt' h).symm,
       Vals.pick v R.val i _ (USize.toNat_ofNat_of_lt' h).symm⟩
@@ -960,11 +960,11 @@ theorem _root_.Rel.Obj.sortByC_snd : (A : Obj) → {n : USize} → (c : Vals A n
   | .sum _ _, _, _, _ => rfl
 
 /-- `|R|` of several relations of one type in one code space, one code per relation. -/
-def pairs {k v : Obj} {p : Nat} (ds : Vector (Rel k v) p) : Vector Code p :=
+def pairs {k v : Obj} {p : Nat} (ds : Vector (Tab k v) p) : Vector Code p :=
   tuples (k.codes (ds.map fun R => ⟨R.n, R.key⟩)) #[v.codes (ds.map fun R => ⟨R.n, R.val⟩)]
 
 /-- `R` with each pair once: the first row of each class of `|R|`. -/
-def _root_.Rel.Rel.nub {k v : Obj} (R : Rel k v) : Rel k v :=
+def _root_.Rel.Tab.nub {k v : Obj} (R : Tab k v) : Tab k v :=
   R.rows (tuples.tupleIds (k.codes #v[⟨_, R.key⟩])[0] #[(v.codes #v[⟨_, R.val⟩])[0]]).2
 
 /-- `join(l, r)`: every pair of a left and a right row with equal codes, as two index columns —

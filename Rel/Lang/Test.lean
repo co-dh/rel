@@ -9,7 +9,7 @@ import Rel.AC3
 
 namespace Rel.Lang.Test
 
-open Rel Rel.Lang Rel.Alg Rel
+open Tab Rel.Lang Rel.Alg Rel
 
 -- the prelude's definitions type-check
 #eval show Lean.Meta.MetaM Unit from do match ← (typesOf none).run with | .error e => throwError "{e}" | .ok _ => pure ()
@@ -35,7 +35,7 @@ def readIn (s : Parse.S) (src : String) : CM (Except Err Program) := do
   | .error e => pure (.error ⟨default, e⟩)
 
 /-- The definition `n` of an expansion at the objects `A ⟶ B`. -/
-def get (gs : List (String × Gen.Gv)) (n : String) (A B : Obj) : Option (Rel A B) := do
+def get (gs : List (String × Gen.Gv)) (n : String) (A B : Obj) : Option (Tab A B) := do
   let (_, ⟨A', B', c⟩) ← gs.find? (·.1 == n)
   if h : A' = A ∧ B' = B then some (h.1 ▸ h.2 ▸ c.rel) else none
 
@@ -754,7 +754,7 @@ rel_program signed where
     mn : Z×Z ⟶ Z ≜ W min
 
 def sameSet {α : Type} [BEq α] (a b : List α) : Bool := a.all b.contains && b.all a.contains
-def ints (R : Rel .long .long) : List (Int × Int) := R.toList.map fun (a, b) => (a.toInt, b.toInt)
+def ints (R : Tab .long .long) : List (Int × Int) := R.toList.map fun (a, b) => (a.toInt, b.toInt)
 
 #guard signed.ok
 #guard signed.prints == ["x = {(a, -3), (a, -1), (b, 2)}", "Λ(x) = {(a, -3 -1), (b, [2])}",
@@ -908,8 +908,8 @@ rel_program pre where
     z : K ⟶ [[N]] ≜ {(a,[1 2] [3] []),(b,[] [])}
     pz : K ⟶ [[N]] ≜ z perm
 
-def same {A B : Obj} (R S : Rel A B) : Bool := R ⊑ S && S ⊑ R
-def is {B : Obj} (gs : List (String × Gen.Gv)) (n : String) (R : Rel .long B) : Bool :=
+def same {A B : Obj} (R S : Tab A B) : Bool := R ⊑ S && S ⊑ R
+def is {B : Obj} (gs : List (String × Gen.Gv)) (n : String) (R : Tab .long B) : Bool :=
   ((get gs n .long B).map (same · R)).getD false
 
 #guard let o := pre.expanded
@@ -1121,7 +1121,7 @@ rel_program muGrow where
 /-- An AC-3 body read from the definitions `gs`: the bound `s`, the arcs `(A, C)` by name, the universes `uv`,
     `ud`. -/
 def acOf (gs : List (String × Gen.Gv)) (s uv ud : String) (arcs : List (String × String)) :
-    Option ((V : Obj) × (D : Obj) × Rel V D × Rel V V × List (Revise V D)) := do
+    Option ((V : Obj) × (D : Obj) × Tab V D × Tab V V × List (Revise V D)) := do
   let (_, ⟨V, D, sR⟩) ← gs.find? (·.1 == s)
   let UV ← get gs uv V V; let UD ← get gs ud D D
   let as ← arcs.mapM fun (a, c) => return (⟨← get gs a V V, ← get gs c D D, UV, UD⟩ : Revise V D)
@@ -1136,20 +1136,20 @@ def acAgree (gs : List (String × Gen.Gv)) (z s uv ud : String) (arcs : List (St
   | none => false
 
 /-- One round's work: the cells divided over `Σₖ |ran(Δ Aₖ)|`, and the rows the divisions join `Σₖ |(Δ Aₖ)° (Δ X Cₖ)|`. -/
-def acWork {V D : Obj} (as : List (Revise V D)) (X : Rel V D) (Δ : Rel V V) : Nat × Nat :=
+def acWork {V D : Obj} (as : List (Revise V D)) (X : Tab V D) (Δ : Tab V V) : Nat × Nat :=
   as.foldl (fun (c, j) a => let R := (Δ ≫ a.A).nub
     (c + (ran R).n.toNat, j + (R° ≫ (Δ ≫ X ≫ a.C).nub).n.toNat)) (0, 0)
 
 /-- The delta rounds' work, until `Δ = 𝟘`. -/
-def deltaTrace {V D : Obj} (as : List (Revise V D)) : Nat → Rel V D → Rel V V → List (Nat × Nat × Nat)
+def deltaTrace {V D : Obj} (as : List (Revise V D)) : Nat → Tab V D → Tab V V → List (Nat × Nat × Nat)
   | 0, _, _ => []
   | f + 1, X, Δ => if Δ.n == 0 then [] else
     let (X', Δ') := acDelta as (X, Δ); let w := acWork as X Δ
     (w.1, w.2, X'.n.toNat) :: deltaTrace as f X' Δ'
 
 /-- The naive rounds' work, until a round leaves the row count. -/
-def naiveTrace {V D : Obj} (s : Rel V D) (as : List (Revise V D)) (U : Rel V V) :
-    Nat → Rel V D → List (Nat × Nat × Nat)
+def naiveTrace {V D : Obj} (s : Tab V D) (as : List (Revise V D)) (U : Tab V V) :
+    Nat → Tab V D → List (Nat × Nat × Nat)
   | 0, _ => []
   | f + 1, X => let X' := (acRound s as X).nub; let w := acWork as X U
     (w.1, w.2, X'.n.toNat) :: if X'.n == X.n then [] else naiveTrace s as U f X'

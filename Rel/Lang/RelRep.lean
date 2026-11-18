@@ -8,7 +8,7 @@ import Rel.Lang.GenSpec
 
 namespace Rel.Lang
 
-open Rel Rel.Alg
+open Tab Rel.Alg
 
 namespace Expand
 

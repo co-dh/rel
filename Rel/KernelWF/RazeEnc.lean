@@ -12,7 +12,7 @@ open Rel.Ext
 
 namespace Rel.KernelWF
 
-open Rel Rel.Kernel Rel.Dep Rel Rel.Alg Rel.Rep
+open Tab Rel.Kernel Rel.Dep Rel Rel.Alg Rel.Rep
 open scoped Rel.Core.Rel
 open Rel.Core.Rel hiding id comp recip inter union zero le inl inr junc
 

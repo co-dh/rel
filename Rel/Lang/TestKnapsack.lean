@@ -7,7 +7,7 @@ import Rel.Programs.Knapsack
 
 namespace Rel.Lang.TestKnapsack
 
-open Rel Rel.Lang Rel.Lang.Test Rel.Alg Rel
+open Tab Rel.Lang Rel.Lang.Test Rel.Alg Rel
 
 /-- The instances of `X`, `K = {a,b,c,d}` coded `0 … 3`, each its items `(value, weight)`. -/
 def items : List (Int64 × List (Int64 × Int64)) :=

@@ -10,7 +10,7 @@ an unfolding of `runB`. -/
 
 namespace Rel.Lang.Plan
 
-open Rel Rel.Kernel
+open Tab Rel.Kernel
 
 /-! ### Reading registers -/
 

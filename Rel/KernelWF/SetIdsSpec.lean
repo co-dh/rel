@@ -7,7 +7,7 @@ import Rel.KernelWF.CodesRec
 
 namespace Rel.Alg
 
-open Rel Rel.Kernel Rel.Verify Rel Rel.KernelWF
+open Tab Rel.Kernel Rel.Verify Rel Rel.KernelWF
 
 -- the long `i` of a column `seg`, the key `gradeBy` sorts by first
 set_option hygiene false in

@@ -19,14 +19,14 @@ open Rel.Ext
 
 namespace Rel.Lang
 
-open Rel Rel.Alg
+open Tab Rel.Alg
 
 /-- The keys a term reads: a coreflexive when it runs on demand, nothing when it is closed. -/
 @[reducible] def Dem : Bool → Obj → Type
-  | true, A => Rel A A
+  | true, A => Tab A A
   | false, _ => Unit
 
-def Dem.of {A : Obj} : (d : Bool) → Rel A A → Dem d A
+def Dem.of {A : Obj} : (d : Bool) → Tab A A → Dem d A
   | true, D => D
   | false, _ => ()
 
@@ -85,13 +85,13 @@ def arrV (B : Obj) (n m : USize) (lo hi : Arr .long n × Bool) (p : Vals B m × 
 def sumV (A B : Obj) (n l r : USize) (tag : Arr .boolean n × Bool) (idx : Arr .long n × Bool) (x : Vals A l × Bool)
     (y : Vals B r × Bool) : Vals (.sum A B) n × Bool :=
   (⟨l, r, tag.1, idx.1, x.1, y.1⟩, tag.2 && idx.2 && x.2 && y.2)
-def relV (A B : Obj) (n : USize) (k : Vals A n × Bool) (v : Vals B n × Bool) : Rel A B × Bool :=
+def relV (A B : Obj) (n : USize) (k : Vals A n × Bool) (v : Vals B n × Bool) : Tab A B × Bool :=
   (⟨n, k.1, v.1⟩, k.2 && v.2)
 
 /-! ### Code -/
 
 def const (A B : Obj) (c : CRel A B) : Fn false A B := fun _ => c
-def val (A B : Obj) (R : Rel A B × Bool) : Fn false A B := fun _ => ofC R
+def val (A B : Obj) (R : Tab A B × Bool) : Fn false A B := fun _ => ofC R
 def uni (A : Obj) (m : USize) (U : Vals A m × Bool) : Fn false A A := fun _ => ⟨idU U.1, U.2⟩
 def zero (A B : Obj) : Fn false A B := fun _ => ⟨Alg.zero, true⟩
 def id (A : Obj) : Fn true A A := fun D => ofC (D, true)

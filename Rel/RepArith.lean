@@ -12,7 +12,7 @@ import Rel.KernelWF.CrossSpec
 
 namespace Rel.Rep
 
-open Rel Rel.Kernel Rel.Verify Rel Rel.Alg Rel.KernelWF
+open Tab Rel.Kernel Rel.Verify Rel Rel.Alg Rel.KernelWF
 
 /-! ## The rows `whereBits` keeps -/
 
@@ -26,7 +26,7 @@ theorem holds_where {K V : Obj} (what : String) (n : USize) (B : ByteArray)
     (hval : ∀ r hr (q : Fin r.toNat), (Column.bitsAt (whereBits n B) (q.1 * 8) 8).toNat < n.toNat →
       (val r hr).row q = h (Column.bitsAt (whereBits n B) (q.1 * 8) 8).toNat)
     (x : K.El) (y : V.El) :
-    (longCount what (whereBits n B) fun r hr => (⟨r, key r hr, val r hr⟩ : Rel K V)).Holds x y ↔
+    (longCount what (whereBits n B) fun r hr => (⟨r, key r hr, val r hr⟩ : Tab K V)).Holds x y ↔
       ∃ t, t < n.toNat ∧ Column.bitAt B t = true ∧ g t = x ∧ h t = y := by
   have hl : len (whereBits n B) < USize.size := Nat.lt_of_le_of_lt (len_whereBits_le B n) n.toNat_lt_size
   rw [longCount_eq _ _ _ hl]
@@ -510,7 +510,7 @@ theorem intStep_ofNat_succ (m : Nat) (hm : m + 1 < 2 ^ 63) :
 
 /-- **The chain `foldOn` leaves for `length`**: `sc` steps from `0` along `xs`, `sc` taking `m` to `m + 1` below `N`,
     end at `xs`'s length, `xs` no longer than `N`. -/
-theorem length_chain (sc : Rel .long .long) (N : Nat)
+theorem length_chain (sc : Tab .long .long) (N : Nat)
     (hsc' : ∀ m w, m < N → (rep sc (Int64.ofNat m) w ↔ w = Int64.ofNat (m + 1)))
     {E : Obj} (xs : List E.El) (hLx : xs.length ≤ N) (w : Int64) :
     (∃ ys : List Int64, ∃ hy : ys.length = xs.length + 1,

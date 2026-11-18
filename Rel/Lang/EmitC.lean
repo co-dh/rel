@@ -10,7 +10,7 @@ It is linked against qlean's `libqleankernel.a` and `qrt.o` (`rust/build.sh rt`)
 
 namespace Rel.Lang.Plan
 
-open Rel
+open Tab
 
 /-- The kernels a plan may call, each read off its `@[extern]` declaration. -/
 def abi : List Kernel :=
@@ -41,7 +41,7 @@ def planOf (chain : List (Lean.Name × Program)) (prog : Program) (x : String) (
 
 /-- The Lean side of the same output: `R`'s columns written by `Db.ownWrite` under the names `output` gives them,
     from the value Lean computed, not from a plan. -/
-def writeRel {A B : Obj} (dir : String) (R : Rel A B) : IO Unit := do
+def writeRel {A B : Obj} (dir : String) (R : Tab A B) : IO Unit := do
   for (side, cs) in [("key", cols A R.key ""), ("val", cols B R.val "")] do
     for (p, v) in cs do
       let f ← IO.ofExcept (ownFile (side ++ p) v)

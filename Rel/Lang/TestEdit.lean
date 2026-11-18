@@ -6,7 +6,7 @@ import Rel.Programs.Edit
 
 namespace Rel.Lang.TestEdit
 
-open Rel Rel.Lang
+open Tab Rel.Lang
 
 /-- The least length of an edit sequence of `(xs, ys)`, each of `cpy`, `del`, `ins` costing one: every
     operation that applies at the heads, the cheapest rest taken. A copy is one choice among three, not

@@ -8,7 +8,7 @@ import Rel.RepE
 
 namespace Rel.Rep
 
-open Rel Rel.Kernel Rel.Verify Rel Rel.Alg Rel.KernelWF
+open Tab Rel.Kernel Rel.Verify Rel Rel.Alg Rel.KernelWF
 
 /-! ## `tail`, `pairsIn`, `swapIn`, `estOn`, `est`, `thinOn`, `thin` -/
 
@@ -33,14 +33,14 @@ theorem rep_tail {B : Obj} {n : USize} (X : Vals (.arr B) n)
 
 /-- **`rep (pairsIn Q D)`: the pairs of `D` that are pairs of `Q`**: `pairsIn Q D` is `D ≫ idU (Q.key, Q.val)`
     (`rep_comp`, `rep_idU`). Hypotheses: `rep_comp`'s. -/
-theorem rep_pairsIn {B : Obj} (Q : Rel B B) (D : Rel (.prod B B) (.prod B B))
-    (h : cmpOK(.prod B B, D, idU (t := .prod B B) (m := Rel.n Q) (Rel.key Q, Rel.val Q))) :
+theorem rep_pairsIn {B : Obj} (Q : Tab B B) (D : Tab (.prod B B) (.prod B B))
+    (h : cmpOK(.prod B B, D, idU (t := .prod B B) (m := n Q) (Tab.key Q, val Q))) :
     ∀ p p', rep (pairsIn Q D) p p' ↔ rep D p p' ∧ rep Q p'.1 p'.2 := by
   obtain ⟨hf, h'⟩ := h
   obtain ⟨h1, h2, h3, h4⟩ := h' _ rfl
   have e := rep_comp _ _ (codes_faithful_wf _ _ hf).1 h1 h2 h3 h4
   intro p p'
-  rw [show pairsIn Q D = D ≫ idU (t := .prod B B) (m := Rel.n Q) (Rel.key Q, Rel.val Q) from rfl, e,
+  rw [show pairsIn Q D = D ≫ idU (t := .prod B B) (m := n Q) (Tab.key Q, val Q) from rfl, e,
     Core.Rel.comp_apply]
   constructor
   · rintro ⟨w, hw, hu⟩
@@ -53,10 +53,10 @@ theorem rep_pairsIn {B : Obj} (Q : Rel B B) (D : Rel (.prod B B) (.prod B B))
     second component and `v` a first component of a pair `D` gives `p`, the test `q E` relates `(u, v)` to
     something; `s`, `E`, `M` bound by their equations as `swapIn` builds them. Hypotheses: `rep_pair`'s at `s`,
     `rep_comp`'s at `M`, `rep_dom`'s at `M`. -/
-theorem rep_swapIn {B : Obj} (q : Rel (.prod B B) (.prod B B) → Rel (.prod B B) (.prod B B))
-    (D : Rel (.prod B B) (.prod B B)) (s : Rel (.prod B B) (.prod B B)) (hs : s = pair (outr D) (outl D))
-    (E : Rel (.prod B B) (.prod B B)) (hE : E = ran s) (M : Rel (.prod B B) (.prod B B)) (hM : M = s ≫ q E)
-    (h : pairOK(.prod B B, outr D, outl D) ∧ cmpOK(.prod B B, s, q E) ∧ oneFit(.prod B B, Rel.n M, Rel.key M)) :
+theorem rep_swapIn {B : Obj} (q : Tab (.prod B B) (.prod B B) → Tab (.prod B B) (.prod B B))
+    (D : Tab (.prod B B) (.prod B B)) (s : Tab (.prod B B) (.prod B B)) (hs : s = pair (outr D) (outl D))
+    (E : Tab (.prod B B) (.prod B B)) (hE : E = ran s) (M : Tab (.prod B B) (.prod B B)) (hM : M = s ≫ q E)
+    (h : pairOK(.prod B B, outr D, outl D) ∧ cmpOK(.prod B B, s, q E) ∧ oneFit(.prod B B, n M, Tab.key M)) :
     ∀ p p', rep (swapIn q D) p p' ↔
       p = p' ∧ ∃ u v w, ((∃ y, rep D p (y, u)) ∧ ∃ z, rep D p (v, z)) ∧ rep (q E) (u, v) w := by
   obtain ⟨⟨hpf, hp'⟩, ⟨hcf, hc'⟩, hdf, hdp⟩ := h
@@ -78,13 +78,13 @@ theorem rep_swapIn {B : Obj} (q : Rel (.prod B B) (.prod B B) → Rel (.prod B B
     `q D` at itself, `D` the coreflexive on the pairs of values of one key. The intermediates are bound as
     `estOn` builds them. Hypotheses: `rep_pair`'s at `P`, `W`; `rep_ran`'s at `D`, `V`, `N`; `rep_diff`'s at
     `Y`, `Z` and the result; `rep_comp`'s at `M`. -/
-theorem rep_estOn {A B : Obj} (q : Rel (.prod B B) (.prod B B) → Rel (.prod B B) (.prod B B)) (G : Rel A B)
-    (P : Rel A (.prod B B)) (hP : P = pair G G) (D : Rel (.prod B B) (.prod B B)) (hD : D = ran P)
-    (V : Rel B B) (hV : V = ran G) (W : Rel B (.prod B B)) (hW : W = pair V V)
-    (N : Rel (.prod B B) (.prod B B)) (hN : N = ran W) (Y : Rel (.prod B B) (.prod B B)) (hY : Y = D \ q D)
-    (Z : Rel (.prod B B) (.prod B B)) (hZ : Z = Y \ N) (M : Rel A B) (hM : M = P ≫ outl Z)
-    (h : pairOK(A, G, G) ∧ oneFit(.prod B B, Rel.n P, Rel.val P) ∧ oneFit(B, Rel.n G, Rel.val G) ∧
-      pairOK(B, V, V) ∧ oneFit(.prod B B, Rel.n W, Rel.val W) ∧ diffOK(.prod B B, .prod B B, D, q D) ∧
+theorem rep_estOn {A B : Obj} (q : Tab (.prod B B) (.prod B B) → Tab (.prod B B) (.prod B B)) (G : Tab A B)
+    (P : Tab A (.prod B B)) (hP : P = pair G G) (D : Tab (.prod B B) (.prod B B)) (hD : D = ran P)
+    (V : Tab B B) (hV : V = ran G) (W : Tab B (.prod B B)) (hW : W = pair V V)
+    (N : Tab (.prod B B) (.prod B B)) (hN : N = ran W) (Y : Tab (.prod B B) (.prod B B)) (hY : Y = D \ q D)
+    (Z : Tab (.prod B B) (.prod B B)) (hZ : Z = Y \ N) (M : Tab A B) (hM : M = P ≫ outl Z)
+    (h : pairOK(A, G, G) ∧ oneFit(.prod B B, n P, val P) ∧ oneFit(B, n G, val G) ∧
+      pairOK(B, V, V) ∧ oneFit(.prod B B, n W, val W) ∧ diffOK(.prod B B, .prod B B, D, q D) ∧
       diffOK(.prod B B, .prod B B, Y, N) ∧ cmpOK(.prod B B, P, outl Z) ∧ diffOK(A, B, G, M)) :
     ∀ a b, rep (estOn q G) a b ↔ rep G a b ∧ ¬ ∃ c, rep G a c ∧ c ≠ b ∧ ¬ rep (q D) (b, c) (b, c) := by
   obtain ⟨⟨hPf, hP'⟩, ⟨hDf, hDp⟩, ⟨hVf, hVp⟩, ⟨hWf, hW'⟩, ⟨hNf, hNp⟩, hY', hZ', ⟨hMf, hM'⟩, hE'⟩ := h
@@ -142,16 +142,16 @@ theorem rep_estOn {A B : Obj} (q : Rel (.prod B B) (.prod B B) → Rel (.prod B 
 
 /-- **`rep (est Q G)`: the values `b` of `a` with `b Q c` for every other value `c` of `a`**: `rep_estOn` at
     `q := pairsIn Q` (`rep_pairsIn`). Hypotheses: `rep_estOn`'s, then `rep_pairsIn`'s at `D`. -/
-theorem rep_est {A B : Obj} (Q : Rel B B) (G : Rel A B)
-    (P : Rel A (.prod B B)) (hP : P = pair G G) (D : Rel (.prod B B) (.prod B B)) (hD : D = ran P)
-    (V : Rel B B) (hV : V = ran G) (W : Rel B (.prod B B)) (hW : W = pair V V)
-    (N : Rel (.prod B B) (.prod B B)) (hN : N = ran W) (Y : Rel (.prod B B) (.prod B B))
-    (hY : Y = D \ pairsIn Q D) (Z : Rel (.prod B B) (.prod B B)) (hZ : Z = Y \ N) (M : Rel A B)
+theorem rep_est {A B : Obj} (Q : Tab B B) (G : Tab A B)
+    (P : Tab A (.prod B B)) (hP : P = pair G G) (D : Tab (.prod B B) (.prod B B)) (hD : D = ran P)
+    (V : Tab B B) (hV : V = ran G) (W : Tab B (.prod B B)) (hW : W = pair V V)
+    (N : Tab (.prod B B) (.prod B B)) (hN : N = ran W) (Y : Tab (.prod B B) (.prod B B))
+    (hY : Y = D \ pairsIn Q D) (Z : Tab (.prod B B) (.prod B B)) (hZ : Z = Y \ N) (M : Tab A B)
     (hM : M = P ≫ outl Z)
-    (h : pairOK(A, G, G) ∧ oneFit(.prod B B, Rel.n P, Rel.val P) ∧ oneFit(B, Rel.n G, Rel.val G) ∧
-      pairOK(B, V, V) ∧ oneFit(.prod B B, Rel.n W, Rel.val W) ∧ diffOK(.prod B B, .prod B B, D, pairsIn Q D) ∧
+    (h : pairOK(A, G, G) ∧ oneFit(.prod B B, n P, val P) ∧ oneFit(B, n G, val G) ∧
+      pairOK(B, V, V) ∧ oneFit(.prod B B, n W, val W) ∧ diffOK(.prod B B, .prod B B, D, pairsIn Q D) ∧
       diffOK(.prod B B, .prod B B, Y, N) ∧ cmpOK(.prod B B, P, outl Z) ∧ diffOK(A, B, G, M))
-    (hq : cmpOK(.prod B B, D, idU (t := .prod B B) (m := Rel.n Q) (Rel.key Q, Rel.val Q))) :
+    (hq : cmpOK(.prod B B, D, idU (t := .prod B B) (m := n Q) (Tab.key Q, val Q))) :
     ∀ a b, rep (est Q G) a b ↔ rep G a b ∧ ∀ c, rep G a c → c ≠ b → rep Q b c := by
   obtain ⟨p1, p2, p3, p4, p5⟩ := h.1.2 _ rfl
   have hd : ∀ a b c, rep G a b → rep G a c → rep D (b, c) (b, c) := fun a b c hb hc => by
@@ -168,10 +168,10 @@ theorem rep_est {A B : Obj} (Q : Rel B B) (G : Rel A B)
 /-- **`rep (thinOn q G)`**: `(a, c)` of `G` is kept unless some pair `(b, b')` of values of `a` passes the test
     `q D` to `(y, c)` and not `swapIn q D`. The intermediates are bound as `thinOn` builds them; `S`'s read-back
     is `rep_swapIn`. Hypotheses: `rep_pair`'s at `P`; `rep_diff`'s at `Y` and the result; `rep_comp`'s at `M`. -/
-theorem rep_thinOn {A B : Obj} (q : Rel (.prod B B) (.prod B B) → Rel (.prod B B) (.prod B B)) (G : Rel A B)
-    (P : Rel A (.prod B B)) (hP : P = pair G G) (D : Rel (.prod B B) (.prod B B)) (hD : D = ran P)
-    (S : Rel (.prod B B) (.prod B B)) (hS : S = swapIn q D) (Y : Rel (.prod B B) (.prod B B)) (hY : Y = q D \ S)
-    (M : Rel A B) (hM : M = P ≫ outr Y)
+theorem rep_thinOn {A B : Obj} (q : Tab (.prod B B) (.prod B B) → Tab (.prod B B) (.prod B B)) (G : Tab A B)
+    (P : Tab A (.prod B B)) (hP : P = pair G G) (D : Tab (.prod B B) (.prod B B)) (hD : D = ran P)
+    (S : Tab (.prod B B) (.prod B B)) (hS : S = swapIn q D) (Y : Tab (.prod B B) (.prod B B)) (hY : Y = q D \ S)
+    (M : Tab A B) (hM : M = P ≫ outr Y)
     (h : pairOK(A, G, G) ∧ diffOK(.prod B B, .prod B B, q D, S) ∧ cmpOK(.prod B B, P, outr Y) ∧
       diffOK(A, B, G, M)) :
     ∀ a c, rep (thinOn q G) a c ↔ rep G a c ∧
@@ -208,20 +208,20 @@ theorem rep_thinOn {A B : Obj} (q : Rel (.prod B B) (.prod B B) → Rel (.prod B
     dropped when some value `b` of `a` has `b Q c` and not `c Q b`. `rep_thinOn` at `q := pairsIn Q`, `rep_swapIn`
     there, `rep_pairsIn` at `D` and at `E`. Hypotheses: `rep_thinOn`'s, `rep_swapIn`'s, `rep_ran`'s at `D` and
     `E`, `rep_pairsIn`'s at `D` and `E`. -/
-theorem rep_thin {A B : Obj} (Q : Rel B B) (G : Rel A B)
-    (P : Rel A (.prod B B)) (hP : P = pair G G) (D : Rel (.prod B B) (.prod B B)) (hD : D = ran P)
-    (s : Rel (.prod B B) (.prod B B)) (hs : s = pair (outr D) (outl D))
-    (E : Rel (.prod B B) (.prod B B)) (hE : E = ran s) (Ms : Rel (.prod B B) (.prod B B))
+theorem rep_thin {A B : Obj} (Q : Tab B B) (G : Tab A B)
+    (P : Tab A (.prod B B)) (hP : P = pair G G) (D : Tab (.prod B B) (.prod B B)) (hD : D = ran P)
+    (s : Tab (.prod B B) (.prod B B)) (hs : s = pair (outr D) (outl D))
+    (E : Tab (.prod B B) (.prod B B)) (hE : E = ran s) (Ms : Tab (.prod B B) (.prod B B))
     (hMs : Ms = s ≫ pairsIn Q E)
-    (S : Rel (.prod B B) (.prod B B)) (hS : S = swapIn (pairsIn Q) D) (Y : Rel (.prod B B) (.prod B B))
-    (hY : Y = pairsIn Q D \ S) (M : Rel A B) (hM : M = P ≫ outr Y)
+    (S : Tab (.prod B B) (.prod B B)) (hS : S = swapIn (pairsIn Q) D) (Y : Tab (.prod B B) (.prod B B))
+    (hY : Y = pairsIn Q D \ S) (M : Tab A B) (hM : M = P ≫ outr Y)
     (h : pairOK(A, G, G) ∧ diffOK(.prod B B, .prod B B, pairsIn Q D, S) ∧ cmpOK(.prod B B, P, outr Y) ∧
       diffOK(A, B, G, M))
     (hsw : pairOK(.prod B B, outr D, outl D) ∧ cmpOK(.prod B B, s, pairsIn Q E) ∧
-      oneFit(.prod B B, Rel.n Ms, Rel.key Ms))
-    (hDf : oneFit(.prod B B, Rel.n P, Rel.val P)) (hEf : oneFit(.prod B B, Rel.n s, Rel.val s))
-    (hqD : cmpOK(.prod B B, D, idU (t := .prod B B) (m := Rel.n Q) (Rel.key Q, Rel.val Q)))
-    (hqE : cmpOK(.prod B B, E, idU (t := .prod B B) (m := Rel.n Q) (Rel.key Q, Rel.val Q))) :
+      oneFit(.prod B B, n Ms, Tab.key Ms))
+    (hDf : oneFit(.prod B B, n P, val P)) (hEf : oneFit(.prod B B, n s, val s))
+    (hqD : cmpOK(.prod B B, D, idU (t := .prod B B) (m := n Q) (Tab.key Q, val Q)))
+    (hqE : cmpOK(.prod B B, E, idU (t := .prod B B) (m := n Q) (Tab.key Q, val Q))) :
     ∀ a c, rep (thin Q G) a c ↔ rep G a c ∧ ¬ ∃ b, rep G a b ∧ rep Q b c ∧ ¬ rep Q c b := by
   obtain ⟨p1, p2, p3, p4, p5⟩ := h.1.2 _ rfl
   obtain ⟨s1, s2, s3, s4, s5⟩ := hsw.1.2 _ rfl

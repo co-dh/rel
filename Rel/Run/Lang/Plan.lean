@@ -10,7 +10,7 @@ table `kernel%` builds from their declarations, and `relc` (`Rel/Lang/EmitC`) pr
 
 namespace Rel.Lang.Plan
 
-open Lean Elab Term Meta Rel Rel.Kernel
+open Lean Elab Term Meta Tab Rel.Kernel
 
 /-- A register's type: the argument and result types of the kernels' `@[extern]` declarations. -/
 inductive Ty
@@ -376,7 +376,7 @@ def valsRegs : (A : Obj) → {n : USize} → Vals A n → Option (Array Val)
       (← valsRegs a x) ++ (← valsRegs b y)
 
 /-- A relation's registers: its count, its key side's, its value side's. -/
-def relRegs {A B : Obj} (R : Rel A B) : Option (Array Val) :=
+def relRegs {A B : Obj} (R : Tab A B) : Option (Array Val) :=
   return #[.size R.n] ++ (← valsRegs A R.key) ++ (← valsRegs B R.val)
 
 /-- `need`'s test on the bit `c`: set, nothing runs; clear, `fail msg args`. -/

@@ -7,7 +7,7 @@ import Rel.Run.CRelRelDef
 
 namespace Rel.CanonTest
 
-open Rel
+open Tab
 
 /-- A table of pairs, through `ofC` like every op's answer. -/
 def mk (ps : List (Int64 × Int64)) : CRel .long .long := CRel.ofC (Alg.ofPairs ps, true)

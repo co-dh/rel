@@ -7,7 +7,7 @@ import Rel.CRelLoop
 
 namespace Rel
 
-open Rel Rel.Kernel Rel.Verify Rel Rel.Alg Rel.KernelWF
+open Tab Rel.Kernel Rel.Verify Rel Rel.Alg Rel.KernelWF
 open scoped Rel.Core.Rel
 open Rel.Core.Rel hiding id comp recip inter union zero le inl inr junc
 open Rel.Rep Rel.Rep.FoldN Rel.Rep.OpsN Rel.Rep.Prim Rel.Rep.ListN
@@ -215,23 +215,23 @@ theorem thinTwoDen_eq {B : Obj} (le : B.El → B.El → Bool) : thinTwoDen le = 
 /-! ## The steps' read-backs -/
 
 /-- `R` on the states `P`, the function `f` there: the read-back each piece of `thinAC`, `thinKC` has. -/
-abbrev FnOn {A B : Obj} (R : Rel A B) (P : A.El → Prop) (f : A.El → B.El) : Prop :=
+abbrev FnOn {A B : Obj} (R : Tab A B) (P : A.El → Prop) (f : A.El → B.El) : Prop :=
   ∀ s z, rep R s z ↔ P s ∧ z = f s
 
-theorem fnOn_congr {A B : Obj} {R : Rel A B} {P P' : A.El → Prop} {f : A.El → B.El} (h : FnOn R P f)
+theorem fnOn_congr {A B : Obj} {R : Tab A B} {P P' : A.El → Prop} {f : A.El → B.El} (h : FnOn R P f)
     (hP : ∀ s, P s ↔ P' s) : FnOn R P' f := fun s z => (h s z).trans (and_congr_left' (hP s))
 
-theorem fnOn_outl {A B C : Obj} {T : Rel A (.prod B C)} {P : A.El → Prop} {f : A.El → (Obj.prod B C).El}
+theorem fnOn_outl {A B C : Obj} {T : Tab A (.prod B C)} {P : A.El → Prop} {f : A.El → (Obj.prod B C).El}
     (h : FnOn T P f) : FnOn (outl T) P fun s => (f s).1 := fun s z =>
   (outl_holds T s z).trans ⟨fun ⟨w, hw⟩ => by obtain ⟨hp, e⟩ := (h _ _).1 hw; exact ⟨hp, congrArg Prod.fst e⟩,
     fun ⟨hp, e⟩ => ⟨(f s).2, (h _ _).2 ⟨hp, by rw [e]⟩⟩⟩
 
-theorem fnOn_outr {A B C : Obj} {T : Rel A (.prod B C)} {P : A.El → Prop} {f : A.El → (Obj.prod B C).El}
+theorem fnOn_outr {A B C : Obj} {T : Tab A (.prod B C)} {P : A.El → Prop} {f : A.El → (Obj.prod B C).El}
     (h : FnOn T P f) : FnOn (outr T) P fun s => (f s).2 := fun s z =>
   (outr_holds T s z).trans ⟨fun ⟨w, hw⟩ => by obtain ⟨hp, e⟩ := (h _ _).1 hw; exact ⟨hp, congrArg Prod.snd e⟩,
     fun ⟨hp, e⟩ => ⟨(f s).1, (h _ _).2 ⟨hp, by rw [e]⟩⟩⟩
 
-theorem fnOn_comp {A B C : Obj} {R : Rel A B} {S : Rel B C} {P Q : A.El → Prop} {f : A.El → B.El}
+theorem fnOn_comp {A B C : Obj} {R : Tab A B} {S : Tab B C} {P Q : A.El → Prop} {f : A.El → B.El}
     {g : A.El → C.El} (hR : FnOn R P f) (hS : ∀ s, P s → ∀ z, rep S (f s) z ↔ Q s ∧ z = g s)
     (hb : (compC R S).2 = true) : FnOn (compC R S).1 (fun s => P s ∧ Q s) g := fun s z => by
   rw [rep_compC _ _ hb, comp_apply]
@@ -243,7 +243,7 @@ theorem fnOn_comp {A B C : Obj} {R : Rel A B} {S : Rel B C} {P Q : A.El → Prop
   · rintro ⟨⟨hp, hq⟩, e⟩
     exact ⟨f s, (hR _ _).2 ⟨hp, rfl⟩, (hS s hp z).2 ⟨hq, e⟩⟩
 
-theorem fnOn_pair {A B C : Obj} {R : Rel A B} {S : Rel A C} {P Q : A.El → Prop} {f : A.El → B.El}
+theorem fnOn_pair {A B C : Obj} {R : Tab A B} {S : Tab A C} {P Q : A.El → Prop} {f : A.El → B.El}
     {g : A.El → C.El} (hR : FnOn R P f) (hS : FnOn S Q g) (hb : (pairC R S).2 = true) :
     FnOn (pairC R S).1 (fun s => P s ∧ Q s) fun s => (f s, g s) := fun s z => by
   obtain ⟨z1, z2⟩ := z
@@ -252,7 +252,7 @@ theorem fnOn_pair {A B C : Obj} {R : Rel A B} {S : Rel A C} {P Q : A.El → Prop
   rw [hR, hS, Prod.mk.injEq]
   exact ⟨fun ⟨⟨hp, e1⟩, hq, e2⟩ => ⟨⟨hp, hq⟩, e1, e2⟩, fun ⟨⟨hp, hq⟩, e1, e2⟩ => ⟨⟨hp, e1⟩, hq, e2⟩⟩
 
-theorem fnOn_snoc {K B : Obj} {T : Rel K (.prod (.arr B) B)} {P : K.El → Prop} {f : K.El → List B.El}
+theorem fnOn_snoc {K B : Obj} {T : Tab K (.prod (.arr B) B)} {P : K.El → Prop} {f : K.El → List B.El}
     {g : K.El → B.El} (hT : FnOn T P fun s => (f s, g s)) (hb : (snocC T).2 = true) :
     FnOn (snocC T).1 P fun s => f s ++ [g s] := fun s z => by
   rw [rep_snocC _ hb]
@@ -275,13 +275,13 @@ theorem fnOn_top {A B : Obj} {ma mb : USize} (Ua : Vals A ma) (Ub : Vals B mb) (
   · rintro ⟨hs, e⟩
     exact ⟨s, ⟨rfl, hs⟩, by rw [comp_apply]; exact ⟨z, trivial, rfl, (hk z).2 e⟩⟩
 
-theorem fnOn_dom {A B : Obj} {R : Rel A B} {P : A.El → Prop} {f : A.El → B.El} (hR : FnOn R P f)
+theorem fnOn_dom {A B : Obj} {R : Tab A B} {P : A.El → Prop} {f : A.El → B.El} (hR : FnOn R P f)
     (hb : (domC R).2 = true) : FnOn (domC R).1 P fun s => s := fun s z => by
   rw [(rep_domC _ hb).trans (dom_corefl _)]
   show s = z ∧ (∃ b, rep R s b) ↔ _
   exact ⟨fun ⟨e, b, h⟩ => ⟨((hR _ _).1 h).1, e.symm⟩, fun ⟨hp, e⟩ => ⟨e.symm, f s, (hR _ _).2 ⟨hp, rfl⟩⟩⟩
 
-theorem fnOn_diff {A : Obj} {C1 C2 : Rel A A} {P Q : A.El → Prop} (h1 : FnOn C1 P fun s => s)
+theorem fnOn_diff {A : Obj} {C1 C2 : Tab A A} {P Q : A.El → Prop} (h1 : FnOn C1 P fun s => s)
     (h2 : FnOn C2 Q fun s => s) (hb : (diffC C1 C2).2 = true) :
     FnOn (diffC C1 C2).1 (fun s => P s ∧ ¬ Q s) fun s => s := fun s z => by
   rw [rep_diffC _ _ hb, h1, h2]
@@ -289,13 +289,13 @@ theorem fnOn_diff {A : Obj} {C1 C2 : Rel A A} {P Q : A.El → Prop} (h1 : FnOn C
   · rintro ⟨⟨hp, rfl⟩, hn⟩; exact ⟨⟨hp, fun hq => hn ⟨hq, rfl⟩⟩, rfl⟩
   · rintro ⟨⟨hp, hn⟩, rfl⟩; exact ⟨⟨hp, rfl⟩, fun ⟨hq, _⟩ => hn hq⟩
 
-theorem fnOn_union {A B : Obj} {R S : Rel A B} {P Q : A.El → Prop} {f : A.El → B.El} (h1 : FnOn R P f)
+theorem fnOn_union {A B : Obj} {R S : Tab A B} {P Q : A.El → Prop} {f : A.El → B.El} (h1 : FnOn R P f)
     (h2 : FnOn S Q f) (hb : (unionC R S).2 = true) : FnOn (unionC R S).1 (fun s => P s ∨ Q s) f := fun s z => by
   rw [rep_unionC _ _ hb]
   show rep R s z ∨ rep S s z ↔ _
   rw [h1, h2]; exact or_and_right.symm
 
-theorem fnOn_union_if {A B : Obj} {R S : Rel A B} {P Q : A.El → Prop} [DecidablePred Q] {f g : A.El → B.El}
+theorem fnOn_union_if {A B : Obj} {R S : Tab A B} {P Q : A.El → Prop} [DecidablePred Q] {f g : A.El → B.El}
     (h1 : FnOn R (fun s => P s ∧ Q s) f) (h2 : FnOn S (fun s => P s ∧ ¬ Q s) g) (hb : (unionC R S).2 = true) :
     FnOn (unionC R S).1 P fun s => if Q s then f s else g s := fun s z => by
   rw [rep_unionC _ _ hb]
@@ -303,11 +303,11 @@ theorem fnOn_union_if {A B : Obj} {R S : Rel A B} {P Q : A.El → Prop} [Decidab
   rw [h1, h2]
   by_cases hq : Q s <;> simp [hq]
 
-theorem fnOn_corefl {A : Obj} {C : Rel A A} {P : A.El → Prop} (h : ∀ s s', rep C s s' ↔ s = s' ∧ P s) :
+theorem fnOn_corefl {A : Obj} {C : Tab A A} {P : A.El → Prop} (h : ∀ s s', rep C s s' ↔ s = s' ∧ P s) :
     FnOn C P fun s => s := fun s z => (h s z).trans ⟨fun ⟨e, hp⟩ => ⟨hp, e.symm⟩, fun ⟨hp, e⟩ => ⟨e.symm, hp⟩⟩
 
 /-- A coreflexive `D` is the identity on the states it holds. -/
-theorem fnOn_self {A : Obj} {D : Rel A A} (hD : ∀ s s', rep D s s' → s = s') :
+theorem fnOn_self {A : Obj} {D : Tab A A} (hD : ∀ s s', rep D s s' → s = s') :
     FnOn D (fun s => rep D s s) fun s => s := fun s z =>
   ⟨fun h => ⟨by obtain rfl := hD _ _ h; exact h, (hD _ _ h).symm⟩, fun ⟨h, e⟩ => e ▸ h⟩
 
@@ -321,7 +321,7 @@ theorem col_one_row (k b : Int64) : (∃ j, Vals.row (A := .atom .long) (col [k]
     exact ⟨⟨0, by simp⟩, by rw [Vals.row_atom, col_get [k] h1, e]; rfl⟩
 
 /-- `idU (col [k])` on a value of `R`: the values equal to `k`. -/
-theorem fnOn_compK {A : Obj} {R : Rel A .long} {P : A.El → Prop} {f : A.El → Int64} (k : Int64)
+theorem fnOn_compK {A : Obj} {R : Tab A .long} {P : A.El → Prop} {f : A.El → Int64} (k : Int64)
     (hR : FnOn R P f) (hb : (compC R (idU (col [k]))).2 = true) :
     FnOn (compC R (idU (col [k]))).1 (fun s => P s ∧ f s = k) f :=
   fnOn_comp hR (fun s _ z => by
@@ -343,7 +343,7 @@ theorem snoc_eq_iff {α : Type _} (xs bs : List α) (b d : α) :
 /-- **`thinKC`'s step on a coreflexive `D`, read back under its bit**: `thinK` on the states of `D` whose actions are
     not empty, each piece read back by its twin's lemma. -/
 theorem thinKC_rep {B : Obj}
-    (D : Rel (.prod (.prod (.prod (.arr B) .long) (.arr .long)) B)
+    (D : Tab (.prod (.prod (.prod (.arr B) .long) (.arr .long)) B)
       (.prod (.prod (.prod (.arr B) .long) (.arr .long)) B))
     (hD : ∀ s s', rep D s s' → s = s') (hb : (thinKC D).2 = true) :
     FnOn (thinKC D).1 (fun s => rep D s s ∧ s.1.2 ≠ []) thinK := by
@@ -392,11 +392,11 @@ theorem thinKC_rep {B : Obj}
     output piece read back by its twin's lemma. `hq` is the test's own spec: where `q`'s bit is set, `q` on a
     coreflexive keeps the pairs of it `le` holds of. -/
 theorem thinAC_rep {B : Obj}
-    (q : Rel (.prod B B) (.prod B B) → Rel (.prod B B) (.prod B B) × Bool) (le : B.El → B.El → Bool)
-    (hq : ∀ (D : Rel (.prod B B) (.prod B B)) (S : (Obj.prod B B).El → Prop),
+    (q : Tab (.prod B B) (.prod B B) → Tab (.prod B B) (.prod B B) × Bool) (le : B.El → B.El → Bool)
+    (hq : ∀ (D : Tab (.prod B B) (.prod B B)) (S : (Obj.prod B B).El → Prop),
       rep D = corefl (α := (Obj.prod B B).El) S → (q D).2 = true →
       ∀ a b, S (a, b) → ((∃ c, rep (q D).1 (a, b) c) ↔ le a b = true))
-    (D : Rel (.prod B (.prod (.arr B) (.arr .long))) (.prod B (.prod (.arr B) (.arr .long))))
+    (D : Tab (.prod B (.prod (.arr B) (.arr .long))) (.prod B (.prod (.arr B) (.arr .long))))
     (hD : ∀ s s', rep D s s' → s = s') (hb : (thinAC q D).2 = true) :
     ∀ x (h : List B.El) (as : List Int64) v, rep (thinAC q D).1 (x, (h, as)) v ↔
       rep D (x, (h, as)) (x, (h, as)) ∧ thinAStep le (x, (h, as)) v := by
@@ -428,15 +428,15 @@ theorem thinAC_rep {B : Obj}
   have hDn := fnOn_corefl eDn
   have hLone := fnOn_corefl eLone
   -- a state of `D` is a key of `D`
-  have hkey : ∀ s, rep D s s → ∃ i, (Rel.key D).row i = s := fun s ⟨i, hk, _⟩ => ⟨i, hk⟩
+  have hkey : ∀ s, rep D s s → ∃ i, (Tab.key D).row i = s := fun s ⟨i, hk, _⟩ => ⟨i, hk⟩
   have hNil : ∀ b, (∃ j, (nilVal B).row j = b) ↔ b = [] :=
     fun b => ⟨fun ⟨j, h⟩ => by rw [← h, nilVal_row], fun h => ⟨⟨0, by simp⟩, by rw [nilVal_row, h]⟩⟩
   -- `x` pushed or replacing: `h` becomes `[x]`; the action appended: 0 (`lone`), 1 (`up`), 2 (`down`)
-  have hSG := fnOn_snoc (fnOn_pair (fnOn_top (Rel.key D) (nilVal B) ([] : List B.El) hNil hN)
+  have hSG := fnOn_snoc (fnOn_pair (fnOn_top (Tab.key D) (nilVal B) ([] : List B.El) hNil hN)
     (fnOn_comp (fnOn_union hLone hUp hpu) (fun s _ => hx s) hpa) hnp) hsg
-  have hC0 := fnOn_comp hLone (fun s _ => fnOn_top (B := .atom .long) (Rel.key D) (col [(0 : Int64)]) 0 (col_one_row 0) hK0 s) hc0
-  have hC1 := fnOn_comp hUp (fun s _ => fnOn_top (B := .atom .long) (Rel.key D) (col [(1 : Int64)]) 1 (col_one_row 1) hK1 s) hc1
-  have hC2 := fnOn_comp hDn (fun s _ => fnOn_top (B := .atom .long) (Rel.key D) (col [(2 : Int64)]) 2 (col_one_row 2) hK2 s) hc2
+  have hC0 := fnOn_comp hLone (fun s _ => fnOn_top (B := .atom .long) (Tab.key D) (col [(0 : Int64)]) 0 (col_one_row 0) hK0 s) hc0
+  have hC1 := fnOn_comp hUp (fun s _ => fnOn_top (B := .atom .long) (Tab.key D) (col [(1 : Int64)]) 1 (col_one_row 1) hK1 s) hc1
+  have hC2 := fnOn_comp hDn (fun s _ => fnOn_top (B := .atom .long) (Tab.key D) (col [(2 : Int64)]) 2 (col_one_row 2) hK2 s) hc2
   have hO2 := fnOn_pair (fnOn_comp hDn (fun s _ => hh s) hdh) (fnOn_snoc (fnOn_pair has hC2 hdc) hsd) ho2
   -- `up` and `lone` are disjoint, so the action of the first branch is 0 on `lone`, else 1
   have hUL : ∀ s : (Obj.prod B (.prod (.arr B) (.arr .long))).El,
@@ -450,7 +450,7 @@ theorem thinAC_rep {B : Obj}
     exact fnOn_union_if
       (P := fun s : (Obj.prod B (.prod (.arr B) (.arr .long))).El =>
         (rep D s s ∧ ((s.2.1 = [] ∨ ∃ b bs, s.2.1 = b :: bs ∧ le s.1 b = false ∧ le b s.1 = false) ∨
-          ∃ b bs, s.2.1 = b :: bs ∧ le s.1 b = true)) ∧ ∃ i, (Rel.key D).row i = s)
+          ∃ b bs, s.2.1 = b :: bs ∧ le s.1 b = true)) ∧ ∃ i, (Tab.key D).row i = s)
       (Q := fun s : (Obj.prod B (.prod (.arr B) (.arr .long))).El =>
         s.2.1 = [] ∨ ∃ b bs, s.2.1 = b :: bs ∧ le s.1 b = false ∧ le b s.1 = false)
       (fnOn_congr hC0 fun s => ⟨fun ⟨⟨d, l⟩, k⟩ => ⟨⟨⟨d, Or.inl l⟩, k⟩, l⟩, fun ⟨⟨⟨d, _⟩, k⟩, l⟩ => ⟨⟨d, l⟩, k⟩⟩)
@@ -476,9 +476,9 @@ theorem thinAC_rep {B : Obj}
 /-- **`thinLOn` under `thinLOnC`'s bit**: the right fold of `thinAC` (`rep_foldOnC`, each step by `thinAC_rep`)
     leaves the actions, the `loop` of `thinKC` (`rep_loopOnC`, each step by `thinKC_rep`) appends the kept elements:
     `thinTwoDen`, which `thinTwoDen_eq` makes `thinLDen`. What stays: `hq`, the test's own spec. -/
-theorem rep_thinLOnC {B : Obj} {n : USize} (q : Rel (.prod B B) (.prod B B) → Rel (.prod B B) (.prod B B) × Bool)
+theorem rep_thinLOnC {B : Obj} {n : USize} (q : Tab (.prod B B) (.prod B B) → Tab (.prod B B) (.prod B B) × Bool)
     (le : B.El → B.El → Bool) (X : Vals (.arr B) n)
-    (hq : ∀ (D : Rel (.prod B B) (.prod B B)) (S : (Obj.prod B B).El → Prop),
+    (hq : ∀ (D : Tab (.prod B B) (.prod B B)) (S : (Obj.prod B B).El → Prop),
       rep D = corefl (α := (Obj.prod B B).El) S → (q D).2 = true →
       ∀ a b, S (a, b) → ((∃ c, rep (q D).1 (a, b) c) ↔ le a b = true))
     (hb : (thinLOnC q X).2 = true) :
@@ -554,7 +554,7 @@ open Rel.Core.Rel hiding id comp recip inter union zero le inl inr junc
 /-- **`CRel.thinLOn` read back under its bit**: `rep_thinLOnC`. -/
 theorem rep_thinLOn {B : Obj} {n : USize} (q : CRel (.prod B B) (.prod B B) → CRel (.prod B B) (.prod B B))
     (le : B.El → B.El → Bool) (X : Vals (.arr B) n)
-    (hq : ∀ (D : Rel (.prod B B) (.prod B B)) (S : (Obj.prod B B).El → Prop),
+    (hq : ∀ (D : Tab (.prod B B) (.prod B B)) (S : (Obj.prod B B).El → Prop),
       rep D = corefl (α := (Obj.prod B B).El) S → (q ⟨D, true⟩).ok = true →
       ∀ a b, S (a, b) → ((∃ c, rep (q ⟨D, true⟩).rel (a, b) c) ↔ le a b = true))
     (hb : (thinLOn q X).ok = true) :

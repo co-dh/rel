@@ -8,7 +8,7 @@ import Rel.KernelWF.CodesProd
 
 namespace Rel.Alg
 
-open Rel Rel.Dep Rel.Kernel Rel.Verify Rel
+open Tab Rel.Dep Rel.Kernel Rel.Verify Rel
 
 /-- **A product side's codes are faithful and well formed, on one lane**, given its two columns' are, one
     lane each, the parts' summed count a `USize`: `pairCode_spec` of the columns laid end to end

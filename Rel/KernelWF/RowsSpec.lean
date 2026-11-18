@@ -8,7 +8,7 @@ import Rel.KernelWF.CrossSpec
 
 namespace Rel.Alg
 
-open Rel Rel.Kernel Rel.Verify Rel
+open Tab Rel.Kernel Rel.Verify Rel
 
 /-- `Ew.val` on longs at `va`, element `i` below the count: `valStep` of `a`'s long `i` and `b`'s first. -/
 theorem val_va_get (op : UInt8) (a b : ByteArray) (n : USize) {i : Nat} (hi : i < n.toNat) :

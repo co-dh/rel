@@ -11,7 +11,7 @@ import Rel.KernelSpec.Structural
 
 namespace Rel.Alg
 
-open Rel Rel.Kernel Rel.Verify Rel
+open Tab Rel.Kernel Rel.Verify Rel
 
 /-- A long below `2^63` reads as its own value at `i64`. -/
 theorem toInt64_toInt {x : UInt64} (hx : x.toNat < 2 ^ 63) : x.toInt64.toInt = x.toNat :=

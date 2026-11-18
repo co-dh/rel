@@ -6,7 +6,7 @@ import Rel.KernelWF.JoinContent
 
 namespace Rel.KernelWF
 
-open Rel Rel.Kernel Rel.Verify Rel Rel.Alg Rel.Rep
+open Tab Rel.Kernel Rel.Verify Rel Rel.Alg Rel.Rep
 
 /-- **`Ew.val lesser` on longs, long `i`**: the lesser of the two longs `i`, both below `2^63`. -/
 theorem lesser_get {n : USize} {a b : ByteArray} {i : Nat} (hi : i < n.toNat)

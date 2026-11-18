@@ -9,7 +9,7 @@ import Rel.RepOps
 
 namespace Rel.KernelWF
 
-open Rel Rel.Kernel Rel.Dep Rel Rel.Alg Rel.Rep
+open Tab Rel.Kernel Rel.Dep Rel Rel.Alg Rel.Rep
 open scoped Rel.Core.Rel
 open Rel.Core.Rel hiding id comp recip inter union zero le inl inr junc
 
@@ -127,7 +127,7 @@ end Rel.KernelWF
 
 namespace Rel.Rep
 
-open Rel Rel.Kernel Rel.Verify Rel Rel.Alg Rel.KernelWF
+open Tab Rel.Kernel Rel.Verify Rel Rel.Alg Rel.KernelWF
 open scoped Rel.Core.Rel
 open Rel.Core.Rel hiding id comp recip inter union zero le inl inr junc
 
@@ -140,7 +140,7 @@ namespace RazeN
 set_option hygiene false in
 scoped notation "Uc" =>
   (⟨_, A.raze #[⟨R.n, R.key⟩, ⟨S.n, S.key⟩] (raze2_lt hN), B.raze #[⟨R.n, R.val⟩, ⟨S.n, S.val⟩] (raze2_lt hN)⟩ :
-    Rel A B)
+    Rel.Tab A B)
 set_option hygiene false in
 scoped notation "kcU" => (Obj.codes A (#v[⟨(Uc).n, (Uc).key⟩] : Vector (Part A) 1))[0]'Nat.zero_lt_one
 set_option hygiene false in
@@ -149,7 +149,7 @@ end RazeN
 open RazeN
 
 /-- `∪` within the fits bound: the `nub` of the razed relation. -/
-theorem union_eq_nub (R S : Rel A B) (hN : R.n.toNat + S.n.toNat < USize.size) :
+theorem union_eq_nub (R S : Tab A B) (hN : R.n.toNat + S.n.toNat < USize.size) :
     R ∪ S = (Uc).nub := by
   show (unionC R S).1 = _
   unfold unionC; rw [need_fst]; simp only [razeC_fst, Obj.codesC_fst]
@@ -159,7 +159,7 @@ theorem union_eq_nub (R S : Rel A B) (hN : R.n.toNat + S.n.toNat < USize.size) :
     relation holds the pairs of `R` and of `S` (`holds_two`), and its `nub` holds the same (`rep_nub`, whose code
     hypotheses `hK`, `hV`, `hk`, `hv` are stated on the razed relation). `hN`: the row count fits a `USize`
     (past it `∪` answers `𝟘`), and so the two `raze`s' (`raze2_lt`). -/
-theorem rep_union (R S : Rel A B) (hN : R.n.toNat + S.n.toNat < USize.size)
+theorem rep_union (R S : Tab A B) (hN : R.n.toNat + S.n.toNat < USize.size)
     (hA : ∀ k hk, Vals.row (A.raze #[⟨R.n, R.key⟩, ⟨S.n, S.key⟩] (raze2_lt hN)) ⟨k, hk⟩ =
       if h : k < R.n.toNat then Vals.row R.key ⟨k, h⟩
       else Vals.row S.key ⟨k - R.n.toNat, by have := raze2_cnt R.key S.key (raze2_lt hN); omega⟩)

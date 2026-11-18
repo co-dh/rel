@@ -8,7 +8,7 @@ import Rel.KernelWF.SegSpec
 
 namespace Rel.Alg
 
-open Rel Rel.Kernel Rel.Verify Rel Rel.KernelWF
+open Tab Rel.Kernel Rel.Verify Rel Rel.KernelWF
 
 /-- **A sort of distinct keys below their count is the inverse permutation**: `g` lists `til N` sorted by
     `key`, `key` one-to-one on `til N` and below `N`, so the key of `g[d]` is `d`. -/

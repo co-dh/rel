@@ -9,7 +9,7 @@ import Rel.RepList
 
 namespace Rel.Rep
 
-open Rel Rel.Kernel Rel.Verify Rel Rel.Alg Rel.KernelWF
+open Tab Rel.Kernel Rel.Verify Rel Rel.Alg Rel.KernelWF
 open Rel.Dep
 
 open FoldN OpsN
@@ -93,23 +93,23 @@ theorem arr_row_length {B : Obj} {n : USize} (x : Vals (.arr B) n) (i : Fin n.to
     folds to `c` along `xs`, step `t` by `Fr t`. The round `f` is bound by its defining equation (`hf`, its
     values `D`, `u`, `p` with theirs); `hS`, `hO` read each round's states and `out` back (internal: the
     headline discharges them from the primitives). -/
-theorem loopOn_rounds {K X Y : Obj} (F : Rel (.prod X Y) (.prod X Y) → Rel (.prod X Y) X)
-    (P : Rel K (.prod X (.arr Y)))
-    (f : Rel K X × Rel K (.prod X (.arr Y)) → Rel K X × Rel K (.prod X (.arr Y)))
+theorem loopOn_rounds {K X Y : Obj} (F : Tab (.prod X Y) (.prod X Y) → Tab (.prod X Y) X)
+    (P : Tab K (.prod X (.arr Y)))
+    (f : Tab K X × Tab K (.prod X (.arr Y)) → Tab K X × Tab K (.prod X (.arr Y)))
     (hf : ∀ out St D u p, D = ran St → u = outr D ≫ uncons (ran (outr D)).val → p = pair (outl D) (outl u) →
-      f (out, St) = (out ∪ St ≫ outl (antiJoin D (dom u)), Rel.nub (St ≫ pair (p ≫ F (ran p)) (outr u))))
+      f (out, St) = (out ∪ St ≫ outl (antiJoin D (dom u)), nub (St ≫ pair (p ≫ F (ran p)) (outr u))))
     (Fr : Nat → X.El × Y.El → X.El → Prop)
     -- each round `iter` runs: below the fuel, `done` failing at every iterate up to it
-    (hS : ∀ i, i ≤ (Rel.val P).2.1.toNat → (∀ i' ≤ i, ((f^[i'] (Alg.zero, P)).2.n == 0) = false) →
+    (hS : ∀ i, i ≤ (val P).2.1.toNat → (∀ i' ≤ i, ((f^[i'] (Alg.zero, P)).2.n == 0) = false) →
       ∀ k c' ys, rep (f^[i + 1] (Alg.zero, P)).2 k (c', ys) ↔
       ∃ c y, rep (f^[i] (Alg.zero, P)).2 k (c, y :: ys) ∧ Fr i (c, y) c')
-    (hO : ∀ i, i ≤ (Rel.val P).2.1.toNat → (∀ i' ≤ i, ((f^[i'] (Alg.zero, P)).2.n == 0) = false) →
+    (hO : ∀ i, i ≤ (val P).2.1.toNat → (∀ i' ≤ i, ((f^[i'] (Alg.zero, P)).2.n == 0) = false) →
       ∀ k c, rep (f^[i + 1] (Alg.zero, P)).1 k c ↔
       rep (f^[i] (Alg.zero, P)).1 k c ∨ rep (f^[i] (Alg.zero, P)).2 k (c, [])) :
     ∀ k c, rep (loopOn F P) k c ↔ ∃ c₀ xs, rep P k (c₀, xs) ∧ ∃ g : Nat → X.El, g 0 = c₀ ∧
       (∀ t (ht : t < xs.length), Fr t (g t, xs[t]'ht) (g (t + 1))) ∧ c = g xs.length := by
-  obtain ⟨j, hj, he, hs, hm⟩ := iter_stop (fun s : Rel K X × Rel K (.prod X (.arr Y)) => s.2.n == 0) f
-    ((Rel.val P).2.1.toNat + 1) (Alg.zero, P)
+  obtain ⟨j, hj, he, hs, hm⟩ := iter_stop (fun s : Tab K X × Tab K (.prod X (.arr Y)) => s.2.n == 0) f
+    ((val P).2.1.toNat + 1) (Alg.zero, P)
   have hfe : f = fun st => (loopRound (fun D => (F D, true)) st).1 := funext fun ⟨o, S⟩ => by
     rw [hf o S _ _ _ rfl rfl rfl, ← nubC_fst]; rfl
   have hl : loopOn F P = (f^[j] (Alg.zero, P)).1 := by
@@ -134,10 +134,10 @@ theorem loopOn_rounds {K X Y : Obj} (F : Rel (.prod X Y) (.prod X Y) → Rel (.p
         rcases Nat.lt_succ_iff_lt_or_eq.1 hi with hi | rfl
         · exact Or.inl ⟨i, hi, h⟩
         · exact Or.inr h
-  have hN : ∀ k (s : X.El × List Y.El), rep (f^[0] (Alg.zero, P)).2 k s → s.2.length ≤ (Rel.val P).2.1.toNat := by
+  have hN : ∀ k (s : X.El × List Y.El), rep (f^[0] (Alg.zero, P)).2 k s → s.2.length ≤ (val P).2.1.toNat := by
     rintro k s ⟨i, -, hi⟩
-    rw [← hi]; exact arr_row_length (Rel.val P).2 i
-  have hstop : (Rel.val P).2.1.toNat < j ∨
+    rw [← hi]; exact arr_row_length (val P).2 i
+  have hstop : (val P).2.1.toNat < j ∨
       ∀ k (s : X.El × List Y.El), ¬ rep (f^[j] (Alg.zero, P)).2 k s := by
     rcases hs with hs | hs
     · exact Or.inl (by omega)
@@ -149,7 +149,7 @@ theorem loopOn_rounds {K X Y : Obj} (F : Rel (.prod X Y) (.prod X Y) → Rel (.p
   intro k c
   rw [hl, hout j (Nat.le_refl _)]
   exact loop_out Fr (fun i k s => rep (f^[i] (Alg.zero, P)).2 k s) j
-    (fun i hi => hS i (by omega) (fun i' hi' => hm i' (by omega))) (Rel.val P).2.1.toNat j (Nat.le_refl _) hN
+    (fun i hi => hS i (by omega) (fun i' hi' => hm i' (by omega))) (val P).2.1.toNat j (Nat.le_refl _) hN
     hstop k c
 
 section Round
@@ -162,11 +162,11 @@ open Rel.Core.Rel hiding id comp recip inter union zero le inl inr junc
     whose array is empty. Each hypothesis is one primitive's read-back at this round's values (`rep_ran` at `St`
     and at `outr D`, `rep_uncons`, `rep_comp`, `rep_pair`, `rep_nub`, `rep_dom`, `rep_antiJoin`,
     `rep_union_full`); the values `D`, `u`, `p`, `Q`, `R`, `T`, `A`, `O` are whatever the hypotheses say. -/
-theorem loop_round_set {K X Y : Obj} (out : Rel K X) (St : Rel K (.prod X (.arr Y)))
-    (D : Rel (.prod X (.arr Y)) (.prod X (.arr Y))) (u : Rel (.prod X (.arr Y)) (.prod Y (.arr Y)))
-    (p : Rel (.prod X (.arr Y)) (.prod X Y)) (G : Rel (.prod X Y) X) (Q : Rel (.prod X (.arr Y)) X)
-    (R : Rel (.prod X (.arr Y)) (.prod X (.arr Y))) (T : Rel K (.prod X (.arr Y)))
-    (A : Rel (.prod X (.arr Y)) (.prod X (.arr Y))) (O : Rel K X)
+theorem loop_round_set {K X Y : Obj} (out : Tab K X) (St : Tab K (.prod X (.arr Y)))
+    (D : Tab (.prod X (.arr Y)) (.prod X (.arr Y))) (u : Tab (.prod X (.arr Y)) (.prod Y (.arr Y)))
+    (p : Tab (.prod X (.arr Y)) (.prod X Y)) (G : Tab (.prod X Y) X) (Q : Tab (.prod X (.arr Y)) X)
+    (R : Tab (.prod X (.arr Y)) (.prod X (.arr Y))) (T : Tab K (.prod X (.arr Y)))
+    (A : Tab (.prod X (.arr Y)) (.prod X (.arr Y))) (O : Tab K X)
     (hD : rep D = corefl (α := (Obj.prod X (.arr Y)).El) fun s => ∃ k, rep St k s)
     (hW : rep (ran (outr D)) = corefl (α := (Obj.arr Y).El) fun ys => ∃ s, rep (outr D) s ys)
     (hUn : ∀ (xs : List Y.El) b bs, rep (uncons (ran (outr D)).val) xs (b, bs) ↔
@@ -175,11 +175,11 @@ theorem loop_round_set {K X Y : Obj} (out : Rel K X) (St : Rel K (.prod X (.arr 
     (hp : rep p = rpair (rep (outl D)) (rep (outl u)))
     (Gr : X.El × Y.El → X.El → Prop) (hG : ∀ cy c', (∃ s, rep p s cy) → (rep G cy c' ↔ Gr cy c'))
     (hQ : rep Q = rep p ≫ rep G)
-    (hR : rep R = rpair (rep Q) (rep (outr u))) (hT : rep T = rep St ≫ rep R) (hN : rep (Rel.nub T) = rep T)
+    (hR : rep R = rpair (rep Q) (rep (outr u))) (hT : rep T = rep St ≫ rep R) (hN : rep (nub T) = rep T)
     (hdu : rep (dom u) = corefl (α := (Obj.prod X (.arr Y)).El) fun s => ∃ b, rep u s b)
     (hA : rep A = rep D ≫ corefl (α := (Obj.prod X (.arr Y)).El) fun s => ¬ ∃ y, rep (dom u) y s)
     (hO : rep O = rep St ≫ rep (outl A)) (hU : rep (out ∪ O) = rep out ∪ rep O) :
-    (∀ k (c' : X.El) (ys : List Y.El), rep (Rel.nub T) k (c', ys) ↔
+    (∀ k (c' : X.El) (ys : List Y.El), rep (nub T) k (c', ys) ↔
       ∃ c y, rep St k (c, y :: ys) ∧ Gr (c, y) c') ∧
     ∀ k (c : X.El), rep (out ∪ O) k c ↔ rep out k c ∨ rep St k (c, []) := by
   have eD : ∀ s s' : X.El × List Y.El, rep D s s' ↔ s = s' ∧ ∃ k, rep St k s := by
@@ -274,20 +274,20 @@ namespace Prim
 -- `rep_comp`'s hypotheses at `R ≫ S`, `B` the middle object, the codes `jc` bound by their equation
 set_option hygiene false in
 scoped notation "cmpOK(" B ", " R ", " S ")" =>
-  (Obj.CodesFit B (#v[⟨Rel.n R, Rel.val R⟩, ⟨Rel.n S, Rel.key S⟩] : Vector (Part B) 2) ∧
-    ∀ jc : Vector Code 2, jc = Obj.codes B (#v[⟨Rel.n R, Rel.val R⟩, ⟨Rel.n S, Rel.key S⟩] : Vector (Part B) 2) →
-      (Rel.n S).toNat < 2 ^ 63 ∧ (Rel.n R).toNat * (Rel.n S).toNat < min (2 ^ 63) USize.size ∧
-      Vals.PickFits _ (Rel.key R) ((mpairs(jc, R, S)).map Prod.fst) ∧
-      Vals.PickFits _ (Rel.val S) ((mpairs(jc, R, S)).map Prod.snd))
+  (Obj.CodesFit B (#v[⟨Rel.Tab.n R, Rel.Tab.val R⟩, ⟨Rel.Tab.n S, Rel.Tab.key S⟩] : Vector (Part B) 2) ∧
+    ∀ jc : Vector Code 2, jc = Obj.codes B (#v[⟨Rel.Tab.n R, Rel.Tab.val R⟩, ⟨Rel.Tab.n S, Rel.Tab.key S⟩] : Vector (Part B) 2) →
+      (Rel.Tab.n S).toNat < 2 ^ 63 ∧ (Rel.Tab.n R).toNat * (Rel.Tab.n S).toNat < min (2 ^ 63) USize.size ∧
+      Vals.PickFits _ (Rel.Tab.key R) ((mpairs(jc, R, S)).map Prod.fst) ∧
+      Vals.PickFits _ (Rel.Tab.val S) ((mpairs(jc, R, S)).map Prod.snd))
 -- `rep_pair`'s hypotheses at `⟨R, S⟩`, `A` the keys' object, the codes `kc` bound by their equation
 set_option hygiene false in
 scoped notation "pairOK(" A ", " R ", " S ")" =>
-  (Obj.CodesFit A (#v[⟨Rel.n R, Rel.key R⟩, ⟨Rel.n S, Rel.key S⟩] : Vector (Part A) 2) ∧
-    ∀ kc : Vector Code 2, kc = Obj.codes A (#v[⟨Rel.n R, Rel.key R⟩, ⟨Rel.n S, Rel.key S⟩] : Vector (Part A) 2) →
-      (Rel.n S).toNat < 2 ^ 63 ∧ (Rel.n R).toNat * (Rel.n S).toNat < min (2 ^ 63) USize.size ∧
-      Vals.PickFits A (Rel.key R) ((mpairs(kc, R, S)).map Prod.fst) ∧
-      Vals.PickFits _ (Rel.val R) ((mpairs(kc, R, S)).map Prod.fst) ∧
-      Vals.PickFits _ (Rel.val S) ((mpairs(kc, R, S)).map Prod.snd))
+  (Obj.CodesFit A (#v[⟨Rel.Tab.n R, Rel.Tab.key R⟩, ⟨Rel.Tab.n S, Rel.Tab.key S⟩] : Vector (Part A) 2) ∧
+    ∀ kc : Vector Code 2, kc = Obj.codes A (#v[⟨Rel.Tab.n R, Rel.Tab.key R⟩, ⟨Rel.Tab.n S, Rel.Tab.key S⟩] : Vector (Part A) 2) →
+      (Rel.Tab.n S).toNat < 2 ^ 63 ∧ (Rel.Tab.n R).toNat * (Rel.Tab.n S).toNat < min (2 ^ 63) USize.size ∧
+      Vals.PickFits A (Rel.Tab.key R) ((mpairs(kc, R, S)).map Prod.fst) ∧
+      Vals.PickFits _ (Rel.Tab.val R) ((mpairs(kc, R, S)).map Prod.fst) ∧
+      Vals.PickFits _ (Rel.Tab.val S) ((mpairs(kc, R, S)).map Prod.snd))
 -- `rep_ran`'s (`x` the values) or `rep_dom`'s (`x` the keys) hypotheses on the one-part code of `x`
 set_option hygiene false in
 scoped notation "oneFit(" B ", " n ", " x ")" =>
@@ -295,24 +295,24 @@ scoped notation "oneFit(" B ", " n ", " x ")" =>
 -- `rep_antiJoin`'s hypotheses at `antiJoin R C`
 set_option hygiene false in
 scoped notation "ajOK(" B ", " R ", " C ")" =>
-  (Obj.CodesFit B (#v[⟨Rel.n R, Rel.val R⟩, ⟨Rel.n C, Rel.val C⟩] : Vector (Part B) 2) ∧
-    (Vals.PickFits _ (Rel.key R) (List.range (Rel.n R).toNat) ∧ Vals.PickFits B (Rel.val R) (List.range (Rel.n R).toNat)))
+  (Obj.CodesFit B (#v[⟨Rel.Tab.n R, Rel.Tab.val R⟩, ⟨Rel.Tab.n C, Rel.Tab.val C⟩] : Vector (Part B) 2) ∧
+    (Vals.PickFits _ (Rel.Tab.key R) (List.range (Rel.Tab.n R).toNat) ∧ Vals.PickFits B (Rel.Tab.val R) (List.range (Rel.Tab.n R).toNat)))
 -- `rep_uncons`'s hypotheses at the arrays `Rel.val W`, its intermediates `ib`, `lb`, `Tv` bound by their equations
 set_option hygiene false in
 scoped notation "uncOK(" Y ", " W ")" =>
-  (∀ ib : ByteArray, ib = whereBits (Rel.n W) (Ew.cmp Ew.gt Ew.i64 Ew.va (slicesOf (Rel.val W)).2 (one 0) (Rel.n W)) →
-    ∀ lb : ByteArray, lb = gather 8 (slicesOf (Rel.val W)).1 ib →
-    ∀ Tv : Vals (.arr Y) (len ib).toUSize, Tv = ⟨(Rel.val W).1, valCol Ew.add Ew.va lb (one 1),
-        valCol Ew.add Ew.vv lb (gather 8 (slicesOf (Rel.val W)).2 ib), (Rel.val W).2.2.2⟩ →
-      Vals.PickFits (.arr Y) (Rel.val W)
+  (∀ ib : ByteArray, ib = whereBits (Rel.Tab.n W) (Ew.cmp Ew.gt Ew.i64 Ew.va (slicesOf (Rel.Tab.val W)).2 (one 0) (Rel.Tab.n W)) →
+    ∀ lb : ByteArray, lb = gather 8 (slicesOf (Rel.Tab.val W)).1 ib →
+    ∀ Tv : Vals (.arr Y) (len ib).toUSize, Tv = ⟨(Rel.Tab.val W).1, valCol Ew.add Ew.va lb (one 1),
+        valCol Ew.add Ew.vv lb (gather 8 (slicesOf (Rel.Tab.val W)).2 ib), (Rel.Tab.val W).2.2.2⟩ →
+      Vals.PickFits (.arr Y) (Rel.Tab.val W)
           ((List.range (len ib)).map fun q => (Column.bitsAt ib (q * 8) 8).toNat))
 -- `rep_diff`'s hypotheses at `R \ S`, `A`, `B` the key and value objects, its codes `pc` bound
 set_option hygiene false in
 scoped notation "diffOK(" A ", " B ", " R ", " S ")" =>
   (∀ pc : Vector Code 2, pc = pairs #v[R, S] →
-    codesOK(pc, (#v[⟨Rel.n R, (Rel.key R, Rel.val R)⟩, ⟨Rel.n S, (Rel.key S, Rel.val S)⟩] :
+    codesOK(pc, (#v[⟨Rel.Tab.n R, (Rel.Tab.key R, Rel.Tab.val R)⟩, ⟨Rel.Tab.n S, (Rel.Tab.key S, Rel.Tab.val S)⟩] :
       Vector (Part (.prod A B)) 2)) ∧
-    (Vals.PickFits A (Rel.key R) (List.range (Rel.n R).toNat) ∧ Vals.PickFits B (Rel.val R) (List.range (Rel.n R).toNat)))
+    (Vals.PickFits A (Rel.Tab.key R) (List.range (Rel.Tab.n R).toNat) ∧ Vals.PickFits B (Rel.Tab.val R) (List.range (Rel.Tab.n R).toNat)))
 
 end Prim
 
@@ -323,8 +323,8 @@ open Rel.Core.Rel hiding id comp recip inter union zero le inl inr junc
 
 set_option hygiene false in
 /-- `P`'s rows are pairwise distinct: two rows holding one pair are one row (`nub_rows_inj`'s conclusion). -/
-scoped notation "rowsInj(" P ")" => ∀ {t t' : Fin (Rel.n P).toNat}, (Rel.key P).row t = (Rel.key P).row t' →
-  (Rel.val P).row t = (Rel.val P).row t' → t = t'
+scoped notation "rowsInj(" P ")" => ∀ {t t' : Fin (Rel.Tab.n P).toNat}, (Rel.Tab.key P).row t = (Rel.Tab.key P).row t' →
+  (Rel.Tab.val P).row t = (Rel.Tab.val P).row t' → t = t'
 
 /-- **Pigeonhole on `Nat`**: a list without repeats of numbers below `k` is at most `k` long, and when exactly `k`
     long it holds every number below `k` (`List.erase` of `k` at each step). -/
@@ -351,7 +351,7 @@ theorem nodup_below {k : Nat} : ∀ l : List Nat, l.Nodup → (∀ x ∈ l, x < 
 /-- **Distinct rows count the pairs**: a relation `P` with distinct rows below `Q` has at most `Q`'s rows, and at
     least as many only when `Q` is below it too — each row of `P` sent to a row of `Q` holding its pair is a
     pigeonhole map (`nodup_below`). -/
-theorem rows_le_of_inj (P Q : Rel A B) (hP : rowsInj(P)) (hle : rep P ⊑ rep Q) :
+theorem rows_le_of_inj (P Q : Tab A B) (hP : rowsInj(P)) (hle : rep P ⊑ rep Q) :
     P.n.toNat ≤ Q.n.toNat ∧ (Q.n.toNat ≤ P.n.toNat → rep Q ⊑ rep P) := by
   have hs : ∀ t : Fin P.n.toNat, ∃ s : Fin Q.n.toNat, Q.key.row s = P.key.row t ∧ Q.val.row s = P.val.row t :=
     fun t => le_iff.1 hle _ _ ⟨t, rfl, rfl⟩
@@ -378,11 +378,11 @@ theorem rows_le_of_inj (P Q : Rel A B) (hP : rowsInj(P)) (hle : rep P ⊑ rep Q)
   exact ⟨_, k1.symm.trans ha, v1.symm.trans hb⟩
 
 /-- **`fixOn`'s state after round `i`**: the count of round `i - 1`'s relation, round `i`'s, and `i`. -/
-theorem fixOn_iterate {A B : Obj} (φ : Rel A B → Rel A B) (X₀ : Rel A B) : ∀ i,
-    (fun s : Nat × Rel A B × Nat => (s.2.1.n.toNat, (φ s.2.1).nub, s.2.2 + 1))^[i + 1] (X₀.nub.n.toNat + 1, X₀.nub, 0) =
+theorem fixOn_iterate {A B : Obj} (φ : Tab A B → Tab A B) (X₀ : Tab A B) : ∀ i,
+    (fun s : Nat × Tab A B × Nat => (s.2.1.n.toNat, (φ s.2.1).nub, s.2.2 + 1))^[i + 1] (X₀.nub.n.toNat + 1, X₀.nub, 0) =
       (((fun X => (φ X).nub)^[i] X₀.nub).n.toNat, (fun X => (φ X).nub)^[i + 1] X₀.nub, i + 1)
   | 0 => rfl
-  | i + 1 => congrArg (fun s : Nat × Rel A B × Nat => (s.2.1.n.toNat, (φ s.2.1).nub, s.2.2 + 1)) (fixOn_iterate φ X₀ i)
+  | i + 1 => congrArg (fun s : Nat × Tab A B × Nat => (s.2.1.n.toNat, (φ s.2.1).nub, s.2.2 + 1)) (fixOn_iterate φ X₀ i)
 
 /-- **`fixOn`, read back**: with `st i` the `i`-th round's state `nub(φ(…nub(X₀)))`, `fixOn n φ X₀` stops at a round
     `j ≤ n`, answers it, and denotes `Φ^[j](rep X₀)`, `Φ` what one round does to the denotation; below the fuel `j`
@@ -393,7 +393,7 @@ theorem fixOn_iterate {A B : Obj} (φ : Rel A B → Rel A B) (X₀ : Rel A B) : 
     (shrinking) count (`rows_le_of_inj`). Kept: `h₀`, `hφ`, the step's spec with `rep_nub`'s premises at each round
     the loop ran (their codes grow with the rounds), and `hinj`, the distinct rows of each round's `nub`
     (`nub_rows_inj` under the same premises). -/
-theorem rep_fixOn {A B : Obj} (n : Nat) (φ : Rel A B → Rel A B) (X₀ : Rel A B)
+theorem rep_fixOn {A B : Obj} (n : Nat) (φ : Tab A B → Tab A B) (X₀ : Tab A B)
     (Φ : type_of% (rep X₀) → type_of% (rep X₀)) (h₀ : rep X₀.nub = rep X₀)
     (hφ : ∀ i < n, (∀ k < i, ((fun X => (φ X).nub)^[k] X₀.nub).n.toNat ≠
         ((fun X => (φ X).nub)^[k + 1] X₀.nub).n.toNat) →
@@ -404,11 +404,11 @@ theorem rep_fixOn {A B : Obj} (n : Nat) (φ : Rel A B → Rel A B) (X₀ : Rel A
     ∃ j ≤ n, (fixOn n φ X₀).2 = j ∧ rep (fixOn n φ X₀).1 = Φ^[j] (rep X₀) ∧
       (j < n → Φ (rep (fixOn n φ X₀).1) = rep (fixOn n φ X₀).1) ∧
       (∀ Y, rep X₀ ⊑ Y → Φ Y ⊑ Y → rep (fixOn n φ X₀).1 ⊑ Y) ∧
-      (∀ U : Rel A B, (∀ i, Φ^[i] (rep X₀) ⊑ rep U) → U.n.toNat + 1 < n → j < n) := by
-  let g : Rel A B → Rel A B := fun X => (φ X).nub
-  let f : Nat × Rel A B × Nat → Nat × Rel A B × Nat := fun s => (s.2.1.n.toNat, (φ s.2.1).nub, s.2.2 + 1)
-  let done : Nat × Rel A B × Nat → Bool := fun s => s.1 == s.2.1.n.toNat
-  let s₀ : Nat × Rel A B × Nat := (X₀.nub.n.toNat + 1, X₀.nub, 0)
+      (∀ U : Tab A B, (∀ i, Φ^[i] (rep X₀) ⊑ rep U) → U.n.toNat + 1 < n → j < n) := by
+  let g : Tab A B → Tab A B := fun X => (φ X).nub
+  let f : Nat × Tab A B × Nat → Nat × Tab A B × Nat := fun s => (s.2.1.n.toNat, (φ s.2.1).nub, s.2.2 + 1)
+  let done : Nat × Tab A B × Nat → Bool := fun s => s.1 == s.2.1.n.toNat
+  let s₀ : Nat × Tab A B × Nat := (X₀.nub.n.toNat + 1, X₀.nub, 0)
   have hs : ∀ i, f^[i + 1] s₀ = ((g^[i] X₀.nub).n.toNat, g^[i + 1] X₀.nub, i + 1) := fixOn_iterate φ X₀
   have hd : ∀ k, done (f^[k + 1] s₀) = ((g^[k] X₀.nub).n.toNat == (g^[k + 1] X₀.nub).n.toNat) := fun k => by
     rw [hs k]

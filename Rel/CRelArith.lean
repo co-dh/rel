@@ -13,7 +13,7 @@ namespace Rel
 
 namespace Rep
 
-open Rel Rel.Kernel Rel.Verify Rel Rel.Alg Rel.KernelWF
+open Tab Rel.Kernel Rel.Verify Rel Rel.Alg Rel.KernelWF
 open scoped Rel.Core.Rel
 open Rel.Core.Rel hiding id comp recip inter union zero le inl inr junc
 open OpsN UnionN
@@ -34,7 +34,7 @@ theorem rep_inrC {n : USize} (Y : Vals B n) (hb : (inrC (A := A) Y).2 = true) :
 
 /-- **`rep [R, S] = [rep R, rep S]` under `juncC`'s bit**: `need`'s guard is `rep_junc_full`'s `hN`, the decided
     bound its `h63`, the raze's bit its `hF` (`razeC_fits`). -/
-theorem rep_juncC (R : Rel A C) (S : Rel B C) (hb : (juncC R S).2 = true) :
+theorem rep_juncC (R : Tab A C) (S : Tab B C) (hb : (juncC R S).2 = true) :
     rep (juncC R S).1 = Core.Rel.junc (rep R) (rep S) := by
   unfold juncC need at hb
   split at hb
@@ -44,7 +44,7 @@ theorem rep_juncC (R : Rel A C) (S : Rel B C) (hb : (juncC R S).2 = true) :
   · exact absurd hb Bool.false_ne_true
 
 /-- **`rep (R + S) = ι₁° rep R ι₁ ∪ ι₂° rep S ι₂` under `sumC`'s bit**: the bit is `rep_sum`'s `hN` and `h63`. -/
-theorem rep_sumC (R : Rel A C) (S : Rel B D) (hb : (sumC R S).2 = true) :
+theorem rep_sumC (R : Tab A C) (S : Tab B D) (hb : (sumC R S).2 = true) :
     rep (sumC R S).1 =
       ((Core.Rel.inl (α := A.El) (β := B.El))° ≫ rep R ≫ (Core.Rel.inl (α := C.El) (β := D.El))) ∪
       ((Core.Rel.inr (α := A.El) (β := B.El))° ≫ rep S ≫ (Core.Rel.inr (α := C.El) (β := D.El))) := by
@@ -176,7 +176,7 @@ end Rep
 
 namespace CRel
 
-open Rel Rel.Kernel Rel.Alg Rel.Rep
+open Tab Rel.Kernel Rel.Alg Rel.Rep
 open scoped Rel.Core.Rel
 open Rel.Core.Rel hiding id comp recip inter union zero le inl inr junc
 

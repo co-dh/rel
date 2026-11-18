@@ -14,7 +14,7 @@ import Rel.KernelSpec.Structural
 
 namespace Rel.KernelWF
 
-open Rel Rel.Kernel Rel Rel.Alg
+open Tab Rel.Kernel Rel Rel.Alg
 
 /-! ## `til` -/
 

@@ -8,7 +8,7 @@ import Rel.KernelWF.CrossSpec
 
 namespace Rel.Rep
 
-open Rel Rel.Kernel Rel.Verify Rel Rel.Alg Rel.KernelWF
+open Tab Rel.Kernel Rel.Verify Rel Rel.Alg Rel.KernelWF
 open scoped Rel.Core.Rel
 open Rel.Core.Rel hiding id comp recip inter union zero le inl inr junc
 
@@ -95,7 +95,7 @@ theorem sublist_range {l : List Nat} {n : Nat} (h : l.Pairwise (· < ·)) (hl : 
 
 -- `transpose`'s pieces, as it names them: the key codes, the values' order, the rows grouped, the run starts
 set_option hygiene false in
-local notation "kcT" => (Obj.codes A (#v[⟨(Rel.nub R).n, (Rel.nub R).key⟩] : Vector (Part A) 1))[0]'Nat.zero_lt_one
+local notation "kcT" => (Obj.codes A (#v[⟨(Rel.Tab.nub R).n, (Rel.Tab.nub R).key⟩] : Vector (Part A) 1))[0]'Nat.zero_lt_one
 set_option hygiene false in
 local notation "vpT" => vp
 set_option hygiene false in
@@ -107,7 +107,7 @@ local notation "loT" => ByteArray.extract (oT) 0 (ByteArray.size (oT) - 8)
 
 /-- **`sortBy` lists a relation's rows once each**: `vp` at `transpose`'s order (`d` the nub), `sortBy_perm` at
     `til n`, given the fit of `d`'s values (`hW`). -/
-theorem sortBy_nub_perm (d : Rel A B) (hW : B.CodesFit (#v[⟨d.n, d.val⟩] : Vector (Part B) 1)) :
+theorem sortBy_nub_perm (d : Tab A B) (hW : B.CodesFit (#v[⟨d.n, d.val⟩] : Vector (Part B) 1)) :
     (ids (Obj.sortBy B d.val (tilLongs d.n))).Perm (List.range d.n.toNat) := by
   have hU : d.n.toNat < USize.size := d.n.toNat_lt_size
   have htil : (ids (tilLongs d.n)).Perm (List.range d.n.toNat) := by
@@ -129,42 +129,42 @@ attribute [local irreducible] Code.runStarts Code.gather ByteArray.extract
     stable grade of the key codes over the values sorted; every key of `d` keys some row. Hypotheses: the key codes faithful and well formed
     (`rep_nub`'s `hK` at `d`), the values' order `vp` a permutation of `d`'s rows and `T` built on it, `d`'s count below `2⁶³`, and the picks fitting
     (`Vals.PickFits`) at the row order and at the run starts. -/
-theorem transpose_row_list (R : Rel A B)
-    (hF : ∀ {i j : Nat} (hi : i < (Rel.nub R).n.toNat) (hj : j < (Rel.nub R).n.toNat),
+theorem transpose_row_list (R : Tab A B)
+    (hF : ∀ {i j : Nat} (hi : i < (nub R).n.toNat) (hj : j < (nub R).n.toNat),
       Column.idAt (kcT).b (kcT).w i = Column.idAt (kcT).b (kcT).w j ↔
-        Vals.row (Rel.nub R).key ⟨i, hi⟩ = Vals.row (Rel.nub R).key ⟨j, hj⟩)
+        Vals.row (nub R).key ⟨i, hi⟩ = Vals.row (nub R).key ⟨j, hj⟩)
     (hw : laneOK((kcT).w))
-    (hn : (kcT).n = (Rel.nub R).n) (hs : (kcT).b.size = ((kcT).n.toNat * (kcT).w + 7) / 8)
+    (hn : (kcT).n = (nub R).n) (hs : (kcT).b.size = ((kcT).n.toNat * (kcT).w + 7) / 8)
     -- the values' order `vp`, any permutation of the nub's rows, and `T` what `transposeRuns` builds on it
-    (vp : ByteArray) (hvp : (ids vp).Perm (List.range (Rel.nub R).n.toNat))
-    (T : Rel A (.arr B)) (hT : T = transposeRuns (Rel.nub R) kcT vp)
-    (h63 : (Rel.nub R).n.toNat < 2 ^ 63)
-    (hpk : Vals.PickFits A (Rel.nub R).key (List.range (Rel.nub R).n.toNat))
-    (hpv : Vals.PickFits B (Rel.nub R).val (List.range (Rel.nub R).n.toNat)) :
-    (∀ q : Fin (T).n.toNat, ∃ i : Fin (Rel.nub R).n.toNat,
-      Vals.row (T).key q = Vals.row (Rel.nub R).key i ∧ ∃ L : List (Fin (Rel.nub R).n.toNat),
-        L.Nodup ∧ (∀ i', i' ∈ L ↔ Vals.row (Rel.nub R).key i' = Vals.row (Rel.nub R).key i) ∧
-          (L.map Fin.val).Sublist (ids vpT) ∧ Vals.row (T).val q = L.map (Vals.row (Rel.nub R).val)) ∧
-    ∀ i : Fin (Rel.nub R).n.toNat, ∃ q : Fin (T).n.toNat,
-      Vals.row (T).key q = Vals.row (Rel.nub R).key i := by
-  have hN : (kcT).n.toNat = (Rel.nub R).n.toNat := by rw [hn]
-  have hU : (Rel.nub R).n.toNat < USize.size := (Rel.nub R).n.toNat_lt_size
+    (vp : ByteArray) (hvp : (ids vp).Perm (List.range (nub R).n.toNat))
+    (T : Tab A (.arr B)) (hT : T = transposeRuns (nub R) kcT vp)
+    (h63 : (nub R).n.toNat < 2 ^ 63)
+    (hpk : Vals.PickFits A (nub R).key (List.range (nub R).n.toNat))
+    (hpv : Vals.PickFits B (nub R).val (List.range (nub R).n.toNat)) :
+    (∀ q : Fin (T).n.toNat, ∃ i : Fin (nub R).n.toNat,
+      Vals.row (T).key q = Vals.row (nub R).key i ∧ ∃ L : List (Fin (nub R).n.toNat),
+        L.Nodup ∧ (∀ i', i' ∈ L ↔ Vals.row (nub R).key i' = Vals.row (nub R).key i) ∧
+          (L.map Fin.val).Sublist (ids vpT) ∧ Vals.row (T).val q = L.map (Vals.row (nub R).val)) ∧
+    ∀ i : Fin (nub R).n.toNat, ∃ q : Fin (T).n.toNat,
+      Vals.row (T).key q = Vals.row (nub R).key i := by
+  have hN : (kcT).n.toNat = (nub R).n.toNat := by rw [hn]
+  have hU : (nub R).n.toNat < USize.size := (nub R).n.toNat_lt_size
   -- `til n` read back, `vp` a permutation of the rows
   have hvp : (ids vpT).Perm (List.range (kcT).n.toNat) := by rw [hN]; exact hvp
   obtain ⟨hpp, hgrp, hgp, hstab⟩ := grade_gather_group (kcT) hw hs vpT hvp
   -- `p` reorders `d`'s rows, so `d` fits at `p` as at its rows
-  have hpr : (ids pT).Perm (List.range (Rel.nub R).n.toNat) := by rw [← hN]; exact hpp
+  have hpr : (ids pT).Perm (List.range (nub R).n.toNat) := by rw [← hN]; exact hpp
   replace hpk := pickFits_perm hpr hpk
   replace hpv := pickFits_perm hpr hpv
   -- the row order `p`: its long `s` is `P s`, every row once
-  have hlp : len pT = (Rel.nub R).n.toNat := by rw [len_eq_ids, hpp.length_eq, List.length_range, hN]
+  have hlp : len pT = (nub R).n.toNat := by rw [len_eq_ids, hpp.length_eq, List.length_range, hN]
   have hpl : len pT < USize.size := by rw [hlp]; exact hU
   have hpi : ∀ s < len pT, (Column.bitsAt pT (s * 8) 8).toNat < (kcT).n.toNat := fun s h => by
     have h' : s < (ids pT).length := by rw [← len_eq_ids]; exact h
     rw [← ids_getElem h']; exact List.mem_range.1 (hpp.mem_iff.1 (List.getElem_mem h'))
-  have hP : ∀ s < len pT, (Column.bitsAt pT (s * 8) 8).toNat < (Rel.nub R).n.toNat := fun s h => by
+  have hP : ∀ s < len pT, (Column.bitsAt pT (s * 8) 8).toNat < (nub R).n.toNat := fun s h => by
     rw [← hN]; exact hpi s h
-  have hsurj : ∀ i < (Rel.nub R).n.toNat, ∃ s, s < len pT ∧ (Column.bitsAt pT (s * 8) 8).toNat = i := fun i hi => by
+  have hsurj : ∀ i < (nub R).n.toNat, ∃ s, s < len pT ∧ (Column.bitsAt pT (s * 8) 8).toNat = i := fun i hi => by
     obtain ⟨s, hs', e⟩ := List.getElem_of_mem (hpp.mem_iff.2 (List.mem_range.2 (by rw [hN]; exact hi)))
     exact ⟨s, by rw [len_eq_ids]; exact hs', by rw [← ids_getElem hs']; exact e⟩
   have hcb : 8 ≤ (kcT).w → 8 * (kcT).b.size = (kcT).w * (kcT).n.toNat := fun h8 => by
@@ -174,7 +174,7 @@ theorem transpose_row_list (R : Rel A B)
   -- the key codes along `p` are the keys of `d`
   have hcode : ∀ s t (hs' : s < len pT) (ht : t < len pT),
       (Column.idAt (Code.gather (kcT) pT).b (kcT).w s = Column.idAt (Code.gather (kcT) pT).b (kcT).w t ↔
-        Vals.row (Rel.nub R).key ⟨_, hP s hs'⟩ = Vals.row (Rel.nub R).key ⟨_, hP t ht⟩) :=
+        Vals.row (nub R).key ⟨_, hP s hs'⟩ = Vals.row (nub R).key ⟨_, hP t ht⟩) :=
     fun s t hs' ht => by rw [hGid s hs', hGid t ht]; exact hF _ _
   -- the runs of `G = kc@p`: `r j`, each key one run
   obtain ⟨m, hosz, hlast, hasc, -, hrun, hcov⟩ := code_runs (Code.gather (kcT) pT) (by rw [hGw]; exact hw)
@@ -189,21 +189,21 @@ theorem transpose_row_list (R : Rel A B)
   rw [hGn] at hlast hrun hcov
   rw [hGw] at hrun
   -- the picked columns read back at `P s`
-  have hpkd : Vals.pickPart A (Rel.nub R).key pT =
-      ⟨(len pT).toUSize, Vals.pick A (Rel.nub R).key pT _ (USize.toNat_ofNat_of_lt' hpl).symm⟩ := by
+  have hpkd : Vals.pickPart A (nub R).key pT =
+      ⟨(len pT).toUSize, Vals.pick A (nub R).key pT _ (USize.toNat_ofNat_of_lt' hpl).symm⟩ := by
     unfold Vals.pickPart need; rw [dif_pos hpl]
-  have hpvd : Vals.pickPart B (Rel.nub R).val pT =
-      ⟨(len pT).toUSize, Vals.pick B (Rel.nub R).val pT _ (USize.toNat_ofNat_of_lt' hpl).symm⟩ := by
+  have hpvd : Vals.pickPart B (nub R).val pT =
+      ⟨(len pT).toUSize, Vals.pick B (nub R).val pT _ (USize.toNat_ofNat_of_lt' hpl).symm⟩ := by
     unfold Vals.pickPart need; rw [dif_pos hpl]
   have hLn : ((len pT).toUSize).toNat = len pT := USize.toNat_ofNat_of_lt' hpl
-  have hp1A : (Vals.pickPart A (Rel.nub R).key pT).1.toNat = len pT := by rw [hpkd]; exact hLn
-  have hp1B : (Vals.pickPart B (Rel.nub R).val pT).1.toNat = len pT := by rw [hpvd]; exact hLn
-  have hkey : ∀ s (h : s < (Vals.pickPart A (Rel.nub R).key pT).1.toNat) (h' : s < len pT),
-      Vals.row (Vals.pickPart A (Rel.nub R).key pT).2 ⟨s, h⟩ = Vals.row (Rel.nub R).key ⟨_, hP s h'⟩ := by
+  have hp1A : (Vals.pickPart A (nub R).key pT).1.toNat = len pT := by rw [hpkd]; exact hLn
+  have hp1B : (Vals.pickPart B (nub R).val pT).1.toNat = len pT := by rw [hpvd]; exact hLn
+  have hkey : ∀ s (h : s < (Vals.pickPart A (nub R).key pT).1.toNat) (h' : s < len pT),
+      Vals.row (Vals.pickPart A (nub R).key pT).2 ⟨s, h⟩ = Vals.row (nub R).key ⟨_, hP s h'⟩ := by
     intro s h h'; revert h; rw [hpkd]; intro h; dsimp only at h ⊢
     rw [pick_row A _ pT _ _ (by rw [hLn]; exact hpk) ⟨s, h⟩, dif_pos (hP s h')]
-  have hval : ∀ s (h : s < (Vals.pickPart B (Rel.nub R).val pT).1.toNat) (h' : s < len pT),
-      Vals.row (Vals.pickPart B (Rel.nub R).val pT).2 ⟨s, h⟩ = Vals.row (Rel.nub R).val ⟨_, hP s h'⟩ := by
+  have hval : ∀ s (h : s < (Vals.pickPart B (nub R).val pT).1.toNat) (h' : s < len pT),
+      Vals.row (Vals.pickPart B (nub R).val pT).2 ⟨s, h⟩ = Vals.row (nub R).val ⟨_, hP s h'⟩ := by
     intro s h h'; revert h; rw [hpvd]; intro h; dsimp only at h ⊢
     rw [pick_row B _ pT _ _ (by rw [hLn]; exact hpv) ⟨s, h⟩, dif_pos (hP s h')]
   -- the run starts `o`: `lo`, `hi` their extracts, each start below the count
@@ -246,7 +246,7 @@ theorem transpose_row_list (R : Rel A B)
     · rw [List.pairwise_map]
       exact List.pairwise_lt_range.imp_of_mem fun ha hb hab => hasc _ _ hab (Nat.le_of_lt (List.mem_range.1 hb))
     · obtain ⟨j, hj, rfl⟩ := List.mem_map.1 hx; exact hrlt j (List.mem_range.1 hj)
-  have hlo : Vals.PickFits A (Vals.pickPart A (Rel.nub R).key pT).2 (ids (o.extract 0 (o.size - 8))) := by
+  have hlo : Vals.PickFits A (Vals.pickPart A (nub R).key pT).2 (ids (o.extract 0 (o.size - 8))) := by
     rw [hpkd]
     refine pickFits_pick A _ pT _ _ _ (fun q hq => ?_) (by rw [hLn, ← hidsP]; exact hpk)
       (pickFits_sublist ?_ hpk)
@@ -254,9 +254,9 @@ theorem transpose_row_list (R : Rel A B)
     · rw [hlid, hidsP]; exact hrs.map _
   -- row `j` of the answer is keyed by `P (r j)`
   have hkrow : ∀ j (h : j < ((len (o.extract 0 (o.size - 8))).toUSize).toNat) (hj : j < m),
-      Vals.row (Vals.pick A (Vals.pickPart A (Rel.nub R).key pT).2
+      Vals.row (Vals.pick A (Vals.pickPart A (nub R).key pT).2
         (o.extract 0 (o.size - 8)) _ (USize.toNat_ofNat_of_lt' hloU).symm) ⟨j, h⟩ =
-      Vals.row (Rel.nub R).key ⟨_, hP _ (hrlt j hj)⟩ := fun j h hj => by
+      Vals.row (nub R).key ⟨_, hP _ (hrlt j hj)⟩ := fun j h hj => by
     rw [pick_row A _ _ _ _ (by rw [USize.toNat_ofNat_of_lt' hloU]; exact hlo) ⟨j, h⟩,
       dif_pos (by rw [hlo_at j hj, hp1A]; exact hrlt j hj)]
     exact (hkey _ _ (by rw [hlo_at j hj]; exact hrlt j hj)).trans
@@ -275,21 +275,21 @@ theorem transpose_row_list (R : Rel A B)
       hlo_at q.1 hq, hhi_at q.1 hq, toInt_toInt64, toInt_toInt64, if_pos (by have := hrlt q.1 hq; omega),
       if_pos (by omega)]
     -- `S` the positions of row `q`'s run, each one's row of `d` its position under `p`
-    rw [List.filter_congr (q := fun s : Fin (Vals.pickPart B (Rel.nub R).val pT).1.toNat =>
+    rw [List.filter_congr (q := fun s : Fin (Vals.pickPart B (nub R).val pT).1.toNat =>
       decide ((Column.bitsAt oT (q.1 * 8) 8).toNat ≤ s.1 ∧ s.1 < (Column.bitsAt oT ((q.1 + 1) * 8) 8).toNat))
       (fun s _ => by rw [decide_eq_decide]; constructor <;> rintro ⟨h1, h2⟩ <;> exact ⟨by omega, by omega⟩)]
-    generalize hS : (List.finRange (Vals.pickPart B (Rel.nub R).val pT).1.toNat).filter (fun s =>
+    generalize hS : (List.finRange (Vals.pickPart B (nub R).val pT).1.toNat).filter (fun s =>
       decide ((Column.bitsAt oT (q.1 * 8) 8).toNat ≤ s.1 ∧ s.1 < (Column.bitsAt oT ((q.1 + 1) * 8) 8).toNat)) = S
     have hSa : S.Pairwise (· < ·) := by rw [← hS]; exact (finRange_pairwise_lt _).filter _
     have hSn : S.Nodup := hSa.imp Fin.ne_of_lt
     have hSm : ∀ s, s ∈ S ↔
         (Column.bitsAt oT (q.1 * 8) 8).toNat ≤ s.1 ∧ s.1 < (Column.bitsAt oT ((q.1 + 1) * 8) 8).toNat := fun s => by
       rw [← hS, List.mem_filter, decide_eq_true_iff]; exact ⟨fun h => h.2, fun h => ⟨List.mem_finRange s, h⟩⟩
-    have hsl : ∀ s : Fin (Vals.pickPart B (Rel.nub R).val pT).1.toNat, s.1 < len pT := fun s => by
+    have hsl : ∀ s : Fin (Vals.pickPart B (nub R).val pT).1.toNat, s.1 < len pT := fun s => by
       have := s.2; omega
-    have hsl' : ∀ s : Fin (Vals.pickPart B (Rel.nub R).val pT).1.toNat, s.1 < (ids pT).length := fun s => by
+    have hsl' : ∀ s : Fin (Vals.pickPart B (nub R).val pT).1.toNat, s.1 < (ids pT).length := fun s => by
       rw [← len_eq_ids]; exact hsl s
-    have hinj : ∀ s s' : Fin (Vals.pickPart B (Rel.nub R).val pT).1.toNat,
+    have hinj : ∀ s s' : Fin (Vals.pickPart B (nub R).val pT).1.toNat,
         (Column.bitsAt pT (s.1 * 8) 8).toNat = (Column.bitsAt pT (s'.1 * 8) 8).toNat → s = s' := fun s s' e => by
       rw [← ids_getElem (hsl' s), ← ids_getElem (hsl' s')] at e
       exact Fin.ext (nodup_getElem_inj hpn _ _ e)
@@ -307,18 +307,18 @@ theorem transpose_row_list (R : Rel A B)
         obtain ⟨h1, h2⟩ := (hrun s q.1 hs' hq).1 ((hcode _ _ hs' (hrlt q.1 hq)).2 e1)
         exact ⟨⟨s, by rw [hp1B]; exact hs'⟩, (hSm _).2 ⟨by omega, by omega⟩, rfl⟩
     · -- `p`'s long `s` is `vp`'s long `g s`, `g` the grade; along the run `g` ascends (the grade's ties)
-      have hgl : (ids (Code.gather (kcT) vpT).grade).length = (Rel.nub R).n.toNat := by
+      have hgl : (ids (Code.gather (kcT) vpT).grade).length = (nub R).n.toNat := by
         rw [hgp.length_eq, List.length_range, hN]
-      have hvl : (ids vpT).length = (Rel.nub R).n.toNat := by rw [hvp.length_eq, List.length_range, hN]
-      have hgs : ∀ s : Fin (Vals.pickPart B (Rel.nub R).val pT).1.toNat,
+      have hvl : (ids vpT).length = (nub R).n.toNat := by rw [hvp.length_eq, List.length_range, hN]
+      have hgs : ∀ s : Fin (Vals.pickPart B (nub R).val pT).1.toNat,
           s.1 < (ids (Code.gather (kcT) vpT).grade).length := fun s => by rw [hgl, ← hlp]; exact hsl s
-      have hgb : ∀ s : Fin (Vals.pickPart B (Rel.nub R).val pT).1.toNat,
-          (Column.bitsAt (Code.gather (kcT) vpT).grade (s.1 * 8) 8).toNat < (Rel.nub R).n.toNat := fun s => by
+      have hgb : ∀ s : Fin (Vals.pickPart B (nub R).val pT).1.toNat,
+          (Column.bitsAt (Code.gather (kcT) vpT).grade (s.1 * 8) 8).toNat < (nub R).n.toNat := fun s => by
         rw [← ids_getElem (hgs s), ← hN]; exact List.mem_range.1 (hgp.mem_iff.1 (List.getElem_mem (hgs s)))
-      have hpg : ∀ s : Fin (Vals.pickPart B (Rel.nub R).val pT).1.toNat, Column.bitsAt pT (s.1 * 8) 8 =
+      have hpg : ∀ s : Fin (Vals.pickPart B (nub R).val pT).1.toNat, Column.bitsAt pT (s.1 * 8) 8 =
           Column.bitsAt vpT ((Column.bitsAt (Code.gather (kcT) vpT).grade (s.1 * 8) 8).toNat * 8) 8 := fun s =>
         gather8_get (by rw [len_eq_ids]; exact hgs s) (by rw [len_eq_ids, hvl]; exact hgb s)
-      have hrq : ∀ s : Fin (Vals.pickPart B (Rel.nub R).val pT).1.toNat, s ∈ S →
+      have hrq : ∀ s : Fin (Vals.pickPart B (nub R).val pT).1.toNat, s ∈ S →
           Column.idAt (Code.gather (kcT) pT).b (kcT).w s.1 =
             Column.idAt (Code.gather (kcT) pT).b (kcT).w (Column.bitsAt oT (q.1 * 8) 8).toNat := fun s hs => by
         obtain ⟨h1, h2⟩ := (hSm s).1 hs
@@ -330,10 +330,10 @@ theorem transpose_row_list (R : Rel A B)
         have := List.pairwise_iff_getElem.1 hstab s.1 t.1 (hgs s) (hgs t) hst
         rw [ids_getElem, ids_getElem] at this
         exact this e)
-      have hr : (List.range (Rel.nub R).n.toNat).map (fun k => (ids vpT)[k]!) = ids vpT :=
+      have hr : (List.range (nub R).n.toNat).map (fun k => (ids vpT)[k]!) = ids vpT :=
         List.ext_getElem (by rw [List.length_map, List.length_range, hvl]) fun k _ h2 => by
           rw [List.getElem_map, List.getElem_range]; exact getElem!_pos (ids vpT) k h2
-      have e : ((S.map fun s => (⟨_, hP s.1 (hsl s)⟩ : Fin (Rel.nub R).n.toNat)).map Fin.val) =
+      have e : ((S.map fun s => (⟨_, hP s.1 (hsl s)⟩ : Fin (nub R).n.toNat)).map Fin.val) =
           (S.map fun s => (Column.bitsAt (Code.gather (kcT) vpT).grade (s.1 * 8) 8).toNat).map
             fun k => (ids vpT)[k]! := by
         rw [List.map_map, List.map_map]
@@ -357,24 +357,24 @@ end
 /-- **`Λ(R)`'s rows, read back against `R.nub`**: row `q` is keyed by a key `d.key.row i` of `d = R.nub`, and
     its array holds exactly the values `d` relates that key to; every key of `d` keys some row. The membership
     reading of `transpose_row_list`, under its hypotheses. -/
-theorem transpose_rows (R : Rel A B)
-    (hF : ∀ {i j : Nat} (hi : i < (Rel.nub R).n.toNat) (hj : j < (Rel.nub R).n.toNat),
+theorem transpose_rows (R : Tab A B)
+    (hF : ∀ {i j : Nat} (hi : i < (nub R).n.toNat) (hj : j < (nub R).n.toNat),
       Column.idAt (kcT).b (kcT).w i = Column.idAt (kcT).b (kcT).w j ↔
-        Vals.row (Rel.nub R).key ⟨i, hi⟩ = Vals.row (Rel.nub R).key ⟨j, hj⟩)
+        Vals.row (nub R).key ⟨i, hi⟩ = Vals.row (nub R).key ⟨j, hj⟩)
     (hw : laneOK((kcT).w))
-    (hn : (kcT).n = (Rel.nub R).n) (hs : (kcT).b.size = ((kcT).n.toNat * (kcT).w + 7) / 8)
+    (hn : (kcT).n = (nub R).n) (hs : (kcT).b.size = ((kcT).n.toNat * (kcT).w + 7) / 8)
     -- the values' order `vp`, any permutation of the nub's rows, and `T` what `transposeRuns` builds on it
-    (vp : ByteArray) (hvp : (ids vp).Perm (List.range (Rel.nub R).n.toNat))
-    (T : Rel A (.arr B)) (hT : T = transposeRuns (Rel.nub R) kcT vp)
-    (h63 : (Rel.nub R).n.toNat < 2 ^ 63)
-    (hpk : Vals.PickFits A (Rel.nub R).key (List.range (Rel.nub R).n.toNat))
-    (hpv : Vals.PickFits B (Rel.nub R).val (List.range (Rel.nub R).n.toNat)) :
-    (∀ q : Fin (T).n.toNat, ∃ i : Fin (Rel.nub R).n.toNat,
-      Vals.row (T).key q = Vals.row (Rel.nub R).key i ∧ ∀ x, x ∈ Vals.row (T).val q ↔
-        ∃ i' : Fin (Rel.nub R).n.toNat, Vals.row (Rel.nub R).key i' = Vals.row (Rel.nub R).key i ∧
-          Vals.row (Rel.nub R).val i' = x) ∧
-    ∀ i : Fin (Rel.nub R).n.toNat, ∃ q : Fin (T).n.toNat,
-      Vals.row (T).key q = Vals.row (Rel.nub R).key i := by
+    (vp : ByteArray) (hvp : (ids vp).Perm (List.range (nub R).n.toNat))
+    (T : Tab A (.arr B)) (hT : T = transposeRuns (nub R) kcT vp)
+    (h63 : (nub R).n.toNat < 2 ^ 63)
+    (hpk : Vals.PickFits A (nub R).key (List.range (nub R).n.toNat))
+    (hpv : Vals.PickFits B (nub R).val (List.range (nub R).n.toNat)) :
+    (∀ q : Fin (T).n.toNat, ∃ i : Fin (nub R).n.toNat,
+      Vals.row (T).key q = Vals.row (nub R).key i ∧ ∀ x, x ∈ Vals.row (T).val q ↔
+        ∃ i' : Fin (nub R).n.toNat, Vals.row (nub R).key i' = Vals.row (nub R).key i ∧
+          Vals.row (nub R).val i' = x) ∧
+    ∀ i : Fin (nub R).n.toNat, ∃ q : Fin (T).n.toNat,
+      Vals.row (T).key q = Vals.row (nub R).key i := by
   obtain ⟨h1, h2⟩ := transpose_row_list R hF hw hn hs vp hvp T hT h63 hpk hpv
   refine ⟨fun q => ?_, h2⟩
   obtain ⟨i, hk, L, -, hL, -, hv⟩ := h1 q
@@ -386,34 +386,34 @@ theorem transpose_rows (R : Rel A B)
 
 -- `rep_nub`'s codes of `R` and the rows `nub` keeps (`NubSpec`'s local notations, restated)
 set_option hygiene false in
-local notation "kcR" => (Obj.codes A (#v[⟨Rel.n R, Rel.key R⟩] : Vector (Part A) 1))[0]'Nat.zero_lt_one
+local notation "kcR" => (Obj.codes A (#v[⟨Rel.Tab.n R, Rel.Tab.key R⟩] : Vector (Part A) 1))[0]'Nat.zero_lt_one
 set_option hygiene false in
-local notation "vcR" => (Obj.codes B (#v[⟨Rel.n R, Rel.val R⟩] : Vector (Part B) 1))[0]'Nat.zero_lt_one
+local notation "vcR" => (Obj.codes B (#v[⟨Rel.Tab.n R, Rel.Tab.val R⟩] : Vector (Part B) 1))[0]'Nat.zero_lt_one
 set_option hygiene false in
 local notation "nubR" => (tuples.tupleIds kcR #[vcR]).2
 
 /-- **The nub's key codes, from a fit at the nub's key**: faithful and well formed (`codes_faithful_wf` at the one
     part); the nub's count below `2^63` where `R`'s is, as it keeps a filter of `R`'s rows (`nub_row`, `nub_ids`). -/
-theorem nub_key_codes (R : Rel A B)
-    (hK : (∀ {i j : Nat} (hi : i < (Rel.n R).toNat) (hj : j < (Rel.n R).toNat),
+theorem nub_key_codes (R : Tab A B)
+    (hK : (∀ {i j : Nat} (hi : i < (n R).toNat) (hj : j < (n R).toNat),
         Column.idAt (kcR).b (kcR).w i = Column.idAt (kcR).b (kcR).w j ↔
-          Vals.row (Rel.key R) ⟨i, hi⟩ = Vals.row (Rel.key R) ⟨j, hj⟩) ∧
+          Vals.row (Tab.key R) ⟨i, hi⟩ = Vals.row (Tab.key R) ⟨j, hj⟩) ∧
       laneOK((kcR).w) ∧
-        (kcR).n = Rel.n R ∧ (kcR).b.size = ((kcR).n.toNat * (kcR).w + 7) / 8 ∧
+        (kcR).n = n R ∧ (kcR).b.size = ((kcR).n.toNat * (kcR).w + 7) / 8 ∧
         ((kcR).w < 8 → (kcR).card < USize.size ∧ ∀ i < (kcR).n.toNat, Column.idAt (kcR).b (kcR).w i < (kcR).card))
-    (hV : (∀ {i j : Nat} (hi : i < (Rel.n R).toNat) (hj : j < (Rel.n R).toNat),
+    (hV : (∀ {i j : Nat} (hi : i < (n R).toNat) (hj : j < (n R).toNat),
         Column.idAt (vcR).b (vcR).w i = Column.idAt (vcR).b (vcR).w j ↔
-          Vals.row (Rel.val R) ⟨i, hi⟩ = Vals.row (Rel.val R) ⟨j, hj⟩) ∧
+          Vals.row (val R) ⟨i, hi⟩ = Vals.row (val R) ⟨j, hj⟩) ∧
       laneOK((vcR).w) ∧
-        (vcR).n = Rel.n R ∧ (vcR).b.size = ((vcR).n.toNat * (vcR).w + 7) / 8 ∧
+        (vcR).n = n R ∧ (vcR).b.size = ((vcR).n.toNat * (vcR).w + 7) / 8 ∧
         ((vcR).w < 8 → (vcR).card < USize.size ∧ ∀ i < (vcR).n.toNat, Column.idAt (vcR).b (vcR).w i < (vcR).card))
-    (hk : Vals.PickFits A (Rel.key R) (List.range R.n.toNat)) (hv : Vals.PickFits B (Rel.val R) (List.range R.n.toNat))
-    (hWk : A.CodesFit (#v[⟨(Rel.nub R).n, (Rel.nub R).key⟩] : Vector (Part A) 1)) (h63 : (Rel.n R).toNat < 2 ^ 63) :
-    (∀ {i j : Nat} (hi : i < (Rel.nub R).n.toNat) (hj : j < (Rel.nub R).n.toNat),
+    (hk : Vals.PickFits A (Tab.key R) (List.range R.n.toNat)) (hv : Vals.PickFits B (val R) (List.range R.n.toNat))
+    (hWk : A.CodesFit (#v[⟨(nub R).n, (nub R).key⟩] : Vector (Part A) 1)) (h63 : (n R).toNat < 2 ^ 63) :
+    (∀ {i j : Nat} (hi : i < (nub R).n.toNat) (hj : j < (nub R).n.toNat),
       Column.idAt (kcT).b (kcT).w i = Column.idAt (kcT).b (kcT).w j ↔
-        Vals.row (Rel.nub R).key ⟨i, hi⟩ = Vals.row (Rel.nub R).key ⟨j, hj⟩) ∧
-      laneOK((kcT).w) ∧ (kcT).n = (Rel.nub R).n ∧ (kcT).b.size = ((kcT).n.toNat * (kcT).w + 7) / 8 ∧
-      (Rel.nub R).n.toNat < 2 ^ 63 := by
+        Vals.row (nub R).key ⟨i, hi⟩ = Vals.row (nub R).key ⟨j, hj⟩) ∧
+      laneOK((kcT).w) ∧ (kcT).n = (nub R).n ∧ (kcT).b.size = ((kcT).n.toNat * (kcT).w + 7) / 8 ∧
+      (nub R).n.toNat < 2 ^ 63 := by
   obtain ⟨⟨hF, hW⟩, -⟩ := codes_faithful_wf A _ hWk
   obtain ⟨hw, hn, hs, -⟩ := hW (k := 0) (by decide)
   refine ⟨fun hi hj => hF (k := 0) (l := 0) (by decide) (by decide) hi hj, hw, hn, hs, ?_⟩
@@ -426,32 +426,32 @@ theorem nub_key_codes (R : Rel A B)
 /-- **`rep (Λ(R))` is the power transpose of `rep R`**: the array `Λ(R)` gives a key `a` holds exactly the
     values `R` relates `a` to, and `Λ(R)` has a row at `a` exactly when `R` has a pair at `a`. Hypotheses:
     `rep_nub`'s (`hK hV hk hv`), the fits at the nub's two sides, `R`'s count below `2^63`. -/
-theorem rep_transpose (R : Rel A B)
-    (hK : (∀ {i j : Nat} (hi : i < (Rel.n R).toNat) (hj : j < (Rel.n R).toNat),
+theorem rep_transpose (R : Tab A B)
+    (hK : (∀ {i j : Nat} (hi : i < (n R).toNat) (hj : j < (n R).toNat),
         Column.idAt (kcR).b (kcR).w i = Column.idAt (kcR).b (kcR).w j ↔
-          Vals.row (Rel.key R) ⟨i, hi⟩ = Vals.row (Rel.key R) ⟨j, hj⟩) ∧
+          Vals.row (Tab.key R) ⟨i, hi⟩ = Vals.row (Tab.key R) ⟨j, hj⟩) ∧
       laneOK((kcR).w) ∧
-        (kcR).n = Rel.n R ∧ (kcR).b.size = ((kcR).n.toNat * (kcR).w + 7) / 8 ∧
+        (kcR).n = n R ∧ (kcR).b.size = ((kcR).n.toNat * (kcR).w + 7) / 8 ∧
         ((kcR).w < 8 → (kcR).card < USize.size ∧ ∀ i < (kcR).n.toNat, Column.idAt (kcR).b (kcR).w i < (kcR).card))
-    (hV : (∀ {i j : Nat} (hi : i < (Rel.n R).toNat) (hj : j < (Rel.n R).toNat),
+    (hV : (∀ {i j : Nat} (hi : i < (n R).toNat) (hj : j < (n R).toNat),
         Column.idAt (vcR).b (vcR).w i = Column.idAt (vcR).b (vcR).w j ↔
-          Vals.row (Rel.val R) ⟨i, hi⟩ = Vals.row (Rel.val R) ⟨j, hj⟩) ∧
+          Vals.row (val R) ⟨i, hi⟩ = Vals.row (val R) ⟨j, hj⟩) ∧
       laneOK((vcR).w) ∧
-        (vcR).n = Rel.n R ∧ (vcR).b.size = ((vcR).n.toNat * (vcR).w + 7) / 8 ∧
+        (vcR).n = n R ∧ (vcR).b.size = ((vcR).n.toNat * (vcR).w + 7) / 8 ∧
         ((vcR).w < 8 → (vcR).card < USize.size ∧ ∀ i < (vcR).n.toNat, Column.idAt (vcR).b (vcR).w i < (vcR).card))
-    (hk : Vals.PickFits A (Rel.key R) (List.range R.n.toNat)) (hv : Vals.PickFits B (Rel.val R) (List.range R.n.toNat))
+    (hk : Vals.PickFits A (Tab.key R) (List.range R.n.toNat)) (hv : Vals.PickFits B (val R) (List.range R.n.toNat))
     -- generic sides: the nub copies `R`'s cells, whose dictionaries, general cells, nested payloads no `R` fact bounds
-    (hWk : A.CodesFit (#v[⟨(Rel.nub R).n, (Rel.nub R).key⟩] : Vector (Part A) 1))
+    (hWk : A.CodesFit (#v[⟨(nub R).n, (nub R).key⟩] : Vector (Part A) 1))
     -- the values' order `vp`, any permutation of the nub's rows, and `T` what `transposeRuns` builds on it
-    (vp : ByteArray) (hvp : (ids vp).Perm (List.range (Rel.nub R).n.toNat))
-    (T : Rel A (.arr B)) (hT : T = transposeRuns (Rel.nub R) kcT vp)
-    (h63 : (Rel.n R).toNat < 2 ^ 63) :
+    (vp : ByteArray) (hvp : (ids vp).Perm (List.range (nub R).n.toNat))
+    (T : Tab A (.arr B)) (hT : T = transposeRuns (nub R) kcT vp)
+    (h63 : (n R).toNat < 2 ^ 63) :
     (∀ a X, rep (T) a X → ∀ x, x ∈ X ↔ rep R a x) ∧
       (∀ a, (∃ X, rep (T) a X) ↔ ∃ b, rep R a b) := by
   have hd := rep_nub R hK hV hk hv
   obtain ⟨hpk, hpv⟩ := nub_pickFits R hK hV hk hv
-  have hdh : ∀ a b, (Rel.nub R).Holds a b ↔ R.Holds a b := fun a b => by
-    show rep (Rel.nub R) a b ↔ rep R a b
+  have hdh : ∀ a b, (nub R).Holds a b ↔ R.Holds a b := fun a b => by
+    show rep (nub R) a b ↔ rep R a b
     rw [hd]
   obtain ⟨hF, hw, hn, hs, h63⟩ := nub_key_codes R hK hV hk hv hWk h63
   obtain ⟨hrow, hcov⟩ := transpose_rows R hF hw hn hs vp hvp T hT h63 hpk hpv
@@ -472,28 +472,28 @@ theorem rep_transpose (R : Rel A B)
 
 /-- **`nub R` holds each pair once**: two rows of `R.nub` with one key and one value are one row — each is the
     first occurrence (`nub_mem`) of its pair in `R` (`nub_row`). Hypotheses: `rep_nub`'s. -/
-theorem nub_row_inj (R : Rel A B)
-    (hK : (∀ {i j : Nat} (hi : i < (Rel.n R).toNat) (hj : j < (Rel.n R).toNat),
+theorem nub_row_inj (R : Tab A B)
+    (hK : (∀ {i j : Nat} (hi : i < (n R).toNat) (hj : j < (n R).toNat),
         Column.idAt (kcR).b (kcR).w i = Column.idAt (kcR).b (kcR).w j ↔
-          Vals.row (Rel.key R) ⟨i, hi⟩ = Vals.row (Rel.key R) ⟨j, hj⟩) ∧
+          Vals.row (Tab.key R) ⟨i, hi⟩ = Vals.row (Tab.key R) ⟨j, hj⟩) ∧
       laneOK((kcR).w) ∧
-        (kcR).n = Rel.n R ∧ (kcR).b.size = ((kcR).n.toNat * (kcR).w + 7) / 8 ∧
+        (kcR).n = n R ∧ (kcR).b.size = ((kcR).n.toNat * (kcR).w + 7) / 8 ∧
         ((kcR).w < 8 → (kcR).card < USize.size ∧ ∀ i < (kcR).n.toNat, Column.idAt (kcR).b (kcR).w i < (kcR).card))
-    (hV : (∀ {i j : Nat} (hi : i < (Rel.n R).toNat) (hj : j < (Rel.n R).toNat),
+    (hV : (∀ {i j : Nat} (hi : i < (n R).toNat) (hj : j < (n R).toNat),
         Column.idAt (vcR).b (vcR).w i = Column.idAt (vcR).b (vcR).w j ↔
-          Vals.row (Rel.val R) ⟨i, hi⟩ = Vals.row (Rel.val R) ⟨j, hj⟩) ∧
+          Vals.row (val R) ⟨i, hi⟩ = Vals.row (val R) ⟨j, hj⟩) ∧
       laneOK((vcR).w) ∧
-        (vcR).n = Rel.n R ∧ (vcR).b.size = ((vcR).n.toNat * (vcR).w + 7) / 8 ∧
+        (vcR).n = n R ∧ (vcR).b.size = ((vcR).n.toNat * (vcR).w + 7) / 8 ∧
         ((vcR).w < 8 → (vcR).card < USize.size ∧ ∀ i < (vcR).n.toNat, Column.idAt (vcR).b (vcR).w i < (vcR).card))
-    (hk : Vals.PickFits A (Rel.key R) (List.range R.n.toNat)) (hv : Vals.PickFits B (Rel.val R) (List.range R.n.toNat))
-    (t t' : Fin (Rel.nub R).n.toNat) (ek : Vals.row (Rel.nub R).key t = Vals.row (Rel.nub R).key t')
-    (ev : Vals.row (Rel.nub R).val t = Vals.row (Rel.nub R).val t') : t = t' := by
+    (hk : Vals.PickFits A (Tab.key R) (List.range R.n.toNat)) (hv : Vals.PickFits B (val R) (List.range R.n.toNat))
+    (t t' : Fin (nub R).n.toNat) (ek : Vals.row (nub R).key t = Vals.row (nub R).key t')
+    (ev : Vals.row (nub R).val t = Vals.row (nub R).val t') : t = t' := by
   obtain ⟨hn, hrow⟩ := nub_row R hK hV hk hv
   obtain ⟨hI, hp, e1, e2⟩ := hrow t.1 t.2
   obtain ⟨hI', hp', e1', e2'⟩ := hrow t'.1 t'.2
   have hnd : (ids nubR).Nodup := by rw [nub_ids R hK hV]; exact List.nodup_range.filter _
-  have hk' : Vals.row (Rel.key R) ⟨_, hp⟩ = Vals.row (Rel.key R) ⟨_, hp'⟩ := e1.symm.trans (ek.trans e1')
-  have hv' : Vals.row (Rel.val R) ⟨_, hp⟩ = Vals.row (Rel.val R) ⟨_, hp'⟩ := e2.symm.trans (ev.trans e2')
+  have hk' : Vals.row (Tab.key R) ⟨_, hp⟩ = Vals.row (Tab.key R) ⟨_, hp'⟩ := e1.symm.trans (ek.trans e1')
+  have hv' : Vals.row (val R) ⟨_, hp⟩ = Vals.row (val R) ⟨_, hp'⟩ := e2.symm.trans (ev.trans e2')
   have he : (ids nubR)[t.1]'hI = (ids nubR)[t'.1]'hI' := by
     rcases Nat.lt_trichotomy ((ids nubR)[t.1]'hI) ((ids nubR)[t'.1]'hI') with h | h | h
     · exact absurd ⟨hk', hv'⟩ (((nub_mem R hK hV).1 (List.getElem_mem hI')).2 _ h)
@@ -507,29 +507,29 @@ theorem nub_row_inj (R : Rel A B)
     exactly once, in the order `sortBy` lists the rows of `d = R.nub`: it is the values of the list `L` of `d`'s
     rows keyed `a`, `L` a sublist of `sortBy`'s permutation `vp`; `Λ(R)` has a row at `a` exactly when `R` has a
     pair at `a`. `transpose_row_list` read through `nub_row_inj`. Hypotheses: `rep_transpose`'s. -/
-theorem rep_transpose_list (R : Rel A B)
-    (hK : (∀ {i j : Nat} (hi : i < (Rel.n R).toNat) (hj : j < (Rel.n R).toNat),
+theorem rep_transpose_list (R : Tab A B)
+    (hK : (∀ {i j : Nat} (hi : i < (n R).toNat) (hj : j < (n R).toNat),
         Column.idAt (kcR).b (kcR).w i = Column.idAt (kcR).b (kcR).w j ↔
-          Vals.row (Rel.key R) ⟨i, hi⟩ = Vals.row (Rel.key R) ⟨j, hj⟩) ∧
+          Vals.row (Tab.key R) ⟨i, hi⟩ = Vals.row (Tab.key R) ⟨j, hj⟩) ∧
       laneOK((kcR).w) ∧
-        (kcR).n = Rel.n R ∧ (kcR).b.size = ((kcR).n.toNat * (kcR).w + 7) / 8 ∧
+        (kcR).n = n R ∧ (kcR).b.size = ((kcR).n.toNat * (kcR).w + 7) / 8 ∧
         ((kcR).w < 8 → (kcR).card < USize.size ∧ ∀ i < (kcR).n.toNat, Column.idAt (kcR).b (kcR).w i < (kcR).card))
-    (hV : (∀ {i j : Nat} (hi : i < (Rel.n R).toNat) (hj : j < (Rel.n R).toNat),
+    (hV : (∀ {i j : Nat} (hi : i < (n R).toNat) (hj : j < (n R).toNat),
         Column.idAt (vcR).b (vcR).w i = Column.idAt (vcR).b (vcR).w j ↔
-          Vals.row (Rel.val R) ⟨i, hi⟩ = Vals.row (Rel.val R) ⟨j, hj⟩) ∧
+          Vals.row (val R) ⟨i, hi⟩ = Vals.row (val R) ⟨j, hj⟩) ∧
       laneOK((vcR).w) ∧
-        (vcR).n = Rel.n R ∧ (vcR).b.size = ((vcR).n.toNat * (vcR).w + 7) / 8 ∧
+        (vcR).n = n R ∧ (vcR).b.size = ((vcR).n.toNat * (vcR).w + 7) / 8 ∧
         ((vcR).w < 8 → (vcR).card < USize.size ∧ ∀ i < (vcR).n.toNat, Column.idAt (vcR).b (vcR).w i < (vcR).card))
-    (hk : Vals.PickFits A (Rel.key R) (List.range R.n.toNat)) (hv : Vals.PickFits B (Rel.val R) (List.range R.n.toNat))
+    (hk : Vals.PickFits A (Tab.key R) (List.range R.n.toNat)) (hv : Vals.PickFits B (val R) (List.range R.n.toNat))
     -- generic sides: the nub copies `R`'s cells, whose dictionaries, general cells, nested payloads no `R` fact bounds
-    (hWk : A.CodesFit (#v[⟨(Rel.nub R).n, (Rel.nub R).key⟩] : Vector (Part A) 1))
+    (hWk : A.CodesFit (#v[⟨(nub R).n, (nub R).key⟩] : Vector (Part A) 1))
     -- the values' order `vp`, any permutation of the nub's rows, and `T` what `transposeRuns` builds on it
-    (vp : ByteArray) (hvp : (ids vp).Perm (List.range (Rel.nub R).n.toNat))
-    (T : Rel A (.arr B)) (hT : T = transposeRuns (Rel.nub R) kcT vp)
-    (h63 : (Rel.n R).toNat < 2 ^ 63) :
+    (vp : ByteArray) (hvp : (ids vp).Perm (List.range (nub R).n.toNat))
+    (T : Tab A (.arr B)) (hT : T = transposeRuns (nub R) kcT vp)
+    (h63 : (n R).toNat < 2 ^ 63) :
     (∀ a X, rep (T) a X → X.Nodup ∧ (∀ x, x ∈ X ↔ rep R a x) ∧
-      ∃ L : List (Fin (Rel.nub R).n.toNat), (L.map Fin.val).Sublist (ids vpT) ∧
-        (∀ i, i ∈ L ↔ Vals.row (Rel.nub R).key i = a) ∧ X = L.map (Vals.row (Rel.nub R).val)) ∧
+      ∃ L : List (Fin (nub R).n.toNat), (L.map Fin.val).Sublist (ids vpT) ∧
+        (∀ i, i ∈ L ↔ Vals.row (nub R).key i = a) ∧ X = L.map (Vals.row (nub R).val)) ∧
       (∀ a, (∃ X, rep (T) a X) ↔ ∃ b, rep R a b) := by
   obtain ⟨h1, h2⟩ := rep_transpose R hK hV hk hv hWk vp hvp T hT h63
   obtain ⟨hF, hw, hn, hs, h63⟩ := nub_key_codes R hK hV hk hv hWk h63

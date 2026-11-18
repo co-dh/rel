@@ -6,7 +6,7 @@ import Rel.Programs.Wumpus
 
 namespace Rel.Lang.TestWumpus
 
-open Rel Rel.Lang Rel.Lang.Test Rel.Alg Rel
+open Tab Rel.Lang Rel.Lang.Test Rel.Alg Rel
 
 /-- Each table `fₖ` of `given`: its name, and whether its key is `∗ : 1` rather than a cell. -/
 def tables : List (String × Bool) := [("V", false), ("B", false), ("S", false), ("G", false), ("noB", false),
@@ -40,23 +40,23 @@ def cell (x : Int64) : Int64 :=
   ([11, 12, 13, 14, 21, 22, 23, 24, 31, 32, 33, 34, 41, 42, 43, 44] : List Int64).getD x.toInt.toNat 0
 
 /-- The table `k` at step `i`, its cells coded `10x + y`. -/
-def at? (k i : Nat) : Option (Rel .long .long) := do
+def at? (k i : Nat) : Option (Tab .long .long) := do
   let (_, one) ← tables[k]?
   let R ← get given.expanded s!"f{k}" .long XX
   pure (ofPairs ((R.toList.filter (·.1 == Int64.ofNat i)).map fun (_, a, b) => (if one then a else cell a, cell b))).nub
 
 /-- The program's views after each step. -/
-def views : List (List (String × Rel .long .long)) :=
+def views : List (List (String × Tab .long .long)) :=
   (List.range 6).map fun i => tables.zipIdx.filterMap fun ((n, _), k) => (at? k i).map (n, ·)
 
 #guard given.ok
 #guard views.length == 6 && views.all (·.length == tables.length)
 
 -- row order is not part of a table, so rows compare sorted
-def showT (X : Rel .long .long) : String :=
+def showT (X : Tab .long .long) : String :=
   let rows := X.toList.map fun (a, b) => if a == b then s!"{a}" else s!"{a}:{b}"
   " ".intercalate (rows.mergeSort fun a b => !decide (b < a))
-def showS (t : List (String × Rel .long .long)) : String :=
+def showS (t : List (String × Tab .long .long)) : String :=
   "; ".intercalate (t.filterMap fun (n, X) => if X.n == 0 then none else some s!"{n} {showT X}")
 
 -- the design page's non-empty tables after each step

@@ -87,14 +87,14 @@ end Rel.Hylo
 
 namespace Rel.Lang.Gen
 
-open Rel Rel.Alg Rel.Rep Rel.Hylo
+open Tab Rel.Alg Rel.Rep Rel.Hylo
 open scoped Rel.Core.Rel
 open Rel.Core.Rel hiding id comp recip inter union zero le inl inr junc
 
 variable {A B : Obj}
 
 /-- A relation with no rows relates nothing. -/
-theorem rep_empty {C : Obj} {R : Rel A C} (h : (R.n == 0) = true) (a : A.El) (c : C.El) : ¬ rep R a c := by
+theorem rep_empty {C : Obj} {R : Tab A C} (h : (R.n == 0) = true) (a : A.El) (c : C.El) : ¬ rep R a c := by
   rintro ⟨i, -⟩
   have : R.n.toNat = 0 := by simp [beq_iff_eq.1 h]
   exact absurd i.2 (by omega)

@@ -14,7 +14,7 @@ import Rel.KernelWF.CodesFloatParts
 
 namespace Rel.Alg
 
-open Rel Rel.Kernel Rel.Verify Rel
+open Tab Rel.Kernel Rel.Verify Rel
 
 /-! ## First occurrences -/
 
@@ -177,13 +177,13 @@ theorem tupleIds_firsts (a b : Code) (hn : b.n = a.n)
 
 /-- **`Rel.rows R i` lists `R`'s rows by position**: `len i` rows, row `q` `R`'s row `i[q]`, or the
     default pair where `i[q]` is past `R`'s count; each side under `Vals.PickFits` at the rows `i` names. -/
-theorem rows_spec {k v : Obj} (R : Rel k v) (i : ByteArray) (hl : len i < USize.size)
+theorem rows_spec {k v : Obj} (R : Tab k v) (i : ByteArray) (hl : len i < USize.size)
     (hk : Vals.PickFits k R.key (ids i)) (hv : Vals.PickFits v R.val (ids i)) :
     (R.rows i).n.toNat = len i ∧ ∀ q (hq : q < (R.rows i).n.toNat),
       ((R.rows i).key.row ⟨q, hq⟩, (R.rows i).val.row ⟨q, hq⟩) =
         if h : (Column.bitsAt i (q * 8) 8).toNat < R.n.toNat then (R.key.row ⟨_, h⟩, R.val.row ⟨_, h⟩)
         else (k.dflt, v.dflt) := by
-  unfold Rel.rows need
+  unfold rows need
   rw [dif_pos hl]
   have hm : (len i).toUSize.toNat = len i := USize.toNat_ofNat_of_lt' hl
   have e : ((List.range (len i).toUSize.toNat).map fun q => (Column.bitsAt i (q * 8) 8).toNat) = ids i := by
@@ -197,14 +197,14 @@ theorem rows_spec {k v : Obj} (R : Rel k v) (i : ByteArray) (hl : len i < USize.
 
 /-- **`Rel.rows R i` fits at all its rows where `R` does**, when `i` names a sublist of `R`'s rows: each pick is
     a hit (`pickFits_pick`), at rows where `R` fits (`pickFits_sublist`). -/
-theorem rows_pickFits {k v : Obj} (R : Rel k v) (i : ByteArray) (hsub : (ids i).Sublist (List.range R.n.toNat))
+theorem rows_pickFits {k v : Obj} (R : Tab k v) (i : ByteArray) (hsub : (ids i).Sublist (List.range R.n.toNat))
     (hk : Vals.PickFits k R.key (List.range R.n.toNat)) (hv : Vals.PickFits v R.val (List.range R.n.toNat)) :
     Vals.PickFits k (R.rows i).key (List.range (R.rows i).n.toNat) ∧
       Vals.PickFits v (R.rows i).val (List.range (R.rows i).n.toNat) := by
   have hl : len i < USize.size := by
     rw [len_eq_ids]
     exact Nat.lt_of_le_of_lt (by simpa using hsub.length_le) R.n.toNat_lt_size
-  unfold Rel.rows need
+  unfold rows need
   rw [dif_pos hl]
   have hm : (len i).toUSize.toNat = len i := USize.toNat_ofNat_of_lt' hl
   have e : ((List.range (len i).toUSize.toNat).map fun q => (Column.bitsAt i (q * 8) 8).toNat) = ids i := by
@@ -230,7 +230,7 @@ open NubN
 
 section Nub
 
-variable {k v : Obj} (R : Rel k v)
+variable {k v : Obj} (R : Tab k v)
   -- the key's codes identify its rows and are well formed — what `CodesSpec` concludes of one part
   (hK : (∀ {i j : Nat} (hi : i < R.n.toNat) (hj : j < R.n.toNat),
       Column.idAt (kc).b (kc).w i = Column.idAt (kc).b (kc).w j ↔ Vals.row R.key ⟨i, hi⟩ = Vals.row R.key ⟨j, hj⟩) ∧
@@ -331,14 +331,14 @@ end Rel.Alg
 
 namespace Rel.Rep
 
-open Rel Rel.Kernel Rel.Verify Rel Rel.Alg
+open Tab Rel.Kernel Rel.Verify Rel Rel.Alg
 open scoped Rel.Core.Rel
 open Rel.Core.Rel hiding id comp recip inter union zero le inl inr junc
 open Alg.NubN
 
 /-- **`rep (nub R) = rep R`**: `rep` reads a relation as the set of its pairs, so dropping repeated rows
     changes nothing. Hypotheses: `nub_row`'s; under `CodesFit` at each side, `hK`, `hV` are `one_ok`'s. -/
-theorem rep_nub {k v : Obj} (R : Rel k v)
+theorem rep_nub {k v : Obj} (R : Tab k v)
     (hK : (∀ {i j : Nat} (hi : i < R.n.toNat) (hj : j < R.n.toNat),
         Column.idAt (kc).b (kc).w i = Column.idAt (kc).b (kc).w j ↔ Vals.row R.key ⟨i, hi⟩ = Vals.row R.key ⟨j, hj⟩) ∧
       laneOK((kc).w) ∧ (kc).n = R.n ∧
@@ -354,7 +354,7 @@ theorem rep_nub {k v : Obj} (R : Rel k v)
   obtain ⟨hn, hrow⟩ := nub_row R hK hV hk hv
   refine Core.Rel.ext fun a c => ?_
   show R.nub.Holds a c ↔ R.Holds a c
-  simp only [Rel.Holds]
+  simp only [Holds]
   constructor
   · rintro ⟨t, hta, htc⟩
     obtain ⟨hI, hp, e1, e2⟩ := hrow t.1 t.2

@@ -7,7 +7,7 @@ import Rel.Programs.Mss
 namespace Rel.Lang.TestMss
 
 -- no `open Rel`/`Rel.Alg`: their notation tokens break the `rel_program` lines below ("expected a name" at `Λ`)
-open Rel Rel.Lang Rel.Lang.Test
+open Tab Rel.Lang Rel.Lang.Test
 
 -- the specification and the derived fold on every array of `A`, named `s` and `p`; printed, `x mss` and `x` then the fold
 open Rel.Programs.prelude Programs.mss in

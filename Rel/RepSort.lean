@@ -8,7 +8,7 @@ import Rel.RepSubseq
 
 namespace Rel.Rep
 
-open Rel Rel.Kernel Rel.Verify Rel Rel.Alg Rel.KernelWF
+open Tab Rel.Kernel Rel.Verify Rel Rel.Alg Rel.KernelWF
 
 open FoldN OpsN Prim ListN
 
@@ -32,32 +32,32 @@ theorem suffix_pairwise {β : Type _} (R : β → β → Prop) (xs : List β) :
 -- every primitive's hypotheses in `orderedOn q X` past `suffix`, at the pieces bound by their equations
 set_option hygiene false in
 local notation "ordOK" =>
-  (oneFit(.arr B, Rel.n Su, Rel.val Su) ∧ uncOK(B, Wu) ∧ cmpOK(.arr B, Su, uncons (Rel.val Wu)) ∧
-    oneFit(.prod B (.arr B), Rel.n T, Rel.val T) ∧ oneFit(.arr B, Rel.n O, Rel.val O) ∧
-    Vals.PickFits (.arr B) (Rel.val V) (List.range (Rel.n V).toNat) ∧
-    Vals.PickFits (.arr B) (Rel.val V) ((List.range (Rel.n V).toNat).flatMap fun r =>
-      if h : r < (Rel.n V).toNat then List.replicate ((Rel.val V).row ⟨r, h⟩).length r else []) ∧
-    cmpOK(.arr B, O, mem (Rel.val V)) ∧ pairOK(.prod B (.arr B), outl D, M) ∧
-    oneFit(.prod B B, Rel.n yz, Rel.val yz) ∧ ajOK(.prod B B, yz, q E) ∧
-    oneFit(.prod B (.arr B), Rel.n bad, Rel.key bad) ∧ cmpOK(.prod B (.arr B), T, dom bad) ∧
-    oneFit(.arr B, Rel.n C, Rel.key C) ∧ ajOK(.arr B, idU X, dom C))
+  (oneFit(.arr B, Rel.Tab.n Su, Rel.Tab.val Su) ∧ uncOK(B, Wu) ∧ cmpOK(.arr B, Su, uncons (Rel.Tab.val Wu)) ∧
+    oneFit(.prod B (.arr B), Rel.Tab.n T, Rel.Tab.val T) ∧ oneFit(.arr B, Rel.Tab.n O, Rel.Tab.val O) ∧
+    Vals.PickFits (.arr B) (Rel.Tab.val V) (List.range (Rel.Tab.n V).toNat) ∧
+    Vals.PickFits (.arr B) (Rel.Tab.val V) ((List.range (Rel.Tab.n V).toNat).flatMap fun r =>
+      if h : r < (Rel.Tab.n V).toNat then List.replicate ((Rel.Tab.val V).row ⟨r, h⟩).length r else []) ∧
+    cmpOK(.arr B, O, mem (Rel.Tab.val V)) ∧ pairOK(.prod B (.arr B), outl D, M) ∧
+    oneFit(.prod B B, Rel.Tab.n yz, Rel.Tab.val yz) ∧ ajOK(.prod B B, yz, q E) ∧
+    oneFit(.prod B (.arr B), Rel.Tab.n bad, Rel.Tab.key bad) ∧ cmpOK(.prod B (.arr B), T, dom bad) ∧
+    oneFit(.arr B, Rel.Tab.n C, Rel.Tab.key C) ∧ ajOK(.arr B, idU X, dom C))
 
 /-- **`orderedOn`, read back**: an array `xs` of `X` goes to itself exactly when, for every suffix `y :: zs` of `xs`
     and every `z` of `zs`, the test `q E` reaches `(y, z)`; and the test sees every such `(y, z)` (`E` holds it).
     The pieces are bound as `orderedOn` builds them: `Su` the suffixes, `T` their `uncons`, `D = ran T`,
     `yz` the pairs `(y, z)`, `bad` those the test misses, `C` the arrays with a bad suffix. Hypotheses:
     `hS`, `suffix X` read back (`rep_suffixC`), and every primitive's at the pieces (`ordOK`). -/
-theorem rep_orderedOn {B : Obj} {n : USize} (q : Rel (.prod B B) (.prod B B) → Rel (.prod B B) (.prod B B))
+theorem rep_orderedOn {B : Obj} {n : USize} (q : Tab (.prod B B) (.prod B B) → Tab (.prod B B) (.prod B B))
     (X : Vals (.arr B) n) (hS : ∀ xs ys, rep (suffix X) xs ys ↔ (∃ j, X.row j = xs) ∧ ys <:+ xs)
-    (Su : Rel (.arr B) (.arr B)) (hSu : Su = suffix X) (Wu : Rel (.arr B) (.arr B)) (hWu : Wu = ran Su)
-    (T : Rel (.arr B) (.prod B (.arr B))) (hT : T = Su ≫ uncons (Rel.val Wu))
-    (D : Rel (.prod B (.arr B)) (.prod B (.arr B))) (hD : D = ran T)
-    (O : Rel (.prod B (.arr B)) (.arr B)) (hO : O = outr D) (V : Rel (.arr B) (.arr B)) (hV : V = ran O)
-    (M : Rel (.prod B (.arr B)) B) (hM : M = O ≫ mem (Rel.val V))
-    (yz : Rel (.prod B (.arr B)) (.prod B B)) (hyz : yz = pair (outl D) M)
-    (E : Rel (.prod B B) (.prod B B)) (hE : E = ran yz)
-    (bad : Rel (.prod B (.arr B)) (.prod B B)) (hbad : bad = antiJoin yz (q E))
-    (C : Rel (.arr B) (.prod B (.arr B))) (hC : C = T ≫ dom bad)
+    (Su : Tab (.arr B) (.arr B)) (hSu : Su = suffix X) (Wu : Tab (.arr B) (.arr B)) (hWu : Wu = ran Su)
+    (T : Tab (.arr B) (.prod B (.arr B))) (hT : T = Su ≫ uncons (val Wu))
+    (D : Tab (.prod B (.arr B)) (.prod B (.arr B))) (hD : D = ran T)
+    (O : Tab (.prod B (.arr B)) (.arr B)) (hO : O = outr D) (V : Tab (.arr B) (.arr B)) (hV : V = ran O)
+    (M : Tab (.prod B (.arr B)) B) (hM : M = O ≫ mem (val V))
+    (yz : Tab (.prod B (.arr B)) (.prod B B)) (hyz : yz = pair (outl D) M)
+    (E : Tab (.prod B B) (.prod B B)) (hE : E = ran yz)
+    (bad : Tab (.prod B (.arr B)) (.prod B B)) (hbad : bad = antiJoin yz (q E))
+    (C : Tab (.arr B) (.prod B (.arr B))) (hC : C = T ≫ dom bad)
     -- kept: fits and codes of the suffix pieces `Su`, `Wu`, `V`, `O`, `bad`, `C`, kernel intermediates
     (h : ordOK) :
     (∀ xs y zs z, (∃ i, X.row i = xs) → (y :: zs) <:+ xs → z ∈ zs → rep E (y, z) (y, z)) ∧
@@ -76,7 +76,7 @@ theorem rep_orderedOn {B : Obj} {n : USize} (q : Rel (.prod B B) (.prod B B) →
     rw [hSu]; exact hS
   have eW : ∀ a a', rep Wu a a' ↔ a = a' ∧ ∃ k, rep Su k a := fun a a' => by
     rw [hWu, rep_ran_corefl Su (one_ok _ hSf) (hSp)]; exact Iff.rfl
-  have eU := rep_uncons (Rel.val Wu) _ rfl _ rfl _ rfl u1
+  have eU := rep_uncons (val Wu) _ rfl _ rfl _ rfl u1
   -- `T`: an array to the head and tail of each of its non-empty suffixes
   have eT : ∀ xs (p : (Obj.prod B (.arr B)).El), rep T xs p ↔ rep Su xs (p.1 :: p.2) := fun xs p => by
     rw [hT, rep_comp _ _ (codes_faithful_wf _ _ hcf).1 c1 c2 c3 c4, Core.Rel.comp_apply]
@@ -99,7 +99,7 @@ theorem rep_orderedOn {B : Obj} {n : USize} (q : Rel (.prod B B) (.prod B B) →
       exact ⟨p.1, (eD _ _).2 ⟨rfl, hx⟩⟩
   have eV : ∀ a a', rep V a a' ↔ a = a' ∧ ∃ p, rep O p a := fun a a' => by
     rw [hV, rep_ran_corefl O (one_ok _ hOf) (hOp)]; exact Iff.rfl
-  have eMem := rep_mem (Rel.val V) hVv hVk
+  have eMem := rep_mem (val V) hVv hVk
   have eM : ∀ p z, rep M p z ↔ (∃ xs, rep T xs p) ∧ z ∈ p.2 := fun p z => by
     rw [hM, rep_comp _ _ (codes_faithful_wf _ _ hmf).1 m1 m2 m3 m4, Core.Rel.comp_apply]
     constructor
@@ -174,9 +174,9 @@ theorem rep_orderedOn {B : Obj} {n : USize} (q : Rel (.prod B B) (.prod B B) →
 
 /-- **`orderedOn`'s read-back at `q := pairsIn Q` in `Pairwise` form**, for any relation `O` read back as it: the test
     read back by `rep_pairsIn` (`hq`), the suffix form turned into `Pairwise` (`suffix_pairwise`). -/
-theorem pairwise_of_orderedOn {B : Obj} {n : USize} (Q : Rel B B) (X : Vals (.arr B) n) (O : Rel (.arr B) (.arr B))
-    (E : Rel (.prod B B) (.prod B B))
-    (hq : cmpOK(.prod B B, E, idU (t := .prod B B) (m := Rel.n Q) (Rel.key Q, Rel.val Q)))
+theorem pairwise_of_orderedOn {B : Obj} {n : USize} (Q : Tab B B) (X : Vals (.arr B) n) (O : Tab (.arr B) (.arr B))
+    (E : Tab (.prod B B) (.prod B B))
+    (hq : cmpOK(.prod B B, E, idU (t := .prod B B) (m := Tab.n Q) (Tab.key Q, val Q)))
     (h1 : ∀ xs y zs z, (∃ i, X.row i = xs) → (y :: zs) <:+ xs → z ∈ zs → rep E (y, z) (y, z))
     (h2 : ∀ xs ys, rep O xs ys ↔ (∃ i, X.row i = xs) ∧ ys = xs ∧
       ∀ y zs, (y :: zs) <:+ xs → ∀ z ∈ zs, ∃ w, rep (pairsIn Q E) w (y, z)) :
@@ -192,7 +192,7 @@ theorem pairwise_of_orderedOn {B : Obj} {n : USize} (Q : Rel B B) (X : Vals (.ar
 /-- **`sortSet(Q)`, read back**: `s` goes to `ys` exactly when `setify` takes the array `ys` of `Y` to `s` and `ys`
     is `Q`-ordered. `sortSet Q Y` is `(setify Y)° ≫ ordered Q Y` (`rep_comp`, `rep_conv`, `rep_orderedC`).
     Hypotheses: `ordered Q Y` read back (`eO`: `rep_orderedC`), `rep_comp`'s at the composite. -/
-theorem rep_sortSet {B : Obj} {n : USize} (Q : Rel B B) (Y : Vals (.arr B) n)
+theorem rep_sortSet {B : Obj} {n : USize} (Q : Tab B B) (Y : Vals (.arr B) n)
     (eO : ∀ xs ys, rep (ordered Q Y) xs ys ↔ (∃ i, Y.row i = xs) ∧ ys = xs ∧ xs.Pairwise (fun y z => rep Q y z))
     (hc : cmpOK(.arr B, (setify Y)°, ordered Q Y)) :
     ∀ s ys, rep (sortSet Q Y) s ys ↔

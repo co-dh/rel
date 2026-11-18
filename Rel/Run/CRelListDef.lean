@@ -3,7 +3,7 @@ import Rel.Run.CRelDef
 section
 namespace Rel
 namespace CRel
-open Rel Rel.Kernel Rel.Alg
+open Tab Rel.Kernel Rel.Alg
 variable {K A B : Obj} {n : USize}
 
 /-- `cons°` on the arrays `X`, ok where `unconsC` ran within capacity. -/

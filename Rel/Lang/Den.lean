@@ -12,7 +12,7 @@ import Rel.Run.Lang.Compile
 
 namespace Rel.Lang
 
-open Rel.Kernel Rel Rel.Rep
+open Rel.Kernel Tab Rel.Rep
 open scoped Rel.Core.Rel
 open Rel.Core.Rel hiding id comp recip inter union zero le inl inr junc
 
@@ -42,7 +42,7 @@ variable {A B C : Obj} {Φ Ψ : Den A B → Den A B} {Y : Den A B}
 /-! ### The named meanings: each the `T` of its node's `Gen.*_sound` lemma -/
 
 /-- A table's value rows are the values its `rep` relates. -/
-theorem valRow {A B : Obj} (U : Rel A B) (b : B.El) : (∃ p, U.val.row p = b) ↔ ∃ a, rep U a b :=
+theorem valRow {A B : Obj} (U : Tab A B) (b : B.El) : (∃ p, U.val.row p = b) ↔ ∃ a, rep U a b :=
   ⟨fun ⟨p, e⟩ => ⟨U.key.row p, p, rfl, e⟩, fun ⟨_, p, _, e⟩ => ⟨p, e⟩⟩
 
 /-- `R − S`, pointwise. -/

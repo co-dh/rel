@@ -12,7 +12,7 @@ open Rel.Ext
 
 namespace Rel.Alg
 
-open Rel Rel.Dep Rel.Kernel Rel.Verify Rel
+open Tab Rel.Dep Rel.Kernel Rel.Verify Rel
 
 /-- A long column's dense payload holds its `n` longs. -/
 theorem len_longsOf {n : USize} (x : Arr .long n) : len (longsOf x) = n.toNat := by

@@ -11,7 +11,7 @@ open Rel.Ext
 
 namespace Rel.Alg
 
-open Rel Rel.Dep Rel.Kernel Rel.Verify Rel
+open Tab Rel.Dep Rel.Kernel Rel.Verify Rel
 
 /-- A float type's facts: `bitsType` sorts it at an integral kind `k` of its width, its dense payload holds
     `k.width` bytes an element. -/

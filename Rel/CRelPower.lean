@@ -15,7 +15,7 @@ namespace Rel
 
 namespace Rep
 
-open Rel Rel.Kernel Rel.Verify Rel Rel.Alg Rel.KernelWF
+open Tab Rel.Kernel Rel.Verify Rel Rel.Alg Rel.KernelWF
 open scoped Rel.Core.Rel
 open Rel.Core.Rel hiding id comp recip inter union zero le inl inr junc
 open Pow OpsN UnionN
@@ -24,12 +24,12 @@ variable {A B K : Obj}
 
 /-- **`unionC`'s bit is `rep_union_full`'s premises**: `need`'s guard its `hN`, the razes' bits its `hFk`, `hFv`
     (`razeC_fits`), the codes' bits its `hK`, `hV` (`oneOK_of_codesC`), the `fitsN` bits its `hk`, `hv`. -/
-theorem unionC_ok (R S : Rel A B) (hb : (unionC R S).2 = true) :
+theorem unionC_ok (R S : Tab A B) (hb : (unionC R S).2 = true) :
     ∃ hN : R.n.toNat + S.n.toNat < USize.size, Vals.RazeFits A R.key S.key ∧ Vals.RazeFits B R.val S.val ∧
-      cOK(kcR(Uc(R, S, hN)), Rel.n (Uc(R, S, hN)), Rel.key (Uc(R, S, hN))) ∧
-      cOK(vcR(Uc(R, S, hN)), Rel.n (Uc(R, S, hN)), Rel.val (Uc(R, S, hN))) ∧
-      Vals.PickFits A (Rel.key (Uc(R, S, hN))) (List.range (Rel.n (Uc(R, S, hN))).toNat) ∧
-      Vals.PickFits B (Rel.val (Uc(R, S, hN))) (List.range (Rel.n (Uc(R, S, hN))).toNat) := by
+      cOK(kcR(Uc(R, S, hN)), n (Uc(R, S, hN)), Tab.key (Uc(R, S, hN))) ∧
+      cOK(vcR(Uc(R, S, hN)), n (Uc(R, S, hN)), val (Uc(R, S, hN))) ∧
+      Vals.PickFits A (Tab.key (Uc(R, S, hN))) (List.range (n (Uc(R, S, hN))).toNat) ∧
+      Vals.PickFits B (val (Uc(R, S, hN))) (List.range (n (Uc(R, S, hN))).toNat) := by
   unfold unionC need at hb
   split at hb
   · rename_i hN
@@ -54,8 +54,8 @@ theorem rep_τC {n : USize} (X : Vals A n) (hb : (τC X).2 = true) :
     at the intermediates `lamOnByC` builds, each defining equation `rfl` but the transpose's (`transposeBy_eq`).
     `transposeByC_ok` gives `hK`…`h63`, `diffC`'s bit `hc` (`codes_faithful_wf`, `pairs_eq_codes`) and `hdU`, `topC`'s
     `ht63`, `unionC_ok` `hN`…`huv`. -/
-theorem rep_lamOnByC {m : USize} (o : Rel A B → ByteArray × Bool)
-    (ho : ∀ d, (o d).2 = true → (ids (o d).1).Perm (List.range d.n.toNat)) (R : Rel A B) (U : Vals A m)
+theorem rep_lamOnByC {m : USize} (o : Tab A B → ByteArray × Bool)
+    (ho : ∀ d, (o d).2 = true → (ids (o d).1).Perm (List.range d.n.toNat)) (R : Tab A B) (U : Vals A m)
     (hb : (lamOnByC o R U).2 = true) :
     (∀ a Y, rep (lamOnByC o R U).1 a Y → ∀ y, y ∈ Y ↔ rep R a y) ∧
       (∀ a, (∃ Y, rep (lamOnByC o R U).1 a Y) ↔ (∃ b, rep R a b) ∨ ∃ i, Vals.row U i = a) ∧
@@ -77,8 +77,8 @@ theorem rep_lamOnByC {m : USize} (o : Rel A B → ByteArray × Bool)
 
 /-- `lamOnByC o M X` on rows of `X` when `M` relates only rows of `X`: an array it gives `xs` holds exactly the `y`
     with `P xs y`, and it has a row at `xs` exactly when `X` lists `xs`. -/
-theorem rep_lamOnByC_rows {n : USize} (o : Rel K B → ByteArray × Bool)
-    (ho : ∀ d, (o d).2 = true → (ids (o d).1).Perm (List.range d.n.toNat)) (M : Rel K B) (X : Vals K n)
+theorem rep_lamOnByC_rows {n : USize} (o : Tab K B → ByteArray × Bool)
+    (ho : ∀ d, (o d).2 = true → (ids (o d).1).Perm (List.range d.n.toNat)) (M : Tab K B) (X : Vals K n)
     (P : K.El → B.El → Prop) (hm : ∀ xs y, rep M xs y ↔ (∃ i, Vals.row X i = xs) ∧ P xs y)
     (hb : (lamOnByC o M X).2 = true) :
     (∀ xs Y, rep (lamOnByC o M X).1 xs Y → (∃ i, Vals.row X i = xs) ∧ ∀ y, y ∈ Y ↔ P xs y) ∧
@@ -98,22 +98,22 @@ theorem rep_setifyC {n : USize} (X : Vals (.arr B) n) (hb : (setifyC X).2 = true
 
 /-- **`Λ(R)`'s arrays are ascending and duplicate-free**, `B` ordered: each is `R.nub`'s values at a sublist of
     `sortBy`'s permutation of its rows (`rep_transpose_list`), which lists them ascending (`sortBy_asc`). -/
-theorem transposeC_asc (R : Rel A B) (hB : B.Ordered) (hb : (transposeC R).2 = true) :
+theorem transposeC_asc (R : Tab A B) (hB : B.Ordered) (hb : (transposeC R).2 = true) :
     ∀ a X, rep (transposeC R).1 a X → X.Nodup ∧ X.Pairwise fun x y => ¬ B.lt y x := by
   obtain ⟨hK, hV, hk, hv, hWk, hW, h63⟩ := transposeC_ok R hb
   intro a X h
   obtain ⟨hnd, -, L, hL, -, rfl⟩ := (rep_transpose_list R hK hV hk hv hWk _ (sortBy_nub_perm _ hW) _ (transpose_eq _) h63).1 a X h
   refine ⟨hnd, ?_⟩
-  have hs := (sortBy_asc (sortsAsc_all B hB) (Rel.nub R).val
-    (small_of_pickFits B _ _ (nub_pickFits R hK hV hk hv).2) (tilLongs (Rel.nub R).n)
-    (by rw [len_tilLongs]; exact (Rel.nub R).n.toNat_lt_size)
+  have hs := (sortBy_asc (sortsAsc_all B hB) (nub R).val
+    (small_of_pickFits B _ _ (nub_pickFits R hK hV hk hv).2) (tilLongs (nub R).n)
+    (by rw [len_tilLongs]; exact (nub R).n.toNat_lt_size)
     (fun i h => by rw [ids_tilLongs] at h; exact List.mem_range.1 h)).sublist hL
   rw [List.pairwise_map] at hs ⊢
   exact hs.imp fun h => h _ _
 
 /-- **`Λ(R)` total on `U` gives ascending, duplicate-free arrays**, `B` ordered: `Λ(R)`'s (`transposeC_asc`) and
     the empty arrays of the elements of `U` that `R` relates to nothing. -/
-theorem lamOnC_asc {m : USize} (R : Rel A B) (U : Vals A m) (hB : B.Ordered) (hb : (lamOnC R U).2 = true) :
+theorem lamOnC_asc {m : USize} (R : Tab A B) (U : Vals A m) (hB : B.Ordered) (hb : (lamOnC R U).2 = true) :
     ∀ a Y, rep (lamOnC R U).1 a Y → Y.Nodup ∧ Y.Pairwise fun x y => ¬ B.lt y x := by
   simp only [lamOnC, lamOnByC, Bool.and_eq_true] at hb
   obtain ⟨⟨⟨⟨ht, -⟩, -⟩, hn⟩, hu⟩ := hb
@@ -136,7 +136,7 @@ theorem setifyC_asc {n : USize} (X : Vals (.arr B) n) (hB : B.Ordered) (hb : (se
   exact lamOnC_asc _ X hB hb.2
 
 /-- **`rep (E R X)` under `EC`'s bit**: `rep_lamOnByC_rows` at `∋ ≫ R` on `X` (`rep_compC`, `rep_memC`). -/
-theorem rep_EC {n : USize} (R : Rel A B) (X : Vals (.arr A) n) (hb : (EC R X).2 = true) :
+theorem rep_EC {n : USize} (R : Tab A B) (X : Vals (.arr A) n) (hb : (EC R X).2 = true) :
     (∀ xs Y, rep (EC R X).1 xs Y → (∃ i, Vals.row X i = xs) ∧ ∀ y, y ∈ Y ↔ ∃ x ∈ xs, rep R x y) ∧
       (∀ xs, (∃ Y, rep (EC R X).1 xs Y) ↔ ∃ i, Vals.row X i = xs) := by
   simp only [EC, Bool.and_eq_true] at hb
@@ -157,7 +157,7 @@ theorem rep_distinctC [DecidableEq B.El] {n : USize} (X : Vals (.arr B) n) (hb :
       (∀ xs, (∃ Y, rep (distinctC X).1 xs Y) ↔ ∃ i, Vals.row X i = xs) := by
   simp only [distinctC, Bool.and_eq_true] at hb
   obtain ⟨hm, hl⟩ := hb
-  let o : Rel (.arr B) B → ByteArray × Bool := fun d => (tilLongs d.n, true)
+  let o : Tab (.arr B) B → ByteArray × Bool := fun d => (tilLongs d.n, true)
   have ho : ∀ d, (o d).2 = true → (ids (o d).1).Perm (List.range d.n.toNat) := fun d _ => by
     simp only [o, ids_tilLongs]; exact List.Perm.refl _
   obtain ⟨h1, h2⟩ := rep_lamOnByC_rows o ho _ X (fun xs y => y ∈ xs) (rep_memC X hm) hl
@@ -174,18 +174,18 @@ theorem rep_distinctC [DecidableEq B.El] {n : USize} (X : Vals (.arr B) n) (hb :
     -- `L` is the nub rows keyed `xs`, ascending: both ascending with the same members
     have hLs : L.Pairwise (· < ·) := by
       simp only [o, ids_tilLongs] at hL
-      have hs := List.Pairwise.sublist hL (List.pairwise_lt_range (n := (Rel.nub M).n.toNat))
+      have hs := List.Pairwise.sublist hL (List.pairwise_lt_range (n := (nub M).n.toNat))
       have hs' := List.pairwise_map.1 hs; exact hs'
-    have hF : ((List.finRange (Rel.nub M).n.toNat).filter fun t => (Rel.nub M).key.row t = xs).Pairwise (· < ·) :=
+    have hF : ((List.finRange (nub M).n.toNat).filter fun t => (nub M).key.row t = xs).Pairwise (· < ·) :=
       (finRange_pairwise_lt _).filter _
-    have eL : L = (List.finRange (Rel.nub M).n.toNat).filter fun t => (Rel.nub M).key.row t = xs := by
+    have eL : L = (List.finRange (nub M).n.toNat).filter fun t => (nub M).key.row t = xs := by
       refine List.Perm.eq_of_pairwise (fun a b _ _ h1 h2 => absurd (Fin.lt_trans h1 h2) (Fin.lt_irrefl _)) hLs hF ?_
       refine List.perm_iff_count.2 fun t => ?_
       rw [List.Nodup.count (hLs.imp Fin.ne_of_lt), List.Nodup.count (hF.imp Fin.ne_of_lt)]
       simp [hLi]
     -- the nub's pairs keyed `xs`, read off `mem X`'s rows with repeats erased
     obtain ⟨hmv, hmk⟩ := memC_ok X hm
-    have hmr : (List.range (Rel.n M).toNat).map (fun t => if h : t < (Rel.n M).toNat then
+    have hmr : (List.range (Tab.n M).toNat).map (fun t => if h : t < (Tab.n M).toNat then
         (M.key.row ⟨t, h⟩, M.val.row ⟨t, h⟩) else ((Obj.arr B).dflt, B.dflt)) =
         (List.range n.toNat).flatMap fun r => if h : r < n.toNat then (X.row ⟨r, h⟩).map (X.row ⟨r, h⟩, ·) else [] :=
       mem_rows X hmv hmk
@@ -265,7 +265,7 @@ end Rep
 
 namespace CRel
 
-open Rel Rel.Kernel Rel.Alg Rel.Rep
+open Tab Rel.Kernel Rel.Alg Rel.Rep
 open scoped Rel.Core.Rel
 open Rel.Core.Rel hiding id comp recip inter union zero le inl inr junc
 

@@ -11,7 +11,7 @@ import Rel.KernelWF.SortSpec
 
 namespace Rel.Alg
 
-open Rel Rel.Kernel Rel.Verify Rel
+open Tab Rel.Kernel Rel.Verify Rel
 
 namespace DivN
 

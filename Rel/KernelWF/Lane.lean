@@ -8,7 +8,7 @@ import Rel.KernelSpec.Encoding
 
 namespace Rel.Alg
 
-open Rel Rel.Kernel Rel
+open Tab Rel.Kernel Rel
 
 /-- A lane `laneKind` names is the bitmap at `1`, or an integral byte layout at `8 ×` its width. -/
 theorem laneKind_some {w : Nat} {k : Scan.Kind} (h : laneKind w = some k) :

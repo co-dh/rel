@@ -15,7 +15,7 @@ namespace Rel
 
 namespace Rep
 
-open Rel Rel.Kernel Rel.Verify Rel Rel.Alg Rel.KernelWF
+open Tab Rel.Kernel Rel.Verify Rel Rel.Alg Rel.KernelWF
 open FoldN OpsN Prim Pow ListN
 
 /-- Counts each one more than `g`'s sum to `g`'s sum plus their number. -/
@@ -59,7 +59,7 @@ theorem rep_unsnocC {B : Obj} {n : USize} (X : Vals (.arr B) n) (hb : (unsnocC X
 /-- **`zipC`'s bit is `rep_zip`'s premises**: the `fitsN` bits its `hPa`, `hPb`, `hKf`; the copies' count decided
     inside `expand` its `hS`, `expand`'s guard its `hU`, both through `len_expand_sum` (each lesser count below a
     side's payload, `lesser_get`). -/
-theorem zipC_ok {K A B : Obj} (P : Rel K (.prod (.arr A) (.arr B))) (hb : (zipC P).2 = true) :
+theorem zipC_ok {K A B : Obj} (P : Tab K (.prod (.arr A) (.arr B))) (hb : (zipC P).2 = true) :
     Vals.PickFits (.arr A) P.val.1 (List.range P.n.toNat) ∧ Vals.PickFits (.arr B) P.val.2 (List.range P.n.toNat) ∧
     ((List.range P.n.toNat).map fun r => (Column.bitsAt (Kernel.Ew.val Ew.lesser Ew.i64 Ew.vv nul
       (slicesOf P.val.1).2 (slicesOf P.val.2).2 P.n) (r * 8) 8).toNat).sum < 2 ^ 63 ∧
@@ -84,7 +84,7 @@ theorem zipC_ok {K A B : Obj} (P : Rel K (.prod (.arr A) (.arr B))) (hb : (zipC 
     exact ⟨hPa, hPb, hb, hx, pickFits_map_range _ _ _ hk⟩
   · exact absurd hb Bool.false_ne_true
 
-theorem rep_zipC {K A B : Obj} (P : Rel K (.prod (.arr A) (.arr B))) (hb : (zipC P).2 = true) :
+theorem rep_zipC {K A B : Obj} (P : Tab K (.prod (.arr A) (.arr B))) (hb : (zipC P).2 = true) :
     ∀ k zs, rep (zipC P).1 k zs ↔ ∃ xs ys, rep P k (xs, ys) ∧ zs = List.zip xs ys := by
   obtain ⟨hPa, hPb, hS, hU, hk⟩ := zipC_ok P hb
   exact rep_zip P hPa hPb _ rfl hS hU _ rfl _ rfl _ rfl _ rfl _ rfl hk
@@ -92,7 +92,7 @@ theorem rep_zipC {K A B : Obj} (P : Rel K (.prod (.arr A) (.arr B))) (hb : (zipC
 /-- **`consC`'s bit is `rep_cons`'s premises** (`consOK`): the `fitsN` bits its `hV`, `hKf`; inside `expand`, the
     copies' count `k` plus the rows decided its `hS`, `need`'s guard its `hU` (`len_expand_slicesOf`), the raze's
     bit its `hRf` (`razeC_fits`), the last pick's its `hFf` (`pickC_fits`). -/
-theorem consC_ok {K B : Obj} (P : Rel K (.prod B (.arr B))) (hb : (consC P).2 = true) : consOK(K, B, P) := by
+theorem consC_ok {K B : Obj} (P : Tab K (.prod B (.arr B))) (hb : (consC P).2 = true) : consOK(K, B, P) := by
   simp only [consC, expand, longCount, need, okbit] at hb
   obtain ⟨⟨hV, hK⟩, hb⟩ := hb
   have hVf := pickFits_range _ _ hV
@@ -116,13 +116,13 @@ theorem consC_ok {K B : Obj} (P : Rel K (.prod B (.arr B))) (hb : (consC P).2 = 
     · exact absurd hb Bool.false_ne_true
   · exact absurd hb Bool.false_ne_true
 
-theorem rep_consC {K B : Obj} (P : Rel K (.prod B (.arr B))) (hb : (consC P).2 = true) :
+theorem rep_consC {K B : Obj} (P : Tab K (.prod B (.arr B))) (hb : (consC P).2 = true) :
     ∀ k ys, rep (consC P).1 k ys ↔ ∃ b bs, rep P k (b, bs) ∧ ys = b :: bs := by
   exact rep_cons_ok P (consC_ok P hb)
 
 /-- **`catC`'s bit is `rep_cat`'s premises** (`catOK`), as `consC_ok`: the two copies' counts `ka + kb` decided its
     `hS`, `need`'s guard its `hU`, each a side's counts summed (`len_expand_slicesOf`). -/
-theorem catC_ok {K B : Obj} (P : Rel K (.prod (.arr B) (.arr B))) (hb : (catC P).2 = true) : catOK(K, B, P) := by
+theorem catC_ok {K B : Obj} (P : Tab K (.prod (.arr B) (.arr B))) (hb : (catC P).2 = true) : catOK(K, B, P) := by
   simp only [catC, expand, longCount, need, okbit] at hb
   obtain ⟨⟨⟨ha, hb'⟩, hK⟩, hb⟩ := hb
   have hPa := pickFits_range _ _ ha; have hPb := pickFits_range _ _ hb'
@@ -153,7 +153,7 @@ theorem catC_ok {K B : Obj} (P : Rel K (.prod (.arr B) (.arr B))) (hb : (catC P)
   · exact absurd hb Bool.false_ne_true
 
 /-- **`rep (cat P)` under `catC`'s bit**: `rep_cat` at `catC_ok`'s premises. -/
-theorem rep_catC {K B : Obj} (P : Rel K (.prod (.arr B) (.arr B))) (hb : (catC P).2 = true) :
+theorem rep_catC {K B : Obj} (P : Tab K (.prod (.arr B) (.arr B))) (hb : (catC P).2 = true) :
     ∀ k zs, rep (catC P).1 k zs ↔ ∃ xs ys, rep P k (xs, ys) ∧ zs = xs ++ ys := by
   exact rep_cat_ok P (catC_ok P hb)
 
@@ -251,7 +251,7 @@ theorem rep_suffixC {B : Obj} {n : USize} (X : Vals (.arr B) n) (hb : (suffixC X
   exact rep_suffix X _ rfl hS hU _ rfl _ rfl _ rfl hK hV hk
 
 /-- `compC_ok` in `cmpOK`'s form, the codes bound by their equation. -/
-theorem compC_cmpOK {A B C : Obj} (R : Rel A B) (S : Rel B C) (hb : (compC R S).2 = true) : cmpOK(B, R, S) := by
+theorem compC_cmpOK {A B C : Obj} (R : Tab A B) (S : Tab B C) (hb : (compC R S).2 = true) : cmpOK(B, R, S) := by
   obtain ⟨hcf, h⟩ := compC_ok R S hb
   exact ⟨hcf, fun _ e => by subst e; exact h⟩
 
@@ -275,7 +275,7 @@ theorem rep_uncatC {B : Obj} {n : USize} (X : Vals (.arr B) n) (hb : (uncatC X).
 /-- **`rep (snoc P)` under `snocC`'s bit**: `rep_snoc` at `snocOK`, each piece's premises read off its bit —
     `ranC`'s codes and `fitsN` bits (`oneFit`), `transposeC`'s at `idU` (`tauOK`), `compC_cmpOK`, `pairC_ok`,
     `catC_ok`. -/
-theorem rep_snocC {K B : Obj} (P : Rel K (.prod (.arr B) B)) (hb : (snocC P).2 = true) :
+theorem rep_snocC {K B : Obj} (P : Tab K (.prod (.arr B) B)) (hb : (snocC P).2 = true) :
     ∀ k ys, rep (snocC P).1 k ys ↔ ∃ bs b, rep P k (bs, b) ∧ ys = bs ++ [b] := by
   simp only [snocC, okbit] at hb
   obtain ⟨⟨⟨⟨⟨hD, ht⟩, hT⟩, hQ⟩, hM⟩, hr⟩ := hb
@@ -296,7 +296,7 @@ theorem rep_snocC {K B : Obj} (P : Rel K (.prod (.arr B) B)) (hb : (snocC P).2 =
 
 /-- **`cons` built by appending, under `consCatC`'s bit**: each piece read back by its twin's lemma (`rep_ranC`,
     `rep_topC`, `rep_pairC`, `rep_snocC`, `rep_compC`, `rep_catC`); `nilVal`'s one row is `[]`. -/
-theorem rep_consCatC {K B : Obj} (P : Rel K (.prod B (.arr B))) (hb : (consCatC P).2 = true) :
+theorem rep_consCatC {K B : Obj} (P : Tab K (.prod B (.arr B))) (hb : (consCatC P).2 = true) :
     ∀ k ys, rep (consCatC P).1 k ys ↔ ∃ b bs, rep P k (b, bs) ∧ ys = b :: bs := by
   simp only [consCatC, Bool.and_eq_true] at hb
   obtain ⟨⟨⟨⟨⟨⟨hD, hN⟩, hS⟩, hs⟩, hQ⟩, hM⟩, hr⟩ := hb
@@ -519,14 +519,14 @@ theorem countBefore_get {M : USize} (hM : M.toNat < 2 ^ 63) (b idx : ByteArray) 
 
 /-- **`keyBitsC`'s bit `k`**: set exactly when cell `k` of the payload is a key of `P`, the joint codes faithful
     (`codes_faithful_wf`, `member_bit`). -/
-theorem keyBitsC_bit {B : Obj} {M : USize} (F : Vals B M) (P : Rel B B) (hb : (keyBitsC F P).2 = true) {k : Nat}
+theorem keyBitsC_bit {B : Obj} {M : USize} (F : Vals B M) (P : Tab B B) (hb : (keyBitsC F P).2 = true) {k : Nat}
     (hk : k < M.toNat) : Column.bitAt (keyBitsC F P).1 k = true ↔ ∃ y, rep P (F.row ⟨k, hk⟩) y := by
   have hc := codes_faithful_wf B _ (Obj.codesC_fits B _ hb)
   obtain ⟨hw0, hn0, hs0, -⟩ := hc.1.2 (k := 0) (by decide)
   obtain ⟨hw1, hn1, hs1, -⟩ := hc.1.2 (k := 1) (by decide)
   simp only [keyBitsC]; rw [Obj.codesC_fst]
   rw [member_bit _ _ hw0 hw1 hs0 hs1 (by rw [hn0]; exact hk)]
-  simp only [rep_apply, Rel.Holds]
+  simp only [rep_apply, Holds]
   constructor
   · rintro ⟨j, hj, he⟩
     have hj' : j < P.n.toNat := by rw [hn1] at hj; exact hj
@@ -615,7 +615,7 @@ theorem row_window {B : Obj} {n : USize} (X : Vals (.arr B) n) (hp : X.1.toNat <
 /-- A relation keyed by the arrays `X`, row `i` valued `φ` of array `i`: each array of `X` goes to its `φ`. -/
 theorem rep_rowwise {B C : Obj} {n : USize} (X : Vals (.arr B) n) (V : Vals C n) (φ : List B.El → C.El)
     (h : ∀ i, V.row i = φ (X.row i)) :
-    ∀ xs ys, rep (⟨n, X, V⟩ : Rel (.arr B) C) xs ys ↔ (∃ j, X.row j = xs) ∧ ys = φ xs := by
+    ∀ xs ys, rep (⟨n, X, V⟩ : Tab (.arr B) C) xs ys ↔ (∃ j, X.row j = xs) ∧ ys = φ xs := by
   intro xs ys; rw [rep_apply]
   constructor
   · rintro ⟨i, h1, h2⟩; exact ⟨⟨i, h1⟩, h2 ▸ h1 ▸ h i⟩
@@ -626,7 +626,7 @@ open Classical in
     (B&dM p.66, `filter p = ⦇[nil, p outl → cons, outr]⦈`). The mask is `keyBitsC_bit`, the kept cells `L`
     (`whereBits_ids`); a row `[a, a + c)` is `L` between the counts kept below `a` and below `a + c`
     (`countBefore_get`, `filter_window`), each picked from the payload (`pick_row`). -/
-theorem rep_filterC {B : Obj} {n : USize} (P : Rel B B) (X : Vals (.arr B) n) (hb : (filterC P X).2 = true) :
+theorem rep_filterC {B : Obj} {n : USize} (P : Tab B B) (X : Vals (.arr B) n) (hb : (filterC P X).2 = true) :
     ∀ xs ys, rep (filterC P X).1 xs ys ↔ (∃ j, X.row j = xs) ∧ ys = xs.filter fun x => decide (∃ y, rep P x y) := by
   obtain ⟨M, lo, hi, F⟩ := X
   have hb' := hb
@@ -702,7 +702,7 @@ open Classical in
     (B&dM p.174, `takewhile p = ⦇[nil, p outl → cons, nil]⦈`). The failing cells `L` (`notBits`, `whereBits_ids`)
     read at the count failing below a row's start `a` give the first failing cell `e` from `a` (`first_set`), the
     row's end the lesser of `e` and its own (`lesser_get`, `takeWhile_window`). -/
-theorem rep_takewhileC {B : Obj} {n : USize} (P : Rel B B) (X : Vals (.arr B) n) (hb : (takewhileC P X).2 = true) :
+theorem rep_takewhileC {B : Obj} {n : USize} (P : Tab B B) (X : Vals (.arr B) n) (hb : (takewhileC P X).2 = true) :
     ∀ xs ys, rep (takewhileC P X).1 xs ys ↔
       (∃ j, X.row j = xs) ∧ ys = xs.takeWhile fun x => decide (∃ y, rep P x y) := by
   obtain ⟨M, lo, hi, F⟩ := X
@@ -797,7 +797,7 @@ end Rep
 
 namespace CRel
 
-open Rel Rel.Kernel Rel.Alg Rel.Rep
+open Tab Rel.Kernel Rel.Alg Rel.Rep
 
 variable {K A B : Obj} {n : USize}
 

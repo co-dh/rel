@@ -6,7 +6,7 @@ import Rel.KernelWF.PickRow
 
 namespace Rel.Alg
 
-open Rel Rel.Kernel Rel.Verify Rel
+open Tab Rel.Kernel Rel.Verify Rel
 
 namespace SliceN
 -- row `r`'s slice of the array side `x`, its start and end clamped into `[0, x.1]`, as `Vals.row` reads it; one

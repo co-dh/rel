@@ -8,7 +8,7 @@ import Rel.RepMerge
 
 namespace Rel.Rep
 
-open Rel Rel.Kernel Rel.Verify Rel Rel.Alg Rel.KernelWF
+open Tab Rel.Kernel Rel.Verify Rel Rel.Alg Rel.KernelWF
 
 open FoldN OpsN Prim
 
@@ -23,34 +23,34 @@ open Rel.Core.Rel hiding id comp recip inter union zero le inl inr junc
     hypothesis is one primitive's read-back at the decision's values (`rep_uncons`, `rep_comp`, `rep_pair`,
     `rep_ran`, `rep_dom`, `rep_diff`, `rep_union`); `ht1`, `ht2` read the test on the pairs of heads `rab` the
     decision meets, and on their swaps `rs`. -/
-theorem thin_cases_set {B S : Obj} (le : B.El → B.El → Bool) (D : Rel S S) (Dm : S.El → Prop)
+theorem thin_cases_set {B S : Obj} (le : B.El → B.El → Bool) (D : Tab S S) (Dm : S.El → Prop)
     (hD : rep D = corefl (α := S.El) Dm) (fa : S.El → B.El) (fy : S.El → List B.El)
-    (ta : Rel S B) (eA : ∀ s x, rep ta s x ↔ Dm s ∧ x = fa s)
-    (ty : Rel S (.arr B)) (eY : ∀ s x, rep ty s x ↔ Dm s ∧ x = fy s)
-    (tu : Rel S (.prod B (.arr B)))
-    (hUn : ∀ (xs : List B.El) b bs, rep (uncons (Rel.val ty)) xs (b, bs) ↔
-      (∃ j, (Rel.val ty).row j = xs) ∧ xs = b :: bs)
-    (htu : rep tu = rep ty ≫ rep (uncons (Rel.val ty)))
-    (tab : Rel S (.prod B B)) (htab : rep tab = rpair (rep ta) (rep (outl tu)))
-    (rab : Rel (.prod B B) (.prod B B))
+    (ta : Tab S B) (eA : ∀ s x, rep ta s x ↔ Dm s ∧ x = fa s)
+    (ty : Tab S (.arr B)) (eY : ∀ s x, rep ty s x ↔ Dm s ∧ x = fy s)
+    (tu : Tab S (.prod B (.arr B)))
+    (hUn : ∀ (xs : List B.El) b bs, rep (uncons (val ty)) xs (b, bs) ↔
+      (∃ j, (val ty).row j = xs) ∧ xs = b :: bs)
+    (htu : rep tu = rep ty ≫ rep (uncons (val ty)))
+    (tab : Tab S (.prod B B)) (htab : rep tab = rpair (rep ta) (rep (outl tu)))
+    (rab : Tab (.prod B B) (.prod B B))
     (hrab : rep rab = corefl (α := (Obj.prod B B).El) fun c => ∃ s, rep tab s c)
-    (G1 : Rel (.prod B B) (.prod B B)) (ht1 : ∀ a b, rep rab (a, b) (a, b) → ((∃ c, rep G1 (a, b) c) ↔ le a b = true))
-    (tq1 : Rel S (.prod B B)) (htq1 : rep tq1 = rep tab ≫ rep G1)
-    (tup : Rel S S) (htup : rep tup = corefl (α := S.El) fun s => ∃ c, rep tq1 s c)
-    (ss : Rel (.prod B B) (.prod B B)) (hss : rep ss = rpair (rep (outr rab)) (rep (outl rab)))
-    (rs : Rel (.prod B B) (.prod B B))
+    (G1 : Tab (.prod B B) (.prod B B)) (ht1 : ∀ a b, rep rab (a, b) (a, b) → ((∃ c, rep G1 (a, b) c) ↔ le a b = true))
+    (tq1 : Tab S (.prod B B)) (htq1 : rep tq1 = rep tab ≫ rep G1)
+    (tup : Tab S S) (htup : rep tup = corefl (α := S.El) fun s => ∃ c, rep tq1 s c)
+    (ss : Tab (.prod B B) (.prod B B)) (hss : rep ss = rpair (rep (outr rab)) (rep (outl rab)))
+    (rs : Tab (.prod B B) (.prod B B))
     (hrs : rep rs = corefl (α := (Obj.prod B B).El) fun c => ∃ x, rep ss x c)
-    (G2 : Rel (.prod B B) (.prod B B)) (ht2 : ∀ a b, rep rs (b, a) (b, a) → ((∃ c, rep G2 (b, a) c) ↔ le b a = true))
-    (tq2 : Rel (.prod B B) (.prod B B)) (htq2 : rep tq2 = rep ss ≫ rep G2)
-    (sw : Rel (.prod B B) (.prod B B))
+    (G2 : Tab (.prod B B) (.prod B B)) (ht2 : ∀ a b, rep rs (b, a) (b, a) → ((∃ c, rep G2 (b, a) c) ↔ le b a = true))
+    (tq2 : Tab (.prod B B) (.prod B B)) (htq2 : rep tq2 = rep ss ≫ rep G2)
+    (sw : Tab (.prod B B) (.prod B B))
     (hsw : rep sw = corefl (α := (Obj.prod B B).El) fun x => ∃ c, rep tq2 x c)
-    (tq3 : Rel S (.prod B B)) (htq3 : rep tq3 = rep tab ≫ rep sw)
-    (tdn : Rel S S) (htdn : rep tdn = corefl (α := S.El) fun s => ∃ c, rep tq3 s c)
-    (du : Rel S S) (hdu : rep du = corefl (α := S.El) fun s => ∃ c, rep tu s c)
-    (l1 : Rel S S) (hl1 : ∀ s s', rep l1 s s' ↔ rep D s s' ∧ ¬ rep du s s')
-    (l2 : Rel S S) (hl2 : ∀ s s', rep l2 s s' ↔ rep du s s' ∧ ¬ rep tup s s')
-    (l3 : Rel S S) (hl3 : ∀ s s', rep l3 s s' ↔ rep l2 s s' ∧ ¬ rep tdn s s')
-    (lone : Rel S S) (hlone : rep lone = rep l1 ∪ rep l3) :
+    (tq3 : Tab S (.prod B B)) (htq3 : rep tq3 = rep tab ≫ rep sw)
+    (tdn : Tab S S) (htdn : rep tdn = corefl (α := S.El) fun s => ∃ c, rep tq3 s c)
+    (du : Tab S S) (hdu : rep du = corefl (α := S.El) fun s => ∃ c, rep tu s c)
+    (l1 : Tab S S) (hl1 : ∀ s s', rep l1 s s' ↔ rep D s s' ∧ ¬ rep du s s')
+    (l2 : Tab S S) (hl2 : ∀ s s', rep l2 s s' ↔ rep du s s' ∧ ¬ rep tup s s')
+    (l3 : Tab S S) (hl3 : ∀ s s', rep l3 s s' ↔ rep l2 s s' ∧ ¬ rep tdn s s')
+    (lone : Tab S S) (hlone : rep lone = rep l1 ∪ rep l3) :
     (∀ s s', rep tup s s' ↔ s = s' ∧ Dm s ∧ ∃ b bs, fy s = b :: bs ∧ le (fa s) b = true) ∧
     (∀ s s', rep tdn s s' ↔ s = s' ∧ Dm s ∧ ∃ b bs, fy s = b :: bs ∧ le b (fa s) = true) ∧
     (∀ s s', rep lone s s' ↔ s = s' ∧ Dm s ∧

@@ -11,7 +11,7 @@ open Rel.Ext
 
 namespace Rel.Alg
 
-open Rel Rel.Kernel Rel.Verify Rel Rel.KernelWF
+open Tab Rel.Kernel Rel.Verify Rel Rel.KernelWF
 
 /-- Element `j` of `ids b` is the long `j` of `b`. -/
 theorem ids_getElem {b : ByteArray} {j : Nat} (hj : j < (ids b).length) :

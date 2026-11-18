@@ -11,7 +11,7 @@ open Rel.Ext
 
 namespace Rel.KernelWF
 
-open Rel Rel.Kernel Rel.Verify
+open Tab Rel.Kernel Rel.Verify
 
 /-- Belongs in qlean. `Enc.get` at a fixed-width type is `raw`'s element read through `atomOfBits`. -/
 theorem get_eq_raw {t : QAtomicType} {w : Nat} (ht : denseWidth t = some w) {n : USize} {e : Enc}
@@ -466,7 +466,7 @@ end Rel.KernelWF
 
 namespace Rel.Alg
 
-open Rel Rel.Kernel Rel
+open Tab Rel.Kernel Rel
 
 /-- A general list's element `j` is its `gen` column's. -/
 theorem get_general {n : USize} (x : Arr .general n) {xs : Array QValue} (hc : x.enc = .gen xs)

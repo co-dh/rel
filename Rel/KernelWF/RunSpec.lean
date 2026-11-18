@@ -7,7 +7,7 @@ import Rel.KernelWF.SortSpec
 
 namespace Rel.Alg
 
-open Rel Rel.Kernel Rel.Verify Rel Rel.KernelWF
+open Tab Rel.Kernel Rel.Verify Rel Rel.KernelWF
 
 /-- **The run-start fold cuts a column into its runs**, for any `f`: `B` holds `m` starts and then `n`, read
     back as naturals, ascending; where `key` agrees exactly where `f` does and its equal elements stand

@@ -7,28 +7,28 @@ import Rel.Core.Rel
 
 namespace Rel.Rep
 
-open Rel
+open Tab
 open scoped Rel.Core.Rel
 open Rel.Core.Rel hiding id comp recip inter union zero le inl inr junc
 
 variable {A B C : Obj}
 
 /-- The `Rel(Set)` arrow a `Rel` denotes: `x` to `y` when some row holds `(x, y)`. -/
-def rep (R : Rel A B) : Core.Rel (A.El) (B.El) := R.Holds
+def rep (R : Tab A B) : Core.Rel (A.El) (B.El) := R.Holds
 
 /-- `rep R x y` is `R.Holds x y`, by definition. -/
-theorem rep_apply (R : Rel A B) (x : A.El) (y : B.El) : rep R x y = R.Holds x y := rfl
+theorem rep_apply (R : Tab A B) (x : A.El) (y : B.El) : rep R x y = R.Holds x y := rfl
 
 section Ops
 
 open Rel.Alg
 
 /-- `rep (R°) = (rep R)°`: the converse swaps the two fields. -/
-theorem rep_conv (R : Rel A B) : rep (R°) = (rep R)° :=
+theorem rep_conv (R : Tab A B) : rep (R°) = (rep R)° :=
   Core.Rel.ext fun y x => convArr_holds R.key R.val x y
 
 /-- `rep 𝟘 = 𝟘`: no row, no pair. -/
-theorem rep_zero : rep (Alg.zero : Rel A B) = 𝟘 :=
+theorem rep_zero : rep (Alg.zero : Tab A B) = 𝟘 :=
   Core.Rel.ext fun _ _ => ⟨fun ⟨i, _⟩ => i.elim0, False.elim⟩
 
 /-- `rep (idU U)` is the coreflexive on the elements `U` lists — not `𝟙`, which it is only when `U` lists every
@@ -39,13 +39,13 @@ theorem rep_idU {m : USize} (U : Vals A m) :
 
 /-- `rep (outl T) = rep T ≫ π₁`: `outl` on a relation into a product is that relation followed by the first
     projection, the graph of `Prod.fst` (`relProd`'s `π₁`). -/
-theorem rep_outl (T : Rel A (.prod B C)) :
+theorem rep_outl (T : Tab A (.prod B C)) :
     rep (outl T) = rep T ≫ (graph Prod.fst : Core.Rel (B.El × C.El) (B.El)) :=
   Core.Rel.ext fun x y => (outl_holds T x y).trans
     ⟨fun ⟨z, h⟩ => ⟨(y, z), h, rfl⟩, fun ⟨⟨y', z⟩, h, e⟩ => ⟨z, (show y = y' from e) ▸ h⟩⟩
 
 /-- `rep (outr T) = rep T ≫ π₂`: the second projection, the graph of `Prod.snd`. -/
-theorem rep_outr (T : Rel A (.prod B C)) :
+theorem rep_outr (T : Tab A (.prod B C)) :
     rep (outr T) = rep T ≫ (graph Prod.snd : Core.Rel (B.El × C.El) (C.El)) :=
   Core.Rel.ext fun x z => (outr_holds T x z).trans
     ⟨fun ⟨y, h⟩ => ⟨(y, z), h, rfl⟩, fun ⟨⟨y, z'⟩, h, e⟩ => ⟨y, (show z = z' from e) ▸ h⟩⟩
@@ -53,7 +53,7 @@ theorem rep_outr (T : Rel A (.prod B C)) :
 end Ops
 
 -- `Classical.choice` below comes with `Rel.Holds` itself (through qlean's `Carrier`), not from the proofs
-#print axioms Rel.Holds
+#print axioms Holds
 #print axioms rep_conv
 #print axioms rep_zero
 #print axioms rep_idU

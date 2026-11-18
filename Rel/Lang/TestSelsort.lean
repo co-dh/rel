@@ -7,7 +7,7 @@ import Rel.Programs.Selsort
 
 namespace Rel.Lang.TestSelsort
 
-open Rel Rel.Lang Rel.Lang.Test
+open Tab Rel.Lang Rel.Lang.Test
 
 /-- The program's inputs, as Lean lists. -/
 def inputs : List (String × List Nat) := [("x", [3, 1, 2]), ("y", [2, 1, 2]), ("z", [5, 4, 3, 2, 1]), ("e", [])]

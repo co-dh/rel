@@ -13,7 +13,7 @@ import Rel.KernelSpec.SymFind
 
 namespace Rel.Alg
 
-open Rel Rel.Dep Rel.Kernel Rel.Verify Rel
+open Tab Rel.Dep Rel.Kernel Rel.Verify Rel
 
 /-! ## Offsets -/
 
