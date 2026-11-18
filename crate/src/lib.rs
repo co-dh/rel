@@ -44,6 +44,7 @@ pub mod os;
 pub mod exports {
     pub mod coc;
     pub mod env;
+    pub mod gather;
     pub mod group;
     pub mod ew;
     pub mod own;
@@ -74,6 +75,8 @@ pub mod alp;
 pub mod coc;
 /// cbindgen:ignore
 pub mod cocops;
+/// cbindgen:ignore
+pub mod gather;
 /// cbindgen:ignore
 pub mod codec;
 /// cbindgen:ignore
