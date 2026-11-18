@@ -85,6 +85,11 @@ theorem ran_iff {A B : Obj} (R : Den A B) (y y' : B.El) :
 theorem ok_and {A B : Obj} {b : Bool} {k : Unit → CRel A B} (h : (CRel.guard b k).ok = true) : b = true := by
   rw [CRel.guard_ok, Bool.and_eq_true] at h; exact h.1
 
+/-- Where `also b r` is ok, `b` and `r`'s bit are set and its table is `r`'s. -/
+theorem also_ok_rel {A B : Obj} {b : Bool} {r : CRel A B} (h : (also b r).ok = true) :
+    (b = true ∧ r.ok = true) ∧ (also b r).rel = r.rel :=
+  let ⟨h, e⟩ := CRel.mk_ok_rel (r := r.rel) (b := b && r.ok) h; ⟨Bool.and_eq_true_iff.1 h, e⟩
+
 /-! ### Leaves -/
 
 theorem const_sound {A B : Obj} {c : CRel A B} {T : Den A B} (h : c.ok = true → rep c.rel = T) :
@@ -94,12 +99,12 @@ theorem val_sound {A B : Obj} (R : Tab A B × Bool) : Sound (val A B R) (rep R.1
   fun _ _ hb _ _ _ => by simp only [Gen.val] at hb ⊢; rw [CRel.rep_ofC hb]
 
 theorem uni_sound {A : Obj} {m : USize} (U : Vals A m × Bool) : Sound (uni A m U) (rep (idU U.1)) :=
-  fun _ _ _ _ _ _ => Iff.rfl
+  fun _ _ hb _ _ _ => by simp only [uni] at hb ⊢; rw [(CRel.mk_ok_rel hb).2]
 
 /-- `succ`, `arith`, `≤`, `<` on a declared object's universe `uni` read its literal `U` directly: the one
     definition of each is also the literal form, so no second copy can drift from it. -/
 theorem uni_lits {m : USize} (U : Vals .long m × Bool) (k : UInt8) :
-    succ (uni .long m U) = (fun D => also U.2 (CRel.comp ⟨D, true⟩ (CRel.succ U.1))) ∧
+    succ (uni .long m U) = (fun D => also U.2 (CRel.comp (some D) (CRel.succ U.1))) ∧
     leq (uni .long m U) = (fun _ => also U.2 (CRel.leq U.1)) ∧
     lt (uni .long m U) = (fun _ => also U.2 (CRel.lt U.1)) :=
   ⟨rfl, rfl, rfl⟩
@@ -154,8 +159,8 @@ theorem ofVals_sound {A B : Obj} {f : {n : USize} → Vals A n → CRel A B} {T 
 theorem after_sound {A B : Obj} {f : {K : Obj} → CRel K A → CRel K B} {T : Den A B}
     (h : ∀ {K : Obj} (P : CRel K A), (f P).ok = true → rep (f P).rel = rep P.rel ≫ T) :
     Sound (after A B f) T := fun D hD hb x y hx => by
-  show rep (f ⟨D, true⟩).rel x y ↔ T x y
-  rw [h ⟨D, true⟩ hb, comp_apply]
+  show rep (f (some D)).rel x y ↔ T x y
+  rw [h (some D) hb, comp_apply]
   exact ⟨fun ⟨_, hk, t⟩ => hD x _ hk ▸ t, fun t => ⟨x, hx, t⟩⟩
 
 theorem τ_sound {A : Obj} : Sound (ofVals A (.arr A) fun X => CRel.τ X) (fun a Y => Y = [a]) :=
@@ -233,7 +238,7 @@ open Classical in
 theorem filter_sound {B : Obj} {d : Bool} {R : Fn d B B} {TR : Den B B} (hR : Sound R TR) :
     Sound (elems B B (.arr B) d R CRel.filter) (fun xs ys => ys = xs.filter fun x => decide (∃ y, TR x y)) :=
   fun D _ hb xs ys hx => by
-    simp only [elems, also] at hb ⊢; have hb' := Bool.and_eq_true_iff.1 hb
+    simp only [elems] at hb ⊢; obtain ⟨hb', e⟩ := also_ok_rel hb; rw [e]
     rw [CRel.rep_filter _ _ hb'.2, List.filter_congr (elems_test hR D hb'.1 (ok_and hb'.2) hx)]
     exact ⟨And.right, fun t => ⟨keyRow hx, t⟩⟩
 
@@ -242,7 +247,7 @@ open Classical in
 theorem takewhile_sound {B : Obj} {d : Bool} {R : Fn d B B} {TR : Den B B} (hR : Sound R TR) :
     Sound (elems B B (.arr B) d R CRel.takewhile) (fun xs ys => ys = xs.takeWhile fun x => decide (∃ y, TR x y)) :=
   fun D _ hb xs ys hx => by
-    simp only [elems, also] at hb ⊢; have hb' := Bool.and_eq_true_iff.1 hb
+    simp only [elems] at hb ⊢; obtain ⟨hb', e⟩ := also_ok_rel hb; rw [e]
     have hc := elems_test hR D hb'.1 (ok_and hb'.2) hx
     rw [CRel.rep_takewhile _ _ hb'.2]
     suffices e : ∀ {p q : B.El → Bool} (l : List B.El), (∀ x ∈ l, p x = q x) → l.takeWhile p = l.takeWhile q by
@@ -293,7 +298,7 @@ theorem map_sound {A B : Obj} {d : Bool} {R : Fn d A B} {TR : Den A B} (hR : Sou
     Sound (elems A B (.arr B) d R CRel.map) (fun xs ys => ys.length = xs.length ∧
       ∀ t (ht : t < xs.length) (ht' : t < ys.length), TR (xs[t]'ht) (ys[t]'ht')) :=
   fun D _ hb xs ys hx => by
-    simp only [elems, also] at hb ⊢; have hb' := Bool.and_eq_true_iff.1 hb
+    simp only [elems] at hb ⊢; obtain ⟨hb', e⟩ := also_ok_rel hb; rw [e]
     have hK := CRel.rep_ran _ hb'.1
     have hs := atKeys hR _ (fun a b h => ((ran_iff _ a b).1 (hK ▸ h)).1) (ok_and hb'.2)
     have hin : ∀ x ∈ xs, ∀ y, rep (R (Dem.of d (CRel.ran (CRel.mem D.val)).rel)).rel x y ↔ TR x y := fun x hx' y => by
@@ -308,8 +313,8 @@ open Classical in
 theorem merge_sound {B : Obj} {Q : Fn true (.prod B B) (.prod B B)} {TQ : Den (.prod B B) (.prod B B)}
     (hQ : Sound Q TQ) : Sound (testAfter B (.prod (.arr B) (.arr B)) (.arr B) Q fun q P => CRel.mergeOn q P)
       (fun p zs => zs = List.merge p.1 p.2 fun a b => decide (∃ c, TQ (a, b) c)) := fun D hD hb x zs hx => by
-  have hb' : (CRel.mergeOn (fun P => Q P.rel) ⟨D, true⟩).ok = true := hb
-  exact (CRel.rep_mergeOn (fun P => Q P.rel) ⟨D, true⟩ (fun a b => decide (∃ c, TQ (a, b) c)) (test_le hQ) hb' x
+  have hb' : (CRel.mergeOn (fun P => Q P.rel) (some D)).ok = true := hb
+  exact (CRel.rep_mergeOn (fun P => Q P.rel) (some D)(fun a b => decide (∃ c, TQ (a, b) c)) (test_le hQ) hb' x
     zs).trans ⟨fun ⟨_, _, h, e⟩ => hD x _ h ▸ e, fun e => ⟨x.1, x.2, hx, e⟩⟩
 
 open Classical in
@@ -323,8 +328,8 @@ theorem thinL_sound {B : Obj} {Q : Fn true (.prod B B) (.prod B B)} {TQ : Den (.
 /-- A step run on a round's coreflexive `D` of the pairs `S` (`onKeys`) computes `T` at those pairs: `D` has a
     row, so the step ran. -/
 theorem onKeys_sound {A B : Obj} {d : Bool} {F : Fn d A B} {T : Den A B} (hF : Sound F T) (D : Tab A A)
-    (S : A.El → Prop) (hD : rep D = corefl (α := A.El) S) (hb : (onKeys d F ⟨D, true⟩).ok = true) :
-    ∀ x y, S x → (rep (onKeys d F ⟨D, true⟩).rel x y ↔ T x y) := fun x y hx => by
+    (S : A.El → Prop) (hD : rep D = corefl (α := A.El) S) (hb : (onKeys d F (some D)).ok = true) :
+    ∀ x y, S x → (rep (onKeys d F (some D)).rel x y ↔ T x y) := fun x y hx => by
   have hk : rep D x x := by rw [hD]; exact ⟨rfl, hx⟩
   unfold onKeys at hb ⊢; dsimp only at hb ⊢
   split
@@ -352,7 +357,7 @@ theorem comp_sound {A B C : Obj} {e : Bool} {R : Fn true A B} {S : Fn e B C} {TR
   have hr := hR D hD
   unfold comp at hb ⊢
   by_cases h0 : ((R D).rel.n == 0) = true
-  · rw [if_pos h0] at hb ⊢
+  · rw [if_pos h0] at hb ⊢; rw [(CRel.mk_ok_rel hb).2]
     show rep (Alg.zero : Tab A C) x z ↔ _
     rw [rep_zero]
     refine ⟨False.elim, fun ⟨y, hy, _⟩ => ?_⟩
@@ -360,8 +365,7 @@ theorem comp_sound {A B C : Obj} {e : Bool} {R : Fn true A B} {S : Fn e B C} {TR
     have : (R D).rel.n.toNat = 0 := by simp [beq_iff_eq.1 h0]
     exact absurd i.2 (by omega)
   · rw [if_neg h0] at hb ⊢
-    simp only [also, Bool.and_eq_true] at hb ⊢
-    obtain ⟨hk, hc⟩ := hb
+    obtain ⟨⟨hk, hc⟩, e⟩ := also_ok_rel hb; rw [e]
     have hc2 := ok_and hc; rw [Bool.and_eq_true] at hc2
     have hro : (R D).ok = true := hc2.1
     rw [CRel.rep_comp _ _ hc]
@@ -459,8 +463,7 @@ theorem atPos_sound {B : Obj} (k : Nat) : Sound (atPos B k) (atDen k) :=
 theorem succ_sound {U : Fn false .long .long} {TU : Den .long .long} (hU : Sound U TU) :
     Sound (succ U) (succDen TU) :=
   fun D hD hb u w hu => by
-    simp only [succ, also, Bool.and_eq_true] at hb ⊢
-    obtain ⟨hu0, hc⟩ := hb
+    simp only [succ] at hb ⊢; obtain ⟨⟨hu0, hc⟩, e⟩ := also_ok_rel hb; rw [e]
     have h2 := ok_and hc; rw [Bool.and_eq_true] at h2
     rw [CRel.rep_comp _ _ hc, Core.Rel.comp_apply]
     have e : ∀ u', rep (CRel.succ (U ()).rel.key).rel u' w ↔ (∃ v, TU u' v) ∧ w = Ew.intStep Ew.add nul u' 1 ∧
@@ -470,19 +473,19 @@ theorem succ_sound {U : Fn false .long .long} {TU : Den .long .long} (hU : Sound
 
 theorem leq_sound {U : Fn false .long .long} {TU : Den .long .long} (hU : Sound U TU) :
     Sound (leq U) (leqDen TU) := fun ⟨⟩ _ hb a b _ => by
-  simp only [leq, also, Bool.and_eq_true] at hb ⊢
+  simp only [leq] at hb ⊢; obtain ⟨hb, e⟩ := also_ok_rel hb; rw [e]
   rw [CRel.rep_leq _ _ hb.2, keyRowRep, keyRowRep, hU.eq hb.1]
 
 theorem lt_sound {U : Fn false .long .long} {TU : Den .long .long} (hU : Sound U TU) :
     Sound (lt U) (ltDen TU) := fun ⟨⟩ _ hb a b _ => by
-  simp only [lt, also, Bool.and_eq_true] at hb ⊢
+  simp only [lt] at hb ⊢; obtain ⟨hb, e⟩ := also_ok_rel hb; rw [e]
   rw [CRel.rep_lt _ _ hb.2, keyRowRep, keyRowRep, hU.eq hb.1]
 
 /-- A value verb `k` on the universe `U`: both inputs in `U`, `Int64`'s step, not the null and, for `+ - *`, not
     wrapped, then within `U` (`rep_arith`). -/
 theorem arith_sound (k : UInt8) {U : Fn false .long .long} {TU : Den .long .long} (hU : Sound U TU) :
     Sound (arith k U) (arithDen k TU) := by
-  have hs : Sound (fun D => CRel.comp ⟨Alg.arith k D.val, true⟩ (U ()) : Fn true (.prod .long .long) .long)
+  have hs : Sound (fun D => CRel.comp (some (Alg.arith k D.val)) (U ()) : Fn true (.prod .long .long) .long)
       (stepDen k ≫ TU) := fun D _ hb p w hp => by
     have hc := ok_and hb; rw [Bool.and_eq_true] at hc
     show rep (CRel.comp _ _).rel p w ↔ _
@@ -493,8 +496,8 @@ theorem arith_sound (k : UInt8) {U : Fn false .long .long} {TU : Den .long .long
 
 /-- A fold round's pairs have a row, so `onKeys` runs `S` on them: `S`'s spec on a nonempty coreflexive. -/
 theorem onKeys_round {P V : Obj} {d : Bool} {S : Fn d P V} {TS : Den P V} (hS : Sound S TS) (K : Tab P P) (p w)
-    (hp : ∃ a, rep K a p) (hc : ∀ a b, rep K a b → a = b) (hok : (onKeys d S ⟨K, true⟩).ok = true) :
-    rep (onKeys d S ⟨K, true⟩).rel p w ↔ TS p w := by
+    (hp : ∃ a, rep K a p) (hc : ∀ a b, rep K a b → a = b) (hok : (onKeys d S (some K)).ok = true) :
+    rep (onKeys d S (some K)).rel p w ↔ TS p w := by
   obtain ⟨a, ha⟩ := hp
   have h0 : (K.n == 0) = false := by
     obtain ⟨j, -⟩ := ha
@@ -510,7 +513,7 @@ theorem onKeys_round {P V : Obj} {d : Bool} {S : Fn d P V} {TS : Den P V} (hS : 
 theorem foldr_sound {E V : Obj} {d : Bool} {e : Fn false V V} {S : Fn d (.prod E V) V} {Te : Den V V}
     {TS : Den (.prod E V) V} (he : Sound e Te) (hS : Sound S TS) :
     Sound (foldr E V d e S) (foldrDen Te TS) := fun D _ hb xs w hx => by
-  simp only [foldr, also, Bool.and_eq_true] at hb ⊢
+  simp only [foldr] at hb ⊢; obtain ⟨hb, e⟩ := also_ok_rel hb; rw [e]
   refine (CRel.rep_foldOn false pairC Prod.mk Rep.pairC_pt _ _ _ hb.2 _ rfl _ rfl _ (fun _ _ => rfl) _ (fun _ => rfl) _
     (fun _ => rfl) _ (fun _ => rfl) (fun _ => TS) ?_ xs w).trans ?_
   · intro i _ _ hbi p w hp hc
@@ -525,7 +528,7 @@ theorem foldr_sound {E V : Obj} {d : Bool} {e : Fn false V V} {S : Fn d (.prod E
 theorem fold_sound {E V : Obj} {d : Bool} {e : Fn false V V} {S : Fn d (.prod V E) V} {Te : Den V V}
     {TS : Den (.prod V E) V} (he : Sound e Te) (hS : Sound S TS) :
     Sound (fold E V d e S) (foldDen Te TS) := fun D _ hb xs w hx => by
-  simp only [fold, also, Bool.and_eq_true] at hb ⊢
+  simp only [fold] at hb ⊢; obtain ⟨hb, e⟩ := also_ok_rel hb; rw [e]
   refine (CRel.rep_foldOn true (fun el p => pairC p el) (fun e u => (u, e))
     (fun el p h r q => (Rep.pairC_pt p el h r q).trans
       ⟨fun ⟨u, e, hu, he, hq⟩ => ⟨e, u, he, hu, hq⟩, fun ⟨e, u, he, hu, hq⟩ => ⟨u, e, hu, he, hq⟩⟩)
@@ -568,7 +571,7 @@ theorem est_sound {B : Obj} {Q : Fn true (.prod B B) (.prod B B)} {TQ : Den (.pr
 
 theorem top_sound {A B : Obj} {V : Fn false B B} {TV : Den B B} (hV : Sound V TV) :
     Sound (top A B V) (Core.Rel.top ≫ TV) := fun D _ hb x y hx => by
-  simp only [top, also, Bool.and_eq_true] at hb ⊢; rw [CRel.rep_ofC hb.2]; replace hb := And.intro hb.1 (CRel.ofC_ok hb.2).1
+  simp only [top] at hb ⊢; obtain ⟨hb, e⟩ := also_ok_rel hb; rw [e]; rw [CRel.rep_ofC hb.2]; replace hb := And.intro hb.1 (CRel.ofC_ok hb.2).1
   rw [rep_topC _ _ hb.2, ← hV.eq hb.1]
   exact ⟨fun ⟨_, _, _, _, e, hq⟩ => let ⟨a, h⟩ := (valRow _ _).1 hq; ⟨a, trivial, e ▸ h⟩,
     fun ⟨a, _, hy⟩ => ⟨x, ⟨rfl, keyRow hx⟩, y, trivial, rfl, (valRow _ _).2 ⟨a, hy⟩⟩⟩
@@ -579,7 +582,7 @@ theorem rdiv_sound {A B C : Obj} {R : Fn false A C} {S : Fn false B C} {UA : Fn 
     Sound (rdiv A B C R S UA UB)
       (rdivDen TR TS TA TB) :=
   fun ⟨⟩ _ hb x y _ => by
-    simp only [rdiv, also, Bool.and_eq_true] at hb ⊢
+    simp only [rdiv] at hb ⊢; obtain ⟨hb, e⟩ := also_ok_rel hb; rw [e]
     have hc := ok_and hb.2; rw [Bool.and_eq_true] at hc
     rw [CRel.rep_rightDiv _ _ _ _ hb.2, hR.eq hc.1, hS.eq hc.2, valRow, valRow, hA.eq hb.1.1, hB.eq hb.1.2]
 
@@ -663,7 +666,7 @@ theorem pldiv_sound {A B C : Obj} {R : Pl false A B} {S : Pl false A C} {UB : Fn
 /-- A plan run as bits (`Bits.runC`), its leaves' bits kept: the plan's relation, on its keys. -/
 theorem ofPl_sound {A B : Obj} {d : Bool} {p : Pl d A B} {T : Den A B} (hp : PSound p T) :
     Sound (ofPl A B d p) T := fun D hD hb x y hx => by
-  simp only [ofPl, also, Bool.and_eq_true] at hb ⊢; rw [CRel.rep_ofC hb.2]
+  simp only [ofPl] at hb ⊢; obtain ⟨hb, e⟩ := also_ok_rel hb; rw [e]; rw [CRel.rep_ofC hb.2]
   replace hb := And.intro hb.1 (CRel.ofC_ok hb.2).1
   exact (rep_runC _ hb.2 x y).trans (hp D hD hb.1 x y hx)
 
