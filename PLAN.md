@@ -315,13 +315,25 @@ relk 线程池空转 2 526（与前三项重叠）。
 - ✅ W.4 lean-refactor：`index` 为每个过时 module 起的 `syntax-rows` 子进程仍运行 relk，改为所有 elaboration 路径共用
   `Elaborate.headerEnv` 的不运行表（6706c7e）；`moduleNames` 移出循环（7406671）。6 个过时 module 的 `index`：
   105.4 s → 22.6 s wall，270 → 30 CPU-s。
-- 🔄 W.5 compile-diff 只用 `SPLIT` 以下的输入，并加一个计数 gate 检查（owner 选 D）。
+- 🔄 W.5 compile-diff 的耗时（owner 选 D）。按 `SPLIT` 以下的输入跑做不到：引起 split 的规模是各 program 自己的
+  universe、字面表和 `muCap`，TestCompile 没有通用的开关，缩小还可能让收敛的定义变成 not ok。约 325 s 的分布：
+  `Test.muGrow.g` 123 s（μ 每轮增长到 `muCap`=1024，225 920 次 split，本身 not ok）；`blocks.*`、`table.*`、`cycle.*`
+  约 200 s，0 次 split（见 W.10）；其余每个定义 < 0.6 s。做法 A：TestCompile 先跑 `compile`，只在 `c.ok` 时
+  `evalConst`，结果行不会变；split 由 W.6 消除。在 W.6 报告之后落地，前后各跑一次 `make check`。逐个 program 覆盖输入
+  的做法不采纳：每个新 program 都要改一次。
+- ⏸ W.5a `qlean_pool_stats` 移入 relk，即 `Rel.Kernel.poolStat`（worktree commit 65760d6，未合并）。只能和 qlean 删除
+  qrs 那份 `qlean_pool_stats` 的 commit 一起合并，否则 qlean 链接时有两份同名符号。
+- ⬜ W.5b 缺口：rel 里没有测试走真实 `SPLIT`（8388608）以上的 pool 路径。`cargo test` 下 `SPLIT_AT`=1，没有 Lean
+  测试读 pool 计数器；目前只有 TestCompile 本身（`muGrow.g`、`digits`、`detab.tc`）会达到这个阈值。
 - 🔄 W.6 elaboration 时 `QLEAN_THREADS=1`，只设一处；先测 `make check` 前后的 wall 与 `user+sys`，不变慢才提交（owner 选 E）。
 - ✅ W.7 `-Wl,--build-id`（owner 选 F）：rel lakefile 52b6203（gates、relc、librelk.so、两个 precompiled lib），
   cc-guard 8d08fa4（已部署），lean-refactor 22bc2aa；`crate/build.sh` 只出 `.o`，不需要。lake 不跟踪 extern_lib 的
   link 参数，旧的 librelk.so 要重链接才带 build-id。cap 的 build-id 缓存在 947fbca。
 - ⬜ W.8 调查：Lean 的 module 系统（`module` + `public import`）能否让只改 kernel body 时不重建下游。
 - ✖ W.9 `SubagentStart` hook：首条命令被拒 0.4%，不值得多一个 hook（owner 选 B）。
+- ⬜ W.10 `compile` 在每个后面的定义里重新展开前面所有的定义，耗时沿链条每步翻倍（Q 0.5 s、C 1.3、W 2.4、K 5、
+  Z 11、ζ 21、plan 25 s）。`blocks.*`、`table.*`、`cycle.*` 在 compile-diff 中合计约 200 s，0 次 split，与输入规模
+  无关。修法：`compile`/`CodeEnv` 引用已经编译好的定义，不再重新展开。参见 W.5a：poolStat 的合并要和 qlean 同步。
 
 ## Baseline
 
