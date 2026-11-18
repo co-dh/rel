@@ -225,7 +225,7 @@ def Out.Sound {A B : Obj} {d : Bool} (o : Out d A B) (T : Den A B) (Ta : List Se
   Gen.Sound o.fn T ∧ PSound o.pl T ∧ ∀ r cs, o.row = some (r, cs) → ∀ cs' ss, Code.Sounds cs' ss →
     ∀ f, r.run A B (cs ++ cs') = some f → Gen.Sound f (Ta ss)
 
-/-- `Out.memo` is the identity: a closed node's code is a function of `()` alone. -/
+/-- `Out.memo` is the identity: a closed node's plan is a function of `()` alone. -/
 theorem Out.memo_eq {A B : Obj} : ∀ {d : Bool} (o : Out d A B), o.memo = o
   | false, _ => rfl
   | true, _ => rfl

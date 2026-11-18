@@ -32,17 +32,14 @@ partial def prf (pre : Name) (ρ : List (Nat × Lean.Expr)) {A B : Obj} {d : Boo
     PM (Option Lean.Expr) := do
   if !closed t then return ← prfNode pre ρ t
   let cd ← code pre ρ t
-  let c := cd.appArg!.constName!
+  let c := cd.constName!
   if let some h := (← get).1[c]? then return some (mkConst h)
   let h := c ++ `rep
   -- under its number, `t`'s node: proving `.share k R` by `R`'s own `prf` would add `h` twice
   let some p ← (match t with | .share _ R => prfNode pre ρ R | t => prfNode pre ρ t) | return none
-  -- `const_sound` at `c` itself, so the kernel meets `c =?= node(t) ()` and unfolds `c`, never the data
-  let T := (← inferType p).appArg!
-  let some (.defnInfo ci) := (← getEnv).find? c | throwError "Expand.rep: internal: no definition `{c}`"
-  let hb := g ``Gen.Sound.eq #[oE A, oE B, ci.value.appFn!, T, p]
-  let ty := g ``Gen.Sound #[bE false, oE A, oE B, cd, T]
-  addDecl (.thmDecl { name := h, levelParams := [], type := ty, value := g ``Gen.const_sound #[oE A, oE B, mkConst c, T, hb] })
+  -- `p` itself at `c`, so the kernel meets `c =?= node(t)` and unfolds `c`, never the data
+  let ty := g ``Gen.Sound #[oE A, oE B, cd, (← inferType p).appArg!]
+  addDecl (.thmDecl { name := h, levelParams := [], type := ty, value := p })
   modify fun (m, g) => (m.insert c h, g)
   pure (some (mkConst h))
 
@@ -134,7 +131,7 @@ def rep (n : Name) : MetaM Unit := do
         | some p =>
           let ty ← mkArrow (← mkEq (← mkAppM ``CRel.ok #[kc]) (toExpr true))
             (← mkEq (← mkAppM ``Rel.Rep.rep #[← mkAppM ``CRel.rel #[kc]]) (← inferType p).appArg!)
-          let pv ← mkAppM ``Gen.Sound.eq #[p]
+          let pv ← mkAppM ``Gen.Sound.run_eq #[p]
           addDecl (.thmDecl { name := n ++ Name.mkSimple s!"rep_{x}", levelParams := [], type := ty, value := pv })
           pure none
         | none => pure (((← get).2.map toString).getD "?")

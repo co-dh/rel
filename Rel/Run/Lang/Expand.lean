@@ -613,16 +613,16 @@ partial def code (pre : Name) (ρ : List (Nat × Lean.Expr)) {A B : Obj} {d : Bo
     let v ← node pre ρ t
     -- at an object variable's placeholder (`varObj`) the value lives under a generic constant's binders: not shared
     if (v.find? placeholders.contains).isSome then return v
-    let c ← share pre A B (mkApp v (mkConst ``Unit.unit))
-    pure (g ``Gen.const #[oE A, oE B, mkConst c])
+    return mkConst (← share pre A B v)
   else node pre ρ t
 
-/-- The constant of the closed value `v : CRel A B`: one per structurally equal value. -/
+/-- The constant of the closed code `v : Rel A B`: one per structurally equal value, so a `tab` is computed once
+    and a `lazy` one still runs on the context it is given (`Out.memo`). -/
 partial def share (pre : Name) (A B : Obj) (v : Lean.Expr) : RM Name := do
   if let some c := (← get).1[v]? then return c
   let i := (← get).1.size
   let c := pre ++ `c ++ Name.mkSimple s!"c{i}"
-  addConst c (mkApp2 (mkConst ``CRel) (oE A) (oE B)) v
+  addConst c (mkApp2 (mkConst ``Rel.Rel) (oE A) (oE B)) v
   modify fun (m, cs) => (m.insert v c, cs); pure c
 
 /-- The plan of `t` (`Gen.Pl d A B`) where its node has a bit rule. -/
@@ -818,7 +818,9 @@ def emit (n : Name) (r : Read) : MetaM Unit := do
     pure ((ds, ps, cs), fs) : StateM Nat ((List (String × Res) × List (String × Top) × List Chk) × List Once)).run 0
   addConst (n ++ `objs) (mkConst ``Objs) (← objsE objs)
   let os := mkConst (n ++ `objs)
-  let app (t : Lean.Expr) := mkApp t (mkConst ``Unit.unit)
+  -- a closed term's table: its code run in the empty context `{}`, which knows neither side
+  let app (A B : Obj) (t : Lean.Expr) := g ``Rel.Rel.run #[oE A, oE B, t,
+    g ``Rel.Known.mk #[oE A, oE B, g ``Rel.Known.dom._default #[oE A, oE B], g ``Rel.Known.ran._default #[oE A, oE B]]]
   let ((entries, printed, checked), st) ← (do
     -- each definition elaborated once: `n.x : (A₁ … : Obj) → Pl U₁ → … → Pl R₁ → … → Pl d A B`, generic over the
     -- objects of its generic variables, then plans in and out, the universes it reads then its parameters, so a
@@ -847,13 +849,13 @@ def emit (n : Name) (r : Read) : MetaM Unit := do
       let v ← code n [] t
       let k := Parse.constOf n x
       unless !d do throwError "rel_program expansion: internal: `{x}` needs keys"
-      addConst k (mkApp2 (mkConst ``CRel) (oE A) (oE B)) (app v)
+      addConst k (mkApp2 (mkConst ``CRel) (oE A) (oE B)) (app A B v)
       es := es ++ [g ``Gen.entry #[toExpr x, oE A, oE B, mkConst k]]
     let ps ← ps.mapM fun (x, ⟨A, B, t⟩, s, u) => do
-      pure (g ``printText #[oE A, oE B, os, toExpr x, toExpr s, toExpr u, app (← code n [] t)])
+      pure (g ``printText #[oE A, oE B, os, toExpr x, toExpr s, toExpr u, app A B (← code n [] t)])
     let cs ← cs.mapM fun (p, x, y, eq, s, u, ⟨A, B, R, S⟩) => do
       pure (g ``checkErr #[oE A, oE B, os, toExpr p, toExpr x, toExpr y, toExpr eq, toExpr s, toExpr u,
-        app (← code n [] R), app (← code n [] S)])
+        app A B (← code n [] R), app A B (← code n [] S)])
     pure (es, ps, cs) : RM (List Lean.Expr × List Lean.Expr × List Lean.Expr)).run ({}, {})
   -- what `Expand.rep` proves from: the numbered definitions, and `code`'s constants so it adds none of them again
   modifyEnv (relRegistry.addEntry · (.rep n ds st.1.toArray st.2.toArray))

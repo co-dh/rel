@@ -157,10 +157,11 @@ structure Out (d : Bool) (A B : Obj) where
   pl : Pl d A B
   row : Option (Prim × List Code) := none
 
-/-- A closed node's table and plan computed once, where the `Gen` combinators would recompute it at every call
-    (each round of a fold over it): the sharing `rel_program` gets from Lean hoisting closed terms. -/
+/-- A closed node's plan computed once, where the `Gen` combinators would recompute it at every call (each round
+    of a fold over it). Its code is kept as it is: a `tab` is already a computed value, and a `lazy` one runs on the
+    keys its context gives, which its run in the empty context, stored as a `tab`, would ignore. -/
 def Out.memo {A B : Obj} : {d : Bool} → Out d A B → Out d A B
-  | false, o => let r := o.fn.at (); let p := o.pl (); ⟨const A B r, fun _ => p, o.row⟩
+  | false, o => let p := o.pl (); ⟨o.fn, fun _ => p, o.row⟩
   | true, o => o
 
 /-- `t`'s code and plan, one `Gen` combinator per constructor, as `Expand.node` and `Expand.plan?` build them. The
