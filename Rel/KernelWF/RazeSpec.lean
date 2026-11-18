@@ -360,7 +360,7 @@ theorem toList_bits {n : USize} (x : Arr .boolean n) {b : ByteArray} (hx : boolB
     x.toList = (List.range n.toNat).map (Column.bitAt b) := by
   obtain rfl : b = tagBits x := Option.some.inj (hx.symm.trans (enc_tagBits x))
   apply List.ext_getElem (by rw [Arr.length_toList, List.length_map, List.length_range])
-  intro j h1 h2; rw [Arr.getElem_toList, Arr.get_bool_bits x]; simp
+  intro j h1 h2; rw [Arr.getElem_toList, Arr.get_bool_bits x hx]; simp
 
 /-- **`razeTo` at `boolean`**: the razed bitmap lists its parts' bits one part after another
     (`concatBits`). -/
