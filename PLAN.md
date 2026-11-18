@@ -89,14 +89,14 @@ Size：S = 一步，少于 20 次 tool call；M = 一到三步；L = 多于三�
 状态：✅ 完成，🔄 进行中，⬜ 未开始，✖ 弃用。每步的旧文本（文件、行号、`LR` 命令、Done 条件）在 commit
 178da18 的 `PLAN.md` §2：`git show 178da18:PLAN.md`。行号已过时，先用 index 重新定位。
 
-进度：25 / 54 步（约 46%）。
+进度：27 / 54 步（50%）。
 
 | Phase                | 完成 / 步数 | %    |
 |----------------------|-------------|------|
 | P0 baseline          | 1 / 1       | 100% |
 | P1 删除 `Syn`        | 3 / 3       | 100% |
 | P2 不依赖 `Rel` 类型 | 6 / 6       | 100% |
-| P3 `Rel` 类型        | 5 / 13      | 38%  |
+| P3 `Rel` 类型        | 7 / 13      | 54%  |
 | P4 `Tm` constructor  | 1 / 5       | 20%  |
 | P5 关闭 gap          | 0 / 8       | 0%   |
 | P6 kernels           | 9 / 14      | 64%  |
@@ -138,7 +138,7 @@ Size：S = 一步，少于 20 次 tool call；M = 一到三步；L = 多于三�
 - ✅ 2.5 对称除法的含义。
 - ✅ 2.6 分析：28 个 prim row 能否写成 fold/hylo（不编辑）。
 
-### P3 `Rel` 类型 — 5/13（在分支 `rel-lazy` 上串行；phase gate 通过之前不动 master）
+### P3 `Rel` 类型 — 7/13（在分支 `rel-lazy` 上串行；phase gate 通过之前不动 master）
 
 - ✅ 3.1 结构 `Rel.Rel` → `Rel.Tab`。
 - ✅ 3.2 `CRel` 是 `Option (Tab A B)`（90e753d）；与 3.3 合于 `rel-lazy` bee2ce2，`make check` 通过，241 / 25。
@@ -147,9 +147,11 @@ Size：S = 一步，少于 20 次 tool call；M = 一到三步；L = 多于三�
   （`K.dom ≫ rep t ≫ K.ran = K.dom ≫ T ≫ K.ran`），`Reps` 以 `K` 为参数，同 `Rel.run`。
 - ✅ 3.5 `Gen.Fn d A B := Rel A B`（phantom `d`）：叶子（8ee7433，`rel-lazy`）。组合子暂由 `Fn.ofDem`/`Fn.at` 包旧体；
   `Sound f T := ∀ K, f.Reps K T`，旧谓词留作 `KSound`。
-- 🔄 3.6 二元和一元组合子（3.6a 组合子，3.6b 行与叶子引理，并行）。
-- ⬜ 3.7 fold 和不动点。
-- ⬜ 3.8 `Compile`、`Expand`、测试迁到新的 `Fn`。
+- ✅ 3.6 二元和一元组合子（3.6a 9fe7e30 组合子经 `compT`/`lift1`/`lift2`；3.6b 8c4fed0 行与叶子引理；合并 f4b0e42）。
+  `comp` 不再对 `R` 的结果做 `ranC`，`S` 直接拿 `R` 的值列。
+- ✅ 3.7 fold 和不动点（d1a45f0）：`foldr fold foldI flat hylo juncD` 是 `ofVals` 叶子，`nu nuAC mu` 是闭合体的 `.tab`；
+  `onNodes` 分 tab/lazy 两种。`Fn.ofDem`、`Fn.at`、`KSound`、`Sound.at` 仍有调用者，3.12 删。
+- 🔄 3.8 `Compile`、`Expand`、测试迁到新的 `Fn`。红：`Out.memo_eq`；`rel_program` 展开出 "function expected"。
 - ⬜ 3.9 从 `Tm` 去掉下标。
 - ⬜ 3.10 没有 demand bit 的 `Elab`。
 - ⬜ 3.11 没有 demand bit 的 `Expand`。
