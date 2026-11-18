@@ -105,7 +105,8 @@ pub fn frame_pick<T: Elt>(smp: &mut [i64], nb: usize, nnul: usize, cost: usize, 
 }
 
 // ---- A8: coc.rs ----
-/// coc.rs `encode_meta_exc_blk`: block metadata with patches; answers the patch count. The frame goes to `frm`.
+/// coc.rs `encode_meta_exc_blk`: block metadata with patches; answers the patch count. The frame goes to `frm`. The
+/// writer no longer takes it (`for_blk`); it builds the patched columns a reader still has to read, in the tests.
 pub fn encode_meta_exc_blk<T: Elt>(m: &mut EncMeta, x: &[T], nb: usize) -> u32 {
     let (x, nul, esz) = (&x[..nb], nul::<T>(), size_of::<T>());
     let frm = m.frm.as_deref_mut().expect("encode_meta_exc_blk: the column keeps no frames");
@@ -163,8 +164,16 @@ pub fn elts<'b, T: crate::pod::Pod>(x: &'b [u8], what: &str) -> &'b [T] {
 }
 /// coc.rs `coc_enc_for_meta`: the FoR meta step over block `b`'s `nb` elements `x` at `width` bytes each.
 pub fn for_meta(m: &mut EncMeta, x: &[u8], width: usize, nb: usize) {
-    fn go<T: Elt>(m: &mut EncMeta, x: &[u8], nb: usize) { let ne = encode_meta_exc_blk(m, elts::<T>(x, "coc_enc_for_meta"), nb); *m.nexc = ne }
+    fn go<T: Elt>(m: &mut EncMeta, x: &[u8], nb: usize) { for_blk(m, elts::<T>(x, "coc_enc_for_meta"), nb); }
     crate::by_width!(int width, go(m, x, nb))
+}
+/// The writer's FoR block, Lean `Coc.blockOf`: the width of `max - min`, no frame and no patch; answers the patch count, 0.
+/// Not `encode_meta_exc_blk`'s cheapest width with patches: `Coc.encode` is the spec, and it writes neither.
+pub fn for_blk<T: Elt>(m: &mut EncMeta, x: &[T], nb: usize) -> u32 {
+    encode_meta_blk(m, x, nb);
+    if let Some(f) = m.frm.as_deref_mut() { *f = 0 }
+    *m.nexc = 0;
+    0
 }
 /// coc.rs `coc_enc_for_pack`: `p.pos` holds the block's patches, `exc_off[b + 1] - exc_off[b]` of them.
 pub fn for_pack(p: &mut EncPack, x: &[u8], width: usize) {
@@ -205,7 +214,7 @@ pub fn narrow<'b>(width: usize, v: &'b [i64], out: &'b mut [u8]) -> &'b [u8] {
 /// coc.rs `coc_enc_blk_meta`: block metadata from decoded `v`; answers the patch count.
 pub fn blk_meta(m: &mut EncMeta, v: &[i64], width: usize) -> u32 {
     fn go<T: Elt>(m: &mut EncMeta, x: &[u8], nb: usize) -> u32 {
-        encode_meta_exc_blk(m, crate::pod::cast::<T>(x).expect("qlean: narrowed block misaligned"), nb)
+        for_blk(m, crate::pod::cast::<T>(x).expect("qlean: narrowed block misaligned"), nb)
     }
     let mut buf = crate::pod::Scr::<i64>::new(v.len()); // i64 lanes, so the narrowed bytes are aligned for every `T`
     let x = narrow(width, v, crate::pod::bytes_mut(&mut buf));
@@ -389,8 +398,8 @@ mod a17_tests {
     }
     #[test] fn blk_meta_at_each_width() {
         let u = [i16::MIN as i64, 3, 9, -2];
-        assert_eq!(meta(&u, 2), (1, -2, 9, 10, 4, 0)); // the null is a patch
-        assert_eq!(meta(&[500, 100000, 100003], 4), (0, 500, 100003, 200503, 18, 0));
+        assert_eq!(meta(&u, 2), (0, -32768, 9, 10, 16, 0)); // the null is the minimum, as in `Coc.blockOf`
+        assert_eq!(meta(&[500, 100000, 100003], 4), (0, 500, 100003, 200503, 17, 0)); // the bit length, not a tie's wider width
         assert_eq!(meta(&u, 8), (0, -32768, 9, -32758, 16, 0));
     }
     #[test] fn move_pack_zero_pads_a_short_pack() {
