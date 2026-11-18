@@ -48,6 +48,12 @@ open Rel.CRel (ofC)
 /-- A term's code: its relation and ok bit on the keys it is given. -/
 abbrev Fn (d : Bool) (A B : Obj) := Dem d A → CRel A B
 
+/-- A term's code as a `Rel`: a closed term is its table; one on demand is run on the keys its context knows
+    of its domain, and is a run past capacity where its domain is unknown. -/
+def Fn.toRel {A B : Obj} : {d : Bool} → Fn d A B → Rel A B
+  | false, f => .tab (f ())
+  | true, f => .lazy fun K => K.dom.elim (.tab none) fun c => .tab (f (Alg.idU c.2))
+
 /-- A term's bit-matrix plan on the keys it is given, and the ok bit of the tables at its leaves. -/
 abbrev Pl (d : Bool) (A B : Obj) := Dem d A → Tm A B false × Bool
 

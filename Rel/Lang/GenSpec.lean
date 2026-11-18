@@ -43,6 +43,32 @@ theorem Sound.eq {A B : Obj} {f : Fn false A B} {T : Den A B} (h : Sound f T) (h
     rep (f ()).rel = T :=
   Core.Rel.ext fun x y => h () trivial hb x y rfl
 
+/-- A `Sound` term's `Rel` represents its relation in every context: a closed one by `Sound.eq`; one on demand,
+    run on the keys `idU U` of a known domain, agrees with `T` after `rep (idU U)`, then after `K.den.2` too. -/
+theorem Sound.reps {d : Bool} {A B : Obj} {f : Fn d A B} {T : Den A B} (h : Sound f T) (K : Known A B) :
+    (Fn.toRel f).Reps K T := by
+  cases d
+  · show Rel.Reps K (.tab (f ())) T
+    match e : f () with
+    | none => trivial
+    | some t =>
+      have := Sound.eq h (by rw [e]; rfl); rw [e] at this
+      exact congrArg (fun R => K.den.1 ≫ R ≫ K.den.2) this
+  · show Rel.Reps K (K.dom.elim (.tab none) fun c => .tab (f (Alg.idU c.2))) T
+    rcases K with ⟨_ | ⟨n, U⟩, ran⟩
+    · trivial
+    · show Rel.Reps _ (.tab (f (idU U))) T
+      match e : f (idU U) with
+      | none => trivial
+      | some t =>
+        have hc : ∀ x y, rep (idU U) x y → x = y := fun x y k => ((idU_holds U x y).1 k).1
+        have ht : ∀ z y, rep (idU U) z z → (rep t z y ↔ T z y) := fun z y k => by
+          have := h (idU U) hc (by rw [e]; rfl) z y k; rw [e] at this; exact this
+        have hD : rep (idU U) ≫ rep t = rep (idU U) ≫ T := Core.Rel.ext fun x y =>
+          ⟨fun ⟨z, k, r⟩ => ⟨z, k, (ht z y (hc x z k ▸ k)).1 r⟩, fun ⟨z, k, r⟩ => ⟨z, k, (ht z y (hc x z k ▸ k)).2 r⟩⟩
+        show rep (idU U) ≫ rep t ≫ _ = rep (idU U) ≫ T ≫ _
+        rw [← comp_assoc, ← comp_assoc, hD]
+
 /-- A plan computes `T` on its keys, read by `⟦−⟧` at `Val.empty` (a plan is closed). -/
 def PSound {d : Bool} {A B : Obj} (p : Pl d A B) (T : Den A B) : Prop :=
   ∀ D : Dem d A, Cor D → (p D).2 = true → ∀ x y, keys D x x → ((p D).1.den Val.empty x y ↔ T x y)
