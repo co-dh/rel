@@ -167,7 +167,7 @@ Size：S = 一步，少于 20 次 tool call；M = 一到三步；L = 多于三�
 - ✅ 6.4 / 6.5 `scan`、`scatter`；唯一的 foR 读取是 `Rel.Kernel.foRWords`。
 - ✅ 6.6 / 6.7 / 6.8 `gather`、`asc`、`distinct`；写入是 `wordsFoR`。6.7 剩余：`arr` key 的 MSD；浮点用 `ordKey`
   直到 6.9。
-- ✅ 计划外：foR 含 patch 与 frame，Lean `Coc.encode` 为规格，Rust 逐字节相同（owner 选 B）；30f7b34。`≥2^32` 个元素的列不写 patch list。
+- ✅ 计划外：foR 含 patch 与 frame，Lean `Coc.encode` 为规格，Rust 逐字节相同（owner 选 B）；30f7b34，合并进 master f0f9171。`≥2^32` 个元素的列不写 patch list。
 - ⬜ 6.9 atom 和保序编码：`QAtomicType` → `u1 char u8 i8 i16 i32 i64 f32 f64 sym date datetime`，用 `LR rename`，全仓串行。
   owner 定：`QAtom` 的 constructor 同名改（`.i64 x`、`.i32 x`，不再用 `long`、`int`）；`i8` 有符号（排序翻符号位 `0x80`，
   同 `i16`/`i32`/`i64`），另加无符号字节 `u8`（今天的 `byte`）；`Scan.Kind` 并入 `QAtomicType`，由它推出，不再单独定义
@@ -181,7 +181,7 @@ Size：S = 一步，少于 20 次 tool call；M = 一到三步；L = 多于三�
   `kscatter` 乱序下标先按输出块分组、扫两遍，不开整列数组（V）；`kasc` 一般 grade 用排列工作数组，宽 key 或多列 key
   另加整列序码数组（X）。默认：带 patch 的源按地址随机读，先测；不做输入块原样透传，重跑编码器块步骤，Lean 不改。
   顺序：`scan` → `gather` → `asc` → `scatter` → `distinct`；复用未 export 的旧 Rust（`codec::mask_cmp`、`cmp2`、
-  `ffi/coc.rs` `val_vv`、`gather_enc`、`sort::order_enc`、`encode_scatter`），经 `Sink` 写出。等计划外的 foR B 合并。
+  `ffi/coc.rs` `val_vv`、`gather_enc`、`sort::order_enc`、`encode_scatter`），经 `Sink` 写出。foR B 已合并（f0f9171）；等它的 `make check` 通过，接着先做 6.9。
   vortex 100M 复测（564ffa1，`doc/vortex.md` "Re-measure on 0164b91"，perf 定位）给每个 kernel 的改法：
   - `scan`（慢 2.4-12×，当 map 用 `x<c` 慢 16-630×）：去掉 `rb::for_words_of` 整列解码和 `simd::v::pack64` 整列重编码，
     改为一次一块；`kscan_rows`/`op_eval` 的 `match` 与 `Result` 从每行提到每块，块内循环单态；比较走 `codec::mask_cmp`，
@@ -231,7 +231,7 @@ Size：S = 一步，少于 20 次 tool call；M = 一到三步；L = 多于三�
 | P6    | 13+  | 6.1、6.3；6.4、6.5；6.6-6.8；6.10 各组 | 先 6.0；6.2 → 6.4；6.9 → 6.10 → 6.11 → 6.12 |
 | P7    | 4    | —                                      | 7.1 → 7.2 → 7.3 → 7.4                       |
 
-合计：8 个 phase，53 步（6.10 只计一次；它在 6.0 之后展开）。Opus 39，sonnet 14。
+合计：8 个 phase，54 步（6.10 只计一次；它在 6.0 之后展开）。Opus 39，sonnet 14。
 
 ## 4. Anchor：会变化的 constructor 的使用位置（行号对应 059f46c）
 
