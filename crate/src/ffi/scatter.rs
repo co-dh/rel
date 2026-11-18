@@ -1,18 +1,18 @@
-//! scatter.rs's Lean export, `Kernel.kscatter` (Rel/Kernel/Scatter.lean): its `foR` arguments read through
-//! `ffi::scan::raw`, its answer written by `ffi::scan::for_words`.
+//! scatter.rs's Lean export, `Kernel.kscatter` (Rel/Kernel/Scatter.lean): its `foR` arguments checked by `for_view`
+//! and read a block at a time by `scatter::blocks`, which writes the answer.
 #![deny(unsafe_code)]
 use alloc::string::String;
 use crate::lean::{O, ctor, export, string};
 #[cfg(all(feature = "ffi", not(any(test, feature = "std"))))]
-use {alloc::{format, vec::Vec}, crate::{coc, exports::scan::{for_words, raw}, lean::B, scatter}};
+use {alloc::{format, vec::Vec}, crate::{blocks::Blocks, coc, exports::scan::raw, lean::B, scatter}};
 
 /// `Ext.Enc.foR`'s constructor tag (Rel/Kernel/Value.lean: `bytes bits syms foR ..`).
 pub const FOR: u32 = 3;
 /// `QAtomicType.long`'s constructor index, the 64-bit column `Kernel.foRWords` reads its argument as.
 pub const QT_LONG: u8 = 5;
 
-/// `Kernel.foRWords what m e`: the `m` raw words of a `foR` argument whose layout `Column.lgOk` and `Coc.foRStd` admit
-/// at `m` (`coc::view` and `Coc::std`), else the model's error text.
+/// `Kernel.foRWords what m e`'s layout test: the `foR` argument `e` as the block source of its `m` words where
+/// `Column.lgOk` and `Coc.foRStd` admit it at `m` (`coc::view` and `Coc::std`), else the model's error text.
 #[cfg(all(feature = "ffi", not(any(test, feature = "std"))))]
 pub fn for_words_of(what: &str, m: usize, e: B) -> Result<Vec<u64>, String> {
     for_view(what, m, e)?;
@@ -40,7 +40,6 @@ export! {
     /// `n` cells, `fill` but where a row `k` writes `e[k]` at `ix[k]`, the last such row winning, encoded as
     /// `Coc.encode 8`; the first error met in that order is the answer, an index `>= n` among them.
     fn qlean_k_scatter(m: usize, ix: B, e: B, n: usize, fill: u64) -> O {
-        except(for_words_of("scatter: ix", m, ix).and_then(|is| for_words_of("scatter: e", m, e)
-            .and_then(|es| scatter::words(&is, &es, n, fill))).map(|o| for_words(&o)))
+        except(for_view("scatter: ix", m, ix).and_then(|is| for_view("scatter: e", m, e).and_then(|es| scatter::blocks(&Blocks::from(is), &Blocks::from(es), n, fill))))
     }
 }
