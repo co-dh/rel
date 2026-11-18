@@ -57,11 +57,11 @@ theorem subseq_chain {β : Type _} (xs w : List β) :
         | succ t => exact hstep t (by simp at ht; omega)
 
 /-- **`subseq`'s step in `rep_foldBy_keep`'s form**: a step that takes row `r`'s element `e` and list `u` to
-    `e :: u` and keeps every list `U` holds splits into the rows with an element (`e :: u` or `u`) and the kept
-    rows with none. -/
-theorem subseq_keep {β : Type _} (E : β → Prop) (U : List β → Prop) (v : List β) (A : Prop)
-    (hA : A ↔ (∃ e u, E e ∧ U u ∧ v = e :: u) ∨ U v) :
-    A ↔ (∃ e u, E e ∧ U u ∧ (v = e :: u ∨ v = u)) ∨ (True ∧ (¬ ∃ e, E e) ∧ U v) := by
+    `g e u` (`e :: u`, or `u ++ [e]`) and keeps every list `U` holds splits into the rows with an element (`g e u`
+    or `u`) and the kept rows with none. -/
+theorem subseq_keep {β : Type _} (g : β → List β → List β) (E : β → Prop) (U : List β → Prop) (v : List β)
+    (A : Prop) (hA : A ↔ (∃ e u, E e ∧ U u ∧ v = g e u) ∨ U v) :
+    A ↔ (∃ e u, E e ∧ U u ∧ (v = g e u ∨ v = u)) ∨ (True ∧ (¬ ∃ e, E e) ∧ U v) := by
   rw [hA]
   constructor
   · rintro (⟨e, u, he, hu, rfl⟩ | hu)

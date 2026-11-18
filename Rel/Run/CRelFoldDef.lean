@@ -9,13 +9,14 @@ open Rel Rel.Kernel Rel.Alg
     step sees its inputs as ok: their bits are already in the fold's. -/
 def foldBy {E V : Obj} {n m : USize} (X : Vals (.arr E) n) (e : Vals V m)
     (step : CRel .long E → CRel .long V → CRel .long V) : CRel (.arr E) V :=
-  ofC (foldByC X e fun el p => let s := step ⟨el, true⟩ ⟨p, true⟩; (s.rel, s.ok))
+  ofC (foldByC false X e fun el p => let s := step ⟨el, true⟩ ⟨p, true⟩; (s.rel, s.ok))
 
 /-- `foldOn` on a family over `CRel`s, ok where every round's family member was and `foldOnC` ran within
-    capacity. The family sees the round's pairs as ok: their bits are already in the fold's. -/
-def foldOn {E V : Obj} {m n : USize} (e : Vals V m) (S : CRel (.prod E V) (.prod E V) → CRel (.prod E V) V)
-    (X : Vals (.arr E) n) : CRel (.arr E) V :=
-  ofC (foldOnC e (fun D => ((S ⟨D, true⟩).rel, (S ⟨D, true⟩).ok)) X)
+    capacity; `l`, `pr` the reading order and the step's pair, as `foldOnC`'s. The family sees the round's pairs
+    as ok: their bits are already in the fold's. -/
+def foldOn {E V P : Obj} {m n : USize} (l : Bool) (pr : Rel .long E → Rel .long V → Rel .long P × Bool)
+    (e : Vals V m) (S : CRel P P → CRel P V) (X : Vals (.arr E) n) : CRel (.arr E) V :=
+  ofC (foldOnC l pr e (fun D => ((S ⟨D, true⟩).rel, (S ⟨D, true⟩).ok)) X)
 
 /-- `fold` of one `CRel` step, ok where `S` is and `foldC` ran within capacity. -/
 def fold {E V : Obj} {m n : USize} (e : Vals V m) (S : CRel (.prod E V) V) (X : Vals (.arr E) n) : CRel (.arr E) V :=
