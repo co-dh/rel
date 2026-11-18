@@ -185,9 +185,11 @@ Build `B Rel.Lang.Den Rel.CRelRel`.
 cat uncat zip snoc unsnoc setify distinct asc tic`) write to `doc/rel-rows.md` one line: the `Tm` it equals
 (using only constructors of the target `Tm`), or "primitive" with the reason. `Syntax.lean` 150-192 already marks
 `filter takewhile tails prefix suffix concat` with a `prelude :=` definition. Output feeds Q5; no code changes.
-Done (`doc/rel-rows.md`). Owner decisions: the kept list primitive is `snoc`, not `cons` (appending uses the
-array's spare capacity), so `fold` eliminates `[nil, snoc]` (step 4.5) and `cons`, `uncons` are definitions; Q5
-answered L (every row with slice code stays a fused kernel, its definition the specification, `⟦row⟧ = ⟦def⟧`).
+Done (`doc/rel-rows.md`). Owner decisions: arrays are built only by `snoc`, never by `cons` (appending uses the
+array's spare capacity), so the default `fold` eliminates `[nil, snoc]` (step 4.5) and `cons`, `uncons` are
+definitions used only as reads (`cons° = uncons`); arrays are read left to right where the meaning allows, so the
+right fold stays only for `sum` and `thinL`, whose meanings are right-to-left (kept); Q5 answered L (every row with
+slice code stays a fused kernel, its definition the specification, `⟦row⟧ = ⟦def⟧`).
 
 ### P3 The `Rel` type (13 steps; serial on one branch `rel-lazy`, except where marked)
 
@@ -352,22 +354,37 @@ right-hand side of `foldIDen_eq` (2.3). Delete `Gen.foldI` (196-206), `foldIDen_
 `CRel.symDiv` (`Run/CRelRelDef.lean:52`); soundness from `CRel.rep_symDiv` (`CRelRel.lean:306`) and 2.5. Add arms
 to every function listed at the head of P4. Surface syntax in `Grammar`/`Elab` is a separate decision (Q8).
 
-**4.5 opus — `fold` over `[nil, snoc]`.** Today `fold` is a right fold over `[nil, cons]`: `foldDen`
-(`Den.lean:107-113`) seeds `ys[n]`, sets `ys[t] = S(xs[t], ys[t+1])` and returns `ys[0]`; the kernel round `k` reads
-element `k` from the end (`Alg.foldRound`, `Run/Alg.lean:686-700`). Make it a left fold, step `S : V×E ⟶ V` reading
-`(acc, x)`, index 0 first (the order `scan` runs):
-- Meaning: `foldDen` (seed `ys[0]`, `ys[t+1] = S(ys[t], xs[t])`, result `ys[n]`), `foldIDen`, `foldIDen_eq`
-  (115-157; the meet becomes `π₁ ≫ π₁ ≫ π₁°`), `fold_le`, `foldI_le` (550-558); the step type of `Tm.fold`
-  (`Tm.lean`) and its arm in every function listed at the head of P4.
-- Code: `Alg.foldRound` reads element `k` from the start, `demandStepC` (733-736) pairs `(pend, el)`; `Gen.fold`
-  (`Gen.lean:191-192`), `Gen.foldI` if 4.3 has not removed it, `Expand.node:713`. The row kernels on `foldC`
-  (`thinLOnC`, `Arr.sumC`) keep their rows' meanings (`thinL` stays a right fold, `doc/rel-rows.md` §4).
+**4.5 opus — the left fold over `[nil, snoc]` as default; build by `snoc` only.** Today `fold` is only a right
+fold over `[nil, cons]`: `foldDen` (`Den.lean:107-113`) seeds `ys[n]`, sets `ys[t] = S(xs[t], ys[t+1])` and returns
+`ys[0]`; the kernel round `k` reads element `k` from the end (`Alg.foldRound`, `Run/Alg.lean:686-700`). Rule
+(`doc/rel-rows.md` head): read left to right where the meaning allows, right to left only where it needs it; build
+arrays only by appending. No row meaning changes, so no `rowDens` entry and no `#guard` result changes.
+- Add the left fold, step `S : V×E ⟶ V` reading `(acc, x)`, index 0 first (the order `scan` runs), as `Tm.fold`;
+  today's constructor stays as `Tm.foldr`, meaning unchanged. Meaning: `foldDen` becomes `foldrDen`, a left
+  `foldDen` beside it (seed `ys[0]`, `ys[t+1] = S(ys[t], xs[t])`, result `ys[n]`); `foldIDen`, `foldIDen_eq`
+  (115-157) move to the left fold (the meet becomes `π₁ ≫ π₁ ≫ π₁°`); `fold_le`, `foldI_le` (550-558) for both;
+  both constructors' arms in every function listed at the head of P4.
+- Code: `foldRound` takes the reading order (element `k` from the start, or from the end as today);
+  `demandStepC` (733-736) pairs `(pend, el)` for the left fold, `(el, pend)` for the right; `foldOnC` (743-748),
+  `CRel.foldOn` (`Run/CRelFoldDef.lean:16`), `Gen.fold` (`Gen.lean:191-192`) with `Gen.foldr` beside it,
+  `Gen.foldI` if 4.3 has not removed it, `Expand.node:713`.
+- Right fold kept only where the meaning is right-to-left: `Arr.sumC` (`Alg.lean:1546`; `sum`'s side condition
+  bounds suffix sums) and the first pass of `thinLOnC` (1393; `thinLDen` is the chain from the end). Every other
+  `foldOnC` caller moves to the left fold.
+- Prepend → append: every output path built by `consC` (`Alg.lean:656`) builds by `snocC`: `thinBodyC` (1377)
+  becomes the two passes `thinA`/`thinK` of `doc/rel-rows.md` (actions appended right to left, then the kept
+  elements appended left to right; `thinLDen`, `rep_thinLOnC` (`CRelFold.lean:469`) and their `#guard`s keep their
+  statements), `mapFoldC` (771), `alphaC` (896), `permC` (1242), `subseqC` (1347), `ticC` (1531). `consC` and
+  `CRel.cons` (`Run/CRelListDef.lean:44`) remain only as the `cons` row's code until 2.6 deletes the row;
+  `mergeRound` (1408) already appends.
 - Lemmas: `rep_foldOnC` (`CRelFold.lean:133-181`), `CRel.rep_foldOn` (533-557), `foldRows_iter`,
-  `foldRows_rep_keep` (`RepFold.lean:328-347`, `575-669`), `Gen.fold_sound` (`GenSpec.lean:493-518`).
-- Programs: every fold's step flips its pair, and a step that conses becomes one that snocs, so outputs keep their
-  order: prelude `filter`, `takewhile`, `sort` (`Rel/Programs/Prelude.lean`), the programs whose generated code
+  `foldRows_rep_keep` (`RepFold.lean:328-347`, `575-669`), `Gen.fold_sound` (`GenSpec.lean:493-518`), each for both
+  reading orders; the `rep_*C` lemmas of the kernels above.
+- Programs: every left fold's step flips its pair, and a step that conses becomes one that snocs, so outputs keep
+  their order; each prelude definition takes its form in `doc/rel-rows.md` §2: `prefix`, `subseq`, `tails`,
+  `filter`, `takewhile`, `perm` (its `add`), `sort` (`Rel/Programs/Prelude.lean`); the programs whose generated code
   calls `Gen.fold` (`Selsort Mss Detab Blocks Edit Party Knapsack Quicksort`) and the tests (`Test TestHylo
-  TestSelsort TestKnapsack TestEdit TestMss`).
+  TestSelsort TestKnapsack TestEdit TestMss`). A fold whose meaning is right-to-left becomes `foldr`.
 
 Build all four libraries + `TestCompile`. Done: compile-diff unchanged (241 / 25), every `#guard` result unchanged.
 
