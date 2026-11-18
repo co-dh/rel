@@ -161,7 +161,7 @@ compile η t : {r : Rel A B // rep r = ⟦t⟧ρ}       -- 方案 A：规格在�
   [`own_write` `md5` 等], [q 运行时的需要],
 )
 
-== 剩下的唯一编码：packed（分块 frame of reference）
+== 剩下的唯一编码：foR（分块 frame of reference）
 
 #figure(
   diagram(spacing: (2mm, 8mm), edge-stroke: 0.8pt, label-size: 8pt,
@@ -176,18 +176,19 @@ compile η t : {r : Rel A B // rep r = ⟦t⟧ρ}       -- 方案 A：规格在�
     `lg` 是列的参数（如 0..16）：值域变化快的列用小块（每块 $w$ 更窄），平稳的列用大块（base 和宽度的开销更少）。],
 )
 
-#tbl(c-run, (auto, auto, 1fr), ([旧形式], [在 packed 中], [说明]),
+#tbl(c-run, (auto, auto, 1fr), ([旧形式], [在 foR 中], [说明]),
   [`bits`（bitmap）], [$b = 0$，$w = 1$], [布尔列、mask],
-  [`enum` / ids], [$b = 0$，$w = ⌈log_2 "card"⌉$], [code 列的常态],
+  [`enum` / ids], [$b = 0$，$w = ⌈log_2 "card"⌉$，同样的残差打包], [code 列的常态],
   [`foR`], [一般情形], [不变],
   [常量列], [$w = 0$], [只存 base],
-  [`bytes`（dense）], [不再是一种形式], [只在某块值域确实需要 $w = 8k$ 时出现，是 packed 的退化块，不单独实现],
+  [`bytes`（dense）], [不再是一种形式], [只在某块值域确实需要 $w = 8k$ 时出现，是 foR 的退化块，不单独实现],
 )
 
-- 结论：*一种编码*。`Enc := packed {lg, bases, widths, payload}`；`Enc.raw` 只有一个解码，所有 kernel 的模型仍写在 `raw` 上。
-- 每个 kernel 读 packed、写 packed；写出由共享的 `Producer::block_into` 逐块完成，不经过稠密中间数组。
+- 结论：*一种编码*，就是现有的 `Ext.Enc.foR`（曾设想的 `packed` 即去掉缓存的 `foR`，已弃用）。`Enc.raw` 只有一个解码，所有 kernel 的模型仍写在 `raw` 上。
+- 缓存（只服务速度，语义从不读，证明零成本）：`maxv`（谓词跳过整块）、`bsum`/`sumnul`/`sumn`（O(nblk) 求和）、`off`（块起点）。
+- 每个 kernel 读 foR、写 foR；写出由共享的 `Producer::block_into` 逐块完成，不经过稠密中间数组。
 
-== 原子类型：都是 packed 的 code
+== 原子类型：都是 foR 的 code
 
 #tbl(c-syn, (auto, 1.2fr, 1fr), ([原子], [存成什么 code], [比较 / 运算]),
   [`u1`], [宽度 1 的无符号 code（0 或 1），真假值就是 `u1`，不另设 `bool`；sum 的 tag 列也是 `u1` 列], [`asc`、`scan(and/or/not)` 直接在 code 上],
@@ -199,14 +200,14 @@ compile η t : {r : Rel A B // rep r = ⟦t⟧ρ}       -- 方案 A：规格在�
 
 - 原子的宽度只决定 code 的值域上限（`i8` ≤ 8 位 …）；块的宽度 $w$ 仍按数据选，常常比声明宽度窄。
 
-- data frame = `Rel A B` 的 `tab`，`B` 是若干原子列的 `prod`：struct of arrays，每列一个 packed `Enc`。
+- data frame = `Rel A B` 的 `tab`，`B` 是若干原子列的 `prod`：struct of arrays，每列一个 foR `Enc`。
 - `alp`（浮点小数压缩）不再是一种形式；需要时作为 float 列的 fast path，配一条定理说明 decode 后等于保序位映射。
 - intern（建字典）= `asc ≫ distinct`：字符串排序、去重得字典；每个字符串的 id = 它在字典中的位置（`asc` 的排列经
   `scan` 编号再 `scatter` 回原位）。两个 `sym` 列合并（`∪`、join 两侧字典不同）时对字典的并做一次 intern、重映射 id。不是 kernel。
 
 == 5 个 kernel：2 个原语 + 3 个优化
 
-#tbl(c-rs, (auto, 1.4fr, auto, 1fr), ([kernel], [形状（输入输出都是 packed）], [定律], [现有 driver]),
+#tbl(c-rs, (auto, 1.4fr, auto, 1fr), ([kernel], [形状（输入输出都是 foR）], [定律], [现有 driver]),
   [`scan`], [`(op : Op) (seg : Enc) (es : List Enc) : Enc`，分段前缀折叠；含 map 与 fold], [`raw_scan`], [`scan` `map` `fold`],
   [`gather`], [`(ix : Enc) (e : Enc) (fill) : Enc`，`out[i] = e[ix[i]]`], [`raw_permute`], [`permute`],
   [`scatter`], [`(ix : Enc) (e : Enc) (n) (fill) : Enc`，`out[ix[i]] = e[i]`], [`raw_scatter`（新）], [—],
@@ -256,7 +257,7 @@ compile η t : {r : Rel A B // rep r = ⟦t⟧ρ}       -- 方案 A：规格在�
 
 #tbl(c-syn, (auto, auto, auto, 1fr, auto), ([层], [目录], [lib], [内容], [axiom]),
   text(fill: c-sem)[core], [`Rel/Core/`], [RelCore], [`Core.Rel α β`，`≫ ° ∩ ∪ 𝟙 𝟘`，`mu`，`nu`], [`propext` `Quot.sound`],
-  text(fill: c-run)[kernel], [`Rel/Kernel/`], [RelKernel], [`Enc`（packed）、5 个 extern、driver], [Classical],
+  text(fill: c-run)[kernel], [`Rel/Kernel/`], [RelKernel], [`Enc`（foR）、5 个 extern、driver], [Classical],
   text(fill: c-run)[kernel spec], [`Rel/KernelSpec/`], [RelKernel], [其余部分引用的 kernel 引理], [],
   text(fill: c-run)[run-time], [`Rel/Run/`], [RelRun], [`Obj` `Vals` `Rel` `Known` `Alg` `Tm` `Gen` `compile`], [precompiled],
   text(fill: c-syn)[证明 + 语言], [`Rel/`、`Rel/Lang/`], [Rel], [`Rep*` 律、`KernelWF`、`Lang.Den`（语义）、`CompileSpec`], [],
@@ -291,4 +292,4 @@ index-complete · axioms · noreduce · panic · externs；另加 `lake -d freyd
 - 去掉 `Syn`、`Tm.Le`、`Tm.Eqv`、`Hom.den`（`Rel/Lang/Syn.lean`）与 #9；`Tm.Ax` 改为改写引理 `⟦lhs⟧ρ = ⟦rhs⟧ρ`；freyd 需要的范畴在 `relaop` 自建。
 - `Tm` 加 symmetric division 构造子（运行时已有 `Alg.symDiv`）。
 - 改名：去掉 `Den` `Dem` `Fn` `CRel`，`Rel k v` 改为 `Rel A B`（`tab` ┃ `lazy`），`Tm` 去掉 `d`。
-- kernel 缩到 5 个：原语 `scan` `scatter`，优化 `gather` `asc` `distinct`（各配「= 原语复合」的定理）、编码只留 packed（块长 `lg` 每列可选）、原子 u1 char i8–i64 f32 f64 sym；q 专用 kernel 留在 qlean 的副本（tag `qlean-base`）。
+- kernel 缩到 5 个：原语 `scan` `scatter`，优化 `gather` `asc` `distinct`（各配「= 原语复合」的定理）、编码只留 foR（块长 `lg` 每列可选）、原子 u1 char i8–i64 f32 f64 sym；q 专用 kernel 留在 qlean 的副本（tag `qlean-base`）。

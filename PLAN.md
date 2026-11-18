@@ -78,7 +78,7 @@ Size：S = 一步，少于 20 次 tool call；M = 一到三步；L = 多于三�
 | 22 | prim row 写成 fold/hylo        | 28 行, `Compile.lean:77-112`          | 没有逐行检查                            | M    |
 | 23 | scan、scatter primitive        | driver, `Kernel/Driver.lean:25-38`    | `Op`、`Op.eval`、两条定律               | L    |
 | 24 | gather、asc、distinct          | `gatherPacked`, `Order.grade`, `nubC` | extern、定律、"= 复合"                  | L    |
-| 25 | 一种编码 `packed`              | `Ext.Enc`, 7 个 ctor, `Value.lean`    | 460 个 decl 依赖 `Enc`                  | L    |
+| 25 | 一种编码 `foR`              | `Ext.Enc`, 7 个 ctor, `Value.lean`    | 460 个 decl 依赖 `Enc`                  | L    |
 | 26 | 九个 atom                      | `QAtomicType`, 18 个 ctor, `Value:13` | 1718 个 decl；boolean、general；R5      | L    |
 | 27 | RELK.txt 99 → 5                | `crate/RELK.txt`, `crate/src/ffi/`    | native gate 需要更多；R4                | L    |
 | 28 | q-only kernel 离开             | 99 个 extern（`extern.tsv`）          | qlean 固定在 e024297：无工作            | S    |
@@ -445,17 +445,14 @@ flt`（按设计 §4 补全列表）、`def Op.readsAcc : Op → Bool`、`def Op
 `def Op.eval : Op → UInt64 → UInt64 → UInt64`，作用在原始 word 上。名字 `Rel.Lang.Op`（`Syntax.lean`）已经
 存在：kernel 的那个放在 `Rel.Kernel`。要映射的现有 op code：`Ew.add … Ew.acos`（`Elementwise.lean`
 22-65）、`Scan.Verb`（`Scan.lean:11`）。
-
-**6.2 opus — `packed`。** `Rel/Kernel/Value.lean`：给 `Ext.Enc` 加 constructor
-`| packed (lg : UInt8) (bases widths payload : ByteArray)`，以及它在 `Ext.Enc.raw`（705 行）中的 case；`bits` 是
-base 0 宽度 1，`enum` 宽度 `⌈log2 card⌉`，`const` 宽度 0。复用 `Coc.encodeAt`（`Coc.lean:85`）。其他六个
-constructor 保留到 6.11。
-
-**6.3 opus — `crate/src/pack.rs`。** `packed` 的块 encode/decode，基于 `pod::Elt`（`pod.rs:22`）、`by_width!`
-（`ids.rs:12`）、`Producer::block_into`（`enc.rs:284`）、`pool`。在 `crate/` 中 `cargo test`。
-位的打包和解包复用 coc 已有的 SIMD 例程（`ids::unpack`、`res::res_unpack`、`res_pack`、`codec::res_mask_cmp`，
-在 `coc.rs`、`codec.rs`、`ids.rs`、`res.rs`、`simd.rs`、`unpack.rs`）：`packed` 的 payload 与 coc FoR 的逐字节相同，
-只有元数据不同（`packed` 每块 9 B）。逐元素的 `res_at` 只作为测试 SIMD 的标量参照（Vortex spike，`doc/vortex.md`）。
+**6.2 / 6.3 已弃用 — `packed`。** 曾设想新增 `Ext.Enc.packed` 与 `crate/src/pack.rs`；owner（2026-11-18）改为弃用，
+唯一保留的编码是现有的 `Ext.Enc.foR`。`packed` 就是去掉缓存的 `foR`：两者的元素语义相同（base 加回绕的残差，每块
+LSB 优先，每块预留 $2^"lg" · w / 8$ 字节，`lg` 每列一个，存在 `foR` 的 trailer 中）。`foR` 多保留的缓存是 `maxv`（谓词跳过整块）、
+`bsum`/`sumnul`/`sumn`（O(nblk) 求和）、`off`（块起点）；语义从不读它们（`Rel/Kernel/Value.lean` ~202），所以证明零成本。
+归约在 `foR` 上同样成立：`bits` = base 0 宽度 1，`bytes` = 退化的 `foR`，常量 = 宽度 0，enum id 用同样的残差打包，
+`alp` 挂在 `foR` 的元数据上（float 的 fast path）。已做：删除 `crate/src/pack.rs` 和 `Own` 的文件类型 6；`scan`、`scatter`、
+`gather` 经 `Rel.Kernel.foRWords`（检查 `lgOk` 与 `foRStd`）读 `foR`，答 `.foR (Coc.encode 8 …)`；位的打包/解包用 coc 现有的
+SIMD 编解码。往返定理 `raw_encodeAt`（`Rel/KernelSpec/Raw.lean`）：经 `raw` 读 `.foR (encodeAt lg w x)` 等于读 `.bytes x`。
 
 **6.4 / 6.5 opus — `scan`、`scatter`（并行）。** Lean（`Rel/Kernel/Scan.lean`，新增 `Rel/Kernel/Scatter.lean`）：
 
@@ -474,7 +471,7 @@ theorem raw_scan …    theorem raw_scatter …       -- Rel/KernelSpec/, statem
 Gate：`B RelKernel`、`sh crate/build.sh syms`、
 `make externs`。
 
-**6.6 / 6.7 / 6.8 opus — `gather`、`asc`、`distinct`（并行，在 6.4 和 6.5 之后）。**
+**6.6 / 6.7 / 6.8 opus — `gather`、`asc`、`distinct`（并行，在 6.4 和 6.5 之后）。** 6.6 `gather` 已完成（23b65e0，`raw_kgather`）。
 
 ```
 @[extern "qlean_k_gather"]   def Kernel.kgather (ix e : @& Enc) (fill : UInt64) : Enc
@@ -498,8 +495,11 @@ radix scan → scatter，`arr` 字节用 MSD；gather = concat → asc → scan 
 `Rel/KernelSpec/*`（约 5700 行）和 `Rel/KernelWF/*`（约 16000 行）
 是针对今天的 kernel 陈述的；步数在 6.0 之后才知道。
 
+未决项：Rust `cocops::width_exc` 在代价相同时选更宽的宽度（`cost <= best`），Lean `Coc.encode` 取 bit length；例如
+`[11,7,12,7]`，Rust 选宽度 4，Lean 选宽度 3。所以 Lean `Coc.encode` 与 Rust `qlean_coc_encode` 可能字节不同、解码出的 word 相同。
+
 **6.11 sonnet — 删除旧物。** 不删 `coc.rs`、`codec.rs`、`ids.rs`、`res.rs`、`simd.rs`、`unpack.rs` 中的 SIMD 编解码函数：
-它们是 `packed` 的实现（6.3）。移除六个旧的 `Ext.Enc` constructor、旧 extern、driver
+它们是 `foR` 的位打包实现（6.2 / 6.3）。「一种编码」= `foR`：删除 `bytes` `bits` `syms` `enum` `gen` 这五个 `Ext.Enc` constructor，`alp` 保留；再移除旧 extern、driver
 `Kernel.map fold scan permute`（`Driver.lean`；分别有 5、2、2、2 个使用者）、没有调用者的 Rust 文件；用 `LR rename`
 把 `k` 名字改成 `Kernel.scan gather scatter asc distinct`，把符号改成 `qlean_scan …`；`crate/RELK.txt`；
 `panic-allow.txt`。Gate：`syms`、`externs`、`panic`、`crate-test`。
@@ -589,7 +589,7 @@ lemO rep`；`Rel/Lang/TestRep.lean`。`test/TestCompile.lean` 和 `compile-diff`
 - **R5（上面已决定）九个 atom 移除了 core 在用的类型。** `Vals (.sum A B)` 把它的 tag 放在
   `Arr .boolean` 中；`Obj.general`
   和 `Obj.Ordered (t ≠ .general)` 点名了 `.general`；`Arr .long` 持有 `Obj.arr` 的 `lo`/`hi`。设计没有
-  说 tag column 变成什么（i8，还是宽度 1 的 packed），也没有说装箱的 column 是否保留。1718 个 declaration
+  说 tag column 变成什么（i8，还是宽度 1 的 foR），也没有说装箱的 column 是否保留。1718 个 declaration
   依赖 `QAtomicType`；`KernelSpec` + `KernelWF`（约 21700 行）是针对今天的 kernel 和
   编码陈述的：P6 的证明代价在 6.0 之前未知。
 - **R6 Open share：没有找到 producer。** `Expand.number` 只包裹 closed 的 term，而 `Tm.gap` 却有这个分支；
@@ -610,7 +610,7 @@ lemO rep`；`Rel/Lang/TestRep.lean`。`test/TestCompile.lean` 和 `compile-diff`
 - **R11 4.2/4.3 之后的 `Tm.pol`。** 它把 `foldI`、`flat` 当作 "不得提及 k"；作为 definition，它们的
   polarity 由 `comp`/`meet`/`conv` 推出，所以被接受的程序集合会改变。
 - **R12 分阶段使用临时物**（`CRel.ok`、`CRel.rel`、`CRel.mk`、`Fn.toRel`、phantom `d`、`k` 命名的
-  kernel、与六种编码并存的 `packed`）。每一个在一个 phase 的时间内都是同一事实的第二种形式，违反
+  kernel、与 `bytes` `bits` `syms` `enum` `gen` 并存的 `foR`）。每一个在一个 phase 的时间内都是同一事实的第二种形式，违反
   DRY 规则；每一个都有指名的删除步骤（3.12、3.9、6.11）。
 
 给 owner 的问题：
