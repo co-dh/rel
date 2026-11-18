@@ -38,7 +38,7 @@ scoped notation "vacY(" B ", " Ub ", " ycs ")" =>
 
 end DivN
 
-open DivN OpsN
+open Rep.DivN Alg.DivN OpsN
 
 /-- `joinC`'s relation: each pick twin's `.1` its pick (`pickC_fst`), `fit` read as `pickN` reads it; at
     `\`'s value parts it is `yJ`. -/

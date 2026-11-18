@@ -94,14 +94,14 @@ rel_program closedQ where
 
 /-- error: line 100, col 17: unknown name 'add' -/
 #guard_msgs in
-open Nat in
+open _root_.Nat Lean.Nat in
 rel_program closedOpen where
     obj A = 0…2
     s : A ⟶ A ≜ add
 
 /-- info: succ -/
 #guard_msgs in
-open Nat in
+open _root_.Nat Lean.Nat in
 #rel_read "print succ"
 
 def fake : CRel .long .long := default
@@ -120,7 +120,7 @@ rel_program closedType where
 
 /-- info: (ad d) -/
 #guard_msgs in
-open Nat in
+open _root_.Nat Lean.Nat in
 #rel_read "obj A = 0…2\nad : A ⟶ A ≜ 𝟙\nd : A ⟶ A ≜ 𝟙\nprint add"
 
 /-! Symbol names: `open mh («≺»)` makes `≺` readable; `mh.≺` reads unopened. -/

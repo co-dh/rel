@@ -10,7 +10,7 @@ import Lean
 
 namespace Rel.Lang.Embed
 
-open Lean Parser Elab Command
+open Lean Parser Elab Elab.Command Parser.Command
 open Rel.Lang
 open Rel.Lang.Parse (P)
 

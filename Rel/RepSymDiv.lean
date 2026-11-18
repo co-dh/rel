@@ -288,7 +288,7 @@ theorem sym_ids (rk sk v0 v1 : Code)
   rw [hRside k hk u, hSside l hl u]
 
 -- `jp(l, r)`: the pairs `(i, j)` `join l r` answers (`RepDiv`'s)
-open DivN
+open Rep.DivN Alg.DivN
 
 /-- **`symDiv`'s joined classes**: `lc`, `rc`, the two halves of `sym_ids`'s `sid` as long codes, are well formed
     with one row per key class of `rk`, `sk`; `join lc rc` pairs a class `k` of `rk` with a class `l` of `sk`
