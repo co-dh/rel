@@ -87,7 +87,7 @@ structure Known (A B : Obj) where
   ran : Option (Σ n, Vals B n)          -- 已知的值域 L
 
 inductive Rel (A B : Obj)
-  | tab  (t : Option (Σ n, Vals A n × Vals B n))   -- 两列等长数组；none = 失败（原 CRel 的 ok = false）
+  | tab  (t : Option (Tab A B))                   -- 两列等长数组；none = 失败（原 CRel 的 ok = false）
   | lazy (f : Known A B → Rel A B)                -- 边界够了返回 tab，不够返回 lazy 等更多边界
 
 compile η t : {r : Rel A B // rep r = ⟦t⟧ρ}       -- 方案 A：规格在类型里
@@ -102,7 +102,7 @@ compile η t : {r : Rel A B // rep r = ⟦t⟧ρ}       -- 方案 A：规格在�
 
 - 删除的类型：`CRel`（`ok` 并入 `tab` 的 `Option`）、`Fn`、`Dem`（定义域就是 `Known.dom`）、`Den`（直接写 `Core.Rel`）。
 - `Obj` 是可检查的数据，编译器按它分派（`Vals A n` 几列、哪个宽度的 kernel）；Lean 的 `Type` 不能模式匹配，所以程序用 `Obj`、数学用 `.El`。
-- `Tab` 不另起名字：`tab` 的内容就是原来 `Rel k v` 的 `{n, key, val}`，即 data frame。
+- `Tab` 是三字段结构 `{n, key, val}`（原来的 `Rel k v`），内容和 `Σ n, Vals A n × Vals B n` 相同，留名字是因为字段名 `.n .key .val` 被两千多处使用。
 - 新的组合子加 `Known` 的字段，不加 `Rel` 的构造子。
 
 #card(c-sem, [`rep` 与 `compile`（规格写在类型里）])[
@@ -129,7 +129,7 @@ compile η t : {r : Rel A B // rep r = ⟦t⟧ρ}       -- 方案 A：规格在�
   [product / sum], [`outl` `outr` `pair` `prod`；`junc` = `[R,S]`（目标：加 `inl` `inr`，`[R,S] = inl° ≫ R ∪ inr° ≫ S` 成为定义；`juncD` 随 lazy `Rel` 消失）],
   [power], [`lam`（Λ） `E` `est` `thin` `nil` `atPos`],
   [数据], [`val R` `uni U` `succ` `arith` `leq` `lt`],
-  [递归], [`mu` `nu` `fold`（`⦇e,S⦈`，catamorphism） `hylo`（`μX. c ≫ G(X) ≫ S`，原 `hylo`）],
+  [递归], [`mu` `nu` `fold`（`⦇e,S⦈`，代数 `[nil, snoc]` 上的 catamorphism：左折叠，`snoc` 在数组末尾追加，步骤读 `(acc, x)`，从下标 0 向上） `hylo`（`μX. c ≫ G(X) ≫ S`，原 `hylo`）],
   [绑定 / 复用], [`var` `share` `own` `call` `arg`],
   [库原语], [`prim r`：`prims` 表的一行（`inits` `tails` `prefix` `concat` `zip` …；`asc` `distinct` 改为 kernel），在某个类型上实例化，参数由 `arg` 给出],
 )

@@ -17,7 +17,8 @@ Owner decisions on section 5 (taken as the recommended defaults; the owner may o
   after canonicalisation.
 - R8: 1.1 writes only the equations that are not a restatement of one `Core.Rel` law (`mu_unfold`, `nu_unfold`);
   the other ten are used directly as the `Core.Rel` laws.
-- Q1 delete `RelAop/Syn.lean`; Q2 surface `refold` becomes `hylo` too; Q3 `tab` holds `Σ n, Vals A n × Vals B n`;
+- Q1 delete `RelAop/Syn.lean`; Q2 surface `refold` becomes `hylo` too; Q3 `tab` holds `Option (Tab A B)`, the structure
+  `{n, key, val}` (owner: M);
   Q7 `Den` inlined by hand; Q9 `hylo` keeps `k what ch body`; Q11 `call` means the callee's term inlined;
   Q12 `compile` moves out of `RelRun` into the library that holds the proofs.
 - Non-log outputs (baseline, row analysis) go into this file or `doc/`, not `/data/tmp`.
@@ -184,6 +185,9 @@ Build `B Rel.Lang.Den Rel.CRelRel`.
 cat uncat zip snoc unsnoc setify distinct asc tic`) write to `doc/rel-rows.md` one line: the `Tm` it equals
 (using only constructors of the target `Tm`), or "primitive" with the reason. `Syntax.lean` 150-192 already marks
 `filter takewhile tails prefix suffix concat` with a `prelude :=` definition. Output feeds Q5; no code changes.
+Done (`doc/rel-rows.md`). Owner decisions: the kept list primitive is `snoc`, not `cons` (appending uses the
+array's spare capacity), so `fold` eliminates `[nil, snoc]` (step 4.5) and `cons`, `uncons` are definitions; Q5
+answered L (every row with slice code stays a fused kernel, its definition the specification, `⟦row⟧ = ⟦def⟧`).
 
 ### P3 The `Rel` type (13 steps; serial on one branch `rel-lazy`, except where marked)
 
@@ -194,8 +198,7 @@ gate passes on the branch.
 `select name || ' Rel.Tab' || substr(name, 8) from decl_info where internal=0 and (name='Rel.Rel' or name like
 'Rel.Rel.%')` (structure, fields `n key val`, `mk`, `Holds`, `toList`, `Canon`, …). `LR rename <pairs> --apply`.
 Build `B RelCore RelKernel RelRun Rel`. Done: no declaration named `Rel.Rel` or `Rel.Rel.*` remains. (Q3: the
-design writes the payload as `Σ n, Vals A n × Vals B n`; this plan keeps the structure with the same three
-fields, because 2128 declarations project `.n .key .val`.)
+design names `Tab` too, the structure with the three fields, because 2128 declarations project `.n .key .val`.)
 
 **3.2 opus — `CRel` is `Option (Tab A B)`.** File `Rel/Run/CRelDef.lean` lines 8-64. Replace the structure by
 
@@ -312,7 +315,7 @@ inverse needed for `CRel`: replace `CRel A B` by `Option (Tab A B)` with `LR ret
 ConvSpec CompileSpec BitsSpecRun BitsSpec`. `LR` has no "unfold abbrev" command (Q7). Until one exists: the step
 is blocked; do not do it with a regex.
 
-### P4 Constructor changes of `Tm` (4 steps; serial, they share the same match arms)
+### P4 Constructor changes of `Tm` (5 steps; serial, they share the same match arms)
 
 For each removed constructor delete its arm in: `Tm.lean` (`mapM fv subst pol`), `Den.lean` (`den`, `den_congr`,
 `den_subst`, `den_pol`), `Rows.lean` (`gap`), `Compile.lean` (`gen`), `CompileSpec.lean`, `ConvSpec.lean`,
@@ -348,6 +351,25 @@ right-hand side of `foldIDen_eq` (2.3). Delete `Gen.foldI` (196-206), `foldIDen_
 (S : Tm B C) : Tm A B` (mirrors `ldiv`'s universe arguments; Q8). `den := symDivDen` (2.5); `gen` through
 `CRel.symDiv` (`Run/CRelRelDef.lean:52`); soundness from `CRel.rep_symDiv` (`CRelRel.lean:306`) and 2.5. Add arms
 to every function listed at the head of P4. Surface syntax in `Grammar`/`Elab` is a separate decision (Q8).
+
+**4.5 opus — `fold` over `[nil, snoc]`.** Today `fold` is a right fold over `[nil, cons]`: `foldDen`
+(`Den.lean:107-113`) seeds `ys[n]`, sets `ys[t] = S(xs[t], ys[t+1])` and returns `ys[0]`; the kernel round `k` reads
+element `k` from the end (`Alg.foldRound`, `Run/Alg.lean:686-700`). Make it a left fold, step `S : V×E ⟶ V` reading
+`(acc, x)`, index 0 first (the order `scan` runs):
+- Meaning: `foldDen` (seed `ys[0]`, `ys[t+1] = S(ys[t], xs[t])`, result `ys[n]`), `foldIDen`, `foldIDen_eq`
+  (115-157; the meet becomes `π₁ ≫ π₁ ≫ π₁°`), `fold_le`, `foldI_le` (550-558); the step type of `Tm.fold`
+  (`Tm.lean`) and its arm in every function listed at the head of P4.
+- Code: `Alg.foldRound` reads element `k` from the start, `demandStepC` (733-736) pairs `(pend, el)`; `Gen.fold`
+  (`Gen.lean:191-192`), `Gen.foldI` if 4.3 has not removed it, `Expand.node:713`. The row kernels on `foldC`
+  (`thinLOnC`, `Arr.sumC`) keep their rows' meanings (`thinL` stays a right fold, `doc/rel-rows.md` §4).
+- Lemmas: `rep_foldOnC` (`CRelFold.lean:133-181`), `CRel.rep_foldOn` (533-557), `foldRows_iter`,
+  `foldRows_rep_keep` (`RepFold.lean:328-347`, `575-669`), `Gen.fold_sound` (`GenSpec.lean:493-518`).
+- Programs: every fold's step flips its pair, and a step that conses becomes one that snocs, so outputs keep their
+  order: prelude `filter`, `takewhile`, `sort` (`Rel/Programs/Prelude.lean`), the programs whose generated code
+  calls `Gen.fold` (`Selsort Mss Detab Blocks Edit Party Knapsack Quicksort`) and the tests (`Test TestHylo
+  TestSelsort TestKnapsack TestEdit TestMss`).
+
+Build all four libraries + `TestCompile`. Done: compile-diff unchanged (241 / 25), every `#guard` result unchanged.
 
 ### P5 Close the gaps, in the decided order (8 steps; 5.4a-c parallel, the rest serial)
 
@@ -486,12 +508,12 @@ update `CLAUDE.md` Layout/Gates text and `Makefile` (`compile-diff`).
 | P1    | 3     | 1.3 (freyd repo) beside 1.1                | 1.1 → 1.2; 1.2 and 1.3 land together           |
 | P2    | 6     | 2.1, 2.2, 2.4, 2.5, 2.6                    | 2.2 → 2.3 (same section of `Den.lean`)         |
 | P3    | 13    | 3.3 beside 3.2                             | 3.1 → 3.2 → 3.4 → 3.5 → … → 3.13, one branch   |
-| P4    | 4     | none: every step edits the same match arms | 4.1 → 4.2 → 4.3 → 4.4                          |
+| P4    | 5     | none: every step edits the same match arms | 4.1 → 4.2 → 4.3 → 4.4 → 4.5                    |
 | P5    | 8     | 5.4a, 5.4b, 5.4c; 5.2 beside 5.3           | 5.1 first; 5.5 → 5.6 last                      |
 | P6    | 13+   | 6.1, 6.3; 6.4, 6.5; 6.6-6.8; 6.10 groups   | 6.0 first; 6.2 → 6.4; 6.9 → 6.10 → 6.11 → 6.12 |
 | P7    | 4     | —                                          | 7.1 → 7.2 → 7.3 → 7.4                          |
 
-Total: 8 phases, 52 steps (6.10 counted once; it expands after 6.0). Opus 38, sonnet 14.
+Total: 8 phases, 53 steps (6.10 counted once; it expands after 6.0). Opus 39, sonnet 14.
 
 ## 4. Anchors: use sites of the constructors that change (line numbers at 059f46c)
 
@@ -567,9 +589,9 @@ Questions for the owner:
 |-----|-----------------------------------------------------------------------------------------------------------|
 | Q1  | freyd: delete `RelAop/Syn.lean`, or keep `Functor Syn RelSet` by moving the quotient into relaop?         |
 | Q2  | Does the surface keyword / `Pre.refold` also become hylo?                                                 |
-| Q3  | `tab` payload: the structure `Tab {n, key, val}` or literally `Σ n, Vals A n × Vals B n`?                 |
+| Q3  | Answered M: `tab` holds `Option (Tab A B)`, `Tab` the structure `{n, key, val}` (3.1's rename)            |
 | Q4  | Is `Reps` (predicate, `tab none ↦ True`) the intended `rep`? If not, what is `rep (tab none)`?            |
-| Q5  | Which prim rows stay kernels after 2.6's table?                                                           |
+| Q5  | Answered L: `snoc`, `asc` primitive; every `+ slice` row of 2.6 a fused kernel tied by `⟦row⟧ = ⟦def⟧`    |
 | Q6  | Without `d`, where does Elab insert the universe prefix that `closeRes` inserts today?                    |
 | Q7  | `Den` inline: add an unfold-abbrev command to lean-refactor, or keep `Den` as a notation?                 |
 | Q8  | `Tm.symDiv` signature (universe arguments as `ldiv`?) and its surface syntax.                             |
