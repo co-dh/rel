@@ -182,6 +182,20 @@ Size：S = 一步，少于 20 次 tool call；M = 一到三步；L = 多于三�
   另加整列序码数组（X）。默认：带 patch 的源按地址随机读，先测；不做输入块原样透传，重跑编码器块步骤，Lean 不改。
   顺序：`scan` → `gather` → `asc` → `scatter` → `distinct`；复用未 export 的旧 Rust（`codec::mask_cmp`、`cmp2`、
   `ffi/coc.rs` `val_vv`、`gather_enc`、`sort::order_enc`、`encode_scatter`），经 `Sink` 写出。等计划外的 foR B 合并。
+  vortex 100M 复测（564ffa1，`doc/vortex.md` "Re-measure on 0164b91"，perf 定位）给每个 kernel 的改法：
+  - `scan`（慢 2.4-12×，当 map 用 `x<c` 慢 16-630×）：去掉 `rb::for_words_of` 整列解码和 `simd::v::pack64` 整列重编码，
+    改为一次一块；`kscan_rows`/`op_eval` 的 `match` 与 `Result` 从每行提到每块，块内循环单态；比较走 `codec::mask_cmp`，
+    平滑列先用块元数据（`codec::cmp_meta`，这条路径已经比 q 快 50-79×）。
+  - `gather`（1% 慢 22-40×，全排列慢 3.5-6.5×）：只解码被读到的块（`gather_enc`、`res_get_in`）；结果经 `Sink` 写出，
+    不再逐元素收集成 `Result`（`GenericShunt::next` 占 62%）。
+  - `asc`（慢 4-168×）：LSD 的 8 趟不再经排列随机读 `k[i]`，key 随排列一起搬动（X 的序码数组）；先用块元数据查是否
+    已有序，有序即返回（q 在已排序输入上快的原因）。
+  - `scatter`（全排列慢 1.5-3.1×）：按 V 先按输出块分组，块内顺序写。
+  - `distinct`（≈ q）：只换成按块读写，不另优化。
+  - 6.10 之后另起一步：旧 coc 比较路径 `c::slice`（内联 `mask_res`，每 8 lane 一次 `kmovb` + `or`，占 87%）
+    对 FastLanes 慢 1.4-10×，改为整字掩码写出；`take` 1% 的逐元素块查找改为按块分组。
+  - 每个 kernel 合并后用 vortex 的 harness 在 100M 上复测一次，记进 `doc/vortex.md`；带 patch 的列（`sz` + outlier）
+    在 foR B 合并（f0f9171）后重测。
 - ⬜ 6.11 删除旧 extern 与旧 constructor；保留 SIMD 编解码函数。
 - ⬜ 6.12 native gate。
 - ⬜ 6.13 虚拟行号（owner 经 dataframe 会话决定）：frame 的行号对象 `I` 只存 `n`，磁盘与内存都不物化；每个 kernel 把它
