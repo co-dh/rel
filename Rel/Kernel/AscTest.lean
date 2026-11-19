@@ -42,6 +42,12 @@ def i32Out : String ⊕ (List (List UInt64) × List UInt64) := .inr ([[0x8000000
 example : pview (u 4) (kasc (u 4) i32) = .inr [2, 1, 3, 0] := by decide +kernel
 #guard view (u 4) (kasc (u 4) i32) == i32Out
 
+-- an `i8` is signed at its byte: `0x80` (`-128`) is the least, `0xff` is `-1`, then `0`; the words move whole
+def i8 : List (QAtomicType × Enc) := [(.i8, col [5, 0xff, 0x80, 2, 0])]
+def i8Out : String ⊕ (List (List UInt64) × List UInt64) := .inr ([[0x80, 0xff, 0, 2, 5]], [2, 1, 4, 3, 0])
+example : pview (u 5) (kasc (u 5) i8) = .inr [2, 1, 4, 3, 0] := by decide +kernel
+#guard view (u 5) (kasc (u 5) i8) == i8Out
+
 -- floats by `ordKey`: NaN below every number, `-0.0` equal to `0.0` (a tie, so input order)
 def flt : List (QAtomicType × Enc) :=
   [(.f64, col [0x3ff0000000000000, 0x7ff8000000000000, 0x8000000000000000, 0xbff0000000000000, 0])]
