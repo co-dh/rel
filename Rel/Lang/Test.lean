@@ -1268,6 +1268,7 @@ rel_program kernT2Old where
     pl : N×N ⟶ N ≜ p\r
     fn : N ⟶ N ≜ νX : (r ∪ s) ∩ (X X)
     fm : N ⟶ N ≜ μX : r ∪ (X r)
+    po : N ⟶ N ≜ p π₁
 
 /-- The definition `x` of `kernT2` (kernel path) and of `kernT2Old` (old path) as equal sets of rows. -/
 def sameK (x : String) (A B : Obj) [BEq (A.El × B.El)] : Bool :=
