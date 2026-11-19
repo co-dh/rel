@@ -8,9 +8,8 @@ import Rel.Run.Div
 import Rel.Run.Bits
 import Rel.Run.Fix
 
-/-! The kernel path: the `Gen` bodies a program runs when every node of its terms has one here (`Tm.onKernel`),
-    each a composition of the `Tab` operators over the five kernels, with `Gen`'s signature so `Expand` emits
-    either namespace by the same rule. A `tab` holds the message of the op that could not run, never a dropped
+/-! The code a program runs: one body per node of its terms (`Tm.onKernel`), each a composition of the `Tab`
+    operators over the five kernels. A `tab` holds the message of the op that could not run, never a dropped
     error. `≫` and `\` take a bit matrix by `Tab.bitsWin` (`Tab.compSel`, `Tab.ldivSel`). -/
 
 namespace Rel.Lang

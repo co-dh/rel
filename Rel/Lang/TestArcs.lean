@@ -1,8 +1,7 @@
 import Rel.Lang.Test
 
-/-! A `ν` whose AC-3 body has a second conjunct `t` free of the variable besides the seed `s`, with `s ⋢ t`:
-    `Expand.arcs` skips every conjunct free of the variable, so the result is right only if `t` reaches the seed
-    `Gen.nuAC` starts from. It does: `Pre.bound` makes the seed the meet of all such top-level conjuncts. -/
+/-! A `ν` whose body `s ∩ (t ∩ (A\(Z e)))` has a second conjunct `t` free of the variable besides `s`, with
+    `s ⋢ t`: its fixed point is below both, whichever way the conjuncts are nested. -/
 
 namespace Rel.Lang.TestArcs
 
