@@ -36,6 +36,13 @@ theorem lt_idWidthOf {x n : Nat} (hx : x < n) (hn : n ≤ 2 ^ 64) : x < 2 ^ Colu
     exact Nat.lt_of_le_of_lt (Nat.le_sub_one_of_lt hx)
       (Nat.lt_of_lt_of_le Nat.lt_log2_self (Nat.pow_le_pow_right (by decide) hlane))
 
+/-- The kernels' `firstsBy` (a `BEq` key) is the specification's `firstsOf` at a lawful one. -/
+theorem firstsBy_eq {α : Type} [BEq α] [LawfulBEq α] [DecidableEq α] (m : Nat) (key : Nat → α) :
+    Order.firstsBy m key = firstsOf key m := by
+  have hb : ∀ a b : α, (a != b) = !decide (a = b) := fun a b => by
+    rw [bne, Bool.eq_iff_iff.2 (show (a == b) = true ↔ decide (a = b) = true by rw [beq_iff_eq, decide_eq_true_iff])]
+  unfold Order.firstsBy firstsOf; simp only [hb]
+
 /-- **`idsBy` read back**: the ids are `groupOf`, packed at the width of the first occurrences' count,
 and the second payload holds one long per first occurrence. -/
 theorem idsBy_spec {α : Type} [BEq α] [LawfulBEq α] [DecidableEq α] (m : Nat) (key : Nat → α) :
@@ -43,8 +50,7 @@ theorem idsBy_spec {α : Type} [BEq α] [LawfulBEq α] [DecidableEq α] (m : Nat
       (Order.idsBy m key).2.size = 8 * (firstsOf key m).length := by
   have hb : ∀ a b : α, (a == b) = decide (a = b) := fun a b => Bool.eq_iff_iff.2 (by
     rw [beq_iff_eq, decide_eq_true_iff])
-  have hf : Order.firstsBy m key = firstsOf key m := by
-    unfold Order.firstsBy firstsOf; simp only [bne, hb]
+  have hf := firstsBy_eq m key
   refine ⟨?_, ?_⟩
   · show Column.packIds _ m (fun i => (Order.firstsBy m key).findIdx (key · == key i)) = _
     simp only [hf, hb]; rfl
