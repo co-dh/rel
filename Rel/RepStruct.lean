@@ -78,6 +78,17 @@ theorem Vals.cross_rows {A B : Obj} {n m : USize} {x : Vals A n} {y : Vals B m}
 namespace Tab
 variable {A B C D I : Obj}
 
+/-- **`cross X Y` denotes `X × Y`**: every pair of a row of `X` and a row of `Y` (`Vals.cross_rows`). -/
+theorem cross_holds {n m : USize} {X : Vals A n} {Y : Vals B m} {T : Tab A B} (h : cross X Y = .ok T) (a : A.El)
+    (b : B.El) : T.Holds a b ↔ (∃ i, X.row i = a) ∧ ∃ j, Y.row j = b := by
+  unfold cross at h
+  simp only [bind, Except.bind] at h
+  split at h; · cases h
+  rename_i r hr
+  obtain ⟨T', x, y⟩ := r
+  rw [canon_holds h]
+  exact Vals.cross_rows hr a b
+
 /-- **`Tab.zero` denotes `𝟘`** (`Tm.den` at `zero`). -/
 theorem zero_holds {T : Tab A B} (h : (Tab.zero : Except String (Tab A B)) = .ok T) (a : A.El) (b : B.El) :
     T.Holds a b ↔ False := by
@@ -98,12 +109,8 @@ theorem idU_holds {n : USize} {X : Vals A n} {T : Tab A A} (h : Tab.idU X = .ok 
 theorem top_holds {n : USize} {X : Vals A n} {V : Tab B B} {T : Tab A B} (h : Tab.top X V = .ok T) (a : A.El)
     (b : B.El) : T.Holds a b ↔ (∃ i, X.row i = a) ∧ (Core.Rel.top ≫ V.Holds) a b := by
   unfold Tab.top at h
-  simp only [bind, Except.bind] at h
-  split at h; · cases h
-  rename_i r hr
-  obtain ⟨T', x, y⟩ := r
-  rw [canon_holds h]
-  refine (Vals.cross_rows hr a b).trans (and_congr_right fun _ => ⟨fun ⟨j, hj⟩ => ⟨_, trivial, j, rfl, hj⟩, fun ⟨_, _, j, _, hj⟩ => ⟨j, hj⟩⟩)
+  rw [cross_holds h]
+  exact and_congr_right fun _ => ⟨fun ⟨j, hj⟩ => ⟨_, trivial, j, rfl, hj⟩, fun ⟨_, _, j, _, hj⟩ => ⟨j, hj⟩⟩
 
 /-- **`Tab.outl X` denotes `π₁` on the pairs `X`** (`Tm.den` at `outl`: `idU X ≫ graph Prod.fst`). -/
 theorem outl_holds {n : USize} {X : Vals (.prod A B) n} {T : Tab (.prod A B) A} (h : Tab.outl X = .ok T)
@@ -185,14 +192,6 @@ theorem flat_holds {n : USize} {X : Vals (.prod I A) n} {R : Tab I (.prod A B)} 
 
 end Tab
 
-/-- **`Arr.map` is `colMap`** on the array's column. -/
-theorem Arr.map_ok {o : Op} {n : USize} {a b : Enc} {t : QAtomicType} {x : Arr t n} (h : Arr.map o n a b t = .ok x) :
-    colMap o n a b t = .ok x.enc := by
-  unfold Arr.map at h
-  split at h
-  next e he => cases h; exact he
-  next => cases h
-
 /-- **`injCols`'s columns**: every tag is `s`, and row `k`'s position reads back as `k`. -/
 theorem injCols_ok {n : USize} {s : Bool} {tag : Arr .u1 n} {idx : Arr .i64 n} (h : injCols n s = .ok (tag, idx))
     (k : Fin n.toNat) :
@@ -213,8 +212,8 @@ theorem injCols_ok {n : USize} {s : Bool} {tag : Arr .u1 n} {idx : Arr .i64 n} (
   obtain ⟨rfl, rfl⟩ := h
   have hk : k.1 < n.toNat := k.2
   refine ⟨?_, ?_⟩
-  · obtain ⟨a, ha, he⟩ := Arr.get_u1 t (colMap_closed (Arr.map_ok ht)).1 k
-    obtain ⟨v, ev, hv⟩ := (colMap_get (Arr.map_ok ht)).2 k.1 hk
+  · obtain ⟨a, ha, he⟩ := Arr.get_u1 t (colMap_closed (colArr_ok ht)).1 k
+    obtain ⟨v, ev, hv⟩ := (colMap_get (colArr_ok ht)).2 k.1 hk
     rw [colConst_raw hz, colConst_raw ho] at ev
     rw [ha] at hv
     simp only [Array.getElem?_replicate, hk, if_true, Option.getD_some, Op.eval, Except.ok.injEq] at ev
@@ -222,7 +221,7 @@ theorem injCols_ok {n : USize} {s : Bool} {tag : Arr .u1 n} {idx : Arr .i64 n} (
     subst ev; subst hv
     cases s <;> cases hg : t.get k <;> rw [hg] at he <;> revert he <;> decide
   · rw [Arr.get_i64]
-    obtain ⟨v, ev, hv⟩ := (colMap_get (Arr.map_ok hi)).2 k.1 hk
+    obtain ⟨v, ev, hv⟩ := (colMap_get (colArr_ok hi)).2 k.1 hk
     rw [raw_pos_word hk, colConst_raw hz] at ev
     simp only [Op.eval, Array.getElem?_replicate, hk, if_true, Option.getD_some, UInt64.add_zero,
       Except.ok.injEq] at ev

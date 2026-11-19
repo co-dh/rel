@@ -34,6 +34,12 @@ def whereCol (m : USize) (b : Enc) : Except String (USize × Enc) :=
 namespace Tab
 variable {k v : Obj}
 
+/-- The rows of `T` where the `0`/`1` words `b` are `1`: `whereCol`, both sides `kgather`ed there. Row order is
+kept, so a canonical `T` stays canonical. -/
+def keep (T : Tab k v) (b : Enc) : Except String (Tab k v) := do
+  let (M, sel) ← whereCol T.n b
+  pure ⟨M, ← Vals.gather M sel T.key, ← Vals.gather M sel T.val⟩
+
 /-- **`R` then `S`**: the rows of both, `R`'s first (`Vals.concat` of each side on `catPlan`). -/
 def concat (R S : Tab k v) : Except String (Tab k v) := do
   let (n, off) ← catPlan R.n S.n

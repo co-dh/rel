@@ -105,7 +105,7 @@ theorem Arr.concat_get {t : QAtomicType} {n₁ n₂ n : USize} {off : Enc} {x : 
     (hoff : ∀ k < n₂.toNat, ((raw .i64 n₂ off)[k]?.getD 0).toNat = n₁.toNat + k) (h : Arr.concat n off x y = .ok z)
     (c : Fin n.toNat) :
     z.get c = if hc : c.1 < n₁.toNat then x.get ⟨c.1, hc⟩ else y.get ⟨c.1 - n₁.toNat, by omega⟩ := by
-  unfold Arr.concat at h
+  unfold Arr.concat colArr at h
   simp only [bind, Except.bind] at h
   split at h; · cases h
   rename_i a ha
@@ -183,7 +183,7 @@ theorem catPlan_ok {n₁ n₂ n : USize} {off : Enc} (h : catPlan n₁ n₂ = .o
 theorem Arr.clampShift_get {n : USize} {c s : UInt64} {x y : Arr .i64 n} (hcs : c.toNat + s.toNat < 2 ^ 63)
     (h : x.clampShift c s = .ok y) (i : Fin n.toNat) :
     (y.get i).toInt = min (max (x.get i).toInt 0) c.toNat + s.toNat := by
-  unfold Arr.clampShift at h
+  unfold Arr.clampShift colArr at h
   simp only [bind, Except.bind] at h
   split at h; · cases h
   rename_i z hz
@@ -252,6 +252,24 @@ theorem sum_append_nat : ∀ l1 l2 : List Nat, (l1 ++ l2).sum = l1.sum + l2.sum
 theorem toInt64_toInt {x : UInt64} (h : x.toNat < 2 ^ 63) : x.toInt64.toInt = x.toNat := by
   rw [show x.toInt64.toInt = x.toBitVec.toInt from rfl, BitVec.toInt]; simp only [UInt64.toNat_toBitVec]
   omega
+
+/-- The signed reading of a word: itself below `2^63`, itself less `2^64` from there. -/
+theorem toInt64_toInt_cond (x : UInt64) :
+    x.toInt64.toInt = if x.toNat < 2 ^ 63 then (x.toNat : Int) else (x.toNat : Int) - 2 ^ 64 := by
+  split
+  · exact toInt64_toInt (by assumption)
+  · rename_i hx
+    have := x.toNat_lt
+    simp only [UInt64.toInt64, Int64.toInt, Int64.toBitVec, BitVec.toInt_eq_toNat_cond, UInt64.toNat] at *
+    rw [if_neg (by omega)]; simp
+
+/-- A word whose signed reading is not negative is below `2^63` and reads as itself. -/
+theorem toInt64_nonneg {x : UInt64} (h : 0 ≤ x.toInt64.toInt) : x.toNat < 2 ^ 63 ∧ x.toInt64.toInt = x.toNat := by
+  rw [toInt64_toInt_cond] at h ⊢
+  have := x.toNat_lt
+  split at h <;> rename_i hx
+  · rw [if_pos hx]; exact ⟨hx, rfl⟩
+  · omega
 
 /-- A `Nat` below `2^64` is its word's `Nat`. -/
 theorem toNat_toUInt64 {x : Nat} (h : x < 2 ^ 64) : x.toUInt64.toNat = x := by simp; omega

@@ -14,24 +14,18 @@ both index columns one `kscan` map (`colMap .div`, `.mod`) of the positions by t
 namespace Rel
 open Rel.Ext Rel.Kernel Rel.Verify
 
-/-- `colMap o n a b t` as an `Arr t n`, the map's output well formed at `t` (`colMap_closed`). -/
-def Arr.map (o : Op) (n : USize) (a b : Enc) (t : QAtomicType) : Except String (Arr t n) :=
-  match h : colMap o n a b t with
-  | .ok e => .ok (Arr.mk e (colMap_closed h).2)
-  | .error s => .error s
+/-- `n` zero words at the atom type `t`: `colArr .add` of two `colConst n 0`, written at `t`. -/
+def Arr.zeros (t : QAtomicType) (n : USize) : Except String (Arr t n) := do
+  let z ← colConst n 0
+  colArr .add n z z t
 
-/-- No row at the atom type `t`: `colMap` of no rows, written at `t`. -/
-def Arr.none (t : QAtomicType) : Except String (Arr t 0) := do
-  let z ← colConst 0 0
-  Arr.map .add 0 z z t
-
-/-- No row of `A`: `Arr.none` per atom column; an `arr` side of no cells over no payload, a `sum` side over two
+/-- No row of `A`: `Arr.zeros _ 0` per atom column; an `arr` side of no cells over no payload, a `sum` side over two
 summands of no rows. -/
 def Vals.none : (A : Obj) → Except String (Vals A 0)
-  | .atom t => Arr.none t
+  | .atom t => Arr.zeros t 0
   | .prod a b => do pure (← Vals.none a, ← Vals.none b)
-  | .arr b => do pure ⟨0, ← Arr.none .i64, ← Arr.none .i64, ← Vals.none b⟩
-  | .sum a b => do pure ⟨0, 0, ← Arr.none .u1, ← Arr.none .i64, ← Vals.none a, ← Vals.none b⟩
+  | .arr b => do pure ⟨0, ← Arr.zeros .i64 0, ← Arr.zeros .i64 0, ← Vals.none b⟩
+  | .sum a b => do pure ⟨0, 0, ← Arr.zeros .u1 0, ← Arr.zeros .i64 0, ← Vals.none a, ← Vals.none b⟩
 
 /-- The index columns of CROSS: `T = n · m` rows, `iR = pos / m`, `iS = pos % m` (`colMap` of the positions and
 `colConst T m`). `.div`, `.mod` read their words signed, so `n · m + m` stays below `2^63`, and `T` fits a `USize`. -/
@@ -55,7 +49,7 @@ past `2^63` rows, which an `Int64` position cannot reach, is the error. -/
 def injCols (n : USize) (s : Bool) : Except String (Arr .u1 n × Arr .i64 n) := do
   if 2 ^ 63 < n.toNat then throw s!"inj: {n} rows, past an Int64 position"
   let z ← colConst n 0
-  pure (← Arr.map .add n z (← colConst n (if s then 1 else 0)) .u1, ← Arr.map .add n .pos z .i64)
+  pure (← colArr .add n z (← colConst n (if s then 1 else 0)) .u1, ← colArr .add n .pos z .i64)
 
 namespace Tab
 variable {A B C D I : Obj}
@@ -66,11 +60,13 @@ def zero : Except String (Tab A B) := do pure ⟨0, ← Vals.none A, ← Vals.no
 /-- **`𝟙` on the values `X`**, `idU X`: the domain of `⟨n, X, X⟩` (`Tab.dom`), each value once, paired with itself. -/
 def idU {n : USize} (X : Vals A n) : Except String (Tab A A) := Tab.dom ⟨n, X, X⟩
 
-/-- **`⊤ ≫ V` on the values `X`**, `idU X ≫ ⊤ ≫ V`: every value of `X` beside every value of `V` (CROSS of `X` and
-`V.val`), canonical. -/
-def top {n : USize} (X : Vals A n) (V : Tab B B) : Except String (Tab A B) := do
-  let ⟨T, x, y⟩ ← Vals.cross X V.val
+/-- **`X × Y`**, every pair `(X[i], Y[j])`: `Vals.cross`, canonical. -/
+def cross {n m : USize} (X : Vals A n) (Y : Vals B m) : Except String (Tab A B) := do
+  let ⟨T, x, y⟩ ← Vals.cross X Y
   canon ⟨T, x, y⟩
+
+/-- **`⊤ ≫ V` on the values `X`**, `idU X ≫ ⊤ ≫ V`: every value of `X` beside every value of `V` (`cross X V.val`). -/
+def top {n : USize} (X : Vals A n) (V : Tab B B) : Except String (Tab A B) := cross X V.val
 
 /-- **`π₁` on the pairs `X`**, `idU X ≫ π₁`: each pair beside its first component, canonical. -/
 def outl {n : USize} (X : Vals (.prod A B) n) : Except String (Tab (.prod A B) A) := canon ⟨n, X, X.1⟩

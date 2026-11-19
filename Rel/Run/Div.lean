@@ -1,4 +1,5 @@
 import Rel.Run.Arith
+import Rel.Run.Struct
 
 /-! The `Tm` constructors `ldiv`, `rdiv`, `lam`, `E`, `nil`, `lt`, `leq` (`Rel/Run/Lang/Tm.lean`) as operators on `Tab`
 over the five kernels (PLAN 6.14 W3), on the encoded columns as they are, as `Rel/Run/Comp.lean`. Each operator's
@@ -9,55 +10,8 @@ demand `D`, as the compiled term reads it (`Tm.lam`'s doc). Their laws are in `R
 namespace Rel
 open Rel.Ext Rel.Kernel Rel.Verify
 
-/-- `n` zero words at `t`: `colMap .add` of two `colConst n 0`, as an `Arr` of `t` (`colMap_closed`; `colArr` of
-`Rel/Run/Arith.lean` at `t` once it takes the type, to move there). -/
-def Arr.zeros (t : QAtomicType) (n : USize) : Except String (Arr t n) := do
-  let z ← colConst n 0
-  match h : colMap .add n z z t with
-  | .ok o => .ok (Arr.mk o (colMap_closed h).2)
-  | .error s => .error s
-
-/-- A side of no rows, every atom column `Arr.zeros _ 0`. -/
-def Vals.noRows : (B : Obj) → Except String (Vals B 0)
-  | .atom t => Arr.zeros t 0
-  | .prod a b => do pure (← Vals.noRows a, ← Vals.noRows b)
-  | .arr b => do pure ⟨0, ← Arr.zeros .i64 0, ← Arr.zeros .i64 0, ← Vals.noRows b⟩
-  | .sum a b => do pure ⟨0, 0, ← Arr.zeros .u1 0, ← Arr.zeros .i64 0, ← Vals.noRows a, ← Vals.noRows b⟩
-
-/-- **EXPAND** (`doc/rel-kernels.md`) of the `K` widths `w`: `T` output rows, each row's group `G` and its offset `u`
-in the group. A prefix sum `P` places the groups (`o = P - w`), `kscatter (.max)` of each group id at its offset,
-filled forward by `colPrefix (.max)`, the spare cell `T` cut off by `kgather`; `u = pos - o[G]`. The one scalar read
-is the count `T` (`lastCount`). As `Tab.comp`'s expansion (to move there with it). -/
-def expand (K : USize) (w : Enc) : Except String (USize × Enc × Enc) := do
-  match hP : colPrefix .add K w with
-  | .error s => throw s
-  | .ok P =>
-    let T := lastCount K P (by
-      unfold colPrefix at hP; simp only [bind, Except.bind] at hP; split at hP; · cases hP
-      exact (kscan_closed hP).2)
-    if USize.size ≤ T + 1 then throw s!"expand: {T} output rows past USize"
-    let T := T.toUSize
-    let o ← colMap .sub K P w
-    let G ← kgather T .pos (T + 1) (← colPrefix .max (T + 1) (← kscatter .max K o .pos (T + 1) 0))
-    pure (T, G, ← colMap .sub T .pos (← kgather T G K o))
-
 namespace Tab
 variable {A B C : Obj}
-
-/-- **`X × Y`**, every pair `(X[i], Y[j])`: CROSS (`T = n·m`, `i = pos div m`, `j = pos mod m`), both sides
-`kgather`ed there, then `canon`. -/
-def cross {n m : USize} (X : Vals A n) (Y : Vals B m) : Except String (Tab A B) := do
-  if 2 ^ 63 ≤ n.toNat * m.toNat ∨ USize.size ≤ n.toNat * m.toNat then
-    throw s!"cross: {n} × {m} rows past 2^63 or USize"
-  let T := (n.toNat * m.toNat).toUSize
-  let mc ← colConst T m.toNat.toUInt64
-  Tab.canon ⟨T, ← Vals.gather T (← colMap .div T .pos mc) X, ← Vals.gather T (← colMap .mod T .pos mc) Y⟩
-
-/-- The rows of `T` where the `0`/`1` words `b` are `1`: `whereCol`, both sides `kgather`ed there. Row order is
-kept, so a canonical `T` stays canonical. -/
-def keep (T : Tab A B) (b : Enc) : Except String (Tab A B) := do
-  let (M, sel) ← whereCol T.n b
-  pure ⟨M, ← Vals.gather M sel T.key, ← Vals.gather M sel T.val⟩
 
 /-- **`∋` on the arrays `X`** (the step `EDen` composes, `(fun xs a => a ∈ xs) ≫ T`): each cell to each of its
 elements. A cell `[lo, hi)` clamped to the payload's `[0, m)` is `[s, e)` with `s = max lo 0` and
@@ -108,7 +62,7 @@ def E {n : USize} (X : Vals (.arr A) n) (R : Tab A B) : Except String (Tab (.arr
 `canon`. -/
 def nil {n : USize} (D : Vals A n) : Except String (Tab A (.arr B)) := do
   let z ← Arr.zeros .i64 n
-  Tab.canon ⟨n, D, ⟨0, z, z, ← Vals.noRows B⟩⟩
+  Tab.canon ⟨n, D, ⟨0, z, z, ← Vals.none B⟩⟩
 
 /-- **`R \ S` within `UB`, `UC`** (`ldivDen`), by counting: `b` of `ran R` to `c` where
 `#{a | R a b ∧ S a c} = #{a | R a b}`, no complement (`doc/rel-architecture.zh.typ`, `R\S`): `Q = r° ≫ ⟨𝟙, s⟩`

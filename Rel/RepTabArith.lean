@@ -112,12 +112,6 @@ private theorem min_iff (a b v : Int64) : (if b < a then b else a) ≠ Alg.nul �
 
 private theorem nulWord_eq : nulWord = Alg.nul.toUInt64 := rfl
 
-theorem colArr_ok {op : Op} {n : USize} {a b : Enc} {w : Arr .i64 n} (h : colArr op n a b = .ok w) :
-    colMap op n a b = .ok w.enc := by
-  unfold colArr at h; split at h
-  · cases h; rename_i o hc; exact hc
-  · cases h
-
 /-- **`stepCols k` computes `stepDen k` row by row**: at each row `i` the keep flag is a bit, set exactly where some
 `v` is `stepDen k` of the row's operands, and then `v` is the answer word. -/
 theorem stepCols_spec {k : UInt8} {n : USize} {a b : Enc} {w : Arr .i64 n} {keep : Enc}
