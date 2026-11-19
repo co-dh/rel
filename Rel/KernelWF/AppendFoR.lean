@@ -158,13 +158,6 @@ theorem foRFrame_congr {md P Q : ByteArray} (hs : P.size = Q.size)
 
 /-! ### The append -/
 
-/-- `packRes` lays out a whole block, `B * w / 8` bytes. -/
-theorem packRes_size (B w : Nat) (R : Nat → UInt64) : (Coc.packRes B w R).size = B * w / 8 := by
-  unfold Coc.packRes
-  split
-  · rename_i h; subst h; simp
-  · exact (Verify.fold_push_getElem? _ _ _).1.trans (Nat.zero_add _)
-
 /-- A pack with the bytes `[s, s + L)` replaced by `B`: its size, the bytes before `s` and from `s + L` on are the
     old pack's, and the ones between are `B`'s. -/
 theorem splice_reads {p0 B P : ByteArray} {s L : Nat}
@@ -240,7 +233,7 @@ theorem append_reads {n0 : USize} {n1 : Nat} {m0 p0 D M P : ByteArray}
     rcases w0.size with h0 | h0
     · omega
     · cases hT' : Coc.foRTail (Column.nblk M) p0 (Column.blockStart M (Column.nblk M)) <;> simp [hT'] at h0; omega
-  obtain ⟨hPs, hP0, hPB, hPE⟩ := splice_reads hP.symm (packRes_size _ _ _) (by omega)
+  obtain ⟨hPs, hP0, hPB, hPE⟩ := splice_reads hP.symm (Verify.packRes_size _ _ _) (by omega)
   have hPE' : ∀ k, P[Column.blockStart M (Column.nblk M) + k]? = p0[Column.blockStart M (Column.nblk M) + k]? :=
     fun k => by rw [hE]; exact hPE k
   have hb := Nat.mod_lt i (Verify.blk_pos M)

@@ -532,7 +532,7 @@ theorem nblk_alpEncodeAt (f32 : Bool) (x : ByteArray) :
   simp only []
   rw [show (8 : USize) = (8 : Nat).toUSize from rfl,
     (Verify.nblk_encode Column.lgEnc (by decide) 8 (by decide) (by decide) _ (patch := false)).1,
-    (Verify.nblk_encode Column.lgEnc (by decide) 8 (by decide) (by decide) _ (patch := false)).2, Verify.blocks_size]
+    (Verify.nblk_encode Column.lgEnc (by decide) 8 (by decide) (by decide) _ (patch := false)).2.1, Verify.blocks_size]
   simp only [Array.toList_map, Array.toList_range, List.map_map, Function.comp_def, Coc.alpBlockOf,
     Array.size_map, Array.size_range]
   rw [Verify.sum_blocks]
@@ -622,7 +622,7 @@ theorem answer_wf {t : QAtomicType} {n : USize} {e : Enc}
         have h0 : 0 < w ∧ w ≤ 8 := by
           cases t <;> simp_all [QAtomicType.width, Column.encodes] <;> omega
         have hmp := encodeBelow_eq heq
-        have hk := Verify.nblk_encode Column.lgEnc (by decide) w h0.1 h0.2 b (patch := true)
+        have hk := Verify.nblk_encode Column.lgEnc (by decide) w h0.1 h0.2 b (patch := true) |> fun h => And.intro h.1 h.2.1
         change Column.nblk (Coc.encode _ b).1 = _ ∧ Column.blk (Coc.encode _ b).1 = _ at hk
         rw [← hmp] at hk
         simp only [hs, Nat.mul_div_cancel _ h0.1] at hk
@@ -1115,7 +1115,7 @@ theorem concatFoR_nblk {w : Nat} {ns : Array USize} {ms ps : Array ByteArray} {m
     simpa [Nat.add_comm] using hk
   · refine ⟨?_, lgOk_encode _ (by rw [hwu]; exact hw) _⟩
     rw [Coc.encode, (Verify.nblk_encode Column.lgEnc (by decide) w hw0 hw _).1,
-      (Verify.nblk_encode Column.lgEnc (by decide) w hw0 hw _).2, concatBytes_size]
+      (Verify.nblk_encode Column.lgEnc (by decide) w hw0 hw _).2.1, concatBytes_size]
     simp only [Array.toList_map, List.map_map, Function.comp_def, decode_size, hwu]
     rw [sum_map_mul, Nat.mul_div_cancel _ hw0]
     simp only [Column.lgEnc, Nat.reducePow]; omega
