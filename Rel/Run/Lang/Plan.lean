@@ -388,8 +388,19 @@ def relRegs {A B : Obj} (R : Tab A B) : Option (Array Val) :=
 def guard (c : Nat) (msg : String) (args : Array Nat) : Bld Unit :=
   discard <| ite c (pure #[]) (do discard <| emit (.fail msg args) 0; pure #[])
 
-/-- A one-register kernel call. -/
-def call1 (k : Kernel) (args : Array Nat) : Bld Nat := emit1 (.call k.sym args)
+/-- `call k(args)`: as many new registers as `k`'s declaration answers, so the count is never written by hand. -/
+def callK (k : Kernel) (args : Array Nat) : Bld (Array Nat) := call k.sym args k.res.size
+
+/-- A one-register kernel call. Any other kernel is refused: the run pushes all its results, so every register
+    numbered after a one-register `emit1` would be off by the rest. -/
+def call1 (k : Kernel) (args : Array Nat) : Bld Nat := do
+  unless k.res.size == 1 do throw s!"call1 `{k.sym}`: its declaration answers {k.res.size} registers, not one (`callK`)"
+  emit1 (.call k.sym args)
+
+/-- A kernel answering a `u1` `foR` of `n` elements (`Ew.cmp`, `Ew.bit`), read as the bitmap `whereBits` and
+    `Ew.bit` take: `bitsOfFoR`, `boolBits`'s `foR` branch. -/
+def maskB (k : Kernel) (args : Array Nat) (n : Nat) : Bld Nat := do
+  call1 (kernel% Kernel.bitsOfFoR) ((← callK k args).push n)
 
 /-- `len b`, the longs of the payload `b`, as a `size`: its bytes (`lean_sarray_size`) over `8`. -/
 def lenB (b : Nat) : Bld Nat := do
@@ -402,10 +413,8 @@ def lenB (b : Nat) : Bld Nat := do
 def arithB (op : UInt8) (n u v : Nat) : Bld (Array Nat) := do
   let i64 ← lit (.u8 Ew.i64); let vv ← lit (.u8 Ew.vv); let va ← lit (.u8 Ew.va); let nl ← lit (.i64 Alg.nul)
   let val (o sh x y : Nat) := call1 (kernel% Kernel.Ew.val) #[o, i64, sh, nl, x, y, n]
-  -- `cmp` and `bit` answer a `u1` `foR`, read as the bitmap `bit` and `whereBits` take by `bitsOfFoR` (`boolBits`)
-  let bits (r : Array Nat) := call1 (kernel% Kernel.bitsOfFoR) (r.push n)
-  let cmp (c : UInt8) (sh x y : Nat) := do bits (← call (kernel% Kernel.Ew.cmp).sym #[← lit (.u8 c), i64, sh, x, y, n] 2)
-  let bit (c : UInt8) (x y : Nat) := do bits (← call (kernel% Kernel.Ew.bit).sym #[← lit (.u8 c), vv, x, y, n] 2)
+  let cmp (c : UInt8) (sh x y : Nat) := do maskB (kernel% Kernel.Ew.cmp) #[← lit (.u8 c), i64, sh, x, y, n] n
+  let bit (c : UInt8) (x y : Nat) := do maskB (kernel% Kernel.Ew.bit) #[← lit (.u8 c), vv, x, y, n] n
   let s ← val (← lit (.u8 op)) vv u v
   let pos ← cmp Ew.ge va v (← lit (.bytes (one 0)))
   let ok ← cmp Ew.ne va s (← lit (.bytes (one Alg.nul.toUInt64)))
@@ -449,7 +458,7 @@ def groupSumB (n k v : Nat) : Bld (Array Nat) := do
   -- either end the gather answers the null, which differs from every key
   let cut (op : UInt8) := do
     let nb ← g nf ks (← val op va t o n)
-    call1 (kernel% Kernel.whereBits) #[n, ← call1 (kernel% Kernel.Ew.cmp) #[← lit (.u8 Ew.ne), i64, vv, ks, nb, n]]
+    call1 (kernel% Kernel.whereBits) #[n, ← maskB (kernel% Kernel.Ew.cmp) #[← lit (.u8 Ew.ne), i64, vv, ks, nb, n] n]
   let firsts ← cut Ew.sub; let lasts ← cut Ew.add
   let r ← lenB firsts
   let cs ← call1 (kernel% Kernel.Scan.scan) #[← lit (Reg.put Scan.Verb.sums), lane, n, vs]
