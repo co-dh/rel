@@ -92,6 +92,13 @@ theorem elemsW_bytesOf {t : QAtomicType} {w : Nat} (ht : t.width = some w) (hb :
     have e := elemsW_alpDecode w.toUSize (by omega) (by omega) M P a n
     rw [hwU] at e
     rw [e, raw_alp t w ht hb, Array.toList_map, Array.toList_range, Coc.alpElems, List.map_map]; rfl
+  | pos =>
+    cases t <;> simp only [Enc.WF] at hxw
+    simp only [QAtomicType.width, Option.some.injEq] at ht; subst ht
+    simp only [Enc.bytesOf, Option.some.injEq] at h; subst h
+    rw [List.foldl_map, elemsW_foldl_mod Nat.toUInt64 8 (by decide) (by decide)]
+    simp only [Enc.raw, Array.toList_map, Array.toList_range, List.map_map]
+    exact List.map_congr_left fun a _ => UInt64.toNat_inj.mp (by simp [UInt64.toNat_ofNat, Nat.mod_mod])
   | _ => simp [Enc.bytesOf] at h
 
 theorem gatherColumn_fixed_shape {t : QAtomicType} {w : Nat} (ht : denseWidth t = some w) (n : USize) (e : Ext.Enc X)

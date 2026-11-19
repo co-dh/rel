@@ -23,11 +23,11 @@ theorem flatMap_congr {α β : Type} {l : List α} {f g : α → List β} (h : �
 theorem longsOf_get {n : USize} (x : Arr .i64 n) {k : Nat} (hk : k < n.toNat) :
     Column.bitsAt (longsOf x) (k * 8) 8 = (x.get ⟨k, hk⟩).toUInt64 := by
   obtain ⟨ws, hws⟩ : ∃ ws, longWords n x.enc = some ws := by
-    rcases KernelWF.long_cases x.wf with ⟨b, h⟩ | ⟨M, P, h⟩ <;> simp [longWords, h]
+    rcases KernelWF.long_cases x.wf with ⟨b, h⟩ | ⟨M, P, h⟩ | h <;> simp [longWords, h]
   obtain ⟨B, hB, -, hE, hS⟩ := Arr.dense_long x hws
   have hL : longsOf x = B := by
     have e : longBytes n x.enc = some B := by
-      rcases hB with h | ⟨md, pk, h, rfl⟩ <;> simp only [longBytes, h] <;> rfl
+      exact hB
     exact Option.some_inj.1 ((Option.some_get _).trans e)
   subst hE
   have hw : k < (elemsW 8 B).length := by simp [elemsW, hS, hk]
@@ -42,7 +42,7 @@ theorem pickArr_long_get {n : USize} (x : Arr .i64 n) (i : ByteArray) (m : USize
   split
   · exact pickArr_get _ i m h q ‹_›
   · refine pickArr_get_miss ⟨n, x⟩ i m h (fun d o ids he => ?_) q (Nat.le_of_not_lt ‹_›)
-    exfalso; rcases KernelWF.long_cases x.wf with ⟨b, h'⟩ | ⟨M, P, h'⟩ <;> rw [h'] at he <;> cases he
+    exfalso; rcases KernelWF.long_cases x.wf with ⟨b, h'⟩ | ⟨M, P, h'⟩ | h' <;> rw [h'] at he <;> cases he
 
 /-- `longsN` reads back its payload's first `m` longs. -/
 theorem longsN_get {m : USize} {b : ByteArray} (hh : m.toNat ≤ len b) (q : Fin m.toNat) :

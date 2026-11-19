@@ -8,60 +8,6 @@ the words `Enc.raw` reads, from the five kernels' laws. -/
 namespace Rel
 open Rel.Ext Rel.Kernel Rel.Verify Ext.Enc
 
-/-- **`kscatter` under any `op`, on words**: the answer reads back as `scatterWords` of its arguments' words. -/
-theorem kscatter_words {op : Op} {m n : USize} {ix e o : Enc} {fill : UInt64} (h : kscatter op m ix e n fill = .ok o) :
-    (raw .i64 m ix).size = m.toNat ∧ (raw .i64 m e).size = m.toNat ∧
-      scatterWords op (raw .i64 m ix) (raw .i64 m e) n.toNat fill = .ok (raw .i64 n o) := by
-  unfold kscatter at h
-  cases hi : foRWords "scatter: ix" m ix with
-  | error s => simp [hi, bind, Except.bind] at h
-  | ok is' =>
-    cases he : foRWords "scatter: e" m e with
-    | error s => simp [hi, he, bind, Except.bind] at h
-    | ok es' =>
-      obtain ⟨rfl, hisz⟩ := foRWords_raw _ _ _ _ hi
-      obtain ⟨rfl, hesz⟩ := foRWords_raw _ _ _ _ he
-      cases hw : scatterWords op (raw .i64 m ix) (raw .i64 m e) n.toNat fill with
-      | error s => simp [hi, he, hw, bind, Except.bind] at h
-      | ok ws =>
-        simp only [hi, he, hw, bind, Except.bind, pure, Except.pure] at h
-        have h8 : USize.ofNat32 8 (by decide) = 8 := USize.toNat_inj.mp (by simp)
-        rw [h8] at h
-        have hs := scatterWords_size hw
-        have ho := (Except.ok.inj h).symm
-        obtain ⟨hxs, -, hxg⟩ := foldl_pushBits (fun v => v) 8 (by decide) ws.toList ByteArray.empty
-        rw [Array.foldl_toList] at hxs hxg
-        simp only [show ByteArray.empty.size = 0 from rfl, Nat.zero_add, Array.length_toList] at hxs hxg
-        refine ⟨hisz, hesz, congrArg Except.ok ?_⟩
-        have h88 : (8 : USize) = (8 : Nat).toUSize := rfl
-        rw [ho, Coc.encode, h88, raw_encodeAt .i64 8 rfl (by decide) Column.lgEnc (by decide) _ n (by rw [hxs]; omega),
-          raw_bytes .i64 8 rfl (by decide)]
-        refine (Array.ext (by simp [hs]) fun i h1 _ => ?_).symm
-        simp only [Array.getElem_map, Array.getElem_range]
-        rw [Nat.mul_comm, hxg i (by simp at h1; omega), ofNat_toNat_mod64, Array.getElem_toList]
-
-/-- **`colConst n w` is `n` words `w`.** -/
-theorem colConst_raw {n : USize} {w : UInt64} {e : Enc} (h : colConst n w = .ok e) :
-    raw .i64 n e = Array.replicate n.toNat w := by
-  obtain ⟨-, -, hw⟩ := kscatter_words h
-  have h0 : (raw .i64 0 (.pos : Enc)).size = 0 := by simp [raw]
-  unfold scatterWords at hw
-  rw [h0] at hw
-  exact (Except.ok.inj hw).symm
-
-/-- **`colConst n w` read as booleans is `n` words `w % 2`** (`kscan`'s `seg`). -/
-theorem colConst_u1 {n : USize} {w : UInt64} {e : Enc} (h : colConst n w = .ok e) :
-    ∀ i < n.toNat, (raw .u1 n e)[i]?.getD 0 = UInt64.ofNat (w.toNat % 2) := by
-  intro i hi
-  obtain ⟨hfo, -⟩ := raw_scatter 0 .pos .pos n w e h
-  have he := colConst_raw h
-  generalize Coc.encode _ _ = q at hfo; subst hfo
-  have hu : raw .u1 n (.foR q.1 q.2 : Enc) = (raw .i64 n (.foR q.1 q.2 : Enc)).map fun w => UInt64.ofNat (w.toNat % 2) := by
-    simp only [raw, QAtomicType.width, Array.map_map]
-    refine Array.ext (by simp) fun j _ _ => ?_
-    simp
-  rw [hu, Array.getElem?_map, he, Array.getElem?_replicate, if_pos hi]; rfl
-
 /-- `kscan` at `i64` writes its words as they are: the cut to `8 * 8` bits is the identity. -/
 private theorem mod_i64 (v : UInt64) : UInt64.ofNat (v.toNat % 2 ^ (if QAtomicType.i64 = .u1 then 1 else 8 * 8)) = v := by
   simp only [if_neg (by decide : QAtomicType.i64 ≠ .u1)]; exact ofNat_toNat_mod64 v
@@ -116,50 +62,6 @@ theorem colMap_raw {op : Op} {n : USize} {a b e : Enc} (h : colMap op n a b = .o
   rw [he]
   simp only [Array.getElem?_eq_getElem (show i < out.size by omega), Option.getD_some]
   rw [← this]; cases op.eval ((raw .i64 n a)[i]?.getD 0) ((raw .i64 n b)[i]?.getD 0) <;> rfl
-
-/-- **`colMap op n a b t` at any answer type `t`**: word `i` is `op` of `a`'s and `b`'s words `i`, a boolean answer's
-cut to its bit (`colMap_raw` is the `i64` case with the argument sizes). -/
-theorem colMap_get {op : Op} {t : QAtomicType} {n : USize} {a b o : Enc} (h : colMap op n a b t = .ok o) :
-    (raw .i64 n o).size = n.toNat ∧ ∀ i < n.toNat, ∃ v,
-      op.eval ((raw .i64 n a)[i]?.getD 0) ((raw .i64 n b)[i]?.getD 0) = .ok v ∧
-      (raw .i64 n o)[i]? = some (if t = .u1 then v % 2 else v) := by
-  unfold colMap at h
-  simp only [bind, Except.bind] at h
-  split at h; · cases h
-  rename_i one1 h1
-  have hone : ∀ i < n.toNat, (raw .u1 n one1)[i]?.getD 0 ≠ 0 := fun i hi => by rw [colConst_u1 h1 i hi]; decide
-  unfold kscan at h
-  cases hg : rawAll .u1 n one1 with
-  | error m => simp [hg, bind, Except.bind] at h
-  | ok g =>
-    obtain ⟨rfl, hgs⟩ := rawAll_ok hg
-    cases hc : [a, b].mapM (rawAll .i64 n) with
-    | error m => simp [hg, hc, bind, Except.bind] at h
-    | ok cs =>
-      obtain ⟨rfl, hsz⟩ := mapM_rawAll hc
-      cases hf : (List.range n.toNat).foldlM (kscanRow op (raw .u1 n one1) (raw .i64 n a) [raw .i64 n b]) #[] with
-      | error m => simp [hg, hc, hf, bind, Except.bind] at h
-      | ok out =>
-        obtain ⟨hos, hrow⟩ := foldlM_kscanRow _ _ _ _ _ _ hf
-        cases ht : t.width with
-        | none => simp [hg, hc, hf, ht, bind, Except.bind] at h
-        | some w =>
-          simp only [hg, hc, hf, ht, bind, Except.bind, List.map_cons, List.map_nil, pure, Except.pure,
-            Bool.false_eq_true, if_false, Except.ok.injEq] at h
-          change wordsFoR _ = o at h
-          cases h
-          have hW : (out.map fun v => if t = .u1 then v % 2 else v).size = n.toNat := by simp [hos]
-          rw [(wordsFoR_closed _ hW.symm).2.1]
-          refine ⟨hW, fun i hi => ?_⟩
-          have hr := hrow i (by omega)
-          rw [if_neg (fun hh => hone i hi hh.2)] at hr
-          simp only [List.foldlM_cons, List.foldlM_nil, bind, Except.bind] at hr
-          cases he : op.eval ((raw .i64 n a)[i]?.getD 0) ((raw .i64 n b)[i]?.getD 0) with
-          | error s => rw [he] at hr; cases hr
-          | ok v =>
-            rw [he] at hr; simp only [pure, Except.pure, Except.ok.injEq] at hr
-            refine ⟨v, rfl, ?_⟩
-            rw [Array.getElem?_map, Array.getElem?_eq_getElem (by omega), ← hr]; rfl
 
 /-- **`shiftCol n s` is the words `k + s`**. -/
 theorem shiftCol_raw {n : USize} {s : UInt64} {o : Enc} (h : shiftCol n s = .ok o) :

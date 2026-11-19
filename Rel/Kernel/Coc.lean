@@ -475,6 +475,8 @@ def bytesOf (t : QAtomicType) (n : USize) (e : Ext.Enc X) : Option ByteArray :=
   -- `~` comparing elements while `Kernel.columnHash` keyed every element as 0
   | .alp metadata pack a, t => t.width.map fun w =>
     Rel.Kernel.Coc.alpDecode w.toUSize metadata pack a n
+  -- a `pos` column is a long since `Enc.WF` admits it (decision M); this old layer reads it as its `n` positions
+  | .pos, .i64 => some (((List.range n.toNat).map Nat.toUInt64).foldl (fun acc v => Column.pushBits acc v 8) .empty)
   | _, _ => none
 
 /-- The same atoms in the Frame-of-Reference form, or the column unchanged at a type `encodes`

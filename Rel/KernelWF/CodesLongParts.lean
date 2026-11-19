@@ -17,7 +17,7 @@ theorem codes_long_cut {t : QAtomicType} (ht : orderKind t = some .i64) {p : Nat
       Obj.codes (.atom t) cs = (Code.ofIds (len q.2) (raze t cs.toArray).1 q.1).cut (cs.map (·.1)) := by
   obtain ⟨-, -, hg, -, -⟩ := long_facts ht
   have hne : ∀ d o ids, Column.intern (raze t cs.toArray).2.enc ≠ .enum d o ids := fun d o ids he => by
-    rcases long_enc ht (raze t cs.toArray).2.wf with ⟨b, hb, -⟩ | ⟨md, pk, hb⟩ <;> simp [hb, Column.intern] at he
+    rcases long_enc ht (raze t cs.toArray).2.wf with ⟨b, -, -, -, hb | hb⟩ | ⟨md, pk, hb⟩ <;> simp [hb, Column.intern] at he
   obtain ⟨q, hq, hc⟩ := codes_raze_cut hg cs hp (by rintro rfl; simp [orderKind] at ht) hro hne
   have hbt : KernelWF.bitsType t = t := by cases t <;> simp [orderKind] at ht <;> rfl
   rw [hbt] at hq

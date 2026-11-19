@@ -687,6 +687,8 @@ def WF (t : QAtomicType) (n : USize) (e : Ext.Enc X) : Prop :=
     t.width.isSome ∧ (t = .u1 → ∀ i < n.toNat, (foRBits metadata pack (blockStarts metadata) i).toNat < 2) ∧ n.toNat ≤ blk metadata * nblk metadata ∧ lgOk metadata
   | t, .alp metadata _ a =>
     (t = .f32 ∨ t = .f64) ∧ n.toNat ≤ blk metadata * nblk metadata ∧ lgOk metadata ∧ alpF32 a = (t.width == some 4)
+  -- owner decision M (PLAN): the encodings are `foR` and `pos`; `pos` holds the positions `0..n-1`, so it is a long
+  | .i64, .pos => True
   | _, _ => False
 
 /-- `atoms`' fixed-width branches before `atomOfBits`: the raw bits of each element, a boolean's as `0`/`1` and an

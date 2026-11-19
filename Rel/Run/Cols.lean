@@ -7,20 +7,6 @@ composition of the five kernels on encoded columns: a constant column, a pointwi
 namespace Rel
 open Rel.Ext Rel.Kernel Rel.Verify
 
-/-- `n` cells holding the word `w`: `kscatter` of no rows. -/
-def colConst (n : USize) (w : UInt64) : Except String Enc := kscatter .last 0 .pos .pos n w
-
-/-- `op` row by row over the `n` words of `a` and `b`, `out[i] = op(a[i], b[i])` written at `t`: `kscan` with every row
-starting a segment (`colConst n 1`). -/
-def colMap (op : Op) (n : USize) (a b : Enc) (t : QAtomicType := .i64) : Except String Enc := do
-  kscan op false .i64 t n (← colConst n 1) [a, b]
-
-/-- `colMap`'s answer is a column every kernel reads, `Enc.WF` at `t` (`kscan_closed`). -/
-theorem colMap_closed {op : Op} {n : USize} {a b o : Enc} {t : QAtomicType} (h : colMap op n a b t = .ok o) :
-    Kernel.Enc.Valid n o ∧ Enc.WF t n o := by
-  unfold colMap at h; simp only [bind, Except.bind] at h; split at h; · cases h
-  exact kscan_closed h
-
 /-- The running fold of `op` over the `n` words of `a` from the word `0`: `kscan` with one segment. -/
 def colPrefix (op : Op) (n : USize) (a : Enc) : Except String Enc := do
   let z ← colConst n 0

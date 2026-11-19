@@ -364,17 +364,24 @@ theorem concat_split {R S C : Tab k v} (h : R.concat S = .ok C) {a : k.El} {b : 
     · rw [rk, dif_neg (by simp)]; simpa using ha
     · rw [rv, dif_neg (by simp)]; simpa using hb
 
-/-- **`select keep R S` holds the pairs of `R ∪ S` whose flags pass `κ`**, `keep` answering per group a `0`/`1` word
-that is `1` iff `κ (and = 0) (or = 1)`: a group is a run of equal rows (`Vals.row_of_codes`, `Vals.codes_of_row`),
-its `and` of the tags is `0` iff it holds a row of `R` and its `or` is `1` iff one of `S` (`scatterWords_fold`), the
-kept groups are `whereCol_spec`'s positions, and each answer row is its group's first input row (`Vals.gather_row`). -/
-theorem select_holds {keep : USize → Enc → Enc → Except String Enc} {κ : Prop → Prop → Prop}
+/-- **What `select keep R S` answers**, `keep` answering per group a `0`/`1` word that is `1` iff
+`κ (and = 0) (or = 1)`: the pairs of `R ∪ S` whose flags pass `κ`, and, in `Tab.canon_sorted`'s form over
+`C = R.concat S`, its rows ascending with unequal codes. A group is a run of equal rows (`Vals.row_of_codes`,
+`Vals.codes_of_row`), its `and` of the tags is `0` iff it holds a row of `R` and its `or` is `1` iff one of `S`
+(`scatterWords_fold`), the kept groups are `whereCol_spec`'s positions, ascending, and answer row `j` is the first input
+row `ps[F[sel[j]]]` of its group (`Vals.gather_row`), which ascend with `sel` (`Verify.firsts_sorted`). -/
+theorem select_ok {keep : USize → Enc → Enc → Except String Enc} {κ : Prop → Prop → Prop}
     (hk : ∀ M mn mx o, keep M mn mx = .ok o → (Enc.raw .i64 M o).size = M.toNat ∧ ∀ G < M.toNat,
       (Enc.raw .i64 M mn)[G]?.getD 0 < 2 → (Enc.raw .i64 M mx)[G]?.getD 0 < 2 →
       (Enc.raw .i64 M o)[G]?.getD 0 < 2 ∧ ((Enc.raw .i64 M o)[G]?.getD 0 ≠ 0 ↔
         κ ((Enc.raw .i64 M mn)[G]?.getD 0 = 0) ((Enc.raw .i64 M mx)[G]?.getD 0 = 1)))
-    {R S U : Tab k v} (h : select keep R S = .ok U) (a : k.El) (b : v.El) :
-    U.Holds a b ↔ (R.Holds a b ∨ S.Holds a b) ∧ κ (R.Holds a b) (S.Holds a b) := by
+    {R S U : Tab k v} (h : select keep R S = .ok U) :
+    (∀ a b, U.Holds a b ↔ (R.Holds a b ∨ S.Holds a b) ∧ κ (R.Holds a b) (S.Holds a b)) ∧
+    ∃ C es, R.concat S = .ok C ∧ Vals.cols (A := .prod k v) (C.key, C.val) = .ok es ∧
+      ∃ sel : Fin U.n.toNat → Fin C.n.toNat,
+        (∀ j, (U.key.row j, U.val.row j) = (C.key.row (sel j), C.val.row (sel j))) ∧
+        ∀ j j' : Fin U.n.toNat, j.1 < j'.1 → lexLe (ascKeys C.n es) (sel j) (sel j') = true ∧
+          seenKey C.n es (sel j) ≠ seenKey C.n es (sel j') := by
   unfold select at h
   simp only [bind, Except.bind, Functor.map, Except.map] at h
   repeat (split at h; · cases h)
@@ -551,6 +558,32 @@ theorem select_holds {keep : USize → Enc → Enc → Except String Enc} {κ : 
       Option.map_some, Option.getD_some, hjG, hrf, hrp]
     simp only [List.getElem?_toArray, List.getElem?_map, List.getElem?_eq_getElem hG, Option.map_some,
       Option.getD_some, hc64 _ (hFlt G hG), List.getElem?_eq_getElem hpj, hc64 _ (hpsl _ hpj)]
+  refine ⟨fun a b => ?_, ?_⟩
+  rotate_left
+  · -- answer row `j` is input row `ps[F[G]]`, `G = sel[j]` ascending (`whereCol_spec`)
+    have hrow : ∀ j : Fin K.toNat, ∃ i : Fin C.n.toNat, Vals.row y j = Vals.row (A := .prod k v) (C.key, C.val) i ∧
+        F[((Enc.raw .i64 K sel)[j.1]'(by rw [his1]; exact j.2)).toNat]?.bind (ps[·]?) = some i.1 := by
+      intro j
+      obtain ⟨i, hi, hyi⟩ := Vals.gather_row _ hy j
+      have hj : j.1 < (Enc.raw .i64 K sel).size := by rw [his1]; exact j.2
+      have hGm := List.mem_map_of_mem (f := UInt64.toNat) (Array.getElem_mem_toList hj)
+      rw [hsel, List.mem_filter, List.mem_range, decide_eq_true_eq] at hGm
+      have hGF : ((Enc.raw .i64 K sel)[j.1]).toNat < F.length := by have := hGm.1; rw [hmU] at this; omega
+      have hiv := hixv j j.2 _ hGF (by rw [Array.getElem?_eq_getElem hj, Option.getD_some])
+      rw [hi] at hiv
+      refine ⟨i, hyi, ?_⟩
+      rw [List.getElem?_eq_getElem hGF, Option.bind_some,
+        List.getElem?_eq_getElem (by have := hFlt _ hGF; omega), hiv]
+    obtain ⟨sl, hs⟩ := Classical.axiomOfChoice hrow
+    refine ⟨C, es, hcat, hes, sl, fun j => (hs j).1, fun j j' hjj => ?_⟩
+    have hpw : ((Enc.raw .i64 K sel).toList.map UInt64.toNat).Pairwise (· < ·) := by
+      rw [hsel]; exact List.pairwise_lt_range.filter _
+    have hGG := List.pairwise_iff_getElem.1 hpw j j' (by simp [his1]) (by simp [his1]) hjj
+    simp only [List.getElem_map, Array.getElem_toList] at hGG
+    have e := (hs j).2; have e' := (hs j').2
+    have hpsg := asc_perm_grade hvp hp hperm
+    subst hF hpsg
+    exact Verify.firsts_sorted hkey hGG e e'
   have hCH := concat_holds hcat a b
   simp only [Tab.Holds]
   constructor
@@ -605,11 +638,12 @@ private theorem bit01 {w : UInt64} (hw : w < 2) : w = 0 ∨ w = 1 := by
   · exact .inl (UInt64.toNat_inj.1 h)
   · exact .inr (UInt64.toNat_inj.1 h)
 
-/-- **`R.inter S` denotes `R ∩ S`**: `select` keeping the groups with `and < or`, a row of each. -/
-theorem inter_holds {R S U : Tab k v} (h : R.inter S = .ok U) (a : k.El) (b : v.El) :
-    U.Holds a b ↔ R.Holds a b ∧ S.Holds a b := by
-  rw [select_holds (κ := (· ∧ ·)) (fun M mn mx o ho => ?_) h]
-  · exact ⟨fun h => h.2, fun h => ⟨.inl h.1, h⟩⟩
+/-- `inter`'s `keep`, `and < or` (`colMap .lt`), is `1` exactly where a group holds a row of each side. -/
+theorem inter_keep (M : USize) (mn mx o : Enc) (ho : colMap .lt M mn mx = .ok o) :
+    (Enc.raw .i64 M o).size = M.toNat ∧ ∀ G < M.toNat,
+      (Enc.raw .i64 M mn)[G]?.getD 0 < 2 → (Enc.raw .i64 M mx)[G]?.getD 0 < 2 →
+      (Enc.raw .i64 M o)[G]?.getD 0 < 2 ∧ ((Enc.raw .i64 M o)[G]?.getD 0 ≠ 0 ↔
+        ((Enc.raw .i64 M mn)[G]?.getD 0 = 0) ∧ ((Enc.raw .i64 M mx)[G]?.getD 0 = 1)) := by
   obtain ⟨-, -, hs, hrow⟩ := colMap_raw ho
   refine ⟨hs, fun G hG h1 h2 => ?_⟩
   have e := hrow G hG
@@ -619,11 +653,27 @@ theorem inter_holds {R S U : Tab k v} (h : R.inter S = .ok U) (a : k.El) (b : v.
   rcases bit01 h1 with rfl | rfl <;> rcases bit01 h2 with rfl | rfl <;>
     (simp only [Op.eval, Except.ok.injEq] at e; subst e; (try dsimp only); decide)
 
-/-- **`R.diff S` denotes `R − S`**: `select` keeping the groups with `or = 0`, no row of `S`. -/
-theorem diff_holds {R S U : Tab k v} (h : R.diff S = .ok U) (a : k.El) (b : v.El) :
-    U.Holds a b ↔ R.Holds a b ∧ ¬S.Holds a b := by
-  rw [select_holds (κ := fun _ s => ¬s) (fun M mn mx o ho => ?_) h]
-  · exact ⟨fun h => ⟨h.1.resolve_right h.2, h.2⟩, fun h => ⟨.inl h.1, h.2⟩⟩
+/-- **`R.inter S` denotes `R ∩ S`**: `select` keeping the groups with `and < or`, a row of each. -/
+theorem inter_holds {R S U : Tab k v} (h : R.inter S = .ok U) (a : k.El) (b : v.El) :
+    U.Holds a b ↔ R.Holds a b ∧ S.Holds a b := by
+  rw [(select_ok (κ := (· ∧ ·)) inter_keep h).1 a b]
+  exact ⟨fun h => h.2, fun h => ⟨.inl h.1, h⟩⟩
+
+/-- **`R.inter S` is sorted and duplicate-free**, in `Tab.canon_sorted`'s form over `R.concat S` (`select_ok`). -/
+theorem inter_sorted {R S U : Tab k v} (h : R.inter S = .ok U) :
+    ∃ C es, R.concat S = .ok C ∧ Vals.cols (A := .prod k v) (C.key, C.val) = .ok es ∧
+      ∃ sel : Fin U.n.toNat → Fin C.n.toNat,
+        (∀ j, (U.key.row j, U.val.row j) = (C.key.row (sel j), C.val.row (sel j))) ∧
+        ∀ j j' : Fin U.n.toNat, j.1 < j'.1 → lexLe (ascKeys C.n es) (sel j) (sel j') = true ∧
+          seenKey C.n es (sel j) ≠ seenKey C.n es (sel j') :=
+  (select_ok (κ := (· ∧ ·)) inter_keep h).2
+
+/-- `diff`'s `keep`, `not` of the `or` (`colMap .not`), is `1` exactly where a group holds no row of `S`. -/
+theorem diff_keep (M : USize) (mn mx o : Enc) (ho : colMap .not M mx mx = .ok o) :
+    (Enc.raw .i64 M o).size = M.toNat ∧ ∀ G < M.toNat,
+      (Enc.raw .i64 M mn)[G]?.getD 0 < 2 → (Enc.raw .i64 M mx)[G]?.getD 0 < 2 →
+      (Enc.raw .i64 M o)[G]?.getD 0 < 2 ∧ ((Enc.raw .i64 M o)[G]?.getD 0 ≠ 0 ↔
+        ¬((Enc.raw .i64 M mx)[G]?.getD 0 = 1)) := by
   obtain ⟨-, -, hs, hrow⟩ := colMap_raw ho
   refine ⟨hs, fun G hG _ h2 => ?_⟩
   have e := hrow G hG
@@ -631,6 +681,21 @@ theorem diff_holds {R S U : Tab k v} (h : R.diff S = .ok U) (a : k.El) (b : v.El
   generalize (Enc.raw .i64 M o)[G]?.getD 0 = z at e ⊢
   rcases bit01 h2 with rfl | rfl <;>
     (simp only [Op.eval, Except.ok.injEq] at e; subst e; (try dsimp only); decide)
+
+/-- **`R.diff S` denotes `R − S`**: `select` keeping the groups with `or = 0`, no row of `S`. -/
+theorem diff_holds {R S U : Tab k v} (h : R.diff S = .ok U) (a : k.El) (b : v.El) :
+    U.Holds a b ↔ R.Holds a b ∧ ¬S.Holds a b := by
+  rw [(select_ok (κ := fun _ s => ¬s) diff_keep h).1 a b]
+  exact ⟨fun h => ⟨h.1.resolve_right h.2, h.2⟩, fun h => ⟨.inl h.1, h.2⟩⟩
+
+/-- **`R.diff S` is sorted and duplicate-free**, in `Tab.canon_sorted`'s form over `R.concat S` (`select_ok`). -/
+theorem diff_sorted {R S U : Tab k v} (h : R.diff S = .ok U) :
+    ∃ C es, R.concat S = .ok C ∧ Vals.cols (A := .prod k v) (C.key, C.val) = .ok es ∧
+      ∃ sel : Fin U.n.toNat → Fin C.n.toNat,
+        (∀ j, (U.key.row j, U.val.row j) = (C.key.row (sel j), C.val.row (sel j))) ∧
+        ∀ j j' : Fin U.n.toNat, j.1 < j'.1 → lexLe (ascKeys C.n es) (sel j) (sel j') = true ∧
+          seenKey C.n es (sel j) ≠ seenKey C.n es (sel j') :=
+  (select_ok (κ := fun _ s => ¬s) diff_keep h).2
 
 /-- **`R.le S` answers `R ⊑ S`**: `R.diff S` has no row iff every pair of `R` is one of `S` (`diff_holds`). -/
 theorem le_holds {R S : Tab k v} {r : Bool} (h : R.le S = .ok r) : r = true ↔ ∀ a b, R.Holds a b → S.Holds a b := by

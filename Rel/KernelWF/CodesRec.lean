@@ -17,11 +17,11 @@ open Tab Rel.Dep Rel.Kernel Rel.Verify Rel
 /-- A long column's dense payload holds its `n` longs. -/
 theorem len_longsOf {n : USize} (x : Arr .i64 n) : len (longsOf x) = n.toNat := by
   obtain ⟨ws, hws⟩ : ∃ ws, longWords n x.enc = some ws := by
-    rcases KernelWF.long_cases x.wf with ⟨b, h⟩ | ⟨M, P, h⟩ <;> simp [longWords, h]
+    rcases KernelWF.long_cases x.wf with ⟨b, h⟩ | ⟨M, P, h⟩ | h <;> simp [longWords, h]
   obtain ⟨B, hB, -, -, hS⟩ := Arr.dense_long x hws
   have hL : longsOf x = B := by
     have e : longBytes n x.enc = some B := by
-      rcases hB with h | ⟨md, pk, h, rfl⟩ <;> simp only [longBytes, h] <;> rfl
+      exact hB
     exact Option.some_inj.1 ((Option.some_get _).trans e)
   rw [hL]; exact hS
 
