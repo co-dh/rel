@@ -448,6 +448,11 @@ Diff table 的「状态」列：✅ 后面是完成它的步骤；🔄 是部分
       `|A|·|B| ≤ 2²⁷` 时选用，用定理连到 `Tab.comp` / `Tab.ldiv`）；RELK 目标 10 → 11。分析：`/data/tmp/pc9/analysis.md`。
       `rel-native` 程序自己创建输出目录（owner 选 E），CLAUDE.md 不改。`muGrow` 固定在旧层：新路径上无不动点的 `μ` 要跑
       1024 轮、每轮给变长的数组排序（`kasc` 的 `cmp_rows` 占 71%），待修。
+      状态（2026-11-19 14:00，master `f90f42e`，`make check` 绿，compile-diff 427 / 33）：新 kernel 上仍 3 / 15；RELK 80。
+      已合入：`kbitrows` + `Tab.compBits` / `Tab.ldivBits` + 定理 `Tab.compBits_comp` / `Tab.ldivBits_ldiv`（同样的行，`Canon` 未证）；
+      `Tab.comp` 展开分块（`blockRows = 2^24`，`comp_holds` 不变）；`kasc` 的 `cmp_rows` 每元素读一次整列宽度的问题已修
+      （基准 64 s → 0.39 s）；`own_write` 创建缺失的父目录。未做：编译器选用 `compBits`、去掉 `sudokupc9` 与 `muGrow` 的固定、
+      T6 / T8（`t68c`，闭项只算一次的规则见 architecture §0 草稿）。
     - W3 留给后面的风险（清单 agent 提出，均未验证）：计数做 `\` 会物化 join（最多 `|R|·|S|` 行），SudokuPC9、
       blocks 可能超内存；规范序从 `Obj.lt` 变成 `kasc` 序码，打印的期望值与 `out/key`、`out/val` 可能变；
       `coc_block_start`、`coc_bools_of`、`structural_bits_of_for` 与 `Plan.abi` 点名的 12 个 export 在 W5 后仍有
