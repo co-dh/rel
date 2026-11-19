@@ -35,12 +35,14 @@ def u (k : Nat) (h : k < 4294967296 := by decide) : USize := USize.ofNat32 k h
 def bitsOf (xs : List UInt8) (n : USize) : List UInt8 :=
   let r := Coc.encode (u 2) ⟨(xs.flatMap fun x => [x, 0]).toArray⟩
   (bitsOfFoR r.1 r.2 n).data.toList
-def oneHigh : List UInt8 := (List.range 70).map fun i => if i = 5 then 1 else 0
+-- 33 rows, the fewest at which one 4-byte patch (width 0) is cheaper than width 1 (5 bytes): `decide +kernel`'s
+-- memory grows with the rows `encode` plans over
+def oneHigh : List UInt8 := (List.range 33).map fun i => if i = 5 then 1 else 0
 example : bitsOf [0, 1, 1, 0, 1] (u 5) = [22] := by decide +kernel
 #guard bitsOf [0, 1, 1, 0, 1] (u 5) = [22]
 example : bitsOf (List.replicate 10 1) (u 10) = [255, 3] := by decide +kernel
 #guard bitsOf (List.replicate 10 1) (u 10) = [255, 3]
-example : bitsOf oneHigh (u 70) = 32 :: List.replicate 8 0 := by decide +kernel
-#guard bitsOf oneHigh (u 70) = 32 :: List.replicate 8 0
+example : bitsOf oneHigh (u 33) = 32 :: List.replicate 4 0 := by decide +kernel
+#guard bitsOf oneHigh (u 33) = 32 :: List.replicate 4 0
 
 end Rel.Kernel.StructuralTest
