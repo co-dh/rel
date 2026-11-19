@@ -28,6 +28,29 @@ def Vals.cells {B : Obj} {T : USize} (n : USize) (w : Enc) (pay : Vals B T) : Ex
   let P ← colPrefix .add n w
   pure ⟨T, ← colArr .sub n P w, ← colArr .add n P (← colConst n 0), pay⟩
 
+/-- `x` with every array payload cut to the elements its cells read, where at most half of it is read (`2 · T ≤ m`,
+`T` the summed widths): the widths EXPANDed, the payload `kgather`ed there, laid out by `Vals.cells`; nested payloads
+the same. A payload joined to a copy of itself (`Vals.concat` in `∪`, `cat`) doubles while its cells read one copy;
+the cut is paid by the dead half, so a round's slices (`uncons`) are not copied each round. -/
+def Vals.pack : {A : Obj} → {n : USize} → Vals A n → Except String (Vals A n)
+  | .atom _, _, x => pure x
+  | .prod _ _, _, x => do pure (← Vals.pack x.1, ← Vals.pack x.2)
+  | .arr _, n, ⟨m, lo, hi, f⟩ => do
+    let (s, e) ← cellSpan m lo hi
+    let w ← colMap .sub n e.enc s.enc
+    match hP : colPrefix .add n w with
+    | .error err => throw err
+    | .ok P =>
+      if 0 < m.toNat ∧ 2 * lastCount n P (colPrefix_closed hP).2 ≤ m.toNat then do
+        let (T, G, u) ← expand n w
+        Vals.cells n w (← Vals.pack (← Vals.gather T (← colMap .add T (← kgather T G n s.enc) u) f))
+      else pure ⟨m, lo, hi, ← Vals.pack f⟩
+  | .sum _ _, _, ⟨l, r, tag, idx, x, y⟩ => do pure ⟨l, r, tag, idx, ← Vals.pack x, ← Vals.pack y⟩
+
+/-- **`R` with its payloads cut** (`Vals.pack` of both sides): the same rows in the same order. -/
+def Tab.pack {k v : Obj} (R : Tab k v) : Except String (Tab k v) := do
+  pure ⟨R.n, ← Vals.pack R.key, ← Vals.pack R.val⟩
+
 /-- **`τ` on the rows of `x`**: row `i` the one-element cell `[i, i + 1)` over `x` itself. -/
 def Vals.tau {B : Obj} {n : USize} (x : Vals B n) : Except String (Vals (.arr B) n) := do
   pure ⟨n, ← Arr.pos n, ← colArr .add n .pos (← colConst n 1), x⟩

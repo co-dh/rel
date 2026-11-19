@@ -34,7 +34,9 @@ def mu (cap : Nat) (f : Tab A B → Except String (Tab A B)) : Except String (Ta
 /-- **The rounds of a fold** (`fold`, `foldr`, `foldI`), at most `f`: `rest` holds at each key `k` the part of its
 array not yet read, `P` its values so far. A round moves the rows of `P` whose key has no element left (`P − dom(el) P`)
 to `out`, `peel` splits each `rest` into the element read now and the rest (`cons°` or `snoc°`), and `step` gives the
-next values; it ends when `P` is empty, so one round more than the longest array. -/
+next values, their payloads cut (`Tab.pack`): a step joining two tables that share a payload (`merge`'s `∪` of its
+two branches, each carrying `x`) would double it every round; it ends when `P` is empty, so one round more than the
+longest array. -/
 def foldRounds {K E V : Obj} (peel : Tab K (.arr E) → Except String (Tab K E × Tab K (.arr E)))
     (step : Tab K V → Tab K E → Except String (Tab K V)) :
     Nat → Tab K (.arr E) → Tab K V → Tab K V → Except String (Tab K V)
@@ -42,7 +44,7 @@ def foldRounds {K E V : Obj} (peel : Tab K (.arr E) → Except String (Tab K E �
   | f + 1, rest, P, out => do
     if P.n == 0 then return out
     let (el, rest') ← peel rest
-    foldRounds peel step f rest' (← step P el) (← out.union (← P.diff (← (← el.dom).comp P)))
+    foldRounds peel step f rest' (← (← step P el).pack) (← out.union (← P.diff (← (← el.dom).comp P)))
 
 /-- Round `k` of a left fold: `cons°` of what is left of each array, its head read now (index `k` from the start). -/
 def peelL {K E : Obj} (rest : Tab K (.arr E)) : Except String (Tab K E × Tab K (.arr E)) := do
