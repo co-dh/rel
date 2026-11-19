@@ -1399,7 +1399,7 @@ rel_program kernT45Old where
 
 /-! The kernel path, steps T6, T8: `kernT68` uses `inl inr [R,S]` and the folds `⦇e,S⦈`, `⦇e,S⦈ʳ` (on atom, tuple
     and array carriers, a nondeterministic step, a step with no row, an empty demand), and a fold given a family
-    (`pF`); `kernT68Old` is the same definitions on the old layer. `x` holds an empty cell and the cell `1 2` twice;
+    (`pF`), and the rows `prefix`, `suffix` (`pr`, `su`); `kernT68Old` is the same definitions on the old layer. `x` holds an empty cell and the cell `1 2` twice;
     `sm` a left summand from the empty `z`. -/
 open Rel.Programs.prelude in
 rel_program kernT68 where
@@ -1429,6 +1429,8 @@ rel_program kernT68 where
     p(R : N ⟶ N) : N ⟶ N ≜ ran(x ⦇[zr, π₁ ∪ (π₂ R)]⦈)
     Fm : K ⟶ N×N ≜ {(0,(1,2)),(0,(2,3)),(1,(3,3)),(2,(1,1))}
     pF : K ⟶ N×N ≜ p(Fm)
+    pr : N ⟶ [N] ≜ x prefix
+    su : N ⟶ [N] ≜ x suffix
 
 open Rel.Programs.prelude in
 set_option rel.kernel false in
@@ -1459,18 +1461,20 @@ rel_program kernT68Old where
     p(R : N ⟶ N) : N ⟶ N ≜ ran(x ⦇[zr, π₁ ∪ (π₂ R)]⦈)
     Fm : K ⟶ N×N ≜ {(0,(1,2)),(0,(2,3)),(1,(3,3)),(2,(1,1))}
     pF : K ⟶ N×N ≜ p(Fm)
+    pr : N ⟶ [N] ≜ x prefix
+    su : N ⟶ [N] ≜ x suffix
 
 #guard kernT68.kernel && !kernT68Old.kernel && kernT68.ok && kernT68Old.ok
 #guard ["z", "j1", "j3", "f1", "f2", "f3", "f8", "f9"].all (sameK kernT68.expanded kernT68Old.expanded · .long .long)
 #guard ["il", "ir", "sm"].all (sameK kernT68.expanded kernT68Old.expanded · .long (.sum .long .long))
 #guard ["j2", "f7", "pF"].all (sameK kernT68.expanded kernT68Old.expanded · .long (.prod .long .long))
-#guard ["x", "f4", "f5", "f6"].all (sameK kernT68.expanded kernT68Old.expanded · .long (.arr .long))
+#guard ["x", "f4", "f5", "f6", "pr", "su"].all (sameK kernT68.expanded kernT68Old.expanded · .long (.arr .long))
 -- not vacuous: the kernel tables have rows
 #guard ["j1", "j3", "f1", "f2", "f3", "f8"].all fun d =>
   ((get kernT68.expanded d .long .long).map (·.n.toNat != 0)) == some true
 #guard ["j2", "f7", "pF"].all fun d =>
   ((get kernT68.expanded d .long (.prod .long .long)).map (·.n.toNat != 0)) == some true
-#guard ["f4", "f5", "f6"].all fun d => ((get kernT68.expanded d .long (.arr .long)).map (·.n.toNat != 0)) == some true
+#guard ["f4", "f5", "f6", "pr", "su"].all fun d => ((get kernT68.expanded d .long (.arr .long)).map (·.n.toNat != 0)) == some true
 
 /-- The kernel body `k` and the old body `o` run on what `K` knows of their sides, as equal sets of rows. -/
 def sameOn {A B : Obj} [BEq (A.El × B.El)] (k o : Rel A B) (K : Known A B) : Bool :=
