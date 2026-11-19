@@ -892,6 +892,10 @@ private def compOk {A B C : Obj} [BEq A.El] [BEq B.El] [BEq C.El] (R : Tab A B) 
   (⟨3, Arr.bools 3 fun i => i == 1, Alg.col [7, 8, 9]⟩ : Tab (.atom .u1) .long)
 #guard compOk (⟨4, Alg.col [3, 1, 2, 1], (Alg.col [1, 1, 2, 2], Alg.col [5, 6, 5, 6])⟩ : Tab .long (.prod .long .long))
   (⟨3, (Alg.col [2, 1, 1], Alg.col [5, 6, 5]), Alg.col [7, 8, 9]⟩ : Tab (.prod .long .long) .long)
+-- an `arr` middle column: `R`'s values and `S`'s keys are cells (`arrTab`), met as lists, equal cells from different
+-- ranges and payloads included
+#guard let A := arrTab arrCells arrPay; let B := arrTab [(2, 3, 1), (1, 2, 1), (3, 9, 0), (0, 0, 2)] [5, 1, 5, 9, 5, 7]
+  compOk (Tab.mk A.n A.val A.key) B && compOk (Tab.mk B.n B.val B.key) A && compOk (Tab.mk A.n A.val A.key) (arrTab [] [])
 
 end Checks
 

@@ -75,6 +75,13 @@ inductive AscKey where
   | atom (t : QAtomicType)
   | cells (n c : USize) (lo hi : Enc) (els : List (AscKey × Enc))
 
+/-- The first payload row of cell `r`: its `lo` word as an `Int64`, clamped to `[0, c]`. -/
+def cellStart (c : Nat) (lo : Array UInt64) (r : UInt64) : Nat := min (max (lo[r.toNat]?.getD 0).toInt64.toInt 0).toNat c
+
+/-- The length of cell `r`: its `hi` word clamped to `c`, less `cellStart`; `0` where `hi` is not past `lo`. -/
+def cellLen (c : Nat) (lo hi : Array UInt64) (r : UInt64) : Nat :=
+  (min (hi[r.toNat]?.getD 0).toInt64.toInt (c : Int)).toNat - cellStart c lo r
+
 /-- The order codes of a `cells` key over `c` payload rows, each a function of a row's word `r` (the cell it names),
 the payload rows coded by the columns `xs`: per element position `j < c`, whether cell `r` reaches `j` (`1`, else `0`)
 and then each payload column's code of its element there (`0` past the end). `lexLe` over them orders cells
@@ -82,8 +89,8 @@ lexicographically by their elements' codes, a proper prefix first, and two rows 
 their cells have one length and equal codes element by element. Functions of the word alone, so a permuted column
 has the permuted codes; every cell lies in `[0, c)`, so `c` positions cover the longest. -/
 def cellFns (c : Nat) (lo hi : Array UInt64) (xs : List (Array UInt64)) : List (UInt64 → UInt64) :=
-  let s := fun r : UInt64 => min (max (lo[r.toNat]?.getD 0).toInt64.toInt 0).toNat c
-  let len := fun r : UInt64 => (min (hi[r.toNat]?.getD 0).toInt64.toInt (c : Int)).toNat - s r
+  let s := cellStart c lo
+  let len := cellLen c lo hi
   (List.range c).flatMap fun j =>
     (fun r => if j < len r then 1 else 0) :: xs.map fun x r => if j < len r then x[s r + j]?.getD 0 else 0
 

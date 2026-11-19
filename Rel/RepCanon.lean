@@ -450,6 +450,163 @@ theorem Arr.eq_of_codes {t : QAtomicType} {n : USize} (x : Arr t n) {cs}
   exact Arr.get_eq_of_raw x x hv hv i i' fun hg a b ha hb hu =>
     (ascOrd_atom hof hg hu).1 (by simpa only [ha, hb, Option.map_some, Option.getD_some] using hk)
 
+/-- A `flatMap` of blocks of one length is equal exactly where each block is. -/
+theorem flatMap_eq_iff {α β : Type} {k : Nat} {F G : α → List β} (hF : ∀ a, (F a).length = k)
+    (hG : ∀ a, (G a).length = k) : ∀ l : List α, l.flatMap F = l.flatMap G ↔ ∀ a ∈ l, F a = G a
+  | [] => by simp
+  | a :: l => by
+    simp only [List.flatMap_cons, List.mem_cons, forall_eq_or_imp]
+    constructor
+    · intro h; obtain ⟨h1, h2⟩ := List.append_inj h (by rw [hF, hG])
+      exact ⟨h1, (flatMap_eq_iff hF hG l).1 h2⟩
+    · rintro ⟨h1, h2⟩; rw [h1, (flatMap_eq_iff hF hG l).2 h2]
+
+/-- The positions below `c` in the window `[a, b)` are `range'` from the window's start clamped to `[0, c]`. -/
+theorem filter_range_window (a b : Int) : ∀ c : Nat,
+    (List.range c).filter (fun k : Nat => decide (a ≤ (k : Int) ∧ (k : Int) < b)) =
+      List.range' (min (max a 0).toNat c) ((min b (c : Int)).toNat - min (max a 0).toNat c)
+  | 0 => by simp; omega
+  | c + 1 => by
+    rw [List.range_succ, List.filter_append, filter_range_window a b c]
+    by_cases h : a ≤ (c : Int) ∧ (c : Int) < b
+    · rw [List.filter_cons, List.filter_nil, if_pos (decide_eq_true h)]
+      have e1 : min (max a 0).toNat (c + 1) = min (max a 0).toNat c := by omega
+      have e2 : (min b ((c + 1 : Nat) : Int)).toNat - min (max a 0).toNat c =
+          ((min b (c : Int)).toNat - min (max a 0).toNat c) + 1 := by omega
+      rw [e1, e2, List.range'_concat]
+      congr 2; omega
+    · rw [List.filter_cons, List.filter_nil, if_neg fun e => h (of_decide_eq_true e), List.append_nil]
+      by_cases h0 : (min b (c : Int)).toNat - min (max a 0).toNat c = 0
+      · rw [h0, show (min b ((c + 1 : Nat) : Int)).toNat - min (max a 0).toNat (c + 1) = 0 by omega]; rfl
+      · congr 1 <;> omega
+
+/-- `filterMap` of an `if` is a `filter` then a `map`. -/
+theorem filterMap_ite {α β : Type} (p : α → Bool) (g : α → β) : ∀ l : List α,
+    l.filterMap (fun x => if p x then some (g x) else none) = (l.filter p).map g
+  | [] => rfl
+  | x :: l => by by_cases h : p x <;> simp [h, filterMap_ite p g l]
+
+/-- Two runs of `g` from `s` and `s'` are equal exactly where they have one length and agree position by position. -/
+theorem map_range'_eq_iff {β : Type} (g : Nat → β) (s l s' l' : Nat) :
+    (List.range' s l).map g = (List.range' s' l').map g ↔ l = l' ∧ ∀ k < l, g (s + k) = g (s' + k) := by
+  constructor
+  · intro h
+    have hl : l = l' := by simpa using congrArg List.length h
+    subst hl
+    refine ⟨rfl, fun k hk => ?_⟩
+    have := congrArg (·[k]?) h
+    simpa [List.getElem?_map, List.getElem?_range', hk] using this
+  · rintro ⟨rfl, h⟩
+    exact List.ext_getElem (by simp) fun k h1 _ => by simp at h1; simp [h k h1]
+
+/-- `cellFns`' codes at two words, for any start `s` and length `len ≤ c`: equal exactly where the lengths are and the
+payload codes `ks` agree element by element. -/
+theorem cellBlocks_eq_iff (c : Nat) (s len : UInt64 → Nat) (hc : ∀ r, len r ≤ c) (ks : List (Array UInt64))
+    (r r' : UInt64) :
+    (List.range c).flatMap (fun j => (if j < len r then 1 else 0) ::
+        ks.map (fun x => if j < len r then x[s r + j]?.getD 0 else 0)) =
+      (List.range c).flatMap (fun j => (if j < len r' then 1 else 0) ::
+        ks.map (fun x => if j < len r' then x[s r' + j]?.getD 0 else 0)) ↔
+      len r = len r' ∧ ∀ k < len r, ks.map (·[s r + k]?.getD 0) = ks.map (·[s r' + k]?.getD 0) := by
+  rw [flatMap_eq_iff (k := ks.length + 1) (by simp) (by simp)]
+  simp only [List.mem_range, List.cons.injEq]
+  constructor
+  · intro h
+    have hl : len r = len r' := by
+      have h1 := fun j (hj : j < c) => (h j hj).1
+      rcases Nat.lt_trichotomy (len r) (len r') with hlt | heq | hlt
+      · have := h1 (len r) (by have := hc r'; omega); simp [hlt] at this
+      · exact heq
+      · have := h1 (len r') (by have := hc r; omega); simp [hlt] at this
+    refine ⟨hl, fun k hk => ?_⟩
+    have := (h k (by have := hc r; omega)).2
+    simpa [hk, show k < len r' by omega] using this
+  · rintro ⟨hl, h⟩ j hj
+    by_cases hk : j < len r
+    · simpa [hk, show j < len r' by omega] using h j hk
+    · simp [hk, show ¬ j < len r' by omega]
+
+/-- **Equal codes of two cells** (`cellFns`): the cells the words `r` and `r'` name have one length and equal payload
+codes `ks` element by element. -/
+theorem cellFns_eq_iff (c : Nat) (lo hi : Array UInt64) (ks : List (Array UInt64)) (r r' : UInt64) :
+    (cellFns c lo hi ks).map (· r) = (cellFns c lo hi ks).map (· r') ↔
+      cellLen c lo hi r = cellLen c lo hi r' ∧ ∀ k < cellLen c lo hi r,
+        ks.map (·[cellStart c lo r + k]?.getD 0) = ks.map (·[cellStart c lo r' + k]?.getD 0) := by
+  simp only [cellFns, List.map_flatMap, List.map_cons, List.map_map, Function.comp_def]
+  exact cellBlocks_eq_iff c (cellStart c lo) (cellLen c lo hi) (fun r => by simp only [cellLen]; omega) ks r r'
+
+/-- **An `arr` side's row is its cell**: the payload rows from `cellStart` for `cellLen` rows (`cellFns`' reading of
+`lo` and `hi` at the row's own word), read through `f`. -/
+theorem Vals.row_arr {B : Obj} {n c : USize} (lo hi : Arr .i64 n) (f : Vals B c) (i : Fin n.toNat) :
+    Vals.row (A := .arr B) ⟨c, lo, hi, f⟩ i =
+      (List.range' (cellStart c.toNat (Enc.raw .i64 n lo.enc) i.1.toUInt64)
+        (cellLen c.toNat (Enc.raw .i64 n lo.enc) (Enc.raw .i64 n hi.enc) i.1.toUInt64)).map
+        fun k => if h : k < c.toNat then Vals.row f ⟨k, h⟩ else B.dflt := by
+  have hi : (i.1.toUInt64).toNat = i.1 := by
+    have := i.2; have := n.toNat_lt_size; have := USize.size_le; simp; omega
+  have hfr : (List.finRange c.toNat).map Fin.val = List.range c.toNat := List.ext_getElem (by simp) (by simp)
+  simp only [Vals.row, cellLen, cellStart, hi, ← Arr.get_i64]
+  rw [← filter_range_window, ← filterMap_ite, ← hfr, List.filterMap_map]
+  exact congrArg (fun F => List.filterMap F _) (funext fun j => by simp [j.2])
+
+theorem Verify.ascCodes_mapM : ∀ {m : USize} {es : List (AscKey × Enc)} {ks},
+    ascCodes m es = .ok ks → ∃ cs, es.mapM (ascCol m) = .ok cs
+  | _, [], _, _ => ⟨[], rfl⟩
+  | m, e :: es, ks, h => by
+    rw [ascCodes] at h; simp only [bind, Except.bind] at h
+    split at h; · cases h
+    rename_i c hc
+    split at h; · cases h
+    rename_i ks' hks
+    obtain ⟨cs, hcs⟩ := ascCodes_mapM hks
+    exact ⟨c :: cs, by simp [List.mapM_cons, hc, hcs, bind, Except.bind, pure, Except.pure]⟩
+
+/-- A `cells` column `kasc` reads has a payload it reads: `ascCol` answers only where `ascCodes` does. -/
+theorem Verify.ascCodes_of_cells {m n c : USize} {lo hi e : Enc} {els : List (AscKey × Enc)} {xk}
+    (h : ascCol m (.cells n c lo hi els, e) = .ok xk) : ∃ ks, ascCodes c els = .ok ks := by
+  rw [ascCol] at h
+  cases hks : ascCodes c els with
+  | ok ks => exact ⟨ks, rfl⟩
+  | error s =>
+    cases hix : foRWords "asc: cells" m e with
+    | error s => simp [hix, bind, Except.bind] at h
+    | ok ix =>
+      cases hf : ix.find? (n.toNat ≤ ·.toNat) with
+      | some r => simp [hix, hf, bind, Except.bind] at h
+      | none =>
+        cases hl : foRWords "asc: cells lo" n lo with
+        | error s => simp [hix, hf, hl, bind, Except.bind] at h
+        | ok l =>
+          cases hh : foRWords "asc: cells hi" n hi with
+          | error s => simp [hix, hf, hl, hh, bind, Except.bind] at h
+          | ok hw => simp [hix, hf, hl, hh, hks, bind, Except.bind] at h
+
+/-- What `Vals.cols` answers at an `arr` side, unfolded: one `cells` key over the payload's columns `fs`, which `kasc`
+reads; two rows have equal codes exactly where their cells have one length and equal payload codes element by
+element (`cellFns_eq_iff`). -/
+theorem Vals.cols_arr {B : Obj} {n c : USize} {lo hi : Arr .i64 n} {f : Vals B c} {es : List (AscKey × Enc)} {cs}
+    (hes : Vals.cols (A := .arr B) ⟨c, lo, hi, f⟩ = .ok es) (hc : es.mapM (ascCol n) = .ok cs) :
+    ∃ fs, Vals.cols f = .ok fs ∧ (∃ cs', fs.mapM (ascCol c) = .ok cs') ∧ ∀ i i' : Fin n.toNat,
+      (seenKey n es i = seenKey n es i' ↔
+        cellLen c.toNat (Enc.raw .i64 n lo.enc) (Enc.raw .i64 n hi.enc) i.1.toUInt64 =
+          cellLen c.toNat (Enc.raw .i64 n lo.enc) (Enc.raw .i64 n hi.enc) i'.1.toUInt64 ∧
+        ∀ k < cellLen c.toNat (Enc.raw .i64 n lo.enc) (Enc.raw .i64 n hi.enc) i.1.toUInt64,
+          seenKey c fs (cellStart c.toNat (Enc.raw .i64 n lo.enc) i.1.toUInt64 + k) =
+            seenKey c fs (cellStart c.toNat (Enc.raw .i64 n lo.enc) i'.1.toUInt64 + k)) := by
+  simp only [Vals.cols, bind, Except.bind, pure, Except.pure] at hes
+  split at hes; · cases hes
+  rename_i fs hfs
+  cases hes
+  obtain ⟨hlen, hf⟩ := mapM_ok hc
+  have hac := hf 0 _ (cs[0]'(by simp at hlen; omega)) rfl (List.getElem?_eq_getElem _)
+  obtain ⟨ks, hks⟩ := ascCodes_of_cells hac
+  refine ⟨fs, hfs, ascCodes_mapM hks, fun i i' => ?_⟩
+  have hr : ∀ q : Fin n.toNat, seenKey n [(AscKey.cells n c lo.enc hi.enc fs, .pos)] q =
+      (cellFns c.toNat (Enc.raw .i64 n lo.enc) (Enc.raw .i64 n hi.enc) (ascKeys c fs)).map (· q.1.toUInt64) :=
+    fun q => by simp [seenKey, ascKeys, ascKey, List.map_map, Function.comp_def, Enc.raw, q.2]
+  rw [hr, hr, cellFns_eq_iff]
+  rfl
+
 /-- **Equal order codes, equal rows**, over any side whose columns `kasc` reads (`ascCol` answers on each): the codes
 of row `i` and row `i'` agree in every column (`seenKey`), so their atoms do (`ascOrd_atom`), so their elements do
 (`Arr.get_eq_of_raw`). -/
@@ -473,7 +630,15 @@ theorem Vals.row_of_codes : {A : Obj} → {n : USize} → (x : Vals A n) → {es
     obtain ⟨k1, k2⟩ := List.append_inj hk (by simp [seenKey, ascKeys])
     show (Vals.row x.1 i, Vals.row x.2 i) = (Vals.row x.1 i', Vals.row x.2 i')
     rw [Vals.row_of_codes x.1 h1 hc1 i i' k1, Vals.row_of_codes x.2 h2 hc2 i i' k2]
-  | .arr _, _, _, _, hes, _, _, _, _, _ => by simp [Vals.cols] at hes
+  | .arr _, n, ⟨c, lo, hi, f⟩, es, hes, cs, hc, i, i', hk => by
+    obtain ⟨fs, hfs, ⟨cs', hcs'⟩, hkey⟩ := Vals.cols_arr hes hc
+    obtain ⟨hl, hk⟩ := (hkey i i').1 hk
+    rw [Vals.row_arr, Vals.row_arr, map_range'_eq_iff]
+    refine ⟨hl, fun k hkl => ?_⟩
+    have b1 := hkl; have b2 := hl ▸ hkl
+    simp only [cellLen] at b1 b2
+    rw [dif_pos (by omega), dif_pos (by omega)]
+    exact Vals.row_of_codes f hfs hcs' _ _ (hk k hkl)
   | .sum _ _, n, ⟨l, r, tag, idx, x, y⟩, es, hes, cs, hc, i, i', hk => by
     obtain ⟨xs, ys, rfl, hrest⟩ := Vals.cols_sum hes
     obtain ⟨c0, c12, hc0, hc12, -⟩ := mapM_append_ok (l1 := [(.atom .u1, tag.enc)]) (l2 := xs ++ ys) hc
@@ -582,7 +747,15 @@ theorem Vals.codes_of_row : {A : Obj} → {n : USize} → (x : Vals A n) → {es
     have hs : ∀ q, seenKey n (es1 ++ es2) q = seenKey n es1 q ++ seenKey n es2 q := fun q => by
       simp [seenKey, ascKeys_append]
     rw [hs, hs, Vals.codes_of_row x.1 h1 hc1 i i' r1, Vals.codes_of_row x.2 h2 hc2 i i' r2]
-  | .arr _, _, _, _, hes, _, _, _, _, _ => by simp [Vals.cols] at hes
+  | .arr _, n, ⟨c, lo, hi, f⟩, es, hes, cs, hc, i, i', hr => by
+    obtain ⟨fs, hfs, ⟨cs', hcs'⟩, hkey⟩ := Vals.cols_arr hes hc
+    rw [Vals.row_arr, Vals.row_arr, map_range'_eq_iff] at hr
+    refine (hkey i i').2 ⟨hr.1, fun k hkl => ?_⟩
+    have b1 := hkl; have b2 := hr.1 ▸ hkl
+    simp only [cellLen] at b1 b2
+    have e := hr.2 k hkl
+    rw [dif_pos (by omega), dif_pos (by omega)] at e
+    exact Vals.codes_of_row f hfs hcs' _ _ e
   | .sum _ _, n, ⟨l, r, tag, idx, x, y⟩, es, hes, cs, hc, i, i', hr => by
     obtain ⟨xs, ys, rfl, hrest⟩ := Vals.cols_sum hes
     obtain ⟨c0, c12, hc0, hc12, -⟩ := mapM_append_ok (l1 := [(.atom .u1, tag.enc)]) (l2 := xs ++ ys) hc
@@ -858,6 +1031,25 @@ def sumTab (ts : List (Bool × Int64 × Int64)) (ls rs : List Int64) : Tab (.sum
   let R := sumTab ts ls rs
   R.canon.toOption.isSome && canonAgrees R && canonAgrees (Tab.mk R.n R.val R.key) &&
     canonAgrees (Tab.mk R.n R.key R.key)
+
+/-- The table whose row `i` is `(lo, hi, value)` = `cs[i]`, its key the `arr` side of the cells `[lo, hi)` over the
+payload `ps`, every column `foR` (`Alg.col`). -/
+def arrTab (cs : List (Int64 × Int64 × Int64)) (ps : List Int64) : Tab (.arr .long) .long :=
+  ⟨cs.length.toUSize, ⟨ps.length.toUSize, List.length_map _ ▸ Alg.col (cs.map (·.1)),
+    List.length_map _ ▸ Alg.col (cs.map (·.2.1)), Alg.col ps⟩, List.length_map _ ▸ Alg.col (cs.map (·.2.2))⟩
+
+/-- Cells over the payload `5 1 5 9 5`: `[5,1]` twice from one range, `[5]` from three ranges (`[0,1)`, `[2,3)`, and
+`[-1,1)` clamped), the empty cell from `[3,3)` and from `hi < lo`, a proper prefix `[5]` of `[5,1]`, and `[3,9)` clamped
+to `[9,5]`. -/
+def arrCells : List (Int64 × Int64 × Int64) :=
+  [(0, 2, 1), (2, 3, 1), (0, 2, 1), (3, 3, 2), (4, 5, 2), (2, 4, 7), (0, 1, 1), (3, 1, 2), (-1, 1, 1), (3, 9, 0)]
+def arrPay : List Int64 := [5, 1, 5, 9, 5]
+
+-- `arr` sides, as the key, the value and both, and a side of no cells
+#guard [(arrCells, arrPay), (arrCells.take 3, arrPay), ([], arrPay), ([(0, 0, 1), (0, 0, 1)], [])].all fun (cs, ps) =>
+  let R := arrTab cs ps
+  R.canon.toOption.isSome && R.ran.toOption.isSome && R.dom.toOption.isSome && canonAgrees R &&
+    canonAgrees (Tab.mk R.n R.val R.key) && canonAgrees (Tab.mk R.n R.key R.key)
 
 end Checks
 

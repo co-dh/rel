@@ -94,7 +94,7 @@ def posBig : String ⊕ (List (List UInt64) × List UInt64) :=
 #guard view (USize.ofNat (2 ^ 63 + 1)) (kasc (USize.ofNat (2 ^ 63 + 1)) [(.atom .i64, .pos)]) == posBig
 
 /-! `cells` keys: a row names a cell, a cell is a range of payload rows, cells order lexicographically by their elements'
-codes, a proper prefix first. -/
+codes, a proper pre first. -/
 
 /-- A `cells` key of the cells `[lo[r], hi[r])` over the payload columns `els` of `c` rows, row `i` naming cell
 `ix[i]` (`.pos`: cell `i`). -/
@@ -104,11 +104,11 @@ def cells (n c : USize) (lo hi : List UInt64) (els : List (AscKey × Enc)) (ix :
 -- payload `5 1 5`; cells `[]`, `[5]`, `[5,1]`, `[1]`, `[5]` (the second `[5]` at another payload row). Rows name
 -- `[5,1] [] [5] [1] [5] []`: the empty cell first, a proper prefix `[5]` before `[5,1]`, the two `[]`s and the two `[5]`s
 -- (cells 1 and 4, equal elements) tie in input order across non-adjacent rows
-def prefix : List (AscKey × Enc) :=
+def pre : List (AscKey × Enc) :=
   [cells (u 5) (u 3) [0, 0, 0, 1, 2] [0, 1, 2, 2, 3] [(.atom .i64, col [5, 1, 5])] (col [2, 0, 1, 3, 4, 0])]
-def prefixOut : String ⊕ (List (List UInt64) × List UInt64) := .inr ([[0, 0, 3, 1, 4, 2]], [1, 5, 3, 2, 4, 0])
-example : view (u 6) (kasc (u 6) prefix) = prefixOut := by decide +kernel
-#guard view (u 6) (kasc (u 6) prefix) == prefixOut
+def preOut : String ⊕ (List (List UInt64) × List UInt64) := .inr ([[0, 0, 3, 1, 4, 2]], [1, 5, 3, 2, 4, 0])
+example : view (u 6) (kasc (u 6) pre) = preOut := by decide +kernel
+#guard view (u 6) (kasc (u 6) pre) == preOut
 
 -- a tuple element (`i64`, `i32`): cells `[(1,5)]`, `[(1,-2^31)]`, `[(0,9)]`; the first atom decides, then the `i32`
 -- at its sign
@@ -118,7 +118,7 @@ example : pview (u 3) (kasc (u 3) tuple) = .inr [2, 1, 0] := by decide +kernel
 #guard pview (u 3) (kasc (u 3) tuple) == .inr [2, 1, 0]
 
 -- nested cells: the inner cells `p = [3]`, `q = [1,2]`, `r = []` (so `r < q < p`); the outer payload `p q q r` and its
--- cells `[p,q]`, `[q,r]`, `[q]`: `[q]` first, a proper prefix of `[q,r]`, then `[p,q]`
+-- cells `[p,q]`, `[q,r]`, `[q]`: `[q]` first, a proper pre of `[q,r]`, then `[p,q]`
 def nested : List (AscKey × Enc) :=
   [cells (u 3) (u 4) [0, 2, 1] [2, 4, 2] [cells (u 3) (u 3) [0, 1, 0] [1, 3, 0] [(.atom .i64, col [3, 1, 2])] (col [0, 1, 1, 2])]]
 example : pview (u 3) (kasc (u 3) nested) = .inr [2, 1, 0] := by decide +kernel
@@ -137,7 +137,7 @@ example : view (u 2) (kasc (u 2) [cells (u 2) (u 1) [0, 0] [1, 1] [(.atom .i64, 
 #guard view (u 2) (kasc (u 2) [cells (u 2) (u 1) [0, 0] [1, 1] [(.atom .i64, col [7])] (col [0, 2])]) == noCell
 
 -- past a block of `2 ^ 10`, `#guard` only (`decide` does not reduce `1100` rows of codes): the payload `0 … 1099`, cells
--- `A = [1020, 1030)`, its proper prefix `B = [1020, 1029)` and `C = [0, 1100)`, row `i` naming cell `i % 3`, so the
+-- `A = [1020, 1030)`, its proper pre `B = [1020, 1029)` and `C = [0, 1100)`, row `i` naming cell `i % 3`, so the
 -- rows of `C` come first, then `B`'s, then `A`'s, each in input order
 def edge : List (AscKey × Enc) :=
   [(.cells (u 3) (u 1100) (col [1020, 1020, 0]) (col [1030, 1029, 1100])
