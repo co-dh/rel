@@ -2,7 +2,6 @@ import Rel.Run.SetOps
 import Rel.Run.Comp
 import Rel.Run.Struct
 import Rel.Run.Div
-import Rel.Run.Fix
 
 /-! The list rows of `prims` (`Rel/Lang/Den.lean`, `rowDens`) on `Tab`, as compositions of the five kernels (PLAN 6.14
 W3, step T7), in the style of `Rel/Run/Comp.lean`: `snoc`, `cat`, `cons`, `zip` after a table of pairs of cells, and
@@ -148,30 +147,6 @@ def tails {n : USize} (X : Vals (.arr B) n) : Except String (Tab (.arr B) (.arr 
   match L.val with
   | ⟨m, lo, hi, f⟩ => pure ⟨L.n, L.key, ⟨m, lo, hi, f.2⟩⟩
 
-
-/-- **`concat` on the cells of cells `X`** = `⦇nil, cat⦈` (the prelude's `concat`, B&dM p.129): the rounds of a left
-fold from `[]`, each `(acc, xs) ↦ acc ++ xs`. -/
-def flatten {n : USize} (X : Vals (.arr (.arr B)) n) : Except String (Tab (.arr (.arr B)) (.arr B)) := do
-  foldRounds peelL (fun acc el => do cat (← acc.pair el)) (X.1.toNat + 2) (← idU X) (← nil X) (← zero)
-
-/-- **`filter(p)` on the cells `X`**, `P` the relation `p` = `⦇nil, dom(π₂p) snoc ∪ (𝟙 − dom(π₂p)) π₁⦈` (the prelude's
-`filter`, B&dM p.66): a left fold, `x` appended where it is a key of `P` (`k = el ≫ dom P`), else `acc` kept; the
-`𝟙 − dom(π₂p)` part is `(dom el − dom k) acc`, only keys still folding, so `foldRounds` ends. -/
-def filter {n : USize} (P : Tab B B) (X : Vals (.arr B) n) : Except String (Tab (.arr B) (.arr B)) := do
-  let D ← P.dom
-  foldRounds peelL (fun acc el => do
-      let k ← el.comp D
-      (← snoc (← acc.pair k)).union (← (← (← el.dom).diff (← k.dom)).comp acc))
-    (X.1.toNat + 2) (← idU X) (← nil X) (← zero)
-
-/-- **`takewhile(p)` on the cells `X`**, `P` the relation `p` = `⦇nil, dom(π₁p) cons ∪ (𝟙 − dom(π₁p)) nil⦈ʳ` (the
-prelude's `takewhile`, B&dM p.174): a right fold, `x :: acc` where `x` is a key of `P`, else `[]` on `dom el − dom k`. -/
-def takewhile {n : USize} (P : Tab B B) (X : Vals (.arr B) n) : Except String (Tab (.arr B) (.arr B)) := do
-  let D ← P.dom
-  foldRounds peelR (fun acc el => do
-      let k ← el.comp D
-      (← cons (← k.pair acc)).union (← (← (← (← el.dom).diff (← k.dom)).comp acc).comp (← nil acc.val)))
-    (X.1.toNat + 2) (← idU X) (← nil X) (← zero)
 
 /-- **`sum` on the cells of longs `X`** (`rowDens`: `foldr (+) 0`, kept where every suffix sum lies strictly inside
 `(-2^63, 2^63)` and no element is the null `-2^63`): the elements EXPANDed into `(G, u)`, the suffix sums `W` of each
