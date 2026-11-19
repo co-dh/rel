@@ -532,6 +532,331 @@ theorem Tab.canon_distinct {k v : Obj} {R U : Tab k v} (h : R.canon = .ok U) {j 
     subst h
     exact Vals.nub_distinct hn hjj
 
+/-- **`ldiv` holds as `ldivDen`**: a pair `(b, c)` of the counting stage has as many `R`-witnesses `a` of `b` with
+`S a c` as `R`-witnesses of `b` at all, so (rows being distinct) every one; the vacuous `b`s come from the `CROSS`. -/
+theorem Tab.ldiv_holds {A B C : Obj} {R : Tab A B} {S : Tab A C} {UB : Tab B B} {UC : Tab C C} {T : Tab B C}
+    (h : Tab.ldiv R S UB UC = .ok T) (b : B.El) (c : C.El) :
+    T.Holds b c ↔ Lang.ldivDen R.Holds S.Holds UB.Holds UC.Holds b c := by
+  classical
+  unfold Tab.ldiv at h
+  simp only [bind] at h
+  rw [Except.bind_eq_ok'] at h; obtain ⟨r, hr, h⟩ := h
+  rw [Except.bind_eq_ok'] at h; obtain ⟨s, hs, h⟩ := h
+  rw [Except.bind_eq_ok'] at h; obtain ⟨Q, hQ, h⟩ := h
+  rw [Except.bind_eq_ok'] at h; obtain ⟨es, hes, h⟩ := h
+  rw [Except.bind_eq_ok'] at h; obtain ⟨⟨vs, p⟩, hasc, h⟩ := h; try dsimp only at h
+  rw [Except.bind_eq_ok'] at h; obtain ⟨⟨k, g, f⟩, hseen, h⟩ := h; try dsimp only at h
+  rw [Except.bind_eq_ok'] at h; obtain ⟨c1, hc1, h⟩ := h
+  rw [Except.bind_eq_ok'] at h; obtain ⟨cnt, hcnt, h⟩ := h
+  rw [Except.bind_eq_ok'] at h; obtain ⟨⟨N, sh⟩, hcat, h⟩ := h; try dsimp only at h
+  split at h
+  · rw [Except.bind_eq_ok'] at h; obtain ⟨_, h', -⟩ := h; cases h'
+  rename_i hN63
+  rw [Except.bind_eq_ok'] at h; obtain ⟨_, -, h⟩ := h
+  rw [Except.bind_eq_ok'] at h; obtain ⟨z, hz, h⟩ := h
+  rw [Except.bind_eq_ok'] at h; obtain ⟨bs, hbs, h⟩ := h
+  rw [Except.bind_eq_ok'] at h; obtain ⟨⟨bv, bp⟩, hbasc, h⟩ := h; try dsimp only at h
+  rw [Except.bind_eq_ok'] at h; obtain ⟨⟨bk, bg, bf⟩, hbseen, h⟩ := h; try dsimp only at h
+  rw [Except.bind_eq_ok'] at h; obtain ⟨cn, hcn, h⟩ := h
+  rw [Except.bind_eq_ok'] at h; obtain ⟨lt, hlt, h⟩ := h
+  rw [Except.bind_eq_ok'] at h; obtain ⟨cR, hcR, h⟩ := h
+  rw [Except.bind_eq_ok'] at h; obtain ⟨code, hcode, h⟩ := h
+  rw [Except.bind_eq_ok'] at h; obtain ⟨q, hq, h⟩ := h
+  rw [Except.bind_eq_ok'] at h; obtain ⟨ck, hck, h⟩ := h
+  rw [Except.bind_eq_ok'] at h; obtain ⟨qa, hqa, h⟩ := h
+  rw [Except.bind_eq_ok'] at h; obtain ⟨cq, hcq, h⟩ := h
+  rw [Except.bind_eq_ok'] at h; obtain ⟨d, hd, h⟩ := h
+  rw [Except.bind_eq_ok'] at h; obtain ⟨eqc, heqc, h⟩ := h
+  rw [Except.bind_eq_ok'] at h; obtain ⟨⟨M, sel⟩, hM, h⟩ := h; try dsimp only at h
+  rw [Except.bind_eq_ok'] at h; obtain ⟨ix, hix, h⟩ := h
+  rw [Except.bind_eq_ok'] at h; obtain ⟨X1, hX1, h⟩ := h
+  rw [Except.bind_eq_ok'] at h; obtain ⟨Y1, hY1, h⟩ := h
+  rw [Except.bind_eq_ok'] at h; obtain ⟨ub, hub, h⟩ := h
+  rw [Except.bind_eq_ok'] at h; obtain ⟨rr, hrr, h⟩ := h
+  rw [Except.bind_eq_ok'] at h; obtain ⟨df, hdf, h⟩ := h
+  rw [Except.bind_eq_ok'] at h; obtain ⟨uc, huc, h⟩ := h
+  rw [Except.bind_eq_ok'] at h; obtain ⟨cr, hcr, h⟩ := h
+  rw [union_holds h, cross_holds hcr]
+  have hP : (∃ j, X1.row j = b ∧ Y1.row j = c) ↔
+      (∃ a, R.Holds a b ∧ S.Holds a c) ∧ ∀ a, R.Holds a b → S.Holds a c := by
+    have hU64 : USize.size ≤ 2 ^ 64 := by rcases USize.size_eq with h | h <;> omega
+    obtain ⟨hNn, hoff⟩ := catPlan_ok hcat
+    have hzr := Vals.concat_row hNn hoff r.val Q.key hz
+    have hNU := N.toNat_lt_size
+    obtain ⟨π1, gr1, fs1, hkN, hp1, -, hsur1, hcnt1, hg1, hf1, hrow1⟩ := group_rows hes hasc hseen
+    obtain ⟨π2, gr2, fs2, hbkN, hp2, hinj2, hsur2, hcnt2, hg2, -, hrow2⟩ := group_rows hbs hbasc hbseen
+    have hK : k.toUSize.toNat = k := USize.toNat_ofNat_of_lt' (by omega)
+    have hbK : bk.toUSize.toNat = bk := USize.toNat_ofNat_of_lt' (by omega)
+    have hnU : r.n.toUInt64 = r.n.toNat.toUInt64 := UInt64.toNat_inj.mp (by simp <;> omega)
+    ------------------------------------------------------------------ `Q`'s rows, `r`'s rows
+    have hQh : ∀ a, Q.Holds b (a, c) ↔ R.Holds a b ∧ S.Holds a c := fun a => by
+      rw [comp_holds hQ]
+      constructor
+      · rintro ⟨a', ⟨i, h1, h2⟩, ⟨j, h3, h4⟩⟩
+        obtain ⟨e1, e2⟩ := Prod.mk.inj (show (s.key.row j, s.val.row j) = (a, c) from h4)
+        exact ⟨(canon_holds hr a b).1 ⟨i, h2.trans (h3.symm.trans e1), h1⟩, (canon_holds hs a c).1 ⟨j, e1, e2⟩⟩
+      · rintro ⟨hab, hac⟩
+        obtain ⟨i, h1, h2⟩ := (canon_holds hr a b).2 hab
+        obtain ⟨j, h3, h4⟩ := (canon_holds hs a c).2 hac
+        exact ⟨a, ⟨i, h2, h1⟩, ⟨j, h3, show (s.key.row j, s.val.row j) = (a, c) by rw [h3, h4]⟩⟩
+    obtain ⟨U, hUc, -⟩ := comp_canon hQ
+    have hQd : ∀ i i' : Fin Q.n.toNat, Q.key.row i = Q.key.row i' → Q.val.row i = Q.val.row i' → i = i' :=
+      fun i i' e1 e2 => Classical.byContradiction fun hne => Tab.canon_distinct hUc hne (by rw [e1, e2])
+    have hrd : ∀ i i' : Fin r.n.toNat, r.key.row i = r.key.row i' → r.val.row i = r.val.row i' → i = i' :=
+      fun i i' e1 e2 => Classical.byContradiction fun hne => Tab.canon_distinct hr hne (by rw [e1, e2])
+    ------------------------------------------------------------------ the finite count
+    obtain ⟨P1, hP1⟩ : ∃ P : Nat → Bool, ∀ i, P i =
+        decide (∃ h : i < Q.n.toNat, Q.key.row ⟨i, h⟩ = b ∧ Q.val.2.row ⟨i, h⟩ = c) := ⟨_, fun _ => rfl⟩
+    obtain ⟨P2, hP2⟩ : ∃ P : Nat → Bool, ∀ i, P i = decide (∃ h : i < r.n.toNat, r.val.row ⟨i, h⟩ = b) :=
+      ⟨_, fun _ => rfl⟩
+    have hfin : (List.range Q.n.toNat).countP P1 = (List.range N.toNat).countP P2 ↔
+        ∀ a, R.Holds a b → S.Holds a c := by
+      obtain ⟨f1, hf1'⟩ : ∃ F : Nat → Option A.El, ∀ i,
+          F i = if h : i < Q.n.toNat then some (Q.val.1.row ⟨i, h⟩) else none := ⟨_, fun _ => rfl⟩
+      obtain ⟨f2, hf2'⟩ : ∃ F : Nat → Option A.El, ∀ i,
+          F i = if h : i < r.n.toNat then some (r.key.row ⟨i, h⟩) else none := ⟨_, fun _ => rfl⟩
+      have m1 : ∀ y, y ∈ ((List.range Q.n.toNat).filter P1).map f1 ↔ ∃ a, y = some a ∧ Q.Holds b (a, c) := by
+        intro y; simp only [List.mem_map, List.mem_filter, List.mem_range, hP1, decide_eq_true_eq]
+        constructor
+        · rintro ⟨i, ⟨hi, hi', h1, h2⟩, rfl⟩
+          rw [hf1', dif_pos hi]
+          exact ⟨_, rfl, ⟨i, hi⟩, h1, show (Q.val.1.row ⟨i, hi⟩, Q.val.2.row ⟨i, hi⟩) = _ by rw [h2]⟩
+        · rintro ⟨a, rfl, ⟨i, h1, h2⟩⟩
+          obtain ⟨e1, e2⟩ := Prod.mk.inj (show (Q.val.1.row i, Q.val.2.row i) = (a, c) from h2)
+          exact ⟨i.1, ⟨i.2, i.2, h1, e2⟩, by rw [hf1', dif_pos i.2]; exact congrArg some e1⟩
+      have m2 : ∀ y, y ∈ ((List.range N.toNat).filter P2).map f2 ↔ ∃ a, y = some a ∧ R.Holds a b := by
+        intro y; simp only [List.mem_map, List.mem_filter, List.mem_range, hP2, decide_eq_true_eq]
+        constructor
+        · rintro ⟨i, ⟨-, hi, h1⟩, rfl⟩
+          rw [hf2', dif_pos hi]; exact ⟨_, rfl, (canon_holds hr _ _).1 ⟨⟨i, hi⟩, rfl, h1⟩⟩
+        · rintro ⟨a, rfl, hab⟩
+          obtain ⟨i, h1, h2⟩ := (canon_holds hr a b).2 hab
+          exact ⟨i.1, ⟨by have := i.2; omega, i.2, h2⟩, by rw [hf2', dif_pos i.2]; exact congrArg some h1⟩
+      have d1 : (((List.range Q.n.toNat).filter P1).map f1).Nodup := by
+        refine List.pairwise_map.2 (List.Pairwise.imp_of_mem (fun {i i'} hi hi' hne e => hne ?_)
+          (List.Pairwise.filter P1 List.nodup_range))
+        simp only [List.mem_filter, List.mem_range, hP1, decide_eq_true_eq] at hi hi'
+        obtain ⟨-, hi, h1, h2⟩ := hi
+        obtain ⟨-, hi', h1', h2'⟩ := hi'
+        rw [hf1', hf1', dif_pos hi, dif_pos hi'] at e
+        have := hQd ⟨i, hi⟩ ⟨i', hi'⟩ (h1.trans h1'.symm)
+          (show (Q.val.1.row _, Q.val.2.row _) = (Q.val.1.row _, Q.val.2.row _) by rw [Option.some.inj e, h2, h2'])
+        exact congrArg Fin.val this
+      have d2 : (((List.range N.toNat).filter P2).map f2).Nodup := by
+        refine List.pairwise_map.2 (List.Pairwise.imp_of_mem (fun {i i'} hi hi' hne e => hne ?_)
+          (List.Pairwise.filter P2 List.nodup_range))
+        simp only [List.mem_filter, List.mem_range, hP2, decide_eq_true_eq] at hi hi'
+        obtain ⟨-, hi, h1⟩ := hi
+        obtain ⟨-, hi', h1'⟩ := hi'
+        rw [hf2', hf2', dif_pos hi, dif_pos hi'] at e
+        exact congrArg Fin.val (hrd ⟨i, hi⟩ ⟨i', hi'⟩ (Option.some.inj e) (h1.trans h1'.symm))
+      have sub : ((List.range Q.n.toNat).filter P1).map f1 ⊆ ((List.range N.toNat).filter P2).map f2 :=
+        fun y hy => by obtain ⟨a, rfl, hq⟩ := (m1 y).1 hy; exact (m2 _).2 ⟨a, rfl, ((hQh a).1 hq).1⟩
+      have := nodup_length_eq_iff d1 d2 sub
+      simp only [List.length_map] at this
+      rw [List.countP_eq_length_filter, List.countP_eq_length_filter, this]
+      constructor
+      · intro hs a hab
+        obtain ⟨a', e, hq⟩ := (m1 _).1 (hs ((m2 _).2 ⟨a, rfl, hab⟩))
+        cases e; exact ((hQh a).1 hq).2
+      · intro hall y hy
+        obtain ⟨a, rfl, hab⟩ := (m2 y).1 hy
+        exact (m1 _).2 ⟨a, rfl, (hQh a).2 ⟨hab, hall a hab⟩⟩
+    ------------------------------------------------------------------ the words of `cnt`, `d`, `eqc`
+    have hcntw : ∀ G < k, (raw .i64 k.toUSize cnt)[G]?.getD 0 =
+        ((List.range Q.n.toNat).countP fun q => gr1 q == G && true).toUInt64 :=
+      fun G hG => scatter_add_count hcnt gr1 (fun _ => true) (fun q hq => (hg1 q hq).1)
+        (fun q hq => by have := (hg1 q hq).2; omega) (fun q hq => by rw [colConst_raw hc1]; simp [hq]) G (by omega)
+    have hcntG : ∀ G < k, ∀ h : π1 (fs1 G) < Q.n.toNat, Q.key.row ⟨_, h⟩ = b → Q.val.2.row ⟨_, h⟩ = c →
+        ((List.range Q.n.toNat).countP fun q => gr1 q == G && true) = (List.range Q.n.toNat).countP P1 := by
+      intro G hG h hb hc
+      rw [← hcnt1 P1]
+      refine List.countP_congr fun q hq => ?_
+      have hq := List.mem_range.1 hq
+      obtain ⟨-, hfn, hfg⟩ := hf1 G hG
+      have e := hrow1 q hq (fs1 G) hfn
+      rw [hfg] at e
+      simp only [Bool.and_true, beq_iff_eq, hP1, decide_eq_true_eq]
+      rw [e]
+      constructor
+      · intro hr'
+        obtain ⟨e1, e2⟩ := Prod.mk.inj (show (Q.key.row _, Q.val.2.row _) = (Q.key.row _, Q.val.2.row _) from
+          hr' (hp1 q hq).2 h)
+        exact ⟨(hp1 q hq).2, e1.trans hb, e2.trans hc⟩
+      · rintro ⟨h', e1, e2⟩ h1 h2
+        show (Q.key.row _, Q.val.2.row _) = (Q.key.row _, Q.val.2.row _)
+        rw [e1, e2, hb, hc]
+    have hltw : ∀ q < N.toNat, (raw .i64 N lt)[q]?.getD 0 = if decide (π2 q < r.n.toNat) then 1 else 0 :=
+      fun q hq => by
+        have e := (colMap_raw hlt).2.2.2 q hq
+        rw [(hp2 q hq).1, colConst_raw hcn, Array.getElem?_replicate, if_pos hq, Option.getD_some, hnU,
+          eval_lt_nat (by have := (hp2 q hq).2; omega) (by omega), Except.ok.injEq] at e
+        rw [← e]; simp
+    have hqw : ∀ G < k, (raw .i64 k.toUSize q)[G]?.getD 0 = (π1 (fs1 G)).toUInt64 := fun G hG => by
+      obtain ⟨hfw, hfn, -⟩ := hf1 G hG
+      rw [(kgather_word hq G (by omega)).2, hfw, toNat_toUInt64 (by omega), (hp1 _ hfn).1]
+    have hdG : ∀ G < k, ∀ h : π1 (fs1 G) < Q.n.toNat, Q.key.row ⟨_, h⟩ = b →
+        (raw .i64 k.toUSize d)[G]?.getD 0 = ((List.range N.toNat).countP P2).toUInt64 := by
+      intro G hG h hb
+      have hqaw : (raw .i64 k.toUSize qa)[G]?.getD 0 = (r.n.toNat + π1 (fs1 G)).toUInt64 := by
+        have e := (colMap_raw hqa).2.2.2 G (by omega)
+        rw [hqw G hG, colConst_raw hck, Array.getElem?_replicate, if_pos (by omega), Option.getD_some] at e
+        simp only [Op.eval, Except.ok.injEq] at e
+        rw [← e, hnU, ← UInt64.ofNat_add, Nat.add_comm]
+      obtain ⟨q2, hq2, hpq2⟩ := hsur2 (r.n.toNat + π1 (fs1 G)) (by omega)
+      have hcqw : (raw .i64 k.toUSize cq)[G]?.getD 0 = (gr2 q2).toUInt64 := by
+        rw [(kgather_word hcq G (by omega)).2, hqaw, toNat_toUInt64 (by omega), ← hpq2,
+          scatter_last_at hcode π2 (fun q hq => (hp2 q hq).1) (fun q hq => (hp2 q hq).2) hinj2 q2 hq2,
+          (hg2 q2 hq2).1]
+      have hgq := (hg2 q2 hq2).2
+      rw [(kgather_word hd G (by omega)).2, hcqw, toNat_toUInt64 (by omega),
+        scatter_add_count hcR gr2 (fun q => decide (π2 q < r.n.toNat)) (fun q hq => (hg2 q hq).1)
+          (fun q hq => by have := (hg2 q hq).2; omega) hltw (gr2 q2) (by omega), ← hcnt2 P2]
+      have hz2 : ∀ h2 : π2 q2 < N.toNat, z.row ⟨_, h2⟩ = b := fun h2 => by
+        rw [hzr, dif_neg (show ¬ π2 q2 < r.n.toNat by omega)]
+        have : (⟨π2 q2 - r.n.toNat, by omega⟩ : Fin Q.n.toNat) = ⟨π1 (fs1 G), h⟩ := Fin.ext (by simp only; omega)
+        rw [this]; exact hb
+      congr 1
+      refine List.countP_congr fun q' hq' => ?_
+      have hq' := List.mem_range.1 hq'
+      have e := hrow2 q' hq' q2 hq2
+      rw [hP2]
+      rw [Bool.eq_iff_iff]
+      simp only [Bool.and_eq_true, beq_iff_eq, decide_eq_true_eq, e, iff_true]
+      constructor
+      · rintro ⟨hr', hl⟩
+        have hzq : z.row ⟨π2 q', (hp2 q' hq').2⟩ = r.val.row ⟨π2 q', hl⟩ := by rw [hzr, dif_pos hl]
+        exact ⟨hl, hzq.symm.trans ((hr' (hp2 q' hq').2 (hp2 q2 hq2).2).trans (hz2 _))⟩
+      · rintro ⟨hl, hv⟩
+        have hzq : z.row ⟨π2 q', (hp2 q' hq').2⟩ = r.val.row ⟨π2 q', hl⟩ := by rw [hzr, dif_pos hl]
+        exact ⟨fun h1 h2 => by rw [hz2 h2]; exact hzq.trans hv, hl⟩
+    -- `Op.eval .eq` is `if a == x then 1 else 0` by definition (its `w` is private to `Rel.Kernel.Op`)
+    have heqe : ∀ G < k, Except.ok (if (raw .i64 k.toUSize cnt)[G]?.getD 0 == (raw .i64 k.toUSize d)[G]?.getD 0
+        then (1 : UInt64) else 0) = (.ok ((raw .i64 k.toUSize eqc)[G]?.getD 0) : Except String UInt64) :=
+      fun G hG => (colMap_raw heqc).2.2.2 G (by omega)
+    have hb2 : ∀ G < k, (raw .i64 k.toUSize eqc)[G]?.getD 0 < 2 := fun G hG => by
+      rw [← Except.ok.inj (heqe G hG)]; split <;> decide
+    have heqw : ∀ G < k, (raw .i64 k.toUSize eqc)[G]?.getD 0 ≠ 0 ↔
+        (raw .i64 k.toUSize cnt)[G]?.getD 0 = (raw .i64 k.toUSize d)[G]?.getD 0 := fun G hG => by
+      rw [← Except.ok.inj (heqe G hG)]
+      split
+      · exact ⟨fun _ => beq_iff_eq.1 ‹_›, fun _ => by decide⟩
+      · exact ⟨fun h' => absurd rfl h', fun e => absurd (beq_iff_eq.2 e) ‹_›⟩
+    have hsel := whereCol_spec hM (fun G hG => hb2 G (by omega))
+    have hsz := whereCol_size hM
+    have hcl : ∀ G < k, ((List.range Q.n.toNat).countP P1 : Nat).toUInt64 =
+        ((List.range N.toNat).countP P2 : Nat).toUInt64 ↔
+        (List.range Q.n.toNat).countP P1 = (List.range N.toNat).countP P2 := fun G _ => by
+      have := List.countP_le_length (p := P1) (l := List.range Q.n.toNat)
+      have := List.countP_le_length (p := P2) (l := List.range N.toNat)
+      simp only [List.length_range] at *
+      constructor
+      · intro e; have := congrArg UInt64.toNat e
+        rwa [toNat_toUInt64 (by omega), toNat_toUInt64 (by omega)] at this
+      · intro e; rw [e]
+    ------------------------------------------------------------------ the kept groups
+    constructor
+    · rintro ⟨j, hj1, hj2⟩
+      obtain ⟨i, hi, hxi⟩ := Vals.gather_row _ hX1 j
+      obtain ⟨i', hi', hyi⟩ := Vals.gather_row _ hY1 j
+      have e : i = i' := Fin.ext (by rw [← hi, hi'])
+      subst e
+      have hjM : j.1 < (raw .i64 M sel).size := by rw [hsz]; exact j.2
+      have hG := List.mem_map_of_mem (f := UInt64.toNat) (Array.getElem_mem_toList hjM)
+      rw [hsel, List.mem_filter, List.mem_range, decide_eq_true_eq] at hG
+      obtain ⟨hGk, hGne⟩ := hG
+      rw [hK] at hGk
+      have hixw := (kgather_word hix j.1 j.2).2
+      rw [Array.getElem?_eq_getElem hjM, Option.getD_some, hqw _ hGk] at hixw
+      generalize ((raw .i64 M sel)[j.1]'hjM).toNat = G at hGk hGne hixw
+      obtain ⟨-, hfn, -⟩ := hf1 G hGk
+      have hπ := (hp1 _ hfn).2
+      have ei : i = ⟨π1 (fs1 G), hπ⟩ := Fin.ext (by rw [← hi, hixw, toNat_toUInt64 (by omega)])
+      subst ei
+      have hb' : Q.key.row ⟨_, hπ⟩ = b := hxi.symm.trans hj1
+      have hc' : Q.val.2.row ⟨_, hπ⟩ = c := hyi.symm.trans hj2
+      have hall := hfin.1 ((hcl G hGk).1 (by
+        rw [← hcntG G hGk hπ hb' hc', ← hcntw G hGk, ← hdG G hGk hπ hb']; exact (heqw G hGk).1 hGne))
+      exact ⟨⟨_, ((hQh _).1 ⟨_, hb', show (Q.val.1.row _, Q.val.2.row _) = _ by rw [hc']⟩)⟩, hall⟩
+    · rintro ⟨⟨a0, hab, hac⟩, hall⟩
+      obtain ⟨i, h1, h2⟩ := (hQh a0).2 ⟨hab, hac⟩
+      obtain ⟨-, e2⟩ := Prod.mk.inj (show (Q.val.1.row i, Q.val.2.row i) = (a0, c) from h2)
+      obtain ⟨q0, hq0, hπq⟩ := hsur1 i.1 i.2
+      have hG := (hg1 q0 hq0).2
+      obtain ⟨-, hfn, hfg⟩ := hf1 (gr1 q0) hG
+      have hπ := (hp1 _ hfn).2
+      have hrr := (hrow1 (fs1 (gr1 q0)) hfn q0 hq0).1 hfg hπ (hp1 _ hq0).2
+      obtain ⟨eb, ec⟩ := Prod.mk.inj (show (Q.key.row _, Q.val.2.row _) = (Q.key.row _, Q.val.2.row _) from hrr)
+      have hfi : (⟨π1 q0, (hp1 _ hq0).2⟩ : Fin Q.n.toNat) = i := Fin.ext hπq
+      rw [hfi] at eb ec
+      have hb' : Q.key.row ⟨_, hπ⟩ = b := eb.trans h1
+      have hc' : Q.val.2.row ⟨_, hπ⟩ = c := ec.trans e2
+      have hne : (raw .i64 k.toUSize eqc)[gr1 q0]?.getD 0 ≠ 0 := (heqw _ hG).2 (by
+        rw [hcntw _ hG, hcntG _ hG hπ hb' hc', hdG _ hG hπ hb']; exact (hcl _ hG).2 (hfin.2 hall))
+      have hm : gr1 q0 ∈ (raw .i64 M sel).toList.map UInt64.toNat := by
+        rw [hsel, List.mem_filter, List.mem_range, decide_eq_true_eq, hK]; exact ⟨hG, hne⟩
+      obtain ⟨w, hw, hwi⟩ := List.mem_map.1 hm
+      obtain ⟨j, hj, rfl⟩ := List.getElem_of_mem hw
+      have hj' : j < (raw .i64 M sel).size := by simpa using hj
+      have hjM : j < M.toNat := by rw [← hsz]; exact hj'
+      simp only [Array.getElem_toList] at hwi
+      have hixw := (kgather_word hix j hjM).2
+      rw [Array.getElem?_eq_getElem hj', Option.getD_some, hwi, hqw _ hG] at hixw
+      obtain ⟨i1, hi1, hx1⟩ := Vals.gather_row _ hX1 ⟨j, hjM⟩
+      obtain ⟨i2, hi2, hy2⟩ := Vals.gather_row _ hY1 ⟨j, hjM⟩
+      have e1 : i1 = ⟨_, hπ⟩ := Fin.ext (by rw [← hi1, hixw, toNat_toUInt64 (by omega)])
+      have e2 : i2 = ⟨_, hπ⟩ := Fin.ext (by rw [← hi2, hixw, toNat_toUInt64 (by omega)])
+      subst e1 e2
+      exact ⟨⟨j, hjM⟩, hx1.trans hb', hy2.trans hc'⟩
+  have hD : (∃ i, df.key.row i = b) ↔ (∃ b', UB.Holds b' b) ∧ ¬∃ a, R.Holds a b := by
+    constructor
+    · rintro ⟨i, rfl⟩
+      have h1 := (diff_holds hdf _ _).1 ⟨i, rfl, rfl⟩
+      obtain ⟨e, hb⟩ := (ran_holds hub _ _).1 h1.1
+      rw [← e] at h1
+      exact ⟨hb, fun ha => h1.2 ((ran_holds hrr _ _).2 ⟨rfl, ha⟩)⟩
+    · rintro ⟨hb, hn⟩
+      obtain ⟨i, h1, -⟩ := (diff_holds hdf b b).2
+        ⟨(ran_holds hub b b).2 ⟨rfl, hb⟩, fun h' => hn ((ran_holds hrr b b).1 h').2⟩
+      exact ⟨i, h1⟩
+  have hU : (∃ j, uc.key.row j = c) ↔ ∃ c', UC.Holds c' c := by
+    constructor
+    · rintro ⟨j, rfl⟩
+      obtain ⟨e, hc⟩ := (ran_holds huc _ _).1 ⟨j, rfl, rfl⟩
+      exact hc
+    · intro hc
+      obtain ⟨j, h1, -⟩ := (ran_holds huc c c).2 ⟨rfl, hc⟩
+      exact ⟨j, h1⟩
+  show _ ↔ (∀ a, R.Holds a b → S.Holds a c) ∧ ((∃ a, R.Holds a b) ∨ ((∃ b', UB.Holds b' b) ∧ ∃ c', UC.Holds c' c))
+  rw [show (⟨M, X1, Y1⟩ : Tab B C).Holds b c ↔ _ from hP, hD, hU]
+  by_cases hb : ∃ a, R.Holds a b
+  · constructor
+    · rintro (⟨-, hall⟩ | ⟨⟨-, hn⟩, -⟩)
+      · exact ⟨hall, Or.inl hb⟩
+      · exact absurd hb hn
+    · rintro ⟨hall, -⟩
+      obtain ⟨a, ha⟩ := hb
+      exact Or.inl ⟨⟨a, ha, hall a ha⟩, hall⟩
+  · constructor
+    · rintro (⟨⟨a, ha, -⟩, -⟩ | ⟨⟨hb', -⟩, hc'⟩)
+      · exact absurd ⟨a, ha⟩ hb
+      · exact ⟨fun a ha => absurd ⟨a, ha⟩ hb, Or.inr ⟨hb', hc'⟩⟩
+    · rintro ⟨-, (ha | ⟨hb', hc'⟩)⟩
+      · exact absurd ha hb
+      · exact Or.inr ⟨⟨hb', hb⟩, hc'⟩
+
+/-- **`rdiv` holds as `rdivDen`**: it is `ldiv` of the two converses, conversed (`R / S = (S° \ R°)°`). -/
+theorem Tab.rdiv_holds {A B C : Obj} {R : Tab A C} {S : Tab B C} {UA : Tab A A} {UB : Tab B B} {T : Tab A B}
+    (h : Tab.rdiv R S UA UB = .ok T) (a : A.El) (b : B.El) :
+    T.Holds a b ↔ Lang.rdivDen R.Holds S.Holds UA.Holds UB.Holds a b := by
+  unfold Tab.rdiv at h
+  simp only [bind] at h
+  rw [Except.bind_eq_ok'] at h; obtain ⟨S', hS, h⟩ := h
+  rw [Except.bind_eq_ok'] at h; obtain ⟨R', hR, h⟩ := h
+  rw [Except.bind_eq_ok'] at h; obtain ⟨L, hL, h⟩ := h
+  rw [conv_holds h, ldiv_holds hL]
+  simp only [Lang.ldivDen, Lang.rdivDen, conv_holds hS, conv_holds hR, and_comm (a := ∃ b', UB.Holds b' b)]
+
 /-! ## Checks on `foR` tables -/
 
 section Checks
