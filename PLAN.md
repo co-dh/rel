@@ -485,6 +485,24 @@ Diff table 的「状态」列：✅ 后面是完成它的步骤；🔄 是部分
       未证）、`t10a`（编译器只发射 `GenK.*`；`rel.kernel` 开关、`*Old` 对照、全部固定、`RelRep.lean` 删除）。RELK 仍 80：
       旧层由 plan 路径四个文件的 import（`Rel.Run.Code`、`GenSpec`）保持存活。在做：分支 `t10b` 切断这些 import，删旧层
       与对应 Rust，RELK → 11；并删无 kernel 实现也无程序使用的 prim `asc distinct tic`。
+      状态（2026-11-19 18:23，master `22c1940`，未变；`t10b` `ba2cedf` 未合入）：`t10b` 删 99 个模块、1519 条定理与 prim
+      `asc distinct tic`，各 gate 在其 worktree 通过，但 RELK 仍 80：旧 export 在 `Rel/Kernel` 之外的直接调用者是保留的
+      核心 `Rel.Run.Code`（37 个 export）、`Rel.Run.Core`（11）、`Rel.Run.Alg`（8），经它们 `Syntax.prims` 的行类型
+      （`prim% CRel.*`）、`Elab` 的字面量（`Alg.prod idU col emptyArr`）、`Den`、`Rep.rep`、`Lazy` 也依赖旧层。
+      审计（逐条按陈述引用的常量分类，`/data/tmp/t10b-audit/classes.tsv`）：564 条关于已删定义；352 条只关于现行路径
+      不可达的旧 `Alg.*` / `CRel.*`；301 条覆盖的旧代码仍在编译期运行（`showRel` → `Tab.nub` → `Alg.Code`）；100 条关于
+      现行定义，是误删（`convTm_den` 一组、`Hylo.rounds_lfp` 一组、`Tm.den_local` 等、`Enc.get` / `Enc.raw` 的读取
+      引理）；202 条通用辅助引理。删除前后都没有任何定理的陈述提到 `GenK`：`compile_sound` 说的是旧编译器 `Tm.gen`，
+      与生成代码的联系只由 compile-diff 测试。compile-diff 现在把生成代码的结果与冻结的 baseline 比，是回归固定，
+      不再有独立对照。owner 2026-11-19 选 A：补回误删后合入，接受上述两点为中间状态。
+      在做：分支 `t10c`（在 `t10b` 之上）恢复 `ConvSpec`、Hylo 理论、denotation 引理、读取引理，删无调用者的
+      `bit_rows_over`、`structural_enlist`（RELK → 78），改正 compile-diff 的描述。
+      之后 T10d：把 `Syntax.prims` 的行类型、`Elab` 字面量、`Den`、`Rep.rep`、`Lazy` 改到 `Tab` 上，重写 `Run.Core` 的
+      11 处，删 `Code`、`Alg`、`CRel*Def`、旧 kernel 与其 Rust，RELK → 11；合入后在 main 重生成 compile-diff baseline
+      与 `panic-allow.txt`，改 CLAUDE.md 的 Layout（`KernelWF`、`CRel*` law 已不存在）。
+      欠的证明：`GenK.*` 组合子与 `Tm` denotation 之间没有定理；`Tab.arith bitsMax compTabMat keepBits foldRounds mu
+      nu peelL peelR atPos est thin`、`kernRows` 的行、plan 的 `groupIdsB arithB whereB` 无定理；compile-diff 需要一个以
+      denotation 为准的独立对照才重新成为检查。
     - W3 留给后面的风险（清单 agent 提出，均未验证）：计数做 `\` 会物化 join（最多 `|R|·|S|` 行），SudokuPC9、
       blocks 可能超内存；规范序从 `Obj.lt` 变成 `kasc` 序码，打印的期望值与 `out/key`、`out/val` 可能变；
       `coc_block_start`、`coc_bools_of`、`structural_bits_of_for` 与 `Plan.abi` 点名的 12 个 export 在 W5 后仍有
