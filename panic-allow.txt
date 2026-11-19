@@ -1,14 +1,4 @@
 Rel.Alg.shift_elem
-Rel.Alg.valStep_add_sub
-Rel.Alg.valStep_clamp
-Rel.Alg.valStep_fill
-Rel.Alg.valStep_int
-Rel.Alg.valStep_key
-Rel.Alg.valStep_max
-Rel.Alg.valStep_min_max
 Rel.Kernel.Ew.bitStep
 Rel.Kernel.Ew.intStep
 Rel.Kernel.Ew.monStep
-Rel.KernelWF.lesser_get
-Rel.KernelWF.valStep_divmod
-Rel.Rep.intStep_add
