@@ -4,6 +4,8 @@ import Rel.Run.Comp
 import Rel.Run.Struct
 import Rel.Run.Power
 import Rel.Run.List
+import Rel.Run.Div
+import Rel.Run.Fix
 
 /-! The kernel path: the `Gen` bodies a program runs when every node of its terms has one here (`Tm.onKernel`),
     each a composition of the `Tab` operators over the five kernels, with `Gen`'s signature so `Expand` emits
@@ -76,6 +78,38 @@ def diff (A B : Obj) (d e : Bool) (R : Fn d A B) (S : Fn e A B) : Fn (d || e) A 
 def dom (A B : Obj) (d : Bool) (R : Fn d A B) : Fn d A A := lift1 Tab.dom (fun K => ⟨K.dom, none⟩) R
 def ran (A B : Obj) (R : Fn false A B) : Fn false B B := lift1 Tab.ran (fun K => ⟨none, K.dom⟩) R
 
+/-! ### T3: `⊤ π₁ π₂ ⟨R,S⟩ × \ /`, `ν`, `μ` -/
+
+/-- `r` cut to the values `K` knows of its sides, `idU X ≫ r ≫ idU L`, a side left whole where it is unknown. -/
+def cut {A B : Obj} (K : Known A B) (r : Tab A B) : Except String (Tab A B) := do
+  let l ← match K.dom with | some c => do (← Tab.idU c.2).comp r | none => pure r
+  match K.ran with | some c => do l.comp (← Tab.idU c.2) | none => pure l
+
+/-- `X × L`: the known domain values by `V`'s values cut to the known range. -/
+def top (A B : Obj) (V : Fn false B B) : Fn true A B := .lazy fun K => match K.dom with
+  | none => .tab (.error "⊤ ran with its domain unknown")
+  | some c => .tab do Tab.top c.2 (← cut ⟨none, K.ran⟩ (← V.runE {})).val
+def outl (A B : Obj) : Fn true (.prod A B) A := ofVals _ _ fun X => Tab.outl X
+def outr (A B : Obj) : Fn true (.prod A B) B := ofVals _ _ fun X => Tab.outr X
+def pair (A B C : Obj) (d e : Bool) (R : Fn d A B) (S : Fn e A C) : Fn (d || e) A (.prod B C) :=
+  lift2 Tab.pair (fun K => ⟨K.dom, none⟩) (fun K => ⟨K.dom, none⟩) R S
+def prod (A B C D : Obj) (R : Fn false A B) (S : Fn false C D) : Fn false (.prod A C) (.prod B D) :=
+  lift2 Tab.prod (fun _ => {}) (fun _ => {}) R S
+/-- `R/S` and `R\S` read both sides whole, with the universes `UA`, `UB` (`UB`, `UC`); `ldiv` takes tables where
+    `Gen.ldivB` takes plans, since the kernel path has no bit matrix. -/
+def rdiv (A B C : Obj) (R : Fn false A C) (S : Fn false B C) (UA : Fn false A A) (UB : Fn false B B) :
+    Fn false A B :=
+  lift2 (fun r s => do Tab.rdiv r s (← UA.runE {}) (← UB.runE {})) (fun _ => {}) (fun _ => {}) R S
+def ldiv (A B C : Obj) (R : Fn false A B) (S : Fn false A C) (UB : Fn false B B) (UC : Fn false C C) :
+    Fn false B C :=
+  lift2 (fun r s => do Tab.ldiv r s (← UB.runE {}) (← UC.runE {})) (fun _ => {}) (fun _ => {}) R S
+
+/-- `νX : S ∩ φ` by plain rounds (`Tab.nu`), no AC-3 delta rounds; `μX : φ` (`Tab.mu`), at most `cap` rounds. -/
+def nu (A B : Obj) (S : Fn false A B) (φ : Tab A B → Fn false A B) : Fn false A B :=
+  .tab do Tab.nu (fun X => (φ X).runE {}) (← S.runE {})
+def mu (A B : Obj) (cap : Nat) (φ : Tab A B → Fn false A B) : Fn false A B :=
+  .tab (Tab.mu cap fun X => (φ X).runE {})
+
 end GenK
 
 /-- The rows of `prims` with a kernel body: each row's `Tab` operator, run under the `GenK` twin of the wrapper its
@@ -90,7 +124,7 @@ def kernRows : List (String × Lean.Name) :=
 #guard kernRows.all fun (s, _) => prims.any (·.sym == s)
 
 /-- `t`'s own node has a kernel body (`GenK`): T2's `val uni 𝟘 𝟙 ° ≫ ∩ ∪ − dom ran`, and `own`, which runs its
-    part. -/
+    part; a `var`, bound to a table or a parameter's code; an `arg`, whose head decides (a `call` or a row). -/
 def Tm.kernelNode {A B : Obj} : Tm A B → Bool
   | .val _ | .uni _ | .zero | .id | .comp .. | .conv _ | .meet .. | .join .. | .diff .. | .dom _ | .ran _
   | .own _ => true
@@ -105,13 +139,30 @@ def Tm.kernelNode {A B : Obj} : Tm A B → Bool
   | .thin _ => true
   | .atPos _ => true
   | .prim r => (kernRows.lookup r.sym).isSome
+  | .top _ => true
+  | .outl => true
+  | .outr => true
+  | .pair .. => true
+  | .prod .. => true
+  | .ldiv .. => true
+  | .rdiv .. => true
+  | .nu .. => true
+  | .mu .. => true
+  | .var .. => true
+  | .arg .. => true
   | _ => false
 
-/-- Every node of `t` has a kernel body: the test that puts a program on the kernel path. A `share` is entered
-    here, though `Tm.parts` does not enter it. -/
-partial def Tm.onKernel {A B : Obj} (t : Tm A B) : Bool := match t with
-  | .share _ R => R.onKernel
-  | t => t.kernelNode && t.parts.all fun ⟨_, _, u⟩ => u.onKernel
+/-- The nodes of `t` with no kernel body, each as its constructor's index (`Tm.ctorIdx`) and, for a `call`, its
+    constant: a call has one where `twin` says its constant has a kernel twin (`Expand.emit` builds one for a
+    definition whose body is on the kernel path). A `share` is entered here, though `Tm.parts` does not enter it. -/
+partial def Tm.offKernel (twin : Lean.Name → Bool) {A B : Obj} (t : Tm A B) : List (Nat × Lean.Name) :=
+  match t with
+  | .share _ R => R.offKernel twin
+  | .call _ c .. => if twin c then [] else [(t.ctorIdx, c)]
+  | t => (if t.kernelNode then [] else [(t.ctorIdx, .anonymous)]) ++ t.parts.flatMap fun ⟨_, _, u⟩ => u.offKernel twin
+
+/-- Every node of `t` has a kernel body: the test that puts a program on the kernel path. -/
+def Tm.onKernel (twin : Lean.Name → Bool) {A B : Obj} (t : Tm A B) : Bool := (t.offKernel twin).isEmpty
 
 /-! ### T4, T5: `≤ < succ`, the value verbs, `Λ E nil est thin at`, and the wrapper `after` of the rows -/
 
