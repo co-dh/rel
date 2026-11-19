@@ -579,7 +579,7 @@ theorem expand_spec {K T : USize} {w G u : Enc} (h : expand K w = .ok (T, G, u))
 theorem Tab.compOne_canon {A B C : Obj}
     {R : Tab A B} {S : Tab B C} {T : Tab A C} (h : R.compOne S = .ok T) :
     ∃ U : Tab A C, U.canon = .ok T ∧ ∀ a c, U.Holds a c ↔ ∃ b, R.Holds a b ∧ S.Holds b c := by
-  rw [Tab.compOne, Except.bind_eq_ok'] at h; obtain ⟨x, hx, h⟩ := h
+  rw [Tab.compOne] at h; simp only [bind] at h; rw [Except.bind_eq_ok'] at h; obtain ⟨x, hx, h⟩ := h
   dsimp only [Tab.compGroups] at hx
   split at hx; · cases hx
   rename_i hnm
@@ -880,7 +880,7 @@ theorem foldlM_union {k v : Obj} {f : Nat → Except String (Tab k v)} :
   | [], acc, T, h => by
     simp only [List.foldlM_nil, pure, Except.pure, Except.ok.injEq] at h; subst h; simp
   | j :: L, acc, T, h => by
-    rw [List.foldlM_cons, Except.bind_eq_ok'] at h; obtain ⟨acc', h1, h2⟩ := h
+    rw [List.foldlM_cons] at h; simp only [bind] at h; rw [Except.bind_eq_ok'] at h; obtain ⟨acc', h1, h2⟩ := h
     rw [Except.bind_eq_ok'] at h1; obtain ⟨X, hX, hu⟩ := h1
     obtain ⟨hL, h0, hc, hH⟩ := foldlM_union L acc' T h2
     refine ⟨fun i hi => ?_, by simp, fun _ => ?_, fun a b => ?_⟩
@@ -906,7 +906,7 @@ theorem compBlock_holds {R : Tab A B} {S : Tab B C} {c : Enc} {j : Nat} {X : Tab
     (h : compBlock R S c j = .ok X) (a : A.El) (d : C.El) :
     X.Holds a d ↔ ∃ b, (∃ i : Fin R.n.toNat, (raw .i64 R.n c)[i.1]?.getD 0 = j.toUInt64 ∧ R.key.row i = a ∧
       R.val.row i = b) ∧ S.Holds b d := by
-  unfold compBlock at h
+  unfold compBlock at h; simp only [bind] at h
   rw [Except.bind_eq_ok'] at h; obtain ⟨e, he, h⟩ := h
   rw [Except.bind_eq_ok'] at h; obtain ⟨m, hm, h⟩ := h
   rw [Except.bind_eq_ok'] at h; obtain ⟨Rj, hRj, h⟩ := h
@@ -917,7 +917,7 @@ theorem compBlock_holds {R : Tab A B} {S : Tab B C} {c : Enc} {j : Nat} {X : Tab
     have e2 : Op.eval .eq ((raw .i64 R.n c)[i]?.getD 0) j.toUInt64 =
         .ok (if (raw .i64 R.n c)[i]?.getD 0 = j.toUInt64 then 1 else 0) := by
       show Except.ok (if ((raw .i64 R.n c)[i]?.getD 0 == j.toUInt64) = true then 1 else 0) = _; simp
-    rw [e2] at e1; cases e1; rfl
+    rw [e2] at e1; exact (Except.ok.inj e1).symm
   obtain ⟨U, hU, hH⟩ := compOne_canon h
   rw [canon_holds hU, hH]
   refine exists_congr fun b => and_congr_left fun _ => ?_
@@ -934,6 +934,7 @@ theorem compBlocks_canon {R : Tab A B} {S : Tab B C} {nb : Nat} {bid : Arr .i64 
   split at h; · cases h
   rename_i hnb
   simp only [bind] at h
+  rw [Except.bind_eq_ok'] at h; obtain ⟨_, -, h⟩ := h
   rw [Except.bind_eq_ok'] at h; obtain ⟨c, hc, h⟩ := h
   rw [Except.bind_eq_ok'] at h; obtain ⟨T0, h0, h⟩ := h
   obtain ⟨hL, hnil, hcan, hH⟩ := foldlM_union (f := fun j => compBlock R S c.enc (j + 1)) _ _ _ h
@@ -941,7 +942,8 @@ theorem compBlocks_canon {R : Tab A B} {S : Tab B C} {nb : Nat} {bid : Arr .i64 
   have hj : ∀ i : Fin R.n.toNat, ∃ j ≤ nb - 1, (raw .i64 R.n c.enc)[i.1]?.getD 0 = j.toUInt64 := fun i => by
     have e := Arr.clampShift_get (by simp; omega) hc i
     rw [Arr.get_i64 c] at e
-    simp only [UInt64.toNat_zero, Nat.cast_zero, add_zero] at e
+    have h00 : ((0 : UInt64).toNat : Int) = 0 := rfl
+    rw [h00, Int.add_zero] at e
     have hn := toInt64_nonneg (x := (raw .i64 R.n c.enc)[i.1]?.getD 0) (by rw [e]; omega)
     refine ⟨((raw .i64 R.n c.enc)[i.1]?.getD 0).toNat, ?_, by simp⟩
     have : ((nb - 1).toUInt64.toNat : Int) = (nb - 1 : Nat) := by rw [toNat_toUInt64 (by omega)]
@@ -961,7 +963,11 @@ theorem compBlocks_canon {R : Tab A B} {S : Tab B C} {nb : Nat} {bid : Arr .i64 
         rw [hji, Nat.sub_add_cancel hpos]
   by_cases hL0 : List.range (nb - 1) = []
   · obtain rfl := hnil hL0
-    obtain ⟨U, hU, -⟩ := compOne_canon (by unfold compBlock at h0; exact h0)
+    have h0' := h0; unfold compBlock at h0'; simp only [bind] at h0'
+    rw [Except.bind_eq_ok'] at h0'; obtain ⟨_, -, h0'⟩ := h0'
+    rw [Except.bind_eq_ok'] at h0'; obtain ⟨_, -, h0'⟩ := h0'
+    rw [Except.bind_eq_ok'] at h0'; obtain ⟨_, -, h0'⟩ := h0'
+    obtain ⟨U, hU, -⟩ := compOne_canon h0'
     exact ⟨U, hU, fun a d => by rw [← hR, canon_holds hU]⟩
   · obtain ⟨U, hU⟩ := hcan hL0
     exact ⟨U, hU, fun a d => by rw [← hR, canon_holds hU]⟩
@@ -973,7 +979,7 @@ theorem comp_canon {bound : Nat} {R : Tab A B} {S : Tab B C} {T : Tab A C} (h : 
   unfold compWith at h
   split at h
   · exact compOne_canon h
-  · rw [Except.bind_eq_ok'] at h; obtain ⟨x, hx, h⟩ := h
+  · simp only [bind] at h; rw [Except.bind_eq_ok'] at h; obtain ⟨x, hx, h⟩ := h
     rw [Except.bind_eq_ok'] at h; obtain ⟨o, -, h⟩ := h
     rcases o with _ | ⟨nb, bid⟩
     · exact compOne_canon (by rw [compOne, hx]; exact h)
