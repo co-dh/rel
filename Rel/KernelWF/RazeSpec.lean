@@ -134,37 +134,21 @@ theorem alpBits_starts (md pk a : ByteArray) (i : Nat) :
   unfold Column.alpBits; rw [foRBits_starts]
 
 /-- **An element of a payload's dense decode is the payload's element**, at every well-formed payload of a type
-    with a width other than `boolean`: `.bytes` is itself, `.foR` decodes to `foRBits`' low `8w` bits
-    (`decodeW`), all `atomOfBits` reads (`atomOfBits_mod`), `.alp` to `alpBits` (`elemsW_alpDecode_alpBits`). -/
+    with a width other than `boolean`. -/
 theorem get_bytesOf {t : QAtomicType} {w : Nat} (hw : t.width = some w) (hb : t ≠ .u1) {n : USize}
     {e : Enc} (hwf : Enc.WF t n e) {b : ByteArray} (he : Enc.bytesOf t n e = some b) {i : Nat}
     (hi : i < n.toNat) : Enc.get (X := Empty) t n (.bytes b) i = Enc.get t n e i := by
+  -- both sides read `raw` (`get_eq_raw`), and `raw` of `e` is `elemsW` of its decode (`elemsW_bytesOf`), at
+  -- every encoding: no case split
   obtain ⟨b', hb', hs⟩ := bytesOf_size hb hw hwf
   rw [he, Option.some.injEq] at hb'; subst hb'
-  cases e
-  case bytes b' => simp only [Enc.bytesOf, Option.some.injEq] at he; subst he; rfl
-  case foR md pk =>
-    have hwu := toUSize_toNat_le8 (width_le8 hw)
-    simp only [Enc.bytesOf, hw, Option.map_some, Option.some.injEq] at he; subst he
-    have hd := (Verify.decodeW w.toUSize (by rw [hwu]; exact width_le8 hw) md pk n).2 i hi
-    rw [hwu] at hd
-    rw [get_bytes_eq hw hb _ hi, get_foR_eq hw hb _ _ hi, hd, foRBits_starts, Verify.atomOfBits_mod hw hb]
-  case alp md pk a =>
-    have hwu := toUSize_toNat_le8 (width_le8 hw)
-    have hw0 : 0 < w := by
-      cases t <;> simp only [QAtomicType.width, reduceCtorEq, Option.some.injEq] at hw <;> (try subst hw) <;> decide
-    have hesz : Column.alpEsz a = w := by
-      cases t <;> simp only [QAtomicType.width, reduceCtorEq, Option.some.injEq] at hw <;> (try subst hw) <;>
-        simp_all [Enc.WF, Column.alpEsz, QAtomicType.width]
-    simp only [Enc.bytesOf, hw, Option.map_some, Option.some.injEq] at he; subst he
-    have hel := Verify.elemsW_alpDecode_alpBits md pk a n w.toUSize (by rw [hwu, hesz])
-    rw [hwu] at hel
-    have h1 : i < (Verify.elemsW w (Coc.alpDecode w.toUSize md pk a n)).length := by
-      simp only [Verify.elemsW, List.length_map, List.length_range, hs, Nat.mul_div_cancel _ hw0]; exact hi
-    have hx := List.getElem_of_eq hel h1
-    simp only [Verify.elemsW, List.getElem_map, List.getElem_range] at hx
-    rw [get_bytes_eq hw hb _ hi, get_alp_eq hw hb _ _ _ hi, hx, alpBits_starts]
-  all_goals simp [Enc.bytesOf] at he
+  have hw0 : 0 < w := by
+    cases t <;> simp only [QAtomicType.width, reduceCtorEq, Option.some.injEq] at hw <;> (try subst hw) <;> decide
+  have hd : denseWidth t = some w := by cases t <;> simp_all [denseWidth, QAtomicType.width]
+  have hwfb := wf_bytes hb hw hs
+  rw [get_eq_raw hd hwfb hi, get_eq_raw hd hwf hi,
+    ← Verify.elemsW_bytesOf hw hb hw0 (width_le8 hw) n e hwf b he,
+    ← Verify.elemsW_bytesOf hw hb hw0 (width_le8 hw) n (.bytes b) hwfb b rfl]
 
 /-- A column's list is its elements read off its dense decode `Enc.bytesOf`, at every encoding. -/
 theorem toList_bytesOf {t : QAtomicType} {w : Nat} (hw : t.width = some w) (hb : t ≠ .u1) {n : USize}
