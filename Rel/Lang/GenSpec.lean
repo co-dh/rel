@@ -350,6 +350,17 @@ theorem distinct_sound {B : Obj} :
     obtain ⟨Y, hY⟩ := (h2 xs).2 hx
     rwa [e, ← (h1 xs Y hY).2]
 
+/-- `elems`' relation run on the elements of the arrays in demand: at every element of a key `xs`, `TR`. -/
+theorem elems_at {B C : Obj} {d : Bool} {R : Fn d B C} {TR : Den B C} (hR : Sound R TR) (D : Tab (.arr B) (.arr B))
+    (hk : (CRel.ran (CRel.mem D.val)).ok = true) (hr : (R.at (Dem.of d (CRel.ran (CRel.mem D.val)).rel)).ok = true)
+    {xs : (Obj.arr B).El} (hx : rep D xs xs) : ∀ x ∈ xs, ∀ y,
+      rep (R.at (Dem.of d (CRel.ran (CRel.mem D.val)).rel)).rel x y ↔ TR x y :=
+  fun x hin y => by
+    have hK := CRel.rep_ran _ hk
+    have h1 : rep (CRel.mem D.val).rel xs x := (CRel.rep_mem _ (CRel.guard_ok_left hk) xs x).2 ⟨keyRow hx, hin⟩
+    have hs := atKeys hR _ (fun a b h => ((ran_iff _ a b).1 (hK ▸ h)).1) hr
+    exact hs x y (hK ▸ (ran_iff _ x x).2 ⟨rfl, xs, h1, h1⟩)
+
 open Classical in
 /-- `elems`' relation run on the elements of the arrays in demand: at every element of a key `xs`, its test (some
     `y` related) is `TR`'s. -/
@@ -357,11 +368,7 @@ theorem elems_test {B C : Obj} {d : Bool} {R : Fn d B C} {TR : Den B C} (hR : So
     (hk : (CRel.ran (CRel.mem D.val)).ok = true) (hr : (R.at (Dem.of d (CRel.ran (CRel.mem D.val)).rel)).ok = true)
     {xs : (Obj.arr B).El} (hx : rep D xs xs) : ∀ x ∈ xs,
       decide (∃ y, rep (R.at (Dem.of d (CRel.ran (CRel.mem D.val)).rel)).rel x y) = decide (∃ y, TR x y) :=
-  fun x hin => by
-    have hK := CRel.rep_ran _ hk
-    have h1 : rep (CRel.mem D.val).rel xs x := (CRel.rep_mem _ (CRel.guard_ok_left hk) xs x).2 ⟨keyRow hx, hin⟩
-    have hs := atKeys hR _ (fun a b h => ((ran_iff _ a b).1 (hK ▸ h)).1) hr
-    exact decide_eq_decide.2 (exists_congr fun y => hs x y (hK ▸ (ran_iff _ x x).2 ⟨rfl, xs, h1, h1⟩))
+  fun x hin => decide_eq_decide.2 (exists_congr (elems_at hR D hk hr hx x hin))
 
 open Classical in
 /-- `filter(R)` keeps the elements `TR` relates to something. -/
@@ -870,9 +877,22 @@ theorem ldivB_sound {A B C : Obj} {R : Pl false A B} {S : Pl false A C} {UB : Fn
     (hB : Sound UB TB) (hC : Sound UC TC) : Sound (ldivB A B C R S UB UC) (ldivDen TR TS TB TC) :=
   runPl_sound (pldiv_sound hR hS hB hC)
 
-/-- **`Λ(R)` on the keys `D` names each key's canonical list** (`lamDen`, D2 = C): `rep_lamOn` gives the list's
-    members and a list at every key, `lamOnC_asc` that it ascends with no repeat, `B.KeyInj` that it ascends
-    strictly, and `eq_of_pairwise` that the strictly ascending list of one set is the one `lamDen` names. -/
+/-- **The lists `G` holds at a key are the canonical list of `M`** (`lamDen`, D2 = C) where each ascends with no
+    repeat, has the members `M`, and one exists: `B.KeyInj` makes each ascend strictly, and `eq_of_pairwise` makes
+    the strictly ascending list of one set the one `lamDen` names. The step every `Λ`-shaped operator shares. -/
+theorem lamDen_of {B : Obj} (hi : B.KeyInj) {G : List B.El → Prop} {M : B.El → Prop}
+    (asc : ∀ Y, G Y → Y.Nodup ∧ Y.Pairwise fun x y => ¬ B.lt y x) (mem : ∀ Y, G Y → ∀ b, b ∈ Y ↔ M b)
+    (ex : ∃ Y, G Y) (ys : List B.El) : G ys ↔ ys.Pairwise B.lt ∧ ∀ b, b ∈ ys ↔ M b := by
+  have st : ∀ Y, G Y → Y.Pairwise B.lt := fun Y h => by
+    obtain ⟨hn, hp⟩ := asc Y h
+    exact (hn.and hp).imp fun ⟨ne, nl⟩ =>
+      (B.lt_trichotomy _ _).resolve_right fun h => h.elim (fun k => ne (hi _ _ k)) nl
+  refine ⟨fun h => ⟨st ys h, mem ys h⟩, fun ⟨hp, hm⟩ => ?_⟩
+  obtain ⟨Y, hY⟩ := ex
+  rwa [← eq_of_pairwise (Obj.lt_irrefl _) (Obj.lt_trans _) (st Y hY) hp fun b => (mem Y hY b).trans (hm b).symm]
+
+/-- **`Λ(R)` on the keys `D` names each key's canonical list**: `lamDen_of`, its members and a list at every key
+    from `rep_lamOn`, its order from `lamOnC_asc`. -/
 theorem lam_sound {A B : Obj} {d : Bool} {R : Fn d A B} {TR : Den A B} (hR : Sound R TR) (ho : B.Ordered)
     (hi : B.KeyInj) : Sound (lam A B d R) (lamDen TR) :=
   KSound.reps fun D hD hb a ys ha => by
@@ -880,13 +900,24 @@ theorem lam_sound {A B : Obj} {d : Bool} {R : Fn d A B} {TR : Den A B} (hR : Sou
     obtain ⟨h1, h2⟩ := CRel.rep_lamOn _ _ hb
     have e : CRel.lamOn (R.at (Dem.of d D)) D.val = _ := CRel.guard_eq CRel.ok hb
     have hc := e ▸ hb
-    have asc : ∀ Y, rep (CRel.lamOn (R.at (Dem.of d D)) D.val).rel a Y → Y.Pairwise B.lt := fun Y h => by
-      obtain ⟨hn, hp⟩ := lamOnC_asc _ _ ho (CRel.ofC_ok hc).1 a Y (by rw [← CRel.rep_ofC hc, ← e]; exact h)
-      exact (hn.and hp).imp fun ⟨ne, nl⟩ =>
-        (B.lt_trichotomy _ _).resolve_right fun h => h.elim (fun k => ne (hi _ _ k)) nl
-    refine ⟨fun h => ⟨asc ys h, fun b => (h1 a ys h b).trans (hs a b ha)⟩, fun ⟨hp, hm⟩ => ?_⟩
-    obtain ⟨Y, hY⟩ := (h2 a).2 (.inr (keyRow ha))
-    rwa [← eq_of_pairwise (Obj.lt_irrefl _) (Obj.lt_trans _) (asc Y hY) hp
-      fun b => (h1 a Y hY b).trans ((hs a b ha).trans (hm b).symm)]
+    refine lamDen_of hi (fun Y h => lamOnC_asc _ _ ho (CRel.ofC_ok hc).1 a Y ?_)
+      (fun Y h b => (h1 a Y h b).trans (hs a b ha)) ((h2 a).2 (.inr (keyRow ha))) ys
+    rw [← CRel.rep_ofC hc, ← e]; exact h
+
+/-- **`E(R)` on the arrays in demand names each one's canonical list of images** (`EDen = lamDen(∋ ≫ R)`):
+    `lamDen_of`, the members from `rep_E` with `R` read at the elements (`elems_at`), the order from `EC_asc`. -/
+theorem E_sound {A B : Obj} {d : Bool} {R : Fn d A B} {TR : Den A B} (hR : Sound R TR) (ho : B.Ordered)
+    (hi : B.KeyInj) : Sound (E A B d R) (EDen TR) :=
+  show Sound (elems A B (.arr B) d R CRel.E) _ from KSound.reps fun D _ hb xs ys hx => by
+    dsimp only at hb ⊢; obtain ⟨hb', e⟩ := also_ok_rel hb; rw [e]
+    have hr := CRel.guard_ok_left hb'.2
+    obtain ⟨h1, h2⟩ := CRel.rep_E _ _ hb'.2
+    have e' : CRel.E (R.at (Dem.of d (CRel.ran (CRel.mem D.val)).rel)) D.val = _ := CRel.guard_eq CRel.ok hb'.2
+    have hc := e' ▸ hb'.2
+    have ht := elems_at hR D hb'.1 hr hx
+    refine lamDen_of hi (fun Y h => EC_asc _ _ ho (CRel.ofC_ok hc).1 xs Y ?_) (fun Y h b => ((h1 xs Y h).2 b).trans
+      ⟨fun ⟨x, hm, r⟩ => ⟨x, hm, (ht x hm b).1 r⟩, fun ⟨x, hm, r⟩ => ⟨x, hm, (ht x hm b).2 r⟩⟩)
+      ((h2 xs).2 (keyRow hx)) ys
+    rw [← CRel.rep_ofC hc, ← e']; exact h
 
 end Rel.Lang.Gen
