@@ -278,4 +278,200 @@ theorem Tab.ofBits_holds {n m g w : USize} {o ra rc : Enc} {x : Vals A n} {y : V
     obtain rfl : i1' = i1 := Fin.ext (h1'.symm.trans h1)
     exact ⟨⟨t, htM⟩, by rw [r0', r0], by rw [r1', r1]⟩
 
+/-- In an ascending list the first `#{v < r}` positions are exactly the ones holding a value below `r`. -/
+private theorem sorted_countP_lt : ∀ {L : List Nat}, L.Pairwise (· ≤ ·) → ∀ r t,
+    t < L.countP (fun v => decide (v < r)) ↔ t < L.length ∧ L[t]?.getD 0 < r
+  | [], _, r, t => by simp
+  | a :: L, h, r, t => by
+    rw [List.pairwise_cons] at h
+    have ih := sorted_countP_lt h.2 r
+    by_cases ha : a < r
+    · rw [List.countP_cons_of_pos (by simpa using ha)]
+      cases t with
+      | zero => simp [ha]
+      | succ t => simp only [List.length_cons, List.getElem?_cons_succ]; have := ih t; omega
+    · rw [List.countP_cons_of_neg (by simpa using ha), List.countP_eq_zero.2 fun b hb hp => by
+        have := h.1 b hb; simp only [decide_eq_true_eq] at hp; omega]
+      cases t with
+      | zero => simp [ha]
+      | succ t =>
+        simp only [List.length_cons, List.getElem?_cons_succ, Nat.not_lt_zero, false_iff, not_and]
+        intro ht; rw [List.getElem?_eq_getElem (by omega), Option.getD_some]
+        have := h.1 L[t] (List.getElem_mem (show t < L.length by omega)); omega
+
+/-- **`csr` groups the rows by `gid`**: row `t` of `idx` is row `π t` of `x`, every row of `x` is some `π t`, and
+`kbitrows`' segment `r` (`[ends[r-1], ends[r])`) is the `t` with `gid (π t) = r`. -/
+theorem csr_spec {n g : USize} {gid x ends idx : Enc} (h : csr n g gid x = .ok (ends, idx)) (gr : Nat → Nat)
+    (hg : ∀ q < n.toNat, (raw .i64 n gid)[q]?.getD 0 = (gr q).toUInt64 ∧ gr q < g.toNat) (hg63 : g.toNat ≤ 2 ^ 63) :
+    ∃ π : Nat → Nat, (∀ t < n.toNat, π t < n.toNat ∧ (raw .i64 n idx)[t]?.getD 0 = (raw .i64 n x)[π t]?.getD 0) ∧
+      (∀ q < n.toNat, ∃ t < n.toNat, π t = q) ∧ ∀ r < g.toNat, ∀ t,
+        ((if r = 0 then 0 else ((raw .i64 g ends)[r - 1]?.getD 0).toNat) ≤ t ∧
+          t < ((raw .i64 g ends)[r]?.getD 0).toNat ↔ t < n.toNat ∧ gr (π t) = r) := by
+  simp only [csr, bind] at h
+  rw [Except.bind_eq_ok'] at h; obtain ⟨one, hone, h⟩ := h
+  rw [Except.bind_eq_ok'] at h; obtain ⟨cnt, hcnt, h⟩ := h
+  rw [Except.bind_eq_ok'] at h; obtain ⟨ends', hends, h⟩ := h
+  rw [Except.bind_eq_ok'] at h; obtain ⟨⟨vs, p⟩, hasc, h⟩ := h; try dsimp only at h
+  rw [Except.bind_eq_ok'] at h; obtain ⟨idx', hidx, h⟩ := h
+  simp only [pure, Except.pure, Except.ok.injEq, Prod.mk.injEq] at h
+  obtain ⟨rfl, rfl⟩ := h
+  have hU64 : USize.size ≤ 2 ^ 64 := by rcases USize.size_eq with h | h <;> omega
+  have hNU := n.toNat_lt_size
+  have hGU := g.toNat_lt_size
+  let C := fun r => (List.range n.toNat).countP fun q => decide (gr q < r)
+  have hCn : ∀ r, C r ≤ n.toNat := fun r => Nat.le_trans List.countP_le_length (by simp)
+  -- `ends[G]` counts the rows with `gid ≤ G`
+  have hc := scatter_add_count hcnt gr (fun _ => true) (fun q hq => (hg q hq).1) (fun q hq => by
+    have := (hg q hq).2; omega) (fun q hq => by
+      rw [colConst_raw hone, Array.getElem?_replicate, if_pos hq, Option.getD_some]; rfl)
+  have hE : ∀ G < g.toNat, ((raw .i64 g ends')[G]?.getD 0).toNat = C (G + 1) := fun G hG => by
+    rw [colPrefix_add_sum hends _ hc G hG, sum_countP_groups]
+    simp only [Bool.and_true]; exact toNat_toUInt64 (Nat.lt_of_le_of_lt (hCn (G + 1)) (by omega))
+  -- `kasc` of one `i64` column below `2^63` is the stable numeric order on `gid`
+  obtain ⟨-, -, hp, -⟩ := kasc_grade hasc
+  have hks : ascKeys n [(.atom .i64, gid)] = [(raw .i64 n gid).map (ordKey 8 false true)] := by
+    simp only [ascKeys, ascKey, List.append_nil]; rfl
+  generalize hps : ascGrade n.toNat (ascKeys n [(.atom .i64, gid)]) = ps at hp
+  obtain ⟨hperm, hpw⟩ := ascGrade_spec n.toNat (ascKeys n [(.atom .i64, gid)])
+  rw [hps] at hperm hpw
+  have hlen : ps.length = n.toNat := by rw [hperm.length_eq, List.length_range]
+  have hin : ∀ i ∈ ps, i < n.toNat := fun i hi => List.mem_range.1 (hperm.mem_iff.1 hi)
+  have hsz := (kscatter_words hcnt).1
+  have hcv : ∀ q < n.toNat, (((raw .i64 n gid).map (ordKey 8 false true))[q]?.getD 0).toNat = gr q + 2 ^ 63 :=
+    fun q hq => by
+      have hq63 : gr q < 2 ^ 63 := by have := (hg q hq).2; omega
+      rw [Array.getElem?_map, getElem?_pos (raw .i64 n gid) q (by omega), Option.map_some, Option.getD_some]
+      have e := (hg q hq).1
+      rw [getElem?_pos (raw .i64 n gid) q (by omega), Option.getD_some] at e
+      rw [e]
+      have := ordKey_signed (w := 8) (by omega) (by omega) (gr q).toUInt64
+      simp only [sx, toNat_toUInt64 (show gr q < 2 ^ 64 by omega)] at this
+      split at this <;> omega
+  have hsorted : (ps.map gr).Pairwise (· ≤ ·) := List.pairwise_map.2 (hpw.imp_of_mem fun {i j} hi hj hij => by
+    have e := hij.1
+    rw [hks] at e
+    simp only [lexLe, Bool.or_eq_true, decide_eq_true_eq, Bool.and_true, beq_iff_eq, UInt64.lt_iff_toNat_lt] at e
+    have ci := hcv i (hin i hi); have cj := hcv j (hin j hj)
+    rcases e with e | e
+    · omega
+    · have := congrArg UInt64.toNat e; omega)
+  have hcount : ∀ r, (ps.map gr).countP (fun v => decide (v < r)) = C r := fun r => by
+    rw [List.countP_map]; exact hperm.countP_eq _
+  let π := fun t : Nat => ps[t]?.getD 0
+  have hπ : ∀ t < n.toNat, ps[t]? = some (π t) := fun t ht => by
+    simp only [π]; rw [List.getElem?_eq_getElem (by omega), Option.getD_some]
+  have hL : ∀ t < n.toNat, (ps.map gr)[t]?.getD 0 = gr (π t) := fun t ht => by
+    rw [List.getElem?_map, hπ t ht]; rfl
+  refine ⟨π, fun t ht => ?_, fun q hq => ?_, fun r hr t => ?_⟩
+  · have hπn : π t < n.toNat := hin _ (List.mem_of_getElem? (hπ t ht))
+    obtain ⟨-, e⟩ := kgather_word hidx t ht
+    have hpt : ((raw .i64 n p)[t]?.getD 0).toNat = π t := by
+      rw [hp, List.getElem?_toArray, List.getElem?_map, hπ t ht]
+      exact toNat_toUInt64 (by omega)
+    rw [hpt] at e
+    exact ⟨hπn, e⟩
+  · obtain ⟨t, ht, e⟩ := List.mem_iff_getElem.1 (hperm.mem_iff.2 (List.mem_range.2 hq))
+    refine ⟨t, by omega, ?_⟩
+    simp only [π]; rw [List.getElem?_eq_getElem ht, Option.getD_some, e]
+  · have hlo : (if r = 0 then 0 else ((raw .i64 g ends')[r - 1]?.getD 0).toNat) = C r := by
+      split
+      · subst r; simp [C]
+      · rw [hE (r - 1) (by omega), Nat.sub_add_cancel (by omega)]
+    rw [hlo, hE r hr]
+    have h1 := sorted_countP_lt hsorted r t
+    have h2 := sorted_countP_lt hsorted (r + 1) t
+    rw [hcount, List.length_map, hlen] at h1 h2
+    by_cases ht : t < n.toNat
+    · rw [hL t ht] at h1 h2; omega
+    · have := hCn (r + 1); omega
+
+/-- **`R.compBits S` denotes `R ≫ S`** (`Tab.comp_holds`' statement). -/
+theorem Tab.compBits_holds {R : Tab A B} {S : Tab B C} {X : Tab A C} (h : Tab.compBits R S = .ok X)
+    (a : A.El) (c : C.El) : X.Holds a c ↔ ∃ b, R.Holds a b ∧ S.Holds b c := by
+  simp only [Tab.compBits, bind] at h
+  rw [Except.bind_eq_ok'] at h; obtain ⟨⟨kb, bR, bS, Z⟩, hb2, h⟩ := h; try dsimp only at h
+  rw [Except.bind_eq_ok'] at h; obtain ⟨⟨ka, aR, ra⟩, ha, h⟩ := h; try dsimp only at h
+  rw [Except.bind_eq_ok'] at h; obtain ⟨⟨kc, cS, rc⟩, hc, h⟩ := h; try dsimp only at h
+  split at h
+  · cases h
+  rename_i hov
+  rw [Except.bind_eq_ok'] at h; obtain ⟨-, -, h⟩ := h
+  rw [Except.bind_eq_ok'] at h; obtain ⟨⟨ends, idx⟩, hcsr, h⟩ := h; try dsimp only at h
+  rw [Except.bind_eq_ok'] at h; obtain ⟨m, hm, h⟩ := h
+  rw [Except.bind_eq_ok'] at h; obtain ⟨o, hk, h⟩ := h
+  obtain ⟨cx, cy, -, hcx, hcy, -, -, hxy⟩ := Vals.code2_spec hb2
+  obtain ⟨-, haR, hra, haeq⟩ := Vals.code_spec ha
+  obtain ⟨-, hcS, hrc, hceq⟩ := Vals.code_spec hc
+  have hU64 : USize.size ≤ 2 ^ 64 := by rcases USize.size_eq with h | h <;> omega
+  have hNb := kb.toNat_lt_size
+  have hw : ∀ (w : UInt64), (w.toNat).toUInt64 = w := fun w => UInt64.toNat_inj.mp (by simp)
+  let aN := fun i : Nat => ((raw .i64 R.n aR)[i]?.getD 0).toNat
+  let cN := fun i : Nat => ((raw .i64 S.n cS)[i]?.getD 0).toNat
+  -- the `a` and `c` of a set bit name rows of `R.key` and `S.val`; `b` is shared by a row of each side
+  let P := fun r j => ∃ i < R.n.toNat, aN i = r ∧ ∃ k < S.n.toNat, cy k = cx i ∧ cN k = j
+  have hX := Tab.ofBits_holds h P
+  by_cases hkc : kc.toNat = 0
+  · have hS0 : S.n.toNat = 0 := Classical.byContradiction fun e => by have := hcS 0 (by omega); omega
+    have hgw : (ka * kc).toNat = ka.toNat * kc.toNat := by
+      simp [USize.toNat_mul, hkc]
+    rw [hX hgw (by rw [hkc, Nat.mul_zero]; decide) (fun _ _ j hj => absurd hj (by omega))]
+    constructor
+    · rintro ⟨-, -, j, hj, -⟩; omega
+    · rintro ⟨-, -, ⟨t, -⟩⟩; exact absurd t.2 (by omega)
+  have hb : ka.toNat * kc.toNat < 2 ^ 63 := by
+    have := Nat.mul_le_mul_right kc.toNat (Nat.le_add_left ka.toNat kb.toNat); omega
+  have hka : ka.toNat ≤ 2 ^ 63 := by
+    have := Nat.mul_le_mul_left ka.toNat (show 1 ≤ kc.toNat by omega); omega
+  obtain ⟨π, hπx, hπs, hseg⟩ := csr_spec hcsr aN (fun q hq => ⟨(hw _).symm, haR q hq⟩) hka
+  obtain ⟨hnw, hgw, -, -, -, -, -, hbit⟩ := raw_kbitrows hk
+  have hM := bitMatrix_spec hm hnw (fun k hk => by
+      rw [(hcy k hk).1, toNat_toUInt64 (by have := (hcy k hk).2; omega)]; exact (hcy k hk).2) hcS
+  rw [hX hgw hb fun r hr j hj => ?_]
+  · constructor
+    · rintro ⟨r, hr, j, hj, ⟨i, hi, hir, k, hk, hki, hkj⟩, ⟨i0, h0, r0⟩, ⟨i1, h1, r1⟩⟩
+      obtain ⟨i0', h0', e0⟩ := hra r hr
+      obtain ⟨i1', h1', e1⟩ := hrc j hj
+      obtain rfl : i0' = i0 := Fin.ext (h0'.symm.trans h0)
+      obtain rfl : i1' = i1 := Fin.ext (h1'.symm.trans h1)
+      refine ⟨R.val.row ⟨i, hi⟩, ⟨⟨i, hi⟩, ?_, rfl⟩, ⟨k, hk⟩, ((hxy ⟨i, hi⟩ ⟨k, hk⟩).1 hki.symm).symm, ?_⟩
+      · rw [← r0]; exact (haeq ⟨i, hi⟩ i0').1 (UInt64.toNat_inj.mp (hir.trans e0.symm))
+      · rw [← r1]; exact (hceq ⟨k, hk⟩ i1').1 (UInt64.toNat_inj.mp (hkj.trans e1.symm))
+    · rintro ⟨b, ⟨t, ht1, ht2⟩, ⟨t', ht1', ht2'⟩⟩
+      obtain ⟨i0, h0, e0⟩ := hra (aN t) (haR t t.2)
+      obtain ⟨i1, h1, e1⟩ := hrc (cN t') (hcS t' t'.2)
+      refine ⟨aN t, haR t t.2, cN t', hcS t' t'.2, ⟨t, t.2, rfl, t', t'.2, ?_, rfl⟩, ⟨i0, h0, ?_⟩, ⟨i1, h1, ?_⟩⟩
+      · exact (hxy t t').2 (ht2.trans ht1'.symm) |>.symm
+      · rw [← ht1]; exact (haeq i0 t).1 (UInt64.toNat_inj.mp e0)
+      · rw [← ht2']; exact (hceq i1 t').1 (UInt64.toNat_inj.mp e1)
+  -- bit `r·kc + j` is set exactly when `P r j`
+  obtain ⟨v, -, hv, hv2, hv1⟩ := hbit r hr j hj
+  refine ⟨v, hv, hv2, hv1.trans ?_⟩
+  simp only [Bool.false_eq_true, if_false]
+  constructor
+  · rintro ⟨t, h1, h2, hon⟩
+    obtain ⟨htn, hr'⟩ := (hseg r hr t).1 ⟨h1, h2⟩
+    obtain ⟨hπn, e⟩ := hπx t htn
+    rw [e, (hcx _ hπn).1, toNat_toUInt64 (by have := (hcx _ hπn).2; omega),
+      hM _ (hcx _ hπn).2 j hj] at hon
+    split at hon
+    · rename_i hex
+      obtain ⟨k, hk, hk1, hk2⟩ := hex
+      rw [(hcy k hk).1, toNat_toUInt64 (by have := (hcy k hk).2; omega)] at hk1
+      exact ⟨π t, hπn, hr', k, hk, hk1, hk2⟩
+    · simp at hon
+  · rintro ⟨i, hi, hir, k, hk, hki, hkj⟩
+    obtain ⟨t, ht, rfl⟩ := hπs i hi
+    obtain ⟨h1, h2⟩ := (hseg r hr t).2 ⟨ht, hir⟩
+    refine ⟨t, h1, h2, ?_⟩
+    obtain ⟨hπn, e⟩ := hπx t ht
+    rw [e, (hcx _ hπn).1, toNat_toUInt64 (by have := (hcx _ hπn).2; omega),
+      hM _ (hcx _ hπn).2 j hj, if_pos ⟨k, hk, by
+        rw [(hcy k hk).1, toNat_toUInt64 (by have := (hcy k hk).2; omega)]; exact hki, hkj⟩]
+    rfl
+
+/-- **`compBits` is `comp`** on the pairs it holds: the fused kernel answers what the composition of primitives does. -/
+theorem Tab.compBits_comp {R : Tab A B} {S : Tab B C} {X Y : Tab A C} (h : Tab.compBits R S = .ok X)
+    (h' : R.comp S = .ok Y) : X.Holds = Y.Holds :=
+  funext fun a => funext fun c => propext ((Tab.compBits_holds h a c).trans (Tab.comp_holds h' a c).symm)
+
 end Rel
