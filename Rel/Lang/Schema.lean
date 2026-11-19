@@ -5,7 +5,7 @@ import Rel.Run.Lang.Tm
     storage and `rep` see the plain nested `prod`; the names live only in `Schema`, so two schemas with the same field
     objects and other names have one `Obj`.
 
-    - `col S "price" : Tm S.obj T true` is the composition of `outl`/`outr` that reaches the field `("price", T)`.
+    - `col S "price" : Tm S.obj T` is the composition of `outl`/`outr` that reaches the field `("price", T)`.
     - `select`, `exclude`, `rename`, `derive`, `join`: each a function on `S` giving its result schema `T` together
       with the term `S.obj ⟶ T.obj` (`To`), or the error that refuses it.
     - Every name is decided at elaboration (`schema_ok`, `ok`): a missing column, a name twice in a schema, an empty
@@ -44,13 +44,13 @@ def obj (S : Schema) : Obj := objR S.reverse
 
 /-- The column `n` of `R` (reversed, as `objR`): `outr` at the last column, `outl` then the column in the rest, `𝟙`
     where it is the only column. -/
-def colR (n : String) : (R : List (String × Obj)) → Option ((B : Obj) × Tm (objR R) B true)
+def colR (n : String) : (R : List (String × Obj)) → Option ((B : Obj) × Tm (objR R) B)
   | [] => none
   | [f] => if f.1 = n then some ⟨f.2, .id⟩ else none
   | f :: g :: R => if f.1 = n then some ⟨f.2, .outr⟩ else (colR n (g :: R)).map fun p => ⟨p.1, .comp .outl p.2⟩
 
 /-- The column `n` of `S` with its object, or the error naming `n` and `S`'s columns. -/
-def col? (S : Schema) (n : String) : Except String ((B : Obj) × Tm S.obj B true) := do
+def col? (S : Schema) (n : String) : Except String ((B : Obj) × Tm S.obj B) := do
   S.check
   (colR n S.reverse).elim (.error s!"no column '{n}' in schema {S.shown}") .ok
 
@@ -82,27 +82,27 @@ def ok {α : Type} : (e : Except String α) → (h : e.isOk = true := by schema_
   | .ok a, _ => a
   | .error _, h => nomatch h
 
-/-- The column `n` of `S`: `col S "price" : Tm S.obj T true` exists iff `("price", T) ∈ S`, at most once. -/
-def col (S : Schema) (n : String) (h : (S.col? n).isOk = true := by schema_ok) : Tm S.obj (ok (S.col? n) h).1 true :=
+/-- The column `n` of `S`: `col S "price" : Tm S.obj T` exists iff `("price", T) ∈ S`, at most once. -/
+def col (S : Schema) (n : String) (h : (S.col? n).isOk = true := by schema_ok) : Tm S.obj (ok (S.col? n) h).1 :=
   (ok (S.col? n) h).2
 
 /-- The fields of `R` (reversed, as `objR`), each read from `A` by `get` at its name and checked to be at the field's
     object, paired as `objR R` nests them. -/
-def tupleR {A : Obj} (get : String → Except String ((B : Obj) × Tm A B true)) :
-    (R : List (String × Obj)) → Except String (Tm A (objR R) true)
+def tupleR {A : Obj} (get : String → Except String ((B : Obj) × Tm A B)) :
+    (R : List (String × Obj)) → Except String (Tm A (objR R))
   | [] => .error noColumn
   | [f] => field f
   | f :: g :: R => return .pair (← tupleR get (g :: R)) (← field f)
 where
-  field (f : String × Obj) : Except String (Tm A f.2 true) := do
+  field (f : String × Obj) : Except String (Tm A f.2) := do
     let ⟨B, t⟩ ← get f.1
     if h : B = f.2 then pure (h ▸ t) else .error s!"column '{f.1}' is read at another object than its schema's"
 
 /-- A frame function's result on rows `A`: its schema `T` and the term `A ⟶ T.obj`, or the error that refuses it. -/
-abbrev To (A : Obj) := Except String ((T : Schema) × Tm A T.obj true)
+abbrev To (A : Obj) := Except String ((T : Schema) × Tm A T.obj)
 
 /-- The schema `T`, checked, with its fields read from `A` by `get`. -/
-def build {A : Obj} (T : Schema) (get : String → Except String ((B : Obj) × Tm A B true)) : To A := do
+def build {A : Obj} (T : Schema) (get : String → Except String ((B : Obj) × Tm A B)) : To A := do
   T.check; return ⟨T, ← tupleR get T.reverse⟩
 
 /-- The columns `ns` of `S`, in the order of `ns`. -/
@@ -120,7 +120,7 @@ def rename (S : Schema) (a b : String) : To S.obj := do
   build (S.map fun f => (if f.1 = a then b else f.1, f.2)) fun n => S.col? (if n = b then a else n)
 
 /-- `S` with the column `n` computed by `e` added last. -/
-def derive (S : Schema) (n : String) {B : Obj} {d : Bool} (e : Tm S.obj B d) : To S.obj :=
+def derive (S : Schema) (n : String) {B : Obj} (e : Tm S.obj B) : To S.obj :=
   build (S ++ [(n, B)]) fun m => if m = n then pure ⟨B, .comp .id e⟩ else S.col? m
 
 /-- The names `S` and `S'` share, in `S`'s order: the key a natural join matches on. -/
@@ -137,7 +137,7 @@ def join (S S' : Schema) : To (.prod S.obj S'.obj) := do
   let ⟨K, k⟩ ← S.select ks
   let ⟨K', k'⟩ ← S'.select ks
   if h : K' = K then
-    let eq : Tm (.prod S.obj S'.obj) (.prod S.obj S'.obj) true :=
+    let eq : Tm (.prod S.obj S'.obj) (.prod S.obj S'.obj) :=
       .dom (.comp (.pair (.comp .outl k) (.comp .outr (h ▸ k'))) (.dom (.meet .outl .outr)))
     let ⟨T, t⟩ ← build (S ++ S'.filter fun f => !ks.contains f.1) fun m =>
       if S.names.contains m then (S.col? m).map fun p => ⟨p.1, .comp .outl p.2⟩

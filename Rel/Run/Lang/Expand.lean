@@ -119,10 +119,10 @@ def failures (ds : List (String × Gen.Gv)) (ms : List (String × List String)) 
 namespace Expand
 
 /-- A top-level term, a `print`'s or a `check` side's: closed, with its objects as the program names them. -/
-abbrev Top := ((A : Obj) × (B : Obj) × Tm A B false) × OTy × OTy
+abbrev Top := ((A : Obj) × (B : Obj) × Tm A B) × OTy × OTy
 
 /-- A `check`: where, both sides' texts, `=` (else `⊑`), the objects as named, both sides at one type. -/
-abbrev Chk := Pos × String × String × Bool × OTy × OTy × ((A : Obj) × (B : Obj) × Tm A B false × Tm A B false)
+abbrev Chk := Pos × String × String × Bool × OTy × OTy × ((A : Obj) × (B : Obj) × Tm A B × Tm A B)
 
 /-- The object variable of the family index class `i` at a call (§e): a name no declaration can write. -/
 def idxVar (i : Nat) : String := s!"ι#{i}"
@@ -135,10 +135,10 @@ def formKey (c : Lean.Name) (fs : List Form) : Lean.Name :=
 
 /-- What a call reads of the constant `o` (`Sig`): the universes its body reads, its converse when it has one. -/
 def sigOf (o : Once) : Sig :=
-  let ⟨_, _, d, t⟩ := o.res
+  let ⟨_, _, t⟩ := o.res
   let cv := if o.tst then none else (convTm t).toOption
-  { const := o.const, demand := d, vars := o.gen.zip ((List.range o.gen.length).map t.fv.contains),
-    conv := cv.map fun ⟨e, _⟩ => (o.const ++ `conv, e), tst := o.tst, kf := o.kf }
+  { const := o.const, demand := t.dem, vars := o.gen.zip ((List.range o.gen.length).map t.fv.contains),
+    conv := cv.map fun u => (o.const ++ `conv, u.dem), tst := o.tst, kf := o.kf }
 
 /-- What a program reads: its closed definitions, its prints (text and term), its checks, its objects, and its
     definitions elaborated once. -/
@@ -196,13 +196,13 @@ open Lean in def g (n : Lean.Name) (as : Array Lean.Expr) : Lean.Expr := mkAppN 
 def placeholders : List Lean.Expr := varAtoms.map (oE <| .atom ·)
 
 /-- The row a spine of `arg`s is headed by, and its relations in order. -/
-def primOf : {A B : Obj} → {d : Bool} → Tm A B d → Option (Prim × List Res)
-  | _, _, _, .prim r => some (r, [])
-  | _, _, _, .arg f x => (primOf f).map fun (r, xs) => (r, xs ++ [⟨_, _, _, x⟩])
-  | _, _, _, _ => none
+def primOf : {A B : Obj} → Tm A B → Option (Prim × List Res)
+  | _, _, .prim r => some (r, [])
+  | _, _, .arg f x => (primOf f).map fun (r, xs) => (r, xs ++ [⟨_, _, x⟩])
+  | _, _, _ => none
 
-/-- The type `Gen.Fn d A B` of a code of `t : Tm A B d`. -/
-def fnTy (t : Res) : Lean.Expr := g ``Gen.Fn #[bE t.2.2.1, oE t.1, oE t.2.1]
+/-- The type `Gen.Fn t.dem A B` of a code of `t : Tm A B`. -/
+def fnTy (t : Res) : Lean.Expr := g ``Gen.Fn #[bE t.2.2.dem, oE t.1, oE t.2.1]
 
 /-- The wrappers a row's constant runs under (`Gen.ofVals` …), tried in order. -/
 def primWrappers : List Lean.Name :=
@@ -245,11 +245,11 @@ open Lean Meta in
 /-- Each row in `t` fits its constant at its objects (`primE`), its relations variables of their types. A row at an
     object variable's placeholder (`varObj`) that its constant reads at `.long` (`sum` at `[β]`) does not, and that
     is how `once` finds the variable a number object. -/
-partial def primsFit {A B : Obj} {d : Bool} (t : Tm A B d) : MetaM Bool := do
-  let some (r, as) := primOf t | t.parts.allM fun ⟨_, _, _, c⟩ => primsFit c
+partial def primsFit {A B : Obj} (t : Tm A B) : MetaM Bool := do
+  let some (r, as) := primOf t | t.parts.allM fun ⟨_, _, c⟩ => primsFit c
   let ts := as.toArray.map fnTy
   withLocalDeclsDND (ts.map (`x, ·)) fun xs => do
-    pure (← primE r A B (xs.zip ts)).isSome <&&> as.allM fun ⟨_, _, _, c⟩ => primsFit c
+    pure (← primE r A B (xs.zip ts)).isSome <&&> as.allM fun ⟨_, _, c⟩ => primsFit c
 
 /-- `n(qs) ≜ e : ty` built once (`elabOnce`); a body that needs keys stays a plan on them, and one that builds no
     relation but tests on pairs is its pair test (`test`, §a). A variable is generic (`varObj`) when the body builds
@@ -273,11 +273,11 @@ def once (env : Env) (p : Pos) (n : String) (qs : List Param) (e : Expr) (ty : O
       ({ key := k, const := c, gen, params := os, res, tst, kf }, st.specs)
     -- a term whose rows do not fit their objects (`primsFit`) does not build
     let fits (x : Except Err Res) : EM (Except Err Res) := do
-      if let .ok ⟨A, B, _, t⟩ := x then unless ← primsFit t do
+      if let .ok ⟨A, B, t⟩ := x then unless ← primsFit t do
         return .error ⟨p, s!"`{n}`: a row fits none of {primWrappers} at {oE A} → {oE B}"⟩
       pure x
     let mc ← Lean.getMCtx
-    let tst := (test objs mc p q).map fun ⟨A, B, t⟩ => (⟨.prod A B, .prod A B, true, t⟩ : Res)
+    let tst := (test objs mc p q).map fun ⟨A, B, t⟩ => (⟨.prod A B, .prod A B, t⟩ : Res)
     match ← fits (build objs mc p q), ← (kq.map (build objs mc p)).mapM fits, ← fits tst with
     | .ok res, _, _ => pure (mk res false false)
     | .error _, some (.ok res), _ => pure (mk res false true)
@@ -365,10 +365,8 @@ def callDef (env : Env) (dp : Pos) (n : String) (qs : List Param) (e : Expr) (ty
     keys, refused where that object has none. -/
 def top (env : Env) (mc : Lean.MetavarContext) (p : Pos) (e : Expr) (r : Arg) : Except Err Top := do
   let (q, s, t) := r.plain
-  let ⟨A, B, d, tm⟩ ← build env.objs mc p (.close p q s noLeft)
-  match d, tm with
-  | false, tm => pure (⟨A, B, tm⟩, zonk mc s, zonk mc t)
-  | true, _ => throw ⟨p, s!"{e.show}: {zonk mc s} has no universe; compose a set of its elements before it (§a)"⟩
+  let ⟨A, B, tm⟩ ← build env.objs mc p (.close p q s noLeft)
+  if !tm.dem then pure (⟨A, B, tm⟩, zonk mc s, zonk mc t) else throw ⟨p, s!"{e.show}: {zonk mc s} has no universe; compose a set of its elements before it (§a)"⟩
 
 /-- `check e = f` at `p` (`⊑` when `eq` is false): the two sides
     elaborated together, one type, an object one side leaves open being the other's (§c); with the constants
@@ -432,12 +430,12 @@ def walk (prog : Program) (env : Env) (wrap : String → Def → Def) (own : Lea
         let each := wrap n (mkDef env n p [] (.rel e) ty)
         if !rigid.isEmpty || s.poly || t.poly then env := { env with defs := (n, each) :: env.defs }; continue
         let q := if (uniOf env.objs s).isSome then Pre.close p q s noLeft else q
-        let res@⟨_, _, dm, _⟩ ← match build env.objs mc p q, test env.objs mc p q with
+        let res@⟨_, _, tm⟩ ← match build env.objs mc p q, test env.objs mc p q with
           | .ok r, _ => pure r
           | .error _, .ok _ => env := { env with defs := (n, each) :: env.defs }; continue
           | .error e, .error _ => throw e
         env := { env with defs := (n, wrap n { arity := 0, apply := fun _ _ => pure (.rel (.tm res) s t) }) :: env.defs }
-        if !dm then ds := ds ++ [(n, res)]
+        if !tm.dem then ds := ds ++ [(n, res)]
       | qs, b, ty =>
         let d := mkDef env n p qs b ty
         match b, ty with
@@ -516,45 +514,45 @@ open Lean Meta
 
 
 /-- The `μ`s in `t`, each as the failure it reports when its rounds reach the cap. -/
-partial def mus : {A B : Obj} → {d : Bool} → Tm A B d → List String
-  | _, _, _, .mu _ w n b => s!"{w} ran its cap of {n} rounds without reaching a fixed point" :: mus b
-  | _, _, _, .hylo _ w ch b =>
+partial def mus : {A B : Obj} → Tm A B → List String
+  | _, _, .mu _ w n b => s!"{w} ran its cap of {n} rounds without reaching a fixed point" :: mus b
+  | _, _, .hylo _ w ch b =>
     s!"{w} reaches a node from itself, so it is not well-founded there" :: mus ch ++ mus b
-  | _, _, _, t => t.parts.flatMap fun ⟨_, _, _, c⟩ => mus c
+  | _, _, t => t.parts.flatMap fun ⟨_, _, c⟩ => mus c
 
 /-- A term that needs no keys and reads no fixed-point variable: computed once, its own constant (`share`). -/
-def closed {A B : Obj} {d : Bool} (t : Tm A B d) : Bool := !d && t.fv.isEmpty
+def closed {A B : Obj} (t : Tm A B) : Bool := !t.dem && t.fv.isEmpty
 
 /-- `t` with each closed sub-term `R` wrapped as `.share k R`, `k` the next number: `code` keeps each number's
     code and `Tm.fv` stops there (a share is closed), so building and proving a closed sub-term never rebuilds it. -/
-partial def number : {A B : Obj} → {d : Bool} → Tm A B d → StateM Nat (Tm A B d)
-  | _, _, _, .share _ R => number R
-  | _, _, _, t => do w (← t.mapM fun c => number c)
-where w {A B : Obj} {d : Bool} (t : Tm A B d) : StateM Nat (Tm A B d) :=
+partial def number : {A B : Obj} → Tm A B → StateM Nat (Tm A B)
+  | _, _, .share _ R => number R
+  | _, _, t => do w (← t.mapM fun c => number c)
+where w {A B : Obj} (t : Tm A B) : StateM Nat (Tm A B) :=
   if closed t then modifyGet fun k => (.share k t, k + 1) else pure t
 
 /-- `t` needs no keys and does not read the variable `k`: fixed across the rounds of `k`'s fixed point, though it
     may read a parameter of a definition elaborated once or an enclosing fixed point's variable. -/
-def free (k : Nat) {A B : Obj} {d : Bool} (t : Tm A B d) : Bool := !d && !t.fv.contains k
+def free (k : Nat) {A B : Obj} (t : Tm A B) : Bool := !t.dem && !t.fv.contains k
 
 /-- `X C`, `X` the variable `k`, `C` free of it: `C`. -/
-def varComp (k : Nat) : {A B : Obj} → {d : Bool} → Tm A B d → Option ((D : Obj) × Tm D B false)
-  | _, _, _, .comp (B := D) (e := false) (.var k') C => if k' == k && free k C then some ⟨D, C⟩ else none
-  | _, _, _, .share _ R => varComp k R
-  | _, _, _, _ => none
+def varComp (k : Nat) : {A B : Obj} → Tm A B → Option ((D : Obj) × Tm D B)
+  | _, _, .comp (B := D) (.var _ k') C => if k' == k && free k C then some ⟨D, C⟩ else none
+  | _, _, .share _ R => varComp k R
+  | _, _, _ => none
 
 /-- The arcs of an AC-3 body `S ∩ ⋂ₖ Aₖ\(X Cₖ)` over the variable `k`, its conjuncts free of `k` skipped (they
     are `S`); `none` for any other body. -/
-def arcs (k : Nat) : {V D : Obj} → {d : Bool} → Tm V D d →
-    Option (List (Tm V V false × Tm D D false × Tm V V false × Tm D D false))
-  | _, _, _, .share _ R => arcs k R
-  | _, _, _, .meet R S => return (← arcs k R) ++ (← arcs k S)
-  | V, D, _, .ldiv (A := V') R S UB UC =>
+def arcs (k : Nat) : {V D : Obj} → Tm V D →
+    Option (List (Tm V V × Tm D D × Tm V V × Tm D D))
+  | _, _, .share _ R => arcs k R
+  | _, _, .meet R S => return (← arcs k R) ++ (← arcs k S)
+  | V, D, .ldiv (A := V') R S UB UC =>
     if free k R && free k S && free k UB && free k UC then some [] else do
     let ⟨D', C⟩ ← varComp k S
     unless free k R && free k UB && free k UC do none
     if h : V' = V ∧ D' = D then some [(h.1 ▸ R, h.2 ▸ C, UB, UC)] else none
-  | _, _, _, t => if free k t then some [] else none
+  | _, _, t => if free k t then some [] else none
 
 /-- The constant of each closed value, and the code of each numbered sub-term (`number`). -/
 abbrev RM := StateT (Std.HashMap Lean.Expr Name × Std.HashMap Nat Lean.Expr) MetaM
@@ -604,7 +602,7 @@ mutual
 
 /-- `t`'s code, `Gen.Fn d A B`: a closed `t` is its constant (`share`), any other its node; a numbered sub-term's
     is built once. -/
-partial def code (pre : Name) (ρ : List (Nat × Lean.Expr)) {A B : Obj} {d : Bool} (t : Tm A B d) : RM Lean.Expr := do
+partial def code (pre : Name) (ρ : List (Nat × Lean.Expr)) {A B : Obj} (t : Tm A B) : RM Lean.Expr := do
   if let .share k R := t then
     if let some e := (← get).2[k]? then return e
     let e ← code pre ρ R
@@ -613,116 +611,116 @@ partial def code (pre : Name) (ρ : List (Nat × Lean.Expr)) {A B : Obj} {d : Bo
     let v ← node pre ρ t
     -- at an object variable's placeholder (`varObj`) the value lives under a generic constant's binders: not shared
     if (v.find? placeholders.contains).isSome then return v
-    let c ← share pre A B (mkApp v (mkConst ``Unit.unit))
-    pure (g ``Gen.const #[oE A, oE B, mkConst c])
+    return mkConst (← share pre A B v)
   else node pre ρ t
 
-/-- The constant of the closed value `v : CRel A B`: one per structurally equal value. -/
+/-- The constant of the closed code `v : Rel A B`: one per structurally equal value, so a `tab` is computed once
+    and a `lazy` one still runs on the context it is given (`Out.memo`). -/
 partial def share (pre : Name) (A B : Obj) (v : Lean.Expr) : RM Name := do
   if let some c := (← get).1[v]? then return c
   let i := (← get).1.size
   let c := pre ++ `c ++ Name.mkSimple s!"c{i}"
-  addConst c (mkApp2 (mkConst ``CRel) (oE A) (oE B)) v
+  addConst c (mkApp2 (mkConst ``Rel.Rel) (oE A) (oE B)) v
   modify fun (m, cs) => (m.insert v c, cs); pure c
 
-/-- The plan of `t` (`Gen.Pl d A B`) where its node has a bit rule. -/
-partial def plan? (pre : Name) (ρ : List (Nat × Lean.Expr)) {A B : Obj} {d : Bool} (t : Tm A B d) : RM (Option Lean.Expr) := do
-  if closed t then return some (g ``Gen.pleaf #[oE A, oE B, bE d, ← code pre ρ t])
-  match A, B, d, t with
+/-- The plan of `t` (`Gen.Pl A B`) where its node has a bit rule. -/
+partial def plan? (pre : Name) (ρ : List (Nat × Lean.Expr)) {A B : Obj} (t : Tm A B) : RM (Option Lean.Expr) := do
+  if closed t then return some (g ``Gen.pleaf #[oE A, oE B, bE t.dem, ← code pre ρ t])
+  match A, B, t with
   -- a constant's parameter is its argument's plan, passed on as it is
-  | A, B, d, .var k => match ρ.lookup k with
+  | A, B, .var d k => match ρ.lookup k with
     | some x => if (← inferType x).isAppOf ``Gen.Pl then return some x
                 else return some (g ``Gen.pleaf #[oE A, oE B, bE d, ← node pre ρ t])
     | none => return some (g ``Gen.pleaf #[oE A, oE B, bE d, ← node pre ρ t])
-  | _, _, _, .call .. => return some (← spine pre ρ t)
+  | _, _, .call .. => return some (← spine pre ρ t)
   -- a row's spine is its kernel's node, a call's its constant's plan
-  | _, _, _, .arg .. => if (primOf t).isSome then return none else return some (← spine pre ρ t)
-  | A, B, _, .val _ => return some (g ``Gen.pleaf #[oE A, oE B, bE false, ← node pre ρ t])
-  | A, _, _, .uni _ => return some (g ``Gen.pleaf #[oE A, oE A, bE false, ← node pre ρ t])
-  | _, _, _, .share _ R | _, _, _, .own R => plan? pre ρ R
-  | A, C, _, .comp (B := B) (d := d) (e := e) R S =>
-    return some (g ``Gen.pcomp #[oE A, oE B, oE C, bE d, bE e, ← planOr pre ρ R, ← planOr pre ρ S])
-  | B, A, _, .conv R => return some (g ``Gen.pconv #[oE A, oE B, ← planOr pre ρ R])
-  | A, B, _, .meet (d := d) (e := e) R S =>
-    return some (g ``Gen.pmeet #[oE A, oE B, bE d, bE e, ← planOr pre ρ R, ← planOr pre ρ S])
-  | A, B, _, .join (d := d) (e := e) R S =>
-    return some (g ``Gen.pjoin #[oE A, oE B, bE d, bE e, ← planOr pre ρ R, ← planOr pre ρ S])
-  | A, B, _, .diff (d := d) (e := e) R S =>
-    return some (g ``Gen.pdiff #[oE A, oE B, bE d, bE e, ← planOr pre ρ R, ← planOr pre ρ S])
-  | B, C, _, .ldiv (A := A) R S UB UC => return some (g ``Gen.pldiv
+  | _, _, .arg .. => if (primOf t).isSome then return none else return some (← spine pre ρ t)
+  | A, B, .val _ => return some (g ``Gen.pleaf #[oE A, oE B, bE false, ← node pre ρ t])
+  | A, _, .uni _ => return some (g ``Gen.pleaf #[oE A, oE A, bE false, ← node pre ρ t])
+  | _, _, .share _ R | _, _, .own R => plan? pre ρ R
+  | A, C, .comp (B := B) R S =>
+    return some (g ``Gen.pcomp #[oE A, oE B, oE C, ← planOr pre ρ R, ← planOr pre ρ S])
+  | B, A, .conv R => return some (g ``Gen.pconv #[oE A, oE B, ← planOr pre ρ R])
+  | A, B, .meet R S => return some (g ``Gen.pmeet #[oE A, oE B, ← planOr pre ρ R, ← planOr pre ρ S])
+  | A, B, .join R S => return some (g ``Gen.pjoin #[oE A, oE B, ← planOr pre ρ R, ← planOr pre ρ S])
+  | A, B, .diff R S => return some (g ``Gen.pdiff #[oE A, oE B, ← planOr pre ρ R, ← planOr pre ρ S])
+  | B, C, .ldiv (A := A) R S UB UC => return some (g ``Gen.pldiv
       #[oE A, oE B, oE C, ← planOr pre ρ R, ← planOr pre ρ S, ← code pre ρ UB, ← code pre ρ UC])
-  | _, _, _, _ => return none
+  | _, _, _ => return none
 
 /-- The plan of `t`, or its table as a leaf (`Gen.pleaf`). -/
-partial def planOr (pre : Name) (ρ : List (Nat × Lean.Expr)) {A B : Obj} {d : Bool} (t : Tm A B d) : RM Lean.Expr := do
+partial def planOr (pre : Name) (ρ : List (Nat × Lean.Expr)) {A B : Obj} (t : Tm A B) : RM Lean.Expr := do
   match ← plan? pre ρ t with
   | some p => pure p
-  | none => pure (g ``Gen.pleaf #[oE A, oE B, bE d, ← code pre ρ t])
+  | none => pure (g ``Gen.pleaf #[oE A, oE B, bE t.dem, ← code pre ρ t])
 
 /-- A call, its constant applied to its arguments' plans (`Gen.Pl`): its own plan, which the caller's runs through. -/
-partial def spine (pre : Name) (ρ : List (Nat × Lean.Expr)) {A B : Obj} {d : Bool} : Tm A B d → RM Lean.Expr
+partial def spine (pre : Name) (ρ : List (Nat × Lean.Expr)) {A B : Obj} : Tm A B → RM Lean.Expr
   | .share _ f => spine pre ρ f
   | .arg f x => return mkApp (← spine pre ρ f) (← planOr pre ρ x)
   | .call _ c os _ => return mkAppN (mkConst c) (os.map oE).toArray
   | _ => throwError "rel_program expansion: internal: a call's head is not a constant"
 
 /-- `φ`'s body as `fun X : CRel A B => …`, the variable `k` read as `X`. -/
-partial def body (pre : Name) (ρ : List (Nat × Lean.Expr)) (A B : Obj) (k : Nat) {d : Bool} (b : Tm A B d) :
+partial def body (pre : Name) (ρ : List (Nat × Lean.Expr)) (A B : Obj) (k : Nat) (b : Tm A B) :
     RM Lean.Expr :=
   withLocalDeclD `X (mkApp2 (mkConst ``CRel) (oE A) (oE B)) fun x => do
     mkLambdaFVars #[x] (← code pre ((k, x) :: ρ) b)
 
 /-- `t`'s own node, its parts by `code` (or `planOr` where they run as bit matrices). -/
-partial def node (pre : Name) (ρ : List (Nat × Lean.Expr)) {A B : Obj} {d : Bool} (t : Tm A B d) : RM Lean.Expr := do
-  let c {X Y : Obj} {e : Bool} (u : Tm X Y e) := code pre ρ u
-  let p {X Y : Obj} {e : Bool} (u : Tm X Y e) := planOr pre ρ u
-  match A, B, d, t with
-  | A, B, _, .val R => return g ``Gen.val #[oE A, oE B, ← liftE (relE R)]
-  | A, _, _, .uni (m := m) U => return g ``Gen.uni #[oE A, uE m, ← liftE (valsE A m U)]
-  | A, B, _, .zero => return g ``Gen.zero #[oE A, oE B]
-  | A, _, _, .id => return g ``Gen.id #[oE A]
-  | A, B, _, .top V => return g ``Gen.top #[oE A, oE B, ← c V]
-  | .prod A B, _, _, .outl => return g ``Gen.outl #[oE A, oE B]
-  | .prod A B, _, _, .outr => return g ``Gen.outr #[oE A, oE B]
-  | A, C, true, .comp (B := B) (e := e) R S => return g ``Gen.comp #[oE A, oE B, oE C, bE e, ← c R, ← c S]
-  | A, C, false, .comp (B := B) (e := e) R S => return g ``Gen.compB #[oE A, oE B, oE C, bE e, ← p R, ← p S]
-  | B, A, _, .conv R => return g ``Gen.conv #[oE A, oE B, ← c R]
-  | A, B, _, .meet (d := false) (e := false) R S => return g ``Gen.meetB #[oE A, oE B, ← p R, ← p S]
-  | A, B, _, .diff (d := false) (e := false) R S => return g ``Gen.diffB #[oE A, oE B, ← p R, ← p S]
-  | A, B, _, .meet (d := d) (e := e) R S => return g ``Gen.meet #[oE A, oE B, bE d, bE e, ← c R, ← c S]
-  | A, B, _, .join (d := d) (e := e) R S => return g ``Gen.join #[oE A, oE B, bE d, bE e, ← c R, ← c S]
-  | A, B, _, .diff (d := d) (e := e) R S => return g ``Gen.diff #[oE A, oE B, bE d, bE e, ← c R, ← c S]
-  | A, _, d, .dom (B := B) R => return g ``Gen.dom #[oE A, oE B, bE d, ← c R]
-  | B, _, _, .ran (A := A) R => return g ``Gen.ran #[oE A, oE B, ← c R]
-  | B, C, _, .ldiv (A := A) R S UB UC => return g ``Gen.ldivB #[oE A, oE B, oE C, ← p R, ← p S, ← c UB, ← c UC]
-  | A, B, _, .rdiv (C := C) R S UA UB => return g ``Gen.rdiv #[oE A, oE B, oE C, ← c R, ← c S, ← c UA, ← c UB]
-  | A, .prod B C, _, .pair (d := d) (e := e) R S => return g ``Gen.pair #[oE A, oE B, oE C, bE d, bE e, ← c R, ← c S]
-  | .prod A C, .prod B D, _, .prod R S => return g ``Gen.prod #[oE A, oE B, oE C, oE D, ← c R, ← c S]
-  | .sum A B, C, _, .junc R S => return g ``Gen.junc #[oE A, oE B, oE C, ← c R, ← c S]
-  | A, .arr B, _, .lam (d := d) R => return g ``Gen.lam #[oE A, oE B, bE d, ← c R]
-  | .arr A, .arr B, _, .E (d := d) R => return g ``Gen.E #[oE A, oE B, bE d, ← c R]
-  | _, B, _, .est Q => return g ``Gen.est #[oE B, ← c Q]
-  | _, .arr B, _, .thin Q => return g ``Gen.thin #[oE B, ← c Q]
-  | A, .arr B, _, .nil => return g ``Gen.nil #[oE A, oE B]
-  | .arr B, _, _, .atPos k => return g ``Gen.atPos #[oE B, toExpr k]
-  | _, _, _, .own R => c R
-  | _, _, _, .succ U => return g ``Gen.succ #[← c U]
-  | _, _, _, .arith k U => return g ``Gen.arith #[toExpr k, ← c U]
-  | _, _, _, .leq U => return g ``Gen.leq #[← c U]
-  | _, _, _, .lt U => return g ``Gen.lt #[← c U]
-  | .arr E, V, _, .foldr (d := d) e S => return g ``Gen.foldr #[oE E, oE V, bE d, ← c e, ← c S]
-  | .arr E, V, _, .fold (d := d) e S => return g ``Gen.fold #[oE E, oE V, bE d, ← c e, ← c S]
-  | _, _, _, .share _ R => c R
-  | .prod I (.arr E), V, _, .foldI (d := d) (d' := d') e S =>
-    return g ``Gen.foldI #[oE I, oE E, oE V, bE d, bE d', ← c e, ← c S]
-  | .prod I A, B, _, .flat (d := d) R => return g ``Gen.flat #[oE I, oE A, oE B, bE d, ← c R]
-  | A, B, d, .var k => match ρ.lookup k with
-    | some x => if (← inferType x).isAppOf ``Gen.Pl then return g ``Gen.ofPl #[oE A, oE B, bE d, x]
+partial def node (pre : Name) (ρ : List (Nat × Lean.Expr)) {A B : Obj} (t : Tm A B) : RM Lean.Expr := do
+  let c {X Y : Obj} (u : Tm X Y) := code pre ρ u
+  let p {X Y : Obj} (u : Tm X Y) := planOr pre ρ u
+  match A, B, t with
+  | A, B, .val R => return g ``Gen.val #[oE A, oE B, ← liftE (relE R)]
+  | A, _, .uni (m := m) U => return g ``Gen.uni #[oE A, uE m, ← liftE (valsE A m U)]
+  | A, B, .zero => return g ``Gen.zero #[oE A, oE B]
+  | A, _, .id => return g ``Gen.id #[oE A]
+  | A, B, .top V => return g ``Gen.top #[oE A, oE B, ← c V]
+  | .prod A B, _, .outl => return g ``Gen.outl #[oE A, oE B]
+  | .prod A B, _, .outr => return g ``Gen.outr #[oE A, oE B]
+  | A, C, .comp (B := B) R S =>
+    if R.dem then return g ``Gen.comp #[oE A, oE B, oE C, bE S.dem, ← c R, ← c S]
+    else return g ``Gen.compB #[oE A, oE B, oE C, ← p R, ← p S]
+  | B, A, .conv R => return g ``Gen.conv #[oE A, oE B, ← c R]
+  | A, B, .meet R S =>
+    if !R.dem && !S.dem then return g ``Gen.meetB #[oE A, oE B, ← p R, ← p S]
+    else return g ``Gen.meet #[oE A, oE B, bE R.dem, bE S.dem, ← c R, ← c S]
+  | A, B, .join R S => return g ``Gen.join #[oE A, oE B, bE R.dem, bE S.dem, ← c R, ← c S]
+  | A, B, .diff R S =>
+    if !R.dem && !S.dem then return g ``Gen.diffB #[oE A, oE B, ← p R, ← p S]
+    else return g ``Gen.diff #[oE A, oE B, bE R.dem, bE S.dem, ← c R, ← c S]
+  | A, _, .dom (B := B) R => return g ``Gen.dom #[oE A, oE B, bE R.dem, ← c R]
+  | B, _, .ran (A := A) R => return g ``Gen.ran #[oE A, oE B, ← c R]
+  | B, C, .ldiv (A := A) R S UB UC => return g ``Gen.ldivB #[oE A, oE B, oE C, ← p R, ← p S, ← c UB, ← c UC]
+  | A, B, .rdiv (C := C) R S UA UB => return g ``Gen.rdiv #[oE A, oE B, oE C, ← c R, ← c S, ← c UA, ← c UB]
+  | A, .prod B C, .pair R S => return g ``Gen.pair #[oE A, oE B, oE C, bE R.dem, bE S.dem, ← c R, ← c S]
+  | .prod A C, .prod B D, .prod R S => return g ``Gen.prod #[oE A, oE B, oE C, oE D, ← c R, ← c S]
+  | .sum A B, C, .junc R S => return g ``Gen.junc #[oE A, oE B, oE C, ← c R, ← c S]
+  | A, .arr B, .lam R => return g ``Gen.lam #[oE A, oE B, bE R.dem, ← c R]
+  | .arr A, .arr B, .E R => return g ``Gen.E #[oE A, oE B, bE R.dem, ← c R]
+  | _, B, .est Q => return g ``Gen.est #[oE B, ← c Q]
+  | _, .arr B, .thin Q => return g ``Gen.thin #[oE B, ← c Q]
+  | A, .arr B, .nil => return g ``Gen.nil #[oE A, oE B]
+  | .arr B, _, .atPos k => return g ``Gen.atPos #[oE B, toExpr k]
+  | _, _, .own R => c R
+  | _, _, .succ U => return g ``Gen.succ #[← c U]
+  | _, _, .arith k U => return g ``Gen.arith #[toExpr k, ← c U]
+  | _, _, .leq U => return g ``Gen.leq #[← c U]
+  | _, _, .lt U => return g ``Gen.lt #[← c U]
+  | .arr E, V, .foldr e S => return g ``Gen.foldr #[oE E, oE V, bE S.dem, ← c e, ← c S]
+  | .arr E, V, .fold e S => return g ``Gen.fold #[oE E, oE V, bE S.dem, ← c e, ← c S]
+  | _, _, .share _ R => c R
+  | .prod I (.arr E), V, .foldI e S =>
+    return g ``Gen.foldI #[oE I, oE E, oE V, bE e.dem, bE S.dem, ← c e, ← c S]
+  | .prod I A, B, .flat R => return g ``Gen.flat #[oE I, oE A, oE B, bE R.dem, ← c R]
+  | A, B, .var _ k => match ρ.lookup k with
+    | some x => if (← inferType x).isAppOf ``Gen.Pl then return g ``Gen.ofPl #[oE A, oE B, x]
                 else return g ``Gen.const #[oE A, oE B, x]
     | none => throwError "rel_program expansion: internal: the variable {k} is not bound here"
-  | A, B, _, .nu k S b => match arcs k b with
+  | A, B, .nu k S b => match arcs k b with
     | some (a :: as) =>
-      let arc (x : Tm A A false × Tm B B false × Tm A A false × Tm B B false) : RM Lean.Expr := do
+      let arc (x : Tm A A × Tm B B × Tm A A × Tm B B) : RM Lean.Expr := do
         let (r, s, u, v) := x
         let ty (X Y : Obj) := mkApp3 (mkConst ``Gen.Fn) (bE false) (oE X) (oE Y)
         pure (mkApp4 (mkConst ``Prod.mk [0, 0]) (ty A A)
@@ -732,19 +730,18 @@ partial def node (pre : Name) (ρ : List (Nat × Lean.Expr)) {A B : Obj} {d : Bo
       let arcTy := mkApp2 (mkConst ``Gen.Arc) (oE A) (oE B)
       return g ``Gen.nuAC #[oE A, oE B, ← c S, ← arc a, ← mkListLit arcTy (← as.mapM arc)]
     | _ => return g ``Gen.nu #[oE A, oE B, ← c S, ← body pre ρ A B k b]
-  | A, B, _, .mu k _ n b => return g ``Gen.mu #[oE A, oE B, toExpr n, ← body pre ρ A B k b]
-  | A, B, _, .hylo (d := d) (e := e) k _ ch b =>
-    return g ``Gen.hylo #[oE A, oE B, bE d, bE e, ← c ch, ← body pre ρ A B k b]
-  | .sum A B, C, _, .juncD (d := d) (e := e) R S => return g ``Gen.juncD #[oE A, oE B, oE C, bE d, bE e, ← c R, ← c S]
-  -- `d` the outer one: `prim`'s is `true`, so the two alternatives cannot bind it alike
-  | A, B, _, t@(.prim _) | A, B, _, t@(.arg ..) => match primOf t with
+  | A, B, .mu k _ n b => return g ``Gen.mu #[oE A, oE B, toExpr n, ← body pre ρ A B k b]
+  | A, B, .hylo k _ ch b =>
+    return g ``Gen.hylo #[oE A, oE B, bE ch.dem, bE b.dem, ← c ch, ← body pre ρ A B k b]
+  | .sum A B, C, .juncD R S => return g ``Gen.juncD #[oE A, oE B, oE C, bE R.dem, bE S.dem, ← c R, ← c S]
+  | A, B, t@(.prim _) | A, B, t@(.arg ..) => match primOf t with
     | some (r, as) => do
-      let xs ← as.toArray.mapM fun x => return (← code pre ρ x.2.2.2, fnTy x)
+      let xs ← as.toArray.mapM fun x => return (← code pre ρ x.2.2, fnTy x)
       let some e ← primE r A B xs
         | throwError "rel_program expansion: `{r.sig.1}` at {oE A} → {oE B} given {xs.size} relations fits none of {primWrappers}"
       pure e
-    | none => return g ``Gen.ofPl #[oE A, oE B, bE d, ← spine pre ρ t]
-  | A, B, d, t@(.call ..) => return g ``Gen.ofPl #[oE A, oE B, bE d, ← spine pre ρ t]
+    | none => return g ``Gen.ofPl #[oE A, oE B, ← spine pre ρ t]
+  | A, B, t@(.call ..) => return g ``Gen.ofPl #[oE A, oE B, ← spine pre ρ t]
 
 end
 
@@ -807,53 +804,58 @@ def objsE (objs : Objs) : MetaM Lean.Expr := do
 def emit (n : Name) (r : Read) : MetaM Unit := do
   let (ds, ps, cs, objs, os) := r
   -- read before `number`, which hides a closed `μ` inside a `share`
-  let ms : List (String × List String) := ds.map fun (x, ⟨_, _, _, t⟩) => (x, mus t)
+  let ms : List (String × List String) := ds.map fun (x, ⟨_, _, t⟩) => (x, mus t)
   -- one numbering over the whole program, as the code of each number is kept across it
   let ((ds, ps, cs), fs) := Prod.fst <| (do
-    let fs ← os.mapM fun o => do let ⟨A, B, d, t⟩ := o.res; return { o with res := ⟨A, B, d, ← number t⟩ }
-    let ds ← ds.mapM fun (x, ⟨A, B, d, t⟩) => return (x, ⟨A, B, d, ← number t⟩)
+    let fs ← os.mapM fun o => do let ⟨A, B, t⟩ := o.res; return { o with res := ⟨A, B, ← number t⟩ }
+    let ds ← ds.mapM fun (x, ⟨A, B, t⟩) => return (x, ⟨A, B, ← number t⟩)
     let ps ← ps.mapM fun (x, ⟨A, B, t⟩, s, u) => return (x, ⟨A, B, ← number t⟩, s, u)
     let cs ← cs.mapM fun (p, x, y, eq, s, u, ⟨A, B, R, S⟩) =>
       return (p, x, y, eq, s, u, ⟨A, B, ← number R, ← number S⟩)
     pure ((ds, ps, cs), fs) : StateM Nat ((List (String × Res) × List (String × Top) × List Chk) × List Once)).run 0
   addConst (n ++ `objs) (mkConst ``Objs) (← objsE objs)
   let os := mkConst (n ++ `objs)
-  let app (t : Lean.Expr) := mkApp t (mkConst ``Unit.unit)
+  -- a closed term's table: its code run in the empty context `{}`, which knows neither side; each side a `none`
+  -- at its field's type, read off the field's default (which has no executable code of its own)
+  let app (A B : Obj) (t : Lean.Expr) : MetaM Lean.Expr := do
+    let none' (f : Name) := return mkApp (mkConst ``Option.none [0]) (← inferType (g f #[oE A, oE B])).appArg!
+    pure (g ``Rel.Rel.run #[oE A, oE B, t,
+      g ``Rel.Known.mk #[oE A, oE B, ← none' ``Rel.Known.dom._default, ← none' ``Rel.Known.ran._default]])
   let ((entries, printed, checked), st) ← (do
-    -- each definition elaborated once: `n.x : (A₁ … : Obj) → Pl U₁ → … → Pl R₁ → … → Pl d A B`, generic over the
+    -- each definition elaborated once: `n.x : (A₁ … : Obj) → Pl U₁ → … → Pl R₁ → … → Pl A B`, generic over the
     -- objects of its generic variables, then plans in and out, the universes it reads then its parameters, so a
     -- caller's plan runs through the call; `n.x.conv` its converse, when its body has one (`convTm`)
-    for o@{ key, const := c, gen, params := qs, res := ⟨A, B, d, t⟩, tst, .. } in fs do
+    for o@{ key, const := c, gen, params := qs, res := ⟨A, B, t⟩, tst, .. } in fs do
       let nv := gen.length
       let reads := (List.range nv).map t.fv.contains
-      let pl (e : Bool) (X Y : Obj) := mkApp3 (mkConst ``Gen.Pl) (bE e) (oE X) (oE Y)
+      let pl (X Y : Obj) := mkApp2 (mkConst ``Gen.Pl) (oE X) (oE Y)
       let vo (k : Nat) : Obj := if gen.getD k false then (varObj k).getD .long else .long
       let rk := (List.range nv).filter (reads.getD · false)
       let gk := (List.range nv).filter (gen.getD · false)
-      let mk (k : Name) (X Y : Obj) (e : Bool) (u : Tm X Y e) : RM Unit := do
+      let mk (k : Name) (X Y : Obj) (u : Tm X Y) : RM Unit := do
         let (ty, v) ← lams (gk.map fun _ => mkConst ``Obj) fun xs => do
           -- each placeholder `varObj k` becomes its binder
           let sub (z : Lean.Expr) := z.replace fun s =>
             (gk.zip xs.toList).findSome? fun (k, a) => if (varObj k).map toExpr == some s then some a else none
-          lams ((rk.map fun k => sub (pl false (vo k) (vo k))) ++ qs.map fun (P, Q, e) => sub (pl e P Q)) fun ys => do
-            pure (sub (pl e X Y), sub (← planOr n ((rk ++ (List.range qs.length).map (nv + ·)).zip ys.toList) u))
+          lams ((rk.map fun k => sub (pl (vo k) (vo k))) ++ qs.map fun (P, Q, _) => sub (pl P Q)) fun ys => do
+            pure (sub (pl X Y), sub (← planOr n ((rk ++ (List.range qs.length).map (nv + ·)).zip ys.toList) u))
         addConst k ty v
       let cv := if tst then none else (convTm t).toOption
-      if let some ⟨e, u⟩ := cv then mk (c ++ `conv) B A e u
-      mk c A B d t
+      if let some u := cv then mk (c ++ `conv) B A u
+      mk c A B t
       modifyEnv (relRegistry.addEntry · (.call key (sigOf o)))
     let mut es := []
-    for (x, ⟨A, B, d, t⟩) in ds do
+    for (x, ⟨A, B, t⟩) in ds do
       let v ← code n [] t
       let k := Parse.constOf n x
-      unless !d do throwError "rel_program expansion: internal: `{x}` needs keys"
-      addConst k (mkApp2 (mkConst ``CRel) (oE A) (oE B)) (app v)
+      unless !t.dem do throwError "rel_program expansion: internal: `{x}` needs keys"
+      addConst k (mkApp2 (mkConst ``CRel) (oE A) (oE B)) (← app A B v)
       es := es ++ [g ``Gen.entry #[toExpr x, oE A, oE B, mkConst k]]
     let ps ← ps.mapM fun (x, ⟨A, B, t⟩, s, u) => do
-      pure (g ``printText #[oE A, oE B, os, toExpr x, toExpr s, toExpr u, app (← code n [] t)])
+      pure (g ``printText #[oE A, oE B, os, toExpr x, toExpr s, toExpr u, ← app A B (← code n [] t)])
     let cs ← cs.mapM fun (p, x, y, eq, s, u, ⟨A, B, R, S⟩) => do
       pure (g ``checkErr #[oE A, oE B, os, toExpr p, toExpr x, toExpr y, toExpr eq, toExpr s, toExpr u,
-        app (← code n [] R), app (← code n [] S)])
+        ← app A B (← code n [] R), ← app A B (← code n [] S)])
     pure (es, ps, cs) : RM (List Lean.Expr × List Lean.Expr × List Lean.Expr)).run ({}, {})
   -- what `Expand.rep` proves from: the numbered definitions, and `code`'s constants so it adds none of them again
   modifyEnv (relRegistry.addEntry · (.rep n ds st.1.toArray st.2.toArray))

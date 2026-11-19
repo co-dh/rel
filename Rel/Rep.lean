@@ -4,6 +4,7 @@
 -/
 import Rel.Run.Alg
 import Rel.Core.Rel
+import Rel.Run.Lang.Lazy
 
 namespace Rel.Rep
 
@@ -15,6 +16,26 @@ variable {A B C : Obj}
 
 /-- The `Rel(Set)` arrow a `Rel` denotes: `x` to `y` when some row holds `(x, y)`. -/
 def rep (R : Tab A B) : Core.Rel (A.El) (B.El) := R.Holds
+
+/-- The coreflexives `K` confines a relation's two sides to: `𝟙` on an unknown side, `rep (idU c)` (the
+    coreflexive on `c`'s values, `rep_idU`) on a known one. -/
+def _root_.Rel.Known.den (K : Known A B) : Core.Rel A.El A.El × Core.Rel B.El B.El :=
+  (K.dom.elim (𝟙 _) fun c => rep (Alg.idU c.2), K.ran.elim (𝟙 _) fun c => rep (Alg.idU c.2))
+
+/-- `r` represents `R` in the context `K`, as `run` computes it there: a table agrees with `R` on `K`'s sides
+    only, since `Gen.Sound` fixes a term only at the keys it is given and a caller that passes `K.ran` cuts the
+    result itself; a `tab none` (a run past capacity) represents anything. -/
+def _root_.Rel.Rel.Reps (K : Known A B) : Rel A B → Core.Rel A.El B.El → Prop
+  | .tab none, _ => True
+  | .tab (some t), R => K.den.1 ≫ rep t ≫ K.den.2 = K.den.1 ≫ R ≫ K.den.2
+  | .lazy f, R => (f K).Reps K R
+
+/-- What `r` computes in `K` agrees with `R` on `K`'s sides, where `r` represents `R` there. -/
+theorem _root_.Rel.Rel.Reps.run {K : Known A B} : ∀ {r : Rel A B} {R : Core.Rel A.El B.El} {t : Tab A B},
+    r.Reps K R → r.run K = some t → K.den.1 ≫ rep t ≫ K.den.2 = K.den.1 ≫ R ≫ K.den.2
+  | .tab none, _, _, _, e => by simp [Rel.run] at e
+  | .tab (some _), _, _, h, e => by simp only [Rel.run, Option.some.injEq] at e; subst e; exact h
+  | .lazy f, _, _, h, e => Rel.Reps.run (r := f K) h e
 
 /-- `rep R x y` is `R.Holds x y`, by definition. -/
 theorem rep_apply (R : Tab A B) (x : A.El) (y : B.El) : rep R x y = R.Holds x y := rfl

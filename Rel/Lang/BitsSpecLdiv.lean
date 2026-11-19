@@ -67,7 +67,7 @@ variable {A B C : Obj} {ua : Nat → A.El} {ub : Nat → B.El}
 /-- **`\` as bits** (`rep_leftDiv`'s side, `rep_tableC`): from `R°`'s code pairs `y`, `a` (`y` ascending, `R` read
     off them), `S`'s matrix and the codes `kb`, `kc` of `UB`'s and `UC`'s elements, `Bits.ldiv` holds `Tm.ldiv`'s
     relation: the `∧` of `S`'s rows answers the `∀` clause, the mask `ran R ⊗ ⊤ ∪ Ub ⊗ Uc` the vacuous one. -/
-theorem rep_ldivB {R : Tm A B false} {S : Tm A C false} {UB : Tm B B false} {UC : Tm C C false} {uc : Nat → C.El} (nb : Nat)
+theorem rep_ldivB {R : Tm A B} {S : Tm A C} {UB : Tm B B} {UC : Tm C C} {uc : Nat → C.El} (nb : Nat)
     (y a : ByteArray) {s : Bits} (kb kc : ByteArray)
     (hs : s.Enc ua uc (S.den ρ)) (hl : len a = len y) (hsort : (ids y).Pairwise (· ≤ ·)) (hJ : ∀ x ∈ ids a, x < s.na)
     (hR : ∀ b < nb, ∀ x, R.den ρ x (ub b) ↔

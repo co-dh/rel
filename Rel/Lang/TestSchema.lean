@@ -14,8 +14,8 @@ def kv : Schema := [("k", .long), ("v", .long)]
 def x : Tab .long kv.obj := ⟨_, Alg.col [0, 1, 2], (Alg.col [1, 2, 1], Alg.col [10, 20, 30])⟩
 
 /-- `x ≫ t`'s pairs and its ok bit. -/
-def run {d : Bool} (t : Tm kv.obj .long d) : List (Int64 × Int64) × Bool :=
-  let r := compile (fun _ _ _ _ _ => (.zero, true)) (.comp (.val x) t) (); (r.rel.toList, r.ok)
+def run (t : Tm kv.obj .long) : List (Int64 × Int64) × Bool :=
+  let r : CRel .long .long := (compile (fun _ _ _ => .closed (.pure (.zero, true))) (.comp (.val x) t)).run {}; (r.rel.toList, r.ok)
 
 #guard run (col kv "k") == ([(0, 1), (1, 2), (2, 1)], true)
 #guard run (col kv "v") == ([(0, 10), (1, 20), (2, 30)], true)
@@ -65,7 +65,7 @@ def x' : Tab .long (.prod kv.obj kw.obj) :=
   ⟨_, Alg.col [0, 1, 2, 3], ((Alg.col [1, 1, 2, 2], Alg.col [10, 10, 20, 20]), (Alg.col [1, 2, 2, 3], Alg.col [7, 8, 8, 9]))⟩
 
 -- the pairs whose `k` agree, `0` and `2`, as rows `(k, v, w)`
-def joined : CRel .long (.prod (.prod .long .long) .long) := compile (fun _ _ _ _ _ => (.zero, true)) (.comp (.val x') jn.2) ()
+def joined : CRel .long (.prod (.prod .long .long) .long) := (compile (fun _ _ _ => .closed (.pure (.zero, true))) (.comp (.val x') jn.2)).run {}
 #guard joined.ok &&
   (joined.rel.toList : List (Int64 × ((Int64 × Int64) × Int64))) == [(0, ((1, 10), 7)), (2, ((2, 20), 8))]
 

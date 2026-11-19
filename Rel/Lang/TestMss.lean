@@ -53,6 +53,6 @@ def rows : String := s!"\{(a, {mssL [3,1,4,1,5]}), (b, {mssL [2,0,7]}), (c, {mss
 
 -- `Rel.Lang.Rows` (the rows' lemmas, `Tm.gap`) loads beside a module that runs a `rel_program`: no declaration of
 -- the elaborator's (`Rel.Run.Lang.Elab`) shares a name with one of its
-#guard (Tm.comp (Tm.id (A := .long)) .id).gap == none && (Tm.lam (Tm.id (A := .long))).gap.isSome
+#guard (Tm.comp (Tm.id (A := .long)) .id).gap == none && (Tm.lam (Tm.id (A := .atom .f64))).gap.isSome
 
 end Rel.Lang.TestMss

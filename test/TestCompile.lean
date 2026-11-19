@@ -19,13 +19,13 @@ namespace Rel.Lang.TestCompile
 open Lean Elab Command Tab Rel.Lang Rel.Lang.Expand
 
 /-- No variable bound: a closed definition reads none, and a use of one vouches for nothing. -/
-def η₀ : CodeEnv := fun _ _ _ _ _ => (.zero, false)
+def η₀ : CodeEnv := fun _ _ _ => .closed (.pure (.zero, false))
 
 /-- `t` against the generated constant `k`: `none` where they agree, `some false` where `compile` vouches for
     nothing, `some true` where they differ. `k` runs only where `compile` vouches: a not-ok row reads nothing of it,
     and a definition that runs to its cap would pay that run twice. -/
-unsafe def differs (k : Name) {A B : Obj} (t : Tm A B false) : CommandElabM (Option Bool) := do
-  let c ← IO.lazyPure fun _ => compile η₀ t ()
+unsafe def differs (k : Name) {A B : Obj} (t : Tm A B) : CommandElabM (Option Bool) := do
+  let c : CRel A B ← IO.lazyPure fun _ => (compile η₀ t).run {}
   if !c.ok then return some false
   let g ← IO.ofExcept ((← getEnv).evalConst (CRel A B) (← getOptions) k)
   pure (if g.ok && g.rel == c.rel then none else some true)
@@ -37,7 +37,8 @@ run_cmd do
   for (n, _, _) in reg.progs do
     let some (ds, _, _) := reg.reps[n]? | throwError "TestCompile: the program `{n}` has no numbered terms"
     for (x, r) in ds do
-      let ⟨_, _, false, t⟩ := r | continue
+      let ⟨_, _, t⟩ := r
+      if t.dem then continue
       match ← unsafe differs (Parse.constOf n x) t with
       | none => same := same + 1
       | some false => open' := open' ++ [s!"{n}.{x}"]

@@ -90,13 +90,14 @@ def gsAgrees : Except String Bool := do
 #eval show IO Unit from do unless ← IO.ofExcept gsAgrees do throw (IO.userError "gsPlan: its registers differ from frame.out")
 
 
--- `out`'s term, read as `planOf` reads it, and the first place the denotation has no rule for it
-/-- info: some (Λ, E, thin: the list a set is held as waits for D2's canonical tables (§7.1)) -/
+-- `out`'s term, read as `outputOf` reads it, and the first place the denotation has no rule for it: none, since `Λ`
+-- and `E` at a canonical element object (`K` is stored `.i64`) have `lam_sound` (D.8)
+/-- info: none -/
 #guard_msgs in
 #eval show Lean.Meta.MetaM Unit from do
   let r ← (Rel.Lang.Expand.read (fun _ => none) [(`Rel.Programs.prelude, Rel.Programs.prelude)] frame).run
   let (ds, _) ← match r with | .ok v => pure v | .error e => throwError "{repr e}"
-  let some ⟨_, _, _, t⟩ := ds.lookup "out" | throwError "frame has no closed `out`"
+  let some ⟨_, _, t⟩ := ds.lookup "out" | throwError "frame has no closed `out`"
   Lean.logInfo m!"{t.gap}"
 
 end Rel.Lang.TestFrame
