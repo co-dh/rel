@@ -121,16 +121,16 @@ Rel 本身（`Obj`、`Tm`、kernel、编码、原子、`compile`）见 `rel-arch
 
 #tbl(c-sem, (auto, 1fr), ([运算的类别], [`ι : N ⟶ N`]),
   [`F(R)`：`select` `derive` `apply` `impute` `over`], [`𝟙`],
-  [`filter`、`distinct`、semi / anti join、`sample`], [`enum(P)`，`P ⊑ (<m)` 是保留的位置：按原位置顺序重新编号],
+  [`filter`、`distinct`、semi / anti join、`sample`], [`where(P)`，`P ⊑ (<m)` 是保留的位置：按原位置顺序重新编号],
   [`sortBy`、`shuffle`], [`(<m)` 上的置换 `σ`],
   [`take` `drop` `range`], [`(<n)`、`(+n)`、`(<b−a) ≫ (+a)`],
   [`cat`、`union`、`melt`], [第二个 frame 的位置经 `(+m₁)°`：`x ∪ (+m₁)° ≫ y`],
-  [join], [`enum(J) : N ⟶ N×N`，`J` 是匹配的位置对，按 `(i, j)` 的字典序；结果 `enum(J) ≫ (x × y)`],
-  [`groupBy`、`aggregate`、pivot], [`enum(ran(x ≫ k)) : N ⟶ K`，按 key 的顺序；组是 `(x ≫ k)° : K ⟶ N`],
+  [join], [`where(J) : N ⟶ N×N`，`J` 是匹配的位置对，按 `(i, j)` 的字典序；结果 `where(J) ≫ (x × y)`],
+  [`groupBy`、`aggregate`、pivot], [`where(ran(x ≫ k)) : N ⟶ K`，按 key 的顺序；组是 `(x ≫ k)° : K ⟶ N`],
 )
 
-- `enum(P) : N ⟶ A`（有序对象 `A` 上的有限集合 ↦ 按顺序编号）是顺序进入的唯一位置（`CLAUDE.md`）。
-  `A = N` 时 `enum(P) = (P ≫ cnt(P))°`；`A = K` 时是 canonical 约定（1.1）。
+- `where(P) : N ⟶ A`（有序对象 `A` 上的有限集合 ↦ 按顺序编号；即 q 的 `where`：`where 0 1 1 0 1` 是 `1 2 4`）是顺序进入的唯一位置（`CLAUDE.md`）。
+  `A = N` 时 `where(P) = (P ≫ cnt(P))°`；`A = K` 时是 canonical 约定（1.1）。
 - *`N` 的元素是虚的。* frame 只有 `m`：位置不落盘。
 - *落盘（q / kdb 的方式）。* 目录 = 表；文件 = 列，是一个 mmap 的 `foR` `Enc`，没有序列化（`CLAUDE.md` 的 Goal）；
   `.d` 文件 = `Schema` 的列顺序；`sym` 列共用一个字典文件。
@@ -145,12 +145,12 @@ take(n)       = (<n) ≫ x                       hi := min(hi, lo+n)
 drop(n)       = (+n) ≫ x                       lo += n；长度 m ∸ n，因为 x 在 ≥ m 处无像
 range(a, b)   = (<b−a) ≫ (+a) ≫ x              takeLast(n) = drop(m ∸ n)    dropLast(n) = take(m ∸ n)
 cnt(P)        : N ⟶ N  = Λ(>ₙ ≫ P) ≫ size      P ⊑ (<m)：i 之前 P 中的位置个数
-enum(P)       : N ⟶ N  = (P ≫ cnt(P))°         新位置 ↦ P 的第 i 个元素
-filter(p)     = enum(dom(x ≫ p)) ≫ x
+where(P)       : N ⟶ N  = (P ≫ cnt(P))°         新位置 ↦ P 的第 i 个元素
+filter(p)     = where(dom(x ≫ p)) ≫ x
 σ = asc(x ≫ a)                                 (<m) 上的双射，按 ⟨x ≫ a, 𝟙⟩ 的字典序单调，所以唯一
 first(R)      = R − R ≫ <ₙ                     R : A ⟶ N，每个 a 的最小位置；last(R) = R − R ≫ >ₙ
 J             = x ≫ k ≫ h° ≫ y°  : N ⟶ N        key 相等的左右位置对；k : C ⟶ K，h : E ⟶ K
-fold(⊕, y)    : P(N) ⟶ V                       位置集合 P ↦ enum(P) ≫ y 按位置顺序的 ⦇e, ⊕⦈
+fold(⊕, y)    : P(N) ⟶ V                       位置集合 P ↦ where(P) ≫ y 按位置顺序的 ⦇e, ⊕⦈
 agg(⊕, R, y)  = Λ(R) ≫ fold(⊕, y)              R : A ⟶ N；每个 a 对它的位置做一次 fold
 win(w)        = ≥ₙ ∩ <ₙ ≫ (+w)°                i ↦ i−w < j ≤ i 的每个 j
 ```
@@ -169,33 +169,33 @@ win(w)        = ≥ₙ ∩ <ₙ ≫ (+w)°                i ↦ i−w < j ≤ i 
   [`apply` `applyMany` `applyInt` `applyDouble` `safeApply` `applyAtIndex`], [`F(⟨a ≫ g, b⟩)`],
     [`g` 必须是 `Op` 的复合；任意 Haskell 函数没有对应的项（F7）],
   [`applyWhere`], [`F(p ≫ ⟨a ≫ g, b⟩ ∪ (𝟙 − p))`], [两个 mask 分支的并],
-  [`filter` `filterWhere` `filterBy`], [`enum(dom(x ≫ p)) ≫ x`，如 `p = dom(a ≫ < ∩ b)`], [],
+  [`filter` `filterWhere` `filterBy`], [`where(dom(x ≫ p)) ≫ x`，如 `p = dom(a ≫ < ∩ b)`], [],
   [`filterJust` `filterAllJust`], [`filter(dom(v ≫ inl°))`], [],
   [`filterNothing` `filterAllNothing`], [`filter(dom(v ≫ inr°))`], [],
   [`take` `drop` `takeLast` `dropLast` `range` `byIndexRange` `cube`], [`(<n) ≫ x`、`(+n) ≫ x`、`(<b−a) ≫ (+a) ≫ x`], [只改 `lo`、`hi`],
   [`selectRows`], [`ix ≫ x`，`ix : N ⟶ N` 是输入的下标 frame], [下标来自数据],
   [`sortBy`], [`σ ≫ x`，`σ = asc(x ≫ a)`], [位置 `𝟙` 作次 key，`σ` 唯一：稳定排序就是规格，是相等而不是 refinement],
   [`topBy`], [`(<n) ≫ σ ≫ x`], [],
-  [`distinct`], [`enum(ran(first(x°))) ≫ x`], [每个值第一次出现的位置],
-  [`groupBy`], [`enum(ran(x ≫ k)) : N ⟶ K`；组是 `(x ≫ k)° : K ⟶ N`], [],
-  [`aggregate`], [`enum(ran(x ≫ k)) ≫ agg(⊕, (x ≫ k)°, x ≫ v)`], [],
+  [`distinct`], [`where(ran(first(x°))) ≫ x`], [每个值第一次出现的位置],
+  [`groupBy`], [`where(ran(x ≫ k)) : N ⟶ K`；组是 `(x ≫ k)° : K ⟶ N`], [],
+  [`aggregate`], [`where(ran(x ≫ k)) ≫ agg(⊕, (x ≫ k)°, x ≫ v)`], [],
   [`sum` `mean` `count` `countAll` `minimum` `maximum` `reduce`], [`fold(⊕, x ≫ v)(dom(x))`，`⊕ = add`、`min`、…；`count = m`；`mean = ⟨sum, count⟩ ≫ fdiv`], [`Op` 的 fold],
   [`variance` `stddev` `skewness` `correlation` `zScore`], [若干 fold 的 pair 再做算术], [],
   [`median` `percentile` `genericPercentile` `interQuartileRange`], [`i ≫ σ ≫ x ≫ v`，`σ = asc(x ≫ v)`，`i = ⌊r·m⌋ : 1 ⟶ N`],
     [一个位置，读一个元素],
   [`countDistinct` `mode`], [`size(ran(x ≫ v))`；`mode` 对 `agg(count, …)` 接 `est`], [],
-  [`collect`], [每组 `enum(P) ≫ x ≫ v`，`P` 是该组的位置], [结果列的类型是 `Obj.arr V`],
+  [`collect`], [每组 `where(P) ≫ x ≫ v`，`P` 是该组的位置], [结果列的类型是 `Obj.arr V`],
   [`firstOrNothing` `lastOrNothing`], [`tot(first((x ≫ k)°) ≫ x ≫ v)`、`last` 同理], [每组的第一 / 最后一个位置],
   [`topK` `bottomK` `kExtremes`], [`(<n) ≫ σ ≫ x`，`σ` 降序或升序], [],
   [`valueCounts` `valueProportions` `frequencies`], [`groupBy` + `aggregate`，`⊕ = count`], [],
   [`summarize` `describeColumns` `nulls`], [固定的一组聚合的 pair], [输出的列由 schema 决定，静态可知],
-  [`innerJoin` `join` `joinOn`], [`enum(J) ≫ (x × y)`，`J = x ≫ k ≫ h° ≫ y°`], [列名在 elaboration 时检查],
-  [`leftJoin`], [`enum(dom(x) ≫ tot(J)) ≫ (x × [y ≫ inl, inr])`], [`tot(J) : N ⟶ N+1`，无匹配的左位置配 `inr`；右侧整行为 null（`E+1`）；F2],
+  [`innerJoin` `join` `joinOn`], [`where(J) ≫ (x × y)`，`J = x ≫ k ≫ h° ≫ y°`], [列名在 elaboration 时检查],
+  [`leftJoin`], [`where(dom(x) ≫ tot(J)) ≫ (x × [y ≫ inl, inr])`], [`tot(J) : N ⟶ N+1`，无匹配的左位置配 `inr`；右侧整行为 null（`E+1`）；F2],
   [`rightJoin`], [`leftJoin` 交换两侧], [],
-  [`fullOuterJoin`], [`leftJoin` 之后 `cat` 上 `enum(dom(y) − ran(J)) ≫ y`], [两侧都是和类型],
+  [`fullOuterJoin`], [`leftJoin` 之后 `cat` 上 `where(dom(y) − ran(J)) ≫ y`], [两侧都是和类型],
   [`union`], [`cat` 后 `distinct`；`cat = x ∪ (+m₁)° ≫ y`], [],
-  [`intersect`], [`enum(dom(J)) ≫ x` 后 `distinct`，`k = h = 𝟙`], [],
-  [`difference` `symmetricDifference`], [`enum(dom(x) − dom(J)) ≫ x` 后 `distinct`], [],
+  [`intersect`], [`where(dom(J)) ≫ x` 后 `distinct`，`k = h = 𝟙`], [],
+  [`difference` `symmetricDifference`], [`where(dom(x) − dom(J)) ≫ x` 后 `distinct`], [],
   [`<>`（行拼接）], [`x ∪ (+m₁)° ≫ y`], [`sym` 列字典不同时先合并字典（`rel-architecture` §4.3 的 intern）],
   [`|||`（列拼接）], [`⟨x, y⟩`], [定义域 `dom(x) ∩ dom(y)`，长度不等时取较短的（F9）],
   [`impute` `imputeWith` `fromMaybe` `castWithDefault`], [`F(v ≫ [𝟙, ! ≫ c])`], [`c : 1 ⟶ V`；`imputeWith` 的 `c` 是一个聚合],
@@ -206,7 +206,7 @@ win(w)        = ≥ₙ ∩ <ₙ ≫ (+w)°                i ↦ i−w < j ≤ i 
   [`over`], [`⟨x, x ≫ k ≫ agg(⊕, (x ≫ k)°, x ≫ v)⟩`], [每行带上它那一组的聚合，位置不变],
   [`contains` `length` `splitOn` `match` `matchAll`], [`contains(s) = dom(suffix ≫ prefix ≫ s)`], [字符串：F3],
   [`parseDate` `daysBetween`], [`date` 上的整数减法；`parseDate` 是字符串解析], [F3、F5],
-  [`sample` `shuffle` `randomSplit` `kFolds` `stratifiedSample` `mkRandom`], [`enum(P) ≫ x`，`P ⊑ dom(x)`、`size(P) = n`；`σ ≫ x`，`σ` 是 `(<m)` 上任一置换], [规格有多个像（F8）],
+  [`sample` `shuffle` `randomSplit` `kFolds` `stratifiedSample` `mkRandom`], [`where(P) ≫ x`，`P ⊑ dom(x)`、`size(P) = n`；`σ ≫ x`，`σ` 是 `(<m)` 上任一置换], [规格有多个像（F8）],
   [`fromList` `fromRows` `fromColumns` `fromUnboxedVector` `empty`], [字面量 `Tm.val`，或 `⟨x, y⟩`], [],
   [`columnAsVector` `columnAsList` `toList` `toRowList` `to*Matrix`], [`F(col S "c")`，在输出边界读出], [列名在 elaboration 时检查],
   [`dimensions` `nRows` `nColumns` `columnNames`], [`m`；其余读 `Obj`], [],
@@ -218,8 +218,8 @@ win(w)        = ≥ₙ ∩ <ₙ ≫ (+w)°                i ↦ i−w < j ≤ i 
 == polars 多出来的运算
 
 #tbl(c-sem, (auto, 1.55fr, 1fr), ([polars], [Rel 复合], [说明 / finding]),
-  [semi / anti join], [`enum(dom(J)) ≫ x`；anti 用 `enum(dom(x) − dom(J)) ≫ x`], [],
-  [cross join], [`enum(dom(x) ≫ ⊤ ≫ dom(y)) ≫ (x × y)`], [],
+  [semi / anti join], [`where(dom(J)) ≫ x`；anti 用 `where(dom(x) − dom(J)) ≫ x`], [],
+  [cross join], [`where(dom(x) ≫ ⊤ ≫ dom(y)) ≫ (x × y)`], [],
   [asof join], [`⟨x, tot(last(J≤) ≫ y)⟩`],
     [`J≤ = x ≫ ⟨k,t⟩ ≫ (𝟙 × ≥) ≫ ⟨h,u⟩° ≫ y°`，右表按时间有序时 `last` 是最近的；位置是左表的，`ι = 𝟙`],
   [`cum_sum` 等], [`c = μ c. (<1) ≫ x ≫ v ∪ ⟨(+1)° ≫ c, x ≫ v⟩ ≫ ⊕`], [`c(i) = c(i−1) ⊕ v(i)`],
@@ -229,7 +229,7 @@ win(w)        = ≥ₙ ∩ <ₙ ≫ (+w)°                i ↦ i−w < j ≤ i 
   [`forward_fill`], [`c = μ c. W ≫ x ≫ v ∪ (dom(x) − W) ≫ (+1)° ≫ c`，`W = dom(x ≫ v ≫ inl°)`], [非 null 的行取自己的值，其余取前一行的结果],
   [`melt`], [`x ≫ ⟨! ≫ α, a⟩ ∪ (+m)° ≫ x ≫ ⟨! ≫ β, b⟩ : N ⟶ P×V`], [各列要同类型],
   [pivot（long）], [`groupBy(⟨k, q⟩)` + `aggregate`], [long 形式就是 key 为 `K×P` 的 frame],
-  [pivot（wide）], [`enum(ran(x ≫ k)) ≫ ⟨𝟙, tot(⟨𝟙, ! ≫ α⟩ ≫ agg(f, (x ≫ ⟨k, q⟩)°, x ≫ v)), …⟩`], [每个声明的 `α ∈ P` 一列；只对声明的 `obj P = {α, β}` 可写（F1）],
+  [pivot（wide）], [`where(ran(x ≫ k)) ≫ ⟨𝟙, tot(⟨𝟙, ! ≫ α⟩ ≫ agg(f, (x ≫ ⟨k, q⟩)°, x ≫ v)), …⟩`], [每个声明的 `α ∈ P` 一列；只对声明的 `obj P = {α, β}` 可写（F1）],
 )
 
 // ───────────────────────────── 4

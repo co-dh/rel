@@ -27,8 +27,8 @@ kernels its programs run on. It was split out of freyd's `leetq/` and qlean's `Q
   Lean's `List`.
 - The algebra on it: composition `≫`, converse `°`, `∩`, `∪`, `⊑`, `𝟘`, `⊤`, `𝟙`, left/right/symmetric
   division, `Λ` and `∋`, pair `⟨R,S⟩` and product, sum `[R,S]`, fold `⦇e,f⦈`, hylo, functors `F(R)`, natural
-  and lax natural transformations (`∋`, `est`, `thin`), maps on positions, and `enum` (a set of positions as the list in
-  position order, the one place row order enters).
+  and lax natural transformations (`∋`, `est`, `thin`), maps on positions, and `where` (q's `where`: a set of positions
+  numbered in position order, the one place row order enters; not `Enc.enum`, the symbol dictionary encoding).
 
 ## Goal
 Test how useful Rel is as a programming language, by implementing k in it:
