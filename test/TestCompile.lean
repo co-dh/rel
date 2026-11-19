@@ -22,11 +22,13 @@ open Lean Elab Command Tab Rel.Lang Rel.Lang.Expand
 def η₀ : CodeEnv := fun _ _ _ _ _ => (.zero, false)
 
 /-- `t` against the generated constant `k`: `none` where they agree, `some false` where `compile` vouches for
-    nothing, `some true` where they differ. -/
+    nothing, `some true` where they differ. `k` runs only where `compile` vouches: a not-ok row reads nothing of it,
+    and a definition that runs to its cap would pay that run twice. -/
 unsafe def differs (k : Name) {A B : Obj} (t : Tm A B false) : CommandElabM (Option Bool) := do
+  let c ← IO.lazyPure fun _ => compile η₀ t ()
+  if !c.ok then return some false
   let g ← IO.ofExcept ((← getEnv).evalConst (CRel A B) (← getOptions) k)
-  let c := compile η₀ t ()
-  pure (if !c.ok then some false else if g.ok && g.rel == c.rel then none else some true)
+  pure (if g.ok && g.rel == c.rel then none else some true)
 
 run_cmd do
   let reg := relRegistry.getState (← getEnv)
