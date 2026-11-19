@@ -623,15 +623,6 @@ pub fn run_starts_bits(n: usize, bits: &[u8], out: &mut [i64]) -> usize {
 
 
 // ---- B17: search.rs's scalar find, the Frame-of-Reference equality walks, the id mask ----
-/// `qlean_search_find_scalar`'s body: the least `i < hay.len() / w` whose key equals the needle's, `hay.len() / w` when
-/// none does. The needle is `scan`'s one key, the low `w` bytes of `needle` little-endian (zero above, for `w` 16).
-pub fn find_scalar(w: usize, is_float: bool, hay: &[u8], needle: u64) -> usize {
-    let kd = kind_of(w, is_float, "find_scalar"); // before dividing by `w`
-    let nb = (needle as u128).to_le_bytes();
-    let mut r = [0i64];
-    scan_kind(kd, &Blocks::new(Src::Dense(hay), hay.len() / w), &Blocks::new(Src::Dense(&nb[..w]), 1), &mut r);
-    r[0] as usize
-}
 
 /// `qlean_coc_find_scalar`'s body: the least row of `c` holding `v`, `c.meta.n` when none does.
 pub fn coc_find(c: &Coc, v: i64) -> usize {

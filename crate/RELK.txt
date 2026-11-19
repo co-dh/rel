@@ -27,11 +27,8 @@ qlean_over_bytes
 qlean_own_map
 qlean_own_write
 qlean_scan
-qlean_search_bin
-qlean_search_find_bit
 qlean_search_find_bit_vec
 qlean_search_find_ids_vec
-qlean_search_find_scalar
 qlean_search_find_sym_scalar
 qlean_search_find_vec
 qlean_search_member_bits
@@ -41,7 +38,6 @@ qlean_search_run_starts
 qlean_search_run_starts_bits
 qlean_search_run_starts_ids
 qlean_search_where_bits
-qlean_sort_distinct_syms
 qlean_sort_grade
 qlean_sort_grade_foR
 qlean_sort_grade_ids
@@ -53,7 +49,6 @@ qlean_sort_group_ids_pair
 qlean_sort_group_ids_pair_ids
 qlean_sort_group_sizes
 qlean_sort_id_groups
-qlean_sort_id_longs
 qlean_sort_intern_syms
 qlean_sort_invert
 qlean_sort_ranks
@@ -76,9 +71,7 @@ qlean_structural_expand
 qlean_structural_gather
 qlean_structural_gather_bits
 qlean_structural_gather_foR
-qlean_structural_gather_foR_idx
 qlean_structural_gather_ids
-qlean_structural_gather_ids_foR
 qlean_structural_gather_syms
 qlean_structural_rows_of
 qlean_structural_scatter

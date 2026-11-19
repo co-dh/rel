@@ -119,14 +119,6 @@ export! {
     }
 
 
-    /// `idLongs n w ids`, the first `n` ids widened to longs.
-    fn qlean_sort_id_longs(n: usize, w: usize, idsv: B) -> O {
-        let p = idsv.bytes();
-        let n = n.min(ids_avail(p.len(), w as u32));
-        let mut r = SArr::new(1, n * 8);
-        sort::id_longs(n, w as u32, &p[..ids_bytes(n, w as u32)], longs(&mut r));
-        r.into()
-    }
 
 
 

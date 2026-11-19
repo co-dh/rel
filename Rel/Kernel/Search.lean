@@ -36,7 +36,6 @@ def key (w : Nat) (float : Bool) (b : ByteArray) (i : Nat) : UInt64 :=
 Measured — `1 1 2?1` is `0`, so a repeat answers with its *first* index; `1 1 2?9` is `3`, so an
 absent element answers the count and not a null; and `(0#0)?5` is `0`, which is that same rule at an
 empty left argument. -/
-@[extern "qlean_search_find_scalar"]
 def findScalar (w : USize) (float : Bool) (hay : @& ByteArray) (needle : UInt64) : USize :=
   let n := hay.size / w.toNat
   let k := normalise w.toNat float needle
@@ -141,7 +140,6 @@ def memberIdsVec (xw : USize) (xs : @& ByteArray) (xn : USize) (hw : USize) (hay
 
 /-- The least index at which the boolean column holds `needle`, and `n` when it holds it nowhere.
 Measured — `101b?1b` is `0`, `101b?0b` is `1`, and `(0#0b)?1b` is `0`. -/
-@[extern "qlean_search_find_bit"]
 def findBit (n : USize) (bits : @& ByteArray) (needle : Bool) : USize :=
   (((List.range n.toNat).find? fun i => Column.bitAt bits i == needle).getD n.toNat).toUSize
 
@@ -226,7 +224,6 @@ def binStep (w : Nat) (float signed right : Bool) (hay order : ByteArray) (k : U
       else binStep w float signed right hay order k fuel lo mid
 
 /-- q's `x bin y` and `x binr y` at dense payloads of one class, as little-endian `Int64`s. -/
-@[extern "qlean_search_bin"]
 def binBytes (w : USize) (float signed right : Bool) (hay : @& ByteArray) (keys : @& ByteArray) :
     ByteArray :=
   let w := w.toNat

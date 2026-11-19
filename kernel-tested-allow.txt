@@ -11,7 +11,6 @@ Rel.Kernel.Ew.chain
 Rel.Kernel.Ew.foRShift
 Rel.Kernel.Ew.val
 Rel.Kernel.Ew.widen
-Rel.Kernel.Order.distinctSyms
 Rel.Kernel.Order.grade
 Rel.Kernel.Order.gradeFoR
 Rel.Kernel.Order.gradeIds
@@ -22,7 +21,6 @@ Rel.Kernel.Order.groupIdsPair
 Rel.Kernel.Order.groupIdsPairIds
 Rel.Kernel.Order.groupSizes
 Rel.Kernel.Order.idGroups
-Rel.Kernel.Order.idLongs
 Rel.Kernel.Order.internSyms
 Rel.Kernel.Order.invert
 Rel.Kernel.Order.rankSlices
@@ -30,7 +28,6 @@ Rel.Kernel.Order.ranks
 Rel.Kernel.Order.ranksFoR
 Rel.Kernel.Scan.scan
 Rel.Kernel.allBelow
-Rel.Kernel.binBytes
 Rel.Kernel.bitRowsOver
 Rel.Kernel.concatALP
 Rel.Kernel.concatBits
@@ -42,19 +39,15 @@ Rel.Kernel.cycleIds
 Rel.Kernel.enumIds
 Rel.Kernel.enumIdsFoR
 Rel.Kernel.expandBytes
-Rel.Kernel.findBit
 Rel.Kernel.findBitVec
 Rel.Kernel.findIdsVec
-Rel.Kernel.findScalar
 Rel.Kernel.findSymScalar
 Rel.Kernel.findVec
 Rel.Kernel.gatherAlp
 Rel.Kernel.gatherBits
 Rel.Kernel.gatherBytes
 Rel.Kernel.gatherFoR
-Rel.Kernel.gatherFoRIdx
 Rel.Kernel.gatherPacked
-Rel.Kernel.gatherPackedFoR
 Rel.Kernel.gatherSyms
 Rel.Kernel.hashConcat
 Rel.Kernel.longRows
