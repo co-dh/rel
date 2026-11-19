@@ -201,7 +201,7 @@ layout its header declares does, `foRTail`, and no width past 64. A column mappe
 built by hand can satisfy `Column.WF` without it, and a kernel that moves blocks or residuals whole
 claims only where this holds: a block past the count would be carried into the answer, and a short
 pack would put the next part's residuals in its place. A kernel that cannot carry a patch list
-declines one on top of this. `Verify.foRStd_iff` is `Verify.FoRWF`, `Verify.foRWF_encode` that
+declines one on top of this. `Verify.foRStd_iff` is `Verify.FoRWF`, `Verify.foRWF_encodeAt` that
 `encode` establishes it, and `rust/src/coc.rs`'s `coc_std` is the same test. -/
 def foRStd (n : USize) (md pk : ByteArray) : Bool :=
   Rel.Column.nblk md == (n.toNat + Rel.Column.blk md - 1) / Rel.Column.blk md
