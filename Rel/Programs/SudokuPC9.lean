@@ -5,10 +5,12 @@ import Rel.Programs.CSP
 `SudokuPC`'s program on the 9×9 board of `SudokuAC`, the puzzle
 `4.....8.5.3..........7......2.....6.....8.4......1.......6.3.7.5..2.....1.4......`. `pc(X)` is never a table:
 each round runs as bit matrices (`Bits`), `sup(X) X` one `bitRowsOver` call where its table has some 10⁸ rows,
-and `π₁\` another. -/
+and `π₁\` another. It stays on the old layer (`rel.kernel`): the kernel path, which has no bit matrix, would build
+the table of `sup(X) X`, and in `K₀` `cor(s₀) ⊤` is a `Tab.cross` of 593 × 729 rows. -/
 
 namespace Rel.Programs
 
+set_option rel.kernel false in
 open Rel.Programs.prelude csp in
 rel_program sudokupc9 where
     obj Cell = 0…80                               -- the cell in row r, column k is 9r+k

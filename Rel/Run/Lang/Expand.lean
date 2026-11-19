@@ -120,6 +120,11 @@ def failures (ds : List (String × Gen.Gv)) (ms : List (String × List String)) 
       s!"; in {x}" ++ String.join (((ms.lookup x).getD []).map (s!", or {·}"))
     [⟨{}, "an op ran out of capacity (its twin's ok bit is false)" ++ String.join bad⟩]
 
+/-- A program whose every node has a kernel body runs on the five kernels (`GenK`) unless this is `false`: one whose
+    tables the kernel path would materialise past memory (`sudokupc9`) or a test that pins the old layer. -/
+register_option rel.kernel : Bool :=
+  { defValue := true, descr := "run a rel_program on the kernel path (GenK) where every node has a kernel body" }
+
 namespace Expand
 
 /-- A top-level term, a `print`'s or a `check` side's: closed, with its objects as the program names them. -/
@@ -885,11 +890,13 @@ def emit (n : Name) (r : Read) : MetaM Unit := do
   let off := ds.flatMap (fun (_, ⟨_, _, t⟩) => t.offKernel tw) ++ ps.flatMap (fun (_, ⟨_, _, t⟩, _, _) => t.offKernel tw)
     ++ cs.flatMap fun (_, _, _, _, _, _, ⟨_, _, R, S⟩) => R.offKernel tw ++ S.offKernel tw
   let runs := !(ds.isEmpty && ps.isEmpty && cs.isEmpty)
-  let kern := runs && off.isEmpty
+  let opt := rel.kernel.get (← getOptions)
+  let kern := runs && off.isEmpty && opt
   -- the node kinds with no kernel body, the run terms' and the definitions' elaborated once, for the progress line
   let ctors := (← getConstInfoInduct ``Tm).ctors
   let kinds := ((off ++ fs.flatMap fun o => o.res.2.2.offKernel tw).map fun (i, c) =>
     if c.isAnonymous then toString ((ctors.getD i .anonymous).componentsRev.headD .anonymous) else s!"call {c}").eraseDups
+    ++ if opt then [] else ["set_option rel.kernel false"]
   let ((entries, printed, checked, errs), st) ← (do
     let mut es := []
     for (x, ⟨A, B, t⟩) in ds do
