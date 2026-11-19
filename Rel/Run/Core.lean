@@ -145,7 +145,7 @@ theorem foRLongs_wf (xs : List Int64) {n : USize} (hn : xs.length = n.toNat) : E
   refine ⟨rfl, by simp, ?_, ?_⟩
   · show n.toNat ≤ Column.blk (Kernel.Coc.encodeAt Column.lgEnc (8 : Nat).toUSize (packLongs xs)).1 *
       Column.nblk (Kernel.Coc.encodeAt Column.lgEnc (8 : Nat).toUSize (packLongs xs)).1
-    rw [h.1, h.2, ← hn]; simp only [Column.lgEnc, Nat.reducePow]; omega
+    rw [h.1, h.2.1, ← hn]; simp only [Column.lgEnc, Nat.reducePow]; omega
   · exact lgOk_encode _ (by simp) _
 
 /-- Under `wf`, a long `bytes` column holds `b.size / 8` elements. -/
@@ -183,6 +183,13 @@ theorem Arr.get_long_foR {m : USize} (x : Arr .i64 m) {md pk : ByteArray} (hc : 
     (i : Fin m.toNat) : x.get i = (Column.foRBits md pk (Column.blockStarts md) i.1).toInt64 := by
   rw [Arr.get_ne x i (by decide), ← foRBits_starts]
   simp only [Enc.get, if_pos i.2, hc, QAtomicType.width]; rfl
+
+/-- **The kernels' words are the elements**: element `i` of a long `foR` column is word `i` of `Enc.raw`, the word every
+kernel reads (`foRWords`) and `Verify.wordsFoR_closed` says a kernel's answer reads back as, read as a long. -/
+theorem Arr.get_raw_foR {m : USize} (x : Arr .i64 m) {md pk : ByteArray} (hc : x.enc = .foR md pk) (i : Fin m.toNat) :
+    x.get i = ((Enc.raw .i64 m x.enc)[i.1]?.getD 0).toInt64 := by
+  rw [Arr.get_long_foR x hc, hc, Verify.raw_foR .i64 8 rfl (by decide)]
+  simp [i.2]
 
 /-- A long payload's `n` words in position order: a `bytes` payload's eight-byte elements, a `foR` payload's
     `foRBits` decode. `none` at `alp`, whose decode has no law yet, and at the non-long constructors. -/
@@ -401,7 +408,7 @@ theorem wf_bools {X : Type} {n : USize} (p : Nat → Bool) :
     rcases System.Platform.numBits_eq with h | h <;> simp [h])
   obtain ⟨hs, -⟩ := Verify.packIds_bytes 1 n.toNat (fun i => (p i).toNat) (by decide) (by decide)
   simp only [Nat.mul_one] at hs
-  obtain ⟨hn, hk⟩ := Verify.nblk_encode Column.lgEnc (by decide) 1 (by decide) (by decide)
+  obtain ⟨hn, hk, -⟩ := Verify.nblk_encode Column.lgEnc (by decide) 1 (by decide) (by decide)
     (Column.packIds 8 n.toNat fun i => (p i).toNat) (patch := false)
   refine ⟨rfl, fun _ i hi => ?_, ?_, ?_⟩
   · rw [foRBits_bools _ _ hi]; cases p i <;> decide
