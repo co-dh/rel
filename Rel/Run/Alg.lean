@@ -452,13 +452,14 @@ def bitsOf (x : Bool) (n : USize) : ByteArray :=
   Ew.cmpBits (if x then Ew.ge else Ew.lt) Ew.i64 Ew.va (tilLongs n) (one 0) n
 
 /-- The tag column of parts `ps`, each `(count, tag)`, `m` the summed count: `concatBits` of constant bit
-    columns, of the summed count whatever the parts' payloads hold (`concatBits_wf`). -/
+    columns written as the `u1` foR by `boolsOf`, of the summed count `m`. -/
 def tags (ps : Array (USize × Bool)) (m : USize) (h : ps.foldl (fun s p => s + p.1.toNat) 0 = m.toNat := by simp) :
     Arr .u1 m :=
   let bs : Array (USize × ByteArray) := ps.map fun p => (p.1, bitsOf p.2 p.1)
-  have hb : m.toNat = bs.foldl (fun s p => s + p.1.toNat) 0 := by rw [Array.foldl_map]; exact h.symm
-  -- the payload is read off `concatBits_wf`'s statement: `.bits (concatBits (countBytes …) …)`
-  Arr.mk _ (KernelWF.concatBits_wf bs hb)
+  -- a boolean is a `u1` foR: the bitmap `concatBits` joins goes through `boolsOf`, as `razeColumn`'s does
+  Arr.mk (.foR (Kernel.Coc.boolsOf m (concatBits (countBytes (bs.map (·.1))) (bs.map (·.2)))).1
+    (Kernel.Coc.boolsOf m (concatBits (countBytes (bs.map (·.1))) (bs.map (·.2)))).2)
+    (by unfold Kernel.Coc.boolsOf; exact wf_bools _)
 
 /-- Under the fits bound, `USize` addition is the `Nat` one. -/
 theorem toNat_add_fits {n m : USize} (h : n.toNat + m.toNat < USize.size) : (n + m).toNat = n.toNat + m.toNat := by

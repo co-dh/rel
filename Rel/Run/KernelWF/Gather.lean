@@ -353,7 +353,7 @@ theorem gatherColumn_wf {t : QAtomicType} {n : USize} {e : Enc} (hw : Enc.WF t n
     by_cases hb : t = .u1
     · subst hb
       simp_all [-Nat.not_lt, denseWidth, foRColumn, Enc.bytesOf, boolBits]
-      obtain ⟨_, -, rfl⟩ := h; simp [Enc.WF, gatherBits_size, hm]
+      obtain ⟨_, -, rfl⟩ := h; exact wf_bools (n := m) (Column.bitAt _)
     by_cases hc : Column.encodes t = true ∧ M.isEmpty = false <;> cases t <;>
       simp_all [-Nat.not_lt, Enc.WF, QAtomicType.width, denseWidth, foRColumn, Enc.bytesOf, boolBits,
         Column.encodes, gatherBytes_size, gatherFoR, toNat_small, small_mod] <;> obtain ⟨_, ⟨_, rfl⟩, rfl⟩ := h <;>

@@ -743,12 +743,13 @@ def _root_.Rel.Tab.rows {k v : Obj} (R : Tab k v) (i : ByteArray) : Tab k v :=
 
 /-! ## The composite steps, named once -/
 
-/-- A code's payload as the column `composeKey` reads: a bit a boolean bitmap, a byte layout the
-    dense column of that width, a `2`/`4`-bit lane an interned column of `card` ids, read by `eIds`
-    where they lie; `composeKey` reads no dictionary, so it holds `card` empty symbols. -/
+/-- A code's payload as the column `composeKey` reads: a byte layout the dense column of that width, a
+    `1`/`2`/`4`-bit lane an interned column of ids, read by `eIds` where they lie; `composeKey` reads no
+    dictionary, so it holds empty symbols, `card` of them, or `2` at a bit, whose codes are `0 … 1` whatever its
+    `card`. A bit is an id lane like the others because a bitmap is ids at width `1`, with no re-encoding. -/
 def Code.column (c : Code) : Option (QAtomicType × (USize × Enc)) :=
   match c.kind with
-  | some .bit => let r := Kernel.Coc.boolsOf c.n c.b; some (.u1, (c.n, .foR r.1 r.2)) | some .u8 => some (.u8, (c.n, .bytes c.b))
+  | some .bit => some (.sym, (c.n, .enum .empty (Array.replicate 3 0) c.b)) | some .u8 => some (.u8, (c.n, .bytes c.b))
   | some .i16 => some (.i16, (c.n, .bytes c.b)) | some .i32 => some (.i32, (c.n, .bytes c.b))
   | some .i64 => some (.i64, (c.n, .bytes c.b))
   | some _ => none

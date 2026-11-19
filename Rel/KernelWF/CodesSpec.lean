@@ -128,8 +128,6 @@ theorem codes_small_int {t : QAtomicType} {k : Scan.Kind} (ht : orderKind t = so
   obtain ⟨hw, -, hg, hb, hs⟩ := small_int_width ht hk
   have hne : ∀ d o ids, x.2.enc ≠ .enum d o ids := fun d o ids he => by
     have := x.2.wf; rw [he] at this; cases t <;> simp_all [Enc.WF]
-  have hnb : ∀ b, x.2.enc ≠ .bits b := fun b he => by
-    have := x.2.wf; rw [he] at this; cases t <;> simp_all [Enc.WF]
   have hns : ∀ b o, x.2.enc ≠ .syms b o := fun b o he => by
     have := x.2.wf; rw [he] at this; cases t <;> simp_all [Enc.WF]
   have hr : raze t #[x] = x := by unfold raze; simp [hg]
