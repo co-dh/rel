@@ -57,6 +57,12 @@ def comp (A B C : Obj) (e : Bool) (R : Fn true A B) (S : Fn e B C) : Fn true A C
     | ⟨none, some L⟩ => if e then compT ((Rel.lazy f).runE {}) S else compS (.lazy f) (S.runE ⟨none, some L⟩)
     | K => compT ((Rel.lazy f).runE ⟨K.dom, none⟩) S
 
+/-- A closed term's code (`Expand.share`) as its table, computed once: it needs no bound (§0), and a lazy one would
+    run again in every context that asks for it, each round of a fold that reads it included. -/
+def memo (A B : Obj) : Rel A B → Rel A B
+  | .tab t => .tab t
+  | R => .tab (R.runE {})
+
 /-- An op on one table: a table now, or lazy, its argument run on what `k` makes of the context. -/
 def lift1 {A B C D : Obj} (f : Tab A B → Except String (Tab C D)) (k : Known C D → Known A B) : Rel A B → Rel C D
   | .tab r => .tab (r >>= f)

@@ -632,7 +632,8 @@ partial def code (pre : Name) (ρ : List (Nat × Lean.Expr)) {A B : Obj} (t : Tm
     let v ← node pre ρ t
     -- at an object variable's placeholder (`varObj`) the value lives under a generic constant's binders: not shared
     if (v.find? placeholders.contains).isSome then return v
-    return mkConst (← share pre A B v)
+    -- on the kernel path computed once (`GenK.memo`): a lazy value re-run at each use repeats a fold per round
+    return mkConst (← share pre A B (if ← readThe Bool then g ``GenK.memo #[oE A, oE B, v] else v))
   else node pre ρ t
 
 /-- The constant of the closed code `v : Rel A B`: one per structurally equal value, so a `tab` is computed once
