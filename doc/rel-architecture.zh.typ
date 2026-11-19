@@ -131,7 +131,7 @@ compile η t : {r : Rel A B // rep r = ⟦t⟧ρ}       -- 方案 A：规格在�
   [数据], [`val R` `uni U` `succ` `arith` `leq` `lt`],
   [递归], [`mu` `nu` `fold`（`⦇e,S⦈`，代数 `[nil, snoc]` 上的 catamorphism：左折叠，步骤读 `(acc, x)`，从下标 0 向上；尽量从左到右读，程序的含义需要时才用从右到左读的 `foldr`（`⦇e,S⦈ʳ`，步骤读 `(x, acc)`，如 `sum`、`thinL`）；输出数组只用 `snoc` 在末尾追加构造，从不在前面插入） `hylo`（`μX. c ≫ G(X) ≫ S`，原 `hylo`）],
   [绑定 / 复用], [`var` `share` `own` `call` `arg`],
-  [库原语], [`prim r`：`prims` 表的一行（`inits` `tails` `prefix` `concat` `zip` …；`asc` `distinct` 改为 kernel），在某个类型上实例化，参数由 `arg` 给出],
+  [库原语], [`prim r`：`prims` 表的一行（`inits` `tails` `prefix` `concat` `zip` …；`asc` `seen` 改为 kernel），在某个类型上实例化，参数由 `arg` 给出],
 )
 
 #card(c-syn, [改写引理（原 `Tm.Ax`）])[category 律、`°°`、`(RS)° = S°R°`、分配律、`𝟘`、`μ`/`ν` 展开（`ν = S ∩ b[ν]`）：每条写成 `⟦lhs⟧ρ = ⟦rhs⟧ρ`，由 `Rel/Core/` 中 `Core.Rel` 的定理证明；改写 `t₁` 为 `t₂` 只需 `⟦t₁⟧ρ = ⟦t₂⟧ρ`。Rel 只在 `Rel(Set)` 上运行，所以 `Tm.Le`、`Syn`、`Hom.den` 去掉。]
@@ -202,8 +202,8 @@ compile η t : {r : Rel A B // rep r = ⟦t⟧ρ}       -- 方案 A：规格在�
 
 - data frame = `Rel A B` 的 `tab`，`B` 是若干原子列的 `prod`：struct of arrays，每列一个 foR `Enc`。
 - `alp`（浮点小数压缩）不再是一种形式；需要时作为 float 列的 fast path，配一条定理说明 decode 后等于保序位映射。
-- intern（建字典）= `asc ≫ distinct`：字符串排序、去重得字典；每个字符串的 id = 它在字典中的位置（`asc` 的排列经
-  `scan` 编号再 `scatter` 回原位）。两个 `sym` 列合并（`∪`、join 两侧字典不同）时对字典的并做一次 intern、重映射 id。不是 kernel。
+- intern（建字典）= `asc ≫ seen`：字符串排序、去重得字典（`first` 经 `gather` 取回代表串）；每个字符串的 id = 它所在组的编号
+  `g`（`asc` 的排列经 `scatter` 回原位）。两个 `sym` 列合并（`∪`、join 两侧字典不同）时对字典的并做一次 intern、重映射 id。不是 kernel。
 
 == 5 个 kernel：2 个原语 + 3 个优化
 
@@ -212,16 +212,20 @@ compile η t : {r : Rel A B // rep r = ⟦t⟧ρ}       -- 方案 A：规格在�
   [`gather`], [`(ix : Enc) (e : Enc) (fill) : Enc`，`out[i] = e[ix[i]]`], [`raw_permute`], [`permute`],
   [`scatter`], [`(ix : Enc) (e : Enc) (n) (fill) : Enc`，`out[ix[i]] = e[i]`], [`raw_scatter`（新）], [—],
   [`asc`], [`(es : List Enc) : Enc × Enc`，按若干列字典序稳定排序：排好的值 + 排列；`arr char` 列按字节字典序], [`asc_sorted` + `asc_perm`（新）], [—],
-  [`distinct`], [`(es : List Enc) : Enc`，有序输入上每组相等行的第一行的位置], [`distinct_first` + `distinct_cover`（新）], [—],
+  [`seen`], [`(n) (es : List (type × Enc)) : (k, g, first)`：`k` 为组数，`g` 为每行的组号（按首次出现编号），`first` 为每组第一行的位置；如键 `B A B`：`k = 2`，`g = 0 1 0`，`first = 0 1`], [—（`asc ≫ seen` 给出 `asc` 的并列组编号；定理待写）], [—],
 )
 
 - *map 与 fold 都是 scan*：map = 步骤不读累加值的 scan（`op` 只看当前元素）；fold = scan 的最后一个值
   （分段时取每段最后一个）。`Op` 标明自己是否读累加值、是否结合，Rust 据此并行：不读累加值或结合的 `op` 分块并行，其余顺序扫。
 - `asc` 返回排列，因为排一列时要带着同一行的其它列走（`gather`）。
+- `seen` 的相等就是 `asc` 的：键 = 每列保序 code 的元组，所以 `-0.0 = 0.0`、所有 NaN 是同一个键；因此 `asc ≫ seen` 编号的恰是 `asc` 的并列组。
+  两个引擎都直接读 foR 块、从不解码整列：直接寻址（每个混合进制 code 一个槽，值域来自块元数据）；输入已按 `asc` 序时用游程检测。
+  键域过宽又无序时报错，错误说明需要 hash 而 hash 未实现；没有 hash 引擎，也没有 `part` 引擎（已决定，PLAN D.12）。
+- `last` 不属于 `seen`：它是 `scatter`（位置 → `g`，后写覆盖），按组号顺序（计划中，未实现）。
 #tbl(c-rs, (auto, auto, 1fr, auto), ([层], [kernel], [由原语写出（定理）], [单独实现的理由]),
   [原语], [`scan`], [—：唯一做计算的], [—],
   [原语], [`scatter`], [—：唯一把数据写到计算出的位置的], [—],
-  [优化], [`distinct`], [`scan`（相邻比较）→ `scatter`（压缩）], [省一遍扫描；`∩ ∪ − ≫ dom ran` 都以它结尾],
+  [优化], [`seen`], [Lean body = `Order.idsBy` 的 foR 形式（`Order.firstsBy` 取每组第一行，行的组号 = 其键在其中的下标）；未写成 `scan` / `scatter` 的复合], [不排序：直接寻址一遍扫描，有序输入用游程检测；`∩ ∪ − ≫ dom ran` 都以它结尾],
   [优化], [`asc`], [radix sort：每一位 `scan`（直方图、前缀偏移）→ `scatter`；`arr char` 用 MSD], [比较排序常数小],
   [优化], [`gather`], [`(ix[i], i)` 与 `(j, e[j])` 拼接 → `asc` → `scan` 向后填 `e` → `scatter` 回 `i`], [O(n)，不必排序],
 )
@@ -234,20 +238,20 @@ compile η t : {r : Rel A B // rep r = ⟦t⟧ρ}       -- 方案 A：规格在�
 
 #tbl(c-sem, (auto, 1fr), ([运算], [由哪些 kernel 复合]),
   [`°`], [交换 key / val 两列，无 kernel],
-  [code（相等 ⇔ code 相等）], [`asc` → `distinct` → `scan`（编号）→ `scatter`（写回原位）],
-  [`∪`], [两表拼接 → `asc`（key, val 两列）→ `distinct`],
+  [code（相等 ⇔ code 相等）], [`seen`（`g` 即 code，按首次出现编号，无需排序）],
+  [`∪`], [两表拼接 → `asc`（key, val 两列）→ `seen`（`first` 取代表行）],
   [`∩` `−`], [两表拼接、带来源标记 → `asc` → 每组相等行数 `scan` → 保留出现在两侧（`∩`）或只在左侧（`−`）的组],
-  [`≫`], [两侧按中间列 `asc`、取组边界（`distinct`）、组内展开（`scan` 偏移、`scatter` 组头、`scan(max)` 填充）、`gather` 取行、`asc` + `distinct`],
-  [`dom` `ran`], [取一列 → `asc` → `distinct`],
+  [`≫`], [两侧按中间列 `asc`、取组（`seen`）、组内展开（`scan` 偏移、`scatter` 组头、`scan(max)` 填充）、`gather` 取行、`asc` + `seen`],
+  [`dom` `ran`], [取一列 → `asc` → `seen`（`first` 取代表行）],
   [`R\S` `R/S` 对称除], [不求补：按组比较「R 的 b 的个数」与「其中满足 S 的个数」，即分段 `scan`],
-  [Λ（`arr` 侧）], [`asc` + 组边界（`distinct`）给出 `lo`/`hi`],
+  [Λ（`arr` 侧）], [`asc ≫ seen` 的组号 `g` 与 `first` 给出 `lo`/`hi`],
   [`μ` `ν` `fold` `hylo`], [Lean 中的循环（`fixOn`），每轮调用上面的运算，行数不变即停；semi-naive 只多一个 `−`],
 )
 
 == Rust 侧
 
 #grid(columns: (1fr, 1fr), gutter: 8pt,
-  card(c-rs, [crate 结构])[`scan.rs` `gather.rs` `scatter.rs` `asc.rs` `distinct.rs` 各一个导出；`pack.rs` 是分块编解码（不导出）；
+  card(c-rs, [crate 结构])[`scan.rs` `gather.rs` `scatter.rs` `asc.rs` `seen.rs` 各一个导出；`pack.rs` 是分块编解码（不导出）；
     `pod::Elt`、`by_width!`（u1、char、i8–i64、f32、f64）、`pool` 保留。`RELK.txt` 从 99 行变为 5 行。],
   card(c-rs, [融合 kernel])[如 join、intern、group ids：只是优化，每个配一条定理说明它等于上表中的某个复合；
     在第二个真实需要出现前不加。],
@@ -278,7 +282,7 @@ index-complete · axioms · noreduce · panic · externs；另加 `lake -d freyd
 #tbl(c-run, (auto, auto, 1fr, auto), ([序], [gap], [缺什么], [能否证明]),
   [1], [`foldI`], [改为由 `fold` 定义（见下）；其正确性由 `fold` 的引理得出，不再需要 `foldI_sound`], [能：随定义消失],
   [2], [`share` 含自由变量], [共享部分必须是闭项；开项在每次绑定下重算是代码的错], [能：改 `Expand` 不共享开项，无需新证明],
-  [3], [`setify` / `asc` 行], [`asc`、`distinct` 改为 kernel 后，缺的是它们的定律：float 不满足 `Obj.Ordered`（NaN）；缺「排序后的排列唯一」（`¬ lt` 反对称）], [能：float 用保序位映射后有全序；反对称是常规证明。与 float 编码同批做],
+  [3], [`setify` / `asc` 行], [`asc`、`seen` 改为 kernel 后，缺的是它们的定律：float 不满足 `Obj.Ordered`（NaN）；缺「排序后的排列唯一」（`¬ lt` 反对称）], [能：float 用保序位映射后有全序；反对称是常规证明。与 float 编码同批做],
   [4], [`hylo`], [按轮迭代 = lfp，需要 `den_local`（body 在一组 key 上的输出只依赖这组 key）], [多半能（positive body）；可能要加 locality 前提],
   [5], [`lam` `E` `thin`], [同一集合有多种数组表示；需要 D2 canonical table（有序、无重复）], [能：先实现 canonical 形式（`doc/rel-denotation-design.md` §7.1）],
   [6], [`call`], [泛型定义还没有语义（stage 5）], [能：语义 = 展开成定义的项],
@@ -292,4 +296,4 @@ index-complete · axioms · noreduce · panic · externs；另加 `lake -d freyd
 - 去掉 `Syn`、`Tm.Le`、`Tm.Eqv`、`Hom.den`（`Rel/Lang/Syn.lean`）与 #9；`Tm.Ax` 改为改写引理 `⟦lhs⟧ρ = ⟦rhs⟧ρ`；freyd 需要的范畴在 `relaop` 自建。
 - `Tm` 加 symmetric division 构造子（运行时已有 `Alg.symDiv`）。
 - 改名：去掉 `Den` `Dem` `Fn` `CRel`，`Rel k v` 改为 `Rel A B`（`tab` ┃ `lazy`），`Tm` 去掉 `d`。
-- kernel 缩到 5 个：原语 `scan` `scatter`，优化 `gather` `asc` `distinct`（各配「= 原语复合」的定理）、编码只留 foR（块长 `lg` 每列可选）、原子 u1 char i8–i64 f32 f64 sym；q 专用 kernel 留在 qlean 的副本（tag `qlean-base`）。
+- kernel 缩到 5 个：原语 `scan` `scatter`，优化 `gather` `asc` `seen`（各配「= 原语复合」的定理）、编码只留 foR（块长 `lg` 每列可选）、原子 u1 char i8–i64 f32 f64 sym；q 专用 kernel 留在 qlean 的副本（tag `qlean-base`）。

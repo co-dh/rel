@@ -1,6 +1,7 @@
 import Rel.Run.Algebra
 import Rel.Run.Lang.Syntax
 import Rel.Run.Lang.Tm
+import Rel.Run.Lang.Schema
 
 /-! The elaborator of the Rel language (`doc/rel-lang-design.md` §a, §e): names resolved, every term typed
     `A ⟶ B` over the declared objects, definitions expanded, a body whose declared parameter is given a family
@@ -69,6 +70,8 @@ structure ObjInfo where
   /-- How it is stored: `.long` for a declared object (F6); `varObj k` for the object variable `k` of a constant
       generic over it. -/
   obj : Obj := .long
+  /-- A schema's columns (`schema S = {…}`), `ty` their `Schema.objAt`; none for any other object. -/
+  cols : Schema OTy := []
 
 /-- The atoms no declared object is stored as (every one is `.long`, F6): each the placeholder of one object
     variable while a constant generic over it is built, its binder `(A : Obj)` once emitted. -/
@@ -406,6 +409,26 @@ def oty (env : Env) (vs : List (String × OTy) := []) : OExp → M OTy
   | .prod a b => return .prod (← oty env vs a) (← oty env vs b)
   | .sum a b => return .sum (← oty env vs a) (← oty env vs b)
   | .list a => return .arr (← oty env vs a)
+
+/-- A solved object's `Obj`: every declared base object is `long`, an object variable as `ObjInfo.obj` stores it. -/
+def objOf (objs : Objs) (dp : Pos) : OTy → Except Err Obj
+  | .base n => pure ((objs.lookup n).elim .long (·.obj))
+  | .prod a b => return .prod (← objOf objs dp a) (← objOf objs dp b)
+  | .sum a b => return .sum (← objOf objs dp a) (← objOf objs dp b)
+  | .arr a => return .arr (← objOf objs dp a)
+  | .mv _ => throw ⟨dp, "an object is not determined; write the constant's objects, as in ⊤(A,B) or 𝟙(A)"⟩
+
+/-- `col S "c"`: the term `Schema.col?` gives at `S`'s columns as `Obj`s, typed `S ⟶ C` at the program's objects. -/
+def colOf (env : Env) (p : Pos) (s : OExp) (c : String) : Except Err (Res × OTy × OTy) := do
+  let (n, i) ← match s with
+    | .name _ n => pure (n, env.obj? n)
+    | _ => pure (s.show, none)
+  let some i := i.filter (!·.cols.isEmpty) | throw ⟨p, s!"`col` reads a column of a schema; `{n}` is no schema"⟩
+  let S ← i.cols.mapM fun (k, o) => return (k, ← objOf env.objs p o)
+  match Schema.col? S c, i.cols.lookup c with
+  | .ok ⟨B, t⟩, some b => pure (⟨_, B, t⟩, i.ty, b)
+  | .error m, _ => throw ⟨p, s!"schema `{n}`: {m}"⟩
+  | .ok _, none => throw ⟨p, s!"internal: schema `{n}` has the column '{c}' as an `Obj` and not as an object"⟩
 
 /-! ### The lifted rows of §e, each shape stated once -/
 
@@ -1019,6 +1042,8 @@ def elabE (env : Env) (m : Option OTy) : Expr → M Arg
   | .lit p ps => do
     let a ← litTy env.objs p (ps.map (·.1)); let b ← litTy env.objs p (ps.map (·.2))
     pure (.rel (.lit p a b ps) a b)
+  -- a built term, as a closed definition is (`walk`)
+  | .col p s c => do let (r, a, b) ← MonadExcept.ofExcept (colOf env p s c); settle m p [] (.rel (.tm r) a b)
   -- `X : a ⟶ b` in scope in the body, which has that type and is monotonic in `X`; `ν` from the conjuncts
   -- without `X`, `μ` from `𝟘` on any object, its rounds capped at run time (`muCap`)
   | .fix p least x b => do
@@ -1385,14 +1410,6 @@ def divTest {A B C : Obj} (c : Tm (.prod A C) (.prod A C)) (s : Tm B C) :
 section Build
 
 variable (objs : Objs) (mc : Lean.MetavarContext) (dp : Pos)
-
-/-- A solved object's `Obj`: every declared base object is `long`, an object variable as `ObjInfo.obj` stores it. -/
-def objOf : OTy → Except Err Obj
-  | .base n => pure ((objs.lookup n).elim .long (·.obj))
-  | .prod a b => return .prod (← objOf a) (← objOf b)
-  | .sum a b => return .sum (← objOf a) (← objOf b)
-  | .arr a => return .arr (← objOf a)
-  | .mv _ => throw ⟨dp, "an object is not determined; write the constant's objects, as in ⊤(A,B) or 𝟙(A)"⟩
 
 def toObj (o : OTy) : Except Err Obj := objOf objs dp (zonk mc o)
 
