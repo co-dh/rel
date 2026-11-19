@@ -15,6 +15,19 @@ def colPrefix (op : Op) (n : USize) (a : Enc) : Except String Enc := do
 /-- The `n` words `i + s`: `colMap .add` of the positions and `colConst n s`. -/
 def shiftCol (n : USize) (s : UInt64) : Except String Enc := do colMap .add n .pos (← colConst n s)
 
+/-- `colMap`'s answer as an `Arr t n`, the map's output well formed at `t` (`colMap_closed`). -/
+def colArr (op : Op) (n : USize) (a b : Enc) (t : QAtomicType := .i64) : Except String (Arr t n) :=
+  match h : colMap op n a b t with
+  | .ok o => .ok (Arr.mk o (colMap_closed h).2)
+  | .error s => .error s
+
+/-- **`colArr` is `colMap`** on the array's column. -/
+theorem colArr_ok {op : Op} {n : USize} {a b : Enc} {t : QAtomicType} {w : Arr t n} (h : colArr op n a b t = .ok w) :
+    colMap op n a b t = .ok w.enc := by
+  unfold colArr at h; split at h
+  · cases h; rename_i o hc; exact hc
+  · cases h
+
 /-- **CONCAT of two columns of one type**: `x` `kscatter`ed to the cells `0 … n₁-1` of `n`, `y` to `off` (`n₁ + k`),
 the rest `0`, and the two added by `colMap .add` at `t` (each cell is `0` in one of the two). `.add` is the wrapping
 add of raw words at every type (`Op.eval`), so `x + 0` is `x`'s stored word, a float's sign and NaN payload included;
@@ -23,9 +36,7 @@ def Arr.concat {t : QAtomicType} {n₁ n₂ : USize} (n : USize) (off : Enc) (x 
     Except String (Arr t n) := do
   let a ← kscatter .last n₁ .pos x.enc n 0
   let b ← kscatter .last n₂ off y.enc n 0
-  match h : colMap .add n a b t with
-  | .ok o => .ok (Arr.mk o (colMap_closed h).2)
-  | .error s => .error s
+  colArr .add n a b t
 
 /-- The layout of `n₁` rows followed by `n₂`: the summed count `n` and the destinations `off` of the second part
 (`shiftCol n₂ n₁`); the error where `n` does not fit a `USize`. -/
@@ -38,10 +49,7 @@ def catPlan (n₁ n₂ : USize) : Except String (USize × Enc) :=
 def Arr.clampShift {n : USize} (c s : UInt64) (x : Arr .i64 n) : Except String (Arr .i64 n) := do
   let a ← colMap .max n x.enc (← colConst n 0)
   let b ← colMap .min n a (← colConst n c)
-  let k ← colConst n s
-  match h : colMap .add n b k with
-  | .ok o => .ok (Arr.mk o (colMap_closed h).2)
-  | .error e => .error e
+  colArr .add n b (← colConst n s)
 
 /-- `colPrefix`'s answer is a column every kernel reads, `Enc.WF` at `i64` (`kscan_closed`). -/
 theorem colPrefix_closed {op : Op} {n : USize} {a o : Enc} (h : colPrefix op n a = .ok o) :

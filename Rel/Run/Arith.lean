@@ -7,7 +7,7 @@ demand `D` and answers `D ≫ ⟦verb⟧`:
 
 - `arithDen k U = (𝟙 ∩ (π₁ ≫ U)(π₁ ≫ U)°) ≫ (𝟙 ∩ (π₂ ≫ U)(π₂ ≫ U)°) ≫ step(k) ≫ U`: the two input tests are
   compositions with `dom U` (`Tab.comp`, `Tab.dom`), `step(k)` one `colMap` of the verb's `Op` and its exactness
-  flags (`stepCols`), the kept rows found by `whereCol` and `kgather`ed, then `≫ U` by `Tab.comp`.
+  flags (`stepCols`), the kept rows selected by `Tab.keep`, then `≫ U` by `Tab.comp`.
 - `succDen U = dom U ≫ (u ↦ u + 1) ≫ dom U`: `Tab.comp` with `dom U` on both sides of one `colMap .add`.
 
 The step reads raw words as `Op.eval` does (two's complement `Int64`); `Ew.intStep`'s null (`Int64.minValue`) is the
@@ -18,12 +18,6 @@ open Rel.Ext Rel.Kernel Rel.Verify
 
 /-- `Ew.intStep`'s null `Int64.minValue` as a raw word. -/
 def nulWord : UInt64 := 0x8000000000000000
-
-/-- `colMap`'s answer as an `i64` column (`colMap_closed`). -/
-def colArr (op : Op) (n : USize) (a b : Enc) : Except String (Arr .i64 n) :=
-  match h : colMap op n a b with
-  | .ok o => .ok (Arr.mk o (colMap_closed h).2)
-  | .error s => .error s
 
 /-- **One value verb `k` on the `n` operand rows `a`, `b`**: the answer column `w` and the keep flag (`0`/`1`) of
 `stepDen k`: `w` is `Ew.intStep k` of the row, not the null, and for `+ - *` did not wrap. `+ - * div mod` answer the
@@ -59,16 +53,15 @@ namespace Tab
 variable {K : Obj}
 
 /-- **`D ≫ arithDen k U`**: `D`'s rows whose first operand is in `dom U` (`Tab.comp` of the rows keyed by
-themselves with `dom U`), of those the ones whose second is, `stepCols` on their operands, the kept rows (`whereCol`)
-with their answers `kgather`ed, `≫ U` (`Tab.comp`). -/
+themselves with `dom U`), of those the ones whose second is, `stepCols` on their operands, the kept rows with their
+answers (`Tab.keep`), `≫ U` (`Tab.comp`). -/
 def arith (k : UInt8) (D : Tab K (.prod .long .long)) (U : Tab .long .long) : Except String (Tab K .long) := do
   let du ← U.dom
   let E₁ : Tab (.prod K (.prod .long .long)) .long ←
     Tab.comp ⟨D.n, ((D.key, D.val) : Vals K D.n × Vals (.prod .long .long) D.n), D.val.1⟩ du
   let E : Tab (.prod K (.prod .long .long)) .long ← Tab.comp ⟨E₁.n, E₁.key, E₁.key.2.2⟩ du
-  let (w, keep) ← stepCols k E.n E.key.2.1.enc E.key.2.2.enc
-  let (m, sel) ← whereCol E.n keep
-  Tab.comp ⟨m, ← Vals.gather m sel E.key.1, ← Arr.gather m sel w⟩ U
+  let (w, b) ← stepCols k E.n E.key.2.1.enc E.key.2.2.enc
+  Tab.comp (← Tab.keep ⟨E.n, E.key.1, w⟩ b) U
 
 /-- **`D ≫ succDen U`**: `D ≫ dom U`, each value `u` to `u + [u ≠ null]` (`Ew.intStep`'s wrapping `u + 1`, the
 null to itself) by two `colMap`s, `≫ dom U`. -/
