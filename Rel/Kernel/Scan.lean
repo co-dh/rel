@@ -178,7 +178,6 @@ is stated in terms of.
 A `fills` whose payload holds no null is the identity, and the C answers the argument's own
 `ByteArray` there rather than a copy of it — the same bytes this fold states, so the same spec, and
 512 MB not written at 64M elements. `rust/src/scan.rs`'s `scan_any_null` carries q's measurements. -/
-@[extern "qlean_scan"]
 def scan (v : Verb) (k : Kind) (n : USize) (b : @& ByteArray) : ByteArray :=
   let m := min n.toNat (k.avail b)
   let w := (outKind v k).width

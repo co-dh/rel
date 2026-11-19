@@ -92,23 +92,28 @@ def cmpEl (objs : Objs) : OTy → (A : Obj) → A.El → A.El → Ordering
     ((xs.zip ys).foldl (fun (o : Ordering) (x, y) => o.then (cmpEl objs a A x y)) Ordering.eq).then (compare xs.length ys.length)
   | s, A, x, y => compare (showEl objs false s A x) (showEl objs false s A y)
 
-/-- A relation printed as its set of pairs, sorted by `cmpEl`. -/
-def showRel (objs : Objs) (s t : OTy) {A B : Obj} (R : Tab A B) : String :=
-  let ps := R.nub.toList.mergeSort fun (x, y) (x', y') => ((cmpEl objs s A x x').then (cmpEl objs t B y y')) != .gt
-  "{" ++ ", ".intercalate (ps.map fun (x, y) => s!"({showEl objs false s A x}, {showEl objs false t B y})") ++ "}"
+/-- A relation printed as its set of pairs: each pair once (`Tab.canon`, `kasc` then `kseen`), sorted by `cmpEl`; the
+    message of a kernel that could not run. -/
+def showRel (objs : Objs) (s t : OTy) {A B : Obj} (R : Tab A B) : Except String String := do
+  let ps := (← R.canon).toList.mergeSort fun (x, y) (x', y') => ((cmpEl objs s A x x').then (cmpEl objs t B y y')) != .gt
+  pure ("{" ++ ", ".intercalate (ps.map fun (x, y) => s!"({showEl objs false s A x}, {showEl objs false t B y})") ++ "}")
 
 /-- A declared object as a print reads it: its names and range, no universe. -/
 def infoOf (ty : OTy) (elems : List String) (range : Option (Int × Int)) : ObjInfo := { ty, elems, range }
 
 /-- A `print`'s line, the term's text `x` and its value; and the value's ok bit. -/
 def printText (A B : Obj) (objs : Objs) (x : String) (s t : OTy) (c : CRel A B) : String × Bool :=
-  (s!"{x} = {showRel objs s t c.rel}", c.ok)
+  match showRel objs s t c.rel with
+  | .ok r => (s!"{x} = {r}", c.ok)
+  | .error e => (s!"{x}: {e}", false)
 
 /-- A `check` at `p` that does not hold, `x ⊑ y` (and `y ⊑ x` for `=`), as its error; and the sides' ok bits. -/
 def checkErr (A B : Obj) (objs : Objs) (p : Pos) (x y : String) (eq : Bool) (s t : OTy) (R S : CRel A B) :
     Option Err × Bool :=
   (if R.rel ⊑ S.rel && (!eq || S.rel ⊑ R.rel) then none
-   else some ⟨p, s!"check failed: {x} = {showRel objs s t R.rel}, {y} = {showRel objs s t S.rel}"⟩, R.ok && S.ok)
+   else some ⟨p, match showRel objs s t R.rel, showRel objs s t S.rel with
+     | .ok r, .ok q => s!"check failed: {x} = {r}, {y} = {q}"
+     | .error e, _ | _, .error e => s!"check failed: {x}, {y}: {e}"⟩, R.ok && S.ok)
 
 /-- A program's failures: each `check` that does not hold, and each term that threw (`Rel.run`), named by `es`,
     `μ` cap included. -/

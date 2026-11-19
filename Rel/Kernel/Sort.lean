@@ -66,7 +66,6 @@ reason, which is q's `idesc 9 1 9 1 9` = `0 2 4 1 3` and not the reverse of its 
 `n` is clamped to what the payload holds, as `Scan.scan` clamps it and for its reason: three bytes
 hold between 17 and 24 booleans, so the size does not determine the count, and reading past the
 array is the one failure worse than a wrong answer. -/
-@[extern "qlean_sort_grade"]
 def grade (k : Kind) (desc : Bool) (n : USize) (b : @& ByteArray) : ByteArray :=
   let m := min n.toNat (k.avail b)
   indices ((List.range m).mergeSort fun i j =>
@@ -76,7 +75,6 @@ def grade (k : Kind) (desc : Bool) (n : USize) (b : @& ByteArray) : ByteArray :=
 stands in `p`, and `m` where it stands nowhere. `~/q/q.k` line 12 builds `rank` as `<<x`, and the
 grade of a permutation is its inverse, so the second grade is one scatter: grading the eight-byte
 permutation again was 52ms of `rank` on 20M booleans, twice the first grade. -/
-@[extern "qlean_sort_invert"]
 def invert (p : @& ByteArray) : ByteArray :=
   let m := p.size / 8
   indices ((List.range m).map fun i => (List.range m).findIdx fun j => (Column.bitsAt p (8 * j) 8).toNat == i)
@@ -85,7 +83,6 @@ def invert (p : @& ByteArray) : ByteArray :=
 further: a block's base is the same for all of it, so `base + residual` is the element and biasing it
 is the key. Nothing is decoded, where `Column.bytesOf` wrote eight megabytes for a pass that only
 ever wanted a key out of them. -/
-@[extern "qlean_sort_grade_foR"]
 def gradeFoR (k : Kind) (desc : Bool) (n : USize) (metadata pack : @& ByteArray) : ByteArray :=
   grade k desc n (Coc.decode k.width.toUSize metadata pack n)
 
@@ -93,7 +90,6 @@ def gradeFoR (k : Kind) (desc : Bool) (n : USize) (metadata pack : @& ByteArray)
 codes for a few classes stay packed at 1, 2 or 4 bits and are graded where they lie, where a caller
 widening them to a byte first wrote and read a byte an element. The C is `grade`'s counting sort with
 a `2 ^ w` table up to sixteen bits. -/
-@[extern "qlean_sort_grade_lane"]
 def gradeLane (desc : Bool) (n w : USize) (ids : @& ByteArray) : ByteArray :=
   indices ((List.range (Column.idsCap ids w.toNat n.toNat)).mergeSort fun i j =>
     if desc then Column.idAt ids w.toNat j ≤ Column.idAt ids w.toNat i
@@ -103,11 +99,9 @@ def gradeLane (desc : Bool) (n w : USize) (ids : @& ByteArray) : ByteArray :=
 which is the grade inverted. The C builds the grade only where the key range takes the radix: a range
 the counting sort serves has every element's rank in the histogram's prefix sums, written in element
 order where the grade is a scatter and its inversion a second one. -/
-@[extern "qlean_sort_ranks"]
 def ranks (k : Kind) (n : USize) (b : @& ByteArray) : ByteArray := invert (grade k false n b)
 
 /-- `ranks` off the encoded form, `gradeFoR`'s reason again. -/
-@[extern "qlean_sort_ranks_foR"]
 def ranksFoR (k : Kind) (n : USize) (metadata pack : @& ByteArray) : ByteArray :=
   ranks k n (Coc.decode k.width.toUSize metadata pack n)
 
@@ -135,25 +129,21 @@ thousand groups, the grouping itself is 372us against `buckets`' 610 and the gat
 The ids are packed at `Column.idWidthOf ng` bits, `ng` being the second payload's count — an interned
 column's id layout, read by `Column.idAt` — because every consumer reads an id per row and at 100
 groups a byte holds what a `long` did; nothing stores the width, the count derives it. -/
-@[extern "qlean_sort_group_ids"]
 def groupIds (k : Kind) (n : USize) (b : @& ByteArray) : ByteArray × ByteArray :=
   idsBy (min n.toNat (k.avail b)) (keyAt k b)
 
 /-- `groupIds` on the pair `(a[i], b[i])`: the joint dense code of two columns, either kind in either
 slot. One kernel because the composition — `groupIds` of each, `p·N + q`, `groupIds` again — reads and
 writes three id payloads where the C makes the pair one key and numbers it in one table. -/
-@[extern "qlean_sort_group_ids_pair"]
 def groupIdsPair (k₁ k₂ : Kind) (n : USize) (a b : @& ByteArray) : ByteArray × ByteArray :=
   idsBy (min n.toNat (min (k₁.avail a) (k₂.avail b))) fun i => (keyAt k₁ a i, keyAt k₂ b i)
 
 /-- `groupIdsPair` on two id payloads — `a` at `wa` bits and `b` at `wb`, an interned column's or
 `groupIds`' own, either any lane `Column.laneWidth` answers. The C reads each id through `id_at`
 where `keys_of` would read a column's element, so neither payload is widened to longs first. -/
-@[extern "qlean_sort_group_ids_pair_ids"]
 def groupIdsPairIds (wa wb n : USize) (a b : @& ByteArray) : ByteArray × ByteArray :=
   groupIdsPair .i64 .i64 n (idsOperand 8 wa a n) (idsOperand 8 wb b n)
 
-@[extern "qlean_sort_group_ids_foR"]
 def groupIdsFoR (k : Kind) (n : USize) (metadata pack : @& ByteArray) : ByteArray × ByteArray :=
   groupIds k n (Coc.decode k.width.toUSize metadata pack n)
 
@@ -164,7 +154,6 @@ An element is `w` bits (`0 .. 64`) read as `Column.resAt` reads a residual, the 
 narrow layout: dense bytes at 8/16/32/64, a bitmap at 1, interned ids at their lane width, one Frame of
 Reference block's residuals at its width. Empty where `w` passes 64 or the offsets do not ascend from
 a non-negative start to at most `v`'s count, which the caller reads as a decline, as `segIds` does. -/
-@[extern "qlean_sort_rank_slices"]
 def rankSlices (w : USize) (v o : @& ByteArray) : ByteArray :=
   let off (j : Nat) : Int := (Column.bitsAt o (8 * j) 8).toInt64.toInt
   let g := o.size / 8 - 1
@@ -182,7 +171,6 @@ def rankSlices (w : USize) (v o : @& ByteArray) : ByteArray :=
 this histogram summed, so nothing new is being counted; it is a pass of its own because a query that
 names no count never wants it — at a million rows it reads eight megabytes, 187us measured, against
 the 190 a whole grouped sum takes. -/
-@[extern "qlean_sort_group_sizes"]
 def groupSizes (ng w n : USize) (gid : @& ByteArray) : ByteArray :=
   indices ((List.range ng.toNat).map fun g =>
     (List.range (Column.idsCap gid w.toNat n.toNat)).countP fun i => Column.idAt gid w.toNat i == g)
@@ -194,7 +182,6 @@ def idLongs (n w : USize) (ids : @& ByteArray) : ByteArray :=
 
 /-- `grade` over a symbol column. The stability argument is `grade`'s: `!= .gt` is the `≤` a stable
 merge needs, and a tie satisfies it both ways round. -/
-@[extern "qlean_sort_grade_syms"]
 def gradeSyms (desc : Bool) (blob : @& ByteArray) (offs : @& Array Nat) : ByteArray :=
   indices ((List.range (offs.size - 1)).mergeSort fun i j =>
     if desc then Column.symCmp (Column.symKey blob offs j) (Column.symKey blob offs i) != .gt
@@ -221,7 +208,6 @@ Ids cannot carry the order themselves and that is measured: q orders symbols by 
 length, `` iasc `$("ab";"a";"aa";"") `` being `3 1 2 0` and `` asc `$("é";"e";"z") `` being
 `` `e`z`é ``, which is not the order they were first seen in. So `asc` is two integer passes over a
 rank, and not a grade of the ids. -/
-@[extern "qlean_sort_grade_ids"]
 def gradeIds (desc : Bool) (n : USize) (dict : @& ByteArray) (dof : @& Array Nat)
     (ids : @& ByteArray) : ByteArray :=
   let d := dof.size - 1
@@ -246,7 +232,6 @@ def idFirsts (d n w : Nat) (ids : ByteArray) : List Nat :=
 
 /-- `groupIds` over an interned column: the group of every row and the row each group was first seen
 at, which is what a grouped reduction accumulates straight from. -/
-@[extern "qlean_sort_id_groups"]
 def idGroups (d n w : USize) (ids : @& ByteArray) : ByteArray × ByteArray :=
   let fs := idFirsts d.toNat n.toNat w.toNat ids
   ( Column.packIds (Column.idWidthOf fs.length) n.toNat (fun i =>
@@ -265,7 +250,6 @@ The specification is the two kernels beside it, so there is one statement of wha
 symbols" are and one of where a symbol is found: `distinctSyms` in first-occurrence order, and
 `findSymScalar` against it. The C does both in the pass `sym_group` already makes — the group of an
 element *is* its dictionary index, the groups being numbered in that same order. -/
-@[extern "qlean_sort_intern_syms"]
 def internSyms (blob : @& ByteArray) (offs : @& Array Nat) :
     ByteArray × Array Nat × ByteArray :=
   let (db, dof) := distinctSyms blob offs

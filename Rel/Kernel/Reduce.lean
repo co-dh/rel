@@ -35,7 +35,6 @@ only in where an element comes from, which is what `~/q/q.k` line 7's one `/aggr
 
 Reading an element is `Ew.signed`'s rule and not a second one, so `byte` and `char` zero-extend and
 everything else sign-extends, which is exactly what makes `min "a b"` the blank. -/
-@[extern "qlean_over_bytes"]
 def overBytes (op : Coc.Over) (cls : UInt8) (nul : Int64) (b : @& ByteArray) : Int64 :=
   (List.range (b.size / Ew.width cls)).foldl (init := op.denseSeed cls nul) fun acc i =>
     let x := Ew.signed cls (Ew.elem cls b i)

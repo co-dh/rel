@@ -182,7 +182,6 @@ def bools (n : Nat) (p : Nat → Bool) : ByteArray × ByteArray :=
 
 /-- The first `n` bits of the bitmap `b` as the `u1` column `bools` lays out, a bit past `b` being `0`: the writer a
 kernel whose answer is a bitmap (`gatherBits`, `concatBits`) hands it to, so no boolean answer is a bitmap `Enc`. -/
-@[extern "qlean_coc_bools_of"]
 def boolsOf (n : USize) (b : @& ByteArray) : ByteArray × ByteArray := bools n.toNat (Rel.Column.bitAt b)
 
 
@@ -277,7 +276,6 @@ short column's elements sign-extended, so its null is `-32768` there and the fol
 The block structure carries over unchanged — a block holds a null exactly when its minimum is one,
 and inside such a block an element is null exactly when its residual is zero — because the null is
 still the smallest value the type has. -/
-@[extern "qlean_coc_over"]
 def over (op : Over) (nul : Int64) (metadata : @& ByteArray) (pack : @& ByteArray)
     (n : USize) : Int64 :=
   (elems metadata pack n).foldl (init := op.seed nul) fun acc v =>
@@ -373,26 +371,21 @@ is decided on the bits.
 Two names and one specification: `rust/src/coc.rs` exports a kernel per element width, so there is a Lean
 declaration per C symbol, and both carry `alpEncodeAt` at the width. `Coc.encode` takes its width as
 an argument instead because the integral encoder is one C symbol; the shape here follows the C. -/
-@[extern "qlean_alp_encode_f64"]
 def alpEncode64 (x : @& ByteArray) : ByteArray × ByteArray × ByteArray := alpEncodeAt false x
 
-@[extern "qlean_alp_encode_f32"]
 def alpEncode32 (x : @& ByteArray) : ByteArray × ByteArray × ByteArray := alpEncodeAt true x
 
 /-- `encode` when its parts are fewer bytes than the `x.size / width * width` dense ones. -/
-@[extern "qlean_coc_encode_below"]
 def encodeBelow (width : USize) (x : @& ByteArray) : Option (ByteArray × ByteArray) :=
   let (m, p) := encode width x
   if m.size + p.size < x.size / width.toNat * width.toNat then some (m, p) else none
 
 /-- `alpEncode64` when its parts are fewer bytes than the dense ones. -/
-@[extern "qlean_alp_encode_below_f64"]
 def alpEncodeBelow64 (x : @& ByteArray) : Option (ByteArray × ByteArray × ByteArray) :=
   let (m, p, a) := alpEncode64 x
   if m.size + p.size + a.size < x.size / 8 * 8 then some (m, p, a) else none
 
 /-- `alpEncode32` when its parts are fewer bytes than the dense ones. -/
-@[extern "qlean_alp_encode_below_f32"]
 def alpEncodeBelow32 (x : @& ByteArray) : Option (ByteArray × ByteArray × ByteArray) :=
   let (m, p, a) := alpEncode32 x
   if m.size + p.size + a.size < x.size / 4 * 4 then some (m, p, a) else none
@@ -406,12 +399,10 @@ def alpElems (metadata pack a : ByteArray) (n : USize) : List UInt64 :=
 /-- The dense payload an ALP column denotes: `n` little-endian elements. This is the inverse of
 `alpEncode64` and the entry every kernel family written over dense floats reaches an ALP column
 through — `Column.bytesOf` is that call. -/
-@[extern "qlean_alp_decode_f64"]
 def alpDecode64 (metadata pack a : @& ByteArray) (n : USize) : ByteArray :=
   (alpElems metadata pack a n).foldl (init := ByteArray.empty) fun acc v =>
     Rel.Column.pushBits acc v 8
 
-@[extern "qlean_alp_decode_f32"]
 def alpDecode32 (metadata pack a : @& ByteArray) (n : USize) : ByteArray :=
   (alpElems metadata pack a n).foldl (init := ByteArray.empty) fun acc v =>
     Rel.Column.pushBits acc v 4
@@ -589,7 +580,6 @@ def packOf (n : Nat) (f : Nat → Bool) : ByteArray :=
 /-- A boolean `foR` (`u1`) as the bitmap `concatBits` joins: bit `i` is element `i`'s low bit, which is what
 `Enc.raw` reads at a boolean, and a row past the blocks is `0`. The C copies a width-1, frame-0 block's residual
 words whole — they already are its bitmap — and builds any other block in one block of L1 scratch. -/
-@[extern "qlean_structural_bits_of_for"]
 def bitsOfFoR (metadata pack : @& ByteArray) (n : USize) : ByteArray :=
   let starts := Column.blockStarts metadata
   packOf n.toNat fun i =>

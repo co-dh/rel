@@ -352,7 +352,6 @@ def widenRead (src : UInt8) (x : ByteArray) (i : Nat) : Int64 :=
   if src == bits then (if Column.bitAt x i then 1 else 0) else signed src (elem src x i)
 
 /-- q's value verbs over two dense payloads. -/
-@[extern "qlean_ew_val"]
 def val (op cls shape : UInt8) (nul : Int64) (a b : @& ByteArray) (n : USize) : ByteArray :=
   (List.range n.toNat).foldl (init := ByteArray.empty) fun acc i =>
     let (ia, ib) := shapeIdx shape i
@@ -371,7 +370,6 @@ def cmpBitmap (op cls shape : UInt8) (a b : @& ByteArray) (n : USize) : ByteArra
       else byte)
 
 /-- q's six comparisons as the `u1` Frame of Reference column `Coc.bools` lays out. -/
-@[extern "qlean_ew_cmp"]
 def cmp (op cls shape : UInt8) (a b : @& ByteArray) (n : USize) : ByteArray × ByteArray :=
   Coc.bools n.toNat (Column.bitAt (cmpBitmap op cls shape a b n))
 
@@ -396,7 +394,6 @@ is what `Column.appendFoR` leaves, it answers none where this answers the sums i
 other section, the pack and therefore `Column.atoms` are the same bytes, and the sums are a cache no
 denotation reads — `Kernel.matchColumn` takes byte equality as a fast `true` and otherwise compares
 payloads. `QLean/Kernel/ElementwiseTest.lean`'s `shiftSections` pins both directions. -/
-@[extern "qlean_coc_shift"]
 def foRShift (neg : Bool) (k : Int64) (metadata pack : @& ByteArray) (n : USize) :
     Option (ByteArray × ByteArray) :=
   let step := fun x => if neg then k.toInt - x else x + k.toInt
@@ -430,7 +427,6 @@ def bitBitmap (op shape : UInt8) (a b : @& ByteArray) (n : USize) : ByteArray :=
       else byte)
 
 /-- A verb of two bitmaps as the `u1` Frame of Reference column `Coc.bools` lays out. -/
-@[extern "qlean_ew_bit"]
 def bit (op shape : UInt8) (a b : @& ByteArray) (n : USize) : ByteArray × ByteArray :=
   Coc.bools n.toNat (Column.bitAt (bitBitmap op shape a b n))
 
@@ -481,7 +477,6 @@ def tickStep (op src dst : UInt8) (nulIn nulOut : Int64) (v : UInt64) : UInt64 :
 /-- An operand brought to the class its verb's result is at. `real` to `float` is written out rather
 than converted so that the sign bit, which is what makes q's null the *negative* NaN, cannot be lost
 to a platform's NaN handling. -/
-@[extern "qlean_ew_widen"]
 def widen (src dst : UInt8) (nulIn nulOut : Int64) (x : @& ByteArray) (n : USize) : ByteArray :=
   (List.range n.toNat).foldl (init := ByteArray.empty) fun acc i =>
     let v :=
@@ -561,7 +556,6 @@ def stageAt (prog : ByteArray) (k : Nat) : Stage :=
 
 Spec: stage `k` is its engine applied to the payloads its two source codes name, at the whole count
 `n`; `rust/src/ew.rs` answers the same list a tile at a time. -/
-@[extern "qlean_ew_chain"]
 def chain (prog : @& ByteArray) (inputs : @& Array ByteArray) (n : USize) : ByteArray :=
   let k := prog.size / stageBytes
   let outs := (List.range k).foldl (init := (#[] : Array ByteArray)) fun outs j =>

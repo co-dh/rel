@@ -18,7 +18,6 @@ same number — `ungroup`'s repeat of a column of atoms is the only shape that b
 composition writes and reads back eight bytes an answer element to say nothing the widths had not
 already said. `widths` is a dense `long` payload, so a caller holding a long column passes it as it
 is; a negative count is a run of none. -/
-@[extern "qlean_structural_expand"]
 def expandBytes (w : USize) (fill : UInt64) (src : @& ByteArray) (widths : @& ByteArray) :
     ByteArray :=
   (Array.range (widths.size / 8)).foldl (init := ByteArray.empty) fun acc i =>
@@ -30,7 +29,6 @@ def expandBytes (w : USize) (fill : UInt64) (src : @& ByteArray) (widths : @& By
 rather than `w`-byte ones, and written out at `wout` because the answer's dictionary can be one entry
 longer than the argument's — a miss is the empty symbol and `gatherIds` appends it when the
 dictionary has none. -/
-@[extern "qlean_structural_gather_ids"]
 def gatherPacked (n w wout : USize) (fill : UInt64) (src : @& ByteArray) (idx : @& ByteArray) :
     ByteArray :=
   Column.packIds wout.toNat (idx.size / 8) fun j =>
@@ -42,7 +40,6 @@ def gatherPacked (n w wout : USize) (fill : UInt64) (src : @& ByteArray) (idx : 
 extract — at a sub-byte width a slice can start inside a byte — so the fields are moved one at a
 time, over a payload that is a fraction of the dense one's size. `off < n` and `0 < n`, which
 `sliceColumn` establishes. -/
-@[extern "qlean_structural_cycle_ids"]
 def cycleIds (n off m w : USize) (ids : @& ByteArray) : ByteArray :=
   Column.packIds w.toNat m.toNat fun j => Column.idAt ids w.toNat ((off.toNat + j) % n.toNat)
 
@@ -59,7 +56,6 @@ def shiftAt (n : Nat) (k : Int) (j : Nat) : Option Nat :=
 
 One kernel for both and not a fold of a two-argument join: folding `++` copies the accumulated prefix
 once per part, so `raze` over `k` columns would be quadratic where q is linear. -/
-@[extern "qlean_structural_concat"]
 def concatBytes (parts : Array ByteArray) : ByteArray :=
   parts.foldl (init := ByteArray.empty) (· ++ ·)
 
@@ -155,7 +151,6 @@ own — so it can answer the re-encode where this answers the append; the values
 
 `ns` is the parts' counts, 8-byte little-endian (`countBytes`); the parts past
 `min (ns.size / 8) (min metas.size packs.size)` are not read, and the C takes the same minimum. -/
-@[extern "qlean_structural_concat_foR"]
 def concatFoR (ew : USize) (ns : @& ByteArray) (metas : Array ByteArray) (packs : Array ByteArray) :
     ByteArray × ByteArray :=
   let ps := (Array.range (min (ns.size / 8) (min metas.size packs.size))).map fun k =>
@@ -182,7 +177,6 @@ The source's decode was the wasteful one and it was a whole column — at 64M lo
 of its 80 on it, 1 GB of dense payload written so that a gather could read a part of it once. This
 is the shape `where` and the element-wise verbs hand it: a source that is a stored column and an
 index of a handful of positions, freshly built and dense. -/
-@[extern "qlean_structural_gather_foR"]
 def gatherFoR (w : USize) (fill : UInt64) (smeta : @& ByteArray) (spack : @& ByteArray) (n : USize)
     (idx : @& ByteArray) : ByteArray :=
   gatherBytes w fill (Coc.decode w smeta spack n) idx
@@ -192,7 +186,6 @@ def gatherFoR (w : USize) (fill : UInt64) (smeta : @& ByteArray) (spack : @& Byt
 `Column.resAt`'s layout, so a bitmap is `wb = 1` and an interned column's ids are `Column.idWidth`.
 In order, so the last write to a repeated index stays: q's `:`. An index past `dst` writes nothing,
 `amendRounds` having raised it already. -/
-@[extern "qlean_structural_scatter"]
 def scatterPacked (wb : USize) (dst : ByteArray) (idx : @& ByteArray) (src : @& ByteArray) (soff : USize)
     (bcast : Bool) : ByteArray :=
   let wb := wb.toNat
@@ -212,14 +205,12 @@ def scatterPacked (wb : USize) (dst : ByteArray) (idx : @& ByteArray) (src : @& 
 /-- q's `til`, as little-endian `Int64`s. Measured — `til 5` is `0 1 2 3 4`, `til 0` is the empty long
 vector, `type til 5` is `7h` and `til 2h` is `0 1`, so the answer is `long` whatever the count's own
 type was; `til -1` and `til 0N` are both `'domain`, which `tilColumn` declines rather than encodes. -/
-@[extern "qlean_structural_til"]
 def tilLongs (n : USize) : ByteArray :=
   (List.range n.toNat).foldl (init := ByteArray.empty) fun acc i =>
     Column.pushBits acc (Int64.ofNat i).toUInt64 8
 
 /-- `x@i` at a bit payload. Measured — `1101b@3 2 1 0` is `1011b` and `101b@0 5` is `10b`, so an index
 q cannot serve answers `0b`, which is `Eval.nullAtom`'s boolean null. -/
-@[extern "qlean_structural_gather_bits"]
 def gatherBits (n : USize) (bits : @& ByteArray) (idx : @& ByteArray) : ByteArray :=
   packOf (idx.size / 8) fun j =>
     match gatherAt n.toNat idx j with
@@ -233,7 +224,6 @@ and `y`, and copies the rest. Decoding every part to join them was what `{x,y}` 
 paid on every append. The values are the specification's; a moved block keeps the exponent it had,
 which is the writer's for a column in the writer's form and an equally exact one otherwise. `ns` is
 `concatFoR`'s: 8-byte little-endian counts. -/
-@[extern "qlean_structural_concat_alp"]
 def concatALP (ew : USize) (ns : @& ByteArray) (metas packs alps : @& Array ByteArray) :
     ByteArray × ByteArray × ByteArray :=
   Coc.alpEncodeAt (ew == 4) (concatBytes ((Array.range (min (ns.size / 8) (min metas.size
@@ -245,7 +235,6 @@ def concatALP (ew : USize) (ns : @& ByteArray) (metas packs alps : @& Array Byte
 has to shift every byte it moves. Measured — `3 rotate 110100001b` is `100001110b`, `-3 rotate` it is
 `001110100b` (which is `off = 6`), `-5#101b` is `01101b` and `5#101b` is `10110b`. A count of `0`
 never divides: `packOf 0` folds over an empty range. -/
-@[extern "qlean_structural_cycle_bits"]
 def cycleBits (n off m : USize) (b : @& ByteArray) : ByteArray :=
   packOf m.toNat fun j => Column.bitAt b ((off.toNat + j) % n.toNat)
 
@@ -255,7 +244,6 @@ def cycleBits (n off m : USize) (b : @& ByteArray) : ByteArray :=
 `counts` is each part's element count, which `Enc.bits` stores because `⌈n/8⌉` is not invertible, as
 8-byte little-endian counts (`countBytes`); the parts past `min (counts.size / 8) parts.size` are not
 read, and the C takes the same minimum. -/
-@[extern "qlean_structural_concat_bits"]
 def concatBits (counts : @& ByteArray) (parts : @& Array ByteArray) : ByteArray :=
   let bs := (Array.range (min (counts.size / 8) parts.size)).flatMap fun k =>
     (Array.range (Column.bitsAt counts (8 * k) 8).toNat).map (Column.bitAt parts[k]!)
@@ -278,7 +266,6 @@ and raises.
 
 `@[extern]` because this **is** reading a partition's symbol column, the longest column in the
 system: the loop it replaces boxed one `QAtom.long` per element and resolved each to a `String`. -/
-@[extern "qlean_structural_enum_ids"]
 def enumIds (n d nullId w : USize) (b : @& ByteArray) : ByteArray × USize :=
   let val := fun i => (Column.bitsAt b (i * 8) 8).toInt64
   (Column.packIds w.toNat n.toNat
@@ -297,7 +284,6 @@ payload, and at a width below eight a part does not start on a byte — the reas
 kernel and not an append. `counts` is the parts' counts, 8-byte little-endian (`countBytes`); the parts
 past `min (counts.size / 8) parts.size` are not read, and the C takes the same minimum. `widths` stay
 `Nat`s: they are bit widths (`Column.idWidth`, at most 64), not counts. -/
-@[extern "qlean_structural_concat_ids"]
 def concatIds (wout : USize) (counts : @& ByteArray) (widths : @& Array Nat) (maps parts : @& Array ByteArray) :
     ByteArray :=
   let ids := (Array.range (min (counts.size / 8) parts.size)).flatMap fun k =>
@@ -332,7 +318,6 @@ remapped. `.error ps`, the parts handed back so the caller's fallback holds no r
 while the first part's ids may be grown in place, where it holds a repeat, and past `2^32 - 2` entries in all, which the table's
 32-bit slots do not reach. The first part's ids are copied as they are, so an id at or past its
 dictionary — which no well-formed column holds — stays where `internConcat` reads it as `0`. -/
-@[extern "qlean_symdict_concat"]
 def hashConcat (ps : Array (USize × ByteArray × Array Nat × ByteArray)) :
     Except (Array (USize × ByteArray × Array Nat × ByteArray)) (ByteArray × Array Nat × ByteArray) :=
   let e := ps.foldl (init := 0) fun s (_, _, o, _) => s + (o.size - 1)
@@ -382,7 +367,6 @@ one unsigned comparison `gatherBytes` folds its three misses into.
 
 The blob and the offsets are built in one pass rather than two because the offsets are the running
 total of what the blob has taken, and a `Enc.syms` payload is exactly those two. -/
-@[extern "qlean_structural_gather_syms"]
 def gatherSyms (blob : @& ByteArray) (offs : @& Array Nat) (ix : @& ByteArray) :
     ByteArray × Array Nat :=
   let n := offs.size - 1
@@ -396,7 +380,6 @@ def gatherSyms (blob : @& ByteArray) (offs : @& Array Nat) (ix : @& ByteArray) :
 
 /-- `gatherBytes` from an ALP column, which the C answers element by element where the index points
 and never restores whole: the gather a `where` hands half a column to. -/
-@[extern "qlean_alp_gather"]
 def gatherAlp (fill : UInt64) (metadata pack a : @& ByteArray) (n : USize) (idx : @& ByteArray) :
     ByteArray :=
   let w : USize := if Column.alpF32 a then 4 else 8
@@ -404,7 +387,6 @@ def gatherAlp (fill : UInt64) (metadata pack a : @& ByteArray) (n : USize) (idx 
 
 /-- Whether every `long` of `idx`, read unsigned, is below `n`: a gather by it misses nowhere. In C
 because the Lean fold was 11% of `select from t where k=5` on a table with an interned column. -/
-@[extern "qlean_structural_all_below"]
 def allBelow (n : USize) (idx : @& ByteArray) : Bool :=
   (idx.size / 8).all fun k _ => (Column.bitsAt idx (k * 8) 8).toNat < n.toNat
 
@@ -458,7 +440,6 @@ def gatherColumn (t : QAtomicType) (n : USize) (e : Ext.Enc X) (m : USize) (ie :
 /-- The other direction: an index payload read back as row numbers. A gather composed with another,
 `fby`'s buckets and a row delete all do this, and the `bitsAt` per element it replaces was eight
 shifts and a `Array.range` of a million naturals. -/
-@[extern "qlean_structural_rows_of"]
 def longRows (b : @& ByteArray) : Array Nat :=
   (Array.range (b.size / 8)).map fun i => (Column.bitsAt b (8 * i) 8).toNat
 
@@ -466,7 +447,6 @@ def longRows (b : @& ByteArray) : Array Nat :=
 `long` column a file holds is encoded as it is read. The body is the specification: the dense
 indices, then `enumIds`. `rust/src/structural.rs` packs a block at a time out of a 1024-element buffer and
 never holds them dense, which is what reading a partition's symbol column comes down to. -/
-@[extern "qlean_structural_enum_ids_for"]
 def enumIdsFoR (n d nullId w : USize) (metadata pack : @& ByteArray) : ByteArray × USize :=
   enumIds n d nullId w (Coc.decode 8 metadata pack n)
 
