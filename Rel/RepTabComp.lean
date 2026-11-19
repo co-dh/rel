@@ -878,6 +878,21 @@ section Checks
       (let c := Alg.canonC (⟨(tab ps).n, (tab ps).val, (tab ps).key⟩ : Tab .long .long)
        if c.2 then some c.1.toList else none)
 
+/-- Whether `comp` answers `R ≫ S`: the old `CRel.comp`'s list, and as a set the pairs `(a, c)` with `a {R} b {S} c`. -/
+private def compOk {A B C : Obj} [BEq A.El] [BEq B.El] [BEq C.El] (R : Tab A B) (S : Tab B C) : Bool :=
+  let sp := R.toList.flatMap fun (a, b) => S.toList.filterMap fun (b', c) => if b == b' then some (a, c) else none
+  match R.comp S with
+  | .ok T => some T.toList == (CRel.comp (some R) (some S)).map Tab.toList && T.toList.all sp.contains &&
+      sp.all T.toList.contains
+  | .error _ => false
+
+-- a `u1` middle column (`Arr.bools`) and a tuple middle column; a float middle column is not checked: its dense
+-- `.bytes` column is refused by `Vals.concat` (`kscatter` reads only `foR`)
+#guard compOk (⟨4, Alg.col [3, 1, 2, 1], Arr.bools 4 fun i => i % 2 == 0⟩ : Tab .long (.atom .u1))
+  (⟨3, Arr.bools 3 fun i => i == 1, Alg.col [7, 8, 9]⟩ : Tab (.atom .u1) .long)
+#guard compOk (⟨4, Alg.col [3, 1, 2, 1], (Alg.col [1, 1, 2, 2], Alg.col [5, 6, 5, 6])⟩ : Tab .long (.prod .long .long))
+  (⟨3, (Alg.col [2, 1, 1], Alg.col [5, 6, 5]), Alg.col [7, 8, 9]⟩ : Tab (.prod .long .long) .long)
+
 end Checks
 
 #print axioms Tab.conv_holds
