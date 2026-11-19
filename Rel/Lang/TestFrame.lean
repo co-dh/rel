@@ -51,8 +51,8 @@ def gsB : Bld (Array Nat) := do
   let some #[.size n, _, _, .bytes k, .bytes v] := valsRegs _ frame.x.rel.val
     | throw "frame.x: its element columns are not dense"
   let n ← lit (.size n); let k ← lit (.bytes k); let v ← lit (.bytes v)
-  let big ← call1 (kernel% Kernel.Ew.cmp)
-    #[← lit (.u8 Ew.gt), ← lit (.u8 Ew.i64), ← lit (.u8 Ew.va), v, ← lit (.bytes (Rel.one 2)), n]
+  let big ← maskB (kernel% Kernel.Ew.cmp)
+    #[← lit (.u8 Ew.gt), ← lit (.u8 Ew.i64), ← lit (.u8 Ew.va), v, ← lit (.bytes (Rel.one 2)), n] n
   let (m, cs) ← whereB n big #[k, v]
   let #[k, v] := cs | throw "whereB: two columns in, two out"
   groupSumB m k v
