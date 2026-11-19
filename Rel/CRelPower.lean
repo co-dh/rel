@@ -135,6 +135,12 @@ theorem setifyC_asc {n : USize} (X : Vals (.arr B) n) (hB : B.Ordered) (hb : (se
   simp only [setifyC, Bool.and_eq_true] at hb
   exact lamOnC_asc _ X hB hb.2
 
+/-- **`E(R)` lists each image ascending, each element once**, `B` ordered: `lamOnC_asc` at `∋ ≫ R` on `X`. -/
+theorem EC_asc {n : USize} (R : Tab A B) (X : Vals (.arr A) n) (hB : B.Ordered) (hb : (EC R X).2 = true) :
+    ∀ xs Y, rep (EC R X).1 xs Y → Y.Nodup ∧ Y.Pairwise fun x y => ¬ B.lt y x := by
+  simp only [EC, Bool.and_eq_true] at hb
+  exact lamOnC_asc _ X hB hb.2
+
 /-- **`rep (E R X)` under `EC`'s bit**: `rep_lamOnByC_rows` at `∋ ≫ R` on `X` (`rep_compC`, `rep_memC`). -/
 theorem rep_EC {n : USize} (R : Tab A B) (X : Vals (.arr A) n) (hb : (EC R X).2 = true) :
     (∀ xs Y, rep (EC R X).1 xs Y → (∃ i, Vals.row X i = xs) ∧ ∀ y, y ∈ Y ↔ ∃ x ∈ xs, rep R x y) ∧

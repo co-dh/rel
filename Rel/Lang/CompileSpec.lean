@@ -374,5 +374,12 @@ theorem compile_sound {A B : Obj} {d : Bool} (t : Tm A B d) (hg : t.gap = none) 
       obtain ⟨ho, hi⟩ := Rep.canonical_spec B' hc
       exact Out.Sound.memo (Out.Sound.leaf (lam_sound (ih hg η ρ hη).1 ho hi))
     · cases hg
-  | E | thin | foldI | call | hylo => simp [Tm.gap] at hg
+  | @E A' B' d R ih =>
+    simp only [Tm.gap] at hg
+    split at hg
+    · rename_i hc
+      obtain ⟨ho, hi⟩ := Rep.canonical_spec B' hc
+      exact Out.Sound.memo (Out.Sound.leaf (E_sound (ih hg η ρ hη).1 ho hi))
+    · cases hg
+  | thin | foldI | call | hylo => simp [Tm.gap] at hg
 end Rel.Lang
