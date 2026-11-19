@@ -147,7 +147,8 @@ theorem tags_get (ps : Array (USize × Bool)) (m : USize) (h : ps.foldl (fun s p
     | nil => simp
     | cons p l ih => intro a; simp only [List.map_cons, List.sum_cons, List.foldl_cons, ← ih]; simp; omega
   unfold Kernel.Coc.boolsOf
-  rw [bitAt_bools _ rfl i.2, Verify.bitAt_packOf _ _ _ (by rw [hlen]; exact i.2), ← Array.getElem?_toList, hbs, List.getD_eq_getElem?_getD]
+  rw [bitAt_bools _ rfl i.2, Verify.bitAt_packOf _ _ _ (by rw [hlen]; exact i.2), ← Array.getElem?_toList, hbs,
+    List.getD_eq_getElem?_getD]
 
 /-! ## `sumVals` -/
 

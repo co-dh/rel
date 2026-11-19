@@ -453,8 +453,7 @@ def bitsOf (x : Bool) (n : USize) : ByteArray :=
 
 /-- The tag column of parts `ps`, each `(count, tag)`, `m` the summed count: `concatBits` of constant bit
     columns written as the `u1` foR by `boolsOf`, of the summed count `m`. -/
-def tags (ps : Array (USize × Bool)) (m : USize) (h : ps.foldl (fun s p => s + p.1.toNat) 0 = m.toNat := by simp) :
-    Arr .u1 m :=
+def tags (ps : Array (USize × Bool)) (m : USize) : Arr .u1 m :=
   let bs : Array (USize × ByteArray) := ps.map fun p => (p.1, bitsOf p.2 p.1)
   -- a boolean is a `u1` foR: the bitmap `concatBits` joins goes through `boolsOf`, as `razeColumn`'s does
   Arr.mk (.foR (Kernel.Coc.boolsOf m (concatBits (countBytes (bs.map (·.1))) (bs.map (·.2)))).1

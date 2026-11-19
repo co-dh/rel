@@ -4,8 +4,8 @@
 //!
 //! The file: bytes 0..8 `qleancol`; byte 8 the format version (`OWN_VERSION`, `OWN_OLDEST` is read too); byte 9 the q type
 //! code of the elements; byte 10 the attribute (0 none, 1 `s#, 2 `u#, 3 `p#, 4 `g#); byte 11 the constructor kind (0 bytes,
-//! 1 the removed bitmap, refused: a boolean is a u1 foR, 2 foR, 3 alp, 4 enum); bytes 12..14 the u16 part count (`OWN_NPARTS`); bytes 14..16 the u16 byte length of the
-//! enumeration domain name; bytes 16..24 the u64 element count; then 16 bytes a part (u64 offset, u64 length), the domain name,
+//! 1 the removed bitmap, refused: a boolean is a u1 foR, 2 foR, 3 alp, 4 enum); bytes 12..14 the u16 part count
+//! (`OWN_NPARTS`); bytes 14..16 the u16 byte length of the enumeration domain name; bytes 16..24 the u64 element count; then 16 bytes a part (u64 offset, u64 length), the domain name,
 //! and each part after zeros up to an offset that is a multiple of 8 and leaves `OWN_ROOM` zero bytes before it; then
 //! `OWN_ROOM` zero bytes. The parts are the dense bytes; `metadata`, `pack`; `metadata`, `pack`, `alp`; `dict`,
 //! `ids`. Nothing is transformed in either direction.

@@ -198,16 +198,6 @@ theorem grade_boolean {n : USize} (x : Arr .u1 n) : ∃ g, gradeColumn .u1 false
     (ids g).Perm (List.range n.toNat) ∧ (ids g).Pairwise (ascBy (.atom .u1) (n := n) x (· < ·)) := by
   have hwf := x.wf
   cases he : x.enc
-  case bits b =>
-    rw [he] at hwf
-    obtain ⟨hp, hsrt⟩ := grade_spec .bit false n b
-    have hav : min n.toNat (Scan.Kind.avail .bit b) = n.toNat := by
-      simp only [Scan.Kind.avail]; simp only [Enc.WF] at hwf; omega
-    rw [hav] at hp
-    refine ⟨_, rfl, hp, ascBy_of_keyOrd x _ (fun i hi => ?_) hsrt⟩
-    rw [Arr.get_bool_bits x (by rw [he]; rfl)]
-    simp only [Obj.key, Order.keyAt, Scan.Kind.bitsAt, Order.rank]
-    split <;> rfl
   -- a `u1` `foR` is graded at the `u8` key (`gradeColumn`), which is its 0/1 element itself
   case foR md pk =>
     rw [he] at hwf
@@ -254,7 +244,7 @@ theorem symCmp_gt_list (a b : List UInt8) :
         List.find?_cons]
       by_cases huv : u = v
       · subst huv
-        simp only [List.length_cons, List.getElem?_cons_zero, Option.getD_some, bne_self_eq_false,
+        simp only [List.getElem?_cons_zero, Option.getD_some, bne_self_eq_false,
           List.find?_map, List.map_cons, List.cons_append, List.cons_lt_cons_iff, Nat.lt_irrefl, false_or,
           true_and]
         simp only [Function.comp_def, List.getElem?_cons_succ]
@@ -263,7 +253,7 @@ theorem symCmp_gt_list (a b : List UInt8) :
         · simp only [Option.map_none, Nat.compare_eq_gt]; omega
         · simp only [Option.map_some, Nat.succ_eq_add_one, List.getElem?_cons_succ]
       · have hn : u.toNat ≠ v.toNat := fun h => huv (UInt8.toNat_inj.1 h)
-        simp only [List.getElem?_cons_zero, Option.getD_some, bne_iff_ne, ne_eq, huv, not_false_eq_true,
+        simp only [List.getElem?_cons_zero, Option.getD_some, ne_eq, huv, not_false_eq_true,
           decide_true, List.map_cons, List.cons_append, List.cons_lt_cons_iff, compare_gt_u8]
         simp only [show (u != v) = true from bne_iff_ne.2 huv, List.getElem?_cons_zero, Option.getD_some, compare_gt_u8]
         constructor

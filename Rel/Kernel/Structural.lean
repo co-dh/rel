@@ -628,8 +628,8 @@ def razeColumn (t : QAtomicType) (cs : Array (USize × Ext.Enc X)) : Option (Ext
 code. An interned column's ids are in `[0, d)` and pass as they lie, at any lane: the chain's
 `Ew.eIds` stage reads them unsigned a tile at a time, so no lane is widened whole first. Measured at
 1e7 rows, two lanes of 1, 2 or 4 bits: 1.3–2.3 ms a key, against 2.7–4.6 widening them by `remapIds`
-first and 1.0–1.7 for the same codes already dense `u8`, the widening not counted. A bitmap is in
-`[0, 1]` without a read.
+first and 1.0–1.7 for the same codes already dense `u8`, the widening not counted. A bit code is
+such a lane at width 1 (`Code.column`), in `[0, 1]` without a read.
 
 A dense column is read by `overBytes`, a fold that skips its `nul` and seeds `min` with `~~~nul`.
 So `min` skipping `-1` is negative exactly when a code other than `-1` is, and `min` skipping `-2`
