@@ -41,8 +41,7 @@ def blankCol (t : QAtomicType) : (n : USize) × Arr t n := ⟨0, Arr.mk (Enc.bla
 def col (xs : List Int64) : Arr .i64 xs.length.toUSize :=
   need (xs.length < USize.size) (fun _ => s!"col: {xs.length} longs do not fit a USize")
     (fun _ => Arr.mk (Enc.blank .i64 _) (Enc.blank_WF .i64 _)) fun h =>
-  Arr.mk (.bytes (packLongs xs)) (show (packLongs xs).size = xs.length.toUSize.toNat * 8 by
-    rw [packLongs_size, Nat.mul_comm, USize.toNat_ofNat_of_lt' h])
+  longArr (packLongs xs) (by rw [packLongs_size, USize.toNat_ofNat_of_lt' h])
 
 def nul : Int64 := Int64.minValue
 
@@ -453,9 +452,8 @@ def longsOf {n : USize} (x : Arr .i64 n) : ByteArray := (longBytes n x.enc).get 
 def longCol (b : ByteArray) : Arr .i64 (len b).toUSize :=
   need (len b < USize.size) (fun _ => s!"longCol: {len b} longs do not fit a USize")
     (fun _ => Arr.mk (Enc.blank .i64 _) (Enc.blank_WF .i64 _)) fun h =>
-  Arr.mk (.bytes (b.extract 0 (8 * len b))) (by
-    simp only [Enc.WF, QAtomicType.width, USize.toNat_ofNat_of_lt' h]
-    simp [len, ByteArray.size_extract]; omega)
+  longArr (b.extract 0 (8 * len b)) (by
+    rw [USize.toNat_ofNat_of_lt' h]; simp [len, ByteArray.size_extract]; omega)
 
 /-- The slices `[lo i, hi i)` of a flat payload of `m` values clamped to `[0, m]`, as `Vals.row` reads
     them: each clamped start and the slice's count, `Ew.val` lesser/greater. -/
@@ -534,9 +532,9 @@ theorem sum_map_fst {α β : USize → Type} (cs : Array ((n : USize) × α n)) 
 
 /-- `Ew.val op` on longs at the count `n`, as a long column of `n` rows (`Ew.val_size`). -/
 def valCol {n : USize} (op shape : UInt8) (a b : ByteArray) : Arr .i64 n :=
-  Arr.mk (.bytes (Kernel.Ew.val op Ew.i64 shape nul a b n)) (by
+  longArr (Kernel.Ew.val op Ew.i64 shape nul a b n) (by
     have hw : Kernel.Ew.width Ew.i64 = 8 := by decide
-    simp [Enc.WF, QAtomicType.width, KernelWF.Ew.val_size, hw])
+    simp [KernelWF.Ew.val_size, hw, Nat.mul_comm])
 
 /-- A column of offsets into a payload of `m` values, clamped into `[0, m]` as `slices` reads them, plus the long
     `k`, at its own count: `Ew.val` lesser, greater, add, each at `n`. -/
@@ -545,7 +543,9 @@ def shiftArr {n : USize} (x : Arr .i64 n) (m k : Nat) : Arr .i64 n :=
   valCol Ew.add Ew.va (Kernel.Ew.val Ew.greater Ew.i64 Ew.va nul c (one 0) n) (one k.toUInt64)
 
 /-- `til n` as a long column (`tilLongs_wf`). -/
-def tilCol (n : USize) : Arr .i64 n := Arr.mk (.bytes (tilLongs n)) (KernelWF.tilLongs_wf n)
+def tilCol (n : USize) : Arr .i64 n :=
+  -- `foR`, not `pos`: `Enc.WF` admits no `pos` column until 6.13b
+  longArr (tilLongs n) (by have w := KernelWF.tilLongs_wf n; simp only [Enc.WF, QAtomicType.width] at w; omega)
 
 /-- `tilLongs n` holds `n` longs (`tilLongs_wf`). -/
 theorem len_tilLongs (n : USize) : len (tilLongs n) = n.toNat := by
@@ -1071,7 +1071,7 @@ theorem setIds_size (vc : Code) (s : ByteArray) : (setIds vc s).size = 8 * len s
 
 /-- `setIds` as a long column of `m = len s` rows (`setIds_size`). -/
 def setIdCol (vc : Code) (s : ByteArray) (m : USize) (h : len s = m.toNat) : Arr .i64 m :=
-  Arr.mk (.bytes (setIds vc s)) (by simp [Enc.WF, QAtomicType.width, setIds_size, ← h]; simp [len]; omega)
+  longArr (setIds vc s) (by rw [setIds_size, h])
 
 /-! ## Laws: codes are faithful, and each operator means its relation -/
 

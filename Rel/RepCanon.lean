@@ -1,5 +1,5 @@
 import Rel.Run.Canon
-import Rel.Run.CRelDef
+import Rel.Run.CRelRelDef
 import Rel.KernelSpec.KSeen
 
 /-! The laws of `Vals.nub`, `Tab.canon`, `Tab.ran` and `Tab.dom` (`Rel/Run/Canon.lean`), from the five kernels' laws:
@@ -212,24 +212,24 @@ end Tab
 
 section Checks
 
-/-- A long column of the words `ws`, as a kernel writes one (`wordsFoR`). -/
-private def lcol (ws : List Int64) (h : ws.length < USize.size) : Arr .i64 ws.length.toUSize :=
-  Arr.mk (wordsFoR (ws.map Int64.toUInt64).toArray)
-    ((wordsFoR_closed _ (by simp [USize.toNat_ofNat_of_lt' h])).2.2 rfl fun h => absurd h (by decide))
-
-/-- The table of the pairs `ps`, both columns `foR`. -/
-private def tab (ps : List (Int64 × Int64)) (h : ps.length < USize.size := by exact Nat.lt_of_lt_of_le (by decide) USize.le_size) :
-    Tab .long .long :=
-  ⟨ps.length.toUSize, List.length_map _ ▸ lcol (ps.map (·.1)) (by simpa using h),
-    List.length_map _ ▸ lcol (ps.map (·.2)) (by simpa using h)⟩
+/-- The table of the pairs `ps` as given, unsorted, both columns `Alg.col`'s literal `foR` columns. -/
+private def tab (ps : List (Int64 × Int64)) : Tab .long .long :=
+  ⟨ps.length.toUSize, List.length_map _ ▸ Alg.col (ps.map (·.1)), List.length_map _ ▸ Alg.col (ps.map (·.2))⟩
 
 #guard ((tab [(3, 1), (1, 2), (3, 1), (-1, 2), (1, 2), (2, 7)]).canon.toOption.map Tab.toList) ==
   some [(-1, 2), (1, 2), (2, 7), (3, 1)]
 #guard ((tab [(3, 1), (1, 2), (3, 5), (0, -4)]).ran.toOption.map Tab.toList) == some [(-4, -4), (1, 1), (2, 2), (5, 5)]
 #guard ((tab [(3, 1), (1, 2), (3, 5)]).dom.toOption.map Tab.toList) == some [(1, 1), (3, 3)]
 #guard ((tab []).canon.toOption.map Tab.toList) == some []
--- a column in another encoding is the error, never a conversion: `Alg.ofPairs`' columns are `col`'s
-#guard (Alg.ofPairs [(1, 2)]).canon matches .error _
+-- `Alg.ofPairs`' columns are `col`'s, `foR` where they are built
+#guard ((Alg.ofPairs [(1, 2)]).canon.toOption.map Tab.toList) == some [(1, 2)]
+-- the five-kernel `canon`, `ran`, `dom` against the old `canonC`, `CRel.ran`, `CRel.dom` on the same tables
+#guard [[(3, 1), (1, 2), (3, 1), (-1, 2), (1, 2), (2, 7), (-5, -5), (0, 0)], [(-2, 9), (-2, 9), (7, -3)], []].all
+  fun (ps : List (Int64 × Int64)) =>
+    let c := Alg.canonC (tab ps)
+    ((tab ps).canon.toOption.map Tab.toList) == (if c.2 then some c.1.toList else none) &&
+    ((tab ps).ran.toOption.map Tab.toList) == ((CRel.ran (some (tab ps))).map Tab.toList) &&
+    ((tab ps).dom.toOption.map Tab.toList) == ((CRel.dom (some (tab ps))).map Tab.toList)
 
 end Checks
 

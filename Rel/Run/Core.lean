@@ -109,13 +109,6 @@ theorem packLongs_size (xs : List Int64) : (packLongs xs).size = 8 * xs.length :
   | nil => simp
   | cons x xs ih => intro b; rw [List.foldl_cons, ih, Column.pushBits_size, List.length_cons]; omega
 
-/-- The column of `f` at the positions `0 … n-1`, packed by Lean with no kernel and no `List`: the reference
-    beside a kernel whose count is checked. -/
-def colFn (n : USize) (f : Fin n.toNat → Int64) : Arr .i64 n :=
-  Arr.mk (.bytes ((Array.ofFn f).foldl (fun b x => Column.pushBits b x.toUInt64 8) .empty)) (by
-    show _ = n.toNat * 8; rw [← Array.foldl_toList]
-    show (packLongs (Array.ofFn f).toList).size = n.toNat * 8; rw [packLongs_size]; simp [Nat.mul_comm])
-
 /-- `encodeAt lg` records `lg` in its metadata: `foRMeta_reads` at the block widths `planBlock_bounds` caps
     at 64, the step `Verify.foRWF_encode` takes inside its proof. -/
 theorem lgAt_encodeAt (lg : Nat) (hlg : lg < 2 ^ 64) (width : USize) (hw : width.toNat ≤ 8) (x : ByteArray)
@@ -135,18 +128,17 @@ theorem lgOk_encode (width : USize) (hw : width.toNat ≤ 8) (x : ByteArray) :
     Column.lgOk (Kernel.Coc.encode width x).1 = true := by
   rw [Kernel.Coc.encode, Column.lgOk, lgAt_encodeAt _ (by decide) _ hw (patch := true)]; rfl
 
-/-- `xs` Frame-of-Reference encoded is well formed at its count `n`: the checks' `foR` columns, which
-    `decide` cannot evaluate through `Coc.encode`. -/
-theorem foRLongs_wf (xs : List Int64) {n : USize} (hn : xs.length = n.toNat) : Enc.WF (X := Empty) .i64 n
-    (.foR (Kernel.Coc.encode 8 (packLongs xs)).1 (Kernel.Coc.encode 8 (packLongs xs)).2) := by
-  have h := Verify.nblk_encode Column.lgEnc (by decide) 8 (by decide) (by decide) (packLongs xs)
-    (patch := true)
-  rw [packLongs_size] at h
+/-- A dense payload `b` of `n` longs Frame-of-Reference encoded is well formed at `n`: every long column the runtime
+    builds (`longArr`), which `decide` cannot evaluate through `Coc.encode`. -/
+theorem foRBytes_wf (b : ByteArray) {n : USize} (hn : b.size = 8 * n.toNat) : Enc.WF (X := Empty) .i64 n
+    (.foR (Kernel.Coc.encode (8 : Nat).toUSize b).1 (Kernel.Coc.encode (8 : Nat).toUSize b).2) := by
+  have h := Verify.nblk_encode Column.lgEnc (by decide) 8 (by decide) (by decide) b (patch := true)
+  rw [hn] at h
   refine ⟨rfl, by simp, ?_, ?_⟩
-  · show n.toNat ≤ Column.blk (Kernel.Coc.encodeAt Column.lgEnc (8 : Nat).toUSize (packLongs xs)).1 *
-      Column.nblk (Kernel.Coc.encodeAt Column.lgEnc (8 : Nat).toUSize (packLongs xs)).1
-    rw [h.1, h.2.1, ← hn]; simp only [Column.lgEnc, Nat.reducePow]; omega
-  · exact lgOk_encode _ (by simp) _
+  · show n.toNat ≤ Column.blk (Kernel.Coc.encodeAt Column.lgEnc (8 : Nat).toUSize b).1 *
+      Column.nblk (Kernel.Coc.encodeAt Column.lgEnc (8 : Nat).toUSize b).1
+    rw [h.1, h.2.1]; simp only [Column.lgEnc, Nat.reducePow]; omega
+  · exact lgOk_encode _ (by rw [USize.toNat_ofNat_of_lt' (Nat.lt_of_lt_of_le (by decide) USize.le_size)]; exact Nat.le_refl 8) _
 
 /-- Under `wf`, a long `bytes` column holds `b.size / 8` elements. -/
 theorem Arr.n_long_bytes {m : USize} (x : Arr .i64 m) {b : ByteArray} (hc : x.enc = .bytes b) :
@@ -239,6 +231,15 @@ theorem Arr.dense_long {m : USize} (x : Arr .i64 m) {ws : List UInt64} (h : long
     rw [hg i (by simpa [Verify.elemsW, hsz] using h1), Verify.ofNat_toNat_mod64]
   | _ => all_goals (rw [hc] at h; cases h)
 
+/-- A dense long payload of `m` words Frame-of-Reference encoded lists them (`foRBits_encode_bits`). -/
+theorem longWords_encode {m : USize} (b : ByteArray) (hm : b.size / 8 = m.toNat) :
+    longWords m (.foR (Kernel.Coc.encode (8 : Nat).toUSize b).1 (Kernel.Coc.encode (8 : Nat).toUSize b).2) =
+      some (Verify.elemsW 8 b) := by
+  simp only [longWords, Verify.elemsW, ← hm]
+  refine congrArg some (List.map_congr_left fun i hi => UInt64.toNat_inj.1 ?_)
+  rw [← Nat.mod_eq_of_lt (UInt64.toNat_lt _)]
+  exact Verify.foRBits_encode_bits Column.lgEnc (by decide) 8 (by decide) (by decide) b i (List.mem_range.1 hi)
+
 /-- A dense long answer lists its words whichever form `Enc.answer` leaves it in: dense, or encoded
     (`foRBits_encode_bits`). -/
 theorem longWords_answer {m : USize} (b : ByteArray) (hm : b.size / 8 = m.toNat) :
@@ -250,13 +251,33 @@ theorem longWords_answer {m : USize} (b : ByteArray) (hm : b.size / 8 = m.toNat)
       show Column.encodes .i64 = true from rfl, Kernel.Coc.encodeBelow]
     repeat' split
     all_goals first | exact .inl rfl | exact .inr rfl | simp_all
-  unfold longWords
   rcases ha with e | e
-  · rw [e]
-  · rw [e]; simp only [Verify.elemsW, ← hm]
-    refine congrArg some (List.map_congr_left fun i hi => UInt64.toNat_inj.1 ?_)
-    rw [← Nat.mod_eq_of_lt (UInt64.toNat_lt _)]
-    exact Verify.foRBits_encode_bits Column.lgEnc (by decide) 8 (by decide) (by decide) b i (List.mem_range.1 hi)
+  · rw [e]; rfl
+  · rw [e]; exact longWords_encode b hm
+
+/-- A long column of `n` rows from the dense payload `b`: `Coc.encode` at 8 bytes, the encoder `wordsFoR` runs, so the
+    column is `foR` where it is produced (decision M). A literal is packed and encoded here once; an old kernel's dense
+    answer is encoded here at its exit, which goes with the old layer (W5). -/
+def longArr {n : USize} (b : ByteArray) (h : b.size = 8 * n.toNat) : Arr .i64 n :=
+  Arr.mk (.foR (Kernel.Coc.encode (8 : Nat).toUSize b).1 (Kernel.Coc.encode (8 : Nat).toUSize b).2) (foRBytes_wf b h)
+
+/-- Element `i` of `longArr b` is the eight bytes at `8i`, read as a long, as `Arr.get_long_bytes` reads them. -/
+theorem Arr.get_longArr {n : USize} (b : ByteArray) (h : b.size = 8 * n.toNat) (i : Fin n.toNat) :
+    (longArr b h).get i = (Column.bitsAt b (i.1 * 8) 8).toInt64 := by
+  rw [Arr.get_long _ (longWords_encode b (by omega)) i.1 i.2 (by simp [Verify.elemsW]; omega)]
+  simp [Verify.elemsW]
+
+/-- `longArr b` lists `b`'s eight-byte words, each read as a long. -/
+theorem Arr.toList_longArr {n : USize} (b : ByteArray) (h : b.size = 8 * n.toNat) :
+    (longArr b h).toList = ((List.range n.toNat).map fun i => Column.bitsAt b (i * 8) 8).map UInt64.toInt64 := by
+  rw [Arr.toList_long _ (longWords_encode b (by omega)), Verify.elemsW, show b.size / 8 = n.toNat by omega]
+
+/-- The column of `f` at the positions `0 … n-1`, packed by Lean with no kernel and no `List`: the reference
+    beside a kernel whose count is checked. -/
+def colFn (n : USize) (f : Fin n.toNat → Int64) : Arr .i64 n :=
+  longArr ((Array.ofFn f).foldl (fun b x => Column.pushBits b x.toUInt64 8) .empty) (by
+    rw [← Array.foldl_toList]
+    show (packLongs (Array.ofFn f).toList).size = 8 * n.toNat; rw [packLongs_size]; simp)
 
 /-- `alpBits` with no hoisted table reads the start `blockStarts` holds, as `foRBits_starts`. -/
 theorem alpBits_starts (md pk a : ByteArray) (i : Nat) :
