@@ -95,6 +95,14 @@ run_cmd do
         if run.contains nm then throwError "TestCompile: `{nm}` is visited twice"
         run := run.insert nm (s, rs)
         if s != "ok" then open' := open' ++ [nm]
+  -- the progress number: the programs some term of which has a node with no kernel body (`n.kernel`, the one
+  -- traversal `Tm.onKernel` in `Expand.emit`); `Rel.Programs` are the language's programs, the rest tests
+  let env ← getEnv
+  let (kern, old) := reg.progs.toList.map (·.1) |>.partition fun n =>
+    (env.find? (n ++ `kernel)).bind (·.value?) == some (toExpr true)
+  let oldP := old.filter (`Rel.Programs).isPrefixOf
+  logInfo m!"old path: {oldP.length} programs of `Rel.Programs` {oldP}; {old.length - oldP.length} test programs; \
+    kernel path: {kern.length} {kern}"
   logInfo m!"compile agrees with the generated code on {run.size - open'.length} definitions; not ok on \
     {open'.length}: {open'}"
   let names := (run.toList.map (·.1)).mergeSort fun a b => decide (a ≤ b)

@@ -677,7 +677,7 @@ partial def body (pre : Name) (ρ : List (Nat × Lean.Expr)) (A B : Obj) (k : Na
 partial def node (pre : Name) (ρ : List (Nat × Lean.Expr)) {A B : Obj} (t : Tm A B) : RM Lean.Expr := do
   let c {X Y : Obj} (u : Tm X Y) := code pre ρ u
   let p {X Y : Obj} (u : Tm X Y) := planOr pre ρ u
-  let k ← read
+  let k ← readThe Bool
   -- the program runs on the kernel path: each body is its `GenK` twin, and a closed `≫ ∩ −` is no bit matrix
   let gk (n : Name) (xs : Array Lean.Expr) := g (if k then n.replacePrefix `Rel.Lang.Gen `Rel.Lang.GenK else n) xs
   match A, B, t with
@@ -869,8 +869,8 @@ def emit (n : Name) (r : Read) : MetaM Unit := do
     let one (x : String) {A B : Obj} (t : Tm A B) : RM Lean.Expr := do
       pure (mkApp4 (mkConst ``Prod.mk [0, 0]) (mkConst ``String) (mkApp (mkConst ``Option [0]) (mkConst ``String))
         (toExpr x) (g ``Rel.Rel.err #[oE A, oE B, ← code n [] t]))
-    let errs ← if !kern then pure [] else
-      return (← ds.mapM fun (x, ⟨_, _, t⟩) => one x t) ++ (← ps.mapM fun (x, ⟨_, _, t⟩, _, _) => one x t) ++
+    let errs ← if !kern then pure [] else do
+      pure <| (← ds.mapM fun (x, ⟨_, _, t⟩) => one x t) ++ (← ps.mapM fun (x, ⟨_, _, t⟩, _, _) => one x t) ++
         (← cs.mapM fun (_, x, _, _, _, _, ⟨_, _, R, _⟩) => one x R) ++
         (← cs.mapM fun (_, _, y, _, _, _, ⟨_, _, _, S⟩) => one y S)
     let ps ← ps.mapM fun (x, ⟨A, B, t⟩, s, u) => do

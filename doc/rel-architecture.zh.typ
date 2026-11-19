@@ -87,7 +87,7 @@ structure Known (A B : Obj) where
   ran : Option (Σ n, Vals B n)          -- 已知的值域 L
 
 inductive Rel (A B : Obj)
-  | tab  (t : Option (Tab A B))                   -- 两列等长数组；none = 失败（原 CRel 的 ok = false）
+  | tab  (t : Except String (Tab A B))            -- 两列等长数组；error = 失败及其消息（原 CRel 的 ok = false），一路到 check、print
   | lazy (f : Known A B → Rel A B)                -- 边界够了返回 tab，不够返回 lazy 等更多边界
 
 compile η t : {r : Rel A B // rep r = ⟦t⟧ρ}       -- 方案 A：规格在类型里
