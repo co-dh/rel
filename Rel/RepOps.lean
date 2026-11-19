@@ -58,7 +58,7 @@ theorem rep_sum (R : Tab A C) (S : Tab B D) (hN : R.n.toNat + S.n.toNat < USize.
 /-- A one-part tag column `tags #[(n, x)]` reads `x` at each of its `n ≤ 2^63` rows. -/
 theorem tags_one_get (x : Bool) {n : USize} (h63 : n.toNat ≤ 2 ^ 63) (i : Fin n.toNat) :
     (tags #[(n, x)] n).get i = x := by
-  rw [tags_get _ _ _ (fun p hp => by simp at hp; subst hp; exact h63) i]
+  rw [tags_get #[(n, x)] n (by simp) (fun p hp => by simp at hp; subst hp; exact h63) i]
   simp [List.getD_eq_getElem?_getD, i.2]
 
 /-- `tilCol n`'s element `i`, clamped into `[0, n)`, is `i`, for `n ≤ 2^63`. -/

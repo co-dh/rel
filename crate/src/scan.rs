@@ -833,7 +833,10 @@ mod kscan_tests {
     fn enc_for(v: &[u64], w: usize) -> O { Sink::new(v.len(), w, Form::For).enc().answer(&Blocks::dense(&bytes(v, w), w)) }
     fn enc_dense(p: &[u8]) -> O { let mut a = SArr::new(1, p.len()); a.bytes_mut().copy_from_slice(p); lean::ctor(0, [a.into()], &[]) }
     fn enc_bits(v: &[u64]) -> O { enc_for(&v.iter().map(|b| b & 1).collect::<Vec<_>>(), 1) }
-    fn parts(o: &O) -> Vec<Vec<u8>> { let b = o.borrow(); (0..if b.tag() == tag::BYTES { 1 } else { 2 }).map(|i| b.field(i).bytes().to_vec()).collect() }
+    fn parts(o: &O) -> Vec<Vec<u8>> {
+        let b = o.borrow();
+        (0..if b.tag() == tag::BYTES { 1 } else { 2 }).map(|i| b.field(i).bytes().to_vec()).collect()
+    }
     /// A column of `n` words: a smooth run, an outlier every 97th row (a patch), negatives, a null every 301st, `0n`
     /// every 211th.
     fn column(n: usize, k: u64) -> Vec<u64> {

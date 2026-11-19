@@ -23,11 +23,12 @@ pub fn no_dense(kind: u8) -> ! {
 }
 /// coc.rs `sk_avail`, which exits where the kind has no dense width.
 pub fn avail(kind: u8, bytes: usize) -> usize { sort::avail(kind, bytes).unwrap_or_else(|| no_dense(kind)) }
-/// sort.rs `for_kind`: the kinds whose key a Frame of Reference value is read at (`kwin::mask`, `key_flip`): every integral
-/// one with a dense width. `u8` is a boolean `foR`'s, whose elements are 0 and 1 (`Kernel.gradeColumn`).
+/// sort.rs `for_kind`: the kinds whose key a Frame of Reference value is read at (`kwin::mask`, `key_flip`): every
+/// integral one with a dense width. `u8` is a boolean `foR`'s, whose elements are 0 and 1 (`Kernel.gradeColumn`).
 pub fn for_kind(kind: u8) {
     if !matches!(kind, SK_U8 | SK_C8 | SK_I8 | SK_I16 | SK_I32 | SK_I64) {
-        die(format_args!("qlean_sort_ascending_foR: kind {kind} has no Frame of Reference key: an integral kind with a dense width (u8, c8, i8, i16, i32, i64) is one\n"))
+        die(format_args!("qlean_sort_ascending_foR: kind {kind} has no Frame of Reference key: an integral kind \
+with a dense width (u8, c8, i8, i16, i32, i64) is one\n"))
     }
 }
 /// The answer array's `Int64`s.

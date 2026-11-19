@@ -468,7 +468,7 @@ theorem toNat_add_fits {n m : USize} (h : n.toNat + m.toNat < USize.size) : (n +
     row its own position in its side (`tilCol`); no value copied. `n + m` fits a `USize`. -/
 def sumVals {A B : Obj} {n m : USize} (X : Vals A n) (Y : Vals B m) (hN : n.toNat + m.toNat < USize.size) :
     Vals (.sum A B) (n + m) :=
-  ⟨n, m, tags #[(n, false), (m, true)] (n + m) (by simp [toNat_add_fits hN]),
+  ⟨n, m, tags #[(n, false), (m, true)] (n + m),
     toUSize_eq (toNat_add_fits hN).symm ▸ razeTo .i64 #[⟨n, tilCol n⟩, ⟨m, tilCol m⟩] (by simp) hN, X, Y⟩
 
 /-- `inl : A ⟶ A + B` on the universe `X`: each `x` to `inl x`, the sum side's left payload `X` itself. -/

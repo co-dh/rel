@@ -440,8 +440,10 @@ theorem bitAt_bools {N : Nat} {n : USize} (p : Nat → Bool) (hN : N = n.toNat) 
 /-- **A bitmap kernel's answer, read back**: element `j < n` of the column `Coc.boolsOf n g` writes is bit `j` of
     `g` (`get_boolBits`, `bitAt_bools`). -/
 theorem get_boolsOf {n : USize} (g : ByteArray) {j : Nat} (hj : j < n.toNat) :
-    Enc.get .u1 n (.foR (Kernel.Coc.boolsOf n g).1 (Kernel.Coc.boolsOf n g).2 : Enc) j = some (.u1 (Column.bitAt g j)) := by
-  show Enc.get .u1 n (.foR (Kernel.Coc.bools n.toNat (Column.bitAt g)).1 (Kernel.Coc.bools n.toNat (Column.bitAt g)).2) j = _
+    Enc.get .u1 n (.foR (Kernel.Coc.boolsOf n g).1 (Kernel.Coc.boolsOf n g).2 : Enc) j =
+      some (.u1 (Column.bitAt g j)) := by
+  show Enc.get .u1 n
+    (.foR (Kernel.Coc.bools n.toNat (Column.bitAt g)).1 (Kernel.Coc.bools n.toNat (Column.bitAt g)).2) j = _
   rw [get_boolBits (wf_bools (Column.bitAt g)) rfl hj, bitAt_bools _ rfl hj]
 
 /-- The boolean column of the `n` booleans `p`, as every boolean writer lays it out (`Coc.bools`). -/
@@ -456,11 +458,13 @@ theorem Ext.Enc.blank_WF {X : Type} (t : QAtomicType) (n : USize) : Ext.Enc.WF t
       by_cases hk : k < n.toNat + 1
       · rw [getElem!_pos _ k (by simpa using hk)]; simp
       · rw [getElem!_neg _ k (by simpa using hk)]; rfl
-    show (Array.replicate (n.toNat + 1) 0).size = n.toNat + 1 ∧ SymsWF ByteArray.empty (Array.replicate (n.toNat + 1) 0) ∧
+    show (Array.replicate (n.toNat + 1) 0).size = n.toNat + 1 ∧
+      SymsWF ByteArray.empty (Array.replicate (n.toNat + 1) 0) ∧
       ∀ i < n.toNat, (Column.symKey ByteArray.empty (Array.replicate (n.toNat + 1) 0) i).IsValidUTF8
     -- every entry is the empty bytes, which are valid
     exact ⟨by simp, ⟨by simp, h0 0, by rw [h0]; rfl, fun k _ => by rw [h0]; exact Nat.zero_le _,
-      fun k _ => by rw [h0, h0]; exact Nat.le_refl _⟩, fun i _ => by simp only [Column.symKey, Column.symBytes, h0]; split <;> decide⟩
+      fun k _ => by rw [h0, h0]; exact Nat.le_refl _⟩,
+      fun i _ => by simp only [Column.symKey, Column.symBytes, h0]; split <;> decide⟩
   all_goals simp [Ext.Enc.blank, Ext.Enc.WF, QAtomicType.width, ByteArray.size]
 
 namespace Column

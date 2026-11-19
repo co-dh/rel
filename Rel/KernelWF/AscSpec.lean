@@ -253,9 +253,10 @@ theorem symCmp_gt_list (a b : List UInt8) :
         · simp only [Option.map_none, Nat.compare_eq_gt]; omega
         · simp only [Option.map_some, Nat.succ_eq_add_one, List.getElem?_cons_succ]
       · have hn : u.toNat ≠ v.toNat := fun h => huv (UInt8.toNat_inj.1 h)
-        simp only [List.getElem?_cons_zero, Option.getD_some, ne_eq, huv, not_false_eq_true,
-          decide_true, List.map_cons, List.cons_append, List.cons_lt_cons_iff, compare_gt_u8]
-        simp only [show (u != v) = true from bne_iff_ne.2 huv, List.getElem?_cons_zero, Option.getD_some, compare_gt_u8]
+        simp only [List.getElem?_cons_zero, Option.getD_some, List.map_cons, List.cons_append,
+          List.cons_lt_cons_iff]
+        simp only [show (u != v) = true from bne_iff_ne.2 huv, List.getElem?_cons_zero, Option.getD_some,
+          compare_gt_u8]
         constructor
         · intro h; exact .inl (by omega)
         · rintro (h | ⟨h, -⟩) <;> omega
