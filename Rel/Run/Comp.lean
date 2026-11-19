@@ -114,15 +114,25 @@ def compBlocks (R : Tab A B) (S : Tab B C) (nb : Nat) (bid : Arr .i64 R.n) : Exc
   let c ← bid.clampShift (nb - 1).toUInt64 0
   (List.range (nb - 1)).foldlM (fun acc j => do acc.union (← compBlock R S c.enc (j + 1))) (← compBlock R S c.enc 0)
 
-/-- **`R ≫ S` expanding at most about `bound` rows at once**: `compOne` where `R.n · S.n` or the expansion
-`Σ cR·cS` is within `bound`, else `compBlocks` over `compCuts`' blocks. Each block is deduplicated (`canon`) before
-the `∪`, so the peak is a block plus the result, not the whole expansion. -/
+/-- The output rows of `compGroups`' answer before `canon`: the last word of the prefix sum of `w` (`compCuts`' `P`). -/
+def compRows : USize × Enc × Enc × Enc × USize × Enc × Enc × Enc → Except String Nat
+  | (_, _, _, _, K, _, _, w) => match hP : colPrefix .add K w with
+    | .error s => throw s
+    | .ok P => pure (lastCount K P (colPrefix_closed hP).2)
+
+/-- `R ≫ S` from `compGroups`' answer `x`: `compExpand` where the expansion is within `bound`, else `compBlocks` over
+`compCuts`' blocks. -/
+def compFrom (bound : Nat) (R : Tab A B) (S : Tab B C)
+    (x : USize × Enc × Enc × Enc × USize × Enc × Enc × Enc) : Except String (Tab A C) := do
+  match ← compCuts bound R.n x with
+  | none => compExpand R S x
+  | some (nb, bid) => compBlocks R S nb bid
+
+/-- **`R ≫ S` expanding at most about `bound` rows at once**: `compOne` where `R.n · S.n` is within `bound`, else
+`compFrom`. Each block is deduplicated (`canon`) before the `∪`, so the peak is a block plus the result, not the
+whole expansion. -/
 def compWith (bound : Nat) (R : Tab A B) (S : Tab B C) : Except String (Tab A C) :=
-  if R.n.toNat * S.n.toNat ≤ bound then compOne R S else do
-    let x ← compGroups R S
-    match ← compCuts bound R.n x with
-    | none => compExpand R S x
-    | some (nb, bid) => compBlocks R S nb bid
+  if R.n.toNat * S.n.toNat ≤ bound then compOne R S else compGroups R S >>= compFrom bound R S
 
 /-- **`R ≫ S`** (first `R`, then `S`): `compWith blockRows`. -/
 def comp (R : Tab A B) (S : Tab B C) : Except String (Tab A C) := compWith blockRows R S

@@ -818,4 +818,38 @@ theorem Tab.ldivBits_ldiv {R : Tab A B} {S : Tab A C} {UB : Tab B B} {UC : Tab C
     (h : Tab.ldivBits R S UB UC = .ok T) (h' : Tab.ldiv R S UB UC = .ok T') : T.Holds = T'.Holds :=
   funext fun b => funext fun c => propext ((Tab.ldivBits_holds h b c).trans (Tab.ldiv_holds h' b c).symm)
 
+/-- **`R.compSel bits S` denotes `R ≫ S`** at every `bits`: its bit branch by `Tab.compBits_holds`, its other by
+`Tab.compFrom_canon`. -/
+theorem Tab.compSel_holds {bits : Nat} {R : Tab A B} {S : Tab B C} {X : Tab A C} (h : Tab.compSel bits R S = .ok X)
+    (a : A.El) (c : C.El) : X.Holds a c ↔ ∃ b, R.Holds a b ∧ S.Holds b c := by
+  simp only [Tab.compSel, bind] at h
+  rw [Except.bind_eq_ok'] at h; obtain ⟨x, hx, h⟩ := h
+  rw [Except.bind_eq_ok'] at h; obtain ⟨T, -, h⟩ := h
+  have hF : ∀ {Y : Tab A C}, Tab.compFrom Tab.blockRows R S x = .ok Y →
+      (Y.Holds a c ↔ ∃ b, R.Holds a b ∧ S.Holds b c) := fun hY => by
+    obtain ⟨U, hU, hH⟩ := Tab.compFrom_canon hx hY; rw [Tab.canon_holds hU]; exact hH a c
+  split at h
+  · exact hF h
+  · rw [Except.bind_eq_ok'] at h; obtain ⟨_, -, h⟩ := h
+    rw [Except.bind_eq_ok'] at h; obtain ⟨_, -, h⟩ := h
+    split at h
+    · exact Tab.compBits_holds h a c
+    · exact hF h
+
+/-- **`R.ldivSel bits S UB UC` denotes `R\S` within `UB`, `UC`** at every `bits`: its bit branch by
+`Tab.ldivBits_holds`, its other by `Tab.ldiv_holds`. -/
+theorem Tab.ldivSel_holds {bits : Nat} {R : Tab A B} {S : Tab A C} {UB : Tab B B} {UC : Tab C C} {T : Tab B C}
+    (h : Tab.ldivSel bits R S UB UC = .ok T) (b : B.El) (c : C.El) :
+    T.Holds b c ↔ Lang.ldivDen R.Holds S.Holds UB.Holds UC.Holds b c := by
+  simp only [Tab.ldivSel, bind] at h
+  rw [Except.bind_eq_ok'] at h; obtain ⟨x, -, h⟩ := h
+  rw [Except.bind_eq_ok'] at h; obtain ⟨_, -, h⟩ := h
+  split at h
+  · exact Tab.ldiv_holds h b c
+  · rw [Except.bind_eq_ok'] at h; obtain ⟨_, -, h⟩ := h
+    rw [Except.bind_eq_ok'] at h; obtain ⟨_, -, h⟩ := h
+    split at h
+    · exact Tab.ldivBits_holds h b c
+    · exact Tab.ldiv_holds h b c
+
 end Rel
