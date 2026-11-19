@@ -75,6 +75,41 @@ theorem union_sorted {R S U : Tab k v} (h : R.union S = .ok U) :
   | error s => simp [hc, bind, Except.bind] at h
   | ok C => simp only [hc, bind, Except.bind] at h; exact ⟨C, rfl, h⟩
 
+/-- **The source tag of `R.tagged S`**: its table is `R.concat S`, and row `c`'s tag is `1` iff `c ≥ R.n` (a row of
+`S`), `0` below (a row of `R`). -/
+theorem tagged_ok {R S C : Tab k v} {tag : Enc} (h : R.tagged S = .ok (C, tag)) :
+    R.concat S = .ok C ∧ C.n.toNat = R.n.toNat + S.n.toNat ∧ (Enc.raw .i64 C.n tag).size = C.n.toNat ∧
+      ∀ c < C.n.toNat, (Enc.raw .i64 C.n tag)[c]?.getD 0 = if R.n.toNat ≤ c then 1 else 0 := by
+  unfold Tab.tagged at h
+  simp only [bind, Except.bind, pure, Except.pure] at h
+  split at h; · cases h
+  rename_i p hp
+  obtain ⟨n, off⟩ := p
+  split at h; · cases h
+  rename_i K hK
+  split at h; · cases h
+  rename_i V hV
+  split at h; · cases h
+  rename_i one h1
+  split at h; · cases h
+  rename_i t ht
+  cases h
+  obtain ⟨hn, hoff⟩ := catPlan_ok hp
+  refine ⟨by unfold Tab.concat; simp only [hp, hK, hV, bind, Except.bind, pure, Except.pure], hn, ?_⟩
+  obtain ⟨-, -, -, hws, -, hfix, hlast⟩ := raw_scatter S.n off one n 0 _ ht
+  refine ⟨hws, fun c hc => ?_⟩
+  have hc' : c < n.toNat := hc
+  split
+  · rename_i hl
+    have e := hlast (c - R.n.toNat) (by omega) fun k' h1 h2 e => by
+      have := congrArg UInt64.toNat e; rw [hoff k' h2, hoff _ (by omega)] at this; omega
+    rw [hoff _ (by omega), show R.n.toNat + (c - R.n.toNat) = c by omega] at e
+    rw [e, colConst_raw h1]
+    simp [show c - R.n.toNat < S.n.toNat by omega]
+  · rename_i hl
+    have e := hfix c hc' fun k hk e => by rw [hoff k hk] at e; omega
+    simp [e]
+
 end Tab
 
 /-! ## Checks on `foR` tables -/
