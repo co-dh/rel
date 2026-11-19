@@ -42,18 +42,19 @@ example : enc [11, 7, 12, 7] = (md 7 12 37 4 3, [68, 1] ++ List.replicate 382 0)
 example : enc [0, 1] = (md 0 1 1 2 1, [2] ++ List.replicate 127 0) := by decide +kernel
 #guard enc [0, 1] == (md 0 1 1 2 1, [2] ++ List.replicate 127 0)
 
--- one outlier 255 after ten zeros: width 0 and 255 patched (10 bytes), not width 8 (11 bytes)
-def outlier : List UInt64 := List.replicate 10 0 ++ [255]
-def outlierBytes : List UInt8 × List UInt8 := (md 0 255 255 11 0, patches 8 [255] [10] [])
+-- Each instance below is the fewest elements its case needs: `decide +kernel`'s memory grows with the elements read and
+-- the pack's `2 ^ lgEnc * width / 8` bytes (17 at width 4 took 13.7 GB through `kscatter`); a large outlier lets three win.
+-- one outlier 2 ^ 32 after two zeros: width 0 and 2 ^ 32 patched (10 bytes), not width 33 (13 bytes)
+def outlier : List UInt64 := [0, 0, 4294967296]
+def outlierBytes : List UInt8 × List UInt8 := (md 0 4294967296 4294967296 3 0, patches 8 [4294967296] [2] [])
 example : enc outlier = outlierBytes := by decide +kernel
 #guard enc outlier == outlierBytes
 
--- a low outlier 0 under 1000 .. 1015: the frame lifted to 1000 at width 4 (9 bytes) and 0 patched, 19 bytes in all,
--- under width 10 from the minimum (22 bytes); the frame section holds 1000
-def lifted : List UInt64 := 0 :: (List.range 16).map fun k => (1000 + k).toUInt64
+-- a low outlier 0 under 2 ^ 32 and 2 ^ 32 + 1: the frame lifted to 2 ^ 32 at width 1 (1 byte) and 0 patched, 11 bytes
+-- in all, under width 33 from the minimum (13 bytes); the frame section holds 2 ^ 32
+def lifted : List UInt64 := [0, 4294967296, 4294967297]
 def liftedBytes : List UInt8 × List UInt8 :=
-  (md 0 1015 16120 17 4, [0, 33, 67, 101, 135, 169, 203, 237, 15] ++ List.replicate 503 0
-    ++ patches (8 ||| 256) [0] [0] (le 1000))
+  (md 0 4294967297 8589934593 3 1, [4] ++ List.replicate 127 0 ++ patches (8 ||| 256) [0] [0] (le 4294967296))
 example : enc lifted = liftedBytes := by decide +kernel
 #guard enc lifted == liftedBytes
 
@@ -62,20 +63,20 @@ def decoded (xs : List UInt64) (n : USize) : List UInt8 :=
   let r := Coc.encode (u 8) (dense xs)
   (Coc.decode (u 8) r.1 r.2 n).data.toList
 
-example : decoded outlier (u 11) = (dense outlier).data.toList := by decide +kernel
-#guard decoded outlier (u 11) == (dense outlier).data.toList
-example : decoded lifted (u 17) = (dense lifted).data.toList := by decide +kernel
-#guard decoded lifted (u 17) == (dense lifted).data.toList
+example : decoded outlier (u 3) = (dense outlier).data.toList := by decide +kernel
+#guard decoded outlier (u 3) == (dense outlier).data.toList
+example : decoded lifted (u 3) = (dense lifted).data.toList := by decide +kernel
+#guard decoded lifted (u 3) == (dense lifted).data.toList
 
 /-- `xs` (`n` elements) encoded, summed by `Coc.over`. -/
 def summed (xs : List UInt64) (n : USize) : Int64 :=
   let r := Coc.encode (u 8) (dense xs)
   Coc.over .add Int64.minValue r.1 r.2 n
 
-example : summed outlier (u 11) = 255 := by decide +kernel
-#guard summed outlier (u 11) == 255
-example : summed lifted (u 17) = 16120 := by decide +kernel
-#guard summed lifted (u 17) == 16120
+example : summed outlier (u 3) = 4294967296 := by decide +kernel
+#guard summed outlier (u 3) == 4294967296
+example : summed lifted (u 3) = 8589934593 := by decide +kernel
+#guard summed lifted (u 3) == 8589934593
 
 /-- `xs` as a `foR` column. -/
 def col (xs : List UInt64) : Enc := let r := Coc.encode (u 8) (dense xs); .foR r.1 r.2
@@ -87,12 +88,12 @@ def view : Except String Enc → String ⊕ (List UInt8 × List UInt8)
   | .ok _ => .inl "not foR"
 
 -- the patched and the framed column as `kscatter`'s `e`, each row to its own cell: the answer is the column again
-example : view (kscatter (u 11) (col ((List.range 11).map (·.toUInt64))) (col outlier) (u 11) 0) = .inr outlierBytes := by
+example : view (kscatter .last (u 3) (col ((List.range 3).map (·.toUInt64))) (col outlier) (u 3) 0) = .inr outlierBytes := by
   decide +kernel
-#guard view (kscatter (u 11) (col ((List.range 11).map (·.toUInt64))) (col outlier) (u 11) 0) == .inr outlierBytes
-example : view (kscatter (u 17) (col ((List.range 17).map (·.toUInt64))) (col lifted) (u 17) 0) = .inr liftedBytes := by
+#guard view (kscatter .last (u 3) (col ((List.range 3).map (·.toUInt64))) (col outlier) (u 3) 0) == .inr outlierBytes
+example : view (kscatter .last (u 3) (col ((List.range 3).map (·.toUInt64))) (col lifted) (u 3) 0) = .inr liftedBytes := by
   decide +kernel
-#guard view (kscatter (u 17) (col ((List.range 17).map (·.toUInt64))) (col lifted) (u 17) 0) == .inr liftedBytes
+#guard view (kscatter .last (u 3) (col ((List.range 3).map (·.toUInt64))) (col lifted) (u 3) 0) == .inr liftedBytes
 
 /-! Element width 1 through `qlean_coc_encode` and `qlean_coc_decode`: the first block above at one byte an element. -/
 
