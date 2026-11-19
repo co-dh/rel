@@ -118,7 +118,7 @@ def zero (A B : Obj) : Fn false A B := const A B (some Alg.zero)
 /-- A leaf on demand: `f` on the values its context knows its domain to hold, a run past capacity where the
     domain is unknown. Every leaf on demand is one, a row of `prims` read on its keys' values included. -/
 def ofVals (A B : Obj) (f : {n : USize} → Vals A n → CRel A B) : Fn true A B :=
-  .lazy fun K => K.dom.elim (.tab none) fun c => .tab (f c.2)
+  .lazy fun K => K.dom.elim (.tab (CRel.toE none)) fun c => .tab (f c.2)
 
 /-- Code on the keys `D` as a `Fn`: closed, its table; on demand, run on the coreflexive of the domain's known
     values. The form the combinators keep until 3.6 (`GenSpec.KSound.reps`). -/
@@ -133,7 +133,7 @@ def cut {A B : Obj} (K : Known A B) (r : CRel A B) : CRel A B :=
 
 def id (A : Obj) : Fn true A A := ofVals A A fun X => ofC (idU X, true)
 /-- `X × L`: the known domain values by `V`'s universe cut to the known range. -/
-def top (A B : Obj) (V : Fn false B B) : Fn true A B := .lazy fun K => K.dom.elim (.tab none) fun c =>
+def top (A B : Obj) (V : Fn false B B) : Fn true A B := .lazy fun K => K.dom.elim (.tab (CRel.toE none)) fun c =>
   let v := cut ⟨none, K.ran⟩ (V.at ()); .tab (also v.ok (ofC (topC c.2 v.rel.val)))
 def outl (A B : Obj) : Fn true (.prod A B) A := ofVals _ _ fun X => ofC (Alg.outl (idU X), true)
 def outr (A B : Obj) : Fn true (.prod A B) B := ofVals _ _ fun X => ofC (Alg.outr (idU X), true)
@@ -146,34 +146,34 @@ def demP {A B : Obj} (r : Tm A B) : Tab B B × Bool :=
 /-- `r S`, `r` the table of `R`: a table `S` is composed now; a lazy one runs knowing its domain is `r`'s value
     column, and not at all where `r` has no row. -/
 def compT {A B C : Obj} : CRel A B → Rel B C → Rel A C
-  | none, _ => .tab none
-  | some r, .tab s => .tab (CRel.comp (some r) s)
-  | some r, .lazy g => if r.n == 0 then .tab (some Alg.zero) else
+  | none, _ => .tab (CRel.toE none)
+  | some r, .tab s => .tab (CRel.comp (some r) s.toOption)
+  | some r, .lazy g => if r.n == 0 then .tab (CRel.toE (some Alg.zero)) else
     .lazy fun K => let d := ranC r
       .tab (also d.2 (CRel.comp (some r) ((Rel.lazy g).run ⟨some ⟨d.1.n, d.1.key⟩, K.ran⟩)))
 
 /-- `R s`, `s` the table of `S`: the mirror of `compT`, `R` run knowing its range is `s`'s key column. -/
 def compS {A B C : Obj} (R : Rel A B) : CRel B C → Rel A C
-  | none => .tab none
+  | none => .tab (CRel.toE none)
   | some s => .tab (CRel.comp (R.run ⟨none, some ⟨s.n, s.key⟩⟩) (some s))
 
 /-- `R S`: a lazy `R` starts from the side its context knows — the domain, then `compT`; only the range, `S`
     first on it, then `compS` — since `R` run on neither side enumerates its universe. -/
 def comp (A B C : Obj) (e : Bool) (R : Fn true A B) (S : Fn e B C) : Fn true A C := match R with
-  | .tab r => compT r S
+  | .tab r => compT r.toOption S
   | .lazy f => .lazy fun
     | ⟨none, some L⟩ => compS (.lazy f) (S.run ⟨none, some L⟩)
     | K => compT ((Rel.lazy f).run ⟨K.dom, none⟩) S
 
 /-- An op on one table: a table now, or lazy, its argument run on what `k` makes of the context. -/
 def lift1 {A B C D : Obj} (f : CRel A B → CRel C D) (k : Known C D → Known A B) : Rel A B → Rel C D
-  | .tab r => .tab (f r)
+  | .tab r => .tab (f r.toOption)
   | R => .lazy fun K => .tab (f (R.run (k K)))
 
 /-- An op on two tables: a table where both are, else lazy, each run on what `kl`, `kr` make of the context. -/
 def lift2 {A B C D E F : Obj} (f : CRel A B → CRel C D → CRel E F) (kl : Known E F → Known A B)
     (kr : Known E F → Known C D) : Rel A B → Rel C D → Rel E F
-  | .tab r, .tab s => .tab (f r s)
+  | .tab r, .tab s => .tab (f r.toOption s.toOption)
   | R, S => .lazy fun K => .tab (f (R.run (kl K)) (S.run (kr K)))
 
 def conv (A B : Obj) (R : Fn false A B) : Fn false B A :=
@@ -305,7 +305,7 @@ def mu (A B : Obj) (cap : Nat) (φ : CRel A B → Fn false A B) : Fn false A B :
 /-- `F` read only at the nodes `P`, `P ≫ F`: a table composed after `P`, a lazy one run on their keys and
     composed after `P`, since a lazy `F` may answer off the keys it is given; not run on none. -/
 def onNodes {A B : Obj} (F : Rel A B) (P : CRel A A) : CRel A B := match F with
-  | .tab f => if P.rel.n == 0 then CRel.mk Alg.zero P.ok else CRel.comp P f
+  | .tab f => if P.rel.n == 0 then CRel.mk Alg.zero P.ok else CRel.comp P f.toOption
   | .lazy _ => also P.ok (CRel.comp P (onKeys F P))
 
 /-- `[R,S]` on the sum values in demand: `R` on the left values they hold, `S` on the right, joined with them. A

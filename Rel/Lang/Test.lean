@@ -1138,7 +1138,7 @@ def acAgree (gs : List (String × Gen.Gv)) (z s uv ud : String) (arcs : List (St
 /-- One round's work: the cells divided over `Σₖ |ran(Δ Aₖ)|`, and the rows the divisions join `Σₖ |(Δ Aₖ)° (Δ X Cₖ)|`. -/
 def acWork {V D : Obj} (as : List (Revise V D)) (X : Tab V D) (Δ : Tab V V) : Nat × Nat :=
   as.foldl (fun (c, j) a => let R := (Δ ≫ a.A).nub
-    (c + (ran R).n.toNat, j + (R° ≫ (Δ ≫ X ≫ a.C).nub).n.toNat)) (0, 0)
+    (c + (Alg.ran R).n.toNat, j + (R° ≫ (Δ ≫ X ≫ a.C).nub).n.toNat)) (0, 0)
 
 /-- The delta rounds' work, until `Δ = 𝟘`. -/
 def deltaTrace {V D : Obj} (as : List (Revise V D)) : Nat → Tab V D → Tab V V → List (Nat × Nat × Nat)
@@ -1196,5 +1196,72 @@ rel_program concats where
   "w concat = {(a, 3 1 2 1)}",
   "d concat = {(a, 1 1), (b, [1])}",
   "e concat = {(a, 3 1), (b, [])}"]
+
+/-! The kernel path (`GenK`, step T2): `kernT2` uses only `val 𝟘 𝟙 ° ≫ ∩ ∪ − dom ran`, so every node has a kernel
+    body and the program runs on the five kernels; `kernT2Old` is the same definitions with one `π₁`, which has
+    none, so it runs on the old layer. Each operator's kernel body against its old body, as sets of rows, at an
+    atom side and a tuple side. -/
+rel_program kernT2 where
+    obj N = 0…5
+    r : N ⟶ N ≜ {(1,2),(2,3),(3,3)}
+    s : N ⟶ N ≜ {(2,1),(3,4),(3,3)}
+    c : N ⟶ N ≜ r s
+    v : N ⟶ N ≜ r°
+    m : N ⟶ N ≜ r ∩ s°
+    j : N ⟶ N ≜ r ∪ s
+    d : N ⟶ N ≜ r − s°
+    dr : N ⟶ N ≜ dom(r)
+    rr : N ⟶ N ≜ ran(r)
+    i : N ⟶ N ≜ r 𝟙
+    z : N ⟶ N ≜ r 𝟘
+    p : N ⟶ N×N ≜ {(1,(2,3)),(2,(3,3)),(2,(4,4))}
+    q : N ⟶ N×N ≜ {(2,(3,3)),(5,(1,1))}
+    pc : N ⟶ N ≜ p p° r
+    pv : N×N ⟶ N ≜ p°
+    pm : N ⟶ N×N ≜ p ∩ q
+    pj : N ⟶ N×N ≜ p ∪ q
+    pd : N ⟶ N×N ≜ p − q
+    pdom : N ⟶ N ≜ dom(p)
+    pran : N×N ⟶ N×N ≜ ran(p)
+
+rel_program kernT2Old where
+    obj N = 0…5
+    r : N ⟶ N ≜ {(1,2),(2,3),(3,3)}
+    s : N ⟶ N ≜ {(2,1),(3,4),(3,3)}
+    c : N ⟶ N ≜ r s
+    v : N ⟶ N ≜ r°
+    m : N ⟶ N ≜ r ∩ s°
+    j : N ⟶ N ≜ r ∪ s
+    d : N ⟶ N ≜ r − s°
+    dr : N ⟶ N ≜ dom(r)
+    rr : N ⟶ N ≜ ran(r)
+    i : N ⟶ N ≜ r 𝟙
+    z : N ⟶ N ≜ r 𝟘
+    p : N ⟶ N×N ≜ {(1,(2,3)),(2,(3,3)),(2,(4,4))}
+    q : N ⟶ N×N ≜ {(2,(3,3)),(5,(1,1))}
+    pc : N ⟶ N ≜ p p° r
+    pv : N×N ⟶ N ≜ p°
+    pm : N ⟶ N×N ≜ p ∩ q
+    pj : N ⟶ N×N ≜ p ∪ q
+    pd : N ⟶ N×N ≜ p − q
+    pdom : N ⟶ N ≜ dom(p)
+    pran : N×N ⟶ N×N ≜ ran(p)
+    po : N ⟶ N ≜ p π₁
+
+/-- The definition `x` of `kernT2` (kernel path) and of `kernT2Old` (old path) as equal sets of rows. -/
+def sameK (x : String) (A B : Obj) [BEq (A.El × B.El)] : Bool :=
+  match get kernT2.expanded x A B, get kernT2Old.expanded x A B with
+  | some k, some o => sameSet k.toList o.toList
+  | _, _ => false
+
+#guard kernT2.kernel && !kernT2Old.kernel && kernT2.ok && kernT2Old.ok
+-- atom sides: `val`, `≫`, `°`, `∩`, `∪`, `−`, `dom`, `ran`, `𝟙`, `𝟘`
+#guard ["r", "s", "c", "v", "m", "j", "d", "dr", "rr", "i", "z", "pc"].all (sameK · .long .long)
+-- tuple sides
+#guard ["p", "q", "pm", "pj", "pd"].all (sameK · .long (.prod .long .long))
+#guard sameK "pv" (.prod .long .long) .long && sameK "pdom" .long .long &&
+  sameK "pran" (.prod .long .long) (.prod .long .long)
+-- not vacuous: the kernel tables have rows
+#guard ((get kernT2.expanded "c" .long .long).map (·.n.toNat)) == some 5
 
 end Rel.Lang.Test

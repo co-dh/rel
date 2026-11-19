@@ -75,7 +75,7 @@ def RowCode.test (sym : String) (ty : List Obj → Obj × Obj)
   RowCode.unary sym ty (fun σ => (.prod (σ.headD .long) (σ.headD .long), .prod (σ.headD .long) (σ.headD .long)))
     fun σ e q => match e, q with
       | true, q => f σ q
-      | false, _ => .tab Option.none
+      | false, _ => .tab (CRel.toE Option.none)
 
 /-- The first and second object variables. -/
 abbrev σ₁ (σ : List Obj) : Obj := σ.headD .long
@@ -135,7 +135,7 @@ def OExp.inst (σ : List (String × Obj)) : OExp → Obj
   | .sum a b => .sum (a.inst σ) (b.inst σ)
   | .list a => .arr (a.inst σ)
 /-- A code that vouches for nothing: its ok bit is false. -/
-def none' (A B : Obj) (d : Bool) : Fn d A B := .tab Option.none
+def none' (A B : Obj) (d : Bool) : Fn d A B := .tab (CRel.toE Option.none)
 
 /-- The row `r` at `A ⟶ B` given its relation arguments' codes `cs`, where its code fits them. -/
 def Prim.run (r : Prim) (A B : Obj) (cs : List Code) : Option (Fn true A B) := do

@@ -107,7 +107,7 @@ theorem onNodes_sound {A B : Obj} {F : Rel A B} {T : Den A B} (hF : Sound F T) (
       exact Core.Rel.ext fun a c => ⟨False.elim, fun ⟨w, h, _⟩ => rep_empty h0 a w h⟩
     · rw [if_neg h0] at hok ⊢
       have hf := CRel.guard_ok_left hok; rw [Bool.and_eq_true] at hf
-      have ef : rep (CRel.rel f) = T := hF.run_eq hf.2
+      have ef : rep (CRel.rel f.toOption) = T := hF.run_eq hf.2
       rw [CRel.rep_comp _ _ hok, ef]
   | lazy g =>
     simp only [onNodes] at hok ⊢
