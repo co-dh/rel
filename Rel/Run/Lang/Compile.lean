@@ -27,6 +27,21 @@ abbrev Code := (X Y : Obj) × (e : Bool) × Fn e X Y
 def Code.at (c : Code) (X Y : Obj) : Option ((e : Bool) × Fn e X Y) :=
   if h : c.1 = X ∧ c.2.1 = Y then some ⟨c.2.2.1, h.2 ▸ h.1 ▸ c.2.2.2⟩ else none
 
+/-- `η` with the variable `k` bound to the code `c`: at `c`'s objects, `c`'s table on each demand's keys (`pleaf`;
+    `Fn`'s bit is phantom, so a closed code read on demand runs whole, and a lazy one read closed has no keys and is
+    not ok); at other objects `𝟘`, as `bind` reads it. `bind k X` is the case `c = const X`. -/
+def CodeEnv.bindCode (η : CodeEnv) (k : Nat) (c : Code) : CodeEnv := fun j A B d =>
+  if j = k then (match c.at A B with | some ⟨_, f⟩ => pleaf A B d f | none => fun _ => (.zero, true))
+  else η j A B d
+
+/-- The codes `cs` bound to the variables `0, 1, …` in order, every other variable `𝟘`: what a call's body is
+    compiled under, the code side of `Val.args`. -/
+def CodeEnv.args (cs : List Code) : CodeEnv := go 0 cs where
+  /-- `cs` bound from the variable `k` on. -/
+  go (k : Nat) : List Code → CodeEnv
+    | [] => fun _ _ _ _ _ => (.zero, true)
+    | c :: cs => (go (k + 1) cs).bindCode k c
+
 /-- The object variables `σ` that make the pattern `o` the object `A`, extending `σ`: none where they cannot. -/
 def OExp.unify : OExp → Obj → List (String × Obj) → Option (List (String × Obj))
   | .var _ n, A, σ => match σ.lookup n with
