@@ -8,7 +8,7 @@ boundary, on the encoded columns as they are: `kasc` sorts a side's atom columns
 column is `kgather`ed at those rows. No column is decoded or re-encoded between the calls: each kernel's answer is the
 next one's argument (`Rel.Verify.kgather_closed` and the other closure laws).
 
-A side of `arr` or `sum` atoms, and an atom column the kernels do not read (any encoding but `foR`), is the error that
+A side of `arr` atoms, and an atom column the kernels do not read (any encoding but `foR`), is the error that
 names it: those producers move to `foR` in the next package. -/
 
 namespace Rel
@@ -78,13 +78,29 @@ def Vals.gather (m : USize) (ix : Enc) : {A : Obj} → {n : USize} → Vals A n 
   | .arr _, _, _ => .error "gather: an arr side is not atom columns"
   | .sum _ _, _, ⟨l, r, tag, idx, x, y⟩ => do pure ⟨l, r, ← Arr.gather m ix tag, ← Arr.gather m ix idx, x, y⟩
 
-/-- The atom columns of a side, each with its type, in the order of `Vals.row`'s tuple; a side holding an `arr` or a
-`sum` is the error, which no kernel reads as one column. -/
+/-- A summand's columns at its sum side's `n` rows: `cols` of the summand `y` gathered at the positions `p`; a summand
+of no rows has no columns, and a position outside it is the error naming the `side`. -/
+def Vals.summandCols {B : Obj} {n m : USize} (side : String) (cols : Vals B n → Except String (List (QAtomicType × Enc)))
+    (p : Enc) (y : Vals B m) : Except String (List (QAtomicType × Enc)) :=
+  if m.toNat = 0 then .ok [] else match Vals.gather n p y with
+    | .ok g => cols g
+    | .error s => .error s!"cols: a sum side's {side} position: {s}"
+
+/-- The atom columns of a side, each with its type, in the order of `Vals.row`'s tuple. A `sum` side is its tag, then
+the left summand's columns gathered at `idx * not(tag)`, then the right's at `idx * tag` (`Vals.summandCols`): a row of
+the other summand reads that summand's row `0`, a constant, so equal codes are equal rows. A summand past `2^63` rows,
+which an `Int64` position cannot reach, is the error, as is an `arr` side. -/
 def Vals.cols : {A : Obj} → {n : USize} → Vals A n → Except String (List (QAtomicType × Enc))
   | .atom t, _, x => .ok [(t, Arr.enc (t := t) x)]
   | .prod _ _, _, x => do pure ((← Vals.cols x.1) ++ (← Vals.cols x.2))
   | .arr _, _, _ => .error "cols: an arr side is not atom columns"
-  | .sum _ _, _, _ => .error "cols: a sum side is not atom columns"
+  | .sum _ _, n, ⟨l, r, tag, idx, x, y⟩ =>
+    if 2 ^ 63 < l.toNat ∨ 2 ^ 63 < r.toNat then .error s!"cols: a sum side of {l} and {r} rows, past an Int64 position"
+    else do
+      let px ← colMap .mul n idx.enc (← colMap .not n tag.enc tag.enc)
+      let py ← colMap .mul n idx.enc tag.enc
+      pure ((.u1, tag.enc) ::
+        ((← Vals.summandCols (n := n) "left" Vals.cols px x) ++ (← Vals.summandCols (n := n) "right" Vals.cols py y)))
 
 /-- **The side `x` without duplicate rows, ascending**: `kasc` over its atom columns (sorted columns `vs`, permutation
 `p`), `kseen` over the sorted columns (the first row of each run of equal rows, `k` of them, ascending), `kgather` of

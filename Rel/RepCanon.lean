@@ -261,6 +261,87 @@ theorem Vals.gather_clamp {B : Obj} {n m : USize} {p : Enc} (idx : Arr .i64 n) (
   rw [r, Arr.get_i64, ← hp, clampFin_word h0 (by rw [e]; exact k.2) hm]
   exact congrArg _ (Fin.ext e)
 
+/-- What `Vals.summandCols` answers, unfolded: no columns for a summand of no rows, else `cols` of the summand
+gathered at `p`. -/
+theorem Vals.summandCols_ok {B : Obj} {n m : USize} {side : String}
+    {cols : Vals B n → Except String (List (QAtomicType × Enc))} {p : Enc} {y : Vals B m} {xs}
+    (h : Vals.summandCols side cols p y = .ok xs) :
+    (m.toNat = 0 → xs = []) ∧ ∀ _ : 0 < m.toNat, ∃ g, Vals.gather n p y = .ok g ∧ cols g = .ok xs := by
+  unfold Vals.summandCols at h
+  by_cases h0 : m.toNat = 0
+  · rw [if_pos h0] at h; cases h; exact ⟨fun _ => rfl, fun h1 => absurd h0 (by omega)⟩
+  · rw [if_neg h0] at h
+    split at h
+    · rename_i g hg; exact ⟨fun e => absurd e h0, fun _ => ⟨g, hg, h⟩⟩
+    · cases h
+
+/-- **A summand gathered at a sum side's positions**, row by row: where the tag is `s`, `p` holds `idx`'s word and the
+row is the summand's row at `idx` clamped (`Vals.gather_clamp`); elsewhere `p` holds `0` and the row is row `0`. -/
+theorem Vals.summand_row {B : Obj} {n m : USize} {p : Enc} (tag : Arr .u1 n) (idx : Arr .i64 n) (s : Bool)
+    (y : Vals B m) {g : Vals B n} (hg : Vals.gather n p y = .ok g) (hm : m.toNat ≤ 2 ^ 63) (h0 : 0 < m.toNat)
+    (hp : ∀ q : Fin n.toNat, (Enc.raw .i64 n p)[q.1]?.getD 0 =
+      if tag.get q = s then (Enc.raw .i64 n idx.enc)[q.1]?.getD 0 else 0) (q : Fin n.toNat) :
+    Vals.row g q = if tag.get q = s then Vals.row y (clampFin (idx.get q) m.toNat h0) else Vals.row y ⟨0, h0⟩ := by
+  by_cases hq : tag.get q = s
+  · rw [if_pos hq]; exact (Vals.gather_clamp idx y hg hm h0 q (by rw [hp, if_pos hq])).symm
+  · rw [if_neg hq]
+    obtain ⟨k, e, r⟩ := Vals.gather_row y hg q
+    rw [r]; congr 1; apply Fin.ext; rw [← e, hp, if_neg hq]; rfl
+
+/-- What `Vals.cols` answers at a `sum` side, unfolded: the tag's column, then each summand's columns, which (the tag
+being a column every kernel reads) are those of a side whose row `q` is the summand's row at `q`'s position where the
+tag selects that summand, and the summand's row `0` elsewhere. -/
+theorem Vals.cols_sum {a b : Obj} {n l r : USize} {tag : Arr .u1 n} {idx : Arr .i64 n} {x : Vals a l} {y : Vals b r}
+    {es : List (QAtomicType × Enc)} (hes : Vals.cols (A := .sum a b) ⟨l, r, tag, idx, x, y⟩ = .ok es) :
+    ∃ xs ys, es = (.u1, tag.enc) :: (xs ++ ys) ∧ (Kernel.Enc.Valid n tag.enc →
+      (l.toNat = 0 → xs = []) ∧ (∀ h0 : 0 < l.toNat, ∃ g : Vals a n, Vals.cols g = .ok xs ∧ ∀ q, Vals.row g q =
+        if tag.get q = false then Vals.row x (clampFin (idx.get q) l.toNat h0) else Vals.row x ⟨0, h0⟩) ∧
+      (r.toNat = 0 → ys = []) ∧ (∀ h0 : 0 < r.toNat, ∃ g : Vals b n, Vals.cols g = .ok ys ∧ ∀ q, Vals.row g q =
+        if tag.get q = true then Vals.row y (clampFin (idx.get q) r.toNat h0) else Vals.row y ⟨0, h0⟩)) := by
+  simp only [Vals.cols] at hes
+  split at hes; · cases hes
+  rename_i hlr
+  simp only [bind, Except.bind, pure, Except.pure] at hes
+  split at hes; · cases hes
+  rename_i nt hnt
+  split at hes; · cases hes
+  rename_i px hpx
+  split at hes; · cases hes
+  rename_i py hpy
+  split at hes; · cases hes
+  rename_i xs hxs
+  split at hes; · cases hes
+  rename_i ys hys
+  cases hes
+  refine ⟨xs, ys, rfl, fun hv => ?_⟩
+  obtain ⟨-, hnt'⟩ := colMap_get hnt
+  obtain ⟨-, hpx'⟩ := colMap_get hpx
+  obtain ⟨-, hpy'⟩ := colMap_get hpy
+  have hi64 : ¬ (QAtomicType.i64 = .u1) := by decide
+  -- `px` is `idx` on the left summand's rows and `0` on the right's, `py` the other way round
+  have wx : ∀ q : Fin n.toNat, (Enc.raw .i64 n px)[q.1]?.getD 0 =
+      if tag.get q = false then (Enc.raw .i64 n idx.enc)[q.1]?.getD 0 else 0 := fun q => by
+    obtain ⟨t, ht, et⟩ := Arr.get_u1 tag hv q
+    obtain ⟨v1, e1, h1⟩ := hnt' q q.2
+    obtain ⟨v2, e2, h2⟩ := hpx' q q.2
+    simp only [ht, Option.getD_some, Op.eval, Except.ok.injEq] at e1; subst e1
+    simp only [h1, if_neg hi64, Option.getD_some, Op.eval, Except.ok.injEq] at e2; subst e2
+    simp only [h2, if_neg hi64, Option.getD_some]
+    rw [et]; cases tag.get q <;> simp
+  have wy : ∀ q : Fin n.toNat, (Enc.raw .i64 n py)[q.1]?.getD 0 =
+      if tag.get q = true then (Enc.raw .i64 n idx.enc)[q.1]?.getD 0 else 0 := fun q => by
+    obtain ⟨t, ht, et⟩ := Arr.get_u1 tag hv q
+    obtain ⟨v2, e2, h2⟩ := hpy' q q.2
+    simp only [ht, Option.getD_some, Op.eval, Except.ok.injEq] at e2; subst e2
+    simp only [h2, if_neg hi64, Option.getD_some]
+    rw [et]; cases tag.get q <;> simp
+  have hm : l.toNat ≤ 2 ^ 63 ∧ r.toNat ≤ 2 ^ 63 := by omega
+  obtain ⟨xl0, xg⟩ := Vals.summandCols_ok hxs
+  obtain ⟨yl0, yg⟩ := Vals.summandCols_ok hys
+  refine ⟨xl0, fun h0 => ?_, yl0, fun h0 => ?_⟩
+  · obtain ⟨g, hg, hc⟩ := xg h0; exact ⟨g, hc, Vals.summand_row tag idx false x hg hm.1 h0 wx⟩
+  · obtain ⟨g, hg, hc⟩ := yg h0; exact ⟨g, hc, Vals.summand_row tag idx true y hg hm.2 h0 wy⟩
+
 /-- What `Vals.nub` answers, unfolded: each kernel's answer named, in the order of the composition. -/
 theorem Vals.nub_ok {A : Obj} {n : USize} {x : Vals A n} {r : (m : USize) × Vals A m} (h : Vals.nub x = .ok r) :
     ∃ es vs p k g f ix y, Vals.cols x = .ok es ∧ kasc n es = .ok (vs, p) ∧
@@ -379,7 +460,34 @@ theorem Vals.row_of_codes : {A : Obj} → {n : USize} → (x : Vals A n) → {es
     show (Vals.row x.1 i, Vals.row x.2 i) = (Vals.row x.1 i', Vals.row x.2 i')
     rw [Vals.row_of_codes x.1 h1 hc1 i i' k1, Vals.row_of_codes x.2 h2 hc2 i i' k2]
   | .arr _, _, _, _, hes, _, _, _, _, _ => by simp [Vals.cols] at hes
-  | .sum _ _, _, _, _, hes, _, _, _, _, _ => by simp [Vals.cols] at hes
+  | .sum _ _, n, ⟨l, r, tag, idx, x, y⟩, es, hes, cs, hc, i, i', hk => by
+    obtain ⟨xs, ys, rfl, hrest⟩ := Vals.cols_sum hes
+    obtain ⟨c0, c12, hc0, hc12, -⟩ := mapM_append_ok (l1 := [(.u1, tag.enc)]) (l2 := xs ++ ys) hc
+    obtain ⟨c1, c2, hc1, hc2, -⟩ := mapM_append_ok hc12
+    obtain ⟨hv, heq⟩ := Arr.eq_of_codes tag hc0
+    obtain ⟨xl0, xg, yl0, yg⟩ := hrest hv
+    have hs : ∀ (e1 e2 : List (QAtomicType × Enc)) q, seenKey n (e1 ++ e2) q = seenKey n e1 q ++ seenKey n e2 q :=
+      fun _ _ q => by simp [seenKey, ascKeys]
+    rw [show (QAtomicType.u1, tag.enc) :: (xs ++ ys) = [(QAtomicType.u1, tag.enc)] ++ (xs ++ ys) from rfl,
+      hs, hs, hs, hs] at hk
+    obtain ⟨k0, k12⟩ := List.append_inj hk (by simp [seenKey, ascKeys])
+    obtain ⟨k1, k2⟩ := List.append_inj k12 (by simp [seenKey, ascKeys])
+    have ht := heq i i' k0
+    show Vals.row (A := .sum _ _) ⟨l, r, tag, idx, x, y⟩ i = Vals.row (A := .sum _ _) ⟨l, r, tag, idx, x, y⟩ i'
+    simp only [Vals.row, ht]
+    cases htt : tag.get i'
+    · simp only [Bool.false_eq_true, ↓reduceIte]
+      by_cases h0 : 0 < l.toNat
+      · obtain ⟨g, hg, hrow⟩ := xg h0
+        have e := Vals.row_of_codes g hg hc1 i i' k1
+        rw [dif_pos h0, dif_pos h0]; simpa [hrow, ht, htt] using e
+      · simp only [dif_neg h0]
+    · simp only [↓reduceIte]
+      by_cases h0 : 0 < r.toNat
+      · obtain ⟨g, hg, hrow⟩ := yg h0
+        have e := Vals.row_of_codes g hg hc2 i i' k2
+        rw [dif_pos h0, dif_pos h0]; simpa [hrow, ht, htt] using e
+      · simp only [dif_neg h0]
 
 /-- **`Arr.get_eq_of_raw`'s converse**: where two `Arr`s of one type in a column every kernel reads hold one element
 at `i` and `j`, their raw words `a`, `b` there read as one atom; and a `u1` word is below `2`, the bound every `Arr`
@@ -389,11 +497,20 @@ theorem Arr.atom_of_get_eq {t : QAtomicType} {n m : USize} (x : Arr t n) (y : Ar
     (hg : t ≠ .general) {a b : UInt64} (ha : (Enc.raw .i64 n x.enc)[i.1]? = some a)
     (hb : (Enc.raw .i64 m y.enc)[j.1]? = some b) :
     (t = .u1 → a < 2 ∧ b < 2) ∧ (x.get i = y.get j → Column.atomOfBits t a hg = Column.atomOfBits t b hg) := by
+  -- off `sym`, an element is `Carrier.of?` of its word's atom (`Arr.get_raw_atom`, any encoding), which keeps the atom
+  by_cases hs : t ≠ .sym
+  · obtain ⟨a', ha', hua, ex⟩ := Arr.get_raw_atom x hx hg hs i
+    obtain ⟨b', hb', hub, ey⟩ := Arr.get_raw_atom y hy hg hs j
+    obtain rfl := Option.some.inj (ha.symm.trans ha'); obtain rfl := Option.some.inj (hb.symm.trans hb')
+    refine ⟨fun hu => ⟨hua hu, hub hu⟩, fun h => ?_⟩
+    rw [ex, ey] at h
+    cases t <;> first | exact absurd rfl hg | exact absurd rfl hs | simp_all [Column.atomOfBits, Dep.Carrier.of?]
+  -- a `sym` column is `foR` (`Enc.WF`), whose element is read off its word
   have foR_of : ∀ {n} (z : Arr t n), Kernel.Enc.Valid n z.enc → ∃ md pk, z.enc = .foR md pk := by
     intro n z hz; have hw := z.wf
     cases hc : z.enc with
     | foR md pk => exact ⟨md, pk, rfl⟩
-    | pos => rw [hc] at hw; cases t <;> simp only [Enc.WF] at hw
+    | pos => rw [hc] at hw; cases t <;> simp only [Enc.WF] at hw <;> exact absurd (by decide) hs
     | _ => all_goals (rw [hc] at hz; simp only [Kernel.Enc.Valid] at hz)
   obtain ⟨md, pk, hcx⟩ := foR_of x hx
   obtain ⟨md', pk', hcy⟩ := foR_of y hy
@@ -446,7 +563,37 @@ theorem Vals.codes_of_row : {A : Obj} → {n : USize} → (x : Vals A n) → {es
       simp [seenKey, ascKeys]
     rw [hs, hs, Vals.codes_of_row x.1 h1 hc1 i i' r1, Vals.codes_of_row x.2 h2 hc2 i i' r2]
   | .arr _, _, _, _, hes, _, _, _, _, _ => by simp [Vals.cols] at hes
-  | .sum _ _, _, _, _, hes, _, _, _, _, _ => by simp [Vals.cols] at hes
+  | .sum _ _, n, ⟨l, r, tag, idx, x, y⟩, es, hes, cs, hc, i, i', hr => by
+    obtain ⟨xs, ys, rfl, hrest⟩ := Vals.cols_sum hes
+    obtain ⟨c0, c12, hc0, hc12, -⟩ := mapM_append_ok (l1 := [(.u1, tag.enc)]) (l2 := xs ++ ys) hc
+    obtain ⟨c1, c2, hc1, hc2, -⟩ := mapM_append_ok hc12
+    obtain ⟨xl0, xg, yl0, yg⟩ := hrest (Arr.eq_of_codes tag hc0).1
+    have hs : ∀ (e1 e2 : List (QAtomicType × Enc)) q, seenKey n (e1 ++ e2) q = seenKey n e1 q ++ seenKey n e2 q :=
+      fun _ _ q => by simp [seenKey, ascKeys]
+    change Vals.row (A := .sum _ _) ⟨l, r, tag, idx, x, y⟩ i = Vals.row (A := .sum _ _) ⟨l, r, tag, idx, x, y⟩ i' at hr
+    simp only [Vals.row] at hr
+    -- equal rows sit in one summand
+    have ht : tag.get i = tag.get i' := by revert hr; cases tag.get i <;> cases tag.get i' <;> simp
+    have k1 : seenKey n xs i = seenKey n xs i' := by
+      by_cases h0 : 0 < l.toNat
+      · obtain ⟨g, hg, hrow⟩ := xg h0
+        apply Vals.codes_of_row g hg hc1 i i'
+        rw [hrow, hrow, ht]
+        cases htt : tag.get i'
+        · simpa [ht, htt, h0] using hr
+        · simp
+      · rw [xl0 (by omega)]
+    have k2 : seenKey n ys i = seenKey n ys i' := by
+      by_cases h0 : 0 < r.toNat
+      · obtain ⟨g, hg, hrow⟩ := yg h0
+        apply Vals.codes_of_row g hg hc2 i i'
+        rw [hrow, hrow, ht]
+        cases htt : tag.get i'
+        · simp
+        · simpa [ht, htt, h0] using hr
+      · rw [yl0 (by omega)]
+    rw [show (QAtomicType.u1, tag.enc) :: (xs ++ ys) = [(QAtomicType.u1, tag.enc)] ++ (xs ++ ys) from rfl,
+      hs, hs, hs, hs, Vals.codes_of_row (A := .atom .u1) tag (es := [(.u1, tag.enc)]) rfl hc0 i i' ht, k1, k2]
 
 /-- **Rows of `x` are equal iff their order codes are** where `Vals.nub x` answers: `kasc` read every column
 (`Vals.row_of_codes`, `Vals.codes_of_row`). -/
@@ -644,13 +791,20 @@ def tab (ps : List (Int64 × Int64)) : Tab .long .long :=
 -- `Alg.ofPairs`' columns are `canonC`'s rows, read through `Alg.pick` → `gatherColumn`, an old kernel that still writes
 -- `.bytes` (`Rel/Run/Code.lean`, `pick`): the error, never a conversion, until that exit is `foR`
 #guard (Alg.ofPairs [(1, 2)]).canon matches .error _
--- the five-kernel `canon`, `ran`, `dom` against the old `canonC`, `CRel.ran`, `CRel.dom` on the same tables
+/-- The five-kernel `canon`, `ran`, `dom` of `R` against the old `canonC`, `CRel.ran`, `CRel.dom`. -/
+def canonAgrees {k v : Obj} [BEq k.El] [BEq v.El] (R : Tab k v) : Bool :=
+  let c := Alg.canonC R
+  (R.canon.toOption.map Tab.toList) == (if c.2 then some c.1.toList else none) &&
+  (R.ran.toOption.map Tab.toList) == ((CRel.ran (some R)).map Tab.toList) &&
+  (R.dom.toOption.map Tab.toList) == ((CRel.dom (some R)).map Tab.toList)
+
 #guard [[(3, 1), (1, 2), (3, 1), (-1, 2), (1, 2), (2, 7), (-5, -5), (0, 0)], [(-2, 9), (-2, 9), (7, -3)], []].all
-  fun (ps : List (Int64 × Int64)) =>
-    let c := Alg.canonC (tab ps)
-    ((tab ps).canon.toOption.map Tab.toList) == (if c.2 then some c.1.toList else none) &&
-    ((tab ps).ran.toOption.map Tab.toList) == ((CRel.ran (some (tab ps))).map Tab.toList) &&
-    ((tab ps).dom.toOption.map Tab.toList) == ((CRel.dom (some (tab ps))).map Tab.toList)
+  fun ps => canonAgrees (tab ps)
+-- sum sides as `[R, S]`, `R + S` and `inl` build them, a summand of no rows among them
+#guard [([(3, 1), (1, 2), (3, 1), (-1, 2)], [(2, 2), (2, 2), (-1, 5), (3, 1)]), ([(3, 1), (1, 2)], []),
+    ([], [(4, 4), (4, 4)]), ([], [])].all fun (ps, qs) =>
+  canonAgrees (Alg.junc (tab ps) (tab qs)) && canonAgrees (Alg.sum (tab ps) (tab qs)) &&
+  canonAgrees (Alg.inl (B := .long) (tab ps).val) && canonAgrees (Alg.inr (A := .long) (tab qs).key)
 
 end Checks
 
