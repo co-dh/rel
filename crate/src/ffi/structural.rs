@@ -125,6 +125,15 @@ export! {
 }
 
 export! {
+    /// Spec: `enlistLong n` is the one little-endian long `n`.
+    fn qlean_structural_enlist(n: usize) -> O {
+        let mut a = SArr::new(1, 8);
+        a.bytes_mut().copy_from_slice(&(n as u64).to_le_bytes());
+        a.into()
+    }
+}
+
+export! {
     /// Spec: `concatALP w ns metas packs alps`. `concatFoR`'s rule at ALP: an answer block that is one part's own block on the
     /// grid moves -- metadata, residuals, exponent and exceptions -- and only the blocks straddling a part boundary are
     /// restored and handed to ALP's block steps. So appending `m` elements to `n` re-encodes the last partial block and the

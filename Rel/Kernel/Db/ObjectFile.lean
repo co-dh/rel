@@ -11,5 +11,10 @@ under the header `rust/src/own.rs` documents, to a temporary beside `path` that 
 opaque ownWrite (path : @& String) (code attr kind : UInt8) (count : USize) (domain : @& String)
     (parts : @& Array ByteArray) : IO Unit
 
+/-- `ownWrite`'s `parts` grown by one computed buffer: `Array.push` at `ByteArray`, so a plan register can name it
+(`kernel%` reads a monomorphic signature). The symbol is the toolchain's; a native run gets it from `crate/rt`. -/
+@[extern "lean_array_push"]
+def pushPart (parts : Array ByteArray) (b : ByteArray) : Array ByteArray := parts.push b
+
 
 end Rel.Db

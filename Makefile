@@ -63,10 +63,10 @@ syms:
 native:
 	$(GATE)
 	$(LAKE) build relc rel-native
-	rm -rf $(T)/nat; mkdir -p $(T)/nat/lean/out $(T)/nat/native/out
+	rm -rf $(T)/nat; mkdir -p $(T)/nat/lean/out/arith $(T)/nat/native/out/arith
 	$(LAKE) exe relc plan $(T)/nat/lean
 	cd $(T)/nat/native; $(NATIVE)
-	for f in key val; do cmp $(T)/nat/lean/out/$$f $(T)/nat/native/out/$$f; done
+	diff -r $(T)/nat/lean/out $(T)/nat/native/out
 
 # the native executable needs libc, libm and libpthread only (plus the loader and the vdso)
 ldd: native

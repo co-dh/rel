@@ -234,6 +234,11 @@ def tilLongs (n : USize) : ByteArray :=
   (List.range n.toNat).foldl (init := ByteArray.empty) fun acc i =>
     Column.pushBits acc (Int64.ofNat i).toUInt64 8
 
+/-- q's `enlist` of a count: the one-element long payload holding `n`. A plan's size register becomes a column
+this way, as an array's `.hi` bound of one row. -/
+@[extern "qlean_structural_enlist"]
+def enlistLong (n : USize) : ByteArray := Column.pushBits .empty n.toUInt64 8
+
 /-- `x@i` at a bit payload. Measured — `1101b@3 2 1 0` is `1011b` and `101b@0 5` is `10b`, so an index
 q cannot serve answers `0b`, which is `Eval.nullAtom`'s boolean null. -/
 @[extern "qlean_structural_gather_bits"]
