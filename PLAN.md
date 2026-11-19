@@ -38,6 +38,13 @@
   - F（D.12）：`kseen` 只接受已按 `kasc` 序排好的行；引擎选择与直接寻址删除，调用者一律 `kasc ≫ kseen`。
   - owner 不在时，已写原则答不了的设计问题由 fable agent 分析并执行，问题、结论、理由记在本列表供复查；kernel 要
     解码、推翻 owner 已做的决定，仍留给 owner。
+  - fable 决定（2026-11-19，待 owner 复查）：float atom 的相等 = 存储位相等。问题：W2 的定律带前提 `hK`（序码相等
+    则行相等），而 `kasc`/`kseen` 的序码把 `±0` 合成一个、所有 NaN 合成一个，`hK` 在 f32/f64 上为假。结论：序码
+    在每个有序原子类型上是存储字的单射保序位映射（float 用 IEEE totalOrder：非负置符号位，负数翻全部位，比较时
+    不再 `normalise`）；R7 的规范化（一个 NaN、`-0 ↦ +0`）只在产生 float 字的地方做（随 6.9）。理由：值模型已经
+    是位（`Carrier .f64 = UInt64`）；`doc/rel-architecture.zh.typ:197` 写的就是纯位映射；规范化过的列上新旧序码
+    相同，所以 R7 与 D.12 不被推翻；没有 Rel 程序用 float。后果：未规范化的列上 `-0.0` 与 `0.0` 是不同的行；
+    mmap 进来的 float 列是否检查规范化，留给 owner。实现在分支 `ordcode`。
 - 非 log 的输出（baseline、row 分析）写进本文件或 `doc/`，不写进 `/data/tmp`。
 
 ## 0. 每一步都遵守的约定
