@@ -10,15 +10,16 @@ demand `D`, as the compiled term reads it (`Tm.lam`'s doc). Their laws are in `R
 namespace Rel
 open Rel.Ext Rel.Kernel Rel.Verify
 
-/-- `colMap` as an `Arr` of its type `t` (`colMap_closed`). -/
-def colArr (op : Op) (n : USize) (a b : Enc) (t : QAtomicType := .i64) : Except String (Arr t n) :=
+/-- `colMap` as an `Arr` of its type `t` (`colMap_closed`); `colArr` (`Rel/Run/Arith.lean`) is its `t = .i64`
+case, to merge there. -/
+def colArrAt (op : Op) (n : USize) (a b : Enc) (t : QAtomicType := .i64) : Except String (Arr t n) :=
   match h : colMap op n a b t with
   | .ok o => .ok (Arr.mk o (colMap_closed h).2)
   | .error s => .error s
 
-/-- `n` zero words at `t`: `colArr .add` of two `colConst n 0`. -/
+/-- `n` zero words at `t`: `colArrAt .add` of two `colConst n 0`. -/
 def Arr.zeros (t : QAtomicType) (n : USize) : Except String (Arr t n) := do
-  colArr .add n (← colConst n 0) (← colConst n 0) t
+  colArrAt .add n (← colConst n 0) (← colConst n 0) t
 
 /-- A side of no rows, every atom column `Arr.zeros _ 0`. -/
 def Vals.noRows : (B : Obj) → Except String (Vals B 0)
@@ -94,8 +95,8 @@ def lam {n : USize} (D : Vals A n) (R : Tab A B) : Except String (Tab A (.arr B)
   let K := k.toUSize
   let nc ← colConst N n.toUInt64
   let cD ← kscatter .add N g (← colMap .lt N p nc) K 0
-  let lo ← colArr .add K f cD
-  let hi ← colArr .add K f (← kscatter .add N g (← colConst N 1) K 0)
+  let lo ← colArrAt .add K f cD
+  let hi ← colArrAt .add K f (← kscatter .add N g (← colConst N 1) K 0)
   let (M, sel) ← whereCol K (← colMap .lt K (← colConst K 0) cD)
   let iD ← kgather M (← kgather M sel K f) N p
   let pay ← if r.n.toNat = 0 then pure (⟨r.n, r.val⟩ : (m : USize) × Vals B m) else
