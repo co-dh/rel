@@ -53,8 +53,6 @@ fn bitrows(all: bool, w: usize, na: usize, ni: usize, g: usize, ends: B, idx: B,
 export! {
 
 
-    /// `overBytes`: the fold of the six verbs over the elements of class `cls`.
-    fn qlean_over_bytes(op: u8, cls: u8, nul: u64, a: B) -> u64 { reduce::over_bytes(op, cls, nul as i64, a.bytes()) as u64 }
 
     /// Spec: `kbitrows all w na ni g ends idx m` (Rel/Kernel/BitRows.lean): bit `r·w + j` of the `g·w`-bit `u1` answer
     /// is the `|` (`&` under `all`) of bit `idx[k]·w + j` of `m` over `k` in `[ends[r-1], ends[r])`, or the model's error.

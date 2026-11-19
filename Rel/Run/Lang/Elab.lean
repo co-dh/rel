@@ -1,4 +1,6 @@
 import Rel.Run.Algebra
+import Rel.Run.Struct
+import Rel.Run.SetOps
 import Rel.Run.Lang.Syntax
 import Rel.Run.Lang.Tm
 import Rel.Run.Lang.Schema
@@ -88,13 +90,18 @@ abbrev Objs := List (String × ObjInfo)
 def uniOf (objs : Objs) : OTy → Option ((A : Obj) × (m : USize) × Vals A m)
   | .base n => do let ⟨m, U⟩ ← (← objs.lookup n).uni; pure ⟨.long, m, U⟩
   | .prod a b => do
-    let ⟨_, _, Ua⟩ ← uniOf objs a; let ⟨_, _, Ub⟩ ← uniOf objs b
-    let k := (Alg.prod (idU Ua) (idU Ub)).key
-    pure ⟨_, _, k⟩
+    let ⟨A, _, Ua⟩ ← uniOf objs a; let ⟨B, _, Ub⟩ ← uniOf objs b
+    match Vals.cross Ua Ub with
+    | .ok ⟨_, x, y⟩ => pure ⟨.prod A B, _, (x, y)⟩
+    | .error e => Rel.Kernel.stop (fun _ => s!"the universe of {a} × {b}: {e}") fun _ => none
   | .sum a b => do
-    let ⟨_, n, Ua⟩ ← uniOf objs a; let ⟨_, m, Ub⟩ ← uniOf objs b
-    need (n.toNat + m.toNat < USize.size) (fun _ => s!"the universe of {a} + {b}: {n} + {m} do not fit a USize")
-      (fun _ => none) fun hN => pure ⟨_, _, sumVals Ua Ub hN⟩
+    let ⟨A, _, Ua⟩ ← uniOf objs a; let ⟨B, _, Ub⟩ ← uniOf objs b
+    -- the values of `inl` on `Ua` and of `inr` on `Ub`: `ran(inl) ∪ ran(inr)`
+    let u : Except String (Tab (.sum A B) (.sum A B)) := do
+      Tab.union (← Tab.ran (← Tab.inl (B := B) Ua)) (← Tab.ran (← Tab.inr (A := A) Ub))
+    match u with
+    | .ok U => pure ⟨_, _, U.key⟩
+    | .error e => Rel.Kernel.stop (fun _ => s!"the universe of {a} + {b}: {e}") fun _ => none
   | _ => none
 
 /-- The rounds a `μ` runs at most when an object of it has no universe: Kleene rounds from `𝟘` stop at the least
@@ -1493,7 +1500,8 @@ def litCol (p : Pos) (n : USize) (o : OTy) (rows : List Tup) : Except Err ((A : 
   | .sum x y =>
     if h : n = 0 ∧ rows.isEmpty then h.1 ▸ (do
       let ⟨A, u⟩ ← litCol p 0 x []; let ⟨B, v⟩ ← litCol p 0 y []
-      pure ⟨.sum A B, ⟨0, 0, emptyArr .u1, emptyArr .i64, u, v⟩⟩ : Except Err ((A : Obj) × Vals A 0))
+      pure ⟨.sum A B, ⟨0, 0, Arr.mk (Rel.Ext.Enc.blank .u1 0) (Rel.Ext.Enc.blank_WF .u1 0), Arr.mk (Rel.Ext.Enc.blank .i64 0)
+        (Rel.Ext.Enc.blank_WF .i64 0), u, v⟩⟩ : Except Err ((A : Obj) × Vals A 0))
     else throw ⟨p, s!"a literal relates elements of declared objects, found {o}"⟩
   | o => do
     let cs ← rows.mapM fun

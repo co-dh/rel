@@ -47,16 +47,10 @@ pub mod exports {
     pub mod seen;
     pub mod env;
     pub mod gather;
-    pub mod group;
-    pub mod ew;
     pub mod own;
     pub mod reduce;
     pub mod scan;
     pub mod scatter;
-    pub mod search;
-    pub mod sort;
-    pub mod structural;
-    pub mod symsort;
 }
 /// cbindgen:ignore
 pub mod pod;

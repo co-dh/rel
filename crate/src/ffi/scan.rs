@@ -33,13 +33,6 @@ pub fn answer(n: usize, fill: impl FnOnce(&mut [u8])) -> O {
 
 export! {
 
-    /// The ByteArray of `n` elements at `sc_out_width` whose ith element is the accumulator after element i of the fold of
-    /// `Verb` (QLean/Kernel/Scan.lean). Where that fold is the identity the answer is the argument object, refcounted.
-    fn qlean_scan(op: u8, kind: u8, n: usize, a: B) -> O {
-        let p = a.bytes();
-        if scan::col_same(op, kind, n, p) { return a.to_owned() }
-        answer(scan::col_len(op, kind, n, p.len()), |o| scan::col(op, kind, n, p, o))
-    }
 
     /// `Kernel.kscan op rev s t n seg es` (Rel/Kernel/Scan.lean): `Except String (Enc × Option UInt64)`, the error (tag 0)
     /// carrying the model's text, the answer (tag 1) a pair (tag 0) of an `Enc.foR` (tag 3) at every `t`, a boolean one

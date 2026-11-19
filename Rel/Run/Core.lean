@@ -811,3 +811,18 @@ end Checks
 #print axioms Tab.holds_iff_mem_toList
 
 end Rel
+
+namespace Rel.Alg
+open Rel.Kernel
+
+/-- A literal long column, `Coc.encode`d where it is built (`Arr.ofBytes`), its count `xs.length` proved by
+    `packLongs_size`; it runs where the count fits a `USize`. -/
+def col (xs : List Int64) : Arr .i64 xs.length.toUSize :=
+  need (xs.length < USize.size) (fun _ => s!"col: {xs.length} longs do not fit a USize")
+    (fun _ => Arr.mk (Enc.blank .i64 _) (Enc.blank_WF .i64 _)) fun h =>
+  Arr.ofBytes .i64 (packLongs xs) (show _ = 8 * _ by rw [packLongs_size, USize.toNat_ofNat_of_lt' h])
+
+/-- The null long. -/
+def nul : Int64 := Int64.minValue
+
+end Rel.Alg

@@ -44,7 +44,6 @@ def findScalar (w : USize) (float : Bool) (hay : @& ByteArray) (needle : UInt64)
 
 /-- q's `x?y` at a vector `y`: `findScalar` at each element of `y`, as little-endian `Int64`s.
 Measured — `1 2 3?2 3 9` is `1 2 3`, and `1 2 3?0#0` is the empty long vector. -/
-@[extern "qlean_search_find_vec"]
 def findVec (w : USize) (float : Bool) (hay : @& ByteArray) (ndl : @& ByteArray) : ByteArray :=
   let sl (b : ByteArray) (i : Nat) := (b.extract (i * w.toNat) (i * w.toNat + w.toNat)).data
   (List.range (ndl.size / w.toNat)).foldl (init := ByteArray.empty) fun acc j =>
@@ -74,7 +73,6 @@ that module.
 `fill` is the type's null as raw bits, and it is `Kernel.nullBits` and no second table — measured,
 `1 2 3@5` is `0N`, `1 2 3h@5` is `0Nh`, `1 2 3e@5` is `0Ne`, `"abc"@5` is `" "` and `0x010203@5` is
 `0x00`, which is `nullBits` at each of them with its `none` read as zero. -/
-@[extern "qlean_structural_gather"]
 def gatherBytes (w : USize) (fill : UInt64) (src : @& ByteArray) (idx : @& ByteArray) : ByteArray :=
   (List.range (idx.size / 8)).foldl (init := ByteArray.empty) fun acc j =>
     match gatherAt (src.size / w.toNat) idx j with
@@ -101,7 +99,6 @@ def memberVecBitmap (w : USize) (float : Bool) (xs : @& ByteArray) (hay : @& Byt
       then byte ||| (1 <<< t.toUInt8) else byte)
 
 /-- q's `x in y` at vectors on both sides as the `u1` Frame of Reference column `Coc.bools` lays out. -/
-@[extern "qlean_search_member_vec"]
 def memberVec (w : USize) (float : Bool) (xs : @& ByteArray) (hay : @& ByteArray) : ByteArray × ByteArray :=
   Coc.bools (xs.size / w.toNat) (Column.bitAt (memberVecBitmap w float xs hay))
 
@@ -120,7 +117,6 @@ def idsOperand (k w : USize) (ids : ByteArray) (n : USize) : ByteArray :=
 any lane `Column.laneWidth` answers — compared at `idKeyWidth`'s bytes. The C reads them where they
 lie: `opnd_blk` restores a block of ids at a time through `id_at` into an L1 buffer, as it restores
 an encoded pack, so neither payload is widened whole. -/
-@[extern "qlean_search_find_ids_vec"]
 def findIdsVec (hw : USize) (hay : @& ByteArray) (hn : USize) (nw : USize) (ndl : @& ByteArray) (nn : USize) :
     ByteArray :=
   let k := idKeyWidth hw nw
@@ -133,7 +129,6 @@ def memberIdsVecBitmap (xw : USize) (xs : @& ByteArray) (xn : USize) (hw : USize
   memberVecBitmap k false (idsOperand k xw xs xn) (idsOperand k hw hay hn)
 
 /-- `memberIdsVecBitmap` as the `u1` Frame of Reference column `Coc.bools` lays out, one element per needle id. -/
-@[extern "qlean_search_member_ids_vec"]
 def memberIdsVec (xw : USize) (xs : @& ByteArray) (xn : USize) (hw : USize) (hay : @& ByteArray) (hn : USize) :
     ByteArray × ByteArray :=
   Coc.bools (Column.idsCap xs xw.toNat xn.toNat) (Column.bitAt (memberIdsVecBitmap xw xs xn hw hay hn))
@@ -144,7 +139,6 @@ def findBit (n : USize) (bits : @& ByteArray) (needle : Bool) : USize :=
   (((List.range n.toNat).find? fun i => Column.bitAt bits i == needle).getD n.toNat).toUSize
 
 /-- `findBit` at each element of a boolean needle vector. -/
-@[extern "qlean_search_find_bit_vec"]
 def findBitVec (n : USize) (hay : @& ByteArray) (m : USize) (ndl : @& ByteArray) : ByteArray :=
   (List.range m.toNat).foldl (init := ByteArray.empty) fun acc j =>
     Column.pushBits acc (findBit n hay (Column.bitAt ndl j)).toUInt64 8
@@ -158,7 +152,6 @@ def memberBitsBitmap (m : USize) (xs : @& ByteArray) (n : USize) (hay : @& ByteA
       then byte ||| (1 <<< t.toUInt8) else byte)
 
 /-- `x in y` at booleans on both sides as the `u1` Frame of Reference column `Coc.bools` lays out. -/
-@[extern "qlean_search_member_bits"]
 def memberBits (m : USize) (xs : @& ByteArray) (n : USize) (hay : @& ByteArray) : ByteArray × ByteArray :=
   Coc.bools m.toNat (Column.bitAt (memberBitsBitmap m xs n hay))
 
@@ -168,13 +161,11 @@ Measured — `where 101b` is `0 2`, and `where 000b` and `where 0#0b` are both t
 Only the boolean form is a kernel. Over a vector of *counts* `where` has to raise `'limit` for a
 null, a negative count and a result that would exceed 2^31-1 — `Eval.whereLongs` carries all three —
 and a kernel returning a `ByteArray` has no way to say which of them happened. -/
-@[extern "qlean_search_where_bits"]
 def whereBits (n : USize) (bits : @& ByteArray) : ByteArray :=
   ((List.range n.toNat).filter (Column.bitAt bits)).foldl (init := ByteArray.empty) fun acc i =>
     Column.pushBits acc (Int64.ofNat i).toUInt64 8
 
 /-- The least index whose symbol bytes are `ndl`, and the symbol count when there is none. -/
-@[extern "qlean_search_find_sym_scalar"]
 def findSymScalar (blob : @& ByteArray) (offs : @& Array Nat) (ndl : @& ByteArray) : USize :=
   let n := offs.size - 1
   (((List.range n).find? fun i => (Column.symKey blob offs i).data == ndl.data).getD n).toUSize
@@ -239,7 +230,6 @@ count: `0, i₁, …, n`, one entry per run and then a terminator, as little-end
 start and the two agree on where a group begins.
 
 An empty payload answers `,0`: no run, and the terminator that says so. -/
-@[extern "qlean_search_run_starts"]
 def runStarts (w : USize) (float : Bool) (hay : @& ByteArray) : ByteArray :=
   let w := w.toNat
   let n := hay.size / w
@@ -249,7 +239,6 @@ def runStarts (w : USize) (float : Bool) (hay : @& ByteArray) : ByteArray :=
 
 /-- `runStarts` over an interned column's ids. The dictionary is distinct, so two elements are equal
 exactly when their ids are and no symbol is compared at all. -/
-@[extern "qlean_search_run_starts_ids"]
 def runStartsIds (n w : USize) (ids : @& ByteArray) : ByteArray :=
   Column.pushBits ((List.range n.toNat).foldl (init := ByteArray.empty) fun acc i =>
     if i == 0 || Column.idAt ids w.toNat i != Column.idAt ids w.toNat (i - 1)
@@ -258,7 +247,6 @@ def runStartsIds (n w : USize) (ids : @& ByteArray) : ByteArray :=
 /-- `runStarts` over a bitmap of `n` booleans, `Column.bitAt`'s layout: a run starts at `0` and
 wherever a bit differs from the one before it. The C reads a word at a time, the set bits of
 `x ^ (x << 1)`, where a byte widened per element was 8x the bytes read. -/
-@[extern "qlean_search_run_starts_bits"]
 def runStartsBits (n : USize) (bits : @& ByteArray) : ByteArray :=
   Column.pushBits ((List.range n.toNat).foldl (init := ByteArray.empty) fun acc i =>
     if i == 0 || Column.bitAt bits i != Column.bitAt bits (i - 1)
