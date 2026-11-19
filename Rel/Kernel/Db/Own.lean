@@ -1,3 +1,4 @@
+import Rel.Kernel.Db.ObjectFile
 import Rel.Kernel.Sort
 import Rel.Kernel.Value
 
@@ -7,16 +8,6 @@ import Rel.Kernel.Value
 namespace Rel.Db
 
 open Rel
-
-/-- A column as `ownWrite` takes it: the header's fields and the constructor's parts. -/
-structure OwnFile where
-  code : UInt8
-  attr : UInt8
-  kind : UInt8
-  count : USize
-  /-- Enumeration domain, empty when the column is not a q enumeration. -/
-  domain : String
-  parts : Array ByteArray
 
 /-- A column's constructor kind and its parts, `rust/src/own.rs`'s numbering. A `syms` column is interned
 first: its `offs` is an `Array Nat` with no bytes to write, where an interned column's per-element
@@ -33,6 +24,21 @@ def ownParts (e : Ext.Enc X) : UInt8 × Array ByteArray :=
   | .gen _ => (5, #[])
   -- `ownFile` answers `none` for it: positions are never written, `n` is the other side's (PLAN 6.13)
   | .pos => (5, #[])
+
+/-- The `offs` of a dictionary blob, one entry past each NUL after the leading `0`: the field a file cannot hold. -/
+def dictOffs (dict : ByteArray) : Array Nat :=
+  dict.data.foldl (init := (#[0], 0)) (fun (o, i) z => (if z == 0 then o.push (i + 1) else o, i + 1)) |>.1
+
+/-- The constructor `ownParts` took apart, from the kind and the parts `ownMap` answers: each `ByteArray` is taken as
+it is, so a mapped part stays in the mapping; an `enum`'s `offs` is `dictOffs`, one pass over the dictionary. -/
+def ownEnc (kind : UInt8) (parts : Array ByteArray) : Option (Ext.Enc X) :=
+  match kind, parts.toList with
+  | 0, [b] => some (.bytes b)
+  | 1, [b] => some (.bits b)
+  | 2, [metadata, pack] => some (.foR metadata pack)
+  | 3, [metadata, pack, alp] => some (.alp metadata pack alp)
+  | 4, [dict, ids] => some (.enum dict (dictOffs dict) ids)
+  | _, _ => none
 
 /-- The file a value is written as when it is a column: a vector, an enumeration's indices under
 their domain's name, and either wearing an attribute. `none` is every other value, which keeps the

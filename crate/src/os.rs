@@ -22,7 +22,14 @@ pub fn errno() -> i32 { unsafe { *__errno_location() } }
 
 
 
+pub const O_RDONLY: i32 = 0;
 pub const O_WRONLY: i32 = 1;
+pub const PROT_READ: i32 = 1;
+pub const PROT_WRITE: i32 = 2;
+pub const MAP_PRIVATE: i32 = 2;
+pub const MAP_NORESERVE: i32 = 0x4000;
+pub const S_IFDIR: u32 = 0o040000;
+pub const EISDIR: i32 = 21;
 pub const O_CREAT: i32 = 0o100;
 pub const O_EXCL: i32 = 0o200;
 pub const O_CLOEXEC: i32 = 0o2000000;

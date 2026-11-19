@@ -24,6 +24,7 @@ qlean_k_scan
 qlean_k_scatter
 qlean_k_seen
 qlean_over_bytes
+qlean_own_map
 qlean_own_write
 qlean_scan
 qlean_search_bin
