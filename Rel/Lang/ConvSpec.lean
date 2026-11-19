@@ -100,7 +100,7 @@ def Tm.ConvOK (ρ : Val) : {A B : Obj} → Tm A B → Prop
   | _, _, _ => True
 
 theorem convTm_of_false {A B : Obj} {t : Tm A B} (h : t.dem = false) : convTm t = .ok (.conv t) := by
-  rw [convTm.eq_def, if_pos h]
+  rw [convTm.eq_def, if_pos h]; rfl
 
 theorem conv_false_den (ρ : Val) {A B : Obj} {t : Tm A B} (u : Tm B A) (hu : convTm t = .ok u) (h : t.dem = false) :
     u.den ρ = (t.den ρ)° ∧ ∀ ss, u.argDen ρ ss = (t.argDen ρ ss)° := by
