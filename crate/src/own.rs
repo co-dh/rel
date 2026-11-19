@@ -121,6 +121,10 @@ pub fn write(target: &CStr, code: u8, attr: u8, kind: u8, count: u64, domain: &[
     let Some(hl) = write_head(code, attr, kind, count, domain.len(), &len, &mut head, &mut off, &mut why) else {
         return Err(Fail::User(text(&buf)));
     };
+    // a Lean `String` is made from a C string, which a NUL would cut short: such a name could not be read back
+    if let Some(z) = domain.iter().position(|&b| b == 0) {
+        return Err(Fail::User(format!("a domain name with no NUL byte, found one at byte {}", z)));
+    }
     let mut segs: Vec<&[u8]> = vec![&head[..hl], domain];
     let mut at = hl + domain.len();
     for (k, p) in parts.iter().enumerate() {
@@ -135,7 +139,7 @@ pub fn write(target: &CStr, code: u8, attr: u8, kind: u8, count: u64, domain: &[
 
 
 pub struct OwnHead { pub n: u64, pub hdr: usize, pub np: usize,
-                     pub off: [usize; OWN_MAXPARTS], pub len: [usize; OWN_MAXPARTS], pub kind: u8 }
+                     pub off: [usize; OWN_MAXPARTS], pub len: [usize; OWN_MAXPARTS], pub code: u8, pub attr: u8, pub kind: u8 }
 pub const OWN_OLDEST: u8 = 3;
 pub fn le(m: &[u8], at: usize, w: usize) -> u64 {
     let mut b = [0u8; 8];
@@ -167,7 +171,7 @@ found kind {} with {} parts", kind, np));
 {} bytes", OWN_HEAD, hdr, size));
         return None;
     }
-    let mut h = OwnHead { n, hdr, np, off: [0; OWN_MAXPARTS], len: [0; OWN_MAXPARTS], kind };
+    let mut h = OwnHead { n, hdr, np, off: [0; OWN_MAXPARTS], len: [0; OWN_MAXPARTS], code: m[9], attr: m[10], kind };
     let mut end = hdr as u64;
     for k in 0..np {
         let at = OWN_HEAD + 16 * k;
@@ -190,6 +194,11 @@ bytes", k, at, l, off, size));
         h.off[k] = off as usize;
         h.len[k] = l as usize;
         end = off + l;
+    }
+    let d = &m[OWN_HEAD + 16 * np..hdr];
+    if core::str::from_utf8(d).is_err() || d.contains(&0) {
+        why.say(format_args!("byte {}: a domain name of {} bytes in UTF-8 with no NUL", OWN_HEAD + 16 * np, nl));
+        return None;
     }
     Some(h)
 }
@@ -310,9 +319,11 @@ pub fn check_syms(n: u64, p: [&[u8]; OWN_MAXPARTS], why: &mut Why) -> bool {
     }
     true
 }
-/// What `map` hands the Lean side: the header, part table and domain name copied out, and the mapping with each part's
-/// `(offset, length)` in it; `lean::sarrays_in` turns the parts into `ByteArray`s.
-pub struct Mapped { pub head: Vec<u8>, pub map: &'static mut [u8], pub spans: Vec<(usize, usize)> }
+/// What `map` hands the Lean side, `Db.OwnFile`'s fields: the header's, the domain name copied out (a Lean `String` has
+/// a header of its own in front of its bytes), and the mapping with each part's `(offset, length)` in it, which
+/// `lean::sarrays_in` turns into `ByteArray`s in place.
+pub struct Mapped { pub code: u8, pub attr: u8, pub kind: u8, pub n: u64, pub domain: String,
+                    pub map: &'static mut [u8], pub spans: Vec<(usize, usize)> }
 /// own.rs `qlean_own_map`: maps `path` (`MAP_PRIVATE`, so the header write of a part copies the page and never reaches the
 /// file) and checks it. The mapping is never unmapped, the lifetime rule of a compact region: a persistent object has no
 /// count to say when the last `ByteArray` into it is gone; a refused file is unmapped.
@@ -337,8 +348,9 @@ pub fn map(path: &CStr) -> Result<Mapped, Fail> {
         check(h.kind, h.n, core::array::from_fn(|k| if k < h.np { &s[h.off[k]..h.off[k] + h.len[k]] } else { none }), &mut why)
     });
     let Some(h) = h.filter(|_| ok) else { m.unmap()?; return Err(Fail::User(text(&buf))) };
-    let head = m.as_slice()[..h.hdr].to_vec();
-    Ok(Mapped { head, spans: (0..h.np).map(|k| (h.off[k], h.len[k])).collect(), map: m.leak() })
+    let domain = String::from_utf8(m.as_slice()[OWN_HEAD + 16 * h.np..h.hdr].to_vec()).expect("own::map: head checked the name");
+    Ok(Mapped { code: h.code, attr: h.attr, kind: h.kind, n: h.n, domain,
+                spans: (0..h.np).map(|k| (h.off[k], h.len[k])).collect(), map: m.leak() })
 }
 #[cfg(test)]
 mod tests {
@@ -389,6 +401,11 @@ mod tests {
         assert_eq!(err(&m), "part 0 at byte 24: 32 reserved bytes after byte 40 before its data, found offset 64");
         let mut m = good(); m[32] = 40;
         assert_eq!(err(&m), "part 0 at byte 24: 40 bytes from byte 72, the file is 96 bytes");
+        // a 2-byte domain name at byte 40, the part moved to 80 so the reserved bytes still fit
+        let mut m = good(); m.resize(104, 0); m[14] = 2; m[24] = 80; m[40] = 0xff;
+        assert_eq!(err(&m), "byte 40: a domain name of 2 bytes in UTF-8 with no NUL");
+        m[40] = b'a'; m[41] = 0;
+        assert_eq!(err(&m), "byte 40: a domain name of 2 bytes in UTF-8 with no NUL");
     }
 
     // expected values: the C of e16b3fd (/data/tmp/qrs/K26/diff.c: 40000 parts of every kind, mutated headers, 0 mismatches)
@@ -436,19 +453,21 @@ mod tests {
     // a kind 0 column written then mapped: the parts come back at their offsets, the file is the layout of the header note
     #[test] fn write_then_map() {
         let p = tmp("w.col");
-        write(&p, 7, 0, 0, 3, b"", &[b"abc"]).unwrap();
+        write(&p, 7, 2, 0, 3, b"dom", &[b"abc"]).unwrap();
         let m = map(&p).unwrap();
-        assert_eq!((m.head.len(), m.spans.len()), (40, 1));
+        assert_eq!((m.code, m.attr, m.kind, m.n, m.domain.as_str(), m.spans.len()), (7, 2, 0, 3, "dom", 1));
         assert_eq!(&m.map[m.spans[0].0..m.spans[0].0 + 3], b"abc");
         assert_eq!(m.spans[0].0 % 8, 0);
         let f = std::fs::read(p.to_str().unwrap()).unwrap();
-        assert_eq!(&f[..12], b"qleancol\x04\x07\x00\x00");
+        assert_eq!(&f[..12], b"qleancol\x04\x07\x02\x00");
         assert_eq!(f.len(), m.spans[0].0 + 3 + OWN_ROOM as usize);
     }
     #[test] fn write_refuses_and_fails() {
         let p = tmp("r.col");
         assert!(matches!(write(&p, 7, 0, 5, 3, b"", &[b"abc"]), Err(Fail::User(w)) if w.starts_with("a column of kind 0..4")));
         assert!(matches!(write(&p, 7, 0, 2, 3, b"", &[b"abc"]), Err(Fail::User(_))));
+        assert!(matches!(write(&p, 7, 0, 0, 3, b"a\0b", &[b"abc"]),
+                         Err(Fail::User(w)) if w == "a domain name with no NUL byte, found one at byte 1"));
         assert!(matches!(write(c"/data/tmp/relk-absent-dir/x", 7, 0, 0, 3, b"", &[b"abc"]), Err(Fail::Errno(os::ENOENT))));
         assert!(matches!(map(c"/data/tmp/relk-absent-dir/x"), Err(Fail::Errno(os::ENOENT))));
         assert!(matches!(map(c"/data/tmp"), Err(Fail::Errno(os::EISDIR))));

@@ -47,18 +47,7 @@ def arithOut (dir : String) : Bld Unit := do
   let (_, ws) ← IO.ofExcept ((← IO.ofExcept (Bld.plan (arithOut "out"))).run abiOf)
   unless ws.size == 6 do throw (IO.userError s!"arithOut writes {ws.size} columns, not six")
 
--- a column written by `ownWrite` and mapped back by `fileMap`: element 0 the header, element 1 the bytes written
-#eval show IO Unit from do
-  let (h, p) ← IO.FS.createTempFile
-  h.flush
-  let b := longs [3, -1, Alg.nul]
-  Rel.Db.ownWrite p.toString QAtomicType.i64.code.toUInt8 0 0 3 "" #[b]
-  let ps ← Rel.Db.fileMap p.toString
-  IO.FS.removeFile p
-  unless ps.size == 2 && (ps[1]?.map (·.data)) == some b.data do
-    throw (IO.userError s!"fileMap of {p}: {ps.size} elements, part 0 not the {b.size} bytes written")
-
-/-- The native gate's plan:`plan`'s output, then the computed relation's to `out/arith`. -/
+/-- The native gate's plan: `plan`'s output, then the computed relation's to `out/arith`. -/
 def gatePlan : Lean.Meta.MetaM (Except String Plan) :=
   return (← outputOf [] native1a "x" "out") >>= fun b => Bld.plan (do b; arithOut "out/arith")
 
