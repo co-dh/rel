@@ -27,11 +27,12 @@ import Rel.Programs.SudokuPC
 import Rel.Programs.SudokuPC9
 import Rel.Programs.Wumpus
 
-/-! The regression check of the generated code: every closed definition of every registered program, the constant
-    `rel_program` generated for it (`GenK`), against the baseline `compile-diff.json` beside this file, by name. The
-    baseline was written by the deleted `compile` (`Tm.gen`). A definition's result is its status (`ok`, or why the
-    constant vouches for nothing) and, where ok, its table as a SET of rows read as values (`rowsOf`), so a body
-    that moves from `Obj.lt` order to `kasc` order, or to another encoding, reads the same.
+/-! A regression pin of the generated code's results, with no independent oracle: every closed definition of every
+    registered program, the constant `rel_program` generated for it (`GenK`), against the pin `compile-diff.json`
+    beside this file, by name. The pin is an earlier run's output, so a difference says a result CHANGED, and a
+    match says nothing about whether it is right. A definition's result is its status (`ok`, or why the constant
+    vouches for nothing) and, where ok, its table as a SET of rows read as values (`rowsOf`), so a body that moves
+    from `Obj.lt` order to `kasc` order, or to another encoding, reads the same.
 
     `REL_COMPILE_DIFF_WRITE=1` regenerates the baseline from the current run instead of comparing; the file is
     never edited by hand. -/
@@ -132,7 +133,9 @@ run_cmd do
   for (nm, _) in base.toList do
     unless run.contains nm do bad := bad.push s!"`{nm}`: in the baseline, not in the run"
   unless bad.isEmpty do
-    throwError "TestCompile: {bad.size} definitions differ from {path}:\n{"\n".intercalate bad.toList}"
-  logInfo m!"every definition matches {path}"
+    throwError "TestCompile: {bad.size} definitions changed since the pin {path} (a regression pin, no oracle: \
+      read each change, and regenerate with `make compile-diff-write` only where the new result is the right one):\
+      \n{"\n".intercalate bad.toList}"
+  logInfo m!"every definition's result is unchanged from the pin {path} (a regression pin, not a check of correctness)"
 
 end Rel.Lang.TestCompile

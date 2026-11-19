@@ -46,14 +46,15 @@ build: main-only
 	$(GATE)
 	CAP_MEM_MB=$(MEM) $(CAP) $(LAKE) build RelCore RelKernel RelRun Rel rel-native
 
-# compile agrees with the code rel_program generated, on every closed definition of every registered program, and each
-# definition's status and set of rows equal test/compile-diff.json's, by name. `lake lean` builds the imports only and
-# elaborates the gate every time: an olean of it would be up to date after the baseline changed.
+# A regression pin, not a correctness check: each closed definition of every registered program, as the constant
+# rel_program generated computes it (`expanded`), has the status and set of rows test/compile-diff.json pins, by name.
+# The pin is an earlier run's output and nothing else computes the rows, so red means changed, green not right.
+# `lake lean` builds the imports only and elaborates the gate every time: an olean would survive a new pin.
 compile-diff: main-only
 	$(GATE)
 	CAP_MEM_MB=$(MEM) $(CAP) $(LAKE) lean $(CURDIR)/test/TestCompile.lean
 
-# regenerates test/compile-diff.json from the current run; read the diff before committing it
+# re-pins test/compile-diff.json to the current run; read the diff before committing it, since nothing else checks it
 compile-diff-write: main-only
 	$(GATE)
 	REL_COMPILE_DIFF_WRITE=1 CAP_MEM_MB=$(MEM) $(CAP) $(LAKE) lean $(CURDIR)/test/TestCompile.lean

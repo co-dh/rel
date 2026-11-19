@@ -126,7 +126,7 @@ pub fn col_bits(c: &crate::coc::Coc, n: usize) -> Vec<u8> {
     out
 }
 
-/// reduce.rs `qlean_bit_rows_over` past the unboxing: per row of `w` bits, the AND (`all`) or OR of the rows
+/// `qlean_k_bitrows` past its checks: per row of `w` bits, the AND (`all`) or OR of the rows
 /// `idx[offs[g] .. offs[g + 1]]` of `m`, into `out`; threaded (`bit_rows_pass`).
 pub fn bit_rows(run: Runner, all: bool, w: usize, offs: &[i64], idx: &[i64], m: &[u8], out: &mut [u8]) {
     let ng = offs.len().saturating_sub(1);
