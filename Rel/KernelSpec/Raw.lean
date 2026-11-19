@@ -51,12 +51,12 @@ namespace Rel.Verify
 
 open Rel Rel.Column
 
-theorem size_raw {t : QAtomicType} (n : USize) (e : Ext.Enc X) (hw : Enc.WF t n e) (hb : t ≠ .boolean)
-    (hs : t ≠ .symbol) (hn : t ≠ .general) : (Enc.raw t n e).size = n.toNat := by
+theorem size_raw {t : QAtomicType} (n : USize) (e : Ext.Enc X) (hw : Enc.WF t n e) (hb : t ≠ .u1)
+    (hs : t ≠ .sym) (hn : t ≠ .general) : (Enc.raw t n e).size = n.toNat := by
   cases e <;> cases t <;> simp_all [Enc.raw, Enc.WF, QAtomicType.width]
 
 /-- `atomOfBits` at a type of width `w` reads only the low `8 * w` bits. -/
-theorem atomOfBits_mod {t : QAtomicType} {w : Nat} (ht : t.width = some w) (hb : t ≠ .boolean)
+theorem atomOfBits_mod {t : QAtomicType} {w : Nat} (ht : t.width = some w) (hb : t ≠ .u1)
     (v : UInt64) : atomOfBits t (UInt64.ofNat (v.toNat % 2 ^ (8 * w))) (QAtomicType.ne_general_of_width ht) = atomOfBits t v (QAtomicType.ne_general_of_width ht) := by
   have h8 : (UInt64.ofNat (v.toNat % 2 ^ 8)).toUInt8 = v.toUInt8 := UInt8.toNat_inj.1 (by simp)
   have h16 : (UInt64.ofNat (v.toNat % 2 ^ 16)).toUInt16 = v.toUInt16 := UInt16.toNat_inj.1 (by simp)
@@ -116,7 +116,7 @@ theorem bitsAt_extract (s : ByteArray) {a m o w : Nat} (h : a + o + w ≤ m) :
 /-- **The foR round trip.** `Enc.raw` cannot tell `Coc.encodeAt` at any block size `2 ^ lg` the layout admits
 (`6 ≤ lg ≤ 16`) from the dense payload it encodes, read at that payload's width `w`, at any count up to `x`'s: element
 `i`'s base plus its residual is `x`'s element sign-extended (`foRBits_encode`), cut back to its `8 * w` bits. -/
-theorem raw_encodeAt (t : QAtomicType) (w : Nat) (ht : t.width = some w) (hb : t ≠ .boolean)
+theorem raw_encodeAt (t : QAtomicType) (w : Nat) (ht : t.width = some w) (hb : t ≠ .u1)
     (lg : Nat) (hlg : 6 ≤ lg ∧ lg ≤ 16) (x : ByteArray) (n : USize) (hn : n.toNat ≤ x.size / w) :
     Enc.raw (X := X) t n (.foR (Kernel.Coc.encodeAt lg w.toUSize x).1 (Kernel.Coc.encodeAt lg w.toUSize x).2) =
       Enc.raw (X := X) t n (.bytes x) := by

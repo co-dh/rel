@@ -57,7 +57,10 @@ impl<'a> Coc<'a> {
     pub fn get(&self, i: usize) -> i64 {
         let (b, j) = (i >> self.meta.lg, i & (self.meta.blk() - 1));
         if let Some(e) = self.exc.filter(|e| !e.pos.is_empty()) {
-            for x in e.off[b] as usize..e.off[b + 1] as usize { if e.pos[x] as usize == j { return self.exc(x) } }
+            let r = e.off[b] as usize..e.off[b + 1] as usize;
+            // the first patch at `j`, Lean `foRExc`'s `find?`: in ascending positions it is the only one
+            let x = if e.asc { e.pos[r.clone()].binary_search(&(j as u16)).ok().map(|k| r.start + k) } else { r.clone().find(|&x| e.pos[x] as usize == j) };
+            if let Some(x) = x { return self.exc(x) }
         }
         let p = self.pack.get(self.meta.off[b] as usize..).unwrap_or(&[]);
         self.frame(b).wrapping_add(res_get_in(p, self.meta.width[b], j, p.len())) as i64
@@ -114,17 +117,6 @@ impl<'a> Meta<'a> {
         for (o, &w) in off[..nblk].iter_mut().zip(&width[..nblk]) { *o = at; at += ((1u64 << lg) * w as u64) / 8 }
         at
     }
-}
-/// coc.rs `width_exc`: from the histogram `h` of the block's residual bit lengths, the width that minimises
-/// residual plus patch bytes, and the patch count at it.
-pub fn width_exc(h: &[u32], nnul: usize, esz: usize, nb: usize) -> (u8, u32) {
-    let (mut best, mut e, mut bw, mut ne) = (usize::MAX, nnul + h[1..=64].iter().map(|&x| x as usize).sum::<usize>(), 64u8, 0u32);
-    for w in 0..=64usize {
-        if w > 0 { e -= h[w] as usize } // e: the residuals wider than w, and the nulls
-        let cost = (nb * w).div_ceil(8) + e * (2 + esz);
-        if cost <= best { (best, bw, ne) = (cost, w as u8, e as u32) }
-    }
-    (bw, ne)
 }
 /// coc.rs `res_cmp2`: `nb` decoded pairs compared by `op` into the bit mask `out`.
 pub fn res_cmp2(x: &[i64], y: &[i64], op: i32, out: &mut [u64]) {
@@ -387,16 +379,6 @@ mod tests {
     use super::*;
     // expected values: /data/tmp/qrs/A1/ex.c (coc.rs's own functions at 152d98f), run; the 24600-case C differential
     // is /data/tmp/qrs/A1/{gen.c,diff_test.rs}
-    #[test] fn width_exc_matches_c() {
-        let mut h = [0u32; 65];
-        assert_eq!(width_exc(&h, 0, 8, 1024), (0, 0));
-        h[3] = 1024;
-        assert_eq!(width_exc(&h, 0, 8, 1024), (3, 0));
-        h = [0; 65]; h[8] = 1;
-        assert_eq!(width_exc(&h, 0, 1, 8), (0, 1));
-        h = [0; 65]; h[2] = 3; h[40] = 1;
-        assert_eq!(width_exc(&h, 2, 2, 100), (0, 6));
-    }
     #[test] fn load_run_fills_both_ends_and_a_run_off_one_end() {
         let (z, base, off, width) = ([0i64], [7i64], [0u64], [0u8]);
         let meta = Meta { lg: crate::DEFAULT_LG, base: &base, maxv: &z, off: &off, bsum: &z, width: &width, sumnul: 0, sumn: 0, n: 3, nblk: 1, mblk: 1 };

@@ -60,7 +60,7 @@ def arrText (item : Bool) (xs : List String) : String :=
 /-- An element printed with the program's names, as a literal's side reads it (§c): a named element by its name,
     a number as itself, an array by `arrText`, its elements as items. -/
 def showEl (objs : Objs) (item : Bool) : OTy → (A : Obj) → A.El → String
-  | .base n, .atom .long, x =>
+  | .base n, .atom .i64, x =>
     let v : Int64 := x
     match objs.lookup n with
     | some i => if i.range.isSome then toString v else (i.elems[v.toInt.toNat]?).getD (toString v)
@@ -74,10 +74,10 @@ def showEl (objs : Objs) (item : Bool) : OTy → (A : Obj) → A.El → String
 /-- The order a print lists elements in: a number by its value (`-2` before `-1`, `2` before `10`), a named
     element by its name, a pair and an array lexicographically, `inl` before `inr`. -/
 def cmpEl (objs : Objs) : OTy → (A : Obj) → A.El → A.El → Ordering
-  | .base n, .atom .long, x, y =>
+  | .base n, .atom .i64, x, y =>
     let (v, w) : Int64 × Int64 := (x, y)
     if ((objs.lookup n).bind (·.range)).isSome then compare v.toInt w.toInt
-    else compare (showEl objs false (.base n) (.atom .long) x) (showEl objs false (.base n) (.atom .long) y)
+    else compare (showEl objs false (.base n) (.atom .i64) x) (showEl objs false (.base n) (.atom .i64) y)
   | .prod a b, .prod A B, (x, y), (x', y') => (cmpEl objs a A x x').then (cmpEl objs b B y y')
   | .sum a _, .sum A _, .inl x, .inl y => cmpEl objs a A x y
   | .sum _ b, .sum _ B, .inr x, .inr y => cmpEl objs b B x y
@@ -585,9 +585,9 @@ def valsE : (A : Obj) → (n : USize) → Vals A n → Except String Lean.Expr
   | .prod a b, n, x => do
     pure (g ``Gen.pairV #[oE a, oE b, uE n, ← valsE a n x.1, ← valsE b n x.2])
   | .arr b, n, ⟨m, lo, hi, p⟩ => do
-    pure (g ``Gen.arrV #[oE b, uE n, uE m, ← atomE .long n lo, ← atomE .long n hi, ← valsE b m p])
+    pure (g ``Gen.arrV #[oE b, uE n, uE m, ← atomE .i64 n lo, ← atomE .i64 n hi, ← valsE b m p])
   | .sum a b, n, ⟨l, r, tag, idx, x, y⟩ => do
-    pure (g ``Gen.sumV #[oE a, oE b, uE n, uE l, uE r, ← atomE .boolean n tag, ← atomE .long n idx,
+    pure (g ``Gen.sumV #[oE a, oE b, uE n, uE l, uE r, ← atomE .u1 n tag, ← atomE .i64 n idx,
       ← valsE a l x, ← valsE b r y])
 
 def relE {A B : Obj} (R : Tab A B) : Except String Lean.Expr := do

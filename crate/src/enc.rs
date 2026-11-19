@@ -22,6 +22,9 @@ pub struct EncMeta<'a> {
     pub nexc: &'a mut u32,
     /// ALP: the block's exponent
     pub exp: Option<&'a mut i8>,
+    /// whether the block may patch, Lean `Coc.encodeAt`'s `patch && n < 2 ^ 32`: a column of `2 ^ 32` elements or more
+    /// has no patch list, its block offsets being `u32`
+    pub patch: bool,
 }
 /// Block `b`'s output region in a column being written: residuals and patch slots, from the layout's offsets.
 pub struct EncPack<'a> {
@@ -32,9 +35,6 @@ pub struct EncPack<'a> {
     /// `exc_off[b] .. exc_off[b + 1]`
     pub pos: &'a mut [u16], pub raw: &'a mut [u8],
 }
-/// `frame_pick`'s answer: the frame, the residual width, the patch count at it.
-#[derive(Clone, Copy, Debug, PartialEq)]
-pub struct Frame { pub fo: i64, pub wo: u8, pub neo: u32 }
 
 // ---- A7: coc.rs ----
 /// `COC_NUL` of the element type: `INT16_MIN`, `INT32_MIN`, `INT64_MIN`; `u8` has none, so `INT64_MIN` there never matches.
@@ -74,75 +74,18 @@ pub fn encode_meta_blk<T: Elt>(m: &mut EncMeta, x: &[T], nb: usize) {
     *m.base = mn; *m.maxv = mx; *m.bsum = s;
     *m.width = crate::bits::width_for((mx as u64).wrapping_sub(mn as u64));
 }
-/// coc.rs `frame_pick`: from the sorted sample `smp`, the frame and width minimising bytes at `cost` per patch;
-/// `None` = keep the plain frame.
-pub fn frame_pick<T: Elt>(smp: &mut [i64], nb: usize, nnul: usize, cost: usize, mn: i64, x: &[T]) -> Option<Frame> {
-    let (k, esz, bl) = (smp.len(), size_of::<T>(), |r: i64| crate::bits::width_for(r as u64) as usize);
-    if k == 0 { return None }
-    smp.sort_unstable();
-    let c = smp[k / 2];
-    // lifting the frame pays only when the minimum lies far below the bulk
-    if bl(c.wrapping_sub(mn)) <= bl(smp[k * 3 / 4].wrapping_sub(smp[k / 4])) + 2 { return None }
-    let v = || x[..nb].iter().map(|v| v.i()).filter(|&v| v != nul::<T>());
-    let (mut lo, mut hi) = ([0u32; 65], [0u32; 65]);
-    for v in v() { if v < c { lo[bl(c.wrapping_sub(v))] += 1 } else { hi[bl(v.wrapping_sub(c))] += 1 } }
-    for i in 1..=64 { lo[i] += lo[i - 1]; hi[i] += hi[i - 1] }
-    let (mut best, mut ba) = (cost, 65);
-    for w in 0..64usize {
-        let m = w.saturating_sub(1);
-        for (pa, pb) in [(0, w), (m, m), (w, 0)] {
-            let bytes = (nb * w + 7) / 8 + (nb - lo[pa] as usize - hi[pb] as usize) * (2 + esz);
-            if bytes < best { best = bytes; ba = pa }
-        }
-    }
-    if ba == 65 { return None }
-    let f = v().filter(|&v| v >= c || bl(c.wrapping_sub(v)) <= ba).fold(i64::MAX, i64::min);
-    let (mut h, mut below) = ([0u32; 65], 0usize);
-    for v in v() { if v < f { below += 1 } else { h[bl(v.wrapping_sub(f))] += 1 } }
-    let (w, ne) = crate::cocops::width_exc(&h, nnul + below, esz, nb);
-    if (nb * w as usize + 7) / 8 + ne as usize * (2 + esz) >= cost { return None }
-    Some(Frame { fo: f, wo: w, neo: ne })
-}
-
 // ---- A8: coc.rs ----
-/// coc.rs `encode_meta_exc_blk`: block metadata with patches; answers the patch count. The frame goes to `frm`. The
-/// writer no longer takes it (`for_blk`); it builds the patched columns a reader still has to read, in the tests.
-pub fn encode_meta_exc_blk<T: Elt>(m: &mut EncMeta, x: &[T], nb: usize) -> u32 {
-    let (x, nul, esz) = (&x[..nb], nul::<T>(), size_of::<T>());
-    let frm = m.frm.as_deref_mut().expect("encode_meta_exc_blk: the column keeps no frames");
-    let v = || x.iter().map(|v| v.i()).filter(|&v| v != nul);
-    let nnul = x.len() - v().count();
-    *frm = 0;
-    if nnul == nb { // all null: the null is the frame at width 0, and nothing is patched
-        (*m.base, *m.maxv, *m.bsum, *m.width, *m.nexc) = (nul, nul, 0, 0, 0);
-        return 0;
-    }
-    let (mn, mx) = v().fold((i64::MAX, i64::MIN), |(a, b), v| (a.min(v), b.max(v)));
-    let mut h = [0u32; 65];
-    for v in v() { h[crate::bits::width_for((v as u64).wrapping_sub(mn as u64)) as usize] += 1 }
-    (*m.base, *m.maxv, *m.bsum) = (mn, mx, v().fold(0i64, i64::wrapping_add));
-    let (mut w, mut ne) = crate::cocops::width_exc(&h, nnul, esz, nb);
-    if w > 1 { // frame_pick is asked only where the median sits high in the window
-        let mut smp = [0i64; 5];
-        let mut k = 0;
-        for q in 0..5 { let v = x[q * (nb - 1) / 4].i(); if v != nul { smp[k] = v; k += 1 } }
-        if let Some(f) = frame_pick(&mut smp[..k], nb, nnul, (nb * w as usize + 7) / 8 + ne as usize * (2 + esz), mn, x) {
-            (w, ne, *frm) = (f.wo, f.neo, (f.fo as u64).wrapping_sub(mn as u64));
-        }
-    }
-    (*m.width, *m.nexc) = (w, ne);
-    ne
-}
-/// coc.rs `pack_exc_blk`: residuals and the block's `ne` patches (an element the frame and width cannot hold, or a
-/// null), their slots set to the frame.
+/// coc.rs `pack_exc_blk`: residuals and the block's `ne` patches — an element below the frame or past `2 ^ width` above
+/// it, Lean `Coc.outside` — their slots set to the frame.
 pub fn pack_exc_blk<T: Elt>(p: &mut EncPack, x: &[T], ne: u32) {
-    let (nul, base, w, x) = (nul::<T>(), p.frame as i64, p.width, &x[..p.nb]);
+    let (base, w, x) = (p.frame as i64, p.width, &x[..p.nb]);
     if ne == 0 { return pack_block(p.res, x, p.nb, base, w) }
     let (mut ys, mut k) = (crate::pod::Scr::<T>::filled(p.nb, T::wrap(base as u64)), 0);
     let y: &mut [T] = &mut ys; // the one deref, outside the element loop
     for (i, &v) in x.iter().enumerate() {
+        // below the frame, `r` wraps past every width but 64, where the frame is the minimum
         let r = (v.i() as u64).wrapping_sub(base as u64);
-        if v.i() == nul || (w < 64 && r >> w != 0) {
+        if w < 64 && r >> w != 0 {
             let mut e = [v];
             p.raw[k * size_of::<T>()..][..size_of::<T>()].copy_from_slice(crate::pod::bytes_mut(&mut e));
             p.pos[k] = i as u16;
@@ -167,13 +110,85 @@ pub fn for_meta(m: &mut EncMeta, x: &[u8], width: usize, nb: usize) {
     fn go<T: Elt>(m: &mut EncMeta, x: &[u8], nb: usize) { for_blk(m, elts::<T>(x, "coc_enc_for_meta"), nb); }
     crate::by_width!(int width, go(m, x, nb))
 }
-/// The writer's FoR block, Lean `Coc.blockOf`: the width of `max - min`, no frame and no patch; answers the patch count, 0.
-/// Not `encode_meta_exc_blk`'s cheapest width with patches: `Coc.encode` is the spec, and it writes neither.
+/// The writer's FoR block, Lean `Coc.planOf`: of the widths `d` in `0 ..= W` (`W` the bit length of `max - min`), the
+/// one whose cost `⌈nb·d/8⌉ + (2 + esz)·patches` is least, the narrower on a tie, at the frame patching fewest, the
+/// lowest of those; answers the patch count. With `m.patch` off, `W` from the minimum, which patches nothing.
 pub fn for_blk<T: Elt>(m: &mut EncMeta, x: &[T], nb: usize) -> u32 {
     encode_meta_blk(m, x, nb);
-    if let Some(f) = m.frm.as_deref_mut() { *f = 0 }
-    *m.nexc = 0;
-    0
+    let (mn, top, esz) = (*m.base, *m.width as usize, size_of::<T>());
+    if !m.patch {
+        *m.frm.as_deref_mut().expect("for_blk: a Frame of Reference column keeps its frames") = 0;
+        *m.nexc = 0;
+        return 0
+    }
+    let (d, f, np) = plan(&x[..nb], mn, top, esz);
+    *m.frm.as_deref_mut().expect("for_blk: a Frame of Reference column keeps its frames") = (f as u64).wrapping_sub(mn as u64);
+    (*m.width, *m.nexc) = (d as u8, np as u32);
+    np as u32
+}
+/// `Coc.planOf`'s width, frame and patch count for the keys `x` of minimum `mn`, `top` the bit length of their range:
+/// the least `(cost, d)`. A width is searched with `frame_at` only while a lower bound on its cost does not already
+/// lose to the best found, so a random block costs a histogram and no sort.
+fn plan<T: Elt>(x: &[T], mn: i64, top: usize, esz: usize) -> (usize, i64, usize) {
+    let (nb, pc) = (x.len(), 2 + esz);
+    let bits = |d: usize| (nb * d).div_ceil(8);
+    // lo[d] <= the patches at width d. Residuals in buckets of 2 ^ b, at most 64: a window of 2 ^ d >= 2 ^ b from a
+    // key spans at most `span` buckets, so leaves at least the keys outside the fullest run of `span`
+    let b = top.saturating_sub(6);
+    let nbk = 1usize << (top - b);
+    let mut h = [0usize; 65];
+    for v in x { h[1 + ((v.i() as u64).wrapping_sub(mn as u64) >> b) as usize] += 1 }
+    for k in 1..=nbk { h[k] += h[k - 1] } // prefix sums
+    let mut lo = [0usize; 65];
+    for d in b..top {
+        let span = ((((1u64 << d) + (1u64 << b) - 2) >> b) as usize + 1).min(nbk);
+        lo[d] = nb - (span..=nbk).map(|e| h[e] - h[e - span]).max().unwrap_or(nb);
+    }
+    for d in 0..b { lo[d] = lo[b] } // patches only grow as the width narrows
+    // the widest width patches nothing at frame `mn`; widths `a .. z` are still open
+    let (mut best, mut pick, mut a, mut z, mut up) = (bits(top), (top, mn, 0usize), 0, top, false);
+    let mut s: Option<crate::pod::Scr<u64>> = None;
+    loop {
+        let open = |d: usize, lo: &[usize; 65]| { let c = bits(d) + lo[d] * pc; c < best || c == best && d < pick.0 };
+        while a < z && !open(a, &lo) { a += 1 }
+        while z > a && !open(z - 1, &lo) { z -= 1 }
+        if a >= z { return pick }
+        // alternate ends: a narrow width lowers `best`, a wide one's patches bound every narrower width's
+        let d = if up { a } else { z - 1 };
+        up = !up;
+        let s = s.get_or_insert_with(|| {
+            let mut s = crate::pod::Scr::<u64>::new(nb);
+            for (o, v) in s.iter_mut().zip(x) { *o = (v.i() as u64).wrapping_sub(mn as u64) }
+            s.sort_unstable(); // an LSD radix sort measured no faster
+            s
+        });
+        // `need` patches close `d`. If every `nb - need + 1` consecutive sorted keys spread at least `2 ^ e`, no window
+        // of `2 ^ e` holds that many, so width `e` patches at least `need`: `need` subtractions close every such `e`
+        let need = if d < pick.0 { (best - bits(d)) / pc + 1 } else { (best - bits(d)).div_ceil(pc) };
+        if need <= nb {
+            let k = nb - need;
+            let spread = (0..need).map(|i| s[i + k] - s[i]).min().unwrap_or(0);
+            if spread >> d != 0 {
+                for e in 0..64 - spread.leading_zeros() as usize { lo[e] = lo[e].max(need) }
+                continue
+            }
+        }
+        let (f, np) = frame_at(&s[..], d);
+        let c = bits(d) + np * pc;
+        if c < best || c == best && d < pick.0 { (best, pick) = (c, (d, (f as i64).wrapping_add(mn), np)) }
+        for e in 0..=d { lo[e] = lo[e].max(np) }
+    }
+}
+/// `Coc.frameAt` over the sorted residuals `s`: a window of `2 ^ d` from each distinct one, its far end `j` only moving
+/// forward; answers the frame's residual and the patches it leaves.
+fn frame_at(s: &[u64], d: usize) -> (u64, usize) {
+    let (nb, mut best, mut j) = (s.len(), (s[0], usize::MAX), 0);
+    for i in 0..nb {
+        if i > 0 && s[i] == s[i - 1] { continue }
+        while j < nb && (d >= 64 || (s[j] - s[i]) >> d == 0) { j += 1 }
+        if nb - (j - i) < best.1 { best = (s[i], nb - (j - i)) }
+    }
+    best
 }
 /// coc.rs `coc_enc_for_pack`: `p.pos` holds the block's patches, `exc_off[b + 1] - exc_off[b]` of them.
 pub fn for_pack(p: &mut EncPack, x: &[u8], width: usize) {
@@ -327,38 +342,23 @@ impl Producer for crate::blocks::Blocks<'_> {
         if self.span(b) == (lo, nb) { self.view(b, w, buf) } else { self.range(lo, nb, w, buf) }
     }
 }
-/// coc.rs `move_meta`: a moved block's metadata is its column's and its exception count is what the layout prefix-sums; the
-/// writer's own step would choose exactly these for the same elements. Else the ALP shortcuts (the sources' exponent where it
-/// leaves no more exceptions than they had), else the writer's own step. `x` is read only on the last two paths.
-pub fn move_meta_blk<'a>(mv: &(impl Producer + ?Sized), m: &mut EncMeta, x: impl FnOnce() -> &'a [u8], width: usize, nb: usize) {
+/// coc.rs `move_meta` then `move_pack`: block `m.b` of the producer `mv`, its metadata into `m`, then its residuals and patches
+/// into `pack(whole)` (asked once, after `m` is written; `whole` for a taken block's full `blk * width / 8` residual region),
+/// so whatever the producer computes for the block it computes once. A moved block's metadata, residuals and patch list are its
+/// column's (the positions are the block's own), which the writer's own step would choose for the same elements. Else the ALP
+/// shortcuts: the producer's decimals (`ints`), or the sources' exponent where it leaves no more exceptions than they had
+/// (`hint`); else the writer's own steps. `x` is read only on the last two paths.
+pub fn move_blk<'a, 'b>(mv: &(impl Producer + ?Sized), m: &mut EncMeta, pack: impl FnOnce(bool) -> EncPack<'b>, x: impl FnOnce() -> &'a [u8],
+                        nb: usize, width: usize) {
     use crate::alp::{alp_exc_at, alp_fin_blk, alp_meta_exp};
     let (b, alp) = (m.b, m.exp.is_some());
-    if let Some((f, pb)) = mv.take(b) { move_meta(m, &f, pb); return }
-    if alp {
-        let (mut d, mut ee) = (crate::pod::Scr::<i64>::new(nb), crate::pod::Scr::<i8>::new(nb));
-        if let Some(e) = mv.ints(b, nb, &mut d, &mut ee, None).filter(|&e| e >= 0) { *m.nexc = alp_fin_blk(m, e, &mut d, &ee, nb); return }
-    }
-    let x = x();
-    if let Some((e, lim)) = if alp { mv.hint(b).filter(|&(e, _)| e >= 0) } else { None } {
-        // the search's up to 19 trials an element were what re-encoding a part off the grid cost
-        let f64s = width != 4;
-        let kept = if f64s { alp_exc_at(elts::<f64>(x, "move_meta"), e, lim + 1) } else { alp_exc_at(elts::<f32>(x, "move_meta"), e, lim + 1) };
-        if kept <= lim {
-            *m.nexc = if f64s { alp_meta_exp(m, elts::<f64>(x, "move_meta"), nb, e) } else { alp_meta_exp(m, elts::<f32>(x, "move_meta"), nb, e) };
-            return;
-        }
-    }
-    meta_step(m, x, width, nb)
-}
-/// coc.rs `move_pack`: a moved block's residuals and its patch list, whose positions are the block's own and so move unchanged.
-/// `pack(whole)` is block `b`'s `EncPack`, asked once; `whole` for a taken block's full `blk * width / 8` residual region.
-pub fn move_pack_blk<'a, 'b>(mv: &(impl Producer + ?Sized), pack: impl FnOnce(bool) -> EncPack<'b>, x: impl FnOnce() -> &'a [u8], b: usize, nb: usize,
-                             width: usize, alp: bool) {
-    if let Some((f, pb)) = mv.take(b) { return move_pack(&mut pack(true), &f, pb, alp, width) }
+    if let Some((f, pb)) = mv.take(b) { move_meta(m, &f, pb); return move_pack(&mut pack(true), &f, pb, alp, width) }
     if alp {
         let (mut d, mut ee, mut raw) = (crate::pod::Scr::<i64>::new(nb), crate::pod::Scr::<i8>::new(nb), crate::pod::Scr::<u64>::new(nb));
         let raw = &mut crate::pod::bytes_mut(&mut raw)[..nb * width];
-        if mv.ints(b, nb, &mut d, &mut ee, Some(raw)).is_some_and(|e| e >= 0) {
+        if let Some(e) = mv.ints(b, nb, &mut d, &mut ee, Some(raw)).filter(|&e| e >= 0) {
+            // `alp_fin_blk` moves only the exceptions' decimals, which the pack sets to the base below
+            *m.nexc = alp_fin_blk(m, e, &mut d, &ee, nb);
             let p = &mut pack(false);
             let (base, wd) = (p.base, p.width);
             // an exception's decimal packs as the block's base, residual 0, its raw bits in the patch list
@@ -371,7 +371,16 @@ pub fn move_pack_blk<'a, 'b>(mv: &(impl Producer + ?Sized), pack: impl FnOnce(bo
             return;
         }
     }
-    pack_step(&mut pack(false), x(), width, alp)
+    let x = x();
+    let hinted = if alp { mv.hint(b).filter(|&(e, _)| e >= 0) } else { None }.is_some_and(|(e, lim)| {
+        // the search's up to 19 trials an element were what re-encoding a part off the grid cost
+        let f64s = width != 4;
+        let kept = if f64s { alp_exc_at(elts::<f64>(x, "move_meta"), e, lim + 1) } else { alp_exc_at(elts::<f32>(x, "move_meta"), e, lim + 1) };
+        if kept <= lim { *m.nexc = if f64s { alp_meta_exp(m, elts::<f64>(x, "move_meta"), nb, e) } else { alp_meta_exp(m, elts::<f32>(x, "move_meta"), nb, e) } }
+        kept <= lim
+    });
+    if !hinted { meta_step(m, x, width, nb) }
+    pack_step(&mut pack(false), x, width, alp)
 }
 
 #[cfg(test)]
@@ -392,14 +401,17 @@ mod a17_tests {
     fn meta(v: &[i64], width: usize) -> (u32, i64, i64, i64, u8, u64) {
         let (mut base, mut maxv, mut width_, mut bsum, mut nexc, mut frm) = (0, 0, 0, 0, 0, 7u64);
         let mut m = EncMeta { b: 0, base: &mut base, maxv: &mut maxv, width: &mut width_, bsum: &mut bsum, frm: Some(&mut frm),
-                              nexc: &mut nexc, exp: None };
+                              nexc: &mut nexc, exp: None, patch: true };
         let ne = blk_meta(&mut m, v, width);
         (ne, base, maxv, bsum, width_, frm)
     }
     #[test] fn blk_meta_at_each_width() {
         let u = [i16::MIN as i64, 3, 9, -2];
-        assert_eq!(meta(&u, 2), (0, -32768, 9, 10, 16, 0)); // the null is the minimum, as in `Coc.blockOf`
-        assert_eq!(meta(&[500, 100000, 100003], 4), (0, 500, 100003, 200503, 17, 0)); // the bit length, not a tie's wider width
+        // the null is the minimum, as in `Coc.blockOf`, and patched at 4 bytes: width 4 from frame -2, 2 + 4 bytes
+        assert_eq!(meta(&u, 2), (1, -32768, 9, 10, 4, 32766));
+        // width 2 from frame 100000 and width 17 from 500 both cost 7 bytes: the narrower wins
+        assert_eq!(meta(&[500, 100000, 100003], 4), (1, 500, 100003, 200503, 2, 99500));
+        // at 8 bytes a patch costs 10, more than width 16's 8 bytes
         assert_eq!(meta(&u, 8), (0, -32768, 9, -32758, 16, 0));
     }
     #[test] fn move_pack_zero_pads_a_short_pack() {
@@ -432,19 +444,26 @@ mod a7_tests {
         pack_block(&mut d, &x, 10, 5, 16);
         assert_eq!(d, [0, 0, 1, 0, 2, 0, 3, 0, 4, 0, 5, 0, 6, 0, 7, 0, 8, 0, 9, 0]);
     }
-    #[test] fn frame_pick_lifts_over_low_outliers() {
+    #[test] fn for_blk_lifts_over_low_outliers() {
+        // 24 zeros under 100000 .. 100255: width 8 from frame 100000 and 24 patches (1000 + 240 bytes), not width 17
+        // from 0 (2125 bytes)
         let x: [i64; 1000] = core::array::from_fn(|i| if i < 24 { 0 } else { 100000 + (i & 255) as i64 });
-        let mut smp = [100001, 100130, 100200, 100050, 100100];
-        // plain frame at the minimum 0: width 17, no patches
-        let cost = (1000 * 17 + 7) / 8;
-        assert_eq!(frame_pick(&mut smp, 1000, 0, cost, 0, &x), Some(Frame { fo: 100000, wo: 8, neo: 24 }));
-        assert_eq!(smp, [100001, 100050, 100100, 100130, 100200]);
+        let (mut base, mut maxv, mut width, mut bsum, mut nexc, mut frm) = (0, 0, 0, 0, 0, 0u64);
+        let mut m = EncMeta { b: 0, base: &mut base, maxv: &mut maxv, width: &mut width, bsum: &mut bsum, frm: Some(&mut frm),
+                              nexc: &mut nexc, exp: None, patch: true };
+        assert_eq!(for_blk(&mut m, &x, 1000), 24);
+        assert_eq!((base, width, frm), (0, 8, 100000));
+        // patching off (a column of `2 ^ 32` elements or more): width 17 from the minimum, no patch, no frame
+        let mut m = EncMeta { b: 0, base: &mut base, maxv: &mut maxv, width: &mut width, bsum: &mut bsum, frm: Some(&mut frm),
+                              nexc: &mut nexc, exp: None, patch: false };
+        assert_eq!(for_blk(&mut m, &x, 1000), 0);
+        assert_eq!((base, width, frm, nexc), (0, 17, 0, 0));
     }
     #[test] fn encode_meta_blk_nulls() {
         let x: [i16; 4] = [i16::MIN, 3, 9, -2];
         let (mut base, mut maxv, mut width, mut bsum, mut nexc) = (0, 0, 0, 0, 0);
         let mut m = EncMeta { b: 0, base: &mut base, maxv: &mut maxv, width: &mut width, bsum: &mut bsum, frm: None, nexc: &mut nexc,
-                              exp: None };
+                              exp: None, patch: true };
         encode_meta_blk(&mut m, &x, 4);
         // the null is the minimum, so the sum skips it
         assert_eq!((base, maxv, width, bsum), (i16::MIN as i64, 9, 16, 10));
@@ -464,9 +483,9 @@ mod tests {
         for b in 0..n.div_ceil(BLK) {
             let mut nx = 0;
             let mut m = EncMeta { b, base: &mut base[b], maxv: &mut maxv[b], width: &mut width[b], bsum: &mut bsum[b],
-                                  frm: Some(&mut frm[b]), nexc: &mut nx, exp: None };
+                                  frm: Some(&mut frm[b]), nexc: &mut nx, exp: None, patch: true };
             let nb = BLK.min(n - b * BLK);
-            ne[b] = encode_meta_exc_blk(&mut m, &x[b * BLK..], nb);
+            ne[b] = for_blk(&mut m, &x[b * BLK..], nb);
         }
         let (mut off, mut pack, mut at) = (vec![0u64; 2], vec![0u8; 2 * BLK * 8], 0usize);
         let (mut pos, mut raw) = (vec![0u16; ne.iter().sum::<u32>() as usize], vec![0u8; ne.iter().sum::<u32>() as usize * size_of::<T>()]);
@@ -485,13 +504,66 @@ mod tests {
         let nbk = n.div_ceil(BLK);
         let c = Coc { meta: crate::coc::Meta { lg: crate::DEFAULT_LG, base: &base, maxv: &maxv, off: &off, bsum: &bsum, width: &width, sumnul: 0, sumn: 0,
                                                 n, nblk: nbk, mblk: 2 },
-                      pack: &pack, exc: Some(crate::coc::Exc { off: &eo, pos: &pos, raw: &raw, esz: size_of::<T>() }),
+                      pack: &pack, exc: Some(crate::coc::Exc { off: &eo, pos: &pos, raw: &raw, esz: size_of::<T>(), asc: crate::coc::ascending(&eo, &pos) }),
                       fdelta: Some(&frm) };
         let mut out = vec![T::wrap(0); n];
         decode(&c, &mut out);
         assert_eq!(out, x);
         ne.iter().sum()
     }
+    /// The search `plan` replaced: `frame_at` at every width `0 ..= top`, the first least cost winning.
+    fn plan_ref<T: Elt>(x: &[T], top: usize) -> (usize, i64, usize) {
+        // the old `Coc.frameAt` over the sorted keys
+        fn frame(s: &[i64], d: usize) -> (i64, usize) {
+            let (nb, mut best, mut j) = (s.len(), (s[0], usize::MAX), 0);
+            for i in 0..nb {
+                if i > 0 && s[i] == s[i - 1] { continue }
+                while j < nb && (d >= 64 || (s[j] as u64).wrapping_sub(s[i] as u64) >> d == 0) { j += 1 }
+                if nb - (j - i) < best.1 { best = (s[i], nb - (j - i)) }
+            }
+            best
+        }
+        let mut s: Vec<i64> = x.iter().map(|v| v.i()).collect();
+        s.sort_unstable();
+        let (mut best, mut pick) = (usize::MAX, (0, s[0], 0));
+        for d in 0..=top {
+            let (f, np) = frame(&s, d);
+            let c = (x.len() * d).div_ceil(8) + np * (2 + size_of::<T>());
+            if c < best { (best, pick) = (c, (d, f, np)) }
+        }
+        pick
+    }
+    // `plan` against `plan_ref` on random, sorted, outlier, constant and few-valued blocks of every element type and
+    // of short lengths, where cost ties between widths are common
+    fn plans<T: Elt>(seed: u64) -> usize {
+        let mut s = seed;
+        let mut rnd = || { s ^= s << 13; s ^= s >> 7; s ^= s << 17; s };
+        let mut n = 0;
+        for k in 0..=64u32 {
+            for nb in [1usize, 2, 3, 5, 9, 17, 64, 100, 1000, BLK] {
+                for kind in 0..7 {
+                    let m = if k == 64 { u64::MAX } else { (1u64 << k) - 1 };
+                    let base = rnd();
+                    let mut x: Vec<u64> = (0..nb).map(|i| base.wrapping_add(match kind {
+                        0 => rnd() & m,                                        // random over 2 ^ k
+                        1 => rnd() & m & 7,                                    // few values: ties
+                        2 => 0,                                                // constant
+                        // a ramp with far outliers, as a scatter into timestamps: the histogram bounds only wide widths
+                        6 => if rnd() % 100 == 0 { rnd() & m } else { ((i as u64) << 4 | rnd() & 15) & m },
+                        _ => if rnd() % [0, 0, 0, 3, 40, 300][kind] == 0 { rnd() & m } else { rnd() & 15 }, // outliers
+                    })).collect();
+                    if kind == 4 { x.sort_unstable() }
+                    let x: Vec<T> = x.into_iter().map(T::wrap).collect();
+                    let (mn, mx) = x.iter().fold((i64::MAX, i64::MIN), |(a, b), v| (a.min(v.i()), b.max(v.i())));
+                    let top = crate::bits::width_for((mx as u64).wrapping_sub(mn as u64)) as usize;
+                    assert_eq!(plan(&x, mn, top, size_of::<T>()), plan_ref(&x, top), "k {k} nb {nb} kind {kind} x {:?}", &x.iter().map(|v| v.i()).collect::<Vec<_>>()[..nb.min(20)]);
+                    n += 1;
+                }
+            }
+        }
+        n
+    }
+    #[test] fn plan_is_the_full_search() { assert!(plans::<u8>(1) + plans::<i16>(2) + plans::<i32>(3) + plans::<i64>(4) + plans::<i64>(5) > 0) }
     #[test] fn decode_round_trip_with_patches() {
         let mut x: Vec<i64> = (0..BLK as i64 + 300).map(|i| 1_000_000 + (i * 37) % 500).collect();
         x[3] = -5; x[900] = 1 << 40; x[1100] = i64::MIN; x[1200] = 7;

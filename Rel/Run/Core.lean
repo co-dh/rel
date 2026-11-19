@@ -8,6 +8,7 @@
 import Rel.Kernel.Dep.Monadic
 import Rel.KernelSpec.Alp
 import Rel.KernelSpec.SymFind
+import Rel.KernelSpec.Gather
 
 open Rel.Ext
 
@@ -110,36 +111,36 @@ theorem packLongs_size (xs : List Int64) : (packLongs xs).size = 8 * xs.length :
 
 /-- The column of `f` at the positions `0 … n-1`, packed by Lean with no kernel and no `List`: the reference
     beside a kernel whose count is checked. -/
-def colFn (n : USize) (f : Fin n.toNat → Int64) : Arr .long n :=
+def colFn (n : USize) (f : Fin n.toNat → Int64) : Arr .i64 n :=
   Arr.mk (.bytes ((Array.ofFn f).foldl (fun b x => Column.pushBits b x.toUInt64 8) .empty)) (by
     show _ = n.toNat * 8; rw [← Array.foldl_toList]
     show (packLongs (Array.ofFn f).toList).size = n.toNat * 8; rw [packLongs_size]; simp [Nat.mul_comm])
 
-/-- `encodeAt lg` records `lg` in its metadata: `foRMeta_reads` at the block widths `blockOf_bounds` caps
+/-- `encodeAt lg` records `lg` in its metadata: `foRMeta_reads` at the block widths `planBlock_bounds` caps
     at 64, the step `Verify.foRWF_encode` takes inside its proof. -/
-theorem lgAt_encodeAt (lg : Nat) (hlg : lg < 2 ^ 64) (width : USize) (hw : width.toNat ≤ 8) (x : ByteArray) :
-    Column.lgAt (Kernel.Coc.encodeAt lg width x).1 = lg := by
+theorem lgAt_encodeAt (lg : Nat) (hlg : lg < 2 ^ 64) (width : USize) (hw : width.toNat ≤ 8) (x : ByteArray)
+    {patch : Bool} : Column.lgAt (Kernel.Coc.encodeAt lg width x patch).1 = lg := by
   have hKp : 0 < 2 ^ lg := Nat.two_pow_pos lg
   simp only [Kernel.Coc.encodeAt]
   generalize width.toNat = w at hw ⊢
   generalize x.size / w = n
   refine (Verify.foRMeta_reads lg hlg _ n _ fun b h => ?_).2.1
   simp only [Array.size_map, Array.size_range] at h
-  have := (Verify.blockOf_bounds (2 ^ lg) w n b hw x (b * 2 ^ lg) (Nat.le_refl _) (by omega)
-    (Verify.mul_lt_of_lt_cdiv hKp h)).2.2
   simp only [Array.getElem_map, Verify.getElem_range]
-  revert this; rcases Kernel.Coc.blockOf (2 ^ lg) w n b x with ⟨_, _, _, _⟩; simp; omega
+  exact Nat.lt_of_le_of_lt (Verify.planBlock_bounds lg w n hw _ x b (Verify.mul_lt_of_lt_cdiv hKp h)).2.2.1
+    (by decide)
 
 /-- `encode`'s metadata passes `Enc.WF`'s `lgOk`: it is `encodeAt` at `Column.lgEnc`. -/
 theorem lgOk_encode (width : USize) (hw : width.toNat ≤ 8) (x : ByteArray) :
     Column.lgOk (Kernel.Coc.encode width x).1 = true := by
-  rw [Kernel.Coc.encode, Column.lgOk, lgAt_encodeAt _ (by decide) _ hw]; rfl
+  rw [Kernel.Coc.encode, Column.lgOk, lgAt_encodeAt _ (by decide) _ hw (patch := true)]; rfl
 
 /-- `xs` Frame-of-Reference encoded is well formed at its count `n`: the checks' `foR` columns, which
     `decide` cannot evaluate through `Coc.encode`. -/
-theorem foRLongs_wf (xs : List Int64) {n : USize} (hn : xs.length = n.toNat) : Enc.WF (X := Empty) .long n
+theorem foRLongs_wf (xs : List Int64) {n : USize} (hn : xs.length = n.toNat) : Enc.WF (X := Empty) .i64 n
     (.foR (Kernel.Coc.encode 8 (packLongs xs)).1 (Kernel.Coc.encode 8 (packLongs xs)).2) := by
   have h := Verify.nblk_encode Column.lgEnc (by decide) 8 (by decide) (by decide) (packLongs xs)
+    (patch := true)
   rw [packLongs_size] at h
   refine ⟨rfl, by simp, ?_, ?_⟩
   · show n.toNat ≤ Column.blk (Kernel.Coc.encodeAt Column.lgEnc (8 : Nat).toUSize (packLongs xs)).1 *
@@ -148,20 +149,20 @@ theorem foRLongs_wf (xs : List Int64) {n : USize} (hn : xs.length = n.toNat) : E
   · exact lgOk_encode _ (by simp) _
 
 /-- Under `wf`, a long `bytes` column holds `b.size / 8` elements. -/
-theorem Arr.n_long_bytes {m : USize} (x : Arr .long m) {b : ByteArray} (hc : x.enc = .bytes b) :
+theorem Arr.n_long_bytes {m : USize} (x : Arr .i64 m) {b : ByteArray} (hc : x.enc = .bytes b) :
     b.size / 8 = m.toNat := by
   have hw := x.wf
   simp only [Enc.WF, hc, QAtomicType.width] at hw; omega
 
 /-- Under `wf`, a long `bytes` column's element `i` is the eight bytes at `8i`, read as a long. -/
-theorem Arr.get_long_bytes {m : USize} (x : Arr .long m) {b : ByteArray} (hc : x.enc = .bytes b) (i : Fin m.toNat) :
+theorem Arr.get_long_bytes {m : USize} (x : Arr .i64 m) {b : ByteArray} (hc : x.enc = .bytes b) (i : Fin m.toNat) :
     x.get i = (Column.bitsAt b (i.1 * 8) 8).toInt64 := by
   rw [Arr.get_ne x i (by decide)]
   simp only [Enc.get, if_pos i.2, hc, QAtomicType.width]; rfl
 
 -- Kept with no caller: the specification of `Arr` as a `List`, per payload form, `List` for proofs.
 /-- Under `wf`, a long `bytes` column lists its eight-byte words, each read as a long. -/
-theorem Arr.toList_long_bytes {m : USize} (x : Arr .long m) {b : ByteArray} (hc : x.enc = .bytes b) :
+theorem Arr.toList_long_bytes {m : USize} (x : Arr .i64 m) {b : ByteArray} (hc : x.enc = .bytes b) :
     x.toList = ((List.range m.toNat).map fun i => Column.bitsAt b (i * 8) 8).map UInt64.toInt64 := by
   apply List.ext_getElem (by rw [Arr.length_toList]; simp)
   intro i h1 h2
@@ -178,7 +179,7 @@ theorem foRBits_starts (md pk : ByteArray) (i : Nat) :
   · simp [Array.getElem?_eq_none (show (Column.blockStarts md).size ≤ i / Column.blk md by omega)]
 
 /-- Under `wf`, a long `foR` column's element `i` is its `foRBits` decode, read as a long. -/
-theorem Arr.get_long_foR {m : USize} (x : Arr .long m) {md pk : ByteArray} (hc : x.enc = .foR md pk)
+theorem Arr.get_long_foR {m : USize} (x : Arr .i64 m) {md pk : ByteArray} (hc : x.enc = .foR md pk)
     (i : Fin m.toNat) : x.get i = (Column.foRBits md pk (Column.blockStarts md) i.1).toInt64 := by
   rw [Arr.get_ne x i (by decide), ← foRBits_starts]
   simp only [Enc.get, if_pos i.2, hc, QAtomicType.width]; rfl
@@ -192,7 +193,7 @@ def longWords (n : USize) (e : Enc) : Option (List UInt64) :=
   | _ => none
 
 /-- Under `wf`, a long column lists its words, each read as a long: `toList_long_bytes` and the `foR` decode. -/
-theorem Arr.toList_long {m : USize} (x : Arr .long m) {ws : List UInt64} (h : longWords m x.enc = some ws) :
+theorem Arr.toList_long {m : USize} (x : Arr .i64 m) {ws : List UInt64} (h : longWords m x.enc = some ws) :
     x.toList = ws.map UInt64.toInt64 := by
   unfold longWords at h
   cases hc : x.enc with
@@ -204,16 +205,16 @@ theorem Arr.toList_long {m : USize} (x : Arr .long m) {ws : List UInt64} (h : lo
   | _ => all_goals (rw [hc] at h; cases h)
 
 /-- Element `i` of a long column is word `i`, read as a long. -/
-theorem Arr.get_long {m : USize} (x : Arr .long m) {ws : List UInt64} (h : longWords m x.enc = some ws)
+theorem Arr.get_long {m : USize} (x : Arr .i64 m) {ws : List UInt64} (h : longWords m x.enc = some ws)
     (i : Nat) (hi : i < m.toNat) (hw : i < ws.length) : x.get ⟨i, hi⟩ = ws[i].toInt64 := by
   rw [← Arr.getElem_toList x i (by rw [Arr.length_toList]; exact hi)]
   simp [Arr.toList_long x h]
 
 /-- The dense payload a kernel reads off a long column that lists `longWords`: a `bytes` payload is
     itself, a `foR` one is handed over or decoded (`decodeW`) to the same words. -/
-theorem Arr.dense_long {m : USize} (x : Arr .long m) {ws : List UInt64} (h : longWords m x.enc = some ws) :
+theorem Arr.dense_long {m : USize} (x : Arr .i64 m) {ws : List UInt64} (h : longWords m x.enc = some ws) :
     ∃ B, (x.enc = .bytes B ∨ ∃ md pk, x.enc = .foR md pk ∧
-      B = Kernel.Coc.decode (8 : Nat).toUSize md pk m) ∧ Enc.bytesOf .long m x.enc = some B ∧
+      B = Kernel.Coc.decode (8 : Nat).toUSize md pk m) ∧ Enc.bytesOf .i64 m x.enc = some B ∧
       Verify.elemsW 8 B = ws ∧ B.size / 8 = m.toNat := by
   have h8 : (8 : Nat).toUSize.toNat = 8 := USize.toNat_ofNat_of_lt' (Nat.lt_of_lt_of_le (by decide) USize.le_size)
   unfold longWords at h
@@ -234,12 +235,12 @@ theorem Arr.dense_long {m : USize} (x : Arr .long m) {ws : List UInt64} (h : lon
 /-- A dense long answer lists its words whichever form `Enc.answer` leaves it in: dense, or encoded
     (`foRBits_encode_bits`). -/
 theorem longWords_answer {m : USize} (b : ByteArray) (hm : b.size / 8 = m.toNat) :
-    longWords m (Enc.answer .long m (.bytes b)) = some (Verify.elemsW 8 b) := by
-  have ha : Enc.answer (X := Empty) .long m (.bytes b) = .bytes b ∨
-      Enc.answer (X := Empty) .long m (.bytes b) =
+    longWords m (Enc.answer .i64 m (.bytes b)) = some (Verify.elemsW 8 b) := by
+  have ha : Enc.answer (X := Empty) .i64 m (.bytes b) = .bytes b ∨
+      Enc.answer (X := Empty) .i64 m (.bytes b) =
       .foR (Kernel.Coc.encode (8 : Nat).toUSize b).1 (Kernel.Coc.encode (8 : Nat).toUSize b).2 := by
-    simp only [Enc.answer, QAtomicType.width, show Column.alpEncodes .long = false from rfl,
-      show Column.encodes .long = true from rfl, Kernel.Coc.encodeBelow]
+    simp only [Enc.answer, QAtomicType.width, show Column.alpEncodes .i64 = false from rfl,
+      show Column.encodes .i64 = true from rfl, Kernel.Coc.encodeBelow]
     repeat' split
     all_goals first | exact .inl rfl | exact .inr rfl | simp_all
   unfold longWords
@@ -264,7 +265,7 @@ def floatWords (n : USize) (e : Enc) : Option (List UInt64) :=
   | _ => none
 
 /-- Under `wf`, a float column lists its words. -/
-theorem Arr.toList_float {m : USize} (x : Arr .float m) {ws : List UInt64} (h : floatWords m x.enc = some ws) :
+theorem Arr.toList_float {m : USize} (x : Arr .f64 m) {ws : List UInt64} (h : floatWords m x.enc = some ws) :
     x.toList = ws := by
   unfold floatWords at h
   cases hc : x.enc with
@@ -290,7 +291,7 @@ theorem Arr.toList_float {m : USize} (x : Arr .float m) {ws : List UInt64} (h : 
 
 /-- The dense payload a kernel reads off a float column that lists `floatWords`: a `bytes` payload is
     itself, an `alp` one is decoded (`alpDecode64`) to the same words. -/
-theorem Arr.dense_float {m : USize} (x : Arr .float m) {ws : List UInt64} (h : floatWords m x.enc = some ws) :
+theorem Arr.dense_float {m : USize} (x : Arr .f64 m) {ws : List UInt64} (h : floatWords m x.enc = some ws) :
     ∃ B, (x.enc = .bytes B ∨ ∃ md pk a, x.enc = .alp md pk a ∧
       B = Kernel.Coc.alpDecode64 md pk a m) ∧ Verify.elemsW 8 B = ws ∧ B.size / 8 = m.toNat := by
   unfold floatWords at h
@@ -315,11 +316,11 @@ theorem Arr.dense_float {m : USize} (x : Arr .float m) {ws : List UInt64} (h : f
 /-- A dense float answer lists its words whichever form `Enc.answer` leaves it in: dense, or ALP
     encoded (`alpBits_alpEncodeAt`, below `2³²` elements). -/
 theorem floatWords_answer {m : USize} (b : ByteArray) (h32 : b.size / 8 < 2 ^ 32) (hm : b.size / 8 = m.toNat) :
-    floatWords m (Enc.answer .float m (.bytes b)) = some (Verify.elemsW 8 b) := by
-  have ha : Enc.answer (X := Empty) .float m (.bytes b) = .bytes b ∨
-      Enc.answer (X := Empty) .float m (.bytes b) =
+    floatWords m (Enc.answer .f64 m (.bytes b)) = some (Verify.elemsW 8 b) := by
+  have ha : Enc.answer (X := Empty) .f64 m (.bytes b) = .bytes b ∨
+      Enc.answer (X := Empty) .f64 m (.bytes b) =
       .alp (Kernel.Coc.alpEncode64 b).1 (Kernel.Coc.alpEncode64 b).2.1 (Kernel.Coc.alpEncode64 b).2.2 := by
-    simp only [Enc.answer, QAtomicType.width, show Column.alpEncodes .float = true from rfl,
+    simp only [Enc.answer, QAtomicType.width, show Column.alpEncodes .f64 = true from rfl,
       Kernel.Coc.alpEncodeBelow64]
     repeat' split
     all_goals first | exact .inl rfl | exact .inr rfl | simp_all
@@ -331,14 +332,14 @@ theorem floatWords_answer {m : USize} (b : ByteArray) (h32 : b.size / 8 < 2 ^ 32
 
 /-- An `int` answer column, dense or encoded, lists its payload's four-byte words: `longWords_answer` at
     width four, the `foR` form read back by `foRBits_encode_bits`. -/
-theorem toList_answer_int {m : USize} (x : Arr .int m) {b : ByteArray} (hm : b.size / 4 = m.toNat)
-    (hc : x.enc = Enc.answer .int m (.bytes b)) :
+theorem toList_answer_int {m : USize} (x : Arr .i32 m) {b : ByteArray} (hm : b.size / 4 = m.toNat)
+    (hc : x.enc = Enc.answer .i32 m (.bytes b)) :
     x.toList = (List.range m.toNat).map fun i => (Column.bitsAt b (i * 4) 4).toUInt32.toInt32 := by
-  have ha : Enc.answer (X := Empty) .int m (.bytes b) = .bytes b ∨
-      Enc.answer (X := Empty) .int m (.bytes b) =
+  have ha : Enc.answer (X := Empty) .i32 m (.bytes b) = .bytes b ∨
+      Enc.answer (X := Empty) .i32 m (.bytes b) =
       .foR (Kernel.Coc.encode (4 : Nat).toUSize b).1 (Kernel.Coc.encode (4 : Nat).toUSize b).2 := by
-    simp only [Enc.answer, QAtomicType.width, show Column.alpEncodes .int = false from rfl,
-      show Column.encodes .int = true from rfl, Kernel.Coc.encodeBelow]
+    simp only [Enc.answer, QAtomicType.width, show Column.alpEncodes .i32 = false from rfl,
+      show Column.encodes .i32 = true from rfl, Kernel.Coc.encodeBelow]
     repeat' split
     all_goals first | exact .inl rfl | exact .inr rfl | simp_all
   apply List.ext_getElem (by rw [Arr.length_toList]; simp)
@@ -360,11 +361,97 @@ theorem toList_answer_int {m : USize} (x : Arr .int m) {b : ByteArray} (hm : b.s
 theorem toInt64_inj {x y : UInt64} (h : x.toInt64 = y.toInt64) : x = y := by
   simpa using congrArg Int64.toUInt64 h
 
-/-- Under `wf`, a boolean `bits` column's element `i` is its bit `i`. -/
-theorem Arr.get_bool_bits {m : USize} (x : Arr .boolean m) {b : ByteArray} (hc : x.enc = .bits b)
-    (i : Fin m.toNat) : x.get i = Column.bitAt b i.1 := by
-  rw [Arr.get_ne x i (by decide)]
-  simp only [Enc.get, if_pos i.2, hc]; rfl
+/-- A boolean column's bitmap: `boolBits` reads one off both forms `Enc.WF .u1` admits. -/
+def Alg.tagBits {n : USize} (x : Arr .u1 n) : ByteArray :=
+  (Kernel.boolBits .u1 n x.enc).get (by
+    have hw := x.wf; revert hw; cases x.enc <;> simp [Enc.WF, Kernel.boolBits])
+
+/-- A boolean column's payload reads as its bitmap `tagBits`. -/
+theorem Alg.enc_tagBits {n : USize} (x : Arr .u1 n) : Kernel.boolBits .u1 n x.enc = some (Alg.tagBits x) :=
+  (Option.some_get _).symm
+
+/-- Under `Enc.WF`, a boolean payload's element `j` is bit `j` of the bitmap `boolBits` reads, at either form: a
+    `u1` `foR` element is `0` or `1`, so its low bit, which `bitsOfFoR` keeps, is whether it is nonzero. -/
+theorem get_boolBits {n : USize} {e : Enc} (hw : Enc.WF .u1 n e) {b : ByteArray}
+    (ht : Kernel.boolBits .u1 n e = some b) {j : Nat} (hj : j < n.toNat) :
+    Enc.get .u1 n e j = some (.u1 (Column.bitAt b j)) := by
+  revert ht hw
+  cases e <;> simp only [Kernel.boolBits, Enc.WF, reduceCtorEq, false_implies, true_implies, implies_true, Option.some.injEq]
+  · rintro - rfl; simp only [Enc.get, if_pos hj]
+  · rename_i md pk
+    rintro ⟨-, hl, hn, -⟩ rfl
+    have h2 := hl j hj
+    have hb : j < Column.blk md * Column.nblk md := Nat.lt_of_lt_of_le hj hn
+    simp only [Enc.get, if_pos hj, QAtomicType.width, Kernel.bitsOfFoR, Verify.bitAt_packOf _ _ _ hj,
+      foRBits_starts, decide_eq_true hb, Bool.true_and]
+    generalize Column.foRBits md pk (Column.blockStarts md) j = v at h2
+    rcases (show v.toNat = 0 ∨ v.toNat = 1 by omega) with h | h
+    · obtain rfl : v = 0 := UInt64.toNat_inj.1 h; rfl
+    · obtain rfl : v = 1 := UInt64.toNat_inj.1 h; rfl
+
+/-- A boolean column's element `i` is bit `i` of its bitmap (`get_boolBits`). -/
+theorem Arr.get_bool_bits {m : USize} (x : Arr .u1 m) {b : ByteArray}
+    (ht : Kernel.boolBits .u1 m x.enc = some b) (i : Fin m.toNat) : x.get i = Column.bitAt b i.1 := by
+  rw [Arr.get_ne x i (by decide), get_boolBits x.wf ht i.2]; rfl
+
+/-- `Coc.bools n p` reads back as `p`: at width 1 the bias is `0`, so element `i` is the 0/1 byte `i` it encodes
+    (`foRBits_encode`). -/
+theorem foRBits_bools (n : Nat) (p : Nat → Bool) {i : Nat} (hi : i < n) :
+    Column.foRBits (Kernel.Coc.bools n p).1 (Kernel.Coc.bools n p).2 (Column.blockStarts (Kernel.Coc.bools n p).1) i =
+      (p i).toNat.toUInt64 := by
+  have h1 : USize.ofNat32 1 (by decide) = (1 : Nat).toUSize := USize.toNat_inj.mp (by
+    rcases System.Platform.numBits_eq with h | h <;> simp [h])
+  obtain ⟨hs, hb⟩ := Verify.packIds_bytes 1 n (fun i => (p i).toNat) (by decide) (by decide)
+  simp only [Nat.mul_one] at hs hb
+  simp only [Kernel.Coc.bools, h1]
+  rw [Verify.foRBits_encode Column.lgEnc (by decide) 1 (by decide) (by decide) _ i (by rw [hs]; simpa using hi)]
+  simp only [Kernel.Coc.unbias, Kernel.Coc.keyAt, Kernel.Coc.bias, if_true, Nat.mul_one,
+    hb i hi (by cases p i <;> decide)]
+  cases p i <;> rfl
+
+/-- `Coc.bools` at a count `n` is a well formed boolean column of `n` rows: each element `0` or `1`
+    (`foRBits_bools`), its blocks covering `n`, its `lg` the encoder's. -/
+theorem wf_bools {n : USize} (p : Nat → Bool) :
+    Enc.WF .u1 n (.foR (Kernel.Coc.bools n.toNat p).1 (Kernel.Coc.bools n.toNat p).2 : Enc) := by
+  have h1 : USize.ofNat32 1 (by decide) = (1 : Nat).toUSize := USize.toNat_inj.mp (by
+    rcases System.Platform.numBits_eq with h | h <;> simp [h])
+  obtain ⟨hs, -⟩ := Verify.packIds_bytes 1 n.toNat (fun i => (p i).toNat) (by decide) (by decide)
+  simp only [Nat.mul_one] at hs
+  obtain ⟨hn, hk⟩ := Verify.nblk_encode Column.lgEnc (by decide) 1 (by decide) (by decide)
+    (Column.packIds 8 n.toNat fun i => (p i).toNat) (patch := false)
+  refine ⟨rfl, fun _ i hi => ?_, ?_, ?_⟩
+  · rw [foRBits_bools _ _ hi]; cases p i <;> decide
+  · rw [show Kernel.Coc.bools n.toNat p = _ from congrArg (fun w => Kernel.Coc.encodeAt Column.lgEnc w _ false) h1, hn, hk, hs]
+    simp only [Nat.div_one, Nat.one_mul, Column.lgEnc, Nat.reducePow]; omega
+  · rw [Kernel.Coc.bools, Column.lgOk, lgAt_encodeAt Column.lgEnc (by decide) (USize.ofNat32 1 (by decide)) (by simp)]; rfl
+
+/-- **A boolean writer's column reads as its bitmap**: `boolBits` of `Coc.bools n` of a `packOf n f`'s bits is that
+    `packOf`. Every writer's bitmap body (`cmpBitmap`, `bitBitmap`, `member*Bitmap`) is a `packOf`, so this one read
+    serves them all, and `get_boolBits` then reads the column's elements off the bitmap's `*_bitAt` lemma. -/
+theorem boolBits_bools {n : USize} (f : Nat → Bool) :
+    Kernel.boolBits .u1 n (.foR (Kernel.Coc.bools n.toNat (Column.bitAt (Kernel.packOf n.toNat f))).1
+      (Kernel.Coc.bools n.toNat (Column.bitAt (Kernel.packOf n.toNat f))).2 : Enc) = some (Kernel.packOf n.toNat f) := by
+  have hb := (wf_bools (n := n) (Column.bitAt (Kernel.packOf n.toNat f))).2.2.1
+  have hf : ∀ i < n.toNat, Column.bitAt (Kernel.packOf n.toNat f) i = f i := fun i hi => Verify.bitAt_packOf _ _ _ hi
+  generalize Column.bitAt (Kernel.packOf n.toNat f) = P at hb hf ⊢
+  simp only [Kernel.boolBits, Kernel.bitsOfFoR, Option.some.injEq]
+  -- `packOf` reads `f` only below `n`, where the column's element is `f`'s bit
+  have e : ∀ g : Nat → Bool, Kernel.packOf n.toNat g = Kernel.packOf n.toNat fun i => decide (i < n.toNat) && g i :=
+    fun g => by simp only [Kernel.packOf, Bool.and_self_left]
+  rw [e, e f]; congr 1; funext i
+  by_cases hi : i < n.toNat
+  · simp only [hi, decide_true, Bool.true_and, foRBits_bools _ _ hi, hf i hi, decide_eq_true (Nat.lt_of_lt_of_le hi hb)]
+    cases f i <;> decide
+  · simp [hi]
+
+/-- **A boolean writer's column, bit by bit**: below `n`, the bitmap `boolBits` reads off `Coc.bools` of `n` rows is
+    the predicate it encodes (`foRBits_bools`). Every writer's `*_bitAt` lemma states its predicate; this composes. -/
+theorem bitAt_bools {N : Nat} {n : USize} (p : Nat → Bool) (hN : N = n.toNat) {i : Nat} (hi : i < n.toNat) :
+    Column.bitAt (Kernel.bitsOfFoR (Kernel.Coc.bools N p).1 (Kernel.Coc.bools N p).2 n) i = p i := by
+  subst hN
+  simp only [Kernel.bitsOfFoR, Verify.bitAt_packOf _ _ _ hi, foRBits_bools _ _ hi,
+    decide_eq_true (Nat.lt_of_lt_of_le hi (wf_bools (n := n) p).2.2.1), Bool.true_and]
+  cases p i <;> decide
 
 /-- The `str` bridge: bytes that are some string's UTF-8, read as a string the way `Column.get` reads a
     symbol (`fromUTF8?`, `""` at invalid bytes), write back out as themselves. -/
@@ -377,19 +464,19 @@ theorem str_bytes {B : ByteArray} (h : ∃ s : String, s.toUTF8.data.toList = B.
 
 /-- A symbol payload's element `i`, read as `Enc.get` reads it, writes out as `symsOf`'s symbol `i`
     wherever that symbol is UTF-8. -/
-theorem get_sym_bytes {n : USize} {e : Enc} {i : Nat} (d : String) (hw : Enc.WF .symbol n e)
+theorem get_sym_bytes {n : USize} {e : Enc} {i : Nat} (d : String) (hw : Enc.WF .sym n e)
     (hi : i < n.toNat) (h2 : i < (Verify.symsOf n.toNat e).length)
     (hk : ∃ s : String, s.toUTF8.data.toList = (Verify.symsOf n.toNat e)[i]) :
-    (((Enc.get .symbol n e i).bind fun a => Carrier.of? (X := Empty) .symbol (.atom a)).getD d).toUTF8.data.toList = (Verify.symsOf n.toNat e)[i] := by
+    (((Enc.get .sym n e i).bind fun a => Carrier.of? (X := Empty) .sym (.atom a)).getD d).toUTF8.data.toList = (Verify.symsOf n.toNat e)[i] := by
   cases e with
   | syms b o =>
-    rw [show Enc.get (X := Empty) .symbol n (.syms b o) i = some (.symbol ((String.fromUTF8? (Column.symKey b o i)).getD ""))
+    rw [show Enc.get (X := Empty) .sym n (.syms b o) i = some (.sym ((String.fromUTF8? (Column.symKey b o i)).getD ""))
       by simp only [Enc.get, if_pos hi]; rfl]
     simp only [Option.bind_some, Carrier.of?, Option.getD_some, Verify.symsOf, List.getElem_map,
       List.getElem_range, Verify.symAt] at hk ⊢
     exact str_bytes hk
   | enum d o ids =>
-    rw [show Enc.get (X := Empty) .symbol n (.enum d o ids) i = some (.symbol ((String.fromUTF8?
+    rw [show Enc.get (X := Empty) .sym n (.enum d o ids) i = some (.sym ((String.fromUTF8?
       (Column.symKey d o (Column.idAt ids (Column.idWidth o) i))).getD "")) by simp only [Enc.get, if_pos hi]; rfl]
     simp only [Option.bind_some, Carrier.of?, Option.getD_some, Verify.symsOf, List.getElem_map,
       List.getElem_range, Verify.symAt] at hk ⊢
@@ -398,7 +485,7 @@ theorem get_sym_bytes {n : USize} {e : Enc} {i : Nat} (d : String) (hw : Enc.WF 
 
 /-- Under `wf`, a symbol column whose symbols are UTF-8 lists them: each element's bytes are `symsOf`'s
     symbol at its position, a blob's own or an interned column's dictionary entry. -/
-theorem Arr.toList_sym {m : USize} (x : Arr .symbol m)
+theorem Arr.toList_sym {m : USize} (x : Arr .sym m)
     (hu : ∀ k ∈ Verify.symsOf m.toNat x.enc, ∃ s : String, s.toUTF8.data.toList = k) :
     x.toList.map (·.toUTF8.data.toList) = Verify.symsOf m.toNat x.enc := by
   have hw := x.wf
@@ -429,7 +516,7 @@ inductive Obj
 instance : Coe QAtomicType Obj := ⟨.atom⟩
 
 /-- The atoms the verbs name, so `.long` reads the same at `Obj` as at `QAtomicType`. -/
-@[match_pattern, reducible] def Obj.long : Obj := .atom .long
+@[match_pattern, reducible] def Obj.long : Obj := .atom .i64
 @[match_pattern, reducible] def Obj.general : Obj := .atom .general
 
 /-- An element of a side: a tuple of its atoms' elements. -/
@@ -456,8 +543,8 @@ def Obj.dflt : (A : Obj) → A.El
 @[reducible] def Vals : Obj → USize → Type
   | .atom t, n => Arr t n
   | .prod a b, n => Vals a n × Vals b n
-  | .arr b, n => (m : USize) × Arr .long n × Arr .long n × Vals b m
-  | .sum a b, n => (l : USize) × (r : USize) × Arr .boolean n × Arr .long n × Vals a l × Vals b r
+  | .arr b, n => (m : USize) × Arr .i64 n × Arr .i64 n × Vals b m
+  | .sum a b, n => (l : USize) × (r : USize) × Arr .u1 n × Arr .i64 n × Vals a l × Vals b r
 
 /-- The position `k` clamped into `[0, m)`: the nearest position of a side of `m > 0` values. -/
 def clampFin (k : Int64) (m : Nat) (h : 0 < m) : Fin m :=
@@ -515,8 +602,29 @@ def one (v : UInt64) : ByteArray := Column.pushBits .empty v 8
 theorem bitsAt_one (v : UInt64) : Column.bitsAt (one v) 0 8 = v := by
   simpa using Verify.bitsAt_pushBits8 ByteArray.empty v
 
+/-- `Ew.cmp`'s `u1` `foR` read through `boolBits` (its `foR` branch, `bitsOfFoR`): the bitmap a bitmap consumer
+    (`whereBits`, `Ew.notBits`) takes, one name for the read so no consumer restates it. -/
+def Ew.cmpBits (op cls shape : UInt8) (a b : ByteArray) (n : USize) : ByteArray :=
+  let c := Ew.cmp op cls shape a b n; bitsOfFoR c.1 c.2 n
+
+/-- `Ew.bit`'s `u1` `foR` read through `boolBits`, as `Ew.cmpBits` reads `Ew.cmp`'s. -/
+def Ew.bitBits (op shape : UInt8) (a b : ByteArray) (n : USize) : ByteArray :=
+  let c := Ew.bit op shape a b n; bitsOfFoR c.1 c.2 n
+
+/-- `Ew.cmpBits` is the bitmap `cmpBitmap`, whose bits `Verify.cmp_bitAt` states (`boolBits_bools`). -/
+theorem Ew.cmpBits_eq (op cls shape : UInt8) (a b : ByteArray) (n : USize) :
+    Ew.cmpBits op cls shape a b n = Ew.cmpBitmap op cls shape a b n :=
+  Option.some.inj (boolBits_bools (n := n) fun i =>
+    Ew.cmpStep op cls (Ew.elem cls a (Ew.shapeIdx shape i).1) (Ew.elem cls b (Ew.shapeIdx shape i).2))
+
+/-- `Ew.bitBits` is the bitmap `bitBitmap`, whose bits `Verify.Ew.bit_bitAt` states (`boolBits_bools`). -/
+theorem Ew.bitBits_eq (op shape : UInt8) (a b : ByteArray) (n : USize) :
+    Ew.bitBits op shape a b n = Ew.bitBitmap op shape a b n :=
+  Option.some.inj (boolBits_bools (n := n) fun i =>
+    Ew.bitStep op (Column.bitAt a (Ew.shapeIdx shape i).1) (Column.bitAt b (Ew.shapeIdx shape i).2))
+
 /-- `~` on `m` bits: `Ew.bit` xor a ones mask, the mask a one-bit atom in shape `av` (xor is `≠` on bits). -/
-def Ew.notBits (m : USize) (b : ByteArray) : ByteArray := Ew.bit (Ew.bitCmp + Ew.ne) Ew.av ⟨#[1]⟩ b m
+def Ew.notBits (m : USize) (b : ByteArray) : ByteArray := Ew.bitBits (Ew.bitCmp + Ew.ne) Ew.av ⟨#[1]⟩ b m
 
 end Payload
 
@@ -532,25 +640,25 @@ macro "wf_lit" : tactic => `(tactic| (unfold Enc.WF; simp only [USize.reduceToNa
 /-- A literal count below `2³²` fits a `USize` on every platform (`USize.le_size`). -/
 macro "fits_lit" : tactic => `(tactic| (refine Nat.lt_of_lt_of_le ?_ USize.le_size; simp))
 
-private def l3 : Arr .long 3 := Arr.mk (.bytes <| packLongs [7, -1, 42]) (by wf_lit)
+private def l3 : Arr .i64 3 := Arr.mk (.bytes <| packLongs [7, -1, 42]) (by wf_lit)
 #guard l3.toList == [7, -1, 42]
 
-private def bs : Arr .boolean 3 := Arr.mk (.bits (ByteArray.mk #[0b101])) (by wf_lit)
+private def bs : Arr .u1 3 := Arr.mk (.bits (ByteArray.mk #[0b101])) (by wf_lit)
 #guard bs.toList == [true, false, true]
 
 -- one symbol column, as `syms` and as `enum` over the dictionary `a, bc`
 private def blob : ByteArray := ByteArray.mk #[97, 0, 98, 99, 0]
-private def ss : Arr .symbol 3 := Arr.mk (.syms (ByteArray.mk #[98, 99, 0, 97, 0, 98, 99, 0]) #[0, 3, 5, 8]) (by wf_lit)
-private def es : Arr .symbol 3 :=
+private def ss : Arr .sym 3 := Arr.mk (.syms (ByteArray.mk #[98, 99, 0, 97, 0, 98, 99, 0]) #[0, 3, 5, 8]) (by wf_lit)
+private def es : Arr .sym 3 :=
   Arr.mk (.enum blob #[0, 2, 5] (packIds (idWidth #[0, 2, 5]) 3 fun i => [1, 0, 1][i]!)) (by wf_lit)
 #guard ss.toList == ["bc", "a", "bc"]
 #guard es.toList == ss.toList
 
-private def gs : Arr .general 2 := Arr.mk (.gen #[(.atom (.long 1) : QValue), (.general #[] 0 : QValue)]) (by unfold Enc.WF; simp only [USize.reduceToNat]; rfl)
-#guard match id (α := QValue) (gs.get ⟨0, by simp⟩), id (α := QValue) (gs.get ⟨1, by simp⟩) with | .atom (.long 1), .general #[] _ _ => true | _, _ => false
+private def gs : Arr .general 2 := Arr.mk (.gen #[(.atom (.i64 1) : QValue), (.general #[] 0 : QValue)]) (by unfold Enc.WF; simp only [USize.reduceToNat]; rfl)
+#guard match id (α := QValue) (gs.get ⟨0, by simp⟩), id (α := QValue) (gs.get ⟨1, by simp⟩) with | .atom (.i64 1), .general #[] _ _ => true | _, _ => false
 
 #guard ss.toList.zipIdx == [("bc", 0), ("a", 1), ("bc", 2)]
-example : ss.Holds 1 "a" := ⟨⟨1, by simp⟩, rfl, by simp only [Arr.get_ne _ _ (show QAtomicType.symbol ≠ .general by decide), Enc.get, USize.reduceToNat]; decide⟩
+example : ss.Holds 1 "a" := ⟨⟨1, by simp⟩, rfl, by simp only [Arr.get_ne _ _ (show QAtomicType.sym ≠ .general by decide), Enc.get, USize.reduceToNat]; decide⟩
 
 end Checks
 

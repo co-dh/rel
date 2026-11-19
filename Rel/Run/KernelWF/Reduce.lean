@@ -69,8 +69,8 @@ private theorem min_avail_decode {k : Scan.Kind} (hk : k ≠ .bit) {n : USize}
 /-- **`gradeColumn` answers `n` longs** on a well-formed payload. -/
 theorem gradeColumn_wf {t : QAtomicType} {desc rank : Bool} {n : USize} {e v : Enc}
     (hw : Enc.WF t n e) (h : gradeColumn t desc n e rank = some v) :
-    Enc.WF .long n v := by
-  have key : ∀ b : ByteArray, b.size = n.toNat * 8 → Enc.WF (X := Empty) .long n (.bytes b) :=
+    Enc.WF .i64 n v := by
+  have key : ∀ b : ByteArray, b.size = n.toNat * 8 → Enc.WF (X := Empty) .i64 n (.bytes b) :=
     fun b hb => wf_bytes (w := 8) (by decide) rfl hb
   unfold gradeColumn at h
   cases rank <;> simp only [Bool.false_eq_true, ↓reduceIte] at h <;> split at h
@@ -83,7 +83,10 @@ theorem gradeColumn_wf {t : QAtomicType} {desc rank : Bool} {n : USize} {e v : E
        · cases h
        rename_i k hk
        split at h
-       · cases h
+       · split at h
+         · cases h; apply key
+           simp only [ranksFoR, gradeFoR, ranks_size, grade_size, min_avail_decode (k := .u8) (by decide)]
+         · cases h
        rename_i hbit
        have hk' : k ≠ .bit := fun e => by simp [e] at hbit
        split at h
@@ -115,14 +118,14 @@ theorem gradeColumn_isSome {t : QAtomicType} {desc rank : Bool} {n : USize} {e :
        rename_i k hk
        split
        · rename_i hbit
-         have : t = .boolean := by cases t <;> simp_all [orderKind]
+         have : t = .u1 := by cases t <;> simp_all [orderKind]
          subst this
          cases e <;> simp_all [Enc.WF]
        rename_i hbit
        have hk' : k ≠ .bit := fun e => by simp [e] at hbit
        have hwk : t.width = some k.width := by
          cases t <;> simp [orderKind] at hk <;> subst hk <;> rfl
-       have htb : t ≠ .boolean := by rintro rfl; simp [orderKind] at hk; exact hk' hk.symm
+       have htb : t ≠ .u1 := by rintro rfl; simp [orderKind] at hk; exact hk' hk.symm
        split
        · rfl
        · obtain ⟨b, hb, hs⟩ := bytesOf_size htb hwk hw
@@ -138,7 +141,7 @@ variable {t : QAtomicType}
 
 /-- `rank x` = `<<x`, key kept: the place of each element in the ascending order, on the domain
     `gradeColumn` orders by value (every atom but a general list, the witness `hg`). -/
-def rank {n : USize} (R : Arr t n) (hg : t ≠ .general) : Arr .long n :=
+def rank {n : USize} (R : Arr t n) (hg : t ≠ .general) : Arr .i64 n :=
   Arr.mk ((gradeColumn t false n R.enc (rank := true)).get (KernelWF.gradeColumn_isSome R.wf hg))
     (KernelWF.gradeColumn_wf R.wf (Option.some_get _).symm)
 

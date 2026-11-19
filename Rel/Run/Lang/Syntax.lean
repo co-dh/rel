@@ -82,7 +82,7 @@ partial def objSyn (c : Name) (e : Lean.Expr) : MetaM Term := do
   | some ``Obj.sum, #[a, b] => `(OExp.sum $(← objSyn c a) $(← objSyn c b))
   | some ``Obj.arr, #[a] => `(OExp.list $(← objSyn c a))
   | some ``Obj.atom, #[t] =>
-    if t.isConstOf ``Rel.QAtomicType.long then `(OExp.var {} "ℕ")
+    if t.isConstOf ``Rel.QAtomicType.i64 then `(OExp.var {} "ℕ")
     else throwError "prim%: `{c}` names the atom `{t}`, which no declared object is stored as"
   | _, _ => throwError "prim%: `{c}` has the object `{e}`, not built by `Obj`'s constructors"
 

@@ -461,7 +461,7 @@ theorem symBytes_concatSyms {parts : Array (ByteArray × Array Nat)} (hw : ∀ x
     SymsWF b o ∧ o.size - 1 = (parts.toList.map fun x => x.2.size - 1).sum ∧
       ∀ p (hp : p < parts.size), ∀ k < parts[p].2.size - 1,
         symBytes b o (((parts.toList.take p).map fun x => x.2.size - 1).sum + k) = symBytes parts[p].1 parts[p].2 k := by
-  have hc : Kernel.concatSyms (X := X) parts = .vector .symbol
+  have hc : Kernel.concatSyms (X := X) parts = .vector .sym
       ((parts.toList.foldl (fun acc x => (acc.1 ++ x.1, acc.2 ++ (x.2.extract 1 x.2.size).map (· + acc.1.size)))
         (ByteArray.empty, #[0])).2.size - 1 |> fun c => needSize c "concatSyms: symbols" (fun _ => 0) id) (.syms
       (parts.toList.foldl (fun acc x => (acc.1 ++ x.1, acc.2 ++ (x.2.extract 1 x.2.size).map (· + acc.1.size)))

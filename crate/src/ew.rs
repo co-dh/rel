@@ -423,6 +423,21 @@ pub fn bit(run: Runner, op: u8, shape: u8, a: &[u8], b: &[u8], n: usize, out: &m
     let nb = n.div_ceil(8);
     if nb == 0 { return }
     // chosen before the pool starts: a panic inside a worker cannot unwind through the C pool
+    let f = bit_verb(op, shape, a, b, n);
+    run_map(run, out, nb, 1, QLEAN_COST_COPY, 1, &|lo, hi, o| bit_slice(f, shape, a, b, lo, hi, o));
+    // the tail byte belongs to whoever wrote the last slice, so it is cleared here and not in a worker
+    if n & 7 != 0 { out[nb - 1] &= ((1u16 << (n & 7)) - 1) as u8 }
+}
+/// Output bytes `[lo, hi)` of the bitmap verb `f`, an atom side (`shape`) its bit 0 widened to a byte; the bits past
+/// the count in the last byte are the caller's to clear.
+pub fn bit_slice(f: fn(u8, u8) -> u8, shape: u8, a: &[u8], b: &[u8], lo: usize, hi: usize, o: &mut [u8]) {
+    let wide = |x: &[u8]| if x.first().is_some_and(|v| v & 1 == 1) { 0xffu8 } else { 0 };
+    let (ac, bc) = (wide(a), wide(b));
+    for (k, ob) in (lo..hi).zip(o) { *ob = f(if shape == k::AV { ac } else { a[k] }, if shape == k::VA { bc } else { b[k] }) }
+}
+/// `qlean_ew_bit`'s verb `op` as a byte function, its operands checked to hold `n` bits: the stops a worker cannot make.
+pub fn bit_verb(op: u8, shape: u8, a: &[u8], b: &[u8], n: usize) -> fn(u8, u8) -> u8 {
+    let nb = n.div_ceil(8);
     let f: fn(u8, u8) -> u8 = match op {
         k::LESSER => |x, y| x & y,
         k::GREATER => |x, y| x | y,
@@ -437,15 +452,7 @@ pub fn bit(run: Runner, op: u8, shape: u8, a: &[u8], b: &[u8], n: usize, out: &m
     };
     assert!(shape == k::AV || a.len() >= nb, "qlean_ew_bit: a {}-byte operand for {n} bits", a.len());
     assert!(shape == k::VA || b.len() >= nb, "qlean_ew_bit: a {}-byte operand for {n} bits", b.len());
-    let wide = |x: &[u8]| if x.first().is_some_and(|v| v & 1 == 1) { 0xffu8 } else { 0 };
-    let (ac, bc) = (wide(a), wide(b));
-    run_map(run, out, nb, 1, QLEAN_COST_COPY, 1, &|lo, hi, o| {
-        for (k, ob) in (lo..hi).zip(o) {
-            *ob = f(if shape == k::AV { ac } else { a[k] }, if shape == k::VA { bc } else { b[k] });
-        }
-    });
-    // the tail byte belongs to whoever wrote the last slice, so it is cleared here and not in a worker
-    if n & 7 != 0 { out[nb - 1] &= ((1u16 << (n & 7)) - 1) as u8 }
+    f
 }
 
 /// `neg` and `abs` over the class's elements: a null stays itself (q's null is the least value, so `abs` needs no case
@@ -712,8 +719,8 @@ pub fn stage_bits(engine: u32, op: u32, cls: u32, shape: u32) -> (u32, u16, u16,
         eng::PACK => (COPY, bits(cls), 0, shape as u16),
         // an ALP block costs a division an element on top of the unpack, which a Frame-of-Reference block does not
         eng::ALP => (ARITH, 0, 0, bits(cls)),
-        // both encoder stages read the tile and answer no payload: what they write is the `coc` at `p.o`
-        eng::ENCMETA | eng::ENCPACK => (ARITH, bits(cls), 0, 0),
+        // the encoder stage reads the tile and answers no payload: what it writes is the `coc` at `p.o` and the blocks at `p.b`
+        eng::ENC => (ARITH, bits(cls), 0, 0),
         _ => (COPY, 0, 0, bits(cls)),
     }
 }
@@ -727,7 +734,8 @@ pub fn stage_fixed(engine: u32, shape: u32, left: bool) -> bool {
 pub mod eng {
     pub const VAL: u32 = 0; pub const CMP: u32 = 1; pub const MON: u32 = 2; pub const WIDEN: u32 = 3;
     pub const BIT: u32 = 4; pub const FLOOR: u32 = 5; pub const CAST: u32 = 6; pub const DECODE: u32 = 7;
-    pub const ALP: u32 = 8; pub const ENCMETA: u32 = 9; pub const ENCPACK: u32 = 10; pub const TICK: u32 = 11;
+    // 10 was the encoder's pack pass, which `ENC` now stages in its one pass
+    pub const ALP: u32 = 8; pub const ENC: u32 = 9; pub const TICK: u32 = 11;
     pub const IDS: u32 = 12; pub const PACK: u32 = 13;
 }
 
@@ -891,14 +899,14 @@ pub fn enc_cls(width: usize, obits: usize) -> u32 {
             "qlean_ew_chain_enc: the result type is {width} bytes wide and the chain's last stage answers {obits} bits. `Kernel.payload` passes `QAtomicType.width`, so the two disagree only if a builder named a stage whose class is not the result type's.");
     match width { 2 => k::I16 as u32, 4 => k::I32 as u32, _ => k::I64 as u32 }
 }
-/// ew.rs `qlean_ew_chain_enc`'s appended stage: stage `k` is the encoder's meta step (`pack` false) or pack step over the tile stage
-/// `k - 1` wrote, `enc` the `coc_enc` it writes through, at class `cls`. It answers no slot (`osrc` fixed), and its cost is added to `cost`
-/// the first time.
-pub fn enc_stage(st: &mut [CStage], k: usize, cls: u32, enc: *mut c_void, pack: bool, cost: &mut u32) {
-    let (cs, ab, bb, ob) = stage_bits(eng::ENCMETA, 0, cls, 0);
-    st[k] = CStage { f: Some(stage_worker(if pack { eng::ENCPACK } else { eng::ENCMETA })), p: CPass { o: enc, cls: cls as u8, ..CPass::EMPTY },
+/// ew.rs `qlean_ew_chain_enc`'s appended stage: stage `k` is the encoder's step over the tile stage `k - 1` wrote, `enc` the
+/// `CEnc` it writes the metadata through and `staged` the `[Staged]` it packs each block into, at class `cls`. It answers no
+/// slot (`osrc` fixed), and its cost is added to `cost`.
+pub fn enc_stage(st: &mut [CStage], k: usize, cls: u32, enc: *mut c_void, staged: *mut c_void, cost: &mut u32) {
+    let (cs, ab, bb, ob) = stage_bits(eng::ENC, 0, cls, 0);
+    st[k] = CStage { f: Some(stage_worker(eng::ENC)), p: CPass { o: enc, b: staged, cls: cls as u8, ..CPass::EMPTY },
                      asrc: (k - 1) as u8, bsrc: FIXED, osrc: FIXED, abits: ab, bbits: bb, obits: ob, bytewise: 0 };
-    if !pack { *cost += cs }
+    *cost += cs
 }
 
 
@@ -1172,7 +1180,7 @@ mod a46b {
         assert_eq!(stage_bits(eng::WIDEN, 0, 1, 2), (C, 16, 0, 32));
         assert_eq!(stage_bits(eng::BIT, 0, 0, 0), (C, 1, 1, 1));
         assert_eq!(stage_bits(eng::PACK, 0, 3, 2), (C, 64, 0, 2));
-        assert_eq!(stage_bits(eng::ENCMETA, 0, 2, 0), (A, 32, 0, 0));
+        assert_eq!(stage_bits(eng::ENC, 0, 2, 0), (A, 32, 0, 0));
         assert_eq!(stage_bits(eng::DECODE, 0, 2, 0), (C, 0, 0, 32));
     }
     #[test] fn atoms_and_encoded_views_are_not_rebased() {

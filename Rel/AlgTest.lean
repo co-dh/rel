@@ -14,7 +14,7 @@ open Tab Rel.Dep Rel.Kernel Rel
 
 section Checks
 
-private abbrev L := QAtomicType.long
+private abbrev L := QAtomicType.i64
 private abbrev LL := Tab .long .long
 
 private def seteq {α : Type} [BEq α] (xs ys : List α) : Bool := xs.all ys.contains && ys.all xs.contains
@@ -210,7 +210,7 @@ private def M : Tab (.sum (.prod L L) (.arr L)) LS := sum (pair R S)° K°
   (dom M).n.toNat == (M.toList.map (·.1)).eraseDups.length && (dom M).n == 6
 -- a sum column by hand: tags `0110`, positions `-5 7 0 9` into `[1 2]` and `[10 20 30]`, read clamped into
 -- each side, `inl 1, inr 30, inr 10, inl 2`; `Xi` the same values at in-range positions of other payloads
-private def tg4 : Arr .boolean 4 := Arr.mk (.bits (ByteArray.mk #[0b0110])) (by wf_lit)
+private def tg4 : Arr .u1 4 := Arr.mk (.bits (ByteArray.mk #[0b0110])) (by wf_lit)
 private def Xo : Vals LS 4 := ⟨2, 3, tg4, col [-5, 7, 0, 9], col [1, 2], col [10, 20, 30]⟩
 private def Xi : Vals LS 4 := ⟨3, 2, tg4, col [2, 1, 0, 1], col [7, 2, 1], col [10, 30]⟩
 #guard ((idU Xo).toList.map (·.1) : List (Int64 ⊕ Int64)) == [.inl 1, .inr 30, .inr 10, .inl 2]
@@ -240,7 +240,7 @@ private def E0 : Vals L 0 := Vals.empty L
   junc R Z ∪ junc Z S == junc R S && junc Z Z ∪ junc Z Z == junc Z Z
 -- a sum column by hand with a row tagged to a side of no values: `Xel`'s `inl` row, `Xer`'s `inr` row. Each
 -- reads its own side's null, as a gather past a side reads it, and `∪` (razed), `∩` (coded) read it so too
-private def tg2 : Arr .boolean 2 := Arr.mk (.bits (ByteArray.mk #[0b10])) (by wf_lit)
+private def tg2 : Arr .u1 2 := Arr.mk (.bits (ByteArray.mk #[0b10])) (by wf_lit)
 private def Xel : Vals LS 2 := ⟨0, 1, tg2, col [0, 0], Vals.empty L, col [20]⟩
 private def Xer : Vals LS 2 := ⟨1, 0, tg2, col [0, 3], col [7], Vals.empty L⟩
 private def Yn : Vals LS 2 := ⟨2, 0, tags #[(2, false)] 2, col [0, 1], col [7, Int64.minValue], Vals.empty L⟩
@@ -349,7 +349,7 @@ private def same {t : QAtomicType} (X Y : Tab L t) : LL := X ≫ Y°
 private def pqpr : List (Int64 × Int64) := [(0, 0), (0, 2), (2, 0), (2, 2), (1, 1), (3, 3)]
 
 -- boolean, `bits`: `1010b`, whose positions pair `(0 2)` and `(1 3)`
-private abbrev Bo := QAtomicType.boolean
+private abbrev Bo := QAtomicType.u1
 private def bitsC : Arr Bo 4 := Arr.mk (.bits (ByteArray.mk #[0b0101])) (by wf_lit)
 #guard let X := same (lst bitsC) (lst bitsC)
   seteq X.toList [(0, 0), (0, 2), (2, 0), (2, 2), (1, 1), (1, 3), (3, 1), (3, 3)] && X.n == 8
@@ -358,7 +358,7 @@ private def bitsC : Arr Bo 4 := Arr.mk (.bits (ByteArray.mk #[0b0101])) (by wf_l
 #guard seteq (symDiv (lst bitsC) (lst bitsC) U4 U4).toList [(0, 0), (0, 2), (2, 0), (2, 2), (1, 1), (1, 3), (3, 1), (3, 3)]
 
 -- symbol,`syms` and `enum`: `` `bc`a`bc`d `` in both, compared across the two
-private abbrev Sy := QAtomicType.symbol
+private abbrev Sy := QAtomicType.sym
 private def symsC : Arr Sy 4 := Arr.mk (.syms (ByteArray.mk #[98, 99, 0, 97, 0, 98, 99, 0, 100, 0]) #[0, 3, 5, 8, 10]) (by wf_lit)
 private def enumC : Arr Sy 4 :=
   Arr.mk (.enum (ByteArray.mk #[97, 0, 98, 99, 0, 100, 0]) #[0, 2, 5, 7] (Column.packIds (Column.idWidth #[0, 2, 5, 7]) 4 fun i => [1, 0, 1, 2][i]!)) (by wf_lit)
@@ -403,7 +403,7 @@ private def Lneg : LL := ⟨4, U4, Arr.mk (.foR (Coc.encode 8 (packLongs [9, -3,
   (Lneg.toList.flatMap fun (i, x) => Lf.toList.filterMap fun (j, y) => if x == y then some (i, j) else none)
 
 -- float through ALP: `1.5 2.25 1.5 0.1`, and the same as dense bytes
-private abbrev Fl := QAtomicType.float
+private abbrev Fl := QAtomicType.f64
 private def fs : List Float := [1.5, 2.25, 1.5, 0.1]
 private def fb : ByteArray := packLongs (fs.map (·.toBits.toInt64))
 private def fd : Arr Fl 4 := Arr.mk (.bytes fb) (by unfold Enc.WF; simp only [USize.reduceToNat, QAtomicType.width]; rw [fb, packLongs_size]; rfl)
@@ -420,7 +420,7 @@ private def alpE : Enc := (Enc.alpOf Fl 4 fd.enc).getD fd.enc
 
 -- a general list, `(1; (); 1; ,2)`, elements matched by identity
 private def gs : Arr .general 4 :=
-  Arr.mk (.gen #[.atom (.long 1), QValue.general #[] 0, .atom (.long 1), QValue.general #[.atom (.long 2)] 1])
+  Arr.mk (.gen #[.atom (.i64 1), QValue.general #[] 0, .atom (.i64 1), QValue.general #[.atom (.i64 2)] 1])
     (by unfold Enc.WF; simp only [USize.reduceToNat]; rfl)
 #guard let X := same (lst gs) (lst gs); seteq X.toList pqpr && X.n == 6
 #guard (lst gs ∪ lst gs).n == 4 && (dom (lst gs)°).n == 3
@@ -697,25 +697,25 @@ section PickMiss
 
 private def r0 {A : Obj} (p : Part A) : Option A.El := if h : 0 < p.1.toNat then some (p.2.row ⟨0, h⟩) else none
 private def i0 : ByteArray := packLongs [0]
-private def bF : Arr .boolean 1 := Arr.mk (.bits (ByteArray.mk #[0])) (by wf_lit)
-private def l0 : Arr .long 1 := Arr.mk (.bytes <| packLongs [0]) (by wf_lit)
-private def l1 : Arr .long 1 := Arr.mk (.bytes <| packLongs [1]) (by wf_lit)
-private def l5 : Arr .long 1 := Arr.mk (.bytes <| packLongs [5]) (by wf_lit)
-private def l7 : Arr .long 1 := Arr.mk (.bytes <| packLongs [7]) (by wf_lit)
-private def l9 : Arr .long 1 := Arr.mk (.bytes <| packLongs [9]) (by wf_lit)
+private def bF : Arr .u1 1 := Arr.mk (.bits (ByteArray.mk #[0])) (by wf_lit)
+private def l0 : Arr .i64 1 := Arr.mk (.bytes <| packLongs [0]) (by wf_lit)
+private def l1 : Arr .i64 1 := Arr.mk (.bytes <| packLongs [1]) (by wf_lit)
+private def l5 : Arr .i64 1 := Arr.mk (.bytes <| packLongs [5]) (by wf_lit)
+private def l7 : Arr .i64 1 := Arr.mk (.bytes <| packLongs [7]) (by wf_lit)
+private def l9 : Arr .i64 1 := Arr.mk (.bytes <| packLongs [9]) (by wf_lit)
 -- T1: the row tagged left, the left side of no values
-private def T1 : Vals (.sum .long .long) 1 := ⟨0, 1, bF, l5, emptyArr .long, l9⟩
+private def T1 : Vals (.sum .long .long) 1 := ⟨0, 1, bF, l5, emptyArr .i64, l9⟩
 #guard r0 (Vals.pickPart _ T1 i0) == some (T1.row ⟨0, by simp⟩)
 -- T2: the left side (no rows) a sum holding a dead left value 7
-private def inner : Vals (.sum .long .long) 0 := ⟨1, 0, emptyArr .boolean, emptyArr .long, l7, emptyArr .long⟩
+private def inner : Vals (.sum .long .long) 0 := ⟨1, 0, emptyArr .u1, emptyArr .i64, l7, emptyArr .i64⟩
 private def T2 : Vals (.sum (.sum .long .long) .long) 1 := ⟨0, 1, bF, l0, inner, l9⟩
 #guard r0 (Vals.pickPart _ T2 i0) == some (T2.row ⟨0, by simp⟩)
 -- T3: the left side (no rows) an array whose payload holds a dead 7
-private def innerA : Vals (.arr .long) 0 := ⟨1, emptyArr .long, emptyArr .long, l7⟩
+private def innerA : Vals (.arr .long) 0 := ⟨1, emptyArr .i64, emptyArr .i64, l7⟩
 private def T3 : Vals (.sum (.arr .long) .long) 1 := ⟨0, 1, bF, l0, innerA, l9⟩
 #guard r0 (Vals.pickPart _ T3 i0) == some (T3.row ⟨0, by simp⟩)
 -- T4: the left side a symbol of no values
-private def T4 : Vals (.sum (.atom .symbol) .long) 1 := ⟨0, 1, bF, l0, emptyArr .symbol, l9⟩
+private def T4 : Vals (.sum (.atom .sym) .long) 1 := ⟨0, 1, bF, l0, emptyArr .sym, l9⟩
 #guard r0 (Vals.pickPart _ T4 i0) == some (T4.row ⟨0, by simp⟩)
 -- T5: an array row whose payload is T2
 private def T5 : Vals (.arr (.sum (.sum .long .long) .long)) 1 := ⟨1, l0, l1, T2⟩

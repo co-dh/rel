@@ -18,23 +18,18 @@ null proper, but `3#0#0b` still has to answer with something, and q answers with
 def nullAtom (t : QAtomicType) (h : t ≠ .general := by first | decide | assumption) : QAtom :=
   match t with
   | .general => absurd rfl h
-  | .boolean => .boolean false
-  | .byte => .byte 0
-  | .short => .short Int16.minValue
-  | .int => .int Int32.minValue
-  | .long => .long Int64.minValue
-  | .real => .real 0xffc00000
-  | .float => .float 0xfff8000000000000
+  | .u1 => .u1 false
+  | .u8 => .u8 0
+  | .i16 => .i16 Int16.minValue
+  | .i32 => .i32 Int32.minValue
+  | .i64 => .i64 Int64.minValue
+  | .f32 => .f32 0xffc00000
+  | .f64 => .f64 0xfff8000000000000
   | .char => .char 32
-  | .symbol => .symbol ""
-  | .timestamp => .timestamp Int64.minValue
-  | .month => .month Int32.minValue
+  | .sym => .sym ""
   | .date => .date Int32.minValue
-  | .datetime => .datetime 0xfff8000000000000
-  | .timespan => .timespan Int64.minValue
-  | .minute => .minute Int32.minValue
-  | .second => .second Int32.minValue
-  | .time => .time Int32.minValue
+  | .datetime => .datetime Int64.minValue
+  | .i8 => .i8 Int8.minValue
 
 /-- q's `~`, which compares bit patterns, so a null matches a null and `1~1b` is false. -/
 def identicalFuel [ValueExt X] (ae : QAtom → QAtom → Bool) (ce : QAtomicType → USize → Ext.Enc X → USize → Ext.Enc X → Bool) :

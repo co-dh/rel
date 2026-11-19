@@ -18,8 +18,7 @@ theorem codes_long_cut {t : QAtomicType} (ht : orderKind t = some .i64) {p : Nat
   obtain ⟨-, -, hg, -, -⟩ := long_facts ht
   have hne : ∀ d o ids, Column.intern (raze t cs.toArray).2.enc ≠ .enum d o ids := fun d o ids he => by
     rcases long_enc ht (raze t cs.toArray).2.wf with ⟨b, hb, -⟩ | ⟨md, pk, hb⟩ <;> simp [hb, Column.intern] at he
-  obtain ⟨q, hq, hc⟩ := codes_raze_cut hg cs hp (fun k hk b he => by
-    rcases long_enc ht (cs[k]'hk).2.wf with ⟨b', hb', -⟩ | ⟨md, pk, hb'⟩ <;> rw [hb'] at he <;> cases he) hro hne
+  obtain ⟨q, hq, hc⟩ := codes_raze_cut hg cs hp (by rintro rfl; simp [orderKind] at ht) hro hne
   have hbt : KernelWF.bitsType t = t := by cases t <;> simp [orderKind] at ht <;> rfl
   rw [hbt] at hq
   exact ⟨q, hq, hc⟩
@@ -35,7 +34,7 @@ theorem codes_long_parts_faithful {t : QAtomicType} (ht : orderKind t = some .i6
         Column.idAt ((Obj.codes (.atom t) cs)[l]'hl).b ((Obj.codes (.atom t) cs)[l]'hl).w j ↔
       Vals.row (cs[k]'hk).2 ⟨i, hi⟩ = Vals.row (cs[l]'hl).2 ⟨j, hj⟩ := by
   have hW : t.width = some 8 := by cases t <;> simp [orderKind] at ht <;> rfl
-  have hB : t ≠ .boolean := by rintro rfl; simp [orderKind] at ht
+  have hB : t ≠ .u1 := by rintro rfl; simp [orderKind] at ht
   have hA : 2 ≤ p → Column.alpEncodes t = true → (cs.toList.map (·.1.toNat)).sum < 2 ^ 32 := fun _ h => by
     cases t <;> simp [orderKind] at ht <;> simp [Column.alpEncodes] at h
   have hX := raze_len t cs.toArray hN

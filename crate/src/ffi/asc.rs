@@ -1,35 +1,52 @@
-//! asc.rs's Lean export, `Kernel.kasc` (Rel/Kernel/Asc.lean): each key column read through
-//! `ffi::scatter::for_words_of`, the grade, and every answer column written by `ffi::scan::for_words`.
+//! asc.rs's Lean export, `Kernel.kasc` (Rel/Kernel/Asc.lean): each key column taken as its encoded blocks
+//! (`ffi::scatter::for_view`), the grade (`asc::grade`), and every answer column written a block at a time through a
+//! `Sink`, the encoder's own block step, so the bytes are `Coc.encode`'s.
 #![deny(unsafe_code)]
 use crate::lean::export;
 #[cfg(all(feature = "ffi", not(any(test, feature = "std"))))]
-use {crate::{asc, exports::{scan::for_words, scatter::{except, for_words_of}}, lean::{B, O, boxed, ctor}},
+use {crate::{asc, blocks::Blocks, c::pool, exports::scatter::{POS, for_view, except}, ffi::{Form, Sink}, lean::{B, O, boxed, ctor}, pod},
     alloc::{format, string::String, vec::Vec}};
 
-/// `Kernel.ascCol`: the `m` words of the `foR` column `e` and their codes at the type `t`, or the model's error.
-#[cfg(all(feature = "ffi", not(any(test, feature = "std"))))]
-fn col(t: u8, e: B, m: usize) -> Result<(Vec<u64>, Vec<u64>), String> {
-    let (w, f, s) = asc::order(t).ok_or_else(|| format!("asc: type {t} has no fixed-width order"))?;
-    let x = for_words_of("asc", m, e)?;
-    let k = x.iter().map(|&v| asc::ord_key(w, f, s, v)).collect();
-    Ok((x, k))
-}
-
-/// `kasc`'s body in its order of failure: the columns left to right, then the grade and the answers.
+/// `kasc`'s body in its order of failure: the columns left to right (`ascCol`: the type, then the layout), then the
+/// grade and the answers. Where the rows are already in order (`None`) each column is its own blocks re-encoded and
+/// the permutation `til m`; else answer row `i` is input row `p[i]`, read at its address (`Coc::get_w`).
 #[cfg(all(feature = "ffi", not(any(test, feature = "std"))))]
 fn kasc(m: usize, es: B) -> Result<O, String> {
-    let (mut xs, mut ks, mut l) = (Vec::new(), Vec::new(), es);
+    // `cs[j]`: `Some(k)` for the key `ks[k]`, `None` for a `pos` column (`ascCol`: `pos` only at `i64`, code 4)
+    let (mut ks, mut cs, mut l) = (Vec::new(), Vec::new(), es);
     while !l.is_scalar() {
-        let e = l.field(0);
-        let (x, k) = col(e.field(0).unbox() as u8, e.field(1), m)?;
-        xs.push(x);
-        ks.push(k);
+        let (e, t) = (l.field(0), l.field(0).field(0).unbox() as u8);
+        let o = asc::order(t).ok_or_else(|| format!("asc: type {t} has no fixed-width order"))?;
+        if e.field(1).tag() == POS {
+            if t != 4 { return Err(format!("asc: a pos column is type 4, not {t}")) }
+            asc::pos_rows(m)?;
+            cs.push(None);
+        } else { cs.push(Some(ks.len())); ks.push(asc::Key::new(for_view("asc", m, e.field(1))?, o)) }
         l = l.field(1);
     }
-    let p = asc::grade(&ks, m);
+    // law A1: a `pos` key (at most 2^63 rows, `pos_rows`) has no ties and is in row order, so it and every later key
+    // decide nothing a stable sort by the keys before it does not
+    // every column before the first `pos` is a key, so their count is its index
+    let nk = cs.iter().position(Option::is_none).unwrap_or(ks.len());
+    let p = if nk == 0 { None } else { asc::grade(pool(), &ks[..nk], m) };
+    let sink = || Sink::new(m, 8, Form::For).enc();
+    // the permutation, which is also a `pos` column sorted
+    let pe = || match &p {
+        None => sink().answer(&Blocks::pos(m)),
+        Some(p) => sink().answer(&Blocks::dense(pod::bytes(p), 8)),
+    };
+    let col = |c: &Option<usize>| match (c, &p) {
+        (None, _) => pe(),
+        (Some(k), None) => sink().answer(&Blocks::from(ks[*k].c)),
+        (Some(k), Some(p)) => {
+            let c = ks[*k].c;
+            let uw = c.one_width();
+            sink().answer(&|buf: &mut [i64], i0: usize| for (o, &i) in buf.iter_mut().zip(&p[i0..]) { *o = c.get_w(uw, i as usize) })
+        }
+    };
     // the `List Enc` of sorted columns, built from its end
-    let vs = xs.iter().rev().fold(boxed(0), |vs, x| ctor(1, [for_words(&p.iter().map(|&i| x[i]).collect::<Vec<_>>()), vs], &[]));
-    Ok(ctor(0, [vs, for_words(&p.iter().map(|&i| i as u64).collect::<Vec<_>>())], &[]))
+    let vs = cs.iter().rev().fold(boxed(0), |vs, c| ctor(1, [col(c), vs], &[]));
+    Ok(ctor(0, [vs, pe()], &[]))
 }
 
 export! {

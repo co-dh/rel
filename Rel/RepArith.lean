@@ -128,13 +128,13 @@ theorem bitStep_same (x y : Bool) : Ew.bitStep (Ew.bitCmp + Ew.eq) x y = true �
   cases x <;> cases y <;> decide
 
 theorem bitAt_cmp (c shape : UInt8) (x y : ByteArray) {n : USize} {t : Nat} (ht : t < n.toNat) :
-    Column.bitAt (Ew.cmp c Ew.i64 shape x y n) t =
+    Column.bitAt (Ew.cmpBits c Ew.i64 shape x y n) t =
       Ew.cmpStep c Ew.i64 (Ew.elem Ew.i64 x (Ew.shapeIdx shape t).1) (Ew.elem Ew.i64 y (Ew.shapeIdx shape t).2) := by
-  rw [(cmp_bitAt c Ew.i64 shape x y n).2 t (by omega)]; simp [ht]
+  rw [Ew.cmpBits_eq, (cmp_bitAt c Ew.i64 shape x y n).2 t (by omega)]; simp [ht]
 
 theorem bitAt_bit (op : UInt8) (x y : ByteArray) {n : USize} {t : Nat} (ht : t < n.toNat) :
-    Column.bitAt (Ew.bit op Ew.vv x y n) t = Ew.bitStep op (Column.bitAt x t) (Column.bitAt y t) := by
-  rw [(Ew.bit_bitAt op Ew.vv x y n).2 t (by omega)]; simp [ht, Ew.shapeIdx]
+    Column.bitAt (Ew.bitBits op Ew.vv x y n) t = Ew.bitStep op (Column.bitAt x t) (Column.bitAt y t) := by
+  rw [Ew.bitBits_eq, (Ew.bit_bitAt op Ew.vv x y n).2 t (by omega)]; simp [ht, Ew.shapeIdx]
 
 theorem bitAt_ite {c : Prop} [Decidable c] (X Y : ByteArray) (t : Nat) :
     Column.bitAt (if c then X else Y) t = if c then Column.bitAt X t else Column.bitAt Y t := by
@@ -171,13 +171,13 @@ local notation "exactA(" op ", " a ", " b ", " w ")" =>
 /-- **`rep (arith op W)`**: `(a, b)` a pair of `W`, to `w = Ew.intStep op nul a b` — `Int64`'s wrapping `+ - *`,
     `Int.fdiv`/`Int.fmod` for `idiv`/`imod`, q's null where an operand is null or (`idiv`/`imod`) `b = 0` — kept
     where `w` is not the null and, for `+ - *`, did not wrap (`exactA`). No hypothesis: the operands are atoms. -/
-theorem rep_arith (op : UInt8) {n : USize} (W : Vals (.prod (.atom .long) (.atom .long)) n) (a b w : Int64) :
+theorem rep_arith (op : UInt8) {n : USize} (W : Vals (.prod (.atom .i64) (.atom .i64)) n) (a b w : Int64) :
     rep (arith op W) (a, b) w ↔
       (∃ i, W.row i = (a, b)) ∧ w = Ew.intStep op nul a b ∧ w ≠ nul ∧ exactA(op, a, b, w) := by
-  refine (holds_where (V := .atom .long) "arith" n _ (fun r hr => Vals.pick _ W _ r hr)
+  refine (holds_where (V := .atom .i64) "arith" n _ (fun r hr => Vals.pick _ W _ r hr)
       (fun r hr => longsN r (gather 8 (Kernel.Ew.val op Ew.i64 Ew.vv nul (longsOf W.1) (longsOf W.2) n) _)
         (Nat.le_of_eq ((gather_len _ _).trans hr).symm))
-      (fun t => if ht : t < n.toNat then W.row ⟨t, ht⟩ else (Obj.prod (.atom .long) (.atom .long)).dflt)
+      (fun t => if ht : t < n.toNat then W.row ⟨t, ht⟩ else (Obj.prod (.atom .i64) (.atom .i64)).dflt)
       (fun t => (Column.bitsAt (Kernel.Ew.val op Ew.i64 Ew.vv nul (longsOf W.1) (longsOf W.2) n) (t * 8) 8).toInt64)
       ?_ ?_ (a, b) w).trans ?_
   · intro r hr q hin
@@ -211,14 +211,14 @@ theorem rep_arith (op : UInt8) {n : USize} (W : Vals (.prod (.atom .long) (.atom
 
 /-- **`rep (plus W)`**: `(a, b)` in `W` to its `Int64` sum, where that did not wrap (`b`'s sign agrees with `w`'s
     order against `a`) and is not q's null; `Ew.intStep` answers the null for a null operand. -/
-theorem rep_plus {n : USize} (W : Vals (.prod (.atom .long) (.atom .long)) n) (a b w : Int64) :
+theorem rep_plus {n : USize} (W : Vals (.prod (.atom .i64) (.atom .i64)) n) (a b w : Int64) :
     rep (plus W) (a, b) w ↔
       (∃ i, W.row i = (a, b)) ∧ w = Ew.intStep Ew.add nul a b ∧ w ≠ nul ∧ (0 ≤ b ↔ a ≤ w) := by
   rw [show plus W = arith Ew.add W from rfl, rep_arith]
   simp only [show (Ew.add == Ew.add) = true by decide, if_true]
 
 /-- **`rep (minus W)`**: `(a, b)` in `W` to `a - b` in `Int64`, where that did not wrap and is not the null. -/
-theorem rep_minus {n : USize} (W : Vals (.prod (.atom .long) (.atom .long)) n) (a b w : Int64) :
+theorem rep_minus {n : USize} (W : Vals (.prod (.atom .i64) (.atom .i64)) n) (a b w : Int64) :
     rep (minus W) (a, b) w ↔
       (∃ i, W.row i = (a, b)) ∧ w = Ew.intStep Ew.sub nul a b ∧ w ≠ nul ∧ (0 ≤ b ↔ w ≤ a) := by
   rw [show minus W = arith Ew.sub W from rfl, rep_arith]
@@ -227,7 +227,7 @@ theorem rep_minus {n : USize} (W : Vals (.prod (.atom .long) (.atom .long)) n) (
 
 /-- **`rep (times W)`**: `(a, b)` in `W` to `a * b` in `Int64`, where `w div a` takes it back to `b` (or `a = 0`)
     and it is not the null. -/
-theorem rep_times {n : USize} (W : Vals (.prod (.atom .long) (.atom .long)) n) (a b w : Int64) :
+theorem rep_times {n : USize} (W : Vals (.prod (.atom .i64) (.atom .i64)) n) (a b w : Int64) :
     rep (times W) (a, b) w ↔ (∃ i, W.row i = (a, b)) ∧ w = Ew.intStep Ew.mul nul a b ∧ w ≠ nul ∧
       (Ew.intStep Ew.idiv nul w a = b ∨ a = 0) := by
   rw [show times W = arith Ew.mul W from rfl, rep_arith]
@@ -236,7 +236,7 @@ theorem rep_times {n : USize} (W : Vals (.prod (.atom .long) (.atom .long)) n) (
 
 /-- **`rep (div W)`**: `(a, b)` in `W` to `Int.fdiv a b` (q's `div`, floor), no row where `b = 0` or an operand is
     the null (`Ew.intStep` answers the null there). -/
-theorem rep_div {n : USize} (W : Vals (.prod (.atom .long) (.atom .long)) n) (a b w : Int64) :
+theorem rep_div {n : USize} (W : Vals (.prod (.atom .i64) (.atom .i64)) n) (a b w : Int64) :
     rep (div W) (a, b) w ↔ (∃ i, W.row i = (a, b)) ∧ w = Ew.intStep Ew.idiv nul a b ∧ w ≠ nul := by
   rw [show div W = arith Ew.idiv W from rfl, rep_arith]
   simp only [show (Ew.idiv == Ew.add) = false by decide, show (Ew.idiv == Ew.sub) = false by decide,
@@ -244,7 +244,7 @@ theorem rep_div {n : USize} (W : Vals (.prod (.atom .long) (.atom .long)) n) (a 
 
 /-- **`rep (mod W)`**: `(a, b)` in `W` to `Int.fmod a b` (q's `mod`, the sign of `b`), no row where `b = 0` or an
     operand is the null. -/
-theorem rep_mod {n : USize} (W : Vals (.prod (.atom .long) (.atom .long)) n) (a b w : Int64) :
+theorem rep_mod {n : USize} (W : Vals (.prod (.atom .i64) (.atom .i64)) n) (a b w : Int64) :
     rep (mod W) (a, b) w ↔ (∃ i, W.row i = (a, b)) ∧ w = Ew.intStep Ew.imod nul a b ∧ w ≠ nul := by
   rw [show mod W = arith Ew.imod W from rfl, rep_arith]
   simp only [show (Ew.imod == Ew.add) = false by decide, show (Ew.imod == Ew.sub) = false by decide,
@@ -268,7 +268,7 @@ local notation "codesL(" cs ", " ps ")" => ((∀ {k l : Nat} (hk : k < 2) (hl : 
     (cs[k]'hk).n = (ps[k]'hk).1 ∧ (cs[k]'hk).b.size = ((cs[k]'hk).n.toNat * (cs[k]'hk).w + 7) / 8)
 
 /-- `valCol` of `Ew.add` against the long `1`, element `i`: `Ew.intStep` of `+ 1`. -/
-theorem valCol_succ_get {n : USize} (U : Arr .long n) (i : Fin n.toNat) :
+theorem valCol_succ_get {n : USize} (U : Arr .i64 n) (i : Fin n.toNat) :
     (valCol (n := n) Ew.add Ew.va (longsOf U) (one 1)).get i = Ew.intStep Ew.add nul (U.get i) 1 := by
   rw [Arr.get_long_bytes _ rfl, val_va_get _ _ _ _ i.2, bitsAt_one, longsOf_get U i.2,
     show (1 : UInt64) = (1 : Int64).toUInt64 from rfl, valStep_i64, Int64.toInt64_toUInt64]
@@ -277,14 +277,14 @@ theorem valCol_succ_get {n : USize} (U : Arr .long n) (i : Fin n.toNat) :
     the top of `U` goes nowhere, and so does `Int64.maxValue`, whose wrapped successor is q's null unless `U` holds
     the null. Hypotheses: the defining equations of the successor column `s` and the codes `cs`, and `cs` faithful
     and well formed (`codesL`). -/
-theorem rep_succ {n : USize} (U : Vals (.atom .long) n) (s : Arr .long n)
+theorem rep_succ {n : USize} (U : Vals (.atom .i64) n) (s : Arr .i64 n)
     (hs : s = valCol Ew.add Ew.va (longsOf U) (one 1)) (cs : Vector Code 2)
-    (hcs : cs = codes .long #v[⟨n, s⟩, ⟨n, U⟩]) (hc : codesL(cs, (#v[⟨n, s⟩, ⟨n, U⟩] : Vector ((m : USize) × Arr .long m) 2)))
+    (hcs : cs = codes .i64 #v[⟨n, s⟩, ⟨n, U⟩]) (hc : codesL(cs, (#v[⟨n, s⟩, ⟨n, U⟩] : Vector ((m : USize) × Arr .i64 m) 2)))
     (u w : Int64) :
     rep (succ U) u w ↔ (∃ i, U.row i = u) ∧ w = Ew.intStep Ew.add nul u 1 ∧ ∃ j, U.row j = w := by
   subst hs
-  refine (holds_where (V := .atom .long) "succ" n _ (fun r hr => Vals.pick _ U _ r hr)
-      (fun r hr => Vals.pick (.atom .long) (valCol (n := n) Ew.add Ew.va (longsOf U) (one 1)) _ r hr)
+  refine (holds_where (V := .atom .i64) "succ" n _ (fun r hr => Vals.pick _ U _ r hr)
+      (fun r hr => Vals.pick (.atom .i64) (valCol (n := n) Ew.add Ew.va (longsOf U) (one 1)) _ r hr)
       (fun t => if ht : t < n.toNat then U.get ⟨t, ht⟩ else default)
       (fun t => if ht : t < n.toNat then (valCol (n := n) Ew.add Ew.va (longsOf U) (one 1)).get ⟨t, ht⟩
         else default) ?_ ?_ u w).trans ?_
@@ -295,7 +295,7 @@ theorem rep_succ {n : USize} (U : Vals (.atom .long) n) (s : Arr .long n)
     dsimp only
     rw [dif_pos hin]; exact pick_row_atom _ _ _ _ q hin
   · -- the codes twin's `.1` at an atom is the codes `cs` names
-    rw [show ((Obj.atom .long).codesC #v[⟨n, valCol Ew.add Ew.va (longsOf U) (one 1)⟩, ⟨n, U⟩]).1 = cs by
+    rw [show ((Obj.atom .i64).codesC #v[⟨n, valCol Ew.add Ew.va (longsOf U) (one 1)⟩, ⟨n, U⟩]).1 = cs by
       rw [hcs]; rfl]
     obtain ⟨hF, hW⟩ := hc
     obtain ⟨hw0, hn0, hs0⟩ := hW (k := 0) (by decide)
@@ -418,7 +418,7 @@ local notation "Sd(" xs ", " t ")" => List.sum (List.map Int64.toInt (List.drop 
     element is the null and every suffix sum lies strictly between the null and `2^63`. -/
 theorem sum_chain (xs : List Int64) (w : Int64) :
     (∃ ys : List Int64, ∃ hy : ys.length = xs.length + 1,
-      (∃ p, Vals.row (A := .atom .long) (col [0]) p = ys[xs.length]'(Nat.lt_of_lt_of_eq (Nat.lt_succ_self _) hy.symm)) ∧
+      (∃ p, Vals.row (A := .atom .i64) (col [0]) p = ys[xs.length]'(Nat.lt_of_lt_of_eq (Nat.lt_succ_self _) hy.symm)) ∧
       (∀ t (ht : t < xs.length), (fun (p : Int64 × Int64) (w : Int64) =>
         w = Ew.intStep Ew.add nul p.1 p.2 ∧ w ≠ nul ∧ (0 ≤ p.2 ↔ p.1 ≤ w))
           (xs[t]'ht, ys[t + 1]'(Nat.lt_of_lt_of_eq (Nat.succ_lt_succ ht) hy.symm))
@@ -514,7 +514,7 @@ theorem length_chain (sc : Tab .long .long) (N : Nat)
     (hsc' : ∀ m w, m < N → (rep sc (Int64.ofNat m) w ↔ w = Int64.ofNat (m + 1)))
     {E : Obj} (xs : List E.El) (hLx : xs.length ≤ N) (w : Int64) :
     (∃ ys : List Int64, ∃ hy : ys.length = xs.length + 1,
-      (∃ p, Vals.row (A := .atom .long) (col [0]) p = ys[xs.length]'(Nat.lt_of_lt_of_eq (Nat.lt_succ_self _) hy.symm)) ∧
+      (∃ p, Vals.row (A := .atom .i64) (col [0]) p = ys[xs.length]'(Nat.lt_of_lt_of_eq (Nat.lt_succ_self _) hy.symm)) ∧
       (∀ t (ht : t < xs.length), rep sc (ys[t + 1]'(Nat.lt_of_lt_of_eq (Nat.succ_lt_succ ht) hy.symm))
         (ys[t]'(Nat.lt_of_lt_of_eq (Nat.lt_succ_of_lt ht) hy.symm))) ∧
       w = ys[0]'(Nat.lt_of_lt_of_eq (Nat.zero_lt_succ _) hy.symm)) ↔ w = Int64.ofNat xs.length := by

@@ -166,9 +166,9 @@ theorem memberIdsVec_mem (xw hw xn hn : USize) (xs hay : ByteArray)
       xw.toNat = 32 ∨ xw.toNat = 64)
     (hhw : hw.toNat = 0 ∨ hw.toNat = 1 ∨ hw.toNat = 2 ∨ hw.toNat = 4 ∨ hw.toNat = 8 ∨ hw.toNat = 16 ∨
       hw.toNat = 32 ∨ hw.toNat = 64) :
-    (memberIdsVec xw xs xn hw hay hn).size = (Column.idsCap xs xw.toNat xn.toNat + 7) / 8 ∧
+    (memberIdsVecBitmap xw xs xn hw hay hn).size = (Column.idsCap xs xw.toNat xn.toNat + 7) / 8 ∧
     ∀ i < 8 * ((Column.idsCap xs xw.toNat xn.toNat + 7) / 8),
-      Column.bitAt (memberIdsVec xw xs xn hw hay hn) i =
+      Column.bitAt (memberIdsVecBitmap xw xs xn hw hay hn) i =
         (decide (i < Column.idsCap xs xw.toNat xn.toNat) &&
           decide (Column.idAt xs xw.toNat i ∈
             (List.range (Column.idsCap hay hw.toNat hn.toNat)).map (Column.idAt hay hw.toNat))) := by
@@ -182,7 +182,7 @@ theorem memberIdsVec_mem (xw hw xn hn : USize) (xs hay : ByteArray)
     rw [hHs, hk, Nat.mul_div_cancel_left _ hc0]
     exact Nat.lt_of_le_of_lt (idsCap_le _ _ _) hn.toNat_lt_size
   obtain ⟨hs, hg⟩ := memberVec_mem (idKeyWidth xw hw) false _ _ hsz
-  have hmv : memberIdsVec xw xs xn hw hay hn = memberVec (idKeyWidth xw hw) false
+  have hmv : memberIdsVecBitmap xw xs xn hw hay hn = memberVecBitmap (idKeyWidth xw hw) false
       (idsOperand (idKeyWidth xw hw) xw xs xn) (idsOperand (idKeyWidth xw hw) hw hay hn) := rfl
   have hnorm : ∀ v, normalise c false v = v := fun _ => rfl
   rw [hmv]
@@ -206,13 +206,13 @@ theorem memberIdsVec_mem (xw hw xn hn : USize) (xs hay : ByteArray)
 /-- **`memberBits`' bit `i` is set exactly when `i` is below the needle count and needle bit `i` is
 one of the haystack's bits**, so the last byte's tail bits are zero. -/
 theorem memberBits_mem (m n : USize) (xs hay : ByteArray) :
-    (memberBits m xs n hay).size = (m.toNat + 7) / 8 ∧
-    ∀ i < 8 * ((m.toNat + 7) / 8), Column.bitAt (memberBits m xs n hay) i =
+    (memberBitsBitmap m xs n hay).size = (m.toNat + 7) / 8 ∧
+    ∀ i < 8 * ((m.toNat + 7) / 8), Column.bitAt (memberBitsBitmap m xs n hay) i =
       (decide (i < m.toNat) && decide (Column.bitAt xs i ∈ (List.range n.toNat).map (Column.bitAt hay))) := by
   let C : Nat → Bool := fun i => decide (i < m.toNat) && decide (findBit n hay (Column.bitAt xs i) < n)
   let B : Nat → UInt8 := fun b =>
     (List.range 8).foldl (fun byte t => if C (b * 8 + t) then byte ||| (1 <<< t.toUInt8) else byte) 0
-  have hf : memberBits m xs n hay =
+  have hf : memberBitsBitmap m xs n hay =
       (List.range ((m.toNat + 7) / 8)).foldl (fun acc b => acc.push (B b)) ByteArray.empty := rfl
   obtain ⟨hs, -, hg⟩ := foldl_push8 B (List.range ((m.toNat + 7) / 8)) ByteArray.empty
   rw [hf]

@@ -43,24 +43,15 @@ export! {
         }
         nat(codec::block_start(&m, bv.unbox()))
     }
-    /// `(meta, pack)` of the dense column `x` of elements `width` bytes wide (2, 4 or 8)
-    fn qlean_coc_encode(width: usize, x: B) -> O {
-        if !matches!(width, 2 | 4 | 8) { die(format_args!("qlean_coc_encode: element width {width} is not 2, 4 or 8\n")) }
-        encode(x, width, Form::For, false)
-    }
+    /// `(meta, pack)` of the dense column `x` of elements `width` bytes wide (`elt_width`)
+    fn qlean_coc_encode(width: usize, x: B) -> O { encode(x, elt_width("qlean_coc_encode", width), Form::For, false) }
     /// `qlean_coc_encode` as `some`, or `none` when the encoded form would not be shorter than `x`
-    fn qlean_coc_encode_below(width: usize, x: B) -> O {
-        if !matches!(width, 2 | 4 | 8) { die(format_args!("qlean_coc_encode_below: element width {width} is not 2, 4 or 8\n")) }
-        encode(x, width, Form::For, true)
-    }
+    fn qlean_coc_encode_below(width: usize, x: B) -> O { encode(x, elt_width("qlean_coc_encode_below", width), Form::For, true) }
     /// The column restored: `n` elements of `width` bytes, little-endian
     fn qlean_coc_decode(width: usize, meta: B, pack: B, n: usize) -> O {
         let c = view("qlean_coc_decode", meta, pack, n);
         // the width is chosen once, outside the block loop
-        match width {
-            2 | 4 | 8 => crate::by_width!(int width, dec(&c)),
-            _ => die(format_args!("qlean_coc_decode: element width {width} is not 2, 4 or 8\n")),
-        }
+        crate::by_width!(int elt_width("qlean_coc_decode", width), dec(&c))
     }
     /// An `Int64` crosses the boundary as `uint64_t` (the proto gate). A reduction of the column, `op` one of `QLean.Kernel.Coc.Over`'s six: add, multiply, lesser, greater, all, any
     fn qlean_coc_over(op: u8, nul: u64, meta: B, pack: B, n: usize) -> u64 {
@@ -95,6 +86,12 @@ export! {
     }
 }
 
+/// `width` where it is a Frame of Reference element width, `QAtomicType.width` of an integral type: a power of two
+/// bytes up to 8 (a boolean's 0/1 bytes are width 1); a stop naming `who` otherwise.
+pub fn elt_width(who: &str, width: usize) -> usize {
+    if !(width.is_power_of_two() && width <= 8) { die(format_args!("{who}: element width {width} is not 1, 2, 4 or 8\n")) }
+    width
+}
 /// The column as `n` elements of `T`, by blocks on the pool
 pub fn dec<T: pod::Elt + Send>(c: &Coc) -> O {
     let mut out = SArr::new(1, c.meta.n * size_of::<T>());

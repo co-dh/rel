@@ -16,12 +16,12 @@ open Rel.Core.Rel hiding id comp recip inter union zero le inl inr junc
 
 /-- A type Frame of Reference encodes is two to eight bytes wide, and not `boolean`. -/
 theorem foR_width {t : QAtomicType} {w : Nat} (he : Column.encodes t = true) (hw : t.width = some w) :
-    1 < w ∧ w ≤ 8 ∧ t ≠ .boolean := by
+    1 < w ∧ w ≤ 8 ∧ t ≠ .u1 := by
   cases t <;> simp_all [Column.encodes, QAtomicType.width] <;> (try subst hw) <;> decide
 
 /-- **`Enc.answer` of a Frame-of-Reference payload keeps its elements**: kept, it is `foRBits`; decoded, it is
     `foRBits`' low `8w` bits (`decodeW`), which `atomOfBits` reads alike (`atomOfBits_mod`). No count bound. -/
-theorem get_answer_foR {t : QAtomicType} {w : Nat} (hw : t.width = some w) (hb : t ≠ .boolean)
+theorem get_answer_foR {t : QAtomicType} {w : Nat} (hw : t.width = some w) (hb : t ≠ .u1)
     {N : USize} (M P : ByteArray) {i : Nat} (hi : i < N.toNat) :
     Enc.get (X := Empty) t N (Enc.answer t N (.foR M P)) i =
       some (Column.atomOfBits t (Column.foRBits M P (Column.blockStarts M) i) (QAtomicType.ne_general_of_width hw)) := by
@@ -60,7 +60,7 @@ theorem foR_part {t : QAtomicType} {w : Nat} (hen : Column.encodes t = true) (hw
       obtain ⟨rfl, rfl⟩ := he; rfl
     intro i hi
     have hib : i < b.size / w := by rw [hbs, Nat.mul_div_cancel _ (by omega)]; exact hi
-    have H := Verify.foRBits_encode_bits Column.lgEnc (by decide) w hw1 hw8 b i hib
+    have H := Verify.foRBits_encode_bits Column.lgEnc (by decide) w hw1 hw8 b i hib (patch := true)
     rw [show Coc.encodeAt Column.lgEnc w.toUSize b = (md, pk) from hE] at H
     rw [← get_bytesOf hw hb hwf hbo hi, get_bytes_eq hw hb _ hi,
       ← Verify.atomOfBits_mod hw hb (Column.foRBits md pk _ i), H, UInt64.ofNat_toNat]
@@ -181,7 +181,7 @@ theorem razeTo_join_foR {t : QAtomicType} {w : Nat} (hw : t.width = some w) (cs 
 /-- **`razeTo` read back at every answer `razeColumn` gives** — dense, the Frame-of-Reference join, the ALP join —
     at any number of parts: the razed column lists its parts' elements one part after another. `hA`: at a type ALP
     encodes, the joined count is below `2 ^ 32`, where `concatALP` stores its exception offsets. -/
-theorem razeTo_toList_all {t : QAtomicType} {w : Nat} (hw : t.width = some w) (hb : t ≠ .boolean)
+theorem razeTo_toList_all {t : QAtomicType} {w : Nat} (hw : t.width = some w) (hb : t ≠ .u1)
     (cs : Array ((k : USize) × Arr t k)) {S : Nat} (hs : (cs.toList.map (·.1.toNat)).sum = S)
     (hS : S < USize.size) (hA : 2 ≤ cs.size → Column.alpEncodes t = true → S < 2 ^ 32) :
     (razeTo t cs hs hS).toList = cs.toList.flatMap (·.2.toList) := by
@@ -220,7 +220,7 @@ theorem hat_all : ∀ (t : QAtomicType) {n m : USize} (x : Arr t n) (y : Arr t m
       USize.size), Vals.RazeFits (.atom t) x y →
     (razeTo t #[⟨n, x⟩, ⟨m, y⟩] rfl hN).toList = x.toList ++ y.toList := by
   intro t n m x y hN hF
-  by_cases hs : t = .boolean ∨ t = .general ∨ t = .symbol
+  by_cases hs : t = .u1 ∨ t = .general ∨ t = .sym
   · exact razeTo2_fits x y hN hF (by
       rcases hs with h | h | h
       · exact .inl h
@@ -258,7 +258,7 @@ open Tab Rel.Kernel Rel.Dep Rel.Verify Rel
 
 /-- **The razed column reads part `k`'s element `i` past the counts before `k`**, on every answer of
     `razeColumn` (dense, FoR, ALP; `razeTo_toList_all`), the ALP join's offsets 32 bits where parts join (`hA`). -/
-theorem raze_get {t : QAtomicType} {w : Nat} (hw : t.width = some w) (hb : t ≠ .boolean) {p : Nat}
+theorem raze_get {t : QAtomicType} {w : Nat} (hw : t.width = some w) (hb : t ≠ .u1) {p : Nat}
     (cs : Vector (Part (.atom t)) p) (hN : (cs.toList.map (·.1.toNat)).sum < USize.size)
     (hA : 2 ≤ p → Column.alpEncodes t = true → (cs.toList.map (·.1.toNat)).sum < 2 ^ 32)
     {k : Nat} (hk : k < p) {i : Nat} (hi : i < cs[k].1.toNat)
@@ -278,7 +278,7 @@ theorem raze_get {t : QAtomicType} {w : Nat} (hw : t.width = some w) (hb : t ≠
 /-- **A small integral side: its codes are faithful jointly across the parts.** Part `k`'s code at `i` and
     part `l`'s at `j` agree exactly when the rows do; the parts in any encoding, their summed count a `USize`. -/
 theorem codes_small_int_parts_faithful {t : QAtomicType} {k₀ : Scan.Kind} (ht : orderKind t = some k₀)
-    (hk₀ : k₀ = .u8 ∨ k₀ = .i16 ∨ k₀ = .i32) {p : Nat} (cs : Vector (Part (.atom t)) p)
+    (hk₀ : k₀ = .u8 ∨ k₀ = .c8 ∨ k₀ = .i8 ∨ k₀ = .i16 ∨ k₀ = .i32) {p : Nat} (cs : Vector (Part (.atom t)) p)
     (hN : (cs.toList.map (·.1.toNat)).sum < USize.size)
     {k l : Nat} (hk : k < p) (hl : l < p) {i j : Nat} (hi : i < cs[k].1.toNat) (hj : j < cs[l].1.toNat) :
     Column.idAt (Obj.codes (.atom t) cs)[k].b (Obj.codes (.atom t) cs)[k].w i =
@@ -286,7 +286,7 @@ theorem codes_small_int_parts_faithful {t : QAtomicType} {k₀ : Scan.Kind} (ht 
       Vals.row cs[k].2 ⟨i, hi⟩ = Vals.row cs[l].2 ⟨j, hj⟩ := by
   obtain ⟨hW, -, -, hB, -⟩ := small_int_width ht hk₀
   have hA : 2 ≤ p → Column.alpEncodes t = true → (cs.toList.map (·.1.toNat)).sum < 2 ^ 32 := fun _ h => by
-    rcases hk₀ with rfl | rfl | rfl <;> cases t <;> simp [orderKind] at ht <;> simp [Column.alpEncodes] at h
+    rcases hk₀ with rfl | rfl | rfl | rfl | rfl <;> cases t <;> simp [orderKind] at ht <;> simp [Column.alpEncodes] at h
   have hX := raze_len t cs.toArray hN
   obtain ⟨hw, hn, -, -⟩ := codes_small_int_wf ht hk₀ (raze t cs.toArray)
   have hs : (((cs.map (·.1)).toList).map (·.toNat)).sum = (Obj.codes (.atom t) #v[raze t cs.toArray])[0].n.toNat := by

@@ -5,15 +5,16 @@ import Rel.Kernel.Need
 
 namespace Rel
 
-/-- The element type of a q list, q's list type codes 0 to 19 less guid's 2, in type-code order. `general` is type 0,
-a list of any values. q has no type-0 atom, so `general` is a column type with no atom value: a function
-that reads or builds an atom (`atomOfBits`, `Column.ofAtoms`) takes `t ≠ .general`. A general list's
-null is not a function of its type either: it depends on the value (its first item's typed null, its
-empty vector, or `()`). -/
+/-- The element type of a column. The constructor index is the tag the Rust kernels read: the fixed-width
+types come first, so `u1`..`i8` (0..8) are `crate/src/key.rs`'s `SK_*` kinds, then `sym`, `date` (i32 days),
+`datetime` (i64 ns) and `general`. `code` gives q's type code. `general` is q's type 0, a list of any values;
+q has no type-0 atom, so `general` is a column type with no atom value: a function that reads or builds an
+atom (`atomOfBits`, `Column.ofAtoms`) takes `t ≠ .general`. A general list's null is not a function of its
+type either: it depends on the value (its first item's typed null, its empty vector, or `()`). -/
 inductive QAtomicType
+  | u1 | u8 | i16 | i32 | i64 | f32 | f64 | char | i8
+  | sym | date | datetime
   | general
-  | boolean | byte | short | int | long | real | float | char | symbol
-  | timestamp | month | date | datetime | timespan | minute | second | time
   deriving Repr, DecidableEq, Inhabited, Hashable
 
 namespace QAtomicType
@@ -24,11 +25,11 @@ it before ever consulting this; anything reading a `Column` through `width` is a
 variable width (NUL-terminated) and so have no fixed size, and a general list's elements are values,
 not bytes. -/
 def width : QAtomicType → Option Nat
-  | boolean | byte | char => some 1
-  | short => some 2
-  | int | real | month | date | minute | second | time => some 4
-  | long | float | timestamp | datetime | timespan => some 8
-  | symbol | general => none
+  | u1 | u8 | char | i8 => some 1
+  | i16 => some 2
+  | i32 | f32 | date => some 4
+  | i64 | f64 | datetime => some 8
+  | sym | general => none
 
 end QAtomicType
 
@@ -42,23 +43,18 @@ end Bits
 /-- A q atom. One constructor per atomic type so that no ill-typed atom is representable;
 the payload is the raw wire value, including null and infinity sentinels. -/
 inductive QAtom
-  | boolean : Bool → QAtom
-  | byte : UInt8 → QAtom
-  | short : Int16 → QAtom
-  | int : Int32 → QAtom
-  | long : Int64 → QAtom
-  | real : UInt32 → QAtom
-  | float : UInt64 → QAtom
+  | u1 : Bool → QAtom
+  | u8 : UInt8 → QAtom
+  | i16 : Int16 → QAtom
+  | i32 : Int32 → QAtom
+  | i64 : Int64 → QAtom
+  | f32 : UInt32 → QAtom
+  | f64 : UInt64 → QAtom
   | char : UInt8 → QAtom
-  | symbol : String → QAtom
-  | timestamp : Int64 → QAtom
-  | month : Int32 → QAtom
+  | i8 : Int8 → QAtom
+  | sym : String → QAtom
   | date : Int32 → QAtom
-  | datetime : UInt64 → QAtom
-  | timespan : Int64 → QAtom
-  | minute : Int32 → QAtom
-  | second : Int32 → QAtom
-  | time : Int32 → QAtom
+  | datetime : Int64 → QAtom
   deriving Repr, Inhabited
 
 namespace QAtom
@@ -279,6 +275,13 @@ inductive Enc (X : Type)
 
   Last, so the constructor tags of the six before it are unchanged. -/
   | gen : Array (QValue X) → Enc X
+  /-- The row positions `0 … n-1` of an `i64` column, `n` the header's: element `i` is `i`, and nothing is stored, in
+  memory or on disk (PLAN 6.13). A kernel reads it as its loop index, never as a materialised `til n`. A kernel's
+  answer is `pos` only where its arguments' forms say so, never because the values happen to be positions. `WF`
+  admits it at no type until no executable reader is left that needs a dense payload (6.13b).
+
+  After `gen`, so every tag before it is unchanged; nullary, so in Lean's ABI it is the scalar `lean_box(7)`. -/
+  | pos : Enc X
   deriving Inhabited
 
 end
@@ -671,28 +674,28 @@ open Column
 /-- What the header promises about the payload: the layout is one `t` has, and it holds exactly `n`
 elements. The conditions `count`, `admit` and `mismatch` used to encode between them, stated once;
 every reader trusts the header, so a vector that fails this is a bug where it was built. Booleans are
-`bits` and never `bytes`; Frame of Reference takes every fixed-width type but `boolean`,
-ALP the three float layouts; a `foR` or `alp` payload's blocks cover its `n`, and an `enum` payload's
+`bits` and never `bytes`; Frame of Reference takes every fixed-width type, a `boolean` one being `u1` (every
+element 0 or 1, which `raw` and `get` then read alike), ALP the three float layouts; a `foR` or `alp` payload's blocks cover its `n`, and an `enum` payload's
 pack holds its `n` ids and its dictionary's offsets end at its blob with none past it, so a symbol
 appended to the dictionary leaves every entry before it reading as it did, and no entry is there twice,
 so two ids name the same symbol only where they are equal. -/
 def WF (t : QAtomicType) (n : USize) (e : Ext.Enc X) : Prop :=
   match t, e with
   | .general, .gen xs => xs.size = n.toNat
-  | .boolean, .bits b => b.size = (n.toNat + 7) / 8
-  | .symbol, .syms blob offs => offs.size = n.toNat + 1 ∧ SymsWF blob offs ∧
+  | .u1, .bits b => b.size = (n.toNat + 7) / 8
+  | .sym, .syms blob offs => offs.size = n.toNat + 1 ∧ SymsWF blob offs ∧
     ∀ i < n.toNat, (symKey blob offs i).IsValidUTF8
-  | .symbol, .enum dict offs ids => ids.size = (n.toNat * idWidth offs + 7) / 8 ∧ SymsWF dict offs ∧
+  | .sym, .enum dict offs ids => ids.size = (n.toNat * idWidth offs + 7) / 8 ∧ SymsWF dict offs ∧
     (∀ i < n.toNat, idAt ids (idWidth offs) i < offs.size - 1) ∧ ((List.range (offs.size - 1)).map fun i => (symKey dict offs i).data.toList).Nodup ∧
     ∀ i < offs.size - 1, (symKey dict offs i).IsValidUTF8
-  | .boolean, .bytes _ => False
+  | .u1, .bytes _ => False
   | t, .bytes b => match t.width with
     | some w => b.size = n.toNat * w
     | none => False
-  | t, .foR metadata _ =>
-    t.width.isSome ∧ t ≠ .boolean ∧ n.toNat ≤ blk metadata * nblk metadata ∧ lgOk metadata
+  | t, .foR metadata pack =>
+    t.width.isSome ∧ (t = .u1 → ∀ i < n.toNat, (foRBits metadata pack (blockStarts metadata) i).toNat < 2) ∧ n.toNat ≤ blk metadata * nblk metadata ∧ lgOk metadata
   | t, .alp metadata _ a =>
-    (t = .real ∨ t = .float ∨ t = .datetime) ∧ n.toNat ≤ blk metadata * nblk metadata ∧ lgOk metadata ∧ alpF32 a = (t.width == some 4)
+    (t = .f32 ∨ t = .f64) ∧ n.toNat ≤ blk metadata * nblk metadata ∧ lgOk metadata ∧ alpF32 a = (t.width == some 4)
   | _, _ => False
 
 /-- `atoms`' fixed-width branches before `atomOfBits`: the raw bits of each element, a boolean's as `0`/`1` and an
@@ -701,11 +704,13 @@ about a numeric column is stated over this, because `atoms`' symbol branch bring
 
 Every form reads an element of a `w`-byte type as its `8 * w` bits zero-extended, the dense payload's own reading, so
 `raw` is a function of the column and not of its form: `foRBits` holds an element sign-extended to 64 bits
-(`Verify.unbias_keyAt`), and its encoded forms are cut to the low `8 * w` here. -/
+(`Verify.unbias_keyAt`), and its encoded forms are cut to the low `8 * w` here, a boolean's to its one bit. -/
 def raw (t : QAtomicType) (n : USize) (e : Ext.Enc X) : Array UInt64 :=
   match t, e with
-  | .boolean, .bytes _ | .boolean, .foR _ _ => #[]
-  | .boolean, .alp _ _ _ => #[]
+  | .u1, .bytes _ => #[]
+  | .u1, .foR metadata pack => let starts := blockStarts metadata
+    (Array.range n.toNat).map fun i => UInt64.ofNat ((foRBits metadata pack starts i).toNat % 2)
+  | .u1, .alp _ _ _ => #[]
   | t, .bytes b => match t.width with
     | some w => (Array.range n.toNat).map fun i => bitsAt b (i * w) w
     | none => #[]
@@ -717,8 +722,10 @@ def raw (t : QAtomicType) (n : USize) (e : Ext.Enc X) : Array UInt64 :=
     | some w => let starts := blockStarts metadata
       (Array.range n.toNat).map fun i => UInt64.ofNat ((alpBits metadata pack a starts i).toNat % 2 ^ (8 * w))
     | none => #[]
-  | .boolean, .bits b => (Array.range n.toNat).map fun i => if bitAt b i then 1 else 0
-  | .symbol, .enum _ offs ids => (Array.range n.toNat).map fun i => (idAt ids (idWidth offs) i).toUInt64
+  | .u1, .bits b => (Array.range n.toNat).map fun i => if bitAt b i then 1 else 0
+  | .sym, .enum _ offs ids => (Array.range n.toNat).map fun i => (idAt ids (idWidth offs) i).toUInt64
+  -- a model read by proofs and kernel specifications; compiled kernels read `pos` as their loop index
+  | .i64, .pos => (Array.range n.toNat).map UInt64.ofNat
   | _, _ => #[]
 
 end Ext.Enc
@@ -925,14 +932,13 @@ namespace Rel
 
 namespace QAtomicType
 
-/-- The q type code of the *vector* form; the atom form is its negation. Codes 2 (guid, which Rel does not
-carry) and 3 are unused, and code 0, the general list, has no atom form. -/
+/-- The q type code of the *vector* form; the atom form is its negation. Code 2 (guid, which Rel does not
+carry) is unused, and code 0, the general list, has no atom form. `datetime` is q type 12 (timestamp, i64 ns since the
+epoch) and `date` type 14 (i32 days); q types 13 and 15 to 19 are not carried. -/
 def code : QAtomicType → Int8
   | general => 0
-  | boolean => 1 | byte => 4 | short => 5 | int => 6 | long => 7
-  | real => 8 | float => 9 | char => 10 | symbol => 11 | timestamp => 12
-  | month => 13 | date => 14 | datetime => 15 | timespan => 16 | minute => 17
-  | second => 18 | time => 19
+  | u1 => 1 | i8 => 3 | u8 => 4 | i16 => 5 | i32 => 6 | i64 => 7
+  | f32 => 8 | f64 => 9 | char => 10 | sym => 11 | datetime => 12 | date => 14
 
 /-- A type with a fixed width has atoms: how a reader that has matched `width` reaches a function
 that takes `t ≠ .general`. -/
@@ -948,27 +954,26 @@ end Bits
 namespace QAtom
 
 def type : QAtom → QAtomicType
-  | boolean _ => .boolean | byte _ => .byte | short _ => .short
-  | int _ => .int | long _ => .long | real _ => .real | float _ => .float
-  | char _ => .char | symbol _ => .symbol | timestamp _ => .timestamp
-  | month _ => .month | date _ => .date | datetime _ => .datetime
-  | timespan _ => .timespan | minute _ => .minute | second _ => .second | time _ => .time
+  | u1 _ => .u1 | u8 _ => .u8 | i16 _ => .i16
+  | i32 _ => .i32 | i64 _ => .i64 | f32 _ => .f32 | f64 _ => .f64
+  | char _ => .char | i8 _ => .i8 | sym _ => .sym
+  | date _ => .date | datetime _ => .datetime
 
 /-- q's `~` on atoms: bit-pattern identity, so a null matches a null. -/
 def identical : QAtom → QAtom → Bool
-  | boolean a, boolean b => a == b
-  | byte a, byte b | char a, char b => a == b
-  | short a, short b => a == b
-  | int a, int b | month a, month b | date a, date b
-  | minute a, minute b | second a, second b | time a, time b => a == b
-  | long a, long b | timestamp a, timestamp b | timespan a, timespan b => a == b
+  | u1 a, u1 b => a == b
+  | u8 a, u8 b | char a, char b => a == b
+  | i16 a, i16 b => a == b
+  | i32 a, i32 b | date a, date b => a == b
+  | i64 a, i64 b | datetime a, datetime b => a == b
+  | i8 a, i8 b => a == b
   -- the two zeros are one value to `~` even though their bit patterns differ: measured,
   -- `-0.0~0.0` and `-0.0e~0.0e` are both `1b`, and `distinct -0.0 0.0` is the single `,-0f`.
   -- Everything else stays bit equality, which is what keeps `0n~0n` true.
-  | real a, real b => a == b || (a &&& 0x7fffffff == 0 && b &&& 0x7fffffff == 0)
-  | float a, float b | datetime a, datetime b =>
+  | f32 a, f32 b => a == b || (a &&& 0x7fffffff == 0 && b &&& 0x7fffffff == 0)
+  | f64 a, f64 b =>
     a == b || (a &&& 0x7fffffffffffffff == 0 && b &&& 0x7fffffffffffffff == 0)
-  | symbol a, symbol b => a == b
+  | sym a, sym b => a == b
   | _, _ => false
 
 end QAtom
@@ -995,14 +1000,15 @@ Floats stay *bits*: `QAtom.float` already holds the wire pattern, and it must ne
 `Float.ofBits`, which canonicalises `0xfff8000000000000` — q's `0n` — to `0x7ff8000000000000` and so
 corrupts every float null. `symbol` is not a scalar and does not come through here. -/
 def bitsOf : QAtom → UInt64
-  | .boolean x => if x then 1 else 0
-  | .byte x | .char x => x.toUInt64
-  | .short x => x.toUInt16.toUInt64
-  | .int x | .month x | .date x | .minute x | .second x | .time x => x.toUInt32.toUInt64
-  | .long x | .timestamp x | .timespan x => x.toUInt64
-  | .real x => x.toUInt64
-  | .float x | .datetime x => x
-  | .symbol _ => 0
+  | .u1 x => if x then 1 else 0
+  | .u8 x | .char x => x.toUInt64
+  | .i16 x => x.toUInt16.toUInt64
+  | .i32 x | .date x => x.toUInt32.toUInt64
+  | .i64 x | .datetime x => x.toUInt64
+  | .i8 x => x.toUInt8.toUInt64
+  | .f32 x => x.toUInt64
+  | .f64 x => x
+  | .sym _ => 0
 
 /-- The atom of type `t` those raw bits denote. Total, and its type is `t` by construction, which is
 what `atoms_type` turns into the invariant `QLean/Verify/` used to assume. `symbol` is
@@ -1011,23 +1017,18 @@ def atomOfBits (t : QAtomicType) (v : UInt64) (h : t ≠ .general := by first | 
     QAtom :=
   match t with
   | .general => absurd rfl h
-  | .boolean => .boolean (v != 0)
-  | .byte => .byte v.toUInt8
+  | .u1 => .u1 (v != 0)
+  | .u8 => .u8 v.toUInt8
   | .char => .char v.toUInt8
-  | .short => .short v.toUInt16.toInt16
-  | .int => .int v.toUInt32.toInt32
-  | .month => .month v.toUInt32.toInt32
+  | .i16 => .i16 v.toUInt16.toInt16
+  | .i32 => .i32 v.toUInt32.toInt32
   | .date => .date v.toUInt32.toInt32
-  | .minute => .minute v.toUInt32.toInt32
-  | .second => .second v.toUInt32.toInt32
-  | .time => .time v.toUInt32.toInt32
-  | .long => .long v.toInt64
-  | .timestamp => .timestamp v.toInt64
-  | .timespan => .timespan v.toInt64
-  | .real => .real v.toUInt32
-  | .float => .float v
-  | .datetime => .datetime v
-  | .symbol => .symbol ""
+  | .i8 => .i8 v.toUInt8.toInt8
+  | .i64 => .i64 v.toInt64
+  | .datetime => .datetime v.toInt64
+  | .f32 => .f32 v.toUInt32
+  | .f64 => .f64 v
+  | .sym => .sym ""
 
 /-- Booleans packed eight to a byte, LSB first. The unused tail bits of the last byte stay `0`, so
 two columns holding the same booleans hold the same bytes — `~` and `atomIdenticalHash` compare
@@ -1036,7 +1037,7 @@ def packBits (as : Array QAtom) : ByteArray := Id.run do
   let mut out := ByteArray.emptyWithCapacity ((as.size + 7) / 8)
   let mut cur : UInt8 := 0
   for i in [0 : as.size] do
-    if (match as[i]! with | .boolean b => b | _ => false) then
+    if (match as[i]! with | .u1 b => b | _ => false) then
       cur := cur ||| (1 <<< (i % 8).toUInt8)
     if i % 8 == 7 then
       out := out.push cur
@@ -1068,14 +1069,14 @@ needs no bound because a replicated array has the size asked for. -/
 def blank (t : QAtomicType) (n : USize) : Ext.Enc X :=
   match t, t.width with
   | .general, _ => .gen (Array.replicate n.toNat default)
-  | .boolean, _ => .bits ⟨Array.replicate ((n.toNat + 7) / 8) 0⟩
-  | .symbol, _ => .syms .empty (Array.replicate (n.toNat + 1) 0)
+  | .u1, _ => .bits ⟨Array.replicate ((n.toNat + 7) / 8) 0⟩
+  | .sym, _ => .syms .empty (Array.replicate (n.toNat + 1) 0)
   | _, some w => .bytes ⟨Array.replicate (n.toNat * w) 0⟩
   | _, none => .gen #[]
 
 theorem blank_WF (t : QAtomicType) (n : USize) : WF t n (blank (X := X) t n) := by
   cases t
-  case symbol =>
+  case sym =>
     have h0 : ∀ k, (Array.replicate (n.toNat + 1) 0)[k]! = 0 := fun k => by
       by_cases hk : k < n.toNat + 1
       · rw [getElem!_pos _ k (by simpa using hk)]; simp
@@ -1103,13 +1104,13 @@ before this was fixed. -/
 def get (t : QAtomicType) (n : USize) (e : Ext.Enc X) (i : Nat) : Option QAtom :=
   if i < n.toNat then
     match t, e with
-    | .boolean, .bits b => some (.boolean (bitAt b i))
-    | .symbol, .syms blob offs =>
+    | .u1, .bits b => some (.u1 (bitAt b i))
+    | .sym, .syms blob offs =>
       let (lo, len) := symBytes offs i
-      some (.symbol ((String.fromUTF8? (blob.extract lo (lo + len))).getD ""))
-    | .symbol, .enum dict offs ids =>
+      some (.sym ((String.fromUTF8? (blob.extract lo (lo + len))).getD ""))
+    | .sym, .enum dict offs ids =>
       let (lo, len) := symBytes offs (idAt ids (idWidth offs) i)
-      some (.symbol ((String.fromUTF8? (dict.extract lo (lo + len))).getD ""))
+      some (.sym ((String.fromUTF8? (dict.extract lo (lo + len))).getD ""))
     | t, .bytes b => match hw : t.width with
       | some w => some (atomOfBits t (bitsAt b (i * w) w) (QAtomicType.ne_general_of_width hw))
       | none => none
@@ -1123,14 +1124,16 @@ def get (t : QAtomicType) (n : USize) (e : Ext.Enc X) (i : Nat) : Option QAtom :
       match hw : t.width with
       | some _ => some (atomOfBits t (alpBits metadata pack a #[] i) (QAtomicType.ne_general_of_width hw))
       | none => none
+    | .i64, .pos => some (.i64 (Int64.ofNat i))
     | _, _ => none
   else none
 
 /-- Symbols as `blob` plus its offset table. -/
 def symsOf (as : Array QAtom) : Ext.Enc X :=
-  let bs := as.map fun | .symbol s => s.toUTF8 | _ => ByteArray.empty
-  let offs := bs.foldl (init := (#[0], 0)) fun (o, pos) s =>
-    (o.push (pos + s.size + 1), pos + s.size + 1)
+  let bs := as.map fun | .sym s => s.toUTF8 | _ => ByteArray.empty
+  -- `p`, not `pos`, which in this namespace is the constructor `Enc.pos` and would make the pattern a match on it
+  let offs := bs.foldl (init := (#[0], 0)) fun (o, p) s =>
+    (o.push (p + s.size + 1), p + s.size + 1)
   let blob := bs.foldl (init := ByteArray.empty) fun acc s => (acc ++ s).push 0
   .syms blob offs.1
 
@@ -1142,8 +1145,8 @@ def ofAtoms (t : QAtomicType) (as : Array QAtom) (h : t ≠ .general := by first
     Option (Ext.Enc X) :=
   if as.all (·.type == t) then match t with
     | .general => absurd rfl h
-    | .boolean => some (.bits (packBits as))
-    | .symbol => some (symsOf as)
+    | .u1 => some (.bits (packBits as))
+    | .sym => some (symsOf as)
     | t => match t.width with
       | some w =>
         some (.bytes (as.foldl (init := ByteArray.emptyWithCapacity (as.size * w))
@@ -1179,7 +1182,7 @@ private theorem foldl_pushBits_size {w : Nat} (b : ByteArray) (as : List QAtom) 
   | cons a as ih => rw [List.foldl_cons, ih, pushBits_size]; simp [Nat.succ_mul]; omega
 
 /-- The bit an atom contributes to a boolean column. -/
-def boolOf (a : QAtom) : Bool := match a with | .boolean b => b | _ => false
+def boolOf (a : QAtom) : Bool := match a with | .u1 b => b | _ => false
 
 /-- Bit `j` of a byte, LSB first: what `bitAt` reads once it has located the byte. -/
 def byteBit (x : UInt8) (j : Nat) : Bool := (x >>> j.toUInt8) &&& 1 == 1
@@ -1343,7 +1346,7 @@ theorem foldl_push_size (b : ByteArray) (xs : List UInt8) :
 
 /-- The bytes a symbol contributes. The NUL that follows them is `blobStep`'s, not this. -/
 def utf8Of : QAtom → ByteArray
-  | .symbol s => s.toUTF8
+  | .sym s => s.toUTF8
   | _ => ByteArray.empty
 
 /-- One step of the `offs` fold: record where the *next* symbol starts. -/
@@ -1579,8 +1582,8 @@ theorem ofAtoms_WF {t : QAtomicType} {as : Array QAtom} {e : Ext.Enc X} {hn : t 
     ByteArray.size_eq_zero_iff.mpr rfl
   match t, hn, h, hc with
   | .general, hn, _, _ => exact absurd rfl hn
-  | .boolean, _, _, hc => cases hc; exact packBits_size as
-  | .symbol, _, _, hc =>
+  | .u1, _, _, hc => cases hc; exact packBits_size as
+  | .sym, _, _, hc =>
     cases hc
     show ((as.map utf8Of).foldl offStep (#[0], 0)).1.size = as.size + 1 ∧
       SymsWF ((as.map utf8Of).foldl blobStep ByteArray.empty) ((as.map utf8Of).foldl offStep (#[0], 0)).1 ∧
@@ -1592,10 +1595,8 @@ theorem ofAtoms_WF {t : QAtomicType} {as : Array QAtom} {e : Ext.Enc X} {hn : t 
     rw [symKey_folds _ i (by simpa using hi), getElem!_pos _ i (by simpa using hi), Array.getElem_toList,
       Array.getElem_map]
     cases as[i] <;> first | exact String.isValidUTF8 _ | exact (by decide : ByteArray.empty.IsValidUTF8)
-  | .byte, _, _, hc | .char, _, _, hc | .short, _, _, hc | .int, _, _, hc | .long, _, _, hc
-  | .real, _, _, hc | .float, _, _, hc | .timestamp, _, _, hc | .month, _, _, hc | .date, _, _, hc
-  | .datetime, _, _, hc | .timespan, _, _, hc | .minute, _, _, hc | .second, _, _, hc
-  | .time, _, _, hc =>
+  | .u8, _, _, hc | .char, _, _, hc | .i16, _, _, hc | .i32, _, _, hc | .i64, _, _, hc
+  | .f32, _, _, hc | .f64, _, _, hc | .i8, _, _, hc | .date, _, _, hc | .datetime, _, _, hc =>
     cases hc
     simp only [WF, QAtomicType.width]
     rw [← Array.foldl_toList, foldl_pushBits_size, h0]; simp <;> omega

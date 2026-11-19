@@ -47,14 +47,6 @@ def segRange (offs : ByteArray) (n r : Nat) : Nat × Nat :=
   let cut (k : Nat) := min (atI64 offs k).toNatClampNeg n
   (cut r, max (cut r) (cut (r + 1)))
 
-/-- `n` bits from `f`, packed LSB first with the tail of the last byte left zero. `Column.packBits`
-records why the tail matters: trailing set bits make two equal boolean vectors compare unequal under
-`~`. One definition for the bit-payload kernels (`bitRowsOver` here, four in `Structural`), which differ only in `f`. -/
-def packOf (n : Nat) (f : Nat → Bool) : ByteArray :=
-  (List.range ((n + 7) / 8)).foldl (init := ByteArray.empty) fun acc k =>
-    acc.push ((List.range 8).foldl (init := (0 : UInt8)) fun byte t =>
-      if k * 8 + t < n && f (k * 8 + t) then byte ||| (1 <<< t.toUInt8) else byte)
-
 /-- Row `g` of the answer, `w` bits, folds the rows `idx[k]` of the bit matrix `m` (row `i` at bits
 `[i·w, (i+1)·w)`) over `k` in segment `g` of `offs` (`segRange`, clamped into `idx`'s longs): by `∨`
 (`all = false`) or `∧` (`all = true`), an empty segment answering zeros or ones. k's `|/'` and `&/'`
@@ -92,9 +84,9 @@ for. The encoded form holds a narrow column's elements sign-extended, so a `shor
 there and not `Int64.minValue`; the block structure is unchanged, the null still being the smallest
 value the type has. -/
 def Coc.nullOf : QAtomicType → Option Int64
-  | .short => some (-32768)
-  | .int | .month | .date | .minute | .second | .time => some (-2147483648)
-  | .long | .timestamp | .timespan => some Int64.minValue
+  | .i16 => some (-32768)
+  | .i32 | .date => some (-2147483648)
+  | .i64 | .datetime => some Int64.minValue
   | _ => none
 
 /-- The fold on the encoded form, before the narrowing `sum` and `prd` put on top of it. It is

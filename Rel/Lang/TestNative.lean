@@ -18,14 +18,45 @@ rel_program native1a where
     x : X ⟶ N ≜ {(1,A),(2,B),(5,C),(5,A)}°
 
 /-- `output x to "out"`. -/
-def plan : Lean.Meta.MetaM (Except String Plan) := planOf [] native1a "x" "out"
+def plan : Lean.Meta.MetaM (Except String Plan) := return (← outputOf [] native1a "x" "out") >>= Bld.plan
 
-/-- `plan` run outside Lean, in the environment of the modules on `LEAN_PATH` (as `lake env` sets it), where the
-    elaborator's unifier finds the objects' constants (`Obj.named`). -/
+/-! F-e: a computed relation as columns. `Alg.arith` (`arithB`) on two literal columns answers a count register
+    and buffers; the output is the one-row relation of lists `gu ↦ s`: each side's `.e` a computed buffer handed to
+    `parts` (`pushPart`), its `.hi` the count register as a buffer (`enlistLong`), its `.lo` the literal `[0]`. -/
+
+/-- The literal long payload of `xs`. -/
+def longs (xs : List Int64) : ByteArray := xs.foldl (fun b x => Column.pushBits b x.toUInt64 8) .empty
+
+/-- A list side of one row: `.lo` `[0]`, `.hi` `[m]`, `.e` the `m` longs `e`. -/
+def listSide (m e : Nat) : Bld Side := do
+  let one ← lit (.size 1)
+  return [(".lo", ← colRegs .i64 0 one #[← lit (.bytes (Rel.one 0))]),
+    (".hi", ← colRegs .i64 0 one #[← call1 (kernel% Kernel.enlistLong) #[m]]), (".e", ← colRegs .i64 0 m #[e])]
+
+/-- `arith add` of `u` and `v` (a null, an overflow, a negative operand among the rows), written to `dir`. -/
+def arithOut (dir : String) : Bld Unit := do
+  let n ← lit (.size 5)
+  let u ← lit (.bytes (longs [5, 7, Alg.nul, Int64.maxValue, -3]))
+  let v ← lit (.bytes (longs [1, 2, 3, 1, 4]))
+  let rs ← arithB Kernel.Ew.add n u v
+  let (some r, some gu, some s) := (rs[0]?, rs[1]?, rs[3]?) | throw "arithB answers four registers"
+  output dir (← listSide r gu, ← listSide r s)
+
+-- six columns, each one `qlean_own_write`; the kept rows are those of `arith`: `5+1`, `7+2`, `-3+4` (null and overflow out)
+#eval show IO Unit from do
+  let (_, ws) ← IO.ofExcept ((← IO.ofExcept (Bld.plan (arithOut "out"))).run abiOf)
+  unless ws.size == 6 do throw (IO.userError s!"arithOut writes {ws.size} columns, not six")
+
+/-- The native gate's plan: `plan`'s output, then the computed relation's to `out/arith`. -/
+def gatePlan : Lean.Meta.MetaM (Except String Plan) :=
+  return (← outputOf [] native1a "x" "out") >>= fun b => Bld.plan (do b; arithOut "out/arith")
+
+/-- `gatePlan` run outside Lean, in the environment of the modules on `LEAN_PATH` (as `lake env` sets it), where
+    the elaborator's unifier finds the objects' constants (`Obj.named`). -/
 def planIO : IO Plan := do
   Lean.initSearchPath (← Lean.findSysroot)
   let env ← Lean.importModules #[{ module := `Rel.Lang.TestNative }] {}
-  let (r, _) ← plan.run'.toIO { fileName := "relc-1a", fileMap := default } { env }
+  let (r, _) ← gatePlan.run'.toIO { fileName := "relc-1a", fileMap := default } { env }
   IO.ofExcept r
 
 -- two columns, each six `lit`s, a path `lit` and one `qlean_own_write`; nothing else is called

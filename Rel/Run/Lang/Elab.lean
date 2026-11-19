@@ -62,7 +62,7 @@ structure ObjInfo where
   ty : OTy
   elems : List String := []
   range : Option (Int × Int) := none
-  uni : Option ((m : USize) × Arr .long m) := none
+  uni : Option ((m : USize) × Arr .i64 m) := none
   /-- An object variable of a definition elaborated once: its universe is the variable `k`, an argument of the
       definition's constant. -/
   uniVar : Option Nat := none
@@ -72,8 +72,8 @@ structure ObjInfo where
 
 /-- The atoms no declared object is stored as (every one is `.long`, F6): each the placeholder of one object
     variable while a constant generic over it is built, its binder `(A : Obj)` once emitted. -/
-def varAtoms : List Rel.QAtomicType := [.general, .boolean, .byte, .short, .int, .real, .float, .char, .symbol,
-  .timestamp, .month, .date, .datetime, .timespan, .minute, .second, .time]
+def varAtoms : List Rel.QAtomicType := [.general, .u1, .u8, .i16, .i32, .f32, .f64, .char, .sym,
+  .i8, .date, .datetime]
 
 /-- The placeholder of the object variable `k`; none past `varAtoms`, where the variable stays `.long`. -/
 def varObj (k : Nat) : Option Obj := varAtoms[k]?.map .atom
@@ -152,9 +152,9 @@ inductive Pre
       its argument's form (`Form`): closed (`none`), run on demand (`some false`), tested on pairs and never run
       (`some true`). -/
   | var (pos : Pos) (k : Nat) (a b : OTy) (tst : Option Bool)
-  /-- `μX : body` (`least`) or `νX : body`, `X` the variable `k`; `S` the meet of `body`'s conjuncts that do not
-      mention `X`, a `ν`'s start. -/
-  | fix (pos : Pos) (least : Bool) (k : Nat) (S : Option Pre) (body : Pre) (a b : OTy)
+  /-- `μX : body` (`least`) or `νX : body`, `X` the variable `k` written `x`; `S` the meet of `body`'s conjuncts that
+      do not mention `X`, a `ν`'s start. -/
+  | fix (pos : Pos) (least : Bool) (k : Nat) (x : String) (S : Option Pre) (body : Pre) (a b : OTy)
   /-- `hylo(c, S)`, `c` at `pos`, where a cycle of `c` is reported: `body` the `μX : c G(X) S` it is, `X` the variable `k`; `ch : a ⟶ a` the children
       `c` gives a node, `c` then `G`'s membership. -/
   | hylo (pos : Pos) (k : Nat) (ch body : Pre) (a b : OTy)
@@ -300,7 +300,7 @@ def Pre.traverse {m : Type → Type} [Monad m] (fp : Pos → m Pos) (f : Option 
   | .lit q a b ps => return .lit (← fp q) a b ps
   | .close q x a why => return .close (← fp q) (← mo x) a why
   | .var q k a b t => return .var (← fp q) k a b t
-  | .fix q l k S x a b => return .fix (← fp q) l k (← S.mapM (f none)) (← mo x) a b
+  | .fix q l k x S y a b => return .fix (← fp q) l k x (← S.mapM (f none)) (← mo y) a b
   | .hylo q k ch x a b => return .hylo (← fp q) k (← mo ch) (← mo x) a b
   | .call q c us xs ts alt a b d cv tst => return .call (← fp q) c us (← xs.mapM (f none)) ts (← mo alt) a b d cv tst
   | x => pure x
@@ -507,12 +507,12 @@ end Shapes
 
 /-- A row of §e: its shape at the index `I`, the place `q`, the parts `R S` and the objects `a b c d`, and its keyed
     form from the holes recognising it binds, `K` keying a part at its objects, `a b` the family's. -/
-structure Row where
+structure LiftRow where
   shape : {τ : Type} → [S : Shape τ] → S.ω → S.π → τ → τ → S.ω → S.ω → S.ω → S.ω → τ
   keyed : (Pre → OTy → OTy → Pre) → OTy → OTy → Holes → Option Pre
 
 /-- The holes `x` binds when it has `r`'s shape. -/
-def Row.match? (r : Row) (x : Pre) : Option Holes :=
+def LiftRow.match? (r : LiftRow) (x : Pre) : Option Holes :=
   (r.shape (τ := Pre → Pat) (fun _ => pure ())
     (fun v => modify fun h => { h with q := h.q <|> some v })
     (fun v => modify fun h => { h with R := h.R <|> some v }) (fun v => modify fun h => { h with S := h.S <|> some v })
@@ -540,7 +540,7 @@ def famOf : Arg → M (Pre × OTy × OTy)
   | .rel q s t => pure (liftConst I p q s t)
 
 /-- The rows whose fibre at a source reads only that source, in the order `keyed` tries them. -/
-def rows : List Row := [
+def liftRows : List LiftRow := [
   ⟨fun _ _ R S _ _ _ _ => Shape.join R S, fun K a b h => return join (K (← h.R) a b) (K (← h.S) a b)⟩,
   ⟨fun _ _ R S _ _ _ _ => Shape.meet R S, fun K a b h => return meet (K (← h.R) a b) (K (← h.S) a b)⟩,
   ⟨fun _ _ R S _ _ _ _ => Shape.diff R S, fun K a b h => return diff (K (← h.R) a b) (K (← h.S) a b)⟩,
@@ -573,7 +573,7 @@ def rows : List Row := [
     Any other family is read whole at each key and cut to the source, `⟨π₁R,π₂⟩dom(π₁π₁ ∩ π₂)π₁π₂`: every part
     runs on the keys in demand, so `I` needs no universe (a converse or `ran` here would close over all of `I`). -/
 partial def keyed (R : Pre) (a b : OTy) : Pre :=
-  ((rows I).findSome? fun r => r.match? R >>= r.keyed (keyed · · ·) a b).getD (flat R)
+  ((liftRows I).findSome? fun r => r.match? R >>= r.keyed (keyed · · ·) a b).getD (flat R)
 
 def lComp : Pre × OTy × OTy → Pre × OTy × OTy → M (Pre × OTy × OTy)
   | (R, a, b), (S, b', c) => do
@@ -1032,7 +1032,7 @@ def elabE (env : Env) (m : Option OTy) : Expr → M Arg
     let S := q.bound k
     if !least && S.isNone then
       throw ⟨p, s!"{fx} needs a bound: write S ∩ φ with S not mentioning {x} (⊤(A,B) for the whole object)"⟩
-    pure (.rel (.fix p least k S q a c) a c)
+    pure (.rel (.fix p least k x S q a c) a c)
 
 def elabArgs (env : Env) (m : Option OTy) : List Expr → M (List Arg)
   | [] => pure []
@@ -1435,7 +1435,7 @@ def numU (p : Pos) (o : OTy) (op : String) : Except Err (Tm .long .long) :=
   match zonk mc o with
   | .base n => match objs.lookup n with
     | some { uni := some ⟨_, U⟩, .. } => pure (.uni (A := .long) U)
-    | some { uniVar := some k, obj := .atom .long, .. } => pure (.var false k)
+    | some { uniVar := some k, obj := .atom .i64, .. } => pure (.var false k)
     | some { uniVar := some _, .. } => throw ⟨p, s!"{op} on {n}: a number object, which its constant is not generic over"⟩
     | _ => throw ⟨p, s!"{op} on {n}: no universe"⟩
   | o => throw ⟨p, s!"{op} runs on a declared object, found {o}"⟩
@@ -1471,20 +1471,20 @@ def litCol (p : Pos) (n : USize) (o : OTy) (rows : List Tup) : Except Err ((A : 
     let ends := (ts.foldl (fun (k, acc) t => (k + t.length, (k + t.length) :: acc)) (0, ([] : List Nat))).2.reverse
     let hi := ends.map Int64.ofNat; let lo := (ends.zip ts).map fun (e, t) => Int64.ofNat (e - t.length)
     if h : lo.length.toUSize = n ∧ hi.length.toUSize = n then
-      (let l : Arr .long n := h.1 ▸ col lo; let r : Arr .long n := h.2 ▸ col hi; pure ⟨.arr B, ⟨_, l, r, v⟩⟩)
+      (let l : Arr .i64 n := h.1 ▸ col lo; let r : Arr .i64 n := h.2 ▸ col hi; pure ⟨.arr B, ⟨_, l, r, v⟩⟩)
     else internal dp "literal array rows"
   | .mv _ => throw (litOpen objs p rows)
   -- a sum only the context gives, to an empty array's elements: no rows to read
   | .sum x y =>
     if h : n = 0 ∧ rows.isEmpty then h.1 ▸ (do
       let ⟨A, u⟩ ← litCol p 0 x []; let ⟨B, v⟩ ← litCol p 0 y []
-      pure ⟨.sum A B, ⟨0, 0, emptyArr .boolean, emptyArr .long, u, v⟩⟩ : Except Err ((A : Obj) × Vals A 0))
+      pure ⟨.sum A B, ⟨0, 0, emptyArr .u1, emptyArr .i64, u, v⟩⟩ : Except Err ((A : Obj) × Vals A 0))
     else throw ⟨p, s!"a literal relates elements of declared objects, found {o}"⟩
   | o => do
     let cs ← rows.mapM fun
       | .leaf w => code objs mc p o w
       | r => throw ⟨p, s!"a literal's element of {o} is a word, found {r.show}"⟩
-    if h : cs.length.toUSize = n then (let c : Arr .long n := h ▸ col cs; pure ⟨.long, c⟩) else internal dp "literal rows"
+    if h : cs.length.toUSize = n then (let c : Arr .i64 n := h ▸ col cs; pure ⟨.long, c⟩) else internal dp "literal rows"
 
 /-- A pair test at the objects `A×B`. -/
 def corAt (A B : Obj) : Cor → Except Err (Tm (.prod A B) (.prod A B))
@@ -1661,12 +1661,15 @@ def build : Pre → Except Err Res
     let os ← (us.filter (·.2.1)).mapM fun (u, _) => toObj objs mc dp u
     pure ⟨A, B, ← callArgs pos c us xs ts (Tm.call (A := A) (B := B) d c os cv)⟩
   -- the body read whole each round, on its source's universe when it needs keys
-  | .fix p least k S q a b => do
+  | .fix p least k x S q a b => do
     let A ← toObj objs mc dp a; let B ← toObj objs mc dp b
     let why := s!"{if least then "μ" else "ν"}'s body is read whole each round"
     let body ← closed? dp (A := A) (B := B) (← closeRes objs mc dp p a why (← build q))
     unless body.pol true k do
-      throw ⟨p, s!"{if least then "μ" else "ν"} at {p}: its body does not use {k} positively"⟩
+      -- `Tm.pol` answers a Bool and `Tm.var` holds no position, so the source term gives the first occurrence
+      let some o := q.occ k | internal dp s!"{x} is not positive in {if least then "μ" else "ν"}{x} at {p} but does not occur"
+      throw ⟨p, s!"{if least then "μ" else "ν"}{x} at {p.line}:{p.col}: {x} first occurs at {o.line}:{o.col}, and the " ++
+        s!"body does not use {x} positively (it reads {x} on both sides, or holds it whole)"⟩
     if least then
       -- a chain from `𝟘` on universes of `n` and `m` elements stops within `n·m+1` rounds, so their `cap` never
       -- fails a monotonic body; an array object has no such bound, and `muCap` only guards termination

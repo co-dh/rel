@@ -13,7 +13,7 @@ namespace Rel.KernelWF
 open Tab Rel.Kernel Rel.Verify
 
 /-- A `long` payload is dense bytes or Frame of Reference: `WF` admits no other layout at `long`. -/
-theorem long_cases {n : USize} {e : Enc} (hw : Enc.WF .long n e) :
+theorem long_cases {n : USize} {e : Enc} (hw : Enc.WF .i64 n e) :
     (∃ b, e = .bytes b) ∨ ∃ M P, e = .foR M P := by
   cases e <;> simp_all [Enc.WF, QAtomicType.width]
 
@@ -29,7 +29,7 @@ theorem gatherColumn_isSome {t : QAtomicType} {n : USize} {e : Enc} (hw : Enc.WF
   have hz : ¬ i.size < m.toNat * 8 := by omega
   unfold gatherColumn
   cases e <;> cases t <;>
-    simp_all [-Nat.not_lt, Enc.WF, QAtomicType.width, denseWidth, foRColumn, Enc.bytesOf,
+    simp_all [-Nat.not_lt, Enc.WF, QAtomicType.width, denseWidth, foRColumn, Enc.bytesOf, boolBits,
       Column.alpEncodes] <;> split <;> simp_all [-Nat.not_lt]
 
 /-! ## The answer's size: what `Enc.WF` asks of each gather's payload -/
@@ -350,8 +350,12 @@ theorem gatherColumn_wf {t : QAtomicType} {n : USize} {e : Enc} (hw : Enc.WF t n
   have hz : ¬ i.size < m.toNat * 8 := by omega
   cases e with
   | foR M P =>
+    by_cases hb : t = .u1
+    · subst hb
+      simp_all [-Nat.not_lt, denseWidth, foRColumn, Enc.bytesOf, boolBits]
+      obtain ⟨_, -, rfl⟩ := h; simp [Enc.WF, gatherBits_size, hm]
     by_cases hc : Column.encodes t = true ∧ M.isEmpty = false <;> cases t <;>
-      simp_all [-Nat.not_lt, Enc.WF, QAtomicType.width, denseWidth, foRColumn, Enc.bytesOf,
+      simp_all [-Nat.not_lt, Enc.WF, QAtomicType.width, denseWidth, foRColumn, Enc.bytesOf, boolBits,
         Column.encodes, gatherBytes_size, gatherFoR, toNat_small, small_mod] <;> obtain ⟨_, ⟨_, rfl⟩, rfl⟩ := h <;>
       simp [gatherBytes_size, toNat_small, small_mod, hm]
   | enum d o ids =>
@@ -388,7 +392,7 @@ theorem gatherColumn_wf {t : QAtomicType} {n : USize} {e : Enc} (hw : Enc.WF t n
     simp only [Enc.WF]
     exact ⟨by rw [gatherSyms_size]; omega, gatherSyms_wf .., fun j hj => hU j (by rw [gatherSyms_size]; omega)⟩
   | _ => cases t <;>
-      simp_all [-Nat.not_lt, Enc.WF, QAtomicType.width, denseWidth, foRColumn, Enc.bytesOf,
+      simp_all [-Nat.not_lt, Enc.WF, QAtomicType.width, denseWidth, foRColumn, Enc.bytesOf, boolBits,
         Column.alpEncodes, gatherBits_size, gatherBytes_size, gatherAlp_size, gatherSyms_size, gatherSyms_wf,
         gatherIds_wf, toNat_small, small_mod] <;> (try subst h) <;>
       simp_all [gatherBits_size, gatherBytes_size, gatherAlp_size, gatherSyms_size, gatherSyms_wf, gatherIds_wf,

@@ -160,8 +160,8 @@ def sortBy (g o : ByteArray) : ByteArray × ByteArray :=
   (gather 8 g p, gather 8 o p)
 
 /-- `∩`, `∪` and `−` of two matrices of one shape: `Ew.bit` lesser, greater, and lesser with `~`. -/
-def Bits.meet (x y : Bits) : Bits := ⟨x.na, x.w, Ew.bit Ew.lesser Ew.vv x.b y.b (x.na * x.w).toUSize⟩
-def Bits.join (x y : Bits) : Bits := ⟨x.na, x.w, Ew.bit Ew.greater Ew.vv x.b y.b (x.na * x.w).toUSize⟩
+def Bits.meet (x y : Bits) : Bits := ⟨x.na, x.w, Ew.bitBits Ew.lesser Ew.vv x.b y.b (x.na * x.w).toUSize⟩
+def Bits.join (x y : Bits) : Bits := ⟨x.na, x.w, Ew.bitBits Ew.greater Ew.vv x.b y.b (x.na * x.w).toUSize⟩
 def Bits.diff (x y : Bits) : Bits := x.meet ⟨y.na, y.w, Ew.notBits (y.na * y.w).toUSize y.b⟩
 
 /-- `R \ S` from `R°`'s pairs `y`, `a` (`y` ascending, below `nb`) and the universes' codes `ub`, `uc`: row `y`

@@ -170,6 +170,8 @@ theorem canonical_spec : (A : Obj) → A.canonical = true → A.Ordered ∧ A.Ke
           | (cases x; cases y; simp_all [UInt16.toNat_inj, UInt32.toNat_inj, UInt64.toNat_inj]; done)
           | exact UInt8.toNat_inj.1 e)
       | exact UInt8.toNat_inj.1 e
+      -- `i8` keys by its sign-bit flip directly (`Obj.key`), not through `Order.rank`
+      | (have e := (UInt8.xor_left_inj _).1 (UInt8.toNat_inj.1 e); cases x; cases y; cases e; rfl)
   | .prod a b, h => by
     simp only [Obj.canonical, Bool.and_eq_true] at h
     exact ⟨⟨(canonical_spec a h.1).1, (canonical_spec b h.2).1⟩,

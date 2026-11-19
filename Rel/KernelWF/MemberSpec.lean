@@ -32,7 +32,8 @@ theorem memberIds_bit (x c : Code)
     (hcw : laneOK(c.w))
     (hxs : x.b.size = (x.n.toNat * x.w + 7) / 8) (hcs : c.b.size = (c.n.toNat * c.w + 7) / 8)
     {i : Nat} (hi : i < x.n.toNat) :
-    Column.bitAt (memberIdsVec x.w.toUSize x.b x.n c.w.toUSize c.b c.n) i = true ↔
+    Column.bitAt (bitsOfFoR (memberIdsVec x.w.toUSize x.b x.n c.w.toUSize c.b c.n).1
+      (memberIdsVec x.w.toUSize x.b x.n c.w.toUSize c.b c.n).2 x.n) i = true ↔
       ∃ j < c.n.toNat, Column.idAt c.b c.w j = Column.idAt x.b x.w i := by
   have ex : x.w.toUSize.toNat = x.w := lane_toNat (by omega)
   have ec : c.w.toUSize.toNat = c.w := lane_toNat (by omega)
@@ -40,7 +41,7 @@ theorem memberIds_bit (x c : Code)
   have fc : Column.idsCap c.b c.w c.n.toNat = c.n.toNat := idsCap_full (by omega) (by rw [Nat.mul_comm]; omega)
   obtain ⟨-, hg⟩ := Verify.memberIdsVec_mem x.w.toUSize c.w.toUSize x.n c.n x.b c.b (by omega) (by omega)
   rw [ex, ec, fx, fc] at hg
-  rw [hg i (by omega)]
+  rw [memberIdsVec, bitAt_bools _ (by rw [ex, fx]) hi, hg i (by omega)]
   simp [hi, List.mem_map, List.mem_range]
 
 /-- **`Code.member`'s bit `i`** (`i` below the needle count): set exactly when the needle's code `i` is some
@@ -51,13 +52,13 @@ theorem member_bit (x c : Code)
     (hxs : x.b.size = (x.n.toNat * x.w + 7) / 8) (hcs : c.b.size = (c.n.toNat * c.w + 7) / 8)
     {i : Nat} (hi : i < x.n.toNat) :
     Column.bitAt (x.member c) i = true ↔ ∃ j < c.n.toNat, Column.idAt c.b c.w j = Column.idAt x.b x.w i := by
-  unfold Code.member Code.kind
+  unfold Code.member Code.kind; dsimp only
   split
   · rename_i h1 h2
     have e1 : x.w = 1 := ((laneKind_some h1).resolve_right (by simp [Scan.Kind.width])).2
     have e2 : c.w = 1 := ((laneKind_some h2).resolve_right (by simp [Scan.Kind.width])).2
     obtain ⟨-, hg⟩ := Verify.memberBits_mem x.n c.n x.b c.b
-    rw [hg i (by omega), e1, e2]
+    rw [memberBits, bitAt_bools _ rfl hi, hg i (by omega), e1, e2]
     simp only [hi, decide_true, Bool.true_and, decide_eq_true_eq, List.mem_map, List.mem_range, Verify.idAt_one]
     constructor
     · rintro ⟨j, hj, e⟩; exact ⟨j, hj, by rw [e]⟩
@@ -91,7 +92,7 @@ theorem member_bit (x c : Code)
       obtain ⟨-, hg⟩ := Verify.memberVec_mem k.width.toUSize false x.b c.b
         (by rw [hwk, hcn]; exact c.n.toNat_lt_size)
       rw [hwk, hxn] at hg
-      rw [hg i (by omega), if_pos hk8, e1, e2]
+      rw [memberVec, bitAt_bools _ (by rw [hwk, hxn]) hi, hg i (by omega), if_pos hk8, e1, e2]
       simp only [idAt_lane _ hk8, hi, decide_true, Bool.true_and, decide_eq_true_eq, Verify.elemsW, hcn, List.map_map,
         List.mem_map, List.mem_range, Function.comp_def, Kernel.normalise, Bool.not_false, if_true]
       constructor
@@ -125,7 +126,7 @@ theorem anti_sublist (x y : Code) : (ids (anti x y)).Sublist (List.range x.n.toN
 theorem notBits_bitAt (m : USize) (b : ByteArray) {i : Nat} (hi : i < m.toNat) :
     Column.bitAt (Ew.notBits m b) i = !Column.bitAt b i := by
   obtain ⟨-, hg⟩ := Verify.Ew.bit_bitAt (Ew.bitCmp + Ew.ne) Ew.av ⟨#[1]⟩ b m
-  simp only [Ew.notBits]
+  simp only [Ew.notBits, Ew.bitBits_eq]
   rw [hg i (by omega)]
   simp only [hi, decide_true, Bool.true_and, Ew.shapeIdx]
   have h1 : Column.bitAt ⟨#[1]⟩ 0 = true := by decide
@@ -192,7 +193,7 @@ theorem groupIds_firsts (c : Code)
           Nat.mul_div_cancel _ hk0, Nat.min_self]
       rw [hm, e]
       refine (Verify.groups_congr _ _ fun i _ j _ => ?_).1
-      rw [Verify.keyAt_eq_iff hki, idAt_lane _ hk8, idAt_lane _ hk8]
+      rw [Verify.keyAt_eq_iff (by revert hki; cases k <;> decide), idAt_lane _ hk8, idAt_lane _ hk8]
       exact ⟨fun h => by rw [h], fun h => UInt64.toNat_inj.1 h⟩
   · rename_i hk
     have h24 := laneKind_none hk hw

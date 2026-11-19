@@ -383,15 +383,12 @@ theorem ids_get {b : ByteArray} {l : List Nat} (h : ids b = l) {j : Nat} (hj : j
     Option.some.injEq] at this
   exact this
 
-/-- At an integral kind the key is the stored bits, sign bit flipped or not, so two keys agree exactly when
-the elements do. -/
-theorem keyAt_eq_iff {k : Kind} (hk : k = .u8 ∨ k = .c8 ∨ k = .i16 ∨ k = .i32 ∨ k = .i64) (b : ByteArray)
+/-- At every kind but the boolean and the two floats the key is the stored bits, sign bit flipped or not, so
+two keys agree exactly when the elements do. -/
+theorem keyAt_eq_iff {k : Kind} (hk : k ≠ .bit ∧ k ≠ .f32 ∧ k ≠ .f64) (b : ByteArray)
     (i j : Nat) : Order.keyAt k b i = Order.keyAt k b j ↔
       Column.bitsAt b (i * k.width) k.width = Column.bitsAt b (j * k.width) k.width := by
-  rcases hk with rfl | rfl | rfl | rfl | rfl
-  · exact Iff.rfl
-  · exact Iff.rfl
-  all_goals exact UInt64.xor_left_inj _
+  cases k <;> simp at hk <;> first | exact Iff.rfl | exact UInt64.xor_left_inj _
 
 section Over
 

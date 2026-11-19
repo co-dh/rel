@@ -80,17 +80,85 @@ def foRMeta (lg : Nat) (nul : UInt64) (sumn : Nat) (bs : Array (UInt64 × UInt64
         lg.toUInt64 8
     ++ bs.foldl (init := ByteArray.empty) fun acc b => acc.push b.2.2.2.toUInt8
 
+/-- A section padded up to the multiple of eight the next one starts on. -/
+private def alpPad (b : ByteArray) : ByteArray :=
+  b ++ ⟨Array.replicate ((8 - b.size % 8) % 8) 0⟩
+
+/-- The exception ladder `Column.alpSects` reads back, `rust/src/layout.rs`'s `exc_layout`: the header (the count of
+`exc`, then `word`), `exc_raw` (element `i` of `x` at `w` bytes, each `i` of `exc`), `exc_off` (at each of the `nb + 1`
+block starts, the exceptions before it), `exc_pos` (each one's place in its block of `B`) and `last`, each section
+aligned. ALP's blob ends in its block exponents, a FoR patch list in its frames or in nothing. -/
+def excBlob (word : UInt64) (B w nb : Nat) (x : ByteArray) (exc : Array Nat) (last : ByteArray) : ByteArray :=
+  alpPad (Rel.Column.pushBits (Rel.Column.pushBits ByteArray.empty exc.size.toUInt64 8) word 8)
+    ++ alpPad (exc.foldl (init := ByteArray.empty) fun acc i =>
+         Rel.Column.pushBits acc (Rel.Column.bitsAt x (i * w) w) w)
+    ++ alpPad ((Array.range (nb + 1)).foldl (init := ByteArray.empty) fun acc b =>
+         Rel.Column.pushBits acc (exc.filter (· < b * B)).size.toUInt64 4)
+    ++ alpPad (exc.foldl (init := ByteArray.empty) fun acc i =>
+         Rel.Column.pushBits acc (i % B).toUInt64 2)
+    ++ alpPad last
+
+/-- Whether key `k` lies outside the `2 ^ d` keys from frame `f`, so that its block patches it. -/
+def outside (f d k : Nat) : Bool := k < f || f + 2 ^ d ≤ k
+
+/-- How many of the block's keys `ks` frame `f` at width `d` patches. -/
+def npatch (ks : Array Nat) (f d : Nat) : Nat := (ks.filter (outside f d)).size
+
+/-- The frame at width `d`: of `mn` and the keys, the one patching fewest, the lowest of those. -/
+def frameAt (ks : Array Nat) (mn d : Nat) : Nat :=
+  ks.foldl (init := mn) fun f k =>
+    if npatch ks k d < npatch ks f d || (npatch ks k d == npatch ks f d && k < f) then k else f
+
+/-- The bytes block `ks` costs at width `d`, at `w` bytes an element: its residual bits rounded up to bytes, and
+`2 + w` a patch (its `u16` position and the element). -/
+def cost (ks : Array Nat) (mn w d : Nat) : Nat := (ks.size * d + 7) / 8 + npatch ks (frameAt ks mn d) d * (2 + w)
+
+/-- A block's frame key and residual width: the width of `0 .. W` that `cost` is least at, the narrower on a tie, and
+its `frameAt`; `W`, the bit length of `mx - mn`, patches nothing, and a wider width only costs more. Where `patch` is
+off — ALP's integers, whose exceptions are its own blob's — the width is `W` and the frame `mn`. -/
+def planOf (patch : Bool) (ks : Array Nat) (mn mx w : Nat) : Nat × Nat :=
+  if patch then
+    -- the best width's cost rides in the accumulator: recomputing it is a `frameAt` search per width
+    let d := ((List.range (Rel.Column.widthFor (mx - mn) + 1)).foldl (init := (0, cost ks mn w 0)) fun (d, cd) c =>
+      let cc := cost ks mn w c
+      if cc < cd then (c, cc) else (d, cd)).1
+    (frameAt ks mn d, d)
+  else (mn, Rel.Column.widthFor (mx - mn))
+
+/-- Block `b` of `n` `w`-byte elements at blocks of `2 ^ lg`: `blockOf`'s extremes and sum, then `planOf`'s frame and
+width for its keys. -/
+def planBlock (lg w n : Nat) (patch : Bool) (x : ByteArray) (b : Nat) : Nat × Nat × UInt64 × Nat × Nat :=
+  let (mn, mx, s, _) := blockOf (2 ^ lg) w n b x
+  let lo := b * 2 ^ lg
+  let (f, d) := planOf patch ((Array.range (min (lo + 2 ^ lg) n - lo)).map fun j => keyAt w x (lo + j)) mn mx w
+  (mn, mx, s, f, d)
+
 /-- `encode` at blocks of `2 ^ lg` elements: the model every theorem about the encoder is stated
-over, at any `lg` the layout admits, `6 .. 16`. `encode` is this at `Column.lgEnc`. -/
-def encodeAt (lg : Nat) (width : USize) (x : ByteArray) : ByteArray × ByteArray :=
+over, at any `lg` the layout admits, `6 .. 16`. `encode` is this at `Column.lgEnc`.
+
+Block `b` is `blockOf`'s extremes and sum with `planOf`'s frame `f` and width `d`: an element whose key `outside`
+leaves is patched — its residual 0, its bits in the patch list `excBlob` lays after the residuals — and every other
+is its key less `f` at `d` bits. The patch list exists where a block patches, its frames (`f - mn` a block) where
+one is not its minimum; `rust/src/enc.rs`'s `for_blk` and `pack_exc_blk` write the same bytes. A column of `2 ^ 32`
+elements or more patches nothing: the list's block offsets are `u32`. -/
+def encodeAt (lg : Nat) (width : USize) (x : ByteArray) (patch : Bool := true) : ByteArray × ByteArray :=
   let w := width.toNat
   let n := x.size / w
-  let bs := (Array.range ((n + 2 ^ lg - 1) / 2 ^ lg)).map fun b =>
-    blockOf (2 ^ lg) w n b x
-  let pack := (bs.foldl (init := (ByteArray.empty, 0)) fun (acc, b) (mn, _, _, wd) =>
+  let blk := planBlock lg w n (patch && decide (n < 2 ^ 32)) x
+  let bs := (Array.range ((n + 2 ^ lg - 1) / 2 ^ lg)).map blk
+  -- every per-element read of a plan goes to `bs`, never `blk`: each `blk` call reruns the block's width search
+  let pack := (bs.foldl (init := (ByteArray.empty, 0)) fun (acc, b) (_, _, _, f, d) =>
     let lo := b * 2 ^ lg
-    (acc ++ packRes (2 ^ lg) wd fun j => (if lo + j < n then keyAt w x (lo + j) - mn else 0).toUInt64, b + 1)).1
-  (foRMeta lg (sumNul w) n (bs.map fun (mn, mx, s, wd) => (unbias w mn, unbias w mx, s, wd)), pack)
+    (acc ++ packRes (2 ^ lg) d fun j =>
+      (if lo + j < n && !outside f d (keyAt w x (lo + j)) then keyAt w x (lo + j) - f else 0).toUInt64, b + 1)).1
+  let exc := (Array.range n).filter fun i =>
+    outside (bs.getD (i / 2 ^ lg) default).2.2.2.1 (bs.getD (i / 2 ^ lg) default).2.2.2.2 (keyAt w x i)
+  let fs := bs.map fun (mn, _, _, f, _) => (f - mn).toUInt64
+  let frm := fs.any (· != 0)
+  let tail := if exc.size = 0 then ByteArray.empty else
+    excBlob (w.toUInt64 ||| if frm then 256 else 0) (2 ^ lg) w bs.size x exc
+      (if frm then fs.foldl (init := ByteArray.empty) fun acc v => Rel.Column.pushBits acc v 8 else ByteArray.empty)
+  (foRMeta lg (sumNul w) n (bs.map fun (mn, mx, s, _, d) => (unbias w mn, unbias w mx, s, d)), pack ++ tail)
 
 /-- A dense payload of `width`-byte elements as `(metadata, pack)`.
 
@@ -103,6 +171,12 @@ those four element types, `Column.encode` below refuses everything else, and the
 answering an empty pair, which would drop a column's contents silently. -/
 @[extern "qlean_coc_encode"]
 def encode (width : USize) (x : @& ByteArray) : ByteArray × ByteArray := encodeAt Rel.Column.lgEnc width x
+
+/-- The `u1` Frame of Reference column of the `n` booleans `p`, the form every boolean writer answers: `encodeAt` of
+their 0/1 bytes, unpatched, so a mixed block's residuals are its bitmap at width 1 and an all-0 or all-1 block is
+width 0 at base 0 or 1 with no residual. `rust/src/ffi.rs`'s `Sink::bools` writes it a block at a time. -/
+def bools (n : Nat) (p : Nat → Bool) : ByteArray × ByteArray :=
+  encodeAt Rel.Column.lgEnc (USize.ofNat32 1 (by decide)) (Rel.Column.packIds 8 n fun i => (p i).toNat) false
 
 
 /-- The bytes of the patch list whose header is at byte `e` of `pk`, for `nb` blocks: `rust/src/coc.rs`'s
@@ -254,24 +328,12 @@ def alpBlockOf (f32 : Bool) (B w n b : Nat) (x : ByteArray) (own : Array (Option
     if (own[lo + j]!).isNone then none
     else alpDat f32 (Rel.Column.bitsAt x ((lo + j) * w) w) e)
 
-/-- A section padded up to the multiple of eight the next one starts on. -/
-private def alpPad (b : ByteArray) : ByteArray :=
-  b ++ ⟨Array.replicate ((8 - b.size % 8) % 8) 0⟩
-
-/-- The alp blob: the header, then `exc_raw`, `exc_off`, `exc_pos` and `exp`, each section aligned.
+/-- The alp blob: `excBlob` ending in each block's exponent, its flag word saying whether an element is four bytes.
 `Column.alpSects` reads this ladder back and `rust/src/coc.rs`'s `alp_layout` is the C's one copy of it. -/
 def alpBlob (f32 : Bool) (B w n : Nat) (x : ByteArray) (bs : Array (Nat × Array (Option UInt64))) :
     ByteArray :=
-  let exc := (Array.range n).filter fun i => ((bs[i / B]!).2[i % B]!).isNone
-  alpPad (Rel.Column.pushBits (Rel.Column.pushBits ByteArray.empty exc.size.toUInt64 8)
-      (if f32 then 1 else 0) 8)
-    ++ alpPad (exc.foldl (init := ByteArray.empty) fun acc i =>
-         Rel.Column.pushBits acc (Rel.Column.bitsAt x (i * w) w) w)
-    ++ alpPad ((Array.range (bs.size + 1)).foldl (init := ByteArray.empty) fun acc b =>
-         Rel.Column.pushBits acc (exc.filter (· < b * B)).size.toUInt64 4)
-    ++ alpPad (exc.foldl (init := ByteArray.empty) fun acc i =>
-         Rel.Column.pushBits acc (i % B).toUInt64 2)
-    ++ alpPad (bs.foldl (init := ByteArray.empty) fun acc be => acc.push be.1.toUInt8)
+  excBlob (if f32 then 1 else 0) B w bs.size x ((Array.range n).filter fun i => ((bs[i / B]!).2[i % B]!).isNone)
+    (bs.foldl (init := ByteArray.empty) fun acc be => acc.push be.1.toUInt8)
 
 /-- A dense payload of `w`-byte floats as `(metadata, pack, alp)`. Three passes, the first of them
 the expensive one — up to nineteen trial round trips an element — because a block's exponent is not
@@ -293,7 +355,7 @@ def alpEncodeAt (f32 : Bool) (x : ByteArray) (lg : Nat := Rel.Column.lgEnc) :
       | some v => some (match m with | none => v.toInt64.toInt | some a => min a v.toInt64.toInt)
     let base := (Int64.ofInt (mn.getD 0)).toUInt64
     be.2.foldl (init := acc) fun a d => Rel.Column.pushBits a (d.getD base) 8
-  let (metadata, pack) := encodeAt lg 8 ds
+  let (metadata, pack) := encodeAt lg 8 ds false
   (metadata, pack, alpBlob f32 (2 ^ lg) w n x bs)
 
 /-- The obligation is `alpDecode (alpEncode x) = x`, **byte for byte**, NaN payloads included: `0n`
@@ -369,23 +431,19 @@ types it is the right encoding for at all. Every exclusion is measured or struct
   per block is a net loss — `tools/coc/note.md` §5 has them at 0.98–1.02x across the board, measured
   when a block cost 25 bytes and so a 2.4% loss; at 33 it is 3.2% and the exclusion only holds
   harder. `CLAUDE.md` grants them explicitly;
-* `real`, `float` and `datetime` are floats. Frame of Reference over raw IEEE bit patterns is
+* `f32` and `f64` are floats. Frame of Reference over raw IEEE bit patterns is
   lossless and shrinks nothing, patterns not clustering the way the values do; their encoding is
   `alpEncodes`, below;
 * `symbol` has no fixed width. -/
 def encodes : QAtomicType → Bool
-  | .short | .int | .month | .date | .minute | .second | .time
-  | .long | .timestamp | .timespan => true
+  | .i16 | .i32 | .date | .i64 | .datetime => true
   | _ => false
 
-/-- The types ALP is the encoding for: q's three float types and no others. `real` is four bytes and
-goes through the `_f32` kernels, `float` and `datetime` are eight and go through the `_f64` ones —
-`QAtomicType.width` is what chooses, so `datetime` needs no case of its own here or anywhere below.
-
-`datetime` is a float in q and not a separate thing: its payload is a `double` count of days, which
-is a decimal on a tick like any price, so nothing about it wants a different encoding. -/
+/-- The types ALP is the encoding for: the two float types and no others. `f32` is four bytes and
+goes through the `_f32` kernels, `f64` is eight and goes through the `_f64` ones — `QAtomicType.width`
+is what chooses. -/
 def alpEncodes : QAtomicType → Bool
-  | .real | .float | .datetime => true
+  | .f32 | .f64 => true
   | _ => false
 
 end Rel.Column
@@ -458,7 +516,8 @@ narrowest residual width its range allows, so all a 64-bit block costs over dens
 and only the whole column's total against `n * w` says whether the narrow blocks paid that back. -/
 def answer (t : QAtomicType) (n : USize) (e : Ext.Enc X) : Ext.Enc X :=
   match t with
-  | .general => e
+  -- a boolean has no dense bytes to decode to: its bitmap or `u1` `foR` is kept as it is
+  | .general | .u1 => e
   | t => match t.width, e with
     | some w, .bytes b => if n < encodeMin then e else
     -- ALP first at a float, as on entry: a float answer encoded with `encode` alone stayed dense, so
@@ -506,3 +565,34 @@ def alpOf (t : QAtomicType) (n : USize) (e : Ext.Enc X) : Option (Ext.Enc X) :=
   | _, _ => none
 
 end Rel.Ext.Enc
+
+namespace Rel.Kernel
+
+/-- `n` bits from `f`, packed LSB first with the tail of the last byte left zero. `Column.packBits`
+records why the tail matters: trailing set bits make two equal boolean vectors compare unequal under
+`~`. One definition for the bit-payload kernels (`bitRowsOver` in `Reduce`, four in `Structural`, `bitsOfFoR`
+here), which differ only in `f`. -/
+def packOf (n : Nat) (f : Nat → Bool) : ByteArray :=
+  (List.range ((n + 7) / 8)).foldl (init := ByteArray.empty) fun acc k =>
+    acc.push ((List.range 8).foldl (init := (0 : UInt8)) fun byte t =>
+      if k * 8 + t < n && f (k * 8 + t) then byte ||| (1 <<< t.toUInt8) else byte)
+
+/-- A boolean `foR` (`u1`) as the bitmap `concatBits` joins: bit `i` is element `i`'s low bit, which is what
+`Enc.raw` reads at a boolean, and a row past the blocks is `0`. The C copies a width-1, frame-0 block's residual
+words whole — they already are its bitmap — and builds any other block in one block of L1 scratch. -/
+@[extern "qlean_structural_bits_of_for"]
+def bitsOfFoR (metadata pack : @& ByteArray) (n : USize) : ByteArray :=
+  let starts := Column.blockStarts metadata
+  packOf n.toNat fun i =>
+    i < Column.blk metadata * Column.nblk metadata && (Column.foRBits metadata pack starts i).toNat % 2 == 1
+
+/-- A boolean payload as its bitmap, whichever of the two forms `Enc.WF .u1` admits it is in (a `u1` `foR`
+through `bitsOfFoR`); `none` at any other type or form. The one boolean read every bitmap consumer goes through,
+here below `Elementwise` so that its operand readers take a boolean through it too. -/
+def boolBits (t : QAtomicType) (n : USize) (e : Ext.Enc X) : Option ByteArray :=
+  match t, e with
+  | .u1, .bits b => some b
+  | .u1, .foR m p => some (bitsOfFoR m p n)
+  | _, _ => none
+
+end Rel.Kernel

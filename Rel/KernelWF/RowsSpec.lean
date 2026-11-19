@@ -474,7 +474,7 @@ theorem flatMap_sublist_map_flatMap {α β γ : Type} (p : α → γ) (g : α �
 
 /-- **An array side with the payload of `x` and windows inside `x`'s fits where `x` does**: the windows of
     `lo'`/`hi'` at `qs`, concatenated, a sublist of `x`'s at `ps` — the bounds and the payload's fit shrink. -/
-theorem pickFits_windows {B : Obj} {n m : USize} (x : Vals (.arr B) n) (lo' hi' : Arr .long m)
+theorem pickFits_windows {B : Obj} {n m : USize} (x : Vals (.arr B) n) (lo' hi' : Arr .i64 m)
     {ps qs : List Nat}
     (h : (qs.flatMap fun k => if h : k < m.toNat then
         List.range' (min (max (lo'.get ⟨k, h⟩).toInt 0).toNat x.1.toNat)

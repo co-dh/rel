@@ -120,7 +120,7 @@ theorem run_val (b : Ew.Build) (hb : b.stages = #[]) (op cls shape sa sb : UInt8
 theorem run_cmp (b : Ew.Build) (hb : b.stages = #[]) (op cls shape sa sb : UInt8) (nul : Int64)
     (ha : sa < Ew.slot0) (hb' : sb < Ew.slot0) (n : USize) :
     b.run { engine := Ew.eCmp, op, cls, shape, a := sa, b := sb, nul } n =
-      Ew.cmp op cls shape b.inputs[sa.toNat]! b.inputs[sb.toNat]! n := by
+      Ew.cmpBitmap op cls shape b.inputs[sa.toNat]! b.inputs[sb.toNat]! n := by
   obtain ⟨hk, h0⟩ := prog_one b hb { engine := Ew.eCmp, op, cls, shape, a := sa, b := sb, nul }
   simp only [Ew.Build.run, Ew.chain, hk, show List.range 1 = [0] from rfl, List.foldl_cons, List.foldl_nil]
   rw [h0]

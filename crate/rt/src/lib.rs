@@ -99,6 +99,23 @@ unsafe fn rt_free(o: *mut Object) {
     }
 }
 
+/// `Array.push`, consuming `a` and `v`: in place when `a` is exclusive with room, else into a copy of twice the
+/// capacity that holds its own reference to each element (a plan's literal `parts` is persistent, never exclusive)
+#[unsafe(no_mangle)] pub unsafe extern "C" fn lean_array_push(a: *mut Object, v: *mut Object) -> *mut Object {
+    unsafe {
+        let n = array_size(a);
+        let r = if is_exclusive(a) && n < array_capacity(a) { a } else {
+            let r = alloc_array(n, 2 * n + 1);
+            for i in 0..n { let e = array_get_core(a, i); inc(e); array_set_core(r, i, e) }
+            dec(a);
+            r
+        };
+        array_set_core(r, n, v);
+        array_set_size(r, n + 1);
+        r
+    }
+}
+
 // ---------------------------------------------------------------------------------- strings and IO errors
 
 #[unsafe(no_mangle)] pub unsafe extern "C" fn lean_mk_string(s: *const c_char) -> *mut Object {

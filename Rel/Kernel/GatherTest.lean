@@ -37,4 +37,19 @@ def short : String ⊕ (List UInt8 × List UInt8) := .inl "gather: ix: foR: 1 bl
 example : view (kgather (u 2000) (col [0, 1]) (u 2) (col [0, 1])) = short := by decide +kernel
 #guard view (kgather (u 2000) (col [0, 1]) (u 2) (col [0, 1])) == short
 
+-- `pos` (PLAN 6.13) as either argument: the positions, read as the loop index. G1: `ix = pos` at `m = n` answers `e`,
+-- at `m < n` the first `m` rows of `e`, at `m > n` row `n` is the error
+example : view (kgather (u 4) .pos (u 4) (col [10, 11, 12, 13])) = view (.ok (col [10, 11, 12, 13])) := by decide +kernel
+#guard view (kgather (u 4) .pos (u 4) (col [10, 11, 12, 13])) == view (.ok (col [10, 11, 12, 13]))
+example : view (kgather (u 2) .pos (u 4) (col [10, 11, 12, 13])) = view (.ok (col [10, 11])) := by decide +kernel
+#guard view (kgather (u 2) .pos (u 4) (col [10, 11, 12, 13])) == view (.ok (col [10, 11]))
+def posPast : String ⊕ (List UInt8 × List UInt8) := .inl "gather: index 3 at row 3 is not below n = 3"
+example : view (kgather (u 4) .pos (u 3) (col [1, 2, 3])) = posPast := by decide +kernel
+#guard view (kgather (u 4) .pos (u 3) (col [1, 2, 3])) == posPast
+-- G2: `e = pos` answers `ix`, once every index is below `n`
+example : view (kgather (u 4) (col [2, 0, 2, 3]) (u 4) .pos) = view (.ok (col [2, 0, 2, 3])) := by decide +kernel
+#guard view (kgather (u 4) (col [2, 0, 2, 3]) (u 4) .pos) == view (.ok (col [2, 0, 2, 3]))
+example : view (kgather (u 3) (col [1, 3, 9]) (u 3) .pos) = past := by decide +kernel
+#guard view (kgather (u 3) (col [1, 3, 9]) (u 3) .pos) == past
+
 end Rel.Kernel.GatherTest

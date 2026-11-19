@@ -1,6 +1,7 @@
 import Rel.Run.Lang.Plan
 import Rel.Run.Lang.Expand
 import Rel.Kernel.Db.ObjectFile
+import Rel.Kernel.Structural
 
 /-! # `relc`: a plan printed as C (`doc/rel-native-design.md` §6, stage 1a)
 
@@ -16,7 +17,9 @@ open Tab
 def abi : List Kernel :=
   [kernel% Rel.Db.ownWrite, kernel% Rel.Kernel.Order.groupIds, kernel% Rel.Kernel.Order.idGroups,
    kernel% USize.decEq, kernel% USize.add, kernel% USize.div, kernel% ByteArray.usize, kernel% Kernel.Ew.val,
-   kernel% Kernel.Ew.cmp, kernel% Kernel.Ew.bit, kernel% Kernel.whereBits, kernel% Kernel.gatherBytes]
+   kernel% Kernel.Ew.cmp, kernel% Kernel.Ew.bit, kernel% Kernel.bitsOfFoR, kernel% Kernel.whereBits,
+   kernel% Kernel.gatherBytes, kernel% Rel.Kernel.Order.grade, kernel% Rel.Kernel.Order.invert,
+   kernel% Rel.Kernel.Scan.scan, kernel% Rel.Db.pushPart, kernel% Kernel.enlistLong]
 
 def abiOf (sym : String) : Option Kernel := abi.find? (·.sym == sym)
 
@@ -30,14 +33,20 @@ def output (dir : String) (rs : Side × Side) : Bld Unit := do
       let path ← lit (.str (System.FilePath.mk dir / (side ++ p)).toString)
       discard <| call "qlean_own_write" (#[path] ++ r) 0
 
-/-- The plan of `output x to dir` in the program `prog`, read after the programs `chain` (`Expand.read`). -/
-def planOf (chain : List (Lean.Name × Program)) (prog : Program) (x : String) (dir : String) :
-    Lean.Meta.MetaM (Except String Plan) := do
+/-- A computed atom column's six `output` registers: type `t`, `count` rows (a register), constructor `kind`
+    (`Db.ownParts`'s numbering) whose parts are the registers `bs`, gathered by `pushPart` from the empty literal. -/
+def colRegs (t : QAtomicType) (kind : UInt8) (count : Nat) (bs : Array Nat) : Bld (Array Nat) := do
+  let ps ← bs.foldlM (fun ps b => call1 (kernel% Rel.Db.pushPart) #[ps, b]) (← lit (.parts #[]))
+  return #[← lit (.u8 t.code.toUInt8), ← lit (.u8 0), ← lit (.u8 kind), count, ← lit (.str ""), ps]
+
+/-- The plan's steps of `output x to dir` in the program `prog`, read after the programs `chain` (`Expand.read`). -/
+def outputOf (chain : List (Lean.Name × Program)) (prog : Program) (x : String) (dir : String) :
+    Lean.Meta.MetaM (Except String (Bld Unit)) := do
   let r ← (Expand.read (fun _ => none) chain prog).run
   return do
     let (ds, _) ← r.mapError (s!"{repr ·}")
     let some ⟨_, _, t⟩ := ds.lookup x | throw s!"`{x}` is no closed definition of the program"
-    Bld.plan (do output dir (← ofTm t))
+    pure (do output dir (← ofTm t))
 
 /-- The Lean side of the same output: `R`'s columns written by `Db.ownWrite` under the names `output` gives them,
     from the value Lean computed, not from a plan. -/

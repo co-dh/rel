@@ -89,22 +89,22 @@ theorem str_eq_of_bytes {s t : String} (h : s.toUTF8.data.toList = t.toUTF8.data
   rfl
 
 /-- An interned row's bytes are its dictionary entry, which is valid UTF-8. -/
-theorem enum_row {n : USize} (x : Arr .symbol n) {d : ByteArray} {o : Array Nat} {ids : ByteArray}
+theorem enum_row {n : USize} (x : Arr .sym n) {d : ByteArray} {o : Array Nat} {ids : ByteArray}
     (he : x.enc = .enum d o ids) (hu : ∀ k < o.size - 1, (Column.symKey d o k).IsValidUTF8)
     (hlt : ∀ i < n.toNat, Column.idAt ids (Column.idWidth o) i < o.size - 1) (i : Fin n.toNat) :
-    (Vals.row (A := .atom .symbol) x i).toUTF8.data.toList = symAt d o (Column.idAt ids (Column.idWidth o) i) := by
+    (Vals.row (A := .atom .sym) x i).toUTF8.data.toList = symAt d o (Column.idAt ids (Column.idWidth o) i) := by
   rw [Vals.row_atom, Arr.get_ne x i (by decide), he,
-    show Enc.get (X := Empty) .symbol n (.enum d o ids) i = some (.symbol ((String.fromUTF8?
+    show Enc.get (X := Empty) .sym n (.enum d o ids) i = some (.sym ((String.fromUTF8?
       (Column.symKey d o (Column.idAt ids (Column.idWidth o) i))).getD "")) by simp only [Enc.get, if_pos i.2]; rfl]
   simp only [Option.bind_some, Carrier.of?, Option.getD_some]
   exact str_bytes ⟨⟨_, hu _ (hlt i i.2)⟩, rfl⟩
 
 /-- A blob row's bytes are its own symbol, which is valid UTF-8. -/
-theorem syms_row {n : USize} (x : Arr .symbol n) {b : ByteArray} {o : Array Nat}
+theorem syms_row {n : USize} (x : Arr .sym n) {b : ByteArray} {o : Array Nat}
     (he : x.enc = .syms b o) (hu : ∀ k < n.toNat, (Column.symKey b o k).IsValidUTF8) (i : Fin n.toNat) :
-    (Vals.row (A := .atom .symbol) x i).toUTF8.data.toList = symAt b o i := by
+    (Vals.row (A := .atom .sym) x i).toUTF8.data.toList = symAt b o i := by
   rw [Vals.row_atom, Arr.get_ne x i (by decide), he,
-    show Enc.get (X := Empty) .symbol n (.syms b o) i = some (.symbol ((String.fromUTF8? (Column.symKey b o i)).getD ""))
+    show Enc.get (X := Empty) .sym n (.syms b o) i = some (.sym ((String.fromUTF8? (Column.symKey b o i)).getD ""))
       by simp only [Enc.get, if_pos i.2]; rfl]
   simp only [Option.bind_some, Carrier.of?, Option.getD_some]
   exact str_bytes ⟨⟨_, hu _ i.2⟩, rfl⟩
@@ -117,9 +117,9 @@ theorem intern_syms (b : ByteArray) (o : Array Nat) :
       .enum (Order.internSyms b o).1 (Order.internSyms b o).2.1 (Order.internSyms b o).2.2 := rfl
 
 /-- **One part of a symbol side is coded by its interned ids** at their lane, `Code.ofLane`. -/
-theorem codes_symbol (x : Part (.atom .symbol)) :
+theorem codes_symbol (x : Part (.atom .sym)) :
     ∃ d o ids, Column.intern x.2.enc = .enum d o ids ∧
-      (Obj.codes (.atom .symbol) #v[x])[0] = Code.ofLane (Column.idWidth o) x.1 (o.size - 1) ids := by
+      (Obj.codes (.atom .sym) #v[x])[0] = Code.ofLane (Column.idWidth o) x.1 (o.size - 1) ids := by
   obtain ⟨n, v, hv⟩ := x
   cases v <;> try exact hv.elim
   rename_i t' n' e a
@@ -132,17 +132,17 @@ theorem codes_symbol (x : Part (.atom .symbol)) :
 
 /-- A code read at `Code.ofLane` of ids below a dictionary of no entry twice: equal codes are equal rows,
     where each row's bytes are its entry. -/
-theorem lane_faithful {n : USize} (x : Arr .symbol n) {d : ByteArray} {o : Array Nat} {ids : ByteArray}
+theorem lane_faithful {n : USize} (x : Arr .sym n) {d : ByteArray} {o : Array Nat} {ids : ByteArray}
     (hlt : ∀ i < n.toNat, Column.idAt ids (Column.idWidth o) i < o.size - 1)
     (hD : ((List.range (o.size - 1)).map (symAt d o)).Nodup)
     (hr : ∀ i : Fin n.toNat,
-      (Vals.row (A := .atom .symbol) x i).toUTF8.data.toList = symAt d o (Column.idAt ids (Column.idWidth o) i))
+      (Vals.row (A := .atom .sym) x i).toUTF8.data.toList = symAt d o (Column.idAt ids (Column.idWidth o) i))
     {i j : Nat} (hi : i < n.toNat) (hj : j < n.toNat) :
     Column.idAt (Code.ofLane (Column.idWidth o) n (o.size - 1) ids).b
           (Code.ofLane (Column.idWidth o) n (o.size - 1) ids).w i =
         Column.idAt (Code.ofLane (Column.idWidth o) n (o.size - 1) ids).b
           (Code.ofLane (Column.idWidth o) n (o.size - 1) ids).w j ↔
-      Vals.row (A := .atom .symbol) x ⟨i, hi⟩ = Vals.row (A := .atom .symbol) x ⟨j, hj⟩ := by
+      Vals.row (A := .atom .sym) x ⟨i, hi⟩ = Vals.row (A := .atom .sym) x ⟨j, hj⟩ := by
   have hz : ∀ k < n.toNat, Column.idWidth o = 0 → Column.idAt ids (Column.idWidth o) k = 0 := fun k hk h => by
     have h1 := hlt k hk
     have h2 := pred_lt_idWidthOf (nd := o.size - 1) (by change Column.idWidth o < 8; omega)
@@ -168,10 +168,10 @@ theorem idWidth_facts (o : Array Nat) :
 /-! ### An `enum` part -/
 
 /-- **One `enum` part of a symbol side: its codes are faithful**, under the part's `Enc.WF` alone. -/
-theorem codes_symbol_enum_faithful (x : Part (.atom .symbol)) {d : ByteArray} {o : Array Nat} {ids : ByteArray}
+theorem codes_symbol_enum_faithful (x : Part (.atom .sym)) {d : ByteArray} {o : Array Nat} {ids : ByteArray}
     (he : x.2.enc = .enum d o ids) {i j : Nat} (hi : i < x.1.toNat) (hj : j < x.1.toNat) :
-    Column.idAt (Obj.codes (.atom .symbol) #v[x])[0].b (Obj.codes (.atom .symbol) #v[x])[0].w i =
-        Column.idAt (Obj.codes (.atom .symbol) #v[x])[0].b (Obj.codes (.atom .symbol) #v[x])[0].w j ↔
+    Column.idAt (Obj.codes (.atom .sym) #v[x])[0].b (Obj.codes (.atom .sym) #v[x])[0].w i =
+        Column.idAt (Obj.codes (.atom .sym) #v[x])[0].b (Obj.codes (.atom .sym) #v[x])[0].w j ↔
       Vals.row x.2 ⟨i, hi⟩ = Vals.row x.2 ⟨j, hj⟩ := by
   obtain ⟨d', o', ids', hi', hc⟩ := codes_symbol x
   rw [he] at hi'
@@ -184,9 +184,9 @@ theorem codes_symbol_enum_faithful (x : Part (.atom .symbol)) {d : ByteArray} {o
   exact lane_faithful x.2 hlt hD (enum_row x.2 he hu hlt) hi hj
 
 /-- **One `enum` part of a symbol side: its code is well formed**, under the part's `Enc.WF` alone. -/
-theorem codes_symbol_enum_wf (x : Part (.atom .symbol)) {d : ByteArray} {o : Array Nat} {ids : ByteArray}
+theorem codes_symbol_enum_wf (x : Part (.atom .sym)) {d : ByteArray} {o : Array Nat} {ids : ByteArray}
     (he : x.2.enc = .enum d o ids) :
-    let c := (Obj.codes (.atom .symbol) #v[x])[0]
+    let c := (Obj.codes (.atom .sym) #v[x])[0]
     laneOK(c.w) ∧ c.n = x.1 ∧
       c.b.size = (c.n.toNat * c.w + 7) / 8 ∧
       (c.w < 8 → c.card < USize.size ∧ ∀ i < c.n.toNat, Column.idAt c.b c.w i < c.card) := by
@@ -205,13 +205,13 @@ theorem codes_symbol_enum_wf (x : Part (.atom .symbol)) {d : ByteArray} {o : Arr
 
 /-- What `internSyms` of a well-formed `syms` part of `n` symbols answers: ids below the dictionary's count,
     a dictionary of no entry twice, each element's bytes its entry, packed in `⌈n·w/8⌉` bytes. -/
-theorem internSyms_facts {n : USize} (x : Arr .symbol n) {b : ByteArray} {o : Array Nat}
+theorem internSyms_facts {n : USize} (x : Arr .sym n) {b : ByteArray} {o : Array Nat}
     (he : x.enc = .syms b o) :
     (∀ i < n.toNat, Column.idAt (Order.internSyms b o).2.2 (Column.idWidth (Order.internSyms b o).2.1) i <
       (Order.internSyms b o).2.1.size - 1) ∧
     ((List.range ((Order.internSyms b o).2.1.size - 1)).map
       (symAt (Order.internSyms b o).1 (Order.internSyms b o).2.1)).Nodup ∧
-    (∀ i : Fin n.toNat, (Vals.row (A := .atom .symbol) x i).toUTF8.data.toList =
+    (∀ i : Fin n.toNat, (Vals.row (A := .atom .sym) x i).toUTF8.data.toList =
       symAt (Order.internSyms b o).1 (Order.internSyms b o).2.1
         (Column.idAt (Order.internSyms b o).2.2 (Column.idWidth (Order.internSyms b o).2.1) i)) ∧
     (Column.idWidth (Order.internSyms b o).2.1 ≠ 0 →
@@ -237,10 +237,10 @@ theorem internSyms_facts {n : USize} (x : Arr .symbol n) {b : ByteArray} {o : Ar
     exact packIds_size ((laneWidth_cases _).resolve_left h0) _ _
 
 /-- **One `syms` part of a symbol side: its codes are faithful**, under the part's `Enc.WF` alone. -/
-theorem codes_symbol_syms_faithful (x : Part (.atom .symbol)) {b : ByteArray} {o : Array Nat}
+theorem codes_symbol_syms_faithful (x : Part (.atom .sym)) {b : ByteArray} {o : Array Nat}
     (he : x.2.enc = .syms b o) {i j : Nat} (hi : i < x.1.toNat) (hj : j < x.1.toNat) :
-    Column.idAt (Obj.codes (.atom .symbol) #v[x])[0].b (Obj.codes (.atom .symbol) #v[x])[0].w i =
-        Column.idAt (Obj.codes (.atom .symbol) #v[x])[0].b (Obj.codes (.atom .symbol) #v[x])[0].w j ↔
+    Column.idAt (Obj.codes (.atom .sym) #v[x])[0].b (Obj.codes (.atom .sym) #v[x])[0].w i =
+        Column.idAt (Obj.codes (.atom .sym) #v[x])[0].b (Obj.codes (.atom .sym) #v[x])[0].w j ↔
       Vals.row x.2 ⟨i, hi⟩ = Vals.row x.2 ⟨j, hj⟩ := by
   obtain ⟨d', o', ids', hi', hc⟩ := codes_symbol x
   rw [he, intern_syms, Ext.Enc.enum.injEq] at hi'
@@ -250,9 +250,9 @@ theorem codes_symbol_syms_faithful (x : Part (.atom .symbol)) {b : ByteArray} {o
   exact lane_faithful x.2 hlt hD hr hi hj
 
 /-- **One `syms` part of a symbol side: its code is well formed**, under the part's `Enc.WF` alone. -/
-theorem codes_symbol_syms_wf (x : Part (.atom .symbol)) {b : ByteArray} {o : Array Nat}
+theorem codes_symbol_syms_wf (x : Part (.atom .sym)) {b : ByteArray} {o : Array Nat}
     (he : x.2.enc = .syms b o) :
-    let c := (Obj.codes (.atom .symbol) #v[x])[0]
+    let c := (Obj.codes (.atom .sym) #v[x])[0]
     laneOK(c.w) ∧ c.n = x.1 ∧
       c.b.size = (c.n.toNat * c.w + 7) / 8 ∧
       (c.w < 8 → c.card < USize.size ∧ ∀ i < c.n.toNat, Column.idAt c.b c.w i < c.card) := by
@@ -267,22 +267,22 @@ theorem codes_symbol_syms_wf (x : Part (.atom .symbol)) {b : ByteArray} {o : Arr
 /-! ### Either encoding -/
 
 /-- A symbol payload is a blob or interned (`Enc.WF`). -/
-theorem symbol_enc {n : USize} {e : Enc} (hwf : Enc.WF .symbol n e) :
+theorem symbol_enc {n : USize} {e : Enc} (hwf : Enc.WF .sym n e) :
     (∃ b o, e = .syms b o) ∨ ∃ d o ids, e = .enum d o ids := by
   cases e <;> simp [Enc.WF, QAtomicType.width] at hwf ⊢
 
 /-- **One part of a symbol side: its codes are faithful**, blob or interned, under its `Enc.WF` alone. -/
-theorem codes_symbol_faithful (x : Part (.atom .symbol)) {i j : Nat} (hi : i < x.1.toNat) (hj : j < x.1.toNat) :
-    Column.idAt (Obj.codes (.atom .symbol) #v[x])[0].b (Obj.codes (.atom .symbol) #v[x])[0].w i =
-        Column.idAt (Obj.codes (.atom .symbol) #v[x])[0].b (Obj.codes (.atom .symbol) #v[x])[0].w j ↔
+theorem codes_symbol_faithful (x : Part (.atom .sym)) {i j : Nat} (hi : i < x.1.toNat) (hj : j < x.1.toNat) :
+    Column.idAt (Obj.codes (.atom .sym) #v[x])[0].b (Obj.codes (.atom .sym) #v[x])[0].w i =
+        Column.idAt (Obj.codes (.atom .sym) #v[x])[0].b (Obj.codes (.atom .sym) #v[x])[0].w j ↔
       Vals.row x.2 ⟨i, hi⟩ = Vals.row x.2 ⟨j, hj⟩ := by
   rcases symbol_enc x.2.wf with ⟨b, o, he⟩ | ⟨d, o, ids, he⟩
   · exact codes_symbol_syms_faithful x he hi hj
   · exact codes_symbol_enum_faithful x he hi hj
 
 /-- **One part of a symbol side: its code is well formed**, blob or interned, under its `Enc.WF` alone. -/
-theorem codes_symbol_wf (x : Part (.atom .symbol)) :
-    let c := (Obj.codes (.atom .symbol) #v[x])[0]
+theorem codes_symbol_wf (x : Part (.atom .sym)) :
+    let c := (Obj.codes (.atom .sym) #v[x])[0]
     laneOK(c.w) ∧ c.n = x.1 ∧
       c.b.size = (c.n.toNat * c.w + 7) / 8 ∧
       (c.w < 8 → c.card < USize.size ∧ ∀ i < c.n.toNat, Column.idAt c.b c.w i < c.card) := by

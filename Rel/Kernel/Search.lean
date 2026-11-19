@@ -87,9 +87,8 @@ def gatherBytes (w : USize) (fill : UInt64) (src : @& ByteArray) (idx : @& ByteA
 /-- q's `x in y` at vectors on both sides, as a bit per element of `x`. The body is q's own
 `(y?x) < count y`, and the `i < m` guard is what leaves the tail bits of the last byte zero —
 `Column.packBits` records why that matters: trailing set bits make two equal boolean vectors compare
-unequal under `~`. -/
-@[extern "qlean_search_member_vec"]
-def memberVec (w : USize) (float : Bool) (xs : @& ByteArray) (hay : @& ByteArray) : ByteArray :=
+unequal under `~`. `memberVec` encodes it. -/
+def memberVecBitmap (w : USize) (float : Bool) (xs : @& ByteArray) (hay : @& ByteArray) : ByteArray :=
   let m := xs.size / w.toNat
   let n := hay.size / w.toNat
   -- a `List`, not `findVec`'s `Array`: membership needs `LawfulBEq`, and `Array`'s brings `Classical.choice`
@@ -101,6 +100,11 @@ def memberVec (w : USize) (float : Bool) (xs : @& ByteArray) (hay : @& ByteArray
       if i < m && (if w.toNat ≤ 8 then findScalar w float hay (Column.bitsAt xs (i * w.toNat) w.toNat) < n.toUSize
                    else ((List.range n).find? (sl hay · == sl xs i)).getD n < n)
       then byte ||| (1 <<< t.toUInt8) else byte)
+
+/-- q's `x in y` at vectors on both sides as the `u1` Frame of Reference column `Coc.bools` lays out. -/
+@[extern "qlean_search_member_vec"]
+def memberVec (w : USize) (float : Bool) (xs : @& ByteArray) (hay : @& ByteArray) : ByteArray × ByteArray :=
+  Coc.bools (xs.size / w.toNat) (Column.bitAt (memberVecBitmap w float xs hay))
 
 /-- Bytes an id key takes where one side's ids are at `a` bits and the other's at `b`: the narrowest
 search width that holds both lanes. -/
@@ -123,12 +127,17 @@ def findIdsVec (hw : USize) (hay : @& ByteArray) (hn : USize) (nw : USize) (ndl 
   let k := idKeyWidth hw nw
   findVec k false (idsOperand k hw hay hn) (idsOperand k nw ndl nn)
 
-/-- `findIdsVec`'s answer as a bitmap, which is `memberVec` to `findVec`. -/
-@[extern "qlean_search_member_ids_vec"]
-def memberIdsVec (xw : USize) (xs : @& ByteArray) (xn : USize) (hw : USize) (hay : @& ByteArray) (hn : USize) :
+/-- `findIdsVec`'s answer as a bitmap, which is `memberVecBitmap` to `findVec`. -/
+def memberIdsVecBitmap (xw : USize) (xs : @& ByteArray) (xn : USize) (hw : USize) (hay : @& ByteArray) (hn : USize) :
     ByteArray :=
   let k := idKeyWidth xw hw
-  memberVec k false (idsOperand k xw xs xn) (idsOperand k hw hay hn)
+  memberVecBitmap k false (idsOperand k xw xs xn) (idsOperand k hw hay hn)
+
+/-- `memberIdsVecBitmap` as the `u1` Frame of Reference column `Coc.bools` lays out, one element per needle id. -/
+@[extern "qlean_search_member_ids_vec"]
+def memberIdsVec (xw : USize) (xs : @& ByteArray) (xn : USize) (hw : USize) (hay : @& ByteArray) (hn : USize) :
+    ByteArray × ByteArray :=
+  Coc.bools (Column.idsCap xs xw.toNat xn.toNat) (Column.bitAt (memberIdsVecBitmap xw xs xn hw hay hn))
 
 /-- The least index at which the boolean column holds `needle`, and `n` when it holds it nowhere.
 Measured — `101b?1b` is `0`, `101b?0b` is `1`, and `(0#0b)?1b` is `0`. -/
@@ -142,14 +151,18 @@ def findBitVec (n : USize) (hay : @& ByteArray) (m : USize) (ndl : @& ByteArray)
   (List.range m.toNat).foldl (init := ByteArray.empty) fun acc j =>
     Column.pushBits acc (findBit n hay (Column.bitAt ndl j)).toUInt64 8
 
-/-- `x in y` at booleans on both sides, `? < count` again. -/
-@[extern "qlean_search_member_bits"]
-def memberBits (m : USize) (xs : @& ByteArray) (n : USize) (hay : @& ByteArray) : ByteArray :=
+/-- `x in y` at booleans on both sides, `? < count` again, as a bitmap; `memberBits` encodes it. -/
+def memberBitsBitmap (m : USize) (xs : @& ByteArray) (n : USize) (hay : @& ByteArray) : ByteArray :=
   (List.range ((m.toNat + 7) / 8)).foldl (init := ByteArray.empty) fun acc b =>
     acc.push ((List.range 8).foldl (init := (0 : UInt8)) fun byte t =>
       let i := b * 8 + t
       if i < m.toNat && findBit n hay (Column.bitAt xs i) < n
       then byte ||| (1 <<< t.toUInt8) else byte)
+
+/-- `x in y` at booleans on both sides as the `u1` Frame of Reference column `Coc.bools` lays out. -/
+@[extern "qlean_search_member_bits"]
+def memberBits (m : USize) (xs : @& ByteArray) (n : USize) (hay : @& ByteArray) : ByteArray × ByteArray :=
+  Coc.bools m.toNat (Column.bitAt (memberBitsBitmap m xs n hay))
 
 /-- q's `where` over a boolean vector: the ascending indices whose bit is set, as `Int64`s.
 Measured — `where 101b` is `0 2`, and `where 000b` and `where 0#0b` are both the empty long vector.
@@ -260,7 +273,7 @@ about the dense *engine* and not about what a kernel can answer — `binColumn` 
 by its own payload — so this gate is never the place to add one. Everything else has
 a width of 1, 2, 4 or 8, so adding a q type is an entry in `QAtomicType.width` and nothing here. -/
 def denseWidth : QAtomicType → Option Nat
-  | .boolean | .symbol => none
+  | .u1 | .sym => none
   | t => t.width
 
 /-- An encoded column at a type the encoding is *for*, which is what every kernel that reads one
@@ -307,7 +320,7 @@ def operandBytes (w : USize) (metadata pack : ByteArray) (n : USize) : ByteArray
 /-- The types whose equality folds `-0.0` onto `0.0`. `datetime` is one: it is an eight-byte IEEE
 value and `QAtom.identical` treats it exactly as `float`. -/
 def foldsZero : QAtomicType → Bool
-  | .real | .float | .datetime => true
+  | .f32 | .f64 => true
   | _ => false
 
 /-- A column as `operandBytes` reads it: encoded where it lies, and otherwise its dense payload under

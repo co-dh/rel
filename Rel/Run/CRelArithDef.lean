@@ -29,7 +29,7 @@ def leq {t : QAtomicType} {n : USize} (U : Vals (.atom t) n) (h : t ≠ .general
     CRel (.atom t) (.atom t) := ofC (leqC U h)
 
 /-- `succ` on `U`, ok where `succC` ran within capacity. -/
-def succ {n : USize} (U : Vals (.atom .long) n) : CRel (.atom .long) (.atom .long) := ofC (succC U)
+def succ {n : USize} (U : Vals (.atom .i64) n) : CRel (.atom .i64) (.atom .i64) := ofC (succC U)
 
 /-- `asc` on the arrays `X`, ok where `ascC` ran within capacity. -/
 def asc {B : Obj} {n : USize} (X : Vals (.arr B) n) : CRel (.arr B) (.arr B) := ofC (ascC X)

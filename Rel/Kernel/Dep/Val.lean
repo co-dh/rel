@@ -19,14 +19,15 @@ its q type, which defeats the point of indexing by the q type.
 @[reducible] def Ext.Carrier (X : Type) : QAtomicType → Type
   -- a general list's element is any value, boxed: the `xs` of `.general xs`
   | .general => Ext.QValue X
-  | .boolean => Bool
-  | .byte | .char => UInt8
-  | .short => Int16
-  | .int | .month | .date | .minute | .second | .time => Int32
-  | .long | .timestamp | .timespan => Int64
-  | .real => UInt32
-  | .float | .datetime => UInt64
-  | .symbol => String
+  | .u1 => Bool
+  | .u8 | .char => UInt8
+  | .i16 => Int16
+  | .i32 | .date => Int32
+  | .i8 => Int8
+  | .i64 | .datetime => Int64
+  | .f32 => UInt32
+  | .f64 => UInt64
+  | .sym => String
 
 /-- rel's own carriers, at no extension, as `QValue` is `Ext.QValue Empty`. -/
 abbrev Carrier := Ext.Carrier Empty
@@ -38,23 +39,18 @@ is no atom, so at every other type it is `none`. The partiality is the price of 
 with the value. -/
 def Carrier.of? {X : Type} : (t : QAtomicType) → Ext.QValue X → Option (Ext.Carrier X t)
   | .general, v => some v
-  | .boolean, .atom (.boolean x) => some x
-  | .byte, .atom (.byte x) => some x
+  | .u1, .atom (.u1 x) => some x
+  | .u8, .atom (.u8 x) => some x
   | .char, .atom (.char x) => some x
-  | .short, .atom (.short x) => some x
-  | .int, .atom (.int x) => some x
-  | .month, .atom (.month x) => some x
+  | .i8, .atom (.i8 x) => some x
+  | .i16, .atom (.i16 x) => some x
+  | .i32, .atom (.i32 x) => some x
   | .date, .atom (.date x) => some x
-  | .minute, .atom (.minute x) => some x
-  | .second, .atom (.second x) => some x
-  | .time, .atom (.time x) => some x
-  | .long, .atom (.long x) => some x
-  | .timestamp, .atom (.timestamp x) => some x
-  | .timespan, .atom (.timespan x) => some x
-  | .real, .atom (.real x) => some x
-  | .float, .atom (.float x) => some x
+  | .i64, .atom (.i64 x) => some x
+  | .f32, .atom (.f32 x) => some x
+  | .f64, .atom (.f64 x) => some x
   | .datetime, .atom (.datetime x) => some x
-  | .symbol, .atom (.symbol x) => some x
+  | .sym, .atom (.sym x) => some x
   | _, _ => none
 
 /-- Every atom is readable at its own type: a value that arrived untyped — off the wire, out

@@ -125,6 +125,15 @@ export! {
 }
 
 export! {
+    /// Spec: `enlistLong n` is the one little-endian long `n`.
+    fn qlean_structural_enlist(n: usize) -> O {
+        let mut a = SArr::new(1, 8);
+        a.bytes_mut().copy_from_slice(&(n as u64).to_le_bytes());
+        a.into()
+    }
+}
+
+export! {
     /// Spec: `concatALP w ns metas packs alps`. `concatFoR`'s rule at ALP: an answer block that is one part's own block on the
     /// grid moves -- metadata, residuals, exponent and exceptions -- and only the blocks straddling a part boundary are
     /// restored and handed to ALP's block steps. So appending `m` elements to `n` re-encodes the last partial block and the
@@ -210,6 +219,15 @@ export! {
         let cs: &[usize] = pod::cast(&cb[..k * 8]).expect("qlean concatBits: the counts are not 8-aligned");
         let mut a = zeroed(cs.iter().sum::<usize>().div_ceil(8));
         structural::concat_bits(cs, &bytes_of(&ps[..k]), a.bytes_mut());
+        a.into()
+    }
+
+    /// Spec: `bitsOfFoR meta pack n` is `packOf n` of each element's low bit, the rows past the blocks `0`: a boolean
+    /// `foR` (`u1`) as the bitmap `concatBits` joins, read a block at a time.
+    fn qlean_structural_bits_of_for(mv: B, pv: B, n: usize) -> O {
+        let c = view("qlean_structural_bits_of_for", mv, pv, n);
+        let mut a = zeroed(n.div_ceil(8));
+        structural::bits_of_enc(&c, a.bytes_mut());
         a.into()
     }
 }

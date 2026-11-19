@@ -136,7 +136,7 @@ theorem codes_general_wf {p : Nat} (cs : Vector (Part (.atom .general)) p)
 
 -- `0f` and `-0f` are one value to q's `~` and two rows to Rel: two codes; an equal row repeats its code
 #guard let c := (Obj.codes (.atom .general)
-    #v[genCol #[.atom (.float 0), .atom (.float 0x8000000000000000), .atom (.float 0)]])[0]
+    #v[genCol #[.atom (.f64 0), .atom (.f64 0x8000000000000000), .atom (.f64 0)]])[0]
   (List.range 3).map (Column.idAt c.b c.w) == [0, 1, 0]
 
 #print axioms codes_general_faithful

@@ -111,7 +111,7 @@ theorem whereEqV_ids (n : USize) (a b : ByteArray) :
   rw [whereEqV, (whereBits_ids n _).1]
   refine List.filter_congr fun i hi => ?_
   have hi := List.mem_range.1 hi
-  rw [(Verify.cmp_bitAt _ _ _ _ _ n).2 i (by omega)]
+  rw [Ew.cmpBits_eq, (Verify.cmp_bitAt _ _ _ _ _ n).2 i (by omega)]
   simp only [Ew.elem, hw, hs, decide_eq_true hi, Bool.true_and]
   generalize Column.bitsAt a (i * 8) 8 = x
   generalize Column.bitsAt b (i * 8) 8 = y

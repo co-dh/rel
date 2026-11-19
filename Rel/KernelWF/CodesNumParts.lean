@@ -13,7 +13,7 @@ open Tab Rel.Dep Rel.Kernel Rel.Verify Rel
 /-- **A float side: its codes are faithful jointly across the parts** — equal codes exactly at rows of equal
     bits; the parts and their `raze` in any encoding, the parts' summed count a `USize`, 32 bits where an ALP
     join offsets it (`hA`). -/
-theorem codes_float_parts_faithful {t : QAtomicType} (ht : t = .real ∨ t = .float ∨ t = .datetime) {p : Nat}
+theorem codes_float_parts_faithful {t : QAtomicType} (ht : t = .f32 ∨ t = .f64) {p : Nat}
     (cs : Vector (Part (.atom t)) p) (hN : (cs.toList.map (·.1.toNat)).sum < USize.size)
     (hA : 2 ≤ p → Column.alpEncodes t = true → (cs.toList.map (·.1.toNat)).sum < 2 ^ 32)
     {k l : Nat} (hk : k < p) (hl : l < p) {i j : Nat} (hi : i < (cs[k]'hk).1.toNat) (hj : j < (cs[l]'hl).1.toNat) :
@@ -47,7 +47,7 @@ theorem codes_float_parts_faithful {t : QAtomicType} (ht : t = .real ∨ t = .fl
     (`codes_float_parts_faithful`/`_wf`); the parts' summed count a `USize`, 32 bits where an ALP join offsets
     it (`hA`). -/
 theorem codes_dense_faithful_wf {t : QAtomicType} {k₀ : Scan.Kind} (ht : orderKind t = some k₀)
-    (hk₀ : k₀ = .u8 ∨ k₀ = .i16 ∨ k₀ = .i32 ∨ k₀ = .f32 ∨ k₀ = .f64) {p : Nat} (cs : Vector (Part (.atom t)) p)
+    (hk₀ : k₀ = .u8 ∨ k₀ = .c8 ∨ k₀ = .i8 ∨ k₀ = .i16 ∨ k₀ = .i32 ∨ k₀ = .f32 ∨ k₀ = .f64) {p : Nat} (cs : Vector (Part (.atom t)) p)
     (hN : (cs.toList.map (·.1.toNat)).sum < USize.size)
     (hA : 2 ≤ p → Column.alpEncodes t = true → (cs.toList.map (·.1.toNat)).sum < 2 ^ 32) :
     ((∀ {k l : Nat} (hk : k < p) (hl : l < p) {i j : Nat} (hi : i < (cs[k]'hk).1.toNat)
@@ -62,15 +62,15 @@ theorem codes_dense_faithful_wf {t : QAtomicType} {k₀ : Scan.Kind} (ht : order
         (c.w < 8 → c.card < USize.size ∧ ∀ i < c.n.toNat, Column.idAt c.b c.w i < c.card)) ∧
       ∀ {k l : Nat} (hk : k < p) (hl : l < p),
         ((Obj.codes (.atom t) cs)[k]'hk).w = ((Obj.codes (.atom t) cs)[l]'hl).w := by
-  rcases hk₀ with hk₀ | hk₀ | hk₀ | hk₀ | hk₀
+  rcases hk₀ with hk₀ | hk₀ | hk₀ | hk₀ | hk₀ | hk₀ | hk₀
   -- a float side groups by its bits (`bitsType`)
   all_goals try
-    have hf : t = .real ∨ t = .float ∨ t = .datetime := by
+    have hf : t = .f32 ∨ t = .f64 := by
       clear hA hN; cases t <;> simp [orderKind] at ht <;> simp_all
     exact ⟨⟨fun hk hl _ _ hi hj => codes_float_parts_faithful hf cs hN hA hk hl hi hj,
       fun hk => (codes_float_parts_wf hf cs hN hk).1⟩, fun hk hl => (codes_float_parts_wf hf cs hN hk).2 hl⟩
   all_goals
-    have hk₀ : k₀ = .u8 ∨ k₀ = .i16 ∨ k₀ = .i32 := by clear hA hN; simp_all
+    have hk₀ : k₀ = .u8 ∨ k₀ = .c8 ∨ k₀ = .i8 ∨ k₀ = .i16 ∨ k₀ = .i32 := by clear hA hN; simp_all
     refine ⟨⟨fun hk hl _ _ hi hj => codes_small_int_parts_faithful ht hk₀ cs hN hk hl hi hj,
       fun hk => codes_small_int_parts_wf ht hk₀ cs hN hk⟩, fun hk hl => ?_⟩
     rw [codes_small_int_cut ht hk₀ cs (by omega)]; unfold Code.cut; split <;> simp

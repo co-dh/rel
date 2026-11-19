@@ -13,16 +13,16 @@ open Rel.Core.Rel hiding id comp recip inter union zero le inl inr junc
 
 /-- `raze_row_atom`'s `hA` at `symbol` (`razeTo_toList_symbol`); `hD`: the parts' dictionaries, a blob counting
     its rows, fit a `USize`. -/
-theorem razeTo2_symbol {n m : USize} (x : Arr .symbol n) (y : Arr .symbol m)
-    (hN : ((#[⟨n, x⟩, ⟨m, y⟩] : Array (Part (.atom .symbol))).toList.map
-      fun c : Part (.atom .symbol) => c.1.toNat).sum < USize.size)
-    (hD : ((#[⟨n, x⟩, ⟨m, y⟩] : Array ((k : USize) × Arr .symbol k)).toList.map
+theorem razeTo2_symbol {n m : USize} (x : Arr .sym n) (y : Arr .sym m)
+    (hN : ((#[⟨n, x⟩, ⟨m, y⟩] : Array (Part (.atom .sym))).toList.map
+      fun c : Part (.atom .sym) => c.1.toNat).sum < USize.size)
+    (hD : ((#[⟨n, x⟩, ⟨m, y⟩] : Array ((k : USize) × Arr .sym k)).toList.map
       fun c => match c.2.enc with | .enum _ o _ => o.size - 1 | _ => c.1.toNat).sum < USize.size) :
-    (razeTo .symbol #[⟨n, x⟩, ⟨m, y⟩] rfl hN).toList = x.toList ++ y.toList :=
+    (razeTo .sym #[⟨n, x⟩, ⟨m, y⟩] rfl hN).toList = x.toList ++ y.toList :=
   razeTo2_toList x y hN (razeTo_toList_symbol _ rfl hN hD)
 
 /-- **`shiftArr` read back**: element `i` is its offset clamped into `[0, m]`, plus `k`, `m + k` below `2^63`. -/
-theorem shiftArr_get {n : USize} (x : Arr .long n) {m k : Nat} (hmk : m + k < 2 ^ 63) (i : Fin n.toNat) :
+theorem shiftArr_get {n : USize} (x : Arr .i64 n) {m k : Nat} (hmk : m + k < 2 ^ 63) (i : Fin n.toNat) :
     ((shiftArr x m k).get i).toInt = ((min (max (x.get i).toInt 0).toNat m + k : Nat) : Int) := by
   unfold shiftArr
   rw [Arr.get_long_bytes _ rfl]
@@ -210,15 +210,15 @@ theorem held_side {a b : Obj} {n : USize} (x : Vals (.sum a b) n) (k : Fin n.toN
     split
     · rename_i hk
       rw [dif_pos hk]
-      dsimp only
+      dsimp (config := { iota := false, zeta := false, eta := false }) only
       rw [USize.toNat_ofNat_of_lt' hk.1, USize.toNat_ofNat_of_lt' hk.2, gather_len, gather_len,
-        Arr.get_bool_bits _ (KernelWF.enc_tagBits _) k]
+        Arr.get_bool_bits _ (Alg.enc_tagBits _) k]
       exact whereBits_pos _ k.2
     · rename_i hk
       exact absurd ⟨by rw [gather_len]; exact Nat.lt_of_le_of_lt (len_whereBits_le _ n) n.toNat_lt_size,
         by rw [gather_len]; exact Nat.lt_of_le_of_lt (len_whereBits_le _ n) n.toNat_lt_size⟩ hk
   · rename_i hC
-    rw [if_neg hC, Arr.get_bool_bits _ (KernelWF.enc_tagBits _) k]
+    rw [if_neg hC, Arr.get_bool_bits _ (Alg.enc_tagBits _) k]
     obtain ⟨h1, h2⟩ := whereBits_pos (tagBits x.2.2.1) k.2
     obtain ⟨hs, -⟩ := Verify.whereBits_spec n (tagBits x.2.2.1)
     have hR : len (whereBits n (tagBits x.2.2.1)) < n.toNat ∨ ∀ k', k' < n.toNat → Column.bitAt (tagBits x.2.2.1) k' = true := by
@@ -253,7 +253,7 @@ theorem place_off_get {a b : Obj} {n : USize} (x : Vals (.sum a b) n) {dl dr : N
   rw [Arr.get_long_bytes _ rfl]
   dsimp only
   simp only [val_vv_get _ _ _ _ k.2, val_va_get _ _ _ _ k.2, widen_bits_get _ _ k.2, longsOf_get _ k.2,
-    ← Arr.get_bool_bits _ (KernelWF.enc_tagBits tag) k]
+    ← Arr.get_bool_bits _ (Alg.enc_tagBits tag) k]
   have e0 := int_bits_toInt ((l.toNat : Int) - 1) (by omega) (by omega)
   have e1 := int_bits_toInt ((r.toNat : Int) - l.toNat) (by omega) (by omega)
   have ez := int_bits_toInt 0 (by decide) (by decide)

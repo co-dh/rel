@@ -234,6 +234,11 @@ def tilLongs (n : USize) : ByteArray :=
   (List.range n.toNat).foldl (init := ByteArray.empty) fun acc i =>
     Column.pushBits acc (Int64.ofNat i).toUInt64 8
 
+/-- q's `enlist` of a count: the one-element long payload holding `n`. A plan's size register becomes a column
+this way, as an array's `.hi` bound of one row. -/
+@[extern "qlean_structural_enlist"]
+def enlistLong (n : USize) : ByteArray := Column.pushBits .empty n.toUInt64 8
+
 /-- `x@i` at a bit payload. Measured — `1101b@3 2 1 0` is `1011b` and `101b@0 5` is `10b`, so an index
 q cannot serve answers `0b`, which is `Eval.nullAtom`'s boolean null. -/
 @[extern "qlean_structural_gather_bits"]
@@ -285,7 +290,7 @@ offsets are `Nat`s, which are tagged scalars rather than allocations. -/
 def concatSyms (parts : Array (ByteArray × Array Nat)) : Ext.QValue X :=
   let p := parts.foldl (init := (ByteArray.empty, #[0])) fun (blob, offs) (b, o) =>
     (blob ++ b, offs ++ (o.extract 1 o.size).map (· + blob.size))
-  .vector .symbol (needSize (p.2.size - 1) "concatSyms: symbols" (fun _ => 0) id) (.syms p.1 p.2) none
+  .vector .sym (needSize (p.2.size - 1) "concatSyms: symbols" (fun _ => 0) id) (.syms p.1 p.2) none
 
 /-- The ids of an enumerated column file: q writes one 8-byte domain index per element, and this is
 those indices packed at the dictionary's own width, with `0Nj` — the null symbol, which q gives no
@@ -371,7 +376,7 @@ def concatEnum (ps : Array (USize × ByteArray × Array Nat × ByteArray)) : Ext
       | none => p
   -- the count first: read after the kernel, it kept `ps` alive across it and its ids shared
   let n := ps.foldl (init := 0) fun s (n, _, _, _) => s + n.toNat
-  .vector .symbol (needSize n "concatEnum: symbols" (fun _ => 0) id) (match hashConcat ps with
+  .vector .sym (needSize n "concatEnum: symbols" (fun _ => 0) id) (match hashConcat ps with
     | .ok (db, dbo, ids) => .enum db dbo ids
     | .error ps => match internConcat ps with | (db, dbo, ids) => .enum db dbo ids) none
 
@@ -443,26 +448,26 @@ An empty index answers the empty vector at `t`: `1 2 3@0#0` is `` `long$() ``, a
 def gatherColumn (t : QAtomicType) (n : USize) (e : Ext.Enc X) (m : USize) (ie : Ext.Enc X) : Option (Ext.Enc X) :=
   -- both encoded is the representation's own case and reads neither operand into dense bytes; every
   -- other pairing brings the index to dense bytes and leaves the source where it is
-  match denseWidth t, foRColumn t n e, foRColumn .long m ie with
+  match denseWidth t, foRColumn t n e, foRColumn .i64 m ie with
   | some w, some (n, sm, sp), some (m, im, ip) =>
     some (.bytes (gatherFoRIdx w.toUSize ((nullBits t).getD 0) sm sp n im ip m))
   | _, _, _ =>
     -- the index decode is a thunk and every arm below opens it for itself: the source's payload is
     -- what decides whether there is an answer at all, and an index column is `long` and therefore
     -- always encoded, so opening it above the refusal writes eight megabytes for a `none`
-    let idx (_ : Unit) : Option ByteArray := match Enc.bytesOf .long m ie with
+    let idx (_ : Unit) : Option ByteArray := match Enc.bytesOf .i64 m ie with
       | some ix => if ix.size < m.toNat * 8 then none else some ix
       | none => none
     match t, e with
-    | .boolean, .bits b => (idx ()).map fun ix => .bits (gatherBits n b ix)
-    | .symbol, .syms blob offs =>
+    | .u1, e => (boolBits .u1 n e).bind fun b => (idx ()).map fun ix => .bits (gatherBits n b ix)
+    | .sym, .syms blob offs =>
       (idx ()).map fun ix => let (nb, no) := gatherSyms blob offs ix; .syms nb no
     -- interned: `asc` is a grade and this gather, and the grade was already the ids' — leaving this
     -- on the blob is what made `asc xs` slower interned than not
     -- no rows name no symbol: an empty answer holding the source's dictionary would carry it into
     -- every `,` onto it, and a `,` from it extends that dictionary — forking its kept hash — for a
     -- value that is thrown away, as `upsert` types a record against its table's empty rows
-    | .symbol, .enum dict dof ids =>
+    | .sym, .enum dict dof ids =>
       if m == 0 then some (.syms .empty #[0]) else
       -- an index past `n`, negative or null reads as a `UInt64` at or past `n`
       let inRange (_ : Unit) : Bool := match idx () with
@@ -471,7 +476,7 @@ def gatherColumn (t : QAtomicType) (n : USize) (e : Ext.Enc X) (m : USize) (ie :
       let ans (gather : USize → USize → UInt64 → ByteArray) : Ext.Enc X :=
         let (db, dbo, nids) := gatherIds dict dof inRange gather
         .enum db dbo nids
-      match foRColumn .long m ie with
+      match foRColumn .i64 m ie with
       | some (m, im, ip) => some (ans fun w wo e => gatherPackedFoR n w wo e ids im ip m)
       | none => (idx ()).map fun ix => ans fun w wo e => gatherPacked n w wo e ids ix
     | t, .alp md p a =>
@@ -574,12 +579,13 @@ vector, and there is no `t` in it to answer with. -/
 def razeColumn (t : QAtomicType) (cs : Array (USize × Ext.Enc X)) : Option (Ext.QValue X) :=
   if cs.isEmpty then none
   else match t with
-    | .boolean =>
-      match cs.mapM (fun | (n, .bits b) => some (n, b) | _ => none) with
+    | .u1 =>
+      -- a `u1` `foR` part is brought to the bitmap the others are, a block at a time
+      match cs.mapM (fun (n, e) => (boolBits .u1 n e).map (n, ·)) with
       | some ps => needSize (ps.foldl (init := 0) (fun s p => s + p.1.toNat)) "raze: booleans" (fun _ => none) fun c =>
-        some (.vector .boolean c (.bits (concatBits (countBytes (ps.map (·.1))) (ps.map (·.2)))) none)
+        some (.vector .u1 c (.bits (concatBits (countBytes (ps.map (·.1))) (ps.map (·.2)))) none)
       | none => none
-    | .symbol =>
+    | .sym =>
       match cs.mapM (fun | (_, .syms b o) => some (b, o) | _ => none) with
       | some ps => some (concatSyms ps)
       | none =>
@@ -630,17 +636,17 @@ when `-1` is — every null being negative, that is the null test too — and `m
 its metadata and patch list, no element at all. -/
 def keyOperand (t : QAtomicType) (e : Ext.Enc X) : Option (QAtomicType × Bool × Int) :=
   match e with
-  | .enum _ offs _ => some (.symbol, false, ((offs.size - 1 : Nat) : Int) - 1)
-  | .bits _ => if t == .boolean then some (t, false, 1) else none
+  | .enum _ offs _ => some (.sym, false, ((offs.size - 1 : Nat) : Int) - 1)
+  | .bits _ => if t == .u1 then some (t, false, 1) else none
   | .bytes b => do
-    guard (t == .byte || t == .short || t == .int || t == .long)
+    guard (t == .u8 || t == .i16 || t == .i32 || t == .i64)
     let cls ← clsOf t
     -- two passes for `min`, because at `long` every `nul` is some element: one skipping `-1` and
     -- one skipping `-2` together see every negative code, at every class
     some (t, overBytes .lesser cls (-1) b < 0 || overBytes .lesser cls (-2) b < 0,
       (overBytes .greater cls Int64.minValue b).toInt)
   | .foR md pk => do
-    guard (t == .short || t == .int || t == .long)
+    guard (t == .i16 || t == .i32 || t == .i64)
     -- every block's extremes, and the patch list's values — a null or an outlier is held there and
     -- not in the extremes — read where `Column.foRExc` reads them, without its position search
     let e := Column.blockStart md (Column.nblk md)
