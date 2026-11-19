@@ -243,7 +243,7 @@ def genCol (xs : Array QValue) : (n : USize) × Arr .general n :=
     reads `default`, a general cell's `Obj.dflt`, not q's prototype fill, so a miss reads `Obj.dflt` at every shape. -/
 def pick (t : QAtomicType) (c : (n : USize) × Arr t n) (i : ByteArray) : (n : USize) × Arr t n :=
   if hg : t = .general then by
-    subst hg; exact let xs := gens c.2; genCol ((longRows i).map fun p => xs[p]?.getD default)
+    subst hg; exact let xs := gens c.2; genCol ((Ext.Enc.raw (X := Empty) .i64 (len i).toUSize (.bytes i)).map fun p => xs[p.toNat]?.getD default)
   else
     need (len i < USize.size) (fun _ => s!"pick: {len i} rows do not fit a USize") (fun _ => blankCol t)
       fun hl =>
@@ -265,13 +265,13 @@ theorem pick_eq_gather {t : QAtomicType} (hg : t ≠ .general) (c : (n : USize) 
   unfold pick; rw [dif_neg hg]; simp only [need]; rw [dif_pos hl]
   exact congrArg ((len i).toUSize, ·) (Option.some_inj.1 ((Option.some_get _).trans he))
 
-/-- `pick` answers one row an index long: `gatherColumn` at `len i`, a general list's `longRows`. -/
+/-- `pick` answers one row an index long: `gatherColumn` at `len i`, a general list's index read by `Enc.raw`. -/
 theorem pick_len (t : QAtomicType) (c : (n : USize) × Arr t n) (i : ByteArray) (hl : len i < USize.size) :
     (pick t c i).1.toNat = len i := by
   by_cases hg : t = .general
   · subst hg
-    have hs : ((longRows i).map fun p => (gens c.2)[p]?.getD default).size = len i := by
-      simp [longRows, len]
+    have hs : ((Ext.Enc.raw (X := Empty) .i64 (len i).toUSize (.bytes i)).map fun p => (gens c.2)[p.toNat]?.getD default).size = len i := by
+      simp [Ext.Enc.raw, QAtomicType.width, USize.toNat_ofNat_of_lt' hl]
     simp only [pick, genCol, need, dif_pos (hs ▸ hl), dite_true]
     exact (USize.toNat_ofNat_of_lt' (hs ▸ hl)).trans hs
   · simp only [pick, dif_neg hg, need]; rw [dif_pos hl]; exact USize.toNat_ofNat_of_lt' hl

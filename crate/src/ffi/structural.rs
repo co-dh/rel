@@ -303,13 +303,6 @@ export! {
 
 
 
-    /// Spec: `longRows b` is the inverse of `longBytes`, those little-endian `Int64`s as row numbers. One that does not fit a
-    /// boxed scalar stops rather than being truncated into a valid-looking row.
-    fn qlean_structural_rows_of(bv: B) -> O {
-        let b = bv.bytes();
-        lean::arr_words(b.len() / 8, |o| { structural::rows_of(b, o); })
-    }
-
     /// Spec: `gatherSyms blob offs ix` is the blob and offset table of the symbols `ix` names, with a miss answering the empty
     /// symbol -- `` `a`b@0 5 ``, `` `a`b@0 -1 `` and `` `a`b@0 0N `` are all `` `a` ``.
     fn qlean_structural_gather_syms(blobv: B, offsv: B, idxv: B) -> O {

@@ -1,4 +1,3 @@
-Rel.Column.blockStart
 Rel.Db.ownWrite
 Rel.Kernel.Coc.alpDecode32
 Rel.Kernel.Coc.alpDecode64
@@ -6,7 +5,6 @@ Rel.Kernel.Coc.alpEncode32
 Rel.Kernel.Coc.alpEncode64
 Rel.Kernel.Coc.alpEncodeBelow32
 Rel.Kernel.Coc.alpEncodeBelow64
-Rel.Kernel.Coc.encodeBelow
 Rel.Kernel.Ew.chain
 Rel.Kernel.Ew.foRShift
 Rel.Kernel.Ew.val
@@ -42,10 +40,8 @@ Rel.Kernel.cycleIds
 Rel.Kernel.enumIds
 Rel.Kernel.enumIdsFoR
 Rel.Kernel.expandBytes
-Rel.Kernel.findBit
 Rel.Kernel.findBitVec
 Rel.Kernel.findIdsVec
-Rel.Kernel.findScalar
 Rel.Kernel.findSymScalar
 Rel.Kernel.findVec
 Rel.Kernel.gatherAlp
@@ -57,7 +53,6 @@ Rel.Kernel.gatherPacked
 Rel.Kernel.gatherPackedFoR
 Rel.Kernel.gatherSyms
 Rel.Kernel.hashConcat
-Rel.Kernel.longRows
 Rel.Kernel.overBytes
 Rel.Kernel.runStarts
 Rel.Kernel.runStartsBits

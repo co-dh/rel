@@ -11,7 +11,7 @@ use crate::ffi::{Form, Sink};
 use crate::lean::{B, O, SArr, boxed, ctor, export};
 use crate::{codec, os, pod};
 #[cfg(all(feature = "ffi", not(any(test, feature = "std"))))]
-use {crate::cocops::CocMut, crate::lean::nat};
+use crate::cocops::CocMut;
 
 /// What C's `fprintf(stderr, …); exit(1)` did for a call no Lean body makes.
 pub fn die(args: core::fmt::Arguments) -> ! {
@@ -35,14 +35,6 @@ pub fn alp_view<'a>(mv: B<'a>, pv: B<'a>, av: B<'a>, n: usize) -> Cocf<'a> {
 }
 
 export! {
-    /// Byte offset in the pack of block `bv`, or the pack's length for the block past the last (`Nat`)
-    fn qlean_coc_block_start(mv: B, bv: B) -> O {
-        let Some(m) = Meta::new(mv.bytes(), usize::MAX) else { die(format_args!("qlean_coc_block_start: the metadata array is not a column's 33 * nblk + 24 bytes\n")) };
-        if !bv.is_scalar() {
-            die(format_args!("qlean_coc_block_start: the block index is a bignum; a column is bounded by its byte count and cannot have 2^63 blocks\n"))
-        }
-        nat(codec::block_start(&m, bv.unbox()))
-    }
     /// `boolsOf n b`: the bitmap `b`'s first `n` bits as the `u1` Frame of Reference column, a block at a time (a
     /// block starts on a byte: `lo` is a multiple of the block size); a bit past `b` is 0.
     fn qlean_coc_bools_of(n: usize, b: B) -> O {
@@ -55,8 +47,6 @@ export! {
     }
     /// `(meta, pack)` of the dense column `x` of elements `width` bytes wide (`elt_width`)
     fn qlean_coc_encode(width: usize, x: B) -> O { encode(x, elt_width("qlean_coc_encode", width), Form::For, false) }
-    /// `qlean_coc_encode` as `some`, or `none` when the encoded form would not be shorter than `x`
-    fn qlean_coc_encode_below(width: usize, x: B) -> O { encode(x, elt_width("qlean_coc_encode_below", width), Form::For, true) }
     /// The column restored: `n` elements of `width` bytes, little-endian
     fn qlean_coc_decode(width: usize, meta: B, pack: B, n: usize) -> O {
         let c = view("qlean_coc_decode", meta, pack, n);

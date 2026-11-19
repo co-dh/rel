@@ -27,7 +27,7 @@ theorem answer_bytes (t : QAtomicType) (w : Nat) (ht : t.width = some w) (n : US
     (encodes t = true ∧ Enc.answer (X := Empty) t n (.bytes b) =
       .foR (Coc.encode w.toUSize b).1 (Coc.encode w.toUSize b).2) := by
   cases t <;> simp only [QAtomicType.width, Option.some.injEq, reduceCtorEq] at ht <;> subst ht <;>
-    simp only [Enc.answer, QAtomicType.width, alpEncodes, encodes, Coc.encodeBelow, Coc.alpEncodeBelow64,
+    simp only [Enc.answer, QAtomicType.width, alpEncodes, encodes, Coc.alpEncodeBelow64,
       Coc.alpEncodeBelow32, Coc.alpEncode64, Coc.alpEncode32] <;>
     (repeat' split) <;> simp_all
 
