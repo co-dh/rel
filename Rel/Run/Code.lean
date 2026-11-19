@@ -224,7 +224,7 @@ def gradeBy (n : USize) (ks : Array Code) : ByteArray :=
 
 /-- A long column's dense payload always answers: `Enc.WF .long` admits only `bytes` and `foR`. -/
 theorem longBytes_isSome {n : USize} (x : Arr .i64 n) : (longBytes n x.enc).isSome := by
-  rcases KernelWF.long_cases x.wf with ⟨b, h⟩ | ⟨M, P, h⟩ <;> simp [h, longBytes]
+  rcases KernelWF.long_cases x.wf with ⟨b, h⟩ | ⟨M, P, h⟩ | h <;> simp [h, longBytes, Enc.bytesOf]
 
 /-- A general list's boxed elements: its `gen` column, which is the only one `Arr .general` admits. -/
 def gens {n : USize} (x : Arr .general n) : Array QValue :=

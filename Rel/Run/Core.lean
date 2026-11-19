@@ -189,6 +189,16 @@ def longWords (n : USize) (e : Enc) : Option (List UInt64) :=
   match e with
   | .bytes b => some (Verify.elemsW 8 b)
   | .foR md pk => some ((List.range n.toNat).map (Column.foRBits md pk (Column.blockStarts md)))
+  | .pos => some ((List.range n.toNat).map Nat.toUInt64)
+  | _ => none
+
+/-- A long payload as dense bytes: `bytes` as it is, `foR` decoded once (`Coc.decode`), `pos` as `Enc.bytesOf` reads
+    it. -/
+def longBytes (n : USize) (e : Enc) : Option ByteArray :=
+  match e with
+  | .bytes b => some b
+  | .foR md pk => some (Kernel.Coc.decode 8 md pk n)
+  | .pos => Enc.bytesOf .i64 n (.pos : Enc)
   | _ => none
 
 /-- Under `wf`, a long column lists its words, each read as a long: `toList_long_bytes` and the `foR` decode. -/
@@ -201,6 +211,14 @@ theorem Arr.toList_long {m : USize} (x : Arr .i64 m) {ws : List UInt64} (h : lon
     rw [hc] at h; cases h
     apply List.ext_getElem (by rw [Arr.length_toList]; simp)
     intro i h1 h2; rw [Arr.getElem_toList, Arr.get_long_foR x hc]; simp
+  | pos =>
+    rw [hc] at h; cases h
+    apply List.ext_getElem (by rw [Arr.length_toList]; simp)
+    intro i h1 h2
+    have hi : i < m.toNat := by rwa [Arr.length_toList] at h1
+    rw [Arr.getElem_toList, Arr.get_ne x _ (by decide)]
+    simp only [Enc.get, hc, if_pos hi, Option.bind_some, List.getElem_map, List.getElem_range]
+    rfl
   | _ => all_goals (rw [hc] at h; cases h)
 
 /-- Element `i` of a long column is word `i`, read as a long. -/
@@ -210,22 +228,27 @@ theorem Arr.get_long {m : USize} (x : Arr .i64 m) {ws : List UInt64} (h : longWo
   simp [Arr.toList_long x h]
 
 /-- The dense payload a kernel reads off a long column that lists `longWords`: a `bytes` payload is
-    itself, a `foR` one is handed over or decoded (`decodeW`) to the same words. -/
+    itself, a `foR` one is handed over or decoded (`decodeW`) to the same words, a `pos` one its positions. -/
 theorem Arr.dense_long {m : USize} (x : Arr .i64 m) {ws : List UInt64} (h : longWords m x.enc = some ws) :
-    ∃ B, (x.enc = .bytes B ∨ ∃ md pk, x.enc = .foR md pk ∧
-      B = Kernel.Coc.decode (8 : Nat).toUSize md pk m) ∧ Enc.bytesOf .i64 m x.enc = some B ∧
+    ∃ B, longBytes m x.enc = some B ∧ Enc.bytesOf .i64 m x.enc = some B ∧
       Verify.elemsW 8 B = ws ∧ B.size / 8 = m.toNat := by
   have h8 : (8 : Nat).toUSize.toNat = 8 := USize.toNat_ofNat_of_lt' (Nat.lt_of_lt_of_le (by decide) USize.le_size)
   unfold longWords at h
   cases hc : x.enc with
   | bytes b =>
     rw [hc] at h; cases h
-    exact ⟨b, .inl rfl, by simp only [Enc.bytesOf], rfl, Arr.n_long_bytes x hc⟩
+    exact ⟨b, rfl, by simp only [Enc.bytesOf], rfl, Arr.n_long_bytes x hc⟩
+  | pos =>
+    rw [hc] at h; cases h
+    refine ⟨_, rfl, rfl, ?_, ?_⟩
+    · rw [List.foldl_map, Verify.elemsW_foldl_mod Nat.toUInt64 8 (by decide) (by decide)]
+      exact List.map_congr_left fun a _ => UInt64.toNat_inj.mp (by simp [UInt64.toNat_ofNat, Nat.mod_mod])
+    · rw [List.foldl_map, (Verify.foldl_pushBits Nat.toUInt64 8 (by decide) _ _).1]; simp
   | foR md pk =>
     rw [hc] at h; cases h
     obtain ⟨hsz, hg⟩ := Verify.decodeW (8 : Nat).toUSize (by rw [h8]; decide) md pk m
     rw [h8] at hsz hg
-    refine ⟨_, .inr ⟨md, pk, rfl, rfl⟩, by simp only [Enc.bytesOf, QAtomicType.width]; rfl,
+    refine ⟨Kernel.Coc.decode (8 : Nat).toUSize md pk m, rfl, by simp only [Enc.bytesOf, QAtomicType.width]; rfl,
       List.ext_getElem (by simp [Verify.elemsW, hsz]) fun i h1 _ => ?_, by rw [hsz]; omega⟩
     simp only [Verify.elemsW, List.getElem_map, List.getElem_range]
     rw [hg i (by simpa [Verify.elemsW, hsz] using h1), Verify.ofNat_toNat_mod64]
@@ -578,13 +601,6 @@ theorem Arr.toList_sym {m : USize} (x : Arr .sym m)
   rw [List.length_map, Arr.length_toList] at h1
   rw [List.getElem_map, Arr.getElem_toList, Arr.get_ne x _ (by decide)]
   exact get_sym_bytes _ hw h1 h2 (hu _ (List.getElem_mem h2))
-
-/-- A long payload as dense bytes: `bytes` as it is, `foR` decoded once (`Coc.decode`). -/
-def longBytes (n : USize) (e : Enc) : Option ByteArray :=
-  match e with
-  | .bytes b => some b
-  | .foR md pk => some (Kernel.Coc.decode 8 md pk n)
-  | _ => none
 
 /-- A side of a relation: an atomic type, a product of sides, or an array of a side. A tree, so
     `Vals (.atom t)` is `Arr t` itself and every one-column path is unchanged. A `arr b` element is an

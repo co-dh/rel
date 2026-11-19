@@ -12,10 +12,11 @@ namespace Rel
 open Rel.Ext Rel.Kernel Rel.Verify
 
 /-- **An element is the atom of its word**: in a column every kernel reads (`foR`, or `pos` at `i64`), element `i` is
-`Carrier.of?` of the atom its raw word `a` reads as (`atomOfBits`), and at `u1` that word is below `2`. -/
+`Carrier.of?` of the atom its raw word `a` reads as (`atomOfBits`), and at `u1` that word is below `2`. A `sym` column
+has no word reading (`Enc.get` declines it), so `sym` is excluded. -/
 theorem Arr.get_raw_atom {t : QAtomicType} {n : USize} (x : Arr t n) (hx : Kernel.Enc.Valid n x.enc)
-    (hg : t ≠ .general) (i : Fin n.toNat) : ∃ a, (Enc.raw .i64 n x.enc)[i.1]? = some a ∧ (t = .u1 → a < 2) ∧
-      x.get i = (Carrier.of? t (.atom (Column.atomOfBits t a hg))).getD default := by
+    (hg : t ≠ .general) (hs : t ≠ .sym) (i : Fin n.toNat) : ∃ a, (Enc.raw .i64 n x.enc)[i.1]? = some a ∧ (t = .u1 → a < 2) ∧
+      x.get i = (Dep.Carrier.of? t (.atom (Column.atomOfBits t a hg))).getD default := by
   have hw := x.wf
   rw [Arr.get_ne x i hg]
   cases hc : x.enc with
@@ -25,7 +26,7 @@ theorem Arr.get_raw_atom {t : QAtomicType} {n : USize} (x : Arr t n) (hx : Kerne
       (by decide : QAtomicType.i64 ≠ .u1), Array.getElem?_map, Array.getElem?_range, i.2, if_true, Option.map_some,
       Nat.reduceMul, ofNat_toNat_mod64], fun hu => by
         subst hu; simp only [Enc.WF] at hw; exact UInt64.lt_iff_toNat_lt.2 (hw.2.1 trivial i i.2), ?_⟩
-    cases t <;> first | exact absurd rfl hg |
+    cases t <;> first | exact absurd rfl hg | exact absurd rfl hs |
       simp only [Enc.get, if_pos i.2, QAtomicType.width, foRBits_starts, Option.bind_some]
   | pos =>
     rw [hc] at hw
@@ -45,8 +46,15 @@ theorem Arr.get_eq_of_raw {t : QAtomicType} {n m : USize} (x : Arr t n) (y : Arr
   have hg : t ≠ .general := by
     rintro rfl; have hw := x.wf
     cases hc : x.enc <;> (rw [hc] at hw hx; simp only [Enc.WF, Kernel.Enc.Valid] at hw hx) <;> exact absurd hw.1 (by decide)
-  obtain ⟨a, ha, hua, ex⟩ := Arr.get_raw_atom x hx hg i
-  obtain ⟨b, hb, hub, ey⟩ := Arr.get_raw_atom y hy hg j
+  by_cases hs : t = .sym
+  · -- `Enc.get` declines a `sym` word column, so both elements are the default
+    subst hs
+    have dflt : ∀ {n} (z : Arr .sym n), Kernel.Enc.Valid n z.enc → ∀ k : Fin n.toNat, z.get k = default := by
+      intro n z hz k; rw [Arr.get_ne z k hg]
+      cases hc : z.enc <;> rw [hc] at hz <;> simp_all [Enc.get, QAtomicType.width, Kernel.Enc.Valid]
+    rw [dflt x hx i, dflt y hy j]
+  obtain ⟨a, ha, hua, ex⟩ := Arr.get_raw_atom x hx hg hs i
+  obtain ⟨b, hb, hub, ey⟩ := Arr.get_raw_atom y hy hg hs j
   rw [ex, ey, h hg a b ha hb fun hu => ⟨hua hu, hub hu⟩]
 
 /-- **The row form of the bridge**: row `j` of `Vals.gather m ix x` is row `ix[j]` of `x`, the index being below `n`. -/
