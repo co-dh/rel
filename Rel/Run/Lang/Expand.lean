@@ -731,7 +731,8 @@ partial def node (pre : Name) (ρ : List (Nat × Lean.Expr)) {A B : Obj} (t : Tm
       return g ``Gen.nuAC #[oE A, oE B, ← c S, ← arc a, ← mkListLit arcTy (← as.mapM arc)]
     | _ => return g ``Gen.nu #[oE A, oE B, ← c S, ← body pre ρ A B k b]
   | A, B, .mu k _ n b => return g ``Gen.mu #[oE A, oE B, toExpr n, ← body pre ρ A B k b]
-  | A, B, .hylo k _ b => let ch := (b.kids k A).getD .zero
+  | A, B, .hylo k _ b =>
+    let ch := (b.kids k A).getD .zero
     return g ``Gen.hylo #[oE A, oE B, bE ch.dem, bE b.dem, ← c ch, ← body pre ρ A B k b]
   | .sum A B, C, .juncD R S => return g ``Gen.juncD #[oE A, oE B, oE C, bE R.dem, bE S.dem, ← c R, ← c S]
   | A, B, t@(.prim _) | A, B, t@(.arg ..) => match primOf t with
