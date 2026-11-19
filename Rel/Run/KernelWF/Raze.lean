@@ -177,12 +177,6 @@ theorem foldl_inv {α σ : Type} (P : σ → Prop) (g : σ → α → σ) (hg : 
   | [], _, h => h
   | a :: l, s, h => foldl_inv P g hg l (g s a) (hg s a h)
 
-/-- `concatBits` of parts `ps` holds their summed count, as `razeColumn` counts it. -/
-theorem concatBits_wf (ps : Array (USize × ByteArray)) {c : USize}
-    (hc : c.toNat = ps.foldl (fun s p => s + p.1.toNat) 0) :
-    Enc.WF (X := Empty) .u1 c (.bits (concatBits (countBytes (ps.map (·.1))) (ps.map (·.2)))) := by
-  simp only [Enc.WF, concatBits, packOf_size, hc, foldl_toNat]
-  rw [flatMap_counts _ _ (by simp)]
 
 /-- `til n` as `tilLongs`: `n` longs. -/
 theorem tilLongs_wf (n : USize) : Enc.WF (X := Empty) .i64 n (.bytes (tilLongs n)) :=
@@ -1359,7 +1353,7 @@ theorem razeColumn_wf {t : QAtomicType} {cs : Array (USize × Enc)}
     dsimp only at hv
     split at hv
     · obtain ⟨hc, hv⟩ := needSize_some hv
-      cases hv; exact ⟨_, _, rfl, concatBits_wf _ (toUSize_toNat hc)⟩
+      cases hv; exact ⟨_, _, rfl, wf_bools _⟩
     · cases hv
   case sym =>
     dsimp only at hv
