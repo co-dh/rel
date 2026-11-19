@@ -49,7 +49,7 @@ rel_program kernMapCycle where
     S : E×[N] ⟶ N ≜ π₂ sum
     bad : E ⟶ N ≜ hylo(⟨𝟙, Λ(next)⟩, S)
 
-#guard kernMapCycle.kernel && kernMapCycle.failures.map (·.msg) == [s!"bad: coalgebra c at line " ++
+#guard kernMapCycle.kernel && kernMapCycle.failures.map (·.msg) == [s!"bad: the coalgebra c at line " ++
   s!"{decl_line% kernMapCycle + 5}, col 24 reaches a node from itself, so it is not well-founded there (2 of 3 nodes)"]
 
 #guard kernMap.kernel && !kernMapOld.kernel && kernMap.ok && kernMapOld.ok
