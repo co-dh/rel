@@ -20,7 +20,8 @@ rel_program kernMap where
     f3 : N ⟶ [N] ≜ z x F(succ)
     boss : E ⟶ E ≜ {(1,0),(2,0),(3,1),(4,3),(5,3)}
     kids : E ⟶ [E] ≜ Λ(boss°)
-    sz : E ⟶ N ≜ hylo(⟨𝟙, kids⟩, π₂ sum succ)
+    S : E×[N] ⟶ N ≜ π₂ sum succ
+    sz : E ⟶ N ≜ hylo(⟨𝟙, kids⟩, S)
 
 open Rel.Programs.prelude in
 set_option rel.kernel false in
@@ -35,7 +36,20 @@ rel_program kernMapOld where
     f3 : N ⟶ [N] ≜ z x F(succ)
     boss : E ⟶ E ≜ {(1,0),(2,0),(3,1),(4,3),(5,3)}
     kids : E ⟶ [E] ≜ Λ(boss°)
-    sz : E ⟶ N ≜ hylo(⟨𝟙, kids⟩, π₂ sum succ)
+    S : E×[N] ⟶ N ≜ π₂ sum succ
+    sz : E ⟶ N ≜ hylo(⟨𝟙, kids⟩, S)
+
+-- A cyclic coalgebra over the list functor on the kernel path (`TestHylo.hyloCycle` on the old layer): it fails,
+-- never a silent `𝟘`.
+open Rel.Programs.prelude in
+rel_program kernMapCycle where
+    obj E = {a,b,m}
+    obj N = 0…40
+    next : E ⟶ E ≜ {(a,b),(b,a)}
+    S : E×[N] ⟶ N ≜ π₂ sum
+    bad : E ⟶ N ≜ hylo(⟨𝟙, Λ(next)⟩, S)
+
+#guard kernMapCycle.kernel && !kernMapCycle.failures.isEmpty
 
 #guard kernMap.kernel && !kernMapOld.kernel && kernMap.ok && kernMapOld.ok
 #guard ["f1", "f2", "f3"].all (sameK kernMap.expanded kernMapOld.expanded · .long (.arr .long))
