@@ -107,9 +107,9 @@ impl<T: Pod + Default, const N: usize> Scr<T, N> {
     /// `len` copies of `x`, written once
     #[inline(always)]
     pub fn filled(len: usize, x: T) -> Self {
-        let mut inl = [const { core::mem::MaybeUninit::uninit() }; N];
-        if len <= N { for o in &mut inl[..len] { o.write(x); } }
-        Scr { inl, heap: if len > N { alloc::vec![x; len] } else { alloc::vec::Vec::new() }, len }
+        let mut s = Scr { inl: [const { core::mem::MaybeUninit::uninit() }; N], heap: alloc::vec::Vec::new(), len };
+        if len > N { s.heap = alloc::vec![x; len] } else { for o in &mut s.inl[..len] { o.write(x); } }
+        s
     }
 }
 impl<T: Pod + Default, const N: usize> core::ops::Deref for Scr<T, N> {

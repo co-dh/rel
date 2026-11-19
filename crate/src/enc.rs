@@ -148,7 +148,7 @@ fn plan<T: Elt>(x: &[T], mn: i64, top: usize, esz: usize) -> (usize, i64, usize)
     for k in 1..=nbk { h[k] = h[k - 1] + h4.iter().map(|g| g[k] as usize).sum::<usize>() } // prefix sums
     let mut lo = [0usize; 65];
     for d in b..top {
-        let span = ((((1u64 << d) + (1u64 << b) - 2) >> b) as usize + 1).min(nbk);
+        let span = (((1u64 << d) - 1).div_ceil(1u64 << b) as usize + 1).min(nbk); // no overflow at b = d = 63
         lo[d] = nb - (span..=nbk).map(|e| h[e] - h[e - span]).max().unwrap_or(nb);
     }
     for d in 0..b { lo[d] = lo[b] } // patches only grow as the width narrows
