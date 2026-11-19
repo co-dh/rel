@@ -47,15 +47,18 @@ pub fn pos_rows(m: usize) -> Result<(), String> {
 }
 
 /// One key column of `kasc`: the encoded column, its type's `order`, and the least and greatest word as its block
-/// metadata bounds them (`kwin::range`, no residual read).
+/// metadata bounds them (`kwin::range`, no residual read), and `uw`, the width its blocks share (`Coc::one_width`).
 #[derive(Clone, Copy)]
-pub struct Key<'a> { pub c: Coc<'a>, w: usize, float: bool, signed: bool, lo: i64, hi: i64 }
+pub struct Key<'a> { pub c: Coc<'a>, w: usize, float: bool, signed: bool, lo: i64, hi: i64, uw: u8 }
 impl<'a> Key<'a> {
     pub fn new(c: Coc<'a>, (w, float, signed): (usize, bool, bool)) -> Self {
         let (mn, mx) = kwin::range(SK_I64, &c);
-        Key { c, w, float, signed, lo: (mn ^ 1 << 63) as i64, hi: (mx ^ 1 << 63) as i64 }
+        // `one_width` reads every block's width, so it is read once here and not at each word (`at`)
+        Key { c, w, float, signed, lo: (mn ^ 1 << 63) as i64, hi: (mx ^ 1 << 63) as i64, uw: c.one_width() }
     }
     pub(crate) fn code(&self, v: u64) -> u64 { ord_key(self.w, self.float, self.signed, v) }
+    /// Row `i`'s code, its word read at its address (`Coc::get_w`).
+    pub(crate) fn at(&self, i: usize) -> u64 { self.code(self.c.get_w(self.uw, i) as u64) }
     /// Every word lies where `ord_key` is `v + s` for one `s`: the type's signed range (`s` its sign bit), its unsigned
     /// range (`s = 0`), or for a float every word with the sign bit clear, `+0.0 ..= +NaN` (`s` the sign bit, which
     /// `ord_key` sets there). There the column's own order is its code order.
@@ -114,7 +117,7 @@ pub fn atoms<'a>(cs: &[Col<'a>]) -> Option<Vec<Key<'a>>> { cs.iter().map(|c| mat
 /// Row `i` against row `j` in `lexLe` order over the codes of `cs`: the first column where they differ decides.
 pub fn cmp_rows(cs: &[Col], i: usize, j: usize) -> core::cmp::Ordering {
     cs.iter().map(|c| match c {
-        Col::Atom(k) => { let uw = k.c.one_width(); k.code(k.c.get_w(uw, i) as u64).cmp(&k.code(k.c.get_w(uw, j) as u64)) }
+        Col::Atom(k) => k.at(i).cmp(&k.at(j)),
         Col::Pos => i.cmp(&j),
         Col::Cells(a) => a.cmp(i, j),
     }).find(|o| o.is_ne()).unwrap_or(core::cmp::Ordering::Equal)
@@ -186,8 +189,7 @@ fn mixed(ks: &[Key], m: usize, p: Option<&[i64]>) -> (Vec<u64>, u64, u64) {
     let mut c = vec![0u64; m];
     match p {
         Some(p) => for (k, &s) in ks.iter().zip(&sp) {
-            let uw = k.c.one_width();
-            for (x, &i) in c.iter_mut().zip(p) { *x = mix(*x, s, k.code(k.c.get_w(uw, i as usize) as u64)) }
+            for (x, &i) in c.iter_mut().zip(p) { *x = mix(*x, s, k.at(i as usize)) }
         },
         None => blocks(ks, |at, cnt, t| {
             let blk = t.len() / ks.len();
@@ -280,6 +282,125 @@ mod tests {
                 assert_eq!(got, want, "columns {set:?} at m {m}");
                 assert_eq!(sorted(crate::c::pool(), &ks, m), want.iter().enumerate().all(|(i, &x)| x == i as i64), "sorted {set:?} at m {m}");
             }
+        }
+    }
+
+    /// The words `x` as a `foR` column's metadata and pack, `Coc::view`ed by `col`.
+    fn enc(x: &[i64]) -> [Vec<u8>; 2] {
+        let o = Sink::new(x.len(), 8, Form::For).answer(&Blocks::dense(pod::bytes(x), 8));
+        [0, 1].map(|i| o.borrow().field(i).bytes().to_vec())
+    }
+    fn col(e: &[Vec<u8>; 2], m: usize) -> Coc<'_> { crate::coc::view(&e[0], &e[1], m).ok().expect("asc test: view") }
+    fn xs(s: &mut u64) -> u64 { *s ^= *s << 13; *s ^= *s >> 7; *s ^= *s << 17; *s }
+
+    /// A `cells` table: `m` rows naming cells `ix`, the cells `lo .. hi` of a payload of atom columns `els` (type 4).
+    struct T { m: usize, c: usize, ix: Vec<i64>, lo: Vec<i64>, hi: Vec<i64>, els: Vec<Vec<i64>>, atoms: Vec<(u8, Vec<i64>)> }
+    struct E { ix: [Vec<u8>; 2], lo: [Vec<u8>; 2], hi: [Vec<u8>; 2], els: Vec<[Vec<u8>; 2]>, atoms: Vec<(u8, [Vec<u8>; 2])> }
+    impl T {
+        fn enc(&self) -> E {
+            E { ix: enc(&self.ix), lo: enc(&self.lo), hi: enc(&self.hi), els: self.els.iter().map(|x| enc(x)).collect(),
+                atoms: self.atoms.iter().map(|(t, x)| (*t, enc(x))).collect() }
+        }
+        /// the key list: the atom columns first and last around the `cells` column (none where `atoms` is empty)
+        fn cols<'a>(&self, e: &'a E) -> Vec<Col<'a>> {
+            let n = self.lo.len();
+            let cells = Col::Cells(Cells { ix: Ix::of(Some(col(&e.ix, self.m))), c: self.c, lo: Ix::of(Some(col(&e.lo, n))),
+                hi: Ix::of(Some(col(&e.hi, n))),
+                els: e.els.iter().map(|x| Col::Atom(Key::new(col(x, self.c), order(4).expect("asc test: order")))).collect() });
+            let atom = |(t, x): &'a (u8, [Vec<u8>; 2])| Col::Atom(Key::new(col(x, self.m), order(*t).expect("asc test: order")));
+            let mut cs: Vec<Col> = e.atoms.iter().take(1).map(atom).collect();
+            cs.push(cells);
+            cs.extend(e.atoms.iter().skip(1).map(atom));
+            cs
+        }
+        /// The straightforward reference: each row's keys as plain vectors, cells clamped as `Cells::span` does,
+        /// compared by `Vec`'s lexicographic order (a proper prefix first), a stable sort.
+        fn reference(&self) -> Vec<i64> {
+            let code = |t: u8, v: i64| { let (w, f, g) = order(t).expect("asc test: order"); ord_key(w, f, g, v as u64) };
+            let cell = |i: usize| {
+                let r = self.ix[i] as usize;
+                let s = self.lo[r].clamp(0, self.c as i64) as usize;
+                let e = (self.hi[r].clamp(0, self.c as i64) as usize).max(s);
+                (s..e).map(|k| self.els.iter().map(|x| code(4, x[k])).collect::<Vec<u64>>()).collect::<Vec<_>>()
+            };
+            let key = |i: usize| {
+                let a = |j: usize| self.atoms.get(j).map(|(t, x)| code(*t, x[i]));
+                (a(0), cell(i), (1..self.atoms.len()).map(|j| a(j)).collect::<Vec<_>>())
+            };
+            let ks: Vec<_> = (0..self.m).map(key).collect();
+            let mut p: Vec<usize> = (0..self.m).collect();
+            p.sort_by(|&a, &b| ks[a].cmp(&ks[b]));
+            p.into_iter().map(|i| i as i64).collect()
+        }
+        /// `n` cells over a payload of `nel` columns: each cell a shared prefix (one of `np`, `pl` long, drawn from
+        /// `alpha` symbols) and a random tail up to `tl` long; row `i` names a random cell.
+        fn make(s: &mut u64, m: usize, n: usize, np: usize, pl: usize, tl: usize, alpha: u64, nel: usize) -> T {
+            let pre: Vec<Vec<Vec<i64>>> = (0..np).map(|_| (0..pl).map(|_| (0..nel).map(|_| (xs(s) % alpha) as i64).collect()).collect()).collect();
+            let (mut els, mut lo, mut hi) = (vec![Vec::new(); nel], Vec::new(), Vec::new());
+            for _ in 0..n {
+                let p = &pre[xs(s) as usize % np];
+                let cut = if pl == 0 { 0 } else { xs(s) as usize % (pl + 1) };
+                let t = if tl == 0 { 0 } else { xs(s) as usize % (tl + 1) };
+                lo.push(els[0].len() as i64);
+                for e in p[..cut].iter().cloned().chain((0..t).map(|_| (0..nel).map(|_| (xs(s) % alpha) as i64).collect())) {
+                    for (c, v) in els.iter_mut().zip(e) { c.push(v) }
+                }
+                hi.push(els[0].len() as i64);
+            }
+            let c = els[0].len();
+            T { m, c, ix: (0..m).map(|_| (xs(s) % n as u64) as i64).collect(), lo, hi, els, atoms: Vec::new() }
+        }
+    }
+
+    // `cells` keys against the reference: shared prefixes, empty cells, equal rows (one cell named by many rows, so
+    // stability decides), cells across foR blocks, patched payloads, `lo`/`hi` out of range, scalar keys around them
+    #[test] fn cells_is_the_reference() {
+        let mut s = 0x2545_f491_4f6c_dd1du64;
+        for (m, n, np, pl, tl, alpha, nel) in [(0, 1, 1, 0, 0, 2, 1), (1, 1, 1, 3, 2, 2, 1), (7, 3, 1, 4, 2, 2, 1), (500, 40, 3, 20, 5, 3, 1),
+                (3000, 3000, 5, 60, 4, 2, 1), (3000, 200, 2, 1500, 3, 2, 1), (2000, 500, 4, 8, 3, 3, 2), (2500, 2500, 1, 0, 3, 4, 1)] {
+            let mut t = T::make(&mut s, m, n, np, pl, tl, alpha, nel);
+            for v in 0..4 {
+                if v == 1 { // patches: a rare outlier in the payload, so its blocks carry a patch list
+                    for x in t.els[0].iter_mut() { if xs(&mut s) % 211 == 0 { *x = (xs(&mut s) >> 1) as i64 - (1 << 62) } }
+                }
+                if v == 2 { // cells out of the payload: a `lo` below 0, a `hi` past `c`, `lo` past `hi`
+                    for r in 0..n { match xs(&mut s) % 9 { 0 => t.lo[r] = -5, 1 => t.hi[r] = t.c as i64 + 7, 2 => t.lo[r] = t.hi[r] + 1, _ => {} } }
+                }
+                if v == 3 { // scalar keys before and after the cells
+                    t.atoms = vec![(4, (0..m).map(|_| (xs(&mut s) % 3) as i64).collect()), (6, (0..m).map(|_| ((xs(&mut s) % 5) as f64 - 2.0).to_bits() as i64).collect())];
+                }
+                let e = t.enc();
+                let cs = t.cols(&e);
+                let got = grade_cols(crate::c::pool(), &cs, m).unwrap_or_else(|| (0..m as i64).collect());
+                assert_eq!(got, t.reference(), "cells m {m} n {n} prefix {np}x{pl} tail {tl} variant {v}");
+            }
+        }
+    }
+
+    /// `cargo test --release --features std -- --ignored bench_asc --nocapture`: (a) 1e6 scalar i64 rows, (b) 2e5
+    /// cells of ~50 with long shared prefixes, (c) 2e5 short cells; each the median of 5 runs of `grade_cols`.
+    #[test] #[ignore] fn bench_asc() {
+        let mut s = 0x9e37_79b9_7f4a_7c15u64;
+        let time = |what: &str, cs: &[Col], m: usize| {
+            let mut t: Vec<_> = (0..5).map(|_| { let t0 = std::time::Instant::now(); core::hint::black_box(grade_cols(crate::c::pool(), cs, m)); t0.elapsed() }).collect();
+            t.sort();
+            std::println!("{what}: {:?}", t[2]);
+        };
+        let which = std::env::var("ASC_BENCH").unwrap_or_default();
+        if which.is_empty() || which.contains('a') {
+            let x: Vec<i64> = (0..1_000_000).map(|_| xs(&mut s) as i64).collect();
+            let e = enc(&x);
+            time("(a) 1e6 scalar i64", &[Col::Atom(Key::new(col(&e, x.len()), order(4).expect("order")))], x.len());
+        }
+        if which.is_empty() || which.contains('b') {
+            let t = T::make(&mut s, 200_000, 200_000, 50, 48, 4, 3, 1);
+            let e = t.enc();
+            time("(b) 2e5 cells ~50, shared prefixes", &t.cols(&e), t.m);
+        }
+        if which.is_empty() || which.contains('c') {
+            let t = T::make(&mut s, 200_000, 200_000, 1, 0, 4, 1000, 1);
+            let e = t.enc();
+            time("(c) 2e5 cells 0..4", &t.cols(&e), t.m);
         }
     }
 }
