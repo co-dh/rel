@@ -57,7 +57,7 @@ def sums (n : USize) (b : ByteArray) : ByteArray := Scan.scan .sums .i64 n b
 /-- `src@idx` at element width `w`; a miss reads `0`. -/
 def gather (w : Nat) (src idx : ByteArray) : ByteArray := gatherBytes w.toUSize 0 src idx
 /-- The positions where `a` equals `b` elementwise, over their `n` longs. -/
-def whereEqV (n : USize) (a b : ByteArray) : ByteArray := whereBits n (Ew.cmp Ew.eq Ew.i64 Ew.vv a b n)
+def whereEqV (n : USize) (a b : ByteArray) : ByteArray := whereBits n (Ew.cmpBits Ew.eq Ew.i64 Ew.vv a b n)
 
 /-- Any `Ew.val` on longs at the count `n` answers `n` longs (`Ew.val_size`). -/
 theorem len_val (op shape : UInt8) (a b : ByteArray) (n : USize) :
@@ -161,11 +161,13 @@ def find (c x : Code) : ByteArray :=
 
 /-- Whether each of `x`'s codes occurs in `c`, as bits: `memberBits`, `memberVec`, `memberIdsVec`. -/
 def member (x c : Code) : ByteArray :=
+  -- each kernel answers a `u1` `foR`, read as a bitmap through `boolBits` (its `foR` branch, `bitsOfFoR`)
+  let read (r : ByteArray × ByteArray) := bitsOfFoR r.1 r.2 x.n
   match x.kind, c.kind with
-  | some .bit, some .bit => memberBits x.n x.b c.n c.b
-  | some k, some k' => if k == k' then memberVec k.width.toUSize false x.b c.b
-    else memberIdsVec x.w.toUSize x.b x.n c.w.toUSize c.b c.n
-  | _, _ => memberIdsVec x.w.toUSize x.b x.n c.w.toUSize c.b c.n
+  | some .bit, some .bit => read (memberBits x.n x.b c.n c.b)
+  | some k, some k' => read (if k == k' then memberVec k.width.toUSize false x.b c.b
+    else memberIdsVec x.w.toUSize x.b x.n c.w.toUSize c.b c.n)
+  | _, _ => read (memberIdsVec x.w.toUSize x.b x.n c.w.toUSize c.b c.n)
 
 /-- Each row's class, numbered by first occurrence, and each class's first row: `groupIds` at the layout,
     `idGroups` (a direct table of `card` entries) at `2`/`4` bits. -/
@@ -424,7 +426,7 @@ def codes {p : Nat} (t : QAtomicType) (cs : Vector ((n : USize) × Arr t n) p) :
     subst hg
     exact let all := (gens (raze .general cs.toArray).2).toList; (pack all.length (firstIds all)).cut (cs.map (·.1))
   else
-  match cs.mapM (fun c => match c.2.enc with | .bits b => some (⟨1, c.1, 2, b⟩ : Code) | _ => none) with
+  match cs.mapM (fun c => (boolBits t c.1 c.2.enc).map fun b => (⟨1, c.1, 2, b⟩ : Code)) with
   | some bs => bs
   | none =>
   let ns := cs.map (·.1)
@@ -550,11 +552,6 @@ theorem len_tilLongs (n : USize) : len (tilLongs n) = n.toNat := by
   have w := KernelWF.tilLongs_wf n
   simp only [Enc.WF, QAtomicType.width] at w
   simp [len, w]
-
-/-- A boolean column's bitmap: `bits` is the one payload `Enc.WF .boolean` admits. -/
-def tagBits {n : USize} (x : Arr .u1 n) : ByteArray :=
-  (match x.enc with | .bits b => some b | _ => none).get (by
-    have hw := x.wf; revert hw; cases x.enc <;> simp [Enc.WF])
 
 /-- The long `z` as a one-element payload, the scalar operand of `Ew.val … va`. -/
 def int (z : Int) : ByteArray := one (Int64.ofInt z).toUInt64
@@ -900,7 +897,7 @@ def sortSide {B : Obj} {s : USize} (x : Vals B s) (srt : {k : USize} → Vals B 
     sort makes. -/
 def longest (n : USize) (cnt : ByteArray) (t₀ : Nat) : (fuel : Nat) → Nat
   | 0 => t₀
-  | fuel + 1 => if len (whereBits n (Ew.cmp Ew.gt Ew.i64 Ew.va cnt (one t₀.toUInt64) n)) = 0 then t₀
+  | fuel + 1 => if len (whereBits n (Ew.cmpBits Ew.gt Ew.i64 Ew.va cnt (one t₀.toUInt64) n)) = 0 then t₀
     else longest n cnt (t₀ + 1) fuel
 
 /-- An array sort's pass at element position `t`, `s` the slices of `c`: the rows of `q` with no element there
@@ -909,7 +906,7 @@ def arrPass {b : Obj} {n : USize} (c : Vals (.arr b) n) (s : ByteArray × ByteAr
     (srt : {k : USize} → Vals b k → ByteArray → ByteArray) (t : Nat) (q : ByteArray) : ByteArray :=
   if len q < USize.size then
     let m := (len q).toUSize
-    let gt := Ew.cmp Ew.gt Ew.i64 Ew.va (gather 8 s.2 q) (one t.toUInt64) m
+    let gt := Ew.cmpBits Ew.gt Ew.i64 Ew.va (gather 8 s.2 q) (one t.toUInt64) m
     concatBytes #[gather 8 q (whereBits m (Ew.notBits m gt)), sortSide c.2.2.2 srt (addc n s.1 t) (gather 8 q (whereBits m gt))]
   else q
 

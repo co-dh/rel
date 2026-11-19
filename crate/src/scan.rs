@@ -587,9 +587,10 @@ const BLK: usize = 1 << crate::DEFAULT_LG;
 type Seg = [u64; BLK / 64];
 
 /// One column of `kscan` as `Enc.raw s n` reads it, a block of rows at a time: a dense payload of `w`-byte elements,
-/// a bit payload, or a block source of `w`-byte elements. Each form reads 0 past what it holds, as `raw` does.
+/// a bit payload, or a block source of `w`-byte elements cut by the mask `m` (`!0`, or `1` for a boolean `foR`, which
+/// `raw` reads at its one bit). Each form reads 0 past what it holds, as `raw` does.
 #[derive(Clone, Copy)]
-enum Col<'a> { Dense(&'a [u8], usize), Bits(&'a [u8]), Blk(Blocks<'a>, usize) }
+enum Col<'a> { Dense(&'a [u8], usize), Bits(&'a [u8]), Blk(Blocks<'a>, usize, u64) }
 
 impl<'a> Col<'a> {
     /// `Enc.raw s n e`'s arms; `None` where `raw` is `#[]`.
@@ -598,10 +599,11 @@ impl<'a> Col<'a> {
         match (e.tag(), w) {
             (0, Some(w)) if !boolean => Some(Col::Dense(e.field(0).bytes(), w)),
             (1, _) if boolean => Some(Col::Bits(e.field(0).bytes())),
-            (3 | 4, Some(w)) if !boolean => Some(Col::Blk(Blocks::of(e, w, n, "qlean_k_scan"), w)),
+            (3, Some(w)) if boolean => Some(Col::Blk(Blocks::of(e, w, n, "qlean_k_scan"), w, 1)),
+            (3 | 4, Some(w)) if !boolean => Some(Col::Blk(Blocks::of(e, w, n, "qlean_k_scan"), w, !0)),
             // ids of no bits (a dictionary of one entry) read 0 at every row
             (5, _) if s == QT_SYMBOL => Some(match ids::id_width(e.field(1).words().len().saturating_sub(1)) {
-                0 => Col::Dense(&[], 8), lw => Col::Blk(Blocks::ids(e.field(2).bytes(), n, lw), 8) }),
+                0 => Col::Dense(&[], 8), lw => Col::Blk(Blocks::ids(e.field(2).bytes(), n, lw), 8, !0) }),
             _ => None,
         }
     }
@@ -611,7 +613,7 @@ impl<'a> Col<'a> {
         match *self {
             Col::Dense(p, w) => widen(p.get(lo * w..).unwrap_or(&[]), w, out),
             Col::Bits(p) => for (k, o) in out.iter_mut().enumerate() { *o = bit(p, lo + k) as u64 },
-            Col::Blk(bl, w) => {
+            Col::Blk(bl, w, m) => {
                 let got = (lo + out.len()).min(bl.n).saturating_sub(lo);
                 let on_grid = bl.lg() == crate::DEFAULT_LG;
                 if on_grid && w == 8 {
@@ -619,16 +621,18 @@ impl<'a> Col<'a> {
                     return out[got..].fill(0)
                 }
                 let x = if got == 0 { &[][..] } else if on_grid { bl.load_w(lo >> bl.lg(), got, w, tmp) } else { bl.range(lo, got, w, tmp) };
-                widen(x, w, out)
+                widen(x, w, out);
+                if m != !0 { for o in out.iter_mut() { *o &= m } }
             }
         }
     }
     /// The FoR column behind block `b` of the writer's grid where its metadata are its rows' words read as `i64`: 8
     /// bytes, or a block whose minimum is at least 0, where zero- and sign-extension agree. `[base, maxv]` bounds
-    /// every element of the block, patches included (`Coc.blockOf`).
+    /// every element of the block, patches included (`Coc.blockOf`); under a mask, only where `maxv` is within it.
     fn coc(&self, b: usize) -> Option<Coc<'a>> {
         match *self {
-            Col::Blk(Blocks { src: Src::For(c), g }, w) if g.lg == crate::DEFAULT_LG && (w == 8 || c.meta.base[b] >= 0) => Some(c),
+            Col::Blk(Blocks { src: Src::For(c), g }, w, m) if g.lg == crate::DEFAULT_LG && (w == 8 || c.meta.base[b] >= 0)
+                && c.meta.maxv[b] as u64 <= m => Some(c),
             _ => None,
         }
     }
@@ -649,23 +653,43 @@ fn widen(x: &[u8], w: usize, out: &mut [u64]) {
     if let Some(o) = out.get_mut(k) { for (j, &b) in x[k * w..].iter().take(w).enumerate() { *o |= (b as u64) << (8 * j) } }
 }
 
-/// `kscan`'s columns, read a block of rows at a time, and the carry into each block (`carry[b]`, row `lo - 1`'s answer).
-struct Scan<'a> { op: u8, n: usize, seg: &'a [u8], seed: Col<'a>, xs: &'a [Col<'a>], carry: Vec<u64> }
+/// `for $p in $it $body`, walking `$it` from its end where `$rev`: a block's rows in the order `kscan` folds them.
+macro_rules! rows { ($rev:expr, $it:expr, $p:pat => $body:block) => { if $rev { for $p in $it.rev() $body } else { for $p in $it $body } } }
+
+/// `kscan`'s columns, read a block of rows at a time, and the carry into each block (`carry[b]`, the answer of the row
+/// the fold reaches the block from: `lo - 1`, or `lo + nb` under `rev`).
+struct Scan<'a> { op: u8, rev: bool, n: usize, seg: Col<'a>, seed: Col<'a>, xs: &'a [Col<'a>], carry: Vec<u64> }
 
 impl Scan<'_> {
-    /// The `seg` bits of the `nb` rows from `lo`, row 0 of the column always a segment start (`kscanRow`'s `0 < i`).
+    /// The `seg` bits of the `nb` rows from `lo` (a block of the writer's grid), the first row the fold reaches always a
+    /// segment start (`kscanRow`'s `0 < i`): row 0, or row `n - 1` under `rev`.
     fn seg(&self, lo: usize, nb: usize) -> Seg {
         let mut g = [0u64; BLK / 64];
-        let src = self.seg.get(lo / 8..).unwrap_or(&[]);
-        for (k, o) in g.iter_mut().enumerate().take(nb.div_ceil(64)) {
-            let mut a = [0u8; 8];
-            let s = src.get(8 * k..).unwrap_or(&[]);
-            a[..s.len().min(8)].copy_from_slice(&s[..s.len().min(8)]);
-            *o = u64::from_le_bytes(a);
+        match self.seg {
+            Col::Bits(p) => {
+                let src = p.get(lo / 8..).unwrap_or(&[]);
+                for (k, o) in g.iter_mut().enumerate().take(nb.div_ceil(64)) {
+                    let mut a = [0u8; 8];
+                    let s = src.get(8 * k..).unwrap_or(&[]);
+                    a[..s.len().min(8)].copy_from_slice(&s[..s.len().min(8)]);
+                    *o = u64::from_le_bytes(a);
+                }
+            }
+            // a `foR` boolean: the block decoded into the L1 scratch, each row's bit packed
+            c => {
+                let (mut v, mut tmp) = (pod::Scr::<u64>::new(nb), pod::Scr::<u64>::new(BLK));
+                c.load(lo, &mut v, pod::bytes_mut(&mut tmp));
+                for (k, &x) in v.iter().enumerate() { g[k >> 6] |= (x & 1) << (k & 63) }
+            }
         }
         if nb & 63 != 0 { g[nb >> 6] &= !0 >> (64 - (nb & 63)) }
-        if lo == 0 { g[0] |= 1 }
+        if self.rev { if lo + nb == self.n { g[(nb - 1) >> 6] |= 1 << ((nb - 1) & 63) } } else if lo == 0 { g[0] |= 1 }
         g
+    }
+    /// Row `i`'s `seg` bit, `i` being no row the fold starts at.
+    fn seg_at(&self, i: usize) -> bool {
+        let lo = i / BLK * BLK;
+        self.seg(lo, (self.n - lo).min(BLK))[(i - lo) >> 6] >> ((i - lo) & 63) & 1 == 1
     }
     /// Rows `lo .. lo + out.len()` into `out`, from `c`, row `lo - 1`'s answer.
     fn block(&self, lo: usize, c: u64, out: &mut [u64]) { let g = self.seg(lo, out.len()); by_op!(self.op, OP => self.fold::<OP>(&g, lo, c, out)) }
@@ -682,22 +706,22 @@ impl Scan<'_> {
         let mut sd = pod::Scr::<u64>::new(if none { 0 } else { nb });
         if !none { self.seed.load(lo, &mut sd, pod::bytes_mut(&mut tmp)) }
         let Some((x0, rest)) = self.xs.split_first() else {
-            for (i, o) in out.iter_mut().enumerate() { if at(i) { c = sd[i] } *o = c }
+            rows!(self.rev, out.iter_mut().enumerate(), (i, o) => { if at(i) { c = sd[i] } *o = c });
             return
         };
         x0.load(lo, out, pod::bytes_mut(&mut tmp));
         if rest.is_empty() {
             if all { for (o, &a) in out.iter_mut().zip(sd.iter()) { *o = f(a, *o) } }
-            else if none { for o in out.iter_mut() { c = f(c, *o); *o = c } }
-            else { for (i, o) in out.iter_mut().enumerate() { c = f(if at(i) { sd[i] } else { c }, *o); *o = c } }
+            else if none { rows!(self.rev, out.iter_mut(), o => { c = f(c, *o); *o = c }) }
+            else { rows!(self.rev, out.iter_mut().enumerate(), (i, o) => { c = f(if at(i) { sd[i] } else { c }, *o); *o = c }) }
             return
         }
         let xr: Vec<pod::Scr<u64>> = rest.iter().map(|x| { let mut v = pod::Scr::<u64>::new(nb); x.load(lo, &mut v, pod::bytes_mut(&mut tmp)); v }).collect();
-        for (i, o) in out.iter_mut().enumerate() {
+        rows!(self.rev, out.iter_mut().enumerate(), (i, o) => {
             let mut a = f(if at(i) { sd[i] } else { c }, *o);
             for x in &xr { a = f(a, x[i]) }
             (*o, c) = (a, a);
-        }
+        });
     }
     /// Block `b`'s last row from `c` where no row of it starts a segment and the folded columns' metadata give it: `+`
     /// and `-` move the carry by the blocks' sums (`bsum`, which skips only the null, and a block holding the null
@@ -713,16 +737,24 @@ impl Scan<'_> {
             _ => None,
         }
     }
-    /// Each block's carry in, serially: a block's last row is computed only where the next block's first row continues
-    /// it, from the metadata where `summary` answers, else by folding the block.
+    /// Each block's carry in, serially in the fold's order (the blocks walked backwards under `rev`): a block's last row
+    /// in that order is computed only where the next block's row continues it, from the metadata where `summary`
+    /// answers, else by folding the block.
     fn carries(&mut self) {
         let g = Grid { n: self.n, lg: crate::DEFAULT_LG };
-        let (mut cs, mut c, mut tmp) = (Vec::with_capacity(g.nblk()), 0u64, pod::Scr::<u64>::new(BLK));
-        for (b, lo, nb) in g.walk() {
-            cs.push(c);
-            if lo + nb >= self.n || bit(self.seg, lo + nb) { continue }
+        let mut bs: Vec<(usize, usize, usize)> = g.walk().collect();
+        if self.rev { bs.reverse() }
+        let (mut cs, mut c, mut tmp) = (alloc::vec![0u64; bs.len()], 0u64, pod::Scr::<u64>::new(BLK));
+        for (b, lo, nb) in bs {
+            cs[b] = c;
+            // the row the fold reaches next, which continues this block unless `seg` starts a segment there
+            let next = if self.rev { lo.checked_sub(1) } else { Some(lo + nb).filter(|&i| i < self.n) };
+            if next.is_none_or(|i| self.seg_at(i)) { continue }
             let quiet = self.seg(lo, nb).iter().all(|&w| w == 0);
-            c = match self.summary(b, c).filter(|_| quiet) { Some(v) => v, None => { self.block(lo, c, &mut tmp[..nb]); tmp[nb - 1] } };
+            c = match self.summary(b, c).filter(|_| quiet) {
+                Some(v) => v,
+                None => { self.block(lo, c, &mut tmp[..nb]); tmp[if self.rev { 0 } else { nb - 1 }] }
+            };
         }
         self.carry = cs;
     }
@@ -763,38 +795,33 @@ impl Scan<'_> {
 /// block, so each column is read here a block at a time through `Col::load`, never as a whole decoded column. A compare
 /// against a constant block goes to `codec::mask_blk` on the residuals; the carry between blocks comes from block
 /// metadata where `Scan::summary` gives it. The answer is written by the encoder's block step (`Sink`), a block at
-/// a time, so its bytes are `Coc.encode 8` of the rows (a boolean `t`: `Enc.bits` of their low bits).
-pub fn kscan<'a>(op: u8, s: u8, t: u8, n: usize, seg: B<'a>, es: &[B<'a>]) -> Result<O, String> {
+/// a time, so its bytes are `Coc.encode 8` of the rows (at a boolean `t` each cut to its low bit, a `foR` of `u1`).
+/// Under `rev` the blocks are walked backwards and each block's rows from its end: no column is reversed in memory.
+pub fn kscan<'a>(op: u8, rev: bool, s: u8, t: u8, n: usize, seg: B<'a>, es: &[B<'a>]) -> Result<O, String> {
     // `None` is `raw`'s `#[]`, of size 0: at `n = 0` that is every row
     let all = |t: u8, e: B<'a>| match Col::of(t, n, e) {
         Some(c) => Ok(c),
         None if n == 0 => Ok(Col::Dense(&[], 8)),
         None => Err(format!("kscan: a column holds 0 raw elements, not {n}")),
     };
-    // not bits only at `n = 0`, where no row reads it
-    let g = match all(QT_BOOLEAN, seg)? { Col::Bits(p) => p, _ => &[] };
+    let g = all(QT_BOOLEAN, seg)?;
     let cols = es.iter().map(|&e| all(s, e)).collect::<Result<Vec<_>, _>>()?;
     let Some((&seed, xs)) = cols.split_first() else { return Err("kscan: es is empty; its first column is the seed".into()) };
-    let mut r = Scan { op, n, seg: g, seed, xs, carry: Vec::new() };
+    let mut r = Scan { op, rev, n, seg: g, seed, xs, carry: Vec::new() };
     if let Err(m) = op_eval(op, 0, 0) && r.zero() { return Err(m.into()) }
     qtype_width(t).ok_or("kscan: the answer type has no fixed width")?;
     r.carries();
-    let grid = Grid { n, lg: crate::DEFAULT_LG };
-    if t == QT_BOOLEAN {
-        return Ok(Sink::new(n, 1, Form::Ids(1)).enc().words(|ws| {
-            ws.fill(0);
-            let (mut o, mut scratch) = (pod::Scr::<u64>::new(BLK), pod::Scr::<u64>::new(BLK));
-            for (b, lo, nb) in grid.walk() {
-                let w64 = &mut ws[lo >> 6..];
-                if r.cmp_blk(b, lo, nb, w64, pod::bytes_mut(&mut scratch)) { continue }
-                r.block(lo, r.carry[b], &mut o[..nb]);
-                for (k, v) in o[..nb].iter().enumerate() { w64[k >> 6] |= (v & 1) << (k & 63) }
-            }
-        }))
-    }
-    let r = &r;
+    let (r, low) = (&r, if t == QT_BOOLEAN { 1 } else { !0u64 });
     Ok(Sink::new(n, 8, Form::For).enc().answer(&|buf: &mut [i64], lo: usize| {
-        r.block(lo, r.carry[lo >> crate::DEFAULT_LG], pod::cast_mut::<u64>(pod::bytes_mut(buf)).expect("kscan: an i64 block is a u64 block"))
+        let o = pod::cast_mut::<u64>(pod::bytes_mut(buf)).expect("kscan: an i64 block is a u64 block");
+        let (b, nb, mut w64) = (lo >> crate::DEFAULT_LG, o.len(), [0u64; BLK / 64]);
+        // a compare against a constant block: the compare kernel's bits, each a row's word
+        if (9..=14).contains(&r.op) && r.cmp_blk(b, lo, nb, &mut w64, pod::bytes_mut(&mut pod::Scr::<u64>::new(BLK))) {
+            for (k, v) in o.iter_mut().enumerate() { *v = w64[k >> 6] >> (k & 63) & 1 }
+        } else {
+            r.block(lo, r.carry[b], o);
+            if low != !0 { for v in o.iter_mut() { *v &= low } }
+        }
     }))
 }
 
@@ -804,7 +831,11 @@ mod kscan_tests {
     use crate::lean::{self, SArr};
     use alloc::{vec, vec::Vec};
     /// `kscanRow` folded over the rows on words, the first error stopping it: the model the kernel answers.
-    fn rows(op: u8, seg: &[u64], seed: &[u64], xs: &[Vec<u64>]) -> Result<Vec<u64>, &'static str> {
+    fn rows(op: u8, rev: bool, seg: &[u64], seed: &[u64], xs: &[Vec<u64>]) -> Result<Vec<u64>, &'static str> {
+        if rev {
+            let r = |v: &[u64]| v.iter().rev().copied().collect::<Vec<u64>>();
+            return rows(op, false, &r(seg), &r(seed), &xs.iter().map(|x| r(x)).collect::<Vec<_>>()).map(|o| r(&o))
+        }
         let mut out: Vec<u64> = Vec::with_capacity(seed.len());
         for i in 0..seed.len() {
             let mut a = if i > 0 && seg[i] == 0 { out[i - 1] } else { seed[i] };
@@ -818,22 +849,26 @@ mod kscan_tests {
     fn enc_dense(p: &[u8]) -> O { let mut a = SArr::new(1, p.len()); a.bytes_mut().copy_from_slice(p); lean::ctor(0, [a.into()], &[]) }
     fn enc_bits(v: &[u64]) -> O { Sink::new(v.len(), 1, Form::Ids(1)).enc().answer(&Blocks::dense(&bytes(v, 1).iter().map(|b| b & 1).collect::<Vec<_>>(), 1)) }
     fn parts(o: &O) -> Vec<Vec<u8>> { let b = o.borrow(); (0..if b.tag() == 1 { 1 } else { 2 }).map(|i| b.field(i).bytes().to_vec()).collect() }
-    /// A column of `n` words: a smooth run, an outlier every 97th row (a patch), negatives, a null every 301st.
+    /// A column of `n` words: a smooth run, an outlier every 97th row (a patch), negatives, a null every 301st, `0n`
+    /// every 211th.
     fn column(n: usize, k: u64) -> Vec<u64> {
-        (0..n as u64).map(|i| match i % 301 { 7 => i64::MIN as u64, _ if i % 97 == 5 => i.wrapping_mul(1_000_003 * k), _ => (1000 + (i * 7919 * k) % 8000).wrapping_sub(3000) }).collect()
+        (0..n as u64).map(|i| match i % 301 { 7 => i64::MIN as u64, _ if i % 211 == 11 => 0xfff8_0000_0000_0000, _ if i % 97 == 5 => i.wrapping_mul(1_000_003 * k), _ => (1000 + (i * 7919 * k) % 8000).wrapping_sub(3000) }).collect()
     }
+    /// Both directions, `seg` as bits and as a boolean `foR` (`kscan`'s own boolean answer, at 8 bytes).
     fn check(op: u8, s: u8, t: u8, n: usize, seg: &[u64], es: &[(O, Vec<u64>)]) {
+        for rev in [false, true] { for g in [enc_bits(seg), enc_for(seg, 8)] { check1(op, rev, s, t, n, seg, &g, es) } }
+    }
+    fn check1(op: u8, rev: bool, s: u8, t: u8, n: usize, seg: &[u64], g: &O, es: &[(O, Vec<u64>)]) {
         let xs: Vec<Vec<u64>> = es.iter().skip(1).map(|e| e.1.clone()).collect();
         let want = match es.first() {
             None => Err("kscan: es is empty; its first column is the seed".into()),
-            Some(sd) => rows(op, seg, &sd.1, &xs).map_err(String::from).and_then(|r| match qtype_width(t) {
+            Some(sd) => rows(op, rev, seg, &sd.1, &xs).map_err(String::from).and_then(|r| match qtype_width(t) {
                 None => Err("kscan: the answer type has no fixed width".into()),
-                Some(_) => Ok(parts(&if t == QT_BOOLEAN { enc_bits(&r) } else { enc_for(&r, 8) })),
+                Some(_) => Ok(parts(&enc_for(&r.iter().map(|v| if t == QT_BOOLEAN { v & 1 } else { *v }).collect::<Vec<_>>(), 8))),
             }),
         };
-        let g = enc_bits(seg);
         let bs: Vec<B> = es.iter().map(|e| e.0.borrow()).collect();
-        assert_eq!(kscan(op, s, t, n, g.borrow(), &bs).map(|o| parts(&o)), want, "op {op} s {s} t {t} n {n}");
+        assert_eq!(kscan(op, rev, s, t, n, g.borrow(), &bs).map(|o| parts(&o)), want, "op {op} rev {rev} s {s} t {t} n {n}");
     }
     // every shape (map, scan, segmented, fill) and op against the row model, over FoR columns with patches and nulls at
     // each width, a dense column cut short, and a constant seed (the compare kernel's path) beside a varying one
@@ -868,11 +903,18 @@ mod kscan_tests {
             check(3, 6, 6, n, &segs[0], &[(enc_for(&z, 8), z.clone()), (enc_for(&z, 8), z.clone())]);
             if n > 0 {
                 let e = enc_dense(&bytes(&z, 1));
-                assert_eq!(kscan(0, QT_BOOLEAN, 6, n, enc_bits(&segs[0]).borrow(), &[e.borrow()]).map(|o| parts(&o)),
+                assert_eq!(kscan(0, false, QT_BOOLEAN, 6, n, enc_bits(&segs[0]).borrow(), &[e.borrow()]).map(|o| parts(&o)),
                            Err(format!("kscan: a column holds 0 raw elements, not {n}")));
             }
             let (a, b): (Vec<u64>, Vec<u64>) = ((0..n as u64).map(|i| i % 3 & 1).collect(), (0..n as u64).map(|i| i % 5 & 1).collect());
-            for op in [15u8, 16, 0] { check(op, QT_BOOLEAN, QT_BOOLEAN, n, &segs[2], &[(enc_bits(&a), a.clone()), (enc_bits(&b), b.clone())]) }
+            // a boolean column as bits, as a `foR` of `u1`, and as a `foR` holding 0..3, which reads its low bit
+            let q: Vec<u64> = (0..n as u64).map(|i| i % 4).collect();
+            let ql: Vec<u64> = q.iter().map(|v| v & 1).collect();
+            for op in [15u8, 16, 0, 9, 11] {
+                check(op, QT_BOOLEAN, QT_BOOLEAN, n, &segs[2], &[(enc_bits(&a), a.clone()), (enc_bits(&b), b.clone())]);
+                check(op, QT_BOOLEAN, QT_BOOLEAN, n, &segs[2], &[(enc_for(&a, 8), a.clone()), (enc_for(&q, 8), ql.clone())]);
+                check(op, QT_BOOLEAN, 6, n, &segs[1], &[(enc_for(&q, 1), ql.clone()), (enc_bits(&b), b.clone())]);
+            }
         }
     }
     #[test] fn op_eval_floors_and_types_its_errors() {

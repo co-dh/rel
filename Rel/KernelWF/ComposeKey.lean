@@ -64,10 +64,10 @@ theorem foldl_push_get_lt {α : Type} [Inhabited α] (g : Array α → Nat → �
     qlean writes it inline. -/
 def stageRun (st : Ew.Stage) (src : UInt8 → ByteArray) (n : USize) : ByteArray :=
   if st.engine == Ew.eVal then Ew.val st.op st.cls st.shape st.nul (src st.a) (src st.b) n
-  else if st.engine == Ew.eCmp then Ew.cmp st.op st.cls st.shape (src st.a) (src st.b) n
+  else if st.engine == Ew.eCmp then Ew.cmpBitmap st.op st.cls st.shape (src st.a) (src st.b) n
   else if st.engine == Ew.eMon then Ew.stageMap st.cls st.cls (Ew.monStep st.op st.cls st.nul.toUInt64) (src st.a) n
   else if st.engine == Ew.eWiden then Ew.widen st.cls st.shape st.nul st.nulOut (src st.a) n
-  else if st.engine == Ew.eBit then Ew.bit st.op st.shape (src st.a) (src st.b) n
+  else if st.engine == Ew.eBit then Ew.bitBitmap st.op st.shape (src st.a) (src st.b) n
   else if st.engine == Ew.eFloor then Ew.stageMap st.cls Ew.i64 (fun v => (Ew.floorStep st.cls v).toUInt64) (src st.a) n
   else if st.engine == Ew.eCast then Ew.stageMap st.cls st.shape (Ew.castStep st.cls st.shape st.nul) (src st.a) n
   else if st.engine == Ew.eTick then
@@ -486,7 +486,7 @@ theorem keySource_code (c : Code)
     obtain ⟨rfl, rfl, rfl⟩ := hcol
     simp [keyOperand] at hko
     obtain ⟨rfl, rfl, rfl⟩ := hko
-    simp [keySource, operandSource, clsOf, promotable, Ew.Build.input, Ew.Build.add] at hks
+    simp [keySource, operandSource, clsOf, promotable, boolBits, Ew.Build.input, Ew.Build.add] at hks
     obtain ⟨-, rfl, rfl⟩ := hks
     refine hstage _ rfl rfl rfl fun j _ src hsrc hj => ?_
     rw [stageRun_widen rfl]; dsimp only; rw [hsrc, elem_widen_i64 (by decide) _ _ _ hj]
@@ -539,7 +539,7 @@ theorem keySource_code (c : Code)
     obtain ⟨rfl, rfl, rfl⟩ := hcol
     have hu := keyOperand_bytes_type hko
     subst hu
-    simp [keySource, operandSource, clsOf, Ew.Build.input] at hks
+    simp [keySource, operandSource, clsOf, Ew.Build.input, Ew.i64, Ew.bits] at hks
     obtain ⟨rfl, rfl⟩ := hks
     refine ⟨rfl, by simp, by simp, fun _ _ => rfl, fun B hBi _ _ j hj => ?_⟩
     obtain ⟨rfl, hh⟩ : neg = false ∧ hi < d := by

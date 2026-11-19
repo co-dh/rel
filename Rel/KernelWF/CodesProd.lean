@@ -393,7 +393,7 @@ theorem cat_wf (cs : Array Code) {w : Nat}
     into its parts**: `codes` groups the razed column once (`groupIdsColumn`, `Code.ofIds`) and cuts that
     code at the parts' counts, the razed column being neither a `syms` nor an `enum` payload. -/
 theorem codes_raze_cut {t : QAtomicType} (hg : t ≠ .general) {p : Nat} (cs : Vector (Part (.atom t)) p)
-    (hp : 0 < p) (hb : ∀ k (hk : k < p), ∀ b, cs[k].2.enc ≠ .bits b)
+    (hp : 0 < p) (hb : t ≠ .u1)
     (hro : rangeOffsets t (cs.map (·.2.part)) ((cs.map (·.1)).foldl (fun s n => s + n.toNat) 0) = none)
     (hne : ∀ d o ids, Column.intern (raze t cs.toArray).2.enc ≠ .enum d o ids) :
     ∃ q, groupIdsColumn (KernelWF.bitsType t) (raze t cs.toArray).1 (raze t cs.toArray).2.enc = some q ∧
@@ -409,20 +409,19 @@ theorem codes_raze_cut {t : QAtomicType} (hg : t ≠ .general) {p : Nat} (cs : V
     have h0 := vec_mapM_some h hp
     exfalso
     revert h0
-    cases he : cs[0].2.enc <;> simp
-    exact (hb 0 hp _ he).elim
+    -- `boolBits` reads only a boolean, so the bitmap branch is empty at any other type, whatever the form.
+    cases t <;> first | exact absurd rfl hb | (cases cs[0].2.enc <;> simp [boolBits])
   simp only [hro]
   split
   · next he => exact absurd he (hne _ _ _)
   all_goals rfl
 
-/-- A small integral part is not a bitmap, and `rangeOffsets` declines a small integral side. -/
+/-- A small integral type is not boolean, and `rangeOffsets` declines a small integral side. -/
 theorem small_int_branches {t : QAtomicType} {k : Scan.Kind} (ht : orderKind t = some k)
     (hk : k = .u8 ∨ k = .c8 ∨ k = .i8 ∨ k = .i16 ∨ k = .i32) :
-    (∀ {n : USize} (x : Arr t n) b, x.enc ≠ .bits b) ∧
-      ∀ {p : Nat} (es : Vector (USize × Enc) p) total, rangeOffsets t es total = none := by
-  refine ⟨fun x b he => ?_, fun es total => ?_⟩
-  · rcases small_int_enc ht hk x with ⟨b', he'⟩ | ⟨md, pk, he'⟩ <;> rw [he'] at he <;> cases he
+    t ≠ .u1 ∧ ∀ {p : Nat} (es : Vector (USize × Enc) p) total, rangeOffsets t es total = none := by
+  refine ⟨?_, fun es total => ?_⟩
+  · rintro rfl; rcases hk with rfl | rfl | rfl | rfl | rfl <;> simp [orderKind] at ht
   · unfold rangeOffsets
     rw [if_pos (by rcases hk with rfl | rfl | rfl | rfl | rfl <;> simp [ht])]
 
@@ -433,7 +432,7 @@ theorem codes_small_int_cut {t : QAtomicType} {k : Scan.Kind} (ht : orderKind t 
   have hg := (small_int_width ht hk).2.2.1
   have hne : ∀ d o ids, Column.intern (raze t cs.toArray).2.enc ≠ .enum d o ids := fun d o ids he => by
     rcases small_int_enc ht hk (raze t cs.toArray).2 with ⟨b, hb⟩ | ⟨md, pk, hb⟩ <;> simp [hb, Column.intern] at he
-  obtain ⟨q, hq, hc⟩ := codes_raze_cut hg cs hp (fun k _ => (small_int_branches ht hk).1 _)
+  obtain ⟨q, hq, hc⟩ := codes_raze_cut hg cs hp (small_int_branches ht hk).1
     ((small_int_branches ht hk).2 _ _) hne
   obtain ⟨q', hq', hc'⟩ := codes_small_int ht hk (raze t cs.toArray)
   have hbt : KernelWF.bitsType t = t := by

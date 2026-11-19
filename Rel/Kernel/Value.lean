@@ -667,8 +667,8 @@ open Column
 /-- What the header promises about the payload: the layout is one `t` has, and it holds exactly `n`
 elements. The conditions `count`, `admit` and `mismatch` used to encode between them, stated once;
 every reader trusts the header, so a vector that fails this is a bug where it was built. Booleans are
-`bits` and never `bytes`; Frame of Reference takes every fixed-width type but `boolean`,
-ALP the three float layouts; a `foR` or `alp` payload's blocks cover its `n`, and an `enum` payload's
+`bits` and never `bytes`; Frame of Reference takes every fixed-width type, a `boolean` one being `u1` (every
+element 0 or 1, which `raw` and `get` then read alike), ALP the three float layouts; a `foR` or `alp` payload's blocks cover its `n`, and an `enum` payload's
 pack holds its `n` ids and its dictionary's offsets end at its blob with none past it, so a symbol
 appended to the dictionary leaves every entry before it reading as it did, and no entry is there twice,
 so two ids name the same symbol only where they are equal. -/
@@ -685,8 +685,8 @@ def WF (t : QAtomicType) (n : USize) (e : Ext.Enc X) : Prop :=
   | t, .bytes b => match t.width with
     | some w => b.size = n.toNat * w
     | none => False
-  | t, .foR metadata _ =>
-    t.width.isSome ∧ t ≠ .u1 ∧ n.toNat ≤ blk metadata * nblk metadata ∧ lgOk metadata
+  | t, .foR metadata pack =>
+    t.width.isSome ∧ (t = .u1 → ∀ i < n.toNat, (foRBits metadata pack (blockStarts metadata) i).toNat < 2) ∧ n.toNat ≤ blk metadata * nblk metadata ∧ lgOk metadata
   | t, .alp metadata _ a =>
     (t = .f32 ∨ t = .f64) ∧ n.toNat ≤ blk metadata * nblk metadata ∧ lgOk metadata ∧ alpF32 a = (t.width == some 4)
   | _, _ => False
@@ -697,10 +697,12 @@ about a numeric column is stated over this, because `atoms`' symbol branch bring
 
 Every form reads an element of a `w`-byte type as its `8 * w` bits zero-extended, the dense payload's own reading, so
 `raw` is a function of the column and not of its form: `foRBits` holds an element sign-extended to 64 bits
-(`Verify.unbias_keyAt`), and its encoded forms are cut to the low `8 * w` here. -/
+(`Verify.unbias_keyAt`), and its encoded forms are cut to the low `8 * w` here, a boolean's to its one bit. -/
 def raw (t : QAtomicType) (n : USize) (e : Ext.Enc X) : Array UInt64 :=
   match t, e with
-  | .u1, .bytes _ | .u1, .foR _ _ => #[]
+  | .u1, .bytes _ => #[]
+  | .u1, .foR metadata pack => let starts := blockStarts metadata
+    (Array.range n.toNat).map fun i => UInt64.ofNat ((foRBits metadata pack starts i).toNat % 2)
   | .u1, .alp _ _ _ => #[]
   | t, .bytes b => match t.width with
     | some w => (Array.range n.toNat).map fun i => bitsAt b (i * w) w

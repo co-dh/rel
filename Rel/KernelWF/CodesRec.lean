@@ -75,7 +75,7 @@ theorem place_lin_get {a b : Obj} {n : USize} (x : Vals (.sum a b) n) {p₀ p₁
   rw [Arr.get_long_bytes _ rfl]
   dsimp only
   simp only [val_vv_get _ _ _ _ k.2, val_va_get _ _ _ _ k.2, widen_bits_get _ _ k.2, longsOf_get _ k.2,
-    ← Arr.get_bool_bits _ (KernelWF.enc_tagBits tag) k]
+    ← Arr.get_bool_bits _ (Alg.enc_tagBits tag) k]
   have e0 := int_bits_toInt p₀ (by omega) (by omega)
   have e1 := int_bits_toInt p₁ (by omega) (by omega)
   have ez := int_bits_toInt 0 (by decide) (by decide)
@@ -327,9 +327,7 @@ theorem codes_sum_faithful_wf {a b : Obj} {p : Nat} (cs₀ : Vector (Part (.sum 
     fun {k} hk => by
       rw [hTk k hk]
       refine ⟨Or.inl rfl, ?_, fun _ i _ => ?_⟩
-      · have hw := (cs[k]'hk).2.2.2.1.wf
-        rw [enc_tagBits] at hw
-        simpa [Enc.WF] using hw
+      · simpa using tagBits_size (cs[k]'hk).2.2.2.1
       · show Column.idAt _ 1 i < max 2 1
         rw [idAt_one]; split <;> decide
   have hlGL : ∀ {k l : Nat} (hk : k < p) (hl : l < p), (GL[k]'hk).w = (GL[l]'hl).w := fun {k l} hk hl => by

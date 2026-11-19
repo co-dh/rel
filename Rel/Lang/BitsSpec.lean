@@ -105,7 +105,7 @@ variable {A B C : Obj} {d e : Bool} {ua : Nat → A.El} {ub : Nat → B.El}
 theorem enc_bit (op : UInt8) (F : Prop → Prop → Prop) (hF : ∀ p q, Ew.bitStep op p q = true ↔ F (p = true) (q = true))
     {x y : Bits} {r s : A.El → B.El → Prop} (hx : x.Enc ua ub r) (hy : y.Enc ua ub s) (hn : y.na = x.na)
     (hw : y.w = x.w) (hfit : x.na * x.w ≤ 2 ^ 27) :
-    (⟨x.na, x.w, Ew.bit op Ew.vv x.b y.b (x.na * x.w).toUSize⟩ : Bits).Enc ua ub fun a b => F (r a b) (s a b) := by
+    (⟨x.na, x.w, Ew.bitBits op Ew.vv x.b y.b (x.na * x.w).toUSize⟩ : Bits).Enc ua ub fun a b => F (r a b) (s a b) := by
   intro i hi j hj
   have ht : i * x.w + j < (x.na * x.w).toUSize.toNat := by rw [toUSize_fit hfit]; exact idx_lt hi hj
   have ex := hx i hi j hj

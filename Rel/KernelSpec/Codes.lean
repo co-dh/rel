@@ -90,7 +90,8 @@ theorem groupIdsColumn_spec {t : QAtomicType} {n : USize} {e : Ext.Enc X} {p : B
           Order.idKey (dof.size - 1) ids (Column.idWidth dof).toUSize.toNat j)) ∨
     (∃ k u b, p = Order.groupIds k u b ∧
       ((t = .u1 ∧ k = .bit ∧ e = .bits b) ∨
-        (orderKind t = some k ∧ ∃ md pk, e = .foR md pk ∧ b = Coc.decode k.width.toUSize md pk n) ∨
+        ((orderKind t = some k ∨ orderKind t = some .bit ∧ k = .u8) ∧
+          ∃ md pk, e = .foR md pk ∧ b = Coc.decode k.width.toUSize md pk n) ∨
         (orderKind t = some k ∧ Enc.bytesOf t n e = some b)) ∧
       ∀ i < min u.toNat (k.avail b), ∀ j < min u.toNat (k.avail b),
         (Column.idAt p.1 (Column.idWidthOf (p.2.size / 8)) i = Column.idAt p.1 (Column.idWidthOf (p.2.size / 8)) j ↔
@@ -123,17 +124,21 @@ theorem groupIdsColumn_spec {t : QAtomicType} {n : USize} {e : Ext.Enc X} {p : B
     exact Or.inr (Or.inr ⟨_, _, _, rfl, Or.inl ⟨rfl, rfl, rfl⟩, keyed _ _ _⟩)
   · split at h
     · nomatch h
-    · split at h
-      · nomatch h
+    · rename_i k hk
+      split at h
+      · cases Option.some.inj h
+        refine Or.inr (Or.inr ⟨_, _, _, rfl, Or.inr (Or.inl ⟨?_, _, _, rfl, rfl⟩), keyed _ _ _⟩)
+        by_cases hb : k = .bit
+        · subst hb; exact .inr ⟨hk, rfl⟩
+        · exact .inl (by simp [hb, hk])
       · split at h
-        · cases Option.some.inj h
-          exact Or.inr (Or.inr ⟨_, _, _, rfl, Or.inr (Or.inl ⟨‹_›, _, _, rfl, rfl⟩), keyed _ _ _⟩)
+        · nomatch h
         · cases hb : Enc.bytesOf t n e with
           | none => rw [hb] at h; cases h
           | some b =>
             rw [hb] at h
             cases Option.some.inj h
-            exact Or.inr (Or.inr ⟨_, _, _, rfl, Or.inr (Or.inr ⟨‹_›, rfl⟩), keyed _ _ _⟩)
+            exact Or.inr (Or.inr ⟨_, _, _, rfl, Or.inr (Or.inr ⟨hk, rfl⟩), keyed _ _ _⟩)
 
 /-- info: 'Rel.Verify.groupIdsColumn_spec' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs in

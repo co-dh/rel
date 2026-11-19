@@ -319,10 +319,10 @@ def groupIdsColumn (t : QAtomicType) (n : USize) (e : Ext.Enc X) : Option (ByteA
     match orderKind t with
     | none => none
     | some k =>
-      if k == .bit then none
-      else match e with
-        | .foR md pk => some (groupIdsFoR k n md pk)
-        | e => (Enc.bytesOf t n e).map fun b => groupIds k n b
+      match e with
+      -- a boolean `foR` is `u1`, every element 0 or 1, so its key is the `u8` one; `Kind.bit` reads only a bitmap
+      | .foR md pk => some (groupIdsFoR (if k == .bit then .u8 else k) n md pk)
+      | e => if k == .bit then none else (Enc.bytesOf t n e).map fun b => groupIds k n b
 
 end Rel.Kernel
 
@@ -391,7 +391,10 @@ def gradeColumn (t : QAtomicType) (desc : Bool) (n : USize) (e : Ext.Enc X) (ran
     match orderKind t with
     | none => none
     | some k =>
-      if k == .bit then none
+      -- a boolean `foR` is `u1`, every element 0 or 1, so its key is the `u8` one; `Kind.bit` reads only a bitmap
+      if k == .bit then match e with
+        | .foR md pk => some (.bytes (if rank then ranksFoR .u8 n md pk else gradeFoR .u8 desc n md pk))
+        | _ => none
       -- the encoded case first, so that `Enc.bytesOf` is never forced underneath the kernel that
       -- made it unnecessary: the key is `base + residual` biased, and no element is ever restored
       else match e with

@@ -355,14 +355,10 @@ theorem flatMap_range {α β : Type} (xs : Array α) (f : Nat → List β) (G : 
       exact h k (by simpa using h1)
   unfold List.flatMap; rw [e]
 
-/-- A boolean column's payload is its bitmap `tagBits`. -/
-theorem enc_tagBits {n : USize} (x : Arr .u1 n) : x.enc = .bits (tagBits x) := by
-  obtain ⟨b, hb⟩ : ∃ b, x.enc = .bits b := by have hw := x.wf; revert hw; cases x.enc <;> simp [Enc.WF]
-  rw [hb]; simp [tagBits, hb]
-
 /-- A boolean column's list is its bitmap's first `n` bits. -/
-theorem toList_bits {n : USize} (x : Arr .u1 n) {b : ByteArray} (hx : x.enc = .bits b) :
+theorem toList_bits {n : USize} (x : Arr .u1 n) {b : ByteArray} (hx : boolBits .u1 n x.enc = some b) :
     x.toList = (List.range n.toNat).map (Column.bitAt b) := by
+  obtain rfl : b = tagBits x := Option.some.inj (hx.symm.trans (enc_tagBits x))
   apply List.ext_getElem (by rw [Arr.length_toList, List.length_map, List.length_range])
   intro j h1 h2; rw [Arr.getElem_toList, Arr.get_bool_bits x hx]; simp
 
@@ -411,12 +407,12 @@ theorem razeTo_toList_boolean (cs : Array ((k : USize) × Arr .u1 k)) {S : Nat}
     -- `show _`: the mapM's matcher is `razeColumn`'s own, generic in `X`, which a local `fun | …` at `Empty` is not
     next ps' heq =>
       obtain rfl : ps' = ps := Option.some_inj.1 (heq.symm.trans (show _ = some ps by
-        rw [Array.mapM_map]; exact mapM_some _ fun c _ => by simp only [Function.comp, Arr.part, enc_tagBits c.2]))
+        rw [Array.mapM_map]; exact mapM_some _ fun c _ => by simp [Arr.part, enc_tagBits c.2]))
       simp only [needSize, need]; rw [dif_pos (by rw [hps, hsum]; exact hS)]
     next heq => cases heq.symm.trans (show _ = some ps by
-        rw [Array.mapM_map]; exact mapM_some _ fun c _ => by simp only [Function.comp, Arr.part, enc_tagBits c.2])
+        rw [Array.mapM_map]; exact mapM_some _ fun c _ => by simp [Arr.part, enc_tagBits c.2])
   refine (toList_bits _ (b := concatBits (countBytes (ps.map (·.1))) (ps.map (·.2)))
-    (by simp only [Arr.enc, hv])).trans ?_
+    (by simp only [Arr.enc, hv, boolBits])).trans ?_
   have hN : (((List.toArray l).map (·.2.part)).foldl (fun s (c : USize × Enc) => s + c.1.toNat) 0).toUSize.toNat =
       (l.map (·.1.toNat)).sum := by rw [USize.toNat_ofNat_of_lt' hf, hk]
   rw [hN]

@@ -65,6 +65,7 @@ theorem answer_foR (t : QAtomicType) (w : Nat) (k : USize) (M P : ByteArray) (ht
   simp only [Enc.answer]
   split
   · exact .inl rfl
+  · exact .inl rfl
   · simp only [ht]
     split
     · exact .inl rfl

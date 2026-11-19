@@ -205,9 +205,20 @@ theorem grade_boolean {n : USize} (x : Arr .u1 n) : ∃ g, gradeColumn .u1 false
       simp only [Scan.Kind.avail]; simp only [Enc.WF] at hwf; omega
     rw [hav] at hp
     refine ⟨_, rfl, hp, ascBy_of_keyOrd x _ (fun i hi => ?_) hsrt⟩
-    rw [Arr.get_bool_bits x he]
+    rw [Arr.get_bool_bits x (by rw [he]; rfl)]
     simp only [Obj.key, Order.keyAt, Scan.Kind.bitsAt, Order.rank]
     split <;> rfl
+  -- a `u1` `foR` is graded at the `u8` key (`gradeColumn`), which is its 0/1 element itself
+  case foR md pk =>
+    rw [he] at hwf
+    obtain ⟨hp, hsrt⟩ := gradeFoR_spec .u8 (by decide) false n md pk
+    refine ⟨_, rfl, hp, ascBy_of_keyOrd x (foRKey .u8 md pk) (fun i hi => ?_) hsrt⟩
+    rw [Arr.get_bool_bits x (b := bitsOfFoR md pk n) (by rw [he]; rfl)]
+    have h2 := hwf.2.1 rfl i hi
+    simp only [bitsOfFoR, Verify.bitAt_packOf _ _ _ hi, foRKey, Order.rank, Obj.key, Scan.Kind.width,
+      decide_eq_true (Nat.lt_of_lt_of_le hi hwf.2.2.1), Bool.true_and]
+    generalize Column.foRBits md pk (Column.blockStarts md) i = v at h2
+    rcases (show v.toNat = 0 ∨ v.toNat = 1 by omega) with h | h <;> simp [h]
   all_goals rw [he] at hwf; simp [Enc.WF] at hwf
 
 theorem sortsAsc_boolean : SortsAsc (.atom .u1) := sortsAsc_atom .u1 grade_boolean
@@ -720,21 +731,21 @@ theorem sortsAsc_arr {b : Obj} (hb : SortsAsc b) : SortsAsc (.arr b) := by
       have hg : k < len (gather 8 (slicesOf c).2 q) := by rw [gather_len]; exact hkq
       rw [← hgd _ _ hg, ids_gather8 hin, List.getD_eq_getElem?_getD, List.getElem?_map, List.getElem?_eq_getElem hk']
       exact hgd _ _ (by rw [hn2]; exact hqn _ (List.getElem_mem hk'))
-    have hbit : ∀ k, k < len q → Column.bitAt (Ew.cmp Ew.gt Ew.i64 Ew.va (gather 8 (slicesOf c).2 q)
+    have hbit : ∀ k, k < len q → Column.bitAt (Ew.cmpBits Ew.gt Ew.i64 Ew.va (gather 8 (slicesOf c).2 q)
         (one t.toUInt64) (len q).toUSize) k =
           decide (t < (Column.bitsAt (slicesOf c).2 (((ids q).getD k 0) * 8) 8).toNat) := by
       intro k hkq
       obtain ⟨hkn, e⟩ := hk k hkq
       rw [gtConst_bitAt _ _ ht63 (by rw [hm]; exact hkq) (by rw [e]; have := (hS _ hkn).1; omega), e]
     have hA : ∀ i ∈ ids (gather 8 q (whereBits (len q).toUSize (Ew.notBits (len q).toUSize
-        (Ew.cmp Ew.gt Ew.i64 Ew.va (gather 8 (slicesOf c).2 q) (one t.toUInt64) (len q).toUSize)))),
+        (Ew.cmpBits Ew.gt Ew.i64 Ew.va (gather 8 (slicesOf c).2 q) (one t.toUInt64) (len q).toUSize)))),
         ∃ _ : i < n.toNat, (Column.bitsAt (slicesOf c).2 (i * 8) 8).toNat ≤ t := by
       intro i hi
       obtain ⟨k, hkq, hbk, rfl⟩ := mem_where hql hi
       rw [notBits_bitAt _ _ (by rw [hm]; exact hkq), hbit k hkq] at hbk
       exact ⟨(hk k hkq).1, by simpa using hbk⟩
     have hB : ∀ i ∈ ids (gather 8 q (whereBits (len q).toUSize
-        (Ew.cmp Ew.gt Ew.i64 Ew.va (gather 8 (slicesOf c).2 q) (one t.toUInt64) (len q).toUSize))),
+        (Ew.cmpBits Ew.gt Ew.i64 Ew.va (gather 8 (slicesOf c).2 q) (one t.toUInt64) (len q).toUSize))),
         ∃ _ : i < n.toNat, t < (Column.bitsAt (slicesOf c).2 (i * 8) 8).toNat := by
       intro i hi
       obtain ⟨k, hkq, hbk, rfl⟩ := mem_where hql hi
@@ -742,10 +753,10 @@ theorem sortsAsc_arr {b : Obj} (hb : SortsAsc b) : SortsAsc (.arr b) := by
       exact ⟨(hk k hkq).1, by simpa using hbk⟩
     have hsp := sortSide_perm c.2.2.2 (fun v r => (b.sortByC v r).1) (fun v r hr => sortBy_permutes b v r hr)
       (addc n (slicesOf c).1 t) (gather 8 q (whereBits (len q).toUSize
-        (Ew.cmp Ew.gt Ew.i64 Ew.va (gather 8 (slicesOf c).2 q) (one t.toUInt64) (len q).toUSize)))
+        (Ew.cmpBits Ew.gt Ew.i64 Ew.va (gather 8 (slicesOf c).2 q) (one t.toUInt64) (len q).toUSize)))
     have hSm : ∀ j ∈ ids (sortSide c.2.2.2 (fun v r => (b.sortByC v r).1) (addc n (slicesOf c).1 t)
         (gather 8 q (whereBits (len q).toUSize
-          (Ew.cmp Ew.gt Ew.i64 Ew.va (gather 8 (slicesOf c).2 q) (one t.toUInt64) (len q).toUSize)))),
+          (Ew.cmpBits Ew.gt Ew.i64 Ew.va (gather 8 (slicesOf c).2 q) (one t.toUInt64) (len q).toUSize)))),
         ∃ _ : j < n.toNat, t < (Column.bitsAt (slicesOf c).2 (j * 8) 8).toNat := fun j hj => hB j (hsp.mem_iff.1 hj)
     unfold arrPass
     rw [if_pos hql]
@@ -770,14 +781,14 @@ theorem sortsAsc_arr {b : Obj} (hb : SortsAsc b) : SortsAsc (.arr b) := by
           rw [hgd _ _ (by rw [hlen]; exact hr), addc_get hr (by omega)]
           exact ⟨rfl, by omega⟩
         have hps : ∀ r ∈ ids (gather 8 q (whereBits (len q).toUSize
-            (Ew.cmp Ew.gt Ew.i64 Ew.va (gather 8 (slicesOf c).2 q) (one t.toUInt64) (len q).toUSize))),
+            (Ew.cmpBits Ew.gt Ew.i64 Ew.va (gather 8 (slicesOf c).2 q) (one t.toUInt64) (len q).toUSize))),
             r < len (addc n (slicesOf c).1 t) ∧ (ids (addc n (slicesOf c).1 t)).getD r 0 < c.1.toNat := by
           intro r hr
           obtain ⟨hrn, cr⟩ := hB r hr
           obtain ⟨e, hlt⟩ := hea r hrn cr
           exact ⟨by rw [show len (addc n (slicesOf c).1 t) = n.toNat from len_val ..]; exact hrn, by rw [e]; exact hlt⟩
         have hBl : len (gather 8 q (whereBits (len q).toUSize
-            (Ew.cmp Ew.gt Ew.i64 Ew.va (gather 8 (slicesOf c).2 q) (one t.toUInt64) (len q).toUSize))) < USize.size := by
+            (Ew.cmpBits Ew.gt Ew.i64 Ew.va (gather 8 (slicesOf c).2 q) (one t.toUInt64) (len q).toUSize))) < USize.size := by
           rw [len_eq_ids]; exact Nat.lt_of_le_of_lt (where_sublist hql).length_le (by rw [← len_eq_ids]; exact hql)
         let f (r : Nat) : b.El :=
           if h : (ids (addc n (slicesOf c).1 t)).getD r 0 < c.1.toNat then c.2.2.2.row ⟨_, h⟩ else b.dflt
@@ -800,7 +811,7 @@ theorem sortsAsc_arr {b : Obj} (hb : SortsAsc b) : SortsAsc (.arr b) := by
           · exact .inl (.inr ⟨e, h'⟩)
           · exact .inr ⟨by rw [kc, kc, e, e'], h'⟩
       · have hnil : ids (gather 8 q (whereBits (len q).toUSize
-            (Ew.cmp Ew.gt Ew.i64 Ew.va (gather 8 (slicesOf c).2 q) (one t.toUInt64) (len q).toUSize))) = [] :=
+            (Ew.cmpBits Ew.gt Ew.i64 Ew.va (gather 8 (slicesOf c).2 q) (one t.toUInt64) (len q).toUSize))) = [] :=
           List.eq_nil_iff_forall_not_mem.2 fun j hj => by
             obtain ⟨hjn, cj⟩ := hB j hj
             have := (hS j hjn).1; omega

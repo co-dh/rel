@@ -12,7 +12,7 @@ namespace Rel.Rep
 
 open Tab Rel.Kernel Rel.Verify Rel Rel.Alg Rel.KernelWF
 
-/-- `Ew.cmp lt` at `long` on two longs below `2^63`: their order as numbers. -/
+/-- `Ew.cmpBits lt` at `long` on two longs below `2^63`: their order as numbers. -/
 theorem cmp_lt_small {v w : UInt64} (hv : v.toNat < 2 ^ 63) (hw : w.toNat < 2 ^ 63) :
     Ew.cmpStep Ew.lt Ew.i64 v w = true ↔ v.toNat < w.toNat := by
   have e : ∀ u : UInt64, u.toNat < 2 ^ 63 → u.toInt64.toInt = u.toNat := fun u hu => by
@@ -40,7 +40,7 @@ theorem pick_gather_at {n : USize} (U : Vals (.atom .i64) n) (c : ByteArray) (N 
   exact congrArg U.row (Fin.ext e)
 
 section
-attribute [local irreducible] whereBits gather cross Ew.cmp longsOf Ops.rank
+attribute [local irreducible] whereBits gather cross Ew.cmpBits longsOf Ops.rank
 
 /-- The rows `lt` builds before it drops the pairs of one value: `(U[p], U[q])` for every pair of positions whose
     ranks ascend — by value, ties by position (`rank_long`). Hypotheses: the pair count fits a `USize` and is
@@ -48,12 +48,12 @@ attribute [local irreducible] whereBits gather cross Ew.cmp longsOf Ops.rank
 theorem lt_rows_holds {n : USize} (U : Vals (.atom .i64) n) (h : QAtomicType.i64 ≠ .general)
     (hN : n.toNat * n.toNat < USize.size) (h63 : n.toNat * n.toNat < 2 ^ 63) (L : Tab (.atom .i64) (.atom .i64))
     (hL : L = longCount "<" (cross n n).1 fun nn _ =>
-      longCount "<" (whereBits nn (Ew.cmp Ew.lt Ew.i64 Ew.vv (gather 8 (longsOf (Ops.rank U h)) (cross n n).1)
+      longCount "<" (whereBits nn (Ew.cmpBits Ew.lt Ew.i64 Ew.vv (gather 8 (longsOf (Ops.rank U h)) (cross n n).1)
           (gather 8 (longsOf (Ops.rank U h)) (cross n n).2) nn)) fun k hk =>
-        ⟨k, Vals.pick _ U (gather 8 (cross n n).1 (whereBits nn (Ew.cmp Ew.lt Ew.i64 Ew.vv
+        ⟨k, Vals.pick _ U (gather 8 (cross n n).1 (whereBits nn (Ew.cmpBits Ew.lt Ew.i64 Ew.vv
             (gather 8 (longsOf (Ops.rank U h)) (cross n n).1) (gather 8 (longsOf (Ops.rank U h)) (cross n n).2) nn)))
             k ((gather_len _ _).trans hk),
-          Vals.pick _ U (gather 8 (cross n n).2 (whereBits nn (Ew.cmp Ew.lt Ew.i64 Ew.vv
+          Vals.pick _ U (gather 8 (cross n n).2 (whereBits nn (Ew.cmpBits Ew.lt Ew.i64 Ew.vv
             (gather 8 (longsOf (Ops.rank U h)) (cross n n).1) (gather 8 (longsOf (Ops.rank U h)) (cross n n).2) nn)))
             k ((gather_len _ _).trans hk)⟩)
     (a b : Int64) :
@@ -76,7 +76,7 @@ theorem lt_rows_holds {n : USize} (U : Vals (.atom .i64) n) (h : QAtomicType.i64
   generalize hR : longsOf (Ops.rank U h) = r
   have hrl : len r = n.toNat := by rw [← hR]; exact len_longsOf _
   have hbit : ∀ t, t < n.toNat * n.toNat →
-      (Column.bitAt (Ew.cmp Ew.lt Ew.i64 Ew.vv (gather 8 r (cross n n).1) (gather 8 r (cross n n).2)
+      (Column.bitAt (Ew.cmpBits Ew.lt Ew.i64 Ew.vv (gather 8 r (cross n n).1) (gather 8 r (cross n n).2)
         ((len (cross n n).1).toUSize)) t = true ↔
         (Column.bitsAt r (t / n.toNat * 8) 8).toNat < (Column.bitsAt r (t % n.toNat * 8) 8).toNat) := fun t ht => by
     obtain ⟨hd, hm⟩ := hdm t ht
@@ -84,19 +84,19 @@ theorem lt_rows_holds {n : USize} (U : Vals (.atom .i64) n) (h : QAtomicType.i64
     have b1 := (rank_long U h hd hd).1
     have b2 := (rank_long U h hm hm).1
     rw [hR] at b1 b2
-    rw [(cmp_bitAt _ _ _ _ _ _).2 t (by rw [hnn]; omega)]
+    rw [Ew.cmpBits_eq, (cmp_bitAt _ _ _ _ _ _).2 t (by rw [hnn]; omega)]
     simp only [Ew.shapeIdx, show (Ew.vv == Ew.vv) = true by decide, ↓reduceIte, elem_i64]
     rw [gather8_get (by rw [hc1]; exact ht) (by rw [g1 t ht, hrl]; exact hd),
       gather8_get (by rw [hc2]; exact ht) (by rw [g2 t ht, hrl]; exact hm), g1 t ht, g2 t ht,
       Bool.and_eq_true, decide_eq_true_eq, cmp_lt_small (by omega) (by omega)]
     exact ⟨fun h => h.2, fun h => ⟨by rw [hnn]; exact ht, h⟩⟩
   refine (holds_where (K := .atom .i64) (V := .atom .i64) "<" ((len (cross n n).1).toUSize)
-      (Ew.cmp Ew.lt Ew.i64 Ew.vv (gather 8 r (cross n n).1) (gather 8 r (cross n n).2) ((len (cross n n).1).toUSize))
+      (Ew.cmpBits Ew.lt Ew.i64 Ew.vv (gather 8 r (cross n n).1) (gather 8 r (cross n n).2) ((len (cross n n).1).toUSize))
       (fun r' hr' => Vals.pick _ U (gather 8 (cross n n).1 (whereBits ((len (cross n n).1).toUSize)
-        (Ew.cmp Ew.lt Ew.i64 Ew.vv (gather 8 r (cross n n).1) (gather 8 r (cross n n).2)
+        (Ew.cmpBits Ew.lt Ew.i64 Ew.vv (gather 8 r (cross n n).1) (gather 8 r (cross n n).2)
           ((len (cross n n).1).toUSize)))) r' ((gather_len _ _).trans hr'))
       (fun r' hr' => Vals.pick _ U (gather 8 (cross n n).2 (whereBits ((len (cross n n).1).toUSize)
-        (Ew.cmp Ew.lt Ew.i64 Ew.vv (gather 8 r (cross n n).1) (gather 8 r (cross n n).2)
+        (Ew.cmpBits Ew.lt Ew.i64 Ew.vv (gather 8 r (cross n n).1) (gather 8 r (cross n n).2)
           ((len (cross n n).1).toUSize)))) r' ((gather_len _ _).trans hr'))
       (fun t => if ht : t / n.toNat < n.toNat then U.row ⟨_, ht⟩ else default)
       (fun t => if ht : t % n.toNat < n.toNat then U.row ⟨_, ht⟩ else default) ?_ ?_ a b).trans ?_
@@ -139,12 +139,12 @@ open OpsN UnionN
 theorem rep_lt {n : USize} (U : Vals (.atom .i64) n) (h : QAtomicType.i64 ≠ .general)
     (hN : n.toNat * n.toNat < USize.size) (h63 : n.toNat * n.toNat < 2 ^ 63) (L : Tab (.atom .i64) (.atom .i64))
     (hL : L = longCount "<" (cross n n).1 fun nn _ =>
-      longCount "<" (whereBits nn (Ew.cmp Ew.lt Ew.i64 Ew.vv (gather 8 (longsOf (Ops.rank U h)) (cross n n).1)
+      longCount "<" (whereBits nn (Ew.cmpBits Ew.lt Ew.i64 Ew.vv (gather 8 (longsOf (Ops.rank U h)) (cross n n).1)
           (gather 8 (longsOf (Ops.rank U h)) (cross n n).2) nn)) fun k hk =>
-        ⟨k, Vals.pick _ U (gather 8 (cross n n).1 (whereBits nn (Ew.cmp Ew.lt Ew.i64 Ew.vv
+        ⟨k, Vals.pick _ U (gather 8 (cross n n).1 (whereBits nn (Ew.cmpBits Ew.lt Ew.i64 Ew.vv
             (gather 8 (longsOf (Ops.rank U h)) (cross n n).1) (gather 8 (longsOf (Ops.rank U h)) (cross n n).2) nn)))
             k ((gather_len _ _).trans hk),
-          Vals.pick _ U (gather 8 (cross n n).2 (whereBits nn (Ew.cmp Ew.lt Ew.i64 Ew.vv
+          Vals.pick _ U (gather 8 (cross n n).2 (whereBits nn (Ew.cmpBits Ew.lt Ew.i64 Ew.vv
             (gather 8 (longsOf (Ops.rank U h)) (cross n n).1) (gather 8 (longsOf (Ops.rank U h)) (cross n n).2) nn)))
             k ((gather_len _ _).trans hk)⟩)
     (hc : pairsOK(L, idU U)) (hk : Vals.PickFits (.atom .i64) L.key (List.range L.n.toNat))
@@ -164,12 +164,12 @@ theorem rep_lt {n : USize} (U : Vals (.atom .i64) n) (h : QAtomicType.i64 ≠ .g
 theorem rep_leq {n : USize} (U : Vals (.atom .i64) n) (h : QAtomicType.i64 ≠ .general)
     (hN : n.toNat * n.toNat < USize.size) (h63 : n.toNat * n.toNat < 2 ^ 63) (L : Tab (.atom .i64) (.atom .i64))
     (hL : L = longCount "<" (cross n n).1 fun nn _ =>
-      longCount "<" (whereBits nn (Ew.cmp Ew.lt Ew.i64 Ew.vv (gather 8 (longsOf (Ops.rank U h)) (cross n n).1)
+      longCount "<" (whereBits nn (Ew.cmpBits Ew.lt Ew.i64 Ew.vv (gather 8 (longsOf (Ops.rank U h)) (cross n n).1)
           (gather 8 (longsOf (Ops.rank U h)) (cross n n).2) nn)) fun k hk =>
-        ⟨k, Vals.pick _ U (gather 8 (cross n n).1 (whereBits nn (Ew.cmp Ew.lt Ew.i64 Ew.vv
+        ⟨k, Vals.pick _ U (gather 8 (cross n n).1 (whereBits nn (Ew.cmpBits Ew.lt Ew.i64 Ew.vv
             (gather 8 (longsOf (Ops.rank U h)) (cross n n).1) (gather 8 (longsOf (Ops.rank U h)) (cross n n).2) nn)))
             k ((gather_len _ _).trans hk),
-          Vals.pick _ U (gather 8 (cross n n).2 (whereBits nn (Ew.cmp Ew.lt Ew.i64 Ew.vv
+          Vals.pick _ U (gather 8 (cross n n).2 (whereBits nn (Ew.cmpBits Ew.lt Ew.i64 Ew.vv
             (gather 8 (longsOf (Ops.rank U h)) (cross n n).1) (gather 8 (longsOf (Ops.rank U h)) (cross n n).2) nn)))
             k ((gather_len _ _).trans hk)⟩)
     (hc : pairsOK(L, idU U)) (hk : Vals.PickFits (.atom .i64) L.key (List.range L.n.toNat))

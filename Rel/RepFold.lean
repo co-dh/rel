@@ -253,7 +253,7 @@ theorem foldRound_fst {E V : Obj} (l : Bool) (ids : Tab .long (.arr E))
 theorem rep_elR {E : Obj} (l : Bool) (ids : Tab .long (.arr E)) (k : Nat) (hk : k < 2 ^ 63)
     (hp : (val ids).1.toNat < 2 ^ 63) (a : ByteArray)
     (ha : a = whereBits (n ids)
-      (Ew.cmp Ew.gt Ew.i64 Ew.va (slicesOf (val ids)).2 (one k.toUInt64) (n ids)))
+      (Ew.cmpBits Ew.gt Ew.i64 Ew.va (slicesOf (val ids)).2 (one k.toUInt64) (n ids)))
     (pos : ByteArray) (hpos : pos = Kernel.Ew.val (bif l then Ew.add else Ew.sub) Ew.i64 Ew.va nul
       (gather 8 (bif l then (slicesOf (val ids)).1
         else add (n ids) (slicesOf (val ids)).1 (slicesOf (val ids)).2) a)

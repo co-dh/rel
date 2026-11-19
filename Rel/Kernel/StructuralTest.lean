@@ -29,4 +29,18 @@ def extraTwo : ByteArray := Coc.foRMeta Rel.Column.lgEnc 0 0 #[(5, 5, 0, 0), (9,
 example : (enlistLong (USize.ofNat32 258 (by decide))).data.toList = [2, 1, 0, 0, 0, 0, 0, 0] := by decide +kernel
 #guard (enlistLong 258).data == #[2, 1, 0, 0, 0, 0, 0, 0]
 
+/-- `bitsOfFoR`'s `decide`-beside-`#guard` pairs: the booleans `xs` as `Coc.encode 2` lays them out, read back as a
+bitmap of `n` rows. A width-1 block (copied), a constant one and a patched one. -/
+def u (k : Nat) (h : k < 4294967296 := by decide) : USize := USize.ofNat32 k h
+def bitsOf (xs : List UInt8) (n : USize) : List UInt8 :=
+  let r := Coc.encode (u 2) ⟨(xs.flatMap fun x => [x, 0]).toArray⟩
+  (bitsOfFoR r.1 r.2 n).data.toList
+def oneHigh : List UInt8 := (List.range 70).map fun i => if i = 5 then 1 else 0
+example : bitsOf [0, 1, 1, 0, 1] (u 5) = [22] := by decide +kernel
+#guard bitsOf [0, 1, 1, 0, 1] (u 5) = [22]
+example : bitsOf (List.replicate 10 1) (u 10) = [255, 3] := by decide +kernel
+#guard bitsOf (List.replicate 10 1) (u 10) = [255, 3]
+example : bitsOf oneHigh (u 70) = 32 :: List.replicate 8 0 := by decide +kernel
+#guard bitsOf oneHigh (u 70) = 32 :: List.replicate 8 0
+
 end Rel.Kernel.StructuralTest

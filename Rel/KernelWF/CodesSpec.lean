@@ -21,14 +21,17 @@ open Tab Rel.Dep Rel.Kernel Rel.Verify Rel
 
 /-! ## Atoms: a boolean side -/
 
-/-- A boolean column's payload is its bitmap, `tagBits`. -/
-theorem enc_tagBits {n : USize} (x : Arr .u1 n) : x.enc = .bits (tagBits x) := by
-  have key : ∀ (e : Enc) (o : Option ByteArray), (o = match e with | .bits b => some b | _ => none) →
-      ∀ h : o.isSome, e = .bits (o.get h) := by
-    intro e o ho h; subst ho; cases e <;> first | rfl | simp at h
-  exact key x.enc _ rfl _
+/-- A boolean column's bitmap holds its `n` bits, at either form. -/
+theorem tagBits_size {n : USize} (x : Arr .u1 n) : (tagBits x).size = (n.toNat + 7) / 8 := by
+  have ht := enc_tagBits x
+  have hw := x.wf
+  revert ht hw
+  generalize tagBits x = b
+  cases x.enc <;> simp only [Kernel.boolBits, Enc.WF, reduceCtorEq, false_implies, true_implies, Option.some.injEq]
+  · rintro rfl h; exact h
+  · rintro rfl -; simp only [Kernel.bitsOfFoR, KernelWF.packOf_size]
 
-/-- **A boolean side's codes are its bitmaps**: every part's payload is `bits` (`Enc.WF .boolean`), so
+/-- **A boolean side's codes are its bitmaps**: every part's payload reads as one (`enc_tagBits`), so
     `codes` takes its first branch, each part its own code a bit wide. -/
 theorem codes_boolean {p : Nat} (cs : Vector (Part (.atom .u1)) p) :
     Obj.codes (.atom .u1) cs = cs.map fun c => (⟨1, c.1, 2, tagBits c.2⟩ : Code) := by
@@ -37,7 +40,7 @@ theorem codes_boolean {p : Nat} (cs : Vector (Part (.atom .u1)) p) :
   rw [dif_neg (by decide)]
   have e : (cs.mapM fun c : Part (.atom .u1) => some (⟨1, c.1, 2, tagBits c.2⟩ : Code)) =
       some (cs.map fun c => (⟨1, c.1, 2, tagBits c.2⟩ : Code)) := Vector.mapM_pure _
-  simp only [enc_tagBits, e]
+  simp only [enc_tagBits, Option.map_some, e]
 
 /-- **A boolean side's codes are faithful, jointly across its parts**: part `k`'s code at `i` and part `l`'s
     at `j` agree exactly when the rows do. -/
@@ -62,9 +65,7 @@ theorem codes_boolean_wf {p : Nat} (cs : Vector (Part (.atom .u1)) p) {k : Nat} 
           Column.idAt (Obj.codes (.atom .u1) cs)[k].b (Obj.codes (.atom .u1) cs)[k].w i <
             (Obj.codes (.atom .u1) cs)[k].card) := by
   rw [codes_boolean, Vector.getElem_map]
-  have hw := cs[k].2.wf
-  rw [enc_tagBits] at hw
-  refine ⟨rfl, rfl, by simpa [Enc.WF] using hw,
+  refine ⟨rfl, rfl, by simpa using tagBits_size cs[k].2,
     fun _ => ⟨Nat.lt_of_lt_of_le (by decide : (2 : Nat) < 2 ^ 32) USize.le_size, fun i _ => ?_⟩⟩
   rw [idAt_one]; split <;> simp
 
@@ -143,7 +144,7 @@ theorem codes_small_int {t : QAtomicType} {k : Scan.Kind} (ht : orderKind t = so
   subst h1 h2
   rcases hk with rfl | rfl | rfl | rfl | rfl <;> cases t' <;> simp [orderKind] at ht <;>
     cases e <;> simp [Enc.WF, QAtomicType.width] at hwf <;>
-    simp [Obj.codes, Alg.codes, rangeOffsets, orderKind, raze, Column.intern, Code.cut, vmapM_one, Column.encodes, Arr.enc,
+    simp [Obj.codes, Alg.codes, rangeOffsets, orderKind, raze, Column.intern, Code.cut, vmapM_one, Column.encodes, Arr.enc, boolBits,
       KernelWF.bitsType]
 
 /-- `Code.ofIds` over ids packed by `Verify.groupOf g m` at the width of its class count reads `Verify.groupOf g m`, the
@@ -731,7 +732,8 @@ theorem codes_long_eq {t : QAtomicType} (ht : orderKind t = some .i64) {p : Nat}
   split
   · next bs hbs =>
     have := vec_mapM_some hbs hp
-    rcases long_enc ht cs[0].2.wf with ⟨b, he, -⟩ | ⟨md, pk, he⟩ <;> simp [he] at this
+    rcases long_enc ht cs[0].2.wf with ⟨b, he, -⟩ | ⟨md, pk, he⟩ <;> cases t <;> simp [orderKind] at ht <;>
+      simp [he, boolBits] at this
   · dsimp only; rw [hro]
 
 /-- **An eight-byte integral column's codes, where `rangeOffsets` answers, are
@@ -799,7 +801,7 @@ theorem codes_long_group {t : QAtomicType} (ht : orderKind t = some .i64) (x : P
   subst h1 h2
   cases t' <;> simp [orderKind] at ht <;> cases e <;> simp [Enc.WF, QAtomicType.width] at hwf <;>
     simp [Arr.part, Arr.enc] at hro <;>
-    simp [Obj.codes, Alg.codes, hro, orderKind, raze, Column.intern, Code.cut, vmapM_one, Column.encodes, Arr.enc,
+    simp [Obj.codes, Alg.codes, hro, orderKind, raze, Column.intern, Code.cut, vmapM_one, Column.encodes, Arr.enc, boolBits,
       KernelWF.bitsType,
       Arr.part]
 

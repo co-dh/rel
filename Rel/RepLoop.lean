@@ -300,7 +300,7 @@ scoped notation "ajOK(" B ", " R ", " C ")" =>
 -- `rep_uncons`'s hypotheses at the arrays `Rel.val W`, its intermediates `ib`, `lb`, `Tv` bound by their equations
 set_option hygiene false in
 scoped notation "uncOK(" Y ", " W ")" =>
-  (∀ ib : ByteArray, ib = whereBits (Rel.Tab.n W) (Ew.cmp Ew.gt Ew.i64 Ew.va (slicesOf (Rel.Tab.val W)).2 (one 0) (Rel.Tab.n W)) →
+  (∀ ib : ByteArray, ib = whereBits (Rel.Tab.n W) (Ew.cmpBits Ew.gt Ew.i64 Ew.va (slicesOf (Rel.Tab.val W)).2 (one 0) (Rel.Tab.n W)) →
     ∀ lb : ByteArray, lb = gather 8 (slicesOf (Rel.Tab.val W)).1 ib →
     ∀ Tv : Vals (.arr Y) (len ib).toUSize, Tv = ⟨(Rel.Tab.val W).1, valCol Ew.add Ew.va lb (one 1),
         valCol Ew.add Ew.vv lb (gather 8 (slicesOf (Rel.Tab.val W)).2 ib), (Rel.Tab.val W).2.2.2⟩ →

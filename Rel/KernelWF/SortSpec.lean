@@ -91,20 +91,8 @@ theorem gradeColumn_sort {t : QAtomicType} {n : USize} {e v : Enc} (h : gradeCol
     ∃ m le, v = .bytes (Order.indices ((List.range m).mergeSort le)) := by
   unfold gradeColumn at h
   simp only [Bool.false_eq_true, ↓reduceIte] at h
-  split at h
-  all_goals first
-    | (cases h; exact ⟨_, _, rfl⟩)
-    | (split at h
-       · cases h
-       split at h
-       · cases h
-       split at h
-       · cases h; exact ⟨_, _, rfl⟩
-       · split at h
-         · split at h
-           · cases h
-           · cases h; exact ⟨_, _, rfl⟩
-         · cases h)
+  -- every branch either declines (`none`) or answers a grade/rank, whatever the nesting of the dispatch
+  repeat' first | (cases h; exact ⟨_, _, rfl⟩) | (cases h; done) | split at h
 
 /-- **The grade of `kc`'s codes gathered at `vp` is a permutation of `vp`'s positions.** Hypotheses: `kc` well
     formed, every long of `vp` one of its rows. -/

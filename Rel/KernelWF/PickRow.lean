@@ -166,7 +166,7 @@ theorem pickArr_tag_bit {n : USize} (tag : Arr .u1 n) (i : ByteArray) (m : USize
     (q : Fin m.toNat) :
     Column.bitAt (tagBits (pickArr .u1 ⟨n, tag⟩ i m h)) q.1 =
       if hin : (Column.bitsAt i (q.1 * 8) 8).toNat < n.toNat then tag.get ⟨_, hin⟩ else false := by
-  rw [← Arr.get_bool_bits _ (KernelWF.enc_tagBits _) q]
+  rw [← Arr.get_bool_bits _ (enc_tagBits _) q]
   split
   · exact pickArr_get _ i m h q ‹_›
   · refine (pickArr_get_miss ⟨n, tag⟩ i m h (fun d o ids he => ?_) q (Nat.le_of_not_lt ‹_›)).trans rfl
@@ -462,7 +462,7 @@ theorem place_get {a b : Obj} {n : USize} (x : Vals (.sum a b) n) (hl : x.1.toNa
   dsimp only
   rw [UInt64.toUInt64_toInt64]
   simp only [val_vv_get _ _ _ _ k.2, val_va_get _ _ _ _ k.2, widen_bits_get _ _ k.2, longsOf_get _ k.2,
-    ← Arr.get_bool_bits _ (KernelWF.enc_tagBits tag) k]
+    ← Arr.get_bool_bits _ (enc_tagBits tag) k]
   have e0 := int_bits_toInt ((l.toNat : Int) - 1) (by omega) (by omega)
   have e1 := int_bits_toInt ((r.toNat : Int) - l.toNat) (by omega) (by omega)
   have ez := int_bits_toInt 0 (by decide) (by decide)
@@ -689,7 +689,7 @@ theorem pick_row_sum {a b : Obj} {n : USize} (x : Vals (.sum a b) n)
     (by rw [hrl q q.2]; have := List.length_filter_le (fun s => !Column.bitAt tb s) (List.range q.1); simp only [List.length_range] at this; omega)
   rw [hrr q q.2, hrl q q.2] at hidx
   have hq0 : (pickArr .u1 ⟨n, tag⟩ i m h).get q = Column.bitAt tb q.1 := by
-    rw [← htb]; exact Arr.get_bool_bits _ (KernelWF.enc_tagBits _) q
+    rw [← htb]; exact Arr.get_bool_bits _ (enc_tagBits _) q
   have hb := hF q q.2
   subst hpd htb
   simp only [Vals.pick, Vals.pickShared, need]
@@ -1063,7 +1063,7 @@ theorem pick_sum_shape {a b : Obj} {n : USize} (l r : USize) (tag : Arr .u1 n) (
   dsimp only at hF
   have hq0 : ∀ t (ht : t < m.toNat), (pickArr .u1 ⟨n, tag⟩ i m h).get ⟨t, ht⟩ =
       Column.bitAt (tagBits (pickArr .u1 ⟨n, tag⟩ i m h)) t := fun t ht =>
-    Arr.get_bool_bits _ (KernelWF.enc_tagBits _) ⟨t, ht⟩
+    Arr.get_bool_bits _ (enc_tagBits _) ⟨t, ht⟩
   generalize htb : tagBits (pickArr .u1 ⟨n, tag⟩ i m h) = tb at hF hq0
   let P : Nat → Nat := fun t => if hin : (Column.bitsAt i (t * 8) 8).toNat < n.toNat then
     min (max (idx.get ⟨_, hin⟩).toInt 0).toNat ((if tag.get ⟨_, hin⟩ then r.toNat else l.toNat) - 1) else l.toNat
