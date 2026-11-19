@@ -323,8 +323,10 @@ def Tm.kids (k : Nat) (A : Obj) {C D : Obj} (t : Tm C D) : Option (Tm C A) :=
       else match S.kids k A with | some s => some (.comp R s) | none => none
     | _, _, .meet R S | _, _, .join R S | _, _, .pair R S => match R.kids k A, S.kids k A with
       | some r, some s => some (.join r s) | _, _ => none
+    -- `juncD`, not `junc`: the children run on the nodes in demand, and `junc` reads its parts whole, so a part
+    -- that needs keys (`π₁ X` under `[𝟘, π₁ X]`) would read none
     | _, _, .junc R S | _, _, .juncD R S => match R.kids k A, S.kids k A with
-      | some r, some s => some (.junc r s) | _, _ => none
+      | some r, some s => some (.juncD r s) | _, _ => none
     | _, _, .dom R | _, _, .own R => R.kids k A
     -- `F(x)` reads `X` at the children of the members
     | _, _, .arg (.prim r) x =>
