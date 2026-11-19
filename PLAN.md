@@ -400,9 +400,9 @@ Diff table 的「状态」列：✅ 后面是完成它的步骤；🔄 是部分
           否决，已撤回。
         - owner 选 G（2026-11-19）：`\`、`/`、`Λ`、pair 等保持为 `Tm` 的节点，kernel 复合写在 compiler 发的 Lean
           代码里；不从 `Tm` 删掉改成 prelude 定义。规则："Not define new data structure"——算子与定律只用已有类型。
-          owner 定：`AscKey`（`w3arrside2` 加的唯一新类型）从 kernel 删除，`kasc`/`kseen` 恢复 §4 的签名（只取原子列）；
-          按 cell 排序不是 Rel kernel 的事。`arr` 侧的 `Vals.cols` 改为把 cell 用 `kgather` 展开成等宽列
-          （O(n·maxlen)，分支 `w3nokey`）。
+          owner 定（2026-11-19，改了先前的"删除"）：保留 `AscKey`。它只用于一侧类型是 `[β]` 的情况：把
+          `lo`/`hi`/payload 作为一个 key 交给 `kasc`/`kseen`，比较时沿 payload 逐元素比。分支 `w3nokey`
+          （展开成等宽列）已停，不合入。待办：architecture §4 的 `asc`/`seen` 签名按 `AscKey` 更新。
       - compiler（`Gen.*`）现在就发 kernel 复合，按程序切换：一个程序用到的构造子都有 kernel 版本，它就走新路径；
         "仍走旧路径的程序数" 是进度数字，到 0 时 W5 删除旧层。新旧算子不能在一个程序里混用（旧的写 `.bytes`，
         新 kernel 拒绝非 foR，转换被禁止）。切换步骤：`/data/tmp/w3-switch-steps.md`（在写）。
