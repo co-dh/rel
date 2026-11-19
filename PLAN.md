@@ -423,13 +423,21 @@ Diff table 的「状态」列：✅ 后面是完成它的步骤；🔄 是部分
         `2^63 ≤ n*m + n + m`）。
       - kernel 签名变更（`w3arrside2`）：`AscKey` = `atom t` | `cells n c lo hi els`，`kasc`/`kseen` 取
         `List (AscKey × Enc)`；cell 按元素序码的字典序比较，真前缀在前；没有新 export。
-    - W3 在做：`w3arrcat`（`arr` 侧的 `Vals.concat`；在它之前 `arr` 侧的 `∪ ∩ − ≫` 回答
-      `.error "concat: an arr side is not atom columns"`）；`w3div`（`ldiv rdiv lam E nil lt leq`）、`w3struct`
-      （`id top zero val pair prod outl outr junc juncD join flat`）、`w3arith`（`arith succ est thin`，部分 fold）
-      —— 后三个的复合要对照 architecture §4 的表（如 `\` 不求补）。
-    - W3 未做：compiler 发射路径（`Gen.*` 的函数体）与 `lazy`/`Known` 的接入；§7 TODO 的 prelude 定义；`hylo`、`mu`、`nu`、`atPos`；`prim` 表里程序实际
-      用到的行（未数）。切换前给 compile-diff 补：旧表 dump 的对照、"not ok" 名单逐名比较（现在它只数个数，且
-      两边跑同一个 `Gen.*`，新算子报错或算错都能通过）。
+    - W3 状态（2026-11-19，master 41bf67b）：算子在 master、尚无程序运行它们。
+      - 有算子且有定律：`∪ ∩ − ≫ ° dom ran`、`𝟘 𝟙 ⊤ outl outr pair prod inl inr junc flat`、
+        `\ / Λ E ∋ nil lt leq`、`succ`。有算子无定律：`arith`（`Tab.arith_holds` 未证）。
+      - 缺算子：`est thin atPos fold foldr foldI mu nu hylo`、对称除、`val` 的包装、`prim` 各行。
+      - 与 architecture §4 不同、待改：`∩ − \` 的按组折叠用了 `kscatter` 而不是分段 `scan`；`\` 物化 join；
+        `lt leq top` 在整个 universe 上做 cross，§0 要 `lazy`（`K ≫ leq ≫ L`）；`°` 之后多跑一次 `canon`。
+      - 定律的缺口：`lam_den`/`E_den`（等于 `lamDen`/`EDen`）带前提 `hB`（序码的序与 `B.lt` 一致），未对任何
+        `Obj` 证掉；float 上本来不成立（`±0.0`、NaN）。
+      - 合并记录：w3arrcat fe67914，w3arith 0f77c2f，w3struct+w3sumcat 4b6f121，w3div+w3divlaw+w3lam 803cd89，
+        w3ldiv 9d7704b，fixpanic 41bf67b（`RepTabArith` 的证明展开 `Ew.intStep` 把 `panic!` 分支带进证明项；
+        改为引用每个 verb 一条的 `Ew.intStep_*`）。旧层里同因上 `panic-allow.txt` 的条目随 W5 消失。
+    - W3 切换（`/data/tmp/w3-switch-steps.md`）：T0 去重（`t0dedup`，在做）→ T1 compile-diff 按名字、按行集合
+      对照生成的基线（`t1diff`，在做）→ T2 管线 + `val uni zero id ° ≫ ∩ ∪ − dom ran` → T3 `top outl outr pair
+      prod ldiv rdiv` 与 `nu`/`mu` 循环：第一批程序（`sudokuac csp sudokupc sudokupc9`）走新路径，16 → 12 →
+      T4 `wumpus`（11）→ T5 `chess`（10）→ T7 `circuit`（9）→ T8（6）→ T9（0）→ T10 删旧层（W5）。
     - W3 留给后面的风险（清单 agent 提出，均未验证）：计数做 `\` 会物化 join（最多 `|R|·|S|` 行），SudokuPC9、
       blocks 可能超内存；规范序从 `Obj.lt` 变成 `kasc` 序码，打印的期望值与 `out/key`、`out/val` 可能变；
       `coc_block_start`、`coc_bools_of`、`structural_bits_of_for` 与 `Plan.abi` 点名的 12 个 export 在 W5 后仍有
