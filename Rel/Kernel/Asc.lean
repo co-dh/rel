@@ -65,22 +65,59 @@ def ascWords (m : USize) : QAtomicType × Enc → Except String (Array UInt64)
   | (t, .pos) => .error s!"asc: a pos column is type {QAtomicType.i64.ctorIdx}, not {t.ctorIdx}"
   | (_, e) => foRWords "asc" m e
 
-/-- One key column of `kasc`: its `m` words as every kernel of design §4 reads a `foR` (`foRWords`) and their order
-codes at its type (`ascOrd`, which cuts a word to the type's width), or why it has none: a type with no order, then
-`ascWords`' error. -/
-def ascCol (m : USize) (c : QAtomicType × Enc) : Except String (Array UInt64 × Array UInt64) :=
-  match ascOrd c.1 with
-  | none => .error s!"asc: type {c.1.ctorIdx} has no fixed-width order"
-  | some f => (fun x => (x, x.map f)) <$> ascWords m c
+/-- What a key column of `kasc` and `kseen` holds, the column itself (an `Enc` of the key's rows) beside it. `atom t`:
+the column is words of type `t`, row `i` its word `i`. `cells n c lo hi els`: an `arr` side (`Obj.arr`) of `n` cells,
+`lo` and `hi` its two `i64` columns of `n` words and `els` the key columns of its payload of `c` rows; the column is
+words below `n`, row `i` the cell its word names, that cell the payload rows `j` with `lo ≤ j < hi`, clamped to
+`[0, c)` (`Vals.row`). The column is the only part `kasc` carries, so after a sort the cells stay where they were
+and the column names them in the new order: the sorted column is again a key of the same `cells`. -/
+inductive AscKey where
+  | atom (t : QAtomicType)
+  | cells (n c : USize) (lo hi : Enc) (els : List (AscKey × Enc))
 
-/-- **The asc kernel** (design §4, `asc_sorted` and `asc_perm`): the `m` rows of the columns `es`, each a type and a
-`foR` column, sorted stably and lexicographically by their order codes. The answer is every column's words sorted and
-the permutation, row `k` of the answer being input row `p[k]`, each as `wordsFoR`. The first error in the order of
-`es` is the answer (`ascCol`). -/
+/-- The order codes of `m` rows of a `cells` key, row `i` naming the cell `ix[i]` and the payload rows coded by the
+columns `xs`: per element position `j` below the longest cell, whether row `i`'s cell reaches `j` (`1`, else `0`) and
+then each payload column's code of its element there (`0` past the end). `lexLe` over them orders cells
+lexicographically by their elements' codes, a proper prefix first, and two rows are equal in every code exactly when
+their cells have one length and equal codes element by element. -/
+def cellCodes (m c : Nat) (ix lo hi : Array UInt64) (xs : List (Array UInt64)) : List (Array UInt64) :=
+  let s := fun i => min (max (lo[(ix[i]?.getD 0).toNat]?.getD 0).toInt64.toInt 0).toNat c
+  let len := fun i => (min (hi[(ix[i]?.getD 0).toNat]?.getD 0).toInt64.toInt (c : Int)).toNat - s i
+  (List.range ((List.range m).foldl (fun a i => max a (len i)) 0)).flatMap fun j =>
+    Array.ofFn (n := m) (fun i => if j < len i.1 then 1 else 0) ::
+      xs.map fun x => Array.ofFn (n := m) fun i => if j < len i.1 then x[s i.1 + j]?.getD 0 else 0
+
+mutual
+/-- One key column of `kasc` at `m` rows: the words it carries and its order code columns, or why it has none. An
+`atom` column carries its `m` words (`ascWords`) coded at its type (`ascOrd`, which cuts a word to the type's width):
+a type with no order, then `ascWords`' error. A `cells` column carries its `m` words, each below its `n` cells, and is
+coded by `cellCodes` over `lo`, `hi` and its payload's codes (`ascCodes` at `c` rows): the column, a word naming no
+cell, `lo`, `hi`, then the payload's first error. -/
+def ascCol (m : USize) : AscKey × Enc → Except String (Array UInt64 × List (Array UInt64))
+  | (.atom t, e) => match ascOrd t with
+    | none => .error s!"asc: type {t.ctorIdx} has no fixed-width order"
+    | some f => (fun x => (x, [x.map f])) <$> ascWords m (t, e)
+  | (.cells n c lo hi els, e) => do
+    let ix ← foRWords "asc: cells" m e
+    if let some r := ix.find? (n.toNat ≤ ·.toNat) then throw s!"asc: cells: row word {r} names no cell of {n}"
+    let l ← foRWords "asc: cells lo" n lo
+    let h ← foRWords "asc: cells hi" n hi
+    pure (ix, cellCodes m.toNat c.toNat ix l h (← ascCodes c els))
+
+/-- The order code columns of the key columns `es` at `m` rows, `ascCol`'s in the order of `es`. -/
+def ascCodes (m : USize) : List (AscKey × Enc) → Except String (List (Array UInt64))
+  | [] => .ok []
+  | k :: ks => do pure ((← ascCol m k).2 ++ (← ascCodes m ks))
+end
+
+/-- **The asc kernel** (design §4, `asc_sorted` and `asc_perm`): the `m` rows of the key columns `es` (`AscKey`),
+sorted stably and lexicographically by their order codes. The answer is every column's words sorted and the
+permutation, row `k` of the answer being input row `p[k]`, each as `wordsFoR`. The first error in the order of `es` is
+the answer (`ascCol`). -/
 @[extern "qlean_k_asc"]
-def kasc (m : USize) (es : @& List (QAtomicType × Enc)) : Except String (List Enc × Enc) := do
+def kasc (m : USize) (es : @& List (AscKey × Enc)) : Except String (List Enc × Enc) := do
   let cs ← es.mapM (ascCol m)
-  let p := ((ascGrade m.toNat (cs.map (·.2))).map Nat.toUInt64).toArray
+  let p := ((ascGrade m.toNat (cs.flatMap (·.2))).map Nat.toUInt64).toArray
   let r ← scatterWords .last p ((List.range m.toNat).map Nat.toUInt64).toArray m.toNat 0
   let vs ← cs.mapM fun c => scatterWords .last r c.1 m.toNat 0
   pure (vs.map wordsFoR, wordsFoR p)

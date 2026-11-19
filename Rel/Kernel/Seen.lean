@@ -22,8 +22,8 @@ ascending), both as `wordsFoR`. A key is a row's order codes across `es`. The fi
 error, `ascCol`'s text after its place in `es`; then the first row that sorts before the row ahead of it, because the
 caller is to run `kasc` first. -/
 @[extern "qlean_k_seen"]
-def kseen (n : USize) (es : @& List (QAtomicType × Enc)) : Except String (Nat × Enc × Enc) := do
-  let ks ← es.zipIdx.mapM fun (c, i) => (·.2) <$> (ascCol n c).mapError (s!"seen: es[{i}]: " ++ ·)
+def kseen (n : USize) (es : @& List (AscKey × Enc)) : Except String (Nat × Enc × Enc) := do
+  let ks := (← es.zipIdx.mapM fun (c, i) => (·.2) <$> (ascCol n c).mapError (s!"seen: es[{i}]: " ++ ·)).flatten
   ((List.range (n.toNat - 1)).find? fun i => !lexLe ks i (i + 1)).forM fun i =>
     throw s!"seen: row {i + 1} sorts before row {i}; kseen takes rows in kasc order, so sort them with kasc first"
   let key := fun i => ks.map (·[i]?.getD 0)

@@ -78,6 +78,58 @@ impl<'a> Key<'a> {
     }
 }
 
+/// A column of words read at its address: a `pos` column (word `i` is `i`) or a `foR` one (`Coc::get_w`).
+#[derive(Clone, Copy)]
+pub enum Ix<'a> { Pos, For(Coc<'a>, u8) }
+impl<'a> Ix<'a> {
+    pub fn of(c: Option<Coc<'a>>) -> Self { c.map_or(Ix::Pos, |c| Ix::For(c, c.one_width())) }
+    pub fn get(&self, i: usize) -> i64 { match self { Ix::Pos => i as i64, Ix::For(c, uw) => c.get_w(*uw, i) } }
+}
+
+/// A `cells` key column (`Kernel.AscKey.cells`): row `i` names the cell `ix[i]`, that cell the payload rows
+/// `lo .. hi` clamped to `0 .. c`, each payload row keyed by `els` (`Kernel.cellCodes`). Every word is read at its
+/// address in its encoded column, one at a time, and no column is decoded.
+pub struct Cells<'a> { pub ix: Ix<'a>, pub c: usize, pub lo: Ix<'a>, pub hi: Ix<'a>, pub els: Vec<Col<'a>> }
+impl Cells<'_> {
+    /// Row `i`'s cell as its first payload row and its length.
+    fn span(&self, i: usize) -> (usize, usize) {
+        let r = self.ix.get(i) as usize;
+        let s = self.lo.get(r).clamp(0, self.c as i64) as usize;
+        (s, (self.hi.get(r).clamp(0, self.c as i64) as usize).saturating_sub(s))
+    }
+    /// Row `i`'s cell against row `j`'s in `cellCodes`' `lexLe` order: the first element that differs decides, else
+    /// the shorter cell, a proper prefix, comes first.
+    pub fn cmp(&self, i: usize, j: usize) -> core::cmp::Ordering {
+        let ((si, li), (sj, lj)) = (self.span(i), self.span(j));
+        (0..li.min(lj)).map(|k| cmp_rows(&self.els, si + k, sj + k)).find(|o| o.is_ne()).unwrap_or_else(|| li.cmp(&lj))
+    }
+}
+
+/// A key column of `kasc` and `kseen`: an atom column, a `pos` atom column (word `i` is `i`), or a `cells` one.
+pub enum Col<'a> { Atom(Key<'a>), Pos, Cells(Cells<'a>) }
+
+/// The atom keys of `cs`, where every column is a `foR` atom.
+pub fn atoms<'a>(cs: &[Col<'a>]) -> Option<Vec<Key<'a>>> { cs.iter().map(|c| match c { Col::Atom(k) => Some(*k), _ => None }).collect() }
+
+/// Row `i` against row `j` in `lexLe` order over the codes of `cs`: the first column where they differ decides.
+pub fn cmp_rows(cs: &[Col], i: usize, j: usize) -> core::cmp::Ordering {
+    cs.iter().map(|c| match c {
+        Col::Atom(k) => { let uw = k.c.one_width(); k.code(k.c.get_w(uw, i) as u64).cmp(&k.code(k.c.get_w(uw, j) as u64)) }
+        Col::Pos => i.cmp(&j),
+        Col::Cells(a) => a.cmp(i, j),
+    }).find(|o| o.is_ne()).unwrap_or(core::cmp::Ordering::Equal)
+}
+
+/// `grade` over any key columns: all `foR` atoms go to `grade`; else `None` where every row is no later than the next
+/// (`cmp_rows`), or a stable comparison sort of `til m` by `cmp_rows`.
+pub fn grade_cols(run: Runner, cs: &[Col], m: usize) -> Option<Vec<i64>> {
+    if let Some(ks) = atoms(cs) { return grade(run, &ks, m) }
+    if (1..m).all(|i| cmp_rows(cs, i - 1, i).is_le()) { return None }
+    let mut p: Vec<i64> = (0..m as i64).collect();
+    p.sort_by(|&a, &b| cmp_rows(cs, a as usize, b as usize));
+    Some(p)
+}
+
 /// The rows of `ks` a block at a time on the first column's grid: `f(at, codes)` with column `c`'s codes of rows
 /// `at ..` at `codes[c * blk ..]`; false from `f` stops the walk.
 fn blocks(ks: &[Key], mut f: impl FnMut(usize, usize, &[u64]) -> bool) {
