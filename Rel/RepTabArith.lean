@@ -4,7 +4,8 @@ import Rel.RepTabComp
 import Rel.RepSetOps
 import Rel.Lang.Den
 
-/-! Checks of `Tab.arith` and `Tab.succ` (`Rel/Run/Arith.lean`) against the meanings `arithDen`, `succDen` of
+/-! Laws of `Tab.arith` and `Tab.succ` (`Rel/Run/Arith.lean`): `stepCols_spec`, `Tab.succ_holds`; and checks
+against the meanings `arithDen`, `succDen` of
 `Rel/Lang/Den.lean`, read on lists, and against the old `Alg.arith`, `Alg.succ` on the same data. -/
 
 namespace Rel
@@ -205,6 +206,44 @@ theorem stepCols_spec {k : UInt8} {n : USize} {a b : Enc} {w : Arr .i64 n} {keep
   simp only [Bool.or_eq_true, beq_iff_eq, e1, e2, e3, false_or, if_false, decide_false] at h
   rw [if_neg (by simpa using e4), if_neg (by simpa using e5)] at h
   cases h
+
+/-- **`Tab.succ` answers `D ≫ succDen U`** (`Rel/Lang/Den.lean`): a row `(x, w)` of the answer is a row `(x, u)` of `D`
+with `u` in `dom U`, `w = u + 1` (`Ew.intStep`, the null to itself), and `w` in `dom U`. -/
+theorem Tab.succ_holds {K : Obj} {D : Tab K .long} {U : Tab .long .long} {T : Tab K .long} (h : D.succ U = .ok T)
+    (x : K.El)
+    (w : Int64) : T.Holds x w ↔ ∃ u, D.Holds x u ∧ Lang.succDen U.Holds u w := by
+  simp only [Tab.succ, bind, Except.bind_eq_ok'] at h
+  obtain ⟨du, hdu, E, hE, N, hN, ne, hne, s, hs, hT⟩ := h
+  have hrow : ∀ i : Fin E.n.toNat, Vals.row (A := .long) s i = Ew.intStep Ew.add Alg.nul (E.val.row i) 1 := by
+    intro i
+    show s.get i = Ew.intStep Ew.add Alg.nul (Arr.get E.val i) 1
+    rw [Arr.get_i64, Arr.get_i64]
+    have r1 := (colMap_raw (colArr_ok hs)).2.2.2 i i.2
+    have r2 := (colMap_raw hne).2.2.2 i i.2
+    rw [colConst_raw hN] at r2
+    simp only [Array.getElem?_replicate, i.2, if_true, Option.getD_some] at r2
+    rw [ev_ne] at r2
+    rw [← Except.ok.inj r2] at r1
+    rw [← Except.ok.inj r1]
+    generalize (raw .i64 E.n E.val.enc)[i.1]?.getD 0 = A
+    obtain ⟨a, rfl⟩ : ∃ a : Int64, a.toUInt64 = A := ⟨A.toInt64, UInt64.toUInt64_toInt64 A⟩
+    by_cases ha : a = Alg.nul
+    · subst ha; decide
+    · have : a.toUInt64 ≠ nulWord := fun e => ha ((toU_inj _ _).1 e)
+      simp (config := {decide := true}) only [ne_eq, this, not_false_eq_true, if_true, Ew.intStep, Ew.add,
+        ha, false_or, if_false, beq_iff_eq, Bool.or_eq_true]
+      show (a + 1).toUInt64.toInt64 = _
+      simp [ha, show (1 : Int64) ≠ Alg.nul by decide]
+  rw [Tab.comp_holds hT]
+  constructor
+  · rintro ⟨b, ⟨i, hx, hb⟩, hd⟩
+    obtain ⟨rfl, y, hy⟩ := (Tab.dom_holds hdu _ _).1 hd
+    obtain ⟨u, hDu, hd'⟩ := (Tab.comp_holds hE x (E.val.row i)).1 ⟨i, hx, rfl⟩
+    obtain ⟨rfl, y', hy'⟩ := (Tab.dom_holds hdu _ _).1 hd'
+    exact ⟨_, hDu, ⟨y', hy'⟩, (hrow i ▸ hb).symm, y, hy⟩
+  · rintro ⟨u, hDu, ⟨y', hy'⟩, rfl, y, hy⟩
+    obtain ⟨i, hx, hu⟩ := (Tab.comp_holds hE x u).2 ⟨u, hDu, (Tab.dom_holds hdu u u).2 ⟨rfl, y', hy'⟩⟩
+    exact ⟨_, ⟨i, hx, by show Vals.row (A := .long) s i = _; rw [hrow, hu]⟩, (Tab.dom_holds hdu _ _).2 ⟨rfl, y, hy⟩⟩
 
 section Checks
 
