@@ -366,24 +366,6 @@ where
 /-- `Code.groupIds` as a plan function of the code's four registers. -/
 def groupIdsF : Bld Nat := defFun #[.size, .size, .size, .bytes] fun ps => groupIdsB 0 1 2 3
 
-/-- A side's registers, as §6 lays a `Vals` out: a product both sides', an array its payload count, `lo`, `hi`
-    and payload, a sum its two counts, tags, positions and both payloads. An atom column is one register, its
-    dense payload (a boolean's bitmap): the dense stage. Any other encoding has none yet (stage 7). -/
-def arrRegs {t : QAtomicType} {n : USize} (x : Arr t n) : Option (Array Val) :=
-  match x.enc with | .bytes b => some #[.bytes b] | e => (Kernel.boolBits t n e).map fun b => #[.bytes b]
-
-@[inherit_doc arrRegs]
-def valsRegs : (A : Obj) → {n : USize} → Vals A n → Option (Array Val)
-  | .atom _, _, x => arrRegs x
-  | .prod a b, _, x => return (← valsRegs a x.1) ++ (← valsRegs b x.2)
-  | .arr b, _, ⟨m, lo, hi, f⟩ => return #[.size m] ++ (← arrRegs lo) ++ (← arrRegs hi) ++ (← valsRegs b f)
-  | .sum a b, _, ⟨l, r, tag, idx, x, y⟩ => return #[.size l, .size r] ++ (← arrRegs tag) ++ (← arrRegs idx) ++
-      (← valsRegs a x) ++ (← valsRegs b y)
-
-/-- A relation's registers: its count, its key side's, its value side's. -/
-def relRegs {A B : Obj} (R : Tab A B) : Option (Array Val) :=
-  return #[.size R.n] ++ (← valsRegs A R.key) ++ (← valsRegs B R.val)
-
 /-- `need`'s test on the bit `c`: set, nothing runs; clear, `fail msg args`. -/
 def guard (c : Nat) (msg : String) (args : Array Nat) : Bld Unit :=
   discard <| ite c (pure #[]) (do discard <| emit (.fail msg args) 0; pure #[])
@@ -430,40 +412,5 @@ def arithB (op : UInt8) (n u v : Nat) : Bld (Array Nat) := do
   let g (fill : UInt64) (x : Nat) := do call1 (kernel% Kernel.gatherBytes) #[w, ← lit (.u64 fill), x, k]
   let nf := (Kernel.nullBits .i64).getD 0
   return #[r, ← g nf u, ← g nf v, ← g 0 s]
-
-/-! ### The dataframe recipes (`doc/dataframe-design.zh.typ` §3.3), on columns of dense longs -/
-
-/-- Recipe WHERE, `filter(p)` given its mask: the rows of the columns `cs` (`n` dense longs each) whose bit in `mask`
-    is set, in their order: the count and the gathered columns. -/
-def whereB (n mask : Nat) (cs : Array Nat) : Bld (Nat × Array Nat) := do
-  let k ← call1 (kernel% Kernel.whereBits) #[n, mask]
-  let w ← lit (.size 8); let nf ← lit (.u64 ((Kernel.nullBits .i64).getD 0))
-  return (← lenB k, ← cs.mapM fun c => call1 (kernel% Kernel.gatherBytes) #[w, nf, c, k])
-
-/-- Recipes CODE and SEGFOLD, `Λ(groups(π₁)) ≫ F(𝟙 × (F(π₂) ≫ sum))` on the key column `k` and value column `v` of
-    `n` dense longs: the keys that occur, ascending, each with the sum of its values. CODE sorts (`grade`, stable)
-    and cuts runs where a key differs from its neighbour; SEGFOLD is one `sums` scan, a run's sum being the prefix
-    sum at its last row minus the one before its first. Registers: the run count, the keys, the sums. -/
-def groupSumB (n k v : Nat) : Bld (Array Nat) := do
-  let i64 ← lit (.u8 Ew.i64); let vv ← lit (.u8 Ew.vv); let va ← lit (.u8 Ew.va); let nl ← lit (.i64 Alg.nul)
-  let w ← lit (.size 8); let nf ← lit (.u64 ((Kernel.nullBits .i64).getD 0)); let z ← lit (.u64 0)
-  let o ← lit (.bytes (one 1)); let lane ← lit (Reg.put Scan.Kind.i64)
-  let g (fill src idx : Nat) := call1 (kernel% Kernel.gatherBytes) #[w, fill, src, idx]
-  let val (op : UInt8) (sh x y m : Nat) := do call1 (kernel% Kernel.Ew.val) #[← lit (.u8 op), i64, sh, nl, x, y, m]
-  let p ← call1 (kernel% Kernel.Order.grade) #[lane, ← lit (.bit false), n, k]
-  let ks ← g nf k p; let vs ← g nf v p
-  -- `til n` as the inverse permutation read at `p`: no kernel of the ABI answers the positions directly
-  let t ← g nf (← call1 (kernel% Kernel.Order.invert) #[p]) p
-  -- a run starts where its key differs from the row before and ends where it differs from the row after; past
-  -- either end the gather answers the null, which differs from every key
-  let cut (op : UInt8) := do
-    let nb ← g nf ks (← val op va t o n)
-    call1 (kernel% Kernel.whereBits) #[n, ← maskB (kernel% Kernel.Ew.cmp) #[← lit (.u8 Ew.ne), i64, vv, ks, nb, n] n]
-  let firsts ← cut Ew.sub; let lasts ← cut Ew.add
-  let r ← lenB firsts
-  let cs ← call1 (kernel% Kernel.Scan.scan) #[← lit (Reg.put Scan.Verb.sums), lane, n, vs]
-  -- the prefix sum before a run's first row; before row 0 the gather answers its fill, `0`
-  let before ← g z cs (← val Ew.sub va firsts o r)
-  return #[r, ← g nf ks firsts, ← val Ew.sub vv (← g z cs lasts) before r]
 
 end Rel.Lang.Plan

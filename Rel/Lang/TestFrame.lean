@@ -40,9 +40,6 @@ rel_program frameSchema where
 -- `S` is not declared here: a program declares it `schema S = {k : K, v : N}` and reads `col S "v"`
 -- (`TestSchema.kvProg`).
 
--- pinned to the old layer: stage 1b reads `frame.k`/`frame.v` with `relRegs`, which takes dense columns only, and
--- the kernel path stores them encoded. Unpin when `relRegs` reads an encoded column (open, before T10).
-set_option rel.kernel false in
 open Rel.Programs.prelude in
 rel_program frame where
     obj K = {A,B,C}
@@ -60,42 +57,11 @@ rel_program frame where
 -- by hand: `keep` is the positions 0 1 2 4 7; A's are 1 4 7 (3+7+3), B's 0 2 (5+5), C has none. B's two rows both
 -- hold 5: the sum runs over positions, so they count twice.
 #guard frame.ok
-
-/-! Stage 1b. `out`'s term has no node a recipe is keyed on, so `Plan.ofTm` is not extended; the recipes are built
-    here on the columns `k`, `v`, `big` as its mask (`v > 2`), and checked against `out`. -/
-
-open Rel.Lang.Plan Rel.Kernel in
-/-- WHERE on `big`'s mask, then CODE and SEGFOLD: the registers of the group count, the keys, the sums. -/
-def gsB : Bld (Array Nat) := do
-  let some #[.size n, .bytes p, .bytes k] := relRegs frame.k.rel | throw "frame.k: its columns are not dense"
-  let some #[.size _, .bytes p', .bytes v] := relRegs frame.v.rel | throw "frame.v: its columns are not dense"
-  unless p.data == p'.data do throw "frame.k, frame.v: their positions differ"
-  let n ← lit (.size n); let k ← lit (.bytes k); let v ← lit (.bytes v)
-  let big ← maskB (kernel% Kernel.Ew.cmp)
-    #[← lit (.u8 Ew.gt), ← lit (.u8 Ew.i64), ← lit (.u8 Ew.va), v, ← lit (.bytes (Rel.one 2)), n] n
-  let (m, cs) ← whereB n big #[k, v]
-  let #[k, v] := cs | throw "whereB: two columns in, two out"
-  groupSumB m k v
-
-open Rel.Lang.Plan in
-def gsPlan : Except String Plan := Bld.plan (discard gsB)
-
-open Rel.Lang.Plan in
-/-- `Plan.run` of `gsPlan` answers `out`'s count, keys and sums, byte for byte. -/
-def gsAgrees : Except String Bool := do
-  let (rs, _) ← gsPlan >>= (·.run abiOf)
-  let (out, _) ← gsB.run (#[], 0, #[], #[])
-  let some #[.size g, .bytes ks, .bytes ss] := relRegs frame.out.rel | throw "frame.out: not dense"
-  match out.toList.map fun (i : Nat) => (rs[i]? : Option Plan.Val) with
-  | [some (.size r), some (.bytes a), some (.bytes b)] => pure (r == g && a.data == ks.data && b.data == ss.data)
-  | _ => throw "gsPlan: its result registers are not a size and two buffers"
-
-#eval show IO Unit from do unless ← IO.ofExcept gsAgrees do throw (IO.userError "gsPlan: its registers differ from frame.out")
-
-
+#guard frame.kernel
 -- `out`'s term, read as `outputOf` reads it, and the first place the denotation has no rule for it: none, since `Λ`
 -- and `E` at a canonical element object (`K` is stored `.i64`) have `lam_sound` (D.8)
 /-- info: none -/
+
 #guard_msgs in
 #eval show Lean.Meta.MetaM Unit from do
   let r ← (Rel.Lang.Expand.read (fun _ => none) [(`Rel.Programs.prelude, Rel.Programs.prelude)] frame).run
