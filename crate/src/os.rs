@@ -36,6 +36,7 @@ pub const O_CLOEXEC: i32 = 0o2000000;
 pub const S_IFMT: u32 = 0o170000;
 pub const S_IFREG: u32 = 0o100000;
 pub const ENOENT: i32 = 2;
+pub const EEXIST: i32 = 17;
 pub const EINTR: i32 = 4;
 pub const EIO: i32 = 5;
 pub const PATH_MAX: usize = 4096;
@@ -72,6 +73,7 @@ pub mod sys2 {
         pub fn munmap(addr: *mut c_void, n: usize) -> i32;
         pub fn rename(from: *const c_char, to: *const c_char) -> i32;
         pub fn unlink(path: *const c_char) -> i32;
+        pub fn mkdir(path: *const c_char, mode: u32) -> i32;
         pub fn realpath(path: *const c_char, out: *mut c_char) -> *mut c_char;
         pub fn getpid() -> i32;
         pub fn dlopen(path: *const c_char, flags: i32) -> *mut c_void;
@@ -151,6 +153,7 @@ pub fn stat(path: &CStr) -> Result<Stat, i32> {
 }
 pub fn rename(from: &CStr, to: &CStr) -> Result<(), i32> { ok(unsafe { sys2::rename(from.as_ptr(), to.as_ptr()) }) }
 pub fn unlink(path: &CStr) -> Result<(), i32> { ok(unsafe { sys2::unlink(path.as_ptr()) }) }
+pub fn mkdir(path: &CStr, mode: u32) -> Result<(), i32> { ok(unsafe { sys2::mkdir(path.as_ptr(), mode) }) }
 /// the canonical path, in `out` (`PATH_MAX` bytes is what `realpath(3)` requires)
 pub fn realpath<'a>(path: &CStr, out: &'a mut [u8; PATH_MAX]) -> Result<&'a CStr, i32> {
     if unsafe { sys2::realpath(path.as_ptr(), out.as_mut_ptr().cast()) }.is_null() { return Err(errno()) }

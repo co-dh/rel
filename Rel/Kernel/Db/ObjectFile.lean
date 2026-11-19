@@ -69,10 +69,11 @@ def ownImage (f : OwnFile) : Except String ByteArray :=
       ++ r.1 ++ d ++ r.2).toArray⟩
 
 /-- The one column writer: `parts` are a `Column` constructor's `ByteArray`s, written as they lie (`ownImage`). The
-extern writes a temporary beside `path` and renames it over `path`, so a mapping of the old file keeps its pages. -/
+extern writes a temporary beside `path` and renames it over `path`, so a mapping of the old file keeps its pages. Missing parent directories are created. -/
 @[extern "qlean_own_write"]
 def ownWrite (path : @& String) (code attr kind : UInt8) (count : USize) (domain : @& String)
     (parts : @& Array ByteArray) : IO Unit := do
+  if let some d := (System.FilePath.mk path).parent then IO.FS.createDirAll d
   IO.FS.writeBinFile path (← IO.ofExcept (ownImage ⟨code, attr, kind, count, domain, parts⟩))
 
 /-- `own::head`'s loop: the `k` parts from part `i`, whose table entry is at `24 + 16 * i`, the bytes before it ending

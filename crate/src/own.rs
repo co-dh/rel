@@ -103,6 +103,20 @@ pub fn write_segs(f: &File, segs: &[&[u8]]) -> Result<(), i32> { segs.iter().try
 /// `r`, else the `close` error: the write's errno is the one reported when both fail.
 pub fn close_after(f: File, r: Result<(), i32>) -> Result<(), i32> { let c = f.close(); r.and(c) }
 
+/// every missing ancestor directory of `target`, outermost first, mode 0o777 under the umask; `EEXIST` is success (another
+/// writer made it), any other errno is returned. A POSIX path: the separator is the byte `/`, empty components are skipped.
+pub fn mkdirs(target: &CStr) -> Result<(), i32> {
+    let mut buf = target.to_bytes_with_nul().to_vec();
+    for i in 1..buf.len() - 1 {
+        if buf[i] != b'/' || buf[i - 1] == b'/' { continue; }
+        buf[i] = 0;
+        let r = os::mkdir(CStr::from_bytes_until_nul(&buf).expect("own::mkdirs: NUL written above"), 0o777);
+        buf[i] = b'/';
+        match r { Err(e) if e != os::EEXIST => return Err(e), _ => {} }
+    }
+    Ok(())
+}
+
 /// own.rs `own_replace`: the segments as the whole content of `target`: a temporary in the same directory, then `rename`
 /// (truncating a mapped path would turn the next read of its pages into SIGBUS; the old mapping keeps the old inode).
 /// A link is written through as `open` would, and a device, fifo or socket is written in place: the name is the thing
@@ -120,7 +134,12 @@ pub fn replace(target: &CStr, segs: &[&[u8]]) -> Result<(), i32> {
     let mut tmp = target.to_bytes().to_vec();
     tmp.extend_from_slice(format!(".{}.{}.tmp\0", os::getpid(), SERIAL.fetch_add(1, Ordering::Relaxed)).as_bytes());
     let tmp = CStr::from_bytes_with_nul(&tmp).expect("own::replace: a NUL inside the path");
-    let f = File::open(tmp, os::O_WRONLY | os::O_CREAT | os::O_EXCL | os::O_CLOEXEC, 0o666)?;
+    let flags = os::O_WRONLY | os::O_CREAT | os::O_EXCL | os::O_CLOEXEC;
+    // a missing target may have missing ancestors: made only after the open said ENOENT, so the common case pays nothing
+    let f = match File::open(tmp, flags, 0o666) {
+        Err(os::ENOENT) if st.is_none() => { mkdirs(target)?; File::open(tmp, flags, 0o666)? }
+        r => r?,
+    };
     let w = write_segs(&f, segs).and_then(|()| match &st { Some(s) => f.fchmod(s.mode & 0o7777), None => Ok(()) });
     let r = close_after(f, w).and_then(|()| os::rename(tmp, target));
     // the write's errno is the one reported; a temporary that also cannot be removed stays behind
@@ -489,12 +508,24 @@ mod tests {
 kind 255 with 18446744073709551615 parts and a 18446744073709551615-byte name");
         assert!(matches!(write(&p, 7, 0, 0, 3, b"a\0b", &[b"abc"]),
                          Err(Fail::User(w)) if w == "a domain name with no NUL byte, found one at byte 1"));
-        assert!(matches!(write(c"/data/tmp/relk-absent-dir/x", 7, 0, 0, 3, b"", &[b"abc"]), Err(Fail::Errno(os::ENOENT))));
+        assert!(matches!(write(c"/dev/null/x", 7, 0, 0, 3, b"", &[b"abc"]), Err(Fail::Errno(20))));
         assert!(matches!(map(c"/data/tmp/relk-absent-dir/x"), Err(Fail::Errno(os::ENOENT))));
         assert!(matches!(map(c"/data/tmp"), Err(Fail::Errno(os::EISDIR))));
         let short = tmp("short.col");
         std::fs::write(short.to_str().unwrap(), b"qleancol").unwrap();
         assert!(matches!(map(&short), Err(Fail::User(w)) if w == "a 24-byte own-format header, the file is 8 bytes"));
+    }
+    // a target whose ancestors do not exist gets them; an ancestor that is a regular file is ENOTDIR, not success
+    #[test] fn replace_makes_ancestors() {
+        let p = tmp("mk/seed.bin");
+        let d = std::path::Path::new(p.to_str().unwrap()).parent().unwrap().to_owned();
+        std::fs::remove_dir_all(d.join("deep")).ok();
+        let q = alloc::ffi::CString::new(d.join("deep/a/b/c.bin").to_str().unwrap()).unwrap();
+        replace(&q, &[b"xy"]).unwrap();
+        assert_eq!(std::fs::read(q.to_str().unwrap()).unwrap(), b"xy");
+        std::fs::write(d.join("file"), b"f").unwrap();
+        let bad = alloc::ffi::CString::new(d.join("file/x/c.bin").to_str().unwrap()).unwrap();
+        assert_eq!(replace(&bad, &[b"z"]), Err(20));
     }
     // a replace keeps the mode of the file it replaces and leaves no temporary
     #[test] fn replace_keeps_mode() {

@@ -71,7 +71,7 @@ syms:
 native:
 	$(GATE)
 	$(LAKE) build relc rel-native
-	rm -rf $(T)/nat; mkdir -p $(T)/nat/lean/out/arith $(T)/nat/native/out/arith
+	rm -rf $(T)/nat; mkdir -p $(T)/nat/lean $(T)/nat/native
 	$(LAKE) exe relc plan $(T)/nat/lean
 	cd $(T)/nat/native; $(NATIVE)
 	diff -r $(T)/nat/lean/out $(T)/nat/native/out
