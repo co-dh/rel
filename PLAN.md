@@ -119,6 +119,11 @@ Size：S = 一步，少于 20 次 tool call；M = 一到三步；L = 多于三�
   「`N` 中小于 m 的位置」；`Enc.pos` 的定义（`get .i64 m .pos i = some i`，i < m）不变。
   进度：6.13a WIP 51aeacd（Lean 与 Rust 读取分支、测试；`RelKernel` 剩 `KGather` 两个证明），由分支 `d4pos2` 接着做。
   6.13b 的范围：`longsOf`/`tilLongs`/`tilCol` 还有约 35 个可执行调用者（`Rel.Run.Alg`、`Rel.Run.Code`、`Rel.Run.Lang.Bits` 等）。
+  窗口在 frame 上（owner，经 dataframe 会话）：一个 frame 的所有列共用一对 `(lo, hi)`，因为每个 frame op 对每一列用同一个
+  `p : N ⟶ N`。frame 的位置总是 `0..m-1`，key 始终恰为 `Enc.pos`，m = hi − lo；在新位置 i 读列 c 就是读 c 的 payload 的
+  `lo + i`。`drop(n)` 是 frame 上的 `lo += n`，key 仍是 `pos`（m − n），所以 `Enc.pos` 不需要 offset（与 6.13 的「不做
+  `a + s·i`」一致）。值恰好是行号的列（物化的下标）是普通 `i64` 列，不是 `pos`。构造新数组的 op（按置换 `gather`、
+  filter 的压紧、groupBy）产生 `lo = 0` 的 frame。
 - ⬜ D.5 F17(1) 布尔 `foR`：把 6.11 中「`bits` 是宽度 1 的 `foR`」这一项提前，`Enc.WF` 接受 `u1` 的 `foR`，`scan` 的布尔结果
   答 `foR`。在 6.10 的 `scan` agent 合并之后（同一个 kernel）。
 - ⬜ D.6 `scan` 的方向参数（反向扫描，van Herk）：`kscan` 的扩展，不是新 kernel。与 D.5 同一个 agent，在 `scan` 合并之后。
@@ -131,6 +136,15 @@ Size：S = 一步，少于 20 次 tool call；M = 一到三步；L = 多于三�
   dataframe 的输入：F-a `groups(k)` 写不出（`strₗ` 不在 `prims`，带键的 `foldI` 缺），只能按 K 的整个 universe 逐元素
   播种左 fold，代价 |K|×n；F-b `filter(p)` 进入 `Tm` 时是 prelude 的 fold 展开，recipe 只能匹配 fold 的结构。
   D.8 一并决定 `filter`/`groupBy` 是否各有自己的 `Tm` 节点。
+  进度（`rel-lazy` e7c40ee，全量 build 0 error 0 sorryAx，compile-diff 241/25 = baseline，native 字节相等）：
+  - 已完成：`lam_sound`（canonical 元素对象，d72cf71）；`groups(k) = ran(R k) ≫ Λ((R k)°)` 与 `filter(p) = R ≫ p` 是
+    组合式，不加 `Tm` 节点；`E_sound`（0ac4f13，与 `lam_sound` 共用 `lamDen_of`）；`Obj.canonical` 对每个 rank 单射的
+    atom 成立（e7c40ee，只有 `f32`/`f64` 不成立）。
+  - 未完成：`foldI` 成为 definition（`rep_foldBy_keep` 要从 `pend₀ = top T.key e` 推广到任意逐行种子关系）；`thin_sound`
+    （缺一条把 `swapInC` 的行读回 `TQ (c,b)` 的引理）；setify/asc 行（Row 引理对每个 σ 都要成立，而含义只在 canonical
+    元素对象上成立，Row 接口要加对 σ 的前提）；`hylo`（`rep_hylo` 要 `Local chN Φ`，而 `Tm.den` 不看 `ch`，见 Q9）。
+  - 性能发现：TestGroups 的耗时随最大组的大小增长（1 个 key 160 ms，1000 个 key 7 ms）。原因是 `Obj.sortByC` 的 `.arr`
+    分支（`Rel/Run/Code.lean`）是 LSD radix sort，每个元素位置跑一遍 `arrPass`，一行里有 100000 个元素就是 100000 遍。
 - ✅ D.10（ee84ad8，make check 绿）：两个 `Row` 是不同概念，`Elab` 的改名 `LiftRow`/`liftRows`；TestMss 覆盖。原条目 F-c：`Rel.Lang.Row` 在 `Rel.Lang.Rows` 与 `Rel.Run.Lang.Elab` 各定义一次，同时 import 就报
   `environment already contains 'Rel.Lang.Row.mk.injEq'`，`Tm.gap` 因此不能在运行程序的模块里调用。在 master 上修，立即派。
 - ⬜ D.9 语言里的 `input`/`output` 声明：改 `Elab`/`Expand`，在 3.10/3.11（去掉 demand bit 的 `Elab`、`Expand`）之后。
