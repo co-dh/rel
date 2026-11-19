@@ -1,5 +1,4 @@
-import Rel.Run.Comp
-import Rel.Run.SetOps
+import Rel.Run.Arith
 
 /-! The `Tm` constructors `ldiv`, `rdiv`, `lam`, `E`, `nil`, `lt`, `leq` (`Rel/Run/Lang/Tm.lean`) as operators on `Tab`
 over the five kernels (PLAN 6.14 W3), on the encoded columns as they are, as `Rel/Run/Comp.lean`. Each operator's
@@ -10,15 +9,13 @@ demand `D`, as the compiled term reads it (`Tm.lam`'s doc). Their laws are in `R
 namespace Rel
 open Rel.Ext Rel.Kernel Rel.Verify
 
-/-- `colMap` as an `Arr` of its type `t` (`colMap_closed`). -/
-def colArr (op : Op) (n : USize) (a b : Enc) (t : QAtomicType := .i64) : Except String (Arr t n) :=
-  match h : colMap op n a b t with
+/-- `n` zero words at `t`: `colMap .add` of two `colConst n 0`, as an `Arr` of `t` (`colMap_closed`; `colArr` of
+`Rel/Run/Arith.lean` at `t` once it takes the type, to move there). -/
+def Arr.zeros (t : QAtomicType) (n : USize) : Except String (Arr t n) := do
+  let z ← colConst n 0
+  match h : colMap .add n z z t with
   | .ok o => .ok (Arr.mk o (colMap_closed h).2)
   | .error s => .error s
-
-/-- `n` zero words at `t`: `colArr .add` of two `colConst n 0`. -/
-def Arr.zeros (t : QAtomicType) (n : USize) : Except String (Arr t n) := do
-  colArr .add n (← colConst n 0) (← colConst n 0) t
 
 /-- A side of no rows, every atom column `Arr.zeros _ 0`. -/
 def Vals.noRows : (B : Obj) → Except String (Vals B 0)
