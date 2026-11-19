@@ -25,6 +25,11 @@ rel_program kernT9 where
     m1 : N ⟶ [N] ≜ ⟨xs, y⟩merge(≤)
     m2 : N ⟶ [N] ≜ ⟨x, y⟩merge(<)
     m3 : N ⟶ [N] ≜ z ⟨x, y⟩merge(≤)
+    p : N ⟶ [N×N] ≜ {(1,(1,5) (2,3)),(2,[(3,1)]),(3,[]),(4,(2,2) (2,2) (5,0))}
+    q : N ⟶ [N×N] ≜ {(1,(1,7) (2,9) (2,0)),(2,(3,1) (3,1)),(3,[(4,4)]),(4,(2,2) (5,0) (5,0))}
+    m4 : N ⟶ [N×N] ≜ ⟨p, q⟩merge(π₁ ≤ π₁°)
+    m5 : N ⟶ [N×N] ≜ ⟨q, q⟩merge(π₁ ≤ π₁°)
+    m6 : N ⟶ [N×N] ≜ ⟨q, p⟩merge(π₁ < π₁°)
     t1 : N ⟶ [N] ≜ x thinL(≤)
     t2 : N ⟶ [N] ≜ x thinL(<)
     t3 : N ⟶ [N] ≜ z x thinL(≤)
@@ -57,6 +62,11 @@ rel_program kernT9Old where
     m1 : N ⟶ [N] ≜ ⟨xs, y⟩merge(≤)
     m2 : N ⟶ [N] ≜ ⟨x, y⟩merge(<)
     m3 : N ⟶ [N] ≜ z ⟨x, y⟩merge(≤)
+    p : N ⟶ [N×N] ≜ {(1,(1,5) (2,3)),(2,[(3,1)]),(3,[]),(4,(2,2) (2,2) (5,0))}
+    q : N ⟶ [N×N] ≜ {(1,(1,7) (2,9) (2,0)),(2,(3,1) (3,1)),(3,[(4,4)]),(4,(2,2) (5,0) (5,0))}
+    m4 : N ⟶ [N×N] ≜ ⟨p, q⟩merge(π₁ ≤ π₁°)
+    m5 : N ⟶ [N×N] ≜ ⟨q, q⟩merge(π₁ ≤ π₁°)
+    m6 : N ⟶ [N×N] ≜ ⟨q, p⟩merge(π₁ < π₁°)
     t1 : N ⟶ [N] ≜ x thinL(≤)
     t2 : N ⟶ [N] ≜ x thinL(<)
     t3 : N ⟶ [N] ≜ z x thinL(≤)
@@ -81,6 +91,10 @@ rel_program kernT9Old where
 #guard ["l1", "l2", "dbl", "sub", "leaf", "ch"].all fun d => ((get kernT9.expanded d .long .long).map (·.n.toNat != 0)) == some true
 #guard ["m1", "m2", "t1", "t2"].all fun d =>
   ((get kernT9.expanded d .long (.arr .long)).map (·.n.toNat != 0)) == some true
+-- `merge` with ties under a preorder (`π₁ ≤ π₁°`: equal first, different second) and duplicates in both inputs: one
+-- merged list per key (`List.merge`), each round's state carrying one copy of `x`'s payload (`Tab.pack`)
+#guard ["m4", "m5", "m6"].all fun d => sameK kernT9.expanded kernT9Old.expanded d .long (.arr (.prod .long .long)) &&
+  ((get kernT9.expanded d .long (.arr (.prod .long .long))).map (·.n.toNat)) == some 4
 #guard ["l3", "sube"].all fun d => ((get kernT9.expanded d .long .long).map (·.n.toNat)) == some 0
 #guard ["m3", "t3"].all fun d => ((get kernT9.expanded d .long (.arr .long)).map (·.n.toNat)) == some 0
 

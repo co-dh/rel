@@ -34,7 +34,9 @@ def mu (cap : Nat) (f : Tab A B → Except String (Tab A B)) : Except String (Ta
 /-- **The rounds of a fold** (`fold`, `foldr`, `foldI`), at most `f`: `rest` holds at each key `k` the part of its
 array not yet read, `P` its values so far. A round moves the rows of `P` whose key has no element left (`P − dom(el) P`)
 to `out`, `peel` splits each `rest` into the element read now and the rest (`cons°` or `snoc°`), and `step` gives the
-next values; it ends when `P` is empty, so one round more than the longest array. -/
+next values, their payloads cut (`Tab.pack`): a step joining two tables that share a payload (`merge`'s `∪` of its
+two branches, each carrying `x`) would double it every round; it ends when `P` is empty, so one round more than the
+longest array. -/
 def foldRounds {K E V : Obj} (peel : Tab K (.arr E) → Except String (Tab K E × Tab K (.arr E)))
     (step : Tab K V → Tab K E → Except String (Tab K V)) :
     Nat → Tab K (.arr E) → Tab K V → Tab K V → Except String (Tab K V)
@@ -42,7 +44,7 @@ def foldRounds {K E V : Obj} (peel : Tab K (.arr E) → Except String (Tab K E �
   | f + 1, rest, P, out => do
     if P.n == 0 then return out
     let (el, rest') ← peel rest
-    foldRounds peel step f rest' (← step P el) (← out.union (← P.diff (← (← el.dom).comp P)))
+    foldRounds peel step f rest' (← (← step P el).pack) (← out.union (← P.diff (← (← el.dom).comp P)))
 
 /-- Round `k` of a left fold: `cons°` of what is left of each array, its head read now (index `k` from the start). -/
 def peelL {K E : Obj} (rest : Tab K (.arr E)) : Except String (Tab K E × Tab K (.arr E)) := do
@@ -104,6 +106,26 @@ def thinL {B : Obj} {n : USize} (q : Tab (.prod B B) (.prod B B) → Except Stri
     let r ← (← (← cons lone).union (← up.comp (← cons (← x.pair bs)))).union (← down.comp ys)
     p.comp r
   foldRounds peelR (fun P el => do bump (← el.pair P)) (X.1.toNat + 2) (← idU X) (← nil X) (← zero)
+
+open Rel.Ext Rel.Kernel in
+/-- **`F(R)` on the cells `X`** (`mapDen`: `xs F(R) ys` iff `|ys| = |xs|` and `xs[i] R ys[i]`), `R` given on the
+elements of the cells. One pass where `R` is a function on them: the elements EXPANDed into a flat payload `v` of `T`
+rows (as `sum`), `⟨pos, v⟩ ≫ R` keyed by position, and where each of the `T` positions has exactly one image those
+images in position order are the new payload under the same widths (`Vals.cells`). Where some element has no image or
+two, the relator is the left fold `⦇nil, ⟨π₁, π₂ ≫ R⟩ ≫ snoc⦈` (`foldRounds`, `peelL`): a cell with an element of no
+image drops out, one with `k` images of an element is `k` ways, one round per element of the longest cell. -/
+def map {A B : Obj} {n : USize} (R : Tab A B) (X : Vals (.arr A) n) : Except String (Tab (.arr A) (.arr B)) :=
+  match X with
+  | ⟨m, lo, hi, f⟩ => do
+    if 2 ^ 63 ≤ n.toNat * m.toNat + n.toNat + m.toNat then throw s!"map: {n} cells over {m} elements past 2^63"
+    let (s, e) ← cellSpan m lo hi
+    let w ← colMap .sub n e.enc s.enc
+    let (T, G, u) ← expand n w
+    let v ← Vals.gather T (← colMap .add T (← kgather T G n s.enc) u) f
+    let C ← (⟨T, ← Arr.pos T, v⟩ : Tab .long A).comp R
+    if C.n == T && (← C.dom).n == T then canon (⟨n, X, ← Vals.cells n w C.val⟩ : Tab (.arr A) (.arr B))
+    else
+      foldRounds peelL (fun acc el => do snoc (← acc.pair (← el.comp R))) (m.toNat + 2) (← idU X) (← nil X) (← zero)
 
 /-- **`concat` on the cells of cells `X`** = `⦇nil, cat⦈` (the prelude's `concat`, B&dM p.129): the rounds of a left
 fold from `[]`, each `(acc, xs) ↦ acc ++ xs`. -/

@@ -134,7 +134,8 @@ def kernRows : List (String × Lean.Name) :=
    ("takewhile", ``Tab.takewhile),
    ("loop", ``Tab.loop),
    ("merge", ``Tab.merge),
-   ("thinL", ``Tab.thinL)]
+   ("thinL", ``Tab.thinL),
+   ("F", ``Tab.map)]
 
 -- every kernel row is a row of `prims`
 #guard kernRows.all fun (s, _) => prims.any (·.sym == s)
@@ -170,14 +171,16 @@ def Tm.kernelNode {A B : Obj} : Tm A B → Bool
   | .arg .. => true
   | _ => false
 
-/-- The nodes of `t` with no kernel body, each as its constructor's index (`Tm.ctorIdx`) and, for a `call`, its
-    constant: a call has one where `twin` says its constant has a kernel twin (`Expand.emit` builds one for a
-    definition whose body is on the kernel path). A `share` is entered here, though `Tm.parts` does not enter it. -/
-partial def Tm.offKernel (twin : Lean.Name → Bool) {A B : Obj} (t : Tm A B) : List (Nat × Lean.Name) :=
+/-- The nodes of `t` with no kernel body, each as its constructor's index (`Tm.ctorIdx`) and what names it: for a
+    `call` its constant, for a `prim` its row's symbol, else `""`. A call has one where `twin` says its constant has
+    a kernel twin (`Expand.emit` builds one for a definition whose body is on the kernel path). A `share` is entered
+    here, though `Tm.parts` does not enter it. -/
+partial def Tm.offKernel (twin : Lean.Name → Bool) {A B : Obj} (t : Tm A B) : List (Nat × String) :=
   match t with
   | .share _ R => R.offKernel twin
-  | .call _ c .. => if twin c then [] else [(t.ctorIdx, c)]
-  | t => (if t.kernelNode then [] else [(t.ctorIdx, .anonymous)]) ++ t.parts.flatMap fun ⟨_, _, u⟩ => u.offKernel twin
+  | .call _ c .. => if twin c then [] else [(t.ctorIdx, toString c)]
+  | t => (if t.kernelNode then [] else [(t.ctorIdx, match t with | .prim r => r.sym | _ => "")]) ++
+    t.parts.flatMap fun ⟨_, _, u⟩ => u.offKernel twin
 
 /-- Every node of `t` has a kernel body: the test that puts a program on the kernel path. -/
 def Tm.onKernel (twin : Lean.Name → Bool) {A B : Obj} (t : Tm A B) : Bool := (t.offKernel twin).isEmpty
@@ -291,11 +294,15 @@ def stepAfter (S T A C : Obj) (d : Bool) (F : Fn d S T)
 
 /-- `hylo(c, S)` = `μX : c G(X) S` on the keys `D` in demand: the nodes `N = μN : D ∪ ran(N ≫ ch)` the children `ch`
     reach (`Tab.mu`), then `D ≫ μX : N ≫ φ(X)` (`Tab.mu`, as `GenK.mu`), `φ` read only at the nodes. A node of height
-    `h` has its value from round `h + 1` on, so `|N| + 2` rounds reach the fixed point where `ch` has no cycle on `N`;
-    with a cycle the rounds run on to the least fixed point, or fail at that bound. -/
+    `h` has its value from round `h + 1` on, so `|N| + 2` rounds reach the fixed point where `ch` has no cycle on `N`.
+    A cycle fails it (`Gen.hylo`'s rule): the nodes with an endless descent, `νP : dom(N ≫ ch ≫ P)` from `N`, are
+    those that reach a node from themselves, where the least fixed point would be a silent `𝟘`. -/
 def hylo (A B : Obj) (d e : Bool) (ch : Fn d A A) (φ : Tab A B → Fn e A B) : Fn true A B := ofVals _ _ fun X => do
   let D ← Tab.idU X
   let N ← Tab.mu USize.size fun N => do D.union (← (← (compT (.ok N) ch).runE {}).ran)
+  let C ← (compT (.ok N) ch).runE {}
+  let cyc ← Tab.nu (fun P => do (← C.comp P).dom) N
+  if cyc.n != 0 then throw s!"hylo: the coalgebra reaches a node from itself at {cyc.n} of {N.n} nodes, so it is not well-founded there"
   D.comp (← Tab.mu (N.n.toNat + 3) fun Y => (compT (.ok N) (φ Y)).runE {})
 
 end GenK
