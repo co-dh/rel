@@ -134,11 +134,15 @@ pub fn mask_blk(c: &Coc, b: usize, nb: usize, op: i32, v: i64, w64: &mut [u64], 
             // a frame above v is the one case the window cannot say: every residual is then above it
             if f > v { if matches!(op, GT | GE | NE) { mask_fill(w64, nb) } } else {
                 let t = (v as u64).wrapping_sub(f as u64);
-                let (lo, hi) = match op { LT => (0, t.wrapping_sub(1)), LE => (0, t), GT => (t.wrapping_add(1), u64::MAX),
-                                          GE => (t, u64::MAX), _ => (t, t) };
-                let at = m.off[b] as usize;
-                res_mask_cmp(&c.pack[at..at + m.blk() * m.width[b] as usize / 8], nb, m.width[b], lo, hi.wrapping_sub(lo), op == NE,
-                             w64, scratch)
+                // `None`: no residual is below 0 (`LT` at `v = f`) or above the largest word, so no row matches; a
+                // wrapped bound there would match every row
+                let r = match op { LT => t.checked_sub(1).map(|h| (0, h)), LE => Some((0, t)), GT => t.checked_add(1).map(|l| (l, u64::MAX)),
+                                   GE => Some((t, u64::MAX)), _ => Some((t, t)) };
+                if let Some((lo, hi)) = r {
+                    let at = m.off[b] as usize;
+                    res_mask_cmp(&c.pack[at..at + m.blk() * m.width[b] as usize / 8], nb, m.width[b], lo, hi.wrapping_sub(lo), op == NE,
+                                 w64, scratch)
+                }
             }
         }
     }

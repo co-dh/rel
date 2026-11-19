@@ -117,6 +117,19 @@ example : ((List.range 4).foldlM (kscanRow .add #[1, 0, 1, 0] #[0x100000064, 0x1
 #guard (kscan .add false .i64 .i32 4 kseg [.bytes (Column.packIds 64 4 fun _ => 0x100000064), .bytes (Column.packIds 64 4 (· + 1))]).toOption.map
   (·.2) = some (some 107)
 
+-- A compare against a constant equal to a patched block's frame: `Tab.comp`'s `p < n` of 81 × 729, each of the `n`
+-- rows before its `m` partners, so block 0 is framed at 81 with the rows 0 and 1 patched below it. `LT` at `v = frame`
+-- once wrapped its bound `0 - 1` and matched every row of that block. Only a block of 1024 rows chooses that frame, so
+-- the expected rows are plain arithmetic, not a `decide` of the row fold.
+private def kperm : Array Nat := (Array.range 81).flatMap fun g => #[g] ++ (Array.range 729).map (81 + 729 * g + ·)
+/-- `kperm`'s rows `f` encoded as the writer encodes a kernel's answer (`Coc.encode 8`). -/
+private def kpermCol (f : Nat → Nat) : Enc :=
+  let c := Coc.encode 8 (Column.packIds 64 kperm.size fun i => f (kperm[i]?.getD 0))
+  .foR c.1 c.2
+#guard (kscan .lt false .i64 .u1 (USize.ofNat kperm.size) (.foR (Coc.bools kperm.size fun _ => true).1
+    (Coc.bools kperm.size fun _ => true).2) [kpermCol id, kpermCol fun _ => 81]).toOption.map
+  (fun r => (r.1.raw .u1 (USize.ofNat kperm.size)).toList) = some (kperm.toList.map fun v => if v < 81 then 1 else 0)
+
 end Rel.Kernel
 
 
