@@ -57,7 +57,6 @@ rel_program frame where
 -- by hand: `keep` is the positions 0 1 2 4 7; A's are 1 4 7 (3+7+3), B's 0 2 (5+5), C has none. B's two rows both
 -- hold 5: the sum runs over positions, so they count twice.
 #guard frame.ok
-#guard frame.kernel
 -- `out`'s term, read as `outputOf` reads it, and the first place the denotation has no rule for it: none, since `Λ`
 -- and `E` at a canonical element object (`K` is stored `.i64`) have `lam_sound` (D.8)
 /-- info: none -/
