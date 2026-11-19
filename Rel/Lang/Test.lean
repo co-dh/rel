@@ -16,6 +16,7 @@ import Rel.Lang.Test.Kern2
 import Rel.Lang.Test.Kern45
 import Rel.Lang.Test.Kern45On
 import Rel.Lang.Test.Kern68
+import Rel.Lang.Test.Kern9
 
 /-! The Rel language on the blocks world of `doc/rel-lang-design.md` §g, the program `Programs.blocks`; its
     front-end errors; the round trip of `rel_program`'s grammar on every operator of §b. Every program runs as its

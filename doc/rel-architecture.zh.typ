@@ -296,6 +296,15 @@ compile η t : {r : Rel A B // rep r = ⟦t⟧ρ}       -- 方案 A：规格在�
   [`snoc°`], [同 `cons°`：格 `[s, e − 1)` 与 payload 第 `e − 1` 个],
   [`cat°`], [格界 → EXPAND(`e − s + 1`)（每格的每个切点）→ `gather` `s` `e` → `scan` 切点 `s[G] + u`；
     两段 `[s, s + u)`、`[s + u, e)` 共享原 payload；`n(m + 1) + n + m + 1 ≥ 2^63` 拒绝],
+  [`hylo(c, S)`（草稿，待审）], [`μX. c ≫ G(X) ≫ S` 在需求键 `D` 上：节点 `N = μN. D ∪ ran(N ≫ ch)`（`ch` = `c` 后接
+    `G` 的成员关系），再 `D ≫ μX. N ≫ φ(X)`；两处都是 `Tab.mu`（`∪` 行的轮次），不建中间结构；无环时至多 `|N| + 2` 轮],
+  [`loop(F)`（草稿，待审）], [`P ≫ loop(F)`：在 `ran P` 的每个 `(c, ys)` 上，以 `c` 起、沿 `ys` 的左折叠
+    （`Tab.foldRounds` + `cons°`），每轮 `p ≫ F(ran p)`，`p` 为该轮的对 `(acc, y)`],
+  [`merge(Q)`（草稿，待审）], [状态 `((x, y), acc)` 自 `((x, y), [])` 起，以 `cat(x, y)` 为时钟跑 `|x| + |y|` 轮
+    `Tab.foldRounds`：`l = dom(⟨a, b⟩ ≫ Q)`（`a`、`b` 为两侧 `cons°` 的头），`l` 或 `y` 空时取 `a`，否则取 `b`，
+    `snoc` 到 `acc`；结果 `π₂`],
+  [`thinL(Q)`（草稿，待审）], [`⦇nil, bump(Q)⦈ʳ`（`Tab.foldRounds` + `snoc°`）；`bump` 在对 `(x, ys)` 上：
+    `u = ys ≫ cons°` 得 `(b, bs)`，`x Q b` 时 `x :: bs`，`b Q x` 时 `ys`，`ys` 空或两者皆否时 `cons`（`x :: ys`）],
 )
 
 == Rust 侧
