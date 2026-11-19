@@ -455,19 +455,6 @@ pub fn gather_enc(run: Runner, w: usize, fill: u64, c: &Coc, idx: &[i64], out: &
     crate::c::run_map(run, out, idx.len(), w, crate::QLEAN_COST_GATHER, w + 8,
                       &|lo, hi, o: &mut [u8]| enc(w, c, sw, fill, &idx[lo..hi], o));
 }
-/// structural.rs `gather_foR_idx_run`: encoded column, encoded indices (`ic.meta.n` of them, `count` cut to the
-/// grid), the index decoded a block at a time and never whole.
-pub fn gather_enc_idx(run: Runner, w: usize, fill: u64, c: &Coc, ic: &Coc, out: &mut [u8]) {
-    let sw = c.one_width();
-    check_enc(w, sw, "gather_foR");
-    crate::c::run_map(run, out, ic.meta.n, w, crate::QLEAN_COST_GATHER, w + 8, &|lo, hi, o: &mut [u8]| {
-        let mut buf = pod::Scr::<i64>::new(ic.meta.blk());
-        for (b, blo, at, end) in Blocks::from(*ic).tiles(lo, hi) {
-            ic.decode_blk(b, end - blo, &mut buf);
-            enc(w, c, sw, fill, &buf[at - blo..end - blo], &mut o[(at - lo) * w..(end - lo) * w]);
-        }
-    });
-}
 /// structural.rs `gather_bits_run` and its entry: bit `j` of `out` is bit `idx[j]` of `bits`, `0` for a miss. The unit
 /// is an output byte (`out` arrives zeroed): two slices sharing a byte would lose each other's bits.
 pub fn gather_bits(run: Runner, n: usize, bits: &[u8], idx: &[i64], out: &mut [u8]) {
@@ -559,20 +546,6 @@ pub fn gather_ids(run: Runner, w: u32, wout: u32, fill: u64, src: &[u8], n: usiz
                       &|lo, hi, o: &mut [u8]| {
         let (lo, hi) = (lo * g, (hi * g).min(m));
         for j in lo..hi { crate::ids::id_put(o, wout, j - lo, gathered_id(src, w, n, fill, idx[j])) }
-    });
-}
-/// structural.rs `gather_ids_foR_run`: encoded indices, `ic.meta.n` of them (`count`, cut to the grid).
-pub fn gather_ids_enc(run: Runner, w: u32, wout: u32, fill: u64, src: &[u8], n: usize, ic: &Coc, out: &mut [u8]) {
-    let (g, m) = (crate::ids::slice_elems(wout), ic.meta.n);
-    crate::c::run_map(run, out, m.div_ceil(g), crate::ids::ids_bytes(g, wout), crate::QLEAN_COST_GATHER, g * 9,
-                      &|lo8, hi8, o: &mut [u8]| {
-        // a slice starts on a whole byte of the answer and each block of the index on a multiple of `WBLK`
-        let (lo, hi) = (lo8 * g, (hi8 * g).min(m));
-        let mut v = pod::Scr::<i64>::new(ic.meta.blk());
-        for (b, blo, at, end) in Blocks::from(*ic).tiles(lo, hi) {
-            ic.decode_blk(b, end - blo, &mut v);
-            for j in at..end { crate::ids::id_put(o, wout, j - lo, gathered_id(src, w, n, fill, v[j - blo])) }
-        }
     });
 }
 /// structural.rs `qlean_structural_cycle_ids`: `m` fields of `ids` from `off`, cycling over `n`; `out` arrives zeroed.

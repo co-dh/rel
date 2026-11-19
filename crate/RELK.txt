@@ -75,9 +75,7 @@ qlean_structural_expand
 qlean_structural_gather
 qlean_structural_gather_bits
 qlean_structural_gather_foR
-qlean_structural_gather_foR_idx
 qlean_structural_gather_ids
-qlean_structural_gather_ids_foR
 qlean_structural_gather_syms
 qlean_structural_rows_of
 qlean_structural_scatter

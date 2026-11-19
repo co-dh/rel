@@ -275,12 +275,6 @@ export! {
         fresh(idx.len() * w, |o| structural::gather_enc(c::pool(), w, fill, &src, idx, o))
     }
 
-    /// Spec: `gatherFoRIdx w fill smeta spack n imeta ipack m` is `gatherFoR w fill smeta spack n (Coc.decode 8 imeta ipack m)`
-    /// -- the same answer with the index left encoded as well.
-    fn qlean_structural_gather_foR_idx(w: usize, fill: u64, smv: B, spv: B, n: usize, imv: B, ipv: B, count: usize) -> O {
-        let (src, ix) = (view("qlean structural", smv, spv, n), view("qlean structural", imv, ipv, count));
-        fresh(ix.meta.n * w, |o| structural::gather_enc_idx(c::pool(), w, fill, &src, &ix, o))
-    }
 
     /// Spec: `gatherBits n bits idx` is bit `j` set exactly when `gatherAt n idx j` is `some i` and `Column.bitAt bits i` --
     /// `101b@0 5` is `10b`, measured, so a miss is `0b` and not a dropped element.
@@ -330,16 +324,6 @@ export! {
         a.into()
     }
 
-    /// Spec: `gatherPackedFoR n w wout fill src imeta ipack m` is `gatherPacked n w wout fill src (Coc.decode 8 imeta ipack m)`,
-    /// the index left encoded.
-    fn qlean_structural_gather_ids_foR(n: usize, w: usize, wout: usize, fill: u64, srcv: B, imv: B, ipv: B, count: usize) -> O {
-        let src = srcv.bytes();
-        let n = ids_n(n, src, w);
-        let ix = view("qlean structural", imv, ipv, count);
-        let mut a = zeroed(crate::ids::ids_bytes(ix.meta.n, wout as u32));
-        structural::gather_ids_enc(c::pool(), w as u32, wout as u32, fill, &src[..crate::ids::ids_bytes(n, w as u32)], n, &ix, a.bytes_mut());
-        a.into()
-    }
 
     /// Spec: `concatIds wout counts widths maps parts` is every part's ids read through its own map and laid down end to end,
     /// packed at `wout`. It reads `min counts.size parts.size` parts; `widths` and `maps` are reached with `!`, so a part
