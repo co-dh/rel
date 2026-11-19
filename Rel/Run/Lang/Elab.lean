@@ -158,9 +158,9 @@ inductive Pre
   /-- `μX : body` (`least`) or `νX : body`, `X` the variable `k` written `x`; `S` the meet of `body`'s conjuncts that
       do not mention `X`, a `ν`'s start. -/
   | fix (pos : Pos) (least : Bool) (k : Nat) (x : String) (S : Option Pre) (body : Pre) (a b : OTy)
-  /-- `hylo(c, S)`, `c` at `pos`, where a cycle of `c` is reported: `body` the `μX : c G(X) S` it is, `X` the variable `k`; `ch : a ⟶ a` the children
-      `c` gives a node, `c` then `G`'s membership. -/
-  | hylo (pos : Pos) (k : Nat) (ch body : Pre) (a b : OTy)
+  /-- `hylo(c, S)`, `c` at `pos`, where a cycle of `c` is reported: `body` the `μX : c G(X) S` it is, `X` the variable
+      `k`; its children, `c` then `G`'s membership, are `Tm.kids` of the built body. -/
+  | hylo (pos : Pos) (k : Nat) (body : Pre) (a b : OTy)
   /-- The constant `c` at `pos`, at the objects `us` of its object variables, each with whether `c` is generic
       over it and whether `c` reads its universe, and the arguments `args`, each passed as its pair test where
       `ts` says so (`Form`), its plan on keys in demand when `d`;
@@ -304,7 +304,7 @@ def Pre.traverse {m : Type → Type} [Monad m] (fp : Pos → m Pos) (f : Option 
   | .close q x a why => return .close (← fp q) (← mo x) a why
   | .var q k a b t => return .var (← fp q) k a b t
   | .fix q l k x S y a b => return .fix (← fp q) l k x (← S.mapM (f none)) (← mo y) a b
-  | .hylo q k ch x a b => return .hylo (← fp q) k (← mo ch) (← mo x) a b
+  | .hylo q k x a b => return .hylo (← fp q) k (← mo x) a b
   | .call q c us xs ts alt a b d cv tst => return .call (← fp q) c us (← xs.mapM (f none)) ts (← mo alt) a b d cv tst
   | x => pure x
 
@@ -883,33 +883,31 @@ def settle (m : Option OTy) (p : Pos) (as : List Arg) : Arg → M Arg
 /-- `hylo(c, S)`'s functor `G`, read off `c : a ⟶ t` (`t = G(a)`) and `S : s ⟶ b` (`s = G(b)`) along `×`, `+`,
     `[ ]`: a place where `t` is `a` and `s` is `b` (or not known yet) is `G`'s argument, one where they are one object
     a constant. Its terms: `G(X) : t ⟶ G(b)`, `X` the variable `k` (`F` on `[ ]`, `⟨π₁·,π₂·⟩` on `×`, `[· inl,· inr]`
-    on `+`, `𝟙` where `G` is constant), the object `G(b)`, and `G`'s membership `G(a) ⟶ a`, none where `G` is
-    constant; the terms `μX : c G(X) S` would elaborate to as written. -/
-partial def hyloG (p : Pos) (k : Nat) (a b : OTy) (t s : OTy) : M (Pre × OTy × Option Pre) := do
+    on `+`, `𝟙` where `G` is constant), the object `G(b)`, and whether `G` reads `X` there (`false` where `G` is
+    constant); the terms `μX : c G(X) S` would elaborate to as written. `G`'s membership is `Tm.kids` of them. -/
+partial def hyloG (p : Pos) (k : Nat) (a b : OTy) (t s : OTy) : M (Pre × OTy × Bool) := do
   let any := match s with | .mv _ => true | _ => false
-  if t == a && (s == b || any) then return (.var p k a b none, b, some (.id a))
+  if t == a && (s == b || any) then return (.var p k a b none, b, true)
   let w := "[R,S] reads its parts whole"
   match t, s with
   | .prod t₁ t₂, .prod s₁ s₂ | .prod t₁ t₂, s₁@(.mv _) =>
     let s₂ := match s with | .prod _ s₂ => s₂ | _ => s₁
     let (g₁, u₁, m₁) ← hyloG p k a b t₁ s₁; let (g₂, u₂, m₂) ← hyloG p k a b t₂ s₂
-    if m₁.isNone && m₂.isNone then return (.id t, t, none)
-    let side (m : Option Pre) (pr : Pre) : Option Pre := m.map (.comp pr)
-    let mem := match side m₁ (.outl t₁ t₂), side m₂ (.outr t₁ t₂) with | some l, some r => some (.join l r) | l, r => l <|> r
-    return (.pair (.comp (.outl t₁ t₂) g₁) (.comp (.outr t₁ t₂) g₂), .prod u₁ u₂, mem)
+    if !m₁ && !m₂ then return (.id t, t, false)
+    return (.pair (.comp (.outl t₁ t₂) g₁) (.comp (.outr t₁ t₂) g₂), .prod u₁ u₂, true)
   | .sum t₁ t₂, .sum s₁ s₂ | .sum t₁ t₂, s₁@(.mv _) =>
     let s₂ := match s with | .sum _ s₂ => s₂ | _ => s₁
     let (g₁, u₁, m₁) ← hyloG p k a b t₁ s₁; let (g₂, u₂, m₂) ← hyloG p k a b t₂ s₂
-    if m₁.isNone && m₂.isNone then return (.id t, t, none)
+    if !m₁ && !m₂ then return (.id t, t, false)
     let junc (l r : Pre) : Pre := .junc (.close p l t₁ w) (.close p r t₂ w)
     return (junc (.comp g₁ (.prim inlRow [] u₁ (.sum u₁ u₂))) (.comp g₂ (.prim inrRow [] u₂ (.sum u₁ u₂))), .sum u₁ u₂,
-      some (junc (m₁.getD (.zero t₁ a)) (m₂.getD (.zero t₂ a))))
+      true)
   | .arr t₁, .arr s₁ | .arr t₁, s₁@(.mv _) =>
     let (g₁, u₁, m₁) ← hyloG p k a b t₁ s₁
-    if m₁.isNone then return (.id t, t, none)
-    return (.prim mapRow [g₁] (.arr t₁) (.arr u₁), .arr u₁, m₁.map (.comp (.prim memRow [] (.arr t₁) t₁)))
+    if !m₁ then return (.id t, t, false)
+    return (.prim mapRow [g₁] (.arr t₁) (.arr u₁), .arr u₁, true)
   | _, _ =>
-    if t == s || any then return (.id t, t, none)
+    if t == s || any then return (.id t, t, false)
     throw ⟨p, s!"hylo(c, S): c's target and S's source differ at {t} against {s}, which is neither {a} against {b} \
       (the recursion) nor one object (a constant); G is read off them"⟩
 
@@ -933,9 +931,9 @@ def elabE (env : Env) (m : Option OTy) : Expr → M Arg
     let (qc, a, t) := (← elabE env none c).plain; let (qs, s', b) := (← elabE env none s).plain
     let k ← modifyGet fun st => (st.fixes, { st with fixes := st.fixes + 1 })
     let mc ← Lean.getMCtx
-    let (gx, gb, mem) ← hyloG p k (zonk mc a) (zonk mc b) (zonk mc t) (zonk mc s')
+    let (gx, gb, _) ← hyloG p k (zonk mc a) (zonk mc b) (zonk mc t) (zonk mc s')
     unify p "the source of hylo's algebra S, G(B)" s' gb
-    pure (.rel (.hylo c.pos k ((mem.map (.comp qc)).getD (.zero a a)) (.comp (.comp qc gx) qs) a b) a b)
+    pure (.rel (.hylo c.pos k (.comp (.comp qc gx) qs) a b) a b)
   | .op p o objs args => do
     let as ← elabArgs env m args
     if args.isEmpty then constant env p o objs
@@ -1660,11 +1658,10 @@ def build : Pre → Except Err Res
     pure ⟨A, B, .val ⟨n, k, v⟩⟩
   | .close p q a why => do closeRes objs mc dp p a why (← build q)
   -- the children and the body run on the nodes in demand, no universe read
-  | .hylo p k ch q a b => do
+  | .hylo p k q a b => do
     let A ← toObj objs mc dp a; let B ← toObj objs mc dp b
-    let c ← at? dp (A := A) (B := A) (← build ch)
     let t ← at? dp (A := A) (B := B) (← build q)
-    pure ⟨A, B, .hylo k s!"the coalgebra c at {p}" c t⟩
+    pure ⟨A, B, .hylo k s!"the coalgebra c at {p}" t⟩
   | .var _ k a b none => return ⟨← toObj objs mc dp a, ← toObj objs mc dp b, .var false k⟩
   | .var _ k a b (some false) => return ⟨← toObj objs mc dp a, ← toObj objs mc dp b, .var true k⟩
   -- a parameter given a pair test runs nowhere; `test` reads it

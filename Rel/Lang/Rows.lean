@@ -165,14 +165,17 @@ def Tm.gap : {A B : Obj} → Tm A B → Option String
   | _, _, .thin (B := B) Q =>
     if B.canonical && Q.cor then Q.gap
     else some s!"thin: needs a canonical element object ({B.canonical}) and a coreflexive pair test ({Q.cor}, Tm.cor)"
-  | _, _, .hylo .. => some "hylo: its rounds equal lfp only by den_local, which is not proved (§7.2)"
+  -- the rounds equal the lfp where the body reads its variable only at the children `Tm.kids` bounds (`den_local`)
+  | A, _, .hylo k _ b => match b.kids k A with
+    | some _ => if b.pol true k then b.gap else some s!"hylo: the body is not positive in its variable {k} (§7.3)"
+    | none => some s!"hylo: the body reads its variable {k} where Tm.kids bounds no children (§7.2)"
   | _, _, .call .. => some "call: a generic definition's term waits for stage 5"
   | A, B, .prim r => if r.ok A B then none else some s!"{r.sym}: its lemma does not hold at these objects (Row.ok)"
   | _, _, .mu k _ _ b =>
     if b.pol true k then b.gap else some s!"μ: the body is not positive in its variable {k} (D8 = R, §7.3)"
   | _, _, .nu k S b =>
     if b.pol true k then S.gap <|> b.gap else some s!"ν: the body is not positive in its variable {k} (D8 = R, §7.3)"
-  -- `share` is a part computed once and reused (numbered by `Expand.number`, its code memoised by `Out.memo`, left
+  -- `share` is a part computed once and reused (numbered by `Expand.number`, its code built once by `Expand.code`, left
   -- alone by `Tm.subst`), so the part must be closed: the meaning reads `Val.empty` and a part with a free variable
   -- is the code's fault, recomputed under each binding, never a meaning that should read `ρ`
   | _, _, .share _ R => if R.fv.isEmpty then R.gap else some "share: its part is not closed"

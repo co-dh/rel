@@ -166,17 +166,12 @@ structure Out (d : Bool) (A B : Obj) where
   pl : Pl A B
   row : Option (Prim × List Code) := none
 
-/-- The identity: a closed node's plan is now computed once by `Pl.closed`'s `Thunk`, which this did before. Kept
-    only so the 42 arms of `compile_sound` that cite `Out.Sound.memo` merge unchanged; removed with them. -/
-def Out.memo {A B : Obj} : {d : Bool} → Out d A B → Out d A B
-  | false, o => o
-  | true, o => o
-
 /-- `t`'s code and plan, one `Gen` combinator per constructor, as `Expand.node` and `Expand.plan?` build them. The
     plan is the bit-rule node where the node has one, else its table as a leaf (`Gen.pleaf`); a closed term's plan
     is its table. `ν` runs as plain rounds (`Gen.nu`); `call` vouches for nothing until stage 5. A closed field
-    (`conv`, `ldiv`) holding a term run on demand reads its `on` plan by `Pl.get`, which vouches for nothing. -/
-def Tm.gen (η : CodeEnv) {A B : Obj} (t : Tm A B) : Out t.dem A B := Out.memo <| match η, A, B, t with
+    (`conv`, `ldiv`) holding a term run on demand reads its `on` plan by `Pl.get`, which vouches for nothing. A
+    `hylo` runs its body's `kids`, not a part of it: the recursion is on `Tm.size` (`Tm.size_kids`). -/
+def Tm.gen (η : CodeEnv) {A B : Obj} (t : Tm A B) : Out t.dem A B := match η, A, B, t with
   | _, A, B, .val R => leaf (Gen.val A B (R, true))
   | _, A, _, .uni (m := m) U => leaf (Gen.uni A m (U, true))
   | _, A, B, .zero => leaf (Gen.zero A B)
@@ -236,8 +231,12 @@ def Tm.gen (η : CodeEnv) {A B : Obj} (t : Tm A B) : Out t.dem A B := Out.memo <
     | none => leaf (none' A B f.dem)
   | η, A, B, .nu k S b => leaf (Gen.nu A B (S.gen η).fn fun X => (b.gen (η.bindCode k ⟨A, B, false, .tab X⟩)).fn)
   | η, A, B, .mu k _ cap b => leaf (Gen.mu A B cap fun X => (b.gen (η.bindCode k ⟨A, B, false, .tab X⟩)).fn)
-  | η, A, B, .hylo k _ ch b =>
-    leaf (Gen.hylo A B ch.dem b.dem (ch.gen η).fn fun X => (b.gen (η.bindCode k ⟨A, B, false, .tab X⟩)).fn)
+  | η, A, B, .hylo k _ b =>
+    have := Tm.size_kids k A b
+    leaf (Gen.hylo A B _ b.dem (((b.kids k A).getD .zero).gen η).fn
+      fun X => (b.gen (η.bindCode k ⟨A, B, false, .tab X⟩)).fn)
+termination_by t.size
+decreasing_by all_goals simp only [Tm.size] at *; omega
 where
   /-- A node with no bit rule: its plan is its table. -/
   leaf {A B : Obj} {d : Bool} (f : Fn d A B) : Out d A B := ⟨f, pleaf A B d f, none⟩

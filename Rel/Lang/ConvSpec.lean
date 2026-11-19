@@ -129,7 +129,7 @@ theorem convTm_den (ρ : Val) : ∀ {A B : Obj} (t : Tm A B), t.ConvOK ρ →
     exact fun _ => ⟨fun u hu => conv_false_den ρ u hu rfl, by noproj⟩
   | top _ _ | lam _ _ | E _ _ | est _ _ | thin _ _ | nil | atPos _ | foldr _ _ _ _ | fold _ _ _ _ | foldI _ _ _ _
   | flat _ _
-  | juncD _ _ _ _ | hylo _ _ _ _ _ _ => exact fun _ => ⟨by noconv, by noproj⟩
+  | juncD _ _ _ _ | hylo _ _ _ _ => exact fun _ => ⟨by noconv, by noproj⟩
   | id =>
     refine fun _ => ⟨fun u hu => ?_, by noproj⟩
     rw [convTm.eq_def, if_neg (by simp [Tm.dem])] at hu; cases hu
