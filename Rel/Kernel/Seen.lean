@@ -6,8 +6,10 @@ adjacent equal rows, found by comparing each row with the one before it. Rows ou
 first such pair. The body states the answer as `Order.idsBy` does, `Order.firstsBy` over the rows and a row's group
 `Order.groupIn` them, which on sorted rows numbers the runs.
 
-Equality is `kasc`'s: two rows are equal when every column's order code at its type (`ascCol`) is, so `-0.0` and `0.0`
-are one group and every NaN is one group, and `kasc ≫ kseen` numbers exactly `kasc`'s runs of ties. The `k` in the name
+Equality is `kasc`'s: two rows are equal when every column's order code at its type (`ascCol`) is, and the code is one
+to one on a type's stored bits (`ascOrd_atom`), so equality is equality of stored bits: `-0.0` and `0.0` are two
+groups, as are two NaNs with different bits. Normalising NaN and `-0` happens where float words are produced, not here.
+`kasc ≫ kseen` numbers exactly `kasc`'s runs of ties. The `k` in the name
 is temporary, as for `kscan`; 6.11 renames. -/
 
 namespace Rel.Kernel

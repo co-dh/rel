@@ -48,12 +48,12 @@ def i8Out : String ⊕ (List (List UInt64) × List UInt64) := .inr ([[0x80, 0xff
 example : pview (u 5) (kasc (u 5) i8) = .inr [2, 1, 4, 3, 0] := by decide +kernel
 #guard view (u 5) (kasc (u 5) i8) == i8Out
 
--- floats by `ordKey`: NaN below every number, `-0.0` equal to `0.0` (a tie, so input order)
+-- floats by `ordCode`, IEEE totalOrder on the stored bits: `-1.0 < -0.0 < 0.0 < 1.0 < NaN`, `-0.0` and `0.0` apart
 def flt : List (QAtomicType × Enc) :=
   [(.f64, col [0x3ff0000000000000, 0x7ff8000000000000, 0x8000000000000000, 0xbff0000000000000, 0])]
 def fltOut : String ⊕ (List (List UInt64) × List UInt64) :=
-  .inr ([[0x7ff8000000000000, 0xbff0000000000000, 0x8000000000000000, 0, 0x3ff0000000000000]], [1, 3, 2, 4, 0])
-example : pview (u 5) (kasc (u 5) flt) = .inr [1, 3, 2, 4, 0] := by decide +kernel
+  .inr ([[0xbff0000000000000, 0x8000000000000000, 0, 0x3ff0000000000000, 0x7ff8000000000000]], [3, 2, 4, 0, 1])
+example : pview (u 5) (kasc (u 5) flt) = .inr [3, 2, 4, 0, 1] := by decide +kernel
 #guard view (u 5) (kasc (u 5) flt) == fltOut
 
 -- no key column: the identity permutation

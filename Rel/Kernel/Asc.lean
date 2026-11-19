@@ -24,11 +24,21 @@ def ascLayout (t : QAtomicType) : Option (Nat × Bool × Bool) :=
     | .i8 | .i16 | .i32 | .i64 => (k.width, false, true)
     | .f32 | .f64 => (k.width, true, false)
 
-/-- The order code of a raw word of a column of type `t`, as an unsigned word: `ordKey` at `t`'s layout
-(`ascLayout`), so a signed integer flips its sign bit and a float folds `-0.0` and every NaN below every number and then
-flips (q's order; PLAN 6.9's map replaces it). -/
+/-- **The order code** of the low `w` bytes of `v` (PLAN 6.9's map): unsigned, so comparing codes as unsigned words
+orders the values, and one to one on the `w`-byte word, so equal codes are equal stored bits (`ascOrd_atom`). A signed
+integer flips its sign bit; a float takes IEEE 754 totalOrder: a non-negative one sets its sign bit and a negative one
+flips every bit, so `-NaN < -∞ < … < -0.0 < 0.0 < … < ∞ < NaN` and no two bit patterns share a code. Normalising a
+`-0.0` or a NaN belongs to whatever produces float words, not here. The non-float branches are `ordKey`'s
+(`Rel/Kernel/Search.lean`, `rfl`), a copy that dies with `ordKey`'s `bin` path (W5). -/
+def ordCode (w : Nat) (float signed : Bool) (v : UInt64) : UInt64 :=
+  let mask : UInt64 := if w == 8 then 0xffffffffffffffff else (2 ^ (8 * w) - 1).toUInt64
+  let top : UInt64 := (2 ^ (8 * w - 1)).toUInt64
+  let u := v &&& mask
+  if float then (if u &&& top != 0 then u ^^^ mask else u ||| top) else if signed then u ^^^ top else u
+
+/-- The order code of a raw word of a column of type `t`: `ordCode` at `t`'s layout (`ascLayout`). -/
 def ascOrd (t : QAtomicType) : Option (UInt64 → UInt64) :=
-  (ascLayout t).map fun (w, f, s) => ordKey w f s
+  (ascLayout t).map fun (w, f, s) => ordCode w f s
 
 /-- Row `i` no later than row `j` in the lexicographic order of the code columns `ks`, the first the most significant:
 the first column where the two differ decides, and rows equal in every column answer `true`. -/
