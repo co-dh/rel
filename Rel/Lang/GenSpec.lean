@@ -196,7 +196,7 @@ theorem lift2_reps {A B C D E F : Obj} {f : CRel A B → CRel C D → CRel E F} 
 
 /-- A plan's value `p` on the keys `D`: where its bit is set, at each key of `D` it relates as `T`, read by `⟦−⟧`
     at `Val.empty` (a plan is closed). -/
-def PlOK {A B : Obj} (p : Tm A B false × Bool) (D : Den A A) (T : Den A B) : Prop :=
+def PlOK {A B : Obj} (p : Tm A B × Bool) (D : Den A A) (T : Den A B) : Prop :=
   p.2 = true → ∀ x y, D x x → (p.1.den Val.empty x y ↔ T x y)
 
 /-- A plan computes `T`: closed, at every point; on keys, at the keys of each coreflexive it is given. -/
@@ -218,7 +218,7 @@ theorem PSound.get {A B : Obj} {P : Pl A B} {T : Den A B} (h : PSound P T) : PlO
   | on f => intro hb; simp [Pl.get] at hb
 
 /-- `Pl.map2 f` is sound where `f` keeps soundness on any keys. -/
-theorem Pl.map2_sound {A B C E : Obj} {f : Tm A B false × Bool → Tm A C false × Bool → Tm A E false × Bool}
+theorem Pl.map2_sound {A B C E : Obj} {f : Tm A B × Bool → Tm A C × Bool → Tm A E × Bool}
     {R : Pl A B} {S : Pl A C} {TR : Den A B} {TS : Den A C} {T : Den A E}
     (hf : ∀ r s (D : Den A A), PlOK r D TR → PlOK s D TS → PlOK (f r s) D T) (hR : PSound R TR)
     (hS : PSound S TS) : PSound (Pl.map2 f R S) T := by
@@ -789,7 +789,7 @@ theorem rdiv_sound {A B C : Obj} {R : Fn false A C} {S : Fn false B C} {UA : Fn 
 
 /-- **`runC`'s answer is the plan's relation** under its bit, on either path, in check mode too (`die` is its
     argument). -/
-theorem rep_runC {A B : Obj} {d : Bool} (p : Tm A B d) (hb : (Bits.runC p).2 = true) (a : A.El) (b : B.El) :
+theorem rep_runC {A B : Obj} (p : Tm A B) (hb : (Bits.runC p).2 = true) (a : A.El) (b : B.El) :
     rep (Bits.runC p).1 a b ↔ p.den Val.empty a b := by
   by_cases hv : p.isVal = true
   · simp only [Bits.runC, hv, if_true] at hb ⊢; exact Bits.rep_tableC p hb a b
@@ -801,7 +801,7 @@ theorem rep_runC {A B : Obj} {d : Bool} (p : Tm A B d) (hb : (Bits.runC p).2 = t
       · rw [if_neg hc]; simp only [dbgTrace]; exact fun hb => Bits.rep_table _ hb a b
 
 /-- The demand `demP` hands `S` in `R S`: a coreflexive holding every value of `R`'s plan. -/
-theorem demP_spec {A B : Obj} (r : Tm A B false) (hb : (demP r).2 = true) :
+theorem demP_spec {A B : Obj} (r : Tm A B) (hb : (demP r).2 = true) :
     (∀ x y, rep (demP r).1 x y → x = y) ∧ ∀ a b, r.den Val.empty a b → rep (demP r).1 b b := by
   simp only [demP, Bool.and_eq_true] at hb
   have hK := rep_ranC _ hb.2
@@ -819,7 +819,7 @@ theorem pleaf_sound {A B : Obj} {d : Bool} {f : Fn d A B} {T : Den A B} (hf : So
   · exact fun D hD hb x y hx => hf.at D hD hb x y hx
 
 /-- `R S` on whatever keys `R`'s plan `r` was given, `S`'s plan closed or run on `ran(r)`. -/
-theorem compPl_sound {A B C : Obj} {r : Tm A B false × Bool} {S : Pl B C} {D : Den A A} {TR : Den A B}
+theorem compPl_sound {A B C : Obj} {r : Tm A B × Bool} {S : Pl B C} {D : Den A A} {TR : Den A B}
     {TS : Den B C} (hr : PlOK r D TR) (hS : PSound S TS) : PlOK (compPl r S) D (TR ≫ TS) := by
   cases S with
   | closed s =>
@@ -875,7 +875,7 @@ theorem pldiv_sound {A B C : Obj} {R : Pl A B} {S : Pl A C} {UB : Fn false B B} 
     simp only [ldivDen, r, s]
 
 /-- A plan's value run as bits is `Sound` where, at every point, it computes `T`. -/
-theorem runPl_sound {A B : Obj} {p : Tm A B false × Bool} {T : Den A B} (hp : PlOK p (𝟙 _) T) :
+theorem runPl_sound {A B : Obj} {p : Tm A B × Bool} {T : Den A B} (hp : PlOK p (𝟙 _) T) :
     Sound (.tab (runPl p)) T := const_sound fun hb => by
   simp only [runPl] at hb ⊢; obtain ⟨hb, e⟩ := also_ok_rel hb; rw [e, CRel.rep_ofC hb.2]
   exact Core.Rel.ext fun x y => (rep_runC _ (CRel.ofC_ok hb.2).1 x y).trans (hp hb.1 x y rfl)

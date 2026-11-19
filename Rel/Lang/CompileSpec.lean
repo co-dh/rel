@@ -13,17 +13,6 @@ open Rel.Core.Rel hiding id comp recip inter union zero le inl inr junc
 /-- Every variable's plan computes its meaning under `ρ`. -/
 def CodeEnv.Sound (η : CodeEnv) (ρ : Val) : Prop := ∀ k A B, PSound (η k A B) (ρ k A B)
 
-/-- Binding `k` to a table keeps `CodeEnv.Sound`, the table's meaning bound in `ρ`. -/
-theorem CodeEnv.Sound.bind {η : CodeEnv} {ρ : Val} (hη : η.Sound ρ) (k : Nat) {A B : Obj} (X : CRel A B) :
-    (η.bind k X).Sound (ρ.bind k (rep X.rel)) := by
-  intro j A' B'
-  by_cases e : j = k
-  · subst e
-    by_cases h : A = A' ∧ B = B'
-    · obtain ⟨rfl, rfl⟩ := h; simp [CodeEnv.bind, Val.bind, PSound, PlOK]; exact fun _ _ _ _ => Iff.rfl
-    · simp [CodeEnv.bind, Val.bind, h, PSound, PlOK]; exact fun _ _ _ _ => Iff.rfl
-  · simp only [CodeEnv.bind, Val.bind, e, if_false]; exact hη j A' B'
-
 /-- `μX : φ` by rounds from `𝟘`: where fewer than `cap` rounds ran, the least fixed point of a monotone `Φ`, each
     round sound at an ok table (`CRel.rep_fixOn`). -/
 theorem mu_sound {A B : Obj} {cap : Nat} {φ : CRel A B → Fn false A B} {Φ : Den A B → Den A B}
@@ -170,21 +159,21 @@ theorem CodeEnv.Sound.bindCode {η : CodeEnv} {ρ : Val} (hη : η.Sound ρ) (k 
     (hc : Code.Sound c s) : (η.bindCode k c).Sound (ρ.bind k s.2.2) := by
   obtain ⟨X, Y, e, f⟩ := c
   obtain ⟨T, rfl, hf⟩ := hc X Y e f rfl
-  intro j A' B' d D hD hb x y hx
+  intro j A' B'
   by_cases ej : j = k
   · subst ej
     by_cases h : X = A' ∧ Y = B'
     · obtain ⟨rfl, rfl⟩ := h
-      simp only [CodeEnv.bindCode, Code.at, Val.bind, and_self, dite_true, if_true] at hb ⊢
-      exact pleaf_sound (d := d) hf D hD hb x y hx
-    · simp [CodeEnv.bindCode, Code.at, Val.bind, h, Tm.den]
-  · simp only [CodeEnv.bindCode, Val.bind, ej, if_false] at hb ⊢; exact hη j A' B' d D hD hb x y hx
+      simp only [CodeEnv.bindCode, Code.at, Val.bind, and_self, dite_true, if_true]
+      exact pleaf_sound hf
+    · simp [CodeEnv.bindCode, Code.at, Val.bind, h, PSound, PlOK, Tm.den]
+  · simp only [CodeEnv.bindCode, Val.bind, ej, if_false]; exact hη j A' B'
 
 /-- A call's arguments bound in order keep `CodeEnv.Sound`: `bindCode`'s lemma along `Code.Sounds`. -/
 theorem CodeEnv.Sound.args {cs : List Code} {ss : List Sem} (h : Code.Sounds cs ss) :
     (CodeEnv.args cs).Sound (Val.args ss) := go 0 h where
   go (k : Nat) : ∀ {cs ss}, Code.Sounds cs ss → (CodeEnv.args.go k cs).Sound (Val.args.go k ss)
-    | [], [], _ => fun _ _ _ _ _ _ _ _ _ _ => by simp [CodeEnv.args.go, Val.args.go, Val.empty, Tm.den]
+    | [], [], _ => fun _ _ _ => by simp [CodeEnv.args.go, Val.args.go, Val.empty, PSound, PlOK, Tm.den]
     | _ :: _, ⟨_, _, _⟩ :: _, ⟨hc, hs⟩ => CodeEnv.Sound.bindCode (go (k + 1) hs) k hc
     | [], _ :: _, h | _ :: _, [], h => h.elim
 
@@ -270,8 +259,11 @@ theorem gap_or {a b : Option String} (h : (a <|> b) = none) : a = none ∧ b = n
 
 /-- **`compile` is sound**: on a term with no gap, under an environment whose plans compute their variables'
     meanings, the code and the plan of every node compute its meaning `⟦t⟧ρ` on their keys. -/
-theorem compile_sound {A B : Obj} {d : Bool} (t : Tm A B d) (hg : t.gap = none) (η : CodeEnv) (ρ : Val)
+theorem compile_sound {A B : Obj} (t : Tm A B) (hg : t.gap = none) (η : CodeEnv) (ρ : Val)
     (hη : η.Sound ρ) : (t.gen η).Sound (t.den ρ) (t.argDen ρ) := by
+  -- a `μ`/`ν` round's table, bound as the closed code `Tm.gen` binds it to
+  have htab {A B : Obj} (X : CRel A B) : Code.Sound ⟨A, B, false, .tab X⟩ ⟨A, B, rep X.rel⟩ :=
+    fun _ _ _ _ h => by cases h; exact ⟨_, rfl, const_sound fun _ => rfl⟩
   induction t generalizing η ρ with
   | val R => exact Out.Sound.memo (Out.Sound.leaf (val_sound (R, true)))
   | uni U => exact Out.Sound.memo (Out.Sound.leaf (uni_sound (U, true)))
@@ -293,26 +285,31 @@ theorem compile_sound {A B : Obj} {d : Bool} (t : Tm A B d) (hg : t.gap = none) 
   | leq U ih => exact Out.Sound.memo (Out.Sound.leaf (leq_sound (ih hg η ρ hη).1))
   | lt U ih => exact Out.Sound.memo (Out.Sound.leaf (lt_sound (ih hg η ρ hη).1))
   | flat R ih => exact Out.Sound.memo (Out.Sound.leaf (flat_sound (ih hg η ρ hη).1))
-  | @comp A' B' C' d e R S ihR ihS =>
+  | comp R S ihR ihS =>
     obtain ⟨hR, hS⟩ := gap_or hg
     have iR := ihR hR η ρ hη; have iS := ihS hS η ρ hη
-    cases d
+    simp only [Tm.gen]; revert iR; generalize R.gen η = r; generalize R.dem = d at r ⊢
+    cases d <;> intro iR
     · exact Out.Sound.memo (.node (compB_sound iR.2.1 iS.2.1) (pcomp_sound iR.2.1 iS.2.1) rfl)
     · exact Out.Sound.memo (.node (comp_sound iR.1 iS.1) (pcomp_sound iR.2.1 iS.2.1) rfl)
-  | @meet A' B' d e R S ihR ihS =>
+  | meet R S ihR ihS =>
     obtain ⟨hR, hS⟩ := gap_or hg
     have iR := ihR hR η ρ hη; have iS := ihS hS η ρ hη
-    cases d <;> cases e <;> first
+    simp only [Tm.gen]; revert iR iS; generalize R.gen η = r; generalize S.gen η = s
+    generalize R.dem = d at r ⊢; generalize S.dem = e at s ⊢
+    cases d <;> cases e <;> intro iR iS <;> first
       | exact Out.Sound.memo (.node (meetB_sound iR.2.1 iS.2.1) (pmeet_sound iR.2.1 iS.2.1) rfl)
       | exact Out.Sound.memo (.node (meet_sound iR.1 iS.1) (pmeet_sound iR.2.1 iS.2.1) rfl)
   | join R S ihR ihS =>
     obtain ⟨hR, hS⟩ := gap_or hg
     have iR := ihR hR η ρ hη; have iS := ihS hS η ρ hη
     exact Out.Sound.memo (.node (join_sound iR.1 iS.1) (pjoin_sound iR.2.1 iS.2.1) rfl)
-  | @diff A' B' d e R S ihR ihS =>
+  | diff R S ihR ihS =>
     obtain ⟨hR, hS⟩ := gap_or hg
     have iR := ihR hR η ρ hη; have iS := ihS hS η ρ hη
-    cases d <;> cases e <;> first
+    simp only [Tm.gen]; revert iR iS; generalize R.gen η = r; generalize S.gen η = s
+    generalize R.dem = d at r ⊢; generalize S.dem = e at s ⊢
+    cases d <;> cases e <;> intro iR iS <;> first
       | exact Out.Sound.memo (.node (diffB_sound iR.2.1 iS.2.1) (pdiff_sound iR.2.1 iS.2.1) rfl)
       | exact Out.Sound.memo (.node (diff_sound iR.1 iS.1) (pdiff_sound iR.2.1 iS.2.1) rfl)
   | pair R S ihR ihS =>
@@ -338,7 +335,7 @@ theorem compile_sound {A B : Obj} {d : Bool} (t : Tm A B d) (hg : t.gap = none) 
     obtain ⟨hR, h⟩ := gap_or hg; obtain ⟨hS, h⟩ := gap_or h; obtain ⟨hU, hV⟩ := gap_or h
     exact Out.Sound.memo (Out.Sound.leaf
       (rdiv_sound (ihR hR η ρ hη).1 (ihS hS η ρ hη).1 (ihU hU η ρ hη).1 (ihV hV η ρ hη).1))
-  | var k => exact Out.Sound.memo (.node (ofPl_sound (hη k _ _)) (hη k _ _) rfl)
+  | var _ k => exact Out.Sound.memo (.node (ofPl_sound (hη k _ _)) (hη k _ _) rfl)
   | own R ih => exact Out.Sound.memo (ih hg η ρ hη)
   | share k R ih =>
     simp only [Tm.gap] at hg
@@ -354,7 +351,7 @@ theorem compile_sound {A B : Obj} {d : Bool} (t : Tm A B d) (hg : t.gap = none) 
     split at hg
     · rename_i hp
       exact Out.Sound.memo (Out.Sound.leaf (mu_sound (fun X Y h => Tm.den_mono hp h)
-        fun X _ => (ih hg _ _ (hη.bind k X)).1))
+        fun X _ => (ih hg _ _ (hη.bindCode k (htab X))).1))
     · cases hg
   | prim r =>
     have hr : rowGaps.contains r.sym = false := by simpa [Tm.gap] using hg
@@ -362,7 +359,7 @@ theorem compile_sound {A B : Obj} {d : Bool} (t : Tm A B d) (hg : t.gap = none) 
       pleaf_sound (Prim.fn_sound (fun f hf => Prim.run_sound (cs := []) (ss := []) hr trivial hf) true), ?_⟩
     intro r' cs e; cases e
     exact fun cs' ss hs f hf => Prim.run_sound hr hs hf
-  | @arg A' B' C D d e f x ihf ihx =>
+  | @arg A' B' C D f x ihf ihx =>
     obtain ⟨hf, hx⟩ := gap_or hg
     have i := ihf hf η ρ hη; have ix := ihx hx η ρ hη
     refine Out.Sound.memo ?_
@@ -371,13 +368,15 @@ theorem compile_sound {A B : Obj} {d : Bool} (t : Tm A B d) (hg : t.gap = none) 
     | none => exact Out.Sound.leaf none'_sound
     | some p =>
       obtain ⟨r, cs⟩ := p
-      have hcx : Code.Sound ⟨C, D, e, (x.gen η).fn⟩ ⟨C, D, x.den ρ⟩ := fun X Y e' g h => by
+      have hcx : Code.Sound ⟨C, D, x.dem, (x.gen η).fn⟩ ⟨C, D, x.den ρ⟩ := fun X Y e' g h => by
         cases h; exact ⟨_, rfl, ix.1⟩
-      have inv : ∀ cs' ss, Code.Sounds cs' ss → ∀ g, r.run A' B' ((cs ++ [⟨C, D, e, (x.gen η).fn⟩]) ++ cs') = some g →
+      have inv : ∀ cs' ss, Code.Sounds cs' ss →
+          ∀ g, r.run A' B' ((cs ++ [⟨C, D, x.dem, (x.gen η).fn⟩]) ++ cs') = some g →
           Sound g (f.argDen ρ (⟨C, D, x.den ρ⟩ :: ss)) := fun cs' ss hs g hg => by
-        rw [List.append_assoc] at hg; exact i.2.2 r cs hrow (⟨C, D, e, (x.gen η).fn⟩ :: cs') (⟨C, D, x.den ρ⟩ :: ss) ⟨hcx, hs⟩ g hg
-      refine ⟨Prim.fn_sound (fun g hg => inv [] [] trivial g (by simpa using hg)) d,
-        pleaf_sound (Prim.fn_sound (fun g hg => inv [] [] trivial g (by simpa using hg)) d), ?_⟩
+        rw [List.append_assoc] at hg
+        exact i.2.2 r cs hrow (⟨C, D, x.dem, (x.gen η).fn⟩ :: cs') (⟨C, D, x.den ρ⟩ :: ss) ⟨hcx, hs⟩ g hg
+      refine ⟨Prim.fn_sound (fun g hg => inv [] [] trivial g (by simpa using hg)) f.dem,
+        pleaf_sound (Prim.fn_sound (fun g hg => inv [] [] trivial g (by simpa using hg)) f.dem), ?_⟩
       intro r' cs' e'; cases e'; exact inv
   | nu k S b ihS ih =>
     simp only [Tm.gap] at hg
@@ -385,19 +384,19 @@ theorem compile_sound {A B : Obj} {d : Bool} (t : Tm A B d) (hg : t.gap = none) 
     · rename_i hp
       obtain ⟨hS, hb⟩ := gap_or hg
       exact Out.Sound.memo (Out.Sound.leaf (nu_sound (ihS hS η ρ hη).1 (fun X Y h => Tm.den_mono hp h)
-        fun X _ => (ih hb _ _ (hη.bind k X)).1))
+        fun X _ => (ih hb _ _ (hη.bindCode k (htab X))).1))
     · cases hg
   | juncD R S ihR ihS =>
     obtain ⟨hR, hS⟩ := gap_or hg
     exact Out.Sound.memo (Out.Sound.leaf (juncD_sound (ihR hR η ρ hη).1 (ihS hS η ρ hη).1))
-  | @lam A' B' d R ih =>
+  | @lam A' B' R ih =>
     simp only [Tm.gap] at hg
     split at hg
     · rename_i hc
       obtain ⟨ho, hi⟩ := Rep.canonical_spec B' hc
       exact Out.Sound.memo (Out.Sound.leaf (lam_sound (ih hg η ρ hη).1 ho hi))
     · cases hg
-  | @E A' B' d R ih =>
+  | @E A' B' R ih =>
     simp only [Tm.gap] at hg
     split at hg
     · rename_i hc
@@ -405,4 +404,11 @@ theorem compile_sound {A B : Obj} {d : Bool} (t : Tm A B d) (hg : t.gap = none) 
       exact Out.Sound.memo (Out.Sound.leaf (E_sound (ih hg η ρ hη).1 ho hi))
     · cases hg
   | thin | foldI | call | hylo => simp [Tm.gap] at hg
+
+/-- The typed entry: `compile` with its soundness as the subtype's proof, on a term with no gap under an
+    environment whose plans compute their variables' meanings. -/
+def compileS (η : CodeEnv) (ρ : Val) (hη : η.Sound ρ) {A B : Obj} (t : Tm A B) (hw : t.gap = none) :
+    {r : Rel A B // Gen.Sound r (t.den ρ)} :=
+  ⟨compile η t, (compile_sound t hw η ρ hη).1⟩
+
 end Rel.Lang
