@@ -148,14 +148,6 @@ def tails {n : USize} (X : Vals (.arr B) n) : Except String (Tab (.arr B) (.arr 
   match L.val with
   | ⟨m, lo, hi, f⟩ => pure ⟨L.n, L.key, ⟨m, lo, hi, f.2⟩⟩
 
-/-- Round `k` of a left fold (`foldRounds`): `cons°` of what is left of each array, its head read now. -/
-def peelL {E : Obj} (rest : Tab K (.arr E)) : Except String (Tab K E × Tab K (.arr E)) := do
-  let c ← rest.comp (← uncons rest.val)
-  pure (← c.comp (← outl c.val), ← c.comp (← outr c.val))
-/-- Round `k` of a right fold: `snoc°`, its last element read now. -/
-def peelR {E : Obj} (rest : Tab K (.arr E)) : Except String (Tab K E × Tab K (.arr E)) := do
-  let c ← rest.comp (← unsnoc rest.val)
-  pure (← c.comp (← outr c.val), ← c.comp (← outl c.val))
 
 /-- **`concat` on the cells of cells `X`** = `⦇nil, cat⦈` (the prelude's `concat`, B&dM p.129): the rounds of a left
 fold from `[]`, each `(acc, xs) ↦ acc ++ xs`. -/

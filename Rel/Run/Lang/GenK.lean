@@ -130,7 +130,10 @@ def kernRows : List (String × Lean.Name) :=
    ("tails", ``Tab.tails),
    ("concat", ``Tab.flatten),
    ("filter", ``Tab.filter),
-   ("takewhile", ``Tab.takewhile)]
+   ("takewhile", ``Tab.takewhile),
+   ("loop", ``Tab.loop),
+   ("merge", ``Tab.merge),
+   ("thinL", ``Tab.thinL)]
 
 -- every kernel row is a row of `prims`
 #guard kernRows.all fun (s, _) => prims.any (·.sym == s)
@@ -161,6 +164,7 @@ def Tm.kernelNode {A B : Obj} : Tm A B → Bool
   | .rdiv .. => true
   | .nu .. => true
   | .mu .. => true
+  | .hylo .. => true
   | .var .. => true
   | .arg .. => true
   | _ => false
@@ -265,6 +269,33 @@ def foldI (I E V : Obj) (d d' : Bool) (e : Fn d I (.prod V V)) (S : Fn d' (.prod
 /-- `Rᴵ` on the pairs `X = (i, a)` in demand (`Tab.flat`), `R` run on their keys `i`. -/
 def flat (I A B : Obj) (d : Bool) (R : Fn d I (.prod A B)) : Fn true (.prod I A) B :=
   ofVals _ _ fun X => do Tab.flat X (← R.runE ⟨some ⟨_, X.1⟩, none⟩)
+
+/-! ### T9: `hylo(c, S)`, and the wrappers of the rows given a pair test or a step (`merge thinL loop`) -/
+
+/-- The twins of `Gen.testVals`, `Gen.testAfter`: the row's `Tab` operator given `Q` as its pair test, run knowing its
+    domain is the pairs `D` it is asked about (`est`'s rule); on the values in demand, or composed after them. -/
+def testVals (B A C : Obj) (Q : Fn true (.prod B B) (.prod B B))
+    (f : {n : USize} → (Tab (.prod B B) (.prod B B) → Except String (Tab (.prod B B) (.prod B B))) → Vals A n →
+      Except String (Tab A C)) : Fn true A C :=
+  ofVals _ _ fun X => f (fun D => Q.runE ⟨some ⟨D.n, D.val⟩, none⟩) X
+def testAfter (B A C : Obj) (Q : Fn true (.prod B B) (.prod B B))
+    (f : {K : Obj} → (Tab (.prod B B) (.prod B B) → Except String (Tab (.prod B B) (.prod B B))) → Tab K A →
+      Except String (Tab K C)) : Fn true A C :=
+  after _ _ fun P => f (fun D => Q.runE ⟨some ⟨D.n, D.val⟩, none⟩) P
+/-- The twin of `Gen.stepAfter`: the step `F` given the coreflexive `D` of the pairs a round meets, `D ≫ F`
+    (`compT`: not run on no pair). -/
+def stepAfter (S T A C : Obj) (d : Bool) (F : Fn d S T)
+    (f : {K : Obj} → (Tab S S → Except String (Tab S T)) → Tab K A → Except String (Tab K C)) : Fn true A C :=
+  after _ _ fun P => f (fun D => (compT (.ok D) F).runE {}) P
+
+/-- `hylo(c, S)` = `μX : c G(X) S` on the keys `D` in demand: the nodes `N = μN : D ∪ ran(N ≫ ch)` the children `ch`
+    reach (`Tab.mu`), then `D ≫ μX : N ≫ φ(X)` (`Tab.mu`, as `GenK.mu`), `φ` read only at the nodes. A node of height
+    `h` has its value from round `h + 1` on, so `|N| + 2` rounds reach the fixed point where `ch` has no cycle on `N`;
+    with a cycle the rounds run on to the least fixed point, or fail at that bound. -/
+def hylo (A B : Obj) (d e : Bool) (ch : Fn d A A) (φ : Tab A B → Fn e A B) : Fn true A B := ofVals _ _ fun X => do
+  let D ← Tab.idU X
+  let N ← Tab.mu USize.size fun N => do D.union (← (← (compT (.ok N) ch).runE {}).ran)
+  D.comp (← Tab.mu (N.n.toNat + 3) fun Y => (compT (.ok N) (φ Y)).runE {})
 
 end GenK
 
