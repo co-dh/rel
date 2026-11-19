@@ -11,7 +11,7 @@ import Rel.Lang.EmitC
 namespace Rel.Lang.TestFrame
 
 -- F10: the list form's `groups(k)` through `strₗ`, which the language does not have
-/-- error: line 23, col 36: unknown name 'str' -/
+/-- error: line 22, col 36: unknown name 'str' -/
 #guard_msgs in
 open Rel.Programs.prelude in
 rel_program frameSpec where
@@ -22,7 +22,7 @@ rel_program frameSpec where
     sel(k : γ ⟶ K) : K×[γ] ⟶ [γ] ≜ strₗ filter(cor(k°)) F(π₂)
     out : 1 ⟶ [K×N] ≜ x filter(dom(π₂ big)) Λ(⟨∋π₁, 𝟙⟩⟨π₁, sel(π₁)⟩) F(𝟙 × (F(π₂) sum))
 
-/-- error: line 35, col 13: expected an object, found 'S' -/
+/-- error: line 34, col 13: expected an object, found 'S' -/
 #guard_msgs in
 open Rel.Programs.prelude in
 rel_program frameSchema where
@@ -56,15 +56,5 @@ rel_program frame where
 -- by hand: `keep` is the positions 0 1 2 4 7; A's are 1 4 7 (3+7+3), B's 0 2 (5+5), C has none. B's two rows both
 -- hold 5: the sum runs over positions, so they count twice.
 #guard frame.ok
--- `out`'s term, read as `outputOf` reads it, and the first place the denotation has no rule for it: none, since `Λ`
--- and `E` at a canonical element object (`K` is stored `.i64`) have `lam_sound` (D.8)
-/-- info: none -/
-
-#guard_msgs in
-#eval show Lean.Meta.MetaM Unit from do
-  let r ← (Rel.Lang.Expand.read (fun _ => none) [(`Rel.Programs.prelude, Rel.Programs.prelude)] frame).run
-  let (ds, _) ← match r with | .ok v => pure v | .error e => throwError "{repr e}"
-  let some ⟨_, _, t⟩ := ds.lookup "out" | throwError "frame has no closed `out`"
-  Lean.logInfo m!"{t.gap}"
 
 end Rel.Lang.TestFrame

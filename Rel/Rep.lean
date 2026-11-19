@@ -91,7 +91,7 @@ end Ops
     `ys[t]` the element `xs[t]` bumped into `ys[t+1]`, `w` its head. -/
 def thinLDen {B : Obj} (le : B.El → B.El → Bool) (xs w : List B.El) : Prop :=
       ∃ ys : List (Obj.arr B).El, ∃ hy : ys.length = xs.length + 1,
-        (∃ p, (nilVal B).row p = ys[xs.length]'(Nat.lt_of_lt_of_eq (Nat.lt_succ_self _) hy.symm)) ∧
+        (∃ p, (Alg.nilVal B).row p = ys[xs.length]'(Nat.lt_of_lt_of_eq (Nat.lt_succ_self _) hy.symm)) ∧
         (∀ t (ht : t < xs.length),
           (ys[t + 1]'(Nat.lt_of_lt_of_eq (Nat.succ_lt_succ ht) hy.symm) = [] ∧
               ys[t]'(Nat.lt_of_lt_of_eq (Nat.lt_succ_of_lt ht) hy.symm) = [xs[t]'ht]) ∨

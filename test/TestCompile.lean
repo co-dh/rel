@@ -7,7 +7,6 @@ import Rel.Lang.TestCircuit
 import Rel.Lang.TestHylo
 import Rel.Lang.TestDetab
 import Rel.Lang.TestEdit
-import Rel.Run.Lang.Compile
 -- every program of `Rel.Programs`, so the gate visits each, a test module or not
 import Rel.Programs.Blocks
 import Rel.Programs.Chess
@@ -27,11 +26,11 @@ import Rel.Programs.SudokuPC
 import Rel.Programs.SudokuPC9
 import Rel.Programs.Wumpus
 
-/-! The differential check of `compile` (`doc/rel-denotation-design.md` §5.1, stage 3): every closed definition of
-    every registered program, its term run by `compile`, against the constant `rel_program` generated for it, and
-    against the baseline `compile-diff.json` beside this file, by name. A definition's result is its status (`ok`, or
-    why `compile` vouches for nothing) and, where ok, its table as a SET of rows read as values (`rowsOf`), so a
-    body that moves from `Obj.lt` order to `kasc` order, or to another encoding, reads the same.
+/-! The regression check of the generated code: every closed definition of every registered program, the constant
+    `rel_program` generated for it (`GenK`), against the baseline `compile-diff.json` beside this file, by name. The
+    baseline was written by the deleted `compile` (`Tm.gen`). A definition's result is its status (`ok`, or why the
+    constant vouches for nothing) and, where ok, its table as a SET of rows read as values (`rowsOf`), so a body
+    that moves from `Obj.lt` order to `kasc` order, or to another encoding, reads the same.
 
     `REL_COMPILE_DIFF_WRITE=1` regenerates the baseline from the current run instead of comparing; the file is
     never edited by hand. -/
@@ -39,9 +38,6 @@ import Rel.Programs.Wumpus
 namespace Rel.Lang.TestCompile
 
 open Lean Elab Command Tab Rel.Lang Rel.Lang.Expand
-
-/-- No variable bound: a closed definition reads none, and a use of one vouches for nothing. -/
-def η₀ : CodeEnv := fun _ _ _ => .closed (.pure (.zero, false))
 
 /-- Whether `Obj.key` reads `A`'s elements as values: every atom but `general`, which keys as `[]` (all tie). A
     float's key merges NaNs and `±0`, as q's equality does. -/
@@ -59,18 +55,13 @@ def rowsOf {A B : Obj} (R : Tab A B) : List (List Nat) :=
     baseline too large to review. A toolchain whose `hash` changes regenerates the baseline. -/
 def rowCap : Nat := 512
 
-/-- `t`'s result, `n.x` the generated constant `k`: its status and, where ok, its rows. `k` runs only where
-    `compile` vouches: a not-ok row reads nothing of it, and a definition that runs to its cap would pay that run
-    twice. An error is a result the baseline may not hold: a side `rowsOf` cannot read, or the generated constant
-    disagreeing with `compile`. -/
-unsafe def result (k : Name) {A B : Obj} (t : Tm A B) : CommandElabM (Except String (String × List (List Nat))) := do
-  let c : CRel A B ← IO.lazyPure fun _ => (compile η₀ t).run {}
-  let some c := c | return .ok ("not ok: compile vouches for nothing", [])
-  if !(keyed A && keyed B) then return .error "a side holds a `general` atom, whose `Obj.key` is `[]`"
+/-- `n.x`'s result, `k` its generated constant at the objects of its term: its status and, where ok, its rows.
+    An error is a result the baseline may not hold: a side `rowsOf` cannot read. -/
+unsafe def result (k : Name) {A B : Obj} (_t : Tm A B) : CommandElabM (Except String (String × List (List Nat))) := do
   let some g ← IO.ofExcept ((← getEnv).evalConst (CRel A B) (← getOptions) k)
-    | return .error "compile vouches for its table, the generated constant does not"
-  let rs := rowsOf c
-  pure (if rowsOf g == rs then .ok ("ok", rs) else .error "compile's rows are not the generated constant's")
+    | return .ok ("not ok: the generated constant vouches for nothing", [])
+  if !(keyed A && keyed B) then return .error "a side holds a `general` atom, whose `Obj.key` is `[]`"
+  pure (.ok ("ok", rowsOf g))
 
 /-- A result as the baseline stores it: the status and the rows, or over `rowCap` rows their count and digest. -/
 def toEntry (s : String) (rs : List (List Nat)) : Json :=

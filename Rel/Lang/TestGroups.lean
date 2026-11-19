@@ -1,4 +1,4 @@
-import Rel.Run.Lang.Gen
+import Rel.Run.Lang.GenK
 
 /-! `groups(k)` and `filter(p)` on a frame of 10⁵ rows, as compositions of the existing operators (D.8, dataframe
     F-a, F-b): the frame `R : row ⟶ value`, a key `k : value ⟶ key`, a coreflexive `p` on values.
@@ -9,20 +9,24 @@ import Rel.Run.Lang.Gen
 
 namespace Rel.Lang.TestGroups
 
-open Tab Rel.Alg Gen
+open Tab Rel.Alg Gen GenK
 
 def n : Nat := 100000
 
+/-- The pairs `(i, f i)` for `i < m`, each column `foR` (`Arr.ofFn`), as the kernels read them. -/
+def pairs (m : Nat) (f : Nat → Nat) : Tab .long .long :=
+  ⟨m.toUSize, Arr.ofFn .i64 _ fun i => i.val.toUInt64, Arr.ofFn .i64 _ fun i => (f i.val).toUInt64⟩
+
 /-- The frame: row `i` holds the value `i·7919 mod 1000`. -/
 def R : Fn false .long .long :=
-  val _ _ (ofPairs ((List.range n).map fun i => (Int64.ofNat i, Int64.ofNat (i * 7919 % 1000))), true)
+  val _ _ (pairs n fun i => i * 7919 % 1000, true)
 
 /-- The key `v mod m` of each of the 1000 values. -/
 def key (m : Nat) : Fn false .long .long :=
-  val _ _ (ofPairs ((List.range 1000).map fun v => (Int64.ofNat v, Int64.ofNat (v % m))), true)
+  val _ _ (pairs 1000 fun v => v % m, true)
 
 /-- The coreflexive of the values below 500. -/
-def p : Fn false .long .long := val _ _ (ofPairs ((List.range 500).map fun v => (Int64.ofNat v, Int64.ofNat v)), true)
+def p : Fn false .long .long := val _ _ (pairs 500 id, true)
 
 def groups (k : Fn false .long .long) : Fn false .long (.arr .long) :=
   let rk := comp _ _ _ false R k
