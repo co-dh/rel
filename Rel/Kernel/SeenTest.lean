@@ -58,13 +58,18 @@ example : view (u 3) (u 3) (kseen (u 3) [(.i64, .pos), col [3, 1, 2]]) = every :
 example : view (u 0) (u 0) (kseen (u 3) [col [5, 6, 5], (.i64, .pos)]) = unsorted 1 := by decide +kernel
 #guard view (u 0) (u 0) (kseen (u 3) [col [5, 6, 5], (.i64, .pos)]) == unsorted 1
 
--- `f64` at `kasc`'s equality: two NaNs (quiet, and signalling with payload 1) are one key, `-0.0` and `0.0` another
-def floats : String ⊕ (Nat × List UInt64 × List UInt64) := .inr (3, [0, 0, 1, 1, 2], [0, 2, 4])
-example : view (u 5) (u 3) (kseen (u 5)
-    [(.f64, wordsFoR #[0x7ff8000000000000, 0x7ff0000000000001, 0x8000000000000000, 0, 0x3ff0000000000000])]) = floats := by
+-- `f64` at `kasc`'s equality, the stored bits: in totalOrder `-0.0`, `0.0`, `1.0`, a signalling NaN (payload 1) and the
+-- quiet NaN are five keys; two bit-identical `0.0`s are one
+def floats : String ⊕ (Nat × List UInt64 × List UInt64) := .inr (5, [0, 1, 2, 3, 4], [0, 1, 2, 3, 4])
+example : view (u 5) (u 5) (kseen (u 5)
+    [(.f64, wordsFoR #[0x8000000000000000, 0, 0x3ff0000000000000, 0x7ff0000000000001, 0x7ff8000000000000])]) = floats := by
   decide +kernel
-#guard view (u 5) (u 3) (kseen (u 5)
-    [(.f64, wordsFoR #[0x7ff8000000000000, 0x7ff0000000000001, 0x8000000000000000, 0, 0x3ff0000000000000])]) == floats
+#guard view (u 5) (u 5) (kseen (u 5)
+    [(.f64, wordsFoR #[0x8000000000000000, 0, 0x3ff0000000000000, 0x7ff0000000000001, 0x7ff8000000000000])]) == floats
+def sameBits : String ⊕ (Nat × List UInt64 × List UInt64) := .inr (3, [0, 1, 1, 2], [0, 1, 3])
+example : view (u 4) (u 3) (kseen (u 4)
+    [(.f64, wordsFoR #[0x8000000000000000, 0, 0, 0x7ff8000000000000])]) = sameBits := by decide +kernel
+#guard view (u 4) (u 3) (kseen (u 4) [(.f64, wordsFoR #[0x8000000000000000, 0, 0, 0x7ff8000000000000])]) == sameBits
 
 -- a block with a patch (the outlier `2^40` among small words), beside a second column
 def patched : String ⊕ (Nat × List UInt64 × List UInt64) := .inr (3, [0, 0, 0, 0, 0, 0, 1, 2], [0, 6, 7])

@@ -11,12 +11,14 @@ the elements, and `Vals.gather_row` to the rows. -/
 namespace Rel
 open Rel.Ext Rel.Kernel Rel.Verify
 
-/-- **Equal words, equal elements**: two `Arr`s of one type in a column every kernel reads (`foR`; `pos` is no `Arr`)
-whose raw words at `i` and `j` agree hold one element there. What lifts a kernel's word law to `Arr.get`, at every
-type, `Arr.get_raw_foR` being its `i64` reading. -/
+/-- **Equal atoms of the words, equal elements**: two `Arr`s of one type in a column every kernel reads (`foR`; `pos`
+is no `Arr`) whose raw words `a` at `i` and `b` at `j` read as one atom (`atomOfBits`, given the `u1` bound every `Arr`
+keeps) hold one element there. What lifts a kernel's word law to `Arr.get`, at every type, equal words being the
+special case and `Arr.get_raw_foR` the `i64` reading. -/
 theorem Arr.get_eq_of_raw {t : QAtomicType} {n m : USize} (x : Arr t n) (y : Arr t m) (hx : Kernel.Enc.Valid n x.enc)
     (hy : Kernel.Enc.Valid m y.enc) (i : Fin n.toNat) (j : Fin m.toNat)
-    (h : (Enc.raw .i64 n x.enc)[i.1]? = (Enc.raw .i64 m y.enc)[j.1]?) : x.get i = y.get j := by
+    (h : ∀ (hg : t ≠ .general) a b, (Enc.raw .i64 n x.enc)[i.1]? = some a → (Enc.raw .i64 m y.enc)[j.1]? = some b →
+      (t = .u1 → a < 2 ∧ b < 2) → Column.atomOfBits t a hg = Column.atomOfBits t b hg) : x.get i = y.get j := by
   have foR_of : ∀ {t n} (z : Arr t n), Kernel.Enc.Valid n z.enc → ∃ md pk, z.enc = .foR md pk := by
     intro t n z hz; have hw := z.wf
     cases hc : z.enc with
@@ -26,12 +28,18 @@ theorem Arr.get_eq_of_raw {t : QAtomicType} {n m : USize} (x : Arr t n) (y : Arr
   obtain ⟨md, pk, hcx⟩ := foR_of x hx
   obtain ⟨md', pk', hcy⟩ := foR_of y hy
   have hwx := x.wf; rw [hcx] at hwx
+  have hwy := y.wf; rw [hcy] at hwy
   have hg : t ≠ .general := by rintro rfl; simp only [Enc.WF] at hwx; exact absurd hwx.1 (by decide)
-  rw [hcx, hcy] at h
-  simp only [raw_foR .i64 8 rfl (by decide : QAtomicType.i64 ≠ .u1), Array.getElem?_map, Array.getElem?_range, i.2,
-    j.2, if_true, Option.map_some, Option.some.injEq, Nat.reduceMul, ofNat_toNat_mod64, ← foRBits_starts] at h
+  have word : ∀ {n : USize} md pk (i : Fin n.toNat),
+      (Enc.raw .i64 n (.foR md pk : Enc))[i.1]? = some (Column.foRBits md pk (Column.blockStarts md) i) :=
+    fun md pk i => by simp only [raw_foR .i64 8 rfl (by decide : QAtomicType.i64 ≠ .u1), Array.getElem?_map,
+      Array.getElem?_range, i.2, if_true, Option.map_some, Nat.reduceMul, ofNat_toNat_mod64]
+  have e := h hg _ _ (by rw [hcx]; exact word md pk i) (by rw [hcy]; exact word md' pk' j) fun hu => by
+    subst hu; simp only [Enc.WF] at hwx hwy
+    exact ⟨UInt64.lt_iff_toNat_lt.2 (hwx.2.1 trivial i i.2), UInt64.lt_iff_toNat_lt.2 (hwy.2.1 trivial j j.2)⟩
+  simp only [← foRBits_starts] at e
   rw [Arr.get_ne x i hg, Arr.get_ne y j hg, hcx, hcy]
-  cases t <;> first | exact absurd rfl hg | (simp only [Enc.get, if_pos i.2, if_pos j.2, QAtomicType.width, h])
+  cases t <;> first | exact absurd rfl hg | (simp only [Enc.get, if_pos i.2, if_pos j.2, QAtomicType.width, e])
 
 /-- **The row form of the bridge**: row `j` of `Vals.gather m ix x` is row `ix[j]` of `x`, the index being below `n`. -/
 theorem Vals.gather_row {m : USize} {ix : Enc} : {A : Obj} → {n : USize} → (x : Vals A n) → {y : Vals A m} →
@@ -49,8 +57,9 @@ theorem Vals.gather_row {m : USize} {ix : Enc} : {A : Obj} → {n : USize} → (
       have hj : j.1 < (Enc.raw .i64 m ix).size := by rw [his]; exact j.2
       have hi := hlt j j.2
       refine ⟨⟨_, hi⟩, rfl, (Arr.get_eq_of_raw (t := t) x _ hv (by show Kernel.Enc.Valid m o; rw [ho']; exact hc.1)
-        _ j ?_).symm⟩
-      show _ = (Enc.raw .i64 m o)[j.1]?
+        _ j fun _ a b ha hb _ => ?_).symm⟩
+      suffices hr : (Enc.raw .i64 n (Arr.enc (t := t) x))[(⟨_, hi⟩ : Fin n.toNat).1]? = (Enc.raw .i64 m o)[j.1]? by
+        obtain rfl := Option.some.inj (ha.symm.trans (hr.trans hb)); rfl
       dsimp only
       rw [ho', hc.2.1, Array.getElem?_map]
       cases hw : (Enc.raw .i64 m ix)[j.1]? with
@@ -144,63 +153,105 @@ theorem Vals.nub_cover {A : Obj} {n : USize} {x : Vals A n} {r : (m : USize) × 
     exact hc64 _ (List.mem_range.1 (hperm.mem_iff.1 (List.getElem_mem hfG)))
   rw [hi', ← hkey _ hfG, hgk, hkey q hq, hqi]
 
-/-- **`Vals.nub x` holds exactly `x`'s rows** where rows with equal order codes are equal (`hK`: no float `±0` or NaN
-pair, whose codes merge): `Vals.nub_sub` one way, `Vals.nub_cover` the other. -/
+/-- A column `kasc` reads is one every kernel reads: `ascCol` answers only on `foRWords`' columns. -/
+theorem Verify.ascCol_valid {m : USize} {c : QAtomicType × Enc} {xk : Array UInt64 × Array UInt64}
+    (h : ascCol m c = .ok xk) : Kernel.Enc.Valid m c.2 := by
+  unfold ascCol at h
+  split at h; · cases h
+  cases hw : ascWords m c with
+  | error s => simp [hw, Functor.map, Except.map] at h
+  | ok x => exact (foRWords_valid _ _ _).2 _ (ascWords_foR hw)
+
+/-- **Equal order codes, equal rows**, over any side whose columns `kasc` reads (`ascCol` answers on each): the codes
+of row `i` and row `i'` agree in every column (`seenKey`), so their atoms do (`ascOrd_atom`), so their elements do
+(`Arr.get_eq_of_raw`). -/
+theorem Vals.row_of_codes : {A : Obj} → {n : USize} → (x : Vals A n) → {es : List (QAtomicType × Enc)} →
+    Vals.cols x = .ok es → ∀ {cs}, es.mapM (ascCol n) = .ok cs → ∀ i i' : Fin n.toNat,
+      seenKey n es i = seenKey n es i' → x.row i = x.row i'
+  | .atom t, n, x, es, hes, cs, hc, i, i', hk => by
+    simp only [Vals.cols, Except.ok.injEq] at hes; subst hes
+    obtain ⟨hlen, hf⟩ := mapM_ok hc
+    have hac := hf 0 _ (cs[0]'(by simp at hlen; omega)) rfl (List.getElem?_eq_getElem _)
+    obtain ⟨-, -, f, hof, -⟩ := ascCol_ok hac
+    have hv := ascCol_valid hac
+    simp only [seenKey, ascKeys, List.map_cons, List.map_nil, hof, Option.getD_some, List.cons.injEq, and_true,
+      Array.getElem?_map] at hk
+    exact Arr.get_eq_of_raw x x hv hv i i' fun hg a b ha hb hu =>
+      ascOrd_atom hof hg hu (by simpa only [ha, hb, Option.map_some, Option.getD_some] using hk)
+  | .prod _ _, n, x, es, hes, cs, hc, i, i', hk => by
+    simp only [Vals.cols, bind, Except.bind, pure, Except.pure] at hes
+    split at hes; · cases hes
+    rename_i es1 h1
+    split at hes; · cases hes
+    rename_i es2 h2
+    cases hes
+    obtain ⟨cs1, cs2, hc1, hc2, -⟩ := mapM_append_ok hc
+    have hs : ∀ q, seenKey n (es1 ++ es2) q = seenKey n es1 q ++ seenKey n es2 q := fun q => by
+      simp [seenKey, ascKeys]
+    rw [hs, hs] at hk
+    obtain ⟨k1, k2⟩ := List.append_inj hk (by simp [seenKey, ascKeys])
+    show (Vals.row x.1 i, Vals.row x.2 i) = (Vals.row x.1 i', Vals.row x.2 i')
+    rw [Vals.row_of_codes x.1 h1 hc1 i i' k1, Vals.row_of_codes x.2 h2 hc2 i i' k2]
+  | .arr _, _, _, _, hes, _, _, _, _, _ => by simp [Vals.cols] at hes
+  | .sum _ _, _, _, _, hes, _, _, _, _, _ => by simp [Vals.cols] at hes
+
+/-- **Rows of `x` with equal order codes are equal** where `Vals.nub x` answers: `kasc` read every column. -/
+theorem Vals.row_of_seenKey {A : Obj} {n : USize} {x : Vals A n} {r : (m : USize) × Vals A m}
+    (h : Vals.nub x = .ok r) {es} (hes : Vals.cols x = .ok es) (i i' : Fin n.toNat)
+    (hk : seenKey n es i = seenKey n es i') : x.row i = x.row i' := by
+  obtain ⟨es', _, _, _, _, _, _, _, hes', ha, -⟩ := Vals.nub_ok h
+  obtain rfl : es = es' := Except.ok.inj (hes.symm.trans hes')
+  obtain ⟨cs, hc, -⟩ := kasc_ok ha
+  exact Vals.row_of_codes x hes hc i i' hk
+
+/-- **`Vals.nub x` holds exactly `x`'s rows**: `Vals.nub_sub` one way, `Vals.nub_cover` with `Vals.row_of_seenKey`
+the other. -/
 theorem Vals.nub_rows {A : Obj} {n : USize} {x : Vals A n} {r : (m : USize) × Vals A m} (h : Vals.nub x = .ok r)
-    (hK : ∀ es, Vals.cols x = .ok es → ∀ i i' : Fin n.toNat, seenKey n es i = seenKey n es i' → x.row i = x.row i')
     (a : A.El) : (∃ j, Vals.row r.2 j = a) ↔ ∃ i, Vals.row x i = a := by
   obtain ⟨es, _, _, _, _, _, _, _, hes, _⟩ := Vals.nub_ok h
   constructor
   · rintro ⟨j, rfl⟩; obtain ⟨i, hi⟩ := Vals.nub_sub h j; exact ⟨i, hi.symm⟩
-  · rintro ⟨i, rfl⟩; obtain ⟨j, i', h1, h2⟩ := Vals.nub_cover h hes i; exact ⟨j, h1.trans (hK es hes i' i h2)⟩
+  · rintro ⟨i, rfl⟩; obtain ⟨j, i', h1, h2⟩ := Vals.nub_cover h hes i
+    exact ⟨j, h1.trans (Vals.row_of_seenKey h hes i' i h2)⟩
 
 namespace Tab
 variable {k v : Obj}
 
-/-- **`R.canon` denotes `R`**, where rows of `R` with equal order codes are equal. -/
-theorem canon_holds {R S : Tab k v} (h : R.canon = .ok S)
-    (hK : ∀ es, Vals.cols (A := .prod k v) (R.key, R.val) = .ok es → ∀ i i' : Fin R.n.toNat,
-      seenKey R.n es i = seenKey R.n es i' → R.key.row i = R.key.row i' ∧ R.val.row i = R.val.row i')
-    (a : k.El) (b : v.El) : S.Holds a b ↔ R.Holds a b := by
+/-- **`R.canon` denotes `R`**. -/
+theorem canon_holds {R S : Tab k v} (h : R.canon = .ok S) (a : k.El) (b : v.El) : S.Holds a b ↔ R.Holds a b := by
   unfold Tab.canon at h
   cases hn : Vals.nub (A := .prod k v) (R.key, R.val) with
   | error s => simp [hn, Functor.map, Except.map] at h
   | ok r =>
     simp only [hn, Functor.map, Except.map, Except.ok.injEq] at h
     subst h
-    have := Vals.nub_rows hn (fun es he i i' e => Prod.ext (hK es he i i' e).1 (hK es he i i' e).2) (a, b)
+    have := Vals.nub_rows hn (a, b)
     simp only [Tab.Holds, Vals.row, Prod.mk.injEq] at this ⊢
     exact this
 
-/-- **`R.ran` denotes `𝟙 ∩ R° ≫ R°°`** (`CRel.rep_ran`'s statement, pointwise), where rows of `R`'s value side with
-equal order codes are equal. -/
-theorem ran_holds {R : Tab k v} {S : Tab v v} (h : R.ran = .ok S)
-    (hK : ∀ es, Vals.cols R.val = .ok es → ∀ i i' : Fin R.n.toNat, seenKey R.n es i = seenKey R.n es i' →
-      R.val.row i = R.val.row i') (a b : v.El) : S.Holds a b ↔ a = b ∧ ∃ x, R.Holds x a := by
+/-- **`R.ran` denotes `𝟙 ∩ R° ≫ R°°`** (`CRel.rep_ran`'s statement, pointwise). -/
+theorem ran_holds {R : Tab k v} {S : Tab v v} (h : R.ran = .ok S) (a b : v.El) : S.Holds a b ↔ a = b ∧ ∃ x, R.Holds x a := by
   unfold Tab.ran at h
   cases hn : Vals.nub R.val with
   | error s => simp [hn, Functor.map, Except.map] at h
   | ok r =>
     simp only [hn, Functor.map, Except.map, Except.ok.injEq] at h
     subst h
-    have := Vals.nub_rows hn hK a
+    have := Vals.nub_rows hn a
     simp only [Tab.Holds]
     constructor
     · rintro ⟨j, rfl, rfl⟩; obtain ⟨i, hi⟩ := this.1 ⟨j, rfl⟩; exact ⟨rfl, Vals.row R.key i, i, rfl, hi⟩
     · rintro ⟨rfl, x, i, -, hi⟩; obtain ⟨j, hj⟩ := this.2 ⟨i, hi⟩; exact ⟨j, hj, hj⟩
 
-/-- **`R.dom` denotes `𝟙 ∩ R ≫ R°`** (`CRel.rep_dom`'s statement, pointwise), where rows of `R`'s key side with equal
-order codes are equal. -/
-theorem dom_holds {R : Tab k v} {S : Tab k k} (h : R.dom = .ok S)
-    (hK : ∀ es, Vals.cols R.key = .ok es → ∀ i i' : Fin R.n.toNat, seenKey R.n es i = seenKey R.n es i' →
-      R.key.row i = R.key.row i') (a b : k.El) : S.Holds a b ↔ a = b ∧ ∃ y, R.Holds a y := by
+/-- **`R.dom` denotes `𝟙 ∩ R ≫ R°`** (`CRel.rep_dom`'s statement, pointwise). -/
+theorem dom_holds {R : Tab k v} {S : Tab k k} (h : R.dom = .ok S) (a b : k.El) : S.Holds a b ↔ a = b ∧ ∃ y, R.Holds a y := by
   unfold Tab.dom at h
   cases hn : Vals.nub R.key with
   | error s => simp [hn, Functor.map, Except.map] at h
   | ok r =>
     simp only [hn, Functor.map, Except.map, Except.ok.injEq] at h
     subst h
-    have := Vals.nub_rows hn hK a
+    have := Vals.nub_rows hn a
     simp only [Tab.Holds]
     constructor
     · rintro ⟨j, rfl, rfl⟩; obtain ⟨i, hi⟩ := this.1 ⟨j, rfl⟩; exact ⟨rfl, Vals.row R.val i, i, hi, rfl⟩

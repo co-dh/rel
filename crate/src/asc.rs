@@ -15,25 +15,17 @@ use crate::enc::Producer;
 use crate::key::SK_I64;
 use crate::{kwin, pod, sort};
 
-/// `Rel.Kernel.normalise` (Rel/Kernel/Search.lean): a float's `-0.0` to `0` and every NaN to the one quiet NaN.
-pub fn normalise(w: usize, float: bool, v: u64) -> u64 {
-    if !float { return v }
-    let abs = v & ((1u64 << (8 * w - 1)) - 1);
-    let inf = if w == 8 { 0x7ff0_0000_0000_0000 } else { 0x7f80_0000 };
-    if abs == 0 { 0 } else if inf < abs { if w == 8 { 0xfff8_0000_0000_0000 } else { 0xffc0_0000 } } else { v }
-}
-
-/// `Rel.Kernel.ordKey`: the unsigned code whose order is q's order of the `w`-byte word `v`.
+/// `Rel.Kernel.ordCode` (Rel/Kernel/Asc.lean): the unsigned code of the `w`-byte word `v`, one to one on that word. A
+/// signed integer flips its sign bit; a float takes IEEE 754 totalOrder (non-negative: set the sign bit; negative: flip
+/// every bit), so `-0.0` and `0.0`, and every two NaNs, keep codes of their own.
 pub fn ord_key(w: usize, float: bool, signed: bool, v: u64) -> u64 {
     let mask = if w == 8 { u64::MAX } else { (1u64 << (8 * w)) - 1 };
     let top = 1u64 << (8 * w - 1);
-    if float {
-        let u = normalise(w, true, v & mask);
-        if u & top != 0 { !u & mask } else { u | top }
-    } else if signed { (v & mask) ^ top } else { v & mask }
+    let u = v & mask;
+    if float { if u & top != 0 { u ^ mask } else { u | top } } else if signed { u ^ top } else { u }
 }
 
-/// `Kernel.ascOrd` at the `QAtomicType` constructor index `t` (Rel/Kernel/Value.lean's order): `ordKey`'s width, float
+/// `Kernel.ascOrd` at the `QAtomicType` constructor index `t` (Rel/Kernel/Value.lean's order): `ordCode`'s width, float
 /// and signed flags at `orderKind t`; `None` at `sym` (9) and `general` (12).
 pub fn order(t: u8) -> Option<(usize, bool, bool)> {
     match t {
@@ -65,11 +57,11 @@ impl<'a> Key<'a> {
     }
     pub(crate) fn code(&self, v: u64) -> u64 { ord_key(self.w, self.float, self.signed, v) }
     /// Every word lies where `ord_key` is `v + s` for one `s`: the type's signed range (`s` its sign bit), its unsigned
-    /// range (`s = 0`), or for a float `0 ..= +inf` (`s` the sign bit). There the column's own order is its code order.
+    /// range (`s = 0`), or for a float every word with the sign bit clear, `+0.0 ..= +NaN` (`s` the sign bit, which
+    /// `ord_key` sets there). There the column's own order is its code order.
     fn linear(&self) -> bool {
         let top = 1i128 << (8 * self.w - 1);
-        let inf = if self.w == 8 { 0x7ff0_0000_0000_0000 } else { 0x7f80_0000 };
-        let (a, b) = if self.float { (0, inf) } else if self.signed { (-top, top - 1) } else { (0, 2 * top - 1) };
+        let (a, b) = if self.float { (0, top - 1) } else if self.signed { (-top, top - 1) } else { (0, 2 * top - 1) };
         a <= self.lo as i128 && self.hi as i128 <= b
     }
     /// The least and greatest code: the bounds' codes where `linear`, else every code of the type's width.
@@ -181,9 +173,14 @@ mod tests {
         assert_eq!(ord_key(4, false, true, 5), 0x8000_0005);
         assert_eq!(ord_key(4, false, true, 0xffff_ffff), 0x7fff_ffff);
         assert_eq!(ord_key(8, false, true, u64::MAX), 0x7fff_ffff_ffff_ffff);
-        // NaN below -1.0 below -0.0 = 0.0 below 1.0
+        // totalOrder: -NaN below -inf below -1.0 below -0.0 below 0.0 below 1.0 below NaN
         let f = |x: f64| ord_key(8, true, false, x.to_bits());
-        assert!(f(f64::NAN) < f(-1.0) && f(-1.0) < f(0.0) && f(-0.0) == f(0.0) && f(0.0) < f(1.0));
+        let g = |b: u64| ord_key(8, true, false, b);
+        assert!(f(-1.0) < f(-0.0) && f(-0.0) < f(0.0) && f(0.0) < f(1.0) && f(1.0) < f(f64::NAN));
+        assert!(g(0xfff8_0000_0000_0000) < f(f64::NEG_INFINITY) && f(f64::NEG_INFINITY) < f(-1.0));
+        // f32 at its 4 bytes: the same order, the high word ignored
+        let h = |x: f32| ord_key(4, true, false, x.to_bits() as u64);
+        assert!(h(-1.0) < h(-0.0) && h(-0.0) < h(0.0) && h(0.0) < h(1.0) && h(1.0) < h(f32::NAN));
     }
     /// The `pos` bound with no rows allocated: `2^63` rows are in order, one more is `ascWords`' error.
     #[test] fn pos_rows_bound() {

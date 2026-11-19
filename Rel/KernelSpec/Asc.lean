@@ -96,6 +96,13 @@ theorem mapM_ok {α β ε : Type} {f : α → Except ε β} :
         | zero => simp only [List.getElem?_cons_zero, Option.some.injEq] at h1 h2; subst h1 h2; exact ha
         | succ i => simp only [List.getElem?_cons_succ] at h1 h2; exact hf i a' b' h1 h2
 
+/-- `ascWords` answers `foRWords`' words or an error. -/
+theorem ascWords_foR {m : USize} {c : QAtomicType × Enc} {x : Array UInt64} (hw : ascWords m c = .ok x) :
+    foRWords "asc" m c.2 = .ok x := by
+  obtain ⟨t, e⟩ := c
+  cases e <;> cases t <;> first | exact hw | cases hw | (simp only [ascWords] at hw; split at hw <;> first
+    | exact hw | cases hw)
+
 theorem ascCol_ok {m : USize} {c : QAtomicType × Enc} {x k : Array UInt64} (h : ascCol m c = .ok (x, k)) :
     x = raw .i64 m c.2 ∧ x.size = m.toNat ∧ ∃ f, ascOrd c.1 = some f ∧ k = x.map f := by
   unfold ascCol at h
@@ -107,11 +114,7 @@ theorem ascCol_ok {m : USize} {c : QAtomicType × Enc} {x k : Array UInt64} (h :
     | ok w =>
       simp only [ho, hw, Functor.map, Except.map, Except.ok.injEq, Prod.mk.injEq] at h
       obtain ⟨hx, hk⟩ := h
-      -- `ascWords` answers `foRWords`' words or an error
-      have hf : foRWords "asc" m c.2 = .ok x := by
-        rw [← hx]; obtain ⟨t, e⟩ := c
-        cases e <;> cases t <;> first | exact hw | cases hw | (simp only [ascWords] at hw; split at hw <;> first
-          | exact hw | cases hw)
+      have hf : foRWords "asc" m c.2 = .ok x := hx ▸ ascWords_foR hw
       obtain ⟨rfl, hs⟩ := foRWords_raw _ _ _ _ hf
       exact ⟨rfl, hs, f, rfl, by rw [← hk, hx]⟩
 
@@ -348,6 +351,64 @@ theorem kasc_pos_first (m : USize) (rest : List (QAtomicType × Enc)) (vs : List
     rwa [List.getElem_range] at this
   · rw [Array.getElem?_eq_none (by omega), Array.getElem?_eq_none (by omega)]
 
+/-- The float branch of `ordCode` is one to one on the masked word `u`: `^^^ M` and `||| T` are each one to one where
+they apply, and they disagree at `T`, the sign bit, which `M` covers. -/
+theorem ordCode_float_inj {M T ua ub : UInt64} (hMT : M &&& T = T)
+    (h : (if ua &&& T != 0 then ua ^^^ M else ua ||| T) = (if ub &&& T != 0 then ub ^^^ M else ub ||| T)) :
+    ua = ub := by
+  have back : ∀ x : UInt64, x &&& T = 0 → (x ||| T) ^^^ T = x := fun x hx => UInt64.toBitVec_inj.1 <| BitVec.eq_of_getLsbD_eq fun i _ => by
+    have := congrArg (fun z : UInt64 => z.toBitVec.getLsbD i) hx
+    simp only [UInt64.toBitVec_and, UInt64.toBitVec_or, UInt64.toBitVec_xor, BitVec.getLsbD_and, BitVec.getLsbD_or,
+      BitVec.getLsbD_xor, UInt64.toBitVec_zero, BitVec.getLsbD_zero] at this ⊢
+    revert this; generalize x.toBitVec.getLsbD i = p; generalize T.toBitVec.getLsbD i = q; revert p q; decide
+  have atT : ∀ x y : UInt64, x &&& T ≠ 0 → y &&& T = 0 → x ^^^ M ≠ y ||| T := fun x y hx _ e => hx (by
+    refine UInt64.toBitVec_inj.1 <| BitVec.eq_of_getLsbD_eq fun i _ => ?_
+    have := congrArg (fun z : UInt64 => (z &&& T).toBitVec.getLsbD i) e
+    have hm := congrArg (fun z : UInt64 => z.toBitVec.getLsbD i) hMT
+    simp only [UInt64.toBitVec_and, UInt64.toBitVec_or, UInt64.toBitVec_xor, BitVec.getLsbD_and, BitVec.getLsbD_or,
+      BitVec.getLsbD_xor, UInt64.toBitVec_zero, BitVec.getLsbD_zero] at this hm ⊢
+    revert this hm; generalize x.toBitVec.getLsbD i = p; generalize T.toBitVec.getLsbD i = q
+    generalize M.toBitVec.getLsbD i = r; generalize y.toBitVec.getLsbD i = s; revert p q r s; decide)
+  by_cases ha : ua &&& T = 0 <;> by_cases hb : ub &&& T = 0 <;> simp only [ha, hb, bne_self_eq_false, bne_iff_ne,
+    ne_eq, not_false_eq_true, if_true, if_false, Bool.false_eq_true] at h
+  · rw [← back ua ha, h, back ub hb]
+  · exact absurd h.symm (atT ub ua hb ha)
+  · exact absurd h (atT ua ub ha hb)
+  · exact (UInt64.xor_left_inj _).1 h
+
+/-- **`ordCode` is one to one on the `w`-byte word**: equal codes, equal low `8 * w` bits. -/
+theorem ordCode_inj {w : Nat} (h1 : 1 ≤ w) (h8 : w ≤ 8) {float signed : Bool} {a b : UInt64}
+    (h : ordCode w float signed a = ordCode w float signed b) : a.toNat % 2 ^ (8 * w) = b.toNat % 2 ^ (8 * w) := by
+  rw [← toNat_and_mask h1 h8, ← toNat_and_mask h1 h8]
+  refine congrArg UInt64.toNat ?_
+  have hMT : (if w == 8 then (0xffffffffffffffff : UInt64) else (2 ^ (8 * w) - 1).toUInt64) &&&
+      (2 ^ (8 * w - 1)).toUInt64 = (2 ^ (8 * w - 1)).toUInt64 := by
+    have hw : w = 1 ∨ w = 2 ∨ w = 3 ∨ w = 4 ∨ w = 5 ∨ w = 6 ∨ w = 7 ∨ w = 8 := by omega
+    rcases hw with rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl <;> decide
+  unfold ordCode at h
+  cases float <;> cases signed <;> simp only [Bool.false_eq_true, if_false, if_true] at h
+  · exact h
+  · exact (UInt64.xor_left_inj _).1 h
+  · exact ordCode_float_inj hMT h
+  · exact ordCode_float_inj hMT h
+
+/-- **Equal order codes, equal atoms**, at every type with an order code (`ascOrd`): the code is one to one on the
+type's stored bits (`ordCode_inj`), and the atom reads only those bits; a `u1` word is `0` or `1`. -/
+theorem ascOrd_atom {t : QAtomicType} {f : UInt64 → UInt64} (ht : ascOrd t = some f) (hg : t ≠ .general)
+    {a b : UInt64} (hu : t = .u1 → a < 2 ∧ b < 2) (h : f a = f b) :
+    Column.atomOfBits t a hg = Column.atomOfBits t b hg := by
+  have key : ∀ {w}, t.width = some w → t ≠ .u1 → a.toNat % 2 ^ (8 * w) = b.toNat % 2 ^ (8 * w) →
+      Column.atomOfBits t a hg = Column.atomOfBits t b hg := fun hw hb e =>
+    (atomOfBits_mod hw hb a).symm.trans (e ▸ atomOfBits_mod hw hb b)
+  cases t <;> simp only [ascOrd, ascLayout, orderKind, Option.map_some, Option.map_none, reduceCtorEq,
+    Option.some.injEq] at ht <;> subst ht
+  case u1 =>
+    obtain ⟨ha, hb⟩ := hu rfl
+    have e : a.toNat % 2 ^ 8 = b.toNat % 2 ^ 8 := ordCode_inj (w := 1) (by decide) (by decide) h
+    have ha' : a.toNat < 2 := ha
+    have hb' : b.toNat < 2 := hb
+    rw [UInt64.toNat_inj.1 (by omega : a.toNat = b.toNat)]
+  all_goals exact key rfl (by decide) (ordCode_inj (by decide) (by decide) h)
 
 end Rel.Verify
 
