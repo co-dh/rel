@@ -462,6 +462,22 @@ Diff table 的「状态」列：✅ 后面是完成它的步骤；🔄 是部分
       模块的旧路径对照；`Tab.fixOn` 也要 `pack`（`muGrow` 带 270 倍的无用 payload，分支 `onepack` 在做）；μ/ν 轮数用尽时
       kernel 路径的错误文本要带 μ 的位置和上限；`sudokupc9` 约 30 s（owner 选 B：中间结果保持 bit matrix，分支 `bitsmid`
       在做）；`GenK.rdiv` 的 bits 规则；`Tab.pack`、`Tab.map`、新行、`GenK.hylo` 没有连到 denotation 的定理。
+      状态（2026-11-19 17:03，master `3d7d677`，完整构建绿 486 jobs，`make check` 在跑）：17 / 17；RELK 80。
+      已合入：`onepack`（只有一个 `pack`，`Tab.fixOn` 与 `foldRounds` 的累积输出每轮都经过它；μ/ν 轮数用尽与有环的
+      `hylo` 在 kernel 路径上报出项的位置和上限，文本只定义一次：`Tab.capMsg`、`GenK.cycleMsg`）；`bitsfin`（新构造子
+      `Rel.bits` 承载 bit matrix，owner 选 B 批准的例外，§0 草稿行；`≫` 选中 matrix 时返回 `.bits`，`tab ≫ bits`、
+      `bits ∩ tab` 在 matrix 上算，`rdiv` 走 `Tab.ldivSel`；`Rel/Run/Gather.lean` 从 `Canon`、`Cols` 拆出）。
+      `sudokupc9` 28.7 s → 13.3 s（旧路径 1.2 s）；`muGrow` 去掉固定，118 s → 约 40 s，`#guard` 改为 kernel 路径的文本。
+      测试代码的取舍由我定（owner，2026-11-19）。
+      在做：分支 `frame1b` 删 `frame` 的 stage 1b（它只测 T10 要删的旧 kernel）与 `relRegs valsRegs arrRegs maskB
+      whereB groupSumB`，去掉 `frame` 的固定；“Lean 之外的 plan 与 `frame.out` 逐字节相等”到 W6 重写。
+      T10 之前还欠的：`hyloCycle` 的固定和各 `Kern*` 模块的旧路径对照（随旧层删）；第三个 gate 的 `arithOut` 一半与
+      `TestNative` 的 `gplan` 全是旧 export，T10 会弄断，保留它需要 W6 先做（写出路径 `lit` + `own_write` 那一半不受影响）。
+      未做（性能，不挡 T10）：`ldiv(tab, bits)` 每轮把 matrix 读回约 2800 万行再排序约 4 次，是 `sudokupc9` 剩下的主要
+      开销（按排序来源推出，perf 无 Lean 侧调用栈）；不 decode 的做法约 40 行、无证明、估计到约 7 s。μ 每轮只规范化
+      `f(X) − X`（semi-naive）可去掉 `asc::cmp_rows` 的大部分。
+      未证：`Tab.keepBits_holds`、`Tab.compTabMat_holds`（命题已写在 `bitsfin` 的报告里，缺 `index` 与 `colMap` 的 spec）、
+      `Tab.pack`、`Tab.map`、新行、`GenK.hylo`。
     - W3 留给后面的风险（清单 agent 提出，均未验证）：计数做 `\` 会物化 join（最多 `|R|·|S|` 行），SudokuPC9、
       blocks 可能超内存；规范序从 `Obj.lt` 变成 `kasc` 序码，打印的期望值与 `out/key`、`out/val` 可能变；
       `coc_block_start`、`coc_bools_of`、`structural_bits_of_for` 与 `Plan.abi` 点名的 12 个 export 在 W5 后仍有
