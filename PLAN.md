@@ -20,6 +20,20 @@
   Q12 `compile` 从 `RelRun` 移到持有证明的 library。（2026-11-18 推翻：见 7.1、7.2）
 - Rel 是自己的语言，不是 k/q 的实现（owner 更正，2026-11-18）：没有 Rel 程序用到的 kdb/q 语义一律删除，
   不保留、不搬走；此后的计划按此办理（见 6.14）。
+- owner 决定（2026-11-18，迁移由 operator 重排为 W0–W6，见 6.14）：
+  - "there should be no conversion"：kernel 调用之间、算子边界上没有 `Coc.encode`/`Coc.decode`/`Enc.bytesOf`/
+    稠密 `ByteArray`；没有 adapter（`Enc.ofLongs`/`Enc.longs` 撤回）。
+  - M：列编码集缩到 foR + `pos`；`sym` 是字典（6.11）之上的 id 列；字面量在进入处编码成 foR；`general` 列只作为
+    `arr`（`lo`、`hi` 指向一个扁平 payload）存在。`.bytes`、`.syms`、`.gen`、enum 编码删除。
+  - C：kernel 测试输入保持 1024 行一块。
+  - I（6.9）：`QAtomicType` 的 13 个 constructor 全部保留（`u1 u8 i16 i32 i64 f32 f64 char i8 sym date datetime
+    general`）；删除的是 q 的编号和 wire 语义：`code`（q 类型码）、`width` 的 IPC/splayed 含义、doc comment 里的 q null
+    规则。未决：若没有 Rel 程序用 `date`/`datetime`，它们是否并入 `i32`/`i64`。
+  - reader 是 mmap（`ownMap`）；`crate/RELK.txt` 的目标：五个 kernel + `stop`、`coc_encode`、`coc_decode`、`own_write`、
+    `own_map`（owner 没有说 "5" 是否取字面）。
+  - `pointfree` gate 的范围 = L（只管类型以关系类型开头的 def）；gate G = 三个 gate，allowlist 只减不增。
+  - `CLAUDE.md` 已提交（a2104f5）：Goal 是 "Rel is its own language, not k/q"；规则 "a kernel computes on the encoded
+    column"。
 - 非 log 的输出（baseline、row 分析）写进本文件或 `doc/`，不写进 `/data/tmp`。
 
 ## 0. 每一步都遵守的约定
@@ -74,16 +88,16 @@ Size：S = 一步，少于 20 次 tool call；M = 一到三步；L = 多于三�
 | 16 | 拒绝非正的 μ/ν                 | `Tm.pol`, `Tm.lean:254`               | Elab `.fix`（1655-1670）：没有检查      | S    | ✅ 2.4      |
 | 17 | gap：open share                | `Rows.lean:125`, `Expand.lean:530`    | 没有找到 producer；R6                   | M    | ⬜ 5.1      |
 | 18 | gap：setify、asc               | `rowGaps`, `Rows.lean:107`            | canonical 上已证；浮点 key 仍是 gap     | M    | 🔄 5.2      |
-| 19 | gap：hylo                      | `rep_refold`, `RefoldSpec.lean:124`   | `onNodes` 修复、`hylo_sound`；去 `ch`   | M    | 🔄 5.3      |
+| 19 | gap：hylo                      | `rep_refold`, `RefoldSpec.lean:124`   | `onNodes` 修复、`hylo_sound`；去 `ch`   | M    | ✅ 5.3      |
 | 20 | gap：lam、E、thin              | `lamDen` `Den.lean:111`; `Canon`      | 三条已证；残留缺口：f32/f64 元素        | L    | ✅ 5.4c     |
 | 21 | gap：call                      | `Tm.lean:79`; den `𝟘`, `none'`        | stage 5 在代码里没有说明                | L    | 🔄 5.5      |
 | 22 | prim row 写成 fold/hylo        | 28 行, `Compile.lean:77-112`          | 没有逐行检查                            | M    | ✅ 2.6      |
-| 23 | scan、scatter primitive        | driver, `Kernel/Driver.lean:25-38`    | 有定律，无 caller（见 6.14）            | L    | 🔄 6.14     |
-| 24 | gather、asc、distinct          | `gatherPacked`, `Order.grade`, `nubC` | 无 caller；无 "= 复合" 定理（见 6.14）  | L    | 🔄 6.14     |
-| 25 | 一种编码 `foR`              | `Ext.Enc`, 7 个 ctor, `Value.lean`    | 460 个 decl 依赖 `Enc`                  | L    | 🔄 6.11     |
+| 23 | scan、scatter primitive        | driver, `Kernel/Driver.lean:25-38`    | 有定律，无 caller（见 W2–W3）           | L    | 🔄 W2–W3    |
+| 24 | gather、asc、distinct          | `gatherPacked`, `Order.grade`, `nubC` | 无 caller；无 "= 复合" 定理（见 W2）    | L    | 🔄 W2       |
+| 25 | 一种编码 `foR`              | `Ext.Enc`, 7 个 ctor, `Value.lean`    | 460 个 decl 依赖 `Enc`                  | L    | 🔄 W1b      |
 | 26 | 九个 atom                      | `QAtomicType`, 18 个 ctor, `Value:13` | 1718 个 decl；boolean、general；R5      | L    | 🔄 6.9      |
-| 27 | RELK.txt 84 → 5 + 4            | `crate/RELK.txt`, `crate/src/ffi/`    | native gate 需要更多；R4                | L    | 🔄 6.11     |
-| 28 | q-only kernel 删除             | 84 个 extern（`RELK.txt`）            | q 专用 kernel 仍导出（6.14）            | S    | 🔄 6.14     |
+| 27 | RELK.txt 84 → 5 + 5            | `crate/RELK.txt`, `crate/src/ffi/`    | native gate 需要更多；R4                | L    | 🔄 W5       |
+| 28 | q-only kernel 删除             | 84 个 extern（`RELK.txt`）            | q 专用 kernel 仍导出（W0）              | S    | 🔄 W0       |
 | 29 | seen-set scan `kseen`          | `kdistinct`, `Order.groupIds`         | foR 上的 `g` 与 `first`；agent 在做     | L    | 🔄 D.12     |
 
 ## 2. Phases
@@ -92,7 +106,7 @@ Size：S = 一步，少于 20 次 tool call；M = 一到三步；L = 多于三�
 状态：✅ 完成，🔄 进行中，⬜ 未开始，✖ 弃用。每步的旧文本（文件、行号、`LR` 命令、Done 条件）在 commit
 178da18 的 `PLAN.md` §2：`git show 178da18:PLAN.md`。行号已过时，先用 index 重新定位。
 
-进度（2026-11-18，master 479841c）：43 / 67 步（64%）；另有 14 步进行中。只数 ✅：分支上 build 通过但还没合并的步骤算进行中。
+进度（2026-11-18，master a2104f5）：45 / 67 步（67%）；另有 12 步进行中（5.3、7.5 已合并，各加一步）。只数 ✅：分支上 build 通过但还没合并的步骤算进行中。
 
 | Phase                | 完成 / 步数 | %    | 进行中（分支）                                              |
 |----------------------|-------------|------|-------------------------------------------------------------|
@@ -102,12 +116,12 @@ Size：S = 一步，少于 20 次 tool call；M = 一到三步；L = 多于三�
 | P2 不依赖 `Rel` 类型 | 6 / 6       | 100% |                                                             |
 | P3 `Rel` 类型        | 11 / 13     | 85%  | 3.12（3.12b 未开始）                                        |
 | P4 `Tm` constructor  | 2 / 5       | 40%  |                                                             |
-| P5 关闭 gap          | 3 / 8       | 38%  | 5.2、5.3、5.5                                               |
+| P5 关闭 gap          | 4 / 8       | 50%  | 5.2、5.5                                                    |
 | P6 kernels           | 9 / 15      | 60%  | 6.9、6.10、6.11（`d56c`）、6.13（`d4pos2`、`d4pos3`）、6.14 |
-| P7 Plan A            | 1 / 4       | 25%  | 7.5（`gates3`）                                             |
+| P7 Plan A            | 2 / 4       | 50%  |                                                             |
 
 Diff table 的「状态」列：✅ 后面是完成它的步骤；🔄 是部分完成，后面是还没完成的那一步；⬜ 后面是要做它的步骤。
-29 项里 ✅ 11、🔄 12、⬜ 6（master 479841c，2026-11-18）。
+29 项里 ✅ 12、🔄 11、⬜ 6（master a2104f5，2026-11-18；第 19 行随 5.3 合并改为 ✅）。
 
 ### 高优先级：dataframe（`doc/dataframe-design.zh.pdf` §2、§6、§7；stage 1 的 `Plan.ofTm` 由 dataframe 会话自己做）
 
@@ -149,7 +163,8 @@ Diff table 的「状态」列：✅ 后面是完成它的步骤；🔄 是部分
   `qlean-base` = e024297。删副本还是保持钉住，由 owner 在 qlean 会话里定。表目录未做，按规则已定：reader 用 qlean 现有的
   `ownColumn` 移进 Rel（DRY）；`.d` 是自有格式的 sym 列（no serialization）；共享字典用列头已有的 `domain` 字段。
   第二部分（mmap reader）owner 说需要：master 上只有 writer，没有 reader（`crate/src/os.rs` 的 `mmap`/`Map` 无人使用，
-  没有 `own_map` export）；分支 `d7map` 进行中。
+  没有 `own_map` export）；分支 `d7map` fbb31f7（未合并）：reader 是 mmap（`ownMap`），定律 `ownParse_ownImage`；
+  未决：`own::check` 没有 Lean model。
   原条目：stage 2 存储的 runtime 部分：export 把 column 目录 mmap 成 `Tab`（目录 = 表，文件 = 一列的 foR `Enc`，`.d` 列序，
   共享 sym 字典文件；`pos` 一侧不落盘，按 6.13）。只动 `crate/rt` 与 `Rel.Kernel`，6.9 合并后与 D.4 并行。
   同一 agent 补 dataframe F-e：`relc`/`rel-native` 跑不了算出来的程序，缺两条 plan 指令：把算出的 buffer 交给
@@ -186,7 +201,8 @@ Diff table 的「状态」列：✅ 后面是完成它的步骤；🔄 是部分
   ✅ 已落地：`kseen` kernel（212c171）；它的定律 `kseen_ok firsts_spec firsts_runs firsts_all kseen_pos`（e130504）；
   `kscatter` 接受 `Op`，覆盖是 `.last`，`last` 是位置的 scatter（23059eb）。
   ⬜ 未做：宽的无序 key 上 Lean body 有答案而 Rust 报错，且组 id 规则写了两次（`kseen` 的 body 与 `Order.idsBy`），
-  修复在分支 `seenfix`；composite 定理；`kasc ≫ kseen` 的 runs 引理；移植 `Order.groupIds*` 的调用者；
+  修复 `seenfix` 已合并（0957f87：`kseen` 的 body 返回 Rust 的 hash 错误；`Order.groupIn` 是组 id 的唯一来源）；
+  余下：composite 定理；`kasc ≫ kseen` 的 runs 引理；移植 `Order.groupIds*` 的调用者；
   `doc/rel-architecture.zh.typ` 仍写 `distinct`。
 
 ### P0 baseline — 1/1
@@ -244,18 +260,18 @@ Diff table 的「状态」列：✅ 后面是完成它的步骤；🔄 是部分
 - ⬜ 4.4 加 `symDiv` constructor。
 - ✅ 4.5 默认是 `[nil, snoc]` 上的左 fold；只用 `snoc` 构造。
 
-### P5 按既定顺序关闭 gap — 3/8（5.4a-c 并行，其余串行）
+### P5 按既定顺序关闭 gap — 4/8（5.4a-c 并行，其余串行）
 
 - ⬜ 5.1 share。
 - 🔄 5.2 Λ/thin/setify/asc 的 soundness：`Gen.thin_sound`、`Gen.setify_sound`、`Gen.asc_sound` 已证并接入（3006856）；
   `thin` 仍有缺口：元素对象不 canonical 或 pair test 不是 `Tm.cor`；浮点 key 仍有缺口。
-- 🔄 5.3 hylo：owner 选 H（删 `ch` 字段，`Tm.kids` 是唯一来源）再选 A
+- ✅ 5.3 hylo：owner 选 H（删 `ch` 字段，`Tm.kids` 是唯一来源）再选 A
   （`Tm.size`，`Tm.gen` 用 `termination_by t.size`，
   `compile_sound` 对 size 强归纳，不要 mutual `kidsGen`）。
   已完成：`Gen.onNodes` 的 lazy 分支裁到其 nodes，
   Gen 层 `hylo_sound`，`onKeys_round` 不带 coreflexive 前提（已合并，5b50784）。
-  `d8hyloA`（d266a73：删 `ch`，`Tm.size`，`compile_sound` 按 size 归纳，`Tm.den_local`）未合并：两个 runtime 检查
-  失败（TestHylo:58、Quicksort 的 `quicksort.ok`）；修复在分支 `d8hyloB`。
+  `d8hyloA`（d266a73：删 `ch`，`Tm.size`，`compile_sound` 按 size 归纳，`Tm.den_local`）经修复已合并为 296bab2
+  （hylo 没有 `ch`：`Tm.kids` 是唯一来源，`Tm.size`，`compile_sound` 按 size 归纳）。
 - ✅ 5.4a ✅ `lam_sound`（d72cf71）、5.4b ✅ `E_sound`（0ac4f13），都在 `rel-lazy`；5.4c ✅ `thin_sound`（3006856，见 D.8）。
 - 🔄 5.5 call（stage 5）：提案 `doc/call-stage5.zh.pdf`（69a8e5d）。owner 定 B D F H J：保留按 form 的常量作共享代码，
   与调用点 `rfl` 相等；`Tm.instObj` 实例化对象；`Code` 带实参的 `Pl`；`cv` 存逆的 body；registry 存 body `Res`。
@@ -278,6 +294,10 @@ Diff table 的「状态」列：✅ 后面是完成它的步骤；🔄 是部分
   owner 定：`QAtom` 的 constructor 同名改（`.i64 x`、`.i32 x`，不再用 `long`、`int`）；`i8` 有符号（排序翻符号位 `0x80`，
   同 `i16`/`i32`/`i64`），另加无符号字节 `u8`（今天的 `byte`）；`Scan.Kind` 并入 `QAtomicType`，由它推出，不再单独定义
   （`orderKind`、`clsOf` 随之删除或变成恒等）。
+  决定 I（owner，2026-11-18）：13 个 constructor 全部保留（`u1 u8 i16 i32 i64 f32 f64 char i8 sym date datetime general`）；
+  删除的是 q 的编号和 wire 语义：`code`（q 类型码）、`width` 的 IPC/splayed 含义、doc comment 里的 q null 规则。
+  未决：若没有 Rel 程序用 `date`/`datetime`，它们是否并入 `i32`/`i64`。（与上面的 q 类型码、`date`/`datetime`
+  描述冲突之处，以本条为准。）
   `date`（自 epoch 的天数，存为 i32）与 `datetime`（自 epoch 的纳秒，存为 i64，即 q 的 timestamp），都不带时区；存为 foR
   码，按整数比较和排序（owner 经 dataframe 会话提出）。
 - 🔄 6.10 已合并（master 2b042fd，make check 绿 241/25）：`gather` `scatter` `distinct` `asc` `scan` 直接在 foR 块上计算，
@@ -308,7 +328,9 @@ Diff table 的「状态」列：✅ 后面是完成它的步骤；🔄 是部分
   - 每个 kernel 合并后用 vortex 的 harness 在 100M 上复测一次，记进 `doc/vortex.md`；带 patch 的列（`sz` + outlier）
     在 foR B 合并（f0f9171）后重测。
 - 🔄 6.11 删除旧 extern 与旧 constructor；保留 SIMD 编解码函数；删 `Enc.bits`：
-  Rust 与 `RelKernel` 在分支 `nobits` 完成，Run/Rel 一侧在 `nobits2` 收尾。6.11c 见 D.5；之后删 `Enc.bits`，在分支 `nobits3`。
+  Rust 与 `RelKernel` 在分支 `nobits` 完成，Run/Rel 一侧在 `nobits2` 收尾。6.11c 见 D.5；之后删 `Enc.bits`，在分支 `nobits3`，已合并（a9812af：`Enc.bits` 删除）。
+  决定 M（owner，2026-11-18）使本步成为 W2 的前提（即 W1b）：编码集缩到 foR + `pos`，`sym` 是字典之上的 id 列，
+  字面量在进入处编码成 foR，`general` 列只作为 `arr` 存在；`.bytes`、`.syms`、`.gen`、enum 编码删除。
 - ⬜ 6.12 native gate。
 - 🔄 6.13 虚拟行号（6.13a 见 D.4；6.13b、6.13c 未开始；owner 经 dataframe 会话决定）：frame 的行号对象 `I` 只存 `n`，磁盘与内存都不物化；每个 kernel 把它
   当恒等（位置即循环下标）。不是 `Enc.gen`，也不退回 `til n` 数组。设计 `/data/tmp/p613-design.md`，按规则定：
@@ -322,20 +344,48 @@ Diff table 的「状态」列：✅ 后面是完成它的步骤；🔄 是部分
   - 顺序：与 P3 无依赖。6.13a 在 6.10 开头（constructor、Lean 与 Rust 读取分支、定律、测试；改 `Value.lean`，全量重建，
     一次提交进 master 后并入 `rel-lazy`）；6.13b 在 6.10 末尾（`WF := True`，删 `tilCol`，gate：def 中 0 个 `tilLongs`）；
     6.13c `Plan` 与 C emitter，随 6.12。
-- 🔄 6.14 调用者迁移与旧 kernel 删除（盘点进行中）。owner 更正（2026-11-18）：Rel 是自己的语言，不是 k/q 的实现；
-  没有 Rel 程序用到的 kdb/q 语义一律删除。现状（master 479841c）：`crate/RELK.txt` 导出 84 个符号 = 5 个设计 kernel
-  （`k_scan k_scatter k_gather k_asc k_seen`）+ 4 个保留（`stop coc_encode coc_decode own_write`）+ 75 个旧的；
-  运行时（`Rel.Run.*`、`Rel.Lang.*`，即 `rel_program` 展开的东西）调用 127 个旧 `Rel.Kernel.*` definition，
-  五个设计 kernel 一个也没有调用；所以为这五个证明的每条定律，说的都是还没有程序运行的代码。
-  - 子步骤：(1) 盘点 75 个旧符号：dead / 仅证明用 / live（进行中）；(2) 删除 dead 与 q 专用的
-    （`til cycle enlist find bin member` 等仍在导出）；(3) 把 live 调用者改写到五个 kernel 上，先端到端做一个算子；
-    (4) `RELK.txt` = 5 + 保留的 4。
-  - 度量：`RELK.txt` 的行数，与运行时调用旧 kernel 的数目；目标 0。
-  - 表中第 23、24 行因此从 ✅ 改回 🔄（✅ 原指「存在且有定律」）：没有 caller；`kgather` 有 `gatherWords_eq`
-    （针对 word 模型）；`kasc`、`kseen` 有定律，但没有「= scan/scatter 的复合」定理；`kasc` 的 body 是插入排序，
-    不是设计的 scan 后 scatter 的 radix。
+- 🔄 6.14 调用者迁移与旧 kernel 删除（2026-11-18 由 operator 重排为 W0–W6）：
+  - 发现（fable review，2026-11-18）：每个算子边界上的 relation 已经是编码列的 `Tab = {n, key : Vals A n,
+    val : Vals B n}`（`Rel/Run/Core.lean:26`）。`structure Code` 与稠密 `ByteArray` 长列（`Rel/Run/Code.lean`）是从
+    qlean 的 kernel pipeline 继承来的中间层，设计把它删掉。工作单位是 `Tab → Tab` 边界上的算子体（`Alg.*C`），
+    不是旧 kernel 的 family，也不是 `Tm` constructor。
+  - 为什么按 family 或 constructor 切分什么也退不掉：每个算子经六个共享函数到达 54–70 个旧 export：
+    `Alg.canonC` → `Obj.sortByC`（每个 op 之后；`Rel/Run/CRelDef.lean:32`、`Code.lean:950`）58；
+    `Lang.Bits.runC`（`Rel/Run/Lang/Bits.lean:249`）63；`Obj.codes`/`codesC`（`Code.lean:817`、`848`）49；
+    `Tab.nub`/`nubC`（`Code.lean:985`、`Alg.lean:202`）49；`Obj.raze`/`razeC`（`Code.lean:665`、`712`）35；
+    `Vals.pick`/`pickC`（`Code.lean:587`、`623`）22；`Alg.join`（`Code.lean:990`）17。
+  - 证明代价：3069 条 theorem 里，1141 条只被下层引用，随下层删除；语言层依赖 85 条不变的算子命题；276 条上层证明直接
+    引用下层，要从五个 kernel 的定律重证；另加一个新的支持层（估计 150–300 条，未核实）。
+  - 包：
+    - W0 删除没有 Rel 程序到达的每个旧 export（不替换，不重证）：进行中，分支 `mig-w0`。
+    - W1 闭包定律：五个 kernel 的答案都满足 `Enc.WF`（是一个 `Arr`），且是下一个 kernel 的合法输入；桥 `Enc.raw` ↔
+      `Arr.get`/`Vals.row`；只对 foR 与 `pos`：进行中，分支 `mig-w1`。
+    - W1b 删除 foR + `pos` 之外的编码（决定 M）：在 W1 之后（同一个文件 `Rel/Kernel/Value.lean`）。
+    - W2 第一个算子端到端：canon/nub（每列 `kasc` → `kseen` → 在 `first` 上 `kgather`），然后 `ran`/`dom`；取代六个
+      共享函数；重证 `rep_ran`：在 W1 之后。
+    - W3 其余算子，在并行 worktree 里：`∪`（concat → `kasc` → `kseen`）；`∩`/`−`（带来源标记的 concat → `kasc` →
+      `kscan` 计数）；`≫`（两侧按中间列 `kasc` → `kseen` → expand → `kgather` → canon）；`/` `\` `Λ`（`kasc` ≫
+      `kseen` 给出 `lo`/`hi`；分段 `kscan`）；list 行、arith、est/thin：在 W2 之后。
+    - W4 `Gen.*B`（稠密 bit 矩阵，`Lang.Bits`）改走 table 路径；融合形式只在有定理时回来。
+    - W5 删除 `Rel/Run/Code.lean`、`Rel/KernelWF/`、旧的 `KernelSpec` module、`Kernel/{Structural,Sort,Search,
+      Elementwise}` 与它们的 Rust；`RELK.txt` = 5 + 保留的。
+    - W6 native：`Plan` 得到一个 `Enc` 寄存器，`Plan.abi` 列出这五个。
+  - 度量（每次合并）：调用旧 export 的可执行 def（现 149）；`RELK.txt` 行数（现 85；主要在 W5 下降）；compile-diff 241/25。
+  - 第一波撤回（2026-11-18）：按 export family 切分（分支 `mig-scan`、`mig-gather`、`mig-ew`、`mig-enc`、
+    `mig-closure`、`mig-abi`、`mig-recipes`：未 build 的 WIP，未合并）；`Code` 的载体改写到 `Enc` 上；adapter
+    `Enc.ofLongs`/`Enc.longs`；加强 `code_runs`；q 动词 recipe（find、member、bin、where、rank、dict）作为具名实体：
+    只有 concat、expand、分段 fold 与 classes = `kasc` → `kseen` 留作构件。保留：`kasc`/`kseen` 在 `arr` key 上
+    （分支 `mig-arrkey` 369f095，WIP）。
+  - 风险：纯组合比融合 kernel 多遍（每个 op 之后的 canon 是一次排序；`kseen` 没有 hash，要先 `kasc`）；生成的测试在
+    elaboration 时运行每个程序，慢的组合会拉长 build；qlean 钉在 e024297，import `Rel.Kernel.*`/`Rel.KernelSpec.*`，
+    所以 W5 会弄坏它，除非 pin 不动。
+  - 已合并（自 d4105f7）：296bab2 hylo 没有 `ch`（`Tm.kids` 是唯一来源，`Tm.size`，`compile_sound` 按 size）；
+    0957f87 seenfix；a9812af `Enc.bits` 删除；dbdc72d 7.5 gate。未合并，在分支上：`d7map` fbb31f7（D.7 reader）、
+    `mig-asc` 43ae2e7（`ascLayout`：`i8` 有符号）。
+  - 操作：同一时刻最多一个 `lean-refactor index`：每次运行对每个 kernel `*Test.lean` 占 3–7 GB；2026-11-18 三个并行
+    index 加九个 agent 填满 30 GB 内存和 57 GB swap，`make check` 在 index 一步停住。
 
-### P7 Plan A — 1/4（7.2-7.4 串行；7.5 独立）
+### P7 Plan A — 2/4（7.2-7.4 串行；7.5 独立）
 
 - ✖ 7.1 library 边界：不做。owner 2026-11-18 选 7.2 的 wrapper，`compile` 留在预编译的 `RelRun`，没有东西要移；
   这推翻 Q12（“`compile` 移到持有证明的 library”）。
@@ -344,7 +394,7 @@ Diff table 的「状态」列：✅ 后面是完成它的步骤；🔄 是部分
   `Tm.gen` 与 `compile_sound` 仍是两个递归；不一致时 `compile_sound` 编译不过。随去下标的 `CompileSpec` 移植一起落地。
 - ⬜ 7.3 `rel_program` 发出 `compile t`，从 `Expand.lean` 删除旧路径。
 - ⬜ 7.4 清理：`LR unused`、`unused-simp`、`remove-import`。
-- 🔄 7.5 规则 gate（owner 选）：三个 gate，allowlist 只减不增：`!` 下标（今天 32 个 def）；关系值 def 的 body 里的
+- ✅ 7.5 已合并（dbdc72d，`gates3`）：gate `bang`（allowlist 32）、`pointfree`（13）、`kernel-tested`（68 of 84）；`pointfree` 的范围 = L。原条目，规则 gate（owner 选）：三个 gate，allowlist 只减不增：`!` 下标（今天 32 个 def）；关系值 def 的 body 里的
   `∃`（`Rel/Lang/Den.lean` 11 个 + `thinLDen`）；测试 module 里用到的每个 extern（85 个里 69 个没有被用到）。
   分支 `gates3`。另：`CLAUDE.md` 的 14 条规则里 9 条没有 gate。
 
