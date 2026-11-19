@@ -29,6 +29,9 @@ def _root_.Rel.Rel.Reps (K : Known A B) : Rel A B → Core.Rel A.El B.El → Pro
   | .tab (.error _), _ => True
   | .tab (.ok t), R => K.den.1 ≫ rep t ≫ K.den.2 = K.den.1 ≫ R ≫ K.den.2
   | .lazy f, R => (f K).Reps K R
+  | .bits g w o x ra y rc, R => match Tab.ofBits g w o x ra y rc with
+    | .error _ => True
+    | .ok t => K.den.1 ≫ rep t ≫ K.den.2 = K.den.1 ≫ R ≫ K.den.2
 
 /-- What `r` computes in `K` agrees with `R` on `K`'s sides, where `r` represents `R` there. -/
 theorem _root_.Rel.Rel.Reps.run {K : Known A B} : ∀ {r : Rel A B} {R : Core.Rel A.El B.El} {t : Tab A B},
@@ -36,6 +39,10 @@ theorem _root_.Rel.Rel.Reps.run {K : Known A B} : ∀ {r : Rel A B} {R : Core.Re
   | .tab (.error _), _, _, _, e => by simp [Rel.run, Except.toOption] at e
   | .tab (.ok _), _, _, h, e => by simp only [Rel.run, Except.toOption, Option.some.injEq] at e; subst e; exact h
   | .lazy f, _, _, h, e => Rel.Reps.run (r := f K) h e
+  | .bits g w o x ra y rc, _, _, h, e => by
+    simp only [Rel.Reps] at h; simp only [Rel.run] at e
+    revert h e; cases Tab.ofBits g w o x ra y rc <;> intro h e <;>
+      simp only [Except.toOption, Option.some.injEq, reduceCtorEq] at e h ⊢ <;> (try subst e) <;> (try exact h)
 
 /-- `rep R x y` is `R.Holds x y`, by definition. -/
 theorem rep_apply (R : Tab A B) (x : A.El) (y : B.El) : rep R x y = R.Holds x y := rfl

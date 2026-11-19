@@ -151,6 +151,7 @@ def compT {A B C : Obj} : CRel A B → Rel B C → Rel A C
   | some r, .lazy g => if r.n == 0 then .tab (CRel.toE (some Alg.zero)) else
     .lazy fun K => let d := ranC r
       .tab (also d.2 (CRel.comp (some r) ((Rel.lazy g).run ⟨some ⟨d.1.n, d.1.key⟩, K.ran⟩)))
+  | some r, s@(.bits ..) => .tab (CRel.comp (some r) (s.run {}))
 
 /-- `R s`, `s` the table of `S`: the mirror of `compT`, `R` run knowing its range is `s`'s key column. -/
 def compS {A B C : Obj} (R : Rel A B) : CRel B C → Rel A C
@@ -161,6 +162,7 @@ def compS {A B C : Obj} (R : Rel A B) : CRel B C → Rel A C
     first on it, then `compS` — since `R` run on neither side enumerates its universe. -/
 def comp (A B C : Obj) (e : Bool) (R : Fn true A B) (S : Fn e B C) : Fn true A C := match R with
   | .tab r => compT r.toOption S
+  | r@(.bits ..) => compT (r.run {}) S
   | .lazy f => .lazy fun
     | ⟨none, some L⟩ => compS (.lazy f) (S.run ⟨none, some L⟩)
     | K => compT ((Rel.lazy f).run ⟨K.dom, none⟩) S
@@ -307,6 +309,7 @@ def mu (A B : Obj) (cap : Nat) (φ : CRel A B → Fn false A B) : Fn false A B :
 def onNodes {A B : Obj} (F : Rel A B) (P : CRel A A) : CRel A B := match F with
   | .tab f => if P.rel.n == 0 then CRel.mk Alg.zero P.ok else CRel.comp P f.toOption
   | .lazy _ => also P.ok (CRel.comp P (onKeys F P))
+  | f@(.bits ..) => CRel.comp P (f.run {})
 
 /-- `[R,S]` on the sum values in demand: `R` on the left values they hold, `S` on the right, joined with them. A
     demand row whose tag names a side with no values reads that side's `dflt` (`Vals.row`), a value the demand does

@@ -131,4 +131,42 @@ def Vals.concat : {A : Obj} → {n₁ n₂ : USize} → (n : USize) → Enc → 
       pure ⟨L.1, R.1, ← Arr.concat n off tag₁ tag₂, ← Arr.pos n, L.2, R.2⟩
     else .error s!"concat: a sum side of {n} rows, past an Int64 position"
 
+/-- The positions of the `1` words among the `m` words `b` (each `0` or `1`), ascending, and their count `K`. WHERE
+as `scan → scatter`, O(m) and no sort: the prefix sum `s` of `b` (`kscan .add`, one segment) returns the count `K` as
+its fold result; `m = 0` folds no row and returns `none`, and an empty `where` counts `0` positions by definition, so
+`none` is `K = 0`. The destination `d = s − b` (`colMap .sub`) is the number of kept rows before each row: a kept row's
+own cell `0 … K − 1`, and a dropped row's the next kept row's cell, which that later row overwrites (`kscatter .last`,
+the last row winning), or the spare cell `K` past every kept row. `kscatter` of `pos` at `d` into `K + 1` cells, then
+`kgather` of the first `K` (at `pos`): 6 kernel calls (`colConst`, `kscan`, `colMap` = `colConst` + `kscan`,
+`kscatter`, `kgather`), where `kasc ≫ kseen` took 13. `m` is below `B`, so `K + 1 ≤ m + 1` cells fit a `USize`. -/
+def whereCol (m : USize) (b : Enc) : Except String (USize × Enc) :=
+  let B := min (USize.size - 1) (2 ^ 63)
+  if m.toNat < B then do
+    let z ← colConst m 0
+    let sk ← kscan .add false .i64 .i64 m z [z, b]
+    let K := (sk.2.getD 0).toNat.toUSize
+    let d ← colMap .sub m sk.1 b
+    let e ← kscatter .last m d .pos (K.toNat + 1).toUSize 0
+    (K, ·) <$> kgather K .pos (K.toNat + 1).toUSize e
+  else .error s!"where: {m} rows, not below {B}: m + 1 cells fit a USize and the counts 0 … m are i64 words below it"
+
+-- `1 0 1 1 0`: the destinations `0 1 1 2 3` send the dropped row 1 to row 2's cell and row 4 to the spare cell `3`
+#guard (whereCol 5 (.bytes (Column.packIds 64 5 fun i => [1, 0, 1, 1, 0][i]?.getD 0))).toOption.map
+  (fun r => (r.1.toNat, (Enc.raw .i64 r.1 r.2).toList)) = some (3, [0, 2, 3])
+-- no kept row, and no row at all: `K = 0`
+#guard (whereCol 3 (.bytes (Column.packIds 64 3 fun _ => 0))).toOption.map
+  (fun r => (r.1.toNat, (Enc.raw .i64 r.1 r.2).toList)) = some (0, [])
+#guard (whereCol 0 .pos).toOption.map (fun r => (r.1.toNat, (Enc.raw .i64 r.1 r.2).toList)) = some (0, [])
+
+/-- The set bits of the `g · w` bits `o`, bit `a·w + c` the row `(x[ra[a]], y[rc[c]])`: `whereCol`, then `a` and `c` by
+`colMap .div/.mod`, each side `kgather`ed. Ascending by `(a, c)`, so canonical where the numbers are `kasc` ranks.
+Here, not in `Bits.lean`, because `Rel.bits` (`Lazy.lean`) reads with it and `Bits.lean`'s imports clash with `Alg`. -/
+def Tab.ofBits {A C : Obj} {n m : USize} (g w : USize) (o : Enc) (x : Vals A n) (ra : Enc) (y : Vals C m) (rc : Enc) :
+    Except String (Tab A C) := do
+  let (M, sel) ← whereCol (g * w) o
+  let wc ← colConst M w.toUInt64
+  let ix ← kgather M (← colMap .div M sel wc) g ra
+  let iy ← kgather M (← colMap .mod M sel wc) w rc
+  pure ⟨M, ← Vals.gather M ix x, ← Vals.gather M iy y⟩
+
 end Rel
