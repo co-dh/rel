@@ -766,10 +766,9 @@ impl Sink {
             (Form::For, false) => lean::ctor(0, [o(m), o(b)], &[]),
             (Form::Alp, false) => lean::ctor(0, [o(m), lean::ctor(0, [o(b), o(a)], &[])], &[]),
             (Form::Ids(_), false) => o(b),
-            // `Enc`'s constructors: `bits` 1, `foR` 3, `alp` 4
-            (Form::For, true) => lean::ctor(3, [o(m), o(b)], &[]),
-            (Form::Alp, true) => lean::ctor(4, [o(m), o(b), o(a)], &[]),
-            (Form::Ids(1), true) => lean::ctor(1, [o(b)], &[]),
+            (Form::For, true) => lean::ctor(crate::blocks::tag::FOR as u8, [o(m), o(b)], &[]),
+            (Form::Alp, true) => lean::ctor(crate::blocks::tag::ALP as u8, [o(m), o(b), o(a)], &[]),
+            // a boolean column is a `u1` `foR` (`Sink::bools`), never ids at width 1
             (Form::Ids(lw), true) => panic!("qlean Sink: ids at {lw} bits are an `Enc` only with a dictionary (`enum`)"),
         }
     }

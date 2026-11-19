@@ -8,6 +8,13 @@ use crate::ids;
 use crate::pod::{self, Elt};
 use core::ops::Range;
 
+/// `Ext.Enc`'s constructor tags, in `Rel/Kernel/Value.lean`'s order; every Rust reader and writer of an `Enc` names
+/// them from here, so a constructor added or removed there is one edit here.
+pub mod tag {
+    pub const BYTES: u32 = 0; pub const SYMS: u32 = 1; pub const FOR: u32 = 2; pub const ALP: u32 = 3;
+    pub const ENUM: u32 = 4; pub const GEN: u32 = 5; pub const POS: u32 = 6;
+}
+
 /// The kinds a column's blocks come from: a dense payload, FoR (`Coc`), ALP (`Cocf`), or ids at `lw` bits. A bit column
 /// is ids at `lw = 1` at the column's own `lg` (`Blocks::bits`); a symbol column is ids whose keys the caller reads
 /// through its dictionary. `Pos` is `Enc.pos`, the row positions: element `i` is `i`, computed from the loop index and
@@ -72,15 +79,14 @@ impl<'a> Blocks<'a> {
     pub fn of(e: crate::lean::B<'a>, w: usize, n: usize, who: &str) -> Self {
         let f = |i| e.field(i).bytes();
         match e.tag() {
-            0 => Blocks::new(Src::Dense(f(0).get(..n * w).unwrap_or_else(|| panic!(
+            tag::BYTES => Blocks::new(Src::Dense(f(0).get(..n * w).unwrap_or_else(|| panic!(
                 "{who}: a dense payload of {} bytes holds fewer than {n} elements of {w} bytes", f(0).len()))), n),
-            1 => Blocks::bits(f(0), n),
-            3 => Blocks::from(crate::coc::view(f(0), f(1), n).unwrap_or_else(|err| panic!("{who}: {err}"))),
-            4 => Blocks::from(Cocf::view(f(0), f(1), f(2), n).unwrap_or_else(|| panic!(
+            tag::FOR => Blocks::from(crate::coc::view(f(0), f(1), n).unwrap_or_else(|err| panic!("{who}: {err}"))),
+            tag::ALP => Blocks::from(Cocf::view(f(0), f(1), f(2), n).unwrap_or_else(|| panic!(
                 "{who}: an ALP column's metadata of {} bytes or its blob of {} are short or misaligned", f(0).len(), f(2).len()))),
-            5 => Blocks::ids(f(2), n, ids::id_width(e.field(1).words().len().saturating_sub(1))),
-            // `pos`, nullary, is the scalar `lean_box(7)`, whose `tag` is 7 and which has no field
-            7 => Blocks::pos(n),
+            tag::ENUM => Blocks::ids(f(2), n, ids::id_width(e.field(1).words().len().saturating_sub(1))),
+            // `pos`, nullary, is the scalar `lean_box(tag::POS)`, which has no field
+            tag::POS => Blocks::pos(n),
             t => panic!("{who}: an `Enc` of constructor {t} (`syms`, `gen`) has no raw elements"),
         }
     }

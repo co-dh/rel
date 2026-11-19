@@ -113,7 +113,7 @@ mod tests {
                 let want = fr(&words(ix, src).expect("gather test: indices in range"));
                 let got = enc(&Blocks::from(ic), &ec).expect("gather test: enc answers");
                 assert_eq!([0, 1].map(|i| got.borrow().field(i).bytes().to_vec()), parts(&want), "{} indices", ix.len());
-                assert_eq!(got.borrow().tag(), 3, "the answer is `Enc.foR`");
+                assert_eq!(got.borrow().tag(), crate::blocks::tag::FOR, "the answer is `Enc.foR`");
             }
             let mut bad = rnd.clone();
             (bad[700], bad[1050]) = (n as u64 + 4, u64::MAX);

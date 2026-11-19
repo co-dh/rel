@@ -6,10 +6,7 @@ use crate::lean::{O, ctor, export, string};
 #[cfg(all(feature = "ffi", not(any(test, feature = "std"))))]
 use {alloc::format, crate::{blocks::Blocks, coc, lean::B, scatter}};
 
-/// `Ext.Enc.foR`'s constructor tag (Rel/Kernel/Value.lean: `bytes bits syms foR ..`).
-pub const FOR: u32 = 3;
-/// `Ext.Enc.pos`'s constructor tag, the last: nullary, so the object is the scalar `lean_box(7)` and `tag` reads 7.
-pub const POS: u32 = 7;
+pub use crate::blocks::tag::{FOR, POS};
 
 /// `Kernel.foRWords what m e` as a block source: `pos` is the positions `0 .. m` (`Blocks::pos`), a `foR` is `for_view`'s
 /// column, and any other form is `for_view`'s error.
