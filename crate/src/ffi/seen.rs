@@ -3,7 +3,7 @@
 #![deny(unsafe_code)]
 use crate::lean::export;
 #[cfg(all(feature = "ffi", not(any(test, feature = "std"))))]
-use {alloc::{format, string::String, vec::Vec}, crate::{asc, seen, exports::scatter::{POS, for_view, except},
+use {alloc::{format, string::String, vec::Vec}, crate::{asc, seen, exports::{asc::key, scatter::except},
     lean::{B, O, ctor, nat}}};
 
 /// `kseen`'s body in its order of failure: each of `es` left to right, `ascCol`'s checks (the type, then the layout),
@@ -14,13 +14,9 @@ fn kseen(n: usize, es: B) -> Result<O, String> {
     // `pre`: the keys before the first `pos` column
     let (mut ks, mut pre, mut i, mut l) = (Vec::new(), None, 0usize, es);
     while !l.is_scalar() {
-        let (e, t, at) = (l.field(0), l.field(0).field(0).unbox() as u8, format!("seen: es[{i}]: "));
-        let o = asc::order(t).ok_or_else(|| format!("{at}asc: type {t} has no fixed-width order"))?;
-        if e.field(1).tag() == POS {
-            if t != 4 { return Err(format!("{at}asc: a pos column is type 4, not {t}")) }
-            asc::pos_rows(n).map_err(|s| format!("{at}{s}"))?;
-            pre.get_or_insert(ks.len());
-        } else { ks.push(asc::Key::new(for_view("asc", n, e.field(1)).map_err(|s| format!("{at}{s}"))?, o)) }
+        let k = key(n, l.field(0)).map_err(|s| format!("seen: es[{i}]: {s}"))?.0;
+        if matches!(k, asc::Col::Pos) { pre.get_or_insert(ks.len()); }
+        ks.push(k);
         (i, l) = (i + 1, l.field(1));
     }
     let (k, g, f) = seen::blocks(&ks[..pre.unwrap_or(ks.len())], n, pre.is_some())?;

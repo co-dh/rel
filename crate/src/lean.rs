@@ -304,6 +304,16 @@ impl<'a> B<'a> {
     pub fn to_owned(self) -> O { unsafe { inc(self.p()); O::from_raw(self.p()) } }
     pub fn is_scalar(self) -> bool { is_scalar(self.p()) }
     pub fn unbox(self) -> usize { unbox(self.p()) }
+    /// `lean_ctor_get_usize(o, i)`: the `USize` field `i` of a ctor, counted after its object fields
+    pub fn usize_field(self, i: u32) -> usize {
+        assert!(!self.is_scalar() && unsafe { is_ctor(self.p()) && ctor_num_objs(self.p()) <= i }, "lean::B::usize_field {i}: not a USize field");
+        unsafe { ctor_get_usize(self.p(), i) }
+    }
+    /// `lean_ctor_get_uint8(o, off)`: the byte `off` bytes past the start of a ctor's fields, its object fields included
+    pub fn u8_field(self, off: u32) -> u8 {
+        assert!(!self.is_scalar() && unsafe { is_ctor(self.p()) && 8 * ctor_num_objs(self.p()) <= off }, "lean::B::u8_field {off}: not a scalar field");
+        unsafe { ctor_get_scalar(self.p(), off) }
+    }
     /// `lean_obj_tag`: the ctor tag of a heap object, the value of a scalar
     pub fn tag(self) -> u32 { unsafe { obj_tag(self.p()) } }
     /// field `i` of a ctor; panics on anything else or an index past its fields

@@ -89,14 +89,14 @@ theorem whereCol_spec {m K : USize} {b o : Enc} (h : whereCol m b = .ok (K, o))
     rw [hs] at this
     change ((ordCode 8 false true v).toNat : Int) = _ at this
     omega
-  have hkey : ∀ q < m.toNat + 1, seenKey (m.toNat + 1).toUSize [(.i64, wordsFoR ws)] q =
+  have hkey : ∀ q < m.toNat + 1, seenKey (m.toNat + 1).toUSize [(.atom .i64, wordsFoR ws)] q =
       [ordCode 8 false true (ws[q]?.getD 0)] := fun q hq => by
     have hq' : q < ws.size := by omega
-    simp only [seenKey, ascKeys, List.map_cons, List.map_nil, hwr, Array.getElem?_map, Array.getElem?_eq_getElem hq',
+    simp only [seenKey, ascKeys, ascKey, List.append_nil, List.map_cons, List.map_nil, hwr, Array.getElem?_map, Array.getElem?_eq_getElem hq',
       Option.map_some, Option.getD_some]
     rfl
   have hK : ∀ q < m.toNat + 1, ∀ q' < m.toNat + 1,
-      seenKey (m.toNat + 1).toUSize [(.i64, wordsFoR ws)] q = seenKey (m.toNat + 1).toUSize [(.i64, wordsFoR ws)] q' ↔
+      seenKey (m.toNat + 1).toUSize [(.atom .i64, wordsFoR ws)] q = seenKey (m.toNat + 1).toUSize [(.atom .i64, wordsFoR ws)] q' ↔
         (ws[q]?.getD 0).toNat = (ws[q']?.getD 0).toNat := by
     intro q hq q' hq'
     rw [hkey q hq, hkey q' hq', List.cons.injEq, and_iff_left rfl, ← UInt64.toNat_inj, hcode _ (hbound q hq),
@@ -104,7 +104,7 @@ theorem whereCol_spec {m K : USize} {b o : Enc} (h : whereCol m b = .ok (K, o))
     exact Nat.add_right_cancel_iff
   have hmono1 : ∀ q, q + 1 < m.toNat + 1 → (ws[q]?.getD 0).toNat ≤ (ws[q + 1]?.getD 0).toNat := fun q hq => by
     have hl := kseen_sorted hr q (by rw [hM']; exact hq)
-    simp only [ascKeys, List.map_cons, List.map_nil, hwr, lexLe, Array.getElem?_map,
+    simp only [ascKeys, ascKey, List.append_nil, List.map_cons, List.map_nil, hwr, lexLe, Array.getElem?_map,
       Array.getElem?_eq_getElem (show q < ws.size by omega), Array.getElem?_eq_getElem (show q + 1 < ws.size by omega),
       Option.map_some, Option.getD_some, Bool.or_eq_true, Bool.and_true, decide_eq_true_eq, beq_iff_eq] at hl
     change ordCode 8 false true _ < ordCode 8 false true _ ∨ ordCode 8 false true _ = ordCode 8 false true _ at hl
@@ -123,7 +123,7 @@ theorem whereCol_spec {m K : USize} {b o : Enc} (h : whereCol m b = .ok (K, o))
   obtain ⟨hc, -, hf⟩ := kseen_ok hr
   rw [hM'] at hc hf
   have hcl : c ≤ m.toNat + 1 := by rw [hc]; unfold firstsOf; exact Nat.le_trans (List.length_filter_le _ _) (by simp)
-  generalize hKf : seenKey (m.toNat + 1).toUSize [(.i64, wordsFoR ws)] = Kf at hc hf hK hkey
+  generalize hKf : seenKey (m.toNat + 1).toUSize [(.atom .i64, wordsFoR ws)] = Kf at hc hf hK hkey
   generalize hF : firstsOf Kf (m.toNat + 1) = F at hc hf
   have hsp := firsts_spec Kf (m.toNat + 1); rw [hF] at hsp
   have hFinj : ∀ j j' (hj : j < F.length) (hj' : j' < F.length), Kf F[j] = Kf F[j'] → j = j' := by
@@ -277,7 +277,7 @@ theorem union_holds {R S U : Tab k v} (h : R.union S = .ok U) (a : k.El) (b : v.
 
 /-- **`R.canon` is sorted and duplicate-free**: `Vals.nub_sorted` of its pair side, the rows of `U` being rows `sel j`
 of `R`, ascending in `kasc`'s order of their codes, no two with equal codes. -/
-theorem canon_sorted {R U : Tab k v} (h : R.canon = .ok U) {es : List (QAtomicType × Enc)}
+theorem canon_sorted {R U : Tab k v} (h : R.canon = .ok U) {es : List (AscKey × Enc)}
     (hes : Vals.cols (A := .prod k v) (R.key, R.val) = .ok es) :
     ∃ sel : Fin U.n.toNat → Fin R.n.toNat,
       (∀ j, (U.key.row j, U.val.row j) = (R.key.row (sel j), R.val.row (sel j))) ∧
@@ -402,14 +402,10 @@ theorem select_ok {keep : USize → Enc → Enc → Except String Enc} {κ : Pro
   have hc64 : ∀ a, a < C.n.toNat → a.toUInt64.toNat = a := fun a ha => by simp; omega
   have hkey : ∀ q (hq : q < ps.length), seenKey C.n ((es.map (·.1)).zip vs) q = seenKey C.n es ps[q] := by
     intro q hq
-    simp only [seenKey, ascKeys, List.map_map]
-    apply List.ext_getElem (by simp [hvl])
-    intro c h1 h2
-    have hc2 : c < es.length := by simpa using h2
-    obtain ⟨ws, hv, hws, hwq⟩ := hcol c es[c] (vs[c]'(by omega)) (List.getElem?_eq_getElem hc2)
+    refine ascKeys_row (by simp [List.map_fst_zip, hvl]) fun c h1 h2 => ?_
+    obtain ⟨ws, hv, hws, hwq⟩ := hcol c es[c] (vs[c]'(by simp at h1; omega)) (List.getElem?_eq_getElem h2)
       (List.getElem?_eq_getElem _)
-    simp only [List.getElem_map, List.getElem_zip, Function.comp_apply, hv, (wordsFoR_closed ws hws.symm).2.1,
-      Array.getElem?_map, hwq q hq]
+    simp only [List.getElem_zip, hv, (wordsFoR_closed ws hws.symm).2.1, hwq q hq]
   obtain ⟨hmm, hg, hf⟩ := kseen_ok hr
   generalize seenKey C.n ((es.map (·.1)).zip vs) = Kf at hmm hg hf hkey
   generalize hF : firstsOf Kf C.n.toNat = F at hmm hg hf
@@ -747,6 +743,10 @@ private def T₃ : List (Int64 × Int64) := [(0, 0), (9, 9)]
   ((R.inter S).toOption.map Tab.toList) == old (CRel.inter (some R) (some S)) &&
   ((R.diff S).toOption.map Tab.toList) == old (CRel.diff (some R) (some S)) &&
   (R.le S).toOption == (let c := Alg.leC R S; if c.2 then some c.1 else none)
+
+-- an `arr` key side: every operator is the error until `Vals.concat` (`Rel/Run/Cols.lean`) concatenates `arr` sides
+#guard let R := arrTab arrCells arrPay
+  [R.union R, R.inter R, R.diff R].all fun r => r matches .error "concat: an arr side is not atom columns"
 
 end Checks
 

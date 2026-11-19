@@ -10,34 +10,39 @@ namespace Rel.Verify
 open Rel.Kernel Ext.Enc
 
 /-- Row `i`'s key as `kseen` compares it: its order code in every column (`ascKeys`, `kasc`'s codes). -/
-def seenKey (n : USize) (es : List (QAtomicType × Enc)) (i : Nat) : List UInt64 := (ascKeys n es).map (·[i]?.getD 0)
+def seenKey (n : USize) (es : List (AscKey × Enc)) (i : Nat) : List UInt64 := (ascKeys n es).map (·[i]?.getD 0)
 
 /-- The columns `kseen` reads are `kasc`'s codes: where its `ascCol` pass over `es` answers `ks`, `ks = ascKeys n es`. -/
-theorem kseen_keys {n : USize} {es : List (QAtomicType × Enc)} {ks : List (Array UInt64)}
-    (heq : es.zipIdx.mapM (fun (c, i) => (fun x : Array UInt64 × Array UInt64 => x.2) <$>
-      (ascCol n c).mapError (s!"seen: es[{i}]: " ++ ·)) = .ok ks) :
-    ks = ascKeys n es := by
+theorem kseen_keys {n : USize} {es : List (AscKey × Enc)} {kss : List (List (Array UInt64))}
+    (heq : es.zipIdx.mapM (fun (c, i) => (fun x : Array UInt64 × List (Array UInt64) => x.2) <$>
+      (ascCol n c).mapError (s!"seen: es[{i}]: " ++ ·)) = .ok kss) :
+    kss.flatten = ascKeys n es := by
+  have hflat : ∀ es : List (AscKey × Enc), ascKeys n es = (es.map (ascKey n)).flatten := fun es => by
+    induction es with
+    | nil => rw [ascKeys]; rfl
+    | cons e es ih => rw [ascKeys, List.map_cons, List.flatten_cons, ih]
+  rw [hflat]
+  congr 1
   obtain ⟨hlen, hf⟩ := mapM_ok heq
   rw [List.length_zipIdx] at hlen
   apply List.ext_getElem? fun i => ?_
   cases hei : es[i]? with
   | none =>
     have := List.getElem?_eq_none_iff.1 hei
-    simp [ascKeys, hei, List.getElem?_eq_none_iff.2 (show ks.length ≤ i by omega)]
+    simp [hei, List.getElem?_eq_none_iff.2 (show kss.length ≤ i by omega)]
   | some e =>
     have hi := (List.getElem?_eq_some_iff.1 hei).1
-    obtain ⟨b, hb⟩ : ∃ b, ks[i]? = some b := ⟨ks[i], List.getElem?_eq_getElem (by omega)⟩
+    obtain ⟨b, hb⟩ : ∃ b, kss[i]? = some b := ⟨kss[i], List.getElem?_eq_getElem (by omega)⟩
     have he := hf i (e, i) b (by simp [List.getElem?_zipIdx, hei]) hb
     cases hce : ascCol n e with
     | error s => simp [hce, Functor.map, Except.map, Except.mapError] at he
     | ok xk =>
       simp only [hce, Functor.map, Except.map, Except.mapError, Except.ok.injEq] at he
-      obtain ⟨hx, -, f, hof, hkk⟩ := ascCol_ok hce
-      simp [ascKeys, hb, hei, ← he, hkk, hx, hof]
+      simp [hb, hei, ← he, (ascCol_ok hce).2.2.1]
 
 /-- **`kseen` answers only rows in `kasc` order**: where it answers, each row is `lexLe` the next under `kasc`'s codes
 (`ascKeys`), so on its answers a group is a run of adjacent equal rows (`firsts_runs`). -/
-theorem kseen_sorted {n : USize} {es : List (QAtomicType × Enc)} {r : Nat × Enc × Enc} (h : kseen n es = .ok r) :
+theorem kseen_sorted {n : USize} {es : List (AscKey × Enc)} {r : Nat × Enc × Enc} (h : kseen n es = .ok r) :
     ∀ i, i + 1 < n.toNat → lexLe (ascKeys n es) i (i + 1) = true := by
   unfold kseen at h
   simp only [bind, Except.bind] at h
@@ -49,13 +54,13 @@ theorem kseen_sorted {n : USize} {es : List (QAtomicType × Enc)} {r : Nat × En
     · cases h
     · rename_i hs
       intro i hi
-      cases hf : (List.range (n.toNat - 1)).find? (fun i => !lexLe ks i (i + 1)) with
+      cases hf : (List.range (n.toNat - 1)).find? (fun i => !lexLe ks.flatten i (i + 1)) with
       | some j => rw [hf] at hs; nomatch hs
       | none => simpa using List.find?_eq_none.1 hf i (List.mem_range.2 (by omega))
 
 /-- **`kseen` answers `firstsOf` and `groupOf` of `seenKey`**: the count of first rows, each row's group as `n` words
 and the first rows ascending as `k` words, each as `wordsFoR`. -/
-theorem kseen_ok {n : USize} {es : List (QAtomicType × Enc)} {k : Nat} {g f : Enc} (h : kseen n es = .ok (k, g, f)) :
+theorem kseen_ok {n : USize} {es : List (AscKey × Enc)} {k : Nat} {g f : Enc} (h : kseen n es = .ok (k, g, f)) :
     k = (firstsOf (seenKey n es) n.toNat).length ∧
       g = wordsFoR (Array.ofFn (n := n.toNat) fun i => (groupOf (seenKey n es) n.toNat i.1).toUInt64) ∧
       f = wordsFoR ((firstsOf (seenKey n es) n.toNat).map Nat.toUInt64).toArray := by
@@ -65,7 +70,7 @@ theorem kseen_ok {n : USize} {es : List (QAtomicType × Enc)} {k : Nat} {g f : E
   · cases h
   · rename_i ks heq
     have hk := kseen_keys heq
-    subst hk
+    simp only [hk] at h
     split at h
     · cases h
     simp only [pure, Except.pure, Except.ok.injEq, Prod.mk.injEq] at h
@@ -119,10 +124,10 @@ theorem firsts_all {α : Type} [DecidableEq α] {g : Nat → α} {m : Nat}
   rw [List.getElem_of_eq hf, List.getElem_range]
 
 /-- **Law d for `kseen`**: with a `pos` column in its key every row is new, `k = n`, `first = til n` and `g = til n`. -/
-theorem kseen_pos {n : USize} {ks rest : List (QAtomicType × Enc)} {k : Nat} {g f : Enc}
-    (h : kseen n (ks ++ (.i64, .pos) :: rest) = .ok (k, g, f)) :
-    firstsOf (seenKey n (ks ++ (.i64, .pos) :: rest)) n.toNat = List.range n.toNat ∧
-      ∀ i < n.toNat, groupOf (seenKey n (ks ++ (.i64, .pos) :: rest)) n.toNat i = i := by
+theorem kseen_pos {n : USize} {ks rest : List (AscKey × Enc)} {k : Nat} {g f : Enc}
+    (h : kseen n (ks ++ (.atom .i64, .pos) :: rest) = .ok (k, g, f)) :
+    firstsOf (seenKey n (ks ++ (.atom .i64, .pos) :: rest)) n.toNat = List.range n.toNat ∧
+      ∀ i < n.toNat, groupOf (seenKey n (ks ++ (.atom .i64, .pos) :: rest)) n.toNat i = i := by
   refine firsts_all fun i hi j hj e => ?_
   have hm : n.toNat ≤ 2 ^ 63 := by
     unfold kseen at h
@@ -131,7 +136,7 @@ theorem kseen_pos {n : USize} {ks rest : List (QAtomicType × Enc)} {k : Nat} {g
     · cases h
     · rename_i cs heq
       obtain ⟨hlen, hf⟩ := mapM_ok heq
-      have he := hf ks.length ((.i64, .pos), ks.length) (cs[ks.length]'(by simp [List.length_zipIdx] at hlen; omega))
+      have he := hf ks.length ((.atom .i64, .pos), ks.length) (cs[ks.length]'(by simp [List.length_zipIdx] at hlen; omega))
         (by simp) (List.getElem?_eq_getElem _)
       refine Classical.byContradiction fun hm => ?_
       simp [ascCol, ascWords, ascOrd, ascLayout, orderKind, hm, Functor.map, Except.map, Except.mapError] at he
@@ -139,9 +144,9 @@ theorem kseen_pos {n : USize} {ks rest : List (QAtomicType × Enc)} {k : Nat} {g
     have := ordKey_signed (w := 8) (by omega) (by omega) (UInt64.ofNat i)
     simp only [sx, UInt64.toNat_ofNat'] at this
     split at this <;> omega
-  have e := congrArg (·[ks.length]?) e
+  have e := congrArg (·[(ascKeys n ks).length]?) e
   have hpr : raw .i64 n (.pos : Enc) = (Array.range n.toNat).map UInt64.ofNat := rfl
-  simp only [seenKey, ascKeys, List.map_append, List.map_cons, hpr, Array.getElem?_map, Array.getElem?_range, hi, hj,
+  simp only [seenKey, ascKeys_append, ascKeys, ascKey, List.cons_append, List.nil_append, List.map_append, List.map_cons, hpr, Array.getElem?_map, Array.getElem?_range, hi, hj,
     if_true, Option.map_some, Option.getD_some] at e
   rw [List.getElem?_append_right (by simp), List.getElem?_append_right (by simp)] at e
   simp only [List.length_map, Nat.sub_self, List.getElem?_cons_zero, Option.some.injEq] at e

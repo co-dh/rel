@@ -103,24 +103,104 @@ theorem ascWords_foR {m : USize} {c : QAtomicType × Enc} {x : Array UInt64} (hw
   cases e <;> cases t <;> first | exact hw | cases hw | (simp only [ascWords] at hw; split at hw <;> first
     | exact hw | cases hw)
 
-theorem ascCol_ok {m : USize} {c : QAtomicType × Enc} {x k : Array UInt64} (h : ascCol m c = .ok (x, k)) :
-    x = raw .i64 m c.2 ∧ x.size = m.toNat ∧ ∃ f, ascOrd c.1 = some f ∧ k = x.map f := by
-  unfold ascCol at h
-  cases ho : ascOrd c.1 with
-  | none => simp [ho] at h
-  | some f =>
-    cases hw : ascWords m c with
-    | error s => simp [ho, hw, Functor.map, Except.map] at h
-    | ok w =>
-      simp only [ho, hw, Functor.map, Except.map, Except.ok.injEq, Prod.mk.injEq] at h
-      obtain ⟨hx, hk⟩ := h
-      have hf : foRWords "asc" m c.2 = .ok x := hx ▸ ascWords_foR hw
-      obtain ⟨rfl, hs⟩ := foRWords_raw _ _ _ _ hf
-      exact ⟨rfl, hs, f, rfl, by rw [← hk, hx]⟩
+mutual
+/-- The order codes of one key column at `m` rows, `ascCol`'s on the words `Enc.raw` reads: an `atom` column's words
+through its type's `ascOrd`, a `cells` column's words through `cellFns` over its payload's `ascKeys`. -/
+def ascKey (m : USize) : AscKey × Enc → List (Array UInt64)
+  | (.atom t, e) => [(raw .i64 m e).map ((ascOrd t).getD id)]
+  | (.cells n c lo hi els, e) =>
+    (cellFns c.toNat (raw .i64 n lo) (raw .i64 n hi) (ascKeys c els)).map fun f => (raw .i64 m e).map f
 
-/-- The order codes `kasc` sorts by: each column's words (`foRWords`) through its type's `ascOrd`. -/
-def ascKeys (m : USize) (es : List (QAtomicType × Enc)) : List (Array UInt64) :=
-  es.map fun e => (raw .i64 m e.2).map ((ascOrd e.1).getD id)
+/-- The order codes `kasc` sorts by: each key column's `ascKey`, in the order of `es`. -/
+def ascKeys (m : USize) : List (AscKey × Enc) → List (Array UInt64)
+  | [] => []
+  | e :: es => ascKey m e ++ ascKeys m es
+end
+
+theorem ascKeys_append (m : USize) (e1 e2 : List (AscKey × Enc)) : ascKeys m (e1 ++ e2) = ascKeys m e1 ++ ascKeys m e2 := by
+  induction e1 with
+  | nil => rw [List.nil_append, ascKeys, List.nil_append]
+  | cons e es ih => simp only [List.cons_append, ascKeys, ih, List.append_assoc]
+
+/-- **A row's codes are a function of its words**: two key lists of one shape whose columns have one word at rows
+`q` and `q'` have one code at those rows in every column of `ascKeys`, so a permuted column has the permuted codes. -/
+theorem ascKeys_row {m m' : USize} {q q' : Nat} : ∀ {K K' : List (AscKey × Enc)}, K.map (·.1) = K'.map (·.1) →
+    (∀ c (h : c < K.length) (h' : c < K'.length), (raw .i64 m K[c].2)[q]? = (raw .i64 m' K'[c].2)[q']?) →
+    (ascKeys m K).map (·[q]?.getD 0) = (ascKeys m' K').map (·[q']?.getD 0)
+  | [], [], _, _ => by simp only [ascKeys]; rfl
+  | [], _ :: _, hk, _ => by simp at hk
+  | _ :: _, [], hk, _ => by simp at hk
+  | (k, e) :: K, (k', e') :: K', hk, hw => by
+    simp only [List.map_cons, List.cons.injEq] at hk
+    obtain ⟨rfl, hk⟩ := hk
+    have h0 := hw 0 (by simp) (by simp)
+    simp only [List.getElem_cons_zero] at h0
+    simp only [ascKeys, List.map_append]
+    congr 1
+    · cases k <;> simp only [ascKey, List.map_cons, List.map_nil, List.map_map, Function.comp_def,
+        Array.getElem?_map, h0]
+    · exact ascKeys_row hk fun c h h' => hw (c + 1) (by simp; omega) (by simp; omega)
+
+mutual
+/-- What `ascCol` answers: the column's words as `Enc.raw` reads them, `m` of them, and its codes `ascKey`; an `atom`
+column's type has an order. -/
+theorem ascCol_ok : ∀ {m : USize} {c : AscKey × Enc} {x : Array UInt64} {k : List (Array UInt64)},
+    ascCol m c = .ok (x, k) → x = raw .i64 m c.2 ∧ x.size = m.toNat ∧ k = ascKey m c ∧
+      ∀ t, c.1 = .atom t → ∃ f, ascOrd t = some f
+  | m, (.atom t, e), x, k, h => by
+    rw [ascCol] at h
+    cases ho : ascOrd t with
+    | none => simp [ho] at h
+    | some f =>
+      cases hw : ascWords m (t, e) with
+      | error s => simp [ho, hw, Functor.map, Except.map] at h
+      | ok w =>
+        simp only [ho, hw, Functor.map, Except.map, Except.ok.injEq, Prod.mk.injEq] at h
+        obtain ⟨hx, hk⟩ := h
+        have hf : foRWords "asc" m e = .ok x := hx ▸ ascWords_foR hw
+        obtain ⟨rfl, hs⟩ := foRWords_raw _ _ _ _ hf
+        refine ⟨rfl, hs, ?_, fun t' ht => ⟨f, by cases ht; exact ho⟩⟩
+        rw [← hk, hx, ascKey, ho, Option.getD_some]
+  | m, (.cells n c lo hi els, e), x, k, h => by
+    rw [ascCol] at h
+    cases hix : foRWords "asc: cells" m e with
+    | error s => simp [hix, bind, Except.bind] at h
+    | ok ix =>
+      cases hf : ix.find? (n.toNat ≤ ·.toNat) with
+      | some r => simp [hix, hf, bind, Except.bind] at h
+      | none =>
+        cases hl : foRWords "asc: cells lo" n lo with
+        | error s => simp [hix, hf, hl, bind, Except.bind] at h
+        | ok l =>
+          cases hh : foRWords "asc: cells hi" n hi with
+          | error s => simp [hix, hf, hl, hh, bind, Except.bind] at h
+          | ok hw =>
+            cases hks : ascCodes c els with
+            | error s => simp [hix, hf, hl, hh, hks, bind, Except.bind] at h
+            | ok ks =>
+              simp only [hix, hf, hl, hh, hks, bind, Except.bind, pure, Except.pure, Except.ok.injEq,
+                Prod.mk.injEq] at h
+              obtain ⟨rfl, rfl⟩ := h
+              obtain ⟨rfl, hs⟩ := foRWords_raw _ _ _ _ hix
+              obtain ⟨rfl, -⟩ := foRWords_raw _ _ _ _ hl
+              obtain ⟨rfl, -⟩ := foRWords_raw _ _ _ _ hh
+              refine ⟨rfl, hs, ?_, fun t ht => by cases ht⟩
+              rw [ascKey, ascCodes_ok hks]
+
+/-- What `ascCodes` answers: `ascKeys`. -/
+theorem ascCodes_ok : ∀ {m : USize} {es : List (AscKey × Enc)} {ks : List (Array UInt64)},
+    ascCodes m es = .ok ks → ks = ascKeys m es
+  | _, [], ks, h => by rw [ascCodes] at h; cases h; rw [ascKeys]
+  | m, e :: es, ks, h => by
+    rw [ascCodes] at h
+    simp only [bind, Except.bind] at h
+    split at h; · cases h
+    rename_i c hc
+    split at h; · cases h
+    rename_i ks' hks
+    simp only [pure, Except.pure, Except.ok.injEq] at h
+    rw [← h, ascKeys, (ascCol_ok hc).2.2.1, ascCodes_ok hks]
+end
 
 /-- `scatterWords` twice through a permutation `ps` of `til M`: `til M` through `ps` puts `k` at `ps[k]`, and `x`
 through that puts `x[ps[k]]` at `k`. -/
@@ -162,16 +242,16 @@ theorem scatter_grade {M : Nat} (hM : M < 2 ^ 64) {ps : List Nat} (hp : ps.Perm 
   simpa using h2
 
 /-- What `kasc` answers, unfolded: the key columns `cs`, the destinations `r` and the sorted words `wss`. -/
-theorem kasc_ok {m : USize} {es : List (QAtomicType × Enc)} {vs : List Enc} {p : Enc} (h : kasc m es = .ok (vs, p)) :
-    ∃ cs, es.mapM (ascCol m) = .ok cs ∧ ∃ r, scatterWords .last ((ascGrade m.toNat (cs.map (·.2))).map Nat.toUInt64).toArray
+theorem kasc_ok {m : USize} {es : List (AscKey × Enc)} {vs : List Enc} {p : Enc} (h : kasc m es = .ok (vs, p)) :
+    ∃ cs, es.mapM (ascCol m) = .ok cs ∧ ∃ r, scatterWords .last ((ascGrade m.toNat (cs.flatMap (·.2))).map Nat.toUInt64).toArray
       ((List.range m.toNat).map Nat.toUInt64).toArray m.toNat 0 = .ok r ∧
       ∃ wss, cs.mapM (fun c => scatterWords .last r c.1 m.toNat 0) = .ok wss ∧ vs = wss.map wordsFoR ∧
-        p = wordsFoR ((ascGrade m.toNat (cs.map (·.2))).map Nat.toUInt64).toArray := by
+        p = wordsFoR ((ascGrade m.toNat (cs.flatMap (·.2))).map Nat.toUInt64).toArray := by
   unfold kasc at h
   cases hc : es.mapM (ascCol m) with
   | error s => simp [hc, bind, Except.bind] at h
   | ok cs =>
-    cases hr : scatterWords .last ((ascGrade m.toNat (cs.map (·.2))).map Nat.toUInt64).toArray
+    cases hr : scatterWords .last ((ascGrade m.toNat (cs.flatMap (·.2))).map Nat.toUInt64).toArray
         ((List.range m.toNat).map Nat.toUInt64).toArray m.toNat 0 with
     | error s => simp [hc, hr, bind, Except.bind] at h
     | ok r =>
@@ -182,28 +262,26 @@ theorem kasc_ok {m : USize} {es : List (QAtomicType × Enc)} {vs : List Enc} {p 
         exact ⟨cs, rfl, r, hr, wss, hw, h.1.symm, h.2.symm⟩
 
 /-- The key columns' codes are `ascKeys`. -/
-theorem ascCol_keys {m : USize} {es : List (QAtomicType × Enc)} {cs} (hc : es.mapM (ascCol m) = .ok cs) :
-    cs.map (·.2) = ascKeys m es := by
-  obtain ⟨hlen, hf⟩ := mapM_ok hc
-  apply List.ext_getElem? fun i => ?_
-  cases hci : cs[i]? with
-  | none =>
-    have : es[i]? = none := List.getElem?_eq_none_iff.2 (by rw [← hlen]; exact List.getElem?_eq_none_iff.1 hci)
-    simp [ascKeys, hci, this]
-  | some c =>
-    cases hei : es[i]? with
-    | none =>
-      have h1 := List.getElem?_eq_none_iff.1 hei
-      have h2 := (List.getElem?_eq_some_iff.1 hci).1
-      omega
-    | some e =>
-      obtain ⟨hx, -, f, hof, hk⟩ := ascCol_ok (hf i e c hei hci)
-      simp [ascKeys, hci, hei, hof, hk, hx]
+theorem ascCol_keys {m : USize} {es : List (AscKey × Enc)} {cs} (hc : es.mapM (ascCol m) = .ok cs) :
+    cs.flatMap (·.2) = ascKeys m es := by
+  induction es generalizing cs with
+  | nil => simp only [List.mapM_nil, pure, Except.pure, Except.ok.injEq] at hc; subst hc; rw [ascKeys]; rfl
+  | cons e es ih =>
+    rw [List.mapM_cons] at hc
+    cases he : ascCol m e with
+    | error s => simp [he, bind, Except.bind] at hc
+    | ok c =>
+      cases hes : es.mapM (ascCol m) with
+      | error s => simp [he, hes, bind, Except.bind] at hc
+      | ok cs' =>
+        simp only [he, hes, bind, Except.bind, pure, Except.pure, Except.ok.injEq] at hc
+        subst hc
+        rw [List.flatMap_cons, ih hes, ascKeys, (ascCol_ok he).2.2.1]
 
 /-- **`asc_sorted`** (design §4): the permutation `kasc` answers lists the rows ordered lexicographically by their
 order codes (`ascKeys`), the first column the most significant, and **stably**: a row comes before a row whose codes
 equal its own only when it came before it in the input. -/
-theorem asc_sorted (m : USize) (es : List (QAtomicType × Enc)) (vs : List Enc) (p : Enc)
+theorem asc_sorted (m : USize) (es : List (AscKey × Enc)) (vs : List Enc) (p : Enc)
     (h : kasc m es = .ok (vs, p)) :
     ∃ ps : List Nat, p = wordsFoR (ps.map Nat.toUInt64).toArray ∧
       ps.Pairwise fun i j => lexLe (ascKeys m es) i j = true ∧ (lexLe (ascKeys m es) j i = true → i < j) := by
@@ -213,7 +291,7 @@ theorem asc_sorted (m : USize) (es : List (QAtomicType × Enc)) (vs : List Enc) 
 
 /-- **`asc_perm`** (design §4): the permutation `kasc` answers is a permutation `ps` of `til m`, and the answer for each
 key column `e` holds `m` words, word `k` being `e`'s raw word at row `ps[k]`. -/
-theorem asc_perm (m : USize) (es : List (QAtomicType × Enc)) (vs : List Enc) (p : Enc)
+theorem asc_perm (m : USize) (es : List (AscKey × Enc)) (vs : List Enc) (p : Enc)
     (h : kasc m es = .ok (vs, p)) :
     ∃ ps : List Nat, p = wordsFoR (ps.map Nat.toUInt64).toArray ∧ ps.Perm (List.range m.toNat) ∧
       vs.length = es.length ∧ ∀ (c : Nat) e v, es[c]? = some e → vs[c]? = some v →
@@ -223,7 +301,7 @@ theorem asc_perm (m : USize) (es : List (QAtomicType × Enc)) (vs : List Enc) (p
   obtain ⟨hlen, hf⟩ := mapM_ok hc
   obtain ⟨wlen, wf⟩ := mapM_ok hw
   have hM : m.toNat < 2 ^ 64 := by have := m.toNat_lt_size; rcases USize.size_eq with h | h <;> omega
-  have hperm := (ascGrade_spec m.toNat (cs.map (·.2))).1
+  have hperm := (ascGrade_spec m.toNat (cs.flatMap (·.2))).1
   refine ⟨_, rfl, hperm, by simp [wlen, hlen], fun c e v hec hvc => ?_⟩
   simp only [List.getElem?_map] at hvc
   cases hwc : wss[c]? with
@@ -237,7 +315,7 @@ theorem asc_perm (m : USize) (es : List (QAtomicType × Enc)) (vs : List Enc) (p
       have h2 := (List.getElem?_eq_some_iff.1 hwc).1
       omega
     | some cc =>
-      obtain ⟨hx, hxs, -⟩ := ascCol_ok (hf c e cc hec hcc)
+      obtain ⟨hx, hxs, -, -⟩ := ascCol_ok (hf c e cc hec hcc)
       obtain ⟨hvs, hk⟩ := scatter_grade hM hperm hr hxs (wf c cc ws hcc hwc)
       exact ⟨ws, rfl, hvs, fun k hk' => by rw [hk k hk', hx]⟩
 
@@ -277,14 +355,14 @@ theorem ascGrade_append {m : Nat} {ks2 : List (Array UInt64)} (h : ∀ y x, y < 
     exact ascIns_congr _ fun y hy => lexLe_append _ _ _ (h y m (hmem y hy) (by omega)) ks
 
 /-- A `pos` key below `2^63` rows puts every row before every later row: its order code at `i64` is `i + 2^63`. -/
-theorem lexLe_pos {m : USize} (hm : m.toNat ≤ 2 ^ 63) (rest : List (QAtomicType × Enc)) {y x : Nat} (hyx : y < x)
-    (hx : x < m.toNat) : lexLe (ascKeys m ((.i64, .pos) :: rest)) y x = true := by
+theorem lexLe_pos {m : USize} (hm : m.toNat ≤ 2 ^ 63) (rest : List (AscKey × Enc)) {y x : Nat} (hyx : y < x)
+    (hx : x < m.toNat) : lexLe (ascKeys m ((.atom .i64, .pos) :: rest)) y x = true := by
   have hc : ∀ i, i < 2 ^ 63 → (ordKey 8 false true (UInt64.ofNat i)).toNat = i + 2 ^ 63 := fun i hi => by
     have := ordKey_signed (w := 8) (by omega) (by omega) (UInt64.ofNat i)
     simp only [sx, UInt64.toNat_ofNat'] at this
     split at this <;> omega
   have hpr : raw .i64 m (.pos : Enc) = (Array.range m.toNat).map UInt64.ofNat := rfl
-  simp only [ascKeys, List.map_cons, lexLe, hpr, Array.getElem?_map, Array.getElem?_range,
+  simp only [ascKeys, ascKey, List.cons_append, List.nil_append, lexLe, hpr, Array.getElem?_map, Array.getElem?_range,
     show y < m.toNat by omega, hx, if_true, Option.map_some, Option.getD_some, Bool.or_eq_true, decide_eq_true_eq,
     UInt64.lt_iff_toNat_lt]
   left
@@ -292,8 +370,8 @@ theorem lexLe_pos {m : USize} (hm : m.toNat ≤ 2 ^ 63) (rest : List (QAtomicTyp
   rw [hc y (by omega), hc x (by omega)]; omega
 
 /-- `ascCol` reads a `pos` column of at most `2^63` rows: past that it is `ascWords`' error. -/
-theorem ascCol_pos {m : USize} {rest : List (QAtomicType × Enc)} {cs : List (Array UInt64 × Array UInt64)}
-    (h : ((.i64, .pos) :: rest).mapM (ascCol m) = .ok cs) : m.toNat ≤ 2 ^ 63 := by
+theorem ascCol_pos {m : USize} {rest : List (AscKey × Enc)} {cs : List (Array UInt64 × List (Array UInt64))}
+    (h : ((.atom .i64, .pos) :: rest).mapM (ascCol m) = .ok cs) : m.toNat ≤ 2 ^ 63 := by
   rw [List.mapM_cons] at h
   refine Classical.byContradiction fun hm => ?_
   simp [ascCol, ascWords, ascOrd, ascLayout, orderKind, hm, bind, Except.bind, Functor.map, Except.map] at h
@@ -301,13 +379,13 @@ theorem ascCol_pos {m : USize} {rest : List (QAtomicType × Enc)} {cs : List (Ar
 /-- **Law A1** (PLAN 6.13): a `pos` key column has no ties and is in row order (`ascWords` admits it only there), so it
 and every later column decide nothing: `kasc` with them answers the permutation of `kasc` without them, and the same
 leading columns. -/
-theorem kasc_pos_key (m : USize) (ks rest : List (QAtomicType × Enc)) (vs : List Enc) (p : Enc)
-    (h : kasc m (ks ++ (.i64, .pos) :: rest) = .ok (vs, p)) : kasc m ks = .ok (vs.take ks.length, p) := by
+theorem kasc_pos_key (m : USize) (ks rest : List (AscKey × Enc)) (vs : List Enc) (p : Enc)
+    (h : kasc m (ks ++ (.atom .i64, .pos) :: rest) = .ok (vs, p)) : kasc m ks = .ok (vs.take ks.length, p) := by
   obtain ⟨cs, hc, r, hr, wss, hw, rfl, rfl⟩ := kasc_ok h
   obtain ⟨cs1, cs2, hc1, hc2, rfl⟩ := mapM_append_ok hc
   have hm := ascCol_pos hc2
-  have hg : ascGrade m.toNat ((cs1 ++ cs2).map (·.2)) = ascGrade m.toNat (cs1.map (·.2)) := by
-    rw [List.map_append, ascCol_keys hc2]
+  have hg : ascGrade m.toNat ((cs1 ++ cs2).flatMap (·.2)) = ascGrade m.toNat (cs1.flatMap (·.2)) := by
+    rw [List.flatMap_append, ascCol_keys hc2]
     exact ascGrade_append (fun y x hyx hx => lexLe_pos hm rest hyx hx) _
   rw [hg] at hr
   obtain ⟨w1, w2, hw1, -, rfl⟩ := mapM_append_ok hw
@@ -318,13 +396,13 @@ theorem kasc_pos_key (m : USize) (ks rest : List (QAtomicType × Enc)) (vs : Lis
 
 /-- **Law A2** (PLAN 6.13): with a `pos` column first the rows are already in order: the permutation is the `pos`
 column and every answer column is its own words. -/
-theorem kasc_pos_first (m : USize) (rest : List (QAtomicType × Enc)) (vs : List Enc) (p : Enc)
-    (h : kasc m ((.i64, .pos) :: rest) = .ok (vs, p)) :
-    p = wordsFoR (raw .i64 m (.pos : Enc)) ∧ vs = ((.i64, .pos) :: rest).map fun e => wordsFoR (raw .i64 m e.2) := by
+theorem kasc_pos_first (m : USize) (rest : List (AscKey × Enc)) (vs : List Enc) (p : Enc)
+    (h : kasc m ((.atom .i64, .pos) :: rest) = .ok (vs, p)) :
+    p = wordsFoR (raw .i64 m (.pos : Enc)) ∧ vs = ((.atom .i64, .pos) :: rest).map fun e => wordsFoR (raw .i64 m e.2) := by
   obtain ⟨cs, hc, r, hr, wss, hw, rfl, rfl⟩ := kasc_ok h
   have hm := ascCol_pos hc
   -- a strictly sorted permutation of `til m` is `til m`
-  have hg : ascGrade m.toNat (cs.map (·.2)) = List.range m.toNat := by
+  have hg : ascGrade m.toNat (cs.flatMap (·.2)) = List.range m.toNat := by
     rw [ascCol_keys hc, ← List.nil_append (ascKeys m _), ascGrade_append (fun y x hyx hx => lexLe_pos hm rest hyx hx)]
     obtain ⟨hp, hs⟩ := ascGrade_spec m.toNat []
     exact hp.eq_of_pairwise (fun a _ _ _ h1 h2 => absurd (Nat.lt_trans h1 h2) (Nat.lt_irrefl a))
@@ -341,7 +419,7 @@ theorem kasc_pos_first (m : USize) (rest : List (QAtomicType × Enc)) (vs : List
   rw [List.length_map] at h1 h2
   rw [List.getElem_map, List.getElem_map]
   have hcl : c < cs.length := by omega
-  obtain ⟨hx, hxs, -⟩ := ascCol_ok (hf c _ _ (List.getElem?_eq_getElem h2) (List.getElem?_eq_getElem hcl))
+  obtain ⟨hx, hxs, -, -⟩ := ascCol_ok (hf c _ _ (List.getElem?_eq_getElem h2) (List.getElem?_eq_getElem hcl))
   obtain ⟨hvs, hk⟩ := scatter_grade hM (List.Perm.refl _) hr hxs (wf c _ _ (List.getElem?_eq_getElem hcl)
     (List.getElem?_eq_getElem h1))
   refine congrArg wordsFoR (Array.ext_getElem? fun k => ?_)

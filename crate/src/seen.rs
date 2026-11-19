@@ -5,7 +5,8 @@
 //! finds the runs: no hash, no direct-addressing table. Rows out of order are the error, naming the first such pair.
 //! Owner approval (PLAN 6.10) S: one block decoded into an L1 scratch counts as per block.
 use alloc::{collections::BTreeMap, format, string::String, vec, vec::Vec};
-use crate::asc::Key;
+use core::cmp::Ordering;
+use crate::asc::Col;
 use crate::blocks::{Blocks, Grid};
 use crate::ffi::{Form, Sink};
 use crate::lean;
@@ -27,24 +28,33 @@ pub fn unsorted(i: usize) -> String {
 /// writes them. `pos` says a `pos` column follows `ks` (the columns after it neither order nor split rows): every row
 /// is then its own group, `til n` twice, and `ks` need only be in order with ties. Rows out of `lexLe` order are the
 /// error (`unsorted`).
-pub fn blocks(ks: &[Key], n: usize, pos: bool) -> Result<(usize, lean::O, lean::O), String> {
+pub fn blocks(ks: &[Col], n: usize, pos: bool) -> Result<(usize, lean::O, lean::O), String> {
     let g = Grid { n, lg: crate::DEFAULT_LG };
     let (blk, wb) = (g.blk(), g.blk() / 64);
     // bit `i` of `bits`: row `i` starts a run (row 0, and each row greater than the one before it)
-    let (mut bits, mut t, mut buf) = (vec![0u64; n.div_ceil(64)], vec![0u64; ks.len() * blk], vec![0u64; 2 * blk]);
-    // `last[c]`: key `c`'s code at the row before the block; `st[j]`: row `j` against the row before it, 0 equal so far,
-    // 1 greater, 2 less, decided by the first column where the two differ
+    let (mut bits, mut x, mut buf) = (vec![0u64; n.div_ceil(64)], vec![0u64; blk], vec![0u64; 2 * blk]);
+    // `last[c]`: atom key `c`'s code at the row before the block; `st[j]`: row `j` against the row before it, 0 equal so
+    // far, 1 greater, 2 less, decided by the first column where the two differ
     let (mut last, mut st) = (vec![0u64; ks.len()], vec![0u8; blk]);
     for (_, lo, nb) in g.walk() {
-        for (k, o) in ks.iter().zip(t.chunks_exact_mut(nb.max(1))) { k.codes(lo, &mut o[..nb], &mut buf) }
         st[..nb].fill(0);
-        for (c, l) in last.iter_mut().enumerate() {
-            let x = &t[c * nb..c * nb + nb];
-            for (j, s) in st[..nb].iter_mut().enumerate() {
-                let p = if j == 0 { *l } else { x[j - 1] };
-                if *s == 0 && (lo > 0 || j > 0) && x[j] != p { *s = if x[j] > p { 1 } else { 2 } }
+        for (k, l) in ks.iter().zip(last.iter_mut()) {
+            match k {
+                Col::Atom(k) => {
+                    k.codes(lo, &mut x[..nb], &mut buf);
+                    for (j, s) in st[..nb].iter_mut().enumerate() {
+                        let p = if j == 0 { *l } else { x[j - 1] };
+                        if *s == 0 && (lo > 0 || j > 0) && x[j] != p { *s = if x[j] > p { 1 } else { 2 } }
+                    }
+                    *l = x[nb - 1];
+                }
+                // a row against the one before it, its cells read where they lie (`Cells::cmp`)
+                Col::Cells(a) => for (j, s) in st[..nb].iter_mut().enumerate() {
+                    if *s == 0 && lo + j > 0 { *s = match a.cmp(lo + j - 1, lo + j) { Ordering::Less => 1, Ordering::Greater => 2, Ordering::Equal => 0 } }
+                },
+                // a `pos` column ascends with no ties: every row after the first is greater
+                Col::Pos => for (j, s) in st[..nb].iter_mut().enumerate() { if *s == 0 && lo + j > 0 { *s = 1 } },
             }
-            *l = x[nb - 1];
         }
         if let Some(j) = st[..nb].iter().position(|&s| s == 2) { return Err(unsorted(lo + j - 1)) }
         let w = &mut bits[lo / 64..(lo + nb).div_ceil(64)];
@@ -120,7 +130,7 @@ mod tests {
             for cs in [vec![a.clone()], vec![b.clone()], vec![s.clone()], vec![s.clone(), c.clone()], vec![s.clone(), d.clone()],
                        vec![p.clone()], vec![e.clone()], vec![f.clone()], vec![b.clone(), a.clone()], vec![]] {
                 let parts: Vec<[Vec<u8>; 2]> = cs.iter().map(|c| enc(c)).collect();
-                let ks: Vec<Key> = parts.iter().map(|[m, q]| Key::new(coc::view(m, q, n).unwrap_or_else(|e| panic!("test column does not view: {e}")), (8, false, true))).collect();
+                let ks: Vec<Col> = parts.iter().map(|[m, q]| Col::Atom(crate::asc::Key::new(coc::view(m, q, n).unwrap_or_else(|e| panic!("test column does not view: {e}")), (8, false, true)))).collect();
                 let bad = first_unsorted(&cs, n);
                 for pos in [false, true] {
                     match (blocks(&ks, n, pos), bad) {
