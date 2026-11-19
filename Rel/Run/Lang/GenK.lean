@@ -49,8 +49,8 @@ def compS {A B C : Obj} (R : Rel A B) : Except String (Tab B C) → Rel A C
   | .error e => .tab (.error e)
   | .ok s => .tab do Tab.comp (← R.runE ⟨none, some ⟨s.n, s.key⟩⟩) s
 
-/-- `R S`: a lazy `R` starts from the side its context knows (`Gen.comp`'s rule); also a closed `R`, which has no
-    bit-matrix form here. Only the range known and `S` on demand (`e`): `R` first, since `S` needs its domain. -/
+/-- `R S`, also for a closed `R` (no bit-matrix form here): `S` runs first, on the range, only where the context
+    knows only the range and `S` is closed; else `R` runs first and hands its range to `S` as its domain (§0). -/
 def comp (A B C : Obj) (e : Bool) (R : Fn true A B) (S : Fn e B C) : Fn true A C := match R with
   | .tab r => compT r S
   | .lazy f => .lazy fun
