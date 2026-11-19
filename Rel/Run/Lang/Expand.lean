@@ -725,11 +725,11 @@ partial def node (pre : Name) (ρ : List (Nat × Lean.Expr)) {A B : Obj} (t : Tm
   | _, _, .arith k U => return gk ``Gen.arith #[toExpr k, ← c U]
   | _, _, .leq U => return gk ``Gen.leq #[← c U]
   | _, _, .lt U => return gk ``Gen.lt #[← c U]
-  | .arr E, V, .foldr e S => return gk ``Gen.foldr #[oE E, oE V, bE S.dem, ← c e, ← c S]
-  | .arr E, V, .fold e S => return gk ``Gen.fold #[oE E, oE V, bE S.dem, ← c e, ← c S]
+  | .arr El, V, .foldr e S => return gk ``Gen.foldr #[oE El, oE V, bE S.dem, ← c e, ← c S]
+  | .arr El, V, .fold e S => return gk ``Gen.fold #[oE El, oE V, bE S.dem, ← c e, ← c S]
   | _, _, .share _ R => c R
-  | .prod I (.arr E), V, .foldI e S =>
-    return gk ``Gen.foldI #[oE I, oE E, oE V, bE e.dem, bE S.dem, ← c e, ← c S]
+  | .prod I (.arr El), V, .foldI e S =>
+    return gk ``Gen.foldI #[oE I, oE El, oE V, bE e.dem, bE S.dem, ← c e, ← c S]
   | .prod I A, B, .flat R => return gk ``Gen.flat #[oE I, oE A, oE B, bE R.dem, ← c R]
   | A, B, .var _ v => match ρ.lookup v with
     -- by what the binder holds: a plan constant's parameter (a plan), a kernel twin's (code), a fixed point's
@@ -743,7 +743,7 @@ partial def node (pre : Name) (ρ : List (Nat × Lean.Expr)) {A B : Obj} (t : Tm
       return g ``Gen.const #[oE A, oE B, x]
     | none => throwError "rel_program expansion: internal: the variable {v} is not bound here"
   -- on the kernel path `ν` is plain rounds (`GenK.nu`): AC-3's delta rounds (`nuAC`) are old-path only
-  | A, B, .nu v S b => match if k then none else arcs v b with
+  | A, B, .nu v S b => match (arcs v b).filter fun _ => !k with
     | some (a :: as) =>
       let arc (x : Tm A A × Tm B B × Tm A A × Tm B B) : RM Lean.Expr := do
         let (r, s, u, v) := x
