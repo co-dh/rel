@@ -1,5 +1,6 @@
 import Rel.Run.Struct
 import Rel.RepTabComp
+import Rel.RepSetOps
 import Rel.Run.CRelRelDef
 import Rel.Core.Rel
 
@@ -156,14 +157,148 @@ theorem flat_holds {n : USize} {X : Vals (.prod I A) n} {R : Tab I (.prod A B)} 
   unfold Tab.flat at h
   simp only [bind, Except.bind] at h
   split at h; · cases h
-  rename_i U hU
+  rename_i O1 hO1
+  split at h; · cases h
+  rename_i L hL
+  split at h; · cases h
+  rename_i O2 hO2
+  split at h; · cases h
+  rename_i O3 hO3
+  split at h; · cases h
+  rename_i O3c hO3c
+  split at h; · cases h
+  rename_i M hM
+  split at h; · cases h
+  rename_i J hJ
+  split at h; · cases h
+  rename_i O4 hO4
   rw [comp_holds h]
+  simp only [inter_holds hJ, comp_holds hL, comp_holds hM, conv_holds hO3c, outl_holds hO1, outr_holds hO2,
+    outl_holds hO3, outr_holds hO4, Core.Rel.graph]
+  obtain ⟨i, a⟩ := p
   constructor
-  · rintro ⟨p', hI, t, h1, h3⟩
-    obtain ⟨rfl, hx⟩ := (idU_holds hU _ _).1 hI
-    exact ⟨hx, t, by subst h1; rfl, by subst h1 h3; rfl⟩
-  · rintro ⟨hx, t, h1, h2⟩
-    exact ⟨p, (idU_holds hU _ _).2 ⟨rfl, hx⟩, t, Prod.ext h1 (congrArg Prod.fst h2), congrArg Prod.snd h2⟩
+  · rintro ⟨⟨a', b'⟩, ⟨⟨i', ⟨hx, rfl⟩, hR⟩, ⟨a'', ⟨-, rfl⟩, ⟨-, rfl⟩⟩⟩, ⟨-, rfl⟩⟩
+    exact ⟨hx, hR⟩
+  · rintro ⟨hx, hR⟩
+    have hy : ∃ j, R.val.row j = (a, b) := let ⟨j, _, hj⟩ := hR; ⟨j, hj⟩
+    exact ⟨(a, b), ⟨⟨i, ⟨hx, rfl⟩, hR⟩, ⟨a, ⟨hx, rfl⟩, ⟨hy, rfl⟩⟩⟩, ⟨hy, rfl⟩⟩
+
+end Tab
+
+/-- **`Arr.map` is `colMap`** on the array's column. -/
+theorem Arr.map_ok {o : Op} {n : USize} {a b : Enc} {t : QAtomicType} {x : Arr t n} (h : Arr.map o n a b t = .ok x) :
+    colMap o n a b t = .ok x.enc := by
+  unfold Arr.map at h
+  split at h
+  next e he => cases h; exact he
+  next => cases h
+
+/-- **`injCols`'s columns**: every tag is `s`, and row `k`'s position reads back as `k`. -/
+theorem injCols_ok {n : USize} {s : Bool} {tag : Arr .u1 n} {idx : Arr .i64 n} (h : injCols n s = .ok (tag, idx))
+    (k : Fin n.toNat) :
+    tag.get k = s ∧ clampFin (idx.get k) n.toNat (Nat.lt_of_le_of_lt (Nat.zero_le _) k.2) = k := by
+  unfold injCols at h
+  by_cases hb : 2 ^ 63 < n.toNat
+  · simp [hb, bind, Except.bind] at h
+  simp only [hb, if_false, bind, Except.bind, pure, Except.pure] at h
+  split at h; · cases h
+  rename_i z hz
+  split at h; · cases h
+  rename_i o ho
+  split at h; · cases h
+  rename_i t ht
+  split at h; · cases h
+  rename_i i hi
+  simp only [Except.ok.injEq, Prod.mk.injEq] at h
+  obtain ⟨rfl, rfl⟩ := h
+  have hk : k.1 < n.toNat := k.2
+  refine ⟨?_, ?_⟩
+  · obtain ⟨a, ha, he⟩ := Arr.get_u1 t (colMap_closed (Arr.map_ok ht)).1 k
+    obtain ⟨v, ev, hv⟩ := (colMap_get (Arr.map_ok ht)).2 k.1 hk
+    rw [colConst_raw hz, colConst_raw ho] at ev
+    rw [ha] at hv
+    simp only [Array.getElem?_replicate, hk, if_true, Option.getD_some, Op.eval, Except.ok.injEq] at ev
+    simp only [if_true, Option.some.injEq] at hv
+    subst ev; subst hv
+    cases s <;> cases hg : t.get k <;> rw [hg] at he <;> revert he <;> decide
+  · rw [Arr.get_i64]
+    obtain ⟨v, ev, hv⟩ := (colMap_get (Arr.map_ok hi)).2 k.1 hk
+    rw [raw_pos_word hk, colConst_raw hz] at ev
+    simp only [Op.eval, Array.getElem?_replicate, hk, if_true, Option.getD_some, UInt64.add_zero,
+      Except.ok.injEq] at ev
+    have hw : (raw .i64 n i.enc)[k.1]?.getD 0 = k.1.toUInt64 := by simp [hv, ev]
+    rw [hw, clampFin_word _ (by rw [toNat_toUInt64 (by omega)]; exact hk) (by omega)]
+    exact Fin.ext (toNat_toUInt64 (by omega))
+
+namespace Tab
+
+/-- **`Tab.inl X` denotes `inl` on the values `X`** (`idU X ≫ Core.Rel.inl`, the injection `junc` is defined by). -/
+theorem inl_holds {n : USize} {X : Vals A n} {T : Tab A (.sum A B)} (h : Tab.inl X = .ok T) (a : A.El)
+    (s : (Obj.sum A B).El) : T.Holds a s ↔ (∃ i, X.row i = a) ∧ Core.Rel.inl a s := by
+  unfold Tab.inl at h
+  simp only [bind, Except.bind] at h
+  split at h; · cases h
+  rename_i ti hti
+  obtain ⟨tag, idx⟩ := ti
+  split at h; · cases h
+  rename_i y hy
+  rw [canon_holds h]
+  have hrow : ∀ k : Fin n.toNat, Vals.row (A := .sum A B) ⟨n, 0, tag, idx, X, y⟩ k = .inl (X.row k) := fun k => by
+    obtain ⟨ht, hc⟩ := injCols_ok hti k
+    simp only [Vals.row, ht, dif_pos (Nat.lt_of_le_of_lt (Nat.zero_le _) k.2), hc]
+    rfl
+  simp only [Tab.Holds, hrow, Core.Rel.inl, Core.Rel.graph]
+  exact ⟨fun ⟨i, h1, h2⟩ => ⟨⟨i, h1⟩, by rw [← h2, h1]⟩, fun ⟨⟨i, h1⟩, h2⟩ => ⟨i, h1, by rw [h2, h1]⟩⟩
+
+/-- **`Tab.inr Y` denotes `inr` on the values `Y`** (`idU Y ≫ Core.Rel.inr`). -/
+theorem inr_holds {n : USize} {Y : Vals B n} {T : Tab B (.sum A B)} (h : Tab.inr Y = .ok T) (b : B.El)
+    (s : (Obj.sum A B).El) : T.Holds b s ↔ (∃ i, Y.row i = b) ∧ Core.Rel.inr b s := by
+  unfold Tab.inr at h
+  simp only [bind, Except.bind] at h
+  split at h; · cases h
+  rename_i ti hti
+  obtain ⟨tag, idx⟩ := ti
+  split at h; · cases h
+  rename_i x hx
+  rw [canon_holds h]
+  have hrow : ∀ k : Fin n.toNat, Vals.row (A := .sum A B) ⟨0, n, tag, idx, x, Y⟩ k = .inr (Y.row k) := fun k => by
+    obtain ⟨ht, hc⟩ := injCols_ok hti k
+    simp only [Vals.row, ht, dif_pos (Nat.lt_of_le_of_lt (Nat.zero_le _) k.2), hc]
+    rfl
+  simp only [Tab.Holds, hrow, Core.Rel.inr, Core.Rel.graph]
+  exact ⟨fun ⟨i, h1, h2⟩ => ⟨⟨i, h1⟩, by rw [← h2, h1]⟩, fun ⟨⟨i, h1⟩, h2⟩ => ⟨i, h1, by rw [h2, h1]⟩⟩
+
+/-- **`R.junc S` denotes `[R, S]`** (`Tm.den` at `junc`: `Core.Rel.junc`, `inl° ≫ R ∪ inr° ≫ S`). -/
+theorem junc_holds {R : Tab A C} {S : Tab B C} {T : Tab (.sum A B) C} (h : R.junc S = .ok T)
+    (s : (Obj.sum A B).El) (c : C.El) : T.Holds s c ↔ Core.Rel.junc R.Holds S.Holds s c := by
+  unfold Tab.junc at h
+  simp only [bind, Except.bind] at h
+  split at h; · cases h
+  rename_i L hL
+  split at h; · cases h
+  rename_i Lc hLc
+  split at h; · cases h
+  rename_i U hU
+  split at h; · cases h
+  rename_i M hM
+  split at h; · cases h
+  rename_i Mc hMc
+  split at h; · cases h
+  rename_i V hV
+  rw [union_holds h, comp_holds hU, comp_holds hV]
+  simp only [conv_holds hLc, conv_holds hMc, inl_holds hL, inr_holds hM]
+  have hk : ∀ {E : Obj} {Q : Tab E C} {e : E.El}, Q.Holds e c → ∃ i, Q.key.row i = e := fun ⟨i, hi, _⟩ => ⟨i, hi⟩
+  cases s with
+  | inl a =>
+    simp only [Core.Rel.junc, Core.Rel.union, Core.Rel.comp, Core.Rel.recip, Core.Rel.inl, Core.Rel.inr,
+      Core.Rel.graph]
+    exact ⟨fun | .inl ⟨_, ⟨_, e⟩, hr⟩ => .inl ⟨_, e, hr⟩ | .inr ⟨_, ⟨_, e⟩, _⟩ => absurd e (by simp),
+      fun | .inl ⟨_, e, hr⟩ => .inl ⟨_, ⟨hk hr, e⟩, hr⟩ | .inr ⟨_, e, _⟩ => absurd e (by simp)⟩
+  | inr b =>
+    simp only [Core.Rel.junc, Core.Rel.union, Core.Rel.comp, Core.Rel.recip, Core.Rel.inl, Core.Rel.inr,
+      Core.Rel.graph]
+    exact ⟨fun | .inr ⟨_, ⟨_, e⟩, hr⟩ => .inr ⟨_, e, hr⟩ | .inl ⟨_, ⟨_, e⟩, _⟩ => absurd e (by simp),
+      fun | .inr ⟨_, e, hr⟩ => .inr ⟨_, ⟨hk hr, e⟩, hr⟩ | .inl ⟨_, e, _⟩ => absurd e (by simp)⟩
 
 end Tab
 
@@ -265,6 +400,45 @@ private def flatOk {I A B : Obj} [BEq I.El] [BEq A.El] [BEq B.El] {n : USize} (X
   flatOk (I := .long) (A := .long) (col [], col []) P &&
   flatOk (I := .long) (A := .atom .f64) (F.key, F.val) (⟨F.n, F.key, (F.val, F.key)⟩ : Tab .long (.prod (.atom .f64) .long))
 
+/-- `inl X` and `inr X` against the old `inlC`, `inrC` and against the injections as sets. -/
+private def injOk {A B : Obj} [BEq A.El] [BEq B.El] {n : USize} (X : Vals A n) (Y : Vals B n) : Bool :=
+  oldOk (Tab.inl (B := B) X) (let c := Alg.inlC (B := B) X; if c.2 then oldC c.1 else none) &&
+    oldOk (Tab.inr (A := A) Y) (let c := Alg.inrC (A := A) Y; if c.2 then oldC c.1 else none) &&
+    specOk (Tab.inl (B := B) X) ((rows X).map fun a => (a, .inl a)) &&
+    specOk (Tab.inr (A := A) Y) ((rows Y).map fun b => (b, .inr b))
+
+/-- `[R, S]` against the old `juncC` and against `inl° ≫ R ∪ inr° ≫ S` as a set. -/
+private def juncOk {A B C : Obj} [BEq A.El] [BEq B.El] [BEq C.El] (R : Tab A C) (S : Tab B C) : Bool :=
+  oldOk (R.junc S) (let c := Alg.juncC R S; if c.2 then oldC c.1 else none) &&
+    specOk (R.junc S) ((R.toList.map fun (a, c) => (.inl a, c)) ++ S.toList.map fun (b, c) => (.inr b, c))
+
+-- `inl`, `inr`: duplicates, none, a float and a tuple summand
+#guard ints.all fun ps => let R := tabW ps; injOk R.key R.val
+#guard injOk F.val F.key && injOk P.val P.key
+/-- `[R, S]` stops at `union`'s `Vals.concat`, which has no `sum` case yet (branch w3arrcat): until then the
+guards assert that error; once it lands they become `juncOk`. -/
+private def juncBlocked {A B C : Obj} (R : Tab A C) (S : Tab B C) : Bool :=
+  match R.junc S with
+  | .error s => s == "concat: a sum side is not atom columns"
+  | .ok _ => false
+
+-- `[R, S]`: integers (duplicates, a summand of no rows, both empty), a float and a tuple value
+#guard ints.all fun ps => ints.all fun qs => juncBlocked (tabW ps) (tabW qs)
+#guard juncBlocked F F && juncBlocked (A := .long) (B := .long) P P &&
+  juncBlocked (tabW []) (⟨F.n, F.val, F.key⟩ : Tab (.atom .f64) .long)
+
 end Checks
+
+#print axioms Tab.zero_holds
+#print axioms Tab.idU_holds
+#print axioms Tab.top_holds
+#print axioms Tab.outl_holds
+#print axioms Tab.outr_holds
+#print axioms Tab.pair_holds
+#print axioms Tab.prod_holds
+#print axioms Tab.inl_holds
+#print axioms Tab.inr_holds
+#print axioms Tab.junc_holds
+#print axioms Tab.flat_holds
 
 end Rel
