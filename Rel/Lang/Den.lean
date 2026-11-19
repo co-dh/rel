@@ -250,8 +250,7 @@ noncomputable def Val.args (ss : List Sem) : Val := go 0 ss where
 abbrev RowDen (c : RowCode) := (σ : List Obj) → List Sem → Den (c.ty σ).1 (c.ty σ).2
 
 open Classical RowCode in
-/-- Every row of `prims` with its meaning, in the order of `rowCodes` (`rowDens_codes`). `setify` is `Λ(∋)`; the
-    meanings of `setify` and `asc` have no lemma yet (`rowGaps`). -/
+/-- Every row of `prims` with its meaning, in the order of `rowCodes` (`rowDens_codes`). `setify` is `Λ(∋)`. -/
 def rowDens : List ((c : RowCode) × RowDen c) :=
   [⟨tau, fun _ _ a Y => Y = [a]⟩,
    ⟨cons, fun _ _ p ys => ys = p.1 :: p.2⟩,

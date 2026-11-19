@@ -934,6 +934,37 @@ theorem lam_sound {A B : Obj} {d : Bool} {R : Fn d A B} {TR : Den A B} (hR : Sou
       (fun Y h b => (h1 a Y h b).trans (hs a b ha)) ((h2 a).2 (.inr (keyRow ha))) ys
     rw [← CRel.rep_ofC hc, ← e]; exact h
 
+/-- **`thin(Q)` on the arrays in demand names each one's canonical list of unbeaten elements**: `lam_sound`'s proof
+    with the members from `thinOn_at`, which needs the test `TQ` coreflexive (`hc`), and `rep_mem`. -/
+theorem thin_sound {B : Obj} {Q : Fn true (.prod B B) (.prod B B)} {TQ : Den (.prod B B) (.prod B B)}
+    (hQ : Sound Q TQ) (hc : ∀ p p', TQ p p' → p = p') (ho : B.Ordered) (hi : B.KeyInj) :
+    Sound (thin B Q) (thinDen TQ) :=
+  KSound.reps fun D _ hb xs ys hx => by
+    have hT := CRel.guard_ok_left hb
+    obtain ⟨h1, h2⟩ := CRel.rep_lamOn _ _ hb
+    have e : CRel.lamOn (CRel.thinOn (fun P => Q.at P.rel) (CRel.mem D.val)) D.val = _ := CRel.guard_eq CRel.ok hb
+    have hc' := e ▸ hb
+    have hm := CRel.guard_ok_left hT
+    refine lamDen_of hi (fun Y h => lamOnC_asc _ _ ho (CRel.ofC_ok hc').1 xs Y ?_) (fun Y h c => (h1 xs Y h c).trans ?_)
+      ((h2 xs).2 (.inr (keyRow hx))) ys
+    · rw [← CRel.rep_ofC hc', ← e]; exact h
+    · rw [CRel.thinOn_at (fun P => Q.at P.rel) (fun E hE hb' => hQ.at E hE hb') hc _ hT xs c]
+      simp only [CRel.rep_mem _ hm, keyRow hx, true_and]
+
+/-- **`setify` sends each array in demand to its canonical list of members**: `lamDen_of` on `rep_setify`. -/
+theorem setify_sound {B : Obj} (ho : B.Ordered) (hi : B.KeyInj) :
+    Sound (ofVals (.arr B) (.arr B) fun X => CRel.setify X) (lamDen fun xs a => a ∈ xs) :=
+  ofVals_keys fun X hb xs ys hx => by
+    obtain ⟨h1, h2⟩ := CRel.rep_setify X ho hb
+    exact lamDen_of hi (fun Y h => (h1 xs Y h).2.2) (fun Y h => (h1 xs Y h).2.1)
+      ((h2 xs).2 ((idU_holds X xs xs).1 hx).2) ys
+
+/-- **`asc` sends each array in demand to its ascending permutation**: `rep_asc` at a row of `X`. -/
+theorem asc_sound {B : Obj} (ho : B.Ordered) (hi : B.KeyInj) :
+    Sound (ofVals (.arr B) (.arr B) fun X => CRel.asc X)
+      fun xs ys => ys.Perm xs ∧ ys.Pairwise fun x y => ¬ B.lt y x :=
+  ofVals_keys fun X hb xs ys hx => (CRel.rep_asc X ho hi hb xs ys).trans (and_iff_right ((idU_holds X xs xs).1 hx).2)
+
 /-- **`E(R)` on the arrays in demand names each one's canonical list of images** (`EDen = lamDen(∋ ≫ R)`):
     `lamDen_of`, the members from `rep_E` with `R` read at the elements (`elems_at`), the order from `EC_asc`. -/
 theorem E_sound {A B : Obj} {d : Bool} {R : Fn d A B} {TR : Den A B} (hR : Sound R TR) (ho : B.Ordered)
