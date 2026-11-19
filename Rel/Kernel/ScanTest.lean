@@ -20,8 +20,8 @@ private def kwords : Except String (Array UInt64) → List UInt64
   | .ok a => a.toList
   | .error _ => []
 /-- `kscan`'s answer read back at `long`, `[]` at an error. -/
-private def kread (r : Except String Enc) : List UInt64 := match r with
-  | .ok e => (e.raw .i64 4).toList
+private def kread (r : Except String (Enc × Option UInt64)) : List UInt64 := match r with
+  | .ok (e, _) => (e.raw .i64 4).toList
   | .error _ => []
 
 /-- Rows 0 and 2 start a segment; the seed is 100 on every row, the folded column `1 2 3 4`. -/
@@ -60,8 +60,8 @@ example : kwords ((List.range 4).foldlM (kscanRow .min #[0, 1, 0, 1] #[0, 0, 0, 
   [0, 0xfff8000000000000, 0, 0]
 
 /-- A boolean answer read back at `boolean`, `[]` unless it is a `foR` (D.5: a boolean is a `foR` of `u1`). -/
-private def kbool (r : Except String Enc) : List UInt64 := match r with
-  | .ok (.foR m p) => ((Enc.foR m p : Enc).raw .u1 4).toList
+private def kbool (r : Except String (Enc × Option UInt64)) : List UInt64 := match r with
+  | .ok (.foR m p, _) => ((Enc.foR m p : Enc).raw .u1 4).toList
   | _ => []
 -- a compare answers a boolean: forward `100>1, 1>2 | 100>3, 1>4`; reversed rows `100>4 | 100>3, 1>2 | 100>1`
 example : kwords ((List.range 4).foldlM (kscanRow .gt #[1, 0, 1, 0] #[100, 100, 100, 100] [#[1, 2, 3, 4]]) #[]) =
@@ -74,11 +74,11 @@ example : kwords ((List.range 4).foldlM (kscanRow .gt #[0, 1, 0, 1] #[100, 100, 
 #guard kbool (kscan .add false .i64 .u1 4 kseg kcols) = [1, 1, 1, 1]
 -- a `foR` boolean is a `seg` and a boolean column: the compare's own answer `1 0 1 0` segments as `kseg` does, and
 -- reversed, `or` of it with itself carries row 2's `1` back into row 1: rows `0 | 1|1, 1|0 | 1|1`
-#guard kread (kscan .gt false .i64 .u1 4 kseg kcols >>= fun g => kscan .add false .i64 .i64 4 g kcols) =
+#guard kread (kscan .gt false .i64 .u1 4 kseg kcols >>= fun g => kscan .add false .i64 .i64 4 g.1 kcols) =
   [101, 103, 103, 107]
 example : kwords ((List.range 4).foldlM (kscanRow .or #[0, 1, 0, 1] #[0, 1, 0, 1] [#[0, 1, 0, 1]]) #[]) =
     [0, 1, 1, 1] := by decide
-#guard kbool (kscan .gt false .i64 .u1 4 kseg kcols >>= fun g => kscan .or true .u1 .u1 4 g [g, g]) =
+#guard kbool (kscan .gt false .i64 .u1 4 kseg kcols >>= fun g => kscan .or true .u1 .u1 4 g.1 [g.1, g.1]) =
   [1, 1, 1, 0]
 
 -- `pos` (PLAN 6.13) as the seed: row `i` reads `i`, `0+1, 1+2 | 2+3, 5+4`
@@ -90,6 +90,32 @@ example : kwords ((List.range 4).foldlM (kscanRow .add #[1, 0, 1, 0] #[0, 1, 2, 
 example : (Ext.Enc.raw (X := Empty) .u1 (USize.ofNat32 4 (by decide)) .pos).size = 0 := by decide +kernel
 #guard (kscan .add false .i64 .i64 4 .pos kcols).toBool = false
 #guard (kscan .add false .i32 .i64 4 kseg [.pos]).toBool = false
+
+-- The fold result: the word of the row the fold visits last, read off the row fold `out` (in fold order) as its last
+-- word cut to the answer type, and `none` with no rows. Forward and segmented: row 3, `103+4`
+example : ((List.range 4).foldlM (kscanRow .add #[1, 0, 1, 0] #[100, 100, 100, 100] [#[1, 2, 3, 4]]) #[]).toOption.map
+    (·.back?) = some (some 107) := by decide
+#guard (kscan .add false .i64 .i64 4 kseg kcols).toOption.map (·.2) = some (some 107)
+-- reversed: the fold visits row 0 last, `100+1`
+example : ((List.range 4).foldlM (kscanRow .add #[0, 1, 0, 1] #[100, 100, 100, 100] [#[4, 3, 2, 1]]) #[]).toOption.map
+    (·.back?) = some (some 101) := by decide
+#guard (kscan .add true .i64 .i64 4 kseg kcols).toOption.map (·.2) = some (some 101)
+-- no rows: no row is visited, so there is no fold result
+example : ((List.range 0).foldlM (kscanRow .add #[] #[] [#[]]) #[]).toOption.map (·.back?) = some none := by decide
+#guard (kscan .add false .i64 .i64 0 .pos [.pos, .pos]).toOption.map (·.2) = some none
+-- at a float type: `fneg` of row 3's `4.0` is `-4.0`, the sign bit flipped
+example : ((List.range 4).foldlM (kscanRow .fneg #[1, 0, 1, 0] #[0, 0, 0, 0]
+    [#[0x3ff0000000000000, 0x4000000000000000, 0x4008000000000000, 0x4010000000000000]]) #[]).toOption.map (·.back?) =
+    some (some 0xc010000000000000) := by decide
+#guard (kscan .fneg false .f64 .f64 4 kseg [.bytes (Column.packIds 64 4 fun _ => 0), .bytes (Column.packIds 64 4
+  fun i => [0x3ff0000000000000, 0x4000000000000000, 0x4008000000000000, 0x4010000000000000][i]?.getD 0)]).toOption.map (·.2) =
+  some (some 0xc010000000000000)
+-- at a narrower answer type: the 64-bit accumulator `2^32 + 107` read at `int` is `107`
+example : ((List.range 4).foldlM (kscanRow .add #[1, 0, 1, 0] #[0x100000064, 0x100000064, 0x100000064, 0x100000064]
+    [#[1, 2, 3, 4]]) #[]).toOption.map (·.back?.map fun v => UInt64.ofNat (v.toNat % 2 ^ 32)) = some (some 107) := by
+  decide
+#guard (kscan .add false .i64 .i32 4 kseg [.bytes (Column.packIds 64 4 fun _ => 0x100000064), .bytes (Column.packIds 64 4 (· + 1))]).toOption.map
+  (·.2) = some (some 107)
 
 end Rel.Kernel
 

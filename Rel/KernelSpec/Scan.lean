@@ -77,17 +77,21 @@ theorem foldlM_kscanRow (op : Op) (g seed : Array UInt64) (xs : List (Array UInt
 of one word a row, each cut to `t`'s width (a boolean's to its low bit), where row `i` of `out` is `op` folded over the
 columns after the first at row `i`, from the previous row's word, or from the first column's row `i` where `seg` starts
 a segment there (row 0 always); every column held `n` raw words. With `rev` every column, `seg` included, is reversed
-before the fold and `out` after it. -/
+before the fold and `out` after it. The fold result `r.2` is `out`'s last word (the row visited last) cut the same way,
+`none` where `out` is empty. -/
 theorem raw_kscan (op : Op) (rev : Bool) (s t : QAtomicType) (w : Nat) (ht : t.width = some w) (n : USize)
-    (seg : Enc) (es : List Enc) (e : Enc) (h : kscan op rev s t n seg es = .ok e) :
+    (seg : Enc) (es : List Enc) (r : Enc × Option UInt64) (h : kscan op rev s t n seg es = .ok r) :
     (seg.raw .u1 n).size = n.toNat ∧ (∀ x ∈ es, (x.raw s n).size = n.toNat) ∧
     ∃ c cs, es = c :: cs ∧ ∃ out : Array UInt64, out.size = n.toNat ∧
-      e.raw t n = (if rev then out.reverse else out).map
+      r.1.raw t n = (if rev then out.reverse else out).map
         (fun v => UInt64.ofNat (v.toNat % 2 ^ (if t = .u1 then 1 else 8 * w))) ∧
+      r.2 = out.back?.map (fun v => UInt64.ofNat (v.toNat % 2 ^ (if t = .u1 then 1 else 8 * w))) ∧
       ∀ i (hi : i < out.size),
         ((cs.map (·.raw s n)).map fun a => if rev then a.reverse else a).foldlM (fun a x => op.eval a (x[i]?.getD 0))
           (if 0 < i ∧ (if rev then (seg.raw .u1 n).reverse else seg.raw .u1 n)[i]?.getD 0 = 0
            then out[i - 1]?.getD 0 else (if rev then (c.raw s n).reverse else c.raw s n)[i]?.getD 0) = .ok out[i] := by
+  obtain ⟨e, v⟩ := r
+  dsimp only
   unfold kscan at h
   cases hg : rawAll .u1 n seg with
   | error m => simp [hg, bind, Except.bind] at h
@@ -108,8 +112,8 @@ theorem raw_kscan (op : Op) (rev : Bool) (s t : QAtomicType) (w : Nat) (ht : t.w
         | ok out =>
           obtain ⟨hos, hrow⟩ := foldlM_kscanRow _ _ _ _ _ _ hf
           simp only [hg, hc, hf, bind, Except.bind, List.map_cons, ht, pure, Except.pure] at h
-          refine ⟨hgs, hsz, c, es, rfl, out, hos, ?_, hrow⟩
           cases h
+          refine ⟨hgs, hsz, c, es, rfl, out, hos, ?_, rfl, hrow⟩
           -- every `foR` is read cut to `t`'s width, a boolean's being one bit
           have hraw : ∀ M P : ByteArray, (Enc.foR M P : Enc).raw t n = (Array.range n.toNat).map fun i =>
               UInt64.ofNat ((Column.foRBits M P (Column.blockStarts M) i).toNat % 2 ^ (if t = .u1 then 1 else 8 * w)) := by
@@ -141,6 +145,17 @@ theorem raw_kscan (op : Op) (rev : Bool) (s t : QAtomicType) (w : Nat) (ht : t.w
           rw [Verify.foRBits_encode Column.lgEnc (by decide) 8 (by decide) (by decide) X i (by rw [hxs]; omega), hu]
           subst hW
           by_cases hb : t = .u1 <;> simp [hb]
+
+/-- **The fold result is the answer's last-visited row**: `kscan`'s second component is word `n − 1` of its answer read
+at `t` (word 0 under `rev`), and `none` exactly at `n = 0`. -/
+theorem kscan_last {op : Op} {rev : Bool} {s t : QAtomicType} {w : Nat} (ht : t.width = some w) {n : USize}
+    {seg : Enc} {es : List Enc} {r : Enc × Option UInt64} (h : kscan op rev s t n seg es = .ok r) :
+    r.2 = (r.1.raw t n)[if rev then 0 else n.toNat - 1]? := by
+  obtain ⟨-, -, -, -, -, out, hos, he, hv, -⟩ := raw_kscan op rev s t w ht n seg es r h
+  rw [he, hv, Array.back?_eq_getElem?]
+  rcases Nat.eq_zero_or_pos out.size with h0 | h0
+  · cases rev <;> simp [h0]
+  · cases rev <;> simp [hos, show 0 < n.toNat by omega] <;> exact ⟨_, Array.getElem?_eq_getElem (by omega), rfl⟩
 
 end Rel.Kernel
 

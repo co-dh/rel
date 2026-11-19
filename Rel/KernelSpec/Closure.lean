@@ -107,8 +107,8 @@ theorem scatterWords_size {op : Op} {is es : Array UInt64} {n : Nat} {fill : UIn
     · cases h
 
 /-- **`kscan` closes**: its answer is valid at its `n` rows and `Ext.Enc.WF` at its answer type `t`. -/
-theorem kscan_closed {op : Op} {rev : Bool} {s t : QAtomicType} {n : USize} {seg : Enc} {es : List Enc} {o : Enc}
-    (h : kscan op rev s t n seg es = .ok o) : Enc.Valid n o ∧ Ext.Enc.WF t n o := by
+theorem kscan_closed {op : Op} {rev : Bool} {s t : QAtomicType} {n : USize} {seg : Enc} {es : List Enc}
+    {r : Enc × Option UInt64} (h : kscan op rev s t n seg es = .ok r) : Enc.Valid n r.1 ∧ Ext.Enc.WF t n r.1 := by
   unfold kscan at h
   simp only [bind, Except.bind] at h
   split at h; · cases h
@@ -121,6 +121,7 @@ theorem kscan_closed {op : Op} {rev : Bool} {s t : QAtomicType} {n : USize} {seg
   rename_i ht
   simp only [pure, Except.pure, Except.ok.injEq] at h
   subst h
+  dsimp only
   have hW : (Array.map (fun v => if t = .u1 then v % 2 else v) (if rev = true then out.reverse else out)).size =
       n.toNat := by rw [Array.size_map]; split <;> simp [hos]
   have hc := wordsFoR_closed _ hW.symm

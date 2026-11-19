@@ -226,11 +226,13 @@ reversed, `seg` included, then reversed, so `seg` marks the row a segment starts
 forward order) and the last row always starts one.
 The answer is `foR` at every `t`, the words encoded whole by `Coc.encode` at 8 bytes and read back by `Enc.raw` cut to
 `t`'s width; at a boolean `t` each word is cut to its low bit first, a `foR` of `u1` being what `Enc.WF` admits there.
+Beside the answer it returns the **fold result**: the word of the row the fold visits last (row `n − 1`, row 0 under
+`rev`), cut to `t`'s width as `Enc.raw t` reads it back (`kscan_last`), and `none` at `n = 0`, where no row is visited.
 An `Op.eval` error, a column short of `n` raw words, an empty `es` or a `t` of no width is the `.error`, never a default.
 Temporary name until 6.11: `Kernel.scan` (`Driver.lean`) and `qlean_scan` exist. -/
 @[extern "qlean_k_scan"]
 def kscan (op : Op) (rev : Bool) (s t : QAtomicType) (n : USize) (seg : @& Enc) (es : @& List Enc) :
-    Except String Enc := do
+    Except String (Enc × Option UInt64) := do
   let rv := fun a : Array UInt64 => if rev then a.reverse else a
   let g ← rawAll .u1 n seg
   match ← es.mapM (rawAll s n) with
@@ -239,11 +241,12 @@ def kscan (op : Op) (rev : Bool) (s t : QAtomicType) (n : USize) (seg : @& Enc) 
     let out ← (List.range n.toNat).foldlM (kscanRow op (rv g) (rv seed) (xs.map rv)) #[]
     match t.width with
     | none => .error "kscan: the answer type has no fixed width"
-    | some _ =>
+    | some w =>
       let ws := (rv out).map fun v => if t = .u1 then v % 2 else v
       -- `ofNat32`, not the literal `8`, whose `toNat` is `8 % 2 ^ numBits` and stops `decide` at the opaque `numBits`
       let r := Coc.encode (USize.ofNat32 8 (by decide)) (ws.foldl (init := .empty) fun acc w => Column.pushBits acc w 8)
-      pure (.foR r.1 r.2)
+      -- `out` is in fold order, so its last word is the row visited last
+      pure (.foR r.1 r.2, out.back?.map fun v => UInt64.ofNat (v.toNat % 2 ^ (if t = .u1 then 1 else 8 * w)))
 
 end Rel.Kernel
 

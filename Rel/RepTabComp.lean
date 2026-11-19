@@ -520,7 +520,9 @@ theorem expand_spec {K T : USize} {w G u : Enc} (h : expand K w = .ok (T, G, u))
   rename_i hTU
   have hPf : ∃ md pk, P = .foR md pk := by
     unfold colPrefix at hP; simp only [bind, Except.bind] at hP; split at hP; · cases hP
-    exact kscan_foR hP
+    split at hP; · cases hP
+    rename_i r hr; simp only [pure, Except.pure, Except.ok.injEq] at hP; subst hP
+    exact kscan_foR hr
   generalize hT : lastCount _ P _ = Tn at h hTU
   simp only [bind] at h
   rw [Except.bind_eq_ok'] at h; obtain ⟨_, -, h⟩ := h

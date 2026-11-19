@@ -208,7 +208,7 @@ compile η t : {r : Rel A B // rep r = ⟦t⟧ρ}       -- 方案 A：规格在�
 == 5 个 kernel：2 个原语 + 3 个优化
 
 #tbl(c-rs, (auto, 1.4fr, auto, 1fr), ([kernel], [形状（输入输出都是 foR）], [定律], [现有 driver]),
-  [`scan`], [`(op : Op) (seg : Enc) (es : List Enc) : Enc`，分段前缀折叠；含 map 与 fold], [`raw_scan`], [`scan` `map` `fold`],
+  [`scan`], [`(op : Op) (rev : Bool) (s t) (n) (seg : Enc) (es : List Enc) : Enc × Option UInt64`，分段前缀折叠；含 map 与 fold。第二个分量是折叠结果：最后访问的那一行（正向第 `n − 1` 行，`rev` 时第 0 行）按 `t` 的宽度截取的字，`n = 0` 时为 `none`；kernel 写输出时从累加器取得，无需解码输出（`kscan_last`）], [`raw_scan`], [`scan` `map` `fold`],
   [`gather`], [`(ix : Enc) (e : Enc) (fill) : Enc`，`out[i] = e[ix[i]]`], [`raw_permute`], [`permute`],
   [`scatter`], [`(ix : Enc) (e : Enc) (n) (fill) : Enc`，`out[ix[i]] = e[i]`], [`raw_scatter`（新）], [—],
   [`asc`（草稿，待审）], [`(m) (es : List (AscKey × Enc)) : List Enc × Enc`，`AscKey = atom t ┃ cells n c lo hi els`；
@@ -259,7 +259,7 @@ compile η t : {r : Rel A B // rep r = ⟦t⟧ρ}       -- 方案 A：规格在�
 - 格界 `[s, e)`：`scan`（逐行 `max`/`min`）把 `lo` `hi` 夹到 payload `[0, m)`，宽 `e − s` 不为负。
 - EXPAND(`w`)：`scan`（前缀和定各组起点）→ `scatter(max)` 组号到起点 → `scan(max)` 向后填 → `gather`；
   得每个输出行的组 `G` 与组内偏移 `u`（`≫` 行的「组内展开」）。
-- where(`b`)：`scan`（`b · (pos + 1)`）→ `scatter`（多一格 `0`）→ `asc` → `seen` → `gather`：`b = 1` 的位置，升序。
+- where(`b`)：`scan(add)` 得前缀和 `s`，其折叠结果即个数 `K`（`m = 0` 时为 `none`，空 where 的个数按定义为 0）→ `scan(sub)` 得 `d = s − b`（每行之前保留的行数）→ `scatter(last)` 把 `pos` 写到 `d`，共 `K + 1` 格（被丢弃的行写到下一保留行的格、由后者覆盖，或写到多出的第 `K` 格）→ `gather` 取前 `K` 格：`b = 1` 的位置，升序；O(m)，不排序。
 - 「`2^63` 拒绝」：位置、宽度按有符号 `i64` 读，所以超过时报错，不截断。
 
 #tbl(c-sem, (auto, 1fr), ([运算（草稿，待审）], [由哪些运算与 kernel 复合]),

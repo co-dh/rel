@@ -140,7 +140,7 @@ def sum {n : USize} (X : Vals (.arr .long) n) : Except String (Tab (.arr .long) 
     let v ← kgather T (← colMap .add T (← kgather T G n s.enc) u) m f.enc
     let z ← colConst T 0
     let last ← colMap .eq T u (← colMap .sub T (← kgather T G n w) (← colConst T 1))
-    let W ← kscan .add true .i64 .i64 T last [z, v]
+    let W := (← kscan .add true .i64 .i64 T last [z, v]).1
     let sv ← colMap .lt T v z
     let ovf ← colMap .and T (← colMap .eq T sv (← colMap .lt T (← colMap .sub T W v) z)) (← colMap .ne T sv
       (← colMap .lt T W z))
