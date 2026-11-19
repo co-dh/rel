@@ -22,7 +22,7 @@ theorem longCount_eq {α : Type} [Inhabited α] (what : String) (b : ByteArray)
 
 /-- A long column cast to the count `M` it holds reads back its payload's longs. -/
 theorem longCol_cast_get {b : ByteArray} {M : USize} (hb : len b < USize.size) (e : (len b).toUSize = M)
-    (q : Fin M.toNat) : (e ▸ longCol b : Arr .long M).get q = (Column.bitsAt b (q.1 * 8) 8).toInt64 := by
+    (q : Fin M.toNat) : (e ▸ longCol b : Arr .i64 M).get q = (Column.bitsAt b (q.1 * 8) 8).toInt64 := by
   have hq : q.1 < len b := by
     have h1 := q.2; have h2 : M.toNat = len b := by rw [← e, USize.toNat_ofNat_of_lt' hb]
     omega
@@ -34,7 +34,7 @@ theorem longCol_cast_get {b : ByteArray} {M : USize} (hb : len b < USize.size) (
   · contradiction
 
 /-- An array row is, as a list, the payload's values at the positions between the row's `lo` and `hi`, in order. -/
-theorem arr_row_eq {b : Obj} {n K : USize} (lo hi : Arr .long n) (f : Vals b K) (q : Fin n.toNat) :
+theorem arr_row_eq {b : Obj} {n K : USize} (lo hi : Arr .i64 n) (f : Vals b K) (q : Fin n.toNat) :
     Vals.row (A := .arr b) ⟨K, lo, hi, f⟩ q = ((List.finRange K.toNat).filter fun s =>
       decide ((lo.get q).toInt ≤ (s.1 : Int) ∧ (s.1 : Int) < (hi.get q).toInt)).map (Vals.row f) := by
   show List.filterMap _ _ = _

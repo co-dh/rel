@@ -42,8 +42,8 @@ theorem grade_i64 (n : USize) (B : ByteArray) :
 
 /-- `gradeColumn` at `long` is the kernel's `grade` (or `ranks`) over the column's dense payload, on either
     encoding. -/
-theorem gradeColumn_long {n : USize} (x : Arr .long n) (rank : Bool) :
-    gradeColumn .long false n x.enc rank = some (.bytes
+theorem gradeColumn_long {n : USize} (x : Arr .i64 n) (rank : Bool) :
+    gradeColumn .i64 false n x.enc rank = some (.bytes
       (if rank then Order.ranks .i64 n (longsOf x) else Order.grade .i64 false n (longsOf x))) := by
   rcases long_cases x.wf with ⟨b, hb⟩ | ⟨M, P, hb⟩
   · have hs : b.size / 8 = n.toNat := Arr.n_long_bytes x hb
@@ -62,7 +62,7 @@ theorem gradeColumn_long {n : USize} (x : Arr .long n) (rank : Bool) :
 /-- **`gradeColumn .long` ascending, read back**: the grade lists every row below the count once, each before
     every later row of a greater value and before every later tie — q's `iasc`, a stable ascending sort, null
     `0N` (the least `Int64`) first. -/
-theorem grade_long {n : USize} (x : Arr .long n) :
+theorem grade_long {n : USize} (x : Arr .i64 n) :
     (ids (Order.grade .i64 false n (longsOf x))).Perm (List.range n.toNat) ∧
       (ids (Order.grade .i64 false n (longsOf x))).Pairwise fun i j => ∀ (hi : i < n.toNat) (hj : j < n.toNat),
         x.get ⟨i, hi⟩ < x.get ⟨j, hj⟩ ∨ (x.get ⟨i, hi⟩ = x.get ⟨j, hj⟩ ∧ i < j) := by
@@ -270,25 +270,25 @@ theorem sorted_block_perm {N n : Nat} (g : List Nat) (key P : Nat → Nat) (hp :
   simp only [hiff]
 
 /-- **`Obj.sortBy` at `long` of `til m`, read back**: every cell once, by value ascending, ties in cell order. -/
-theorem sortBy_long {m : USize} (cells : Vals (.atom .long) m) :
-    (ids (Obj.sortBy (.atom .long) cells (tilLongs m))).Perm (List.range m.toNat) ∧
-      (ids (Obj.sortBy (.atom .long) cells (tilLongs m))).Pairwise fun c c' =>
+theorem sortBy_long {m : USize} (cells : Vals (.atom .i64) m) :
+    (ids (Obj.sortBy (.atom .i64) cells (tilLongs m))).Perm (List.range m.toNat) ∧
+      (ids (Obj.sortBy (.atom .i64) cells (tilLongs m))).Pairwise fun c c' =>
         ∀ (hc : c < m.toNat) (hc' : c' < m.toNat),
           cells.get ⟨c, hc⟩ < cells.get ⟨c', hc'⟩ ∨ (cells.get ⟨c, hc⟩ = cells.get ⟨c', hc'⟩ ∧ c < c') := by
   have hl : len (tilLongs m) < USize.size := by rw [len_tilLongs]; exact m.toNat_lt_size
-  have hx := pick_len .long ⟨_, cells⟩ (tilLongs m) hl
+  have hx := pick_len .i64 ⟨_, cells⟩ (tilLongs m) hl
   rw [len_tilLongs] at hx
-  have hget : ∀ k (hk : k < (pick .long ⟨_, cells⟩ (tilLongs m)).1.toNat) (hk' : k < m.toNat),
-      (pick .long ⟨_, cells⟩ (tilLongs m)).2.get ⟨k, hk⟩ = cells.get ⟨k, hk'⟩ := fun k hk hk' => by
+  have hget : ∀ k (hk : k < (pick .i64 ⟨_, cells⟩ (tilLongs m)).1.toNat) (hk' : k < m.toNat),
+      (pick .i64 ⟨_, cells⟩ (tilLongs m)).2.get ⟨k, hk⟩ = cells.get ⟨k, hk'⟩ := fun k hk hk' => by
     rw [pick_get ⟨_, cells⟩ (tilLongs m) hl k hk (by rw [tilLongs_get hk']; exact hk')]
     exact congrArg cells.get (Fin.ext (tilLongs_get hk'))
   simp only [Obj.sortBy, Obj.sortByC]
   rw [gradeColumn_long]
   simp only [Bool.false_eq_true, ↓reduceIte]
-  obtain ⟨hp, hs⟩ := grade_long (pick .long ⟨_, cells⟩ (tilLongs m)).2
+  obtain ⟨hp, hs⟩ := grade_long (pick .i64 ⟨_, cells⟩ (tilLongs m)).2
   rw [hx] at hp
-  generalize Order.grade .i64 false (pick .long ⟨_, cells⟩ (tilLongs m)).1
-    (longsOf (pick .long ⟨_, cells⟩ (tilLongs m)).2) = G at hp hs
+  generalize Order.grade .i64 false (pick .i64 ⟨_, cells⟩ (tilLongs m)).1
+    (longsOf (pick .i64 ⟨_, cells⟩ (tilLongs m)).2) = G at hp hs
   have hGm : ∀ t ∈ ids G, t < len (tilLongs m) := fun t ht => by
     rw [len_tilLongs]; exact List.mem_range.1 (hp.mem_iff.1 ht)
   have e : ids (gather 8 (tilLongs m) G) = ids G := by

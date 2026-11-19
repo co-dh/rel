@@ -393,7 +393,7 @@ theorem cat_wf (cs : Array Code) {w : Nat}
     into its parts**: `codes` groups the razed column once (`groupIdsColumn`, `Code.ofIds`) and cuts that
     code at the parts' counts, the razed column being neither a `syms` nor an `enum` payload. -/
 theorem codes_raze_cut {t : QAtomicType} (hg : t ≠ .general) {p : Nat} (cs : Vector (Part (.atom t)) p)
-    (hp : 0 < p) (hb : t ≠ .boolean)
+    (hp : 0 < p) (hb : t ≠ .u1)
     (hro : rangeOffsets t (cs.map (·.2.part)) ((cs.map (·.1)).foldl (fun s n => s + n.toNat) 0) = none)
     (hne : ∀ d o ids, Column.intern (raze t cs.toArray).2.enc ≠ .enum d o ids) :
     ∃ q, groupIdsColumn (KernelWF.bitsType t) (raze t cs.toArray).1 (raze t cs.toArray).2.enc = some q ∧
@@ -418,16 +418,16 @@ theorem codes_raze_cut {t : QAtomicType} (hg : t ≠ .general) {p : Nat} (cs : V
 
 /-- A small integral type is not boolean, and `rangeOffsets` declines a small integral side. -/
 theorem small_int_branches {t : QAtomicType} {k : Scan.Kind} (ht : orderKind t = some k)
-    (hk : k = .u8 ∨ k = .i16 ∨ k = .i32) :
-    t ≠ .boolean ∧ ∀ {p : Nat} (es : Vector (USize × Enc) p) total, rangeOffsets t es total = none := by
+    (hk : k = .u8 ∨ k = .c8 ∨ k = .i8 ∨ k = .i16 ∨ k = .i32) :
+    t ≠ .u1 ∧ ∀ {p : Nat} (es : Vector (USize × Enc) p) total, rangeOffsets t es total = none := by
   refine ⟨?_, fun es total => ?_⟩
-  · rintro rfl; rcases hk with rfl | rfl | rfl <;> simp [orderKind] at ht
+  · rintro rfl; rcases hk with rfl | rfl | rfl | rfl | rfl <;> simp [orderKind] at ht
   · unfold rangeOffsets
-    rw [if_pos (by rcases hk with rfl | rfl | rfl <;> simp [ht])]
+    rw [if_pos (by rcases hk with rfl | rfl | rfl | rfl | rfl <;> simp [ht])]
 
 /-- **A small integral side of several dense parts: its codes are those of its `raze`, cut back.** -/
 theorem codes_small_int_cut {t : QAtomicType} {k : Scan.Kind} (ht : orderKind t = some k)
-    (hk : k = .u8 ∨ k = .i16 ∨ k = .i32) {p : Nat} (cs : Vector (Part (.atom t)) p) (hp : 0 < p) :
+    (hk : k = .u8 ∨ k = .c8 ∨ k = .i8 ∨ k = .i16 ∨ k = .i32) {p : Nat} (cs : Vector (Part (.atom t)) p) (hp : 0 < p) :
     Obj.codes (.atom t) cs = (Obj.codes (.atom t) #v[raze t cs.toArray])[0].cut (cs.map (·.1)) := by
   have hg := (small_int_width ht hk).2.2.1
   have hne : ∀ d o ids, Column.intern (raze t cs.toArray).2.enc ≠ .enum d o ids := fun d o ids he => by
@@ -436,14 +436,14 @@ theorem codes_small_int_cut {t : QAtomicType} {k : Scan.Kind} (ht : orderKind t 
     ((small_int_branches ht hk).2 _ _) hne
   obtain ⟨q', hq', hc'⟩ := codes_small_int ht hk (raze t cs.toArray)
   have hbt : KernelWF.bitsType t = t := by
-    rcases hk with rfl | rfl | rfl <;> cases t <;> simp [orderKind] at ht <;> rfl
+    rcases hk with rfl | rfl | rfl | rfl | rfl <;> cases t <;> simp [orderKind] at ht <;> rfl
   rw [hbt] at hq
   rw [hc, hc', show q' = q from Option.some_inj.1 (hq'.symm.trans hq)]
 
 /-- **A small integral side of several parts: each part's code is well formed**, the parts' summed count a
     `USize`. -/
 theorem codes_small_int_parts_wf {t : QAtomicType} {k₀ : Scan.Kind} (ht : orderKind t = some k₀)
-    (hk₀ : k₀ = .u8 ∨ k₀ = .i16 ∨ k₀ = .i32) {p : Nat} (cs : Vector (Part (.atom t)) p)
+    (hk₀ : k₀ = .u8 ∨ k₀ = .c8 ∨ k₀ = .i8 ∨ k₀ = .i16 ∨ k₀ = .i32) {p : Nat} (cs : Vector (Part (.atom t)) p)
     (hN : (cs.toList.map (·.1.toNat)).sum < USize.size) {k : Nat} (hk : k < p) :
     let c := (Obj.codes (.atom t) cs)[k]
     laneOK(c.w) ∧ c.n = cs[k].1 ∧
@@ -536,7 +536,7 @@ theorem keyAt_iff_idAt {w : Nat} {k : Scan.Kind} (h : laneKind w = some k) (b : 
   · rw [idAt_one, idAt_one]
     unfold Order.keyAt Scan.Kind.bitsAt
     cases Column.bitAt b i <;> cases Column.bitAt b j <;> first | decide | simp [Order.rank]
-  · rw [Verify.keyAt_eq_iff hk, idAt_lane _ (by omega), idAt_lane _ (by omega), UInt64.toNat_inj]
+  · rw [Verify.keyAt_eq_iff (by revert hk; cases k <;> decide), idAt_lane _ (by omega), idAt_lane _ (by omega), UInt64.toNat_inj]
 
 /-- A payload of `⌈n·w/8⌉` bytes at a lane `laneKind` names holds all `n` elements. -/
 theorem avail_lane {w : Nat} {k : Scan.Kind} (h : laneKind w = some k) {b : ByteArray} {n : Nat}

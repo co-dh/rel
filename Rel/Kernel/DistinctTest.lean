@@ -16,7 +16,7 @@ def col (xs : List UInt64) : Enc := wordsFoR xs.toArray
 expects, a `USize` the kernel reduces. -/
 def view (m : USize) : Except String (Nat × Enc) → String ⊕ (Nat × List UInt64)
   | .error s => .inl s
-  | .ok (k, o) => .inr (k, (raw .long m o).toList)
+  | .ok (k, o) => .inr (k, (raw .i64 m o).toList)
 
 -- rows (1,0) (1,0) (2,0) (2,1) (2,1): runs start at rows 0, 2 and 3
 def runs : String ⊕ (Nat × List UInt64) := .inr (3, [0, 2, 3])

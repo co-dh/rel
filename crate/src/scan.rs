@@ -2,7 +2,7 @@
 //! Column (a), scan.rs (A14): the running scans (sums, prds, mins, maxs, fills) over a dense payload and
 //! the block skips over an encoded one. `scan_fill` and `scan_any_null` are AVX-512 in C: their vector bodies are in
 //! `simd.rs`, which this module calls and finishes (the groups that hold a null, the tail).
-use crate::key::{SK_BIT, SK_C8, SK_F32, SK_F64, SK_I16, SK_I32, SK_I64, SK_KINDS_N, SK_U8};
+use crate::key::{SK_BIT, SK_C8, SK_I8, SK_F32, SK_F64, SK_I16, SK_I32, SK_I64, SK_KINDS_N, SK_U8};
 use crate::simd;
 use crate::pod::{self, Elt};
 use crate::blocks::{Blocks, Grid, Src};
@@ -51,6 +51,7 @@ acc!(f64, 0.0, 1.0, |a, v| a + v, |a, v| a * v);
 // ---- readers: the signed widths sign-extend and `byte` zero-extends; a boolean is one bit, LSB first ----
 pub fn rd_bit(p: &[u8], i: usize) -> i64 { ((p[i >> 3] >> (i & 7)) & 1) as i64 }
 pub fn rd_u8(p: &[u8], i: usize) -> i64 { p[i] as i64 }
+pub fn rd_i8(p: &[u8], i: usize) -> i64 { p[i] as i8 as i64 }
 pub fn rd_i16(p: &[u8], i: usize) -> i64 { i16::from_ne_bytes(p[2 * i..2 * i + 2].try_into().unwrap()) as i64 }
 pub fn rd_i32(p: &[u8], i: usize) -> i64 { i32::from_ne_bytes(p[4 * i..4 * i + 4].try_into().unwrap()) as i64 }
 pub fn rd_i64(p: &[u8], i: usize) -> i64 { i64::from_ne_bytes(p[8 * i..8 * i + 8].try_into().unwrap()) }
@@ -60,6 +61,7 @@ pub fn rd_f64(p: &[u8], i: usize) -> f64 { f64::from_ne_bytes(p[8 * i..8 * i + 8
 // ---- null tests: `0N` is the minimum of each signed width, byte and boolean have none, `char`'s is the blank ----
 pub fn nul_no(_: i64) -> bool { false }
 pub fn nul_chr(v: i64) -> bool { v == 0x20 }
+pub fn nul_i8(v: i64) -> bool { v == i8::MIN as i64 }
 pub fn nul_i16(v: i64) -> bool { v == i16::MIN as i64 }
 pub fn nul_i32(v: i64) -> bool { v == i32::MIN as i64 }
 pub fn nul_i64(v: i64) -> bool { v == i64::MIN }
@@ -158,7 +160,7 @@ pub fn sc_bad_kind(kind: i32) -> ! {
 /// coc.rs `sk_dense_width`: an element's bytes in a dense payload; the boolean has none, its payload is packed bits.
 pub fn dense_width(kind: i32) -> usize {
     match u8::try_from(kind).unwrap_or(u8::MAX) {
-        SK_U8 | SK_C8 => 1,
+        SK_U8 | SK_C8 | SK_I8 => 1,
         SK_I16 => 2,
         SK_I32 | SK_F32 => 4,
         SK_I64 | SK_F64 => 8,
@@ -200,6 +202,7 @@ pub fn scan_fill(kind: i32, p: &[u8], out: &mut [u8], n: usize, carry: &mut [u8]
         // the one kind that stays on the loop: a bit read, a byte written, so a group is not a group of its bytes
         SK_BIT => lp(out, n, carry, resume, 0i64, (0..n).map(|i| rd_bit(p, i)), nul_no, |_, v| v, wr_i8),
         SK_U8 => fill(kind, p, out, n, carry, resume, 0i64, rd_u8, nul_no, wr_i8),
+        SK_I8 => fill(kind, p, out, n, carry, resume, i8::MIN as i64, rd_i8, nul_i8, wr_i8),
         SK_I16 => fill(kind, p, out, n, carry, resume, i16::MIN as i64, rd_i16, nul_i16, wr_i16),
         SK_I32 => fill(kind, p, out, n, carry, resume, i32::MIN as i64, rd_i32, nul_i32, wr_i32),
         SK_I64 => fill(kind, p, out, n, carry, resume, i64::MIN, rd_i64, nul_i64, wr_i64),
@@ -216,9 +219,10 @@ pub fn scan_fill(kind: i32, p: &[u8], out: &mut [u8], n: usize, carry: &mut [u8]
 pub fn scan_any_null(kind: i32, p: &[u8], n: usize) -> bool {
     let k = u8::try_from(kind).unwrap_or(u8::MAX);
     if matches!(k, SK_BIT | SK_U8) { return false } // neither layout has a null
-    if !matches!(k, SK_I16 | SK_I32 | SK_I64 | SK_F32 | SK_F64 | SK_C8) { sc_bad_kind(kind) }
+    if !matches!(k, SK_I8 | SK_I16 | SK_I32 | SK_I64 | SK_F32 | SK_F64 | SK_C8) { sc_bad_kind(kind) }
     let (hit, i) = simd::any_null(kind, p, n);
     hit || (i..n).any(|j| match k {
+        SK_I8 => nul_i8(rd_i8(p, j)),
         SK_I16 => nul_i16(rd_i16(p, j)),
         SK_I32 => nul_i32(rd_i32(p, j)),
         SK_I64 => nul_i64(rd_i64(p, j)),
@@ -235,6 +239,8 @@ pub fn scan_run(op: i32, kind: i32, p: &[u8], out: &mut [u8], n: usize, carry: &
     match u8::try_from(kind).unwrap_or(u8::MAX) {
         SK_BIT => verbs(op, out, n, carry, resume, 1i64, 0, (0..n).map(|i| rd_bit(p, i)), nul_no, wr_i8, wr_i32, ws_i32),
         SK_U8 => verbs(op, out, n, carry, resume, 0xffi64, 0, elts(p, n, |b: [u8; 1]| b[0] as i64), nul_no, wr_i8, wr_i32, ws_i32),
+        SK_I8 => verbs(op, out, n, carry, resume, i8::MAX as i64, -(i8::MAX as i64), elts(p, n, |b: [u8; 1]| b[0] as i8 as i64), nul_i8,
+                       wr_i8, wr_i32, ws_i32),
         SK_I16 => verbs(op, out, n, carry, resume, i16::MAX as i64, -(i16::MAX as i64), elts(p, n, |b| i16::from_ne_bytes(b) as i64), nul_i16,
                         wr_i16, wr_i32, ws_i32),
         SK_I32 => verbs(op, out, n, carry, resume, i32::MAX as i64, -(i32::MAX as i64), elts(p, n, |b| i32::from_ne_bytes(b) as i64), nul_i32,
@@ -513,11 +519,11 @@ mod tests {
 // ---------------------------------------------------------------- `kscan` (Rel/Kernel/Scan.lean, design §4)
 
 /// `QAtomicType`'s constructor indices `kscan` tells apart (Rel/Kernel/Value.lean's order).
-pub const QT_BOOLEAN: u8 = 1;
+pub const QT_BOOLEAN: u8 = 0;
 pub const QT_SYMBOL: u8 = 9;
-/// `QAtomicType.width` at the constructor index `t`: `None` at `general` (0) and `symbol` (9).
+/// `QAtomicType.width` at the constructor index `t`: `None` at `sym` (9) and `general` (12).
 pub fn qtype_width(t: u8) -> Option<usize> {
-    match t { 1 | 2 | 8 => Some(1), 3 => Some(2), 4 | 6 | 11 | 12 | 15 | 16 | 17 => Some(4), 5 | 7 | 10 | 13 | 14 => Some(8), _ => None }
+    match t { 0 | 1 | 7 | 8 => Some(1), 2 => Some(2), 3 | 5 | 10 => Some(4), 4 | 6 | 11 => Some(8), _ => None }
 }
 
 /// `Int.fdiv` and `Int.fmod` cut to 64 bits (`Int64.ofInt`): floored, so `i64::MIN / -1` wraps to `i64::MIN`; `y != 0`.
@@ -869,7 +875,7 @@ mod kscan_tests {
     #[test] fn kscan_agrees_with_its_rows() {
         for n in [0usize, 1, 1000, 2500] {
             let segs = [vec![1u64; n], vec![0; n], (0..n as u64).map(|i| (i % 1000 == 0 || i % 37 == 3) as u64).collect()];
-            for (s, w) in [(7u8, 8usize), (6, 4), (3, 2)] {
+            for (s, w) in [(6u8, 8usize), (5, 4), (2, 2)] {
                 let m = |v: Vec<u64>| -> Vec<u64> { v.into_iter().map(|x| if w == 8 { x } else { x & ((1 << (8 * w)) - 1) }).collect() };
                 let (x, y, c) = (m(column(n, 3)), m(column(n, 5)), m(vec![column(n.max(3), 3)[2]; n]));
                 let col = |v: &Vec<u64>| (enc_for(v, w), v.clone());
@@ -879,25 +885,25 @@ mod kscan_tests {
                 let sv: Vec<u64> = (0..n).map(|i| (0..w).fold(0u64, |a, k| a | (cut.get(i * w + k).copied().unwrap_or(0) as u64) << (8 * k))).collect();
                 for op in [0u8, 1, 2, 3, 5, 6, 9, 10, 11, 12, 13, 14, 15, 18, 19, 20, 25, 39, 41, 45] {
                     for g in &segs {
-                        for t in [QT_BOOLEAN, 7] {
+                        for t in [QT_BOOLEAN, 6] {
                             check(op, s, t, n, g, &[col(&c), col(&x)]);
                             check(op, s, t, n, g, &[col(&x), col(&c)]);
                         }
-                        check(op, s, 7, n, g, &[col(&y), col(&x)]);
-                        check(op, s, 7, n, g, &[col(&c), col(&x), (enc_dense(&p), y.clone())]);
-                        check(op, s, 7, n, g, &[(enc_dense(&cut), sv.clone()), col(&x)]);
-                        check(op, s, 7, n, g, &[col(&x)]);
+                        check(op, s, 6, n, g, &[col(&y), col(&x)]);
+                        check(op, s, 6, n, g, &[col(&c), col(&x), (enc_dense(&p), y.clone())]);
+                        check(op, s, 6, n, g, &[(enc_dense(&cut), sv.clone()), col(&x)]);
+                        check(op, s, 6, n, g, &[col(&x)]);
                     }
                 }
-                check(0, s, 7, n, &segs[0], &[]);
-                check(0, s, 0, n, &segs[0], &[col(&x)]);
+                check(0, s, 6, n, &segs[0], &[]);
+                check(0, s, 12, n, &segs[0], &[col(&x)]);
             }
             // `div` by a 0 anywhere fails; a dense column read as booleans holds no raw elements
             let z: Vec<u64> = (0..n as u64).map(|i| (i != n as u64 / 2) as u64 * 7).collect();
-            check(3, 7, 7, n, &segs[0], &[(enc_for(&z, 8), z.clone()), (enc_for(&z, 8), z.clone())]);
+            check(3, 6, 6, n, &segs[0], &[(enc_for(&z, 8), z.clone()), (enc_for(&z, 8), z.clone())]);
             if n > 0 {
                 let e = enc_dense(&bytes(&z, 1));
-                assert_eq!(kscan(0, false, QT_BOOLEAN, 7, n, enc_bits(&segs[0]).borrow(), &[e.borrow()]).map(|o| parts(&o)),
+                assert_eq!(kscan(0, false, QT_BOOLEAN, 6, n, enc_bits(&segs[0]).borrow(), &[e.borrow()]).map(|o| parts(&o)),
                            Err(format!("kscan: a column holds 0 raw elements, not {n}")));
             }
             let (a, b): (Vec<u64>, Vec<u64>) = ((0..n as u64).map(|i| i % 3 & 1).collect(), (0..n as u64).map(|i| i % 5 & 1).collect());
@@ -907,7 +913,7 @@ mod kscan_tests {
             for op in [15u8, 16, 0, 9, 11] {
                 check(op, QT_BOOLEAN, QT_BOOLEAN, n, &segs[2], &[(enc_bits(&a), a.clone()), (enc_bits(&b), b.clone())]);
                 check(op, QT_BOOLEAN, QT_BOOLEAN, n, &segs[2], &[(enc_for(&a, 8), a.clone()), (enc_for(&q, 8), ql.clone())]);
-                check(op, QT_BOOLEAN, 7, n, &segs[1], &[(enc_for(&q, 1), ql.clone()), (enc_bits(&b), b.clone())]);
+                check(op, QT_BOOLEAN, 6, n, &segs[1], &[(enc_for(&q, 1), ql.clone()), (enc_bits(&b), b.clone())]);
             }
         }
     }

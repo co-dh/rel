@@ -72,11 +72,11 @@ theorem razeTo_toList_bit {t : QAtomicType} (cs : Array (Part (.atom t)))
     (hN : (cs.toList.map fun c : Part (.atom t) => c.1.toNat).sum < USize.size) (hb : ((Obj.atom t).razeC cs hN).2 = true) :
     (razeTo t cs rfl hN).toList = cs.toList.flatMap (·.2.toList) := by
   simp only [Obj.razeC, Bool.and_eq_true, decide_eq_true_eq, Bool.or_eq_true, Bool.not_eq_true'] at hb
-  by_cases hB : t = .boolean
+  by_cases hB : t = .u1
   · subst hB; exact razeTo_toList_boolean cs rfl hN
   by_cases hG : t = .general
   · subst hG; exact razeTo_toList_general cs rfl hN
-  by_cases hY : t = .symbol
+  by_cases hY : t = .sym
   · subst hY; exact razeTo_toList_symbol cs rfl hN hb.1
   obtain ⟨w, hw⟩ : ∃ w, t.width = some w := by cases t <;> simp_all [QAtomicType.width]
   exact razeTo_toList_all hw hB cs rfl hN fun _ ha => by
@@ -276,7 +276,7 @@ theorem raze_rowN : ∀ (A : Obj) (ps : Array (Part A))
       rw [razeTo_getN _ _ (razeTo_toList_boolean _ _ _) (by simpa using hl) (j := j) (by simpa using hj) q hq
         (by rw [off_map, off_map] <;> first | exact e | intro; rfl)]
       exact get_congr (y := ⟨ps[l].1, ps[l].2.held.2.2.1⟩) ((Array.getElem_map ..).trans (congrArg
-        (fun c : Part (.sum a b) => (⟨c.1, c.2.2.2.1⟩ : (n : USize) × Arr .boolean n)) hH)) j _ hj
+        (fun c : Part (.sum a b) => (⟨c.1, c.2.2.2.1⟩ : (n : USize) × Arr .u1 n)) hH)) j _ hj
     have hI : (R.2.2.2.1.get ⟨q, hq⟩).toInt = ((min (max (ps[l].2.held.2.2.2.1.get ⟨j, hj⟩).toInt 0).toNat
         ((if ps[l].2.held.2.2.1.get ⟨j, hj⟩ then ps[l].2.held.2.1.toNat else ps[l].2.held.1.toNat) - 1) +
         (if ps[l].2.held.2.2.1.get ⟨j, hj⟩ then dr else dl) : Nat) : Int) := by

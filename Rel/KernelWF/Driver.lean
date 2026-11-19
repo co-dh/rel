@@ -40,7 +40,7 @@ theorem dense_bits (w : Nat) (hw : w ≤ 8) (xs : Array UInt64) :
   exact ⟨by rw [dense, hs], fun i h => by rw [dense, Nat.mul_comm, hb i h]⟩
 
 /-- The raw elements of a boolean column, `bits` or a `foR` of `u1`, are `0` or `1`. -/
-theorem raw_boolean_le (n : USize) (e : Enc) : ∀ v ∈ e.raw .boolean n, v ≤ 1 := by
+theorem raw_boolean_le (n : USize) (e : Enc) : ∀ v ∈ e.raw .u1 n, v ≤ 1 := by
   intro v hv
   cases e <;> simp only [Enc.raw, Array.mem_map, Array.mem_range, Array.not_mem_empty] at hv
   all_goals obtain ⟨i, -, rfl⟩ := hv
@@ -62,7 +62,7 @@ theorem raw_lt (t : QAtomicType) (w : Nat) (ht : t.width = some w) (n : USize) (
     rw [UInt64.toNat_ofNat', Nat.mod_eq_of_lt (Nat.lt_of_lt_of_le (Nat.mod_lt _ (Nat.two_pow_pos _)) hM)]
     exact Nat.mod_lt _ (Nat.two_pow_pos _)
   intro v hv
-  by_cases hb : t = .boolean
+  by_cases hb : t = .u1
   · subst hb
     exact Nat.lt_of_le_of_lt (UInt64.le_iff_toNat_le.1 (raw_boolean_le n e v hv))
       (Nat.lt_of_lt_of_le (show (1 : UInt64).toNat < 2 ^ 8 by decide) (Nat.pow_le_pow_right (by decide) (by omega)))
@@ -76,11 +76,11 @@ theorem raw_lt (t : QAtomicType) (w : Nat) (ht : t.width = some w) (n : USize) (
 /-- **The driver law**: `ofRaw t n xs` read back by `Enc.raw` at `t` is `xs`, each element below `2 ^ (8 * w)` — a
 boolean's being `0`/`1`, and an ALP type's column below `2 ^ 32` elements (`Verify.alpBits_alpEncodeAt`). -/
 theorem raw_ofRaw (t : QAtomicType) (w : Nat) (ht : t.width = some w) (n : USize) (xs : Array UInt64)
-    (hn : xs.size = n.toNat) (hr : ∀ v ∈ xs, v.toNat < 2 ^ (8 * w)) (hbool : t = .boolean → ∀ v ∈ xs, v ≤ 1)
+    (hn : xs.size = n.toNat) (hr : ∀ v ∈ xs, v.toNat < 2 ^ (8 * w)) (hbool : t = .u1 → ∀ v ∈ xs, v ≤ 1)
     (h32 : alpEncodes t = true → n.toNat < 2 ^ 32) :
     (ofRaw t n xs).raw t n = xs := by
   obtain ⟨hw1, hw8, hfor, halp⟩ := width_cases t w ht
-  by_cases hb : t = .boolean
+  by_cases hb : t = .u1
   · subst hb
     simp only [ofRaw, Enc.raw]
     apply Array.ext (by simp [hn])
@@ -120,7 +120,7 @@ theorem raw_ofRaw (t : QAtomicType) (w : Nat) (ht : t.width = some w) (n : USize
 /-- `map`: element `i` of the answer is `f` of element `i` of every source, where each such is below `2 ^ (8 * w)`. -/
 theorem raw_map (s t : QAtomicType) (w : Nat) (ht : t.width = some w) (n : USize) (f : List UInt64 → UInt64)
     (es : List Enc) (hr : ∀ i < n.toNat, (f (es.map fun e => (e.raw s n)[i]?.getD 0)).toNat < 2 ^ (8 * w))
-    (hbool : t = .boolean → ∀ l, f l ≤ 1) (h32 : alpEncodes t = true → n.toNat < 2 ^ 32) :
+    (hbool : t = .u1 → ∀ l, f l ≤ 1) (h32 : alpEncodes t = true → n.toNat < 2 ^ 32) :
     (map s t n f es).raw t n = (Array.range n.toNat).map fun i => f (es.map fun e => (e.raw s n)[i]?.getD 0) := by
   rw [map, raw_ofRaw t w ht n _ (by simp)
     (fun v hv => by obtain ⟨i, hi, rfl⟩ := Array.mem_map.1 hv; exact hr i (Array.mem_range.1 hi))
@@ -144,7 +144,7 @@ each such is below `2 ^ (8 * w)`; the source holds `n` raw elements at `s`. -/
 theorem raw_scan (s t : QAtomicType) (w : Nat) (ht : t.width = some w) (n : USize)
     (step : UInt64 → UInt64 → UInt64) (seed : UInt64) (e : Enc) (hs : (e.raw s n).size = n.toNat)
     (hr : ∀ i < n.toNat, (((e.raw s n).toList.take (i + 1)).foldl step seed).toNat < 2 ^ (8 * w))
-    (hbool : t = .boolean → ∀ a v, step a v ≤ 1) (h32 : alpEncodes t = true → n.toNat < 2 ^ 32) :
+    (hbool : t = .u1 → ∀ a v, step a v ≤ 1) (h32 : alpEncodes t = true → n.toNat < 2 ^ 32) :
     ((scan s t n step seed e).raw t n).toList =
       (List.range n.toNat).map fun i => ((e.raw s n).toList.take (i + 1)).foldl step seed := by
   have hl := foldl_scan step (e.raw s n).toList seed #[]
@@ -167,7 +167,7 @@ theorem raw_scan (s t : QAtomicType) (w : Nat) (ht : t.width = some w) (n : USiz
 /-- `permute`: the answer's elements are the source's at the positions `ix`, `fill` past its end, `fill` below
 `2 ^ (8 * w)` as every raw element is (`raw_lt`). -/
 theorem raw_permute (s : QAtomicType) (w : Nat) (hs : s.width = some w) (n m : USize) (ix : Array Nat)
-    (fill : UInt64) (e : Enc) (hm : ix.size = m.toNat) (hr : fill.toNat < 2 ^ (8 * w)) (hbool : s = .boolean → fill ≤ 1)
+    (fill : UInt64) (e : Enc) (hm : ix.size = m.toNat) (hr : fill.toNat < 2 ^ (8 * w)) (hbool : s = .u1 → fill ≤ 1)
     (h32 : alpEncodes s = true → m.toNat < 2 ^ 32) :
     (permute s n m ix fill e).raw s m = ix.map fun j => (e.raw s n)[j]?.getD fill := by
   rw [permute, raw_ofRaw s w hs m _ (by simp [hm]) (fun v hv => ?_) (fun hb v hv => ?_) h32]
@@ -177,7 +177,7 @@ theorem raw_permute (s : QAtomicType) (w : Nat) (hs : s.width = some w) (n m : U
     | some v => exact raw_lt s w hs n e v (Array.mem_of_getElem? h)
   · obtain ⟨j, -, rfl⟩ := Array.mem_map.1 hv
     subst hb
-    cases h : (e.raw .boolean n)[j]? with
+    cases h : (e.raw .u1 n)[j]? with
     | none => exact hbool rfl
     | some v => exact raw_boolean_le n e v (Array.mem_of_getElem? h)
 

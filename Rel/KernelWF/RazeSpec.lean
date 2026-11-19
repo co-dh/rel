@@ -102,7 +102,7 @@ theorem toUSize_toNat_le8 {w : Nat} (hw8 : w ≤ 8) : w.toUSize.toNat = w :=
   USize.toNat_ofNat_of_lt' (Nat.lt_of_le_of_lt hw8 (Nat.lt_of_lt_of_le (by decide) USize.le_size))
 
 /-- A dense element at a type of width `w`, other than `boolean`, is its `w` bytes' atom. -/
-theorem get_bytes_eq {t : QAtomicType} {w : Nat} (hw : t.width = some w) (hb : t ≠ .boolean)
+theorem get_bytes_eq {t : QAtomicType} {w : Nat} (hw : t.width = some w) (hb : t ≠ .u1)
     {n : USize} (b : ByteArray) {i : Nat} (hi : i < n.toNat) :
     Enc.get (X := Empty) t n (.bytes b) i =
       some (Column.atomOfBits t (Column.bitsAt b (i * w) w) (QAtomicType.ne_general_of_width hw)) := by
@@ -111,7 +111,7 @@ theorem get_bytes_eq {t : QAtomicType} {w : Nat} (hw : t.width = some w) (hb : t
       (simp only [Enc.get, hi, ↓reduceIte, QAtomicType.width] <;> rfl)
 
 /-- A Frame-of-Reference element is its `foRBits` atom. -/
-theorem get_foR_eq {t : QAtomicType} {w : Nat} (hw : t.width = some w) (hb : t ≠ .boolean)
+theorem get_foR_eq {t : QAtomicType} {w : Nat} (hw : t.width = some w) (hb : t ≠ .u1)
     {n : USize} (md pk : ByteArray) {i : Nat} (hi : i < n.toNat) :
     Enc.get (X := Empty) t n (.foR md pk) i =
       some (Column.atomOfBits t (Column.foRBits md pk #[] i) (QAtomicType.ne_general_of_width hw)) := by
@@ -120,7 +120,7 @@ theorem get_foR_eq {t : QAtomicType} {w : Nat} (hw : t.width = some w) (hb : t �
       (simp only [Enc.get, hi, ↓reduceIte, QAtomicType.width] <;> rfl)
 
 /-- An ALP element is its `alpBits` atom. -/
-theorem get_alp_eq {t : QAtomicType} {w : Nat} (hw : t.width = some w) (hb : t ≠ .boolean)
+theorem get_alp_eq {t : QAtomicType} {w : Nat} (hw : t.width = some w) (hb : t ≠ .u1)
     {n : USize} (md pk a : ByteArray) {i : Nat} (hi : i < n.toNat) :
     Enc.get (X := Empty) t n (.alp md pk a) i =
       some (Column.atomOfBits t (Column.alpBits md pk a #[] i) (QAtomicType.ne_general_of_width hw)) := by
@@ -136,7 +136,7 @@ theorem alpBits_starts (md pk a : ByteArray) (i : Nat) :
 /-- **An element of a payload's dense decode is the payload's element**, at every well-formed payload of a type
     with a width other than `boolean`: `.bytes` is itself, `.foR` decodes to `foRBits`' low `8w` bits
     (`decodeW`), all `atomOfBits` reads (`atomOfBits_mod`), `.alp` to `alpBits` (`elemsW_alpDecode_alpBits`). -/
-theorem get_bytesOf {t : QAtomicType} {w : Nat} (hw : t.width = some w) (hb : t ≠ .boolean) {n : USize}
+theorem get_bytesOf {t : QAtomicType} {w : Nat} (hw : t.width = some w) (hb : t ≠ .u1) {n : USize}
     {e : Enc} (hwf : Enc.WF t n e) {b : ByteArray} (he : Enc.bytesOf t n e = some b) {i : Nat}
     (hi : i < n.toNat) : Enc.get (X := Empty) t n (.bytes b) i = Enc.get t n e i := by
   obtain ⟨b', hb', hs⟩ := bytesOf_size hb hw hwf
@@ -167,7 +167,7 @@ theorem get_bytesOf {t : QAtomicType} {w : Nat} (hw : t.width = some w) (hb : t 
   all_goals simp [Enc.bytesOf] at he
 
 /-- A column's list is its elements read off its dense decode `Enc.bytesOf`, at every encoding. -/
-theorem toList_bytesOf {t : QAtomicType} {w : Nat} (hw : t.width = some w) (hb : t ≠ .boolean) {n : USize}
+theorem toList_bytesOf {t : QAtomicType} {w : Nat} (hw : t.width = some w) (hb : t ≠ .u1) {n : USize}
     (x : Arr t n) {b : ByteArray} (hx : Enc.bytesOf t n x.enc = some b) :
     x.toList = ((List.range n.toNat).map fun i => Enc.get (X := Empty) t n (.bytes b) i).map
       fun o => (o.bind fun a => Carrier.of? t (.atom a)).getD default := by
@@ -182,7 +182,7 @@ theorem toList_bytesOf {t : QAtomicType} {w : Nat} (hw : t.width = some w) (hb :
 /-- `razeColumn` where it answers dense — no part is encoded to meet (`encodedParts = none`), or the encoded
     join is the dearer (`denseCheaper`) — at a type with a width other than `boolean`: the parts' decodes end
     to end. -/
-theorem razeColumn_dense {t : QAtomicType} {w : Nat} (hw : t.width = some w) (hb : t ≠ .boolean)
+theorem razeColumn_dense {t : QAtomicType} {w : Nat} (hw : t.width = some w) (hb : t ≠ .u1)
     {cs : Array (USize × Enc)} (hwf : ∀ c ∈ cs, Enc.WF t c.1 c.2)
     (hD : ∀ r, encodedParts t cs = some r → denseCheaper (if r.1 then 8 else 5) r.2.1 (if r.1 then 8 else w)
       (straddles (r.2.2.1.map (·.toNat))) = true)
@@ -198,8 +198,8 @@ theorem razeColumn_dense {t : QAtomicType} {w : Nat} (hw : t.width = some w) (hb
   cases hE : encodedParts t cs with
   | none =>
     cases t
-    case boolean => exact absurd rfl hb
-    case symbol => simp [QAtomicType.width] at hw
+    case u1 => exact absurd rfl hb
+    case sym => simp [QAtomicType.width] at hw
     case general => simp [QAtomicType.width] at hw
     all_goals
       simp only [QAtomicType.width, Option.some.injEq] at hw; subst hw
@@ -211,8 +211,8 @@ theorem razeColumn_dense {t : QAtomicType} {w : Nat} (hw : t.width = some w) (hb
     obtain ⟨alp, N, ns, ms, ps, as⟩ := r
     dsimp only at hC
     cases t
-    case boolean => exact absurd rfl hb
-    case symbol => simp [QAtomicType.width] at hw
+    case u1 => exact absurd rfl hb
+    case sym => simp [QAtomicType.width] at hw
     case general => simp [QAtomicType.width] at hw
     all_goals
       simp only [QAtomicType.width, Option.some.injEq] at hw; subst hw
@@ -222,7 +222,7 @@ theorem razeColumn_dense {t : QAtomicType} {w : Nat} (hw : t.width = some w) (hb
 
 /-- **`razeTo` where `razeColumn` answers dense**: the razed column lists its parts' elements one part after
     another, whatever each part's encoding. -/
-theorem razeTo_toList_dense {t : QAtomicType} {w : Nat} (hw : t.width = some w) (hb : t ≠ .boolean)
+theorem razeTo_toList_dense {t : QAtomicType} {w : Nat} (hw : t.width = some w) (hb : t ≠ .u1)
     (cs : Array ((k : USize) × Arr t k)) {S : Nat}
     (hs : (cs.toList.map (·.1.toNat)).sum = S) (hS : S < USize.size)
     (hD : ∀ r, encodedParts t (cs.map (·.2.part)) = some r → denseCheaper (if r.1 then 8 else 5) r.2.1
@@ -296,7 +296,7 @@ theorem razeTo_toList_bytes {t : QAtomicType} (cs : Array ((k : USize) × Arr t 
   obtain ⟨w, hw⟩ : ∃ w, t.width = some w := by
     revert hwf; cases t <;> simp [Enc.WF, QAtomicType.width]
   have hg : t ≠ .general := QAtomicType.ne_general_of_width hw
-  have hbo : t ≠ .boolean := by rintro rfl; simp [Enc.WF] at hwf
+  have hbo : t ≠ .u1 := by rintro rfl; simp [Enc.WF] at hwf
   exact razeTo_toList_dense hw hbo _ hs hS fun r hr => by
     rw [encodedParts_bytes fun c hc => by
       obtain ⟨d, hd, rfl⟩ := Array.mem_map.1 hc; exact hcs d (by simpa using hd)] at hr
@@ -356,7 +356,7 @@ theorem flatMap_range {α β : Type} (xs : Array α) (f : Nat → List β) (G : 
   unfold List.flatMap; rw [e]
 
 /-- A boolean column's list is its bitmap's first `n` bits. -/
-theorem toList_bits {n : USize} (x : Arr .boolean n) {b : ByteArray} (hx : boolBits .boolean n x.enc = some b) :
+theorem toList_bits {n : USize} (x : Arr .u1 n) {b : ByteArray} (hx : boolBits .u1 n x.enc = some b) :
     x.toList = (List.range n.toNat).map (Column.bitAt b) := by
   obtain rfl : b = tagBits x := Option.some.inj (hx.symm.trans (enc_tagBits x))
   apply List.ext_getElem (by rw [Arr.length_toList, List.length_map, List.length_range])
@@ -364,15 +364,15 @@ theorem toList_bits {n : USize} (x : Arr .boolean n) {b : ByteArray} (hx : boolB
 
 /-- **`razeTo` at `boolean`**: the razed bitmap lists its parts' bits one part after another
     (`concatBits`). -/
-theorem razeTo_toList_boolean (cs : Array ((k : USize) × Arr .boolean k)) {S : Nat}
+theorem razeTo_toList_boolean (cs : Array ((k : USize) × Arr .u1 k)) {S : Nat}
     (hs : (cs.toList.map (·.1.toNat)).sum = S) (hS : S < USize.size) :
-    (razeTo .boolean cs hs hS).toList = cs.toList.flatMap (·.2.toList) := by
+    (razeTo .u1 cs hs hS).toList = cs.toList.flatMap (·.2.toList) := by
   unfold razeTo; rw [cast_toList]
   rcases cs with ⟨l⟩
   unfold raze
   by_cases h0 : l = []
   · subst h0
-    have e0 : ({ toList := [] } : Array ((k : USize) × Arr .boolean k)).size = 0 := rfl
+    have e0 : ({ toList := [] } : Array ((k : USize) × Arr .u1 k)).size = 0 := rfl
     rw [dif_pos e0]
     exact (List.eq_nil_of_length_eq_zero (by rw [Arr.length_toList, empty_len]; rfl)).trans rfl
   rw [dif_neg (by simpa using h0), dif_neg (by decide)]
@@ -380,7 +380,7 @@ theorem razeTo_toList_boolean (cs : Array ((k : USize) × Arr .boolean k)) {S : 
   · obtain ⟨c, rfl⟩ := List.length_eq_one_iff.1 h1; simp
   rw [dif_neg (by simpa using h1)]
   dsimp only
-  have key : ∀ (a : Nat) (l : List ((n : USize) × Arr .boolean n)),
+  have key : ∀ (a : Nat) (l : List ((n : USize) × Arr .u1 n)),
       (l.map fun x => (x.1, x.2.enc)).foldl (fun s c => s + c.1.toNat) a = a + (l.map (·.1.toNat)).sum := by
     intro a l; induction l generalizing a <;> simp_all [Nat.add_assoc]
   have hk : ((List.toArray l).map (·.2.part)).foldl (fun s c => s + c.1.toNat) 0 = (l.map (·.1.toNat)).sum := by
@@ -391,13 +391,13 @@ theorem razeTo_toList_boolean (cs : Array ((k : USize) × Arr .boolean k)) {S : 
   unfold need; rw [dif_pos hf]
   let ps : Array (USize × ByteArray) := (List.toArray l).map fun c => (c.1, tagBits c.2)
   have hps : ps.foldl (fun s (p : USize × ByteArray) => s + p.1.toNat) 0 = (l.map (·.1.toNat)).sum := by
-    have e : ∀ (a : Nat) (l : List ((n : USize) × Arr .boolean n)),
+    have e : ∀ (a : Nat) (l : List ((n : USize) × Arr .u1 n)),
         (l.map fun c => (c.1, tagBits c.2)).foldl (fun s (p : USize × ByteArray) => s + p.1.toNat) a =
           a + (l.map (·.1.toNat)).sum := by
       intro a l; induction l generalizing a <;> simp_all [Nat.add_assoc]
     simpa [ps] using e 0 l
-  have hv : ∀ h, (razeColumn .boolean ((List.toArray l).map (·.2.part))).get h =
-      .vector .boolean (ps.foldl (fun s (p : USize × ByteArray) => s + p.1.toNat) 0).toUSize
+  have hv : ∀ h, (razeColumn .u1 ((List.toArray l).map (·.2.part))).get h =
+      .vector .u1 (ps.foldl (fun s (p : USize × ByteArray) => s + p.1.toNat) 0).toUSize
         (.bits (concatBits (countBytes (ps.map (·.1))) (ps.map (·.2)))) none := fun h => by
     apply Option.some_inj.1; rw [Option.some_get]
     unfold razeColumn

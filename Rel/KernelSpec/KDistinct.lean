@@ -331,7 +331,7 @@ theorem distinctWords_spec (n : Nat) (hn : n < 2 ^ 64) (xs : List (Array UInt64)
 
 private theorem mapM_foRWords (n : USize) : ∀ (l : List (Enc × Nat)) (cs : List (Array UInt64)),
     l.mapM (fun p => foRWords s!"distinct: es[{p.2}]" n p.1) = .ok cs →
-      cs = l.map (fun p => raw .long n p.1) ∧ ∀ p ∈ l, (raw .long n p.1).size = n.toNat
+      cs = l.map (fun p => raw .i64 n p.1) ∧ ∀ p ∈ l, (raw .i64 n p.1).size = n.toNat
   | [], cs, h => by cases h; simp
   | p :: l, cs, h => by
     rw [List.mapM_cons] at h
@@ -349,18 +349,18 @@ private theorem mapM_foRWords (n : USize) : ∀ (l : List (Enc × Nat)) (cs : Li
 /-- An answer of `kdistinct` is `distinctWords` of the words `Enc.raw` reads from its columns, `n` a column, encoded
 as `wordsFoR`. -/
 theorem kdistinct_words (n : USize) (es : List Enc) (k : Nat) (o : Enc) (h : kdistinct n es = .ok (k, o)) :
-    ∃ ws : Array UInt64, distinctWords n.toNat (es.map (raw .long n)) = .ok (k, ws) ∧
-      (∀ x ∈ es.map (raw .long n), x.size = n.toNat) ∧
+    ∃ ws : Array UInt64, distinctWords n.toNat (es.map (raw .i64 n)) = .ok (k, ws) ∧
+      (∀ x ∈ es.map (raw .i64 n), x.size = n.toNat) ∧
       o = wordsFoR ws := by
   unfold kdistinct at h
   cases hc : es.zipIdx.mapM (fun p => foRWords s!"distinct: es[{p.2}]" n p.1) with
   | error s => simp [hc, bind, Except.bind] at h
   | ok cs =>
     obtain ⟨rfl, hs⟩ := mapM_foRWords n _ cs hc
-    have hm : es.zipIdx.map (fun p => raw .long n p.1) = es.map (raw .long n) := by
+    have hm : es.zipIdx.map (fun p => raw .i64 n p.1) = es.map (raw .i64 n) := by
       rw [← List.zipIdx_map_fst 0 es, List.map_map]; simp [List.zipIdx_map_fst]
     rw [hm] at hc
-    cases hw : distinctWords n.toNat (es.map (raw .long n)) with
+    cases hw : distinctWords n.toNat (es.map (raw .i64 n)) with
     | error s => simp [hc, hw, bind, Except.bind] at h
     | ok kw =>
       obtain ⟨k', ws⟩ := kw
@@ -375,7 +375,7 @@ theorem kdistinct_words (n : USize) (es : List Enc) (k : Nat) (o : Enc) (h : kdi
 columns read by `Enc.raw` that starts a run of equal rows (row 0, or one that differs from the row before), strictly
 ascending: on a sorted input, the first occurrence of each row, in input order. -/
 theorem distinct_first (n : USize) (es : List Enc) (k : Nat) (o : Enc) (h : kdistinct n es = .ok (k, o)) :
-    let row := fun q => (es.map (raw .long n)).map (·[q]?.getD 0)
+    let row := fun q => (es.map (raw .i64 n)).map (·[q]?.getD 0)
     ∃ ws : Array UInt64,
       o = wordsFoR ws ∧
       ws.size = k ∧
@@ -388,7 +388,7 @@ theorem distinct_first (n : USize) (es : List Enc) (k : Nat) (o : Enc) (h : kdis
 /-- **`distinct_cover`** (design §4): every row `i` of the columns read by `Enc.raw` has a word `ws[j] ≤ i` of the
 answer, and every row from `ws[j]` to `i` equals row `i`: no row is lost, and each lies in the run its start names. -/
 theorem distinct_cover (n : USize) (es : List Enc) (k : Nat) (o : Enc) (h : kdistinct n es = .ok (k, o)) :
-    let row := fun q => (es.map (raw .long n)).map (·[q]?.getD 0)
+    let row := fun q => (es.map (raw .i64 n)).map (·[q]?.getD 0)
     ∃ ws : Array UInt64,
       o = wordsFoR ws ∧
       ws.size = k ∧

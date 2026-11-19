@@ -80,16 +80,16 @@ a segment there (row 0 always); every column held `n` raw words. With `rev` ever
 before the fold and `out` after it. -/
 theorem raw_kscan (op : Op) (rev : Bool) (s t : QAtomicType) (w : Nat) (ht : t.width = some w) (n : USize)
     (seg : Enc) (es : List Enc) (e : Enc) (h : kscan op rev s t n seg es = .ok e) :
-    (seg.raw .boolean n).size = n.toNat ∧ (∀ x ∈ es, (x.raw s n).size = n.toNat) ∧
+    (seg.raw .u1 n).size = n.toNat ∧ (∀ x ∈ es, (x.raw s n).size = n.toNat) ∧
     ∃ c cs, es = c :: cs ∧ ∃ out : Array UInt64, out.size = n.toNat ∧
       e.raw t n = (if rev then out.reverse else out).map
-        (fun v => UInt64.ofNat (v.toNat % 2 ^ (if t = .boolean then 1 else 8 * w))) ∧
+        (fun v => UInt64.ofNat (v.toNat % 2 ^ (if t = .u1 then 1 else 8 * w))) ∧
       ∀ i (hi : i < out.size),
         ((cs.map (·.raw s n)).map fun a => if rev then a.reverse else a).foldlM (fun a x => op.eval a (x[i]?.getD 0))
-          (if 0 < i ∧ (if rev then (seg.raw .boolean n).reverse else seg.raw .boolean n)[i]?.getD 0 = 0
+          (if 0 < i ∧ (if rev then (seg.raw .u1 n).reverse else seg.raw .u1 n)[i]?.getD 0 = 0
            then out[i - 1]?.getD 0 else (if rev then (c.raw s n).reverse else c.raw s n)[i]?.getD 0) = .ok out[i] := by
   unfold kscan at h
-  cases hg : rawAll .boolean n seg with
+  cases hg : rawAll .u1 n seg with
   | error m => simp [hg, bind, Except.bind] at h
   | ok g =>
     obtain ⟨rfl, hgs⟩ := rawAll_ok hg
@@ -101,7 +101,7 @@ theorem raw_kscan (op : Op) (rev : Bool) (s t : QAtomicType) (w : Nat) (ht : t.w
       | nil => simp [hg, hc, bind, Except.bind] at h
       | cons c es =>
         cases hf : (List.range n.toNat).foldlM (kscanRow op
-            (if rev then (seg.raw .boolean n).reverse else seg.raw .boolean n)
+            (if rev then (seg.raw .u1 n).reverse else seg.raw .u1 n)
             (if rev then (c.raw s n).reverse else c.raw s n)
             ((es.map (·.raw s n)).map fun a => if rev then a.reverse else a)) #[] with
         | error m => simp only [hg, hc, hf, bind, Except.bind, List.map_cons] at h; cases h
@@ -112,9 +112,9 @@ theorem raw_kscan (op : Op) (rev : Bool) (s t : QAtomicType) (w : Nat) (ht : t.w
           cases h
           -- every `foR` is read cut to `t`'s width, a boolean's being one bit
           have hraw : ∀ M P : ByteArray, (Enc.foR M P : Enc).raw t n = (Array.range n.toNat).map fun i =>
-              UInt64.ofNat ((Column.foRBits M P (Column.blockStarts M) i).toNat % 2 ^ (if t = .boolean then 1 else 8 * w)) := by
+              UInt64.ofNat ((Column.foRBits M P (Column.blockStarts M) i).toNat % 2 ^ (if t = .u1 then 1 else 8 * w)) := by
             intro M P
-            by_cases hb : t = .boolean
+            by_cases hb : t = .u1
             · subst hb; simp [Enc.raw]
             · rw [Verify.raw_foR t w ht hb]; simp [hb]
           -- the words, encoded whole at 8 bytes, read back exactly (`foRBits_encode`), then cut to `t`'s width
@@ -122,7 +122,7 @@ theorem raw_kscan (op : Op) (rev : Bool) (s t : QAtomicType) (w : Nat) (ht : t.w
             rcases System.Platform.numBits_eq with h | h <;> simp [h])
           generalize hO : (if rev then out.reverse else out) = O
           have hOs : O.size = n.toNat := by subst hO; split <;> simp [hos]
-          generalize hW : O.map (fun v => if t = .boolean then v % 2 else v) = W
+          generalize hW : O.map (fun v => if t = .u1 then v % 2 else v) = W
           have hWs : W.size = n.toNat := by subst hW; simp [hOs]
           generalize hX : W.foldl (init := ByteArray.empty) (fun acc w => Column.pushBits acc w 8) = X
           obtain ⟨hxs, -, hxg⟩ := Verify.foldl_pushBits (fun v => v) 8 (by decide) W.toList ByteArray.empty
@@ -140,7 +140,7 @@ theorem raw_kscan (op : Op) (rev : Bool) (s t : QAtomicType) (w : Nat) (ht : t.w
           simp only [Array.getElem_map, Array.getElem_range, h8, Coc.encode]
           rw [Verify.foRBits_encode Column.lgEnc (by decide) 8 (by decide) (by decide) X i (by rw [hxs]; omega), hu]
           subst hW
-          by_cases hb : t = .boolean <;> simp [hb]
+          by_cases hb : t = .u1 <;> simp [hb]
 
 end Rel.Kernel
 

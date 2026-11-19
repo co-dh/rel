@@ -84,9 +84,9 @@ for. The encoded form holds a narrow column's elements sign-extended, so a `shor
 there and not `Int64.minValue`; the block structure is unchanged, the null still being the smallest
 value the type has. -/
 def Coc.nullOf : QAtomicType → Option Int64
-  | .short => some (-32768)
-  | .int | .month | .date | .minute | .second | .time => some (-2147483648)
-  | .long | .timestamp | .timespan => some Int64.minValue
+  | .i16 => some (-32768)
+  | .i32 | .date => some (-2147483648)
+  | .i64 | .datetime => some Int64.minValue
   | _ => none
 
 /-- The fold on the encoded form, before the narrowing `sum` and `prd` put on top of it. It is

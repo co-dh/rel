@@ -531,19 +531,19 @@ theorem unbias_add (w mn k : Nat) (h : mn ≤ k) :
   simp only [UInt64.toNat_add, Nat.toUInt64_eq, UInt64.toNat_ofNat']
   omega
 
-theorem raw_foR (t : QAtomicType) (w : Nat) (ht : t.width = some w) (hb : t ≠ .boolean)
+theorem raw_foR (t : QAtomicType) (w : Nat) (ht : t.width = some w) (hb : t ≠ .u1)
     (n : USize) (M P : ByteArray) :
     Enc.raw (X := X) t n (.foR M P) = (Array.range n.toNat).map fun i =>
       UInt64.ofNat ((Column.foRBits M P (Column.blockStarts M) i).toNat % 2 ^ (8 * w)) := by
   cases t <;> simp_all [Enc.raw]
 
-theorem raw_alp (t : QAtomicType) (w : Nat) (ht : t.width = some w) (hb : t ≠ .boolean)
+theorem raw_alp (t : QAtomicType) (w : Nat) (ht : t.width = some w) (hb : t ≠ .u1)
     (n : USize) (M P a : ByteArray) :
     Enc.raw (X := X) t n (.alp M P a) = (Array.range n.toNat).map fun i =>
       UInt64.ofNat ((Column.alpBits M P a (Column.blockStarts M) i).toNat % 2 ^ (8 * w)) := by
   cases t <;> simp_all [Enc.raw]
 
-theorem raw_bytes (t : QAtomicType) (w : Nat) (ht : t.width = some w) (hb : t ≠ .boolean)
+theorem raw_bytes (t : QAtomicType) (w : Nat) (ht : t.width = some w) (hb : t ≠ .u1)
     (n : USize) (x : ByteArray) :
     Enc.raw (X := X) t n (.bytes x) = (Array.range n.toNat).map fun i => Column.bitsAt x (i * w) w := by
   cases t <;> simp_all [Enc.raw]

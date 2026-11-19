@@ -12,7 +12,8 @@ pub const SK_I64: u8 = 4;
 pub const SK_F32: u8 = 5;
 pub const SK_F64: u8 = 6;
 pub const SK_C8: u8 = 7;
-pub const SK_KINDS_N: u8 = SK_C8 + 1;
+pub const SK_I8: u8 = 8;
+pub const SK_KINDS_N: u8 = SK_I8 + 1;
 pub const SK_KEY: u8 = SK_KINDS_N;
 
 /// Element `i`'s key, in the unsigned order q sorts by. `at` takes `&mut self` because a window decodes a block
@@ -47,6 +48,8 @@ dense! {
     Bit(u8, 8) |s, i| ((s[i >> 3] >> (i & 7)) & 1) as u64;
     /// `SK_U8`, `SK_C8`: the byte is its own key.
     U8(u8, 1) |s, i| s[i] as u64;
+    /// `SK_I8`: the sign bit flipped within 8 bits.
+    I8(u8, 1) |s, i| (s[i] ^ 0x80) as u64;
     /// `SK_I16`: the sign bit flipped within 16 bits.
     I16(u16, 1) |s, i| (s[i] ^ 0x8000) as u64;
     I32(u32, 1) |s, i| (s[i] ^ 0x8000_0000) as u64;
@@ -75,7 +78,7 @@ pub fn rank64(b: u64) -> u64 {
 pub fn bytes(kind: u8, n: usize) -> Option<usize> {
     match kind {
         SK_BIT => Some(n.div_ceil(8)),
-        SK_U8 | SK_C8 => Some(n),
+        SK_U8 | SK_C8 | SK_I8 => Some(n),
         SK_I16 => n.checked_mul(2),
         SK_I32 | SK_F32 => n.checked_mul(4),
         SK_I64 | SK_F64 | SK_KEY => n.checked_mul(8),
@@ -90,6 +93,7 @@ pub fn each<P: Pass>(kind: u8, p: &[u8], n: usize, pass: P) -> Option<P::Out> {
     Some(match kind {
         SK_BIT => pass.run(Bit(p), n),
         SK_U8 | SK_C8 => pass.run(U8(p), n),
+        SK_I8 => pass.run(I8(p), n),
         SK_I16 => pass.run(I16(cast(p)?), n),
         SK_I32 => pass.run(I32(cast(p)?), n),
         SK_I64 => pass.run(I64(cast(p)?), n),

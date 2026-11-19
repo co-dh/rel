@@ -431,23 +431,19 @@ types it is the right encoding for at all. Every exclusion is measured or struct
   per block is a net loss — `tools/coc/note.md` §5 has them at 0.98–1.02x across the board, measured
   when a block cost 25 bytes and so a 2.4% loss; at 33 it is 3.2% and the exclusion only holds
   harder. `CLAUDE.md` grants them explicitly;
-* `real`, `float` and `datetime` are floats. Frame of Reference over raw IEEE bit patterns is
+* `f32` and `f64` are floats. Frame of Reference over raw IEEE bit patterns is
   lossless and shrinks nothing, patterns not clustering the way the values do; their encoding is
   `alpEncodes`, below;
 * `symbol` has no fixed width. -/
 def encodes : QAtomicType → Bool
-  | .short | .int | .month | .date | .minute | .second | .time
-  | .long | .timestamp | .timespan => true
+  | .i16 | .i32 | .date | .i64 | .datetime => true
   | _ => false
 
-/-- The types ALP is the encoding for: q's three float types and no others. `real` is four bytes and
-goes through the `_f32` kernels, `float` and `datetime` are eight and go through the `_f64` ones —
-`QAtomicType.width` is what chooses, so `datetime` needs no case of its own here or anywhere below.
-
-`datetime` is a float in q and not a separate thing: its payload is a `double` count of days, which
-is a decimal on a tick like any price, so nothing about it wants a different encoding. -/
+/-- The types ALP is the encoding for: the two float types and no others. `f32` is four bytes and
+goes through the `_f32` kernels, `f64` is eight and goes through the `_f64` ones — `QAtomicType.width`
+is what chooses. -/
 def alpEncodes : QAtomicType → Bool
-  | .real | .float | .datetime => true
+  | .f32 | .f64 => true
   | _ => false
 
 end Rel.Column
@@ -521,7 +517,7 @@ and only the whole column's total against `n * w` says whether the narrow blocks
 def answer (t : QAtomicType) (n : USize) (e : Ext.Enc X) : Ext.Enc X :=
   match t with
   -- a boolean has no dense bytes to decode to: its bitmap or `u1` `foR` is kept as it is
-  | .general | .boolean => e
+  | .general | .u1 => e
   | t => match t.width, e with
     | some w, .bytes b => if n < encodeMin then e else
     -- ALP first at a float, as on entry: a float answer encoded with `encode` alone stayed dense, so
@@ -590,13 +586,13 @@ def bitsOfFoR (metadata pack : @& ByteArray) (n : USize) : ByteArray :=
   packOf n.toNat fun i =>
     i < Column.blk metadata * Column.nblk metadata && (Column.foRBits metadata pack starts i).toNat % 2 == 1
 
-/-- A boolean payload as its bitmap, whichever of the two forms `Enc.WF .boolean` admits it is in (a `u1` `foR`
+/-- A boolean payload as its bitmap, whichever of the two forms `Enc.WF .u1` admits it is in (a `u1` `foR`
 through `bitsOfFoR`); `none` at any other type or form. The one boolean read every bitmap consumer goes through,
 here below `Elementwise` so that its operand readers take a boolean through it too. -/
 def boolBits (t : QAtomicType) (n : USize) (e : Ext.Enc X) : Option ByteArray :=
   match t, e with
-  | .boolean, .bits b => some b
-  | .boolean, .foR m p => some (bitsOfFoR m p n)
+  | .u1, .bits b => some b
+  | .u1, .foR m p => some (bitsOfFoR m p n)
   | _, _ => none
 
 end Rel.Kernel

@@ -15,9 +15,9 @@ open Tab Rel.Dep Rel.Kernel Rel.Verify Rel
 
 /-- A float type's facts: `bitsType` sorts it at an integral kind `k` of its width, its dense payload holds
     `k.width` bytes an element. -/
-theorem float_facts {t : QAtomicType} (ht : t = .real ∨ t = .float ∨ t = .datetime) {k : Scan.Kind}
+theorem float_facts {t : QAtomicType} (ht : t = .f32 ∨ t = .f64) {k : Scan.Kind}
     (hk : orderKind (KernelWF.bitsType t) = some k) :
-    (k = .i32 ∨ k = .i64) ∧ t.width = some k.width ∧ t ≠ .general ∧ t ≠ .boolean ∧
+    (k = .i32 ∨ k = .i64) ∧ t.width = some k.width ∧ t ≠ .general ∧ t ≠ .u1 ∧
       (∀ n b, Enc.WF (X := Empty) t n (.bytes b) → b.size = n.toNat * k.width) ∧
       ∀ n b, groupIdsColumn (X := Empty) (KernelWF.bitsType t) n (.bytes b) = some (Order.groupIds k n b) := by
   rcases ht with rfl | rfl | rfl <;> simp [KernelWF.bitsType, orderKind] at hk <;> subst hk <;>
@@ -26,7 +26,7 @@ theorem float_facts {t : QAtomicType} (ht : t = .real ∨ t = .float ∨ t = .da
 
 /-- **A float column's two rows are one cell exactly when the bits of its dense decode agree** — the cell is
     its bits (`Carrier`), no NaN or zero folded; the column in any encoding (`get_bytesOf`). -/
-theorem float_row_eq {t : QAtomicType} (ht : t = .real ∨ t = .float ∨ t = .datetime) {k : Scan.Kind}
+theorem float_row_eq {t : QAtomicType} (ht : t = .f32 ∨ t = .f64) {k : Scan.Kind}
     (hk : orderKind (KernelWF.bitsType t) = some k) {n : USize} (x : Arr t n) {b : ByteArray}
     (he : Enc.bytesOf t n x.enc = some b) {i j : Nat} (hi : i < n.toNat) (hj : j < n.toNat) :
     x.get ⟨i, hi⟩ = x.get ⟨j, hj⟩ ↔ Column.bitsAt b (i * k.width) k.width = Column.bitsAt b (j * k.width) k.width := by
@@ -43,7 +43,7 @@ theorem float_row_eq {t : QAtomicType} (ht : t = .real ∨ t = .float ∨ t = .d
 /-- **A float column in any encoding is grouped by the keys of its dense decode `B`**: `groupIdsColumn` at
     `bitsType` packs `Verify.groupOf g` for a `g` that is `keyAt k B` below the count — a dense or ALP payload
     grouped over `B` itself, a FoR one over its encoded form, whose keys are the decode's (`decode_keyAt`). -/
-theorem float_groups {t : QAtomicType} (ht : t = .real ∨ t = .float ∨ t = .datetime) {n : USize} (x : Arr t n)
+theorem float_groups {t : QAtomicType} (ht : t = .f32 ∨ t = .f64) {n : USize} (x : Arr t n)
     {q : ByteArray × ByteArray} (hq : groupIdsColumn (KernelWF.bitsType t) n x.enc = some q) :
     ∃ k B, ∃ g : Nat → UInt64, orderKind (KernelWF.bitsType t) = some k ∧ Enc.bytesOf t n x.enc = some B ∧
       q.1 = Column.packIds (Column.idWidthOf (Verify.firstsOf g n.toNat).length) n.toNat (Verify.groupOf g n.toNat) ∧
@@ -86,7 +86,7 @@ theorem float_groups {t : QAtomicType} (ht : t = .real ∨ t = .float ∨ t = .d
 
 /-- **The grouping code of one float column, in any encoding, is faithful**: `Code.ofIds` of the ids
     `groupIdsColumn` answers at `bitsType` is equal exactly where the cells are. -/
-theorem ofIds_float_faithful {t : QAtomicType} (ht : t = .real ∨ t = .float ∨ t = .datetime) {n : USize}
+theorem ofIds_float_faithful {t : QAtomicType} (ht : t = .f32 ∨ t = .f64) {n : USize}
     (x : Arr t n) {q : ByteArray × ByteArray} (hq : groupIdsColumn (KernelWF.bitsType t) n x.enc = some q)
     {i j : Nat} (hi : i < n.toNat) (hj : j < n.toNat) :
     Column.idAt (Code.ofIds (len q.2) n q.1).b (Code.ofIds (len q.2) n q.1).w i =
@@ -99,7 +99,7 @@ theorem ofIds_float_faithful {t : QAtomicType} (ht : t = .real ∨ t = .float �
     hg j hj, Verify.keyAt_eq_iff (by rcases hk2 with rfl | rfl <;> simp) B, float_row_eq ht hk x hB hi hj]
 
 /-- A float payload is neither a `syms` nor an `enum` one, so `intern` makes no `enum` of it. -/
-theorem float_intern {t : QAtomicType} (ht : t = .real ∨ t = .float ∨ t = .datetime) {n : USize} (x : Arr t n) :
+theorem float_intern {t : QAtomicType} (ht : t = .f32 ∨ t = .f64) {n : USize} (x : Arr t n) :
     ∀ d o ids, Column.intern x.enc ≠ .enum d o ids := fun d o ids he => by
   have hwf := x.wf
   generalize x.enc = e at hwf he
@@ -107,7 +107,7 @@ theorem float_intern {t : QAtomicType} (ht : t = .real ∨ t = .float ∨ t = .d
 
 /-- **A float side's codes are its `raze` grouped at `bitsType`, cut back into the parts** — the parts and the
     `raze` in any encoding. -/
-theorem codes_float_cut {t : QAtomicType} (ht : t = .real ∨ t = .float ∨ t = .datetime) {p : Nat}
+theorem codes_float_cut {t : QAtomicType} (ht : t = .f32 ∨ t = .f64) {p : Nat}
     (cs : Vector (Part (.atom t)) p) (hp : 0 < p) :
     ∃ q, groupIdsColumn (KernelWF.bitsType t) (raze t cs.toArray).1 (raze t cs.toArray).2.enc = some q ∧
       Obj.codes (.atom t) cs = (Code.ofIds (len q.2) (raze t cs.toArray).1 q.1).cut (cs.map (·.1)) :=
@@ -118,7 +118,7 @@ theorem codes_float_cut {t : QAtomicType} (ht : t = .real ∨ t = .float ∨ t =
 
 /-- **A float side: each part's code is well formed, and all on one lane** — the parts and their `raze` in any
     encoding, the parts' summed count a `USize`. -/
-theorem codes_float_parts_wf {t : QAtomicType} (ht : t = .real ∨ t = .float ∨ t = .datetime) {p : Nat}
+theorem codes_float_parts_wf {t : QAtomicType} (ht : t = .f32 ∨ t = .f64) {p : Nat}
     (cs : Vector (Part (.atom t)) p) (hN : (cs.toList.map (·.1.toNat)).sum < USize.size) {k : Nat} (hk : k < p) :
     (let c := (Obj.codes (.atom t) cs)[k]'hk
     laneOK(c.w) ∧ c.n = (cs[k]'hk).1 ∧

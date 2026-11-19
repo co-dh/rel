@@ -13,7 +13,7 @@ namespace Rel.KernelWF
 open Tab Rel.Kernel Rel.Verify
 
 /-- A `long` payload is dense bytes or Frame of Reference: `WF` admits no other layout at `long`. -/
-theorem long_cases {n : USize} {e : Enc} (hw : Enc.WF .long n e) :
+theorem long_cases {n : USize} {e : Enc} (hw : Enc.WF .i64 n e) :
     (∃ b, e = .bytes b) ∨ ∃ M P, e = .foR M P := by
   cases e <;> simp_all [Enc.WF, QAtomicType.width]
 
@@ -350,7 +350,7 @@ theorem gatherColumn_wf {t : QAtomicType} {n : USize} {e : Enc} (hw : Enc.WF t n
   have hz : ¬ i.size < m.toNat * 8 := by omega
   cases e with
   | foR M P =>
-    by_cases hb : t = .boolean
+    by_cases hb : t = .u1
     · subst hb
       simp_all [-Nat.not_lt, denseWidth, foRColumn, Enc.bytesOf, boolBits]
       obtain ⟨_, -, rfl⟩ := h; simp [Enc.WF, gatherBits_size, hm]
