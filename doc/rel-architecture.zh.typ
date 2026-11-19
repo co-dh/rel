@@ -89,6 +89,7 @@ structure Known (A B : Obj) where
 inductive Rel (A B : Obj)
   | tab  (t : Except String (Tab A B))            -- 两列等长数组；error = 失败及其消息（原 CRel 的 ok = false），一路到 check、print
   | lazy (f : Known A B → Rel A B)                -- 边界够了返回 tab，不够返回 lazy 等更多边界
+  | bits (g w o x ra y rc)                        -- （草稿，待审）g·w 位的 u1 位矩阵 o，行值 x[ra[a]]、列值 y[rc[c]]；读成行即 Tab.ofBits
 
 compile η t : {r : Rel A B // rep r = ⟦t⟧ρ}       -- 方案 A：规格在类型里
 ```
@@ -107,6 +108,9 @@ compile η t : {r : Rel A B // rep r = ⟦t⟧ρ}       -- 方案 A：规格在�
 - `Obj` 是可检查的数据，编译器按它分派（`Vals A n` 几列、哪个宽度的 kernel）；Lean 的 `Type` 不能模式匹配，所以程序用 `Obj`、数学用 `.El`。
 - `Tab` 是三字段结构 `{n, key, val}`（原来的 `Rel k v`），内容和 `Σ n, Vals A n × Vals B n` 相同，留名字是因为字段名 `.n .key .val` 被两千多处使用。
 - 新的组合子加 `Known` 的字段，不加 `Rel` 的构造子。
+- 例外 `bits`（草稿，待审）：中间结果留作位矩阵，交给下一个选位矩阵的运算，不展开成行。`Known` 只向下传边界，
+  不能把矩阵交回上层；`tab` 存的是行；`lazy` 是不透明的函数，所以加一个构造子。`rep (bits ..) = rep (tab (Tab.ofBits ..))`；
+  任何不认识它的运算先 `runE` 读成 `tab`。
 
 #card(c-sem, [`rep` 与 `compile`（规格写在类型里）])[
   `rep (tab (some t))` = 表读成的谓词；`rep (lazy f) = R` ⇔ 对任意 `K`、`L`，`rep (f ⟨K, L⟩) = K ≫ R ≫ L`（缺的一侧取 `𝟙`）。\
@@ -217,7 +221,11 @@ compile η t : {r : Rel A B // rep r = ⟦t⟧ρ}       -- 方案 A：规格在�
   [`asc`（草稿，待审）], [`(m) (es : List (AscKey × Enc)) : List Enc × Enc`，`AscKey = atom t ┃ cells n c lo hi els`；
     按若干列字典序稳定排序：每列排好的值 + 排列], [`asc_sorted` + `asc_perm`（新）], [—],
   [`seen`（草稿，待审）], [`(n) (es : List (AscKey × Enc)) : (k, g, first)`，各列按 `asc` 的方式读；行须已按 `asc` 序，否则报错（先跑 `asc`）：`k` 为组数，`g` 为每行的组号（按首次出现编号），`first` 为每组第一行的位置；如键 `B A B`：`k = 2`，`g = 0 1 0`，`first = 0 1`], [—（`asc ≫ seen` 给出 `asc` 的并列组编号；定理待写）], [—],
-  [`bitrows`（融合 kernel，草稿，待审）], [`(all : Bool) (w na ni g) (ends idx m : Enc) : Enc`，`m` 是 `na · w` 位的 `u1` 位矩阵（第 `i` 行占 `[i·w, (i+1)·w)` 位）；输出 `g · w` 位：第 `r` 行 = 第 `r` 段 `[ends[r-1], ends[r])` 中各 `idx[k]` 行的 `∨`（`all = false`，即 `≫`，空段为 0）或 `∧`（`all = true`，即 `\`，空段为 1）。只在位矩阵小时选用：`|A|·|B| ≤ 2²⁷`（`sudokupc9` 的 `π₁\(sup(X) X)`：作表 1.9e8 行，作矩阵 4.3e7 位）。选用规则（草稿，待审）：kernel 路径的 `≫`、`\`（`GenK` 经 `Tab.compSel`、`Tab.ldivSel`）先由 `compGroups` 的前缀和得展开行数 `T`，当输入矩阵 `na·w` 与输出矩阵 `g·w` 各 `≤ 2²⁷` 且 `< 2³²`、两者之和小于展开所写的 `64·T` 位（每行至少一个 64 位字）时（`Tab.bitsWin`）用位矩阵，否则用分块展开或计数],[`Tab.compBits_comp`：`compBits R S = .ok X`、`comp R S = .ok Y` ⟹ `X.Holds = Y.Holds`；`Tab.ldivBits_ldiv`：`ldivBits` 对 `ldiv` 同式（由 `raw_kbitrows`、`csr_spec`、`colCat_raw`、`Tab.compBits_holds`、`Tab.ldivBits_holds` 证，`Rel/RepBits.lean`）。只证所表的关系相同；输出为 `Canon`（与 `Tab.comp` 的行序相同）未证：仓库中尚无从 `kasc` 秩序到 `Obj.lt` 的桥，现由 `Rel/BitsTest.lean` 的 `#guard` 对照], [`Tab.compBits` `Tab.ldivBits`],
+  [`bitrows`（融合 kernel，草稿，待审）], [`(all : Bool) (w na ni g) (ends idx m : Enc) : Enc`，`m` 是 `na · w` 位的 `u1` 位矩阵（第 `i` 行占 `[i·w, (i+1)·w)` 位）；输出 `g · w` 位：第 `r` 行 = 第 `r` 段 `[ends[r-1], ends[r])` 中各 `idx[k]` 行的 `∨`（`all = false`，即 `≫`，空段为 0）或 `∧`（`all = true`，即 `\`，空段为 1）。只在位矩阵小时选用：`|A|·|B| ≤ 2²⁷`（`sudokupc9` 的 `π₁\(sup(X) X)`：作表 1.9e8 行，作矩阵 4.3e7 位）。选用规则（草稿，待审）：kernel 路径的 `≫`、`\`（`GenK` 经 `Tab.compSel`、`Tab.ldivSel`）先由 `compGroups` 的前缀和得展开行数 `T`，当输入矩阵 `na·w` 与输出矩阵 `g·w` 各 `≤ 2²⁷` 且 `< 2³²`、两者之和小于展开所写的 `64·T` 位（每行至少一个 64 位字）时（`Tab.bitsWin`）用位矩阵，否则用分块展开或计数。
+    结果不展开（草稿，待审）：`≫` 选了位矩阵就返回 `Rel.bits`（`Tab.compSelM`），下一个运算若也读位矩阵则直接接上——
+    `tab ≫ bits` 以左表值在 `bits` 行值中的序号选行，再 `bitrows`（`Tab.compTabMat`，输出 `≤ 2²⁷` 位时）；
+    `bits ∩ tab` 以两侧在行值、列值中的序号取位 `o[a·w+c]` 过滤表（`Tab.keepBits`）；`R \ bits`、`bits ≫ S`、`∪`、`−` 先读成行。
+    `rdiv` 经 `Tab.ldivSel`（`R/S = (S° \ R°)°`）同样可选位矩阵],[`Tab.compBits_comp`：`compBits R S = .ok X`、`comp R S = .ok Y` ⟹ `X.Holds = Y.Holds`；`Tab.ldivBits_ldiv`：`ldivBits` 对 `ldiv` 同式（由 `raw_kbitrows`、`csr_spec`、`colCat_raw`、`Tab.compBits_holds`、`Tab.ldivBits_holds` 证，`Rel/RepBits.lean`）。只证所表的关系相同；输出为 `Canon`（与 `Tab.comp` 的行序相同）未证：仓库中尚无从 `kasc` 秩序到 `Obj.lt` 的桥，现由 `Rel/BitsTest.lean` 的 `#guard` 对照], [`Tab.compBits` `Tab.ldivBits`],
 )
 - `AscKey` 的 `cells`（草稿，待审）：一个 `arr` 侧作一个键，列的每个字是格号，格 = `[lo, hi)` 夹到共享 payload
   `[0, c)`；`els` 是 payload 的键列。两格按元素逐个比较序码（字典序），真前缀在前；格长相同且各元素序码相等才相等。
