@@ -54,13 +54,15 @@ byte `k` being the OR of the residuals whose fields it overlaps, shifted into pl
 A block of `B` elements always occupies `B * w / 8` bytes even when it holds fewer than `B`, so a block
 start is a prefix sum of the widths and is always a multiple of eight. The elements past the count
 are encoded as a residual of 0 — `rust/src/coc.rs` reaches the same bytes by leaving its zeroed buffer
-alone. -/
+alone.
+
+The bytes are one mapped list made an array once, not `B * w / 8` pushes: a push is `List.concat` to `decide`, so
+the kernel built a block's pack in quadratic terms — 8 GB for one block at width 16, whatever the element count. -/
 def packRes (B w : Nat) (res : Nat → UInt64) : ByteArray :=
   if w = 0 then ByteArray.empty else
-  Nat.fold (B * w / 8) (init := ByteArray.emptyWithCapacity (B * w / 8))
-    fun k _ acc => acc.push <|
-      (List.range' (8 * k / w) ((8 * k + 7) / w + 1 - 8 * k / w)).foldl (init := (0 : UInt8)) fun b j =>
-        b ||| ((res j).toNat % 2 ^ w * 2 ^ (j * w) / 2 ^ (8 * k)).toUInt8
+  ⟨((List.range (B * w / 8)).map fun k =>
+    (List.range' (8 * k / w) ((8 * k + 7) / w + 1 - 8 * k / w)).foldl (init := (0 : UInt8)) fun b j =>
+      b ||| ((res j).toNat % 2 ^ w * 2 ^ (j * w) / 2 ^ (8 * k)).toUInt8).toArray⟩
 
 /-- The metadata of the blocks `(base, maxv, bsum, width)` describe, in the five sections and the
 trailer `QLean/Value.lean` lays out. `off` is the prefix sum of `2 ^ lg * width / 8` rather than anything
