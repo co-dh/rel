@@ -402,7 +402,9 @@ relk 线程池空转 2 526（与前三项重叠）。
   qrs 那份 `qlean_pool_stats` 的 commit 一起合并，否则 qlean 链接时有两份同名符号。
 - ⬜ W.5b 缺口：rel 里没有测试走真实 `SPLIT`（8388608）以上的 pool 路径。`cargo test` 下 `SPLIT_AT`=1，没有 Lean
   测试读 pool 计数器；目前只有 TestCompile 本身（`muGrow.g`、`digits`、`detab.tc`）会达到这个阈值。
-- 🔄 W.6 elaboration 时 `QLEAN_THREADS=1`，只设一处；先测 `make check` 前后的 wall 与 `user+sys`，不变慢才提交（owner 选 E）。
+- ✖ W.6 elaboration 时 `QLEAN_THREADS=1`：owner 放弃（2026-11-18）。没有测量，没有提交。只有会 split 的 program
+  （`muGrow.g`、`digits`、`detab.tc`）受它影响；W.5 的做法 A 跳过 not ok 的 `muGrow.g`，不靠它也省掉那 123 s。
+  W.5 的 A 因此不再等 W.6，单独落地。
 - ✅ W.7 `-Wl,--build-id`（owner 选 F）：rel lakefile 52b6203（gates、relc、librelk.so、两个 precompiled lib），
   cc-guard 8d08fa4（已部署），lean-refactor 22bc2aa；`crate/build.sh` 只出 `.o`，不需要。lake 不跟踪 extern_lib 的
   link 参数，旧的 librelk.so 要重链接才带 build-id。cap 的 build-id 缓存在 947fbca。
