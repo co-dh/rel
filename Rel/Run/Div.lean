@@ -66,14 +66,15 @@ def nil {n : USize} (D : Vals A n) : Except String (Tab A (.arr B)) := do
 
 /-- **`R \ S` within `UB`, `UC`** (`ldivDen`), by counting: `b` of `ran R` to `c` where
 `#{a | R a b ∧ S a c} = #{a | R a b}`, no complement (`doc/rel-architecture.zh.typ`, `R\S`): `Q = r° ≫ ⟨𝟙, s⟩`
-(`r`, `s` canonical, so `Q`'s rows `(b, (a, c))` are distinct and hold each `a` once); GROUP over `(b, c)` and its
+(`r`, `s` canonical, so `Q`'s rows `(b, (a, c))` are distinct and hold each `a` once; `compOne`, not the blocked
+`comp`: with no duplicate to remove, the expansion is `Q` itself and blocks would not lower the peak); GROUP over `(b, c)` and its
 row count `cnt` (`kscatter .add`); the count `d` of `R`'s rows of `b`, read at each group's first row by CODE over
 `r.val ++ Q.key` (the run of `r` rows of each `b` group, `kscatter .add` of `p < r.n`, each input row's group by
 `kscatter .last` through `p`); the groups with `cnt = d` (`whereCol`). The vacuous part is `(ran UB − ran R) × ran UC`,
 and the two are met by `∪`. -/
 def ldiv (R : Tab A B) (S : Tab A C) (UB : Tab B B) (UC : Tab C C) : Except String (Tab B C) := do
   let r ← R.canon; let s ← S.canon
-  let Q ← (Tab.mk r.n r.val r.key).comp (Tab.mk s.n s.key (s.key, s.val) : Tab A (.prod A C))
+  let Q ← (Tab.mk r.n r.val r.key).compOne (Tab.mk s.n s.key (s.key, s.val) : Tab A (.prod A C))
   let x : Vals (.prod B C) Q.n := (Q.key, (Q.val : Vals A Q.n × Vals C Q.n).2)
   let es ← Vals.cols x
   let (vs, p) ← kasc Q.n es

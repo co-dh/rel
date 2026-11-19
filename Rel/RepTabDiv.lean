@@ -284,7 +284,7 @@ theorem Tab.ldiv_holds {A B C : Obj} {R : Tab A B} {S : Tab A C} {UB : Tab B B} 
     have hnU : r.n.toUInt64 = r.n.toNat.toUInt64 := UInt64.toNat_inj.mp (by simp <;> omega)
     ------------------------------------------------------------------ `Q`'s rows, `r`'s rows
     have hQh : ∀ a, Q.Holds b (a, c) ↔ R.Holds a b ∧ S.Holds a c := fun a => by
-      rw [comp_holds hQ]
+      obtain ⟨U₀, hU₀, hH₀⟩ := compOne_canon hQ; rw [canon_holds hU₀, hH₀]
       constructor
       · rintro ⟨a', ⟨i, h1, h2⟩, ⟨j, h3, h4⟩⟩
         obtain ⟨e1, e2⟩ := Prod.mk.inj (show (s.key.row j, s.val.row j) = (a, c) from h4)
@@ -293,7 +293,7 @@ theorem Tab.ldiv_holds {A B C : Obj} {R : Tab A B} {S : Tab A C} {UB : Tab B B} 
         obtain ⟨i, h1, h2⟩ := (canon_holds hr a b).2 hab
         obtain ⟨j, h3, h4⟩ := (canon_holds hs a c).2 hac
         exact ⟨a, ⟨i, h2, h1⟩, ⟨j, h3, show (s.key.row j, s.val.row j) = (a, c) by rw [h3, h4]⟩⟩
-    obtain ⟨U, hUc, -⟩ := comp_canon hQ
+    obtain ⟨U, hUc, -⟩ := compOne_canon hQ
     have hQd : ∀ i i' : Fin Q.n.toNat, Q.key.row i = Q.key.row i' → Q.val.row i = Q.val.row i' → i = i' :=
       fun i i' e1 e2 => Classical.byContradiction fun hne => Tab.canon_distinct hUc hne (by rw [e1, e2])
     have hrd : ∀ i i' : Fin r.n.toNat, r.key.row i = r.key.row i' → r.val.row i = r.val.row i' → i = i' :=
