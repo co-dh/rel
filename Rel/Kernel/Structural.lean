@@ -181,28 +181,11 @@ The answer is dense, as the dense gather's is.
 The source's decode was the wasteful one and it was a whole column — at 64M longs `xl@xd` spent 48ms
 of its 80 on it, 1 GB of dense payload written so that a gather could read a part of it once. This
 is the shape `where` and the element-wise verbs hand it: a source that is a stored column and an
-index of a handful of positions, freshly built and dense. `gatherFoRIdx` below is the other one. -/
+index of a handful of positions, freshly built and dense. -/
 @[extern "qlean_structural_gather_foR"]
 def gatherFoR (w : USize) (fill : UInt64) (smeta : @& ByteArray) (spack : @& ByteArray) (n : USize)
     (idx : @& ByteArray) : ByteArray :=
   gatherBytes w fill (Coc.decode w smeta spack n) idx
-
-/-- `x@i` with **both** operands encoded: `n` elements at width `w` in the source, `m` in the index.
-The answer is dense, as the other two gathers' are.
-
-The index is read straight through, one element once, so decoding it whole writes `8m` bytes for a
-pass that reads each of them once and never again. Measured single-threaded at a million longs, that
-decode alone is 73.5 µs — `xl@xg` 296 µs with a dense index against 370 with an encoded one, and
-`xg@xd` 283 against 356, the same figure both times because an index is eight bytes an element
-whatever the source is.
-
-A **dense** source with an encoded index has no kernel and still decodes its index. The encoded form
-is the representation, so a source that is dense at a type `Column.encodes` is a transient — `til`,
-`where`, a grade — while an encoded index is a stored column, and the two do not meet. -/
-@[extern "qlean_structural_gather_foR_idx"]
-def gatherFoRIdx (w : USize) (fill : UInt64) (smeta spack : @& ByteArray) (n : USize)
-    (imeta ipack : @& ByteArray) (m : USize) : ByteArray :=
-  gatherFoR w fill smeta spack n (Coc.decode 8 imeta ipack m)
 
 /-- `dst` with the `wb`-bit field at each long of `idx` replaced, in order, by field `soff + k` of
 `src` — field `soff` for every `k` under `bcast`. Fields below a byte pack low field first, which is
@@ -398,14 +381,6 @@ def gatherIds (dict : @& ByteArray) (dof : @& Array Nat) (inRange : Unit → Boo
   let (db, dbo) := if e < nd || inRange () then (dict, dof) else (dict.push 0, dof.push (dict.size + 1))
   (db, dbo, gather (Column.idWidth dof).toUSize (Column.idWidth dbo).toUSize e.toUInt64)
 
-/-- `gatherPacked` with the index left encoded: an enumeration's values are its domain's ids
-gathered by its indices, a stored `long` column, and decoding that whole was most of every verb
-over an enumerated column — 160 MB written at 20M rows for a pass that reads each element once. -/
-@[extern "qlean_structural_gather_ids_foR"]
-def gatherPackedFoR (n w wout : USize) (fill : UInt64) (src : @& ByteArray)
-    (imeta ipack : @& ByteArray) (m : USize) : ByteArray :=
-  gatherPacked n w wout fill src (Coc.decode 8 imeta ipack m)
-
 /-- The symbol a gather's index names, and the empty symbol — which is `symbol`'s null — where it
 misses. Measured: `` `a`b@0 5 ``, `` `a`b@0 -1 `` and `` `a`b@0 0N `` are all `` `a` ``, the same
 one unsigned comparison `gatherBytes` folds its three misses into.
@@ -446,12 +421,6 @@ without materialising anything.
 An empty index answers the empty vector at `t`: `1 2 3@0#0` is `` `long$() ``, and `(0#0)@0 1` is
 `0N 0N`, so an empty *source* is not a decline either — every index simply misses. -/
 def gatherColumn (t : QAtomicType) (n : USize) (e : Ext.Enc X) (m : USize) (ie : Ext.Enc X) : Option (Ext.Enc X) :=
-  -- both encoded is the representation's own case and reads neither operand into dense bytes; every
-  -- other pairing brings the index to dense bytes and leaves the source where it is
-  match denseWidth t, foRColumn t n e, foRColumn .i64 m ie with
-  | some w, some (n, sm, sp), some (m, im, ip) =>
-    some (.bytes (gatherFoRIdx w.toUSize ((nullBits t).getD 0) sm sp n im ip m))
-  | _, _, _ =>
     -- the index decode is a thunk and every arm below opens it for itself: the source's payload is
     -- what decides whether there is an answer at all, and an index column is `long` and therefore
     -- always encoded, so opening it above the refusal writes eight megabytes for a `none`
@@ -477,9 +446,7 @@ def gatherColumn (t : QAtomicType) (n : USize) (e : Ext.Enc X) (m : USize) (ie :
       let ans (gather : USize → USize → UInt64 → ByteArray) : Ext.Enc X :=
         let (db, dbo, nids) := gatherIds dict dof inRange gather
         .enum db dbo nids
-      match foRColumn .i64 m ie with
-      | some (m, im, ip) => some (ans fun w wo e => gatherPackedFoR n w wo e ids im ip m)
-      | none => (idx ()).map fun ix => ans fun w wo e => gatherPacked n w wo e ids ix
+      (idx ()).map fun ix => ans fun w wo e => gatherPacked n w wo e ids ix
     | t, .alp md p a =>
       if !Column.alpEncodes t then none else
         (idx ()).map fun ix => .bytes (gatherAlp ((nullBits t).getD 0) md p a n ix)

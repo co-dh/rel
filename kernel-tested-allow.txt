@@ -48,9 +48,7 @@ Rel.Kernel.gatherAlp
 Rel.Kernel.gatherBits
 Rel.Kernel.gatherBytes
 Rel.Kernel.gatherFoR
-Rel.Kernel.gatherFoRIdx
 Rel.Kernel.gatherPacked
-Rel.Kernel.gatherPackedFoR
 Rel.Kernel.gatherSyms
 Rel.Kernel.hashConcat
 Rel.Kernel.overBytes
