@@ -36,24 +36,42 @@ def ofVals (A B : Obj) (f : {n : USize} → Vals A n → Except String (Tab A B)
 
 def id (A : Obj) : Fn true A A := ofVals A A fun X => Tab.idU X
 
-/-- `r S`, `r` the table of `R`: a table `S` is composed now; a lazy one runs knowing its domain is `ran(r)`,
-    and not at all where `r` has no row. -/
+/-- `r ≫ s` (`Tab.compSelM`): its bit matrix kept as `bits` where `Tab.bitsWin` takes it, else its table. -/
+def compR {A B C : Obj} (r : Tab A B) (s : Tab B C) : Rel A C := match Tab.compSelM Tab.bitsMax r s with
+  | .ok (.inr (g, w, o, ra, rc)) => .bits g w o r.key ra s.val rc
+  | .ok (.inl t) => .tab (.ok t)
+  | .error e => .tab (.error e)
+
+/-- `r ≫ S`, `S` a table or a bit matrix: a matrix within `Tab.bitsMax` is composed on its bits
+    (`Tab.compTabMat`), so it is never read back as rows; else as `compR`. -/
+def compV {A B C : Obj} (r : Tab A B) : Rel B C → Rel A C
+  | .bits g w o x ra y rc => match Tab.compTabMat r g w o x ra with
+    | .ok (ka, o', ⟨_, key⟩, ra') =>
+      if ka.toNat * w.toNat ≤ Tab.bitsMax then .bits ka w o' key ra' y rc
+      else match Tab.ofBits g w o x ra y rc with | .ok s => compR r s | .error e => .tab (.error e)
+    | .error e => .tab (.error e)
+  | S => match S.runE {} with | .ok s => compR r s | .error e => .tab (.error e)
+
+/-- `r S`, `r` the table of `R`: a table or a bit matrix `S` is composed now; a lazy one runs knowing its domain is
+    `ran(r)`, and not at all where `r` has no row. -/
 def compT {A B C : Obj} : Except String (Tab A B) → Rel B C → Rel A C
   | .error e, _ => .tab (.error e)
-  | .ok r, .tab s => .tab (s >>= Tab.compSel Tab.bitsMax r)
   | .ok r, .lazy g => if r.n == 0 then .tab Tab.zero else
-    .lazy fun K => .tab do
-      let d ← Tab.ran r; Tab.compSel Tab.bitsMax r (← (Rel.lazy g).runE ⟨some ⟨d.n, d.key⟩, K.ran⟩)
+    .lazy fun K => match Tab.ran r with
+      | .ok d => compV r ((Rel.lazy g).force ⟨some ⟨d.n, d.key⟩, K.ran⟩)
+      | .error e => .tab (.error e)
+  | .ok r, S => compV r S
 
 /-- `R s`, `s` the table of `S`: the mirror of `compT`, `R` run knowing its range is `s`'s key column. -/
 def compS {A B C : Obj} (R : Rel A B) : Except String (Tab B C) → Rel A C
   | .error e => .tab (.error e)
-  | .ok s => .tab do Tab.compSel Tab.bitsMax (← R.runE ⟨none, some ⟨s.n, s.key⟩⟩) s
+  | .ok s => match R.runE ⟨none, some ⟨s.n, s.key⟩⟩ with | .ok r => compR r s | .error e => .tab (.error e)
 
 /-- `R S` (`Tab.compSel`: a bit matrix where `Tab.bitsWin` holds): `S` runs first, on the range, only where the context
     knows only the range and `S` is closed; else `R` runs first and hands its range to `S` as its domain (§0). -/
 def comp (A B C : Obj) (e : Bool) (R : Fn true A B) (S : Fn e B C) : Fn true A C := match R with
   | .tab r => compT r S
+  | R@(.bits ..) => compT (R.runE {}) S
   | .lazy f => .lazy fun
     | ⟨none, some L⟩ => if e then compT ((Rel.lazy f).runE {}) S else compS (.lazy f) (S.runE ⟨none, some L⟩)
     | K => compT ((Rel.lazy f).runE ⟨K.dom, none⟩) S
@@ -76,8 +94,15 @@ def lift2 {A B C D E F : Obj} (f : Tab A B → Tab C D → Except String (Tab E 
   | R, S => .lazy fun K => .tab do f (← R.runE (kl K)) (← S.runE (kr K))
 
 def conv (A B : Obj) (R : Fn false A B) : Fn false B A := lift1 Tab.conv (fun K => ⟨K.ran, K.dom⟩) R
-def meet (A B : Obj) (d e : Bool) (R : Fn d A B) (S : Fn e A B) : Fn (d || e) A B :=
-  lift2 Tab.inter (fun K => K) (fun K => K) R S
+/-- `R ∩ S` of two values that are no `lazy`: a table met with a bit matrix keeps its rows whose bit is set
+    (`Tab.keepBits`), so the matrix is never read back as rows; else `Tab.inter` of the two tables. -/
+def meetV {A B : Obj} : Rel A B → Rel A B → Rel A B
+  | .bits g w o x ra y rc, .tab t | .tab t, .bits g w o x ra y rc => .tab (t >>= (Tab.keepBits · g w o x ra y rc))
+  | R, S => .tab do Tab.inter (← R.runE {}) (← S.runE {})
+
+def meet (A B : Obj) (d e : Bool) (R : Fn d A B) (S : Fn e A B) : Fn (d || e) A B := match R, S with
+  | .lazy _, _ | _, .lazy _ => .lazy fun K => meetV (R.force K) (S.force K)
+  | R, S => meetV R S
 def join (A B : Obj) (d e : Bool) (R : Fn d A B) (S : Fn e A B) : Fn (d || e) A B :=
   lift2 Tab.union (fun K => K) (fun K => K) R S
 def diff (A B : Obj) (d e : Bool) (R : Fn d A B) (S : Fn e A B) : Fn (d || e) A B :=
@@ -106,7 +131,8 @@ def prod (A B C D : Obj) (R : Fn false A B) (S : Fn false C D) : Fn false (.prod
     matrix where `Tab.bitsWin` holds. -/
 def rdiv (A B C : Obj) (R : Fn false A C) (S : Fn false B C) (UA : Fn false A A) (UB : Fn false B B) :
     Fn false A B :=
-  lift2 (fun r s => do Tab.rdiv r s (← UA.runE {}) (← UB.runE {})) (fun _ => {}) (fun _ => {}) R S
+  lift2 (fun r s => do (← Tab.ldivSel Tab.bitsMax (← s.conv) (← r.conv) (← UB.runE {}) (← UA.runE {})).conv)
+    (fun _ => {}) (fun _ => {}) R S
 def ldiv (A B C : Obj) (R : Fn false A B) (S : Fn false A C) (UB : Fn false B B) (UC : Fn false C C) :
     Fn false B C :=
   lift2 (fun r s => do Tab.ldivSel Tab.bitsMax r s (← UB.runE {}) (← UC.runE {})) (fun _ => {}) (fun _ => {}) R S

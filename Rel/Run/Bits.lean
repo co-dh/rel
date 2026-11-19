@@ -48,25 +48,20 @@ def bitMatrix (n na w : USize) (r c : Enc) : Except String Enc := do
 
 namespace Tab
 
-/-- The set bits of the `g · w` bits `o`, bit `a·w + c` the row `(x[ra[a]], y[rc[c]])`: `whereCol`, then `a` and `c` by
-`colMap .div/.mod`, each side `kgather`ed. Ascending by `(a, c)`, so canonical where the numbers are `kasc` ranks. -/
-def ofBits {n m : USize} (g w : USize) (o : Enc) (x : Vals A n) (ra : Enc) (y : Vals C m) (rc : Enc) :
-    Except String (Tab A C) := do
-  let (M, sel) ← whereCol (g * w) o
-  let wc ← colConst M w.toUInt64
-  let ix ← kgather M (← colMap .div M sel wc) g ra
-  let iy ← kgather M (← colMap .mod M sel wc) w rc
-  pure ⟨M, ← Vals.gather M ix x, ← Vals.gather M iy y⟩
-
 /-- **`R ≫ S` on a bit matrix**: `S` as `kb` rows (middle values, numbered with `R.val`'s) of `kc` bits (its values),
 `R`'s rows grouped by key (`ka` groups), each group the `∨` of the rows of its middle values (`kbitrows false`). -/
-def compBits (R : Tab A B) (S : Tab B C) : Except String (Tab A C) := do
+def compMat (R : Tab A B) (S : Tab B C) : Except String (USize × USize × Enc × Enc × Enc) := do
   let (kb, bR, bS, _) ← Vals.code2 R.val S.key
   let (ka, aR, ra) ← Vals.code R.key
   let (kc, cS, rc) ← Vals.code S.val
   if 2 ^ 63 ≤ (kb.toNat + ka.toNat) * kc.toNat then throw s!"compBits: {kb} or {ka} rows of {kc} bits past 2^63"
   let (ends, idx) ← csr R.n ka aR bR
-  Tab.ofBits ka kc (← kbitrows false kc kb R.n ka ends idx (← bitMatrix S.n kb kc bS cS)) R.key ra S.val rc
+  pure (ka, kc, ← kbitrows false kc kb R.n ka ends idx (← bitMatrix S.n kb kc bS cS), ra, rc)
+
+/-- `compMat`'s matrix read back as rows (`Tab.ofBits`). -/
+def compBits (R : Tab A B) (S : Tab B C) : Except String (Tab A C) := do
+  let (ka, kc, o, ra, rc) ← compMat R S
+  Tab.ofBits ka kc o R.key ra S.val rc
 
 /-- **`R \ S` within `UB`, `UC` on a bit matrix** (`ldivDen`): `S` as `ka` rows (keys, numbered with `R.key`'s) of `kc`
 bits (values, numbered with `UC`'s), plus row `ka` holding `ran UC`; `R`'s rows grouped by value over `ran R ∪ ran UB`
@@ -104,14 +99,22 @@ def bitsWin (bits T na g w : Nat) : Bool :=
 same `compGroups` (`Tab.comp_canon`). `T` is `compGroups`' expansion, the matrix `K` rows (`K` the middle values, as
 `compBits`' `kb`) and `ka` rows of `kc` bits. A nonempty expansion has `ka, kc ≥ 1`, so `rowBits · T ≤ K + 1` fails
 `bitsWin` before the two codes are paid for. -/
-def compSel (bits : Nat) (R : Tab A B) (S : Tab B C) : Except String (Tab A C) := do
+def compSelM (bits : Nat) (R : Tab A B) (S : Tab B C) :
+    Except String (Tab A C ⊕ (USize × USize × Enc × Enc × Enc)) := do
   let x ← compGroups R S
   let T ← compRows x
   let K := x.2.2.2.2.1.toNat
-  if rowBits * T ≤ K + 1 then compFrom blockRows R S x else do
+  if rowBits * T ≤ K + 1 then do let t ← compFrom blockRows R S x; pure (.inl t) else do
     let ka := (← Vals.code R.key).1.toNat
     let kc := (← Vals.code S.val).1.toNat
-    if bitsWin bits T K ka kc then compBits R S else compFrom blockRows R S x
+    if bitsWin bits T K ka kc then do let m ← compMat R S; pure (.inr m)
+    else do let t ← compFrom blockRows R S x; pure (.inl t)
+
+/-- `compSelM` as a table: its matrix read back as rows (`Tab.ofBits`, as `compBits`). -/
+def compSel (bits : Nat) (R : Tab A B) (S : Tab B C) : Except String (Tab A C) := do
+  match ← compSelM bits R S with
+  | .inl t => pure t
+  | .inr (ka, kc, o, ra, rc) => Tab.ofBits ka kc o R.key ra S.val rc
 
 /-- **`R \ S` within `UB`, `UC`, on a bit matrix where `bitsWin` holds** (`ldivBits`, `Tab.ldivBits_holds`), else
 `ldiv` (`Tab.ldiv_holds`). `T` is the expansion of `R° ≫ S` (`compGroups`; `ldiv`'s `Q` before `R`, `S` are
@@ -125,6 +128,42 @@ def ldivSel (bits : Nat) (R : Tab A B) (S : Tab A C) (UB : Tab B B) (UC : Tab C 
     let kb := (← Vals.code2 R.val UB.val).1.toNat
     let kc := (← Vals.code2 S.val UC.val).1.toNat
     if bitsWin bits T (ka + 1) kb kc then ldivBits R S UB UC else ldiv R S UB UC
+
+/-- `0 … n-1`: the prefix sums of `n` ones, less one. -/
+def colIota (n : USize) : Except String Enc := do
+  colMap .sub n (← colPrefix .add n (← colConst n 1)) (← colConst n 1)
+
+/-- Each row of `v`, its position among the `g` distinct values `xr`, or `g` where it is none of them: both numbered in
+one order (`Vals.code2`), each number's position in `xr` `kscatter`ed (`g` where `xr` holds none), read through `v`'s. -/
+def index {g n : USize} (xr : Vals A g) (v : Vals A n) : Except String Enc := do
+  let (k, cx, cv, _) ← Vals.code2 xr v
+  kgather n cv k (← kscatter .last g cx (← colIota g) k g.toUInt64)
+
+/-- **`T ∩ M`, `M` the `g · w` bits `o` over `x[ra[·]]` and `y[rc[·]]`** (`ofBits`' arguments): the rows of the canonical
+`T` whose bit is set, each side's position by `index`, so `M` is never read back as rows. -/
+def keepBits (T : Tab A C) {n m : USize} (g w : USize) (o : Enc) (x : Vals A n) (ra : Enc) (y : Vals C m) (rc : Enc) :
+    Except String (Tab A C) := do
+  let t ← T.canon
+  let ia ← index (← Vals.gather g ra x) t.key
+  let ic ← index (← Vals.gather w rc y) t.val
+  let ok ← colMap .and t.n (← colMap .lt t.n ia (← colConst t.n g.toUInt64))
+    (← colMap .lt t.n ic (← colConst t.n w.toUInt64))
+  let (M, sel) ← whereCol t.n ok
+  let u ← t.keep ok
+  let pos ← colMap .add M (← colMap .mul M (← kgather M sel t.n ia) (← colConst M w.toUInt64)) (← kgather M sel t.n ic)
+  u.keep (← kgather M pos (g * w) o)
+
+/-- **`R ≫ M`, `M` as in `keepBits`, on its matrix**: `R`'s rows whose value is a row of `M` (`index`), grouped by key
+(`csr`), each group the `∨` of its rows of `M` (`kbitrows false`): `ka` rows of `w` bits, with `R.key`'s values at
+`ra'`. -/
+def compTabMat (R : Tab A B) {n : USize} (g w : USize) (o : Enc) (x : Vals B n) (ra : Enc) :
+    Except String (USize × Enc × ((M : USize) × Vals A M) × Enc) := do
+  let ix ← index (← Vals.gather g ra x) R.val
+  let (M, sel) ← whereCol R.n (← colMap .lt R.n ix (← colConst R.n g.toUInt64))
+  let key ← Vals.gather M sel R.key
+  let (ka, aR, ra') ← Vals.code key
+  let (ends, idx) ← csr M ka aR (← kgather M sel R.n ix)
+  pure (ka, ← kbitrows false w g M ka ends idx o, (⟨M, key⟩ : (M : USize) × Vals A M), ra')
 
 end Tab
 

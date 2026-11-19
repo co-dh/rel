@@ -100,4 +100,48 @@ def ldS : List (Int64 × Int64) :=
   selLdiv b ldR ldS ((List.range 12).map Int64.ofNat) ((List.range 10).map Int64.ofNat)
 #guard [0, Tab.bitsMax].all fun b => selLdiv b [] [(1, 5)] [10, 20] [5, 6] && selLdiv b [(1, 10)] [] [10, 20] [5, 6]
 
+/-! Chains whose middle result stays a bit matrix (`GenK`'s `Rel.bits`): `R ≫ S` as `compMat`'s matrix, then `Q ≫`
+on its bits (`compTabMat`) and `T ∩` on its bits (`keepBits`), against the table path. -/
+
+/-- `Q ≫ (R ≫ S)`, the inner matrix composed on its bits, as `ofBits`' arguments. -/
+def chain2 (Q R S : List (Int64 × Int64)) :
+    Except String (USize × USize × Enc × ((M : USize) × Vals .long M) × Enc × Tab .long .long × Enc) := do
+  let r ← tab R; let s ← tab S; let (g, w, o, ra, rc) ← Tab.compMat r s
+  let (ka, o', key, ra') ← Tab.compTabMat (← tab Q) g w o r.key ra
+  pure (ka, w, o', key, ra', s, rc)
+
+/-- Both succeed and answer the same rows. -/
+def same (X Y : Except String (Tab .long .long)) : Bool := match X, Y with
+  | .ok X, .ok Y => X.toList == Y.toList
+  | _, _ => false
+
+/-- `T ∩ (R ≫ S)`: two operations, the meet on the matrix. -/
+def meet2 (T R S : List (Int64 × Int64)) : Bool :=
+  same (do let r ← tab R; let s ← tab S; let (g, w, o, ra, rc) ← Tab.compMat r s
+           Tab.keepBits (← tab T) g w o r.key ra s.val rc)
+    (do Tab.inter (← tab T) (← Tab.comp (← tab R) (← tab S)))
+
+/-- `Q ≫ (R ≫ S)`: two compositions, the outer on the matrix. -/
+def comp2 (Q R S : List (Int64 × Int64)) : Bool :=
+  same (do let (ka, w, o, ⟨_, key⟩, ra, s, rc) ← chain2 Q R S; Tab.ofBits ka w o key ra s.val rc)
+    (do Tab.comp (← tab Q) (← Tab.comp (← tab R) (← tab S)))
+
+/-- `T ∩ (Q ≫ (R ≫ S))`: three operations, the last two on the matrix. -/
+def meet3 (T Q R S : List (Int64 × Int64)) : Bool :=
+  same (do let (ka, w, o, ⟨_, key⟩, ra, s, rc) ← chain2 Q R S; Tab.keepBits (← tab T) ka w o key ra s.val rc)
+    (do Tab.inter (← tab T) (← Tab.comp (← tab Q) (← Tab.comp (← tab R) (← tab S))))
+
+/-- `⊤` on `0 … n-1`. -/
+def full (n : Nat) : List (Int64 × Int64) :=
+  (List.range (n * n)).map fun i => (Int64.ofNat (i / n), Int64.ofNat (i % n))
+
+#guard meet2 [(0, 100), (1, 101), (9, 103)] denseR denseS && meet2 (full 5) (full 5) (full 5) &&
+  meet2 [] denseR denseS && meet2 (full 4) [] denseS && meet2 [(1, 10), (1, 10), (2, 20)] [(1, 3)] [(3, 10)]
+#guard comp2 [(7, 0), (7, 3), (8, 9), (8, 42)] denseR denseS && comp2 (full 5) (full 5) (full 5) &&
+  comp2 [] denseR denseS && comp2 (full 4) [] (full 4) && comp2 [(5, 1)] (full 4) (full 4)
+#guard comp2 ((rnd 5 200 40).map fun (a, b) => (a, b % 40)) ((rnd 1 300 40).map fun (a, b) => (a, b % 31))
+  ((rnd 2 400 97).map fun (b, c) => (b % 31, c))
+#guard meet3 ((rnd 6 900 100).map fun (a, c) => (a % 9, 100 + c % 4)) [(7, 0), (7, 3), (8, 9)] denseR denseS &&
+  meet3 (full 5) (full 5) (full 5) (full 5) && meet3 [] (full 5) (full 5) (full 5) && meet3 (full 5) [] (full 5) (full 5)
+
 end Rel.BitsTest
