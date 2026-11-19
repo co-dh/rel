@@ -1092,7 +1092,10 @@ rel_program muArr where
 #guard muArr.ok
 #guard muArr.prints == ["f = {(0, [0]), (0, 0 1), (0, 0 1 2), (0, 0 2), (0, [1]), (0, 1 2), (0, [2]), (1, []), (2, [])}"]
 -- a `μ` whose arrays grow every round: no fixed point, so its rounds reach `muCap` and the program reports it
+-- pinned to the old layer, whose arrays have a capacity that stops the rounds; on the kernel path the 1024 rounds each sort
+-- the grown arrays and take minutes
 open Rel.Programs.prelude in
+set_option rel.kernel false in
 rel_program muGrow where
     obj B = 0…1
     r : B ⟶ [B] ≜ {(0,[1])}
