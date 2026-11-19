@@ -95,9 +95,6 @@ export! {
         probe(search::kind_of(search::ids_key_width(xw, hw), false, "member_ids_vec"), &h, &x, true)
     }
 
-    /// Spec: `findBit n bits needle` is the least `i < n` with `Column.bitAt bits i = needle`, and `n` when there is none.
-    fn qlean_search_find_bit(n: usize, bits: B, needle: u8) -> usize { search::find_bit(bits.bytes(), n, needle) }
-
     /// Spec: `findBitVec n hay m ndl` is `findBit n hay` at each of the `m` bits of `ndl`, as `Int64`s.
     fn qlean_search_find_bit_vec(n: usize, hay: B, m: usize, ndl: B) -> O {
         let mut r = longs(m);
@@ -121,9 +118,6 @@ export! {
         r.into()
     }
 
-    /// Spec: `findScalar w float hay needle` is the least `i < hay.size / w` whose key equals `needle`'s, and
-    /// `hay.size / w` when there is none.
-    fn qlean_search_find_scalar(w: usize, is_float: u8, hay: B, needle: u64) -> usize { search::find_scalar(w, is_float != 0, hay.bytes(), needle) }
 
 
 

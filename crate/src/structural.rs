@@ -517,19 +517,6 @@ pub fn expand(run: Runner, w: usize, fill: u64, src: &[u8], wv: &[i64], out: &mu
         _ => panic!("qlean structural: expand got element width {w}; the kernels are instantiated at 1, 2, 4, 8 and 16 bytes"),
     }
 }
-/// structural.rs `qlean_structural_rows_of` past the unboxing: each little-endian `i64` of `b` as the boxed
-/// word `lean_box` makes of it, into `out` (C passes `lean_array_cptr`); answers the count.
-pub fn rows_of(b: &[u8], out: &mut [usize]) -> usize {
-    let n = b.len() / 8;
-    for (i, (c, o)) in b.chunks_exact(8).zip(out.iter_mut()).enumerate() {
-        let u = u64::from_le_bytes(c.try_into().unwrap());
-        if u >> 62 != 0 {
-            panic!("qlean_structural_rows_of: row {i} is {u}, which no column is long enough to hold and no boxed natural can carry")
-        }
-        *o = (u << 1 | 1) as usize;
-    }
-    n
-}
 // A row past `s` (an unsigned compare: negative and `0N` too) is the empty symbol.
 pub fn gathered<'a>(s: &Syms<'a>, u: i64) -> &'a [u8] { if (u as u64) < s.count() as u64 { s.at(u as usize) } else { &[] } }
 /// structural.rs `qlean_structural_gather_syms`: the gathered column's blob length, one NUL a symbol.

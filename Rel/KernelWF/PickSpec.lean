@@ -479,7 +479,7 @@ theorem get_general {n : USize} (x : Arr .general n) {xs : Array QValue} (hc : x
 
 /-- `pick` at `general` is `genCol` of the picked elements. -/
 theorem pick_general (c : (n : USize) × Arr .general n) (i : ByteArray) :
-    pick .general c i = genCol ((longRows i).map fun p => (gens c.2)[p]?.getD default) := by
+    pick .general c i = genCol ((Ext.Enc.raw (X := Empty) .i64 (len i).toUSize (.bytes i)).map fun p => (gens c.2)[p.toNat]?.getD default) := by
   simp [pick]
 
 /-- **`pick` read back at `general`**: element `k` of `x@i` is element `i[k]` of `x`. -/
@@ -488,11 +488,11 @@ theorem pick_get_general (c : (n : USize) × Arr .general n) (i : ByteArray) (hl
     (pick .general c i).2.get ⟨k, hk⟩ = c.2.get ⟨_, hin⟩ := by
   obtain ⟨xs, he, hs⟩ := KernelWF.general_cases c.2.wf
   have hgx : gens c.2 = xs := Option.some_inj.1 ((Option.some_get _).trans (by simp [he]))
-  have hsz : ((longRows i).map fun p => (gens c.2)[p]?.getD default).size < USize.size := by
-    simpa [longRows, len] using hl
+  have hsz : ((Ext.Enc.raw (X := Empty) .i64 (len i).toUSize (.bytes i)).map fun p => (gens c.2)[p.toNat]?.getD default).size < USize.size := by
+    simpa [Ext.Enc.raw, QAtomicType.width, USize.toNat_ofNat_of_lt' hl] using hl
   revert hk; rw [pick_general, genCol, need, dif_pos hsz]; intro hk
   rw [get_general _ rfl, get_general _ he]
-  simp only [Array.getElem_map, longRows, Array.getElem_range, hgx, Nat.mul_comm 8 k]
+  simp only [Array.getElem_map, Ext.Enc.raw, QAtomicType.width, Array.getElem_range, hgx]
   rw [Array.getElem?_eq_getElem (by omega), Option.getD_some]
 
 /-- **`pick` read back**: row `k` of `x@i` is row `i[k]` of `x`, the index read unsigned, where that is
@@ -546,11 +546,11 @@ theorem pick_get_miss {t : QAtomicType} (c : (n : USize) × Arr t n) (i : ByteAr
   · subst hg
     obtain ⟨xs, he, hs⟩ := KernelWF.general_cases c.2.wf
     have hgx : gens c.2 = xs := Option.some_inj.1 ((Option.some_get _).trans (by simp [he]))
-    have hsz : ((longRows i).map fun p => (gens c.2)[p]?.getD default).size < USize.size := by
-      simpa [longRows, len] using hl
+    have hsz : ((Ext.Enc.raw (X := Empty) .i64 (len i).toUSize (.bytes i)).map fun p => (gens c.2)[p.toNat]?.getD default).size < USize.size := by
+      simpa [Ext.Enc.raw, QAtomicType.width, USize.toNat_ofNat_of_lt' hl] using hl
     revert hk; rw [pick_general, genCol, need, dif_pos hsz]; intro hk
     rw [get_general _ rfl]
-    simp only [Array.getElem_map, longRows, Array.getElem_range, hgx, Nat.mul_comm 8 k]
+    simp only [Array.getElem_map, Ext.Enc.raw, QAtomicType.width, Array.getElem_range, hgx]
     rw [Array.getElem?_eq_none (by omega), Option.getD_none]
   obtain ⟨e, he, hp⟩ := pick_eq_gather hg c i hl
   have h1 : (pick t c i).1 = (len i).toUSize := by simpa [Arr.part] using congrArg Prod.fst hp

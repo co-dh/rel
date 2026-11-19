@@ -447,7 +447,6 @@ a fixed-width offset table's wrap out of the denotation. The C reads the prefix 
 already carries, as every kernel does — `coc_offsets` writes exactly this fold and `rust/src/coc.rs`'s
 `for_src` records that the stored offsets are trusted. The sum is what made `Column.get` linear in
 the block index: `xl@i` cost 0.85us at `i = 0` and 3.25us at `i = 1M`, on a single element read. -/
-@[extern "qlean_coc_block_start"]
 def blockStart (metadata : @& ByteArray) (b : @& Nat) : Nat :=
   Nat.fold b (init := 0) fun c _ pos => pos + blk metadata * widthAt metadata c / 8
 
