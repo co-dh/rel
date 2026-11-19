@@ -1,17 +1,20 @@
 import Rel.KernelSpec.Alp
+import Rel.KernelSpec.Scan
 import Rel.KernelSpec.Scatter
 import Rel.KernelSpec.KGather
+import Rel.KernelSpec.KSeen
 
-/-! The closure law (PLAN 6.14): a column the codec or a kernel answers is a column every kernel accepts. `Enc.Valid`
-is what `foRWords` checks before it reads a `foR` or `pos` argument (`kscatter`, `kgather`, `kasc` and through it
-`kseen`); the codec's answer satisfies it (`encode8_valid`, from `Verify.foRWF_encodeAt`), and so does each kernel's
-answer, every one a `Coc.encode` at 8 bytes. A composition's success is then a chain of these laws. -/
+/-! The closure law (PLAN 6.14): a column a kernel answers is a column, `Enc.WF` at the type and length its body
+determines, and a column every kernel reads, `Enc.Valid`. Every one of the five answers `wordsFoR` of its words
+(`kscan` and `kscatter` spell it `Coc.encode` at 8 bytes, the same term), so `wordsFoR_closed` carries the law and each
+kernel's theorem only names its words and their count. A composition's success is then a chain of these laws. -/
 
 namespace Rel.Kernel
 open Ext.Enc
 
-/-- The arguments `foRWords` reads at `n` rows: a `foR` column in the writers' layout (`Coc.foRStd`) with a stored `lg`
-the layout admits, or `pos`. -/
+/-- The arguments `foRWords` reads at `n` rows, its test stated as a proposition: a `foR` column in the writers' layout
+(`Coc.foRStd`) with a stored `lg` the layout admits, or `pos`. `foRWords_valid` is its reading, `Enc.Valid.wf` what it
+gives `Enc.WF`. -/
 def Enc.Valid (n : USize) : Enc → Prop
   | .foR md pk => Column.lgOk md = true ∧ Coc.foRStd n md pk = true
   | .pos => True
@@ -22,25 +25,68 @@ end Rel.Kernel
 namespace Rel.Verify
 open Rel.Kernel Ext.Enc
 
-/-- **The reader accepts a valid column**: `foRWords` answers its raw words. -/
-theorem foRWords_valid (what : String) {m : USize} {e : Enc} (h : Enc.Valid m e) :
-    foRWords what m e = .ok (raw .i64 m e) := by
+/-- **The reader accepts exactly a valid column**: `foRWords` answers the raw words of what `Enc.Valid` admits, and
+an error at everything else. -/
+theorem foRWords_valid (what : String) (m : USize) (e : Enc) :
+    (Enc.Valid m e → foRWords what m e = .ok (raw .i64 m e)) ∧ ∀ ws, foRWords what m e = .ok ws → Enc.Valid m e := by
   unfold foRWords
-  cases e <;> simp_all [Enc.Valid]
+  constructor
+  · intro h; cases e <;> simp_all [Enc.Valid]
+  · intro ws h
+    cases e <;> simp only [Enc.Valid] <;> first | trivial | (split at h <;> simp_all) | cases h
 
-/-- **The codec's answer is valid**: `Coc.encode` at 8 bytes of `x`, at the `x.size / 8` rows it holds. -/
-theorem encode8_valid (x : ByteArray) {n : USize} (hn : n.toNat = x.size / 8) :
-    Enc.Valid n (.foR (Coc.encode 8 x).1 (Coc.encode 8 x).2) := by
+/-- A valid `foR` column is `Enc.WF` at every fixed-width type, a boolean one where every element is `0` or `1`:
+`Coc.foRStd`'s block count covers the `n` elements, the layout part of `Enc.WF`. -/
+theorem Enc.Valid.wf {t : QAtomicType} {n : USize} {md pk : ByteArray} (h : Enc.Valid n (.foR md pk))
+    (ht : t.width.isSome) (hu : t = .u1 → ∀ i < n.toNat, (Column.foRBits md pk (Column.blockStarts md) i).toNat < 2) :
+    Enc.WF t n (.foR md pk) := by
+  obtain ⟨hlg, hs⟩ := h
+  have hF := (foRStd_iff.1 hs).nblk
+  have hb := blk_pos md
+  have hle : n.toNat ≤ Column.blk md * Column.nblk md := by
+    rw [hF]
+    have := Nat.div_add_mod (n.toNat + Column.blk md - 1) (Column.blk md)
+    have := Nat.mod_lt (n.toNat + Column.blk md - 1) hb
+    omega
+  cases t <;> simp only [Ext.Enc.WF] <;>
+    first | exact ⟨ht, hu, hle, hlg⟩ | exact ⟨ht, hle, hlg⟩ | (simp [QAtomicType.width] at ht)
+
+/-- **A kernel's answer is a column**: `wordsFoR ws`, at the `ws.size` rows it holds, is valid (every kernel reads
+it), reads back as `ws` (so the next kernel reads the words this one wrote), and is `Enc.WF` at every fixed-width type,
+a boolean one where every word is `0` or `1`. -/
+theorem wordsFoR_closed (ws : Array UInt64) {n : USize} (hn : n.toNat = ws.size) :
+    Enc.Valid n (wordsFoR ws) ∧ raw .i64 n (wordsFoR ws) = ws ∧
+      ∀ {t : QAtomicType}, t.width.isSome → (t = .u1 → ∀ i (h : i < ws.size), ws[i] < 2) → Enc.WF t n (wordsFoR ws) := by
+  have h8 : USize.ofNat32 8 (by decide) = (8 : Nat).toUSize := USize.toNat_inj.mp (by
+    rcases System.Platform.numBits_eq with h | h <;> simp [h])
   have hlg : 6 ≤ Column.lgEnc ∧ Column.lgEnc ≤ 16 := ⟨by decide, by decide⟩
-  have hl := (nblk_encode Column.lgEnc hlg 8 (by decide) (by decide) x (patch := true)).2.2
-  refine ⟨by unfold Column.lgOk; rw [show (8 : USize) = (8 : Nat).toUSize from rfl]; simp [Coc.encode, hl, Column.lgEnc],
-    foRStd_iff.2 (hn ▸ foRWF_encodeAt Column.lgEnc hlg 8 (by decide) x)⟩
-
-/-- **A kernel's answer is valid**: `wordsFoR` of `ws`, which every kernel answers, at its `ws.size` rows. -/
-theorem wordsFoR_valid (ws : Array UInt64) {n : USize} (hn : n.toNat = ws.size) : Enc.Valid n (wordsFoR ws) := by
-  have hx := (foldl_pushBits (fun v => v) 8 (by decide) ws.toList ByteArray.empty).1
-  rw [Array.foldl_toList] at hx
-  exact encode8_valid _ (by rw [hx, Array.length_toList, hn]; show ws.size = (0 + 8 * ws.size) / 8; omega)
+  obtain ⟨hxs, -, hxg⟩ := foldl_pushBits (fun v => v) 8 (by decide) ws.toList ByteArray.empty
+  rw [Array.foldl_toList] at hxs hxg
+  simp only [show ByteArray.empty.size = 0 from rfl, Nat.zero_add, Array.length_toList] at hxs hxg
+  unfold wordsFoR
+  simp only [h8]
+  generalize hX : ws.foldl (init := ByteArray.empty) (fun acc w => Column.pushBits acc w 8) = X at hxs hxg
+  have hnX : n.toNat = X.size / 8 := by rw [hxs, hn]; omega
+  -- element `i` of the encoded column is word `i` (`foRBits_encode`)
+  have hget : ∀ i (hi : i < ws.size), Column.foRBits (Coc.encodeAt Column.lgEnc (8 : Nat).toUSize X).1
+      (Coc.encodeAt Column.lgEnc (8 : Nat).toUSize X).2 (Column.blockStarts (Coc.encodeAt Column.lgEnc (8 : Nat).toUSize X).1) i
+      = ws[i] := fun i hi => by
+    rw [foRBits_encode Column.lgEnc hlg 8 (by decide) (by decide) X i (by omega)]
+    have h1 := unbias_keyAt 8 (by decide) (by decide) X i
+    rw [Nat.mod_eq_of_lt (UInt64.toNat_lt _), Nat.mul_comm, hxg i (by simpa using hi), ofNat_toNat_mod64,
+      Array.getElem_toList] at h1
+    exact UInt64.toNat_inj.mp h1
+  have hV : Enc.Valid n (.foR (Coc.encodeAt Column.lgEnc (8 : Nat).toUSize X).1
+      (Coc.encodeAt Column.lgEnc (8 : Nat).toUSize X).2) := by
+    have hl := (nblk_encode Column.lgEnc hlg 8 (by decide) (by decide) X (patch := true)).2.2
+    refine ⟨by unfold Column.lgOk; rw [hl]; decide, foRStd_iff.2 (hnX ▸ foRWF_encodeAt Column.lgEnc hlg 8 (by omega) X)⟩
+  refine ⟨hV, ?_, fun ht hu => hV.wf ht fun h1 i hi => ?_⟩
+  · rw [raw_foR .i64 8 rfl (by decide)]
+    refine Array.ext (by simp [hn]) fun i h1 h2 => ?_
+    simp only [Array.getElem_map, Array.getElem_range]
+    rw [hget i h2, ofNat_toNat_mod64]
+  · rw [hget i (hn ▸ hi)]
+    exact UInt64.lt_iff_toNat_lt.1 (hu h1 i (hn ▸ hi))
 
 /-- `scatterWords` answers its `n` cells. -/
 theorem scatterWords_size {op : Op} {is es : Array UInt64} {n : Nat} {fill : UInt64} {o : Array UInt64}
@@ -60,22 +106,91 @@ theorem scatterWords_size {op : Op} {is es : Array UInt64} {n : Nat} {fill : UIn
       · cases h
     · cases h
 
-/-- `kscatter`'s answer is valid at its `n` cells. -/
-theorem kscatter_valid {op : Op} {m n : USize} {ix e o : Enc} {fill : UInt64}
-    (h : kscatter op m ix e n fill = .ok o) : Enc.Valid n o := by
-  unfold kscatter at h
-  cases h1 : foRWords "scatter: ix" m ix <;> simp only [h1, bind, Except.bind] at h
-  · cases h
-  cases h2 : foRWords "scatter: e" m e <;> simp only [h2] at h
-  · cases h
-  cases h3 : scatterWords op _ _ n.toNat fill <;> simp only [h3] at h
-  · cases h
-  cases h
-  exact wordsFoR_valid _ (scatterWords_size h3).symm
+/-- **`kscan` closes**: its answer is valid at its `n` rows and `Enc.WF` at its answer type `t`. -/
+theorem kscan_closed {op : Op} {rev : Bool} {s t : QAtomicType} {n : USize} {seg : Enc} {es : List Enc} {o : Enc}
+    (h : kscan op rev s t n seg es = .ok o) : Enc.Valid n o ∧ Enc.WF t n o := by
+  unfold kscan at h
+  simp only [bind, Except.bind] at h
+  split at h; · cases h
+  split at h; · cases h
+  split at h; · cases h
+  split at h; · cases h
+  rename_i out hf
+  have hos := (foldlM_kscanRow _ _ _ _ _ _ hf).1
+  split at h; · cases h
+  rename_i ht
+  simp only [pure, Except.pure, Except.ok.injEq] at h
+  subst h
+  have hW : (Array.map (fun v => if t = .u1 then v % 2 else v) (if rev = true then out.reverse else out)).size =
+      n.toNat := by split <;> simp [hos]
+  have hc := wordsFoR_closed _ hW.symm
+  refine ⟨hc.1, hc.2.2 (by simp [ht]) fun hu i hi => ?_⟩
+  simp only [Array.getElem_map, hu, if_pos rfl]
+  exact UInt64.lt_iff_toNat_lt.2 (by rw [UInt64.toNat_mod]; exact Nat.mod_lt _ (by decide))
 
-/-- `kgather`'s answer is valid at its `m` rows. -/
-theorem kgather_valid {m n : USize} {ix e o : Enc} (h : kgather m ix n e = .ok o) : Enc.Valid m o := by
+/-- **`kscatter` closes**: its answer holds `n` words, read back by `raw .i64`, valid and `Enc.WF` at every fixed-width
+type but the boolean. -/
+theorem kscatter_closed {op : Op} {m n : USize} {ix e o : Enc} {fill : UInt64}
+    (h : kscatter op m ix e n fill = .ok o) :
+    Enc.Valid n o ∧ (raw .i64 n o).size = n.toNat ∧ ∀ {t : QAtomicType}, t.width.isSome → t ≠ .u1 → Enc.WF t n o := by
+  unfold kscatter at h
+  simp only [bind, Except.bind] at h
+  split at h; · cases h
+  split at h; · cases h
+  split at h; · cases h
+  rename_i ws hs
+  simp only [pure, Except.pure, Except.ok.injEq] at h
+  subst h
+  have hc := wordsFoR_closed ws (scatterWords_size hs).symm
+  exact ⟨hc.1, by rw [hc.2.1, scatterWords_size hs], fun ht hu => hc.2.2 ht fun h => absurd h hu⟩
+
+/-- **`kgather` closes**: its answer holds `m` words, valid and `Enc.WF` at every fixed-width type but the boolean. -/
+theorem kgather_closed {m n : USize} {ix e o : Enc} (h : kgather m ix n e = .ok o) :
+    Enc.Valid m o ∧ (raw .i64 m o).size = m.toNat ∧ ∀ {t : QAtomicType}, t.width.isSome → t ≠ .u1 → Enc.WF t m o := by
   obtain ⟨hs, -, -, rfl⟩ := raw_kgather m ix n e o h
-  exact wordsFoR_valid _ (by simp [hs])
+  have hc := wordsFoR_closed _ (n := m) (by simp [hs])
+  exact ⟨hc.1, by rw [hc.2.1]; simp [hs], fun ht hu => hc.2.2 ht fun h => absurd h hu⟩
+
+/-- **`kasc` closes**: every sorted column and the permutation hold `m` words, valid and `Enc.WF` at every fixed-width
+type but the boolean. -/
+theorem kasc_closed {m : USize} {es : List (QAtomicType × Enc)} {vs : List Enc} {p : Enc} (h : kasc m es = .ok (vs, p)) :
+    ∀ o ∈ p :: vs, Enc.Valid m o ∧ (raw .i64 m o).size = m.toNat ∧
+      ∀ {t : QAtomicType}, t.width.isSome → t ≠ .u1 → Enc.WF t m o := by
+  obtain ⟨cs, -, r, -, wss, hw, rfl, rfl⟩ := kasc_ok h
+  have hm : ∀ ws ∈ ((ascGrade m.toNat (cs.map (·.2))).map Nat.toUInt64).toArray ::
+      wss, ws.size = m.toNat := by
+    intro ws hws
+    rcases List.mem_cons.1 hws with rfl | hws
+    · simp [(ascGrade_spec m.toNat _).1.length_eq]
+    · obtain ⟨hl, hf⟩ := mapM_ok hw
+      obtain ⟨i, hi, rfl⟩ := List.getElem_of_mem hws
+      obtain ⟨c, hc⟩ : ∃ c, cs[i]? = some c := ⟨cs[i], List.getElem?_eq_getElem (by omega)⟩
+      exact scatterWords_size (hf i c _ hc (List.getElem?_eq_getElem hi))
+  have H : ∀ ws ∈ ((ascGrade m.toNat (cs.map (·.2))).map Nat.toUInt64).toArray :: wss, Enc.Valid m (wordsFoR ws) ∧
+      (raw .i64 m (wordsFoR ws)).size = m.toNat ∧ ∀ {t : QAtomicType}, t.width.isSome → t ≠ .u1 → Enc.WF t m (wordsFoR ws) :=
+    fun ws hws => have hc := wordsFoR_closed ws (hm ws hws).symm
+      ⟨hc.1, by rw [hc.2.1, hm ws hws], fun ht hu => hc.2.2 ht fun h => absurd h hu⟩
+  intro o ho
+  rcases List.mem_cons.1 ho with rfl | ho
+  · exact H _ List.mem_cons_self
+  · obtain ⟨ws, hws, rfl⟩ := List.mem_map.1 ho
+    exact H ws (List.mem_cons_of_mem _ hws)
+
+/-- **`kseen` closes**: the group of each row holds `n` words and the first rows `k`, each valid and `Enc.WF` at every
+fixed-width type but the boolean. -/
+theorem kseen_closed {n : USize} {es : List (QAtomicType × Enc)} {k : Nat} {g f : Enc} (h : kseen n es = .ok (k, g, f))
+    (hk : k < USize.size) :
+    ∀ c ∈ [(n, g), (k.toUSize, f)], Enc.Valid c.1 c.2 ∧ (raw .i64 c.1 c.2).size = c.1.toNat ∧
+      ∀ {t : QAtomicType}, t.width.isSome → t ≠ .u1 → Enc.WF t c.1 c.2 := by
+  obtain ⟨rfl, rfl, rfl⟩ := kseen_ok h
+  have H : ∀ (c : USize) (ws : Array UInt64), c.toNat = ws.size → Enc.Valid c (wordsFoR ws) ∧
+      (raw .i64 c (wordsFoR ws)).size = c.toNat ∧ ∀ {t : QAtomicType}, t.width.isSome → t ≠ .u1 → Enc.WF t c (wordsFoR ws) :=
+    fun c ws hws => have hc := wordsFoR_closed ws hws
+      ⟨hc.1, by rw [hc.2.1, hws], fun ht hu => hc.2.2 ht fun h => absurd h hu⟩
+  intro c hc
+  rcases List.mem_cons.1 hc with rfl | hc
+  · exact H _ _ (by simp)
+  · rw [List.mem_singleton] at hc; subst hc
+    exact H _ _ (by simp [Nat.toUSize, USize.toNat_ofNat_of_lt' hk])
 
 end Rel.Verify

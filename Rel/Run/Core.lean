@@ -184,6 +184,13 @@ theorem Arr.get_long_foR {m : USize} (x : Arr .i64 m) {md pk : ByteArray} (hc : 
   rw [Arr.get_ne x i (by decide), ← foRBits_starts]
   simp only [Enc.get, if_pos i.2, hc, QAtomicType.width]; rfl
 
+/-- **The kernels' words are the elements**: element `i` of a long `foR` column is word `i` of `Enc.raw`, the word every
+kernel reads (`foRWords`) and `Verify.wordsFoR_closed` says a kernel's answer reads back as, read as a long. -/
+theorem Arr.get_raw_foR {m : USize} (x : Arr .i64 m) {md pk : ByteArray} (hc : x.enc = .foR md pk) (i : Fin m.toNat) :
+    x.get i = ((Enc.raw .i64 m x.enc)[i.1]?.getD 0).toInt64 := by
+  rw [Arr.get_long_foR x hc, hc, Verify.raw_foR .i64 8 rfl (by decide)]
+  simp [Verify.ofNat_toNat_mod64, i.2]
+
 /-- A long payload's `n` words in position order: a `bytes` payload's eight-byte elements, a `foR` payload's
     `foRBits` decode. `none` at `alp`, whose decode has no law yet, and at the non-long constructors. -/
 def longWords (n : USize) (e : Enc) : Option (List UInt64) :=
