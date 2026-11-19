@@ -40,6 +40,9 @@ rel_program frameSchema where
 -- `S` is not declared here: a program declares it `schema S = {k : K, v : N}` and reads `col S "v"`
 -- (`TestSchema.kvProg`).
 
+-- pinned to the old layer: stage 1b reads `frame.k`/`frame.v` with `relRegs`, which takes dense columns only, and
+-- the kernel path stores them encoded. Unpin when `relRegs` reads an encoded column (open, before T10).
+set_option rel.kernel false in
 open Rel.Programs.prelude in
 rel_program frame where
     obj K = {A,B,C}
