@@ -97,12 +97,12 @@ def parityModel (op : Op) (m : Nat) : Option (List UInt64) :=
 #guard parityModel .last 1025 == some [1024, 1023]
 #guard view (kscatter .last (u 1025) (parity 1025) .pos (u 2) 0) == enc8 [1024, 1023]
 
--- `last`, each group's last row in group order: the positions scattered to `kseen`'s `g` under `.last`. `B A B` has
--- `g = 0 1 0` (2 groups), so `last = 2 1`
-def lastBAB : Except String Enc := do
-  let (_, g, _) ← kseen (u 3) [(.i64, wordsFoR #[2, 1, 2])]
+-- `last`, each group's last row in group order: the positions scattered to `kseen`'s `g` under `.last`. `A B B` (in
+-- `kasc` order, as `kseen` takes it) has `g = 0 1 1` (2 groups), so `last = 0 2`
+def lastABB : Except String Enc := do
+  let (_, g, _) ← kseen (u 3) [(.i64, wordsFoR #[1, 2, 2])]
   kscatter .last (u 3) g .pos (u 2) 0
-example : view lastBAB = enc8 [2, 1] := by decide +kernel
-#guard view lastBAB == enc8 [2, 1]
+example : view lastABB = enc8 [0, 2] := by decide +kernel
+#guard view lastABB == enc8 [0, 2]
 
 end Rel.Kernel.ScatterTest

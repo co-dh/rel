@@ -18,15 +18,27 @@ def view (n k : USize) : Except String (Nat × Enc × Enc) → String ⊕ (Nat �
   | .error s => .inl s
   | .ok (c, g, f) => .inr (c, (raw .i64 n g).toList, (raw .i64 k f).toList)
 
--- `B A B`: row 2 has `B`'s group, first seen at row 0
-def bab : String ⊕ (Nat × List UInt64 × List UInt64) := .inr (2, [0, 1, 0], [0, 1])
-example : view (u 3) (u 2) (kseen (u 3) [col [2, 1, 2]]) = bab := by decide +kernel
-#guard view (u 3) (u 2) (kseen (u 3) [col [2, 1, 2]]) == bab
+/-- The error of rows out of `kasc` order, row `i + 1` sorting before row `i`. -/
+def unsorted (i : Nat) : String ⊕ (Nat × List UInt64 × List UInt64) :=
+  .inl s!"seen: row {i + 1} sorts before row {i}; kseen takes rows in kasc order, so sort them with kasc first"
 
--- two columns, unsorted: rows (1,0) (2,0) (1,0) (2,1) (1,0), so (2,1) is the third key
-def pairs : String ⊕ (Nat × List UInt64 × List UInt64) := .inr (3, [0, 1, 0, 2, 0], [0, 1, 3])
-example : view (u 5) (u 3) (kseen (u 5) [col [1, 2, 1, 2, 1], col [0, 0, 0, 1, 0]]) = pairs := by decide +kernel
-#guard view (u 5) (u 3) (kseen (u 5) [col [1, 2, 1, 2, 1], col [0, 0, 0, 1, 0]]) == pairs
+-- `B A B` is out of order at row 1; sorted, `A B B` is two runs
+example : view (u 0) (u 0) (kseen (u 3) [col [2, 1, 2]]) = unsorted 0 := by decide +kernel
+#guard view (u 0) (u 0) (kseen (u 3) [col [2, 1, 2]]) == unsorted 0
+def abb : String ⊕ (Nat × List UInt64 × List UInt64) := .inr (2, [0, 1, 1], [0, 1])
+example : view (u 3) (u 2) (kseen (u 3) [col [1, 2, 2]]) = abb := by decide +kernel
+#guard view (u 3) (u 2) (kseen (u 3) [col [1, 2, 2]]) == abb
+
+-- two columns: rows (1,0) (2,0) (1,0) (2,1) (1,0) are out of order at row 2, the first column deciding; sorted,
+-- (1,0) (1,0) (1,0) (2,0) (2,1) are three runs, the second column splitting the last
+example : view (u 0) (u 0) (kseen (u 5) [col [1, 2, 1, 2, 1], col [0, 0, 0, 1, 0]]) = unsorted 1 := by decide +kernel
+#guard view (u 0) (u 0) (kseen (u 5) [col [1, 2, 1, 2, 1], col [0, 0, 0, 1, 0]]) == unsorted 1
+def pairs : String ⊕ (Nat × List UInt64 × List UInt64) := .inr (3, [0, 0, 0, 1, 2], [0, 3, 4])
+example : view (u 5) (u 3) (kseen (u 5) [col [1, 1, 1, 2, 2], col [0, 0, 0, 0, 1]]) = pairs := by decide +kernel
+#guard view (u 5) (u 3) (kseen (u 5) [col [1, 1, 1, 2, 2], col [0, 0, 0, 0, 1]]) == pairs
+-- the second column out of order where the first ties
+example : view (u 0) (u 0) (kseen (u 3) [col [1, 1, 2], col [1, 0, 0]]) = unsorted 0 := by decide +kernel
+#guard view (u 0) (u 0) (kseen (u 3) [col [1, 1, 2], col [1, 0, 0]]) == unsorted 0
 
 -- no row: no group; no column: every row is the empty key, one group
 def none0 : String ⊕ (Nat × List UInt64 × List UInt64) := .inr (0, [], [])
@@ -36,10 +48,15 @@ def one : String ⊕ (Nat × List UInt64 × List UInt64) := .inr (1, [0, 0, 0], 
 example : view (u 3) (u 1) (kseen (u 3) []) = one := by decide +kernel
 #guard view (u 3) (u 1) (kseen (u 3) []) == one
 
--- a `pos` column has no ties, so every row is its own group, whatever the other columns hold
+-- a `pos` column has no ties and ascends, so every row is its own group and the order is the columns' before it:
+-- after ties it answers, first it orders any later columns, after rows out of order it is the error
 def every : String ⊕ (Nat × List UInt64 × List UInt64) := .inr (3, [0, 1, 2], [0, 1, 2])
 example : view (u 3) (u 3) (kseen (u 3) [col [5, 5, 5], (.i64, .pos)]) = every := by decide +kernel
 #guard view (u 3) (u 3) (kseen (u 3) [col [5, 5, 5], (.i64, .pos)]) == every
+example : view (u 3) (u 3) (kseen (u 3) [(.i64, .pos), col [3, 1, 2]]) = every := by decide +kernel
+#guard view (u 3) (u 3) (kseen (u 3) [(.i64, .pos), col [3, 1, 2]]) == every
+example : view (u 0) (u 0) (kseen (u 3) [col [5, 6, 5], (.i64, .pos)]) = unsorted 1 := by decide +kernel
+#guard view (u 0) (u 0) (kseen (u 3) [col [5, 6, 5], (.i64, .pos)]) == unsorted 1
 
 -- `f64` at `kasc`'s equality: two NaNs (quiet, and signalling with payload 1) are one key, `-0.0` and `0.0` another
 def floats : String ⊕ (Nat × List UInt64 × List UInt64) := .inr (3, [0, 0, 1, 1, 2], [0, 2, 4])
@@ -74,22 +91,18 @@ def posType : String ⊕ (Nat × List UInt64 × List UInt64) := .inl "seen: es[0
 example : view (u 0) (u 0) (kseen (u 2) [(.i32, .pos)]) = posType := by decide +kernel
 #guard view (u 0) (u 0) (kseen (u 2) [(.i32, .pos)]) == posType
 
--- the engines' edge at two rows (`seenEngine`): direct addressing serves a range of `4 * 2 + 1024` codes, rows in
--- order serve any range, and one code more on rows out of order needs a hash, the error
+-- the key's range does not matter: rows in order answer at any range, and rows out of order are the error at every
+-- range, narrow or wide, one column or two (the second's `2^40` a patch)
 def two : String ⊕ (Nat × List UInt64 × List UInt64) := .inr (2, [0, 1], [0, 1])
-example : view (u 2) (u 2) (kseen (u 2) [col [1031, 0]]) = two := by decide +kernel
-#guard view (u 2) (u 2) (kseen (u 2) [col [1031, 0]]) == two
+example : view (u 0) (u 0) (kseen (u 2) [col [1031, 0]]) = unsorted 0 := by decide +kernel
+#guard view (u 0) (u 0) (kseen (u 2) [col [1031, 0]]) == unsorted 0
 example : view (u 2) (u 2) (kseen (u 2) [col [0, 1032]]) = two := by decide +kernel
 #guard view (u 2) (u 2) (kseen (u 2) [col [0, 1032]]) == two
-def hash : String ⊕ (Nat × List UInt64 × List UInt64) := .inl
-  "seen: key range of 1033 codes (es[0] type 4 codes 0x8000000000000000..=0x8000000000000408) over 2 rows out of order needs a hash, not built (PLAN D.12)"
-example : view (u 0) (u 0) (kseen (u 2) [col [1032, 0]]) = hash := by decide +kernel
-#guard view (u 0) (u 0) (kseen (u 2) [col [1032, 0]]) == hash
-
--- two columns multiply their spans; the second's `2^40` is a patch, which the range reads from the patch list
-def hash2 : String ⊕ (Nat × List UInt64 × List UInt64) := .inl
-  "seen: key range of 2199023255554 codes (es[0] type 4 codes 0x8000000000000000..=0x8000000000000001, es[1] type 4 codes 0x8000000000000000..=0x8000010000000000) over 2 rows out of order needs a hash, not built (PLAN D.12)"
-example : view (u 0) (u 0) (kseen (u 2) [col [1, 0], col [0, 2 ^ 40]]) = hash2 := by decide +kernel
-#guard view (u 0) (u 0) (kseen (u 2) [col [1, 0], col [0, 2 ^ 40]]) == hash2
+example : view (u 0) (u 0) (kseen (u 2) [col [1032, 0]]) = unsorted 0 := by decide +kernel
+#guard view (u 0) (u 0) (kseen (u 2) [col [1032, 0]]) == unsorted 0
+example : view (u 0) (u 0) (kseen (u 2) [col [1, 0], col [0, 2 ^ 40]]) = unsorted 0 := by decide +kernel
+#guard view (u 0) (u 0) (kseen (u 2) [col [1, 0], col [0, 2 ^ 40]]) == unsorted 0
+example : view (u 2) (u 2) (kseen (u 2) [col [0, 1], col [2 ^ 40, 0]]) = two := by decide +kernel
+#guard view (u 2) (u 2) (kseen (u 2) [col [0, 1], col [2 ^ 40, 0]]) == two
 
 end Rel.Kernel.SeenTest
