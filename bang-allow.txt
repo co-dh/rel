@@ -1,7 +1,5 @@
 Rel.Alg.chainStep
 Rel.Alg.srcOf
-Rel.Column.packBits
-Rel.Column.packStep
 Rel.Column.symBytes
 Rel.Eval.identicalFuel
 Rel.Ext.QValue.sliceAt
