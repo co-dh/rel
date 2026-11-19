@@ -13,23 +13,31 @@ namespace Rel
 open Rel.Ext Rel.Kernel Rel.Verify
 
 /-- The positions of the `1` words among the `m` words `b` (each `0` or `1`), ascending, and their count `K`. WHERE
-by the kernels that answer a count: `d = b · (pos + 1)` (a `kscan` map), so a kept position `G` is `G + 1` and every
-other is `0`; a spare cell holding `0` appended (`kscatter` into `m + 1`); `kasc ≫ kseen` over `d` answers `K + 1`
-groups, the `0`s first, then each kept position alone, ascending; the first rows of groups `1 … K` (`kgather` at
-`shiftCol K 1`) read through `kasc`'s permutation are the kept positions. `m` is below `B`: the `m + 1` cells fit a
-`USize`, and the words `1 … m` are below `2^63`, where their `i64` order code (`ordCode`, signed) ascends with them. -/
+as `scan → scatter`, O(m) and no sort: the prefix sum `s` of `b` (`kscan .add`, one segment) returns the count `K` as
+its fold result; `m = 0` folds no row and returns `none`, and an empty `where` counts `0` positions by definition, so
+`none` is `K = 0`. The destination `d = s − b` (`colMap .sub`) is the number of kept rows before each row: a kept row's
+own cell `0 … K − 1`, and a dropped row's the next kept row's cell, which that later row overwrites (`kscatter .last`,
+the last row winning), or the spare cell `K` past every kept row. `kscatter` of `pos` at `d` into `K + 1` cells, then
+`kgather` of the first `K` (at `pos`): 6 kernel calls (`colConst`, `kscan`, `colMap` = `colConst` + `kscan`,
+`kscatter`, `kgather`), where `kasc ≫ kseen` took 13. `m` is below `B`, so `K + 1 ≤ m + 1` cells fit a `USize`. -/
 def whereCol (m : USize) (b : Enc) : Except String (USize × Enc) :=
   let B := min (USize.size - 1) (2 ^ 63)
   if m.toNat < B then do
-    let d ← colMap .mul m b (← shiftCol m 1)
-    let m' := (m.toNat + 1).toUSize
-    let es := [(AscKey.atom .i64, ← kscatter .last m .pos d m' 0)]
-    let (vs, p) ← kasc m' es
-    let (c, _, f) ← kseen m' ((es.map (·.1)).zip vs)
-    let K := (c - 1).toUSize
-    let fs ← kgather K (← shiftCol K 1) c.toUSize f
-    (K, ·) <$> kgather K fs m' p
-  else .error s!"where: {m} rows, not below {B}: m + 1 cells fit a USize and positions 1 … m order as i64 words only below it"
+    let z ← colConst m 0
+    let sk ← kscan .add false .i64 .i64 m z [z, b]
+    let K := (sk.2.getD 0).toNat.toUSize
+    let d ← colMap .sub m sk.1 b
+    let e ← kscatter .last m d .pos (K.toNat + 1).toUSize 0
+    (K, ·) <$> kgather K .pos (K.toNat + 1).toUSize e
+  else .error s!"where: {m} rows, not below {B}: m + 1 cells fit a USize and the counts 0 … m are i64 words below it"
+
+-- `1 0 1 1 0`: the destinations `0 1 1 2 3` send the dropped row 1 to row 2's cell and row 4 to the spare cell `3`
+#guard (whereCol 5 (.bytes (Column.packIds 64 5 fun i => [1, 0, 1, 1, 0][i]?.getD 0))).toOption.map
+  (fun r => (r.1.toNat, (Enc.raw .i64 r.1 r.2).toList)) = some (3, [0, 2, 3])
+-- no kept row, and no row at all: `K = 0`
+#guard (whereCol 3 (.bytes (Column.packIds 64 3 fun _ => 0))).toOption.map
+  (fun r => (r.1.toNat, (Enc.raw .i64 r.1 r.2).toList)) = some (0, [])
+#guard (whereCol 0 .pos).toOption.map (fun r => (r.1.toNat, (Enc.raw .i64 r.1 r.2).toList)) = some (0, [])
 
 namespace Tab
 variable {k v : Obj}
