@@ -453,6 +453,15 @@ Diff table 的「状态」列：✅ 后面是完成它的步骤；🔄 是部分
       `Tab.comp` 展开分块（`blockRows = 2^24`，`comp_holds` 不变）；`kasc` 的 `cmp_rows` 每元素读一次整列宽度的问题已修
       （基准 64 s → 0.39 s）；`own_write` 创建缺失的父目录。未做：编译器选用 `compBits`、去掉 `sudokupc9` 与 `muGrow` 的固定、
       T6 / T8（`t68c`，闭项只算一次的规则见 architecture §0 草稿）。
+      状态（2026-11-19 16:34，master `a362914`，`make check` 绿，compile-diff 598 / 34，旧条目无变化）：新 kernel 上 17 / 17
+      （全部程序 `offKernel = []`）；RELK 80。T3–T9 完成。已合入：T6 / T8、`rows5`（`inits tails concat filter takewhile`）、
+      `GenK.hylo`（有环的余代数报错，owner 选 C）、`loop merge thinL`、`F(R)` 行（`Tab.map`）、`≫` / `\` 按 `Tab.bitsWin` 选
+      bit matrix、`Tab.pack`（`foldRounds` 每轮压缩数组 payload；knapsack OOM 的原因是 `∪` 拼接 payload 而 `canon` 保留）、
+      `Tab.toList` 按列读（`implemented_by`，owner 选 E：证明待办）。
+      T10 之前欠的：`relRegs` 读编码列（`frame` 因此固定在旧层）；去掉 `muGrow`、`hyloCycle`、`frame` 的固定和各 `Kern*`
+      模块的旧路径对照；`Tab.fixOn` 也要 `pack`（`muGrow` 带 270 倍的无用 payload，分支 `onepack` 在做）；μ/ν 轮数用尽时
+      kernel 路径的错误文本要带 μ 的位置和上限；`sudokupc9` 约 30 s（owner 选 B：中间结果保持 bit matrix，分支 `bitsmid`
+      在做）；`GenK.rdiv` 的 bits 规则；`Tab.pack`、`Tab.map`、新行、`GenK.hylo` 没有连到 denotation 的定理。
     - W3 留给后面的风险（清单 agent 提出，均未验证）：计数做 `\` 会物化 join（最多 `|R|·|S|` 行），SudokuPC9、
       blocks 可能超内存；规范序从 `Obj.lt` 变成 `kasc` 序码，打印的期望值与 `out/key`、`out/val` 可能变；
       `coc_block_start`、`coc_bools_of`、`structural_bits_of_for` 与 `Plan.abi` 点名的 12 个 export 在 W5 后仍有
