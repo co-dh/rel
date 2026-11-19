@@ -394,6 +394,70 @@ theorem Arr.get_bool_bits {m : USize} (x : Arr .u1 m) {b : ByteArray}
     (ht : Kernel.boolBits .u1 m x.enc = some b) (i : Fin m.toNat) : x.get i = Column.bitAt b i.1 := by
   rw [Arr.get_ne x i (by decide), get_boolBits x.wf ht i.2]; rfl
 
+/-- `Coc.bools n p` reads back as `p`: at width 1 the bias is `0`, so element `i` is the 0/1 byte `i` it encodes
+    (`foRBits_encode`). -/
+theorem foRBits_bools (n : Nat) (p : Nat → Bool) {i : Nat} (hi : i < n) :
+    Column.foRBits (Kernel.Coc.bools n p).1 (Kernel.Coc.bools n p).2 (Column.blockStarts (Kernel.Coc.bools n p).1) i =
+      (p i).toNat.toUInt64 := by
+  have h1 : USize.ofNat32 1 (by decide) = (1 : Nat).toUSize := USize.toNat_inj.mp (by
+    rcases System.Platform.numBits_eq with h | h <;> simp [h])
+  obtain ⟨hs, hb⟩ := Verify.packIds_bytes 1 n (fun i => (p i).toNat) (by decide) (by decide)
+  simp only [Nat.mul_one] at hs hb
+  simp only [Kernel.Coc.bools, h1]
+  rw [Verify.foRBits_encode Column.lgEnc (by decide) 1 (by decide) (by decide) _ i (by rw [hs]; simpa using hi)]
+  simp only [Kernel.Coc.unbias, Kernel.Coc.keyAt, Kernel.Coc.bias, if_true, Nat.mul_one,
+    hb i hi (by cases p i <;> decide)]
+  cases p i <;> rfl
+
+/-- `Coc.bools` at a count `n` is a well formed boolean column of `n` rows: each element `0` or `1`
+    (`foRBits_bools`), its blocks covering `n`, its `lg` the encoder's. -/
+theorem wf_bools {n : USize} (p : Nat → Bool) :
+    Enc.WF .u1 n (.foR (Kernel.Coc.bools n.toNat p).1 (Kernel.Coc.bools n.toNat p).2 : Enc) := by
+  have h1 : USize.ofNat32 1 (by decide) = (1 : Nat).toUSize := USize.toNat_inj.mp (by
+    rcases System.Platform.numBits_eq with h | h <;> simp [h])
+  obtain ⟨hs, -⟩ := Verify.packIds_bytes 1 n.toNat (fun i => (p i).toNat) (by decide) (by decide)
+  simp only [Nat.mul_one] at hs
+  obtain ⟨hn, hk⟩ := Verify.nblk_encode Column.lgEnc (by decide) 1 (by decide) (by decide)
+    (Column.packIds 8 n.toNat fun i => (p i).toNat) (patch := false)
+  refine ⟨rfl, fun _ i hi => ?_, ?_, ?_⟩
+  · rw [foRBits_bools _ _ hi]; cases p i <;> decide
+  · rw [show Kernel.Coc.bools n.toNat p = _ from congrArg (fun w => Kernel.Coc.encodeAt Column.lgEnc w _ false) h1, hn, hk, hs]
+    simp only [Nat.div_one, Nat.one_mul, Column.lgEnc, Nat.reducePow]; omega
+  · rw [Kernel.Coc.bools, Column.lgOk, lgAt_encodeAt Column.lgEnc (by decide) (USize.ofNat32 1 (by decide)) (by simp)]; rfl
+
+/-- **A boolean writer's column reads as its bitmap**: `boolBits` of `Coc.bools n` of a `packOf n f`'s bits is that
+    `packOf`. Every writer's bitmap body (`cmpBitmap`, `bitBitmap`, `member*Bitmap`) is a `packOf`, so this one read
+    serves them all, and `get_boolBits` then reads the column's elements off the bitmap's `*_bitAt` lemma. -/
+theorem boolBits_bools {n : USize} (f : Nat → Bool) :
+    Kernel.boolBits .u1 n (.foR (Kernel.Coc.bools n.toNat (Column.bitAt (Kernel.packOf n.toNat f))).1
+      (Kernel.Coc.bools n.toNat (Column.bitAt (Kernel.packOf n.toNat f))).2 : Enc) = some (Kernel.packOf n.toNat f) := by
+  have hb := (wf_bools (n := n) (Column.bitAt (Kernel.packOf n.toNat f))).2.2.1
+  have hf : ∀ i < n.toNat, Column.bitAt (Kernel.packOf n.toNat f) i = f i := fun i hi => Verify.bitAt_packOf _ _ _ hi
+  generalize Column.bitAt (Kernel.packOf n.toNat f) = P at hb hf ⊢
+  simp only [Kernel.boolBits, Kernel.bitsOfFoR, Option.some.injEq]
+  -- `packOf` reads `f` only below `n`, where the column's element is `f`'s bit
+  have e : ∀ g : Nat → Bool, Kernel.packOf n.toNat g = Kernel.packOf n.toNat fun i => decide (i < n.toNat) && g i :=
+    fun g => by simp only [Kernel.packOf, Bool.and_self_left]
+  rw [e, e f]; congr 1; funext i
+  by_cases hi : i < n.toNat
+  · simp only [hi, decide_true, Bool.true_and, foRBits_bools _ _ hi, hf i hi, decide_eq_true (Nat.lt_of_lt_of_le hi hb)]
+    cases f i <;> decide
+  · simp [hi]
+
+/-- `Ew.cmp`'s column read through `boolBits` is its bitmap `cmpBitmap` (`boolBits_bools`), whose bits
+    `Verify.cmp_bitAt` states. -/
+theorem Ew.cmp_bits (op cls shape : UInt8) (a b : ByteArray) (n : USize) :
+    Kernel.bitsOfFoR (Kernel.Ew.cmp op cls shape a b n).1 (Kernel.Ew.cmp op cls shape a b n).2 n = Kernel.Ew.cmpBitmap op cls shape a b n :=
+  Option.some.inj (boolBits_bools (n := n) fun i =>
+    Kernel.Ew.cmpStep op cls (Kernel.Ew.elem cls a (Kernel.Ew.shapeIdx shape i).1) (Kernel.Ew.elem cls b (Kernel.Ew.shapeIdx shape i).2))
+
+/-- `Ew.bit`'s column read through `boolBits` is its bitmap `bitBitmap` (`boolBits_bools`), whose bits
+    `Verify.Ew.bit_bitAt` states. -/
+theorem Ew.bit_bits (op shape : UInt8) (a b : ByteArray) (n : USize) :
+    Kernel.bitsOfFoR (Kernel.Ew.bit op shape a b n).1 (Kernel.Ew.bit op shape a b n).2 n = Kernel.Ew.bitBitmap op shape a b n :=
+  Option.some.inj (boolBits_bools (n := n) fun i =>
+    Kernel.Ew.bitStep op (Column.bitAt a (Kernel.Ew.shapeIdx shape i).1) (Column.bitAt b (Kernel.Ew.shapeIdx shape i).2))
+
 /-- The `str` bridge: bytes that are some string's UTF-8, read as a string the way `Column.get` reads a
     symbol (`fromUTF8?`, `""` at invalid bytes), write back out as themselves. -/
 theorem str_bytes {B : ByteArray} (h : ∃ s : String, s.toUTF8.data.toList = B.data.toList) :
@@ -544,7 +608,8 @@ theorem bitsAt_one (v : UInt64) : Column.bitsAt (one v) 0 8 = v := by
   simpa using Verify.bitsAt_pushBits8 ByteArray.empty v
 
 /-- `~` on `m` bits: `Ew.bit` xor a ones mask, the mask a one-bit atom in shape `av` (xor is `≠` on bits). -/
-def Ew.notBits (m : USize) (b : ByteArray) : ByteArray := Ew.bit (Ew.bitCmp + Ew.ne) Ew.av ⟨#[1]⟩ b m
+def Ew.notBits (m : USize) (b : ByteArray) : ByteArray :=
+  Kernel.bitsOfFoR (Ew.bit (Ew.bitCmp + Ew.ne) Ew.av ⟨#[1]⟩ b m).1 (Ew.bit (Ew.bitCmp + Ew.ne) Ew.av ⟨#[1]⟩ b m).2 m
 
 end Payload
 
