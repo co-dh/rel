@@ -632,11 +632,12 @@ partial def code (pre : Name) (ρ : List (Nat × Lean.Expr)) {A B : Obj} (t : Tm
     let v ← node pre ρ t
     -- at an object variable's placeholder (`varObj`) the value lives under a generic constant's binders: not shared
     if (v.find? placeholders.contains).isSome then return v
-    return mkConst (← share pre A B v)
+    -- kernel path: a term demanding nothing of its context (`dem = false`) has one table, so it is computed once
+    return mkConst (← share pre A B (if (← readThe Bool) && !t.dem then g ``GenK.memo #[oE A, oE B, v] else v))
   else node pre ρ t
 
-/-- The constant of the closed code `v : Rel A B`: one per structurally equal value, so a `tab` is computed once
-    and a `lazy` one still runs on the context it is given (`Out.memo`). -/
+/-- The constant of the closed code `v : Rel A B`: one per structurally equal value, so a closed term with
+    `dem = false` (wrapped in `GenK.memo` by `code`) is computed once and any other runs on the context it is given. -/
 partial def share (pre : Name) (A B : Obj) (v : Lean.Expr) : RM Name := do
   if let some c := (← get).1[v]? then return c
   let i := (← get).1.size

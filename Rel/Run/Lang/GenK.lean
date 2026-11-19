@@ -49,13 +49,19 @@ def compS {A B C : Obj} (R : Rel A B) : Except String (Tab B C) → Rel A C
   | .error e => .tab (.error e)
   | .ok s => .tab do Tab.comp (← R.runE ⟨none, some ⟨s.n, s.key⟩⟩) s
 
-/-- `R S`: a lazy `R` starts from the side its context knows (`Gen.comp`'s rule); also a closed `R`, which has no
-    bit-matrix form here. -/
+/-- `R S`, also for a closed `R` (no bit-matrix form here): `S` runs first, on the range, only where the context
+    knows only the range and `S` is closed; else `R` runs first and hands its range to `S` as its domain (§0). -/
 def comp (A B C : Obj) (e : Bool) (R : Fn true A B) (S : Fn e B C) : Fn true A C := match R with
   | .tab r => compT r S
   | .lazy f => .lazy fun
-    | ⟨none, some L⟩ => compS (.lazy f) (S.runE ⟨none, some L⟩)
+    | ⟨none, some L⟩ => if e then compT ((Rel.lazy f).runE {}) S else compS (.lazy f) (S.runE ⟨none, some L⟩)
     | K => compT ((Rel.lazy f).runE ⟨K.dom, none⟩) S
+
+/-- The code of a closed term with `dem = false` as its table, computed once: such a term has one table whatever
+    the context, so this changes no result and saves re-running it at each use (a fold reading it in every round). -/
+def memo (A B : Obj) : Rel A B → Rel A B
+  | .tab t => .tab t
+  | R => .tab (R.runE {})
 
 /-- An op on one table: a table now, or lazy, its argument run on what `k` makes of the context. -/
 def lift1 {A B C D : Obj} (f : Tab A B → Except String (Tab C D)) (k : Known C D → Known A B) : Rel A B → Rel C D
@@ -118,7 +124,8 @@ end GenK
 def kernRows : List (String × Lean.Name) :=
   [("∋", ``Tab.mem), ("τ", ``Tab.tau), ("length", ``Tab.length), ("setify", ``Tab.setify),
    ("snoc", ``Tab.snoc), ("cons", ``Tab.cons), ("cat", ``Tab.cat), ("zip", ``Tab.zip), ("sum", ``Tab.sum),
-   ("uncons", ``Tab.uncons), ("unsnoc", ``Tab.unsnoc), ("uncat", ``Tab.uncat)]
+   ("uncons", ``Tab.uncons), ("unsnoc", ``Tab.unsnoc), ("uncat", ``Tab.uncat), ("inl", ``Tab.inl),
+   ("inr", ``Tab.inr), ("prefix", ``Tab.«prefix»), ("suffix", ``Tab.suffix)]
 
 -- every kernel row is a row of `prims`
 #guard kernRows.all fun (s, _) => prims.any (·.sym == s)
@@ -138,6 +145,7 @@ def Tm.kernelNode {A B : Obj} : Tm A B → Bool
   | .est _ => true
   | .thin _ => true
   | .atPos _ => true
+  | .junc .. | .juncD .. | .fold .. | .foldr .. | .foldI .. | .flat _ => true
   | .prim r => (kernRows.lookup r.sym).isSome
   | .top _ => true
   | .outl => true
@@ -207,6 +215,55 @@ def est (B : Obj) (Q : Fn true (.prod B B) (.prod B B)) : Fn true (.arr B) B :=
 def thin (B : Obj) (Q : Fn true (.prod B B) (.prod B B)) : Fn true (.arr B) (.arr B) :=
   ofVals _ _ fun X => Tab.thin (fun D => Q.runE ⟨some ⟨D.n, D.val⟩, none⟩) X
 def atPos (B : Obj) (k : Nat) : Fn true (.arr B) B := ofVals _ _ fun X => Tab.atPos k X
+
+/-! ### T6: `[R,S]`; T8: `⦇e,S⦈`, `⦇e,S⦈ʳ`, `⦇e,S⦈` given a family, `Rᴵ` -/
+
+/-- `[R,S]` = `inl° ≫ R ∪ inr° ≫ S` (`Tab.junc`), both parts read whole. -/
+def junc (A B C : Obj) (R : Fn false A C) (S : Fn false B C) : Fn false (.sum A B) C :=
+  lift2 Tab.junc (fun _ => {}) (fun _ => {}) R S
+/-- `[R,S]` on the sum values `X` in demand: `R` run on the left values `X` holds, `S` on the right, then `idU X ≫`. -/
+def juncD (A B C : Obj) (d e : Bool) (R : Fn d A C) (S : Fn e B C) : Fn true (.sum A B) C :=
+  ofVals _ _ fun X => do
+    let ⟨l, r, _, _, x, y⟩ := X
+    (← Tab.idU X).comp (← Tab.junc (← R.runE ⟨some ⟨l, x⟩, none⟩) (← S.runE ⟨some ⟨r, y⟩, none⟩))
+
+/-- Round `k` of a left fold: `cons°` of what is left of each array, its head read now (index `k` from the start). -/
+def peelL {K E : Obj} (rest : Tab K (.arr E)) : Except String (Tab K E × Tab K (.arr E)) := do
+  let c ← rest.comp (← Tab.uncons rest.val)
+  pure (← c.comp (← Tab.outl c.val), ← c.comp (← Tab.outr c.val))
+/-- Round `k` of a right fold: `snoc°`, its last element read now (index `k` from the end). -/
+def peelR {K E : Obj} (rest : Tab K (.arr E)) : Except String (Tab K E × Tab K (.arr E)) := do
+  let c ← rest.comp (← Tab.unsnoc rest.val)
+  pure (← c.comp (← Tab.outr c.val), ← c.comp (← Tab.outl c.val))
+
+/-- `⦇e,S⦈` on the arrays `X` in demand (§4 `fold`: a Lean loop of rounds, `Tab.foldRounds`): each array from every
+    value of `e`, round `k` the pairs `(acc, x)` (`⟨P, el⟩`), `S` run on them (`compT`). -/
+def fold (E V : Obj) (d : Bool) (e : Fn false V V) (S : Fn d (.prod V E) V) : Fn true (.arr E) V :=
+  ofVals _ _ fun X => do
+    Tab.foldRounds peelL (fun P el => do (compT (P.pair el) S).runE {}) (X.1.toNat + 2) (← Tab.idU X)
+      (← Tab.top X (← e.runE {}).val) (← Tab.zero)
+/-- `⦇e,S⦈ʳ`: the mirror, each array from its end, `S` on `(x, acc)` (`⟨el, P⟩`). -/
+def foldr (E V : Obj) (d : Bool) (e : Fn false V V) (S : Fn d (.prod E V) V) : Fn true (.arr E) V :=
+  ofVals _ _ fun X => do
+    Tab.foldRounds peelR (fun P el => do (compT (el.pair P) S).runE {}) (X.1.toNat + 2) (← Tab.idU X)
+      (← Tab.top X (← e.runE {}).val) (← Tab.zero)
+
+/-- `⦇e,S⦈` given a family on the pairs `X = (i, xs)` in demand (`foldIDen_eq`): one left fold on the carrier `I×V`
+    from `(i, b)`, `b` from `e` at `i`; each round's step `S` met with `⟨π₁, S ≫ π₂⟩`, so it keeps the key's `i`. -/
+def foldI (I E V : Obj) (d d' : Bool) (e : Fn d I (.prod V V)) (S : Fn d' (.prod (.prod I V) E) (.prod I V)) :
+    Fn true (.prod I (.arr E)) V := ofVals _ _ fun X => do
+  let i ← Tab.outl X
+  let es ← (compT (.ok i) e).runE {}
+  let step (P : Tab _ (.prod I V)) (el : Tab _ E) : Except String (Tab _ (.prod I V)) := do
+    let s ← (compT (P.pair el) S).runE {}
+    s.inter (← i.pair (← s.comp (← Tab.outr s.val)))
+  let out ← Tab.foldRounds peelL step (X.2.1.toNat + 2) (← Tab.outr X) (← i.pair (← es.comp (← Tab.outr es.val)))
+    (← Tab.zero)
+  out.comp (← Tab.outr out.val)
+
+/-- `Rᴵ` on the pairs `X = (i, a)` in demand (`Tab.flat`), `R` run on their keys `i`. -/
+def flat (I A B : Obj) (d : Bool) (R : Fn d I (.prod A B)) : Fn true (.prod I A) B :=
+  ofVals _ _ fun X => do Tab.flat X (← R.runE ⟨some ⟨_, X.1⟩, none⟩)
 
 end GenK
 
