@@ -57,34 +57,176 @@ theorem Arr.get_eq_of_raw {t : QAtomicType} {n m : USize} (x : Arr t n) (y : Arr
   obtain ⟨b, hb, hub, ey⟩ := Arr.get_raw_atom y hy hg hs j
   rw [ex, ey, h hg a b ha hb fun hu => ⟨hua hu, hub hu⟩]
 
+section
+open Ext.Enc
+
+/-- **`kscatter` under any `op`, on words**: the answer reads back as `scatterWords` of its arguments' words. -/
+theorem kscatter_words {op : Op} {m n : USize} {ix e o : Enc} {fill : UInt64} (h : kscatter op m ix e n fill = .ok o) :
+    (raw .i64 m ix).size = m.toNat ∧ (raw .i64 m e).size = m.toNat ∧
+      scatterWords op (raw .i64 m ix) (raw .i64 m e) n.toNat fill = .ok (raw .i64 n o) := by
+  unfold kscatter at h
+  cases hi : foRWords "scatter: ix" m ix with
+  | error s => simp [hi, bind, Except.bind] at h
+  | ok is' =>
+    cases he : foRWords "scatter: e" m e with
+    | error s => simp [hi, he, bind, Except.bind] at h
+    | ok es' =>
+      obtain ⟨rfl, hisz⟩ := foRWords_raw _ _ _ _ hi
+      obtain ⟨rfl, hesz⟩ := foRWords_raw _ _ _ _ he
+      cases hw : scatterWords op (raw .i64 m ix) (raw .i64 m e) n.toNat fill with
+      | error s => simp [hi, he, hw, bind, Except.bind] at h
+      | ok ws =>
+        simp only [hi, he, hw, bind, Except.bind, pure, Except.pure] at h
+        have h8 : USize.ofNat32 8 (by decide) = 8 := USize.toNat_inj.mp (by simp)
+        rw [h8] at h
+        have hs := scatterWords_size hw
+        have ho := (Except.ok.inj h).symm
+        obtain ⟨hxs, -, hxg⟩ := foldl_pushBits (fun v => v) 8 (by decide) ws.toList ByteArray.empty
+        rw [Array.foldl_toList] at hxs hxg
+        simp only [show ByteArray.empty.size = 0 from rfl, Nat.zero_add, Array.length_toList] at hxs hxg
+        refine ⟨hisz, hesz, congrArg Except.ok ?_⟩
+        have h88 : (8 : USize) = (8 : Nat).toUSize := rfl
+        rw [ho, Coc.encode, h88, raw_encodeAt .i64 8 rfl (by decide) Column.lgEnc (by decide) _ n (by rw [hxs]; omega),
+          raw_bytes .i64 8 rfl (by decide)]
+        refine (Array.ext (by simp [hs]) fun i h1 _ => ?_).symm
+        simp only [Array.getElem_map, Array.getElem_range]
+        rw [Nat.mul_comm, hxg i (by simp at h1; omega), ofNat_toNat_mod64, Array.getElem_toList]
+
+/-- **`colConst n w` is `n` words `w`.** -/
+theorem colConst_raw {n : USize} {w : UInt64} {e : Enc} (h : colConst n w = .ok e) :
+    raw .i64 n e = Array.replicate n.toNat w := by
+  obtain ⟨-, -, hw⟩ := kscatter_words h
+  have h0 : (raw .i64 0 (.pos : Enc)).size = 0 := by simp [raw]
+  unfold scatterWords at hw
+  rw [h0] at hw
+  exact (Except.ok.inj hw).symm
+
+/-- **`colConst n w` read as booleans is `n` words `w % 2`** (`kscan`'s `seg`). -/
+theorem colConst_u1 {n : USize} {w : UInt64} {e : Enc} (h : colConst n w = .ok e) :
+    ∀ i < n.toNat, (raw .u1 n e)[i]?.getD 0 = UInt64.ofNat (w.toNat % 2) := by
+  intro i hi
+  obtain ⟨hfo, -⟩ := raw_scatter 0 .pos .pos n w e h
+  have he := colConst_raw h
+  generalize Coc.encode _ _ = q at hfo; subst hfo
+  have hu : raw .u1 n (.foR q.1 q.2 : Enc) = (raw .i64 n (.foR q.1 q.2 : Enc)).map fun w => UInt64.ofNat (w.toNat % 2) := by
+    simp only [raw, QAtomicType.width, Array.map_map]
+    refine Array.ext (by simp) fun j _ _ => ?_
+    simp
+  rw [hu, Array.getElem?_map, he, Array.getElem?_replicate, if_pos hi]; rfl
+/-- **`colMap op n a b t` at any answer type `t`**: word `i` is `op` of `a`'s and `b`'s words `i`, a boolean answer's
+cut to its bit (`colMap_raw` is the `i64` case with the argument sizes). -/
+theorem colMap_get {op : Op} {t : QAtomicType} {n : USize} {a b o : Enc} (h : colMap op n a b t = .ok o) :
+    (raw .i64 n o).size = n.toNat ∧ ∀ i < n.toNat, ∃ v,
+      op.eval ((raw .i64 n a)[i]?.getD 0) ((raw .i64 n b)[i]?.getD 0) = .ok v ∧
+      (raw .i64 n o)[i]? = some (if t = .u1 then v % 2 else v) := by
+  unfold colMap at h
+  simp only [bind, Except.bind] at h
+  split at h; · cases h
+  rename_i one1 h1
+  have hone : ∀ i < n.toNat, (raw .u1 n one1)[i]?.getD 0 ≠ 0 := fun i hi => by rw [colConst_u1 h1 i hi]; decide
+  unfold kscan at h
+  cases hg : rawAll .u1 n one1 with
+  | error m => simp [hg, bind, Except.bind] at h
+  | ok g =>
+    obtain ⟨rfl, hgs⟩ := rawAll_ok hg
+    cases hc : [a, b].mapM (rawAll .i64 n) with
+    | error m => simp [hg, hc, bind, Except.bind] at h
+    | ok cs =>
+      obtain ⟨rfl, hsz⟩ := mapM_rawAll hc
+      cases hf : (List.range n.toNat).foldlM (kscanRow op (raw .u1 n one1) (raw .i64 n a) [raw .i64 n b]) #[] with
+      | error m => simp [hg, hc, hf, bind, Except.bind] at h
+      | ok out =>
+        obtain ⟨hos, hrow⟩ := foldlM_kscanRow _ _ _ _ _ _ hf
+        cases ht : t.width with
+        | none => simp [hg, hc, hf, ht, bind, Except.bind] at h
+        | some w =>
+          simp only [hg, hc, hf, ht, bind, Except.bind, List.map_cons, List.map_nil, pure, Except.pure,
+            Bool.false_eq_true, if_false, Except.ok.injEq] at h
+          change wordsFoR _ = o at h
+          cases h
+          have hW : (out.map fun v => if t = .u1 then v % 2 else v).size = n.toNat := by simp [hos]
+          rw [(wordsFoR_closed _ hW.symm).2.1]
+          refine ⟨hW, fun i hi => ?_⟩
+          have hr := hrow i (by omega)
+          rw [if_neg (fun hh => hone i hi hh.2)] at hr
+          simp only [List.foldlM_cons, List.foldlM_nil, bind, Except.bind] at hr
+          cases he : op.eval ((raw .i64 n a)[i]?.getD 0) ((raw .i64 n b)[i]?.getD 0) with
+          | error s => rw [he] at hr; cases hr
+          | ok v =>
+            rw [he] at hr; simp only [pure, Except.pure, Except.ok.injEq] at hr
+            refine ⟨v, rfl, ?_⟩
+            rw [Array.getElem?_map, Array.getElem?_eq_getElem (by omega), ← hr]; rfl
+
+
+/-- An `i64` element is its raw word read as an `Int64`, at every encoding `Enc.WF` admits. -/
+theorem Arr.get_i64 {n : USize} (x : Arr .i64 n) (i : Fin n.toNat) :
+    x.get i = ((Enc.raw .i64 n x.enc)[i.1]?.getD 0).toInt64 := by
+  have hw := x.wf
+  rw [Arr.get_ne x i (by decide)]
+  cases hc : x.enc <;> rw [hc] at hw <;>
+    simp_all [Enc.WF, Enc.get, Enc.raw, QAtomicType.width, Column.atomOfBits, Dep.Carrier.of?, foRBits_starts,
+      ofNat_toNat_mod64]
+
+/-- A word below `2^63` and below `m` clamps to itself. -/
+theorem clampFin_word {w : UInt64} {m : Nat} (h : 0 < m) (hw : w.toNat < m) (hm : m ≤ 2 ^ 63) :
+    clampFin w.toInt64 m h = ⟨w.toNat, hw⟩ := by
+  have e : w.toInt64.toInt = (w.toNat : Int) := by
+    rw [Int64.toInt, UInt64.toInt64, Int64.toBitVec]
+    simp only [BitVec.toInt]
+    have : w.toBitVec.toNat = w.toNat := rfl
+    omega
+  apply Fin.ext; simp only [clampFin, e]; omega
+
+/-- A boolean element is `true` exactly where its word is `1`. -/
+theorem Arr.get_u1 {n : USize} (x : Arr .u1 n) (hx : Kernel.Enc.Valid n x.enc) (i : Fin n.toNat) :
+    ∃ a, (Enc.raw .i64 n x.enc)[i.1]? = some a ∧ a = (if x.get i then 1 else 0) := by
+  obtain ⟨a, ha, hu, e⟩ := Arr.get_raw_atom x hx (by decide) (by decide) i
+  refine ⟨a, ha, ?_⟩
+  have h2 : a.toNat < 2 := UInt64.lt_iff_toNat_lt.1 (hu rfl)
+  rw [e]
+  rcases (by omega : a.toNat = 0 ∨ a.toNat = 1) with h | h
+  · obtain rfl : a = 0 := UInt64.toNat_inj.mp (by simpa using h)
+    rfl
+  · obtain rfl : a = 1 := UInt64.toNat_inj.mp (by simpa using h)
+    rfl
+
+/-- **The column form of the bridge**: element `j` of `Arr.gather m ix x` is element `ix[j]` of `x`, the index being
+below `n`. -/
+theorem Arr.gather_row {t : QAtomicType} {m n : USize} {ix : Enc} (x : Arr t n) {y : Arr t m}
+    (h : Arr.gather m ix x = .ok y) (j : Fin m.toNat) : ∃ i : Fin n.toNat,
+      ((Enc.raw .i64 m ix)[j.1]?.getD 0).toNat = i.1 ∧ y.get j = x.get i := by
+  simp only [Arr.gather] at h
+  split at h
+  · rename_i o ho
+    cases h
+    have hv := kgather_valid ho
+    obtain ⟨his, hes, hlt, ho'⟩ := raw_kgather m ix n _ o ho
+    have hc := wordsFoR_closed ((Enc.raw .i64 m ix).map fun i => (Enc.raw .i64 n x.enc)[i.toNat]?.getD 0)
+      (n := m) (by rw [Array.size_map, his])
+    have hj : j.1 < (Enc.raw .i64 m ix).size := by rw [his]; exact j.2
+    have hi := hlt j j.2
+    refine ⟨⟨_, hi⟩, rfl, (Arr.get_eq_of_raw (t := t) x _ hv (by show Kernel.Enc.Valid m o; rw [ho']; exact hc.1)
+      _ j fun _ a b ha hb _ => ?_).symm⟩
+    suffices hr : (Enc.raw .i64 n x.enc)[(⟨_, hi⟩ : Fin n.toNat).1]? = (Enc.raw .i64 m o)[j.1]? by
+      obtain rfl := Option.some.inj (ha.symm.trans (hr.trans hb)); rfl
+    dsimp only
+    rw [ho', hc.2.1, Array.getElem?_map]
+    cases hw : (Enc.raw .i64 m ix)[j.1]? with
+    | none => simp [Array.getElem?_eq_getElem hj] at hw
+    | some w =>
+      rw [hw] at hi
+      simp only [Option.getD_some, Option.map_some] at hi ⊢
+      simp only [Array.getElem?_eq_getElem (show w.toNat < _ by rw [hes]; exact hi), Option.getD_some]
+  · cases h
+
+end
+
+
 /-- **The row form of the bridge**: row `j` of `Vals.gather m ix x` is row `ix[j]` of `x`, the index being below `n`. -/
 theorem Vals.gather_row {m : USize} {ix : Enc} : {A : Obj} → {n : USize} → (x : Vals A n) → {y : Vals A m} →
     Vals.gather m ix x = .ok y → ∀ j : Fin m.toNat, ∃ i : Fin n.toNat,
       ((Enc.raw .i64 m ix)[j.1]?.getD 0).toNat = i.1 ∧ Vals.row y j = Vals.row x i
-  | .atom t, n, x, y, h, j => by
-    simp only [Vals.gather] at h
-    split at h
-    · rename_i o ho
-      cases h
-      have hv := kgather_valid ho
-      obtain ⟨his, hes, hlt, ho'⟩ := raw_kgather m ix n _ o ho
-      have hc := wordsFoR_closed ((Enc.raw .i64 m ix).map fun i => (Enc.raw .i64 n (Arr.enc (t := t) x))[i.toNat]?.getD 0)
-        (n := m) (by rw [Array.size_map, his])
-      have hj : j.1 < (Enc.raw .i64 m ix).size := by rw [his]; exact j.2
-      have hi := hlt j j.2
-      refine ⟨⟨_, hi⟩, rfl, (Arr.get_eq_of_raw (t := t) x _ hv (by show Kernel.Enc.Valid m o; rw [ho']; exact hc.1)
-        _ j fun _ a b ha hb _ => ?_).symm⟩
-      suffices hr : (Enc.raw .i64 n (Arr.enc (t := t) x))[(⟨_, hi⟩ : Fin n.toNat).1]? = (Enc.raw .i64 m o)[j.1]? by
-        obtain rfl := Option.some.inj (ha.symm.trans (hr.trans hb)); rfl
-      dsimp only
-      rw [ho', hc.2.1, Array.getElem?_map]
-      cases hw : (Enc.raw .i64 m ix)[j.1]? with
-      | none => simp [Array.getElem?_eq_getElem hj] at hw
-      | some w =>
-        rw [hw] at hi
-        simp only [Option.getD_some, Option.map_some] at hi ⊢
-        simp only [Array.getElem?_eq_getElem (show w.toNat < _ by rw [hes]; exact hi), Option.getD_some]
-    · cases h
+  | .atom _, _, x, _, h, j => Arr.gather_row x h j
   | .prod a b, n, x, y, h, j => by
     simp only [Vals.gather, bind, Except.bind, pure, Except.pure] at h
     split at h; · cases h
@@ -97,7 +239,27 @@ theorem Vals.gather_row {m : USize} {ix : Enc} : {A : Obj} → {n : USize} → (
     obtain rfl : i1 = i2 := Fin.ext (e1.symm.trans e2)
     exact ⟨i1, e1, by simp only [Vals.row, r1, r2]⟩
   | .arr _, _, _, _, h, _ => by simp [Vals.gather] at h
-  | .sum _ _, _, _, _, h, _ => by simp [Vals.gather] at h
+  | .sum _ _, _, ⟨l, r, tag, idx, x, y⟩, _, h, j => by
+    simp only [Vals.gather, bind, Except.bind, pure, Except.pure] at h
+    split at h; · cases h
+    rename_i tag' h1
+    split at h; · cases h
+    rename_i idx' h2
+    cases h
+    obtain ⟨i1, e1, r1⟩ := Arr.gather_row tag h1 j
+    obtain ⟨i2, e2, r2⟩ := Arr.gather_row idx h2 j
+    obtain rfl : i1 = i2 := Fin.ext (e1.symm.trans e2)
+    exact ⟨i1, e1, by simp only [Vals.row, r1, r2]⟩
+
+/-- **A summand gathered at a sum side's positions**: where word `i` of `p` is `idx`'s, `y` (of `m ≤ 2^63` rows)
+gathered at `p` holds at row `i` the row of `y` that `Vals.row` reads at `idx`'s clamped position. -/
+theorem Vals.gather_clamp {B : Obj} {n m : USize} {p : Enc} (idx : Arr .i64 n) (y : Vals B m) {gy : Vals B n}
+    (hg : Vals.gather n p y = .ok gy) (hm : m.toNat ≤ 2 ^ 63) (h0 : 0 < m.toNat) (i : Fin n.toNat)
+    (hp : (Enc.raw .i64 n p)[i.1]?.getD 0 = (Enc.raw .i64 n idx.enc)[i.1]?.getD 0) :
+    Vals.row y (clampFin (idx.get i) m.toNat h0) = Vals.row gy i := by
+  obtain ⟨k, e, r⟩ := Vals.gather_row y hg i
+  rw [r, Arr.get_i64, ← hp, clampFin_word h0 (by rw [e]; exact k.2) hm]
+  exact congrArg _ (Fin.ext e)
 
 /-- What `Vals.nub` answers, unfolded: each kernel's answer named, in the order of the composition. -/
 theorem Vals.nub_ok {A : Obj} {n : USize} {x : Vals A n} {r : (m : USize) × Vals A m} (h : Vals.nub x = .ok r) :
@@ -178,6 +340,21 @@ theorem Verify.ascCol_valid {m : USize} {c : QAtomicType × Enc} {xk : Array UIn
   | error s => simp [hw, Functor.map, Except.map] at h
   | ok x => exact (foRWords_valid _ _ _).2 _ (ascWords_foR hw)
 
+/-- **Equal order codes of one column, equal elements**: where `kasc` reads `x` (`ascCol` answers), `x` is a column
+every kernel reads, and rows with equal codes (`seenKey`) hold one atom (`ascOrd_atom`), so one element. -/
+theorem Arr.eq_of_codes {t : QAtomicType} {n : USize} (x : Arr t n) {cs}
+    (hc : [(t, x.enc)].mapM (ascCol n) = .ok cs) : Kernel.Enc.Valid n x.enc ∧ ∀ i i' : Fin n.toNat,
+      seenKey n [(t, x.enc)] i = seenKey n [(t, x.enc)] i' → x.get i = x.get i' := by
+  obtain ⟨hlen, hf⟩ := mapM_ok hc
+  have hac := hf 0 _ (cs[0]'(by simp at hlen; omega)) rfl (List.getElem?_eq_getElem _)
+  obtain ⟨-, -, f, hof, -⟩ := ascCol_ok hac
+  have hv := ascCol_valid hac
+  refine ⟨hv, fun i i' hk => ?_⟩
+  simp only [seenKey, ascKeys, List.map_cons, List.map_nil, hof, Option.getD_some, List.cons.injEq, and_true,
+    Array.getElem?_map] at hk
+  exact Arr.get_eq_of_raw x x hv hv i i' fun hg a b ha hb hu =>
+    (ascOrd_atom hof hg hu).1 (by simpa only [ha, hb, Option.map_some, Option.getD_some] using hk)
+
 /-- **Equal order codes, equal rows**, over any side whose columns `kasc` reads (`ascCol` answers on each): the codes
 of row `i` and row `i'` agree in every column (`seenKey`), so their atoms do (`ascOrd_atom`), so their elements do
 (`Arr.get_eq_of_raw`). -/
@@ -186,14 +363,7 @@ theorem Vals.row_of_codes : {A : Obj} → {n : USize} → (x : Vals A n) → {es
       seenKey n es i = seenKey n es i' → x.row i = x.row i'
   | .atom t, n, x, es, hes, cs, hc, i, i', hk => by
     simp only [Vals.cols, Except.ok.injEq] at hes; subst hes
-    obtain ⟨hlen, hf⟩ := mapM_ok hc
-    have hac := hf 0 _ (cs[0]'(by simp at hlen; omega)) rfl (List.getElem?_eq_getElem _)
-    obtain ⟨-, -, f, hof, -⟩ := ascCol_ok hac
-    have hv := ascCol_valid hac
-    simp only [seenKey, ascKeys, List.map_cons, List.map_nil, hof, Option.getD_some, List.cons.injEq, and_true,
-      Array.getElem?_map] at hk
-    exact Arr.get_eq_of_raw x x hv hv i i' fun hg a b ha hb hu =>
-      (ascOrd_atom hof hg hu).1 (by simpa only [ha, hb, Option.map_some, Option.getD_some] using hk)
+    exact (Arr.eq_of_codes x hc).2 i i' hk
   | .prod _ _, n, x, es, hes, cs, hc, i, i', hk => by
     simp only [Vals.cols, bind, Except.bind, pure, Except.pure] at hes
     split at hes; · cases hes

@@ -1,16 +1,25 @@
-# W3d handoff (branch w3arr)
+# W3d handoff (branch w3arr2)
 
-Done (step 1, `pos`): `Enc.WF .i64 .pos = True` (Rel/Kernel/Value.lean WF); `Arr.kgather_wf` pos case
-(Rel/Run/Canon.lean); `Arr.get_raw_atom` + `Arr.get_eq_of_raw` over foR and pos (Rel/RepCanon.lean); old
-`Enc.bytesOf` reads `.pos` at i64 (Rel/Kernel/Coc.lean ~479); pos cases in `bytesOf_size`
-(Rel/Run/KernelWF/Raze.lean), `elemsW_bytesOf` (Rel/KernelSpec/Gather.lean); `long_cases` now has a third
-disjunct `e = .pos` (Rel/Run/KernelWF/Gather.lean); `longWords`/`longBytes` read `.pos`, `Arr.dense_long` states
-`longBytes m x.enc = some B` instead of the per-encoding disjunction (Rel/Run/Core.lean); callers updated
-(KernelWF/CodesRec, PickRow, BagSpec `gradeColumn_long` pos branch, Run/Code.lean `longBytes_isSome`, proof only).
+Done
+- Task 1 (old layer at `pos`): `KernelWF.get_bytesOf` (Rel/KernelWF/RazeSpec.lean) proved at every encoding through
+  `get_eq_raw` + `Verify.elemsW_bytesOf` (no case split); `Alg.long_enc` (Rel/KernelWF/CodesSpec.lean) restated:
+  dense disjunct = `∃ b, b.size = n*8 ∧ groupIdsColumn t n e = some (groupIds .i64 n b) ∧ raw word i = bitsAt b (8i) 8
+  ∧ (e = .bytes b ∨ e = .pos)`, users read `hg`/`hraw` (ofIds_long_faithful/wf) or rule `pos` out (rangeOffsets_spec,
+  codes_long_eq, codes_long_group, codes_long_cut). Full build green after merge of master (b4).
+- master merged. `colConst`/`colMap`/`colMap_closed` moved Rel/Run/Cols.lean -> Rel/Run/Canon.lean;
+  `kscatter_words`/`colConst_raw`/`colConst_u1`/`colMap_get` moved Rel/RepCols.lean -> Rel/RepCanon.lean (section
+  `open Ext.Enc`), names unchanged.
+- Task 2, gather half: `Arr.gather` (Canon), `Vals.gather` sum case (gathers tag and idx, keeps payloads);
+  `Arr.gather_row`, `Vals.gather_row` sum case, `Vals.gather_clamp`, `Arr.get_i64`, `clampFin_word`, `Arr.get_u1`,
+  `Arr.eq_of_codes` (Rel/RepCanon.lean).
 
-Left (step 2, sum sides): `Vals.cols`/`Vals.gather` in Rel/Run/Canon.lean still error on `arr`/`sum`.
-Design: cols(sum) = `(.u1, tag.enc) :: xs ++ ys`; `nt = kscan .not false .u1 .i64 n ones [tag, tag]`;
-`px = kscan .mul false .i64 .i64 n ones [idx, nt]`, `py` likewise with `tag`; `ones = kscatter .last 0 .pos .pos n 1`;
-xs = [] when l = 0 else `Vals.cols` of x gathered at px. Gather of arr/sum gathers lo/hi (tag/idx), payload
-shared. Helper lemmas drafted in /data/tmp/w3arr/s4.lean (`kfill_raw` proved; `sumPos_raw` last step open).
-Laws (step 4) and arr kernel (step 3, branch mig-arrkey 369f095, 12 files) not started.
+Left
+- `Vals.cols` sum case + `Vals.row_of_codes` sum case. A full attempt (definition and proof) is in
+  /data/tmp/w3arr2/Canon_attempt.lean (Vals.cols) and /data/tmp/w3arr2/RepCanon_attempt.lean (row_of_codes sum
+  case, ~line 395). Definition compiles. The proof failed only at destructuring `hes`: after
+  `simp only [bind, Except.bind, pure, Except.pure] at hes` the 4th `split at hes` hits the `if l.toNat = 0`
+  (Decidable.rec) — "Dependent elimination failed". Fix: `by_cases hl0 : l.toNat = 0` / `hr0` and
+  `simp only [hl0, hr0, if_true, if_false] at hes` before splitting the gather matches, or name the summand step
+  as its own def. Everything after (`wx`/`wy`, `Vals.gather_clamp`, recursion) is written but unchecked.
+- Task 3: #guards against old `canonC`/`CRel.ran`/`CRel.dom` on a table with a sum side (needs cols sum).
+  Per coordinator: `Vals.codes_of_row` / `Vals.nub_distinct` belong to branch w3laws, not here.
