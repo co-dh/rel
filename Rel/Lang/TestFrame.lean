@@ -1,6 +1,5 @@
 import Rel.Programs.Prelude
 import Rel.Lang.EmitC
-import Rel.Lang.Rows
 
 /-! Stage 1 of `doc/dataframe-design.zh.typ` (§6): a two-column frame filtered, grouped by its key and summed per
     group, in the design's position form (§1.2, §2, §3.1), positions `P` standing for `N` below `m = 8`.

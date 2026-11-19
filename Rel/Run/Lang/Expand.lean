@@ -203,9 +203,9 @@ def primOf : {A B : Obj} → Tm A B → Option (Prim × List Res)
 /-- The type `Gen.Fn t.dem A B` of a code of `t : Tm A B`. -/
 def fnTy (t : Res) : Lean.Expr := g ``Gen.Fn #[bE t.2.2.dem, oE t.1, oE t.2.1]
 
-/-- The wrappers a row's constant runs under (`Gen.ofVals` …), tried in order. -/
+/-- The wrappers a row's constant runs under (`GenK.ofVals` …), tried in order. -/
 def primWrappers : List Lean.Name :=
-  [``Gen.ofVals, ``Gen.after, ``Gen.elems, ``Gen.testVals, ``Gen.testAfter, ``Gen.stepAfter]
+  [``GenK.ofVals, ``GenK.after, ``GenK.elems, ``GenK.testVals, ``GenK.testAfter, ``GenK.stepAfter]
 
 open Lean Meta in
 /-- `c` at fresh metavariables: those whose type `sel` picks are `hs` in order (each given with its type), and `ok`
@@ -227,15 +227,11 @@ def fitConst (c : Lean.Name) (sel : Lean.Expr → MetaM Bool) (hs : Array (Lean.
 open Lean Meta in
 /-- Row `r`'s constant at `A ⟶ B` given its relations `xs` (codes with their types), under the first wrapper it
     fits: the wrapper's `Fn` parts are `xs`, its function's explicit binders the constant's that are relations (as
-    `prim%` reads them, `objOrSize`), every other solved by unifying the types. On the kernel path (`kern`) the
-    constant is the row's `kernRows` operator and the wrappers the `GenK` twins that exist. -/
-def primE (r : Prim) (A B : Obj) (xs : Array (Lean.Expr × Lean.Expr)) (kern : Bool := false) :
-    MetaM (Option Lean.Expr) := do
-  let some c := if kern then kernRows.lookup r.sym else some r.sig.1 | return none
-  let ws ← if kern then primWrappers.filterMapM fun w => do
-      let n := w.replacePrefix `Rel.Lang.Gen `Rel.Lang.GenK; return if (← getEnv).contains n then some n else none
-    else pure primWrappers
-  ws.findSomeM? fun w => fitConst w (fun t => pure (t.isAppOf ``Gen.Fn)) xs fun ws wty => do
+    `prim%` reads them, `objOrSize`), every other solved by unifying the types. The constant is the row's
+    `kernRows` operator. -/
+def primE (r : Prim) (A B : Obj) (xs : Array (Lean.Expr × Lean.Expr)) : MetaM (Option Lean.Expr) := do
+  let some c := kernRows.lookup r.sym | return none
+  primWrappers.findSomeM? fun w => fitConst w (fun t => pure (t.isAppOf ``Gen.Fn)) xs fun ws wty => do
     let some f := ws.back? | return false
     unless ← isDefEq wty (g ``Gen.Fn #[bE true, oE A, oE B]) do return false
     let v? ← forallTelescope (← instantiateMVars (← inferType f)) fun ys body => do
@@ -677,7 +673,7 @@ partial def node (pre : Name) (ρ : List (Nat × Lean.Expr)) {A B : Obj} (t : Tm
   | A, B, t@(.prim _) | A, B, t@(.arg ..) => match primOf t with
     | some (r, as) => do
       let xs ← as.toArray.mapM fun x => return (← code pre ρ x.2.2, fnTy x)
-      let some e ← primE r A B xs true
+      let some e ← primE r A B xs
         | throwError "rel_program expansion: row `{r.sym}` at {oE A} → {oE B} given {xs.size} relations fits none of its wrappers {primWrappers}"
       pure e
     | none => spine pre ρ t

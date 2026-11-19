@@ -1,6 +1,5 @@
 import Rel.Lang.EmitC
 import Rel.Run.Lang.Embed
-import Rel.Lang.GenSpec
 
 /-! Stage 1a of the native backend (`doc/rel-native-design.md` §13): `x ≜ {…}°`, `output x to "out"`. Its plan is
     literals and `qlean_own_write` calls only: the converse is a register rename. `main` is the `relc-1a` exe:

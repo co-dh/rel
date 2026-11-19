@@ -1,5 +1,4 @@
 import Rel.Run.Lang.Schema
-import Rel.Run.Lang.Compile
 import Rel.Run.Lang.Embed
 
 /-! `Schema` (PLAN D.11) on a frame of two columns, key `k` and value `v`, as `TestFrame`'s `[K×N]`: each term run by

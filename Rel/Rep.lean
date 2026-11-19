@@ -87,5 +87,21 @@ end Ops
 #print axioms rep_idU
 #print axioms rep_outl
 #print axioms rep_outr
+/-- What `thinLOn` computes from one array `xs`, `le` its test read as an order: the chain `ys` from `[]`, each
+    `ys[t]` the element `xs[t]` bumped into `ys[t+1]`, `w` its head. -/
+def thinLDen {B : Obj} (le : B.El → B.El → Bool) (xs w : List B.El) : Prop :=
+      ∃ ys : List (Obj.arr B).El, ∃ hy : ys.length = xs.length + 1,
+        (∃ p, (nilVal B).row p = ys[xs.length]'(Nat.lt_of_lt_of_eq (Nat.lt_succ_self _) hy.symm)) ∧
+        (∀ t (ht : t < xs.length),
+          (ys[t + 1]'(Nat.lt_of_lt_of_eq (Nat.succ_lt_succ ht) hy.symm) = [] ∧
+              ys[t]'(Nat.lt_of_lt_of_eq (Nat.lt_succ_of_lt ht) hy.symm) = [xs[t]'ht]) ∨
+            ∃ b bs, ys[t + 1]'(Nat.lt_of_lt_of_eq (Nat.succ_lt_succ ht) hy.symm) = b :: bs ∧
+              ((le (xs[t]'ht) b = true ∧ ys[t]'(Nat.lt_of_lt_of_eq (Nat.lt_succ_of_lt ht) hy.symm) = xs[t]'ht :: bs) ∨
+               (le b (xs[t]'ht) = true ∧ ys[t]'(Nat.lt_of_lt_of_eq (Nat.lt_succ_of_lt ht) hy.symm) =
+                 ys[t + 1]'(Nat.lt_of_lt_of_eq (Nat.succ_lt_succ ht) hy.symm)) ∨
+               (le (xs[t]'ht) b = false ∧ le b (xs[t]'ht) = false ∧
+                ys[t]'(Nat.lt_of_lt_of_eq (Nat.lt_succ_of_lt ht) hy.symm) =
+                  xs[t]'ht :: ys[t + 1]'(Nat.lt_of_lt_of_eq (Nat.succ_lt_succ ht) hy.symm)))) ∧
+        w = ys[0]'(Nat.lt_of_lt_of_eq (Nat.zero_lt_succ _) hy.symm)
 
 end Rel.Rep

@@ -1,6 +1,5 @@
 import Rel.Programs.Blocks
 import Rel.Programs.SudokuAC
-import Rel.AC3
 
 namespace Rel.Lang.Test
 

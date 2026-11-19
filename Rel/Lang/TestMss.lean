@@ -1,6 +1,5 @@
 import Rel.Lang.Test
 import Rel.Programs.Mss
-import Rel.Lang.Rows
 
 /-! The Rel language on B&dM Ex 7.40, the maximum segment sum, the program `Programs.mss`: the
     specification `Λ(segment sum) est(≥)` and the derived fold `⦇k⦈ π₂ est(≥)`, each against a direct `List` computation. -/

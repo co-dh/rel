@@ -7,8 +7,6 @@ import Rel.Run.Lang.Tm
 import Rel.Rep
 import Rel.ObjOrder
 import Rel.Core.Fix
-import Rel.CRelFold
-import Rel.Run.Lang.Compile
 
 namespace Rel.Lang
 
@@ -60,21 +58,6 @@ abbrev rdivDen (TR : Den A C) (TS : Den B C) (TA : Den A A) (TB : Den B B) : Den
 /-- `R÷S = R/S ∩ (S/R)°` within the universes `UA`, `UB`: `x` to `y` when `R x` and `S y` are one image. -/
 abbrev symDivDen (TA : Den A A) (TB : Den B B) (TR : Den A C) (TS : Den B C) : Den A B :=
   rdivDen TR TS TA TB ∩ (rdivDen TS TR TB TA)°
-
-/-- `rep_symDiv` is `symDivDen` with the universes the coreflexives of `Ua`, `Ub`. It sits here, not in
-    `Rel.CRelRel`, because this module imports that one. -/
-theorem rep_symDiv_den {ma mb : USize} (R : CRel A C) (S : CRel B C) (Ua : Vals A ma) (Ub : Vals B mb)
-    (hb : (R.symDiv S Ua Ub).ok = true) :
-    rep (R.symDiv S Ua Ub).rel = symDivDen (corefl fun x => ∃ p, Ua.row p = x) (corefl fun y => ∃ j, Ub.row j = y)
-      (rep R.rel) (rep S.rel) := by
-  funext x y; apply propext; rw [CRel.rep_symDiv R S Ua Ub hb x y]
-  simp only [symDivDen, rdivDen, Core.Rel.inter, Core.Rel.recip, Core.Rel.corefl, exists_eq_left]
-  constructor
-  · rintro ⟨h, ⟨c, hc⟩ | hu⟩
-    · exact ⟨⟨fun c => (h c).2, .inl ⟨c, (h c).1 hc⟩⟩, fun c => (h c).1, .inl ⟨c, hc⟩⟩
-    · exact ⟨⟨fun c => (h c).2, .inr hu⟩, fun c => (h c).1, .inr hu.symm⟩
-  · rintro ⟨⟨h2, -⟩, h1, hu⟩
-    exact ⟨fun c => ⟨h1 c, h2 c⟩, hu.imp id And.symm⟩
 
 /-- `nil`: every source to the empty array. -/
 abbrev nilDen : Den A (.arr B) := fun _ Y => Y = []
@@ -246,11 +229,63 @@ noncomputable def Val.args (ss : List Sem) : Val := go 0 ss where
     | [] => Val.empty
     | ⟨_, _, T⟩ :: ss => (go (k + 1) ss).bind k T
 
+/-- The object variables `σ` that make the pattern `o` the object `A`, extending `σ`: none where they cannot. -/
+def OExp.unify : OExp → Obj → List (String × Obj) → Option (List (String × Obj))
+  | .var _ n, A, σ => match σ.lookup n with
+    | some B => if A = B then some σ else none
+    | none => some ((n, A) :: σ)
+  | .prod a b, .prod A B, σ | .sum a b, .sum A B, σ => a.unify A σ >>= b.unify B
+  | .list a, .arr A, σ => a.unify A σ
+  | _, _, _ => none
+
+/-- The row `r`'s object variables (`Prim.vars` order) at `A ⟶ B`, read off its constant's type. -/
+def Prim.objs (r : Prim) (A B : Obj) : Option (List Obj) := do
+  let σ ← r.sig.2.2.1.unify A [] >>= r.sig.2.2.2.unify B
+  r.vars.mapM fun v => List.lookup v σ
+
+/-- A row of `prims`: its symbol and its objects at its object variables `σ`. -/
+structure RowCode where
+  sym : String
+  ty : List Obj → Obj × Obj
+
+/-- The first and second object variables. -/
+abbrev σ₁ (σ : List Obj) : Obj := σ.headD .long
+abbrev σ₂ (σ : List Obj) : Obj := σ.getD 1 .long
+
+/-! The rows, each named so its meaning names it. -/
+namespace RowCode
+def tau : RowCode := ⟨"τ", fun σ => (σ₁ σ, .arr (σ₁ σ))⟩
+def cons : RowCode := ⟨"cons", fun σ => (.prod (σ₁ σ) (.arr (σ₁ σ)), .arr (σ₁ σ))⟩
+def mem : RowCode := ⟨"∋", fun σ => (.arr (σ₁ σ), σ₁ σ)⟩
+def inl : RowCode := ⟨"inl", fun σ => (σ₁ σ, .sum (σ₁ σ) (σ₂ σ))⟩
+def inr : RowCode := ⟨"inr", fun σ => (σ₁ σ, .sum (σ₂ σ) (σ₁ σ))⟩
+def map : RowCode := ⟨"F", fun σ => (.arr (σ₁ σ), .arr (σ₂ σ))⟩
+def filter : RowCode := ⟨"filter", fun σ => (.arr (σ₁ σ), .arr (σ₁ σ))⟩
+def takewhile : RowCode := ⟨"takewhile", fun σ => (.arr (σ₁ σ), .arr (σ₁ σ))⟩
+def thinL : RowCode := ⟨"thinL", fun σ => (.arr (σ₁ σ), .arr (σ₁ σ))⟩
+def merge : RowCode := ⟨"merge", fun σ => (.prod (.arr (σ₁ σ)) (.arr (σ₁ σ)), .arr (σ₁ σ))⟩
+def loop : RowCode := ⟨"loop", fun σ => (.prod (σ₁ σ) (.arr (σ₂ σ)), σ₁ σ)⟩
+def uncons : RowCode := ⟨"uncons", fun σ => (.arr (σ₁ σ), .prod (σ₁ σ) (.arr (σ₁ σ)))⟩
+def length : RowCode := ⟨"length", fun σ => (.arr (σ₁ σ), .long)⟩
+def sum : RowCode := ⟨"sum", fun _ => (.arr .long, .long)⟩
+def inits : RowCode := ⟨"inits", fun σ => (.arr (σ₁ σ), .arr (.arr (σ₁ σ)))⟩
+def tails : RowCode := ⟨"tails", fun σ => (.arr (σ₁ σ), .arr (.arr (σ₁ σ)))⟩
+def «prefix» : RowCode := ⟨"prefix", fun σ => (.arr (σ₁ σ), .arr (σ₁ σ))⟩
+def suffix : RowCode := ⟨"suffix", fun σ => (.arr (σ₁ σ), .arr (σ₁ σ))⟩
+def concat : RowCode := ⟨"concat", fun σ => (.arr (.arr (σ₁ σ)), .arr (σ₁ σ))⟩
+def cat : RowCode := ⟨"cat", fun σ => (.prod (.arr (σ₁ σ)) (.arr (σ₁ σ)), .arr (σ₁ σ))⟩
+def uncat : RowCode := ⟨"uncat", fun σ => (.arr (σ₁ σ), .prod (.arr (σ₁ σ)) (.arr (σ₁ σ)))⟩
+def zip : RowCode := ⟨"zip", fun σ => (.prod (.arr (σ₁ σ)) (.arr (σ₂ σ)), .arr (.prod (σ₁ σ) (σ₂ σ)))⟩
+def snoc : RowCode := ⟨"snoc", fun σ => (.prod (.arr (σ₁ σ)) (σ₁ σ), .arr (σ₁ σ))⟩
+def unsnoc : RowCode := ⟨"unsnoc", fun σ => (.arr (σ₁ σ), .prod (.arr (σ₁ σ)) (σ₁ σ))⟩
+def setify : RowCode := ⟨"setify", fun σ => (.arr (σ₁ σ), .arr (σ₁ σ))⟩
+end RowCode
+
 /-- A row's meaning at its object variables `σ`, given its relation arguments' meanings. -/
 abbrev RowDen (c : RowCode) := (σ : List Obj) → List Sem → Den (c.ty σ).1 (c.ty σ).2
 
 open Classical RowCode in
-/-- Every row of `prims` with its meaning, in the order of `rowCodes` (`rowDens_codes`). `setify` is `Λ(∋)`. -/
+/-- Every row of `prims` with its meaning. `setify` is `Λ(∋)`. -/
 def rowDens : List ((c : RowCode) × RowDen c) :=
   [⟨tau, fun _ _ a Y => Y = [a]⟩,
    ⟨cons, fun _ _ p ys => ys = p.1 :: p.2⟩,
@@ -284,13 +319,8 @@ def rowDens : List ((c : RowCode) × RowDen c) :=
    ⟨zip, fun _ _ p zs => zs = p.1.zip p.2⟩,
    ⟨snoc, fun _ _ p ys => ys = p.1 ++ [p.2]⟩,
    ⟨unsnoc, fun _ _ xs p => xs = p.1 ++ [p.2]⟩,
-   ⟨setify, fun σ _ => lamDen (fun xs a => a ∈ xs : Den (.arr (σ₁ σ)) (σ₁ σ))⟩,
-   ⟨distinct, fun _ _ xs ys => ys = xs.eraseDups⟩,
-   ⟨asc, fun σ _ xs ys => ys.Perm xs ∧ ys.Pairwise fun x y => ¬ (σ₁ σ).lt y x⟩,
-   ⟨tic, fun _ _ p zss => zss = (List.range (p.2.length + 1)).map fun j => (p.1 :: p.2).take (j + 1)⟩]
+   ⟨setify, fun σ _ => lamDen (fun xs a => a ∈ xs : Den (.arr (σ₁ σ)) (σ₁ σ))⟩]
 
-/-- The codes of `rowDens` are `rowCodes`, so `Prim.den` finds the code `Prim.run` runs. -/
-theorem rowDens_codes : rowDens.map (·.1) = rowCodes := rfl
 
 /-- The row `r`'s meaning at `A ⟶ B` given its relation arguments' meanings, found as `Prim.run` finds its code;
     `𝟘` where it has none there. -/
