@@ -1,5 +1,6 @@
 import Rel.Run.SetOps
 import Rel.Run.Comp
+import Rel.Run.Struct
 
 /-! The list rows of `prims` (`Rel/Lang/Den.lean`, `rowDens`) on `Tab`, as compositions of the five kernels (PLAN 6.14
 W3, step T7), in the style of `Rel/Run/Comp.lean`: `snoc`, `cat`, `cons`, `zip` after a table of pairs of cells, and
@@ -123,6 +124,14 @@ def uncat {n : USize} (X : Vals (.arr B) n) : Except String (Tab (.arr B) (.prod
     let sG ← Arr.gather T G s
     let mid ← colArr .add T sG.enc u
     canon ⟨T, ← Vals.gather (A := .arr B) T G ⟨m, lo, hi, f⟩, (⟨m, sG, mid, f⟩, ⟨m, mid, ← Arr.gather T G e, f⟩)⟩
+
+/-- **`prefix` on the cells `X`**: the prelude's `cat° π₁`, `uncat` then `outl` on its splits. -/
+def «prefix» {n : USize} (X : Vals (.arr B) n) : Except String (Tab (.arr B) (.arr B)) := do
+  let u ← uncat X; u.comp (← outl u.val)
+
+/-- **`suffix` on the cells `X`**: the prelude's `cat° π₂`, `uncat` then `outr` on its splits. -/
+def suffix {n : USize} (X : Vals (.arr B) n) : Except String (Tab (.arr B) (.arr B)) := do
+  let u ← uncat X; u.comp (← outr u.val)
 
 /-- **`sum` on the cells of longs `X`** (`rowDens`: `foldr (+) 0`, kept where every suffix sum lies strictly inside
 `(-2^63, 2^63)` and no element is the null `-2^63`): the elements EXPANDed into `(G, u)`, the suffix sums `W` of each

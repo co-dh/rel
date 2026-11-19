@@ -57,8 +57,8 @@ def comp (A B C : Obj) (e : Bool) (R : Fn true A B) (S : Fn e B C) : Fn true A C
     | ⟨none, some L⟩ => if e then compT ((Rel.lazy f).runE {}) S else compS (.lazy f) (S.runE ⟨none, some L⟩)
     | K => compT ((Rel.lazy f).runE ⟨K.dom, none⟩) S
 
-/-- A closed term's code (`Expand.share`) as its table, computed once: it needs no bound (§0), and a lazy one would
-    run again in every context that asks for it, each round of a fold that reads it included. -/
+/-- The code of a closed term with `dem = false` as its table, computed once: such a term has one table whatever
+    the context, so this changes no result and saves re-running it at each use (a fold reading it in every round). -/
 def memo (A B : Obj) : Rel A B → Rel A B
   | .tab t => .tab t
   | R => .tab (R.runE {})
@@ -125,7 +125,7 @@ def kernRows : List (String × Lean.Name) :=
   [("∋", ``Tab.mem), ("τ", ``Tab.tau), ("length", ``Tab.length), ("setify", ``Tab.setify),
    ("snoc", ``Tab.snoc), ("cons", ``Tab.cons), ("cat", ``Tab.cat), ("zip", ``Tab.zip), ("sum", ``Tab.sum),
    ("uncons", ``Tab.uncons), ("unsnoc", ``Tab.unsnoc), ("uncat", ``Tab.uncat), ("inl", ``Tab.inl),
-   ("inr", ``Tab.inr)]
+   ("inr", ``Tab.inr), ("prefix", ``Tab.«prefix»), ("suffix", ``Tab.suffix)]
 
 -- every kernel row is a row of `prims`
 #guard kernRows.all fun (s, _) => prims.any (·.sym == s)
