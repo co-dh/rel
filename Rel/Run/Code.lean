@@ -36,14 +36,6 @@ def _root_.Rel.Arr.part {t : QAtomicType} {n : USize} (x : Arr t n) : USize × E
 /-- What a stopped op answers in the logic: no element, `Enc.blank`'s payload. -/
 def blankCol (t : QAtomicType) : (n : USize) × Arr t n := ⟨0, Arr.mk (Enc.blank t 0) (Enc.blank_WF t 0)⟩
 
-/-- A literal long column, its count `xs.length` proved by `packLongs_size`; it runs where the count
-    fits a `USize`. -/
-def col (xs : List Int64) : Arr .i64 xs.length.toUSize :=
-  need (xs.length < USize.size) (fun _ => s!"col: {xs.length} longs do not fit a USize")
-    (fun _ => Arr.mk (Enc.blank .i64 _) (Enc.blank_WF .i64 _)) fun h =>
-  Arr.ofBytes .i64 (packLongs xs) (show _ = 8 * _ by rw [packLongs_size, USize.toNat_ofNat_of_lt' h])
-
-def nul : Int64 := Int64.minValue
 
 -- The long helpers run at the count `n` their caller holds in a type (a `Vals A n`, a `longCount`), never at
 -- a `len` read back off the payload, so each answers exactly `n` longs (`len_val`, `len_sums`).

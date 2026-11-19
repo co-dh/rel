@@ -110,10 +110,13 @@ def printText (A B : Obj) (objs : Objs) (x : String) (s t : OTy) (c : CRel A B) 
 /-- A `check` at `p` that does not hold, `x ⊑ y` (and `y ⊑ x` for `=`), as its error; and the sides' ok bits. -/
 def checkErr (A B : Obj) (objs : Objs) (p : Pos) (x y : String) (eq : Bool) (s t : OTy) (R S : CRel A B) :
     Option Err × Bool :=
-  (if R.rel ⊑ S.rel && (!eq || S.rel ⊑ R.rel) then none
-   else some ⟨p, match showRel objs s t R.rel, showRel objs s t S.rel with
+  let holds : Except String Bool := do pure ((← R.rel.le S.rel) && (!eq || (← S.rel.le R.rel)))
+  (match holds with
+   | .ok true => none
+   | .ok false => some ⟨p, match showRel objs s t R.rel, showRel objs s t S.rel with
      | .ok r, .ok q => s!"check failed: {x} = {r}, {y} = {q}"
-     | .error e, _ | _, .error e => s!"check failed: {x}, {y}: {e}"⟩, R.ok && S.ok)
+     | .error e, _ | _, .error e => s!"check failed: {x}, {y}: {e}"⟩
+   | .error e => some ⟨p, s!"check {x}, {y}: {e}"⟩, R.ok && S.ok)
 
 /-- A program's failures: each `check` that does not hold, and each term that threw (`Rel.run`), named by `es`,
     `μ` cap included. -/
