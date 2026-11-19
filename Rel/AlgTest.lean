@@ -96,7 +96,7 @@ private def crossOk {A B : Obj} [BEq A.El] [BEq B.El] (R₁ R₂ : Tab A B) : Bo
 #guard (Λ(R).toList : List (Int64 × List Int64)) == [(1, [10, 20]), (2, [10]), (3, [30])] && ∋(R).n == 4
 -- arrays of pairs: `B = X×X`
 #guard lamOk (pair R S) && lamOk (pair S R) && crossOk (pair R S) (pair S R) && crossOk (pair R R) (pair R S)
-private def LfV : Arr L 4 := Arr.mk (.foR (Coc.encode 8 (packLongs [5, 3, 5, 9])).1 (Coc.encode 8 (packLongs [5, 3, 5, 9])).2) (foRLongs_wf [5, 3, 5, 9] (by simp))
+private def LfV : Arr L 4 := longArr (packLongs [5, 3, 5, 9]) (by simp [packLongs_size])
 private def Lf : LL := ⟨4, U4, LfV⟩
 #guard lamOk Lf && lamOk (Lf°) && Λ(Lf°).n == 3
 #guard Λ(R ∪ R).n == 3 && ∋(R ∪ R).n == 4
@@ -398,7 +398,7 @@ private def c2 : Code := ⟨2, 6, 3, Column.packIds 2 6 ([2, 0, 1, 2, 0, 2][·]!
 #guard c2.groupIds.2 == packLongs [0, 1, 2]
 #guard c2.find ⟨2, 2, 3, Column.packIds 2 2 ([1, 2][·]!)⟩ == packLongs [2, 0]
 -- two foR parts of different bases, one negative: rebased (`foRShift`), equal elements equal codes
-private def Lneg : LL := ⟨4, U4, Arr.mk (.foR (Coc.encode 8 (packLongs [9, -3, 5, 5])).1 (Coc.encode 8 (packLongs [9, -3, 5, 5])).2) (foRLongs_wf [9, -3, 5, 5] (by simp))⟩
+private def Lneg : LL := ⟨4, U4, longArr (packLongs [9, -3, 5, 5]) (by simp [packLongs_size])⟩
 #guard seteq (Lneg ≫ Lf°).toList
   (Lneg.toList.flatMap fun (i, x) => Lf.toList.filterMap fun (j, y) => if x == y then some (i, j) else none)
 

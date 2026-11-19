@@ -29,8 +29,8 @@ theorem longCol_cast_get {b : ByteArray} {M : USize} (hb : len b < USize.size) (
   rw [cast_get]
   unfold longCol need
   split
-  · rw [Arr.get_long_bytes _ rfl]; dsimp only
-    rw [bitsAt_extract _ (by omega), Nat.zero_add]
+  · rw [Arr.get_longArr]
+    rw [bitsAt_extract _ (by have := q.2; (try simp only [Fin.val_mk] at *); omega), Nat.zero_add]
   · contradiction
 
 /-- An array row is, as a list, the payload's values at the positions between the row's `lo` and `hi`, in order. -/

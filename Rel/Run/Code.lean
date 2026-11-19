@@ -532,9 +532,11 @@ theorem sum_map_fst {α β : USize → Type} (cs : Array ((n : USize) × α n)) 
 
 /-- `Ew.val op` on longs at the count `n`, as a long column of `n` rows (`Ew.val_size`). -/
 def valCol {n : USize} (op shape : UInt8) (a b : ByteArray) : Arr .i64 n :=
-  longArr (Kernel.Ew.val op Ew.i64 shape nul a b n) (by
+  -- still dense: the raze laws of `KernelWF.RazeRowRec`/`PickRow` read `shiftArr`/`place` parts as `.bytes`
+  -- (`razeTo2_mapIdx_get`); their `foR` form is the next step
+  Arr.mk (.bytes (Kernel.Ew.val op Ew.i64 shape nul a b n)) (by
     have hw : Kernel.Ew.width Ew.i64 = 8 := by decide
-    simp [KernelWF.Ew.val_size, hw, Nat.mul_comm])
+    simp [Enc.WF, QAtomicType.width, KernelWF.Ew.val_size, hw])
 
 /-- A column of offsets into a payload of `m` values, clamped into `[0, m]` as `slices` reads them, plus the long
     `k`, at its own count: `Ew.val` lesser, greater, add, each at `n`. -/
@@ -543,9 +545,9 @@ def shiftArr {n : USize} (x : Arr .i64 n) (m k : Nat) : Arr .i64 n :=
   valCol Ew.add Ew.va (Kernel.Ew.val Ew.greater Ew.i64 Ew.va nul c (one 0) n) (one k.toUInt64)
 
 /-- `til n` as a long column (`tilLongs_wf`). -/
-def tilCol (n : USize) : Arr .i64 n :=
-  -- `foR`, not `pos`: `Enc.WF` admits no `pos` column until 6.13b
-  longArr (tilLongs n) (by have w := KernelWF.tilLongs_wf n; simp only [Enc.WF, QAtomicType.width] at w; omega)
+-- still dense: `KernelWF.CrossSpec` raises it with `razeTo_toList_bytes`, the foR raze law (`razeTo_toList_all`) sits
+-- above that module; 6.13b deletes `tilCol` for `pos`
+def tilCol (n : USize) : Arr .i64 n := Arr.mk (.bytes (tilLongs n)) (KernelWF.tilLongs_wf n)
 
 /-- `tilLongs n` holds `n` longs (`tilLongs_wf`). -/
 theorem len_tilLongs (n : USize) : len (tilLongs n) = n.toNat := by

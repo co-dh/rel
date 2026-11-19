@@ -334,7 +334,7 @@ theorem col_get (xs : List Int64) (h : xs.length < USize.size) (i : Fin xs.lengt
   have e' := List.getElem_of_eq e hl
   simp only [elemsW, List.getElem_map, List.getElem_range] at e'
   unfold col need
-  rw [dif_pos h, Arr.get_long_bytes _ rfl]
+  rw [dif_pos h, Arr.get_longArr]
   exact (congrArg UInt64.toInt64 e').trans (Int64.toInt64_toUInt64 _)
 
 #print axioms col_get

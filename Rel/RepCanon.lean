@@ -221,8 +221,9 @@ private def tab (ps : List (Int64 × Int64)) : Tab .long .long :=
 #guard ((tab [(3, 1), (1, 2), (3, 5), (0, -4)]).ran.toOption.map Tab.toList) == some [(-4, -4), (1, 1), (2, 2), (5, 5)]
 #guard ((tab [(3, 1), (1, 2), (3, 5)]).dom.toOption.map Tab.toList) == some [(1, 1), (3, 3)]
 #guard ((tab []).canon.toOption.map Tab.toList) == some []
--- `Alg.ofPairs`' columns are `col`'s, `foR` where they are built
-#guard ((Alg.ofPairs [(1, 2)]).canon.toOption.map Tab.toList) == some [(1, 2)]
+-- `Alg.ofPairs`' columns are `canonC`'s rows, read through `Alg.pick` → `gatherColumn`, an old kernel that still writes
+-- `.bytes` (`Rel/Run/Code.lean`, `pick`): the error, never a conversion, until that exit is `foR`
+#guard (Alg.ofPairs [(1, 2)]).canon matches .error _
 -- the five-kernel `canon`, `ran`, `dom` against the old `canonC`, `CRel.ran`, `CRel.dom` on the same tables
 #guard [[(3, 1), (1, 2), (3, 1), (-1, 2), (1, 2), (2, 7), (-5, -5), (0, 0)], [(-2, 9), (-2, 9), (7, -3)], []].all
   fun (ps : List (Int64 × Int64)) =>
