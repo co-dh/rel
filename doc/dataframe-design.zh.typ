@@ -150,8 +150,8 @@ filter(p)     = where(dom(x ≫ p)) ≫ x
 σ = asc(x ≫ a)                                 (<m) 上的双射，按 ⟨x ≫ a, 𝟙⟩ 的字典序单调，所以唯一
 new(a)        = (<m) − dom(x ≫ a ∩ >ₙ ≫ x ≫ a)   没有更早的 j < i 与 i 的 a 相同：scan，carrier 是已见集合
 first(a)      : N ⟶ N = where(new(a))           每个 a 值第一次出现的位置，按第一次出现的顺序
-last(a)       : N ⟶ N = where((<m) − dom(x ≫ a ∩ <ₙ ≫ x ≫ a))      之后没有相同的 a：反向的 scan
 g(a)          : N ⟶ N = x ≫ a ≫ (first(a) ≫ x ≫ a)°               组号：i 的 a 值在 first(a) 中的编号
+last(a)       : N ⟶ N = agg(max, g(a)°, 𝟙)      每组最大的位置，按组号（第一次出现的顺序）：位置按 g 覆盖写入
 J             = x ≫ k ≫ h° ≫ y°  : N ⟶ N        key 相等的左右位置对；k : C ⟶ K，h : E ⟶ K
 fold(⊕, y)    : P(N) ⟶ V                       位置集合 P ↦ where(P) ≫ y 按位置顺序的 ⦇e, ⊕⦈
 agg(⊕, R, y)  = Λ(R) ≫ fold(⊕, y)              R : A ⟶ N；每个 a 对它的位置做一次 fold
@@ -185,7 +185,7 @@ win(w)        = ≥ₙ ∩ <ₙ ≫ (+w)°                i ↦ i−w < j ≤ i 
   [`topBy`], [`(<n) ≫ σ ≫ x`], [],
   [`distinct`], [`first(𝟙) ≫ x`], [按第一次出现的顺序；一次 scan 加 `where`。`B A B` → `B A`],
   [`groupBy`], [组号 `g(k)`；组是 `g(k)° : N ⟶ N`，组的 key 是 `first(k) ≫ x ≫ k`], [组按 key 第一次出现的顺序],
-  [`aggregate`], [`⟨first(k) ≫ x ≫ k, agg(⊕, g(k)°, x ≫ v)⟩`], [`g` 一次 scan，`⊕` 按组号累加：O(m)],
+  [`aggregate`], [`⟨first(k) ≫ x ≫ k, agg(⊕, g(k)°, x ≫ v)⟩`], [`g` 一次 scan；按组号累加 `⊕` 也是一遍，但要求写入时带 `⊕` 的 scatter（今天的 `scatter` 只覆盖）],
   [`sum` `mean` `count` `countAll` `minimum` `maximum` `reduce`], [`fold(⊕, x ≫ v)(dom(x))`，`⊕ = add`、`min`、…；`count = m`；`mean = ⟨sum, count⟩ ≫ fdiv`], [`Op` 的 fold],
   [`variance` `stddev` `skewness` `correlation` `zScore`], [若干 fold 的 pair 再做算术], [],
   [`median` `percentile` `genericPercentile` `interQuartileRange`], [`i ≫ σ ≫ x ≫ v`，`σ = asc(x ≫ v)`，`i = ⌊r·m⌋ : 1 ⟶ N`],
