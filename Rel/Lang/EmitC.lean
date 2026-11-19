@@ -36,7 +36,7 @@ def planOf (chain : List (Lean.Name × Program)) (prog : Program) (x : String) (
   let r ← (Expand.read (fun _ => none) chain prog).run
   return do
     let (ds, _) ← r.mapError (s!"{repr ·}")
-    let some ⟨_, _, _, t⟩ := ds.lookup x | throw s!"`{x}` is no closed definition of the program"
+    let some ⟨_, _, t⟩ := ds.lookup x | throw s!"`{x}` is no closed definition of the program"
     Bld.plan (do output dir (← ofTm t))
 
 /-- The Lean side of the same output: `R`'s columns written by `Db.ownWrite` under the names `output` gives them,
