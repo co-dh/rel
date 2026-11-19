@@ -75,23 +75,23 @@ inductive AscKey where
   | atom (t : QAtomicType)
   | cells (n c : USize) (lo hi : Enc) (els : List (AscKey × Enc))
 
-/-- The order codes of `m` rows of a `cells` key, row `i` naming the cell `ix[i]` and the payload rows coded by the
-columns `xs`: per element position `j` below the longest cell, whether row `i`'s cell reaches `j` (`1`, else `0`) and
-then each payload column's code of its element there (`0` past the end). `lexLe` over them orders cells
+/-- The order codes of a `cells` key over `c` payload rows, each a function of a row's word `r` (the cell it names),
+the payload rows coded by the columns `xs`: per element position `j < c`, whether cell `r` reaches `j` (`1`, else `0`)
+and then each payload column's code of its element there (`0` past the end). `lexLe` over them orders cells
 lexicographically by their elements' codes, a proper prefix first, and two rows are equal in every code exactly when
-their cells have one length and equal codes element by element. -/
-def cellCodes (m c : Nat) (ix lo hi : Array UInt64) (xs : List (Array UInt64)) : List (Array UInt64) :=
-  let s := fun i => min (max (lo[(ix[i]?.getD 0).toNat]?.getD 0).toInt64.toInt 0).toNat c
-  let len := fun i => (min (hi[(ix[i]?.getD 0).toNat]?.getD 0).toInt64.toInt (c : Int)).toNat - s i
-  (List.range ((List.range m).foldl (fun a i => max a (len i)) 0)).flatMap fun j =>
-    Array.ofFn (n := m) (fun i => if j < len i.1 then 1 else 0) ::
-      xs.map fun x => Array.ofFn (n := m) fun i => if j < len i.1 then x[s i.1 + j]?.getD 0 else 0
+their cells have one length and equal codes element by element. Functions of the word alone, so a permuted column
+has the permuted codes; every cell lies in `[0, c)`, so `c` positions cover the longest. -/
+def cellFns (c : Nat) (lo hi : Array UInt64) (xs : List (Array UInt64)) : List (UInt64 → UInt64) :=
+  let s := fun r : UInt64 => min (max (lo[r.toNat]?.getD 0).toInt64.toInt 0).toNat c
+  let len := fun r : UInt64 => (min (hi[r.toNat]?.getD 0).toInt64.toInt (c : Int)).toNat - s r
+  (List.range c).flatMap fun j =>
+    (fun r => if j < len r then 1 else 0) :: xs.map fun x r => if j < len r then x[s r + j]?.getD 0 else 0
 
 mutual
 /-- One key column of `kasc` at `m` rows: the words it carries and its order code columns, or why it has none. An
 `atom` column carries its `m` words (`ascWords`) coded at its type (`ascOrd`, which cuts a word to the type's width):
 a type with no order, then `ascWords`' error. A `cells` column carries its `m` words, each below its `n` cells, and is
-coded by `cellCodes` over `lo`, `hi` and its payload's codes (`ascCodes` at `c` rows): the column, a word naming no
+coded by `cellFns` over `lo`, `hi` and its payload's codes (`ascCodes` at `c` rows): the column, a word naming no
 cell, `lo`, `hi`, then the payload's first error. -/
 def ascCol (m : USize) : AscKey × Enc → Except String (Array UInt64 × List (Array UInt64))
   | (.atom t, e) => match ascOrd t with
@@ -99,10 +99,13 @@ def ascCol (m : USize) : AscKey × Enc → Except String (Array UInt64 × List (
     | some f => (fun x => (x, [x.map f])) <$> ascWords m (t, e)
   | (.cells n c lo hi els, e) => do
     let ix ← foRWords "asc: cells" m e
-    if let some r := ix.find? (n.toNat ≤ ·.toNat) then throw s!"asc: cells: row word {r} names no cell of {n}"
-    let l ← foRWords "asc: cells lo" n lo
-    let h ← foRWords "asc: cells hi" n hi
-    pure (ix, cellCodes m.toNat c.toNat ix l h (← ascCodes c els))
+    match ix.find? (n.toNat ≤ ·.toNat) with
+    | some r => .error s!"asc: cells: row word {r} names no cell of {n}"
+    | none => do
+      let l ← foRWords "asc: cells lo" n lo
+      let h ← foRWords "asc: cells hi" n hi
+      let ks ← ascCodes c els
+      pure (ix, (cellFns c.toNat l h ks).map fun f => ix.map f)
 
 /-- The order code columns of the key columns `es` at `m` rows, `ascCol`'s in the order of `es`. -/
 def ascCodes (m : USize) : List (AscKey × Enc) → Except String (List (Array UInt64))

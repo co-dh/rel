@@ -155,11 +155,11 @@ theorem kgather_closed {m n : USize} {ix e o : Enc} (h : kgather m ix n e = .ok 
 
 /-- **`kasc` closes**: every sorted column and the permutation hold `m` words, valid and `Ext.Enc.WF` at every fixed-width
 type but the boolean. -/
-theorem kasc_closed {m : USize} {es : List (QAtomicType × Enc)} {vs : List Enc} {p : Enc} (h : kasc m es = .ok (vs, p)) :
+theorem kasc_closed {m : USize} {es : List (AscKey × Enc)} {vs : List Enc} {p : Enc} (h : kasc m es = .ok (vs, p)) :
     ∀ o ∈ p :: vs, Enc.Valid m o ∧ (raw .i64 m o).size = m.toNat ∧
       ∀ {t : QAtomicType}, t.width.isSome → t ≠ .u1 → Ext.Enc.WF t m o := by
   obtain ⟨cs, -, r, -, wss, hw, rfl, rfl⟩ := kasc_ok h
-  have hm : ∀ ws ∈ ((ascGrade m.toNat (cs.map (·.2))).map Nat.toUInt64).toArray ::
+  have hm : ∀ ws ∈ ((ascGrade m.toNat (cs.flatMap (·.2))).map Nat.toUInt64).toArray ::
       wss, ws.size = m.toNat := by
     intro ws hws
     rcases List.mem_cons.1 hws with rfl | hws
@@ -168,7 +168,7 @@ theorem kasc_closed {m : USize} {es : List (QAtomicType × Enc)} {vs : List Enc}
       obtain ⟨i, hi, rfl⟩ := List.getElem_of_mem hws
       obtain ⟨c, hc⟩ : ∃ c, cs[i]? = some c := ⟨cs[i], List.getElem?_eq_getElem (by omega)⟩
       exact scatterWords_size (hf i c _ hc (List.getElem?_eq_getElem hi))
-  have H : ∀ ws ∈ ((ascGrade m.toNat (cs.map (·.2))).map Nat.toUInt64).toArray :: wss, Enc.Valid m (wordsFoR ws) ∧
+  have H : ∀ ws ∈ ((ascGrade m.toNat (cs.flatMap (·.2))).map Nat.toUInt64).toArray :: wss, Enc.Valid m (wordsFoR ws) ∧
       (raw .i64 m (wordsFoR ws)).size = m.toNat ∧ ∀ {t : QAtomicType}, t.width.isSome → t ≠ .u1 → Ext.Enc.WF t m (wordsFoR ws) :=
     fun ws hws => have hc := wordsFoR_closed ws (hm ws hws).symm
       ⟨hc.1, by rw [hc.2.1, hm ws hws], fun ht hu => hc.2.2 ht fun h => absurd h hu⟩
@@ -180,7 +180,7 @@ theorem kasc_closed {m : USize} {es : List (QAtomicType × Enc)} {vs : List Enc}
 
 /-- **`kseen` closes**: the group of each row holds `n` words and the first rows `k`, each valid and `Ext.Enc.WF` at every
 fixed-width type but the boolean. -/
-theorem kseen_closed {n : USize} {es : List (QAtomicType × Enc)} {k : Nat} {g f : Enc} (h : kseen n es = .ok (k, g, f))
+theorem kseen_closed {n : USize} {es : List (AscKey × Enc)} {k : Nat} {g f : Enc} (h : kseen n es = .ok (k, g, f))
     (hk : k < USize.size) :
     ∀ c ∈ [(n, g), (k.toUSize, f)], Enc.Valid c.1 c.2 ∧ (raw .i64 c.1 c.2).size = c.1.toNat ∧
       ∀ {t : QAtomicType}, t.width.isSome → t ≠ .u1 → Ext.Enc.WF t c.1 c.2 := by

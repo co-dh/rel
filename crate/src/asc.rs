@@ -87,7 +87,7 @@ impl<'a> Ix<'a> {
 }
 
 /// A `cells` key column (`Kernel.AscKey.cells`): row `i` names the cell `ix[i]`, that cell the payload rows
-/// `lo .. hi` clamped to `0 .. c`, each payload row keyed by `els` (`Kernel.cellCodes`). Every word is read at its
+/// `lo .. hi` clamped to `0 .. c`, each payload row keyed by `els` (`Kernel.cellFns`). Every word is read at its
 /// address in its encoded column, one at a time, and no column is decoded.
 pub struct Cells<'a> { pub ix: Ix<'a>, pub c: usize, pub lo: Ix<'a>, pub hi: Ix<'a>, pub els: Vec<Col<'a>> }
 impl Cells<'_> {
@@ -97,7 +97,7 @@ impl Cells<'_> {
         let s = self.lo.get(r).clamp(0, self.c as i64) as usize;
         (s, (self.hi.get(r).clamp(0, self.c as i64) as usize).saturating_sub(s))
     }
-    /// Row `i`'s cell against row `j`'s in `cellCodes`' `lexLe` order: the first element that differs decides, else
+    /// Row `i`'s cell against row `j`'s in `cellFns`' `lexLe` order: the first element that differs decides, else
     /// the shorter cell, a proper prefix, comes first.
     pub fn cmp(&self, i: usize, j: usize) -> core::cmp::Ordering {
         let ((si, li), (sj, lj)) = (self.span(i), self.span(j));

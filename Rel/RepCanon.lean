@@ -264,7 +264,7 @@ theorem Vals.gather_clamp {B : Obj} {n m : USize} {p : Enc} (idx : Arr .i64 n) (
 /-- What `Vals.summandCols` answers, unfolded: no columns for a summand of no rows, else `cols` of the summand
 gathered at `p`. -/
 theorem Vals.summandCols_ok {B : Obj} {n m : USize} {side : String}
-    {cols : Vals B n → Except String (List (QAtomicType × Enc))} {p : Enc} {y : Vals B m} {xs}
+    {cols : Vals B n → Except String (List (AscKey × Enc))} {p : Enc} {y : Vals B m} {xs}
     (h : Vals.summandCols side cols p y = .ok xs) :
     (m.toNat = 0 → xs = []) ∧ ∀ _ : 0 < m.toNat, ∃ g, Vals.gather n p y = .ok g ∧ cols g = .ok xs := by
   unfold Vals.summandCols at h
@@ -292,8 +292,8 @@ theorem Vals.summand_row {B : Obj} {n m : USize} {p : Enc} (tag : Arr .u1 n) (id
 being a column every kernel reads) are those of a side whose row `q` is the summand's row at `q`'s position where the
 tag selects that summand, and the summand's row `0` elsewhere. -/
 theorem Vals.cols_sum {a b : Obj} {n l r : USize} {tag : Arr .u1 n} {idx : Arr .i64 n} {x : Vals a l} {y : Vals b r}
-    {es : List (QAtomicType × Enc)} (hes : Vals.cols (A := .sum a b) ⟨l, r, tag, idx, x, y⟩ = .ok es) :
-    ∃ xs ys, es = (.u1, tag.enc) :: (xs ++ ys) ∧ (Kernel.Enc.Valid n tag.enc →
+    {es : List (AscKey × Enc)} (hes : Vals.cols (A := .sum a b) ⟨l, r, tag, idx, x, y⟩ = .ok es) :
+    ∃ xs ys, es = (.atom .u1, tag.enc) :: (xs ++ ys) ∧ (Kernel.Enc.Valid n tag.enc →
       (l.toNat = 0 → xs = []) ∧ (∀ h0 : 0 < l.toNat, ∃ g : Vals a n, Vals.cols g = .ok xs ∧ ∀ q, Vals.row g q =
         if tag.get q = false then Vals.row x (clampFin (idx.get q) l.toNat h0) else Vals.row x ⟨0, h0⟩) ∧
       (r.toNat = 0 → ys = []) ∧ (∀ h0 : 0 < r.toNat, ∃ g : Vals b n, Vals.cols g = .ok ys ∧ ∀ q, Vals.row g q =
@@ -366,7 +366,7 @@ theorem Vals.nub_sub {A : Obj} {n : USize} {x : Vals A n} {r : (m : USize) × Va
 columns `es`): the first input row of its run among the sorted rows. Where equal codes mean equal rows, the two sides
 hold the same rows (`Vals.nub_rows`). -/
 theorem Vals.nub_cover {A : Obj} {n : USize} {x : Vals A n} {r : (m : USize) × Vals A m} (h : Vals.nub x = .ok r)
-    {es : List (QAtomicType × Enc)} (hes : Vals.cols x = .ok es) (i : Fin n.toNat) :
+    {es : List (AscKey × Enc)} (hes : Vals.cols x = .ok es) (i : Fin n.toNat) :
     ∃ j : Fin r.1.toNat, ∃ i' : Fin n.toNat, Vals.row r.2 j = Vals.row x i' ∧ seenKey n es i' = seenKey n es i := by
   obtain ⟨es', vs, p, k, g, f, ix, y, hes', ha, hs, hix, hy, rfl⟩ := Vals.nub_ok h
   have hee : es = es' := Except.ok.inj (hes.symm.trans hes'); subst hee
@@ -378,14 +378,10 @@ theorem Vals.nub_cover {A : Obj} {n : USize} {x : Vals A n} {r : (m : USize) × 
   -- the sorted rows' key at `q` is the input's at `ps[q]`
   have hkey : ∀ q (hq : q < ps.length), seenKey n ((es.map (·.1)).zip vs) q = seenKey n es ps[q] := by
     intro q hq
-    simp only [seenKey, ascKeys, List.map_map]
-    apply List.ext_getElem (by simp [hvl])
-    intro c h1 h2
-    have hc2 : c < es.length := by simpa using h2
-    obtain ⟨ws, hv, hws, hwq⟩ := hcol c es[c] (vs[c]'(by omega)) (List.getElem?_eq_getElem hc2)
+    refine ascKeys_row (by simp [List.map_fst_zip, hvl]) fun c h1 h2 => ?_
+    obtain ⟨ws, hv, hws, hwq⟩ := hcol c es[c] (vs[c]'(by simp at h1; omega)) (List.getElem?_eq_getElem h2)
       (List.getElem?_eq_getElem _)
-    simp only [List.getElem_map, List.getElem_zip, Function.comp_apply, hv, (wordsFoR_closed ws hws.symm).2.1,
-      Array.getElem?_map, hwq q hq]
+    simp only [List.getElem_zip, hv, (wordsFoR_closed ws hws.symm).2.1, hwq q hq]
   generalize seenKey n ((es.map (·.1)).zip vs) = K at hk hf hkey
   obtain ⟨q, hq, hqi⟩ := List.getElem_of_mem (hperm.mem_iff.2 (List.mem_range.2 i.2))
   obtain ⟨hgl, -, hgk, -⟩ := (firsts_spec K n.toNat).2.2.2.2.2 q (by omega)
@@ -413,25 +409,33 @@ theorem Vals.nub_cover {A : Obj} {n : USize} {x : Vals A n} {r : (m : USize) × 
   rw [hi', ← hkey _ hfG, hgk, hkey q hq, hqi]
 
 /-- A column `kasc` reads is one every kernel reads: `ascCol` answers only on `foRWords`' columns. -/
-theorem Verify.ascCol_valid {m : USize} {c : QAtomicType × Enc} {xk : Array UInt64 × Array UInt64}
+theorem Verify.ascCol_valid {m : USize} {c : AscKey × Enc} {xk : Array UInt64 × List (Array UInt64)}
     (h : ascCol m c = .ok xk) : Kernel.Enc.Valid m c.2 := by
-  unfold ascCol at h
-  split at h; · cases h
-  cases hw : ascWords m c with
-  | error s => simp [hw, Functor.map, Except.map] at h
-  | ok x => exact (foRWords_valid _ _ _).2 _ (ascWords_foR hw)
+  obtain ⟨a, e⟩ := c
+  cases a with
+  | atom t =>
+    rw [ascCol] at h
+    split at h; · cases h
+    cases hw : ascWords m (t, e) with
+    | error s => simp [hw, Functor.map, Except.map] at h
+    | ok x => exact (foRWords_valid _ _ _).2 _ (ascWords_foR hw)
+  | cells n c lo hi els =>
+    rw [ascCol] at h
+    cases hix : foRWords "asc: cells" m e with
+    | error s => simp [hix, bind, Except.bind] at h
+    | ok ix => exact (foRWords_valid _ _ _).2 _ hix
 
 /-- **Equal order codes of one column, equal elements**: where `kasc` reads `x` (`ascCol` answers), `x` is a column
 every kernel reads, and rows with equal codes (`seenKey`) hold one atom (`ascOrd_atom`), so one element. -/
 theorem Arr.eq_of_codes {t : QAtomicType} {n : USize} (x : Arr t n) {cs}
-    (hc : [(t, x.enc)].mapM (ascCol n) = .ok cs) : Kernel.Enc.Valid n x.enc ∧ ∀ i i' : Fin n.toNat,
-      seenKey n [(t, x.enc)] i = seenKey n [(t, x.enc)] i' → x.get i = x.get i' := by
+    (hc : [(.atom t, x.enc)].mapM (ascCol n) = .ok cs) : Kernel.Enc.Valid n x.enc ∧ ∀ i i' : Fin n.toNat,
+      seenKey n [(.atom t, x.enc)] i = seenKey n [(.atom t, x.enc)] i' → x.get i = x.get i' := by
   obtain ⟨hlen, hf⟩ := mapM_ok hc
   have hac := hf 0 _ (cs[0]'(by simp at hlen; omega)) rfl (List.getElem?_eq_getElem _)
-  obtain ⟨-, -, f, hof, -⟩ := ascCol_ok hac
+  obtain ⟨f, hof⟩ := (ascCol_ok hac).2.2.2 t rfl
   have hv := ascCol_valid hac
   refine ⟨hv, fun i i' hk => ?_⟩
-  simp only [seenKey, ascKeys, List.map_cons, List.map_nil, hof, Option.getD_some, List.cons.injEq, and_true,
+  simp only [seenKey, ascKeys, ascKey, List.append_nil, List.map_cons, List.map_nil, hof, Option.getD_some, List.cons.injEq, and_true,
     Array.getElem?_map] at hk
   exact Arr.get_eq_of_raw x x hv hv i i' fun hg a b ha hb hu =>
     (ascOrd_atom hof hg hu).1 (by simpa only [ha, hb, Option.map_some, Option.getD_some] using hk)
@@ -439,7 +443,7 @@ theorem Arr.eq_of_codes {t : QAtomicType} {n : USize} (x : Arr t n) {cs}
 /-- **Equal order codes, equal rows**, over any side whose columns `kasc` reads (`ascCol` answers on each): the codes
 of row `i` and row `i'` agree in every column (`seenKey`), so their atoms do (`ascOrd_atom`), so their elements do
 (`Arr.get_eq_of_raw`). -/
-theorem Vals.row_of_codes : {A : Obj} → {n : USize} → (x : Vals A n) → {es : List (QAtomicType × Enc)} →
+theorem Vals.row_of_codes : {A : Obj} → {n : USize} → (x : Vals A n) → {es : List (AscKey × Enc)} →
     Vals.cols x = .ok es → ∀ {cs}, es.mapM (ascCol n) = .ok cs → ∀ i i' : Fin n.toNat,
       seenKey n es i = seenKey n es i' → x.row i = x.row i'
   | .atom t, n, x, es, hes, cs, hc, i, i', hk => by
@@ -454,7 +458,7 @@ theorem Vals.row_of_codes : {A : Obj} → {n : USize} → (x : Vals A n) → {es
     cases hes
     obtain ⟨cs1, cs2, hc1, hc2, -⟩ := mapM_append_ok hc
     have hs : ∀ q, seenKey n (es1 ++ es2) q = seenKey n es1 q ++ seenKey n es2 q := fun q => by
-      simp [seenKey, ascKeys]
+      simp [seenKey, ascKeys_append]
     rw [hs, hs] at hk
     obtain ⟨k1, k2⟩ := List.append_inj hk (by simp [seenKey, ascKeys])
     show (Vals.row x.1 i, Vals.row x.2 i) = (Vals.row x.1 i', Vals.row x.2 i')
@@ -462,13 +466,13 @@ theorem Vals.row_of_codes : {A : Obj} → {n : USize} → (x : Vals A n) → {es
   | .arr _, _, _, _, hes, _, _, _, _, _ => by simp [Vals.cols] at hes
   | .sum _ _, n, ⟨l, r, tag, idx, x, y⟩, es, hes, cs, hc, i, i', hk => by
     obtain ⟨xs, ys, rfl, hrest⟩ := Vals.cols_sum hes
-    obtain ⟨c0, c12, hc0, hc12, -⟩ := mapM_append_ok (l1 := [(.u1, tag.enc)]) (l2 := xs ++ ys) hc
+    obtain ⟨c0, c12, hc0, hc12, -⟩ := mapM_append_ok (l1 := [(.atom .u1, tag.enc)]) (l2 := xs ++ ys) hc
     obtain ⟨c1, c2, hc1, hc2, -⟩ := mapM_append_ok hc12
     obtain ⟨hv, heq⟩ := Arr.eq_of_codes tag hc0
     obtain ⟨xl0, xg, yl0, yg⟩ := hrest hv
-    have hs : ∀ (e1 e2 : List (QAtomicType × Enc)) q, seenKey n (e1 ++ e2) q = seenKey n e1 q ++ seenKey n e2 q :=
-      fun _ _ q => by simp [seenKey, ascKeys]
-    rw [show (QAtomicType.u1, tag.enc) :: (xs ++ ys) = [(QAtomicType.u1, tag.enc)] ++ (xs ++ ys) from rfl,
+    have hs : ∀ (e1 e2 : List (AscKey × Enc)) q, seenKey n (e1 ++ e2) q = seenKey n e1 q ++ seenKey n e2 q :=
+      fun _ _ q => by simp [seenKey, ascKeys_append]
+    rw [show (AscKey.atom .u1, tag.enc) :: (xs ++ ys) = [(AscKey.atom .u1, tag.enc)] ++ (xs ++ ys) from rfl,
       hs, hs, hs, hs] at hk
     obtain ⟨k0, k12⟩ := List.append_inj hk (by simp [seenKey, ascKeys])
     obtain ⟨k1, k2⟩ := List.append_inj k12 (by simp [seenKey, ascKeys])
@@ -533,11 +537,12 @@ theorem Arr.atom_of_get_eq {t : QAtomicType} {n m : USize} (x : Arr t n) (y : Ar
 /-- **Equal elements of one column, equal order codes**, `Arr.eq_of_codes`' converse: equal elements are equal atoms
 (`Arr.atom_of_get_eq`), which have equal codes (`ascOrd_atom`). -/
 theorem Arr.codes_of_eq {t : QAtomicType} {n : USize} (x : Arr t n) {cs}
-    (hc : [(t, x.enc)].mapM (ascCol n) = .ok cs) (i i' : Fin n.toNat) (hr : x.get i = x.get i') :
-    seenKey n [(t, x.enc)] i = seenKey n [(t, x.enc)] i' := by
+    (hc : [(.atom t, x.enc)].mapM (ascCol n) = .ok cs) (i i' : Fin n.toNat) (hr : x.get i = x.get i') :
+    seenKey n [(.atom t, x.enc)] i = seenKey n [(.atom t, x.enc)] i' := by
     obtain ⟨hlen, hf⟩ := mapM_ok hc
     have hac := hf 0 _ (cs[0]'(by simp at hlen; omega)) rfl (List.getElem?_eq_getElem _)
-    obtain ⟨hraw, hsz, f, hof, -⟩ := ascCol_ok hac
+    obtain ⟨hraw, hsz, -, hat⟩ := ascCol_ok hac
+    obtain ⟨f, hof⟩ := hat t rfl
     have hv := ascCol_valid hac
     dsimp only at hof hv
     have hs : (Enc.raw .i64 n (Arr.enc (t := t) x)).size = n.toNat := by rw [← hraw]; exact hsz
@@ -545,12 +550,12 @@ theorem Arr.codes_of_eq {t : QAtomicType} {n : USize} (x : Arr t n) {cs}
     have hi := Array.getElem?_eq_getElem (show i.1 < _ by rw [hs]; exact i.2)
     have hi' := Array.getElem?_eq_getElem (show i'.1 < _ by rw [hs]; exact i'.2)
     obtain ⟨hu, he⟩ := Arr.atom_of_get_eq x x hv hv i i' hg hi hi'
-    simp only [seenKey, ascKeys, List.map_cons, List.map_nil, hof, Option.getD_some, Array.getElem?_map, hi, hi',
+    simp only [seenKey, ascKeys, ascKey, List.append_nil, List.map_cons, List.map_nil, hof, Option.getD_some, Array.getElem?_map, hi, hi',
       Option.map_some]
     exact congrArg (· :: []) ((ascOrd_atom hof hg hu).2 (he hr))
 
 /-- **Equal rows, equal order codes**, `Vals.row_of_codes`' converse, column by column (`Arr.codes_of_eq`). -/
-theorem Vals.codes_of_row : {A : Obj} → {n : USize} → (x : Vals A n) → {es : List (QAtomicType × Enc)} →
+theorem Vals.codes_of_row : {A : Obj} → {n : USize} → (x : Vals A n) → {es : List (AscKey × Enc)} →
     Vals.cols x = .ok es → ∀ {cs}, es.mapM (ascCol n) = .ok cs → ∀ i i' : Fin n.toNat,
       x.row i = x.row i' → seenKey n es i = seenKey n es i'
   | .atom t, n, x, es, hes, cs, hc, i, i', hr => by
@@ -565,16 +570,16 @@ theorem Vals.codes_of_row : {A : Obj} → {n : USize} → (x : Vals A n) → {es
     obtain ⟨cs1, cs2, hc1, hc2, -⟩ := mapM_append_ok hc
     obtain ⟨r1, r2⟩ := Prod.mk.inj (show (Vals.row x.1 i, Vals.row x.2 i) = (Vals.row x.1 i', Vals.row x.2 i') from hr)
     have hs : ∀ q, seenKey n (es1 ++ es2) q = seenKey n es1 q ++ seenKey n es2 q := fun q => by
-      simp [seenKey, ascKeys]
+      simp [seenKey, ascKeys_append]
     rw [hs, hs, Vals.codes_of_row x.1 h1 hc1 i i' r1, Vals.codes_of_row x.2 h2 hc2 i i' r2]
   | .arr _, _, _, _, hes, _, _, _, _, _ => by simp [Vals.cols] at hes
   | .sum _ _, n, ⟨l, r, tag, idx, x, y⟩, es, hes, cs, hc, i, i', hr => by
     obtain ⟨xs, ys, rfl, hrest⟩ := Vals.cols_sum hes
-    obtain ⟨c0, c12, hc0, hc12, -⟩ := mapM_append_ok (l1 := [(.u1, tag.enc)]) (l2 := xs ++ ys) hc
+    obtain ⟨c0, c12, hc0, hc12, -⟩ := mapM_append_ok (l1 := [(.atom .u1, tag.enc)]) (l2 := xs ++ ys) hc
     obtain ⟨c1, c2, hc1, hc2, -⟩ := mapM_append_ok hc12
     obtain ⟨xl0, xg, yl0, yg⟩ := hrest (Arr.eq_of_codes tag hc0).1
-    have hs : ∀ (e1 e2 : List (QAtomicType × Enc)) q, seenKey n (e1 ++ e2) q = seenKey n e1 q ++ seenKey n e2 q :=
-      fun _ _ q => by simp [seenKey, ascKeys]
+    have hs : ∀ (e1 e2 : List (AscKey × Enc)) q, seenKey n (e1 ++ e2) q = seenKey n e1 q ++ seenKey n e2 q :=
+      fun _ _ q => by simp [seenKey, ascKeys_append]
     change Vals.row (A := .sum _ _) ⟨l, r, tag, idx, x, y⟩ i = Vals.row (A := .sum _ _) ⟨l, r, tag, idx, x, y⟩ i' at hr
     simp only [Vals.row] at hr
     -- equal rows sit in one summand
@@ -587,7 +592,7 @@ theorem Vals.codes_of_row : {A : Obj} → {n : USize} → (x : Vals A n) → {es
         cases htt : tag.get i'
         · simpa [ht, htt, h0] using hr
         · simp
-      · rw [xl0 (by omega)]; rfl
+      · rw [xl0 (by omega)]; simp [seenKey, ascKeys]
     have k2 : seenKey n ys i = seenKey n ys i' := by
       by_cases h0 : 0 < r.toNat
       · obtain ⟨g, hg, hrow⟩ := yg h0
@@ -596,8 +601,8 @@ theorem Vals.codes_of_row : {A : Obj} → {n : USize} → (x : Vals A n) → {es
         cases htt : tag.get i'
         · simp
         · simpa [ht, htt, h0] using hr
-      · rw [yl0 (by omega)]; rfl
-    rw [show (QAtomicType.u1, tag.enc) :: (xs ++ ys) = [(QAtomicType.u1, tag.enc)] ++ (xs ++ ys) from rfl,
+      · rw [yl0 (by omega)]; simp [seenKey, ascKeys]
+    rw [show (AscKey.atom .u1, tag.enc) :: (xs ++ ys) = [(AscKey.atom .u1, tag.enc)] ++ (xs ++ ys) from rfl,
       hs, hs, hs, hs, Arr.codes_of_eq tag hc0 i i' ht, k1, k2]
 
 /-- **Rows of `x` are equal iff their order codes are** where `Vals.nub x` answers: `kasc` read every column
@@ -631,7 +636,7 @@ theorem Vals.nub_rows {A : Obj} {n : USize} {x : Vals A n} {r : (m : USize) × V
     exact ⟨j, h1.trans (Vals.row_of_seenKey h hes i' i h2)⟩
 
 /-- **`asc_perm`'s permutation is `kasc`'s grade** of the codes (`ascGrade`): both are what `p` reads back as. -/
-theorem Verify.asc_perm_grade {n : USize} {es : List (QAtomicType × Enc)} {vs : List Enc} {p : Enc} {ps : List Nat}
+theorem Verify.asc_perm_grade {n : USize} {es : List (AscKey × Enc)} {vs : List Enc} {p : Enc} {ps : List Nat}
     (ha : kasc n es = .ok (vs, p)) (hp : p = wordsFoR (ps.map Nat.toUInt64).toArray)
     (hperm : ps.Perm (List.range n.toNat)) : ps = ascGrade n.toNat (ascKeys n es) := by
   obtain ⟨cs, hc, -, -, -, -, -, hpk⟩ := kasc_ok ha
@@ -657,7 +662,7 @@ theorem Verify.asc_perm_grade {n : USize} {es : List (QAtomicType × Enc)} {vs :
 `K` the sorted rows' keys (`K q` the key of input row `ps[q]`), and row `j` of the answer input row `ps[F[j]]`, `F` the
 first rows of `K` (`firstsOf`, `k` of them). -/
 theorem Vals.nub_sel {A : Obj} {n : USize} {x : Vals A n} {r : (m : USize) × Vals A m} (h : Vals.nub x = .ok r)
-    {es : List (QAtomicType × Enc)} (hes : Vals.cols x = .ok es) :
+    {es : List (AscKey × Enc)} (hes : Vals.cols x = .ok es) :
     ∃ (ps : List Nat) (K : Nat → List UInt64), ps = ascGrade n.toNat (ascKeys n es) ∧
       (∀ q (hq : q < ps.length), K q = seenKey n es ps[q]) ∧ r.1.toNat = (firstsOf K n.toNat).length ∧
       ∀ j : Fin r.1.toNat, ∃ i : Fin n.toNat, Vals.row r.2 j = Vals.row x i ∧
@@ -676,14 +681,10 @@ theorem Vals.nub_sel {A : Obj} {n : USize} {x : Vals A n} {r : (m : USize) × Va
   -- the sorted rows' key at `q` is the input's at `ps[q]`
   have hkey : ∀ q (hq : q < ps.length), seenKey n ((es.map (·.1)).zip vs) q = seenKey n es ps[q] := by
     intro q hq
-    simp only [seenKey, ascKeys, List.map_map]
-    apply List.ext_getElem (by simp [hvl])
-    intro c h1 h2
-    have hc2 : c < es.length := by simpa using h2
-    obtain ⟨ws, hv, hws, hwq⟩ := hcol c es[c] (vs[c]'(by omega)) (List.getElem?_eq_getElem hc2)
+    refine ascKeys_row (by simp [List.map_fst_zip, hvl]) fun c h1 h2 => ?_
+    obtain ⟨ws, hv, hws, hwq⟩ := hcol c es[c] (vs[c]'(by simp at h1; omega)) (List.getElem?_eq_getElem h2)
       (List.getElem?_eq_getElem _)
-    simp only [List.getElem_map, List.getElem_zip, Function.comp_apply, hv, (wordsFoR_closed ws hws.symm).2.1,
-      Array.getElem?_map, hwq q hq]
+    simp only [List.getElem_zip, hv, (wordsFoR_closed ws hws.symm).2.1, hwq q hq]
   generalize seenKey n ((es.map (·.1)).zip vs) = K at hk hf hkey
   have hkn : k ≤ n.toNat := by rw [hk]; unfold firstsOf; exact Nat.le_trans (List.length_filter_le _ _) (by simp)
   have hkU : k.toUSize.toNat = k := USize.toNat_ofNat_of_lt' (by omega)
@@ -708,7 +709,7 @@ theorem Vals.nub_sel {A : Obj} {n : USize} {x : Vals A n} {r : (m : USize) × Va
 /-- **The groups' first rows ascend, with unequal codes**: with `ps` the grade of the codes (`ascGrade`) and `K q` the
 code of input row `ps[q]`, groups `G < G'` have first input rows `i`, `i'` (`ps` at `firstsOf K`) ascending in
 `lexLe`, no two with one code (`firsts_spec`). -/
-theorem Verify.firsts_sorted {n : USize} {es : List (QAtomicType × Enc)} {K : Nat → List UInt64}
+theorem Verify.firsts_sorted {n : USize} {es : List (AscKey × Enc)} {K : Nat → List UInt64}
     (hkey : ∀ q (hq : q < (ascGrade n.toNat (ascKeys n es)).length),
       K q = seenKey n es (ascGrade n.toNat (ascKeys n es))[q])
     {G G' i i' : Nat} (hGG : G < G')
@@ -740,7 +741,7 @@ theorem Verify.firsts_sorted {n : USize} {es : List (QAtomicType × Enc)} {K : N
 /-- **`Vals.nub x` is sorted and has no two rows with one key**: its rows are input rows `sel j`, ascending in `kasc`'s
 order of their codes (`lexLe` over `ascKeys`), no two with equal codes (`seenKey`). -/
 theorem Vals.nub_sorted {A : Obj} {n : USize} {x : Vals A n} {r : (m : USize) × Vals A m} (h : Vals.nub x = .ok r)
-    {es : List (QAtomicType × Enc)} (hes : Vals.cols x = .ok es) :
+    {es : List (AscKey × Enc)} (hes : Vals.cols x = .ok es) :
     ∃ sel : Fin r.1.toNat → Fin n.toNat, (∀ j, Vals.row r.2 j = Vals.row x (sel j)) ∧
       ∀ j j' : Fin r.1.toNat, j.1 < j'.1 → lexLe (ascKeys n es) (sel j) (sel j') = true ∧
         seenKey n es (sel j) ≠ seenKey n es (sel j') := by
