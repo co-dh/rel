@@ -2,6 +2,7 @@ import Rel.Run.Div
 import Rel.Run.Fix
 import Rel.Run.CRelLoopDef
 import Rel.Run.CRelRelDef
+import Rel.Run.Power
 import Rel.RepStruct
 import Rel.RepCanon
 import Rel.RepSetOps
@@ -742,6 +743,62 @@ private def tcOld (E : Tab .long .long) (X : CRel .long .long) : CRel .long .lon
 #guard match Tab.nu (fun _ => throw "body") (tab arcZ) with | .error e => e == "body" | .ok _ => false
 #guard match Tab.mu 9 (fun (_ : Tab .long .long) => throw "body") with | .error e => e == "body" | .ok _ => false
 
+/-! ### `Rel/Run/Power.lean` against the old layer -/
+
+/-- Arrays of longs: `arrCells` (empty cells, clamped ones, one cell twice, unsorted), a prefix of it, no cells, and
+empty cells over no payload. -/
+private def arrXs : List (Tab (.arr .long) .long) :=
+  [arrTab arrCells arrPay, arrTab (arrCells.take 3) arrPay, arrTab [] arrPay, arrTab [(0, 0, 1), (0, 0, 1)] []]
+
+/-- Arrays of pairs over the payload `(1,5) (2,5) (1,5) (3,6)`: `[(1,5)]` from two ranges, the empty cell, a cell
+clamped, one cell twice. -/
+private def pairXs : Vals (.arr (.prod .long .long)) 6 :=
+  (arrOn [(0, 1, 0), (2, 3, 0), (0, 4, 0), (1, 1, 0), (2, 9, 0), (0, 4, 0)]
+    ((Alg.col [1, 2, 1, 3], Alg.col [5, 5, 5, 6]) : Vals (.prod .long .long) 4)).key
+
+/-- The test of pairs of `Q`, as the old `pairsInC`: the pairs `D` composed with `𝟙` on `Q`'s rows. -/
+private def pairsIn {B : Obj} (Q : Tab B B) (D : Tab (.prod B B) (.prod B B)) :
+    Except String (Tab (.prod B B) (.prod B B)) := do D.comp (← Tab.idU (Q.key, Q.val))
+
+/-- The old `est Q`, `Λ (thin Q)` on `∋` of `X`, as `Gen.est`, `Gen.thin` run them, with the `&&` of the bits. -/
+private def oldEst {B : Obj} {n : USize} (Q : Tab B B) (X : Vals (.arr B) n) : Tab (.arr B) B × Bool :=
+  let m := Alg.memC X; let r := Alg.estC Q m.1; (r.1, m.2 && r.2)
+private def oldThin {B : Obj} {n : USize} (Q : Tab B B) (X : Vals (.arr B) n) : Tab (.arr B) (.arr B) × Bool :=
+  let m := Alg.memC X; let t := Alg.thinC Q m.1; let l := Alg.lamOnC t.1 X; (l.1, m.2 && t.2 && l.2)
+
+/-- Orders on longs: `≤` on `1 5 9`, a relation that is not one (`5` before `1`, `9` only to itself), and none. -/
+private def ordLs : List (Tab .long .long) :=
+  [tab [(1, 1), (1, 5), (1, 9), (5, 5), (5, 9), (9, 9), (1, 5)], tab [(5, 1), (9, 9)], tab []]
+
+/-- Lexicographic `≤` on the pairs `(1,5) (2,5) (3,6)`. -/
+private def ordPs : Tab (.prod .long .long) (.prod .long .long) :=
+  ⟨6, (Alg.col [1, 1, 1, 2, 2, 3], Alg.col [5, 5, 5, 5, 5, 6]), (Alg.col [1, 2, 3, 2, 3, 3], Alg.col [5, 5, 6, 5, 6, 6])⟩
+
+-- `setify`, `length`, `at(k)` against `setifyC`, `lengthC`, `atPosC` on arrays of longs and of pairs
+#guard arrXs.all fun T => let X := T.key
+  canonOk (Tab.setify X) && sameCells (newL (Tab.setify X)) (oldL (Alg.setifyC X)) &&
+  canonOk (Tab.length X) && sameSet (newL (Tab.length X)) (oldL (Alg.lengthC X)) &&
+  [0, 1, 2, 5].all fun k => canonOk (Tab.atPos k X) && sameSet (newL (Tab.atPos k X)) (oldL (Alg.atPosC k X))
+#guard canonOk (Tab.setify pairXs) && sameCells (newL (Tab.setify pairXs)) (oldL (Alg.setifyC pairXs)) &&
+  canonOk (Tab.length pairXs) && sameSet (newL (Tab.length pairXs)) (oldL (Alg.lengthC pairXs)) &&
+  [0, 1, 3].all fun k => canonOk (Tab.atPos k pairXs) &&
+    sameSet (newL (Tab.atPos k pairXs)) (oldL (Alg.atPosC k pairXs))
+
+-- `τ` against `τC` on longs (a value twice), on no values, and on pairs
+#guard [tab [(3, 0), (1, 0), (3, 0), (-2, 0)], tab []].all fun T => let X := T.key
+  canonOk (Tab.tau X) && sameSet (newL (Tab.tau X)) (oldL (Alg.τC X))
+#guard let X : Vals (.prod .long .long) 4 := (Alg.col [1, 2, 1, 3], Alg.col [5, 5, 5, 6])
+  canonOk (Tab.tau X) && sameSet (newL (Tab.tau X)) (oldL (Alg.τC X))
+
+-- `est`, `thin` against the old `est`, `Λ ∘ thin` on `∋`, each order, on arrays of longs and of pairs
+#guard arrXs.all fun T => let X := T.key; ordLs.all fun Q =>
+  canonOk (Tab.est (pairsIn Q) X) && sameSet (newL (Tab.est (pairsIn Q) X)) (oldL (oldEst Q X)) &&
+  canonOk (Tab.thin (pairsIn Q) X) && sameCells (newL (Tab.thin (pairsIn Q) X)) (oldL (oldThin Q X))
+#guard canonOk (Tab.est (pairsIn ordPs) pairXs) &&
+  sameSet (newL (Tab.est (pairsIn ordPs) pairXs)) (oldL (oldEst ordPs pairXs)) &&
+  canonOk (Tab.thin (pairsIn ordPs) pairXs) &&
+  sameCells (newL (Tab.thin (pairsIn ordPs) pairXs)) (oldL (oldThin ordPs pairXs))
+
 end Checks
 
 /-! ## `Λ` and `E`: `lam_holds`, `E_holds` -/
@@ -1243,6 +1300,43 @@ theorem E_den {n : USize} {X : Vals (.arr A) n} {R : Tab A B} {T : Tab (.arr A) 
     exact ⟨hX, hp, fun b => (hm b).trans ⟨fun ⟨_, a, ha, hr⟩ => ⟨a, ha, hr⟩, fun ⟨a, ha, hr⟩ => ⟨hX, a, ha, hr⟩⟩⟩
   · rintro ⟨hX, hp, hm⟩
     exact ⟨hX, hp, fun b => (hm b).trans ⟨fun ⟨a, ha, hr⟩ => ⟨hX, a, ha, hr⟩, fun ⟨_, a, ha, hr⟩ => ⟨a, ha, hr⟩⟩⟩
+
+/-- **`setify X` denotes `Λ(∋)` on the arrays `X`** (`rowDens`'s `setify`), where `B`'s order codes agree with
+`B.lt` (`lam_den`'s `hB`): `lam_den` of `mem_holds`. -/
+theorem setify_den {n : USize} {X : Vals (.arr B) n} {T : Tab (.arr B) (.arr B)} (h : Tab.setify X = .ok T)
+    (hB : ∀ (m : USize) (x : Vals (.prod (.arr B) B) m) es, Vals.cols x = .ok es → ∀ i i' : Fin m.toNat,
+      (x.row i).1 = (x.row i').1 → lexLe (ascKeys m es) i i' = true → seenKey m es i ≠ seenKey m es i' →
+        B.lt (x.row i).2 (x.row i').2)
+    (xs : List B.El) (ys : List B.El) :
+    T.Holds xs ys ↔ (∃ i, X.row i = xs) ∧ Lang.lamDen (fun xs b => b ∈ xs : Lang.Den (.arr B) B) xs ys := by
+  unfold Tab.setify at h; simp only [bind] at h
+  rw [Except.bind_eq_ok'] at h; obtain ⟨G, hG, h⟩ := h
+  rw [lam_den h hB]
+  constructor
+  · rintro ⟨hX, hp, hm⟩
+    exact ⟨hX, hp, fun b => (hm b).trans ((mem_holds hG xs b).trans (and_iff_right hX))⟩
+  · rintro ⟨hX, hp, hm⟩
+    exact ⟨hX, hp, fun b => (hm b).trans ((mem_holds hG xs b).trans (and_iff_right hX)).symm⟩
+
+/-- **`tau X` denotes `τ` on `X`** (`rowDens`: `Y = [a]`), where `A`'s order codes agree with `A.lt`: `lam_den` of
+`idU_holds`, the one list of `A.lt`-ascending elements `{a}` being `[a]` (`pairwise_eq_of_mem`). -/
+theorem tau_den {A : Obj} {n : USize} {X : Vals A n} {T : Tab A (.arr A)} (h : Tab.tau X = .ok T)
+    (hB : ∀ (m : USize) (x : Vals (.prod A A) m) es, Vals.cols x = .ok es → ∀ i i' : Fin m.toNat,
+      (x.row i).1 = (x.row i').1 → lexLe (ascKeys m es) i i' = true → seenKey m es i ≠ seenKey m es i' →
+        A.lt (x.row i).2 (x.row i').2)
+    (a : A.El) (ys : List A.El) : T.Holds a ys ↔ (∃ i, X.row i = a) ∧ ys = [a] := by
+  unfold Tab.tau at h; simp only [bind] at h
+  rw [Except.bind_eq_ok'] at h; obtain ⟨I, hI, h⟩ := h
+  rw [lam_den h hB]
+  have lirr : ∀ x, ¬A.lt x x := fun x => List.lt_irrefl _
+  have lasym : ∀ x y, A.lt x y → ¬A.lt y x := fun _ _ => List.lt_asymm
+  constructor
+  · rintro ⟨hX, hp, hm⟩
+    refine ⟨hX, pairwise_eq_of_mem lirr lasym hp (List.pairwise_singleton _ _) fun b => (hm b).trans ?_⟩
+    rw [idU_holds hI, List.mem_singleton]; exact ⟨fun h => h.1.symm, fun h => ⟨h.symm, hX⟩⟩
+  · rintro ⟨hX, rfl⟩
+    refine ⟨hX, List.pairwise_singleton _ _, fun b => ?_⟩
+    rw [idU_holds hI, List.mem_singleton]; exact ⟨fun h => ⟨h.symm, hX⟩, fun h => h.1.symm⟩
 
 end Tab
 
