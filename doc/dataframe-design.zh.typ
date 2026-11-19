@@ -252,3 +252,6 @@ win(w)        = ≥ₙ ∩ <ₙ ≫ (+w)°                i ↦ i−w < j ≤ i 
 - *F8 抽样。* `sample(n)` 是有多个像的关系（任意 n 行），实现选其中一个，是规格的 refinement，不是相等。
 - *F9 位置模型之外的两处。* 单元格里的 list（`Obj.arr`：字符串、`collect` 的结果）仍是 list，`N` 只给 frame 的行编号。
   `⟨x, y⟩` 的定义域是 `dom(x) ∩ dom(y)`，长度不等时取较短的；要「不等长无像」须另加 `dom(x) = dom(y)` 的检查。
+- *F10 `groups(k)` 在今天的语言里写不出。* `rel_program` 拒绝它（`unknown name 'str'`：`strₗ` 不在 prims，带 key 的
+  `foldI` 是 gap）。能写的只有绕法：carrier 带 key 的左 fold，按 `K` 的整个 universe 各 seed 一次，要求 `K` 是声明过的
+  有限对象，代价 |K|×m。rel-lazy 正在解决：`groups(k)` 与 `filter(p)` 已写成复合，不加 `Tm` 节点。
