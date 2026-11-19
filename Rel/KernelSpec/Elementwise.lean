@@ -67,6 +67,32 @@ theorem Ew.bit_bitAt (op shape : UInt8) (a b : ByteArray) (n : USize) :
   packOf_bitAt n.toNat fun i =>
     Ew.bitStep op (Column.bitAt a (Ew.shapeIdx shape i).1) (Column.bitAt b (Ew.shapeIdx shape i).2)
 
+/-! ### `Ew.intStep` verb by verb
+Each is proved by reducing `intStep` at its verb (`show`), never by unfolding it under `simp`/`rw`: the unfolded body
+carries the `panic!` of its last branch, and a proof term holding it is a panic site of the `panic` gate. Cite these
+instead of `Ew.intStep`. -/
+
+open Rel.Kernel
+
+theorem Ew.intStep_add (nul x y : Int64) : Ew.intStep Ew.add nul x y = if x = nul ∨ y = nul then nul else x + y := by
+  show (if x == nul || y == nul then nul else x + y) = _; simp only [Bool.or_eq_true, beq_iff_eq]
+theorem Ew.intStep_sub (nul x y : Int64) : Ew.intStep Ew.sub nul x y = if x = nul ∨ y = nul then nul else x - y := by
+  show (if x == nul || y == nul then nul else x - y) = _; simp only [Bool.or_eq_true, beq_iff_eq]
+theorem Ew.intStep_mul (nul x y : Int64) : Ew.intStep Ew.mul nul x y = if x = nul ∨ y = nul then nul else x * y := by
+  show (if x == nul || y == nul then nul else x * y) = _; simp only [Bool.or_eq_true, beq_iff_eq]
+theorem Ew.intStep_fill (nul x y : Int64) : Ew.intStep Ew.fill nul x y = if y = nul then x else y := by
+  show (if y == nul then x else y) = _; simp only [beq_iff_eq]
+theorem Ew.intStep_lesser (nul x y : Int64) : Ew.intStep Ew.lesser nul x y = if x < y then x else y := rfl
+theorem Ew.intStep_greater (nul x y : Int64) : Ew.intStep Ew.greater nul x y = if y < x then x else y := rfl
+theorem Ew.intStep_idiv (nul x y : Int64) : Ew.intStep Ew.idiv nul x y =
+    if x = nul ∨ y = nul ∨ y = 0 then nul else Int64.ofInt (Int.fdiv x.toInt y.toInt) := by
+  show (if x == nul || y == nul || y == 0 then nul else Int64.ofInt (Int.fdiv x.toInt y.toInt)) = _
+  simp only [Bool.or_eq_true, beq_iff_eq, or_assoc]
+theorem Ew.intStep_imod (nul x y : Int64) : Ew.intStep Ew.imod nul x y =
+    if x = nul ∨ y = nul ∨ y = 0 then nul else Int64.ofInt (Int.fmod x.toInt y.toInt) := by
+  show (if x == nul || y == nul || y == 0 then nul else Int64.ofInt (Int.fmod x.toInt y.toInt)) = _
+  simp only [Bool.or_eq_true, beq_iff_eq, or_assoc]
+
 end Rel.Verify
 
 -- `Classical.choice` is the statement's: `Ew.cmpStep` names `Float.ofBits` (via `ord64`, `ord32`,

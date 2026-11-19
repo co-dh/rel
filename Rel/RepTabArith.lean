@@ -68,19 +68,20 @@ private theorem toU_ite1 (p : Prop) [Decidable p] (y : Int64) :
 private theorem add_iff (a b v : Int64) :
     (((a ≠ Alg.nul ∧ b ≠ Alg.nul) ∧ a + b ≠ Alg.nul) ∧ (0 ≤ b ↔ a ≤ a + b)) ∧ v = a + b ↔
       Lang.stepDen Ew.add (a, b) v := by
-  simp (config := {decide := true}) only [Lang.stepDen, Ew.intStep, Ew.add, if_true, beq_iff_eq, Bool.or_eq_true]
+  simp only [Lang.stepDen, Ew.intStep_add]
+  simp (config := {decide := true}) only [if_true]
   by_cases ha : a = Alg.nul <;> by_cases hb : b = Alg.nul <;> simp [ha, hb] <;> grind
 private theorem sub_iff (a b v : Int64) :
     (((a ≠ Alg.nul ∧ b ≠ Alg.nul) ∧ a - b ≠ Alg.nul) ∧ (0 ≤ b ↔ a - b ≤ a)) ∧ v = a - b ↔
       Lang.stepDen Ew.sub (a, b) v := by
-  simp (config := {decide := true}) only [Lang.stepDen, Ew.intStep, Ew.sub, if_true, if_false, beq_iff_eq,
-    Bool.or_eq_true]
+  simp only [Lang.stepDen, Ew.intStep_sub]
+  simp (config := {decide := true}) only [if_true, if_false]
   by_cases ha : a = Alg.nul <;> by_cases hb : b = Alg.nul <;> simp [ha, hb] <;> grind
 private theorem mul_iff (a b v : Int64) : (((a ≠ Alg.nul ∧ b ≠ Alg.nul) ∧ a * b ≠ Alg.nul) ∧
     (Int64.ofInt (Int.fdiv (a * b).toInt (if a = 0 then 1 else a).toInt) = b ∨ a = 0)) ∧ v = a * b ↔
       Lang.stepDen Ew.mul (a, b) v := by
-  simp (config := {decide := true}) only [Lang.stepDen, Ew.intStep, Ew.mul, Ew.idiv, Ew.add, Ew.sub, if_true,
-    if_false, beq_iff_eq, Bool.or_eq_true]
+  simp only [Lang.stepDen, Ew.intStep_mul, Ew.intStep_idiv]
+  simp (config := {decide := true}) only [if_true, if_false]
   have hn0 : (0 : Int64) ≠ Alg.nul := by decide
   by_cases ha : a = Alg.nul <;> by_cases hb : b = Alg.nul <;> by_cases h0 : a = 0 <;>
     simp only [ha, hb, h0, hn0, if_true, if_false, or_false, or_true, true_or, not_false_eq_true,
@@ -89,22 +90,24 @@ private theorem mul_iff (a b v : Int64) : (((a ≠ Alg.nul ∧ b ≠ Alg.nul) �
 private theorem div_iff (a b v : Int64) : (((a ≠ Alg.nul ∧ b ≠ Alg.nul) ∧ ¬ b = 0) ∧
     Int64.ofInt (Int.fdiv a.toInt (if b = 0 then 1 else b).toInt) ≠ Alg.nul) ∧
       v = Int64.ofInt (Int.fdiv a.toInt (if b = 0 then 1 else b).toInt) ↔ Lang.stepDen Ew.idiv (a, b) v := by
-  simp (config := {decide := true}) only [Lang.stepDen, Ew.intStep, Ew.idiv, if_true, beq_iff_eq, Bool.or_eq_true]
+  simp only [Lang.stepDen, Ew.intStep_idiv]
+  simp (config := {decide := true}) only []
   by_cases ha : a = Alg.nul <;> by_cases hb : b = Alg.nul <;> by_cases h0 : b = 0 <;> simp [ha, hb, h0] <;> grind
 private theorem mod_iff (a b v : Int64) : (((a ≠ Alg.nul ∧ b ≠ Alg.nul) ∧ ¬ b = 0) ∧
     Int64.ofInt (Int.fmod a.toInt (if b = 0 then 1 else b).toInt) ≠ Alg.nul) ∧
       v = Int64.ofInt (Int.fmod a.toInt (if b = 0 then 1 else b).toInt) ↔ Lang.stepDen Ew.imod (a, b) v := by
-  simp (config := {decide := true}) only [Lang.stepDen, Ew.intStep, Ew.imod, Ew.idiv, Ew.add, Ew.sub, Ew.mul,
-    if_true, if_false, beq_iff_eq, Bool.or_eq_true]
+  simp only [Lang.stepDen, Ew.intStep_imod]
+  simp (config := {decide := true}) only [Ew.idiv, if_false]
   by_cases ha : a = Alg.nul <;> by_cases hb : b = Alg.nul <;> by_cases h0 : b = 0 <;> simp [ha, hb, h0] <;> grind
 private theorem max_iff (a b v : Int64) : (if a < b then b else a) ≠ Alg.nul ∧ v = (if a < b then b else a) ↔
     Lang.stepDen Ew.greater (a, b) v := by
-  simp (config := {decide := true}) only [Lang.stepDen, Ew.intStep, Ew.greater, if_true, beq_iff_eq, Bool.or_eq_true]
+  simp only [Lang.stepDen, Ew.intStep_greater]
+  simp (config := {decide := true}) only []
   grind
 private theorem min_iff (a b v : Int64) : (if b < a then b else a) ≠ Alg.nul ∧ v = (if b < a then b else a) ↔
     Lang.stepDen Ew.lesser (a, b) v := by
-  simp (config := {decide := true}) only [Lang.stepDen, Ew.intStep, Ew.lesser, Ew.greater, if_true, if_false,
-    beq_iff_eq, Bool.or_eq_true]
+  simp only [Lang.stepDen, Ew.intStep_lesser]
+  simp (config := {decide := true}) only [if_false]
   grind
 
 private theorem nulWord_eq : nulWord = Alg.nul.toUInt64 := rfl
@@ -230,10 +233,9 @@ theorem Tab.succ_holds {K : Obj} {D : Tab K .long} {U : Tab .long .long} {T : Ta
     by_cases ha : a = Alg.nul
     · subst ha; decide
     · have : a.toUInt64 ≠ nulWord := fun e => ha ((toU_inj _ _).1 e)
-      simp (config := {decide := true}) only [ne_eq, this, not_false_eq_true, if_true, Ew.intStep, Ew.add,
-        ha, false_or, if_false, beq_iff_eq, Bool.or_eq_true]
+      simp (config := {decide := true}) only [ne_eq, this, not_false_eq_true, if_true, Ew.intStep_add]
       show (a + 1).toUInt64.toInt64 = _
-      simp [ha, show (1 : Int64) ≠ Alg.nul by decide]
+      simp [ha]
   rw [Tab.comp_holds hT]
   constructor
   · rintro ⟨b, ⟨i, hx, hb⟩, hd⟩
