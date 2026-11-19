@@ -450,6 +450,60 @@ theorem Arr.eq_of_codes {t : QAtomicType} {n : USize} (x : Arr t n) {cs}
   exact Arr.get_eq_of_raw x x hv hv i i' fun hg a b ha hb hu =>
     (ascOrd_atom hof hg hu).1 (by simpa only [ha, hb, Option.map_some, Option.getD_some] using hk)
 
+/-- **A duplicate-free list inside another is no longer**: each element of `l₁` erased from `l₂` in turn. -/
+theorem nodup_length_le {α : Type} [DecidableEq α] : ∀ {l₁ l₂ : List α}, l₁.Nodup → l₁ ⊆ l₂ →
+    l₁.length ≤ l₂.length
+  | [], _, _, _ => Nat.zero_le _
+  | a :: l, l₂, d, h => by
+    obtain ⟨ha, d⟩ := List.nodup_cons.1 d
+    have hm : a ∈ l₂ := h (List.mem_cons.2 (Or.inl rfl))
+    have := nodup_length_le (l₂ := l₂.erase a) d fun x hx =>
+      (List.mem_erase_of_ne fun e => ha (by rw [← e]; exact hx)).2 (h (List.mem_cons_of_mem _ hx))
+    rw [List.length_erase_of_mem hm] at this
+    have := List.length_pos_of_mem hm
+    simp only [List.length_cons]; omega
+
+/-- **A duplicate-free list inside another is as long as it exactly when it holds all of it**: an element of `l₂`
+missing from `l₁` leaves `l₁` inside `l₂` less that element (`nodup_length_le`). -/
+theorem nodup_length_eq_iff {α : Type} [DecidableEq α] {l₁ l₂ : List α} (d₁ : l₁.Nodup) (d₂ : l₂.Nodup)
+    (h : l₁ ⊆ l₂) : l₁.length = l₂.length ↔ l₂ ⊆ l₁ :=
+  ⟨fun e y hy => Classical.byContradiction fun hn => by
+      have := nodup_length_le d₁ fun x hx => (List.mem_erase_of_ne (a := x) (b := y) fun e' => hn (by rw [← e']; exact hx)).2 (h hx)
+      rw [List.length_erase_of_mem hy] at this
+      have := List.length_pos_of_mem hy; omega,
+   fun h' => Nat.le_antisymm (nodup_length_le d₁ h) (nodup_length_le d₂ h')⟩
+
+/-- **Two lists ascending by a strict order `lt` with the same elements are equal**: their heads are each other's
+least element. -/
+theorem pairwise_eq_of_mem {α : Type} {lt : α → α → Prop} (hirr : ∀ x, ¬lt x x)
+    (hasym : ∀ x y, lt x y → ¬lt y x) : ∀ {l l' : List α}, l.Pairwise lt → l'.Pairwise lt →
+      (∀ x, x ∈ l ↔ x ∈ l') → l = l'
+  | [], [], _, _, _ => rfl
+  | [], y :: _, _, _, hm => absurd ((hm y).2 (List.mem_cons_self ..)) List.not_mem_nil
+  | x :: _, [], _, _, hm => absurd ((hm x).1 (List.mem_cons_self ..)) List.not_mem_nil
+  | x :: xs, y :: ys, h, h', hm => by
+    rw [List.pairwise_cons] at h h'
+    have exy : x = y := by
+      rcases List.mem_cons.1 ((hm x).1 (List.mem_cons_self ..)) with e | hx; · exact e
+      rcases List.mem_cons.1 ((hm y).2 (List.mem_cons_self ..)) with e | hy; · exact e.symm
+      exact absurd (h.1 y hy) (hasym _ _ (h'.1 x hx))
+    subst exy
+    refine congrArg _ (pairwise_eq_of_mem hirr hasym h.2 h'.2 fun z => ⟨fun hz => ?_, fun hz => ?_⟩)
+    · rcases List.mem_cons.1 ((hm z).1 (List.mem_cons_of_mem _ hz)) with e | e
+      · subst e; exact absurd (h.1 _ hz) (hirr _)
+      · exact e
+    · rcases List.mem_cons.1 ((hm z).2 (List.mem_cons_of_mem _ hz)) with e | e
+      · subst e; exact absurd (h'.1 _ hz) (hirr _)
+      · exact e
+
+/-- The positions below `m` that pass `P`, ascending. -/
+theorem exists_range_filter (m : Nat) (P : (j : Nat) → j < m → Prop) :
+    ∃ L : List Nat, L.Pairwise (· < ·) ∧ ∀ j, j ∈ L ↔ ∃ hj : j < m, P j hj := by
+  classical
+  refine ⟨(List.range m).filter fun j => decide (∃ hj : j < m, P j hj), (pairwise_range m).filter _, fun j => ?_⟩
+  simp only [List.mem_filter, List.mem_range, decide_eq_true_eq]
+  exact ⟨fun h => h.2, fun h => ⟨h.1, h⟩⟩
+
 /-- A `flatMap` of blocks of one length is equal exactly where each block is. -/
 theorem flatMap_eq_iff {α β : Type} {k : Nat} {F G : α → List β} (hF : ∀ a, (F a).length = k)
     (hG : ∀ a, (G a).length = k) : ∀ l : List α, l.flatMap F = l.flatMap G ↔ ∀ a ∈ l, F a = G a
@@ -840,6 +894,28 @@ theorem Verify.asc_perm_grade {n : USize} {es : List (AscKey × Enc)} {vs : List
     List.getElem?_eq_getElem h2, Option.map_some, Option.some.injEq] at e2
   rw [← hc64 _ (List.mem_range.1 (hperm.mem_iff.1 (List.getElem_mem h1))),
     ← hc64 _ (List.mem_range.1 (hperm'.mem_iff.1 (List.getElem_mem h2))), e2]
+
+/-- **`kasc`'s grade**: `p` reads as the stable grade `ps` of the codes (`Verify.asc_perm_grade`), and the `kseen` key
+of sorted row `q` (over the sorted columns `vs`) is input row `ps[q]`'s. -/
+theorem kasc_grade {N : USize} {es : List (AscKey × Enc)} {vs : List Enc} {p : Enc}
+    (ha : kasc N es = .ok (vs, p)) :
+    ∃ cs, es.mapM (ascCol N) = .ok cs ∧
+      Enc.raw .i64 N p = ((ascGrade N.toNat (ascKeys N es)).map Nat.toUInt64).toArray ∧
+      ∀ q (hq : q < (ascGrade N.toNat (ascKeys N es)).length),
+        seenKey N ((es.map (·.1)).zip vs) q = seenKey N es (ascGrade N.toNat (ascKeys N es))[q] := by
+  obtain ⟨ps, hp, hperm, hvl, hcol⟩ := asc_perm N es vs p ha
+  obtain ⟨cs, hc, -⟩ := kasc_ok ha
+  have hpsg := asc_perm_grade ha hp hperm
+  have hrp : Enc.raw .i64 N p = (ps.map Nat.toUInt64).toArray := by
+    rw [hp]; exact (wordsFoR_closed _ (by simp [show ps.length = N.toNat by simpa using hperm.length_eq])).2.1
+  refine ⟨cs, hc, hpsg ▸ hrp, fun q hq => ?_⟩
+  revert hq; rw [← hpsg]; intro hq
+  -- the sorted columns hold input row `ps[q]`'s words at row `q`, so every code does (`ascKeys_row`), `cells` keys' too
+  simp only [seenKey]
+  refine ascKeys_row (List.map_fst_zip (by simp [hvl])) fun c h h' => ?_
+  obtain ⟨ws, hv, hws, hwq⟩ := hcol c es[c] (vs[c]'(by simp at h; omega)) (List.getElem?_eq_getElem h')
+    (List.getElem?_eq_getElem _)
+  simp only [List.getElem_zip, hv, (wordsFoR_closed ws hws.symm).2.1, hwq q hq]
 
 /-- **Which input row each row of `Vals.nub x` is**: `kasc`'s permutation `ps` (its grade by the codes `ascKeys`),
 `K` the sorted rows' keys (`K q` the key of input row `ps[q]`), and row `j` of the answer input row `ps[F[j]]`, `F` the

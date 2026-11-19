@@ -232,9 +232,66 @@ theorem whereCol_spec {m K : USize} {b o : Enc} (h : whereCol m b = .ok (K, o))
   rw [(hnd hpw).count, (hnd hpw').count]
   simp only [hmem]
 
+/-- **`whereCol` answers `K` words**: its last step is a `kgather` of `K` rows. -/
+theorem whereCol_size {m K : USize} {b o : Enc} (h : whereCol m b = .ok (K, o)) : (Enc.raw .i64 K o).size = K.toNat := by
+  unfold whereCol at h
+  have hB : m.toNat < min (USize.size - 1) (2 ^ 63) := by
+    refine Classical.byContradiction fun hn => ?_; simp only [hn, if_false] at h; cases h
+  simp only [hB, if_true, bind, Except.bind, Functor.map, Except.map] at h
+  repeat (split at h; · cases h)
+  rename_i o' ho'
+  obtain ⟨rfl, rfl⟩ := Prod.mk.inj (Except.ok.inj h).symm
+  obtain ⟨his, -, -, hoe⟩ := raw_kgather _ _ _ _ _ ho'
+  rw [hoe, (wordsFoR_closed _ (by rw [Array.size_map, his])).2.1, Array.size_map, his]
+
 /-! ## CONCAT and `∪` -/
 namespace Tab
 variable {k v : Obj}
+
+/-- **`keep T b` holds the rows of `T` whose word of `b` is `1`**, `b` holding `0`/`1` words: answer row `j` is input
+row `sel[j]`, and `sel` lists every position of a `1` (`whereCol_spec`, `whereCol_size`). -/
+theorem keep_holds {A B : Obj} {T U : Tab A B} {b : Enc} (h : T.keep b = .ok U)
+    (hb : ∀ i < T.n.toNat, (Enc.raw .i64 T.n b)[i]?.getD 0 < 2) (a : A.El) (c : B.El) :
+    U.Holds a c ↔ ∃ i : Fin T.n.toNat, (Enc.raw .i64 T.n b)[i.1]?.getD 0 ≠ 0 ∧ T.key.row i = a ∧ T.val.row i = c := by
+  unfold keep at h; simp only [bind, Except.bind] at h
+  split at h; · cases h
+  rename_i Ms hMs; obtain ⟨M, sel⟩ := Ms
+  split at h; · cases h
+  rename_i x hx
+  split at h; · cases h
+  rename_i y hy
+  cases h
+  have hsel := whereCol_spec hMs hb
+  have hsz := whereCol_size hMs
+  simp only [Tab.Holds]
+  constructor
+  · rintro ⟨j, rfl, rfl⟩
+    obtain ⟨i, hi, hxi⟩ := Vals.gather_row _ hx j
+    obtain ⟨i', hi', hyi⟩ := Vals.gather_row _ hy j
+    have e : i' = i := Fin.ext (by rw [← hi', hi])
+    subst e
+    have hj : j.1 < (Enc.raw .i64 M sel).size := by rw [hsz]; exact j.2
+    have hGm := List.mem_map_of_mem (f := UInt64.toNat) (Array.getElem_mem_toList hj)
+    rw [hsel, List.mem_filter, decide_eq_true_eq] at hGm
+    rw [Array.getElem?_eq_getElem hj, Option.getD_some] at hi
+    rw [hi] at hGm
+    exact ⟨i', hGm.2, hxi.symm, hyi.symm⟩
+  · rintro ⟨i, hbi, rfl, rfl⟩
+    have hm : i.1 ∈ (Enc.raw .i64 M sel).toList.map UInt64.toNat := by
+      rw [hsel, List.mem_filter, List.mem_range, decide_eq_true_eq]; exact ⟨i.2, hbi⟩
+    obtain ⟨w, hw, hwi⟩ := List.mem_map.1 hm
+    obtain ⟨j, hj, rfl⟩ := List.getElem_of_mem hw
+    have hj' : j < (Enc.raw .i64 M sel).size := by simpa using hj
+    have hjM : j < M.toNat := by rw [← hsz]; exact hj'
+    simp only [Array.getElem_toList] at hwi
+    have hsj : ((Enc.raw .i64 M sel)[j]?.getD 0).toNat = i.1 := by
+      rw [Array.getElem?_eq_getElem hj', Option.getD_some, hwi]
+    obtain ⟨i1, hi1, hx1⟩ := Vals.gather_row _ hx ⟨j, hjM⟩
+    obtain ⟨i2, hi2, hy2⟩ := Vals.gather_row _ hy ⟨j, hjM⟩
+    have e1 : i1 = i := Fin.ext (by rw [← hi1, hsj])
+    have e2 : i2 = i := Fin.ext (by rw [← hi2, hsj])
+    subst e1 e2
+    exact ⟨⟨j, hjM⟩, hx1, hy2⟩
 
 /-- **`R.concat S` denotes `R ∪ S`**, rows counted with repeats. -/
 theorem concat_holds {R S C : Tab k v} (h : R.concat S = .ok C) (a : k.El) (b : v.El) :
@@ -290,6 +347,29 @@ theorem canon_sorted {R U : Tab k v} (h : R.canon = .ok U) {es : List (AscKey ×
     simp only [hn, Functor.map, Except.map, Except.ok.injEq] at h
     subst h
     exact Vals.nub_sorted hn hes
+
+/-- **`R.canon`'s rows are distinct** (`Vals.nub_distinct` of its pair side). -/
+theorem canon_distinct {k v : Obj} {R U : Tab k v} (h : R.canon = .ok U) {j j' : Fin U.n.toNat} (hjj : j ≠ j') :
+    (U.key.row j, U.val.row j) ≠ (U.key.row j', U.val.row j') := by
+  unfold Tab.canon at h
+  cases hn : Vals.nub (A := .prod k v) (R.key, R.val) with
+  | error s => simp [hn, Functor.map, Except.map] at h
+  | ok r =>
+    simp only [hn, Functor.map, Except.map, Except.ok.injEq] at h
+    subst h
+    exact Vals.nub_distinct hn hjj
+
+/-- **A canonical table's columns have codes**: `canon`
+ran `Vals.cols` and `kasc` on `(R.key, R.val)`. -/
+theorem canon_codes {k v : Obj} {R r : Tab k v} (h : R.canon = .ok r) :
+    ∃ es cs, Vals.cols (A := .prod k v) (R.key, R.val) = .ok es ∧ es.mapM (ascCol R.n) = .ok cs := by
+  simp only [Tab.canon, Functor.map, Except.map] at h
+  split at h; · cases h
+  rename_i y hy
+  obtain ⟨es, vs, p, -, -, -, -, -, hes, hasc, -⟩ := Vals.nub_ok hy
+  obtain ⟨cs, hcs, -⟩ := kasc_grade hasc
+  exact ⟨es, cs, hes, hcs⟩
+
 
 /-- **`R.union S` is sorted and duplicate-free**: `canon_sorted` of the concatenation. -/
 theorem union_sorted {R S U : Tab k v} (h : R.union S = .ok U) :
