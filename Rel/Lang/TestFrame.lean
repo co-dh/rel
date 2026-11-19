@@ -37,8 +37,8 @@ rel_program frameSchema where
     keep : P ⟶ P ≜ dom(x col(S, v) big)
     groups : K ⟶ P ≜ (keep x col(S, k))°
     out : K ⟶ N ≜ dom(groups) Λ(groups) F(v) sum
--- `col S "v"` itself does not parse (a `.rel` term has no string literal: "expected ')'"), so it cannot be pinned
--- here; `col(S, v)` is the nearest spelling that parses.
+-- `S` is not declared here: a program declares it `schema S = {k : K, v : N}` and reads `col S "v"`
+-- (`TestSchema.kvProg`).
 
 open Rel.Programs.prelude in
 rel_program frame where
