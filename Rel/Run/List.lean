@@ -163,21 +163,22 @@ def flatten {n : USize} (X : Vals (.arr (.arr B)) n) : Except String (Tab (.arr 
   foldRounds peelL (fun acc el => do cat (← acc.pair el)) (X.1.toNat + 2) (← idU X) (← nil X) (← zero)
 
 /-- **`filter(p)` on the cells `X`**, `P` the relation `p` = `⦇nil, dom(π₂p) snoc ∪ (𝟙 − dom(π₂p)) π₁⦈` (the prelude's
-`filter`, B&dM p.66): a left fold, `x` appended where it is a key of `P` (`k = el ≫ dom P`), else `acc` kept. -/
+`filter`, B&dM p.66): a left fold, `x` appended where it is a key of `P` (`k = el ≫ dom P`), else `acc` kept; the
+`𝟙 − dom(π₂p)` part is `(dom el − dom k) acc`, only keys still folding, so `foldRounds` ends. -/
 def filter {n : USize} (P : Tab B B) (X : Vals (.arr B) n) : Except String (Tab (.arr B) (.arr B)) := do
   let D ← P.dom
   foldRounds peelL (fun acc el => do
       let k ← el.comp D
-      (← snoc (← acc.pair k)).union (← acc.diff (← (← k.dom).comp acc)))
+      (← snoc (← acc.pair k)).union (← (← (← el.dom).diff (← k.dom)).comp acc))
     (X.1.toNat + 2) (← idU X) (← nil X) (← zero)
 
 /-- **`takewhile(p)` on the cells `X`**, `P` the relation `p` = `⦇nil, dom(π₁p) cons ∪ (𝟙 − dom(π₁p)) nil⦈ʳ` (the
-prelude's `takewhile`, B&dM p.174): a right fold, `x :: acc` where `x` is a key of `P`, else `[]`. -/
+prelude's `takewhile`, B&dM p.174): a right fold, `x :: acc` where `x` is a key of `P`, else `[]` on `dom el − dom k`. -/
 def takewhile {n : USize} (P : Tab B B) (X : Vals (.arr B) n) : Except String (Tab (.arr B) (.arr B)) := do
   let D ← P.dom
   foldRounds peelR (fun acc el => do
       let k ← el.comp D
-      (← cons (← k.pair acc)).union (← (← acc.diff (← (← k.dom).comp acc)).comp (← nil acc.val)))
+      (← cons (← k.pair acc)).union (← (← (← (← el.dom).diff (← k.dom)).comp acc).comp (← nil acc.val)))
     (X.1.toNat + 2) (← idU X) (← nil X) (← zero)
 
 /-- **`sum` on the cells of longs `X`** (`rowDens`: `foldr (+) 0`, kept where every suffix sum lies strictly inside
