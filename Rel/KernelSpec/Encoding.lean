@@ -158,8 +158,9 @@ theorem packRes_byte (B w : Nat) (res : Nat → UInt64) (hw : 0 < w) (k : Nat)
       s < 8 ∧ ((res ((8 * k + s) / w)).toNat % 2 ^ w).testBit ((8 * k + s) % w) = true := by
   unfold Kernel.Coc.packRes
   rw [if_neg (by omega)]
-  have h0 : (ByteArray.emptyWithCapacity (B * w / 8)).size = 0 := rfl
-  refine ⟨_, fold_push0 _ _ _ h0 k hk, fun s => ?_⟩
+  have hg : ∀ (L : Nat) (f : Nat → UInt8), k < L → (⟨((List.range L).map f).toArray⟩ : ByteArray)[k]? = some (f k) :=
+    fun L f h => show (((List.range L).map f).toArray)[k]? = _ by simp [h]
+  refine ⟨_, hg _ _ hk, fun s => ?_⟩
   rw [foldl_or_u8, foldl_or_testBit]
   simp only [UInt8.toNat_zero, Nat.zero_testBit, Bool.false_or, List.any_eq_true, List.mem_range'_1,
     Nat.testBit_mod_two_pow, Nat.testBit_div_two_pow, Nat.testBit_mul_two_pow, Bool.and_eq_true,
@@ -398,7 +399,7 @@ theorem packRes_size (B w : Nat) (res : Nat → UInt64) :
   unfold Kernel.Coc.packRes
   split
   · subst_vars; simp
-  · rw [(fold_push_getElem? _ _ _).1, show (ByteArray.emptyWithCapacity (B * w / 8)).size = 0 from rfl, Nat.zero_add]
+  · show (List.toArray _).size = _; simp
 
 theorem pack_fold {E : Type} (f : ByteArray × Nat → E → ByteArray × Nat) (Q : Nat → E → ByteArray)
     (hf : ∀ a m e, f (a, m) e = (a ++ Q m e, m + 1)) (off : Nat → Nat) (l : List E) (a : ByteArray)
