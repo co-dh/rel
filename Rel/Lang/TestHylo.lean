@@ -29,7 +29,9 @@ rel_program hylos where
   "{(m, m)} total = {(m, 0)}",
   "𝟘(E, E) total = {}"]
 
+-- the old layer's message (an ok bit); the kernel path's, a thrown error, is `kernMapCycle` (`Test/KernMap.lean`)
 open Rel.Programs.prelude in
+set_option rel.kernel false in
 rel_program hyloCycle where
     obj E = {a,b,m}
     obj N = 0…40

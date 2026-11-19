@@ -303,7 +303,8 @@ compile η t : {r : Rel A B // rep r = ⟦t⟧ρ}       -- 方案 A：规格在�
   [`filter(p)`（草稿，待审）], [`⦇nil, dom(π₂p) snoc ∪ (𝟙 − dom(π₂p)) π₁⦈`：`fold` 行，每轮 `≫ dom p`、`⟨,⟩`、`snoc` 行、`−`、`∪`],
   [`takewhile(p)`（草稿，待审）], [`⦇nil, dom(π₁p) cons ∪ (𝟙 − dom(π₁p)) nil⦈ʳ`：`foldr` 行（每轮 `snoc°`），每轮 `≫ dom p`、`⟨,⟩`、`cons` 行、`−`、`nil`、`∪`],
   [`hylo(c, S)`（草稿，待审）], [`μX. c ≫ G(X) ≫ S` 在需求键 `D` 上：节点 `N = μN. D ∪ ran(N ≫ ch)`（`ch` = `c` 后接
-    `G` 的成员关系），再 `D ≫ μX. N ≫ φ(X)`；两处都是 `Tab.mu`（`∪` 行的轮次），不建中间结构；无环时至多 `|N| + 2` 轮],
+    `G` 的成员关系），再 `D ≫ μX. N ≫ φ(X)`；两处都是 `Tab.mu`（`∪` 行的轮次），不建中间结构；无环时至多 `|N| + 2` 轮；
+    有环则报错（草稿，待审）：`νP. dom(N ≫ ch ≫ P)`（`Tab.nu`）自 `N` 起，非空即有节点从自身可达，不给静默的 `𝟘`],
   [`loop(F)`（草稿，待审）], [`P ≫ loop(F)`：在 `ran P` 的每个 `(c, ys)` 上，以 `c` 起、沿 `ys` 的左折叠
     （`Tab.foldRounds` + `cons°`），每轮 `p ≫ F(ran p)`，`p` 为该轮的对 `(acc, y)`],
   [`merge(Q)`（草稿，待审）], [状态 `((x, y), acc)` 自 `((x, y), [])` 起，以 `cat(x, y)` 为时钟跑 `|x| + |y|` 轮
@@ -311,6 +312,10 @@ compile η t : {r : Rel A B // rep r = ⟦t⟧ρ}       -- 方案 A：规格在�
     `snoc` 到 `acc`；结果 `π₂`],
   [`thinL(Q)`（草稿，待审）], [`⦇nil, bump(Q)⦈ʳ`（`Tab.foldRounds` + `snoc°`）；`bump` 在对 `(x, ys)` 上：
     `u = ys ≫ cons°` 得 `(b, bs)`，`x Q b` 时 `x :: bs`，`b Q x` 时 `ys`，`ys` 空或两者皆否时 `cons`（`x :: ys`）],
+  [`F(R)`（草稿，待审）], [格界 → EXPAND → `gather` 元素成平铺 payload `v`（`T` 行）→ `⟨pos, v⟩ ≫ R`（按位置作键）；
+    每个位置恰一个像（`R` 在这些元素上是函数）时，像按位置序即新 payload，格宽不变（`Vals.cells`），一遍完成；
+    否则（某元素 0 个或 ≥ 2 个像）为左折叠 `⦇nil, ⟨π₁, π₂R⟩ snoc⦈`（`Tab.foldRounds` + `cons°`，每元素一轮）；
+    `n·m + n + m ≥ 2^63` 拒绝],
 )
 
 == Rust 侧
