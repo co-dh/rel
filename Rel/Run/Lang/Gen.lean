@@ -210,10 +210,9 @@ def E (A B : Obj) (d : Bool) (R : Fn d A B) : Fn true (.arr A) (.arr B) := elems
 /-- An order held as its pair test, run on the pairs the operator compares. -/
 def est (B : Obj) (Q : Fn true (.prod B B) (.prod B B)) : Fn true (.arr B) B := Fn.ofDem (d := true) fun D =>
   CRel.estOn (fun P => Q.at P.rel) (CRel.mem D.val)
+/-- `Λ` of `thin` on the arrays in demand: `lam`'s body, so `thin_sound` is `lam_sound`'s proof. -/
 def thin (B : Obj) (Q : Fn true (.prod B B) (.prod B B)) : Fn true (.arr B) (.arr B) := Fn.ofDem (d := true) fun D =>
-  let T := CRel.thinOn (fun P => Q.at P.rel) (CRel.mem D.val)
-  let df := CRel.diff (some D) (CRel.dom T)
-  CRel.union (CRel.transpose T) (also df.ok (ofC (topC df.rel.key (nilVal _))))
+  CRel.lamOn (CRel.thinOn (fun P => Q.at P.rel) (CRel.mem D.val)) D.val
 def nil (A B : Obj) : Fn true A (.arr B) := ofVals _ _ fun X => ofC (topC X (nilVal _))
 /-- A row of `prims` (`Tm.prim`) on the keys in demand, `f` its constant at the objects (`Expand.primE`): read on
     their values (`ofVals`) or composed after them (`after`); given a relation `R`, `R` run on the elements of the

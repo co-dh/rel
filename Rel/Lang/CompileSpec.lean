@@ -180,8 +180,8 @@ theorem CodeEnv.Sound.args {cs : List Code} {ss : List Sem} (h : Code.Sounds cs 
 
 /-! ### The rows of `prims` -/
 
-/-- Every row of `rowDens` not in `rowGaps` has its `Row`. -/
-theorem rows_cover : ∀ i : Fin rowDens.length, rowGaps.contains rowDens[i].1.sym = false → ∃ w ∈ rows, w.i = i := by
+/-- Every row of `rowDens` has its `Row`: the obligations are the indices of `rowDens`, not `rows`. -/
+theorem rows_cover : ∀ i : Fin rowDens.length, ∃ w ∈ rows, w.i = i := by
   decide
 
 theorem none'_sound {A B : Obj} {d : Bool} {T : Den A B} : Sound (none' A B d) T :=
@@ -189,7 +189,7 @@ theorem none'_sound {A B : Obj} {d : Bool} {T : Den A B} : Sound (none' A B d) T
 
 /-- The row `r` run on sound arguments: `Prim.run` finds the code of the `rowDens` entry `Prim.den` reads
     (`rowDens_codes`), and that entry's `Row` is in `rows`. -/
-theorem Prim.run_sound {r : Prim} {A B : Obj} {cs : List Code} {ss : List Sem} (hr : rowGaps.contains r.sym = false)
+theorem Prim.run_sound {r : Prim} {A B : Obj} {cs : List Code} {ss : List Sem} (hr : r.ok A B = true)
     (hs : Code.Sounds cs ss) {f : Fn true A B} (hf : r.run A B cs = some f) : Sound f (r.den A B ss) := by
   have hc : rowCodes.find? (·.sym == r.sym) = (rowDens.find? (·.1.sym == r.sym)).map (·.1) := by
     rw [← rowDens_codes, List.find?_map]; rfl
@@ -211,12 +211,15 @@ theorem Prim.run_sound {r : Prim} {A B : Obj} {cs : List Code} {ss : List Sem} (
         · rename_i h; obtain ⟨rfl, rfl⟩ := h; cases hf
           obtain ⟨i, hi, ei⟩ := List.getElem_of_mem (List.mem_of_find?_eq_some hx)
           have hsym : c.sym = r.sym := by simpa using List.find?_some hx
-          obtain ⟨w, -, hw⟩ := rows_cover ⟨i, hi⟩ (by simpa [ei, hsym] using hr)
-          have := w.sound
+          obtain ⟨w, hw', hw⟩ := rows_cover ⟨i, hi⟩
+          have hok : w.ok σ = true := by
+            simp only [Prim.ok, ho, Option.all_some, List.all_eq_true, Bool.or_eq_true, bne_iff_ne, ne_eq] at hr
+            exact (hr w hw').resolve_left (by simp [hw, ei, hsym])
+          have := w.sound σ hok
           rw [hw] at this
           simp only [Fin.getElem_fin] at this
           rw [ei] at this
-          simpa using this σ cs ss hs g hg
+          simpa using this cs ss hs g hg
         · cases hf
 
 /-- A row's code at either demand bit, sound wherever every code `Prim.run` finds is. -/
@@ -354,8 +357,8 @@ theorem compile_sound {A B : Obj} (t : Tm A B) (hg : t.gap = none) (η : CodeEnv
       exact Out.Sound.memo (Out.Sound.leaf (mu_sound (fun X Y h => Tm.den_mono hp h)
         fun X _ => (ih hg _ _ (hη.bindCode k (htab X))).1))
     · cases hg
-  | prim r =>
-    have hr : rowGaps.contains r.sym = false := by simpa [Tm.gap] using hg
+  | @prim A' B' r =>
+    have hr : r.ok A' B' = true := by simpa [Tm.gap] using hg
     refine Out.Sound.memo ⟨Prim.fn_sound (fun f hf => Prim.run_sound (cs := []) (ss := []) hr trivial hf) true,
       pleaf_sound (Prim.fn_sound (fun f hf => Prim.run_sound (cs := []) (ss := []) hr trivial hf) true), ?_⟩
     intro r' cs e; cases e
@@ -404,7 +407,16 @@ theorem compile_sound {A B : Obj} (t : Tm A B) (hg : t.gap = none) (η : CodeEnv
       obtain ⟨ho, hi⟩ := Rep.canonical_spec B' hc
       exact Out.Sound.memo (Out.Sound.leaf (E_sound (ih hg η ρ hη).1 ho hi))
     · cases hg
-  | thin | foldI | call | hylo => simp [Tm.gap] at hg
+  | @thin B' Q ih =>
+    simp only [Tm.gap] at hg
+    split at hg
+    · rename_i hc
+      simp only [Bool.and_eq_true] at hc
+      obtain ⟨ho, hi⟩ := Rep.canonical_spec B' hc.1
+      exact Out.Sound.memo (Out.Sound.leaf (thin_sound (ih hg η ρ hη).1
+        (fun p p' h => eq_of_heq (Q.cor_den hc.2 ρ p p' h)) ho hi))
+    · cases hg
+  | foldI | call | hylo => simp [Tm.gap] at hg
 
 /-- The typed entry: `compile` with its soundness as the subtype's proof, on a term with no gap under an
     environment whose plans compute their variables' meanings. -/
