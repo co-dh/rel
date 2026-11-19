@@ -403,6 +403,11 @@ Diff table 的「状态」列：✅ 后面是完成它的步骤；🔄 是部分
           owner 定（2026-11-19，改了先前的"删除"）：保留 `AscKey`。它只用于一侧类型是 `[β]` 的情况：把
           `lo`/`hi`/payload 作为一个 key 交给 `kasc`/`kseen`，比较时沿 payload 逐元素比。分支 `w3nokey`
           （展开成等宽列）已停，不合入。待办：architecture §4 的 `asc`/`seen` 签名按 `AscKey` 更新。
+        - 切换（`/data/tmp/w3-switch-steps.md`，T0–T10）的三点，owner 交给我定（2026-11-19）：
+          (1) `Rel.tab` 带 `Except String (Tab A B)` 而不是 `Option`，kernel 复合的错误消息一路到 `check`
+          （规则：不吞错误）；architecture §0 的类型随之更新。(2) 切换期间新旧两条路径用第二个同签名的 `Gen`
+          namespace，`Expand` 按程序选；不加算子结构体。(3) `length cat cons F sum` 等行先写成 `fold`/`hylo`
+          上的定义，融合复合以后再加并配 `⟦row⟧ = ⟦def⟧`。
       - compiler（`Gen.*`）现在就发 kernel 复合，按程序切换：一个程序用到的构造子都有 kernel 版本，它就走新路径；
         "仍走旧路径的程序数" 是进度数字，到 0 时 W5 删除旧层。新旧算子不能在一个程序里混用（旧的写 `.bytes`，
         新 kernel 拒绝非 foR，转换被禁止）。切换步骤：`/data/tmp/w3-switch-steps.md`（在写）。
