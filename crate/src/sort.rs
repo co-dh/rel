@@ -466,9 +466,9 @@ pub fn asc_blk(c: &Coc, b: usize, desc: bool, strict: bool) -> Ends {
 }
 /// sort.rs `qlean_sort_ascending_foR` past the unboxing, threaded (`asc_run`). The blocks are checked apart, by
 /// block across the pool, and the pairs between them afterwards from their ends; the first block goes alone and first,
-/// so a column that is not sorted still leaves inside it. `kind` is one of `SK_I16`, `SK_I32`, `SK_I64`.
+/// so a column that is not sorted still leaves inside it. `kind` is one `ffi::sort::for_kind` admits.
 pub fn ascending_enc(run: Runner, kind: u8, desc: bool, strict: bool, c: &Coc) -> bool {
-    debug_assert!(matches!(kind, SK_I16 | SK_I32 | SK_I64));
+    debug_assert!(matches!(kind, SK_U8 | SK_C8 | SK_I8 | SK_I16 | SK_I32 | SK_I64));
     let nb = c.meta.nblk;
     if c.meta.n == 0 { return true }
     let f = asc_blk(c, 0, desc, strict);

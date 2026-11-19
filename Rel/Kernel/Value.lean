@@ -631,7 +631,7 @@ rounds `⌈n·w/8⌉` back down. Every id is there at width `0`, which stores no
 def idsCap (ids : ByteArray) (w n : Nat) : Nat := if w = 0 then n else min n (ids.size * 8 / w)
 
 /-- `n` ids at `w` bits, `f i` being id `i` — `idAt`'s inverse and the one place an id payload is
-laid out. The bits past `n` in the last byte stay `0` for the reason `packBits` clears its tail: two
+laid out. The bits past `n` in the last byte stay `0` so that two
 columns holding the same symbols must hold the same bytes, or `~` and `atomIdenticalHash` call equal
 columns different. -/
 def packIds (w n : Nat) (f : Nat → Nat) : ByteArray :=
@@ -1020,21 +1020,6 @@ def atomOfBits (t : QAtomicType) (v : UInt64) (h : t ≠ .general := by first | 
   | .f64 => .f64 v
   | .sym => .sym ""
 
-/-- Booleans packed eight to a byte, LSB first. The unused tail bits of the last byte stay `0`, so
-two columns holding the same booleans hold the same bytes — `~` and `atomIdenticalHash` compare
-payloads, and trailing garbage would make equal vectors compare unequal. -/
-def packBits (as : Array QAtom) : ByteArray := Id.run do
-  let mut out := ByteArray.emptyWithCapacity ((as.size + 7) / 8)
-  let mut cur : UInt8 := 0
-  for i in [0 : as.size] do
-    if (match as[i]! with | .u1 b => b | _ => false) then
-      cur := cur ||| (1 <<< (i % 8).toUInt8)
-    if i % 8 == 7 then
-      out := out.push cur
-      cur := 0
-  if as.size % 8 != 0 then out := out.push cur
-  return out
-
 /-- A payload of exactly `⌈n·w/8⌉` bytes, the size every writer lays out, holds all `n` ids. -/
 theorem idsCap_of_size {ids : ByteArray} {w n : Nat} (h : ids.size = (n * w + 7) / 8) : idsCap ids w n = n := by
   unfold idsCap; split
@@ -1125,159 +1110,6 @@ theorem foldl_pushBits_size {w : Nat} (b : ByteArray) (as : List QAtom) :
 
 /-- The bit an atom contributes to a boolean column. -/
 def boolOf (a : QAtom) : Bool := match a with | .u1 b => b | _ => false
-
-/-- Bit `j` of a byte, LSB first: what `bitAt` reads once it has located the byte. -/
-def byteBit (x : UInt8) (j : Nat) : Bool := (x >>> j.toUInt8) &&& 1 == 1
-
-/-- One iteration of `packBits`' loop on the `(cur, out)` pair its `do` block threads. The pair is
-an `MProd`, not a `Prod`: that is how the `do` elaborator bundles two `mut` variables. -/
-def packStep (as : Array QAtom) (r : MProd UInt8 ByteArray) (i : Nat) :
-    MProd UInt8 ByteArray :=
-  if boolOf as[i]! = true then
-    if (i % 8 == 7) = true then ⟨0, r.2.push (r.1 ||| 1 <<< (i % 8).toUInt8)⟩
-    else ⟨r.1 ||| 1 <<< (i % 8).toUInt8, r.2⟩
-  else if (i % 8 == 7) = true then ⟨0, r.2.push r.1⟩ else ⟨r.1, r.2⟩
-
-/-- Folds with pointwise equal steps agree. `packBits`' body elaborates to its own `match`
-auxiliary, which is not the one `boolOf` builds, so the two step functions have to be compared
-element by element rather than by `rfl`. -/
-private theorem foldl_ext {α β : Type} {f g : β → α → β} (init : β) (l : List α)
-    (h : ∀ b a, f b a = g b a) : l.foldl f init = l.foldl g init := by
-  induction l generalizing init with
-  | nil => rfl
-  | cons a l ih => rw [List.foldl_cons, List.foldl_cons, h, ih]
-
-/-- Both arms of the loop body yield, so the `if` can be pulled out of the monad and the loop
-collapses to a `foldl`. -/
-private theorem ite_pure_yield {β : Type} (c : Prop) [Decidable c] (a b : β) :
-    (if c then (pure (ForInStep.yield a) : Id (ForInStep β)) else pure (ForInStep.yield b))
-      = pure (ForInStep.yield (if c then a else b)) := by
-  split <;> rfl
-
-/-- `packBits` as a fold over the loop's index list, plus the flush of the last partial byte. -/
-theorem packBits_eq (as : Array QAtom) (r : MProd UInt8 ByteArray)
-    (hr : r = (List.range' 0 as.size).foldl (packStep as)
-      ⟨0, ByteArray.emptyWithCapacity ((as.size + 7) / 8)⟩) :
-    packBits as = if as.size % 8 = 0 then r.2 else r.2.push r.1 := by
-  subst hr
-  simp only [packBits, Std.Legacy.Range.forIn_eq_forIn_range', Std.Legacy.Range.size,
-    ite_pure_yield, List.forIn_pure_yield_eq_foldl, pure_bind, bne_iff_ne, ne_eq,
-    Nat.sub_zero, Nat.add_sub_cancel, Nat.div_one]
-  by_cases hm : as.size % 8 = 0
-  · rw [if_neg fun hn => hn hm, if_pos hm]
-    simp only [Id.run_pure]
-    apply congrArg MProd.snd
-    apply foldl_ext
-    intro b a
-    cases hx : as[a]! <;> simp [packStep, boolOf, hx]
-  · rw [if_pos hm, if_neg hm]
-    simp only [Id.run_pure]
-    apply congrArg fun r : MProd UInt8 ByteArray => r.2.push r.1
-    apply foldl_ext
-    intro b a
-    cases hx : as[a]! <;> simp [packStep, boolOf, hx]
-
-/-- A read inside the prefix is untouched by a push. -/
-theorem bitAt_push_lt (b : ByteArray) (x : UInt8) (i : Nat) (h : i / 8 < b.size) :
-    bitAt (b.push x) i = bitAt b i := by
-  simp only [bitAt, push_getElem?_lt (b := b) (x := x) (j := i / 8) h]
-
-/-- A read in the byte just pushed. -/
-theorem bitAt_push_eq (b : ByteArray) (x : UInt8) (i : Nat) (h : i / 8 = b.size) :
-    bitAt (b.push x) i = byteBit x (i % 8) := by
-  simp only [bitAt, byteBit, h, push_getElem?_eq, Option.getD_some]
-
-/-- `byteBit` is `Nat.testBit` on the byte's value, which is what makes the `|||` in `packStep`
-tractable: setting one bit is an `or` with a power of two. -/
-theorem byteBit_eq_testBit (x : UInt8) (j : Nat) (hj : j < 8) :
-    byteBit x j = x.toNat.testBit j := by
-  have hj8 : j.toUInt8.toNat % 8 = j := by
-    have hjn : j.toUInt8.toNat = j := by
-      simp only [Nat.toUInt8, UInt8.toNat_ofNat']
-      omega
-    omega
-  have key : ((x >>> j.toUInt8) &&& 1).toNat = x.toNat / 2 ^ j % 2 := by
-    rw [UInt8.toNat_and, UInt8.toNat_shiftRight, hj8, UInt8.toNat_one, Nat.and_one_is_mod,
-      Nat.shiftRight_eq_div_pow]
-  rw [byteBit, Nat.testBit_eq_decide_div_mod_eq, ← key]
-  apply Bool.eq_iff_iff.mpr
-  simp only [beq_iff_eq, decide_eq_true_eq, ← UInt8.toNat_inj, UInt8.toNat_one]
-
-/-- Setting bit `j` of a byte is an `or` with `2 ^ j`. -/
-private theorem toNat_or_bit (c : UInt8) (j : Nat) (hj : j < 8) :
-    (c ||| 1 <<< j.toUInt8).toNat = c.toNat ||| 2 ^ j := by
-  have hj8 : j.toUInt8.toNat % 8 = j := by
-    have hjn : j.toUInt8.toNat = j := by
-      simp only [Nat.toUInt8, UInt8.toNat_ofNat']
-      omega
-    omega
-  rw [UInt8.toNat_or, UInt8.toNat_shiftLeft, hj8, UInt8.toNat_one, Nat.shiftLeft_eq, Nat.one_mul,
-    Nat.mod_eq_of_lt (Nat.pow_lt_pow_right (by decide : 1 < 2) hj)]
-
-/-- The loop invariant: after `n` steps `out` holds the `n / 8` bytes already full, and `cur` the
-`n % 8` bits of the byte in progress with its remaining bits still `0`. -/
-theorem packStep_loop (as : Array QAtom) (n : Nat) (r : MProd UInt8 ByteArray)
-    (hr : r = (List.range' 0 n).foldl (packStep as)
-      ⟨0, ByteArray.emptyWithCapacity ((as.size + 7) / 8)⟩) :
-    r.2.size = n / 8 ∧ (∀ i < 8 * (n / 8), bitAt r.2 i = boolOf as[i]!)
-      ∧ ∀ j < 8, r.1.toNat.testBit j = (decide (j < n % 8) && boolOf as[8 * (n / 8) + j]!) := by
-  subst hr
-  induction n with
-  | zero =>
-    refine ⟨ByteArray.size_eq_zero_iff.mpr rfl, fun i hi => absurd hi (by omega), fun j _ => ?_⟩
-    simp
-  | succ n ih =>
-    obtain ⟨hsize, hbits, hcur⟩ := ih
-    rw [List.range'_concat]
-    simp only [List.foldl_append, List.foldl_cons, List.foldl_nil, Nat.zero_add, Nat.one_mul]
-    revert hsize hbits hcur
-    generalize (List.range' 0 n).foldl (packStep as)
-      (⟨0, ByteArray.emptyWithCapacity ((as.size + 7) / 8)⟩ : MProd UInt8 ByteArray) = p
-    intro hsize hbits hcur
-    -- the byte in progress after this element, whichever branch `packStep` takes
-    have hbit : ∀ j < 8, (if boolOf as[n]! = true then p.1 ||| 1 <<< (n % 8).toUInt8
-        else p.1).toNat.testBit j
-          = (p.1.toNat.testBit j || (decide (n % 8 = j) && boolOf as[n]!)) := by
-      intro j hj
-      by_cases hb : boolOf as[n]! = true
-      · rw [if_pos hb, toNat_or_bit _ _ (by omega), Nat.testBit_or, Nat.testBit_two_pow, hb]
-        simp
-      · rw [if_neg hb]
-        simp [Bool.of_not_eq_true hb]
-    have hn : 8 * (n / 8) + n % 8 = n := by omega
-    by_cases h7 : n % 8 = 7
-    · have hq : (n + 1) / 8 = n / 8 + 1 := by omega
-      have hm : (n + 1) % 8 = 0 := by omega
-      rw [show packStep as p n = ⟨0, p.2.push (if boolOf as[n]! = true
-          then p.1 ||| 1 <<< (n % 8).toUInt8 else p.1)⟩ by
-        simp only [packStep, h7]; split <;> simp]
-      refine ⟨by rw [push_size, hsize, hq], fun i hi => ?_, fun j _ => by simp [hm]⟩
-      by_cases hlt : i / 8 < p.2.size
-      · rw [bitAt_push_lt _ _ _ hlt]
-        exact hbits i (by rw [hsize] at hlt; omega)
-      · have hik : i / 8 = p.2.size := by rw [hsize] at hlt ⊢; omega
-        rw [bitAt_push_eq _ _ _ hik, byteBit_eq_testBit _ _ (by omega), hbit _ (by omega), hcur _
-          (by omega)]
-        have hi8 : 8 * (n / 8) + i % 8 = i := by rw [hsize] at hik; omega
-        by_cases he : i % 8 = 7
-        · have : i = n := by omega
-          subst this
-          simp [he]
-        · have hlt7 : i % 8 < 7 := by omega
-          simp [h7, hi8, hlt7, Ne.symm he]
-    · have hq : (n + 1) / 8 = n / 8 := by omega
-      have hm : (n + 1) % 8 = n % 8 + 1 := by omega
-      rw [show packStep as p n = ⟨if boolOf as[n]! = true
-          then p.1 ||| 1 <<< (n % 8).toUInt8 else p.1, p.2⟩ by
-        simp only [packStep]; split <;> simp [h7]]
-      refine ⟨by rw [hsize, hq], fun i hi => hbits i (by omega), fun j hj => ?_⟩
-      rw [hbit _ hj, hcur _ hj, hq, hm]
-      by_cases he : n % 8 = j
-      · subst he
-        simp [hn]
-      · by_cases hj' : j < n % 8
-        · simp [he, hj', Nat.lt_succ_of_lt hj']
-        · simp [he, hj', show ¬j < n % 8 + 1 by omega]
 
 /-- Pushing a list of bytes appends exactly that many. -/
 theorem foldl_push_size (b : ByteArray) (xs : List UInt8) :
@@ -1485,18 +1317,6 @@ theorem symKey_folds (bs : List ByteArray) (i : Nat) (hi : i < bs.length) :
   unfold symKey
   rw [hpair]
   exact extract_blobStep bs i hi
-
-/-- The bytes `packBits` writes: one per eight booleans, the last one partial. -/
-theorem packBits_size (as : Array QAtom) : (packBits as).size = (as.size + 7) / 8 := by
-  obtain ⟨hsize, -, -⟩ := packStep_loop as as.size _ rfl
-  rw [packBits_eq as _ rfl]
-  revert hsize
-  generalize (List.range' 0 as.size).foldl (packStep as)
-    (⟨0, ByteArray.emptyWithCapacity ((as.size + 7) / 8)⟩ : MProd UInt8 ByteArray) = p
-  intro hsize
-  by_cases hm : as.size % 8 = 0
-  · rw [if_pos hm]; omega
-  · rw [if_neg hm, push_size]; omega
 
 /-- The two folds lay their symbols out as `SymsWF` says: start `j` is `symStart j`, which grows with
 `j` and ends at the blob's size. -/

@@ -21,14 +21,13 @@ open Tab Rel.Dep Rel.Kernel Rel.Verify Rel
 
 /-! ## Atoms: a boolean side -/
 
-/-- A boolean column's bitmap holds its `n` bits, at either form. -/
+/-- A boolean column's bitmap holds its `n` bits. -/
 theorem tagBits_size {n : USize} (x : Arr .u1 n) : (tagBits x).size = (n.toNat + 7) / 8 := by
   have ht := enc_tagBits x
   have hw := x.wf
   revert ht hw
   generalize tagBits x = b
   cases x.enc <;> simp only [Kernel.boolBits, Enc.WF, reduceCtorEq, false_implies, true_implies, Option.some.injEq]
-  · rintro rfl h; exact h
   · rintro rfl -; simp only [Kernel.bitsOfFoR, KernelWF.packOf_size]
 
 /-- **A boolean side's codes are its bitmaps**: every part's payload reads as one (`enc_tagBits`), so

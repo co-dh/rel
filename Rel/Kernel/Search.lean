@@ -86,7 +86,7 @@ def gatherBytes (w : USize) (fill : UInt64) (src : @& ByteArray) (idx : @& ByteA
 
 /-- q's `x in y` at vectors on both sides, as a bit per element of `x`. The body is q's own
 `(y?x) < count y`, and the `i < m` guard is what leaves the tail bits of the last byte zero —
-`Column.packBits` records why that matters: trailing set bits make two equal boolean vectors compare
+`packOf` records why that matters: trailing set bits make two equal boolean vectors compare
 unequal under `~`. `memberVec` encodes it. -/
 def memberVecBitmap (w : USize) (float : Bool) (xs : @& ByteArray) (hay : @& ByteArray) : ByteArray :=
   let m := xs.size / w.toNat

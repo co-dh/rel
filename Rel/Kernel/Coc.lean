@@ -573,8 +573,8 @@ end Rel.Ext.Enc
 
 namespace Rel.Kernel
 
-/-- `n` bits from `f`, packed LSB first with the tail of the last byte left zero. `Column.packBits`
-records why the tail matters: trailing set bits make two equal boolean vectors compare unequal under
+/-- `n` bits from `f`, packed LSB first with the tail of the last byte left zero, because
+trailing set bits make two equal boolean vectors compare unequal under
 `~`. One definition for the bit-payload kernels (`bitRowsOver` in `Reduce`, four in `Structural`, `bitsOfFoR`
 here), which differ only in `f`. -/
 def packOf (n : Nat) (f : Nat → Bool) : ByteArray :=
