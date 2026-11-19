@@ -442,6 +442,12 @@ Diff table 的「状态」列：✅ 后面是完成它的步骤；🔄 是部分
       kernel 行表已合入（`95c082e`），`est`/`thin` 在程序里等 T3 的 `pair outl outr`；`Tab` 算子 `nu mu τ setify length atPos
       est thin` 与 list 行已在 master。owner 决定（2026-11-19）：`kscan` 多返回 fold 结果，`whereCol` = `scan → scatter →
       gather`，不排序（`b44915c`）；architecture §4 的 power/list 行是草稿，待 owner 审。
+      状态（2026-11-19 12:00，master `1a31760`，`make check` 绿，compile-diff 427 / 33）：新 kernel 上 3 / 15（`sudokuac sudokupc
+      circuit`）；T6、T8 在做（`t68b`）。owner 决定（2026-11-19）：`sudokupc9` 选 A —— §4 加两行：`≫` 与 `\` 按左侧 key 分块
+      （峰值有界，块界取 `expand` 前的 `cR·cS` 前缀和），以及一个 bit matrix 融合 kernel `kbitrows`（现有 `bitRowsOver`，
+      `|A|·|B| ≤ 2²⁷` 时选用，用定理连到 `Tab.comp` / `Tab.ldiv`）；RELK 目标 10 → 11。分析：`/data/tmp/pc9/analysis.md`。
+      `rel-native` 程序自己创建输出目录（owner 选 E），CLAUDE.md 不改。`muGrow` 固定在旧层：新路径上无不动点的 `μ` 要跑
+      1024 轮、每轮给变长的数组排序（`kasc` 的 `cmp_rows` 占 71%），待修。
     - W3 留给后面的风险（清单 agent 提出，均未验证）：计数做 `\` 会物化 join（最多 `|R|·|S|` 行），SudokuPC9、
       blocks 可能超内存；规范序从 `Obj.lt` 变成 `kasc` 序码，打印的期望值与 `out/key`、`out/val` 可能变；
       `coc_block_start`、`coc_bools_of`、`structural_bits_of_for` 与 `Plan.abi` 点名的 12 个 export 在 W5 后仍有
