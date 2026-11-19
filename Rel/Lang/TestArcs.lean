@@ -11,6 +11,8 @@ open Tab Rel.Lang Rel.Lang.Test
 -- ⟦z⟧ = gfp below s ∩ t, t keeping y ∈ {0,2}. (v,d) ∈ A\(Z e) iff ∀w. w A v ⇒ (w,d) ∈ Z, so A = {(y,x)} needs
 -- (y,d) ∈ Z at x: x ∈ {0,2}, and {(x,0),(x,2),(y,0),(y,2)} is a fixed point. With t lost the seed is s = ⊤, where
 -- the arc removes nothing: all 6 rows. z₁ nests t with the arc, z₂ puts it last, z₃ names s ∩ t.
+-- `nuAC` is the old layer's: the kernel path runs `ν` as plain rounds
+set_option rel.kernel false in
 open Rel.Programs.prelude in
 rel_program arcsT where
     obj V = {x,y}
