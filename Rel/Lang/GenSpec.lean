@@ -571,6 +571,7 @@ theorem comp_sound {A B C : Obj} {e : Bool} {R : Fn true A B} {S : Fn e B C} {TR
   intro K
   cases R with
   | tab r => exact hT fun _ e => hR.agree_some (K := ⟨K.dom, none⟩) e
+  | bits => exact hT fun _ e => hR.agree_some (K := ⟨K.dom, none⟩) e
   | lazy f =>
     rcases K with ⟨_ | D, _ | L⟩
     · exact hT fun _ e => hR.agree_some (K := ⟨none, none⟩) e

@@ -1,5 +1,5 @@
 import Rel.Run.CRelDef
-import Rel.Run.Cols
+import Rel.Run.Gather
 
 /-! A relation computed now (`tab`) or on what its context already knows of its two sides (`lazy`): the
     replacement for the demand bit of `Gen.Fn`. A `tab` holds its table or the message of the op that could not

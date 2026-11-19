@@ -833,12 +833,14 @@ theorem Tab.compSel_holds {bits : Nat} {R : Tab A B} {S : Tab B C} {X : Tab A C}
   simp only [Tab.compSelM, bind] at he
   rw [Except.bind_eq_ok'] at he; obtain ⟨x, hx, he⟩ := he
   rw [Except.bind_eq_ok'] at he; obtain ⟨T, -, he⟩ := he
-  have hF : ∀ {Y : Tab A C}, Tab.compFrom Tab.blockRows R S x = .ok Y → pure (.inl Y) = Except.ok e →
+  have hF : ∀ {Y : Tab A C}, Tab.compFrom Tab.blockRows R S x = .ok Y → e = .inl Y →
       (X.Holds a c ↔ ∃ b, R.Holds a b ∧ S.Holds b c) := fun hY hp => by
-    cases hp; cases h
+    subst hp; simp only [pure, Except.pure, Except.ok.injEq] at h; subst h
     obtain ⟨U, hU, hH⟩ := Tab.compFrom_canon hx hY; rw [Tab.canon_holds hU]; exact hH a c
+  have hP : ∀ {Y : Tab A C}, (pure (Sum.inl Y) : Except String _) = .ok e → e = .inl Y := fun he => by
+    simp only [pure, Except.pure, Except.ok.injEq] at he; exact he.symm
   split at he
-  · rw [Except.bind_eq_ok'] at he; obtain ⟨Y, hY, he⟩ := he; exact hF hY he
+  · rw [Except.bind_eq_ok'] at he; obtain ⟨Y, hY, he⟩ := he; exact hF hY (hP he)
   · rw [Except.bind_eq_ok'] at he; obtain ⟨_, -, he⟩ := he
     rw [Except.bind_eq_ok'] at he; obtain ⟨_, -, he⟩ := he
     split at he
@@ -846,7 +848,7 @@ theorem Tab.compSel_holds {bits : Nat} {R : Tab A B} {S : Tab B C} {X : Tab A C}
       cases he
       refine Tab.compBits_holds ?_ a c
       simp only [Tab.compBits, bind]; rw [hm]; exact h
-    · rw [Except.bind_eq_ok'] at he; obtain ⟨Y, hY, he⟩ := he; exact hF hY he
+    · rw [Except.bind_eq_ok'] at he; obtain ⟨Y, hY, he⟩ := he; exact hF hY (hP he)
 
 /-- **`R.ldivSel bits S UB UC` denotes `R\S` within `UB`, `UC`** at every `bits`: its bit branch by
 `Tab.ldivBits_holds`, its other by `Tab.ldiv_holds`. -/
