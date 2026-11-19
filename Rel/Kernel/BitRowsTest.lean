@@ -60,9 +60,10 @@ def eIdx : String ⊕ (List UInt8 × List UInt8) := .inl "bitrows: idx 3 at row 
 example : view (kbitrows false (u 2) (u 3) (u 4) (u 3) (col [2, 2, 4]) (col [0, 1, 3, 2]) m3) = eIdx := by
   decide +kernel
 #guard view (kbitrows false (u 2) (u 3) (u 4) (u 3) (col [2, 2, 4]) (col [0, 1, 3, 2]) m3) == eIdx
--- `na · w` past `USize`: `USize.size` is opaque to `decide`, so the Rust alone
-#guard view (kbitrows false (USize.ofNat (2 ^ 40)) (USize.ofNat (2 ^ 40)) (u 0) (u 0) (col []) (col []) m3) ==
-  .inl "bitrows: 1099511627776 or 0 rows of 1099511627776 bits do not fit a USize"
+-- `na · w` at `2^32`, the first error
+def eBig : String ⊕ (List UInt8 × List UInt8) := .inl "bitrows: 65536 or 0 rows of 65536 bits reach 2^32"
+example : view (kbitrows false (u 65536) (u 65536) (u 0) (u 0) (col []) (col []) m3) = eBig := by decide +kernel
+#guard view (kbitrows false (u 65536) (u 65536) (u 0) (u 0) (col []) (col []) m3) == eBig
 
 /-- Block boundaries and a width not a multiple of 64: 30 rows of 100 bits (3000, three 1024-bit blocks), 50 row
 numbers, 20 segments (the first ones empty) into 2000 bits. Encoding these is more than `decide +kernel` reduces, so

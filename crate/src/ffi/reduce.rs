@@ -29,8 +29,8 @@ fn words(b: &crate::blocks::Blocks) -> Vec<i64> {
 #[cfg(all(feature = "ffi", not(any(test, feature = "std"))))]
 #[allow(clippy::too_many_arguments)]
 fn bitrows(all: bool, w: usize, na: usize, ni: usize, g: usize, ends: B, idx: B, m: B) -> Result<O, String> {
-    let (Some(nm), Some(no)) = (na.checked_mul(w), g.checked_mul(w)) else {
-        return Err(format!("bitrows: {na} or {g} rows of {w} bits do not fit a USize"))
+    let (Some(nm), Some(no)) = (na.checked_mul(w).filter(|&x| x < 1 << 32), g.checked_mul(w).filter(|&x| x < 1 << 32)) else {
+        return Err(format!("bitrows: {na} or {g} rows of {w} bits reach 2^32"))
     };
     let es = words(&blocks_view("bitrows: ends", g, ends)?);
     let is = words(&blocks_view("bitrows: idx", ni, idx)?);

@@ -32,17 +32,18 @@ numbers each below `na`, `ends` `g` segment ends, nondecreasing and at most `ni`
 `[ends[r-1], ends[r])`, `ends[-1] = 0`). Answer bit `r·w + j` is the `∨` (`all = false`; an empty segment `0`) or the
 `∧` (`all = true`; an empty segment `1`) over `k` in segment `r` of bit `idx[k]·w + j` of `m`: `g · w` bits as a
 `u1` `foR` (`Coc.encodeAt lgEnc 1 _ false`, a mixed block its bitmap). Each count is an argument because an `Enc`
-carries none (as `kscatter`'s `m`, `n`). The error, in this order: a product past `USize`; `ends`, `idx`, `m` not of
-their layout (`foRWords`, `m` a `foR` alone); then `bitRowsOf`'s. -/
+carries none (as `kscatter`'s `m`, `n`). The error, in this order: `na · w` or `g · w` not below `2^32`; `ends`, `idx`,
+`m` not of their layout (`foRWords`, `m` a `foR` alone); then `bitRowsOf`'s. The bound is `2^32`, not `USize.size`:
+every platform's `USize` holds it (`USize.le_size`) and `decide` reduces it, and a matrix is chosen at `≤ 2^27` bits. -/
 @[extern "qlean_k_bitrows"]
 def kbitrows (all : Bool) (w na ni g : USize) (ends idx m : @& Enc) : Except String Enc := do
-  if USize.size ≤ na.toNat * w.toNat ∨ USize.size ≤ g.toNat * w.toNat then
-    throw s!"bitrows: {na} or {g} rows of {w} bits do not fit a USize"
-  let es ← foRWords "bitrows: ends" g ends
-  let is ← foRWords "bitrows: idx" ni idx
-  let ms ← match m with
-    | .pos => throw s!"bitrows: m: constructor {m.ctorIdx} is not foR"
-    | _ => foRWords "bitrows: m" (na.toNat * w.toNat).toUSize m
-  bitRowsOf all w.toNat na.toNat ni.toNat g.toNat es is ms
+  if h : na.toNat * w.toNat < 2 ^ 32 ∧ g.toNat * w.toNat < 2 ^ 32 then
+    let es ← foRWords "bitrows: ends" g ends
+    let is ← foRWords "bitrows: idx" ni idx
+    let ms ← match m with
+      | .pos => throw s!"bitrows: m: constructor {m.ctorIdx} is not foR"
+      | _ => foRWords "bitrows: m" (USize.ofNatLT _ (Nat.lt_of_lt_of_le h.1 USize.le_size)) m
+    bitRowsOf all w.toNat na.toNat ni.toNat g.toNat es is ms
+  else throw s!"bitrows: {na} or {g} rows of {w} bits reach 2^32"
 
 end Rel.Kernel
