@@ -122,7 +122,7 @@ Diff table 的「状态」列：✅ 后面是完成它的步骤；🔄 是部分
   owner 的细化（经 dataframe 会话）：位置是一个固定的对象 `N`，不是每个 frame 各自的 `I = {0..n-1}`。m 行的 frame 是一族
   恰在 `0..m-1` 上有定义的部分映射 `x : N ⟶ C`，加上 m；`N` 的元素从不存储。产生新 frame 的 op 是关系 `p : N ⟶ N`
   （新位置 → 旧位置），结果列是 `p ≫ x`：`take(n) = (<n) ≫ x`（实现 `hi := min(hi, lo+n)`）、`drop(n) = (+n) ≫ x`
-  （实现 `lo += n`）、filter 是保留位置的 `enum`、sort 是 `asc` 给出的置换经 `gather` 作用。所以 `pos` 这一侧的含义是
+  （实现 `lo += n`）、filter 是保留位置的 `where`、sort 是 `asc` 给出的置换经 `gather` 作用。所以 `pos` 这一侧的含义是
   「`N` 中小于 m 的位置」；`Enc.pos` 的定义（`get .i64 m .pos i = some i`，i < m）不变。
   进度：6.13a WIP 51aeacd（Lean 与 Rust 读取分支、测试；`RelKernel` 剩 `KGather` 两个证明），由分支 `d4pos2` 接着做。
   6.13b 的范围：`longsOf`/`tilLongs`/`tilCol` 还有约 35 个可执行调用者（`Rel.Run.Alg`、`Rel.Run.Code`、`Rel.Run.Lang.Bits` 等）。
