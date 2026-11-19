@@ -974,16 +974,23 @@ theorem compBlocks_canon {R : Tab A B} {S : Tab B C} {nb : Nat} {bid : Arr .i64 
 
 /-- **`R.compWith bound S` is `canon` of a table denoting `R ≫ S`**, at every `bound`; `Tab.comp` is `bound =
 blockRows`. -/
+theorem compFrom_canon {bound : Nat} {R : Tab A B} {S : Tab B C}
+    {x : USize × Enc × Enc × Enc × USize × Enc × Enc × Enc} {T : Tab A C} (hx : compGroups R S = .ok x)
+    (h : compFrom bound R S x = .ok T) :
+    ∃ U : Tab A C, U.canon = .ok T ∧ ∀ a c, U.Holds a c ↔ ∃ b, R.Holds a b ∧ S.Holds b c := by
+  simp only [compFrom, bind] at h
+  rw [Except.bind_eq_ok'] at h; obtain ⟨o, -, h⟩ := h
+  rcases o with _ | ⟨nb, bid⟩
+  · exact compOne_canon (by rw [compOne, hx]; exact h)
+  · exact compBlocks_canon h
+
 theorem comp_canon {bound : Nat} {R : Tab A B} {S : Tab B C} {T : Tab A C} (h : compWith bound R S = .ok T) :
     ∃ U : Tab A C, U.canon = .ok T ∧ ∀ a c, U.Holds a c ↔ ∃ b, R.Holds a b ∧ S.Holds b c := by
   unfold compWith at h
   split at h
   · exact compOne_canon h
   · simp only [bind] at h; rw [Except.bind_eq_ok'] at h; obtain ⟨x, hx, h⟩ := h
-    rw [Except.bind_eq_ok'] at h; obtain ⟨o, -, h⟩ := h
-    rcases o with _ | ⟨nb, bid⟩
-    · exact compOne_canon (by rw [compOne, hx]; exact h)
-    · exact compBlocks_canon h
+    exact compFrom_canon hx h
 
 /-- **`R.comp S` denotes `R ≫ S`** (`Rep.rep_comp`'s statement, pointwise). -/
 theorem comp_holds {R : Tab A B} {S : Tab B C} {T : Tab A C} (h : R.comp S = .ok T) (a : A.El) (c : C.El) :
