@@ -99,6 +99,33 @@ pub fn br_store(o: &mut [u8], bit: usize, v: u64, nbits: u32) {
     let x = (v as u128) << s;
     for t in 0..(s + nbits).div_ceil(8) as usize { o[b + t] |= (x >> (8 * t)) as u8 }
 }
+/// The first `n` elements of the `u1` `foR` column `c` as one bitmap, LSB first, bit `i` bit 0 of element `i`: a block
+/// is its width-1 residuals copied (complemented under an odd frame), a constant at width 0, bit 0 of each residual
+/// read in place at any other width, then each patch's bit 0. No element is widened to a word (`kbitrows`).
+pub fn col_bits(c: &crate::coc::Coc, n: usize) -> Vec<u8> {
+    let (lg, blk) = (c.meta.lg, c.meta.blk());
+    let mut out = vec![0u8; n.div_ceil(8)];
+    for b in 0..n.div_ceil(blk) {
+        let (lo, nb) = (b << lg, (n - (b << lg)).min(blk));
+        let o = &mut out[lo / 8..(lo + nb).div_ceil(8)];
+        let (w, f) = (c.meta.width[b] as usize, (c.frame(b) & 1) as u8);
+        let at = c.meta.off[b] as usize;
+        let p = &c.pack[at..at + blk * w / 8];
+        match w {
+            0 => o.fill(0u8.wrapping_sub(f)),
+            1 => for (x, &y) in o.iter_mut().zip(p) { *x = y ^ 0u8.wrapping_sub(f) },
+            _ => for k in 0..nb { o[k / 8] |= (((p[k * w / 8] >> (k * w % 8)) & 1) ^ f) << (k % 8) },
+        }
+        if let Some(e) = c.exc.filter(|e| !e.pos.is_empty()) {
+            for j in e.off[b] as usize..e.off[b + 1] as usize {
+                let k = e.pos[j] as usize;
+                if k < nb { o[k / 8] = (o[k / 8] & !(1 << (k % 8))) | (((c.exc(j) & 1) as u8) << (k % 8)) }
+            }
+        }
+    }
+    out
+}
+
 /// reduce.rs `qlean_bit_rows_over` past the unboxing: per row of `w` bits, the AND (`all`) or OR of the rows
 /// `idx[offs[g] .. offs[g + 1]]` of `m`, into `out`; threaded (`bit_rows_pass`).
 pub fn bit_rows(run: Runner, all: bool, w: usize, offs: &[i64], idx: &[i64], m: &[u8], out: &mut [u8]) {
