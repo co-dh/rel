@@ -153,4 +153,47 @@ theorem kscatter_pos_ix {n : USize} {e o : Enc} {fill : UInt64} (h : kscatter .l
   rw [hrow j hj, Array.getElem?_eq_getElem h1, Array.getElem?_eq_getElem h2, Option.getD_some] at hw
   exact Option.some.inj hw
 
+/-- A fold whose every successful `step` names a cell `ix k` below `n` and combines `es k` into it by `f`: a successful
+run over the rows `l` from `o` of `n` cells keeps the size, and cell `j` ends as `f` folded over `es k` for the rows `k`
+of `l` naming `j`, in row order, from `o[j]`. -/
+private theorem foldCells {f : UInt64 → UInt64 → UInt64} {ix : Nat → Nat} {es : Nat → UInt64} {n : Nat}
+    {step : Array UInt64 → Nat → Except String (Array UInt64)}
+    (hstep : ∀ o k o', step o k = .ok o' → ix k < n ∧ o' = o.setIfInBounds (ix k) (f (o[ix k]?.getD 0) (es k))) :
+    ∀ (l : List Nat) (o ws : Array UInt64), o.size = n → l.foldlM step o = .ok ws →
+      ws.size = n ∧ ∀ j, ws[j]?.getD 0 = ((l.filter fun k => ix k = j).map es).foldl f (o[j]?.getD 0)
+  | [], o, ws, hs, h => by cases h; exact ⟨hs, fun j => by simp⟩
+  | k :: l, o, ws, hs, h => by
+    rw [List.foldlM_cons] at h
+    cases h1 : step o k with
+    | error s => rw [h1] at h; cases h
+    | ok o1 =>
+      rw [h1] at h
+      obtain ⟨hk, rfl⟩ := hstep o k o1 h1
+      obtain ⟨hs', hj⟩ := foldCells hstep l _ ws (by simp [hs]) h
+      refine ⟨hs', fun j => ?_⟩
+      rw [hj j]
+      by_cases e : ix k = j
+      · subst e
+        rw [Array.getElem?_setIfInBounds_self_of_lt (hs ▸ hk)]
+        simp [List.filter_cons]
+      · rw [Array.getElem?_setIfInBounds_ne e]
+        simp [List.filter_cons, e]
+
+/-- **`scatter` under an `op` whose `eval` is the total `f` is a per-cell fold** (design §4: `out[ix[k]] := op(out[ix[k]],
+e[k])` in row order): a successful run holds `n` cells, cell `j` being `f` folded over `es[k]` for the rows `k` naming
+`j`, in row order, from `fill`. `.add`, `.mul`, `.and`, `.or`, `.min`, `.max`, `.first` and `.last` are instances
+(`hf` by `rfl`); `.last` folds to the last row naming `j`, or `fill`. -/
+theorem scatterWords_fold {op : Op} {f : UInt64 → UInt64 → UInt64} (hf : ∀ a x, op.eval a x = .ok (f a x))
+    {is es ws : Array UInt64} {n : Nat} {fill : UInt64} (h : scatterWords op is es n fill = .ok ws) :
+    ws.size = n ∧ ∀ j < n, ws[j]?.getD 0 =
+      (((List.range is.size).filter fun k => (is[k]?.getD 0).toNat = j).map (es[·]?.getD 0)).foldl f fill := by
+  unfold scatterWords at h
+  obtain ⟨hs, hj⟩ := foldCells (f := f) (ix := fun k => (is[k]?.getD 0).toNat) (es := (es[·]?.getD 0))
+    (fun o k o' h => by
+      dsimp only at h
+      split at h
+      · rename_i hk; simp only [hf, Except.ok.injEq] at h; exact ⟨hk, h.symm⟩
+      · cases h) _ _ ws (by simp) h
+  exact ⟨hs, fun j hjn => by rw [hj j]; simp [hjn]⟩
+
 end Rel.Verify
