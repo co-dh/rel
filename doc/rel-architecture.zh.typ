@@ -165,7 +165,7 @@ compile η t : {r : Rel A B // rep r = ⟦t⟧ρ}       -- 方案 A：规格在�
   [`gen`（boxed）], [不在 kernel 里处理 boxed 值；boxed 值先编成 code 再进 Rel],
   [`til` `cycle` `cast` `floor` `widen`], [q verb，不是 allegory 运算],
   [`find` `bin search` `member` `match`], [q 的查找 verb；Rel 中是 `≫`（join）的特例],
-  [`own_write` `md5` 等], [q 运行时的需要],
+  [`md5` 等], [q 运行时的需要],
 )
 
 == 剩下的唯一编码：foR（分块 frame of reference）
