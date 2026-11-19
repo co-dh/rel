@@ -1,6 +1,9 @@
 import Rel.Run.Lang.Tm
 import Rel.Kernel.Db.Own
 import Rel.Kernel.Elementwise
+import Rel.Kernel.Scan
+import Rel.Kernel.Gather
+import Rel.Kernel.Seen
 
 /-! # A program as kernel calls (`doc/rel-native-design.md` §6), stage 1a: `lit`, `call`, `fail`
 
@@ -12,13 +15,17 @@ namespace Rel.Lang.Plan
 
 open Lean Elab Term Meta Tab Rel.Kernel
 
-/-- A register's type: the argument and result types of the kernels' `@[extern]` declarations. -/
+/-- A register's type: the argument and result types of the kernels' `@[extern]` declarations. `nat` is a `Nat`
+    (C `size_t`, below `2^63`, where `lean_box` holds it); `obj` a constructor object, `lean_ctor_object`. -/
 inductive Ty
-  | bytes | size | bit | u8 | str | parts | u64 | i64
+  | bytes | size | bit | u8 | str | parts | u64 | i64 | nat | obj
   deriving BEq, Repr, Inhabited, ToExpr
 
-/-- What a register holds: a buffer, a size, a bit, a byte, a string, an array of buffers (a column's parts), or
-    a 64-bit word, unsigned or signed (a kernel's fill or null). -/
+/-- What a register holds: a buffer, a size, a bit, a byte, a string, an array of buffers (a column's parts), a
+    64-bit word, unsigned or signed (a kernel's fill or null), a `Nat`, or a constructor object as the runtime lays it
+    out: its tag, its object fields in declaration order (a scalar there is boxed, as a field of polymorphic type is),
+    and its unboxed scalar fields in declaration order. A kernel's `Enc`, `List`, product, `Option` and `AscKey`
+    arguments and answers are `ctor`s (`Reg`), because that is what the C passes. -/
 inductive Val
   | bytes (b : ByteArray)
   | size (n : USize)
@@ -28,13 +35,15 @@ inductive Val
   | parts (bs : Array ByteArray)
   | u64 (x : UInt64)
   | i64 (x : Int64)
+  | nat (n : Nat)
+  | ctor (tag : Nat) (objs scal : Array Val)
   deriving Inhabited
 
 def Val.ty : Val → Ty
   | .bytes _ => .bytes | .size _ => .size | .bit _ => .bit | .u8 _ => .u8 | .str _ => .str | .parts _ => .parts
-  | .u64 _ => .u64 | .i64 _ => .i64
+  | .u64 _ => .u64 | .i64 _ => .i64 | .nat _ => .nat | .ctor .. => .obj
 
-/-- `v` as `fail` prints it: a scalar or a string as itself, a buffer by its size. -/
+/-- `v` as `fail` prints it: a scalar or a string as itself, a buffer by its size, an object by its tag. -/
 def Val.show : Val → String
   | .bytes b => s!"<{b.size} bytes>"
   | .size n => toString n
@@ -44,6 +53,8 @@ def Val.show : Val → String
   | .parts bs => s!"<{bs.size} parts>"
   | .u64 x => toString x
   | .i64 x => toString x
+  | .nat n => toString n
+  | .ctor t .. => s!"<constructor {t}>"
 
 /-- The Lean types a register holds, each with its `Ty`; `kernel%` reads an `@[extern]` signature through it. -/
 class Reg (α : Type) where
@@ -59,11 +70,65 @@ instance : Reg String := ⟨.str, fun | .str s => some s | _ => none, .str⟩
 instance : Reg (Array ByteArray) := ⟨.parts, fun | .parts bs => some bs | _ => none, .parts⟩
 instance : Reg UInt64 := ⟨.u64, fun | .u64 x => some x | _ => none, .u64⟩
 instance : Reg Int64 := ⟨.i64, fun | .i64 x => some x | _ => none, .i64⟩
-/-- A layout is an enum, which the C ABI passes as its constructor index in a byte. `Kind.ofNat` clamps, so the
-    round trip through `ctorIdx` is what refuses a byte that is no index. -/
-instance : Reg Scan.Kind := ⟨.u8, fun
-  | .u8 b => let k := Scan.Kind.ofNat b.toNat; if k.ctorIdx == b.toNat then some k else none
-  | _ => none, fun k => .u8 k.ctorIdx.toUInt8⟩
+instance : Reg Nat := ⟨.nat, fun | .nat n => some n | _ => none, .nat⟩
+
+/-- An enum, which the C ABI passes as its constructor index in a byte. `ofNat` clamps, so the round trip through
+    `idx` is what refuses a byte that is no index. -/
+def Reg.enum {α : Type} (ofNat : Nat → α) (idx : α → Nat) : Reg α := ⟨.u8, fun
+  | .u8 b => let k := ofNat b.toNat; if idx k == b.toNat then some k else none
+  | _ => none, fun k => .u8 (idx k).toUInt8⟩
+
+instance : Reg Scan.Kind := Reg.enum Scan.Kind.ofNat Scan.Kind.ctorIdx
+instance : Reg Kernel.Op := Reg.enum Kernel.Op.ofNat Kernel.Op.ctorIdx
+instance : Reg QAtomicType := Reg.enum QAtomicType.ofNat QAtomicType.ctorIdx
+
+/-- A pair: constructor `0`, its two components boxed object fields. -/
+instance {α β : Type} [Reg α] [Reg β] : Reg (α × β) := ⟨.obj, fun
+  | .ctor 0 #[a, b] #[] => do pure (← Reg.get? a, ← Reg.get? b)
+  | _ => none, fun (a, b) => .ctor 0 #[Reg.put a, Reg.put b] #[]⟩
+
+/-- `none` is constructor `0` with no field (`lean_box(0)`), `some a` constructor `1` holding `a` boxed. -/
+instance {α : Type} [Reg α] : Reg (Option α) := ⟨.obj, fun
+  | .ctor 0 #[] #[] => some none
+  | .ctor 1 #[a] #[] => some <$> Reg.get? a
+  | _ => none, fun | none => .ctor 0 #[] #[] | some a => .ctor 1 #[Reg.put a] #[]⟩
+
+/-- A list's cells read back, `[]` constructor `0`, `a :: l` constructor `1` of `a` and `l`. -/
+partial def listGet? {α : Type} [Reg α] : Val → Option (List α)
+  | .ctor 0 #[] #[] => some []
+  | .ctor 1 #[a, l] #[] => do pure ((← Reg.get? a) :: (← listGet? l))
+  | _ => none
+
+instance {α : Type} [Reg α] : Reg (List α) :=
+  ⟨.obj, listGet?, fun l => l.foldr (fun a r => .ctor 1 #[Reg.put a, r] #[]) (.ctor 0 #[] #[])⟩
+
+/-- An `Enc` is the constructor `Db.ownParts` takes apart: its tag, and its parts as its fields, which they are for
+    the forms whose fields are all buffers (`bytes`, `foR`, `alp`) and for `pos`, which has none; `Db.ownEnc` puts
+    them back. Every other form (`syms`, `enum`, `gen`) has a field that is no part, so `get?` refuses it: a run that
+    reaches one fails naming the register, never reads a constructor the C does not hold. -/
+instance : Reg Enc := ⟨.obj, fun
+  | .ctor 6 #[] #[] => some .pos
+  | .ctor k ps #[] => if [0, 2, 3].contains k then
+      ps.mapM (fun | .bytes b => some b | _ => none) >>= Db.ownEnc k.toUInt8 else none
+  | _ => none, fun e => .ctor e.ctorIdx ((Db.ownParts e).2.map .bytes) #[]⟩
+
+mutual
+/-- `atom t` is constructor `0` of the byte `t`; `cells n c lo hi els` constructor `1` of the objects `lo hi els`
+    and the words `n c`, as the runtime lays a constructor out. -/
+partial def ascGet? : Val → Option AscKey
+  | .ctor 0 #[] #[t] => AscKey.atom <$> Reg.get? t
+  | .ctor 1 #[lo, hi, els] #[n, c] => do
+    let _ : Reg AscKey := ⟨.obj, ascGet?, ascPut⟩
+    pure (.cells (← Reg.get? n) (← Reg.get? c) (← Reg.get? lo) (← Reg.get? hi) (← Reg.get? els))
+  | _ => none
+partial def ascPut : AscKey → Val
+  | .atom t => .ctor 0 #[] #[Reg.put t]
+  | .cells n c lo hi els =>
+    let _ : Reg AscKey := ⟨.obj, ascGet?, ascPut⟩
+    .ctor 1 #[Reg.put lo, Reg.put hi, Reg.put els] #[.size n, .size c]
+end
+
+instance : Reg AscKey := ⟨.obj, ascGet?, ascPut⟩
 /-- A scan's verb is an enum too: its constructor index in a byte. -/
 instance : Reg Scan.Verb := ⟨.u8, fun
   | .u8 0 => some .sums | .u8 1 => some .prds | .u8 2 => some .mins | .u8 3 => some .maxs | .u8 4 => some .fills
@@ -71,13 +136,16 @@ instance : Reg Scan.Verb := ⟨.u8, fun
   fun v => .u8 (match v with | .sums => 0 | .prds => 1 | .mins => 2 | .maxs => 3 | .fills => 4)⟩
 
 /-- A kernel as its `@[extern]` declaration states it (`kernel%`): the C symbol, each argument's type and whether
-    it is borrowed (`@&`), the result's types (a product flattened), whether the toolchain declares it (so `lean.h`
-    defines its symbol, `static inline`), and the Lean call on registers: a pure kernel's answer, or an `IO` kernel's
-    action, which answers no register and runs only at the output edge (`Plan.exec`). -/
+    it is borrowed (`@&`), the result's types (a product flattened) and each one's path of field indices into the
+    answer, whether the answer is an `Except String` (its `error` the run's failure), whether the toolchain declares
+    it (so `lean.h` defines its symbol, `static inline`), and the Lean call on registers: a pure kernel's answer, or
+    an `IO` kernel's action, which answers no register and runs only at the output edge (`Plan.exec`). -/
 structure Kernel where
   sym : String
   args : Array (Ty × Bool)
   res : Array Ty
+  paths : Array (List Nat)
+  exc : Bool
   std : Bool
   run : (Array Val → Except String (Array Val)) ⊕ (Array Val → IO Unit)
 
@@ -90,16 +158,19 @@ def arg {α : Type} [Reg α] (sym : String) (vs : Array Val) (i : Nat) : Except 
   | some a => pure a
   | none => throw s!"{sym}: argument {i} is not a {repr (Reg.ty α)} register"
 
-/-- A result as registers: none for `Unit`, else one. -/
+/-- A result as registers: none for `Unit`, else one; an `Except`'s `error` is the run's failure. -/
 class Out (α : Type) where
-  out : α → Array Val
+  out : α → Except String (Array Val)
 
-instance : Out Unit := ⟨fun _ => #[]⟩
-instance {α : Type} [Reg α] : Out α := ⟨fun a => #[Reg.put a]⟩
-/-- A product's registers: its components', left first. -/
-instance {α β : Type} [Out α] [Out β] : Out (α × β) := ⟨fun (a, b) => Out.out a ++ Out.out b⟩
+instance : Out Unit := ⟨fun _ => pure #[]⟩
+instance {α : Type} [Reg α] : Out α := ⟨fun a => pure #[Reg.put a]⟩
+/-- A product's registers: its components', left first (before `Reg (α × β)`, which would make it one register). -/
+instance (priority := high) {α β : Type} [Out α] [Out β] : Out (α × β) :=
+  ⟨fun (a, b) => return (← Out.out a) ++ (← Out.out b)⟩
 /-- A decision is its bit (`lean_usize_dec_eq` answers a `uint8_t`). -/
-instance {p : Prop} : Out (Decidable p) := ⟨fun d => #[.bit (@decide p d)]⟩
+instance {p : Prop} : Out (Decidable p) := ⟨fun d => pure #[.bit (@decide p d)]⟩
+/-- A kernel's typed failure: its `error` fails the run, its `ok` is its registers. -/
+instance (priority := high) {α : Type} [Out α] : Out (Except String α) := ⟨fun r => r >>= Out.out⟩
 
 /-- The `Ty` that `Reg t` answers, read off the instance. -/
 def tyOf (t : Lean.Expr) : MetaM Ty := do
@@ -108,15 +179,20 @@ def tyOf (t : Lean.Expr) : MetaM Ty := do
   match (← whnfD (mkApp2 (mkConst ``Reg.ty) t inst)).constName? with
   | some ``Ty.bytes => pure .bytes | some ``Ty.size => pure .size | some ``Ty.bit => pure .bit
   | some ``Ty.u8 => pure .u8 | some ``Ty.str => pure .str | some ``Ty.parts => pure .parts
-  | some ``Ty.u64 => pure .u64 | some ``Ty.i64 => pure .i64
+  | some ``Ty.u64 => pure .u64 | some ``Ty.i64 => pure .i64 | some ``Ty.nat => pure .nat
+  | some ``Ty.obj => pure .obj
   | _ => throwError "kernel%: `Reg.ty` of `{t}` does not reduce to a `Ty`"
 
-/-- A result's registers' types, as `Out` lays them: none for `Unit`, a product's components', a decision's bit. -/
-partial def resTys (r : Lean.Expr) : MetaM (Array Ty) := do
+/-- A result's registers' types, as `Out` lays them, each with its path of field indices into the answer: none for
+    `Unit`, a product's components' (field `0`, then `1`), a decision's bit, an `Except`'s `ok` value's. -/
+partial def resTys (r : Lean.Expr) : MetaM (Array (Ty × List Nat)) := do
   if r.isConstOf ``Unit then return #[]
-  if r.isAppOfArity ``Decidable 1 then return #[.bit]
-  if r.isAppOfArity ``Prod 2 then return (← resTys r.appFn!.appArg!) ++ (← resTys r.appArg!)
-  return #[← tyOf r]
+  if r.isAppOfArity ``Decidable 1 then return #[(.bit, [])]
+  if r.isAppOfArity ``Except 2 then return ← resTys r.appArg!
+  if r.isAppOfArity ``Prod 2 then
+    return (← resTys r.appFn!.appArg!).map (fun (t, p) => (t, 0 :: p)) ++
+      (← resTys r.appArg!).map (fun (t, p) => (t, 1 :: p))
+  return #[(← tyOf r, [])]
 
 /-- `kernel% f`: the `Kernel` of the `@[extern]` constant `f`, its symbol, `@&` marks and types read off the
     declaration, so the ABI is never written a second time. -/
@@ -129,7 +205,9 @@ elab "kernel% " c:ident : term => do
   let (ds, r) := doms (← getConstInfo n).type
   let args ← ds.toArray.mapM fun d => return (← tyOf d.consumeMData, isMarkedBorrowed d)
   let (io, r) := if r.isAppOfArity ``IO 1 then (true, r.appArg!) else (false, r)
-  let res ← resTys r
+  let exc := r.isAppOfArity ``Except 2
+  let rp ← resTys r
+  let res := rp.map (·.1)
   if io && !res.isEmpty then
     throwError "kernel%: `{n}` runs in `IO` and answers {res.size} registers; a plan runs `IO` only at its output edge"
   -- the toolchain's own externs are the ones `lean.h` defines; its modules are those of `Init`, `Std`, `Lean`
@@ -139,10 +217,11 @@ elab "kernel% " c:ident : term => do
   let as : Array Term ← (List.range ds.length).toArray.mapM fun i =>
     if io then `((← IO.ofExcept (arg $(quote sym) $vs $(quote i)))) else `((← arg $(quote sym) $vs $(quote i)))
   let call ← `($(mkIdent n) $as*)
-  let run ← if io then `(Sum.inr fun $vs => do ($call : IO Unit)) else `(Sum.inl fun $vs => do pure (Out.out $call))
+  let run ← if io then `(Sum.inr fun $vs => do ($call : IO Unit)) else `(Sum.inl fun $vs => do Out.out $call)
   let runE ← elabTermAndSynthesize
     (← `(($run : (Array Val → Except String (Array Val)) ⊕ (Array Val → IO Unit)))) none
-  return mkAppN (mkConst ``Kernel.mk) #[toExpr sym, toExpr args, toExpr res, toExpr std, ← instantiateMVars runE]
+  return mkAppN (mkConst ``Kernel.mk) #[toExpr sym, toExpr args, toExpr res, toExpr (rp.map (·.2)), toExpr exc,
+    toExpr std, ← instantiateMVars runE]
 
 /-- One step. A `lit` defines one register, a `call` as many as its kernel's results, an `apply` as many as the
     function's, a `global` as many as the global's, an `ite` as many as each branch names, a `fail` none. -/
@@ -160,6 +239,12 @@ inductive Instr
   /-- `r… = if c then t else e`: a branch runs after the registers so far, and its registers `rt` (`re`) are the
       results; the two name as many. -/
   | ite (c : Nat) (t : List Instr) (rt : Array Nat) (e : List Instr) (re : Array Nat)
+  /-- `r = ctor tag(objs; scal)`: the constructor object of tag `tag`, its object fields the registers `objs` (a
+      scalar one boxed), its scalar fields the registers `scal` (`Val.ctor`). -/
+  | ctor (tag : Nat) (objs scal : Array Nat)
+  /-- `r = proj x.i`: object field `i` of the constructor in register `x`, whose tag must be `tag`, read as a `t`
+      (unboxed when `t` is a scalar); any other tag fails the run. -/
+  | proj (x tag i : Nat) (t : Ty)
   deriving Inhabited
 
 /-- A function: its parameters' types (registers `0 … k-1`, borrowed), its body, its result registers (owned). A
@@ -227,6 +312,15 @@ def runI (abi : String → Option Kernel) (fs : Array Sem) (gs : Array (Array Va
     | .bit true => let (xs, ws) ← runB abi fs gs t rs ws; pure (rs ++ (← rt.mapM (reg xs "then")), ws)
     | .bit false => let (xs, ws) ← runB abi fs gs e rs ws; pure (rs ++ (← re.mapM (reg xs "else")), ws)
     | _ => throw s!"plan: if reads register {c}, which is not a bit"
+  | .ctor tag os ss, rs, ws => do pure (rs.push (.ctor tag (← os.mapM (reg rs "ctor")) (← ss.mapM (reg rs "ctor"))), ws)
+  | .proj x tag i t, rs, ws => do
+    match ← reg rs "proj" x with
+    | .ctor tag' os _ =>
+      unless tag' == tag do throw s!"plan: proj r{x}.{i} reads constructor {tag'}, not {tag}"
+      match os[i]? with
+      | some v => if v.ty == t then pure (rs.push v, ws) else throw s!"plan: proj r{x}.{i} is a {repr v.ty}, not a {repr t}"
+      | none => throw s!"plan: proj r{x}.{i}: constructor {tag} has {os.size} object fields"
+    | _ => throw s!"plan: proj reads register {x}, which is not a constructor"
 end
 
 /-- What function `f` means where the functions before it mean `fs`. -/
@@ -341,30 +435,7 @@ def ofTm : {A B : Obj} → Tm A B → Bld (Side × Side)
   | _, _, .share _ R => ofTm R
   | _, _, _ => throw "a node other than a literal, a converse or a shared term: stage 1a builds only those"
 
-/-! ### Builders of `Alg`'s defs (stage 1b) -/
-
-/-- A code's four registers `w`, `n`, `max`, `b`: `max` the greatest code, `card - 1`, which fits a `USize` at every
-    width (`2⁶⁴ - 1` at `64`) where `card` does not. `card = 0` (no code) reads `0`, as `card = 1` does; the one
-    reader of a table size, `idGroups` at `2`/`4` bits, never sees either, as there `card ≥ 3` (`Code.ofLane`). -/
-def codeVals (c : Alg.Code) : Array Val := #[.size c.w.toUSize, .size c.n, .size (c.card - 1).toUSize, .bytes c.b]
-
-/-- `Code.groupIds` on a code's registers `w`, `n`, `max`, `b`: one `if` per lane `laneKind` names, tested at run
-    time on `w`, `groupIds` at that layout; past the last, `idGroups` on a table of `max + 1` entries. -/
-def groupIdsB (w n max b : Nat) : Bld (Array Nat) :=
-  go ([1, 8, 16, 32, 64].filterMap fun v => (Alg.laneKind v).map (v, ·))
-where
-  go : List (Nat × Scan.Kind) → Bld (Array Nat)
-    | [] => do
-      let one ← lit (.size 1)
-      let card ← emit1 (.call "lean_usize_add" #[max, one])
-      call "qlean_sort_id_groups" #[card, n, w, b] 2
-    | (v, k) :: ks => do
-      let x ← lit (.size v.toUSize)
-      let e ← emit1 (.call "lean_usize_dec_eq" #[w, x])
-      ite e (do call "qlean_sort_group_ids" #[← lit (Reg.put k), n, b] 2) (go ks)
-
-/-- `Code.groupIds` as a plan function of the code's four registers. -/
-def groupIdsF : Bld Nat := defFun #[.size, .size, .size, .bytes] fun ps => groupIdsB 0 1 2 3
+/-! ### Recipes on the five kernels (design §4) -/
 
 /-- `need`'s test on the bit `c`: set, nothing runs; clear, `fail msg args`. -/
 def guard (c : Nat) (msg : String) (args : Array Nat) : Bld Unit :=
@@ -379,38 +450,78 @@ def call1 (k : Kernel) (args : Array Nat) : Bld Nat := do
   unless k.res.size == 1 do throw s!"call1 `{k.sym}`: its declaration answers {k.res.size} registers, not one (`callK`)"
   emit1 (.call k.sym args)
 
-/-- A kernel answering a `u1` `foR` of `n` elements (`Ew.cmp`, `Ew.bit`), read as the bitmap `whereBits` and
-    `Ew.bit` take: `bitsOfFoR`, `boolBits`'s `foR` branch. -/
-def maskB (k : Kernel) (args : Array Nat) (n : Nat) : Bld Nat := do
-  call1 (kernel% Kernel.bitsOfFoR) ((← callK k args).push n)
+/-- Register `i` of the registers `rs` that `who` answered. -/
+def nth (rs : Array Nat) (i : Nat) (who : String) : Bld Nat := match rs[i]? with
+  | some r => pure r
+  | none => throw s!"{who} answers {rs.size} registers, not {i + 1}"
 
-/-- `len b`, the longs of the payload `b`, as a `size`: its bytes (`lean_sarray_size`) over `8`. -/
-def lenB (b : Nat) : Bld Nat := do
-  let s ← call1 (kernel% ByteArray.usize) #[b]
-  call1 (kernel% USize.div) #[s, ← lit (.size 8)]
+/-- `r = ctor tag(objs; scal)`. -/
+def ctorB (tag : Nat) (objs scal : Array Nat) : Bld Nat := emit1 (.ctor tag objs scal)
 
-/-- `Alg.arith op` on the pair columns `u`, `v` of `n` rows: `Ew.val op`, the bits of the kept rows as `arith`
-    combines them (`op` is static, so its `if`s are decided here), `whereBits`, its count `lenB`, and the three
-    columns gathered there: the relation's count, key columns and value column. -/
-def arithB (op : UInt8) (n u v : Nat) : Bld (Array Nat) := do
-  let i64 ← lit (.u8 Ew.i64); let vv ← lit (.u8 Ew.vv); let va ← lit (.u8 Ew.va); let nl ← lit (.i64 Alg.nul)
-  let val (o sh x y : Nat) := call1 (kernel% Kernel.Ew.val) #[o, i64, sh, nl, x, y, n]
-  let cmp (c : UInt8) (sh x y : Nat) := do maskB (kernel% Kernel.Ew.cmp) #[← lit (.u8 c), i64, sh, x, y, n] n
-  let bit (c : UInt8) (x y : Nat) := do maskB (kernel% Kernel.Ew.bit) #[← lit (.u8 c), vv, x, y, n] n
-  let s ← val (← lit (.u8 op)) vv u v
-  let pos ← cmp Ew.ge va v (← lit (.bytes (one 0)))
-  let ok ← cmp Ew.ne va s (← lit (.bytes (one Alg.nul.toUInt64)))
-  let exact ←
-    if op == Ew.add then do bit (Ew.bitCmp + Ew.eq) pos (← cmp Ew.ge vv s u)
-    else if op == Ew.sub then do bit (Ew.bitCmp + Ew.eq) pos (← cmp Ew.le vv s u)
-    else if op == Ew.mul then do
-      bit Ew.greater (← cmp Ew.eq vv (← val (← lit (.u8 Ew.idiv)) vv s u) v) (← cmp Ew.eq va u (← lit (.bytes (one 0))))
-    else pure ok
-  let k ← call1 (kernel% Kernel.whereBits) #[n, ← bit Ew.lesser ok exact]
-  let r ← lenB k
-  let w ← lit (.size 8)
-  let g (fill : UInt64) (x : Nat) := do call1 (kernel% Kernel.gatherBytes) #[w, ← lit (.u64 fill), x, k]
-  let nf := (Kernel.nullBits .i64).getD 0
-  return #[r, ← g nf u, ← g nf v, ← g 0 s]
+/-- `r = proj x.i`, `x` of tag `tag`, read as a `t`. -/
+def projB (x tag i : Nat) (t : Ty) : Bld Nat := emit1 (.proj x tag i t)
+
+/-- The list of the registers `rs`, laid out as `Reg (List α)` lays it. -/
+def listB (rs : List Nat) : Bld Nat := do rs.foldrM (fun x l => ctorB 1 #[x, l] #[]) (← ctorB 0 #[] #[])
+
+/-- `kscatter` of no row into `n` cells: the column of `n` rows, each the word in register `fill`. -/
+def constB (n fill : Nat) : Bld Nat := do
+  let e ← lit (Reg.put (wordsFoR #[]))
+  call1 (kernel% kscatter) #[← lit (Reg.put Kernel.Op.last), ← lit (.size 0), e, e, n, fill]
+
+/-- `kscan op` at `t` over the `n` rows of the columns `es`, a segment starting at each row `seg` sets: the column and
+    the fold result. -/
+def scanB (op : Kernel.Op) (t : QAtomicType) (n seg : Nat) (es : List Nat) : Bld (Array Nat) := do
+  callK (kernel% kscan) #[← lit (Reg.put op), ← lit (.bit false), ← lit (Reg.put t), ← lit (Reg.put t), n, seg, ← listB es]
+
+/-- `where` (design §4: scan → scatter, no sort): the count `r` (a `size`) and the positions, in order, of the rows the
+    `n`-row mask `keep` sets. The inclusive prefix sum `P` (`kscan add`, one segment) numbers the kept rows `1 … r`
+    and its fold is `r` (`0` at `n = 0`, where no row is folded); row `i` goes to cell `keep[i] · P[i]` of `r + 1`
+    (`kscatter`), a dropped row to the spare cell `0`, which the `kgather` of cells `1 … r` cuts off. -/
+def whereB (n keep : Nat) : Bld (Nat × Nat) := do
+  let z ← constB n (← lit (.u64 0)); let one ← constB n (← lit (.u64 1))
+  let ps ← scanB .add .i64 n z [z, keep]
+  let p ← nth ps 0 "kscan"
+  let fold ← nth ps 1 "kscan"
+  let empty ← call1 (kernel% USize.decEq) #[n, ← lit (.size 0)]
+  let r ← call1 (kernel% UInt64.toUSize) #[← nth (← ite empty (do pure #[← lit (.u64 0)])
+    (do pure #[← projB fold 1 0 .u64])) 0 "if"]
+  let ix ← nth (← scanB .mul .i64 n one [keep, p]) 0 "kscan"
+  let r1 ← call1 (kernel% USize.add) #[r, ← lit (.size 1)]
+  let ix1 ← call1 (kernel% kscatter) #[← lit (Reg.put Kernel.Op.last), n, ix, ← lit (Reg.put (Ext.Enc.pos : Enc)), r1,
+    ← lit (.u64 0)]
+  let zr ← constB r (← lit (.u64 0))
+  let cut ← nth (← scanB .add .i64 r zr [zr, ← constB r (← lit (.u64 1))]) 0 "kscan"
+  pure (r, ← call1 (kernel% kgather) #[r, cut, r1, ix1])
+
+/-- `Alg.arith op` (`add`, `sub`, `mul`) on the `i64` columns `u`, `v` of `n` rows: `s = u op v` wrapped (a `kscan`
+    map: every row a segment), the rows kept where no operand and not `s` is null and `s` did not wrap (`kscan` maps
+    of compares), `whereB` of them, and the columns gathered there (`kgather`): the count, then `u`, `v`, `s`. -/
+def arithB (op : Kernel.Op) (n u v : Nat) : Bld (Array Nat) := do
+  let one ← constB n (← lit (.u64 1)); let z ← constB n (← lit (.u64 0))
+  let nul ← constB n (← lit (.u64 Alg.nul.toUInt64))
+  let m (o : Kernel.Op) (a b : Nat) : Bld Nat := do nth (← scanB o .i64 n one [a, b]) 0 "kscan"
+  let s ← m op u v
+  -- `s` wrapped iff the sign of `v` disagrees with the side of `u` that `s` lies on; a product iff `s / u ≠ v`
+  let exact ← match op with
+    | .add => do m .eq (← m .ge v z) (← m .ge s u)
+    | .sub => do m .eq (← m .ge v z) (← m .le s u)
+    | .mul => do let u0 ← m .eq u z; m .or u0 (← m .eq (← m .div s (← m .add u u0)) v)
+    | _ => throw s!"arithB: {repr op} is not `add`, `sub` or `mul`, the arithmetic whose wrap it checks"
+  let keep ← m .and (← m .and (← m .ne u nul) (← m .ne v nul)) (← m .and (← m .ne s nul) exact)
+  let (r, w) ← whereB n keep
+  let g (x : Nat) := call1 (kernel% kgather) #[r, w, n, x]
+  return #[r, ← g u, ← g v, ← g s]
+
+/-- Each row's group among the `n` rows of the column `c` of the type in the byte `t`, groups numbered in `asc` order of their keys (design §4,
+    group-by = `asc ≫ seen`): `kasc` sorts the rows (the sorted column and the permutation `p`), `kseen` numbers the
+    runs of equal keys on the sorted rows (`g`), and `kscatter` writes sorted row `k`'s group to row `p[k]`. -/
+def groupIdsB (t n c : Nat) : Bld Nat := do
+  let key (e : Nat) : Bld Nat := do listB [← ctorB 0 #[← ctorB 0 #[] #[t], e] #[]]
+  let sp ← callK (kernel% kasc) #[n, ← key c]
+  let sorted ← projB (← nth sp 0 "kasc") 1 0 .obj
+  let kg ← callK (kernel% kseen) #[n, ← key sorted]
+  call1 (kernel% kscatter) #[← lit (Reg.put Kernel.Op.last), n, ← nth sp 1 "kasc", ← nth kg 1 "kseen", n, ← lit (.u64 0)]
 
 end Rel.Lang.Plan
+

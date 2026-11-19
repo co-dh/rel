@@ -357,119 +357,7 @@ theorem Builds.guard {fg fg' : Array Fun × Array Fun} {c : Nat} {msg : String} 
   simp only [runI, reg_of hc, ok_bind, runB.eq_1]
   simp [ok_bind]; rfl
 
-/-! ### `Code.groupIds` -/
-
-theorem toUSize_eq_iff {a b : Nat} (ha : a < USize.size) (hb : b < USize.size) :
-    a.toUSize = b.toUSize ↔ a = b :=
-  ⟨fun h => by
-    rw [← USize.toNat_ofNat_of_lt' ha, ← USize.toNat_ofNat_of_lt' hb]; exact congrArg USize.toNat h,
-   fun h => h ▸ rfl⟩
-
-theorem push_keep {C rs : Array Val} {x : Val} (h4 : C.size ≤ rs.size) (hr : ∀ i < C.size, rs[i]? = C[i]?) :
-    C.size ≤ (rs.push x).size ∧ ∀ i < C.size, (rs.push x)[i]? = C[i]? :=
-  ⟨by simp; omega, fun i hi => by rw [Array.getElem?_push, if_neg (by omega)]; exact hr i hi⟩
-
-theorem abiOf_decEq : abiOf "lean_usize_dec_eq" = some (kernel% USize.decEq) := by simp [abiOf, abi, List.find?]
-theorem abiOf_add : abiOf "lean_usize_add" = some (kernel% USize.add) := by simp [abiOf, abi, List.find?]
-theorem abiOf_groupIds : abiOf "qlean_sort_group_ids" = some (kernel% Rel.Kernel.Order.groupIds) := by
-  simp [abiOf, abi, List.find?]
-theorem abiOf_idGroups : abiOf "qlean_sort_id_groups" = some (kernel% Rel.Kernel.Order.idGroups) := by
-  simp [abiOf, abi, List.find?]
-
-/-- `groupIdsB.go` on lanes `ks`: `groupIds` at the first lane of the code's width, `idGroups` past the last. -/
-theorem groupIdsB_go {fg : Array Fun × Array Fun} (c : Alg.Code) (hw : c.w < USize.size) (hc : 0 < c.card) (ks : List (Nat × Scan.Kind))
-    (hks : ∀ p ∈ ks, p.1 < USize.size) (rs : Array Val) (h4 : (codeVals c).size ≤ rs.size)
-    (hr : ∀ i < (codeVals c).size, rs[i]? = (codeVals c)[i]?) :
-    Builds abiOf fg fg (groupIdsB.go 0 1 2 3 ks) rs
-      (let g := match (ks.find? (·.1 == c.w)).map (·.2) with
-        | some k => Order.groupIds k c.n c.b
-        | none => Order.idGroups c.card.toUSize c.n c.w.toUSize c.b
-       #[.bytes g.1, .bytes g.2]) := by
-  have rd : ∀ {R : Array Val}, (codeVals c).size ≤ R.size → (∀ i < (codeVals c).size, R[i]? = (codeVals c)[i]?) →
-      ∀ i (hi : i < (codeVals c).size), R[i]? = some (codeVals c)[i] := fun _ hr i hi => by
-    rw [hr i hi]; simp [hi]
-  induction ks generalizing rs with
-  | nil =>
-    rw [groupIdsB.go]
-    have hadd : (c.card - 1).toUSize + 1 = c.card.toUSize := by
-      rw [show c.card.toUSize = (c.card - 1 + 1).toUSize by rw [Nat.sub_add_cancel hc]]
-      exact (USize.ofNat_add _ _).symm
-    refine Builds.emit1 (v := .size 1) (fun _ _ _ _ => rfl) ?_
-    obtain ⟨h4₁, hr₁⟩ := push_keep (x := .size 1) h4 hr
-    have ha₁ : #[2, rs.size].mapM (reg (rs.push (.size 1)) "lean_usize_add") =
-        .ok #[.size (c.card - 1).toUSize, .size 1] := by
-      rw [List.mapM_toArray]; simp only [List.mapM_cons, List.mapM_nil]
-      rw [reg_of (rd h4₁ hr₁ 2 (by simp [codeVals])), reg_of (Array.getElem?_push_size)]; rfl
-    refine Builds.emit1 (v := .size c.card.toUSize) (fun _ _ _ ws => by
-      rw [Array.push_eq_append (as := rs.push (.size 1))]
-      exact runI_call abiOf_add rfl ha₁ (by rw [← hadd]; rfl) rfl) ?_
-    obtain ⟨h4₂, hr₂⟩ := push_keep (x := .size c.card.toUSize) h4₁ hr₁
-    have ha : #[(rs.push (.size 1)).size, 1, 0, 3].mapM
-        (reg ((rs.push (.size 1)).push (.size c.card.toUSize)) "qlean_sort_id_groups") =
-        .ok #[.size c.card.toUSize, .size c.n, .size c.w.toUSize, .bytes c.b] := by
-      rw [List.mapM_toArray]; simp only [List.mapM_cons, List.mapM_nil]
-      rw [reg_of (Array.getElem?_push_size), reg_of (rd h4₂ hr₂ 1 (by simp [codeVals])),
-        reg_of (rd h4₂ hr₂ 0 (by simp [codeVals])), reg_of (rd h4₂ hr₂ 3 (by simp [codeVals]))]; rfl
-    exact Builds.emit (fun _ _ _ ws => runI_call abiOf_idGroups rfl ha rfl rfl) rfl
-  | cons p ks ih =>
-    obtain ⟨v, k⟩ := p
-    have hv : v < USize.size := hks _ (List.mem_cons_self ..)
-    have hks' : ∀ p ∈ ks, p.1 < USize.size := fun p hp => hks p (List.mem_cons_of_mem _ hp)
-    rw [groupIdsB.go]
-    refine Builds.emit1 (v := .size v.toUSize) (fun _ _ _ _ => rfl) ?_
-    obtain ⟨h4₁, hr₁⟩ := push_keep (x := .size v.toUSize) h4 hr
-    have ha : #[0, rs.size].mapM (reg (rs.push (.size v.toUSize)) "lean_usize_dec_eq") =
-        .ok #[.size c.w.toUSize, .size v.toUSize] := by
-      rw [List.mapM_toArray]; simp only [List.mapM_cons, List.mapM_nil]
-      rw [reg_of (rd h4₁ hr₁ 0 (by simp [codeVals])), reg_of (Array.getElem?_push_size)]; rfl
-    refine Builds.emit1 (v := .bit (decide (c.w.toUSize = v.toUSize))) (fun _ _ _ ws => by
-      rw [Array.push_eq_append (as := rs.push (.size v.toUSize))]
-      exact runI_call abiOf_decEq rfl ha rfl rfl) ?_
-    obtain ⟨h4₂, hr₂⟩ := push_keep (x := .bit (decide (c.w.toUSize = v.toUSize))) h4₁ hr₁
-    have key := Builds.ite (Array.getElem?_push_size)
-      (show Builds abiOf fg fg (do Plan.call "qlean_sort_group_ids" #[← lit (Reg.put k), 1, 3] 2) _
-          #[.bytes (Order.groupIds k c.n c.b).1, .bytes (Order.groupIds k c.n c.b).2] from by
-        refine Builds.emit1 (v := Reg.put k) (fun _ _ _ _ => rfl) ?_
-        obtain ⟨h4₃, hr₃⟩ := push_keep (x := Reg.put k) h4₂ hr₂
-        have ha : #[(rs.push (.size v.toUSize) |>.push (.bit (decide (c.w.toUSize = v.toUSize)))).size, 1, 3].mapM
-            (reg ((rs.push (.size v.toUSize) |>.push (.bit (decide (c.w.toUSize = v.toUSize)))).push (Reg.put k))
-              "qlean_sort_group_ids") = .ok #[Reg.put k, .size c.n, .bytes c.b] := by
-          rw [List.mapM_toArray]; simp only [List.mapM_cons, List.mapM_nil]
-          rw [reg_of (Array.getElem?_push_size), reg_of (rd h4₃ hr₃ 1 (by simp [codeVals])),
-            reg_of (rd h4₃ hr₃ 3 (by simp [codeVals]))]; rfl
-        exact Builds.emit (fun _ _ _ ws => runI_call abiOf_groupIds rfl ha (by cases k <;> rfl) rfl) rfl)
-      (ih hks' _ h4₂ hr₂) rfl
-    by_cases h : c.w = v
-    · subst h; simpa using key
-    · have hne : decide (c.w.toUSize = v.toUSize) = false := by simp [toUSize_eq_iff hw hv, h]
-      have hb : (v == c.w) = false := by simpa using Ne.symm h
-      rw [hne] at key; simpa [List.find?, hne, hb] using key
-
-/-- The lanes `groupIdsB` tests, found by width, are `laneKind`. -/
-theorem lanes_find (w : Nat) :
-    ((([1, 8, 16, 32, 64].filterMap fun v => (Alg.laneKind v).map (v, ·)).find? (·.1 == w)).map (·.2)) =
-      Alg.laneKind w := by
-  show (([(1, Scan.Kind.bit), (8, .u8), (16, .i16), (32, .i32), (64, .i64)] : List _).find? (·.1 == w)).map (·.2) = _
-  unfold Alg.laneKind
-  split <;> (try (simp_all [List.find?]; done))
-  rename_i h1 h8 h16 h32 h64
-  have hb : ∀ v, v ≠ w → (v == w) = false := fun v h => by simpa using h
-  simp [List.find?, hb 1 (Ne.symm h1), hb 8 (Ne.symm h8), hb 16 (Ne.symm h16), hb 32 (Ne.symm h32),
-    hb 64 (Ne.symm h64)]
-
-/-- `groupIdsB` run on a code's registers answers `Code.groupIds` of that code. -/
-theorem groupIdsB_builds {fg : Array Fun × Array Fun} (c : Alg.Code) (hw : c.w < USize.size) (hc : 0 < c.card) :
-    Builds abiOf fg fg (groupIdsB 0 1 2 3) (codeVals c) #[.bytes c.groupIds.1, .bytes c.groupIds.2] := by
-  have hl : ∀ p ∈ ([1, 8, 16, 32, 64].filterMap fun v => (Alg.laneKind v).map (v, ·)), p.1 < USize.size := by
-    intro p hp
-    have : p = (1, .bit) ∨ p = (8, .u8) ∨ p = (16, .i16) ∨ p = (32, .i32) ∨ p = (64, .i64) := by
-      simpa [Alg.laneKind] using hp
-    rcases USize.size_eq with hs | hs <;> rcases this with rfl | rfl | rfl | rfl | rfl <;> simp [hs]
-  have := groupIdsB_go (fg := fg) c hw hc _ hl (codeVals c) (Nat.le_refl _) (fun _ _ => rfl)
-  rw [lanes_find] at this
-  exact this
-
-/-! ### `Alg.arith` -/
+/-! ### Straight-line builders -/
 
 /-- A one-register kernel call: its arguments read, its one answer pushed. -/
 theorem runI_call1 {k : Kernel} {f : Array Val → Except String (Array Val)} {as : Array Nat} {vs rs : Array Val}
@@ -495,7 +383,7 @@ macro "reads" : tactic => `(tactic| (rw [List.mapM_toArray]; simp only [List.map
 
 /-- One step of a straight-line builder: an `if` of the builder, a literal, a kernel call of one result, or the
 answer. Each lemma is matched by its head only (reducible), so a step that is not its case fails at once. -/
-macro "build_step" : tactic => `(tactic| ((try simp only [bind_assoc, pure_bind, lenB]); (first
+macro "build_step" : tactic => `(tactic| ((try simp only [bind_assoc, pure_bind]); (first
   | split
   | with_reducible refine Builds.lit ?_
   | with_reducible refine Builds.call1 (by with_unfolding_all simp [abiOf, Rel.Lang.Plan.abi, List.find?])
