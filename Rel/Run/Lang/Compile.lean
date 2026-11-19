@@ -9,14 +9,8 @@ namespace Rel.Lang
 
 open Tab Rel.Alg Gen
 
-/-- The plan each variable `k` is bound to, at the objects and demand bit the term asks for. -/
-abbrev CodeEnv := Nat → (A B : Obj) → (d : Bool) → Pl d A B
-
-/-- `η` with the variable `k` bound to the table `X : A ⟶ B`, read at every demand. A use of `k` at other objects
-    is ill-typed and reads `𝟘`, as `Val.bind` reads it, so the two stay one binder. -/
-def CodeEnv.bind (η : CodeEnv) (k : Nat) {A B : Obj} (X : CRel A B) : CodeEnv := fun j A' B' d =>
-  if j = k then (if h : A = A' ∧ B = B' then fun _ => (.val (h.1 ▸ h.2 ▸ X.rel), X.ok) else fun _ => (.zero, true))
-  else η j A' B' d
+/-- The plan each variable `k` is bound to, at the objects the term asks for. -/
+abbrev CodeEnv := Nat → (A B : Obj) → Pl A B
 
 /-! ### The rows of `prims` as code -/
 
@@ -27,19 +21,19 @@ abbrev Code := (X Y : Obj) × (e : Bool) × Fn e X Y
 def Code.at (c : Code) (X Y : Obj) : Option ((e : Bool) × Fn e X Y) :=
   if h : c.1 = X ∧ c.2.1 = Y then some ⟨c.2.2.1, h.2 ▸ h.1 ▸ c.2.2.2⟩ else none
 
-/-- `η` with the variable `k` bound to the code `c`: at `c`'s objects, `c`'s table on each demand's keys (`pleaf`;
-    `Fn`'s bit is phantom, so a closed code read on demand runs whole, and a lazy one read closed has no keys and is
-    not ok); at other objects `𝟘`, as `bind` reads it. `bind k X` is the case `c = const X`. -/
-def CodeEnv.bindCode (η : CodeEnv) (k : Nat) (c : Code) : CodeEnv := fun j A B d =>
-  if j = k then (match c.at A B with | some ⟨_, f⟩ => pleaf A B d f | none => fun _ => (.zero, true))
-  else η j A B d
+/-- `η` with the variable `k` bound to the code `c`: at `c`'s objects, `c`'s plan leaf (`pleaf`: closed where `c`
+    is, else on the keys it is given, so read closed it has none and is not ok, `Pl.get`); at other objects `𝟘`, as
+    `Val.bind` reads it. A `μ`/`ν` round's table `X` is bound as the closed code `⟨A, B, false, .tab X⟩`. -/
+def CodeEnv.bindCode (η : CodeEnv) (k : Nat) (c : Code) : CodeEnv := fun j A B =>
+  if j = k then (match c.at A B with | some ⟨e, f⟩ => pleaf A B e f | none => .closed (.pure (.zero, true)))
+  else η j A B
 
 /-- The codes `cs` bound to the variables `0, 1, …` in order, every other variable `𝟘`: what a call's body is
     compiled under, the code side of `Val.args`. -/
 def CodeEnv.args (cs : List Code) : CodeEnv := go 0 cs where
   /-- `cs` bound from the variable `k` on. -/
   go (k : Nat) : List Code → CodeEnv
-    | [] => fun _ _ _ _ _ => (.zero, true)
+    | [] => fun _ _ _ => .closed (.pure (.zero, true))
     | c :: cs => (go (k + 1) cs).bindCode k c
 
 /-- The object variables `σ` that make the pattern `o` the object `A`, extending `σ`: none where they cannot. -/
@@ -169,25 +163,19 @@ def Prim.fn (r : Prim) (A B : Obj) : (d : Bool) → List Code → Fn d A B
 /-- A term's code, its bit-matrix plan, and, at a row's spine of `arg`s, the row and its arguments' codes. -/
 structure Out (d : Bool) (A B : Obj) where
   fn : Fn d A B
-  pl : Pl d A B
+  pl : Pl A B
   row : Option (Prim × List Code) := none
 
-/-- A closed node's plan computed once, where the `Gen` combinators would recompute it at every call (each round
-    of a fold over it). Its code is kept as it is: a `tab` is already a computed value, and a `lazy` one runs on the
-    keys its context gives, which its run in the empty context, stored as a `tab`, would ignore. -/
+/-- The identity: a closed node's plan is now computed once by `Pl.closed`'s `Thunk`, which this did before. Kept
+    only so the 42 arms of `compile_sound` that cite `Out.Sound.memo` merge unchanged; removed with them. -/
 def Out.memo {A B : Obj} : {d : Bool} → Out d A B → Out d A B
-  | false, o => let p := o.pl (); ⟨o.fn, fun _ => p, o.row⟩
+  | false, o => o
   | true, o => o
-
-/-- A plan read as a closed one: a term that runs on demand has no closed plan, so it vouches for nothing. Where
-    `Tm`'s closed fields (`conv`, `ldiv`) held only `false`-indexed terms, their type said this case cannot arise. -/
-def Pl.closed {A B : Obj} : (d : Bool) → Pl d A B → Pl false A B
-  | false, p => p
-  | true, _ => fun _ => (.zero, false)
 
 /-- `t`'s code and plan, one `Gen` combinator per constructor, as `Expand.node` and `Expand.plan?` build them. The
     plan is the bit-rule node where the node has one, else its table as a leaf (`Gen.pleaf`); a closed term's plan
-    is its table. `ν` runs as plain rounds (`Gen.nu`); `call` vouches for nothing until stage 5. -/
+    is its table. `ν` runs as plain rounds (`Gen.nu`); `call` vouches for nothing until stage 5. A closed field
+    (`conv`, `ldiv`) holding a term run on demand reads its `on` plan by `Pl.get`, which vouches for nothing. -/
 def Tm.gen (η : CodeEnv) {A B : Obj} (t : Tm A B) : Out t.dem A B := Out.memo <| match η, A, B, t with
   | _, A, B, .val R => leaf (Gen.val A B (R, true))
   | _, A, _, .uni (m := m) U => leaf (Gen.uni A m (U, true))
@@ -198,24 +186,24 @@ def Tm.gen (η : CodeEnv) {A B : Obj} (t : Tm A B) : Out t.dem A B := Out.memo <
   | _, _, _, .outr (A := A) (B := B) => leaf (Gen.outr A B)
   | η, A, C, .comp (B := B) R S =>
     show Out R.dem A C from match R.dem, R.gen η with
-    | true, r => ⟨Gen.comp A B C S.dem r.fn (S.gen η).fn, Gen.pcomp A B C true S.dem r.pl (S.gen η).pl, none⟩
-    | false, r => ⟨Gen.compB A B C S.dem r.pl (S.gen η).pl, Gen.pcomp A B C false S.dem r.pl (S.gen η).pl, none⟩
-  | η, _, _, .conv (A := A) (B := B) R => ⟨Gen.conv A B (R.gen η).fn, Gen.pconv A B (Pl.closed _ (R.gen η).pl), none⟩
+    | true, r => ⟨Gen.comp A B C S.dem r.fn (S.gen η).fn, Gen.pcomp A B C r.pl (S.gen η).pl, none⟩
+    | false, r => ⟨Gen.compB A B C r.pl (S.gen η).pl, Gen.pcomp A B C r.pl (S.gen η).pl, none⟩
+  | η, _, _, .conv (A := A) (B := B) R => ⟨Gen.conv A B (R.gen η).fn, Gen.pconv A B (R.gen η).pl, none⟩
   | η, A, B, .meet R S =>
     show Out (R.dem || S.dem) A B from match R.dem, S.dem, R.gen η, S.gen η with
-    | false, false, r, s => ⟨Gen.meetB A B r.pl s.pl, Gen.pmeet A B false false r.pl s.pl, none⟩
-    | d, e, r, s => ⟨Gen.meet A B d e r.fn s.fn, Gen.pmeet A B d e r.pl s.pl, none⟩
+    | false, false, r, s => ⟨Gen.meetB A B r.pl s.pl, Gen.pmeet A B r.pl s.pl, none⟩
+    | d, e, r, s => ⟨Gen.meet A B d e r.fn s.fn, Gen.pmeet A B r.pl s.pl, none⟩
   | η, A, B, .join R S =>
-    ⟨Gen.join A B R.dem S.dem (R.gen η).fn (S.gen η).fn, Gen.pjoin A B R.dem S.dem (R.gen η).pl (S.gen η).pl, none⟩
+    ⟨Gen.join A B R.dem S.dem (R.gen η).fn (S.gen η).fn, Gen.pjoin A B (R.gen η).pl (S.gen η).pl, none⟩
   | η, A, B, .diff R S =>
     show Out (R.dem || S.dem) A B from match R.dem, S.dem, R.gen η, S.gen η with
-    | false, false, r, s => ⟨Gen.diffB A B r.pl s.pl, Gen.pdiff A B false false r.pl s.pl, none⟩
-    | d, e, r, s => ⟨Gen.diff A B d e r.fn s.fn, Gen.pdiff A B d e r.pl s.pl, none⟩
+    | false, false, r, s => ⟨Gen.diffB A B r.pl s.pl, Gen.pdiff A B r.pl s.pl, none⟩
+    | d, e, r, s => ⟨Gen.diff A B d e r.fn s.fn, Gen.pdiff A B r.pl s.pl, none⟩
   | η, A, _, .dom (B := B) R => leaf (Gen.dom A B R.dem (R.gen η).fn)
   | η, _, _, .ran (A := A) (B := B) R => leaf (Gen.ran A B (R.gen η).fn)
   | η, B, C, .ldiv (A := A) R S UB UC =>
-    ⟨Gen.ldivB A B C (Pl.closed _ (R.gen η).pl) (Pl.closed _ (S.gen η).pl) (UB.gen η).fn (UC.gen η).fn,
-     Gen.pldiv A B C (Pl.closed _ (R.gen η).pl) (Pl.closed _ (S.gen η).pl) (UB.gen η).fn (UC.gen η).fn, none⟩
+    ⟨Gen.ldivB A B C (R.gen η).pl (S.gen η).pl (UB.gen η).fn (UC.gen η).fn,
+     Gen.pldiv A B C (R.gen η).pl (S.gen η).pl (UB.gen η).fn (UC.gen η).fn, none⟩
   | η, A, B, .rdiv (C := C) R S UA UB =>
     leaf (Gen.rdiv A B C (R.gen η).fn (S.gen η).fn (UA.gen η).fn (UB.gen η).fn)
   | η, A, _, .pair (B := B) (C := C) R S => leaf (Gen.pair A B C R.dem S.dem (R.gen η).fn (S.gen η).fn)
@@ -240,16 +228,16 @@ def Tm.gen (η : CodeEnv) {A B : Obj} (t : Tm A B) : Out t.dem A B := Out.memo <
   | η, _, V, .foldI (I := I) (E := X) e S =>
     leaf (Gen.foldI I X V e.dem S.dem (e.gen η).fn (S.gen η).fn)
   | η, _, B, .flat (I := I) (A := A) R => leaf (Gen.flat I A B R.dem (R.gen η).fn)
-  | η, A, B, .var d k => ⟨Gen.ofPl A B d (η k A B d), η k A B d, none⟩
+  | η, A, B, .var _ k => ⟨Gen.ofPl A B (η k A B), η k A B, none⟩
   | _, A, B, .call d .. => leaf (none' A B d)
   | η, A, B, .arg f x => match (f.gen η).row with
     | some (r, cs) => let cs := cs ++ [⟨_, _, _, (x.gen η).fn⟩]
       ⟨r.fn A B f.dem cs, pleaf A B f.dem (r.fn A B f.dem cs), some (r, cs)⟩
     | none => leaf (none' A B f.dem)
-  | η, A, B, .nu k S b => leaf (Gen.nu A B (S.gen η).fn fun X => (b.gen (η.bind k X)).fn)
-  | η, A, B, .mu k _ cap b => leaf (Gen.mu A B cap fun X => (b.gen (η.bind k X)).fn)
+  | η, A, B, .nu k S b => leaf (Gen.nu A B (S.gen η).fn fun X => (b.gen (η.bindCode k ⟨A, B, false, .tab X⟩)).fn)
+  | η, A, B, .mu k _ cap b => leaf (Gen.mu A B cap fun X => (b.gen (η.bindCode k ⟨A, B, false, .tab X⟩)).fn)
   | η, A, B, .hylo k _ ch b =>
-    leaf (Gen.hylo A B ch.dem b.dem (ch.gen η).fn fun X => (b.gen (η.bind k X)).fn)
+    leaf (Gen.hylo A B ch.dem b.dem (ch.gen η).fn fun X => (b.gen (η.bindCode k ⟨A, B, false, .tab X⟩)).fn)
 where
   /-- A node with no bit rule: its plan is its table. -/
   leaf {A B : Obj} {d : Bool} (f : Fn d A B) : Out d A B := ⟨f, pleaf A B d f, none⟩
@@ -258,6 +246,6 @@ where
 def compile (η : CodeEnv) {A B : Obj} (t : Tm A B) : Fn t.dem A B := (t.gen η).fn
 
 /-- `t`'s bit-matrix plan where its node has a bit rule, else its table as a leaf (`Gen.pleaf`). -/
-def Tm.plan (η : CodeEnv) {A B : Obj} (t : Tm A B) : Pl t.dem A B := (t.gen η).pl
+def Tm.plan (η : CodeEnv) {A B : Obj} (t : Tm A B) : Pl A B := (t.gen η).pl
 
 end Rel.Lang

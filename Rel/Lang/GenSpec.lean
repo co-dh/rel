@@ -194,22 +194,37 @@ theorem lift2_reps {A B C D E F : Obj} {f : CRel A B → CRel C D → CRel E F} 
     (h : (Rel.tab (f (R.run (kl K)) (S.run (kr K)))).Reps K T) : (lift2 f kl kr R S).Reps K T := by
   cases R <;> cases S <;> exact h
 
-/-- A plan computes `T` on its keys, read by `⟦−⟧` at `Val.empty` (a plan is closed). -/
-def PSound {d : Bool} {A B : Obj} (p : Pl d A B) (T : Den A B) : Prop :=
-  ∀ D : Dem d A, Cor D → (p D).2 = true → ∀ x y, keys D x x → ((p D).1.den Val.empty x y ↔ T x y)
+/-- A plan's value `p` on the keys `D`: where its bit is set, at each key of `D` it relates as `T`, read by `⟦−⟧`
+    at `Val.empty` (a plan is closed). -/
+def PlOK {A B : Obj} (p : Tm A B false × Bool) (D : Den A A) (T : Den A B) : Prop :=
+  p.2 = true → ∀ x y, D x x → (p.1.den Val.empty x y ↔ T x y)
 
-/-! ### Keys -/
+/-- A plan computes `T`: closed, at every point; on keys, at the keys of each coreflexive it is given. -/
+def PSound {A B : Obj} : Pl A B → Den A B → Prop
+  | .closed p, T => PlOK p.get (𝟙 _) T
+  | .on f, T => ∀ D : Tab A A, (∀ x y, rep D x y → x = y) → PlOK (f D) (rep D) T
 
-theorem demL {A : Obj} : ∀ (d e : Bool) (D : Dem (d || e) A) (x : A.El), Cor D → keys D x x →
-    Cor (Dem.l d e D) ∧ keys (Dem.l d e D) x x
-  | true, _, _, _, h, k => ⟨h, k⟩
-  | false, _, _, _, _, _ => ⟨trivial, rfl⟩
+/-- A sound plan on the keys `D` (`Pl.at`), whichever its form. -/
+theorem PSound.at {A B : Obj} {P : Pl A B} {T : Den A B} (h : PSound P T) (D : Tab A A)
+    (hD : ∀ x y, rep D x y → x = y) : PlOK (P.at D) (rep D) T := by
+  cases P with
+  | closed p => exact fun hb x y _ => h hb x y rfl
+  | on f => exact h D hD
 
-theorem demR {A : Obj} : ∀ (d e : Bool) (D : Dem (d || e) A) (x : A.El), Cor D → keys D x x →
-    Cor (Dem.r d e D) ∧ keys (Dem.r d e D) x x
-  | true, true, _, _, h, k => ⟨h, k⟩
-  | false, true, _, _, h, k => ⟨h, k⟩
-  | _, false, _, _, _, _ => ⟨trivial, rfl⟩
+/-- A sound plan where no key is given (`Pl.get`): one on keys has its bit false there. -/
+theorem PSound.get {A B : Obj} {P : Pl A B} {T : Den A B} (h : PSound P T) : PlOK P.get (𝟙 _) T := by
+  cases P with
+  | closed p => exact h
+  | on f => intro hb; simp [Pl.get] at hb
+
+/-- `Pl.map2 f` is sound where `f` keeps soundness on any keys. -/
+theorem Pl.map2_sound {A B C E : Obj} {f : Tm A B false × Bool → Tm A C false × Bool → Tm A E false × Bool}
+    {R : Pl A B} {S : Pl A C} {TR : Den A B} {TS : Den A C} {T : Den A E}
+    (hf : ∀ r s (D : Den A A), PlOK r D TR → PlOK s D TS → PlOK (f r s) D T) (hR : PSound R TR)
+    (hS : PSound S TS) : PSound (Pl.map2 f R S) T := by
+  cases R <;> cases S
+  · exact hf _ _ _ hR hS
+  all_goals exact fun D hD => hf _ _ _ (hR.at D hD) (hS.at D hD)
 
 /-- A coreflexive `K` given as the keys of `S`: `S` agrees with `T` at every key of `K`. -/
 theorem atKeys {B C : Obj} {e : Bool} {S : Fn e B C} {T : Den B C} (hS : Sound S T) (K : Tab B B)
@@ -786,96 +801,111 @@ theorem rep_runC {A B : Obj} {d : Bool} (p : Tm A B d) (hb : (Bits.runC p).2 = t
       · rw [if_neg hc]; simp only [dbgTrace]; exact fun hb => Bits.rep_table _ hb a b
 
 /-- The demand `demP` hands `S` in `R S`: a coreflexive holding every value of `R`'s plan. -/
-theorem demP_spec {A B : Obj} (e : Bool) (r : Tm A B false) (hb : (demP e r).2 = true) :
-    Cor (demP e r).1 ∧ ∀ a b, r.den Val.empty a b → keys (demP e r).1 b b := by
-  cases e
-  · exact ⟨trivial, fun _ _ _ => rfl⟩
-  · simp only [demP, Bool.and_eq_true] at hb
-    have hK := rep_ranC _ hb.2
-    have hR := rep_runC r hb.1
-    refine ⟨fun a b h => ?_, fun a b h => ?_⟩
-    · have h' : rep (ranC (Bits.runC r).1).1 a b := h
-      rw [hK] at h'; exact h'.1
-    · show rep (ranC (Bits.runC r).1).1 b b
-      rw [hK]; exact ⟨rfl, a, (hR a b).2 h, (hR a b).2 h⟩
+theorem demP_spec {A B : Obj} (r : Tm A B false) (hb : (demP r).2 = true) :
+    (∀ x y, rep (demP r).1 x y → x = y) ∧ ∀ a b, r.den Val.empty a b → rep (demP r).1 b b := by
+  simp only [demP, Bool.and_eq_true] at hb
+  have hK := rep_ranC _ hb.2
+  have hR := rep_runC r hb.1
+  refine ⟨fun a b h => ?_, fun a b h => ?_⟩
+  · have h' : rep (ranC (Bits.runC r).1).1 a b := h
+    rw [hK] at h'; exact h'.1
+  · show rep (ranC (Bits.runC r).1).1 b b
+    rw [hK]; exact ⟨rfl, a, (hR a b).2 h, (hR a b).2 h⟩
 
 theorem pleaf_sound {A B : Obj} {d : Bool} {f : Fn d A B} {T : Den A B} (hf : Sound f T) :
-    PSound (pleaf A B d f) T := fun D hD hb x y hx => hf.at D hD hb x y hx
+    PSound (pleaf A B d f) T := by
+  cases d
+  · exact fun hb x y _ => hf.at () trivial hb x y rfl
+  · exact fun D hD hb x y hx => hf.at D hD hb x y hx
 
-theorem pcomp_sound {A B C : Obj} {d e : Bool} {R : Pl d A B} {S : Pl e B C} {TR : Den A B} {TS : Den B C}
-    (hR : PSound R TR) (hS : PSound S TS) : PSound (pcomp A B C d e R S) (TR ≫ TS) := by
-  intro D hD hb x z hx
-  simp only [pcomp, Bool.and_eq_true] at hb
-  obtain ⟨⟨h1, h2⟩, h3⟩ := hb
-  obtain ⟨kc, kk⟩ := demP_spec e _ h2
-  have hr := hR D hD h1
-  have hs := hS _ kc h3
-  exact ⟨fun ⟨b, p1, p2⟩ => ⟨b, (hr x b hx).1 p1, (hs b z (kk x b p1)).1 p2⟩,
-    fun ⟨b, p1, p2⟩ => have p1' := (hr x b hx).2 p1; ⟨b, p1', (hs b z (kk x b p1')).2 p2⟩⟩
+/-- `R S` on whatever keys `R`'s plan `r` was given, `S`'s plan closed or run on `ran(r)`. -/
+theorem compPl_sound {A B C : Obj} {r : Tm A B false × Bool} {S : Pl B C} {D : Den A A} {TR : Den A B}
+    {TS : Den B C} (hr : PlOK r D TR) (hS : PSound S TS) : PlOK (compPl r S) D (TR ≫ TS) := by
+  cases S with
+  | closed s =>
+    intro hb x z hx
+    simp only [compPl, Bool.and_eq_true] at hb
+    have hs := hS hb.2
+    exact ⟨fun ⟨b, p1, p2⟩ => ⟨b, (hr hb.1 x b hx).1 p1, (hs b z rfl).1 p2⟩,
+      fun ⟨b, p1, p2⟩ => ⟨b, (hr hb.1 x b hx).2 p1, (hs b z rfl).2 p2⟩⟩
+  | on g =>
+    intro hb x z hx
+    simp only [compPl, Bool.and_eq_true] at hb
+    obtain ⟨⟨h1, h2⟩, h3⟩ := hb
+    obtain ⟨kc, kk⟩ := demP_spec _ h2
+    have hs := hS _ kc h3
+    exact ⟨fun ⟨b, p1, p2⟩ => ⟨b, (hr h1 x b hx).1 p1, (hs b z (kk x b p1)).1 p2⟩,
+      fun ⟨b, p1, p2⟩ => have p1' := (hr h1 x b hx).2 p1; ⟨b, p1', (hs b z (kk x b p1')).2 p2⟩⟩
 
-theorem pconv_sound {A B : Obj} {R : Pl false A B} {T : Den A B} (hR : PSound R T) : PSound (pconv A B R) T° :=
-  fun ⟨⟩ _ hb y x _ => hR () trivial hb x y rfl
+theorem pcomp_sound {A B C : Obj} {R : Pl A B} {S : Pl B C} {TR : Den A B} {TS : Den B C}
+    (hR : PSound R TR) (hS : PSound S TS) : PSound (pcomp A B C R S) (TR ≫ TS) := by
+  cases R with
+  | closed r => exact compPl_sound hR hS
+  | on f => exact fun D hD => compPl_sound (hR D hD) hS
 
-theorem pmeet_sound {A B : Obj} {d e : Bool} {R : Pl d A B} {S : Pl e A B} {TR TS : Den A B}
-    (hR : PSound R TR) (hS : PSound S TS) : PSound (pmeet A B d e R S) (TR ∩ TS) := fun D hD hb x y hx => by
-  simp only [pmeet, Bool.and_eq_true] at hb
-  obtain ⟨cl, kl⟩ := demL d e D x hD hx; obtain ⟨cr, kr⟩ := demR d e D x hD hx
-  exact and_congr (hR _ cl hb.1 x y kl) (hS _ cr hb.2 x y kr)
+theorem pconv_sound {A B : Obj} {R : Pl A B} {T : Den A B} (hR : PSound R T) : PSound (pconv A B R) T° :=
+  fun hb y x _ => hR.get hb x y rfl
 
-theorem pjoin_sound {A B : Obj} {d e : Bool} {R : Pl d A B} {S : Pl e A B} {TR TS : Den A B}
-    (hR : PSound R TR) (hS : PSound S TS) : PSound (pjoin A B d e R S) (TR ∪ TS) := fun D hD hb x y hx => by
-  simp only [pjoin, Bool.and_eq_true] at hb
-  obtain ⟨cl, kl⟩ := demL d e D x hD hx; obtain ⟨cr, kr⟩ := demR d e D x hD hx
-  exact or_congr (hR _ cl hb.1 x y kl) (hS _ cr hb.2 x y kr)
+theorem pmeet_sound {A B : Obj} {R S : Pl A B} {TR TS : Den A B} (hR : PSound R TR) (hS : PSound S TS) :
+    PSound (pmeet A B R S) (TR ∩ TS) :=
+  Pl.map2_sound (fun _ _ _ hr hs hb x y hx => by
+    simp only [Bool.and_eq_true] at hb; exact and_congr (hr hb.1 x y hx) (hs hb.2 x y hx)) hR hS
 
-theorem pdiff_sound {A B : Obj} {d e : Bool} {R : Pl d A B} {S : Pl e A B} {TR TS : Den A B}
-    (hR : PSound R TR) (hS : PSound S TS) : PSound (pdiff A B d e R S) (diffDen TR TS) :=
-  fun D hD hb x y hx => by
-    simp only [pdiff, Bool.and_eq_true] at hb
-    obtain ⟨cl, kl⟩ := demL d e D x hD hx; obtain ⟨cr, kr⟩ := demR d e D x hD hx
-    exact and_congr (hR _ cl hb.1 x y kl) (not_congr (hS _ cr hb.2 x y kr))
+theorem pjoin_sound {A B : Obj} {R S : Pl A B} {TR TS : Den A B} (hR : PSound R TR) (hS : PSound S TS) :
+    PSound (pjoin A B R S) (TR ∪ TS) :=
+  Pl.map2_sound (fun _ _ _ hr hs hb x y hx => by
+    simp only [Bool.and_eq_true] at hb; exact or_congr (hr hb.1 x y hx) (hs hb.2 x y hx)) hR hS
 
-theorem pldiv_sound {A B C : Obj} {R : Pl false A B} {S : Pl false A C} {UB : Fn false B B} {UC : Fn false C C}
+theorem pdiff_sound {A B : Obj} {R S : Pl A B} {TR TS : Den A B} (hR : PSound R TR) (hS : PSound S TS) :
+    PSound (pdiff A B R S) (diffDen TR TS) :=
+  Pl.map2_sound (fun _ _ _ hr hs hb x y hx => by
+    simp only [Bool.and_eq_true] at hb; exact and_congr (hr hb.1 x y hx) (not_congr (hs hb.2 x y hx))) hR hS
+
+theorem pldiv_sound {A B C : Obj} {R : Pl A B} {S : Pl A C} {UB : Fn false B B} {UC : Fn false C C}
     {TR : Den A B} {TS : Den A C} {TB : Den B B} {TC : Den C C} (hR : PSound R TR) (hS : PSound S TS)
     (hB : Sound UB TB) (hC : Sound UC TC) : PSound (pldiv A B C R S UB UC) (ldivDen TR TS TB TC) :=
-  fun ⟨⟩ _ hb b c _ => by
-    simp only [pldiv, Bool.and_eq_true] at hb
+  fun hb b c _ => by
+    replace hb : (R.get.2 && S.get.2 && (UB.at ()).ok && (UC.at ()).ok) = true := hb
+    simp only [Bool.and_eq_true] at hb
     obtain ⟨⟨⟨h1, h2⟩, h3⟩, h4⟩ := hb
-    have r a b := hR () trivial h1 a b rfl
-    have s a c := hS () trivial h2 a c rfl
-    show ldivDen ((R ()).1.den Val.empty) ((S ()).1.den Val.empty) (rep (UB.at ()).rel) (rep (UC.at ()).rel) b c ↔ _
+    have r a b := hR.get h1 a b rfl
+    have s a c := hS.get h2 a c rfl
+    show ldivDen (R.get.1.den Val.empty) (S.get.1.den Val.empty) (rep (UB.at ()).rel) (rep (UC.at ()).rel) b c ↔ _
     rw [hB.eq h3, hC.eq h4]
     simp only [ldivDen, r, s]
 
-/-- A plan run as bits (`Bits.runC`), its leaves' bits kept: the plan's relation, on its keys. -/
-theorem ofPl_sound {A B : Obj} {d : Bool} {p : Pl d A B} {T : Den A B} (hp : PSound p T) :
-    Sound (ofPl A B d p) T := KSound.reps fun D hD hb x y hx => by
-  dsimp only at hb ⊢; obtain ⟨hb, e⟩ := also_ok_rel hb; rw [e]; rw [CRel.rep_ofC hb.2]
-  replace hb := And.intro hb.1 (CRel.ofC_ok hb.2).1
-  exact (rep_runC _ hb.2 x y).trans (hp D hD hb.1 x y hx)
-
-/-- A closed plan run as bits is `Sound` where the plan computes `T`. -/
-theorem runPl_sound {A B : Obj} {p : Pl false A B} {T : Den A B} (hp : PSound p T) :
-    Sound (.tab (runPl (p ()))) T := const_sound fun hb => by
+/-- A plan's value run as bits is `Sound` where, at every point, it computes `T`. -/
+theorem runPl_sound {A B : Obj} {p : Tm A B false × Bool} {T : Den A B} (hp : PlOK p (𝟙 _) T) :
+    Sound (.tab (runPl p)) T := const_sound fun hb => by
   simp only [runPl] at hb ⊢; obtain ⟨hb, e⟩ := also_ok_rel hb; rw [e, CRel.rep_ofC hb.2]
-  exact Core.Rel.ext fun x y => (rep_runC _ (CRel.ofC_ok hb.2).1 x y).trans (hp () trivial hb.1 x y rfl)
+  exact Core.Rel.ext fun x y => (rep_runC _ (CRel.ofC_ok hb.2).1 x y).trans (hp hb.1 x y rfl)
 
-theorem compB_sound {A B C : Obj} {e : Bool} {R : Pl false A B} {S : Pl e B C} {TR : Den A B} {TS : Den B C}
-    (hR : PSound R TR) (hS : PSound S TS) : Sound (compB A B C e R S) (TR ≫ TS) :=
-  runPl_sound (pcomp_sound hR hS)
+/-- A plan run as bits (`Bits.runC`), its leaves' bits kept: the plan's relation, on its keys. -/
+theorem ofPl_sound {A B : Obj} {p : Pl A B} {T : Den A B} (hp : PSound p T) : Sound (ofPl A B p) T := by
+  cases p with
+  | closed p => exact runPl_sound hp
+  | on f =>
+    refine ofVals_keys (f := fun X => runPl (f (idU X))) fun X hb x y hx => ?_
+    simp only [runPl] at hb ⊢; obtain ⟨hb, e⟩ := also_ok_rel hb; rw [e, CRel.rep_ofC hb.2]
+    exact (rep_runC _ (CRel.ofC_ok hb.2).1 x y).trans
+      (hp (idU X) (fun x y k => ((idU_holds X x y).1 k).1) hb.1 x y hx)
 
-theorem meetB_sound {A B : Obj} {R S : Pl false A B} {TR TS : Den A B} (hR : PSound R TR) (hS : PSound S TS) :
+theorem compB_sound {A B C : Obj} {R : Pl A B} {S : Pl B C} {TR : Den A B} {TS : Den B C}
+    (hR : PSound R TR) (hS : PSound S TS) : Sound (compB A B C R S) (TR ≫ TS) :=
+  runPl_sound (pcomp_sound hR hS).get
+
+theorem meetB_sound {A B : Obj} {R S : Pl A B} {TR TS : Den A B} (hR : PSound R TR) (hS : PSound S TS) :
     Sound (meetB A B R S) (TR ∩ TS) :=
-  runPl_sound (pmeet_sound (d := false) (e := false) hR hS)
+  runPl_sound (pmeet_sound hR hS).get
 
-theorem diffB_sound {A B : Obj} {R S : Pl false A B} {TR TS : Den A B} (hR : PSound R TR) (hS : PSound S TS) :
+theorem diffB_sound {A B : Obj} {R S : Pl A B} {TR TS : Den A B} (hR : PSound R TR) (hS : PSound S TS) :
     Sound (diffB A B R S) (diffDen TR TS) :=
-  runPl_sound (pdiff_sound (d := false) (e := false) hR hS)
+  runPl_sound (pdiff_sound hR hS).get
 
-theorem ldivB_sound {A B C : Obj} {R : Pl false A B} {S : Pl false A C} {UB : Fn false B B} {UC : Fn false C C}
+theorem ldivB_sound {A B C : Obj} {R : Pl A B} {S : Pl A C} {UB : Fn false B B} {UC : Fn false C C}
     {TR : Den A B} {TS : Den A C} {TB : Den B B} {TC : Den C C} (hR : PSound R TR) (hS : PSound S TS)
     (hB : Sound UB TB) (hC : Sound UC TC) : Sound (ldivB A B C R S UB UC) (ldivDen TR TS TB TC) :=
-  runPl_sound (pldiv_sound hR hS hB hC)
+  runPl_sound (pldiv_sound hR hS hB hC).get
 
 /-- **The lists `G` holds at a key are the canonical list of `M`** (`lamDen`, D2 = C) where each ascends with no
     repeat, has the members `M`, and one exists: `B.KeyInj` makes each ascend strictly, and `eq_of_pairwise` makes

@@ -31,15 +31,6 @@ def Dem.of {A : Obj} : (d : Bool) → Tab A A → Dem d A
   | true, D => D
   | false, _ => ()
 
-def Dem.l {A : Obj} : (d e : Bool) → Dem (d || e) A → Dem d A
-  | true, _, D => D
-  | false, _, _ => ()
-
-def Dem.r {A : Obj} : (d e : Bool) → Dem (d || e) A → Dem e A
-  | _, false, _ => ()
-  | true, true, D => D
-  | false, true, D => D
-
 namespace Gen
 
 open Rel Rel.Dep Rel.Kernel
@@ -55,8 +46,28 @@ def Fn.at {A B : Obj} : {d : Bool} → Fn d A B → Dem d A → CRel A B
   | false, f, _ => f.run {}
   | true, f, D => f.run ⟨some ⟨D.n, D.val⟩, none⟩
 
-/-- A term's bit-matrix plan on the keys it is given, and the ok bit of the tables at its leaves. -/
-abbrev Pl (d : Bool) (A B : Obj) := Dem d A → Tm A B × Bool
+/-- A term's bit-matrix plan and the ok bit of the tables at its leaves: closed, computed once where first read
+    (a `Thunk`, so a closed node read every round of a fold is planned once); or on the keys `D` it is given, the
+    shape of `Rel`'s `tab`/`lazy`. -/
+inductive Pl (A B : Obj) where
+  | closed (p : Thunk (Tm A B × Bool))
+  | on (f : Tab A A → Tm A B × Bool)
+
+/-- The plan on the keys `D`: a closed plan ignores them. -/
+def Pl.at {A B : Obj} : Pl A B → Tab A A → Tm A B × Bool
+  | .closed p, _ => p.get
+  | .on f, D => f D
+
+/-- The plan where no key is given: a closed plan's; one on keys vouches for nothing there (bit false). -/
+def Pl.get {A B : Obj} : Pl A B → Tm A B × Bool
+  | .closed p => p.get
+  | .on _ => (.zero, false)
+
+/-- `f` on the plans of `R` and `S`: closed where both are, else on the keys both are given. -/
+def Pl.map2 {A B C E : Obj} (f : Tm A B × Bool → Tm A C × Bool → Tm A E × Bool) :
+    Pl A B → Pl A C → Pl A E
+  | .closed r, .closed s => .closed (Thunk.mk fun _ => f r.get s.get)
+  | R, S => .on fun D => f (R.at D) (S.at D)
 
 /-- A definition's value with its objects: what `rel_program n` lists as `n.expanded`. -/
 abbrev Gv := (A : Obj) × (B : Obj) × CRel A B
@@ -127,11 +138,10 @@ def top (A B : Obj) (V : Fn false B B) : Fn true A B := .lazy fun K => K.dom.eli
 def outl (A B : Obj) : Fn true (.prod A B) A := ofVals _ _ fun X => ofC (Alg.outl (idU X), true)
 def outr (A B : Obj) : Fn true (.prod A B) B := ofVals _ _ fun X => ofC (Alg.outr (idU X), true)
 
-/-- The demand of `S` in `R S`: `ran(R)` where `S` takes one, `R`'s plan run for it, `ranC`'s bit kept so the
+/-- The demand of `S` in `R S` where `S` takes one: `ran(R)`, `R`'s plan run for it, `ranC`'s bit kept so the
     demand is proved a coreflexive on `R`'s range (`GenSpec.demP_spec`). -/
-def demP {A B : Obj} : (e : Bool) → Tm A B → Dem e B × Bool
-  | false, _ => ((), true)
-  | true, r => let x := Bits.runC r; let k := ranC x.1; (k.1, x.2 && k.2)
+def demP {A B : Obj} (r : Tm A B) : Tab B B × Bool :=
+  let x := Bits.runC r; let k := ranC x.1; (k.1, x.2 && k.2)
 
 /-- `r S`, `r` the table of `R`: a table `S` is composed now; a lazy one runs knowing its domain is `r`'s value
     column, and not at all where `r` has no row. -/
@@ -327,34 +337,43 @@ def hylo (A B : Obj) (d e : Bool) (ch : Fn d A A) (φ : CRel A B → Fn e A B) :
 
 /-! ### Plans: terms with the bit-rule nodes kept, every other sub-term its table (`Tm.val`) -/
 
-def pleaf (A B : Obj) (d : Bool) (f : Fn d A B) : Pl d A B := fun D => let r := f.at D; (.val r.rel, r.ok)
-/-- The plan `P` run to its relation: a constant's result or argument read where a table is wanted. -/
-def ofPl (A B : Obj) (d : Bool) (P : Pl d A B) : Fn d A B := Fn.ofDem (d := d) fun D =>
-  let r := P D; also r.2 (ofC (Bits.runC r.1))
-def pcomp (A B C : Obj) (d e : Bool) (R : Pl d A B) (S : Pl e B C) : Pl d A C := fun D =>
-  let r := R D; let k := demP e r.1; let s := S k.1; (.comp r.1 s.1, r.2 && k.2 && s.2)
-def pconv (A B : Obj) (R : Pl false A B) : Pl false B A := fun _ => let r := R (); (.conv r.1, r.2)
-def pmeet (A B : Obj) (d e : Bool) (R : Pl d A B) (S : Pl e A B) : Pl (d || e) A B := fun D =>
-  let r := R (Dem.l d e D); let s := S (Dem.r d e D); (.meet r.1 s.1, r.2 && s.2)
-def pjoin (A B : Obj) (d e : Bool) (R : Pl d A B) (S : Pl e A B) : Pl (d || e) A B := fun D =>
-  let r := R (Dem.l d e D); let s := S (Dem.r d e D); (.join r.1 s.1, r.2 && s.2)
-def pdiff (A B : Obj) (d e : Bool) (R : Pl d A B) (S : Pl e A B) : Pl (d || e) A B := fun D =>
-  let r := R (Dem.l d e D); let s := S (Dem.r d e D); (.diff r.1 s.1, r.2 && s.2)
-def pldiv (A B C : Obj) (R : Pl false A B) (S : Pl false A C) (UB : Fn false B B) (UC : Fn false C C) :
-    Pl false B C := fun _ =>
-  let r := R (); let s := S (); let ub := UB.at (); let uc := UC.at ()
-  (.ldiv r.1 s.1 (.val ub.rel) (.val uc.rel), r.2 && s.2 && ub.ok && uc.ok)
+/-- A term's code as its plan's leaf: closed where the term is, `d` deciding as it does for `Fn.at`. -/
+def pleaf (A B : Obj) : (d : Bool) → Fn d A B → Pl A B
+  | false, f => .closed (Thunk.mk fun _ => let r := f.at (); (.val r.rel, r.ok))
+  | true, f => .on fun D => let r := f.at D; (.val r.rel, r.ok)
 
-/-- A closed plan run as bits (`Bits.runC`), its leaves' bit kept. -/
+/-- A plan's tables run as bits (`Bits.runC`), its leaves' bit kept. -/
 def runPl {A B : Obj} (p : Tm A B × Bool) : CRel A B := also p.2 (ofC (Bits.runC p.1))
 
+/-- The plan `P` run to its relation: a constant's result or argument read where a table is wanted; closed, its
+    table, else run on the coreflexive of the domain's known values. -/
+def ofPl (A B : Obj) : Pl A B → Rel A B
+  | .closed p => .tab (runPl p.get)
+  | .on f => ofVals A B fun X => runPl (f (idU X))
+
+/-- `R S` from `R`'s plan `r` on some keys: a closed `S` composed as it is, one on keys run on `ran(r)` (`demP`),
+    so a closed `S` costs no `ranC`. -/
+def compPl {A B C : Obj} (r : Tm A B × Bool) : Pl B C → Tm A C × Bool
+  | .closed s => (.comp r.1 s.get.1, r.2 && s.get.2)
+  | .on g => let k := demP r.1; let s := g k.1; (.comp r.1 s.1, r.2 && k.2 && s.2)
+
+def pcomp (A B C : Obj) (R : Pl A B) (S : Pl B C) : Pl A C := match R with
+  | .closed r => .closed (r.map (compPl · S))
+  | .on f => .on fun D => compPl (f D) S
+def pconv (A B : Obj) (R : Pl A B) : Pl B A := .closed (Thunk.mk fun _ => let r := R.get; (.conv r.1, r.2))
+def pmeet (A B : Obj) (R S : Pl A B) : Pl A B := Pl.map2 (fun r s => (.meet r.1 s.1, r.2 && s.2)) R S
+def pjoin (A B : Obj) (R S : Pl A B) : Pl A B := Pl.map2 (fun r s => (.join r.1 s.1, r.2 && s.2)) R S
+def pdiff (A B : Obj) (R S : Pl A B) : Pl A B := Pl.map2 (fun r s => (.diff r.1 s.1, r.2 && s.2)) R S
+def pldiv (A B C : Obj) (R : Pl A B) (S : Pl A C) (UB : Fn false B B) (UC : Fn false C C) : Pl B C :=
+  .closed <| Thunk.mk fun _ => let r := R.get; let s := S.get; let ub := UB.at (); let uc := UC.at ()
+    (.ldiv r.1 s.1 (.val ub.rel) (.val uc.rel), r.2 && s.2 && ub.ok && uc.ok)
+
 /-- A closed `R S`, `R ∩ S`, `R − S`, `R\S` as bit matrices where its plan's objects are small (`Bits.runC`). -/
-def compB (A B C : Obj) (e : Bool) (R : Pl false A B) (S : Pl e B C) : Fn false A C :=
-  .tab (runPl (pcomp A B C false e R S ()))
-def meetB (A B : Obj) (R S : Pl false A B) : Fn false A B := .tab (runPl (pmeet A B false false R S ()))
-def diffB (A B : Obj) (R S : Pl false A B) : Fn false A B := .tab (runPl (pdiff A B false false R S ()))
-def ldivB (A B C : Obj) (R : Pl false A B) (S : Pl false A C) (UB : Fn false B B) (UC : Fn false C C) :
-    Fn false B C := .tab (runPl (pldiv A B C R S UB UC ()))
+def compB (A B C : Obj) (R : Pl A B) (S : Pl B C) : Fn false A C := .tab (runPl (pcomp A B C R S).get)
+def meetB (A B : Obj) (R S : Pl A B) : Fn false A B := .tab (runPl (pmeet A B R S).get)
+def diffB (A B : Obj) (R S : Pl A B) : Fn false A B := .tab (runPl (pdiff A B R S).get)
+def ldivB (A B C : Obj) (R : Pl A B) (S : Pl A C) (UB : Fn false B B) (UC : Fn false C C) :
+    Fn false B C := .tab (runPl (pldiv A B C R S UB UC).get)
 
 end Gen
 
