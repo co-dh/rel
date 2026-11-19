@@ -23,7 +23,7 @@ def whereCol (m : USize) (b : Enc) : Except String (USize × Enc) :=
   if m.toNat < B then do
     let d ← colMap .mul m b (← shiftCol m 1)
     let m' := (m.toNat + 1).toUSize
-    let es := [(QAtomicType.i64, ← kscatter .last m .pos d m' 0)]
+    let es := [(AscKey.atom .i64, ← kscatter .last m .pos d m' 0)]
     let (vs, p) ← kasc m' es
     let (c, _, f) ← kseen m' ((es.map (·.1)).zip vs)
     let K := (c - 1).toUSize

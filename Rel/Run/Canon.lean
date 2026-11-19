@@ -80,8 +80,8 @@ def Vals.gather (m : USize) (ix : Enc) : {A : Obj} → {n : USize} → Vals A n 
 
 /-- A summand's columns at its sum side's `n` rows: `cols` of the summand `y` gathered at the positions `p`; a summand
 of no rows has no columns, and a position outside it is the error naming the `side`. -/
-def Vals.summandCols {B : Obj} {n m : USize} (side : String) (cols : Vals B n → Except String (List (QAtomicType × Enc)))
-    (p : Enc) (y : Vals B m) : Except String (List (QAtomicType × Enc)) :=
+def Vals.summandCols {B : Obj} {n m : USize} (side : String) (cols : Vals B n → Except String (List (AscKey × Enc)))
+    (p : Enc) (y : Vals B m) : Except String (List (AscKey × Enc)) :=
   if m.toNat = 0 then .ok [] else match Vals.gather n p y with
     | .ok g => cols g
     | .error s => .error s!"cols: a sum side's {side} position: {s}"
@@ -90,8 +90,8 @@ def Vals.summandCols {B : Obj} {n m : USize} (side : String) (cols : Vals B n �
 the left summand's columns gathered at `idx * not(tag)`, then the right's at `idx * tag` (`Vals.summandCols`): a row of
 the other summand reads that summand's row `0`, a constant, so equal codes are equal rows. A summand past `2^63` rows,
 which an `Int64` position cannot reach, is the error, as is an `arr` side. -/
-def Vals.cols : {A : Obj} → {n : USize} → Vals A n → Except String (List (QAtomicType × Enc))
-  | .atom t, _, x => .ok [(t, Arr.enc (t := t) x)]
+def Vals.cols : {A : Obj} → {n : USize} → Vals A n → Except String (List (AscKey × Enc))
+  | .atom t, _, x => .ok [(.atom t, Arr.enc (t := t) x)]
   | .prod _ _, _, x => do pure ((← Vals.cols x.1) ++ (← Vals.cols x.2))
   | .arr _, _, _ => .error "cols: an arr side is not atom columns"
   | .sum _ _, n, ⟨l, r, tag, idx, x, y⟩ =>
@@ -99,7 +99,7 @@ def Vals.cols : {A : Obj} → {n : USize} → Vals A n → Except String (List (
     else do
       let px ← colMap .mul n idx.enc (← colMap .not n tag.enc tag.enc)
       let py ← colMap .mul n idx.enc tag.enc
-      pure ((.u1, tag.enc) ::
+      pure ((.atom .u1, tag.enc) ::
         ((← Vals.summandCols (n := n) "left" Vals.cols px x) ++ (← Vals.summandCols (n := n) "right" Vals.cols py y)))
 
 /-- **The side `x` without duplicate rows, ascending**: `kasc` over its atom columns (sorted columns `vs`, permutation

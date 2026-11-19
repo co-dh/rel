@@ -100,7 +100,7 @@ def parityModel (op : Op) (m : Nat) : Option (List UInt64) :=
 -- `last`, each group's last row in group order: the positions scattered to `kseen`'s `g` under `.last`. `A B B` (in
 -- `kasc` order, as `kseen` takes it) has `g = 0 1 1` (2 groups), so `last = 0 2`
 def lastABB : Except String Enc := do
-  let (_, g, _) ← kseen (u 3) [(.i64, wordsFoR #[1, 2, 2])]
+  let (_, g, _) ← kseen (u 3) [(.atom .i64, wordsFoR #[1, 2, 2])]
   kscatter .last (u 3) g .pos (u 2) 0
 example : view lastABB = enc8 [0, 2] := by decide +kernel
 #guard view lastABB == enc8 [0, 2]
