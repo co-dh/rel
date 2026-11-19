@@ -34,6 +34,10 @@
   - `pointfree` gate 的范围 = L（只管类型以关系类型开头的 def）；gate G = 三个 gate，allowlist 只减不增。
   - `CLAUDE.md` 已提交（a2104f5）：Goal 是 "Rel is its own language, not k/q"；规则 "a kernel computes on the encoded
     column"。
+- owner 决定（2026-11-19）：
+  - F（D.12）：`kseen` 只接受已按 `kasc` 序排好的行；引擎选择与直接寻址删除，调用者一律 `kasc ≫ kseen`。
+  - owner 不在时，已写原则答不了的设计问题由 fable agent 分析并执行，问题、结论、理由记在本列表供复查；kernel 要
+    解码、推翻 owner 已做的决定，仍留给 owner。
 - 非 log 的输出（baseline、row 分析）写进本文件或 `doc/`，不写进 `/data/tmp`。
 
 ## 0. 每一步都遵守的约定
@@ -204,6 +208,9 @@ Diff table 的「状态」列：✅ 后面是完成它的步骤；🔄 是部分
   修复 `seenfix` 已合并（0957f87：`kseen` 的 body 返回 Rust 的 hash 错误；`Order.groupIn` 是组 id 的唯一来源）；
   余下：composite 定理；`kasc ≫ kseen` 的 runs 引理；移植 `Order.groupIds*` 的调用者；
   `doc/rel-architecture.zh.typ` 仍写 `distinct`。
+  决定 F 已落地（5617318，2026-11-19）：上面的 "引擎" 一句作废。`kseen` 在乱序行上报固定错误（指出第一处乱序的行），
+  `seenEngine`/`keySpan`/`foRBounds` 与 Rust 的 `seen::direct` 删除（`Seen.lean` 74 → 32 行）；新引理 `kseen_sorted`。
+  未做：1024 行块边界只有 Rust 测试，Lean 例子因 `decide +kernel` 归约不动而缺（与决定 C 有出入）。
 
 ### P0 baseline — 1/1
 
@@ -357,12 +364,17 @@ Diff table 的「状态」列：✅ 后面是完成它的步骤；🔄 是部分
   - 证明代价：3069 条 theorem 里，1141 条只被下层引用，随下层删除；语言层依赖 85 条不变的算子命题；276 条上层证明直接
     引用下层，要从五个 kernel 的定律重证；另加一个新的支持层（估计 150–300 条，未核实）。
   - 包：
-    - W0 删除没有 Rel 程序到达的每个旧 export（不替换，不重证）：进行中，分支 `mig-w0`。
-    - W1 闭包定律：五个 kernel 的答案都满足 `Enc.WF`（是一个 `Arr`），且是下一个 kernel 的合法输入；桥 `Enc.raw` ↔
-      `Arr.get`/`Vals.row`；只对 foR 与 `pos`：进行中，分支 `mig-w1`。
-    - W1b 删除 foR + `pos` 之外的编码（决定 M）：在 W1 之后（同一个文件 `Rel/Kernel/Value.lean`）。
-    - W2 第一个算子端到端：canon/nub（每列 `kasc` → `kseen` → 在 `first` 上 `kgather`），然后 `ran`/`dom`；取代六个
-      共享函数；重证 `rep_ran`：在 W1 之后。
+    - ✅ W0 删除没有 Rel 程序到达的每个旧 export（不替换，不重证）：已合并（de93da2），删 7 个；其余 70 多个都被
+      六个共享函数连着，在算子改写之前删不掉。
+    - ✅ W1 闭包定律（af61a75，`Rel/KernelSpec/Closure.lean`）：`Enc.Valid`、`foRWords_valid`、`wordsFoR_closed`、
+      五条 `k*_closed`；桥 `Arr.get_raw_foR`。缺口：`pos` 不是 `Enc.WF`；`u1` 列带前提 `t ≠ u1`。
+    - 🔄 W1a 每个原子列在产生处就是 foR 或 `pos`（分支 `mig-for`）：W2 的新算子拒绝 `.bytes` 列，所以旧路径
+      换不掉；产生点 7 个（`col longCol valCol tilCol setIdCol colFn`、`Gen.atom`）加旧 gather 的输出。
+    - W1b 删除 foR + `pos` 之外的编码（决定 M）：在 W1a 之后（`.bytes` 没有构造点时删 constructor）。
+    - 🔄 W2 第一个算子端到端（04acf52）：`Tab.canon`/`ran`/`dom` = `kasc` → `kseen` → `kgather`
+      （`Rel/Run/Canon.lean`，定律 `Rel/RepCanon.lean`），kernel 之间无转换。未做：替换旧的 `canonC`/`nubC`/
+      `CRel.ran`/`CRel.dom`（等 W1a，以及 `sym`、`general`、`arr`、`sum` 列）；定律的前提 `hK`（序码相等则行
+      相等）对浮点不成立（`±0`、NaN），交 fable 分析；"结果有序且无重复" 未陈述。
     - W3 其余算子，在并行 worktree 里：`∪`（concat → `kasc` → `kseen`）；`∩`/`−`（带来源标记的 concat → `kasc` →
       `kscan` 计数）；`≫`（两侧按中间列 `kasc` → `kseen` → expand → `kgather` → canon）；`/` `\` `Λ`（`kasc` ≫
       `kseen` 给出 `lo`/`hi`；分段 `kscan`）；list 行、arith、est/thin：在 W2 之后。
@@ -370,7 +382,11 @@ Diff table 的「状态」列：✅ 后面是完成它的步骤；🔄 是部分
     - W5 删除 `Rel/Run/Code.lean`、`Rel/KernelWF/`、旧的 `KernelSpec` module、`Kernel/{Structural,Sort,Search,
       Elementwise}` 与它们的 Rust；`RELK.txt` = 5 + 保留的。
     - W6 native：`Plan` 得到一个 `Enc` 寄存器，`Plan.abi` 列出这五个。
-  - 度量（每次合并）：调用旧 export 的可执行 def（现 149）；`RELK.txt` 行数（现 85；主要在 W5 下降）；compile-diff 241/25。
+  - 度量（每次合并）：调用旧 export 的可执行 def（149，W0 之后未重数）；`RELK.txt` 行数（master 80a1e99：79；
+    主要在 W5 下降）；compile-diff 241/25。`make check` 在 80a1e99 全绿（2026-11-19）。
+  - 2026-11-19 的修复：`Coc.packRes` 改为一次 `map`（77b475c；逐字节 `push` 在 Lean kernel 里是平方的，
+    `SeenTest` 8.2 → 1.6 GB，全库 build 峰值 2.8 GB）；own 列文件没有 kind 1，part 数表是唯一判据，两条拒绝文本
+    由表生成（679839b；`OWN_NPARTS` 变为 `[Option<usize>; 5]`，qlean 的比较要跟着改）。
   - 第一波撤回（2026-11-18）：按 export family 切分（分支 `mig-scan`、`mig-gather`、`mig-ew`、`mig-enc`、
     `mig-closure`、`mig-abi`、`mig-recipes`：未 build 的 WIP，未合并）；`Code` 的载体改写到 `Enc` 上；adapter
     `Enc.ofLongs`/`Enc.longs`；加强 `code_runs`；q 动词 recipe（find、member、bin、where、rank、dict）作为具名实体：
@@ -379,9 +395,8 @@ Diff table 的「状态」列：✅ 后面是完成它的步骤；🔄 是部分
   - 风险：纯组合比融合 kernel 多遍（每个 op 之后的 canon 是一次排序；`kseen` 没有 hash，要先 `kasc`）；生成的测试在
     elaboration 时运行每个程序，慢的组合会拉长 build；qlean 钉在 e024297，import `Rel.Kernel.*`/`Rel.KernelSpec.*`，
     所以 W5 会弄坏它，除非 pin 不动。
-  - 已合并（自 d4105f7）：296bab2 hylo 没有 `ch`（`Tm.kids` 是唯一来源，`Tm.size`，`compile_sound` 按 size）；
-    0957f87 seenfix；a9812af `Enc.bits` 删除；dbdc72d 7.5 gate。未合并，在分支上：`d7map` fbb31f7（D.7 reader）、
-    `mig-asc` 43ae2e7（`ascLayout`：`i8` 有符号）。
+  - 已合并（自 d4105f7）：`d7map`（75a2d45）、`mig-asc`（931a278）；296bab2 hylo 没有 `ch`（`Tm.kids` 是唯一来源，`Tm.size`，`compile_sound` 按 size）；
+    0957f87 seenfix；a9812af `Enc.bits` 删除；dbdc72d 7.5 gate。
   - 操作：同一时刻最多一个 `lean-refactor index`：每次运行对每个 kernel `*Test.lean` 占 3–7 GB；2026-11-18 三个并行
     index 加九个 agent 填满 30 GB 内存和 57 GB swap，`make check` 在 index 一步停住。
 
