@@ -111,30 +111,8 @@
   [`Day`], [`date`（`i32`）], [epoch 以来的天数；foR code 按整数有序（PLAN 6.9 第 1 步，`69d5638`）],
   [`UTCTime`], [`datetime`（`i64`）], [epoch 以来的纳秒，无时区；同上],
   [list 列（`collect`）], [`Obj.arr T`], [平铺 payload 加 `lo` `hi`],
-  [`Maybe a`], [`A+1`], [见 1.4],
+  [`Maybe a`], [`A+1`], [见 1.3],
 )
-
-== 编码：只有 `foR`
-
-唯一的编码是现有的 `Ext.Enc.foR`（`doc/rel-architecture.zh.typ`「剩下的唯一编码：foR」）。`coc` 不是第二种编码，
-是写出和读入 `foR` 的 codec。
-
-#tbl(c-run, (auto, 1fr), ([名字], [是什么]),
-  [`foR`], [`Ext.Enc.foR md pk`（`Rel/Kernel/Value.lean`）：每 $2^"lg"$ 个元素一块，值是 base 加回绕的残差，残差按该块的宽度
-    （0 到 64 位）LSB 优先打包；`lg` 每列一个。`enum` / ids 是 $b = 0$ 的 `foR`，`bits` 是 base 0 宽度 1，常量是宽度 0],
-  [缓存], [`maxv`（谓词跳过整块）、`bsum` / `sumnul` / `sumn`（O(nblk) 求和）、`off`（块起点）。只服务速度，语义从不读，
-    所以证明零成本],
-  [codec `coc`], [Lean：`Coc.encode` / `Coc.encodeAt`（`Rel/Kernel/Coc.lean`）写 `foR`，kernel 经 `Rel.Kernel.foRWords` 读。
-    Rust：`coc::Coc`（`crate/src/coc.rs`）是同一批字节的视图，kernel 经 `blocks.rs` 的 `Blocks::walk` / `load` 一块一块地读，
-    compute-on-compression 在这一层发生],
-)
-
-- 对 dataframe 有用的三点，都来自缓存：`maxv` 与 base 就是 zone map，`filter` 可以整块跳过；`sum` 可以只读 `bsum`；
-  排好序的列每块宽度很小。
-- `Ext.Enc` 今天有 `bytes` `bits` `syms` `foR` `alp` `enum` `gen`。PLAN 6.11 之后只剩 `foR`，`alp` 作为 float 的 fast path
-  挂在 `foR` 的元数据上，其余五个删除。
-- `packed`（去掉缓存的 `foR`）已弃用。
-- Lean `Coc.encode` 与 Rust 的宽度选择相同（并列取较窄），逐字节相等（`f0f9171`），gate 3 直接比较字节。
 
 == null
 
@@ -340,7 +318,7 @@ kernel 一栏：S = `scan`，T = `scatter`，G = `gather`，A = `asc`，D = `dis
 == 定律充当 optimiser
 
 一个实例，projection pushdown：`derive e` 之后 `select a`：`F(⟨𝟙, e⟩) ≫ F(π₁ ≫ a) = F(⟨𝟙, e⟩ ≫ π₁ ≫ a) = F(dom(e) ≫ a) = F(a)`。
-第一步是 functor 律，第二步是 `⟨R, S⟩ ≫ π₁ = dom(S) ≫ R`，第三步要求 `e` 是全的（1.4 保证）。列 `e` 不被计算。
+第一步是 functor 律，第二步是 `⟨R, S⟩ ≫ π₁ = dom(S) ≫ R`，第三步要求 `e` 是全的（1.3 保证）。列 `e` 不被计算。
 
 #tbl(c-sem, (auto, 1.6fr, auto), ([优化], [定律], [状态]),
   [projection pushdown], [`⟨R, S⟩ ≫ π₁ = dom(S) ≫ R`；`S` 全时 `dom(S) = 𝟙`], [待陈述],
@@ -386,7 +364,7 @@ kernel 一栏：S = `scan`，T = `scatter`，G = `gather`，A = `asc`，D = `dis
   `group 走排序`、`join 走排序` 两条定律证出之前，native builder 对 canonical 读法的翻译没有证明，要由 `Tm.gap` 报出来。
 - *F4 依赖数据的 schema 无法给出类型。* wide pivot、`get_dummies`、读文件时推断 schema：结果的 `Obj` 要读了值才知道，
   而 `Tm A B` 在 elaboration 时固定 `B`。wide pivot 只对声明的有限 `obj P` 可写；long 形式是忠实的那个。
-- *F5 null。* 布局问题见 1.4，outer join 的两支见主表 `leftJoin`。另外 null 上的布尔运算（Kleene `or`）要用 `[R, S]` 逐情况写。
+- *F5 null。* 布局问题见 1.3，outer join 的两支见主表 `leftJoin`。另外 null 上的布尔运算（Kleene `or`）要用 `[R, S]` 逐情况写。
 - *F6 没有 hash。* `groupBy`、join、`distinct` 都基于排序。窄的 `foR` code 上 radix `asc` 是线性的；宽 key 或高基数时
   polars 的 hash 表应当更快。stage 1 测量；hash 形式是第一批融合候选，它们不保持稳定顺序，定理只能到「组内相差一个置换」。
 - *F7 没有代价模型。* join 顺序、build 侧的选择需要统计信息。
