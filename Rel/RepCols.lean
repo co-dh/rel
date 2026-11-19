@@ -244,10 +244,68 @@ theorem filterMap_finRange_add {α : Type} {M a b : Nat} (h : M = a + b) (G : Fi
       (List.ofFn fun i : Fin b => i).map (fun j => ⟨a + j.1, by omega⟩) from
       List.ext_getElem (by simp) (fun _ _ _ => by simp [Fin.natAdd]), List.filterMap_map]; rfl
 
+theorem sum_append_nat : ∀ l1 l2 : List Nat, (l1 ++ l2).sum = l1.sum + l2.sum
+  | [], _ => by simp
+  | x :: l, l2 => by simp [sum_append_nat l l2, Nat.add_assoc]
+
+/-- A word below `2^63` read signed is its `Nat`. -/
+theorem toInt64_toInt {x : UInt64} (h : x.toNat < 2 ^ 63) : x.toInt64.toInt = x.toNat := by
+  rw [show x.toInt64.toInt = x.toBitVec.toInt from rfl, BitVec.toInt]; simp only [UInt64.toNat_toBitVec]
+  omega
+
+/-- A `Nat` below `2^64` is its word's `Nat`. -/
+theorem toNat_toUInt64 {x : Nat} (h : x < 2 ^ 64) : x.toUInt64.toNat = x := by simp; omega
+
+/-- **`colPrefix (.add)` is the running sum**: where word `G` of `w` is `wN G`, word `G` of the answer is the sum of
+`wN` over `0 … G`. -/
+theorem colPrefix_add_sum {K : USize} {w P : Enc} (h : colPrefix .add K w = .ok P) (wN : Nat → Nat)
+    (hw : ∀ G < K.toNat, (raw .i64 K w)[G]?.getD 0 = (wN G).toUInt64) :
+    ∀ G < K.toNat, (raw .i64 K P)[G]?.getD 0 = ((List.range (G + 1)).map wN).sum.toUInt64 := by
+  obtain ⟨-, -, hr⟩ := colPrefix_raw h
+  intro G hG
+  induction G with
+  | zero =>
+    have := hr 0 hG
+    simp only [if_pos rfl, Op.eval, hw 0 hG, Except.ok.injEq] at this
+    rw [← this]; simp
+  | succ G ih =>
+    have := hr (G + 1) hG
+    rw [if_neg (by omega), Nat.add_sub_cancel, ih (by omega), hw _ hG] at this
+    simp only [Op.eval, Except.ok.injEq] at this
+    rw [← this]; simp only [List.range_succ, List.map_append, sum_append_nat, List.map_cons, List.map_nil,
+      List.sum_cons, List.sum_nil, Nat.add_zero]; exact (UInt64.ofNat_add _ _).symm
+
+/-- `kscan`'s answer is a `foR` column. -/
+theorem kscan_foR {op : Op} {rev : Bool} {s t : QAtomicType} {n : USize} {seg : Enc} {es : List Enc} {o : Enc}
+    (h : kscan op rev s t n seg es = .ok o) : ∃ md pk, o = .foR md pk := by
+  unfold kscan at h
+  simp only [bind, Except.bind] at h
+  split at h; · cases h
+  split at h; · cases h
+  split at h; · cases h
+  split at h; · cases h
+  split at h; · cases h
+  simp only [pure, Except.pure, Except.ok.injEq] at h
+  exact ⟨_, _, h.symm⟩
+
+/-- **`lastCount` reads the last word**: `x` where the last of the `K` words is `x < 2^63`, `0` at `K = 0`. -/
+theorem lastCount_eq {K : USize} {P : Enc} (hw : Enc.WF .i64 K P) (hf : ∃ md pk, P = .foR md pk) {x : Nat}
+    (hx : x < 2 ^ 63) (hl : 0 < K.toNat → (raw .i64 K P)[K.toNat - 1]?.getD 0 = x.toUInt64)
+    (h0 : K.toNat = 0 → x = 0) : lastCount K P hw = x := by
+  unfold lastCount
+  split
+  · rename_i hk
+    obtain ⟨md, pk, rfl⟩ := hf
+    rw [Arr.get_raw_foR (Arr.mk _ hw) rfl]; change ((raw .i64 K (Enc.foR md pk))[K.toNat - 1]?.getD 0).toInt64.toNatClampNeg = x
+    rw [hl hk, ← Int64.toNat_toInt,
+      toInt64_toInt (by rw [toNat_toUInt64 (by omega)]; omega), toNat_toUInt64 (by omega)]
+    simp
+  · exact (h0 (by omega)).symm
+
 /-- **`summandPos n s tag idx`** is `idx` on the rows `tag` gives to the summand `s`, `0` on the others. -/
-theorem summandPos_raw {n : USize} {s : Bool} {tag : Arr .u1 n} {idx : Arr .i64 n} {p : Enc}
+theorem summandPos_raw {n : USize} {s : Bool} {tag : Arr .u1 n} {idx : Enc} {p : Enc}
     (h : summandPos n s tag idx = .ok p) (hv : Kernel.Enc.Valid n tag.enc) (q : Fin n.toNat) :
-    (raw .i64 n p)[q.1]?.getD 0 = if tag.get q = s then (raw .i64 n idx.enc)[q.1]?.getD 0 else 0 := by
+    (raw .i64 n p)[q.1]?.getD 0 = if tag.get q = s then (raw .i64 n idx)[q.1]?.getD 0 else 0 := by
   obtain ⟨t, ht, et⟩ := Arr.get_u1 tag hv q
   have hi64 : ¬ (QAtomicType.i64 = .u1) := by decide
   unfold summandPos at h
@@ -293,6 +351,79 @@ theorem Arr.pos_clamp {n : USize} {P : Arr .i64 n} (h : Arr.pos n = .ok P) (hn :
     exact (clampFin_word h0 (by rw [hc]; exact c.2) hn).trans (Fin.ext hc)
   · cases h
 
+/-- **A `tagCount` of `0`**: no row is tagged into the summand `s`. -/
+theorem tagCount_zero {n : USize} {s : Bool} {tag : Arr .u1 n} (h : tagCount n s tag = .ok 0)
+    (hv : Kernel.Enc.Valid n tag.enc) (q : Fin n.toNat) : tag.get q ≠ s := by
+  unfold tagCount at h
+  split at h; · cases h
+  simp only [bind, Except.bind] at h
+  split at h; · cases h
+  rename_i one hone
+  split at h; · cases h
+  rename_i p hp
+  split at h
+  · rename_i P hP
+    simp only [Except.ok.injEq] at h
+    have hf : ∃ md pk, P = .foR md pk := by
+      unfold colPrefix at hP; simp only [bind, Except.bind] at hP; split at hP; · cases hP
+      exact kscan_foR hP
+    -- `wN G`: row `G` is tagged into `s`
+    obtain ⟨wN, hwN⟩ : ∃ f : Nat → Nat, f = fun G => if hG : G < n.toNat then (if tag.get ⟨G, hG⟩ = s then 1 else 0) else 0 := ⟨_, rfl⟩
+    have hw : ∀ G < n.toNat, (raw .i64 n p)[G]?.getD 0 = (wN G).toUInt64 := fun G hG => by
+      rw [summandPos_raw hp hv ⟨G, hG⟩, colConst_raw hone]; rw [hwN]; simp only [dif_pos hG]
+      split <;> simp [hG]
+    have key : ∀ k, ((List.range k).map wN).sum ≤ k ∧ (q.1 < k → wN q.1 ≤ ((List.range k).map wN).sum) := by
+      intro k; induction k with
+      | zero => simp
+      | succ k ih =>
+        rw [List.range_succ, List.map_append, sum_append_nat]
+        simp only [List.map_cons, List.map_nil, List.sum_cons, List.sum_nil, Nat.add_zero]
+        have h1 : wN k ≤ 1 := by rw [hwN]; dsimp only; split <;> (try split) <;> omega
+        refine ⟨by omega, fun hk => ?_⟩
+        by_cases e : q.1 = k
+        · rw [e]; omega
+        · have := ih.2 (by omega); omega
+    have hc := lastCount_eq (colPrefix_closed hP).2 hf (x := ((List.range n.toNat).map wN).sum)
+      (by have := (key n.toNat).1; omega)
+      (fun hn => by rw [colPrefix_add_sum hP wN hw _ (by omega), Nat.sub_add_cancel hn])
+      (fun hn => by rw [hn]; rfl)
+    rw [h] at hc
+    have h0 : wN q.1 = 0 := by have := (key n.toNat).2 q.2; omega
+    rw [hwN] at h0; simp only [dif_pos q.2] at h0
+    intro e; rw [if_pos e] at h0; exact absurd h0 (by decide)
+  · cases h
+
+/-- **Summand `s` of one side, `Vals.catSide`**, read at a row `q` the tags give to it: the summand is not empty, and
+the row is its row at `q`'s position clamped. -/
+theorem Vals.catSide_row {B : Obj} {m l l' : USize} {s : Bool} {tag : Arr .u1 m} {idx : Arr .i64 m} {x : Vals B l}
+    {o : Vals B l'} {g : Vals B m} (h : Vals.catSide s tag idx x o = .ok g) (hv : Kernel.Enc.Valid m tag.enc)
+    (h63 : l.toNat ≤ 2 ^ 63) (q : Fin m.toNat) (ht : tag.get q = s) :
+    ∃ hl : 0 < l.toNat, Vals.row g q = Vals.row x (clampFin (idx.get q) l.toNat hl) := by
+  unfold Vals.catSide at h
+  split at h
+  · simp only [bind, Except.bind] at h
+    split at h; · cases h
+    rename_i c hc
+    split at h
+    · rename_i hc0; subst hc0; exact absurd ht (tagCount_zero hc hv q)
+    · cases h
+  · rename_i hl0
+    have hl : 0 < l.toNat := by omega
+    refine ⟨hl, ?_⟩
+    simp only [bind, Except.bind] at h
+    split at h; · cases h
+    rename_i k hk
+    split at h; · cases h
+    rename_i p hp
+    rw [Vals.summand_row tag k s x h h63 hl (summandPos_raw hp hv) q, if_pos ht]
+    -- the clamped positions clamp as the stored ones (`Arr.clampShift_get`)
+    have hU : (l.toUInt64 - 1).toNat = l.toNat - 1 := by
+      have := l.toNat_lt_size; have := USize.size_le
+      rw [UInt64.toNat_sub_of_le _ _ (by rw [UInt64.le_iff_toNat_le]; simp; omega)]; simp
+    have e := Arr.clampShift_get (by rw [hU]; simp; omega) hk q
+    rw [hU] at e
+    congr 1; apply Fin.ext; simp only [clampFin]; simp at e; omega
+
 /-- **A summand of `Vals.catSummand`** read at row `c`, which the tags give to it, through positions `P` that clamp to
 themselves: the summand's value of row `c` of the first side below `n₁`, of row `c - n₁` of the second from there,
 given `cat` concatenates (`Vals.concat_row`). -/
@@ -325,47 +456,26 @@ theorem Vals.catSummand_row {B : Obj} {n₁ n₂ n l₁ l₂ : USize} {off : Enc
     rw [dif_neg (by dsimp only; omega)]
     split <;> rw [dif_neg (by omega)]
   · split at h; · cases h
-    split at h; · cases h
     simp only [bind, Except.bind, pure, Except.pure] at h
     split at h; · cases h
-    rename_i k₁ hk₁
-    split at h; · cases h
-    rename_i p₁ hp₁
-    split at h; · cases h
     rename_i g₁ hg₁
-    split at h; · cases h
-    rename_i k₂ hk₂
-    split at h; · cases h
-    rename_i p₂ hp₂
     split at h; · cases h
     rename_i g₂ hg₂
     split at h; · cases h
     rename_i G hG
     cases h
     have hc0 : 0 < n.toNat := by have := c.2; omega
-    have hU : ∀ m : USize, 0 < m.toNat → (m.toUInt64 - 1).toNat = m.toNat - 1 := fun m hm => by
-      have := m.toNat_lt_size; have := USize.size_le
-      rw [UInt64.toNat_sub_of_le _ _ (by rw [UInt64.le_iff_toNat_le]; simp; omega)]; simp
-    -- the clamped positions clamp as the stored ones (`Arr.clampShift_get`)
-    have hk {m : USize} {k idx : Arr .i64 m} {l : USize} (hl : 0 < l.toNat) (h63 : l.toNat ≤ 2 ^ 63)
-        (hk : idx.clampShift (l.toUInt64 - 1) 0 = .ok k) (q : Fin m.toNat) :
-        clampFin (k.get q) l.toNat hl = clampFin (idx.get q) l.toNat hl := by
-      have e := Arr.clampShift_get (by rw [hU l hl]; simp; omega) hk q
-      rw [hU l hl] at e
-      apply Fin.ext; simp only [clampFin]; simp at e; omega
     show (if h0 : 0 < n.toNat then Vals.row G (clampFin (P.get c) n.toNat h0) else B.dflt) = _
     rw [dif_pos hc0, hP c hc0, hcat g₁ g₂ hn hoff hG c]
     split
     · rename_i hc
       rw [dif_pos hc] at ht
-      have hl : 0 < l₁.toNat := by omega
-      rw [dif_pos hl, Vals.summand_row tag₁ k₁ s x₁ hg₁ (by omega) hl (summandPos_raw hp₁ hv₁) ⟨c.1, hc⟩,
-        if_pos ht, hk hl (by omega) hk₁]
+      obtain ⟨hl, e⟩ := Vals.catSide_row hg₁ hv₁ (by omega) ⟨c.1, hc⟩ ht
+      rw [dif_pos hl, e]
     · rename_i hc
       rw [dif_neg hc] at ht
-      have hl : 0 < l₂.toNat := by omega
-      rw [dif_pos hl, Vals.summand_row tag₂ k₂ s x₂ hg₂ (by omega) hl (summandPos_raw hp₂ hv₂) _, if_pos ht,
-        hk hl (by omega) hk₂]
+      obtain ⟨hl, e⟩ := Vals.catSide_row hg₂ hv₂ (by omega) _ ht
+      rw [dif_pos hl, e]
 
 /-- **Row `c` of `Vals.concat`** is row `c` of `x` below `n₁`, row `c - n₁` of `y` from there. -/
 theorem Vals.concat_row : {A : Obj} → {n₁ n₂ n : USize} → {off : Enc} → (hn : n.toNat = n₁.toNat + n₂.toNat) →

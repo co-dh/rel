@@ -92,10 +92,6 @@ theorem countP_split (p q : Nat → Bool) : ∀ l : List Nat,
     simp only [List.countP_cons, countP_split p q l]
     cases p x <;> cases q x <;> simp <;> omega
 
-private theorem sum_append_nat : ∀ l1 l2 : List Nat, (l1 ++ l2).sum = l1.sum + l2.sum
-  | [], _ => by simp
-  | x :: l, l2 => by simp [sum_append_nat l l2, Nat.add_assoc]
-
 /-- **Counting by groups**: where every row's group `gr` is below `K`, the `K` groups' counts of rows with `P` sum
 to the count of all rows with `P`. -/
 theorem sum_countP_groups (gr : Nat → Nat) (P : Nat → Bool) (l : List Nat) :
@@ -109,11 +105,6 @@ theorem sum_countP_groups (gr : Nat → Nat) (P : Nat → Bool) (l : List Nat) :
     rw [Nat.add_comm]
     congr 1 <;> apply List.countP_congr <;> intro x _ <;> by_cases h : gr x = K <;>
       simp [h] <;> omega
-
-/-- A word below `2^63` read signed is its `Nat`. -/
-theorem toInt64_toInt {x : UInt64} (h : x.toNat < 2 ^ 63) : x.toInt64.toInt = x.toNat := by
-  rw [show x.toInt64.toInt = x.toBitVec.toInt from rfl, BitVec.toInt]; simp only [UInt64.toNat_toBitVec]
-  omega
 
 /-- Folding `.add` over `0`/`1` words counts the ones. -/
 theorem foldl_add_count (P : Nat → Bool) : ∀ (l : List Nat) (a : UInt64),
@@ -147,9 +138,6 @@ theorem foldl_max_spec : ∀ (l : List UInt64) (a : UInt64), (∀ x ∈ l, x.toN
         · exact Or.inr (List.mem_cons_self ..)
         · exact Or.inl rfl
       · exact Or.inr (List.mem_cons_of_mem _ e)
-
-/-- A `Nat` below `2^64` is its word's `Nat`. -/
-theorem toNat_toUInt64 {x : Nat} (h : x < 2 ^ 64) : x.toUInt64.toNat = x := by simp; omega
 
 theorem toInt64_toInt_nat {x : Nat} (h : x < 2 ^ 63) : x.toUInt64.toInt64.toInt = x := by
   rw [toInt64_toInt (by rw [toNat_toUInt64 (by omega)]; omega), toNat_toUInt64 (by omega)]
@@ -250,52 +238,6 @@ theorem scatter_add_count {N K : USize} {g e o : Enc} (h : kscatter .add N g e K
   rw [hf, List.map_congr_left (g := fun q => if P q then (1 : UInt64) else 0)
     (fun q hq => he q (List.mem_range.1 (List.mem_filter.1 hq).1)), foldl_add_count, List.countP_filter]
   simp [Bool.and_comm]
-
-/-- **`colPrefix (.add)` is the running sum**: where word `G` of `w` is `wN G`, word `G` of the answer is the sum of
-`wN` over `0 … G`. -/
-theorem colPrefix_add_sum {K : USize} {w P : Enc} (h : colPrefix .add K w = .ok P) (wN : Nat → Nat)
-    (hw : ∀ G < K.toNat, (raw .i64 K w)[G]?.getD 0 = (wN G).toUInt64) :
-    ∀ G < K.toNat, (raw .i64 K P)[G]?.getD 0 = ((List.range (G + 1)).map wN).sum.toUInt64 := by
-  obtain ⟨-, -, hr⟩ := colPrefix_raw h
-  intro G hG
-  induction G with
-  | zero =>
-    have := hr 0 hG
-    simp only [if_pos rfl, Op.eval, hw 0 hG, Except.ok.injEq] at this
-    rw [← this]; simp
-  | succ G ih =>
-    have := hr (G + 1) hG
-    rw [if_neg (by omega), Nat.add_sub_cancel, ih (by omega), hw _ hG] at this
-    simp only [Op.eval, Except.ok.injEq] at this
-    rw [← this]; simp only [List.range_succ, List.map_append, sum_append_nat, List.map_cons, List.map_nil,
-      List.sum_cons, List.sum_nil, Nat.add_zero]; exact (UInt64.ofNat_add _ _).symm
-
-/-- `kscan`'s answer is a `foR` column. -/
-theorem kscan_foR {op : Op} {rev : Bool} {s t : QAtomicType} {n : USize} {seg : Enc} {es : List Enc} {o : Enc}
-    (h : kscan op rev s t n seg es = .ok o) : ∃ md pk, o = .foR md pk := by
-  unfold kscan at h
-  simp only [bind, Except.bind] at h
-  split at h; · cases h
-  split at h; · cases h
-  split at h; · cases h
-  split at h; · cases h
-  split at h; · cases h
-  simp only [pure, Except.pure, Except.ok.injEq] at h
-  exact ⟨_, _, h.symm⟩
-
-/-- **`lastCount` reads the last word**: `x` where the last of the `K` words is `x < 2^63`, `0` at `K = 0`. -/
-theorem lastCount_eq {K : USize} {P : Enc} (hw : Enc.WF .i64 K P) (hf : ∃ md pk, P = .foR md pk) {x : Nat}
-    (hx : x < 2 ^ 63) (hl : 0 < K.toNat → (raw .i64 K P)[K.toNat - 1]?.getD 0 = x.toUInt64)
-    (h0 : K.toNat = 0 → x = 0) : lastCount K P hw = x := by
-  unfold lastCount
-  split
-  · rename_i hk
-    obtain ⟨md, pk, rfl⟩ := hf
-    rw [Arr.get_raw_foR (Arr.mk _ hw) rfl]; change ((raw .i64 K (Enc.foR md pk))[K.toNat - 1]?.getD 0).toInt64.toNatClampNeg = x
-    rw [hl hk, ← Int64.toNat_toInt,
-      toInt64_toInt (by rw [toNat_toUInt64 (by omega)]; omega), toNat_toUInt64 (by omega)]
-    simp
-  · exact (h0 (by omega)).symm
 
 /-- Word `t` of the index column `.pos` is `t`. -/
 theorem raw_pos_word {n : USize} {t : Nat} (ht : t < n.toNat) : (raw .i64 n (.pos : Enc))[t]?.getD 0 = t.toUInt64 := by

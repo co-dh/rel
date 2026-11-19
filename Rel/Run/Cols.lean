@@ -43,10 +43,29 @@ def Arr.clampShift {n : USize} (c s : UInt64) (x : Arr .i64 n) : Except String (
   | .ok o => .ok (Arr.mk o (colMap_closed h).2)
   | .error e => .error e
 
+/-- `colPrefix`'s answer is a column every kernel reads, `Enc.WF` at `i64` (`kscan_closed`). -/
+theorem colPrefix_closed {op : Op} {n : USize} {a o : Enc} (h : colPrefix op n a = .ok o) :
+    Kernel.Enc.Valid n o ∧ Enc.WF .i64 n o := by
+  unfold colPrefix at h; simp only [bind, Except.bind] at h; split at h; · cases h
+  exact kscan_closed h
+
+/-- The last of the `n` words of the `i64` column `e`, or `0` at `n = 0`, read as a count (`Arr.get`, one element). -/
+def lastCount (n : USize) (e : Enc) (h : Enc.WF .i64 n e) : Nat :=
+  if hn : 0 < n.toNat then (Arr.get (Arr.mk e h) ⟨n.toNat - 1, by omega⟩).toNatClampNeg else 0
+
 /-- The positions of a sum side's summand `s` (`false` left, `true` right): `idx` on the rows `tag` gives to it, `0` on
 the others (`colMap .mul` by `tag` or by its `.not`), as `Vals.cols` gathers a summand. -/
-def summandPos (n : USize) (s : Bool) (tag : Arr .u1 n) (idx : Arr .i64 n) : Except String Enc :=
-  if s then colMap .mul n idx.enc tag.enc else do colMap .mul n idx.enc (← colMap .not n tag.enc tag.enc)
+def summandPos (n : USize) (s : Bool) (tag : Arr .u1 n) (idx : Enc) : Except String Enc :=
+  if s then colMap .mul n idx tag.enc else do colMap .mul n idx (← colMap .not n tag.enc tag.enc)
+
+/-- The count of the `n` rows `tag` gives to the summand `s`: `summandPos` of the words `1`, its running sum
+(`colPrefix .add`), the last word (`lastCount`); past `2^63` rows, which a signed count cannot reach, the error. -/
+def tagCount (n : USize) (s : Bool) (tag : Arr .u1 n) : Except String Nat :=
+  if 2 ^ 63 ≤ n.toNat then .error s!"count: {n} rows, past an Int64 count" else do
+    let p ← summandPos n s tag (← colConst n 1)
+    match h : colPrefix .add n p with
+    | .ok P => .ok (lastCount n P (colPrefix_closed h).2)
+    | .error e => .error e
 
 /-- The positions `0 … n-1`, a `foR` column (`shiftCol n 0`). -/
 def Arr.pos (n : USize) : Except String (Arr .i64 n) :=
@@ -56,22 +75,28 @@ def Arr.pos (n : USize) : Except String (Arr .i64 n) :=
       split at h <;> first | cases h | exact (colMap_closed h).2))
   | .error e => .error e
 
+/-- Summand `s` of a sum side of `m` rows (tags `tag`, positions `idx`) at those rows, as `Vals.row` reads them: its
+rows `x` gathered at `summandPos` of the positions clamped into `x`. Where `x` has no rows, a row tagged into it reads
+`Obj.dflt`, which no payload row holds: with no such row (`tagCount` is `0`) the rows are never read, and the other
+side's summand `o` gathered at row `0` stands in; with some, the error naming the summand and the count. -/
+def Vals.catSide {B : Obj} {m l l' : USize} (s : Bool) (tag : Arr .u1 m) (idx : Arr .i64 m) (x : Vals B l)
+    (o : Vals B l') : Except String (Vals B m) :=
+  if l.toNat = 0 then do
+    let c ← tagCount m s tag
+    if c = 0 then Vals.gather m (← colConst m 0) o
+    else .error s!"concat: {c} rows tagged into the {if s then "right" else "left"} summand, which has no rows"
+  else do Vals.gather m (← summandPos m s tag (← idx.clampShift (l.toUInt64 - 1) 0).enc) x
+
 /-- Summand `s` of the concat of two sum sides of `n₁` and `n₂` rows, its rows `x₁` and `x₂` on each: their concat
-`cat` where both are empty (every row of the summand reads `Obj.dflt`), else each gathered at its side's
-`summandPos` of its positions clamped into the summand, as `Vals.row` reads them (row `i` its own row `i`'s value) and the two concatenated, `n` rows read at the positions `Arr.pos`.
-A summand empty on one side only is the error: its rows read `Obj.dflt`, which no payload row holds. -/
+`cat` where both are empty (every row of the summand reads `Obj.dflt`), else each side's `Vals.catSide` (the other
+side's summand standing in for an empty one) concatenated, `n` rows read at the positions `Arr.pos`. -/
 def Vals.catSummand {B : Obj} {n₁ n₂ l₁ l₂ : USize} (n : USize) (off : Enc) (s : Bool) (tag₁ : Arr .u1 n₁)
     (idx₁ : Arr .i64 n₁) (x₁ : Vals B l₁) (tag₂ : Arr .u1 n₂) (idx₂ : Arr .i64 n₂) (x₂ : Vals B l₂)
     (cat : {m₁ m₂ : USize} → (m : USize) → Enc → Vals B m₁ → Vals B m₂ → Except String (Vals B m)) :
     Except String ((m : USize) × Vals B m) :=
   if l₁.toNat = 0 ∧ l₂.toNat = 0 then do let p ← catPlan l₁ l₂; pure ⟨p.1, ← cat p.1 p.2 x₁ x₂⟩
-  else if l₁.toNat = 0 ∨ l₂.toNat = 0 then
-    .error s!"concat: a sum summand of {l₁} rows on one side and {l₂} on the other: a side of none reads Obj.dflt"
   else if 2 ^ 63 < l₁.toNat ∨ 2 ^ 63 < l₂.toNat then .error s!"concat: a sum summand of {l₁} or {l₂} rows, past 2^63"
-  else do
-    let g₁ ← Vals.gather n₁ (← summandPos n₁ s tag₁ (← idx₁.clampShift (l₁.toUInt64 - 1) 0)) x₁
-    let g₂ ← Vals.gather n₂ (← summandPos n₂ s tag₂ (← idx₂.clampShift (l₂.toUInt64 - 1) 0)) x₂
-    pure ⟨n, ← cat n off g₁ g₂⟩
+  else do pure ⟨n, ← cat n off (← Vals.catSide s tag₁ idx₁ x₁ x₂) (← Vals.catSide s tag₂ idx₂ x₂ x₁)⟩
 
 /-- The rows of `x`, then those of `y`, as `n` rows: `Arr.concat` of each atom column (`off` as there). An `arr` side
 concatenates its payloads (`catPlan`, the recursive call) and its `lo`, `hi` columns, each side's clamped into its own

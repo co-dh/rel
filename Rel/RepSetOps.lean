@@ -775,8 +775,12 @@ private def sumRows₂ : List (Bool × Int64 × Int64) := [(true, 0, 2), (false,
 #guard let Ss := [sumOn sumRows₁ (arrTab arrCells arrPay).key (b := .long) (Alg.col [9, 4]),
     sumOn sumRows₂ (arrTab arrCells₂ arrPay₂).key (b := .long) (Alg.col [9, 8])]
   Ss.all fun R => Ss.all fun S => setOk R S && setOk (Tab.mk R.n R.val R.key) (Tab.mk S.n S.val S.key)
--- a summand empty on one side only: its rows read `Obj.dflt`, which no payload row holds, so the error
-#guard (sumTab [(true, 0, 1)] [] [9]).union (sumTab [(false, 0, 1)] [5] []) matches .error _
+-- an all-`inl` and an all-`inr` side: each summand is empty on one side, where no row is tagged into it
+#guard let Ss := [sumTab [(false, 0, 1), (false, 1, 2), (false, 0, 1)] [5, 7] [], sumTab [(true, 1, 3), (true, 0, 1)] [] [9, 4],
+    sumTab [(true, 0, 1)] [] [5]]
+  Ss.all fun R => Ss.all fun S => setOk R S && setOk (Tab.mk R.n R.val R.key) (Tab.mk S.n S.val S.key)
+-- a row tagged into a summand empty on its side reads `Obj.dflt`, which no payload row holds: the error
+#guard (sumTab [(false, 0, 1)] [] [9]).union (sumTab [(false, 0, 1)] [5] []) matches .error _
 
 end Checks
 

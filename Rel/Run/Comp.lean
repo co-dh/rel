@@ -15,10 +15,6 @@ own column; the output count is the one element `Arr.get` reads. -/
 namespace Rel
 open Rel.Ext Rel.Kernel Rel.Verify
 
-/-- The last of the `n` words of the `i64` column `e`, or `0` at `n = 0`, read as a count (`Arr.get`, one element). -/
-def lastCount (n : USize) (e : Enc) (h : Enc.WF .i64 n e) : Nat :=
-  if hn : 0 < n.toNat then (Arr.get (Arr.mk e h) ⟨n.toNat - 1, by omega⟩).toNatClampNeg else 0
-
 namespace Tab
 variable {A B C : Obj}
 
@@ -45,9 +41,7 @@ def comp (R : Tab A B) (S : Tab B C) : Except String (Tab A C) := do
   match hP : colPrefix .add K w with
   | .error s => throw s
   | .ok P =>
-    let T := lastCount K P (by
-      unfold colPrefix at hP; simp only [bind, Except.bind] at hP; split at hP; · cases hP
-      exact (kscan_closed hP).2)
+    let T := lastCount K P (colPrefix_closed hP).2
     if USize.size ≤ T + 1 then throw s!"comp: {T} output rows past USize"
     let T := T.toUSize
     let o ← colMap .sub K P w
