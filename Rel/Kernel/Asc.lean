@@ -16,9 +16,13 @@ open Ext.Enc
 open Rel.Kernel.Scan (Kind)
 
 /-- The layout a column of type `t` is ordered at (`orderKind`): its width in bytes, whether it is a float and whether
-it is signed, `asc::order` in `crate/src/asc.rs`. `symbol` and `general` have no fixed-width order: `none`. -/
+it is signed, `asc::order` in `crate/src/asc.rs`. `symbol` and `general` have no fixed-width order: `none`. The flags
+are one exhaustive match, so a new `Kind` has to state its own (a test `k == .i16 || …` left `i8` unsigned). -/
 def ascLayout (t : QAtomicType) : Option (Nat × Bool × Bool) :=
-  (orderKind t).map fun k => (k.width, k == .f32 || k == .f64, k == .i16 || k == .i32 || k == .i64)
+  (orderKind t).map fun k => match k with
+    | .bit | .u8 | .c8 => (k.width, false, false)
+    | .i8 | .i16 | .i32 | .i64 => (k.width, false, true)
+    | .f32 | .f64 => (k.width, true, false)
 
 /-- The order code of a raw word of a column of type `t`, as an unsigned word: `ordKey` at `t`'s layout
 (`ascLayout`), so a signed integer flips its sign bit and a float folds `-0.0` and every NaN below every number and then
