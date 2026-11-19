@@ -300,10 +300,11 @@ def nuAC (V D : Obj) (S : Fn false V D) (a : Arc V D) (as : List (Arc V D)) : Fn
 def mu (A B : Obj) (cap : Nat) (φ : CRel A B → Fn false A B) : Fn false A B :=
   let r := CRel.fixOn cap (fun X => (φ X).run {}) (some Alg.zero); .tab (also (decide (r.2 < cap)) r.1)
 
-/-- `F` read only at the nodes `P`: a table composed after `P`, a lazy one run on their keys; not run on none. -/
+/-- `F` read only at the nodes `P`, `P ≫ F`: a table composed after `P`, a lazy one run on their keys and
+    composed after `P`, since a lazy `F` may answer off the keys it is given; not run on none. -/
 def onNodes {A B : Obj} (F : Rel A B) (P : CRel A A) : CRel A B := match F with
   | .tab f => if P.rel.n == 0 then CRel.mk Alg.zero P.ok else CRel.comp P f
-  | .lazy _ => also P.ok (onKeys F P)
+  | .lazy _ => also P.ok (CRel.comp P (onKeys F P))
 
 /-- `[R,S]` on the sum values in demand: `R` on the left values they hold, `S` on the right, joined with them. A
     demand row whose tag names a side with no values reads that side's `dflt` (`Vals.row`), a value the demand does

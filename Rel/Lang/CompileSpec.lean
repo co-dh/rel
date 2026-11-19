@@ -1,4 +1,5 @@
 import Rel.Lang.Rows
+import Rel.HyloSpec
 
 /-! The cases of `compile_sound` that `GenSpec` has no lemma for (`doc/rel-denotation-design.md` §7.2, §7.5): the
     binders `μ`, `ν`, their environment, and `flat`. Each is stated for every body, so the induction hypothesis
@@ -77,7 +78,7 @@ theorem flat_sound {I A B : Obj} {d : Bool} {R : Fn d I (.prod A B)} {TR : Den I
   have hK := (CRel.rep_ofC hro).trans (rep_ranC (Alg.outl (idU X)) (CRel.ofC_ok hro).1)
   have hRk : ∀ i v, rep (CRel.ofC (ranC (Alg.outl (idU X)))).rel i i →
       (rep (onKeys R (CRel.ofC (ranC (Alg.outl (idU X))))).rel i v ↔ TR i v) :=
-    fun i v h => onKeys_round hR _ i v ⟨i, h⟩ (fun a b h => by rw [hK] at h; exact h.1) hr
+    fun i v h => onKeys_round hR _ i v ⟨i, h⟩ hr
   have hi : rep (CRel.ofC (ranC (Alg.outl (idU X)))).rel x.1 x.1 := by
     have ho : rep (Alg.outl (idU X)) x x.1 := by rw [rep_outl]; exact ⟨x, hx, rfl⟩
     rw [hK]; exact ⟨rfl, x, ho, ho⟩
@@ -94,29 +95,77 @@ theorem flat_sound {I A B : Obj} {d : Bool} {R : Fn d I (.prod A B)} {TR : Den I
     have hr := (hRk x.1 _ hi).2 t
     exact ⟨x, hx, (x.2, b), ⟨hr, (x.2, b), ⟨rfl, x.1, hr, hr⟩, rfl⟩, (x.2, b), ⟨rfl, x.1, hr, hr⟩, rfl⟩
 
-/-- `F` read at the nodes `U` (`onNodes`): at a value of `U`, what `F` computes there. -/
-theorem onNodes_sound {A B : Obj} {F : Rel A B} {T : Den A B} {m : USize} (hF : Sound F T)
-    (U : Vals A m) (hok : (onNodes F (some (idU U))).ok = true) (a : A.El) (ha : ∃ i, U.row i = a) (c : B.El) :
-    rep (onNodes F (some (idU U))).rel a c ↔ T a c := by
-  have hk : rep (idU U) a a := by rw [rep_idU]; exact ⟨rfl, ha⟩
-  have hc : ∀ x y, rep (idU U) x y → x = y := fun x y h => by rw [rep_idU] at h; exact h.1
+/-- `F` read at the nodes `P` (`onNodes`) is `P ≫ F`, for any `P`: a lazy `F` runs on `P`'s values. -/
+theorem onNodes_sound {A B : Obj} {F : Rel A B} {T : Den A B} (hF : Sound F T) (P : CRel A A)
+    (hok : (onNodes F P).ok = true) : rep (onNodes F P).rel = rep P.rel ≫ T := by
   cases F with
   | tab f =>
-    have h0 : ((idU U).n == 0) = false := by
-      obtain ⟨j, -⟩ := hk
-      cases h : (idU U).n == 0
-      · rfl
-      · have : (idU U).n.toNat = 0 := by simp [beq_iff_eq.1 h]
-        exact absurd j.2 (by omega)
-    simp only [onNodes, CRel.some_rel, h0, Bool.false_eq_true, if_false] at hok ⊢
-    have hf := CRel.guard_ok_left hok; rw [Bool.and_eq_true] at hf
-    have ef : rep (CRel.rel f) = T := hF.run_eq hf.2
-    rw [CRel.rep_comp _ _ hok, ef]
-    exact ⟨fun ⟨w, h1, h2⟩ => hc a w h1 ▸ h2, fun h => ⟨a, hk, h⟩⟩
+    simp only [onNodes] at hok ⊢
+    by_cases h0 : (P.rel.n == 0) = true
+    · rw [if_pos h0] at hok ⊢
+      rw [(CRel.mk_ok_rel hok).2, rep_zero]
+      exact Core.Rel.ext fun a c => ⟨False.elim, fun ⟨w, h, _⟩ => rep_empty h0 a w h⟩
+    · rw [if_neg h0] at hok ⊢
+      have hf := CRel.guard_ok_left hok; rw [Bool.and_eq_true] at hf
+      have ef : rep (CRel.rel f) = T := hF.run_eq hf.2
+      rw [CRel.rep_comp _ _ hok, ef]
   | lazy g =>
     simp only [onNodes] at hok ⊢
-    obtain ⟨⟨-, hok⟩, e⟩ := also_ok_rel hok
-    rw [e]; exact onKeys_round hF (some (idU U)) a c ⟨a, hk⟩ hc hok
+    obtain ⟨⟨-, hc⟩, e⟩ := also_ok_rel hok
+    have hk := CRel.guard_ok_left hc; rw [Bool.and_eq_true] at hk
+    rw [e, CRel.rep_comp _ _ hc]
+    exact Core.Rel.ext fun a c => ⟨fun ⟨p, hp, h⟩ => ⟨p, hp, (onKeys_round hF P p c ⟨a, hp⟩ hk.2).1 h⟩,
+      fun ⟨p, hp, h⟩ => ⟨p, hp, (onKeys_round hF P p c ⟨a, hp⟩ hk.2).2 h⟩⟩
+
+/-- `hylo(c, S)` (`Gen.hylo`) computes `μX : Φ`: the nodes `N` reached from the keys by `ch` are the least set
+    closed under `TCh` (`CRel.rep_fixOn`), and the rounds over them leave `μ Φ` there (`rep_hylo`), for `Φ`
+    monotonic and local along `TCh`, each round sound at an ok table as in `mu_sound`. -/
+theorem hylo_sound {A B : Obj} {d e : Bool} {ch : Fn d A A} {φ : CRel A B → Fn e A B} {TCh : Den A A}
+    {Φ : Den A B → Den A B} (hm : Monotonic Φ) (hl : Hylo.Local (fun _ => True) TCh Φ) (hch : Sound ch TCh)
+    (hφ : ∀ X : CRel A B, X.ok = true → Sound (φ X) (Φ (rep X.rel))) :
+    Sound (Gen.hylo A B d e ch φ) (Core.Rel.mu Φ) := ofVals_keys fun X hb x y hx => by
+  dsimp only at hb ⊢
+  obtain ⟨⟨hlt, hc⟩, e⟩ := also_ok_rel hb
+  rw [Bool.and_eq_true] at hlt
+  have hc' := CRel.guard_ok_left hc; rw [Bool.and_eq_true] at hc'
+  rw [e, CRel.rep_comp _ _ hc, CRel.some_rel]
+  -- the reach: one round adds the coreflexive on the values of `N ≫ TCh`
+  have hst : ∀ D : Tab A A, (CRel.union (some D) (CRel.ran (onNodes ch (some D)))).ok = true →
+      rep (CRel.union (some D) (CRel.ran (onNodes ch (some D)))).rel =
+        rep D ∪ (𝟙 _ ∩ (rep D ≫ TCh)° ≫ (rep D ≫ TCh)°°) := fun D hD => by
+    have h1 := CRel.guard_ok_left hD; rw [Bool.and_eq_true] at h1
+    rw [CRel.rep_union _ _ hD, CRel.rep_ran _ h1.2, onNodes_sound hch _ (CRel.guard_ok_left h1.2), CRel.some_rel]
+  have hΨ : ∀ Y Z : Den A A, Y ⊑ Z → Y ∪ (𝟙 _ ∩ (Y ≫ TCh)° ≫ (Y ≫ TCh)°°) ⊑ Z ∪ (𝟙 _ ∩ (Z ≫ TCh)° ≫ (Z ≫ TCh)°°) :=
+    fun Y Z h => le_iff.2 fun a b k => k.elim (fun k => Or.inl (le_iff.1 h _ _ k))
+      fun ⟨e, w, ⟨v, h1, h2⟩, v', h3, h4⟩ => Or.inr ⟨e, w, ⟨v, le_iff.1 h _ _ h1, h2⟩, v', le_iff.1 h _ _ h3, h4⟩
+  have hNok := (hyloRounds_ok _ _ _ hlt.2 hc'.2).1
+  obtain ⟨j, -, hj, hrep, hfix, hleast, -⟩ := CRel.rep_fixOn _ _ _
+    (fun Y => Y ∪ (𝟙 _ ∩ (Y ≫ TCh)° ≫ (Y ≫ TCh)°°)) hNok hst hΨ (Or.inl (le_iff.2 fun a b h => Or.inl h))
+  have hfp := hfix (hj ▸ of_decide_eq_true hlt.1)
+  have hcor := hleast (𝟙 _) (le_iff.2 fun a b h => ((idU_holds X a b).1 h).1)
+    (le_iff.2 fun a b h => h.elim id fun ⟨e, _⟩ => e)
+  have hinf : ∀ i, rep (idU X) ⊑ Nat.repeat (fun Y => Y ∪ (𝟙 _ ∩ (Y ≫ TCh)° ≫ (Y ≫ TCh)°°)) i (rep (idU X)) :=
+    fun i => by
+    induction i with
+    | zero => exact Core.Rel.le_refl _
+    | succ i ih => exact le_iff.2 fun a b h => Or.inl (le_iff.1 ih a b h)
+  have hxN := le_iff.1 (hrep ▸ hinf j) x x hx
+  revert hlt hc' hNok hrep hfp hcor hxN
+  generalize (CRel.fixOn USize.size (fun N => CRel.union N (CRel.ran (onNodes ch N))) (some (idU X))).1 = N
+  intro hlt hc' hNok hrep hfp hcor hxN
+  have hcN : ∀ a b, rep N.rel a b → a = b := fun a b h => le_iff.1 hcor a b h
+  have key := rep_hylo (chN := onNodes ch N) (φ := fun Y P => onNodes (φ Y) P) (N := N) hm
+    (fun hok X Y a hNa h => hl X Y a trivial fun a' t => h a' (by rw [onNodes_sound hch N hok]; exact ⟨a, hNa, t⟩))
+    (fun Y P hY hok hP a b => by
+      rw [onNodes_sound (hφ Y hY) P hok]
+      exact ⟨fun ⟨w, h1, h2⟩ => by cases hP _ _ h1; exact ⟨h1, h2⟩, fun ⟨h1, h2⟩ => ⟨a, h1, h2⟩⟩)
+    hcN
+    (fun hok a a' hNa h => by
+      rw [onNodes_sound hch N hok] at h
+      rw [← hfp]; exact Or.inr ⟨rfl, a, h, h⟩)
+    _ hlt.2 hc'.2 x hxN y
+  exact ⟨fun ⟨w, h1, h2⟩ => by cases ((idU_holds X x w).1 h1).1; exact key.1 h2,
+    fun h => ⟨x, hx, key.2 h⟩⟩
 
 /-- `[R,S]` on the sum values in demand (`juncD`): each side's part run on that side's values; the scan's bit
     excludes a demand row that names a side with no values (D7 = P). -/
@@ -130,6 +179,12 @@ theorem juncD_sound {A B C : Obj} {d e : Bool} {R : Fn d A C} {S : Fn e B C} {TR
   have h1 := CRel.guard_ok_left hc; rw [Bool.and_eq_true] at h1
   have h2 := CRel.guard_ok_left h1.2; rw [Bool.and_eq_true] at h2
   rw [CRel.rep_comp _ _ hc, CRel.rep_junc _ _ h1.2]
+  have hN : ∀ {D : Obj} {F : Rel D C} {T : Den D C} {m : USize} (U : Vals D m), Sound F T →
+      (onNodes F (some (idU U))).ok = true → ∀ i z, (rep (onNodes F (some (idU U))).rel (U.row i) z ↔ T (U.row i) z) :=
+    fun U hF hok i z => by
+      rw [onNodes_sound hF _ hok, CRel.some_rel]
+      exact ⟨fun ⟨w, h, t⟩ => by obtain rfl := ((idU_holds U _ w).1 h).1; exact t,
+        fun t => ⟨_, (idU_holds U _ _).2 ⟨rfl, i, rfl⟩, t⟩⟩
   have hx' : rep _ x x := hx
   refine (show (∃ w, _ ∧ _) ↔ _ from
     ⟨fun ⟨w, h, j⟩ => ((idU_holds _ x w).1 h).1 ▸ j, fun j => ⟨x, hx', j⟩⟩).trans ?_
@@ -142,17 +197,17 @@ theorem juncD_sound {A B C : Obj} {d e : Bool} {R : Fn d A C} {S : Fn e B C} {TR
     simp only [Core.Rel.junc, Core.Rel.inl, Core.Rel.inr, graph, union_apply, comp_apply, recip_apply,
       reduceCtorEq, false_and, exists_false, false_or, Sum.inr.injEq, exists_eq_left', exists_eq_left]
     first
-      | exact onNodes_sound hS yv h2.2 _ ⟨_, rfl⟩ z
-      | exact ⟨fun ⟨_, e, h⟩ => e ▸ (onNodes_sound hS yv h2.2 _ ⟨_, rfl⟩ z).1 h,
-          fun h => ⟨_, rfl, (onNodes_sound hS yv h2.2 _ ⟨_, rfl⟩ z).2 h⟩⟩
+      | exact hN yv hS h2.2 _ z
+      | exact ⟨fun ⟨_, e, h⟩ => e ▸ (hN yv hS h2.2 _ z).1 h,
+          fun h => ⟨_, rfl, (hN yv hS h2.2 _ z).2 h⟩⟩
   · simp only [ht, if_true, if_false, Bool.false_eq_true, decide_eq_true_eq] at hrow
     rw [dif_pos hrow] at hp; subst hp
     simp only [Core.Rel.junc, Core.Rel.inl, Core.Rel.inr, graph, union_apply, comp_apply, recip_apply,
       reduceCtorEq, false_and, exists_false, or_false, Sum.inl.injEq, exists_eq_left', exists_eq_left]
     first
-      | exact onNodes_sound hR xv h2.1 _ ⟨_, rfl⟩ z
-      | exact ⟨fun ⟨_, e, h⟩ => e ▸ (onNodes_sound hR xv h2.1 _ ⟨_, rfl⟩ z).1 h,
-          fun h => ⟨_, rfl, (onNodes_sound hR xv h2.1 _ ⟨_, rfl⟩ z).2 h⟩⟩
+      | exact hN xv hR h2.1 _ z
+      | exact ⟨fun ⟨_, e, h⟩ => e ▸ (hN xv hR h2.1 _ z).1 h,
+          fun h => ⟨_, rfl, (hN xv hR h2.1 _ z).2 h⟩⟩
 
 /-- Binding `k` to a code keeps `CodeEnv.Sound`, the code's meaning bound in `ρ`. -/
 theorem CodeEnv.Sound.bindCode {η : CodeEnv} {ρ : Val} (hη : η.Sound ρ) (k : Nat) {c : Code} {s : Sem}
