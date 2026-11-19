@@ -1,4 +1,7 @@
 import Rel.Run.Div
+import Rel.Run.Fix
+import Rel.Run.CRelLoopDef
+import Rel.Run.CRelRelDef
 import Rel.RepStruct
 import Rel.RepCanon
 import Rel.RepSetOps
@@ -652,6 +655,52 @@ private def f64s : List UInt64 := [0x8000000000000000, 0, 0x7ff8000000000001, 0x
   let Up : Vals (.prod .long .long) 2 := (Alg.col [9, 9], Alg.col [9, 8])
   canonOk (R.ldiv S (idT Up) (idT U)) && sameSet (newL (R.ldiv S (idT Up) (idT U))) (oldL (Alg.leftDivC R S Up U)) &&
   sameSet (newL (Tab.lam D R)) (onD (oldL (Alg.lamOnC R D)))
+
+/-! `Tab.nu`, `Tab.mu` (`Rel/Run/Fix.lean`) against the old `Gen.nu`, `Gen.mu` rounds (`CRel.fixOn`) on the same body. -/
+
+/-- The old `Gen.nu`'s rounds `X ↦ s ∩ φ(X)` from `s`, as a list. -/
+private def oldNu (s : Tab .long .long) (φ : CRel .long .long → CRel .long .long) : Option (List (Int64 × Int64)) :=
+  Option.map Tab.toList (CRel.fixOn (s.n.toNat + 2) (fun X => CRel.inter (some s) (φ X)) (some s)).1
+
+/-- The old `Gen.mu`'s rounds `X ↦ φ(X)` from `𝟘`, as a list, `none` where `cap` rounds ran. -/
+private def oldMu (cap : Nat) (φ : CRel .long .long → CRel .long .long) : Option (List (Int64 × Int64)) :=
+  let r := CRel.fixOn cap φ (some Alg.zero); if r.2 < cap then Option.map Tab.toList r.1 else none
+
+/-- `TestArcs`' body `t ∩ A\(X e)` on `V = {0,1}`, `D = {0,1,2}`: `A = {(1,0)}`, `e = 𝟙(D)`, `t` missing `(1,1)`. -/
+private def arcT := tab [(0, 0), (0, 1), (0, 2), (1, 0), (1, 2)]
+private def arcA := tab [(1, 0)]
+private def arcE := tab [(0, 0), (1, 1), (2, 2)]
+private def arcNew (X : Tab .long .long) : Except String (Tab .long .long) := do
+  arcT.inter (← arcA.ldiv (← X.comp arcE) (idT (Alg.col [0, 1])) (idT (Alg.col [0, 1, 2])))
+private def arcOld (X : CRel .long .long) : CRel .long .long :=
+  CRel.inter (some arcT) (CRel.leftDiv (some arcA) (CRel.comp X (some arcE)) (Alg.col [0, 1]) (Alg.col [0, 1, 2]))
+/-- `TestArcs`' answer: `(0,1)` drops, since `(1,1)` is not in `t`. -/
+private def arcZ : List (Int64 × Int64) := [(0, 0), (0, 2), (1, 0), (1, 2)]
+
+-- ν from `⊤(V,D)`, from its own fixed point, and from no rows
+#guard [tab [(0, 0), (0, 1), (0, 2), (1, 0), (1, 1), (1, 2)], tab arcZ, tab []].all fun s =>
+  sameSet (newL (Tab.nu arcNew s)) (oldNu s arcOld)
+#guard sameSet (newL (Tab.nu arcNew (tab [(0, 0), (0, 1), (0, 2), (1, 0), (1, 1), (1, 2)]))) (some arcZ)
+#guard sameSet (newL (Tab.nu arcNew (tab arcZ))) (some arcZ)
+
+/-- Transitive closure `μX : E ∪ X E` of the edges `E`. -/
+private def tcNew (E X : Tab .long .long) : Except String (Tab .long .long) := do E.union (← X.comp E)
+private def tcOld (E : Tab .long .long) (X : CRel .long .long) : CRel .long .long :=
+  CRel.union (some E) (CRel.comp X (some E))
+
+-- the cycle `2 → 3 → 4 → 2` entered from `1`: 12 pairs at round 3, seen fixed at round 4, so `cap = 4` fails on
+-- both sides and `cap = 5` passes; an already-closed `E` and no edges
+#guard let E := tab [(1, 2), (2, 3), (3, 4), (4, 2)]
+  [4, 5, 9].all fun cap => match newL (Tab.mu cap (tcNew E)), oldMu cap (tcOld E) with
+    | none, none => true
+    | a, b => sameSet a b
+#guard let E := tab [(1, 2), (2, 3), (3, 4), (4, 2)]
+  (newL (Tab.mu 4 (tcNew E))).isNone && (newL (Tab.mu 5 (tcNew E))).map List.length == some 12
+#guard [tab [(1, 2), (2, 2), (1, 1)], tab []].all fun E =>
+  sameSet (newL (Tab.mu 3 (tcNew E))) (oldMu 3 (tcOld E)) && sameSet (newL (Tab.mu 3 (tcNew E))) (some (E.toList))
+-- an error of the body is the loop's error
+#guard match Tab.nu (fun _ => throw "body") (tab arcZ) with | .error e => e == "body" | .ok _ => false
+#guard match Tab.mu 9 (fun (_ : Tab .long .long) => throw "body") with | .error e => e == "body" | .ok _ => false
 
 end Checks
 
