@@ -164,79 +164,85 @@ def Out.memo {A B : Obj} : {d : Bool} → Out d A B → Out d A B
   | false, o => let p := o.pl (); ⟨o.fn, fun _ => p, o.row⟩
   | true, o => o
 
+/-- A plan read as a closed one: a term that runs on demand has no closed plan, so it vouches for nothing. Where
+    `Tm`'s closed fields (`conv`, `ldiv`) held only `false`-indexed terms, their type said this case cannot arise. -/
+def Pl.closed {A B : Obj} : (d : Bool) → Pl d A B → Pl false A B
+  | false, p => p
+  | true, _ => fun _ => (.zero, false)
+
 /-- `t`'s code and plan, one `Gen` combinator per constructor, as `Expand.node` and `Expand.plan?` build them. The
     plan is the bit-rule node where the node has one, else its table as a leaf (`Gen.pleaf`); a closed term's plan
     is its table. `ν` runs as plain rounds (`Gen.nu`); `call` vouches for nothing until stage 5. -/
-def Tm.gen (η : CodeEnv) {A B : Obj} {d : Bool} (t : Tm A B d) : Out d A B := Out.memo <| match η, A, B, d, t with
-  | _, A, B, _, .val R => leaf (Gen.val A B (R, true))
-  | _, A, _, _, .uni (m := m) U => leaf (Gen.uni A m (U, true))
-  | _, A, B, _, .zero => leaf (Gen.zero A B)
-  | _, A, _, _, .id => leaf (Gen.id A)
-  | η, A, B, _, .top V => leaf (Gen.top A B (V.gen η).fn)
-  | _, _, _, _, .outl (A := A) (B := B) => leaf (Gen.outl A B)
-  | _, _, _, _, .outr (A := A) (B := B) => leaf (Gen.outr A B)
-  | η, A, C, true, .comp (B := B) (e := e) R S =>
-    ⟨Gen.comp A B C e (R.gen η).fn (S.gen η).fn, Gen.pcomp A B C true e (R.gen η).pl (S.gen η).pl, none⟩
-  | η, A, C, false, .comp (B := B) (e := e) R S =>
-    ⟨Gen.compB A B C e (R.gen η).pl (S.gen η).pl, Gen.pcomp A B C false e (R.gen η).pl (S.gen η).pl, none⟩
-  | η, _, _, _, .conv (A := A) (B := B) R => ⟨Gen.conv A B (R.gen η).fn, Gen.pconv A B (R.gen η).pl, none⟩
-  | η, A, B, _, .meet (d := false) (e := false) R S =>
-    ⟨Gen.meetB A B (R.gen η).pl (S.gen η).pl, Gen.pmeet A B false false (R.gen η).pl (S.gen η).pl, none⟩
-  | η, A, B, _, .meet (d := d) (e := e) R S =>
-    ⟨Gen.meet A B d e (R.gen η).fn (S.gen η).fn, Gen.pmeet A B d e (R.gen η).pl (S.gen η).pl, none⟩
-  | η, A, B, _, .join (d := d) (e := e) R S =>
-    ⟨Gen.join A B d e (R.gen η).fn (S.gen η).fn, Gen.pjoin A B d e (R.gen η).pl (S.gen η).pl, none⟩
-  | η, A, B, _, .diff (d := false) (e := false) R S =>
-    ⟨Gen.diffB A B (R.gen η).pl (S.gen η).pl, Gen.pdiff A B false false (R.gen η).pl (S.gen η).pl, none⟩
-  | η, A, B, _, .diff (d := d) (e := e) R S =>
-    ⟨Gen.diff A B d e (R.gen η).fn (S.gen η).fn, Gen.pdiff A B d e (R.gen η).pl (S.gen η).pl, none⟩
-  | η, A, _, d, .dom (B := B) R => leaf (Gen.dom A B d (R.gen η).fn)
-  | η, _, _, _, .ran (A := A) (B := B) R => leaf (Gen.ran A B (R.gen η).fn)
-  | η, B, C, _, .ldiv (A := A) R S UB UC =>
-    ⟨Gen.ldivB A B C (R.gen η).pl (S.gen η).pl (UB.gen η).fn (UC.gen η).fn,
-     Gen.pldiv A B C (R.gen η).pl (S.gen η).pl (UB.gen η).fn (UC.gen η).fn, none⟩
-  | η, A, B, _, .rdiv (C := C) R S UA UB =>
+def Tm.gen (η : CodeEnv) {A B : Obj} (t : Tm A B) : Out t.dem A B := Out.memo <| match η, A, B, t with
+  | _, A, B, .val R => leaf (Gen.val A B (R, true))
+  | _, A, _, .uni (m := m) U => leaf (Gen.uni A m (U, true))
+  | _, A, B, .zero => leaf (Gen.zero A B)
+  | _, A, _, .id => leaf (Gen.id A)
+  | η, A, B, .top V => leaf (Gen.top A B (V.gen η).fn)
+  | _, _, _, .outl (A := A) (B := B) => leaf (Gen.outl A B)
+  | _, _, _, .outr (A := A) (B := B) => leaf (Gen.outr A B)
+  | η, A, C, .comp (B := B) R S =>
+    show Out R.dem A C from match R.dem, R.gen η with
+    | true, r => ⟨Gen.comp A B C S.dem r.fn (S.gen η).fn, Gen.pcomp A B C true S.dem r.pl (S.gen η).pl, none⟩
+    | false, r => ⟨Gen.compB A B C S.dem r.pl (S.gen η).pl, Gen.pcomp A B C false S.dem r.pl (S.gen η).pl, none⟩
+  | η, _, _, .conv (A := A) (B := B) R => ⟨Gen.conv A B (R.gen η).fn, Gen.pconv A B (Pl.closed _ (R.gen η).pl), none⟩
+  | η, A, B, .meet R S =>
+    show Out (R.dem || S.dem) A B from match R.dem, S.dem, R.gen η, S.gen η with
+    | false, false, r, s => ⟨Gen.meetB A B r.pl s.pl, Gen.pmeet A B false false r.pl s.pl, none⟩
+    | d, e, r, s => ⟨Gen.meet A B d e r.fn s.fn, Gen.pmeet A B d e r.pl s.pl, none⟩
+  | η, A, B, .join R S =>
+    ⟨Gen.join A B R.dem S.dem (R.gen η).fn (S.gen η).fn, Gen.pjoin A B R.dem S.dem (R.gen η).pl (S.gen η).pl, none⟩
+  | η, A, B, .diff R S =>
+    show Out (R.dem || S.dem) A B from match R.dem, S.dem, R.gen η, S.gen η with
+    | false, false, r, s => ⟨Gen.diffB A B r.pl s.pl, Gen.pdiff A B false false r.pl s.pl, none⟩
+    | d, e, r, s => ⟨Gen.diff A B d e r.fn s.fn, Gen.pdiff A B d e r.pl s.pl, none⟩
+  | η, A, _, .dom (B := B) R => leaf (Gen.dom A B R.dem (R.gen η).fn)
+  | η, _, _, .ran (A := A) (B := B) R => leaf (Gen.ran A B (R.gen η).fn)
+  | η, B, C, .ldiv (A := A) R S UB UC =>
+    ⟨Gen.ldivB A B C (Pl.closed _ (R.gen η).pl) (Pl.closed _ (S.gen η).pl) (UB.gen η).fn (UC.gen η).fn,
+     Gen.pldiv A B C (Pl.closed _ (R.gen η).pl) (Pl.closed _ (S.gen η).pl) (UB.gen η).fn (UC.gen η).fn, none⟩
+  | η, A, B, .rdiv (C := C) R S UA UB =>
     leaf (Gen.rdiv A B C (R.gen η).fn (S.gen η).fn (UA.gen η).fn (UB.gen η).fn)
-  | η, A, _, _, .pair (B := B) (C := C) (d := d) (e := e) R S => leaf (Gen.pair A B C d e (R.gen η).fn (S.gen η).fn)
-  | η, _, _, _, .prod (A := A) (B := B) (C := C) (D := D) R S => leaf (Gen.prod A B C D (R.gen η).fn (S.gen η).fn)
-  | η, _, C, _, .junc (A := A) (B := B) R S => leaf (Gen.junc A B C (R.gen η).fn (S.gen η).fn)
-  | η, _, C, _, .juncD (A := A) (B := B) (d := d) (e := e) R S => leaf (Gen.juncD A B C d e (R.gen η).fn (S.gen η).fn)
-  | η, A, _, _, .lam (B := B) (d := d) R => leaf (Gen.lam A B d (R.gen η).fn)
-  | η, _, _, _, .E (A := A) (B := B) (d := d) R => leaf (Gen.E A B d (R.gen η).fn)
-  | η, _, B, _, .est Q => leaf (Gen.est B (Q.gen η).fn)
-  | η, _, _, _, .thin (B := B) Q => leaf (Gen.thin B (Q.gen η).fn)
-  | _, A, _, _, .nil (B := B) => leaf (Gen.nil A B)
-  | _, _, _, _, .prim r => ⟨r.fn _ _ true [], pleaf _ _ true (r.fn _ _ true []), some (r, [])⟩
-  | _, _, B, _, .atPos k => leaf (Gen.atPos B k)
-  | η, _, _, _, .own R => R.gen η
-  | η, _, _, _, .succ U => leaf (Gen.succ (U.gen η).fn)
-  | η, _, _, _, .arith k U => leaf (Gen.arith k (U.gen η).fn)
-  | η, _, _, _, .leq U => leaf (Gen.leq (U.gen η).fn)
-  | η, _, _, _, .lt U => leaf (Gen.lt (U.gen η).fn)
-  | η, _, V, _, .foldr (E := X) (d := d) e S => leaf (Gen.foldr X V d (e.gen η).fn (S.gen η).fn)
-  | η, _, V, _, .fold (E := X) (d := d) e S => leaf (Gen.fold X V d (e.gen η).fn (S.gen η).fn)
-  | η, _, _, _, .share _ R => R.gen η
-  | η, _, V, _, .foldI (I := I) (E := X) (d := d) (d' := d') e S =>
-    leaf (Gen.foldI I X V d d' (e.gen η).fn (S.gen η).fn)
-  | η, _, B, _, .flat (I := I) (A := A) (d := d) R => leaf (Gen.flat I A B d (R.gen η).fn)
-  | η, A, B, d, .var k => ⟨Gen.ofPl A B d (η k A B d), η k A B d, none⟩
-  | _, A, B, d, .call .. => leaf (none' A B d)
-  | η, A, B, d, .arg f x => match (f.gen η).row with
+  | η, A, _, .pair (B := B) (C := C) R S => leaf (Gen.pair A B C R.dem S.dem (R.gen η).fn (S.gen η).fn)
+  | η, _, _, .prod (A := A) (B := B) (C := C) (D := D) R S => leaf (Gen.prod A B C D (R.gen η).fn (S.gen η).fn)
+  | η, _, C, .junc (A := A) (B := B) R S => leaf (Gen.junc A B C (R.gen η).fn (S.gen η).fn)
+  | η, _, C, .juncD (A := A) (B := B) R S => leaf (Gen.juncD A B C R.dem S.dem (R.gen η).fn (S.gen η).fn)
+  | η, A, _, .lam (B := B) R => leaf (Gen.lam A B R.dem (R.gen η).fn)
+  | η, _, _, .E (A := A) (B := B) R => leaf (Gen.E A B R.dem (R.gen η).fn)
+  | η, _, B, .est Q => leaf (Gen.est B (Q.gen η).fn)
+  | η, _, _, .thin (B := B) Q => leaf (Gen.thin B (Q.gen η).fn)
+  | _, A, _, .nil (B := B) => leaf (Gen.nil A B)
+  | _, _, _, .prim r => ⟨r.fn _ _ true [], pleaf _ _ true (r.fn _ _ true []), some (r, [])⟩
+  | _, _, B, .atPos k => leaf (Gen.atPos B k)
+  | η, _, _, .own R => R.gen η
+  | η, _, _, .succ U => leaf (Gen.succ (U.gen η).fn)
+  | η, _, _, .arith k U => leaf (Gen.arith k (U.gen η).fn)
+  | η, _, _, .leq U => leaf (Gen.leq (U.gen η).fn)
+  | η, _, _, .lt U => leaf (Gen.lt (U.gen η).fn)
+  | η, _, V, .foldr (E := X) e S => leaf (Gen.foldr X V S.dem (e.gen η).fn (S.gen η).fn)
+  | η, _, V, .fold (E := X) e S => leaf (Gen.fold X V S.dem (e.gen η).fn (S.gen η).fn)
+  | η, _, _, .share _ R => R.gen η
+  | η, _, V, .foldI (I := I) (E := X) e S =>
+    leaf (Gen.foldI I X V e.dem S.dem (e.gen η).fn (S.gen η).fn)
+  | η, _, B, .flat (I := I) (A := A) R => leaf (Gen.flat I A B R.dem (R.gen η).fn)
+  | η, A, B, .var d k => ⟨Gen.ofPl A B d (η k A B d), η k A B d, none⟩
+  | _, A, B, .call d .. => leaf (none' A B d)
+  | η, A, B, .arg f x => match (f.gen η).row with
     | some (r, cs) => let cs := cs ++ [⟨_, _, _, (x.gen η).fn⟩]
-      ⟨r.fn A B d cs, pleaf A B d (r.fn A B d cs), some (r, cs)⟩
-    | none => leaf (none' A B d)
-  | η, A, B, _, .nu k S b => leaf (Gen.nu A B (S.gen η).fn fun X => (b.gen (η.bind k X)).fn)
-  | η, A, B, _, .mu k _ cap b => leaf (Gen.mu A B cap fun X => (b.gen (η.bind k X)).fn)
-  | η, A, B, _, .hylo (d := d) (e := e) k _ ch b =>
-    leaf (Gen.hylo A B d e (ch.gen η).fn fun X => (b.gen (η.bind k X)).fn)
+      ⟨r.fn A B f.dem cs, pleaf A B f.dem (r.fn A B f.dem cs), some (r, cs)⟩
+    | none => leaf (none' A B f.dem)
+  | η, A, B, .nu k S b => leaf (Gen.nu A B (S.gen η).fn fun X => (b.gen (η.bind k X)).fn)
+  | η, A, B, .mu k _ cap b => leaf (Gen.mu A B cap fun X => (b.gen (η.bind k X)).fn)
+  | η, A, B, .hylo k _ ch b =>
+    leaf (Gen.hylo A B ch.dem b.dem (ch.gen η).fn fun X => (b.gen (η.bind k X)).fn)
 where
   /-- A node with no bit rule: its plan is its table. -/
   leaf {A B : Obj} {d : Bool} (f : Fn d A B) : Out d A B := ⟨f, pleaf A B d f, none⟩
 
 /-- `t`'s code. -/
-def compile (η : CodeEnv) {A B : Obj} {d : Bool} (t : Tm A B d) : Fn d A B := (t.gen η).fn
+def compile (η : CodeEnv) {A B : Obj} (t : Tm A B) : Fn t.dem A B := (t.gen η).fn
 
 /-- `t`'s bit-matrix plan where its node has a bit rule, else its table as a leaf (`Gen.pleaf`). -/
-def Tm.plan (η : CodeEnv) {A B : Obj} {d : Bool} (t : Tm A B d) : Pl d A B := (t.gen η).pl
+def Tm.plan (η : CodeEnv) {A B : Obj} (t : Tm A B) : Pl t.dem A B := (t.gen η).pl
 
 end Rel.Lang

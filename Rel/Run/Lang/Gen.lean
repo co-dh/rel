@@ -56,7 +56,7 @@ def Fn.at {A B : Obj} : {d : Bool} → Fn d A B → Dem d A → CRel A B
   | true, f, D => f.run ⟨some ⟨D.n, D.val⟩, none⟩
 
 /-- A term's bit-matrix plan on the keys it is given, and the ok bit of the tables at its leaves. -/
-abbrev Pl (d : Bool) (A B : Obj) := Dem d A → Tm A B false × Bool
+abbrev Pl (d : Bool) (A B : Obj) := Dem d A → Tm A B × Bool
 
 /-- A definition's value with its objects: what `rel_program n` lists as `n.expanded`. -/
 abbrev Gv := (A : Obj) × (B : Obj) × CRel A B
@@ -129,7 +129,7 @@ def outr (A B : Obj) : Fn true (.prod A B) B := ofVals _ _ fun X => ofC (Alg.out
 
 /-- The demand of `S` in `R S`: `ran(R)` where `S` takes one, `R`'s plan run for it, `ranC`'s bit kept so the
     demand is proved a coreflexive on `R`'s range (`GenSpec.demP_spec`). -/
-def demP {A B : Obj} : (e : Bool) → Tm A B false → Dem e B × Bool
+def demP {A B : Obj} : (e : Bool) → Tm A B → Dem e B × Bool
   | false, _ => ((), true)
   | true, r => let x := Bits.runC r; let k := ranC x.1; (k.1, x.2 && k.2)
 
@@ -346,7 +346,7 @@ def pldiv (A B C : Obj) (R : Pl false A B) (S : Pl false A C) (UB : Fn false B B
   (.ldiv r.1 s.1 (.val ub.rel) (.val uc.rel), r.2 && s.2 && ub.ok && uc.ok)
 
 /-- A closed plan run as bits (`Bits.runC`), its leaves' bit kept. -/
-def runPl {A B : Obj} (p : Tm A B false × Bool) : CRel A B := also p.2 (ofC (Bits.runC p.1))
+def runPl {A B : Obj} (p : Tm A B × Bool) : CRel A B := also p.2 (ofC (Bits.runC p.1))
 
 /-- A closed `R S`, `R ∩ S`, `R − S`, `R\S` as bit matrices where its plan's objects are small (`Bits.runC`). -/
 def compB (A B C : Obj) (e : Bool) (R : Pl false A B) (S : Pl e B C) : Fn false A C :=
