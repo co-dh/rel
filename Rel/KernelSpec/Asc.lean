@@ -293,7 +293,7 @@ theorem ascCol_pos {m : USize} {rest : List (QAtomicType × Enc)} {cs : List (Ar
     (h : ((.i64, .pos) :: rest).mapM (ascCol m) = .ok cs) : m.toNat ≤ 2 ^ 63 := by
   rw [List.mapM_cons] at h
   refine Classical.byContradiction fun hm => ?_
-  simp [ascCol, ascWords, ascOrd, orderKind, hm, bind, Except.bind, Functor.map, Except.map] at h
+  simp [ascCol, ascWords, ascOrd, ascLayout, orderKind, hm, bind, Except.bind, Functor.map, Except.map] at h
 
 /-- **Law A1** (PLAN 6.13): a `pos` key column has no ties and is in row order (`ascWords` admits it only there), so it
 and every later column decide nothing: `kasc` with them answers the permutation of `kasc` without them, and the same
