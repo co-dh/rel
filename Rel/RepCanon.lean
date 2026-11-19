@@ -373,7 +373,7 @@ end Tab
 section Checks
 
 /-- The table of the pairs `ps` as given, unsorted, both columns `Alg.col`'s literal `foR` columns. -/
-private def tab (ps : List (Int64 × Int64)) : Tab .long .long :=
+def tab (ps : List (Int64 × Int64)) : Tab .long .long :=
   ⟨ps.length.toUSize, List.length_map _ ▸ Alg.col (ps.map (·.1)), List.length_map _ ▸ Alg.col (ps.map (·.2))⟩
 
 #guard ((tab [(3, 1), (1, 2), (3, 1), (-1, 2), (1, 2), (2, 7)]).canon.toOption.map Tab.toList) ==
