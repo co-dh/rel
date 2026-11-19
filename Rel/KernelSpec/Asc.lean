@@ -101,13 +101,17 @@ theorem ascCol_ok {m : USize} {c : QAtomicType × Enc} {x k : Array UInt64} (h :
   cases ho : ascOrd c.1 with
   | none => simp [ho] at h
   | some f =>
-    cases hw : foRWords "asc" m c.2 with
+    cases hw : ascWords m c with
     | error s => simp [ho, hw, Functor.map, Except.map] at h
     | ok w =>
       simp only [ho, hw, Functor.map, Except.map, Except.ok.injEq, Prod.mk.injEq] at h
-      obtain ⟨rfl, rfl⟩ := h
-      obtain ⟨rfl, hs⟩ := foRWords_raw _ _ _ _ hw
-      exact ⟨rfl, hs, f, rfl, rfl⟩
+      obtain ⟨hx, hk⟩ := h
+      -- `ascWords` answers `foRWords`' words or an error
+      have hf : foRWords "asc" m c.2 = .ok x := by
+        rw [← hx]; obtain ⟨t, e⟩ := c
+        cases e <;> cases t <;> first | exact hw | cases hw
+      obtain ⟨rfl, hs⟩ := foRWords_raw _ _ _ _ hf
+      exact ⟨rfl, hs, f, rfl, by rw [← hk, hx]⟩
 
 /-- The order codes `kasc` sorts by: each column's words (`foRWords`) through its type's `ascOrd`. -/
 def ascKeys (m : USize) (es : List (QAtomicType × Enc)) : List (Array UInt64) :=

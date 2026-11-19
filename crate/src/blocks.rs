@@ -10,9 +10,10 @@ use core::ops::Range;
 
 /// The kinds a column's blocks come from: a dense payload, FoR (`Coc`), ALP (`Cocf`), or ids at `lw` bits. A bit column
 /// is ids at `lw = 1` at the column's own `lg` (`Blocks::bits`); a symbol column is ids whose keys the caller reads
-/// through its dictionary.
+/// through its dictionary. `Pos` is `Enc.pos`, the row positions: element `i` is `i`, computed from the loop index and
+/// stored nowhere (PLAN 6.13).
 #[derive(Clone, Copy)]
-pub enum Src<'a> { Dense(&'a [u8]), For(Coc<'a>), Alp(Cocf<'a>), Ids(&'a [u8], u32) }
+pub enum Src<'a> { Dense(&'a [u8]), For(Coc<'a>), Alp(Cocf<'a>), Ids(&'a [u8], u32), Pos }
 /// The block grid of a column of `n` elements, `1 << lg` a block: what a source reads by and a `Sink` writes by.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Grid { pub n: usize, pub lg: u32 }
@@ -64,6 +65,8 @@ impl<'a> Blocks<'a> {
     }
     /// A bit column of `n` bits: ids at width 1 (decision B).
     pub fn bits(p: &'a [u8], n: usize) -> Self { Self::ids(p, n, 1) }
+    /// The positions `0 .. n` (`Enc.pos`), on the writer's grid.
+    pub fn pos(n: usize) -> Self { Blocks::new(Src::Pos, n) }
     /// The `n` elements of `w` bytes a Lean `Enc` object holds, whatever its kind (coc plan §3 `Col::of`, decision C1):
     /// the one reader of `Enc`'s constructor tags, in `Rel/Kernel/Value.lean`'s order. `who` names the export in a panic.
     pub fn of(e: crate::lean::B<'a>, w: usize, n: usize, who: &str) -> Self {
@@ -76,6 +79,8 @@ impl<'a> Blocks<'a> {
             4 => Blocks::from(Cocf::view(f(0), f(1), f(2), n).unwrap_or_else(|| panic!(
                 "{who}: an ALP column's metadata of {} bytes or its blob of {} are short or misaligned", f(0).len(), f(2).len()))),
             5 => Blocks::ids(f(2), n, ids::id_width(e.field(1).words().len().saturating_sub(1))),
+            // `pos`, nullary, is the scalar `lean_box(7)`, whose `tag` is 7 and which has no field
+            7 => Blocks::pos(n),
             t => panic!("{who}: an `Enc` of constructor {t} (`syms`, `gen`) has no raw elements"),
         }
     }
@@ -85,6 +90,12 @@ impl<'a> Blocks<'a> {
             Src::For(c) | Src::Alp(Cocf { c, .. }) =>
                 BlkMeta { base: c.meta.base[b], max: Some(c.meta.maxv[b]), sum: Some(c.meta.bsum[b]), width: c.meta.width[b] as u32 },
             Src::Ids(_, lw) => BlkMeta { base: 0, max: Some(crate::search::ids_top(lw) as i64), sum: None, width: lw },
+            // block `lo .. lo + nb` is `lo + k`: frame `lo`, residuals `0 .. nb`, the sum `nb * lo + nb (nb - 1) / 2`
+            Src::Pos => {
+                let (lo, nb) = self.span(b);
+                let sum = (nb as i64).wrapping_mul(lo as i64).wrapping_add((nb * nb.saturating_sub(1) / 2) as i64);
+                BlkMeta { base: lo as i64, max: Some((lo + nb.max(1) - 1) as i64), sum: Some(sum), width: usize::BITS - nb.saturating_sub(1).leading_zeros() }
+            }
             Src::Dense(d) => BlkMeta { base: 0, max: None, sum: None, width: 8 * (d.len() / self.n.max(1)) as u32 },
         }
     }
@@ -98,6 +109,7 @@ impl<'a> Blocks<'a> {
             }
             // a block holds `blk` elements, a multiple of 8, so an ids block starts on a byte
             Src::Ids(p, lw) => { let (lo, nb) = self.span(b); Res { pack: &p[lo * lw as usize / 8..ids::ids_bytes(lo + nb, lw)], width: lw, base: 0, exc: 0..0, nb } }
+            Src::Pos => panic!("qlean Blocks::res: a `pos` column stores no residuals; read it through `load`"),
             Src::Dense(d) => { let (w, (lo, nb)) = (d.len() / self.n.max(1), self.span(b)); Res { pack: &d[lo * w..(lo + nb) * w], width: 8 * w as u32, base: 0, exc: 0..0, nb } }
         }
     }
@@ -112,6 +124,7 @@ impl<'a> Blocks<'a> {
                 f.load_blk(b, cnt, pod::bytes_mut(&mut out[..cnt]))
             }
             Src::Ids(p, lw) => for (k, o) in out[..cnt].iter_mut().enumerate() { *o = T::wrap(ids::id_at(p, lw, lo + k) as u64) },
+            Src::Pos => for (k, o) in out[..cnt].iter_mut().enumerate() { *o = T::wrap((lo + k) as u64) },
             Src::Dense(d) => pod::bytes_mut(&mut out[..cnt]).copy_from_slice(&d[lo * size_of::<T>()..(lo + cnt) * size_of::<T>()]),
         }
     }
@@ -126,6 +139,10 @@ impl<'a> Blocks<'a> {
             (Src::Ids(p, lw), 16) => {
                 let lo = b << self.lg();
                 for k in 0..cnt { out[k * 16..k * 16 + 16].fill(0); out[k * 16..k * 16 + 8].copy_from_slice(&(ids::id_at(p, lw, lo + k) as u64).to_le_bytes()) }
+            }
+            (Src::Pos, 16) => {
+                let lo = b << self.lg();
+                for k in 0..cnt { out[k * 16..k * 16 + 16].fill(0); out[k * 16..k * 16 + 8].copy_from_slice(&((lo + k) as u64).to_le_bytes()) }
             }
             _ => crate::by_width!(int w, self.load(b, cnt, pod::cast_mut(out).unwrap_or_else(|| bad()))),
         }

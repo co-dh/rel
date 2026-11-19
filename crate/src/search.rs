@@ -111,7 +111,7 @@ pub fn table<K: PKey>(o: &Blocks) -> Ptab<K> {
         let (lo, span) = match o.src {
             Src::Ids(_, lw) => (0, ids_top(lw)),
             Src::For(c) => { let (a, z) = coc_srange(&c); (a as u64 & mask::<K>(), (z as u64).wrapping_sub(a as u64)) }
-            Src::Dense(_) | Src::Alp(_) => {
+            Src::Dense(_) | Src::Alp(_) | Src::Pos => {
                 // the C reads exactly `n` elements; a shorter payload is a caller bug and would fold to an empty range
                 if let Src::Dense(d) = o.src { assert!(d.len() >= o.n * K::W, "qlean search: a dense haystack of {} bytes holds fewer than its {} elements of {} bytes", d.len(), o.n, K::W) }
                 let mut buf = crate::pod::Scr::<u64>::new(o.blk() * K::W / 8 + 1);
@@ -247,7 +247,7 @@ pub fn scan<K: PKey>(h: &Blocks, x: &Blocks, lo: usize, hi: usize, out: &mut [i6
 pub fn srange<K: PKey>(o: &Blocks) -> (i64, i64) {
     match o.src {
         Src::Ids(_, lw) => (0, (ids_top(lw) >> 1) as i64),
-        Src::Dense(_) | Src::Alp(_) => {
+        Src::Dense(_) | Src::Alp(_) | Src::Pos => {
             let (w, mut buf) = (K::W.min(8), crate::pod::Scr::<u64>::new(o.blk() * K::W / 8 + 1));
             o.walk().fold((i64::MAX, i64::MIN), |acc, (b, ..)| o.view(b, K::W, crate::pod::bytes_mut(&mut buf)).chunks_exact(K::W)
                 .map(|c| { let mut b = [0u8; 8]; b[..w].copy_from_slice(&c[..w]); sext(u64::from_le_bytes(b), w) })

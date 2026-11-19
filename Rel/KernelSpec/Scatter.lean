@@ -82,6 +82,8 @@ theorem foRWords_raw (what : String) (m : USize) (e : Enc) (ws : Array UInt64)
       exact ⟨rfl, by simp [raw, QAtomicType.width]⟩
     · cases h
   · cases h
+    exact ⟨rfl, by simp [raw]⟩
+  · cases h
 
 /-- Design §4's `scatter` law, on words: the `n` words `ws` `Enc.raw` reads from an answer of `kscatter`, against the
 `m` words `is` and `es` it reads from `ix` and `e`: every index is below `n`, a cell no row names is `fill`, and
@@ -134,5 +136,21 @@ theorem raw_scatter (m : USize) (ix e : Enc) (n : USize) (fill : UInt64) (o : En
         refine ⟨ho, hisz, hesz, hs, fun k hk => hall k (by omega), fun j hj hn => hfix j hj
           fun k hk => hn k (by omega), fun k hk hl => hlast k (by omega) fun k' a b hc => hl k' a (by omega) ?_⟩
         exact UInt64.toNat_inj.mp hc
+
+/-- Law S1 (PLAN 6.13): scattering to the positions `ix = pos` at `m = n` writes every cell once, at its own row, so the
+answer reads back as `e`: the identity is a permutation, and a caller holding `pos` skips the call. -/
+theorem kscatter_pos_ix {n : USize} {e o : Enc} {fill : UInt64} (h : kscatter n .pos e n fill = .ok o) :
+    raw .i64 n o = raw .i64 n e := by
+  obtain ⟨-, his, hes, hws, -, -, hlast⟩ := raw_scatter n .pos e n fill o h
+  have hm : n.toNat < 2 ^ 64 := Nat.lt_of_lt_of_le n.toNat_lt_size USize.size_le
+  -- row `k` of `pos` is `k`
+  have hrow : ∀ k < n.toNat, ((raw .i64 n (.pos : Enc))[k]?.getD 0).toNat = k := fun k hk => by
+    simp [raw, Array.getElem?_range, hk, Nat.mod_eq_of_lt (Nat.lt_trans hk hm)]
+  apply Array.ext (by rw [hws, hes])
+  intro j h1 h2
+  have hj : j < n.toNat := by omega
+  have hw := hlast j hj fun k' _ hk' hc => by have := congrArg UInt64.toNat hc; rw [hrow k' hk', hrow j hj] at this; omega
+  rw [hrow j hj, Array.getElem?_eq_getElem h1, Array.getElem?_eq_getElem h2, Option.getD_some] at hw
+  exact Option.some.inj hw
 
 end Rel.Verify

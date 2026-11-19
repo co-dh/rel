@@ -43,4 +43,21 @@ def short : String ⊕ (List UInt8 × List UInt8) :=
 example : view (kscatter (u 1025) (col [0, 1, 2]) (col [0, 1, 2]) (u 9) 0) = short := by decide +kernel
 #guard view (kscatter (u 1025) (col [0, 1, 2]) (col [0, 1, 2]) (u 9) 0) == short
 
+/-- `Coc.encodeAt lgEnc 8` of the words `ws`, as `view` shows an answer. -/
+def enc8 (ws : List UInt64) : String ⊕ (List UInt8 × List UInt8) :=
+  let r := Coc.encodeAt Column.lgEnc (u 8) (ws.foldl (init := .empty) fun acc w => Column.pushBits acc w 8)
+  .inr (r.1.data.toList, r.2.data.toList)
+-- `pos` (PLAN 6.13), the positions read as the loop index. S1: `ix = pos` at `m = n` answers `e`; at `m < n` the rest
+-- of the cells keep `fill`; at `m > n` row `n` is the error
+example : view (kscatter (u 3) .pos (col [10, 11, 12]) (u 3) 7) = enc8 [10, 11, 12] := by decide +kernel
+#guard view (kscatter (u 3) .pos (col [10, 11, 12]) (u 3) 7) == enc8 [10, 11, 12]
+example : view (kscatter (u 2) .pos (col [10, 11]) (u 4) 7) = enc8 [10, 11, 7, 7] := by decide +kernel
+#guard view (kscatter (u 2) .pos (col [10, 11]) (u 4) 7) == enc8 [10, 11, 7, 7]
+def posPast : String ⊕ (List UInt8 × List UInt8) := .inl "scatter: index 3 at row 3 is not below n = 3"
+example : view (kscatter (u 4) .pos .pos (u 3) 0) = posPast := by decide +kernel
+#guard view (kscatter (u 4) .pos .pos (u 3) 0) == posPast
+-- `e = pos` writes each row's number at its index: the inverse of the permutation `2 0 1` (RANK)
+example : view (kscatter (u 3) (col [2, 0, 1]) .pos (u 3) 9) = enc8 [1, 2, 0] := by decide +kernel
+#guard view (kscatter (u 3) (col [2, 0, 1]) .pos (u 3) 9) == enc8 [1, 2, 0]
+
 end Rel.Kernel.ScatterTest

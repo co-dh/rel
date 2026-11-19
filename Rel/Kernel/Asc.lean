@@ -37,13 +37,20 @@ def ascIns (le : Nat → Nat → Bool) (x : Nat) : List Nat → List Nat
 def ascGrade (m : Nat) (ks : List (Array UInt64)) : List Nat :=
   (List.range m).foldl (fun acc x => ascIns (lexLe ks) x acc) []
 
+/-- A key column's `m` words, `foRWords`', but a `pos` column is `i64` (PLAN 6.13): at another type its positions'
+order codes would wrap, so it is the error there; at `i64` its codes are in row order, which is law A1. -/
+def ascWords (m : USize) : QAtomicType × Enc → Except String (Array UInt64)
+  | (.i64, .pos) => foRWords "asc" m .pos
+  | (t, .pos) => .error s!"asc: a pos column is type {QAtomicType.i64.ctorIdx}, not {t.ctorIdx}"
+  | (_, e) => foRWords "asc" m e
+
 /-- One key column of `kasc`: its `m` words as every kernel of design §4 reads a `foR` (`foRWords`) and their order
 codes at its type (`ascOrd`, which cuts a word to the type's width), or why it has none: a type with no order, then
-`foRWords`' error. -/
+`ascWords`' error. -/
 def ascCol (m : USize) (c : QAtomicType × Enc) : Except String (Array UInt64 × Array UInt64) :=
   match ascOrd c.1 with
   | none => .error s!"asc: type {c.1.ctorIdx} has no fixed-width order"
-  | some f => (fun x => (x, x.map f)) <$> foRWords "asc" m c.2
+  | some f => (fun x => (x, x.map f)) <$> ascWords m c
 
 /-- **The asc kernel** (design §4, `asc_sorted` and `asc_perm`): the `m` rows of the columns `es`, each a type and a
 `foR` column, sorted stably and lexicographically by their order codes. The answer is every column's words sorted and
