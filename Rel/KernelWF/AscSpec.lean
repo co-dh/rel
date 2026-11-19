@@ -954,7 +954,7 @@ theorem arrDistinct_sound {b : Obj} (hb : SortsAsc b) {n : USize} (c : Vals (.ar
     have hm : ((len p).toUSize).toNat = len p := USize.toNat_ofNat_of_lt' hl
     have hin2 : ∀ t ∈ ids p, t < len (slicesOf c).2 := fun t ht => by rw [hn2]; exact hp t ht
     have memA : ∀ i ∈ ids p, ∀ hi : i < n.toNat, T ≤ (c.row ⟨i, hi⟩).length →
-        i ∈ ids (gather 8 p (whereBits (len p).toUSize (Ew.cmp Ew.gt Ew.i64 Ew.va (gather 8 (slicesOf c).2 p)
+        i ∈ ids (gather 8 p (whereBits (len p).toUSize (Ew.cmpBits Ew.gt Ew.i64 Ew.va (gather 8 (slicesOf c).2 p)
           (one (T - 1).toUInt64) (len p).toUSize))) := by
       intro i hi' hi li
       obtain ⟨k, hk, ek⟩ := List.getElem_of_mem hi'

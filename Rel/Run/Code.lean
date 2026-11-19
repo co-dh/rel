@@ -925,7 +925,7 @@ def arrUntied {b : Obj} {n : USize} (c : Vals (.arr b) n) (srt : {k : USize} →
 def arrDistinct {b : Obj} {n : USize} (c : Vals (.arr b) n) (srt : {k : USize} → Vals b k → ByteArray → ByteArray)
     (T : Nat) (p : ByteArray) : Bool :=
   if len p < USize.size then arrUntied c srt T (gather 8 p (whereBits (len p).toUSize
-    (Ew.cmp Ew.gt Ew.i64 Ew.va (gather 8 (slicesOf c).2 p) (one (T - 1).toUInt64) (len p).toUSize)))
+    (Ew.cmpBits Ew.gt Ew.i64 Ew.va (gather 8 (slicesOf c).2 p) (one (T - 1).toUInt64) (len p).toUSize)))
   else false
 
 /-- `p` sorted by its arrays: by their first `T` elements, `T` doubling until the rows that hold `T` differ in them
