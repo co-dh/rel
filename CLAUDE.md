@@ -40,6 +40,9 @@ Test how useful Rel is as a programming language, by implementing k in it:
 - No serialization: the in-memory structure is the on-disk structure, so loading an array is an mmap.
 
 ## Rules
+- **Documents in `doc/` are written in Chinese** — a design note is a `.zh.typ` styled after
+  `doc/rel-architecture.zh.typ`, compiled to PDF, because he reads them in Chinese; code, identifiers, comments,
+  commit messages and technical terms stay English.
 - **Notation follows freyd's.** Composition in diagram order by juxtaposition or `≫` (`R ≫ S`: first `R`, then `S`);
   applying an operator takes parentheses (`F(R)`, `thin(Q)`, `f(a)`); a converse with a name of its own is written by
   that name (`≥`, not `≤°`; `∈`, not `∋°`).
