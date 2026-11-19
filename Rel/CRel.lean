@@ -133,23 +133,43 @@ theorem keyInj_prod {a b : Obj} (ha : a.KeyInj) (hb : b.KeyInj) : (Obj.prod a b)
   rw [e, List.append_cancel_left_eq] at h
   rw [ha x x' e, hb y y' h]
 
+/-- `k`'s rank is one to one: every layout but the floats, whose rank merges NaNs and `±0`. -/
+def _root_.Rel.Kernel.Order.rankInj : Kernel.Scan.Kind → Bool
+  | .f32 | .f64 => false
+  | _ => true
+
+/-- The one injectivity fact the atoms' keys rest on: an identity or a sign-bit flip. -/
+theorem _root_.Rel.Kernel.Order.rank_inj {k : Kernel.Scan.Kind} (hk : Order.rankInj k = true) {a b : UInt64}
+    (h : (Order.rank k a).toNat = (Order.rank k b).toNat) : a = b := by
+  have h := UInt64.toNat_inj.1 h
+  cases k <;> simp only [Order.rankInj, Bool.false_eq_true] at hk <;> simp only [Order.rank] at h
+  all_goals first | exact h | exact (UInt64.xor_left_inj _).1 h
+
 /-- `A`'s atoms are ones the kernels order and its key tells its elements apart, decided by recursion on `A`: an
-    atom whose key re-codes its bits one to one (`boolean`, `long`); a float merges NaNs and `±0`, `general` keys
-    as `[]`. What `Tm.gap` reads for `Λ`, whose canonical list needs the strict order (`canonical_spec`). -/
+    atom whose order rank is one to one (`Order.rankInj` of its `orderKind`); a float merges NaNs and `±0`, a
+    `symbol` or `general` has no rank. What `Tm.gap` reads for `Λ`, whose canonical list needs the strict order
+    (`canonical_spec`). -/
 def _root_.Rel.Obj.canonical : Obj → Bool
-  | .atom .boolean | .atom .long => true
-  | .atom _ => false
+  | .atom t => (Kernel.orderKind t).any Order.rankInj
   | .prod a b | .sum a b => a.canonical && b.canonical
   | .arr b => b.canonical
 
 theorem canonical_spec : (A : Obj) → A.canonical = true → A.Ordered ∧ A.KeyInj
-  | .atom .boolean, _ => ⟨(fun h => nomatch h), fun x y h => by
-      cases x <;> cases y <;> simp_all [Obj.key]⟩
-  | .atom .long, _ => ⟨(fun h => nomatch h), fun x y h => by
-      simp only [Obj.key, Order.rank, List.cons.injEq, and_true] at h
-      have h' := congrArg (· ^^^ (0x8000000000000000 : UInt64)) (UInt64.toNat_inj.1 h)
-      simp only [UInt64.xor_assoc, UInt64.xor_self, UInt64.xor_zero] at h'
-      exact match x, y, h' with | ⟨_⟩, ⟨_⟩, rfl => rfl⟩
+  | .atom t, h => by
+    refine ⟨fun e => by subst e; simp [Obj.canonical, Kernel.orderKind] at h, fun x y e => ?_⟩
+    -- the key of an atom with a rank is `[rank k bits]`: `rank_inj`, then the bits' re-coding is one to one
+    cases t <;> simp only [Obj.canonical, Kernel.orderKind, Option.any_some, Option.any_none, Order.rankInj,
+      Bool.false_eq_true] at h
+    all_goals simp only [Obj.key, List.cons.injEq, and_true] at e
+    all_goals first
+      | (cases x <;> cases y <;> simp_all; done)
+      | (have e := Order.rank_inj rfl e
+         have e := congrArg UInt64.toNat e
+         simp only [UInt16.toNat_toUInt64, UInt32.toNat_toUInt64] at e
+         first
+          | (cases x; cases y; simp_all [UInt16.toNat_inj, UInt32.toNat_inj, UInt64.toNat_inj]; done)
+          | exact UInt8.toNat_inj.1 e)
+      | exact UInt8.toNat_inj.1 e
   | .prod a b, h => by
     simp only [Obj.canonical, Bool.and_eq_true] at h
     exact ⟨⟨(canonical_spec a h.1).1, (canonical_spec b h.2).1⟩,
@@ -180,10 +200,6 @@ theorem canonical_spec : (A : Obj) → A.canonical = true → A.Ordered ∧ A.Ke
         have k := Obj.key_prefix b x y _ _ e.2
         rw [k, List.append_cancel_left_eq] at e
         rw [i x y k, ih ys e.2]
-  | .atom .byte, h | .atom .char, h | .atom .short, h | .atom .int, h | .atom .month, h | .atom .date, h
-  | .atom .minute, h | .atom .second, h | .atom .time, h | .atom .timestamp, h | .atom .timespan, h
-  | .atom .real, h | .atom .float, h | .atom .datetime, h | .atom .symbol, h | .atom .general, h => by
-    simp [Obj.canonical] at h
 
 /-- Two lists strictly ascending in one strict order, with the same members, are one list. -/
 theorem eq_of_pairwise {α : Type} {r : α → α → Prop} (irr : ∀ a, ¬ r a a) (tr : ∀ {a b c}, r a b → r b c → r a c) :
