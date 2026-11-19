@@ -101,56 +101,47 @@ theorem gatherColumn_fixed_shape {t : QAtomicType} {w : Nat} (ht : denseWidth t 
       c = .bytes (gatherBytes w.toUSize ((nullBits t).getD 0) src ix) := by
   obtain ⟨hw, hb, hs, hw0, hw8⟩ := denseWidth_facts ht
   unfold gatherColumn at h
-  rw [ht] at h
+  -- the `idx` thunk is a `let` ahead of the `match t, e`: inline it so `split` takes the match
+  simp only at h
   split at h
-  · rename_i w' n' sm sp m' im ip hw' hfx hfi
-    obtain rfl := Option.some.inj hw'
-    obtain ⟨rfl, hxe⟩ := foRColumn_some hfx
-    obtain ⟨rfl, hie⟩ := foRColumn_some hfi
-    cases Option.some.inj h
-    exact ⟨Coc.decode w.toUSize sm sp n, Coc.decode 8 im ip m,
-      by simp [Enc.bytesOf, hxe, hw], by simp only [Enc.bytesOf, hie]; rfl, rfl⟩
-  · -- the `idx` thunk is a `let` ahead of the `match t, e`: inline it so `split` takes the match
-    simp only at h
-    split at h
-    · exact absurd rfl hb
-    · exact absurd rfl hs
-    · exact absurd rfl hs
-    · split at h
-      · simp at h
-      · rename_i hae
-        cases hix : Enc.bytesOf .i64 m ie with
+  · exact absurd rfl hb
+  · exact absurd rfl hs
+  · exact absurd rfl hs
+  · split at h
+    · simp at h
+    · rename_i hae
+      cases hix : Enc.bytesOf .i64 m ie with
+      | none => simp [hix] at h
+      | some ix =>
+        by_cases hz : ix.size < m.toNat * 8
+        · simp [hix, hz] at h
+        simp only [hix, hz, ↓reduceIte, Option.map_some, Option.some.injEq] at h
+        subst h
+        cases t <;> simp [Column.alpEncodes] at hae <;> simp [QAtomicType.width] at hw <;> subst hw <;>
+          exact ⟨_, ix, rfl, rfl, by rw [gatherAlp, show Column.alpF32 _ = _ from hxw.2.2.2]; rfl⟩
+  · split at h
+    · obtain rfl := Option.some.inj (ht.symm.trans ‹denseWidth t = some _›)
+      obtain ⟨rfl, hxe⟩ := foRColumn_some ‹foRColumn t _ _ = some _›
+      cases hix : Enc.bytesOf .i64 m ie with
+      | none => simp [hix] at h
+      | some ix =>
+        by_cases hz : ix.size < m.toNat * 8
+        · simp [hix, hz] at h
+        simp only [hix, hz, ↓reduceIte, Option.map_some, Option.some.injEq] at h
+        subst h
+        exact ⟨_, ix, by simp [Enc.bytesOf, hxe, hw], rfl, rfl⟩
+    · obtain rfl := Option.some.inj (ht.symm.trans ‹denseWidth t = some _›)
+      split at h
+      · cases hix : Enc.bytesOf .i64 m ie with
         | none => simp [hix] at h
         | some ix =>
           by_cases hz : ix.size < m.toNat * 8
           · simp [hix, hz] at h
           simp only [hix, hz, ↓reduceIte, Option.map_some, Option.some.injEq] at h
           subst h
-          cases t <;> simp [Column.alpEncodes] at hae <;> simp [QAtomicType.width] at hw <;> subst hw <;>
-            exact ⟨_, ix, rfl, rfl, by rw [gatherAlp, show Column.alpF32 _ = _ from hxw.2.2.2]; rfl⟩
-    · split at h
-      · obtain rfl := Option.some.inj (ht.symm.trans ‹denseWidth t = some _›)
-        obtain ⟨rfl, hxe⟩ := foRColumn_some ‹foRColumn t _ _ = some _›
-        cases hix : Enc.bytesOf .i64 m ie with
-        | none => simp [hix] at h
-        | some ix =>
-          by_cases hz : ix.size < m.toNat * 8
-          · simp [hix, hz] at h
-          simp only [hix, hz, ↓reduceIte, Option.map_some, Option.some.injEq] at h
-          subst h
-          exact ⟨_, ix, by simp [Enc.bytesOf, hxe, hw], rfl, rfl⟩
-      · obtain rfl := Option.some.inj (ht.symm.trans ‹denseWidth t = some _›)
-        split at h
-        · cases hix : Enc.bytesOf .i64 m ie with
-          | none => simp [hix] at h
-          | some ix =>
-            by_cases hz : ix.size < m.toNat * 8
-            · simp [hix, hz] at h
-            simp only [hix, hz, ↓reduceIte, Option.map_some, Option.some.injEq] at h
-            subst h
-            exact ⟨_, ix, ‹_›, rfl, rfl⟩
-        · simp at h
+          exact ⟨_, ix, ‹_›, rfl, rfl⟩
       · simp at h
+    · simp at h
 
 /-- The byte `packOf` builds from eight flags, flag `t` at bit `t`. -/
 def byteOf (l : List Bool) : UInt8 :=
@@ -215,29 +206,18 @@ theorem gatherColumn_enum (n : USize) (dict : ByteArray) (dof : Array Nat) (ids 
     ∃ ix inRange db dbo nids, elemsW 8 ix = (Enc.raw .i64 m ie).toList ∧
       gatherIds dict dof inRange (fun w wo e => gatherPacked n w wo e ids ix) = (db, dbo, nids) ∧
       c = .enum db dbo nids := by
-  simp only [gatherColumn, denseWidth] at h
+  simp only [gatherColumn] at h
   rw [if_neg (by simpa using hm)] at h
-  cases hfi : foRColumn .i64 m ie with
-  | some s =>
-    obtain ⟨m', im, ip⟩ := s
-    obtain ⟨rfl, rfl⟩ := foRColumn_some hfi
-    simp only [hfi, Option.some.injEq] at h
+  cases hix : Enc.bytesOf .i64 m ie with
+  | none => simp [hix] at h
+  | some ix =>
+    by_cases hz : ix.size < m.toNat * 8
+    · simp [hix, hz] at h
+    simp only [hix, hz, ↓reduceIte, Option.map_some, Option.some.injEq] at h
     generalize hG : gatherIds dict dof _ _ = G at h
     obtain ⟨db, dbo, nids⟩ := G
     simp only at h
-    exact ⟨Coc.decode 8 im ip m, _, db, dbo, nids, elemsW_bytesOf (t := .i64) rfl (by decide) (by decide) (by decide) _ _ hiw _ rfl, hG, h.symm⟩
-  | none =>
-    simp only [hfi] at h
-    cases hix : Enc.bytesOf .i64 m ie with
-    | none => simp [hix] at h
-    | some ix =>
-      by_cases hz : ix.size < m.toNat * 8
-      · simp [hix, hz] at h
-      simp only [hix, hz, ↓reduceIte, Option.map_some, Option.some.injEq] at h
-      generalize hG : gatherIds dict dof _ _ = G at h
-      obtain ⟨db, dbo, nids⟩ := G
-      simp only at h
-      exact ⟨ix, _, db, dbo, nids, elemsW_bytesOf (t := .i64) rfl (by decide) (by decide) (by decide) m ie hiw ix hix, hG, h.symm⟩
+    exact ⟨ix, _, db, dbo, nids, elemsW_bytesOf (t := .i64) rfl (by decide) (by decide) (by decide) m ie hiw ix hix, hG, h.symm⟩
 
 /-- One symbol laid after a blob and its starts: the bytes, a NUL, and the next start. -/
 def symStep (x : ByteArray × Array Nat) (k : ByteArray) : ByteArray × Array Nat :=
@@ -315,7 +295,7 @@ theorem gatherColumn_syms (n : USize) (blob : ByteArray) (offs : Array Nat) (m :
     (hiw : Enc.WF .i64 m ie) (h : gatherColumn .sym n (.syms blob offs) m ie = some c) :
     ∃ ix, elemsW 8 ix = (Enc.raw .i64 m ie).toList ∧
       c = .syms (gatherSyms blob offs ix).1 (gatherSyms blob offs ix).2 := by
-  simp only [gatherColumn, denseWidth] at h
+  simp only [gatherColumn] at h
   cases hix : Enc.bytesOf .i64 m ie with
   | none => simp [hix] at h
   | some ix =>
