@@ -625,7 +625,7 @@ partial def share (pre : Name) (A B : Obj) (v : Lean.Expr) : RM Name := do
   addConst c (mkApp2 (mkConst ``Rel.Rel) (oE A) (oE B)) v
   modify fun (m, cs) => (m.insert v c, cs); pure c
 
-/-- The plan of `t` (`Gen.Pl d A B`) where its node has a bit rule. -/
+/-- The plan of `t` (`Gen.Pl A B`) where its node has a bit rule. -/
 partial def plan? (pre : Name) (ρ : List (Nat × Lean.Expr)) {A B : Obj} {d : Bool} (t : Tm A B d) : RM (Option Lean.Expr) := do
   if closed t then return some (g ``Gen.pleaf #[oE A, oE B, bE d, ← code pre ρ t])
   match A, B, d, t with
@@ -640,15 +640,12 @@ partial def plan? (pre : Name) (ρ : List (Nat × Lean.Expr)) {A B : Obj} {d : B
   | A, B, _, .val _ => return some (g ``Gen.pleaf #[oE A, oE B, bE false, ← node pre ρ t])
   | A, _, _, .uni _ => return some (g ``Gen.pleaf #[oE A, oE A, bE false, ← node pre ρ t])
   | _, _, _, .share _ R | _, _, _, .own R => plan? pre ρ R
-  | A, C, _, .comp (B := B) (d := d) (e := e) R S =>
-    return some (g ``Gen.pcomp #[oE A, oE B, oE C, bE d, bE e, ← planOr pre ρ R, ← planOr pre ρ S])
+  | A, C, _, .comp (B := B) R S =>
+    return some (g ``Gen.pcomp #[oE A, oE B, oE C, ← planOr pre ρ R, ← planOr pre ρ S])
   | B, A, _, .conv R => return some (g ``Gen.pconv #[oE A, oE B, ← planOr pre ρ R])
-  | A, B, _, .meet (d := d) (e := e) R S =>
-    return some (g ``Gen.pmeet #[oE A, oE B, bE d, bE e, ← planOr pre ρ R, ← planOr pre ρ S])
-  | A, B, _, .join (d := d) (e := e) R S =>
-    return some (g ``Gen.pjoin #[oE A, oE B, bE d, bE e, ← planOr pre ρ R, ← planOr pre ρ S])
-  | A, B, _, .diff (d := d) (e := e) R S =>
-    return some (g ``Gen.pdiff #[oE A, oE B, bE d, bE e, ← planOr pre ρ R, ← planOr pre ρ S])
+  | A, B, _, .meet R S => return some (g ``Gen.pmeet #[oE A, oE B, ← planOr pre ρ R, ← planOr pre ρ S])
+  | A, B, _, .join R S => return some (g ``Gen.pjoin #[oE A, oE B, ← planOr pre ρ R, ← planOr pre ρ S])
+  | A, B, _, .diff R S => return some (g ``Gen.pdiff #[oE A, oE B, ← planOr pre ρ R, ← planOr pre ρ S])
   | B, C, _, .ldiv (A := A) R S UB UC => return some (g ``Gen.pldiv
       #[oE A, oE B, oE C, ← planOr pre ρ R, ← planOr pre ρ S, ← code pre ρ UB, ← code pre ρ UC])
   | _, _, _, _ => return none
@@ -685,7 +682,7 @@ partial def node (pre : Name) (ρ : List (Nat × Lean.Expr)) {A B : Obj} {d : Bo
   | .prod A B, _, _, .outl => return g ``Gen.outl #[oE A, oE B]
   | .prod A B, _, _, .outr => return g ``Gen.outr #[oE A, oE B]
   | A, C, true, .comp (B := B) (e := e) R S => return g ``Gen.comp #[oE A, oE B, oE C, bE e, ← c R, ← c S]
-  | A, C, false, .comp (B := B) (e := e) R S => return g ``Gen.compB #[oE A, oE B, oE C, bE e, ← p R, ← p S]
+  | A, C, false, .comp (B := B) R S => return g ``Gen.compB #[oE A, oE B, oE C, ← p R, ← p S]
   | B, A, _, .conv R => return g ``Gen.conv #[oE A, oE B, ← c R]
   | A, B, _, .meet (d := false) (e := false) R S => return g ``Gen.meetB #[oE A, oE B, ← p R, ← p S]
   | A, B, _, .diff (d := false) (e := false) R S => return g ``Gen.diffB #[oE A, oE B, ← p R, ← p S]
@@ -717,7 +714,7 @@ partial def node (pre : Name) (ρ : List (Nat × Lean.Expr)) {A B : Obj} {d : Bo
     return g ``Gen.foldI #[oE I, oE E, oE V, bE d, bE d', ← c e, ← c S]
   | .prod I A, B, _, .flat (d := d) R => return g ``Gen.flat #[oE I, oE A, oE B, bE d, ← c R]
   | A, B, d, .var k => match ρ.lookup k with
-    | some x => if (← inferType x).isAppOf ``Gen.Pl then return g ``Gen.ofPl #[oE A, oE B, bE d, x]
+    | some x => if (← inferType x).isAppOf ``Gen.Pl then return g ``Gen.ofPl #[oE A, oE B, x]
                 else return g ``Gen.const #[oE A, oE B, x]
     | none => throwError "rel_program expansion: internal: the variable {k} is not bound here"
   | A, B, _, .nu k S b => match arcs k b with
@@ -743,8 +740,8 @@ partial def node (pre : Name) (ρ : List (Nat × Lean.Expr)) {A B : Obj} {d : Bo
       let some e ← primE r A B xs
         | throwError "rel_program expansion: `{r.sig.1}` at {oE A} → {oE B} given {xs.size} relations fits none of {primWrappers}"
       pure e
-    | none => return g ``Gen.ofPl #[oE A, oE B, bE d, ← spine pre ρ t]
-  | A, B, d, t@(.call ..) => return g ``Gen.ofPl #[oE A, oE B, bE d, ← spine pre ρ t]
+    | none => return g ``Gen.ofPl #[oE A, oE B, ← spine pre ρ t]
+  | A, B, _, t@(.call ..) => return g ``Gen.ofPl #[oE A, oE B, ← spine pre ρ t]
 
 end
 
@@ -825,13 +822,13 @@ def emit (n : Name) (r : Read) : MetaM Unit := do
     pure (g ``Rel.Rel.run #[oE A, oE B, t,
       g ``Rel.Known.mk #[oE A, oE B, ← none' ``Rel.Known.dom._default, ← none' ``Rel.Known.ran._default]])
   let ((entries, printed, checked), st) ← (do
-    -- each definition elaborated once: `n.x : (A₁ … : Obj) → Pl U₁ → … → Pl R₁ → … → Pl d A B`, generic over the
+    -- each definition elaborated once: `n.x : (A₁ … : Obj) → Pl U₁ → … → Pl R₁ → … → Pl A B`, generic over the
     -- objects of its generic variables, then plans in and out, the universes it reads then its parameters, so a
     -- caller's plan runs through the call; `n.x.conv` its converse, when its body has one (`convTm`)
     for o@{ key, const := c, gen, params := qs, res := ⟨A, B, d, t⟩, tst, .. } in fs do
       let nv := gen.length
       let reads := (List.range nv).map t.fv.contains
-      let pl (e : Bool) (X Y : Obj) := mkApp3 (mkConst ``Gen.Pl) (bE e) (oE X) (oE Y)
+      let pl (X Y : Obj) := mkApp2 (mkConst ``Gen.Pl) (oE X) (oE Y)
       let vo (k : Nat) : Obj := if gen.getD k false then (varObj k).getD .long else .long
       let rk := (List.range nv).filter (reads.getD · false)
       let gk := (List.range nv).filter (gen.getD · false)
@@ -840,8 +837,8 @@ def emit (n : Name) (r : Read) : MetaM Unit := do
           -- each placeholder `varObj k` becomes its binder
           let sub (z : Lean.Expr) := z.replace fun s =>
             (gk.zip xs.toList).findSome? fun (k, a) => if (varObj k).map toExpr == some s then some a else none
-          lams ((rk.map fun k => sub (pl false (vo k) (vo k))) ++ qs.map fun (P, Q, e) => sub (pl e P Q)) fun ys => do
-            pure (sub (pl e X Y), sub (← planOr n ((rk ++ (List.range qs.length).map (nv + ·)).zip ys.toList) u))
+          lams ((rk.map fun k => sub (pl (vo k) (vo k))) ++ qs.map fun (P, Q, _) => sub (pl P Q)) fun ys => do
+            pure (sub (pl X Y), sub (← planOr n ((rk ++ (List.range qs.length).map (nv + ·)).zip ys.toList) u))
         addConst k ty v
       let cv := if tst then none else (convTm t).toOption
       if let some ⟨e, u⟩ := cv then mk (c ++ `conv) B A e u

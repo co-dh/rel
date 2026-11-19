@@ -11,18 +11,18 @@ open scoped Rel.Core.Rel
 open Rel.Core.Rel hiding id comp recip inter union zero le inl inr junc
 
 /-- Every variable's plan computes its meaning under `ρ`. -/
-def CodeEnv.Sound (η : CodeEnv) (ρ : Val) : Prop := ∀ k A B d, PSound (η k A B d) (ρ k A B)
+def CodeEnv.Sound (η : CodeEnv) (ρ : Val) : Prop := ∀ k A B, PSound (η k A B) (ρ k A B)
 
 /-- Binding `k` to a table keeps `CodeEnv.Sound`, the table's meaning bound in `ρ`. -/
 theorem CodeEnv.Sound.bind {η : CodeEnv} {ρ : Val} (hη : η.Sound ρ) (k : Nat) {A B : Obj} (X : CRel A B) :
     (η.bind k X).Sound (ρ.bind k (rep X.rel)) := by
-  intro j A' B' d D hD hb x y hx
+  intro j A' B'
   by_cases e : j = k
   · subst e
     by_cases h : A = A' ∧ B = B'
-    · obtain ⟨rfl, rfl⟩ := h; simp [CodeEnv.bind, Val.bind, Tm.den]
-    · simp [CodeEnv.bind, Val.bind, h, Tm.den]
-  · simp only [CodeEnv.bind, Val.bind, e, if_false] at hb ⊢; exact hη j A' B' d D hD hb x y hx
+    · obtain ⟨rfl, rfl⟩ := h; simp [CodeEnv.bind, Val.bind, Tm.den, PSound, PlOK]
+    · simp [CodeEnv.bind, Val.bind, h, Tm.den, PSound, PlOK]
+  · simp only [CodeEnv.bind, Val.bind, e, if_false]; exact hη j A' B'
 
 /-- `μX : φ` by rounds from `𝟘`: where fewer than `cap` rounds ran, the least fixed point of a monotone `Φ`, each
     round sound at an ok table (`CRel.rep_fixOn`). -/
@@ -315,7 +315,7 @@ theorem compile_sound {A B : Obj} {d : Bool} (t : Tm A B d) (hg : t.gap = none) 
     obtain ⟨hR, h⟩ := gap_or hg; obtain ⟨hS, h⟩ := gap_or h; obtain ⟨hU, hV⟩ := gap_or h
     exact Out.Sound.memo (Out.Sound.leaf
       (rdiv_sound (ihR hR η ρ hη).1 (ihS hS η ρ hη).1 (ihU hU η ρ hη).1 (ihV hV η ρ hη).1))
-  | var k => exact Out.Sound.memo (.node (ofPl_sound (hη k _ _ _)) (hη k _ _ _) rfl)
+  | var k => exact Out.Sound.memo (.node (ofPl_sound (hη k _ _)) (hη k _ _) rfl)
   | own R ih => exact Out.Sound.memo (ih hg η ρ hη)
   | share k R ih =>
     simp only [Tm.gap] at hg
