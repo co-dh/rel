@@ -34,7 +34,6 @@ it is, so a mapped part stays in the mapping; an `enum`'s `offs` is `dictOffs`, 
 def ownEnc (kind : UInt8) (parts : Array ByteArray) : Option (Ext.Enc X) :=
   match kind, parts.toList with
   | 0, [b] => some (.bytes b)
-  | 1, [b] => some (.bits b)
   | 2, [metadata, pack] => some (.foR metadata pack)
   | 3, [metadata, pack, alp] => some (.alp metadata pack alp)
   | 4, [dict, ids] => some (.enum dict (dictOffs dict) ids)

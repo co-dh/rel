@@ -466,7 +466,7 @@ mod tests {
     }
     #[test] fn write_refuses_and_fails() {
         let p = tmp("r.col");
-        assert!(matches!(write(&p, 7, 0, 5, 3, b"", &[b"abc"]), Err(Fail::User(w)) if w.starts_with("a column of kind 0..4")));
+        assert!(matches!(write(&p, 7, 0, 5, 3, b"", &[b"abc"]), Err(Fail::User(w)) if w.starts_with("a column of kind 0, 2, 3 or 4")));
         assert!(matches!(write(&p, 7, 0, 2, 3, b"", &[b"abc"]), Err(Fail::User(_))));
         assert!(matches!(write(&p, 7, 0, 0, 3, b"a\0b", &[b"abc"]),
                          Err(Fail::User(w)) if w == "a domain name with no NUL byte, found one at byte 1"));
