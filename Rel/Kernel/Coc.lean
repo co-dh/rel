@@ -563,3 +563,34 @@ def alpOf (t : QAtomicType) (n : USize) (e : Ext.Enc X) : Option (Ext.Enc X) :=
   | _, _ => none
 
 end Rel.Ext.Enc
+
+namespace Rel.Kernel
+
+/-- `n` bits from `f`, packed LSB first with the tail of the last byte left zero. `Column.packBits`
+records why the tail matters: trailing set bits make two equal boolean vectors compare unequal under
+`~`. One definition for the bit-payload kernels (`bitRowsOver` in `Reduce`, four in `Structural`, `bitsOfFoR`
+here), which differ only in `f`. -/
+def packOf (n : Nat) (f : Nat → Bool) : ByteArray :=
+  (List.range ((n + 7) / 8)).foldl (init := ByteArray.empty) fun acc k =>
+    acc.push ((List.range 8).foldl (init := (0 : UInt8)) fun byte t =>
+      if k * 8 + t < n && f (k * 8 + t) then byte ||| (1 <<< t.toUInt8) else byte)
+
+/-- A boolean `foR` (`u1`) as the bitmap `concatBits` joins: bit `i` is element `i`'s low bit, which is what
+`Enc.raw` reads at a boolean, and a row past the blocks is `0`. The C copies a width-1, frame-0 block's residual
+words whole — they already are its bitmap — and builds any other block in one block of L1 scratch. -/
+@[extern "qlean_structural_bits_of_for"]
+def bitsOfFoR (metadata pack : @& ByteArray) (n : USize) : ByteArray :=
+  let starts := Column.blockStarts metadata
+  packOf n.toNat fun i =>
+    i < Column.blk metadata * Column.nblk metadata && (Column.foRBits metadata pack starts i).toNat % 2 == 1
+
+/-- A boolean payload as its bitmap, whichever of the two forms `Enc.WF .boolean` admits it is in (a `u1` `foR`
+through `bitsOfFoR`); `none` at any other type or form. The one boolean read every bitmap consumer goes through,
+here below `Elementwise` so that its operand readers take a boolean through it too. -/
+def boolBits (t : QAtomicType) (n : USize) (e : Ext.Enc X) : Option ByteArray :=
+  match t, e with
+  | .boolean, .bits b => some b
+  | .boolean, .foR m p => some (bitsOfFoR m p n)
+  | _, _ => none
+
+end Rel.Kernel

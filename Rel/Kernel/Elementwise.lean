@@ -670,11 +670,10 @@ rather than converting it and is the one `-` hands a flipped NaN to; every other
 def operandAt (t : QAtomicType) (m : USize) (e : Ext.Enc X) (dst : UInt8) (nulIn nulOut : Int64) (n : USize) :
     Option ByteArray := do
   let src ← clsOf t
-  if src == dst then Enc.bytesOf t m e
+  -- a boolean is read only through `boolBits`, at either form: its `u1` `foR` is never decoded to bytes
+  let raw ← if src == Ew.bits then boolBits t m e else Enc.bytesOf t m e
+  if src == dst then some raw
   else
-    let raw ← match e with
-      | .bits bs => if src == Ew.bits then some bs else none
-      | _ => Enc.bytesOf t m e
     some (if promotable t dst then Ew.widen src dst nulIn nulOut raw n
           else Ew.stageMap src dst (Ew.castStep src dst nulIn) raw n)
 
@@ -695,12 +694,15 @@ def operandSource (b : Ew.Build) (t : QAtomicType) (m : USize) (e : Ext.Enc X) (
     { engine := Ew.eTick, op, cls := src, shape := dst, a, nul := nulIn, nulOut }
   if m != n then
     some (b.input (← match tk with
-      | some op => (Enc.bytesOf t m e).map fun x =>
+      | some op => (operandAt t m e src nulIn nulOut m).map fun x =>
           let (one, a) := ({} : Ew.Build).input x
           one.run (tickAt a op) m
       | none => operandAt t m e dst nulIn nulOut m))
   else
-    let (b, raw) ← match e with
+    -- a boolean is read only through `boolBits`, at either form, and never through the decode stage
+    let (b, raw) ← if src == Ew.bits then
+      if src != dst then (boolBits t m e).map b.input else none
+    else match e with
       | .bytes x => some (b.input x)
       -- the decode is a stage, so the restored block is the tile the engine reads and is never
       -- written out; the width test is what makes `Ew.width src` the width `Enc.bytesOf` decodes at
@@ -710,7 +712,6 @@ def operandSource (b : Ew.Build) (t : QAtomicType) (m : USize) (e : Ext.Enc X) (
           let (b, pi) := b.input pack
           some (b.add { engine := Ew.eDecode, cls := src, a := mi, b := pi })
         else none
-      | .bits x => if src == Ew.bits && src != dst then some (b.input x) else none
       -- the float half of the same stage, and the blob's own width has to agree with the type's:
       -- the scale and the exceptions are read at `alpF32`, so a blob that disagrees is a malformed
       -- column and declines here rather than being decoded at one width and written at the other

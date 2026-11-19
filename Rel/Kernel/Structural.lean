@@ -266,23 +266,6 @@ never divides: `packOf 0` folds over an empty range. -/
 def cycleBits (n off m : USize) (b : @& ByteArray) : ByteArray :=
   packOf m.toNat fun j => Column.bitAt b ((off.toNat + j) % n.toNat)
 
-/-- A boolean `foR` (`u1`) as the bitmap `concatBits` joins: bit `i` is element `i`'s low bit, which is what
-`Enc.raw` reads at a boolean, and a row past the blocks is `0`. The C copies a width-1, frame-0 block's residual
-words whole — they already are its bitmap — and builds any other block in one block of L1 scratch. -/
-@[extern "qlean_structural_bits_of_for"]
-def bitsOfFoR (metadata pack : @& ByteArray) (n : USize) : ByteArray :=
-  let starts := Column.blockStarts metadata
-  packOf n.toNat fun i =>
-    i < Column.blk metadata * Column.nblk metadata && (Column.foRBits metadata pack starts i).toNat % 2 == 1
-
-/-- A boolean payload as its bitmap, whichever of the two forms `Enc.WF .boolean` admits it is in (a `u1` `foR`
-through `bitsOfFoR`); `none` at any other type or form. The one boolean read every bitmap consumer goes through. -/
-def boolBits (t : QAtomicType) (n : USize) (e : Ext.Enc X) : Option ByteArray :=
-  match t, e with
-  | .boolean, .bits b => some b
-  | .boolean, .foR m p => some (bitsOfFoR m p n)
-  | _, _ => none
-
 /-- `,` and `raze` at bit payloads. Measured — `101b,11b` is `10111b` and `raze (11111111b;1b)` is
 `111111111b`, so a part starts wherever the one before it ended and not on a byte.
 

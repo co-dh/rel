@@ -47,14 +47,6 @@ def segRange (offs : ByteArray) (n r : Nat) : Nat × Nat :=
   let cut (k : Nat) := min (atI64 offs k).toNatClampNeg n
   (cut r, max (cut r) (cut (r + 1)))
 
-/-- `n` bits from `f`, packed LSB first with the tail of the last byte left zero. `Column.packBits`
-records why the tail matters: trailing set bits make two equal boolean vectors compare unequal under
-`~`. One definition for the bit-payload kernels (`bitRowsOver` here, four in `Structural`), which differ only in `f`. -/
-def packOf (n : Nat) (f : Nat → Bool) : ByteArray :=
-  (List.range ((n + 7) / 8)).foldl (init := ByteArray.empty) fun acc k =>
-    acc.push ((List.range 8).foldl (init := (0 : UInt8)) fun byte t =>
-      if k * 8 + t < n && f (k * 8 + t) then byte ||| (1 <<< t.toUInt8) else byte)
-
 /-- Row `g` of the answer, `w` bits, folds the rows `idx[k]` of the bit matrix `m` (row `i` at bits
 `[i·w, (i+1)·w)`) over `k` in segment `g` of `offs` (`segRange`, clamped into `idx`'s longs): by `∨`
 (`all = false`) or `∧` (`all = true`), an empty segment answering zeros or ones. k's `|/'` and `&/'`

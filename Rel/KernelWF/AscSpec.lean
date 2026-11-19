@@ -213,7 +213,7 @@ theorem grade_boolean {n : USize} (x : Arr .boolean n) : ∃ g, gradeColumn .boo
     obtain ⟨hp, hsrt⟩ := gradeFoR_spec .u8 (by decide) false n md pk
     refine ⟨_, rfl, hp, ascBy_of_keyOrd x (foRKey .u8 md pk) (fun i hi => ?_) hsrt⟩
     rw [Arr.get_bool_bits x (b := bitsOfFoR md pk n) (by rw [he]; rfl)]
-    have h2 := hwf.2.1 i hi
+    have h2 := hwf.2.1 rfl i hi
     simp only [bitsOfFoR, Verify.bitAt_packOf _ _ _ hi, foRKey, Order.rank, Obj.key, Scan.Kind.width,
       decide_eq_true (Nat.lt_of_lt_of_le hi hwf.2.2.1), Bool.true_and]
     generalize Column.foRBits md pk (Column.blockStarts md) i = v at h2
