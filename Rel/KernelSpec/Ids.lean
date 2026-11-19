@@ -337,3 +337,22 @@ theorem idGroups_eq_iff (d n w : USize) (ids : ByteArray) {i j : Nat} (hi : i < 
 #guard_msgs in #print axioms idGroups_eq_iff
 
 end Rel.Verify
+
+namespace Rel
+
+/-- `Coc.bools n p` reads back as `p`: at width 1 the bias is `0`, so element `i` is the 0/1 byte `i` it encodes
+    (`foRBits_encode`). Here, beside `packIds_bytes`, so the driver law (`raw_ofRaw`) reads a boolean answer too. -/
+theorem foRBits_bools (n : Nat) (p : Nat → Bool) {i : Nat} (hi : i < n) :
+    Column.foRBits (Kernel.Coc.bools n p).1 (Kernel.Coc.bools n p).2 (Column.blockStarts (Kernel.Coc.bools n p).1) i =
+      (p i).toNat.toUInt64 := by
+  have h1 : USize.ofNat32 1 (by decide) = (1 : Nat).toUSize := USize.toNat_inj.mp (by
+    rcases System.Platform.numBits_eq with h | h <;> simp [h])
+  obtain ⟨hs, hb⟩ := Verify.packIds_bytes 1 n (fun i => (p i).toNat) (by decide) (by decide)
+  simp only [Nat.mul_one] at hs hb
+  simp only [Kernel.Coc.bools, h1]
+  rw [Verify.foRBits_encode Column.lgEnc (by decide) 1 (by decide) (by decide) _ i (by rw [hs]; simpa using hi)]
+  simp only [Kernel.Coc.unbias, Kernel.Coc.keyAt, Kernel.Coc.bias, if_true, Nat.mul_one,
+    hb i hi (by cases p i <;> decide)]
+  cases p i <;> rfl
+
+end Rel

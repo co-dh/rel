@@ -4,10 +4,10 @@
 //!
 //! The file: bytes 0..8 `qleancol`; byte 8 the format version (`OWN_VERSION`, `OWN_OLDEST` is read too); byte 9 the q type
 //! code of the elements; byte 10 the attribute (0 none, 1 `s#, 2 `u#, 3 `p#, 4 `g#); byte 11 the constructor kind (0 bytes,
-//! 1 bits, 2 foR, 3 alp, 4 enum); bytes 12..14 the u16 part count (`OWN_NPARTS`); bytes 14..16 the u16 byte length of the
+//! 1 the removed bitmap, refused: a boolean is a u1 foR, 2 foR, 3 alp, 4 enum); bytes 12..14 the u16 part count (`OWN_NPARTS`); bytes 14..16 the u16 byte length of the
 //! enumeration domain name; bytes 16..24 the u64 element count; then 16 bytes a part (u64 offset, u64 length), the domain name,
 //! and each part after zeros up to an offset that is a multiple of 8 and leaves `OWN_ROOM` zero bytes before it; then
-//! `OWN_ROOM` zero bytes. The parts are the dense bytes; the bitmap; `metadata`, `pack`; `metadata`, `pack`, `alp`; `dict`,
+//! `OWN_ROOM` zero bytes. The parts are the dense bytes; `metadata`, `pack`; `metadata`, `pack`, `alp`; `dict`,
 //! `ids`. Nothing is transformed in either direction.
 //!
 //! A mapped part is a `ByteArray` of rc 0 (persistent: `lean_inc_ref`/`lean_dec_ref` do nothing, never exclusive, so every
@@ -33,7 +33,7 @@ pub const OWN_NPARTS: [usize; 5] = [1, 1, 2, 3, 2];
 
 /// The refusal `write_head` gives a bad kind, part count or name length; None, so a caller returns it.
 pub fn refuse_head(kind: u8, np: usize, nl: usize, why: &mut Why) -> Option<usize> {
-    why.say(format_args!("a column of kind 0..4 with its parts and a domain name under 65536 \
+    why.say(format_args!("a column of kind 0, 2, 3 or 4 (kind 1, the bitmap, is gone: a boolean column is a u1 foR, kind 2) with its parts and a domain name under 65536 \
 bytes, given kind {} with {} parts and a {}-byte name", kind, np, nl));
     None
 }
@@ -44,7 +44,7 @@ bytes, given kind {} with {} parts and a {}-byte name", kind, np, nl));
 pub fn write_head(code: u8, attr: u8, kind: u8, count: u64, nl: usize, len: &[usize],
                   head: &mut [u8], off: &mut [usize], why: &mut Why) -> Option<usize> {
     let np = len.len();
-    if kind > 4 || np != OWN_NPARTS[kind as usize] || nl > 0xffff { return refuse_head(kind, np, nl, why) }
+    if kind > 4 || kind == 1 || np != OWN_NPARTS[kind as usize] || nl > 0xffff { return refuse_head(kind, np, nl, why) }
     head[..8].copy_from_slice(b"qleancol");
     head[8..12].copy_from_slice(&[OWN_VERSION, code, attr, kind]);
     head[12..14].copy_from_slice(&(np as u16).to_le_bytes());
