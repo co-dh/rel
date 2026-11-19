@@ -89,10 +89,10 @@ inductive Tm : Obj → Obj → Type where
   /-- `μX : φ`: rounds of `body` from `𝟘` up to the least fixed point, at most `cap`; `what` names the `μ` in the
       failure a run that reaches `cap` first reports. -/
   | mu {A B : Obj} (k : Nat) (what : String) (cap : Nat) (body : Tm A B) : Tm A B
-  /-- `hylo(c, S)` = `μX : c G(X) S`, `X` the variable `k`, on the keys in demand: bottom-up over the nodes `ch`
-      (`c` then `G`'s membership) reaches from them, each node's value `body` run once its children have theirs;
-      `what` names the coalgebra `c`, where the failure a cycle of `ch` reports is. -/
-  | hylo {A B : Obj} (k : Nat) (what : String) (ch : Tm A A) (body : Tm A B) : Tm A B
+  /-- `hylo(c, S)` = `μX : c G(X) S`, `X` the variable `k`, on the keys in demand: bottom-up over the nodes the
+      children `body.kids k` (`c` then `G`'s membership) reach from them, each node's value `body` run once its
+      children have theirs; `what` names the coalgebra `c`, where the failure a cycle of the children reports is. -/
+  | hylo {A B : Obj} (k : Nat) (what : String) (body : Tm A B) : Tm A B
 
 /-- A built term with its objects. -/
 abbrev Res := (A : Obj) × (B : Obj) × Tm A B
@@ -146,7 +146,7 @@ def Tm.mapM {m : Type → Type} [Monad m] (f : {A B : Obj} → Tm A B → m (Tm 
   | _, _, .arg g x => return .arg (← f g) (← f x)
   | _, _, .nu k S b => return .nu k (← f S) (← f b)
   | _, _, .mu k w n b => return .mu k w n (← f b)
-  | _, _, .hylo k w ch b => return .hylo k w (← f ch) (← f b)
+  | _, _, .hylo k w b => return .hylo k w (← f b)
   | _, _, t => pure t
 
 /-- The parts of `t`, in `Tm.mapM`'s order. -/
@@ -186,7 +186,7 @@ def Tm.fv : {A B : Obj} → Tm A B → List Nat
   | _, _, .arg g x => g.fv ++ x.fv
   | _, _, .nu k S b => S.fv ++ b.fv.filter (· != k)
   | _, _, .mu k _ _ b => b.fv.filter (· != k)
-  | _, _, .hylo k _ ch b => ch.fv ++ b.fv.filter (· != k)
+  | _, _, .hylo k _ b => b.fv.filter (· != k)
   -- every leaf listed: a wildcard makes the equation lemmas of this 40-constructor family slow to build
   | _, _, .val _ | _, _, .uni _ | _, _, .zero | _, _, .id | _, _, .outl | _, _, .outr
   | _, _, .nil | _, _, .prim _ | _, _, .atPos _ | _, _, .share .. | _, _, .call .. => []
@@ -247,8 +247,8 @@ def Tm.subst : Tm.Sub → {A B : Obj} → Tm A B → Tm A B
     .nu (fresh (b.fv ++ σ.fvs)) (S.subst σ) (b.subst ((k, ⟨A, B, .var false (fresh (b.fv ++ σ.fvs))⟩) :: σ))
   | σ, A, B, .mu k w n b =>
     .mu (fresh (b.fv ++ σ.fvs)) w n (b.subst ((k, ⟨A, B, .var false (fresh (b.fv ++ σ.fvs))⟩) :: σ))
-  | σ, A, B, .hylo k w ch b =>
-    .hylo (fresh (b.fv ++ σ.fvs)) w (ch.subst σ) (b.subst ((k, ⟨A, B, .var false (fresh (b.fv ++ σ.fvs))⟩) :: σ))
+  | σ, A, B, .hylo k w b =>
+    .hylo (fresh (b.fv ++ σ.fvs)) w (b.subst ((k, ⟨A, B, .var false (fresh (b.fv ++ σ.fvs))⟩) :: σ))
   | _, _, _, .val R => .val R
   | _, _, _, .uni U => .uni U
   | _, _, _, .zero => .zero
@@ -285,7 +285,7 @@ def Tm.pol (s : Bool) (k : Nat) : {A B : Obj} → Tm A B → Bool
   | _, _, .own R => R.pol s k
   | _, _, .nu j S b => S.pol s k && (j == k || b.pol s k)
   | _, _, .mu j _ _ b => j == k || b.pol s k
-  | _, _, .hylo j _ _ b => j == k || b.pol s k
+  | _, _, .hylo j _ b => j == k || b.pol s k
   | _, _, .est Q => Q.pol s k
   | _, _, .succ U | _, _, .arith _ U | _, _, .leq U | _, _, .lt U => U.pol s k
   | _, _, .foldr e S | _, _, .fold e S | _, _, .foldI e S => e.pol s k && S.pol s k
@@ -294,5 +294,48 @@ def Tm.pol (s : Bool) (k : Nat) : {A B : Obj} → Tm A B → Bool
   | _, _, t@(.lam _) | _, _, t@(.E _) | _, _, t@(.thin _) | _, _, t@(.arg ..) => !t.fv.contains k
   | _, _, .val _ | _, _, .uni _ | _, _, .zero | _, _, .id | _, _, .outl | _, _, .outr
   | _, _, .nil | _, _, .prim _ | _, _, .atPos _ | _, _, .share .. | _, _, .call .. => true
+
+/-! ### The children of a recursion -/
+
+/-- One per node, a `prim` one whatever its row: `kids` puts `memRow` for `mapRow`, and must not grow a term
+    (`size_kids`), since `Tm.gen` recurses into `kids` of a `hylo`'s body. -/
+def Tm.size : {A B : Obj} → Tm A B → Nat
+  | _, _, .top R | _, _, .conv R | _, _, .dom R | _, _, .ran R | _, _, .lam R | _, _, .E R | _, _, .est R
+  | _, _, .thin R | _, _, .own R | _, _, .succ R | _, _, .arith _ R | _, _, .leq R | _, _, .lt R | _, _, .flat R
+  | _, _, .share _ R | _, _, .mu _ _ _ R | _, _, .hylo _ _ R => R.size + 1
+  | _, _, .comp R S | _, _, .meet R S | _, _, .join R S | _, _, .diff R S | _, _, .pair R S | _, _, .prod R S
+  | _, _, .junc R S | _, _, .juncD R S | _, _, .foldr R S | _, _, .fold R S | _, _, .foldI R S | _, _, .arg R S
+  | _, _, .nu _ R S => R.size + S.size + 1
+  | _, _, .ldiv R S U V | _, _, .rdiv R S U V => R.size + S.size + U.size + V.size + 1
+  | _, _, .val _ | _, _, .uni _ | _, _, .zero | _, _, .id | _, _, .outl | _, _, .outr | _, _, .nil | _, _, .prim _
+  | _, _, .atPos _ | _, _, .var .. | _, _, .call .. => 1
+
+/-- The children `t` reads the variable `k : A ⟶ _` at: from `t`'s source to the nodes of `A` (`Tm.den_local`);
+    `𝟘` where `t` does not mention `k`, `none` where it reads `k` in a shape no relation bounds. The shapes are
+    those `hyloG` builds `G(X)` from: the place, `⟨ , ⟩`, `[ , ]`, `F`, a part composed with a closed one. -/
+def Tm.kids (k : Nat) (A : Obj) {C D : Obj} (t : Tm C D) : Option (Tm C A) :=
+  if t.fv.contains k then
+    match C, D, t with
+    | C, _, .var _ _ => if h : C = A then some (h ▸ .id) else some .zero
+    | _, _, .comp R S =>
+      if !S.fv.contains k then R.kids k A
+      else if R.fv.contains k then none
+      else match S.kids k A with | some s => some (.comp R s) | none => none
+    | _, _, .meet R S | _, _, .join R S | _, _, .pair R S => match R.kids k A, S.kids k A with
+      | some r, some s => some (.join r s) | _, _ => none
+    | _, _, .junc R S | _, _, .juncD R S => match R.kids k A, S.kids k A with
+      | some r, some s => some (.junc r s) | _, _ => none
+    | _, _, .dom R | _, _, .own R => R.kids k A
+    -- `F(x)` reads `X` at the children of the members
+    | _, _, .arg (.prim r) x =>
+      if r.sym == mapRow.sym then match x.kids k A with | some s => some (.comp (.prim memRow) s) | none => none
+      else none
+    | _, _, _ => none
+  else some .zero
+
+theorem Tm.size_kids (k : Nat) (A : Obj) {C D : Obj} (t : Tm C D) : ((t.kids k A).getD .zero).size ≤ t.size := by
+  induction t
+  case arg f x _ _ => cases f <;> unfold Tm.kids <;> (try dsimp only) <;> (repeat' split) <;> simp_all [Tm.size] <;> omega
+  all_goals unfold Tm.kids <;> (try dsimp only) <;> (repeat' split) <;> (try subst_vars) <;> simp_all [Tm.size] <;> omega
 
 end Rel.Lang

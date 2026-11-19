@@ -172,7 +172,7 @@ def Tm.gap : {A B : Obj} → Tm A B → Option String
     if b.pol true k then b.gap else some s!"μ: the body is not positive in its variable {k} (D8 = R, §7.3)"
   | _, _, .nu k S b =>
     if b.pol true k then S.gap <|> b.gap else some s!"ν: the body is not positive in its variable {k} (D8 = R, §7.3)"
-  -- `share` is a part computed once and reused (numbered by `Expand.number`, its code memoised by `Out.memo`, left
+  -- `share` is a part computed once and reused (numbered by `Expand.number`, its code built once by `Expand.code`, left
   -- alone by `Tm.subst`), so the part must be closed: the meaning reads `Val.empty` and a part with a free variable
   -- is the code's fault, recomputed under each binding, never a meaning that should read `ρ`
   | _, _, .share _ R => if R.fv.isEmpty then R.gap else some "share: its part is not closed"

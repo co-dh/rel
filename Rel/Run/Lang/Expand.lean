@@ -516,8 +516,8 @@ open Lean Meta
 /-- The `μ`s in `t`, each as the failure it reports when its rounds reach the cap. -/
 partial def mus : {A B : Obj} → Tm A B → List String
   | _, _, .mu _ w n b => s!"{w} ran its cap of {n} rounds without reaching a fixed point" :: mus b
-  | _, _, .hylo _ w ch b =>
-    s!"{w} reaches a node from itself, so it is not well-founded there" :: mus ch ++ mus b
+  | _, _, .hylo _ w b =>
+    s!"{w} reaches a node from itself, so it is not well-founded there" :: mus b
   | _, _, t => t.parts.flatMap fun ⟨_, _, c⟩ => mus c
 
 /-- A term that needs no keys and reads no fixed-point variable: computed once, its own constant (`share`). -/
@@ -731,7 +731,7 @@ partial def node (pre : Name) (ρ : List (Nat × Lean.Expr)) {A B : Obj} (t : Tm
       return g ``Gen.nuAC #[oE A, oE B, ← c S, ← arc a, ← mkListLit arcTy (← as.mapM arc)]
     | _ => return g ``Gen.nu #[oE A, oE B, ← c S, ← body pre ρ A B k b]
   | A, B, .mu k _ n b => return g ``Gen.mu #[oE A, oE B, toExpr n, ← body pre ρ A B k b]
-  | A, B, .hylo k _ ch b =>
+  | A, B, .hylo k _ b => let ch := (b.kids k A).getD .zero
     return g ``Gen.hylo #[oE A, oE B, bE ch.dem, bE b.dem, ← c ch, ← body pre ρ A B k b]
   | .sum A B, C, .juncD R S => return g ``Gen.juncD #[oE A, oE B, oE C, bE R.dem, bE S.dem, ← c R, ← c S]
   | A, B, t@(.prim _) | A, B, t@(.arg ..) => match primOf t with

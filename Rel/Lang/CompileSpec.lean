@@ -296,13 +296,6 @@ def Out.Sound {A B : Obj} {d : Bool} (o : Out d A B) (T : Den A B) (Ta : List Se
   Gen.Sound o.fn T ∧ PSound o.pl T ∧ ∀ r cs, o.row = some (r, cs) → ∀ cs' ss, Code.Sounds cs' ss →
     ∀ f, r.run A B (cs ++ cs') = some f → Gen.Sound f (Ta ss)
 
-/-- `Out.memo` is the identity: a closed node's plan is a function of `()` alone. -/
-theorem Out.memo_eq {A B : Obj} : ∀ {d : Bool} (o : Out d A B), o.memo = o
-  | false, _ => rfl
-  | true, _ => rfl
-
-theorem Out.Sound.memo {A B : Obj} {d : Bool} {o : Out d A B} {T : Den A B} {Ta : List Sem → Den A B}
-    (h : o.Sound T Ta) : o.memo.Sound T Ta := by rw [Out.memo_eq]; exact h
 
 /-- A node that is no row's spine. -/
 theorem Out.Sound.node {A B : Obj} {d : Bool} {o : Out d A B} {T : Den A B} {Ta : List Sem → Den A B}
@@ -323,108 +316,108 @@ theorem compile_sound {A B : Obj} (t : Tm A B) (hg : t.gap = none) (η : CodeEnv
   -- a `μ`/`ν` round's table, bound as the closed code `Tm.gen` binds it to
   have htab {A B : Obj} (X : CRel A B) : Code.Sound ⟨A, B, false, .tab X⟩ ⟨A, B, rep X.rel⟩ :=
     fun _ _ _ _ h => by cases h; exact ⟨_, rfl, const_sound fun _ => rfl⟩
-  induction t generalizing η ρ with
-  | val R => exact Out.Sound.memo (Out.Sound.leaf (val_sound (R, true)))
-  | uni U => exact Out.Sound.memo (Out.Sound.leaf (uni_sound (U, true)))
-  | zero => exact Out.Sound.memo (Out.Sound.leaf zero_sound)
-  | id => exact Out.Sound.memo (Out.Sound.leaf id_sound)
-  | outl => exact Out.Sound.memo (Out.Sound.leaf outl_sound)
-  | outr => exact Out.Sound.memo (Out.Sound.leaf outr_sound)
-  | nil => exact Out.Sound.memo (Out.Sound.leaf nil_sound)
-  | atPos k => exact Out.Sound.memo (Out.Sound.leaf (atPos_sound k))
-  | top V ih => exact Out.Sound.memo (Out.Sound.leaf (top_sound (ih hg η ρ hη).1))
-  | conv R ih =>
-    have i := ih hg η ρ hη
-    exact Out.Sound.memo (.node (conv_sound i.1) (pconv_sound i.2.1) rfl)
-  | dom R ih => exact Out.Sound.memo (Out.Sound.leaf (dom_sound (ih hg η ρ hη).1))
-  | ran R ih => exact Out.Sound.memo (Out.Sound.leaf (ran_sound (ih hg η ρ hη).1))
-  | est Q ih => exact Out.Sound.memo (Out.Sound.leaf (est_sound (ih hg η ρ hη).1))
-  | succ U ih => exact Out.Sound.memo (Out.Sound.leaf (succ_sound (ih hg η ρ hη).1))
-  | arith k U ih => exact Out.Sound.memo (Out.Sound.leaf (arith_sound k (ih hg η ρ hη).1))
-  | leq U ih => exact Out.Sound.memo (Out.Sound.leaf (leq_sound (ih hg η ρ hη).1))
-  | lt U ih => exact Out.Sound.memo (Out.Sound.leaf (lt_sound (ih hg η ρ hη).1))
-  | flat R ih => exact Out.Sound.memo (Out.Sound.leaf (flat_sound (ih hg η ρ hη).1))
-  | comp R S ihR ihS =>
+  match A, B, t, hg with
+  | _, _, .val R, hg => rw [Tm.gen]; exact (Out.Sound.leaf (val_sound (R, true)))
+  | _, _, .uni U, hg => rw [Tm.gen]; exact (Out.Sound.leaf (uni_sound (U, true)))
+  | _, _, .zero, hg => rw [Tm.gen]; exact (Out.Sound.leaf zero_sound)
+  | _, _, .id, hg => rw [Tm.gen]; exact (Out.Sound.leaf id_sound)
+  | _, _, .outl, hg => rw [Tm.gen]; exact (Out.Sound.leaf outl_sound)
+  | _, _, .outr, hg => rw [Tm.gen]; exact (Out.Sound.leaf outr_sound)
+  | _, _, .nil, hg => rw [Tm.gen]; exact (Out.Sound.leaf nil_sound)
+  | _, _, .atPos k, hg => rw [Tm.gen]; exact (Out.Sound.leaf (atPos_sound k))
+  | _, _, .top V, hg => rw [Tm.gen]; exact (Out.Sound.leaf (top_sound (compile_sound V hg η ρ hη).1))
+  | _, _, .conv R, hg =>
+    have i := compile_sound R hg η ρ hη
+    rw [Tm.gen]; exact (.node (conv_sound i.1) (pconv_sound i.2.1) rfl)
+  | _, _, .dom R, hg => rw [Tm.gen]; exact (Out.Sound.leaf (dom_sound (compile_sound R hg η ρ hη).1))
+  | _, _, .ran R, hg => rw [Tm.gen]; exact (Out.Sound.leaf (ran_sound (compile_sound R hg η ρ hη).1))
+  | _, _, .est Q, hg => rw [Tm.gen]; exact (Out.Sound.leaf (est_sound (compile_sound Q hg η ρ hη).1))
+  | _, _, .succ U, hg => rw [Tm.gen]; exact (Out.Sound.leaf (succ_sound (compile_sound U hg η ρ hη).1))
+  | _, _, .arith k U, hg => rw [Tm.gen]; exact (Out.Sound.leaf (arith_sound k (compile_sound U hg η ρ hη).1))
+  | _, _, .leq U, hg => rw [Tm.gen]; exact (Out.Sound.leaf (leq_sound (compile_sound U hg η ρ hη).1))
+  | _, _, .lt U, hg => rw [Tm.gen]; exact (Out.Sound.leaf (lt_sound (compile_sound U hg η ρ hη).1))
+  | _, _, .flat R, hg => rw [Tm.gen]; exact (Out.Sound.leaf (flat_sound (compile_sound R hg η ρ hη).1))
+  | _, _, .comp R S, hg =>
     obtain ⟨hR, hS⟩ := gap_or hg
-    have iR := ihR hR η ρ hη; have iS := ihS hS η ρ hη
-    dsimp only [Tm.gen, Tm.dem]; revert iR; generalize R.gen η = r; generalize R.dem = d at r ⊢
+    have iR := compile_sound R hR η ρ hη; have iS := compile_sound S hS η ρ hη
+    rw [Tm.gen]; dsimp only [Tm.dem]; revert iR; generalize R.gen η = r; generalize R.dem = d at r ⊢
     cases d <;> intro iR
-    · exact Out.Sound.memo (.node (compB_sound iR.2.1 iS.2.1) (pcomp_sound iR.2.1 iS.2.1) rfl)
-    · exact Out.Sound.memo (.node (comp_sound iR.1 iS.1) (pcomp_sound iR.2.1 iS.2.1) rfl)
-  | meet R S ihR ihS =>
+    · exact (.node (compB_sound iR.2.1 iS.2.1) (pcomp_sound iR.2.1 iS.2.1) rfl)
+    · exact (.node (comp_sound iR.1 iS.1) (pcomp_sound iR.2.1 iS.2.1) rfl)
+  | _, _, .meet R S, hg =>
     obtain ⟨hR, hS⟩ := gap_or hg
-    have iR := ihR hR η ρ hη; have iS := ihS hS η ρ hη
-    dsimp only [Tm.gen, Tm.dem]; revert iR iS; generalize R.gen η = r; generalize S.gen η = s
+    have iR := compile_sound R hR η ρ hη; have iS := compile_sound S hS η ρ hη
+    rw [Tm.gen]; dsimp only [Tm.dem]; revert iR iS; generalize R.gen η = r; generalize S.gen η = s
     generalize R.dem = d at r ⊢; generalize S.dem = e at s ⊢
     cases d <;> cases e <;> intro iR iS <;> first
-      | exact Out.Sound.memo (.node (meetB_sound iR.2.1 iS.2.1) (pmeet_sound iR.2.1 iS.2.1) rfl)
-      | exact Out.Sound.memo (.node (meet_sound iR.1 iS.1) (pmeet_sound iR.2.1 iS.2.1) rfl)
-  | join R S ihR ihS =>
+      | exact (.node (meetB_sound iR.2.1 iS.2.1) (pmeet_sound iR.2.1 iS.2.1) rfl)
+      | exact (.node (meet_sound iR.1 iS.1) (pmeet_sound iR.2.1 iS.2.1) rfl)
+  | _, _, .join R S, hg =>
     obtain ⟨hR, hS⟩ := gap_or hg
-    have iR := ihR hR η ρ hη; have iS := ihS hS η ρ hη
-    exact Out.Sound.memo (.node (join_sound iR.1 iS.1) (pjoin_sound iR.2.1 iS.2.1) rfl)
-  | diff R S ihR ihS =>
+    have iR := compile_sound R hR η ρ hη; have iS := compile_sound S hS η ρ hη
+    rw [Tm.gen]; exact (.node (join_sound iR.1 iS.1) (pjoin_sound iR.2.1 iS.2.1) rfl)
+  | _, _, .diff R S, hg =>
     obtain ⟨hR, hS⟩ := gap_or hg
-    have iR := ihR hR η ρ hη; have iS := ihS hS η ρ hη
-    dsimp only [Tm.gen, Tm.dem]; revert iR iS; generalize R.gen η = r; generalize S.gen η = s
+    have iR := compile_sound R hR η ρ hη; have iS := compile_sound S hS η ρ hη
+    rw [Tm.gen]; dsimp only [Tm.dem]; revert iR iS; generalize R.gen η = r; generalize S.gen η = s
     generalize R.dem = d at r ⊢; generalize S.dem = e at s ⊢
     cases d <;> cases e <;> intro iR iS <;> first
-      | exact Out.Sound.memo (.node (diffB_sound iR.2.1 iS.2.1) (pdiff_sound iR.2.1 iS.2.1) rfl)
-      | exact Out.Sound.memo (.node (diff_sound iR.1 iS.1) (pdiff_sound iR.2.1 iS.2.1) rfl)
-  | pair R S ihR ihS =>
+      | exact (.node (diffB_sound iR.2.1 iS.2.1) (pdiff_sound iR.2.1 iS.2.1) rfl)
+      | exact (.node (diff_sound iR.1 iS.1) (pdiff_sound iR.2.1 iS.2.1) rfl)
+  | _, _, .pair R S, hg =>
     obtain ⟨hR, hS⟩ := gap_or hg
-    exact Out.Sound.memo (Out.Sound.leaf (pair_sound (ihR hR η ρ hη).1 (ihS hS η ρ hη).1))
-  | prod R S ihR ihS =>
+    rw [Tm.gen]; exact (Out.Sound.leaf (pair_sound (compile_sound R hR η ρ hη).1 (compile_sound S hS η ρ hη).1))
+  | _, _, .prod R S, hg =>
     obtain ⟨hR, hS⟩ := gap_or hg
-    exact Out.Sound.memo (Out.Sound.leaf (prod_sound (ihR hR η ρ hη).1 (ihS hS η ρ hη).1))
-  | junc R S ihR ihS =>
+    rw [Tm.gen]; exact (Out.Sound.leaf (prod_sound (compile_sound R hR η ρ hη).1 (compile_sound S hS η ρ hη).1))
+  | _, _, .junc R S, hg =>
     obtain ⟨hR, hS⟩ := gap_or hg
-    exact Out.Sound.memo (Out.Sound.leaf (junc_sound (ihR hR η ρ hη).1 (ihS hS η ρ hη).1))
-  | foldr e S ihe ihS =>
+    rw [Tm.gen]; exact (Out.Sound.leaf (junc_sound (compile_sound R hR η ρ hη).1 (compile_sound S hS η ρ hη).1))
+  | _, _, .foldr e S, hg =>
     obtain ⟨he, hS⟩ := gap_or hg
-    exact Out.Sound.memo (Out.Sound.leaf (foldr_sound (ihe he η ρ hη).1 (ihS hS η ρ hη).1))
-  | fold e S ihe ihS =>
+    rw [Tm.gen]; exact (Out.Sound.leaf (foldr_sound (compile_sound e he η ρ hη).1 (compile_sound S hS η ρ hη).1))
+  | _, _, .fold e S, hg =>
     obtain ⟨he, hS⟩ := gap_or hg
-    exact Out.Sound.memo (Out.Sound.leaf (fold_sound (ihe he η ρ hη).1 (ihS hS η ρ hη).1))
-  | foldI e S ihe ihS =>
+    rw [Tm.gen]; exact (Out.Sound.leaf (fold_sound (compile_sound e he η ρ hη).1 (compile_sound S hS η ρ hη).1))
+  | _, _, .foldI e S, hg =>
     obtain ⟨he, hS⟩ := gap_or hg
-    exact Out.Sound.memo (Out.Sound.leaf (foldI_sound (ihe he η ρ hη).1 (ihS hS η ρ hη).1))
-  | ldiv R S U V ihR ihS ihU ihV =>
+    rw [Tm.gen]; exact (Out.Sound.leaf (foldI_sound (compile_sound e he η ρ hη).1 (compile_sound S hS η ρ hη).1))
+  | _, _, .ldiv R S U V, hg =>
     obtain ⟨hR, h⟩ := gap_or hg; obtain ⟨hS, h⟩ := gap_or h; obtain ⟨hU, hV⟩ := gap_or h
-    have iR := ihR hR η ρ hη; have iS := ihS hS η ρ hη; have iU := ihU hU η ρ hη; have iV := ihV hV η ρ hη
-    exact Out.Sound.memo (.node (ldivB_sound iR.2.1 iS.2.1 iU.1 iV.1) (pldiv_sound iR.2.1 iS.2.1 iU.1 iV.1) rfl)
-  | rdiv R S U V ihR ihS ihU ihV =>
+    have iR := compile_sound R hR η ρ hη; have iS := compile_sound S hS η ρ hη; have iU := compile_sound U hU η ρ hη; have iV := compile_sound V hV η ρ hη
+    rw [Tm.gen]; exact (.node (ldivB_sound iR.2.1 iS.2.1 iU.1 iV.1) (pldiv_sound iR.2.1 iS.2.1 iU.1 iV.1) rfl)
+  | _, _, .rdiv R S U V, hg =>
     obtain ⟨hR, h⟩ := gap_or hg; obtain ⟨hS, h⟩ := gap_or h; obtain ⟨hU, hV⟩ := gap_or h
-    exact Out.Sound.memo (Out.Sound.leaf
-      (rdiv_sound (ihR hR η ρ hη).1 (ihS hS η ρ hη).1 (ihU hU η ρ hη).1 (ihV hV η ρ hη).1))
-  | var _ k => exact Out.Sound.memo (.node (ofPl_sound (hη k _ _)) (hη k _ _) rfl)
-  | own R ih => exact Out.Sound.memo (ih hg η ρ hη)
-  | share k R ih =>
+    rw [Tm.gen]; exact (Out.Sound.leaf
+      (rdiv_sound (compile_sound R hR η ρ hη).1 (compile_sound S hS η ρ hη).1 (compile_sound U hU η ρ hη).1 (compile_sound V hV η ρ hη).1))
+  | _, _, .var _ k, hg => rw [Tm.gen]; exact (.node (ofPl_sound (hη k _ _)) (hη k _ _) rfl)
+  | _, _, .own R, hg => rw [Tm.gen]; exact (compile_sound R hg η ρ hη)
+  | _, _, .share k R, hg =>
     simp only [Tm.gap] at hg
     split at hg
     · rename_i hc
       have e := R.den_congr ρ Val.empty fun i hi => by simp [List.isEmpty_iff.1 hc] at hi
-      have i := ih hg η ρ hη
+      have i := compile_sound R hg η ρ hη
       rw [e.1, funext e.2] at i
-      exact Out.Sound.memo i
+      rw [Tm.gen]; exact i
     · cases hg
-  | mu k w cap b ih =>
+  | _, _, .mu k w cap b, hg =>
     simp only [Tm.gap] at hg
     split at hg
     · rename_i hp
-      exact Out.Sound.memo (Out.Sound.leaf (mu_sound (fun X Y h => Tm.den_mono hp h)
-        fun X _ => (ih hg _ _ (hη.bindCode k (htab X))).1))
+      rw [Tm.gen]; exact (Out.Sound.leaf (mu_sound (fun X Y h => Tm.den_mono hp h)
+        fun X _ => (compile_sound b hg _ _ (hη.bindCode k (htab X))).1))
     · cases hg
-  | @prim A' B' r =>
+  | _, _, .prim (A := A') (B := B') r, hg =>
     have hr : r.ok A' B' = true := by simpa [Tm.gap] using hg
-    refine Out.Sound.memo ⟨Prim.fn_sound (fun f hf => Prim.run_sound (cs := []) (ss := []) hr trivial hf) true,
+    rw [Tm.gen]; refine ⟨Prim.fn_sound (fun f hf => Prim.run_sound (cs := []) (ss := []) hr trivial hf) true,
       pleaf_sound (Prim.fn_sound (fun f hf => Prim.run_sound (cs := []) (ss := []) hr trivial hf) true), ?_⟩
     intro r' cs e; cases e
     exact fun cs' ss hs f hf => Prim.run_sound hr hs hf
-  | @arg A' B' C D f x ihf ihx =>
+  | _, _, .arg (A := A') (B := B') (C := C) (D := D) f x, hg =>
     obtain ⟨hf, hx⟩ := gap_or hg
-    have i := ihf hf η ρ hη; have ix := ihx hx η ρ hη
-    refine Out.Sound.memo ?_
+    have i := compile_sound f hf η ρ hη; have ix := compile_sound x hx η ρ hη
+    rw [Tm.gen]
     dsimp only
     cases hrow : (f.gen η).row with
     | none => exact Out.Sound.leaf none'_sound
@@ -440,41 +433,43 @@ theorem compile_sound {A B : Obj} (t : Tm A B) (hg : t.gap = none) (η : CodeEnv
       refine ⟨Prim.fn_sound (fun g hg => inv [] [] trivial g (by simpa using hg)) f.dem,
         pleaf_sound (Prim.fn_sound (fun g hg => inv [] [] trivial g (by simpa using hg)) f.dem), ?_⟩
       intro r' cs' e'; cases e'; exact inv
-  | nu k S b ihS ih =>
+  | _, _, .nu k S b, hg =>
     simp only [Tm.gap] at hg
     split at hg
     · rename_i hp
       obtain ⟨hS, hb⟩ := gap_or hg
-      exact Out.Sound.memo (Out.Sound.leaf (nu_sound (ihS hS η ρ hη).1 (fun X Y h => Tm.den_mono hp h)
-        fun X _ => (ih hb _ _ (hη.bindCode k (htab X))).1))
+      rw [Tm.gen]; exact (Out.Sound.leaf (nu_sound (compile_sound S hS η ρ hη).1 (fun X Y h => Tm.den_mono hp h)
+        fun X _ => (compile_sound b hb _ _ (hη.bindCode k (htab X))).1))
     · cases hg
-  | juncD R S ihR ihS =>
+  | _, _, .juncD R S, hg =>
     obtain ⟨hR, hS⟩ := gap_or hg
-    exact Out.Sound.memo (Out.Sound.leaf (juncD_sound (ihR hR η ρ hη).1 (ihS hS η ρ hη).1))
-  | @lam A' B' R ih =>
+    rw [Tm.gen]; exact (Out.Sound.leaf (juncD_sound (compile_sound R hR η ρ hη).1 (compile_sound S hS η ρ hη).1))
+  | _, _, .lam (A := A') (B := B') R, hg =>
     simp only [Tm.gap] at hg
     split at hg
     · rename_i hc
       obtain ⟨ho, hi⟩ := Rep.canonical_spec B' hc
-      exact Out.Sound.memo (Out.Sound.leaf (lam_sound (ih hg η ρ hη).1 ho hi))
+      rw [Tm.gen]; exact (Out.Sound.leaf (lam_sound (compile_sound R hg η ρ hη).1 ho hi))
     · cases hg
-  | @E A' B' R ih =>
+  | _, _, .E (A := A') (B := B') R, hg =>
     simp only [Tm.gap] at hg
     split at hg
     · rename_i hc
       obtain ⟨ho, hi⟩ := Rep.canonical_spec B' hc
-      exact Out.Sound.memo (Out.Sound.leaf (E_sound (ih hg η ρ hη).1 ho hi))
+      rw [Tm.gen]; exact (Out.Sound.leaf (E_sound (compile_sound R hg η ρ hη).1 ho hi))
     · cases hg
-  | @thin B' Q ih =>
+  | _, _, .thin (B := B') Q, hg =>
     simp only [Tm.gap] at hg
     split at hg
     · rename_i hc
       simp only [Bool.and_eq_true] at hc
       obtain ⟨ho, hi⟩ := Rep.canonical_spec B' hc.1
-      exact Out.Sound.memo (Out.Sound.leaf (thin_sound (ih hg η ρ hη).1
+      rw [Tm.gen]; exact (Out.Sound.leaf (thin_sound (compile_sound Q hg η ρ hη).1
         (fun p p' h => eq_of_heq (Q.cor_den hc.2 ρ p p' h)) ho hi))
     · cases hg
-  | call | hylo => simp [Tm.gap] at hg
+  | _, _, .call .., hg | _, _, .hylo .., hg => simp [Tm.gap] at hg
+termination_by t.size
+decreasing_by all_goals simp only [Tm.size] at *; omega
 
 /-- The typed entry: `compile` with its soundness as the subtype's proof, on a term with no gap under an
     environment whose plans compute their variables' meanings. -/
