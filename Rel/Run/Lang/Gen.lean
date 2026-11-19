@@ -262,10 +262,13 @@ def foldI (I E V : Obj) (d d' : Bool) (e : Fn d I (.prod V V)) (S : Fn d' (.prod
   let D := idU X; let ro := ofC (ranC (Alg.outl D)); let es := onKeys e ro
   let res := CRel.ran es
   let iv := CRel.pair (CRel.dom es) (CRel.comp es (CRel.mk (Alg.outr res.rel) res.ok))
-  let r := CRel.num (some D) 0
+  -- `numC` uncanonicalised, as `foldByC`: `num`'s own rows are what `num_pickFits`, `num_fun` read
+  let r := CRel.mk (numC D 0).1 (numC D 0).2
   let ci := CRel.comp (CRel.mk (Alg.outl r.rel) r.ok) iv
   let G := ofC (foldRowsC true (Alg.outr r.rel) ci.rel
-    (demandStepC (fun el p => pairC p el) fun A => let s := onKeys S (some A); (s.rel, s.ok)))
+    (demandStepC (fun el p => pairC p el) fun A => let s := onKeys S (some A)
+      -- `S ∩ π₁π₁π₁°` (`foldIDen_eq`): `foldIDen` steps at the key's index only, and a `Tm` step may move it
+      let m := CRel.inter s (CRel.pair (some (Alg.outl (Alg.outl A))) (CRel.mk (Alg.outr s.rel) s.ok)); (m.rel, m.ok)))
   let rg := CRel.ran G
   also (ro.ok && ci.ok) (CRel.comp (CRel.mk r.rel° r.ok) (CRel.comp G (CRel.mk (Alg.outr rg.rel) rg.ok)))
 
@@ -299,10 +302,11 @@ def nuAC (V D : Obj) (S : Fn false V D) (a : Arc V D) (as : List (Arc V D)) : Fn
 def mu (A B : Obj) (cap : Nat) (φ : CRel A B → Fn false A B) : Fn false A B :=
   let r := CRel.fixOn cap (fun X => (φ X).run {}) (some Alg.zero); .tab (also (decide (r.2 < cap)) r.1)
 
-/-- `F` read only at the nodes `P`: a table composed after `P`, a lazy one run on their keys; not run on none. -/
+/-- `F` read only at the nodes `P`, `P ≫ F`: a table composed after `P`, a lazy one run on their keys and
+    composed after `P`, since a lazy `F` may answer off the keys it is given; not run on none. -/
 def onNodes {A B : Obj} (F : Rel A B) (P : CRel A A) : CRel A B := match F with
   | .tab f => if P.rel.n == 0 then CRel.mk Alg.zero P.ok else CRel.comp P f
-  | .lazy _ => also P.ok (onKeys F P)
+  | .lazy _ => also P.ok (CRel.comp P (onKeys F P))
 
 /-- `[R,S]` on the sum values in demand: `R` on the left values they hold, `S` on the right, joined with them. A
     demand row whose tag names a side with no values reads that side's `dflt` (`Vals.row`), a value the demand does

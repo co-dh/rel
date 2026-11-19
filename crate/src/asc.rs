@@ -63,7 +63,7 @@ impl<'a> Key<'a> {
         let (mn, mx) = kwin::range(SK_I64, &c);
         Key { c, w, float, signed, lo: (mn ^ 1 << 63) as i64, hi: (mx ^ 1 << 63) as i64 }
     }
-    fn code(&self, v: u64) -> u64 { ord_key(self.w, self.float, self.signed, v) }
+    pub(crate) fn code(&self, v: u64) -> u64 { ord_key(self.w, self.float, self.signed, v) }
     /// Every word lies where `ord_key` is `v + s` for one `s`: the type's signed range (`s` its sign bit), its unsigned
     /// range (`s = 0`), or for a float `0 ..= +inf` (`s` the sign bit). There the column's own order is its code order.
     fn linear(&self) -> bool {
@@ -73,12 +73,12 @@ impl<'a> Key<'a> {
         a <= self.lo as i128 && self.hi as i128 <= b
     }
     /// The least and greatest code: the bounds' codes where `linear`, else every code of the type's width.
-    fn span(&self) -> (u64, u64) {
+    pub(crate) fn span(&self) -> (u64, u64) {
         if self.linear() { (self.code(self.lo as u64), self.code(self.hi as u64)) }
         else { (0, if self.w == 8 { !0 } else { (1 << (8 * self.w)) - 1 }) }
     }
     /// The codes of rows `at .. at + out.len()`, the blocks they cross decoded into `buf` one at a time (S).
-    fn codes(&self, at: usize, out: &mut [u64], buf: &mut [u64]) {
+    pub(crate) fn codes(&self, at: usize, out: &mut [u64], buf: &mut [u64]) {
         let src = Blocks::from(self.c);
         let x = src.block(0, at, out.len(), 8, pod::bytes_mut(buf));
         let x = pod::cast::<u64>(x).expect("asc: a decoded block is misaligned");

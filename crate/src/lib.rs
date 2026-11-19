@@ -44,7 +44,7 @@ pub mod os;
 pub mod exports {
     pub mod asc;
     pub mod coc;
-    pub mod distinct;
+    pub mod seen;
     pub mod env;
     pub mod gather;
     pub mod group;
@@ -84,7 +84,7 @@ pub mod gather;
 /// cbindgen:ignore
 pub mod codec;
 /// cbindgen:ignore
-pub mod distinct;
+pub mod seen;
 /// cbindgen:ignore
 pub mod enc;
 /// cbindgen:ignore

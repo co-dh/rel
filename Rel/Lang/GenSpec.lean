@@ -481,7 +481,7 @@ theorem thinL_sound {B : Obj} {Q : Fn true (.prod B B) (.prod B B)} {TQ : Den (.
 
 /-- A round's pairs `K` have a row, so `onKeys` runs `S` on their values, where it agrees with `TS`. -/
 theorem onKeys_round {P V : Obj} {S : Rel P V} {TS : Den P V} (hS : Sound S TS) (K : CRel P P) (p w)
-    (hp : ∃ a, rep K.rel a p) (hc : ∀ a b, rep K.rel a b → a = b) (hok : (onKeys S K).ok = true) :
+    (hp : ∃ a, rep K.rel a p) (hok : (onKeys S K).ok = true) :
     rep (onKeys S K).rel p w ↔ TS p w := by
   obtain ⟨a, ha⟩ := hp
   have h0 : (K.rel.n == 0) = false := by
@@ -491,7 +491,7 @@ theorem onKeys_round {P V : Obj} {S : Rel P V} {TS : Den P V} (hS : Sound S TS) 
     · have : K.rel.n.toNat = 0 := by simp [beq_iff_eq.1 h]
       exact absurd j.2 (by omega)
   simp only [onKeys, h0, Bool.false_eq_true, if_false] at hok ⊢
-  exact hS.agree hok p w ((idU_holds K.rel.val p p).2 ⟨rfl, keyRow (hc a p ha ▸ ha)⟩) rfl
+  exact hS.agree hok p w ((idU_holds K.rel.val p p).2 ⟨rfl, (valRow K.rel p).2 ⟨a, ha⟩⟩) rfl
 
 /-- A step run on a round's coreflexive `D` of the pairs `S` (`onKeys`) computes `T` at those pairs: `D` has a
     row, so the step ran. -/
@@ -499,7 +499,7 @@ theorem onKeys_sound {A B : Obj} {F : Rel A B} {T : Den A B} (hF : Sound F T) (D
     (S : A.El → Prop) (hD : rep D = corefl (α := A.El) S) (hb : (onKeys F (some D)).ok = true) :
     ∀ x y, S x → (rep (onKeys F (some D)).rel x y ↔ T x y) := fun x y hx =>
   have hk : rep D x x := by rw [hD]; exact ⟨rfl, hx⟩
-  onKeys_round hF (some D) x y ⟨x, hk⟩ (fun a b h => (show corefl S a b by rw [← hD]; exact h).1) hb
+  onKeys_round hF (some D) x y ⟨x, hk⟩ hb
 
 /-- `loop(F)` folds the step `F` along each array from the left, from the seed. -/
 theorem loop_sound {X Y : Obj} {d : Bool} {F : Fn d (.prod X Y) X} {TF : Den (.prod X Y) X} (hF : Sound F TF) :
@@ -701,9 +701,9 @@ theorem foldr_sound {E V : Obj} {d : Bool} {e : Fn false V V} {S : Fn d (.prod E
   dsimp only at hb ⊢; obtain ⟨hb, e⟩ := also_ok_rel hb; rw [e]
   refine (CRel.rep_foldOn false pairC Prod.mk Rep.pairC_pt _ _ _ hb.2 _ rfl _ rfl _ (fun _ _ => rfl) _ (fun _ => rfl) _
     (fun _ => rfl) _ (fun _ => rfl) (fun _ => TS) ?_ xs w).trans ?_
-  · intro i _ _ hbi p w hp hc
+  · intro i _ _ hbi p w hp _
     simp only [demandStepC, Bool.and_eq_true] at hbi
-    exact onKeys_round hS _ p w hp hc hbi.1.2
+    exact onKeys_round hS _ p w hp hbi.1.2
   · exact and_congr_right fun _ => exists_congr fun ys => exists_congr fun hy => and_congr_left fun _ =>
       (valRow _ _).trans (by rw [he.run_eq hb.1]; exact Iff.rfl)
 
@@ -718,12 +718,159 @@ theorem fold_sound {E V : Obj} {d : Bool} {e : Fn false V V} {S : Fn d (.prod V 
       ⟨fun ⟨u, e, hu, he, hq⟩ => ⟨e, u, he, hu, hq⟩, fun ⟨e, u, he, hu, hq⟩ => ⟨u, e, hu, he, hq⟩⟩)
     _ _ _ hb.2 _ rfl _ rfl _ (fun _ _ => rfl) _ (fun _ => rfl) _ (fun _ => rfl) _ (fun _ => rfl) (fun _ => TS) ?_
     xs w).trans ?_
-  · intro i _ _ hbi p w hp hc
+  · intro i _ _ hbi p w hp _
     simp only [demandStepC, Bool.and_eq_true] at hbi
-    exact onKeys_round hS _ p w hp hc hbi.1.2
+    exact onKeys_round hS _ p w hp hbi.1.2
   · rw [foldDen_rev]; simp only [ordL, cond_true]
     exact and_congr_right fun _ => exists_congr fun ys => exists_congr fun hy => and_congr_left fun _ =>
       (valRow _ _).trans (by rw [he.run_eq hb.1])
+
+open Rel.Rep Rel.CRel Rel.Alg in
+/-- `foldI(e, S)`, the fused fold of a family: the row of `(i, xs)` in `num` is a fold on the carrier `I×V`
+    (`rep_foldRowsC_ids`), seeded `(i, b)` from `e` at `i`, its step `S ∩ π₁π₁π₁°` (`demandStep_round`), so the
+    chain stays at `i` and reads back as `foldIDen` (`foldDen_rev`). -/
+theorem foldI_sound {I E V : Obj} {d d' : Bool} {e : Fn d I (.prod V V)} {S : Fn d' (.prod (.prod I V) E) (.prod I V)}
+    {Te : Den I (.prod V V)} {TS : Den (.prod (.prod I V) E) (.prod I V)} (he : Sound e Te) (hS : Sound S TS) :
+    Sound (foldI I E V d d' e S) (foldIDen Te TS) := ofVals_sound fun X hb => idU_ext fun p w => by
+  -- the step met with `π₁π₁π₁°` computes `TS` at the round's pairs, keeping the index
+  have meet : ∀ (A : Tab (.prod (.prod I V) E) (.prod (.prod I V) E)), (∀ a b, rep A a b → a = b) →
+      ∀ p, (∃ a, rep A a p) → (CRel.inter (onKeys S (some A)) (CRel.pair (some (Alg.outl (Alg.outl A)))
+        (CRel.mk (Alg.outr (onKeys S (some A)).rel) (onKeys S (some A)).ok))).ok = true → ∀ w,
+      (rep (CRel.inter (onKeys S (some A)) (CRel.pair (some (Alg.outl (Alg.outl A)))
+        (CRel.mk (Alg.outr (onKeys S (some A)).rel) (onKeys S (some A)).ok))).rel p w ↔ TS p w ∧ w.1 = p.1.1) := by
+    intro A hc p ⟨a, ha⟩ hm w
+    have h1 := CRel.guard_ok_left hm; rw [Bool.and_eq_true] at h1
+    have h2 := CRel.guard_ok_left h1.2; rw [Bool.and_eq_true] at h2
+    rw [CRel.rep_inter _ _ hm, CRel.rep_pair _ _ h1.2, (CRel.mk_ok_rel h2.2).2, CRel.some_rel, rep_outl, rep_outl,
+      rep_outr, ← onKeys_round hS (some A) p w ⟨a, ha⟩ h1.1]
+    have hpp : rep A p p := hc a p ha ▸ ha
+    simp only [Core.Rel.inter, Core.Rel.rpair, Core.Rel.comp, Core.Rel.graph]
+    exact ⟨fun ⟨h, ⟨_, ⟨b, hb, rfl⟩, hw⟩, _⟩ => ⟨h, hc p b hb ▸ hw⟩,
+      fun ⟨h, hw⟩ => ⟨h, ⟨p.1, ⟨p, hpp, rfl⟩, hw⟩, w, h, rfl⟩⟩
+  dsimp only [foldI] at hb ⊢
+  generalize hD : idU X = D at hb ⊢
+  generalize hro : ofC (ranC (Alg.outl D)) = ro at hb ⊢
+  generalize hes : onKeys e ro = es at hb ⊢
+  generalize hN : numC D 0 = N at hb ⊢
+  generalize hci : CRel.comp (CRel.mk (Alg.outl (CRel.mk N.1 N.2).rel) (CRel.mk N.1 N.2).ok)
+    (CRel.pair (CRel.dom es) (CRel.comp es (CRel.mk (Alg.outr (CRel.ran es).rel) (CRel.ran es).ok))) = ci at hb ⊢
+  obtain ⟨⟨hb1, hb2⟩, hres⟩ := also_ok_rel hb
+  rw [hres]
+  rw [Bool.and_eq_true] at hb1
+  have hciok := hb1.2
+  rw [← hci] at hciok
+  have hc1 := CRel.guard_ok_left hciok; rw [Bool.and_eq_true] at hc1
+  have hN2 : N.2 = true := (CRel.mk_ok_rel (CRel.mk_ok_rel hc1.1).1).1
+  obtain ⟨N1, N2⟩ := N
+  dsimp only at hN2; subst hN2
+  have hmk : CRel.mk N1 true = some N1 := rfl
+  have hmk' : CRel.mk N1° (CRel.ok (some N1)) = some N1° := rfl
+  simp only [hmk, hmk', CRel.some_rel] at hb2 hci hciok ⊢
+  have h3 := CRel.guard_ok_left hb2; rw [Bool.and_eq_true] at h3
+  rw [CRel.rep_comp _ _ hb2, CRel.rep_comp _ _ h3.2]
+  have h4 := CRel.guard_ok_left h3.2; rw [Bool.and_eq_true] at h4
+  have hG := CRel.ofC_ok h4.1
+  rw [(CRel.mk_ok_rel h4.2).2, rep_outr, CRel.rep_ran _ (CRel.mk_ok_rel h4.2).1, CRel.rep_ofC h4.1, CRel.some_rel, rep_conv]
+  -- `N1` is `num D 0`, its bit `numC`'s
+  have hk := congrArg Prod.snd hN
+  simp only [numC, Bool.and_eq_true, decide_eq_true_eq] at hk
+  have hN1 : N1 = num D 0 := (congrArg Prod.fst hN).symm
+  subst hN1
+  have hv := pickFits_range _ D.val hk.2
+  have hfun : ∀ r y y', rep (Alg.outr (num D 0)) r y → rep (Alg.outr (num D 0)) r y' → y = y' := by
+    intro r y y' h h'
+    rw [rep_outr] at h h'
+    obtain ⟨b, hb, rfl⟩ := h; obtain ⟨b', hb', rfl⟩ := h'
+    rw [num_fun D 0 hk.1 hv r b b' hb hb']
+  have hTv : Vals.PickFits (.arr E) (Alg.outr (num D 0)).val (List.range (Alg.outr (num D 0)).n.toNat) := by
+    have h := num_pickFits D 0 hv; unfold Vals.PickFits at h; exact h.2
+  have row := rep_foldRowsC_ids true (Alg.outr (num D 0)) ci.rel _ hG.1 hTv hfun _ (fun _ _ => rfl)
+    (fun _ eu v => TS (eu.2, eu.1) v ∧ v.1 = eu.2.1) _ (fun _ => rfl) _ (fun _ => rfl) False
+    (fun i _ _ hbi r v => by
+      have hbi' := hbi
+      simp only [demandStepC, Bool.and_eq_true] at hbi'
+      refine (demandStep_round (fun el p => pairC p el) (fun e u => (u, e)) _ _ _ hbi
+        (fun h r q => (Rep.pairC_pt _ _ h r q).trans
+          ⟨fun ⟨u, e, hu, he, hq⟩ => ⟨e, u, he, hu, hq⟩, fun ⟨e, u, he, hu, hq⟩ => ⟨u, e, hu, he, hq⟩⟩)
+        _ rfl (fun p w => TS p w ∧ w.1 = p.1.1) (fun p w hp hc => meet _ hc p hp hbi'.1.2 w) r v).trans ?_
+      exact (or_iff_left fun h => h.1).symm)
+  subst hD
+  -- the seed of the row of `p`: `(p.1, b)`, `b` a value side of `e` at `p.1`
+  have seed : ∀ j, rep (num (idU X) 0) j p → ∀ c, rep ci.rel j c ↔ c.1 = p.1 ∧ ∃ a, Te p.1 (a, c.2) := by
+    intro j hj c
+    obtain ⟨i, -, hi⟩ := (rep_num _ 0 hk.1 hv j p).1 hj
+    have hpD : rep (idU X) p p := by rw [rep_idU]; exact ⟨rfl, i, hi⟩
+    have hro' := hb1.1; rw [← hro] at hro'
+    have hrr := (CRel.rep_ofC hro').trans (rep_ranC _ (CRel.ofC_ok hro').1); rw [hro] at hrr
+    have hpr : rep ro.rel p.1 p.1 := by
+      rw [hrr, rep_outl]; exact ⟨rfl, p, ⟨p, hpD, rfl⟩, ⟨p, hpD, rfl⟩⟩
+    have hc2 := CRel.guard_ok_left hciok; rw [Bool.and_eq_true] at hc2
+    have hc3 := CRel.guard_ok_left hc2.2; rw [Bool.and_eq_true] at hc3
+    have hc4 := CRel.guard_ok_left hc3.2; rw [Bool.and_eq_true] at hc4
+    have hTe := onKeys_round he ro p.1; rw [hes] at hTe
+    have hT := fun x => hTe x ⟨p.1, hpr⟩ hc4.1
+    rw [← hci, CRel.rep_comp _ _ hciok, CRel.rep_pair _ _ hc2.2, CRel.rep_dom _ hc3.1, CRel.rep_comp _ _ hc3.2,
+      (CRel.mk_ok_rel hc4.2).2, rep_outr, CRel.rep_ran _ (CRel.mk_ok_rel hc4.2).1, (CRel.mk_ok_rel hc2.1).2,
+      rep_outl]
+    simp only [Core.Rel.comp, Core.Rel.inter, Core.Rel.recip, Core.Rel.rpair, Core.Rel.graph, Core.Rel.id]
+    constructor
+    · rintro ⟨_, ⟨b, hb, rfl⟩, ⟨hbc, -⟩, x, hx, _, ⟨rfl, -⟩, hc2⟩
+      rw [num_fun _ 0 hk.1 hv j b p hb hj] at hbc hx
+      refine ⟨hbc.symm, x.1, ?_⟩
+      rw [hc2]; exact (hT x).1 hx
+    · rintro ⟨hc1, a, ha⟩
+      have hx := (hT (a, c.2)).2 ha
+      exact ⟨p.1, ⟨p, hj, rfl⟩, ⟨hc1.symm, _, hx, by rw [hc1]; exact hx⟩, _, hx, _, ⟨rfl, _, hx, hx⟩, rfl⟩
+  -- the chain read back at one index `i`: the step keeps it, so the chain is `ys` paired with `i`
+  have chain : ∀ (L : List E.El) (i : I.El) (w : V.El),
+      (∃ q : (Obj.prod I V).El, (∃ zs : List (Obj.prod I V).El, ∃ hz : zs.length = L.length + 1,
+        ((zs[L.length]'(by omega)).1 = i ∧ ∃ a, Te i (a, (zs[L.length]'(by omega)).2)) ∧
+        (∀ t (ht : t < L.length), TS (zs[t + 1]'(by omega), L[t]) (zs[t]'(by omega)) ∧
+          (zs[t]'(by omega)).1 = (zs[t + 1]'(by omega)).1) ∧ q = zs[0]'(by omega)) ∧ w = q.2) ↔
+      ∃ ys : List V.El, ∃ hy : ys.length = L.length + 1, (∃ a, Te i (a, ys[L.length]'(by omega))) ∧
+        (∀ t (ht : t < L.length), TS ((i, ys[t + 1]'(by omega)), L[t]) (i, ys[t]'(by omega))) ∧
+        w = ys[0]'(by omega) := by
+    intro L i w
+    constructor
+    · rintro ⟨_, ⟨zs, hz, ⟨hi, a, ha⟩, hS, rfl⟩, rfl⟩
+      have hidx : ∀ m t (ht : t < zs.length), zs.length - 1 - t = m → (zs[t]'ht).1 = i := by
+        intro m
+        induction m with
+        | zero => intro t ht hm; have : t = L.length := by omega
+                  subst this; exact hi
+        | succ m ih => intro t ht hm; exact (hS t (by omega)).2.trans (ih (t + 1) (by omega) (by omega))
+      have hx : ∀ t (ht : t < zs.length), zs[t]'ht = (i, (zs[t]'ht).2) := fun t ht => Prod.ext (hidx _ t ht rfl) rfl
+      refine ⟨zs.map Prod.snd, by simp [hz], ⟨a, by simpa using ha⟩, fun t ht => ?_, by simp⟩
+      have h := (hS t ht).1
+      rw [hx t (by omega), hx (t + 1) (by omega)] at h
+      simpa using h
+    · rintro ⟨ys, hy, ⟨a, ha⟩, hS, rfl⟩
+      exact ⟨(i, ys[0]'(by omega)), ⟨ys.map (i, ·), by simp [hy], ⟨by simp, a, by simpa using ha⟩,
+        fun t ht => ⟨by simpa using hS t ht, by simp⟩, by simp⟩, rfl⟩
+  have rowp : ∀ j, rep (num (idU X) 0) j p → ∀ q, rep (foldRowsC true (Alg.outr (num (idU X) 0)) ci.rel
+      (demandStepC (fun el p => pairC p el) fun A =>
+        ((CRel.inter (onKeys S (some A)) (CRel.pair (some (Alg.outl (Alg.outl A)))
+          (CRel.mk (Alg.outr (onKeys S (some A)).rel) (onKeys S (some A)).ok))).rel,
+         (CRel.inter (onKeys S (some A)) (CRel.pair (some (Alg.outl (Alg.outl A)))
+          (CRel.mk (Alg.outr (onKeys S (some A)).rel) (onKeys S (some A)).ok))).ok))).1 j q ↔
+      ∃ zs : List (Obj.prod I V).El, ∃ hz : zs.length = p.2.reverse.length + 1,
+        ((zs[p.2.reverse.length]'(by omega)).1 = p.1 ∧ ∃ a, Te p.1 (a, (zs[p.2.reverse.length]'(by omega)).2)) ∧
+        (∀ t (ht : t < p.2.reverse.length), TS (zs[t + 1]'(by omega), p.2.reverse[t]) (zs[t]'(by omega)) ∧
+          (zs[t]'(by omega)).1 = (zs[t + 1]'(by omega)).1) ∧ q = zs[0]'(by omega) := fun j hj q =>
+    (row j p.2 (by rw [rep_outr]; exact ⟨p, hj, rfl⟩) q).trans (by
+      simp only [ordL, cond_true]
+      exact exists_congr fun zs => exists_congr fun hz => and_congr_left fun _ => seed j hj _)
+  simp only [Core.Rel.comp, Core.Rel.inter, Core.Rel.recip, Core.Rel.graph, Core.Rel.id, foldIDen]
+  rw [foldDen_rev]
+  constructor
+  · rintro ⟨j, hj, q, hq, _, ⟨rfl, -⟩, rfl⟩
+    obtain ⟨i, -, hi⟩ := (rep_num _ 0 hk.1 hv j p).1 hj
+    exact ⟨⟨i, hi⟩, (chain p.2.reverse p.1 _).1 ⟨q, (rowp j hj q).1 hq, rfl⟩⟩
+  · rintro ⟨⟨i, hi⟩, h⟩
+    obtain ⟨q, hq, rfl⟩ := (chain _ _ _).2 h
+    have hj : rep (num (idU X) 0) (Int64.ofNat (USize.toNat 0 + i.1)) p := (rep_num _ 0 hk.1 hv _ p).2 ⟨i, rfl, hi⟩
+    have hF := (rowp _ hj q).2 hq
+    exact ⟨_, hj, q, hF, q, ⟨rfl, _, hF, hF⟩, rfl⟩
 
 open Rel.KernelWF Rel.Rep.FoldN Rel.Rep.OpsN Rel.Rep.Prim in
 /-- `est(Q)` keeps `b` of `xs` unless some other `c` of `xs` fails `Q` at `(b, c)`; `Q` runs on the pairs of

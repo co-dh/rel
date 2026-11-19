@@ -130,7 +130,7 @@ Rel 本身（`Obj`、`Tm`、kernel、编码、原子、`compile`）见 `rel-arch
 )
 
 - `where(P) : N ⟶ A`（有序对象 `A` 上的有限集合 ↦ 按顺序编号；即 q 的 `where`：`where 0 1 1 0 1` 是 `1 2 4`）是顺序进入的唯一位置（`CLAUDE.md`）。
-  `A = N` 时 `where(P) = (P ≫ cnt(P))°`；`A = K` 时是 canonical 约定（1.1）。
+  `A = N` 时定义见 3.1；`A = K` 时是 canonical 约定（1.1）。
 - *`N` 的元素是虚的。* frame 只有 `m`：位置不落盘。
 - *落盘（q / kdb 的方式）。* 目录 = 表；文件 = 列，是一个 mmap 的 `foR` `Enc`，没有序列化（`CLAUDE.md` 的 Goal）；
   `.d` 文件 = `Schema` 的列顺序；`sym` 列共用一个字典文件。
@@ -144,8 +144,8 @@ Rel 本身（`Obj`、`Tm`、kernel、编码、原子、`compile`）见 `rel-arch
 take(n)       = (<n) ≫ x                       hi := min(hi, lo+n)
 drop(n)       = (+n) ≫ x                       lo += n；长度 m ∸ n，因为 x 在 ≥ m 处无像
 range(a, b)   = (<b−a) ≫ (+a) ≫ x              takeLast(n) = drop(m ∸ n)    dropLast(n) = take(m ∸ n)
-cnt(P)        : N ⟶ N  = Λ(>ₙ ≫ P) ≫ size      P ⊑ (<m)：i 之前 P 中的位置个数
-where(P)       : N ⟶ N  = (P ≫ cnt(P))°         新位置 ↦ P 的第 i 个元素
+where(P)      : N ⟶ N                          (<size(P)) 到 P 的唯一单调双射：新位置 j ↦ P 的第 j 个元素
+                                               q：where m；实现：r[(sums m)-m] 处写入 i，一次 scan 加一次 scatter
 filter(p)     = where(dom(x ≫ p)) ≫ x
 σ = asc(x ≫ a)                                 (<m) 上的双射，按 ⟨x ≫ a, 𝟙⟩ 的字典序单调，所以唯一
 new(a)        = (<m) − dom(x ≫ a ∩ >ₙ ≫ x ≫ a)   没有更早的 j < i 与 i 的 a 相同：scan，carrier 是已见集合
