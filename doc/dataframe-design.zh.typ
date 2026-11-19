@@ -236,7 +236,7 @@ win(w)        = ≥ₙ ∩ <ₙ ≫ (+w)°                i ↦ i−w < j ≤ i 
   [`forward_fill`], [`c = μ c. W ≫ x ≫ v ∪ (dom(x) − W) ≫ (+1)° ≫ c`，`W = dom(x ≫ v ≫ inl°)`], [非 null 的行取自己的值，其余取前一行的结果],
   [`melt`], [`x ≫ ⟨! ≫ α, a⟩ ∪ (+m)° ≫ x ≫ ⟨! ≫ β, b⟩ : N ⟶ P×V`], [各列要同类型],
   [pivot（long）], [`groupBy(⟨k, q⟩)` + `aggregate`], [long 形式就是 key 为 `K×P` 的 frame],
-  [pivot（wide）], [`where(ran(x ≫ k)) ≫ ⟨𝟙, tot(⟨𝟙, ! ≫ α⟩ ≫ agg(f, (x ≫ ⟨k, q⟩)°, x ≫ v)), …⟩`], [每个声明的 `α ∈ P` 一列；只对声明的 `obj P = {α, β}` 可写（F1）],
+  [pivot（wide）], [`first(k) ≫ x ≫ k ≫ ⟨𝟙, tot(⟨𝟙, ! ≫ α⟩ ≫ agg(f, (x ≫ ⟨k, q⟩)°, x ≫ v)), …⟩`], [每个声明的 `α ∈ P` 一列；只对声明的 `obj P = {α, β}` 可写（F1）],
 )
 
 // ───────────────────────────── 4
