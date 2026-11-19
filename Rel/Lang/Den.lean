@@ -7,8 +7,6 @@ import Rel.Run.Lang.Tm
 import Rel.Rep
 import Rel.ObjOrder
 import Rel.Core.Fix
-import Rel.CRelFold
-import Rel.Run.Lang.Compile
 
 namespace Rel.Lang
 
@@ -60,21 +58,6 @@ abbrev rdivDen (TR : Den A C) (TS : Den B C) (TA : Den A A) (TB : Den B B) : Den
 /-- `R÷S = R/S ∩ (S/R)°` within the universes `UA`, `UB`: `x` to `y` when `R x` and `S y` are one image. -/
 abbrev symDivDen (TA : Den A A) (TB : Den B B) (TR : Den A C) (TS : Den B C) : Den A B :=
   rdivDen TR TS TA TB ∩ (rdivDen TS TR TB TA)°
-
-/-- `rep_symDiv` is `symDivDen` with the universes the coreflexives of `Ua`, `Ub`. It sits here, not in
-    `Rel.CRelRel`, because this module imports that one. -/
-theorem rep_symDiv_den {ma mb : USize} (R : CRel A C) (S : CRel B C) (Ua : Vals A ma) (Ub : Vals B mb)
-    (hb : (R.symDiv S Ua Ub).ok = true) :
-    rep (R.symDiv S Ua Ub).rel = symDivDen (corefl fun x => ∃ p, Ua.row p = x) (corefl fun y => ∃ j, Ub.row j = y)
-      (rep R.rel) (rep S.rel) := by
-  funext x y; apply propext; rw [CRel.rep_symDiv R S Ua Ub hb x y]
-  simp only [symDivDen, rdivDen, Core.Rel.inter, Core.Rel.recip, Core.Rel.corefl, exists_eq_left]
-  constructor
-  · rintro ⟨h, ⟨c, hc⟩ | hu⟩
-    · exact ⟨⟨fun c => (h c).2, .inl ⟨c, (h c).1 hc⟩⟩, fun c => (h c).1, .inl ⟨c, hc⟩⟩
-    · exact ⟨⟨fun c => (h c).2, .inr hu⟩, fun c => (h c).1, .inr hu.symm⟩
-  · rintro ⟨⟨h2, -⟩, h1, hu⟩
-    exact ⟨fun c => ⟨h1 c, h2 c⟩, hu.imp id And.symm⟩
 
 /-- `nil`: every source to the empty array. -/
 abbrev nilDen : Den A (.arr B) := fun _ Y => Y = []
@@ -246,11 +229,63 @@ noncomputable def Val.args (ss : List Sem) : Val := go 0 ss where
     | [] => Val.empty
     | ⟨_, _, T⟩ :: ss => (go (k + 1) ss).bind k T
 
+/-- The object variables `σ` that make the pattern `o` the object `A`, extending `σ`: none where they cannot. -/
+def OExp.unify : OExp → Obj → List (String × Obj) → Option (List (String × Obj))
+  | .var _ n, A, σ => match σ.lookup n with
+    | some B => if A = B then some σ else none
+    | none => some ((n, A) :: σ)
+  | .prod a b, .prod A B, σ | .sum a b, .sum A B, σ => a.unify A σ >>= b.unify B
+  | .list a, .arr A, σ => a.unify A σ
+  | _, _, _ => none
+
+/-- The row `r`'s object variables (`Prim.vars` order) at `A ⟶ B`, read off its constant's type. -/
+def Prim.objs (r : Prim) (A B : Obj) : Option (List Obj) := do
+  let σ ← r.sig.2.2.1.unify A [] >>= r.sig.2.2.2.unify B
+  r.vars.mapM fun v => List.lookup v σ
+
+/-- A row of `prims`: its symbol and its objects at its object variables `σ`. -/
+structure RowCode where
+  sym : String
+  ty : List Obj → Obj × Obj
+
+/-- The first and second object variables. -/
+abbrev σ₁ (σ : List Obj) : Obj := σ.headD .long
+abbrev σ₂ (σ : List Obj) : Obj := σ.getD 1 .long
+
+/-! The rows, each named so its meaning names it. -/
+namespace RowCode
+def tau : RowCode := ⟨"τ", fun σ => (σ₁ σ, .arr (σ₁ σ))⟩
+def cons : RowCode := ⟨"cons", fun σ => (.prod (σ₁ σ) (.arr (σ₁ σ)), .arr (σ₁ σ))⟩
+def mem : RowCode := ⟨"∋", fun σ => (.arr (σ₁ σ), σ₁ σ)⟩
+def inl : RowCode := ⟨"inl", fun σ => (σ₁ σ, .sum (σ₁ σ) (σ₂ σ))⟩
+def inr : RowCode := ⟨"inr", fun σ => (σ₁ σ, .sum (σ₂ σ) (σ₁ σ))⟩
+def map : RowCode := ⟨"F", fun σ => (.arr (σ₁ σ), .arr (σ₂ σ))⟩
+def filter : RowCode := ⟨"filter", fun σ => (.arr (σ₁ σ), .arr (σ₁ σ))⟩
+def takewhile : RowCode := ⟨"takewhile", fun σ => (.arr (σ₁ σ), .arr (σ₁ σ))⟩
+def thinL : RowCode := ⟨"thinL", fun σ => (.arr (σ₁ σ), .arr (σ₁ σ))⟩
+def merge : RowCode := ⟨"merge", fun σ => (.prod (.arr (σ₁ σ)) (.arr (σ₁ σ)), .arr (σ₁ σ))⟩
+def loop : RowCode := ⟨"loop", fun σ => (.prod (σ₁ σ) (.arr (σ₂ σ)), σ₁ σ)⟩
+def uncons : RowCode := ⟨"uncons", fun σ => (.arr (σ₁ σ), .prod (σ₁ σ) (.arr (σ₁ σ)))⟩
+def length : RowCode := ⟨"length", fun σ => (.arr (σ₁ σ), .long)⟩
+def sum : RowCode := ⟨"sum", fun _ => (.arr .long, .long)⟩
+def inits : RowCode := ⟨"inits", fun σ => (.arr (σ₁ σ), .arr (.arr (σ₁ σ)))⟩
+def tails : RowCode := ⟨"tails", fun σ => (.arr (σ₁ σ), .arr (.arr (σ₁ σ)))⟩
+def «prefix» : RowCode := ⟨"prefix", fun σ => (.arr (σ₁ σ), .arr (σ₁ σ))⟩
+def suffix : RowCode := ⟨"suffix", fun σ => (.arr (σ₁ σ), .arr (σ₁ σ))⟩
+def concat : RowCode := ⟨"concat", fun σ => (.arr (.arr (σ₁ σ)), .arr (σ₁ σ))⟩
+def cat : RowCode := ⟨"cat", fun σ => (.prod (.arr (σ₁ σ)) (.arr (σ₁ σ)), .arr (σ₁ σ))⟩
+def uncat : RowCode := ⟨"uncat", fun σ => (.arr (σ₁ σ), .prod (.arr (σ₁ σ)) (.arr (σ₁ σ)))⟩
+def zip : RowCode := ⟨"zip", fun σ => (.prod (.arr (σ₁ σ)) (.arr (σ₂ σ)), .arr (.prod (σ₁ σ) (σ₂ σ)))⟩
+def snoc : RowCode := ⟨"snoc", fun σ => (.prod (.arr (σ₁ σ)) (σ₁ σ), .arr (σ₁ σ))⟩
+def unsnoc : RowCode := ⟨"unsnoc", fun σ => (.arr (σ₁ σ), .prod (.arr (σ₁ σ)) (σ₁ σ))⟩
+def setify : RowCode := ⟨"setify", fun σ => (.arr (σ₁ σ), .arr (σ₁ σ))⟩
+end RowCode
+
 /-- A row's meaning at its object variables `σ`, given its relation arguments' meanings. -/
 abbrev RowDen (c : RowCode) := (σ : List Obj) → List Sem → Den (c.ty σ).1 (c.ty σ).2
 
 open Classical RowCode in
-/-- Every row of `prims` with its meaning, in the order of `rowCodes` (`rowDens_codes`). `setify` is `Λ(∋)`. -/
+/-- Every row of `prims` with its meaning. `setify` is `Λ(∋)`. -/
 def rowDens : List ((c : RowCode) × RowDen c) :=
   [⟨tau, fun _ _ a Y => Y = [a]⟩,
    ⟨cons, fun _ _ p ys => ys = p.1 :: p.2⟩,
@@ -284,13 +319,8 @@ def rowDens : List ((c : RowCode) × RowDen c) :=
    ⟨zip, fun _ _ p zs => zs = p.1.zip p.2⟩,
    ⟨snoc, fun _ _ p ys => ys = p.1 ++ [p.2]⟩,
    ⟨unsnoc, fun _ _ xs p => xs = p.1 ++ [p.2]⟩,
-   ⟨setify, fun σ _ => lamDen (fun xs a => a ∈ xs : Den (.arr (σ₁ σ)) (σ₁ σ))⟩,
-   ⟨distinct, fun _ _ xs ys => ys = xs.eraseDups⟩,
-   ⟨asc, fun σ _ xs ys => ys.Perm xs ∧ ys.Pairwise fun x y => ¬ (σ₁ σ).lt y x⟩,
-   ⟨tic, fun _ _ p zss => zss = (List.range (p.2.length + 1)).map fun j => (p.1 :: p.2).take (j + 1)⟩]
+   ⟨setify, fun σ _ => lamDen (fun xs a => a ∈ xs : Den (.arr (σ₁ σ)) (σ₁ σ))⟩]
 
-/-- The codes of `rowDens` are `rowCodes`, so `Prim.den` finds the code `Prim.run` runs. -/
-theorem rowDens_codes : rowDens.map (·.1) = rowCodes := rfl
 
 /-- The row `r`'s meaning at `A ⟶ B` given its relation arguments' meanings, found as `Prim.run` finds its code;
     `𝟘` where it has none there. -/
@@ -805,6 +835,166 @@ theorem Tm.den_nu_unfold {A B : Obj} (k : Nat) (S b : Tm A B) (h : b.pol true k 
   show _ = S.den ρ ∩ _
   rw [(b.den_subst _ (fun e he _ _ => by obtain rfl := List.mem_singleton.1 he; rfl) _).1]
   exact (Core.Rel.nu_fix fun _ _ hXY => inter_le' (Core.Rel.le_refl _) (den_mono h hXY)).symm
+
+/-- `memRow` at `[E] ⟶ E` relates a list to its members. -/
+theorem Prim.den_memRow {E : Obj} {xs : (Obj.arr E).El} {x : E.El} (h : x ∈ xs) :
+    Prim.den memRow (.arr E) E [] xs x := by
+  have ho : memRow.objs (.arr E) E = some [E] := by simp [Prim.objs, memRow, OExp.unify, Prim.vars, OExp.vars]; rfl
+  have hf : rowDens.find? (·.1.sym == memRow.sym) =
+      some ⟨RowCode.mem, fun σ _ (xs : List (σ₁ σ).El) x => x ∈ xs⟩ := rfl
+  unfold Prim.den; rw [hf, ho]; dsimp only; rw [dif_pos ⟨rfl, rfl⟩]; exact h
+
+/-- A row `F(T)` at `xs` reads `T` only at the members of `xs`. -/
+theorem Prim.den_map_congr {r : Prim} (hr : (r.sym == mapRow.sym) = true) {A B C D : Obj} {T T' : Den C D}
+    {a : A.El} (h : ∀ m, Prim.den memRow A C [] a m → ∀ e, (T m e ↔ T' m e)) (d : B.El) :
+    r.den A B [⟨C, D, T⟩] a d ↔ r.den A B [⟨C, D, T'⟩] a d := by
+  have hf : rowDens.find? (·.1.sym == mapRow.sym) = some ⟨RowCode.map, fun σ => Sem.one (X := σ₁ σ) (Y := σ₂ σ)
+      fun T (xs : List (σ₁ σ).El) (ys : List (σ₂ σ).El) => ys.length = xs.length ∧
+        ∀ t (ht : t < xs.length) (ht' : t < ys.length), T (xs[t]'ht) (ys[t]'ht')⟩ := rfl
+  unfold Prim.den; rw [eq_of_beq hr, hf]
+  cases r.objs A B with
+  | none => exact Iff.rfl
+  | some σ =>
+    dsimp only
+    by_cases hh : (RowCode.map.ty σ).1 = A ∧ (RowCode.map.ty σ).2 = B
+    · obtain ⟨rfl, rfl⟩ := hh
+      rw [dif_pos ⟨rfl, rfl⟩, dif_pos ⟨rfl, rfl⟩]
+      simp only [Sem.one]
+      by_cases hc : C = σ₁ σ ∧ D = σ₂ σ
+      · obtain ⟨rfl, rfl⟩ := hc
+        rw [dif_pos ⟨rfl, rfl⟩, dif_pos ⟨rfl, rfl⟩]
+        exact and_congr_right fun _ => forall_congr' fun t => forall_congr' fun ht => forall_congr' fun ht' =>
+          h _ (Prim.den_memRow (List.getElem_mem ht)) _
+      · rw [dif_neg hc, dif_neg hc]
+    · rw [dif_neg hh, dif_neg hh]
+
+/-- **`hylo`'s body is local along its children** (`Hylo.Local`): where `X` and `Y` agree at the children
+    `t.kids k A` reaches from `a`, `t` reads the same at `a` under either bound to `k`. -/
+theorem Tm.den_local (k : Nat) {A B : Obj} (ρ : Val) (X Y : Den A B) : ∀ {C D : Obj} (t : Tm C D) (c : Tm C A),
+    t.kids k A = some c → ∀ a, (∀ a', c.den ρ a a' → ∀ b, (X a' b ↔ Y a' b)) →
+      ∀ d, t.den (ρ.bind k X) a d ↔ t.den (ρ.bind k Y) a d := by
+  have free : ∀ {C D : Obj} (t : Tm C D), t.fv.contains k = false → ∀ a d,
+      t.den (ρ.bind k X) a d ↔ t.den (ρ.bind k Y) a d := fun t h a d => by
+    rw [(t.den_congr _ (ρ.bind k Y) fun i hi => by
+      rw [Val.bind_ne (by rintro rfl; simp [hi] at h), Val.bind_ne (by rintro rfl; simp [hi] at h)]).1]
+  intro C D t
+  induction t with
+  | @var C' D' _ j =>
+    intro c hc a hX d
+    unfold Tm.kids at hc; split at hc
+    · rename_i hk
+      simp only [Tm.fv, List.contains_cons, List.contains_nil, Bool.or_false, beq_iff_eq] at hk
+      subst hk
+      dsimp only at hc
+      simp only [Tm.den, Val.bind, if_true]
+      by_cases h : A = C' ∧ B = D'
+      · obtain ⟨rfl, rfl⟩ := h
+        rw [dif_pos rfl] at hc; cases hc
+        rw [dif_pos ⟨rfl, rfl⟩, dif_pos ⟨rfl, rfl⟩]
+        exact hX a rfl d
+      · simp only [dif_neg h]
+    · exact free _ (Bool.eq_false_iff.mpr ‹_›) a d
+  | comp R S ihR ihS =>
+    intro c hc a hX d
+    unfold Tm.kids at hc; split at hc
+    · dsimp only at hc
+      cases hS : S.fv.contains k
+      · simp only [hS, Bool.not_false, if_true] at hc
+        simp only [Tm.den]
+        exact exists_congr fun m => and_congr (ihR c hc a hX m) (free S hS m d)
+      · cases hR : R.fv.contains k
+        rotate_left
+        · simp only [hS, hR, Bool.not_true, Bool.false_eq_true, ↓reduceIte, reduceCtorEq] at hc
+        simp only [hS, hR, Bool.not_true, Bool.false_eq_true, if_false] at hc
+        cases hs : S.kids k A <;> simp only [hs, reduceCtorEq, Option.some.injEq] at hc
+        subst hc
+        rename_i s
+        have eX := (R.den_congr (ρ.bind k X) ρ fun i hi => Val.bind_ne (by rintro rfl; simp [hi] at hR)).1
+        have eY := (R.den_congr (ρ.bind k Y) ρ fun i hi => Val.bind_ne (by rintro rfl; simp [hi] at hR)).1
+        simp only [Tm.den, eX, eY]
+        exact exists_congr fun m => and_congr_right fun hm => ihS s hs m (fun a' h' => hX a' ⟨m, hm, h'⟩) d
+    · exact free _ (Bool.eq_false_iff.mpr ‹_›) a d
+  | meet R S ihR ihS =>
+    intro c hc a hX d
+    unfold Tm.kids at hc; split at hc
+    · dsimp only at hc
+      cases hr : R.kids k A <;> cases hs : S.kids k A <;> simp only [hr, hs, reduceCtorEq, Option.some.injEq] at hc
+      subst hc
+      exact and_congr (ihR _ hr a (fun a' h => hX a' (Or.inl h)) d) (ihS _ hs a (fun a' h => hX a' (Or.inr h)) d)
+    · exact free _ (Bool.eq_false_iff.mpr ‹_›) a d
+  | join R S ihR ihS =>
+    intro c hc a hX d
+    unfold Tm.kids at hc; split at hc
+    · dsimp only at hc
+      cases hr : R.kids k A <;> cases hs : S.kids k A <;> simp only [hr, hs, reduceCtorEq, Option.some.injEq] at hc
+      subst hc
+      exact or_congr (ihR _ hr a (fun a' h => hX a' (Or.inl h)) d) (ihS _ hs a (fun a' h => hX a' (Or.inr h)) d)
+    · exact free _ (Bool.eq_false_iff.mpr ‹_›) a d
+  | pair R S ihR ihS =>
+    intro c hc a hX d
+    unfold Tm.kids at hc; split at hc
+    · dsimp only at hc
+      cases hr : R.kids k A <;> cases hs : S.kids k A <;> simp only [hr, hs, reduceCtorEq, Option.some.injEq] at hc
+      subst hc
+      exact and_congr (ihR _ hr a (fun a' h => hX a' (Or.inl h)) d.1)
+        (ihS _ hs a (fun a' h => hX a' (Or.inr h)) d.2)
+    · exact free _ (Bool.eq_false_iff.mpr ‹_›) a d
+  | junc R S ihR ihS =>
+    intro c hc a hX d
+    unfold Tm.kids at hc; split at hc
+    · dsimp only at hc
+      cases hr : R.kids k A <;> cases hs : S.kids k A <;> simp only [hr, hs, reduceCtorEq, Option.some.injEq] at hc
+      subst hc
+      rename_i r s
+      exact or_congr (exists_congr fun m => and_congr_right fun e =>
+          ihR _ hr m (fun a' h => hX a' (Or.inl ⟨m, e, h⟩)) d)
+        (exists_congr fun m => and_congr_right fun e => ihS _ hs m (fun a' h => hX a' (Or.inr ⟨m, e, h⟩)) d)
+    · exact free _ (Bool.eq_false_iff.mpr ‹_›) a d
+  | juncD R S ihR ihS =>
+    intro c hc a hX d
+    unfold Tm.kids at hc; split at hc
+    · dsimp only at hc
+      cases hr : R.kids k A <;> cases hs : S.kids k A <;> simp only [hr, hs, reduceCtorEq, Option.some.injEq] at hc
+      subst hc
+      exact or_congr (exists_congr fun m => and_congr_right fun e =>
+          ihR _ hr m (fun a' h => hX a' (Or.inl ⟨m, e, h⟩)) d)
+        (exists_congr fun m => and_congr_right fun e => ihS _ hs m (fun a' h => hX a' (Or.inr ⟨m, e, h⟩)) d)
+    · exact free _ (Bool.eq_false_iff.mpr ‹_›) a d
+  | dom R ih =>
+    intro c hc a hX d
+    unfold Tm.kids at hc; split at hc
+    · dsimp only at hc
+      refine and_congr_right fun e => ?_
+      subst e
+      exact exists_congr fun m => and_congr (ih c hc a hX m) (ih c hc a hX m)
+    · exact free _ (Bool.eq_false_iff.mpr ‹_›) a d
+  | own R ih =>
+    intro c hc a hX d
+    unfold Tm.kids at hc; split at hc
+    · dsimp only at hc; exact ih c hc a hX d
+    · exact free _ (Bool.eq_false_iff.mpr ‹_›) a d
+  | arg f x _ ihx =>
+    intro c hc a hX d
+    unfold Tm.kids at hc; split at hc
+    · cases f with
+      | prim r =>
+        dsimp only at hc
+        split at hc
+        · rename_i hr
+          cases hs : x.kids k A <;> simp only [hs, reduceCtorEq, Option.some.injEq] at hc
+          subst hc
+          rename_i s
+          simp only [Tm.den, Tm.argDen]
+          refine Prim.den_map_congr hr (fun m hm e => ?_) d
+          exact ihx s hs m (fun a' h' => hX a' ⟨m, hm, h'⟩) e
+        · cases hc
+      | _ => dsimp only at hc; cases hc
+    · exact free _ (Bool.eq_false_iff.mpr ‹_›) a d
+  | _ =>
+    intro c hc a hX d
+    unfold Tm.kids at hc; split at hc
+    · dsimp only at hc; cases hc
+    · exact free _ (Bool.eq_false_iff.mpr ‹_›) a d
 
 #print axioms Tm.den_pol
 #print axioms Core.Rel.mu_fix

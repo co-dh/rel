@@ -201,14 +201,7 @@ def prims : List Prim :=
      aop := .error "AOP's `snoc` is on snoc lists (`SL.snoc`), not on the cons lists `[α]` reads as" },
    { sym := "unsnoc", sig := prim% CRel.unsnoc,
      conv := "snoc", written := false },
-   { sym := "setify", sig := prim% CRel.setify, aop := .ok `Freyd.Alg.RelSet.ListRel.setify },
-   { sym := "distinct", sig := prim% CRel.distinct,
-     aop := .error "AOP declares no first-occurrence removal of repeats from a list" },
-   -- `asc` sorts each array by `Obj.lt` (`rep_asc`): B&dM's `bagify` with a bag kept as its ascending array
-   { sym := "asc", sig := prim% CRel.asc,
-     aop := .error "AOP's sorts take their order as a relation (`ISort.sortSpec R`); `asc` sorts by q's" },
-   { sym := "tic", sig := prim% CRel.tic,
-     aop := .error "AOP declares no non-empty prefixes of `a::xs`" }]
+   { sym := "setify", sig := prim% CRel.setify, aop := .ok `Freyd.Alg.RelSet.ListRel.setify }]
 
 def Prim.find? (s : String) : Option Prim := prims.find? (·.sym == s)
 

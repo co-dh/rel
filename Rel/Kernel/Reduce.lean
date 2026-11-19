@@ -41,25 +41,6 @@ def overBytes (op : Coc.Over) (cls : UInt8) (nul : Int64) (b : @& ByteArray) : I
     let x := Ew.signed cls (Ew.elem cls b i)
     if !op.boolCast && x == nul then acc else op.step acc x
 
-/-- Segment `r`'s rows `[lo, hi)` among `n`: the offsets clamped into `[0, n]`, and empty where they
-descend, so every offsets payload names some rows and the kernel never reads past the payload. -/
-def segRange (offs : ByteArray) (n r : Nat) : Nat × Nat :=
-  let cut (k : Nat) := min (atI64 offs k).toNatClampNeg n
-  (cut r, max (cut r) (cut (r + 1)))
-
-/-- Row `g` of the answer, `w` bits, folds the rows `idx[k]` of the bit matrix `m` (row `i` at bits
-`[i·w, (i+1)·w)`) over `k` in segment `g` of `offs` (`segRange`, clamped into `idx`'s longs): by `∨`
-(`all = false`) or `∧` (`all = true`), an empty segment answering zeros or ones. k's `|/'` and `&/'`
-on bit rows; a composition is its `∨` instance, a left division its `∧`. A negative row reads row `0`
-and a row past `m` reads zeros (`Column.bitAt`), as the C does. -/
-@[extern "qlean_bit_rows_over"]
-def bitRowsOver (all : Bool) (w : USize) (offs idx m : @& ByteArray) : ByteArray :=
-  let w := w.toNat
-  packOf ((offs.size / 8 - 1) * w) fun i =>
-    let (lo, hi) := segRange offs (idx.size / 8) (i / w)
-    let bit (k : Nat) := Column.bitAt m ((atI64 idx k).toNatClampNeg * w + i % w)
-    if all then (List.range' lo (hi - lo)).all bit else (List.range' lo (hi - lo)).any bit
-
 /-- How `groupCells` reads a group's cell off its fold `s` and live count `k`. -/
 inductive GroupCell where
   /-- `s`'s low `w` bytes: an integral fold, wrapped or not narrowed at all -/

@@ -1,4 +1,4 @@
-import Rel.Lang.GenSpec
+import Rel.Lang.Den
 import Rel.Run.Lang.Elab
 
 namespace Rel.Lang
@@ -22,14 +22,14 @@ theorem Proj.den_meet (ρ : Val) {B A₁ A₂ : Obj} (x y : Proj B A₁ A₂) :
     (∀ z, Proj.meet x y = .inr z → z.den ρ = x.den ρ ∩ y.den ρ) := by
   rcases x with x | x <;> rcases y with y | y
   · refine ⟨fun u hu => by simp only [Proj.meet, reduceCtorEq] at hu, fun z hz => ?_⟩
-    simp only [Proj.meet, Sum.inr.injEq] at hz; subst hz; exact (Gen.meet_comp_conv_graph _ _ _).symm
+    simp only [Proj.meet, Sum.inr.injEq] at hz; subst hz; exact (Rep.meet_comp_conv_graph _ _ _).symm
   · refine ⟨fun u hu => ?_, fun z hz => by simp only [Proj.meet, reduceCtorEq] at hz⟩
-    simp only [Proj.meet, Sum.inl.injEq] at hu; subst hu; exact (Gen.rpair_eq_meet_proj _ _).symm
+    simp only [Proj.meet, Sum.inl.injEq] at hu; subst hu; exact (Rep.rpair_eq_meet_proj _ _).symm
   · refine ⟨fun u hu => ?_, fun z hz => by simp only [Proj.meet, reduceCtorEq] at hz⟩
     simp only [Proj.meet, Sum.inl.injEq] at hu; subst hu
-    exact (Gen.rpair_eq_meet_proj _ _).symm.trans (funext fun _ => funext fun _ => propext and_comm)
+    exact (Rep.rpair_eq_meet_proj _ _).symm.trans (funext fun _ => funext fun _ => propext and_comm)
   · refine ⟨fun u hu => by simp only [Proj.meet, reduceCtorEq] at hu, fun z hz => ?_⟩
-    simp only [Proj.meet, Sum.inr.injEq] at hz; subst hz; exact (Gen.meet_comp_conv_graph _ _ _).symm
+    simp only [Proj.meet, Sum.inr.injEq] at hz; subst hz; exact (Rep.meet_comp_conv_graph _ _ _).symm
 
 /-- `Proj.meet` across the two projections is a pair, no row's spine. -/
 theorem Proj.meet_argDen {B A₁ A₂ : Obj} (x y : Proj B A₁ A₂) (t : Tm B (.prod A₁ A₂))
@@ -65,8 +65,8 @@ theorem Prim.den_conv : ∀ r ∈ prims, ∀ s r', r.conv = some s → Prim.find
     ∀ A B ss, Prim.den r' B A ss = (Prim.den r A B ss)° := by
   intro r hr s r' hs hr'
   simp only [prims, List.mem_cons, List.not_mem_nil, or_false] at hr
-  rcases hr with rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl |
-    rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl
+  -- one goal per row, however many `prims` lists
+  repeat' (first | subst hr | (obtain rfl | hr := hr))
   all_goals simp only [consRow, memRow, inlRow, inrRow, mapRow, reduceCtorEq, Option.some.injEq] at hs
   all_goals subst hs
   all_goals simp [Prim.find?, prims, consRow, memRow, inlRow, inrRow, mapRow] at hr'
@@ -79,7 +79,7 @@ theorem Prim.den_conv : ∀ r ∈ prims, ∀ s r', r.conv = some s → Prim.find
       rintro ⟨σ, -, ⟨rfl, rfl⟩, h⟩
       refine ⟨[σ₁ σ], ?_, ⟨rfl, rfl⟩, h⟩
       simp [Prim.objs, Prim.vars, OExp.vars, OExp.unify, List.eraseDups, List.eraseDupsBy, List.eraseDupsBy.loop,
-        consRow, RowCode.cons, RowCode.uncons, RowCode.cat, RowCode.uncat, RowCode.snoc, RowCode.unsnoc, RowCode.plain]
+        consRow, RowCode.cons, RowCode.uncons, RowCode.cat, RowCode.uncat, RowCode.snoc, RowCode.unsnoc]
 
 /-- What `convTm_den` needs of `t` under `ρ` at the nodes whose converse `convTm` takes as given: a variable and
     `own` are their own converse (as a row's spine too), a number verb's universe is a coreflexive, a shared term

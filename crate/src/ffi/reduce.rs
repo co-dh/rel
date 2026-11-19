@@ -56,16 +56,6 @@ export! {
     /// `overBytes`: the fold of the six verbs over the elements of class `cls`.
     fn qlean_over_bytes(op: u8, cls: u8, nul: u64, a: B) -> u64 { reduce::over_bytes(op, cls, nul as i64, a.bytes()) as u64 }
 
-    /// `bitRowsOver`: row `g` of `w` bits is the `|` (`&` under `all`) of the rows `idx[k]` of `m`, `k` over segment `g`.
-    fn qlean_bit_rows_over(all: u8, w: usize, offv: B, idxv: B, mv: B) -> O {
-        let offs = elems::<i64>(offv);
-        let ng = offs.len().saturating_sub(1);
-        let bytes = if w != 0 && ng != 0 { (ng * w).div_ceil(8) } else { 0 };
-        let mut r = answer(bytes);
-        reduce::bit_rows(c::pool(), all != 0, w, offs, elems::<i64>(idxv), mv.bytes(), r.bytes_mut());
-        r.into()
-    }
-
     /// Spec: `kbitrows all w na ni g ends idx m` (Rel/Kernel/BitRows.lean): bit `r·w + j` of the `g·w`-bit `u1` answer
     /// is the `|` (`&` under `all`) of bit `idx[k]·w + j` of `m` over `k` in `[ends[r-1], ends[r])`, or the model's error.
     fn qlean_k_bitrows(all: u8, w: usize, na: usize, ni: usize, g: usize, ends: B, idx: B, m: B) -> O {

@@ -7,7 +7,7 @@ import Rel.Lang.TestCircuit
 import Rel.Lang.TestHylo
 import Rel.Lang.TestDetab
 import Rel.Lang.TestEdit
-import Rel.Run.Lang.Compile
+import Rel.ObjOrder
 -- every program of `Rel.Programs`, so the gate visits each, a test module or not
 import Rel.Programs.Blocks
 import Rel.Programs.Chess
@@ -27,11 +27,12 @@ import Rel.Programs.SudokuPC
 import Rel.Programs.SudokuPC9
 import Rel.Programs.Wumpus
 
-/-! The differential check of `compile` (`doc/rel-denotation-design.md` §5.1, stage 3): every closed definition of
-    every registered program, its term run by `compile`, against the constant `rel_program` generated for it, and
-    against the baseline `compile-diff.json` beside this file, by name. A definition's result is its status (`ok`, or
-    why `compile` vouches for nothing) and, where ok, its table as a SET of rows read as values (`rowsOf`), so a
-    body that moves from `Obj.lt` order to `kasc` order, or to another encoding, reads the same.
+/-! A regression pin of the generated code's results, with no independent oracle: every closed definition of every
+    registered program, the constant `rel_program` generated for it (`GenK`), against the pin `compile-diff.json`
+    beside this file, by name. The pin is an earlier run's output, so a difference says a result CHANGED, and a
+    match says nothing about whether it is right. A definition's result is its status (`ok`, or why the constant
+    vouches for nothing) and, where ok, its table as a SET of rows read as values (`rowsOf`), so a body that moves
+    from `Obj.lt` order to `kasc` order, or to another encoding, reads the same.
 
     `REL_COMPILE_DIFF_WRITE=1` regenerates the baseline from the current run instead of comparing; the file is
     never edited by hand. -/
@@ -39,9 +40,6 @@ import Rel.Programs.Wumpus
 namespace Rel.Lang.TestCompile
 
 open Lean Elab Command Tab Rel.Lang Rel.Lang.Expand
-
-/-- No variable bound: a closed definition reads none, and a use of one vouches for nothing. -/
-def η₀ : CodeEnv := fun _ _ _ => .closed (.pure (.zero, false))
 
 /-- Whether `Obj.key` reads `A`'s elements as values: every atom but `general`, which keys as `[]` (all tie). A
     float's key merges NaNs and `±0`, as q's equality does. -/
@@ -59,18 +57,12 @@ def rowsOf {A B : Obj} (R : Tab A B) : List (List Nat) :=
     baseline too large to review. A toolchain whose `hash` changes regenerates the baseline. -/
 def rowCap : Nat := 512
 
-/-- `t`'s result, `n.x` the generated constant `k`: its status and, where ok, its rows. `k` runs only where
-    `compile` vouches: a not-ok row reads nothing of it, and a definition that runs to its cap would pay that run
-    twice. An error is a result the baseline may not hold: a side `rowsOf` cannot read, or the generated constant
-    disagreeing with `compile`. -/
-unsafe def result (k : Name) {A B : Obj} (t : Tm A B) : CommandElabM (Except String (String × List (List Nat))) := do
-  let c : CRel A B ← IO.lazyPure fun _ => (compile η₀ t).run {}
-  let some c := c | return .ok ("not ok: compile vouches for nothing", [])
-  if !(keyed A && keyed B) then return .error "a side holds a `general` atom, whose `Obj.key` is `[]`"
-  let some g ← IO.ofExcept ((← getEnv).evalConst (CRel A B) (← getOptions) k)
-    | return .error "compile vouches for its table, the generated constant does not"
-  let rs := rowsOf c
-  pure (if rowsOf g == rs then .ok ("ok", rs) else .error "compile's rows are not the generated constant's")
+/-- A definition's result, `c` its value as `n.expanded` lists it: its status and, where ok, its rows. An error is
+    a result the baseline may not hold: a side `rowsOf` cannot read. -/
+def result {A B : Obj} (c : CRel A B) : Except String (String × List (List Nat)) := do
+  let some g := c | return ("not ok: the generated constant vouches for nothing", [])
+  if !(keyed A && keyed B) then throw "a side holds a `general` atom, whose `Obj.key` is `[]`"
+  pure ("ok", rowsOf g)
 
 /-- A result as the baseline stores it: the status and the rows, or over `rowCap` rows their count and digest. -/
 def toEntry (s : String) (rs : List (List Nat)) : Json :=
@@ -102,37 +94,16 @@ run_cmd do
   let mut errs : Array String := #[]
   let mut open' : List String := []
   for (n, _, _) in reg.progs do
-    let some (ds, _, _) := reg.reps[n]? | throwError "TestCompile: the program `{n}` has no numbered terms"
-    for (x, r) in ds do
-      let ⟨_, _, t⟩ := r
-      if t.dem then continue
+    let gs ← unsafe IO.ofExcept ((← getEnv).evalConst (List (String × Gen.Gv)) (← getOptions) (n ++ `expanded))
+    for (x, ⟨_, _, c⟩) in gs do
       let nm := s!"{n}.{x}"
-      match ← unsafe result (Parse.constOf n x) t with
+      match result c with
       | .error e => errs := errs.push s!"`{nm}`: {e}"
       | .ok (s, rs) =>
         if run.contains nm then throwError "TestCompile: `{nm}` is visited twice"
         run := run.insert nm (s, rs)
         if s != "ok" then open' := open' ++ [nm]
-  -- the progress number, from `Expand.emit`'s one traversal `Tm.offKernel`: a program is on the kernel path when it
-  -- runs a term and every node of every term it runs has a kernel body, a call one whose constant has a kernel twin
-  -- (`n.kernel`); a program that runs no term is counted through its callers; `Rel.Programs` are the language's
-  let env ← getEnv
-  let flag (n : Name) (f : Name) : CommandElabM Bool := unsafe do
-    IO.ofExcept (env.evalConst Bool (← getOptions) (n ++ f))
-  let mut kern : List Name := []; let mut old : List (Name × List String) := []
-  let mut defs : List (Name × List String) := []
-  for (n, _, _) in reg.progs do
-    -- the node kinds with no kernel body, of the terms it runs and of its definitions elaborated once
-    let ks ← unsafe IO.ofExcept (env.evalConst (List String) (← getOptions) (n ++ `offKernel))
-    if ← flag n `kernel then kern := kern ++ [n]
-    else if !(← flag n `runs) then defs := defs ++ [(n, ks)]
-    else old := old ++ [(n, ks)]
-  let inP (n : Name) := (`Rel.Programs).isPrefixOf n
-  let kernP := kern.filter inP; let oldP := old.filter (inP ·.1)
-  logInfo m!"kernel path: {kernP.length} programs of `Rel.Programs` {kernP}; old path: {oldP.length} {oldP}; \
-    definitions only (counted through their callers): {defs.filter (inP ·.1)}; test programs: kernel path \
-    {kern.filter (!inP ·)}, old path {(old.filter (!inP ·.1)).map (·.1)}"
-  logInfo m!"compile agrees with the generated code on {run.size - open'.length} definitions; not ok on \
+  logInfo m!"the generated code is ok on {run.size - open'.length} definitions; not ok on \
     {open'.length}: {open'}"
   let names := (run.toList.map (·.1)).mergeSort fun a b => decide (a ≤ b)
   let stored := (names.filter fun nm => match run[nm]? with | some (_, rs) => rs.length > rowCap | none => false)
@@ -162,7 +133,9 @@ run_cmd do
   for (nm, _) in base.toList do
     unless run.contains nm do bad := bad.push s!"`{nm}`: in the baseline, not in the run"
   unless bad.isEmpty do
-    throwError "TestCompile: {bad.size} definitions differ from {path}:\n{"\n".intercalate bad.toList}"
-  logInfo m!"every definition matches {path}"
+    throwError "TestCompile: {bad.size} definitions changed since the pin {path} (a regression pin, no oracle: \
+      read each change, and regenerate with `make compile-diff-write` only where the new result is the right one):\
+      \n{"\n".intercalate bad.toList}"
+  logInfo m!"every definition's result is unchanged from the pin {path} (a regression pin, not a check of correctness)"
 
 end Rel.Lang.TestCompile

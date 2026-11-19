@@ -27,7 +27,6 @@ Rel.Kernel.Order.ranks
 Rel.Kernel.Order.ranksFoR
 Rel.Kernel.Scan.scan
 Rel.Kernel.allBelow
-Rel.Kernel.bitRowsOver
 Rel.Kernel.concatALP
 Rel.Kernel.concatBits
 Rel.Kernel.concatBytes

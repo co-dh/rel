@@ -1,7 +1,6 @@
 import Rel.Run.Lang.Plan
 import Rel.Run.Lang.Expand
 import Rel.Kernel.Db.ObjectFile
-import Rel.Kernel.Structural
 
 /-! # `relc`: a plan printed as C (`doc/rel-native-design.md` §6, stage 1a)
 

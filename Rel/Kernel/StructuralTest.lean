@@ -25,10 +25,6 @@ def extraRev : ByteArray := Coc.foRMeta Rel.Column.lgEnc 0 0 #[(5, 5, 0, 0), (9,
 -- block length, so the walk overran its buffer
 def extraTwo : ByteArray := Coc.foRMeta Rel.Column.lgEnc 0 0 #[(5, 5, 0, 0), (9, 9, 0, 0), (9, 9, 0, 0)]
 
--- `enlistLong`: the body by `decide`, the Rust by `#guard`
-example : (enlistLong (USize.ofNat32 258 (by decide))).data.toList = [2, 1, 0, 0, 0, 0, 0, 0] := by decide +kernel
-#guard (enlistLong 258).data == #[2, 1, 0, 0, 0, 0, 0, 0]
-
 /-- `bitsOfFoR`'s `decide`-beside-`#guard` pairs: the booleans `xs` as `Coc.encode 2` lays them out, read back as a
 bitmap of `n` rows. A width-1 block (copied), a constant one and a patched one. -/
 def u (k : Nat) (h : k < 4294967296 := by decide) : USize := USize.ofNat32 k h

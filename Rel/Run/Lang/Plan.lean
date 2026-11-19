@@ -1,6 +1,5 @@
 import Rel.Run.Lang.Tm
 import Rel.Kernel.Db.Own
-import Rel.Kernel.Elementwise
 import Rel.Kernel.Scan
 import Rel.Kernel.Gather
 import Rel.Kernel.Seen
