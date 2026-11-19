@@ -25,7 +25,7 @@ private def kread (r : Except String Enc) : List UInt64 := match r with
   | .error _ => []
 
 /-- Rows 0 and 2 start a segment; the seed is 100 on every row, the folded column `1 2 3 4`. -/
-private def kseg : Enc := .bits ⟨#[0b0101]⟩
+private def kseg : Enc := .foR (Coc.bools 4 (· % 2 == 0)).1 (Coc.bools 4 (· % 2 == 0)).2
 private def kcols : List Enc := [.bytes (Column.packIds 64 4 fun _ => 100), .bytes (Column.packIds 64 4 (· + 1))]
 
 -- The kernel cannot reduce a `USize` (`System.Platform.numBits` is opaque), so `decide` runs `kscan`'s row fold on the

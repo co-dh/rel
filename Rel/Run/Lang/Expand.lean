@@ -571,13 +571,13 @@ def hex (b : ByteArray) : String :=
   let d (x : UInt8) : UInt8 := if x < 10 then 48 + x else 87 + x
   String.fromUTF8! (b.foldl (fun o x => (o.push (d (x / 16))).push (d (x % 16))) (.emptyWithCapacity (2 * b.size)))
 
-/-- An atom column rebuilt from its payload (`Gen.atom`): a fixed-width or boolean one; a symbol, general,
-    Frame-of-Reference or ALP payload is not rebuilt, and says so. -/
+/-- An atom column rebuilt from its payload (`Gen.atom`): a dense one, or a boolean one from its bitmap
+    (`boolBits`); a symbol, general, other Frame-of-Reference or ALP payload is not rebuilt, and says so. -/
 def atomE (t : Rel.QAtomicType) (n : USize) (x : Arr t n) : Except String Lean.Expr :=
-  match x.enc with
-  | .bytes b => pure (g ``Gen.atom #[toExpr t, uE n, toExpr false, mkStrLit (hex b)])
-  | .bits b => pure (g ``Gen.atom #[toExpr t, uE n, toExpr true, mkStrLit (hex b)])
-  | _ => throw s!"a column of {n} rows in a symbol, general, Frame-of-Reference or ALP payload cannot be rebuilt"
+  match x.enc, Rel.Kernel.boolBits t n x.enc with
+  | .bytes b, _ => pure (g ``Gen.atom #[toExpr t, uE n, toExpr false, mkStrLit (hex b)])
+  | _, some b => pure (g ``Gen.atom #[toExpr t, uE n, toExpr true, mkStrLit (hex b)])
+  | _, none => throw s!"a column of {n} rows in a symbol, general, Frame-of-Reference or ALP payload cannot be rebuilt"
 
 /-- A column rebuilt from its parts: each atom column from its payload (`atomE`), the rest by `Vals`'s shape. -/
 def valsE : (A : Obj) → (n : USize) → Vals A n → Except String Lean.Expr

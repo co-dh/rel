@@ -152,17 +152,9 @@ inductive QTable (X : Type)
 the header's `n` on `QValue.vector`, one source for it. -/
 inductive Enc (X : Type)
   /-- Fixed-width types other than boolean: q's own layout, little-endian,
-  byte for byte the same as the IPC wire format and a splayed column file. Booleans are `bits`, not
-  this. -/
+  byte for byte the same as the IPC wire format and a splayed column file. Booleans are a `u1`
+  `foR` (`Coc.bools`), not this. -/
   | bytes : ByteArray → Enc X
-  /-- Booleans, one *bit* each, LSB first within a byte. q spends a byte per boolean; a bit is
-  eight times less memory, and it is also the shape every comparison wants — a predicate over 100M
-  elements writes 12.5 MB here against q's 100 MB.
-
-  `⌈n/8⌉` is not invertible — a 3-byte payload holds between 17 and 24 booleans — which is why the
-  count is the header's. This is the one type whose in-memory width differs from its wire width, so
-  `QLean/Wire/` and `QLean/Db/` expand and contract it instead of copying. -/
-  | bits : ByteArray → Enc X
   /-- Symbols. `blob` is each symbol's UTF-8 bytes *followed by its NUL*, concatenated — byte for
   byte the IPC payload and the splayed `sym` file, so sending it is a memcpy. `offs` holds the n+1
   starts, `offs[0] = 0` and `offs[n] = blob.size`; symbol `i` is `blob[offs[i] .. offs[i+1] - 1]`,
@@ -295,7 +287,7 @@ abbrev Enc := Ext.Enc Empty
 
 -- `Rel.QValue.atom` … as aliases of the family's constructors, so rel's code names them as before
 export Ext (QValue.atom QValue.vector QValue.dict QValue.table QValue.keyed QValue.slices QValue.func QValue.err
-  QValue.enum QValue.ext QTable.mk Enc.bytes Enc.bits Enc.syms Enc.foR Enc.alp Enc.enum Enc.gen)
+  QValue.enum QValue.ext QTable.mk Enc.bytes Enc.syms Enc.foR Enc.alp Enc.enum Enc.gen)
 
 /-- What a rel function that recurses through `gen`, `dict` or `table` must do at an `ext`; a field is added when
 another such function must. -/
@@ -674,7 +666,7 @@ open Column
 /-- What the header promises about the payload: the layout is one `t` has, and it holds exactly `n`
 elements. The conditions `count`, `admit` and `mismatch` used to encode between them, stated once;
 every reader trusts the header, so a vector that fails this is a bug where it was built. Booleans are
-`bits` and never `bytes`; Frame of Reference takes every fixed-width type, a `boolean` one being `u1` (every
+a `u1` `foR` and never `bytes`; Frame of Reference takes every fixed-width type, a `boolean` one being `u1` (every
 element 0 or 1, which `raw` and `get` then read alike), ALP the three float layouts; a `foR` or `alp` payload's blocks cover its `n`, and an `enum` payload's
 pack holds its `n` ids and its dictionary's offsets end at its blob with none past it, so a symbol
 appended to the dictionary leaves every entry before it reading as it did, and no entry is there twice,
@@ -682,7 +674,6 @@ so two ids name the same symbol only where they are equal. -/
 def WF (t : QAtomicType) (n : USize) (e : Ext.Enc X) : Prop :=
   match t, e with
   | .general, .gen xs => xs.size = n.toNat
-  | .u1, .bits b => b.size = (n.toNat + 7) / 8
   | .sym, .syms blob offs => offs.size = n.toNat + 1 ∧ SymsWF blob offs ∧
     ∀ i < n.toNat, (symKey blob offs i).IsValidUTF8
   | .sym, .enum dict offs ids => ids.size = (n.toNat * idWidth offs + 7) / 8 ∧ SymsWF dict offs ∧
@@ -722,7 +713,6 @@ def raw (t : QAtomicType) (n : USize) (e : Ext.Enc X) : Array UInt64 :=
     | some w => let starts := blockStarts metadata
       (Array.range n.toNat).map fun i => UInt64.ofNat ((alpBits metadata pack a starts i).toNat % 2 ^ (8 * w))
     | none => #[]
-  | .u1, .bits b => (Array.range n.toNat).map fun i => if bitAt b i then 1 else 0
   | .sym, .enum _ offs ids => (Array.range n.toNat).map fun i => (idAt ids (idWidth offs) i).toUInt64
   -- a model read by proofs and kernel specifications; compiled kernels read `pos` as their loop index
   | .i64, .pos => (Array.range n.toNat).map UInt64.ofNat
@@ -1064,29 +1054,6 @@ open Column
 instance (t : QAtomicType) (n : USize) (e : Ext.Enc X) : Decidable (WF t n e) := by
   unfold WF; split <;> (try split) <;> exact inferInstance
 
-/-- `n` elements of `t`, all zero bits, for every `n`: the value a failed `need`'s model answers. It
-needs no bound because a replicated array has the size asked for. -/
-def blank (t : QAtomicType) (n : USize) : Ext.Enc X :=
-  match t, t.width with
-  | .general, _ => .gen (Array.replicate n.toNat default)
-  | .u1, _ => .bits ⟨Array.replicate ((n.toNat + 7) / 8) 0⟩
-  | .sym, _ => .syms .empty (Array.replicate (n.toNat + 1) 0)
-  | _, some w => .bytes ⟨Array.replicate (n.toNat * w) 0⟩
-  | _, none => .gen #[]
-
-theorem blank_WF (t : QAtomicType) (n : USize) : WF t n (blank (X := X) t n) := by
-  cases t
-  case sym =>
-    have h0 : ∀ k, (Array.replicate (n.toNat + 1) 0)[k]! = 0 := fun k => by
-      by_cases hk : k < n.toNat + 1
-      · rw [getElem!_pos _ k (by simpa using hk)]; simp
-      · rw [getElem!_neg _ k (by simpa using hk)]; rfl
-    show (Array.replicate (n.toNat + 1) 0).size = n.toNat + 1 ∧ SymsWF ByteArray.empty (Array.replicate (n.toNat + 1) 0) ∧
-      ∀ i < n.toNat, (symKey ByteArray.empty (Array.replicate (n.toNat + 1) 0) i).IsValidUTF8
-    -- every entry is the empty bytes, which are valid
-    exact ⟨by simp, ⟨by simp, h0 0, by rw [h0]; rfl, fun k _ => by rw [h0]; exact Nat.zero_le _,
-      fun k _ => by rw [h0, h0]; exact Nat.le_refl _⟩, fun i _ => by simp only [symKey, symBytes, h0]; split <;> decide⟩
-  all_goals simp [blank, WF, QAtomicType.width, ByteArray.size]
 
 /-- One element, without materialising the rest. `first`, `last`, indexing and every binary search
 belong here; calling `atoms` to read a single element is what this exists to prevent.
@@ -1104,7 +1071,6 @@ before this was fixed. -/
 def get (t : QAtomicType) (n : USize) (e : Ext.Enc X) (i : Nat) : Option QAtom :=
   if i < n.toNat then
     match t, e with
-    | .u1, .bits b => some (.u1 (bitAt b i))
     | .sym, .syms blob offs =>
       let (lo, len) := symBytes offs i
       some (.sym ((String.fromUTF8? (blob.extract lo (lo + len))).getD ""))
@@ -1137,22 +1103,6 @@ def symsOf (as : Array QAtom) : Ext.Enc X :=
   let blob := bs.foldl (init := ByteArray.empty) fun acc s => (acc ++ s).push 0
   .syms blob offs.1
 
-/-- The payload holding exactly these atoms at `t`, count `as.size`, or `none` if one of them is not
-at `t`. Only the payload, because the header is the caller's arguments: `.vector t as.size e none`.
-The caller decides what a mismatch means — `Eval.vectorOf` answers with a general list, which is q's
-own behaviour — so this never coerces. -/
-def ofAtoms (t : QAtomicType) (as : Array QAtom) (h : t ≠ .general := by first | decide | assumption) :
-    Option (Ext.Enc X) :=
-  if as.all (·.type == t) then match t with
-    | .general => absurd rfl h
-    | .u1 => some (.bits (packBits as))
-    | .sym => some (symsOf as)
-    | t => match t.width with
-      | some w =>
-        some (.bytes (as.foldl (init := ByteArray.emptyWithCapacity (as.size * w))
-          fun acc a => pushBits acc (bitsOf a) w))
-      | none => none
-  else none
 
 end Ext.Enc
 
@@ -1165,17 +1115,9 @@ def Ext.QValue.WFAt (t : QAtomicType) (n : USize) : Ext.QValue X → Prop
 namespace Column
 open Ext.Enc
 
-/-- `ofAtoms` fails on exactly one condition, so a caller that already knows its atoms are at `t`
-gets a payload back. Every assembler in `QLean/Eval/` establishes that condition by filtering or
-testing before it commits to a vector, which is what makes its announced type honest. -/
-theorem ofAtoms_isSome {t : QAtomicType} {as : Array QAtom} (hn : t ≠ .general)
-    (h : ∀ a ∈ as, a.type = t) : (ofAtoms (X := X) t as).isSome := by
-  unfold ofAtoms
-  rw [if_pos (Array.all_eq_true'.mpr fun x hx => by simp [h x hx])]
-  cases t <;> first | contradiction | simp [QAtomicType.width]
 
 /-- The fold appends `w` bytes per element. -/
-private theorem foldl_pushBits_size {w : Nat} (b : ByteArray) (as : List QAtom) :
+theorem foldl_pushBits_size {w : Nat} (b : ByteArray) (as : List QAtom) :
     (as.foldl (fun acc a => pushBits acc (bitsOf a) w) b).size = b.size + as.length * w := by
   induction as generalizing b with
   | nil => simp
@@ -1392,7 +1334,7 @@ private theorem offs_push_getElem!_eq (o : Array Nat) (v : Nat) : (o.push v)[o.s
   rw [getElem!_pos (o.push v) o.size (by rw [Array.size_push]; omega), Array.getElem_push_eq]
 
 /-- The offs fold appends one start per symbol. -/
-private theorem foldl_offStep_size (o : Array Nat) (pos : Nat) (bs : List ByteArray) :
+theorem foldl_offStep_size (o : Array Nat) (pos : Nat) (bs : List ByteArray) :
     (bs.foldl offStep (o, pos)).1.size = o.size + bs.length := by
   induction bs generalizing o pos with
   | nil => simp
@@ -1558,7 +1500,7 @@ theorem packBits_size (as : Array QAtom) : (packBits as).size = (as.size + 7) / 
 
 /-- The two folds lay their symbols out as `SymsWF` says: start `j` is `symStart j`, which grows with
 `j` and ends at the blob's size. -/
-private theorem symsWF_folds (bs : List ByteArray) :
+theorem symsWF_folds (bs : List ByteArray) :
     SymsWF (bs.foldl blobStep ByteArray.empty) (bs.foldl offStep (#[0], 0)).1 := by
   have hs : (bs.foldl offStep (#[0], 0)).1.size = bs.length + 1 := by
     rw [foldl_offStep_size]; show 1 + bs.length = bs.length + 1; omega
@@ -1570,36 +1512,6 @@ private theorem symsWF_folds (bs : List ByteArray) :
   · rw [hO k (by omega), hb]; exact symStart_le bs (by omega)
   · rw [hO k (by omega), hO (k + 1) (by omega)]; exact symStart_le bs (Nat.le_succ k)
 
-/-- What `ofAtoms` builds is well formed: its header is the atoms' type and count, and each layout
-holds exactly that many. -/
-theorem ofAtoms_WF {t : QAtomicType} {as : Array QAtom} {e : Ext.Enc X} {hn : t ≠ .general}
-    (h : ∀ a ∈ as, a.type = t) (hc : ofAtoms t as hn = some e) (hs : as.size < USize.size) :
-    WF t as.size.toUSize e := by
-  unfold WF; rw [USize.toNat_ofNat_of_lt' hs]
-  unfold ofAtoms at hc
-  rw [if_pos (Array.all_eq_true'.mpr fun x hx => by simp [h x hx])] at hc
-  have h0 : ∀ k, (ByteArray.emptyWithCapacity k).size = 0 := fun _ =>
-    ByteArray.size_eq_zero_iff.mpr rfl
-  match t, hn, h, hc with
-  | .general, hn, _, _ => exact absurd rfl hn
-  | .u1, _, _, hc => cases hc; exact packBits_size as
-  | .sym, _, _, hc =>
-    cases hc
-    show ((as.map utf8Of).foldl offStep (#[0], 0)).1.size = as.size + 1 ∧
-      SymsWF ((as.map utf8Of).foldl blobStep ByteArray.empty) ((as.map utf8Of).foldl offStep (#[0], 0)).1 ∧
-      ∀ i < as.size, (symKey ((as.map utf8Of).foldl blobStep ByteArray.empty)
-        ((as.map utf8Of).foldl offStep (#[0], 0)).1 i).IsValidUTF8
-    rw [← Array.foldl_toList blobStep, ← Array.foldl_toList offStep]
-    refine ⟨by rw [foldl_offStep_size]; simp <;> omega, symsWF_folds _, fun i hi => ?_⟩
-    -- every entry is a `String`'s `toUTF8`, or the empty bytes for a non-symbol
-    rw [symKey_folds _ i (by simpa using hi), getElem!_pos _ i (by simpa using hi), Array.getElem_toList,
-      Array.getElem_map]
-    cases as[i] <;> first | exact String.isValidUTF8 _ | exact (by decide : ByteArray.empty.IsValidUTF8)
-  | .u8, _, _, hc | .char, _, _, hc | .i16, _, _, hc | .i32, _, _, hc | .i64, _, _, hc
-  | .f32, _, _, hc | .f64, _, _, hc | .i8, _, _, hc | .date, _, _, hc | .datetime, _, _, hc =>
-    cases hc
-    simp only [WF, QAtomicType.width]
-    rw [← Array.foldl_toList, foldl_pushBits_size, h0]; simp <;> omega
 
 end Column
 
@@ -1625,50 +1537,6 @@ end Ext.QValue
 
 namespace Ext.QValue
 
-/-- The `i`th slice of a `slices` value, as the vector it denotes. Reading one is a copy of its
-bytes and nothing else; reading them all is the loop the constructor exists to avoid, which is why
-this is by index and there is no `toArray`.
-
-**The slice stays dense, and that is measured rather than conceded.** `CLAUDE.md`'s "the encoded form
-is the representation" is about a column that *enters* and is then read many times; a slice is read
-once, by the `each` that asked for it, so encoding it spends a whole extra pass to save part of one.
-Interleaved against the same binary with the encode spliced in, a million longs in a thousand pieces:
-`count each value group xg` 1.32x, `min each value group xg` 1.18x, `sums each value group xg` 1.12x,
-`{x+x} each value group xg` and `{x+x} each flip mxl` 1.05x — against the same pieces held as a
-general list, `{x+x} each mxl` at 1.00x and `sums each mxl` at 1.04x. Every shape is a loss.
-
-There is no boxing on the other side of that trade, which is what would have paid for the pass.
-`Kernel.overColumn` folds a dense payload at every integral type and a `.bits` one at `boolean`, and
-the elementwise and scan families have their own dense paths: measured, `min each mxf` is 341ns per
-thousand elements and `{x+x} each mxl` 1.0µs, where `Column.atoms` alone would be 64µs. The decline
-`CLAUDE.md` warns about is real at a column that arrives, not at a slice of one.
-
-Two things anyone re-proposing the one-liner needs: `Column.encode` lives in `QLean/Kernel/Coc.lean`,
-which *imports* this file, so it cannot be called from here at all; and it answers a float column
-unchanged (`Coc.encodes` is false there — ALP is the float encoding and reaches columns through
-`Column.admit`), so it would be a no-op at the one type it was wanted for.
-
-The second case rests on every producer — `group`, `flip`, `string`, `vs`, `cross` — sharing a
-`.bytes` payload. A payload that is not dense has no per-piece cut here and answers the whole column,
-so a producer over an encoded column must cut it where it is built, the way `Kernel.cutFoR` does. -/
-def sliceAt (t : QAtomicType) (n : USize) (e : Ext.Enc X) (attr : Option (UInt8 × IndexCell))
-    (offs : Array Nat) (i : Nat) : Ext.QValue X :=
-  match e with
-  -- `offs` are byte offsets, so the slice's count is its bytes over the element width; a type with
-  -- no width has no `bytes` layout (`Enc.WF`)
-  | .bytes blob =>
-    let c := (offs[i + 1]! - offs[i]!) / (t.width.getD 1)
-    Kernel.needSize c "sliceAt: count" (fun _ => .vector t 0 (Enc.blank t 0) none)
-      fun c => .vector t c (.bytes (blob.extract offs[i]! offs[i + 1]!)) none
-  | _ => .vector t n e attr
-
-/-- Every element of a `slices` value, which is the million-value loop it exists to avoid. Only
-where something genuinely needs them all — `~` against a general list, the wire encoder — and the
-count is small, or the cost is the one the constructor was avoiding. -/
-def slicesExpand (t : QAtomicType) (n : USize) (e : Ext.Enc X) (attr : Option (UInt8 × IndexCell))
-    (offs : Array Nat) : Array (Ext.QValue X) :=
-  if offs.isEmpty then #[]
-  else (Array.range (offs.size - 1)).map (sliceAt t n e attr offs)
 
 end Ext.QValue
 

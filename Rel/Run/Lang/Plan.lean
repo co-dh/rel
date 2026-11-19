@@ -370,7 +370,7 @@ def groupIdsF : Bld Nat := defFun #[.size, .size, .size, .bytes] fun ps => group
     and payload, a sum its two counts, tags, positions and both payloads. An atom column is one register, its
     dense payload (a boolean's bitmap): the dense stage. Any other encoding has none yet (stage 7). -/
 def arrRegs {t : QAtomicType} {n : USize} (x : Arr t n) : Option (Array Val) :=
-  match x.enc with | .bytes b => some #[.bytes b] | .bits b => some #[.bytes b] | _ => none
+  match x.enc with | .bytes b => some #[.bytes b] | e => (Kernel.boolBits t n e).map fun b => #[.bytes b]
 
 @[inherit_doc arrRegs]
 def valsRegs : (A : Obj) → {n : USize} → Vals A n → Option (Array Val)

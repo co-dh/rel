@@ -142,4 +142,9 @@ example : parts (Ew.bit Ew.lesser Ew.va (bytes1 [0b11101]) (bytes1 [0]) (u 5)) =
 #guard parts (memberIdsVec (u 8) (bytes1 [1, 5, 2]) (u 3) (u 8) (bytes1 [5, 9]) (u 2)) == (md 0 1 1 3 1, mixed 2)
 #guard parts (memberBits (u 3) (bytes1 [0b101]) (u 2) (bytes1 [0b10])) == (md 1 1 3 3 0, [])
 
+-- `boolsOf`'s Rust against its body: a mixed, an all-0 and a short all-1 block, and a bitmap shorter than `n`
+#guard parts (Coc.boolsOf (u 2600) (packOf 2600 fun i => (i % 3 == 0 && i < 1024) || 2048 ≤ i)) ==
+  parts (Coc.bools 2600 (Column.bitAt (packOf 2600 fun i => (i % 3 == 0 && i < 1024) || 2048 ≤ i)))
+#guard parts (Coc.boolsOf (u 12) (bytes1 [0b101])) == parts (Coc.bools 12 (Column.bitAt (bytes1 [0b101])))
+
 end Rel.Kernel.CocTest

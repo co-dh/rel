@@ -17,7 +17,7 @@ a fixed-width type's payload as `Enc.answer` leaves it. A symbol or general colu
 could have computed, and no driver answers one; `gen #[]` is that case's value. -/
 def ofRaw (t : QAtomicType) (n : USize) (xs : Array UInt64) : Enc :=
   match t, t.width with
-  | .u1, _ => .bits (packIds 1 n.toNat fun i => (xs[i]?.getD 0).toNat)
+  | .u1, _ => let r := Coc.boolsOf n (packIds 1 n.toNat fun i => (xs[i]?.getD 0).toNat); .foR r.1 r.2
   | t, some w => Enc.answer t n (.bytes (dense w xs))
   | _, none => .gen #[]
 

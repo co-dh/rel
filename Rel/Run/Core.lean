@@ -411,8 +411,8 @@ theorem foRBits_bools (n : Nat) (p : Nat → Bool) {i : Nat} (hi : i < n) :
 
 /-- `Coc.bools` at a count `n` is a well formed boolean column of `n` rows: each element `0` or `1`
     (`foRBits_bools`), its blocks covering `n`, its `lg` the encoder's. -/
-theorem wf_bools {n : USize} (p : Nat → Bool) :
-    Enc.WF .u1 n (.foR (Kernel.Coc.bools n.toNat p).1 (Kernel.Coc.bools n.toNat p).2 : Enc) := by
+theorem wf_bools {X : Type} {n : USize} (p : Nat → Bool) :
+    Ext.Enc.WF .u1 n (.foR (Kernel.Coc.bools n.toNat p).1 (Kernel.Coc.bools n.toNat p).2 : Ext.Enc X) := by
   have h1 : USize.ofNat32 1 (by decide) = (1 : Nat).toUSize := USize.toNat_inj.mp (by
     rcases System.Platform.numBits_eq with h | h <;> simp [h])
   obtain ⟨hs, -⟩ := Verify.packIds_bytes 1 n.toNat (fun i => (p i).toNat) (by decide) (by decide)
@@ -452,6 +452,72 @@ theorem bitAt_bools {N : Nat} {n : USize} (p : Nat → Bool) (hN : N = n.toNat) 
   simp only [Kernel.bitsOfFoR, Verify.bitAt_packOf _ _ _ hi, foRBits_bools _ _ hi,
     decide_eq_true (Nat.lt_of_lt_of_le hi (wf_bools (n := n) p).2.2.1), Bool.true_and]
   cases p i <;> decide
+
+/-- **A bitmap kernel's answer, read back**: element `j < n` of the column `Coc.boolsOf n g` writes is bit `j` of
+    `g` (`get_boolBits`, `bitAt_bools`). -/
+theorem get_boolsOf {n : USize} (g : ByteArray) {j : Nat} (hj : j < n.toNat) :
+    Enc.get .u1 n (.foR (Kernel.Coc.boolsOf n g).1 (Kernel.Coc.boolsOf n g).2 : Enc) j = some (.u1 (Column.bitAt g j)) := by
+  show Enc.get .u1 n (.foR (Kernel.Coc.bools n.toNat (Column.bitAt g)).1 (Kernel.Coc.bools n.toNat (Column.bitAt g)).2) j = _
+  rw [get_boolBits (wf_bools (Column.bitAt g)) rfl hj, bitAt_bools _ rfl hj]
+
+/-- The boolean column of the `n` booleans `p`, as every boolean writer lays it out (`Coc.bools`). -/
+def Arr.bools (n : USize) (p : Nat → Bool) : Arr .u1 n :=
+  Arr.mk (.foR (Kernel.Coc.bools n.toNat p).1 (Kernel.Coc.bools n.toNat p).2) (wf_bools p)
+
+theorem Ext.Enc.blank_WF {X : Type} (t : QAtomicType) (n : USize) : Ext.Enc.WF t n (Ext.Enc.blank (X := X) t n) := by
+  cases t
+  case u1 => exact wf_bools fun _ => false
+  case sym =>
+    have h0 : ∀ k, (Array.replicate (n.toNat + 1) 0)[k]! = 0 := fun k => by
+      by_cases hk : k < n.toNat + 1
+      · rw [getElem!_pos _ k (by simpa using hk)]; simp
+      · rw [getElem!_neg _ k (by simpa using hk)]; rfl
+    show (Array.replicate (n.toNat + 1) 0).size = n.toNat + 1 ∧ SymsWF ByteArray.empty (Array.replicate (n.toNat + 1) 0) ∧
+      ∀ i < n.toNat, (Column.symKey ByteArray.empty (Array.replicate (n.toNat + 1) 0) i).IsValidUTF8
+    -- every entry is the empty bytes, which are valid
+    exact ⟨by simp, ⟨by simp, h0 0, by rw [h0]; rfl, fun k _ => by rw [h0]; exact Nat.zero_le _,
+      fun k _ => by rw [h0, h0]; exact Nat.le_refl _⟩, fun i _ => by simp only [Column.symKey, Column.symBytes, h0]; split <;> decide⟩
+  all_goals simp [Ext.Enc.blank, Ext.Enc.WF, QAtomicType.width, ByteArray.size]
+
+namespace Column
+open Ext.Enc
+
+/-- What `ofAtoms` builds is well formed: its header is the atoms' type and count, and each layout
+holds exactly that many. Here, after `wf_bools`, because a boolean is a `u1` `foR`. -/
+theorem ofAtoms_WF {X : Type} {t : QAtomicType} {as : Array QAtom} {e : Ext.Enc X} {hn : t ≠ .general}
+    (h : ∀ a ∈ as, a.type = t) (hc : ofAtoms t as hn = some e) (hs : as.size < USize.size) :
+    WF t as.size.toUSize e := by
+  unfold ofAtoms at hc
+  rw [if_pos (Array.all_eq_true'.mpr fun x hx => by simp [h x hx])] at hc
+  have h0 : ∀ k, (ByteArray.emptyWithCapacity k).size = 0 := fun _ =>
+    ByteArray.size_eq_zero_iff.mpr rfl
+  match t, hn, h, hc with
+  | .general, hn, _, _ => exact absurd rfl hn
+  | .u1, _, _, hc =>
+    cases hc
+    have := wf_bools (X := X) (n := as.size.toUSize) fun i => (as[i]?.map boolOf).getD false
+    rwa [USize.toNat_ofNat_of_lt' hs] at this
+  | .sym, _, _, hc =>
+    cases hc
+    unfold WF; rw [USize.toNat_ofNat_of_lt' hs]
+    show ((as.map utf8Of).foldl offStep (#[0], 0)).1.size = as.size + 1 ∧
+      SymsWF ((as.map utf8Of).foldl blobStep ByteArray.empty) ((as.map utf8Of).foldl offStep (#[0], 0)).1 ∧
+      ∀ i < as.size, (symKey ((as.map utf8Of).foldl blobStep ByteArray.empty)
+        ((as.map utf8Of).foldl offStep (#[0], 0)).1 i).IsValidUTF8
+    rw [← Array.foldl_toList blobStep, ← Array.foldl_toList offStep]
+    refine ⟨by rw [foldl_offStep_size]; simp <;> omega, symsWF_folds _, fun i hi => ?_⟩
+    -- every entry is a `String`'s `toUTF8`, or the empty bytes for a non-symbol
+    rw [symKey_folds _ i (by simpa using hi), getElem!_pos _ i (by simpa using hi), Array.getElem_toList,
+      Array.getElem_map]
+    cases as[i] <;> first | exact String.isValidUTF8 _ | exact (by decide : ByteArray.empty.IsValidUTF8)
+  | .u8, _, _, hc | .char, _, _, hc | .i16, _, _, hc | .i32, _, _, hc | .i64, _, _, hc
+  | .f32, _, _, hc | .f64, _, _, hc | .i8, _, _, hc | .date, _, _, hc | .datetime, _, _, hc =>
+    cases hc
+    unfold WF; rw [USize.toNat_ofNat_of_lt' hs]
+    simp only [WF, QAtomicType.width]
+    rw [← Array.foldl_toList, foldl_pushBits_size, h0]; simp <;> omega
+
+end Column
 
 /-- The `str` bridge: bytes that are some string's UTF-8, read as a string the way `Column.get` reads a
     symbol (`fromUTF8?`, `""` at invalid bytes), write back out as themselves. -/
@@ -643,7 +709,7 @@ macro "fits_lit" : tactic => `(tactic| (refine Nat.lt_of_lt_of_le ?_ USize.le_si
 private def l3 : Arr .i64 3 := Arr.mk (.bytes <| packLongs [7, -1, 42]) (by wf_lit)
 #guard l3.toList == [7, -1, 42]
 
-private def bs : Arr .u1 3 := Arr.mk (.bits (ByteArray.mk #[0b101])) (by wf_lit)
+private def bs : Arr .u1 3 := Arr.bools 3 (Column.bitAt ⟨#[0b101]⟩)
 #guard bs.toList == [true, false, true]
 
 -- one symbol column, as `syms` and as `enum` over the dictionary `a, bc`

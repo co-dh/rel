@@ -439,7 +439,7 @@ def codes {p : Nat} (t : QAtomicType) (cs : Vector ((n : USize) × Arr t n) p) :
   match hi : Column.intern x.2.enc with
   | .enum _ dof ids => (Code.ofLane (Column.idWidth dof) x.1 (dof.size - 1) ids).cut ns
   -- every other constructor by name, so `hi` refutes `groupIdsColumn`'s interned-dictionary premise
-  | .bytes _ | .bits _ | .syms .. | .foR .. | .alp .. | .gen _ | .pos =>
+  | .bytes _ | .syms .. | .foR .. | .alp .. | .gen _ | .pos =>
     -- at `bitsType t`: a float groups by its bits, not by q's key, which folds the NaNs and the zeros
     let (gid, fs) := (groupIdsColumn (KernelWF.bitsType t) x.1 x.2.enc).get
       (KernelWF.groupIdsColumn_bitsType_isSome hg x.2.wf fun _ _ _ he => nomatch hi.symm.trans he)
@@ -748,7 +748,7 @@ def _root_.Rel.Tab.rows {k v : Obj} (R : Tab k v) (i : ByteArray) : Tab k v :=
     where they lie; `composeKey` reads no dictionary, so it holds `card` empty symbols. -/
 def Code.column (c : Code) : Option (QAtomicType × (USize × Enc)) :=
   match c.kind with
-  | some .bit => some (.u1, (c.n, .bits c.b)) | some .u8 => some (.u8, (c.n, .bytes c.b))
+  | some .bit => let r := Kernel.Coc.boolsOf c.n c.b; some (.u1, (c.n, .foR r.1 r.2)) | some .u8 => some (.u8, (c.n, .bytes c.b))
   | some .i16 => some (.i16, (c.n, .bytes c.b)) | some .i32 => some (.i32, (c.n, .bytes c.b))
   | some .i64 => some (.i64, (c.n, .bytes c.b))
   | some _ => none

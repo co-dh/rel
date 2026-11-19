@@ -7,6 +7,7 @@ qlean_alp_encode_f64
 qlean_alp_gather
 qlean_bit_rows_over
 qlean_coc_block_start
+qlean_coc_bools_of
 qlean_coc_decode
 qlean_coc_encode
 qlean_coc_encode_below
