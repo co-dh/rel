@@ -901,13 +901,6 @@ def sortSide {B : Obj} {s : USize} (x : Vals B s) (srt : {k : USize} → Vals B 
       (by rw [gather_len]; exact (USize.toNat_ofNat_of_lt' h.2).symm)) (tilLongs (len q).toUSize))
   else q
 
-/-- The least `t ≥ t₀` (at most `t₀ + fuel`) past which none of the `n` longs `cnt` is: the passes an array
-    sort makes. -/
-def longest (n : USize) (cnt : ByteArray) (t₀ : Nat) : (fuel : Nat) → Nat
-  | 0 => t₀
-  | fuel + 1 => if len (whereBits n (Ew.cmp Ew.gt Ew.i64 Ew.va cnt (one t₀.toUInt64) n)) = 0 then t₀
-    else longest n cnt (t₀ + 1) fuel
-
 /-- An array sort's pass at element position `t`, `s` the slices of `c`: the rows of `q` with no element there
     first, kept in order, then the others by that element (`sortSide`, `srt` sorting the payload). -/
 def arrPass {b : Obj} {n : USize} (c : Vals (.arr b) n) (s : ByteArray × ByteArray)
@@ -918,11 +911,46 @@ def arrPass {b : Obj} {n : USize} (c : Vals (.arr b) n) (s : ByteArray × ByteAr
     concatBytes #[gather 8 q (whereBits m (Ew.notBits m gt)), sortSide c.2.2.2 srt (addc n s.1 t) (gather 8 q (whereBits m gt))]
   else q
 
+/-- The rows `p` sorted stably by the first `T` elements of their arrays: the `arrPass`es at `T - 1` down to `0`. -/
+def arrPasses {b : Obj} {n : USize} (c : Vals (.arr b) n) (srt : {k : USize} → Vals b k → ByteArray → ByteArray)
+    (T : Nat) (p : ByteArray) : ByteArray :=
+  (List.range T).foldr (arrPass c (slicesOf c) srt) p
+
+/-- `m - 1, …, 1, 0`: the positions below `m`, descending. -/
+def revLongs (m : USize) : ByteArray :=
+  sub m (addc m (sub m (tilLongs m) (tilLongs m)) (m.toNat - 1)) (tilLongs m)
+
+/-- Whether the rows `a` differ pairwise in their first `T` elements: sorted by them, their positions come out the
+    same from ascending as from descending, which two positions that tie would swap. -/
+def arrUntied {b : Obj} {n : USize} (c : Vals (.arr b) n) (srt : {k : USize} → Vals b k → ByteArray → ByteArray)
+    (T : Nat) (a : ByteArray) : Bool :=
+  if h : len a < USize.size ∧ len a < 2 ^ 63 then
+    let x := Vals.pickShared (.arr b) c a (len a).toUSize (USize.toNat_ofNat_of_lt' h.1).symm
+    (arrPasses x srt T (tilLongs (len a).toUSize)).data == (arrPasses x srt T (revLongs (len a).toUSize)).data
+  else false
+
+/-- Whether the rows of `p` holding at least `T` elements differ pairwise in their first `T` (`arrUntied`). -/
+def arrDistinct {b : Obj} {n : USize} (c : Vals (.arr b) n) (srt : {k : USize} → Vals b k → ByteArray → ByteArray)
+    (T : Nat) (p : ByteArray) : Bool :=
+  if len p < USize.size then arrUntied c srt T (gather 8 p (whereBits (len p).toUSize
+    (Ew.cmp Ew.gt Ew.i64 Ew.va (gather 8 (slicesOf c).2 p) (one (T - 1).toUInt64) (len p).toUSize)))
+  else false
+
+/-- `p` sorted by its arrays: by their first `T` elements, `T` doubling until the rows that hold `T` differ in them
+    (`arrDistinct`), so the passes follow the prefix that tells the rows apart, not the longest row; by all `c.1`
+    positions once `T` passes them. -/
+def arrSort {b : Obj} {n : USize} (c : Vals (.arr b) n) (srt : {k : USize} → Vals b k → ByteArray → ByteArray)
+    (p : ByteArray) : (T fuel : Nat) → ByteArray
+  | _, 0 => arrPasses c srt c.1.toNat p
+  | T, fuel + 1 => if c.1.toNat < T then arrPasses c srt c.1.toNat p
+    else if arrDistinct c srt T p then arrPasses c srt T p else arrSort c srt p (2 * T) fuel
+
 /-- The permutation `p` refined stably by the values of `A` at its rows, ascending by `Obj.lt`:
     - an atom: `gradeColumn` (a symbol by its string, so the order is the value's, the same in every call);
     - a product: the last component first, so it sorts lexicographically;
-    - an array: one stable pass per element position, the last first (least significant digit first), each
-      putting the rows with no element there first and the rest by that element (`sortSide`);
+    - an array: by its first `T` elements (`arrSort`), one stable pass per position below `T`, the last first
+      (least significant digit first), each putting the rows with no element there first and the rest by that
+      element (`sortSide`); `T` doubles from `1` until the rows holding `T` elements differ in them;
     - a sum: the `inl` rows, then the `inr` rows (`whereBits` of the tags), each by its own side (`sortSide` at
       `Vals.row`'s clamped position, `place`).
     And whether it ran within capacity: the codes' bit of `c` (`sortByC_snd`), at an atom from the counts alone
@@ -934,10 +962,7 @@ def _root_.Rel.Obj.sortByC : (A : Obj) → {n : USize} → Vals A n → ByteArra
       | some (.bytes g) => gather 8 p g
       | _ => gather 8 p (codes t #v[x])[0].grade, Obj.codesC.atomFit t #v[⟨_, c⟩])
   | .prod a b, _, c, p => let r := Obj.sortByC b c.2 p; let l := Obj.sortByC a c.1 r.1; (l.1, l.2 && r.2)
-  | .arr b, n, c, p =>
-    let s := slicesOf c
-    ((List.range (longest n s.2 0 c.1.toNat)).foldr (arrPass c s fun v r => (Obj.sortByC b v r).1) p,
-      (Obj.codesC (.arr b) #v[⟨_, c⟩]).2)
+  | .arr b, _, c, p => (arrSort c (fun v r => (Obj.sortByC b v r).1) p 1 64, (Obj.codesC (.arr b) #v[⟨_, c⟩]).2)
   | .sum a b, _, c, p =>
     let ps := longsOf (place c ((c.1.toNat : Int) - 1) ((c.2.1.toNat : Int) - c.1.toNat) 0 0)
     (if h : len p < USize.size then
