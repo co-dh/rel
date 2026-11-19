@@ -90,7 +90,7 @@ Size：S = 一步，少于 20 次 tool call；M = 一到三步；L = 多于三�
 状态：✅ 完成，🔄 进行中，⬜ 未开始，✖ 弃用。每步的旧文本（文件、行号、`LR` 命令、Done 条件）在 commit
 178da18 的 `PLAN.md` §2：`git show 178da18:PLAN.md`。行号已过时，先用 index 重新定位。
 
-进度（2026-11-18，master d209154）：41 / 65 步（63%）；另有 14 步进行中。只数 ✅：分支上 build 通过但还没合并的步骤算进行中。
+进度（2026-11-18，master d209154）：42 / 65 步（65%）；另有 13 步进行中。只数 ✅：分支上 build 通过但还没合并的步骤算进行中。
 
 | Phase                | 完成 / 步数 | %    | 进行中（分支）                                              |
 |----------------------|-------------|------|-------------------------------------------------------------|
@@ -100,7 +100,7 @@ Size：S = 一步，少于 20 次 tool call；M = 一到三步；L = 多于三�
 | P2 不依赖 `Rel` 类型 | 6 / 6       | 100% |                                                             |
 | P3 `Rel` 类型        | 11 / 13     | 85%  | 3.12（3.12b 未开始）                                        |
 | P4 `Tm` constructor  | 2 / 5       | 40%  |                                                             |
-| P5 关闭 gap          | 2 / 8       | 25%  | 5.2、5.3、5.4c、5.5                                         |
+| P5 关闭 gap          | 3 / 8       | 38%  | 5.2、5.3、5.5                                               |
 | P6 kernels           | 9 / 14      | 64%  | 6.9、6.10、6.11（`d56c`）、6.13（`d4pos2`、`d4pos3`）       |
 | P7 Plan A            | 1 / 3       | 33%  | 7.1 弃用                                                    |
 
@@ -248,7 +248,7 @@ Diff table 的「状态」列：✅ 后面是完成它的步骤；🔄 是部分
   已完成：`Gen.onNodes` 的 lazy 分支裁到其 nodes，
   Gen 层 `hylo_sound`，`onKeys_round` 不带 coreflexive 前提（已合并，5b50784）。
   进行中：分支 `d8hyloA`。
-- 🔄 5.4a ✅ `lam_sound`（d72cf71）、5.4b ✅ `E_sound`（0ac4f13），都在 `rel-lazy`；5.4c ⬜ `thin_sound`（见 D.8）。
+- ✅ 5.4a ✅ `lam_sound`（d72cf71）、5.4b ✅ `E_sound`（0ac4f13），都在 `rel-lazy`；5.4c ✅ `thin_sound`（3006856，见 D.8）。
 - 🔄 5.5 call（stage 5）：提案 `doc/call-stage5.zh.pdf`（69a8e5d）。owner 定 B D F H J：保留按 form 的常量作共享代码，
   与调用点 `rfl` 相等；`Tm.instObj` 实例化对象；`Code` 带实参的 `Pl`；`cv` 存逆的 body；registry 存 body `Res`。
   实现排在 P3、P4 之后（改 `Tm.call`）。
@@ -436,7 +436,7 @@ relk 线程池空转 2 526（与前三项重叠）。
 - ✅ W.4 lean-refactor：`index` 为每个过时 module 起的 `syntax-rows` 子进程仍运行 relk，改为所有 elaboration 路径共用
   `Elaborate.headerEnv` 的不运行表（6706c7e）；`moduleNames` 移出循环（7406671）。6 个过时 module 的 `index`：
   105.4 s → 22.6 s wall，270 → 30 CPU-s。
-- 🔄 W.5 compile-diff 的耗时（owner 选 D）。按 `SPLIT` 以下的输入跑做不到：引起 split 的规模是各 program 自己的
+- ✅ W.5 compile-diff 的耗时（owner 选 A，`w5a` 1dd5754 已合并）。按 `SPLIT` 以下的输入跑做不到：引起 split 的规模是各 program 自己的
   universe、字面表和 `muCap`，TestCompile 没有通用的开关，缩小还可能让收敛的定义变成 not ok。约 325 s 的分布：
   `Test.muGrow.g` 123 s（μ 每轮增长到 `muCap`=1024，225 920 次 split，本身 not ok）；`blocks.*`、`table.*`、`cycle.*`
   约 200 s，0 次 split（见 W.10）；其余每个定义 < 0.6 s。做法 A：TestCompile 先跑 `compile`，只在 `c.ok` 时
