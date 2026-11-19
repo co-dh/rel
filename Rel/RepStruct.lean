@@ -418,7 +418,8 @@ private def juncOk {A B C : Obj} [BEq A.El] [BEq B.El] [BEq C.El] (R : Tab A C) 
 -- `[R, S]`: integers (duplicate rows, one side empty, both empty)
 #guard ints.all fun ps => ints.all fun qs => juncOk (tabW ps) (tabW qs)
 -- a float value column, a tuple value, a float and a tuple key summand, each beside a side of none
-#guard juncOk F F && juncOk (A := .long) (B := .long) P P && juncOk F (tabW []) && juncOk (tabW []) F &&
+#guard juncOk F F && juncOk (A := .long) (B := .long) P P && juncOk F (⟨_, col [], Arr.ofFn .f64 _ fun _ => 0⟩ : Tab .long (.atom .f64)) &&
+  juncOk (⟨_, col [], Arr.ofFn .f64 _ fun _ => 0⟩ : Tab .long (.atom .f64)) F &&
   juncOk (tabW []) (⟨F.n, F.val, F.key⟩ : Tab (.atom .f64) .long) &&
   juncOk (⟨P.n, P.val, P.key⟩ : Tab (.prod .long .long) .long) (tabW (ints.getD 0 [])) &&
   juncOk (tabW (ints.getD 1 [])) (⟨P.n, P.val, P.key⟩ : Tab (.prod .long .long) .long) &&

@@ -368,9 +368,9 @@ theorem tagCount_zero {n : USize} {s : Bool} {tag : Arr .u1 n} (h : tagCount n s
       unfold colPrefix at hP; simp only [bind, Except.bind] at hP; split at hP; · cases hP
       exact kscan_foR hP
     -- `wN G`: row `G` is tagged into `s`
-    let wN : Nat → Nat := fun G => if hG : G < n.toNat then (if tag.get ⟨G, hG⟩ = s then 1 else 0) else 0
+    obtain ⟨wN, hwN⟩ : ∃ f : Nat → Nat, f = fun G => if hG : G < n.toNat then (if tag.get ⟨G, hG⟩ = s then 1 else 0) else 0 := ⟨_, rfl⟩
     have hw : ∀ G < n.toNat, (raw .i64 n p)[G]?.getD 0 = (wN G).toUInt64 := fun G hG => by
-      rw [summandPos_raw hp hv ⟨G, hG⟩, colConst_raw hone]; simp only [wN, dif_pos hG]
+      rw [summandPos_raw hp hv ⟨G, hG⟩, colConst_raw hone]; rw [hwN]; simp only [dif_pos hG]
       split <;> simp [hG]
     have key : ∀ k, ((List.range k).map wN).sum ≤ k ∧ (q.1 < k → wN q.1 ≤ ((List.range k).map wN).sum) := by
       intro k; induction k with
@@ -378,7 +378,7 @@ theorem tagCount_zero {n : USize} {s : Bool} {tag : Arr .u1 n} (h : tagCount n s
       | succ k ih =>
         rw [List.range_succ, List.map_append, sum_append_nat]
         simp only [List.map_cons, List.map_nil, List.sum_cons, List.sum_nil, Nat.add_zero]
-        have h1 : wN k ≤ 1 := by simp only [wN]; split <;> [split <;> omega; omega]
+        have h1 : wN k ≤ 1 := by rw [hwN]; dsimp only; split <;> (try split) <;> omega
         refine ⟨by omega, fun hk => ?_⟩
         by_cases e : q.1 = k
         · rw [e]; omega
@@ -388,9 +388,9 @@ theorem tagCount_zero {n : USize} {s : Bool} {tag : Arr .u1 n} (h : tagCount n s
       (fun hn => by rw [colPrefix_add_sum hP wN hw _ (by omega), Nat.sub_add_cancel hn])
       (fun hn => by rw [hn]; rfl)
     rw [h] at hc
-    have := (key n.toNat).2 q.2
-    simp only [wN, dif_pos q.2] at this
-    intro e; rw [if_pos e] at this; omega
+    have h0 : wN q.1 = 0 := by have := (key n.toNat).2 q.2; omega
+    rw [hwN] at h0; simp only [dif_pos q.2] at h0
+    intro e; rw [if_pos e] at h0; exact absurd h0 (by decide)
   · cases h
 
 /-- **Summand `s` of one side, `Vals.catSide`**, read at a row `q` the tags give to it: the summand is not empty, and
