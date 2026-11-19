@@ -416,6 +416,122 @@ theorem mem_holds {n : USize} {X : Vals (.arr B) n} {T : Tab (.arr B) B} (h : Ta
 
 end Tab
 
+/-- **A duplicate-free list inside another is no longer**: each element of `l₁` erased from `l₂` in turn. -/
+theorem nodup_length_le {α : Type} [DecidableEq α] : ∀ {l₁ l₂ : List α}, l₁.Nodup → l₁ ⊆ l₂ →
+    l₁.length ≤ l₂.length
+  | [], _, _, _ => Nat.zero_le _
+  | a :: l, l₂, d, h => by
+    obtain ⟨ha, d⟩ := List.nodup_cons.1 d
+    have hm : a ∈ l₂ := h (List.mem_cons.2 (Or.inl rfl))
+    have := nodup_length_le (l₂ := l₂.erase a) d fun x hx =>
+      (List.mem_erase_of_ne fun e => ha (by rw [← e]; exact hx)).2 (h (List.mem_cons_of_mem _ hx))
+    rw [List.length_erase_of_mem hm] at this
+    have := List.length_pos_of_mem hm
+    simp only [List.length_cons]; omega
+
+/-- **A duplicate-free list inside another is as long as it exactly when it holds all of it**: an element of `l₂`
+missing from `l₁` leaves `l₁` inside `l₂` less that element (`nodup_length_le`). -/
+theorem nodup_length_eq_iff {α : Type} [DecidableEq α] {l₁ l₂ : List α} (d₁ : l₁.Nodup) (d₂ : l₂.Nodup)
+    (h : l₁ ⊆ l₂) : l₁.length = l₂.length ↔ l₂ ⊆ l₁ :=
+  ⟨fun e y hy => Classical.byContradiction fun hn => by
+      have := nodup_length_le d₁ fun x hx => (List.mem_erase_of_ne (a := x) (b := y) fun e' => hn (by rw [← e']; exact hx)).2 (h hx)
+      rw [List.length_erase_of_mem hy] at this
+      have := List.length_pos_of_mem hy; omega,
+   fun h' => Nat.le_antisymm (nodup_length_le d₁ h) (nodup_length_le d₂ h')⟩
+
+/-- **`kscatter (.last)` at distinct indices** writes word `q` of `e` at index `π q`: no later row writes there. -/
+theorem scatter_last_at {N K : USize} {ix e o : Enc} (h : kscatter .last N ix e K 0 = .ok o) (π : Nat → Nat)
+    (hix : ∀ q < N.toNat, (raw .i64 N ix)[q]?.getD 0 = (π q).toUInt64) (hπ : ∀ q < N.toNat, π q < K.toNat)
+    (hinj : ∀ q < N.toNat, ∀ q' < N.toNat, π q = π q' → q = q') :
+    ∀ q < N.toNat, (raw .i64 K o)[π q]?.getD 0 = (raw .i64 N e)[q]?.getD 0 := by
+  obtain ⟨hs, -, hw⟩ := kscatter_words h
+  have hK := K.toNat_lt_size
+  have hU : USize.size ≤ 2 ^ 64 := by rcases USize.size_eq with h | h <;> omega
+  have hat : ∀ q < N.toNat, ((raw .i64 N ix)[q]?.getD 0).toNat = π q := fun q hq => by
+    rw [hix q hq, toNat_toUInt64 (by have := hπ q hq; omega)]
+  intro q hq
+  have := ((scatterWords_spec _ _ _ _).2 _ hw).2.2 q (by omega) fun q' h1 h2 e => by
+    have e' : ((raw .i64 N ix)[q']?.getD 0).toNat = ((raw .i64 N ix)[q]?.getD 0).toNat := e
+    rw [hat q' (by omega), hat q hq] at e'; have := hinj _ (by omega) _ hq e'; omega
+  have h' : (raw .i64 K o)[π q]? = some ((raw .i64 N e)[q]?.getD 0) := by rw [← hat q hq]; exact this
+  rw [h']; rfl
+
+/-- **GROUP over the rows of `x`** (`Vals.cols`, `kasc`, `kseen` over the sorted columns): sorted row `q` is input
+row `π q`, `π` a permutation of the rows; sorted row `q` is in group `gr q`, whose first sorted row is `fs G`; two
+sorted rows share a group exactly when their input rows are equal. -/
+theorem group_rows {A : Obj} {N : USize} {x : Vals A N} {es : List (AscKey × Enc)} {vs : List Enc} {p g f : Enc}
+    {k : Nat} (hes : Vals.cols x = .ok es) (hasc : kasc N es = .ok (vs, p))
+    (hseen : kseen N ((es.map (·.1)).zip vs) = .ok (k, g, f)) :
+    ∃ π gr fs : Nat → Nat, k ≤ N.toNat ∧
+      (∀ q < N.toNat, (raw .i64 N p)[q]?.getD 0 = (π q).toUInt64 ∧ π q < N.toNat) ∧
+      (∀ q < N.toNat, ∀ q' < N.toNat, π q = π q' → q = q') ∧
+      (∀ i < N.toNat, ∃ q < N.toNat, π q = i) ∧
+      (∀ P : Nat → Bool, (List.range N.toNat).countP (fun q => P (π q)) = (List.range N.toNat).countP P) ∧
+      (∀ q < N.toNat, (raw .i64 N g)[q]?.getD 0 = (gr q).toUInt64 ∧ gr q < k) ∧
+      (∀ G < k, (raw .i64 k.toUSize f)[G]?.getD 0 = (fs G).toUInt64 ∧ fs G < N.toNat ∧ gr (fs G) = G) ∧
+      ∀ q < N.toNat, ∀ q' < N.toNat, gr q = gr q' ↔
+        ∀ (h : π q < N.toNat) (h' : π q' < N.toNat), x.row ⟨π q, h⟩ = x.row ⟨π q', h'⟩ := by
+  obtain ⟨cs, hcs, hp, hkq⟩ := kasc_grade hasc
+  obtain ⟨hperm, -⟩ := ascGrade_spec N.toNat (ascKeys N es)
+  obtain ⟨hk, hg, hf⟩ := kseen_ok hseen
+  generalize ascGrade N.toNat (ascKeys N es) = ps at hp hkq hperm
+  generalize seenKey N ((es.map (·.1)).zip vs) = Kk at hk hg hf hkq
+  have hU : USize.size ≤ 2 ^ 64 := by rcases USize.size_eq with h | h <;> omega
+  have hNU := N.toNat_lt_size
+  have hlen : ps.length = N.toNat := by simpa using hperm.length_eq
+  have hpsN : ∀ q < N.toNat, ps[q]?.getD 0 < N.toNat := fun q hq => by
+    rw [List.getElem?_eq_getElem (by omega), Option.getD_some]
+    exact List.mem_range.1 (hperm.mem_iff.1 (List.getElem_mem _))
+  have hkN : k ≤ N.toNat := by rw [hk]; unfold firstsOf; exact Nat.le_trans (List.length_filter_le _ _) (by simp)
+  have hK : k.toUSize.toNat = k := USize.toNat_ofNat_of_lt' (by omega)
+  have hpsN' : ∀ q (hq : q < ps.length), ps[q] < N.toNat := fun q _ => List.mem_range.1 (hperm.mem_iff.1 (List.getElem_mem _))
+  have hnd := hperm.nodup_iff.2 List.nodup_range
+  obtain ⟨-, -, hgg, hfg, -⟩ := firsts_spec Kk N.toNat
+  refine ⟨fun q => ps[q]?.getD 0, Verify.groupOf Kk N.toNat, fun G => (firstsOf Kk N.toNat)[G]?.getD 0, hkN,
+    fun q hq => ⟨by rw [hp]; simp [List.getElem?_eq_getElem (show q < ps.length by omega)], hpsN q hq⟩,
+    ?_, ?_, ?_, ?_, ?_, ?_⟩
+  · intro q hq q' hq' e
+    simp only [List.getElem?_eq_getElem (show q < ps.length by omega),
+      List.getElem?_eq_getElem (show q' < ps.length by omega), Option.getD_some] at e
+    rcases Nat.lt_trichotomy q q' with hl | hl | hl
+    · exact absurd e (List.pairwise_iff_getElem.1 hnd _ _ _ _ hl)
+    · exact hl
+    · exact absurd e.symm (List.pairwise_iff_getElem.1 hnd _ _ _ _ hl)
+  · intro i hi
+    obtain ⟨q, hq, e⟩ := List.getElem_of_mem (hperm.mem_iff.2 (List.mem_range.2 hi))
+    exact ⟨q, by omega, by simp [List.getElem?_eq_getElem hq, e]⟩
+  · intro P
+    have hmap : (List.range N.toNat).map (fun q => ps[q]?.getD 0) = ps :=
+      List.ext_getElem (by simp [hlen]) fun i h1 h2 => by simp [List.getElem?_eq_getElem h2]
+    rw [show (fun q => P (ps[q]?.getD 0)) = P ∘ (fun q => ps[q]?.getD 0) from rfl, ← List.countP_map, hmap,
+      hperm.countP_eq]
+  · intro q hq
+    exact ⟨by rw [hg, (wordsFoR_closed _ (by simp)).2.1]; simp [hq],
+      by have := groupOf_lt (g := Kk) (m := N.toNat) hq; omega⟩
+  · intro G hG
+    have hG' : G < (firstsOf Kk N.toNat).length := by omega
+    refine ⟨by rw [hf, (wordsFoR_closed _ (by rw [hK, hk]; simp)).2.1]; simp [List.getElem?_eq_getElem hG'], ?_, ?_⟩
+    · simp only [List.getElem?_eq_getElem hG', Option.getD_some]; exact firsts_lt Kk N.toNat (List.getElem_mem _)
+    · simp only [List.getElem?_eq_getElem hG', Option.getD_some]; exact hfg G hG'
+  · intro q hq q' hq'
+    simp only [List.getElem?_eq_getElem (show q < ps.length by omega),
+      List.getElem?_eq_getElem (show q' < ps.length by omega), Option.getD_some]
+    rw [hgg q hq q' hq', hkq q (by omega), hkq q' (by omega)]
+    exact ⟨fun e h h' => Vals.row_of_codes x hes hcs ⟨ps[q], h⟩ ⟨ps[q'], h'⟩ e,
+      fun e => Vals.codes_of_row x hes hcs ⟨_, hpsN' q (by omega)⟩ ⟨_, hpsN' q' (by omega)⟩
+        (e (hpsN' q (by omega)) (hpsN' q' (by omega)))⟩
+
+/-- **`R.canon`'s rows are distinct** (`Vals.nub_distinct` of its pair side). -/
+theorem Tab.canon_distinct {k v : Obj} {R U : Tab k v} (h : R.canon = .ok U) {j j' : Fin U.n.toNat} (hjj : j ≠ j') :
+    (U.key.row j, U.val.row j) ≠ (U.key.row j', U.val.row j') := by
+  unfold Tab.canon at h
+  cases hn : Vals.nub (A := .prod k v) (R.key, R.val) with
+  | error s => simp [hn, Functor.map, Except.map] at h
+  | ok r =>
+    simp only [hn, Functor.map, Except.map, Except.ok.injEq] at h
+    subst h
+    exact Vals.nub_distinct hn hjj
+
 /-! ## Checks on `foR` tables -/
 
 section Checks
