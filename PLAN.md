@@ -434,10 +434,14 @@ Diff table 的「状态」列：✅ 后面是完成它的步骤；🔄 是部分
       - 合并记录：w3arrcat fe67914，w3arith 0f77c2f，w3struct+w3sumcat 4b6f121，w3div+w3divlaw+w3lam 803cd89，
         w3ldiv 9d7704b，fixpanic 41bf67b（`RepTabArith` 的证明展开 `Ew.intStep` 把 `panic!` 分支带进证明项；
         改为引用每个 verb 一条的 `Ew.intStep_*`）。旧层里同因上 `panic-allow.txt` 的条目随 W5 消失。
-    - W3 切换（`/data/tmp/w3-switch-steps.md`）：T0 去重（`t0dedup`，在做）→ T1 compile-diff 按名字、按行集合
-      对照生成的基线（`t1diff`，在做）→ T2 管线 + `val uni zero id ° ≫ ∩ ∪ − dom ran` → T3 `top outl outr pair
+    - W3 切换（`/data/tmp/w3-switch-steps.md`）：T0 去重（✅ `5e41591`）→ T1 compile-diff 按名字、按行集合
+      对照生成的基线（✅）→ T2 管线 + `val uni zero id ° ≫ ∩ ∪ − dom ran`（✅ `43cfd2b`，`GenK`）→ T3 `top outl outr pair
       prod ldiv rdiv` 与 `nu`/`mu` 循环：第一批程序（`sudokuac csp sudokupc sudokupc9`）走新路径，16 → 12 →
       T4 `wumpus`（11）→ T5 `chess`（10）→ T7 `circuit`（9）→ T8（6）→ T9（0）→ T10 删旧层（W5）。
+      状态（2026-11-19，master `95c082e`）：跑在新 kernel 上的程序 0 / 16；T3 在做（`t3b`）；T4、T5、T7 的 `GenK` 发射体和
+      kernel 行表已合入（`95c082e`），`est`/`thin` 在程序里等 T3 的 `pair outl outr`；`Tab` 算子 `nu mu τ setify length atPos
+      est thin` 与 list 行已在 master。owner 决定（2026-11-19）：`kscan` 多返回 fold 结果，`whereCol` = `scan → scatter →
+      gather`，不排序（`b44915c`）；architecture §4 的 power/list 行是草稿，待 owner 审。
     - W3 留给后面的风险（清单 agent 提出，均未验证）：计数做 `\` 会物化 join（最多 `|R|·|S|` 行），SudokuPC9、
       blocks 可能超内存；规范序从 `Obj.lt` 变成 `kasc` 序码，打印的期望值与 `out/key`、`out/val` 可能变；
       `coc_block_start`、`coc_bools_of`、`structural_bits_of_for` 与 `Plan.abi` 点名的 12 个 export 在 W5 后仍有
