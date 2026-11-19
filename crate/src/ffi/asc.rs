@@ -19,12 +19,13 @@ fn kasc(m: usize, es: B) -> Result<O, String> {
         let o = asc::order(t).ok_or_else(|| format!("asc: type {t} has no fixed-width order"))?;
         if e.field(1).tag() == POS {
             if t != 4 { return Err(format!("asc: a pos column is type 4, not {t}")) }
+            asc::pos_rows(m)?;
             cs.push(None);
         } else { cs.push(Some(ks.len())); ks.push(asc::Key::new(for_view("asc", m, e.field(1))?, o)) }
         l = l.field(1);
     }
-    // law A1: a `pos` key has no ties and is in row order, so it and every later key decide nothing a stable sort by the
-    // keys before it does not
+    // law A1: a `pos` key (at most 2^63 rows, `pos_rows`) has no ties and is in row order, so it and every later key
+    // decide nothing a stable sort by the keys before it does not
     // every column before the first `pos` is a key, so their count is its index
     let nk = cs.iter().position(Option::is_none).unwrap_or(ks.len());
     let p = if nk == 0 { None } else { asc::grade(pool(), &ks[..nk], m) };

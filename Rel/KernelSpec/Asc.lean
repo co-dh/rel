@@ -1,5 +1,6 @@
 import Rel.Kernel.Asc
 import Rel.KernelSpec.Scatter
+import Rel.KernelSpec.Search
 
 /-! `asc`'s laws (design §4, `asc_sorted` and `asc_perm`), on the words `Enc.raw` reads from its arguments: the
 permutation is a stable lexicographic sort of the rows by their order codes, and each answer column is its input
@@ -109,7 +110,8 @@ theorem ascCol_ok {m : USize} {c : QAtomicType × Enc} {x k : Array UInt64} (h :
       -- `ascWords` answers `foRWords`' words or an error
       have hf : foRWords "asc" m c.2 = .ok x := by
         rw [← hx]; obtain ⟨t, e⟩ := c
-        cases e <;> cases t <;> first | exact hw | cases hw
+        cases e <;> cases t <;> first | exact hw | cases hw | (simp only [ascWords] at hw; split at hw <;> first
+          | exact hw | cases hw)
       obtain ⟨rfl, hs⟩ := foRWords_raw _ _ _ _ hf
       exact ⟨rfl, hs, f, rfl, by rw [← hk, hx]⟩
 
@@ -236,8 +238,127 @@ theorem asc_perm (m : USize) (es : List (QAtomicType × Enc)) (vs : List Enc) (p
       obtain ⟨hvs, hk⟩ := scatter_grade hM hperm hr hxs (wf c cc ws hcc hwc)
       exact ⟨ws, rfl, hvs, fun k hk' => by rw [hk k hk', hx]⟩
 
+theorem mapM_append_ok {α β ε : Type} {f : α → Except ε β} {l1 l2 : List α} {r : List β}
+    (h : (l1 ++ l2).mapM f = .ok r) : ∃ r1 r2, l1.mapM f = .ok r1 ∧ l2.mapM f = .ok r2 ∧ r = r1 ++ r2 := by
+  rw [List.mapM_append] at h
+  cases h1 : l1.mapM f with
+  | error e => simp [h1, bind, Except.bind] at h
+  | ok r1 =>
+    cases h2 : l2.mapM f with
+    | error e => simp [h1, h2, bind, Except.bind] at h
+    | ok r2 =>
+      simp only [h1, h2, bind, Except.bind, pure, Except.pure, Except.ok.injEq] at h
+      exact ⟨r1, r2, rfl, rfl, h.symm⟩
+
+theorem lexLe_append (ks2 : List (Array UInt64)) (i j : Nat) (h : lexLe ks2 i j = true) :
+    ∀ ks, lexLe (ks ++ ks2) i j = lexLe ks i j
+  | [] => h
+  | c :: cs => by simp only [List.cons_append, lexLe, lexLe_append ks2 i j h cs]
+
+theorem ascIns_congr {le le' : Nat → Nat → Bool} {x : Nat} :
+    ∀ l : List Nat, (∀ y ∈ l, le y x = le' y x) → ascIns le x l = ascIns le' x l
+  | [], _ => rfl
+  | y :: ys, h => by simp only [ascIns, h y (.head _), ascIns_congr ys fun z hz => h z (.tail _ hz)]
+
+/-- Keys `ks2` that put every row no later than every later row decide nothing a stable sort by `ks` does not. -/
+theorem ascGrade_append {m : Nat} {ks2 : List (Array UInt64)} (h : ∀ y x, y < x → x < m → lexLe ks2 y x = true)
+    (ks : List (Array UInt64)) : ascGrade m (ks ++ ks2) = ascGrade m ks := by
+  induction m with
+  | zero => rfl
+  | succ m ih =>
+    have e := ih fun y x hyx hx => h y x hyx (by omega)
+    have hmem := fun y (hy : y ∈ ascGrade m ks) => List.mem_range.1 ((ascGrade_spec m ks).1.mem_iff.1 hy)
+    unfold ascGrade at e hmem ⊢
+    rw [List.range_succ, List.foldl_append, List.foldl_append, e]
+    simp only [List.foldl_cons, List.foldl_nil]
+    exact ascIns_congr _ fun y hy => lexLe_append _ _ _ (h y m (hmem y hy) (by omega)) ks
+
+/-- A `pos` key below `2^63` rows puts every row before every later row: its order code at `i64` is `i + 2^63`. -/
+theorem lexLe_pos {m : USize} (hm : m.toNat ≤ 2 ^ 63) (rest : List (QAtomicType × Enc)) {y x : Nat} (hyx : y < x)
+    (hx : x < m.toNat) : lexLe (ascKeys m ((.i64, .pos) :: rest)) y x = true := by
+  have hc : ∀ i, i < 2 ^ 63 → (ordKey 8 false true (UInt64.ofNat i)).toNat = i + 2 ^ 63 := fun i hi => by
+    have := ordKey_signed (w := 8) (by omega) (by omega) (UInt64.ofNat i)
+    simp only [sx, UInt64.toNat_ofNat'] at this
+    split at this <;> omega
+  have hpr : raw .i64 m (.pos : Enc) = (Array.range m.toNat).map UInt64.ofNat := rfl
+  simp only [ascKeys, List.map_cons, lexLe, hpr, Array.getElem?_map, Array.getElem?_range,
+    show y < m.toNat by omega, hx, if_true, Option.map_some, Option.getD_some, Bool.or_eq_true, decide_eq_true_eq,
+    UInt64.lt_iff_toNat_lt]
+  left
+  show (ordKey 8 false true (UInt64.ofNat y)).toNat < (ordKey 8 false true (UInt64.ofNat x)).toNat
+  rw [hc y (by omega), hc x (by omega)]; omega
+
+/-- `ascCol` reads a `pos` column of at most `2^63` rows: past that it is `ascWords`' error. -/
+theorem ascCol_pos {m : USize} {rest : List (QAtomicType × Enc)} {cs : List (Array UInt64 × Array UInt64)}
+    (h : ((.i64, .pos) :: rest).mapM (ascCol m) = .ok cs) : m.toNat ≤ 2 ^ 63 := by
+  rw [List.mapM_cons] at h
+  refine Classical.byContradiction fun hm => ?_
+  simp [ascCol, ascWords, ascOrd, orderKind, hm, bind, Except.bind, Functor.map, Except.map] at h
+
+/-- **Law A1** (PLAN 6.13): a `pos` key column has no ties and is in row order (`ascWords` admits it only there), so it
+and every later column decide nothing: `kasc` with them answers the permutation of `kasc` without them, and the same
+leading columns. -/
+theorem kasc_pos_key (m : USize) (ks rest : List (QAtomicType × Enc)) (vs : List Enc) (p : Enc)
+    (h : kasc m (ks ++ (.i64, .pos) :: rest) = .ok (vs, p)) : kasc m ks = .ok (vs.take ks.length, p) := by
+  obtain ⟨cs, hc, r, hr, wss, hw, rfl, rfl⟩ := kasc_ok h
+  obtain ⟨cs1, cs2, hc1, hc2, rfl⟩ := mapM_append_ok hc
+  have hm := ascCol_pos hc2
+  have hg : ascGrade m.toNat ((cs1 ++ cs2).map (·.2)) = ascGrade m.toNat (cs1.map (·.2)) := by
+    rw [List.map_append, ascCol_keys hc2]
+    exact ascGrade_append (fun y x hyx hx => lexLe_pos hm rest hyx hx) _
+  rw [hg] at hr
+  obtain ⟨w1, w2, hw1, -, rfl⟩ := mapM_append_ok hw
+  have hl : (w1.map wordsFoR).length = ks.length := by rw [List.length_map, (mapM_ok hw1).1, (mapM_ok hc1).1]
+  rw [hg, List.map_append, List.take_left' hl]
+  unfold kasc
+  simp only [hc1, hr, hw1, bind, Except.bind, pure, Except.pure]
+
+/-- **Law A2** (PLAN 6.13): with a `pos` column first the rows are already in order: the permutation is the `pos`
+column and every answer column is its own words. -/
+theorem kasc_pos_first (m : USize) (rest : List (QAtomicType × Enc)) (vs : List Enc) (p : Enc)
+    (h : kasc m ((.i64, .pos) :: rest) = .ok (vs, p)) :
+    p = wordsFoR (raw .i64 m (.pos : Enc)) ∧ vs = ((.i64, .pos) :: rest).map fun e => wordsFoR (raw .i64 m e.2) := by
+  obtain ⟨cs, hc, r, hr, wss, hw, rfl, rfl⟩ := kasc_ok h
+  have hm := ascCol_pos hc
+  -- a strictly sorted permutation of `til m` is `til m`
+  have hg : ascGrade m.toNat (cs.map (·.2)) = List.range m.toNat := by
+    rw [ascCol_keys hc, ← List.nil_append (ascKeys m _), ascGrade_append (fun y x hyx hx => lexLe_pos hm rest hyx hx)]
+    obtain ⟨hp, hs⟩ := ascGrade_spec m.toNat []
+    exact hp.eq_of_pairwise (fun a _ _ _ h1 h2 => absurd (Nat.lt_trans h1 h2) (Nat.lt_irrefl a))
+      (hs.imp fun h => h.2 rfl) List.pairwise_lt_range
+  rw [hg] at hr
+  have hM : m.toNat < 2 ^ 64 := by have := m.toNat_lt_size; rcases USize.size_eq with h | h <;> omega
+  obtain ⟨hlen, hf⟩ := mapM_ok hc
+  obtain ⟨wlen, wf⟩ := mapM_ok hw
+  have hpr : ((List.range m.toNat).map Nat.toUInt64).toArray = raw .i64 m (.pos : Enc) := by
+    show _ = (Array.range m.toNat).map UInt64.ofNat
+    apply Array.ext (by simp) fun k h1 h2 => ?_
+    simp [Nat.toUInt64_eq]
+  refine ⟨by rw [hg, hpr], List.ext_getElem (by simp [wlen, hlen]) fun c h1 h2 => ?_⟩
+  rw [List.length_map] at h1 h2
+  rw [List.getElem_map, List.getElem_map]
+  have hcl : c < cs.length := by omega
+  obtain ⟨hx, hxs, -⟩ := ascCol_ok (hf c _ _ (List.getElem?_eq_getElem h2) (List.getElem?_eq_getElem hcl))
+  obtain ⟨hvs, hk⟩ := scatter_grade hM (List.Perm.refl _) hr hxs (wf c _ _ (List.getElem?_eq_getElem hcl)
+    (List.getElem?_eq_getElem h1))
+  refine congrArg wordsFoR (Array.ext_getElem? fun k => ?_)
+  rw [← hx]
+  by_cases hkm : k < m.toNat
+  · have := hk k (by rw [List.length_range]; exact hkm)
+    rwa [List.getElem_range] at this
+  · rw [Array.getElem?_eq_none (by omega), Array.getElem?_eq_none (by omega)]
+
+
 end Rel.Verify
 
 /-- info: 'Rel.Verify.asc_perm' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs in
 #print axioms Rel.Verify.asc_perm
+
+/-- info: 'Rel.Verify.kasc_pos_first' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+#guard_msgs in
+#print axioms Rel.Verify.kasc_pos_first
+
+/-- info: 'Rel.Verify.kasc_pos_key' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+#guard_msgs in
+#print axioms Rel.Verify.kasc_pos_key

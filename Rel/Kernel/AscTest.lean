@@ -81,5 +81,10 @@ example : view (u 4) (kasc (u 4) [(.i64, col [1, 0, 1, 0]), (.i64, .pos), (.i64,
 def posI32 : String ⊕ (List (List UInt64) × List UInt64) := .inl "asc: a pos column is type 4, not 3"
 example : view (u 2) (kasc (u 2) [(.i32, .pos)]) = posI32 := by decide +kernel
 #guard view (u 2) (kasc (u 2) [(.i32, .pos)]) == posI32
+-- and at most `2 ^ 63` rows, past which the code `i ^^^ 2 ^ 63` no longer ascends with `i`; the export answers the
+-- error before it allocates a row. `Rust` side only: `decide` reduces no `USize` past `u`'s `2 ^ 32`
+def posBig : String ⊕ (List (List UInt64) × List UInt64) :=
+  .inl "asc: a pos column of 9223372036854775809 rows is past 2^63, where its order codes wrap"
+#guard view (USize.ofNat (2 ^ 63 + 1)) (kasc (USize.ofNat (2 ^ 63 + 1)) [(.i64, .pos)]) == posBig
 
 end Rel.Kernel.AscTest
