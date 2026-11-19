@@ -676,6 +676,22 @@ def Vals.row : {A : Obj} → {n : USize} → Vals A n → Fin n.toNat → A.El
 @[simp] theorem Vals.row_atom {t : QAtomicType} {n : USize} (x : Arr t n) (i : Fin n.toNat) :
     Vals.row (A := .atom t) x i = x.get i := rfl
 
+/-- Every row of `x` in position order, `Array.ofFn (Vals.row x)`, as `Tab.toList` runs it: each column read once
+    front to back. `Vals.row` at an `arr` side scans all `m` payload values per row, reading `lo i` and `hi i` at
+    each, which over all rows is `n * m` reads; here a row is the payload's slice `[lo i, hi i)`, the clamp
+    `Vals.row` applies, and a sum row indexes its side's rows by the clamped position. -/
+private def Vals.rowsImpl : {A : Obj} → {n : USize} → Vals A n → Array A.El
+  | .atom _, _, x => Array.ofFn x.get
+  | .prod _ _, _, x => (Vals.rowsImpl x.1).zip (Vals.rowsImpl x.2)
+  | .arr _, n, ⟨_, lo, hi, f⟩ =>
+    let fs := Vals.rowsImpl f
+    Array.ofFn (n := n.toNat) fun i => (fs.extract (lo.get i).toInt.toNat (hi.get i).toInt.toNat).toList
+  | .sum a b, n, ⟨l, r, tag, idx, x, y⟩ =>
+    let xs := Vals.rowsImpl x; let ys := Vals.rowsImpl y
+    Array.ofFn (n := n.toNat) fun i =>
+      if tag.get i then .inr (ys[min (idx.get i).toInt.toNat (r.toNat - 1)]?.getD b.dflt)
+      else .inl (xs[min (idx.get i).toInt.toNat (l.toNat - 1)]?.getD a.dflt)
+
 /-- A relation from `k` to `v`: `n` positions, a key and a value at each — q's dict, two arrays at atoms,
     one column per atom of a product side, so `B×C` stored as two columns IS one side of pairs. -/
 structure Tab (k v : Obj) where
@@ -690,7 +706,12 @@ variable {k v : Obj}
 /-- The relation `R` denotes: `R x y ↔ ∃ i, key.row i = x ∧ val.row i = y`. -/
 def Holds (R : Tab k v) (x : k.El) (y : v.El) : Prop := ∃ i, R.key.row i = x ∧ R.val.row i = y
 
-/-- The pairs, in position order, for proofs only. -/
+/-- What `toList` runs as: `Vals.rowsImpl` of each side, zipped. -/
+private def toListImpl (R : Tab k v) : List (k.El × v.El) := ((Vals.rowsImpl R.key).zip (Vals.rowsImpl R.val)).toList
+
+/-- The pairs, in position order. The body is the specification; it runs as `toListImpl` (not proved equal: the
+    `#guard`s under `Checks` compare the two on an `arr` and a `sum` side). -/
+@[implemented_by toListImpl]
 def toList (R : Tab k v) : List (k.El × v.El) := List.ofFn fun i => (R.key.row i, R.val.row i)
 
 -- Kept with no caller: what a `Rel` holds, read off its `List` of pairs.
@@ -765,6 +786,21 @@ private def es : Arr .sym 3 :=
 
 private def gs : Arr .general 2 := Arr.mk (.gen #[(.atom (.i64 1) : QValue), (.general #[] 0 : QValue)]) (by unfold Enc.WF; simp only [USize.reduceToNat]; rfl)
 #guard match id (α := QValue) (gs.get ⟨0, by simp⟩), id (α := QValue) (gs.get ⟨1, by simp⟩) with | .atom (.i64 1), .general #[] _ _ => true | _, _ => false
+
+-- `Tab.toList` runs as `toListImpl`; the spec `List.ofFn` of the rows is computed beside it. An `arr` side whose
+-- slices are in range, past the payload and negative, and a `sum` side whose positions clamp at both ends.
+private def ta : Tab .long (.arr .long) := ⟨3, l3, ⟨4, Arr.mk (.bytes <| packLongs [0, 2, -5]) (by wf_lit),
+  Arr.mk (.bytes <| packLongs [2, 9, 0]) (by wf_lit), Arr.mk (.bytes <| packLongs [10, 20, 30, 40]) (by wf_lit)⟩⟩
+private def tsum : Tab .long (.sum .long .long) := ⟨3, l3, ⟨2, 1, bs, Arr.mk (.bytes <| packLongs [0, 7, -3]) (by wf_lit),
+  Arr.mk (.bytes <| packLongs [5, 6]) (by wf_lit), Arr.mk (.bytes <| packLongs [9]) (by wf_lit)⟩⟩
+#guard (ta.toList : List (Int64 × List Int64)) == [(7, [10, 20]), (-1, [30, 40]), (42, [])]
+#guard (ta.toList : List (Int64 × List Int64)) == List.ofFn fun i => (ta.key.row i, ta.val.row i)
+#guard (tsum.toList : List (Int64 × Sum Int64 Int64)) == [(7, .inr 9), (-1, .inl 6), (42, .inr 9)]
+#guard (tsum.toList : List (Int64 × Sum Int64 Int64)) == List.ofFn fun i => (tsum.key.row i, tsum.val.row i)
+-- on a multi-block `foR` side (`Arr.ofFn` encodes), with an `arr` of it
+private def big (d : Nat) : Arr .i64 1100 := Arr.ofFn .i64 1100 fun i => (i.1 * 7 % 1000 + d).toUInt64
+private def tbig : Tab .long (.arr .long) := ⟨1100, big 0, ⟨1100, big 0, big 3, big 5⟩⟩
+#guard (tbig.toList : List (Int64 × List Int64)) == List.ofFn fun i => (tbig.key.row i, tbig.val.row i)
 
 #guard ss.toList.zipIdx == [("bc", 0), ("a", 1), ("bc", 2)]
 example : ss.Holds 1 "a" := ⟨⟨1, by simp⟩, rfl, by simp only [Arr.get_ne _ _ (show QAtomicType.sym ≠ .general by decide), Enc.get, USize.reduceToNat]; decide⟩

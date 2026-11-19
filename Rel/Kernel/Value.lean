@@ -401,6 +401,12 @@ def lgOf (metadata : ByteArray) : Nat := min 16 (max 6 (lgAt metadata))
 /-- `2 ^ lgOf`, the elements a block holds. -/
 def blk (metadata : ByteArray) : Nat := 2 ^ lgOf metadata
 
+/-- What `blk` runs as: a shift on a small `Nat`. `2 ^ lgOf` runs as `lean_nat_pow`, which goes through GMP, and
+`foRBits` takes `blk` on every element it reads. -/
+private def blkImpl (metadata : ByteArray) : Nat := 1 <<< lgOf metadata
+
+@[csimp] private theorem blk_eq_blkImpl : @blk = @blkImpl := by funext m; simp [blk, blkImpl, Nat.shiftLeft_eq]
+
 /-- The `lg` every encoder writes. -/
 def lgEnc : Nat := 10
 
@@ -559,6 +565,16 @@ def alpExpAt (metadata a : ByteArray) (b : Nat) : Nat :=
 `2 ^ 18 * 5 ^ 18` and `5 ^ 18` is under `2 ^ 53`, so no entry is rounded and the two tables are the
 same nineteen numbers. -/
 def pow10 (e : Nat) : Float := Float.ofNat (10 ^ e)
+
+/-- What `pow10` runs as: `e` multiplications of a small `Nat`, where `10 ^ e` runs as `lean_nat_pow` through GMP on
+every `alp` element read. -/
+private def pow10Impl (e : Nat) : Float := Float.ofNat (Nat.fold e (init := 1) fun _ _ a => a * 10)
+
+@[csimp] private theorem pow10_eq_pow10Impl : @pow10 = @pow10Impl := by
+  funext e; unfold pow10 pow10Impl; congr 1; symm
+  induction e with
+  | zero => rfl
+  | succ e ih => simp only [Nat.fold_succ, ih, Nat.pow_succ]
 
 /-- The value `d` denotes at exponent `e`, as raw bits: `d / 10 ^ e`, narrowed to four bytes for a
 `real` column. `rust/src/coc.rs`'s `alp_dec` is this expression and the encoder verified its round trip
