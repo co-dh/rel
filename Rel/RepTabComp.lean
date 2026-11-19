@@ -477,6 +477,37 @@ theorem sum_mul_le (a b : Nat → Nat) (m : Nat) (hb : ∀ G, b G ≤ m) :
     simp only [List.map_cons, List.map_nil, List.sum_cons, List.sum_nil, Nat.add_zero]
     rw [Nat.mul_comm m (a k)]; omega
 
+theorem sum_range_succ' (f : Nat → Nat) (j : Nat) :
+    ((List.range (j + 1)).map f).sum = ((List.range j).map f).sum + f j := by
+  rw [List.range_succ, List.map_append, sum_append_nat]; simp
+
+theorem sum_range_mono (f : Nat → Nat) {i : Nat} : ∀ {j}, i ≤ j →
+    ((List.range i).map f).sum ≤ ((List.range j).map f).sum
+  | 0, h => by rw [Nat.le_zero.1 h]; exact Nat.le_refl _
+  | j + 1, h => by
+    rcases Nat.lt_or_eq_of_le h with h | rfl
+    · rw [sum_range_succ']; have := sum_range_mono f (i := i) (j := j) (by omega); omega
+    · exact Nat.le_refl _
+
+/-- A row below the total of `k` widths lies in one group's run of widths. -/
+theorem exists_group (f : Nat → Nat) : ∀ k t, t < ((List.range k).map f).sum →
+    ∃ G < k, ((List.range G).map f).sum ≤ t ∧ t < ((List.range G).map f).sum + f G
+  | 0, t, h => by simp at h
+  | k + 1, t, h => by
+    rw [sum_range_succ'] at h
+    by_cases ht : t < ((List.range k).map f).sum
+    · obtain ⟨G, hG, h1, h2⟩ := exists_group f k t ht; exact ⟨G, by omega, h1, h2⟩
+    · exact ⟨k, by omega, by omega, h⟩
+
+/-- **`kgather` on words**: row `j` of the answer is word `ix[j]` of `e`, and `ix[j]` is below `n`. -/
+theorem kgather_word {m n : USize} {ix e o : Enc} (h : kgather m ix n e = .ok o) :
+    ∀ j < m.toNat, ((raw .i64 m ix)[j]?.getD 0).toNat < n.toNat ∧
+      (raw .i64 m o)[j]?.getD 0 = (raw .i64 n e)[((raw .i64 m ix)[j]?.getD 0).toNat]?.getD 0 := by
+  obtain ⟨his, -, hlt, ho⟩ := raw_kgather m ix n e o h
+  intro j hj
+  refine ⟨hlt j hj, ?_⟩
+  rw [ho, (wordsFoR_closed _ (by rw [Array.size_map, his])).2.1]
+  simp [Array.getElem?_eq_getElem (show j < (raw .i64 m ix).size by omega)]
 
 namespace Tab
 variable {A B C : Obj}
