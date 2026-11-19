@@ -109,6 +109,10 @@ theorem onNodes_sound {A B : Obj} {F : Rel A B} {T : Den A B} (hF : Sound F T) (
       have hf := CRel.guard_ok_left hok; rw [Bool.and_eq_true] at hf
       have ef : rep (CRel.rel f.toOption) = T := hF.run_eq hf.2
       rw [CRel.rep_comp _ _ hok, ef]
+  | bits =>
+    simp only [onNodes] at hok ⊢
+    have hf := CRel.guard_ok_left hok; rw [Bool.and_eq_true] at hf
+    rw [CRel.rep_comp _ _ hok, hF.run_eq hf.2]
   | lazy g =>
     simp only [onNodes] at hok ⊢
     obtain ⟨⟨-, hc⟩, e⟩ := also_ok_rel hok
