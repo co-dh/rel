@@ -384,16 +384,27 @@ Diff table 的「状态」列：✅ 后面是完成它的步骤；🔄 是部分
       （`Rel/Run/Canon.lean`，定律 `Rel/RepCanon.lean`），kernel 之间无转换。未做：替换旧的 `canonC`/`nubC`/
       `CRel.ran`/`CRel.dom`（等 W3 的 `pick` 替换，以及 `sym`、`general`、`arr`、`sum` 列）。前提 `hK` 已去掉
       （2f86a15，`ordcode`，owner: G）：`ascOrd_atom`、`Vals.row_of_seenKey`；`Vals.nub_sorted`（按序码升序、无两行
-      序码相等；反方向"行相等则序码相等"未证）。缺：1024 行块边界的 Lean 例子（`decide +kernel` 不归约，未诊断）。
-    - W3 其余算子，在并行 worktree 里：`∪`（concat → `kasc` → `kseen`）；`∩`/`−`（带来源标记的 concat → `kasc` →
-      `kscan` 计数）；`≫`（两侧按中间列 `kasc` → `kseen` → expand → `kgather` → canon）；`/` `\` `Λ`（`kasc` ≫
-      `kseen` 给出 `lo`/`hi`；分段 `kscan`）；list 行、arith、est/thin：在 W2 之后。
+      序码相等）；`Vals.seenKey_iff_row`（序码相等 ⇔ 行相等）、`Vals.nub_distinct`（005e20e）。缺：1024 行块边界的
+      Lean 例子（`decide +kernel` 不归约，未诊断）。
+    - W3 策略（2026-11-19）：旧层不逐点修补。`w3canon`（58715db）证明了循环：旧 `pick` 写 `.bytes` 是因为它的 index
+      是旧 kernel 给的稠密 `ByteArray`，而 `canonC` 经 `CRel.ofC` 在每个算子后运行。所以每个算子先有一个覆盖全部
+      object（atom、`sum`、`arr`）的五-kernel 版本和定律，然后 compiler 一次切换，再由 W5 删除旧层；`RELK.txt` 到
+      切换为止不变。
+    - W3 已在 master（005e20e），尚无程序运行它们：共用构件 `Rel/Run/Cols.lean`（`colConst`、`colMap`、
+      `colPrefix`、`Vals.concat`；定律 `Rel/RepCols.lean`，`scatterWords_fold`）；`Rel/Run/SetOps.lean` 的 `∪ ∩ − ⊑`
+      （`Tab.union_holds`、`inter_holds`、`diff_holds`、`le_holds`、`whereCol_spec`；`whereCol` 拒绝 ≥ 2^63 行）；
+      `Rel/Run/Comp.lean` 的 `≫` 与 converse（`Tab.conv_holds`）。只覆盖 atom 列及其 tuple。
+    - W3 在做：`Tab.comp_holds`（`w3complaw`）；`sum` 侧的 `Vals.cols`、`∩`/`−` 结果有序无重复（`w3arr3`，含
+      `w3arr2` 的 `Enc.WF .i64 .pos`）。
+    - W3 未做：`arr` 侧（`mig-arrkey` 369f095 的移植，需 Rust）；`/` `\` `Λ` `∋`（`kasc` ≫ `kseen` 给出 `lo`/`hi`；
+      分段 `kscan`）；pair/product、`[R,S]`、list 行、arith、est/thin；compiler 切换。
     - W4 `Gen.*B`（稠密 bit 矩阵，`Lang.Bits`）改走 table 路径；融合形式只在有定理时回来。
     - W5 删除 `Rel/Run/Code.lean`、`Rel/KernelWF/`、旧的 `KernelSpec` module、`Kernel/{Structural,Sort,Search,
       Elementwise}` 与它们的 Rust；`RELK.txt` = 5 + 保留的。
     - W6 native：`Plan` 得到一个 `Enc` 寄存器，`Plan.abi` 列出这五个。
-  - 度量（每次合并）：调用旧 export 的可执行 def（149，W0 之后未重数）；`RELK.txt` 行数（master 2f86a15：79；
-    主要在 W5 下降）；compile-diff 241/25。`make check` 在 2f86a15 全绿（2026-11-19）。
+  - 度量（每次合并）：调用旧 export 的可执行 def（149，W0 之后未重数）；`RELK.txt` 行数（master 005e20e：79；
+    主要在 W5 下降）；compile-diff 241/25。`make check` 在 f16e293 全绿（2026-11-19）；005e20e 只跑了改动的
+    module 的 build。
   - 2026-11-19 的修复：`Coc.packRes` 改为一次 `map`（77b475c；逐字节 `push` 在 Lean kernel 里是平方的，
     `SeenTest` 8.2 → 1.6 GB，全库 build 峰值 2.8 GB）；own 列文件没有 kind 1，part 数表是唯一判据，两条拒绝文本
     由表生成（679839b；`OWN_NPARTS` 变为 `[Option<usize>; 5]`，qlean 的比较要跟着改）。
