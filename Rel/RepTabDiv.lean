@@ -733,16 +733,19 @@ private def tcOld (E : Tab .long .long) (X : CRel .long .long) : CRel .long .lon
 -- the cycle `2 → 3 → 4 → 2` entered from `1`: 12 pairs at round 3, seen fixed at round 4, so `cap = 4` fails on
 -- both sides and `cap = 5` passes; an already-closed `E` and no edges
 #guard let E := tab [(1, 2), (2, 3), (3, 4), (4, 2)]
-  [4, 5, 9].all fun cap => match newL (Tab.mu cap (tcNew E)), oldMu cap (tcOld E) with
+  [4, 5, 9].all fun cap => match newL (Tab.mu "tc" cap (tcNew E)), oldMu cap (tcOld E) with
     | none, none => true
     | a, b => sameSet a b
 #guard let E := tab [(1, 2), (2, 3), (3, 4), (4, 2)]
-  (newL (Tab.mu 4 (tcNew E))).isNone && (newL (Tab.mu 5 (tcNew E))).map List.length == some 12
+  (newL (Tab.mu "tc" 4 (tcNew E))).isNone && (newL (Tab.mu "tc" 5 (tcNew E))).map List.length == some 12
+-- the cap reached is reported with the μ's text and its cap
+#guard let E := tab [(1, 2), (2, 3), (3, 4), (4, 2)]
+  match Tab.mu "tc" 4 (tcNew E) with | .error e => e == Tab.capMsg "tc" 4 | .ok _ => false
 #guard [tab [(1, 2), (2, 2), (1, 1)], tab []].all fun E =>
-  sameSet (newL (Tab.mu 3 (tcNew E))) (oldMu 3 (tcOld E)) && sameSet (newL (Tab.mu 3 (tcNew E))) (some (E.toList))
+  sameSet (newL (Tab.mu "tc" 3 (tcNew E))) (oldMu 3 (tcOld E)) && sameSet (newL (Tab.mu "tc" 3 (tcNew E))) (some (E.toList))
 -- an error of the body is the loop's error
 #guard match Tab.nu (fun _ => throw "body") (tab arcZ) with | .error e => e == "body" | .ok _ => false
-#guard match Tab.mu 9 (fun (_ : Tab .long .long) => throw "body") with | .error e => e == "body" | .ok _ => false
+#guard match Tab.mu "tc" 9 (fun (_ : Tab .long .long) => throw "body") with | .error e => e == "body" | .ok _ => false
 
 /-! ### `Rel/Run/Power.lean` against the old layer -/
 

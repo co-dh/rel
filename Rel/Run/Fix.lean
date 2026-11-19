@@ -13,30 +13,34 @@ namespace Rel
 namespace Tab
 variable {A B : Obj}
 
-/-- `step` from `X`, at most `n` rounds, until a round leaves the row count as it was; that round's table. A round
-of `step` that fails fails the loop, and `n` rounds with the count still moving fail it: never a truncated chain
-passed off as the answer. -/
-def fixOn (step : Tab A B → Except String (Tab A B)) : Nat → Tab A B → Except String (Tab A B)
-  | 0, X => throw s!"Tab.fixOn: the row count still moved at {X.n} rows when the rounds ran out"
-  | n + 1, X => do let Y ← step X; if Y.n == X.n then pure Y else fixOn step n Y
+/-- `step` from `X`, at most `n` rounds, until a round leaves the row count as it was; that round's table, each
+round's payloads cut (`Tab.pack`: `∪` and `canon` keep every input payload whole, so a carried table would hold the
+dead elements of all its rounds). A round of `step` that fails fails the loop, and `n` rounds with the count still
+moving fail it with `out`: never a truncated chain passed off as the answer. -/
+def fixOn (out : String) (step : Tab A B → Except String (Tab A B)) : Nat → Tab A B → Except String (Tab A B)
+  | 0, _ => throw out
+  | n + 1, X => do let Y ← step X >>= pack; if Y.n == X.n then pure Y else fixOn out step n Y
 
 /-- **`νX : top ∩ f(X)`**: rounds `X ↦ X ∩ f(X)` from `top` made canonical. A strict round drops a row of the
 canonical `top`, so its row count plus one rounds reach the fixed point; the old `Gen.nu`'s `+ 2` is kept. -/
 def nu (f : Tab A B → Except String (Tab A B)) (top : Tab A B) : Except String (Tab A B) := do
   let T ← top.canon
-  fixOn (fun X => f X >>= X.inter) (T.n.toNat + 2) T
+  fixOn s!"Tab.nu: the row count still moved at {T.n} rows of top" (fun X => f X >>= X.inter) (T.n.toNat + 2) T
+
+/-- What the `μ` `what` reports when its rounds reach its cap `n`, on either path (`Expand.mus`, `Tab.mu`). -/
+def capMsg (what : String) (n : Nat) : String := s!"{what} ran its cap of {n} rounds without reaching a fixed point"
 
 /-- **`μX : f(X)`**: rounds `X ↦ X ∪ f(X)` from `𝟘`, fewer than `cap` of them, the old `Gen.mu`'s bound: `cap`
-rounds run fails, the chain has no fixed point that the program's bound admits. -/
-def mu (cap : Nat) (f : Tab A B → Except String (Tab A B)) : Except String (Tab A B) := do
-  fixOn (fun X => f X >>= X.union) (cap - 1) (← Tab.zero)
+rounds run fails with `capMsg what cap`, the chain has no fixed point that the program's bound admits. -/
+def mu (what : String) (cap : Nat) (f : Tab A B → Except String (Tab A B)) : Except String (Tab A B) := do
+  fixOn (capMsg what cap) (fun X => f X >>= X.union) (cap - 1) (← Tab.zero)
 
 /-- **The rounds of a fold** (`fold`, `foldr`, `foldI`), at most `f`: `rest` holds at each key `k` the part of its
 array not yet read, `P` its values so far. A round moves the rows of `P` whose key has no element left (`P − dom(el) P`)
 to `out`, `peel` splits each `rest` into the element read now and the rest (`cons°` or `snoc°`), and `step` gives the
-next values, their payloads cut (`Tab.pack`): a step joining two tables that share a payload (`merge`'s `∪` of its
-two branches, each carrying `x`) would double it every round; it ends when `P` is empty, so one round more than the
-longest array. -/
+next values. `P` and `out` have their payloads cut (`Tab.pack`): a step joining two tables that share a payload
+(`merge`'s `∪` of its two branches, each carrying `x`) would double it every round, and `out`'s `∪` keeps the payload
+of every round's `P`; it ends when `P` is empty, so one round more than the longest array. -/
 def foldRounds {K E V : Obj} (peel : Tab K (.arr E) → Except String (Tab K E × Tab K (.arr E)))
     (step : Tab K V → Tab K E → Except String (Tab K V)) :
     Nat → Tab K (.arr E) → Tab K V → Tab K V → Except String (Tab K V)
@@ -44,7 +48,7 @@ def foldRounds {K E V : Obj} (peel : Tab K (.arr E) → Except String (Tab K E �
   | f + 1, rest, P, out => do
     if P.n == 0 then return out
     let (el, rest') ← peel rest
-    foldRounds peel step f rest' (← (← step P el).pack) (← out.union (← P.diff (← (← el.dom).comp P)))
+    foldRounds peel step f rest' (← (← step P el).pack) (← (← out.union (← P.diff (← (← el.dom).comp P))).pack)
 
 /-- Round `k` of a left fold: `cons°` of what is left of each array, its head read now (index `k` from the start). -/
 def peelL {K E : Obj} (rest : Tab K (.arr E)) : Except String (Tab K E × Tab K (.arr E)) := do
