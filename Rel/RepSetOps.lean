@@ -764,6 +764,20 @@ private def arrPay₂ : List Int64 := [9, 5, 1, 5]
     arrOn [(0, 2, 1)] (arrTab [] arrPay).key]
   As.all fun R => As.all fun S => setOk R S && setOk (Tab.mk R.n R.val R.key) (Tab.mk S.n S.val S.key)
 
+/-- Sum rows `(tag, position, value)`: left payload positions holding one value, a clamped position `5`. -/
+private def sumRows₁ : List (Bool × Int64 × Int64) :=
+  [(false, 0, 1), (true, 1, 2), (false, 2, 1), (false, 1, 1), (true, 0, 2), (true, 1, 2), (false, 5, 3)]
+private def sumRows₂ : List (Bool × Int64 × Int64) := [(true, 0, 2), (false, 1, 1), (false, 0, 9), (true, 1, 3)]
+
+-- `sum` sides as the key and as the value, with long and with `arr` summands
+#guard let Ss := [sumTab sumRows₁ [5, 7, 5] [9, 4], sumTab sumRows₂ [7, 5] [9, 8]]
+  Ss.all fun R => Ss.all fun S => setOk R S && setOk (Tab.mk R.n R.val R.key) (Tab.mk S.n S.val S.key)
+#guard let Ss := [sumOn sumRows₁ (arrTab arrCells arrPay).key (b := .long) (Alg.col [9, 4]),
+    sumOn sumRows₂ (arrTab arrCells₂ arrPay₂).key (b := .long) (Alg.col [9, 8])]
+  Ss.all fun R => Ss.all fun S => setOk R S && setOk (Tab.mk R.n R.val R.key) (Tab.mk S.n S.val S.key)
+-- a summand empty on one side only: its rows read `Obj.dflt`, which no payload row holds, so the error
+#guard (sumTab [(true, 0, 1)] [] [9]).union (sumTab [(false, 0, 1)] [5] []) matches .error _
+
 end Checks
 
 end Rel

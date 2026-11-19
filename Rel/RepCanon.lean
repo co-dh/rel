@@ -1015,12 +1015,17 @@ def canonAgrees {k v : Obj} [BEq k.El] [BEq v.El] (R : Tab k v) : Bool :=
 
 #guard [[(3, 1), (1, 2), (3, 1), (-1, 2), (1, 2), (2, 7), (-5, -5), (0, 0)], [(-2, 9), (-2, 9), (7, -3)], []].all
   fun ps => canonAgrees (tab ps)
-/-- The table whose row `i` is `(tag, position, value)` = `ts[i]`, its key the sum side over the payloads `ls` (tag
-`false`) and `rs` (tag `true`), every column `foR` (`Alg.tags`, `Alg.col`). `[R, S]`, `R + S`, `inl` and `inr` write
+/-- The table whose row `i` is `(tag, position, value)` = `ts[i]`, its key the sum side over the payloads `x` (tag
+`false`) and `y` (tag `true`), every column `foR` (`Alg.tags`, `Alg.col`). `[R, S]`, `R + S`, `inl` and `inr` write
 their position columns through the old `tilCol`/`razeTo`, which `kgather` declines (not `foR`). -/
+def sumOn {a b : Obj} (ts : List (Bool × Int64 × Int64)) {l r : USize} (x : Vals a l) (y : Vals b r) :
+    Tab (.sum a b) .long :=
+  ⟨ts.length.toUSize, ⟨l, r, Alg.tags (ts.map fun t => ((1 : USize), t.1)).toArray _,
+    List.length_map _ ▸ Alg.col (ts.map (·.2.1)), x, y⟩, List.length_map _ ▸ Alg.col (ts.map (·.2.2))⟩
+
+/-- `sumOn` over the payloads of the longs `ls` and `rs`. -/
 def sumTab (ts : List (Bool × Int64 × Int64)) (ls rs : List Int64) : Tab (.sum .long .long) .long :=
-  ⟨ts.length.toUSize, ⟨ls.length.toUSize, rs.length.toUSize, Alg.tags (ts.map fun t => ((1 : USize), t.1)).toArray _,
-    List.length_map _ ▸ Alg.col (ts.map (·.2.1)), Alg.col ls, Alg.col rs⟩, List.length_map _ ▸ Alg.col (ts.map (·.2.2))⟩
+  sumOn ts (Alg.col ls) (Alg.col rs)
 
 -- sum sides, as the key, the value and both: left payload positions `0` and `2` hold one value, so their rows are one
 -- row; a summand of no rows, on each side
