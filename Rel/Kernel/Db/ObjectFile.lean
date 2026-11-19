@@ -20,8 +20,16 @@ structure OwnFile where
   domain : String
   parts : Array ByteArray
 
-/-- `own.rs`'s `OWN_NPARTS`: the part count of constructor kind 0..4 (bytes, bits, foR, alp, enum). -/
-def ownNParts : List Nat := [1, 1, 2, 3, 2]
+/-- `own.rs`'s `OWN_NPARTS`: the part count of each constructor kind (0 bytes, 2 foR, 3 alp, 4 enum), `none` for a
+number that is no kind: 1 was the bitmap, gone since a boolean is a `u1` `foR`; the others keep their numbers. -/
+def ownNParts : List (Option Nat) := [some 1, none, some 2, some 3, some 2]
+
+/-- The kinds with their part counts as both refusals name them, `0:1, 2:2, 3:3 or 4:2` (`own.rs`'s `Kinds`). -/
+def ownKinds : String :=
+  match (ownNParts.zipIdx.filterMap fun (n, k) => n.map (s!"{k}:{·}")).reverse with
+  | [] => ""
+  | [l] => l
+  | l :: ks => ", ".intercalate ks.reverse ++ " or " ++ l
 
 /-- The file's first 8 bytes, `qleancol`. -/
 def ownMagic : List UInt8 := [0x71, 0x6c, 0x65, 0x61, 0x6e, 0x63, 0x6f, 0x6c]
@@ -52,8 +60,8 @@ table, the domain name, then `ownLayout`. -/
 def ownImage (f : OwnFile) : Except String ByteArray :=
   let np := f.parts.size
   let d := f.domain.toUTF8.data.toList
-  if f.kind.toNat > 4 || ownNParts[f.kind.toNat]? != some np || d.length > 0xffff then
-    .error s!"a column of kind 0..4 with its parts and a domain name under 65536 bytes, given kind {f.kind} with {np} parts and a {d.length}-byte name"
+  if ownNParts[f.kind.toNat]?.join != some np || d.length > 0xffff then
+    .error s!"a column of kind and part count {ownKinds} and a domain name under 65536 bytes, given kind {f.kind} with {np} parts and a {d.length}-byte name"
   else if d.contains 0 then .error s!"a domain name with no NUL byte, found one at byte {d.idxOf 0}"
   else
     let r := ownLayout (24 + 16 * np + d.length) f.parts.toList
@@ -94,8 +102,8 @@ def ownParse (b : ByteArray) : Except String OwnFile :=
   else if (List.range 8).map byte != ownMagic then .error "byte 0: the magic `qleancol`"
   else if v < 3 || v > 4 then
     .error s!"byte 8: format version 3 or 4, found {v}; a version-1 file predates the Frame of Reference patch list and a version-2 one its per-block frames, and either is rewritten by `set` from the data it was made from"
-  else if kind > 4 || ownNParts[kind]? != some np then
-    .error s!"byte 11: a constructor kind in 0..4 with its 1, 1, 2, 3 or 2 parts, found kind {kind} with {np} parts"
+  else if ownNParts[kind]?.join != some np then
+    .error s!"byte 11: a constructor kind and part count {ownKinds}, found kind {kind} with {np} parts"
   else if 24 + 16 * np + nl > b.size then
     .error s!"byte 24: a part table and domain name ending at byte {24 + 16 * np + nl}, the file is {b.size} bytes"
   else do
@@ -111,7 +119,7 @@ def ownParse (b : ByteArray) : Except String OwnFile :=
 mapping (`crate/src/own.rs`), so no byte of a part is copied or decoded; the domain name is copied into its
 `String`. The parts are persistent objects (rc 0): an update copies first, and the mapping is `MAP_PRIVATE`, so the
 file is never written through them. The extern also refuses a part the Rust kernels could read outside of
-(`own::check`: Frame of Reference block widths and offsets, patch lists, ALP sections, bitmap length, symbol ids),
+(`own::check`: Frame of Reference block widths and offsets, patch lists, ALP sections, symbol ids),
 which this body does not model. -/
 @[extern "qlean_own_map"]
 def ownMap (path : @& String) : IO OwnFile := do

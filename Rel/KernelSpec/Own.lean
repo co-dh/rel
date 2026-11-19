@@ -101,7 +101,7 @@ theorem ownParse_ownImage (f : OwnFile) (b : ByteArray) (h : ownImage f = .ok b)
   simp only [Bool.or_eq_true, decide_eq_true_eq, bne_iff_ne, ne_eq, not_or, Decidable.not_not, gt_iff_lt,
     Nat.not_lt] at hk
   have hnp : ps.size ≤ 3 := by
-    have h2 := hk.1.2
+    have h2 := hk.1
     generalize k.toNat = kk at h2
     rcases kk with _ | _ | _ | _ | _ | kk <;> simp [ownNParts] at h2 <;> omega
   have hL : ps.toList.length = ps.size := Array.length_toList
@@ -138,7 +138,7 @@ theorem ownParse_ownImage (f : OwnFile) (b : ByteArray) (h : ownImage f = .ok b)
   simp only [ownParse, List.append_assoc, List.cons_append, List.nil_append, ownMagic_prefix]
   rw [e8, e11, e12, e14, e16, byte _ _ _ e9, byte _ _ _ e10]
   simp only [sz, List.length_append, List.length_cons, leBytes_length, hr1, hL, ownMagic_len]
-  rw [if_neg (by omega), if_neg (by simp), if_neg (by decide), if_neg (by simp [hk.1.1, hk.1.2]), if_neg (by omega)]
+  rw [if_neg (by omega), if_neg (by simp), if_neg (by decide), if_neg (by simp [hk.1]), if_neg (by omega)]
   rw [show (ownMagic ++ [4, c, t, k] ++ leBytes ps.size 2 ++ leBytes D.length 2 ++ leBytes n.toNat 8 ++ r.1).length =
     24 + 16 * ps.size by simp only [List.length_append, leBytes_length, hr1, hL, ownMagic_len]; simp] at ed
   simp only [List.append_assoc, List.cons_append, List.nil_append] at ed

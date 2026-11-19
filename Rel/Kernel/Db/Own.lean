@@ -9,10 +9,10 @@ namespace Rel.Db
 
 open Rel
 
-/-- A column's constructor kind and its parts, `rust/src/own.rs`'s numbering. A `syms` column is interned
-first: its `offs` is an `Array Nat` with no bytes to write, where an interned column's per-element
-payload is `ids`. The `syms` arm is what `intern` never answers, and the writer refuses its no
-parts. -/
+/-- A column's constructor kind and its parts, numbered as `ownNParts` (`crate/src/own.rs`'s `OWN_NPARTS`) gives each
+kind its part count; there is no kind 1, a boolean being a `u1` `foR`. A `syms` column is interned first: its `offs`
+is an `Array Nat` with no bytes to write, where an interned column's per-element payload is `ids`. The `syms` arm is
+what `intern` never answers, and the writer refuses its no parts. -/
 def ownParts (e : Ext.Enc X) : UInt8 × Array ByteArray :=
   match Column.intern e with
   | .bytes b => (0, #[b])
