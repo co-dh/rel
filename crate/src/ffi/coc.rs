@@ -43,6 +43,16 @@ export! {
         }
         nat(codec::block_start(&m, bv.unbox()))
     }
+    /// `boolsOf n b`: the bitmap `b`'s first `n` bits as the `u1` Frame of Reference column, a block at a time (a
+    /// block starts on a byte: `lo` is a multiple of the block size); a bit past `b` is 0.
+    fn qlean_coc_bools_of(n: usize, b: B) -> O {
+        let b = b.bytes();
+        Sink::new(n, 1, Form::For).bools(crate::QLEAN_COST_ARITH, &|lo, hi, o| {
+            let s = b.get(lo / 8..hi.div_ceil(8).min(b.len())).unwrap_or(&[]);
+            o[..s.len()].copy_from_slice(s);
+            o[s.len()..].fill(0)
+        })
+    }
     /// `(meta, pack)` of the dense column `x` of elements `width` bytes wide (`elt_width`)
     fn qlean_coc_encode(width: usize, x: B) -> O { encode(x, elt_width("qlean_coc_encode", width), Form::For, false) }
     /// `qlean_coc_encode` as `some`, or `none` when the encoded form would not be shorter than `x`

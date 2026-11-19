@@ -459,7 +459,8 @@ def gatherColumn (t : QAtomicType) (n : USize) (e : Ext.Enc X) (m : USize) (ie :
       | some ix => if ix.size < m.toNat * 8 then none else some ix
       | none => none
     match t, e with
-    | .u1, e => (boolBits .u1 n e).bind fun b => (idx ()).map fun ix => .bits (gatherBits n b ix)
+    | .u1, e => (boolBits .u1 n e).bind fun b => (idx ()).map fun ix =>
+      let r := Coc.boolsOf m (gatherBits n b ix); .foR r.1 r.2
     | .sym, .syms blob offs =>
       (idx ()).map fun ix => let (nb, no) := gatherSyms blob offs ix; .syms nb no
     -- interned: `asc` is a grade and this gather, and the grade was already the ids' — leaving this
@@ -583,7 +584,8 @@ def razeColumn (t : QAtomicType) (cs : Array (USize × Ext.Enc X)) : Option (Ext
       -- a `u1` `foR` part is brought to the bitmap the others are, a block at a time
       match cs.mapM (fun (n, e) => (boolBits .u1 n e).map (n, ·)) with
       | some ps => needSize (ps.foldl (init := 0) (fun s p => s + p.1.toNat)) "raze: booleans" (fun _ => none) fun c =>
-        some (.vector .u1 c (.bits (concatBits (countBytes (ps.map (·.1))) (ps.map (·.2)))) none)
+        let r := Coc.boolsOf c (concatBits (countBytes (ps.map (·.1))) (ps.map (·.2)))
+        some (.vector .u1 c (.foR r.1 r.2) none)
       | none => none
     | .sym =>
       match cs.mapM (fun | (_, .syms b o) => some (b, o) | _ => none) with
@@ -626,8 +628,8 @@ def razeColumn (t : QAtomicType) (cs : Array (USize × Ext.Enc X)) : Option (Ext
 code. An interned column's ids are in `[0, d)` and pass as they lie, at any lane: the chain's
 `Ew.eIds` stage reads them unsigned a tile at a time, so no lane is widened whole first. Measured at
 1e7 rows, two lanes of 1, 2 or 4 bits: 1.3–2.3 ms a key, against 2.7–4.6 widening them by `remapIds`
-first and 1.0–1.7 for the same codes already dense `u8`, the widening not counted. A bitmap is in
-`[0, 1]` without a read.
+first and 1.0–1.7 for the same codes already dense `u8`, the widening not counted. A bit code is
+such a lane at width 1 (`Code.column`), in `[0, 1]` without a read.
 
 A dense column is read by `overBytes`, a fold that skips its `nul` and seeds `min` with `~~~nul`.
 So `min` skipping `-1` is negative exactly when a code other than `-1` is, and `min` skipping `-2`
@@ -637,7 +639,6 @@ its metadata and patch list, no element at all. -/
 def keyOperand (t : QAtomicType) (e : Ext.Enc X) : Option (QAtomicType × Bool × Int) :=
   match e with
   | .enum _ offs _ => some (.sym, false, ((offs.size - 1 : Nat) : Int) - 1)
-  | .bits _ => if t == .u1 then some (t, false, 1) else none
   | .bytes b => do
     guard (t == .u8 || t == .i16 || t == .i32 || t == .i64)
     let cls ← clsOf t

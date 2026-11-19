@@ -5,7 +5,7 @@
 use crate::key::{SK_BIT, SK_C8, SK_I8, SK_F32, SK_F64, SK_I16, SK_I32, SK_I64, SK_KINDS_N, SK_U8};
 use crate::simd;
 use crate::pod::{self, Elt};
-use crate::blocks::{Blocks, Grid, Src};
+use crate::blocks::{Blocks, Grid, Src, tag};
 use crate::coc::Coc;
 use crate::ffi::{Form, Sink};
 use crate::ids;
@@ -587,24 +587,23 @@ const BLK: usize = 1 << crate::DEFAULT_LG;
 type Seg = [u64; BLK / 64];
 
 /// One column of `kscan` as `Enc.raw s n` reads it, a block of rows at a time: a dense payload of `w`-byte elements,
-/// a bit payload, or a block source of `w`-byte elements cut by the mask `m` (`!0`, or `1` for a boolean `foR`, which
-/// `raw` reads at its one bit). Each form reads 0 past what it holds, as `raw` does.
+/// or a block source of `w`-byte elements cut by the mask `m` (`!0`, or `1` for a boolean `foR`, which `raw` reads at
+/// its one bit). Each form reads 0 past what it holds, as `raw` does.
 #[derive(Clone, Copy)]
-enum Col<'a> { Dense(&'a [u8], usize), Bits(&'a [u8]), Blk(Blocks<'a>, usize, u64) }
+enum Col<'a> { Dense(&'a [u8], usize), Blk(Blocks<'a>, usize, u64) }
 
 impl<'a> Col<'a> {
     /// `Enc.raw s n e`'s arms; `None` where `raw` is `#[]`.
     fn of(s: u8, n: usize, e: B<'a>) -> Option<Col<'a>> {
         let (w, boolean) = (qtype_width(s), s == QT_BOOLEAN);
         match (e.tag(), w) {
-            (0, Some(w)) if !boolean => Some(Col::Dense(e.field(0).bytes(), w)),
-            (1, _) if boolean => Some(Col::Bits(e.field(0).bytes())),
-            (3, Some(w)) if boolean => Some(Col::Blk(Blocks::of(e, w, n, "qlean_k_scan"), w, 1)),
-            (3 | 4, Some(w)) if !boolean => Some(Col::Blk(Blocks::of(e, w, n, "qlean_k_scan"), w, !0)),
-            // `pos` (tag 7) is `raw`'s at `i64` (type 4) only: the loop index
-            (7, _) if s == 4 => Some(Col::Blk(Blocks::pos(n), 8, !0)),
+            (tag::BYTES, Some(w)) if !boolean => Some(Col::Dense(e.field(0).bytes(), w)),
+            (tag::FOR, Some(w)) if boolean => Some(Col::Blk(Blocks::of(e, w, n, "qlean_k_scan"), w, 1)),
+            (tag::FOR | tag::ALP, Some(w)) if !boolean => Some(Col::Blk(Blocks::of(e, w, n, "qlean_k_scan"), w, !0)),
+            // `pos` is `raw`'s at `i64` (type 4) only: the loop index
+            (tag::POS, _) if s == 4 => Some(Col::Blk(Blocks::pos(n), 8, !0)),
             // ids of no bits (a dictionary of one entry) read 0 at every row
-            (5, _) if s == QT_SYMBOL => Some(match ids::id_width(e.field(1).words().len().saturating_sub(1)) {
+            (tag::ENUM, _) if s == QT_SYMBOL => Some(match ids::id_width(e.field(1).words().len().saturating_sub(1)) {
                 0 => Col::Dense(&[], 8), lw => Col::Blk(Blocks::ids(e.field(2).bytes(), n, lw), 8, !0) }),
             _ => None,
         }
@@ -614,7 +613,6 @@ impl<'a> Col<'a> {
     fn load(&self, lo: usize, out: &mut [u64], tmp: &mut [u8]) {
         match *self {
             Col::Dense(p, w) => widen(p.get(lo * w..).unwrap_or(&[]), w, out),
-            Col::Bits(p) => for (k, o) in out.iter_mut().enumerate() { *o = bit(p, lo + k) as u64 },
             Col::Blk(bl, w, m) => {
                 let got = (lo + out.len()).min(bl.n).saturating_sub(lo);
                 let on_grid = bl.lg() == crate::DEFAULT_LG;
@@ -641,8 +639,6 @@ impl<'a> Col<'a> {
     /// Block `b`'s one word where its metadata say every row holds it.
     fn konst(&self, b: usize) -> Option<u64> { self.coc(b).filter(|c| c.meta.base[b] == c.meta.maxv[b]).map(|c| c.meta.base[b] as u64) }
 }
-/// `p`'s bit `i`, LSB first, 0 past its end (`bitAt`).
-fn bit(p: &[u8], i: usize) -> bool { p.get(i >> 3).is_some_and(|b| b >> (i & 7) & 1 == 1) }
 /// The `w`-byte elements of `x` zero-extended into `out`, 0 past `x`; an element `x` cuts short reads its low bytes, as
 /// `raw`'s `rd` does.
 fn widen(x: &[u8], w: usize, out: &mut [u64]) {
@@ -667,23 +663,10 @@ impl Scan<'_> {
     /// segment start (`kscanRow`'s `0 < i`): row 0, or row `n - 1` under `rev`.
     fn seg(&self, lo: usize, nb: usize) -> Seg {
         let mut g = [0u64; BLK / 64];
-        match self.seg {
-            Col::Bits(p) => {
-                let src = p.get(lo / 8..).unwrap_or(&[]);
-                for (k, o) in g.iter_mut().enumerate().take(nb.div_ceil(64)) {
-                    let mut a = [0u8; 8];
-                    let s = src.get(8 * k..).unwrap_or(&[]);
-                    a[..s.len().min(8)].copy_from_slice(&s[..s.len().min(8)]);
-                    *o = u64::from_le_bytes(a);
-                }
-            }
-            // a `foR` boolean: the block decoded into the L1 scratch, each row's bit packed
-            c => {
-                let (mut v, mut tmp) = (pod::Scr::<u64>::new(nb), pod::Scr::<u64>::new(BLK));
-                c.load(lo, &mut v, pod::bytes_mut(&mut tmp));
-                for (k, &x) in v.iter().enumerate() { g[k >> 6] |= (x & 1) << (k & 63) }
-            }
-        }
+        // a `foR` boolean: the block decoded into the L1 scratch, each row's bit packed
+        let (mut v, mut tmp) = (pod::Scr::<u64>::new(nb), pod::Scr::<u64>::new(BLK));
+        self.seg.load(lo, &mut v, pod::bytes_mut(&mut tmp));
+        for (k, &x) in v.iter().enumerate() { g[k >> 6] |= (x & 1) << (k & 63) }
         if nb & 63 != 0 { g[nb >> 6] &= !0 >> (64 - (nb & 63)) }
         if self.rev { if lo + nb == self.n { g[(nb - 1) >> 6] |= 1 << ((nb - 1) & 63) } } else if lo == 0 { g[0] |= 1 }
         g
@@ -849,8 +832,11 @@ mod kscan_tests {
     fn bytes(v: &[u64], w: usize) -> Vec<u8> { v.iter().flat_map(|e| e.to_le_bytes()[..w].to_vec()).collect() }
     fn enc_for(v: &[u64], w: usize) -> O { Sink::new(v.len(), w, Form::For).enc().answer(&Blocks::dense(&bytes(v, w), w)) }
     fn enc_dense(p: &[u8]) -> O { let mut a = SArr::new(1, p.len()); a.bytes_mut().copy_from_slice(p); lean::ctor(0, [a.into()], &[]) }
-    fn enc_bits(v: &[u64]) -> O { Sink::new(v.len(), 1, Form::Ids(1)).enc().answer(&Blocks::dense(&bytes(v, 1).iter().map(|b| b & 1).collect::<Vec<_>>(), 1)) }
-    fn parts(o: &O) -> Vec<Vec<u8>> { let b = o.borrow(); (0..if b.tag() == 1 { 1 } else { 2 }).map(|i| b.field(i).bytes().to_vec()).collect() }
+    fn enc_bits(v: &[u64]) -> O { enc_for(&v.iter().map(|b| b & 1).collect::<Vec<_>>(), 1) }
+    fn parts(o: &O) -> Vec<Vec<u8>> {
+        let b = o.borrow();
+        (0..if b.tag() == tag::BYTES { 1 } else { 2 }).map(|i| b.field(i).bytes().to_vec()).collect()
+    }
     /// A column of `n` words: a smooth run, an outlier every 97th row (a patch), negatives, a null every 301st, `0n`
     /// every 211th.
     fn column(n: usize, k: u64) -> Vec<u64> {

@@ -317,8 +317,6 @@ def groupIdsColumn (t : QAtomicType) (n : USize) (e : Ext.Enc X) : Option (ByteA
     let (_, dof, ids) := internSyms blob offs
     needSize (dof.size - 1) "groupIdsColumn: dictionary entries" (fun _ => none)
       fun nd => some (idGroups nd n (Column.idWidth dof).toUSize ids)
-  -- `dedup` reads a bitmap a bit an element at `Kind.bit`, so the bitmap is the payload as it lies
-  | .u1, .bits b => some (groupIds .bit n b)
   | t, e =>
     match orderKind t with
     | none => none
@@ -389,8 +387,6 @@ def gradeColumn (t : QAtomicType) (desc : Bool) (n : USize) (e : Ext.Enc X) (ran
   match t, e with
   | .sym, .syms blob offs => some (.bytes (inv (gradeSyms desc blob offs)))
   | .sym, .enum dict dof ids => some (.bytes (inv (gradeIds desc n dict dof ids)))
-  | .u1, .bits b =>
-    some (.bytes (if rank then ranks .bit n b else grade .bit desc n b))
   | t, e =>
     match orderKind t with
     | none => none

@@ -61,11 +61,11 @@ theorem gatherColumn_get_bits {n : USize} {e : Enc} (hw : Enc.WF .u1 n e) {m : U
     Enc.get .u1 m e' k = Enc.get .u1 n e (Column.bitsAt i (k * 8) 8).toNat := by
   have hz : ¬ i.size < m.toNat * 8 := by omega
   obtain ⟨b, hb⟩ : ∃ b, boolBits .u1 n e = some b := by cases e <;> simp_all [Enc.WF, boolBits]
-  have hg : gatherColumn .u1 n e m (.bytes i) = some (.bits (gatherBits n b i)) := by
+  have hg : gatherColumn .u1 n e m (.bytes i) =
+      some (.foR (Coc.boolsOf m (gatherBits n b i)).1 (Coc.boolsOf m (gatherBits n b i)).2) := by
     cases e <;> simp_all [gatherColumn, denseWidth, foRColumn, Enc.bytesOf, boolBits]
   cases h.symm.trans hg
-  rw [get_boolBits hw hb hin]
-  simp only [Enc.get, if_pos hk, bitAt_gatherBits _ _ _ _ (hm ▸ hk), if_pos hin]
+  rw [get_boolsOf _ hk, get_boolBits hw hb hin, bitAt_gatherBits _ _ _ _ (hm ▸ hk), if_pos hin]
 
 /-- `extract` of a range that ends where it starts, or before, is empty. -/
 theorem extract_empty (b : ByteArray) {lo hi : Nat} (h : hi ≤ lo) : b.extract lo hi = b.extract lo lo := by
@@ -312,10 +312,11 @@ theorem gatherColumn_miss_bits {n : USize} {e : Enc} (hw : Enc.WF .u1 n e) {m : 
     Enc.get .u1 m e' k = some (Eval.nullAtom .u1) := by
   have hz : ¬ i.size < m.toNat * 8 := by omega
   obtain ⟨b, hb⟩ : ∃ b, boolBits .u1 n e = some b := by cases e <;> simp_all [Enc.WF, boolBits]
-  have hg : gatherColumn .u1 n e m (.bytes i) = some (.bits (gatherBits n b i)) := by
+  have hg : gatherColumn .u1 n e m (.bytes i) =
+      some (.foR (Coc.boolsOf m (gatherBits n b i)).1 (Coc.boolsOf m (gatherBits n b i)).2) := by
     cases e <;> simp_all [gatherColumn, denseWidth, foRColumn, Enc.bytesOf, boolBits]
   cases h.symm.trans hg
-  simp only [Enc.get, if_pos hk, bitAt_gatherBits _ _ _ _ (hm ▸ hk), if_neg (Nat.not_lt.2 hout)]
+  rw [get_boolsOf _ hk, bitAt_gatherBits _ _ _ _ (hm ▸ hk), if_neg (Nat.not_lt.2 hout)]
   rfl
 
 /-- Belongs in qlean. **`x@i` at a `symbol` blob, a miss**: symbol `k` of the answer is the empty one. -/

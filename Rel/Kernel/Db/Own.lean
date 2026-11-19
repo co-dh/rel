@@ -25,7 +25,6 @@ parts. -/
 def ownParts (e : Ext.Enc X) : UInt8 × Array ByteArray :=
   match Column.intern e with
   | .bytes b => (0, #[b])
-  | .bits b => (1, #[b])
   | .foR metadata pack => (2, #[metadata, pack])
   | .alp metadata pack alp => (3, #[metadata, pack, alp])
   | .enum dict _ ids => (4, #[dict, ids])

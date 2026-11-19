@@ -178,6 +178,11 @@ width 0 at base 0 or 1 with no residual. `rust/src/ffi.rs`'s `Sink::bools` write
 def bools (n : Nat) (p : Nat → Bool) : ByteArray × ByteArray :=
   encodeAt Rel.Column.lgEnc (USize.ofNat32 1 (by decide)) (Rel.Column.packIds 8 n fun i => (p i).toNat) false
 
+/-- The first `n` bits of the bitmap `b` as the `u1` column `bools` lays out, a bit past `b` being `0`: the writer a
+kernel whose answer is a bitmap (`gatherBits`, `concatBits`) hands it to, so no boolean answer is a bitmap `Enc`. -/
+@[extern "qlean_coc_bools_of"]
+def boolsOf (n : USize) (b : @& ByteArray) : ByteArray × ByteArray := bools n.toNat (Rel.Column.bitAt b)
+
 
 /-- The bytes of the patch list whose header is at byte `e` of `pk`, for `nb` blocks: `rust/src/coc.rs`'s
 `for_layout` of the header's count, element width and frame flag — the ladder `Column.alpSects` gives,
@@ -568,8 +573,8 @@ end Rel.Ext.Enc
 
 namespace Rel.Kernel
 
-/-- `n` bits from `f`, packed LSB first with the tail of the last byte left zero. `Column.packBits`
-records why the tail matters: trailing set bits make two equal boolean vectors compare unequal under
+/-- `n` bits from `f`, packed LSB first with the tail of the last byte left zero, because
+trailing set bits make two equal boolean vectors compare unequal under
 `~`. One definition for the bit-payload kernels (`bitRowsOver` in `Reduce`, four in `Structural`, `bitsOfFoR`
 here), which differ only in `f`. -/
 def packOf (n : Nat) (f : Nat → Bool) : ByteArray :=
@@ -591,8 +596,106 @@ through `bitsOfFoR`); `none` at any other type or form. The one boolean read eve
 here below `Elementwise` so that its operand readers take a boolean through it too. -/
 def boolBits (t : QAtomicType) (n : USize) (e : Ext.Enc X) : Option ByteArray :=
   match t, e with
-  | .u1, .bits b => some b
   | .u1, .foR m p => some (bitsOfFoR m p n)
   | _, _ => none
 
 end Rel.Kernel
+
+namespace Rel
+
+namespace Ext.Enc
+open Column
+
+/-- `n` elements of `t`, all zero bits, for every `n`: the value a failed `need`'s model answers. It
+needs no bound because a replicated array has the size asked for. Here, after `Coc.bools`, because a
+boolean is a `u1` `foR`. -/
+def blank (t : QAtomicType) (n : USize) : Ext.Enc X :=
+  match t, t.width with
+  | .general, _ => .gen (Array.replicate n.toNat default)
+  | .u1, _ => .foR (Kernel.Coc.bools n.toNat fun _ => false).1 (Kernel.Coc.bools n.toNat fun _ => false).2
+  | .sym, _ => .syms .empty (Array.replicate (n.toNat + 1) 0)
+  | _, some w => .bytes ⟨Array.replicate (n.toNat * w) 0⟩
+  | _, none => .gen #[]
+
+/-- The payload holding exactly these atoms at `t`, count `as.size`, or `none` if one of them is not
+at `t`. Only the payload, because the header is the caller's arguments: `.vector t as.size e none`.
+The caller decides what a mismatch means — `Eval.vectorOf` answers with a general list, which is q's
+own behaviour — so this never coerces. -/
+def ofAtoms (t : QAtomicType) (as : Array QAtom) (h : t ≠ .general := by first | decide | assumption) :
+    Option (Ext.Enc X) :=
+  if as.all (·.type == t) then match t with
+    | .general => absurd rfl h
+    | .u1 => some (.foR (Kernel.Coc.bools as.size fun i => (as[i]?.map boolOf).getD false).1
+        (Kernel.Coc.bools as.size fun i => (as[i]?.map boolOf).getD false).2)
+    | .sym => some (symsOf as)
+    | t => match t.width with
+      | some w =>
+        some (.bytes (as.foldl (init := ByteArray.emptyWithCapacity (as.size * w))
+          fun acc a => pushBits acc (bitsOf a) w))
+      | none => none
+  else none
+
+end Ext.Enc
+
+namespace Column
+open Ext.Enc
+
+/-- `ofAtoms` fails on exactly one condition, so a caller that already knows its atoms are at `t`
+gets a payload back. Every assembler in `QLean/Eval/` establishes that condition by filtering or
+testing before it commits to a vector, which is what makes its announced type honest. -/
+theorem ofAtoms_isSome {t : QAtomicType} {as : Array QAtom} (hn : t ≠ .general)
+    (h : ∀ a ∈ as, a.type = t) : (ofAtoms (X := X) t as).isSome := by
+  unfold ofAtoms
+  rw [if_pos (Array.all_eq_true'.mpr fun x hx => by simp [h x hx])]
+  cases t <;> first | contradiction | simp [QAtomicType.width]
+
+end Column
+
+namespace Ext.QValue
+
+/-- The `i`th slice of a `slices` value, as the vector it denotes. Reading one is a copy of its
+bytes and nothing else; reading them all is the loop the constructor exists to avoid, which is why
+this is by index and there is no `toArray`. Here, after `Enc.blank`.
+
+**The slice stays dense, and that is measured rather than conceded.** `CLAUDE.md`'s "the encoded form
+is the representation" is about a column that *enters* and is then read many times; a slice is read
+once, by the `each` that asked for it, so encoding it spends a whole extra pass to save part of one.
+Interleaved against the same binary with the encode spliced in, a million longs in a thousand pieces:
+`count each value group xg` 1.32x, `min each value group xg` 1.18x, `sums each value group xg` 1.12x,
+`{x+x} each value group xg` and `{x+x} each flip mxl` 1.05x — against the same pieces held as a
+general list, `{x+x} each mxl` at 1.00x and `sums each mxl` at 1.04x. Every shape is a loss.
+
+There is no boxing on the other side of that trade, which is what would have paid for the pass.
+`Kernel.overColumn` folds a dense payload at every integral type and a boolean `foR` at `boolean`, and
+the elementwise and scan families have their own dense paths: measured, `min each mxf` is 341ns per
+thousand elements and `{x+x} each mxl` 1.0µs, where `Column.atoms` alone would be 64µs. The decline
+`CLAUDE.md` warns about is real at a column that arrives, not at a slice of one.
+
+`Column.encode` answers a float column unchanged (`Coc.encodes` is false there — ALP is the float encoding and
+reaches columns through `Column.admit`), so it would be a no-op at the one type it was wanted for.
+
+The second case rests on every producer — `group`, `flip`, `string`, `vs`, `cross` — sharing a
+`.bytes` payload. A payload that is not dense has no per-piece cut here and answers the whole column,
+so a producer over an encoded column must cut it where it is built, the way `Kernel.cutFoR` does. -/
+def sliceAt (t : QAtomicType) (n : USize) (e : Ext.Enc X) (attr : Option (UInt8 × IndexCell))
+    (offs : Array Nat) (i : Nat) : Ext.QValue X :=
+  match e with
+  -- `offs` are byte offsets, so the slice's count is its bytes over the element width; a type with
+  -- no width has no `bytes` layout (`Enc.WF`)
+  | .bytes blob =>
+    let c := (offs[i + 1]! - offs[i]!) / (t.width.getD 1)
+    Kernel.needSize c "sliceAt: count" (fun _ => .vector t 0 (Enc.blank t 0) none)
+      fun c => .vector t c (.bytes (blob.extract offs[i]! offs[i + 1]!)) none
+  | _ => .vector t n e attr
+
+/-- Every element of a `slices` value, which is the million-value loop it exists to avoid. Only
+where something genuinely needs them all — `~` against a general list, the wire encoder — and the
+count is small, or the cost is the one the constructor was avoiding. -/
+def slicesExpand (t : QAtomicType) (n : USize) (e : Ext.Enc X) (attr : Option (UInt8 × IndexCell))
+    (offs : Array Nat) : Array (Ext.QValue X) :=
+  if offs.isEmpty then #[]
+  else (Array.range (offs.size - 1)).map (sliceAt t n e attr offs)
+
+end Ext.QValue
+
+end Rel

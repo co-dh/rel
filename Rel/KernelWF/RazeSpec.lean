@@ -398,7 +398,10 @@ theorem razeTo_toList_boolean (cs : Array ((k : USize) × Arr .u1 k)) {S : Nat}
     simpa [ps] using e 0 l
   have hv : ∀ h, (razeColumn .u1 ((List.toArray l).map (·.2.part))).get h =
       .vector .u1 (ps.foldl (fun s (p : USize × ByteArray) => s + p.1.toNat) 0).toUSize
-        (.bits (concatBits (countBytes (ps.map (·.1))) (ps.map (·.2)))) none := fun h => by
+        (.foR (Coc.boolsOf (ps.foldl (fun s (p : USize × ByteArray) => s + p.1.toNat) 0).toUSize
+            (concatBits (countBytes (ps.map (·.1))) (ps.map (·.2)))).1
+          (Coc.boolsOf (ps.foldl (fun s (p : USize × ByteArray) => s + p.1.toNat) 0).toUSize
+            (concatBits (countBytes (ps.map (·.1))) (ps.map (·.2)))).2) none := fun h => by
     apply Option.some_inj.1; rw [Option.some_get]
     unfold razeColumn
     rw [if_neg (by simpa using h0)]
@@ -411,8 +414,14 @@ theorem razeTo_toList_boolean (cs : Array ((k : USize) × Arr .u1 k)) {S : Nat}
       simp only [needSize, need]; rw [dif_pos (by rw [hps, hsum]; exact hS)]
     next heq => cases heq.symm.trans (show _ = some ps by
         rw [Array.mapM_map]; exact mapM_some _ fun c _ => by simp [Arr.part, enc_tagBits c.2])
-  refine (toList_bits _ (b := concatBits (countBytes (ps.map (·.1))) (ps.map (·.2)))
-    (by simp only [Arr.enc, hv, boolBits])).trans ?_
+  refine (toList_bits _ (by simp only [Arr.enc, hv, boolBits]; rfl)).trans ?_
+  -- the answer's bitmap reads, below its count, as the `concatBits` the kernel handed `boolsOf`
+  simp only [Kernel.Coc.boolsOf]
+  -- `boolsOf` was handed the parts' bitmap count, the answer is read at the columns' count: both are the sum
+  have hN0 : (ps.foldl (fun s (p : USize × ByteArray) => s + p.1.toNat) 0).toUSize.toNat =
+      (((List.toArray l).map (·.2.part)).foldl (fun s (c : USize × Enc) => s + c.1.toNat) 0).toUSize.toNat := by
+    rw [hps, hk]
+  rw [List.map_congr_left fun j hj => bitAt_bools _ hN0 (List.mem_range.1 hj)]
   have hN : (((List.toArray l).map (·.2.part)).foldl (fun s (c : USize × Enc) => s + c.1.toNat) 0).toUSize.toNat =
       (l.map (·.1.toNat)).sum := by rw [USize.toNat_ofNat_of_lt' hf, hk]
   rw [hN]

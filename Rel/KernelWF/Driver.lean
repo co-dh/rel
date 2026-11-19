@@ -1,6 +1,7 @@
 import Rel.Kernel.Driver
 import Rel.KernelSpec.Alp
 import Rel.KernelSpec.Search
+import Rel.KernelSpec.Ids
 
 open Rel.Ext
 
@@ -39,7 +40,7 @@ theorem dense_bits (w : Nat) (hw : w ≤ 8) (xs : Array UInt64) :
     Array.foldl_toList] at hs hb
   exact ⟨by rw [dense, hs], fun i h => by rw [dense, Nat.mul_comm, hb i h]⟩
 
-/-- The raw elements of a boolean column, `bits` or a `foR` of `u1`, are `0` or `1`. -/
+/-- The raw elements of a boolean column, a `foR` of `u1`, are `0` or `1`. -/
 theorem raw_boolean_le (n : USize) (e : Enc) : ∀ v ∈ e.raw .u1 n, v ≤ 1 := by
   intro v hv
   cases e <;> simp only [Enc.raw, Array.mem_map, Array.mem_range, Array.not_mem_empty] at hv
@@ -88,7 +89,7 @@ theorem raw_ofRaw (t : QAtomicType) (w : Nat) (ht : t.width = some w) (n : USize
   obtain ⟨hw1, hw8, hfor, halp⟩ := width_cases t w ht
   by_cases hb : t = .u1
   · subst hb
-    simp only [ofRaw, Enc.raw]
+    simp only [ofRaw, Enc.raw, Kernel.Coc.boolsOf]
     apply Array.ext (by simp [hn])
     intro i h1 h2
     have hx := hbool rfl xs[i] (Array.getElem_mem _)
@@ -96,7 +97,7 @@ theorem raw_ofRaw (t : QAtomicType) (w : Nat) (ht : t.width = some w) (n : USize
       (f := fun i => (xs[i]?.getD 0).toNat) (.inl rfl) (by simpa using h1) (by
         simp only [Array.getElem?_eq_getElem h2, Option.getD_some]; exact Nat.lt_of_le_of_lt (UInt64.le_iff_toNat_le.1 hx) (by decide))
     rw [Verify.idAt_one] at hp
-    simp only [Array.getElem_map, Array.getElem_range]
+    simp only [Array.getElem_map, Array.getElem_range, foRBits_bools _ _ (show i < n.toNat by simpa using h1)]
     simp only [Array.getElem?_eq_getElem h2, Option.getD_some] at hp
     split at hp <;> rename_i hc <;> simp only [hc] <;> apply UInt64.toNat_inj.1 <;> simp [← hp]
   have hof : ofRaw t n xs = Enc.answer t n (.bytes (dense w xs)) := by

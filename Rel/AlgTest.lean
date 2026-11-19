@@ -210,7 +210,7 @@ private def M : Tab (.sum (.prod L L) (.arr L)) LS := sum (pair R S)° K°
   (dom M).n.toNat == (M.toList.map (·.1)).eraseDups.length && (dom M).n == 6
 -- a sum column by hand: tags `0110`, positions `-5 7 0 9` into `[1 2]` and `[10 20 30]`, read clamped into
 -- each side, `inl 1, inr 30, inr 10, inl 2`; `Xi` the same values at in-range positions of other payloads
-private def tg4 : Arr .u1 4 := Arr.mk (.bits (ByteArray.mk #[0b0110])) (by wf_lit)
+private def tg4 : Arr .u1 4 := Arr.bools 4 (Column.bitAt ⟨#[0b0110]⟩)
 private def Xo : Vals LS 4 := ⟨2, 3, tg4, col [-5, 7, 0, 9], col [1, 2], col [10, 20, 30]⟩
 private def Xi : Vals LS 4 := ⟨3, 2, tg4, col [2, 1, 0, 1], col [7, 2, 1], col [10, 30]⟩
 #guard ((idU Xo).toList.map (·.1) : List (Int64 ⊕ Int64)) == [.inl 1, .inr 30, .inr 10, .inl 2]
@@ -240,7 +240,7 @@ private def E0 : Vals L 0 := Vals.empty L
   junc R Z ∪ junc Z S == junc R S && junc Z Z ∪ junc Z Z == junc Z Z
 -- a sum column by hand with a row tagged to a side of no values: `Xel`'s `inl` row, `Xer`'s `inr` row. Each
 -- reads its own side's null, as a gather past a side reads it, and `∪` (razed), `∩` (coded) read it so too
-private def tg2 : Arr .u1 2 := Arr.mk (.bits (ByteArray.mk #[0b10])) (by wf_lit)
+private def tg2 : Arr .u1 2 := Arr.bools 2 (Column.bitAt ⟨#[0b10]⟩)
 private def Xel : Vals LS 2 := ⟨0, 1, tg2, col [0, 0], Vals.empty L, col [20]⟩
 private def Xer : Vals LS 2 := ⟨1, 0, tg2, col [0, 3], col [7], Vals.empty L⟩
 private def Yn : Vals LS 2 := ⟨2, 0, tags #[(2, false)] 2, col [0, 1], col [7, Int64.minValue], Vals.empty L⟩
@@ -348,9 +348,9 @@ private def same {t : QAtomicType} (X Y : Tab L t) : LL := X ≫ Y°
 -- the positions of `(p q p r)` paired with equal elements: `(0 2)` share, `1` and `3` alone
 private def pqpr : List (Int64 × Int64) := [(0, 0), (0, 2), (2, 0), (2, 2), (1, 1), (3, 3)]
 
--- boolean, `bits`: `1010b`, whose positions pair `(0 2)` and `(1 3)`
+-- boolean: `1010b`, whose positions pair `(0 2)` and `(1 3)`
 private abbrev Bo := QAtomicType.u1
-private def bitsC : Arr Bo 4 := Arr.mk (.bits (ByteArray.mk #[0b0101])) (by wf_lit)
+private def bitsC : Arr Bo 4 := Arr.bools 4 (Column.bitAt ⟨#[0b0101]⟩)
 #guard let X := same (lst bitsC) (lst bitsC)
   seteq X.toList [(0, 0), (0, 2), (2, 0), (2, 2), (1, 1), (1, 3), (3, 1), (3, 3)] && X.n == 8
 #guard let X := ran (lst bitsC); seteq X.toList [(true, true), (false, false)] && X.n == 2
@@ -697,7 +697,7 @@ section PickMiss
 
 private def r0 {A : Obj} (p : Part A) : Option A.El := if h : 0 < p.1.toNat then some (p.2.row ⟨0, h⟩) else none
 private def i0 : ByteArray := packLongs [0]
-private def bF : Arr .u1 1 := Arr.mk (.bits (ByteArray.mk #[0])) (by wf_lit)
+private def bF : Arr .u1 1 := Arr.bools 1 fun _ => false
 private def l0 : Arr .i64 1 := Arr.mk (.bytes <| packLongs [0]) (by wf_lit)
 private def l1 : Arr .i64 1 := Arr.mk (.bytes <| packLongs [1]) (by wf_lit)
 private def l5 : Arr .i64 1 := Arr.mk (.bytes <| packLongs [5]) (by wf_lit)

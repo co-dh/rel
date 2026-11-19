@@ -481,21 +481,22 @@ theorem keySource_code (c : Code)
     obtain ⟨src, hsrc, e⟩ := srcOf_stage (B := B) cn hb hbs hst hBi hBs hBz
     rw [e]; exact hel j hj src hsrc hj
   rcases hw with rfl | rfl | rfl | rfl | rfl | rfl | rfl
-  · -- a bitmap: input, then `eWiden` from `bits`
+  · -- a bitmap: an interned lane of `1` bit, input, then `eIds` reading it where it lies
+    have hw1 : Column.idWidth (Array.replicate 3 0) = 1 := by decide
     simp [Code.column, Code.kind, laneKind] at hcol
     obtain ⟨rfl, rfl, rfl⟩ := hcol
     simp [keyOperand] at hko
     obtain ⟨rfl, rfl, rfl⟩ := hko
-    simp [keySource, operandSource, clsOf, promotable, boolBits, Ew.Build.input, Ew.Build.add] at hks
+    simp [keySource, Ew.Build.input, Ew.Build.add, hw1] at hks
     obtain ⟨-, rfl, rfl⟩ := hks
     refine hstage _ rfl rfl rfl fun j _ src hsrc hj => ?_
-    rw [stageRun_widen rfl]; dsimp only; rw [hsrc, elem_widen_i64 (by decide) _ _ _ hj]
-    simp only [Ew.widenRead, beq_self_eq_true, ↓reduceIte, idAt_one]
-    have hd' : (1 : Int) < d := by
-      rcases hd with h0 | ⟨-, h⟩
-      · subst h0; simp at hj
-      · exact h
-    split <;> exact ⟨by first | rfl | decide | simp, by omega⟩
+    rw [stageRun_ids rfl]; dsimp only; rw [hsrc, elem_idAt]
+    have h := eIds_idAt cb (w := 1) hj
+    have h2 : Column.idAt cb 1 j < 2 := by rw [Verify.idAt_one]; split <;> decide
+    refine ⟨by simpa using h, ?_⟩
+    rcases hd with h0 | ⟨-, hh⟩
+    · subst h0; simp at hj
+    · omega
   -- an interned lane of `2` or `4` bits: input, then `eIds` reading it where it lies
   iterate 2
     · simp [Code.column, Code.kind, laneKind] at hcol

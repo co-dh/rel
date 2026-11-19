@@ -119,8 +119,8 @@ theorem bitsOf_bitAt (x : Bool) (c : USize) {r : Nat} (hr : r < c.toNat) (hc : c
     count, laid one after another. Each count is at most `2^63`, where `bitsOf` reads `til` as nonnegative. -/
 theorem tags_get (ps : Array (USize × Bool)) (m : USize) (h : ps.foldl (fun s p => s + p.1.toNat) 0 = m.toNat)
     (hc : ∀ p ∈ ps, p.1.toNat ≤ 2 ^ 63) (i : Fin m.toNat) :
-    (tags ps m h).get i = (ps.toList.flatMap fun p => List.replicate p.1.toNat p.2).getD i.1 false := by
-  rw [Arr.get_bool_bits (tags ps m h) rfl i]
+    (tags ps m).get i = (ps.toList.flatMap fun p => List.replicate p.1.toNat p.2).getD i.1 false := by
+  rw [Arr.get_bool_bits (tags ps m) rfl i]
   simp only [concatBits]
   have hK : min ((countBytes ((ps.map fun p => (p.1, bitsOf p.2 p.1)).map (·.1))).size / 8)
       ((ps.map fun p => (p.1, bitsOf p.2 p.1)).map (·.2)).size = ps.size := by
@@ -146,7 +146,9 @@ theorem tags_get (ps : Array (USize × Bool)) (m : USize) (h : ps.foldl (fun s p
     intro l; induction l with
     | nil => simp
     | cons p l ih => intro a; simp only [List.map_cons, List.sum_cons, List.foldl_cons, ← ih]; simp; omega
-  rw [Verify.bitAt_packOf _ _ _ (by rw [hlen]; exact i.2), ← Array.getElem?_toList, hbs, List.getD_eq_getElem?_getD]
+  unfold Kernel.Coc.boolsOf
+  rw [bitAt_bools _ rfl i.2, Verify.bitAt_packOf _ _ _ (by rw [hlen]; exact i.2), ← Array.getElem?_toList, hbs,
+    List.getD_eq_getElem?_getD]
 
 /-! ## `sumVals` -/
 
@@ -168,7 +170,7 @@ theorem sumVals_row {A B : Obj} {n m : USize} (X : Vals A n) (Y : Vals B m) (hN 
   have hc : ∀ p ∈ #[(n, false), (m, true)], p.1.toNat ≤ 2 ^ 63 := by
     intro p hp; simp only [Array.mem_toList_iff.symm, List.mem_cons, List.not_mem_nil, or_false] at hp
     rcases hp with rfl | rfl <;> simp <;> omega
-  simp only [sumVals, Vals.row, tags_get _ _ _ hc k]
+  simp only [sumVals, Vals.row, tags_get _ _ (by simp [toNat_add_fits hN]) hc k]
   have hl : ((tilCol n).toList ++ (tilCol m).toList).length = n.toNat + m.toNat := by
     simp [tilCol_toList]
   have hidx : ∀ (x : Arr .i64 (n + m)), x.toList = (tilCol n).toList ++ (tilCol m).toList →
