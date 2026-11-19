@@ -37,4 +37,11 @@ def short : String ⊕ (Nat × List UInt64) := .inl "distinct: es[0]: foR: 1 blo
 example : view (u 0) (kdistinct (u 2000) [col [0, 1]]) = short := by decide +kernel
 #guard view (u 0) (kdistinct (u 2000) [col [0, 1]]) == short
 
+-- D1: a `pos` column (PLAN 6.13) changes at every row, so every row starts a run, whatever the other columns hold
+def every : String ⊕ (Nat × List UInt64) := .inr (3, [0, 1, 2])
+example : view (u 3) (kdistinct (u 3) [col [5, 5, 5], .pos]) = every := by decide +kernel
+#guard view (u 3) (kdistinct (u 3) [col [5, 5, 5], .pos]) == every
+example : view (u 3) (kdistinct (u 3) [.pos]) = every := by decide +kernel
+#guard view (u 3) (kdistinct (u 3) [.pos]) == every
+
 end Rel.Kernel.DistinctTest

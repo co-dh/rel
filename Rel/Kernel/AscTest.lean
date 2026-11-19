@@ -68,4 +68,23 @@ def short : String ⊕ (List (List UInt64) × List UInt64) :=
 example : view (u 65) (kasc (u 65) [(.i64, col [0, 1])]) = short := by decide +kernel
 #guard view (u 65) (kasc (u 65) [(.i64, col [0, 1])]) == short
 
+-- `pos` (PLAN 6.13). A2: a `pos` first key leaves every row in place, the permutation is the positions
+def posFirst : String ⊕ (List (List UInt64) × List UInt64) := .inr ([[0, 1, 2], [5, 1, 3]], [0, 1, 2])
+example : view (u 3) (kasc (u 3) [(.i64, .pos), (.i64, col [5, 1, 3])]) = posFirst := by decide +kernel
+#guard view (u 3) (kasc (u 3) [(.i64, .pos), (.i64, col [5, 1, 3])]) == posFirst
+-- A1: a `pos` key breaks every tie of the keys before it in row order, so the keys after it decide nothing
+def posMid : String ⊕ (List (List UInt64) × List UInt64) := .inr ([[0, 0, 1, 1], [1, 3, 0, 2], [8, 6, 9, 7]], [1, 3, 0, 2])
+example : view (u 4) (kasc (u 4) [(.i64, col [1, 0, 1, 0]), (.i64, .pos), (.i64, col [9, 8, 7, 6])]) = posMid := by
+  decide +kernel
+#guard view (u 4) (kasc (u 4) [(.i64, col [1, 0, 1, 0]), (.i64, .pos), (.i64, col [9, 8, 7, 6])]) == posMid
+-- `pos` is `i64` only: at another type its codes would wrap
+def posI32 : String ⊕ (List (List UInt64) × List UInt64) := .inl "asc: a pos column is type 4, not 3"
+example : view (u 2) (kasc (u 2) [(.i32, .pos)]) = posI32 := by decide +kernel
+#guard view (u 2) (kasc (u 2) [(.i32, .pos)]) == posI32
+-- and at most `2 ^ 63` rows, past which the code `i ^^^ 2 ^ 63` no longer ascends with `i`; the export answers the
+-- error before it allocates a row. `Rust` side only: `decide` reduces no `USize` past `u`'s `2 ^ 32`
+def posBig : String ⊕ (List (List UInt64) × List UInt64) :=
+  .inl "asc: a pos column of 9223372036854775809 rows is past 2^63, where its order codes wrap"
+#guard view (USize.ofNat (2 ^ 63 + 1)) (kasc (USize.ofNat (2 ^ 63 + 1)) [(.i64, .pos)]) == posBig
+
 end Rel.Kernel.AscTest

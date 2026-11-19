@@ -71,6 +71,12 @@ theorem raw_lt (t : QAtomicType) (w : Nat) (ht : t.width = some w) (n : USize) (
     rw [Verify.raw_bytes t w ht hb] at hv; obtain ⟨i, -, rfl⟩ := Array.mem_map.1 hv; exact Verify.bitsAt_lt _ _ _ hw8
   | foR M P => rw [Verify.raw_foR t w ht hb] at hv; obtain ⟨i, -, rfl⟩ := Array.mem_map.1 hv; exact hmod _
   | alp M P a => rw [Verify.raw_alp t w ht hb] at hv; obtain ⟨i, -, rfl⟩ := Array.mem_map.1 hv; exact hmod _
+  -- `pos` is read at `i64` only, where every word is below `2 ^ 64`
+  | pos =>
+    by_cases hi : t = .i64
+    · subst hi; obtain rfl : w = 8 := by simp [QAtomicType.width] at ht; omega
+      exact v.toNat_lt
+    · cases t <;> simp_all [Enc.raw, QAtomicType.width]
   | _ => cases t <;> simp_all [Enc.raw, QAtomicType.width]
 
 /-- **The driver law**: `ofRaw t n xs` read back by `Enc.raw` at `t` is `xs`, each element below `2 ^ (8 * w)` — a

@@ -25,15 +25,31 @@ pub fn words(is: &[u64], es: &[u64]) -> Result<Vec<u64>, String> {
 /// Decodes the source once when #idx ≥ #src and the source is not flat (approved 2026-11-18: the decode is O(n) ≤ the
 /// O(m) output, and a flat column already reads in one load): each read is then one load from the dense words. Not flat
 /// is `structural::enc`'s own test, `one_width() == 255` (blocks of unequal widths, or a patch list).
-pub fn enc(ix: &Coc, e: &Coc) -> Result<lean::O, String> {
+pub fn enc(ix: &Blocks, e: &Coc) -> Result<lean::O, String> {
     let sw = e.one_width();
-    let d = (ix.meta.n >= e.meta.n && sw == 255).then(|| { let mut d = alloc::vec![0i64; e.meta.n]; codec::decode(crate::c::pool(), e, &mut d); d });
-    let t = Take { ix: Blocks::from(*ix), e: *e, sw, d, bad: AtomicUsize::new(usize::MAX) };
-    let o = Sink::new(ix.meta.n, 8, Form::For).enc().answer(&t);
+    let d = (ix.n >= e.meta.n && sw == 255).then(|| { let mut d = alloc::vec![0i64; e.meta.n]; codec::decode(crate::c::pool(), e, &mut d); d });
+    let t = Take { ix: *ix, e: *e, sw, d, bad: AtomicUsize::new(usize::MAX) };
+    let o = Sink::new(ix.n, 8, Form::For).enc().answer(&t);
     match t.bad.into_inner() {
         usize::MAX => Ok(o),
-        k => Err(format!("gather: index {} at row {k} is not below n = {}", ix.get(k) as u64, e.meta.n)),
+        k => Err(format!("gather: index {} at row {k} is not below n = {}", row(ix, k), e.meta.n)),
     }
+}
+
+/// Row `k` of `ix` as a word.
+fn row(ix: &Blocks, k: usize) -> u64 { let mut b = [0u8; 8]; ix.range(k, 1, 8, &mut b); u64::from_le_bytes(b) }
+
+/// `words` where `e` is the positions `0 .. n` (`Enc.pos`), law G2: `e[ix[i]] = ix[i]`, so the answer is `ix` re-encoded
+/// as `Coc.encode 8` writes it, once a walk over `ix`'s blocks finds every index below `n`; else `words`' error.
+pub fn of_pos(ix: &Blocks, n: usize) -> Result<lean::O, String> {
+    let mut buf = pod::Scr::<u64>::new(ix.blk());
+    for (b, lo, _) in ix.walk() {
+        let x = pod::cast::<i64>(ix.view(b, 8, pod::bytes_mut(&mut buf))).expect("qlean gather: an index block buffer is misaligned for i64");
+        if let Some(k) = x.iter().position(|&u| u as u64 >= n as u64) {
+            return Err(format!("gather: index {} at row {} is not below n = {n}", x[k] as u64, lo + k))
+        }
+    }
+    Ok(Sink::new(ix.n, 8, Form::For).enc().answer(ix))
 }
 /// `enc`'s producer: answer block `lo .. lo + nb` is `e` at index rows `lo .. lo + nb`; `d` the decoded `e` when there
 /// is one; `bad` the first row past `e`.
@@ -95,7 +111,7 @@ mod tests {
                 let [im, ip] = parts(&fr(ix));
                 let ic = crate::coc::view(&im, &ip, ix.len()).unwrap_or_else(|e| panic!("gather test: index does not view: {e}"));
                 let want = fr(&words(ix, src).expect("gather test: indices in range"));
-                let got = enc(&ic, &ec).expect("gather test: enc answers");
+                let got = enc(&Blocks::from(ic), &ec).expect("gather test: enc answers");
                 assert_eq!([0, 1].map(|i| got.borrow().field(i).bytes().to_vec()), parts(&want), "{} indices", ix.len());
                 assert_eq!(got.borrow().tag(), 3, "the answer is `Enc.foR`");
             }
@@ -103,7 +119,28 @@ mod tests {
             (bad[700], bad[1050]) = (n as u64 + 4, u64::MAX);
             let [im, ip] = parts(&fr(&bad));
             let ic = crate::coc::view(&im, &ip, bad.len()).unwrap_or_else(|e| panic!("gather test: index does not view: {e}"));
-            assert_eq!(enc(&ic, &ec).err(), words(&bad, src).err());
+            assert_eq!(enc(&Blocks::from(ic), &ec).err(), words(&bad, src).err());
         }
+    }
+    // `pos` as either argument is `words` over `0 .. len`: as `ix` it is read from the loop index (G1 when `m = n`), as
+    // `e` the answer is `ix` re-encoded (G2), and an index past `n` fails with `words`' text either way
+    #[test] fn pos_is_words_of_positions() {
+        let fr = |v: &[u64]| Sink::new(v.len(), 8, Form::For).answer(&Blocks::dense(pod::bytes(v), 8));
+        let parts = |o: &lean::O| [0, 1].map(|i| o.borrow().field(i).bytes().to_vec());
+        let til = |n: usize| (0..n as u64).collect::<Vec<u64>>();
+        let n = 3000usize;
+        let src: Vec<u64> = (0..n as u64).map(|i| if i % 97 == 5 { i * 1_000_003 } else { 1000 + (i * 7919) % 8000 }).collect();
+        let [em, ep] = parts(&fr(&src));
+        let ec = crate::coc::view(&em, &ep, n).unwrap_or_else(|e| panic!("gather test: source does not view: {e}"));
+        for m in [0usize, 1, 1024, 2500, 3000] {
+            let got = enc(&Blocks::pos(m), &ec).expect("gather test: positions below n");
+            assert_eq!(parts(&got), parts(&fr(&words(&til(m), &src).expect("gather test: in range"))), "ix = pos, m {m}");
+        }
+        assert_eq!(enc(&Blocks::pos(n + 1), &ec).err(), words(&til(n + 1), &src).err());
+        let rnd: Vec<u64> = (0..1100u64).map(|k| (k * 2654435761) % n as u64).collect();
+        let [im, ip] = parts(&fr(&rnd));
+        let ic = crate::coc::view(&im, &ip, rnd.len()).unwrap_or_else(|e| panic!("gather test: index does not view: {e}"));
+        assert_eq!(parts(&of_pos(&Blocks::from(ic), n).expect("gather test: in range")), parts(&fr(&words(&rnd, &til(n)).expect("in range"))));
+        assert_eq!(of_pos(&Blocks::from(ic), 10).err(), words(&rnd, &til(10)).err());
     }
 }

@@ -397,4 +397,49 @@ theorem distinct_cover (n : USize) (es : List Enc) (k : Nat) (o : Enc) (h : kdis
   obtain ⟨a, -, -, d⟩ := distinctWords_spec n.toNat (usize_lt n) _ hx k ws hw
   exact ⟨ws, ho, a, d⟩
 
+/-- Law D1 (PLAN 6.13): with a `pos` column among `es`, no two rows are equal, so every row starts its own run: the
+answer is all `n` positions, and a caller holding a `pos` column skips the call. -/
+theorem kdistinct_pos (n : USize) (es : List Enc) (k : Nat) (o : Enc) (hp : (.pos : Enc) ∈ es)
+    (h : kdistinct n es = .ok (k, o)) : k = n.toNat ∧ o = wordsFoR ((Array.range n.toNat).map UInt64.ofNat) := by
+  obtain ⟨ws, hw, hx, rfl⟩ := kdistinct_words n es k o h
+  obtain ⟨hk, hf, ha, hc⟩ := distinctWords_spec n.toNat (usize_lt n) _ hx k ws hw
+  have hN : n.toNat < 2 ^ 64 := usize_lt n
+  -- the `pos` column reads row `q` as `q`, so two rows are equal only at one row
+  have hrow : ∀ q i, q < n.toNat → i < n.toNat →
+      (es.map (raw .i64 n)).map (·[q]?.getD 0) = (es.map (raw .i64 n)).map (·[i]?.getD 0) → q = i := by
+    intro q i hq hi e
+    have hpr : raw .i64 n (.pos : Enc) = (Array.range n.toNat).map UInt64.ofNat := rfl
+    have e1 := congrArg UInt64.toNat (List.map_inj_left.mp e _ (List.mem_map_of_mem hp))
+    simp only [hpr, Array.getElem?_map, Array.getElem?_range, hq, hi, if_true, Option.map_some,
+      Option.getD_some, UInt64.toNat_ofNat', Nat.mod_eq_of_lt (Nat.lt_trans hq hN),
+      Nat.mod_eq_of_lt (Nat.lt_trans hi hN)] at e1
+    exact e1
+  -- word `j` is `j`: it is above word `j - 1`, and row `j` lies in the run some word starts
+  have hj : ∀ j (hjs : j < ws.size), ws[j].toNat = j := by
+    intro j
+    induction j using Nat.strongRecOn with
+    | _ j ih =>
+      intro hjs
+      have hge : j ≤ ws[j].toNat := by
+        rcases j with _ | j
+        · omega
+        · have := UInt64.lt_iff_toNat_lt.1 (ha j (j + 1) (by omega) hjs (by omega))
+          rw [ih j (by omega) (by omega)] at this; omega
+      refine Nat.le_antisymm (Nat.not_lt.1 fun hlt => ?_) hge
+      obtain ⟨j', hj', hle, hq⟩ := hc j (by have := (hf j hjs).1; omega)
+      have e := hrow _ j (by have := (hf j' hj').1; omega) (by have := (hf j hjs).1; omega) (hq _ (Nat.le_refl _) hle)
+      rcases Nat.lt_trichotomy j' j with hl | rfl | hl
+      · rw [ih j' hl hj'] at e; omega
+      · omega
+      · have := UInt64.lt_iff_toNat_lt.1 (ha j j' hjs hj' hl); omega
+  have hsz : ws.size = n.toNat := by
+    refine Nat.le_antisymm (Nat.not_lt.1 fun hlt => ?_) (Nat.not_lt.1 fun hlt => ?_)
+    · have := (hf n.toNat hlt).1; rw [hj _ hlt] at this; omega
+    · obtain ⟨j', hj', hle, hq⟩ := hc (n.toNat - 1) (by omega)
+      have e := hrow _ _ (by have := (hf j' hj').1; omega) (by omega) (hq _ (Nat.le_refl _) hle)
+      rw [hj _ hj'] at e; omega
+  refine ⟨hk ▸ hsz, congrArg wordsFoR (Array.ext (by simp [hsz]) fun j h1 h2 => ?_)⟩
+  rw [Array.getElem_map, Array.getElem_range, ← UInt64.toNat_inj, hj j h1, UInt64.toNat_ofNat',
+    Nat.mod_eq_of_lt (Nat.lt_trans (hsz ▸ h1) hN)]
+
 end Rel.Verify

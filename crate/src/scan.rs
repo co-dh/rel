@@ -601,6 +601,8 @@ impl<'a> Col<'a> {
             (1, _) if boolean => Some(Col::Bits(e.field(0).bytes())),
             (3, Some(w)) if boolean => Some(Col::Blk(Blocks::of(e, w, n, "qlean_k_scan"), w, 1)),
             (3 | 4, Some(w)) if !boolean => Some(Col::Blk(Blocks::of(e, w, n, "qlean_k_scan"), w, !0)),
+            // `pos` (tag 7) is `raw`'s at `i64` (type 4) only: the loop index
+            (7, _) if s == 4 => Some(Col::Blk(Blocks::pos(n), 8, !0)),
             // ids of no bits (a dictionary of one entry) read 0 at every row
             (5, _) if s == QT_SYMBOL => Some(match ids::id_width(e.field(1).words().len().saturating_sub(1)) {
                 0 => Col::Dense(&[], 8), lw => Col::Blk(Blocks::ids(e.field(2).bytes(), n, lw), 8, !0) }),
