@@ -273,7 +273,7 @@ theorem alpBits_alpEncodeAt (f32 : Bool) (lg : Nat) (hlg : 6 ≤ lg ∧ lg ≤ 1
     rw [← Nat.mod_eq_of_lt (UInt64.toNat_lt _),
       foRBits_encode_bits lg hlg 8 (by decide) (by decide) ds i (by rw [hdsz]; omega)]
   generalize Kernel.Coc.alpBlob f32 (2 ^ lg) w n x bs = A at hf32 hraw hoff hpos hexpA ⊢
-  have hBMP := (nblk_encode lg hlg 8 (by decide) (by decide) ds (patch := false)).2
+  have hBMP := (nblk_encode lg hlg 8 (by decide) (by decide) ds (patch := false)).2.1
   generalize Kernel.Coc.encodeAt lg (8 : Nat).toUSize ds false = MP at hfr hM hoff hpos hexpA hBMP ⊢
   have hPi : P i = (bs[i / 2 ^ lg].2[i % 2 ^ lg]).isNone := by
     rw [← hP]; simp only [getElem!_pos, hib, hjb]
@@ -431,7 +431,7 @@ theorem foRWF_encodeAt (lg : Nat) (hlg : 6 ≤ lg ∧ lg ≤ 16) (w : Nat) (hw :
           have hk := ((hpb (j / 2 ^ lg) (Nat.lt_of_le_of_lt (Nat.div_mul_le_self _ _) hj.1)).2.2.2.2 j
             (Nat.div_mul_le_self _ _) (by have := Nat.mod_add_div' j (2 ^ lg); have := Nat.mod_lt j hBp; omega)
             hj.1).2 hpl
-          unfold Array.getD at hj; rw [dif_pos hb, hbget _ hb, hk] at hj; exact absurd hj.2 Bool.false_ne_true
+          rw [show bs.getD (j / 2 ^ lg) default = bs[j / 2 ^ lg] by unfold Array.getD; rw [dif_pos hb]; rfl, hbget _ hb, hk] at hj; exact absurd hj.2 Bool.false_ne_true
       exact absurd (by rw [← Array.length_toList, he]; rfl) h
     · exact Nat.lt_of_le_of_lt hen (h32 hpl)
   generalize hexc : Array.filter (fun i => Kernel.Coc.outside (bs.getD (i / 2 ^ lg) default).2.2.2.1
@@ -459,7 +459,7 @@ theorem foRWF_encodeAt (lg : Nat) (hlg : 6 ≤ lg ∧ lg ≤ 16) (w : Nat) (hw :
       right
       have hlast : (fs.foldl (init := ByteArray.empty) fun acc v => Column.pushBits acc v 8).size = 8 * bs.size := by
         rw [← Array.foldl_toList, (foldl_pushBits (fun v => v) 8 (by decide) fs.toList ByteArray.empty).1,
-          Array.length_toList, hfsz, hnb]; rfl
+          Array.length_toList, hfsz, hnb]; simp
       obtain ⟨hc, hwd, -, -, -, -, -, hsz⟩ := excBlob_reads (w.toUInt64 ||| if frm = true then 256 else 0) (2 ^ lg)
         ⟨hBp, hB16⟩ w hw8 bs.size x exc
         (if frm = true then fs.foldl (init := ByteArray.empty) fun acc v => Column.pushBits acc v 8 else ByteArray.empty)
@@ -470,12 +470,13 @@ theorem foRWF_encodeAt (lg : Nat) (hlg : 6 ≤ lg ∧ lg ≤ 16) (w : Nat) (hw :
           (if (w.toUInt64 ||| if frm = true then 256 else 0).toNat < 256 then 0 else 8 * bs.size) =
             if frm = true then 8 * bs.size else 0 := by
         rcases hw with rfl | rfl | rfl | rfl <;> cases frm <;>
-          exact ⟨by decide, by decide, by split <;> first | rfl | exact absurd ‹_› (by decide)⟩
+          exact ⟨by decide +kernel, by decide +kernel, by split <;> first | rfl | exact absurd ‹_› (by decide +kernel)⟩
       rw [← hQ.1, hnb]
       unfold Kernel.Coc.foRTail
       rw [hwd, hc, if_pos hW.1, Option.map_some, hW.2.1, hW.2.2, ByteArray.size_append, hsz]
-      congr 1
-      cases frm <;> simp only [hlast, if_true, if_false] <;> simp <;> omega
+      cases frm
+      · simp
+      · simp only [↓reduceIte, hlast]; rw [show (8 * bs.size + 7) / 8 * 8 = 8 * bs.size by omega]
   · rw [(hMb b (hnb ▸ hb)).2]; simp only [Array.getElem_map]; rw [hbget b (hnb ▸ hb)]
     exact (hpb b (mul_lt_of_lt_cdiv hBp (hbsz ▸ hnb ▸ hb))).2.2.1
 

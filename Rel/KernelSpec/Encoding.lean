@@ -1157,7 +1157,7 @@ theorem foRBits_encode (lg : Nat) (hlg : 6 ≤ lg ∧ lg ≤ 16) (w : Nat) (hw0 
         (Kernel.Coc.keyAt w x (m * 2 ^ lg + j))) = true then
         Kernel.Coc.keyAt w x (m * 2 ^ lg + j) - e.2.2.2.1 else 0).toUInt64)
     (fun a m e => rfl)
-  beta_reduce at hQ
+  dsimp only at hQ
   generalize (Array.foldl _ (ByteArray.empty, 0) bs).1 = pack at hQ ⊢
   have he : Column.blockStart M (Column.nblk M) = pack.size := hQ.1.symm
   -- element `i`'s block
