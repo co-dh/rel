@@ -218,10 +218,22 @@ theorem rep_asc_long {n : USize} (X : Vals (.arr (.atom .long)) n) (hb : (asc X)
     ∀ xs ys, rep (asc X).rel xs ys ↔ (∃ j, X.row j = xs) ∧ ys.Perm xs ∧ ys.Pairwise (· ≤ ·) :=
   by unfold CRel.asc at hb ⊢; rw [rep_ofC hb]; exact rep_ascC_long X (ofC_ok hb).1
 
-theorem rep_asc {n : USize} (X : Vals (.arr B) n) (hB : B.Ordered) (hb : (asc X).ok = true) :
-    (∀ xs ys, rep (asc X).rel xs ys → (∃ j, X.row j = xs) ∧ ys.Perm xs ∧ ys.Pairwise fun x y => ¬ B.lt y x) ∧
-      ∀ xs, (∃ j, X.row j = xs) → ∃ ys, rep (asc X).rel xs ys :=
-  by unfold CRel.asc at hb ⊢; rw [rep_ofC hb]; exact rep_ascC X hB (ofC_ok hb).1
+/-- **An ascending permutation is unique** where `B`'s key is injective: `¬ Obj.lt` is then antisymmetric
+    (`Obj.eq_of_not_lt`), and `List.Perm.eq_of_pairwise` needs no more. -/
+theorem _root_.Rel.Obj.asc_unique {B : Obj} (hi : B.KeyInj) {l₁ l₂ : List B.El} (hp : l₁.Perm l₂)
+    (h1 : l₁.Pairwise fun x y => ¬ B.lt y x) (h2 : l₂.Pairwise fun x y => ¬ B.lt y x) : l₁ = l₂ :=
+  hp.eq_of_pairwise (fun _ _ _ _ hab hba => Obj.eq_of_not_lt B hi hba hab) h1 h2
+
+/-- **`asc` sends each array of `X` to its one ascending permutation**, `B` ordered with an injective key: "→" and a
+    sorted array at every row from `rep_ascC`, "←" by `Obj.asc_unique` against that array. -/
+theorem rep_asc {n : USize} (X : Vals (.arr B) n) (hB : B.Ordered) (hi : B.KeyInj) (hb : (asc X).ok = true) :
+    ∀ xs ys, rep (asc X).rel xs ys ↔ (∃ j, X.row j = xs) ∧ ys.Perm xs ∧ ys.Pairwise fun x y => ¬ B.lt y x := by
+  unfold CRel.asc at hb ⊢; rw [rep_ofC hb]
+  obtain ⟨h1, h2⟩ := rep_ascC X hB (ofC_ok hb).1
+  refine fun xs ys => ⟨h1 xs ys, fun ⟨hj, hp, hs⟩ => ?_⟩
+  obtain ⟨ys', h'⟩ := h2 xs hj
+  obtain ⟨-, hp', hs'⟩ := h1 xs ys' h'
+  exact Obj.asc_unique hi (hp'.trans hp.symm) hs' hs ▸ h'
 
 #print axioms rep_asc
 

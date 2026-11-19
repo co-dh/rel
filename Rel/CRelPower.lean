@@ -220,8 +220,7 @@ theorem rep_distinctC [DecidableEq B.El] {n : USize} (X : Vals (.arr B) n) (hb :
     | cons x _ => exact absurd ((hY x).2 (by simp)) (by simp)
 
 /-- **`setify` is `distinct` then `asc`**, `B` ordered with an injective key: both sides relate `xs` to the arrays
-    holding `xs`'s elements once each, ascending, and two such are equal (`List.Perm.eq_of_pairwise`, its
-    antisymmetry `Obj.eq_of_not_lt`). `setify`'s from `rep_setifyC`, `setifyC_asc`; `distinct`'s `xs.eraseDups`
+    holding `xs`'s elements once each, ascending, and two such are equal (`Obj.asc_unique`). `setify`'s from `rep_setifyC`, `setifyC_asc`; `distinct`'s `xs.eraseDups`
     (`rep_distinctC`), a row of its values, which `asc` sorts (`rep_ascC`). -/
 theorem setifyC_eq_distinct_asc [DecidableEq B.El] {n : USize} (X : Vals (.arr B) n) (hB : B.Ordered)
     (hk : ∀ x y : B.El, B.key x = B.key y → x = y) (hs : (setifyC X).2 = true) (hd : (distinctC X).2 = true)
@@ -233,10 +232,6 @@ theorem setifyC_eq_distinct_asc [DecidableEq B.El] {n : USize} (X : Vals (.arr B
   -- two duplicate-free lists with the same members are permutations of each other
   have hp : ∀ l₁ l₂ : List B.El, l₁.Nodup → l₂.Nodup → (∀ x, x ∈ l₁ ↔ x ∈ l₂) → l₁.Perm l₂ := fun l₁ l₂ h1 h2 hm =>
     List.perm_iff_count.2 fun x => by rw [List.Nodup.count h1, List.Nodup.count h2]; simp only [hm x]
-  -- an ascending permutation is unique
-  have hu : ∀ l₁ l₂ : List B.El, l₁.Perm l₂ → (l₁.Pairwise fun x y => ¬ B.lt y x) →
-      (l₂.Pairwise fun x y => ¬ B.lt y x) → l₁ = l₂ := fun l₁ l₂ hp h1 h2 =>
-    hp.eq_of_pairwise (fun a b _ _ hab hba => Obj.eq_of_not_lt B hk hba hab) h1 h2
   -- `setify`'s array at `xs` is `xs.eraseDups` up to order
   have hse : ∀ Z, rep (setifyC X).1 xs Z → Z.Perm xs.eraseDups := fun Z h =>
     hp _ _ (setifyC_asc X hB hs xs Z h).1 (nodup_eraseDups xs) fun x =>
@@ -251,12 +246,12 @@ theorem setifyC_eq_distinct_asc [DecidableEq B.El] {n : USize} (X : Vals (.arr B
     obtain ⟨Z', hZ'⟩ := a2 Y (hrow Y hY)
     obtain ⟨-, hP, hA⟩ := a1 Y Z' hZ'
     rw [(d1 xs Y hY).2] at hP
-    exact ⟨Y, hY, hu Z' Z (hP.trans (hse Z h).symm) hA (setifyC_asc X hB hs xs Z h).2 ▸ hZ'⟩
+    exact ⟨Y, hY, Obj.asc_unique hk (hP.trans (hse Z h).symm) hA (setifyC_asc X hB hs xs Z h).2 ▸ hZ'⟩
   · rintro ⟨Y, hY, hZ⟩
     obtain ⟨-, hP, hA⟩ := a1 Y Z hZ
     rw [(d1 xs Y hY).2] at hP
     obtain ⟨Z₀, h₀⟩ := (s2 xs).2 (d1 xs Y hY).1
-    exact (hu Z₀ Z ((hse Z₀ h₀).trans hP.symm) (setifyC_asc X hB hs xs Z₀ h₀).2 hA) ▸ h₀
+    exact (Obj.asc_unique hk ((hse Z₀ h₀).trans hP.symm) (setifyC_asc X hB hs xs Z₀ h₀).2 hA) ▸ h₀
 
 #print axioms setifyC_eq_distinct_asc
 #print axioms setifyC_asc
@@ -286,10 +281,15 @@ theorem rep_lamOn {m : USize} (R : CRel A B) (U : Vals A m) (hb : (R.lamOn U).ok
       (∀ a, (∃ Y, rep (R.lamOn U).rel a Y) ↔ (∃ b, rep R.rel a b) ∨ ∃ i, Vals.row U i = a) := by
   have e : R.lamOn U = _ := guard_eq ok hb; rw [e] at hb ⊢; rw [rep_ofC hb]; replace hb := (ofC_ok hb).1; exact (rep_lamOnByC valSortC valSortC_perm R.rel U hb).imp id And.left
 
-theorem rep_setify {n : USize} (X : Vals (.arr B) n) (hb : (setify X).ok = true) :
-    (∀ xs Y, rep (setify X).rel xs Y → (∃ i, Vals.row X i = xs) ∧ ∀ y, y ∈ Y ↔ y ∈ xs) ∧
-      (∀ xs, (∃ Y, rep (setify X).rel xs Y) ↔ ∃ i, Vals.row X i = xs) :=
-  by unfold CRel.setify at hb ⊢; rw [rep_ofC hb]; exact rep_setifyC X (ofC_ok hb).1
+/-- **`setify` sends each array of `X` to an array of its elements, each once, ascending**, `B` ordered: members
+    and a set at every row from `rep_setifyC`, the order from `setifyC_asc` — the three premises of `lamDen_of`. -/
+theorem rep_setify {n : USize} (X : Vals (.arr B) n) (hB : B.Ordered) (hb : (setify X).ok = true) :
+    (∀ xs Y, rep (setify X).rel xs Y → (∃ i, Vals.row X i = xs) ∧ (∀ y, y ∈ Y ↔ y ∈ xs) ∧
+        Y.Nodup ∧ Y.Pairwise fun x y => ¬ B.lt y x) ∧
+      (∀ xs, (∃ Y, rep (setify X).rel xs Y) ↔ ∃ i, Vals.row X i = xs) := by
+  unfold CRel.setify at hb ⊢; rw [rep_ofC hb]
+  obtain ⟨h1, h2⟩ := rep_setifyC X (ofC_ok hb).1
+  exact ⟨fun xs Y h => ⟨(h1 xs Y h).1, (h1 xs Y h).2, setifyC_asc X hB (ofC_ok hb).1 xs Y h⟩, h2⟩
 
 theorem rep_distinct [DecidableEq B.El] {n : USize} (X : Vals (.arr B) n) (hb : (distinct X).ok = true) :
     (∀ xs Y, rep (distinct X).rel xs Y → (∃ i, Vals.row X i = xs) ∧ Y = xs.eraseDups) ∧

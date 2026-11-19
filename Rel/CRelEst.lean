@@ -300,7 +300,74 @@ theorem rep_thinOn (q : CRel (.prod B B) (.prod B B) → CRel (.prod B B) (.prod
         ¬ rep (swapInC (testC q) (Alg.ran (Alg.pair G.rel G.rel))).1 (b, b') (y, c) := by
   have e : thinOn q G = _ := guard_eq ok hb; rw [e] at hb ⊢; rw [rep_ofC hb]; replace hb := (ofC_ok hb).1; exact rep_thinOnC (testC q) G.rel hb
 
-theorem rep_est (Q : CRel B B) (G : CRel A B) (hb : (est Q G).ok = true) :
+/-- **`swapIn` read through a test with a spec**: where `q`, given a coreflexive `E` and ok there, relates as `TQ` at
+    each key of `E` (the form `Sound.at` hands back), a pair `(b, c)` of the coreflexive `D` is kept exactly when
+    `TQ` relates its swap `(c, b)` to something. `rep_swapInC`; the test's bit at `E` from `swapInC_ok`, and `(c, b)`
+    a key of `E` by `rep_ran_corefl`, `rep_pair` there. -/
+theorem swapIn_at (q : CRel (.prod B B) (.prod B B) → CRel (.prod B B) (.prod B B))
+    {TQ : Core.Rel (B.El × B.El) (B.El × B.El)}
+    (hq : ∀ E : Tab (.prod B B) (.prod B B), (∀ x y, rep E x y → x = y) → (q (some E)).ok = true →
+      ∀ x y, rep E x x → (rep (q (some E)).rel x y ↔ TQ x y))
+    (D : Tab (.prod B B) (.prod B B)) (hD : ∀ p p', rep D p p' → p = p')
+    (hb : (swapInC (testC q) D).2 = true) (b c : B.El) (p' : B.El × B.El) :
+    rep (swapInC (testC q) D).1 (b, c) p' ↔ p' = (b, c) ∧ rep D (b, c) (b, c) ∧ ∃ w, TQ (c, b) w := by
+  obtain ⟨hs, hEf, ht, -, -⟩ := Rep.swapInC_ok (testC q) D hb
+  obtain ⟨s1, s2, s3, s4, s5⟩ := hs.2 _ rfl
+  have es : ∀ x u v, rep (Alg.pair (Alg.outr D) (Alg.outl D)) x (u, v) ↔
+      (∃ y, rep D x (y, u)) ∧ ∃ z, rep D x (v, z) := fun x u v => by
+    rw [Rep.rep_pair _ _ (codes_faithful_wf _ _ hs.1).1 s1 s2 s3 s4 s5]
+    exact and_congr (outr_holds D x u) (outl_holds D x v)
+  have eE : ∀ x x', rep (Alg.ran (Alg.pair (Alg.outr D) (Alg.outl D))) x x' ↔
+      x = x' ∧ ∃ y, rep (Alg.pair (Alg.outr D) (Alg.outl D)) y x := fun x x' => by
+    rw [rep_ran_corefl _ (one_ok _ hEf.1) hEf.2]; exact Iff.rfl
+  have hqE := hq _ (fun x x' h => ((eE x x').1 h).1) ht
+  have hk : rep D (b, c) (b, c) → rep (Alg.ran (Alg.pair (Alg.outr D) (Alg.outl D))) (c, b) (c, b) := fun hd =>
+    (eE _ _).2 ⟨rfl, (b, c), (es _ _ _).2 ⟨⟨b, hd⟩, c, hd⟩⟩
+  rw [Rep.rep_swapInC (testC q) D hb]
+  constructor
+  · rintro ⟨e, u, v, w, ⟨⟨y, hy⟩, z, hz⟩, hw⟩
+    obtain ⟨e1, e2⟩ := Prod.mk.inj (hD _ _ hy)
+    obtain ⟨e3, -⟩ := Prod.mk.inj (hD _ _ hz)
+    subst y u v
+    exact ⟨e.symm, hy, w, (hqE _ w (hk hy)).1 hw⟩
+  · rintro ⟨rfl, hd, w, hw⟩
+    exact ⟨rfl, c, b, w, ⟨⟨b, hd⟩, c, hd⟩, (hqE _ w (hk hd)).2 hw⟩
+
+/-- **`thinOn` computes `thin` of a coreflexive test's spec**: with `q` relating as `TQ` on each coreflexive it is
+    given (`swapIn_at`'s `hq`) and `TQ` coreflexive, `(a, c)` of `G` is dropped exactly when some value `b` of `a`
+    has `TQ` at `(b, c)` and not at `(c, b)`. `TQ` coreflexive is needed: `rep_thinOn` reads the test off the
+    diagonal (`(b, b') ↦ (y, c)`), the spec only on it. `rep_thinOnC`, the test at `D = ran ⟨G,G⟩`, `swapIn_at`. -/
+theorem thinOn_at (q : CRel (.prod B B) (.prod B B) → CRel (.prod B B) (.prod B B))
+    {TQ : Core.Rel (B.El × B.El) (B.El × B.El)}
+    (hq : ∀ E : Tab (.prod B B) (.prod B B), (∀ x y, rep E x y → x = y) → (q (some E)).ok = true →
+      ∀ x y, rep E x x → (rep (q (some E)).rel x y ↔ TQ x y))
+    (hc : ∀ p p', TQ p p' → p = p') (G : CRel A B) (hb : (thinOn q G).ok = true) (a : A.El) (c : B.El) :
+    rep (thinOn q G).rel a c ↔ rep G.rel a c ∧ ¬ ∃ b, rep G.rel a b ∧ TQ (b, c) (b, c) ∧ ¬ TQ (c, b) (c, b) := by
+  have e : thinOn q G = _ := guard_eq ok hb; rw [e] at hb ⊢; rw [rep_ofC hb]; replace hb := (ofC_ok hb).1
+  obtain ⟨ht, hS, hDf, ⟨hPf, hP'⟩, -⟩ := Rep.thinOnC_ok (testC q) G.rel hb
+  obtain ⟨p1, p2, p3, p4, p5⟩ := hP' _ rfl
+  have eD : ∀ x x', rep (Alg.ran (Alg.pair G.rel G.rel)) x x' ↔ x = x' ∧ ∃ a, rep G.rel a x.1 ∧ rep G.rel a x.2 :=
+    fun x x' => by
+      rw [rep_ran_corefl _ (one_ok _ hDf.1) hDf.2, Rep.rep_pair _ _ (codes_faithful_wf _ _ hPf).1 p1 p2 p3 p4 p5]
+      exact Iff.rfl
+  have hcD : ∀ x x', rep (Alg.ran (Alg.pair G.rel G.rel)) x x' → x = x' := fun x x' h => ((eD x x').1 h).1
+  have hqD := hq _ hcD ht
+  have hsw := swapIn_at q hq _ hcD hS
+  rw [(Rep.rep_thinOnC (testC q) G.rel hb).2.2 a c]
+  refine and_congr_right fun hac => not_congr ⟨?_, ?_⟩
+  · rintro ⟨b, b', y, hb1, hb2, hy, hn⟩
+    have hT := (hqD _ _ ((eD _ _).2 ⟨rfl, a, hb1, hb2⟩)).1 hy
+    obtain ⟨e1, e2⟩ := Prod.mk.inj (hc _ _ hT)
+    subst y b'
+    exact ⟨b, hb1, hT, fun hT' => hn ((hsw b c (b, c)).2 ⟨rfl, (eD _ _).2 ⟨rfl, a, hb1, hb2⟩, _, hT'⟩)⟩
+  · rintro ⟨b, hb1, hT, hn⟩
+    have hk : rep (Alg.ran (Alg.pair G.rel G.rel)) (b, c) (b, c) := (eD _ _).2 ⟨rfl, a, hb1, hac⟩
+    refine ⟨b, c, b, hb1, hac, (hqD _ _ hk).2 hT, fun hs => hn ?_⟩
+    obtain ⟨-, -, w, hw⟩ := (hsw b c (b, c)).1 hs
+    obtain rfl := hc _ _ hw
+    exact hw
+
+theorem rep_est(Q : CRel B B) (G : CRel A B) (hb : (est Q G).ok = true) :
     ∀ a b, rep (est Q G).rel a b ↔ rep G.rel a b ∧ ∀ c, rep G.rel a c → c ≠ b → rep Q.rel b c := by
   have e : est Q G = _ := guard_eq ok hb; rw [e] at hb ⊢; rw [rep_ofC hb]; replace hb := (ofC_ok hb).1; exact rep_estC Q.rel G.rel hb
 
