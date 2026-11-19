@@ -49,8 +49,8 @@ open Rel.Kernel in
 /-- **`Ew.cmp`'s bitmap**: bit `i` is set exactly when `i < n` and `cmpStep` holds of the two elements
     the shape reads at `i`, so the last byte's tail is zero. -/
 theorem cmp_bitAt (op cls shape : UInt8) (a b : ByteArray) (n : USize) :
-    (Ew.cmp op cls shape a b n).size = (n.toNat + 7) / 8 ∧
-    ∀ i < 8 * ((n.toNat + 7) / 8), Column.bitAt (Ew.cmp op cls shape a b n) i =
+    (Ew.cmpBitmap op cls shape a b n).size = (n.toNat + 7) / 8 ∧
+    ∀ i < 8 * ((n.toNat + 7) / 8), Column.bitAt (Ew.cmpBitmap op cls shape a b n) i =
       (decide (i < n.toNat) && Ew.cmpStep op cls (Ew.elem cls a (Ew.shapeIdx shape i).1)
         (Ew.elem cls b (Ew.shapeIdx shape i).2)) :=
   packOf_bitAt n.toNat fun i =>
@@ -60,8 +60,8 @@ open Rel.Kernel in
 /-- **`Ew.bit`'s bitmap**: bit `i` is set exactly when `i < n` and `bitStep` holds of the two bits the
     shape reads at `i`. -/
 theorem Ew.bit_bitAt (op shape : UInt8) (a b : ByteArray) (n : USize) :
-    (Ew.bit op shape a b n).size = (n.toNat + 7) / 8 ∧
-    ∀ i < 8 * ((n.toNat + 7) / 8), Column.bitAt (Ew.bit op shape a b n) i =
+    (Ew.bitBitmap op shape a b n).size = (n.toNat + 7) / 8 ∧
+    ∀ i < 8 * ((n.toNat + 7) / 8), Column.bitAt (Ew.bitBitmap op shape a b n) i =
       (decide (i < n.toNat) && Ew.bitStep op (Column.bitAt a (Ew.shapeIdx shape i).1)
         (Column.bitAt b (Ew.shapeIdx shape i).2)) :=
   packOf_bitAt n.toNat fun i =>

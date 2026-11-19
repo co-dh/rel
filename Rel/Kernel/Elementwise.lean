@@ -358,11 +358,10 @@ def val (op cls shape : UInt8) (nul : Int64) (a b : @& ByteArray) (n : USize) : 
     let (ia, ib) := shapeIdx shape i
     Column.pushBits acc (valStep op cls nul.toUInt64 (elem cls a ia) (elem cls b ib)) (width cls)
 
-/-- q's six comparisons, answering the `Column.bits` payload one bit per element. The bits above `n`
-in the last byte stay `0`, which `QLean/Value.lean` requires of every boolean payload: `~` compares
-payloads, and trailing garbage would make equal vectors compare unequal. -/
-@[extern "qlean_ew_cmp"]
-def cmp (op cls shape : UInt8) (a b : @& ByteArray) (n : USize) : ByteArray :=
+/-- q's six comparisons as a bitmap, one bit per element: the chain's comparison stage, and what `cmp` encodes. The
+bits above `n` in the last byte stay `0`: `~` compares payloads, and trailing garbage would make equal vectors
+compare unequal. -/
+def cmpBitmap (op cls shape : UInt8) (a b : @& ByteArray) (n : USize) : ByteArray :=
   (List.range ((n.toNat + 7) / 8)).foldl (init := ByteArray.empty) fun acc k =>
     acc.push ((List.range 8).foldl (init := (0 : UInt8)) fun byte j =>
       let i := k * 8 + j
@@ -370,6 +369,11 @@ def cmp (op cls shape : UInt8) (a b : @& ByteArray) (n : USize) : ByteArray :=
       if i < n.toNat && cmpStep op cls (elem cls a ia) (elem cls b ib) then
         byte ||| (1 <<< j.toUInt8)
       else byte)
+
+/-- q's six comparisons as the `u1` Frame of Reference column `Coc.bools` lays out. -/
+@[extern "qlean_ew_cmp"]
+def cmp (op cls shape : UInt8) (a b : @& ByteArray) (n : USize) : ByteArray × ByteArray :=
+  Coc.bools n.toNat (Column.bitAt (cmpBitmap op cls shape a b n))
 
 /-- `k + x`, and `k - x` when `neg`, at `long` on the encoded form: the answer is the same column
 with every block's minimum moved by `k` — turned round, for `k - x`, the residuals with it — which
@@ -415,9 +419,8 @@ def inI64 (x : Int) : Bool := Int64.minValue.toInt ≤ x && x ≤ Int64.maxValue
 and the reason `x within (lo;hi)` no longer boxes: the two comparisons it is built from already
 reach `cmp`, and it was this last `&` between their bitmaps that fell to atoms. Both operands are
 already `Column.bits`, so nothing widens and the C runs a byte at a time. The bits above `n` in the
-last byte stay `0` for `cmp`'s reason. -/
-@[extern "qlean_ew_bit"]
-def bit (op shape : UInt8) (a b : @& ByteArray) (n : USize) : ByteArray :=
+last byte stay `0` for `cmpBitmap`'s reason. This bitmap is the chain's stage and what `bit` encodes. -/
+def bitBitmap (op shape : UInt8) (a b : @& ByteArray) (n : USize) : ByteArray :=
   (List.range ((n.toNat + 7) / 8)).foldl (init := ByteArray.empty) fun acc k =>
     acc.push ((List.range 8).foldl (init := (0 : UInt8)) fun byte j =>
       let i := k * 8 + j
@@ -425,6 +428,11 @@ def bit (op shape : UInt8) (a b : @& ByteArray) (n : USize) : ByteArray :=
       if i < n.toNat && bitStep op (Column.bitAt a ia) (Column.bitAt b ib) then
         byte ||| (1 <<< j.toUInt8)
       else byte)
+
+/-- A verb of two bitmaps as the `u1` Frame of Reference column `Coc.bools` lays out. -/
+@[extern "qlean_ew_bit"]
+def bit (op shape : UInt8) (a b : @& ByteArray) (n : USize) : ByteArray × ByteArray :=
+  Coc.bools n.toNat (Column.bitAt (bitBitmap op shape a b n))
 
 /-- `f` over the `n` elements of the dense payload `x` at class `ci`, written at class `co`: a one-source chain stage
 (`mon`, `floor`, `cast`, `tick`), the `Kernel.map` of a tile, where the extern is `Kernel.map` of a whole column. -/
@@ -562,10 +570,10 @@ def chain (prog : @& ByteArray) (inputs : @& Array ByteArray) (n : USize) : Byte
       if c < slot0 then inputs[c.toNat]! else outs[(c - slot0).toNat]!
     outs.push <|
       if st.engine == eVal then val st.op st.cls st.shape st.nul (src st.a) (src st.b) n
-      else if st.engine == eCmp then cmp st.op st.cls st.shape (src st.a) (src st.b) n
+      else if st.engine == eCmp then cmpBitmap st.op st.cls st.shape (src st.a) (src st.b) n
       else if st.engine == eMon then stageMap st.cls st.cls (monStep st.op st.cls st.nul.toUInt64) (src st.a) n
       else if st.engine == eWiden then widen st.cls st.shape st.nul st.nulOut (src st.a) n
-      else if st.engine == eBit then bit st.op st.shape (src st.a) (src st.b) n
+      else if st.engine == eBit then bitBitmap st.op st.shape (src st.a) (src st.b) n
       else if st.engine == eFloor then stageMap st.cls i64 (fun v => (floorStep st.cls v).toUInt64) (src st.a) n
       else if st.engine == eCast then stageMap st.cls st.shape (castStep st.cls st.shape st.nul) (src st.a) n
       else if st.engine == eTick then

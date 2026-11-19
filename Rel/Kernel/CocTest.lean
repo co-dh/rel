@@ -1,4 +1,6 @@
 import Rel.Kernel.Scatter
+import Rel.Kernel.Elementwise
+import Rel.Kernel.Search
 
 /-! `Coc.encode`'s `decide`-beside-`#guard` pairs on the exact bytes: each `example` evaluates the Lean body, each
 `#guard` the Rust export, against one literal. The blocks are a tie in `Coc.cost` (the narrower width wins), an
@@ -91,5 +93,53 @@ example : view (kscatter (u 11) (col ((List.range 11).map (·.toUInt64))) (col o
 example : view (kscatter (u 17) (col ((List.range 17).map (·.toUInt64))) (col lifted) (u 17) 0) = .inr liftedBytes := by
   decide +kernel
 #guard view (kscatter (u 17) (col ((List.range 17).map (·.toUInt64))) (col lifted) (u 17) 0) == .inr liftedBytes
+
+/-! Element width 1 through `qlean_coc_encode` and `qlean_coc_decode`: the first block above at one byte an element. -/
+
+/-- `xs` as 1-byte elements. -/
+def bytes1 (xs : List UInt8) : ByteArray := ⟨xs.toArray⟩
+
+example : (fun r : ByteArray × ByteArray => (r.1.data.toList, r.2.data.toList)) (Coc.encode (u 1) (bytes1 [11, 7, 12, 7]))
+    = (md 7 12 37 4 3, [68, 1] ++ List.replicate 382 0) := by decide +kernel
+#guard (fun r : ByteArray × ByteArray => (r.1.data.toList, r.2.data.toList)) (Coc.encode (u 1) (bytes1 [11, 7, 12, 7]))
+    == (md 7 12 37 4 3, [68, 1] ++ List.replicate 382 0)
+example : (Coc.decode (u 1) (Coc.encode (u 1) (bytes1 [11, 7, 12, 7])).1 (Coc.encode (u 1) (bytes1 [11, 7, 12, 7])).2 (u 4)).data.toList
+    = [11, 7, 12, 7] := by decide +kernel
+#guard (Coc.decode (u 1) (Coc.encode (u 1) (bytes1 [11, 7, 12, 7])).1 (Coc.encode (u 1) (bytes1 [11, 7, 12, 7])).2 (u 4)).data.toList
+    == [11, 7, 12, 7]
+
+/-! The boolean writers' pairs: each answers `Coc.bools`' `u1` column — a mixed block width 1 with its bitmap as the
+residuals, an all-0 or all-1 block width 0 at base 0 or 1 and no residual. -/
+
+/-- A writer's answer as the metadata and pack bytes. -/
+def parts (r : ByteArray × ByteArray) : List UInt8 × List UInt8 := (r.1.data.toList, r.2.data.toList)
+
+/-- One mixed block's pack: the bitmap byte, then the rest of the block's 128 residual bytes. -/
+def mixed (b : UInt8) : List UInt8 := b :: List.replicate 127 0
+
+-- 1 5 2 7 3 against 4: `<` is 1 0 1 0 1 (bitmap 21), `<` against 100 all 1, `>` against 100 all 0
+example : parts (Ew.cmp Ew.lt Ew.i64 Ew.va (dense [1, 5, 2, 7, 3]) (dense [4]) (u 5)) = (md 0 1 3 5 1, mixed 21) := by
+  decide +kernel
+#guard parts (Ew.cmp Ew.lt Ew.i64 Ew.va (dense [1, 5, 2, 7, 3]) (dense [4]) (u 5)) == (md 0 1 3 5 1, mixed 21)
+example : parts (Ew.cmp Ew.lt Ew.i64 Ew.va (dense [1, 5, 2, 7, 3]) (dense [100]) (u 5)) = (md 1 1 5 5 0, []) := by
+  decide +kernel
+#guard parts (Ew.cmp Ew.lt Ew.i64 Ew.va (dense [1, 5, 2, 7, 3]) (dense [100]) (u 5)) == (md 1 1 5 5 0, [])
+example : parts (Ew.cmp Ew.gt Ew.i64 Ew.va (dense [1, 5, 2, 7, 3]) (dense [100]) (u 5)) = (md 0 0 0 5 0, []) := by
+  decide +kernel
+#guard parts (Ew.cmp Ew.gt Ew.i64 Ew.va (dense [1, 5, 2, 7, 3]) (dense [100]) (u 5)) == (md 0 0 0 5 0, [])
+
+-- 10111 & 11101 is 10101; & with an all-0 atom is all 0
+example : parts (Ew.bit Ew.lesser Ew.vv (bytes1 [0b11101]) (bytes1 [0b10111]) (u 5)) = (md 0 1 3 5 1, mixed 21) := by
+  decide +kernel
+#guard parts (Ew.bit Ew.lesser Ew.vv (bytes1 [0b11101]) (bytes1 [0b10111]) (u 5)) == (md 0 1 3 5 1, mixed 21)
+example : parts (Ew.bit Ew.lesser Ew.va (bytes1 [0b11101]) (bytes1 [0]) (u 5)) = (md 0 0 0 5 0, []) := by decide +kernel
+#guard parts (Ew.bit Ew.lesser Ew.va (bytes1 [0b11101]) (bytes1 [0]) (u 5)) == (md 0 0 0 5 0, [])
+
+-- `memberVec`, `memberIdsVec` and `memberBits` have no `decide`: `findScalar` and `findBit` take `Nat.toUSize`, which the
+-- kernel cannot reduce (`USize.ofNat` reads `System.Platform.numBits`), so their pairs are `#guard` only
+-- 1 5 2 in 5 9 is 0 1 0, at longs and at 8-bit ids; 1 0 1 in a haystack holding both bits is all 1
+#guard parts (memberVec (u 8) false (dense [1, 5, 2]) (dense [5, 9])) == (md 0 1 1 3 1, mixed 2)
+#guard parts (memberIdsVec (u 8) (bytes1 [1, 5, 2]) (u 3) (u 8) (bytes1 [5, 9]) (u 2)) == (md 0 1 1 3 1, mixed 2)
+#guard parts (memberBits (u 3) (bytes1 [0b101]) (u 2) (bytes1 [0b10])) == (md 1 1 3 3 0, [])
 
 end Rel.Kernel.CocTest
