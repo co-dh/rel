@@ -1,195 +1,209 @@
-import Rel.Run.Comp
-import Rel.RepCanon
-import Rel.Run.CRelDef
-import Rel.KernelSpec.Scatter
-import Rel.KernelSpec.Scan
+/-
+  `rep (R ≫ S) = rep R ≫ rep S`: `≫` joins `R.val` with `S.key` on the middle side's joint codes and picks
+  `R.key` and `S.val` at the matched rows. `join_spec` reads the join back; the codes must identify rows
+  (`CodesSpec`), the counts must fit, and each outer side's `Vals.pick` must read back.
+-/
+import Rel.Rep
+import Rel.KernelWF.JoinAssembly
+import Rel.KernelWF.CodesSpec
+import Rel.KernelWF.CodesProd
+import Rel.KernelWF.PickRow
 
-/-! The laws of `Tab.conv` and `Tab.comp` (`Rel/Run/Comp.lean`), from the five kernels' laws and `Tab.canon_holds`. -/
+namespace Rel.Rep
 
-namespace Rel
-open Rel.Ext Rel.Kernel Rel.Verify Ext.Enc
+open Tab Rel.Kernel Rel.Verify Rel Rel.Alg
 
-/-- **`kscatter` under any `op`, on words**: the answer reads back as `scatterWords` of its arguments' words. -/
-theorem kscatter_words {op : Op} {m n : USize} {ix e o : Enc} {fill : UInt64} (h : kscatter op m ix e n fill = .ok o) :
-    (raw .i64 m ix).size = m.toNat ∧ (raw .i64 m e).size = m.toNat ∧
-      scatterWords op (raw .i64 m ix) (raw .i64 m e) n.toNat fill = .ok (raw .i64 n o) := by
-  unfold kscatter at h
-  cases hi : foRWords "scatter: ix" m ix with
-  | error s => simp [hi, bind, Except.bind] at h
-  | ok is' =>
-    cases he : foRWords "scatter: e" m e with
-    | error s => simp [hi, he, bind, Except.bind] at h
-    | ok es' =>
-      obtain ⟨rfl, hisz⟩ := foRWords_raw _ _ _ _ hi
-      obtain ⟨rfl, hesz⟩ := foRWords_raw _ _ _ _ he
-      cases hw : scatterWords op (raw .i64 m ix) (raw .i64 m e) n.toNat fill with
-      | error s => simp [hi, he, hw, bind, Except.bind] at h
-      | ok ws =>
-        simp only [hi, he, hw, bind, Except.bind, pure, Except.pure] at h
-        have h8 : USize.ofNat32 8 (by decide) = 8 := USize.toNat_inj.mp (by simp)
-        rw [h8] at h
-        have hs := scatterWords_size hw
-        have ho := (Except.ok.inj h).symm
-        obtain ⟨hxs, -, hxg⟩ := foldl_pushBits (fun v => v) 8 (by decide) ws.toList ByteArray.empty
-        rw [Array.foldl_toList] at hxs hxg
-        simp only [show ByteArray.empty.size = 0 from rfl, Nat.zero_add, Array.length_toList] at hxs hxg
-        refine ⟨hisz, hesz, congrArg Except.ok ?_⟩
-        have h88 : (8 : USize) = (8 : Nat).toUSize := rfl
-        rw [ho, Coc.encode, h88, raw_encodeAt .i64 8 rfl (by decide) Column.lgEnc (by decide) _ n (by rw [hxs]; omega),
-          raw_bytes .i64 8 rfl (by decide)]
-        refine (Array.ext (by simp [hs]) fun i h1 _ => ?_).symm
-        simp only [Array.getElem_map, Array.getElem_range]
-        rw [Nat.mul_comm, hxg i (by simp at h1; omega), ofNat_toNat_mod64, Array.getElem_toList]
-
-/-- **`colConst n w` is `n` words `w`.** -/
-theorem colConst_raw {n : USize} {w : UInt64} {e : Enc} (h : colConst n w = .ok e) :
-    raw .i64 n e = Array.replicate n.toNat w := by
-  obtain ⟨-, -, hw⟩ := kscatter_words h
-  have h0 : (raw .i64 0 (.pos : Enc)).size = 0 := by simp [raw]
-  unfold scatterWords at hw
-  rw [h0] at hw
-  exact (Except.ok.inj hw).symm
-
-/-- **`colConst n w` read as booleans is `n` words `w % 2`** (`kscan`'s `seg`). -/
-theorem colConst_u1 {n : USize} {w : UInt64} {e : Enc} (h : colConst n w = .ok e) :
-    ∀ i < n.toNat, (raw .u1 n e)[i]?.getD 0 = UInt64.ofNat (w.toNat % 2) := by
-  intro i hi
-  obtain ⟨hfo, -⟩ := raw_scatter 0 .pos .pos n w e h
-  have he := colConst_raw h
-  generalize Coc.encode _ _ = q at hfo; subst hfo
-  have hu : raw .u1 n (.foR q.1 q.2 : Enc) = (raw .i64 n (.foR q.1 q.2 : Enc)).map fun w => UInt64.ofNat (w.toNat % 2) := by
-    simp only [raw, QAtomicType.width, Array.map_map]
-    refine Array.ext (by simp) fun j _ _ => ?_
-    simp
-  rw [hu, Array.getElem?_map, he, Array.getElem?_replicate, if_pos hi]; rfl
-
-/-- `kscan` at `i64` writes its words as they are: the cut to `8 * 8` bits is the identity. -/
-private theorem mod_i64 (v : UInt64) : UInt64.ofNat (v.toNat % 2 ^ (if QAtomicType.i64 = .u1 then 1 else 8 * 8)) = v := by
-  simp only [if_neg (by decide : QAtomicType.i64 ≠ .u1)]; exact ofNat_toNat_mod64 v
-
-/-- **`colPrefix op n a` is the running fold of `op` from `0`**: row `i` is `op` of row `i - 1` (`0` at row `0`) and
-`a[i]`. -/
-theorem colPrefix_raw {op : Op} {n : USize} {a e : Enc} (h : colPrefix op n a = .ok e) :
-    (raw .i64 n a).size = n.toNat ∧ (raw .i64 n e).size = n.toNat ∧ ∀ i < n.toNat,
-      op.eval (if i = 0 then 0 else (raw .i64 n e)[i - 1]?.getD 0) ((raw .i64 n a)[i]?.getD 0) =
-        .ok ((raw .i64 n e)[i]?.getD 0) := by
-  unfold colPrefix at h
-  simp only [bind, Except.bind] at h
-  split at h; · cases h
-  rename_i z hz
-  obtain ⟨-, hxs, c, cs, hc, out, hout, he, hrow⟩ := raw_kscan op false .i64 .i64 8 rfl n z [z, a] e h
-  simp only [List.cons.injEq] at hc; obtain ⟨rfl, rfl⟩ := hc
-  simp only [Bool.false_eq_true, ↓reduceIte, mod_i64, Array.map_id'] at he hrow
-  have hz0 := colConst_raw hz
-  have hzs := colConst_u1 hz
-  refine ⟨hxs a (by simp), by rw [he, hout], fun i hi => ?_⟩
-  have := hrow i (by rw [hout]; exact hi)
-  simp only [List.map_cons, List.map_nil, List.foldlM_cons, List.foldlM_nil, hzs i hi, hz0,
-    Array.getElem?_replicate, if_pos hi, Option.getD_some] at this
-  rw [he]
-  simp only [Array.getElem?_eq_getElem (show i < out.size by omega), Option.getD_some]
-  rw [← this]
-  by_cases h0 : i = 0
-  · subst h0; simp only [Nat.lt_irrefl, false_and, ↓reduceIte]
-    cases op.eval 0 ((raw .i64 n a)[0]?.getD 0) <;> rfl
-  · simp only [if_neg h0, show 0 < i by omega, true_and, show UInt64.ofNat (UInt64.toNat 0 % 2) = 0 from rfl,
-      ↓reduceIte]
-    cases op.eval (out[i - 1]?.getD 0) ((raw .i64 n a)[i]?.getD 0) <;> rfl
-
-/-- **`colMap op n a b` is `op` row by row**: both arguments hold `n` words, and row `i` of the answer is
-`op.eval a[i] b[i]`. -/
-theorem colMap_raw {op : Op} {n : USize} {a b e : Enc} (h : colMap op n a b = .ok e) :
-    (raw .i64 n a).size = n.toNat ∧ (raw .i64 n b).size = n.toNat ∧ (raw .i64 n e).size = n.toNat ∧
-      ∀ i < n.toNat, op.eval ((raw .i64 n a)[i]?.getD 0) ((raw .i64 n b)[i]?.getD 0) = .ok ((raw .i64 n e)[i]?.getD 0) := by
-  unfold colMap at h
-  simp only [bind, Except.bind] at h
-  split at h; · cases h
-  rename_i one hone
-  obtain ⟨hg, hxs, c, cs, hc, out, hout, he, hrow⟩ := raw_kscan op false .i64 .i64 8 rfl n one [a, b] e h
-  simp only [List.cons.injEq] at hc; obtain ⟨rfl, rfl⟩ := hc
-  simp only [Bool.false_eq_true, ↓reduceIte, mod_i64, Array.map_id'] at he hrow
-  -- `one` read as booleans: each word `1`, so every row starts a segment
-  have hseg : ∀ i < n.toNat, (raw .u1 n one)[i]?.getD 0 ≠ 0 := fun i hi => by rw [colConst_u1 hone i hi]; decide
-  refine ⟨hxs a (by simp), hxs b (by simp), by rw [he, hout], fun i hi => ?_⟩
-  have := hrow i (by rw [hout]; exact hi)
-  have hc : ¬(0 < i ∧ (raw .u1 n one)[i]?.getD 0 = 0) := fun h => hseg i hi h.2
-  simp only [hc, ↓reduceIte, List.map_cons, List.map_nil, List.foldlM_cons, List.foldlM_nil] at this
-  rw [he]
-  simp only [Array.getElem?_eq_getElem (show i < out.size by omega), Option.getD_some]
-  rw [← this]; cases op.eval ((raw .i64 n a)[i]?.getD 0) ((raw .i64 n b)[i]?.getD 0) <;> rfl
-
-/-- The fold `scatterWords .add` runs, over any rows `l` from any start `o` of `n` cells, every index below `n`: cell
-`j` ends as `o[j]` plus the sum of `es[k]` over the rows `k` of `l` that name `j`. -/
-private theorem scatterAddFold (is es : Array UInt64) (n : Nat) :
-    ∀ (l : List Nat) (o : Array UInt64), o.size = n → (∀ k ∈ l, (is[k]?.getD 0).toNat < n) →
-      ∃ o', l.foldlM (fun (o : Array UInt64) (k : Nat) =>
-          let i : UInt64 := is[k]?.getD 0
-          if i.toNat < n then
-            match Op.add.eval (o[i.toNat]?.getD 0) (es[k]?.getD 0) with
-            | .ok v => Except.ok (o.setIfInBounds i.toNat v)
-            | .error s => Except.error s!"scatter: {s} at row {k}"
-          else Except.error (ε := String) s!"scatter: index {i} at row {k} is not below n = {n}") o = Except.ok o' ∧ o'.size = n ∧
-        ∀ j < n, o'[j]?.getD 0 = o[j]?.getD 0 +
-          ((l.filter fun k => (is[k]?.getD 0).toNat = j).map (es[·]?.getD 0)).sum
-  | [], o, hs, _ => ⟨o, rfl, hs, fun j _ => by simp⟩
-  | k :: l, o, hs, hix => by
-    have hk := hix k (by simp)
-    obtain ⟨o', ho', hs', hj⟩ := scatterAddFold is es n l (o.setIfInBounds (is[k]?.getD 0).toNat
-      ((o[(is[k]?.getD 0).toNat]?.getD 0) + (es[k]?.getD 0))) (by simp [hs]) fun k' hk' => hix k' (by simp [hk'])
-    refine ⟨o', by simp only [List.foldlM_cons, if_pos hk, Op.eval, bind, Except.bind]; exact ho', hs', fun j hjn => ?_⟩
-    rw [hj j hjn]
-    by_cases e : (is[k]?.getD 0).toNat = j
-    · subst e
-      simp only [Array.getElem?_setIfInBounds_self_of_lt (show (is[k]?.getD 0).toNat < o.size by omega),
-        Option.getD_some, UInt64.add_assoc]
-      simp
-    · simp only [Array.getElem?_setIfInBounds_ne e]
-      simp [e]
-
-/-- **`scatterWords .add` sums**: where every index is below `n`, cell `j` is `fill` plus the sum of `es[k]` over the
-rows `k` naming `j`. -/
-theorem scatterWords_add (is es : Array UInt64) (n : Nat) (fill : UInt64)
-    (hix : ∀ k < is.size, (is[k]?.getD 0).toNat < n) :
-    ∃ ws, scatterWords .add is es n fill = .ok ws ∧ ws.size = n ∧ ∀ j < n, ws[j]?.getD 0 = fill +
-      (((List.range is.size).filter fun k => (is[k]?.getD 0).toNat = j).map (es[·]?.getD 0)).sum := by
-  obtain ⟨o', ho, hs, hj⟩ := scatterAddFold is es n (List.range is.size) (Array.replicate n fill) (by simp)
-    fun k hk => hix k (List.mem_range.1 hk)
-  exact ⟨o', ho, hs, fun j hjn => by rw [hj j hjn]; simp [hjn]⟩
-
-namespace Tab
 variable {A B C : Obj}
 
-/-- **`R.conv` denotes `R°`** (`Rep.rep_conv`'s statement, pointwise). -/
-theorem conv_holds {R : Tab A B} {S : Tab B A} (h : R.conv = .ok S) (b : B.El) (a : A.El) :
-    S.Holds b a ↔ R.Holds a b := by
-  rw [canon_holds h]; exact ⟨fun ⟨i, h1, h2⟩ => ⟨i, h2, h1⟩, fun ⟨i, h1, h2⟩ => ⟨i, h2, h1⟩⟩
+/-! `≫`'s notations, one home: `open CompN` in every file that states a `≫` read-back. -/
+namespace CompN
+-- the two parts `≫` codes jointly, and their codes, named as `comp` names them
+set_option hygiene false in
+scoped notation "jcs" => (#v[⟨R.n, R.val⟩, ⟨S.n, S.key⟩] : Vector (Part _) 2)
+set_option hygiene false in
+scoped notation "jc" => Obj.codes _ jcs
+-- the pairs `(i, j)` `join` answers, as `join_spec` reads them back: row `i` of `R`, row `j` of `S`, equal codes
+set_option hygiene false in
+scoped notation "jpairs" => ((List.range R.n.toNat).flatMap fun i => ((List.range S.n.toNat).filter fun j =>
+  Column.idAt (jc[1]'Nat.one_lt_two).b (jc[1]'Nat.one_lt_two).w j ==
+    Column.idAt (jc[0]'Nat.zero_lt_two).b (jc[0]'Nat.zero_lt_two).w i).map (i, ·))
+end CompN
+open CompN
 
-end Tab
+/-- **An atom side fits at the left rows of a join's pairs**: each is a row of that side (`join_pairs_lt`),
+    so no pick misses. At an array or a sum side the pairs repeat rows and the copied windows can outgrow the
+    input, so there the fit stays a hypothesis. -/
+theorem pickFits_atom_fst {t : QAtomicType} {n : USize} (x : Vals (.atom t) n) {b : Nat}
+    {P : Nat → Nat → Bool} :
+    Vals.PickFits (.atom t) x (((List.range n.toNat).flatMap fun i => ((List.range b).filter (P i)).map (i, ·)).map
+      Prod.fst) :=
+  pickFits_atom x fun _ hk => by
+    obtain ⟨p, hp, rfl⟩ := List.mem_map.1 hk
+    exact (join_pairs_lt hp).1
 
-/-! ## Checks on `foR` tables -/
+/-- **An atom side fits at the right rows of a join's pairs**, as `pickFits_atom_fst`. -/
+theorem pickFits_atom_snd {t : QAtomicType} {n : USize} (x : Vals (.atom t) n) {a : Nat}
+    {P : Nat → Nat → Bool} :
+    Vals.PickFits (.atom t) x (((List.range a).flatMap fun i => ((List.range n.toNat).filter (P i)).map (i, ·)).map
+      Prod.snd) :=
+  pickFits_atom x fun _ hk => by
+    obtain ⟨p, hp, rfl⟩ := List.mem_map.1 hk
+    exact (join_pairs_lt hp).2
 
-section Checks
+/-- **A join's left rows repeat a row at most `b` times**: once per right row its filter keeps, and only rows
+    below `N` occur. -/
+theorem join_fst_count {b : Nat} {P : Nat → Nat → Bool} (N k : Nat) :
+    (((List.range N).flatMap fun i => ((List.range b).filter (P i)).map (i, ·)).map Prod.fst).count k ≤
+      if k < N then b else 0 := by
+  induction N with
+  | zero => simp
+  | succ N ih =>
+    have hl := Nat.le_trans (List.length_filter_le (P N) (List.range b)) (Nat.le_of_eq (List.length_range ..))
+    rw [List.range_succ, List.flatMap_append, List.map_append, List.count_append, List.flatMap_singleton,
+      List.map_map, show (Prod.fst ∘ fun j => (N, j)) = fun (_ : Nat) => N from rfl, List.map_const',
+      List.count_replicate]
+    by_cases hk : k < N
+    · have : ¬ (N == k) = true := by simp only [beq_iff_eq]; omega
+      rw [if_pos hk] at ih; rw [if_neg this, if_pos (by omega)]; omega
+    · rw [if_neg hk] at ih
+      by_cases he : k = N
+      · subst he; rw [if_pos (by simp), if_pos (by omega)]; omega
+      · have : ¬ (N == k) = true := by simp only [beq_iff_eq]; omega
+        rw [if_neg this]; omega
 
-/-- The table of the pairs `ps` as given, unsorted, both columns `Alg.col`'s literal `foR` columns. -/
-private def tab (ps : List (Int64 × Int64)) : Tab .long .long :=
-  ⟨ps.length.toUSize, List.length_map _ ▸ Alg.col (ps.map (·.1)), List.length_map _ ▸ Alg.col (ps.map (·.2))⟩
+/-- **A join's right rows repeat a row at most once per left row**: each left row's filter of `List.range b` keeps
+    a row at most once. -/
+theorem join_snd_count {b : Nat} {P : Nat → Nat → Bool} (N k : Nat) :
+    (((List.range N).flatMap fun i => ((List.range b).filter (P i)).map (i, ·)).map Prod.snd).count k ≤ N := by
+  induction N with
+  | zero => simp
+  | succ N ih =>
+    have h1 := (List.filter_sublist : (List.filter (P N) (List.range b)).Sublist _).count_le k
+    rw [List.count_range] at h1
+    rw [List.range_succ, List.flatMap_append, List.map_append, List.count_append, List.flatMap_singleton,
+      List.map_map, show (Prod.snd ∘ fun j => (N, j)) = id from rfl, List.map_id]
+    split at h1 <;> omega
 
-#guard ((tab [(3, 1), (1, 2), (3, 1), (-1, 2)]).conv.toOption.map Tab.toList) == some [(1, 3), (2, -1), (2, 1)]
-#guard ((tab [(3, 1), (1, 2), (-1, 2), (1, 2)]).comp (tab [(2, 5), (1, -3), (2, 6), (7, 7)])).toOption.map Tab.toList ==
-  some [(-1, 5), (-1, 6), (1, 5), (1, 6), (3, -3)]
--- the five-kernel `comp` and `conv` against the old `CRel.comp` and `ofC (R°)` on the same tables: duplicates,
--- negatives, an empty side, no common middle value, a group whose run product is past 1
-#guard
-  let ts : List (List (Int64 × Int64)) := [[(3, 1), (1, 2), (3, 1), (-1, 2), (1, 2), (2, 7), (-5, -5), (0, 0)],
-    [(2, 5), (1, -3), (2, 6), (7, 7), (9, 0), (2, 5), (-5, 4), (0, 0)], [(-2, 9), (-2, 9), (7, -3)], [(4, 8)], []]
-  ts.all fun ps => (ts.all fun qs => ((tab ps).comp (tab qs)).toOption.isSome &&
-    ((tab ps).comp (tab qs)).toOption.map Tab.toList == (CRel.comp (some (tab ps)) (some (tab qs))).map Tab.toList) &&
-    (tab ps).conv.toOption.isSome && ((tab ps).conv.toOption.map Tab.toList) ==
-      (let c := Alg.canonC (⟨(tab ps).n, (tab ps).val, (tab ps).key⟩ : Tab .long .long)
-       if c.2 then some c.1.toList else none)
+/-- **A side fits at a join's left rows** where its reading at all rows, once per right row and once more, fits:
+    the left rows repeat each row at most `b` times (`join_fst_count`, `reads_count_le`). -/
+theorem pickFits_join_fst {A : Obj} {n : USize} (x : Vals A n) {b : Nat} {P : Nat → Nat → Bool}
+    (h : (b + 1) * Vals.reads A x (List.range n.toNat) < min (2 ^ 63) USize.size) :
+    Vals.PickFits A x (((List.range n.toNat).flatMap fun i => ((List.range b).filter (P i)).map (i, ·)).map
+      Prod.fst) := by
+  apply pickFits_of_reads <;>
+    refine Nat.lt_of_le_of_lt (reads_count_le x (c := b + 1) (N := n.toNat) (Nat.succ_pos _) fun k hk => ?_)
+      (Nat.lt_of_lt_of_le h (by first | exact Nat.min_le_left _ _ | exact Nat.min_le_right _ _)) <;>
+  · obtain ⟨p, hp, rfl⟩ := List.mem_map.1 hk
+    have hlt := (join_pairs_lt hp).1
+    have hc := join_fst_count (b := b) (P := P) n.toNat p.1
+    rw [if_pos hlt] at hc
+    exact ⟨hlt, by omega⟩
 
-end Checks
+/-- **A side fits at a join's right rows** where its reading at all rows, once per left row and once more, fits
+    (`join_snd_count`, `reads_count_le`). -/
+theorem pickFits_join_snd {A : Obj} {n : USize} (x : Vals A n) {a : Nat} {P : Nat → Nat → Bool}
+    (h : (a + 1) * Vals.reads A x (List.range n.toNat) < min (2 ^ 63) USize.size) :
+    Vals.PickFits A x (((List.range a).flatMap fun i => ((List.range n.toNat).filter (P i)).map (i, ·)).map
+      Prod.snd) := by
+  apply pickFits_of_reads <;>
+    refine Nat.lt_of_le_of_lt (reads_count_le x (c := a + 1) (N := n.toNat) (Nat.succ_pos _) fun k hk => ?_)
+      (Nat.lt_of_lt_of_le h (by first | exact Nat.min_le_left _ _ | exact Nat.min_le_right _ _)) <;>
+  · obtain ⟨p, hp, rfl⟩ := List.mem_map.1 hk
+    have hc := join_snd_count (b := n.toNat) (P := P) a p.2
+    exact ⟨(join_pairs_lt hp).2, by omega⟩
 
-#print axioms Tab.conv_holds
+section Comp
 
-end Rel
+open scoped Rel.Core.Rel
+open Rel.Core.Rel hiding id comp recip inter union zero le inl inr junc
+
+/-- **`rep (R ≫ S) = rep R ≫ rep S`.** Hypotheses:
+    - `hc`, the middle side's joint codes identify rows and are well formed — what `CodesSpec` concludes;
+    - `hrn`, `hM`, the counts `join_spec` takes: `S`'s rows below `2^63`, and `R`'s rows times `S`'s below
+      `2^63` and a `USize`, which bounds the match count (past a `USize` `≫` answers `𝟘`);
+    - `hA`, `hC`, `Vals.PickFits` of `R.key` at the left rows of the join's pairs and of `S.val` at the
+      right ones, which `pick_row` reads back under; a side of atoms and products fits outright
+      (`pickFits_atom_fst`, `pickFits_atom_snd`, `pickFits_prod`).
+    At a middle side `B` with `B.CodesFit jcs`, `hc` is `(codes_faithful_wf B jcs _).1`. -/
+theorem rep_comp (R : Tab A B) (S : Tab B C)
+    (hc : (∀ {k l : Nat} (hk : k < 2) (hl : l < 2) {i j : Nat} (hi : i < (jcs[k]'hk).1.toNat)
+        (hj : j < (jcs[l]'hl).1.toNat),
+        Column.idAt (jc[k]'hk).b (jc[k]'hk).w i = Column.idAt (jc[l]'hl).b (jc[l]'hl).w j ↔
+          Vals.row (jcs[k]'hk).2 ⟨i, hi⟩ = Vals.row (jcs[l]'hl).2 ⟨j, hj⟩) ∧
+      ∀ {k : Nat} (hk : k < 2),
+        laneOK((jc[k]'hk).w) ∧
+        (jc[k]'hk).n = (jcs[k]'hk).1 ∧ (jc[k]'hk).b.size = ((jc[k]'hk).n.toNat * (jc[k]'hk).w + 7) / 8 ∧
+        ((jc[k]'hk).w < 8 → (jc[k]'hk).card < USize.size ∧
+          ∀ i < (jc[k]'hk).n.toNat, Column.idAt (jc[k]'hk).b (jc[k]'hk).w i < (jc[k]'hk).card))
+    (hrn : S.n.toNat < 2 ^ 63)
+    (hM : R.n.toNat * S.n.toNat < min (2 ^ 63) USize.size)
+    -- fits, not reads bounds: an atom side fits outright (`pickFits_atom_fst`); an input side discharges them by
+    -- `pickFits_join_fst`/`_snd`
+    (hA : Vals.PickFits A R.key ((jpairs).map Prod.fst)) (hC : Vals.PickFits C S.val ((jpairs).map Prod.snd)) :
+    rep (R ≫ S) = rep R ≫ rep S := by
+  obtain ⟨hF, hW⟩ := hc
+  obtain ⟨hlw, hln, hls, -⟩ := hW (k := 0) (by decide)
+  obtain ⟨hrw, hrn', hrs, hrc⟩ := hW (k := 1) (by decide)
+  replace hln : (jc[0]'Nat.zero_lt_two).n = R.n := hln
+  replace hrn' : (jc[1]'Nat.one_lt_two).n = S.n := hrn'
+  obtain ⟨hlt, hZ⟩ := join_rows _ _ hlw hls hrw hrs hrc (by rw [hrn']; exact hrn) (by rw [hln, hrn']; exact hM)
+  have hP := mem_joinPairs (jc[0]'Nat.zero_lt_two) (jc[1]'Nat.one_lt_two)
+  rw [hln, hrn'] at hP
+  refine Core.Rel.ext fun a c => ?_
+  -- the codes twin's `.1` read as `jc` while an argument of `joinC`, then the picks' twins
+  show ((joinC "≫" (keyPart R) (valPart S) ((B.codesC jcs).1[0]) ((B.codesC jcs).1[1])).1).Holds a c ↔ ∃ b, R.Holds a b ∧ S.Holds b c
+  rw [Obj.codesC_fst]; unfold joinC longCount; rw [need_fst]; simp only [pickC_fst, keyPart, valPart]
+  unfold need
+  rw [dif_pos hlt]
+  -- the relation at whatever count `m` the join's length enters as
+  suffices H : ∀ (m : USize) (hmJ : len (join (jc[0]'Nat.zero_lt_two) (jc[1]'Nat.one_lt_two)).2 = m.toNat),
+      (⟨m, Vals.pickN A R.key (join (jc[0]'Nat.zero_lt_two) (jc[1]'Nat.one_lt_two)).1 m (hmJ ▸ join_len (jc[0]'Nat.zero_lt_two) (jc[1]'Nat.one_lt_two)),
+        Vals.pick C S.val (join (jc[0]'Nat.zero_lt_two) (jc[1]'Nat.one_lt_two)).2 m hmJ⟩ : Tab A C).Holds a c ↔ ∃ b, R.Holds a b ∧ S.Holds b c from H _ _
+  intro m hmJ
+  have e := hZ m hmJ
+  rw [hln, hrn'] at e
+  have hfA : Vals.PickFits A R.key
+      ((List.range m.toNat).map fun q => (Column.bitsAt (fit m.toNat (join (jc[0]'Nat.zero_lt_two) (jc[1]'Nat.one_lt_two)).1) (q * 8) 8).toNat) := by
+    rw [show ((List.range m.toNat).map fun q => (Column.bitsAt (fit m.toNat (join (jc[0]'Nat.zero_lt_two) (jc[1]'Nat.one_lt_two)).1) (q * 8) 8).toNat) =
+      (jpairs).map Prod.fst by rw [e, List.map_map]; rfl]; exact hA
+  have hfC : Vals.PickFits C S.val
+      ((List.range m.toNat).map fun q => (Column.bitsAt (join (jc[0]'Nat.zero_lt_two) (jc[1]'Nat.one_lt_two)).2 (q * 8) 8).toNat) := by
+    rw [show ((List.range m.toNat).map fun q => (Column.bitsAt (join (jc[0]'Nat.zero_lt_two) (jc[1]'Nat.one_lt_two)).2 (q * 8) 8).toNat) =
+      (jpairs).map Prod.snd by rw [e, List.map_map]; rfl]; exact hC
+  have hA' : ∀ (h : m.toNat ≤ len (join (jc[0]'Nat.zero_lt_two) (jc[1]'Nat.one_lt_two)).1) (q : Fin m.toNat)
+      (hin : (Column.bitsAt (fit m.toNat (join (jc[0]'Nat.zero_lt_two) (jc[1]'Nat.one_lt_two)).1) (q.1 * 8) 8).toNat < R.n.toNat),
+      (Vals.pickN A R.key (join (jc[0]'Nat.zero_lt_two) (jc[1]'Nat.one_lt_two)).1 m h).row q = R.key.row ⟨_, hin⟩ :=
+    fun h q hin => by unfold Vals.pickN; rw [pick_row A R.key _ m _ hfA q, dif_pos hin]
+  simp only [Holds]
+  constructor
+  · rintro ⟨q, hqa, hqc⟩
+    have hq : ((Column.bitsAt (fit m.toNat (join (jc[0]'Nat.zero_lt_two) (jc[1]'Nat.one_lt_two)).1) (q.1 * 8) 8).toNat,
+        (Column.bitsAt (join (jc[0]'Nat.zero_lt_two) (jc[1]'Nat.one_lt_two)).2 (q.1 * 8) 8).toNat) ∈ jpairs := by
+      rw [e]; exact List.mem_map.2 ⟨q.1, List.mem_range.2 q.2, rfl⟩
+    obtain ⟨hi, hj, he⟩ := (hP _ _).1 hq
+    rw [hA' _ q hi] at hqa
+    rw [pick_row C S.val _ m hmJ hfC q, dif_pos hj] at hqc
+    exact ⟨R.val.row ⟨_, hi⟩, ⟨⟨_, hi⟩, hqa, rfl⟩, ⟨_, hj⟩,
+      ((hF (k := 0) (l := 1) (by decide) (by decide) hi hj).1 he.symm).symm, hqc⟩
+  · rintro ⟨b, ⟨i, hia, hib⟩, ⟨j, hjb, hjc⟩⟩
+    have he : Column.idAt (jc[1]'Nat.one_lt_two).b (jc[1]'Nat.one_lt_two).w j.1 =
+        Column.idAt (jc[0]'Nat.zero_lt_two).b (jc[0]'Nat.zero_lt_two).w i.1 :=
+      ((hF (k := 0) (l := 1) (by decide) (by decide) i.2 j.2).2 (hib.trans hjb.symm)).symm
+    have hm := (hP i.1 j.1).2 ⟨i.2, j.2, he⟩
+    rw [e] at hm
+    obtain ⟨q, hq, hqe⟩ := List.mem_map.1 hm
+    obtain ⟨h1, h2⟩ := Prod.mk.inj hqe
+    have hq2 := List.mem_range.1 hq
+    have hi' : (Column.bitsAt (fit m.toNat (join (jc[0]'Nat.zero_lt_two) (jc[1]'Nat.one_lt_two)).1) (q * 8) 8).toNat < R.n.toNat := by rw [h1]; exact i.2
+    have hj' : (Column.bitsAt (join (jc[0]'Nat.zero_lt_two) (jc[1]'Nat.one_lt_two)).2 (q * 8) 8).toNat < S.n.toNat := by rw [h2]; exact j.2
+    refine ⟨⟨q, hq2⟩, ?_, ?_⟩
+    · rw [hA' _ ⟨q, hq2⟩ hi', ← hia]; exact congrArg R.key.row (Fin.ext h1)
+    · rw [pick_row C S.val _ m hmJ hfC ⟨q, hq2⟩, dif_pos hj', ← hjc]; exact congrArg S.val.row (Fin.ext h2)
+
+end Comp
+
+#print axioms pick_row_atom
+#print axioms pick_row_prod
+#print axioms rep_comp
+
+end Rel.Rep
