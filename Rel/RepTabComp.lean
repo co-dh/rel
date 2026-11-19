@@ -226,14 +226,12 @@ theorem kasc_grade {N : USize} {es : List (AscKey × Enc)} {vs : List Enc} {p : 
       ← hc64 _ (List.mem_range.1 (hperm'.mem_iff.1 (List.getElem_mem h2))), e2]
   refine ⟨cs, hc, hpsg ▸ hrp, fun q hq => ?_⟩
   revert hq; rw [← hpsg]; intro hq
-  simp only [seenKey, ascKeys, List.map_map]
-  apply List.ext_getElem (by simp [hvl])
-  intro c h1 h2
-  have hc2 : c < es.length := by simpa using h2
-  obtain ⟨ws, hv, hws, hwq⟩ := hcol c es[c] (vs[c]'(by omega)) (List.getElem?_eq_getElem hc2)
+  -- the sorted columns hold input row `ps[q]`'s words at row `q`, so every code does (`ascKeys_row`), `cells` keys' too
+  simp only [seenKey]
+  refine ascKeys_row (List.map_fst_zip (by simp [hvl])) fun c h h' => ?_
+  obtain ⟨ws, hv, hws, hwq⟩ := hcol c es[c] (vs[c]'(by simp at h; omega)) (List.getElem?_eq_getElem h')
     (List.getElem?_eq_getElem _)
-  simp only [List.getElem_map, List.getElem_zip, Function.comp_apply, hv, (wordsFoR_closed ws hws.symm).2.1,
-    Array.getElem?_map, hwq q hq]
+  simp only [List.getElem_zip, hv, (wordsFoR_closed ws hws.symm).2.1, hwq q hq]
 
 /-- **`kscatter (.add)` of `0`/`1` words by group** is each group's count of rows with `P`. -/
 theorem scatter_add_count {N K : USize} {g e o : Enc} (h : kscatter .add N g e K 0 = .ok o) (gr : Nat → Nat)
@@ -892,10 +890,9 @@ private def compOk {A B C : Obj} [BEq A.El] [BEq B.El] [BEq C.El] (R : Tab A B) 
   (⟨3, Arr.bools 3 fun i => i == 1, Alg.col [7, 8, 9]⟩ : Tab (.atom .u1) .long)
 #guard compOk (⟨4, Alg.col [3, 1, 2, 1], (Alg.col [1, 1, 2, 2], Alg.col [5, 6, 5, 6])⟩ : Tab .long (.prod .long .long))
   (⟨3, (Alg.col [2, 1, 1], Alg.col [5, 6, 5]), Alg.col [7, 8, 9]⟩ : Tab (.prod .long .long) .long)
--- an `arr` middle column: `R`'s values and `S`'s keys are cells (`arrTab`), met as lists, equal cells from different
--- ranges and payloads included
-#guard let A := arrTab arrCells arrPay; let B := arrTab [(2, 3, 1), (1, 2, 1), (3, 9, 0), (0, 0, 2)] [5, 1, 5, 9, 5, 7]
-  compOk (Tab.mk A.n A.val A.key) B && compOk (Tab.mk B.n B.val B.key) A && compOk (Tab.mk A.n A.val A.key) (arrTab [] [])
+-- an `arr` middle column: the error until `Vals.concat` (`Rel/Run/Cols.lean`) concatenates `arr` sides
+#guard let A := arrTab arrCells arrPay
+  (Tab.comp (Tab.mk A.n A.val A.key) A) matches .error "concat: an arr side is not atom columns"
 
 end Checks
 

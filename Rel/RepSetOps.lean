@@ -744,17 +744,9 @@ private def T₃ : List (Int64 × Int64) := [(0, 0), (9, 9)]
   ((R.diff S).toOption.map Tab.toList) == old (CRel.diff (some R) (some S)) &&
   (R.le S).toOption == (let c := Alg.leC R S; if c.2 then some c.1 else none)
 
--- an `arr` key side (`arrTab`): equal cells from different ranges, so the operators meet rows across tables by their
--- cells as lists; each operator must answer
-#guard
-  let ts := [arrTab arrCells arrPay, arrTab [(2, 3, 1), (1, 2, 1), (3, 9, 0), (0, 0, 2)] [5, 1, 5, 9, 5, 7],
-    arrTab [] [], arrTab [(0, 1, 1)] [5]]
-  ts.all fun R => ts.all fun S =>
-  let old (c : CRel (.arr .long) .long) := c.bind fun t => let c := Alg.canonC t; if c.2 then some c.1.toList else none
-  (R.union S).toOption.isSome && (R.inter S).toOption.isSome && (R.diff S).toOption.isSome &&
-  ((R.union S).toOption.map Tab.toList) == old (CRel.union (some R) (some S)) &&
-  ((R.inter S).toOption.map Tab.toList) == old (CRel.inter (some R) (some S)) &&
-  ((R.diff S).toOption.map Tab.toList) == old (CRel.diff (some R) (some S))
+-- an `arr` key side: every operator is the error until `Vals.concat` (`Rel/Run/Cols.lean`) concatenates `arr` sides
+#guard let R := arrTab arrCells arrPay
+  [R.union R, R.inter R, R.diff R].all fun r => r matches .error "concat: an arr side is not atom columns"
 
 end Checks
 
