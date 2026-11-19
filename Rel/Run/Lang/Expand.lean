@@ -232,14 +232,20 @@ def fitConst (c : Lean.Name) (sel : Lean.Expr → MetaM Bool) (hs : Array (Lean.
 open Lean Meta in
 /-- Row `r`'s constant at `A ⟶ B` given its relations `xs` (codes with their types), under the first wrapper it
     fits: the wrapper's `Fn` parts are `xs`, its function's explicit binders the constant's that are relations (as
-    `prim%` reads them, `objOrSize`), every other solved by unifying the types. -/
-def primE (r : Prim) (A B : Obj) (xs : Array (Lean.Expr × Lean.Expr)) : MetaM (Option Lean.Expr) :=
-  primWrappers.findSomeM? fun w => fitConst w (fun t => pure (t.isAppOf ``Gen.Fn)) xs fun ws wty => do
+    `prim%` reads them, `objOrSize`), every other solved by unifying the types. On the kernel path (`kern`) the
+    constant is the row's `kernRows` operator and the wrappers the `GenK` twins that exist. -/
+def primE (r : Prim) (A B : Obj) (xs : Array (Lean.Expr × Lean.Expr)) (kern : Bool := false) :
+    MetaM (Option Lean.Expr) := do
+  let some c := if kern then kernRows.lookup r.sym else some r.sig.1 | return none
+  let ws ← if kern then primWrappers.filterMapM fun w => do
+      let n := w.replacePrefix `Rel.Lang.Gen `Rel.Lang.GenK; return if (← getEnv).contains n then some n else none
+    else pure primWrappers
+  ws.findSomeM? fun w => fitConst w (fun t => pure (t.isAppOf ``Gen.Fn)) xs fun ws wty => do
     let some f := ws.back? | return false
     unless ← isDefEq wty (g ``Gen.Fn #[bE true, oE A, oE B]) do return false
     let v? ← forallTelescope (← instantiateMVars (← inferType f)) fun ys body => do
       let es ← ys.filterM fun y => return (← getFVarLocalDecl y).binderInfo.isExplicit
-      let some v ← fitConst r.sig.1 (fun t => return !(← objOrSize t)) (← es.mapM fun y => return (y, ← inferType y))
+      let some v ← fitConst c (fun t => return !(← objOrSize t)) (← es.mapM fun y => return (y, ← inferType y))
           fun _ ty => isDefEq ty body | return none
       some <$> mkLambdaFVars ys v
     let some v := v? | return false
@@ -717,11 +723,11 @@ partial def node (pre : Name) (ρ : List (Nat × Lean.Expr)) {A B : Obj} (t : Tm
   | _, _, .arith k U => return gk ``Gen.arith #[toExpr k, ← c U]
   | _, _, .leq U => return gk ``Gen.leq #[← c U]
   | _, _, .lt U => return gk ``Gen.lt #[← c U]
-  | .arr E, V, .foldr e S => return gk ``Gen.foldr #[oE E, oE V, bE S.dem, ← c e, ← c S]
-  | .arr E, V, .fold e S => return gk ``Gen.fold #[oE E, oE V, bE S.dem, ← c e, ← c S]
+  | .arr Y, V, .foldr e S => return gk ``Gen.foldr #[oE Y, oE V, bE S.dem, ← c e, ← c S]
+  | .arr Y, V, .fold e S => return gk ``Gen.fold #[oE Y, oE V, bE S.dem, ← c e, ← c S]
   | _, _, .share _ R => c R
-  | .prod I (.arr E), V, .foldI e S =>
-    return gk ``Gen.foldI #[oE I, oE E, oE V, bE e.dem, bE S.dem, ← c e, ← c S]
+  | .prod I (.arr Y), V, .foldI e S =>
+    return gk ``Gen.foldI #[oE I, oE Y, oE V, bE e.dem, bE S.dem, ← c e, ← c S]
   | .prod I A, B, .flat R => return gk ``Gen.flat #[oE I, oE A, oE B, bE R.dem, ← c R]
   | A, B, .var _ k => match ρ.lookup k with
     | some x => if (← inferType x).isAppOf ``Gen.Pl then return gk ``Gen.ofPl #[oE A, oE B, x]
@@ -747,8 +753,8 @@ partial def node (pre : Name) (ρ : List (Nat × Lean.Expr)) {A B : Obj} (t : Tm
   | A, B, t@(.prim _) | A, B, t@(.arg ..) => match primOf t with
     | some (r, as) => do
       let xs ← as.toArray.mapM fun x => return (← code pre ρ x.2.2, fnTy x)
-      let some e ← primE r A B xs
-        | throwError "rel_program expansion: `{r.sig.1}` at {oE A} → {oE B} given {xs.size} relations fits none of {primWrappers}"
+      let some e ← primE r A B xs k
+        | throwError "rel_program expansion: row `{r.sym}` (kernel path {k}) at {oE A} → {oE B} given {xs.size} relations fits none of its wrappers {primWrappers}"
       pure e
     | none => return gk ``Gen.ofPl #[oE A, oE B, ← spine pre ρ t]
   | A, B, t@(.call ..) => return gk ``Gen.ofPl #[oE A, oE B, ← spine pre ρ t]
