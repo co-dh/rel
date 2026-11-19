@@ -910,4 +910,184 @@ theorem lam_canon {n : USize} {D : Vals A n} {R : Tab A B} {T : Tab A (.arr B)} 
 
 end Tab
 
+/-- **A canonical table's columns have codes** (to move beside `Tab.canon_sorted`, `Rel/RepSetOps.lean`): `canon`
+ran `Vals.cols` and `kasc` on `(R.key, R.val)`. -/
+theorem Tab.canon_codes {k v : Obj} {R r : Tab k v} (h : R.canon = .ok r) :
+    ∃ es cs, Vals.cols (A := .prod k v) (R.key, R.val) = .ok es ∧ es.mapM (ascCol R.n) = .ok cs := by
+  simp only [Tab.canon, Functor.map, Except.map] at h
+  split at h; · cases h
+  rename_i y hy
+  obtain ⟨es, vs, p, -, -, -, -, -, hes, hasc, -⟩ := Vals.nub_ok hy
+  obtain ⟨cs, hcs, -⟩ := kasc_grade hasc
+  exact ⟨es, cs, hes, hcs⟩
+
+/-- The positions below `m` that pass `P`, ascending. -/
+theorem exists_range_filter (m : Nat) (P : (j : Nat) → j < m → Prop) :
+    ∃ L : List Nat, L.Pairwise (· < ·) ∧ ∀ j, j ∈ L ↔ ∃ hj : j < m, P j hj := by
+  classical
+  refine ⟨(List.range m).filter fun j => decide (∃ hj : j < m, P j hj), (pairwise_range m).filter _, fun j => ?_⟩
+  simp only [List.mem_filter, List.mem_range, decide_eq_true_eq]
+  exact ⟨fun h => h.2, fun h => ⟨h.1, h⟩⟩
+
+namespace Tab
+variable {A B : Obj}
+
+/-- **`lam D R` denotes `Λ(R)` on the keys `D`, each cell in `R`'s order codes**: `a` of `D` to the list `ys` of its
+images under `R`, each once and ascending by the codes `kasc` gives the rows `(a, b)` of `R` (strictly: no two
+equal by stored bits). The codes order the images strictly (`keys_of_lexLe`, `Vals.codes_of_row`), so two such
+lists are one (`pairwise_eq_of_mem`), and `lam_canon`'s cell is one (`canon_sorted`). -/
+theorem lam_holds {n : USize} {D : Vals A n} {R : Tab A B} {T : Tab A (.arr B)} (h : Tab.lam D R = .ok T)
+    (a : A.El) (ys : List B.El) :
+    T.Holds a ys ↔ (∃ i, D.row i = a) ∧ (∀ b, b ∈ ys ↔ R.Holds a b) ∧
+      ∀ es, Vals.cols (A := .prod A B) (R.key, R.val) = .ok es →
+        ∃ s : Fin ys.length → Fin R.n.toNat, (∀ u, R.key.row (s u) = a ∧ R.val.row (s u) = ys[u]) ∧
+          ∀ u u' : Fin ys.length, u.1 < u'.1 → lexLe (ascKeys R.n es) (s u) (s u') = true ∧
+            seenKey R.n es (s u) ≠ seenKey R.n es (s u') := by
+  obtain ⟨r, U, hr, hU, hH⟩ := lam_canon h
+  obtain ⟨es0, cs, hes0, hcs⟩ := canon_codes hr
+  rw [canon_holds hU, hH]
+  -- the strict order the codes put on the images of `a`
+  have hsk : ∀ i j : Fin R.n.toNat, R.key.row i = R.key.row j → R.val.row i = R.val.row j →
+      seenKey R.n es0 i = seenKey R.n es0 j := fun i j e1 e2 =>
+    Vals.codes_of_row (A := .prod A B) (R.key, R.val) hes0 hcs i j (Prod.ext e1 e2)
+  have hks : ∀ i : Nat, seenKey R.n es0 i = (ascKeys R.n es0).map (·[i]?.getD 0) := fun i => by simp [seenKey]
+  obtain ⟨lc, hlc⟩ : ∃ F : B.El → B.El → Prop, ∀ x y, F x y ↔ ∃ i j : Fin R.n.toNat, R.key.row i = a ∧
+      R.val.row i = x ∧ R.key.row j = a ∧ R.val.row j = y ∧ lexLe (ascKeys R.n es0) i j = true ∧
+      seenKey R.n es0 i ≠ seenKey R.n es0 j := ⟨_, fun _ _ => Iff.rfl⟩
+  have lirr : ∀ x, ¬lc x x := fun x hx => by
+    obtain ⟨i, j, h1, h2, h3, h4, -, hne⟩ := (hlc x x).1 hx
+    exact hne (hsk i j (h1.trans h3.symm) (h2.trans h4.symm))
+  have lasym : ∀ x y, lc x y → ¬lc y x := fun x y hxy hyx => by
+    obtain ⟨i, j, h1, h2, h3, h4, hl, hne⟩ := (hlc x y).1 hxy
+    obtain ⟨j', i', h1', h2', h3', h4', hl', -⟩ := (hlc y x).1 hyx
+    have ei := hsk i i' (h1.trans h3'.symm) (h2.trans h4'.symm)
+    have ej := hsk j' j (h1'.trans h3.symm) (h2'.trans h4.symm)
+    rw [hks, hks] at ei ej
+    have hji : lexLe (ascKeys R.n es0) j i = true :=
+      lexLe_trans _ _ _ _ (lexLe_trans _ _ _ _ (lexLe_of_keys _ ej.symm) hl') (lexLe_of_keys _ ei.symm)
+    exact hne (by rw [hks, hks]; exact keys_of_lexLe _ hl hji)
+  -- a cell in canonical order satisfies the right-hand side, and every such list is ascending in `lc`
+  have fwd : ∀ L : List Nat, L.Pairwise (· < ·) → (∀ j, j ∈ L ↔ ∃ hj : j < r.n.toNat, r.key.row ⟨j, hj⟩ = a) →
+      let ys := L.map fun j => if hj : j < r.n.toNat then r.val.row ⟨j, hj⟩ else B.dflt
+      (∀ b, b ∈ ys ↔ R.Holds a b) ∧ ∀ es, Vals.cols (A := .prod A B) (R.key, R.val) = .ok es →
+        ∃ s : Fin ys.length → Fin R.n.toNat, (∀ u, R.key.row (s u) = a ∧ R.val.row (s u) = ys[u]) ∧
+          ∀ u u' : Fin ys.length, u.1 < u'.1 → lexLe (ascKeys R.n es) (s u) (s u') = true ∧
+            seenKey R.n es (s u) ≠ seenKey R.n es (s u') := by
+    intro L hLp hLm ys
+    refine ⟨fun b => ?_, fun es hes => ?_⟩
+    · rw [← canon_holds hr, List.mem_map]
+      constructor
+      · rintro ⟨j, hj, rfl⟩
+        obtain ⟨hj', e⟩ := (hLm j).1 hj
+        exact ⟨⟨j, hj'⟩, e, by simp only [dif_pos hj']⟩
+      · rintro ⟨j, e1, rfl⟩
+        exact ⟨j.1, (hLm j.1).2 ⟨j.2, e1⟩, by simp only [dif_pos j.2]⟩
+    · obtain ⟨sel, hrow, hord⟩ := canon_sorted hr hes
+      have hLr : ∀ u (hu : u < L.length), L[u] < r.n.toNat := fun u hu => ((hLm _).1 (List.getElem_mem hu)).1
+      have hlen : ys.length = L.length := List.length_map _
+      refine ⟨fun u => sel ⟨L[u.1]'(by omega), hLr u.1 (by omega)⟩, fun u => ?_, fun u u' hu => ?_⟩
+      · obtain ⟨e1, e2⟩ := Prod.mk.inj (hrow ⟨L[u.1]'(by omega), hLr u.1 (by omega)⟩)
+        refine ⟨e1 ▸ ((hLm _).1 (List.getElem_mem _)).2, ?_⟩
+        rw [← e2]; simp only [ys, Fin.getElem_fin, List.getElem_map, dif_pos (hLr u.1 (by omega))]
+      · exact hord _ _ (List.pairwise_iff_getElem.1 hLp _ _ (by omega) (by omega) hu)
+  have pw : ∀ ys : List B.El, (∀ es, Vals.cols (A := .prod A B) (R.key, R.val) = .ok es →
+      ∃ s : Fin ys.length → Fin R.n.toNat, (∀ u, R.key.row (s u) = a ∧ R.val.row (s u) = ys[u]) ∧
+        ∀ u u' : Fin ys.length, u.1 < u'.1 → lexLe (ascKeys R.n es) (s u) (s u') = true ∧
+          seenKey R.n es (s u) ≠ seenKey R.n es (s u')) → ys.Pairwise lc := fun ys hy => by
+    obtain ⟨s, hs, hord⟩ := hy es0 hes0
+    refine List.pairwise_iff_getElem.2 fun u u' hu hu' hlt => (hlc _ _).2 ?_
+    obtain ⟨h1, h2⟩ := hs ⟨u, hu⟩; obtain ⟨h3, h4⟩ := hs ⟨u', hu'⟩
+    exact ⟨_, _, h1, h2, h3, h4, hord ⟨u, hu⟩ ⟨u', hu'⟩ hlt⟩
+  constructor
+  · rintro ⟨hD, L, hLp, hLm, rfl⟩
+    exact ⟨hD, fwd L hLp hLm⟩
+  · rintro ⟨hD, hm, ho⟩
+    obtain ⟨L, hLp, hLm⟩ := exists_range_filter r.n.toNat fun j hj => r.key.row ⟨j, hj⟩ = a
+    obtain ⟨hm0, ho0⟩ := fwd L hLp hLm
+    exact ⟨hD, L, hLp, hLm, pairwise_eq_of_mem lirr lasym (pw ys ho) (pw _ ho0) fun b => by rw [hm, hm0]⟩
+
+/-- **`lam D R` denotes `lamDen R` on the keys `D`** (`Tm.lam`), where `B`'s order codes agree with `B.lt`: `hB` says
+that on any table of pairs, two rows of one key whose codes ascend strictly (`lexLe`, distinct `seenKey`) hold
+values ascending in `B.lt` (`Obj.key`). `lam_holds`'s cell is then `B.lt`-ascending, and `lamDen`'s list is that
+cell (`pairwise_eq_of_mem`). `hB` fails at a float atom: `ordCode` is IEEE totalOrder on stored bits, `Obj.key`
+puts every NaN lowest and `-0.0 = +0.0`. -/
+theorem lam_den {n : USize} {D : Vals A n} {R : Tab A B} {T : Tab A (.arr B)} (h : Tab.lam D R = .ok T)
+    (hB : ∀ (m : USize) (x : Vals (.prod A B) m) es, Vals.cols x = .ok es → ∀ i i' : Fin m.toNat,
+      (x.row i).1 = (x.row i').1 → lexLe (ascKeys m es) i i' = true → seenKey m es i ≠ seenKey m es i' →
+        B.lt (x.row i).2 (x.row i').2)
+    (a : A.El) (ys : List B.El) : T.Holds a ys ↔ (∃ i, D.row i = a) ∧ Lang.lamDen R.Holds a ys := by
+  obtain ⟨r, U, hr, hU, hH⟩ := lam_canon h
+  obtain ⟨es0, -, hes0, -⟩ := canon_codes hr
+  have lirr : ∀ x, ¬B.lt x x := fun x => List.lt_irrefl _
+  have lasym : ∀ x y, B.lt x y → ¬B.lt y x := fun _ _ => List.lt_asymm
+  have up : ∀ ys : List B.El, (∀ es, Vals.cols (A := .prod A B) (R.key, R.val) = .ok es →
+      ∃ s : Fin ys.length → Fin R.n.toNat, (∀ u, R.key.row (s u) = a ∧ R.val.row (s u) = ys[u]) ∧
+        ∀ u u' : Fin ys.length, u.1 < u'.1 → lexLe (ascKeys R.n es) (s u) (s u') = true ∧
+          seenKey R.n es (s u) ≠ seenKey R.n es (s u')) → ys.Pairwise B.lt := fun ys ho => by
+    obtain ⟨s, hs, hord⟩ := ho es0 hes0
+    refine List.pairwise_iff_getElem.2 fun u u' hu hu' hlt => ?_
+    obtain ⟨h1, h2⟩ := hs ⟨u, hu⟩; obtain ⟨h3, h4⟩ := hs ⟨u', hu'⟩
+    obtain ⟨hl, hne⟩ := hord ⟨u, hu⟩ ⟨u', hu'⟩ hlt
+    have := hB R.n (R.key, R.val) es0 hes0 (s ⟨u, hu⟩) (s ⟨u', hu'⟩) (h1.trans h3.symm) hl hne
+    simp only [Fin.getElem_fin] at h2 h4
+    rw [← h2, ← h4]; exact this
+  rw [lam_holds h]
+  constructor
+  · rintro ⟨hD, hm, ho⟩; exact ⟨hD, up ys ho, hm⟩
+  · rintro ⟨hD, hp, hm⟩
+    obtain ⟨L, hLp, hLm⟩ := exists_range_filter r.n.toNat fun j hj => r.key.row ⟨j, hj⟩ = a
+    have hT0 := (canon_holds hU _ _).2 ((hH _ _).2 ⟨hD, L, hLp, hLm, rfl⟩)
+    obtain ⟨-, hm0, ho0⟩ := (lam_holds h a _).1 hT0
+    rw [pairwise_eq_of_mem lirr lasym hp (up _ ho0) fun b => by rw [hm, hm0]]
+    exact (lam_holds h a _).1 hT0
+
+/-- **`E X R` is `lam X Q`, `Q` the pairs `(xs, b)` of `X` with `b` an image of an element of `xs`** (`mem_holds`,
+`comp_holds`): `E`'s laws are `lam`'s at `Q`. -/
+theorem E_lam {n : USize} {X : Vals (.arr A) n} {R : Tab A B} {T : Tab (.arr A) (.arr B)} (h : Tab.E X R = .ok T) :
+    ∃ Q : Tab (.arr A) B, Tab.lam X Q = .ok T ∧
+      ∀ xs b, Q.Holds xs b ↔ (∃ i, X.row i = xs) ∧ ∃ a, a ∈ xs ∧ R.Holds a b := by
+  simp only [Tab.E, bind] at h
+  rw [Except.bind_eq_ok'] at h; obtain ⟨M0, hM0, h⟩ := h
+  rw [Except.bind_eq_ok'] at h; obtain ⟨Q, hQ, h⟩ := h
+  refine ⟨Q, h, fun xs b => ?_⟩
+  rw [comp_holds hQ]
+  simp only [mem_holds hM0]
+  exact ⟨fun ⟨a, ⟨hX, ha⟩, hr⟩ => ⟨hX, a, ha, hr⟩, fun ⟨hX, a, ha, hr⟩ => ⟨a, ⟨hX, ha⟩, hr⟩⟩
+
+/-- **`E X R` denotes `E(R)` on the arrays `X`, each cell in the order codes of `Q`** (`E_lam`, `lam_holds`): `xs`
+of `X` to the images of its elements under `R`, each once, ascending by the codes of the rows `(xs, b)` of `Q`. -/
+theorem E_holds {n : USize} {X : Vals (.arr A) n} {R : Tab A B} {T : Tab (.arr A) (.arr B)} (h : Tab.E X R = .ok T) :
+    ∃ Q : Tab (.arr A) B, (∀ xs b, Q.Holds xs b ↔ (∃ i, X.row i = xs) ∧ ∃ a, a ∈ xs ∧ R.Holds a b) ∧
+      ∀ xs ys, T.Holds xs ys ↔ (∃ i, X.row i = xs) ∧ (∀ b, b ∈ ys ↔ ∃ a, a ∈ xs ∧ R.Holds a b) ∧
+        ∀ es, Vals.cols (A := .prod (.arr A) B) (Q.key, Q.val) = .ok es →
+          ∃ s : Fin ys.length → Fin Q.n.toNat, (∀ u, Q.key.row (s u) = xs ∧ Q.val.row (s u) = ys[u]) ∧
+            ∀ u u' : Fin ys.length, u.1 < u'.1 → lexLe (ascKeys Q.n es) (s u) (s u') = true ∧
+              seenKey Q.n es (s u) ≠ seenKey Q.n es (s u') := by
+  obtain ⟨Q, hl, hQ⟩ := E_lam h
+  refine ⟨Q, hQ, fun xs ys => ?_⟩
+  rw [lam_holds hl]
+  constructor
+  · rintro ⟨hX, hm, ho⟩
+    exact ⟨hX, fun b => (hm b).trans ((hQ xs b).trans ⟨fun h => h.2, fun h => ⟨hX, h⟩⟩), ho⟩
+  · rintro ⟨hX, hm, ho⟩
+    exact ⟨hX, fun b => (hm b).trans ((hQ xs b).trans ⟨fun h => h.2, fun h => ⟨hX, h⟩⟩).symm, ho⟩
+
+/-- **`E X R` denotes `EDen R` on the arrays `X`** (`Tm.E`), where `B`'s order codes agree with `B.lt` on tables of
+pairs keyed by arrays of `A` (`lam_den`'s `hB` at `.arr A`). -/
+theorem E_den {n : USize} {X : Vals (.arr A) n} {R : Tab A B} {T : Tab (.arr A) (.arr B)} (h : Tab.E X R = .ok T)
+    (hB : ∀ (m : USize) (x : Vals (.prod (.arr A) B) m) es, Vals.cols x = .ok es → ∀ i i' : Fin m.toNat,
+      (x.row i).1 = (x.row i').1 → lexLe (ascKeys m es) i i' = true → seenKey m es i ≠ seenKey m es i' →
+        B.lt (x.row i).2 (x.row i').2)
+    (xs : List A.El) (ys : List B.El) : T.Holds xs ys ↔ (∃ i, X.row i = xs) ∧ Lang.EDen R.Holds xs ys := by
+  obtain ⟨Q, hl, hQ⟩ := E_lam h
+  rw [lam_den hl hB]
+  simp only [Lang.EDen, Lang.lamDen, Core.Rel.comp, hQ]
+  constructor
+  · rintro ⟨hX, hp, hm⟩
+    exact ⟨hX, hp, fun b => (hm b).trans ⟨fun ⟨_, a, ha, hr⟩ => ⟨a, ha, hr⟩, fun ⟨a, ha, hr⟩ => ⟨hX, a, ha, hr⟩⟩⟩
+  · rintro ⟨hX, hp, hm⟩
+    exact ⟨hX, hp, fun b => (hm b).trans ⟨fun ⟨a, ha, hr⟩ => ⟨hX, a, ha, hr⟩, fun ⟨_, a, ha, hr⟩ => ⟨a, ha, hr⟩⟩⟩
+
+end Tab
+
 end Rel
