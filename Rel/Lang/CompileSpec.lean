@@ -167,6 +167,166 @@ theorem hylo_sound {A B : Obj} {d e : Bool} {ch : Fn d A A} {φ : CRel A B → F
   exact ⟨fun ⟨w, h1, h2⟩ => by cases ((idU_holds X x w).1 h1).1; exact key.1 h2,
     fun h => ⟨x, hx, key.2 h⟩⟩
 
+/-- `memRow` at `[E] ⟶ E` relates a list to its members. -/
+theorem Prim.den_memRow {E : Obj} {xs : (Obj.arr E).El} {x : E.El} (h : x ∈ xs) :
+    Prim.den memRow (.arr E) E [] xs x := by
+  have ho : memRow.objs (.arr E) E = some [E] := by simp [Prim.objs, memRow, OExp.unify, Prim.vars, OExp.vars]; rfl
+  have hf : rowDens.find? (·.1.sym == memRow.sym) =
+      some ⟨RowCode.mem, fun σ _ (xs : List (σ₁ σ).El) x => x ∈ xs⟩ := rfl
+  unfold Prim.den; rw [hf, ho]; dsimp only; rw [dif_pos ⟨rfl, rfl⟩]; exact h
+
+/-- A row `F(T)` at `xs` reads `T` only at the members of `xs`. -/
+theorem Prim.den_map_congr {r : Prim} (hr : (r.sym == mapRow.sym) = true) {A B C D : Obj} {T T' : Den C D}
+    {a : A.El} (h : ∀ m, Prim.den memRow A C [] a m → ∀ e, (T m e ↔ T' m e)) (d : B.El) :
+    r.den A B [⟨C, D, T⟩] a d ↔ r.den A B [⟨C, D, T'⟩] a d := by
+  have hf : rowDens.find? (·.1.sym == mapRow.sym) = some ⟨RowCode.map, fun σ => Sem.one (X := σ₁ σ) (Y := σ₂ σ)
+      fun T (xs : List (σ₁ σ).El) (ys : List (σ₂ σ).El) => ys.length = xs.length ∧
+        ∀ t (ht : t < xs.length) (ht' : t < ys.length), T (xs[t]'ht) (ys[t]'ht')⟩ := rfl
+  unfold Prim.den; rw [eq_of_beq hr, hf]
+  cases r.objs A B with
+  | none => exact Iff.rfl
+  | some σ =>
+    dsimp only
+    by_cases hh : (RowCode.map.ty σ).1 = A ∧ (RowCode.map.ty σ).2 = B
+    · obtain ⟨rfl, rfl⟩ := hh
+      rw [dif_pos ⟨rfl, rfl⟩, dif_pos ⟨rfl, rfl⟩]
+      simp only [Sem.one]
+      by_cases hc : C = σ₁ σ ∧ D = σ₂ σ
+      · obtain ⟨rfl, rfl⟩ := hc
+        rw [dif_pos ⟨rfl, rfl⟩, dif_pos ⟨rfl, rfl⟩]
+        exact and_congr_right fun _ => forall_congr' fun t => forall_congr' fun ht => forall_congr' fun ht' =>
+          h _ (Prim.den_memRow (List.getElem_mem ht)) _
+      · rw [dif_neg hc, dif_neg hc]
+    · rw [dif_neg hh, dif_neg hh]
+
+/-- **`hylo`'s body is local along its children** (`Hylo.Local`): where `X` and `Y` agree at the children
+    `t.kids k A` reaches from `a`, `t` reads the same at `a` under either bound to `k`. -/
+theorem Tm.den_local (k : Nat) {A B : Obj} (ρ : Val) (X Y : Den A B) : ∀ {C D : Obj} (t : Tm C D) (c : Tm C A),
+    t.kids k A = some c → ∀ a, (∀ a', c.den ρ a a' → ∀ b, (X a' b ↔ Y a' b)) →
+      ∀ d, t.den (ρ.bind k X) a d ↔ t.den (ρ.bind k Y) a d := by
+  have free : ∀ {C D : Obj} (t : Tm C D), t.fv.contains k = false → ∀ a d,
+      t.den (ρ.bind k X) a d ↔ t.den (ρ.bind k Y) a d := fun t h a d => by
+    rw [(t.den_congr _ (ρ.bind k Y) fun i hi => by
+      rw [Val.bind_ne (by rintro rfl; simp [hi] at h), Val.bind_ne (by rintro rfl; simp [hi] at h)]).1]
+  intro C D t
+  induction t with
+  | @var C' D' _ j =>
+    intro c hc a hX d
+    unfold Tm.kids at hc; split at hc
+    · rename_i hk
+      simp only [Tm.fv, List.contains_cons, List.contains_nil, Bool.or_false, beq_iff_eq] at hk
+      subst hk
+      dsimp only at hc
+      simp only [Tm.den, Val.bind, if_true]
+      by_cases h : A = C' ∧ B = D'
+      · obtain ⟨rfl, rfl⟩ := h
+        rw [dif_pos rfl] at hc; cases hc
+        rw [dif_pos ⟨rfl, rfl⟩, dif_pos ⟨rfl, rfl⟩]
+        exact hX a rfl d
+      · simp only [dif_neg h]
+    · exact free _ (Bool.eq_false_iff.mpr ‹_›) a d
+  | comp R S ihR ihS =>
+    intro c hc a hX d
+    unfold Tm.kids at hc; split at hc
+    · dsimp only at hc
+      cases hS : S.fv.contains k
+      · simp only [hS, Bool.not_false, if_true] at hc
+        simp only [Tm.den]
+        exact exists_congr fun m => and_congr (ihR c hc a hX m) (free S hS m d)
+      · cases hR : R.fv.contains k
+        rotate_left
+        · simp only [hS, hR, Bool.not_true, Bool.false_eq_true, ↓reduceIte, reduceCtorEq] at hc
+        simp only [hS, hR, Bool.not_true, Bool.false_eq_true, if_false] at hc
+        cases hs : S.kids k A <;> simp only [hs, reduceCtorEq, Option.some.injEq] at hc
+        subst hc
+        rename_i s
+        have eX := (R.den_congr (ρ.bind k X) ρ fun i hi => Val.bind_ne (by rintro rfl; simp [hi] at hR)).1
+        have eY := (R.den_congr (ρ.bind k Y) ρ fun i hi => Val.bind_ne (by rintro rfl; simp [hi] at hR)).1
+        simp only [Tm.den, eX, eY]
+        exact exists_congr fun m => and_congr_right fun hm => ihS s hs m (fun a' h' => hX a' ⟨m, hm, h'⟩) d
+    · exact free _ (Bool.eq_false_iff.mpr ‹_›) a d
+  | meet R S ihR ihS =>
+    intro c hc a hX d
+    unfold Tm.kids at hc; split at hc
+    · dsimp only at hc
+      cases hr : R.kids k A <;> cases hs : S.kids k A <;> simp only [hr, hs, reduceCtorEq, Option.some.injEq] at hc
+      subst hc
+      exact and_congr (ihR _ hr a (fun a' h => hX a' (Or.inl h)) d) (ihS _ hs a (fun a' h => hX a' (Or.inr h)) d)
+    · exact free _ (Bool.eq_false_iff.mpr ‹_›) a d
+  | join R S ihR ihS =>
+    intro c hc a hX d
+    unfold Tm.kids at hc; split at hc
+    · dsimp only at hc
+      cases hr : R.kids k A <;> cases hs : S.kids k A <;> simp only [hr, hs, reduceCtorEq, Option.some.injEq] at hc
+      subst hc
+      exact or_congr (ihR _ hr a (fun a' h => hX a' (Or.inl h)) d) (ihS _ hs a (fun a' h => hX a' (Or.inr h)) d)
+    · exact free _ (Bool.eq_false_iff.mpr ‹_›) a d
+  | pair R S ihR ihS =>
+    intro c hc a hX d
+    unfold Tm.kids at hc; split at hc
+    · dsimp only at hc
+      cases hr : R.kids k A <;> cases hs : S.kids k A <;> simp only [hr, hs, reduceCtorEq, Option.some.injEq] at hc
+      subst hc
+      exact and_congr (ihR _ hr a (fun a' h => hX a' (Or.inl h)) d.1)
+        (ihS _ hs a (fun a' h => hX a' (Or.inr h)) d.2)
+    · exact free _ (Bool.eq_false_iff.mpr ‹_›) a d
+  | junc R S ihR ihS =>
+    intro c hc a hX d
+    unfold Tm.kids at hc; split at hc
+    · dsimp only at hc
+      cases hr : R.kids k A <;> cases hs : S.kids k A <;> simp only [hr, hs, reduceCtorEq, Option.some.injEq] at hc
+      subst hc
+      rename_i r s
+      exact or_congr (exists_congr fun m => and_congr_right fun e =>
+          ihR _ hr m (fun a' h => hX a' (Or.inl ⟨m, e, h⟩)) d)
+        (exists_congr fun m => and_congr_right fun e => ihS _ hs m (fun a' h => hX a' (Or.inr ⟨m, e, h⟩)) d)
+    · exact free _ (Bool.eq_false_iff.mpr ‹_›) a d
+  | juncD R S ihR ihS =>
+    intro c hc a hX d
+    unfold Tm.kids at hc; split at hc
+    · dsimp only at hc
+      cases hr : R.kids k A <;> cases hs : S.kids k A <;> simp only [hr, hs, reduceCtorEq, Option.some.injEq] at hc
+      subst hc
+      exact or_congr (exists_congr fun m => and_congr_right fun e =>
+          ihR _ hr m (fun a' h => hX a' (Or.inl ⟨m, e, h⟩)) d)
+        (exists_congr fun m => and_congr_right fun e => ihS _ hs m (fun a' h => hX a' (Or.inr ⟨m, e, h⟩)) d)
+    · exact free _ (Bool.eq_false_iff.mpr ‹_›) a d
+  | dom R ih =>
+    intro c hc a hX d
+    unfold Tm.kids at hc; split at hc
+    · dsimp only at hc
+      refine and_congr_right fun e => ?_
+      subst e
+      exact exists_congr fun m => and_congr (ih c hc a hX m) (ih c hc a hX m)
+    · exact free _ (Bool.eq_false_iff.mpr ‹_›) a d
+  | own R ih =>
+    intro c hc a hX d
+    unfold Tm.kids at hc; split at hc
+    · dsimp only at hc; exact ih c hc a hX d
+    · exact free _ (Bool.eq_false_iff.mpr ‹_›) a d
+  | arg f x _ ihx =>
+    intro c hc a hX d
+    unfold Tm.kids at hc; split at hc
+    · cases f with
+      | prim r =>
+        dsimp only at hc
+        split at hc
+        · rename_i hr
+          cases hs : x.kids k A <;> simp only [hs, reduceCtorEq, Option.some.injEq] at hc
+          subst hc
+          rename_i s
+          simp only [Tm.den, Tm.argDen]
+          refine Prim.den_map_congr hr (fun m hm e => ?_) d
+          exact ihx s hs m (fun a' h' => hX a' ⟨m, hm, h'⟩) e
+        · cases hc
+      | _ => dsimp only at hc; cases hc
+    · exact free _ (Bool.eq_false_iff.mpr ‹_›) a d
+  | _ =>
+    intro c hc a hX d
+    unfold Tm.kids at hc; split at hc
+    · dsimp only at hc; cases hc
+    · exact free _ (Bool.eq_false_iff.mpr ‹_›) a d
+
 /-- `[R,S]` on the sum values in demand (`juncD`): each side's part run on that side's values; the scan's bit
     excludes a demand row that names a side with no values (D7 = P). -/
 theorem juncD_sound {A B C : Obj} {d e : Bool} {R : Fn d A C} {S : Fn e B C} {TR : Den A C} {TS : Den B C}
@@ -308,6 +468,60 @@ theorem Out.Sound.leaf {A B : Obj} {d : Bool} {f : Fn d A B} {T : Den A B} {Ta :
 
 theorem gap_or {a b : Option String} (h : (a <|> b) = none) : a = none ∧ b = none := by
   cases a <;> simp_all
+
+/-- `∋` has a lemma at every object, so a `kids` that reads `F(x)` through it adds no gap. -/
+theorem memRow_ok (A B : Obj) : memRow.ok A B = true := by
+  unfold Prim.ok; cases memRow.objs A B <;> rfl
+
+/-- The children `Tm.kids` builds compile where their term does: they are its parts joined by `∪`, `[ , ]`, `;`
+    and `∋`. -/
+theorem Tm.gap_kids (k : Nat) (A : Obj) : ∀ {C D : Obj} (t : Tm C D) (c : Tm C A),
+    t.gap = none → t.kids k A = some c → c.gap = none := by
+  intro C D t
+  induction t with
+  | var =>
+    intro c _ hc; unfold Tm.kids at hc; split at hc
+    · dsimp only at hc; split at hc <;> (cases hc; rename_i h; try subst h) <;> rfl
+    · cases hc; rfl
+  | comp R S ihR ihS =>
+    intro c hg hc; obtain ⟨hR, hS⟩ := gap_or (by simpa only [Tm.gap] using hg)
+    unfold Tm.kids at hc; split at hc
+    · dsimp only at hc
+      split at hc
+      · exact ihR c hR hc
+      · split at hc
+        · cases hc
+        · cases hs : S.kids k A <;> simp only [hs, reduceCtorEq, Option.some.injEq] at hc
+          subst hc; simp only [Tm.gap, hR, ihS _ hS hs]; rfl
+    · cases hc; rfl
+  | meet R S ihR ihS | join R S ihR ihS | pair R S ihR ihS | junc R S ihR ihS | juncD R S ihR ihS =>
+    intro c hg hc; obtain ⟨hR, hS⟩ := gap_or (by simpa only [Tm.gap] using hg)
+    unfold Tm.kids at hc; split at hc
+    · dsimp only at hc
+      cases hr : R.kids k A <;> cases hs : S.kids k A <;> simp only [hr, hs, reduceCtorEq, Option.some.injEq] at hc
+      subst hc; simp only [Tm.gap, ihR _ hR hr, ihS _ hS hs]; rfl
+    · cases hc; rfl
+  | dom R ih | own R ih =>
+    intro c hg hc; unfold Tm.kids at hc; split at hc
+    · exact ih c (by simpa only [Tm.gap] using hg) hc
+    · cases hc; rfl
+  | arg f x _ ihx =>
+    intro c hg hc; obtain ⟨-, hx⟩ := gap_or (by simpa only [Tm.gap] using hg)
+    unfold Tm.kids at hc; split at hc
+    · cases f with
+      | prim r =>
+        dsimp only at hc
+        split at hc
+        · cases hs : x.kids k A <;> simp only [hs, reduceCtorEq, Option.some.injEq] at hc
+          subst hc; simp only [Tm.gap, memRow_ok, ihx _ hx hs]; rfl
+        · cases hc
+      | _ => dsimp only at hc; cases hc
+    · cases hc; rfl
+  | _ =>
+    intro c _ hc; unfold Tm.kids at hc; split at hc
+    · dsimp only at hc; cases hc
+    · cases hc; rfl
+
 
 /-- **`compile` is sound**: on a term with no gap, under an environment whose plans compute their variables'
     meanings, the code and the plan of every node compute its meaning `⟦t⟧ρ` on their keys. -/
@@ -467,7 +681,23 @@ theorem compile_sound {A B : Obj} (t : Tm A B) (hg : t.gap = none) (η : CodeEnv
       rw [Tm.gen]; exact (Out.Sound.leaf (thin_sound (compile_sound Q hg η ρ hη).1
         (fun p p' h => eq_of_heq (Q.cor_den hc.2 ρ p p' h)) ho hi))
     · cases hg
-  | _, _, .call .., hg | _, _, .hylo .., hg => simp [Tm.gap] at hg
+  | A', _, .hylo k w b, hg =>
+    simp only [Tm.gap] at hg
+    split at hg
+    · rename_i c hc
+      split at hg
+      · rename_i hp
+        -- the child is named as `Tm.gen` names it, `getD` of `kids`, which `hc` reads as `c`
+        have := Tm.size_kids k A' b
+        have e : (b.kids k A').getD .zero = c := by rw [hc]; rfl
+        rw [Tm.gen]
+        exact Out.Sound.leaf (hylo_sound (fun X Y h => Tm.den_mono hp h)
+          (fun X Y a _ h => Tm.den_local k ρ X Y b c hc a (e ▸ h))
+          (compile_sound _ (e ▸ Tm.gap_kids k _ b c hg hc) η ρ hη).1
+          fun X _ => (compile_sound b hg _ _ (hη.bindCode k (htab X))).1)
+      · cases hg
+    · cases hg
+  | _, _, .call .., hg => simp [Tm.gap] at hg
 termination_by t.size
 decreasing_by all_goals simp only [Tm.size] at *; omega
 
