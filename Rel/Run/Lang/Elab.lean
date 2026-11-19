@@ -1,4 +1,3 @@
-import Rel.Run.Algebra
 import Rel.Run.Struct
 import Rel.Run.SetOps
 import Rel.Run.Lang.Syntax
@@ -695,8 +694,8 @@ def Arg.isFam : Arg → Bool
     type. -/
 def Prim.inst (env : Env) (r : Prim) : M (List ((OTy × OTy) × Option Bool) × OTy × OTy) := do
   let vs ← r.vars.mapM fun v => return (v, ← fresh)
-  let ps ← r.sig.2.1.mapM fun ((x, y), f) => return ((← oty env vs x, ← oty env vs y), f)
-  pure (ps, ← oty env vs r.sig.2.2.1, ← oty env vs r.sig.2.2.2)
+  let ps ← r.sig.1.mapM fun ((x, y), f) => return ((← oty env vs x, ← oty env vs y), f)
+  pure (ps, ← oty env vs r.sig.2.1, ← oty env vs r.sig.2.2)
 
 /-- The row `o` runs as: `prim s` the row `s`, `inl`, `inr`, `map` theirs (`Prim.written`); none for an operator
     with a term of its own. -/
@@ -1618,7 +1617,7 @@ def build : Pre → Except Err Res
   -- the row's objects are checked where `Expand.primE` fits its constant at them (`primsFit`, `node`)
   | .prim r xs s t => do
     let A ← toObj objs mc dp s; let B ← toObj objs mc dp t
-    (r.sig.2.1.zip xs.attach).foldlM (init := (⟨A, B, .prim r⟩ : Res)) fun ⟨A, B, f⟩ ((_, form), ⟨x, h⟩) => do
+    (r.sig.1.zip xs.attach).foldlM (init := (⟨A, B, .prim r⟩ : Res)) fun ⟨A, B, f⟩ ((_, form), ⟨x, h⟩) => do
       have := List.sizeOf_lt_of_mem h
       if form == some true then let ⟨_, c⟩ ← param x; pure ⟨A, B, .arg f c⟩
       else let ⟨_, _, u⟩ ← build x; pure ⟨A, B, .arg f u⟩

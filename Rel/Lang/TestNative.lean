@@ -117,8 +117,8 @@ def main (args : List String) : IO UInt32 := do
     match args with
     | ["c", file] => IO.FS.writeFile file (← IO.ofExcept (relc abiOf (← planIO)))
     | ["lean", dir] =>
-      unless native1a.x.ok do throw (IO.userError "x: an op ran out of capacity")
-      writeRel (System.FilePath.mk dir / "out").toString native1a.x.rel
+      let x ← IO.ofExcept native1a.x
+      writeRel (System.FilePath.mk dir / "out").toString x
     | ["plan", dir] => IO.Process.setCurrentDir dir; discard <| (← planIO).exec abiOf
     | ["g", file] => IO.FS.writeFile file (← IO.ofExcept (gplan codes >>= relc abiOf))
     | _ => throw (IO.userError "usage: relc-1a c FILE | lean DIR | plan DIR | g FILE")

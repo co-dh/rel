@@ -1,12 +1,11 @@
 import Rel.Run.Arith
-import Rel.Run.Alg
 import Rel.RepTabComp
 import Rel.RepSetOps
 import Rel.Lang.Den
 
 /-! Laws of `Tab.arith` and `Tab.succ` (`Rel/Run/Arith.lean`): `stepCols_spec`, `Tab.succ_holds`; and checks
 against the meanings `arithDen`, `succDen` of
-`Rel/Lang/Den.lean`, read on lists, and against the old `Alg.arith`, `Alg.succ` on the same data. -/
+`Rel/Lang/Den.lean`, read on lists. -/
 
 namespace Rel
 open Rel.Ext Rel.Kernel Rel.Verify Ext.Enc
@@ -261,28 +260,22 @@ private def exactB (k : UInt8) (a b w : Int64) : Bool :=
   if k == Ew.add then (decide (0 ≤ b) == decide (a ≤ w)) else if k == Ew.sub then (decide (0 ≤ b) == decide (w ≤ a))
   else if k == Ew.mul then (Ew.intStep Ew.idiv Alg.nul w a == b || a == 0) else true
 
-/-- Whether `Tab.arith k` answers `D ≫ arithDen k U` on lists, and agrees with the old `Alg.arith` on the pairs of
-`D` whose operands are in `U`, then `≫ U`. -/
+/-- Whether `Tab.arith k` answers `D ≫ arithDen k U` on lists. -/
 private def arithOk (k : UInt8) (d : List (Int64 × Int64 × Int64)) (u : List Int64) : Bool :=
   let inU (x : Int64) := u.contains x
   let spec := d.filterMap fun (x, a, b) => let w := Ew.intStep k Alg.nul a b
     if inU a && inU b && w != Alg.nul && exactB k a b w && inU w then some (x, w) else none
-  let d' := d.filter fun (_, a, b) => inU a && inU b
-  let old := ((Alg.arith k (dTab d').val).toList).filter (inU ·.2)
-  let viaOld := d.flatMap fun (x, p) => (old.filter (·.1 == p)).map fun q => (x, q.2)
   match (dTab d).arith k (uTab u) with
-  | .ok T => sameSet T.toList spec && sameSet T.toList viaOld
+  | .ok T => sameSet T.toList spec
   | .error _ => false
 
-/-- Whether `Tab.succ` answers `D ≫ succDen U` on lists, and agrees with the old `Alg.succ` composed after `D`. -/
+/-- Whether `Tab.succ` answers `D ≫ succDen U` on lists. -/
 private def succOk (d : List (Int64 × Int64)) (u : List Int64) : Bool :=
   let inU (x : Int64) := u.contains x
   let spec := d.filterMap fun (x, v) => let w := Ew.intStep Ew.add Alg.nul v 1
     if inU v && inU w then some (x, w) else none
-  let old := (Alg.succ (colOf id u)).toList
-  let viaOld := d.flatMap fun (x, v) => (old.filter (·.1 == v)).map fun q => (x, q.2)
   match (⟨_, colOf (·.1) d, colOf (·.2) d⟩ : Tab .long .long).succ (uTab u) with
-  | .ok T => sameSet T.toList spec && sameSet T.toList viaOld
+  | .ok T => sameSet T.toList spec
   | .error _ => false
 
 /-- Operands and answers: the null `Int64.minValue`, its neighbour, `Int64.maxValue`, zero, signs, a value outside

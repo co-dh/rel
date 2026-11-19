@@ -21,7 +21,7 @@ def readIn (s : Parse.S) (src : String) : CM (Except Err Program) := do
 /-- The definition `n` of an expansion at the objects `A ⟶ B`. -/
 def get (gs : List (String × Gen.Gv)) (n : String) (A B : Obj) : Option (Tab A B) := do
   let (_, ⟨A', B', c⟩) ← gs.find? (·.1 == n)
-  if h : A' = A ∧ B' = B then some (h.1 ▸ h.2 ▸ c.rel) else none
+  if h : A' = A ∧ B' = B then (h.1 ▸ h.2 ▸ c).toOption else none
 
 /-- The value printed by each line of `ps`, after its ` = `. -/
 def printed (ps : List String) : List String := ps.map fun s => (s.splitOn " = ").getLastD ""

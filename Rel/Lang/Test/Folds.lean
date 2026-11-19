@@ -83,7 +83,9 @@ rel_program objVars where
 
 #guard let o := objVars.expanded
   let g (n : String) := get o n .long .long
-  objVars.ok && g "a₁" == g "b₁" && g "a₂" == g "b₂" && (g "a₁").map (·.toList) == some [(1, 2)] &&
+  objVars.ok && (g "a₁").map (·.toList) == (g "b₁").map (·.toList) &&
+    (g "a₂").map (·.toList) == (g "b₂").map (·.toList) &&
+    (g "a₁").map (·.toList) == some [(1, 2)] &&
     (g "a₂").map (·.n) == some 2 &&
     [((0 : Int64), "d₀"), (1, "d₁"), (2, "d₂")].all fun (k, n) =>
       match get o "dF" .long XX, g n with

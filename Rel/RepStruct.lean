@@ -1,11 +1,10 @@
 import Rel.Run.Struct
 import Rel.RepTabComp
 import Rel.RepSetOps
-import Rel.Run.CRelRelDef
 import Rel.Core.Rel
 
 /-! The laws of the structural operators (`Rel/Run/Struct.lean`), each with its `Tm` constructor's denotation
-(`Tm.den`, `Rel/Lang/Den.lean`) as the right-hand side, and their checks against the old operators. -/
+(`Tm.den`, `Rel/Lang/Den.lean`) as the right-hand side, and their checks against their denotations as sets. -/
 
 namespace Rel
 open Rel.Ext Rel.Kernel Rel.Verify Ext.Enc
@@ -309,7 +308,7 @@ end Tab
 
 section Checks
 
-/-- Two lists hold the same elements: the old layer orders a float NaN first, `kasc` by `ordCode`. -/
+/-- Two lists hold the same elements, in any order. -/
 private def setEq {α : Type} [BEq α] (a b : List α) : Bool := a.all b.contains && b.all a.contains
 
 /-- The answer `r` runs, holds no row twice, and holds the rows `sp` (as a set). -/
@@ -317,12 +316,6 @@ private def specOk {A B : Obj} [BEq A.El] [BEq B.El] (r : Except String (Tab A B
   match r with
   | .ok T => T.toList.eraseDups.length == T.toList.length && setEq T.toList sp
   | .error _ => false
-
-/-- The answer `r` runs and holds the rows of the old table `o` (as a set), where `o` ran within capacity. -/
-private def oldOk {A B : Obj} [BEq A.El] [BEq B.El] (r : Except String (Tab A B)) (o : Option (Tab A B)) : Bool :=
-  match r, o with
-  | .ok T, some U => setEq T.toList U.toList
-  | _, _ => false
 
 /-- The `i64` column of the integers `ws`, `foR` (`Arr.ofFn`). -/
 private def col (ws : List Int64) : Arr .i64 ws.length.toUSize := Arr.ofFn .i64 _ fun i => (ws.getD i.1 0).toUInt64
@@ -343,48 +336,41 @@ private def ints : List (List (Int64 × Int64)) :=
 private def F : Tab .long (.atom .f64) := ⟨8, col [3, 1, 2, 1, 4, 4, 0, 3], Arr.ofFn .f64 8 (f64s.getD · 0)⟩
 /-- A tuple value column with duplicate rows. -/
 private def P : Tab .long (.prod .long .long) := ⟨5, col [3, 1, 3, 1, 3], (col [1, 1, 1, 2, 1], col [5, 6, 5, 6, 5])⟩
-
-/-- The canonical old table, where `canonC` ran within capacity. -/
-private def oldC {A B : Obj} (T : Tab A B) : Option (Tab A B) := let c := Alg.canonC T; if c.2 then some c.1 else none
-
 -- `𝟘` at an atom, a float, a tuple, an `arr` and a `sum` side
 #guard specOk (Tab.zero : Except String (Tab .long (.atom .f64))) [] &&
   specOk (Tab.zero : Except String (Tab (.prod .long .long) (.arr .long))) [] &&
-  specOk (Tab.zero : Except String (Tab (.sum .long .long) .long)) [] && (Alg.zero : Tab .long .long).toList.isEmpty
+  specOk (Tab.zero : Except String (Tab (.sum .long .long) .long)) []
 
 -- `𝟙` on the values `X`: duplicates, a float, a tuple, none
 #guard ints.all fun ps => let R := tabW ps
-  oldOk (Tab.idU R.key) (oldC (Alg.idU R.key)) && specOk (Tab.idU R.key) (R.key.toList.map fun a => (a, a))
-#guard oldOk (Tab.idU F.val) (oldC (Alg.idU F.val)) && oldOk (Tab.idU P.val) (oldC (Alg.idU P.val))
+  specOk (Tab.idU R.key) (R.key.toList.map fun a => (a, a))
+#guard specOk (Tab.idU F.val) ((List.ofFn (Vals.row F.val)).map fun a => (a, a)) &&
+  specOk (Tab.idU P.val) ((List.ofFn (Vals.row P.val)).map fun a => (a, a))
 
 /-- The rows of a side, in position order. -/
 private def rows {A : Obj} {n : USize} (X : Vals A n) : List A.El := List.ofFn (Vals.row X)
 
-/-- `top X Y` against the old `topC` and against `X × Y` as a set. -/
+/-- `top X Y` against `X × Y` as a set. -/
 private def topOk {A B : Obj} [BEq A.El] [BEq B.El] {n m : USize} (X : Vals A n) (Y : Vals B m) : Bool :=
-  oldOk (Tab.top X Y) (let c := Alg.topC X Y; if c.2 then oldC c.1 else none) &&
     specOk (Tab.top X Y) ((rows X).flatMap fun a => (rows Y).map fun b => (a, b))
 
 -- `⊤`: integers (an empty side on either end), a float, a tuple
 #guard ints.all fun ps => ints.all fun qs => topOk (tabW ps).key (tabW qs).val
 #guard topOk P.val F.val && topOk F.val P.val
 
-/-- `outl X`, `outr X` against the old `outl`, `outr` of `idU X` and against the projections as sets. -/
+/-- `outl X`, `outr X` against the projections as sets. -/
 private def outOk {A B : Obj} [BEq A.El] [BEq B.El] {n : USize} (X : Vals (.prod A B) n) : Bool :=
-  oldOk (Tab.outl X) (oldC (Alg.outl (Alg.idU X))) && oldOk (Tab.outr X) (oldC (Alg.outr (Alg.idU X))) &&
     specOk (Tab.outl X) ((rows X).map fun p => (p, p.1)) && specOk (Tab.outr X) ((rows X).map fun p => (p, p.2))
 
 -- `π₁`, `π₂`: integer pairs with duplicates, none, a float component, a tuple component
 #guard ints.all fun ps => let R := tabW ps; outOk (A := .long) (B := .long) (R.key, R.val)
 #guard outOk (A := .long) (B := .atom .f64) (F.key, F.val) && outOk (A := .long) (B := .prod .long .long) (P.key, P.val)
 
-/-- `pair` and `prod` against the old `CRel.pair`, `CRel.prod` and against their denotations as sets. -/
+/-- `pair` and `prod` against their denotations as sets. -/
 private def pairOk {A B C : Obj} [BEq A.El] [BEq B.El] [BEq C.El] (R : Tab A B) (S : Tab A C) : Bool :=
-  oldOk (R.pair S) (CRel.pair (some R) (some S)) &&
     specOk (R.pair S) (R.toList.flatMap fun (a, b) => S.toList.filterMap fun (a', c) =>
       if a == a' then some (a, (b, c)) else none)
 private def prodOk {A B C D : Obj} [BEq A.El] [BEq B.El] [BEq C.El] [BEq D.El] (R : Tab A B) (S : Tab C D) : Bool :=
-  oldOk (R.prod S) (CRel.prod (some R) (some S)) &&
     specOk (R.prod S) (R.toList.flatMap fun (a, b) => S.toList.map fun (c, d) => ((a, c), (b, d)))
 
 -- `⟨R, S⟩` and `R × S`: integers (duplicates, an empty side, no common key), a float and a tuple value
@@ -402,16 +388,13 @@ private def flatOk {I A B : Obj} [BEq I.El] [BEq A.El] [BEq B.El] {n : USize} (X
   flatOk (I := .long) (A := .long) (col [], col []) P &&
   flatOk (I := .long) (A := .atom .f64) (F.key, F.val) (⟨F.n, F.key, (F.val, F.key)⟩ : Tab .long (.prod (.atom .f64) .long))
 
-/-- `inl X` and `inr X` against the old `inlC`, `inrC` and against the injections as sets. -/
+/-- `inl X` and `inr X` against the injections as sets. -/
 private def injOk {A B : Obj} [BEq A.El] [BEq B.El] {n : USize} (X : Vals A n) (Y : Vals B n) : Bool :=
-  oldOk (Tab.inl (B := B) X) (let c := Alg.inlC (B := B) X; if c.2 then oldC c.1 else none) &&
-    oldOk (Tab.inr (A := A) Y) (let c := Alg.inrC (A := A) Y; if c.2 then oldC c.1 else none) &&
     specOk (Tab.inl (B := B) X) ((rows X).map fun a => (a, .inl a)) &&
     specOk (Tab.inr (A := A) Y) ((rows Y).map fun b => (b, .inr b))
 
-/-- `[R, S]` against the old `juncC` and against `inl° ≫ R ∪ inr° ≫ S` as a set. -/
+/-- `[R, S]` against `inl° ≫ R ∪ inr° ≫ S` as a set. -/
 private def juncOk {A B C : Obj} [BEq A.El] [BEq B.El] [BEq C.El] (R : Tab A C) (S : Tab B C) : Bool :=
-  oldOk (R.junc S) (let c := Alg.juncC R S; if c.2 then oldC c.1 else none) &&
     specOk (R.junc S) ((R.toList.map fun (a, c) => (.inl a, c)) ++ S.toList.map fun (b, c) => (.inr b, c))
 
 -- `inl`, `inr`: duplicates, none, a float and a tuple summand

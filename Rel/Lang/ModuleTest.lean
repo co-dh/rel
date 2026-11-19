@@ -104,7 +104,7 @@ rel_program closedOpen where
 open _root_.Nat Lean.Nat in
 #rel_read "print succ"
 
-def fake : CRel .long .long := default
+def fake : Except String (Tab .long .long) := .error "fake"
 
 /-- error: line 113, col 17: `fake` is not a Rel definition: Lean resolves it to [Rel.Programs.fake] -/
 #guard_msgs in

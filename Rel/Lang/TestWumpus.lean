@@ -43,7 +43,9 @@ def cell (x : Int64) : Int64 :=
 def at? (k i : Nat) : Option (Tab .long .long) := do
   let (_, one) ← tables[k]?
   let R ← get given.expanded s!"f{k}" .long XX
-  pure (ofPairs ((R.toList.filter (·.1 == Int64.ofNat i)).map fun (_, a, b) => (if one then a else cell a, cell b))).nub
+  let ps := (R.toList.filter (·.1 == Int64.ofNat i)).map fun (_, a, b) => (if one then a else cell a, cell b)
+  (⟨ps.length.toUSize, List.length_map _ ▸ col (ps.map (·.1)), List.length_map _ ▸ col (ps.map (·.2))⟩ :
+    Tab .long .long).canon.toOption
 
 /-- The program's views after each step. -/
 def views : List (List (String × Tab .long .long)) :=

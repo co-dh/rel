@@ -1,6 +1,5 @@
 import Rel.Run.SetOps
 import Rel.RepCols
-import Rel.Run.CRelFoldDef
 
 /-! The laws of `Tab.union`, `Tab.inter`, `Tab.diff` and `Tab.le` (`Rel/Run/SetOps.lean`), from the five kernels' laws
 and `Tab.canon`'s (`Rel/RepCanon.lean`). -/
@@ -715,15 +714,15 @@ private def T₃ : List (Int64 × Int64) := [(0, 0), (9, 9)]
 #guard ((tab T₁).le (tab T₁)).toOption == some true
 #guard ((tab T₁).le (tab T₂)).toOption == some false
 #guard ((tab []).le (tab [])).toOption == some true
-/-- The five-kernel `∪`, `∩`, `−`, `⊑` of `R` and `S`, each answering `.ok`, against the old `CRel.union`, `CRel.inter`,
-`CRel.diff`, `Alg.leC`; the old `∩`/`−` keep `R`'s order, so their answer is compared after `Alg.canonC`. -/
+/-- The five-kernel `∪`, `∩`, `−`, `⊑` of `R` and `S`, each answering `.ok`, against their denotations on the rows of
+`R` and `S` as sets, each row once. -/
 private def setOk {k v : Obj} [BEq k.El] [BEq v.El] (R S : Tab k v) : Bool :=
-  let old (c : CRel k v) := c.bind fun t => let c := Alg.canonC t; if c.2 then some c.1.toList else none
-  let new (r : Except String (Tab k v)) := match r with | .ok t => some t.toList | .error _ => none
-  (new (R.union S)).isSome && (new (R.inter S)).isSome && (new (R.diff S)).isSome && (R.le S).toOption.isSome &&
-  new (R.union S) == old (CRel.union (some R) (some S)) && new (R.inter S) == old (CRel.inter (some R) (some S)) &&
-  new (R.diff S) == old (CRel.diff (some R) (some S)) &&
-  (R.le S).toOption == (let c := Alg.leC R S; if c.2 then some c.1 else none)
+  let r := R.toList; let s := S.toList
+  let is (x : Except String (Tab k v)) (sp : List (k.El × v.El)) := match x with
+    | .ok T => let a := T.toList; let b := sp.eraseDups; a.length == b.length && a.all b.contains && b.all a.contains
+    | .error _ => false
+  is (R.union S) (r ++ s) && is (R.inter S) (r.filter s.contains) && is (R.diff S) (r.filter (!s.contains ·)) &&
+  (R.le S).toOption == some (r.all s.contains)
 
 -- both orders of every pair of tables
 #guard [T₁, T₂, T₃, []].all fun ps => [T₁, T₂, T₃, []].all fun qs => setOk (tab ps) (tab qs)
