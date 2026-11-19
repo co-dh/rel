@@ -26,8 +26,8 @@ SQL     := sqlite3 -readonly $(DB)
 GATE     = SECONDS=0; trap 'echo "[$@] $$SECONDS s, exit $$?"' EXIT; mkdir -p $(T)
 
 # cheapest first: compile-diff takes minutes, so a gate that fails in seconds is reported before it starts
-GATES_LIST := build crate-test syms native ldd index-complete axioms noreduce panic externs compile-diff
-.PHONY: check main-only index panic-allow $(GATES_LIST)
+GATES_LIST := build crate-test syms native ldd index-complete axioms noreduce panic bang pointfree kernel-tested externs compile-diff
+.PHONY: check main-only index panic-allow bang-allow pointfree-allow kernel-tested-allow $(GATES_LIST)
 check: main-only $(GATES_LIST)
 	$(GATE)
 	echo "make check: every gate passed"
@@ -117,6 +117,63 @@ panic: index
 panic-allow: index
 	$(GATE)
 	$(SQL) "$(PANICS)" > panic-allow.txt
+
+# $(T)/$(1).txt, the declarations violating gate $(1) today, against $(1)-allow.txt, each printed with its source line
+# from the index: a new one fails, and so does a listed one that no longer violates, so the list only shrinks
+define ALLOWED
+$(SQL) "select i.name, coalesce(m.source || ':' || (r.sl1 + 1), m.source) from decl_info i join module m on m.name = i.module left join decl_range r on r.name = i.name and r.module = i.module" | sort -t'|' -k1,1 > $(T)/loc.txt
+sort -u $(1)-allow.txt > $(T)/$(1).allow
+comm -13 $(T)/$(1).allow $(T)/$(1).txt | join -t'|' -a1 - $(T)/loc.txt | sed 's/^/$(1): new, not in $(1)-allow.txt: /' > $(T)/$(1).diff
+comm -23 $(T)/$(1).allow $(T)/$(1).txt | join -t'|' -a1 - $(T)/loc.txt | sed 's/^/$(1): stale, no longer violates (delete from $(1)-allow.txt): /' >> $(T)/$(1).diff
+cat $(T)/$(1).diff
+if [ -s $(T)/$(1).diff ]; then echo "$(1): fix the new ones; after a fix, regenerate the list with: make -C $(CURDIR) $(1)-allow"; exit 1; fi
+endef
+
+# every package module, for the gates that read the whole package's environment
+MODS = $(LAKE) query RelCore:modules RelKernel:modules RelRun:modules Rel:modules
+# no `!` indexing: a written def or opaque whose code (its value and the auxiliaries it owns) reaches a constant named
+# `…!` declared outside the package, Lean's convention for the variant that panics (gates/Gates.lean `panicking`)
+define bang_NOW
+$(LAKE) build gates
+$(MODS) | xargs $(LAKE) env $(GATES) bang | sort -u > $(T)/bang.txt
+endef
+# no ∃ in the body of a relation: a written def whose type unfolds to a `Prop`-valued function of two or more explicit
+# arguments (what `Core.Rel α β` is), or a type built from one, and whose code mentions `Exists`; theorems are exempt
+define pointfree_NOW
+$(LAKE) build gates
+$(MODS) | xargs $(LAKE) env $(GATES) pointfree | sort -u > $(T)/pointfree.txt
+endef
+# every kernel, an @[extern] declaration whose symbol crate/RELK.txt lists, is mentioned (index `use_site`: a
+# declaration, `#guard` or `example`) in a module whose name matches *Test*; loops over the kernels, not the tests
+define kernel-tested_NOW
+$(LAKE) build gates
+$(LAKE) query RelKernel:modules | xargs $(LAKE) env $(GATES) externs | sort -t$$'\t' -k1,1 > $(T)/kt-extern.tsv
+sort -u crate/RELK.txt | join -t$$'\t' -o 1.2 $(T)/kt-extern.tsv - | sort -u > $(T)/kernels.txt
+$(SQL) "select distinct name from use_site where use_module glob '*Test*'" | sort -u > $(T)/tested.txt
+comm -23 $(T)/kernels.txt $(T)/tested.txt > $(T)/kernel-tested.txt
+echo "kernel-tested: $$(wc -l < $(T)/kernel-tested.txt) of $$(wc -l < $(T)/kernels.txt) kernels have no use in a *Test* module"
+endef
+
+bang: index
+	$(GATE)
+	$(bang_NOW)
+	$(call ALLOWED,bang)
+
+pointfree: index
+	$(GATE)
+	$(pointfree_NOW)
+	$(call ALLOWED,pointfree)
+
+kernel-tested: index
+	$(GATE)
+	$(kernel-tested_NOW)
+	$(call ALLOWED,kernel-tested)
+
+# regenerate an allowlist from what violates today; read the diff before committing it
+bang-allow pointfree-allow kernel-tested-allow: %-allow: index
+	$(GATE)
+	$($*_NOW)
+	cp $(T)/$*.txt $*-allow.txt
 
 # every @[extern] name declared in RelKernel is defined in what a native program links: librelk.a (the kernels) or
 # qrt.o (the Lean runtime symbols crate/rt provides, e.g. lean_array_push)
