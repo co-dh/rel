@@ -15,8 +15,8 @@ is temporary, as for `kscan`; 6.11 renames. -/
 namespace Rel.Kernel
 open Ext.Enc
 
-/-- **The seen kernel** (PLAN D.12): over the `n` rows of the columns `es`, each a type and a `foR` read as `kasc` reads
-it (`ascCol`), rows in `kasc` order (every adjacent pair `lexLe`), the number `k` of distinct keys, each row's group `g`
+/-- **The seen kernel** (PLAN D.12): over the `n` rows of the columns `es`, each an `AscKey` beside its column, read as
+`kasc` reads it (`ascCol`, a `cells` key by its cells' element codes), rows in `kasc` order (every adjacent pair `lexLe`), the number `k` of distinct keys, each row's group `g`
 (`n` words, groups numbered by first occurrence, `Order.groupIn`) and each group's first row `first` (`k` words,
 ascending), both as `wordsFoR`. A key is a row's order codes across `es`. The first column that does not read is the
 error, `ascCol`'s text after its place in `es`; then the first row that sorts before the row ahead of it, because the

@@ -198,7 +198,7 @@ theorem toUInt64_sub {x y : Nat} (h : y ≤ x) : (x - y).toUInt64 = x.toUInt64 -
 
 /-- **`kasc`'s grade**: `p` reads as the stable grade `ps` of the codes, and the `kseen` key of sorted row `q` (over
 the sorted columns `vs`) is input row `ps[q]`'s. -/
-theorem kasc_grade {N : USize} {es : List (QAtomicType × Enc)} {vs : List Enc} {p : Enc}
+theorem kasc_grade {N : USize} {es : List (AscKey × Enc)} {vs : List Enc} {p : Enc}
     (ha : kasc N es = .ok (vs, p)) :
     ∃ cs, es.mapM (ascCol N) = .ok cs ∧
       raw .i64 N p = ((ascGrade N.toNat (ascKeys N es)).map Nat.toUInt64).toArray ∧

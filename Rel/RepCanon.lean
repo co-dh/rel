@@ -238,7 +238,17 @@ theorem Vals.gather_row {m : USize} {ix : Enc} : {A : Obj} → {n : USize} → (
     obtain ⟨i2, e2, r2⟩ := Vals.gather_row x.2 h2 j
     obtain rfl : i1 = i2 := Fin.ext (e1.symm.trans e2)
     exact ⟨i1, e1, by simp only [Vals.row, r1, r2]⟩
-  | .arr _, _, _, _, h, _ => by simp [Vals.gather] at h
+  | .arr _, _, ⟨c, lo, hi, f⟩, _, h, j => by
+    simp only [Vals.gather, bind, Except.bind, pure, Except.pure] at h
+    split at h; · cases h
+    rename_i lo' h1
+    split at h; · cases h
+    rename_i hi' h2
+    cases h
+    obtain ⟨i1, e1, r1⟩ := Arr.gather_row lo h1 j
+    obtain ⟨i2, e2, r2⟩ := Arr.gather_row hi h2 j
+    obtain rfl : i1 = i2 := Fin.ext (e1.symm.trans e2)
+    exact ⟨i1, e1, by simp only [Vals.row, r1, r2]⟩
   | .sum _ _, _, ⟨l, r, tag, idx, x, y⟩, _, h, j => by
     simp only [Vals.gather, bind, Except.bind, pure, Except.pure] at h
     split at h; · cases h

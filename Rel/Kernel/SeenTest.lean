@@ -110,4 +110,48 @@ example : view (u 0) (u 0) (kseen (u 2) [col [1, 0], col [0, 2 ^ 40]]) = unsorte
 example : view (u 2) (u 2) (kseen (u 2) [col [0, 1], col [2 ^ 40, 0]]) = two := by decide +kernel
 #guard view (u 2) (u 2) (kseen (u 2) [col [0, 1], col [2 ^ 40, 0]]) == two
 
+/-! `cells` keys: rows are equal when their cells have one length and equal element codes, whichever cells they
+name. -/
+
+/-- A `cells` key of the cells `[lo[r], hi[r])` over the payload columns `els` of `c` rows, row `i` naming cell
+`ix[i]`. -/
+def cells (n c : USize) (lo hi : List UInt64) (els : List (AscKey × Enc)) (ix : List UInt64) : AscKey × Enc :=
+  (.cells n c (wordsFoR lo.toArray) (wordsFoR hi.toArray) els, wordsFoR ix.toArray)
+
+-- payload `5 1 5`; cells `[]`, `[5]`, `[5,1]`, `[1]`, `[5]`: rows `[] [] [1] [5] [5] [5,1]` in `kasc` order, the two
+-- `[5]`s naming cells 1 and 4 one group; the empty cell a group of its own
+def runs : String ⊕ (Nat × List UInt64 × List UInt64) := .inr (4, [0, 0, 1, 2, 2, 3], [0, 2, 3, 5])
+example : view (u 6) (u 4) (kseen (u 6)
+    [cells (u 5) (u 3) [0, 0, 0, 1, 2] [0, 1, 2, 2, 3] [col [5, 1, 5]] [0, 0, 3, 1, 4, 2]]) = runs := by decide +kernel
+#guard view (u 6) (u 4) (kseen (u 6)
+    [cells (u 5) (u 3) [0, 0, 0, 1, 2] [0, 1, 2, 2, 3] [col [5, 1, 5]] [0, 0, 3, 1, 4, 2]]) == runs
+-- `[5,1]` before its proper prefix `[5]` is out of order
+example : view (u 0) (u 0) (kseen (u 2) [cells (u 2) (u 2) [0, 0] [2, 1] [col [5, 1]] [0, 1]]) = unsorted 0 := by
+  decide +kernel
+#guard view (u 0) (u 0) (kseen (u 2) [cells (u 2) (u 2) [0, 0] [2, 1] [col [5, 1]] [0, 1]]) == unsorted 0
+
+-- a tuple element, a nested cells element and a float element: `[(0,9)] [(1,5)] [(1,5)]`, then inner `[q] [q] [q,r]`
+-- (`q = [1,2]`, `r = []`), then `[-0.0] [0.0] [0.0]`; the floats' bits split `-0.0` from `0.0`
+def tuple : String ⊕ (Nat × List UInt64 × List UInt64) := .inr (2, [0, 1, 1], [0, 1])
+example : view (u 3) (u 2) (kseen (u 3)
+    [cells (u 3) (u 3) [2, 0, 1] [3, 1, 2] [col [1, 1, 0], (.atom .i32, wordsFoR #[5, 5, 9])] [0, 1, 2]]) = tuple := by
+  decide +kernel
+#guard view (u 3) (u 2) (kseen (u 3)
+    [cells (u 3) (u 3) [2, 0, 1] [3, 1, 2] [col [1, 1, 0], (.atom .i32, wordsFoR #[5, 5, 9])] [0, 1, 2]]) == tuple
+def nest : List (AscKey × Enc) :=
+  [cells (u 3) (u 3) [0, 1, 1] [1, 2, 3] [cells (u 2) (u 2) [0, 0] [2, 0] [col [1, 2]] [0, 0, 1]] [0, 1, 2]]
+example : view (u 3) (u 2) (kseen (u 3) nest) = .inr (2, [0, 0, 1], [0, 2]) := by decide +kernel
+#guard view (u 3) (u 2) (kseen (u 3) nest) == .inr (2, [0, 0, 1], [0, 2])
+def fl : List (AscKey × Enc) :=
+  [cells (u 3) (u 3) [0, 1, 2] [1, 2, 3] [(.atom .f64, wordsFoR #[0x8000000000000000, 0, 0])] [0, 1, 2]]
+example : view (u 3) (u 2) (kseen (u 3) fl) = tuple := by decide +kernel
+#guard view (u 3) (u 2) (kseen (u 3) fl) == tuple
+
+-- past a block of `2 ^ 10`, `#guard` only: the payload `0 … 1099`, cells `C = [0, 1100)`, `B = [1020, 1029)` and its
+-- extension `A = [1020, 1030)`, 400 rows of `C`, 400 of `B`, 300 of `A`: three runs
+def edge : String ⊕ (Nat × List UInt64 × List UInt64) :=
+  .inr (3, List.replicate 400 0 ++ List.replicate 400 1 ++ List.replicate 300 2, [0, 400, 800])
+#guard view (u 1100) (u 3) (kseen (u 1100) [cells (u 3) (u 1100) [1020, 1020, 0] [1030, 1029, 1100]
+    [col ((List.range 1100).map Nat.toUInt64)] (List.replicate 400 2 ++ List.replicate 400 1 ++ List.replicate 300 0)]) == edge
+
 end Rel.Kernel.SeenTest
