@@ -126,7 +126,7 @@ Rel 本身（`Obj`、`Tm`、kernel、编码、原子、`compile`）见 `rel-arch
   [`take` `drop` `range`], [`(<n)`、`(+n)`、`(<b−a) ≫ (+a)`],
   [`cat`、`union`、`melt`], [第二个 frame 的位置经 `(+m₁)°`：`x ∪ (+m₁)° ≫ y`],
   [join], [`where(J) : N ⟶ N×N`，`J` 是匹配的位置对，按 `(i, j)` 的字典序；结果 `where(J) ≫ (x × y)`],
-  [`groupBy`、`aggregate`、pivot], [`where(ran(x ≫ k)) : N ⟶ K`，按 key 的顺序；组是 `(x ≫ k)° : K ⟶ N`],
+  [`groupBy`、`aggregate`、pivot], [`first(k)`：每组一行，按 key 第一次出现的顺序；组是 `g(k)° : N ⟶ N`（3.1）],
 )
 
 - `where(P) : N ⟶ A`（有序对象 `A` 上的有限集合 ↦ 按顺序编号；即 q 的 `where`：`where 0 1 1 0 1` 是 `1 2 4`）是顺序进入的唯一位置（`CLAUDE.md`）。
@@ -148,15 +148,19 @@ cnt(P)        : N ⟶ N  = Λ(>ₙ ≫ P) ≫ size      P ⊑ (<m)：i 之前 P 
 where(P)       : N ⟶ N  = (P ≫ cnt(P))°         新位置 ↦ P 的第 i 个元素
 filter(p)     = where(dom(x ≫ p)) ≫ x
 σ = asc(x ≫ a)                                 (<m) 上的双射，按 ⟨x ≫ a, 𝟙⟩ 的字典序单调，所以唯一
-s(a)          = σ ≫ x ≫ a,  σ = asc(x ≫ a)      按 a 排好序的列
-first(a)      : N ⟶ N = where((<m) − dom(s(a) ∩ (+1)° ≫ s(a))) ≫ σ
-                                               段首 s(i) ≠ s(i−1)：每个 a 值的最小旧位置，按 a 升序
-last(a)       : N ⟶ N = where((<m) − dom(s(a) ∩ (+1) ≫ s(a))) ≫ σ      段尾 s(i) ≠ s(i+1)
+new(a)        = (<m) − dom(x ≫ a ∩ >ₙ ≫ x ≫ a)   没有更早的 j < i 与 i 的 a 相同：scan，carrier 是已见集合
+first(a)      : N ⟶ N = where(new(a))           每个 a 值第一次出现的位置，按第一次出现的顺序
+last(a)       : N ⟶ N = where((<m) − dom(x ≫ a ∩ <ₙ ≫ x ≫ a))      之后没有相同的 a：反向的 scan
+g(a)          : N ⟶ N = x ≫ a ≫ (first(a) ≫ x ≫ a)°               组号：i 的 a 值在 first(a) 中的编号
 J             = x ≫ k ≫ h° ≫ y°  : N ⟶ N        key 相等的左右位置对；k : C ⟶ K，h : E ⟶ K
 fold(⊕, y)    : P(N) ⟶ V                       位置集合 P ↦ where(P) ≫ y 按位置顺序的 ⦇e, ⊕⦈
 agg(⊕, R, y)  = Λ(R) ≫ fold(⊕, y)              R : A ⟶ N；每个 a 对它的位置做一次 fold
 win(w)        = ≥ₙ ∩ <ₙ ≫ (+w)°                i ↦ i−w < j ≤ i 的每个 j
 ```
+
+- 一个实例：`x ≫ a = B A B`：`0` 时已见 `∅`，留；`1` 时 `A ∉ {B}`，留；`2` 时 `B ∈ {B, A}`，丢。`first = 0 1`，`g = 0 1 0`。
+  规则：`new`、`g` 是同一次 scan，已见集合在编码列（sym、字典 id，值是 `0..card−1`）上是 card 位的 bitmap，
+  一般值上是 hash；扫描一遍，O(m)。列已有序时已见集合退化为「前一个值」。
 
 - 一个实例：`take(3)` 在 `m = 4` 的 `x` 上：`2 {(<3)} 2 {x} (A,1)`；`3` 被 `(<3)` 挡住，没有像。
   规则：结果是 `ι ≫ x`；coreflexive `(<n)` 收 `hi`，`(+n)` 移 `lo`，其余的 `ι` 得到 `lo = 0` 的新 frame（第 2 节）。
@@ -179,16 +183,16 @@ win(w)        = ≥ₙ ∩ <ₙ ≫ (+w)°                i ↦ i−w < j ≤ i 
   [`selectRows`], [`ix ≫ x`，`ix : N ⟶ N` 是输入的下标 frame], [下标来自数据],
   [`sortBy`], [`σ ≫ x`，`σ = asc(x ≫ a)`], [位置 `𝟙` 作次 key，`σ` 唯一：稳定排序就是规格，是相等而不是 refinement],
   [`topBy`], [`(<n) ≫ σ ≫ x`], [],
-  [`distinct`], [`first(𝟙) ≫ x`], [结果按值升序（canonical 集合）：一次排序、相邻比较、`where`。`x = B A B` → `s = A B B` → 段首 `{0,1}` → `A B`],
-  [`groupBy`], [`where(ran(x ≫ k)) : N ⟶ K`；组是 `(x ≫ k)° : K ⟶ N`], [],
-  [`aggregate`], [`where(ran(x ≫ k)) ≫ agg(⊕, (x ≫ k)°, x ≫ v)`], [],
+  [`distinct`], [`first(𝟙) ≫ x`], [按第一次出现的顺序；一次 scan 加 `where`。`B A B` → `B A`],
+  [`groupBy`], [组号 `g(k)`；组是 `g(k)° : N ⟶ N`，组的 key 是 `first(k) ≫ x ≫ k`], [组按 key 第一次出现的顺序],
+  [`aggregate`], [`⟨first(k) ≫ x ≫ k, agg(⊕, g(k)°, x ≫ v)⟩`], [`g` 一次 scan，`⊕` 按组号累加：O(m)],
   [`sum` `mean` `count` `countAll` `minimum` `maximum` `reduce`], [`fold(⊕, x ≫ v)(dom(x))`，`⊕ = add`、`min`、…；`count = m`；`mean = ⟨sum, count⟩ ≫ fdiv`], [`Op` 的 fold],
   [`variance` `stddev` `skewness` `correlation` `zScore`], [若干 fold 的 pair 再做算术], [],
   [`median` `percentile` `genericPercentile` `interQuartileRange`], [`i ≫ σ ≫ x ≫ v`，`σ = asc(x ≫ v)`，`i = ⌊r·m⌋ : 1 ⟶ N`],
     [一个位置，读一个元素],
   [`countDistinct` `mode`], [`size(ran(x ≫ v))`；`mode` 对 `agg(count, …)` 接 `est`], [],
   [`collect`], [每组 `where(P) ≫ x ≫ v`，`P` 是该组的位置], [结果列的类型是 `Obj.arr V`],
-  [`firstOrNothing` `lastOrNothing`], [`first(k) ≫ x ≫ ⟨k, v⟩`、`last(k)` 同理], [每组一行，按 key 升序；σ 稳定，所以段首是该组最小的位置],
+  [`firstOrNothing` `lastOrNothing`], [`first(k) ≫ x ≫ ⟨k, v⟩`、`last(k)` 同理], [每组一行，按 key 第一次出现的顺序],
   [`topK` `bottomK` `kExtremes`], [`(<n) ≫ σ ≫ x`，`σ` 降序或升序], [],
   [`valueCounts` `valueProportions` `frequencies`], [`groupBy` + `aggregate`，`⊕ = count`], [],
   [`summarize` `describeColumns` `nulls`], [固定的一组聚合的 pair], [输出的列由 schema 决定，静态可知],
