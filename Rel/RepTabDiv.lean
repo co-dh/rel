@@ -1,4 +1,5 @@
 import Rel.Run.Div
+import Rel.Run.List
 import Rel.RepStruct
 import Rel.RepCanon
 import Rel.RepSetOps
@@ -652,6 +653,44 @@ private def f64s : List UInt64 := [0x8000000000000000, 0, 0x7ff8000000000001, 0x
   let Up : Vals (.prod .long .long) 2 := (Alg.col [9, 9], Alg.col [9, 8])
   canonOk (R.ldiv S (idT Up) (idT U)) && sameSet (newL (R.ldiv S (idT Up) (idT U))) (oldL (Alg.leftDivC R S Up U)) &&
   sameSet (newL (Tab.lam D R)) (onD (oldL (Alg.lamOnC R D)))
+
+/-- `arrCells`-style fixtures for the list rows (`Rel/Run/List.lean`): `arrCells` (empty, clamped and repeated cells,
+so repeated rows), a prefix of it, no cells, empty cells over no payload, and cells over `2^63 - 1` and the null whose
+sums overflow or meet the null. -/
+private def listFix : List (List (Int64 × Int64 × Int64) × List Int64) :=
+  [(arrCells, arrPay), (arrCells.take 3, arrPay), ([], arrPay), ([(0, 0, 1), (0, 0, 1)], []),
+   ([(0, 2, 0), (1, 3, 0), (2, 3, 0), (0, 3, 0), (3, 4, 1)], [9223372036854775807, 1, -1, -9223372036854775807 - 1])]
+
+-- `snoc cat cons zip sum uncons unsnoc uncat` against `snocC catC consC zipC Arr.sumC unconsC unsnocC uncatC`, on
+-- long and pair elements
+#guard listFix.all fun (cs, ps) =>
+  let A := arrTab cs ps
+  let X := A.key; let x := A.val
+  let Y := (arrOn cs (Alg.col (ps.map (· * 10 + 3)))).key
+  let Z := (arrOn cs ((Alg.col ps, List.length_map _ ▸ Alg.col (ps.map (· - 1))) :
+    Vals (.prod .long .long) ps.length.toUSize)).key
+  let P₁ : Tab .long (.prod (.arr .long) .long) := ⟨_, x, (X, x)⟩
+  let P₂ : Tab .long (.prod (.arr .long) (.arr .long)) := ⟨_, x, (X, Y)⟩
+  let P₃ : Tab .long (.prod .long (.arr .long)) := ⟨_, x, (x, Y)⟩
+  let P₄ : Tab .long (.prod (.arr .long) (.arr (.prod .long .long))) := ⟨_, x, (Y, Z)⟩
+  let Q₁ : Tab .long (.prod (.arr (.prod .long .long)) (.prod .long .long)) := ⟨_, x, (Z, (x, x))⟩
+  let Q₂ : Tab .long (.prod (.arr (.prod .long .long)) (.arr (.prod .long .long))) := ⟨_, x, (Z, Z)⟩
+  let Q₃ : Tab .long (.prod (.prod .long .long) (.arr (.prod .long .long))) := ⟨_, x, ((x, x), Z)⟩
+  canonOk (Tab.snoc P₁) && canonOk (Tab.uncat X) &&
+  sameSet (newL (Tab.snoc P₁)) (oldL (Alg.snocC P₁)) && sameSet (newL (Tab.cat P₂)) (oldL (Alg.catC P₂)) &&
+  sameSet (newL (Tab.cons P₃)) (oldL (Alg.consC P₃)) && sameSet (newL (Tab.zip P₄)) (oldL (Alg.zipC P₄)) &&
+  sameSet (newL (Tab.sum X)) (oldL (Alg.Arr.sumC X)) &&
+  sameSet (newL (Tab.uncons X)) (oldL (Alg.unconsC X)) && sameSet (newL (Tab.unsnoc X)) (oldL (Alg.unsnocC X)) &&
+  sameSet (newL (Tab.uncat X)) (oldL (Alg.uncatC X)) &&
+  sameSet (newL (Tab.snoc Q₁)) (oldL (Alg.snocC Q₁)) && sameSet (newL (Tab.cat Q₂)) (oldL (Alg.catC Q₂)) &&
+  sameSet (newL (Tab.cons Q₃)) (oldL (Alg.consC Q₃)) &&
+  sameSet (newL (Tab.uncons Z)) (oldL (Alg.unconsC Z)) && sameSet (newL (Tab.unsnoc Z)) (oldL (Alg.unsnocC Z)) &&
+  sameSet (newL (Tab.uncat Z)) (oldL (Alg.uncatC Z))
+
+-- `sum` drops `[2^63 - 1, 1]` (a suffix sum past `2^63`) and `[null]`, keeps `[2^63 - 1, 1, -1]` (every suffix sum
+-- inside), as `rowDens` states
+#guard sameSet (newL (Tab.sum (arrTab (listFix.getD 4 ([], [])).1 (listFix.getD 4 ([], [])).2).key))
+  (some [([1, -1], 0), ([-1], -1), ([9223372036854775807, 1, -1], 9223372036854775807)])
 
 end Checks
 
