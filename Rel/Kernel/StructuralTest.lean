@@ -25,4 +25,8 @@ def extraRev : ByteArray := Coc.foRMeta Rel.Column.lgEnc 0 0 #[(5, 5, 0, 0), (9,
 -- block length, so the walk overran its buffer
 def extraTwo : ByteArray := Coc.foRMeta Rel.Column.lgEnc 0 0 #[(5, 5, 0, 0), (9, 9, 0, 0), (9, 9, 0, 0)]
 
+-- `enlistLong`: the body by `decide`, the Rust by `#guard`
+example : (enlistLong (USize.ofNat32 258 (by decide))).data.toList = [2, 1, 0, 0, 0, 0, 0, 0] := by decide +kernel
+#guard (enlistLong 258).data == #[2, 1, 0, 0, 0, 0, 0, 0]
+
 end Rel.Kernel.StructuralTest

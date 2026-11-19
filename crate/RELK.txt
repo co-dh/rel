@@ -66,6 +66,7 @@ qlean_structural_concat_foR
 qlean_structural_concat_ids
 qlean_structural_cycle_bits
 qlean_structural_cycle_ids
+qlean_structural_enlist
 qlean_structural_enum_ids
 qlean_structural_enum_ids_for
 qlean_structural_expand
