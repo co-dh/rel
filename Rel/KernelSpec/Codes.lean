@@ -43,17 +43,23 @@ theorem firstsBy_eq {α : Type} [BEq α] [LawfulBEq α] [DecidableEq α] (m : Na
     rw [bne, Bool.eq_iff_iff.2 (show (a == b) = true ↔ decide (a = b) = true by rw [beq_iff_eq, decide_eq_true_iff])]
   unfold Order.firstsBy firstsOf; simp only [hb]
 
+/-- The kernels' group rule (`groupIn` over `firstsBy`, a `BEq` key) is the specification's `groupOf` at a lawful one. -/
+theorem groupIn_firstsBy {α : Type} [BEq α] [LawfulBEq α] [DecidableEq α] (m : Nat) (key : Nat → α) (i : Nat) :
+    Order.groupIn (Order.firstsBy m key) key i = groupOf key m i := by
+  have hb : ∀ a b : α, (a == b) = decide (a = b) := fun a b => Bool.eq_iff_iff.2 (by
+    rw [beq_iff_eq, decide_eq_true_iff])
+  simp only [Order.groupIn, groupOf, firstsBy_eq, hb]
+
 /-- **`idsBy` read back**: the ids are `groupOf`, packed at the width of the first occurrences' count,
 and the second payload holds one long per first occurrence. -/
 theorem idsBy_spec {α : Type} [BEq α] [LawfulBEq α] [DecidableEq α] (m : Nat) (key : Nat → α) :
     (Order.idsBy m key).1 = Column.packIds (Column.idWidthOf (firstsOf key m).length) m (groupOf key m) ∧
       (Order.idsBy m key).2.size = 8 * (firstsOf key m).length := by
-  have hb : ∀ a b : α, (a == b) = decide (a = b) := fun a b => Bool.eq_iff_iff.2 (by
-    rw [beq_iff_eq, decide_eq_true_iff])
   have hf := firstsBy_eq m key
   refine ⟨?_, ?_⟩
-  · show Column.packIds _ m (fun i => (Order.firstsBy m key).findIdx (key · == key i)) = _
-    simp only [hf, hb]; rfl
+  · show Column.packIds (Column.idWidthOf (Order.firstsBy m key).length) m
+      (Order.groupIn (Order.firstsBy m key) key) = _
+    rw [show Order.groupIn (Order.firstsBy m key) key = groupOf key m from funext (groupIn_firstsBy m key), hf]
   · show (Order.indices (Order.firstsBy m key)).size = _
     obtain ⟨hs, -⟩ := foldl_pushBits (fun i : Nat => (Int64.ofNat i).toUInt64) 8 (by decide)
       (Order.firstsBy m key) ByteArray.empty

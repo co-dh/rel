@@ -69,4 +69,27 @@ def short : String ⊕ (Nat × List UInt64 × List UInt64) :=
 example : view (u 0) (u 0) (kseen (u 2000) [col [0, 1]]) = short := by decide +kernel
 #guard view (u 0) (u 0) (kseen (u 2000) [col [0, 1]]) == short
 
+-- a `pos` column of another type than `i64` is the error, named by its place in `es`
+def posType : String ⊕ (Nat × List UInt64 × List UInt64) := .inl "seen: es[0]: asc: a pos column is type 4, not 3"
+example : view (u 0) (u 0) (kseen (u 2) [(.i32, .pos)]) = posType := by decide +kernel
+#guard view (u 0) (u 0) (kseen (u 2) [(.i32, .pos)]) == posType
+
+-- the engines' edge at two rows (`seenEngine`): direct addressing serves a range of `4 * 2 + 1024` codes, rows in
+-- order serve any range, and one code more on rows out of order needs a hash, the error
+def two : String ⊕ (Nat × List UInt64 × List UInt64) := .inr (2, [0, 1], [0, 1])
+example : view (u 2) (u 2) (kseen (u 2) [col [1031, 0]]) = two := by decide +kernel
+#guard view (u 2) (u 2) (kseen (u 2) [col [1031, 0]]) == two
+example : view (u 2) (u 2) (kseen (u 2) [col [0, 1032]]) = two := by decide +kernel
+#guard view (u 2) (u 2) (kseen (u 2) [col [0, 1032]]) == two
+def hash : String ⊕ (Nat × List UInt64 × List UInt64) := .inl
+  "seen: key range of 1033 codes (es[0] type 4 codes 0x8000000000000000..=0x8000000000000408) over 2 rows out of order needs a hash, not built (PLAN D.12)"
+example : view (u 0) (u 0) (kseen (u 2) [col [1032, 0]]) = hash := by decide +kernel
+#guard view (u 0) (u 0) (kseen (u 2) [col [1032, 0]]) == hash
+
+-- two columns multiply their spans; the second's `2^40` is a patch, which the range reads from the patch list
+def hash2 : String ⊕ (Nat × List UInt64 × List UInt64) := .inl
+  "seen: key range of 2199023255554 codes (es[0] type 4 codes 0x8000000000000000..=0x8000000000000001, es[1] type 4 codes 0x8000000000000000..=0x8000010000000000) over 2 rows out of order needs a hash, not built (PLAN D.12)"
+example : view (u 0) (u 0) (kseen (u 2) [col [1, 0], col [0, 2 ^ 40]]) = hash2 := by decide +kernel
+#guard view (u 0) (u 0) (kseen (u 2) [col [1, 0], col [0, 2 ^ 40]]) == hash2
+
 end Rel.Kernel.SeenTest

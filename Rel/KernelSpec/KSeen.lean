@@ -42,15 +42,14 @@ theorem kseen_ok {n : USize} {es : List (QAtomicType × Enc)} {k : Nat} {g f : E
           obtain ⟨hx, -, f, hof, hkk⟩ := ascCol_ok hce
           simp [ascKeys, hb, hei, ← he, hkk, hx, hof]
     subst hk
+    split at h
+    · cases h
     simp only [pure, Except.pure, Except.ok.injEq, Prod.mk.injEq] at h
     obtain ⟨rfl, rfl, rfl⟩ := h
-    have hb : ∀ a b : List UInt64, (a == b) = decide (a = b) := fun a b => Bool.eq_iff_iff.2 (by
-      rw [beq_iff_eq, decide_eq_true_iff])
     have hf : Order.firstsBy n.toNat (seenKey n es) = firstsOf (seenKey n es) n.toNat := firstsBy_eq _ _
     refine ⟨congrArg List.length hf, ?_, by rw [← hf]; rfl⟩
-    show wordsFoR (Array.ofFn fun i => ((Order.firstsBy n.toNat (seenKey n es)).findIdx
-      (seenKey n es · == seenKey n es i.1)).toUInt64) = _
-    simp only [hf, hb]; rfl
+    show wordsFoR (Array.ofFn fun i => (Order.groupIn (Order.firstsBy n.toNat (seenKey n es)) (seenKey n es) i.1).toUInt64) = _
+    simp only [groupIn_firstsBy]
 
 /-- **The first-occurrence laws** over a key `g` on the rows below `m`, `F = firstsOf g m` and `G = groupOf g m`:
 `F` ascends, holds exactly the rows whose key no earlier row has (law a), `G` is constant exactly on equal keys and
@@ -111,7 +110,7 @@ theorem kseen_pos {n : USize} {ks rest : List (QAtomicType × Enc)} {k : Nat} {g
       have he := hf ks.length ((.i64, .pos), ks.length) (cs[ks.length]'(by simp [List.length_zipIdx] at hlen; omega))
         (by simp) (List.getElem?_eq_getElem _)
       refine Classical.byContradiction fun hm => ?_
-      simp [ascCol, ascWords, ascOrd, orderKind, hm, Functor.map, Except.map, Except.mapError] at he
+      simp [ascCol, ascWords, ascOrd, ascLayout, orderKind, hm, Functor.map, Except.map, Except.mapError] at he
   have hc : ∀ i, i < 2 ^ 63 → (ordKey 8 false true (UInt64.ofNat i)).toNat = i + 2 ^ 63 := fun i hi => by
     have := ordKey_signed (w := 8) (by omega) (by omega) (UInt64.ofNat i)
     simp only [sx, UInt64.toNat_ofNat'] at this

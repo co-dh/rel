@@ -116,11 +116,15 @@ def ranksFoR (k : Kind) (n : USize) (metadata pack : @& ByteArray) : ByteArray :
 def firstsBy {α : Type} [BEq α] (m : Nat) (key : Nat → α) : List Nat :=
   (List.range m).filter fun i => (List.range i).all fun j => key j != key i
 
+/-- Index `i`'s group among the first occurrences `fs` (`firstsBy`): the place of the first one holding its key.
+`idsBy` packs it at an id width, `Kernel.kseen` writes it as words; the two answer different forms, so this is shared. -/
+def groupIn {α : Type} [BEq α] (fs : List Nat) (key : Nat → α) (i : Nat) : Nat := fs.findIdx (key · == key i)
+
 /-- Each of the `m` indices' group under `key`, numbered in first-occurrence order, and `firstsBy`:
 what `groupIds` answers, over any key so that a pair of columns is the same statement. -/
 def idsBy {α : Type} [BEq α] (m : Nat) (key : Nat → α) : ByteArray × ByteArray :=
   let fs := firstsBy m key
-  (Column.packIds (Column.idWidthOf fs.length) m (fun i => fs.findIdx (key · == key i)), indices fs)
+  (Column.packIds (Column.idWidthOf fs.length) m (groupIn fs key), indices fs)
 
 /-- The group each element falls in, numbered in first-occurrence order, against `firsts` — the same
 pass `group` makes, stopping before the buckets. That is what a grouped reduction wants:

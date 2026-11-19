@@ -15,11 +15,16 @@ namespace Rel.Kernel
 open Ext.Enc
 open Rel.Kernel.Scan (Kind)
 
+/-- The layout a column of type `t` is ordered at (`orderKind`): its width in bytes, whether it is a float and whether
+it is signed, `asc::order` in `crate/src/asc.rs`. `symbol` and `general` have no fixed-width order: `none`. -/
+def ascLayout (t : QAtomicType) : Option (Nat × Bool × Bool) :=
+  (orderKind t).map fun k => (k.width, k == .f32 || k == .f64, k == .i16 || k == .i32 || k == .i64)
+
 /-- The order code of a raw word of a column of type `t`, as an unsigned word: `ordKey` at `t`'s layout
-(`orderKind`), so a signed integer flips its sign bit and a float folds `-0.0` and every NaN below every number and then
-flips (q's order; PLAN 6.9's map replaces it). `symbol` and `general` have no fixed-width order: `none`. -/
+(`ascLayout`), so a signed integer flips its sign bit and a float folds `-0.0` and every NaN below every number and then
+flips (q's order; PLAN 6.9's map replaces it). -/
 def ascOrd (t : QAtomicType) : Option (UInt64 → UInt64) :=
-  (orderKind t).map fun k => ordKey k.width (k == .f32 || k == .f64) (k == .i16 || k == .i32 || k == .i64)
+  (ascLayout t).map fun (w, f, s) => ordKey w f s
 
 /-- Row `i` no later than row `j` in the lexicographic order of the code columns `ks`, the first the most significant:
 the first column where the two differ decides, and rows equal in every column answer `true`. -/
