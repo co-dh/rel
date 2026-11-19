@@ -503,6 +503,13 @@ Diff table 的「状态」列：✅ 后面是完成它的步骤；🔄 是部分
       欠的证明：`GenK.*` 组合子与 `Tm` denotation 之间没有定理；`Tab.arith bitsMax compTabMat keepBits foldRounds mu
       nu peelL peelR atPos est thin`、`kernRows` 的行、plan 的 `groupIdsB arithB whereB` 无定理；compile-diff 需要一个以
       denotation 为准的独立对照才重新成为检查。
+      状态（2026-11-19 18:54，master `893fcd4`，`make check` 全绿，compile-diff 476 ok / 2 按预期报错）：`t10b` + `t10c`
+      合入（a1f86e9，RELK 78；读取引理补回 55 / 62，在 `Rel/KernelWF/Read.lean`）；`t10d` 合入（b455892）：**RELK 11**
+      （`k_scan k_scatter k_gather k_asc k_seen k_bitrows stop coc_encode coc_decode own_write own_map`），67 个旧
+      kernel 去掉 `@[extern]` 与 Rust export、6 个 ffi 模块、5 个 kernel 测试模块；`showRel checkErr uniOf litCol` 改到
+      `Tab` 上。未完成：旧 kernel 仍以普通 Lean 定义存在，`Code`、`Alg`、`CRel*Def`、`Run/KernelWF` 未删；ffi 背后的
+      Rust 库模块未删。在做 T10e：`Syntax.prims` 的行类型直接写出、`CRel` 类型换成 `Tab` / `Rel`、`Den` / `Rep` 去掉
+      `Alg.*`、`Rep*` 的对照 `#guard` 改成固定的期望行，然后删上述模块与无 export 可达的 Rust 模块。
     - W3 留给后面的风险（清单 agent 提出，均未验证）：计数做 `\` 会物化 join（最多 `|R|·|S|` 行），SudokuPC9、
       blocks 可能超内存；规范序从 `Obj.lt` 变成 `kasc` 序码，打印的期望值与 `out/key`、`out/val` 可能变；
       `coc_block_start`、`coc_bools_of`、`structural_bits_of_for` 与 `Plan.abi` 点名的 12 个 export 在 W5 后仍有

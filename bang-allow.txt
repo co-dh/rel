@@ -3,9 +3,7 @@ Rel.Eval.identicalFuel
 Rel.Ext.QValue.sliceAt
 Rel.Kernel.Coc.alpBlob
 Rel.Kernel.Coc.alpBlockOf
-Rel.Kernel.ElementwiseTest.noSums
 Rel.Kernel.Ew.chain
-Rel.Kernel.StructuralTest.shortPack
 Rel.Kernel.atI64
 Rel.Kernel.concatALP
 Rel.Kernel.concatBits
