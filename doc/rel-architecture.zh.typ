@@ -296,6 +296,12 @@ compile η t : {r : Rel A B // rep r = ⟦t⟧ρ}       -- 方案 A：规格在�
   [`snoc°`], [同 `cons°`：格 `[s, e − 1)` 与 payload 第 `e − 1` 个],
   [`cat°`], [格界 → EXPAND(`e − s + 1`)（每格的每个切点）→ `gather` `s` `e` → `scan` 切点 `s[G] + u`；
     两段 `[s, s + u)`、`[s + u, e)` 共享原 payload；`n(m + 1) + n + m + 1 ≥ 2^63` 拒绝],
+  [`inits`（草稿，待审）], [`Λ(prefix)`：`prefix` 行 → Λ 行；一个数组的前缀互为真前缀，Λ 的升序格即按长度递增，`[]` 在前],
+  [`tails`（草稿，待审）], [`Λ(cat°) ≫ F(π₂)`：`cat°` 行 → Λ 行（格内按切点递增）→ 取格 payload 的第二列，格界不变（无 kernel）；
+    后缀按长度递减，`[]` 在后],
+  [`concat`（草稿，待审）], [`⦇nil, cat⦈`：`fold` 行（`Tab.foldRounds`，每轮 `cons°`），步骤为 `cat` 行],
+  [`filter(p)`（草稿，待审）], [`⦇nil, dom(π₂p) snoc ∪ (𝟙 − dom(π₂p)) π₁⦈`：`fold` 行，每轮 `≫ dom p`、`⟨,⟩`、`snoc` 行、`−`、`∪`],
+  [`takewhile(p)`（草稿，待审）], [`⦇nil, dom(π₁p) cons ∪ (𝟙 − dom(π₁p)) nil⦈ʳ`：`foldr` 行（每轮 `snoc°`），每轮 `≫ dom p`、`⟨,⟩`、`cons` 行、`−`、`nil`、`∪`],
 )
 
 == Rust 侧

@@ -125,7 +125,12 @@ def kernRows : List (String × Lean.Name) :=
   [("∋", ``Tab.mem), ("τ", ``Tab.tau), ("length", ``Tab.length), ("setify", ``Tab.setify),
    ("snoc", ``Tab.snoc), ("cons", ``Tab.cons), ("cat", ``Tab.cat), ("zip", ``Tab.zip), ("sum", ``Tab.sum),
    ("uncons", ``Tab.uncons), ("unsnoc", ``Tab.unsnoc), ("uncat", ``Tab.uncat), ("inl", ``Tab.inl),
-   ("inr", ``Tab.inr), ("prefix", ``Tab.«prefix»), ("suffix", ``Tab.suffix)]
+   ("inr", ``Tab.inr), ("prefix", ``Tab.«prefix»), ("suffix", ``Tab.suffix),
+   ("inits", ``Tab.inits),
+   ("tails", ``Tab.tails),
+   ("concat", ``Tab.flatten),
+   ("filter", ``Tab.filter),
+   ("takewhile", ``Tab.takewhile)]
 
 -- every kernel row is a row of `prims`
 #guard kernRows.all fun (s, _) => prims.any (·.sym == s)
@@ -207,6 +212,11 @@ def lam (A B : Obj) (d : Bool) (R : Fn d A B) : Fn true A (.arr B) :=
 def E (A B : Obj) (d : Bool) (R : Fn d A B) : Fn true (.arr A) (.arr B) :=
   lam _ _ true (comp _ _ _ d (ofVals _ _ fun X => Tab.mem X) R)
 def nil (A B : Obj) : Fn true A (.arr B) := ofVals _ _ fun X => Tab.nil X
+/-- `f` on `R` run knowing its domain is `ran(∋)` at the arrays `X` in demand (`Gen.elems`' rule): the wrapper of the
+    rows given a relation on elements (`filter`, `takewhile`). -/
+def elems (A B C : Obj) (d : Bool) (R : Fn d A B)
+    (f : {n : USize} → Tab A B → Vals (.arr A) n → Except String (Tab (.arr A) C)) : Fn true (.arr A) C :=
+  ofVals _ _ fun X => do let k ← (← Tab.mem X).ran; f (← R.runE ⟨some ⟨k.n, k.key⟩, none⟩) X
 
 /-- `est(Q)`, `thin(Q)` on the arrays in demand, the pair test `Q` run knowing its domain is the pairs `D` it is
     asked about (`Gen.est`'s `Q.at`). -/
@@ -227,25 +237,16 @@ def juncD (A B C : Obj) (d e : Bool) (R : Fn d A C) (S : Fn e B C) : Fn true (.s
     let ⟨l, r, _, _, x, y⟩ := X
     (← Tab.idU X).comp (← Tab.junc (← R.runE ⟨some ⟨l, x⟩, none⟩) (← S.runE ⟨some ⟨r, y⟩, none⟩))
 
-/-- Round `k` of a left fold: `cons°` of what is left of each array, its head read now (index `k` from the start). -/
-def peelL {K E : Obj} (rest : Tab K (.arr E)) : Except String (Tab K E × Tab K (.arr E)) := do
-  let c ← rest.comp (← Tab.uncons rest.val)
-  pure (← c.comp (← Tab.outl c.val), ← c.comp (← Tab.outr c.val))
-/-- Round `k` of a right fold: `snoc°`, its last element read now (index `k` from the end). -/
-def peelR {K E : Obj} (rest : Tab K (.arr E)) : Except String (Tab K E × Tab K (.arr E)) := do
-  let c ← rest.comp (← Tab.unsnoc rest.val)
-  pure (← c.comp (← Tab.outr c.val), ← c.comp (← Tab.outl c.val))
-
 /-- `⦇e,S⦈` on the arrays `X` in demand (§4 `fold`: a Lean loop of rounds, `Tab.foldRounds`): each array from every
     value of `e`, round `k` the pairs `(acc, x)` (`⟨P, el⟩`), `S` run on them (`compT`). -/
 def fold (E V : Obj) (d : Bool) (e : Fn false V V) (S : Fn d (.prod V E) V) : Fn true (.arr E) V :=
   ofVals _ _ fun X => do
-    Tab.foldRounds peelL (fun P el => do (compT (P.pair el) S).runE {}) (X.1.toNat + 2) (← Tab.idU X)
+    Tab.foldRounds Tab.peelL (fun P el => do (compT (P.pair el) S).runE {}) (X.1.toNat + 2) (← Tab.idU X)
       (← Tab.top X (← e.runE {}).val) (← Tab.zero)
 /-- `⦇e,S⦈ʳ`: the mirror, each array from its end, `S` on `(x, acc)` (`⟨el, P⟩`). -/
 def foldr (E V : Obj) (d : Bool) (e : Fn false V V) (S : Fn d (.prod E V) V) : Fn true (.arr E) V :=
   ofVals _ _ fun X => do
-    Tab.foldRounds peelR (fun P el => do (compT (el.pair P) S).runE {}) (X.1.toNat + 2) (← Tab.idU X)
+    Tab.foldRounds Tab.peelR (fun P el => do (compT (el.pair P) S).runE {}) (X.1.toNat + 2) (← Tab.idU X)
       (← Tab.top X (← e.runE {}).val) (← Tab.zero)
 
 /-- `⦇e,S⦈` given a family on the pairs `X = (i, xs)` in demand (`foldIDen_eq`): one left fold on the carrier `I×V`
@@ -257,7 +258,7 @@ def foldI (I E V : Obj) (d d' : Bool) (e : Fn d I (.prod V V)) (S : Fn d' (.prod
   let step (P : Tab _ (.prod I V)) (el : Tab _ E) : Except String (Tab _ (.prod I V)) := do
     let s ← (compT (P.pair el) S).runE {}
     s.inter (← i.pair (← s.comp (← Tab.outr s.val)))
-  let out ← Tab.foldRounds peelL step (X.2.1.toNat + 2) (← Tab.outr X) (← i.pair (← es.comp (← Tab.outr es.val)))
+  let out ← Tab.foldRounds Tab.peelL step (X.2.1.toNat + 2) (← Tab.outr X) (← i.pair (← es.comp (← Tab.outr es.val)))
     (← Tab.zero)
   out.comp (← Tab.outr out.val)
 
