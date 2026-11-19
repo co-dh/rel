@@ -390,20 +390,18 @@ Diff table 的「状态」列：✅ 后面是完成它的步骤；🔄 是部分
       - 工作清单是 `Rel.Lang.Tm` 的构造子（43 个；`call`/`arg`/`var`/`share`/`own` 是绑定），spec 是各自的
         denotation。不照旧层 `CRel.*`/`Alg.*` 的列表移植（owner："this is stupid"）；旧算子只在 `#guard` 里做对照，
         与 denotation 不一致时跟 denotation。清单 agent 按旧层数出的 "约 62 个未开始" 作废。
-      - 算子定义在 prelude 里（`Rel/Programs/Prelude.lean`，`.rel` 语法），直接写在五个 kernel 上：`/`、`\`、`Λ`、
-        `∋`、pair/product、`[R,S]`、fold/hylo、arith、`est`/`thin`，按同一规则也包括 `≫`、`∩` 等。它们不是 runtime
-        的 Lean 函数。
-      - 关系是一对等长的数组（`{n, key, val}`），kernel 是数组 `[α]` 上的原语：`scan(op)`、`scatter(op)`、
-        `gather`、`asc`、`seen`；prelude 里的算子定义取参数的一对数组，给出结果的一对数组。"一列是 `pos ⟶ α` 的
-        map" 是 dataframe 的 frame，不用于 Rel（owner 否决了我提的这个形式）。`.rel` 怎样指名一个关系的两个数组
-        由设计给出，未定。
-      - compiler 现在就发原语，按程序切换：一个程序展开后只用原语，它就走新路径；"仍走旧路径的程序数" 是进度
-        数字，到 0 时 W5 删除旧层。新旧算子不能在一个程序里混用（旧的写 `.bytes`，新 kernel 拒绝非 foR，转换被
-        禁止）。
-      - 设计：`doc/rel-prelude-kernels.zh.typ`（在写；原语的类型与 denotation、每个构造子的 prelude 定义、`Tm` 的
-        去向、compiler、迁移步骤、给 owner 的未决点）。预计 `mu`/`nu`、fold 的迭代、`arr` cell 不能直接写（未验证）。
-    - W3 已在 master（335b933）的 Lean `Tab` 算子与定律，在 prelude 形式下是 prelude 定义的复合与证明的来源，不再是
-      实现；尚无程序运行它们：
+      - 设计就是 `doc/rel-architecture.zh.typ`（owner："You should follow the architect pdf"），不另写设计：
+        - §1：`Tm` 的构造子组保持为构造子；§4 "allegory 运算 → kernel" 给出每个运算由哪些 kernel 复合（`R\S`、
+          `R/S`、对称除不求补，按组比较个数；`Λ` 由 `asc ≫ seen` 给 `lo`/`hi`；`μ ν fold hylo` 是 Lean 里的循环
+          `fixOn`）；§0：`Rel A B = tab | lazy`，`succ`、`arith`、`leq`、`⊤` 是 `lazy`。
+        - 成为 prelude 定义（`.rel`）的是 §7 TODO 列的：`junc = inl° ≫ R ∪ inr° ≫ S`（先加 `inl`、`inr`，删
+          `juncD`）、`flat`、`foldI`、`prims` 表里能写成 `fold`/`hylo` 的行；只留 kernel 级的原语。
+        - 我提过的两个形式（列是 `pos ⟶ α` 的 map —— 那是 dataframe 的 frame；全部算子写进 prelude）都被 owner
+          否决，已撤回。
+      - compiler（`Gen.*`）现在就发 kernel 复合，按程序切换：一个程序用到的构造子都有 kernel 版本，它就走新路径；
+        "仍走旧路径的程序数" 是进度数字，到 0 时 W5 删除旧层。新旧算子不能在一个程序里混用（旧的写 `.bytes`，
+        新 kernel 拒绝非 foR，转换被禁止）。切换步骤：`/data/tmp/w3-switch-steps.md`（在写）。
+    - W3 已在 master（335b933）的 Lean `Tab` 算子与定律；尚无程序运行它们：
       - 共用构件 `Rel/Run/Cols.lean`（`colPrefix`、`shiftCol`、`Arr.concat`、`Vals.concat`、`catPlan`、`lastCount`；
         `colConst`、`colMap` 在 `Rel/Run/Canon.lean`）；`Rel/Run/Core.lean` 的 `Arr.ofBytes`、`Arr.ofFn`（每个定宽
         type 的 foR producer，`w1float` 2ed1c81）。
@@ -418,8 +416,8 @@ Diff table 的「状态」列：✅ 后面是完成它的步骤；🔄 是部分
     - W3 在做：`w3arrcat`（`arr` 侧的 `Vals.concat`；在它之前 `arr` 侧的 `∪ ∩ − ≫` 回答
       `.error "concat: an arr side is not atom columns"`）；`w3div`（`ldiv rdiv lam E nil lt leq`）、`w3struct`
       （`id top zero val pair prod outl outr junc juncD join flat`）、`w3arith`（`arith succ est thin`，部分 fold）
-      —— 后三个是在 prelude 决定之前派出的 Lean `Tab` 算子，保留的是复合与定律。
-    - W3 未做：prelude 形式的原语与 compiler 发射路径（等设计）；`hylo`、`mu`、`nu`、`atPos`；`prim` 表里程序实际
+      —— 后三个的复合要对照 architecture §4 的表（如 `\` 不求补）。
+    - W3 未做：compiler 发射路径（`Gen.*` 的函数体）与 `lazy`/`Known` 的接入；§7 TODO 的 prelude 定义；`hylo`、`mu`、`nu`、`atPos`；`prim` 表里程序实际
       用到的行（未数）。切换前给 compile-diff 补：旧表 dump 的对照、"not ok" 名单逐名比较（现在它只数个数，且
       两边跑同一个 `Gen.*`，新算子报错或算错都能通过）。
     - W3 留给后面的风险（清单 agent 提出，均未验证）：计数做 `\` 会物化 join（最多 `|R|·|S|` 行），SudokuPC9、
@@ -432,7 +430,7 @@ Diff table 的「状态」列：✅ 后面是完成它的步骤；🔄 是部分
     - W6 native：`Plan` 得到一个 `Enc` 寄存器，`Plan.abi` 列出这五个。
   - 度量（每次合并）：调用旧 export 的可执行 def（149，W0 之后未重数）；`RELK.txt` 行数（master 335b933：79；
     主要在 W5 下降）；仍走旧路径的程序数（全部；新路径尚不存在）；compile-diff 241/25。`make check` 在 afd96d5
-    全绿（2026-11-19）；16c3c79 全量 build 绿；335b933 的 `make check` 在跑。
+    全绿（2026-11-19）；335b933 的 `make check` 全绿（241/25）。
   - 2026-11-19 的修复：`Coc.packRes` 改为一次 `map`（77b475c；逐字节 `push` 在 Lean kernel 里是平方的，
     `SeenTest` 8.2 → 1.6 GB，全库 build 峰值 2.8 GB）；own 列文件没有 kind 1，part 数表是唯一判据，两条拒绝文本
     由表生成（679839b；`OWN_NPARTS` 变为 `[Option<usize>; 5]`，qlean 的比较要跟着改）。
