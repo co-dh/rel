@@ -113,14 +113,36 @@ def nil {n : USize} (D : Vals A n) : Except String (Tab A (.arr B)) := do
   let z ← Arr.zeros .i64 n
   Tab.canon ⟨n, D, ⟨0, z, z, ← Vals.noRows B⟩⟩
 
-/-- **`R \ S` within `UB`, `UC`** (`ldivDen`), by complement: `b` of `ran R` to `c` of `ran S` unless some `a` with
-`R a b` misses `S a c`, and every `b` of `ran UB − ran R` to every `c` of `ran UC`:
-`(ran R × ran S) − R° ≫ ((dom R × ran S) − S)  ∪  (ran UB − ran R) × ran UC`. -/
+/-- **`R \ S` within `UB`, `UC`** (`ldivDen`), by counting: `b` of `ran R` to `c` where
+`#{a | R a b ∧ S a c} = #{a | R a b}`, no complement (`doc/rel-architecture.zh.typ`, `R\S`): `Q = r° ≫ ⟨𝟙, s⟩`
+(`r`, `s` canonical, so `Q`'s rows `(b, (a, c))` are distinct and hold each `a` once); GROUP over `(b, c)` and its
+row count `cnt` (`kscatter .add`); the count `d` of `R`'s rows of `b`, read at each group's first row by CODE over
+`r.val ++ Q.key` (the run of `r` rows of each `b` group, `kscatter .add` of `p < r.n`, each input row's group by
+`kscatter .last` through `p`); the groups with `cnt = d` (`whereCol`). The vacuous part is `(ran UB − ran R) × ran UC`,
+and the two are met by `∪`. -/
 def ldiv (R : Tab A B) (S : Tab A C) (UB : Tab B B) (UC : Tab C C) : Except String (Tab B C) := do
-  let dR ← R.dom; let rR ← R.ran; let rS ← S.ran
-  let Q ← (← R.conv).comp (← (← cross dR.key rS.key).diff S)
-  let P ← (← cross rR.key rS.key).diff Q
-  P.union (← cross (← (← UB.ran).diff rR).key (← UC.ran).key)
+  let r ← R.canon; let s ← S.canon
+  let Q ← (Tab.mk r.n r.val r.key).comp (Tab.mk s.n s.key (s.key, s.val) : Tab A (.prod A C))
+  let x : Vals (.prod B C) Q.n := (Q.key, (Q.val : Vals A Q.n × Vals C Q.n).2)
+  let es ← Vals.cols x
+  let (vs, p) ← kasc Q.n es
+  let (k, g, f) ← kseen Q.n ((es.map (·.1)).zip vs)
+  let K := k.toUSize
+  let cnt ← kscatter .add Q.n g (← colConst Q.n 1) K 0
+  let (N, sh) ← catPlan r.n Q.n
+  -- `.lt` reads positions signed: every one is below `N`
+  if 2 ^ 63 ≤ N.toNat then throw s!"ldiv: {N} rows past 2^63"
+  let bs ← Vals.cols (← Vals.concat N sh r.val Q.key)
+  let (bv, bp) ← kasc N bs
+  let (bk, bg, _) ← kseen N ((bs.map (·.1)).zip bv)
+  let cR ← kscatter .add N bg (← colMap .lt N bp (← colConst N r.n.toUInt64)) bk.toUSize 0
+  let code ← kscatter .last N bp bg N 0
+  let q ← kgather K f Q.n p
+  let d ← kgather K (← kgather K (← colMap .add K q (← colConst K r.n.toUInt64)) N code) bk.toUSize cR
+  let (M, sel) ← whereCol K (← colMap .eq K cnt d)
+  let ix ← kgather M sel K q
+  let P : Tab B C := ⟨M, ← Vals.gather M ix Q.key, ← Vals.gather M ix (Q.val : Vals A Q.n × Vals C Q.n).2⟩
+  P.union (← cross (← (← UB.ran).diff (← R.ran)).key (← UC.ran).key)
 
 /-- **`R / S` within `UA`, `UB`** (`rdivDen`): `(S° \ R°)°` within `UB`, `UA`. -/
 def rdiv (R : Tab A C) (S : Tab B C) (UA : Tab A A) (UB : Tab B B) : Except String (Tab A B) := do
