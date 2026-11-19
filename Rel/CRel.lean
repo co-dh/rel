@@ -133,6 +133,58 @@ theorem keyInj_prod {a b : Obj} (ha : a.KeyInj) (hb : b.KeyInj) : (Obj.prod a b)
   rw [e, List.append_cancel_left_eq] at h
   rw [ha x x' e, hb y y' h]
 
+/-- `A`'s atoms are ones the kernels order and its key tells its elements apart, decided by recursion on `A`: an
+    atom whose key re-codes its bits one to one (`boolean`, `long`); a float merges NaNs and `±0`, `general` keys
+    as `[]`. What `Tm.gap` reads for `Λ`, whose canonical list needs the strict order (`canonical_spec`). -/
+def _root_.Rel.Obj.canonical : Obj → Bool
+  | .atom .boolean | .atom .long => true
+  | .atom _ => false
+  | .prod a b | .sum a b => a.canonical && b.canonical
+  | .arr b => b.canonical
+
+theorem canonical_spec : (A : Obj) → A.canonical = true → A.Ordered ∧ A.KeyInj
+  | .atom .boolean, _ => ⟨(fun h => nomatch h), fun x y h => by
+      cases x <;> cases y <;> simp_all [Obj.key]⟩
+  | .atom .long, _ => ⟨(fun h => nomatch h), fun x y h => by
+      simp only [Obj.key, Order.rank, List.cons.injEq, and_true] at h
+      have h' := congrArg (· ^^^ (0x8000000000000000 : UInt64)) (UInt64.toNat_inj.1 h)
+      simp only [UInt64.xor_assoc, UInt64.xor_self, UInt64.xor_zero] at h'
+      exact match x, y, h' with | ⟨_⟩, ⟨_⟩, rfl => rfl⟩
+  | .prod a b, h => by
+    simp only [Obj.canonical, Bool.and_eq_true] at h
+    exact ⟨⟨(canonical_spec a h.1).1, (canonical_spec b h.2).1⟩,
+      keyInj_prod (canonical_spec a h.1).2 (canonical_spec b h.2).2⟩
+  | .sum a b, h => by
+    simp only [Obj.canonical, Bool.and_eq_true] at h
+    obtain ⟨⟨oa, ia⟩, ob, ib⟩ := And.intro (canonical_spec a h.1) (canonical_spec b h.2)
+    refine ⟨⟨oa, ob⟩, ?_⟩
+    rintro (x | x) (y | y) e <;> simp only [Obj.key, List.cons.injEq] at e
+    · rw [ia x y e.2]
+    · exact absurd e.1 (by decide)
+    · exact absurd e.1 (by decide)
+    · rw [ib x y e.2]
+  | .arr b, h => by
+    obtain ⟨o, i⟩ := canonical_spec b h
+    refine ⟨o, ?_⟩
+    intro xs ys
+    induction xs generalizing ys with
+    | nil => cases ys with
+      | nil => intro; rfl
+      | cons y ys => intro e; simp [Obj.key] at e
+    | cons x xs ih => cases ys with
+      | nil => intro e; simp [Obj.key] at e
+      | cons y ys =>
+        intro e
+        change 1 :: (b.key x ++ (Obj.arr b).key xs) = 1 :: (b.key y ++ (Obj.arr b).key ys) at e
+        rw [List.cons.injEq] at e
+        have k := Obj.key_prefix b x y _ _ e.2
+        rw [k, List.append_cancel_left_eq] at e
+        rw [i x y k, ih ys e.2]
+  | .atom .byte, h | .atom .char, h | .atom .short, h | .atom .int, h | .atom .month, h | .atom .date, h
+  | .atom .minute, h | .atom .second, h | .atom .time, h | .atom .timestamp, h | .atom .timespan, h
+  | .atom .real, h | .atom .float, h | .atom .datetime, h | .atom .symbol, h | .atom .general, h => by
+    simp [Obj.canonical] at h
+
 /-- Two lists strictly ascending in one strict order, with the same members, are one list. -/
 theorem eq_of_pairwise {α : Type} {r : α → α → Prop} (irr : ∀ a, ¬ r a a) (tr : ∀ {a b c}, r a b → r b c → r a c) :
     ∀ {l m : List α}, l.Pairwise r → m.Pairwise r → (∀ x, x ∈ l ↔ x ∈ m) → l = m

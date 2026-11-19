@@ -870,4 +870,23 @@ theorem ldivB_sound {A B C : Obj} {R : Pl false A B} {S : Pl false A C} {UB : Fn
     (hB : Sound UB TB) (hC : Sound UC TC) : Sound (ldivB A B C R S UB UC) (ldivDen TR TS TB TC) :=
   runPl_sound (pldiv_sound hR hS hB hC)
 
+/-- **`Λ(R)` on the keys `D` names each key's canonical list** (`lamDen`, D2 = C): `rep_lamOn` gives the list's
+    members and a list at every key, `lamOnC_asc` that it ascends with no repeat, `B.KeyInj` that it ascends
+    strictly, and `eq_of_pairwise` that the strictly ascending list of one set is the one `lamDen` names. -/
+theorem lam_sound {A B : Obj} {d : Bool} {R : Fn d A B} {TR : Den A B} (hR : Sound R TR) (ho : B.Ordered)
+    (hi : B.KeyInj) : Sound (lam A B d R) (lamDen TR) :=
+  KSound.reps fun D hD hb a ys ha => by
+    have hs := atKeys hR D hD (CRel.guard_ok_left hb)
+    obtain ⟨h1, h2⟩ := CRel.rep_lamOn _ _ hb
+    have e : CRel.lamOn (R.at (Dem.of d D)) D.val = _ := CRel.guard_eq CRel.ok hb
+    have hc := e ▸ hb
+    have asc : ∀ Y, rep (CRel.lamOn (R.at (Dem.of d D)) D.val).rel a Y → Y.Pairwise B.lt := fun Y h => by
+      obtain ⟨hn, hp⟩ := lamOnC_asc _ _ ho (CRel.ofC_ok hc).1 a Y (by rw [← CRel.rep_ofC hc, ← e]; exact h)
+      exact (hn.and hp).imp fun ⟨ne, nl⟩ =>
+        (B.lt_trichotomy _ _).resolve_right fun h => h.elim (fun k => ne (hi _ _ k)) nl
+    refine ⟨fun h => ⟨asc ys h, fun b => (h1 a ys h b).trans (hs a b ha)⟩, fun ⟨hp, hm⟩ => ?_⟩
+    obtain ⟨Y, hY⟩ := (h2 a).2 (.inr (keyRow ha))
+    rwa [← eq_of_pairwise (Obj.lt_irrefl _) (Obj.lt_trans _) (asc Y hY) hp
+      fun b => (h1 a Y hY b).trans ((hs a b ha).trans (hm b).symm)]
+
 end Rel.Lang.Gen

@@ -109,8 +109,10 @@ def rowGaps : List String := ["setify", "asc"]
 /-- The first node of `t` that `compile_sound` has no case for, with why (`doc/rel-denotation-design.md` §7);
     `none` where every node has one. -/
 def Tm.gap : {A B : Obj} → {d : Bool} → Tm A B d → Option String
-  | _, _, _, .lam _ | _, _, _, .E _ | _, _, _, .thin _ =>
-    some "Λ, E, thin: the list a set is held as waits for D2's canonical tables (§7.1)"
+  -- `Λ`'s canonical list is the strictly ascending one, which exists where the element's key is one to one
+  | _, _, _, .lam (B := B) R =>
+    if B.canonical then R.gap else some "Λ: its element object has a key that merges elements (Obj.canonical)"
+  | _, _, _, .E _ | _, _, _, .thin _ => some "E, thin: lam_sound is not yet applied to E = Λ(∋R) and thin (§7.1)"
   | _, _, _, .hylo .. => some "hylo: its rounds equal lfp only by den_local, which is not proved (§7.2)"
   | _, _, _, .call .. => some "call: a generic definition's term waits for stage 5"
   | _, _, _, .prim r => if rowGaps.contains r.sym then some s!"{r.sym}: the row has no lemma (rowGaps)" else none
