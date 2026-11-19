@@ -6,7 +6,7 @@ use crate::lean::{O, SArr, export};
 use {crate::lean::B, crate::scan};
 
 #[cfg(all(feature = "ffi", not(any(test, feature = "std"))))]
-use {crate::{blocks::Blocks, ffi::{Form, Sink}, lean::{ctor, string}}, alloc::{string::String, vec::Vec}};
+use {crate::{blocks::Blocks, ffi::{Form, Sink}, lean::{box_u64, boxed, ctor, string}}, alloc::{string::String, vec::Vec}};
 
 /// `Coc.encode 8` of the words `ws` as an `Enc.foR`, every cache filled: the answer of a design-§4 kernel at a
 /// fixed-width type other than `boolean`, which `Enc.raw` reads back cut to that type's width.
@@ -18,7 +18,7 @@ pub fn for_words(ws: &[u64]) -> O {
 
 /// `kscan` (`crate::scan::kscan`) of the Lean list `es`.
 #[cfg(all(feature = "ffi", not(any(test, feature = "std"))))]
-fn kscan(op: u8, rev: bool, s: u8, t: u8, n: usize, seg: B, es: B) -> Result<O, String> {
+fn kscan(op: u8, rev: bool, s: u8, t: u8, n: usize, seg: B, es: B) -> Result<(O, Option<u64>), String> {
     let (mut v, mut l) = (Vec::new(), es);
     while !l.is_scalar() { v.push(l.field(0)); l = l.field(1) }
     scan::kscan(op, rev, s, t, n, seg, &v)
@@ -41,10 +41,14 @@ export! {
         answer(scan::col_len(op, kind, n, p.len()), |o| scan::col(op, kind, n, p, o))
     }
 
-    /// `Kernel.kscan op rev s t n seg es` (Rel/Kernel/Scan.lean): `Except String Enc`, the error (tag 0) carrying the
-    /// model's text, the answer (tag 1) an `Enc.foR` (tag 3) at every `t`, a boolean one a `foR` of `u1`.
+    /// `Kernel.kscan op rev s t n seg es` (Rel/Kernel/Scan.lean): `Except String (Enc × Option UInt64)`, the error (tag 0)
+    /// carrying the model's text, the answer (tag 1) a pair (tag 0) of an `Enc.foR` (tag 3) at every `t`, a boolean one
+    /// a `foR` of `u1`, and the fold result: `none` (the scalar 0) at `n = 0`, else `some` (tag 1) of a boxed `UInt64`.
     fn qlean_k_scan(op: u8, rev: u8, s: u8, t: u8, n: usize, seg: B, es: B) -> O {
-        match kscan(op, rev != 0, s, t, n, seg, es) { Ok(e) => ctor(1, [e], &[]), Err(m) => ctor(0, [string(&m)], &[]) }
+        match kscan(op, rev != 0, s, t, n, seg, es) {
+            Ok((e, v)) => ctor(1, [ctor(0, [e, v.map_or_else(|| boxed(0), |v| ctor(1, [box_u64(v)], &[]))], &[])], &[]),
+            Err(m) => ctor(0, [string(&m)], &[]),
+        }
     }
 
 

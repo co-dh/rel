@@ -782,7 +782,9 @@ impl Scan<'_> {
 /// metadata where `Scan::summary` gives it. The answer is written by the encoder's block step (`Sink`), a block at
 /// a time, so its bytes are `Coc.encode 8` of the rows (at a boolean `t` each cut to its low bit, a `foR` of `u1`).
 /// Under `rev` the blocks are walked backwards and each block's rows from its end: no column is reversed in memory.
-pub fn kscan<'a>(op: u8, rev: bool, s: u8, t: u8, n: usize, seg: B<'a>, es: &[B<'a>]) -> Result<O, String> {
+/// The fold result is the row the fold visits last (row `n - 1`, row 0 under `rev`), taken from the block the writer
+/// fills and cut to `t`'s width as `Enc.raw t` reads it back; `None` at `n = 0`, where no row is visited.
+pub fn kscan<'a>(op: u8, rev: bool, s: u8, t: u8, n: usize, seg: B<'a>, es: &[B<'a>]) -> Result<(O, Option<u64>), String> {
     // `None` is `raw`'s `#[]`, of size 0: at `n = 0` that is every row
     let all = |t: u8, e: B<'a>| match Col::of(t, n, e) {
         Some(c) => Ok(c),
@@ -794,10 +796,14 @@ pub fn kscan<'a>(op: u8, rev: bool, s: u8, t: u8, n: usize, seg: B<'a>, es: &[B<
     let Some((&seed, xs)) = cols.split_first() else { return Err("kscan: es is empty; its first column is the seed".into()) };
     let mut r = Scan { op, rev, n, seg: g, seed, xs, carry: Vec::new() };
     if let Err(m) = op_eval(op, 0, 0) && r.zero() { return Err(m.into()) }
-    qtype_width(t).ok_or("kscan: the answer type has no fixed width")?;
+    let tw = qtype_width(t).ok_or("kscan: the answer type has no fixed width")?;
     r.carries();
     let (r, low) = (&r, if t == QT_BOOLEAN { 1 } else { !0u64 });
-    Ok(Sink::new(n, 8, Form::For).enc().answer(&|buf: &mut [i64], lo: usize| {
+    // `raw t`'s cut: one bit at a boolean, `8 * tw` bits otherwise
+    let cut = if t == QT_BOOLEAN { 1 } else if tw < 8 { (1u64 << (8 * tw)) - 1 } else { !0u64 };
+    // the writer may fill blocks on several threads, so the one block holding `last` stores it atomically
+    let (fin, last) = (core::sync::atomic::AtomicU64::new(0), if rev { 0 } else { n.wrapping_sub(1) });
+    let e = Sink::new(n, 8, Form::For).enc().answer(&|buf: &mut [i64], lo: usize| {
         let o = pod::cast_mut::<u64>(pod::bytes_mut(buf)).expect("kscan: an i64 block is a u64 block");
         let (b, nb, mut w64) = (lo >> crate::DEFAULT_LG, o.len(), [0u64; BLK / 64]);
         // a compare against a constant block: the compare kernel's bits, each a row's word
@@ -807,7 +813,10 @@ pub fn kscan<'a>(op: u8, rev: bool, s: u8, t: u8, n: usize, seg: B<'a>, es: &[B<
             r.block(lo, r.carry[b], o);
             if low != !0 { for v in o.iter_mut() { *v &= low } }
         }
-    }))
+        if (lo..lo + nb).contains(&last) { fin.store(o[last - lo] & cut, core::sync::atomic::Ordering::Relaxed) }
+    });
+    // every row is written, so at `n > 0` the block holding `last` stored it
+    Ok((e, (n > 0).then(|| fin.load(core::sync::atomic::Ordering::Relaxed))))
 }
 
 #[cfg(test)]
@@ -852,11 +861,11 @@ mod kscan_tests {
             None => Err("kscan: es is empty; its first column is the seed".into()),
             Some(sd) => rows(op, rev, seg, &sd.1, &xs).map_err(String::from).and_then(|r| match qtype_width(t) {
                 None => Err("kscan: the answer type has no fixed width".into()),
-                Some(_) => Ok(parts(&enc_for(&r.iter().map(|v| if t == QT_BOOLEAN { v & 1 } else { *v }).collect::<Vec<_>>(), 8))),
+                Some(w) => { let ws: Vec<u64> = r.iter().map(|v| if t == QT_BOOLEAN { v & 1 } else { *v }).collect(); let fin = if rev { ws.first() } else { ws.last() }; Ok((parts(&enc_for(&ws, 8)), fin.map(|v| if w < 8 { v & ((1 << (8 * w)) - 1) } else { *v }))) }
             }),
         };
         let bs: Vec<B> = es.iter().map(|e| e.0.borrow()).collect();
-        assert_eq!(kscan(op, rev, s, t, n, g.borrow(), &bs).map(|o| parts(&o)), want, "op {op} rev {rev} s {s} t {t} n {n}");
+        assert_eq!(kscan(op, rev, s, t, n, g.borrow(), &bs).map(|(o, v)| (parts(&o), v)), want, "op {op} rev {rev} s {s} t {t} n {n}");
     }
     // every shape (map, scan, segmented, fill) and op against the row model, over FoR columns with patches and nulls at
     // each width, a dense column cut short, and a constant seed (the compare kernel's path) beside a varying one
@@ -878,6 +887,7 @@ mod kscan_tests {
                             check(op, s, t, n, g, &[col(&x), col(&c)]);
                         }
                         check(op, s, 6, n, g, &[col(&y), col(&x)]);
+                        check(op, s, 5, n, g, &[col(&y), col(&x)]);
                         check(op, s, 6, n, g, &[col(&c), col(&x), (enc_dense(&p), y.clone())]);
                         check(op, s, 6, n, g, &[(enc_dense(&cut), sv.clone()), col(&x)]);
                         check(op, s, 6, n, g, &[col(&x)]);
@@ -891,7 +901,7 @@ mod kscan_tests {
             check(3, 6, 6, n, &segs[0], &[(enc_for(&z, 8), z.clone()), (enc_for(&z, 8), z.clone())]);
             if n > 0 {
                 let e = enc_dense(&bytes(&z, 1));
-                assert_eq!(kscan(0, false, QT_BOOLEAN, 6, n, enc_bits(&segs[0]).borrow(), &[e.borrow()]).map(|o| parts(&o)),
+                assert_eq!(kscan(0, false, QT_BOOLEAN, 6, n, enc_bits(&segs[0]).borrow(), &[e.borrow()]).map(|(o, v)| (parts(&o), v)),
                            Err(format!("kscan: a column holds 0 raw elements, not {n}")));
             }
             let (a, b): (Vec<u64>, Vec<u64>) = ((0..n as u64).map(|i| i % 3 & 1).collect(), (0..n as u64).map(|i| i % 5 & 1).collect());
