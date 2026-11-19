@@ -386,25 +386,51 @@ Diff table 的「状态」列：✅ 后面是完成它的步骤；🔄 是部分
       （2f86a15，`ordcode`，owner: G）：`ascOrd_atom`、`Vals.row_of_seenKey`；`Vals.nub_sorted`（按序码升序、无两行
       序码相等）；`Vals.seenKey_iff_row`（序码相等 ⇔ 行相等）、`Vals.nub_distinct`（005e20e）。缺：1024 行块边界的
       Lean 例子（`decide +kernel` 不归约，未诊断）。
-    - W3 策略（2026-11-19）：旧层不逐点修补。`w3canon`（58715db）证明了循环：旧 `pick` 写 `.bytes` 是因为它的 index
-      是旧 kernel 给的稠密 `ByteArray`，而 `canonC` 经 `CRel.ofC` 在每个算子后运行。所以每个算子先有一个覆盖全部
-      object（atom、`sum`、`arr`）的五-kernel 版本和定律，然后 compiler 一次切换，再由 W5 删除旧层；`RELK.txt` 到
-      切换为止不变。
-    - W3 已在 master（005e20e），尚无程序运行它们：共用构件 `Rel/Run/Cols.lean`（`colConst`、`colMap`、
-      `colPrefix`、`Vals.concat`；定律 `Rel/RepCols.lean`，`scatterWords_fold`）；`Rel/Run/SetOps.lean` 的 `∪ ∩ − ⊑`
-      （`Tab.union_holds`、`inter_holds`、`diff_holds`、`le_holds`、`whereCol_spec`；`whereCol` 拒绝 ≥ 2^63 行）；
-      `Rel/Run/Comp.lean` 的 `≫` 与 converse（`Tab.conv_holds`）。只覆盖 atom 列及其 tuple。
-    - W3 在做：`Tab.comp_holds`（`w3complaw`）；`sum` 侧的 `Vals.cols`、`∩`/`−` 结果有序无重复（`w3arr3`，含
-      `w3arr2` 的 `Enc.WF .i64 .pos`）。
-    - W3 未做：`arr` 侧（`mig-arrkey` 369f095 的移植，需 Rust）；`/` `\` `Λ` `∋`（`kasc` ≫ `kseen` 给出 `lo`/`hi`；
-      分段 `kscan`）；pair/product、`[R,S]`、list 行、arith、est/thin；compiler 切换。
+    - W3 策略（2026-11-19，owner 三条决定，取代同日早先的 "全部算子齐了再一次切换"）：
+      - 工作清单是 `Rel.Lang.Tm` 的构造子（43 个；`call`/`arg`/`var`/`share`/`own` 是绑定），spec 是各自的
+        denotation。不照旧层 `CRel.*`/`Alg.*` 的列表移植（owner："this is stupid"）；旧算子只在 `#guard` 里做对照，
+        与 denotation 不一致时跟 denotation。清单 agent 按旧层数出的 "约 62 个未开始" 作废。
+      - 算子定义在 prelude 里（`Rel/Programs/Prelude.lean`，`.rel` 语法），直接写在五个 kernel 上：`/`、`\`、`Λ`、
+        `∋`、pair/product、`[R,S]`、fold/hylo、arith、`est`/`thin`，按同一规则也包括 `≫`、`∩` 等。它们不是 runtime
+        的 Lean 函数。
+      - 形式 A：一列是关系 `pos ⟶ α`，一张表是 tabulation `R = key(R)° val(R)`。`.rel` 可见的原语：`key`、`val`、
+        `scan(op)`、`scatter(op)`、`asc`、`seen`；`gather` 是复合 `i c`。`Tm` 缩成这些原语加绑定。
+      - compiler 现在就发原语，按程序切换：一个程序展开后只用原语，它就走新路径；"仍走旧路径的程序数" 是进度
+        数字，到 0 时 W5 删除旧层。新旧算子不能在一个程序里混用（旧的写 `.bytes`，新 kernel 拒绝非 foR，转换被
+        禁止）。
+      - 设计：`doc/rel-prelude-kernels.zh.typ`（在写；原语的类型与 denotation、每个构造子的 prelude 定义、`Tm` 的
+        去向、compiler、迁移步骤、给 owner 的未决点）。预计 `mu`/`nu`、fold 的迭代、`arr` cell 不能直接写（未验证）。
+    - W3 已在 master（335b933）的 Lean `Tab` 算子与定律，在形式 A 下是 prelude 定义的复合与证明的来源，不再是
+      实现；尚无程序运行它们：
+      - 共用构件 `Rel/Run/Cols.lean`（`colPrefix`、`shiftCol`、`Arr.concat`、`Vals.concat`、`catPlan`、`lastCount`；
+        `colConst`、`colMap` 在 `Rel/Run/Canon.lean`）；`Rel/Run/Core.lean` 的 `Arr.ofBytes`、`Arr.ofFn`（每个定宽
+        type 的 foR producer，`w1float` 2ed1c81）。
+      - `Rel/Run/Canon.lean`：`Vals.cols`、`Vals.gather`、`Vals.nub`、`Tab.canon`、`dom`、`ran`，覆盖 atom、tuple、
+        `sum`、`arr` 侧（`Tab.canon_holds`、`canon_sorted`）。
+      - `Rel/Run/SetOps.lean`：`∪ ∩ − ⊑`（`Tab.union_holds`、`inter_holds`、`diff_holds`、`le_holds`、`inter_sorted`、
+        `diff_sorted`、`whereCol_spec`；`whereCol` 拒绝 ≥ 2^63 行）。
+      - `Rel/Run/Comp.lean`：`≫` 与 converse（`Tab.comp_holds`、`comp_canon`、`conv_holds`；`Tab.comp` 拒绝
+        `2^63 ≤ n*m + n + m`）。
+      - kernel 签名变更（`w3arrside2`）：`AscKey` = `atom t` | `cells n c lo hi els`，`kasc`/`kseen` 取
+        `List (AscKey × Enc)`；cell 按元素序码的字典序比较，真前缀在前；没有新 export。
+    - W3 在做：`w3arrcat`（`arr` 侧的 `Vals.concat`；在它之前 `arr` 侧的 `∪ ∩ − ≫` 回答
+      `.error "concat: an arr side is not atom columns"`）；`w3div`（`ldiv rdiv lam E nil lt leq`）、`w3struct`
+      （`id top zero val pair prod outl outr junc juncD join flat`）、`w3arith`（`arith succ est thin`，部分 fold）
+      —— 后三个是在形式 A 决定之前派出的 Lean `Tab` 算子，保留的是复合与定律。
+    - W3 未做：prelude 形式的原语与 compiler 发射路径（等设计）；`hylo`、`mu`、`nu`、`atPos`；`prim` 表里程序实际
+      用到的行（未数）。切换前给 compile-diff 补：旧表 dump 的对照、"not ok" 名单逐名比较（现在它只数个数，且
+      两边跑同一个 `Gen.*`，新算子报错或算错都能通过）。
+    - W3 留给后面的风险（清单 agent 提出，均未验证）：计数做 `\` 会物化 join（最多 `|R|·|S|` 行），SudokuPC9、
+      blocks 可能超内存；规范序从 `Obj.lt` 变成 `kasc` 序码，打印的期望值与 `out/key`、`out/val` 可能变；
+      `coc_block_start`、`coc_bools_of`、`structural_bits_of_for` 与 `Plan.abi` 点名的 12 个 export 在 W5 后仍有
+      caller。
     - W4 `Gen.*B`（稠密 bit 矩阵，`Lang.Bits`）改走 table 路径；融合形式只在有定理时回来。
     - W5 删除 `Rel/Run/Code.lean`、`Rel/KernelWF/`、旧的 `KernelSpec` module、`Kernel/{Structural,Sort,Search,
       Elementwise}` 与它们的 Rust；`RELK.txt` = 5 + 保留的。
     - W6 native：`Plan` 得到一个 `Enc` 寄存器，`Plan.abi` 列出这五个。
-  - 度量（每次合并）：调用旧 export 的可执行 def（149，W0 之后未重数）；`RELK.txt` 行数（master 005e20e：79；
-    主要在 W5 下降）；compile-diff 241/25。`make check` 在 f16e293 全绿（2026-11-19）；005e20e 只跑了改动的
-    module 的 build。
+  - 度量（每次合并）：调用旧 export 的可执行 def（149，W0 之后未重数）；`RELK.txt` 行数（master 335b933：79；
+    主要在 W5 下降）；仍走旧路径的程序数（全部；新路径尚不存在）；compile-diff 241/25。`make check` 在 afd96d5
+    全绿（2026-11-19）；16c3c79 全量 build 绿；335b933 的 `make check` 在跑。
   - 2026-11-19 的修复：`Coc.packRes` 改为一次 `map`（77b475c；逐字节 `push` 在 Lean kernel 里是平方的，
     `SeenTest` 8.2 → 1.6 GB，全库 build 峰值 2.8 GB）；own 列文件没有 kind 1，part 数表是唯一判据，两条拒绝文本
     由表生成（679839b；`OWN_NPARTS` 变为 `[Option<usize>; 5]`，qlean 的比较要跟着改）。
