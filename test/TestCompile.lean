@@ -7,6 +7,7 @@ import Rel.Lang.TestCircuit
 import Rel.Lang.TestHylo
 import Rel.Lang.TestDetab
 import Rel.Lang.TestEdit
+import Rel.ObjOrder
 -- every program of `Rel.Programs`, so the gate visits each, a test module or not
 import Rel.Programs.Blocks
 import Rel.Programs.Chess
@@ -55,13 +56,12 @@ def rowsOf {A B : Obj} (R : Tab A B) : List (List Nat) :=
     baseline too large to review. A toolchain whose `hash` changes regenerates the baseline. -/
 def rowCap : Nat := 512
 
-/-- `n.x`'s result, `k` its generated constant at the objects of its term: its status and, where ok, its rows.
-    An error is a result the baseline may not hold: a side `rowsOf` cannot read. -/
-unsafe def result (k : Name) {A B : Obj} (_t : Tm A B) : CommandElabM (Except String (String × List (List Nat))) := do
-  let some g ← IO.ofExcept ((← getEnv).evalConst (CRel A B) (← getOptions) k)
-    | return .ok ("not ok: the generated constant vouches for nothing", [])
-  if !(keyed A && keyed B) then return .error "a side holds a `general` atom, whose `Obj.key` is `[]`"
-  pure (.ok ("ok", rowsOf g))
+/-- A definition's result, `c` its value as `n.expanded` lists it: its status and, where ok, its rows. An error is
+    a result the baseline may not hold: a side `rowsOf` cannot read. -/
+def result {A B : Obj} (c : CRel A B) : Except String (String × List (List Nat)) := do
+  let some g := c | return ("not ok: the generated constant vouches for nothing", [])
+  if !(keyed A && keyed B) then throw "a side holds a `general` atom, whose `Obj.key` is `[]`"
+  pure ("ok", rowsOf g)
 
 /-- A result as the baseline stores it: the status and the rows, or over `rowCap` rows their count and digest. -/
 def toEntry (s : String) (rs : List (List Nat)) : Json :=
@@ -93,37 +93,16 @@ run_cmd do
   let mut errs : Array String := #[]
   let mut open' : List String := []
   for (n, _, _) in reg.progs do
-    let some (ds, _, _) := reg.reps[n]? | throwError "TestCompile: the program `{n}` has no numbered terms"
-    for (x, r) in ds do
-      let ⟨_, _, t⟩ := r
-      if t.dem then continue
+    let gs ← unsafe IO.ofExcept ((← getEnv).evalConst (List (String × Gen.Gv)) (← getOptions) (n ++ `expanded))
+    for (x, ⟨_, _, c⟩) in gs do
       let nm := s!"{n}.{x}"
-      match ← unsafe result (Parse.constOf n x) t with
+      match result c with
       | .error e => errs := errs.push s!"`{nm}`: {e}"
       | .ok (s, rs) =>
         if run.contains nm then throwError "TestCompile: `{nm}` is visited twice"
         run := run.insert nm (s, rs)
         if s != "ok" then open' := open' ++ [nm]
-  -- the progress number, from `Expand.emit`'s one traversal `Tm.offKernel`: a program is on the kernel path when it
-  -- runs a term and every node of every term it runs has a kernel body, a call one whose constant has a kernel twin
-  -- (`n.kernel`); a program that runs no term is counted through its callers; `Rel.Programs` are the language's
-  let env ← getEnv
-  let flag (n : Name) (f : Name) : CommandElabM Bool := unsafe do
-    IO.ofExcept (env.evalConst Bool (← getOptions) (n ++ f))
-  let mut kern : List Name := []; let mut old : List (Name × List String) := []
-  let mut defs : List (Name × List String) := []
-  for (n, _, _) in reg.progs do
-    -- the node kinds with no kernel body, of the terms it runs and of its definitions elaborated once
-    let ks ← unsafe IO.ofExcept (env.evalConst (List String) (← getOptions) (n ++ `offKernel))
-    if ← flag n `kernel then kern := kern ++ [n]
-    else if !(← flag n `runs) then defs := defs ++ [(n, ks)]
-    else old := old ++ [(n, ks)]
-  let inP (n : Name) := (`Rel.Programs).isPrefixOf n
-  let kernP := kern.filter inP; let oldP := old.filter (inP ·.1)
-  logInfo m!"kernel path: {kernP.length} programs of `Rel.Programs` {kernP}; old path: {oldP.length} {oldP}; \
-    definitions only (counted through their callers): {defs.filter (inP ·.1)}; test programs: kernel path \
-    {kern.filter (!inP ·)}, old path {(old.filter (!inP ·.1)).map (·.1)}"
-  logInfo m!"compile agrees with the generated code on {run.size - open'.length} definitions; not ok on \
+  logInfo m!"the generated code is ok on {run.size - open'.length} definitions; not ok on \
     {open'.length}: {open'}"
   let names := (run.toList.map (·.1)).mergeSort fun a b => decide (a ≤ b)
   let stored := (names.filter fun nm => match run[nm]? with | some (_, rs) => rs.length > rowCap | none => false)
