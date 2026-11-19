@@ -20,6 +20,7 @@ T       := /data/tmp/rel-gates/$(notdir $(CURDIR))
 GATES   := $(CURDIR)/.lake/build/bin/gates
 NATIVE  := $(CURDIR)/.lake/build/native/rel-native
 RELKA   := $(CURDIR)/.lake/build/lib/librelk.a
+QRT     := $(CURDIR)/.lake/build/native/cargo/qrt.o
 SQL     := sqlite3 -readonly $(DB)
 # prints the gate's wall time when it ends, pass or fail
 GATE     = SECONDS=0; trap 'echo "[$@] $$SECONDS s, exit $$?"' EXIT; mkdir -p $(T)
@@ -117,12 +118,13 @@ panic-allow: index
 	$(GATE)
 	$(SQL) "$(PANICS)" > panic-allow.txt
 
-# every @[extern] name declared in RelKernel is defined in librelk.a
+# every @[extern] name declared in RelKernel is defined in what a native program links: librelk.a (the kernels) or
+# qrt.o (the Lean runtime symbols crate/rt provides, e.g. lean_array_push)
 externs:
 	$(GATE)
-	$(LAKE) build RelKernel gates
+	$(LAKE) build RelKernel gates rel-native
 	$(LAKE) query RelKernel:modules | xargs $(LAKE) env $(GATES) externs > $(T)/extern.tsv
 	cut -f1 $(T)/extern.tsv | sort -u > $(T)/extern.names
-	nm -g --defined-only --format=just-symbols $(RELKA) | sort -u > $(T)/relk.defined
+	nm -g --defined-only --format=just-symbols $(RELKA) $(QRT) | sort -u > $(T)/relk.defined
 	comm -23 $(T)/extern.names $(T)/relk.defined > $(T)/extern.missing
-	if [ -s $(T)/extern.missing ]; then echo "extern names with no definition in $(RELKA):"; grep -F -f $(T)/extern.missing $(T)/extern.tsv; exit 1; fi
+	if [ -s $(T)/extern.missing ]; then echo "extern names with no definition in $(RELKA) or $(QRT):"; grep -F -f $(T)/extern.missing $(T)/extern.tsv; exit 1; fi
