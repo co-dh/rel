@@ -15,9 +15,9 @@ open Rel.Core.Rel hiding id comp recip inter union zero le inl inr junc
 
 variable {α β : Type}
 
-/-- `Φ X` at `a` reads `X` only at the children of `a`. -/
-def Local (ch : α → α → Prop) (Φ : Core.Rel α β → Core.Rel α β) : Prop :=
-  ∀ X Y a, (∀ a', ch a a' → ∀ b, (X a' b ↔ Y a' b)) → ∀ b, (Φ X a b ↔ Φ Y a b)
+/-- `Φ X` at a node `a` of `N` reads `X` only at the children of `a`. -/
+def Local (N : α → Prop) (ch : α → α → Prop) (Φ : Core.Rel α β → Core.Rel α β) : Prop :=
+  ∀ X Y a, N a → (∀ a', ch a a' → ∀ b, (X a' b ↔ Y a' b)) → ∀ b, (Φ X a b ↔ Φ Y a b)
 
 /-- A pending node none of whose children is pending. -/
 def ready (ch : α → α → Prop) (pend : α → Prop) (a : α) : Prop := pend a ∧ ∀ a', ch a a' → ¬ pend a'
@@ -39,14 +39,14 @@ def Inv (ch : α → α → Prop) (Φ : Core.Rel α β → Core.Rel α β) (N pe
     fixed point's value. -/
 theorem round_inv {ch : α → α → Prop} {Φ : Core.Rel α β → Core.Rel α β} {N pend : α → Prop} {X : Core.Rel α β}
     (hm : Monotonic Φ)
-    (hl : Local ch Φ) (hN : ∀ a a', N a → ch a a' → N a') (h : Inv ch Φ N pend X) :
+    (hl : Local N ch Φ) (hN : ∀ a a', N a → ch a a' → N a') (h : Inv ch Φ N pend X) :
     Inv ch Φ N (fun a => pend a ∧ ¬ ready ch pend a) (fun a b => X a b ∨ (ready ch pend a ∧ Φ X a b)) := by
   obtain ⟨hs, hd, he, hk⟩ := h
   refine ⟨fun a ha => hs a ha.1, fun a hNa hp b => ?_, fun a hp b hx => ?_, fun a a' hNa hp hc hp' => ?_⟩
   · by_cases hpa : pend a
     · have hr : ready ch pend a := Classical.byContradiction fun hr => hp ⟨hpa, hr⟩
       have key : Φ X a b ↔ mu Φ a b :=
-        (hl X (mu Φ) a (fun a' hc b' => hd a' (hN a a' hNa hc) (hr.2 a' hc) b') b).trans
+        (hl X (mu Φ) a hNa (fun a' hc b' => hd a' (hN a a' hNa hc) (hr.2 a' hc) b') b).trans
           (by rw [mu_fix hm])
       exact ⟨fun hx => hx.elim (fun hx => absurd hx (he a hpa b)) (fun hx => key.1 hx.2),
         fun hx => Or.inr ⟨hr, key.2 hx⟩⟩
@@ -58,7 +58,7 @@ theorem round_inv {ch : α → α → Prop} {Φ : Core.Rel α β → Core.Rel α
     · exact hk a a' hNa hpa hc hp'.1
 
 theorem rounds_inv {ch : α → α → Prop} {Φ : Core.Rel α β → Core.Rel α β} {N : α → Prop}
-    (hm : Monotonic Φ) (hl : Local ch Φ)
+    (hm : Monotonic Φ) (hl : Local N ch Φ)
     (hN : ∀ a a', N a → ch a a' → N a') :
     ∀ n pend X, Inv ch Φ N pend X → Inv ch Φ N (rounds ch Φ n pend X).1 (rounds ch Φ n pend X).2
   | 0, _, _, h => h
@@ -67,7 +67,7 @@ theorem rounds_inv {ch : α → α → Prop} {Φ : Core.Rel α β → Core.Rel �
 /-- **`hylo` computes the least fixed point**: from the nodes `N` closed under `ch`, all pending and none valued,
     rounds that leave nothing pending value every node of `N` as `mu Φ`, `Φ X = c G(X) S`. -/
 theorem rounds_lfp {ch : α → α → Prop} {Φ : Core.Rel α β → Core.Rel α β} {N : α → Prop}
-    (hm : Monotonic Φ) (hl : Local ch Φ)
+    (hm : Monotonic Φ) (hl : Local N ch Φ)
     (hN : ∀ a a', N a → ch a a' → N a') (n : Nat) (hdone : ∀ a, ¬ (rounds ch Φ n N fun _ _ => False).1 a) :
     ∀ a, N a → ∀ b, ((rounds ch Φ n N fun _ _ => False).2 a b ↔ mu Φ a b) := fun a hNa b =>
   (rounds_inv hm hl hN n N _ ⟨fun _ h => h, fun _ h hn => absurd h hn, fun _ _ _ h => h,
@@ -120,14 +120,15 @@ theorem hyloRounds_ok {chN : CRel A A} {φ : CRel A B → CRel A A → CRel A B}
 /-- **`hyloRounds` read back** (`rounds_lfp` on arrays): from the nodes `N` (a coreflexive closed under the
     children `chN`), all pending and none valued, rounds whose bits say the pending nodes emptied and the value is
     ok leave `mu Φ` at every node of `N`, where `φ X P` is `Φ` at the nodes `P` (`onNodes`) and `Φ` is monotonic
-    and local along `chN`. Rounds stuck are `stuck_not_acc`. -/
+    and local on `N` along `chN`. A round reads `chN` only where its bit is set, so `hl`, `hN` are needed only
+    there. Rounds stuck are `stuck_not_acc`. -/
 theorem rep_hylo {chN : CRel A A} {φ : CRel A B → CRel A A → CRel A B}
-    {Φ : Core.Rel A.El B.El → Core.Rel A.El B.El}
-    (hm : Monotonic Φ) (hl : Local (fun a a' => rep chN.rel a a') Φ)
-    (hφ : ∀ X P, (φ X P).ok = true → (∀ x y, rep P.rel x y → x = y) →
+    {Φ : Core.Rel A.El B.El → Core.Rel A.El B.El} {N : CRel A A} (hm : Monotonic Φ)
+    (hl : chN.ok = true → Local (fun a => rep N.rel a a) (fun a a' => rep chN.rel a a') Φ)
+    (hφ : ∀ X P, X.ok = true → (φ X P).ok = true → (∀ x y, rep P.rel x y → x = y) →
       ∀ a b, (rep (φ X P).rel a b ↔ rep P.rel a a ∧ Φ (fun a b => rep X.rel a b) a b))
-    {N : CRel A A} (hc : ∀ x y, rep N.rel x y → x = y)
-    (hN : ∀ a a', rep N.rel a a → rep chN.rel a a' → rep N.rel a' a') (f : Nat)
+    (hc : ∀ x y, rep N.rel x y → x = y)
+    (hN : chN.ok = true → ∀ a a', rep N.rel a a → rep chN.rel a a' → rep N.rel a' a') (f : Nat)
     (hb : (hyloRounds chN φ f N (some Alg.zero)).2 = true)
     (hx : (hyloRounds chN φ f N (some Alg.zero)).1.ok = true) :
     ∀ a, rep N.rel a a → ∀ b, (rep (hyloRounds chN φ f N (some Alg.zero)).1.rel a b ↔ Core.Rel.mu Φ a b) := by
@@ -183,9 +184,10 @@ theorem rep_hylo {chN : CRel A A} {φ : CRel A B → CRel A A → CRel A B}
               Φ (fun a b => rep X.rel a b) a b) :=
           funext fun a => funext fun b => propext <| by
             rw [CRel.rep_union _ _ hxo]
-            exact or_congr Iff.rfl ((hφ _ _ hxr.2 hcr a b).trans (and_congr_left' (hready a)))
+            exact or_congr Iff.rfl ((hφ _ _ hxr.1 hxr.2 hcr a b).trans (and_congr_left' (hready a)))
+        have hch := (Bool.and_eq_true_iff.1 (CRel.guard_ok_left hc1.1)).2
         refine ih _ _ h hx (fun x y h => hcp x y ((CRel.rep_diff _ _ hp x y).1 h).1) ?_
-        rw [eP, eX]; exact round_inv hm hl hN hinv
+        rw [eP, eX]; exact round_inv hm (hl hch) (hN hch) hinv
 
 #print axioms rep_hylo
 

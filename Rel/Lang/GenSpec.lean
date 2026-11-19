@@ -481,7 +481,7 @@ theorem thinL_sound {B : Obj} {Q : Fn true (.prod B B) (.prod B B)} {TQ : Den (.
 
 /-- A round's pairs `K` have a row, so `onKeys` runs `S` on their values, where it agrees with `TS`. -/
 theorem onKeys_round {P V : Obj} {S : Rel P V} {TS : Den P V} (hS : Sound S TS) (K : CRel P P) (p w)
-    (hp : ∃ a, rep K.rel a p) (hc : ∀ a b, rep K.rel a b → a = b) (hok : (onKeys S K).ok = true) :
+    (hp : ∃ a, rep K.rel a p) (hok : (onKeys S K).ok = true) :
     rep (onKeys S K).rel p w ↔ TS p w := by
   obtain ⟨a, ha⟩ := hp
   have h0 : (K.rel.n == 0) = false := by
@@ -491,7 +491,7 @@ theorem onKeys_round {P V : Obj} {S : Rel P V} {TS : Den P V} (hS : Sound S TS) 
     · have : K.rel.n.toNat = 0 := by simp [beq_iff_eq.1 h]
       exact absurd j.2 (by omega)
   simp only [onKeys, h0, Bool.false_eq_true, if_false] at hok ⊢
-  exact hS.agree hok p w ((idU_holds K.rel.val p p).2 ⟨rfl, keyRow (hc a p ha ▸ ha)⟩) rfl
+  exact hS.agree hok p w ((idU_holds K.rel.val p p).2 ⟨rfl, (valRow K.rel p).2 ⟨a, ha⟩⟩) rfl
 
 /-- A step run on a round's coreflexive `D` of the pairs `S` (`onKeys`) computes `T` at those pairs: `D` has a
     row, so the step ran. -/
@@ -499,7 +499,7 @@ theorem onKeys_sound {A B : Obj} {F : Rel A B} {T : Den A B} (hF : Sound F T) (D
     (S : A.El → Prop) (hD : rep D = corefl (α := A.El) S) (hb : (onKeys F (some D)).ok = true) :
     ∀ x y, S x → (rep (onKeys F (some D)).rel x y ↔ T x y) := fun x y hx =>
   have hk : rep D x x := by rw [hD]; exact ⟨rfl, hx⟩
-  onKeys_round hF (some D) x y ⟨x, hk⟩ (fun a b h => (show corefl S a b by rw [← hD]; exact h).1) hb
+  onKeys_round hF (some D) x y ⟨x, hk⟩ hb
 
 /-- `loop(F)` folds the step `F` along each array from the left, from the seed. -/
 theorem loop_sound {X Y : Obj} {d : Bool} {F : Fn d (.prod X Y) X} {TF : Den (.prod X Y) X} (hF : Sound F TF) :
@@ -701,9 +701,9 @@ theorem foldr_sound {E V : Obj} {d : Bool} {e : Fn false V V} {S : Fn d (.prod E
   dsimp only at hb ⊢; obtain ⟨hb, e⟩ := also_ok_rel hb; rw [e]
   refine (CRel.rep_foldOn false pairC Prod.mk Rep.pairC_pt _ _ _ hb.2 _ rfl _ rfl _ (fun _ _ => rfl) _ (fun _ => rfl) _
     (fun _ => rfl) _ (fun _ => rfl) (fun _ => TS) ?_ xs w).trans ?_
-  · intro i _ _ hbi p w hp hc
+  · intro i _ _ hbi p w hp _
     simp only [demandStepC, Bool.and_eq_true] at hbi
-    exact onKeys_round hS _ p w hp hc hbi.1.2
+    exact onKeys_round hS _ p w hp hbi.1.2
   · exact and_congr_right fun _ => exists_congr fun ys => exists_congr fun hy => and_congr_left fun _ =>
       (valRow _ _).trans (by rw [he.run_eq hb.1]; exact Iff.rfl)
 
@@ -718,9 +718,9 @@ theorem fold_sound {E V : Obj} {d : Bool} {e : Fn false V V} {S : Fn d (.prod V 
       ⟨fun ⟨u, e, hu, he, hq⟩ => ⟨e, u, he, hu, hq⟩, fun ⟨e, u, he, hu, hq⟩ => ⟨u, e, hu, he, hq⟩⟩)
     _ _ _ hb.2 _ rfl _ rfl _ (fun _ _ => rfl) _ (fun _ => rfl) _ (fun _ => rfl) _ (fun _ => rfl) (fun _ => TS) ?_
     xs w).trans ?_
-  · intro i _ _ hbi p w hp hc
+  · intro i _ _ hbi p w hp _
     simp only [demandStepC, Bool.and_eq_true] at hbi
-    exact onKeys_round hS _ p w hp hc hbi.1.2
+    exact onKeys_round hS _ p w hp hbi.1.2
   · rw [foldDen_rev]; simp only [ordL, cond_true]
     exact and_congr_right fun _ => exists_congr fun ys => exists_congr fun hy => and_congr_left fun _ =>
       (valRow _ _).trans (by rw [he.run_eq hb.1])
