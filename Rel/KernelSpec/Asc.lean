@@ -123,8 +123,8 @@ def ascKeys (m : USize) (es : List (QAtomicType × Enc)) : List (Array UInt64) :
 through that puts `x[ps[k]]` at `k`. -/
 theorem scatter_grade {M : Nat} (hM : M < 2 ^ 64) {ps : List Nat} (hp : ps.Perm (List.range M))
     {r x v : Array UInt64}
-    (hr : scatterWords (ps.map Nat.toUInt64).toArray ((List.range M).map Nat.toUInt64).toArray M 0 = .ok r)
-    (hx : x.size = M) (hv : scatterWords r x M 0 = .ok v) :
+    (hr : scatterWords .last (ps.map Nat.toUInt64).toArray ((List.range M).map Nat.toUInt64).toArray M 0 = .ok r)
+    (hx : x.size = M) (hv : scatterWords .last r x M 0 = .ok v) :
     v.size = M ∧ ∀ k (hk : k < ps.length), v[k]? = x[ps[k]]? := by
   have hnd : ps.Nodup := hp.nodup_iff.2 List.nodup_range
   have hlen : ps.length = M := by simpa using hp.length_eq
@@ -160,19 +160,19 @@ theorem scatter_grade {M : Nat} (hM : M < 2 ^ 64) {ps : List Nat} (hp : ps.Perm 
 
 /-- What `kasc` answers, unfolded: the key columns `cs`, the destinations `r` and the sorted words `wss`. -/
 theorem kasc_ok {m : USize} {es : List (QAtomicType × Enc)} {vs : List Enc} {p : Enc} (h : kasc m es = .ok (vs, p)) :
-    ∃ cs, es.mapM (ascCol m) = .ok cs ∧ ∃ r, scatterWords ((ascGrade m.toNat (cs.map (·.2))).map Nat.toUInt64).toArray
+    ∃ cs, es.mapM (ascCol m) = .ok cs ∧ ∃ r, scatterWords .last ((ascGrade m.toNat (cs.map (·.2))).map Nat.toUInt64).toArray
       ((List.range m.toNat).map Nat.toUInt64).toArray m.toNat 0 = .ok r ∧
-      ∃ wss, cs.mapM (fun c => scatterWords r c.1 m.toNat 0) = .ok wss ∧ vs = wss.map wordsFoR ∧
+      ∃ wss, cs.mapM (fun c => scatterWords .last r c.1 m.toNat 0) = .ok wss ∧ vs = wss.map wordsFoR ∧
         p = wordsFoR ((ascGrade m.toNat (cs.map (·.2))).map Nat.toUInt64).toArray := by
   unfold kasc at h
   cases hc : es.mapM (ascCol m) with
   | error s => simp [hc, bind, Except.bind] at h
   | ok cs =>
-    cases hr : scatterWords ((ascGrade m.toNat (cs.map (·.2))).map Nat.toUInt64).toArray
+    cases hr : scatterWords .last ((ascGrade m.toNat (cs.map (·.2))).map Nat.toUInt64).toArray
         ((List.range m.toNat).map Nat.toUInt64).toArray m.toNat 0 with
     | error s => simp [hc, hr, bind, Except.bind] at h
     | ok r =>
-      cases hw : cs.mapM (fun c => scatterWords r c.1 m.toNat 0) with
+      cases hw : cs.mapM (fun c => scatterWords .last r c.1 m.toNat 0) with
       | error s => simp [hc, hr, hw, bind, Except.bind] at h
       | ok wss =>
         simp only [hc, hr, hw, bind, Except.bind, pure, Except.pure, Except.ok.injEq, Prod.mk.injEq] at h

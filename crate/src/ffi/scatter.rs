@@ -38,10 +38,10 @@ pub fn except(r: Result<O, String>) -> O {
 }
 
 export! {
-    /// Spec: `kscatter m ix e n fill` reads the `m` words of `ix`, then of `e` (each `foR`, its layout whole), and answers
-    /// `n` cells, `fill` but where a row `k` writes `e[k]` at `ix[k]`, the last such row winning, encoded as
-    /// `Coc.encode 8`; the first error met in that order is the answer, an index `>= n` among them.
-    fn qlean_k_scatter(m: usize, ix: B, e: B, n: usize, fill: u64) -> O {
-        except(blocks_view("scatter: ix", m, ix).and_then(|is| blocks_view("scatter: e", m, e).and_then(|es| scatter::blocks(&is, &es, n, fill))))
+    /// Spec: `kscatter op m ix e n fill` reads the `m` words of `ix`, then of `e` (each `foR`, its layout whole), and answers
+    /// `n` cells, each `fill` folded with `Op.eval op` over the rows `k` naming it (`e[k]`), in row order, encoded as
+    /// `Coc.encode 8`; the first error met in that order is the answer, an index `>= n` or a failing step among them.
+    fn qlean_k_scatter(op: u8, m: usize, ix: B, e: B, n: usize, fill: u64) -> O {
+        except(blocks_view("scatter: ix", m, ix).and_then(|is| blocks_view("scatter: e", m, e).and_then(|es| scatter::blocks(op, &is, &es, n, fill))))
     }
 }
