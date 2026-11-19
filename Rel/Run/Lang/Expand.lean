@@ -713,7 +713,7 @@ partial def node (pre : Name) (ρ : List (Nat × Lean.Expr)) {A B : Obj} {d : Bo
   | .prod I (.arr E), V, _, .foldI (d := d) (d' := d') e S =>
     return g ``Gen.foldI #[oE I, oE E, oE V, bE d, bE d', ← c e, ← c S]
   | .prod I A, B, _, .flat (d := d) R => return g ``Gen.flat #[oE I, oE A, oE B, bE d, ← c R]
-  | A, B, d, .var k => match ρ.lookup k with
+  | A, B, _, .var k => match ρ.lookup k with
     | some x => if (← inferType x).isAppOf ``Gen.Pl then return g ``Gen.ofPl #[oE A, oE B, x]
                 else return g ``Gen.const #[oE A, oE B, x]
     | none => throwError "rel_program expansion: internal: the variable {k} is not bound here"

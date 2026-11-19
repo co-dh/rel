@@ -878,7 +878,7 @@ theorem ofPl_sound {A B : Obj} {p : Pl A B} {T : Den A B} (hp : PSound p T) : So
   cases p with
   | closed p => exact runPl_sound hp
   | on f =>
-    refine ofVals_keys fun X hb x y hx => ?_
+    refine ofVals_keys (f := fun X => runPl (f (idU X))) fun X hb x y hx => ?_
     simp only [runPl] at hb ⊢; obtain ⟨hb, e⟩ := also_ok_rel hb; rw [e, CRel.rep_ofC hb.2]
     exact (rep_runC _ (CRel.ofC_ok hb.2).1 x y).trans
       (hp (idU X) (fun x y k => ((idU_holds X x y).1 k).1) hb.1 x y hx)
