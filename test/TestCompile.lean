@@ -8,6 +8,24 @@ import Rel.Lang.TestHylo
 import Rel.Lang.TestDetab
 import Rel.Lang.TestEdit
 import Rel.Run.Lang.Compile
+-- every program of `Rel.Programs`, so the gate visits each, a test module or not
+import Rel.Programs.Blocks
+import Rel.Programs.Chess
+import Rel.Programs.Circuit
+import Rel.Programs.CSP
+import Rel.Programs.Detab
+import Rel.Programs.Edit
+import Rel.Programs.JobShop
+import Rel.Programs.Knapsack
+import Rel.Programs.Mss
+import Rel.Programs.Party
+import Rel.Programs.Prelude
+import Rel.Programs.Quicksort
+import Rel.Programs.Selsort
+import Rel.Programs.SudokuAC
+import Rel.Programs.SudokuPC
+import Rel.Programs.SudokuPC9
+import Rel.Programs.Wumpus
 
 /-! The differential check of `compile` (`doc/rel-denotation-design.md` §5.1, stage 3): every closed definition of
     every registered program, its term run by `compile`, against the constant `rel_program` generated for it, and
@@ -95,14 +113,25 @@ run_cmd do
         if run.contains nm then throwError "TestCompile: `{nm}` is visited twice"
         run := run.insert nm (s, rs)
         if s != "ok" then open' := open' ++ [nm]
-  -- the progress number: the programs some term of which has a node with no kernel body (`n.kernel`, the one
-  -- traversal `Tm.onKernel` in `Expand.emit`); `Rel.Programs` are the language's programs, the rest tests
+  -- the progress number, from `Expand.emit`'s one traversal `Tm.offKernel`: a program is on the kernel path when it
+  -- runs a term and every node of every term it runs has a kernel body, a call one whose constant has a kernel twin
+  -- (`n.kernel`); a program that runs no term is counted through its callers; `Rel.Programs` are the language's
   let env ← getEnv
-  let (kern, old) := reg.progs.toList.map (·.1) |>.partition fun n =>
-    (env.find? (n ++ `kernel)).bind (·.value?) == some (toExpr true)
-  let oldP := old.filter (`Rel.Programs).isPrefixOf
-  logInfo m!"old path: {oldP.length} programs of `Rel.Programs` {oldP}; {old.length - oldP.length} test programs; \
-    kernel path: {kern.length} {kern}"
+  let flag (n : Name) (f : Name) : CommandElabM Bool := unsafe do
+    IO.ofExcept (env.evalConst Bool (← getOptions) (n ++ f))
+  let mut kern : List Name := []; let mut old : List (Name × List String) := []
+  let mut defs : List (Name × List String) := []
+  for (n, _, _) in reg.progs do
+    -- the node kinds with no kernel body, of the terms it runs and of its definitions elaborated once
+    let ks ← unsafe IO.ofExcept (env.evalConst (List String) (← getOptions) (n ++ `offKernel))
+    if ← flag n `kernel then kern := kern ++ [n]
+    else if !(← flag n `runs) then defs := defs ++ [(n, ks)]
+    else old := old ++ [(n, ks)]
+  let inP (n : Name) := (`Rel.Programs).isPrefixOf n
+  let kernP := kern.filter inP; let oldP := old.filter (inP ·.1)
+  logInfo m!"kernel path: {kernP.length} programs of `Rel.Programs` {kernP}; old path: {oldP.length} {oldP}; \
+    definitions only (counted through their callers): {defs.filter (inP ·.1)}; test programs: kernel path \
+    {kern.filter (!inP ·)}, old path {(old.filter (!inP ·.1)).map (·.1)}"
   logInfo m!"compile agrees with the generated code on {run.size - open'.length} definitions; not ok on \
     {open'.length}: {open'}"
   let names := (run.toList.map (·.1)).mergeSort fun a b => decide (a ≤ b)
