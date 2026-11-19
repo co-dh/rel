@@ -330,11 +330,11 @@ def litSide {A : Obj} {n : USize} (x : Vals A n) : Bld Side :=
 
 /-- The registers of a closed term's value, key side then value side. Stage 1a builds a literal and a converse,
     which swaps the sides and emits nothing; any other node is refused. -/
-def ofTm : {A B : Obj} → {d : Bool} → Tm A B d → Bld (Side × Side)
-  | _, _, _, .val R => return (← litSide R.key, ← litSide R.val)
-  | _, _, _, .conv R => return (← ofTm R).swap
-  | _, _, _, .share _ R => ofTm R
-  | _, _, _, _ => throw "a node other than a literal, a converse or a shared term: stage 1a builds only those"
+def ofTm : {A B : Obj} → Tm A B → Bld (Side × Side)
+  | _, _, .val R => return (← litSide R.key, ← litSide R.val)
+  | _, _, .conv R => return (← ofTm R).swap
+  | _, _, .share _ R => ofTm R
+  | _, _, _ => throw "a node other than a literal, a converse or a shared term: stage 1a builds only those"
 
 /-! ### Builders of `Alg`'s defs (stage 1b) -/
 
