@@ -54,18 +54,24 @@
     edge("-|>", [`Plan`]),
     node((3, 0), [*5 个 kernel* \ #text(8pt)[`scan` `scatter` ┃ `gather` `asc` `distinct`]], ..bx(c-rs, none)),
   ),
-  caption: [一个 frame 是位置对象 `I` 上的 tabulation，记作 `[C]`；`I` 只有长度 `n`，不存储。],
+  caption: [一个 frame 是从位置对象 `N` 出发、定义域为 `(<m)` 的部分 map，记作 `[C]`；只存长度 `m`。],
 )
 
 #tbl(c-syn, (auto, auto, 1fr), ([记号], [类型], [含义]),
-  [`x`], [`[C]`], [一个 frame：tabulation `c : I ⟶ C`，`I` 是行位置 `0…n−1`（第 2 节）。`[C]` 是这个 map 的记号],
+  [`N`], [对象], [位置（自然数），所有 frame 共用；元素不存储],
+  [`x` `y`], [`[C]`], [一个 frame：部分 map `x : N ⟶ C`，`dom(x) = (<m)`（第 2 节）。第 `a` 列是 `x ≫ a`；`[C]` 是这类 map 的类型],
+  [`m`], [自然数], [frame 的长度；两个 frame 时写 `m₁` `m₂`],
+  [`(<n)`], [`N ⟶ N`], [coreflexive：只放过 `i < n`],
+  [`(+n)`], [`N ⟶ N`], [函数 `i ↦ i+n`；`(+n)°` 是 `i ↦ i−n`，只在 `i ≥ n` 有像],
+  [`≤ₙ` `<ₙ`], [`N ⟶ N`], [位置的序],
+  [`ι` `σ`], [`N ⟶ N`], [新位置到旧位置的关系；`σ` 专指 `(<m)` 上的置换。结果的列是 `ι ≫ x`],
   [`S`], [`Schema`], [行的类型：带列名的列类型表；`S.obj` 是其积],
   [`a` `v`], [`col S "…"`], [一列：一个投影（`π₁` `π₂` 的复合）],
   [`k`], [`col S "…"`], [key 列（一个投影，或若干投影的 pair）],
   [`p`], [`C ⟶ C`], [谓词，写成 coreflexive],
   [`e`], [`C ⟶ V`], [一行之内的表达式],
   [`!`], [`A ⟶ 1`], [到 prelude 的终对象 `1` 的 `⊤`],
-  [`F(R)`], [`[A] ⟶ [B]`], [后接 `R`：`c ↦ c ≫ R`，`I` 不变],
+  [`F(R)`], [`[A] ⟶ [B]`], [后接 `R`：`x ↦ x ≫ R`，位置不变（`ι = 𝟙`）],
 )
 
 // ───────────────────────────── 0
@@ -145,29 +151,31 @@
 // ───────────────────────────── 2
 = 存储与顺序
 
-一个实例：frame `[(A,1),(B,2),(A,1)]` 是 `a : I ⟶ K`、`b : I ⟶ N`，`I = {0,1,2}`：`0 {a} A`，`0 {b} 1`，`2 {a} A`，`2 {b} 1`。
-第 0 行与第 2 行是 `I` 的不同元素，所以是两行；`a° ≫ b` 只有 `A ↦ 1`、`B ↦ 2` 两对。
+一个实例：frame `[(A,1),(B,2),(A,1)]` 是 `a : N ⟶ K`、`b : N ⟶ V`，`m = 3`：`0 {a} A`，`0 {b} 1`，`2 {a} A`，`2 {b} 1`，`3` 没有像。
+第 0 行与第 2 行是 `N` 的不同元素，所以是两行；`a° ≫ b` 只有 `A ↦ 1`、`B ↦ 2` 两对。
 
-- *语义是集合。* 没有 bag，也没有 list 对象。frame 是一个 tabulation：每列是 `I` 出发的 map。以 `I` 为 key 它已经是
+- *语义是集合。* 没有 bag，也没有 list 对象。frame 是一族从同一个 `N` 出发的部分 map，定义域都是 `(<m)`。以 `N` 为 key 它已经是
   `asc`、`distinct` 的，不需要排序。`a° ≫ b : A ⟶ B`（排序并去重）只在运算的规格需要它时才形成：join、`distinct`、成员判断。
-- *顺序是位置的顺序。* 用户的排序是一个置换 `I ⟶ I`，由 `gather` 施加。规则：结果是新 frame 的运算必须说明它怎样给新的 `I` 编号。
+- *新 frame = 位置关系后接列。* 结果是新 frame 的运算给出 `ι : N ⟶ N`（新位置 ↦ 旧位置），结果是 `ι ≫ x`。
+  规格就写成这个形状，所以它同时说明了实现：`ι` 是切片时只改 `lo`、`hi`，是数据算出的数组时每列一次 `gather` 或 `scatter`。
 
-#tbl(c-sem, (auto, 1fr), ([运算的类别], [新的 I]),
-  [`F(R)`：`select` `derive` `apply` `impute`], [不变],
-  [`filter`、`distinct`、semi / anti join、`sample`], [保留位置的集合的 `enum`：按原位置顺序重新编号],
-  [`sortBy`、`shuffle`], [同一个 `I`，经置换],
-  [`take` `drop` `range`], [`I` 的一个区间，平移到 0],
-  [`cat`、`union`], [`I + J`：左边的位置在前],
-  [join、`over`、`melt`], [匹配对 `(i, j)` 的集合的 `enum`，按 `(i, j)` 的字典序],
-  [`groupBy`、`aggregate`、pivot], [出现的 key 的集合的 `enum`，按 key 的顺序；每组内部是原位置的 `enum`],
+#tbl(c-sem, (auto, 1fr), ([运算的类别], [`ι : N ⟶ N`]),
+  [`F(R)`：`select` `derive` `apply` `impute` `over`], [`𝟙`],
+  [`filter`、`distinct`、semi / anti join、`sample`], [`enum(P)`，`P ⊑ (<m)` 是保留的位置：按原位置顺序重新编号],
+  [`sortBy`、`shuffle`], [`(<m)` 上的置换 `σ`],
+  [`take` `drop` `range`], [`(<n)`、`(+n)`、`(<b−a) ≫ (+a)`],
+  [`cat`、`union`、`melt`], [第二个 frame 的位置经 `(+m₁)°`：`x ∪ (+m₁)° ≫ y`],
+  [join], [`enum(J) : N ⟶ N×N`，`J` 是匹配的位置对，按 `(i, j)` 的字典序；结果 `enum(J) ≫ (x × y)`],
+  [`groupBy`、`aggregate`、pivot], [`enum(ran(x ≫ k)) : N ⟶ K`，按 key 的顺序；组是 `(x ≫ k)° : K ⟶ N`],
 )
 
-- `enum`（位置的集合 ↦ 按位置顺序的 list）是顺序进入的唯一位置（`CLAUDE.md`）。它今天没有声明。它不作为位置数组算出来，
-  只作用到列上：mask 的 `scan(add)` 给出目标位置，每列一次 `scatter`（recipe WHERE）。
-- *`I` 是虚的。* 它只有 `n`：不落盘，在内存里也不物化（存成 `foR` 每个 1024 块约 10 bit / 行）。
-  key 是一个种类「位置 `0…n−1`」，kernel 把它当恒等处理：`gather`、`scatter` 的下标或 payload 是这个 key 时，kernel 读自己的循环变量。
+- `enum(P) : N ⟶ A`（有序对象 `A` 上的有限集合 ↦ 按顺序编号）是顺序进入的唯一位置（`CLAUDE.md`）。它今天没有声明。
+  `A = N` 时 `enum(P) = (P ≫ cnt(P))°`，`cnt(P)` 是 mask 的 `scan(add)`；`°` 不作为位置数组算出来，每列一次 `scatter`（recipe WHERE）。
+  `A = K` 时是 `asc` 后 `distinct`（canonical 约定，`doc/rel-kernels.md` §3 CODE）。
+- *`N` 的元素是虚的。* frame 只有 `m`：位置不落盘，在内存里也不物化（存成 `foR` 每个 1024 块约 10 bit / 行）。
+  key 是一个种类「位置 `0…m−1`」，kernel 把它当恒等处理：`gather`、`scatter` 的下标或 payload 是这个 key 时，kernel 读自己的循环变量。
   它不是新的存储，也不是 `Enc.gen`（6.11 删除）。实现是 `Enc.pos`（PLAN 6.13a / D.4），进行中；验收：`til n` 读成 `pos`，不出现 `gather(invert(p), p)`。
-  会用到 `til n` 数组的运算列在 F1。
+  会用到 `til m` 数组的运算列在 F1。
 - *落盘（q / kdb 的方式）。* 目录 = 表；文件 = 列，是一个 mmap 的 `foR` `Enc`，没有序列化（`CLAUDE.md` 的 Goal）；
   `.d` 文件 = `Schema` 的列顺序；`sym` 列共用一个字典文件。`.d`、共用字典、符号 key 三项是新的，不在 PLAN 里。
 
@@ -177,21 +185,24 @@
 == 辅助定义
 
 ```
-len(n)      = dom(length ≫ n°)                                    长度为 n 的 list（coreflexive），n : 1 ⟶ N
-take(n)     = prefix ≫ len(n)          takeLast(n) = suffix ≫ len(n)
-drop(n)     = cat° ≫ dom(π₁ ≫ len(n)) ≫ π₂                        x = y ⧺ z 且 |y| = n，取 z
-strₗ        : A×[B] ⟶ [A×B]                                       把 a 配给每个元素；一个 foldI，carrier 带着 a
-strᵣ        : [A]×B ⟶ [A×B]                                       对称
-selᴷ(k)     : K×[C] ⟶ [C]    = strₗ ≫ filter(cor(k°)) ≫ F(π₂)     key 等于 κ 的行，顺序不变
-groups(k)   : [C] ⟶ K×[C]    = ⟨∋ ≫ k, 𝟙⟩ ≫ ⟨π₁, selᴷ(k)⟩         每个出现的 key 与它的子 list
-M           : C×E ⟶ C×E      = cor(k ≫ h°)                        key 相等的行对；k : C ⟶ K，h : E ⟶ K
-cand        : C×[E] ⟶ [C×E]  = strₗ ≫ filter(M)                   左表一行在右表中的全部匹配
-hit         : C×[E] ⟶ C×[E]  = dom(cand ≫ ∋)                      至少有一个匹配
-lastw(w)    : [A] ⟶ [A]      = Λ(suffix ≫ dom(length ≫ ≤ ≫ w°)) ≫ est(length ≫ ≥ ≫ length°)   最长的、不超过 w 的后缀
+take(n)       = (<n) ≫ x                       hi := min(hi, lo+n)
+drop(n)       = (+n) ≫ x                       lo += n；长度 m ∸ n，因为 x 在 ≥ m 处无像
+range(a, b)   = (<b−a) ≫ (+a) ≫ x              takeLast(n) = drop(m ∸ n)    dropLast(n) = take(m ∸ n)
+cnt(P)        : N ⟶ N  = Λ(>ₙ ≫ P) ≫ size      P ⊑ (<m)：i 之前 P 中的位置个数，mask 的 scan(add)
+enum(P)       : N ⟶ N  = (P ≫ cnt(P))°         新位置 ↦ P 的第 i 个元素；° 是 scatter（WHERE）
+filter(p)     = enum(dom(x ≫ p)) ≫ x
+σ = asc(x ≫ a)                                 (<m) 上的双射，按 ⟨x ≫ a, 𝟙⟩ 的字典序单调，所以唯一
+first(R)      = R − R ≫ <ₙ                     R : A ⟶ N，每个 a 的最小位置；last(R) = R − R ≫ >ₙ
+J             = x ≫ k ≫ h° ≫ y°  : N ⟶ N        key 相等的左右位置对；k : C ⟶ K，h : E ⟶ K
+fold(⊕, y)    : P(N) ⟶ V                       位置集合 P ↦ enum(P) ≫ y 按位置顺序的 ⦇e, ⊕⦈
+agg(⊕, R, y)  = Λ(R) ≫ fold(⊕, y)              R : A ⟶ N；每个 a 对它的位置做一次 fold
+win(w)        = ≥ₙ ∩ <ₙ ≫ (+w)°                i ↦ i−w < j ≤ i 的每个 j
 ```
 
-- 一个实例：`groups(k)` 在 `x = [(A,1),(B,2),(A,3)]` 上：`x {⟨∋ ≫ k, 𝟙⟩} (A, x) {⟨π₁, selᴷ(k)⟩} (A, [(A,1),(A,3)])`；
-  另一个像是 `(B, [(B,2)])`。每个 key 一个像；子 list 是 `x` 的一段（`filter` 保持顺序与重复）。
+- 一个实例：`take(3)` 在 `m = 4` 的 `x` 上：`2 {(<3)} 2 {x} (A,1)`；`3` 被 `(<3)` 挡住，没有像。
+  规则：结果是 `ι ≫ x`，`ι` 的形状就是实现：coreflexive `(<n)` 收 `hi`，`(+n)` 移 `lo`，`enum(P)` 是一次 `scatter`，`σ` 是一次 `gather`。
+- `(x ≫ k)° : K ⟶ N` 的 canonical 形式（asc 后 distinct）就是按 `k` 的稳定 `asc`：每个 key 的位置是一段 `lo`/`hi`，段内按位置有序。
+  所以 `agg(⊕, (x ≫ k)°, y)` 是分段 `scan`（SEGFOLD），`J` 经 `K` 的复合是两段有序 run 的归并（CODE + EXPAND）。
 
 == DataHaskell `dataframe` 的导出函数
 
@@ -205,49 +216,49 @@ kernel 一栏：S = `scan`，T = `scatter`，G = `gather`，A = `asc`，D = `dis
   [`apply` `applyMany` `applyInt` `applyDouble` `safeApply` `applyAtIndex`], [`F(⟨a ≫ g, b⟩)`], [S],
     [`g` 必须是 `Op` 的复合；任意 Haskell 函数没有对应的项（F12）],
   [`applyWhere`], [`F(p ≫ ⟨a ≫ g, b⟩ ∪ (𝟙 − p))`], [S], [两个 mask 分支的并],
-  [`filter` `filterWhere` `filterBy`], [`filter(p)`，如 `p = dom(a ≫ < ∩ b)`], [S T],
-    [mask 的前缀计数是 `scatter` 的目标位置：瞬时位置向量（F1）],
+  [`filter` `filterWhere` `filterBy`], [`enum(dom(x ≫ p)) ≫ x`，如 `p = dom(a ≫ < ∩ b)`], [S T],
+    [`cnt` 是 mask 的 `scan(add)`，`°` 是 `scatter`：瞬时位置向量（F1）],
   [`filterJust` `filterAllJust`], [`filter(dom(v ≫ inl°))`], [S T], [],
   [`filterNothing` `filterAllNothing`], [`filter(dom(v ≫ inr°))`], [S T], [],
-  [`take` `drop` `takeLast` `dropLast` `range` `byIndexRange` `cube`], [`take(n)`、`drop(n)`、`takeLast(n)`], [无], [只改 `lo`、`hi`],
-  [`selectRows`], [`F(at)`，下标来自数据], [G], [`at(i)` 只接受常量 `i`；显式位置是 API 的输入（F1）],
-  [`sortBy`], [`sort(Q)`，`Q = a ≫ ≤ ≫ a°`], [A G],
-    [prelude 的 `sort(Q) = perm ≫ ordered(Q)`；稳定排序是它的一个 refinement（F16）；带着其它列走要 `asc` 的置换（F1）],
-  [`topBy`], [`sort(Q) ≫ take(n)`], [A G], [定律：等于 `est` 的 n 次迭代；待证],
-  [`distinct`], [`distinct`], [A D G], [`prims` 的行：保留第一次出现],
-  [`groupBy`], [`Λ(groups(k)) : [C] ⟶ [K×[C]]`], [A D S T], [recipe CODE；每组是 `lo`/`hi` 段],
-  [`aggregate`], [`F(𝟙 × (F(v) ≫ f))`], [S G], [recipe SEGFOLD：分段 `scan`，取每段最后一行],
-  [`sum` `mean` `count` `countAll` `minimum` `maximum` `reduce`], [`f = sum`、`length`、`est(≥)`、`⦇e, ⊕⦈`；`mean = ⟨sum, length⟩ ≫ fdiv`], [S], [`Op` 的 fold],
+  [`take` `drop` `takeLast` `dropLast` `range` `byIndexRange` `cube`], [`(<n) ≫ x`、`(+n) ≫ x`、`(<b−a) ≫ (+a) ≫ x`], [无], [只改 `lo`、`hi`],
+  [`selectRows`], [`ix ≫ x`，`ix : N ⟶ N` 是输入的下标 frame], [G], [下标来自数据，是值列（F1）],
+  [`sortBy`], [`σ ≫ x`，`σ = asc(x ≫ a)`], [A G],
+    [位置 `𝟙` 作次 key，`σ` 唯一：稳定排序就是规格（F16）；`σ` 是瞬时值列（F1）],
+  [`topBy`], [`(<n) ≫ σ ≫ x`], [A G], [定律：等于 `est` 的 n 次迭代；待证],
+  [`distinct`], [`enum(ran(first(x°))) ≫ x`], [A D S T], [每个值第一次出现的位置；`asc` + `distinct` 取段首，写成 mask 后 WHERE],
+  [`groupBy`], [`enum(ran(x ≫ k)) : N ⟶ K`；组是 `(x ≫ k)° : K ⟶ N`], [A D S T], [recipe CODE；每组是 `lo`/`hi` 段],
+  [`aggregate`], [`enum(ran(x ≫ k)) ≫ agg(⊕, (x ≫ k)°, x ≫ v)`], [S G], [recipe SEGFOLD：分段 `scan`，取每段最后一行],
+  [`sum` `mean` `count` `countAll` `minimum` `maximum` `reduce`], [`fold(⊕, x ≫ v)(dom(x))`，`⊕ = add`、`min`、…；`count = m`；`mean = ⟨sum, count⟩ ≫ fdiv`], [S], [`Op` 的 fold],
   [`variance` `stddev` `skewness` `correlation` `zScore`], [若干 fold 的 pair 再做算术], [S], [],
-  [`median` `percentile` `genericPercentile` `interQuartileRange`], [`asc ≫ cat° ≫ dom(⟨π₁ ≫ length, π₂ ≫ length⟩ ≫ r) ≫ π₂ ≫ head`], [A],
-    [`r` 是两段长度之比；位置由 `cat°` 给出，不是下标],
-  [`countDistinct` `mode`], [`F(v) ≫ distinct ≫ length`；`mode` 再接 `est`], [A D S], [],
-  [`collect`], [`F(v)`（每组的 list 本身）], [无], [结果列的类型是 `Obj.arr V`],
-  [`firstOrNothing` `lastOrNothing`], [`tot(head)`、`tot(last)`], [G], [每段的第一 / 最后一个位置],
-  [`topK` `bottomK` `kExtremes`], [`asc ≫ takeLast(n)`], [A], [],
-  [`valueCounts` `valueProportions` `frequencies`], [`groupBy` + `aggregate`，`f = length`], [A D S T], [],
+  [`median` `percentile` `genericPercentile` `interQuartileRange`], [`i ≫ σ ≫ x ≫ v`，`σ = asc(x ≫ v)`，`i = ⌊r·m⌋ : 1 ⟶ N`], [A G],
+    [一个位置，读一个元素],
+  [`countDistinct` `mode`], [`size(ran(x ≫ v))`；`mode` 对 `agg(count, …)` 接 `est`], [A D S], [],
+  [`collect`], [每组 `enum(P) ≫ x ≫ v`，`P` 是该组的位置], [无], [`σ ≫ x ≫ v` 的一段 `lo`/`hi`；结果列的类型是 `Obj.arr V`],
+  [`firstOrNothing` `lastOrNothing`], [`tot(first((x ≫ k)°) ≫ x ≫ v)`、`last` 同理], [G], [每段的第一 / 最后一个位置],
+  [`topK` `bottomK` `kExtremes`], [`(<n) ≫ σ ≫ x`，`σ` 降序或升序], [A], [],
+  [`valueCounts` `valueProportions` `frequencies`], [`groupBy` + `aggregate`，`⊕ = count`], [A D S T], [],
   [`summarize` `describeColumns` `nulls`], [固定的一组聚合的 pair], [S A], [输出的列由 schema 决定，静态可知],
-  [`innerJoin` `join` `joinOn`], [`strᵣ ≫ F(cand(col S "k")) ≫ concat`], [全部], [列名在 elaboration 时检查；recipe CODE + EXPAND；匹配的位置对必须物化（F1）；字面读是二次的（F3）],
-  [`leftJoin`], [`strᵣ ≫ F(hit ≫ cand ≫ F(𝟙×inl) ∪ (𝟙 − hit) ≫ π₁ ≫ ⟨𝟙, ! ≫ inr⟩ ≫ τ) ≫ concat`], [全部], [右侧整行为 null（`E+1`）；F5],
+  [`innerJoin` `join` `joinOn`], [`enum(J) ≫ (x × y)`，`J = x ≫ k ≫ h° ≫ y°`], [全部], [列名在 elaboration 时检查；recipe CODE + EXPAND：`J` 是归并；匹配的位置对必须物化（F1）],
+  [`leftJoin`], [`enum(dom(x) ≫ tot(J)) ≫ (x × [y ≫ inl, inr])`], [全部], [`tot(J) : N ⟶ N+1`，无匹配的左位置配 `inr`；右侧整行为 null（`E+1`）；F5],
   [`rightJoin`], [`leftJoin` 交换两侧], [全部], [],
-  [`fullOuterJoin`], [`leftJoin` 之后 `cat` 上右表未匹配的行], [全部], [两侧都是和类型],
-  [`union`], [`cat ≫ distinct`], [S T A D], [],
-  [`intersect`], [`strᵣ ≫ filter(hit) ≫ F(π₁) ≫ distinct`，`k = h = 𝟙`], [A S T D], [recipe LOOKUP],
-  [`difference` `symmetricDifference`], [`strᵣ ≫ filter(𝟙 − hit) ≫ F(π₁) ≫ distinct`], [A S T D], [],
-  [`<>`（行拼接）], [`cat`], [S T], [recipe CONCAT；`sym` 列字典不同时再做 DICT + CODE],
-  [`|||`（列拼接）], [`zip`], [无], [两个 `Vals` 并排；长度不等时无像],
+  [`fullOuterJoin`], [`leftJoin` 之后 `cat` 上 `enum(dom(y) − ran(J)) ≫ y`], [全部], [两侧都是和类型],
+  [`union`], [`cat` 后 `distinct`；`cat = x ∪ (+m₁)° ≫ y`], [S T A D], [],
+  [`intersect`], [`enum(dom(J)) ≫ x` 后 `distinct`，`k = h = 𝟙`], [A S T D], [recipe LOOKUP],
+  [`difference` `symmetricDifference`], [`enum(dom(x) − dom(J)) ≫ x` 后 `distinct`], [A S T D], [],
+  [`<>`（行拼接）], [`x ∪ (+m₁)° ≫ y`], [S T], [recipe CONCAT：按块追加；`sym` 列字典不同时再做 DICT + CODE],
+  [`|||`（列拼接）], [`⟨x, y⟩`], [无], [两个 `Vals` 并排；定义域 `dom(x) ∩ dom(y)`，长度不等时取较短的],
   [`impute` `imputeWith` `fromMaybe` `castWithDefault`], [`F(v ≫ [𝟙, ! ≫ c])`], [S], [`c : 1 ⟶ V`；`imputeWith` 的 `c` 是一个聚合],
   [`toMaybe` `isJust` `isNothing` `isNull` `fromJust` `whenPresent`], [`inl`、`dom(inl°)`、`dom(inr°)`、`inl°`、`[g ≫ inl, inr]`], [S], [],
   [`recode` `recodeWithDefault`], [`F(v ≫ T)`，`T` 是字面量表；带缺省用 `tot`], [A S T G], [recipe LOOKUP],
   [`lift` `lift2` `nullLift` `bind`], [无], [—], [宿主语言的任意函数没有项（F12）],
   [`cast` `toDouble` `div` `mod` `pow` `relu` `eq` `lt` `and` `or` `not` …], [`Op` 的 constructor], [S], [整数 / 浮点转换的 `Op` 待加；`arith` 今天只在 `i64`（F9）],
-  [`over`], [`⟨𝟙, 𝟙⟩ ≫ strᵣ ≫ F(⟨π₁, (k × 𝟙) ≫ selᴷ(k) ≫ F(v) ≫ f⟩)`], [全部], [每行带上它那一组的聚合；CODE + SEGFOLD + 按组号 `gather`],
+  [`over`], [`⟨x, x ≫ k ≫ agg(⊕, (x ≫ k)°, x ≫ v)⟩`], [全部], [每行带上它那一组的聚合，位置不变；CODE + SEGFOLD + 按组号 `gather`],
   [`contains` `length` `splitOn` `match` `matchAll`], [`contains(s) = dom(suffix ≫ prefix ≫ s)`], [—], [字符串：F8],
   [`parseDate` `daysBetween`], [`date` 上的整数减法；`parseDate` 是字符串解析], [S], [F8、F10],
-  [`sample` `shuffle` `randomSplit` `kFolds` `stratifiedSample` `mkRandom`], [`subseq ≫ len(n)`；`perm`], [S G], [规格有多个像，PRNG 选一个；下标向量是显式位置（F13）],
-  [`fromList` `fromRows` `fromColumns` `fromUnboxedVector` `empty`], [字面量 `Tm.val`，或 `zip`], [无], [],
+  [`sample` `shuffle` `randomSplit` `kFolds` `stratifiedSample` `mkRandom`], [`enum(P) ≫ x`，`P ⊑ dom(x)`、`size(P) = n`；`σ ≫ x`，`σ` 是 `(<m)` 上任一置换], [S G], [规格有多个像，PRNG 选一个；下标向量是显式位置（F13）],
+  [`fromList` `fromRows` `fromColumns` `fromUnboxedVector` `empty`], [字面量 `Tm.val`，或 `⟨x, y⟩`], [无], [],
   [`columnAsVector` `columnAsList` `toList` `toRowList` `to*Matrix`], [`F(col S "c")`，在输出边界读出], [无], [列名在 elaboration 时检查],
-  [`dimensions` `nRows` `nColumns` `columnNames`], [`length`；其余读 `Obj`], [无], [],
+  [`dimensions` `nRows` `nColumns` `columnNames`], [`m`；其余读 `Obj`], [无], [],
   [`readCsv` `readTsv` `readParquet` `readJSON` `writeCsv` `writeParquet`], [无], [—], [IO 在代数之外；schema 推断见 F4、F11],
   [`scanCsv` `scanParquet` `fromDataFrame` `run`（Lazy）], [`input` 声明、`rel_program`、`output`], [—], [第 5 节],
   [`fold`、`display`、Plot、`DecisionTree`、`KMeans` 等], [不在本设计范围], [—], [宿主层的工具与模型库],
@@ -256,26 +267,26 @@ kernel 一栏：S = `scan`，T = `scatter`，G = `gather`，A = `asc`，D = `dis
 == polars 多出来的运算
 
 #tbl(c-sem, (auto, 1.55fr, auto, 1fr), ([polars], [Rel 复合], [kernel], [说明 / finding]),
-  [semi / anti join], [`strᵣ ≫ filter(hit) ≫ F(π₁)`；anti 用 `𝟙 − hit`], [A S T G], [LOOKUP、map、WHERE],
-  [cross join], [`strᵣ ≫ F(strₗ) ≫ concat`], [S T G], [EXPAND],
-  [asof join], [`strᵣ ≫ F(⟨π₁, tot(strₗ ≫ filter(M≤) ≫ last ≫ π₂)⟩)`], [A S T G],
-    [`M≤ = cor(⟨k,t⟩ ≫ (𝟙 × ≥) ≫ ⟨h,u⟩°)`，右表按时间有序；LOOKUP 带 `≤`，结果写回左表原位要位置（F1）],
-  [`cum_sum` 等], [`inits ≫ tail ≫ F(F(v) ≫ ⦇e, ⊕⦈)`], [S], [由 scan lemma 等于 `⊕` 的前缀 `scan`],
-  [`shift(1)`], [`⟨! ≫ inr ≫ τ, init ≫ F(inl)⟩ ≫ cat`], [S T], [前面接一个 null，去掉最后一个],
-  [`diff`], [`⟨tail, init⟩ ≫ zip ≫ F(minus)`], [S], [两个切片的 map，不复制],
-  [`rolling(w)`], [`inits ≫ tail ≫ F(lastw(w) ≫ F(v) ≫ f)`], [S G], [recipe WINDOW（F1）],
-  [`forward_fill`], [`⦇nil, step⦈`，carrier 带着最后一个有效值], [S], [`scan(last)`，在有效行开新段],
-  [`melt`], [`⟨F(⟨! ≫ x, a⟩), F(⟨! ≫ y, b⟩)⟩ ≫ cat : [C] ⟶ [P×V]`], [S T], [CONCAT；各列要同类型],
+  [semi / anti join], [`enum(dom(J)) ≫ x`；anti 用 `enum(dom(x) − dom(J)) ≫ x`], [A S T G], [LOOKUP、map、WHERE],
+  [cross join], [`enum(dom(x) ≫ ⊤ ≫ dom(y)) ≫ (x × y)`], [S T G], [EXPAND],
+  [asof join], [`⟨x, tot(last(J≤) ≫ y)⟩`], [A S T G],
+    [`J≤ = x ≫ ⟨k,t⟩ ≫ (𝟙 × ≥) ≫ ⟨h,u⟩° ≫ y°`，右表按时间有序时 `last` 是最近的；LOOKUP 带 `≤`；位置是左表的，`ι = 𝟙`],
+  [`cum_sum` 等], [`c = μ c. (<1) ≫ x ≫ v ∪ ⟨(+1)° ≫ c, x ≫ v⟩ ≫ ⊕`], [S], [`c(i) = c(i−1) ⊕ v(i)`：规格就是前缀 `scan` 的递推],
+  [`shift(k)`], [`(<m) ≫ tot((+k)° ≫ x)`], [S T], [值是同一列的切片；前 `k` 个位置是 null],
+  [`diff`], [`⟨(+1) ≫ x ≫ v, x ≫ v⟩ ≫ minus`], [S], [两个切片的 map，不复制],
+  [`rolling(w)`], [`dom(x) ≫ agg(f, win(w), x ≫ v)`], [S G], [recipe WINDOW；字面读 O(m·w)（F3）],
+  [`forward_fill`], [`c = μ c. W ≫ x ≫ v ∪ (dom(x) − W) ≫ (+1)° ≫ c`，`W = dom(x ≫ v ≫ inl°)`], [S], [`scan(last)`，在有效行开新段],
+  [`melt`], [`x ≫ ⟨! ≫ α, a⟩ ∪ (+m)° ≫ x ≫ ⟨! ≫ β, b⟩ : N ⟶ P×V`], [S T], [CONCAT；各列要同类型],
   [pivot（long）], [`groupBy(⟨k, q⟩)` + `aggregate`], [A D S T], [long 形式就是 key 为 `K×P` 的 frame],
-  [pivot（wide）], [`groupBy(k) ≫ F(𝟙 × ⟨tot(∋ ≫ dom(q ≫ x°) ≫ v), …⟩)`], [A D S T G], [只对声明的 `obj P = {x, y}` 可写（F4）],
+  [pivot（wide）], [`enum(ran(x ≫ k)) ≫ ⟨𝟙, tot(⟨𝟙, ! ≫ α⟩ ≫ agg(f, (x ≫ ⟨k, q⟩)°, x ≫ v)), …⟩`], [A D S T G], [每个声明的 `α ∈ P` 一列；只对声明的 `obj P = {α, β}` 可写（F4）],
 )
 
 == recipe
 
 沿用 `doc/rel-kernels.md` §3 的八个（CODE、DICT、RANK、CONCAT、LOOKUP、EXPAND、WHERE、SEGFOLD），这里新增两个，都是五个 kernel 的复合：
 
-- WINDOW：`f` 可逆（`sum`、`count`）时，前缀 `scan(f)` 得 `s`，再 `⟨drop(w), take(n−w)⟩ ≫ zip ≫ F(minus)`：
-  位置 `i − w` 处的值是同一列的一个切片，不用 `gather`。
+- WINDOW：`f` 可逆（`sum`、`count`）时，前缀 `scan(f)` 得 `c`，再 `(<w) ≫ c ∪ ⟨c, (+w)° ≫ c⟩ ≫ minus`：
+  `(+w)° ≫ c` 是同一列的一个切片，不用 `gather`。
   `min` / `max`：每 `w` 行一段做两次分段 `scan`，其中一次从后往前，再 map `scan(min)`（van Herk）。
 - WHERE 的无下标形式：mask 的 `scan(add)` 给出每个保留行的目标位置，每列一次 `scatter` 写过去，不经过 `gather`。
 
@@ -322,7 +333,7 @@ kernel 一栏：S = `scan`，T = `scatter`，G = `gather`，A = `asc`，D = `dis
 
 - 现状：`compile`、`Tm.plan`（`Rel/Run/Lang/Compile.lean:236`、`:239`）在 Lean 里经 `Gen` / `Alg` 运行每个 `Tm` 节点；
   `compile_sound`（`Rel/Lang/CompileSpec.lean:238`）覆盖 `Tm.gap = none` 的节点（`Rel/Lang/Rows.lean:111`）。
-  `Λ`、`asc`、`foldI`、`hylo` 今天都是 gap，而 `groupBy`、`strₗ` 正好用到它们。
+  `Λ`、`asc`、`foldI`、`hylo` 今天都是 gap，而 `groupBy` 的 `agg`（`Λ`）与 `σ`（`asc`）正好用到它们。
 - native 路径更窄：`Plan.ofTm`（`Plan.lean:333`）只构造 `val`、`conv`、`share`；`arithB`（`:397`）、`groupIdsF`（`:362`）
   是仅有的 builder；`Plan.abi`（`EmitC.lean:16`）列的 12 个符号都是旧导出。
 
@@ -334,11 +345,11 @@ kernel 一栏：S = `scan`，T = `scatter`，G = `gather`，A = `asc`，D = `dis
 #tbl(c-sem, (auto, 1.6fr, auto), ([优化], [定律], [状态]),
   [projection pushdown], [`⟨R, S⟩ ≫ π₁ = dom(S) ≫ R`；`S` 全时 `dom(S) = 𝟙`], [待陈述],
   [表达式融合], [`F(R) ≫ F(S) = F(R ≫ S)`], [待陈述（`E` 的版本是 prelude 的 `Ecomp`）],
-  [predicate pushdown], [`F(R) ≫ filter(p) = filter(dom(R ≫ p)) ≫ F(R)`；`cand` 中 `p` 移到一侧], [待证],
-  [group 走排序], [`Λ(groups(k))` = 按 `k` 稳定排序后在 key 变化处切段], [待证；fold 融合],
-  [join 走排序], [`strᵣ ≫ F(cand) ≫ concat` = 两侧按 key 排序后逐段展开], [待证],
-  [cumulative 是一次 scan], [`inits ≫ F(⦇e, ⊕⦈)` = `⊕` 的前缀 scan], [B&dM scan lemma；`Programs/Mss` 是一例],
-  [聚合不看顺序], [`perm ≫ ⦇e, ⊕⦈ = ⦇e, ⊕⦈`，`⊕` 结合且交换], [待证；`Op.assoc`],
+  [predicate pushdown], [`ι ≫ (x ≫ R) = (ι ≫ x) ≫ R`，`ι = enum(dom(x ≫ R ≫ p))`：`R` 只对保留的行算], [结合律，现成],
+  [group 走排序], [`(x ≫ k)°` 的 canonical 形式 = `σ = asc(x ≫ k)` 在 key 变化处切段], [待证；fold 融合],
+  [join 走排序], [`J = x ≫ k ≫ h° ≫ y°` 经 `K` 的复合 = 两侧 canonical run 的归并], [待证],
+  [cumulative 两种写法相等], [`μ c. (<1) ≫ x ≫ v ∪ ⟨(+1)° ≫ c, x ≫ v⟩ ≫ ⊕ = dom(x) ≫ agg(⊕, ≥ₙ, x ≫ v)`], [B&dM scan lemma；`Programs/Mss` 是一例],
+  [聚合不看顺序], [`fold(⊕, σ ≫ y)(dom(y)) = fold(⊕, y)(dom(y))`，`σ` 是 `dom(y)` 上的置换，`⊕` 结合且交换], [待证；`Op.assoc`],
   [融合 kernel], [准入规则的「pattern = 融合」], [每个 kernel 一条],
 )
 
@@ -346,7 +357,7 @@ kernel 一栏：S = `scan`，T = `scatter`，G = `gather`，A = `asc`，D = `dis
   是表示定律：可执行的算子算出了那个关系。它们为 physical plan 作证，和 `compile_sound` 一样。
 - optimiser 要的是项与项之间的代数定律 `t₁.den ρ = t₂.den ρ`（`Tm.den`，`Rel/Lang/Den.lean:300`）。它们在 `Rel/Core`
   与 prelude 的 `theorem` 声明里（`absorption`、`Eunion`、`Ecomp`、`estMap`，经 `rel_aop` 对 freyd 证明）。
-  index 里还没有 pair 投影律与 map 融合律；上表标「待证」的四条是真正的工作量，用 fold / hylo 的融合律来证。
+  index 里还没有 pair 投影律与 map 融合律；上表标「待证」的三条是真正的工作量，用 fold / hylo 的融合律来证。
 - 没有的：pass 本身、代价模型、统计信息。定律说两个 plan 相等，不说哪个便宜（F7）。
 
 // ───────────────────────────── 5
@@ -354,22 +365,25 @@ kernel 一栏：S = `scan`，T = `scatter`，G = `gather`，A = `asc`，D = `dis
 
 写不出来、或只能别扭地写出来的运算。
 
-- *F1 `I` 是虚的，所以下面这些原本要 `til n` 数组的地方都要改写。* 每一处都让 kernel 把位置读成循环变量：
-  - `asc` 的置换（`sortBy`、`groupBy` 的 CODE、LOOKUP、asof）：置换是「按 key 排序的 `til n`」。`asc` kernel 以恒等 key 为 payload，
-    直接产出置换，不接受一个 `til n` 输入。
-  - RANK（置换的逆，`scatter(perm, til n)`）：`scatter` 的 payload 是恒等 key。
-  - `cat` / `melt` 的 CONCAT（目标位置 `off + 0…n−1`）：按块追加，属于 codec，不调用 `scatter`。
-  - `rolling`、`shift`、`diff`（位置 `i ± w`）：同一列的切片，只改 `lo`、`hi`（recipe WINDOW）。
-  - van Herk 里反转的列（下标 `n−1−i`）：`scan` 要一个方向参数；今天的 `kscan` 没有，这是 `scan` 的一处扩展，不是新 kernel。
-  - `enum` 本身作为位置的 list（q 的 `where`）：不形成；只有它作用到列上的结果（见第 2 节）。
-  下标向量如果是由数据算出来的，就不是 `I`，而是普通的值列，照常存在：mask 的前缀计数、`asc` 产出的置换、join 的匹配位置对（EXPAND）、
-  `selectRows` 的输入、PRNG 的输出。主表标 F1 的行指的是这一类；它们是 recipe 内部的瞬时值，不落盘。
-- *F2 `Λ` 的 canonical 形式还没有实现。* `groupBy` 的 `Λ(groups(k))` 依赖「集合存成 `asc` 后 `distinct` 的数组」这个约定；
+- *F1 `N` 的元素是虚的，所以下面这些原本要 `til m` 数组的地方都要改写。* 每一处都让 kernel 把位置读成循环变量：
+  - `σ = asc(x ≫ a)`（`sortBy`、`groupBy` 的 CODE、LOOKUP、asof）：`σ` 是「按 key 排序的 `(<m)`」。`asc` kernel 以恒等 key 为 payload，
+    直接产出 `σ`，不接受一个 `til m` 输入。
+  - RANK（`σ°`，`scatter(σ, til m)`）：`scatter` 的 payload 是恒等 key。
+  - `cat` / `melt` 的 CONCAT（`(+m₁)°`）：按块追加，属于 codec，不调用 `scatter`。
+  - `rolling`、`shift`、`diff`（`(+k)`、`(+w)°`）：同一列的切片，只改 `lo`、`hi`（recipe WINDOW）。
+  - van Herk 里反转的列（下标 `m−1−i`）：`scan` 要一个方向参数；今天的 `kscan` 没有，这是 `scan` 的一处扩展，不是新 kernel。
+  - `enum(P)` 本身作为位置数组（q 的 `where`）：不形成；`(P ≫ cnt(P))°` 只作用到列上（见第 2 节）。
+  由数据算出来的 `ι` 不是 `N` 的元素表，而是普通的值列，照常存在：`cnt(P)`、`σ`、`enum(J)`（EXPAND）、
+  `selectRows` 的 `ix`、PRNG 的输出。主表标 F1 的行指的是这一类；它们是 recipe 内部的瞬时值，不落盘。
+- *F2 `Λ` 的 canonical 形式还没有实现。* `groupBy` 的 `agg(⊕, (x ≫ k)°, …)` 与 `enum(ran(x ≫ k))` 依赖「集合存成 `asc` 后 `distinct` 的数组」这个约定；
   `Tm.gap`（`Rel/Lang/Rows.lean:111`）今天对 `Λ` `E` `thin` 报的正是它（D2 canonical table，`doc/rel-denotation-design.md` §7.1），
   `asc`、`setify` 两行也缺定律（`rowGaps`）。
-- *F3 规格按字面读是二次的。* `groups(k)` 对每个 key 做一次 `filter`，`strᵣ ≫ F(cand)` 对每个左行扫一遍右表，
-  `over`、`rolling` 同理。它们靠第 5 节「待证」的四条定律才线性地运行；在定律证出之前，native builder 对这些 pattern 的
-  翻译没有证明，要由 `Tm.gap` 报出来。另外 `strₗ`、`strᵣ`、带参数的 `filter` 不在 `prims` 里，要用 `foldI` 写，而 `foldI` 今天是 gap。
+- *F3 规格按字面读是二次的：位置模型之后只剩三处。* 旧的 list 写法里 `take(n) = prefix ≫ len(n)` 枚举全部前缀，
+  `groups`、`cand` 对每个 key / 左行扫一遍，`inits` 形成全部前缀；这些已删除。现在 `take`、`drop`、`filter`、`sortBy`、`median`
+  的 `ι` 就是实现；`groupBy`、join、`over` 在 canonical 读法下（`(x ≫ k)°` 是按 `K` 有序的段，经 `K` 的复合是归并）是线性的；
+  cumulative、`forward_fill` 是 `μ` 递推。仍然不是实现形状的：`rolling(w)` 的 `agg(f, win(w), …)` 字面读 O(m·w)，靠 WINDOW；
+  `first(R) = R − R ≫ <ₙ` 字面读形成 `R ≫ <ₙ`（二次），实现是 `distinct` 取段首；`contains`（F8）。
+  `group 走排序`、`join 走排序` 两条定律证出之前，native builder 对 canonical 读法的翻译没有证明，要由 `Tm.gap` 报出来。
 - *F4 依赖数据的 schema 无法给出类型。* wide pivot、`get_dummies`、读文件时推断 schema：结果的 `Obj` 要读了值才知道，
   而 `Tm A B` 在 elaboration 时固定 `B`。wide pivot 只对声明的有限 `obj P` 可写；long 形式是忠实的那个。
 - *F5 null。* 布局问题见 1.4，outer join 的两支见主表 `leftJoin`。另外 null 上的布尔运算（Kleene `or`）要用 `[R, S]` 逐情况写。
@@ -387,11 +401,13 @@ kernel 一栏：S = `scan`，T = `scatter`，G = `gather`，A = `asc`，D = `dis
 - *F13 抽样。* `sample(n)` 是有多个像的关系（任意 n 行），实现用 PRNG 选一个，是规格的 refinement，不是相等。
 - *F14 整列执行。* kernel 读写整列。polars 的 streaming 引擎按 morsel 工作并可落盘；`lazy` / `Known` 传递的是 demand，不是批。
 - *F15 浮点 `sum` 是顺序的。* `Op.assoc fadd = false`，一段之内按顺序折叠。组与组并行，一个大组不并行。
-- *F16 稳定排序不是规格。* `sort(Q) = perm ≫ ordered(Q)` 在并列时有多个像；`asc` kernel 的稳定结果是其中之一。
-  「保持原顺序」本身要位置才能陈述，所以只作为实现的性质记录。
+- *F16 已解决：稳定排序就是规格。* 位置是 `N` 的元素，`σ` 是按 `⟨x ≫ a, 𝟙⟩` 字典序单调的双射，并列由位置决定，所以唯一；
+  `asc` kernel 的稳定结果就是它，是相等而不是 refinement。
 - *F17 `foR` 的布尔列不统一。* `Enc.WF` 不接受布尔类型的 `foR`，所以 `scan` 的布尔结果答 `.bits`；`filter` 的 mask
   因此是第二种形式。进行中（D.5）：布尔列成为 `u1` foR，经 `Kernel.boolBits` 读，`Enc.bits` 将删除。
-- *F-a `groups(k)` 今天写不出。* `strₗ` 不在 prims（报错 `unknown name 'str'`），带 key 的 `foldI` 是 gap。可运行的绕法：carrier 带 key 的左 fold，
+- *F18 位置模型之外的两处。* 单元格里的 list（`Obj.arr`：字符串、`collect` 的结果）仍是 list，`contains` 用 `prefix`、`suffix`（F8），
+  `N` 只给 frame 的行编号。`⟨x, y⟩` 的定义域是 `dom(x) ∩ dom(y)`，长度不等时取较短的；要「不等长无像」须另加 `dom(x) = dom(y)` 的检查。
+- *F-a prelude 的 `groups(k)`（旧 list 写法）今天写不出。* `strₗ` 不在 prims（报错 `unknown name 'str'`），带 key 的 `foldI` 是 gap。可运行的绕法：carrier 带 key 的左 fold，
   按 K 的整个 universe 各 seed 一次，要求 K 是声明过的有限对象，代价 |K|×n。→ D.8；rel-lazy `d72cf71` 已把 `groups(k)`、`filter(p)` 写成复合（不加 Tm 节点），
   并有 canonical 元素对象的 `lam_sound`。
 - *F-b `filter(p)` 的形态。* 进入 Tm 时是 prelude 的 fold 展开式，recipe 要按 fold 结构匹配。→ D.8。
@@ -419,7 +435,7 @@ rel 的 D 块：D.1 asc/distinct 已完成；D.2 宽度并列已完成；D.3 ato
 
 阶段 1（最小的端到端切片）：
 
-- 程序：`out : [K×N] ⟶ [K×N] ≜ filter(dom(π₂ ≫ big)) ≫ Λ(groups(π₁)) ≫ F(𝟙 × (F(π₂) ≫ sum))`，输入是一个两列的字面量 frame。
+- 程序：`out : [K×N] ⟶ [K×N] ≜ filter(dom(π₂ ≫ big)) ≫ Λ(groups(π₁)) ≫ F(𝟙 × (F(π₂) ≫ sum))`，输入是一个两列的字面量 frame（`.rel` 源码原文，旧 list 写法；这里的 `N` 是值的类型）。
 - 1a：原写法被拒（`unknown name 'str'`），`frame` 绕法可运行，`#guard` 结果 `{(∗, (A, 13) (B, 10))}` 与手算一致。
 - 1b：用现有 kernel 写出 `whereB`（WHERE）与 `groupSumB`（`grade` 稳定排序 + 相邻比较分段；一次前缀和 `scan`，段尾减段首），
   `Plan.run` 与 Lean 的指称逐字节相等，`Plan.ofTm` 未扩展（F-a、F-b）。
