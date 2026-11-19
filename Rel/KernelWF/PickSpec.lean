@@ -22,7 +22,7 @@ theorem get_eq_raw {t : QAtomicType} {w : Nat} (ht : denseWidth t = some w) {n :
   cases e <;> cases t <;>
     simp_all [Enc.get, Enc.raw, Enc.WF, QAtomicType.width, denseWidth, List.getD_eq_getElem?_getD,
       foRBits_starts, alpBits_starts] <;>
-    (subst_vars; exact (atomOfBits_mod (by rfl) (by decide) _).symm)
+    first | (subst_vars; exact (atomOfBits_mod (by rfl) (by decide) _).symm) | rfl
 
 /-- Belongs in qlean. **`x@i` at a fixed-width type, read back**: element `k` of the answer is element
     `i[k]` of `x`, the index read unsigned, where that is below `x`'s count. -/

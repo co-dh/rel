@@ -45,7 +45,18 @@ theorem grade_i64 (n : USize) (B : ByteArray) :
 theorem gradeColumn_long {n : USize} (x : Arr .i64 n) (rank : Bool) :
     gradeColumn .i64 false n x.enc rank = some (.bytes
       (if rank then Order.ranks .i64 n (longsOf x) else Order.grade .i64 false n (longsOf x))) := by
-  rcases long_cases x.wf with ⟨b, hb⟩ | ⟨M, P, hb⟩
+  rcases long_cases x.wf with ⟨b, hb⟩ | ⟨M, P, hb⟩ | hb
+  rotate_left 2
+  · -- `pos`: its positions as `Enc.bytesOf` reads them, graded as a dense payload
+    have hl : longsOf x = ((List.range n.toNat).map Nat.toUInt64).foldl (fun acc v => Column.pushBits acc v 8)
+        ByteArray.empty := by unfold longsOf; simp only [hb, longBytes, Enc.bytesOf]; rfl
+    have hs : (((List.range n.toNat).map Nat.toUInt64).foldl (fun acc v => Column.pushBits acc v 8)
+        ByteArray.empty).size / 8 = n.toNat := by
+      rw [List.foldl_map, (Verify.foldl_pushBits Nat.toUInt64 8 (by decide) _ _).1]; simp
+    rw [hl]
+    unfold gradeColumn
+    simp only [hb, orderKind, Enc.bytesOf]
+    rw [if_neg (by decide), if_neg (by simp only [Scan.Kind.width]; omega)]
   · have hs : b.size / 8 = n.toNat := Arr.n_long_bytes x hb
     have hl : longsOf x = b := by unfold longsOf; simp only [hb, longBytes]; rfl
     rw [hl]

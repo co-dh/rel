@@ -409,13 +409,21 @@ theorem long_facts {t : QAtomicType} (ht : orderKind t = some .i64) :
     t.width = some 8 ∧ denseWidth t = some 8 ∧ t ≠ .general ∧ Coc.nullOf t = some nul ∧ Column.encodes t = true := by
   cases t <;> simp [orderKind] at ht <;> exact ⟨rfl, rfl, by decide, rfl, rfl⟩
 
-/-- An eight-byte integral payload is dense or Frame-of-Reference encoded (`Enc.WF`). -/
+/-- An eight-byte integral payload is Frame-of-Reference encoded, or `dense` or `pos` read through its dense
+    decode `b` (`Enc.WF`): `groupIdsColumn` groups `b`, and word `i` of `raw` is `b`'s at `8i`. -/
 theorem long_enc {t : QAtomicType} (ht : orderKind t = some .i64) {n : USize} {e : Enc} (hwf : Enc.WF t n e) :
-    (∃ b, e = .bytes b ∧ b.size = n.toNat * 8) ∨ ∃ md pk, e = .foR md pk := by
-  cases e with
-  | bytes b => left; refine ⟨b, rfl, ?_⟩; cases t <;> simp [orderKind] at ht <;> simpa [Enc.WF, QAtomicType.width] using hwf
-  | foR md pk => exact .inr ⟨md, pk, rfl⟩
-  | _ => exfalso; cases t <;> simp [orderKind] at ht <;> simp [Enc.WF] at hwf
+    (∃ b, b.size = n.toNat * 8 ∧ groupIdsColumn t n e = some (Order.groupIds .i64 n b) ∧
+      (∀ i < n.toNat, (Enc.raw (X := Empty) t n e).toList.getD i 0 = Column.bitsAt b (i * 8) 8) ∧
+      (e = .bytes b ∨ e = .pos)) ∨ ∃ md pk, e = .foR md pk := by
+  by_cases hf : ∃ md pk, e = .foR md pk
+  · exact .inr hf
+  left
+  obtain ⟨hw, -, -, -, -⟩ := long_facts ht
+  have hb : t ≠ .u1 := by rintro rfl; simp [orderKind] at ht
+  obtain ⟨b, hB, hs⟩ := KernelWF.bytesOf_size hb hw hwf
+  have hel := Verify.elemsW_bytesOf hw hb (by decide) (by decide) n e hwf b hB
+  refine ⟨b, hs, ?_, fun i hi => by rw [← hel]; simp [Verify.elemsW, hs, List.getD_eq_getElem?_getD, hi], ?_⟩ <;>
+    cases t <;> simp [orderKind] at ht <;> cases e <;> simp_all [Enc.WF, Enc.bytesOf, groupIdsColumn, orderKind]
 
 /-- An eight-byte integral payload's raw word `i`: a dense one's eight bytes at `8i`, an encoded one's
     `foRBits`. -/
@@ -651,7 +659,7 @@ theorem rangeOffsets_spec {a : QAtomicType} (ha : orderKind a = some .i64) {p : 
   have hc2 : 2 ≤ (hi.toInt - B.toInt + 2).toNat := by omega
   have hrng : ∀ x : Int64, (los[k]'hkl).toInt ≤ x.toInt → x.toInt ≤ (his[k]'hkh).toInt →
       B.toInt ≤ x.toInt ∧ x.toInt - B.toInt + 2 ≤ (hi.toInt - B.toInt + 2).toNat := fun x h1 h2 => by omega
-  rcases long_enc ha (hwf k hk) with ⟨b, he, hbs⟩ | ⟨md, pk, he⟩
+  rcases long_enc ha (hwf k hk) with ⟨b, hbs, -, -, he | he⟩ | ⟨md, pk, he⟩
   · rw [he] at hp hlk hhk ⊢
     dsimp only at hp hlk hhk
     rw [Option.some_inj] at hlk hhk
@@ -673,6 +681,7 @@ theorem rangeOffsets_spec {a : QAtomicType} (ha : orderKind a = some .i64) {p : 
     refine ⟨h1, h2, by rw [h3]; exact hw, by rw [h4, h3], fun i hi => ?_⟩
     rw [hraw i hi]
     exact ⟨h5 i hi, hbnd i hi⟩
+  · rw [he] at hlk; simp at hlk
   · rw [he] at hp hlk hhk ⊢
     dsimp only at hp hlk hhk
     simp only [overFoR, hnul, Option.map_some, Option.some_inj] at hlk hhk
@@ -729,7 +738,7 @@ theorem codes_long_eq {t : QAtomicType} (ht : orderKind t = some .i64) {p : Nat}
   split
   · next bs hbs =>
     have := vec_mapM_some hbs hp
-    rcases long_enc ht cs[0].2.wf with ⟨b, he, -⟩ | ⟨md, pk, he⟩ <;> cases t <;> simp [orderKind] at ht <;>
+    rcases long_enc ht cs[0].2.wf with ⟨b, -, -, -, he | he⟩ | ⟨md, pk, he⟩ <;> cases t <;> simp [orderKind] at ht <;>
       simp [he, boolBits] at this
   · dsimp only; rw [hro]
 
@@ -788,7 +797,7 @@ theorem codes_long_group {t : QAtomicType} (ht : orderKind t = some .i64) (x : P
       (Obj.codes (.atom t) #v[x])[0] = Code.ofIds (len p.2) x.1 p.1 := by
   obtain ⟨-, -, hg, -, -⟩ := long_facts ht
   have hsome := KernelWF.groupIdsColumn_isSome hg x.2.wf fun d o ids he => by
-    exfalso; rcases long_enc ht x.2.wf with ⟨b, hb, -⟩ | ⟨md, pk, hb⟩ <;> simp [hb, Column.intern] at he
+    exfalso; rcases long_enc ht x.2.wf with ⟨b, -, -, -, hb | hb⟩ | ⟨md, pk, hb⟩ <;> simp [hb, Column.intern] at he
   refine ⟨_, (Option.some_get hsome).symm, ?_⟩
   -- at a concrete type and payload constructor every branch test of `codes` but `rangeOffsets` reduces
   obtain ⟨n, v, hv⟩ := x
@@ -813,8 +822,8 @@ theorem ofIds_long_faithful {t : QAtomicType} (ht : orderKind t = some .i64) (x 
   have hinj : ∀ a c : UInt64, a.toInt64 = c.toInt64 ↔ a = c := fun a c =>
     ⟨fun h => by simpa using congrArg Int64.toUInt64 h, fun h => h ▸ rfl⟩
   rw [Vals.row_atom, Vals.row_atom, long_row_eq ht, hinj]
-  rcases long_enc ht x.2.wf with ⟨b, he, hbs⟩ | ⟨md, pk, he⟩
-  · rw [he, (groupIdsColumn_long ht x.1).1 b, Option.some_inj] at hp
+  rcases long_enc ht x.2.wf with ⟨b, hbs, hg, hraw, -⟩ | ⟨md, pk, he⟩
+  · rw [hg, Option.some_inj] at hp
     subst hp
     have hav : min x.1.toNat (Scan.Kind.i64.avail b) = x.1.toNat := by
       simp [Scan.Kind.avail, Scan.Kind.width, hbs]
@@ -822,8 +831,7 @@ theorem ofIds_long_faithful {t : QAtomicType} (ht : orderKind t = some .i64) (x 
     rw [hav] at hspec
     rw [ofIds_groupOf (Order.keyAt .i64 b) x.1 hn64 hspec.1 (by rw [len_eq_ids, hspec.2]) hi,
       ofIds_groupOf (Order.keyAt .i64 b) x.1 hn64 hspec.1 (by rw [len_eq_ids, hspec.2]) hj,
-      groupOf_eq_groupOf hi hj, Verify.keyAt_eq_iff (by simp) b i j, he,
-      (raw_long ht hi).1 b, (raw_long ht hj).1 b]
+      groupOf_eq_groupOf hi hj, Verify.keyAt_eq_iff (by simp) b i j, hraw i hi, hraw j hj]
     rfl
   · rw [he, (groupIdsColumn_long ht x.1).2 md pk, Option.some_inj] at hp
     subst hp
@@ -844,8 +852,8 @@ theorem ofIds_long_wf {t : QAtomicType} (ht : orderKind t = some .i64) (x : Part
     laneOK(c.w) ∧ c.n = x.1 ∧
       c.b.size = (c.n.toNat * c.w + 7) / 8 ∧
       (c.w < 8 → c.card < USize.size ∧ ∀ i < c.n.toNat, Column.idAt c.b c.w i < c.card) := by
-  rcases long_enc ht x.2.wf with ⟨b, he, hbs⟩ | ⟨md, pk, he⟩
-  · rw [he, (groupIdsColumn_long ht x.1).1 b, Option.some_inj] at hp
+  rcases long_enc ht x.2.wf with ⟨b, hbs, hg, -, -⟩ | ⟨md, pk, he⟩
+  · rw [hg, Option.some_inj] at hp
     subst hp
     have hav : min x.1.toNat (Scan.Kind.i64.avail b) = x.1.toNat := by
       simp [Scan.Kind.avail, Scan.Kind.width, hbs]
