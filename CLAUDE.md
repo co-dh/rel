@@ -43,6 +43,11 @@ Rel is a programming language of its own, not an implementation of k or q:
 - **Documents in `doc/` are written in Chinese** — a design note is a `.zh.typ` styled after
   `doc/rel-architecture.zh.typ`, compiled to PDF, because he reads them in Chinese; code, identifiers, comments,
   commit messages and technical terms stay English.
+- **`doc/rel-architecture.zh.typ` is THE design; read it before any design question, dispatch or new operator** —
+  §0 the runtime types (`Rel = tab | lazy`, `Known`), §1 the `Tm` constructor groups, §4 the table
+  "allegory 运算 → kernel" (each operation's composition of the five kernels), §7 what becomes a prelude definition.
+  Where code and that document differ, say so and ask; never propose a second design beside it, because a
+  design invented without reading it has been rejected each time.
 - **Notation follows freyd's.** Composition in diagram order by juxtaposition or `≫` (`R ≫ S`: first `R`, then `S`);
   applying an operator takes parentheses (`F(R)`, `thin(Q)`, `f(a)`); a converse with a name of its own is written by
   that name (`≥`, not `≤°`; `∈`, not `∋°`).
