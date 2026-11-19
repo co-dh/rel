@@ -25,6 +25,10 @@ def objInfo (env : Env) (n : String) : ObjDef → EM ObjInfo
   | .range lo hi =>
     pure { ty := .base n, range := some (lo, hi), uni := some ⟨_, col ((List.range (hi + 1 - lo).toNat).map fun k : Nat => Int64.ofInt (lo + k))⟩ }
   | .alias o => do let (t, _) ← (oty env [] o).run {}; pure { ty := t }
+  -- the object `Schema.obj` lays out, at the program's objects; `col` reads the columns back (`elabE`)
+  | .schema cs => do
+    let cs ← cs.mapM fun (c, o) => return (c, (← (oty env [] o).run {}).1)
+    pure { ty := Schema.objAt (.base n) .prod cs, cols := cs }
 
 /-- The definition `d` whose constant is `c`, as a use sees it. `prelude.perm` is its own converse, the one converse
     rule kept for a definition (`Tm.own`): `perm° = perm` is a theorem the language cannot derive from the fold

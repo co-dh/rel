@@ -13,38 +13,43 @@ import Rel.Run.Lang.Tm
 
 namespace Rel.Lang
 
-/-- A frame's row type: its columns' names and objects, in `.d` column order. -/
-abbrev Schema := List (String × Obj)
+/-- A frame's row type: its columns' names and objects, in `.d` column order. `α` is what a column's object is: `Obj`,
+    or the elaborator's objects (`OTy`), whose names `X`, `N` an `Obj` does not keep. -/
+abbrev Schema (α : Type := Obj) := List (String × α)
 
 namespace Schema
 
-def names (S : Schema) : List String := S.map (·.1)
+def names {α : Type} (S : Schema α) : List String := S.map (·.1)
 
 /-- `S` as an error message writes it: its column names. -/
-def shown (S : Schema) : String := s!"[{", ".intercalate S.names}]"
+def shown {α : Type} (S : Schema α) : String := s!"[{", ".intercalate S.names}]"
 
 def noColumn : String := "a schema with no column has no object (`Obj` has no unit)"
 
 /-- `S` has a column and no name twice: what every function here accepts and returns. -/
-def check (S : Schema) : Except String Unit :=
+def check {α : Type} (S : Schema α) : Except String Unit :=
   if S.isEmpty then .error noColumn else
   match S.names.find? fun n => S.names.count n > 1 with
   | some n => .error s!"column '{n}' appears twice in schema {S.shown}"
   | none => pure ()
 
-/-- The object of `R`, a schema reversed: its head is the last column. -/
-def objR : List (String × Obj) → Obj
-  | [] => .long
+/-- The object of `R`, a schema reversed, its columns paired by `prod` (`none` when it has none): its head is the
+    last column. -/
+def objR {α : Type} (none : α) (prod : α → α → α) : List (String × α) → α
+  | [] => none
   | [f] => f.2
-  | f :: g :: R => .prod (objR (g :: R)) f.2
+  | f :: g :: R => prod (objR none prod (g :: R)) f.2
+
+/-- `S`'s object at `α`: the one layout of `obj`, which the elaborator reads at its own objects. -/
+def objAt {α : Type} (none : α) (prod : α → α → α) (S : Schema α) : α := objR none prod S.reverse
 
 -- Left-nested, `(A×B)×C`, as `.rel` reads `A×B×C` (`oProd` is left-associative); one column is its own object. `Obj`
--- has no unit, so the empty schema is refused by `check` and its `.long` here is never read.
-def obj (S : Schema) : Obj := objR S.reverse
+-- has no unit, so the empty schema is refused by `check` and its `none` here is never read.
+def obj (S : Schema) : Obj := objAt .long .prod S
 
 /-- The column `n` of `R` (reversed, as `objR`): `outr` at the last column, `outl` then the column in the rest, `𝟙`
     where it is the only column. -/
-def colR (n : String) : (R : List (String × Obj)) → Option ((B : Obj) × Tm (objR R) B)
+def colR (n : String) : (R : List (String × Obj)) → Option ((B : Obj) × Tm (objR .long .prod R) B)
   | [] => none
   | [f] => if f.1 = n then some ⟨f.2, .id⟩ else none
   | f :: g :: R => if f.1 = n then some ⟨f.2, .outr⟩ else (colR n (g :: R)).map fun p => ⟨p.1, .comp .outl p.2⟩
@@ -89,7 +94,7 @@ def col (S : Schema) (n : String) (h : (S.col? n).isOk = true := by schema_ok) :
 /-- The fields of `R` (reversed, as `objR`), each read from `A` by `get` at its name and checked to be at the field's
     object, paired as `objR R` nests them. -/
 def tupleR {A : Obj} (get : String → Except String ((B : Obj) × Tm A B)) :
-    (R : List (String × Obj)) → Except String (Tm A (objR R))
+    (R : List (String × Obj)) → Except String (Tm A (objR .long .prod R))
   | [] => .error noColumn
   | [f] => field f
   | f :: g :: R => return .pair (← tupleR get (g :: R)) (← field f)

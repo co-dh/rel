@@ -64,6 +64,11 @@ def stmt (s : Syntax) : C Decl := do
     if hi < lo then failAt s[5] s!"the range {lo}…{hi} is empty: {hi} is below {lo}"
     pure (.range lo hi)
   | ``sAlias => objDecl do pure (.alias (← obj s[3]))
+  | ``sSchema => objDecl do
+    let cs ← s[4].getSepArgs.toList.mapM fun f => do pure (← wordOf f[0], ← obj f[2])
+    -- a column twice is refused where it is written, by the check every `Schema` function makes
+    if let .error m := Schema.check cs then failAt s[4] m
+    pure (.schema cs)
   | ``sPrint => pure (.print p (← expr s[1]))
   | ``sCheck => pure (.check p (← expr s[1]) (← expr s[3]) (atomIn s[2] == "="))
   | ``sDefn =>

@@ -296,6 +296,8 @@ inductive Expr
   | junc (p : Pos) (a b : Expr)
   | fold (p : Pos) (right : Bool) (r : Expr)
   | lit (p : Pos) (ps : List (Tup × Tup))
+  /-- `col S "c"`: the column `c` of the schema `S`, `S ⟶ C` where `("c", C) ∈ S` (`Schema.col?`). -/
+  | col (p : Pos) (s : OExp) (c : String)
   /-- `μX : φ` (`least`) or `νX : φ`: the least or the greatest `X` with `X = φ(X)`; the body reaches to the
       closing parenthesis or the end of the declaration. -/
   | fix (p : Pos) (least : Bool) (x : String) (body : Expr)
@@ -304,7 +306,7 @@ inductive Expr
 /-- The position a term starts at. -/
 def Expr.pos : Expr → Pos
   | .name p _ | .op p .. | .app p .. | .bin p .. | .inf p .. | .conv p _ | .compl p _ | .pair p .. | .junc p .. | .fold p ..
-  | .lit p _ | .fix p .. => p
+  | .lit p _ | .fix p .. | .col p .. => p
   | .comp a _ => a.pos
 
 /-- Each name of `σ` replaced by its term: a `where` item put in place in its body (§c). -/
@@ -321,6 +323,7 @@ partial def Expr.subst (σ : List (String × Expr)) : Expr → Expr
   | .junc p a b => .junc p (a.subst σ) (b.subst σ)
   | .fold p d r => .fold p d (r.subst σ)
   | .lit p ps => .lit p ps
+  | .col p s c => .col p s c
   -- `x` is bound in the body, so an outer `x` is not replaced there
   | .fix p l x b => .fix p l x (b.subst (σ.filter (·.1 != x)))
 
@@ -334,7 +337,7 @@ partial def Expr.names : Expr → List String
   | .fold _ _ r => r.names
   | .inf _ n a b => n :: (a.names ++ b.names)
   | .conv _ a | .compl _ a => a.names
-  | .lit .. => []
+  | .lit .. | .col .. => []
   | .fix _ _ x b => x :: b.names
 
 /-- A body: a relation, or a test `e ⊑ f` (§e). -/
@@ -356,6 +359,8 @@ inductive ObjDef
   | elems (ws : List String)
   | range (lo hi : Int)
   | alias (o : OExp)
+  /-- `schema S = {k : K, v : N}`: the `Schema` of these columns, the object `Schema.obj` of it (`Expand.objInfo`). -/
+  | schema (cs : List (String × OExp))
   deriving Repr, Inhabited
 
 /-- A `calc` step's reason (`doc/rel-mss-proof-design.md` §3): `:= n(R, …)` cites the theorem `n` at the
@@ -444,6 +449,7 @@ def Expr.render (l : Nat) (full : Bool := false) : Expr → String
   | .junc _ a b => s!"[{a.render 0 full}, {b.render 0 full}]"
   | .fold _ d r => s!"⦇{r.render 0 full}⦈{if d then "ʳ" else ""}"
   | .lit _ ps => "{" ++ ", ".intercalate (ps.map fun (a, b) => (Tup.pair a b).show) ++ "}"
+  | .col _ s c => s!"col {s.render true} {c.quote}"
   | .fix _ least x b =>
     let s := s!"{if least then "μ" else "ν"}{x} : {b.render 0 full}"; if full || l ≥ 1 then s!"({s})" else s
 
