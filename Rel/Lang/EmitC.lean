@@ -17,8 +17,9 @@ open Tab
 def abi : List Kernel :=
   [kernel% Rel.Db.ownWrite, kernel% Rel.Kernel.Order.groupIds, kernel% Rel.Kernel.Order.idGroups,
    kernel% USize.decEq, kernel% USize.add, kernel% USize.div, kernel% ByteArray.usize, kernel% Kernel.Ew.val,
-   kernel% Kernel.Ew.cmp, kernel% Kernel.Ew.bit, kernel% Kernel.whereBits, kernel% Kernel.gatherBytes,
-   kernel% Rel.Db.pushPart, kernel% Kernel.enlistLong]
+   kernel% Kernel.Ew.cmp, kernel% Kernel.Ew.bit, kernel% Kernel.bitsOfFoR, kernel% Kernel.whereBits,
+   kernel% Kernel.gatherBytes, kernel% Rel.Kernel.Order.grade, kernel% Rel.Kernel.Order.invert,
+   kernel% Rel.Kernel.Scan.scan, kernel% Rel.Db.pushPart, kernel% Kernel.enlistLong]
 
 def abiOf (sym : String) : Option Kernel := abi.find? (·.sym == sym)
 
@@ -44,7 +45,7 @@ def outputOf (chain : List (Lean.Name × Program)) (prog : Program) (x : String)
   let r ← (Expand.read (fun _ => none) chain prog).run
   return do
     let (ds, _) ← r.mapError (s!"{repr ·}")
-    let some ⟨_, _, _, t⟩ := ds.lookup x | throw s!"`{x}` is no closed definition of the program"
+    let some ⟨_, _, t⟩ := ds.lookup x | throw s!"`{x}` is no closed definition of the program"
     pure (do output dir (← ofTm t))
 
 /-- The Lean side of the same output: `R`'s columns written by `Db.ownWrite` under the names `output` gives them,

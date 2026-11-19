@@ -109,7 +109,7 @@ private theorem compose (is es : Array UInt64) (hm : is.size < 2 ^ 64)
     (do
       let F ← (List.range L.length).foldlM (kscanRow .first (L.map fun r => if r.2.1 = 0 then (1 : UInt64) else 0).toArray
         (L.map (·.2.2.2)).toArray []) #[]
-      let o ← scatterWords (L.map fun r => UInt64.ofNat (if r.2.1 = 0 then is.size else r.2.2.1)).toArray F
+      let o ← scatterWords .last (L.map fun r => UInt64.ofNat (if r.2.1 = 0 then is.size else r.2.2.1)).toArray F
         (is.size + 1) 0
       pure (o.extract 0 is.size) : Except String (Array UInt64)) = .ok (is.map fun i => es[i.toNat]?.getD 0) := by
   have hN := hP.nodup_iff.mpr (rows_nodup is es)
@@ -140,7 +140,7 @@ private theorem compose (is es : Array UInt64) (hm : is.size < 2 ^ 64)
   obtain ⟨hos, -, hlast⟩ := hw o ho
   show (do
       let F ← (List.range L.length).foldlM (kscanRow .first seg seed []) #[]
-      let o ← scatterWords D F (is.size + 1) 0
+      let o ← scatterWords .last D F (is.size + 1) 0
       pure (o.extract 0 is.size) : Except String (Array UInt64)) = _
   rw [hF]; simp only [bind, Except.bind]; rw [ho]; simp only [pure, Except.pure, Except.ok.injEq]
   apply Array.ext (by simp [hos])
@@ -250,5 +250,36 @@ theorem raw_kgather (m : USize) (ix : Enc) (n : USize) (e : Enc) (o : Enc) (h : 
       rw [gatherWords_eq is es hm he fun k hk => by have := hall k (by omega); omega] at h
       simp only [Functor.map, Except.map] at h
       exact ⟨hisz, hesz, hall, (Except.ok.inj h).symm⟩
+
+/-- Law G2 (PLAN 6.13): gathering from the positions `e = pos` answers the indices themselves, `e[ix[i]] = ix[i]`; so a
+caller holding `pos` as the source skips the call, and `crate/src/gather.rs`'s `of_pos` only checks the bounds. -/
+theorem kgather_pos_e {m n : USize} {ix o : Enc} (h : kgather m ix n .pos = .ok o) : o = wordsFoR (raw .i64 m ix) := by
+  obtain ⟨hs, -, hb, rfl⟩ := raw_kgather m ix n .pos o h
+  congr 1
+  apply Array.ext (by simp)
+  intro k h1 h2
+  have hk := hb k (by simpa [hs] using h2)
+  simp only [Array.getElem?_eq_getElem h2, Option.getD_some] at hk
+  have hp : raw .i64 n (.pos : Enc) = (Array.range n.toNat).map UInt64.ofNat := rfl
+  simp [hp, Array.getElem?_range, hk]
+
+/-- Law G1 (PLAN 6.13): gathering at the positions `ix = pos` answers the first `m` words of `e`, every one of them
+when `m = n`; so a caller holding `pos` as the index skips the call. -/
+theorem kgather_pos_ix {m n : USize} {e o : Enc} (h : kgather m .pos n e = .ok o) :
+    m.toNat ≤ n.toNat ∧ o = wordsFoR ((raw .i64 n e).extract 0 m.toNat) := by
+  obtain ⟨hs, he, hb, rfl⟩ := raw_kgather m .pos n e o h
+  have hm : m.toNat < 2 ^ 64 := Nat.lt_of_lt_of_le m.toNat_lt_size USize.size_le
+  -- row `k` of `pos` is `k`, and the last row `m - 1` is below `n`
+  have hrow : ∀ k < m.toNat, ((raw .i64 m (.pos : Enc))[k]?.getD 0).toNat = k := fun k hk => by
+    simp [raw, Array.getElem?_range, hk, Nat.mod_eq_of_lt (Nat.lt_trans hk hm)]
+  have hle : m.toNat ≤ n.toNat := by
+    rcases Nat.eq_zero_or_pos m.toNat with h0 | h0
+    · omega
+    · have := hb (m.toNat - 1) (by omega); rw [hrow _ (by omega)] at this; omega
+  refine ⟨hle, congrArg wordsFoR (Array.ext (by simp [hs, he, hle]) fun k h1 h2 => ?_)⟩
+  have hk : k < m.toNat := by simpa [hs] using h1
+  have := hrow k hk
+  rw [Array.getElem?_eq_getElem (by omega), Option.getD_some] at this
+  simp [Array.getElem_map, this, Array.getElem_extract, Array.getElem?_eq_getElem (by omega : k < (raw .i64 n e).size)]
 
 end Rel.Verify

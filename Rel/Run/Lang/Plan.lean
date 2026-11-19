@@ -64,6 +64,11 @@ instance : Reg Int64 := ⟨.i64, fun | .i64 x => some x | _ => none, .i64⟩
 instance : Reg Scan.Kind := ⟨.u8, fun
   | .u8 b => let k := Scan.Kind.ofNat b.toNat; if k.ctorIdx == b.toNat then some k else none
   | _ => none, fun k => .u8 k.ctorIdx.toUInt8⟩
+/-- A scan's verb is an enum too: its constructor index in a byte. -/
+instance : Reg Scan.Verb := ⟨.u8, fun
+  | .u8 0 => some .sums | .u8 1 => some .prds | .u8 2 => some .mins | .u8 3 => some .maxs | .u8 4 => some .fills
+  | _ => none,
+  fun v => .u8 (match v with | .sums => 0 | .prds => 1 | .mins => 2 | .maxs => 3 | .fills => 4)⟩
 
 /-- A kernel as its `@[extern]` declaration states it (`kernel%`): the C symbol, each argument's type and whether
     it is borrowed (`@&`), the result's types (a product flattened), whether the toolchain declares it (so `lean.h`
@@ -330,11 +335,11 @@ def litSide {A : Obj} {n : USize} (x : Vals A n) : Bld Side :=
 
 /-- The registers of a closed term's value, key side then value side. Stage 1a builds a literal and a converse,
     which swaps the sides and emits nothing; any other node is refused. -/
-def ofTm : {A B : Obj} → {d : Bool} → Tm A B d → Bld (Side × Side)
-  | _, _, _, .val R => return (← litSide R.key, ← litSide R.val)
-  | _, _, _, .conv R => return (← ofTm R).swap
-  | _, _, _, .share _ R => ofTm R
-  | _, _, _, _ => throw "a node other than a literal, a converse or a shared term: stage 1a builds only those"
+def ofTm : {A B : Obj} → Tm A B → Bld (Side × Side)
+  | _, _, .val R => return (← litSide R.key, ← litSide R.val)
+  | _, _, .conv R => return (← ofTm R).swap
+  | _, _, .share _ R => ofTm R
+  | _, _, _ => throw "a node other than a literal, a converse or a shared term: stage 1a builds only those"
 
 /-! ### Builders of `Alg`'s defs (stage 1b) -/
 
@@ -383,8 +388,19 @@ def relRegs {A B : Obj} (R : Tab A B) : Option (Array Val) :=
 def guard (c : Nat) (msg : String) (args : Array Nat) : Bld Unit :=
   discard <| ite c (pure #[]) (do discard <| emit (.fail msg args) 0; pure #[])
 
-/-- A one-register kernel call. -/
-def call1 (k : Kernel) (args : Array Nat) : Bld Nat := emit1 (.call k.sym args)
+/-- `call k(args)`: as many new registers as `k`'s declaration answers, so the count is never written by hand. -/
+def callK (k : Kernel) (args : Array Nat) : Bld (Array Nat) := call k.sym args k.res.size
+
+/-- A one-register kernel call. Any other kernel is refused: the run pushes all its results, so every register
+    numbered after a one-register `emit1` would be off by the rest. -/
+def call1 (k : Kernel) (args : Array Nat) : Bld Nat := do
+  unless k.res.size == 1 do throw s!"call1 `{k.sym}`: its declaration answers {k.res.size} registers, not one (`callK`)"
+  emit1 (.call k.sym args)
+
+/-- A kernel answering a `u1` `foR` of `n` elements (`Ew.cmp`, `Ew.bit`), read as the bitmap `whereBits` and
+    `Ew.bit` take: `bitsOfFoR`, `boolBits`'s `foR` branch. -/
+def maskB (k : Kernel) (args : Array Nat) (n : Nat) : Bld Nat := do
+  call1 (kernel% Kernel.bitsOfFoR) ((← callK k args).push n)
 
 /-- `len b`, the longs of the payload `b`, as a `size`: its bytes (`lean_sarray_size`) over `8`. -/
 def lenB (b : Nat) : Bld Nat := do
@@ -397,8 +413,8 @@ def lenB (b : Nat) : Bld Nat := do
 def arithB (op : UInt8) (n u v : Nat) : Bld (Array Nat) := do
   let i64 ← lit (.u8 Ew.i64); let vv ← lit (.u8 Ew.vv); let va ← lit (.u8 Ew.va); let nl ← lit (.i64 Alg.nul)
   let val (o sh x y : Nat) := call1 (kernel% Kernel.Ew.val) #[o, i64, sh, nl, x, y, n]
-  let cmp (c : UInt8) (sh x y : Nat) := do call1 (kernel% Kernel.Ew.cmp) #[← lit (.u8 c), i64, sh, x, y, n]
-  let bit (c : UInt8) (x y : Nat) := do call1 (kernel% Kernel.Ew.bit) #[← lit (.u8 c), vv, x, y, n]
+  let cmp (c : UInt8) (sh x y : Nat) := do maskB (kernel% Kernel.Ew.cmp) #[← lit (.u8 c), i64, sh, x, y, n] n
+  let bit (c : UInt8) (x y : Nat) := do maskB (kernel% Kernel.Ew.bit) #[← lit (.u8 c), vv, x, y, n] n
   let s ← val (← lit (.u8 op)) vv u v
   let pos ← cmp Ew.ge va v (← lit (.bytes (one 0)))
   let ok ← cmp Ew.ne va s (← lit (.bytes (one Alg.nul.toUInt64)))
@@ -414,5 +430,40 @@ def arithB (op : UInt8) (n u v : Nat) : Bld (Array Nat) := do
   let g (fill : UInt64) (x : Nat) := do call1 (kernel% Kernel.gatherBytes) #[w, ← lit (.u64 fill), x, k]
   let nf := (Kernel.nullBits .i64).getD 0
   return #[r, ← g nf u, ← g nf v, ← g 0 s]
+
+/-! ### The dataframe recipes (`doc/dataframe-design.zh.typ` §3.3), on columns of dense longs -/
+
+/-- Recipe WHERE, `filter(p)` given its mask: the rows of the columns `cs` (`n` dense longs each) whose bit in `mask`
+    is set, in their order: the count and the gathered columns. -/
+def whereB (n mask : Nat) (cs : Array Nat) : Bld (Nat × Array Nat) := do
+  let k ← call1 (kernel% Kernel.whereBits) #[n, mask]
+  let w ← lit (.size 8); let nf ← lit (.u64 ((Kernel.nullBits .i64).getD 0))
+  return (← lenB k, ← cs.mapM fun c => call1 (kernel% Kernel.gatherBytes) #[w, nf, c, k])
+
+/-- Recipes CODE and SEGFOLD, `Λ(groups(π₁)) ≫ F(𝟙 × (F(π₂) ≫ sum))` on the key column `k` and value column `v` of
+    `n` dense longs: the keys that occur, ascending, each with the sum of its values. CODE sorts (`grade`, stable)
+    and cuts runs where a key differs from its neighbour; SEGFOLD is one `sums` scan, a run's sum being the prefix
+    sum at its last row minus the one before its first. Registers: the run count, the keys, the sums. -/
+def groupSumB (n k v : Nat) : Bld (Array Nat) := do
+  let i64 ← lit (.u8 Ew.i64); let vv ← lit (.u8 Ew.vv); let va ← lit (.u8 Ew.va); let nl ← lit (.i64 Alg.nul)
+  let w ← lit (.size 8); let nf ← lit (.u64 ((Kernel.nullBits .i64).getD 0)); let z ← lit (.u64 0)
+  let o ← lit (.bytes (one 1)); let lane ← lit (Reg.put Scan.Kind.i64)
+  let g (fill src idx : Nat) := call1 (kernel% Kernel.gatherBytes) #[w, fill, src, idx]
+  let val (op : UInt8) (sh x y m : Nat) := do call1 (kernel% Kernel.Ew.val) #[← lit (.u8 op), i64, sh, nl, x, y, m]
+  let p ← call1 (kernel% Kernel.Order.grade) #[lane, ← lit (.bit false), n, k]
+  let ks ← g nf k p; let vs ← g nf v p
+  -- `til n` as the inverse permutation read at `p`: no kernel of the ABI answers the positions directly
+  let t ← g nf (← call1 (kernel% Kernel.Order.invert) #[p]) p
+  -- a run starts where its key differs from the row before and ends where it differs from the row after; past
+  -- either end the gather answers the null, which differs from every key
+  let cut (op : UInt8) := do
+    let nb ← g nf ks (← val op va t o n)
+    call1 (kernel% Kernel.whereBits) #[n, ← maskB (kernel% Kernel.Ew.cmp) #[← lit (.u8 Ew.ne), i64, vv, ks, nb, n] n]
+  let firsts ← cut Ew.sub; let lasts ← cut Ew.add
+  let r ← lenB firsts
+  let cs ← call1 (kernel% Kernel.Scan.scan) #[← lit (Reg.put Scan.Verb.sums), lane, n, vs]
+  -- the prefix sum before a run's first row; before row 0 the gather answers its fill, `0`
+  let before ← g z cs (← val Ew.sub va firsts o r)
+  return #[r, ← g nf ks firsts, ← val Ew.sub vv (← g z cs lasts) before r]
 
 end Rel.Lang.Plan

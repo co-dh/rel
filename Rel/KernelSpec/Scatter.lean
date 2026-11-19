@@ -59,8 +59,8 @@ private abbrev ixAt (is : Array UInt64) (k : Nat) : Nat := (is[k]?.getD 0).toNat
 /-- `scatterWords` answers exactly when every index is below `n`; its `n` cells are `fill` where no row names them,
 and `es[k]` at `is[k]` where no later row names the same cell. -/
 theorem scatterWords_spec (is es : Array UInt64) (n : Nat) (fill : UInt64) :
-    ((∃ ws, scatterWords is es n fill = .ok ws) ↔ ∀ k < is.size, ixAt is k < n) ∧
-    ∀ ws, scatterWords is es n fill = .ok ws → ws.size = n ∧
+    ((∃ ws, scatterWords .last is es n fill = .ok ws) ↔ ∀ k < is.size, ixAt is k < n) ∧
+    ∀ ws, scatterWords .last is es n fill = .ok ws → ws.size = n ∧
       (∀ j < n, (∀ k < is.size, ixAt is k ≠ j) → ws[j]? = some fill) ∧
       ∀ k < is.size, (∀ k', k < k' → k' < is.size → ixAt is k' ≠ ixAt is k) →
         ws[ixAt is k]? = some (es[k]?.getD 0) := by
@@ -82,12 +82,14 @@ theorem foRWords_raw (what : String) (m : USize) (e : Enc) (ws : Array UInt64)
       exact ⟨rfl, by simp [raw, QAtomicType.width]⟩
     · cases h
   · cases h
+    exact ⟨rfl, by simp [raw]⟩
+  · cases h
 
 /-- Design §4's `scatter` law, on words: the `n` words `ws` `Enc.raw` reads from an answer of `kscatter`, against the
 `m` words `is` and `es` it reads from `ix` and `e`: every index is below `n`, a cell no row names is `fill`, and
 `ws[is[k]] = es[k]` for every row `k` no later row overrides. The answer is `foR`, `Coc.encode` of `ws` at 8 bytes. -/
 theorem raw_scatter (m : USize) (ix e : Enc) (n : USize) (fill : UInt64) (o : Enc)
-    (h : kscatter m ix e n fill = .ok o) :
+    (h : kscatter .last m ix e n fill = .ok o) :
     let is := raw .i64 m ix
     let es := raw .i64 m e
     let ws := raw .i64 n o
@@ -108,7 +110,7 @@ theorem raw_scatter (m : USize) (ix e : Enc) (n : USize) (fill : UInt64) (o : En
     | ok es' =>
       obtain ⟨rfl, hisz⟩ := foRWords_raw _ _ _ _ hi
       obtain ⟨rfl, hesz⟩ := foRWords_raw _ _ _ _ he
-      cases hw : scatterWords (raw .i64 m ix) (raw .i64 m e) n.toNat fill with
+      cases hw : scatterWords .last (raw .i64 m ix) (raw .i64 m e) n.toNat fill with
       | error s => simp [hi, he, hw, bind, Except.bind] at h
       | ok ws =>
         simp only [hi, he, hw, bind, Except.bind, pure, Except.pure] at h
@@ -134,5 +136,21 @@ theorem raw_scatter (m : USize) (ix e : Enc) (n : USize) (fill : UInt64) (o : En
         refine ⟨ho, hisz, hesz, hs, fun k hk => hall k (by omega), fun j hj hn => hfix j hj
           fun k hk => hn k (by omega), fun k hk hl => hlast k (by omega) fun k' a b hc => hl k' a (by omega) ?_⟩
         exact UInt64.toNat_inj.mp hc
+
+/-- Law S1 (PLAN 6.13): scattering to the positions `ix = pos` at `m = n` writes every cell once, at its own row, so the
+answer reads back as `e`: the identity is a permutation, and a caller holding `pos` skips the call. -/
+theorem kscatter_pos_ix {n : USize} {e o : Enc} {fill : UInt64} (h : kscatter .last n .pos e n fill = .ok o) :
+    raw .i64 n o = raw .i64 n e := by
+  obtain ⟨-, his, hes, hws, -, -, hlast⟩ := raw_scatter n .pos e n fill o h
+  have hm : n.toNat < 2 ^ 64 := Nat.lt_of_lt_of_le n.toNat_lt_size USize.size_le
+  -- row `k` of `pos` is `k`
+  have hrow : ∀ k < n.toNat, ((raw .i64 n (.pos : Enc))[k]?.getD 0).toNat = k := fun k hk => by
+    simp [raw, Array.getElem?_range, hk, Nat.mod_eq_of_lt (Nat.lt_trans hk hm)]
+  apply Array.ext (by rw [hws, hes])
+  intro j h1 h2
+  have hj : j < n.toNat := by omega
+  have hw := hlast j hj fun k' _ hk' hc => by have := congrArg UInt64.toNat hc; rw [hrow k' hk', hrow j hj] at this; omega
+  rw [hrow j hj, Array.getElem?_eq_getElem h1, Array.getElem?_eq_getElem h2, Option.getD_some] at hw
+  exact Option.some.inj hw
 
 end Rel.Verify

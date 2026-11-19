@@ -30,31 +30,31 @@ def opC {α β γ : Type} (op : α → β → γ × Bool) (r : α × Bool) (s : 
   let c := op r.1 s.1; (c.1, r.2 && s.2 && c.2)
 
 /-- Whether the term is a table, the one leaf a route has. -/
-def _root_.Rel.Lang.Tm.isVal {A B : Obj} {d : Bool} : Tm A B d → Bool
+def _root_.Rel.Lang.Tm.isVal {A B : Obj} : Tm A B → Bool
   | .val _ => true
   | _ => false
 
 /-- A table leaf's relation, `𝟘` at any other term: the universes of `\` in a route. -/
-def _root_.Rel.Lang.Tm.tab {A B : Obj} {d : Bool} : Tm A B d → Tab A B
+def _root_.Rel.Lang.Tm.tab {A B : Obj} : Tm A B → Tab A B
   | .val R => R
   | _ => Alg.zero
 
 /-- The route as a table and whether every node's op ran within capacity: `Alg`'s C twin at each node, what the expander
     runs for the term. Bit false at a constructor with no bit rule. -/
-def _root_.Rel.Lang.Tm.tableC : {A B : Obj} → {d : Bool} → Tm A B d → Tab A B × Bool
-  | _, _, _, .val R => (R, true)
-  | _, _, _, .comp R S => let r := R.tableC; if r.1.n == 0 then (Alg.zero, r.2) else opC compC r S.tableC
-  | _, _, _, .conv R => let r := R.tableC; (r.1°, r.2)
-  | _, _, _, .meet R S => opC interC R.tableC S.tableC
-  | _, _, _, .join R S => opC unionC R.tableC S.tableC
-  | _, _, _, .diff R S => opC diffC R.tableC S.tableC
+def _root_.Rel.Lang.Tm.tableC : {A B : Obj} → Tm A B → Tab A B × Bool
+  | _, _, .val R => (R, true)
+  | _, _, .comp R S => let r := R.tableC; if r.1.n == 0 then (Alg.zero, r.2) else opC compC r S.tableC
+  | _, _, .conv R => let r := R.tableC; (r.1°, r.2)
+  | _, _, .meet R S => opC interC R.tableC S.tableC
+  | _, _, .join R S => opC unionC R.tableC S.tableC
+  | _, _, .diff R S => opC diffC R.tableC S.tableC
   -- the universes are read as tables: a universe that is not one clears the bit
-  | _, _, _, .ldiv R S UB UC =>
+  | _, _, .ldiv R S UB UC =>
     let r := opC (leftDivC · · UB.tab.val UC.tab.val) R.tableC S.tableC; (r.1, r.2 && UB.isVal && UC.isVal)
-  | _, _, _, _ => (Alg.zero, false)
+  | _, _, _ => (Alg.zero, false)
 
 /-- The route as a table: `tableC`'s relation. -/
-def _root_.Rel.Lang.Tm.table {A B : Obj} {d : Bool} (p : Tm A B d) : Tab A B := p.tableC.1
+def _root_.Rel.Lang.Tm.table {A B : Obj} (p : Tm A B) : Tab A B := p.tableC.1
 
 /-- A column of some object. -/
 abbrev Col := (X : Obj) × Part X
@@ -62,24 +62,24 @@ abbrev Col := (X : Obj) × Part X
 def relCols {A B : Obj} (R : Tab A B) (cs : Array Col) : Array Col := (cs.push ⟨A, ⟨R.n, R.key⟩⟩).push ⟨B, ⟨R.n, R.val⟩⟩
 
 /-- The tables' columns, two per table, in the order `Tm.bits` reads them back. -/
-def _root_.Rel.Lang.Tm.cols : {A B : Obj} → {d : Bool} → Tm A B d → Array Col → Array Col
-  | _, _, _, .val R, cs => relCols R cs
-  | _, _, _, .comp R S, cs | _, _, _, .meet R S, cs | _, _, _, .join R S, cs | _, _, _, .diff R S, cs => S.cols (R.cols cs)
-  | _, _, _, .conv R, cs => R.cols cs
-  | _, _, _, .ldiv R S UB UC, cs => relCols UC.tab (relCols UB.tab (S.cols (R.cols cs)))
-  | _, _, _, _, cs => cs
+def _root_.Rel.Lang.Tm.cols : {A B : Obj} → Tm A B → Array Col → Array Col
+  | _, _, .val R, cs => relCols R cs
+  | _, _, .comp R S, cs | _, _, .meet R S, cs | _, _, .join R S, cs | _, _, .diff R S, cs => S.cols (R.cols cs)
+  | _, _, .conv R, cs => R.cols cs
+  | _, _, .ldiv R S UB UC, cs => relCols UC.tab (relCols UB.tab (S.cols (R.cols cs)))
+  | _, _, _, cs => cs
 
 /-- Every matrix the route builds at most `2²⁷` bits (16 MB), `sz` each object's code count; false at a constructor with
     no bit rule. The left side of `≫` and `\` is read as its pairs (`Tm.pairs`): a table's from its codes, with no
     matrix. -/
-def _root_.Rel.Lang.Tm.fits (sz : Obj → Nat) : {A B : Obj} → {d : Bool} → Tm A B d → Bool
-  | A, B, _, .val _ => sz A * sz B ≤ 2 ^ 27
-  | A, B, _, .meet R S | A, B, _, .join R S | A, B, _, .diff R S => sz A * sz B ≤ 2 ^ 27 && R.fits sz && S.fits sz
-  | A, B, _, .comp R S => sz A * sz B ≤ 2 ^ 27 && (R.isVal || R.fits sz) && S.fits sz
+def _root_.Rel.Lang.Tm.fits (sz : Obj → Nat) : {A B : Obj} → Tm A B → Bool
+  | A, B, .val _ => sz A * sz B ≤ 2 ^ 27
+  | A, B, .meet R S | A, B, .join R S | A, B, .diff R S => sz A * sz B ≤ 2 ^ 27 && R.fits sz && S.fits sz
+  | A, B, .comp R S => sz A * sz B ≤ 2 ^ 27 && (R.isVal || R.fits sz) && S.fits sz
   -- the universes are read as tables, as in `tableC`
-  | A, B, _, .ldiv R S UB UC => sz A * sz B ≤ 2 ^ 27 && (R.isVal || R.fits sz) && S.fits sz && UB.isVal && UC.isVal
-  | A, B, _, .conv R => sz A * sz B ≤ 2 ^ 27 && R.fits sz
-  | _, _, _, _ => false
+  | A, B, .ldiv R S UB UC => sz A * sz B ≤ 2 ^ 27 && (R.isVal || R.fits sz) && S.fits sz && UB.isVal && UC.isVal
+  | A, B, .conv R => sz A * sz B ≤ 2 ^ 27 && R.fits sz
+  | _, _, _ => false
 
 /-! ### Codes -/
 
@@ -160,8 +160,8 @@ def sortBy (g o : ByteArray) : ByteArray × ByteArray :=
   (gather 8 g p, gather 8 o p)
 
 /-- `∩`, `∪` and `−` of two matrices of one shape: `Ew.bit` lesser, greater, and lesser with `~`. -/
-def Bits.meet (x y : Bits) : Bits := ⟨x.na, x.w, Ew.bit Ew.lesser Ew.vv x.b y.b (x.na * x.w).toUSize⟩
-def Bits.join (x y : Bits) : Bits := ⟨x.na, x.w, Ew.bit Ew.greater Ew.vv x.b y.b (x.na * x.w).toUSize⟩
+def Bits.meet (x y : Bits) : Bits := ⟨x.na, x.w, Ew.bitBits Ew.lesser Ew.vv x.b y.b (x.na * x.w).toUSize⟩
+def Bits.join (x y : Bits) : Bits := ⟨x.na, x.w, Ew.bitBits Ew.greater Ew.vv x.b y.b (x.na * x.w).toUSize⟩
 def Bits.diff (x y : Bits) : Bits := x.meet ⟨y.na, y.w, Ew.notBits (y.na * y.w).toUSize y.b⟩
 
 /-- `R \ S` from `R°`'s pairs `y`, `a` (`y` ascending, below `nb`) and the universes' codes `ub`, `uc`: row `y`
@@ -187,29 +187,29 @@ def take (ids : Array ByteArray) : StateM Nat (ByteArray × ByteArray) :=
 
 /-- The pairs of codes of `p`, the key ascending, of the converse under `flip`: a table's from its codes, sorted,
     with no matrix (so a large table on the left of `≫` or `\` builds none); any other node's from its matrix `x`. -/
-def pairsOf {A B : Obj} {d : Bool} (p : Tm A B d) (x : StateM Nat Bits) (ids : Array ByteArray) (flip : Bool) :
+def pairsOf {A B : Obj} (p : Tm A B) (x : StateM Nat Bits) (ids : Array ByteArray) (flip : Bool) :
     StateM Nat (ByteArray × ByteArray) :=
   if p.isVal then do let (k, v) ← take ids; pure (if flip then sortBy v k else sortBy k v)
   else do let x ← x; pure (if flip then x.conv.pairs else x.pairs)
 
 /-- The route's matrix, one kernel call per node, the tables' code columns read in `Tm.cols`' order. -/
-def _root_.Rel.Lang.Tm.bits (ids : Array ByteArray) (sz : Obj → Nat) : {A B : Obj} → {d : Bool} → Tm A B d →
+def _root_.Rel.Lang.Tm.bits (ids : Array ByteArray) (sz : Obj → Nat) : {A B : Obj} → Tm A B →
     StateM Nat Bits
-  | A, B, _, .val _ => do let (k, v) ← take ids; pure (Bits.ofCodes (sz A) (sz B) k v)
-  | A, _, _, .comp R S => do
+  | A, B, .val _ => do let (k, v) ← take ids; pure (Bits.ofCodes (sz A) (sz B) k v)
+  | A, _, .comp R S => do
     let (i, j) ← pairsOf R (R.bits ids sz) ids false; return Bits.comp (sz A) i j (← S.bits ids sz)
-  | _, _, _, .conv R => return (← R.bits ids sz).conv
-  | _, _, _, .meet R S => return (← R.bits ids sz).meet (← S.bits ids sz)
-  | _, _, _, .join R S => return (← R.bits ids sz).join (← S.bits ids sz)
-  | _, _, _, .diff R S => return (← R.bits ids sz).diff (← S.bits ids sz)
-  | A, _, _, .ldiv R S _ _ => do
+  | _, _, .conv R => return (← R.bits ids sz).conv
+  | _, _, .meet R S => return (← R.bits ids sz).meet (← S.bits ids sz)
+  | _, _, .join R S => return (← R.bits ids sz).join (← S.bits ids sz)
+  | _, _, .diff R S => return (← R.bits ids sz).diff (← S.bits ids sz)
+  | A, _, .ldiv R S _ _ => do
     let (y, a) ← pairsOf R (R.bits ids sz) ids true; let s ← S.bits ids sz; let ub ← take ids; let uc ← take ids
     pure (Bits.ldiv (sz A) y a s ub.2 uc.2)
-  | _, _, _, _ => pure (Bits.const false 0 0)
+  | _, _, _ => pure (Bits.const false 0 0)
 
 /-- The route's pairs of codes (`pairsOf` at its matrix). -/
-def _root_.Rel.Lang.Tm.pairs (ids : Array ByteArray) (sz : Obj → Nat) (flip : Bool) {A B : Obj} {d : Bool}
-    (p : Tm A B d) : StateM Nat (ByteArray × ByteArray) := pairsOf p (p.bits ids sz) ids flip
+def _root_.Rel.Lang.Tm.pairs (ids : Array ByteArray) (sz : Obj → Nat) (flip : Bool) {A B : Obj}
+    (p : Tm A B) : StateM Nat (ByteArray × ByteArray) := pairsOf p (p.bits ids sz) ids flip
 
 /-- The capacities the bit run is proved under, read off counts alone: every column's rows below `2^63` (a table
     sorted or scattered by its codes), every object's codes at most `2²⁷`, and the root's picks at its at most
@@ -220,7 +220,7 @@ def capsOK {A B : Obj} (cs sps : Array Col) (pa : Part A) (pb : Part B) : Bool :
 
 /-- The route run as bit matrices and turned into a table at the root; `none` where a coding did not run within
     capacity, a node's matrix is over `2²⁷` bits, or the counts fail `capsOK`. -/
-def run? {A B : Obj} {d : Bool} (p : Tm A B d) : Option (Tab A B) := do
+def run? {A B : Obj} (p : Tm A B) : Option (Tab A B) := do
   let (ids, sps) ← codeAll (p.cols #[])
   let sp (X : Obj) : Part X := match sps.find? (·.1 == X) with
     | some ⟨Y, q⟩ => if h : Y = X then h ▸ q else ⟨0, Vals.empty X⟩
@@ -246,7 +246,7 @@ unsafe def checkOnU : Nat := match unsafeBaseIO (IO.getEnv "LEETQ_CHECK") with |
 /-- The route's relation with its bit: `run?`'s answer, bit set, or the table with `tableC.2` where it does not run as
     bits (`codeAll`, `fits`, `capsOK` failed). In check mode both paths run, the path taken is traced
     (`LEETQ bits` / `LEETQ table`), and `R ⊑ T ∧ T ⊑ R` failing stops the process. -/
-def runC {A B : Obj} {d : Bool} (p : Tm A B d) : Tab A B × Bool :=
+def runC {A B : Obj} (p : Tm A B) : Tab A B × Bool :=
   if p.isVal then p.tableC else match run? p with
     | some R => (if checkOn == 0 then R else dbgTrace "LEETQ bits" fun _ => if checkOn == 1 then R else
         let T := p.table

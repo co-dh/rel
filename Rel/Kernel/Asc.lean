@@ -37,13 +37,22 @@ def ascIns (le : Nat → Nat → Bool) (x : Nat) : List Nat → List Nat
 def ascGrade (m : Nat) (ks : List (Array UInt64)) : List Nat :=
   (List.range m).foldl (fun acc x => ascIns (lexLe ks) x acc) []
 
+/-- A key column's `m` words, `foRWords`', but a `pos` column is the error wherever its positions' order codes are not
+in row order (PLAN 6.13): at a type other than `i64` they wrap at its width, and at `i64` the code of `i` is
+`i ^^^ 2^63`, which ascends with `i` only up to `2^63` rows. Within that bound the rows are in order, laws A1 and A2. -/
+def ascWords (m : USize) : QAtomicType × Enc → Except String (Array UInt64)
+  | (.i64, .pos) => if m.toNat ≤ 2 ^ 63 then foRWords "asc" m .pos
+    else .error s!"asc: a pos column of {m} rows is past 2^63, where its order codes wrap"
+  | (t, .pos) => .error s!"asc: a pos column is type {QAtomicType.i64.ctorIdx}, not {t.ctorIdx}"
+  | (_, e) => foRWords "asc" m e
+
 /-- One key column of `kasc`: its `m` words as every kernel of design §4 reads a `foR` (`foRWords`) and their order
 codes at its type (`ascOrd`, which cuts a word to the type's width), or why it has none: a type with no order, then
-`foRWords`' error. -/
+`ascWords`' error. -/
 def ascCol (m : USize) (c : QAtomicType × Enc) : Except String (Array UInt64 × Array UInt64) :=
   match ascOrd c.1 with
   | none => .error s!"asc: type {c.1.ctorIdx} has no fixed-width order"
-  | some f => (fun x => (x, x.map f)) <$> foRWords "asc" m c.2
+  | some f => (fun x => (x, x.map f)) <$> ascWords m c
 
 /-- **The asc kernel** (design §4, `asc_sorted` and `asc_perm`): the `m` rows of the columns `es`, each a type and a
 `foR` column, sorted stably and lexicographically by their order codes. The answer is every column's words sorted and
@@ -53,8 +62,8 @@ the permutation, row `k` of the answer being input row `p[k]`, each as `wordsFoR
 def kasc (m : USize) (es : @& List (QAtomicType × Enc)) : Except String (List Enc × Enc) := do
   let cs ← es.mapM (ascCol m)
   let p := ((ascGrade m.toNat (cs.map (·.2))).map Nat.toUInt64).toArray
-  let r ← scatterWords p ((List.range m.toNat).map Nat.toUInt64).toArray m.toNat 0
-  let vs ← cs.mapM fun c => scatterWords r c.1 m.toNat 0
+  let r ← scatterWords .last p ((List.range m.toNat).map Nat.toUInt64).toArray m.toNat 0
+  let vs ← cs.mapM fun c => scatterWords .last r c.1 m.toNat 0
   pure (vs.map wordsFoR, wordsFoR p)
 
 end Rel.Kernel

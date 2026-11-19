@@ -36,6 +36,13 @@ theorem lt_idWidthOf {x n : Nat} (hx : x < n) (hn : n ≤ 2 ^ 64) : x < 2 ^ Colu
     exact Nat.lt_of_le_of_lt (Nat.le_sub_one_of_lt hx)
       (Nat.lt_of_lt_of_le Nat.lt_log2_self (Nat.pow_le_pow_right (by decide) hlane))
 
+/-- The kernels' `firstsBy` (a `BEq` key) is the specification's `firstsOf` at a lawful one. -/
+theorem firstsBy_eq {α : Type} [BEq α] [LawfulBEq α] [DecidableEq α] (m : Nat) (key : Nat → α) :
+    Order.firstsBy m key = firstsOf key m := by
+  have hb : ∀ a b : α, (a != b) = !decide (a = b) := fun a b => by
+    rw [bne, Bool.eq_iff_iff.2 (show (a == b) = true ↔ decide (a = b) = true by rw [beq_iff_eq, decide_eq_true_iff])]
+  unfold Order.firstsBy firstsOf; simp only [hb]
+
 /-- **`idsBy` read back**: the ids are `groupOf`, packed at the width of the first occurrences' count,
 and the second payload holds one long per first occurrence. -/
 theorem idsBy_spec {α : Type} [BEq α] [LawfulBEq α] [DecidableEq α] (m : Nat) (key : Nat → α) :
@@ -43,8 +50,7 @@ theorem idsBy_spec {α : Type} [BEq α] [LawfulBEq α] [DecidableEq α] (m : Nat
       (Order.idsBy m key).2.size = 8 * (firstsOf key m).length := by
   have hb : ∀ a b : α, (a == b) = decide (a = b) := fun a b => Bool.eq_iff_iff.2 (by
     rw [beq_iff_eq, decide_eq_true_iff])
-  have hf : Order.firstsBy m key = firstsOf key m := by
-    unfold Order.firstsBy firstsOf; simp only [bne, hb]
+  have hf := firstsBy_eq m key
   refine ⟨?_, ?_⟩
   · show Column.packIds _ m (fun i => (Order.firstsBy m key).findIdx (key · == key i)) = _
     simp only [hf, hb]; rfl
@@ -90,7 +96,8 @@ theorem groupIdsColumn_spec {t : QAtomicType} {n : USize} {e : Ext.Enc X} {p : B
           Order.idKey (dof.size - 1) ids (Column.idWidth dof).toUSize.toNat j)) ∨
     (∃ k u b, p = Order.groupIds k u b ∧
       ((t = .u1 ∧ k = .bit ∧ e = .bits b) ∨
-        (orderKind t = some k ∧ ∃ md pk, e = .foR md pk ∧ b = Coc.decode k.width.toUSize md pk n) ∨
+        ((orderKind t = some k ∨ orderKind t = some .bit ∧ k = .u8) ∧
+          ∃ md pk, e = .foR md pk ∧ b = Coc.decode k.width.toUSize md pk n) ∨
         (orderKind t = some k ∧ Enc.bytesOf t n e = some b)) ∧
       ∀ i < min u.toNat (k.avail b), ∀ j < min u.toNat (k.avail b),
         (Column.idAt p.1 (Column.idWidthOf (p.2.size / 8)) i = Column.idAt p.1 (Column.idWidthOf (p.2.size / 8)) j ↔
@@ -123,17 +130,21 @@ theorem groupIdsColumn_spec {t : QAtomicType} {n : USize} {e : Ext.Enc X} {p : B
     exact Or.inr (Or.inr ⟨_, _, _, rfl, Or.inl ⟨rfl, rfl, rfl⟩, keyed _ _ _⟩)
   · split at h
     · nomatch h
-    · split at h
-      · nomatch h
+    · rename_i k hk
+      split at h
+      · cases Option.some.inj h
+        refine Or.inr (Or.inr ⟨_, _, _, rfl, Or.inr (Or.inl ⟨?_, _, _, rfl, rfl⟩), keyed _ _ _⟩)
+        by_cases hb : k = .bit
+        · subst hb; exact .inr ⟨hk, rfl⟩
+        · exact .inl (by simp [hb, hk])
       · split at h
-        · cases Option.some.inj h
-          exact Or.inr (Or.inr ⟨_, _, _, rfl, Or.inr (Or.inl ⟨‹_›, _, _, rfl, rfl⟩), keyed _ _ _⟩)
+        · nomatch h
         · cases hb : Enc.bytesOf t n e with
           | none => rw [hb] at h; cases h
           | some b =>
             rw [hb] at h
             cases Option.some.inj h
-            exact Or.inr (Or.inr ⟨_, _, _, rfl, Or.inr (Or.inr ⟨‹_›, rfl⟩), keyed _ _ _⟩)
+            exact Or.inr (Or.inr ⟨_, _, _, rfl, Or.inr (Or.inr ⟨hk, rfl⟩), keyed _ _ _⟩)
 
 /-- info: 'Rel.Verify.groupIdsColumn_spec' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs in

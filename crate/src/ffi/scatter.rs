@@ -8,6 +8,16 @@ use {alloc::format, crate::{blocks::Blocks, coc, lean::B, scatter}};
 
 /// `Ext.Enc.foR`'s constructor tag (Rel/Kernel/Value.lean: `bytes bits syms foR ..`).
 pub const FOR: u32 = 3;
+/// `Ext.Enc.pos`'s constructor tag, the last: nullary, so the object is the scalar `lean_box(7)` and `tag` reads 7.
+pub const POS: u32 = 7;
+
+/// `Kernel.foRWords what m e` as a block source: `pos` is the positions `0 .. m` (`Blocks::pos`), a `foR` is `for_view`'s
+/// column, and any other form is `for_view`'s error.
+#[cfg(all(feature = "ffi", not(any(test, feature = "std"))))]
+pub fn blocks_view<'a>(what: &str, m: usize, e: B<'a>) -> Result<Blocks<'a>, String> {
+    if e.tag() == POS { return Ok(Blocks::pos(m)) }
+    for_view(what, m, e).map(Blocks::from)
+}
 
 /// `Kernel.foRWords what m e`'s layout test: the `foR` argument `e` as the block source of its `m` words where
 /// `Column.lgOk` and `Coc.foRStd` admit it at `m` (`coc::view` and `Coc::std`), else the model's error text.
@@ -28,10 +38,10 @@ pub fn except(r: Result<O, String>) -> O {
 }
 
 export! {
-    /// Spec: `kscatter m ix e n fill` reads the `m` words of `ix`, then of `e` (each `foR`, its layout whole), and answers
-    /// `n` cells, `fill` but where a row `k` writes `e[k]` at `ix[k]`, the last such row winning, encoded as
-    /// `Coc.encode 8`; the first error met in that order is the answer, an index `>= n` among them.
-    fn qlean_k_scatter(m: usize, ix: B, e: B, n: usize, fill: u64) -> O {
-        except(for_view("scatter: ix", m, ix).and_then(|is| for_view("scatter: e", m, e).and_then(|es| scatter::blocks(&Blocks::from(is), &Blocks::from(es), n, fill))))
+    /// Spec: `kscatter op m ix e n fill` reads the `m` words of `ix`, then of `e` (each `foR`, its layout whole), and answers
+    /// `n` cells, each `fill` folded with `Op.eval op` over the rows `k` naming it (`e[k]`), in row order, encoded as
+    /// `Coc.encode 8`; the first error met in that order is the answer, an index `>= n` or a failing step among them.
+    fn qlean_k_scatter(op: u8, m: usize, ix: B, e: B, n: usize, fill: u64) -> O {
+        except(blocks_view("scatter: ix", m, ix).and_then(|is| blocks_view("scatter: e", m, e).and_then(|es| scatter::blocks(op, &is, &es, n, fill))))
     }
 }

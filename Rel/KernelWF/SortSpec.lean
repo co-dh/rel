@@ -91,20 +91,8 @@ theorem gradeColumn_sort {t : QAtomicType} {n : USize} {e v : Enc} (h : gradeCol
     ∃ m le, v = .bytes (Order.indices ((List.range m).mergeSort le)) := by
   unfold gradeColumn at h
   simp only [Bool.false_eq_true, ↓reduceIte] at h
-  split at h
-  all_goals first
-    | (cases h; exact ⟨_, _, rfl⟩)
-    | (split at h
-       · cases h
-       split at h
-       · cases h
-       split at h
-       · cases h; exact ⟨_, _, rfl⟩
-       · split at h
-         · split at h
-           · cases h
-           · cases h; exact ⟨_, _, rfl⟩
-         · cases h)
+  -- every branch either declines (`none`) or answers a grade/rank, whatever the nesting of the dispatch
+  repeat' first | (cases h; exact ⟨_, _, rfl⟩) | (cases h; done) | split at h
 
 /-- **The grade of `kc`'s codes gathered at `vp` is a permutation of `vp`'s positions.** Hypotheses: `kc` well
     formed, every long of `vp` one of its rows. -/
@@ -204,6 +192,39 @@ theorem sortSide_size8 {B : Obj} {s : USize} (x : Vals B s) (srt : {k : USize} �
   · exact gather_size8 _ _
   · exact hq
 
+/-- **The array passes permute the rows they are handed**, given that the element sort does. -/
+theorem arrPasses_perm {b : Obj} {n : USize} (c : Vals (.arr b) n)
+    (srt : {k : USize} → Vals b k → ByteArray → ByteArray)
+    (hs : ∀ {k : USize} (v : Vals b k) (r : ByteArray), len r < USize.size → (ids (srt v r)).Perm (ids r))
+    (T : Nat) (p : ByteArray) : (ids (arrPasses c srt T p)).Perm (ids p) := by
+  unfold arrPasses
+  generalize List.range _ = ts
+  induction ts with
+  | nil => exact List.Perm.refl _
+  | cons t ts iht =>
+    simp only [List.foldr_cons]
+    generalize List.foldr _ p ts = q at iht ⊢
+    unfold arrPass
+    split
+    next hq =>
+      rw [ids_concat2 (gather_size8 _ _)]
+      exact (((List.Perm.refl _).append (sortSide_perm _ _ hs _ _)).trans (split_perm q _ hq)).trans iht
+    next => exact iht
+
+/-- **`arrSort` permutes the rows it is handed**: each of its answers is one of `arrPasses`. -/
+theorem arrSort_perm {b : Obj} {n : USize} (c : Vals (.arr b) n)
+    (srt : {k : USize} → Vals b k → ByteArray → ByteArray)
+    (hs : ∀ {k : USize} (v : Vals b k) (r : ByteArray), len r < USize.size → (ids (srt v r)).Perm (ids r))
+    (p : ByteArray) : ∀ T fuel, (ids (arrSort c srt p T fuel)).Perm (ids p)
+  | _, 0 => arrPasses_perm c srt hs _ p
+  | T, fuel + 1 => by
+    unfold arrSort
+    split
+    · exact arrPasses_perm c srt hs _ p
+    · split
+      · exact arrPasses_perm c srt hs _ p
+      · exact arrSort_perm c srt hs p (2 * T) fuel
+
 /-- **`Obj.sortBy` permutes the rows it is handed**: its answer holds the longs of `p`, each once, at every
     side, wherever `len p` fits a `USize`. -/
 theorem sortBy_permutes (A : Obj) {n : USize} (c : Vals A n) (p : ByteArray) (hl : len p < USize.size) :
@@ -234,19 +255,7 @@ theorem sortBy_permutes (A : Obj) {n : USize} (c : Vals A n) (p : ByteArray) (hl
     exact (iha c.1 _ hl2).trans h2
   | arr b ih =>
     simp only [Obj.sortBy, Obj.sortByC]
-    generalize List.range _ = ts
-    induction ts with
-    | nil => exact List.Perm.refl _
-    | cons t ts iht =>
-      simp only [List.foldr_cons]
-      generalize List.foldr _ p ts = q at iht ⊢
-      unfold arrPass
-      split
-      next hq =>
-        rw [ids_concat2 (gather_size8 _ _)]
-        exact (((List.Perm.refl _).append (sortSide_perm _ _ (fun v r hr => ih v r hr) _ _)).trans
-          (split_perm q _ hq)).trans iht
-      next => exact iht
+    exact arrSort_perm c _ (fun v r hr => ih v r hr) p 1 64
   | sum a b iha ihb =>
     simp only [Obj.sortBy, Obj.sortByC]
     split

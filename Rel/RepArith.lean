@@ -128,13 +128,13 @@ theorem bitStep_same (x y : Bool) : Ew.bitStep (Ew.bitCmp + Ew.eq) x y = true â†
   cases x <;> cases y <;> decide
 
 theorem bitAt_cmp (c shape : UInt8) (x y : ByteArray) {n : USize} {t : Nat} (ht : t < n.toNat) :
-    Column.bitAt (Ew.cmp c Ew.i64 shape x y n) t =
+    Column.bitAt (Ew.cmpBits c Ew.i64 shape x y n) t =
       Ew.cmpStep c Ew.i64 (Ew.elem Ew.i64 x (Ew.shapeIdx shape t).1) (Ew.elem Ew.i64 y (Ew.shapeIdx shape t).2) := by
-  rw [(cmp_bitAt c Ew.i64 shape x y n).2 t (by omega)]; simp [ht]
+  rw [Ew.cmpBits_eq, (cmp_bitAt c Ew.i64 shape x y n).2 t (by omega)]; simp [ht]
 
 theorem bitAt_bit (op : UInt8) (x y : ByteArray) {n : USize} {t : Nat} (ht : t < n.toNat) :
-    Column.bitAt (Ew.bit op Ew.vv x y n) t = Ew.bitStep op (Column.bitAt x t) (Column.bitAt y t) := by
-  rw [(Ew.bit_bitAt op Ew.vv x y n).2 t (by omega)]; simp [ht, Ew.shapeIdx]
+    Column.bitAt (Ew.bitBits op Ew.vv x y n) t = Ew.bitStep op (Column.bitAt x t) (Column.bitAt y t) := by
+  rw [Ew.bitBits_eq, (Ew.bit_bitAt op Ew.vv x y n).2 t (by omega)]; simp [ht, Ew.shapeIdx]
 
 theorem bitAt_ite {c : Prop} [Decidable c] (X Y : ByteArray) (t : Nat) :
     Column.bitAt (if c then X else Y) t = if c then Column.bitAt X t else Column.bitAt Y t := by

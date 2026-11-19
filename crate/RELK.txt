@@ -18,10 +18,10 @@ qlean_ew_cmp
 qlean_ew_val
 qlean_ew_widen
 qlean_k_asc
-qlean_k_distinct
 qlean_k_gather
 qlean_k_scan
 qlean_k_scatter
+qlean_k_seen
 qlean_over_bytes
 qlean_own_map
 qlean_own_write
@@ -60,6 +60,7 @@ qlean_sort_ranks_foR
 qlean_sort_rank_slices
 qlean_stop
 qlean_structural_all_below
+qlean_structural_bits_of_for
 qlean_structural_concat
 qlean_structural_concat_alp
 qlean_structural_concat_bits

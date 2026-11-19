@@ -555,8 +555,8 @@ open Rel.Core.Rel hiding id comp recip inter union zero le inl inr junc
 theorem rep_thinLOn {B : Obj} {n : USize} (q : CRel (.prod B B) (.prod B B) → CRel (.prod B B) (.prod B B))
     (le : B.El → B.El → Bool) (X : Vals (.arr B) n)
     (hq : ∀ (D : Tab (.prod B B) (.prod B B)) (S : (Obj.prod B B).El → Prop),
-      rep D = corefl (α := (Obj.prod B B).El) S → (q ⟨D, true⟩).ok = true →
-      ∀ a b, S (a, b) → ((∃ c, rep (q ⟨D, true⟩).rel (a, b) c) ↔ le a b = true))
+      rep D = corefl (α := (Obj.prod B B).El) S → (q (some D)).ok = true →
+      ∀ a b, S (a, b) → ((∃ c, rep (q (some D)).rel (a, b) c) ↔ le a b = true))
     (hb : (thinLOn q X).ok = true) :
     ∀ (xs : List B.El) w, rep (thinLOn q X).rel xs w ↔ (∃ i, X.row i = xs) ∧ thinLDen le xs w :=
   by unfold CRel.thinLOn at hb ⊢; rw [rep_ofC hb]; exact rep_thinLOnC _ le X hq (ofC_ok hb).1

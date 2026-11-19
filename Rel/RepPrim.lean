@@ -32,7 +32,7 @@ theorem rep_nil {K B : Obj} (I : Vals K 1) :
     picked. -/
 theorem rep_atPos {B : Obj} {n : USize} (k : Nat) (X : Vals (.arr B) n)
     (hk : k < 2 ^ 63)
-    (i : ByteArray) (hi : i = whereBits n (Ew.cmp Ew.gt Ew.i64 Ew.va (slicesOf X).2 (one k.toUInt64) n))
+    (i : ByteArray) (hi : i = whereBits n (Ew.cmpBits Ew.gt Ew.i64 Ew.va (slicesOf X).2 (one k.toUInt64) n))
     (e : ByteArray) (he : e = addc (len i).toUSize (gather 8 (slicesOf X).1 i) k)
     (hX : Vals.PickFits (.arr B) X (List.range n.toNat)) :
     ∀ (xs : List B.El) x, rep (atPos k X) xs x ↔ (∃ j, X.row j = xs) ∧ ∃ h : k < xs.length, x = xs[k]'h := by
@@ -125,7 +125,7 @@ theorem rep_atPos {B : Obj} {n : USize} (k : Nat) (X : Vals (.arr B) n)
     Hypotheses: `Vals.PickFits` where `X`, its payload and the fronts (`[l, e)`, before `Vals.compact`, at
     whatever count proofs) are picked. -/
 theorem rep_unsnoc {B : Obj} {n : USize} (X : Vals (.arr B) n)
-    (i : ByteArray) (hi : i = whereBits n (Ew.cmp Ew.gt Ew.i64 Ew.va (slicesOf X).2 (one 0) n))
+    (i : ByteArray) (hi : i = whereBits n (Ew.cmpBits Ew.gt Ew.i64 Ew.va (slicesOf X).2 (one 0) n))
     (l : ByteArray) (hl : l = gather 8 (slicesOf X).1 i)
     (e : ByteArray) (he : e = Kernel.Ew.val Ew.sub Ew.i64 Ew.va nul
       (add (len i).toUSize l (gather 8 (slicesOf X).2 i)) (one 1) (len i).toUSize)

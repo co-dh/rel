@@ -6,7 +6,7 @@
 //! Owner approvals (PLAN 6.10): a key block is decoded into an L1 scratch one block at a time (S); the grade keeps a
 //! permutation work array, and a dense array of order codes for a key that is not graded off its blocks: a column whose
 //! codes do not ascend with its words, or several columns, which become one mixed-radix code per row (X).
-use alloc::{vec, vec::Vec};
+use alloc::{format, string::String, vec, vec::Vec};
 use core::ops::Range;
 use crate::blocks::Blocks;
 use crate::c::Runner;
@@ -48,6 +48,12 @@ pub fn order(t: u8) -> Option<(usize, bool, bool)> {
     }
 }
 
+/// `Kernel.ascWords`' bound on a `pos` key of `m` rows: its `i64` order code `i ^ 2^63` ascends with `i` only up to
+/// `2^63` rows (laws A1, A2), so past that the column is the error, word for word the Lean body's.
+pub fn pos_rows(m: usize) -> Result<(), String> {
+    if m as u128 <= 1 << 63 { Ok(()) } else { Err(format!("asc: a pos column of {m} rows is past 2^63, where its order codes wrap")) }
+}
+
 /// One key column of `kasc`: the encoded column, its type's `order`, and the least and greatest word as its block
 /// metadata bounds them (`kwin::range`, no residual read).
 #[derive(Clone, Copy)]
@@ -57,7 +63,7 @@ impl<'a> Key<'a> {
         let (mn, mx) = kwin::range(SK_I64, &c);
         Key { c, w, float, signed, lo: (mn ^ 1 << 63) as i64, hi: (mx ^ 1 << 63) as i64 }
     }
-    fn code(&self, v: u64) -> u64 { ord_key(self.w, self.float, self.signed, v) }
+    pub(crate) fn code(&self, v: u64) -> u64 { ord_key(self.w, self.float, self.signed, v) }
     /// Every word lies where `ord_key` is `v + s` for one `s`: the type's signed range (`s` its sign bit), its unsigned
     /// range (`s = 0`), or for a float `0 ..= +inf` (`s` the sign bit). There the column's own order is its code order.
     fn linear(&self) -> bool {
@@ -67,12 +73,12 @@ impl<'a> Key<'a> {
         a <= self.lo as i128 && self.hi as i128 <= b
     }
     /// The least and greatest code: the bounds' codes where `linear`, else every code of the type's width.
-    fn span(&self) -> (u64, u64) {
+    pub(crate) fn span(&self) -> (u64, u64) {
         if self.linear() { (self.code(self.lo as u64), self.code(self.hi as u64)) }
         else { (0, if self.w == 8 { !0 } else { (1 << (8 * self.w)) - 1 }) }
     }
     /// The codes of rows `at .. at + out.len()`, the blocks they cross decoded into `buf` one at a time (S).
-    fn codes(&self, at: usize, out: &mut [u64], buf: &mut [u64]) {
+    pub(crate) fn codes(&self, at: usize, out: &mut [u64], buf: &mut [u64]) {
         let src = Blocks::from(self.c);
         let x = src.block(0, at, out.len(), 8, pod::bytes_mut(buf));
         let x = pod::cast::<u64>(x).expect("asc: a decoded block is misaligned");
@@ -178,6 +184,12 @@ mod tests {
         // NaN below -1.0 below -0.0 = 0.0 below 1.0
         let f = |x: f64| ord_key(8, true, false, x.to_bits());
         assert!(f(f64::NAN) < f(-1.0) && f(-1.0) < f(0.0) && f(-0.0) == f(0.0) && f(0.0) < f(1.0));
+    }
+    /// The `pos` bound with no rows allocated: `2^63` rows are in order, one more is `ascWords`' error.
+    #[test] fn pos_rows_bound() {
+        assert_eq!(pos_rows(1 << 63), Ok(()));
+        assert_eq!(pos_rows((1 << 63) + 1).unwrap_err(),
+            "asc: a pos column of 9223372036854775809 rows is past 2^63, where its order codes wrap");
     }
     /// The word reference: `0 .. m` stably by `keys` lexicographically, one LSD counting pass per code byte.
     fn reference(keys: &[Vec<u64>], m: usize) -> Vec<i64> {

@@ -4,10 +4,23 @@ import Rel.Run.Core
 section
 namespace Rel
 
-/-- A relation and whether every op that built it ran within capacity. -/
-structure CRel (k v : Obj) where
-  rel : Tab k v
-  ok : Bool
+/-- A relation, present where every op that built it ran within capacity. -/
+abbrev CRel (k v : Obj) := Option (Tab k v)
+
+/-- Whether every op that built it ran within capacity. -/
+def CRel.ok {k v : Obj} (c : CRel k v) : Bool := c.isSome            -- temporary, removed in 3.12
+/-- The table, `default` (`𝟘`) where a run stopped. -/
+def CRel.rel {k v : Obj} (c : CRel k v) : Tab k v := c.getD default   -- temporary, removed in 3.12
+/-- The table where `ok`, `none` otherwise. -/
+def CRel.mk {k v : Obj} (r : Tab k v) (ok : Bool) : CRel k v := if ok then some r else none   -- temporary
+
+@[simp] theorem CRel.mk_ok {k v : Obj} (r : Tab k v) (b : Bool) : (CRel.mk r b).ok = b := by cases b <;> rfl
+
+/-- Where its bit is set, `mk`'s table is the one given. -/
+@[simp] theorem CRel.mk_rel {k v : Obj} (r : Tab k v) : (CRel.mk r true).rel = r := rfl
+
+/-- Where its bit is set, `mk` is the table, present. -/
+theorem CRel.mk_true {k v : Obj} {r : Tab k v} {b : Bool} (h : b = true) : CRel.mk r b = some r := by subst h; rfl
 
 namespace Alg
 
@@ -40,21 +53,23 @@ open Tab Rel.Kernel Rel.Alg
 variable {A B C : Obj}
 
 /-- A twin's answer as a `CRel`, its rows in canonical form (`canonC`): ok where the twin's bit and `canonC`'s are. -/
-def ofC (r : Tab A B × Bool) : CRel A B := let c := canonC r.1; ⟨c.1, r.2 && c.2⟩
+def ofC (r : Tab A B × Bool) : CRel A B := let c := canonC r.1; mk c.1 (r.2 && c.2)
 
-/-- A stopped run: `𝟘`, its bit false. -/
-instance : Inhabited (CRel A B) := ⟨⟨default, false⟩⟩
-
-/-- Runs the op `k` only where its inputs' bits `b` are all set; otherwise stops at `default` (`𝟘`, bit false)
+/-- Runs the op `k` only where its inputs' bits `b` are all set; otherwise stops at `default` (`none` for a `CRel`)
     without running it, since an op on a bad input answers nothing worth its cost. -/
-def guard {α : Type} [Inhabited α] (b : Bool) (k : Unit → α) : α := if b then k () else default
+@[irreducible] def guard {α : Type} [Inhabited α] (b : Bool) (k : Unit → α) : α := if b then k () else default
+
+/- `guard` is read through these two: unfolded, `(guard ?b ?k).ok` meets an op's `.ok` as a stuck `if` on `?b`
+   before the op itself is unfolded, so `guard_ok_left hb` would not elaborate on `hb : (op …).ok = true`. -/
+theorem guard_true {α : Type} [Inhabited α] (k : Unit → α) : guard true k = k () := by unfold guard; rfl
+theorem guard_false {α : Type} [Inhabited α] (k : Unit → α) : guard false k = default := by unfold guard; rfl
 
 /-- `R ≫ S`, ok where both inputs are and `compC` ran within capacity. -/
 def comp (R : CRel A B) (S : CRel B C) : CRel A C := guard (R.ok && S.ok) fun _ => ofC (compC R.rel S.rel)
 
 /-- `R ∩ S`, ok where both inputs are and `interC` ran within capacity. Its rows are a subsequence of `R`'s, canonical
     where `R` is (`canon_inter`), so it skips `canonC`. -/
-def inter (R S : CRel A B) : CRel A B := guard (R.ok && S.ok) fun _ => let r := interC R.rel S.rel; ⟨r.1, r.2⟩
+def inter (R S : CRel A B) : CRel A B := guard (R.ok && S.ok) fun _ => let r := interC R.rel S.rel; mk r.1 r.2
 
 /-- `R ∪ S`, ok where both inputs are and `unionC` ran within capacity. -/
 def union (R S : CRel A B) : CRel A B := guard (R.ok && S.ok) fun _ => ofC (unionC R.rel S.rel)

@@ -57,7 +57,7 @@ def sums (n : USize) (b : ByteArray) : ByteArray := Scan.scan .sums .i64 n b
 /-- `src@idx` at element width `w`; a miss reads `0`. -/
 def gather (w : Nat) (src idx : ByteArray) : ByteArray := gatherBytes w.toUSize 0 src idx
 /-- The positions where `a` equals `b` elementwise, over their `n` longs. -/
-def whereEqV (n : USize) (a b : ByteArray) : ByteArray := whereBits n (Ew.cmp Ew.eq Ew.i64 Ew.vv a b n)
+def whereEqV (n : USize) (a b : ByteArray) : ByteArray := whereBits n (Ew.cmpBits Ew.eq Ew.i64 Ew.vv a b n)
 
 /-- Any `Ew.val` on longs at the count `n` answers `n` longs (`Ew.val_size`). -/
 theorem len_val (op shape : UInt8) (a b : ByteArray) (n : USize) :
@@ -161,11 +161,13 @@ def find (c x : Code) : ByteArray :=
 
 /-- Whether each of `x`'s codes occurs in `c`, as bits: `memberBits`, `memberVec`, `memberIdsVec`. -/
 def member (x c : Code) : ByteArray :=
+  -- each kernel answers a `u1` `foR`, read as a bitmap through `boolBits` (its `foR` branch, `bitsOfFoR`)
+  let read (r : ByteArray × ByteArray) := bitsOfFoR r.1 r.2 x.n
   match x.kind, c.kind with
-  | some .bit, some .bit => memberBits x.n x.b c.n c.b
-  | some k, some k' => if k == k' then memberVec k.width.toUSize false x.b c.b
-    else memberIdsVec x.w.toUSize x.b x.n c.w.toUSize c.b c.n
-  | _, _ => memberIdsVec x.w.toUSize x.b x.n c.w.toUSize c.b c.n
+  | some .bit, some .bit => read (memberBits x.n x.b c.n c.b)
+  | some k, some k' => read (if k == k' then memberVec k.width.toUSize false x.b c.b
+    else memberIdsVec x.w.toUSize x.b x.n c.w.toUSize c.b c.n)
+  | _, _ => read (memberIdsVec x.w.toUSize x.b x.n c.w.toUSize c.b c.n)
 
 /-- Each row's class, numbered by first occurrence, and each class's first row: `groupIds` at the layout,
     `idGroups` (a direct table of `card` entries) at `2`/`4` bits. -/
@@ -424,7 +426,7 @@ def codes {p : Nat} (t : QAtomicType) (cs : Vector ((n : USize) × Arr t n) p) :
     subst hg
     exact let all := (gens (raze .general cs.toArray).2).toList; (pack all.length (firstIds all)).cut (cs.map (·.1))
   else
-  match cs.mapM (fun c => match c.2.enc with | .bits b => some (⟨1, c.1, 2, b⟩ : Code) | _ => none) with
+  match cs.mapM (fun c => (boolBits t c.1 c.2.enc).map fun b => (⟨1, c.1, 2, b⟩ : Code)) with
   | some bs => bs
   | none =>
   let ns := cs.map (·.1)
@@ -437,7 +439,7 @@ def codes {p : Nat} (t : QAtomicType) (cs : Vector ((n : USize) × Arr t n) p) :
   match hi : Column.intern x.2.enc with
   | .enum _ dof ids => (Code.ofLane (Column.idWidth dof) x.1 (dof.size - 1) ids).cut ns
   -- every other constructor by name, so `hi` refutes `groupIdsColumn`'s interned-dictionary premise
-  | .bytes _ | .bits _ | .syms .. | .foR .. | .alp .. | .gen _ =>
+  | .bytes _ | .bits _ | .syms .. | .foR .. | .alp .. | .gen _ | .pos =>
     -- at `bitsType t`: a float groups by its bits, not by q's key, which folds the NaNs and the zeros
     let (gid, fs) := (groupIdsColumn (KernelWF.bitsType t) x.1 x.2.enc).get
       (KernelWF.groupIdsColumn_bitsType_isSome hg x.2.wf fun _ _ _ he => nomatch hi.symm.trans he)
@@ -550,11 +552,6 @@ theorem len_tilLongs (n : USize) : len (tilLongs n) = n.toNat := by
   have w := KernelWF.tilLongs_wf n
   simp only [Enc.WF, QAtomicType.width] at w
   simp [len, w]
-
-/-- A boolean column's bitmap: `bits` is the one payload `Enc.WF .boolean` admits. -/
-def tagBits {n : USize} (x : Arr .u1 n) : ByteArray :=
-  (match x.enc with | .bits b => some b | _ => none).get (by
-    have hw := x.wf; revert hw; cases x.enc <;> simp [Enc.WF])
 
 /-- The long `z` as a one-element payload, the scalar operand of `Ew.val … va`. -/
 def int (z : Int) : ByteArray := one (Int64.ofInt z).toUInt64
@@ -896,28 +893,56 @@ def sortSide {B : Obj} {s : USize} (x : Vals B s) (srt : {k : USize} → Vals B 
       (by rw [gather_len]; exact (USize.toNat_ofNat_of_lt' h.2).symm)) (tilLongs (len q).toUSize))
   else q
 
-/-- The least `t ≥ t₀` (at most `t₀ + fuel`) past which none of the `n` longs `cnt` is: the passes an array
-    sort makes. -/
-def longest (n : USize) (cnt : ByteArray) (t₀ : Nat) : (fuel : Nat) → Nat
-  | 0 => t₀
-  | fuel + 1 => if len (whereBits n (Ew.cmp Ew.gt Ew.i64 Ew.va cnt (one t₀.toUInt64) n)) = 0 then t₀
-    else longest n cnt (t₀ + 1) fuel
-
 /-- An array sort's pass at element position `t`, `s` the slices of `c`: the rows of `q` with no element there
     first, kept in order, then the others by that element (`sortSide`, `srt` sorting the payload). -/
 def arrPass {b : Obj} {n : USize} (c : Vals (.arr b) n) (s : ByteArray × ByteArray)
     (srt : {k : USize} → Vals b k → ByteArray → ByteArray) (t : Nat) (q : ByteArray) : ByteArray :=
   if len q < USize.size then
     let m := (len q).toUSize
-    let gt := Ew.cmp Ew.gt Ew.i64 Ew.va (gather 8 s.2 q) (one t.toUInt64) m
+    let gt := Ew.cmpBits Ew.gt Ew.i64 Ew.va (gather 8 s.2 q) (one t.toUInt64) m
     concatBytes #[gather 8 q (whereBits m (Ew.notBits m gt)), sortSide c.2.2.2 srt (addc n s.1 t) (gather 8 q (whereBits m gt))]
   else q
+
+/-- The rows `p` sorted stably by the first `T` elements of their arrays: the `arrPass`es at `T - 1` down to `0`. -/
+def arrPasses {b : Obj} {n : USize} (c : Vals (.arr b) n) (srt : {k : USize} → Vals b k → ByteArray → ByteArray)
+    (T : Nat) (p : ByteArray) : ByteArray :=
+  (List.range T).foldr (arrPass c (slicesOf c) srt) p
+
+/-- `m - 1, …, 1, 0`: the positions below `m`, descending. -/
+def revLongs (m : USize) : ByteArray :=
+  sub m (addc m (sub m (tilLongs m) (tilLongs m)) (m.toNat - 1)) (tilLongs m)
+
+/-- Whether the rows `a` differ pairwise in their first `T` elements: sorted by them, their positions come out the
+    same from ascending as from descending, which two positions that tie would swap. -/
+def arrUntied {b : Obj} {n : USize} (c : Vals (.arr b) n) (srt : {k : USize} → Vals b k → ByteArray → ByteArray)
+    (T : Nat) (a : ByteArray) : Bool :=
+  if h : len a < USize.size ∧ len a < 2 ^ 63 then
+    let x := Vals.pickShared (.arr b) c a (len a).toUSize (USize.toNat_ofNat_of_lt' h.1).symm
+    (arrPasses x srt T (tilLongs (len a).toUSize)).data == (arrPasses x srt T (revLongs (len a).toUSize)).data
+  else false
+
+/-- Whether the rows of `p` holding at least `T` elements differ pairwise in their first `T` (`arrUntied`). -/
+def arrDistinct {b : Obj} {n : USize} (c : Vals (.arr b) n) (srt : {k : USize} → Vals b k → ByteArray → ByteArray)
+    (T : Nat) (p : ByteArray) : Bool :=
+  if len p < USize.size then arrUntied c srt T (gather 8 p (whereBits (len p).toUSize
+    (Ew.cmpBits Ew.gt Ew.i64 Ew.va (gather 8 (slicesOf c).2 p) (one (T - 1).toUInt64) (len p).toUSize)))
+  else false
+
+/-- `p` sorted by its arrays: by their first `T` elements, `T` doubling until the rows that hold `T` differ in them
+    (`arrDistinct`), so the passes follow the prefix that tells the rows apart, not the longest row; by all `c.1`
+    positions once `T` passes them. -/
+def arrSort {b : Obj} {n : USize} (c : Vals (.arr b) n) (srt : {k : USize} → Vals b k → ByteArray → ByteArray)
+    (p : ByteArray) : (T fuel : Nat) → ByteArray
+  | _, 0 => arrPasses c srt c.1.toNat p
+  | T, fuel + 1 => if c.1.toNat < T then arrPasses c srt c.1.toNat p
+    else if arrDistinct c srt T p then arrPasses c srt T p else arrSort c srt p (2 * T) fuel
 
 /-- The permutation `p` refined stably by the values of `A` at its rows, ascending by `Obj.lt`:
     - an atom: `gradeColumn` (a symbol by its string, so the order is the value's, the same in every call);
     - a product: the last component first, so it sorts lexicographically;
-    - an array: one stable pass per element position, the last first (least significant digit first), each
-      putting the rows with no element there first and the rest by that element (`sortSide`);
+    - an array: by its first `T` elements (`arrSort`), one stable pass per position below `T`, the last first
+      (least significant digit first), each putting the rows with no element there first and the rest by that
+      element (`sortSide`); `T` doubles from `1` until the rows holding `T` elements differ in them;
     - a sum: the `inl` rows, then the `inr` rows (`whereBits` of the tags), each by its own side (`sortSide` at
       `Vals.row`'s clamped position, `place`).
     And whether it ran within capacity: the codes' bit of `c` (`sortByC_snd`), at an atom from the counts alone
@@ -929,10 +954,7 @@ def _root_.Rel.Obj.sortByC : (A : Obj) → {n : USize} → Vals A n → ByteArra
       | some (.bytes g) => gather 8 p g
       | _ => gather 8 p (codes t #v[x])[0].grade, Obj.codesC.atomFit t #v[⟨_, c⟩])
   | .prod a b, _, c, p => let r := Obj.sortByC b c.2 p; let l := Obj.sortByC a c.1 r.1; (l.1, l.2 && r.2)
-  | .arr b, n, c, p =>
-    let s := slicesOf c
-    ((List.range (longest n s.2 0 c.1.toNat)).foldr (arrPass c s fun v r => (Obj.sortByC b v r).1) p,
-      (Obj.codesC (.arr b) #v[⟨_, c⟩]).2)
+  | .arr b, _, c, p => (arrSort c (fun v r => (Obj.sortByC b v r).1) p 1 64, (Obj.codesC (.arr b) #v[⟨_, c⟩]).2)
   | .sum a b, _, c, p =>
     let ps := longsOf (place c ((c.1.toNat : Int) - 1) ((c.2.1.toNat : Int) - c.1.toNat) 0 0)
     (if h : len p < USize.size then

@@ -172,6 +172,12 @@ answering an empty pair, which would drop a column's contents silently. -/
 @[extern "qlean_coc_encode"]
 def encode (width : USize) (x : @& ByteArray) : ByteArray × ByteArray := encodeAt Rel.Column.lgEnc width x
 
+/-- The `u1` Frame of Reference column of the `n` booleans `p`, the form every boolean writer answers: `encodeAt` of
+their 0/1 bytes, unpatched, so a mixed block's residuals are its bitmap at width 1 and an all-0 or all-1 block is
+width 0 at base 0 or 1 with no residual. `rust/src/ffi.rs`'s `Sink::bools` writes it a block at a time. -/
+def bools (n : Nat) (p : Nat → Bool) : ByteArray × ByteArray :=
+  encodeAt Rel.Column.lgEnc (USize.ofNat32 1 (by decide)) (Rel.Column.packIds 8 n fun i => (p i).toNat) false
+
 
 /-- The bytes of the patch list whose header is at byte `e` of `pk`, for `nb` blocks: `rust/src/coc.rs`'s
 `for_layout` of the header's count, element width and frame flag — the ladder `Column.alpSects` gives,
@@ -510,7 +516,8 @@ narrowest residual width its range allows, so all a 64-bit block costs over dens
 and only the whole column's total against `n * w` says whether the narrow blocks paid that back. -/
 def answer (t : QAtomicType) (n : USize) (e : Ext.Enc X) : Ext.Enc X :=
   match t with
-  | .general => e
+  -- a boolean has no dense bytes to decode to: its bitmap or `u1` `foR` is kept as it is
+  | .general | .u1 => e
   | t => match t.width, e with
     | some w, .bytes b => if n < encodeMin then e else
     -- ALP first at a float, as on entry: a float answer encoded with `encode` alone stayed dense, so
@@ -558,3 +565,34 @@ def alpOf (t : QAtomicType) (n : USize) (e : Ext.Enc X) : Option (Ext.Enc X) :=
   | _, _ => none
 
 end Rel.Ext.Enc
+
+namespace Rel.Kernel
+
+/-- `n` bits from `f`, packed LSB first with the tail of the last byte left zero. `Column.packBits`
+records why the tail matters: trailing set bits make two equal boolean vectors compare unequal under
+`~`. One definition for the bit-payload kernels (`bitRowsOver` in `Reduce`, four in `Structural`, `bitsOfFoR`
+here), which differ only in `f`. -/
+def packOf (n : Nat) (f : Nat → Bool) : ByteArray :=
+  (List.range ((n + 7) / 8)).foldl (init := ByteArray.empty) fun acc k =>
+    acc.push ((List.range 8).foldl (init := (0 : UInt8)) fun byte t =>
+      if k * 8 + t < n && f (k * 8 + t) then byte ||| (1 <<< t.toUInt8) else byte)
+
+/-- A boolean `foR` (`u1`) as the bitmap `concatBits` joins: bit `i` is element `i`'s low bit, which is what
+`Enc.raw` reads at a boolean, and a row past the blocks is `0`. The C copies a width-1, frame-0 block's residual
+words whole — they already are its bitmap — and builds any other block in one block of L1 scratch. -/
+@[extern "qlean_structural_bits_of_for"]
+def bitsOfFoR (metadata pack : @& ByteArray) (n : USize) : ByteArray :=
+  let starts := Column.blockStarts metadata
+  packOf n.toNat fun i =>
+    i < Column.blk metadata * Column.nblk metadata && (Column.foRBits metadata pack starts i).toNat % 2 == 1
+
+/-- A boolean payload as its bitmap, whichever of the two forms `Enc.WF .u1` admits it is in (a `u1` `foR`
+through `bitsOfFoR`); `none` at any other type or form. The one boolean read every bitmap consumer goes through,
+here below `Elementwise` so that its operand readers take a boolean through it too. -/
+def boolBits (t : QAtomicType) (n : USize) (e : Ext.Enc X) : Option ByteArray :=
+  match t, e with
+  | .u1, .bits b => some b
+  | .u1, .foR m p => some (bitsOfFoR m p n)
+  | _, _ => none
+
+end Rel.Kernel

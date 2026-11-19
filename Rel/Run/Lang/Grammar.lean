@@ -178,6 +178,10 @@ syntax:60 (name := rPipe) rel:60 "|" rel:61 : rel
 -- `μX : φ`, `νX : φ`, one identifier then the body to the end: below every operator, so an operand only in
 -- parentheses
 syntax:0 (name := rFix) ident ":" rel : rel
+-- `col S "v"`, the column `v` of the schema `S`: led by `ident`, since `rel` tries only the ident's own productions at
+-- an identifier, and no other production has a string, so `col` stays a name; `atomic`, so `x k` on its own
+-- fails at `x` and composes
+syntax:max (name := rCol) atomic(ident relObj:max str) : rel
 
 syntax (name := pDecl) relWord (relType)? : relParam
 syntax (name := iDecl) relWord "≜" rel : relItem
@@ -185,6 +189,9 @@ syntax (name := iDecl) relWord "≜" rel : relItem
 syntax (name := sElems) &"obj" relWord "=" "{" relWord,+ "}" : relStmt
 syntax (name := sRange) &"obj" relWord "=" relWord "…" relWord : relStmt
 syntax (name := sAlias) &"obj" relWord "=" relObj : relStmt
+-- a schema's column `k : K`
+syntax relField := relWord ":" relObj
+syntax (name := sSchema) &"schema" relWord "=" "{" relField,+ "}" : relStmt
 syntax (name := sPrint) &"print" rel : relStmt
 syntax (name := sCheck) &"check" rel cmpOp rel : relStmt
 syntax (name := sDefn) relWord ("(" relParam,+ ")")? (relType)? "≜" rel ("⊑" rel)? ("where" relItem,+)? : relStmt
@@ -342,6 +349,10 @@ partial def prim (s : Syntax) : C (List Lang.Expr) := do
   | ``rJunc => pure [.junc p (← expr s[1]) (← expr s[3])]
   | ``rFold1 => pure [.fold p false (← expr s[1])]
   | ``rFoldR => pure [.fold p true (← expr s[1])]
+  | ``rCol => do
+    unless s[0].getId == `col do failAt s[0] "a string is a column name, read only as `col S \"v\"`"
+    let some c := s[2].isStrLit? | failAt s[2] "expected a column name, a string"
+    pure [.col p (← obj s[1]) c]
   | ``rLit => pure [.lit p (← s[1].getSepArgs.toList.mapM fun r => do match ← litItem r with
       | .pair a b => pure (a, b)
       | _ => failAt r "expected '('")]

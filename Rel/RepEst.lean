@@ -19,7 +19,7 @@ open FoldN OpsN Prim
 /-- **`rep (tail X)`: an array of `X` to its tail**: `tail X` is `outr (uncons X)` (`outr_holds`, `rep_uncons`).
     Hypotheses: `rep_uncons`'s. -/
 theorem rep_tail {B : Obj} {n : USize} (X : Vals (.arr B) n)
-    (i : ByteArray) (hi : i = whereBits n (Ew.cmp Ew.gt Ew.i64 Ew.va (slicesOf X).2 (one 0) n))
+    (i : ByteArray) (hi : i = whereBits n (Ew.cmpBits Ew.gt Ew.i64 Ew.va (slicesOf X).2 (one 0) n))
     (l : ByteArray) (hl : l = gather 8 (slicesOf X).1 i)
     (T : Vals (.arr B) (len i).toUSize)
     (hT : T = ⟨X.1, valCol Ew.add Ew.va l (one 1), valCol Ew.add Ew.vv l (gather 8 (slicesOf X).2 i), X.2.2.2⟩)

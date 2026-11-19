@@ -4,7 +4,7 @@
 //! Lean passes `Int64` and `UInt64` as C's `uint64_t`.
 #![deny(unsafe_code)]
 use crate::coc::Coc;
-use crate::ffi::{sarray_room, sd_kept, syms_of};
+use crate::ffi::{Form, Sink, sarray_room, sd_kept, syms_of};
 use crate::lean::{B, O, SArr, export};
 use crate::exports::coc::view;
 use crate::search::{Kind, Blocks, Src};
@@ -13,10 +13,18 @@ use crate::{c, pod, search};
 use crate::ids;
 
 
-/// `x ? h` (`member` false, `Int64`s) or `x in h` (bits) at the key type `kd`, over the pool.
+/// `x ? h` (`member` false, `Int64`s) or `x in h` (a `u1` Frame of Reference column, `Sink::bools`) at the key type `kd`,
+/// over the pool.
 pub fn probe(kd: Kind, h: &Blocks, x: &Blocks, member: bool) -> O {
-    let mut r = SArr::new(1, if member { x.n.div_ceil(8) } else { x.n * 8 });
-    search::search(c::pool(), kd, h, x, member, r.bytes_mut());
+    if member {
+        // no needle, no block asks the table
+        let t = (x.n > 0).then(|| search::Probe::of(kd, h, x));
+        return Sink::new(x.n, 1, Form::For).bools(crate::QLEAN_COST_ARITH, &|lo, hi, o| {
+            t.as_ref().expect("qlean probe: a block of needles with no table").member(x, lo, hi, o)
+        })
+    }
+    let mut r = SArr::new(1, x.n * 8);
+    search::search(c::pool(), kd, h, x, false, r.bytes_mut());
     r.into()
 }
 /// A run-starts answer: `f` writes the starts and the terminator into room for `n + 1` and answers how many it wrote; the array
@@ -100,9 +108,8 @@ export! {
 
     /// Spec: `memberBits m xs n hay` is bit `i` set exactly when `findBit n hay (Column.bitAt xs i)` is below `n`.
     fn qlean_search_member_bits(m: usize, xs: B, n: usize, hay: B) -> O {
-        let mut r = SArr::new(1, m.div_ceil(8));
-        search::member_bits(m, xs.bytes(), n, hay.bytes(), r.bytes_mut());
-        r.into()
+        let (has, xs) = (search::bits_held(n, hay.bytes()), xs.bytes());
+        Sink::new(m, 1, Form::For).bools(crate::QLEAN_COST_COPY, &|lo, hi, o| search::member_bits_at(has, xs, lo, hi, o))
     }
 
     /// Spec: `whereBits n bits` is the ascending indices `i < n` with `Column.bitAt bits i`, as `Int64`s; two passes, as

@@ -133,6 +133,76 @@ theorem keyInj_prod {a b : Obj} (ha : a.KeyInj) (hb : b.KeyInj) : (Obj.prod a b)
   rw [e, List.append_cancel_left_eq] at h
   rw [ha x x' e, hb y y' h]
 
+/-- `k`'s rank is one to one: every layout but the floats, whose rank merges NaNs and `±0`. -/
+def _root_.Rel.Kernel.Order.rankInj : Kernel.Scan.Kind → Bool
+  | .f32 | .f64 => false
+  | _ => true
+
+/-- The one injectivity fact the atoms' keys rest on: an identity or a sign-bit flip. -/
+theorem _root_.Rel.Kernel.Order.rank_inj {k : Kernel.Scan.Kind} (hk : Order.rankInj k = true) {a b : UInt64}
+    (h : (Order.rank k a).toNat = (Order.rank k b).toNat) : a = b := by
+  have h := UInt64.toNat_inj.1 h
+  cases k <;> simp only [Order.rankInj, Bool.false_eq_true] at hk <;> simp only [Order.rank] at h
+  all_goals first | exact h | exact (UInt64.xor_left_inj _).1 h
+
+/-- `A`'s atoms are ones the kernels order and its key tells its elements apart, decided by recursion on `A`: an
+    atom whose order rank is one to one (`Order.rankInj` of its `orderKind`); a float merges NaNs and `±0`, a
+    `symbol` or `general` has no rank. What `Tm.gap` reads for `Λ`, whose canonical list needs the strict order
+    (`canonical_spec`). -/
+def _root_.Rel.Obj.canonical : Obj → Bool
+  | .atom t => (Kernel.orderKind t).any Order.rankInj
+  | .prod a b | .sum a b => a.canonical && b.canonical
+  | .arr b => b.canonical
+
+theorem canonical_spec : (A : Obj) → A.canonical = true → A.Ordered ∧ A.KeyInj
+  | .atom t, h => by
+    refine ⟨fun e => by subst e; simp [Obj.canonical, Kernel.orderKind] at h, fun x y e => ?_⟩
+    -- the key of an atom with a rank is `[rank k bits]`: `rank_inj`, then the bits' re-coding is one to one
+    cases t <;> simp only [Obj.canonical, Kernel.orderKind, Option.any_some, Option.any_none, Order.rankInj,
+      Bool.false_eq_true] at h
+    all_goals simp only [Obj.key, List.cons.injEq, and_true] at e
+    all_goals first
+      | (cases x <;> cases y <;> simp_all; done)
+      | (have e := Order.rank_inj rfl e
+         have e := congrArg UInt64.toNat e
+         simp only [UInt16.toNat_toUInt64, UInt32.toNat_toUInt64] at e
+         first
+          | (cases x; cases y; simp_all [UInt16.toNat_inj, UInt32.toNat_inj, UInt64.toNat_inj]; done)
+          | exact UInt8.toNat_inj.1 e)
+      | exact UInt8.toNat_inj.1 e
+      -- `i8` keys by its sign-bit flip directly (`Obj.key`), not through `Order.rank`
+      | (have e := (UInt8.xor_left_inj _).1 (UInt8.toNat_inj.1 e); cases x; cases y; cases e; rfl)
+  | .prod a b, h => by
+    simp only [Obj.canonical, Bool.and_eq_true] at h
+    exact ⟨⟨(canonical_spec a h.1).1, (canonical_spec b h.2).1⟩,
+      keyInj_prod (canonical_spec a h.1).2 (canonical_spec b h.2).2⟩
+  | .sum a b, h => by
+    simp only [Obj.canonical, Bool.and_eq_true] at h
+    obtain ⟨⟨oa, ia⟩, ob, ib⟩ := And.intro (canonical_spec a h.1) (canonical_spec b h.2)
+    refine ⟨⟨oa, ob⟩, ?_⟩
+    rintro (x | x) (y | y) e <;> simp only [Obj.key, List.cons.injEq] at e
+    · rw [ia x y e.2]
+    · exact absurd e.1 (by decide)
+    · exact absurd e.1 (by decide)
+    · rw [ib x y e.2]
+  | .arr b, h => by
+    obtain ⟨o, i⟩ := canonical_spec b h
+    refine ⟨o, ?_⟩
+    intro xs ys
+    induction xs generalizing ys with
+    | nil => cases ys with
+      | nil => intro; rfl
+      | cons y ys => intro e; simp [Obj.key] at e
+    | cons x xs ih => cases ys with
+      | nil => intro e; simp [Obj.key] at e
+      | cons y ys =>
+        intro e
+        change 1 :: (b.key x ++ (Obj.arr b).key xs) = 1 :: (b.key y ++ (Obj.arr b).key ys) at e
+        rw [List.cons.injEq] at e
+        have k := Obj.key_prefix b x y _ _ e.2
+        rw [k, List.append_cancel_left_eq] at e
+        rw [i x y k, ih ys e.2]
+
 /-- Two lists strictly ascending in one strict order, with the same members, are one list. -/
 theorem eq_of_pairwise {α : Type} {r : α → α → Prop} (irr : ∀ a, ¬ r a a) (tr : ∀ {a b c}, r a b → r b c → r a c) :
     ∀ {l m : List α}, l.Pairwise r → m.Pairwise r → (∀ x, x ∈ l ↔ x ∈ m) → l = m
@@ -290,31 +360,49 @@ open Rel.Core.Rel hiding id comp recip inter union zero le inl inr junc
 variable {A B C : Obj}
 
 /-- A guarded op's bit: the inputs' bits and the op's own. -/
-@[simp] theorem guard_ok (b : Bool) (k : Unit → CRel A B) : (guard b k).ok = (b && (k ()).ok) := by cases b <;> rfl
+@[simp] theorem guard_ok (b : Bool) (k : Unit → CRel A B) : (guard b k).ok = (b && (k ()).ok) := by
+  cases b
+  · rw [guard_false]; rfl
+  · rw [guard_true]; rfl
 
 /-- Where a bit `p` read off the result is set, the guard ran its op: `default`'s bit is false. -/
 theorem guard_eq {α : Type} [Inhabited α] {b : Bool} {k : Unit → α} (p : α → Bool) (h : p (guard b k) = true)
     (hd : p default = false := by rfl) : guard b k = k () := by
   cases b
-  · exact absurd (hd ▸ h) Bool.false_ne_true
-  · rfl
+  · rw [guard_false] at h; exact absurd (hd ▸ h) Bool.false_ne_true
+  · exact guard_true k
 
 /-- `ofC`'s bit: the twin's and `canonC`'s. -/
 theorem ofC_ok {r : Tab A B × Bool} (hb : (ofC r).ok = true) : r.2 = true ∧ (canonC r.1).2 = true := by
-  simpa only [ofC, Bool.and_eq_true] using hb
+  simpa only [ofC, CRel.mk_ok, Bool.and_eq_true] using hb
 
-theorem rep_ofC {r : Tab A B × Bool} (hb : (ofC r).ok = true) : rep (ofC r).rel = rep r.1 :=
-  rep_canonC r.1 (ofC_ok hb).2
+/-- Where `ofC` is ok, its table is `canonC`'s. -/
+theorem ofC_rel {r : Tab A B × Bool} (hb : (ofC r).ok = true) : (ofC r).rel = (canonC r.1).1 := by
+  have h := ofC_ok hb; show (CRel.mk _ (r.2 && (canonC r.1).2)).rel = _; rw [CRel.mk_true (by simp [h])]; rfl
+
+/-- A present table's bit and table. -/
+@[simp] theorem some_ok (r : Tab A B) : CRel.ok (some r) = true := rfl
+@[simp] theorem some_rel (r : Tab A B) : CRel.rel (some r) = r := rfl
+@[simp] theorem none_ok : CRel.ok (none : CRel A B) = false := rfl
+@[simp] theorem mk_false (r : Tab A B) : CRel.mk r false = none := rfl
+
+/-- Where `mk r b` is ok, its bit `b` is set and its table is `r`. -/
+theorem mk_ok_rel {r : Tab A B} {b : Bool} (hb : (CRel.mk r b).ok = true) : b = true ∧ (CRel.mk r b).rel = r :=
+  have h : b = true := by simpa only [CRel.mk_ok] using hb
+  ⟨h, by rw [CRel.mk_true h]; rfl⟩
+
+theorem rep_ofC {r : Tab A B × Bool} (hb : (ofC r).ok = true) : rep (ofC r).rel = rep r.1 := by
+  rw [ofC_rel hb]; exact rep_canonC r.1 (ofC_ok hb).2
 
 /-- **Every op through `ofC` answers a canonical table** where it ran within capacity. -/
 theorem canon_ofC {r : Tab A B × Bool} (hb : (ofC r).ok = true) (ho : (Obj.prod A B).Ordered)
-    (hi : (Obj.prod A B).KeyInj) : (ofC r).rel.Canon :=
-  canon_canonC r.1 (ofC_ok hb).2 ho hi
+    (hi : (Obj.prod A B).KeyInj) : (ofC r).rel.Canon := by
+  rw [ofC_rel hb]; exact canon_canonC r.1 (ofC_ok hb).2 ho hi
 
 /-- A guarded op's inputs ran ok where it did. -/
 theorem guard_ok_left {b : Bool} {k : Unit → CRel A B} (h : (guard b k).ok = true) : b = true := by
   cases b
-  · exact absurd h Bool.false_ne_true
+  · rw [guard_false] at h; exact absurd h Bool.false_ne_true
   · rfl
 
 theorem rep_comp (R : CRel A B) (S : CRel B C) (hb : (R.comp S).ok = true) :
@@ -322,7 +410,8 @@ theorem rep_comp (R : CRel A B) (S : CRel B C) (hb : (R.comp S).ok = true) :
   have e : R.comp S = _ := guard_eq ok hb; rw [e] at hb ⊢; rw [rep_ofC hb]; replace hb := (ofC_ok hb).1; exact rep_compC R.rel S.rel hb
 
 theorem rep_inter (R S : CRel A B) (hb : (R.inter S).ok = true) : rep (R.inter S).rel = rep R.rel ∩ rep S.rel := by
-  have e : R.inter S = _ := guard_eq ok hb; rw [e] at hb ⊢; exact rep_interC R.rel S.rel hb
+  have e : R.inter S = _ := guard_eq ok hb; rw [e] at hb ⊢
+  obtain ⟨h, e'⟩ := mk_ok_rel hb; rw [e']; exact rep_interC R.rel S.rel h
 
 theorem rep_union (R S : CRel A B) (hb : (R.union S).ok = true) : rep (R.union S).rel = rep R.rel ∪ rep S.rel := by
   have e : R.union S = _ := guard_eq ok hb; rw [e] at hb ⊢; rw [rep_ofC hb]; replace hb := (ofC_ok hb).1; exact rep_unionC R.rel S.rel hb
@@ -334,7 +423,7 @@ theorem canon_comp (R : CRel A B) (S : CRel B C) (hb : (R.comp S).ok = true) (ho
 /-- **`∩` is canonical where `R` is**: it keeps the rows of `R` that `whereBits` picks (`whereBits_sublist`). -/
 theorem canon_inter (R S : CRel A B) (hb : (R.inter S).ok = true) (hR : R.rel.Canon) : (R.inter S).rel.Canon := by
   have e : R.inter S = _ := guard_eq ok hb; rw [e] at hb ⊢
-  replace hb : (interC R.rel S.rel).2 = true := hb
+  obtain ⟨hb, e'⟩ := mk_ok_rel hb; rw [e']
   simp only [interC, Bool.and_eq_true] at hb
   exact canon_rows R.rel hR _ (whereBits_sublist _ _) hb.1.2 hb.2
 

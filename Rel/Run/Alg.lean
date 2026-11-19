@@ -449,7 +449,7 @@ def prodC {A B D E : Obj} (R : Tab A B) (S : Tab D E) : Tab (.prod A D) (.prod B
 
 /-- `n` bits, all `x`: `Ew.cmp` of `til n` against `0`. -/
 def bitsOf (x : Bool) (n : USize) : ByteArray :=
-  Ew.cmp (if x then Ew.ge else Ew.lt) Ew.i64 Ew.va (tilLongs n) (one 0) n
+  Ew.cmpBits (if x then Ew.ge else Ew.lt) Ew.i64 Ew.va (tilLongs n) (one 0) n
 
 /-- The tag column of parts `ps`, each `(count, tag)`, `m` the summed count: `concatBits` of constant bit
     columns, of the summed count whatever the parts' payloads hold (`concatBits_wf`). -/
@@ -634,7 +634,7 @@ theorem razeC_fst (A : Obj) (cs : Array (Part A)) (h) : (Obj.razeC A cs h).1 = O
     the pick of `X` at the non-empty rows (`pickC`), `rep_uncons`'s one fit. -/
 def unconsC {B : Obj} {n : USize} (X : Vals (.arr B) n) : Tab (.arr B) (.prod B (.arr B)) × Bool :=
   let s := slicesOf X
-  let i := whereBits n (Ew.cmp Ew.gt Ew.i64 Ew.va s.2 (one 0) n)
+  let i := whereBits n (Ew.cmpBits Ew.gt Ew.i64 Ew.va s.2 (one 0) n)
   longCount "cons°" i fun r hr =>
   let l := gather 8 s.1 i
   let x := Vals.pickC (.arr B) X i r hr
@@ -744,7 +744,7 @@ def consCatC {K B : Obj} (P : Tab K (.prod B (.arr B))) : Tab K (.arr B) × Bool
     left fold's order) or from the end (the right fold's). Either is a slice position, `lo + k` or `hi - 1 - k`. -/
 def foldEl {E : Obj} (l : Bool) (ids : Tab .long (.arr E)) (k : Nat) : Tab .long E :=
   let s := slicesOf ids.val
-  let a := whereBits ids.n (Ew.cmp Ew.gt Ew.i64 Ew.va s.2 (one k.toUInt64) ids.n)
+  let a := whereBits ids.n (Ew.cmpBits Ew.gt Ew.i64 Ew.va s.2 (one k.toUInt64) ids.n)
   longCount "foldRows" a fun r hr =>
     -- the start `+ k`, or the end `- (k + 1)`: one elementwise op, so the position's count is `len_val`'s
     let pos := Kernel.Ew.val (bif l then Ew.add else Ew.sub) Ew.i64 Ew.va nul
@@ -856,14 +856,14 @@ def mapSimpleC {A B : Obj} {n : USize} (R : Tab A B) (X : Vals (.arr A) n) : Tab
 /-! ## Order on numbers, the power side, and the note's list functions -/
 
 /-- The rows `<` keeps the pairs of one value from (`ltC`): `rank` of `U` (`gradeColumn`, ties in position order),
-    `cross` of the positions, `Ew.cmp <` of their ranks. The domain is the types `gradeColumn` orders by value:
+    `cross` of the positions, `Ew.cmpBits <` of their ranks. The domain is the types `gradeColumn` orders by value:
     every atom but a general list, whose witness `decide` discharges. -/
 def ltRows {t : QAtomicType} {n : USize} (U : Vals (.atom t) n) (_h : t ≠ .general := by decide) :
     Tab (.atom t) (.atom t) :=
   let r := longsOf (Ops.rank (t := t) U _h)
   let c := cross n n
   longCount "<" c.1 fun nn _ =>
-    let i := whereBits nn (Ew.cmp Ew.lt Ew.i64 Ew.vv (gather 8 r c.1) (gather 8 r c.2) nn)
+    let i := whereBits nn (Ew.cmpBits Ew.lt Ew.i64 Ew.vv (gather 8 r c.1) (gather 8 r c.2) nn)
     longCount "<" i fun k hk =>
       ⟨k, Vals.pick _ U (gather 8 c.1 i) k ((gather_len _ _).trans hk), Vals.pick _ U (gather 8 c.2 i) k ((gather_len _ _).trans hk)⟩
 
@@ -917,18 +917,18 @@ def arith (op : UInt8) {n : USize} (W : Vals (.prod (.atom .i64) (.atom .i64)) n
   let m := n
   let u := longsOf W.1; let v := longsOf W.2
   let s := Kernel.Ew.val op Ew.i64 Ew.vv nul u v m
-  let cmp (c : UInt8) (x y : ByteArray) := Ew.cmp c Ew.i64 Ew.vv x y m
-  let same (x y : ByteArray) := Ew.bit (Ew.bitCmp + Ew.eq) Ew.vv x y m
-  let pos := Ew.cmp Ew.ge Ew.i64 Ew.va v (one 0) m
-  let ok := Ew.cmp Ew.ne Ew.i64 Ew.va s (one nul.toUInt64) m
+  let cmp (c : UInt8) (x y : ByteArray) := Ew.cmpBits c Ew.i64 Ew.vv x y m
+  let same (x y : ByteArray) := Ew.bitBits (Ew.bitCmp + Ew.eq) Ew.vv x y m
+  let pos := Ew.cmpBits Ew.ge Ew.i64 Ew.va v (one 0) m
+  let ok := Ew.cmpBits Ew.ne Ew.i64 Ew.va s (one nul.toUInt64) m
   let exact :=
     if op == Ew.add then same pos (cmp Ew.ge s u)
     else if op == Ew.sub then same pos (cmp Ew.le s u)
     else if op == Ew.mul then
-      Ew.bit Ew.greater Ew.vv (cmp Ew.eq (Kernel.Ew.val Ew.idiv Ew.i64 Ew.vv nul s u m) v)
-        (Ew.cmp Ew.eq Ew.i64 Ew.va u (one 0) m) m
+      Ew.bitBits Ew.greater Ew.vv (cmp Ew.eq (Kernel.Ew.val Ew.idiv Ew.i64 Ew.vv nul s u m) v)
+        (Ew.cmpBits Ew.eq Ew.i64 Ew.va u (one 0) m) m
     else ok
-  let k := whereBits m (Ew.bit Ew.lesser Ew.vv ok exact m)
+  let k := whereBits m (Ew.bitBits Ew.lesser Ew.vv ok exact m)
   longCount "arith" k fun r hr =>
     ⟨r, Vals.pick _ W k r hr, longsN r (gather 8 s k) (Nat.le_of_eq ((gather_len _ _).trans hr).symm)⟩
 
@@ -1210,7 +1210,7 @@ def zip {K A B : Obj} (P : Tab K (.prod (.arr A) (.arr B))) : Tab K (.arr (.prod
     all but its last element (`[lo, hi - 1)`, a slice of the same payload) and its last element. -/
 def unsnoc {B : Obj} {n : USize} (X : Vals (.arr B) n) : Tab (.arr B) (.prod (.arr B) B) :=
   let s := slicesOf X
-  let i := whereBits n (Ew.cmp Ew.gt Ew.i64 Ew.va s.2 (one 0) n)
+  let i := whereBits n (Ew.cmpBits Ew.gt Ew.i64 Ew.va s.2 (one 0) n)
   longCount "snoc°" i fun r hr =>
   let l := gather 8 s.1 i
   let e := Kernel.Ew.val Ew.sub Ew.i64 Ew.va nul (add r l (gather 8 s.2 i)) (one 1) r
@@ -1227,7 +1227,7 @@ def unsnocC {B : Obj} {n : USize} (X : Vals (.arr B) n) : Tab (.arr B) (.prod (.
     `lo + k` of the payload, read in place as `uncons` reads the head; a row of `k` or fewer cells has no pair. -/
 def atPos {B : Obj} {n : USize} (k : Nat) (X : Vals (.arr B) n) : Tab (.arr B) B :=
   let s := slicesOf X
-  let i := whereBits n (Ew.cmp Ew.gt Ew.i64 Ew.va s.2 (one k.toUInt64) n)
+  let i := whereBits n (Ew.cmpBits Ew.gt Ew.i64 Ew.va s.2 (one k.toUInt64) n)
   longCount "at" i fun r hr =>
   ⟨r, Vals.pick (.arr B) X i r hr, Vals.pick B X.2.2.2 (addc r (gather 8 s.1 i) k) r (len_val ..)⟩
 

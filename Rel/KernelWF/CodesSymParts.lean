@@ -24,7 +24,8 @@ theorem codes_symbol_cut {p : Nat} (cs : Vector (Part (.atom .sym)) p) (hp : 0 <
     exfalso
     have h0 := vec_mapM_some h hp
     revert h0
-    rcases symbol_enc (cs[0]'hp).2.wf with ⟨b, o, he⟩ | ⟨d, o, ids, he⟩ <;> simp [he]
+    -- `boolBits` reads only a boolean, so the bitmap branch is empty at a symbol, whatever the form
+    cases (cs[0]'hp).2.enc <;> simp [boolBits]
   have hro : rangeOffsets .sym (cs.map (·.2.part)) ((cs.map (·.1)).foldl (fun s n => s + n.toNat) 0) = none := by
     simp [rangeOffsets, orderKind]
   simp only [hro]

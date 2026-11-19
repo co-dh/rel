@@ -89,15 +89,19 @@ partial def objSyn (c : Name) (e : Lean.Expr) : MetaM Term := do
 /-- A binder of a `CRel` constant that is no relation: an object or a size, solved by unification (`Expand.primE`). -/
 def objOrSize (t : Lean.Expr) : MetaM Bool := return (← whnfR t).isConstOf ``Obj || (← whnfR t).isConstOf ``USize
 
+/-- `t` as `CRel X Y`: its objects `X`, `Y`. Read off `whnfR t`, where the abbrev `CRel` is `Option (Tab X Y)`. -/
+def crel? (t : Lean.Expr) : MetaM (Option (Lean.Expr × Lean.Expr)) := do
+  return (← whnfR t).app1? ``Option >>= (·.app2? ``Tab)
+
 /-- A binder of a `CRel` constant as a relation parameter `X ⟶ Y` and its form (`Form`'s first part): `CRel X Y` a
     relation run on the keys in demand; `CRel S S → CRel S T` one run on the keys `S` a round gives it, except that
     with `S = T = B×B` it is the pair test `τ(Q)` of an order `Q : B ⟶ B`, as every kernel taking an order takes it
     (§a). None: the binder is no relation. -/
 def paramSyn (c : Name) (t : Lean.Expr) : MetaM (Option Term) := do
   let t ← whnfR t
-  if let some (x, y) := t.app2? ``CRel then return some (← `((($(← objSyn c x), $(← objSyn c y)), some false)))
+  if let some (x, y) ← crel? t then return some (← `((($(← objSyn c x), $(← objSyn c y)), some false)))
   let .forallE _ dom r _ := t | return none
-  let (some (s, s'), some (s'', u)) := ((← whnfR dom).app2? ``CRel, (← whnfR r).app2? ``CRel) | return none
+  let (some (s, s'), some (s'', u)) := (← crel? dom, ← crel? r) | return none
   unless !r.hasLooseBVars && s == s' && s == s'' do return none
   if let (true, some (b, b')) := (u == s, s.app2? ``Obj.prod) then
     if b == b' then return some (← `((($(← objSyn c b), $(← objSyn c b)), some true)))
@@ -117,9 +121,10 @@ elab "prim% " i:ident : term => do
       let some p ← paramSyn c t
         | throwError "prim%: `{c}` has the parameter `{y} : {t}`; a builtin's binders are objects, sizes and relations"
       ps := ps.push p
-    let some (_, b) := r.app2? ``CRel | throwError "prim%: `{c}` is `{r}`, not a `CRel`"
-    match (← inferType x).getAppFn.constName?, (← inferType x).getAppArgs with
-    | some ``CRel, #[_, a] | some ``Vals, #[a, _] => pure (ps, ← objSyn c a, ← objSyn c b)
+    let some (_, b) ← crel? r | throwError "prim%: `{c}` is `{r}`, not a `CRel`"
+    let tx ← inferType x
+    match ← crel? tx, tx.app2? ``Vals with
+    | some (_, a), _ | none, some (a, _) => pure (ps, ← objSyn c a, ← objSyn c b)
     | _, _ => throwError "prim%: `{c}` takes `{x} : {← inferType x}`, neither the values `Vals A n` nor a `CRel K A`"
   elabTerm (← `((($(quote c) : Lean.Name), ([$ps,*] : List ((OExp × OExp) × Option Bool)), ($src : OExp),
     ($tgt : OExp)))) none
@@ -291,6 +296,8 @@ inductive Expr
   | junc (p : Pos) (a b : Expr)
   | fold (p : Pos) (right : Bool) (r : Expr)
   | lit (p : Pos) (ps : List (Tup × Tup))
+  /-- `col S "c"`: the column `c` of the schema `S`, `S ⟶ C` where `("c", C) ∈ S` (`Schema.col?`). -/
+  | col (p : Pos) (s : OExp) (c : String)
   /-- `μX : φ` (`least`) or `νX : φ`: the least or the greatest `X` with `X = φ(X)`; the body reaches to the
       closing parenthesis or the end of the declaration. -/
   | fix (p : Pos) (least : Bool) (x : String) (body : Expr)
@@ -299,7 +306,7 @@ inductive Expr
 /-- The position a term starts at. -/
 def Expr.pos : Expr → Pos
   | .name p _ | .op p .. | .app p .. | .bin p .. | .inf p .. | .conv p _ | .compl p _ | .pair p .. | .junc p .. | .fold p ..
-  | .lit p _ | .fix p .. => p
+  | .lit p _ | .fix p .. | .col p .. => p
   | .comp a _ => a.pos
 
 /-- Each name of `σ` replaced by its term: a `where` item put in place in its body (§c). -/
@@ -316,6 +323,7 @@ partial def Expr.subst (σ : List (String × Expr)) : Expr → Expr
   | .junc p a b => .junc p (a.subst σ) (b.subst σ)
   | .fold p d r => .fold p d (r.subst σ)
   | .lit p ps => .lit p ps
+  | .col p s c => .col p s c
   -- `x` is bound in the body, so an outer `x` is not replaced there
   | .fix p l x b => .fix p l x (b.subst (σ.filter (·.1 != x)))
 
@@ -329,7 +337,7 @@ partial def Expr.names : Expr → List String
   | .fold _ _ r => r.names
   | .inf _ n a b => n :: (a.names ++ b.names)
   | .conv _ a | .compl _ a => a.names
-  | .lit .. => []
+  | .lit .. | .col .. => []
   | .fix _ _ x b => x :: b.names
 
 /-- A body: a relation, or a test `e ⊑ f` (§e). -/
@@ -351,6 +359,8 @@ inductive ObjDef
   | elems (ws : List String)
   | range (lo hi : Int)
   | alias (o : OExp)
+  /-- `schema S = {k : K, v : N}`: the `Schema` of these columns, the object `Schema.obj` of it (`Expand.objInfo`). -/
+  | schema (cs : List (String × OExp))
   deriving Repr, Inhabited
 
 /-- A `calc` step's reason (`doc/rel-mss-proof-design.md` §3): `:= n(R, …)` cites the theorem `n` at the
@@ -439,6 +449,7 @@ def Expr.render (l : Nat) (full : Bool := false) : Expr → String
   | .junc _ a b => s!"[{a.render 0 full}, {b.render 0 full}]"
   | .fold _ d r => s!"⦇{r.render 0 full}⦈{if d then "ʳ" else ""}"
   | .lit _ ps => "{" ++ ", ".intercalate (ps.map fun (a, b) => (Tup.pair a b).show) ++ "}"
+  | .col _ s c => s!"col {s.render true} {c.quote}"
   | .fix _ least x b =>
     let s := s!"{if least then "μ" else "ν"}{x} : {b.render 0 full}"; if full || l ≥ 1 then s!"({s})" else s
 

@@ -47,6 +47,7 @@ def encEq : Enc → Enc → Bool
   | .alp m p x, .alp m' p' x' => decide (m = m') && decide (p = p') && decide (x = x')
   | .enum d o i, .enum d' o' i' => decide (d = d') && decide (o = o') && decide (i = i')
   | .gen ⟨xs⟩, .gen ⟨ys⟩ => listEq xs ys
+  | .pos, .pos => true
   | _, _ => false
 
 end
@@ -96,7 +97,7 @@ theorem tabEq_refl : (x : QTable) → tabEq x x = true
   | .mk _ ⟨v⟩ _ => by simp [tabEq, listEq_refl v]
 
 theorem encEq_refl : (e : Enc) → encEq e e = true
-  | .bytes _ | .bits _ | .syms .. | .foR .. | .alp .. | .enum .. => by simp [encEq]
+  | .bytes _ | .bits _ | .syms .. | .foR .. | .alp .. | .enum .. | .pos => by simp [encEq]
   | .gen ⟨xs⟩ => by simp [encEq, listEq_refl xs]
 
 end
@@ -172,7 +173,7 @@ theorem encEq_sound : (e f : Enc) → encCellFree e = true → encEq e f = true 
       rw [listEq_sound xs ys hc h]
     | _ => simp [encEq] at h
   | .bytes _, f, _, h | .bits _, f, _, h | .syms .., f, _, h | .foR .., f, _, h | .alp .., f, _, h
-  | .enum .., f, _, h => by cases f <;> simp_all [encEq]
+  | .enum .., f, _, h | .pos, f, _, h => by cases f <;> simp_all [encEq]
 
 end
 

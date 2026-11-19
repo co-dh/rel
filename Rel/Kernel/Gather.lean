@@ -37,7 +37,7 @@ def gatherWords (is es : Array UInt64) : Except String (Array UInt64) :=
     let L := gatherAsc (gatherRows is es)
     let F ← (List.range L.length).foldlM (kscanRow .first (L.map fun r => if r.2.1 = 0 then (1 : UInt64) else 0).toArray
       (L.map (·.2.2.2)).toArray []) #[]
-    let o ← scatterWords (L.map fun r => UInt64.ofNat (if r.2.1 = 0 then is.size else r.2.2.1)).toArray F (is.size + 1) 0
+    let o ← scatterWords .last (L.map fun r => UInt64.ofNat (if r.2.1 = 0 then is.size else r.2.2.1)).toArray F (is.size + 1) 0
     pure (o.extract 0 is.size)
 
 /-- `gather` of `m` indices `ix` into `n` words `e`, both `foR`: `gatherWords` of their words (`foRWords`), encoded

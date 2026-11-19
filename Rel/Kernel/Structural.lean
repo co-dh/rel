@@ -459,7 +459,7 @@ def gatherColumn (t : QAtomicType) (n : USize) (e : Ext.Enc X) (m : USize) (ie :
       | some ix => if ix.size < m.toNat * 8 then none else some ix
       | none => none
     match t, e with
-    | .u1, .bits b => (idx ()).map fun ix => .bits (gatherBits n b ix)
+    | .u1, e => (boolBits .u1 n e).bind fun b => (idx ()).map fun ix => .bits (gatherBits n b ix)
     | .sym, .syms blob offs =>
       (idx ()).map fun ix => let (nb, no) := gatherSyms blob offs ix; .syms nb no
     -- interned: `asc` is a grade and this gather, and the grade was already the ids' — leaving this
@@ -580,7 +580,8 @@ def razeColumn (t : QAtomicType) (cs : Array (USize × Ext.Enc X)) : Option (Ext
   if cs.isEmpty then none
   else match t with
     | .u1 =>
-      match cs.mapM (fun | (n, .bits b) => some (n, b) | _ => none) with
+      -- a `u1` `foR` part is brought to the bitmap the others are, a block at a time
+      match cs.mapM (fun (n, e) => (boolBits .u1 n e).map (n, ·)) with
       | some ps => needSize (ps.foldl (init := 0) (fun s p => s + p.1.toNat)) "raze: booleans" (fun _ => none) fun c =>
         some (.vector .u1 c (.bits (concatBits (countBytes (ps.map (·.1))) (ps.map (·.2)))) none)
       | none => none

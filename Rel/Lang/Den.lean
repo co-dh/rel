@@ -238,12 +238,19 @@ def Sem.one {X Y A B : Obj} (D : Den X Y → Den A B) : List Sem → Den A B
   | [⟨X', Y', T⟩] => if h : X' = X ∧ Y' = Y then D (h.1 ▸ h.2 ▸ T) else 𝟘
   | _ => 𝟘
 
+/-- The arguments `ss` bound to the variables `0, 1, …` in order, every other variable `𝟘`: what a call's body is
+    read under, `Val.empty.bind 0 ss₀ ⋯ .bind (n-1) ssₙ₋₁`. -/
+noncomputable def Val.args (ss : List Sem) : Val := go 0 ss where
+  /-- `ss` bound from the variable `k` on. -/
+  go (k : Nat) : List Sem → Val
+    | [] => Val.empty
+    | ⟨_, _, T⟩ :: ss => (go (k + 1) ss).bind k T
+
 /-- A row's meaning at its object variables `σ`, given its relation arguments' meanings. -/
 abbrev RowDen (c : RowCode) := (σ : List Obj) → List Sem → Den (c.ty σ).1 (c.ty σ).2
 
 open Classical RowCode in
-/-- Every row of `prims` with its meaning, in the order of `rowCodes` (`rowDens_codes`). `setify` is `Λ(∋)`; the
-    meanings of `setify` and `asc` have no lemma yet (`rowGaps`). -/
+/-- Every row of `prims` with its meaning, in the order of `rowCodes` (`rowDens_codes`). `setify` is `Λ(∋)`. -/
 def rowDens : List ((c : RowCode) × RowDen c) :=
   [⟨tau, fun _ _ a Y => Y = [a]⟩,
    ⟨cons, fun _ _ p ys => ys = p.1 :: p.2⟩,
@@ -297,69 +304,69 @@ def Prim.den (r : Prim) (A B : Obj) (ss : List Sem) : Den A B :=
 mutual
 /-- `⟦t⟧ρ`, one clause per constructor. A row and its arguments (`prim` under `arg`s) mean the row's meaning of
     its arguments' (`Tm.argDen`). `𝟘` at `call` (a `let` node), whose meaning is not settled yet. -/
-noncomputable def Tm.den : Val → {A B : Obj} → {d : Bool} → Tm A B d → Den A B
-  | _, _, _, _, .val R => rep R
-  | _, _, _, _, .uni U => rep (Alg.idU U)
-  | _, _, _, _, .zero => 𝟘
-  | _, _, _, _, .id => 𝟙 _
-  | ρ, _, _, _, .top V => Core.Rel.top ≫ V.den ρ
-  | _, _, _, _, .outl => graph Prod.fst
-  | _, _, _, _, .outr => graph Prod.snd
-  | ρ, _, _, _, .comp R S => R.den ρ ≫ S.den ρ
-  | ρ, _, _, _, .conv R => (R.den ρ)°
-  | ρ, _, _, _, .meet R S => R.den ρ ∩ S.den ρ
-  | ρ, _, _, _, .join R S => R.den ρ ∪ S.den ρ
-  | ρ, _, _, _, .diff R S => diffDen (R.den ρ) (S.den ρ)
-  | ρ, _, _, _, .dom R => 𝟙 _ ∩ R.den ρ ≫ (R.den ρ)°
-  | ρ, _, _, _, .ran R => 𝟙 _ ∩ (R.den ρ)° ≫ (R.den ρ)°°
-  | ρ, _, _, _, .ldiv R S U V => ldivDen (R.den ρ) (S.den ρ) (U.den ρ) (V.den ρ)
-  | ρ, _, _, _, .rdiv R S U V => rdivDen (R.den ρ) (S.den ρ) (U.den ρ) (V.den ρ)
-  | ρ, _, _, _, .pair R S => rpair (R.den ρ) (S.den ρ)
-  | ρ, _, _, _, .prod R S => rprodMap (R.den ρ) (S.den ρ)
-  | ρ, _, _, _, .junc R S => Core.Rel.junc (R.den ρ) (S.den ρ)
-  | ρ, _, _, _, .juncD R S => Core.Rel.junc (R.den ρ) (S.den ρ)
-  | ρ, _, _, _, .lam R => lamDen (R.den ρ)
-  | ρ, _, _, _, .E R => EDen (R.den ρ)
-  | ρ, _, _, _, .est Q => estDen (Q.den ρ)
-  | ρ, _, _, _, .thin Q => thinDen (Q.den ρ)
-  | _, _, _, _, .nil => nilDen
-  | _, A, B, _, .prim r => Prim.den r A B []
-  | _, _, _, _, .atPos k => atDen k
-  | ρ, _, _, _, .own R => R.den ρ
-  | ρ, _, _, _, .succ U => succDen (U.den ρ)
-  | ρ, _, _, _, .arith k U => arithDen k (U.den ρ)
-  | ρ, _, _, _, .leq U => leqDen (U.den ρ)
-  | ρ, _, _, _, .lt U => ltDen (U.den ρ)
-  | ρ, _, _, _, .foldr e S => foldrDen (e.den ρ) (S.den ρ)
-  | ρ, _, _, _, .fold e S => foldDen (e.den ρ) (S.den ρ)
-  | _, _, _, _, .share _ R => R.den Val.empty
-  | ρ, _, _, _, .foldI e S => foldIDen (e.den ρ) (S.den ρ)
-  | ρ, _, _, _, .flat R => flatDen (R.den ρ)
-  | ρ, A, B, _, .var k => ρ k A B
-  | _, _, _, _, .call .. => 𝟘
-  | ρ, _, _, _, .arg f x => f.argDen ρ [⟨_, _, x.den ρ⟩]
+noncomputable def Tm.den : Val → {A B : Obj} → Tm A B → Den A B
+  | _, _, _, .val R => rep R
+  | _, _, _, .uni U => rep (Alg.idU U)
+  | _, _, _, .zero => 𝟘
+  | _, _, _, .id => 𝟙 _
+  | ρ, _, _, .top V => Core.Rel.top ≫ V.den ρ
+  | _, _, _, .outl => graph Prod.fst
+  | _, _, _, .outr => graph Prod.snd
+  | ρ, _, _, .comp R S => R.den ρ ≫ S.den ρ
+  | ρ, _, _, .conv R => (R.den ρ)°
+  | ρ, _, _, .meet R S => R.den ρ ∩ S.den ρ
+  | ρ, _, _, .join R S => R.den ρ ∪ S.den ρ
+  | ρ, _, _, .diff R S => diffDen (R.den ρ) (S.den ρ)
+  | ρ, _, _, .dom R => 𝟙 _ ∩ R.den ρ ≫ (R.den ρ)°
+  | ρ, _, _, .ran R => 𝟙 _ ∩ (R.den ρ)° ≫ (R.den ρ)°°
+  | ρ, _, _, .ldiv R S U V => ldivDen (R.den ρ) (S.den ρ) (U.den ρ) (V.den ρ)
+  | ρ, _, _, .rdiv R S U V => rdivDen (R.den ρ) (S.den ρ) (U.den ρ) (V.den ρ)
+  | ρ, _, _, .pair R S => rpair (R.den ρ) (S.den ρ)
+  | ρ, _, _, .prod R S => rprodMap (R.den ρ) (S.den ρ)
+  | ρ, _, _, .junc R S => Core.Rel.junc (R.den ρ) (S.den ρ)
+  | ρ, _, _, .juncD R S => Core.Rel.junc (R.den ρ) (S.den ρ)
+  | ρ, _, _, .lam R => lamDen (R.den ρ)
+  | ρ, _, _, .E R => EDen (R.den ρ)
+  | ρ, _, _, .est Q => estDen (Q.den ρ)
+  | ρ, _, _, .thin Q => thinDen (Q.den ρ)
+  | _, _, _, .nil => nilDen
+  | _, A, B, .prim r => Prim.den r A B []
+  | _, _, _, .atPos k => atDen k
+  | ρ, _, _, .own R => R.den ρ
+  | ρ, _, _, .succ U => succDen (U.den ρ)
+  | ρ, _, _, .arith k U => arithDen k (U.den ρ)
+  | ρ, _, _, .leq U => leqDen (U.den ρ)
+  | ρ, _, _, .lt U => ltDen (U.den ρ)
+  | ρ, _, _, .foldr e S => foldrDen (e.den ρ) (S.den ρ)
+  | ρ, _, _, .fold e S => foldDen (e.den ρ) (S.den ρ)
+  | _, _, _, .share _ R => R.den Val.empty
+  | ρ, _, _, .foldI e S => foldIDen (e.den ρ) (S.den ρ)
+  | ρ, _, _, .flat R => flatDen (R.den ρ)
+  | ρ, A, B, .var _ k => ρ k A B
+  | _, _, _, .call .. => 𝟘
+  | ρ, _, _, .arg f x => f.argDen ρ [⟨_, _, x.den ρ⟩]
   -- the rounds start at `⟦S⟧` and meet each with it (`Gen.nu`), so `S` bounds the greatest fixed point
-  | ρ, _, _, _, .nu k S b => Core.Rel.nu fun X => S.den ρ ∩ b.den (ρ.bind k X)
-  | ρ, _, _, _, .mu k _ _ b => Core.Rel.mu fun X => b.den (ρ.bind k X)
-  | ρ, _, _, _, .hylo k _ _ b => Core.Rel.mu fun X => b.den (ρ.bind k X)
+  | ρ, _, _, .nu k S b => Core.Rel.nu fun X => S.den ρ ∩ b.den (ρ.bind k X)
+  | ρ, _, _, .mu k _ _ b => Core.Rel.mu fun X => b.den (ρ.bind k X)
+  | ρ, _, _, .hylo k _ _ b => Core.Rel.mu fun X => b.den (ρ.bind k X)
 
 /-- The spine `f` of a row given the meanings `ss` of its later arguments: the row's meaning of all of them, in
     the order `compile` passes their codes; `𝟘` where `f` is not a row under `arg`s. `share` and `own` are seen
     through, as `Tm.gen` passes their part's row on. -/
-noncomputable def Tm.argDen : Val → {A B : Obj} → {d : Bool} → Tm A B d → List Sem → Den A B
-  | _, A, B, _, .prim r, ss => Prim.den r A B ss
-  | ρ, _, _, _, .arg f x, ss => f.argDen ρ (⟨_, _, x.den ρ⟩ :: ss)
-  | _, _, _, _, .share _ R, ss => R.argDen Val.empty ss
-  | ρ, _, _, _, .own R, ss => R.argDen ρ ss
-  | _, _, _, _, _, _ => 𝟘
+noncomputable def Tm.argDen : Val → {A B : Obj} → Tm A B → List Sem → Den A B
+  | _, A, B, .prim r, ss => Prim.den r A B ss
+  | ρ, _, _, .arg f x, ss => f.argDen ρ (⟨_, _, x.den ρ⟩ :: ss)
+  | _, _, _, .share _ R, ss => R.argDen Val.empty ss
+  | ρ, _, _, .own R, ss => R.argDen ρ ss
+  | _, _, _, _, _ => 𝟘
 end
 
 /-- `⟦t⟧`, and `t`'s meaning as a row's spine, read `ρ` only at the variables free in `t`. -/
-theorem Tm.den_congr : ∀ {A B : Obj} {d : Bool} (t : Tm A B d) (ρ ρ' : Val), (∀ i ∈ t.fv, ρ i = ρ' i) →
+theorem Tm.den_congr : ∀ {A B : Obj} (t : Tm A B) (ρ ρ' : Val), (∀ i ∈ t.fv, ρ i = ρ' i) →
     t.den ρ = t.den ρ' ∧ ∀ ss, t.argDen ρ ss = t.argDen ρ' ss := by
-  intro A B d t
+  intro A B t
   induction t with
-  | var k => intro ρ ρ' h; exact ⟨by simp only [Tm.den, h k (by simp [Tm.fv])], fun _ => rfl⟩
+  | var _ k => intro ρ ρ' h; exact ⟨by simp only [Tm.den, h k (by simp [Tm.fv])], fun _ => rfl⟩
   | top V ih => intro ρ ρ' h; exact ⟨by simp only [Tm.den, (ih ρ ρ' fun i hi => h i (by simp [Tm.fv, hi])).1], fun _ => rfl⟩
   | comp R S ihR ihS | meet R S ihR ihS | join R S ihR ihS | diff R S ihR ihS | pair R S ihR ihS
   | prod R S ihR ihS | junc R S ihR ihS | juncD R S ihR ihS | foldr R S ihR ihS | fold R S ihR ihS | foldI R S ihR ihS =>
@@ -410,37 +417,30 @@ noncomputable def Tm.Sub.den (ρ : Val) : Tm.Sub → Val
   | [] => ρ
   | (k, ⟨_, _, s⟩) :: σ => (Sub.den ρ σ).bind k (s.den ρ)
 
-theorem Tm.den_lift (ρ : Val) (s : Tm A B false) : ∀ d, (s.lift d).den ρ = s.den ρ
-  | false => rfl
-  | true => Core.Rel.id_comp _
-
 /-- No term of `σ` is a row's spine: a term put for a variable heading `arg`s keeps that spine's meaning `𝟘`, as
     the variable's own is (`compile` too runs a row only under a `prim` head). -/
 def Tm.Sub.Plain (σ : Tm.Sub) : Prop := ∀ e ∈ σ, ∀ ρ ss, e.2.2.2.argDen ρ ss = 𝟘
 
 theorem Tm.Sub.argDen_get {ρ : Val} {ss : List Sem} (i : Nat) {A' B' : Obj} (d : Bool) :
-    ∀ σ : Tm.Sub, σ.Plain → (σ.get i d : Tm A' B' d).argDen ρ ss = 𝟘
+    ∀ σ : Tm.Sub, σ.Plain → (σ.get i d : Tm A' B').argDen ρ ss = 𝟘
   | [], _ => rfl
   | (k, ⟨A, B, s⟩) :: σ, hσ => by
     simp only [Sub.get]
     split
     · split
-      · rename_i h; obtain ⟨rfl, rfl⟩ := h
-        cases d
-        · exact hσ _ List.mem_cons_self ρ ss
-        · rfl
-      · cases d <;> rfl
+      · rename_i h; obtain ⟨rfl, rfl⟩ := h; exact hσ _ List.mem_cons_self ρ ss
+      · rfl
     · exact argDen_get i d σ fun e he => hσ e (List.mem_cons_of_mem _ he)
 
 theorem Tm.Sub.den_get (ρ : Val) (i : Nat) {A' B' : Obj} (d : Bool) :
-    ∀ σ : Tm.Sub, (σ.get i d : Tm A' B' d).den ρ = σ.den ρ i A' B'
+    ∀ σ : Tm.Sub, (σ.get i d : Tm A' B').den ρ = σ.den ρ i A' B'
   | [] => rfl
   | (k, ⟨A, B, s⟩) :: σ => by
     by_cases e : i = k
     · subst e
       by_cases h : A = A' ∧ B = B'
-      · obtain ⟨rfl, rfl⟩ := h; simp [Sub.get, Sub.den, Val.bind, den_lift]
-      · simp [Sub.get, Sub.den, Val.bind, h, den_lift, Tm.den]
+      · obtain ⟨rfl, rfl⟩ := h; simp [Sub.get, Sub.den, Val.bind]
+      · simp [Sub.get, Sub.den, Val.bind, h, Tm.den]
     · simp only [Sub.get, Sub.den, if_neg e, Val.bind_ne e]; exact den_get ρ i d σ
 
 theorem Tm.lt_fresh : ∀ {l : List Nat} {i : Nat}, i ∈ l → i < Tm.fresh l
@@ -461,11 +461,11 @@ theorem Tm.Sub.den_bind {ρ : Val} {k : Nat} {A B : Obj} {X : Den A B} :
 
 /-- Under a binder `k` renamed to `k'`, fresh for the body `b` and `σ`: the substituted body read with `k'` bound
     to `X` is the body read with `k` bound to `X` over `σ`'s meaning. -/
-theorem Tm.Sub.den_rename {A B A' B' : Obj} {d : Bool} (b : Tm A' B' d) (σ : Tm.Sub) (ρ : Val) (k : Nat)
+theorem Tm.Sub.den_rename {A B A' B' : Obj} (b : Tm A' B') (σ : Tm.Sub) (ρ : Val) (k : Nat)
     (X : Den A B) : b.den (Sub.den (ρ.bind (fresh (b.fv ++ σ.fvs)) X)
-      ((k, ⟨A, B, .var (fresh (b.fv ++ σ.fvs))⟩) :: σ)) = b.den ((σ.den ρ).bind k X) := by
+      ((k, ⟨A, B, .var false (fresh (b.fv ++ σ.fvs))⟩) :: σ)) = b.den ((σ.den ρ).bind k X) := by
   refine (b.den_congr _ _ fun i hi => ?_).1
-  have hv : (Tm.var (fresh (b.fv ++ σ.fvs)) : Tm A B false).den (ρ.bind (fresh (b.fv ++ σ.fvs)) X) = X := by
+  have hv : (Tm.var false (fresh (b.fv ++ σ.fvs)) : Tm A B).den (ρ.bind (fresh (b.fv ++ σ.fvs)) X) = X := by
     simp [Tm.den, Val.bind]
   simp only [Sub.den, hv]
   by_cases e : i = k
@@ -475,11 +475,11 @@ theorem Tm.Sub.den_rename {A B A' B' : Obj} {d : Bool} (b : Tm A' B' d) (σ : Tm
       (Nat.ne_of_lt (lt_fresh (List.mem_append_left _ hi)))
 
 /-- **Substitution lemma**: `⟦t σ⟧ρ = ⟦t⟧(⟦σ⟧ρ)`. -/
-theorem Tm.den_subst : ∀ {A B : Obj} {d : Bool} (t : Tm A B d) (σ : Tm.Sub), σ.Plain → ∀ ρ : Val,
+theorem Tm.den_subst : ∀ {A B : Obj} (t : Tm A B) (σ : Tm.Sub), σ.Plain → ∀ ρ : Val,
     (t.subst σ).den ρ = t.den (σ.den ρ) ∧ ∀ ss, (t.subst σ).argDen ρ ss = t.argDen (σ.den ρ) ss := by
-  intro A B d t
+  intro A B t
   induction t with
-  | var i => intro σ hσ ρ; exact ⟨Sub.den_get ρ i _ σ, fun _ => Sub.argDen_get i _ σ hσ⟩
+  | var d i => intro σ hσ ρ; exact ⟨Sub.den_get ρ i d σ, fun _ => Sub.argDen_get i d σ hσ⟩
   | nu k S b ihS ih =>
     intro σ hσ ρ; refine ⟨?_, fun _ => rfl⟩; simp only [Tm.subst, Tm.den, (ihS σ hσ ρ).1]
     congr 1; funext X; congr 1
@@ -512,7 +512,7 @@ def Val.Grow (k : Nat) (ρ ρ' : Val) : Prop := (∀ A B, ρ k A B ⊑ ρ' k A B
 /-- `X ⊑ Y` read with the sign `s`: `true` keeps it, `false` turns it round. -/
 def sle (s : Bool) {A B : Obj} (X Y : Den A B) : Prop := cond s (X ⊑ Y) (Y ⊑ X)
 
-theorem Val.Grow.congr {k : Nat} {ρ ρ' : Val} (g : Grow k ρ ρ') {A B : Obj} {d : Bool} {t : Tm A B d}
+theorem Val.Grow.congr {k : Nat} {ρ ρ' : Val} (g : Grow k ρ ρ') {A B : Obj} {t : Tm A B}
     (h : t.fv.contains k = false) : t.den ρ = t.den ρ' :=
   (t.den_congr ρ ρ' fun i hi => g.2 i fun e => by subst e; simp [hi] at h).1
 
@@ -681,11 +681,11 @@ theorem sle.gfp {s : Bool} (h : ∀ X, sle s (Φ X) (Ψ X)) : sle s (Core.Rel.nu
 
 /-- **Polarity**: where `t.pol s k`, growing the variable `k` moves `⟦t⟧` with the sign `s`. `den_mono` and
     `den_anti` are its two signs, one induction. -/
-theorem Tm.den_pol (k : Nat) : ∀ {A B : Obj} {d : Bool} (t : Tm A B d) (s : Bool) (ρ ρ' : Val),
+theorem Tm.den_pol (k : Nat) : ∀ {A B : Obj} (t : Tm A B) (s : Bool) (ρ ρ' : Val),
     t.pol s k = true → Val.Grow k ρ ρ' → sle s (t.den ρ) (t.den ρ') := by
-  intro A B d t
+  intro A B t
   induction t with
-  | var j =>
+  | var _ j =>
     intro s ρ ρ' hp g
     simp only [Tm.den]
     by_cases e : j = k
@@ -779,31 +779,28 @@ theorem Tm.den_pol (k : Nat) : ∀ {A B : Obj} {d : Bool} (t : Tm A B d) (s : Bo
       | prim r =>
         have hp : (Prim.find? r.sym).any (·.mono) = true ∧ x.pol s k = true := by simpa [Tm.pol, hc] using hp
         exact sle.map1 (f := fun T => Prim.den r _ _ [⟨_, _, T⟩]) (Prim.den_mono hp.1) (ihx s ρ ρ' hp.2 g)
-      -- a spine whose demand bit is `d || e` reduces `Tm.pol`'s match only once the two bits are known
-      | @meet _ _ d₁ e₁ _ _ | @join _ _ d₁ e₁ _ _ | @diff _ _ d₁ e₁ _ _ | @pair _ _ _ d₁ e₁ _ _ =>
-        revert hp; cases d₁ <;> cases e₁ <;> simp [Tm.pol, hc]
       | _ => simp [Tm.pol, hc] at hp
   | _ => intro s ρ ρ' hp g; exact sle.of_eq (g.congr (by first | simpa [Tm.pol] using hp | simp [Tm.fv]))
 
 /-- `⟦t⟧` is monotone in `X` where `X` occurs only positively. -/
-theorem Tm.den_mono {A' B' : Obj} {d : Bool} {t : Tm A' B' d} {k : Nat} (h : t.pol true k = true) {ρ : Val}
+theorem Tm.den_mono {A' B' : Obj} {t : Tm A' B'} {k : Nat} (h : t.pol true k = true) {ρ : Val}
     {X Y : Den A B} (hXY : X ⊑ Y) : t.den (ρ.bind k X) ⊑ t.den (ρ.bind k Y) :=
   t.den_pol k true _ _ h (Val.Grow.of_le hXY)
 
 /-- `⟦t⟧` is antitone in `X` where `X` occurs only negatively. -/
-theorem Tm.den_anti {A' B' : Obj} {d : Bool} {t : Tm A' B' d} {k : Nat} (h : t.pol false k = true) {ρ : Val}
+theorem Tm.den_anti {A' B' : Obj} {t : Tm A' B'} {k : Nat} (h : t.pol false k = true) {ρ : Val}
     {X Y : Den A B} (hXY : X ⊑ Y) : t.den (ρ.bind k Y) ⊑ t.den (ρ.bind k X) :=
   t.den_pol k false _ _ h (Val.Grow.of_le hXY)
 
 /-- `μX : φ = φ[μX : φ]` where `X` occurs in `φ` only positively. -/
-theorem Tm.den_mu_unfold {A B : Obj} (k : Nat) (what : String) (cap : Nat) (b : Tm A B false)
+theorem Tm.den_mu_unfold {A B : Obj} (k : Nat) (what : String) (cap : Nat) (b : Tm A B)
     (h : b.pol true k = true) (ρ : Val) :
     (Tm.mu k what cap b).den ρ = (b.subst [(k, ⟨A, B, .mu k what cap b⟩)]).den ρ := by
   rw [(b.den_subst _ (fun e he _ _ => by obtain rfl := List.mem_singleton.1 he; rfl) _).1]
   exact (Core.Rel.mu_fix fun _ _ hXY => den_mono h hXY).symm
 
 /-- `νX : S ∩ φ = S ∩ φ[νX : S ∩ φ]` where `X` occurs in `φ` only positively; `S` is outside the binder. -/
-theorem Tm.den_nu_unfold {A B : Obj} (k : Nat) (S b : Tm A B false) (h : b.pol true k = true) (ρ : Val) :
+theorem Tm.den_nu_unfold {A B : Obj} (k : Nat) (S b : Tm A B) (h : b.pol true k = true) (ρ : Val) :
     (Tm.nu k S b).den ρ = (Tm.meet S (b.subst [(k, ⟨A, B, .nu k S b⟩)])).den ρ := by
   show _ = S.den ρ ∩ _
   rw [(b.den_subst _ (fun e he _ _ => by obtain rfl := List.mem_singleton.1 he; rfl) _).1]
