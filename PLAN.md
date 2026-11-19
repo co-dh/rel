@@ -478,6 +478,13 @@ Diff table 的「状态」列：✅ 后面是完成它的步骤；🔄 是部分
       `f(X) − X`（semi-naive）可去掉 `asc::cmp_rows` 的大部分。
       未证：`Tab.keepBits_holds`、`Tab.compTabMat_holds`（命题已写在 `bitsfin` 的报告里，缺 `index` 与 `colMap` 的 spec）、
       `Tab.pack`、`Tab.map`、新行、`GenK.hylo`。
+      状态（2026-11-19 17:58，master `a2f1f9b`；`make check` 绿到 `6a91b10`，其后的合并未构建）：已合入 `frame1b`（`frame`
+      走 kernel 路径）、`w6`（W6 完成：plan 路径只调用五个 kernel 与 `own_write`；寄存器以 `Val.ctor` / `Val.nat`、
+      `Instr.ctor` / `Instr.proj` 承载 Lean 构造子对象，owner 2026-11-19 批准；recipe `whereB` = scan → scan → scatter →
+      gather，`groupIdsB` = `kasc` → `kseen` → `kscatter`，`arithB` 仅 `add sub mul`；旧 recipe 的 9 条定理删除，新 recipe
+      未证）、`t10a`（编译器只发射 `GenK.*`；`rel.kernel` 开关、`*Old` 对照、全部固定、`RelRep.lean` 删除）。RELK 仍 80：
+      旧层由 plan 路径四个文件的 import（`Rel.Run.Code`、`GenSpec`）保持存活。在做：分支 `t10b` 切断这些 import，删旧层
+      与对应 Rust，RELK → 11；并删无 kernel 实现也无程序使用的 prim `asc distinct tic`。
     - W3 留给后面的风险（清单 agent 提出，均未验证）：计数做 `\` 会物化 join（最多 `|R|·|S|` 行），SudokuPC9、
       blocks 可能超内存；规范序从 `Obj.lt` 变成 `kasc` 序码，打印的期望值与 `out/key`、`out/val` 可能变；
       `coc_block_start`、`coc_bools_of`、`structural_bits_of_for` 与 `Plan.abi` 点名的 12 个 export 在 W5 后仍有
