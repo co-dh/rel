@@ -575,13 +575,15 @@ def hex (b : ByteArray) : String :=
   let d (x : UInt8) : UInt8 := if x < 10 then 48 + x else 87 + x
   String.fromUTF8! (b.foldl (fun o x => (o.push (d (x / 16))).push (d (x % 16))) (.emptyWithCapacity (2 * b.size)))
 
-/-- An atom column rebuilt from its payload (`Gen.atom`): a dense one, or a boolean one from its bitmap
-    (`boolBits`); a symbol, general, other Frame-of-Reference or ALP payload is not rebuilt, and says so. -/
+/-- An atom column rebuilt from its `foR` payload as it is (`Gen.atom`), a boolean one included; a symbol, general or
+    ALP payload is not rebuilt, and says so. -/
 def atomE (t : Rel.QAtomicType) (n : USize) (x : Arr t n) : Except String Lean.Expr :=
-  match x.enc, Rel.Kernel.boolBits t n x.enc with
-  | .bytes b, _ => pure (g ``Gen.atom #[toExpr t, uE n, toExpr false, mkStrLit (hex b)])
-  | _, some b => pure (g ``Gen.atom #[toExpr t, uE n, toExpr true, mkStrLit (hex b)])
-  | _, none => throw s!"a column of {n} rows in a symbol, general, Frame-of-Reference or ALP payload cannot be rebuilt"
+  let ofFoR (m p : ByteArray) := pure (g ``Gen.atom #[toExpr t, uE n, mkStrLit (hex m), mkStrLit (hex p)])
+  match x.enc, t.width with
+  | .foR m p, _ => ofFoR m p
+  -- an old kernel's dense answer, encoded at its exit; goes with the old layer (W5)
+  | .bytes b, some w => let r := Rel.Kernel.Coc.encode w.toUSize b; ofFoR r.1 r.2
+  | _, _ => throw s!"a column of {n} rows in a symbol, general or ALP payload cannot be rebuilt"
 
 /-- A column rebuilt from its parts: each atom column from its payload (`atomE`), the rest by `Vals`'s shape. -/
 def valsE : (A : Obj) → (n : USize) → Vals A n → Except String Lean.Expr

@@ -51,11 +51,11 @@ theorem longsN_get {m : USize} {b : ByteArray} (hh : m.toNat ≤ len b) (q : Fin
   have hq := q.2
   unfold longCol need
   split
-  · rw [Arr.get_long_bytes _ rfl]; dsimp only
-    rw [bitsAt_extract _ (by rw [fit_len hh]; omega), Nat.zero_add]
+  · rw [Arr.get_longArr]
+    rw [bitsAt_extract _ (by have := fit_len hh; have := q.2; (try simp only [Fin.val_mk] at *); omega), Nat.zero_add]
     unfold fit; split
     · rfl
-    · rw [bitsAt_extract _ (by omega), Nat.zero_add]
+    · rw [bitsAt_extract _ (by have := q.2; (try simp only [Fin.val_mk] at *); omega), Nat.zero_add]
   · rename_i hn; exact absurd (by rw [fit_len hh]; exact m.toNat_lt_size) hn
 
 /-- An array row, as a list: the payload from its clamped start, its clamped count long. -/

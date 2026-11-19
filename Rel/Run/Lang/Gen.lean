@@ -89,11 +89,11 @@ def unhex (s : String) : ByteArray := Id.run do
     have := h.upper; b := b.push (d u[2 * i] * 16 + d u[2 * i + 1])
   pure b
 
-/-- The column of `t` whose payload is the hex text `s`, `bits` a boolean's bitmap (written by `Coc.boolsOf`), else
-    `Enc.bytes`, and its fit as its ok bit: `Enc.WF` is decided, so a payload that does not fit `n` is a blank column
-    with bit false, never a wrong column read as right. -/
-def atom (t : QAtomicType) (n : USize) (bits : Bool) (s : String) : Arr t n × Bool :=
-  let e := if bits then (let r := Kernel.Coc.boolsOf n (unhex s); Enc.foR r.1 r.2) else Enc.bytes (unhex s)
+/-- The `foR` column of `t` whose metadata and pack are the hex texts `m` and `p`, rebuilt as it was written, and its
+    fit as its ok bit: `Enc.WF` is decided, so a payload that does not fit `n` is a blank column with bit false, never a
+    wrong column read as right. -/
+def atom (t : QAtomicType) (n : USize) (m p : String) : Arr t n × Bool :=
+  let e := Enc.foR (unhex m) (unhex p)
   if h : Enc.WF t n e then (Arr.mk e h, true) else (Arr.mk (Enc.blank t n) (Enc.blank_WF t n), false)
 
 /-- A rebuilt column from its rebuilt parts, its bit the `&&` of theirs. -/
