@@ -902,7 +902,8 @@ def emit (n : Name) (r : Read) : MetaM Unit := do
   -- the node kinds with no kernel body, the run terms' and the definitions' elaborated once, for the progress line
   let ctors := (← getConstInfoInduct ``Tm).ctors
   let kinds := ((off ++ fs.flatMap fun o => o.res.2.2.offKernel tw).map fun (i, c) =>
-    if c.isAnonymous then toString ((ctors.getD i .anonymous).componentsRev.headD .anonymous) else s!"call {c}").eraseDups
+    let k := toString ((ctors.getD i .anonymous).componentsRev.headD .anonymous)
+    if c.isEmpty then k else s!"{k} {c}").eraseDups
     ++ if opt then [] else ["set_option rel.kernel false"]
   let ((entries, printed, checked, errs), st) ← (do
     let mut es := []

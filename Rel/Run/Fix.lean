@@ -105,6 +105,26 @@ def thinL {B : Obj} {n : USize} (q : Tab (.prod B B) (.prod B B) → Except Stri
     p.comp r
   foldRounds peelR (fun P el => do bump (← el.pair P)) (X.1.toNat + 2) (← idU X) (← nil X) (← zero)
 
+open Rel.Ext Rel.Kernel in
+/-- **`F(R)` on the cells `X`** (`mapDen`: `xs F(R) ys` iff `|ys| = |xs|` and `xs[i] R ys[i]`), `R` given on the
+elements of the cells. One pass where `R` is a function on them: the elements EXPANDed into a flat payload `v` of `T`
+rows (as `sum`), `⟨pos, v⟩ ≫ R` keyed by position, and where each of the `T` positions has exactly one image those
+images in position order are the new payload under the same widths (`Vals.cells`). Where some element has no image or
+two, the relator is the left fold `⦇nil, ⟨π₁, π₂ ≫ R⟩ ≫ snoc⦈` (`foldRounds`, `peelL`): a cell with an element of no
+image drops out, one with `k` images of an element is `k` ways, one round per element of the longest cell. -/
+def map {A B : Obj} {n : USize} (R : Tab A B) (X : Vals (.arr A) n) : Except String (Tab (.arr A) (.arr B)) :=
+  match X with
+  | ⟨m, lo, hi, f⟩ => do
+    if 2 ^ 63 ≤ n.toNat * m.toNat + n.toNat + m.toNat then throw s!"map: {n} cells over {m} elements past 2^63"
+    let (s, e) ← cellSpan m lo hi
+    let w ← colMap .sub n e.enc s.enc
+    let (T, G, u) ← expand n w
+    let v ← Vals.gather T (← colMap .add T (← kgather T G n s.enc) u) f
+    let C ← (⟨T, ← Arr.pos T, v⟩ : Tab .long A).comp R
+    if C.n == T && (← C.dom).n == T then canon (⟨n, X, ← Vals.cells n w C.val⟩ : Tab (.arr A) (.arr B))
+    else
+      foldRounds peelL (fun acc el => do snoc (← acc.pair (← el.comp R))) (m.toNat + 2) (← idU X) (← nil X) (← zero)
+
 /-- **`concat` on the cells of cells `X`** = `⦇nil, cat⦈` (the prelude's `concat`, B&dM p.129): the rounds of a left
 fold from `[]`, each `(acc, xs) ↦ acc ++ xs`. -/
 def flatten {n : USize} (X : Vals (.arr (.arr B)) n) : Except String (Tab (.arr (.arr B)) (.arr B)) := do
