@@ -275,6 +275,13 @@ inductive Enc (X : Type)
 
   Last, so the constructor tags of the six before it are unchanged. -/
   | gen : Array (QValue X) → Enc X
+  /-- The row positions `0 … n-1` of an `i64` column, `n` the header's: element `i` is `i`, and nothing is stored, in
+  memory or on disk (PLAN 6.13). A kernel reads it as its loop index, never as a materialised `til n`. A kernel's
+  answer is `pos` only where its arguments' forms say so, never because the values happen to be positions. `WF`
+  admits it at no type until no executable reader is left that needs a dense payload (6.13b).
+
+  After `gen`, so every tag before it is unchanged; nullary, so in Lean's ABI it is the scalar `lean_box(7)`. -/
+  | pos : Enc X
   deriving Inhabited
 
 end
@@ -715,6 +722,8 @@ def raw (t : QAtomicType) (n : USize) (e : Ext.Enc X) : Array UInt64 :=
     | none => #[]
   | .u1, .bits b => (Array.range n.toNat).map fun i => if bitAt b i then 1 else 0
   | .sym, .enum _ offs ids => (Array.range n.toNat).map fun i => (idAt ids (idWidth offs) i).toUInt64
+  -- a model read by proofs and kernel specifications; compiled kernels read `pos` as their loop index
+  | .i64, .pos => (Array.range n.toNat).map UInt64.ofNat
   | _, _ => #[]
 
 end Ext.Enc
@@ -1113,14 +1122,16 @@ def get (t : QAtomicType) (n : USize) (e : Ext.Enc X) (i : Nat) : Option QAtom :
       match hw : t.width with
       | some _ => some (atomOfBits t (alpBits metadata pack a #[] i) (QAtomicType.ne_general_of_width hw))
       | none => none
+    | .i64, .pos => some (.i64 (Int64.ofNat i))
     | _, _ => none
   else none
 
 /-- Symbols as `blob` plus its offset table. -/
 def symsOf (as : Array QAtom) : Ext.Enc X :=
   let bs := as.map fun | .sym s => s.toUTF8 | _ => ByteArray.empty
-  let offs := bs.foldl (init := (#[0], 0)) fun (o, pos) s =>
-    (o.push (pos + s.size + 1), pos + s.size + 1)
+  -- `p`, not `pos`, which in this namespace is the constructor `Enc.pos` and would make the pattern a match on it
+  let offs := bs.foldl (init := (#[0], 0)) fun (o, p) s =>
+    (o.push (p + s.size + 1), p + s.size + 1)
   let blob := bs.foldl (init := ByteArray.empty) fun acc s => (acc ++ s).push 0
   .syms blob offs.1
 

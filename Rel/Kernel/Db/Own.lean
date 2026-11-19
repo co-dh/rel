@@ -32,6 +32,8 @@ def ownParts (e : Ext.Enc X) : UInt8 × Array ByteArray :=
   | .syms _ _ => (4, #[])
   -- `ownFile` sends a general column to the serialized-object form, whose encoder names it
   | .gen _ => (5, #[])
+  -- `ownFile` answers `none` for it: positions are never written, `n` is the other side's (PLAN 6.13)
+  | .pos => (5, #[])
 
 /-- The file a value is written as when it is a column: a vector, an enumeration's indices under
 their domain's name, and either wearing an attribute. `none` is every other value, which keeps the
@@ -44,6 +46,7 @@ def ownFile (v : Ext.QValue X) : Option OwnFile :=
   match w with
   | .enum d (.vector .i64 n e _) => if d.isEmpty then none else some (column .i64 n e d)
   | .vector _ _ (.gen _) _ => none
+  | .vector _ _ .pos _ => none
   | .vector t n e _ => if t == .general then none else some (column t n e "")
   | _ => none
 

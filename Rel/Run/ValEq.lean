@@ -47,6 +47,7 @@ def encEq : Enc → Enc → Bool
   | .alp m p x, .alp m' p' x' => decide (m = m') && decide (p = p') && decide (x = x')
   | .enum d o i, .enum d' o' i' => decide (d = d') && decide (o = o') && decide (i = i')
   | .gen ⟨xs⟩, .gen ⟨ys⟩ => listEq xs ys
+  | .pos, .pos => true
   | _, _ => false
 
 end
