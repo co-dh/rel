@@ -29,15 +29,13 @@ theorem nil_holds {n : USize} {D : Vals A n} {T : Tab A (.arr B)} (h : Tab.nil D
   simp only [Tab.Holds, Vals.row]
   exact ⟨fun ⟨i, h1, h2⟩ => ⟨⟨i, h1⟩, h2.symm⟩, fun ⟨⟨i, h1⟩, h2⟩ => ⟨i, h1, h2.symm⟩⟩
 
-/-- **`cmpOn op U` is the pairs of `dom U` that `r` relates**, `op` testing `r` on the signed words: `keep` of
-`cross` of the domain with itself, row `i` kept where `op` answers `1`. -/
+/-- **`cmpOn op K L` is `K ≫ r ≫ L`**, `op` testing `r` on the signed words: `keep` of `cross K L`, row `i` kept
+where `op` answers `1`. -/
 theorem cmpOn_holds {op : Op} {r : Int64 → Int64 → Bool}
     (hop : ∀ x y : UInt64, op.eval x y = .ok (if r x.toInt64 y.toInt64 then 1 else 0))
-    {U T : Tab .long .long} (h : cmpOn op U = .ok T) (a c : Int64) :
-    T.Holds a c ↔ (∃ v, U.Holds a v) ∧ (∃ v, U.Holds c v) ∧ r a c = true := by
+    {n m : USize} {K : Vals .long n} {L : Vals .long m} {T : Tab .long .long} (h : cmpOn op K L = .ok T)
+    (a c : Int64) : T.Holds a c ↔ (∃ i, K.row i = a) ∧ (∃ j, L.row j = c) ∧ r a c = true := by
   unfold cmpOn at h; simp only [bind, Except.bind] at h
-  split at h; · cases h
-  rename_i d hd
   split at h; · cases h
   rename_i X hX
   split at h; · cases h
@@ -49,12 +47,7 @@ theorem cmpOn_holds {op : Op} {r : Int64 → Int64 → Bool}
     have := hev i.1 i.2
     rw [hop] at this
     rw [← Except.ok.inj this, Vals.row_atom, Vals.row_atom, Arr.get_i64, Arr.get_i64]
-  have hdom : ∀ x : Int64, (∃ i, d.key.row i = x) ↔ ∃ v, U.Holds x v := fun x => by
-    constructor
-    · rintro ⟨i, rfl⟩; exact ((dom_holds hd _ _).1 ⟨i, rfl, rfl⟩).2
-    · intro hv; obtain ⟨i, hi, -⟩ := (dom_holds hd x x).2 ⟨rfl, hv⟩; exact ⟨i, hi⟩
-  rw [keep_holds h (fun i hi => by rw [hwv ⟨i, hi⟩]; split <;> decide), ← hdom a, ← hdom c, ← and_assoc,
-    ← cross_holds hX a c]
+  rw [keep_holds h (fun i hi => by rw [hwv ⟨i, hi⟩]; split <;> decide), ← and_assoc, ← cross_holds hX a c]
   simp only [Tab.Holds]
   constructor
   · rintro ⟨i, hi, rfl, rfl⟩
@@ -63,15 +56,32 @@ theorem cmpOn_holds {op : Op} {r : Int64 → Int64 → Bool}
   · rintro ⟨⟨i, rfl, rfl⟩, hr⟩
     exact ⟨i, by rw [hwv i, if_pos hr]; decide, rfl, rfl⟩
 
-/-- **`lt U` denotes `ltDen`**: `<` on `dom U`. -/
-theorem lt_holds {U T : Tab .long .long} (h : Tab.lt U = .ok T) (a c : Int64) :
-    T.Holds a c ↔ Lang.ltDen U.Holds a c := by
+/-- **`lt K L` denotes `K ≫ < ≫ L`**. -/
+theorem lt_holds {n m : USize} {K : Vals .long n} {L : Vals .long m} {T : Tab .long .long} (h : Tab.lt K L = .ok T)
+    (a c : Int64) : T.Holds a c ↔ (∃ i, K.row i = a) ∧ (∃ j, L.row j = c) ∧ a < c := by
   rw [cmpOn_holds (r := fun x y => decide (x < y)) (fun _ _ => rfl) h, decide_eq_true_eq]
 
-/-- **`leq U` denotes `leqDen`**: `≤` on `dom U`. -/
-theorem leq_holds {U T : Tab .long .long} (h : Tab.leq U = .ok T) (a c : Int64) :
-    T.Holds a c ↔ Lang.leqDen U.Holds a c := by
+/-- **`leq K L` denotes `K ≫ ≤ ≫ L`**. -/
+theorem leq_holds {n m : USize} {K : Vals .long n} {L : Vals .long m} {T : Tab .long .long}
+    (h : Tab.leq K L = .ok T) (a c : Int64) : T.Holds a c ↔ (∃ i, K.row i = a) ∧ (∃ j, L.row j = c) ∧ a ≤ c := by
   rw [cmpOn_holds (r := fun x y => decide (x ≤ y)) (fun _ _ => rfl) h, decide_eq_true_eq]
+
+/-- The keys of `dom U` are the keys of `U`. -/
+private theorem dom_key {k v : Obj} {U : Tab k v} {d : Tab k k} (hd : U.dom = .ok d) (x : k.El) :
+    (∃ i, d.key.row i = x) ↔ ∃ y, U.Holds x y := by
+  constructor
+  · rintro ⟨i, rfl⟩; exact ((dom_holds hd _ _).1 ⟨i, rfl, rfl⟩).2
+  · intro hv; obtain ⟨i, hi, -⟩ := (dom_holds hd x x).2 ⟨rfl, hv⟩; exact ⟨i, hi⟩
+
+/-- **`lt` on both sides `dom U` denotes `ltDen`**: `lt_holds` at `K = L = dom U`. -/
+theorem lt_dom_holds {U d T : Tab .long .long} (hd : U.dom = .ok d) (h : Tab.lt d.key d.key = .ok T)
+    (a c : Int64) : T.Holds a c ↔ Lang.ltDen U.Holds a c := by
+  rw [lt_holds h, dom_key hd, dom_key hd]
+
+/-- **`leq` on both sides `dom U` denotes `leqDen`**: `leq_holds` at `K = L = dom U`. -/
+theorem leq_dom_holds {U d T : Tab .long .long} (hd : U.dom = .ok d) (h : Tab.leq d.key d.key = .ok T)
+    (a c : Int64) : T.Holds a c ↔ Lang.leqDen U.Holds a c := by
+  rw [leq_holds h, dom_key hd, dom_key hd]
 
 /-- **`mem X` denotes `∋` on the arrays `X`**: each cell of `X` to each of its elements. Cell `i` is `[s, e)` with
 `s = max lo 0`, `e = max (min hi m) s` (`Vals.row` of an `arr` side reads `lo ≤ j < hi` over `j < m`, the same
@@ -583,10 +593,40 @@ private def U := Alg.col [1, 2, 5, 7, 9, -3, 2]
 #guard newL ((tab [(1, 2), (1, 5), (2, 2), (2, 5), (3, 2)]).ldiv (tab [(1, 7), (2, 7), (2, 8), (3, 7)])
   (idT (Alg.col [2, 5, 6])) (idT (Alg.col [7, 9]))) == some [(2, 7), (5, 7), (6, 7), (6, 9)]
 
--- `<`, `≤` against `ltC`, `leqC`, on `U` and on no values
-#guard canonOk (Tab.lt (idT U)) && canonOk (Tab.leq (idT U)) &&
-  sameSet (newL (Tab.lt (idT U))) (oldL (Alg.ltC U)) && sameSet (newL (Tab.leq (idT U))) (oldL (Alg.leqC U)) &&
-  newL (Tab.lt (tab [])) == some [] && newL (Tab.leq (tab [(4, 0), (2, 0)])) == some [(2, 2), (2, 4), (4, 4)]
+/-- A two-sided operator `f` (`lt`, `leq`, `top`) on the whole universe `U`: both sides `dom U`. -/
+private def whole {A : Obj} (f : ∀ {n m : USize}, Vals A n → Vals A m → Except String (Tab A A)) (U : Tab A A) :
+    Except String (Tab A A) := do let d ← U.dom; f d.key d.key
+
+/-- `f K L` is canonical and holds the rows of `K ≫ whole f U ≫ L` (`Tab.comp`), as a set. -/
+private def sidesOk {A : Obj} [BEq A.El] (f : ∀ {n m : USize}, Vals A n → Vals A m → Except String (Tab A A))
+    (U : Tab A A) {n m : USize} (K : Vals A n) (L : Vals A m) : Bool :=
+  canonOk (f K L) && sameSet (newL (f K L)) (newL (do (← (idT K).comp (← whole f U)).comp (idT L)))
+
+-- `<`, `≤` on both sides `dom U` against `ltC`, `leqC`, on `U` and on no values
+#guard canonOk (whole Tab.lt (idT U)) && canonOk (whole Tab.leq (idT U)) &&
+  sameSet (newL (whole Tab.lt (idT U))) (oldL (Alg.ltC U)) &&
+  sameSet (newL (whole Tab.leq (idT U))) (oldL (Alg.leqC U)) && newL (whole Tab.lt (tab [])) == some [] &&
+  newL (whole Tab.leq (tab [(4, 0), (2, 0)])) == some [(2, 2), (2, 4), (4, 4)]
+
+/-- Known sides inside `U`: none, a value twice, and two that differ. -/
+private def sides : List ((n : USize) × Vals .long n) :=
+  [⟨_, Alg.col []⟩, ⟨_, Alg.col [2, 9, -3, 2]⟩, ⟨_, Alg.col [5, 1, 7]⟩, ⟨_, Alg.col [1, 2, 5, 7, 9, -3]⟩]
+
+/-- An `f64` column of the bits `ws`. -/
+private def fcol (ws : List UInt64) : Vals (.atom .f64) ws.length.toUSize := Arr.ofFn .f64 _ (ws.getD · 0)
+
+/-- The `f64` universe `-0.0`, `+0.0`, a NaN, `1.5`, `+inf`. -/
+private def FU := fcol [0x8000000000000000, 0, 0x7ff8000000000001, 0x3ff8000000000000, 0x7ff0000000000000]
+
+/-- Known `f64` sides inside `FU`: none, a value twice, two that differ, all of `FU`. -/
+private def fsides : List ((n : USize) × Vals (.atom .f64) n) :=
+  [⟨_, fcol []⟩, ⟨_, fcol [0x3ff8000000000000, 0x8000000000000000, 0x3ff8000000000000]⟩,
+   ⟨_, fcol [0, 0x7ff8000000000001, 0x7ff0000000000000]⟩, ⟨_, FU⟩]
+
+-- `<`, `≤`, `⊤` on the known sides `K`, `L` against `K ≫ (both sides dom U) ≫ L`, every pair of sides; `⊤` on `f64`
+#guard sides.all fun ⟨_, K⟩ => sides.all fun ⟨_, L⟩ =>
+  sidesOk Tab.lt (idT U) K L && sidesOk Tab.leq (idT U) K L && sidesOk Tab.top (idT U) K L
+#guard fsides.all fun ⟨_, K⟩ => fsides.all fun ⟨_, L⟩ => sidesOk Tab.top (idT FU) K L
 
 /-- The keys `3 1 4 -1 3`: `3` twice, `4` the key of no row. -/
 private def D := Alg.col [3, 1, 4, -1, 3]

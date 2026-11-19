@@ -65,8 +65,9 @@ def cross {n m : USize} (X : Vals A n) (Y : Vals B m) : Except String (Tab A B) 
   let ⟨T, x, y⟩ ← Vals.cross X Y
   canon ⟨T, x, y⟩
 
-/-- **`⊤ ≫ V` on the values `X`**, `idU X ≫ ⊤ ≫ V`: every value of `X` beside every value of `V` (`cross X V.val`). -/
-def top {n : USize} (X : Vals A n) (V : Tab B B) : Except String (Tab A B) := cross X V.val
+/-- **`⊤` between the known sides `K` and `L`**, `K ≫ ⊤ ≫ L = K × L`: every value of `K` beside every value of `L`
+(`idU X ≫ ⊤ ≫ V` is `top X V.val`). -/
+def top {n m : USize} (K : Vals A n) (L : Vals B m) : Except String (Tab A B) := cross K L
 
 /-- **`π₁` on the pairs `X`**, `idU X ≫ π₁`: each pair beside its first component, canonical. -/
 def outl {n : USize} (X : Vals (.prod A B) n) : Except String (Tab (.prod A B) A) := canon ⟨n, X, X.1⟩

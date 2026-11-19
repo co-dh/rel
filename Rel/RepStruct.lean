@@ -105,11 +105,15 @@ theorem idU_holds {n : USize} {X : Vals A n} {T : Tab A A} (h : Tab.idU X = .ok 
   rw [dom_holds h]
   exact ⟨fun ⟨e, _, i, h1, _⟩ => ⟨e, i, h1⟩, fun ⟨e, i, h1⟩ => ⟨e, _, i, h1, rfl⟩⟩
 
-/-- **`Tab.top X V` denotes `⊤ ≫ V` on the values of `X`** (`Tm.den` at `top`: `idU X ≫ ⊤ ≫ ⟦V⟧`). -/
-theorem top_holds {n : USize} {X : Vals A n} {V : Tab B B} {T : Tab A B} (h : Tab.top X V = .ok T) (a : A.El)
-    (b : B.El) : T.Holds a b ↔ (∃ i, X.row i = a) ∧ (Core.Rel.top ≫ V.Holds) a b := by
-  unfold Tab.top at h
-  rw [cross_holds h]
+/-- **`Tab.top K L` denotes `K ≫ ⊤ ≫ L`**: every value of `K` beside every value of `L`. -/
+theorem top_holds {n m : USize} {K : Vals A n} {L : Vals B m} {T : Tab A B} (h : Tab.top K L = .ok T) (a : A.El)
+    (b : B.El) : T.Holds a b ↔ (∃ i, K.row i = a) ∧ ∃ j, L.row j = b := cross_holds h a b
+
+/-- **`Tab.top X V.val` denotes `⊤ ≫ V` on the values of `X`** (`Tm.den` at `top`: `idU X ≫ ⊤ ≫ ⟦V⟧`), `top_holds`
+with `L` the values of `V`. -/
+theorem top_val_holds {n : USize} {X : Vals A n} {V : Tab B B} {T : Tab A B} (h : Tab.top X V.val = .ok T)
+    (a : A.El) (b : B.El) : T.Holds a b ↔ (∃ i, X.row i = a) ∧ (Core.Rel.top ≫ V.Holds) a b := by
+  rw [top_holds h]
   exact and_congr_right fun _ => ⟨fun ⟨j, hj⟩ => ⟨_, trivial, j, rfl, hj⟩, fun ⟨_, _, j, _, hj⟩ => ⟨j, hj⟩⟩
 
 /-- **`Tab.outl X` denotes `π₁` on the pairs `X`** (`Tm.den` at `outl`: `idU X ≫ graph Prod.fst`). -/
@@ -356,15 +360,14 @@ private def oldC {A B : Obj} (T : Tab A B) : Option (Tab A B) := let c := Alg.ca
 /-- The rows of a side, in position order. -/
 private def rows {A : Obj} {n : USize} (X : Vals A n) : List A.El := List.ofFn (Vals.row X)
 
-/-- `top X V` against the old `topC` (on `V`'s values) and against `X × V.val` as a set. -/
-private def topOk {A B : Obj} [BEq A.El] [BEq B.El] {n : USize} (X : Vals A n) (V : Tab B B) : Bool :=
-  oldOk (Tab.top X V) (let c := Alg.topC X V.val; if c.2 then oldC c.1 else none) &&
-    specOk (Tab.top X V) ((rows X).flatMap fun a => (rows V.val).map fun b => (a, b))
+/-- `top X Y` against the old `topC` and against `X × Y` as a set. -/
+private def topOk {A B : Obj} [BEq A.El] [BEq B.El] {n m : USize} (X : Vals A n) (Y : Vals B m) : Bool :=
+  oldOk (Tab.top X Y) (let c := Alg.topC X Y; if c.2 then oldC c.1 else none) &&
+    specOk (Tab.top X Y) ((rows X).flatMap fun a => (rows Y).map fun b => (a, b))
 
 -- `⊤`: integers (an empty side on either end), a float, a tuple
-#guard ints.all fun ps => ints.all fun qs => topOk (tabW ps).key (tabW qs)
-#guard topOk P.val (⟨F.n, F.val, F.val⟩ : Tab (.atom .f64) (.atom .f64)) &&
-  topOk F.val (⟨P.n, P.val, P.val⟩ : Tab (.prod .long .long) (.prod .long .long))
+#guard ints.all fun ps => ints.all fun qs => topOk (tabW ps).key (tabW qs).val
+#guard topOk P.val F.val && topOk F.val P.val
 
 /-- `outl X`, `outr X` against the old `outl`, `outr` of `idU X` and against the projections as sets. -/
 private def outOk {A B : Obj} [BEq A.El] [BEq B.El] {n : USize} (X : Vals (.prod A B) n) : Bool :=
@@ -429,6 +432,7 @@ end Checks
 #print axioms Tab.zero_holds
 #print axioms Tab.idU_holds
 #print axioms Tab.top_holds
+#print axioms Tab.top_val_holds
 #print axioms Tab.outl_holds
 #print axioms Tab.outr_holds
 #print axioms Tab.pair_holds

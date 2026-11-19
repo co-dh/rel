@@ -99,18 +99,18 @@ def ldiv (R : Tab A B) (S : Tab A C) (UB : Tab B B) (UC : Tab C C) : Except Stri
 def rdiv (R : Tab A C) (S : Tab B C) (UA : Tab A A) (UB : Tab B B) : Except String (Tab A B) := do
   (← ldiv (← S.conv) (← R.conv) UB UA).conv
 
-/-- The pairs `(a, b)` of `dom U × dom U` whose `i64` words pass `op` (signed, as `Int64`'s order): CROSS of the
-domain with itself, then `keep` of `colMap op` of the two columns. -/
-def cmpOn (op : Op) (U : Tab .long .long) : Except String (Tab .long .long) := do
-  let d ← U.dom
-  let T ← cross d.key d.key
+/-- `K ≫ op ≫ L`: the pairs `(a, c)` of `K × L` whose `i64` words pass `op` (signed, as `Int64`'s order): CROSS of
+the two known sides, then `keep` of `colMap op` of the two columns. A side not known is `dom U`, exact since the
+denotation (`ltDen`, `leqDen`) lies inside `U` (`doc/rel-architecture.zh.typ` §0). -/
+def cmpOn (op : Op) {n m : USize} (K : Vals .long n) (L : Vals .long m) : Except String (Tab .long .long) := do
+  let T ← cross K L
   T.keep (← colMap op T.n T.key.enc T.val.enc)
 
-/-- **`<` on `dom U`** (`ltDen`). -/
-def lt (U : Tab .long .long) : Except String (Tab .long .long) := cmpOn .lt U
+/-- **`K ≫ < ≫ L`** (`ltDen` on `dom U` when `K = L = dom U`). -/
+def lt {n m : USize} (K : Vals .long n) (L : Vals .long m) : Except String (Tab .long .long) := cmpOn .lt K L
 
-/-- **`≤` on `dom U`** (`leqDen`). -/
-def leq (U : Tab .long .long) : Except String (Tab .long .long) := cmpOn .le U
+/-- **`K ≫ ≤ ≫ L`** (`leqDen` on `dom U` when `K = L = dom U`). -/
+def leq {n m : USize} (K : Vals .long n) (L : Vals .long m) : Except String (Tab .long .long) := cmpOn .le K L
 
 end Tab
 
