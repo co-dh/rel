@@ -22,7 +22,9 @@ theorem colPrefix_raw {op : Op} {n : USize} {a e : Enc} (h : colPrefix op n a = 
   simp only [bind, Except.bind] at h
   split at h; · cases h
   rename_i z hz
-  obtain ⟨-, hxs, c, cs, hc, out, hout, he, hrow⟩ := raw_kscan op false .i64 .i64 8 rfl n z [z, a] e h
+  split at h; · cases h
+  rename_i r hr; simp only [pure, Except.pure, Except.ok.injEq] at h; subst h
+  obtain ⟨-, hxs, c, cs, hc, out, hout, he, -, hrow⟩ := raw_kscan op false .i64 .i64 8 rfl n z [z, a] r hr
   simp only [List.cons.injEq] at hc; obtain ⟨rfl, rfl⟩ := hc
   simp only [Bool.false_eq_true, ↓reduceIte, mod_i64, Array.map_id'] at he hrow
   have hz0 := colConst_raw hz
@@ -50,7 +52,9 @@ theorem colMap_raw {op : Op} {n : USize} {a b e : Enc} (h : colMap op n a b = .o
   simp only [bind, Except.bind] at h
   split at h; · cases h
   rename_i one hone
-  obtain ⟨hg, hxs, c, cs, hc, out, hout, he, hrow⟩ := raw_kscan op false .i64 .i64 8 rfl n one [a, b] e h
+  split at h; · cases h
+  rename_i r hr; simp only [pure, Except.pure, Except.ok.injEq] at h; subst h
+  obtain ⟨hg, hxs, c, cs, hc, out, hout, he, -, hrow⟩ := raw_kscan op false .i64 .i64 8 rfl n one [a, b] r hr
   simp only [List.cons.injEq] at hc; obtain ⟨rfl, rfl⟩ := hc
   simp only [Bool.false_eq_true, ↓reduceIte, mod_i64, Array.map_id'] at he hrow
   -- `one` read as booleans: each word `1`, so every row starts a segment
@@ -294,8 +298,8 @@ theorem colPrefix_add_sum {K : USize} {w P : Enc} (h : colPrefix .add K w = .ok 
       List.sum_cons, List.sum_nil, Nat.add_zero]; exact (UInt64.ofNat_add _ _).symm
 
 /-- `kscan`'s answer is a `foR` column. -/
-theorem kscan_foR {op : Op} {rev : Bool} {s t : QAtomicType} {n : USize} {seg : Enc} {es : List Enc} {o : Enc}
-    (h : kscan op rev s t n seg es = .ok o) : ∃ md pk, o = .foR md pk := by
+theorem kscan_foR {op : Op} {rev : Bool} {s t : QAtomicType} {n : USize} {seg : Enc} {es : List Enc}
+    {r : Enc × Option UInt64} (h : kscan op rev s t n seg es = .ok r) : ∃ md pk, r.1 = .foR md pk := by
   unfold kscan at h
   simp only [bind, Except.bind] at h
   split at h; · cases h
@@ -304,7 +308,7 @@ theorem kscan_foR {op : Op} {rev : Bool} {s t : QAtomicType} {n : USize} {seg : 
   split at h; · cases h
   split at h; · cases h
   simp only [pure, Except.pure, Except.ok.injEq] at h
-  exact ⟨_, _, h.symm⟩
+  subst h; exact ⟨_, _, rfl⟩
 
 /-- **`lastCount` reads the last word**: `x` where the last of the `K` words is `x < 2^63`, `0` at `K = 0`. -/
 theorem lastCount_eq {K : USize} {P : Enc} (hw : Enc.WF .i64 K P) (hf : ∃ md pk, P = .foR md pk) {x : Nat}
@@ -384,7 +388,9 @@ theorem tagCount_zero {n : USize} {s : Bool} {tag : Arr .u1 n} (h : tagCount n s
     simp only [Except.ok.injEq] at h
     have hf : ∃ md pk, P = .foR md pk := by
       unfold colPrefix at hP; simp only [bind, Except.bind] at hP; split at hP; · cases hP
-      exact kscan_foR hP
+      split at hP; · cases hP
+      rename_i r hr; simp only [pure, Except.pure, Except.ok.injEq] at hP; subst hP
+      exact kscan_foR hr
     -- `wN G`: row `G` is tagged into `s`
     obtain ⟨wN, hwN⟩ : ∃ f : Nat → Nat, f = fun G => if hG : G < n.toNat then (if tag.get ⟨G, hG⟩ = s then 1 else 0) else 0 := ⟨_, rfl⟩
     have hw : ∀ G < n.toNat, (raw .i64 n p)[G]?.getD 0 = (wN G).toUInt64 := fun G hG => by

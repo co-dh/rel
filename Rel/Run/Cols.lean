@@ -10,7 +10,8 @@ open Rel.Ext Rel.Kernel Rel.Verify
 /-- The running fold of `op` over the `n` words of `a` from the word `0`: `kscan` with one segment. -/
 def colPrefix (op : Op) (n : USize) (a : Enc) : Except String Enc := do
   let z ← colConst n 0
-  kscan op false .i64 .i64 n z [z, a]
+  let r ← kscan op false .i64 .i64 n z [z, a]
+  pure r.1
 
 /-- The `n` words `i + s`: `colMap .add` of the positions and `colConst n s`. -/
 def shiftCol (n : USize) (s : UInt64) : Except String Enc := do colMap .add n .pos (← colConst n s)
@@ -55,7 +56,9 @@ def Arr.clampShift {n : USize} (c s : UInt64) (x : Arr .i64 n) : Except String (
 theorem colPrefix_closed {op : Op} {n : USize} {a o : Enc} (h : colPrefix op n a = .ok o) :
     Kernel.Enc.Valid n o ∧ Enc.WF .i64 n o := by
   unfold colPrefix at h; simp only [bind, Except.bind] at h; split at h; · cases h
-  exact kscan_closed h
+  split at h; · cases h
+  rename_i r hr; simp only [pure, Except.pure, Except.ok.injEq] at h; subst h
+  exact kscan_closed hr
 
 /-- The last of the `n` words of the `i64` column `e`, or `0` at `n = 0`, read as a count (`Arr.get`, one element). -/
 def lastCount (n : USize) (e : Enc) (h : Enc.WF .i64 n e) : Nat :=
