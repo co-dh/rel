@@ -27,19 +27,36 @@ def Arr.concat {t : QAtomicType} {n₁ n₂ : USize} (n : USize) (off : Enc) (x 
   | .ok o => .ok (Arr.mk o (colMap_closed h).2)
   | .error s => .error s
 
-/-- The rows of `x`, then those of `y`, as `n` rows: `Arr.concat` of each atom column (`off` as there). -/
-def Vals.concat (n : USize) (off : Enc) : {A : Obj} → {n₁ n₂ : USize} → Vals A n₁ → Vals A n₂ →
-    Except String (Vals A n)
-  | .atom _, _, _, x, y => Arr.concat n off x y
-  | .prod _ _, _, _, x, y => do pure (← Vals.concat n off x.1 y.1, ← Vals.concat n off x.2 y.2)
-  | .arr _, _, _, _, _ => .error "concat: an arr side is not atom columns"
-  | .sum _ _, _, _, _, _ => .error "concat: a sum side is not atom columns"
-
 /-- The layout of `n₁` rows followed by `n₂`: the summed count `n` and the destinations `off` of the second part
 (`shiftCol n₂ n₁`); the error where `n` does not fit a `USize`. -/
 def catPlan (n₁ n₂ : USize) : Except String (USize × Enc) :=
   if n₁.toNat + n₂.toNat < USize.size then do
     pure ((n₁.toNat + n₂.toNat).toUSize, ← shiftCol n₂ n₁.toUInt64)
   else .error s!"concat: {n₁} + {n₂} rows do not fit a USize"
+
+/-- The words of `x` clamped into `[0, c]` (`colMap .max` with `0`, then `.min` with `c`), then `s` added. -/
+def Arr.clampShift {n : USize} (c s : UInt64) (x : Arr .i64 n) : Except String (Arr .i64 n) := do
+  let a ← colMap .max n x.enc (← colConst n 0)
+  let b ← colMap .min n a (← colConst n c)
+  let k ← colConst n s
+  match h : colMap .add n b k with
+  | .ok o => .ok (Arr.mk o (colMap_closed h).2)
+  | .error e => .error e
+
+/-- The rows of `x`, then those of `y`, as `n` rows: `Arr.concat` of each atom column (`off` as there). An `arr` side
+concatenates its payloads (`catPlan`, the recursive call) and its `lo`, `hi` columns, each side's clamped into its own
+payload (`Vals.row` reads a cell clamped) and the second's shifted past the first payload; a payload past `2^63` rows,
+which an `Int64` bound cannot reach, is the error. -/
+def Vals.concat : {A : Obj} → {n₁ n₂ : USize} → (n : USize) → Enc → Vals A n₁ → Vals A n₂ → Except String (Vals A n)
+  | .atom _, _, _, n, off, x, y => Arr.concat n off x y
+  | .prod _ _, _, _, n, off, x, y => do pure (← Vals.concat n off x.1 y.1, ← Vals.concat n off x.2 y.2)
+  | .arr _, _, _, n, off, ⟨m₁, lo₁, hi₁, f₁⟩, ⟨m₂, lo₂, hi₂, f₂⟩ =>
+    if m₁.toNat + m₂.toNat < 2 ^ 63 then do
+      let p ← catPlan m₁ m₂
+      let lo ← Arr.concat n off (← lo₁.clampShift m₁.toUInt64 0) (← lo₂.clampShift m₂.toUInt64 m₁.toUInt64)
+      let hi ← Arr.concat n off (← hi₁.clampShift m₁.toUInt64 0) (← hi₂.clampShift m₂.toUInt64 m₁.toUInt64)
+      pure ⟨p.1, lo, hi, ← Vals.concat p.1 p.2 f₁ f₂⟩
+    else .error s!"concat: {m₁} + {m₂} payload rows, past an Int64 bound"
+  | .sum _ _, _, _, _, _, _, _ => .error "concat: a sum side is not atom columns"
 
 end Rel

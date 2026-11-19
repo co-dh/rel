@@ -179,14 +179,63 @@ theorem catPlan_ok {n₁ n₂ n : USize} {off : Enc} (h : catPlan n₁ n₂ = .o
     omega
   · cases h
 
+/-- **`Arr.clampShift c s x`** reads each long of `x` clamped into `[0, c]`, plus `s`, where `c + s` is below `2^63`. -/
+theorem Arr.clampShift_get {n : USize} {c s : UInt64} {x y : Arr .i64 n} (hcs : c.toNat + s.toNat < 2 ^ 63)
+    (h : x.clampShift c s = .ok y) (i : Fin n.toNat) :
+    (y.get i).toInt = min (max (x.get i).toInt 0) c.toNat + s.toNat := by
+  unfold Arr.clampShift at h
+  simp only [bind, Except.bind] at h
+  split at h; · cases h
+  rename_i z hz
+  split at h; · cases h
+  rename_i a ha
+  split at h; · cases h
+  rename_i cc hcc
+  split at h; · cases h
+  rename_i b hb
+  split at h; · cases h
+  rename_i k hk
+  split at h
+  · rename_i o ho
+    cases h
+    have r1 := (colMap_raw ha).2.2.2 i.1 i.2
+    have r2 := (colMap_raw hb).2.2.2 i.1 i.2
+    have r3 := (colMap_raw ho).2.2.2 i.1 i.2
+    rw [colConst_raw hz] at r1; rw [colConst_raw hcc] at r2; rw [colConst_raw hk] at r3
+    simp only [Array.getElem?_replicate, i.2, if_true, Option.getD_some, Op.eval, Except.ok.injEq] at r1 r2 r3
+    rw [Arr.get_i64, Arr.get_i64]
+    show ((raw .i64 n o)[i.1]?.getD 0).toInt64.toInt = _
+    rw [← r3, ← r2, ← r1]
+    generalize (raw .i64 n x.enc)[i.1]?.getD 0 = w
+    have hc : c.toInt64.toInt = c.toNat := by rw [Verify.toInt_toInt64, if_pos (by omega)]
+    have h0 : (0 : UInt64).toInt64.toInt = 0 := rfl
+    simp only [Int64.lt_iff_toInt_lt, hc, h0]
+    split <;> split <;> rename_i h1 h2 <;> simp only [Verify.toInt_toInt64] at * <;>
+      simp only [UInt64.toNat_add] at * <;> split at * <;> split at * <;> omega
+  · cases h
+
+/-- The pairs of `List.finRange (a + b)` that `G` keeps: those of the first `a` positions, then of the last `b`. -/
+theorem filterMap_finRange_add {α : Type} {M a b : Nat} (h : M = a + b) (G : Fin M → Option α) :
+    (List.finRange M).filterMap G = (List.finRange a).filterMap (fun j => G ⟨j.1, by omega⟩) ++
+      (List.finRange b).filterMap (fun j => G ⟨a + j.1, by omega⟩) := by
+  subst h
+  simp only [List.finRange, List.ofFn_add, List.filterMap_append]
+  congr 1
+  · rw [show (List.ofFn fun i : Fin a => Fin.castLE (Nat.le_add_right a b) i) =
+      (List.ofFn fun i : Fin a => i).map (fun j => ⟨j.1, by omega⟩) from
+      List.ext_getElem (by simp) (fun _ _ _ => by simp), List.filterMap_map]; rfl
+  · rw [show (List.ofFn fun i : Fin b => Fin.natAdd a i) =
+      (List.ofFn fun i : Fin b => i).map (fun j => ⟨a + j.1, by omega⟩) from
+      List.ext_getElem (by simp) (fun _ _ _ => by simp [Fin.natAdd]), List.filterMap_map]; rfl
+
 /-- **Row `c` of `Vals.concat`** is row `c` of `x` below `n₁`, row `c - n₁` of `y` from there. -/
-theorem Vals.concat_row {n₁ n₂ n : USize} {off : Enc} (hn : n.toNat = n₁.toNat + n₂.toNat)
-    (hoff : ∀ k < n₂.toNat, ((raw .i64 n₂ off)[k]?.getD 0).toNat = n₁.toNat + k) :
-    {A : Obj} → (x : Vals A n₁) → (y : Vals A n₂) → {z : Vals A n} → Vals.concat n off x y = .ok z →
+theorem Vals.concat_row : {A : Obj} → {n₁ n₂ n : USize} → {off : Enc} → (hn : n.toNat = n₁.toNat + n₂.toNat) →
+    (hoff : ∀ k < n₂.toNat, ((raw .i64 n₂ off)[k]?.getD 0).toNat = n₁.toNat + k) →
+    (x : Vals A n₁) → (y : Vals A n₂) → {z : Vals A n} → Vals.concat n off x y = .ok z →
       ∀ c : Fin n.toNat, Vals.row z c =
         if hc : c.1 < n₁.toNat then Vals.row x ⟨c.1, hc⟩ else Vals.row y ⟨c.1 - n₁.toNat, by omega⟩
-  | .atom _, x, y, z, h, c => Arr.concat_get hn hoff h c
-  | .prod _ _, x, y, z, h, c => by
+  | .atom _, _, _, _, _, hn, hoff, x, y, z, h, c => Arr.concat_get hn hoff h c
+  | .prod _ _, _, _, _, _, hn, hoff, x, y, z, h, c => by
     simp only [Vals.concat, bind, Except.bind, pure, Except.pure] at h
     split at h; · cases h
     rename_i z1 h1
@@ -196,8 +245,65 @@ theorem Vals.concat_row {n₁ n₂ n : USize} {off : Enc} (hn : n.toNat = n₁.t
     show (Vals.row z1 c, Vals.row z2 c) = _
     rw [Vals.concat_row hn hoff x.1 y.1 h1 c, Vals.concat_row hn hoff x.2 y.2 h2 c]
     split <;> rfl
-  | .arr _, _, _, _, h, _ => by simp [Vals.concat] at h
-  | .sum _ _, _, _, _, h, _ => by simp [Vals.concat] at h
+  | .arr _, n₁, _, _, _, hn, hoff, ⟨m₁, lo₁, hi₁, f₁⟩, ⟨m₂, lo₂, hi₂, f₂⟩, z, h, c => by
+    simp only [Vals.concat] at h
+    split at h; swap; · cases h
+    rename_i hm
+    simp only [bind, Except.bind, pure, Except.pure] at h
+    split at h; · cases h
+    rename_i p hp
+    split at h; · cases h
+    rename_i L₁ hL₁
+    split at h; · cases h
+    rename_i L₂ hL₂
+    split at h; · cases h
+    rename_i lo hlo
+    split at h; · cases h
+    rename_i H₁ hH₁
+    split at h; · cases h
+    rename_i H₂ hH₂
+    split at h; · cases h
+    rename_i hi hhi
+    split at h; · cases h
+    rename_i F hF
+    cases h
+    obtain ⟨hpn, hpo⟩ := catPlan_ok (show catPlan m₁ m₂ = .ok (p.1, p.2) from hp)
+    have hrow := Vals.concat_row hpn hpo f₁ f₂ hF
+    have hU : ∀ m : USize, m.toUInt64.toNat = m.toNat := fun m => by
+      have := m.toNat_lt_size; have := USize.size_le; simp
+    have e0 : (0 : UInt64).toNat = 0 := rfl
+    have gl := Arr.concat_get hn hoff hlo c
+    have gh := Arr.concat_get hn hoff hhi c
+    simp only [Vals.row]
+    rw [filterMap_finRange_add hpn]
+    split
+    · rename_i hc
+      have l1 := Arr.clampShift_get (by rw [hU, e0]; omega) hL₁ ⟨c.1, hc⟩
+      have h1 := Arr.clampShift_get (by rw [hU, e0]; omega) hH₁ ⟨c.1, hc⟩
+      rw [dif_pos hc] at gl gh
+      rw [hU, e0] at l1 h1
+      rw [List.filterMap_eq_nil_iff.2 fun j _ => by rw [if_neg]; rw [gh, h1]; omega, List.append_nil]
+      congr 1; funext j
+      rw [hrow, dif_pos j.2, gl, gh, l1, h1]
+      by_cases hA : (lo₁.get ⟨c.1, hc⟩).toInt ≤ (j.1 : Int) ∧ (j.1 : Int) < (hi₁.get ⟨c.1, hc⟩).toInt
+      · rw [if_pos hA, if_pos (by omega)]
+      · rw [if_neg hA, if_neg (by omega)]
+    · rename_i hc
+      have hc' : c.1 - n₁.toNat < _ := by omega
+      have l2 := Arr.clampShift_get (by rw [hU, hU]; omega) hL₂ ⟨_, hc'⟩
+      have h2 := Arr.clampShift_get (by rw [hU, hU]; omega) hH₂ ⟨_, hc'⟩
+      rw [dif_neg hc] at gl gh
+      rw [hU, hU] at l2 h2
+      rw [List.filterMap_eq_nil_iff.2 fun j _ => by rw [if_neg]; rw [gl, l2]; have := j.2; omega,
+        List.nil_append]
+      congr 1; funext j
+      rw [hrow, dif_neg (by omega), gl, gh, l2, h2]
+      have hj : (⟨m₁.toNat + j.1 - m₁.toNat, by omega⟩ : Fin m₂.toNat) = j := Fin.ext (by simp)
+      rw [hj]
+      by_cases hA : (lo₂.get ⟨_, hc'⟩).toInt ≤ (j.1 : Int) ∧ (j.1 : Int) < (hi₂.get ⟨_, hc'⟩).toInt
+      · rw [if_pos hA, if_pos (by push_cast; omega)]
+      · rw [if_neg hA, if_neg (by push_cast; omega)]
+  | .sum _ _, _, _, _, _, _, _, _, _, _, h, _ => by simp [Vals.concat] at h
 
 /-! ## Checks: CONCAT keeps every stored word -/
 
