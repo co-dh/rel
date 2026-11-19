@@ -331,6 +331,9 @@ theorem compile_sound {A B : Obj} (t : Tm A B) (hg : t.gap = none) (η : CodeEnv
   | fold e S ihe ihS =>
     obtain ⟨he, hS⟩ := gap_or hg
     exact Out.Sound.memo (Out.Sound.leaf (fold_sound (ihe he η ρ hη).1 (ihS hS η ρ hη).1))
+  | foldI e S ihe ihS =>
+    obtain ⟨he, hS⟩ := gap_or hg
+    exact Out.Sound.memo (Out.Sound.leaf (foldI_sound (ihe he η ρ hη).1 (ihS hS η ρ hη).1))
   | ldiv R S U V ihR ihS ihU ihV =>
     obtain ⟨hR, h⟩ := gap_or hg; obtain ⟨hS, h⟩ := gap_or h; obtain ⟨hU, hV⟩ := gap_or h
     have iR := ihR hR η ρ hη; have iS := ihS hS η ρ hη; have iU := ihU hU η ρ hη; have iV := ihV hV η ρ hη
@@ -416,7 +419,7 @@ theorem compile_sound {A B : Obj} (t : Tm A B) (hg : t.gap = none) (η : CodeEnv
       exact Out.Sound.memo (Out.Sound.leaf (thin_sound (ih hg η ρ hη).1
         (fun p p' h => eq_of_heq (Q.cor_den hc.2 ρ p p' h)) ho hi))
     · cases hg
-  | foldI | call | hylo => simp [Tm.gap] at hg
+  | call | hylo => simp [Tm.gap] at hg
 
 /-- The typed entry: `compile` with its soundness as the subtype's proof, on a term with no gap under an
     environment whose plans compute their variables' meanings. -/

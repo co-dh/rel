@@ -262,10 +262,13 @@ def foldI (I E V : Obj) (d d' : Bool) (e : Fn d I (.prod V V)) (S : Fn d' (.prod
   let D := idU X; let ro := ofC (ranC (Alg.outl D)); let es := onKeys e ro
   let res := CRel.ran es
   let iv := CRel.pair (CRel.dom es) (CRel.comp es (CRel.mk (Alg.outr res.rel) res.ok))
-  let r := CRel.num (some D) 0
+  -- `numC` uncanonicalised, as `foldByC`: `num`'s own rows are what `num_pickFits`, `num_fun` read
+  let r := CRel.mk (numC D 0).1 (numC D 0).2
   let ci := CRel.comp (CRel.mk (Alg.outl r.rel) r.ok) iv
   let G := ofC (foldRowsC true (Alg.outr r.rel) ci.rel
-    (demandStepC (fun el p => pairC p el) fun A => let s := onKeys S (some A); (s.rel, s.ok)))
+    (demandStepC (fun el p => pairC p el) fun A => let s := onKeys S (some A)
+      -- `S ∩ π₁π₁π₁°` (`foldIDen_eq`): `foldIDen` steps at the key's index only, and a `Tm` step may move it
+      let m := CRel.inter s (CRel.pair (some (Alg.outl (Alg.outl A))) (CRel.mk (Alg.outr s.rel) s.ok)); (m.rel, m.ok)))
   let rg := CRel.ran G
   also (ro.ok && ci.ok) (CRel.comp (CRel.mk r.rel° r.ok) (CRel.comp G (CRel.mk (Alg.outr rg.rel) rg.ok)))
 

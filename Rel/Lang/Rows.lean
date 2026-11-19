@@ -172,7 +172,6 @@ def Tm.gap : {A B : Obj} → Tm A B → Option String
     if b.pol true k then b.gap else some s!"μ: the body is not positive in its variable {k} (D8 = R, §7.3)"
   | _, _, .nu k S b =>
     if b.pol true k then S.gap <|> b.gap else some s!"ν: the body is not positive in its variable {k} (D8 = R, §7.3)"
-  | _, _, .foldI .. => some "foldI: Gen.foldI has no lemma (foldI_sound) yet"
   -- `share` is a part computed once and reused (numbered by `Expand.number`, its code memoised by `Out.memo`, left
   -- alone by `Tm.subst`), so the part must be closed: the meaning reads `Val.empty` and a part with a free variable
   -- is the code's fault, recomputed under each binding, never a meaning that should read `ρ`
@@ -182,6 +181,7 @@ def Tm.gap : {A B : Obj} → Tm A B → Option String
   | _, _, .flat R => R.gap
   | _, _, .comp R S | _, _, .meet R S | _, _, .join R S | _, _, .diff R S | _, _, .pair R S
   | _, _, .prod R S | _, _, .junc R S | _, _, .juncD R S | _, _, .foldr R S | _, _, .fold R S
+  | _, _, .foldI R S
   | _, _, .arg R S =>
     R.gap <|> S.gap
   | _, _, .ldiv R S U V | _, _, .rdiv R S U V => R.gap <|> S.gap <|> U.gap <|> V.gap
