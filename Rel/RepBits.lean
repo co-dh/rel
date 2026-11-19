@@ -54,6 +54,52 @@ theorem Vals.code_spec {n : USize} {x : Vals A n} {k : USize} {c rep : Enc} (h :
       exact (hrow q hq q' hq').1 this _ _
     · intro hx; rw [(hrow q hq q' hq').2 fun _ _ => hx]
 
+/-- **`Vals.code2` numbers `x` and `y` in one order**: `x`'s row `i` gets `cx i`, `y`'s row `j` gets `cy j`, each below
+`k`, and two rows (of either side) get one number exactly when they are equal. -/
+theorem Vals.code2_spec {n₁ n₂ : USize} {x : Vals A n₁} {y : Vals A n₂} {k : USize} {bx bY : Enc}
+    {Z : (N : USize) × Vals A N × Enc} (h : Vals.code2 x y = .ok (k, bx, bY, Z)) :
+    ∃ cx cy : Nat → Nat, k.toNat ≤ n₁.toNat + n₂.toNat ∧
+      (∀ i < n₁.toNat, (raw .i64 n₁ bx)[i]?.getD 0 = (cx i).toUInt64 ∧ cx i < k.toNat) ∧
+      (∀ j < n₂.toNat, (raw .i64 n₂ bY)[j]?.getD 0 = (cy j).toUInt64 ∧ cy j < k.toNat) ∧
+      (∀ i i' : Fin n₁.toNat, cx i = cx i' ↔ x.row i = x.row i') ∧
+      (∀ j j' : Fin n₂.toNat, cy j = cy j' ↔ y.row j = y.row j') ∧
+      ∀ (i : Fin n₁.toNat) (j : Fin n₂.toNat), cx i = cy j ↔ x.row i = y.row j := by
+  simp only [Vals.code2, bind] at h
+  rw [Except.bind_eq_ok'] at h; obtain ⟨⟨N, sh⟩, hcat, h⟩ := h; try dsimp only at h
+  rw [Except.bind_eq_ok'] at h; obtain ⟨z, hz, h⟩ := h
+  rw [Except.bind_eq_ok'] at h; obtain ⟨⟨k', c, rep⟩, hcode, h⟩ := h; try dsimp only at h
+  rw [Except.bind_eq_ok'] at h; obtain ⟨bx', hbx, h⟩ := h
+  rw [Except.bind_eq_ok'] at h; obtain ⟨bY', hbY, h⟩ := h
+  simp only [pure, Except.pure, Except.ok.injEq, Prod.mk.injEq] at h
+  obtain ⟨rfl, rfl, rfl, -⟩ := h
+  obtain ⟨hNn, hoff⟩ := catPlan_ok hcat
+  have hzr := Vals.concat_row hNn hoff x y hz
+  obtain ⟨hkN, hck, -, hceq⟩ := Vals.code_spec hcode
+  have hU64 : USize.size ≤ 2 ^ 64 := by rcases USize.size_eq with h | h <;> omega
+  have hNU := N.toNat_lt_size
+  let cd := fun t : Nat => ((raw .i64 N c)[t]?.getD 0).toNat
+  have hcd : ∀ t < N.toNat, (raw .i64 N c)[t]?.getD 0 = (cd t).toUInt64 := fun t _ =>
+    UInt64.toNat_inj.mp (by simp [cd])
+  have zx : ∀ i (hi : i < n₁.toNat), z.row ⟨i, by omega⟩ = x.row ⟨i, hi⟩ := fun i hi => by
+    rw [hzr, dif_pos hi]
+  have zy : ∀ j (hj : j < n₂.toNat), z.row ⟨n₁.toNat + j, by omega⟩ = y.row ⟨j, hj⟩ := fun j hj => by
+    rw [hzr, dif_neg (Nat.not_lt.2 (Nat.le_add_right _ _))]; congr 2; simp
+  have bxw : ∀ i < n₁.toNat, (raw .i64 n₁ bx')[i]?.getD 0 = (cd i).toUInt64 := fun i hi => by
+    rw [(kgather_word hbx i hi).2, raw_pos_word hi, toNat_toUInt64 (by omega), hcd i (by omega)]
+  have byw : ∀ j < n₂.toNat, (raw .i64 n₂ bY')[j]?.getD 0 = (cd (n₁.toNat + j)).toUInt64 := fun j hj => by
+    rw [(kgather_word hbY j hj).2, show ((raw .i64 n₂ sh)[j]?.getD 0).toNat = n₁.toNat + j from hoff j hj,
+      hcd _ (by omega)]
+  have heq : ∀ t (ht : t < N.toNat) t' (ht' : t' < N.toNat), cd t = cd t' ↔ z.row ⟨t, ht⟩ = z.row ⟨t', ht'⟩ :=
+    fun t ht t' ht' => by
+      rw [← hceq ⟨t, ht⟩ ⟨t', ht'⟩]
+      exact ⟨fun e => by rw [hcd t ht, hcd t' ht', e], fun e => by
+        simp only [cd]; exact congrArg UInt64.toNat e⟩
+  refine ⟨cd, fun j => cd (n₁.toNat + j), by omega, fun i hi => ⟨bxw i hi, hck i (by omega)⟩,
+    fun j hj => ⟨byw j hj, hck _ (by omega)⟩, fun i i' => ?_, fun j j' => ?_, fun i j => ?_⟩
+  · rw [heq i (by omega) i' (by omega), zx i i.2, zx i' i'.2]
+  · rw [heq _ (by omega) _ (by omega), zy j j.2, zy j' j'.2]
+  · rw [heq i (by omega) _ (by omega), zx i i.2, zy j j.2]
+
 /-- A `P` below `N` has a last one: no later `k'` below `N` is a `P`. -/
 private theorem last_of_exists {P : Nat → Prop} {N : Nat} :
     ∀ {k}, k < N → P k → ∃ k, k < N ∧ P k ∧ ∀ k', k < k' → k' < N → ¬P k' := by
