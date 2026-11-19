@@ -742,7 +742,7 @@ theorem foldI_sound {I E V : Obj} {d d' : Bool} {e : Fn d I (.prod V V)} {S : Fn
     have h1 := CRel.guard_ok_left hm; rw [Bool.and_eq_true] at h1
     have h2 := CRel.guard_ok_left h1.2; rw [Bool.and_eq_true] at h2
     rw [CRel.rep_inter _ _ hm, CRel.rep_pair _ _ h1.2, (CRel.mk_ok_rel h2.2).2, CRel.some_rel, rep_outl, rep_outl,
-      rep_outr, ← onKeys_round hS (some A) p w ⟨a, ha⟩ hc h1.1]
+      rep_outr, ← onKeys_round hS (some A) p w ⟨a, ha⟩ h1.1]
     have hpp : rep A p p := hc a p ha ▸ ha
     simp only [Core.Rel.inter, Core.Rel.rpair, Core.Rel.comp, Core.Rel.graph]
     exact ⟨fun ⟨h, ⟨_, ⟨b, hb, rfl⟩, hw⟩, _⟩ => ⟨h, hc p b hb ▸ hw⟩,
@@ -802,14 +802,13 @@ theorem foldI_sound {I E V : Obj} {d d' : Bool} {e : Fn d I (.prod V V)} {S : Fn
     have hpD : rep (idU X) p p := by rw [rep_idU]; exact ⟨rfl, i, hi⟩
     have hro' := hb1.1; rw [← hro] at hro'
     have hrr := (CRel.rep_ofC hro').trans (rep_ranC _ (CRel.ofC_ok hro').1); rw [hro] at hrr
-    have hcr : ∀ a b, rep ro.rel a b → a = b := fun a b h => by rw [hrr] at h; exact h.1
     have hpr : rep ro.rel p.1 p.1 := by
       rw [hrr, rep_outl]; exact ⟨rfl, p, ⟨p, hpD, rfl⟩, ⟨p, hpD, rfl⟩⟩
     have hc2 := CRel.guard_ok_left hciok; rw [Bool.and_eq_true] at hc2
     have hc3 := CRel.guard_ok_left hc2.2; rw [Bool.and_eq_true] at hc3
     have hc4 := CRel.guard_ok_left hc3.2; rw [Bool.and_eq_true] at hc4
     have hTe := onKeys_round he ro p.1; rw [hes] at hTe
-    have hT := fun x => hTe x ⟨p.1, hpr⟩ hcr hc4.1
+    have hT := fun x => hTe x ⟨p.1, hpr⟩ hc4.1
     rw [← hci, CRel.rep_comp _ _ hciok, CRel.rep_pair _ _ hc2.2, CRel.rep_dom _ hc3.1, CRel.rep_comp _ _ hc3.2,
       (CRel.mk_ok_rel hc4.2).2, rep_outr, CRel.rep_ran _ (CRel.mk_ok_rel hc4.2).1, (CRel.mk_ok_rel hc2.1).2,
       rep_outl]
