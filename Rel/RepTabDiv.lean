@@ -535,4 +535,379 @@ private def f64s : List UInt64 := [0x8000000000000000, 0, 0x7ff8000000000001, 0x
 
 end Checks
 
+/-! ## `Λ` and `E`: `lam_holds`, `E_holds` -/
+
+/-- **Two lists ascending by a strict order `lt` with the same elements are equal**: their heads are each other's
+least element. -/
+theorem pairwise_eq_of_mem {α : Type} {lt : α → α → Prop} (hirr : ∀ x, ¬lt x x)
+    (hasym : ∀ x y, lt x y → ¬lt y x) : ∀ {l l' : List α}, l.Pairwise lt → l'.Pairwise lt →
+      (∀ x, x ∈ l ↔ x ∈ l') → l = l'
+  | [], [], _, _, _ => rfl
+  | [], y :: _, _, _, hm => absurd ((hm y).2 (List.mem_cons_self ..)) List.not_mem_nil
+  | x :: _, [], _, _, hm => absurd ((hm x).1 (List.mem_cons_self ..)) List.not_mem_nil
+  | x :: xs, y :: ys, h, h', hm => by
+    rw [List.pairwise_cons] at h h'
+    have exy : x = y := by
+      rcases List.mem_cons.1 ((hm x).1 (List.mem_cons_self ..)) with e | hx; · exact e
+      rcases List.mem_cons.1 ((hm y).2 (List.mem_cons_self ..)) with e | hy; · exact e.symm
+      exact absurd (h.1 y hy) (hasym _ _ (h'.1 x hx))
+    subst exy
+    refine congrArg _ (pairwise_eq_of_mem hirr hasym h.2 h'.2 fun z => ⟨fun hz => ?_, fun hz => ?_⟩)
+    · rcases List.mem_cons.1 ((hm z).1 (List.mem_cons_of_mem _ hz)) with e | e
+      · subst e; exact absurd (h.1 _ hz) (hirr _)
+      · exact e
+    · rcases List.mem_cons.1 ((hm z).2 (List.mem_cons_of_mem _ hz)) with e | e
+      · subst e; exact absurd (h'.1 _ hz) (hirr _)
+      · exact e
+
+/-- `colArr` answers the words of its `colMap` (to move beside `colArr`, `Rel/Run/Arith.lean`). -/
+theorem colArr_enc {op : Op} {n : USize} {a b : Enc} {x : Arr .i64 n} (h : colArr op n a b = .ok x) :
+    colMap op n a b = .ok x.enc := by
+  unfold colArr at h; split at h
+  · rename_i o ho; cases h; exact ho
+  · cases h
+
+namespace Tab
+variable {A B : Obj}
+
+/-- **`lam D R` is `canon` of one row per key `a` of `D`, its cell the rows of `r = canon R` with key `a`, in
+`r`'s order**: `L` lists those rows' positions ascending. GROUP over `D ++ r.key` (`sorted_groups`): group `G` holds
+the sorted positions `[Fs, Fs + cnt)`, its `D` rows first (`[Fs, Fs + cD)`, `kasc` stable) and then its `r` rows,
+ascending in `r` (`hmono`); the cell `[Fs + cD, Fs + cnt)` of the payload reads `r` at `p - n`. -/
+theorem lam_canon {n : USize} {D : Vals A n} {R : Tab A B} {T : Tab A (.arr B)} (h : Tab.lam D R = .ok T) :
+    ∃ (r : Tab A B) (U : Tab A (.arr B)), R.canon = .ok r ∧ U.canon = .ok T ∧ ∀ a ys,
+      U.Holds a ys ↔ (∃ i, D.row i = a) ∧
+      ∃ L : List Nat, L.Pairwise (· < ·) ∧ (∀ j, j ∈ L ↔ ∃ hj : j < r.n.toNat, r.key.row ⟨j, hj⟩ = a) ∧
+        ys = L.map fun j => if hj : j < r.n.toNat then r.val.row ⟨j, hj⟩ else B.dflt := by
+  dsimp only [Tab.lam] at h
+  simp only [bind] at h
+  rw [Except.bind_eq_ok'] at h; obtain ⟨r, hr, h⟩ := h
+  rw [Except.bind_eq_ok'] at h; obtain ⟨⟨N, sh⟩, hcat, h⟩ := h; try dsimp only at h
+  split at h; · cases h
+  rename_i hN
+  rw [Except.bind_eq_ok'] at h; obtain ⟨_, -, h⟩ := h
+  rw [Except.bind_eq_ok'] at h; obtain ⟨z, hz, h⟩ := h
+  rw [Except.bind_eq_ok'] at h; obtain ⟨es, hes, h⟩ := h
+  rw [Except.bind_eq_ok'] at h; obtain ⟨⟨vs, p⟩, hasc, h⟩ := h; try dsimp only at h
+  rw [Except.bind_eq_ok'] at h; obtain ⟨⟨k, g, f⟩, hseen, h⟩ := h; try dsimp only at h
+  rw [Except.bind_eq_ok'] at h; obtain ⟨nc, hnc, h⟩ := h
+  rw [Except.bind_eq_ok'] at h; obtain ⟨lt, hlt, h⟩ := h
+  rw [Except.bind_eq_ok'] at h; obtain ⟨cD, hcD, h⟩ := h
+  rw [Except.bind_eq_ok'] at h; obtain ⟨lo, hlo, h⟩ := h
+  rw [Except.bind_eq_ok'] at h; obtain ⟨c1, hc1, h⟩ := h
+  rw [Except.bind_eq_ok'] at h; obtain ⟨cnt, hcnt, h⟩ := h
+  rw [Except.bind_eq_ok'] at h; obtain ⟨hi, hhi, h⟩ := h
+  rw [Except.bind_eq_ok'] at h; obtain ⟨c0, hc0, h⟩ := h
+  rw [Except.bind_eq_ok'] at h; obtain ⟨b, hb, h⟩ := h
+  rw [Except.bind_eq_ok'] at h; obtain ⟨⟨M, sel⟩, hwh, h⟩ := h; try dsimp only at h
+  rw [Except.bind_eq_ok'] at h; obtain ⟨fs, hfs, h⟩ := h
+  rw [Except.bind_eq_ok'] at h; obtain ⟨iD, hiD, h⟩ := h
+  refine ⟨r, ?_⟩
+  ------------------------------------------------------------------ the sorted rows and their groups
+  obtain ⟨hNn, hoff⟩ := catPlan_ok hcat
+  have hU : USize.size ≤ 2 ^ 64 := by rcases USize.size_eq with h | h <;> omega
+  have hNU := N.toNat_lt_size
+  obtain ⟨cs, hcs, hp, hkq⟩ := kasc_grade hasc
+  obtain ⟨hperm, hsort⟩ := ascGrade_spec N.toNat (ascKeys N es)
+  obtain ⟨hk, hg, hf⟩ := kseen_ok hseen
+  generalize ascGrade N.toNat (ascKeys N es) = ps at hp hkq hperm hsort
+  generalize seenKey N ((es.map (·.1)).zip vs) = Kk at hk hg hf hkq
+  have hlen : ps.length = N.toNat := by simpa using hperm.length_eq
+  have hpsN : ∀ q < N.toNat, ps[q]?.getD 0 < N.toNat := fun q hq => by
+    rw [List.getElem?_eq_getElem (by omega), Option.getD_some]
+    exact List.mem_range.1 (hperm.mem_iff.1 (List.getElem_mem _))
+  have hkN : k ≤ N.toNat := by rw [hk]; unfold firstsOf; exact Nat.le_trans (List.length_filter_le _ _) (by simp)
+  have hK : k.toUSize.toNat = k := USize.toNat_ofNat_of_lt' (by omega)
+  have hpw : ∀ q < N.toNat, (raw .i64 N p)[q]?.getD 0 = (ps[q]?.getD 0).toUInt64 := fun q hq => by
+    rw [hp]; simp [List.getElem?_eq_getElem (show q < ps.length by omega)]
+  have hgw : ∀ q < N.toNat, (raw .i64 N g)[q]?.getD 0 = (Verify.groupOf Kk N.toNat q).toUInt64 := fun q hq => by
+    rw [hg, (wordsFoR_closed _ (by simp)).2.1]; simp [hq]
+  have hfw : ∀ G < k, (raw .i64 k.toUSize f)[G]?.getD 0 = ((firstsOf Kk N.toNat)[G]?.getD 0).toUInt64 :=
+    fun G hG => by
+      rw [hf, (wordsFoR_closed _ (by rw [hK, hk]; simp)).2.1]
+      simp [List.getElem?_eq_getElem (show G < (firstsOf Kk N.toNat).length by omega)]
+  have hgr : ∀ q < N.toNat, Verify.groupOf Kk N.toNat q < k := fun q hq => by
+    have := groupOf_lt (g := Kk) (m := N.toNat) hq; omega
+  have fs' := firsts_spec Kk N.toNat
+  have hn63 : N.toNat < 2 ^ 63 := by omega
+  have hnN : n.toNat ≤ N.toNat := by omega
+  have hps : ∀ q (hq : q < N.toNat), ps[q]?.getD 0 = ps[q]'(by omega) := fun q hq => by
+    rw [List.getElem?_eq_getElem (by omega)]; rfl
+  have hnU : n.toUInt64 = n.toNat.toUInt64 := UInt64.toNat_inj.mp (by simp <;> omega)
+  have hltw : ∀ q < N.toNat, (raw .i64 N lt)[q]?.getD 0 =
+      if decide (ps[q]?.getD 0 < n.toNat) then 1 else 0 := fun q hq => by
+    have e := (colMap_raw hlt).2.2.2 q hq
+    rw [hpw q hq, colConst_raw hnc, Array.getElem?_replicate, if_pos hq, Option.getD_some, hnU,
+      eval_lt_nat (by have := hpsN q hq; omega) (by omega), Except.ok.injEq] at e
+    rw [← e]; simp
+  obtain ⟨cDN, hcDN⟩ : ∃ F : Nat → Nat, F = fun G => (List.range N.toNat).countP
+      fun q => Verify.groupOf Kk N.toNat q == G && decide (ps[q]?.getD 0 < n.toNat) := ⟨_, rfl⟩
+  obtain ⟨cntN, hcntN⟩ : ∃ F : Nat → Nat, F = fun G => (List.range N.toNat).countP
+      fun q => Verify.groupOf Kk N.toNat q == G && true := ⟨_, rfl⟩
+  have hcDw : ∀ G < k, (raw .i64 k.toUSize cD)[G]?.getD 0 = (cDN G).toUInt64 := fun G hG => by
+    rw [scatter_add_count hcD (Verify.groupOf Kk N.toNat) (fun q => decide (ps[q]?.getD 0 < n.toNat)) hgw
+      (fun q hq => by have := hgr q hq; omega) hltw G (by omega), hcDN]
+  have hcntw : ∀ G < k, (raw .i64 k.toUSize cnt)[G]?.getD 0 = (cntN G).toUInt64 := fun G hG => by
+    rw [scatter_add_count hcnt (Verify.groupOf Kk N.toNat) (fun _ => true) hgw
+      (fun q hq => by have := hgr q hq; omega) (fun q hq => by rw [colConst_raw hc1]; simp [hq]) G (by omega), hcntN]
+  have hle : ∀ G, cDN G ≤ cntN G := fun G => by
+    rw [hcDN, hcntN]; exact List.countP_mono_left fun x _ hx => by simp at hx ⊢; exact hx.1
+  obtain ⟨Fs, hFs⟩ : ∃ F : Nat → Nat, ∀ G, F G = (firstsOf Kk N.toNat)[G]?.getD 0 := ⟨_, fun _ => rfl⟩
+  have hKks : ∀ q (hq : q < ps.length), Kk q = (ascKeys N es).map (·[ps[q]]?.getD 0) := fun q hq => by
+    rw [hkq q hq]; simp [seenKey]
+  have sg : ∀ G < k, (∀ q, (q < N.toNat ∧ Verify.groupOf Kk N.toNat q = G) ↔ Fs G ≤ q ∧ q < Fs G + cntN G) ∧
+      (∀ q, (q < N.toNat ∧ Verify.groupOf Kk N.toNat q = G ∧ ps[q]?.getD 0 < n.toNat) ↔
+        Fs G ≤ q ∧ q < Fs G + cDN G) := by
+    intro G hG
+    have hG' : G < (firstsOf Kk N.toNat).length := by omega
+    have := sorted_groups (n := n.toNat) hlen hsort (fun q hq => hKks q hq) hG'
+    rw [hFs, List.getElem?_eq_getElem hG', Option.getD_some, hcntN, hcDN]; exact this
+  have hFsG : ∀ G < k, Fs G < N.toNat ∧ Verify.groupOf Kk N.toNat (Fs G) = G := fun G hG => by
+    have hG' : G < (firstsOf Kk N.toNat).length := by omega
+    rw [hFs, List.getElem?_eq_getElem hG', Option.getD_some]
+    exact ⟨(fs'.2.1 _).1 (List.getElem_mem _) |>.1, fs'.2.2.2.1 G hG'⟩
+  have hcN : ∀ G < k, Fs G < Fs G + cntN G ∧ Fs G + cntN G ≤ N.toNat := fun G hG => by
+    obtain ⟨sgA, -⟩ := sg G hG
+    have h1 := ((sgA (Fs G)).1 (hFsG G hG)).2
+    have h2 := ((sgA (Fs G + cntN G - 1)).2 ⟨by omega, by omega⟩).1
+    omega
+  have hgD : ∀ G < k, 0 < cDN G → ps[Fs G]?.getD 0 < n.toNat := fun G hG hc =>
+    ((sg G hG).2 (Fs G)).2 ⟨Nat.le_refl _, by omega⟩ |>.2.2
+  -- rows of the same group are equal rows of `z`, and back
+  have grp_row : ∀ q (hq : q < N.toNat) q' (hq' : q' < N.toNat),
+      Verify.groupOf Kk N.toNat q = Verify.groupOf Kk N.toNat q' →
+      z.row ⟨_, hpsN q hq⟩ = z.row ⟨_, hpsN q' hq'⟩ := fun q hq q' hq' e => by
+    have eK := (fs'.2.2.1 q hq q' hq').1 e
+    rw [hkq q (by omega), hkq q' (by omega), ← hps q hq, ← hps q' hq'] at eK
+    exact Vals.row_of_codes z hes hcs _ _ eK
+  have row_grp : ∀ q (hq : q < N.toNat) q' (hq' : q' < N.toNat),
+      z.row ⟨_, hpsN q hq⟩ = z.row ⟨_, hpsN q' hq'⟩ →
+      Verify.groupOf Kk N.toNat q = Verify.groupOf Kk N.toNat q' := fun q hq q' hq' e => by
+    have eK := Vals.codes_of_row z hes hcs _ _ e
+    have eK2 : Kk q = Kk q' := by rw [hkq q (by omega), hkq q' (by omega), ← hps q hq, ← hps q' hq']; exact eK
+    exact (fs'.2.2.1 q hq q' hq').2 eK2
+  have hinv : ∀ i < N.toNat, ∃ q, ∃ hq : q < N.toNat, ps[q]?.getD 0 = i := fun i hi => by
+    obtain ⟨q, hq, e⟩ := List.mem_iff_getElem.1 (hperm.mem_iff.2 (List.mem_range.2 hi))
+    exact ⟨q, by omega, by rw [hps q (by omega)]; exact e⟩
+  have zD : ∀ i (hi : i < n.toNat), z.row ⟨i, by omega⟩ = D.row ⟨i, hi⟩ := fun i hi => by
+    rw [Vals.concat_row hNn hoff D r.key hz, dif_pos hi]
+  have zR : ∀ j (hj : j < r.n.toNat), z.row ⟨n.toNat + j, by omega⟩ = r.key.row ⟨j, hj⟩ := fun j hj => by
+    rw [Vals.concat_row hNn hoff D r.key hz, dif_neg (by simp)]; simp only [Nat.add_sub_cancel_left]
+  -- within a group, sorted positions read ascending input rows (`kasc` is stable)
+  have hmono : ∀ q q', q < q' → q' < N.toNat →
+      Verify.groupOf Kk N.toNat q = Verify.groupOf Kk N.toNat q' → ps[q]?.getD 0 < ps[q']?.getD 0 := by
+    intro q q' hlt' hq' e
+    have eK := (fs'.2.2.1 q (by omega) q' hq').1 e
+    rw [hKks q (by omega), hKks q' (by omega)] at eK
+    have := (List.pairwise_iff_getElem.1 hsort) q q' (by omega) (by omega) hlt'
+    rw [hps q (by omega), hps q' hq']
+    exact this.2 (lexLe_of_keys _ eK.symm)
+  -- the cell of group `G`: the input rows of its sorted positions `[Fs + cD, Fs + cnt)`, less `n`
+  obtain ⟨Ln, hLn⟩ : ∃ F : Nat → List Nat, ∀ G, F G =
+      (List.range' (Fs G + cDN G) (cntN G - cDN G)).map (fun q => ps[q]?.getD 0 - n.toNat) := ⟨_, fun _ => rfl⟩
+  have hLin : ∀ G < k, ∀ q, Fs G + cDN G ≤ q → q < Fs G + cntN G →
+      q < N.toNat ∧ Verify.groupOf Kk N.toNat q = G ∧ n.toNat ≤ ps[q]?.getD 0 := fun G hG q h1 h2 => by
+    obtain ⟨sgA, sgR⟩ := sg G hG
+    obtain ⟨hq, hqG⟩ := (sgA q).2 ⟨by omega, h2⟩
+    exact ⟨hq, hqG, Nat.le_of_not_lt fun hc => by have := (sgR q).1 ⟨hq, hqG, hc⟩; omega⟩
+  have hLp : ∀ G < k, (Ln G).Pairwise (· < ·) := fun G hG => by
+    rw [hLn, List.pairwise_map, List.range'_eq_map_range, List.pairwise_map]
+    refine List.Pairwise.imp_of_mem (fun {x y} hx hy hxy => ?_) (pairwise_range (cntN G - cDN G))
+    rw [List.mem_range] at hx hy
+    obtain ⟨-, gx, nx⟩ := hLin G hG (Fs G + cDN G + x) (by omega) (by omega)
+    obtain ⟨hy', gy, ny⟩ := hLin G hG (Fs G + cDN G + y) (by omega) (by omega)
+    have := hmono (Fs G + cDN G + x) (Fs G + cDN G + y) (by omega) hy' (gx.trans gy.symm)
+    omega
+  have hLm : ∀ G (hG : G < k) (hi0 : ps[Fs G]?.getD 0 < n.toNat) j,
+      j ∈ Ln G ↔ ∃ hj : j < r.n.toNat, r.key.row ⟨j, hj⟩ = D.row ⟨_, hi0⟩ := by
+    intro G hG hi0 j
+    obtain ⟨hF, hFg⟩ := hFsG G hG
+    rw [hLn, List.mem_map]
+    constructor
+    · rintro ⟨q, hq, rfl⟩
+      rw [List.mem_range'_1] at hq
+      obtain ⟨hqN, hqG, hnq⟩ := hLin G hG q hq.1 (by omega)
+      have hj : ps[q]?.getD 0 - n.toNat < r.n.toNat := by have := hpsN q hqN; omega
+      refine ⟨hj, ?_⟩
+      rw [← zR _ hj, ← zD _ hi0]
+      have := grp_row q hqN (Fs G) hF (hqG.trans hFg.symm)
+      simp only [Nat.add_sub_cancel' hnq]; exact this
+    · rintro ⟨hj, e⟩
+      obtain ⟨q, hq, eq⟩ := hinv (n.toNat + j) (by omega)
+      have e' : z.row ⟨_, hpsN q hq⟩ = z.row ⟨_, hpsN (Fs G) hF⟩ := by
+        have h1 : z.row ⟨_, hpsN q hq⟩ = z.row ⟨n.toNat + j, by omega⟩ := by simp only [eq]
+        rw [h1, zR j hj, e, ← zD _ hi0]
+      have hqG := (row_grp q hq (Fs G) hF e').trans hFg
+      obtain ⟨sgA, sgR⟩ := sg G hG
+      have h1 := (sgA q).1 ⟨hq, hqG⟩
+      have h2 : Fs G + cDN G ≤ q := Nat.le_of_not_lt fun hc => by
+        have := ((sgR q).2 ⟨h1.1, hc⟩).2.2; omega
+      exact ⟨q, List.mem_range'_1.2 ⟨h2, by omega⟩, by omega⟩
+  ------------------------------------------------------------------ the words `lo`, `hi`, the kept groups
+  have hlow : ∀ G < k, (raw .i64 k.toUSize lo.enc)[G]?.getD 0 = (Fs G + cDN G).toUInt64 := fun G hG => by
+    have e := (colMap_raw (colArr_enc hlo)).2.2.2 G (by omega)
+    rw [hfw G hG, hcDw G hG] at e; simp only [Op.eval, Except.ok.injEq] at e
+    rw [← e, hFs]; exact (UInt64.ofNat_add _ _).symm
+  have hhiw : ∀ G < k, (raw .i64 k.toUSize hi.enc)[G]?.getD 0 = (Fs G + cntN G).toUInt64 := fun G hG => by
+    have e := (colMap_raw (colArr_enc hhi)).2.2.2 G (by omega)
+    rw [hfw G hG, hcntw G hG] at e; simp only [Op.eval, Except.ok.injEq] at e
+    rw [← e, hFs]; exact (UInt64.ofNat_add _ _).symm
+  have hbw : ∀ G < k, (raw .i64 k.toUSize b)[G]?.getD 0 = if 0 < cDN G then 1 else 0 := fun G hG => by
+    have e := (colMap_raw hb).2.2.2 G (by omega)
+    have := hle G; have := hcN G hG
+    rw [colConst_raw hc0, Array.getElem?_replicate, if_pos (by omega), Option.getD_some, hcDw G hG,
+      show Op.eval .lt 0 (cDN G).toUInt64 = .ok (if 0 < cDN G then 1 else 0) from
+        eval_lt_nat (x := 0) (by omega) (by omega), Except.ok.injEq] at e
+    rw [← e]
+  have hsel := whereCol_spec hwh (fun G hG => by rw [hbw G (by omega)]; split <;> decide)
+  have hsz := whereCol_size hwh
+  have hselj : ∀ j < M.toNat, ((raw .i64 M sel)[j]?.getD 0).toNat < k ∧
+      0 < cDN ((raw .i64 M sel)[j]?.getD 0).toNat := fun j hj => by
+    have hj' : j < (raw .i64 M sel).size := by rw [hsz]; exact hj
+    have hGm := List.mem_map_of_mem (f := UInt64.toNat) (Array.getElem_mem_toList hj')
+    rw [hsel, List.mem_filter, decide_eq_true_eq, List.mem_range] at hGm
+    rw [Array.getElem?_eq_getElem hj', Option.getD_some]
+    refine ⟨by omega, ?_⟩
+    have := hGm.2; rw [hbw _ (by omega)] at this
+    exact Classical.byContradiction fun hc => this (if_neg hc)
+  have hselG : ∀ G < k, 0 < cDN G → ∃ j, ∃ hj : j < M.toNat, ((raw .i64 M sel)[j]?.getD 0).toNat = G :=
+    fun G hG hc => by
+      have hm : G ∈ (raw .i64 M sel).toList.map UInt64.toNat := by
+        rw [hsel, List.mem_filter, List.mem_range, decide_eq_true_eq, hbw G (by omega), if_pos hc]
+        exact ⟨by omega, by decide⟩
+      obtain ⟨w, hw, hwi⟩ := List.mem_map.1 hm
+      obtain ⟨j, hj, rfl⟩ := List.getElem_of_mem hw
+      have hj' : j < (raw .i64 M sel).size := by simpa using hj
+      refine ⟨j, by rw [← hsz]; exact hj', ?_⟩
+      simp only [Array.getElem_toList] at hwi
+      rw [Array.getElem?_eq_getElem hj', Option.getD_some, hwi]
+  have hiDj : ∀ j < M.toNat, (raw .i64 M iD)[j]?.getD 0 =
+      (ps[Fs ((raw .i64 M sel)[j]?.getD 0).toNat]?.getD 0).toUInt64 := fun j hj => by
+    obtain ⟨hG, -⟩ := hselj j hj
+    obtain ⟨hF, -⟩ := hFsG _ hG
+    rw [(kgather_word hiD j hj).2, (kgather_word hfs j hj).2, hfw _ hG, ← hFs, toNat_toUInt64 (by omega), hpw _ hF]
+  have hgat : ∀ {x : Arr .i64 k.toUSize} {y : Arr .i64 M} {w : Nat → Nat}, Arr.gather M sel x = .ok y →
+      (∀ G < k, (raw .i64 k.toUSize x.enc)[G]?.getD 0 = (w G).toUInt64) →
+      ∀ j < M.toNat, (raw .i64 M y.enc)[j]?.getD 0 = (w ((raw .i64 M sel)[j]?.getD 0).toNat).toUInt64 := by
+    intro x y w hxy hw j hj
+    obtain ⟨i, hi, e⟩ := Arr.gather_row x hxy ⟨j, hj⟩
+    rw [Arr.get_i64, Arr.get_i64] at e
+    have e' := congrArg Int64.toUInt64 e; simp only [UInt64.toUInt64_toInt64] at e'
+    rw [e', hw i.1 (by omega)]; rw [hi]
+  ------------------------------------------------------------------ the rows of the table before `canon`
+  have key : ∀ {m : USize} (y : Vals B m), (∀ q (hq : q < N.toNat), n.toNat ≤ ps[q]?.getD 0 →
+        ∃ hm : q < m.toNat, ∃ hj : ps[q]?.getD 0 - n.toNat < r.n.toNat, y.row ⟨q, hm⟩ = r.val.row ⟨_, hj⟩) →
+      ∀ {xk : Vals A M} {alo ahi : Arr .i64 M}, Vals.gather M iD D = .ok xk → Arr.gather M sel lo = .ok alo →
+        Arr.gather M sel hi = .ok ahi → ∀ a ys,
+        (Tab.mk M xk ⟨m, alo, ahi, y⟩ : Tab A (.arr B)).Holds a ys ↔ (∃ i, D.row i = a) ∧
+          ∃ L : List Nat, L.Pairwise (· < ·) ∧ (∀ j, j ∈ L ↔ ∃ hj : j < r.n.toNat, r.key.row ⟨j, hj⟩ = a) ∧
+            ys = L.map fun j => if hj : j < r.n.toNat then r.val.row ⟨j, hj⟩ else B.dflt := by
+    intro m y hy xk alo ahi hxk halo hahi a ys
+    have walo := hgat halo hlow
+    have wahi := hgat hahi hhiw
+    have hcell : ∀ j (hj : j < M.toNat), Vals.row (A := .arr B) ⟨m, alo, ahi, y⟩ ⟨j, hj⟩ =
+        (Ln ((raw .i64 M sel)[j]?.getD 0).toNat).map
+          fun j => if hj : j < r.n.toNat then r.val.row ⟨j, hj⟩ else B.dflt := by
+      intro j hj
+      obtain ⟨hG, hc⟩ := hselj j hj
+      have wl := walo j hj; have wh := wahi j hj
+      generalize ((raw .i64 M sel)[j]?.getD 0).toNat = G at hG hc wl wh ⊢
+      have hjU : (j.toUInt64).toNat = j := toNat_toUInt64 (by have := M.toNat_lt_size; omega)
+      have hcN' := hcN G hG; have hle' := hle G
+      have e1 : cellStart m.toNat (raw .i64 M alo.enc) j.toUInt64 = min (Fs G + cDN G) m.toNat := by
+        unfold cellStart; rw [hjU, wl, toInt64_toInt_nat (by omega)]; omega
+      have e2 : cellLen m.toNat (raw .i64 M alo.enc) (raw .i64 M ahi.enc) j.toUInt64 =
+          min (Fs G + cntN G) m.toNat - min (Fs G + cDN G) m.toNat := by
+        unfold cellLen; rw [e1, hjU, wh, toInt64_toInt_nat (by omega)]; omega
+      rw [Vals.row_arr]; rw [e1, e2]
+      by_cases hne : cDN G < cntN G
+      · obtain ⟨hqN, -, hnq⟩ := hLin G hG (Fs G + cntN G - 1) (by omega) (by omega)
+        obtain ⟨hm, -, -⟩ := hy _ hqN hnq
+        rw [show min (Fs G + cDN G) m.toNat = Fs G + cDN G by omega,
+          show min (Fs G + cntN G) m.toNat = Fs G + cntN G by omega,
+          show Fs G + cntN G - (Fs G + cDN G) = cntN G - cDN G by omega, hLn, List.map_map]
+        refine List.map_congr_left fun q hq => ?_
+        rw [List.mem_range'_1] at hq
+        obtain ⟨hqN, -, hnq⟩ := hLin G hG q hq.1 (by omega)
+        obtain ⟨hm, hj', e⟩ := hy q hqN hnq
+        simp only [Function.comp, dif_pos hm, dif_pos hj', e]
+      · rw [show min (Fs G + cntN G) m.toNat - min (Fs G + cDN G) m.toNat = 0 by omega, hLn,
+          show cntN G - cDN G = 0 by omega]
+        rfl
+    have hxj : ∀ j (hj : j < M.toNat), ∃ hi0 : ps[Fs ((raw .i64 M sel)[j]?.getD 0).toNat]?.getD 0 < n.toNat,
+        xk.row ⟨j, hj⟩ = D.row ⟨_, hi0⟩ := by
+      intro j hj
+      obtain ⟨hG, hc⟩ := hselj j hj
+      have hi0 := hgD _ hG hc
+      obtain ⟨i, hi, e⟩ := Vals.gather_row D hxk ⟨j, hj⟩
+      simp only [Fin.val_mk] at hi
+      rw [hiDj j hj, toNat_toUInt64 (by omega)] at hi
+      exact ⟨hi0, by rw [e]; congr 1; exact Fin.ext hi.symm⟩
+    simp only [Tab.Holds]
+    constructor
+    · rintro ⟨⟨j, hj⟩, hxa, hys⟩
+      obtain ⟨hG, -⟩ := hselj j hj
+      obtain ⟨hi0, hx⟩ := hxj j hj
+      refine ⟨⟨_, hx.symm.trans hxa⟩, Ln _, hLp _ hG, fun j' => ?_, ?_⟩
+      · rw [hLm _ hG hi0, ← hxa, hx]
+      · rw [← hys, hcell j hj]
+    · rintro ⟨⟨i, rfl⟩, L, hLp', hLm', rfl⟩
+      obtain ⟨q, hq, hqi⟩ := hinv i.1 (by omega)
+      have hG := hgr q hq
+      generalize hGq : Verify.groupOf Kk N.toNat q = G at hG
+      have hqD := ((sg G hG).2 q).1 ⟨hq, hGq, by omega⟩
+      obtain ⟨j, hj, hjG⟩ := hselG G hG (by omega)
+      obtain ⟨hi0, hx⟩ := hxj j hj
+      have hcj := hcell j hj
+      rw [hjG] at hcj
+      simp only [hjG] at hi0 hx
+      have hDi : D.row ⟨_, hi0⟩ = D.row i := by
+        show D.row ⟨_, hi0⟩ = D.row ⟨i.1, i.2⟩
+        rw [← zD _ hi0, ← zD i.1 i.2]
+        have := grp_row (Fs G) (hFsG G hG).1 q hq ((hFsG G hG).2.trans hGq.symm)
+        simp only [hqi] at this; exact this
+      refine ⟨⟨j, hj⟩, hx.trans hDi, ?_⟩
+      rw [hcj]
+      congr 1
+      exact pairwise_eq_of_mem Nat.lt_irrefl (fun _ _ => Nat.lt_asymm) (hLp G hG) hLp' fun j' => by
+        rw [hLm G hG hi0, hLm' j', hDi]
+  ------------------------------------------------------------------ the payload: `r.val` at `p - n`, or no rows
+  split at h
+  · rename_i hr0
+    rw [Except.bind_eq_ok'] at h; obtain ⟨pay, hpay, h⟩ := h
+    cases hpay
+    rw [Except.bind_eq_ok'] at h; obtain ⟨xk, hxk, h⟩ := h
+    rw [Except.bind_eq_ok'] at h; obtain ⟨alo, halo, h⟩ := h
+    rw [Except.bind_eq_ok'] at h; obtain ⟨ahi, hahi, h⟩ := h
+    exact ⟨_, hr, h, key r.val (fun q hq hnq => absurd (hpsN q hq) (by omega)) hxk halo hahi⟩
+  · rename_i hr0
+    rw [Except.bind_eq_ok'] at h; obtain ⟨pm, hpm, h⟩ := h
+    rw [Except.bind_eq_ok'] at h; obtain ⟨z0, hz0, h⟩ := h
+    rw [Except.bind_eq_ok'] at h; obtain ⟨mx, hmx, h⟩ := h
+    rw [Except.bind_eq_ok'] at h; obtain ⟨pay, hpay, h⟩ := h
+    simp only [Functor.map, Except.map] at hpay
+    split at hpay; · cases hpay
+    rename_i y hy
+    cases hpay
+    rw [Except.bind_eq_ok'] at h; obtain ⟨xk, hxk, h⟩ := h
+    rw [Except.bind_eq_ok'] at h; obtain ⟨alo, halo, h⟩ := h
+    rw [Except.bind_eq_ok'] at h; obtain ⟨ahi, hahi, h⟩ := h
+    refine ⟨_, hr, h, key y (fun q hq hnq => ?_) hxk halo hahi⟩
+    have hs63 : ps[q]?.getD 0 - n.toNat < 2 ^ 63 := by have := hpsN q hq; omega
+    have hmxw : (raw .i64 N mx)[q]?.getD 0 = (ps[q]?.getD 0 - n.toNat).toUInt64 := by
+      have e1 := (colMap_raw hpm).2.2.2 q hq
+      rw [hpw q hq, colConst_raw hnc, Array.getElem?_replicate, if_pos hq, Option.getD_some, hnU] at e1
+      simp only [Op.eval, Except.ok.injEq] at e1
+      have e2 := (colMap_raw hmx).2.2.2 q hq
+      rw [← e1, ← toUInt64_sub hnq, colConst_raw hz0, Array.getElem?_replicate, if_pos hq, Option.getD_some,
+        show Op.eval .max (ps[q]?.getD 0 - n.toNat).toUInt64 0 = .ok (ps[q]?.getD 0 - n.toNat).toUInt64 by
+          rw [eval_max (by rw [toNat_toUInt64 (by omega)]; omega) (by decide)]; simp] at e2
+      exact (Except.ok.inj e2).symm
+    obtain ⟨i, hi, e⟩ := Vals.gather_row r.val hy ⟨q, hq⟩
+    simp only [Fin.val_mk] at hi
+    rw [hmxw, toNat_toUInt64 (by omega)] at hi
+    exact ⟨hq, by omega, by rw [e]; congr 1; exact Fin.ext hi.symm⟩
+
+end Tab
+
 end Rel
