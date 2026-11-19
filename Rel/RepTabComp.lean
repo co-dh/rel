@@ -3,6 +3,7 @@ import Rel.Run.SetOps
 import Rel.Run.CRelFoldDef
 import Rel.RepCols
 import Rel.RepCanon
+import Rel.RepSetOps
 import Rel.Run.CRelDef
 
 /-! The laws of `Tab.conv` and `Tab.comp` (`Rel/Run/Comp.lean`), from the five kernels' laws and `Tab.canon_holds`. -/
@@ -573,27 +574,30 @@ theorem expand_spec {K T : USize} {w G u : Enc} (h : expand K w = .ok (T, G, u))
   simp only [Op.eval, Except.ok.injEq] at e
   rw [← e, toUInt64_sub h1]
 
-/-- **`R.comp S` is `canon` of a table denoting `R ≫ S`**: so `T` holds `R ≫ S` (`Tab.comp_holds`) and is sorted
-without duplicates (`Tab.canon_sorted` at `U`). -/
-theorem Tab.comp_canon {A B C : Obj}
-    {R : Tab A B} {S : Tab B C} {T : Tab A C} (h : R.comp S = .ok T) :
+/-- **`R.compOne S` is `canon` of a table denoting `R ≫ S`**: so `T` holds `R ≫ S` and is sorted without duplicates
+(`Tab.canon_sorted` at `U`). -/
+theorem Tab.compOne_canon {A B C : Obj}
+    {R : Tab A B} {S : Tab B C} {T : Tab A C} (h : R.compOne S = .ok T) :
     ∃ U : Tab A C, U.canon = .ok T ∧ ∀ a c, U.Holds a c ↔ ∃ b, R.Holds a b ∧ S.Holds b c := by
-  dsimp only [Tab.comp] at h
-  split at h; · cases h
+  rw [Tab.compOne, Except.bind_eq_ok'] at h; obtain ⟨x, hx, h⟩ := h
+  dsimp only [Tab.compGroups] at hx
+  split at hx; · cases hx
   rename_i hnm
-  simp only [bind] at h; rw [Except.bind_eq_ok'] at h; obtain ⟨_, -, h⟩ := h
-  rw [Except.bind_eq_ok'] at h; obtain ⟨⟨N, sh⟩, hcat, h⟩ := h; try dsimp only at h
-  rw [Except.bind_eq_ok'] at h; obtain ⟨z, hz, h⟩ := h
-  rw [Except.bind_eq_ok'] at h; obtain ⟨es, hes, h⟩ := h
-  rw [Except.bind_eq_ok'] at h; obtain ⟨⟨vs, p⟩, hasc, h⟩ := h; try dsimp only at h
-  rw [Except.bind_eq_ok'] at h; obtain ⟨⟨k, g, f⟩, hseen, h⟩ := h; try dsimp only at h
-  rw [Except.bind_eq_ok'] at h; obtain ⟨cn, hcn, h⟩ := h
-  rw [Except.bind_eq_ok'] at h; obtain ⟨lt, hlt, h⟩ := h
-  rw [Except.bind_eq_ok'] at h; obtain ⟨cR, hcR, h⟩ := h
-  rw [Except.bind_eq_ok'] at h; obtain ⟨c1, hc1, h⟩ := h
-  rw [Except.bind_eq_ok'] at h; obtain ⟨cnt, hcnt, h⟩ := h
-  rw [Except.bind_eq_ok'] at h; obtain ⟨cS, hcS, h⟩ := h
-  rw [Except.bind_eq_ok'] at h; obtain ⟨w, hw, h⟩ := h
+  simp only [bind] at hx; rw [Except.bind_eq_ok'] at hx; obtain ⟨_, -, hx⟩ := hx
+  rw [Except.bind_eq_ok'] at hx; obtain ⟨⟨N, sh⟩, hcat, hx⟩ := hx; try dsimp only at hx
+  rw [Except.bind_eq_ok'] at hx; obtain ⟨z, hz, hx⟩ := hx
+  rw [Except.bind_eq_ok'] at hx; obtain ⟨es, hes, hx⟩ := hx
+  rw [Except.bind_eq_ok'] at hx; obtain ⟨⟨vs, p⟩, hasc, hx⟩ := hx; try dsimp only at hx
+  rw [Except.bind_eq_ok'] at hx; obtain ⟨⟨k, g, f⟩, hseen, hx⟩ := hx; try dsimp only at hx
+  rw [Except.bind_eq_ok'] at hx; obtain ⟨cn, hcn, hx⟩ := hx
+  rw [Except.bind_eq_ok'] at hx; obtain ⟨lt, hlt, hx⟩ := hx
+  rw [Except.bind_eq_ok'] at hx; obtain ⟨cR, hcR, hx⟩ := hx
+  rw [Except.bind_eq_ok'] at hx; obtain ⟨c1, hc1, hx⟩ := hx
+  rw [Except.bind_eq_ok'] at hx; obtain ⟨cnt, hcnt, hx⟩ := hx
+  rw [Except.bind_eq_ok'] at hx; obtain ⟨cS, hcS, hx⟩ := hx
+  rw [Except.bind_eq_ok'] at hx; obtain ⟨w, hw, hx⟩ := hx
+  simp only [pure, Except.pure, Except.ok.injEq] at hx; subst hx
+  dsimp only [Tab.compExpand] at h; simp only [bind] at h
   rw [Except.bind_eq_ok'] at h; obtain ⟨⟨T', Gc, u⟩, hex, h⟩ := h; try dsimp only at h
   obtain ⟨Tn, rfl, hTT⟩ : ∃ Tn : Nat, T' = Tn.toUSize ∧ Tn.toUSize.toNat = Tn := ⟨T'.toNat, by simp, by simp⟩
   rw [Except.bind_eq_ok'] at h; obtain ⟨ft, hft, h⟩ := h
@@ -867,6 +871,114 @@ theorem Tab.comp_canon {A B C : Obj}
 namespace Tab
 variable {A B C : Obj}
 
+/-- A `∪` fold of the tables `f j` from `acc`: every `f j` answers, it holds what `acc` or some `f j` holds, and past
+the first step it is a `canon`. -/
+theorem foldlM_union {k v : Obj} {f : Nat → Except String (Tab k v)} :
+    ∀ (L : List Nat) (acc T : Tab k v), L.foldlM (fun acc j => do acc.union (← f j)) acc = .ok T →
+      (∀ j ∈ L, ∃ X, f j = .ok X) ∧ (L = [] → T = acc) ∧ (L ≠ [] → ∃ U : Tab k v, U.canon = .ok T) ∧
+      ∀ a b, T.Holds a b ↔ acc.Holds a b ∨ ∃ j ∈ L, ∃ X, f j = .ok X ∧ X.Holds a b
+  | [], acc, T, h => by
+    simp only [List.foldlM_nil, pure, Except.pure, Except.ok.injEq] at h; subst h; simp
+  | j :: L, acc, T, h => by
+    rw [List.foldlM_cons, Except.bind_eq_ok'] at h; obtain ⟨acc', h1, h2⟩ := h
+    rw [Except.bind_eq_ok'] at h1; obtain ⟨X, hX, hu⟩ := h1
+    obtain ⟨hL, h0, hc, hH⟩ := foldlM_union L acc' T h2
+    refine ⟨fun i hi => ?_, by simp, fun _ => ?_, fun a b => ?_⟩
+    · rcases List.mem_cons.1 hi with rfl | hi
+      · exact ⟨X, hX⟩
+      · exact hL i hi
+    · by_cases hL0 : L = []
+      · obtain rfl := h0 hL0; obtain ⟨C, -, hC⟩ := union_sorted hu; exact ⟨C, hC⟩
+      · exact hc hL0
+    · rw [hH, union_holds hu]; constructor
+      · rintro ((h | h) | ⟨i, hi, Y, hY, h⟩)
+        · exact .inl h
+        · exact .inr ⟨j, by simp, X, hX, h⟩
+        · exact .inr ⟨i, by simp [hi], Y, hY, h⟩
+      · rintro (h | ⟨i, hi, Y, hY, h⟩)
+        · exact .inl (.inl h)
+        · rcases List.mem_cons.1 hi with rfl | hi
+          · rw [hX] at hY; cases hY; exact .inl (.inr h)
+          · exact .inr ⟨i, hi, Y, hY, h⟩
+
+/-- **Block `j` denotes `R ≫ S` from the rows of `R` whose word in `c` is `j`.** -/
+theorem compBlock_holds {R : Tab A B} {S : Tab B C} {c : Enc} {j : Nat} {X : Tab A C}
+    (h : compBlock R S c j = .ok X) (a : A.El) (d : C.El) :
+    X.Holds a d ↔ ∃ b, (∃ i : Fin R.n.toNat, (raw .i64 R.n c)[i.1]?.getD 0 = j.toUInt64 ∧ R.key.row i = a ∧
+      R.val.row i = b) ∧ S.Holds b d := by
+  unfold compBlock at h
+  rw [Except.bind_eq_ok'] at h; obtain ⟨e, he, h⟩ := h
+  rw [Except.bind_eq_ok'] at h; obtain ⟨m, hm, h⟩ := h
+  rw [Except.bind_eq_ok'] at h; obtain ⟨Rj, hRj, h⟩ := h
+  have hmi : ∀ i < R.n.toNat, (raw .i64 R.n m)[i]?.getD 0 =
+      if (raw .i64 R.n c)[i]?.getD 0 = j.toUInt64 then 1 else 0 := fun i hi => by
+    have e1 := (colMap_raw hm).2.2.2 i hi
+    simp only [colConst_raw he, Array.getElem?_replicate, hi, if_true, Option.getD_some] at e1
+    have e2 : Op.eval .eq ((raw .i64 R.n c)[i]?.getD 0) j.toUInt64 =
+        .ok (if (raw .i64 R.n c)[i]?.getD 0 = j.toUInt64 then 1 else 0) := by
+      show Except.ok (if ((raw .i64 R.n c)[i]?.getD 0 == j.toUInt64) = true then 1 else 0) = _; simp
+    rw [e2] at e1; cases e1; rfl
+  obtain ⟨U, hU, hH⟩ := compOne_canon h
+  rw [canon_holds hU, hH]
+  refine exists_congr fun b => and_congr_left fun _ => ?_
+  rw [keep_holds hRj (fun i hi => by rw [hmi i hi]; split <;> decide)]
+  refine exists_congr fun i => and_congr_left fun _ => ?_
+  rw [hmi i.1 i.2]; split <;> simp_all
+
+/-- **`compBlocks` denotes `R ≫ S` and is a `canon`**, whatever the block words `bid`: clamped into `[0, nb - 1]`,
+every row of `R` is in one block, and every block is in the `∪`. -/
+theorem compBlocks_canon {R : Tab A B} {S : Tab B C} {nb : Nat} {bid : Arr .i64 R.n} {T : Tab A C}
+    (h : compBlocks R S nb bid = .ok T) :
+    ∃ U : Tab A C, U.canon = .ok T ∧ ∀ a c, U.Holds a c ↔ ∃ b, R.Holds a b ∧ S.Holds b c := by
+  unfold compBlocks at h
+  split at h; · cases h
+  rename_i hnb
+  simp only [bind] at h
+  rw [Except.bind_eq_ok'] at h; obtain ⟨c, hc, h⟩ := h
+  rw [Except.bind_eq_ok'] at h; obtain ⟨T0, h0, h⟩ := h
+  obtain ⟨hL, hnil, hcan, hH⟩ := foldlM_union (f := fun j => compBlock R S c.enc (j + 1)) _ _ _ h
+  -- each row's clamped word is a block `j ≤ nb - 1`
+  have hj : ∀ i : Fin R.n.toNat, ∃ j ≤ nb - 1, (raw .i64 R.n c.enc)[i.1]?.getD 0 = j.toUInt64 := fun i => by
+    have e := Arr.clampShift_get (by simp; omega) hc i
+    rw [Arr.get_i64 c] at e
+    simp only [UInt64.toNat_zero, Nat.cast_zero, add_zero] at e
+    have hn := toInt64_nonneg (x := (raw .i64 R.n c.enc)[i.1]?.getD 0) (by rw [e]; omega)
+    refine ⟨((raw .i64 R.n c.enc)[i.1]?.getD 0).toNat, ?_, by simp⟩
+    have : ((nb - 1).toUInt64.toNat : Int) = (nb - 1 : Nat) := by rw [toNat_toUInt64 (by omega)]
+    omega
+  have hR : ∀ a d, T.Holds a d ↔ ∃ b, R.Holds a b ∧ S.Holds b d := fun a d => by
+    rw [hH, compBlock_holds h0]; constructor
+    · rintro (⟨b, ⟨i, -, h1, h2⟩, hs⟩ | ⟨j, -, X, hX, hx⟩)
+      · exact ⟨b, ⟨i, h1, h2⟩, hs⟩
+      · obtain ⟨b, ⟨i, -, h1, h2⟩, hs⟩ := (compBlock_holds hX a d).1 hx; exact ⟨b, ⟨i, h1, h2⟩, hs⟩
+    · rintro ⟨b, ⟨i, h1, h2⟩, hs⟩
+      obtain ⟨j, hjn, hji⟩ := hj i
+      rcases Nat.eq_zero_or_pos j with rfl | hpos
+      · exact .inl ⟨b, ⟨i, hji, h1, h2⟩, hs⟩
+      · have hmem : j - 1 ∈ List.range (nb - 1) := List.mem_range.2 (by omega)
+        obtain ⟨X, hX⟩ := hL _ hmem
+        refine .inr ⟨j - 1, hmem, X, hX, (compBlock_holds hX a d).2 ⟨b, ⟨i, ?_, h1, h2⟩, hs⟩⟩
+        rw [hji, Nat.sub_add_cancel hpos]
+  by_cases hL0 : List.range (nb - 1) = []
+  · obtain rfl := hnil hL0
+    obtain ⟨U, hU, -⟩ := compOne_canon (by unfold compBlock at h0; exact h0)
+    exact ⟨U, hU, fun a d => by rw [← hR, canon_holds hU]⟩
+  · obtain ⟨U, hU⟩ := hcan hL0
+    exact ⟨U, hU, fun a d => by rw [← hR, canon_holds hU]⟩
+
+/-- **`R.compWith bound S` is `canon` of a table denoting `R ≫ S`**, at every `bound`; `Tab.comp` is `bound =
+blockRows`. -/
+theorem comp_canon {bound : Nat} {R : Tab A B} {S : Tab B C} {T : Tab A C} (h : compWith bound R S = .ok T) :
+    ∃ U : Tab A C, U.canon = .ok T ∧ ∀ a c, U.Holds a c ↔ ∃ b, R.Holds a b ∧ S.Holds b c := by
+  unfold compWith at h
+  split at h
+  · exact compOne_canon h
+  · rw [Except.bind_eq_ok'] at h; obtain ⟨x, hx, h⟩ := h
+    rw [Except.bind_eq_ok'] at h; obtain ⟨o, -, h⟩ := h
+    rcases o with _ | ⟨nb, bid⟩
+    · exact compOne_canon (by rw [compOne, hx]; exact h)
+    · exact compBlocks_canon h
+
 /-- **`R.comp S` denotes `R ≫ S`** (`Rep.rep_comp`'s statement, pointwise). -/
 theorem comp_holds {R : Tab A B} {S : Tab B C} {T : Tab A C} (h : R.comp S = .ok T) (a : A.El) (c : C.El) :
     T.Holds a c ↔ ∃ b, R.Holds a b ∧ S.Holds b c := by
@@ -897,6 +1009,30 @@ section Checks
     (tab ps).conv.toOption.isSome && ((tab ps).conv.toOption.map Tab.toList) ==
       (let c := Alg.canonC (⟨(tab ps).n, (tab ps).val, (tab ps).key⟩ : Tab .long .long)
        if c.2 then some c.1.toList else none)
+
+/-- Whether `compWith b` (blocked past `b` rows) and `compOne` (one expansion) give the same rows. -/
+private def blockedOk (b : Nat) (ps qs : List (Int64 × Int64)) : Bool :=
+  match Tab.compWith b (tab ps) (tab qs), (tab ps).compOne (tab qs) with
+  | .ok X, .ok Y => X.toList == Y.toList
+  | _, _ => false
+
+/-- The block count `compCuts b` gives `tab ps ≫ tab qs` (`1`: one block). -/
+private def blockCount (b : Nat) (ps qs : List (Int64 × Int64)) : Option Nat :=
+  ((Tab.compGroups (tab ps) (tab qs)).bind (Tab.compCuts b (tab ps).n)).toOption.map fun o => (o.map (·.1)).getD 1
+
+-- middle values `1 2 3` expand to `6 4 4` rows (duplicates `(1, 10)` …): every bound `0 … 15` cuts between groups,
+-- at a group's end (`6`, `10`), inside a group larger than the bound (`1 … 5`), or not at all (`14`, `15`); an empty
+-- side, no common middle value, and negative words
+#guard let ps : List (Int64 × Int64) := [(1, 1), (2, 1), (3, 1), (1, 2), (2, 2), (4, 3), (1, 3), (1, 1)]
+  let qs : List (Int64 × Int64) := [(1, 10), (1, 11), (2, 10), (2, 12), (3, 10), (3, 13), (9, 9)]
+  let ts := [ps, qs, [], [(-1, 5), (-2, 5), (7, 7)], [(5, -3), (5, 1), (5, -3)]]
+  (List.range 16).all fun b => ts.all fun xs => ts.all fun ys => blockedOk b xs ys
+#guard blockCount 3 [(1, 1), (2, 1), (3, 1), (1, 2), (2, 2), (1, 3)] [(1, 10), (1, 11), (2, 10), (2, 12), (3, 10),
+  (3, 13)] == some 3
+#guard blockCount 10 [(1, 1), (2, 1), (3, 1), (1, 2), (2, 2), (1, 3)] [(1, 10), (1, 11), (2, 10), (2, 12), (3, 10),
+  (3, 13)] == some 2
+#guard blockCount 14 [(1, 1), (2, 1), (3, 1), (1, 2), (2, 2), (1, 3)] [(1, 10), (1, 11), (2, 10), (2, 12), (3, 10),
+  (3, 13)] == some 1
 
 /-- Whether `comp` answers `R ≫ S`: the old `CRel.comp`'s list, and as a set the pairs `(a, c)` with `a {R} b {S} c`. -/
 private def compOk {A B C : Obj} [BEq A.El] [BEq B.El] [BEq C.El] (R : Tab A B) (S : Tab B C) : Bool :=
