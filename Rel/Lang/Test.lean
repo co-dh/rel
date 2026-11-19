@@ -1264,4 +1264,147 @@ def sameK (x : String) (A B : Obj) [BEq (A.El × B.El)] : Bool :=
 -- not vacuous: the kernel tables have rows
 #guard ((get kernT2.expanded "c" .long .long).map (·.n.toNat)) == some 5
 
+/-! The kernel path, steps T4, T5, T7: `kernT45` uses `≤ < succ plus Λ E nil at est thin` and the rows
+    `∋ τ length setify sum snoc cons cat zip cons° snoc° cat°` with T2's operators, so it runs on the five kernels;
+    `kernT45Old` is the same definitions with one `distinct`, a row with no kernel body, so it runs on the old
+    layer. Then each kernel body against its old body run on the same known values, as sets of rows, on inputs with
+    empty cells and duplicate rows. -/
+rel_program kernT45 where
+    obj N = 0…5
+    r : N ⟶ N ≜ {(1,2),(2,3),(3,3)}
+    w : N ⟶ N×N ≜ {(1,(1,2)),(2,(3,4)),(3,(5,5))}
+    un : N ⟶ N ≜ 𝟙(N)
+    x : N ⟶ [N] ≜ {(1,3 1 2),(2,[]),(3,1 2),(4,1 2)}
+    pa : N ⟶ [N]×N ≜ {(1,(3 1,2)),(2,([],4)),(3,(3 1,2))}
+    pc : N ⟶ N×[N] ≜ {(1,(2,3 1)),(2,(4,[]))}
+    pp : N ⟶ [N]×[N] ≜ {(1,(3 1,2 2)),(2,([],[4])),(3,([],[]))}
+    le : N ⟶ N ≜ r ≤
+    lq : N ⟶ N ≜ ≤ r
+    lt : N ⟶ N ≜ r <
+    sc : N ⟶ N ≜ r succ
+    pl : N ⟶ N ≜ w plus
+    lr : N ⟶ [N] ≜ Λ(r)
+    lw : N ⟶ [N×N] ≜ Λ(w)
+    er : N ⟶ [N] ≜ x E(r)
+    ew : N ⟶ [N×N] ≜ x E(w)
+    nl : N ⟶ [N] ≜ r nil
+    a1 : N ⟶ N ≜ x at(1)
+    es : N ⟶ N ≜ x est(≤)
+    th : N ⟶ [N] ≜ x thin(≤)
+    ms : N ⟶ N ≜ x ∋
+    tu : N ⟶ [N] ≜ r τ
+    ln : N ⟶ N ≜ x length
+    st : N ⟶ [N] ≜ x setify
+    sm : N ⟶ N ≜ x sum
+    sn : N ⟶ [N] ≜ pa snoc
+    cn : N ⟶ [N] ≜ pc cons
+    ct : N ⟶ [N] ≜ pp cat
+    zp : N ⟶ [N×N] ≜ pp zip
+    zm : N ⟶ N×N ≜ zp ∋
+    uc : N ⟶ N×[N] ≜ x cons°
+    us : N ⟶ [N]×N ≜ x snoc°
+    ut : N ⟶ [N]×[N] ≜ x cat°
+
+rel_program kernT45Old where
+    obj N = 0…5
+    r : N ⟶ N ≜ {(1,2),(2,3),(3,3)}
+    w : N ⟶ N×N ≜ {(1,(1,2)),(2,(3,4)),(3,(5,5))}
+    un : N ⟶ N ≜ 𝟙(N)
+    x : N ⟶ [N] ≜ {(1,3 1 2),(2,[]),(3,1 2),(4,1 2)}
+    pa : N ⟶ [N]×N ≜ {(1,(3 1,2)),(2,([],4)),(3,(3 1,2))}
+    pc : N ⟶ N×[N] ≜ {(1,(2,3 1)),(2,(4,[]))}
+    pp : N ⟶ [N]×[N] ≜ {(1,(3 1,2 2)),(2,([],[4])),(3,([],[]))}
+    le : N ⟶ N ≜ r ≤
+    lq : N ⟶ N ≜ ≤ r
+    lt : N ⟶ N ≜ r <
+    sc : N ⟶ N ≜ r succ
+    pl : N ⟶ N ≜ w plus
+    lr : N ⟶ [N] ≜ Λ(r)
+    lw : N ⟶ [N×N] ≜ Λ(w)
+    er : N ⟶ [N] ≜ x E(r)
+    ew : N ⟶ [N×N] ≜ x E(w)
+    nl : N ⟶ [N] ≜ r nil
+    a1 : N ⟶ N ≜ x at(1)
+    es : N ⟶ N ≜ x est(≤)
+    th : N ⟶ [N] ≜ x thin(≤)
+    ms : N ⟶ N ≜ x ∋
+    tu : N ⟶ [N] ≜ r τ
+    ln : N ⟶ N ≜ x length
+    st : N ⟶ [N] ≜ x setify
+    sm : N ⟶ N ≜ x sum
+    sn : N ⟶ [N] ≜ pa snoc
+    cn : N ⟶ [N] ≜ pc cons
+    ct : N ⟶ [N] ≜ pp cat
+    zp : N ⟶ [N×N] ≜ pp zip
+    zm : N ⟶ N×N ≜ zp ∋
+    uc : N ⟶ N×[N] ≜ x cons°
+    us : N ⟶ [N]×N ≜ x snoc°
+    ut : N ⟶ [N]×[N] ≜ x cat°
+    o : N ⟶ [N] ≜ x distinct
+
+/-- The definition `x` of the programs `k` (kernel path) and `o` (old path) as equal sets of rows. -/
+def sameP (k o : List (String × Gen.Gv)) (x : String) (A B : Obj) [BEq (A.El × B.El)] : Bool :=
+  match get k x A B, get o x A B with
+  | some k, some o => sameSet k.toList o.toList
+  | _, _ => false
+
+#guard kernT45.kernel && !kernT45Old.kernel && kernT45.ok && kernT45Old.ok
+#guard ["r", "le", "lq", "lt", "sc", "pl", "a1", "es", "ms", "ln", "sm"].all
+  (sameP kernT45.expanded kernT45Old.expanded · .long .long)
+#guard ["x", "lr", "er", "nl", "th", "tu", "st", "sn", "cn", "ct"].all
+  (sameP kernT45.expanded kernT45Old.expanded · .long (.arr .long))
+#guard ["lw", "ew", "zp"].all (sameP kernT45.expanded kernT45Old.expanded · .long (.arr (.prod .long .long)))
+#guard sameP kernT45.expanded kernT45Old.expanded "zm" .long (.prod .long .long) &&
+  sameP kernT45.expanded kernT45Old.expanded "uc" .long (.prod .long (.arr .long)) &&
+  sameP kernT45.expanded kernT45Old.expanded "us" .long (.prod (.arr .long) .long) &&
+  sameP kernT45.expanded kernT45Old.expanded "ut" .long (.prod (.arr .long) (.arr .long))
+-- not vacuous: the kernel tables have rows
+#guard ["le", "es", "ms", "sm"].all fun d => ((get kernT45.expanded d .long .long).map (0 < ·.n.toNat)) == some true
+
+/-- The kernel body `k` and the old body `o` run on what `K` knows of their sides, as equal sets of rows. -/
+def sameOn {A B : Obj} [BEq (A.El × B.El)] (k o : Rel A B) (K : Known A B) : Bool :=
+  match k.runE K, o.run K with
+  | .ok a, some b => sameSet a.toList b.toList
+  | _, _ => false
+
+/-- The value column of the definition `d` of `kernT45` as a known domain: `x`'s holds the cell `1 2` twice and the
+    empty cell, `pa`'s the pair `(3 1, 2)` twice. -/
+def knownOf (d : String) (A B : Obj) : Known B A :=
+  match get kernT45.expanded d A B with
+  | some t => ⟨some ⟨t.n, t.val⟩, none⟩
+  | none => {}
+
+-- the rows on the keys `X` given (`Gen.ofVals`, `Gen.after`), with empty cells and duplicate rows
+#guard let K := knownOf "x" .long (.arr .long)
+  sameOn (GenK.ofVals _ _ fun X => Tab.mem X) (Gen.ofVals _ _ fun X => CRel.mem X) K &&
+  sameOn (GenK.ofVals _ _ fun X => Tab.length X) (Gen.ofVals _ _ fun X => CRel.length X) K &&
+  sameOn (GenK.ofVals _ _ fun X => Tab.sum X) (Gen.ofVals _ _ fun X => CRel.Arr.sum X) K &&
+  sameOn (GenK.ofVals _ _ fun X => Tab.setify X) (Gen.ofVals _ _ fun X => CRel.setify X) K &&
+  sameOn (GenK.ofVals _ _ fun X => Tab.uncons X) (Gen.ofVals _ _ fun X => CRel.uncons X) K &&
+  sameOn (GenK.ofVals _ _ fun X => Tab.unsnoc X) (Gen.ofVals _ _ fun X => CRel.unsnoc X) K &&
+  sameOn (GenK.ofVals _ _ fun X => Tab.uncat X) (Gen.ofVals _ _ fun X => CRel.uncat X) K &&
+  sameOn (GenK.ofVals _ _ fun X => Tab.tau X) (Gen.ofVals _ _ fun X => CRel.τ X) K &&
+  sameOn (GenK.atPos .long 1) (Gen.atPos .long 1) K && sameOn (GenK.nil _ .long) (Gen.nil _ .long) K
+#guard sameOn (GenK.after _ _ fun P => Tab.snoc P) (Gen.after _ _ fun P => CRel.snoc P) (knownOf "pa" .long _) &&
+  sameOn (GenK.after _ _ fun P => Tab.cons P) (Gen.after _ _ fun P => CRel.cons P) (knownOf "pc" .long _) &&
+  sameOn (GenK.after _ _ fun P => Tab.cat P) (Gen.after _ _ fun P => CRel.cat P) (knownOf "pp" .long _) &&
+  sameOn (GenK.after _ _ fun P => Tab.zip P) (Gen.after _ _ fun P => CRel.zip P) (knownOf "pp" .long _)
+-- `Λ`, `E` at an atom and a tuple side, on the keys `X` with duplicate rows
+#guard match get kernT45.expanded "r" .long .long, get kernT45.expanded "w" .long (.prod .long .long) with
+  | some r, some w =>
+    let K := knownOf "x" .long (.arr .long)
+    sameOn (GenK.lam _ _ false (.tab (.ok r))) (Gen.lam _ _ false (.tab (.ok r))) ⟨some ⟨r.n, r.val⟩, none⟩ &&
+    sameOn (GenK.lam _ _ false (.tab (.ok w))) (Gen.lam _ _ false (.tab (.ok w))) ⟨some ⟨r.n, r.val⟩, none⟩ &&
+    sameOn (GenK.E _ _ false (.tab (.ok r))) (Gen.E _ _ false (.tab (.ok r))) K &&
+    sameOn (GenK.E _ _ false (.tab (.ok w))) (Gen.E _ _ false (.tab (.ok w))) K
+  | _, _ => false
+-- `≤`, `<` with both sides known, one, or none (`r`'s value column holds `3` twice); `succ` on the keys
+#guard match get kernT45.expanded "r" .long .long, get kernT45.expanded "un" .long .long with
+  | some r, some u =>
+    let U : Rel .long .long := .tab (.ok u)
+    [(⟨some ⟨r.n, r.key⟩, some ⟨r.n, r.val⟩⟩ : Known .long .long), ⟨none, some ⟨r.n, r.val⟩⟩, {}].all fun K =>
+      sameOn (GenK.leq U) (Gen.leq U) K && sameOn (GenK.lt U) (Gen.lt U) K
+    && sameOn (GenK.succ U) (Gen.succ U) ⟨some ⟨r.n, r.val⟩, none⟩
+  | _, _ => false
+
 end Rel.Lang.Test

@@ -2,6 +2,8 @@ import Rel.Run.Lang.Gen
 import Rel.Run.SetOps
 import Rel.Run.Comp
 import Rel.Run.Struct
+import Rel.Run.Power
+import Rel.Run.List
 
 /-! The kernel path: the `Gen` bodies a program runs when every node of its terms has one here (`Tm.onKernel`),
     each a composition of the `Tab` operators over the five kernels, with `Gen`'s signature so `Expand` emits
@@ -76,11 +78,33 @@ def ran (A B : Obj) (R : Fn false A B) : Fn false B B := lift1 Tab.ran (fun K =>
 
 end GenK
 
+/-- The rows of `prims` with a kernel body: each row's `Tab` operator, run under the `GenK` twin of the wrapper its
+    old constant runs under (`Expand.primE`), as `RowCode` gives the old ones; a row not here keeps a program off
+    the kernel path (`Tm.kernelNode`). -/
+def kernRows : List (String × Lean.Name) :=
+  [("∋", ``Tab.mem), ("τ", ``Tab.tau), ("length", ``Tab.length), ("setify", ``Tab.setify),
+   ("snoc", ``Tab.snoc), ("cons", ``Tab.cons), ("cat", ``Tab.cat), ("zip", ``Tab.zip), ("sum", ``Tab.sum),
+   ("uncons", ``Tab.uncons), ("unsnoc", ``Tab.unsnoc), ("uncat", ``Tab.uncat)]
+
+-- every kernel row is a row of `prims`
+#guard kernRows.all fun (s, _) => prims.any (·.sym == s)
+
 /-- `t`'s own node has a kernel body (`GenK`): T2's `val uni 𝟘 𝟙 ° ≫ ∩ ∪ − dom ran`, and `own`, which runs its
     part. -/
 def Tm.kernelNode {A B : Obj} : Tm A B → Bool
   | .val _ | .uni _ | .zero | .id | .comp .. | .conv _ | .meet .. | .join .. | .diff .. | .dom _ | .ran _
   | .own _ => true
+  | .leq _ => true
+  | .lt _ => true
+  | .succ _ => true
+  | .arith .. => true
+  | .lam _ => true
+  | .E _ => true
+  | .nil => true
+  | .est _ => true
+  | .thin _ => true
+  | .atPos _ => true
+  | .prim r => (kernRows.lookup r.sym).isSome
   | _ => false
 
 /-- Every node of `t` has a kernel body: the test that puts a program on the kernel path. A `share` is entered
@@ -88,5 +112,51 @@ def Tm.kernelNode {A B : Obj} : Tm A B → Bool
 partial def Tm.onKernel {A B : Obj} (t : Tm A B) : Bool := match t with
   | .share _ R => R.onKernel
   | t => t.kernelNode && t.parts.all fun ⟨_, _, u⟩ => u.onKernel
+
+/-! ### T4, T5: `≤ < succ`, the value verbs, `Λ E nil est thin at`, and the wrapper `after` of the rows -/
+
+namespace GenK
+
+open Rel Gen
+
+/-- A row composed after the keys: `f` on the coreflexive of the values the context knows (`Gen.after`'s rule). -/
+def after (A B : Obj) (f : {K : Obj} → Tab K A → Except String (Tab K B)) : Fn true A B :=
+  ofVals A B fun X => do f (← Tab.idU X)
+
+/-- `succ`, a value verb on `U`'s universe: the keys' coreflexive `D`, then `D ≫ succDen U` (`Tab.succ`),
+    `D ≫ arithDen k U` (`Tab.arith`). -/
+def succ (U : Fn false .long .long) : Fn true .long .long := after _ _ fun D => do Tab.succ D (← U.runE {})
+def arith (k : UInt8) (U : Fn false .long .long) : Fn true (.prod .long .long) .long :=
+  after _ _ fun D => do Tab.arith k D (← U.runE {})
+
+/-- `K ≫ op ≫ L` on `U`'s universe (`Tab.leq`, `Tab.lt`, CROSS of the two sides): each side the values the context
+    knows of it cut to `dom U` (`idU ≫ dom U`), `dom U` where it knows none (§0, `Known`). -/
+def cmp (f : {n m : USize} → Vals .long n → Vals .long m → Except String (Tab .long .long))
+    (U : Fn false .long .long) : Fn false .long .long := .lazy fun K => .tab do
+  let d ← (← U.runE {}).dom
+  let side (s : Option ((n : USize) × Vals .long n)) : Except String ((n : USize) × Vals .long n) :=
+    s.elim (pure ⟨d.n, d.key⟩) fun c => do let t ← (← Tab.idU c.2).comp d; pure ⟨t.n, t.key⟩
+  let k ← side K.dom; let l ← side K.ran
+  f k.2 l.2
+def leq (U : Fn false .long .long) : Fn false .long .long := cmp Tab.leq U
+def lt (U : Fn false .long .long) : Fn false .long .long := cmp Tab.lt U
+
+/-- `Λ(R)` on the keys `X` (`Tab.lam`), `R` run knowing its domain is `X`. -/
+def lam (A B : Obj) (d : Bool) (R : Fn d A B) : Fn true A (.arr B) :=
+  ofVals _ _ fun X => do Tab.lam X (← R.runE ⟨some ⟨_, X⟩, none⟩)
+/-- `E(R) = Λ(∋ ≫ R)` (`Tab.E`'s composition): `R` runs knowing its domain is `ran(∋)` at the arrays in demand. -/
+def E (A B : Obj) (d : Bool) (R : Fn d A B) : Fn true (.arr A) (.arr B) :=
+  lam _ _ true (comp _ _ _ d (ofVals _ _ fun X => Tab.mem X) R)
+def nil (A B : Obj) : Fn true A (.arr B) := ofVals _ _ fun X => Tab.nil X
+
+/-- `est(Q)`, `thin(Q)` on the arrays in demand, the pair test `Q` run knowing its domain is the pairs `D` it is
+    asked about (`Gen.est`'s `Q.at`). -/
+def est (B : Obj) (Q : Fn true (.prod B B) (.prod B B)) : Fn true (.arr B) B :=
+  ofVals _ _ fun X => Tab.est (fun D => Q.runE ⟨some ⟨D.n, D.val⟩, none⟩) X
+def thin (B : Obj) (Q : Fn true (.prod B B) (.prod B B)) : Fn true (.arr B) (.arr B) :=
+  ofVals _ _ fun X => Tab.thin (fun D => Q.runE ⟨some ⟨D.n, D.val⟩, none⟩) X
+def atPos (B : Obj) (k : Nat) : Fn true (.arr B) B := ofVals _ _ fun X => Tab.atPos k X
+
+end GenK
 
 end Rel.Lang
