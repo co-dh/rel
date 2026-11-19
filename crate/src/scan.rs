@@ -915,6 +915,20 @@ mod kscan_tests {
             }
         }
     }
+    // a compare against a constant at, below and above a patched block's frame, the column on either side: `Tab.comp`'s
+    // `p < n` of 81 × 729 (each of `n` rows before its `m` partners, block 0 framed at 81 with 0 and 1 patched) once
+    // matched every row of that block, `t - 1` wrapping at `t = 0`
+    #[test] fn compare_against_a_constant_at_the_frame() {
+        let (n, m) = (81u64, 729u64);
+        let p: Vec<u64> = (0..n).flat_map(|g| core::iter::once(g).chain(n + m * g..n + m * (g + 1))).collect();
+        let k = p.len();
+        for v in [n - 1, n, n + 1] {
+            for op in [9u8, 10, 11, 12, 13, 14] {
+                check(op, 6, 6, k, &vec![1; k], &[(enc_for(&p, 8), p.clone()), (enc_for(&vec![v; k], 8), vec![v; k])]);
+                check(op, 6, 6, k, &vec![1; k], &[(enc_for(&vec![v; k], 8), vec![v; k]), (enc_for(&p, 8), p.clone())]);
+            }
+        }
+    }
     #[test] fn op_eval_floors_and_types_its_errors() {
         assert_eq!(op_eval(3, -1i64 as u64, 2), Ok(-1i64 as u64));
         assert_eq!(op_eval(4, -7i64 as u64, 3), Ok(2));
