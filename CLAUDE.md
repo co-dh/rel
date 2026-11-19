@@ -31,11 +31,11 @@ kernels its programs run on. It was split out of freyd's `leetq/` and qlean's `Q
   numbered in position order, the one place row order enters; not `Enc.enum`, the symbol dictionary encoding).
 
 ## Goal
-Test how useful Rel is as a programming language, by implementing k in it:
-- Every k verb is a program written in the algebra above — a composition of a few executable Rel primitives —
-  and runs as written; where it cannot be written, or only awkwardly, that is the finding to record.
-- Only the primitives are kernels (`crate/`). A fused kernel for a pattern of primitives is an optimisation, tied
-  to the pattern by a theorem.
+Rel is a programming language of its own, not an implementation of k or q:
+- A program is written in the algebra above — a composition of a few executable Rel primitives — and runs as
+  written. kdb/q semantics that no Rel program uses are removed, not kept or re-implemented.
+- Only the primitives are kernels (`crate/`): `scan` and `scatter`, with `gather`, `asc` and `seen` as
+  optimisations. A fused kernel for a pattern of primitives is an optimisation, tied to the pattern by a theorem.
 - Execution is compute-on-compression (encoded columns), so it is also efficient: memory IO is the speed limit.
 - No serialization: the in-memory structure is the on-disk structure, so loading an array is an mmap.
 
@@ -53,6 +53,11 @@ Test how useful Rel is as a programming language, by implementing k in it:
   allegory freyd's bridge maps it to. The rest uses `Classical` freely (`Column.atoms`, `Classical.propDecidable`).
 - **No `sorry`, `native_decide`, `!` indexing, raised `maxHeartbeats`, and no new `panic!`** — a `panic!` already in
   the tree is on the allowlist until removed, and the gate refuses any other.
+- **A kernel computes on the encoded column, never on a decoded copy** — it reads the foR blocks (frame, width,
+  patches) and their per-block metadata directly and writes encoded output, because decoding to full words and
+  encoding back costs more than the operation itself and throws away the speed the encoding exists to buy. A
+  kernel that decodes needs his approval first: ask him, stating why the answer cannot be computed per block, and
+  record the approval in its doc comment.
 - **A kernel is one declaration**: the `@[extern]` def and its Lean model are the same `def`, and its `decide`
   beside `#guard` pair is the only check that the Rust agrees with the body. Never restate a body by cases.
 - **Find a declaration with the index**, never by grepping `*.lean`: `./scripts`-less here, so run
