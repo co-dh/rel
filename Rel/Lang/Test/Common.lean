@@ -76,10 +76,4 @@ def reading : Decl → Option (String × String)
   | .check _ e f eq => some ("check", s!"{e.render 0 true} {if eq then "=" else "⊑"} {f.render 0 true}")
   | _ => none
 
-/-- The definition `x` of the programs `k` (kernel path) and `o` (old path) as equal sets of rows. -/
-def sameK (k o : List (String × Gen.Gv)) (x : String) (A B : Obj) [BEq (A.El × B.El)] : Bool :=
-  match get k x A B, get o x A B with
-  | some k, some o => sameSet k.toList o.toList
-  | _, _ => false
-
 end Rel.Lang.Test

@@ -24,17 +24,12 @@ rel_program lists where
     print x inits concat
     print y perm
     print z setify
-    print z asc
-    print z distinct
-    print z distinct asc
-    print ⟨{(a,b)}, Λ({(a,a),(a,b)})⟩cons asc
     print x ordered(≤)
     print x sort(≤)
     print y subseq
     print x thinL(≤)
     print ⟨Λ({(a,1),(a,5)}),Λ({(a,2),(a,3)})⟩merge(≤)
     print ⟨{(a,0),(b,1)},x⟩loop(plus)
-    print ⟨{(a,5)},Λ({(a,1),(a,2)})⟩tic
 
 -- `thinL(≤)` runs the one-pass thinning: each element bumped into the thinned rest keeps the lower of the two
 #guard lists.ok && lists.prints == [
@@ -50,17 +45,12 @@ rel_program lists where
   "x inits concat = {(a, 3 3 1 3 1 2), (b, 1 1 5)}",
   "y perm = {(a, [7]), (b, 8 9), (b, 9 8)}",
   "z setify = {(a, 1 2 3)}",
-  "z asc = {(a, 1 2 3 3)}",
-  "z distinct = {(a, 3 1 2)}",
-  "z distinct asc = {(a, 1 2 3)}",
-  "⟨{(a, b)}, Λ({(a, a), (a, b)})⟩ cons asc = {(a, a b b)}",
   "x ordered(≤) = {(b, 1 5)}",
   "x sort(≤) = {(a, 1 2 3), (b, 1 5)}",
   "y subseq = {(a, []), (a, [7]), (b, []), (b, [8]), (b, 8 9), (b, [9])}",
   "x thinL(≤) = {(a, [1]), (b, [1])}",
   "⟨Λ({(a, 1), (a, 5)}), Λ({(a, 2), (a, 3)})⟩ merge(≤) = {(a, 1 2 3 5), (b, [])}",
-  "⟨{(a, 0), (b, 1)}, x⟩ loop(plus) = {(a, 6), (b, 7)}",
-  "⟨{(a, 5)}, Λ({(a, 1), (a, 2)})⟩ tic = {(a, [5] [5 1] [5 1 2])}"]
+  "⟨{(a, 0), (b, 1)}, x⟩ loop(plus) = {(a, 6), (b, 7)}"]
 
 /-! `at(i)`, positions from `0`, on the arrays `x` above: `at(0) = head`, `tail at(i) = at(i+1)`, and a position
     past every array's end the empty relation. -/

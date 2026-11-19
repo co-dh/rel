@@ -14,7 +14,6 @@ import Rel.Lang.Test.MuGrow
 import Rel.Lang.Test.AC
 import Rel.Lang.Test.Kern2
 import Rel.Lang.Test.Kern45
-import Rel.Lang.Test.Kern45On
 import Rel.Lang.Test.Kern68
 import Rel.Lang.Test.KernRows
 import Rel.Lang.Test.Kern9

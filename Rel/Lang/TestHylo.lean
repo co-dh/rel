@@ -29,9 +29,8 @@ rel_program hylos where
   "{(m, m)} total = {(m, 0)}",
   "𝟘(E, E) total = {}"]
 
--- the old layer's message (an ok bit); the kernel path's, a thrown error, is `kernMapCycle` (`Test/KernMap.lean`)
+-- a cyclic coalgebra over the list functor: it fails, never a silent `𝟘`
 open Rel.Programs.prelude in
-set_option rel.kernel false in
 rel_program hyloCycle where
     obj E = {a,b,m}
     obj N = 0…40
@@ -39,8 +38,8 @@ rel_program hyloCycle where
     S : E×[N] ⟶ N ≜ π₂ sum
     bad : E ⟶ N ≜ hylo(⟨𝟙, Λ(next)⟩, S)
 
-#guard hyloCycle.failures.map (·.msg) == ["an op ran out of capacity (its twin's ok bit is false); in bad, or the " ++
-  s!"coalgebra c at line {decl_line% hyloCycle + 5}, col 24 reaches a node from itself, so it is not well-founded there"]
+#guard hyloCycle.failures.map (·.msg) == [s!"bad: the coalgebra c at line {decl_line% hyloCycle + 5}, col 24 " ++
+  "reaches a node from itself, so it is not well-founded there (2 of 3 nodes)"]
 
 open Rel.Programs.prelude in
 rel_program quicksort where
