@@ -46,14 +46,19 @@ def panicking (inMods : Name → Bool) : Name → Bool
   | n@(.str _ s) => s.endsWith "!" && !inMods n
   | _ => false
 
-/-- A relation is what `Core.Rel α β` unfolds to: a `Prop`-valued function of at least two explicit arguments; a type
-    built from relations (`List ((c : RowCode) × RowDen c)`) counts too, since its elements are relations. -/
-partial def relational (t : Expr) : MetaM Bool :=
-  forallTelescopeReducing t fun xs b => do
-    if b.isProp then
-      return (← xs.filterM fun x => return (← x.fvarId!.getDecl).binderInfo.isExplicit).size ≥ 2
-    b.getAppArgs.anyM fun a => lambdaTelescope a fun _ e => do
-      if ← isType e then relational e else pure false
+/-- The repo's relation types. `Core.Rel α β` is the arrow of `Rel(Set)`, the only one: `Den` and `RowDen` are reducible
+    abbreviations that reach it, so they need no entry; `Tab`/`CRel` are executable tables, not predicates. A predicate
+    or invariant of two arguments is written `… → Prop`, never as one of these, so it is not a relation here. -/
+def relTypes : List Name := [`Rel.Core.Rel]
+
+/-- Whether the result of type `t` (after its `∀`s), unfolding reducible abbreviations only and never a `relTypes`
+    head itself, is a relation type or a type built from one (`List ((c : RowCode) × RowDen c)`). -/
+partial def relational (t : Expr) : MetaM Bool := withReducible do
+  let t ← whnfCore t
+  if t.isForall then return ← forallTelescope t fun _ b => relational b
+  if t.getAppFn.constName?.any relTypes.contains then return true
+  if let some u ← unfoldDefinition? t then return ← relational u
+  t.getAppArgs.anyM fun a => lambdaTelescope a fun _ e => do if ← isType e then relational e else pure false
 
 def runMeta (env : Environment) (x : MetaM α) : IO α :=
   Prod.fst <$> (x.run' {}).toIO { fileName := "<gates>", fileMap := default } { env }

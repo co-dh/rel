@@ -137,8 +137,8 @@ define bang_NOW
 $(LAKE) build gates
 $(MODS) | xargs $(LAKE) env $(GATES) bang | sort -u > $(T)/bang.txt
 endef
-# no ∃ in the body of a relation: a written def whose type unfolds to a `Prop`-valued function of two or more explicit
-# arguments (what `Core.Rel α β` is), or a type built from one, and whose code mentions `Exists`; theorems are exempt
+# no ∃ in the body of a relation: a written def whose result type, unfolding reducible abbreviations only, is headed by
+# a relation type (gates/Gates.lean `relTypes`) or built from one, and whose code mentions `Exists`; theorems are exempt
 define pointfree_NOW
 $(LAKE) build gates
 $(MODS) | xargs $(LAKE) env $(GATES) pointfree | sort -u > $(T)/pointfree.txt
