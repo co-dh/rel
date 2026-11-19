@@ -41,7 +41,7 @@ def blankCol (t : QAtomicType) : (n : USize) × Arr t n := ⟨0, Arr.mk (Enc.bla
 def col (xs : List Int64) : Arr .i64 xs.length.toUSize :=
   need (xs.length < USize.size) (fun _ => s!"col: {xs.length} longs do not fit a USize")
     (fun _ => Arr.mk (Enc.blank .i64 _) (Enc.blank_WF .i64 _)) fun h =>
-  longArr (packLongs xs) (by rw [packLongs_size, USize.toNat_ofNat_of_lt' h])
+  Arr.ofBytes .i64 (packLongs xs) (show _ = 8 * _ by rw [packLongs_size, USize.toNat_ofNat_of_lt' h])
 
 def nul : Int64 := Int64.minValue
 
@@ -452,7 +452,7 @@ def longsOf {n : USize} (x : Arr .i64 n) : ByteArray := (longBytes n x.enc).get 
 def longCol (b : ByteArray) : Arr .i64 (len b).toUSize :=
   need (len b < USize.size) (fun _ => s!"longCol: {len b} longs do not fit a USize")
     (fun _ => Arr.mk (Enc.blank .i64 _) (Enc.blank_WF .i64 _)) fun h =>
-  longArr (b.extract 0 (8 * len b)) (by
+  Arr.ofBytes .i64 (b.extract 0 (8 * len b)) (show _ = 8 * _ by
     rw [USize.toNat_ofNat_of_lt' h]; simp [len, ByteArray.size_extract]; omega)
 
 /-- The slices `[lo i, hi i)` of a flat payload of `m` values clamped to `[0, m]`, as `Vals.row` reads
@@ -1073,7 +1073,7 @@ theorem setIds_size (vc : Code) (s : ByteArray) : (setIds vc s).size = 8 * len s
 
 /-- `setIds` as a long column of `m = len s` rows (`setIds_size`). -/
 def setIdCol (vc : Code) (s : ByteArray) (m : USize) (h : len s = m.toNat) : Arr .i64 m :=
-  longArr (setIds vc s) (by rw [setIds_size, h])
+  Arr.ofBytes .i64 (setIds vc s) (show _ = 8 * _ by rw [setIds_size, h])
 
 /-! ## Laws: codes are faithful, and each operator means its relation -/
 

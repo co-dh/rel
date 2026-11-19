@@ -1,4 +1,6 @@
 import Rel.Run.Comp
+import Rel.Run.SetOps
+import Rel.Run.CRelFoldDef
 import Rel.RepCols
 import Rel.RepCanon
 import Rel.Run.CRelDef
@@ -873,7 +875,7 @@ section Checks
   let ts : List (List (Int64 × Int64)) := [[(3, 1), (1, 2), (3, 1), (-1, 2), (1, 2), (2, 7), (-5, -5), (0, 0)],
     [(2, 5), (1, -3), (2, 6), (7, 7), (9, 0), (2, 5), (-5, 4), (0, 0)], [(-2, 9), (-2, 9), (7, -3)], [(4, 8)], []]
   ts.all fun ps => (ts.all fun qs => ((tab ps).comp (tab qs)).toOption.isSome &&
-    ((tab ps).comp (tab qs)).toOption.map Tab.toList == (CRel.comp (some (tab ps)) (some (tab qs))).map Tab.toList) &&
+    ((tab ps).comp (tab qs)).toOption.map Tab.toList == Option.map Tab.toList (CRel.comp (some (tab ps)) (some (tab qs)))) &&
     (tab ps).conv.toOption.isSome && ((tab ps).conv.toOption.map Tab.toList) ==
       (let c := Alg.canonC (⟨(tab ps).n, (tab ps).val, (tab ps).key⟩ : Tab .long .long)
        if c.2 then some c.1.toList else none)
@@ -882,12 +884,63 @@ section Checks
 private def compOk {A B C : Obj} [BEq A.El] [BEq B.El] [BEq C.El] (R : Tab A B) (S : Tab B C) : Bool :=
   let sp := R.toList.flatMap fun (a, b) => S.toList.filterMap fun (b', c) => if b == b' then some (a, c) else none
   match R.comp S with
-  | .ok T => some T.toList == (CRel.comp (some R) (some S)).map Tab.toList && T.toList.all sp.contains &&
+  | .ok T => some T.toList == Option.map Tab.toList (CRel.comp (some R) (some S)) && T.toList.all sp.contains &&
       sp.all T.toList.contains
   | .error _ => false
 
--- a `u1` middle column (`Arr.bools`) and a tuple middle column; a float middle column is not checked: its dense
--- `.bytes` column is refused by `Vals.concat` (`kscatter` reads only `foR`)
+/-- `-0.0`, `+0.0`, NaN with payloads `1` and `2`, `+inf`, `-inf`, `1.5`, `-0.0` again, as `f64` bits. -/
+private def f64s : List UInt64 := [0x8000000000000000, 0, 0x7ff8000000000001, 0x7ff8000000000002, 0x7ff0000000000000,
+  0xfff0000000000000, 0x3ff8000000000000, 0x8000000000000000]
+/-- The same eight values as `f32` bits. -/
+private def f32s : List UInt64 := [0x80000000, 0, 0x7fc00001, 0x7fc00002, 0x7f800000, 0xff800000, 0x3fc00000, 0x80000000]
+/-- `-1`, `-128`, `127`, `0`, `1`, `-2`, `-128`, `-1` as `i8` bits. -/
+private def i8s : List UInt64 := [0xff, 0x80, 0x7f, 0, 1, 0xfe, 0x80, 0xff]
+
+-- a float middle column, a `foR` column of its stored bits (`Arr.ofFn`) as every fixed-width column is
+#guard compOk (⟨8, Alg.col [3, 1, 2, 1, 4, 4, 0, 9], Arr.ofFn .f64 8 (f64s.getD · 0)⟩ : Tab .long (.atom .f64))
+  (⟨5, Arr.ofFn .f64 5 (f64s.reverse.getD · 0), Alg.col [7, 8, 9, 7, 6]⟩ : Tab (.atom .f64) .long)
+#guard compOk (⟨8, Alg.col [3, 1, 2, 1, 4, 4, 0, 9], Arr.ofFn .f32 8 (f32s.getD · 0)⟩ : Tab .long (.atom .f32))
+  (⟨5, Arr.ofFn .f32 5 (f32s.reverse.getD · 0), Alg.col [7, 8, 9, 7, 6]⟩ : Tab (.atom .f32) .long)
+
+/-- Two lists hold the same elements, each once: the old layer orders a float NaN first, `kasc` by `ordCode`. -/
+private def sameSet {α : Type} [BEq α] : Option (List α) → Option (List α) → Bool
+  | some a, some b => a.length == b.length && a.all b.contains && b.all a.contains
+  | _, _ => false
+
+/-- The old layer's table in canonical form, as a list. -/
+private def oldList {A B : Obj} (c : CRel A B) : Option (List (A.El × B.El)) :=
+  c.bind fun t => let c := Alg.canonC t; if c.2 then some c.1.toList else none
+
+/-- The five-kernel `canon`, `∪`, `∩`, `−`, `⊑`, `conv` and `comp` against the old operators on the same tables, whose
+key, value or middle column holds the words `ws` at `t` (`Arr.ofFn`). -/
+private def typeOk (t : QAtomicType) [BEq (Obj.atom t).El] (ws : List UInt64) (hu : t ≠ .u1 ∧ t.width.isSome) : Bool :=
+  let x := Arr.ofFn t 8 (ws.getD · 0) hu
+  let ls : List Int64 := [5, 6, 5, 7, 5, 6, 8, 5]
+  let K : Tab (.atom t) .long := ⟨8, x, Alg.col ls⟩
+  let V : Tab .long (.atom t) := ⟨8, Alg.col ls, x⟩
+  let K₂ : Tab (.atom t) .long := ⟨8, x, Alg.col ls.reverse⟩
+  let S : Tab (.atom t) .long := ⟨3, Arr.ofFn t 3 (ws.getD · 0) hu, Alg.col [5, 6, 3]⟩
+  let le (R S : Tab (.atom t) .long) := (R.le S).toOption == (let c := Alg.leC R S; if c.2 then some c.1 else none)
+  sameSet (K.canon.toOption.map Tab.toList) (oldList (some K)) &&
+  sameSet (V.canon.toOption.map Tab.toList) (oldList (some V)) &&
+  sameSet ((K.union K₂).toOption.map Tab.toList) (oldList (CRel.union (some K) (some K₂))) &&
+  sameSet ((K.inter K₂).toOption.map Tab.toList) (oldList (CRel.inter (some K) (some K₂))) &&
+  sameSet ((K.diff S).toOption.map Tab.toList) (oldList (CRel.diff (some K) (some S))) &&
+  sameSet ((S.diff K).toOption.map Tab.toList) (oldList (CRel.diff (some S) (some K))) &&
+  le K K && le K S && le S K &&
+  sameSet (K.conv.toOption.map Tab.toList) (oldList (some (⟨8, K.val, K.key⟩ : Tab .long (.atom t)))) &&
+  sameSet ((V.comp K).toOption.map Tab.toList) (Option.map Tab.toList (CRel.comp (some V) (some K))) &&
+  sameSet ((K.comp V).toOption.map Tab.toList) (Option.map Tab.toList (CRel.comp (some K) (some V)))
+
+-- floats (`-0.0` apart from `+0.0`, two NaN payloads apart, `±inf`), a narrow signed integer and `datetime` as key,
+-- value and middle column
+#guard typeOk .f64 f64s ⟨by decide, by decide⟩ && typeOk .f32 f32s ⟨by decide, by decide⟩ &&
+  typeOk .i8 i8s ⟨by decide, by decide⟩ && typeOk .datetime f64s ⟨by decide, by decide⟩
+-- `-0.0` and `+0.0`, and the two NaNs, are distinct rows: stored-bit equality
+#guard ((⟨8, Arr.ofFn .f64 8 (f64s.getD · 0), Alg.col [1, 1, 1, 1, 1, 1, 1, 1]⟩ : Tab (.atom .f64) .long).canon.toOption.map
+  Tab.n) == some 7
+
+-- a `u1` middle column (`Arr.bools`) and a tuple middle column
 #guard compOk (⟨4, Alg.col [3, 1, 2, 1], Arr.bools 4 fun i => i % 2 == 0⟩ : Tab .long (.atom .u1))
   (⟨3, Arr.bools 3 fun i => i == 1, Alg.col [7, 8, 9]⟩ : Tab (.atom .u1) .long)
 #guard compOk (⟨4, Alg.col [3, 1, 2, 1], (Alg.col [1, 1, 2, 2], Alg.col [5, 6, 5, 6])⟩ : Tab .long (.prod .long .long))
