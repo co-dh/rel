@@ -392,23 +392,42 @@ theorem ordCode_inj {w : Nat} (h1 : 1 ≤ w) (h8 : w ≤ 8) {float signed : Bool
   · exact ordCode_float_inj hMT h
   · exact ordCode_float_inj hMT h
 
-/-- **Equal order codes, equal atoms**, at every type with an order code (`ascOrd`): the code is one to one on the
-type's stored bits (`ordCode_inj`), and the atom reads only those bits; a `u1` word is `0` or `1`. -/
+/-- `atomOfBits_mod`'s converse: the atom determines the low `8 * w` bits it was read from (`Column.bitsOf` reads them
+back). -/
+theorem mod_of_atomOfBits {t : QAtomicType} {w : Nat} (ht : t.width = some w) (hb : t ≠ .u1) {a b : UInt64}
+    (h : Column.atomOfBits t a (QAtomicType.ne_general_of_width ht) =
+      Column.atomOfBits t b (QAtomicType.ne_general_of_width ht)) :
+    a.toNat % 2 ^ (8 * w) = b.toNat % 2 ^ (8 * w) := by
+  have e := congrArg Column.bitsOf h
+  cases t <;> simp [QAtomicType.width] at ht <;> subst ht <;> first | exact absurd rfl hb |
+    (simp only [Column.atomOfBits, Column.bitsOf] at e; try simp at e) <;>
+    first | (subst e; rfl) | simpa [UInt64.toNat_mod] using congrArg UInt64.toNat e
+
+/-- **Equal order codes iff equal atoms**, at every type with an order code (`ascOrd`): the code is one to one on the
+type's stored bits (`ordCode_inj`) and reads only those (`toNat_and_mask`), and the atom is one to one on them too
+(`atomOfBits_mod`, `mod_of_atomOfBits`); a `u1` word is `0` or `1`. -/
 theorem ascOrd_atom {t : QAtomicType} {f : UInt64 → UInt64} (ht : ascOrd t = some f) (hg : t ≠ .general)
-    {a b : UInt64} (hu : t = .u1 → a < 2 ∧ b < 2) (h : f a = f b) :
-    Column.atomOfBits t a hg = Column.atomOfBits t b hg := by
-  have key : ∀ {w}, t.width = some w → t ≠ .u1 → a.toNat % 2 ^ (8 * w) = b.toNat % 2 ^ (8 * w) →
-      Column.atomOfBits t a hg = Column.atomOfBits t b hg := fun hw hb e =>
-    (atomOfBits_mod hw hb a).symm.trans (e ▸ atomOfBits_mod hw hb b)
+    {a b : UInt64} (hu : t = .u1 → a < 2 ∧ b < 2) :
+    f a = f b ↔ Column.atomOfBits t a hg = Column.atomOfBits t b hg := by
+  have key : ∀ {w fl s}, f = ordCode w fl s → 1 ≤ w → w ≤ 8 → t.width = some w → t ≠ .u1 →
+      (f a = f b ↔ Column.atomOfBits t a hg = Column.atomOfBits t b hg) := fun hf h1 h8 hw hb => by
+    subst hf
+    refine ⟨fun h => (atomOfBits_mod hw hb a).symm.trans (ordCode_inj h1 h8 h ▸ atomOfBits_mod hw hb b), fun h => ?_⟩
+    have e := mod_of_atomOfBits hw hb h
+    have hm := UInt64.toNat_inj.1 ((toNat_and_mask h1 h8 a).trans (e.trans (toNat_and_mask h1 h8 b).symm))
+    simp only [ordCode, hm]
   cases t <;> simp only [ascOrd, ascLayout, orderKind, Option.map_some, Option.map_none, reduceCtorEq,
-    Option.some.injEq] at ht <;> subst ht
+    Option.some.injEq] at ht
   case u1 =>
     obtain ⟨ha, hb⟩ := hu rfl
-    have e : a.toNat % 2 ^ 8 = b.toNat % 2 ^ 8 := ordCode_inj (w := 1) (by decide) (by decide) h
     have ha' : a.toNat < 2 := ha
     have hb' : b.toNat < 2 := hb
-    rw [UInt64.toNat_inj.1 (by omega : a.toNat = b.toNat)]
-  all_goals exact key rfl (by decide) (ordCode_inj (by decide) (by decide) h)
+    have bit : ∀ x : UInt64, x.toNat < 2 → x = 0 ∨ x = 1 := fun x hx => by
+      rcases (by omega : x.toNat = 0 ∨ x.toNat = 1) with e | e
+      · exact .inl (UInt64.toNat_inj.1 (by simpa using e))
+      · exact .inr (UInt64.toNat_inj.1 (by simpa using e))
+    rcases bit a ha' with rfl | rfl <;> rcases bit b hb' with rfl | rfl <;> subst ht <;> simp only [Column.atomOfBits, QAtom.u1.injEq] <;> decide
+  all_goals exact key ht.symm (by decide) (by decide) rfl (by decide)
 
 end Rel.Verify
 

@@ -177,7 +177,7 @@ theorem Vals.row_of_codes : {A : Obj} → {n : USize} → (x : Vals A n) → {es
     simp only [seenKey, ascKeys, List.map_cons, List.map_nil, hof, Option.getD_some, List.cons.injEq, and_true,
       Array.getElem?_map] at hk
     exact Arr.get_eq_of_raw x x hv hv i i' fun hg a b ha hb hu =>
-      ascOrd_atom hof hg hu (by simpa only [ha, hb, Option.map_some, Option.getD_some] using hk)
+      (ascOrd_atom hof hg hu).1 (by simpa only [ha, hb, Option.map_some, Option.getD_some] using hk)
   | .prod _ _, n, x, es, hes, cs, hc, i, i', hk => by
     simp only [Vals.cols, bind, Except.bind, pure, Except.pure] at hes
     split at hes; · cases hes
