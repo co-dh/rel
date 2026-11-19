@@ -247,6 +247,10 @@ theorem bytesOf_size {t : QAtomicType} {n : USize} {w : Nat} {e : Enc} (hb : t �
     · split
       · rw [hpush, h8 ‹_›]; simp [Coc.alpElems]
       · rw [hpush]; simp [Coc.alpElems, hwu]
+  case pos =>
+    cases t <;> simp only [Enc.WF] at h
+    simp only [QAtomicType.width, Option.some.injEq] at hw; subst hw
+    exact ⟨_, rfl, by rw [hpush]; simp⟩
   all_goals cases t <;> simp_all [Enc.WF, Enc.bytesOf, QAtomicType.width]
 
 /-- `razeColumn`'s dense pass over well-formed parts, each read at its count as the `USize` it is: every

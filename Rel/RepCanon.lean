@@ -11,35 +11,43 @@ the elements, and `Vals.gather_row` to the rows. -/
 namespace Rel
 open Rel.Ext Rel.Kernel Rel.Verify
 
-/-- **Equal atoms of the words, equal elements**: two `Arr`s of one type in a column every kernel reads (`foR`; `pos`
-is no `Arr`) whose raw words `a` at `i` and `b` at `j` read as one atom (`atomOfBits`, given the `u1` bound every `Arr`
+/-- **An element is the atom of its word**: in a column every kernel reads (`foR`, or `pos` at `i64`), element `i` is
+`Carrier.of?` of the atom its raw word `a` reads as (`atomOfBits`), and at `u1` that word is below `2`. -/
+theorem Arr.get_raw_atom {t : QAtomicType} {n : USize} (x : Arr t n) (hx : Kernel.Enc.Valid n x.enc)
+    (hg : t ≠ .general) (i : Fin n.toNat) : ∃ a, (Enc.raw .i64 n x.enc)[i.1]? = some a ∧ (t = .u1 → a < 2) ∧
+      x.get i = (Carrier.of? t (.atom (Column.atomOfBits t a hg))).getD default := by
+  have hw := x.wf
+  rw [Arr.get_ne x i hg]
+  cases hc : x.enc with
+  | foR md pk =>
+    rw [hc] at hw
+    refine ⟨Column.foRBits md pk (Column.blockStarts md) i, by simp only [raw_foR .i64 8 rfl
+      (by decide : QAtomicType.i64 ≠ .u1), Array.getElem?_map, Array.getElem?_range, i.2, if_true, Option.map_some,
+      Nat.reduceMul, ofNat_toNat_mod64], fun hu => by
+        subst hu; simp only [Enc.WF] at hw; exact UInt64.lt_iff_toNat_lt.2 (hw.2.1 trivial i i.2), ?_⟩
+    cases t <;> first | exact absurd rfl hg |
+      simp only [Enc.get, if_pos i.2, QAtomicType.width, foRBits_starts, Option.bind_some]
+  | pos =>
+    rw [hc] at hw
+    cases t <;> simp only [Enc.WF] at hw
+    exact ⟨UInt64.ofNat i.1, by simp [Enc.raw, i.2], fun h => absurd h (by decide),
+      by simp [Enc.get, i.2, Column.atomOfBits]⟩
+  | _ => all_goals (rw [hc] at hx; simp only [Kernel.Enc.Valid] at hx)
+
+/-- **Equal atoms of the words, equal elements**: two `Arr`s of one type in a column every kernel reads (`foR`, or `pos`
+at `i64`) whose raw words `a` at `i` and `b` at `j` read as one atom (`atomOfBits`, given the `u1` bound every `Arr`
 keeps) hold one element there. What lifts a kernel's word law to `Arr.get`, at every type, equal words being the
 special case and `Arr.get_raw_foR` the `i64` reading. -/
 theorem Arr.get_eq_of_raw {t : QAtomicType} {n m : USize} (x : Arr t n) (y : Arr t m) (hx : Kernel.Enc.Valid n x.enc)
     (hy : Kernel.Enc.Valid m y.enc) (i : Fin n.toNat) (j : Fin m.toNat)
     (h : ∀ (hg : t ≠ .general) a b, (Enc.raw .i64 n x.enc)[i.1]? = some a → (Enc.raw .i64 m y.enc)[j.1]? = some b →
       (t = .u1 → a < 2 ∧ b < 2) → Column.atomOfBits t a hg = Column.atomOfBits t b hg) : x.get i = y.get j := by
-  have foR_of : ∀ {t n} (z : Arr t n), Kernel.Enc.Valid n z.enc → ∃ md pk, z.enc = .foR md pk := by
-    intro t n z hz; have hw := z.wf
-    cases hc : z.enc with
-    | foR md pk => exact ⟨md, pk, rfl⟩
-    | pos => rw [hc] at hw; cases t <;> simp only [Enc.WF] at hw
-    | _ => all_goals (rw [hc] at hz; simp only [Kernel.Enc.Valid] at hz)
-  obtain ⟨md, pk, hcx⟩ := foR_of x hx
-  obtain ⟨md', pk', hcy⟩ := foR_of y hy
-  have hwx := x.wf; rw [hcx] at hwx
-  have hwy := y.wf; rw [hcy] at hwy
-  have hg : t ≠ .general := by rintro rfl; simp only [Enc.WF] at hwx; exact absurd hwx.1 (by decide)
-  have word : ∀ {n : USize} md pk (i : Fin n.toNat),
-      (Enc.raw .i64 n (.foR md pk : Enc))[i.1]? = some (Column.foRBits md pk (Column.blockStarts md) i) :=
-    fun md pk i => by simp only [raw_foR .i64 8 rfl (by decide : QAtomicType.i64 ≠ .u1), Array.getElem?_map,
-      Array.getElem?_range, i.2, if_true, Option.map_some, Nat.reduceMul, ofNat_toNat_mod64]
-  have e := h hg _ _ (by rw [hcx]; exact word md pk i) (by rw [hcy]; exact word md' pk' j) fun hu => by
-    subst hu; simp only [Enc.WF] at hwx hwy
-    exact ⟨UInt64.lt_iff_toNat_lt.2 (hwx.2.1 trivial i i.2), UInt64.lt_iff_toNat_lt.2 (hwy.2.1 trivial j j.2)⟩
-  simp only [← foRBits_starts] at e
-  rw [Arr.get_ne x i hg, Arr.get_ne y j hg, hcx, hcy]
-  cases t <;> first | exact absurd rfl hg | (simp only [Enc.get, if_pos i.2, if_pos j.2, QAtomicType.width, e])
+  have hg : t ≠ .general := by
+    rintro rfl; have hw := x.wf
+    cases hc : x.enc <;> (rw [hc] at hw hx; simp only [Enc.WF, Kernel.Enc.Valid] at hw hx) <;> exact absurd hw.1 (by decide)
+  obtain ⟨a, ha, hua, ex⟩ := Arr.get_raw_atom x hx hg i
+  obtain ⟨b, hb, hub, ey⟩ := Arr.get_raw_atom y hy hg j
+  rw [ex, ey, h hg a b ha hb fun hu => ⟨hua hu, hub hu⟩]
 
 /-- **The row form of the bridge**: row `j` of `Vals.gather m ix x` is row `ix[j]` of `x`, the index being below `n`. -/
 theorem Vals.gather_row {m : USize} {ix : Enc} : {A : Obj} → {n : USize} → (x : Vals A n) → {y : Vals A m} →

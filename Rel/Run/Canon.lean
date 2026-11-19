@@ -44,7 +44,10 @@ theorem Arr.kgather_wf {t : QAtomicType} {n m : USize} {ix o : Enc} (x : Arr t n
     simp only [Array.getElem_map, raw_foR .i64 8 rfl (by decide : QAtomicType.i64 ≠ .u1), Array.getElem?_map,
       Array.getElem?_range, hi, if_true, Option.map_some, Option.getD_some, Nat.reduceMul, ofNat_toNat_mod64]
     exact UInt64.lt_iff_toNat_lt.2 (hw'.2 hu _ hi)
-  | pos => cases t <;> simp only [Enc.WF] at hw
+  | pos =>
+    -- `pos` is a column only at `i64` (`Enc.WF`), where the gathered words need no bound
+    cases t <;> simp only [Enc.WF] at hw
+    exact (wordsFoR_closed _ (by rw [Array.size_map, his])).2.2 rfl (fun h => absurd h (by decide))
   | _ => all_goals simp only [Kernel.Enc.Valid] at hv
 
 /-- The atom columns of a side, each with its type, in the order of `Vals.row`'s tuple; a side holding an `arr` or a
