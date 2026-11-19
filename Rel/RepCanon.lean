@@ -1015,12 +1015,17 @@ def canonAgrees {k v : Obj} [BEq k.El] [BEq v.El] (R : Tab k v) : Bool :=
 
 #guard [[(3, 1), (1, 2), (3, 1), (-1, 2), (1, 2), (2, 7), (-5, -5), (0, 0)], [(-2, 9), (-2, 9), (7, -3)], []].all
   fun ps => canonAgrees (tab ps)
-/-- The table whose row `i` is `(tag, position, value)` = `ts[i]`, its key the sum side over the payloads `ls` (tag
-`false`) and `rs` (tag `true`), every column `foR` (`Alg.tags`, `Alg.col`). `[R, S]`, `R + S`, `inl` and `inr` write
+/-- The table whose row `i` is `(tag, position, value)` = `ts[i]`, its key the sum side over the payloads `x` (tag
+`false`) and `y` (tag `true`), every column `foR` (`Alg.tags`, `Alg.col`). `[R, S]`, `R + S`, `inl` and `inr` write
 their position columns through the old `tilCol`/`razeTo`, which `kgather` declines (not `foR`). -/
+def sumOn {a b : Obj} (ts : List (Bool × Int64 × Int64)) {l r : USize} (x : Vals a l) (y : Vals b r) :
+    Tab (.sum a b) .long :=
+  ⟨ts.length.toUSize, ⟨l, r, Alg.tags (ts.map fun t => ((1 : USize), t.1)).toArray _,
+    List.length_map _ ▸ Alg.col (ts.map (·.2.1)), x, y⟩, List.length_map _ ▸ Alg.col (ts.map (·.2.2))⟩
+
+/-- `sumOn` over the payloads of the longs `ls` and `rs`. -/
 def sumTab (ts : List (Bool × Int64 × Int64)) (ls rs : List Int64) : Tab (.sum .long .long) .long :=
-  ⟨ts.length.toUSize, ⟨ls.length.toUSize, rs.length.toUSize, Alg.tags (ts.map fun t => ((1 : USize), t.1)).toArray _,
-    List.length_map _ ▸ Alg.col (ts.map (·.2.1)), Alg.col ls, Alg.col rs⟩, List.length_map _ ▸ Alg.col (ts.map (·.2.2))⟩
+  sumOn ts (Alg.col ls) (Alg.col rs)
 
 -- sum sides, as the key, the value and both: left payload positions `0` and `2` hold one value, so their rows are one
 -- row; a summand of no rows, on each side
@@ -1033,10 +1038,13 @@ def sumTab (ts : List (Bool × Int64 × Int64)) (ls rs : List Int64) : Tab (.sum
     canonAgrees (Tab.mk R.n R.key R.key)
 
 /-- The table whose row `i` is `(lo, hi, value)` = `cs[i]`, its key the `arr` side of the cells `[lo, hi)` over the
-payload `ps`, every column `foR` (`Alg.col`). -/
-def arrTab (cs : List (Int64 × Int64 × Int64)) (ps : List Int64) : Tab (.arr .long) .long :=
-  ⟨cs.length.toUSize, ⟨ps.length.toUSize, List.length_map _ ▸ Alg.col (cs.map (·.1)),
-    List.length_map _ ▸ Alg.col (cs.map (·.2.1)), Alg.col ps⟩, List.length_map _ ▸ Alg.col (cs.map (·.2.2))⟩
+payload `f`, every column `foR` (`Alg.col`). -/
+def arrOn {B : Obj} (cs : List (Int64 × Int64 × Int64)) {m : USize} (f : Vals B m) : Tab (.arr B) .long :=
+  ⟨cs.length.toUSize, ⟨m, List.length_map _ ▸ Alg.col (cs.map (·.1)), List.length_map _ ▸ Alg.col (cs.map (·.2.1)), f⟩,
+    List.length_map _ ▸ Alg.col (cs.map (·.2.2))⟩
+
+/-- `arrOn` over the payload of the longs `ps`. -/
+def arrTab (cs : List (Int64 × Int64 × Int64)) (ps : List Int64) : Tab (.arr .long) .long := arrOn cs (Alg.col ps)
 
 /-- Cells over the payload `5 1 5 9 5`: `[5,1]` twice from one range, `[5]` from three ranges (`[0,1)`, `[2,3)`, and
 `[-1,1)` clamped), the empty cell from `[3,3)` and from `hi < lo`, a proper prefix `[5]` of `[5,1]`, and `[3,9)` clamped

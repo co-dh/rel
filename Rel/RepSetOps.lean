@@ -734,19 +734,49 @@ private def T₃ : List (Int64 × Int64) := [(0, 0), (9, 9)]
 #guard ((tab T₁).le (tab T₁)).toOption == some true
 #guard ((tab T₁).le (tab T₂)).toOption == some false
 #guard ((tab []).le (tab [])).toOption == some true
--- the five-kernel operators against the old `CRel.union`, `CRel.inter`, `CRel.diff`, `Alg.leC` on the same tables,
--- both orders; the old `∩`/`−` keep `R`'s order, so their answer is compared after `Alg.canonC`
-#guard [T₁, T₂, T₃, []].all fun ps => [T₁, T₂, T₃, []].all fun qs =>
-  let R := tab ps; let S := tab qs
-  let old (c : CRel .long .long) := c.bind fun t => let c := Alg.canonC t; if c.2 then some c.1.toList else none
-  ((R.union S).toOption.map Tab.toList) == old (CRel.union (some R) (some S)) &&
-  ((R.inter S).toOption.map Tab.toList) == old (CRel.inter (some R) (some S)) &&
-  ((R.diff S).toOption.map Tab.toList) == old (CRel.diff (some R) (some S)) &&
+/-- The five-kernel `∪`, `∩`, `−`, `⊑` of `R` and `S`, each answering `.ok`, against the old `CRel.union`, `CRel.inter`,
+`CRel.diff`, `Alg.leC`; the old `∩`/`−` keep `R`'s order, so their answer is compared after `Alg.canonC`. -/
+private def setOk {k v : Obj} [BEq k.El] [BEq v.El] (R S : Tab k v) : Bool :=
+  let old (c : CRel k v) := c.bind fun t => let c := Alg.canonC t; if c.2 then some c.1.toList else none
+  let new (r : Except String (Tab k v)) := match r with | .ok t => some t.toList | .error _ => none
+  (new (R.union S)).isSome && (new (R.inter S)).isSome && (new (R.diff S)).isSome && (R.le S).toOption.isSome &&
+  new (R.union S) == old (CRel.union (some R) (some S)) && new (R.inter S) == old (CRel.inter (some R) (some S)) &&
+  new (R.diff S) == old (CRel.diff (some R) (some S)) &&
   (R.le S).toOption == (let c := Alg.leC R S; if c.2 then some c.1 else none)
 
--- an `arr` key side: every operator is the error until `Vals.concat` (`Rel/Run/Cols.lean`) concatenates `arr` sides
-#guard let R := arrTab arrCells arrPay
-  [R.union R, R.inter R, R.diff R].all fun r => r matches .error "concat: an arr side is not atom columns"
+-- both orders of every pair of tables
+#guard [T₁, T₂, T₃, []].all fun ps => [T₁, T₂, T₃, []].all fun qs => setOk (tab ps) (tab qs)
+
+/-- Cells over the payload `9 5 1 5`, the second part of each pair being shifted past `arrPay` by `Vals.concat`:
+`[5]` and `[5,1]` (in `arrCells` too, from other ranges), the empty cell, `[1,5]`, and `[5]` from `[-4,2)` clamped. -/
+private def arrCells₂ : List (Int64 × Int64 × Int64) := [(1, 2, 1), (1, 3, 7), (0, 0, 2), (2, 4, 1), (3, 4, 5), (-4, 2, 9)]
+private def arrPay₂ : List Int64 := [9, 5, 1, 5]
+
+-- `arr` sides as the key and as the value: cells over different payloads, a side of no payload rows, a table of no
+-- rows; tuple elements (`arr (long × long)`) and nested arrays (`arr (arr long)`)
+#guard let As := [arrTab arrCells arrPay, arrTab arrCells₂ arrPay₂, arrTab [(0, 0, 1), (3, 1, 2)] [], arrTab [] arrPay]
+  As.all fun R => As.all fun S => setOk R S && setOk (Tab.mk R.n R.val R.key) (Tab.mk S.n S.val S.key)
+#guard let P (cs : List (Int64 × Int64 × Int64)) (ps qs : List Int64) (h : qs.length = ps.length) :
+    Tab (.arr (.prod .long .long)) .long := arrOn cs (B := .prod .long .long) (Alg.col ps, h ▸ Alg.col qs)
+  let As := [P arrCells arrPay [0, 1, 0, 0, 2] rfl, P arrCells₂ arrPay₂ [0, 1, 1, 1] rfl, P [] [] [] rfl]
+  As.all fun R => As.all fun S => setOk R S
+#guard let As := [arrOn arrCells (arrTab arrCells₂ arrPay₂).key, arrOn arrCells₂ (arrTab arrCells arrPay).key,
+    arrOn [(0, 2, 1)] (arrTab [] arrPay).key]
+  As.all fun R => As.all fun S => setOk R S && setOk (Tab.mk R.n R.val R.key) (Tab.mk S.n S.val S.key)
+
+/-- Sum rows `(tag, position, value)`: left payload positions holding one value, a clamped position `5`. -/
+private def sumRows₁ : List (Bool × Int64 × Int64) :=
+  [(false, 0, 1), (true, 1, 2), (false, 2, 1), (false, 1, 1), (true, 0, 2), (true, 1, 2), (false, 5, 3)]
+private def sumRows₂ : List (Bool × Int64 × Int64) := [(true, 0, 2), (false, 1, 1), (false, 0, 9), (true, 1, 3)]
+
+-- `sum` sides as the key and as the value, with long and with `arr` summands
+#guard let Ss := [sumTab sumRows₁ [5, 7, 5] [9, 4], sumTab sumRows₂ [7, 5] [9, 8]]
+  Ss.all fun R => Ss.all fun S => setOk R S && setOk (Tab.mk R.n R.val R.key) (Tab.mk S.n S.val S.key)
+#guard let Ss := [sumOn sumRows₁ (arrTab arrCells arrPay).key (b := .long) (Alg.col [9, 4]),
+    sumOn sumRows₂ (arrTab arrCells₂ arrPay₂).key (b := .long) (Alg.col [9, 8])]
+  Ss.all fun R => Ss.all fun S => setOk R S && setOk (Tab.mk R.n R.val R.key) (Tab.mk S.n S.val S.key)
+-- a summand empty on one side only: its rows read `Obj.dflt`, which no payload row holds, so the error
+#guard (sumTab [(true, 0, 1)] [] [9]).union (sumTab [(false, 0, 1)] [5] []) matches .error _
 
 end Checks
 

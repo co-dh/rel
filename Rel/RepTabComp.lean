@@ -943,9 +943,26 @@ private def typeOk (t : QAtomicType) [BEq (Obj.atom t).El] (ws : List UInt64) (h
   (⟨3, Arr.bools 3 fun i => i == 1, Alg.col [7, 8, 9]⟩ : Tab (.atom .u1) .long)
 #guard compOk (⟨4, Alg.col [3, 1, 2, 1], (Alg.col [1, 1, 2, 2], Alg.col [5, 6, 5, 6])⟩ : Tab .long (.prod .long .long))
   (⟨3, (Alg.col [2, 1, 1], Alg.col [5, 6, 5]), Alg.col [7, 8, 9]⟩ : Tab (.prod .long .long) .long)
--- an `arr` middle column: the error until `Vals.concat` (`Rel/Run/Cols.lean`) concatenates `arr` sides
-#guard let A := arrTab arrCells arrPay
-  (Tab.comp (Tab.mk A.n A.val A.key) A) matches .error "concat: an arr side is not atom columns"
+-- an `arr` middle column: cells over two payloads (equal cells from different ranges, the empty cell, clamped
+-- ranges), a side of no payload rows, a table of no rows, tuple elements and nested arrays
+#guard let As := [arrTab arrCells arrPay, arrTab [(1, 2, 1), (1, 3, 7), (0, 0, 2), (2, 4, 1), (-4, 2, 9)] [9, 5, 1, 5],
+    arrTab [(0, 0, 1), (3, 1, 2)] [], arrTab [] arrPay]
+  As.all fun R => As.all fun S => compOk (Tab.mk R.n R.val R.key) S
+#guard let As := [arrOn arrCells (B := .prod .long .long) (Alg.col arrPay, Alg.col [0, 1, 0, 0, 2]),
+    arrOn [(1, 3, 7), (0, 0, 2), (2, 5, 1)] (B := .prod .long .long) (Alg.col arrPay, Alg.col [1, 0, 0, 1, 0])]
+  As.all fun R => As.all fun S => compOk (Tab.mk R.n R.val R.key) S
+#guard let As := [arrOn arrCells (arrTab [(1, 2, 1), (0, 2, 7), (0, 0, 2), (2, 4, 1)] [9, 5, 1, 5]).key,
+    arrOn [(0, 2, 1), (1, 3, 7)] (arrTab arrCells arrPay).key]
+  As.all fun R => As.all fun S => compOk (Tab.mk R.n R.val R.key) S
+-- a `sum` middle column, with long and with `arr` summands
+#guard let Ss := [sumTab [(false, 0, 1), (true, 1, 2), (false, 2, 1), (true, 0, 2), (false, 5, 3)] [5, 7, 5] [9, 4],
+    sumTab [(true, 0, 2), (false, 1, 1), (false, 0, 9), (true, 1, 3)] [7, 5] [9, 8]]
+  Ss.all fun R => Ss.all fun S => compOk (Tab.mk R.n R.val R.key) S
+#guard let Ss := [sumOn [(false, 0, 1), (true, 1, 2), (false, 2, 1)] (arrTab arrCells arrPay).key (b := .long)
+      (Alg.col [9, 4]),
+    sumOn [(true, 0, 2), (false, 7, 1), (false, 0, 9)] (arrTab [(1, 3, 7), (0, 0, 2)] [9, 5, 1, 5]).key (b := .long)
+      (Alg.col [9])]
+  Ss.all fun R => Ss.all fun S => compOk (Tab.mk R.n R.val R.key) S
 
 end Checks
 
