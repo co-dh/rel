@@ -3,14 +3,12 @@ import Rel.Programs.CSP
 /-! # Sudoku path consistency (AIMA §6.2.3), 9×9
 
 `SudokuPC`'s program on the 9×9 board of `SudokuAC`, the puzzle
-`4.....8.5.3..........7......2.....6.....8.4......1.......6.3.7.5..2.....1.4......`. `pc(X)` is never a table:
-each round runs as bit matrices (`Bits`), `sup(X) X` one `bitRowsOver` call where its table has some 10⁸ rows,
-and `π₁\` another. It stays on the old layer (`rel.kernel`): the kernel path, which has no bit matrix, would build
-the table of `sup(X) X` (some 10⁸ rows). -/
+`4.....8.5.3..........7......2.....6.....8.4......1.......6.3.7.5..2.....1.4......`. On the kernel path
+`sup(X) X` (an expansion of 1.9e8 rows in round 1) and `π₁\` run as bit matrices (`Tab.compSel`, `Tab.ldivSel`);
+`π₁X` (2.7e7 rows in round 1) is still a table, which is where the rounds spend their time. -/
 
 namespace Rel.Programs
 
-set_option rel.kernel false in
 open Rel.Programs.prelude csp in
 rel_program sudokupc9 where
     obj Cell = 0…80                               -- the cell in row r, column k is 9r+k

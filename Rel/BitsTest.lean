@@ -80,8 +80,9 @@ def selLdiv (bits : Nat) (R S : List (Int64 × Int64)) (UB UC : List Int64) : Bo
 def denseR : List (Int64 × Int64) := (List.range 40).map fun i => (Int64.ofNat (i / 10), Int64.ofNat (i % 10))
 def denseS : List (Int64 × Int64) := (List.range 40).map fun i => (Int64.ofNat (i / 4), Int64.ofNat (100 + i % 4))
 
--- the rule on its own: `40 ≤ bits` takes the matrix, `39` the expansion; never past the expansion
-#guard Tab.bitsWin 40 160 10 4 4 && !Tab.bitsWin 39 160 10 4 4 && !Tab.bitsWin Tab.bitsMax 56 10 4 4
+-- the rule on its own: `40 ≤ bits` takes the matrix, `39` the expansion; never past the expansion's `64 · T` bits
+#guard Tab.bitsWin 40 160 10 4 4 && !Tab.bitsWin 39 160 10 4 4 && !Tab.bitsWin Tab.bitsMax 0 10 4 4 &&
+  Tab.bitsWin Tab.bitsMax 1 10 4 0 && !Tab.bitsWin Tab.bitsMax 1 64 0 1
 -- both sides of the threshold, and the bound in use
 #guard [0, 39, 40, Tab.bitsMax].all fun b => selComp b denseR denseS
 #guard [0, 39, 40, Tab.bitsMax].all fun b => selComp b ((rnd 1 300 40).map fun (a, b) => (a, b % 31))

@@ -90,20 +90,25 @@ def ldivBits (R : Tab A B) (S : Tab A C) (UB : Tab B B) (UC : Tab C C) : Except 
 /-- The most bits a matrix `compSel`, `ldivSel` build (`doc/rel-architecture.zh.typ` §4, `bitrows`). -/
 def bitsMax : Nat := 2 ^ 27
 
+/-- The bits an expanded row costs at least: one 64-bit word (it carries more: both sides and its row numbers). The
+rule compares bits with bits, because memory IO is what both forms pay. -/
+def rowBits : Nat := 64
+
 /-- **The bit-matrix rule**: the `kbitrows` input of `na` rows and output of `g` rows, both of `w` bits, replace an
-expansion of `T` rows when each is within `bits` and below `kbitrows`' `2^32`, and the two together are below `T`. -/
+expansion of `T` rows when each is within `bits` and below `kbitrows`' `2^32`, and the two together are below the
+expansion's `rowBits · T` bits. -/
 def bitsWin (bits T na g w : Nat) : Bool :=
-  na * w ≤ bits && g * w ≤ bits && na * w < 2 ^ 32 && g * w < 2 ^ 32 && na * w + g * w < T
+  na * w ≤ bits && g * w ≤ bits && na * w < 2 ^ 32 && g * w < 2 ^ 32 && na * w + g * w < rowBits * T
 
 /-- **`R ≫ S`, on a bit matrix where `bitsWin` holds** (`compBits`, `Tab.compBits_holds`), else `compFrom` on the
 same `compGroups` (`Tab.comp_canon`). `T` is `compGroups`' expansion, the matrix `K` rows (`K` the middle values, as
-`compBits`' `kb`) and `ka` rows of `kc` bits. A nonempty expansion has `ka, kc ≥ 1`, so `T ≤ K + 1` fails `bitsWin`
-before the two codes are paid for. -/
+`compBits`' `kb`) and `ka` rows of `kc` bits. A nonempty expansion has `ka, kc ≥ 1`, so `rowBits · T ≤ K + 1` fails
+`bitsWin` before the two codes are paid for. -/
 def compSel (bits : Nat) (R : Tab A B) (S : Tab B C) : Except String (Tab A C) := do
   let x ← compGroups R S
   let T ← compRows x
   let K := x.2.2.2.2.1.toNat
-  if T ≤ K + 1 then compFrom blockRows R S x else do
+  if rowBits * T ≤ K + 1 then compFrom blockRows R S x else do
     let ka := (← Vals.code R.key).1.toNat
     let kc := (← Vals.code S.val).1.toNat
     if bitsWin bits T K ka kc then compBits R S else compFrom blockRows R S x
@@ -111,12 +116,12 @@ def compSel (bits : Nat) (R : Tab A B) (S : Tab B C) : Except String (Tab A C) :
 /-- **`R \ S` within `UB`, `UC`, on a bit matrix where `bitsWin` holds** (`ldivBits`, `Tab.ldivBits_holds`), else
 `ldiv` (`Tab.ldiv_holds`). `T` is the expansion of `R° ≫ S` (`compGroups`; `ldiv`'s `Q` before `R`, `S` are
 deduplicated), the matrix `ka + 1` rows (`ka` the keys, as `ldivBits`' `ka`) and `kb` rows of `kc` bits. A nonempty
-expansion has `kb, kc ≥ 1`, so `T ≤ ka + 2` fails `bitsWin` before the two codes are paid for. -/
+expansion has `kb, kc ≥ 1`, so `rowBits · T ≤ ka + 2` fails `bitsWin` before the two codes are paid for. -/
 def ldivSel (bits : Nat) (R : Tab A B) (S : Tab A C) (UB : Tab B B) (UC : Tab C C) : Except String (Tab B C) := do
   let x ← compGroups (⟨R.n, R.val, R.key⟩ : Tab B A) S
   let T ← compRows x
   let ka := x.2.2.2.2.1.toNat
-  if T ≤ ka + 2 then ldiv R S UB UC else do
+  if rowBits * T ≤ ka + 2 then ldiv R S UB UC else do
     let kb := (← Vals.code2 R.val UB.val).1.toNat
     let kc := (← Vals.code2 S.val UC.val).1.toNat
     if bitsWin bits T (ka + 1) kb kc then ldivBits R S UB UC else ldiv R S UB UC
