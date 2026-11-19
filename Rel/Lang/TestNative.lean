@@ -10,7 +10,7 @@ import Rel.Lang.GenSpec
 
 namespace Rel.Lang.TestNative
 
-open Tab Rel.Lang Rel.Lang.Plan
+open Tab Rel.Lang Rel.Lang.Plan Rel.Kernel
 
 rel_program native1a where
     obj X = {A,B,C}
@@ -20,36 +20,80 @@ rel_program native1a where
 /-- `output x to "out"`. -/
 def plan : Lean.Meta.MetaM (Except String Plan) := return (← outputOf [] native1a "x" "out") >>= Bld.plan
 
-/-! F-e: a computed relation as columns. `Alg.arith` (`arithB`) on two literal columns answers a count register
-    and buffers; the output is the one-row relation of lists `gu ↦ s`: each side's `.e` a computed buffer handed to
-    `parts` (`pushPart`), its `.hi` the count register as a buffer (`enlistLong`), its `.lo` the literal `[0]`. -/
+/-! F-e: a computed relation as columns. `arithB` on two literal columns answers a count register and `Enc`
+    registers; the output is the one-row relation of lists `gu ↦ s`: each side's `.e` a computed column handed over
+    encoded (`encRegs`), its `.hi` the one-row column of the count (`constB`), its `.lo` the literal `[0]`. -/
 
-/-- The literal long payload of `xs`. -/
-def longs (xs : List Int64) : ByteArray := xs.foldl (fun b x => Column.pushBits b x.toUInt64 8) .empty
+/-- The literal `i64` column of `xs`, encoded as the kernels encode their answers (`wordsFoR`). -/
+def longs (xs : List Int64) : Enc := wordsFoR (xs.map Int64.toUInt64).toArray
 
-/-- A list side of one row: `.lo` `[0]`, `.hi` `[m]`, `.e` the `m` longs `e`. -/
+/-- A list side of one row: `.lo` `[0]`, `.hi` `[m]`, `.e` the `m` rows of the column `e`. -/
 def listSide (m e : Nat) : Bld Side := do
   let one ← lit (.size 1)
-  return [(".lo", ← colRegs .i64 0 one #[← lit (.bytes (Rel.one 0))]),
-    (".hi", ← colRegs .i64 0 one #[← call1 (kernel% Kernel.enlistLong) #[m]]), (".e", ← colRegs .i64 0 m #[e])]
+  return [(".lo", ← encRegs .i64 one (← lit (Reg.put (longs [0])))),
+    (".hi", ← encRegs .i64 one (← constB one (← call1 (kernel% USize.toUInt64) #[m]))), (".e", ← encRegs .i64 m e)]
 
-/-- `arith add` of `u` and `v` (a null, an overflow, a negative operand among the rows), written to `dir`. -/
-def arithOut (dir : String) : Bld Unit := do
+/-- `arith add`'s operands: a null, an overflow, a negative operand among the rows. -/
+def arithIn : Bld (Array Nat) := do
   let n ← lit (.size 5)
-  let u ← lit (.bytes (longs [5, 7, Alg.nul, Int64.maxValue, -3]))
-  let v ← lit (.bytes (longs [1, 2, 3, 1, 4]))
-  let rs ← arithB Kernel.Ew.add n u v
-  let (some r, some gu, some s) := (rs[0]?, rs[1]?, rs[3]?) | throw "arithB answers four registers"
-  output dir (← listSide r gu, ← listSide r s)
+  arithB .add n (← lit (Reg.put (longs [5, 7, Alg.nul, Int64.maxValue, -3]))) (← lit (Reg.put (longs [1, 2, 3, 1, 4])))
 
--- six columns, each one `qlean_own_write`; the kept rows are those of `arith`: `5+1`, `7+2`, `-3+4` (null and overflow out)
+/-- `arithIn`'s relation, written to `dir`. -/
+def arithOut (dir : String) : Bld Unit := do
+  let rs ← arithIn
+  output dir (← listSide (← nth rs 0 "arithB") (← nth rs 1 "arithB"), ← listSide (← nth rs 0 "arithB") (← nth rs 3 "arithB"))
+
+-- six columns, each one `qlean_own_write`
 #eval show IO Unit from do
   let (_, ws) ← IO.ofExcept ((← IO.ofExcept (Bld.plan (arithOut "out"))).run abiOf)
   unless ws.size == 6 do throw (IO.userError s!"arithOut writes {ws.size} columns, not six")
 
-/-- The native gate's plan: `plan`'s output, then the computed relation's to `out/arith`. -/
+-- the kept rows are those of `arith`: `5+1`, `7+2`, `-3+4` (the null and the overflow out); decoded here, in the test
+#eval show IO Unit from do
+  let (rs, is, _, fs, gs) ← IO.ofExcept (arithIn.run (#[], 0, #[], #[]))
+  let (vs, _) ← IO.ofExcept ((Plan.mk fs gs is.toList).run abiOf)
+  let col (i : Nat) : List UInt64 := match rs[i]?.bind (vs[·]?) |>.bind (Reg.get? (α := Enc)) with
+    | some e => (Ext.Enc.raw .i64 3 e).toList | none => []
+  unless (rs[0]?.bind (vs[·]?) |>.bind (Reg.get? (α := USize))) == some 3 do throw (IO.userError "arithB keeps not 3 rows")
+  unless col 1 == [5, 7, (-3 : Int64).toUInt64] && col 3 == [6, 9, 1] do
+    throw (IO.userError s!"arithB keeps u = {col 1}, s = {col 3}")
+
+/-! Group ids (`groupIdsB`, design §4 group-by `kasc ≫ kseen`), as a plan function, so a function's C is printed. -/
+
+/-- The plan function of `groupIdsB` on its parameters: the type's byte, the row count, the column. -/
+def gfun : Bld Nat := defFun #[.u8, .size, .obj] fun ps => do
+  pure #[← groupIdsB (← nth ps 0 "gfun") (← nth ps 1 "gfun") (← nth ps 2 "gfun")]
+
+/-- Columns of each type a key reads, with their group ids: ties, a boolean, no row. -/
+def codes : List (QAtomicType × Nat × Enc × List UInt64) :=
+  [(.i64, 5, longs [3, 1, 3, 2, 1], [2, 0, 2, 1, 0]), (.u1, 4, wordsFoR #[1, 0, 1, 1], [1, 0, 1, 1]),
+   (.i64, 0, longs [], [])]
+
+/-- `gfun` applied to `c`: its ids register. -/
+def gapply (c : QAtomicType × Nat × Enc × List UInt64) (f : Nat) : Bld Nat := do
+  nth (← apply f #[← lit (Reg.put c.1), ← lit (.size c.2.1.toUSize), ← lit (Reg.put c.2.2.1)] 1) 0 "gfun"
+
+/-- `gfun` applied to each of `cs`; `main`'s last register is the last column's ids. -/
+def gplan (cs : List (QAtomicType × Nat × Enc × List UInt64)) : Except String Plan := Bld.plan do
+  let f ← gfun
+  for c in cs do discard <| gapply c f
+
+/-- `Plan.run` of `gplan [c]` answers `c`'s ids. -/
+def agrees (c : QAtomicType × Nat × Enc × List UInt64) : IO Bool := do
+  let (rs, _) ← IO.ofExcept ((← IO.ofExcept (gplan [c])).run abiOf)
+  pure <| (rs.back?.bind (Reg.get? (α := Enc))).any fun g => (Ext.Enc.raw .i64 c.2.1.toUSize g).toList == c.2.2.2
+
+#eval show IO Unit from do for c in codes do unless ← agrees c do throw (IO.userError s!"group ids differ at {repr c.1}")
+
+/-- The ids of `codes`' first column, written to `dir/key`. -/
+def gidOut (dir : String) : Bld Unit := do
+  let some c := codes.head? | throw "codes is empty"
+  output dir ([("", ← encRegs .i64 (← lit (.size c.2.1.toUSize)) (← gapply c (← gfun)))], [])
+
+/-- The native gate's plan: `plan`'s output, then the computed relation's to `out/arith` and the group ids to
+    `out/gid`. -/
 def gatePlan : Lean.Meta.MetaM (Except String Plan) :=
-  return (← outputOf [] native1a "x" "out") >>= fun b => Bld.plan (do b; arithOut "out/arith")
+  return (← outputOf [] native1a "x" "out") >>= fun b => Bld.plan (do b; arithOut "out/arith"; gidOut "out/gid")
 
 /-- `gatePlan` run outside Lean, in the environment of the modules on `LEAN_PATH` (as `lake env` sets it), where
     the elaborator's unifier finds the objects' constants (`Obj.named`). -/
@@ -64,32 +108,6 @@ def planIO : IO Plan := do
   let p ← match ← plan with | .ok p => pure p | .error e => throwError e
   unless p.main.length == 16 && p.main.all fun | .call s _ => s == "qlean_own_write" | .fail .. => false | _ => true do
     throwError "the plan has {p.main.length} instructions, not sixteen `lit`s and `qlean_own_write` calls"
-
-/-! Stage 1b, `Code.groupIds` (`groupIdsF`): one code per kind of lane, so every branch of its `if`s runs. -/
-
-/-- A code's four registers, as `lit`s. -/
-def codeRegs (c : Alg.Code) : Bld (Array Nat) :=
-  (codeVals c).mapM lit
-
-/-- `groupIdsF` applied to each of `cs`; `main`'s last two registers are the last code's answer. -/
-def gplan (cs : List Alg.Code) : Except String Plan := Bld.plan do
-  let f ← groupIdsF
-  for c in cs do discard <| apply f (← codeRegs c) 2
-
-/-- A bitmap, bytes, longs, and ids at `2` bits (`idGroups`). -/
-def codes : List Alg.Code :=
-  [⟨1, 10, 2, ⟨#[0b1011001, 0b10]⟩⟩, ⟨8, 5, 256, ⟨#[3, 1, 3, 2, 1]⟩⟩,
-   Alg.Code.ofLongs ⟨#[5, 0, 0, 0, 0, 0, 0, 0, 3, 0, 0, 0, 0, 0, 0, 0, 5, 0, 0, 0, 0, 0, 0, 0]⟩,
-   ⟨2, 4, 3, ⟨#[0b10000100]⟩⟩]
-
-/-- `Plan.run` of `gplan [c]` answers `c.groupIds`. -/
-def agrees (c : Alg.Code) : IO Bool := do
-  let (rs, _) ← IO.ofExcept ((← IO.ofExcept (gplan [c])).run abiOf)
-  match rs[rs.size - 2]?, rs[rs.size - 1]? with
-  | some (.bytes a), some (.bytes b) => pure (a.data == c.groupIds.1.data && b.data == c.groupIds.2.data)
-  | _, _ => pure false
-
-#eval show IO Unit from do for c in codes do unless ← agrees c do throw (IO.userError s!"groupIds plan differs at w = {c.w}")
 
 end Rel.Lang.TestNative
 

@@ -513,11 +513,11 @@ def arithB (op : Kernel.Op) (n u v : Nat) : Bld (Array Nat) := do
   let g (x : Nat) := call1 (kernel% kgather) #[r, w, n, x]
   return #[r, ← g u, ← g v, ← g s]
 
-/-- Each row's group among the `n` rows of the `t` column `c`, groups numbered in `asc` order of their keys (design §4,
+/-- Each row's group among the `n` rows of the column `c` of the type in the byte `t`, groups numbered in `asc` order of their keys (design §4,
     group-by = `asc ≫ seen`): `kasc` sorts the rows (the sorted column and the permutation `p`), `kseen` numbers the
     runs of equal keys on the sorted rows (`g`), and `kscatter` writes sorted row `k`'s group to row `p[k]`. -/
-def groupIdsB (t : QAtomicType) (n c : Nat) : Bld Nat := do
-  let key (e : Nat) : Bld Nat := do listB [← ctorB 0 #[← ctorB 0 #[] #[← lit (Reg.put t)], e] #[]]
+def groupIdsB (t n c : Nat) : Bld Nat := do
+  let key (e : Nat) : Bld Nat := do listB [← ctorB 0 #[← ctorB 0 #[] #[t], e] #[]]
   let sp ← callK (kernel% kasc) #[n, ← key c]
   let sorted ← projB (← nth sp 0 "kasc") 1 0 .obj
   let kg ← callK (kernel% kseen) #[n, ← key sorted]
