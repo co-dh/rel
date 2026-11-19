@@ -214,6 +214,99 @@ theorem Vals.nub_rows {A : Obj} {n : USize} {x : Vals A n} {r : (m : USize) × V
   · rintro ⟨i, rfl⟩; obtain ⟨j, i', h1, h2⟩ := Vals.nub_cover h hes i
     exact ⟨j, h1.trans (Vals.row_of_seenKey h hes i' i h2)⟩
 
+/-- **Which input row each row of `Vals.nub x` is**: `kasc`'s permutation `ps` (its grade by the codes `ascKeys`),
+`K` the sorted rows' keys (`K q` the key of input row `ps[q]`), and row `j` of the answer input row `ps[F[j]]`, `F` the
+first rows of `K` (`firstsOf`, `k` of them). -/
+theorem Vals.nub_sel {A : Obj} {n : USize} {x : Vals A n} {r : (m : USize) × Vals A m} (h : Vals.nub x = .ok r)
+    {es : List (QAtomicType × Enc)} (hes : Vals.cols x = .ok es) :
+    ∃ (ps : List Nat) (K : Nat → List UInt64), ps = ascGrade n.toNat (ascKeys n es) ∧
+      (∀ q (hq : q < ps.length), K q = seenKey n es ps[q]) ∧ r.1.toNat = (firstsOf K n.toNat).length ∧
+      ∀ j : Fin r.1.toNat, ∃ i : Fin n.toNat, Vals.row r.2 j = Vals.row x i ∧
+        ((firstsOf K n.toNat)[j.1]?.bind (ps[·]?)) = some i.1 := by
+  obtain ⟨es', vs, p, k, g, f, ix, y, hes', ha, hs, hix, hy, rfl⟩ := Vals.nub_ok h
+  have hee : es = es' := Except.ok.inj (hes.symm.trans hes'); subst hee
+  obtain ⟨ps, hp, hperm, hvl, hcol⟩ := asc_perm n es vs p ha
+  obtain ⟨cs, hc, -, -, -, -, -, hpk⟩ := kasc_ok ha
+  rw [ascCol_keys hc] at hpk
+  obtain ⟨hk, -, hf⟩ := kseen_ok hs
+  have hlen : ps.length = n.toNat := by simpa using hperm.length_eq
+  have hperm' := (ascGrade_spec n.toNat (ascKeys n es)).1
+  have hlen' : (ascGrade n.toNat (ascKeys n es)).length = n.toNat := by simpa using hperm'.length_eq
+  have hn := n.toNat_lt_size
+  have hU : USize.size ≤ 2 ^ 64 := by rcases USize.size_eq with h | h <;> omega
+  have hc64 : ∀ a, a < n.toNat → a.toUInt64.toNat = a := fun a ha => by simp; omega
+  have hrp : Enc.raw .i64 n p = (ps.map Nat.toUInt64).toArray := by
+    rw [hp]; exact (wordsFoR_closed _ (by simp [hlen])).2.1
+  -- `asc_perm`'s permutation is the grade: both are what `p` reads back as
+  have hpsg : ps = ascGrade n.toNat (ascKeys n es) := by
+    have e : ((ascGrade n.toNat (ascKeys n es)).map Nat.toUInt64).toArray = (ps.map Nat.toUInt64).toArray := by
+      rw [← hrp, hpk]; exact ((wordsFoR_closed _ (by simp [hlen'])).2.1).symm
+    refine List.ext_getElem (by rw [hlen, hlen']) fun q h1 h2 => ?_
+    have e2 := congrArg (fun a : Array UInt64 => a[q]?) e
+    simp only [List.getElem?_toArray, List.getElem?_map, List.getElem?_eq_getElem h1,
+      List.getElem?_eq_getElem h2, Option.map_some, Option.some.injEq] at e2
+    rw [← hc64 _ (List.mem_range.1 (hperm.mem_iff.1 (List.getElem_mem h1))),
+      ← hc64 _ (List.mem_range.1 (hperm'.mem_iff.1 (List.getElem_mem h2))), e2]
+  -- the sorted rows' key at `q` is the input's at `ps[q]`
+  have hkey : ∀ q (hq : q < ps.length), seenKey n ((es.map (·.1)).zip vs) q = seenKey n es ps[q] := by
+    intro q hq
+    simp only [seenKey, ascKeys, List.map_map]
+    apply List.ext_getElem (by simp [hvl])
+    intro c h1 h2
+    have hc2 : c < es.length := by simpa using h2
+    obtain ⟨ws, hv, hws, hwq⟩ := hcol c es[c] (vs[c]'(by omega)) (List.getElem?_eq_getElem hc2)
+      (List.getElem?_eq_getElem _)
+    simp only [List.getElem_map, List.getElem_zip, Function.comp_apply, hv, (wordsFoR_closed ws hws.symm).2.1,
+      Array.getElem?_map, hwq q hq]
+  generalize seenKey n ((es.map (·.1)).zip vs) = K at hk hf hkey
+  have hkn : k ≤ n.toNat := by rw [hk]; unfold firstsOf; exact Nat.le_trans (List.length_filter_le _ _) (by simp)
+  have hkU : k.toUSize.toNat = k := USize.toNat_ofNat_of_lt' (by omega)
+  refine ⟨ps, K, hpsg, hkey, by rw [hkU, hk], fun j => ?_⟩
+  have hgl : j.1 < (firstsOf K n.toNat).length := by have h2 : j.1 < k.toUSize.toNat := j.2; omega
+  obtain ⟨i', e1, r1⟩ := Vals.gather_row x hy j
+  refine ⟨i', r1, ?_⟩
+  -- `ix[j]` is `ps[firsts[j]]`
+  obtain ⟨his, hps, -, hix'⟩ := raw_kgather _ _ _ _ _ hix
+  have hrf : Enc.raw .i64 k.toUSize f = ((firstsOf K n.toNat).map Nat.toUInt64).toArray := by
+    rw [hf]; exact (wordsFoR_closed _ (by rw [hkU, hk]; simp)).2.1
+  have hri : Enc.raw .i64 k.toUSize ix = (((firstsOf K n.toNat).map Nat.toUInt64).toArray.map fun w =>
+      ((ps.map Nat.toUInt64).toArray)[w.toNat]?.getD 0) := by
+    rw [hix', (wordsFoR_closed _ (by rw [Array.size_map, his])).2.1, hrf, hrp]
+  have hq' : (firstsOf K n.toNat)[j.1] < n.toNat := firsts_lt K n.toNat (List.getElem_mem hgl)
+  have hfG : (firstsOf K n.toNat)[j.1] < ps.length := by omega
+  rw [List.getElem?_eq_getElem hgl, Option.bind_some, List.getElem?_eq_getElem hfG, ← e1, hri]
+  simp only [Array.getElem?_map, List.getElem?_toArray, List.getElem?_map, List.getElem?_eq_getElem hgl,
+    Option.map_some, Option.getD_some, hc64 _ hq', List.getElem?_eq_getElem hfG]
+  exact congrArg some (hc64 _ (List.mem_range.1 (hperm.mem_iff.1 (List.getElem_mem hfG)))).symm
+
+/-- **`Vals.nub x` is sorted and has no two rows with one key**: its rows are input rows `sel j`, ascending in `kasc`'s
+order of their codes (`lexLe` over `ascKeys`), no two with equal codes (`seenKey`). -/
+theorem Vals.nub_sorted {A : Obj} {n : USize} {x : Vals A n} {r : (m : USize) × Vals A m} (h : Vals.nub x = .ok r)
+    {es : List (QAtomicType × Enc)} (hes : Vals.cols x = .ok es) :
+    ∃ sel : Fin r.1.toNat → Fin n.toNat, (∀ j, Vals.row r.2 j = Vals.row x (sel j)) ∧
+      ∀ j j' : Fin r.1.toNat, j.1 < j'.1 → lexLe (ascKeys n es) (sel j) (sel j') = true ∧
+        seenKey n es (sel j) ≠ seenKey n es (sel j') := by
+  obtain ⟨ps, K, hps, hkey, hr, hsel⟩ := Vals.nub_sel h hes
+  obtain ⟨sel, hs⟩ := Classical.axiomOfChoice hsel
+  refine ⟨sel, fun j => (hs j).1, fun j j' hjj => ?_⟩
+  obtain ⟨hperm, hsort⟩ := ascGrade_spec n.toNat (ascKeys n es); rw [← hps] at hperm hsort
+  have hlen : ps.length = n.toNat := by simpa using hperm.length_eq
+  have fs := firsts_spec K n.toNat
+  have hj : j.1 < (firstsOf K n.toNat).length := hr ▸ j.2
+  have hj' : j'.1 < (firstsOf K n.toNat).length := hr ▸ j'.2
+  have hf : (firstsOf K n.toNat)[j.1] < ps.length := by have := firsts_lt K n.toNat (List.getElem_mem hj); omega
+  have hf' : (firstsOf K n.toNat)[j'.1] < ps.length := by have := firsts_lt K n.toNat (List.getElem_mem hj'); omega
+  have e := (hs j).2; have e' := (hs j').2
+  simp only [List.getElem?_eq_getElem hj, List.getElem?_eq_getElem hj', Option.bind_some, List.getElem?_eq_getElem hf,
+    List.getElem?_eq_getElem hf', Option.some.injEq] at e e'
+  have hlt : (firstsOf K n.toNat)[j.1] < (firstsOf K n.toNat)[j'.1] := List.pairwise_iff_getElem.1 fs.1 _ _ hj hj' hjj
+  refine ⟨?_, fun hk => ?_⟩
+  · have l := (List.pairwise_iff_getElem.1 hsort _ _ hf hf' hlt).1; rw [e, e'] at l; exact l
+  · replace hk : K (firstsOf K n.toNat)[j.1] = K (firstsOf K n.toNat)[j'.1] := by
+      rw [hkey _ hf, hkey _ hf', e, e']; exact hk
+    have g := (fs.2.2.1 _ (by omega) _ (by omega)).2 hk
+    rw [fs.2.2.2.1 _ hj, fs.2.2.2.1 _ hj'] at g; omega
+
 namespace Tab
 variable {k v : Obj}
 
