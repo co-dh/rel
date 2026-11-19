@@ -126,17 +126,6 @@ export! {
 
 
 
-    /// Spec: `binBytes w float signed right hay keys` is, for each element `k` of `keys`, the partition point `p` of the
-    /// halving that advances past `key hay[mid] <= key k` when `right` is false and past `<` when it is true; written out as
-    /// `p - 1` for `bin` and `p` for `binr`, as `Int64`s.
-    fn qlean_search_bin(w: usize, is_float: u8, is_signed: u8, right: u8, hayv: B, keysv: B) -> O {
-        let (hay, keys) = (hayv.bytes(), keysv.bytes());
-        let m = keys.len() / w;
-        let mut r = longs(m);
-        search::bin(c::pool(), w, is_float != 0, is_signed != 0, right != 0, hay, None, (hay.len() / w) as i64, &keys[..w * m], None, m,
-                    search::i64s(r.bytes_mut()));
-        r.into()
-    }
 
 
 

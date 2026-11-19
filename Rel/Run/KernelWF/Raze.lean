@@ -495,6 +495,15 @@ private theorem add_le_mul_cdiv {B n m : Nat} (h0 : n % B ≠ 0) (hm : n % B + m
     Nat.div_eq_of_lt_le (by rw [Nat.add_mul]; omega) (by rw [Nat.add_mul, Nat.add_mul]; omega)
   rw [hq, Nat.mul_add, Nat.mul_comm B]; omega
 
+/-- `encodeBelow`'s `some` is `encode`'s answer. -/
+private theorem encodeBelow_eq {w : USize} {x : ByteArray} {mp : ByteArray × ByteArray}
+    (h : Coc.encodeBelow w x = some mp) : mp = Coc.encode w x := by
+  unfold Coc.encodeBelow at h
+  generalize Coc.encode w x = q at h ⊢
+  rcases q with ⟨m, p⟩
+  simp only at h; split at h
+  · cases h; rfl
+  · cases h
 
 /-! ## ALP payloads -/
 
@@ -609,11 +618,10 @@ theorem answer_wf {t : QAtomicType} {n : USize} {e : Enc}
     split
     · rename_i hE
       split
-      rename_i m p heq
-      split
-      · have h0 : 0 < w ∧ w ≤ 8 := by
+      · rename_i m p heq
+        have h0 : 0 < w ∧ w ≤ 8 := by
           cases t <;> simp_all [QAtomicType.width, Column.encodes] <;> omega
-        have hmp : (m, p) = Coc.encode w.toUSize b := heq.symm
+        have hmp := encodeBelow_eq heq
         have hk := Verify.nblk_encode Column.lgEnc (by decide) w h0.1 h0.2 b (patch := true)
         change Column.nblk (Coc.encode _ b).1 = _ ∧ Column.blk (Coc.encode _ b).1 = _ at hk
         rw [← hmp] at hk

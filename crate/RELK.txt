@@ -6,9 +6,11 @@ qlean_alp_encode_f32
 qlean_alp_encode_f64
 qlean_alp_gather
 qlean_bit_rows_over
+qlean_coc_block_start
 qlean_coc_bools_of
 qlean_coc_decode
 qlean_coc_encode
+qlean_coc_encode_below
 qlean_coc_over
 qlean_coc_shift
 qlean_ew_bit
@@ -24,7 +26,6 @@ qlean_k_seen
 qlean_over_bytes
 qlean_own_write
 qlean_scan
-qlean_search_bin
 qlean_search_find_bit_vec
 qlean_search_find_ids_vec
 qlean_search_find_sym_scalar
@@ -36,7 +37,6 @@ qlean_search_run_starts
 qlean_search_run_starts_bits
 qlean_search_run_starts_ids
 qlean_search_where_bits
-qlean_sort_distinct_syms
 qlean_sort_grade
 qlean_sort_grade_foR
 qlean_sort_grade_ids
@@ -48,7 +48,6 @@ qlean_sort_group_ids_pair
 qlean_sort_group_ids_pair_ids
 qlean_sort_group_sizes
 qlean_sort_id_groups
-qlean_sort_id_longs
 qlean_sort_intern_syms
 qlean_sort_invert
 qlean_sort_ranks
@@ -73,6 +72,7 @@ qlean_structural_gather_bits
 qlean_structural_gather_foR
 qlean_structural_gather_ids
 qlean_structural_gather_syms
+qlean_structural_rows_of
 qlean_structural_scatter
 qlean_structural_til
 qlean_symdict_concat

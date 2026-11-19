@@ -49,16 +49,6 @@ export! {
     }
 
 
-    /// `distinctSyms blob offs` is `symsAt blob offs (symFirsts blob offs)`: the first occurrence of each distinct symbol, in
-    /// the order they occur.
-    fn qlean_sort_distinct_syms(blob: B, offs: B) -> O {
-        let s = syms_of(blob, offs);
-        let n = s.count();
-        if n == 0 { return syms_pair(&[]) }
-        let mut first = pod::uninit::<usize>(n);
-        let ng = sort::distinct_syms(&s, &mut first);
-        syms_pair(&sort::sym_heads(&s, &first[..ng]))
-    }
 
 
 

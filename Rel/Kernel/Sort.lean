@@ -189,7 +189,6 @@ def groupSizes (ng w n : USize) (gid : @& ByteArray) : ByteArray :=
 
 /-- The first `n` of `w`-bit ids as `long`s, for the consumers whose next step is `long` arithmetic
 or a `long` column — `pairIds`' `ids·k + ids'`, a join's key ids, `group` over the ids. -/
-@[extern "qlean_sort_id_longs"]
 def idLongs (n w : USize) (ids : @& ByteArray) : ByteArray :=
   indices ((List.range (Column.idsCap ids w.toNat n.toNat)).map (Column.idAt ids w.toNat ·))
 
@@ -255,7 +254,6 @@ def idGroups (d n w : USize) (ids : @& ByteArray) : ByteArray × ByteArray :=
   , indices fs )
 
 /-- q's `distinct` over a symbol column, as the payload a `Column.syms` is made of. -/
-@[extern "qlean_sort_distinct_syms"]
 def distinctSyms (blob : @& ByteArray) (offs : @& Array Nat) : ByteArray × Array Nat :=
   symsAt blob offs (symFirsts blob offs)
 

@@ -240,7 +240,7 @@ theorem longWords_answer {m : USize} (b : ByteArray) (hm : b.size / 8 = m.toNat)
       Enc.answer (X := Empty) .i64 m (.bytes b) =
       .foR (Kernel.Coc.encode (8 : Nat).toUSize b).1 (Kernel.Coc.encode (8 : Nat).toUSize b).2 := by
     simp only [Enc.answer, QAtomicType.width, show Column.alpEncodes .i64 = false from rfl,
-      show Column.encodes .i64 = true from rfl]
+      show Column.encodes .i64 = true from rfl, Kernel.Coc.encodeBelow]
     repeat' split
     all_goals first | exact .inl rfl | exact .inr rfl | simp_all
   unfold longWords
@@ -339,7 +339,7 @@ theorem toList_answer_int {m : USize} (x : Arr .i32 m) {b : ByteArray} (hm : b.s
       Enc.answer (X := Empty) .i32 m (.bytes b) =
       .foR (Kernel.Coc.encode (4 : Nat).toUSize b).1 (Kernel.Coc.encode (4 : Nat).toUSize b).2 := by
     simp only [Enc.answer, QAtomicType.width, show Column.alpEncodes .i32 = false from rfl,
-      show Column.encodes .i32 = true from rfl]
+      show Column.encodes .i32 = true from rfl, Kernel.Coc.encodeBelow]
     repeat' split
     all_goals first | exact .inl rfl | exact .inr rfl | simp_all
   apply List.ext_getElem (by rw [Arr.length_toList]; simp)

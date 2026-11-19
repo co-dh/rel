@@ -377,6 +377,12 @@ def alpEncode64 (x : @& ByteArray) : ByteArray × ByteArray × ByteArray := alpE
 @[extern "qlean_alp_encode_f32"]
 def alpEncode32 (x : @& ByteArray) : ByteArray × ByteArray × ByteArray := alpEncodeAt true x
 
+/-- `encode` when its parts are fewer bytes than the `x.size / width * width` dense ones. -/
+@[extern "qlean_coc_encode_below"]
+def encodeBelow (width : USize) (x : @& ByteArray) : Option (ByteArray × ByteArray) :=
+  let (m, p) := encode width x
+  if m.size + p.size < x.size / width.toNat * width.toNat then some (m, p) else none
+
 /-- `alpEncode64` when its parts are fewer bytes than the dense ones. -/
 @[extern "qlean_alp_encode_below_f64"]
 def alpEncodeBelow64 (x : @& ByteArray) : Option (ByteArray × ByteArray × ByteArray) :=
@@ -527,8 +533,9 @@ def answer (t : QAtomicType) (n : USize) (e : Ext.Enc X) : Ext.Enc X :=
         | some (m, p, a) => .alp m p a
         | none => e
       else if encodes t then
-        let (m, p) := Rel.Kernel.Coc.encode w.toUSize b
-        if m.size + p.size < b.size / w * w then .foR m p else e
+        match Rel.Kernel.Coc.encodeBelow w.toUSize b with
+        | some (m, p) => .foR m p
+        | none => e
       else e
     | some w, _ =>
       if shrinks w n e && encodeMin ≤ n then e

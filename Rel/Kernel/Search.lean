@@ -224,7 +224,6 @@ def binStep (w : Nat) (float signed right : Bool) (hay order : ByteArray) (k : U
       else binStep w float signed right hay order k fuel lo mid
 
 /-- q's `x bin y` and `x binr y` at dense payloads of one class, as little-endian `Int64`s. -/
-@[extern "qlean_search_bin"]
 def binBytes (w : USize) (float signed right : Bool) (hay : @& ByteArray) (keys : @& ByteArray) :
     ByteArray :=
   let w := w.toNat

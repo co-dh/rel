@@ -460,6 +460,13 @@ def gatherColumn (t : QAtomicType) (n : USize) (e : Ext.Enc X) (m : USize) (ie :
         | none => none
       | none, _ => none
 
+/-- The other direction: an index payload read back as row numbers. A gather composed with another,
+`fby`'s buckets and a row delete all do this, and the `bitsAt` per element it replaces was eight
+shifts and a `Array.range` of a million naturals. -/
+@[extern "qlean_structural_rows_of"]
+def longRows (b : @& ByteArray) : Array Nat :=
+  (Array.range (b.size / 8)).map fun i => (Column.bitsAt b (8 * i) 8).toNat
+
 /-- `enumIds` over the Frame-of-Reference column an enumerated column's indices arrive in — every
 `long` column a file holds is encoded as it is read. The body is the specification: the dense
 indices, then `enumIds`. `rust/src/structural.rs` packs a block at a time out of a 1024-element buffer and

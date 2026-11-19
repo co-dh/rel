@@ -3,7 +3,7 @@
 //! The entries themselves unbox and allocate, and stay C (§1); each calls the pass here through its `qrs_*` shim.
 use crate::alp::{dec, Cocf};
 use crate::c::{run_map, run_map_at, Runner};
-use crate::coc::{lanes, Coc};
+use crate::coc::{lanes, Coc, Meta};
 use crate::cocops::{cmp2_res, EQ, GE, GT, LE, LT, NE};
 use crate::enc;
 use crate::simd::res_vcmp;
@@ -20,6 +20,8 @@ pub fn decode<T: Elt + Send>(run: Runner, c: &Coc, out: &mut [T]) {
         enc::decode(&c.blocks(lo, hi), o)
     });
 }
+/// coc.rs `qlean_coc_block_start`: byte offset in the pack of block `b`; past the last block, the pack's whole length.
+pub fn block_start(m: &Meta, b: usize) -> usize { if b < m.mblk { m.off[b] as usize } else { m.res_end() } }
 /// The deep blocks `deep` of a bitmap threaded: `f(lo, hi, o, w0)` once per slice `[lo, hi)` of them, `o` the words
 /// from the slice's first deep block to the next slice's first (`deep` ascends, so no two slices overlap) and `w0`
 /// the word of the whole bitmap `o[0]` is.
