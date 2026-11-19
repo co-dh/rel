@@ -334,6 +334,324 @@ theorem tagged_ok {R S C : Tab k v} {tag : Enc} (h : R.tagged S = .ok (C, tag)) 
     have e := hfix c hc' fun k hk e => by rw [hoff k hk] at e; omega
     simp [e]
 
+/-- **`R.concat S` row by row**: its rows below `R.n` are `R`'s, from there `S`'s. -/
+theorem concat_split {R S C : Tab k v} (h : R.concat S = .ok C) {a : k.El} {b : v.El} :
+    ((∃ c : Fin C.n.toNat, c.1 < R.n.toNat ∧ C.key.row c = a ∧ C.val.row c = b) ↔ R.Holds a b) ∧
+      ((∃ c : Fin C.n.toNat, R.n.toNat ≤ c.1 ∧ C.key.row c = a ∧ C.val.row c = b) ↔ S.Holds a b) := by
+  unfold Tab.concat at h
+  simp only [bind, Except.bind, pure, Except.pure] at h
+  split at h; · cases h
+  rename_i p hp
+  obtain ⟨n, off⟩ := p
+  split at h; · cases h
+  rename_i K hK
+  split at h; · cases h
+  rename_i V hV
+  cases h
+  obtain ⟨hn, hoff⟩ := catPlan_ok hp
+  have rk := Vals.concat_row hn hoff R.key S.key hK
+  have rv := Vals.concat_row hn hoff R.val S.val hV
+  simp only [Tab.Holds]
+  refine ⟨⟨?_, ?_⟩, ⟨?_, ?_⟩⟩
+  · rintro ⟨c, hl, ha, hb⟩
+    rw [rk, dif_pos hl] at ha; rw [rv, dif_pos hl] at hb; exact ⟨_, ha, hb⟩
+  · rintro ⟨i, ha, hb⟩
+    exact ⟨⟨i.1, by omega⟩, i.2, by rw [rk, dif_pos i.2]; exact ha, by rw [rv, dif_pos i.2]; exact hb⟩
+  · rintro ⟨c, hl, ha, hb⟩
+    rw [rk, dif_neg (by omega)] at ha; rw [rv, dif_neg (by omega)] at hb; exact ⟨_, ha, hb⟩
+  · rintro ⟨j, ha, hb⟩
+    refine ⟨⟨R.n.toNat + j.1, by omega⟩, by simp, ?_, ?_⟩
+    · rw [rk, dif_neg (by simp)]; simpa using ha
+    · rw [rv, dif_neg (by simp)]; simpa using hb
+
+/-- **`select keep R S` holds the pairs of `R ∪ S` whose flags pass `κ`**, `keep` answering per group a `0`/`1` word
+that is `1` iff `κ (and = 0) (or = 1)`: a group is a run of equal rows (`Vals.row_of_codes`, `Vals.codes_of_row`),
+its `and` of the tags is `0` iff it holds a row of `R` and its `or` is `1` iff one of `S` (`scatterWords_fold`), the
+kept groups are `whereCol_spec`'s positions, and each answer row is its group's first input row (`Vals.gather_row`). -/
+theorem select_holds {keep : USize → Enc → Enc → Except String Enc} {κ : Prop → Prop → Prop}
+    (hk : ∀ M mn mx o, keep M mn mx = .ok o → (Enc.raw .i64 M o).size = M.toNat ∧ ∀ G < M.toNat,
+      (Enc.raw .i64 M mn)[G]?.getD 0 < 2 → (Enc.raw .i64 M mx)[G]?.getD 0 < 2 →
+      (Enc.raw .i64 M o)[G]?.getD 0 < 2 ∧ ((Enc.raw .i64 M o)[G]?.getD 0 ≠ 0 ↔
+        κ ((Enc.raw .i64 M mn)[G]?.getD 0 = 0) ((Enc.raw .i64 M mx)[G]?.getD 0 = 1)))
+    {R S U : Tab k v} (h : select keep R S = .ok U) (a : k.El) (b : v.El) :
+    U.Holds a b ↔ (R.Holds a b ∨ S.Holds a b) ∧ κ (R.Holds a b) (S.Holds a b) := by
+  unfold select at h
+  simp only [bind, Except.bind, Functor.map, Except.map] at h
+  repeat (split at h; · cases h)
+  rename_i _ Ct hCt _ es hes _ vp hvp _ r hr _ ts hts _ mn hmn _ mx hmx _ kb hkb _ Ks hKs _ ix1 hix1 _ ix hix _ y hy
+  obtain ⟨C, tag⟩ := Ct; obtain ⟨vs, p⟩ := vp; obtain ⟨mm, g, f⟩ := r; obtain ⟨K, sel⟩ := Ks
+  injection h with h; subst h
+  dsimp only at *
+  have hU : USize.size ≤ 2 ^ 64 := by rcases USize.size_eq with h | h <;> omega
+  have hn := C.n.toNat_lt_size
+  obtain ⟨hcat, hCn, htsz, htag⟩ := tagged_ok hCt
+  have hsplit := fun (a : k.El) (b : v.El) => concat_split hcat (a := a) (b := b)
+  -- the sorted rows: `ps`, and the sorted rows' keys are the input's at `ps`
+  obtain ⟨ps, hp, hperm, hvl, hcol⟩ := asc_perm _ _ _ _ hvp
+  obtain ⟨cs, hc, -⟩ := kasc_ok hvp
+  have hlen : ps.length = C.n.toNat := by simpa using hperm.length_eq
+  have hpsl : ∀ q (hq : q < ps.length), ps[q] < C.n.toNat := fun q hq =>
+    List.mem_range.1 (hperm.mem_iff.1 (List.getElem_mem hq))
+  have hc64 : ∀ a, a < C.n.toNat → a.toUInt64.toNat = a := fun a ha => by simp; omega
+  have hkey : ∀ q (hq : q < ps.length), seenKey C.n ((es.map (·.1)).zip vs) q = seenKey C.n es ps[q] := by
+    intro q hq
+    simp only [seenKey, ascKeys, List.map_map]
+    apply List.ext_getElem (by simp [hvl])
+    intro c h1 h2
+    have hc2 : c < es.length := by simpa using h2
+    obtain ⟨ws, hv, hws, hwq⟩ := hcol c es[c] (vs[c]'(by omega)) (List.getElem?_eq_getElem hc2)
+      (List.getElem?_eq_getElem _)
+    simp only [List.getElem_map, List.getElem_zip, Function.comp_apply, hv, (wordsFoR_closed ws hws.symm).2.1,
+      Array.getElem?_map, hwq q hq]
+  obtain ⟨hmm, hg, hf⟩ := kseen_ok hr
+  generalize seenKey C.n ((es.map (·.1)).zip vs) = Kf at hmm hg hf hkey
+  generalize hF : firstsOf Kf C.n.toNat = F at hmm hg hf
+  have hsp := firsts_spec Kf C.n.toNat; rw [hF] at hsp
+  have hFlt : ∀ G (hG : G < F.length), F[G] < C.n.toNat := fun G hG => ((hsp.2.1 _).1 (List.getElem_mem hG)).1
+  have hmn' : mm ≤ C.n.toNat := by rw [hmm, ← hF]; unfold firstsOf; exact Nat.le_trans (List.length_filter_le _ _) (by simp)
+  have hmU : mm.toUSize.toNat = mm := USize.toNat_ofNat_of_lt' (by omega)
+  -- rows in one group are equal rows
+  have hgrp : ∀ q (hq : q < ps.length) G (hG : G < F.length),
+      Verify.groupOf Kf C.n.toNat q = G ↔ Vals.row (A := .prod k v) (C.key, C.val) ⟨ps[q], hpsl q hq⟩ =
+        Vals.row (A := .prod k v) (C.key, C.val) ⟨ps[F[G]]'(by have := hFlt G hG; omega), hpsl _ _⟩ := by
+    intro q hq G hG
+    rw [(hsp.2.2.2.2.1 q (by omega) G), exists_prop_of_true hG, hkey _ (by have := hFlt G hG; omega), hkey q hq]
+    exact ⟨fun e => Vals.row_of_codes _ hes hc _ _ e.symm, fun e => (Vals.codes_of_row _ hes hc _ _ e).symm⟩
+  -- the tags in sorted order, and their `and`/`or` per group
+  obtain ⟨-, -, -, hts'⟩ := raw_kgather _ _ _ _ _ hts
+  have hrp : Enc.raw .i64 C.n p = (ps.map Nat.toUInt64).toArray := by
+    rw [hp]; exact (wordsFoR_closed _ (by simp [hlen])).2.1
+  have htv : ∀ q (hq : q < ps.length), (Enc.raw .i64 C.n ts)[q]?.getD 0 = if R.n.toNat ≤ ps[q] then 1 else 0 := by
+    intro q hq
+    rw [hts', (wordsFoR_closed _ (by simp [hrp, hlen])).2.1, hrp]
+    simp only [Array.getElem?_map, List.getElem?_toArray, List.getElem?_map, List.getElem?_eq_getElem hq,
+      Option.map_some, Option.getD_some, hc64 _ (hpsl q hq)]
+    exact htag _ (hpsl q hq)
+  have hgr : Enc.raw .i64 C.n g = Array.ofFn (n := C.n.toNat) fun i => (Verify.groupOf Kf C.n.toNat i.1).toUInt64 := by
+    rw [hg]; exact (wordsFoR_closed _ (by simp)).2.1
+  have hgv : ∀ q < C.n.toNat, ((Enc.raw .i64 C.n g)[q]?.getD 0).toNat = Verify.groupOf Kf C.n.toNat q := by
+    intro q hq
+    obtain ⟨hgl, -⟩ := hsp.2.2.2.2.2 q hq
+    rw [hgr, Array.getElem?_ofFn, dif_pos hq, Option.getD_some]; exact hc64 (Verify.groupOf Kf C.n.toNat q) (by omega)
+  have hand : ∀ (l : List UInt64), (∀ x ∈ l, x = 0 ∨ x = 1) → ∀ acc : UInt64, (acc = 0 ∨ acc = 1) →
+      (l.foldl (· &&& ·) acc = 0 ∨ l.foldl (· &&& ·) acc = 1) ∧ (l.foldl (· &&& ·) acc = 0 ↔ acc = 0 ∨ 0 ∈ l) := by
+    intro l; induction l with
+    | nil => intro _ acc hacc; simp only [List.foldl_nil]; exact ⟨hacc, by simp⟩
+    | cons x l ih =>
+      intro hl acc hacc
+      have hx := hl x (.head _)
+      have := ih (fun y hy => hl y (.tail _ hy)) (acc &&& x)
+        (by rcases hx with rfl | rfl <;> rcases hacc with rfl | rfl <;> decide)
+      simp only [List.foldl_cons]
+      refine ⟨this.1, ?_⟩
+      rw [this.2]
+      rcases hx with rfl | rfl <;> rcases hacc with rfl | rfl <;> simp
+  have hor : ∀ (l : List UInt64), (∀ x ∈ l, x = 0 ∨ x = 1) → ∀ acc : UInt64, (acc = 0 ∨ acc = 1) →
+      (l.foldl (· ||| ·) acc = 0 ∨ l.foldl (· ||| ·) acc = 1) ∧ (l.foldl (· ||| ·) acc = 1 ↔ acc = 1 ∨ 1 ∈ l) := by
+    intro l; induction l with
+    | nil => intro _ acc hacc; simp only [List.foldl_nil]; exact ⟨hacc, by simp⟩
+    | cons x l ih =>
+      intro hl acc hacc
+      have hx := hl x (.head _)
+      have := ih (fun y hy => hl y (.tail _ hy)) (acc ||| x)
+        (by rcases hx with rfl | rfl <;> rcases hacc with rfl | rfl <;> decide)
+      simp only [List.foldl_cons]
+      refine ⟨this.1, ?_⟩
+      rw [this.2]
+      rcases hx with rfl | rfl <;> rcases hacc with rfl | rfl <;> simp
+  obtain ⟨hgs, hts2, hwmn⟩ := kscatter_words hmn
+  obtain ⟨-, -, hwmx⟩ := kscatter_words hmx
+  have hfmn := scatterWords_fold (f := (· &&& ·)) (fun _ _ => rfl) hwmn
+  have hfmx := scatterWords_fold (f := (· ||| ·)) (fun _ _ => rfl) hwmx
+  -- the list a group's fold reads, and its members
+  have hl01 : ∀ G, ∀ x ∈ ((List.range (Enc.raw .i64 C.n g).size).filter fun q =>
+      ((Enc.raw .i64 C.n g)[q]?.getD 0).toNat = G).map ((Enc.raw .i64 C.n ts)[·]?.getD 0), x = 0 ∨ x = 1 := by
+    intro G x hx
+    obtain ⟨q, hq, rfl⟩ := List.mem_map.1 hx
+    have hq' : q < ps.length := by rw [hlen, ← hgs]; exact List.mem_range.1 (List.mem_filter.1 hq).1
+    rw [htv q hq']; split <;> simp
+  have hmem : ∀ G (w : UInt64), w ∈ ((List.range (Enc.raw .i64 C.n g).size).filter fun q =>
+      ((Enc.raw .i64 C.n g)[q]?.getD 0).toNat = G).map ((Enc.raw .i64 C.n ts)[·]?.getD 0) ↔
+      ∃ q, ∃ hq : q < ps.length, Verify.groupOf Kf C.n.toNat q = G ∧ (if R.n.toNat ≤ ps[q] then 1 else 0) = w := by
+    intro G w
+    simp only [List.mem_map, List.mem_filter, List.mem_range, decide_eq_true_eq, hgs]
+    constructor
+    · rintro ⟨q, ⟨hq, hqG⟩, rfl⟩; exact ⟨q, by omega, by rw [← hgv q hq, hqG], (htv q (by omega)).symm⟩
+    · rintro ⟨q, hq, hqG, rfl⟩; exact ⟨q, ⟨by omega, by rw [hgv q (by omega), hqG]⟩, htv q hq⟩
+  -- per group: `mn = 0` iff it holds a row of `R`, `mx = 1` iff one of `S`
+  have hR0 : ∀ G < mm, ((Enc.raw .i64 mm.toUSize mn)[G]?.getD 0 = 0 ∨ (Enc.raw .i64 mm.toUSize mn)[G]?.getD 0 = 1) ∧
+      ((Enc.raw .i64 mm.toUSize mn)[G]?.getD 0 = 0 ↔
+        ∃ q, ∃ hq : q < ps.length, Verify.groupOf Kf C.n.toNat q = G ∧ ps[q] < R.n.toNat) := by
+    intro G hG
+    rw [hfmn.2 G (by omega)]
+    obtain ⟨h1, h2⟩ := hand _ (hl01 G) 1 (.inr rfl)
+    refine ⟨h1, h2.trans ?_⟩
+    rw [hmem]
+    simp only [show (1 : UInt64) ≠ 0 by decide, false_or]
+    exact exists_congr fun q => exists_congr fun hq => and_congr_right fun _ => by split <;> simp <;> omega
+  have hS1 : ∀ G < mm, ((Enc.raw .i64 mm.toUSize mx)[G]?.getD 0 = 0 ∨ (Enc.raw .i64 mm.toUSize mx)[G]?.getD 0 = 1) ∧
+      ((Enc.raw .i64 mm.toUSize mx)[G]?.getD 0 = 1 ↔
+        ∃ q, ∃ hq : q < ps.length, Verify.groupOf Kf C.n.toNat q = G ∧ R.n.toNat ≤ ps[q]) := by
+    intro G hG
+    rw [hfmx.2 G (by omega)]
+    obtain ⟨h1, h2⟩ := hor _ (hl01 G) 0 (.inl rfl)
+    refine ⟨h1, h2.trans ?_⟩
+    rw [hmem]
+    simp only [show (0 : UInt64) ≠ 1 by decide, false_or]
+    exact exists_congr fun q => exists_congr fun hq => and_congr_right fun _ => by split <;> simp <;> omega
+  -- a group's flags say whether `R` and `S` hold its row
+  have hgrpR : ∀ G (hG : G < F.length) (w : (Obj.prod k v).El),
+      Vals.row (A := .prod k v) (C.key, C.val) ⟨ps[F[G]]'(by have := hFlt G hG; omega), hpsl _ _⟩ = w →
+      ((∃ q, ∃ hq : q < ps.length, Verify.groupOf Kf C.n.toNat q = G ∧ ps[q] < R.n.toNat) ↔ R.Holds w.1 w.2) ∧
+      ((∃ q, ∃ hq : q < ps.length, Verify.groupOf Kf C.n.toNat q = G ∧ R.n.toNat ≤ ps[q]) ↔ S.Holds w.1 w.2) := by
+    intro G hG w hw
+    have key : ∀ (P : Nat → Prop), (∃ q, ∃ hq : q < ps.length, Verify.groupOf Kf C.n.toNat q = G ∧ P ps[q]) ↔
+        ∃ c : Fin C.n.toNat, P c.1 ∧ C.key.row c = w.1 ∧ C.val.row c = w.2 := by
+      intro P
+      constructor
+      · rintro ⟨q, hq, hqG, hP⟩
+        have e := (hgrp q hq G hG).1 hqG
+        rw [hw] at e
+        exact ⟨⟨ps[q], hpsl q hq⟩, hP, congrArg Prod.fst e, congrArg Prod.snd e⟩
+      · rintro ⟨c, hP, h1, h2⟩
+        obtain ⟨q, hq, hqc⟩ := List.getElem_of_mem (hperm.mem_iff.2 (List.mem_range.2 c.2))
+        refine ⟨q, hq, (hgrp q hq G hG).2 ?_, hqc ▸ hP⟩
+        rw [hw]
+        have : (⟨ps[q], hpsl q hq⟩ : Fin C.n.toNat) = c := Fin.ext hqc
+        rw [this]; exact Prod.ext h1 h2
+    exact ⟨(key (· < R.n.toNat)).trans (hsplit w.1 w.2).1, (key (R.n.toNat ≤ ·)).trans (hsplit w.1 w.2).2⟩
+  -- the kept groups, ascending (`whereCol_spec`)
+  obtain ⟨-, hbits⟩ := hk _ _ _ _ hkb
+  have hbit : ∀ G < mm, ((Enc.raw .i64 mm.toUSize kb)[G]?.getD 0 ≠ 0 ↔
+      κ (∃ q, ∃ hq : q < ps.length, Verify.groupOf Kf C.n.toNat q = G ∧ ps[q] < R.n.toNat)
+        (∃ q, ∃ hq : q < ps.length, Verify.groupOf Kf C.n.toNat q = G ∧ R.n.toNat ≤ ps[q])) ∧
+      (Enc.raw .i64 mm.toUSize kb)[G]?.getD 0 < 2 := by
+    intro G hG
+    have b2 : ∀ w : UInt64, w = 0 ∨ w = 1 → w < 2 := fun w hw => by rcases hw with rfl | rfl <;> decide
+    obtain ⟨h2, hiff⟩ := hbits G (by omega) (b2 _ (hR0 G hG).1) (b2 _ (hS1 G hG).1)
+    rw [← propext (hR0 G hG).2, ← propext (hS1 G hG).2]
+    exact ⟨hiff, h2⟩
+  have hsel := whereCol_spec hKs fun G hG => (hbit G (by omega)).2
+  -- row `j` of the answer is input row `ps[F[sel[j]]]`
+  obtain ⟨his1, -, -, hix1'⟩ := raw_kgather _ _ _ _ _ hix1
+  obtain ⟨his2, -, -, hix'⟩ := raw_kgather _ _ _ _ _ hix
+  have hrf : Enc.raw .i64 mm.toUSize f = (F.map Nat.toUInt64).toArray := by
+    rw [hf]; exact (wordsFoR_closed _ (by rw [hmU, hmm]; simp)).2.1
+  have hrix : Enc.raw .i64 K ix = ((Enc.raw .i64 K sel).map fun i => (Enc.raw .i64 mm.toUSize f)[i.toNat]?.getD 0).map
+      fun i => (Enc.raw .i64 C.n p)[i.toNat]?.getD 0 := by
+    rw [hix', (wordsFoR_closed _ (by rw [Array.size_map, his2])).2.1, hix1',
+      (wordsFoR_closed _ (by rw [Array.size_map, his1])).2.1]
+  have hixv : ∀ j (hj : j < K.toNat) G (hG : G < F.length), ((Enc.raw .i64 K sel)[j]?.getD 0).toNat = G →
+      ((Enc.raw .i64 K ix)[j]?.getD 0).toNat = ps[F[G]]'(by have := hFlt G hG; omega) := by
+    intro j hj G hG hjG
+    have hj' : j < (Enc.raw .i64 K sel).size := by rw [his1]; exact hj
+    rw [Array.getElem?_eq_getElem hj', Option.getD_some] at hjG
+    have hpj : F[G] < ps.length := by have := hFlt G hG; omega
+    rw [hrix, Array.getElem?_map, Array.getElem?_map, Array.getElem?_eq_getElem hj', Option.map_some,
+      Option.map_some, Option.getD_some, hjG, hrf, hrp]
+    simp only [List.getElem?_toArray, List.getElem?_map, List.getElem?_eq_getElem hG, Option.map_some,
+      Option.getD_some, hc64 _ (hFlt G hG), List.getElem?_eq_getElem hpj, hc64 _ (hpsl _ hpj)]
+  have hCH := concat_holds hcat a b
+  simp only [Tab.Holds]
+  constructor
+  · rintro ⟨j, ha, hb⟩
+    obtain ⟨i, hi, hyi⟩ := Vals.gather_row _ hy j
+    have hj : j.1 < (Enc.raw .i64 K sel).size := by rw [his1]; exact j.2
+    have hGm := List.mem_map_of_mem (f := UInt64.toNat) (Array.getElem_mem_toList hj)
+    rw [hsel, List.mem_filter, List.mem_range, decide_eq_true_eq] at hGm
+    obtain ⟨hGlt, hGbit⟩ := hGm
+    rw [hmU] at hGlt
+    have hGF : ((Enc.raw .i64 K sel)[j.1]).toNat < F.length := by omega
+    have hiv := hixv j j.2 _ hGF (by rw [Array.getElem?_eq_getElem hj, Option.getD_some])
+    rw [hi] at hiv
+    have hxi : Vals.row (A := .prod k v) (C.key, C.val) i = (a, b) := by
+      rw [← hyi]; show (Vals.row _ j, Vals.row _ j) = (a, b); rw [ha, hb]
+    have hw : Vals.row (A := .prod k v) (C.key, C.val) ⟨ps[F[((Enc.raw .i64 K sel)[j.1]).toNat]]'(by
+        have := hFlt _ hGF; omega), hpsl _ _⟩ = (a, b) := by
+      rw [← hxi]; exact congrArg _ (Fin.ext hiv.symm)
+    have hκ := ((hbit _ hGlt).1).1 hGbit
+    rw [propext (hgrpR _ hGF _ hw).1, propext (hgrpR _ hGF _ hw).2] at hκ
+    exact ⟨hCH.1 ⟨i, congrArg Prod.fst hxi, congrArg Prod.snd hxi⟩, hκ⟩
+  · rintro ⟨hRS, hκ⟩
+    obtain ⟨c, hca, hcb⟩ := hCH.2 hRS
+    obtain ⟨q, hq, hqc⟩ := List.getElem_of_mem (hperm.mem_iff.2 (List.mem_range.2 c.2))
+    obtain ⟨hGF, -, -, -⟩ := hsp.2.2.2.2.2 q (by omega)
+    generalize hG : Verify.groupOf Kf C.n.toNat q = G at hGF
+    have hw : Vals.row (A := .prod k v) (C.key, C.val) ⟨ps[F[G]]'(by have := hFlt G hGF; omega), hpsl _ _⟩ =
+        (a, b) := by
+      rw [← (hgrp q hq G hGF).1 hG]
+      have : (⟨ps[q], hpsl q hq⟩ : Fin C.n.toNat) = c := Fin.ext hqc
+      rw [this]; exact Prod.ext hca hcb
+    have hGm : G < mm := by omega
+    have hbG := ((hbit G hGm).1).2 (by
+      rw [propext (hgrpR _ hGF _ hw).1, propext (hgrpR _ hGF _ hw).2]; exact hκ)
+    have hmemG : G ∈ (Enc.raw .i64 K sel).toList.map UInt64.toNat := by
+      rw [hsel, List.mem_filter, List.mem_range, decide_eq_true_eq, hmU]; exact ⟨hGm, hbG⟩
+    obtain ⟨j, hj, hjG⟩ := List.mem_iff_getElem.1 hmemG
+    have hjK : j < K.toNat := by simp at hj; omega
+    obtain ⟨i, hi, hyi⟩ := Vals.gather_row _ hy ⟨j, hjK⟩
+    have hiv := hixv j hjK G hGF (by
+      rw [← hjG, List.getElem_map, Array.getElem_toList, Array.getElem?_eq_getElem (by rw [his1]; exact hjK),
+        Option.getD_some])
+    rw [hi] at hiv
+    have : i = ⟨ps[F[G]]'(by have := hFlt G hGF; omega), hpsl _ _⟩ := Fin.ext hiv
+    rw [this, hw] at hyi
+    exact ⟨⟨j, hjK⟩, congrArg Prod.fst hyi, congrArg Prod.snd hyi⟩
+
+/-- A word below `2` is `0` or `1`. -/
+private theorem bit01 {w : UInt64} (hw : w < 2) : w = 0 ∨ w = 1 := by
+  have : w.toNat < 2 := hw
+  rcases (show w.toNat = 0 ∨ w.toNat = 1 by omega) with h | h
+  · exact .inl (UInt64.toNat_inj.1 h)
+  · exact .inr (UInt64.toNat_inj.1 h)
+
+/-- **`R.inter S` denotes `R ∩ S`**: `select` keeping the groups with `and < or`, a row of each. -/
+theorem inter_holds {R S U : Tab k v} (h : R.inter S = .ok U) (a : k.El) (b : v.El) :
+    U.Holds a b ↔ R.Holds a b ∧ S.Holds a b := by
+  rw [select_holds (κ := (· ∧ ·)) (fun M mn mx o ho => ?_) h]
+  · exact ⟨fun h => h.2, fun h => ⟨.inl h.1, h⟩⟩
+  obtain ⟨-, -, hs, hrow⟩ := colMap_raw ho
+  refine ⟨hs, fun G hG h1 h2 => ?_⟩
+  have e := hrow G hG
+  generalize (Enc.raw .i64 M mn)[G]?.getD 0 = x at h1 e ⊢
+  generalize (Enc.raw .i64 M mx)[G]?.getD 0 = y at h2 e ⊢
+  generalize (Enc.raw .i64 M o)[G]?.getD 0 = z at e ⊢
+  rcases bit01 h1 with rfl | rfl <;> rcases bit01 h2 with rfl | rfl <;>
+    (simp only [Op.eval, Except.ok.injEq] at e; subst e; (try dsimp only); decide)
+
+/-- **`R.diff S` denotes `R − S`**: `select` keeping the groups with `or = 0`, no row of `S`. -/
+theorem diff_holds {R S U : Tab k v} (h : R.diff S = .ok U) (a : k.El) (b : v.El) :
+    U.Holds a b ↔ R.Holds a b ∧ ¬S.Holds a b := by
+  rw [select_holds (κ := fun _ s => ¬s) (fun M mn mx o ho => ?_) h]
+  · exact ⟨fun h => ⟨h.1.resolve_right h.2, h.2⟩, fun h => ⟨.inl h.1, h.2⟩⟩
+  obtain ⟨-, -, hs, hrow⟩ := colMap_raw ho
+  refine ⟨hs, fun G hG _ h2 => ?_⟩
+  have e := hrow G hG
+  generalize (Enc.raw .i64 M mx)[G]?.getD 0 = y at h2 e ⊢
+  generalize (Enc.raw .i64 M o)[G]?.getD 0 = z at e ⊢
+  rcases bit01 h2 with rfl | rfl <;>
+    (simp only [Op.eval, Except.ok.injEq] at e; subst e; (try dsimp only); decide)
+
+/-- **`R.le S` answers `R ⊑ S`**: `R.diff S` has no row iff every pair of `R` is one of `S` (`diff_holds`). -/
+theorem le_holds {R S : Tab k v} {r : Bool} (h : R.le S = .ok r) : r = true ↔ ∀ a b, R.Holds a b → S.Holds a b := by
+  unfold Tab.le at h
+  cases hd : R.diff S with
+  | error s => simp [hd, Functor.map, Except.map] at h
+  | ok D =>
+    simp only [hd, Functor.map, Except.map, Except.ok.injEq] at h
+    subst h
+    have hD := diff_holds hd
+    rw [beq_iff_eq, ← USize.toNat_inj, USize.toNat_zero]
+    constructor
+    · intro h0 a b hR; refine Classical.byContradiction fun hS => ?_
+      obtain ⟨i, -⟩ := (hD a b).2 ⟨hR, hS⟩
+      exact absurd i.2 (by omega)
+    · intro hall
+      refine Classical.byContradiction fun hn => ?_
+      have hpos : 0 < D.n.toNat := by omega
+      obtain ⟨hR, hS⟩ := (hD (D.key.row ⟨0, hpos⟩) (D.val.row ⟨0, hpos⟩)).1 ⟨⟨0, hpos⟩, rfl, rfl⟩
+      exact hS (hall _ _ hR)
+
 end Tab
 
 /-! ## Checks on `foR` tables -/
