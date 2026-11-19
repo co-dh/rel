@@ -260,7 +260,8 @@ theorem kgather_pos_e {m n : USize} {ix o : Enc} (h : kgather m ix n .pos = .ok 
   intro k h1 h2
   have hk := hb k (by simpa [hs] using h2)
   simp only [Array.getElem?_eq_getElem h2, Option.getD_some] at hk
-  simp [raw, Array.getElem?_range, hk]
+  have hp : raw .i64 n (.pos : Enc) = (Array.range n.toNat).map UInt64.ofNat := rfl
+  simp [hp, Array.getElem?_range, hk]
 
 /-- Law G1 (PLAN 6.13): gathering at the positions `ix = pos` answers the first `m` words of `e`, every one of them
 when `m = n`; so a caller holding `pos` as the index skips the call. -/
