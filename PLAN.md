@@ -17,7 +17,7 @@
 - Q1 删除 `RelAop/Syn.lean`；Q2 表层的 `refold` 也变成 `hylo`；Q3 `tab` 持有 `Option (Tab A B)`，结构
   `{n, key, val}`（owner：M）；
   Q7 `Den` 手工 inline；Q9 `hylo` 保留 `k what ch body`；Q11 `call` 的意思是被调用者的 term 被 inline；
-  Q12 `compile` 从 `RelRun` 移到持有证明的 library。
+  Q12 `compile` 从 `RelRun` 移到持有证明的 library。（2026-11-18 推翻：见 7.1、7.2）
 - 非 log 的输出（baseline、row 分析）写进本文件或 `doc/`，不写进 `/data/tmp`。
 
 ## 0. 每一步都遵守的约定
@@ -276,8 +276,11 @@ Size：S = 一步，少于 20 次 tool call；M = 一到三步；L = 多于三�
 
 ### P7 Plan A — 0/4（串行）
 
-- ⬜ 7.1 library 边界。
-- ⬜ 7.2 subtype。
+- ✖ 7.1 library 边界：不做。owner 2026-11-18 选 7.2 的 wrapper，`compile` 留在预编译的 `RelRun`，没有东西要移；
+  这推翻 Q12（“`compile` 移到持有证明的 library”）。
+- ⬜ 7.2 subtype = wrapper（owner 2026-11-18）：`CompileSpec` 里的 `compileS (η) (ρ) (hη : η.Sound ρ) (t)
+  (hw : t.gap = none) : {r : Rel A B // Gen.Sound r (t.den ρ)} := ⟨compile η t, (compile_sound t hw η ρ hη).1⟩`。
+  `Tm.gen` 与 `compile_sound` 仍是两个递归；不一致时 `compile_sound` 编译不过。随去下标的 `CompileSpec` 移植一起落地。
 - ⬜ 7.3 `rel_program` 发出 `compile t`，从 `Expand.lean` 删除旧路径。
 - ⬜ 7.4 清理：`LR unused`、`unused-simp`、`remove-import`。
 
