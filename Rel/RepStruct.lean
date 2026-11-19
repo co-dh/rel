@@ -415,17 +415,14 @@ private def juncOk {A B C : Obj} [BEq A.El] [BEq B.El] [BEq C.El] (R : Tab A C) 
 -- `inl`, `inr`: duplicates, none, a float and a tuple summand
 #guard ints.all fun ps => let R := tabW ps; injOk R.key R.val
 #guard injOk F.val F.key && injOk P.val P.key
-/-- `[R, S]` stops at `union`'s `Vals.concat`, which has no `sum` case yet (branch w3arrcat): until then the
-guards assert that error; once it lands they become `juncOk`. -/
-private def juncBlocked {A B C : Obj} (R : Tab A C) (S : Tab B C) : Bool :=
-  match R.junc S with
-  | .error s => s == "concat: a sum side is not atom columns"
-  | .ok _ => false
-
--- `[R, S]`: integers (duplicates, a summand of no rows, both empty), a float and a tuple value
-#guard ints.all fun ps => ints.all fun qs => juncBlocked (tabW ps) (tabW qs)
-#guard juncBlocked F F && juncBlocked (A := .long) (B := .long) P P &&
-  juncBlocked (tabW []) (⟨F.n, F.val, F.key⟩ : Tab (.atom .f64) .long)
+-- `[R, S]`: integers (duplicate rows, one side empty, both empty)
+#guard ints.all fun ps => ints.all fun qs => juncOk (tabW ps) (tabW qs)
+-- a float value column, a tuple value, a float and a tuple key summand, each beside a side of none
+#guard juncOk F F && juncOk (A := .long) (B := .long) P P && juncOk F (tabW []) && juncOk (tabW []) F &&
+  juncOk (tabW []) (⟨F.n, F.val, F.key⟩ : Tab (.atom .f64) .long) &&
+  juncOk (⟨P.n, P.val, P.key⟩ : Tab (.prod .long .long) .long) (tabW (ints.getD 0 [])) &&
+  juncOk (tabW (ints.getD 1 [])) (⟨P.n, P.val, P.key⟩ : Tab (.prod .long .long) .long) &&
+  juncOk (⟨P.n, P.val, P.key⟩ : Tab (.prod .long .long) .long) (tabW [])
 
 end Checks
 
