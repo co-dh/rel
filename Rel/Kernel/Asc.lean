@@ -62,8 +62,8 @@ the permutation, row `k` of the answer being input row `p[k]`, each as `wordsFoR
 def kasc (m : USize) (es : @& List (QAtomicType × Enc)) : Except String (List Enc × Enc) := do
   let cs ← es.mapM (ascCol m)
   let p := ((ascGrade m.toNat (cs.map (·.2))).map Nat.toUInt64).toArray
-  let r ← scatterWords p ((List.range m.toNat).map Nat.toUInt64).toArray m.toNat 0
-  let vs ← cs.mapM fun c => scatterWords r c.1 m.toNat 0
+  let r ← scatterWords .last p ((List.range m.toNat).map Nat.toUInt64).toArray m.toNat 0
+  let vs ← cs.mapM fun c => scatterWords .last r c.1 m.toNat 0
   pure (vs.map wordsFoR, wordsFoR p)
 
 end Rel.Kernel
