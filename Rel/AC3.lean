@@ -329,6 +329,58 @@ theorem exists_fixed (s : Tab V D) (as : List (Revise V D)) (hsn : ∀ x d, rep 
 
 /-! ## The agreement -/
 
+/-- **`acFix` ends on a fixed naive iterate**, under `acFixC`'s bit alone: each delta round is a naive round
+    (`acDelta_round`), and `acFix` stops at `Δ = 𝟘`, a fixed iterate by `AcInv`, or after `|s.nub| + 1` rounds, past
+    the first fixed iterate (`exists_fixed`). Hypotheses as `acInv_init`'s. -/
+theorem acFix_naive (s : Tab V D) (as : List (Revise V D)) (U : Tab V V)
+    (hU : ∀ w v, rep U w v → w = v) (hUA : ∀ a ∈ as, ∀ w x, rep a.A w x → rep U w w)
+    (hsV : ∀ a ∈ as, ∀ x d, rep s x d → Vac a x d) (hd : (acFixC s as U).2 = true) :
+    ∃ c, (∀ x d, naive s as (c + 1) x d ↔ naive s as c x d) ∧
+      ∀ x d, rep (acFix s as U).1 x d ↔ naive s as c x d := by
+  classical
+  simp only [acFixC, Bool.and_eq_true] at hd
+  obtain ⟨h0, hdbit⟩ := hd
+  have hs0 : ∀ x d, rep (nubC s).1 x d ↔ rep s x d := by rw [rep_nubC s h0]; exact fun _ _ => Iff.rfl
+  have hcnt : (nubC s).1.n.toNat = s.nub.n.toNat := by rw [nubC_fst]
+  obtain ⟨c, hc, hcF⟩ := exists_fixed s as (by rw [← nubC_fst]; exact hs0)
+  refine ⟨c, hcF, ?_⟩
+  -- the delta run: `acFixC`'s rounds, the state `(X, Δ, round)`
+  let fd : Tab V D × Tab V V × Nat → Tab V D × Tab V V × Nat := fun st =>
+    ((acDeltaC as (st.1, st.2.1)).1.1, (acDeltaC as (st.1, st.2.1)).1.2, st.2.2 + 1)
+  let b₀ : Tab V D × Tab V V × Nat := ((nubC s).1, U, 0)
+  have e : (acFix s as U).1 = (iter ((nubC s).1.n.toNat + 1) (fun st => st.2.1.n == 0) fd b₀).1 := by
+    show (iterC (α := Tab V D × Tab V V × Nat) _ _ _ _).1.1 = _
+    rw [iterC_fst]
+  obtain ⟨K, hK, he, hst, hlt⟩ :=
+    iter_stop (fun st : Tab V D × Tab V V × Nat => st.2.1.n == 0) fd ((nubC s).1.n.toNat + 1) b₀
+  have hrun : ∀ i < K, (acDeltaC as ((fd^[i] b₀).1, (fd^[i] b₀).2.1)).2 = true := fun i hi =>
+    have h := iterC_run _ _ _ _ hdbit i (by omega) fun i' hi' => hlt i' (by omega); h
+  have hZ : ∀ k ≤ K, AcInv s as (rep (fd^[k] b₀).1) (rep (fd^[k] b₀).2.1) ∧
+      ∀ x d, rep (fd^[k] b₀).1 x d ↔ naive s as k x d := by
+    intro k
+    induction k with
+    | zero => intro _; exact ⟨acInv_init s as _ U (rep_nubC s h0) hU hUA hsV, hs0⟩
+    | succ k ih =>
+      intro hk
+      obtain ⟨hI, hk'⟩ := ih (by omega)
+      obtain ⟨hr, hI'⟩ := acDelta_round s as _ _ hI (hrun k (by omega))
+      show AcInv s as (rep (fd (fd^[k] b₀)).1) (rep (fd (fd^[k] b₀)).2.1) ∧ ∀ x d, rep (fd (fd^[k] b₀)).1 x d ↔ _
+      exact ⟨hI', fun x d => (hr x d).trans (body_congr s as hk' x d)⟩
+  rw [e, he]
+  obtain ⟨hI, hK'⟩ := hZ K (Nat.le_refl _)
+  intro x d
+  refine (hK' x d).trans ?_
+  rcases hst with hKf | hdone
+  · exact naive_stable s as hcF K (by omega) x d
+  · -- `Δ = 𝟘`: every pair of `X` is supported, so `X` is fixed
+    have hz := (n_eq_zero_iff _).1 (by simpa using hdone)
+    obtain ⟨-, hXs, hXv, hXn, hXo⟩ := hI
+    have hfix : ∀ x d, naive s as (K + 1) x d ↔ naive s as K x d := fun x d => by
+      refine (body_congr s as (fun x d => (hK' x d).symm) x d).trans ((?_ : _ ↔ _).trans (hK' x d))
+      exact ⟨fun ⟨hs, hN⟩ => hXn x d hs hN, fun hx => ⟨hXs x d hx, fun a ha =>
+        ⟨fun w hA => hXo a ha x d hx w (hz w w) hA, hXv a ha x d hx⟩⟩⟩
+    exact naive_fixed_eq s as hcF hfix x d
+
 /-- **`acFix` is `fixOn` on the naive round**: the delta rounds from `(s.nub, U)` and `fixOn n (acRound s as)` from
     `s` end on one relation, the first fixed naive iterate (`exists_fixed`). Each delta round is a naive round
     (`acDelta_round`); `acFix` stops at `Δ = 𝟘`, a fixed iterate by `AcInv`, or after `|s.nub| + 1` rounds; `fixOn`
@@ -345,8 +397,7 @@ theorem acFix_eq_fixOn (s : Tab V D) (as : List (Revise V D)) (U : Tab V V) (n :
   classical
   simp only [fixOnC, Bool.and_eq_true] at hb
   obtain ⟨h0, hbit⟩ := hb
-  simp only [acFixC, Bool.and_eq_true] at hd
-  obtain ⟨-, hdbit⟩ := hd
+  obtain ⟨c', hc'F, hA⟩ := acFix_naive s as U hU hUA hsV hd
   have hs0 : ∀ x d, rep (nubC s).1 x d ↔ rep s x d := by rw [rep_nubC s h0]; exact fun _ _ => Iff.rfl
   have hcnt : (nubC s).1.n.toNat = s.nub.n.toNat := by rw [nubC_fst]
   obtain ⟨c, hc, hcF⟩ := exists_fixed s as (by rw [← nubC_fst]; exact hs0)
@@ -394,44 +445,7 @@ theorem acFix_eq_fixOn (s : Tab V D) (as : List (Revise V D)) (U : Tab V V) (n :
             have := hlt' ⟨x, d, (hY i (by omega) x d).2 h, fun h' => hn' ((hY1 x d).1 h')⟩
             omega⟩
         exact (hfix x d).trans (naive_fixed_eq s as hcF hfix x d)
-  -- the delta run: `acFixC`'s rounds, the state `(X, Δ, round)`
-  let fd : Tab V D × Tab V V × Nat → Tab V D × Tab V V × Nat := fun st =>
-    ((acDeltaC as (st.1, st.2.1)).1.1, (acDeltaC as (st.1, st.2.1)).1.2, st.2.2 + 1)
-  let b₀ : Tab V D × Tab V V × Nat := ((nubC s).1, U, 0)
-  have hA : ∀ x d, rep (acFix s as U).1 x d ↔ naive s as c x d := by
-    have e : (acFix s as U).1 = (iter ((nubC s).1.n.toNat + 1) (fun st => st.2.1.n == 0) fd b₀).1 := by
-      show (iterC (α := Tab V D × Tab V V × Nat) _ _ _ _).1.1 = _
-      rw [iterC_fst]
-    obtain ⟨K, hK, he, hst, hlt⟩ :=
-      iter_stop (fun st : Tab V D × Tab V V × Nat => st.2.1.n == 0) fd ((nubC s).1.n.toNat + 1) b₀
-    have hrun : ∀ i < K, (acDeltaC as ((fd^[i] b₀).1, (fd^[i] b₀).2.1)).2 = true := fun i hi =>
-      have h := iterC_run _ _ _ _ hdbit i (by omega) fun i' hi' => hlt i' (by omega); h
-    have hZ : ∀ k ≤ K, AcInv s as (rep (fd^[k] b₀).1) (rep (fd^[k] b₀).2.1) ∧
-        ∀ x d, rep (fd^[k] b₀).1 x d ↔ naive s as k x d := by
-      intro k
-      induction k with
-      | zero => intro _; exact ⟨acInv_init s as _ U (rep_nubC s h0) hU hUA hsV, hs0⟩
-      | succ k ih =>
-        intro hk
-        obtain ⟨hI, hk'⟩ := ih (by omega)
-        obtain ⟨hr, hI'⟩ := acDelta_round s as _ _ hI (hrun k (by omega))
-        show AcInv s as (rep (fd (fd^[k] b₀)).1) (rep (fd (fd^[k] b₀)).2.1) ∧ ∀ x d, rep (fd (fd^[k] b₀)).1 x d ↔ _
-        exact ⟨hI', fun x d => (hr x d).trans (body_congr s as hk' x d)⟩
-    rw [e, he]
-    obtain ⟨hI, hK'⟩ := hZ K (Nat.le_refl _)
-    intro x d
-    refine (hK' x d).trans ?_
-    rcases hst with hKf | hdone
-    · exact naive_stable s as hcF K (by omega) x d
-    · -- `Δ = 𝟘`: every pair of `X` is supported, so `X` is fixed
-      have hz := (n_eq_zero_iff _).1 (by simpa using hdone)
-      obtain ⟨-, hXs, hXv, hXn, hXo⟩ := hI
-      have hfix : ∀ x d, naive s as (K + 1) x d ↔ naive s as K x d := fun x d => by
-        refine (body_congr s as (fun x d => (hK' x d).symm) x d).trans ((?_ : _ ↔ _).trans (hK' x d))
-        exact ⟨fun ⟨hs, hN⟩ => hXn x d hs hN, fun hx => ⟨hXs x d hx, fun a ha =>
-          ⟨fun w hA => hXo a ha x d hx w (hz w w) hA, hXv a ha x d hx⟩⟩⟩
-      exact naive_fixed_eq s as hcF hfix x d
-  exact Core.Rel.ext fun x d => (hA x d).trans (hB x d).symm
+  exact Core.Rel.ext fun x d => ((hA x d).trans (naive_fixed_eq s as hcF hc'F x d)).trans (hB x d).symm
 
 #print axioms acFix_eq_fixOn
 

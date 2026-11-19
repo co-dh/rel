@@ -165,6 +165,29 @@ theorem juncD_sound {A B C : Obj} {d e : Bool} {R : Fn d A C} {S : Fn e B C} {TR
       | exact ⟨fun ⟨_, e, h⟩ => e ▸ (onNodes_sound hR xv h2.1 _ ⟨_, rfl⟩ z).1 h,
           fun h => ⟨_, rfl, (onNodes_sound hR xv h2.1 _ ⟨_, rfl⟩ z).2 h⟩⟩
 
+/-- Binding `k` to a code keeps `CodeEnv.Sound`, the code's meaning bound in `ρ`. -/
+theorem CodeEnv.Sound.bindCode {η : CodeEnv} {ρ : Val} (hη : η.Sound ρ) (k : Nat) {c : Code} {s : Sem}
+    (hc : Code.Sound c s) : (η.bindCode k c).Sound (ρ.bind k s.2.2) := by
+  obtain ⟨X, Y, e, f⟩ := c
+  obtain ⟨T, rfl, hf⟩ := hc X Y e f rfl
+  intro j A' B' d D hD hb x y hx
+  by_cases ej : j = k
+  · subst ej
+    by_cases h : X = A' ∧ Y = B'
+    · obtain ⟨rfl, rfl⟩ := h
+      simp only [CodeEnv.bindCode, Code.at, Val.bind, and_self, dite_true, if_true] at hb ⊢
+      exact pleaf_sound (d := d) hf D hD hb x y hx
+    · simp [CodeEnv.bindCode, Code.at, Val.bind, h, Tm.den]
+  · simp only [CodeEnv.bindCode, Val.bind, ej, if_false] at hb ⊢; exact hη j A' B' d D hD hb x y hx
+
+/-- A call's arguments bound in order keep `CodeEnv.Sound`: `bindCode`'s lemma along `Code.Sounds`. -/
+theorem CodeEnv.Sound.args {cs : List Code} {ss : List Sem} (h : Code.Sounds cs ss) :
+    (CodeEnv.args cs).Sound (Val.args ss) := go 0 h where
+  go (k : Nat) : ∀ {cs ss}, Code.Sounds cs ss → (CodeEnv.args.go k cs).Sound (Val.args.go k ss)
+    | [], [], _ => fun _ _ _ _ _ _ _ _ _ _ => by simp [CodeEnv.args.go, Val.args.go, Val.empty, Tm.den]
+    | _ :: _, ⟨_, _, _⟩ :: _, ⟨hc, hs⟩ => CodeEnv.Sound.bindCode (go (k + 1) hs) k hc
+    | [], _ :: _, h | _ :: _, [], h => h.elim
+
 /-! ### The rows of `prims` -/
 
 /-- Every row of `rowDens` not in `rowGaps` has its `Row`. -/

@@ -238,6 +238,14 @@ def Sem.one {X Y A B : Obj} (D : Den X Y → Den A B) : List Sem → Den A B
   | [⟨X', Y', T⟩] => if h : X' = X ∧ Y' = Y then D (h.1 ▸ h.2 ▸ T) else 𝟘
   | _ => 𝟘
 
+/-- The arguments `ss` bound to the variables `0, 1, …` in order, every other variable `𝟘`: what a call's body is
+    read under, `Val.empty.bind 0 ss₀ ⋯ .bind (n-1) ssₙ₋₁`. -/
+noncomputable def Val.args (ss : List Sem) : Val := go 0 ss where
+  /-- `ss` bound from the variable `k` on. -/
+  go (k : Nat) : List Sem → Val
+    | [] => Val.empty
+    | ⟨_, _, T⟩ :: ss => (go (k + 1) ss).bind k T
+
 /-- A row's meaning at its object variables `σ`, given its relation arguments' meanings. -/
 abbrev RowDen (c : RowCode) := (σ : List Obj) → List Sem → Den (c.ty σ).1 (c.ty σ).2
 
