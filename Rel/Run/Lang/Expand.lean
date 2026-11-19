@@ -1,5 +1,5 @@
 import Lean
-import Rel.Run.Lang.Gen
+import Rel.Run.Lang.GenK
 import Rel.Run.Lang.Elab
 import Rel.Run.Lang.Parse
 
@@ -114,8 +114,8 @@ def checkErr (A B : Obj) (objs : Objs) (p : Pos) (x y : String) (eq : Bool) (s t
     prints or checks (an ok bit false), which no value of the program can be trusted after; each definition not
     ok is named with the `μ`s it holds (`ms`), whose rounds reaching their cap also clear the bit. -/
 def failures (ds : List (String × Gen.Gv)) (ms : List (String × List String)) (ps : List (String × Bool))
-    (cs : List (Option Err × Bool)) : List Err :=
-  cs.filterMap (·.1) ++ if ds.all (·.2.2.2.ok) && ps.all (·.2) && cs.all (·.2) then [] else
+    (cs : List (Option Err × Bool)) (es : List (String × Option String)) : List Err :=
+  cs.filterMap (·.1) ++ es.filterMap (fun (x, e) => e.map fun m => ⟨{}, s!"{x}: {m}"⟩) ++ if ds.all (·.2.2.2.ok) && ps.all (·.2) && cs.all (·.2) then [] else
     let bad := (ds.filter (!·.2.2.2.ok)).map fun (x, _) =>
       s!"; in {x}" ++ String.join (((ms.lookup x).getD []).map (s!", or {·}"))
     [⟨{}, "an op ran out of capacity (its twin's ok bit is false)" ++ String.join bad⟩]
@@ -559,7 +559,7 @@ def arcs (k : Nat) : {V D : Obj} → Tm V D →
   | _, _, t => if free k t then some [] else none
 
 /-- The constant of each closed value, and the code of each numbered sub-term (`number`). -/
-abbrev RM := StateT (Std.HashMap Lean.Expr Name × Std.HashMap Nat Lean.Expr) MetaM
+abbrev RM := ReaderT Bool (StateT (Std.HashMap Lean.Expr Name × Std.HashMap Nat Lean.Expr) MetaM)
 
 /-- The constant `c : ty := v`, compiled, with the heartbeats a `def` command of its own would have: one
     `rel_program` command adds them all, and a program's count of constants is no measure of any one's cost.
@@ -677,52 +677,55 @@ partial def body (pre : Name) (ρ : List (Nat × Lean.Expr)) (A B : Obj) (k : Na
 partial def node (pre : Name) (ρ : List (Nat × Lean.Expr)) {A B : Obj} (t : Tm A B) : RM Lean.Expr := do
   let c {X Y : Obj} (u : Tm X Y) := code pre ρ u
   let p {X Y : Obj} (u : Tm X Y) := planOr pre ρ u
+  let k ← read
+  -- the program runs on the kernel path: each body is its `GenK` twin, and a closed `≫ ∩ −` is no bit matrix
+  let gk (n : Name) (xs : Array Lean.Expr) := g (if k then n.replacePrefix `Rel.Lang.Gen `Rel.Lang.GenK else n) xs
   match A, B, t with
-  | A, B, .val R => return g ``Gen.val #[oE A, oE B, ← liftE (relE R)]
-  | A, _, .uni (m := m) U => return g ``Gen.uni #[oE A, uE m, ← liftE (valsE A m U)]
-  | A, B, .zero => return g ``Gen.zero #[oE A, oE B]
-  | A, _, .id => return g ``Gen.id #[oE A]
-  | A, B, .top V => return g ``Gen.top #[oE A, oE B, ← c V]
-  | .prod A B, _, .outl => return g ``Gen.outl #[oE A, oE B]
-  | .prod A B, _, .outr => return g ``Gen.outr #[oE A, oE B]
+  | A, B, .val R => return gk ``Gen.val #[oE A, oE B, ← liftE (relE R)]
+  | A, _, .uni (m := m) U => return gk ``Gen.uni #[oE A, uE m, ← liftE (valsE A m U)]
+  | A, B, .zero => return gk ``Gen.zero #[oE A, oE B]
+  | A, _, .id => return gk ``Gen.id #[oE A]
+  | A, B, .top V => return gk ``Gen.top #[oE A, oE B, ← c V]
+  | .prod A B, _, .outl => return gk ``Gen.outl #[oE A, oE B]
+  | .prod A B, _, .outr => return gk ``Gen.outr #[oE A, oE B]
   | A, C, .comp (B := B) R S =>
-    if R.dem then return g ``Gen.comp #[oE A, oE B, oE C, bE S.dem, ← c R, ← c S]
-    else return g ``Gen.compB #[oE A, oE B, oE C, ← p R, ← p S]
-  | B, A, .conv R => return g ``Gen.conv #[oE A, oE B, ← c R]
+    if R.dem || k then return gk ``Gen.comp #[oE A, oE B, oE C, bE S.dem, ← c R, ← c S]
+    else return gk ``Gen.compB #[oE A, oE B, oE C, ← p R, ← p S]
+  | B, A, .conv R => return gk ``Gen.conv #[oE A, oE B, ← c R]
   | A, B, .meet R S =>
-    if !R.dem && !S.dem then return g ``Gen.meetB #[oE A, oE B, ← p R, ← p S]
-    else return g ``Gen.meet #[oE A, oE B, bE R.dem, bE S.dem, ← c R, ← c S]
-  | A, B, .join R S => return g ``Gen.join #[oE A, oE B, bE R.dem, bE S.dem, ← c R, ← c S]
+    if !R.dem && !S.dem && !k then return gk ``Gen.meetB #[oE A, oE B, ← p R, ← p S]
+    else return gk ``Gen.meet #[oE A, oE B, bE R.dem, bE S.dem, ← c R, ← c S]
+  | A, B, .join R S => return gk ``Gen.join #[oE A, oE B, bE R.dem, bE S.dem, ← c R, ← c S]
   | A, B, .diff R S =>
-    if !R.dem && !S.dem then return g ``Gen.diffB #[oE A, oE B, ← p R, ← p S]
-    else return g ``Gen.diff #[oE A, oE B, bE R.dem, bE S.dem, ← c R, ← c S]
-  | A, _, .dom (B := B) R => return g ``Gen.dom #[oE A, oE B, bE R.dem, ← c R]
-  | B, _, .ran (A := A) R => return g ``Gen.ran #[oE A, oE B, ← c R]
-  | B, C, .ldiv (A := A) R S UB UC => return g ``Gen.ldivB #[oE A, oE B, oE C, ← p R, ← p S, ← c UB, ← c UC]
-  | A, B, .rdiv (C := C) R S UA UB => return g ``Gen.rdiv #[oE A, oE B, oE C, ← c R, ← c S, ← c UA, ← c UB]
-  | A, .prod B C, .pair R S => return g ``Gen.pair #[oE A, oE B, oE C, bE R.dem, bE S.dem, ← c R, ← c S]
-  | .prod A C, .prod B D, .prod R S => return g ``Gen.prod #[oE A, oE B, oE C, oE D, ← c R, ← c S]
-  | .sum A B, C, .junc R S => return g ``Gen.junc #[oE A, oE B, oE C, ← c R, ← c S]
-  | A, .arr B, .lam R => return g ``Gen.lam #[oE A, oE B, bE R.dem, ← c R]
-  | .arr A, .arr B, .E R => return g ``Gen.E #[oE A, oE B, bE R.dem, ← c R]
-  | _, B, .est Q => return g ``Gen.est #[oE B, ← c Q]
-  | _, .arr B, .thin Q => return g ``Gen.thin #[oE B, ← c Q]
-  | A, .arr B, .nil => return g ``Gen.nil #[oE A, oE B]
-  | .arr B, _, .atPos k => return g ``Gen.atPos #[oE B, toExpr k]
+    if !R.dem && !S.dem && !k then return gk ``Gen.diffB #[oE A, oE B, ← p R, ← p S]
+    else return gk ``Gen.diff #[oE A, oE B, bE R.dem, bE S.dem, ← c R, ← c S]
+  | A, _, .dom (B := B) R => return gk ``Gen.dom #[oE A, oE B, bE R.dem, ← c R]
+  | B, _, .ran (A := A) R => return gk ``Gen.ran #[oE A, oE B, ← c R]
+  | B, C, .ldiv (A := A) R S UB UC => return gk ``Gen.ldivB #[oE A, oE B, oE C, ← p R, ← p S, ← c UB, ← c UC]
+  | A, B, .rdiv (C := C) R S UA UB => return gk ``Gen.rdiv #[oE A, oE B, oE C, ← c R, ← c S, ← c UA, ← c UB]
+  | A, .prod B C, .pair R S => return gk ``Gen.pair #[oE A, oE B, oE C, bE R.dem, bE S.dem, ← c R, ← c S]
+  | .prod A C, .prod B D, .prod R S => return gk ``Gen.prod #[oE A, oE B, oE C, oE D, ← c R, ← c S]
+  | .sum A B, C, .junc R S => return gk ``Gen.junc #[oE A, oE B, oE C, ← c R, ← c S]
+  | A, .arr B, .lam R => return gk ``Gen.lam #[oE A, oE B, bE R.dem, ← c R]
+  | .arr A, .arr B, .E R => return gk ``Gen.E #[oE A, oE B, bE R.dem, ← c R]
+  | _, B, .est Q => return gk ``Gen.est #[oE B, ← c Q]
+  | _, .arr B, .thin Q => return gk ``Gen.thin #[oE B, ← c Q]
+  | A, .arr B, .nil => return gk ``Gen.nil #[oE A, oE B]
+  | .arr B, _, .atPos k => return gk ``Gen.atPos #[oE B, toExpr k]
   | _, _, .own R => c R
-  | _, _, .succ U => return g ``Gen.succ #[← c U]
-  | _, _, .arith k U => return g ``Gen.arith #[toExpr k, ← c U]
-  | _, _, .leq U => return g ``Gen.leq #[← c U]
-  | _, _, .lt U => return g ``Gen.lt #[← c U]
-  | .arr E, V, .foldr e S => return g ``Gen.foldr #[oE E, oE V, bE S.dem, ← c e, ← c S]
-  | .arr E, V, .fold e S => return g ``Gen.fold #[oE E, oE V, bE S.dem, ← c e, ← c S]
+  | _, _, .succ U => return gk ``Gen.succ #[← c U]
+  | _, _, .arith k U => return gk ``Gen.arith #[toExpr k, ← c U]
+  | _, _, .leq U => return gk ``Gen.leq #[← c U]
+  | _, _, .lt U => return gk ``Gen.lt #[← c U]
+  | .arr E, V, .foldr e S => return gk ``Gen.foldr #[oE E, oE V, bE S.dem, ← c e, ← c S]
+  | .arr E, V, .fold e S => return gk ``Gen.fold #[oE E, oE V, bE S.dem, ← c e, ← c S]
   | _, _, .share _ R => c R
   | .prod I (.arr E), V, .foldI e S =>
-    return g ``Gen.foldI #[oE I, oE E, oE V, bE e.dem, bE S.dem, ← c e, ← c S]
-  | .prod I A, B, .flat R => return g ``Gen.flat #[oE I, oE A, oE B, bE R.dem, ← c R]
+    return gk ``Gen.foldI #[oE I, oE E, oE V, bE e.dem, bE S.dem, ← c e, ← c S]
+  | .prod I A, B, .flat R => return gk ``Gen.flat #[oE I, oE A, oE B, bE R.dem, ← c R]
   | A, B, .var _ k => match ρ.lookup k with
-    | some x => if (← inferType x).isAppOf ``Gen.Pl then return g ``Gen.ofPl #[oE A, oE B, x]
-                else return g ``Gen.const #[oE A, oE B, x]
+    | some x => if (← inferType x).isAppOf ``Gen.Pl then return gk ``Gen.ofPl #[oE A, oE B, x]
+                else return gk ``Gen.const #[oE A, oE B, x]
     | none => throwError "rel_program expansion: internal: the variable {k} is not bound here"
   | A, B, .nu k S b => match arcs k b with
     | some (a :: as) =>
@@ -734,21 +737,21 @@ partial def node (pre : Name) (ρ : List (Nat × Lean.Expr)) {A B : Obj} (t : Tm
           (← c r) (mkApp4 (mkConst ``Prod.mk [0, 0]) (ty B B) (mkApp2 (mkConst ``Prod [0, 0]) (ty A A) (ty B B))
             (← c s) (mkApp4 (mkConst ``Prod.mk [0, 0]) (ty A A) (ty B B) (← c u) (← c v))))
       let arcTy := mkApp2 (mkConst ``Gen.Arc) (oE A) (oE B)
-      return g ``Gen.nuAC #[oE A, oE B, ← c S, ← arc a, ← mkListLit arcTy (← as.mapM arc)]
-    | _ => return g ``Gen.nu #[oE A, oE B, ← c S, ← body pre ρ A B k b]
-  | A, B, .mu k _ n b => return g ``Gen.mu #[oE A, oE B, toExpr n, ← body pre ρ A B k b]
+      return gk ``Gen.nuAC #[oE A, oE B, ← c S, ← arc a, ← mkListLit arcTy (← as.mapM arc)]
+    | _ => return gk ``Gen.nu #[oE A, oE B, ← c S, ← body pre ρ A B k b]
+  | A, B, .mu k _ n b => return gk ``Gen.mu #[oE A, oE B, toExpr n, ← body pre ρ A B k b]
   | A, B, .hylo k _ b =>
     let ch := (b.kids k A).getD .zero
-    return g ``Gen.hylo #[oE A, oE B, bE ch.dem, bE b.dem, ← c ch, ← body pre ρ A B k b]
-  | .sum A B, C, .juncD R S => return g ``Gen.juncD #[oE A, oE B, oE C, bE R.dem, bE S.dem, ← c R, ← c S]
+    return gk ``Gen.hylo #[oE A, oE B, bE ch.dem, bE b.dem, ← c ch, ← body pre ρ A B k b]
+  | .sum A B, C, .juncD R S => return gk ``Gen.juncD #[oE A, oE B, oE C, bE R.dem, bE S.dem, ← c R, ← c S]
   | A, B, t@(.prim _) | A, B, t@(.arg ..) => match primOf t with
     | some (r, as) => do
       let xs ← as.toArray.mapM fun x => return (← code pre ρ x.2.2, fnTy x)
       let some e ← primE r A B xs
         | throwError "rel_program expansion: `{r.sig.1}` at {oE A} → {oE B} given {xs.size} relations fits none of {primWrappers}"
       pure e
-    | none => return g ``Gen.ofPl #[oE A, oE B, ← spine pre ρ t]
-  | A, B, t@(.call ..) => return g ``Gen.ofPl #[oE A, oE B, ← spine pre ρ t]
+    | none => return gk ``Gen.ofPl #[oE A, oE B, ← spine pre ρ t]
+  | A, B, t@(.call ..) => return gk ``Gen.ofPl #[oE A, oE B, ← spine pre ρ t]
 
 end
 
@@ -812,6 +815,10 @@ def emit (n : Name) (r : Read) : MetaM Unit := do
   let (ds, ps, cs, objs, os) := r
   -- read before `number`, which hides a closed `μ` inside a `share`
   let ms : List (String × List String) := ds.map fun (x, ⟨_, _, t⟩) => (x, mus t)
+  -- the kernel path: every node of every term the program runs has a `GenK` body; a call has none, so a
+  -- definition elaborated once (`fs`) is read by no term on it
+  let kern := ds.all (fun (_, ⟨_, _, t⟩) => t.onKernel) && ps.all (fun (_, ⟨_, _, t⟩, _, _) => t.onKernel) &&
+    cs.all fun (_, _, _, _, _, _, ⟨_, _, R, S⟩) => R.onKernel && S.onKernel
   -- one numbering over the whole program, as the code of each number is kept across it
   let ((ds, ps, cs), fs) := Prod.fst <| (do
     let fs ← os.mapM fun o => do let ⟨A, B, t⟩ := o.res; return { o with res := ⟨A, B, ← number t⟩ }
@@ -828,7 +835,7 @@ def emit (n : Name) (r : Read) : MetaM Unit := do
     let none' (f : Name) := return mkApp (mkConst ``Option.none [0]) (← inferType (g f #[oE A, oE B])).appArg!
     pure (g ``Rel.Rel.run #[oE A, oE B, t,
       g ``Rel.Known.mk #[oE A, oE B, ← none' ``Rel.Known.dom._default, ← none' ``Rel.Known.ran._default]])
-  let ((entries, printed, checked), st) ← (do
+  let ((entries, printed, checked, errs), st) ← (do
     -- each definition elaborated once: `n.x : (A₁ … : Obj) → Pl U₁ → … → Pl R₁ → … → Pl A B`, generic over the
     -- objects of its generic variables, then plans in and out, the universes it reads then its parameters, so a
     -- caller's plan runs through the call; `n.x.conv` its converse, when its body has one (`convTm`)
@@ -840,7 +847,7 @@ def emit (n : Name) (r : Read) : MetaM Unit := do
       let rk := (List.range nv).filter (reads.getD · false)
       let gk := (List.range nv).filter (gen.getD · false)
       let mk (k : Name) (X Y : Obj) (u : Tm X Y) : RM Unit := do
-        let (ty, v) ← lams (gk.map fun _ => mkConst ``Obj) fun xs => do
+        let (ty, v) ← withReader (fun _ => false) <| lams (gk.map fun _ => mkConst ``Obj) fun xs => do
           -- each placeholder `varObj k` becomes its binder
           let sub (z : Lean.Expr) := z.replace fun s =>
             (gk.zip xs.toList).findSome? fun (k, a) => if (varObj k).map toExpr == some s then some a else none
@@ -858,12 +865,20 @@ def emit (n : Name) (r : Read) : MetaM Unit := do
       unless !t.dem do throwError "rel_program expansion: internal: `{x}` needs keys"
       addConst k (mkApp2 (mkConst ``CRel) (oE A) (oE B)) (← app A B v)
       es := es ++ [g ``Gen.entry #[toExpr x, oE A, oE B, mkConst k]]
+    -- on the kernel path, each term's error message, so `failures` names the op that could not run
+    let one (x : String) {A B : Obj} (t : Tm A B) : RM Lean.Expr := do
+      pure (mkApp4 (mkConst ``Prod.mk [0, 0]) (mkConst ``String) (mkApp (mkConst ``Option [0]) (mkConst ``String))
+        (toExpr x) (g ``Rel.Rel.err #[oE A, oE B, ← code n [] t]))
+    let errs ← if !kern then pure [] else
+      return (← ds.mapM fun (x, ⟨_, _, t⟩) => one x t) ++ (← ps.mapM fun (x, ⟨_, _, t⟩, _, _) => one x t) ++
+        (← cs.mapM fun (_, x, _, _, _, _, ⟨_, _, R, _⟩) => one x R) ++
+        (← cs.mapM fun (_, _, y, _, _, _, ⟨_, _, _, S⟩) => one y S)
     let ps ← ps.mapM fun (x, ⟨A, B, t⟩, s, u) => do
       pure (g ``printText #[oE A, oE B, os, toExpr x, toExpr s, toExpr u, ← app A B (← code n [] t)])
     let cs ← cs.mapM fun (p, x, y, eq, s, u, ⟨A, B, R, S⟩) => do
       pure (g ``checkErr #[oE A, oE B, os, toExpr p, toExpr x, toExpr y, toExpr eq, toExpr s, toExpr u,
         ← app A B (← code n [] R), ← app A B (← code n [] S)])
-    pure (es, ps, cs) : RM (List Lean.Expr × List Lean.Expr × List Lean.Expr)).run ({}, {})
+    pure (es, ps, cs, errs) : RM (List Lean.Expr × List Lean.Expr × List Lean.Expr × List Lean.Expr)).run kern |>.run ({}, {})
   -- what `Expand.rep` proves from: the numbered definitions, and `code`'s constants so it adds none of them again
   modifyEnv (relRegistry.addEntry · (.rep n ds st.1.toArray st.2.toArray))
   let ety := pairT (mkConst ``String) (mkConst ``Gen.Gv)
@@ -876,7 +891,9 @@ def emit (n : Name) (r : Read) : MetaM Unit := do
     (mkApp2 (mkConst ``Prod.fst [0, 0]) (mkConst ``String) (mkConst ``Bool)) (mkConst (n ++ `printed)))
   let cty := pairT (mkApp (mkConst ``Option [0]) (mkConst ``Err)) (mkConst ``Bool)
   addConst (n ++ `failures) (listT (mkConst ``Err))
-    (g ``failures #[mkConst (n ++ `expanded), toExpr ms, mkConst (n ++ `printed), ← mkListLit cty checked])
+    (g ``failures #[mkConst (n ++ `expanded), toExpr ms, mkConst (n ++ `printed), ← mkListLit cty checked,
+      ← mkListLit (pairT (mkConst ``String) (mkApp (mkConst ``Option [0]) (mkConst ``String))) errs])
+  addConst (n ++ `kernel) (mkConst ``Bool) (toExpr kern)
   addConst (n ++ `ok) (mkConst ``Bool) (mkApp2 (mkConst ``List.isEmpty [0]) (mkConst ``Err) (mkConst (n ++ `failures)))
 
 end Expand

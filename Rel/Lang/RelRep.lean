@@ -137,9 +137,12 @@ def rep (n : Name) : MetaM Unit := do
     | throwError "Expand.rep: `{n}` is no rel_program"
   -- `emit`'s constants by value and by number, so `code` finds each one and adds none
   let st : Std.HashMap Lean.Expr Name × Std.HashMap Nat Lean.Expr := (.ofList shared.toList, .ofList codes.toList)
+  let kern := ((← getEnv).find? (n ++ `kernel)).bind (·.value?) == some (toExpr true)
   let unproved ← (do
     let mut gaps : List (String × String) := []
     for (x, ⟨_, _, t⟩) in ds do
+      -- a program on the kernel path runs `GenK`, which `GenSpec` has no lemma for yet
+      if kern then gaps := gaps ++ [(x, "GenK")]; continue
       let kc := mkConst (Parse.constOf n x)
       modify fun (m, _) => (m, none)
       let body : PM (Option String) := do
@@ -153,7 +156,7 @@ def rep (n : Name) : MetaM Unit := do
         | none => pure (((← get).2.map toString).getD "?")
       -- a fresh heartbeat count per theorem, since the command has spent its own
       if let some c ← withCurrHeartbeats body then gaps := gaps ++ [(x, c)]
-    pure gaps : PM (List (String × String))).run' ({}, none) |>.run' st
+    pure gaps : PM (List (String × String))).run' ({}, none) |>.run false |>.run' st
   let sty := pairT (mkConst ``String) (mkConst ``String)
   addConst (n ++ `unproved) (listT sty) (← mkListLit sty (unproved.map fun (x, c) =>
     mkApp4 (mkConst ``Prod.mk [0, 0]) (mkConst ``String) (mkConst ``String) (toExpr x) (toExpr c)))
