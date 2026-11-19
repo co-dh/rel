@@ -16,9 +16,11 @@ open Rel.Ext Rel.Kernel Rel.Verify
 by the kernels that answer a count: `d = b · (pos + 1)` (a `kscan` map), so a kept position `G` is `G + 1` and every
 other is `0`; a spare cell holding `0` appended (`kscatter` into `m + 1`); `kasc ≫ kseen` over `d` answers `K + 1`
 groups, the `0`s first, then each kept position alone, ascending; the first rows of groups `1 … K` (`kgather` at
-`shiftCol K 1`) read through `kasc`'s permutation are the kept positions. -/
+`shiftCol K 1`) read through `kasc`'s permutation are the kept positions. `m` is below `B`: the `m + 1` cells fit a
+`USize`, and the words `1 … m` are below `2^63`, where their `i64` order code (`ordCode`, signed) ascends with them. -/
 def whereCol (m : USize) (b : Enc) : Except String (USize × Enc) :=
-  if m.toNat + 1 < USize.size then do
+  let B := min (USize.size - 1) (2 ^ 63)
+  if m.toNat < B then do
     let d ← colMap .mul m b (← shiftCol m 1)
     let m' := (m.toNat + 1).toUSize
     let es := [(QAtomicType.i64, ← kscatter .last m .pos d m' 0)]
@@ -27,7 +29,7 @@ def whereCol (m : USize) (b : Enc) : Except String (USize × Enc) :=
     let K := (c - 1).toUSize
     let fs ← kgather K (← shiftCol K 1) c.toUSize f
     (K, ·) <$> kgather K fs m' p
-  else .error s!"where: {m} + 1 rows do not fit a USize"
+  else .error s!"where: {m} rows, not below {B}: m + 1 cells fit a USize and positions 1 … m order as i64 words only below it"
 
 namespace Tab
 variable {k v : Obj}
