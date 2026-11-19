@@ -27,7 +27,7 @@ GATE     = SECONDS=0; trap 'echo "[$@] $$SECONDS s, exit $$?"' EXIT; mkdir -p $(
 
 # cheapest first: compile-diff takes minutes, so a gate that fails in seconds is reported before it starts
 GATES_LIST := build crate-test syms native ldd index-complete axioms noreduce panic bang pointfree kernel-tested externs compile-diff
-.PHONY: check main-only index panic-allow bang-allow pointfree-allow kernel-tested-allow $(GATES_LIST)
+.PHONY: check main-only index compile-diff-write panic-allow bang-allow pointfree-allow kernel-tested-allow $(GATES_LIST)
 check: main-only $(GATES_LIST)
 	$(GATE)
 	echo "make check: every gate passed"
@@ -46,10 +46,17 @@ build: main-only
 	$(GATE)
 	CAP_MEM_MB=$(MEM) $(CAP) $(LAKE) build RelCore RelKernel RelRun Rel rel-native
 
-# compile agrees with the code rel_program generated, on every closed definition of every registered program
+# compile agrees with the code rel_program generated, on every closed definition of every registered program, and each
+# definition's status and set of rows equal test/compile-diff.json's, by name. `lake lean` builds the imports only and
+# elaborates the gate every time: an olean of it would be up to date after the baseline changed.
 compile-diff: main-only
 	$(GATE)
-	CAP_MEM_MB=$(MEM) $(CAP) $(LAKE) build TestCompile
+	CAP_MEM_MB=$(MEM) $(CAP) $(LAKE) lean $(CURDIR)/test/TestCompile.lean
+
+# regenerates test/compile-diff.json from the current run; read the diff before committing it
+compile-diff-write: main-only
+	$(GATE)
+	REL_COMPILE_DIFF_WRITE=1 CAP_MEM_MB=$(MEM) $(CAP) $(LAKE) lean $(CURDIR)/test/TestCompile.lean
 
 crate-test:
 	$(GATE)
