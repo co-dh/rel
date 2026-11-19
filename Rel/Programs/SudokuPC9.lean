@@ -6,7 +6,7 @@ import Rel.Programs.CSP
 `4.....8.5.3..........7......2.....6.....8.4......1.......6.3.7.5..2.....1.4......`. `pc(X)` is never a table:
 each round runs as bit matrices (`Bits`), `sup(X) X` one `bitRowsOver` call where its table has some 10⁸ rows,
 and `π₁\` another. It stays on the old layer (`rel.kernel`): the kernel path, which has no bit matrix, would build
-the table of `sup(X) X`, and in `K₀` `cor(s₀) ⊤` is a `Tab.cross` of 593 × 729 rows. -/
+the table of `sup(X) X` (some 10⁸ rows). -/
 
 namespace Rel.Programs
 
