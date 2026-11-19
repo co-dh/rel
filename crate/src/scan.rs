@@ -664,7 +664,7 @@ impl Scan<'_> {
     fn seg(&self, lo: usize, nb: usize) -> Seg {
         let mut g = [0u64; BLK / 64];
         // a `foR` boolean: the block decoded into the L1 scratch, each row's bit packed
-        let (mut v, mut tmp) = (pod::Scr::<u64>::new(nb), pod::Scr::<u64>::new(BLK));
+        let (mut v, mut tmp) = (pod::Scr::<u64>::new(nb), pod::Scr::<u64>::new(nb));
         self.seg.load(lo, &mut v, pod::bytes_mut(&mut tmp));
         for (k, &x) in v.iter().enumerate() { g[k >> 6] |= (x & 1) << (k & 63) }
         if nb & 63 != 0 { g[nb >> 6] &= !0 >> (64 - (nb & 63)) }
@@ -729,7 +729,7 @@ impl Scan<'_> {
         let g = Grid { n: self.n, lg: crate::DEFAULT_LG };
         let mut bs: Vec<(usize, usize, usize)> = g.walk().collect();
         if self.rev { bs.reverse() }
-        let (mut cs, mut c, mut tmp) = (alloc::vec![0u64; bs.len()], 0u64, pod::Scr::<u64>::new(BLK));
+        let (mut cs, mut c, mut tmp) = (alloc::vec![0u64; bs.len()], 0u64, pod::Scr::<u64>::new(self.n.min(BLK)));
         for (b, lo, nb) in bs {
             cs[b] = c;
             // the row the fold reaches next, which continues this block unless `seg` starts a segment there
@@ -746,7 +746,7 @@ impl Scan<'_> {
     /// Whether some row of a folded column reads 0: `div` and `mod` then fail, and every row folds every column.
     fn zero(&self) -> bool {
         let g = Grid { n: self.n, lg: crate::DEFAULT_LG };
-        let (mut v, mut tmp) = (pod::Scr::<u64>::new(BLK), pod::Scr::<u64>::new(BLK));
+        let (mut v, mut tmp) = (pod::Scr::<u64>::new(self.n.min(BLK)), pod::Scr::<u64>::new(self.n.min(BLK)));
         self.xs.iter().any(|x| g.walk().any(|(b, lo, nb)| match x.coc(b) {
             Some(c) if c.meta.base[b] > 0 || c.meta.maxv[b] < 0 => false,
             _ => { x.load(lo, &mut v[..nb], pod::bytes_mut(&mut tmp)); v[..nb].contains(&0) }
@@ -807,7 +807,7 @@ pub fn kscan<'a>(op: u8, rev: bool, s: u8, t: u8, n: usize, seg: B<'a>, es: &[B<
         let o = pod::cast_mut::<u64>(pod::bytes_mut(buf)).expect("kscan: an i64 block is a u64 block");
         let (b, nb, mut w64) = (lo >> crate::DEFAULT_LG, o.len(), [0u64; BLK / 64]);
         // a compare against a constant block: the compare kernel's bits, each a row's word
-        if (9..=14).contains(&r.op) && r.cmp_blk(b, lo, nb, &mut w64, pod::bytes_mut(&mut pod::Scr::<u64>::new(BLK))) {
+        if (9..=14).contains(&r.op) && r.cmp_blk(b, lo, nb, &mut w64, pod::bytes_mut(&mut pod::Scr::<u64>::new(nb + 8))) {
             for (k, v) in o.iter_mut().enumerate() { *v = w64[k >> 6] >> (k & 63) & 1 }
         } else {
             r.block(lo, r.carry[b], o);

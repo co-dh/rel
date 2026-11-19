@@ -133,15 +133,22 @@ fn plan<T: Elt>(x: &[T], mn: i64, top: usize, esz: usize) -> (usize, i64, usize)
     let (nb, pc) = (x.len(), 2 + esz);
     let bits = |d: usize| (nb * d).div_ceil(8);
     // lo[d] <= the patches at width d. Residuals in buckets of 2 ^ b, at most 64: a window of 2 ^ d >= 2 ^ b from a
-    // key spans at most `span` buckets, so leaves at least the keys outside the fullest run of `span`
-    let b = top.saturating_sub(6);
+    // key spans at most `span` buckets, so leaves at least the keys outside the fullest run of `span`. No more buckets
+    // than keys (⌈log2 nb⌉ bits of them), so the table below costs what the block does
+    let b = top.saturating_sub((usize::BITS - nb.saturating_sub(1).leading_zeros()).min(6) as usize);
     let nbk = 1usize << (top - b);
+    // a key's bucket is below `nbk` <= 64, its residual being below `2 ^ top`. Four histograms, as one would chain the
+    // increments of a run of keys in one bucket through memory
+    let mut h4 = [[0u32; 65]; 4];
+    let at = |v: &T| 1 + (((v.i() as u64).wrapping_sub(mn as u64) >> b) & 63) as usize;
+    let ch = x.chunks_exact(4);
+    for v in ch.remainder() { h4[0][at(v)] += 1 }
+    for g in ch { for (h, v) in h4.iter_mut().zip(g) { h[at(v)] += 1 } }
     let mut h = [0usize; 65];
-    for v in x { h[1 + ((v.i() as u64).wrapping_sub(mn as u64) >> b) as usize] += 1 }
-    for k in 1..=nbk { h[k] += h[k - 1] } // prefix sums
+    for k in 1..=nbk { h[k] = h[k - 1] + h4.iter().map(|g| g[k] as usize).sum::<usize>() } // prefix sums
     let mut lo = [0usize; 65];
     for d in b..top {
-        let span = ((((1u64 << d) + (1u64 << b) - 2) >> b) as usize + 1).min(nbk);
+        let span = (((1u64 << d) - 1).div_ceil(1u64 << b) as usize + 1).min(nbk); // no overflow at b = d = 63
         lo[d] = nb - (span..=nbk).map(|e| h[e] - h[e - span]).max().unwrap_or(nb);
     }
     for d in 0..b { lo[d] = lo[b] } // patches only grow as the width narrows
@@ -540,7 +547,7 @@ mod tests {
         let mut rnd = || { s ^= s << 13; s ^= s >> 7; s ^= s << 17; s };
         let mut n = 0;
         for k in 0..=64u32 {
-            for nb in [1usize, 2, 3, 5, 9, 17, 64, 100, 1000, BLK] {
+            for nb in (1usize..=64).chain([65, 100, 255, 256, 1000, BLK]) {
                 for kind in 0..7 {
                     let m = if k == 64 { u64::MAX } else { (1u64 << k) - 1 };
                     let base = rnd();
@@ -564,6 +571,23 @@ mod tests {
         n
     }
     #[test] fn plan_is_the_full_search() { assert!(plans::<u8>(1) + plans::<i16>(2) + plans::<i32>(3) + plans::<i64>(4) + plans::<i64>(5) > 0) }
+    // `for_blk` called `reps` times on `x`, for `perf stat` (`cargo test --release -- --ignored bench_for_blk_<shape>`)
+    fn bench(x: &[i64], reps: usize) -> u64 {
+        let (mut base, mut maxv, mut width, mut bsum, mut nexc, mut frm, mut t) = (0, 0, 0, 0, 0, 0u64, 0u64);
+        for _ in 0..reps {
+            let mut m = EncMeta { b: 0, base: &mut base, maxv: &mut maxv, width: &mut width, bsum: &mut bsum, frm: Some(&mut frm),
+                                  nexc: &mut nexc, exp: None, patch: true };
+            t += for_blk(&mut m, core::hint::black_box(x), x.len()) as u64 + width as u64;
+        }
+        t
+    }
+    #[test] #[ignore] fn bench_for_blk_small() { assert!(bench(&(0..16).map(|i| 100 + i * 3).collect::<Vec<_>>(), 2_000_000) > 0) }
+    // a sorted key column: long runs of one histogram bucket
+    #[test] #[ignore] fn bench_for_blk_sorted() { assert!(bench(&(0..BLK as i64).map(|i| 1000 + i / 7).collect::<Vec<_>>(), 100_000) > 0) }
+    #[test] #[ignore] fn bench_for_blk_random() {
+        let mut s = 7u64;
+        assert!(bench(&(0..BLK).map(|_| { s ^= s << 13; s ^= s >> 7; s ^= s << 17; (s & 0xfff) as i64 }).collect::<Vec<_>>(), 100_000) > 0)
+    }
     #[test] fn decode_round_trip_with_patches() {
         let mut x: Vec<i64> = (0..BLK as i64 + 300).map(|i| 1_000_000 + (i * 37) % 500).collect();
         x[3] = -5; x[900] = 1 << 40; x[1100] = i64::MIN; x[1200] = 7;

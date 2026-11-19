@@ -99,24 +99,29 @@ pub fn bytes_mut<T: Pod>(s: &mut [T]) -> &mut [u8] {
 
 /// A zeroed scratch of `len` elements: inline up to `N` (the default block of 1024, so a column at `DEFAULT_LG` pays what a
 /// stack array did), on the heap above it. One per call, never per block.
-pub struct Scr<T: Pod + Default, const N: usize = 1024> { inl: [T; N], heap: alloc::vec::Vec<T>, len: usize }
+/// Only `inl[..len]` is ever written: initialising all `N` made every small kernel call pay `N` elements of memset.
+pub struct Scr<T: Pod + Default, const N: usize = 1024> { inl: core::mem::MaybeUninit<[T; N]>, heap: alloc::vec::Vec<T>, len: usize }
 impl<T: Pod + Default, const N: usize> Scr<T, N> {
-    #[inline(always)]
-    pub fn new(len: usize) -> Self {
-        Scr { inl: [T::default(); N], heap: if len > N { alloc::vec![T::default(); len] } else { alloc::vec::Vec::new() }, len }
-    }
-    /// `len` copies of `x`, written once (a `new` then `fill` would write the inline array twice)
-    #[inline(always)]
+    #[inline]
+    pub fn new(len: usize) -> Self { Self::filled(len, T::default()) }
+    /// `len` copies of `x`, written once. Not `inline(always)`: unoptimised, a kernel expanded at every op (`by_op!`)
+    /// then holds this frame's copy of the inline array once per op, which overflowed a test thread's stack
+    #[inline]
     pub fn filled(len: usize, x: T) -> Self {
-        Scr { inl: [x; N], heap: if len > N { alloc::vec![x; len] } else { alloc::vec::Vec::new() }, len }
+        let mut s = Scr { inl: core::mem::MaybeUninit::uninit(), heap: alloc::vec::Vec::new(), len };
+        // Safety: `i < len <= N`
+        if len > N { s.heap = alloc::vec![x; len] } else { let p = s.inl.as_mut_ptr().cast::<T>(); for i in 0..len { unsafe { p.add(i).write(x) } } }
+        s
     }
 }
 impl<T: Pod + Default, const N: usize> core::ops::Deref for Scr<T, N> {
     type Target = [T];
-    fn deref(&self) -> &[T] { if self.len > N { &self.heap } else { &self.inl[..self.len] } }
+    // Safety: `filled` wrote `inl[..len]` whenever `len <= N`
+    fn deref(&self) -> &[T] { if self.len > N { &self.heap } else { unsafe { core::slice::from_raw_parts(self.inl.as_ptr().cast::<T>(), self.len) } } }
 }
 impl<T: Pod + Default, const N: usize> core::ops::DerefMut for Scr<T, N> {
-    fn deref_mut(&mut self) -> &mut [T] { if self.len > N { &mut self.heap } else { &mut self.inl[..self.len] } }
+    // Safety: as `deref`
+    fn deref_mut(&mut self) -> &mut [T] { if self.len > N { &mut self.heap } else { unsafe { core::slice::from_raw_parts_mut(self.inl.as_mut_ptr().cast::<T>(), self.len) } } }
 }
 impl<'a, T: Pod + Default, const N: usize> IntoIterator for &'a Scr<T, N> {
     type Item = &'a T; type IntoIter = core::slice::Iter<'a, T>;

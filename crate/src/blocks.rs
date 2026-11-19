@@ -164,7 +164,7 @@ impl<'a> Blocks<'a> {
     /// Elements `at .. at + cnt` at width `w`, as the slice of `buf` they are restored into: one or more of this source's own
     /// blocks, whichever its block size cuts them from.
     pub fn range<'b>(&self, at: usize, cnt: usize, w: usize, buf: &'b mut [u8]) -> &'b [u8] where 'a: 'b {
-        let mut tmp = pod::Scr::<u64, 1024>::new(2 * self.blk());
+        let mut tmp = pod::Scr::<u64, 1024>::new((self.blk() * w).div_ceil(8));
         for (b, blo, s, e) in self.tiles(at, at + cnt) {
             let x = self.view(b, w, pod::bytes_mut(&mut tmp));
             buf[(s - at) * w..(e - at) * w].copy_from_slice(&x[(s - blo) * w..(e - blo) * w]);
