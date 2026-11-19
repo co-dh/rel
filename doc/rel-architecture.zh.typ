@@ -96,6 +96,9 @@ compile η t : {r : Rel A B // rep r = ⟦t⟧ρ}       -- 方案 A：规格在�
 #grid(columns: (1fr, 1fr), gutter: 8pt,
   card(c-run, [为什么是 `lazy`])[`succ`、`arith`、`leq`、`⊤` 是无限关系，只能在边界已知后求值；
     它们和有限表一样是 `Rel` 的值，不是编译器的特例。复合时自动传播：`tab ≫ lazy` 把左表的值域作为 `dom` 交给右边。],
+  card(c-run, [闭项只算一次（草稿，待审）])[闭项的值不随上下文变：由下面的 `rep (f ⟨K, L⟩) = K ≫ R ≫ L`，取空边界得 `rep (f {}) = R`。
+    所以一个不需要边界的闭项（有限：旧记号 `Tm.dem = false`）在共享常量处求值一次，存成 `tab`（`GenK.memo`）；
+    需要边界的闭项（`𝟙`、`≤`、`⊤` 等无限关系）仍是 `lazy`，在每个上下文里按边界求值。否则一个闭的 `lazy` 值在 `fold` 的每一轮重算。],
   card(c-run, [需要几侧边界])[`succ`（函数）：`dom` 已知即返回 `tab`。`leq`：`Λ(leq)(3) = {3,4,…}` 无限，
     `dom` 与 `ran` 都已知才返回 `tab (K ≫ leq ≫ L)`。`⊤`：`K × L`。],
 )
