@@ -38,7 +38,7 @@
   - F（D.12）：`kseen` 只接受已按 `kasc` 序排好的行；引擎选择与直接寻址删除，调用者一律 `kasc ≫ kseen`。
   - owner 不在时，已写原则答不了的设计问题由 fable agent 分析并执行，问题、结论、理由记在本列表供复查；kernel 要
     解码、推翻 owner 已做的决定，仍留给 owner。
-  - fable 决定（2026-11-19，待 owner 复查）：float atom 的相等 = 存储位相等。问题：W2 的定律带前提 `hK`（序码相等
+  - fable 决定（2026-11-19，owner 接受：G）：float atom 的相等 = 存储位相等。问题：W2 的定律带前提 `hK`（序码相等
     则行相等），而 `kasc`/`kseen` 的序码把 `±0` 合成一个、所有 NaN 合成一个，`hK` 在 f32/f64 上为假。结论：序码
     在每个有序原子类型上是存储字的单射保序位映射（float 用 IEEE totalOrder：非负置符号位，负数翻全部位，比较时
     不再 `normalise`）；R7 的规范化（一个 NaN、`-0 ↦ +0`）只在产生 float 字的地方做（随 6.9）。理由：值模型已经
@@ -375,13 +375,16 @@ Diff table 的「状态」列：✅ 后面是完成它的步骤；🔄 是部分
       六个共享函数连着，在算子改写之前删不掉。
     - ✅ W1 闭包定律（af61a75，`Rel/KernelSpec/Closure.lean`）：`Enc.Valid`、`foRWords_valid`、`wordsFoR_closed`、
       五条 `k*_closed`；桥 `Arr.get_raw_foR`。缺口：`pos` 不是 `Enc.WF`；`u1` 列带前提 `t ≠ u1`。
-    - 🔄 W1a 每个原子列在产生处就是 foR 或 `pos`（分支 `mig-for`）：W2 的新算子拒绝 `.bytes` 列，所以旧路径
-      换不掉；产生点 7 个（`col longCol valCol tilCol setIdCol colFn`、`Gen.atom`）加旧 gather 的输出。
+    - 🔄 W1a 每个原子列在产生处就是 foR 或 `pos`（ad5b0d7，`mig-for`）：`col longCol setIdCol colFn`、`Gen.atom`
+      经 `longArr` 产生 foR（`longCol`、`setIdCol` 是旧 kernel 稠密输出在出口处编码一次，随 W5 删除）。仍稠密：
+      `tilCol valCol`、`pick`/`gatherColumn`、`Enc.answer`、`sortByC`——卡在旧层只对 `.bytes` 陈述的 raze/pick
+      定律上，不再逐点改，由 W3 把这些算子直接改写到五个 kernel 上。`Expand.atomE` 对 sym/general/ALP 列报错。
     - W1b 删除 foR + `pos` 之外的编码（决定 M）：在 W1a 之后（`.bytes` 没有构造点时删 constructor）。
     - 🔄 W2 第一个算子端到端（04acf52）：`Tab.canon`/`ran`/`dom` = `kasc` → `kseen` → `kgather`
       （`Rel/Run/Canon.lean`，定律 `Rel/RepCanon.lean`），kernel 之间无转换。未做：替换旧的 `canonC`/`nubC`/
-      `CRel.ran`/`CRel.dom`（等 W1a，以及 `sym`、`general`、`arr`、`sum` 列）；定律的前提 `hK`（序码相等则行
-      相等）对浮点不成立（`±0`、NaN），交 fable 分析；"结果有序且无重复" 未陈述。
+      `CRel.ran`/`CRel.dom`（等 W3 的 `pick` 替换，以及 `sym`、`general`、`arr`、`sum` 列）。前提 `hK` 已去掉
+      （2f86a15，`ordcode`，owner: G）：`ascOrd_atom`、`Vals.row_of_seenKey`；`Vals.nub_sorted`（按序码升序、无两行
+      序码相等；反方向"行相等则序码相等"未证）。缺：1024 行块边界的 Lean 例子（`decide +kernel` 不归约，未诊断）。
     - W3 其余算子，在并行 worktree 里：`∪`（concat → `kasc` → `kseen`）；`∩`/`−`（带来源标记的 concat → `kasc` →
       `kscan` 计数）；`≫`（两侧按中间列 `kasc` → `kseen` → expand → `kgather` → canon）；`/` `\` `Λ`（`kasc` ≫
       `kseen` 给出 `lo`/`hi`；分段 `kscan`）；list 行、arith、est/thin：在 W2 之后。
@@ -389,8 +392,8 @@ Diff table 的「状态」列：✅ 后面是完成它的步骤；🔄 是部分
     - W5 删除 `Rel/Run/Code.lean`、`Rel/KernelWF/`、旧的 `KernelSpec` module、`Kernel/{Structural,Sort,Search,
       Elementwise}` 与它们的 Rust；`RELK.txt` = 5 + 保留的。
     - W6 native：`Plan` 得到一个 `Enc` 寄存器，`Plan.abi` 列出这五个。
-  - 度量（每次合并）：调用旧 export 的可执行 def（149，W0 之后未重数）；`RELK.txt` 行数（master 80a1e99：79；
-    主要在 W5 下降）；compile-diff 241/25。`make check` 在 80a1e99 全绿（2026-11-19）。
+  - 度量（每次合并）：调用旧 export 的可执行 def（149，W0 之后未重数）；`RELK.txt` 行数（master 2f86a15：79；
+    主要在 W5 下降）；compile-diff 241/25。`make check` 在 2f86a15 全绿（2026-11-19）。
   - 2026-11-19 的修复：`Coc.packRes` 改为一次 `map`（77b475c；逐字节 `push` 在 Lean kernel 里是平方的，
     `SeenTest` 8.2 → 1.6 GB，全库 build 峰值 2.8 GB）；own 列文件没有 kind 1，part 数表是唯一判据，两条拒绝文本
     由表生成（679839b；`OWN_NPARTS` 变为 `[Option<usize>; 5]`，qlean 的比较要跟着改）。
