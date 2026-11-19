@@ -31,8 +31,8 @@ theorem sum_range_add_one {f g : Nat → Nat} {N : Nat} (h : ∀ r < N, f r = g 
 /-- **`unconsC`'s bit is `rep_uncons`'s fit**: the pick of `X` at its non-empty rows (`pickC_fits`). -/
 theorem unconsC_fits {B : Obj} {n : USize} (X : Vals (.arr B) n) (hb : (unconsC X).2 = true) :
     Vals.PickFits (.arr B) X
-      ((List.range (len (whereBits n (Ew.cmp Ew.gt Ew.i64 Ew.va (slicesOf X).2 (one 0) n)))).map fun q =>
-        (Column.bitsAt (whereBits n (Ew.cmp Ew.gt Ew.i64 Ew.va (slicesOf X).2 (one 0) n)) (q * 8) 8).toNat) := by
+      ((List.range (len (whereBits n (Ew.cmpBits Ew.gt Ew.i64 Ew.va (slicesOf X).2 (one 0) n)))).map fun q =>
+        (Column.bitsAt (whereBits n (Ew.cmpBits Ew.gt Ew.i64 Ew.va (slicesOf X).2 (one 0) n)) (q * 8) 8).toNat) := by
   simp only [unconsC, longCount, need] at hb
   split at hb
   · rename_i hlt

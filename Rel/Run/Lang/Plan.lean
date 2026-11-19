@@ -397,8 +397,10 @@ def lenB (b : Nat) : Bld Nat := do
 def arithB (op : UInt8) (n u v : Nat) : Bld (Array Nat) := do
   let i64 ← lit (.u8 Ew.i64); let vv ← lit (.u8 Ew.vv); let va ← lit (.u8 Ew.va); let nl ← lit (.i64 Alg.nul)
   let val (o sh x y : Nat) := call1 (kernel% Kernel.Ew.val) #[o, i64, sh, nl, x, y, n]
-  let cmp (c : UInt8) (sh x y : Nat) := do call1 (kernel% Kernel.Ew.cmp) #[← lit (.u8 c), i64, sh, x, y, n]
-  let bit (c : UInt8) (x y : Nat) := do call1 (kernel% Kernel.Ew.bit) #[← lit (.u8 c), vv, x, y, n]
+  -- `cmp` and `bit` answer a `u1` `foR`, read as the bitmap `bit` and `whereBits` take by `bitsOfFoR` (`boolBits`)
+  let bits (r : Array Nat) := call1 (kernel% Kernel.bitsOfFoR) (r.push n)
+  let cmp (c : UInt8) (sh x y : Nat) := do bits (← call (kernel% Kernel.Ew.cmp).sym #[← lit (.u8 c), i64, sh, x, y, n] 2)
+  let bit (c : UInt8) (x y : Nat) := do bits (← call (kernel% Kernel.Ew.bit).sym #[← lit (.u8 c), vv, x, y, n] 2)
   let s ← val (← lit (.u8 op)) vv u v
   let pos ← cmp Ew.ge va v (← lit (.bytes (one 0)))
   let ok ← cmp Ew.ne va s (← lit (.bytes (one Alg.nul.toUInt64)))

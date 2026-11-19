@@ -444,19 +444,14 @@ theorem boolBits_bools {n : USize} (f : Nat → Bool) :
     cases f i <;> decide
   · simp [hi]
 
-/-- `Ew.cmp`'s column read through `boolBits` is its bitmap `cmpBitmap` (`boolBits_bools`), whose bits
-    `Verify.cmp_bitAt` states. -/
-theorem Ew.cmp_bits (op cls shape : UInt8) (a b : ByteArray) (n : USize) :
-    Kernel.bitsOfFoR (Kernel.Ew.cmp op cls shape a b n).1 (Kernel.Ew.cmp op cls shape a b n).2 n = Kernel.Ew.cmpBitmap op cls shape a b n :=
-  Option.some.inj (boolBits_bools (n := n) fun i =>
-    Kernel.Ew.cmpStep op cls (Kernel.Ew.elem cls a (Kernel.Ew.shapeIdx shape i).1) (Kernel.Ew.elem cls b (Kernel.Ew.shapeIdx shape i).2))
-
-/-- `Ew.bit`'s column read through `boolBits` is its bitmap `bitBitmap` (`boolBits_bools`), whose bits
-    `Verify.Ew.bit_bitAt` states. -/
-theorem Ew.bit_bits (op shape : UInt8) (a b : ByteArray) (n : USize) :
-    Kernel.bitsOfFoR (Kernel.Ew.bit op shape a b n).1 (Kernel.Ew.bit op shape a b n).2 n = Kernel.Ew.bitBitmap op shape a b n :=
-  Option.some.inj (boolBits_bools (n := n) fun i =>
-    Kernel.Ew.bitStep op (Column.bitAt a (Kernel.Ew.shapeIdx shape i).1) (Column.bitAt b (Kernel.Ew.shapeIdx shape i).2))
+/-- **A boolean writer's column, bit by bit**: below `n`, the bitmap `boolBits` reads off `Coc.bools` of `n` rows is
+    the predicate it encodes (`foRBits_bools`). Every writer's `*_bitAt` lemma states its predicate; this composes. -/
+theorem bitAt_bools {N : Nat} {n : USize} (p : Nat → Bool) (hN : N = n.toNat) {i : Nat} (hi : i < n.toNat) :
+    Column.bitAt (Kernel.bitsOfFoR (Kernel.Coc.bools N p).1 (Kernel.Coc.bools N p).2 n) i = p i := by
+  subst hN
+  simp only [Kernel.bitsOfFoR, Verify.bitAt_packOf _ _ _ hi, foRBits_bools _ _ hi,
+    decide_eq_true (Nat.lt_of_lt_of_le hi (wf_bools (n := n) p).2.2.1), Bool.true_and]
+  cases p i <;> decide
 
 /-- The `str` bridge: bytes that are some string's UTF-8, read as a string the way `Column.get` reads a
     symbol (`fromUTF8?`, `""` at invalid bytes), write back out as themselves. -/
@@ -607,9 +602,29 @@ def one (v : UInt64) : ByteArray := Column.pushBits .empty v 8
 theorem bitsAt_one (v : UInt64) : Column.bitsAt (one v) 0 8 = v := by
   simpa using Verify.bitsAt_pushBits8 ByteArray.empty v
 
+/-- `Ew.cmp`'s `u1` `foR` read through `boolBits` (its `foR` branch, `bitsOfFoR`): the bitmap a bitmap consumer
+    (`whereBits`, `Ew.notBits`) takes, one name for the read so no consumer restates it. -/
+def Ew.cmpBits (op cls shape : UInt8) (a b : ByteArray) (n : USize) : ByteArray :=
+  let c := Ew.cmp op cls shape a b n; bitsOfFoR c.1 c.2 n
+
+/-- `Ew.bit`'s `u1` `foR` read through `boolBits`, as `Ew.cmpBits` reads `Ew.cmp`'s. -/
+def Ew.bitBits (op shape : UInt8) (a b : ByteArray) (n : USize) : ByteArray :=
+  let c := Ew.bit op shape a b n; bitsOfFoR c.1 c.2 n
+
+/-- `Ew.cmpBits` is the bitmap `cmpBitmap`, whose bits `Verify.cmp_bitAt` states (`boolBits_bools`). -/
+theorem Ew.cmpBits_eq (op cls shape : UInt8) (a b : ByteArray) (n : USize) :
+    Ew.cmpBits op cls shape a b n = Ew.cmpBitmap op cls shape a b n :=
+  Option.some.inj (boolBits_bools (n := n) fun i =>
+    Ew.cmpStep op cls (Ew.elem cls a (Ew.shapeIdx shape i).1) (Ew.elem cls b (Ew.shapeIdx shape i).2))
+
+/-- `Ew.bitBits` is the bitmap `bitBitmap`, whose bits `Verify.Ew.bit_bitAt` states (`boolBits_bools`). -/
+theorem Ew.bitBits_eq (op shape : UInt8) (a b : ByteArray) (n : USize) :
+    Ew.bitBits op shape a b n = Ew.bitBitmap op shape a b n :=
+  Option.some.inj (boolBits_bools (n := n) fun i =>
+    Ew.bitStep op (Column.bitAt a (Ew.shapeIdx shape i).1) (Column.bitAt b (Ew.shapeIdx shape i).2))
+
 /-- `~` on `m` bits: `Ew.bit` xor a ones mask, the mask a one-bit atom in shape `av` (xor is `≠` on bits). -/
-def Ew.notBits (m : USize) (b : ByteArray) : ByteArray :=
-  Kernel.bitsOfFoR (Ew.bit (Ew.bitCmp + Ew.ne) Ew.av ⟨#[1]⟩ b m).1 (Ew.bit (Ew.bitCmp + Ew.ne) Ew.av ⟨#[1]⟩ b m).2 m
+def Ew.notBits (m : USize) (b : ByteArray) : ByteArray := Ew.bitBits (Ew.bitCmp + Ew.ne) Ew.av ⟨#[1]⟩ b m
 
 end Payload
 

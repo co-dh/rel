@@ -1511,12 +1511,12 @@ theorem razeColumn_isSome {t : QAtomicType} {cs : Array (USize × Enc)} (hne : c
   rw [if_neg (by simpa [Array.isEmpty] using hne)]
   cases t
   case general => exact absurd rfl hg
-  case boolean =>
+  case u1 =>
     rw [mapM_some (fun c => (c.1, (boolBits .u1 c.1 c.2).getD .empty))
       fun c hc => ?_]
     · dsimp only; rw [Array.foldl_map, needSize_fits hN]; rfl
     · have := h c hc; rcases c with ⟨n, e⟩; cases e <;> simp [Enc.WF, boolBits] at this ⊢
-  case symbol =>
+  case sym =>
     dsimp only
     split
     · rfl

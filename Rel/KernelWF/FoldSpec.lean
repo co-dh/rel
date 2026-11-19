@@ -1,6 +1,6 @@
 /-
   The kernels `foldRows` reads round `k`'s elements with, read back: `slicesOf`'s start and count at a row,
-  the rows whose count is greater than `k` (`whereBits` of `Ew.cmp gt`), and `Ew.val sub` of a long less a
+  the rows whose count is greater than `k` (`whereBits` of `Ew.cmpBits gt`), and `Ew.val sub` of a long less a
   constant.
 -/
 import Rel.KernelWF.SliceSpec
@@ -30,18 +30,18 @@ theorem slicesOf_row {B : Obj} {n : USize} (x : Vals (.arr B) n) (hp : x.1.toNat
     dif_pos (by rw [← hL]; exact hl)]
   exact congrArg (Vals.row x.2.2.2) (Fin.ext (show _ + j = _ + j by rw [hL]))
 
-/-- **`Ew.cmp gt` against the constant `k`, read back at `i`**: whether the long `i` is greater than `k`, it and
+/-- **`Ew.cmpBits gt` against the constant `k`, read back at `i`**: whether the long `i` is greater than `k`, it and
     `k` below `2^63`. -/
 theorem gtConst_bitAt (n : USize) (c : ByteArray) {k : Nat} (hk : k < 2 ^ 63) {i : Nat} (hi : i < n.toNat)
     (hc : (Column.bitsAt c (i * 8) 8).toNat < 2 ^ 63) :
-    Column.bitAt (Ew.cmp Ew.gt Ew.i64 Ew.va c (one k.toUInt64) n) i =
+    Column.bitAt (Ew.cmpBits Ew.gt Ew.i64 Ew.va c (one k.toUInt64) n) i =
       decide (k < (Column.bitsAt c (i * 8) 8).toNat) := by
   have hw : Ew.width Ew.i64 = 8 := by decide
   have hs : ∀ i, Ew.shapeIdx Ew.va i = (i, 0) := fun i => by simp (config := {decide := true}) [Ew.shapeIdx]
   have ek : (k.toUInt64).toInt64.toInt = k :=
     (toInt64_toInt (x := k.toUInt64) (by rw [UInt64.toNat_ofNat_of_lt' (Nat.lt_trans hk (by decide))]; exact hk)).trans
       (by rw [UInt64.toNat_ofNat_of_lt' (Nat.lt_trans hk (by decide))])
-  rw [(Verify.cmp_bitAt _ _ _ _ _ n).2 i (by omega)]
+  rw [Ew.cmpBits_eq, (Verify.cmp_bitAt _ _ _ _ _ n).2 i (by omega)]
   simp only [Ew.elem, hw, hs, decide_eq_true hi, Bool.true_and, Nat.zero_mul, Rel.bitsAt_one]
   have ex := toInt64_toInt hc
   generalize Column.bitsAt c (i * 8) 8 = x at ex ⊢
@@ -63,11 +63,11 @@ theorem gtConst_bitAt (n : USize) (c : ByteArray) {k : Nat} (hk : k < 2 ^ 63) {i
       rw [ex, ek] at e
       exact ⟨fun _ => by omega, fun _ => rfl⟩
 
-/-- **`whereBits` of `Ew.cmp gt` against the constant `k`, read back**: the ascending positions below `n`
+/-- **`whereBits` of `Ew.cmpBits gt` against the constant `k`, read back**: the ascending positions below `n`
     whose long is greater than `k`, every long and `k` below `2^63`. -/
 theorem whereGt_ids (n : USize) (c : ByteArray) {k : Nat} (hk : k < 2 ^ 63)
     (hc : ∀ i < n.toNat, (Column.bitsAt c (i * 8) 8).toNat < 2 ^ 63) :
-    ids (whereBits n (Ew.cmp Ew.gt Ew.i64 Ew.va c (one k.toUInt64) n)) =
+    ids (whereBits n (Ew.cmpBits Ew.gt Ew.i64 Ew.va c (one k.toUInt64) n)) =
       (List.range n.toNat).filter fun i => decide (k < (Column.bitsAt c (i * 8) 8).toNat) := by
   rw [(whereBits_ids n _).1]
   exact List.filter_congr fun i hi => gtConst_bitAt n c hk (List.mem_range.1 hi) (hc i (List.mem_range.1 hi))
@@ -96,7 +96,7 @@ theorem subConst_get {g : ByteArray} {m : USize} {v q : Nat} (hq : q < m.toNat)
     picked row's window), so the fit of the array side at all its rows is a fit at both picks. -/
 theorem pickFits_round {B : Obj} {m : USize} (l : Bool) (K : Vals .long m) (V : Vals (.arr B) m)
     (hV : Vals.PickFits (.arr B) V (List.range m.toNat)) {k : Nat} (hk : k ≤ V.1.toNat) (a : ByteArray)
-    (ha : a = whereBits m (Ew.cmp Ew.gt Ew.i64 Ew.va (slicesOf V).2 (one k.toUInt64) m)) (pos : ByteArray)
+    (ha : a = whereBits m (Ew.cmpBits Ew.gt Ew.i64 Ew.va (slicesOf V).2 (one k.toUInt64) m)) (pos : ByteArray)
     (hpos : pos = Kernel.Ew.val (bif l then Ew.add else Ew.sub) Ew.i64 Ew.va nul
       (gather 8 (bif l then (slicesOf V).1 else add m (slicesOf V).1 (slicesOf V).2) a)
       (one (bif l then k else k + 1).toUInt64) (len a).toUSize) :

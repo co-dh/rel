@@ -16,7 +16,7 @@ open Tab
 def abi : List Kernel :=
   [kernel% Rel.Db.ownWrite, kernel% Rel.Kernel.Order.groupIds, kernel% Rel.Kernel.Order.idGroups,
    kernel% USize.decEq, kernel% USize.add, kernel% USize.div, kernel% ByteArray.usize, kernel% Kernel.Ew.val,
-   kernel% Kernel.Ew.cmp, kernel% Kernel.Ew.bit, kernel% Kernel.whereBits, kernel% Kernel.gatherBytes]
+   kernel% Kernel.Ew.cmp, kernel% Kernel.Ew.bit, kernel% Kernel.bitsOfFoR, kernel% Kernel.whereBits, kernel% Kernel.gatherBytes]
 
 def abiOf (sym : String) : Option Kernel := abi.find? (·.sym == sym)
 

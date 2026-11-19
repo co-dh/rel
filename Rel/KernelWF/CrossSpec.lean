@@ -109,7 +109,7 @@ theorem bitsOf_bitAt (x : Bool) (c : USize) {r : Nat} (hr : r < c.toNat) (hc : c
   have e : (UInt64.ofNat r).toInt64.toInt = r := ofNat_toInt (by omega)
   have hlt : ¬ (UInt64.ofNat r).toInt64 < 0 := by rw [Int64.lt_iff_toInt_lt, e]; simp
   unfold bitsOf
-  rw [(Verify.cmp_bitAt _ _ _ _ _ c).2 r (by omega)]
+  rw [Ew.cmpBits_eq, (Verify.cmp_bitAt _ _ _ _ _ c).2 r (by omega)]
   simp only [Ew.elem, hw, hs, Nat.zero_mul, bitsAt_one, tilLongs_bitsAt c hr, decide_eq_true hr, Bool.true_and]
   have hcmp : compare (UInt64.ofNat r).toInt64 (UInt64.toInt64 0) ≠ .lt := by
     show compareOfLessAndEq _ _ ≠ _; unfold compareOfLessAndEq; rw [if_neg (by exact hlt)]; split <;> simp

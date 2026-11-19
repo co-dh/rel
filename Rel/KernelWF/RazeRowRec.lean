@@ -210,7 +210,7 @@ theorem held_side {a b : Obj} {n : USize} (x : Vals (.sum a b) n) (k : Fin n.toN
     split
     · rename_i hk
       rw [dif_pos hk]
-      dsimp only
+      dsimp (config := { iota := false, zeta := false, eta := false }) only
       rw [USize.toNat_ofNat_of_lt' hk.1, USize.toNat_ofNat_of_lt' hk.2, gather_len, gather_len,
         Arr.get_bool_bits _ (Alg.enc_tagBits _) k]
       exact whereBits_pos _ k.2

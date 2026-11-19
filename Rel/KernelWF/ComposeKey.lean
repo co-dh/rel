@@ -64,10 +64,10 @@ theorem foldl_push_get_lt {α : Type} [Inhabited α] (g : Array α → Nat → �
     qlean writes it inline. -/
 def stageRun (st : Ew.Stage) (src : UInt8 → ByteArray) (n : USize) : ByteArray :=
   if st.engine == Ew.eVal then Ew.val st.op st.cls st.shape st.nul (src st.a) (src st.b) n
-  else if st.engine == Ew.eCmp then Ew.cmp st.op st.cls st.shape (src st.a) (src st.b) n
+  else if st.engine == Ew.eCmp then Ew.cmpBitmap st.op st.cls st.shape (src st.a) (src st.b) n
   else if st.engine == Ew.eMon then Ew.stageMap st.cls st.cls (Ew.monStep st.op st.cls st.nul.toUInt64) (src st.a) n
   else if st.engine == Ew.eWiden then Ew.widen st.cls st.shape st.nul st.nulOut (src st.a) n
-  else if st.engine == Ew.eBit then Ew.bit st.op st.shape (src st.a) (src st.b) n
+  else if st.engine == Ew.eBit then Ew.bitBitmap st.op st.shape (src st.a) (src st.b) n
   else if st.engine == Ew.eFloor then Ew.stageMap st.cls Ew.i64 (fun v => (Ew.floorStep st.cls v).toUInt64) (src st.a) n
   else if st.engine == Ew.eCast then Ew.stageMap st.cls st.shape (Ew.castStep st.cls st.shape st.nul) (src st.a) n
   else if st.engine == Ew.eTick then
