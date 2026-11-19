@@ -114,8 +114,8 @@ def ldiv (A B C : Obj) (R : Fn false A B) (S : Fn false A C) (UB : Fn false B B)
 /-- `νX : S ∩ φ` by plain rounds (`Tab.nu`), no AC-3 delta rounds; `μX : φ` (`Tab.mu`), at most `cap` rounds. -/
 def nu (A B : Obj) (S : Fn false A B) (φ : Tab A B → Fn false A B) : Fn false A B :=
   .tab do Tab.nu (fun X => (φ X).runE {}) (← S.runE {})
-def mu (A B : Obj) (cap : Nat) (φ : Tab A B → Fn false A B) : Fn false A B :=
-  .tab (Tab.mu cap fun X => (φ X).runE {})
+def mu (A B : Obj) (what : String) (cap : Nat) (φ : Tab A B → Fn false A B) : Fn false A B :=
+  .tab (Tab.mu what cap fun X => (φ X).runE {})
 
 end GenK
 
@@ -292,18 +292,22 @@ def stepAfter (S T A C : Obj) (d : Bool) (F : Fn d S T)
     (f : {K : Obj} → (Tab S S → Except String (Tab S T)) → Tab K A → Except String (Tab K C)) : Fn true A C :=
   after _ _ fun P => f (fun D => (compT (.ok D) F).runE {}) P
 
+/-- What the hylo `what` reports when its coalgebra reaches a node from itself, on either path (`Expand.mus`). -/
+def cycleMsg (what : String) : String := s!"{what} reaches a node from itself, so it is not well-founded there"
+
 /-- `hylo(c, S)` = `μX : c G(X) S` on the keys `D` in demand: the nodes `N = μN : D ∪ ran(N ≫ ch)` the children `ch`
     reach (`Tab.mu`), then `D ≫ μX : N ≫ φ(X)` (`Tab.mu`, as `GenK.mu`), `φ` read only at the nodes. A node of height
     `h` has its value from round `h + 1` on, so `|N| + 2` rounds reach the fixed point where `ch` has no cycle on `N`.
     A cycle fails it (`Gen.hylo`'s rule): the nodes with an endless descent, `νP : dom(N ≫ ch ≫ P)` from `N`, are
     those that reach a node from themselves, where the least fixed point would be a silent `𝟘`. -/
-def hylo (A B : Obj) (d e : Bool) (ch : Fn d A A) (φ : Tab A B → Fn e A B) : Fn true A B := ofVals _ _ fun X => do
+def hylo (A B : Obj) (what : String) (d e : Bool) (ch : Fn d A A) (φ : Tab A B → Fn e A B) : Fn true A B :=
+  ofVals _ _ fun X => do
   let D ← Tab.idU X
-  let N ← Tab.mu USize.size fun N => do D.union (← (← (compT (.ok N) ch).runE {}).ran)
+  let N ← Tab.mu what USize.size fun N => do D.union (← (← (compT (.ok N) ch).runE {}).ran)
   let C ← (compT (.ok N) ch).runE {}
   let cyc ← Tab.nu (fun P => do (← C.comp P).dom) N
-  if cyc.n != 0 then throw s!"hylo: the coalgebra reaches a node from itself at {cyc.n} of {N.n} nodes, so it is not well-founded there"
-  D.comp (← Tab.mu (N.n.toNat + 3) fun Y => (compT (.ok N) (φ Y)).runE {})
+  if cyc.n != 0 then throw s!"{cycleMsg what} ({cyc.n} of {N.n} nodes)"
+  D.comp (← Tab.mu what (N.n.toNat + 3) fun Y => (compT (.ok N) (φ Y)).runE {})
 
 end GenK
 

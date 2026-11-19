@@ -112,10 +112,12 @@ def checkErr (A B : Obj) (objs : Objs) (p : Pos) (x y : String) (eq : Bool) (s t
 
 /-- A program's failures: each `check` that does not hold, and an op out of capacity anywhere in its definitions,
     prints or checks (an ok bit false), which no value of the program can be trusted after; each definition not
-    ok is named with the `μ`s it holds (`ms`), whose rounds reaching their cap also clear the bit. -/
-def failures (ds : List (String × Gen.Gv)) (ms : List (String × List String)) (ps : List (String × Bool))
-    (cs : List (Option Err × Bool)) (es : List (String × Option String)) : List Err :=
-  cs.filterMap (·.1) ++ es.filterMap (fun (x, e) => e.map fun m => ⟨{}, s!"{x}: {m}"⟩) ++ if ds.all (·.2.2.2.ok) && ps.all (·.2) && cs.all (·.2) then [] else
+    ok is named with the `μ`s it holds (`ms`), whose rounds reaching their cap also clear the bit. On the kernel
+    path (`kern`) a bit is false only where the term threw (`Rel.run`), and `es` names that throw, `μ` cap included. -/
+def failures (kern : Bool) (ds : List (String × Gen.Gv)) (ms : List (String × List String))
+    (ps : List (String × Bool)) (cs : List (Option Err × Bool)) (es : List (String × Option String)) : List Err :=
+  cs.filterMap (·.1) ++ es.filterMap (fun (x, e) => e.map fun m => ⟨{}, s!"{x}: {m}"⟩) ++
+  if kern || ds.all (·.2.2.2.ok) && ps.all (·.2) && cs.all (·.2) then [] else
     let bad := (ds.filter (!·.2.2.2.ok)).map fun (x, _) =>
       s!"; in {x}" ++ String.join (((ms.lookup x).getD []).map (s!", or {·}"))
     [⟨{}, "an op ran out of capacity (its twin's ok bit is false)" ++ String.join bad⟩]
@@ -530,9 +532,8 @@ open Lean Meta
 
 /-- The `μ`s in `t`, each as the failure it reports when its rounds reach the cap. -/
 partial def mus : {A B : Obj} → Tm A B → List String
-  | _, _, .mu _ w n b => s!"{w} ran its cap of {n} rounds without reaching a fixed point" :: mus b
-  | _, _, .hylo _ w b =>
-    s!"{w} reaches a node from itself, so it is not well-founded there" :: mus b
+  | _, _, .mu _ w n b => Tab.capMsg w n :: mus b
+  | _, _, .hylo _ w b => GenK.cycleMsg w :: mus b
   | _, _, t => t.parts.flatMap fun ⟨_, _, c⟩ => mus c
 
 /-- A term that needs no keys and reads no fixed-point variable: computed once, its own constant (`share`). -/
@@ -767,10 +768,14 @@ partial def node (pre : Name) (ρ : List (Nat × Lean.Expr)) {A B : Obj} (t : Tm
       let arcTy := mkApp2 (mkConst ``Gen.Arc) (oE A) (oE B)
       return gk ``Gen.nuAC #[oE A, oE B, ← c S, ← arc a, ← mkListLit arcTy (← as.mapM arc)]
     | _ => return gk ``Gen.nu #[oE A, oE B, ← c S, ← body pre ρ A B v b]
-  | A, B, .mu v _ n b => return gk ``Gen.mu #[oE A, oE B, toExpr n, ← body pre ρ A B v b]
-  | A, B, .hylo k _ b =>
-    let ch := (b.kids k A).getD .zero
-    return gk ``Gen.hylo #[oE A, oE B, bE ch.dem, bE b.dem, ← c ch, ← body pre ρ A B k b]
+  -- the kernel twins also take the μ's or hylo's text: they throw the message `mus` gives the old path
+  | A, B, .mu v w n b =>
+    let φ ← body pre ρ A B v b
+    return if k then g ``GenK.mu #[oE A, oE B, toExpr w, toExpr n, φ] else g ``Gen.mu #[oE A, oE B, toExpr n, φ]
+  | A, B, .hylo v w b =>
+    let ch := (b.kids v A).getD .zero
+    let xs := #[bE ch.dem, bE b.dem, ← c ch, ← body pre ρ A B v b]
+    return if k then g ``GenK.hylo (#[oE A, oE B, toExpr w] ++ xs) else g ``Gen.hylo (#[oE A, oE B] ++ xs)
   | .sum A B, C, .juncD R S => return gk ``Gen.juncD #[oE A, oE B, oE C, bE R.dem, bE S.dem, ← c R, ← c S]
   | A, B, t@(.prim _) | A, B, t@(.arg ..) => match primOf t with
     | some (r, as) => do
@@ -939,7 +944,7 @@ def emit (n : Name) (r : Read) : MetaM Unit := do
     (mkApp2 (mkConst ``Prod.fst [0, 0]) (mkConst ``String) (mkConst ``Bool)) (mkConst (n ++ `printed)))
   let cty := pairT (mkApp (mkConst ``Option [0]) (mkConst ``Err)) (mkConst ``Bool)
   addConst (n ++ `failures) (listT (mkConst ``Err))
-    (g ``failures #[mkConst (n ++ `expanded), toExpr ms, mkConst (n ++ `printed), ← mkListLit cty checked,
+    (g ``failures #[toExpr kern, mkConst (n ++ `expanded), toExpr ms, mkConst (n ++ `printed), ← mkListLit cty checked,
       ← mkListLit (pairT (mkConst ``String) (mkApp (mkConst ``Option [0]) (mkConst ``String))) errs])
   addConst (n ++ `kernel) (mkConst ``Bool) (toExpr kern)
   addConst (n ++ `runs) (mkConst ``Bool) (toExpr runs)
