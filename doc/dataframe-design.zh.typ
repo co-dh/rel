@@ -148,7 +148,10 @@ cnt(P)        : N ⟶ N  = Λ(>ₙ ≫ P) ≫ size      P ⊑ (<m)：i 之前 P 
 where(P)       : N ⟶ N  = (P ≫ cnt(P))°         新位置 ↦ P 的第 i 个元素
 filter(p)     = where(dom(x ≫ p)) ≫ x
 σ = asc(x ≫ a)                                 (<m) 上的双射，按 ⟨x ≫ a, 𝟙⟩ 的字典序单调，所以唯一
-first(R)      = R − R ≫ <ₙ                     R : A ⟶ N，每个 a 的最小位置；last(R) = R − R ≫ >ₙ
+s(a)          = σ ≫ x ≫ a,  σ = asc(x ≫ a)      按 a 排好序的列
+first(a)      : N ⟶ N = where((<m) − dom(s(a) ∩ (+1)° ≫ s(a))) ≫ σ
+                                               段首 s(i) ≠ s(i−1)：每个 a 值的最小旧位置，按 a 升序
+last(a)       : N ⟶ N = where((<m) − dom(s(a) ∩ (+1) ≫ s(a))) ≫ σ      段尾 s(i) ≠ s(i+1)
 J             = x ≫ k ≫ h° ≫ y°  : N ⟶ N        key 相等的左右位置对；k : C ⟶ K，h : E ⟶ K
 fold(⊕, y)    : P(N) ⟶ V                       位置集合 P ↦ where(P) ≫ y 按位置顺序的 ⦇e, ⊕⦈
 agg(⊕, R, y)  = Λ(R) ≫ fold(⊕, y)              R : A ⟶ N；每个 a 对它的位置做一次 fold
@@ -176,7 +179,7 @@ win(w)        = ≥ₙ ∩ <ₙ ≫ (+w)°                i ↦ i−w < j ≤ i 
   [`selectRows`], [`ix ≫ x`，`ix : N ⟶ N` 是输入的下标 frame], [下标来自数据],
   [`sortBy`], [`σ ≫ x`，`σ = asc(x ≫ a)`], [位置 `𝟙` 作次 key，`σ` 唯一：稳定排序就是规格，是相等而不是 refinement],
   [`topBy`], [`(<n) ≫ σ ≫ x`], [],
-  [`distinct`], [`where(ran(first(x°))) ≫ x`], [每个值第一次出现的位置],
+  [`distinct`], [`first(𝟙) ≫ x`], [结果按值升序（canonical 集合）：一次排序、相邻比较、`where`。`x = B A B` → `s = A B B` → 段首 `{0,1}` → `A B`],
   [`groupBy`], [`where(ran(x ≫ k)) : N ⟶ K`；组是 `(x ≫ k)° : K ⟶ N`], [],
   [`aggregate`], [`where(ran(x ≫ k)) ≫ agg(⊕, (x ≫ k)°, x ≫ v)`], [],
   [`sum` `mean` `count` `countAll` `minimum` `maximum` `reduce`], [`fold(⊕, x ≫ v)(dom(x))`，`⊕ = add`、`min`、…；`count = m`；`mean = ⟨sum, count⟩ ≫ fdiv`], [`Op` 的 fold],
@@ -185,7 +188,7 @@ win(w)        = ≥ₙ ∩ <ₙ ≫ (+w)°                i ↦ i−w < j ≤ i 
     [一个位置，读一个元素],
   [`countDistinct` `mode`], [`size(ran(x ≫ v))`；`mode` 对 `agg(count, …)` 接 `est`], [],
   [`collect`], [每组 `where(P) ≫ x ≫ v`，`P` 是该组的位置], [结果列的类型是 `Obj.arr V`],
-  [`firstOrNothing` `lastOrNothing`], [`tot(first((x ≫ k)°) ≫ x ≫ v)`、`last` 同理], [每组的第一 / 最后一个位置],
+  [`firstOrNothing` `lastOrNothing`], [`first(k) ≫ x ≫ ⟨k, v⟩`、`last(k)` 同理], [每组一行，按 key 升序；σ 稳定，所以段首是该组最小的位置],
   [`topK` `bottomK` `kExtremes`], [`(<n) ≫ σ ≫ x`，`σ` 降序或升序], [],
   [`valueCounts` `valueProportions` `frequencies`], [`groupBy` + `aggregate`，`⊕ = count`], [],
   [`summarize` `describeColumns` `nulls`], [固定的一组聚合的 pair], [输出的列由 schema 决定，静态可知],
