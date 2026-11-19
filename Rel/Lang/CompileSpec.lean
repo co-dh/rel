@@ -166,14 +166,15 @@ theorem CodeEnv.Sound.bindCode {η : CodeEnv} {ρ : Val} (hη : η.Sound ρ) (k 
     · obtain ⟨rfl, rfl⟩ := h
       simp only [CodeEnv.bindCode, Code.at, Val.bind, and_self, dite_true, if_true]
       exact pleaf_sound hf
-    · simp [CodeEnv.bindCode, Code.at, Val.bind, h, PSound, PlOK, Tm.den]
+    · simp [CodeEnv.bindCode, Code.at, Val.bind, h, PSound, PlOK]; exact fun _ _ _ _ => Iff.rfl
   · simp only [CodeEnv.bindCode, Val.bind, ej, if_false]; exact hη j A' B'
 
 /-- A call's arguments bound in order keep `CodeEnv.Sound`: `bindCode`'s lemma along `Code.Sounds`. -/
 theorem CodeEnv.Sound.args {cs : List Code} {ss : List Sem} (h : Code.Sounds cs ss) :
     (CodeEnv.args cs).Sound (Val.args ss) := go 0 h where
   go (k : Nat) : ∀ {cs ss}, Code.Sounds cs ss → (CodeEnv.args.go k cs).Sound (Val.args.go k ss)
-    | [], [], _ => fun _ _ _ => by simp [CodeEnv.args.go, Val.args.go, Val.empty, PSound, PlOK, Tm.den]
+    | [], [], _ => fun _ _ _ => by
+      simp [CodeEnv.args.go, Val.args.go, Val.empty, PSound, PlOK]; exact fun _ _ _ _ => Iff.rfl
     | _ :: _, ⟨_, _, _⟩ :: _, ⟨hc, hs⟩ => CodeEnv.Sound.bindCode (go (k + 1) hs) k hc
     | [], _ :: _, h | _ :: _, [], h => h.elim
 
@@ -288,14 +289,14 @@ theorem compile_sound {A B : Obj} (t : Tm A B) (hg : t.gap = none) (η : CodeEnv
   | comp R S ihR ihS =>
     obtain ⟨hR, hS⟩ := gap_or hg
     have iR := ihR hR η ρ hη; have iS := ihS hS η ρ hη
-    simp only [Tm.gen]; revert iR; generalize R.gen η = r; generalize R.dem = d at r ⊢
+    dsimp only [Tm.gen, Tm.dem]; revert iR; generalize R.gen η = r; generalize R.dem = d at r ⊢
     cases d <;> intro iR
     · exact Out.Sound.memo (.node (compB_sound iR.2.1 iS.2.1) (pcomp_sound iR.2.1 iS.2.1) rfl)
     · exact Out.Sound.memo (.node (comp_sound iR.1 iS.1) (pcomp_sound iR.2.1 iS.2.1) rfl)
   | meet R S ihR ihS =>
     obtain ⟨hR, hS⟩ := gap_or hg
     have iR := ihR hR η ρ hη; have iS := ihS hS η ρ hη
-    simp only [Tm.gen]; revert iR iS; generalize R.gen η = r; generalize S.gen η = s
+    dsimp only [Tm.gen, Tm.dem]; revert iR iS; generalize R.gen η = r; generalize S.gen η = s
     generalize R.dem = d at r ⊢; generalize S.dem = e at s ⊢
     cases d <;> cases e <;> intro iR iS <;> first
       | exact Out.Sound.memo (.node (meetB_sound iR.2.1 iS.2.1) (pmeet_sound iR.2.1 iS.2.1) rfl)
@@ -307,7 +308,7 @@ theorem compile_sound {A B : Obj} (t : Tm A B) (hg : t.gap = none) (η : CodeEnv
   | diff R S ihR ihS =>
     obtain ⟨hR, hS⟩ := gap_or hg
     have iR := ihR hR η ρ hη; have iS := ihS hS η ρ hη
-    simp only [Tm.gen]; revert iR iS; generalize R.gen η = r; generalize S.gen η = s
+    dsimp only [Tm.gen, Tm.dem]; revert iR iS; generalize R.gen η = r; generalize S.gen η = s
     generalize R.dem = d at r ⊢; generalize S.dem = e at s ⊢
     cases d <;> cases e <;> intro iR iS <;> first
       | exact Out.Sound.memo (.node (diffB_sound iR.2.1 iS.2.1) (pdiff_sound iR.2.1 iS.2.1) rfl)
