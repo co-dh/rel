@@ -211,9 +211,13 @@ compile η t : {r : Rel A B // rep r = ⟦t⟧ρ}       -- 方案 A：规格在�
   [`scan`], [`(op : Op) (seg : Enc) (es : List Enc) : Enc`，分段前缀折叠；含 map 与 fold], [`raw_scan`], [`scan` `map` `fold`],
   [`gather`], [`(ix : Enc) (e : Enc) (fill) : Enc`，`out[i] = e[ix[i]]`], [`raw_permute`], [`permute`],
   [`scatter`], [`(ix : Enc) (e : Enc) (n) (fill) : Enc`，`out[ix[i]] = e[i]`], [`raw_scatter`（新）], [—],
-  [`asc`], [`(es : List Enc) : Enc × Enc`，按若干列字典序稳定排序：排好的值 + 排列；`arr char` 列按字节字典序], [`asc_sorted` + `asc_perm`（新）], [—],
-  [`seen`], [`(n) (es : List (type × Enc)) : (k, g, first)`：`k` 为组数，`g` 为每行的组号（按首次出现编号），`first` 为每组第一行的位置；如键 `B A B`：`k = 2`，`g = 0 1 0`，`first = 0 1`], [—（`asc ≫ seen` 给出 `asc` 的并列组编号；定理待写）], [—],
+  [`asc`（草稿，待审）], [`(m) (es : List (AscKey × Enc)) : List Enc × Enc`，`AscKey = atom t ┃ cells n c lo hi els`；
+    按若干列字典序稳定排序：每列排好的值 + 排列], [`asc_sorted` + `asc_perm`（新）], [—],
+  [`seen`（草稿，待审）], [`(n) (es : List (AscKey × Enc)) : (k, g, first)`，各列按 `asc` 的方式读；行须已按 `asc` 序，否则报错（先跑 `asc`）：`k` 为组数，`g` 为每行的组号（按首次出现编号），`first` 为每组第一行的位置；如键 `B A B`：`k = 2`，`g = 0 1 0`，`first = 0 1`], [—（`asc ≫ seen` 给出 `asc` 的并列组编号；定理待写）], [—],
 )
+- `AscKey` 的 `cells`（草稿，待审）：一个 `arr` 侧作一个键，列的每个字是格号，格 = `[lo, hi)` 夹到共享 payload
+  `[0, c)`；`els` 是 payload 的键列。两格按元素逐个比较序码（字典序），真前缀在前；格长相同且各元素序码相等才相等。
+  `arr char` 是它在 `els = [atom char]` 时的特例。
 
 - *map 与 fold 都是 scan*：map = 步骤不读累加值的 scan（`op` 只看当前元素）；fold = scan 的最后一个值
   （分段时取每段最后一个）。`Op` 标明自己是否读累加值、是否结合，Rust 据此并行：不读累加值或结合的 `op` 分块并行，其余顺序扫。
@@ -246,6 +250,48 @@ compile η t : {r : Rel A B // rep r = ⟦t⟧ρ}       -- 方案 A：规格在�
   [`R\S` `R/S` 对称除], [不求补：按组比较「R 的 b 的个数」与「其中满足 S 的个数」，即分段 `scan`],
   [Λ（`arr` 侧）], [`asc ≫ seen` 的组号 `g` 与 `first` 给出 `lo`/`hi`],
   [`μ` `ν` `fold` `hylo`], [Lean 中的循环（`fixOn`），每轮调用上面的运算，行数不变即停；semi-naive 只多一个 `−`],
+)
+
+== allegory 运算 → kernel：power 与 list（草稿，待审）
+
+以下各行照 `Rel/Run/Div.lean`（`∋` `E`）、`Rel/Run/Power.lean`、`Rel/Run/List.lean` 现有代码写出。行中的复用部分：
+- `canon` = `asc → seen → gather`：去重、升序（`∪` 行的后半）；每行最后都接它，下面不再写。
+- 格界 `[s, e)`：`scan`（逐行 `max`/`min`）把 `lo` `hi` 夹到 payload `[0, m)`，宽 `e − s` 不为负。
+- EXPAND(`w`)：`scan`（前缀和定各组起点）→ `scatter(max)` 组号到起点 → `scan(max)` 向后填 → `gather`；
+  得每个输出行的组 `G` 与组内偏移 `u`（`≫` 行的「组内展开」）。
+- where(`b`)：`scan`（`b · (pos + 1)`）→ `scatter`（多一格 `0`）→ `asc` → `seen` → `gather`：`b = 1` 的位置，升序。
+- 「`2^63` 拒绝」：位置、宽度按有符号 `i64` 读，所以超过时报错，不截断。
+
+#tbl(c-sem, (auto, 1fr), ([运算（草稿，待审）], [由哪些运算与 kernel 复合]),
+  [`∋`（on `X`）], [格界 → EXPAND(`e − s`) → `gather`（key 取格 `X[G]`，val 取 payload 第 `s[G] + u` 个）；
+    `n·m + n + m ≥ 2^63` 拒绝],
+  [`E(R)`], [`Λ(∋ ≫ R)`：`∋` 行 → `≫` 行 → Λ 行],
+  [`τ` = `Λ(𝟙)`], [`𝟙` on `X` = `dom ⟨X, X⟩`（`asc → seen → gather`）→ Λ 行；Λ 中 `X` 与表共 `N` 行，`N ≥ 2^63` 拒绝],
+  [`setify` = `Λ(∋)`], [`∋` 行 → Λ 行],
+  [`length`], [格界 → `scan(sub)` 得宽 `e − s`；payload `m ≥ 2^63` 拒绝。是 `fold` 定义（§1、§7「`prims` 行改为
+    `fold`」）的融合形式，定理 `⟦length 行⟧ = ⟦fold 定义⟧` 未证],
+  [`at(k)`], [格界 → `scan` 测 `k < e − s` → where → `gather`（格，及 payload 第 `s + k` 个）；`m + k ≥ 2^63` 拒绝],
+  [`est(Q)`], [`G = ∋`、`D = ran ⟨G, G⟩`、`V = ran G`；`Y = (D − Q(D)) − ran ⟨V, V⟩`（失败的对，去掉对角）；
+    结果 `G − ⟨G, G⟩ ≫ Y ≫ π₁`。只用 `∋` `⟨,⟩` `ran` `−` `≫` `π₁` 各行，`Q` 只在一个数组内的对 `D` 上跑],
+  [`thin(Q)`], [`G` `D` 同上；`w = D ≫ ⟨π₂, π₁⟩`，`S = dom (w ≫ Q(ran w))`（交换后也通过的对），`Y = Q(D) − S`
+    （严格胜出的对）；结果 `Λ(G − ⟨G, G⟩ ≫ Y ≫ π₂)` on `X`],
+  [`cat`（`(xs, ys) ↦ xs ++ ys`）], [两 payload 拼接（`scatter` + `scan(add)`）→ 两侧格界 → `scan` 宽 `w₁ + w₂` →
+    EXPAND → `gather` `s₁[G]` `s₂[G]` `w₁[G]` → `scan` 选下标（`u < w₁` 取第一段 `s₁[G] + u`，否则
+    `m₁ + s₂[G] + u − w₁`）→ `gather` payload → `scan` 前缀和得新格 `lo` `hi`；
+    `n(m₁ + m₂) + n + m₁ + m₂ ≥ 2^63` 拒绝。是 §7 中应成为定义的列表运算的融合形式，`⟦cat 行⟧ = ⟦定义⟧` 未证],
+  [`snoc` `cons`], [`(𝟙 × τ) ≫ cat`、`(τ × 𝟙) ≫ cat`；这里的 `τ` 是逐行单元素格 `[i, i + 1)`（`scan`），
+    不经 Λ 行、不 `canon`。同为融合形式，`⟦snoc 行⟧ = ⟦定义⟧`、`⟦cons 行⟧ = ⟦定义⟧` 未证],
+  [`zip`], [两侧格界 → `scan(min)` 宽 → EXPAND → `gather` 两 payload 各在 `s₁[G] + u`、`s₂[G] + u` →
+    `scan` 前缀和得新格；拒绝条件同 `cat`],
+  [`sum`（`⦇0, +⦈ʳ`）], [格界 → EXPAND → `gather` 元素 `v` → `scan` 标每格末元素 → 反向分段 `scan(add)` 得后缀和
+    `W` → `scan` 测溢出（`v` 与 `W − v` 同号、`W` 异号）或 null `−2^63` → `scatter(or)` 得坏格、`scatter(add)`
+    得每格回绕总和 → where 留无坏元素的格（坏格不出现在结果中，不报错）；`n·m + n + m ≥ 2^63` 拒绝。
+    `foldr` 的融合形式，`⟦sum 行⟧ = ⟦定义⟧` 未证],
+  [`cons°`], [格界 → where(`s < e`) → `gather`：首元素 = payload 第 `s` 个，尾 = 格 `[s + 1, e)`（`scan`），
+    共享原 payload，不建新 payload；`n + m + 1 ≥ 2^63` 拒绝],
+  [`snoc°`], [同 `cons°`：格 `[s, e − 1)` 与 payload 第 `e − 1` 个],
+  [`cat°`], [格界 → EXPAND(`e − s + 1`)（每格的每个切点）→ `gather` `s` `e` → `scan` 切点 `s[G] + u`；
+    两段 `[s, s + u)`、`[s + u, e)` 共享原 payload；`n(m + 1) + n + m + 1 ≥ 2^63` 拒绝],
 )
 
 == Rust 侧
