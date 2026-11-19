@@ -202,16 +202,32 @@ theorem Arr.clampShift_get {n : USize} {c s : UInt64} {x y : Arr .i64 n} (hcs : 
     have r2 := (colMap_raw hb).2.2.2 i.1 i.2
     have r3 := (colMap_raw ho).2.2.2 i.1 i.2
     rw [colConst_raw hz] at r1; rw [colConst_raw hcc] at r2; rw [colConst_raw hk] at r3
-    simp only [Array.getElem?_replicate, i.2, if_true, Option.getD_some, Op.eval, Except.ok.injEq] at r1 r2 r3
+    simp only [Array.getElem?_replicate, i.2, if_true, Option.getD_some] at r1 r2 r3
     rw [Arr.get_i64, Arr.get_i64]
     show ((raw .i64 n o)[i.1]?.getD 0).toInt64.toInt = _
-    rw [← r3, ← r2, ← r1]
-    generalize (raw .i64 n x.enc)[i.1]?.getD 0 = w
+    generalize (raw .i64 n x.enc)[i.1]?.getD 0 = w at r1 ⊢
+    generalize (raw .i64 n a)[i.1]?.getD 0 = A at r1 r2
+    generalize (raw .i64 n b)[i.1]?.getD 0 = B at r2 r3
+    generalize (raw .i64 n o)[i.1]?.getD 0 = O at r3 ⊢
+    have e1 : (if w.toInt64 < (0 : UInt64).toInt64 then 0 else w) = A := Except.ok.inj r1
+    have e2 : (if c.toInt64 < A.toInt64 then c else A) = B := Except.ok.inj r2
+    have e3 : B + s = O := Except.ok.inj r3
+    subst e1 e2 e3
     have hc : c.toInt64.toInt = c.toNat := by rw [Verify.toInt_toInt64, if_pos (by omega)]
     have h0 : (0 : UInt64).toInt64.toInt = 0 := rfl
+    have hw := UInt64.toNat_lt w
+    have hs := UInt64.toNat_lt s
+    have hW := Verify.toInt_toInt64 w
     simp only [Int64.lt_iff_toInt_lt, hc, h0]
-    split <;> split <;> rename_i h1 h2 <;> simp only [Verify.toInt_toInt64] at * <;>
-      simp only [UInt64.toNat_add] at * <;> split at * <;> split at * <;> omega
+    by_cases h1 : w.toInt64.toInt < 0
+    · simp only [h1, if_true, h0]
+      rw [if_neg (by omega), Verify.toInt_toInt64, UInt64.toNat_add, if_pos (by simp; omega)]
+      simp; omega
+    · simp only [h1, if_false]
+      by_cases h2 : (c.toNat : Int) < w.toInt64.toInt
+      · rw [if_pos h2, Verify.toInt_toInt64, UInt64.toNat_add, if_pos (by omega)]; omega
+      · rw [if_neg h2, Verify.toInt_toInt64, UInt64.toNat_add]
+        split at hW <;> rw [if_pos (by omega)] <;> omega
   · cases h
 
 /-- The pairs of `List.finRange (a + b)` that `G` keeps: those of the first `a` positions, then of the last `b`. -/
@@ -245,10 +261,10 @@ theorem Vals.concat_row : {A : Obj} → {n₁ n₂ n : USize} → {off : Enc} �
     show (Vals.row z1 c, Vals.row z2 c) = _
     rw [Vals.concat_row hn hoff x.1 y.1 h1 c, Vals.concat_row hn hoff x.2 y.2 h2 c]
     split <;> rfl
-  | .arr _, n₁, _, _, _, hn, hoff, ⟨m₁, lo₁, hi₁, f₁⟩, ⟨m₂, lo₂, hi₂, f₂⟩, z, h, c => by
+  | .arr _, n₁, n₂, _, _, hn, hoff, ⟨m₁, lo₁, hi₁, f₁⟩, ⟨m₂, lo₂, hi₂, f₂⟩, z, h, c => by
     simp only [Vals.concat] at h
-    split at h; swap; · cases h
-    rename_i hm
+    split at h
+    case isFalse => cases h
     simp only [bind, Except.bind, pure, Except.pure] at h
     split at h; · cases h
     rename_i p hp
@@ -282,27 +298,29 @@ theorem Vals.concat_row : {A : Obj} → {n₁ n₂ n : USize} → {off : Enc} �
       have h1 := Arr.clampShift_get (by rw [hU, e0]; omega) hH₁ ⟨c.1, hc⟩
       rw [dif_pos hc] at gl gh
       rw [hU, e0] at l1 h1
-      rw [List.filterMap_eq_nil_iff.2 fun j _ => by rw [if_neg]; rw [gh, h1]; omega, List.append_nil]
+      rw [List.filterMap_eq_nil_iff (l := List.finRange m₂.toNat) |>.2 fun j _ => by
+          rw [if_neg]; rw [gh, h1]; dsimp only; omega, List.append_nil]
       congr 1; funext j
       rw [hrow, dif_pos j.2, gl, gh, l1, h1]
       by_cases hA : (lo₁.get ⟨c.1, hc⟩).toInt ≤ (j.1 : Int) ∧ (j.1 : Int) < (hi₁.get ⟨c.1, hc⟩).toInt
-      · rw [if_pos hA, if_pos (by omega)]
-      · rw [if_neg hA, if_neg (by omega)]
+      · rw [if_pos hA, if_pos (by dsimp only; omega)]
+      · rw [if_neg hA, if_neg (by dsimp only; omega)]
     · rename_i hc
-      have hc' : c.1 - n₁.toNat < _ := by omega
+      have hc' : c.1 - n₁.toNat < n₂.toNat := by omega
       have l2 := Arr.clampShift_get (by rw [hU, hU]; omega) hL₂ ⟨_, hc'⟩
       have h2 := Arr.clampShift_get (by rw [hU, hU]; omega) hH₂ ⟨_, hc'⟩
       rw [dif_neg hc] at gl gh
       rw [hU, hU] at l2 h2
-      rw [List.filterMap_eq_nil_iff.2 fun j _ => by rw [if_neg]; rw [gl, l2]; have := j.2; omega,
+      rw [List.filterMap_eq_nil_iff (l := List.finRange m₁.toNat) |>.2 fun j _ => by
+          rw [if_neg]; rw [gl, l2]; have := j.2; dsimp only; omega,
         List.nil_append]
       congr 1; funext j
-      rw [hrow, dif_neg (by omega), gl, gh, l2, h2]
+      rw [hrow, dif_neg (by dsimp only; omega), gl, gh, l2, h2]
       have hj : (⟨m₁.toNat + j.1 - m₁.toNat, by omega⟩ : Fin m₂.toNat) = j := Fin.ext (by simp)
       rw [hj]
       by_cases hA : (lo₂.get ⟨_, hc'⟩).toInt ≤ (j.1 : Int) ∧ (j.1 : Int) < (hi₂.get ⟨_, hc'⟩).toInt
-      · rw [if_pos hA, if_pos (by push_cast; omega)]
-      · rw [if_neg hA, if_neg (by push_cast; omega)]
+      · rw [if_pos hA, if_pos (by dsimp only; omega)]
+      · rw [if_neg hA, if_neg (by dsimp only; omega)]
   | .sum _ _, _, _, _, _, _, _, _, _, _, h, _ => by simp [Vals.concat] at h
 
 /-! ## Checks: CONCAT keeps every stored word -/
