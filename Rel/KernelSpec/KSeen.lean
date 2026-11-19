@@ -3,7 +3,7 @@ import Rel.KernelSpec.Asc
 import Rel.KernelSpec.Codes
 
 /-! `seen`'s laws (PLAN D.12): `kseen_ok` reads its answer as `firstsOf`/`groupOf` of the rows' order codes
-(`seenKey`), and the first-occurrence laws hold over any key (`firsts_spec`, `firsts_runs`, `firsts_all`): `groupIds`
+(`seenKey`), `kseen_sorted` says it answers only rows in `kasc` order, and the first-occurrence laws hold over any key (`firsts_spec`, `firsts_runs`, `firsts_all`): `groupIds`
 answers the same `firstsOf`/`groupOf` (`groupIds_spec`), so they are its laws too. -/
 
 namespace Rel.Verify
@@ -11,6 +11,47 @@ open Rel.Kernel Ext.Enc
 
 /-- Row `i`'s key as `kseen` compares it: its order code in every column (`ascKeys`, `kasc`'s codes). -/
 def seenKey (n : USize) (es : List (QAtomicType × Enc)) (i : Nat) : List UInt64 := (ascKeys n es).map (·[i]?.getD 0)
+
+/-- The columns `kseen` reads are `kasc`'s codes: where its `ascCol` pass over `es` answers `ks`, `ks = ascKeys n es`. -/
+theorem kseen_keys {n : USize} {es : List (QAtomicType × Enc)} {ks : List (Array UInt64)}
+    (heq : es.zipIdx.mapM (fun (c, i) => (fun x : Array UInt64 × Array UInt64 => x.2) <$>
+      (ascCol n c).mapError (s!"seen: es[{i}]: " ++ ·)) = .ok ks) :
+    ks = ascKeys n es := by
+  obtain ⟨hlen, hf⟩ := mapM_ok heq
+  rw [List.length_zipIdx] at hlen
+  apply List.ext_getElem? fun i => ?_
+  cases hei : es[i]? with
+  | none =>
+    have := List.getElem?_eq_none_iff.1 hei
+    simp [ascKeys, hei, List.getElem?_eq_none_iff.2 (show ks.length ≤ i by omega)]
+  | some e =>
+    have hi := (List.getElem?_eq_some_iff.1 hei).1
+    obtain ⟨b, hb⟩ : ∃ b, ks[i]? = some b := ⟨ks[i], List.getElem?_eq_getElem (by omega)⟩
+    have he := hf i (e, i) b (by simp [List.getElem?_zipIdx, hei]) hb
+    cases hce : ascCol n e with
+    | error s => simp [hce, Functor.map, Except.map, Except.mapError] at he
+    | ok xk =>
+      simp only [hce, Functor.map, Except.map, Except.mapError, Except.ok.injEq] at he
+      obtain ⟨hx, -, f, hof, hkk⟩ := ascCol_ok hce
+      simp [ascKeys, hb, hei, ← he, hkk, hx, hof]
+
+/-- **`kseen` answers only rows in `kasc` order**: where it answers, each row is `lexLe` the next under `kasc`'s codes
+(`ascKeys`), so on its answers a group is a run of adjacent equal rows (`firsts_runs`). -/
+theorem kseen_sorted {n : USize} {es : List (QAtomicType × Enc)} {r : Nat × Enc × Enc} (h : kseen n es = .ok r) :
+    ∀ i, i + 1 < n.toNat → lexLe (ascKeys n es) i (i + 1) = true := by
+  unfold kseen at h
+  simp only [bind, Except.bind] at h
+  split at h
+  · cases h
+  · rename_i ks heq
+    rw [← kseen_keys heq]
+    split at h
+    · cases h
+    · rename_i hs
+      intro i hi
+      cases hf : (List.range (n.toNat - 1)).find? (fun i => !lexLe ks i (i + 1)) with
+      | some j => rw [hf] at hs; nomatch hs
+      | none => simpa using List.find?_eq_none.1 hf i (List.mem_range.2 (by omega))
 
 /-- **`kseen` answers `firstsOf` and `groupOf` of `seenKey`**: the count of first rows, each row's group as `n` words
 and the first rows ascending as `k` words, each as `wordsFoR`. -/
@@ -23,24 +64,7 @@ theorem kseen_ok {n : USize} {es : List (QAtomicType × Enc)} {k : Nat} {g f : E
   split at h
   · cases h
   · rename_i ks heq
-    have hk : ks = ascKeys n es := by
-      obtain ⟨hlen, hf⟩ := mapM_ok heq
-      rw [List.length_zipIdx] at hlen
-      apply List.ext_getElem? fun i => ?_
-      cases hei : es[i]? with
-      | none =>
-        have := List.getElem?_eq_none_iff.1 hei
-        simp [ascKeys, hei, List.getElem?_eq_none_iff.2 (show ks.length ≤ i by omega)]
-      | some e =>
-        have hi := (List.getElem?_eq_some_iff.1 hei).1
-        obtain ⟨b, hb⟩ : ∃ b, ks[i]? = some b := ⟨ks[i], List.getElem?_eq_getElem (by omega)⟩
-        have he := hf i (e, i) b (by simp [List.getElem?_zipIdx, hei]) hb
-        cases hce : ascCol n e with
-        | error s => simp [hce, Functor.map, Except.map, Except.mapError] at he
-        | ok xk =>
-          simp only [hce, Functor.map, Except.map, Except.mapError, Except.ok.injEq] at he
-          obtain ⟨hx, -, f, hof, hkk⟩ := ascCol_ok hce
-          simp [ascKeys, hb, hei, ← he, hkk, hx, hof]
+    have hk := kseen_keys heq
     subst hk
     split at h
     · cases h
