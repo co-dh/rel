@@ -54,10 +54,11 @@ def column (v : QValue) : IO Unit := do
   | some _ => IO.println "another constructor"
   | none => throw (IO.userError s!"ownEnc: no constructor of kind {g.kind}")
 
--- 64 longs 0..62 and one outlier: Frame of Reference with a one-element patch list
+-- 64 longs 0..62 and one outlier: Frame of Reference, one block of 1024 at 6 bits (768 residual bytes) and a 40-byte
+-- patch list holding the outlier
 /--
-info: ok kind 2 count 64 domain `` part sizes [57, 72]
-foR: metadata 57 bytes, pack 72 bytes
+info: ok kind 2 count 64 domain `` part sizes [57, 808]
+foR: metadata 57 bytes, pack 808 bytes
 -/
 #guard_msgs in
 #eval column (.vector .i64 64 (Ext.Enc.encode .i64 64 (.bytes (dense ((List.range 63).map (·.toUInt64) ++ [1000000000000])))) none)
@@ -77,9 +78,10 @@ bytes: 24 bytes
 #eval column (.enum "dom" (.vector .i64 3 (.bytes (dense [2, 0, 1])) none))
 
 -- positions are never written (PLAN 6.13): `ownFile` answers `none`, and the kind `ownParts` gives them is refused
-#guard (ownFile (.vector .i64 5 .pos none)).isNone
+#guard (ownFile (X := Empty) (.vector .i64 5 .pos none)).isNone
 /--
-info: (error: a column of kind 0..4 with its parts and a domain name under 65536 bytes, given kind 5 with 0 parts and a 0-byte name, error: a column of kind 0..4 with its parts and a domain name under 65536 bytes, given kind 5 with 0 parts and a 0-byte name)
+info: ("error: a column of kind 0..4 with its parts and a domain name under 65536 bytes, given kind 5 with 0 parts and a 0-byte name",
+ "error: a column of kind 0..4 with its parts and a domain name under 65536 bytes, given kind 5 with 0 parts and a 0-byte name")
 -/
 #guard_msgs in
 #eval show IO _ from do
@@ -192,15 +194,16 @@ body:   no such file or directory (error code: 2)
 #guard_msgs in #eval do let (m, s) ← both "own-absent/x"; IO.println s!"extern: {say m}\nbody:   {say s}"
 
 /--
-info: extern: is a directory (error code: 21)
+info: extern: inappropriate type (error code: 21, is a directory)
   file: .
-body:   is a directory (error code: 21)
+body:   inappropriate type (error code: 21, is a directory)
 -/
 #guard_msgs in #eval do let (m, s) ← both "."; IO.println s!"extern: {say m}\nbody:   {say s}"
 
 -- the writer's own refusal: a NUL in the domain name, which `lean_mk_string` would cut the name at
 /--
-info: (error: a domain name with no NUL byte, found one at byte 1, error: a domain name with no NUL byte, found one at byte 1)
+info: ("error: a domain name with no NUL byte, found one at byte 1",
+ "error: a domain name with no NUL byte, found one at byte 1")
 -/
 #guard_msgs in
 #eval show IO _ from do
