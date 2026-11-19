@@ -851,7 +851,8 @@ theorem excBlob_reads (word : UInt64) (B : Nat) (hB : 0 < B ∧ B ≤ 65536) (w 
     (∀ k (h : k < exc.size), (Column.bitsAt P (e + (Column.alpSects nb exc.size w).2.1 + k * 2) 2).toNat =
       exc[k] % B) ∧
     (∀ k < last.size, P[e + (Column.alpSects nb exc.size w).2.2 + k]? = last[k]?) ∧
-    16 ≤ (Kernel.Coc.excBlob word B w nb x exc last).size := by
+    16 ≤ (Kernel.Coc.excBlob word B w nb x exc last).size ∧
+    (Kernel.Coc.excBlob word B w nb x exc last).size = (Column.alpSects nb exc.size w).2.2 + (last.size + 7) / 8 * 8 := by
   have hsz : ∀ p : Nat → Bool, (exc.filter p).size ≤ exc.size := fun p => by
     have := List.length_filter_le p exc.toList
     rw [← Array.toList_filter, Array.length_toList, Array.length_toList] at this; exact this
@@ -919,7 +920,8 @@ theorem excBlob_reads (word : UInt64) (B : Nat) (hB : 0 < B ∧ B ≤ 65536) (w 
   have hwd := Column.bitsAt_pushBits (Column.pushBits ByteArray.empty exc.size.toUInt64 8) word 8 (by decide)
   rw [X8] at hwd
   simp only [Column.alpSects]
-  refine ⟨?_, ?_, fun k hk => ?_, fun b hb => ?_, fun k hk => ?_, fun k hk => ?_, by omega⟩
+  refine ⟨?_, ?_, fun k hk => ?_, fun b hb => ?_, fun k hk => ?_, fun k hk => ?_, by omega,
+    by rw [hAs, p0, p1, p2, p3, hps]; omega⟩
   · rw [hPA e 0 S0 0 8 (by omega) (by omega) (fun t ht => by rw [Nat.zero_add]; exact g0 t (by omega)), ← hS0,
       bitsAt_shift _ (Column.pushBits ByteArray.empty exc.size.toUInt64 8) 0 0 8
         (fun t ht => Column.pushBits_getElem?_lt _ _ _ _ (by rw [X8]; omega)), hcnt]
@@ -983,7 +985,7 @@ theorem foRExc_excBlob (M pack : ByteArray) (B : Nat) (hBM : Column.blk M = B) (
     (he : Column.blockStart M (Column.nblk M) = pack.size) (i : Nat) (hi : i / B < Column.nblk M) :
     Column.foRExc M (pack ++ Kernel.Coc.excBlob word B w (Column.nblk M) x exc last) i =
       if i ∈ exc.toList then some (Kernel.Coc.unbias w (Kernel.Coc.keyAt w x i)) else none := by
-  obtain ⟨hc, hwd, hraw, hoff, hpos, -, h16⟩ := excBlob_reads word B hB w hw (Column.nblk M) x exc last hn _
+  obtain ⟨hc, hwd, hraw, hoff, hpos, -, h16, -⟩ := excBlob_reads word B hB w hw (Column.nblk M) x exc last hn _
     pack.size (fun k _ => ba_append_right _ _ _)
   obtain ⟨f1, f2⟩ := exc_find B hB.1 exc hs
     (fun b => (Column.bitsAt (pack ++ Kernel.Coc.excBlob word B w (Column.nblk M) x exc last)
@@ -1023,7 +1025,7 @@ theorem foRFrame_excBlob (M pack : ByteArray) (B : Nat) (hB : 0 < B ∧ B ≤ 65
     (b : Nat) (hb : b < Column.nblk M) :
     Column.foRFrame M (pack ++ Kernel.Coc.excBlob word B w (Column.nblk M) x exc last) b =
       if word.toNat / 256 % 2 = 1 then fs[b]?.getD 0 else 0 := by
-  obtain ⟨hc, hwd, -, -, -, hlast, h16⟩ := excBlob_reads word B hB w hw (Column.nblk M) x exc last hn _
+  obtain ⟨hc, hwd, -, -, -, hlast, h16, -⟩ := excBlob_reads word B hB w hw (Column.nblk M) x exc last hn _
     pack.size (fun k _ => ba_append_right _ _ _)
   simp only [Column.alpSects] at hlast
   unfold Column.foRFrame
@@ -1039,6 +1041,21 @@ theorem foRFrame_excBlob (M pack : ByteArray) (B : Nat) (hB : 0 < B ∧ B ≤ 65
   rw [if_neg (by simp; omega), bitsAt_shift _ last _ (b * 8) 8 (fun t ht => by rw [Nat.add_assoc, hlast _ (by omega)]),
     show b * 8 = ByteArray.empty.size + 8 * b by simp; omega, hr, getElem?_pos fs b (by omega)]
   simp [Nat.mod_eq_of_lt (UInt64.toNat_lt _)]
+
+/-- A pack laid block by block, block `b`'s residuals at the width the metadata `M` declares for it, ends where `M`'s
+block starts say the last block does, and holds each block's residuals at that block's start. -/
+theorem pack_blockStart {E : Type} (M : ByteArray) (B : Nat) (hB : Column.blk M = B) (bs : Array E) (d : E → Nat)
+    (hnb : Column.nblk M = bs.size) (hd : ∀ b (h : b < bs.size), Column.widthAt M b = d bs[b])
+    (f : ByteArray × Nat → E → ByteArray × Nat) (Q : Nat → E → Nat → UInt64)
+    (hf : ∀ a m e, f (a, m) e = (a ++ Kernel.Coc.packRes B (d e) (Q m e), m + 1)) :
+    (bs.foldl f (ByteArray.empty, 0)).1.size = Column.blockStart M (Column.nblk M) ∧
+    ∀ i (h : i < bs.size), ∀ k < (Kernel.Coc.packRes B (d bs[i]) (Q i bs[i])).size,
+      (bs.foldl f (ByteArray.empty, 0)).1[Column.blockStart M i + k]? = (Kernel.Coc.packRes B (d bs[i]) (Q i bs[i]))[k]? := by
+  have h := pack_fold0 f (fun m e => Kernel.Coc.packRes B (d e) (Q m e)) hf (Column.blockStart M) bs.toList rfl
+    (fun c h => by rw [packRes_size, blockStart_succ, hB, hd c (by simpa using h)]; simp)
+  rw [Array.foldl_toList] at h
+  simp only [Array.length_toList, Array.getElem_toList] at h
+  exact ⟨by rw [h.1, hnb], h.2⟩
 
 /-- The encoder model reads back element by element, at any block size `2 ^ lg` the layout admits, patched or not:
 a kept element is its block's base, plus its frame's lift, plus its residual; a patched one is its own bits. -/
@@ -1130,20 +1147,19 @@ theorem foRBits_encode (lg : Nat) (hlg : 6 ≤ lg ∧ lg ≤ 16) (w : Nat) (hw0 
       rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl <;> cases fr <;> decide
   generalize (fs.any fun a => a != 0) = frm at hfr0 ⊢
   -- the residuals
-  have hQ := pack_fold0 (fun (a : ByteArray × Nat) (e : Nat × Nat × UInt64 × Nat × Nat) =>
+  have hQ := pack_blockStart M (2 ^ lg) hBM bs (·.2.2.2.2) hnb (fun c h => by rw [(hMb c h).2]; simp)
+    (fun (a : ByteArray × Nat) (e : Nat × Nat × UInt64 × Nat × Nat) =>
       (a.1 ++ Kernel.Coc.packRes (2 ^ lg) e.2.2.2.2 fun j => (if (decide (a.2 * 2 ^ lg + j < n) &&
         !Kernel.Coc.outside e.2.2.2.1 e.2.2.2.2 (Kernel.Coc.keyAt w x (a.2 * 2 ^ lg + j))) = true then
         Kernel.Coc.keyAt w x (a.2 * 2 ^ lg + j) - e.2.2.2.1 else 0).toUInt64, a.2 + 1))
-    (fun m (e : Nat × Nat × UInt64 × Nat × Nat) => Kernel.Coc.packRes (2 ^ lg) e.2.2.2.2 fun j =>
+    (fun m (e : Nat × Nat × UInt64 × Nat × Nat) j =>
       (if (decide (m * 2 ^ lg + j < n) && !Kernel.Coc.outside e.2.2.2.1 e.2.2.2.2
         (Kernel.Coc.keyAt w x (m * 2 ^ lg + j))) = true then
         Kernel.Coc.keyAt w x (m * 2 ^ lg + j) - e.2.2.2.1 else 0).toUInt64)
-    (fun a m e => rfl) (Column.blockStart M) bs.toList rfl (fun c h => by
-      rw [packRes_size, blockStart_succ, hBM, (hMb c (by simpa using h)).2]; simp)
-  rw [Array.foldl_toList] at hQ
+    (fun a m e => rfl)
+  beta_reduce at hQ
   generalize (Array.foldl _ (ByteArray.empty, 0) bs).1 = pack at hQ ⊢
-  simp only [Array.length_toList, Array.getElem_toList] at hQ
-  have he : Column.blockStart M (Column.nblk M) = pack.size := by rw [hnb, hQ.1]
+  have he : Column.blockStart M (Column.nblk M) = pack.size := hQ.1.symm
   -- element `i`'s block
   obtain ⟨hmf, hf64, hd64, ⟨j0, h0a, h0b, h0c, h0k⟩, -⟩ :=
     hpb (i / 2 ^ lg) (Nat.lt_of_le_of_lt (Nat.div_mul_le_self _ _) hi)
