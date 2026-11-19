@@ -430,12 +430,12 @@ def walk (prog : Program) (env : Env) (wrap : String → Def → Def) (own : Lea
         let each := wrap n (mkDef env n p [] (.rel e) ty)
         if !rigid.isEmpty || s.poly || t.poly then env := { env with defs := (n, each) :: env.defs }; continue
         let q := if (uniOf env.objs s).isSome then Pre.close p q s noLeft else q
-        let res@⟨_, _, dm, _⟩ ← match build env.objs mc p q, test env.objs mc p q with
+        let res@⟨_, _, tm⟩ ← match build env.objs mc p q, test env.objs mc p q with
           | .ok r, _ => pure r
           | .error _, .ok _ => env := { env with defs := (n, each) :: env.defs }; continue
           | .error e, .error _ => throw e
         env := { env with defs := (n, wrap n { arity := 0, apply := fun _ _ => pure (.rel (.tm res) s t) }) :: env.defs }
-        if !dm then ds := ds ++ [(n, res)]
+        if !tm.dem then ds := ds ++ [(n, res)]
       | qs, b, ty =>
         let d := mkDef env n p qs b ty
         match b, ty with
