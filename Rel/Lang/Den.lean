@@ -5,6 +5,7 @@
 -/
 import Rel.Run.Lang.Tm
 import Rel.Run.Where
+import Rel.AscOrder
 import Rel.Rep
 import Rel.ObjOrder
 import Rel.Core.Fix
@@ -279,6 +280,7 @@ def snoc : RowCode := ⟨"snoc", fun σ => (.prod (.arr (σ₁ σ)) (σ₁ σ), 
 def unsnoc : RowCode := ⟨"unsnoc", fun σ => (.arr (σ₁ σ), .prod (.arr (σ₁ σ)) (σ₁ σ))⟩
 def setify : RowCode := ⟨"setify", fun σ => (.arr (σ₁ σ), .arr (σ₁ σ))⟩
 def positions : RowCode := ⟨"positions", fun σ => (.arr (σ₁ σ), .arr .long)⟩
+def asc : RowCode := ⟨"asc", fun σ => (.long, σ₁ σ)⟩
 def inlC : RowCode := ⟨"inl°", fun σ => (.sum (σ₁ σ) (σ₂ σ), σ₁ σ)⟩
 def inrC : RowCode := ⟨"inr°", fun σ => (.sum (σ₁ σ) (σ₂ σ), σ₂ σ)⟩
 end RowCode
@@ -325,6 +327,8 @@ def rowDens : List ((c : RowCode) × RowDen c) :=
    -- dataframe §3.1's `where(dom(xs ≫ p))`: the positions of `xs` whose element is in `dom(p)`, ascending
    ⟨positions, fun σ => Sem.one (X := σ₁ σ) (Y := σ₁ σ) fun T xs ys =>
       ys = positionsL (fun x => decide (∃ y, T x y)) xs⟩,
+   -- q's `asc` of the set `dom P`: `j` to its `j`-th element in `Obj.lt` order
+   ⟨asc, fun σ => Sem.one (X := σ₁ σ) (Y := σ₁ σ) fun T => ascDen (σ₁ σ) fun b => ∃ c, T b c⟩,
    ⟨inlC, fun _ _ s a => Core.Rel.inl a s⟩,
    ⟨inrC, fun _ _ s b => Core.Rel.inr b s⟩]
 
@@ -657,7 +661,7 @@ theorem rowDens_mono : ∀ e ∈ rowDens, (Prim.find? e.1.sym).any (·.mono) = t
   intro e he hm σ X Y T T' h
   simp only [rowDens, List.mem_cons, List.not_mem_nil, or_false] at he
   rcases he with rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl |
-    rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl
+    rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl
   all_goals first | exact Core.Rel.le_refl _ | exact absurd hm (by decide) | skip
   · dsimp only; refine Sem.one_mono (fun hT => le_iff.2 fun _ _ hm => ?_) h
     exact ⟨hm.1, fun t ht ht' => le_iff.1 hT _ _ (hm.2 t ht ht')⟩

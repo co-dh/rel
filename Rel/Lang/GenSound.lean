@@ -1,5 +1,6 @@
 import Rel.Lang.GenKFold
 import Rel.RepWhere
+import Rel.RepAsc
 import Rel.Lang.GenKEst
 import Rel.Lang.GenKFix
 import Rel.Lang.GenKHylo
@@ -275,13 +276,14 @@ end
 
 /-- The rows whose case of `Tm.gen_sound` is proved (`rowsProved_ok`), each with the objects, as a function of the
     row's `A ⟶ B`, at which its proof reads `LamLaw` (`Tm.LamLawsAt`): none, `A ⟶ [B']` where its table is a `Λ` into
-    `B = [B']` (`τ`, `setify`), `[σ] ⟶ [[σ] × [σ]]` where it is `Λ(cat°)` on `A = [σ]` (`tails`). -/
+    `B = [B']` (`τ`, `setify`), `[σ] ⟶ [[σ] × [σ]]` where it is `Λ(cat°)` on `A = [σ]` (`tails`), `ℕ ⟶ B` itself where
+    it numbers a set in `canon`'s order (`asc`). -/
 def rowsProved : List (String × (Obj → Obj → List (Obj × Obj))) :=
   let no : Obj → Obj → List (Obj × Obj) := fun _ _ => []
   let cod : Obj → Obj → List (Obj × Obj) := fun A B => match B with | .arr B' => [(A, B')] | _ => []
-  [("∋", no), ("inl", no), ("inr", no), ("inl°", no), ("inr°", no), ("τ", cod), ("setify", cod), ("snoc", no), ("cons", no), ("cat", no),
+  [("∋", no), ("inl", no), ("inr", no), ("τ", cod), ("setify", cod), ("snoc", no), ("cons", no), ("cat", no),
    ("uncat", no), ("zip", no), ("length", no), ("sum", no), ("loop", no), ("filter", no), ("concat", no), ("merge", no),
-   ("thinL", no), ("F", no), ("positions", no), ("tails", fun A _ => match A with | .arr σ => [(.arr σ, .prod (.arr σ) (.arr σ))] | _ => [])]
+   ("thinL", no), ("F", no), ("positions", no), ("asc", fun A B => [(A, B)]), ("inl°", no), ("inr°", no), ("tails", fun A _ => match A with | .arr σ => [(.arr σ, .prod (.arr σ) (.arr σ))] | _ => [])]
 
 /-- The number of relations row `s` is given: its `prims` entry's, the one `rowGens` was generated from. A
     `rowGens` entry ignores a code past them, where `Prim.den` (`Sem.one`) is `𝟘`. -/
@@ -760,6 +762,29 @@ theorem rowOK_positions : RowOK "positions" :=
     · exact GenK.positions_sound hss
     · rename_i h; exact absurd ⟨rfl, rfl⟩ h
 
+theorem rowOK_asc : RowOK "asc" :=
+  rowOK_args (c := RowCode.asc) rfl rfl fun _ σ xs _ _ _ hs hn _ hv => by
+  have h1 : rowArity "asc" = 1 := by decide
+  rcases xs with _ | ⟨⟨X, Y, x⟩, _ | ⟨_, _⟩⟩ <;> simp only [List.length_cons, List.length_nil, h1] at hn <;>
+    try omega
+  rcases σ with _ | ⟨a, σ⟩ <;>
+    simp only [Codes.at, List.getElem?_cons_zero, List.getD_cons_zero, List.getD_nil] at hv
+  all_goals
+    split at hv
+    case isFalse => simp at hv
+    rename_i he; revert hv; obtain ⟨h1, h2⟩ := he; subst h1; subst h2; intro hv
+    cases hv
+    refine ⟨by unfold GenK.ofRel; exact GenK.lift1_wf _, fun ss hss hl => ⟨⟨rfl, rfl⟩, ?_⟩⟩
+    have hB := hl _ (by rw [hs]; rfl) _ (List.mem_singleton_self _)
+    rcases ss with _ | ⟨⟨X', Y', T⟩, _ | ⟨_, _⟩⟩ <;> simp only [CodesRep, and_true, and_false] at hss
+    split at hss
+    case isFalse => exact hss.elim
+    rename_i he; revert hss; obtain ⟨h1, h2⟩ := he; subst h1; subst h2; intro hss
+    simp only [Sem.one]
+    split
+    · exact GenK.ofRel_sound hss fun _ _ h hr => by subst hr; exact Tab.asc_holds h hB
+    · rename_i h; exact absurd ⟨rfl, rfl⟩ h
+
 theorem rowOK_F : RowOK "F" := rowOK_args (c := RowCode.map) rfl rfl fun _ σ xs _ _ _ _ hn _ hv => by
   have h1 : rowArity "F" = 1 := by decide
   rcases xs with _ | ⟨⟨X, Y, x⟩, _ | ⟨_, _⟩⟩ <;> simp only [List.length_cons, List.length_nil, h1] at hn <;>
@@ -865,13 +890,14 @@ theorem rowsProved_ok (r : Prim) (h : (rowsProved.lookup r.sym).isSome) : RowOK 
   by_cases h18 : r.sym = "sum"; · rw [h18]; exact rowOK_sum
   by_cases h19 : r.sym = "F"; · rw [h19]; exact rowOK_F
   by_cases h20 : r.sym = "positions"; · rw [h20]; exact rowOK_positions
-  by_cases h21 : r.sym = "inl°"; · rw [h21]; exact rowOK_inlC
-  by_cases h22 : r.sym = "inr°"; · rw [h22]; exact rowOK_inrC
+  by_cases h21 : r.sym = "asc"; · rw [h21]; exact rowOK_asc
+  by_cases h22 : r.sym = "inl°"; · rw [h22]; exact rowOK_inlC
+  by_cases h23 : r.sym = "inr°"; · rw [h23]; exact rowOK_inrC
   simp [rowsProved, List.lookup, beq_false_of_ne h1, beq_false_of_ne h2, beq_false_of_ne h3, beq_false_of_ne h4,
     beq_false_of_ne h5, beq_false_of_ne h6, beq_false_of_ne h7, beq_false_of_ne h8, beq_false_of_ne h9,
     beq_false_of_ne h10, beq_false_of_ne h11, beq_false_of_ne h12, beq_false_of_ne h13, beq_false_of_ne h14,
     beq_false_of_ne h15, beq_false_of_ne h16, beq_false_of_ne h17, beq_false_of_ne h18,
-    beq_false_of_ne h19, beq_false_of_ne h20, beq_false_of_ne h21, beq_false_of_ne h22] at h
+    beq_false_of_ne h19, beq_false_of_ne h20, beq_false_of_ne h21, beq_false_of_ne h22, beq_false_of_ne h23] at h
 
 /-- A `Prim.proved` row is `RowOK`, given as many relations as it takes. -/
 theorem Prim.proved_ok {r : Prim} {A B : Obj} {os : List (Obj × Obj)} (h : (!r.proved A B os) = false) :
