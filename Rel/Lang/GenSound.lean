@@ -296,7 +296,7 @@ def Prim.proved (r : Prim) (A B : Obj) (os : List (Obj × Obj)) : Bool :=
   (rowsProved.lookup r.sym).isSome && os.length == rowArity r.sym && primHasCode r A B os
 
 mutual
-/-- Some node of `t` has no proved case in `Tm.gen_sound`: no `GenK` lemma yet (`thin`), a `hylo` whose children's term
+/-- Some node of `t` has no proved case in `Tm.gen_sound`: a `hylo` whose children's term
     (`Tm.kids`) is none or has a gap node, a row not `Prim.proved` at its relations' objects
     (`Tm.argGap`), or a spine headed by neither a row nor a call. A call reads its body (`Tm.size` counts it). -/
 def Tm.gap : {A B : Obj} → Tm A B → Bool
@@ -305,12 +305,11 @@ def Tm.gap : {A B : Obj} → Tm A B → Bool
   | _, _, .atPos _ | _, _, .var .. => false
   | _, _, .top R | _, _, .conv R | _, _, .dom R | _, _, .ran R | _, _, .lam R | _, _, .E R | _, _, .own R
   | _, _, .succ R | _, _, .arith _ R | _, _, .leq R | _, _, .lt R | _, _, .flat R | _, _, .share _ R
-  | _, _, .est R | _, _, .mu _ _ _ R | _, _, .call _ _ _ R | _, _, .callCv _ _ _ _ R _ => R.gap
+  | _, _, .est R | _, _, .thin R | _, _, .mu _ _ _ R | _, _, .call _ _ _ R | _, _, .callCv _ _ _ _ R _ => R.gap
   | _, _, .comp R S | _, _, .meet R S | _, _, .join R S | _, _, .diff R S | _, _, .pair R S | _, _, .prod R S
   | _, _, .fold R S | _, _, .foldr R S | _, _, .foldI R S | _, _, .nu _ R S => R.gap || S.gap
   | _, _, .ldiv R S U V | _, _, .rdiv R S U V => R.gap || S.gap || U.gap || V.gap
   | _, _, .arg (C := C) (D := D) f x => f.argGap [(C, D)] || x.gap
-  | _, _, .thin _ => true
   -- the children's term is no subterm (`Tm.kids`), only no larger than the body (`Tm.size_kids`)
   | A, _, .hylo k _ b =>
     have : ((b.kids k A).getD .zero).size ≤ b.size := Tm.size_kids k A b
@@ -345,12 +344,12 @@ def Tm.gapKinds : {A B : Obj} → Tm A B → List String
   | _, _, .atPos _ | _, _, .var .. => []
   | _, _, .top R | _, _, .conv R | _, _, .dom R | _, _, .ran R | _, _, .lam R | _, _, .E R | _, _, .own R
   | _, _, .succ R | _, _, .arith _ R | _, _, .leq R | _, _, .lt R | _, _, .flat R | _, _, .share _ R
-  | _, _, .est R | _, _, .mu _ _ _ R | _, _, .call _ _ _ R | _, _, .callCv _ _ _ _ R _ => R.gapKinds
+  | _, _, .est R | _, _, .thin R | _, _, .mu _ _ _ R | _, _, .call _ _ _ R | _, _, .callCv _ _ _ _ R _ =>
+    R.gapKinds
   | _, _, .comp R S | _, _, .meet R S | _, _, .join R S | _, _, .diff R S | _, _, .pair R S | _, _, .prod R S
   | _, _, .fold R S | _, _, .foldr R S | _, _, .foldI R S | _, _, .nu _ R S =>
     R.gapKinds ++ S.gapKinds
   | _, _, .ldiv R S U V | _, _, .rdiv R S U V => R.gapKinds ++ S.gapKinds ++ U.gapKinds ++ V.gapKinds
-  | _, _, .thin _ => ["thin"]
   -- a `hylo` whose children `Tm.kids` reads in no shape, or whose children's term has a gap node
   | A, _, .hylo k _ b =>
     b.gapKinds ++ if (b.kids k A).isNone || ((b.kids k A).getD .zero).gap then ["hylo"] else []
@@ -397,6 +396,7 @@ def Tm.LamLawsAt (L : Obj → Obj → Prop) : {A B : Obj} → Tm A B → Prop
   | A, B, .prim r => ∀ f, rowsProved.lookup r.sym = some f → ∀ p ∈ f A B, L p.1 p.2
   | _, _, .lam (A := A) (B := B) R => L A B ∧ R.LamLawsAt L
   | _, _, .E (A := A) (B := B) R => L (.arr A) B ∧ R.LamLawsAt L
+  | _, .arr B, .thin Q => L (.arr B) B ∧ Q.LamLawsAt L
   | _, _, .top R | _, _, .conv R | _, _, .dom R | _, _, .ran R | _, _, .own R | _, _, .succ R | _, _, .arith _ R
   | _, _, .leq R | _, _, .lt R | _, _, .flat R | _, _, .share _ R | _, _, .est R | _, _, .call _ _ _ R
   | _, _, .callCv _ _ _ _ R _ => R.LamLawsAt L
@@ -409,7 +409,7 @@ def Tm.LamLawsAt (L : Obj → Obj → Prop) : {A B : Obj} → Tm A B → Prop
   | _, _, .mu k _ _ b | _, _, .hylo k _ b => b.pol true k = true ∧ b.LamLawsAt L
   -- every other constructor spelled out: a catch-all's equation lemmas time `simp` out
   | _, _, .val _ | _, _, .uni _ | _, _, .zero | _, _, .id | _, _, .outl | _, _, .outr | _, _, .nil
-  | _, _, .atPos _ | _, _, .var .. | _, _, .thin _ => True
+  | _, _, .atPos _ | _, _, .var .. => True
 
 /-- `Tm.LamLawsAt` with `LamLaw`, the premise of `Tm.gen_sound`. -/
 abbrev Tm.LamLaws {A B : Obj} (t : Tm A B) : Prop := t.LamLawsAt LamLaw
@@ -419,14 +419,14 @@ abbrev Tm.LamLaws {A B : Obj} (t : Tm A B) : Prop := t.LamLawsAt LamLaw
 def Tm.monoOK : {A B : Obj} → Tm A B → Bool
   | _, _, .lam R | _, _, .E R | _, _, .top R | _, _, .conv R | _, _, .dom R | _, _, .ran R | _, _, .own R
   | _, _, .succ R | _, _, .arith _ R | _, _, .leq R | _, _, .lt R | _, _, .flat R | _, _, .share _ R
-  | _, _, .est R | _, _, .call _ _ _ R | _, _, .callCv _ _ _ _ R _ => R.monoOK
+  | _, _, .est R | _, _, .thin R | _, _, .call _ _ _ R | _, _, .callCv _ _ _ _ R _ => R.monoOK
   | _, _, .comp R S | _, _, .meet R S | _, _, .join R S | _, _, .diff R S | _, _, .pair R S | _, _, .prod R S
   | _, _, .fold R S | _, _, .foldr R S | _, _, .foldI R S | _, _, .arg R S => R.monoOK && S.monoOK
   | _, _, .ldiv R S U V | _, _, .rdiv R S U V => R.monoOK && S.monoOK && U.monoOK && V.monoOK
   | _, _, .nu k S b => b.pol true k && S.monoOK && b.monoOK
   | _, _, .mu k _ _ b | _, _, .hylo k _ b => b.pol true k && b.monoOK
   | _, _, .val _ | _, _, .uni _ | _, _, .zero | _, _, .id | _, _, .outl | _, _, .outr | _, _, .nil
-  | _, _, .atPos _ | _, _, .var .. | _, _, .thin _ | _, _, .prim _ => true
+  | _, _, .atPos _ | _, _, .var .. | _, _, .prim _ => true
 
 theorem Tm.monoOK_iff {A B : Obj} (t : Tm A B) : t.monoOK = true ↔ t.LamLawsAt fun _ _ => True := by
   induction t <;> simp [Tm.monoOK, Tm.LamLawsAt, and_assoc, *]
@@ -1133,6 +1133,7 @@ theorem Tm.gen_sound_spine {A B : Obj} (t : Tm A B) :
   case flat R ih => exact GenK.flat_sound (code_of ((ih (by omega)).1 η ρ hg hl hs))
   case var k => exact hs.1 k _ _
   case est Q ih => exact GenK.est_sound (code_of ((ih (by omega)).1 η ρ hg hl hs))
+  case thin Q ih => exact GenK.thin_sound (code_of ((ih (by omega)).1 η ρ hg hl.2 hs)) hl.1
   case atPos k => exact GenK.atPos_sound k
   case nu k S b ihS ihb =>
     exact GenK.nu_sound (code_of ((ihS (by omega)).1 η ρ hg.1 hl.2.1 hs))

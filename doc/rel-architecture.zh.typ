@@ -297,8 +297,8 @@ compile η t : {r : Rel A B // rep r = ⟦t⟧ρ}       -- 方案 A：规格在�
   [`at(k)`], [格界 → `scan` 测 `k < e − s` → where → `gather`（格，及 payload 第 `s + k` 个）；`m + k ≥ 2^63` 拒绝],
   [`est(Q)`], [`G = ∋`、`D = ran ⟨G, G⟩`、`V = ran G`；`Y = (D − Q(D)) − ran ⟨V, V⟩`（失败的对，去掉对角）；
     结果 `G − ⟨G, G⟩ ≫ Y ≫ π₁`。只用 `∋` `⟨,⟩` `ran` `−` `≫` `π₁` 各行，`Q` 只在一个数组内的对 `D` 上跑],
-  [`thin(Q)`], [`G` `D` 同上；`w = D ≫ ⟨π₂, π₁⟩`，`S = dom (w ≫ Q(ran w))`（交换后也通过的对），`Y = Q(D) − S`
-    （严格胜出的对）；结果 `Λ(G − ⟨G, G⟩ ≫ Y ≫ π₂)` on `X`],
+  [`thin(Q)`], [`G` `D` 同上；`w = D ≫ ⟨π₂, π₁⟩`，`S = dom (w ≫ Q(ran w))`（交换后也通过的对），`Y = dom Q(D) − S`
+    （严格胜出的对；一对通过 `Q` 即在 `dom Q` 中，`−` 两侧同读法）；结果 `Λ(G − ⟨G, G⟩ ≫ Y ≫ π₂)` on `X`],
   [`cat`（`(xs, ys) ↦ xs ++ ys`）], [两 payload 拼接（`scatter` + `scan(add)`）→ 两侧格界 → `scan` 宽 `w₁ + w₂` →
     EXPAND → `gather` `s₁[G]` `s₂[G]` `w₁[G]` → `scan` 选下标（`u < w₁` 取第一段 `s₁[G] + u`，否则
     `m₁ + s₂[G] + u − w₁`）→ `gather` payload → `scan` 前缀和得新格 `lo` `hi`；

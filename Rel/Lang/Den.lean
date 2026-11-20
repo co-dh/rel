@@ -208,9 +208,9 @@ abbrev lamDen (T : Den A B) : Den A (.arr B) := fun a ys => ys.Pairwise B.lt ∧
 abbrev EDen (T : Den A B) : Den (.arr A) (.arr B) := lamDen ((fun xs a => a ∈ xs : Den (.arr A) A) ≫ T)
 
 /-- `thin(Q)` as `CRel.thinOn` computes it: the canonical list of the `c` of `xs` that no `b` of `xs` beats
-    strictly, `Q` read as its pair test as in `estDen`. -/
+    strictly, a pair passing `Q` where it is in `dom Q` (as `thinL`, `merge` read their test). -/
 abbrev thinDen (TQ : Den (.prod B B) (.prod B B)) : Den (.arr B) (.arr B) :=
-  lamDen fun xs c => c ∈ xs ∧ ¬ ∃ b, b ∈ xs ∧ TQ (b, c) (b, c) ∧ ¬ TQ (c, b) (c, b)
+  lamDen fun xs c => c ∈ xs ∧ ¬ ∃ b, b ∈ xs ∧ (∃ p, TQ (b, c) p) ∧ ¬ ∃ p, TQ (c, b) p
 
 /-! ### The rows of `prims` -/
 

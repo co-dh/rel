@@ -57,8 +57,9 @@ def est {n : USize} (q : Tab (.prod B B) (.prod B B) → Except String (Tab (.pr
 
 /-- **`thin(Q)` on the arrays `X`** (`thinDen`), `Q` the test `q` run on the pairs `D = ran ⟨G, G⟩` of elements of
 one array (`G = ∋` on `X`): `S` the pairs whose swap passes (`dom (w ≫ q (ran w))`, `w = ⟨π₂, π₁⟩` on `D`),
-`Y = q(D) − S` the pairs `(b, c)` where `b` beats `c` strictly; `(xs, c)` of `G` dropped where `⟨G, G⟩ ≫ π₂` on `Y`
-reaches it; then `Λ` on `X`. -/
+`Y = dom q(D) − S` the pairs `(b, c)` where `b` beats `c` strictly; `(xs, c)` of `G` dropped where `⟨G, G⟩ ≫ π₂` on
+`Y` reaches it; then `Λ` on `X`. A pair passes where it is in `dom q`, on both sides of the `−`: `q(D) − S` would
+keep `(p, p')` with `p' ≠ p` whatever `S` says. -/
 def thin {n : USize} (q : Tab (.prod B B) (.prod B B) → Except String (Tab (.prod B B) (.prod B B)))
     (X : Vals (.arr B) n) : Except String (Tab (.arr B) (.arr B)) := do
   let G ← mem X
@@ -66,7 +67,7 @@ def thin {n : USize} (q : Tab (.prod B B) (.prod B B) → Except String (Tab (.p
   let D ← ran P
   let w ← pair (← outr D.key) (← outl D.key)
   let S ← dom (← w.comp (← q (← ran w)))
-  let Y ← (← q D).diff S
+  let Y ← (← dom (← q D)).diff S
   lam X (← G.diff (← P.comp (← outr Y.key)))
 
 end Tab
