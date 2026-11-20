@@ -548,7 +548,20 @@ Diff table 的「状态」列：✅ 后面是完成它的步骤；🔄 是部分
       "证明止于 Lean 定义，Rust 由 `decide` / `#guard` 测"）。现状：`Expand.node` 每个 `Tm` 构造子对一个 `GenK.*`，
       55 个定义、0 条定理；陈述用的谓词 `Rel.Rel.Reps K r R`（`Rel/Rep.lean:28`）已存在而无定理使用；`Tm.gen` /
       `compile` 已不在；`Tm.den (.call ..) = 𝟘`。不另写 list 上的求值器（那是第二份 `Tm.den`）。
-      - T11a（在跑，分支 `t11a`）：新模块 `Rel/Lang/GenKSpec.lean`，为已有 `Tab.*_holds` 的运算（`id comp conv meet dom
+      - 状态（2026-11-19 20:50，master 83f98bb；`make check` 在 bf0a8c5 全绿）：T11a、T11b、T11c、T11e1–e3 已合入。
+        `Tm.gen_sound (hb : GenK.ReadsBack) … : t.gap = false → t.LamLaws → Sound η ρ → ∀ K, (t.gen η).Reps K (t.den ρ)`
+        （`Rel/Lang/GenSound.lean`）；覆盖 117 / 203 个定义；差分测试 `Tm.gen` 对生成常量 261 比较、0 不同，随
+        `make check` 跑。`CompTabMatLaw`/`KeepBitsLaw` 原陈述为假，已换成 `BitsWf`/`Rel.Wf`（`Rel/Lang/GenKBits.lean`）。
+        - 发现：`ReadsBack` 第一部分为假（反例 `/data/tmp/t11e4/Cex.lean`，已跑）：sum key 的 `idx` 列为 `bytes` 时
+          `compSelM` 给出 bit matrix，`ofBits` 的 `kgather` 报 `gather: e: constructor 0 is not foR`。是报错不是错答案；
+          修法二选一（`compSelM` 拒绝非 `foR`/`pos` 的列，或 `kgather` 读 `bytes`），随 bit matrix 路径的改动一起定。
+        - 发现：`GenK.juncD` 不成立（tag false 而 `l = 0`，或 tag true 而 `r = 0` 时读 `dflt`）；无程序使用；未改。
+        - T11d 只做了测试一侧：`GenSoundTest.reread` 在读入时展开每个带参数的定义，不留 `call` 节点；
+          `Tm.den (.call ..) = 𝟘` 仍在。
+        - owner 定的顺序（C）：先做 architecture §4 已定的实现改动（`∩ − \` 分段 `scan`、`\` 不物化 join、
+          `ldiv(tab, bits)` 在 bit matrix 上算、`μ` semi-naive），差分测试与回归固定保护；`ldiv meet diff mu fold` 与
+          bit matrix 路径的证明（T11e 余项、`ReadsBack`）等实现稳定后再做。T11e5 只做 `arith`。
+      - T11a ✅：新模块 `Rel/Lang/GenKSpec.lean`，为已有 `Tab.*_holds` 的运算（`id comp conv meet dom
         ran zero join top ldiv rdiv diff outl outr pair prod junc flat lam nil val uni succ leq lt`、行 `∋ τ setify inl
         inr`）各写一条 `GenK.*_sound`：前提 `∀ K, R.Reps K X`，结论右边与 `Tm.den` 对应分支相同；从 `Tab` 定律到
         `GenK` 引理的提升只证一次。需要附加条件的引理如实带上条件并列出。
