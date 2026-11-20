@@ -27,8 +27,8 @@ SQL     := sqlite3 -readonly $(DB)
 GATE     = SECONDS=0; trap 'echo "[$@] $$SECONDS s, exit $$?"' EXIT; mkdir -p $(T)
 
 # cheapest first: compile-diff takes minutes, so a gate that fails in seconds is reported before it starts
-GATES_LIST := build allcov crate-test syms native ldd index-complete axioms noreduce panic bang pointfree kernel-tested externs compile-diff
-.PHONY: check main-only index compile-diff-write panic-allow bang-allow pointfree-allow kernel-tested-allow $(GATES_LIST)
+GATES_LIST := build allcov crate-test syms native ldd index-complete axioms noreduce panic bang pointfree decode kernel-tested externs compile-diff
+.PHONY: check main-only index compile-diff-write panic-allow bang-allow pointfree-allow decode-allow kernel-tested-allow $(GATES_LIST)
 check: main-only $(GATES_LIST)
 	$(GATE)
 	echo "make check: every gate passed"
@@ -172,6 +172,13 @@ define pointfree_NOW
 $(LAKE) build gates
 $(MODS) | xargs $(LAKE) env $(GATES) pointfree | sort -u > $(T)/pointfree.txt
 endef
+# no element decode in Lean on the run path: a compiled declaration of RelRun whose code, followed through the IR (an
+# @[extern] a call, an @[implemented_by] its implementation), reaches a per-element reader (gates/Gates.lean `decoders`);
+# the chain from each to the reader is in $(T)/decode.chains
+define decode_NOW
+$(LAKE) build RelRun gates
+$(LAKE) query RelRun:modules | xargs $(LAKE) env $(GATES) decode 2> $(T)/decode.chains | sort -u > $(T)/decode.txt
+endef
 # every kernel, an @[extern] declaration whose symbol crate/RELK.txt lists, is mentioned (index `use_site`: a
 # declaration, `#guard` or `example`) in a module whose name matches *Test*; loops over the kernels, not the tests
 define kernel-tested_NOW
@@ -193,13 +200,18 @@ pointfree: index
 	$(pointfree_NOW)
 	$(call ALLOWED,pointfree)
 
+decode: index
+	$(GATE)
+	$(decode_NOW)
+	$(call ALLOWED,decode)
+
 kernel-tested: index
 	$(GATE)
 	$(kernel-tested_NOW)
 	$(call ALLOWED,kernel-tested)
 
 # regenerate an allowlist from what violates today; read the diff before committing it
-bang-allow pointfree-allow kernel-tested-allow: %-allow: index
+bang-allow pointfree-allow decode-allow kernel-tested-allow: %-allow: index
 	$(GATE)
 	$($*_NOW)
 	cp $(T)/$*.txt $*-allow.txt

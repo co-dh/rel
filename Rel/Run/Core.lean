@@ -172,8 +172,8 @@ theorem foRBits_starts (md pk : ByteArray) (i : Nat) :
   have hs : (Column.blockStarts md).size = Column.nblk md + 1 := (Verify.blockStarts_fold md (Column.nblk md)).2.1
   unfold Column.foRBits
   by_cases h : i / Column.blk md ≤ Column.nblk md
-  · simp [Verify.blockStarts_get md h]
-  · simp [Array.getElem?_eq_none (show (Column.blockStarts md).size ≤ i / Column.blk md by omega)]
+  · simp [Verify.blockStarts_get md h, Verify.blockStarts_get md (Nat.le_refl _)]
+  · simp [Verify.blockStarts_get md (Nat.le_refl _), Array.getElem?_eq_none (show (Column.blockStarts md).size ≤ i / Column.blk md by omega)]
 
 /-- Under `wf`, a long `foR` column's element `i` is its `foRBits` decode, read as a long. -/
 theorem Arr.get_long_foR {m : USize} (x : Arr .i64 m) {md pk : ByteArray} (hc : x.enc = .foR md pk)
