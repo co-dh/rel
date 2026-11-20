@@ -27,7 +27,7 @@ SQL     := sqlite3 -readonly $(DB)
 GATE     = SECONDS=0; trap 'echo "[$@] $$SECONDS s, exit $$?"' EXIT; mkdir -p $(T)
 
 # cheapest first: compile-diff takes minutes, so a gate that fails in seconds is reported before it starts
-GATES_LIST := build crate-test syms native ldd index-complete axioms noreduce panic bang pointfree kernel-tested externs compile-diff
+GATES_LIST := build allcov crate-test syms native ldd index-complete axioms noreduce panic bang pointfree kernel-tested externs compile-diff
 .PHONY: check main-only index compile-diff-write panic-allow bang-allow pointfree-allow kernel-tested-allow $(GATES_LIST)
 check: main-only $(GATES_LIST)
 	$(GATE)
@@ -46,6 +46,12 @@ main-only:
 build: main-only
 	$(GATE)
 	CAP_MEM_MB=$(MEM) $(CAP) $(LAKE) build RelCore RelKernel RelRun Rel rel-native
+
+# Rel/Lang/AllPrograms.lean imports every module of Rel/ that defines a rel_program. It reads the oleans of the modules
+# that list does not import, so it runs after `build`, never as a library module (lake does not know those reads).
+allcov: build
+	$(GATE)
+	CAP_MEM_MB=$(MEM) $(CAP) $(LAKE) lean $(CURDIR)/test/AllCovered.lean
 
 # A regression pin, not a correctness check: each closed definition of every registered program, as the constant
 # rel_program generated computes it (`expanded`), has the status and set of rows test/compile-diff.json pins, by name.
