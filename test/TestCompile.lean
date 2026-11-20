@@ -16,6 +16,9 @@ import Rel.Programs.Circuit
 import Rel.Programs.CSP
 import Rel.Programs.Detab
 import Rel.Programs.Edit
+import Rel.Programs.Frame
+import Rel.Programs.FrameGroup
+import Rel.Programs.FrameJoin
 import Rel.Programs.JobShop
 import Rel.Programs.Knapsack
 import Rel.Programs.Mss
