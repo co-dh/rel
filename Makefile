@@ -60,12 +60,16 @@ allcov: build
 # `lake lean` builds the imports only and elaborates the gate every time: an olean would survive a new pin.
 compile-diff: main-only
 	$(GATE)
-	CAP_MEM_MB=$(MEM) $(CAP) $(LAKE) lean $(CURDIR)/test/TestCompile.lean
+	REL_COMPILE_DIFF_OUT=$(T)/compile-diff.json CAP_MEM_MB=$(MEM) $(CAP) $(LAKE) lean $(CURDIR)/test/TestCompile.lean
 
-# re-pins test/compile-diff.json to the current run; read the diff before committing it, since nothing else checks it
+# re-pins test/compile-diff.json to the run `make compile-diff` just wrote (a copy: the run takes minutes, so it is
+# computed once); read the diff that gate printed before committing, since nothing else checks the pin. Refuses a
+# run older than a built module, which is a run of other sources.
 compile-diff-write: main-only
 	$(GATE)
-	REL_COMPILE_DIFF_WRITE=1 CAP_MEM_MB=$(MEM) $(CAP) $(LAKE) lean $(CURDIR)/test/TestCompile.lean
+	test -f $(T)/compile-diff.json || { echo "compile-diff-write: no run at $(T)/compile-diff.json; run 'make compile-diff' first" >&2; exit 1; }
+	new=$$(find $(CURDIR)/.lake/build/lib/lean -name '*.olean' -newer $(T)/compile-diff.json -print -quit) || exit 1; test -z "$$new" || { echo "compile-diff-write: $$new is newer than the run at $(T)/compile-diff.json; run 'make compile-diff' first" >&2; exit 1; }
+	cp $(T)/compile-diff.json $(CURDIR)/test/compile-diff.json
 
 crate-test:
 	$(GATE)
