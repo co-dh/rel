@@ -67,6 +67,9 @@ structure ObjInfo where
   uni : Option ((m : USize) × Arr .i64 m) := none
   /-- An unbounded number object (`ObjDef.num`): every `Int64` an element, `𝟙` its universe. -/
   num : Bool := false
+  /-- Its universe is an initial segment `0…k` of ℕ (a range from `0`, or named elements, coded `0…n−1`; or an
+      object variable a call puts one at): there a row's `dfn` is its fused row cut to the universe (`build`). -/
+  seg : Bool := false
   /-- An object variable of a definition elaborated once: its universe is the variable `k`, an argument of the
       definition's constant. -/
   uniVar : Option Nat := none
@@ -1562,6 +1565,11 @@ def unbounded (objs : Objs) : OTy → Bool
   | .base n => (objs.lookup n).any (·.num)
   | _ => false
 
+/-- `o`'s universe is an initial segment `0…k` of ℕ (`ObjInfo.seg`). -/
+def initSeg (objs : Objs) : OTy → Bool
+  | .base n => (objs.lookup n).any (·.seg)
+  | _ => false
+
 /-- `uniPart`, or the error naming the whole object `o` that has no universe. -/
 def uniTm (p : Pos) (o : OTy) (A : Obj) (what : String) : Except Err (Tm A A) := do
   match ← uniPart objs dp (zonk mc o) A with
@@ -1736,15 +1744,18 @@ def build : Pre → Except Err Res
   | .est p => do let ⟨_, c⟩ ← param p; pure ⟨_, _, .est c⟩
   | .thin p => do let ⟨_, c⟩ ← param p; pure ⟨_, _, .thin c⟩
   | .nil a b => return ⟨_, _, .nil (A := ← toObj objs mc dp a) (B := ← toObj objs mc dp b)⟩
-  -- a row is the fused form of its definition (§4): where its target has a universe, the definition runs, each
-  -- step kept in the object as `succ`, `plus` keep theirs; the fused row only where no step can leave it
+  -- a row is the fused form of its definition (§4), a fold from `0` whose steps, kept in the object as `succ`, `plus`
+  -- keep theirs, never decrease the value: at an unbounded object (universe `𝟙`) the fused row is the definition; at
+  -- an initial segment `0…k` of ℕ a step leaves it only if the result does, so the definition is the fused row cut
+  -- to the universe `U`, one pass; elsewhere the definition runs, a round per element each reading `U`
   | .prim r xs s t (some q) => do
     have : 0 < sizeOf q := by cases q <;> simp <;> omega
-    -- an unbounded object's universe `𝟙` drops no step, so there the fused row is the definition, and it needs no keys
     if unbounded objs (zonk mc t) then build (.prim r xs s t none) else
     match ← uniPart objs dp (zonk mc t) (← toObj objs mc dp t) with
     | some .id | none => build (.prim r xs s t none)
-    | some _ => build q
+    | some u => if !initSeg objs (zonk mc t) then build q else do
+      let f ← build (.prim r xs s t none); let ⟨A, _, _⟩ := f
+      pure ⟨A, _, .comp (← at? dp (A := A) f) u⟩
   -- the row's objects are checked where `Expand.primE` fits its constant at them (`primsFit`, `node`)
   | .prim r xs s t none => do
     let A ← toObj objs mc dp s; let B ← toObj objs mc dp t

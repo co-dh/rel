@@ -144,7 +144,9 @@ def Expr.pos : Expr → Pos
     (`ℕ` too: a declared number object is stored as `.long`, F6) instantiated by the elaborator; `conv` the row of
     its converse; `aop` its AOP reading (`Calc.builtins`) or why it has none; `mono`: it reads its parameters
     monotonically (§e's fixed points); `prelude` and `aop` named unchecked (`Test` and `Calc` check them); `dfn`
-    the term the row is the fused form of (§4), which it runs as where its target has a universe (`build`). -/
+    the term the row is the fused form of (§4): a fold from `0` whose step never decreases the value, so at an
+    initial segment `0…k` of ℕ it is the row cut to the universe; it runs as written at any other bounded object
+    (`build`). -/
 structure Prim where
   sym : String
   sig : List ((OExp × OExp) × Option Bool) × OExp × OExp

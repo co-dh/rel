@@ -33,4 +33,36 @@ rel_program fusedMT where
 -- sums to 19999 + 0 = 19999.
 #guard fusedMT.failures.map toString == []
 
+open Rel.Programs.prelude in
+rel_program fusedG where
+    lenG(x : 1 ⟶ [α]) : 1 ⟶ ν ≜ x length
+    sumG(x : 1 ⟶ [ν]) : 1 ⟶ ν ≜ x sum
+
+/-! The same rows inside constants generic over their target `ν`, called at `M` (the constant built with `ν` an
+    initial segment, `formKey`'s `seg`), and at `Q = 1…5`, not one: there the definition runs, and its fold's base
+    `0` is not in `Q`, so it has no value. -/
+open Rel.Programs.prelude fusedG in
+rel_program fusedGT where
+    obj M = 0…19999
+    obj Q = 1…5
+    xs : 1 ⟶ [M] ≜ {(∗,1 2 3 4 5 6 7 8 9 10)}
+    x2 : 1 ⟶ [M] ≜ ⟨xs, xs⟩ cat
+    x4 : 1 ⟶ [M] ≜ ⟨x2, x2⟩ cat
+    zs : 1 ⟶ [M] ≜ {(∗,19999 1)}
+    qs : 1 ⟶ [Q] ≜ {(∗,1 2)}
+    gn : 1 ⟶ M ≜ lenG(x4)
+    gs : 1 ⟶ M ≜ sumG(x4)
+    gz : 1 ⟶ M ≜ sumG(zs)
+    qn : 1 ⟶ Q ≜ qs length
+    qsm : 1 ⟶ Q ≜ qs sum
+    check gn = {(∗,40)}
+    check gs = {(∗,220)}
+    check gz = 𝟘
+    check qn = 𝟘
+    check qsm = 𝟘
+
+-- by hand: `x4` is `1 2 … 10` four times: 40 elements, sum 4 × 55 = 220; `zs` sums to 20000, not in `M`; at `Q` the
+-- definitions' folds start at `0 ∉ Q`, so `length` and `sum` of `1 2` have no value.
+#guard fusedGT.failures.map toString == []
+
 end Rel.Lang.TestFusedM
