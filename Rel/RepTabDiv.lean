@@ -1016,6 +1016,57 @@ theorem expand_group_run {K T : USize} {w G u : Enc} (h : expand K w = .ok (T, G
       rw [List.mem_range'_1] at ht; simpa using hnot t (by omega) (by omega))]
   simp
 
+theorem eval_eq_word {a b o : UInt64} (h : Op.eval .eq a b = .ok o) : o = if a = b then 1 else 0 := by
+  have e : Op.eval .eq a b = .ok (if (a == b) = true then 1 else 0) := rfl
+  rw [e, Except.ok.injEq] at h; rw [← h]; simp only [beq_iff_eq]
+
+theorem eval_ne_word {a b o : UInt64} (h : Op.eval .ne a b = .ok o) : o = if a ≠ b then 1 else 0 := by
+  have e : Op.eval .ne a b = .ok (if (a != b) = true then 1 else 0) := rfl
+  rw [e, Except.ok.injEq] at h; rw [← h]; simp only [bne_iff_ne]
+
+theorem eval_lt_word {a b o : UInt64} (h : Op.eval .lt a b = .ok o) : o = if a.toInt64 < b.toInt64 then 1 else 0 := by
+  have e : Op.eval .lt a b = .ok (if decide (a.toInt64 < b.toInt64) = true then 1 else 0) := rfl
+  rw [e, Except.ok.injEq] at h; rw [← h]; simp only [decide_eq_true_eq]
+
+/-- **A row's bad word** (`Tab.sum`, `Tab.sums`): `0`/`1`, and `0` exactly when the element `v` and the sum `W` are
+not the null and `W = (W - v) + v` did not wrap (the signs of `v`, `W - v` agree and differ from `W`'s). -/
+theorem badWord_spec {N : USize} {v W z sv d sd e1 sw e2 ovf nl eW ev o1 bad : Enc}
+    (hz : colConst N 0 = .ok z) (hsv : colMap .lt N v z = .ok sv) (hd : colMap .sub N W v = .ok d)
+    (hsd : colMap .lt N d z = .ok sd) (he1 : colMap .eq N sv sd = .ok e1) (hsw : colMap .lt N W z = .ok sw)
+    (he2 : colMap .ne N sv sw = .ok e2) (hovf : colMap .and N e1 e2 = .ok ovf)
+    (hnl : colConst N 0x8000000000000000 = .ok nl) (heW : colMap .eq N W nl = .ok eW)
+    (hev : colMap .eq N v nl = .ok ev) (ho1 : colMap .or N eW ev = .ok o1) (hbad : colMap .or N ovf o1 = .ok bad) :
+    ∀ t < N.toNat, ((raw .i64 N bad)[t]?.getD 0 = 0 ∨ (raw .i64 N bad)[t]?.getD 0 = 1) ∧
+      ((raw .i64 N bad)[t]?.getD 0 = 0 ↔ ((raw .i64 N v)[t]?.getD 0).toInt64 ≠ Alg.nul ∧
+        ((raw .i64 N W)[t]?.getD 0).toInt64 ≠ Alg.nul ∧
+        ¬((((raw .i64 N v)[t]?.getD 0).toInt64 < 0 ↔
+            ((raw .i64 N W)[t]?.getD 0 - (raw .i64 N v)[t]?.getD 0).toInt64 < 0) ∧
+          ¬(((raw .i64 N v)[t]?.getD 0).toInt64 < 0 ↔ ((raw .i64 N W)[t]?.getD 0).toInt64 < 0))) := by
+  intro t ht
+  have hsv' := eval_lt_word ((colMap_raw hsv).2.2.2 t ht)
+  have hd' := (colMap_raw hd).2.2.2 t ht; simp only [Op.eval, Except.ok.injEq] at hd'
+  have hsd' := eval_lt_word ((colMap_raw hsd).2.2.2 t ht)
+  have he1' := eval_eq_word ((colMap_raw he1).2.2.2 t ht)
+  have hsw' := eval_lt_word ((colMap_raw hsw).2.2.2 t ht)
+  have he2' := eval_ne_word ((colMap_raw he2).2.2.2 t ht)
+  have hovf' := (colMap_raw hovf).2.2.2 t ht; simp only [Op.eval, Except.ok.injEq] at hovf'
+  have heW' := eval_eq_word ((colMap_raw heW).2.2.2 t ht)
+  have hev' := eval_eq_word ((colMap_raw hev).2.2.2 t ht)
+  have ho1' := (colMap_raw ho1).2.2.2 t ht; simp only [Op.eval, Except.ok.injEq] at ho1'
+  have hbad' := (colMap_raw hbad).2.2.2 t ht; simp only [Op.eval, Except.ok.injEq] at hbad'
+  rw [colConst_raw hz, Array.getElem?_replicate, if_pos ht, Option.getD_some] at hsv' hsd' hsw'
+  rw [colConst_raw hnl, Array.getElem?_replicate, if_pos ht, Option.getD_some] at heW' hev'
+  rw [← hd'] at hsd'
+  rw [← hbad', ← ho1', ← hovf', he1', he2', hsv', hsd', hsw', heW', hev']
+  have hn : ∀ x : UInt64, x = 0x8000000000000000 ↔ x.toInt64 = Alg.nul := fun x =>
+    ⟨fun h => by rw [h]; decide, fun h => by rw [← UInt64.toUInt64_toInt64 x, h]; decide⟩
+  simp only [hn, show (0 : UInt64).toInt64 = 0 from rfl]
+  generalize ((raw .i64 N W)[t]?.getD 0 - (raw .i64 N v)[t]?.getD 0).toInt64 = q
+  generalize ((raw .i64 N W)[t]?.getD 0).toInt64 = sW
+  generalize ((raw .i64 N v)[t]?.getD 0).toInt64 = sV
+  by_cases p1 : sV < 0 <;> by_cases p2 : q < 0 <;> by_cases p3 : sW < 0 <;> by_cases p4 : sW = Alg.nul <;>
+    by_cases p5 : sV = Alg.nul <;> simp (config := { decide := true }) [p1, p2, p3, p4, p5]
+
 namespace Tab
 
 /-- **`sum X` denotes `rowDens`' `sum` on the arrays of longs `X`**: a cell is kept, with its wrapped total
@@ -1088,16 +1139,7 @@ theorem sum_holds {n : USize} {X : Vals (.arr .long) n} {T : Tab (.arr .long) .l
     rw [List.range_succ, List.map_append] at this; simp at this
     rw [hT, hoff, hoff]; omega
   -- the row words, one `colMap`/`kgather` each
-  have eqW : ∀ a b o : UInt64, Op.eval .eq a b = .ok o → o = if a = b then 1 else 0 := fun a b o h => by
-    have e : Op.eval .eq a b = .ok (if (a == b) = true then 1 else 0) := rfl
-    rw [e, Except.ok.injEq] at h; rw [← h]; simp only [beq_iff_eq]
-  have neW : ∀ a b o : UInt64, Op.eval .ne a b = .ok o → o = if a ≠ b then 1 else 0 := fun a b o h => by
-    have e : Op.eval .ne a b = .ok (if (a != b) = true then 1 else 0) := rfl
-    rw [e, Except.ok.injEq] at h; rw [← h]; simp only [bne_iff_ne]
-  have ltW : ∀ a b o : UInt64, Op.eval .lt a b = .ok o → o = if a.toInt64 < b.toInt64 then 1 else 0 :=
-    fun a b o h => by
-      have e : Op.eval .lt a b = .ok (if decide (a.toInt64 < b.toInt64) = true then 1 else 0) := rfl
-      rw [e, Except.ok.injEq] at h; rw [← h]; simp only [decide_eq_true_eq]
+  have eqW : ∀ a b o : UInt64, Op.eval .eq a b = .ok o → o = if a = b then 1 else 0 := fun _ _ _ => eval_eq_word
   have hGt := kgather_word hg1
   have hA := (colMap_raw ha1).2.2.2
   have hVt := kgather_word hv
@@ -1106,18 +1148,6 @@ theorem sum_holds {n : USize} {X : Vals (.arr .long) n} {T : Tab (.arr .long) .l
   have hONE := colConst_raw hone
   have hWM := (colMap_raw hwm1).2.2.2
   have hL := (colMap_raw hlast).2.2.2
-  have hSV := (colMap_raw hsv).2.2.2
-  have hD := (colMap_raw hd).2.2.2
-  have hSD := (colMap_raw hsd).2.2.2
-  have hE1 := (colMap_raw he1).2.2.2
-  have hSW := (colMap_raw hsw).2.2.2
-  have hE2 := (colMap_raw he2).2.2.2
-  have hOVF := (colMap_raw hovf).2.2.2
-  have hNL := colConst_raw hnl
-  have hEW := (colMap_raw heW).2.2.2
-  have hEV := (colMap_raw hev).2.2.2
-  have hO1 := (colMap_raw ho1).2.2.2
-  have hBAD := (colMap_raw hbad).2.2.2
   obtain ⟨out, hos, hWr, hrec⟩ := raw_kscan_rev (w := 8) rfl hr
   simp only [show ∀ v : UInt64, UInt64.ofNat (v.toNat % 2 ^ (if QAtomicType.i64 = .u1 then 1 else 8 * 8)) = v from
     fun v => by rw [if_neg (by decide)]; simp, Array.map_id'] at hWr
@@ -1126,37 +1156,7 @@ theorem sum_holds {n : USize} {X : Vals (.arr .long) n} {T : Tab (.arr .long) .l
     unfold colMap at hlast; simp only [bind, Except.bind] at hlast; split at hlast; · cases hlast
     split at hlast; · cases hlast
     rename_i q hq; simp only [pure, Except.pure, Except.ok.injEq] at hlast; subst hlast; exact kscan_foR hq
-  -- each row's bad word is `0`/`1`, `0` exactly when the row's sum `W = v + (W - v)` is exact and not the null
-  have hbad0 : ∀ t < T'.toNat, ((raw .i64 T' bad)[t]?.getD 0 = 0 ∨ (raw .i64 T' bad)[t]?.getD 0 = 1) ∧
-      ((raw .i64 T' bad)[t]?.getD 0 = 0 ↔ ((raw .i64 T' v)[t]?.getD 0).toInt64 ≠ Alg.nul ∧
-        ((raw .i64 T' r.1)[t]?.getD 0).toInt64 ≠ Alg.nul ∧
-        ¬((((raw .i64 T' v)[t]?.getD 0).toInt64 < 0 ↔
-            ((raw .i64 T' r.1)[t]?.getD 0 - (raw .i64 T' v)[t]?.getD 0).toInt64 < 0) ∧
-          ¬(((raw .i64 T' v)[t]?.getD 0).toInt64 < 0 ↔ ((raw .i64 T' r.1)[t]?.getD 0).toInt64 < 0))) := by
-    intro t ht
-    have hsv' := ltW _ _ _ (hSV t ht)
-    have hd' := hD t ht; simp only [Op.eval, Except.ok.injEq] at hd'
-    have hsd' := ltW _ _ _ (hSD t ht)
-    have he1' := eqW _ _ _ (hE1 t ht)
-    have hsw' := ltW _ _ _ (hSW t ht)
-    have he2' := neW _ _ _ (hE2 t ht)
-    have hovf' := hOVF t ht; simp only [Op.eval, Except.ok.injEq] at hovf'
-    have heW' := eqW _ _ _ (hEW t ht)
-    have hev' := eqW _ _ _ (hEV t ht)
-    have ho1' := hO1 t ht; simp only [Op.eval, Except.ok.injEq] at ho1'
-    have hbad' := hBAD t ht; simp only [Op.eval, Except.ok.injEq] at hbad'
-    rw [hZ, Array.getElem?_replicate, if_pos ht, Option.getD_some] at hsv' hsd' hsw'
-    rw [hNL, Array.getElem?_replicate, if_pos ht, Option.getD_some] at heW' hev'
-    rw [← hd'] at hsd'
-    rw [← hbad', ← ho1', ← hovf', he1', he2', hsv', hsd', hsw', heW', hev']
-    have hn : ∀ x : UInt64, x = 0x8000000000000000 ↔ x.toInt64 = Alg.nul := fun x =>
-      ⟨fun h => by rw [h]; decide, fun h => by rw [← UInt64.toUInt64_toInt64 x, h]; decide⟩
-    simp only [hn, show (0 : UInt64).toInt64 = 0 from rfl]
-    generalize ((raw .i64 T' r.1)[t]?.getD 0 - (raw .i64 T' v)[t]?.getD 0).toInt64 = q
-    generalize ((raw .i64 T' r.1)[t]?.getD 0).toInt64 = sW
-    generalize ((raw .i64 T' v)[t]?.getD 0).toInt64 = sV
-    by_cases p1 : sV < 0 <;> by_cases p2 : q < 0 <;> by_cases p3 : sW < 0 <;> by_cases p4 : sW = Alg.nul <;>
-      by_cases p5 : sV = Alg.nul <;> simp (config := { decide := true }) [p1, p2, p3, p4, p5]
+  have hbad0 := badWord_spec hz hsv hd hsd he1 hsw he2 hovf hnl heW hev ho1 hbad
   -- each cell `g`'s rows `off g + k`: its group and offset, its element, and the segment start at its last row
   have hG2 : ∀ g < n.toNat, ∀ k < EN g - SN g, (raw .i64 T' G)[off g + k]?.getD 0 = g.toUInt64 ∧
       (raw .i64 T' u)[off g + k]?.getD 0 = k.toUInt64 := fun g hg k hk => by
