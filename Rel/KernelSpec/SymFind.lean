@@ -454,33 +454,6 @@ theorem concatSyms_foldl (L : List (ByteArray × Array Nat)) (hL : ∀ x ∈ L, 
         rw [← i4 p (Nat.lt_of_succ_lt_succ hp') k hk, s2]
         congr 1; omega
 
-/-- **`,` of symbol blobs keeps every part's entries**: `concatSyms` over well-formed parts answers a well-formed
-blob with one entry per part entry, and part `p`'s entry `k` is the answer's entry `k` past the parts before `p`. -/
-theorem symBytes_concatSyms {parts : Array (ByteArray × Array Nat)} (hw : ∀ x ∈ parts, SymsWF x.1 x.2)
-    {t n a} {b : ByteArray} {o : Array Nat} (h : Kernel.concatSyms (X := X) parts = .vector t n (.syms b o) a) :
-    SymsWF b o ∧ o.size - 1 = (parts.toList.map fun x => x.2.size - 1).sum ∧
-      ∀ p (hp : p < parts.size), ∀ k < parts[p].2.size - 1,
-        symBytes b o (((parts.toList.take p).map fun x => x.2.size - 1).sum + k) = symBytes parts[p].1 parts[p].2 k := by
-  have hc : Kernel.concatSyms (X := X) parts = .vector .sym
-      ((parts.toList.foldl (fun acc x => (acc.1 ++ x.1, acc.2 ++ (x.2.extract 1 x.2.size).map (· + acc.1.size)))
-        (ByteArray.empty, #[0])).2.size - 1 |> fun c => needSize c "concatSyms: symbols" (fun _ => 0) id) (.syms
-      (parts.toList.foldl (fun acc x => (acc.1 ++ x.1, acc.2 ++ (x.2.extract 1 x.2.size).map (· + acc.1.size)))
-        (ByteArray.empty, #[0])).1
-      (parts.toList.foldl (fun acc x => (acc.1 ++ x.1, acc.2 ++ (x.2.extract 1 x.2.size).map (· + acc.1.size)))
-        (ByteArray.empty, #[0])).2) none := by
-    unfold Kernel.concatSyms; rw [Array.foldl_toList]
-  rw [hc] at h
-  injection h with _ _ he _
-  injection he with hb ho
-  subst hb ho
-  obtain ⟨f1, f2, -, f4⟩ := concatSyms_foldl parts.toList (fun x hx => hw x (Array.mem_def.2 hx))
-    (ByteArray.empty, #[0]) ⟨by decide, rfl, rfl,
-      fun k hk => by rw [show k = 0 by simpa using hk]; exact Nat.le_refl _, fun k hk => absurd hk (Nat.not_lt_zero k)⟩
-  refine ⟨f1, by rw [f2]; exact Nat.zero_add _, fun p hp k hk => ?_⟩
-  have := f4 p (by rw [Array.length_toList]; exact hp) k (by rw [Array.getElem_toList]; exact hk)
-  rwa [Array.getElem_toList, show (#[0] : Array Nat).size - 1 = 0 from rfl, Nat.zero_add] at this
 
-/-- info: 'Rel.Verify.symBytes_concatSyms' depends on axioms: [propext, Quot.sound] -/
-#guard_msgs in #print axioms symBytes_concatSyms
 
 end Rel.Verify

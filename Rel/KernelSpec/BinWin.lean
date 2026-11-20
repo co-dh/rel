@@ -40,37 +40,6 @@ theorem binBytes_last (w : USize) (float signed : Bool) (hay keys : ByteArray) (
   simp only [Bool.false_eq_true, ↓reduceIte]
   exact Int64.toInt_ofInt_of_le (by omega) (by omega)
 
-/-- **`groupSizes` counts each group's rows**: entry `g` is how many of the ids read back are `g`. -/
-theorem groupSizes_spec (ng w n : USize) (gid : ByteArray) :
-    ids (Order.groupSizes ng w n gid) =
-      (List.range ng.toNat).map fun g => (idsW w.toNat n.toNat gid).countP (· == g) := by
-  rw [Order.groupSizes, ids_indices]
-  · exact List.map_congr_left fun g _ => by rw [idsW, List.countP_map]; rfl
-  · intro c hc'
-    obtain ⟨g, -, rfl⟩ := List.mem_map.1 hc'
-    exact Nat.lt_of_le_of_lt (Nat.le_trans List.countP_le_length
-      (by rw [List.length_range]; exact idsCap_le _ _ _)) (usize_lt n)
 
 end Rel.Verify
 #print axioms Rel.Verify.binBytes_last
-#print axioms Rel.Verify.groupSizes_spec
-
-
-namespace Rel.Verify
-
-open Rel Rel.Kernel
-open Rel.Kernel.Scan (Kind)
-
-/-- At an integral kind `ordKey` is the kernel's sort key, signed exactly at the signed widths. -/
-theorem ordKey_keyAt {k : Kind} {s : Bool}
-    (hk : (k = .u8 ∨ k = .c8) ∧ s = false ∨ (k = .i16 ∨ k = .i32 ∨ k = .i64) ∧ s = true) (b : ByteArray)
-    (i : Nat) : ordKey k.width false s (Column.bitsAt b (i * k.width) k.width) = Order.keyAt k b i := by
-  have hw := kind_width k
-  have hm := toNat_and_mask hw.1 hw.2 (Column.bitsAt b (i * k.width) k.width)
-  rw [Nat.mod_eq_of_lt (bitsAt_lt _ _ _ hw.2)] at hm
-  have hm := UInt64.toNat_inj.1 hm
-  rcases hk with ⟨hk | hk, rfl⟩ | ⟨hk | hk | hk, rfl⟩ <;> subst hk <;>
-    simp only [ordKey, Bool.false_eq_true, ↓reduceIte, hm] <;> rfl
-
-end Rel.Verify
-#print axioms Rel.Verify.ordKey_keyAt

@@ -71,35 +71,8 @@ theorem answer_foR (t : QAtomicType) (w : Nat) (k : USize) (M P : ByteArray) (ht
     · exact .inl rfl
     · exact .inr (by simp [Enc.bytesOf, ht])
 
-/-- **`Ew.val`, element by element**: element `i` is `valStep` of the two elements the shape reads at
-    `i`, truncated to the class's width. -/
-theorem val_spec (op cls shape : UInt8) (nul : Int64) (a b : ByteArray) (n : USize) :
-    (Ew.val op cls shape nul a b n).size = Ew.width cls * n.toNat ∧
-    elemsW (Ew.width cls) (Ew.val op cls shape nul a b n) = (List.range n.toNat).map fun i =>
-      UInt64.ofNat ((Ew.valStep op cls nul.toUInt64 (Ew.elem cls a (Ew.shapeIdx shape i).1)
-        (Ew.elem cls b (Ew.shapeIdx shape i).2)).toNat % 2 ^ (8 * Ew.width cls)) := by
-  obtain ⟨h0, h8⟩ := width_bounds cls
-  let g : Nat → UInt64 := fun i =>
-    Ew.valStep op cls nul.toUInt64 (Ew.elem cls a (Ew.shapeIdx shape i).1) (Ew.elem cls b (Ew.shapeIdx shape i).2)
-  exact ⟨(foldl_pushBits g _ h8 (List.range n.toNat) ByteArray.empty).1.trans (by simp),
-    elemsW_foldl_mod g _ h0 h8 _⟩
 
-theorem val_size8 (op shape : UInt8) (nul : Int64) (a b : ByteArray) (n : USize) :
-    n.toNat = (Ew.val op Ew.i64 shape nul a b n).size / 8 := by
-  rw [(val_spec op Ew.i64 shape nul a b n).1]
-  exact (Nat.mul_div_cancel_left _ (by decide)).symm
 
-/-- **`foRShift`**, where it answers, encodes `k + x` (`k - x` when `neg`) over the decoded operand. -/
-theorem foRShift_spec (neg : Bool) (k : Int64) (md pk : ByteArray) (n : USize) (m p : ByteArray)
-    (h : Ew.foRShift neg k md pk n = some (m, p)) :
-    elemsW 8 (Coc.decode 8 m p n) = elemsW 8 (if neg
-      then Ew.val Ew.sub Ew.i64 Ew.av Int64.minValue (Column.pushBits ByteArray.empty k.toUInt64 8)
-        (Coc.decode 8 md pk n) n
-      else Ew.val Ew.add Ew.i64 Ew.va Int64.minValue (Coc.decode 8 md pk n)
-        (Column.pushBits ByteArray.empty k.toUInt64 8) n) := by
-  unfold Ew.foRShift at h
-  dsimp only at h
-  exact decode_of_encode8 (eq_of_ite_none h) (by split <;> exact val_size8 _ _ _ _ _ _)
 
 end Rel.Verify
 
@@ -136,21 +109,6 @@ end Rel.Verify
 /-- info: 'Rel.Verify.answer_foR' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs in
 #print axioms Rel.Verify.answer_foR
-
-/-- info: 'Rel.Verify.val_spec' depends on axioms: [propext, Classical.choice, Quot.sound] -/
-#guard_msgs in
-#print axioms Rel.Verify.val_spec
-
-/-- info: 'Rel.Verify.val_size8' depends on axioms: [propext, Classical.choice, Quot.sound] -/
-#guard_msgs in
-#print axioms Rel.Verify.val_size8
-
-
-
-
-/-- info: 'Rel.Verify.foRShift_spec' depends on axioms: [propext, Classical.choice, Quot.sound] -/
-#guard_msgs in
-#print axioms Rel.Verify.foRShift_spec
 
 
 

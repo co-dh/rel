@@ -1,6 +1,5 @@
 import Rel.KernelSpec.FindMember
 import Rel.KernelSpec.Encoding
-import Rel.Kernel.Reduce
 import Rel.Kernel.Value
 import Rel.Kernel.Elementwise
 import Rel.Kernel.Eval.Val

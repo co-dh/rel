@@ -1,5 +1,4 @@
 import Rel.Kernel.Dep.Monadic
-import Rel.Kernel.Driver
 import Rel.Kernel.Scan
 import Rel.Kernel.Structural
 import Rel.KernelSpec.Alp
@@ -386,16 +385,6 @@ namespace Rel.KernelWF
 
 open Tab Rel.Kernel Rel.Verify
 
-/-- Belongs in qlean. `Enc.get` at a fixed-width type is `raw`'s element read through `atomOfBits`. -/
-theorem get_eq_raw {t : QAtomicType} {w : Nat} (ht : denseWidth t = some w) {n : USize} {e : Enc}
-    (hw : Enc.WF t n e) {j : Nat} (hj : j < n.toNat) :
-    Enc.get t n e j = some (Column.atomOfBits t ((Enc.raw t n e).toList.getD j 0)
-      (QAtomicType.ne_general_of_width (denseWidth_facts ht).1)) := by
-  obtain ⟨hw', hb, hs, -, -⟩ := denseWidth_facts ht
-  cases e <;> cases t <;>
-    simp_all [Enc.get, Enc.raw, Enc.WF, QAtomicType.width, denseWidth, List.getD_eq_getElem?_getD,
-      foRBits_starts, alpBits_starts] <;>
-    first | (subst_vars; exact (atomOfBits_mod (by rfl) (by decide) _).symm) | rfl
 
 /-- `extract` of a range that ends where it starts, or before, is empty. -/
 theorem extract_empty (b : ByteArray) {lo hi : Nat} (h : hi ≤ lo) : b.extract lo hi = b.extract lo lo := by
@@ -575,11 +564,6 @@ theorem raw_small_int {t : QAtomicType} {k : Scan.Kind} (ht : orderKind t = some
     exact ⟨fun b => by simp [Enc.raw, QAtomicType.width, Scan.Kind.width, List.getD_eq_getElem?_getD, hi],
       fun md pk => by simp [Enc.raw, QAtomicType.width, Scan.Kind.width, List.getD_eq_getElem?_getD, hi]⟩
 
-/-- An eight-byte integral type's facts: its layout is eight bytes, its payload dense or encoded, its
-    encoded null `nul`. -/
-theorem long_facts {t : QAtomicType} (ht : orderKind t = some .i64) :
-    t.width = some 8 ∧ denseWidth t = some 8 ∧ t ≠ .general ∧ Coc.nullOf t = some nul ∧ Column.encodes t = true := by
-  cases t <;> simp [orderKind] at ht <;> exact ⟨rfl, rfl, by decide, rfl, rfl⟩
 
 /-- An eight-byte integral payload's raw word `i`: a dense one's eight bytes at `8i`, an encoded one's
     `foRBits`. -/
@@ -590,13 +574,6 @@ theorem raw_long {t : QAtomicType} (ht : orderKind t = some .i64) {n : USize} {i
     exact ⟨fun b => by simp [Enc.raw, QAtomicType.width, List.getD_eq_getElem?_getD, hi],
       fun md pk => by simp [Enc.raw, QAtomicType.width, List.getD_eq_getElem?_getD, hi]⟩
 
-/-- **An eight-byte integral column's element is its raw word read as an `Int64`.** -/
-theorem long_row_eq {t : QAtomicType} (ht : orderKind t = some .i64) {n m : USize} (x : Arr t n) (y : Arr t m)
-    (i : Fin n.toNat) (j : Fin m.toNat) :
-    x.get i = y.get j ↔ ((Enc.raw t n x.enc).toList.getD i 0).toInt64 = ((Enc.raw t m y.enc).toList.getD j 0).toInt64 := by
-  obtain ⟨-, hd, hg, -, -⟩ := long_facts ht
-  rw [Arr.get_ne x i hg, Arr.get_ne y j hg, KernelWF.get_eq_raw hd x.wf i.2, KernelWF.get_eq_raw hd y.wf j.2]
-  cases t <;> simp [orderKind] at ht <;> simp [Column.atomOfBits, Carrier.of?]
 
 /-- A shift by `-base` of an element `x` with `base ≤ x < base + 2^63`: the integer difference, not the null. -/
 theorem shift_toInt {x base : Int64} (hb : base ≠ nul) (h1 : base.toInt ≤ x.toInt) (h2 : x.toInt - base.toInt < 2 ^ 63) :

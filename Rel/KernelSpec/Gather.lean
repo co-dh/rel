@@ -3,7 +3,6 @@ import Rel.KernelSpec.Encoding
 import Rel.Kernel.Coc
 import Rel.KernelSpec.Distinct
 import Rel.Kernel.Structural
-import Rel.Kernel.Reduce
 import Rel.KernelSpec.Where
 import Rel.Kernel.Value
 import Rel.Kernel.Search
@@ -17,23 +16,6 @@ open Rel.Ext
 namespace Rel.Verify
 open Rel Rel.Kernel
 
-/-- **`gatherBytes` read back**: element `j` is the source's element at index `j` read unsigned, or
-`fill`, at the low `8 * w` bits. -/
-theorem elemsW_gatherBytes (w : USize) (hw0 : 0 < w.toNat) (hw : w.toNat ≤ 8) (fill : UInt64)
-    (src idx : ByteArray) :
-    elemsW w.toNat (gatherBytes w fill src idx) = (elemsW 8 idx).map fun k =>
-      UInt64.ofNat (((elemsW w.toNat src).getD k.toNat fill).toNat % 2 ^ (8 * w.toNat)) := by
-  obtain ⟨hs, hg⟩ := gatherBytes_spec w hw fill src idx
-  apply List.ext_getElem (by simp only [elemsW, List.length_map, List.length_range, hs,
-    Nat.mul_div_cancel_left _ hw0])
-  intro j h1 h2
-  simp only [elemsW, List.length_map, List.length_range] at h2
-  simp only [elemsW, List.getElem_map, List.getElem_range]
-  rw [hg j h2, List.getD_eq_getElem?_getD, List.getElem?_map]
-  by_cases hi : (Column.bitsAt idx (j * 8) 8).toNat < src.size / w.toNat
-  · rw [if_pos hi, List.getElem?_range hi, Option.map_some, Option.getD_some,
-      Nat.mod_eq_of_lt (bitsAt_lt _ _ _ hw), UInt64.ofNat_toNat]
-  · rw [if_neg hi, List.getElem?_eq_none (by rw [List.length_range]; omega), Option.map_none, Option.getD_none]
 
 /-- `Coc.decode`'s elements, each the encoded one's low `8 * w` bits. -/
 theorem elemsW_decode (w : USize) (hw0 : 0 < w.toNat) (hw : w.toNat ≤ 8) (M P : ByteArray) (n : USize) :
@@ -58,14 +40,7 @@ theorem elemsW_alpDecode (w : USize) (hw0 : 0 < w.toNat) (hw : w.toNat ≤ 8) (M
       (Coc.alpElems M P a n).map fun v => UInt64.ofNat (v.toNat % 2 ^ (8 * w.toNat)) := by
   rw [alpDecode_eq]; exact elemsW_foldl_mod id w.toNat hw0 hw _
 
-theorem denseWidth_facts {t : QAtomicType} {w : Nat} (ht : denseWidth t = some w) :
-    t.width = some w ∧ t ≠ .u1 ∧ t ≠ .sym ∧ 0 < w ∧ w ≤ 8 := by
-  cases t <;> simp only [denseWidth, QAtomicType.width, reduceCtorEq, Option.some.injEq] at ht <;> subst ht <;>
-    exact ⟨rfl, by decide, by decide, by decide, by decide⟩
 
-theorem foRColumn_some {t : QAtomicType} {k : USize} {e : Ext.Enc X} {n : USize} {M P : ByteArray}
-    (h : foRColumn t k e = some (n, M, P)) : k = n ∧ e = .foR M P := by
-  cases e <;> simp [foRColumn] at h; obtain ⟨_, rfl, rfl, rfl⟩ := h; exact ⟨rfl, rfl⟩
 
 /-- **`bytesOf` reads what `raw` reads**: the dense payload a fixed-width kernel is handed is the column's elements
 at its own width, `raw` reading every form zero-extended from `8 * w` bits. -/
@@ -101,54 +76,6 @@ theorem elemsW_bytesOf {t : QAtomicType} {w : Nat} (ht : t.width = some w) (hb :
     exact List.map_congr_left fun a _ => UInt64.toNat_inj.mp (by simp [UInt64.toNat_ofNat, Nat.mod_mod])
   | _ => simp [Enc.bytesOf] at h
 
-theorem gatherColumn_fixed_shape {t : QAtomicType} {w : Nat} (ht : denseWidth t = some w) (n : USize) (e : Ext.Enc X)
-    (m : USize) (ie c : Ext.Enc X) (hxw : Enc.WF t n e)
-    (h : gatherColumn t n e m ie = some c) :
-    ∃ src ix, Enc.bytesOf t n e = some src ∧ Enc.bytesOf .i64 m ie = some ix ∧
-      c = .bytes (gatherBytes w.toUSize ((nullBits t).getD 0) src ix) := by
-  obtain ⟨hw, hb, hs, hw0, hw8⟩ := denseWidth_facts ht
-  unfold gatherColumn at h
-  -- the `idx` thunk is a `let` ahead of the `match t, e`: inline it so `split` takes the match
-  simp only at h
-  split at h
-  · exact absurd rfl hb
-  · exact absurd rfl hs
-  · exact absurd rfl hs
-  · split at h
-    · simp at h
-    · rename_i hae
-      cases hix : Enc.bytesOf .i64 m ie with
-      | none => simp [hix] at h
-      | some ix =>
-        by_cases hz : ix.size < m.toNat * 8
-        · simp [hix, hz] at h
-        simp only [hix, hz, ↓reduceIte, Option.map_some, Option.some.injEq] at h
-        subst h
-        cases t <;> simp [Column.alpEncodes] at hae <;> simp [QAtomicType.width] at hw <;> subst hw <;>
-          exact ⟨_, ix, rfl, rfl, by rw [gatherAlp, show Column.alpF32 _ = _ from hxw.2.2.2]; rfl⟩
-  · split at h
-    · obtain rfl := Option.some.inj (ht.symm.trans ‹denseWidth t = some _›)
-      obtain ⟨rfl, hxe⟩ := foRColumn_some ‹foRColumn t _ _ = some _›
-      cases hix : Enc.bytesOf .i64 m ie with
-      | none => simp [hix] at h
-      | some ix =>
-        by_cases hz : ix.size < m.toNat * 8
-        · simp [hix, hz] at h
-        simp only [hix, hz, ↓reduceIte, Option.map_some, Option.some.injEq] at h
-        subst h
-        exact ⟨_, ix, by simp [Enc.bytesOf, hxe, hw], rfl, rfl⟩
-    · obtain rfl := Option.some.inj (ht.symm.trans ‹denseWidth t = some _›)
-      split at h
-      · cases hix : Enc.bytesOf .i64 m ie with
-        | none => simp [hix] at h
-        | some ix =>
-          by_cases hz : ix.size < m.toNat * 8
-          · simp [hix, hz] at h
-          simp only [hix, hz, ↓reduceIte, Option.map_some, Option.some.injEq] at h
-          subst h
-          exact ⟨_, ix, ‹_›, rfl, rfl⟩
-      · simp at h
-    · simp at h
 
 /-- The byte `packOf` builds from eight flags, flag `t` at bit `t`. -/
 def byteOf (l : List Bool) : UInt8 :=
@@ -179,52 +106,8 @@ theorem bitAt_packOf (n : Nat) (f : Nat → Bool) (j : Nat) (hj : j < n) : Colum
   rw [Column.bitAt, hp, e, Option.getD_some, byteOf_bit _ _ _ _ _ _ _ _ _ hs, hg _ hs]
   simp only [g, hd, hj, decide_true, Bool.true_and]
 
-/-- **`gatherBits` read back**: bit `j` of the answer is bit `idx[j]` of the source, the index read
-unsigned, or `false` — `boolean`'s null — where that is not below `n`. -/
-theorem bitAt_gatherBits (n : USize) (b idx : ByteArray) (j : Nat) (hj : j < idx.size / 8) :
-    Column.bitAt (gatherBits n b idx) j =
-      if (Column.bitsAt idx (j * 8) 8).toNat < n.toNat then Column.bitAt b (Column.bitsAt idx (j * 8) 8).toNat
-      else false := by
-  rw [gatherBits, bitAt_packOf _ _ _ hj]; simp only [gatherAt]
-  by_cases hi : (Column.bitsAt idx (j * 8) 8).toNat < n.toNat <;> simp only [hi, ↓reduceIte]
 
-/-- **`gatherPacked` read back**: id `j` of the answer is id `idx[j]` of the source, the index read
-unsigned, or `fill` — the empty symbol's id — where that is not below `n`; at an answer width every
-id fits. -/
-theorem idAt_gatherPacked (n w wout : USize) (fill : UInt64) (src idx : ByteArray)
-    (hw : wout.toNat = 0 ∨ wout.toNat = 1 ∨ wout.toNat = 2 ∨ wout.toNat = 4 ∨ wout.toNat = 8 ∨
-      wout.toNat = 16 ∨ wout.toNat = 32 ∨ wout.toNat = 64)
-    (hv : ∀ i < n.toNat, Column.idAt src w.toNat i < 2 ^ wout.toNat) (hf : fill.toNat < 2 ^ wout.toNat)
-    (j : Nat) (hj : j < idx.size / 8) :
-    Column.idAt (gatherPacked n w wout fill src idx) wout.toNat j =
-      if (Column.bitsAt idx (j * 8) 8).toNat < n.toNat then Column.idAt src w.toNat (Column.bitsAt idx (j * 8) 8).toNat
-      else fill.toNat := by
-  unfold gatherPacked
-  rw [idAt_packIds hw hj ?_] <;> simp only [gatherAt] <;>
-    by_cases hi : (Column.bitsAt idx (j * 8) 8).toNat < n.toNat <;> simp only [hi, ↓reduceIte] <;>
-    first | exact hv _ hi | exact hf
 
-/-- **`x@i` at an interned `symbol` column** gathers the ids and leaves the dictionary to
-`gatherIds`: the answer holds as many elements as the index, and its ids are `gatherPacked` of the
-source's at the index — which `idAt_gatherPacked` reads back. An empty index answers before this. -/
-theorem gatherColumn_enum (n : USize) (dict : ByteArray) (dof : Array Nat) (ids : ByteArray) (m : USize) (ie c : Ext.Enc X)
-    (hiw : Enc.WF .i64 m ie) (hm : m ≠ 0)
-    (h : gatherColumn .sym n (.enum dict dof ids) m ie = some c) :
-    ∃ ix inRange db dbo nids, elemsW 8 ix = (Enc.raw .i64 m ie).toList ∧
-      gatherIds dict dof inRange (fun w wo e => gatherPacked n w wo e ids ix) = (db, dbo, nids) ∧
-      c = .enum db dbo nids := by
-  simp only [gatherColumn] at h
-  rw [if_neg (by simpa using hm)] at h
-  cases hix : Enc.bytesOf .i64 m ie with
-  | none => simp [hix] at h
-  | some ix =>
-    by_cases hz : ix.size < m.toNat * 8
-    · simp [hix, hz] at h
-    simp only [hix, hz, ↓reduceIte, Option.map_some, Option.some.injEq] at h
-    generalize hG : gatherIds dict dof _ _ = G at h
-    obtain ⟨db, dbo, nids⟩ := G
-    simp only at h
-    exact ⟨ix, _, db, dbo, nids, elemsW_bytesOf (t := .i64) rfl (by decide) (by decide) (by decide) m ie hiw ix hix, hG, h.symm⟩
 
 /-- One symbol laid after a blob and its starts: the bytes, a NUL, and the next start. -/
 def symStep (x : ByteArray × Array Nat) (k : ByteArray) : ByteArray × Array Nat :=
@@ -275,44 +158,8 @@ theorem foldl_symStep (ks : List ByteArray) (b : ByteArray) (o : Array Nat) (ho0
         exact ⟨lo, by rw [show o.size - 1 + (j + 1) = o.size + j by omega]; exact h1,
           by rw [show o.size + (j + 1) = o.size + 1 + j by omega]; exact h2, h3⟩
 
-/-- **`gatherSyms` read back**: the answer holds one symbol per index, and symbol `j` — the bytes
-between its start and the NUL before the next — is the source's symbol at the index read unsigned,
-or the empty symbol, `symbol`'s null, past the end. -/
-theorem gatherSyms_spec (blob : ByteArray) (offs : Array Nat) (ix : ByteArray) :
-    let key (j : Nat) : ByteArray := match gatherAt (offs.size - 1) ix j with
-      | some i => blob.extract offs[i]! (offs[i + 1]! - 1)
-      | none => ByteArray.empty
-    (gatherSyms blob offs ix).2.size = ix.size / 8 + 1 ∧
-    ∀ j < ix.size / 8, ∃ lo, (gatherSyms blob offs ix).2[j]? = some lo ∧
-      (gatherSyms blob offs ix).2[j + 1]? = some (lo + (key j).size + 1) ∧
-      ∀ q < (key j).size, (gatherSyms blob offs ix).1[lo + q]? = (key j)[q]? := by
-  intro key
-  have hg : gatherSyms blob offs ix = ((List.range (ix.size / 8)).map key).foldl symStep (ByteArray.empty, #[0]) := by
-    rw [List.foldl_map]; rfl
-  obtain ⟨-, -, hS, hJ⟩ := foldl_symStep ((List.range (ix.size / 8)).map key) ByteArray.empty #[0] (by decide) rfl
-  rw [hg]
-  refine ⟨by rw [hS]; simp [Nat.add_comm], fun j hj => ?_⟩
-  obtain ⟨lo, h1, h2, h3⟩ := hJ j (by simpa using hj)
-  simp only [List.getElem_map, List.getElem_range] at h2 h3
-  exact ⟨lo, by simpa using h1, by simpa [Nat.add_comm] using h2, h3⟩
 
-/-- **`x@i` at a `symbol` blob** answers a blob, its symbols those `gatherSyms_spec` reads back at
-the index column's elements. -/
-theorem gatherColumn_syms (n : USize) (blob : ByteArray) (offs : Array Nat) (m : USize) (ie c : Ext.Enc X)
-    (hiw : Enc.WF .i64 m ie) (h : gatherColumn .sym n (.syms blob offs) m ie = some c) :
-    ∃ ix, elemsW 8 ix = (Enc.raw .i64 m ie).toList ∧
-      c = .syms (gatherSyms blob offs ix).1 (gatherSyms blob offs ix).2 := by
-  simp only [gatherColumn] at h
-  cases hix : Enc.bytesOf .i64 m ie with
-  | none => simp [hix] at h
-  | some ix =>
-    by_cases hz : ix.size < m.toNat * 8
-    · simp [hix, hz] at h
-    simp only [hix, hz, ↓reduceIte, Option.map_some, Option.some.injEq] at h
-    exact ⟨ix, elemsW_bytesOf (t := .i64) rfl (by decide) (by decide) (by decide) m ie hiw ix hix, h.symm⟩
 
-/-- info: 'Rel.Verify.elemsW_gatherBytes' depends on axioms: [propext, Quot.sound] -/
-#guard_msgs in #print axioms elemsW_gatherBytes
 
 /-- info: 'Rel.Verify.elemsW_decode' depends on axioms: [propext, Quot.sound] -/
 #guard_msgs in #print axioms elemsW_decode
@@ -320,17 +167,11 @@ theorem gatherColumn_syms (n : USize) (blob : ByteArray) (offs : Array Nat) (m :
 /-- info: 'Rel.Verify.elemsW_alpDecode' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs in #print axioms elemsW_alpDecode
 
-/-- info: 'Rel.Verify.denseWidth_facts' depends on axioms: [propext] -/
-#guard_msgs in #print axioms denseWidth_facts
 
-/-- info: 'Rel.Verify.foRColumn_some' depends on axioms: [propext] -/
-#guard_msgs in #print axioms foRColumn_some
 
 /-- info: 'Rel.Verify.elemsW_bytesOf' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs in #print axioms elemsW_bytesOf
 
-/-- info: 'Rel.Verify.gatherColumn_fixed_shape' depends on axioms: [propext, Classical.choice, Quot.sound] -/
-#guard_msgs in #print axioms gatherColumn_fixed_shape
 
 /-- info: 'Rel.Verify.byteOf_bit' depends on axioms: [propext, Quot.sound] -/
 #guard_msgs in #print axioms byteOf_bit
@@ -338,15 +179,9 @@ theorem gatherColumn_syms (n : USize) (blob : ByteArray) (offs : Array Nat) (m :
 /-- info: 'Rel.Verify.bitAt_packOf' depends on axioms: [propext, Quot.sound] -/
 #guard_msgs in #print axioms bitAt_packOf
 
-/-- info: 'Rel.Verify.bitAt_gatherBits' depends on axioms: [propext, Quot.sound] -/
-#guard_msgs in #print axioms bitAt_gatherBits
 
 
-/-- info: 'Rel.Verify.idAt_gatherPacked' depends on axioms: [propext, Quot.sound] -/
-#guard_msgs in #print axioms idAt_gatherPacked
 
-/-- info: 'Rel.Verify.gatherColumn_enum' depends on axioms: [propext, Classical.choice, Quot.sound] -/
-#guard_msgs in #print axioms gatherColumn_enum
 
 /-- info: 'Rel.Verify.ba_size_append' depends on axioms: [propext, Quot.sound] -/
 #guard_msgs in #print axioms ba_size_append
@@ -354,10 +189,6 @@ theorem gatherColumn_syms (n : USize) (blob : ByteArray) (offs : Array Nat) (m :
 /-- info: 'Rel.Verify.foldl_symStep' depends on axioms: [propext, Quot.sound] -/
 #guard_msgs in #print axioms foldl_symStep
 
-/-- info: 'Rel.Verify.gatherSyms_spec' depends on axioms: [propext, Quot.sound] -/
-#guard_msgs in #print axioms gatherSyms_spec
 
-/-- info: 'Rel.Verify.gatherColumn_syms' depends on axioms: [propext, Classical.choice, Quot.sound] -/
-#guard_msgs in #print axioms gatherColumn_syms
 
 end Rel.Verify
