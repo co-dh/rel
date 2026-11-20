@@ -567,6 +567,155 @@ theorem Tab.filter_holds {B : Obj} {n : USize} {P : Tab B B} {X : Vals (.arr B) 
     exact ⟨xs, [], (Tab.idU_holds hrest xs xs).2 ⟨rfl, hi⟩, (Tab.nil_holds hP0 xs []).2 ⟨hi, rfl⟩,
       (hfold _ _ _).2 (by simp)⟩
 
+section
+open Rel.Ext
+
+/-- A strictly ascending map of `[0, T)` into `[0, T)` is the identity. -/
+theorem strictMono_id {T : Nat} {f : Nat → Nat} (hs : ∀ i j, i < j → j < T → f i < f j) (hb : ∀ i < T, f i < T) :
+    ∀ i < T, f i = i := by
+  have up : ∀ i < T, i ≤ f i := fun i => by
+    induction i with
+    | zero => intro; exact Nat.zero_le _
+    | succ i ih => intro hi; have := hs i (i + 1) (by omega) hi; have := ih (by omega); omega
+  have gap : ∀ d i, i + d < T → f i + d ≤ f (i + d) := fun d => by
+    induction d with
+    | zero => intro i _; exact Nat.le_refl _
+    | succ d ih =>
+      intro i hi; show f i + (d + 1) ≤ f (i + d + 1); rw [← Nat.add_assoc] at hi
+      have := ih i (by omega); have := hs (i + d) (i + d + 1) (by omega) hi; omega
+  intro i hi
+  have := gap (T - 1 - i) i (by omega); rw [show i + (T - 1 - i) = T - 1 by omega] at this
+  have := hb (T - 1) (by omega); have := up i hi; omega
+
+/-- **The `i64` order code of a non-negative word** is the word plus `2^63`: the sign bit it flips is clear. -/
+theorem ordCode_i64_nonneg {a : Nat} (h : a < 2 ^ 63) : (ordCode 8 false true a.toUInt64).toNat = a + 2 ^ 63 := by
+  have ha : a.toUInt64.toNat = a := by simp; omega
+  have m64 : (18446744073709551615 : UInt64).toNat = 2 ^ 64 - 1 := rfl
+  have e1 : (UInt64.ofNat 9223372036854775808).toNat = 2 ^ 63 := rfl
+  have e2 : (9223372036854775808 : Nat) = 2 ^ 63 := rfl
+  rw [show a + 2 ^ 63 = 2 ^ 63 + a by omega]
+  simp only [ordCode, Nat.reduceMul, Nat.reduceSub, Nat.reducePow, beq_self_eq_true, if_true, Bool.false_eq_true,
+    if_false, UInt64.toNat_xor, UInt64.toNat_and, Nat.toUInt64_eq, m64]
+  apply Nat.eq_of_testBit_eq; intro i
+  rw [ha, e1, e2, show (18446744073709551615 : Nat) = 2 ^ 64 - 1 from rfl, Nat.testBit_xor, Nat.testBit_and, Nat.testBit_two_pow_sub_one]
+  rcases Nat.lt_trichotomy i 63 with hi | rfl | hi
+  · rw [Nat.testBit_two_pow_add_gt hi, Nat.testBit_two_pow, decide_eq_false (by omega : ¬ 63 = i),
+      decide_eq_true (by omega : i < 64)]; simp
+  · rw [Nat.testBit_two_pow_add_eq, Nat.testBit_lt_two_pow h, Nat.testBit_two_pow]; simp
+  · have h1 : 2 ^ 63 + a < 2 ^ i := Nat.lt_of_lt_of_le (by omega) (Nat.pow_le_pow_right (by omega) hi)
+    rw [Nat.testBit_lt_two_pow h1, Nat.testBit_lt_two_pow (Nat.lt_of_lt_of_le h (Nat.pow_le_pow_right (by omega)
+      (by omega))), Nat.testBit_two_pow, decide_eq_false (by omega : ¬ 63 = i)]; simp
+
+/-- **`lexLe` on a key list led by an `i64` column** orders that column's codes. -/
+theorem Arr.lexLe_i64 {n : USize} (x : Arr .i64 n) (rest : List (AscKey × Enc)) {i j : Fin n.toNat}
+    (h : lexLe (ascKeys n ((.atom .i64, x.enc) :: rest)) i j = true) :
+    (ordCode 8 false true (x.get i).toUInt64).toNat ≤ (ordCode 8 false true (x.get j).toUInt64).toNat := by
+  have hs := size_raw (t := .i64) n x.enc x.wf (by decide) (by decide) (by decide)
+  have hi : i.1 < (Enc.raw .i64 n x.enc).size := by rw [hs]; exact i.2
+  have hj : j.1 < (Enc.raw .i64 n x.enc).size := by rw [hs]; exact j.2
+  simp only [ascKeys, ascKey, ascOrd, ascLayout, orderKind, Option.map_some, Option.getD_some, List.cons_append,
+    lexLe, Array.getElem?_map, Array.getElem?_eq_getElem hi, Array.getElem?_eq_getElem hj,
+    Option.map_some, Option.getD_some, Bool.or_eq_true, decide_eq_true_eq, Bool.and_eq_true, beq_iff_eq] at h
+  rw [Arr.get_i64, Arr.get_i64, Array.getElem?_eq_getElem hi, Array.getElem?_eq_getElem hj,
+    Option.getD_some, Option.getD_some, UInt64.toUInt64_toInt64, UInt64.toUInt64_toInt64]
+  rcases h with h | ⟨h, -⟩
+  · exact Nat.le_of_lt (UInt64.lt_iff_toNat_lt.1 h)
+  · exact Nat.le_of_eq (congrArg UInt64.toNat h)
+
+theorem Arr.pos_get {n : USize} {P : Arr .i64 n} (h : Arr.pos n = .ok P) (c : Fin n.toNat) :
+    P.get c = c.1.toUInt64.toInt64 := by
+  unfold Arr.pos at h
+  split at h
+  · rename_i o ho
+    cases h
+    rw [Arr.get_i64]
+    show ((Enc.raw .i64 n o)[c.1]?.getD 0).toInt64 = _
+    rw [shiftCol_raw ho c.1 c.2, UInt64.add_zero]
+  · cases h
+
+/-- **`⟨pos, v⟩ ≫ R` with one image per position is in position order**: where `C`, the composite of the `T`
+positions `pos` (`Arr.pos`) keyed to `v` with `R`, has `T` rows and `T` distinct keys (`dom`), row `j` of `C` has key
+`j` and is the only row there. Its keys are positions; `dom C`'s ascend strictly (`nub_sorted`, `nub_distinct`) so
+they are `0..T-1`; `C`'s ascend (`canon_sorted`), so the row of key `p` is row `p` (`strictMono_id` twice). -/
+theorem Tab.comp_pos_rows {A B : Obj} {T : USize} {P : Arr .i64 T} {v : Vals A T} {R : Tab A B} {C : Tab .long B}
+    {D : Tab .long .long} (hP : Arr.pos T = .ok P) (hT : T.toNat ≤ 2 ^ 63)
+    (hC : (⟨T, P, v⟩ : Tab .long A).comp R = .ok C) (hD : C.dom = .ok D) (hn : C.n = T) (hd : D.n = T) :
+    ∀ j : Fin C.n.toNat, C.key.row j = j.1.toUInt64.toInt64 ∧ ∀ y, C.Holds (C.key.row j) y ↔ y = C.val.row j := by
+  subst hn
+  obtain ⟨a, ha⟩ := Classical.axiomOfChoice fun j : Fin C.n.toNat => show ∃ i : Fin C.n.toNat,
+      C.key.row j = i.1.toUInt64.toInt64 by
+    obtain ⟨b, ⟨i, hi, -⟩, -⟩ := (Tab.comp_holds hC _ _).1 ⟨j, rfl, rfl⟩
+    exact ⟨i, hi ▸ Arr.pos_get hP i⟩
+  have hcode : ∀ j, (ordCode 8 false true (C.key.get j).toUInt64).toNat = (a j).1 + 2 ^ 63 := fun j => by
+    rw [show C.key.get j = C.key.row j from rfl, ha j, UInt64.toUInt64_toInt64]
+    exact ordCode_i64_nonneg (by have := (a j).2; omega)
+  have hinj : ∀ j j', C.key.row j = C.key.row j' ↔ a j = a j' := fun j j' => by
+    rw [ha, ha]
+    refine ⟨fun e => Fin.ext ?_, fun e => by rw [e]⟩
+    have k : ∀ i : Fin C.n.toNat, i.1.toUInt64.toNat = i.1 := fun i => by have := i.2; simp; omega
+    have := congrArg UInt64.toNat (toInt64_inj e); rwa [k, k] at this
+  -- the keys of `dom C` ascend strictly, so they are `0..T-1`: every position is a key of `C`
+  unfold Tab.dom at hD
+  cases hnb : Vals.nub C.key with
+  | error s => simp [hnb, Functor.map, Except.map] at hD
+  | ok r =>
+  simp only [hnb, Functor.map, Except.map, Except.ok.injEq] at hD
+  subst hD
+  obtain ⟨sel, hs, hlt⟩ := Vals.nub_sorted (es := [(.atom .i64, C.key.enc)]) hnb rfl
+  have hr : r.1.toNat = C.n.toNat := congrArg USize.toNat hd
+  let f : Nat → Nat := fun d => if h : d < C.n.toNat then (a (sel ⟨d, hr ▸ h⟩)).1 else 0
+  have hf := strictMono_id (f := f) (T := C.n.toNat) (fun d d' hdd hd' => by
+      simp only [f, dif_pos hd', dif_pos (Nat.lt_trans hdd hd')]
+      have hl := Arr.lexLe_i64 C.key [] (hlt ⟨d, by omega⟩ ⟨d', by omega⟩ hdd).1
+      rw [hcode, hcode] at hl
+      have hne := Vals.nub_distinct hnb (j := ⟨d, by omega⟩) (j' := ⟨d', by omega⟩) (by simp; omega)
+      rw [hs, hs] at hne
+      have := mt (hinj _ _).2 hne
+      have := Fin.val_ne_of_ne this; omega)
+    (fun d hd => by simp only [f, dif_pos hd]; exact (a _).2)
+  -- the keys of `C` ascend, so the row of key `p` is row `p`
+  obtain ⟨U, hU, -⟩ := Tab.comp_canon hC
+  obtain ⟨es, -, hes, -⟩ := Tab.canon_codes hU
+  cases h2 : Vals.cols U.val with
+  | error s => simp [Vals.cols, h2, bind, Except.bind] at hes
+  | ok es₂ =>
+  simp only [Vals.cols, h2, bind, Except.bind, pure, Except.pure, Except.ok.injEq] at hes
+  subst hes
+  obtain ⟨selC, hsC, hltC⟩ := Tab.canon_sorted hU (es := (.atom .i64, U.key.enc) :: es₂) (by
+    simp [Vals.cols, h2, bind, Except.bind, pure, Except.pure])
+  have hmono : ∀ j j' : Fin C.n.toNat, j.1 < j'.1 → (a j).1 ≤ (a j').1 := fun j j' hjj => by
+    have hl := Arr.lexLe_i64 U.key es₂ (hltC j j' hjj).1
+    have e1 := (Prod.mk.inj (hsC j)).1; have e2 := (Prod.mk.inj (hsC j')).1
+    have c1 := hcode j; have c2 := hcode j'
+    rw [show C.key.get j = C.key.row j from rfl, e1] at c1
+    rw [show C.key.get j' = C.key.row j' from rfl, e2] at c2
+    change (ordCode 8 false true (U.key.get (selC j)).toUInt64).toNat = _ at c1
+    change (ordCode 8 false true (U.key.get (selC j')).toUInt64).toNat = _ at c2
+    omega
+  let g : Nat → Nat := fun p => if h : p < C.n.toNat then (sel ⟨p, by omega⟩).1 else 0
+  have hfp : ∀ p (hp : p < C.n.toNat), (a (sel ⟨p, by omega⟩)).1 = p := fun p hp => by
+    have := hf p hp; simp only [f, dif_pos hp] at this; exact this
+  have hg := strictMono_id (f := g) (T := C.n.toNat) (fun p p' hpp hp' => by
+      simp only [g, dif_pos hp', dif_pos (Nat.lt_trans hpp hp')]
+      have h1 := hfp p (by omega); have h2 := hfp p' hp'
+      rcases Nat.lt_or_ge (sel ⟨p, by omega⟩).1 (sel ⟨p', by omega⟩).1 with h | h
+      · exact h
+      · rcases Nat.eq_or_lt_of_le h with e | e
+        · have := congrArg (fun i => (a i).1) (Fin.ext e); simp only at this; omega
+        · have := hmono _ _ e; omega)
+    (fun p hp => by simp only [g, dif_pos hp]; exact (sel _).2)
+  have hid : ∀ j : Fin C.n.toNat, (a j).1 = j.1 := fun j => by
+    have := hg j.1 j.2; simp only [g, dif_pos j.2] at this
+    have e : sel ⟨j.1, by omega⟩ = j := Fin.ext this
+    have := hfp j.1 j.2; rwa [e] at this
+  intro j
+  refine ⟨by rw [ha j, hid j], fun y => ⟨fun ⟨i, hi, hy⟩ => ?_, fun hy => ⟨j, rfl, hy.symm⟩⟩⟩
+  have := (hinj i j).1 hi
+  have e : i = j := Fin.ext (by rw [← hid i, ← hid j, this])
+  rw [← hy, e]
+
+end
+
 /-- **`F(R)`'s fold branch on the cells `X`** (`Tab.map` where some element has no image or two): each array `xs` of
 `X` to every `ys` of its length with `xs[t] R ys[t]`, the left fold from `[]` of `⟨π₁, π₂ ≫ R⟩ ≫ snoc`
 (`foldRoundsL_holds`, the step `v ↦ v ++ [y]` for a `y` with `x R y`). -/
@@ -629,6 +778,115 @@ theorem Tab.mapFold_holds {A B : Obj} {n : USize} {R : Tab A B} {X : Vals (.arr 
   · rintro ⟨hi, hl, hz⟩
     exact ⟨xs, [], (Tab.idU_holds hrest xs xs).2 ⟨rfl, hi⟩, (Tab.nil_holds hP0 xs []).2 ⟨hi, rfl⟩,
       (hfold _ _ _).2 ⟨ys, by simp, hl, hz⟩⟩
+
+/-- **`Vals.cells` places any payload under one layout**: its `lo` and `hi` read only the widths `w`. -/
+theorem Vals.cells_pay {B : Obj} {T n : USize} {w} {pay : Vals B T} {Y : Vals (.arr B) n}
+    (h : Vals.cells n w pay = .ok Y) {C : Obj} (pay' : Vals C T) :
+    ∃ lo hi : Arr .i64 n, Y = ⟨T, lo, hi, pay⟩ ∧ Vals.cells n w pay' = .ok ⟨T, lo, hi, pay'⟩ := by
+  simp only [Vals.cells, bind] at h ⊢
+  rw [Except.bind_eq_ok'] at h; obtain ⟨P, hP, h⟩ := h
+  rw [Except.bind_eq_ok'] at h; obtain ⟨lo, hlo, h⟩ := h
+  rw [Except.bind_eq_ok'] at h; obtain ⟨c0, hc0, h⟩ := h
+  rw [Except.bind_eq_ok'] at h; obtain ⟨hi, hhi, h⟩ := h
+  cases h
+  exact ⟨lo, hi, rfl, by simp [hP, hlo, hc0, hhi, Except.bind, pure, Except.pure]⟩
+
+/-- **`Tab.map`'s one pass has at most `n * m` rows**: the `T` EXPANDed rows are the summed widths of `n` cells over a
+payload of `m` (`cellSpan_spec`, `expand_spec`). -/
+theorem expand_cells_le {A : Obj} {n m : USize} {lo up : Arr .i64 n} {f : Vals A m} {s e : Arr .i64 n} {w G u}
+    {T : USize} (hb : ¬2 ^ 63 ≤ n.toNat * m.toNat + n.toNat + m.toNat) (hse : cellSpan m lo up = .ok (s, e))
+    (hw : colMap .sub n e.enc s.enc = .ok w) (hex : expand n w = .ok (T, G, u)) : T.toNat ≤ n.toNat * m.toNat := by
+  have hm63 : m.toNat < 2 ^ 63 := by omega
+  have hn63 : n.toNat < 2 ^ 63 := by omega
+  obtain ⟨SN, EN, hse', hb1, -⟩ := cellSpan_spec hse hm63 f
+  obtain ⟨wN, hwN⟩ : ∃ F : Nat → Nat, ∀ i, F i = EN i - SN i := ⟨_, fun _ => rfl⟩
+  have hww : ∀ i < n.toNat, (Ext.Enc.raw .i64 n w)[i]?.getD 0 = (wN i).toUInt64 := by
+    intro i hi
+    have es := (colMap_raw hw).2.2.2 i hi
+    rw [(hse' i hi).2, (hse' i hi).1] at es; simp only [Op.eval, Except.ok.injEq] at es
+    rw [← es, hwN, toUInt64_sub (hb1 i).1]
+  have hsum : ∀ k, ((List.range k).map wN).sum ≤ k * m.toNat := fun k => by
+    induction k with
+    | zero => simp
+    | succ k ih => rw [sum_range_succ', Nat.succ_mul]; have := hb1 k; rw [hwN]; omega
+  rw [(expand_spec hex wN hww (by have := hsum n.toNat; omega) hn63).1]; exact hsum _
+
+/-- **`F(R)` on the cells `X`** (`Tab.map`): each array `xs` of `X` to every `ys` of its length with `xs[t] R ys[t]`.
+The fold branch is `mapFold_holds`; in the one-pass branch every element `x` of a cell is a payload row `v[t]`, whose
+only image is `C`'s row `t` (`comp_pos_rows`), and the new cells are the old ones mapped by that image
+(`cells_expand_row`, once at `R`'s image and once at `id` over `v`). -/
+theorem Tab.map_holds {A B : Obj} {n : USize} {R : Tab A B} {X : Vals (.arr A) n} {res : Tab (.arr A) (.arr B)}
+    (h : Tab.map R X = .ok res) (xs : List A.El) (ys : List B.El) :
+    res.Holds xs ys ↔ (∃ i, X.row i = xs) ∧ ys.length = xs.length ∧
+      ∀ t (ht : t < xs.length) (ht' : t < ys.length), R.Holds (xs[t]'ht) (ys[t]'ht') := by
+  rcases X with ⟨m, lo, hi, f⟩
+  simp only [Tab.map] at h
+  split at h
+  · simp [bind, Except.bind] at h
+  rename_i hb
+  obtain ⟨_, -, h⟩ := GenK.bind_ok h
+  obtain ⟨⟨s, e⟩, hse, h⟩ := GenK.bind_ok h
+  obtain ⟨w, hw, h⟩ := GenK.bind_ok h
+  obtain ⟨⟨T, G, u⟩, hex, h⟩ := GenK.bind_ok h
+  dsimp only at h
+  obtain ⟨sg, hsg, h⟩ := GenK.bind_ok h
+  obtain ⟨ix, hix, h⟩ := GenK.bind_ok h
+  obtain ⟨v, hv, h⟩ := GenK.bind_ok h
+  obtain ⟨P, hP, h⟩ := GenK.bind_ok h
+  obtain ⟨C, hC, h⟩ := GenK.bind_ok h
+  obtain ⟨D, hD, h⟩ := GenK.bind_ok h
+  split at h
+  · classical
+    rename_i hcd
+    simp only [Bool.and_eq_true, beq_iff_eq] at hcd
+    obtain ⟨hn, hd⟩ := hcd
+    obtain ⟨Y, hY, hc⟩ := GenK.bind_ok h
+    have hT : T.toNat ≤ 2 ^ 63 := by have := expand_cells_le (f := f) hb hse hw hex; omega
+    have rows := Tab.comp_pos_rows hP hT hC hD hn hd
+    subst hn
+    -- `R`'s only image of payload row `t` is `C`'s row `t`
+    have himg : ∀ (t : Fin C.n.toNat) y, R.Holds (v.row t) y ↔ y = C.val.row t := fun t y => by
+      rw [← (rows t).2 y, (rows t).1, Tab.comp_holds hC]
+      constructor
+      · intro hR; exact ⟨v.row t, ⟨t, Arr.pos_get hP t, rfl⟩, hR⟩
+      · rintro ⟨b, ⟨i, hi, rfl⟩, hR⟩
+        have k : ∀ i : Fin C.n.toNat, i.1.toUInt64.toNat = i.1 := fun i => by have := i.2; simp; omega
+        have e : i = t := Fin.ext (by
+          have := congrArg UInt64.toNat (toInt64_inj ((Arr.pos_get hP i).symm.trans hi)); rwa [k, k] at this)
+        rwa [← e]
+    let g : A.El → B.El := fun a => if h : ∃ y, R.Holds a y then Classical.choose h else B.dflt
+    have hg : ∀ t, g (v.row t) = C.val.row t := fun t => by
+      have hx : ∃ y, R.Holds (v.row t) y := ⟨_, (himg t _).2 rfl⟩
+      simp only [g, dif_pos hx]; exact (himg t _).1 (Classical.choose_spec hx)
+    have hrow := Vals.cells_expand_row hb hse hw hex hsg hix g (fun t => by
+      obtain ⟨j, hj, hvj⟩ := Vals.gather_row f hv t
+      exact ⟨j, hj, by rw [← hvj, hg]⟩) hY
+    obtain ⟨lo', hi', -, hY'⟩ := Vals.cells_pay hY v
+    have hrow' := Vals.cells_expand_row hb hse hw hex hsg hix id (fun t => by
+      obtain ⟨j, hj, hvj⟩ := Vals.gather_row f hv t
+      exact ⟨j, hj, hvj⟩) hY'
+    -- every element of a cell is a payload row, so `R` maps it to `g` of it and nothing else
+    have hfun : ∀ i x, x ∈ Vals.row (A := .arr A) ⟨m, lo, hi, f⟩ i → ∀ y, R.Holds x y ↔ y = g x := fun i x hx y => by
+      have e := hrow' i; rw [List.map_id] at e; rw [← e] at hx
+      simp only [Vals.row, List.mem_filterMap] at hx
+      obtain ⟨j, -, hj⟩ := hx
+      split at hj
+      · cases hj; rw [hg]; exact himg j y
+      · cases hj
+    rw [Tab.canon_holds hc]
+    constructor
+    · rintro ⟨i, rfl, rfl⟩
+      rw [hrow i]
+      refine ⟨⟨i, rfl⟩, List.length_map .., fun t ht ht' => ?_⟩
+      rw [List.getElem_map]; exact (hfun i _ (List.getElem_mem ht) _).2 rfl
+    · rintro ⟨⟨i, rfl⟩, hl, hR⟩
+      refine ⟨i, rfl, ?_⟩
+      rw [hrow i]
+      apply List.ext_getElem (by rw [List.length_map, hl])
+      intro t h1 h2
+      rw [List.getElem_map]
+      exact ((hfun i _ (List.getElem_mem (by simpa using h1)) _).1 (hR t (by simpa using h1) h2)).symm
+  · exact Tab.mapFold_holds h xs ys
 
 /-- **`concat` on the cells of cells `X`** (`Tab.flatten`): each array of arrays of `X` to their concatenation, the
 left fold of `cat` from `[]` (`foldRoundsL_holds`). -/
@@ -1111,6 +1369,26 @@ theorem filter_sound {B : Obj} {d : Bool} {R : Rel B B} {T : Den B B} (hR : ∀ 
       exact exists_congr fun y => ha x y ((side_some rfl x).2 ⟨j, hj⟩) rfl
     show t.Holds xs ys ↔ _
     rw [Tab.filter_holds h, and_iff_right hi, List.filter_congr fun x hm => decide_eq_decide.2 (hPT x hm)]
+
+/-- `F(R)`, `Expand.primE`'s fit of the row (`elems`, `Tab.map`): each array in demand to every array of its length
+related pointwise by `R`'s meaning `T`, `R` run knowing its domain is the elements, where it agrees with `T`. -/
+theorem map_sound {A B : Obj} {d : Bool} {R : Rel A B} {T : Den A B} (hR : ∀ K, R.Reps K T) :
+    ∀ K, (GenK.elems A B (.arr B) d R fun P X => Tab.map P X).Reps K
+      (fun xs ys => ys.length = xs.length ∧ ∀ t (ht : t < xs.length) (ht' : t < ys.length), T (xs[t]'ht) (ys[t]'ht')) := by
+  unfold GenK.elems
+  exact ofVals_sound fun _ _ X t hK h xs ys hx _ => by
+    obtain ⟨M, hM, h⟩ := bind_ok h
+    obtain ⟨k, hk, h⟩ := bind_ok h
+    obtain ⟨P, hP, h⟩ := bind_ok h
+    have hi := (side_some hK xs).1 hx
+    have ha := (reps_iff _ _ _).1 (hR ⟨some ⟨k.n, k.key⟩, none⟩) P hP
+    have hPT : ∀ x ∈ xs, ∀ y, P.Holds x y ↔ T x y := fun x hm y => by
+      obtain ⟨j, hj, -⟩ := (Tab.ran_holds hk x x).2 ⟨rfl, xs, (Tab.mem_holds hM xs x).2 ⟨hi, hm⟩⟩
+      exact ha x y ((side_some rfl x).2 ⟨j, hj⟩) rfl
+    show t.Holds xs ys ↔ _
+    rw [Tab.map_holds h, and_iff_right hi]
+    exact and_congr_right fun _ => forall_congr' fun s => forall_congr' fun hs => forall_congr' fun hs' =>
+      hPT _ (List.getElem_mem hs) _
 
 /-- `loop(F)`, `Expand.primE`'s fit of the row (`stepAfter`, `Tab.loop`): each `(c, ys)` in demand to the states
 of `rowDens`' `loop` iteration of `F`'s meaning `TF`, `F` run on the pairs each round meets (`compT_sound`). -/
