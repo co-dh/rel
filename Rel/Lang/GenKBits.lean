@@ -1043,6 +1043,626 @@ theorem Tab.ldivTabMat_wf {n m N N' : USize} {r : Tab A B} {ub : Tab B B} {uc : 
   obtain ⟨v, hv, hv2, -⟩ := hw' a ha j hj
   rw [hv]; exact decide_eq_true hv2
 
+/-- **`kgather` answers** on valid columns whose every index is below `n`. -/
+theorem kgather_ok {m n : USize} {ix e : Enc} (hi : Enc.Valid m ix) (he : Enc.Valid n e)
+    (hr : ∀ k < m.toNat, ((raw .i64 m ix)[k]?.getD 0).toNat < n.toNat) : ∃ o, kgather m ix n e = .ok o := by
+  have h1 := (foRWords_valid "gather: ix" m ix).1 hi
+  have h2 := (foRWords_valid "gather: e" n e).1 he
+  have s1 := (foRWords_raw _ _ _ _ h1).2
+  have s2 := (foRWords_raw _ _ _ _ h2).2
+  have hU : USize.size ≤ 2 ^ 64 := by rcases USize.size_eq with h | h <;> omega
+  have := m.toNat_lt_size; have := n.toNat_lt_size
+  unfold kgather
+  rw [h1, h2]
+  simp only [bind, Except.bind]
+  rw [gatherWords_eq _ _ (by omega) (by omega) (fun k hk => by rw [s2]; exact hr k (by omega))]
+  exact ⟨_, rfl⟩
+
+/-- **`scatterWords` answers** where every index is below `n` and `op` answers on every row's word. -/
+theorem scatterWords_ok {op : Op} {is es : Array UInt64} {n : Nat} {fill : UInt64}
+    (hop : ∀ k < is.size, ∀ a, ∃ v, op.eval a (es[k]?.getD 0) = .ok v)
+    (hi : ∀ k < is.size, (is[k]?.getD 0).toNat < n) : ∃ o, scatterWords op is es n fill = .ok o := by
+  unfold scatterWords
+  have hl : ∀ k ∈ List.range is.size, k < is.size := fun k hk => List.mem_range.1 hk
+  generalize List.range is.size = l at hl
+  generalize Array.replicate n fill = a0
+  induction l generalizing a0 with
+  | nil => exact ⟨_, rfl⟩
+  | cons k t ih =>
+    have hk := hl k List.mem_cons_self
+    obtain ⟨v, hv⟩ := hop k hk (a0[(is[k]?.getD 0).toNat]?.getD 0)
+    simp only [List.foldlM_cons, bind, Except.bind, if_pos (hi k hk), hv]
+    exact ih (fun k' h' => hl k' (List.mem_cons_of_mem _ h')) _
+
+/-- **`kscatter` answers** on valid columns whose every index is below `n`, `op` answering on every row's word. -/
+theorem kscatter_ok {op : Op} {m n : USize} {ix e : Enc} {fill : UInt64} (hix : Enc.Valid m ix) (he : Enc.Valid m e)
+    (hop : ∀ k < m.toNat, ∀ a, ∃ v, op.eval a ((raw .i64 m e)[k]?.getD 0) = .ok v)
+    (hi : ∀ k < m.toNat, ((raw .i64 m ix)[k]?.getD 0).toNat < n.toNat) : ∃ o, kscatter op m ix e n fill = .ok o := by
+  have h1 := (foRWords_valid "scatter: ix" m ix).1 hix
+  have h2 := (foRWords_valid "scatter: e" m e).1 he
+  have s1 := (foRWords_raw _ _ _ _ h1).2
+  obtain ⟨o, ho⟩ := scatterWords_ok (is := raw .i64 m ix) (es := raw .i64 m e) (op := op) (n := n.toNat)
+    (fill := fill) (fun k hk => hop k (by omega)) (fun k hk => hi k (by omega))
+  unfold kscatter; rw [h1, h2]; simp only [bind, Except.bind, ho]; exact ⟨_, rfl⟩
+
+/-- **`colConst` answers**, a `foR` column. -/
+theorem colConst_ok (n : USize) (w : UInt64) : ∃ md pk, colConst n w = .ok (.foR md pk) := by
+  simp [colConst, kscatter, foRWords, scatterWords, Enc.raw, bind, Except.bind, pure, Except.pure]
+
+/-- **`kscan` answers** on columns of `n` raw words, a seed column first, at a type of fixed width, where `op` answers
+    on every row's word of every column after the seed. -/
+theorem kscan_ok {op : Op} {rev : Bool} {s t : QAtomicType} {n : USize} {seg c : Enc} {cs : List Enc}
+    (hseg : (seg.raw .u1 n).size = n.toNat) (hes : ∀ x ∈ c :: cs, (x.raw s n).size = n.toNat)
+    (ht : t.width.isSome) (hop : ∀ x ∈ cs, ∀ i < n.toNat, ∀ a, ∃ v, op.eval a ((x.raw s n)[i]?.getD 0) = .ok v) :
+    ∃ r, kscan op rev s t n seg (c :: cs) = .ok r := by
+  have hm : ∀ l : List Enc, (∀ x ∈ l, (x.raw s n).size = n.toNat) → l.mapM (rawAll s n) = .ok (l.map (·.raw s n)) := by
+    intro l hl; induction l with
+    | nil => rfl
+    | cons x l ih =>
+      simp only [List.mapM_cons, rawAll, hl x List.mem_cons_self, if_true, ih (fun y hy => hl y (List.mem_cons_of_mem _ hy)),
+        bind, Except.bind, pure, Except.pure, List.map_cons]
+  -- every column after the seed folds at every row
+  have hx : ∀ i < n.toNat, ∀ a, ∃ v, ((cs.map (·.raw s n)).map fun a => if rev then a.reverse else a).foldlM
+      (fun a x => op.eval a (x[i]?.getD 0)) a = .ok v := by
+    intro i hi
+    have hcs : ∀ x ∈ cs, (x.raw s n).size = n.toNat := fun x hx => hes x (List.mem_cons_of_mem _ hx)
+    clear hes hm
+    induction cs with
+    | nil => exact fun a => ⟨a, rfl⟩
+    | cons x cs ih =>
+      intro a
+      have hrow : ∃ v, op.eval a (((if rev then (x.raw s n).reverse else x.raw s n))[i]?.getD 0) = .ok v := by
+        cases rev
+        · exact hop x List.mem_cons_self i hi a
+        · simp only [if_true, Array.getElem?_reverse, hcs x List.mem_cons_self, hi, if_true]
+          exact hop x List.mem_cons_self _ (by omega) a
+      obtain ⟨v, hv⟩ := hrow
+      simp only [List.map_cons, List.foldlM_cons, hv, bind, Except.bind]
+      exact ih (fun y hy => hop y (List.mem_cons_of_mem _ hy)) (fun y hy => hcs y (List.mem_cons_of_mem _ hy)) v
+  have hf : ∀ (L : List Nat), (∀ i ∈ L, i < n.toNat) → ∀ (g sd : Array UInt64) (acc : Array UInt64), ∃ out,
+      L.foldlM (kscanRow op g sd ((cs.map (·.raw s n)).map fun a => if rev then a.reverse else a)) acc = .ok out := by
+    intro L hL g sd
+    induction L with
+    | nil => exact fun acc => ⟨acc, rfl⟩
+    | cons i L ih =>
+      intro acc
+      obtain ⟨v, hv⟩ := hx i (hL i List.mem_cons_self) (if 0 < i ∧ g[i]?.getD 0 = 0 then acc[i - 1]?.getD 0 else sd[i]?.getD 0)
+      simp only [List.foldlM_cons, kscanRow, hv, bind, Except.bind, Functor.map, Except.map]
+      exact ih (fun j hj => hL j (List.mem_cons_of_mem _ hj)) _
+  obtain ⟨w, hw⟩ := Option.isSome_iff_exists.1 ht
+  unfold kscan
+  rw [show rawAll .u1 n seg = .ok (seg.raw .u1 n) by simp [rawAll, hseg], hm _ hes]
+  obtain ⟨out, hout⟩ := hf (List.range n.toNat) (fun i hi => List.mem_range.1 hi)
+    (if rev then (seg.raw .u1 n).reverse else seg.raw .u1 n) (if rev then (c.raw s n).reverse else c.raw s n) #[]
+  simp only [bind, Except.bind, List.map_cons]
+  rw [hout]; simp only [hw]; exact ⟨_, rfl⟩
+
+/-- **`colMap` answers** on columns of `n` raw words where `op` answers on every word of `b` (`kscan` reads raw words,
+    not a layout). -/
+theorem colMap_ok {op : Op} {n : USize} {a b : Enc} {t : QAtomicType} (ht : t.width.isSome)
+    (sa : (raw .i64 n a).size = n.toNat) (sb : (raw .i64 n b).size = n.toNat)
+    (hop : ∀ i < n.toNat, ∀ c, ∃ v, op.eval c ((raw .i64 n b)[i]?.getD 0) = .ok v) :
+    ∃ o, colMap op n a b t = .ok o := by
+  obtain ⟨md, pk, hc⟩ := colConst_ok n 1
+  obtain ⟨r, hr⟩ := kscan_ok (op := op) (rev := false) (s := .i64) (t := t) (n := n) (seg := .foR md pk) (c := a)
+    (cs := [b]) (by simp [Enc.raw]) (by simp [sa, sb]) ht (by simpa using hop)
+  unfold colMap; simp only [hc, hr, bind, Except.bind, pure, Except.pure]; exact ⟨_, rfl⟩
+
+/-- **`whereCol` answers** on `m` raw `0`/`1` words within its bound, a valid column. -/
+theorem whereCol_ok {m : USize} {b : Enc} (hm : m.toNat < min (USize.size - 1) (2 ^ 63))
+    (sb : (raw .i64 m b).size = m.toNat) (hb : ∀ i < m.toNat, (raw .i64 m b)[i]?.getD 0 < 2) :
+    ∃ K o, whereCol m b = .ok (K, o) ∧ Enc.Valid K o := by
+  have hU : USize.size ≤ 2 ^ 64 := by rcases USize.size_eq with h | h <;> omega
+  have hc64 : ∀ a, a < 2 ^ 63 → a.toUInt64.toNat = a := fun a ha => by simp; omega
+  obtain ⟨md, pk, hz⟩ := colConst_ok m 0
+  have zv : Enc.Valid m (.foR md pk) := (kscatter_closed hz).1
+  have sz := (foRWords_raw _ _ _ _ ((foRWords_valid "" m _).1 zv)).2
+  obtain ⟨sk, hsk⟩ := kscan_ok (op := .add) (rev := false) (s := .i64) (t := .i64) (n := m) (seg := .foR md pk)
+    (c := .foR md pk) (cs := [b]) (by simp [Enc.raw]) (by simp [sz, sb]) rfl (by simp [Op.eval])
+  have hP : colPrefix .add m b = .ok sk.1 := by
+    unfold colPrefix; simp only [hz, hsk, bind, Except.bind, pure, Except.pure]
+  obtain ⟨f, hf⟩ : ∃ f : Nat → Bool, f = fun i => decide ((raw .i64 m b)[i]?.getD 0 ≠ 0) := ⟨_, rfl⟩
+  obtain ⟨C, hC⟩ : ∃ C : Nat → Nat, C = fun a => ((List.range a).filter f).length := ⟨_, rfl⟩
+  have hbit : ∀ i < m.toNat, (raw .i64 m b)[i]?.getD 0 = if f i then 1 else 0 := by
+    intro i hi
+    have h2 := UInt64.lt_iff_toNat_lt.1 (hb i hi)
+    rw [hf]
+    by_cases h0 : (raw .i64 m b)[i]?.getD 0 = 0
+    · simp [h0]
+    · simp only [h0, ne_eq, not_false_eq_true, decide_true, if_true]
+      have : ((raw .i64 m b)[i]?.getD 0).toNat ≠ 0 := fun e0 => h0 (UInt64.toNat_inj.1 (by simpa using e0))
+      apply UInt64.toNat_inj.1; simp at h2 ⊢; omega
+  have hstep : ∀ a, C (a + 1) = C a + if f a then 1 else 0 := fun a => by
+    rw [hC]; dsimp only; rw [List.range_succ, List.filter_append, List.length_append]; by_cases hfa : f a <;> simp [hfa]
+  have hCle : ∀ a, C a ≤ a := fun a => by
+    rw [hC]; exact Nat.le_trans (List.length_filter_le _ _) (by simp)
+  have hmono : ∀ a a', a ≤ a' → C a ≤ C a' := fun a a' h => by
+    rw [hC]; exact (List.IsPrefix.filter f (List.prefix_iff_eq_take.2
+      (by rw [List.length_range, List.take_range, Nat.min_eq_left h]))).length_le
+  have hsum : ∀ a, ((List.range a).map fun G => if f G then 1 else 0).sum = C a := by
+    intro a; induction a with
+    | zero => rw [hC]; rfl
+    | succ a ih => rw [hstep, ← ih, List.range_succ, List.map_append, sum_append_nat]; simp
+  have hs : ∀ i < m.toNat, (raw .i64 m sk.1)[i]?.getD 0 = (C (i + 1)).toUInt64 := fun i hi => by
+    rw [colPrefix_add_sum hP (fun G => if f G then 1 else 0)
+      (fun G hG => by rw [hbit G hG]; by_cases hfg : f G <;> simp [hfg]) i hi, hsum]
+  have hk : sk.2.getD 0 = (C m.toNat).toUInt64 := by
+    rw [kscan_last (w := 8) rfl hsk]
+    simp only [Bool.false_eq_true, if_false]
+    rcases Nat.eq_zero_or_pos m.toNat with h0 | h0
+    · rw [h0, hC]; simp [(colPrefix_raw hP).2.1, h0]
+    · have := hs (m.toNat - 1) (by omega)
+      rw [Nat.sub_add_cancel h0] at this
+      rw [← this, Array.getElem?_eq_getElem (by rw [(colPrefix_raw hP).2.1]; omega)]
+  have hKn : (sk.2.getD 0).toNat.toUSize.toNat = C m.toNat := by
+    rw [hk, hc64 _ (by have := hCle m.toNat; omega)]
+    exact USize.toNat_ofNat_of_lt' (by have := hCle m.toNat; omega)
+  obtain ⟨d, hd⟩ := colMap_ok (op := .sub) (n := m) (a := sk.1) (b := b) (t := .i64) rfl (colPrefix_raw hP).2.1 sb
+    (fun _ _ _ => ⟨_, rfl⟩)
+  have hdv : ∀ i < m.toNat, (raw .i64 m d)[i]?.getD 0 = (C i).toUInt64 := by
+    intro i hi
+    have := (colMap_raw hd).2.2.2 i hi
+    rw [hs i hi, hbit i hi, hstep] at this
+    simp only [Op.eval, Except.ok.injEq] at this
+    rw [← this]
+    cases f i
+    · simp
+    · show UInt64.ofNat (C i + 1) - 1 = UInt64.ofNat (C i); rw [UInt64.ofNat_add]; simp
+  have hK1 : ((sk.2.getD 0).toNat.toUSize.toNat + 1).toUSize.toNat = C m.toNat + 1 := by
+    rw [hKn]; exact USize.toNat_ofNat_of_lt' (by have := hCle m.toNat; omega)
+  obtain ⟨e, he⟩ := kscatter_ok (op := .last) (m := m) (ix := d) (e := .pos)
+    (n := ((sk.2.getD 0).toNat.toUSize.toNat + 1).toUSize) (fill := 0) (colMap_closed hd).1 trivial
+    (fun _ _ _ => ⟨_, rfl⟩) (fun k hk => by
+      rw [hdv k hk, hc64 _ (by have := hCle k; omega), hK1]; have := hmono k m.toNat (by omega); omega)
+  obtain ⟨o, ho⟩ := kgather_ok (m := (sk.2.getD 0).toNat.toUSize) (ix := .pos) (e := e) trivial (kscatter_closed he).1
+    (fun k hk => by
+      simp only [Enc.raw, Array.getElem?_map, Array.getElem?_range, hk, if_true, Option.map_some, Option.getD_some]
+      rw [hK1, hc64 _ (by rw [hKn] at hk; have := hCle m.toNat; omega)]; rw [hKn] at hk; omega)
+  unfold whereCol; dsimp only; rw [if_pos hm]
+  simp only [hz, hsk, hd, he, ho, bind, Except.bind, Functor.map, Except.map]
+  exact ⟨_, _, rfl, (kgather_closed ho).1⟩
+
+/-- A list `mapM` answered on answers on each of its elements. -/
+theorem mapM_ok_mem {α β : Type} {f : α → Except String β} {l : List α} {cs : List β} (h : l.mapM f = .ok cs) :
+    ∀ x ∈ l, ∃ c, f x = .ok c := fun x hx => by
+  obtain ⟨hl, hf⟩ := mapM_ok h
+  obtain ⟨i, hi, rfl⟩ := List.getElem_of_mem hx
+  exact ⟨cs[i]'(by omega), hf i _ _ (List.getElem?_eq_getElem hi) (List.getElem?_eq_getElem (by omega))⟩
+
+/-- **`Arr.gather` answers** on a valid column at valid positions below its length. -/
+theorem Arr.gather_ok {t : QAtomicType} {n M : USize} {ix : Enc} (x : Arr t n) (hx : Enc.Valid n x.enc)
+    (hi : Enc.Valid M ix) (hr : ∀ k < M.toNat, ((raw .i64 M ix)[k]?.getD 0).toNat < n.toNat) :
+    ∃ v, Arr.gather M ix x = .ok v := by
+  obtain ⟨o, ho⟩ := kgather_ok hi hx hr
+  unfold Arr.gather; split
+  · exact ⟨_, rfl⟩
+  · rename_i h; rw [ho] at h; cases h
+
+/-- A column `Arr.gather` read is valid. -/
+theorem Arr.valid_of_gather {t : QAtomicType} {n M : USize} {ix : Enc} {x : Arr t n} {v : Arr t M}
+    (h : Arr.gather M ix x = .ok v) : Enc.Valid n x.enc := by
+  unfold Arr.gather at h; split at h
+  · rename_i hk; exact kgather_valid hk
+  · cases h
+
+/-- **A side gathered once is gathered at any valid positions below its length**: `Vals.gather` reads the same
+    columns at every `ix`. -/
+theorem Vals.gather_ok_of_ok {M M' : USize} {ix ix' : Enc} (hi : Enc.Valid M' ix') :
+    {A : Obj} → {n : USize} → (x : Vals A n) → {v : Vals A M} → Vals.gather M ix x = .ok v →
+    (∀ k < M'.toNat, ((raw .i64 M' ix')[k]?.getD 0).toNat < n.toNat) → ∃ v', Vals.gather M' ix' x = .ok v'
+  | .atom _, _, x, _, h, hr => Arr.gather_ok x (Arr.valid_of_gather h) hi hr
+  | .prod _ _, _, x, _, h, hr => by
+    simp only [Vals.gather, bind] at h
+    rw [Except.bind_eq_ok'] at h; obtain ⟨a, ha, h⟩ := h
+    rw [Except.bind_eq_ok'] at h; obtain ⟨b, hb, -⟩ := h
+    obtain ⟨a', ha'⟩ := Vals.gather_ok_of_ok hi x.1 ha hr
+    obtain ⟨b', hb'⟩ := Vals.gather_ok_of_ok hi x.2 hb hr
+    simp only [Vals.gather, ha', hb', bind, Except.bind, pure, Except.pure]; exact ⟨_, rfl⟩
+  | .arr _, _, ⟨c, lo, hi', f⟩, _, h, hr => by
+    simp only [Vals.gather, bind] at h
+    rw [Except.bind_eq_ok'] at h; obtain ⟨a, ha, h⟩ := h
+    rw [Except.bind_eq_ok'] at h; obtain ⟨b, hb, -⟩ := h
+    obtain ⟨a', ha'⟩ := Arr.gather_ok lo (Arr.valid_of_gather ha) hi hr
+    obtain ⟨b', hb'⟩ := Arr.gather_ok hi' (Arr.valid_of_gather hb) hi hr
+    simp only [Vals.gather, ha', hb', bind, Except.bind, pure, Except.pure]; exact ⟨_, rfl⟩
+  | .sum _ _, _, ⟨l, r, tag, idx, x, y⟩, _, h, hr => by
+    simp only [Vals.gather, bind] at h
+    rw [Except.bind_eq_ok'] at h; obtain ⟨a, ha, h⟩ := h
+    rw [Except.bind_eq_ok'] at h; obtain ⟨b, hb, -⟩ := h
+    obtain ⟨a', ha'⟩ := Arr.gather_ok tag (Arr.valid_of_gather ha) hi hr
+    obtain ⟨b', hb'⟩ := Arr.gather_ok idx (Arr.valid_of_gather hb) hi hr
+    simp only [Vals.gather, ha', hb', bind, Except.bind, pure, Except.pure]; exact ⟨_, rfl⟩
+
+/-- `ascCol` of a `cells` key answered: its `lo` and `hi` are valid at its `n` cells. -/
+theorem ascCol_cells_valid {m n c : USize} {lo hi e : Enc} {els : List (AscKey × Enc)} {xk}
+    (h : ascCol m (.cells n c lo hi els, e) = .ok xk) : Enc.Valid n lo ∧ Enc.Valid n hi := by
+  rw [ascCol] at h
+  cases hix : foRWords "asc: cells" m e with
+  | error s => simp [hix, bind, Except.bind] at h
+  | ok ix =>
+    cases hf : ix.find? (n.toNat ≤ ·.toNat) with
+    | some r => simp [hix, hf, bind, Except.bind] at h
+    | none =>
+      cases hl : foRWords "asc: cells lo" n lo with
+      | error s => simp [hix, hf, hl, bind, Except.bind] at h
+      | ok l =>
+        cases hh : foRWords "asc: cells hi" n hi with
+        | error s => simp [hix, hf, hl, hh, bind, Except.bind] at h
+        | ok l' => exact ⟨(foRWords_valid _ _ _).2 _ hl, (foRWords_valid _ _ _).2 _ hh⟩
+
+/-- **A side `kasc` reads is gathered at any valid positions below its length**: `ascCol` answering on each of its
+    key columns (`Vals.cols`) makes every column `Vals.gather` reads valid. -/
+theorem Vals.gather_ok_of_cols {M : USize} {ix : Enc} (hi : Enc.Valid M ix) :
+    {A : Obj} → {n : USize} → (x : Vals A n) → {es : List (AscKey × Enc)} → Vals.cols x = .ok es →
+    (∀ e ∈ es, ∃ c, ascCol n e = .ok c) →
+    (∀ k < M.toNat, ((raw .i64 M ix)[k]?.getD 0).toNat < n.toNat) → ∃ v, Vals.gather M ix x = .ok v
+  | .atom _, _, x, _, hes, hc, hr => by
+    simp only [Vals.cols, Except.ok.injEq] at hes; subst hes
+    obtain ⟨c, hc⟩ := hc _ List.mem_cons_self
+    exact Arr.gather_ok x (ascCol_valid hc) hi hr
+  | .prod _ _, _, x, _, hes, hc, hr => by
+    simp only [Vals.cols, bind] at hes
+    rw [Except.bind_eq_ok'] at hes; obtain ⟨e1, h1, hes⟩ := hes
+    rw [Except.bind_eq_ok'] at hes; obtain ⟨e2, h2, hes⟩ := hes
+    simp only [pure, Except.pure, Except.ok.injEq] at hes; subst hes
+    obtain ⟨a', ha'⟩ := Vals.gather_ok_of_cols hi x.1 h1 (fun e he => hc e (List.mem_append_left _ he)) hr
+    obtain ⟨b', hb'⟩ := Vals.gather_ok_of_cols hi x.2 h2 (fun e he => hc e (List.mem_append_right _ he)) hr
+    simp only [Vals.gather, ha', hb', bind, Except.bind, pure, Except.pure]; exact ⟨_, rfl⟩
+  | .arr _, _, ⟨c, lo, hi', f⟩, _, hes, hc, hr => by
+    simp only [Vals.cols, bind] at hes
+    rw [Except.bind_eq_ok'] at hes; obtain ⟨fs, -, hes⟩ := hes
+    simp only [pure, Except.pure, Except.ok.injEq] at hes; subst hes
+    obtain ⟨k, hk⟩ := hc _ List.mem_cons_self
+    obtain ⟨vl, vh⟩ := ascCol_cells_valid hk
+    obtain ⟨a', ha'⟩ := Arr.gather_ok lo vl hi hr
+    obtain ⟨b', hb'⟩ := Arr.gather_ok hi' vh hi hr
+    simp only [Vals.gather, ha', hb', bind, Except.bind, pure, Except.pure]; exact ⟨_, rfl⟩
+  | .sum _ _, n, ⟨l, r, tag, idx, x, y⟩, es, hes, hc, hr => by
+    have hidx : Enc.Valid n idx.enc := by
+      unfold Vals.cols at hes
+      split at hes; · cases hes
+      split at hes; · cases hes
+      rename_i h
+      cases hw : foRWords "" n idx.enc with
+      | error => rw [hw] at h; exact absurd rfl h
+      | ok ws => exact (foRWords_valid _ _ _).2 _ hw
+    obtain ⟨xs, ys, rfl, -⟩ := Vals.cols_sum hes
+    obtain ⟨k, hk⟩ := hc _ List.mem_cons_self
+    obtain ⟨a', ha'⟩ := Arr.gather_ok tag (ascCol_valid hk) hi hr
+    obtain ⟨b', hb'⟩ := Arr.gather_ok idx hidx hi hr
+    simp only [Vals.gather, ha', hb', bind, Except.bind, pure, Except.pure]; exact ⟨_, rfl⟩
+
+/-- **A side `Vals.code` numbers is gathered at any valid positions below its length**. -/
+theorem Vals.gather_ok_of_code {n M k : USize} {x : Vals A n} {c rep ix : Enc} (h : Vals.code x = .ok (k, c, rep))
+    (hi : Enc.Valid M ix) (hr : ∀ k < M.toNat, ((raw .i64 M ix)[k]?.getD 0).toNat < n.toNat) :
+    ∃ v, Vals.gather M ix x = .ok v := by
+  simp only [Vals.code, bind] at h
+  rw [Except.bind_eq_ok'] at h; obtain ⟨es, hes, h⟩ := h
+  rw [Except.bind_eq_ok'] at h; obtain ⟨⟨vs, p⟩, hk, -⟩ := h
+  obtain ⟨cs, hcs, -⟩ := kasc_ok hk
+  exact Vals.gather_ok_of_cols hi x hes (mapM_ok_mem hcs) hr
+
+/-- `Vals.code`'s `rep` is a valid column of its `k` numbers. -/
+theorem Vals.code_valid {n k : USize} {x : Vals A n} {c rep : Enc} (h : Vals.code x = .ok (k, c, rep)) :
+    Enc.Valid k rep := by
+  simp only [Vals.code, bind] at h
+  rw [Except.bind_eq_ok'] at h; obtain ⟨_, -, h⟩ := h
+  rw [Except.bind_eq_ok'] at h; obtain ⟨_, -, h⟩ := h
+  rw [Except.bind_eq_ok'] at h; obtain ⟨⟨k0, g0, f0⟩, -, h⟩ := h
+  rw [Except.bind_eq_ok'] at h; obtain ⟨_, -, h⟩ := h
+  rw [Except.bind_eq_ok'] at h; obtain ⟨r0, hr0, h⟩ := h
+  simp only [pure, Except.pure, Except.ok.injEq, Prod.mk.injEq] at h
+  obtain ⟨rfl, -, rfl⟩ := h
+  exact (kgather_closed hr0).1
+
+/-- `Vals.code2` is `Vals.code` of its CONCAT `z`, with the same count and `rep`. -/
+theorem Vals.code2_code {n₁ n₂ k N : USize} {x : Vals A n₁} {y : Vals A n₂} {bx bY rep : Enc} {z : Vals A N}
+    (h : Vals.code2 x y = .ok (k, bx, bY, ⟨N, z, rep⟩)) : ∃ c, Vals.code z = .ok (k, c, rep) := by
+  simp only [Vals.code2, bind] at h
+  rw [Except.bind_eq_ok'] at h; obtain ⟨⟨N0, sh⟩, -, h⟩ := h; try dsimp only at h
+  rw [Except.bind_eq_ok'] at h; obtain ⟨z0, -, h⟩ := h
+  rw [Except.bind_eq_ok'] at h; obtain ⟨⟨k0, c0, rep0⟩, hc, h⟩ := h; try dsimp only at h
+  rw [Except.bind_eq_ok'] at h; obtain ⟨_, -, h⟩ := h
+  rw [Except.bind_eq_ok'] at h; obtain ⟨_, -, h⟩ := h
+  simp only [pure, Except.pure, Except.ok.injEq, Prod.mk.injEq] at h
+  obtain ⟨rfl, -, -, hS⟩ := h
+  obtain ⟨eN, eZ⟩ := Sigma.mk.inj hS; subst eN
+  have e := eq_of_heq eZ; simp only [Prod.mk.injEq] at e; obtain ⟨rfl, rfl⟩ := e
+  exact ⟨_, hc⟩
+
+/-- An `i64` column read at `n` holds `n` words or none: every form of fixed width is read at each of `n` rows. -/
+theorem raw_size_or {n : USize} (e : Enc) : (raw .i64 n e).size = n.toNat ∨ (raw .i64 n e).size = 0 := by
+  cases e <;> simp [Enc.raw, QAtomicType.width]
+
+/-- A matrix with a word at each of its `g · w` bits holds `g · w` words. -/
+theorem raw_size_of_bits {g w : USize} {o : Enc} (hgw : (g * w).toNat = g.toNat * w.toNat)
+    (hv : ∀ a < g.toNat, ∀ j < w.toNat, ∃ v, (raw .i64 (g * w) o)[a * w.toNat + j]? = some v) :
+    (raw .i64 (g * w) o).size = (g * w).toNat := by
+  rcases raw_size_or (n := g * w) o with h1 | h1
+  · exact h1
+  rcases Nat.eq_zero_or_pos (g * w).toNat with h0 | h0
+  · rw [h1, h0]
+  rw [hgw] at h0
+  obtain ⟨v, hv⟩ := hv 0 (Nat.pos_of_mul_pos_right h0) 0 (Nat.pos_of_mul_pos_left h0)
+  rw [Array.getElem?_eq_none (by rw [h1]; omega)] at hv; cases hv
+
+/-- **`ofBits`' positions**: the `M` selected words `sel`, each below `2^63`, divided by `w` (`colMap .div`) and
+    taken modulo `w` (`colMap .mod`) against the constant `w`, positive and below `2^63` wherever a row is. -/
+theorem colMap_div_mod {M w : USize} {sel wc : Enc} (hwc : colConst M w.toUInt64 = .ok wc)
+    (hs : ∀ k < M.toNat, ((raw .i64 M sel)[k]?.getD 0).toNat < 2 ^ 63)
+    (hw : ∀ k < M.toNat, 0 < w.toNat ∧ w.toNat < 2 ^ 63) :
+    (∀ op : Op, (op = .div ∨ op = .mod) → ∀ k < M.toNat, ∀ c, ∃ v, op.eval c ((raw .i64 M wc)[k]?.getD 0) = .ok v) ∧
+    (∀ {dv : Enc}, colMap .div M sel wc = .ok dv → ∀ k < M.toNat,
+      (raw .i64 M dv)[k]?.getD 0 = (((raw .i64 M sel)[k]?.getD 0).toNat / w.toNat).toUInt64) ∧
+    (∀ {mv : Enc}, colMap .mod M sel wc = .ok mv → ∀ k < M.toNat,
+      (raw .i64 M mv)[k]?.getD 0 = (((raw .i64 M sel)[k]?.getD 0).toNat % w.toNat).toUInt64) := by
+  have hwr : ∀ k < M.toNat, (raw .i64 M wc)[k]?.getD 0 = w.toNat.toUInt64 := fun k hk => by
+    rw [colConst_raw hwc, Array.getElem?_replicate, if_pos hk, Option.getD_some]
+    exact UInt64.toNat_inj.mp (by simp)
+  have hsn : ∀ k < M.toNat, (raw .i64 M sel)[k]?.getD 0 = ((raw .i64 M sel)[k]?.getD 0).toNat.toUInt64 :=
+    fun k hk => UInt64.toNat_inj.mp (by simp)
+  refine ⟨fun op hop k hk c => ?_, fun hdv k hk => ?_, fun hmv k hk => ?_⟩
+  · rw [hwr k hk]
+    have hne : w.toNat.toUInt64 ≠ 0 := fun h0 => by
+      have := congrArg UInt64.toNat h0
+      rw [toNat_toUInt64 (by have := hw k hk; omega)] at this
+      have := (hw k hk).1; simp at *; omega
+    rcases hop with rfl | rfl <;> simp only [Op.eval, beq_iff_eq, hne, if_false] <;> exact ⟨_, rfl⟩
+  · have e1 := (colMap_raw hdv).2.2.2 k hk
+    rw [hwr k hk, hsn k hk, eval_div_nat (hs k hk) (hw k hk).2 (hw k hk).1] at e1
+    exact (Except.ok.inj e1).symm
+  · have e1 := (colMap_raw hmv).2.2.2 k hk
+    rw [hwr k hk, hsn k hk, eval_mod_nat (hs k hk) (hw k hk).2 (hw k hk).1] at e1
+    exact (Except.ok.inj e1).symm
+
+/-- Position `p` of a `g · w` matrix is bit `(p / w, p % w)`. -/
+theorem bit_dec {g w p : Nat} (hp : p < g * w) : p / w < g ∧ p % w < w ∧ p / w * w + p % w = p := by
+  have hw : 0 < w := Nat.pos_of_ne_zero fun h0 => by rw [h0, Nat.mul_zero] at hp; omega
+  exact ⟨(Nat.div_lt_iff_lt_mul hw).2 hp, Nat.mod_lt _ hw, Nat.div_add_mod' p w⟩
+
+/-- A selected position `p < g · w` has `0 < w ≤ p + 1 ≤ g · w`. -/
+theorem bit_w {g w p : Nat} (hp : p < g * w) : 0 < w ∧ w ≤ g * w := by
+  have hw : 0 < w := Nat.pos_of_ne_zero fun h0 => by rw [h0, Nat.mul_zero] at hp; omega
+  have hg : 0 < g := Nat.pos_of_ne_zero fun h0 => by rw [h0, Nat.zero_mul] at hp; omega
+  exact ⟨hw, Nat.le_mul_of_pos_left w hg⟩
+
+/-- **`Tab.ofBits` answers** on a matrix of `g · w` `0`/`1` words, `g · w` within `whereCol`'s bound and not wrapping,
+    whose every set bit `(a, j)` names rows `ra[a]`, `rc[j]` of `x`, `y`, sides `Vals.gather` reads at any valid
+    positions below their lengths. -/
+theorem Tab.ofBits_ok {n m g w : USize} {o ra rc : Enc} {x : Vals A n} {y : Vals C m}
+    (hgw : (g * w).toNat = g.toNat * w.toNat) (hB : g.toNat * w.toNat < min (USize.size - 1) (2 ^ 63))
+    (hos : (raw .i64 (g * w) o).size = (g * w).toNat)
+    (h2 : ∀ a < g.toNat, ∀ j < w.toNat, (raw .i64 (g * w) o)[a * w.toNat + j]?.getD 0 < 2)
+    (hra : Enc.Valid g ra) (hrc : Enc.Valid w rc)
+    (hin : ∀ a < g.toNat, ∀ j < w.toNat, (raw .i64 (g * w) o)[a * w.toNat + j]?.getD 0 ≠ 0 →
+      ((raw .i64 g ra)[a]?.getD 0).toNat < n.toNat ∧ ((raw .i64 w rc)[j]?.getD 0).toNat < m.toNat)
+    (hx : ∀ (M : USize) (ix : Enc), Enc.Valid M ix →
+      (∀ k < M.toNat, ((raw .i64 M ix)[k]?.getD 0).toNat < n.toNat) → ∃ v, Vals.gather M ix x = .ok v)
+    (hy : ∀ (M : USize) (ix : Enc), Enc.Valid M ix →
+      (∀ k < M.toNat, ((raw .i64 M ix)[k]?.getD 0).toNat < m.toNat) → ∃ v, Vals.gather M ix y = .ok v) :
+    ∀ e, Tab.ofBits g w o x ra y rc ≠ .error e := by
+  have hb2 : ∀ p < (g * w).toNat, (raw .i64 (g * w) o)[p]?.getD 0 < 2 := fun p hp => by
+    obtain ⟨h1, h2', h3⟩ := bit_dec (hgw ▸ hp); have := h2 _ h1 _ h2'; rwa [h3] at this
+  obtain ⟨M, sel, hsel, -⟩ := whereCol_ok (m := g * w) (b := o) (by omega) hos hb2
+  have hp : ∀ k < M.toNat, ((raw .i64 M sel)[k]?.getD 0).toNat < g.toNat * w.toNat ∧
+      (raw .i64 (g * w) o)[((raw .i64 M sel)[k]?.getD 0).toNat]?.getD 0 ≠ 0 := fun k hk => by
+    have := (whereCol_mem hsel hb2 _).1 ⟨k, hk, rfl⟩; rwa [hgw] at this
+  obtain ⟨md, pk, hwc⟩ := colConst_ok M w.toUInt64
+  obtain ⟨hev, hdw, hmw⟩ := colMap_div_mod (sel := sel) hwc (fun k hk => by have := (hp k hk).1; omega)
+    (fun k hk => by have := bit_w (hp k hk).1; omega)
+  have hws : (raw .i64 M (.foR md pk : Enc)).size = M.toNat := (kscatter_closed hwc).2.1
+  obtain ⟨dv, hdv⟩ := colMap_ok (op := .div) (t := .i64) rfl (whereCol_size hsel) hws (hev _ (.inl rfl))
+  obtain ⟨mv, hmv⟩ := colMap_ok (op := .mod) (t := .i64) rfl (whereCol_size hsel) hws (hev _ (.inr rfl))
+  have hd : ∀ k < M.toNat, ((raw .i64 M dv)[k]?.getD 0).toNat < g.toNat ∧
+      ((raw .i64 M mv)[k]?.getD 0).toNat < w.toNat ∧
+      (raw .i64 (g * w) o)[((raw .i64 M dv)[k]?.getD 0).toNat * w.toNat +
+        ((raw .i64 M mv)[k]?.getD 0).toNat]?.getD 0 ≠ 0 := fun k hk => by
+    obtain ⟨h1, h2', h3⟩ := bit_dec (hp k hk).1
+    have := g.toNat_lt_size; have := w.toNat_lt_size; have := (hp k hk).1
+    have hU64 : USize.size ≤ 2 ^ 64 := by rcases USize.size_eq with h | h <;> omega
+    rw [hdw hdv k hk, hmw hmv k hk, toNat_toUInt64 (by omega), toNat_toUInt64 (by omega), h3]
+    exact ⟨h1, h2', (hp k hk).2⟩
+  obtain ⟨ix, hix⟩ := kgather_ok (colMap_closed hdv).1 hra fun k hk => (hd k hk).1
+  obtain ⟨iy, hiy⟩ := kgather_ok (colMap_closed hmv).1 hrc fun k hk => (hd k hk).2.1
+  obtain ⟨vx, hvx⟩ := hx M ix (kgather_closed hix).1 fun k hk => by
+    rw [(kgather_word hix k hk).2]; exact (hin _ (hd k hk).1 _ (hd k hk).2.1 (hd k hk).2.2).1
+  obtain ⟨vy, hvy⟩ := hy M iy (kgather_closed hiy).1 fun k hk => by
+    rw [(kgather_word hiy k hk).2]; exact (hin _ (hd k hk).1 _ (hd k hk).2.1 (hd k hk).2.2).2
+  intro e; unfold Tab.ofBits
+  simp only [hsel, hwc, hdv, hix, hmv, hiy, hvx, hvy, bind, Except.bind, pure, Except.pure]
+  nofun
+
+/-- **A set bit of a matrix `Tab.ofBits` read back names rows of both sides**: `ofBits` gathered `x` at `ra[a]` and
+    `y` at `rc[j]`. -/
+theorem Tab.ofBits_in {n m g w : USize} {o ra rc : Enc} {x : Vals A n} {y : Vals C m} {X : Tab A C}
+    (h : Tab.ofBits g w o x ra y rc = .ok X) (hgw : (g * w).toNat = g.toNat * w.toNat)
+    (h2 : ∀ a < g.toNat, ∀ j < w.toNat, (raw .i64 (g * w) o)[a * w.toNat + j]?.getD 0 < 2)
+    {a j : Nat} (ha : a < g.toNat) (hj : j < w.toNat) (hs : (raw .i64 (g * w) o)[a * w.toNat + j]?.getD 0 ≠ 0) :
+    ((raw .i64 g ra)[a]?.getD 0).toNat < n.toNat ∧ ((raw .i64 w rc)[j]?.getD 0).toNat < m.toNat := by
+  have hb2 : ∀ p < (g * w).toNat, (raw .i64 (g * w) o)[p]?.getD 0 < 2 := fun p hp => by
+    obtain ⟨h1, h2', h3⟩ := bit_dec (hgw ▸ hp); have := h2 _ h1 _ h2'; rwa [h3] at this
+  simp only [Tab.ofBits, bind] at h
+  rw [Except.bind_eq_ok'] at h; obtain ⟨⟨M, sel⟩, hsel, h⟩ := h; try dsimp only at h
+  rw [Except.bind_eq_ok'] at h; obtain ⟨wc, hwc, h⟩ := h
+  rw [Except.bind_eq_ok'] at h; obtain ⟨dv, hdv, h⟩ := h
+  rw [Except.bind_eq_ok'] at h; obtain ⟨ix, hix, h⟩ := h
+  rw [Except.bind_eq_ok'] at h; obtain ⟨mv, hmv, h⟩ := h
+  rw [Except.bind_eq_ok'] at h; obtain ⟨iy, hiy, h⟩ := h
+  rw [Except.bind_eq_ok'] at h; obtain ⟨vx, hvx, h⟩ := h
+  rw [Except.bind_eq_ok'] at h; obtain ⟨vy, hvy, -⟩ := h
+  have hap := bit_lt ha hj
+  have hT := whereCol_lt hsel
+  obtain ⟨k, hk, hkp⟩ := (whereCol_mem hsel hb2 _).2 ⟨by omega, hs⟩
+  have hp : ∀ k < M.toNat, ((raw .i64 M sel)[k]?.getD 0).toNat < g.toNat * w.toNat := fun k hk => by
+    have := ((whereCol_mem hsel hb2 _).1 ⟨k, hk, rfl⟩).1; omega
+  obtain ⟨-, hdw, hmw⟩ := colMap_div_mod (sel := sel) hwc (fun k hk => by have := hp k hk; omega)
+    (fun k hk => by have := bit_w (hp k hk); omega)
+  have := g.toNat_lt_size; have := w.toNat_lt_size
+  have hU64 : USize.size ≤ 2 ^ 64 := by rcases USize.size_eq with h | h <;> omega
+  have e1 : ((raw .i64 M dv)[k]?.getD 0).toNat = a := by
+    rw [hdw hdv k hk, hkp, Nat.add_comm, Nat.add_mul_div_right _ _ (by omega), Nat.div_eq_of_lt hj, Nat.zero_add]
+    exact toNat_toUInt64 (x := a) (by omega)
+  have e2 : ((raw .i64 M mv)[k]?.getD 0).toNat = j := by
+    rw [hmw hmv k hk, hkp, Nat.add_comm, Nat.add_mul_mod_self_right, Nat.mod_eq_of_lt hj]
+    exact toNat_toUInt64 (x := j) (by omega)
+  obtain ⟨i, hi, -⟩ := Vals.gather_row x hvx ⟨k, hk⟩
+  obtain ⟨i', hi', -⟩ := Vals.gather_row y hvy ⟨k, hk⟩
+  rw [(kgather_word hix k hk).2, e1] at hi
+  rw [(kgather_word hiy k hk).2, e2] at hi'
+  exact ⟨hi ▸ i.2, hi' ▸ i'.2⟩
+
+/-- **What a `Tab.ofBits` that answered read**: `ra`, `rc` valid, and each side gathered once. -/
+theorem Tab.ofBits_reads {n m g w : USize} {o ra rc : Enc} {x : Vals A n} {y : Vals C m} {X : Tab A C}
+    (h : Tab.ofBits g w o x ra y rc = .ok X) : Enc.Valid g ra ∧ Enc.Valid w rc ∧
+      (∃ M ix v, Vals.gather M ix x = .ok v) ∧ ∃ M iy v, Vals.gather M iy y = .ok v := by
+  simp only [Tab.ofBits, bind] at h
+  rw [Except.bind_eq_ok'] at h; obtain ⟨⟨M, sel⟩, -, h⟩ := h; try dsimp only at h
+  rw [Except.bind_eq_ok'] at h; obtain ⟨_, -, h⟩ := h
+  rw [Except.bind_eq_ok'] at h; obtain ⟨_, -, h⟩ := h
+  rw [Except.bind_eq_ok'] at h; obtain ⟨ix, hix, h⟩ := h
+  rw [Except.bind_eq_ok'] at h; obtain ⟨_, -, h⟩ := h
+  rw [Except.bind_eq_ok'] at h; obtain ⟨iy, hiy, h⟩ := h
+  rw [Except.bind_eq_ok'] at h; obtain ⟨vx, hvx, h⟩ := h
+  rw [Except.bind_eq_ok'] at h; obtain ⟨vy, hvy, -⟩ := h
+  exact ⟨kgather_valid hix, kgather_valid hiy, ⟨_, _, _, hvx⟩, ⟨_, _, _, hvy⟩⟩
+
+/-- **`Tab.ofBits` reads back every matrix `compSelM` builds**. -/
+theorem Tab.compSelM_reads {r : Tab A B} {s : Tab B C} {g w : USize} {o ra rc : Enc}
+    (h : Tab.compSelM Tab.bitsMax r s = .ok (.inr (g, w, o, ra, rc))) :
+    ∀ e, Tab.ofBits g w o r.key ra s.val rc ≠ .error e := by
+  have hU : 2 ^ 32 ≤ USize.size := by rcases USize.size_eq with h | h <;> omega
+  simp only [Tab.compSelM, bind] at h
+  rw [Except.bind_eq_ok'] at h; obtain ⟨_, -, h⟩ := h
+  rw [Except.bind_eq_ok'] at h; obtain ⟨_, -, h⟩ := h
+  split at h
+  · rw [Except.bind_eq_ok'] at h; obtain ⟨_, -, h⟩ := h; cases h
+  rw [Except.bind_eq_ok'] at h; obtain ⟨⟨ka1, aR1, ra1⟩, hca1, h⟩ := h
+  rw [Except.bind_eq_ok'] at h; obtain ⟨⟨kc1, cS1, rc1⟩, hcc1, h⟩ := h
+  split at h
+  · rename_i hwin
+    rw [Except.bind_eq_ok'] at h; obtain ⟨mm, hm, h⟩ := h
+    simp only [pure, Except.pure, Except.ok.injEq, Sum.inr.injEq] at h; subst h
+    simp only [Tab.compMat, bind] at hm
+    rw [Except.bind_eq_ok'] at hm; obtain ⟨_, -, hm⟩ := hm
+    rw [Except.bind_eq_ok'] at hm; obtain ⟨⟨ka, aR, ra'⟩, hca, hm⟩ := hm; try dsimp only at hm
+    rw [Except.bind_eq_ok'] at hm; obtain ⟨⟨kc, cS, rc'⟩, hcc, hm⟩ := hm; try dsimp only at hm
+    split at hm; · cases hm
+    rw [Except.bind_eq_ok'] at hm; obtain ⟨_, -, hm⟩ := hm
+    rw [Except.bind_eq_ok'] at hm; obtain ⟨_, -, hm⟩ := hm
+    rw [Except.bind_eq_ok'] at hm; obtain ⟨_, -, hm⟩ := hm
+    rw [Except.bind_eq_ok'] at hm; obtain ⟨o0, hko, hm⟩ := hm
+    simp only [pure, Except.pure, Except.ok.injEq, Prod.mk.injEq] at hm
+    obtain ⟨rfl, rfl, rfl, rfl, rfl⟩ := hm
+    rw [hca, Except.ok.injEq, Prod.mk.injEq] at hca1; obtain ⟨rfl, -⟩ := hca1
+    rw [hcc, Except.ok.injEq, Prod.mk.injEq] at hcc1; obtain ⟨rfl, -⟩ := hcc1
+    simp only [Tab.bitsWin, Bool.and_eq_true, decide_eq_true_eq] at hwin
+    have hB : ka.toNat * kc.toNat ≤ Tab.bitsMax := hwin.1.1.1.2
+    have hbm : Tab.bitsMax = 2 ^ 27 := rfl
+    obtain ⟨-, hgw, -, -, -, -, -, hbit⟩ := raw_kbitrows hko
+    obtain ⟨-, -, hra, -⟩ := Vals.code_spec hca
+    obtain ⟨-, -, hrc, -⟩ := Vals.code_spec hcc
+    refine Tab.ofBits_ok hgw (by omega)
+      (raw_size_of_bits hgw fun a ha j hj => let ⟨v, _, hv, _⟩ := hbit a ha j hj; ⟨v, hv⟩)
+      (fun a ha j hj => by obtain ⟨v, -, hv, hv2, -⟩ := hbit a ha j hj; rw [hv]; exact hv2)
+      (Vals.code_valid hca) (Vals.code_valid hcc) (fun a ha j hj _ => ⟨?_, ?_⟩)
+      (fun _ _ hv hr => Vals.gather_ok_of_code hca hv hr) (fun _ _ hv hr => Vals.gather_ok_of_code hcc hv hr)
+    · obtain ⟨i, hi, -⟩ := hra a ha; rw [hi]; exact i.2
+    · obtain ⟨i, hi, -⟩ := hrc j hj; rw [hi]; exact i.2
+  · rw [Except.bind_eq_ok'] at h; obtain ⟨_, -, h⟩ := h; cases h
+
+/-- **`Tab.ofBits` reads back every matrix `compTabMat` builds from a `BitsWf` one** within `Tab.bitsMax`: a set bit
+    `(a, j)` of the answer is the `∨` of bits `(·, j)` of the argument, whose `rc[j]` its own read-back gathered. -/
+theorem Tab.compTabMat_reads {n m M : USize} {r : Tab A B} {g w ka : USize} {o o' ra ra' rc : Enc}
+    {x : Vals B n} {key : Vals A M} {y : Vals C m} (hw : BitsWf g w o x ra y rc)
+    (h : Tab.compTabMat r g w o x ra = .ok (ka, o', ⟨M, key⟩, ra')) (hB : ka.toNat * w.toNat ≤ Tab.bitsMax) :
+    ∀ e, Tab.ofBits ka w o' key ra' y rc ≠ .error e := by
+  have hU : 2 ^ 32 ≤ USize.size := by rcases USize.size_eq with h | h <;> omega
+  have hbm : Tab.bitsMax = 2 ^ 27 := rfl
+  simp only [Tab.compTabMat, bind] at h
+  rw [Except.bind_eq_ok'] at h; obtain ⟨_, -, h⟩ := h
+  rw [Except.bind_eq_ok'] at h; obtain ⟨_, -, h⟩ := h
+  rw [Except.bind_eq_ok'] at h; obtain ⟨_, -, h⟩ := h
+  rw [Except.bind_eq_ok'] at h; obtain ⟨_, -, h⟩ := h
+  rw [Except.bind_eq_ok'] at h; obtain ⟨⟨M0, sel⟩, -, h⟩ := h; try dsimp only at h
+  rw [Except.bind_eq_ok'] at h; obtain ⟨key0, -, h⟩ := h
+  rw [Except.bind_eq_ok'] at h; obtain ⟨⟨ka0, aR, ra0⟩, hcode, h⟩ := h; try dsimp only at h
+  rw [Except.bind_eq_ok'] at h; obtain ⟨_, -, h⟩ := h
+  rw [Except.bind_eq_ok'] at h; obtain ⟨_, -, h⟩ := h
+  rw [Except.bind_eq_ok'] at h; obtain ⟨o0, hko, h⟩ := h
+  simp only [pure, Except.pure, Except.ok.injEq, Prod.mk.injEq] at h
+  obtain ⟨e1, e2, hS, e3⟩ := h
+  subst ka0 o0 ra0
+  obtain ⟨eM, eK⟩ := Sigma.mk.inj hS
+  subst M0
+  have eK' := eq_of_heq eK
+  subst key0
+  obtain ⟨hr, hgw0, ho, -, -⟩ := hw
+  rcases hs : Tab.ofBits g w o x ra y rc with e | s
+  · exact absurd hs (hr e)
+  obtain ⟨-, hrc, -, ⟨My, iy, vy, hvy⟩⟩ := Tab.ofBits_reads hs
+  have ho2 : ∀ a < g.toNat, ∀ j < w.toNat, (raw .i64 (g * w) o)[a * w.toNat + j]?.getD 0 < 2 :=
+    fun a ha j hj => by obtain ⟨v, hv, hv2⟩ := some_lt_two (ho a ha j hj); rw [hv]; exact hv2
+  obtain ⟨-, hgw, -, -, -, hseg, hidx, hbit⟩ := raw_kbitrows hko
+  obtain ⟨-, -, hra, -⟩ := Vals.code_spec hcode
+  refine Tab.ofBits_ok hgw (by omega)
+    (raw_size_of_bits hgw fun a ha j hj => let ⟨v, _, hv, _⟩ := hbit a ha j hj; ⟨v, hv⟩)
+    (fun a ha j hj => by obtain ⟨v, -, hv, hv2, -⟩ := hbit a ha j hj; rw [hv]; exact hv2)
+    (Vals.code_valid hcode) hrc (fun a ha j hj hne => ⟨?_, ?_⟩)
+    (fun _ _ hv hr => Vals.gather_ok_of_code hcode hv hr)
+    (fun _ _ hv hr => Vals.gather_ok_of_ok hv y hvy hr)
+  · obtain ⟨i, hi, -⟩ := hra a ha; rw [hi]; exact i.2
+  · obtain ⟨v, -, hv, hv2, hv1⟩ := hbit a ha j hj
+    rw [hv, Option.getD_some] at hne
+    have h1 : v = 1 := UInt64.toNat_inj.1 (by
+      have h1 := UInt64.lt_iff_toNat_lt.1 hv2
+      have h0 : v.toNat ≠ 0 := fun h0 => hne (UInt64.toNat_inj.1 h0)
+      simp at h1 ⊢; omega)
+    have H := hv1.1 h1
+    simp only [Bool.false_eq_true, ↓reduceIte] at H
+    obtain ⟨k, hk1, hk2, hon⟩ := H
+    have hkM : k < M.toNat := Nat.lt_of_lt_of_le hk2 (hseg a ha).2
+    refine (Tab.ofBits_in hs hgw0 ho2 (hidx k hkM) hj fun h0 => ?_).2
+    rw [h0] at hon; exact absurd hon (by decide)
+
+/-- **`Tab.ofBits` reads back every matrix `ldivTabMat` builds from a `BitsWf` one**: `ldivTabMat_spec` gives its
+    words, its `none` test `Tab.bitsMax`, and `Vals.code2` the rows of each side. -/
+theorem Tab.ldivTabMat_reads {n m N N' : USize} {r : Tab A B} {ub : Tab B B} {uc : Tab C C} {g w kb kc : USize}
+    {o o' ra rb rc rc' : Enc} {x : Vals A n} {y : Vals C m} {zb : Vals B N} {zc : Vals C N'}
+    (hw : BitsWf g w o x ra y rc)
+    (h : Tab.ldivTabMat r ub uc g w o x ra y rc = .ok (some (kb, kc, o', ⟨N, zb⟩, rb, ⟨N', zc⟩, rc'))) :
+    ∀ e, Tab.ofBits kb kc o' zb rb zc rc' ≠ .error e := by
+  have hU : 2 ^ 32 ≤ USize.size := by rcases USize.size_eq with h | h <;> omega
+  obtain ⟨hr, -, ho, hx, hy⟩ := hw
+  rcases hs : Tab.ofBits g w o x ra y rc with e | s
+  · exact absurd hs (hr e)
+  obtain ⟨hkbc, -, PP, hw', -, -, -⟩ :=
+    Tab.ldivTabMat_spec h hs (fun a ha j hj => some_lt_two (ho a ha j hj)) hx hy
+  simp only [Tab.ldivTabMat, bind] at h
+  rw [Except.bind_eq_ok'] at h; obtain ⟨⟨kb0, bR, bU, Nb, zb0, rb0⟩, hb2, h⟩ := h; try dsimp only at h
+  rw [Except.bind_eq_ok'] at h; obtain ⟨yM, hyM, h⟩ := h
+  rw [Except.bind_eq_ok'] at h; obtain ⟨⟨kc0, cM, cU, Nc, zc0, rc0⟩, hc2, h⟩ := h; try dsimp only at h
+  split at h
+  · cases h
+  rename_i hov
+  repeat (rw [Except.bind_eq_ok'] at h; obtain ⟨_, -, h⟩ := h; try dsimp only at h)
+  simp only [pure, Except.pure, Except.ok.injEq, Option.some.injEq, Prod.mk.injEq] at h
+  obtain ⟨e1, e2, e3, hzb, e4, hzc, e5⟩ := h
+  subst kb0 kc0 rb0 rc0
+  obtain ⟨eN, eZ⟩ := Sigma.mk.inj hzb; subst Nb; have eZ' := eq_of_heq eZ; subst zb0
+  obtain ⟨eN', eZ2⟩ := Sigma.mk.inj hzc; subst Nc; have eZ2' := eq_of_heq eZ2; subst zc0
+  simp only [not_or, Nat.not_lt, Tab.bitsMax] at hov
+  obtain ⟨cb, hcb⟩ := Vals.code2_code hb2
+  obtain ⟨cc, hcc⟩ := Vals.code2_code hc2
+  obtain ⟨-, -, hrb, -⟩ := Vals.code_spec hcb
+  obtain ⟨-, -, hrc, -⟩ := Vals.code_spec hcc
+  refine Tab.ofBits_ok hkbc (by omega)
+    (raw_size_of_bits hkbc fun a ha j hj => let ⟨v, hv, _⟩ := hw' a ha j hj; ⟨v, hv⟩)
+    (fun a ha j hj => by obtain ⟨v, hv, hv2, -⟩ := hw' a ha j hj; rw [hv]; exact hv2)
+    (Vals.code_valid hcb) (Vals.code_valid hcc) (fun a ha j hj _ => ⟨?_, ?_⟩)
+    (fun _ _ hv hr => Vals.gather_ok_of_code hcb hv hr) (fun _ _ hv hr => Vals.gather_ok_of_code hcc hv hr)
+  · obtain ⟨i, hi, -⟩ := hrb a ha; rw [hi]; exact i.2
+  · obtain ⟨i, hi, -⟩ := hrc j hj; rw [hi]; exact i.2
+
 end Rel
 
 /-! ### `comp` and `meet`: the two ops that read a bit matrix, sound on a `Rel.Wf` argument -/
@@ -1054,22 +1674,6 @@ open scoped Rel.Core.Rel
 open Rel.Core.Rel hiding id comp recip inter union zero le inl inr junc
 
 variable {A B C : Obj}
-
-/-- `Tab.ofBits` reads back every matrix `compSelM` builds, every one `compTabMat` builds from a `BitsWf` matrix
-    within `Tab.bitsMax`, and every one `ldivTabMat` builds from a `BitsWf` matrix. Not proved: it needs each kernel
-    `ofBits` calls to succeed on in-range indices. -/
-def ReadsBack : Prop :=
-  (∀ {A B C : Obj} (r : Tab A B) (s : Tab B C) (g w : USize) (o ra rc : Enc) (e : String),
-    Tab.compSelM Tab.bitsMax r s = .ok (.inr (g, w, o, ra, rc)) → Tab.ofBits g w o r.key ra s.val rc ≠ .error e) ∧
-  (∀ {A B C : Obj} {n m M : USize} (r : Tab A B) (g w ka : USize) (o o' ra ra' rc : Enc) (x : Vals B n)
-    (key : Vals A M) (y : Vals C m) (e : String), BitsWf g w o x ra y rc →
-    Tab.compTabMat r g w o x ra = .ok (ka, o', ⟨M, key⟩, ra') → ka.toNat * w.toNat ≤ Tab.bitsMax →
-    Tab.ofBits ka w o' key ra' y rc ≠ .error e) ∧
-  ∀ {A B C : Obj} {n m N N' : USize} (r : Tab A B) (ub : Tab B B) (uc : Tab C C) (g w kb kc : USize)
-    (o o' ra rb rc rc' : Enc) (x : Vals A n) (y : Vals C m) (zb : Vals B N) (zc : Vals C N') (e : String),
-    BitsWf g w o x ra y rc →
-    Tab.ldivTabMat r ub uc g w o x ra y rc = .ok (some (kb, kc, o', ⟨N, zb⟩, rb, ⟨N', zc⟩, rc')) →
-    Tab.ofBits kb kc o' zb rb zc rc' ≠ .error e
 
 theorem meet_runE {d e : Bool} (R S : Rel A B) (K : Known A B) :
     (GenK.meet A B d e R S).runE K = (meetV (R.force K) (S.force K)).runE K := by
@@ -1123,9 +1727,9 @@ theorem compR_sound {r : Tab A B} {s : Tab B C} {K : Known A C} {Z : Core.Rel A.
   rw [reps_iff, compR_runE]; intro t ht x z hx hz
   exact (Tab.compSel_holds ht x z).trans (H x z hx hz)
 
-theorem compR_wf (hb : ReadsBack) (r : Tab A B) (s : Tab B C) : (compR r s).Wf := by
+theorem compR_wf (r : Tab A B) (s : Tab B C) : (compR r s).Wf := by
   unfold compR; split
-  next g w o ra rc h => exact Tab.compSelM_wf h fun e => hb.1 r s g w o ra rc e h
+  next g w o ra rc h => exact Tab.compSelM_wf h (Tab.compSelM_reads h)
   all_goals trivial
 
 theorem compV_sound {r : Tab A B} {S : Rel B C} {K : Known A C} {Z : Core.Rel A.El C.El} (wS : S.Wf)
@@ -1152,25 +1756,25 @@ theorem compV_sound {r : Tab A B} {S : Rel B C} {K : Known A C} {Z : Core.Rel A.
     · rw [reps_iff]; intro t ht; nomatch ht
     · exact compR_sound (H s hs)
 
-theorem compV_wf (hb : ReadsBack) (r : Tab A B) {S : Rel B C} (wS : S.Wf) : (compV r S).Wf := by
+theorem compV_wf (r : Tab A B) {S : Rel B C} (wS : S.Wf) : (compV r S).Wf := by
   cases S with
   | bits g w o x ra y rc =>
     rcases hc : Tab.compTabMat r g w o x ra with e | ⟨ka, o', ⟨M, key⟩, ra'⟩
     · simp only [compV, hc]; trivial
     · simp only [compV, hc]
       split
-      · next hle => exact Tab.compTabMat_wf hc (fun e => hb.2.1 r g w ka o o' ra ra' rc x key y e wS hc hle) wS
+      · next hle => exact Tab.compTabMat_wf hc (Tab.compTabMat_reads wS hc hle) wS
       · split
-        · exact compR_wf hb r _
+        · exact compR_wf r _
         · trivial
   | tab t0 => cases t0 with
     | error e => trivial
-    | ok s => exact compR_wf hb r s
+    | ok s => exact compR_wf r s
   | lazy f =>
     show (match (Rel.lazy f).runE {} with | .ok s => compR r s | .error e => .tab (.error e)).Wf
     rcases (Rel.lazy f).runE {} with e | s
     · trivial
-    · exact compR_wf hb r s
+    · exact compR_wf r s
 
 theorem compT_sound {r' : Except String (Tab A B)} {S : Rel B C} {K : Known A C}
     {X : Core.Rel A.El B.El} {Y : Core.Rel B.El C.El}
@@ -1206,7 +1810,7 @@ theorem compT_sound {r' : Except String (Tab A B)} {S : Rel B C} {K : Known A C}
     exact compV_sound wS fun (s : Tab B C) hs a c ha _ => exists_congr fun b =>
       and_congr (er a b ha rfl) ((reps_iff _ _ _).1 (hS {}) s hs b c rfl rfl)
 
-theorem compT_wf (hb : ReadsBack) (r' : Except String (Tab A B)) {S : Rel B C} (wS : S.Wf) : (compT r' S).Wf := by
+theorem compT_wf (r' : Except String (Tab A B)) {S : Rel B C} (wS : S.Wf) : (compT r' S).Wf := by
   rcases r' with e | r
   · trivial
   cases S with
@@ -1215,10 +1819,10 @@ theorem compT_wf (hb : ReadsBack) (r' : Except String (Tab A B)) {S : Rel B C} (
     split
     · trivial
     · intro K; dsimp only; split
-      · exact compV_wf hb r (wS.force _)
+      · exact compV_wf r (wS.force _)
       · trivial
-  | tab _ => exact compV_wf hb r wS
-  | bits => exact compV_wf hb r wS
+  | tab _ => exact compV_wf r wS
+  | bits => exact compV_wf r wS
 
 theorem compS_sound {R : Rel A B} {s' : Except String (Tab B C)}
     {L : (n : USize) × Vals C n} {X : Core.Rel A.El B.El} {Y : Core.Rel B.El C.El} (hR : ∀ K, R.Reps K X)
@@ -1236,11 +1840,11 @@ theorem compS_sound {R : Rel A B} {s' : Except String (Tab B C)}
   exact ⟨fun ⟨h1, h2⟩ => ⟨(er a b rfl (key h2)).1 h1, (es b c rfl hc).1 h2⟩,
     fun ⟨h1, h2⟩ => have h2' := (es b c rfl hc).2 h2; ⟨(er a b rfl (key h2')).2 h1, h2'⟩⟩
 
-theorem compS_wf (hb : ReadsBack) (R : Rel A B) (s' : Except String (Tab B C)) : (compS R s').Wf := by
+theorem compS_wf (R : Rel A B) (s' : Except String (Tab B C)) : (compS R s').Wf := by
   rcases s' with e | s
   · trivial
   simp only [compS]; split
-  · exact compR_wf hb _ _
+  · exact compR_wf _ _
   · trivial
 
 theorem comp_sound {e : Bool} {R : Rel A B} {S : Rel B C} {X : Core.Rel A.El B.El}
@@ -1258,18 +1862,18 @@ theorem comp_sound {e : Bool} {R : Rel A B} {S : Rel B C} {X : Core.Rel A.El B.E
       · exact compS_sound (fun K => hR K) ((reps_iff _ _ _).1 (hS _))
     · exact compT_sound (eR _) hS wS
 
-theorem comp_wf (hb : ReadsBack) {e : Bool} (R : Rel A B) {S : Rel B C} (wS : S.Wf) :
+theorem comp_wf {e : Bool} (R : Rel A B) {S : Rel B C} (wS : S.Wf) :
     (GenK.comp A B C e R S).Wf := by
   cases R with
-  | tab r => exact compT_wf hb r wS
-  | bits => exact compT_wf hb _ wS
+  | tab r => exact compT_wf r wS
+  | bits => exact compT_wf _ wS
   | lazy f =>
     intro K; simp only [GenK.comp]
     split
     · split
-      · exact compT_wf hb _ wS
-      · exact compS_wf hb _ _
-    · exact compT_wf hb _ wS
+      · exact compT_wf _ wS
+      · exact compS_wf _ _
+    · exact compT_wf _ wS
 
 /-! ### `Rel.Wf` of the ops that build no `bits` value -/
 
@@ -1329,7 +1933,7 @@ theorem ldiv_sound {R : Rel A B} {S : Rel A C} {UB : Rel B B} {UC : Rel C C} {X 
       agrees_empty ((reps_iff _ _ _).1 (hC {}) uc huc)]
     exact fun b c _ _ => Tab.ldivSel_holds ht b c
 
-theorem ldiv_wf (hb : ReadsBack) (R : Rel A B) {S : Rel A C} (UB : Rel B B) (UC : Rel C C) (wS : S.Wf) :
+theorem ldiv_wf (R : Rel A B) {S : Rel A C} (UB : Rel B B) (UC : Rel C C) (wS : S.Wf) :
     (GenK.ldiv A B C R S UB UC).Wf := by
   have wF := wS.force {}
   simp only [GenK.ldiv]
@@ -1344,7 +1948,7 @@ theorem ldiv_wf (hb : ReadsBack) (R : Rel A B) {S : Rel A C} (UB : Rel B B) (UC 
       dsimp only
     · trivial
     · trivial
-    · exact Tab.ldivTabMat_wf hm (fun e => hb.2.2 r ub uc g w kb kc o o' ra rb rc rc' x y zb zc e wF hm) wF
+    · exact Tab.ldivTabMat_wf hm (Tab.ldivTabMat_reads wF hm) wF
   all_goals exact lift2_wf _ _
 
 end Rel.Lang.GenK
