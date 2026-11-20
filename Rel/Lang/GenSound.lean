@@ -232,7 +232,8 @@ end
     at its objects `A ⟶ [B]` (a row whose table is a `Λ`). -/
 def rowsProved : List (String × Bool) :=
   [("∋", false), ("inl", false), ("inr", false), ("τ", true), ("setify", true), ("snoc", false),
-   ("cons", false), ("cat", false)]
+   ("cons", false), ("cat", false), ("uncat", false), ("zip", false),
+   ("length", false)]
 
 /-- Some node of `t` has no proved case in `Tm.gen_sound`: no `GenK` lemma yet (`est thin atPos mu nu
     hylo`), a lemma that does not hold
@@ -402,6 +403,19 @@ theorem rowOK_cat : RowOK "cat" := rowOK_of (c := RowCode.cat) rfl rfl fun _ σ 
   cases hv
   cases σ <;> exact ⟨GenK.ofVals_wf, fun _ => ⟨⟨rfl, rfl⟩, GenK.after_row_sound fun _ _ h => Tab.cat_holds h⟩⟩
 
+theorem rowOK_uncat : RowOK "uncat" := rowOK_of (c := RowCode.uncat) rfl rfl fun _ σ _ _ _ _ hv => by
+  cases hv
+  cases σ <;> exact ⟨GenK.ofVals_wf, fun _ => ⟨⟨rfl, rfl⟩, GenK.ofVals_row_sound fun _ _ _ h => Tab.uncat_holds h⟩⟩
+
+theorem rowOK_zip : RowOK "zip" := rowOK_of (c := RowCode.zip) rfl rfl fun _ σ _ _ _ _ hv => by
+  cases hv
+  rcases σ with _ | ⟨_, _ | _⟩ <;>
+    exact ⟨GenK.ofVals_wf, fun _ => ⟨⟨rfl, rfl⟩, GenK.after_row_sound fun _ _ h => Tab.zip_holds h⟩⟩
+
+theorem rowOK_length : RowOK "length" := rowOK_of (c := RowCode.length) rfl rfl fun _ σ _ _ _ _ hv => by
+  cases hv
+  cases σ <;> exact ⟨GenK.ofVals_wf, fun _ => ⟨⟨rfl, rfl⟩, GenK.ofVals_row_sound fun _ _ _ h => Tab.length_holds h⟩⟩
+
 /-- Every row of `rowsProved` is `RowOK`: the obligations enumerated from the list `Tm.gap` reads. -/
 theorem rowsProved_ok (r : Prim) (A B : Obj) (h : (rowsProved.lookup r.sym).isNone = false) :
     (primGen r A B []).Wf ∧
@@ -414,8 +428,12 @@ theorem rowsProved_ok (r : Prim) (A B : Obj) (h : (rowsProved.lookup r.sym).isNo
   by_cases h6 : r.sym = "snoc"; · exact rowOK_snoc r A B h6
   by_cases h7 : r.sym = "cons"; · exact rowOK_cons r A B h7
   by_cases h8 : r.sym = "cat"; · exact rowOK_cat r A B h8
+  by_cases h9 : r.sym = "uncat"; · exact rowOK_uncat r A B h9
+  by_cases h10 : r.sym = "zip"; · exact rowOK_zip r A B h10
+  by_cases h11 : r.sym = "length"; · exact rowOK_length r A B h11
   simp [rowsProved, List.lookup, beq_false_of_ne h1, beq_false_of_ne h2, beq_false_of_ne h3, beq_false_of_ne h4,
-    beq_false_of_ne h5, beq_false_of_ne h6, beq_false_of_ne h7, beq_false_of_ne h8] at h
+    beq_false_of_ne h5, beq_false_of_ne h6, beq_false_of_ne h7, beq_false_of_ne h8, beq_false_of_ne h9,
+    beq_false_of_ne h10, beq_false_of_ne h11] at h
 
 theorem Tm.code_wf {η : Code} {A B : Obj} {t : Tm A B} (h : (t.gen η).Wf) : (t.code η).Wf := by
   rw [Tm.code]; split
