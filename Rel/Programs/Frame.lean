@@ -20,11 +20,12 @@ rel_program frame where
     take(n : 1 ⟶ ν, x : ν ⟶ β) : ν ⟶ β ≜ dom(< n°) x
     drop(n : 1 ⟶ ν, x : ν ⟶ β) : ν ⟶ β ≜ (dom(x) dom(≥ n°) ⟨𝟙, ⊤ n⟩minus)° x
     range(a : 1 ⟶ ν, b : 1 ⟶ ν, x : ν ⟶ β) : ν ⟶ β ≜ take(⟨b, a⟩minus, drop(a, x))
-    filterBy(p : β ⟶ β, x : ν ⟶ β) : ν ⟶ β ≜ asc(dom(x p)) x
+    -- `dom(x)` before `asc`: a kept row's new position is one of `x`'s, the demand `asc` needs at an unbounded `ν`
+    filterBy(p : β ⟶ β, x : ν ⟶ β) : ν ⟶ β ≜ dom(x) asc(dom(x p)) x
     -- `count − n` is negative when `n` exceeds the rows: `take` of it is empty; `takeLast` keeps what `dropLast`
     -- drops, since `i + n` or `count − n` may fall outside a declared object
     dropLast(n : 1 ⟶ ν, x : ν ⟶ β) : ν ⟶ β ≜ take(⟨count(x), n⟩minus, x)
-    takeLast(n : 1 ⟶ ν, x : ν ⟶ β) : ν ⟶ β ≜ asc(dom(x) − dom(dropLast(n, x))) x
+    takeLast(n : 1 ⟶ ν, x : ν ⟶ β) : ν ⟶ β ≜ dom(x) asc(dom(x) − dom(dropLast(n, x))) x
     -- rolling window: `j ≤ i < j + w`, written from the `j` side so no position below 0 is formed
     win(w : 1 ⟶ ν, x : ν ⟶ β) : ν ⟶ ν ≜ ≥ ∩ (dom(x) ⟨𝟙, ⊤ w⟩plus > dom(x))°
     rolling(w : 1 ⟶ ν, f : [ν] ⟶ δ, x : ν ⟶ β) : ν ⟶ δ ≜ agg(win(w, x), f)

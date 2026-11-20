@@ -12,8 +12,8 @@ rel_program frameJoin where
     joinOn(K : ν ⟶ μ, x : ν ⟶ β, y : μ ⟶ δ) : ρ ⟶ β×δ ≜ asc(ran(⟨𝟙, K⟩)) (x × y)
     innerJoin(a : β ⟶ κ, b : δ ⟶ κ, x : ν ⟶ β, y : μ ⟶ δ) : ρ ⟶ β×δ ≜ joinOn(J(a, b, x, y), x, y)
     crossJoin(x : ν ⟶ β, y : μ ⟶ δ) : ρ ⟶ β×δ ≜ joinOn(dom(x) ⊤ dom(y), x, y)
-    semiJoin(a : β ⟶ κ, b : δ ⟶ κ, x : ν ⟶ β, y : μ ⟶ δ) : ν ⟶ β ≜ asc(dom(J(a, b, x, y))) x
-    antiJoin(a : β ⟶ κ, b : δ ⟶ κ, x : ν ⟶ β, y : μ ⟶ δ) : ν ⟶ β ≜ asc(dom(x) − dom(J(a, b, x, y))) x
+    semiJoin(a : β ⟶ κ, b : δ ⟶ κ, x : ν ⟶ β, y : μ ⟶ δ) : ν ⟶ β ≜ dom(x) asc(dom(J(a, b, x, y))) x
+    antiJoin(a : β ⟶ κ, b : δ ⟶ κ, x : ν ⟶ β, y : μ ⟶ δ) : ν ⟶ β ≜ dom(x) asc(dom(x) − dom(J(a, b, x, y))) x
     -- every row of `x` with each match in `y`, or once with the null when it has none
     leftJoin(a : β ⟶ κ, b : δ ⟶ κ, x : ν ⟶ β, y : μ ⟶ δ) : ρ ⟶ β×(δ+1) ≜ asc(ran(⟨𝟙, dom(x) tot(J(a, b, x, y))⟩)) (x × (y ⊕ 𝟙))
 

@@ -10,11 +10,11 @@ open Rel.Programs.prelude Rel.Programs.frame in
 rel_program frameGroup where
     -- q's idesc, stable: `asc` on (value, m−1−i) read from its end, so `r : i ↦ m−1−i` on both sides
     idesc(c : ν ⟶ γ) : ν ⟶ ν ≜ r asc(ran(⟨c, r⟩)) π₂ r where r ≜ dom(c) ⟨⊤ count(c), succ⟩minus
-    sortBy(a : β ⟶ γ, x : ν ⟶ β) : ν ⟶ β ≜ iasc(x a) x
+    sortBy(a : β ⟶ γ, x : ν ⟶ β) : ν ⟶ β ≜ dom(x) iasc(x a) x
     topBy(n : 1 ⟶ ν, a : β ⟶ γ, x : ν ⟶ β) : ν ⟶ β ≜ take(n, sortBy(a, x))
 
     -- `head` of the ascending image is the first position of each key: no self-join
-    firstOcc(c : ν ⟶ γ) : ν ⟶ ν ≜ asc(ran(agg(c°, head)))
+    firstOcc(c : ν ⟶ γ) : ν ⟶ ν ≜ dom(c) asc(ran(agg(c°, head)))
     -- q's group as a relation: group number ↦ the positions holding its key
     group(c : ν ⟶ γ) : ν ⟶ ν ≜ firstOcc(c) c c°
     lastOcc(c : ν ⟶ γ) : ν ⟶ ν ≜ agg(group(c), last)
