@@ -336,21 +336,6 @@ theorem colArr_of_ok {op : Op} {n : USize} {a b o : Enc} {t : QAtomicType} (h : 
   · rename_i o' h'; have := h.symm.trans h'; cases this; rfl
   · rename_i s' h'; have := h.symm.trans h'; cases this
 
-/-- **`cellBounds` is `cellSpan`** on the columns: the same four maps, its answer unwrapped from `Arr`. -/
-theorem cellBounds_span {n m : USize} {lo up : Arr .i64 n} {s e : Enc} (h : cellBounds n m lo up = .ok (s, e)) :
-    ∃ s' e' : Arr .i64 n, cellSpan m lo up = .ok (s', e') ∧ s'.enc = s ∧ e'.enc = e := by
-  simp only [cellBounds, bind] at h
-  rw [Except.bind_eq_ok'] at h; obtain ⟨c0, hc0, h⟩ := h
-  rw [Except.bind_eq_ok'] at h; obtain ⟨s1, hs, h⟩ := h
-  rw [Except.bind_eq_ok'] at h; obtain ⟨cm, hcm, h⟩ := h
-  rw [Except.bind_eq_ok'] at h; obtain ⟨mn, hmn, h⟩ := h
-  rw [Except.bind_eq_ok'] at h; obtain ⟨e1, he, h⟩ := h
-  cases h
-  refine ⟨Arr.mk s (colMap_closed hs).2, Arr.mk e (colMap_closed he).2, ?_, rfl, rfl⟩
-  unfold cellSpan
-  simp only [bind, Except.bind, hc0, colArr_of_ok hs, hcm, hmn, pure, Except.pure]
-  erw [colArr_of_ok he] <;> rfl
-
 /-- **The non-empty cells** (`uncons`, `unsnoc`): `whereCol` of `s < e` after `cellSpan` lists exactly the cells
 `[SN, EN)` with `SN < EN`. -/
 theorem cellSpan_where {B : Obj} {n m M : USize} {lo up s e : Arr .i64 n} {lt sel : Enc}
@@ -832,8 +817,8 @@ theorem zip_holds {A : Obj} {P : Tab K (.prod (.arr A) (.arr B))} {T : Tab K (.a
   · rintro ⟨j, rfl, rfl⟩; exact ⟨_, ⟨j, rfl, rfl⟩, hrow j⟩
   · rintro ⟨p, ⟨j, rfl, rfl⟩, rfl⟩; exact ⟨j, rfl, hrow j⟩
 
-/-- **`length X` denotes `length` on the arrays `X`**: each cell `[SN, EN)` (`cellSpan_spec`, through
-`cellBounds_span`) to its width `EN - SN`. -/
+/-- **`length X` denotes `length` on the arrays `X`**: each cell `[SN, EN)` (`cellSpan_spec`) to its width
+`EN - SN`. -/
 theorem length_holds {n : USize} {X : Vals (.arr B) n} {T : Tab (.arr B) .long} (h : Tab.length X = .ok T)
     (xs : List B.El) (w : Int64) : T.Holds xs w ↔ (∃ i, X.row i = xs) ∧ w = Int64.ofNat xs.length := by
   obtain ⟨m, lo, up, f⟩ := X
@@ -842,11 +827,10 @@ theorem length_holds {n : USize} {X : Vals (.arr B) n} {T : Tab (.arr B) .long} 
   rename_i hb
   simp only [bind] at h
   rw [Except.bind_eq_ok'] at h; obtain ⟨_, -, h⟩ := h
-  rw [Except.bind_eq_ok'] at h; obtain ⟨⟨s, e⟩, hse, h⟩ := h; try dsimp only at h
+  rw [Except.bind_eq_ok'] at h; obtain ⟨⟨s', e'⟩, hse', h⟩ := h; try dsimp only at h
   rw [Except.bind_eq_ok'] at h; obtain ⟨wd, hwd, h⟩ := h
   rw [canon_holds h]
   have hm63 : m.toNat < 2 ^ 63 := by omega
-  obtain ⟨s', e', hse', rfl, rfl⟩ := cellBounds_span hse
   obtain ⟨SN, EN, hw1, hb1, hrow⟩ := cellSpan_spec hse' hm63 f
   have hv : ∀ i : Fin n.toNat,
       Vals.row (A := .long) wd i = Int64.ofNat (Vals.row (A := .arr B) ⟨m, lo, up, f⟩ i).length := by
@@ -2911,7 +2895,7 @@ theorem atPos_holds {B : Obj} {k : Nat} {n : USize} {X : Vals (.arr B) n} {T : T
   rename_i hb
   simp only [bind] at h
   rw [Except.bind_eq_ok'] at h; obtain ⟨_, -, h⟩ := h
-  rw [Except.bind_eq_ok'] at h; obtain ⟨⟨s, e⟩, hse, h⟩ := h; try dsimp only at h
+  rw [Except.bind_eq_ok'] at h; obtain ⟨⟨s', e'⟩, hse', h⟩ := h; try dsimp only at h
   rw [Except.bind_eq_ok'] at h; obtain ⟨kc, hkc, h⟩ := h
   rw [Except.bind_eq_ok'] at h; obtain ⟨w, hw, h⟩ := h
   rw [Except.bind_eq_ok'] at h; obtain ⟨lt, hlt, h⟩ := h
@@ -2923,7 +2907,6 @@ theorem atPos_holds {B : Obj} {k : Nat} {n : USize} {X : Vals (.arr B) n} {T : T
   rw [canon_holds h]
   have hm63 : m.toNat < 2 ^ 63 := by omega
   have hk63 : k < 2 ^ 63 := by omega
-  obtain ⟨s', e', hse', rfl, rfl⟩ := cellBounds_span hse
   obtain ⟨SN, EN, hw1, hb1, hrow⟩ := cellSpan_spec hse' hm63 f
   have hwl : ∀ i, EN i - SN i < 2 ^ 63 := fun i => by have := hb1 i; omega
   have hkw : ∀ i < n.toNat, (raw .i64 n kc)[i]?.getD 0 = k.toUInt64 := fun i hi => by
@@ -2993,78 +2976,86 @@ open Rel.Ext Rel.Kernel Rel.Verify Ext.Enc
 
 namespace Tab
 
+/-- Rows pairwise distinct as values make `toList` duplicate-free. -/
+theorem toList_nodup {k v : Obj} {R : Tab k v}
+    (h : ∀ j j' : Fin R.n.toNat, j ≠ j' → (R.key.row j, R.val.row j) ≠ (R.key.row j', R.val.row j')) :
+    R.toList.Nodup := by
+  unfold Tab.toList; rw [List.Nodup, List.pairwise_iff_getElem]
+  intro i j hi hj hij
+  simp only [List.getElem_ofFn]
+  exact h _ _ fun e => Nat.ne_of_lt hij (congrArg Fin.val e)
+
+/-- **`pack` keeps the row count and every row**, in order (`Vals.pack_row`). -/
+theorem pack_toList {k v : Obj} {R R' : Tab k v} (h : R.pack = .ok R') : R'.n = R.n ∧ R'.toList = R.toList := by
+  simp only [Tab.pack, bind] at h
+  rw [Except.bind_eq_ok'] at h; obtain ⟨kk, hk, h⟩ := h
+  rw [Except.bind_eq_ok'] at h; obtain ⟨vv, hv, h⟩ := h
+  cases h
+  exact ⟨rfl, by simp only [Tab.toList, Vals.pack_row _ hk, Vals.pack_row _ hv]⟩
+
+/-- **`R ∪ S`'s rows are distinct**: it is `canon` of the concatenation (`union_sorted`, `canon_distinct`). -/
+theorem union_nodup {k v : Obj} {R S U : Tab k v} (h : R.union S = .ok U) : U.toList.Nodup := by
+  obtain ⟨_, -, hc⟩ := union_sorted h
+  exact toList_nodup fun _ _ hjj => canon_distinct hc hjj
+
+/-- **A chain step that keeps the row count keeps the relation**: `X` inside `Y`, both duplicate-free and of one
+    row count, so `Y` inside `X` (`nodup_length_eq_iff` on their rows). -/
+theorem holds_of_n {k v : Obj} {X Y : Tab k v} (dX : X.toList.Nodup) (dY : Y.toList.Nodup)
+    (hXY : ∀ a b, X.Holds a b → Y.Holds a b) (hn : X.n = Y.n) : ∀ a b, Y.Holds a b → X.Holds a b := by
+  classical
+  have e := (nodup_length_eq_iff dX dY fun p hp => (holds_iff_mem_toList Y p.1 p.2).1
+    (hXY _ _ ((holds_iff_mem_toList X p.1 p.2).2 hp))).1 (by simp [Tab.toList, hn])
+  exact fun a b hb => (holds_iff_mem_toList X a b).2 (e ((holds_iff_mem_toList Y a b).1 hb))
+
+/-- **The round invariant of `Tab.fixOn`**: an `I` that every round keeps (`hI`: from `X`, `step X` then `pack`)
+    holds of the answer's round, whose `pack`ed table is the answer with the row count of the table before it. -/
+theorem fixOn_inv {A B : Obj} {out : String} {step : Tab A B → Except String (Tab A B)} (I : Tab A B → Prop)
+    (hI : ∀ X Y Y', I X → step X = .ok Y → Y.pack = .ok Y' → I Y') :
+    ∀ n X T, I X → Tab.fixOn out step n X = .ok T →
+      ∃ X' Y, I X' ∧ step X' = .ok Y ∧ Y.pack = .ok T ∧ T.n = X'.n := by
+  intro n
+  induction n with
+  | zero => intro X T _ h; simp [Tab.fixOn] at h
+  | succ n ih =>
+    intro X T hX h
+    simp only [Tab.fixOn, bind] at h
+    rw [Except.bind_eq_ok'] at h; obtain ⟨Y', hY', h⟩ := h
+    rw [Except.bind_eq_ok'] at hY'; obtain ⟨Y, hY, hp⟩ := hY'
+    split at h
+    · rename_i e; cases h; exact ⟨X, Y, hX, hY, hp, beq_iff_eq.1 e⟩
+    · exact ih Y' T (hI X Y Y' hX hY hp) h
+
 /-- **The rounds of `Tab.mu`**, its step `f` acting on relations as `F`: the table it returns satisfies every
-property `S` that `𝟘` has and each round `X ↦ X ∪ F(X)` keeps, and is a prefixed point of `F`. A round's table is
-canonical (`union_sorted`) and `pack` keeps its rows, so an equal row count is an equal relation
-(`nodup_length_eq_iff`). -/
+property `S` that `𝟘` has and each round `X ↦ X ∪ F(X)` keeps (`fixOn_inv`), and is a prefixed point of `F`: the
+last round keeps the row count of the table before it, so it keeps the relation (`holds_of_n`). -/
 theorem mu_holds {A B : Obj} {what : String} {cap : Nat} {f : Tab A B → Except String (Tab A B)}
     {F : Core.Rel A.El B.El → Core.Rel A.El B.El} (hf : ∀ X T, f X = .ok T → ∀ a b, T.Holds a b ↔ F X.Holds a b)
     (S : Core.Rel A.El B.El → Prop) (h0 : S fun _ _ => False) (hS : ∀ X, S X → S fun a b => X a b ∨ F X a b)
     {Y : Tab A B} (h : Tab.mu what cap f = .ok Y) : S Y.Holds ∧ ∀ a b, F Y.Holds a b → Y.Holds a b := by
-  classical
-  let L : Tab A B → List (A.El × B.El) := fun R => (List.finRange R.n.toNat).map fun j => (R.key.row j, R.val.row j)
-  have hL : ∀ R p, p ∈ L R ↔ R.Holds p.1 p.2 := fun R p => by
-    simp only [L, List.mem_map, List.mem_finRange, true_and]
-    exact ⟨fun ⟨j, e⟩ => ⟨j, congrArg Prod.fst e, congrArg Prod.snd e⟩, fun ⟨j, e1, e2⟩ => ⟨j, Prod.ext e1 e2⟩⟩
-  let Dist : Tab A B → Prop := fun R => ∀ j j' : Fin R.n.toNat, j ≠ j' →
-    (R.key.row j, R.val.row j) ≠ (R.key.row j', R.val.row j')
-  have hnd : ∀ R, Dist R → (L R).Nodup := fun R d => by
-    rw [List.Nodup, List.pairwise_iff_getElem]
-    intro i j hi hj hij
-    simp only [L, List.getElem_map, List.getElem_finRange]
-    exact d _ _ fun e => by have := congrArg Fin.val e; simp at this; omega
   unfold Tab.mu at h; simp only [bind] at h
   rw [Except.bind_eq_ok'] at h; obtain ⟨Z, hZ, h⟩ := h
-  suffices key : ∀ n (X : Tab A B), S X.Holds → Dist X → Tab.fixOn (capMsg what cap)
-      (fun X => f X >>= X.union) n X = .ok Y → S Y.Holds ∧ ∀ a b, F Y.Holds a b → Y.Holds a b by
-    refine key _ Z ?_ ?_ h
-    · have e : Z.Holds = fun _ _ => False := funext fun a => funext fun b => propext (zero_holds hZ a b)
-      rw [e]; exact h0
-    · intro j
-      have : Z.n = 0 := by
-        simp only [Tab.zero, bind] at hZ
-        rw [Except.bind_eq_ok'] at hZ; obtain ⟨_, -, hZ⟩ := hZ
-        rw [Except.bind_eq_ok'] at hZ; obtain ⟨_, -, hZ⟩ := hZ
-        cases hZ; rfl
-      have h0 : Z.n.toNat = 0 := by rw [this]; rfl
-      have := j.2; omega
-  intro n
-  induction n with
-  | zero => intro X _ _ h; simp [Tab.fixOn] at h
-  | succ n ih =>
-    intro X hSX hdX h
-    simp only [Tab.fixOn, bind] at h
-    rw [Except.bind_eq_ok'] at h; obtain ⟨Y', hY', h⟩ := h
-    rw [Except.bind_eq_ok'] at hY'; obtain ⟨U, hU, hP⟩ := hY'
-    rw [Except.bind_eq_ok'] at hU; obtain ⟨T, hT, hU⟩ := hU
-    have eY : ∀ a b, Y'.Holds a b ↔ X.Holds a b ∨ F X.Holds a b := fun a b => by
-      rw [pack_holds hP, union_holds hU, hf X T hT]
-    have eY' : Y'.Holds = fun a b => X.Holds a b ∨ F X.Holds a b :=
-      funext fun a => funext fun b => propext (eY a b)
-    have hdY : Dist Y' := by
-      obtain ⟨C, -, hC⟩ := union_sorted hU
-      simp only [Tab.pack, bind] at hP
-      rw [Except.bind_eq_ok'] at hP; obtain ⟨k', hk', hP⟩ := hP
-      rw [Except.bind_eq_ok'] at hP; obtain ⟨v', hv', hP⟩ := hP
-      cases hP
-      intro j j' hj
-      show (k'.row j, v'.row j) ≠ (k'.row j', v'.row j')
-      rw [Vals.pack_row _ hk', Vals.pack_row _ hk', Vals.pack_row _ hv', Vals.pack_row _ hv']
-      exact canon_distinct hC hj
-    split at h
-    · rename_i hn
-      have hYY : Y' = Y := by cases h; rfl
-      subst hYY
-      have hsub : L X ⊆ L Y' := fun p hp => (hL _ p).2 ((eY _ _).2 (Or.inl ((hL _ p).1 hp)))
-      have hlen : (L X).length = (L Y').length := by
-        simp only [L, List.length_map, List.length_finRange]; exact (beq_iff_eq.1 hn).symm ▸ rfl
-      have hback := (nodup_length_eq_iff (hnd X hdX) (hnd Y' hdY) hsub).1 hlen
-      have eXY : Y'.Holds = X.Holds := funext fun a => funext fun b => propext
-        ⟨fun hy => (hL X (a, b)).1 (hback ((hL Y' (a, b)).2 hy)), fun hx => (eY a b).2 (Or.inl hx)⟩
-      refine ⟨eY' ▸ hS _ hSX, fun a b hF => ?_⟩
-      rw [eXY] at hF ⊢
-      exact (hL X (a, b)).1 (hback ((hL Y' (a, b)).2 ((eY a b).2 (Or.inr hF))))
-    · exact ih Y' (eY' ▸ hS _ hSX) hdY h
+  -- a round: `X ∪ f(X)`, then `pack`
+  have round : ∀ X U U', (f X >>= X.union) = .ok U → U.pack = .ok U' →
+      U'.toList.Nodup ∧ U'.Holds = fun a b => X.Holds a b ∨ F X.Holds a b := by
+    intro X U U' hU hp
+    simp only [bind] at hU; rw [Except.bind_eq_ok'] at hU; obtain ⟨T, hT, hu⟩ := hU
+    refine ⟨(pack_toList hp).2 ▸ union_nodup hu, funext fun a => funext fun b => propext ?_⟩
+    rw [pack_holds hp, union_holds hu, hf X T hT]
+  have eZ : Z.Holds = fun _ _ => False := funext fun a => funext fun b => propext (zero_holds hZ a b)
+  obtain ⟨X, U, ⟨dX, sX⟩, hU, hp, hn⟩ := fixOn_inv (fun X : Tab A B => X.toList.Nodup ∧ S X.Holds)
+    (fun X U U' ⟨_, sX⟩ hU hp => by
+      obtain ⟨d, e⟩ := round X U U' hU hp
+      rw [e]; exact ⟨d, hS _ sX⟩) _ _ _
+    ⟨by
+      rw [show Z.toList = [] from List.eq_nil_iff_forall_not_mem.2 fun p hp => by
+        have := (holds_iff_mem_toList Z p.1 p.2).2 hp; rw [eZ] at this; exact this]
+      exact List.nodup_nil, by rw [eZ]; exact h0⟩ h
+  obtain ⟨dY, eY⟩ := round X U Y hU hp
+  have hY : ∀ a b, Y.Holds a b ↔ X.Holds a b ∨ F X.Holds a b := fun a b => by rw [eY]
+  have hX := holds_of_n dX dY (fun a b hab => (hY a b).2 (.inl hab)) hn.symm
+  have eXY : Y.Holds = X.Holds := funext fun a => funext fun b => propext ⟨hX a b, fun hx => (hY a b).2 (.inl hx)⟩
+  refine ⟨by rw [eXY]; exact sX, fun a b hF => (hY a b).2 (.inr ?_)⟩
+  rw [eXY] at hF; exact hF
 
 end Tab
 
