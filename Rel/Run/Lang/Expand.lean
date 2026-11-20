@@ -50,7 +50,7 @@ def useDef (c : Lean.Name) (imported : Bool) (d : Def) : Def :=
       match c, r, row with
       | _, .rel q s t, some x =>
         if rels.length == as.length && as.length == x.sig.1.length then
-          pure (.rel (.prim x ((x.sig.1.zip rels).map fun ((_, f), (a, s')) => x.pass p f a s') s t none) s t)
+          pure (.rel (.prim x ((x.sig.1.zip rels).map fun ((_, f), (a, s')) => x.pass p f a s') s t) s t)
         else pure (.rel (if imported then q.at p else q) s t)
       | `Rel.Programs.prelude.perm, .rel q s t, _ => pure (.rel (.own (q.at p)) s t)
       | _, .rel q s t, _ => pure (.rel (if imported then q.at p else q) s t)
@@ -228,7 +228,8 @@ def fnTy (t : Res) : Lean.Expr := g ``Gen.Fn #[bE t.2.2.dem, oE t.1, oE t.2.1]
 
 /-- The wrappers a row's constant runs under (`GenK.ofVals` …), tried in order. -/
 def primWrappers : List Lean.Name :=
-  [``GenK.ofVals, ``GenK.after, ``GenK.elems, ``GenK.testVals, ``GenK.testAfter, ``GenK.stepAfter, ``GenK.ofRel]
+  [``GenK.ofVals, ``GenK.after, ``GenK.elems, ``GenK.testVals, ``GenK.testAfter, ``GenK.stepAfter, ``GenK.ofRel,
+   ``GenK.onKeys]
 
 open Lean Meta in
 /-- `c` at fresh metavariables: those whose type `sel` picks are `hs` in order (each given with its type), and `ok`
@@ -269,15 +270,29 @@ def primE (r : Prim) (A B : Obj) (xs : Array (Lean.Expr × Lean.Expr)) : MetaM (
     let some v := v? | return false
     isDefEq f v
 
+/-- Each fit `primFit` made, by row, objects and its relations' types. Process-wide rather than in the environment:
+    the fit reads only this library's constants, and a backtracking elaborator (`restore`) would drop an env's. -/
+initialize primMemo : IO.Ref (Std.HashMap (String × Lean.Expr × Lean.Expr × Array Lean.Expr) (Option Lean.Expr)) ←
+  IO.mkRef {}
+
 open Lean Meta in
-/-- Each row in `t` fits its constant at its objects (`primE`), its relations variables of their types. A row at an
+/-- Row `r` at `A ⟶ B` fitted once per relation types `ts` (`primE` at fresh relations), closed over the relations:
+    `fun xs => e`, applied by `Expr.beta`. Every caller goes through it, so a program pays per distinct instance, not
+    per occurrence. -/
+def primFit (r : Prim) (A B : Obj) (ts : Array Lean.Expr) : MetaM (Option Lean.Expr) := do
+  let k := (r.sym, oE A, oE B, ts)
+  if let some v := (← primMemo.get)[k]? then return v
+  let v ← withLocalDeclsDND (ts.map (`x, ·)) fun xs => do
+    match ← primE r A B (xs.zip ts) with | some e => some <$> mkLambdaFVars xs e | none => pure none
+  primMemo.modify (·.insert k v); pure v
+
+open Lean Meta in
+/-- Each row in `t` fits its constant at its objects (`primFit`), its relations variables of their types. A row at an
     object variable's placeholder (`varObj`) that its constant reads at `.long` (`sum` at `[β]`) does not, and that
     is how `once` finds the variable a number object. -/
 partial def primsFit {A B : Obj} (t : Tm A B) : MetaM Bool := do
   let some (r, as) := primOf t | t.parts.allM fun ⟨_, _, c⟩ => primsFit c
-  let ts := as.toArray.map fnTy
-  withLocalDeclsDND (ts.map (`x, ·)) fun xs => do
-    pure (← primE r A B (xs.zip ts)).isSome <&&> as.allM fun ⟨_, _, c⟩ => primsFit c
+  pure (← primFit r A B (as.toArray.map fnTy)).isSome <&&> as.allM fun ⟨_, _, c⟩ => primsFit c
 
 /-- The placeholders of a constant of `n` with `k` object variables in `env`: atoms no object in scope is stored at,
     one per variable, or the definition is refused by name. A refusal of the definition, not of one form of it, so
@@ -716,7 +731,6 @@ partial def node (pre : Name) (ph : List Lean.Expr) (ρ : List (Nat × Lean.Expr
   | _, _, .share _ R => c R
   | .prod I (.arr Y), V, .foldI e S =>
     return g ``GenK.foldI #[oE I, oE Y, oE V, bE e.dem, bE S.dem, ← c e, ← c S]
-  | .prod I A, B, .flat R => return g ``GenK.flat #[oE I, oE A, oE B, bE R.dem, ← c R]
   | A, B, .var _ v => match ρ.lookup v with
     -- by what the binder holds: a kernel twin's parameter (code), a fixed point's variable (a `Tab`)
     | some x => do
@@ -736,10 +750,9 @@ partial def node (pre : Name) (ph : List Lean.Expr) (ρ : List (Nat × Lean.Expr
     return g ``GenK.hylo #[oE A, oE B, toExpr w, bE ch.dem, bE b.dem, ← c ch, ← body pre ph ρ A B v b]
   | A, B, t@(.prim _) | A, B, t@(.arg ..) => match primOf t with
     | some (r, as) => do
-      let xs ← as.toArray.mapM fun x => return (← code pre ph ρ x.2.2, fnTy x)
-      let some e ← primE r A B xs
-        | throwError "rel_program expansion: row `{r.sym}` at {oE A} → {oE B} given {xs.size} relations fits none of its wrappers {primWrappers}"
-      pure e
+      let some f ← primFit r A B (as.toArray.map fnTy)
+        | throwError "rel_program expansion: row `{r.sym}` at {oE A} → {oE B} given {as.length} relations fits none of its wrappers {primWrappers}"
+      pure (f.beta (← as.toArray.mapM fun x => code pre ph ρ x.2.2))
     | none => spine pre ph ρ t
   | _, _, t@(.call ..) | _, _, t@(.callCv ..) => spine pre ph ρ t
 

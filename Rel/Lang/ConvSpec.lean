@@ -63,11 +63,11 @@ theorem Prim.den_conv : ∀ r ∈ prims, ∀ s r', r.conv = some s → Prim.find
   simp only [prims, List.mem_cons, List.not_mem_nil, or_false] at hr
   -- one goal per row, however many `prims` lists
   repeat' (first | subst hr | (obtain rfl | hr := hr))
-  all_goals simp only [consRow, memRow, inlRow, inrRow, inlConvRow, inrConvRow, mapRow, lengthRow, sumRow, reduceCtorEq,
-    Option.some.injEq] at hs
+  all_goals simp only [consRow, memRow, inlRow, inrRow, inlConvRow, inrConvRow, mapRow, lengthRow, sumRow, flatRow,
+    reduceCtorEq, Option.some.injEq] at hs
   all_goals subst hs
   all_goals simp [Prim.find?, prims, consRow, memRow, inlRow, inrRow, inlConvRow, inrConvRow, mapRow, lengthRow,
-    sumRow] at hr'
+    sumRow, flatRow] at hr'
   all_goals subst hr'
   all_goals
     intro A B ss
@@ -131,7 +131,6 @@ theorem convTm_den (ρ : Val) : ∀ {A B : Obj} (t : Tm A B), t.ConvOK ρ →
   | leq _ _ | lt _ _ | nu _ _ _ _ _ | mu _ _ _ _ _ =>
     exact fun _ => ⟨fun u hu => conv_false_den ρ u hu rfl, by noproj⟩
   | top _ _ | lam _ _ | E _ _ | est _ _ | thin _ _ | nil | atPos _ | foldr _ _ _ _ | fold _ _ _ _ | foldI _ _ _ _
-  | flat _ _
   | hylo _ _ _ _ => exact fun _ => ⟨by noconv, by noproj⟩
   | id =>
     refine fun _ => ⟨fun u hu => ?_, by noproj⟩
@@ -516,7 +515,7 @@ theorem convTm_instObj_den (ph : List Rel.QAtomicType) (σ : List Obj) (ρ : Val
   | leq _ _ | lt _ _ | nu _ _ _ _ _ | mu _ _ _ _ _ =>
     exact fun t' ht _ => ⟨fun u u' hu hu' => inst_false_den ph σ ρ rfl hu hu' ht, by noproj'⟩
   | top _ _ | lam _ _ | E _ _ | est _ _ | thin _ _ | nil | atPos _ | foldr _ _ _ _ | fold _ _ _ _ | foldI _ _ _ _
-  | flat _ _ | hylo _ _ _ _ => exact fun _ _ _ => ⟨by noconv', by noproj'⟩
+  | hylo _ _ _ _ => exact fun _ _ _ => ⟨by noconv', by noproj'⟩
   | id =>
     refine fun t' ht _ => ⟨fun u u' hu hu' => ?_, by noproj'⟩
     rw [convTm.eq_def, if_neg (by simp [Tm.dem])] at hu; cases hu

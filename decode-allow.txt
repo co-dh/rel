@@ -29,7 +29,6 @@ Rel.Lang.GenK.cut
 Rel.Lang.GenK.diff
 Rel.Lang.GenK.elems
 Rel.Lang.GenK.est
-Rel.Lang.GenK.flat
 Rel.Lang.GenK.fold
 Rel.Lang.GenK.foldI
 Rel.Lang.GenK.foldr
