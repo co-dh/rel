@@ -2,14 +2,6 @@ Rel.Column.symBytes
 Rel.Ext.QValue.sliceAt
 Rel.Kernel.Coc.alpBlob
 Rel.Kernel.Coc.alpBlockOf
-Rel.Kernel.Ew.chain
-Rel.Kernel.concatALP
-Rel.Kernel.concatBits
-Rel.Kernel.concatFoR
-Rel.Kernel.concatIds
-Rel.Kernel.fewSyms
-Rel.Kernel.gatherSyms
-Rel.Kernel.internConcat
 Rel.Lang.Expand.emit
 Rel.Lang.Expand.fitConst
 Rel.Lang.Expand.hex

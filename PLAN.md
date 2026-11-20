@@ -524,7 +524,14 @@ Diff table 的「状态」列：✅ 后面是完成它的步骤；🔄 是部分
       own 文件 kind 4 `enum`）。按 architecture §4（`sym` = 保序字典 id，intern = `asc ≫ seen`，字典排好序）与本文件
       "`.syms`、enum 编码删除"，`Column.intern` 与 own 的 `enum` 种类删除，不另问 owner。
       Rust：无整模块可删（`sort structural ew group ids` 各有部分被现行 kernel 使用）；模块设为私有后 894 个无用项，逐项清。
-      在做：T10h（删那 164 个声明与 `Driver`，去掉 `Column.intern` / own `enum`）；T10i（Rust 无用项清理）。
+      状态（2026-11-19 19:46，master `91abf22`，`make check` 全绿，RELK 11，compile-diff 476 / 2）：`t10h`（40c1358）合入。
+      旧 kernel 模块里 224 个无人使用的声明删除，`Kernel/Driver`、`Kernel/Reduce`、`KernelSpec/Dyad` 整个删除，连同约 90 条
+      以它们为对象的引理。index 显示没有任何程序、测试或 native gate 把 `syms` 列送进 own 写入器，所以 `Column.intern`
+      及其辅助删除；`Db.ownParts` / `Db.ownFile` 返回 `Except String`，对 `syms` / `enum` 列报错（symbol 列应是 foR id 加
+      排好序的字典，该写入器尚不存在）。留下：Rust own 格式仍读 kind 4；`Rel/KernelWF/Read.lean` 约 60 条引理无使用者但
+      对象还在；旧模块里剩运行路径与定理仍读的定义（`Carrier`、`rank`、`ordKey`、`binStep`、`tilLongs`、`Ew.intStep` 等）。
+      T10i（`t10i` a837f6c，未合入）：`crate/src` 17 540 → 7 709 行，默认配置 0 警告；但把现行 kernel 的测试也删了
+      （`cargo test` 169 → 53），并去掉了 `build.sh` 无 feature 那一步的 `-D warnings`。T10j 在其上补回被测对象仍在的测试。
     - W3 留给后面的风险（清单 agent 提出，均未验证）：计数做 `\` 会物化 join（最多 `|R|·|S|` 行），SudokuPC9、
       blocks 可能超内存；规范序从 `Obj.lt` 变成 `kasc` 序码，打印的期望值与 `out/key`、`out/val` 可能变；
       `coc_block_start`、`coc_bools_of`、`structural_bits_of_for` 与 `Plan.abi` 点名的 12 个 export 在 W5 后仍有

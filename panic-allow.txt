@@ -1,3 +1,2 @@
 Rel.Kernel.Ew.bitStep
 Rel.Kernel.Ew.intStep
-Rel.Kernel.Ew.monStep
