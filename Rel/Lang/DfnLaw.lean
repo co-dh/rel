@@ -3,11 +3,11 @@ import Rel.RepTabArith
 import Rel.KernelSpec.Elementwise
 import Rel.Run.Lang.Elab
 
-/-! A row with a definition (`Prim.dfn`) is its definition's fused form (§4). `build` replaces the definition it
-    built by the form `Tm.dfnCut?` reads it back to: the fused row at an unbounded object, the fused row cut to the
-    universe at an initial segment `0…k`. `Tm.dfnCut_den` proves each replacement means the definition, from one
-    fact (`chain_in`): a fold from `0` whose step never decreases the value leaves `0…k` only at its result.
-    `Prim.dfn_read` enumerates the rows of `prims` with a definition and fails on one `Tm.dfnCut?` does not read. -/
+/-! A row of `dfns` is its definition's fused form (§4). `build` runs, in place of the definition, the fused row at an
+    unbounded object and the fused row followed by `𝟙` of the target at an initial segment `0…k`; `Tm.dfnCut_den`
+    proves each means the definition, from one fact (`chain_in`): a fold from `0` whose step never decreases the
+    value leaves `0…k` only at its result. At any other universe the definition runs: there a partial sum or count
+    may leave the object while the result is in it. `Prim.dfn_read` ties `dfns` to the rows of `DfnCut`. -/
 
 namespace Rel.Lang
 
@@ -63,22 +63,31 @@ theorem foldrDen_cons {E V : Obj} (Te : Den V V) (TS : Den (.prod E V) V) (x : E
 /-- The base `0` (`zeroTm`): its values are `0`, where `0` is in its universe. -/
 theorem zeroTm_den (u₀ : Tm .long .long) (ρ : Val) {P : Int64 → Prop} (hU : ∀ x y, u₀.den ρ x y ↔ x = y ∧ P x)
     (v : Int64) : (∃ a, (zeroTm u₀).den ρ a v) ↔ v = 0 ∧ P 0 := by
-  simp only [zeroTm, Tm.den, Core.Rel.inter, Core.Rel.comp, Core.Rel.rpair, Core.Rel.id]
+  -- `⟨𝟙,𝟙⟩ minus ∩ 𝟙` keeps `0` alone, where `0` is in the universe
+  have hz : ∀ y w, (Tm.meet (.comp (.pair .id .id) (.arith Rel.Kernel.Ew.sub u₀)) .id : Tm .long .long).den ρ y w ↔
+      y = w ∧ w = 0 ∧ P 0 := fun y w => by
+    simp only [Tm.den, Core.Rel.inter, Core.Rel.comp, Core.Rel.rpair, Core.Rel.id]
+    constructor
+    · rintro ⟨⟨⟨a1, a2⟩, ⟨h1, h2⟩, hA⟩, rfl⟩
+      dsimp only at h1 h2
+      subst h1 h2
+      obtain ⟨-, -, v', ⟨hv, hn, -⟩, hv'⟩ := (arithDen_iff _ _ _ _).1 hA
+      obtain ⟨rfl, hPa⟩ := (hU _ _).1 hv'
+      rw [Rel.Verify.Ew.intStep_sub] at hv
+      split at hv
+      · exact absurd hv hn
+      rw [Int64.sub_self] at hv
+      subst hv
+      exact ⟨rfl, rfl, hPa⟩
+    · rintro ⟨rfl, rfl, h0⟩
+      have hu : u₀.den ρ 0 0 := (hU _ _).2 ⟨rfl, h0⟩
+      exact ⟨⟨(0, 0), ⟨rfl, rfl⟩, (arithDen_iff _ _ _ _).2 ⟨⟨0, hu⟩, ⟨0, hu⟩, 0, by decide, hu⟩⟩, rfl⟩
+  simp only [zeroTm, Tm.den, Core.Rel.inter, Core.Rel.comp, Core.Rel.recip, Core.Rel.id, hz, hU]
   constructor
-  · rintro ⟨a, ⟨⟨a1, a2⟩, ⟨h1, h2⟩, hA⟩, rfl⟩
-    dsimp only at h1 h2
-    subst h1 h2
-    obtain ⟨-, -, v', ⟨hv, hn, -⟩, hv'⟩ := (arithDen_iff _ _ _ _).1 hA
-    obtain ⟨rfl, hPa⟩ := (hU _ _).1 hv'
-    rw [Rel.Verify.Ew.intStep_sub] at hv
-    split at hv
-    · exact absurd hv hn
-    rw [Int64.sub_self] at hv
-    subst hv
-    exact ⟨rfl, hPa⟩
+  · rintro ⟨a, rfl, x, ⟨y, ⟨rfl, -⟩, rfl, rfl, h0⟩, -⟩
+    exact ⟨rfl, h0⟩
   · rintro ⟨rfl, h0⟩
-    have hu : u₀.den ρ 0 0 := (hU _ _).2 ⟨rfl, h0⟩
-    exact ⟨0, ⟨(0, 0), ⟨rfl, rfl⟩, (arithDen_iff _ _ _ _).2 ⟨⟨0, hu⟩, ⟨0, hu⟩, 0, by decide, hu⟩⟩, rfl⟩
+    exact ⟨0, rfl, 0, ⟨0, ⟨rfl, h0⟩, rfl, rfl, h0⟩, ⟨0, ⟨rfl, h0⟩, rfl, rfl, h0⟩⟩
 
 /-- `Int64`'s `+` with no null and no wrap: the integer sum. -/
 theorem stepDen_add_iff (x v w : Int64) : stepDen Ew.add (x, v) w ↔

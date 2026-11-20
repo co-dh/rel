@@ -1546,8 +1546,10 @@ def divTest {A B C : Obj} (c : Tm (.prod A C) (.prod A C)) (s : Tm B C) :
     Tm (.prod A B) (.prod A B) :=
   .diff .id (.dom (.comp (.pair .outl (.comp .outr s)) (.diff .id c)))
 
-/-- The fold base `0` as `Pre.zero0` builds it on the universe `u`: `⟨𝟙,𝟙⟩ minus ∩ 𝟙`. -/
-def zeroTm (u : Tm .long .long) : Tm .long .long := .meet (.comp (.pair .id .id) (.arith Rel.Kernel.Ew.sub u)) .id
+/-- The fold base `0` as `Pre.fold0` builds it on the universe `u`: `ran(u (⟨𝟙,𝟙⟩ minus ∩ 𝟙))`, closed on `u`
+    (`closeRes`), since the fold reads its start whole; the bare `⟨𝟙,𝟙⟩ minus ∩ 𝟙` needs keys and runs empty there. -/
+def zeroTm (u : Tm .long .long) : Tm .long .long :=
+  .ran (.comp u (.meet (.comp (.pair .id .id) (.arith Rel.Kernel.Ew.sub u)) .id))
 
 /-- A row's definition (§4): `⦇[0, π₁ succ]⦈` (`lengthRow`'s) and `⦇[0, plus]⦈ʳ` (`sumRow`'s), the base `0` on the
     universe `u₀`, the step on `u`; `⟨π₁R,π₂⟩dom(π₁π₁ ∩ π₂)π₁π₂` (`flatRow`'s, of the family `R`). Indexed by the
@@ -1833,11 +1835,11 @@ def build : Pre → Except Err Res
   | .thin p => do let ⟨_, c⟩ ← param p; pure ⟨_, _, .thin c⟩
   | .nil a b => return ⟨_, _, .nil (A := ← toObj objs mc dp a) (B := ← toObj objs mc dp b)⟩
   -- the row's objects are checked where `Expand.primE` fits its constant at them (`primsFit`, `node`). A row of
-  -- `dfns` is the fused form of its definition (§4), which `Tm.dfnCut_den` proves equal to the row at an unbounded
-  -- target (universe `𝟙`) or where the law needs no universe (`DfnCut.uni`), and to the row cut to the universe
-  -- at an initial segment `0…k` (one pass, where the definition's fold reads the universe in every round). At any
-  -- other universe (an object variable of a generic body, or one not from 0) the definition `d`, the DfnCut's index,
-  -- runs; with no universe, the row runs (the definition's base `0` would need keys none supply).
+  -- `dfns` means its definition `d` (§4: every step stays in the target object). `Tm.dfnCut_den` proves `d` equal to
+  -- the row followed by `𝟙` of the target (`c.cut`) where the universe is every number or `0…k`, and to the row
+  -- itself at `𝟙` or where no universe enters (`DfnCut.uni`); at any other universe (one with negatives or not from
+  -- `0`, or an object variable no call fixed to one of those) the two differ — `[−3,3,3] sum` on `−3…3` is `𝟘` by
+  -- `d`, `3` by the cut — so `d` runs. With no universe, the row runs (the base `0` would need keys none supply).
   | .prim r xs s t => do
     let A ← toObj objs mc dp s; let B ← toObj objs mc dp t
     let row (_ : Unit) : Except Err Res :=
