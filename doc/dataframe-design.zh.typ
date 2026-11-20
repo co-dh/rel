@@ -192,7 +192,7 @@ next(n, x)        ≜ dom(x) tot(⟨𝟙, ⊤ n⟩plus x)                 行 i 
 ```
 
 - `f` 的取法（`c = x v`）：`sum` 是 `F(c) sum`（prim `sum`，dfn `⦇[0, plus]⦈ʳ`），`count` 是 `length`，积是
-  `F(c) ⦇[⊤ 1, times]⦈`，`reduce` 是 `F(c) ⦇[e, op]⦈`（`op` 是一个 `arith`），`mean` 是 `F(c) ⟨sum, length⟩div`。
+  `F(c) ⦇[⊤ 1, times]⦈`，`reduce` 是 `F(c) ⦇[e, op]⦈`（`op` 是一个 `arith`）。`mean` 不在库里：它要 `f64` 上的 `sum` 与 `div`（F4）。
   `min` `max` 只选不造：`F(c) Λ(∋) head`、`last`（`Λ(∋)` 是数组的值的升序集合）。每组第一个、最后一个值：
   `F(c) head`、`last`。`F` 是 prim：数组逐元素后接 `c`。
 - 一个实例：`c = x a = B A B`：`agg(c°, head)` 是 `A ↦ 1`、`B ↦ 0`，`asc` 把 `{0, 1}` 编号，`firstOcc = 0 1`；
@@ -236,8 +236,8 @@ next(n, x)        ≜ dom(x) tot(⟨𝟙, ⊤ n⟩plus x)                 行 i 
   ([`topK` `bottomK` `kExtremes`], [`topK(n, a, x) ≜ take(n, sortByDesc(a, x))`；`bottomK` 是 `topBy`], [并列按位置顺序], "full"),
   ([`valueCounts` `valueProportions` `frequencies`], [`valueCounts(a, x) ≜ aggregate(a, length, x)`], [比例：计数经 `$ F` 成为 `f64`，但 `f64` 上没有 `div`：F4], "part"),
   ([`summarize` `describeColumns`],
-    [`describe(c) ≜ ⟨count(c), ⟨summarize(F(c) ⟨sum, length⟩div, c), ⟨summarize(F(c) Λ(∋) head, c), summarize(F(c) Λ(∋) last, c)⟩⟩⟩`],
-    [整数列的 count、mean、min、max；浮点的 mean / std：F4], "part"),
+    [`describe(c) ≜ ⟨count(c), ⟨summarize(F(c) Λ(∋) head, c), summarize(F(c) Λ(∋) last, c)⟩⟩`],
+    [count、min、max；mean / std 要 `f64` 上的 `sum` 与 `div`：F4], "part"),
   ([`nulls`], [`nulls(c, x) ≜ count(filterNothing(c, x))`], [], "full"),
   ([`innerJoin` `join` `joinOn`], [`innerJoin(a, b, x, y) ≜ joinOn(J(a, b, x, y), x, y)`], [], "full"),
   ([`leftJoin`], [`leftJoin(a, b, x, y) ≜ asc(ran(⟨𝟙, dom(x) tot(J(a, b, x, y))⟩)) ⟨π₁ x, π₂ (y ⊕ 𝟙)⟩`],

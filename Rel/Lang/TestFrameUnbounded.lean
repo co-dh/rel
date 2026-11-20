@@ -47,7 +47,7 @@ rel_program frameUnboundedT where
     cl : N ⟶ N ≜ c length
     check cl = {(0,3),(1,2),(2,3)}
     check summarize(F(x π₂) ⦇[{(∗,0)}, max]⦈, x) = {(∗,7)}
-    check describe(x π₂) = {(∗,(8,(3,(1,7))))}
+    check describe(x π₂) = {(∗,(8,(1,7)))}
     check x π₂ ⟨𝟙, ⊤ {(∗,2)}⟩div = {(0,2),(1,1),(2,2),(3,0),(4,3),(5,1),(6,0),(7,1)}
     check x π₂ ⟨𝟙, ⊤ {(∗,2)}⟩mod = {(0,1),(1,1),(2,1),(3,1),(4,1),(5,0),(6,1),(7,1)}
     check filterBy(dom(π₁ {(A,A)}) ∩ dom(π₂ dom(<°{(2,∗)})), x) = {(0,(A,3)),(1,(A,7)),(2,(A,3))}

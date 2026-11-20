@@ -46,7 +46,7 @@ rel_program frameNullT where
     check dom(nc inl°) = {(0,0),(2,2),(4,4),(7,7)}
     check dom(nc inr°) = {(1,1),(3,3),(5,5),(6,6)}
     check nc (succ ⊕ 𝟙) [𝟙, {(∗,40)}] = {(0,6),(1,40),(2,6),(3,40),(4,8),(5,40),(6,40),(7,4)}
-    -- imputeWith the mean of the values present, (5+5+7+3) div 4 = 5
+    -- imputeWith the integer quotient (by intent; not a mean) of the values present, (5+5+7+3) div 4 = 5
     check nc [𝟙, summarize(F(nc inl°) ⟨sum, length⟩div, nc inl°)] = {(0,5),(1,5),(2,5),(3,5),(4,7),(5,5),(6,5),(7,3)}
     check nulls(π₂, xn) = {(∗,4)}
     -- fills: 5 · 5 · 7 · · 3 → 5 5 5 5 7 7 7 3; a leading null stays: · · 4 · · 1 · · → · · 4 4 4 1 1 1
