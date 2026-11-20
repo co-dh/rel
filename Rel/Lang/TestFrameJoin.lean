@@ -33,6 +33,8 @@ rel_program frameJoinT where
     -- x's rows in y2: (A,3) at 1 7, (C,2) at 5
     check intersect(x, y2) = {(0,(A,3)),(1,(C,2))}
     check difference(x, y2) = {(0,(B,5)),(1,(C,1)),(2,(A,7)),(3,(B,1))}
+    -- then y2's rows not in x: (B,4)
+    check symmetricDifference(x, y2) = {(0,(B,5)),(1,(C,1)),(2,(A,7)),(3,(B,1)),(4,(B,4))}
     check melt({(∗,a)}, π₁, {(∗,b)}, π₂, w) = {(0,(a,1)),(1,(a,3)),(2,(a,5)),(3,(b,2)),(4,(b,4)),(5,(b,6))}
     t : P ⟶ K×(N×N) ≜ {(0,(A,(1,2))),(1,(B,(3,4))),(2,(C,(5,6)))}
     check pivotLong(π₁, {(∗,a)}, π₂ π₁, {(∗,b)}, π₂ π₂, t) =
