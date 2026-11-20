@@ -211,8 +211,9 @@ inductive Pre
   | est (p : Pre)
   | thin (p : Pre)
   | nil (a b : OTy)
-  /-- The row `r` of `prims` at `s ⟶ t`, an instance of its type, given the relations `args` (`Prim.inst`). -/
-  | prim (r : Prim) (args : List Pre) (s t : OTy)
+  /-- The row `r` of `prims` at `s ⟶ t`, an instance of its type, given the relations `args` (`Prim.inst`);
+      `dfn` its definition `r.dfn` elaborated at `s ⟶ t`, which `build` runs where `t` has a universe. -/
+  | prim (r : Prim) (args : List Pre) (s t : OTy) (dfn : Option Pre)
   | atPos (k : Nat) (b : OTy)
   | own (p : Pre)
   | succ (pos : Pos) (n : OTy)
@@ -367,7 +368,7 @@ def Pre.traverse {m : Type → Type} [Monad m] (fp : Pos → m Pos) (f : Option 
   | .est x => return .est (← mo x)
   | .thin x => return .thin (← f (some (.not "thin")) x)
   | .own x => return .own (← mo x)
-  | .prim r xs s t => return .prim r (← xs.mapM (f (some (if r.mono then .mono else .not r.sym)))) s t
+  | .prim r xs s t d => return .prim r (← xs.mapM (f (some (if r.mono then .mono else .not r.sym)))) s t (← d.mapM (f none))
   | .succ q n => return .succ (← fp q) n
   | .arith q k n => return .arith (← fp q) k n
   | .leq q n => return .leq (← fp q) n
@@ -723,8 +724,8 @@ def lProd : Pre × OTy × OTy → Pre × OTy × OTy → Pre × OTy × OTy
 def lJunc : Pre × OTy × OTy → Pre × OTy × OTy → M (Pre × OTy × OTy)
   | (R, a, c), (S, b, c') => do
     unify p "the target of the case's second part" c' c
-    pure (join (comp R (pair (comp (outl a c) (Pre.prim inlRow [] a (.sum a b))) (outr a c)))
-      (comp S (pair (comp (outl b c) (Pre.prim inrRow [] b (.sum a b))) (outr b c))), .sum a b, c)
+    pure (join (comp R (pair (comp (outl a c) (Pre.prim inlRow [] a (.sum a b) none)) (outr a c)))
+      (comp S (pair (comp (outl b c) (Pre.prim inrRow [] b (.sum a b) none)) (outr b c))), .sum a b, c)
 
 /-- `Λ(R)` lifted on the sources `S : I ⟶ a` of each key, `Rπ₁` (`dom`) when none: `⟨𝟙,S⟩⟨π₂,Λ(Rᴵ)⟩`. `Λ` takes
     `S = ⊤` onto `a`'s universe, being total; `E` and `thin` take `dom`, as their `a = [x]` has no universe. -/
@@ -785,7 +786,7 @@ def constant (env : Env) (p : Pos) (o : Op) (objs : List OExp) : M Arg := do
     | some r => do
       let (ps, s, t) ← r.inst env
       unless ps.isEmpty do throw ⟨p, s!"{r.sym} takes {ps.length} arguments, found 0"⟩
-      pure (some (Pre.prim r [] s t, s, t))
+      pure (some (Pre.prim r [] s t none, s, t))
     | none => pure none
   let (q, s, t) : Pre × OTy × OTy := row.getD <| match o with
     | .id => (.id a, a, a)
@@ -798,7 +799,7 @@ def constant (env : Env) (p : Pos) (o : Op) (objs : List OExp) : M Arg := do
     | .succ => (.succ p a, a, a)
     | .arith k => (.arith p k a, .prod a a, a)
     | .nil => (.nil a b, a, .arr b)
-    | .alpha => (.junc (.close p (.nil a b) a "α") (.close p (.prim consRow [] (.prod b (.arr b)) (.arr b)) (.prod b (.arr b)) "α"),
+    | .alpha => (.junc (.close p (.nil a b) a "α") (.close p (.prim consRow [] (.prod b (.arr b)) (.arr b) none) (.prod b (.arr b)) "α"),
         .sum a (.prod b (.arr b)), .arr b)
     | .index k => (.atPos k b, .arr b, b)
     | _ => (.id a, a, a)
@@ -859,7 +860,7 @@ def appliedRow (env : Env) (p : Pos) (r : Prim) (qs : List (Pre × OTy × OTy)) 
   let xs ← (ps.zip qs).mapM fun (((x, y), f), (q, s', t')) => do
     unify p s!"the source of {r.sym}'s argument" s' x; unify p s!"the target of {r.sym}'s argument" t' y
     pure (r.pass p f q s')
-  pure (.rel (.prim r xs s t) s t)
+  pure (.rel (.prim r xs s t none) s t)
 
 /-- A builtin applied to relations, every argument one relation. -/
 def applied (env : Env) (p : Pos) (o : Op) (as : List (Pre × OTy × OTy)) : M Arg := do
@@ -886,7 +887,7 @@ def appliedL (I : OTy) (p : Pos) (o : Op) (as : List Arg) : M Arg := do
     | .dom, [R] => pure (lDom R)
     | .ran, [R] => pure (lRan R)
     | .lam, [R] => pure (lLam I (some (.top p I R.2.1 none)) R)
-    | .E, [R] => do let b ← fresh; pure (lLam I none (← lComp I p (liftConst I p (.prim memRow [] (.arr b) b) (.arr b) b) R))
+    | .E, [R] => do let b ← fresh; pure (lLam I none (← lComp I p (liftConst I p (.prim memRow [] (.arr b) b none) (.arr b) b) R))
     | o, _ => notLiftable p s!"{o.sym}( )"
   pure (.fam r.1 I r.2.1 r.2.2)
 
@@ -909,8 +910,13 @@ where
     let (src, tgt) := match a with | .rel _ s t | .fam _ _ s t => (s, t)
     unify p "the target of ⦇R⦈'s base inl R, the target of its step inr R" tgt (match s with | .rel _ _ t | .fam _ _ _ t => t)
     -- a base `a : B ⟶ V` means the book's `⊤a`, `⊤ : 1 ⟶ B`, as `ran(⊤a) = ran(a)` is the kernel's start
-    -- either way; so `1` is its source only where nothing else fixed one, as `settleNil` does for `nil`
-    if let .mv _ := zonk (← Lean.getMCtx) src then unify p "the source of ⦇R⦈'s base inl R" src env.one
+    -- either way; so `1` is its source only where nothing else fixed one, as `settleNil` does for `nil`: a base on
+    -- one object, a coreflexive on `V` (`sum`'s `0`), is its own start
+    let mc ← Lean.getMCtx
+    match zonk mc src, zonk mc tgt with
+    | .mv i, .mv j => if i != j then unify p "the source of ⦇R⦈'s base inl R" src env.one
+    | .mv _, _ => unify p "the source of ⦇R⦈'s base inl R" src env.one
+    | _, _ => pure ()
     match m, a with
     | some I, .fam .. => pure (← appliedL I p .ran [a], s)
     | _, _ => pure (← applied env p .ran [a.plain], s)
@@ -976,12 +982,12 @@ partial def hyloG (p : Pos) (k : Nat) (a b : OTy) (t s : OTy) : M (Pre × OTy ×
     let (g₁, u₁, m₁) ← hyloG p k a b t₁ s₁; let (g₂, u₂, m₂) ← hyloG p k a b t₂ s₂
     if !m₁ && !m₂ then return (.id t, t, false)
     let junc (l r : Pre) : Pre := .junc (.close p l t₁ w) (.close p r t₂ w)
-    return (junc (.comp g₁ (.prim inlRow [] u₁ (.sum u₁ u₂))) (.comp g₂ (.prim inrRow [] u₂ (.sum u₁ u₂))), .sum u₁ u₂,
+    return (junc (.comp g₁ (.prim inlRow [] u₁ (.sum u₁ u₂) none)) (.comp g₂ (.prim inrRow [] u₂ (.sum u₁ u₂) none)), .sum u₁ u₂,
       true)
   | .arr t₁, .arr s₁ | .arr t₁, s₁@(.mv _) =>
     let (g₁, u₁, m₁) ← hyloG p k a b t₁ s₁
     if !m₁ then return (.id t, t, false)
-    return (.prim mapRow [g₁] (.arr t₁) (.arr u₁), .arr u₁, true)
+    return (.prim mapRow [g₁] (.arr t₁) (.arr u₁) none, .arr u₁, true)
   | _, _ =>
     if t == s || any then return (.id t, t, false)
     throw ⟨p, s!"hylo(c, S): c's target and S's source differ at {t} against {s}, which is neither {a} against {b} \
@@ -990,7 +996,7 @@ partial def hyloG (p : Pos) (k : Nat) (a b : OTy) (t s : OTy) : M (Pre × OTy ×
 mutual
 
 /-- Elaborate `e` in the mode `m`: plain, or the body of a definition lifted to the index `I`. -/
-def elabE (env : Env) (m : Option OTy) : Expr → M Arg
+partial def elabE (env : Env) (m : Option OTy) : Expr → M Arg
   | .name p n => do
     match env.params.lookup n with
     -- a fixed point's variable at the place it is used, which its errors name
@@ -1012,10 +1018,20 @@ def elabE (env : Env) (m : Option OTy) : Expr → M Arg
     pure (.rel (.hylo c.pos k (.comp (.comp qc gx) qs) a b) a b)
   | .op p o objs args => do
     let as ← elabArgs env m args
-    if args.isEmpty then constant env p o objs
-    else match m with
-      | some I => if as.any Arg.isFam then appliedL I p o as else applied env p o (as.map Arg.plain)
-      | none => applied env p o (as.map Arg.plain)
+    let a ← if args.isEmpty then constant env p o objs
+      else match m with
+        | some I => if as.any Arg.isFam then appliedL I p o as else applied env p o (as.map Arg.plain)
+        | none => applied env p o (as.map Arg.plain)
+    -- a row with a definition carries it at the row's objects, for `build` to run where the target has a universe
+    match a with
+    | .rel (.prim r xs s t none) s' t' => match r.dfn with
+      | some e => do
+        unless r.sig.1.isEmpty do throw ⟨p, s!"internal: {r.sym}'s definition takes none of its relations"⟩
+        let (q, u, v) := (← elabE env none e).plain
+        unify p s!"the source of {r.sym}'s definition" u s; unify p s!"the target of {r.sym}'s definition" v t
+        pure (.rel (.prim r xs s t (some (q.at p))) s' t')
+      | none => pure a
+    | a => pure a
   | .app p n args => do
     let as ← elabArgs env m args
     match env.def? n with
@@ -1053,7 +1069,7 @@ def elabE (env : Env) (m : Option OTy) : Expr → M Arg
     match m, q? with
     | some I, some q => do
       let e ← fresh
-      let G ← lThen p (← famOf I p x) (.prim memRow [] (.arr e) e, .arr e, e)
+      let G ← lThen p (← famOf I p x) (.prim memRow [] (.arr e) e none, .arr e, e)
       let Q ← famOf I p q
       let r ← if est then do lSame p Pre.meet G (← lLdiv I p (lConv G) (lConv Q))
         else do pure (lLam I none (← lSame p Pre.diff G (← lComp I p G (← lSame p Pre.diff Q (lConv Q)))))
@@ -1133,7 +1149,7 @@ def elabE (env : Env) (m : Option OTy) : Expr → M Arg
       throw ⟨p, s!"{fx} needs a bound: write S ∩ φ with S not mentioning {x} (⊤(A,B) for the whole object)"⟩
     pure (.rel (.fix p least k x S q a c) a c)
 
-def elabArgs (env : Env) (m : Option OTy) : List Expr → M (List Arg)
+partial def elabArgs (env : Env) (m : Option OTy) : List Expr → M (List Arg)
   | [] => pure []
   | e :: es => do let a ← elabE env m e; pure (a :: (← elabArgs env m es))
 
@@ -1699,17 +1715,18 @@ def build : Pre → Except Err Res
   | .est p => do let ⟨_, c⟩ ← param p; pure ⟨_, _, .est c⟩
   | .thin p => do let ⟨_, c⟩ ← param p; pure ⟨_, _, .thin c⟩
   | .nil a b => return ⟨_, _, .nil (A := ← toObj objs mc dp a) (B := ← toObj objs mc dp b)⟩
-  -- the row's objects are checked where `Expand.primE` fits its constant at them (`primsFit`, `node`); its result
-  -- kept in the universe of its target where that has one, as the number verbs keep theirs (`arithDen`'s `≫ TU`)
-  | .prim r xs s t => do
+  -- a row is the fused form of its definition (§4): where its target has a universe, the definition runs, each
+  -- step kept in the object as `succ`, `plus` keep theirs; the fused row only where no step can leave it
+  | .prim r xs s t (some q) => do
+    have : 0 < sizeOf q := by cases q <;> simp <;> omega
+    if (← uniPart objs dp (zonk mc t) (← toObj objs mc dp t)).isSome then build q else build (.prim r xs s t none)
+  -- the row's objects are checked where `Expand.primE` fits its constant at them (`primsFit`, `node`)
+  | .prim r xs s t none => do
     let A ← toObj objs mc dp s; let B ← toObj objs mc dp t
-    let ⟨A, B, f⟩ ← (r.sig.1.zip xs.attach).foldlM (init := (⟨A, B, .prim r⟩ : Res)) fun ⟨A, B, f⟩ ((_, form), ⟨x, h⟩) => do
+    (r.sig.1.zip xs.attach).foldlM (init := (⟨A, B, .prim r⟩ : Res)) fun ⟨A, B, f⟩ ((_, form), ⟨x, h⟩) => do
       have := List.sizeOf_lt_of_mem h
       if form == some true then let ⟨_, c⟩ ← param x; pure ⟨A, B, .arg f c⟩
       else let ⟨_, _, u⟩ ← build x; pure ⟨A, B, .arg f u⟩
-    match ← uniPart objs dp (zonk mc t) B with
-    | some u => pure ⟨A, B, .comp f u⟩
-    | none => pure ⟨A, B, f⟩
   | .own p => do
     let ⟨A, B, t⟩ ← build p
     if h : B = A then pure ⟨A, A, .own (h ▸ t)⟩ else internal dp "perm's objects"
