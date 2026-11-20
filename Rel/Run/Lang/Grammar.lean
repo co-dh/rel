@@ -178,6 +178,8 @@ syntax:60 (name := rComp) rel:60 sameLine rel:61 : rel
 syntax:60 (name := rBin) rel:60 binOp rel:61 : rel
 -- `R | S` is `R S`, written so where juxtaposition would read `f(a)` as an application; `|` is no name
 syntax:60 (name := rPipe) rel:60 "|" rel:61 : rel
+-- `x $ F`: `x`'s values to the same numbers at the object `F` (the row `$`); at the infix level, left to right
+syntax:60 (name := rCast) rel:60 "$" relObj:max : rel
 -- `μX : φ`, `νX : φ`, one identifier then the body to the end: below every operator, so an operand only in
 -- parentheses
 syntax:0 (name := rFix) ident ":" rel : rel
@@ -334,6 +336,8 @@ partial def items (s : Syntax) : C Items := do
   | ``rPipe => match ← prim s[2] with
     | b :: bs => do infixFree b; pure ((← items s[0]) ++ (b :: bs).map (none, ·))
     | [] => failAt s[2] "expected a term"
+  -- `x $ F` is `x` composed with the row `$` at the target `F`
+  | ``rCast => do pure ((← items s[0]) ++ [(none, .op (← posOf s[1]) (.prim "$") [← obj s[2]] [])])
   | ``rBin =>
     let some o := Bin.table.lookup (atomIn s[1]).front | failAt s[1] "expected an operator"
     match ← prim s[2] with

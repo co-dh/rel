@@ -1,6 +1,7 @@
 import Lean
 import Rel.Kernel.Op
 import Rel.Run.Core
+import Rel.Kernel.Cast
 
 /-! The Rel language's surface syntax (`doc/rel-lang-design.md` §c, §h): objects, terms, declarations, each node
     with its source line and column. The builtin operators are one table, `Op.table`, read by the parser (symbol,

@@ -28,6 +28,7 @@ import Rel.Lang.TestChess
 import Rel.Lang.TestCircuit
 import Rel.Lang.TestDemand
 import Rel.Lang.TestFloatObj
+import Rel.Lang.TestCast
 import Rel.Lang.TestTopProd
 import Rel.Lang.TestDetab
 import Rel.Lang.TestEdit

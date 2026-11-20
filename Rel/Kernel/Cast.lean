@@ -135,6 +135,27 @@ def embed (s t : QAtomicType) (x : Carrier s) : Option (Carrier t) := (value s x
 /-- The stored word of `x`, as a column holds it (`num`, two's complement past the sign). -/
 def word (t : QAtomicType) (x : Carrier t) : UInt64 := UInt64.ofInt (t.num x)
 
+/-- Equality of two words of an atom other than `general` (whose `QValue`s `$` never produces). -/
+def decEq : (t : QAtomicType) → t ≠ .general → DecidableEq (Carrier t)
+  | .u1, _ => inferInstanceAs (DecidableEq Bool)
+  | .u8, _ | .char, _ => inferInstanceAs (DecidableEq UInt8)
+  | .i8, _ => inferInstanceAs (DecidableEq Int8)
+  | .i16, _ => inferInstanceAs (DecidableEq Int16)
+  | .i32, _ | .date, _ => inferInstanceAs (DecidableEq Int32)
+  | .i64, _ | .datetime, _ => inferInstanceAs (DecidableEq Int64)
+  | .f32, _ => inferInstanceAs (DecidableEq UInt32)
+  | .f64, _ => inferInstanceAs (DecidableEq UInt64)
+  | .sym, _ => inferInstanceAs (DecidableEq String)
+  | .general, h => absurd rfl h
+
+/-- A word `$` produces at `t` is canonical (`nonCanonical`, the one predicate): `floatBits` writes zero as `+0` and a
+    value as a finite word, so no `-0` and no NaN. Decided at the integers where the format changes, not proved for all. -/
+def embedCanonical (s t : QAtomicType) (x : Carrier s) : Bool := (embed s t x).all fun y => !nonCanonical t (word t y)
+
+example : [0, 1, -1, 2, -2, 9007199254740992, -9007199254740992, 4611686018427387904, Int64.maxValue,
+    -Int64.maxValue].all (embedCanonical .i64 .f64) := by decide
+example : [0, 1, -1, 16777216, -16777216, Int32.maxValue, -Int32.maxValue].all (embedCanonical .i32 .f32) := by decide
+
 -- the pairs `$` admits: widenings and integer → float; no float → integer, no narrowing, no non-number atom
 #guard castOK .i32 .i64 && castOK .i64 .f64 && castOK .i32 .f64 && castOK .f32 .f64 && castOK .u8 .i16 &&
   castOK .i64 .f32 && castOK .i64 .i64

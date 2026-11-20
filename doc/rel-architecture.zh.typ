@@ -163,10 +163,15 @@ compile η t : {r : Rel A B // rep r = ⟦t⟧ρ}       -- 方案 A：规格在�
 
 #tbl(c-rs, (auto, 1fr), ([移出], [原因]),
   [`gen`（boxed）], [不在 kernel 里处理 boxed 值；boxed 值先编成 code 再进 Rel],
-  [`til` `cycle` `cast` `floor` `widen`], [q verb，不是 allegory 运算],
+  [`til` `cycle` `floor` `widen`], [q verb，不是 allegory 运算],
   [`find` `bin search` `member` `match`], [q 的查找 verb；Rel 中是 `≫`（join）的特例],
   [`md5` 等], [q 运行时的需要],
 )
+
+q 的 `cast` 不移出，而是行 `$`（typed base S6）：`x $ F` 把 `x : A ⟶ N` 的每个值换成 `F` 的 atom 上同一个数，即与
+`QAtomicType.embed s t` 的图复合。只允许保值方向：`s → t` 当且仅当 `s` 的每个值在 `t` 上都能精确表示（`castOK`，由两个
+atom 的位宽、符号、指数和尾数位读出，不逐对列出），另加整数 → 浮点；后者在不能精确表示处没有像（部分映射，从不舍入，
+`i64 → f64` 在 `2^53 + 1` 处无像）。有损方向（浮点 → 整数、宽 → 窄）在 elaboration 时报错并写出两个 atom。
 
 == 剩下的唯一编码：foR（分块 frame of reference）
 
