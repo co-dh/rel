@@ -19,6 +19,11 @@ rel_program frameJoinT where
     ij : P ⟶ (K×N)×(K×N) ≜ innerJoin(π₁, π₁, x, y)
     check ij = {(0,((A,3),(A,9))),(1,((A,3),(A,6))),(2,((C,1),(C,8))),(3,((A,7),(A,9))),(4,((A,7),(A,6))),
       (5,((C,2),(C,8))),(6,((A,3),(A,9))),(7,((A,3),(A,6)))}
+    -- a pair of columns as the key: x's (k, v) against y3's (k, first value); x's rows 3 and 5 have no match
+    y3 : P ⟶ K×(N×N) ≜ {(0,(A,(3,11))),(1,(B,(5,12))),(2,(A,(7,13))),(3,(B,(1,14)))}
+    ij2 : P ⟶ (K×N)×(K×(N×N)) ≜ innerJoin(⟨π₁, π₂⟩, ⟨π₁, π₂ π₁⟩, x, y3)
+    check ij2 = {(0,((B,5),(B,(5,12)))),(1,((A,3),(A,(3,11)))),(2,((B,5),(B,(5,12)))),(3,((A,7),(A,(7,13)))),
+      (4,((B,1),(B,(1,14)))),(5,((A,3),(A,(3,11))))}
     check semiJoin(π₁, π₁, x, y) = {(0,(A,3)),(1,(C,1)),(2,(A,7)),(3,(C,2)),(4,(A,3))}
     check antiJoin(π₁, π₁, x, y) = {(0,(B,5)),(1,(B,5)),(2,(B,1))}
     -- 8 × 3 rows: row 3i + j pairs x's row i with y's row j
