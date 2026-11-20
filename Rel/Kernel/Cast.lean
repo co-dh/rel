@@ -234,13 +234,72 @@ def decEq : (t : QAtomicType) → t ≠ .general → DecidableEq (Carrier t)
   | .sym, _ => inferInstanceAs (DecidableEq String)
   | .general, h => absurd rfl h
 
-/-- A word `$` produces at `t` is canonical (`nonCanonical`, the one predicate): `floatBits` writes zero as `+0` and a
-    value as a finite word, so no `-0` and no NaN. Decided at the integers where the format changes, not proved for all. -/
-def embedCanonical (s t : QAtomicType) (x : Carrier s) : Bool := (embed s t x).all fun y => !nonCanonical t (word t y)
+/-- **A word `$` produces at `t` is canonical** (`nonCanonical`, the one predicate): `floatBits`' exponent field is never
+    all ones, so no NaN, and a word with the sign bit has a nonzero exponent or fraction, so no `-0`
+    (`floatBits_some`). -/
+theorem embed_canonical {s t : QAtomicType} {x : Carrier s} {y : Carrier t} (h : embed s t x = some y) :
+    nonCanonical t (word t y) = false := by
+  have hnul := word_ne_nul h
+  obtain ⟨v, -, hv⟩ := Option.bind_eq_some_iff.1 h
+  have k (x : Nat) (j : Nat) : x &&& (2 ^ j - 1) = x % 2 ^ j := Nat.and_two_pow_sub_one_eq_mod x j
+  cases t <;> simp only [ofValue, numFmt?, QAtomicType.width, Option.bind_eq_some_iff, Option.map_eq_some_iff,
+    NumFmt.lo, NumFmt.hi, reduceCtorEq, Option.ite_none_right_eq_some] at hv
+  case f32 =>
+    obtain ⟨b, hb, rfl⟩ := hv
+    cases hf : floatBits 8 23 v <;> simp [hf] at hb
+    subst hb
+    obtain ⟨sg, ex, fr, rfl, h1, h2, h3, h4⟩ := floatBits_some hf
+    have hw : (word .f32 (ofNum .f32 (((sg * 2 ^ (8 + 23) + ex * 2 ^ 23 + fr : Nat)) : Int))).toUInt32.toNat =
+        sg * 2 ^ 31 + ex * 2 ^ 23 + fr := by
+      simp [word, num, ofNum, UInt64.ofInt]; omega
+    simp only [nonCanonical, Bits.f32IsNaN, Bool.or_eq_false_iff, Bool.and_eq_false_iff, beq_eq_false_iff_ne,
+      bne_eq_false_iff_eq, ne_eq]
+    refine ⟨.inl fun hx => ?_, fun hx => ?_⟩
+    · have := congrArg UInt32.toNat hx
+      rw [UInt32.toNat_and, UInt32.toNat_shiftRight, hw, Nat.shiftRight_eq_div_pow] at this
+      have := k ((sg * 2 ^ 31 + ex * 2 ^ 23 + fr) / 2 ^ (23 % 32)) 8
+      simp at *
+      omega
+    · have := congrArg UInt32.toNat hx
+      rw [hw] at this
+      simp at this
+      omega
+  case f64 =>
+    obtain ⟨b, hb, rfl⟩ := hv
+    cases hf : floatBits 11 52 v <;> simp [hf] at hb
+    subst hb
+    obtain ⟨sg, ex, fr, rfl, h1, h2, h3, h4⟩ := floatBits_some hf
+    have hw : (word .f64 (ofNum .f64 (((sg * 2 ^ (11 + 52) + ex * 2 ^ 52 + fr : Nat)) : Int))).toNat =
+        sg * 2 ^ 63 + ex * 2 ^ 52 + fr := by
+      simp [word, num, ofNum, UInt64.ofInt]; omega
+    simp only [nonCanonical, Bits.f64IsNaN, Bool.or_eq_false_iff, Bool.and_eq_false_iff, beq_eq_false_iff_ne,
+      bne_eq_false_iff_eq, ne_eq]
+    refine ⟨.inl fun hx => ?_, by simpa using hnul⟩
+    have := congrArg UInt64.toNat hx
+    rw [UInt64.toNat_and, UInt64.toNat_shiftRight, hw, Nat.shiftRight_eq_div_pow] at this
+    have := k ((sg * 2 ^ 63 + ex * 2 ^ 52 + fr) / 2 ^ (52 % 64)) 11
+    simp at *
+    omega
+  all_goals rfl
 
-example : [0, 1, -1, 2, -2, 9007199254740992, -9007199254740992, 4611686018427387904, Int64.maxValue,
-    -Int64.maxValue].all (embedCanonical .i64 .f64) := by decide
-example : [0, 1, -1, 16777216, -16777216, Int32.maxValue, -Int32.maxValue].all (embedCanonical .i32 .f32) := by decide
+/-- **A number atom's stored word read back at its type is the atom** (`ofBits` after `word`). -/
+theorem ofBits_word {t : QAtomicType} (y : Carrier t) (h : t.numFmt?.isSome) : ofBits t (word t y) = y := by
+  cases t <;> first | exact absurd h (by decide) | simp only [ofBits, word, num]
+  case u8 => apply UInt8.toNat_inj.1; simp [UInt64.ofInt]; have := y.toNat_lt; omega
+  case f32 => apply UInt32.toNat_inj.1; simp [UInt64.ofInt]; have := y.toNat_lt; omega
+  case f64 => apply UInt64.toNat_inj.1; simp [UInt64.ofInt]; have := y.toNat_lt; omega
+  case i8 =>
+    apply Int8.toBitVec_inj.1; simp only [UInt64.ofInt, Int8.toInt]; apply BitVec.eq_of_toNat_eq
+    simp [BitVec.toInt_eq_toNat_cond]; have := y.toBitVec.isLt; split <;> omega
+  case i16 =>
+    apply Int16.toBitVec_inj.1; simp only [UInt64.ofInt, Int16.toInt]; apply BitVec.eq_of_toNat_eq
+    simp [BitVec.toInt_eq_toNat_cond]; have := y.toBitVec.isLt; split <;> omega
+  case i32 =>
+    apply Int32.toBitVec_inj.1; simp only [UInt64.ofInt, Int32.toInt]; apply BitVec.eq_of_toNat_eq
+    simp [BitVec.toInt_eq_toNat_cond]; have := y.toBitVec.isLt; split <;> omega
+  case i64 =>
+    apply Int64.toBitVec_inj.1; simp only [UInt64.ofInt, Int64.toInt]; apply BitVec.eq_of_toNat_eq
+    simp [BitVec.toInt_eq_toNat_cond]; have := y.toBitVec.isLt; split <;> omega
 
 -- the pairs `$` admits: widenings and integer → float; no float → integer, no narrowing, no non-number atom
 #guard castOK .i32 .i64 && castOK .i64 .f64 && castOK .i32 .f64 && castOK .f32 .f64 && castOK .u8 .i16 &&

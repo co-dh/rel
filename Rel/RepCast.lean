@@ -19,14 +19,7 @@ theorem numFmt_ne {u : QAtomicType} (h : u.numFmt?.isSome) : u ≠ .general ∧ 
 /-- A word read as an atom of a number type `t` (`atomOfBits`) is `ofBits t` of it. -/
 theorem of_atomOfBits {t : QAtomicType} (a : UInt64) (hg : t ≠ .general) (h : t.numFmt?.isSome) :
     (Dep.Carrier.of? t (.atom (Column.atomOfBits t a hg))).getD default = QAtomicType.ofBits t a := by
-  cases t <;> first | rfl | (revert h; decide)
-
-/-- A number atom's stored word read back at its type is the atom. -/
-theorem ofBits_word {t : QAtomicType} (y : Dep.Carrier t) (h : t.numFmt?.isSome) :
-    QAtomicType.ofBits t (QAtomicType.word t y) = y := by
-  cases t <;> first | (revert h; decide) | skip
-  all_goals simp [QAtomicType.ofBits, QAtomicType.word, QAtomicType.num]
-  all_goals sorry
+  cases t <;> first | rfl | exact absurd h (by decide)
 
 /-- The rows of an `Arr.gather` read a valid column. -/
 theorem gather_valid {u : QAtomicType} {m n : USize} {ix : Enc} {x : Arr u n} {y : Arr u m}
@@ -81,12 +74,12 @@ theorem cast_holds {s t : QAtomicType} {n : USize} {X : Vals (.atom s) n} {T : T
     cases he : QAtomicType.embed s t (QAtomicType.ofBits s a) with
     | none =>
       refine .inr ⟨?_, rfl⟩
-      rw [← hfv]; simp [QAtomicType.castWord, he, nulWord]
+      rw [hfv]; simp [QAtomicType.castWord, he, nulWord]
     | some y =>
       have hy := QAtomicType.word_ne_nul he
       refine .inl ⟨?_, ?_⟩
-      · rw [← hfv]; simp [QAtomicType.castWord, he, nulWord, hy]
-      · simp [QAtomicType.castWord, he, ofBits_word y hst.2]
+      · rw [hfv]; simp [QAtomicType.castWord, he, nulWord, hy]
+      · simp [QAtomicType.castWord, he, QAtomicType.ofBits_word y hst.2]
   rw [canon_holds hT, keep_holds hU (fun i hi => by rcases row ⟨i, hi⟩ with h | h <;> rw [h.1] <;> decide)]
   constructor
   · rintro ⟨i, hf, rfl, rfl⟩

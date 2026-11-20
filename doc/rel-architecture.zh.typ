@@ -220,7 +220,7 @@ atom 的位宽、符号、指数和尾数位读出，不逐对列出），另加
 == 5 个 kernel：2 个原语 + 3 个优化
 
 #tbl(c-rs, (auto, 1.4fr, auto, 1fr), ([kernel], [形状（输入输出都是 foR）], [定律], [现有 driver]),
-  [`scan`], [`(op : Op) (rev : Bool) (s t) (n) (seg : Enc) (es : List Enc) : Enc × Option UInt64`，分段前缀折叠；含 map 与 fold。第二个分量是折叠结果：最后访问的那一行（正向第 `n − 1` 行，`rev` 时第 0 行）按 `t` 的宽度截取的字，`n = 0` 时为 `none`；kernel 写输出时从累加器取得，无需解码输出（`kscan_last`）], [`raw_scan`], [`scan` `map` `fold`],
+  [`scan`], [`(op : @& Op) (rev : Bool) (s t) (n) (seg : Enc) (es : List Enc) : Enc × Option UInt64`，分段前缀折叠；含 map 与 fold。第二个分量是折叠结果：最后访问的那一行（正向第 `n − 1` 行，`rev` 时第 0 行）按 `t` 的宽度截取的字，`n = 0` 时为 `none`；kernel 写输出时从累加器取得，无需解码输出（`kscan_last`）], [`raw_scan`], [`scan` `map` `fold`],
   [`gather`], [`(ix : Enc) (e : Enc) (fill) : Enc`，`out[i] = e[ix[i]]`], [`raw_permute`], [`permute`],
   [`scatter`], [`(ix : Enc) (e : Enc) (n) (fill) : Enc`，`out[ix[i]] = e[i]`], [`raw_scatter`（新）], [—],
   [`asc`（草稿，待审）], [`(m) (es : List (AscKey × Enc)) : List Enc × Enc`，`AscKey = atom t ┃ cells n c lo hi els`；
@@ -264,8 +264,11 @@ atom 的位宽、符号、指数和尾数位读出，不逐对列出），另加
 )
 - Lean body 只需信任两个原语；每个优化 kernel 配一条定理 `k = 上表中的复合`，所以它的 Lean body 可以就是那个复合，
   Rust 实现仍由 `decide`/`#guard` 对它测试。
-- `Op` 是有限枚举（`add` `sub` `mul` `min` `max` `eq` `lt` `and` `or` `not` `first`，及 float 的 `fadd` `fmul` `fdiv` `flt` …），而不是 Lean 闭包：Rust 只能执行固定的运算集，
+- `Op` 是有限的运算集（`add` `sub` `mul` `min` `max` `eq` `lt` `and` `or` `not` `first`，及 float 的 `fadd` `fmul` `fdiv` `flt` …），而不是 Lean 闭包：Rust 只能执行固定的运算集，
   Lean body 用 `Op.eval` 解释它，所以 `decide`/`#guard` 的检查方式不变。
+- `Op` 不再是枚举：`cast (s t : QAtomicType)` 带两个字段（S6），所以 `kscan`/`kscatter` 以借用对象 `@& Op` 传它，
+  不再是一个字节。无字段的 `Op` 是 `lean_box(序号)`，`cast s t` 是 tag 46 的构造子对象，两个 `u8` 标量字段；
+  Rust 用 `op_code` 读它。plan 寄存器（`Reg Op`）与 C 发射器同样按对象传。
 
 == allegory 运算 → kernel
 
@@ -327,6 +330,11 @@ atom 的位宽、符号、指数和尾数位读出，不逐对列出），另加
     之后各行 → where 留无坏步的行（同 `sum`，不报错）。不排序 `canon` 之外的东西、不回置换。含义是组合
     `agg(dom(x) (𝟙 × ≥) dom(x), F(x) ⦇[0, plus]⦈)`（左折叠，`rowDens` 即此组合），本行是它的融合形式（定理
     `Tab.sums_holds`，无前提，故 `rowsProved` 条目不读 `LamLaw`）。`Prim.dfn` 同 `asc`：待 `dfn` 能读行的关系参数],
+  [`$`（`x $ F`，`x : A ⟶ N` ↦ `A ⟶ F`，只在 `castOK N F` 的原子对之间）], [`scan` map（`Op.cast s t`，在编码列上）：
+    每个值换成 `t` 中表示同一个数的字（`QAtomicType.embed`，不舍入），无像时写 null 字 `2^63`（任何像都不是它：
+    `word_ne_nul`）→ `scan` map（`Op.ne`，对常量列 `2^63`）得 0/1 标志 → where（`keep`）→ `canon`。无新 kernel、无新
+    导出。`Tab.cast_holds`：结果是 `embed` 在需求值上的图，无前提；像是规范字（`embed_canonical`：无 NaN、无 `−0`）。
+    不在 `castOK` 中的对（浮点 → 整数、宽 → 窄）在 elaboration 时报错],
   [`cons°`], [格界 → where(`s < e`) → `gather`：首元素 = payload 第 `s` 个，尾 = 格 `[s + 1, e)`（`scan`），
     共享原 payload，不建新 payload；`n + m + 1 ≥ 2^63` 拒绝],
   [`snoc°`], [同 `cons°`：格 `[s, e − 1)` 与 payload 第 `e − 1` 个],
