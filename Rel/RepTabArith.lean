@@ -240,6 +240,73 @@ theorem Tab.succ_holds {K : Obj} {D : Tab K .long} {U : Tab .long .long} {T : Ta
     obtain ⟨i, hx, hu⟩ := (Tab.comp_holds hE x u).2 ⟨u, hDu, (Tab.dom_holds hdu u u).2 ⟨rfl, y', hy'⟩⟩
     exact ⟨_, ⟨i, hx, by show Vals.row (A := .long) s i = _; rw [hrow, hu]⟩, (Tab.dom_holds hdu _ _).2 ⟨rfl, y, hy⟩⟩
 
+/-- `arithDen k TU` pointwise: both operands in `dom TU`, then `stepDen k ≫ TU`. -/
+theorem Lang.arithDen_iff (k : UInt8) (TU : Core.Rel Int64 Int64) (p : Int64 × Int64) (w : Int64) :
+    Lang.arithDen k TU p w ↔ (∃ c, TU p.1 c) ∧ (∃ c, TU p.2 c) ∧ ∃ v, Lang.stepDen k p v ∧ TU v w := by
+  simp only [Lang.arithDen, Core.Rel.comp, Core.Rel.inter, Core.Rel.recip, Core.Rel.id, Core.Rel.graph]
+  constructor
+  · rintro ⟨_, ⟨rfl, c, ⟨_, rfl, h1⟩, -⟩, _, ⟨rfl, c', ⟨_, rfl, h2⟩, -⟩, v, hs, hv⟩
+    exact ⟨⟨c, h1⟩, ⟨c', h2⟩, v, hs, hv⟩
+  · rintro ⟨⟨c, h1⟩, ⟨c', h2⟩, v, hs, hv⟩
+    exact ⟨p, ⟨rfl, c, ⟨_, rfl, h1⟩, _, rfl, h1⟩, p, ⟨rfl, c', ⟨_, rfl, h2⟩, _, rfl, h2⟩, v, hs, hv⟩
+
+/-- **`Tab.arith` answers `D ≫ arithDen k U`** (`Rel/Lang/Den.lean`): a row `(x, w)` of the answer is a row `(x, p)`
+of `D` with `p`'s operands in `dom U`, `v = stepDen k p` (no null, no wrap), and `v U w`. -/
+theorem Tab.arith_holds {K : Obj} {k : UInt8} {D : Tab K (.prod .long .long)} {U : Tab .long .long} {T : Tab K .long}
+    (h : D.arith k U = .ok T) (x : K.El) (w : Int64) :
+    T.Holds x w ↔ ∃ p, D.Holds x p ∧ Lang.arithDen k U.Holds p w := by
+  simp only [Tab.arith, bind, Except.bind_eq_ok'] at h
+  obtain ⟨du, hdu, E₁, hE₁, E, hE, wb, hwb, h⟩ := h
+  obtain ⟨w', b⟩ := wb
+  simp only [bind, Except.bind_eq_ok'] at h
+  obtain ⟨Kp, hKp, hT⟩ := h
+  have hd := Tab.dom_holds hdu
+  have key : ∀ {A B : Obj} (T : Tab A B) a, (∃ i, T.key.row i = a) ↔ ∃ c, T.Holds a c :=
+    fun _ _ => ⟨fun ⟨i, h⟩ => ⟨_, i, h, rfl⟩, fun ⟨_, i, h, _⟩ => ⟨i, h⟩⟩
+  have k1 : ∀ x p, (∃ i, E₁.key.row i = (x, p)) ↔ D.Holds x p ∧ ∃ y, U.Holds p.1 y := by
+    intro x p
+    rw [key]
+    simp only [Tab.comp_holds hE₁]
+    constructor
+    · rintro ⟨c, b, ⟨i, hi, hb⟩, hdb⟩
+      obtain ⟨rfl, y, hy⟩ := (hd b c).1 hdb
+      have hi' : D.key.row i = x ∧ D.val.row i = p := Prod.ext_iff.1 hi
+      have e : b = p.1 := hb.symm.trans (congrArg Prod.fst hi'.2)
+      exact ⟨⟨i, hi'.1, hi'.2⟩, y, e ▸ hy⟩
+    · rintro ⟨⟨i, rfl, rfl⟩, y, hy⟩
+      exact ⟨_, _, ⟨i, rfl, rfl⟩, (hd _ _).2 ⟨rfl, y, hy⟩⟩
+  have k2 : ∀ x p, (∃ i, E.key.row i = (x, p)) ↔ D.Holds x p ∧ (∃ y, U.Holds p.1 y) ∧ ∃ y, U.Holds p.2 y := by
+    intro x p
+    rw [key]
+    simp only [Tab.comp_holds hE]
+    constructor
+    · rintro ⟨c, b, ⟨i, hi, hb⟩, hdb⟩
+      obtain ⟨rfl, y, hy⟩ := (hd b c).1 hdb
+      have h1 := (k1 x p).1 ⟨i, hi⟩
+      have e : b = p.2 := hb.symm.trans (congrArg (fun q : K.El × (Int64 × Int64) => q.2.2) hi)
+      exact ⟨h1.1, h1.2, y, e ▸ hy⟩
+    · rintro ⟨hD, h1, y, hy⟩
+      obtain ⟨i, hi⟩ := (k1 x p).2 ⟨hD, h1⟩
+      exact ⟨_, _, ⟨i, hi, rfl⟩, (hd _ _).2 ⟨rfl, y, by show U.Holds (E₁.key.row i).2.2 y; rw [hi]; exact hy⟩⟩
+  have st : ∀ (i : Fin E.n.toNat) v, ((Enc.raw .i64 E.n b)[i.1]?.getD 0 ≠ 0 ∧ Vals.row (A := .long) w' i = v) ↔
+      Lang.stepDen k (E.key.row i).2 v := by
+    intro i v
+    show _ ∧ Arr.get w' i = v ↔ Lang.stepDen k (Arr.get E.key.2.1 i, Arr.get E.key.2.2 i) v
+    rw [Arr.get_i64, Arr.get_i64, Arr.get_i64]
+    exact (and_congr Iff.rfl eq_comm).trans ((stepCols_spec hwb i.1 i.2).2 v)
+  rw [Tab.comp_holds hT]
+  have kp := Tab.keep_holds hKp (fun i hi => (stepCols_spec hwb i hi).1)
+  constructor
+  · rintro ⟨v, hk, hU⟩
+    obtain ⟨i, h0, hx, hv⟩ := (kp x v).1 hk
+    obtain ⟨hD, h1, h2⟩ := (k2 x (E.key.row i).2).1 ⟨i, Prod.ext hx rfl⟩
+    exact ⟨_, hD, (Lang.arithDen_iff k _ _ w).2 ⟨h1, h2, v, (st i v).1 ⟨h0, hv⟩, hU⟩⟩
+  · rintro ⟨p, hD, ha⟩
+    obtain ⟨h1, h2, v, hs, hU⟩ := (Lang.arithDen_iff k _ _ w).1 ha
+    obtain ⟨i, hi⟩ := (k2 x p).2 ⟨hD, h1, h2⟩
+    have e := (st i v).2 (by rw [hi]; exact hs)
+    exact ⟨v, (kp x v).2 ⟨i, e.1, congrArg Prod.fst hi, e.2⟩, hU⟩
+
 section Checks
 
 /-- The `Int64`s `l.map f` as an `i64` column of stored words (`Arr.ofFn`). -/
