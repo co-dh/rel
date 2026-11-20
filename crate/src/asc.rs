@@ -114,21 +114,27 @@ impl Cells<'_> {
     }
     /// The working key of rows `0 .. m`: the rank of each row's cell in `cellFns`' `lexLe` order (the first element
     /// that differs decides, else a proper prefix first). The payload rows are ranked once (`rank`), each cell named by
-    /// some row reads its `lo`/`hi` once, and only those cells are sorted, as slices of the payload ranks: a row never
-    /// compares, so rows that share a cell cost nothing past their one rank.
+    /// some row reads its `lo`/`hi` once, and only the distinct spans are sorted, as slices of the payload ranks: a row
+    /// never compares, so rows that share a span cost nothing past their one rank.
     pub fn codes(&self, m: usize) -> Vec<u64> {
         let (r, ix) = (rank(&self.els, self.c), self.ix.dense(m));
         let mut q = ix.clone();
         q.sort_unstable();
         q.dedup();
-        let sp: Vec<Range<usize>> = q.iter().map(|&x| self.span(x as usize)).collect();
-        let cell = |k: usize| &r[sp[k].clone()];
-        let mut o: Vec<usize> = (0..q.len()).collect();
+        // one span is one list however many cells copy it (a gathered side copies `lo`/`hi` per row): sorting the
+        // copies would compare equal slices element by element
+        let sp: Vec<(usize, usize)> = q.iter().map(|&x| { let s = self.span(x as usize); (s.start, s.end) }).collect();
+        let mut u = sp.clone();
+        u.sort_unstable();
+        u.dedup();
+        let cell = |k: usize| &r[u[k].0..u[k].1];
+        let mut o: Vec<usize> = (0..u.len()).collect();
         o.sort_unstable_by(|&a, &b| cell(a).cmp(cell(b)));
-        let mut rk = vec![0u64; q.len()];
+        let mut rk = vec![0u64; u.len()];
         for w in 1..o.len() { rk[o[w]] = rk[o[w - 1]] + (cell(o[w - 1]) != cell(o[w])) as u64 }
-        // every word of `ix` is in `q`, so the search finds it
-        ix.iter().map(|x| rk[q.binary_search(x).unwrap_or_else(|i| i)]).collect()
+        // every span of `sp` is in `u` and every word of `ix` in `q`, so both searches find it
+        let rq: Vec<u64> = sp.iter().map(|s| rk[u.binary_search(s).unwrap_or_else(|i| i)]).collect();
+        ix.iter().map(|x| rq[q.binary_search(x).unwrap_or_else(|i| i)]).collect()
     }
 }
 
@@ -391,13 +397,14 @@ mod tests {
     }
 
     // `cells` keys against the reference: shared prefixes, empty cells, equal rows (one cell named by many rows, so
-    // stability decides), cells across foR blocks, patched payloads, `lo`/`hi` out of range, scalar keys around them
+    // stability decides), cells across foR blocks, patched payloads, `lo`/`hi` out of range, scalar keys around them,
+    // cells sharing one span
     #[test] fn cells_is_the_reference() {
         let mut s = 0x2545_f491_4f6c_dd1du64;
         for (m, n, np, pl, tl, alpha, nel) in [(0, 1, 1, 0, 0, 2, 1), (1, 1, 1, 3, 2, 2, 1), (7, 3, 1, 4, 2, 2, 1), (500, 40, 3, 20, 5, 3, 1),
                 (3000, 3000, 5, 60, 4, 2, 1), (3000, 200, 2, 1500, 3, 2, 1), (2000, 500, 4, 8, 3, 3, 2), (2500, 2500, 1, 0, 3, 4, 1)] {
             let mut t = T::make(&mut s, m, n, np, pl, tl, alpha, nel);
-            for v in 0..4 {
+            for v in 0..5 {
                 if v == 1 { // patches: a rare outlier in the payload, so its blocks carry a patch list
                     for x in t.els[0].iter_mut() { if xs(&mut s) % 211 == 0 { *x = (xs(&mut s) >> 1) as i64 - (1 << 62) } }
                 }
@@ -406,6 +413,9 @@ mod tests {
                 }
                 if v == 3 { // scalar keys before and after the cells
                     t.atoms = vec![(4, (0..m).map(|_| (xs(&mut s) % 3) as i64).collect()), (6, (0..m).map(|_| ((xs(&mut s) % 5) as f64 - 2.0).to_bits() as i64).collect())];
+                }
+                if v == 4 { // cells copying another cell's span, as a gathered side copies `lo`/`hi` per row
+                    for r in 0..n { if xs(&mut s) % 2 == 0 { let k = (xs(&mut s) % n as u64) as usize; (t.lo[r], t.hi[r]) = (t.lo[k], t.hi[k]) } }
                 }
                 let e = t.enc();
                 let cs = t.cols(&e);
