@@ -162,9 +162,9 @@ def primGen (r : Prim) (A B : Obj) (xs : Codes) : Rel A B :=
 #guard rowGens.length = kernRows.length
 
 mutual
-/-- `Expand.code` without the constant sharing: a closed `t` memoised (`GenK.memo`), any other its node. -/
+/-- `Expand.code` without the constant sharing: a `t` that needs no keys memoised (`GenK.memo`), any other its node. -/
 def Tm.code (η : Code) {A B : Obj} (t : Tm A B) : Rel A B :=
-  if Expand.closed t then GenK.memo A B (t.gen η) else t.gen η
+  if !t.dem then GenK.memo A B (t.gen η) else t.gen η
 termination_by 2 * t.size + 1
 
 /-- `Expand.node`: `t`'s own `GenK` op, its parts by `Tm.code`. A fixed point's variable reads its round's table
