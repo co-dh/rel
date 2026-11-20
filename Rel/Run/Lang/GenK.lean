@@ -124,12 +124,15 @@ def bound {A B : Obj} (K : Known A B) (r : Tab A B) : Except String (Tab A B × 
   let t ← cut K r; let d ← Tab.dom t; let l ← Tab.ran t
   pure (t, ⟨some ⟨d.n, d.key⟩, some ⟨l.n, l.key⟩⟩)
 
-/-- `T ∩ S` in `K`, `T` already run: a table bounds `S` (`bound`); anything else meets `S` run on `K`. -/
+/-- `T ∩ S` in `K`, `T` already run: its table bounds `S` (`bound`), a bit matrix's read back as rows (in `ν` the
+    `ldiv` beside a parameter run on demand is one); a lazy or failed `T` meets `S` run on `K`. -/
 def meetOn {A B : Obj} (K : Known A B) (T S : Rel A B) : Rel A B := match T with
-  | .tab (.ok r) => match bound K r with
-    | .ok p => meetV (.tab (.ok p.1)) (S.force p.2)
-    | .error e => .tab (.error e)
-  | T => meetV T (S.force K)
+  | .lazy _ => meetV T (S.force K)
+  | T => match T.runE {} with
+    | .ok r => match bound K r with
+      | .ok p => meetV (.tab (.ok p.1)) (S.force p.2)
+      | .error e => .tab (.error e)
+    | .error _ => meetV T (S.force K)
 
 /-- `R ∩ S` in `K`: the operand that is no `lazy` runs first and bounds the other (`meetOn`); of two lazy ones `R`,
     or `S` where `R` cannot run on `K` alone. -/
@@ -140,13 +143,13 @@ def meetK {A B : Obj} (K : Known A B) (R S : Rel A B) : Rel A B := match R, S wi
   | .lazy _, S => meetOn K S R
   | R, S => meetOn K R S
 
-def meet (A B : Obj) (d e : Bool) (R : Fn d A B) (S : Fn e A B) : Fn (d || e) A B := match R, S with
+def meet (A B : Obj) (d e : Bool) (R : Fn d A B) (S : Fn e A B) : Fn (d && e) A B := match R, S with
   | .lazy _, _ | _, .lazy _ => .lazy fun K => meetK K R S
   | R, S => meetV R S
 def join (A B : Obj) (d e : Bool) (R : Fn d A B) (S : Fn e A B) : Fn (d || e) A B :=
   lift2 Tab.union (fun K => K) (fun K => K) R S
 /-- `R − S`: a lazy `S` is needed only on `R`'s pairs, so it runs knowing `R`'s sides (`bound`). -/
-def diff (A B : Obj) (d e : Bool) (R : Fn d A B) (S : Fn e A B) : Fn (d || e) A B := match S with
+def diff (A B : Obj) (d e : Bool) (R : Fn d A B) (S : Fn e A B) : Fn d A B := match S with
   | .lazy _ => .lazy fun K => .tab do let p ← bound K (← R.runE K); Tab.diff p.1 (← S.runE p.2)
   | S => lift2 Tab.diff (fun K => K) (fun K => K) R S
 /-- A coreflexive's two sides are one value set, so either side the context knows bounds `R`'s side. -/

@@ -70,7 +70,7 @@ run_cmd do
 /-- Two modules' registrations of the keys `j` and `k`, as `a.*` and `b.*`: each `k` calls its own module's `j`. -/
 def twice (k' : Tm .long .long) : Expand.Registry :=
   let o (k c : Name) (t : Tm .long .long) : Once :=
-    { key := k, const := c, gen := [], params := [], res := ⟨_, _, t⟩, tst := false, kf := false }
+    { key := k, const := c, gen := [], params := [], forms := [], res := ⟨_, _, t⟩, tst := false, kf := false }
   [.call `j (o `j `a.j .id), .call `k (o `k `a.k (.call [] `a.j [] .id)),
    .call `j (o `j `b.j .id), .call `k (o `k `b.k k')].foldl Expand.Registry.add {}
 
