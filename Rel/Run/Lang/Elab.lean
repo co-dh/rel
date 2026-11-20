@@ -113,8 +113,6 @@ def Tm.instObj (σ : List Obj) : {A B : Obj} → Tm A B → Except String (Tm (A
   | _, _, .rdiv R S U V => return .rdiv (← R.instObj σ) (← S.instObj σ) (← U.instObj σ) (← V.instObj σ)
   | _, _, .pair R S => return .pair (← R.instObj σ) (← S.instObj σ)
   | _, _, .prod R S => return .prod (← R.instObj σ) (← S.instObj σ)
-  | _, _, .junc R S => return .junc (← R.instObj σ) (← S.instObj σ)
-  | _, _, .juncD R S => return .juncD (← R.instObj σ) (← S.instObj σ)
   | _, _, .lam R => return .lam (← R.instObj σ)
   | _, _, .E R => return .E (← R.instObj σ)
   | _, _, .est Q => return .est (← Q.instObj σ)
@@ -205,7 +203,6 @@ inductive Pre
   | rdiv (pos : Pos) (p q : Pre) (a b : OTy)
   | pair (p q : Pre)
   | prod (p q : Pre)
-  | junc (p q : Pre)
   | lam (p : Pre)
   | E (p : Pre)
   | est (p : Pre)
@@ -246,6 +243,11 @@ inductive Pre
       (ks : List Nat) (body : Res) (cv : Option (Lean.Name × Res)) (tst : Bool)
 
 instance : Inhabited Pre := ⟨.id (.base "")⟩
+
+/-- `[R,S] : a + b ⟶ _` is its definition `inl°R ∪ inr°S` (architecture §1, §7), not a node of its own: each part
+    runs on the values of its summand in demand (`Tab.inlConv`), and is covered by the laws of `∪`, `≫` and the rows. -/
+def Pre.junc (r s : Pre) (a b : OTy) : Pre :=
+  .join (.comp (.prim inlConvRow [] (.sum a b) a none) r) (.comp (.prim inrConvRow [] (.sum a b) b none) s)
 
 /-- The `why` of a top-level term's `close`. -/
 def noLeft : String := "the term here needs keys and has no left context"
@@ -362,7 +364,6 @@ def Pre.traverse {m : Type → Type} [Monad m] (fp : Pos → m Pos) (f : Option 
   | .rdiv q x y a b => return .rdiv (← fp q) (← mo x) (← f (some (.anti "the right operand of /")) y) a b
   | .pair x y => return .pair (← mo x) (← mo y)
   | .prod x y => return .prod (← mo x) (← mo y)
-  | .junc x y => return .junc (← mo x) (← mo y)
   | .lam x => return .lam (← f (some (.not "Λ")) x)
   | .E x => return .E (← f (some (.not "E")) x)
   | .est x => return .est (← mo x)
@@ -799,7 +800,7 @@ def constant (env : Env) (p : Pos) (o : Op) (objs : List OExp) : M Arg := do
     | .succ => (.succ p a, a, a)
     | .arith k => (.arith p k a, .prod a a, a)
     | .nil => (.nil a b, a, .arr b)
-    | .alpha => (.junc (.close p (.nil a b) a "α") (.close p (.prim consRow [] (.prod b (.arr b)) (.arr b) none) (.prod b (.arr b)) "α"),
+    | .alpha => (.junc (.nil a b) (.prim consRow [] (.prod b (.arr b)) (.arr b) none) a (.prod b (.arr b)),
         .sum a (.prod b (.arr b)), .arr b)
     | .index k => (.atPos k b, .arr b, b)
     | _ => (.id a, a, a)
@@ -970,7 +971,6 @@ def settle (m : Option OTy) (p : Pos) (as : List Arg) : Arg → M Arg
 partial def hyloG (p : Pos) (k : Nat) (a b : OTy) (t s : OTy) : M (Pre × OTy × Bool) := do
   let any := match s with | .mv _ => true | _ => false
   if t == a && (s == b || any) then return (.var p k a b none, b, true)
-  let w := "[R,S] reads its parts whole"
   match t, s with
   | .prod t₁ t₂, .prod s₁ s₂ | .prod t₁ t₂, s₁@(.mv _) =>
     let s₂ := match s with | .prod _ s₂ => s₂ | _ => s₁
@@ -981,9 +981,8 @@ partial def hyloG (p : Pos) (k : Nat) (a b : OTy) (t s : OTy) : M (Pre × OTy ×
     let s₂ := match s with | .sum _ s₂ => s₂ | _ => s₁
     let (g₁, u₁, m₁) ← hyloG p k a b t₁ s₁; let (g₂, u₂, m₂) ← hyloG p k a b t₂ s₂
     if !m₁ && !m₂ then return (.id t, t, false)
-    let junc (l r : Pre) : Pre := .junc (.close p l t₁ w) (.close p r t₂ w)
-    return (junc (.comp g₁ (.prim inlRow [] u₁ (.sum u₁ u₂) none)) (.comp g₂ (.prim inrRow [] u₂ (.sum u₁ u₂) none)), .sum u₁ u₂,
-      true)
+    return (.junc (.comp g₁ (.prim inlRow [] u₁ (.sum u₁ u₂) none)) (.comp g₂ (.prim inrRow [] u₂ (.sum u₁ u₂) none)) t₁ t₂,
+      .sum u₁ u₂, true)
   | .arr t₁, .arr s₁ | .arr t₁, s₁@(.mv _) =>
     let (g₁, u₁, m₁) ← hyloG p k a b t₁ s₁
     if !m₁ then return (.id t, t, false)
@@ -1121,8 +1120,7 @@ def elabWith (dfn : Except String (Prim → Env → Expr → M Arg)) (env : Env)
     | _, _ =>
       let (q, s, t) := x.plain; let (r, s', t') := y.plain
       unify p "the target of the case's second part" t' t
-      let w := "[R,S] reads its parts whole"
-      pure (.rel (.junc (.close p q s w) (.close p r s' w)) (.sum s s') t)
+      pure (.rel (.junc q r s s') (.sum s s') t)
   | .fold p d r => do
     let (x, y) ← foldParts env m p (← match r with
       | .junc _ a s => do pure (.inl (← elabWith dfn env m a, ← elabWith dfn env m s))
@@ -1414,7 +1412,6 @@ def convTm {A B : Obj} (t : Tm A B) : Except String (Tm B A) :=
   | .ldiv R S U V => pure (.conv (.ldiv R S U V))
   | .rdiv R S U V => pure (.conv (.rdiv R S U V))
   | .prod R S => pure (.conv (.prod R S))
-  | .junc R S => pure (.conv (.junc R S))
   | .leq U => pure (.conv (.leq U))
   | .lt U => pure (.conv (.lt U))
   | .id => pure .id
@@ -1469,7 +1466,6 @@ def convTm {A B : Obj} (t : Tm A B) : Except String (Tm B A) :=
   | .thin _ => throw "thin( )"
   | .nil => throw "nil"
   | .hylo .. => throw "hylo( )"
-  | .juncD .. => throw "[R,S]"
   | .atPos k => throw s!"at({k})"
   | .foldr .. => throw "⦇e,S⦈ʳ"
   | .fold .. => throw "⦇e,S⦈"
@@ -1536,7 +1532,7 @@ def uniPart (o : OTy) (A : Obj) : Except Err (Option (Tm A A)) := do
     pure (some (.prod u v))
   | .sum a b, .sum A B => do
     let (some u, some v) := (← uniPart a A, ← uniPart b B) | pure none
-    pure (some (.junc (.comp u (.prim inlRow)) (.comp v (.prim inrRow))))
+    pure (some (.join (.ran (.comp u (.prim inlRow))) (.ran (.comp v (.prim inrRow)))))
   | _, _ => pure none
 
 /-- `uniPart`, or the error naming the whole object `o` that has no universe. -/
@@ -1706,20 +1702,6 @@ def build : Pre → Except Err Res
   | .prod p q => do
     let ⟨A, B, t⟩ ← build p; let ⟨C, D, u⟩ ← build q
     pure ⟨.prod A C, .prod B D, .pair (.comp .outl t) (.comp .outr u)⟩
-  -- read whole where both parts can be; otherwise on demand, each part on its side's values in demand
-  | .junc p@(.close _ p' _ _) q@(.close _ q' _ _) => do
-    let whole : Except Err Res := do
-      let r ← build p; let s ← build q; let ⟨A, C, _⟩ := r; let ⟨B, _, _⟩ := s
-      pure ⟨_, _, .junc (← closed? dp (A := A) (B := C) r) (← closed? dp (A := B) (B := C) s)⟩
-    match whole with
-    | .ok r => pure r
-    | .error _ => do
-      let r ← build p'; let s ← build q'; let ⟨A, C, _⟩ := r; let ⟨B, _, _⟩ := s
-      let t ← at? dp (A := A) (B := C) r; let u ← at? dp (A := B) (B := C) s
-      pure ⟨_, _, .juncD t u⟩
-  | .junc p q => do
-    let r ← build p; let s ← build q; let ⟨A, C, _⟩ := r; let ⟨B, _, _⟩ := s
-    pure ⟨_, _, .junc (← closed? dp (A := A) (B := C) r) (← closed? dp (A := B) (B := C) s)⟩
   | .lam p => do let ⟨_, _, t⟩ ← build p; pure ⟨_, _, .lam t⟩
   | .E p => do let ⟨_, _, t⟩ ← build p; pure ⟨_, _, .E t⟩
   | .est p => do let ⟨_, c⟩ ← param p; pure ⟨_, _, .est c⟩

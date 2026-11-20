@@ -165,7 +165,7 @@ def kernRows : List (String × Lean.Name) :=
   [("∋", ``Tab.mem), ("τ", ``Tab.tau), ("length", ``Tab.length), ("setify", ``Tab.setify),
    ("snoc", ``Tab.snoc), ("cons", ``Tab.cons), ("cat", ``Tab.cat), ("zip", ``Tab.zip), ("sum", ``Tab.sum),
    ("uncons", ``Tab.uncons), ("unsnoc", ``Tab.unsnoc), ("uncat", ``Tab.uncat), ("inl", ``Tab.inl),
-   ("inr", ``Tab.inr), ("prefix", ``Tab.«prefix»), ("suffix", ``Tab.suffix),
+   ("inr", ``Tab.inr), ("inl°", ``Tab.inlConv), ("inr°", ``Tab.inrConv), ("prefix", ``Tab.«prefix»), ("suffix", ``Tab.suffix),
    ("inits", ``Tab.inits),
    ("tails", ``Tab.tails),
    ("concat", ``Tab.flatten),
@@ -195,7 +195,7 @@ def Tm.kernelNode {A B : Obj} : Tm A B → Bool
   | .est _ => true
   | .thin _ => true
   | .atPos _ => true
-  | .junc .. | .juncD .. | .fold .. | .foldr .. | .foldI .. | .flat _ => true
+  | .fold .. | .foldr .. | .foldI .. | .flat _ => true
   | .prim r => (kernRows.lookup r.sym).isSome
   | .top _ => true
   | .outl => true
@@ -274,16 +274,7 @@ def thin (B : Obj) (Q : Fn true (.prod B B) (.prod B B)) : Fn true (.arr B) (.ar
   ofVals _ _ fun X => Tab.thin (fun D => Q.runE ⟨some ⟨D.n, D.val⟩, none⟩) X
 def atPos (B : Obj) (k : Nat) : Fn true (.arr B) B := ofVals _ _ fun X => Tab.atPos k X
 
-/-! ### T6: `[R,S]`; T8: `⦇e,S⦈`, `⦇e,S⦈ʳ`, `⦇e,S⦈` given a family, `Rᴵ` -/
-
-/-- `[R,S]` = `inl° ≫ R ∪ inr° ≫ S` (`Tab.junc`), both parts read whole. -/
-def junc (A B C : Obj) (R : Fn false A C) (S : Fn false B C) : Fn false (.sum A B) C :=
-  lift2 Tab.junc (fun _ => {}) (fun _ => {}) R S
-/-- `[R,S]` on the sum values `X` in demand: `R` run on the left values `X` holds, `S` on the right, then `idU X ≫`. -/
-def juncD (A B C : Obj) (d e : Bool) (R : Fn d A C) (S : Fn e B C) : Fn true (.sum A B) C :=
-  ofVals _ _ fun X => do
-    let ⟨l, r, _, _, x, y⟩ := X
-    (← Tab.idU X).comp (← Tab.junc (← R.runE ⟨some ⟨l, x⟩, none⟩) (← S.runE ⟨some ⟨r, y⟩, none⟩))
+/-! ### T8: `⦇e,S⦈`, `⦇e,S⦈ʳ`, `⦇e,S⦈` given a family, `Rᴵ` -/
 
 /-- `⦇e,S⦈` on the arrays `X` in demand (§4 `fold`: a Lean loop of rounds, `Tab.foldRounds`): each array from every
     value of `e`, round `k` the pairs `(acc, x)` (`⟨P, el⟩`), `S` run on them (`compT`). -/

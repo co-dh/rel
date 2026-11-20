@@ -654,7 +654,6 @@ partial def node (pre : Name) (ρ : List (Nat × Lean.Expr)) {A B : Obj} (t : Tm
   | A, B, .rdiv (C := C) R S UA UB => return g ``GenK.rdiv #[oE A, oE B, oE C, ← c R, ← c S, ← c UA, ← c UB]
   | A, .prod B C, .pair R S => return g ``GenK.pair #[oE A, oE B, oE C, bE R.dem, bE S.dem, ← c R, ← c S]
   | .prod A C, .prod B D, .prod R S => return g ``GenK.prod #[oE A, oE B, oE C, oE D, ← c R, ← c S]
-  | .sum A B, C, .junc R S => return g ``GenK.junc #[oE A, oE B, oE C, ← c R, ← c S]
   | A, .arr B, .lam R => return g ``GenK.lam #[oE A, oE B, bE R.dem, ← c R]
   | .arr A, .arr B, .E R => return g ``GenK.E #[oE A, oE B, bE R.dem, ← c R]
   | _, B, .est Q => return g ``GenK.est #[oE B, ← c Q]
@@ -687,7 +686,6 @@ partial def node (pre : Name) (ρ : List (Nat × Lean.Expr)) {A B : Obj} (t : Tm
   | A, B, .hylo v w b =>
     let ch := (b.kids v A).getD .zero
     return g ``GenK.hylo #[oE A, oE B, toExpr w, bE ch.dem, bE b.dem, ← c ch, ← body pre ρ A B v b]
-  | .sum A B, C, .juncD R S => return g ``GenK.juncD #[oE A, oE B, oE C, bE R.dem, bE S.dem, ← c R, ← c S]
   | A, B, t@(.prim _) | A, B, t@(.arg ..) => match primOf t with
     | some (r, as) => do
       let xs ← as.toArray.mapM fun x => return (← code pre ρ x.2.2, fnTy x)
