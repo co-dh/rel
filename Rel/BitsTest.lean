@@ -161,6 +161,24 @@ def ldiv2 (Q R S : List (Int64 × Int64)) (UB UC : List Int64) : Bool :=
 -- an empty `Q`, an empty matrix, all of `⊤`
 #guard ldiv2 [] (full 4) (full 4) [1, 2] [0, 7] && ldiv2 [(1, 10)] [] (full 4) [10, 20] [5, 6] &&
   ldiv2 (full 5) (full 5) (full 5) [0, 9] [3, 9]
+/-- A sum key whose `idx` column is a legal `bytes` column (`Enc.WF`) that `kgather` does not read: `compSelM` numbers
+its sides with `Vals.cols`, which must refuse it, so no matrix over it reaches `ofBits` (`GenK.ReadsBack`). -/
+def bytesKey : Option String :=
+  let idxB : Arr .i64 1 := Arr.mk (.bytes (ByteArray.mk #[0, 0, 0, 0, 0, 0, 0, 0])) (by
+    show (ByteArray.mk #[0, 0, 0, 0, 0, 0, 0, 0]).size = (1 : USize).toNat * 8
+    rw [show (1 : USize).toNat = 1 from USize.toNat_one]; rfl)
+  let five : Arr .i64 1 := Arr.ofFn .i64 1 fun _ => 5
+  let R : Tab (.sum (.atom .i64) (.atom .i64)) (.atom .i64) :=
+    ⟨1, ⟨1, 1, Arr.bools 1 fun _ => false, idxB, five, five⟩, Arr.ofFn .i64 1 fun _ => 7⟩
+  let S : Tab (.atom .i64) (.atom .i64) := ⟨1, Arr.ofFn .i64 1 fun _ => 7, Arr.ofFn .i64 1 fun _ => 9⟩
+  match Tab.compSelM Tab.bitsMax R S with
+  | .ok (.inr (g, w, o, ra, rc)) => match Tab.ofBits g w o R.key ra S.val rc with
+    | .error e => some e
+    | .ok _ => none
+  | _ => none
+
+#guard bytesKey.isNone
+
 #guard ldiv2 ((rnd 7 300 40).map fun (a, b) => (a, b % 12)) ((rnd 1 300 40).map fun (a, b) => (a, b % 31))
   ((rnd 2 400 97).map fun (b, c) => (b % 31, c % 23)) [0, 5, 50, 51] [1, 2, 99]
 

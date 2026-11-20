@@ -143,7 +143,7 @@ def ldivM {A B C : Obj} (r : Tab A B) (ub : Tab B B) (uc : Tab C C) {n m : USize
   | .error e => .tab (.error e)
 
 def ldiv (A B C : Obj) (R : Fn false A B) (S : Fn false A C) (UB : Fn false B B) (UC : Fn false C C) :
-    Fn false B C := match S with
+    Fn false B C := match S.force {} with
   | .bits g w o x ra y rc => match R.runE {}, UB.runE {}, UC.runE {} with
     | .ok r, .ok ub, .ok uc => ldivM r ub uc g w o x ra y rc
     | .error e, _, _ | _, .error e, _ | _, _, .error e => .tab (.error e)
