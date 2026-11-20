@@ -57,8 +57,6 @@ pub const SLICES: usize = 2;
 pub const DECLINED: usize = 3;
 /// passes entered while another was in flight, run as the same slices in turn on their own thread
 pub const CONTENDED: usize = 4;
-/// `rdtsc` ticks inside the slices of split passes, summed over threads; against `WALL` it is the parallelism had
-pub const BUSY: usize = 5;
 /// `rdtsc` ticks from the hand-off of each split pass to its join
 pub const WALL: usize = 6;
 
@@ -96,25 +94,6 @@ pub struct Pool {
 // read by the workers after the release of `generation` that published it.
 unsafe impl Sync for Pool {}
 
-/// A mutex on one futex word (0 free, 1 held, 2 held with a sleeper), for the one cache the pool's callers share: no
-/// `pthread_mutex_*`, which would be one more undefined name.
-pub struct Lock(AtomicU32);
-impl Lock {
-    pub const fn new() -> Lock { Lock(AtomicU32::new(0)) }
-    pub fn lock(&self) {
-        if self.0.compare_exchange(0, 1, Acquire, Relaxed).is_ok() { return }
-        while self.0.swap(2, Acquire) != 0 {
-            // Safety: FUTEX_WAIT on a live u32 that outlives the call; a changed value returns EAGAIN at once
-            unsafe { sys::syscall(SYS_FUTEX, self.0.as_ptr(), FUTEX_WAIT_PRIVATE, 2 as c_long, null::<c_void>(), null::<c_void>(), 0 as c_long) };
-        }
-    }
-    pub fn unlock(&self) {
-        if self.0.swap(0, Release) == 2 {
-            // Safety: FUTEX_WAKE on a live u32 that outlives the call
-            unsafe { sys::syscall(SYS_FUTEX, self.0.as_ptr(), FUTEX_WAKE_PRIVATE, 1 as c_long, null::<c_void>(), null::<c_void>(), 0 as c_long) };
-        }
-    }
-}
 /// Slice `k` of `[0, n)` cut `parts` ways, the remainder spread over the first slices.
 pub fn cut(n: usize, parts: u32, k: u32) -> (usize, usize) {
     let (q, r, k) = (n / parts as usize, n % parts as usize, k as usize);
@@ -206,10 +185,6 @@ impl Pool {
         self.width() > 1 && n.wrapping_mul(cost as usize).wrapping_mul(wide) >= SPLIT_AT
     }
 
-    pub fn stat(&self, k: u8) -> u64 {
-        if k as usize == BUSY { return self.spent.iter().map(|b| b.0.load(Relaxed)).fold(0, u64::wrapping_add) }
-        self.ctr.0.get(k as usize).map_or(0, |c| c.load(Relaxed))
-    }
 
     fn add(&self, k: usize, v: u64) { self.ctr.0[k].fetch_add(v, Relaxed); }
 
@@ -317,8 +292,6 @@ pub unsafe extern "C" fn run_c(f: Worker, n: usize, cost: u32, wide: usize, p: *
     unsafe { THE.enter(n, cost, wide, call, f as *const (), p.cast()) }
 }
 
-/// Counter `k` of the process's pool (`PASSES` .. `WALL`), 0 for any other.
-pub fn stat(k: u8) -> u64 { THE.stat(k) }
 
 #[cfg(test)]
 pub mod tests {

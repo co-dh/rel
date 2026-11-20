@@ -2,19 +2,11 @@
 //! Each unboxes its arguments, allocates the answer and makes one call into `reduce.rs`, which owns the loops and the
 //! split over the pool (`c::pool()`). Lean passes `Int64` as C's `uint64_t` and `Bool` as `uint8_t`.
 #![deny(unsafe_code)]
-use crate::lean::{B, SArr, export};
-use crate::pod;
+use crate::lean::{B, export};
 #[cfg(all(feature = "ffi", not(any(test, feature = "std"))))]
 use {crate::lean::O, crate::{c, reduce}, alloc::{format, string::String, vec::Vec},
      crate::{exports::scatter::{blocks_view, except, for_view}, ffi::{Form, Sink}}};
 
-/// The whole `T` elements of a payload (a ragged tail is not one, as `size >> 3` in C).
-pub fn elems<'a, T: pod::Pod>(b: B<'a>) -> &'a [T] {
-    let v = b.bytes();
-    pod::cast(&v[..v.len() - v.len() % size_of::<T>()]).expect("reduce: a payload is not aligned for its element")
-}
-/// An answer of `n` bytes, undefined until the kernel writes it.
-pub fn answer(n: usize) -> SArr { SArr::new(1, n) }
 
 /// The `n` words of a block source, as `i64` (`foRWords`' reading of an index column).
 #[cfg(all(feature = "ffi", not(any(test, feature = "std"))))]

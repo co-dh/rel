@@ -233,15 +233,6 @@ pub fn narrow<'b>(width: usize, v: &'b [i64], out: &'b mut [u8]) -> &'b [u8] {
     assert!(matches!(width, 1 | 2 | 4 | 8), "qlean: a Frame of Reference element of {width} bytes; the writer has 1, 2, 4 and 8");
     crate::by_width!(int width, put(v, out))
 }
-/// coc.rs `coc_enc_blk_meta`: block metadata from decoded `v`; answers the patch count.
-pub fn blk_meta(m: &mut EncMeta, v: &[i64], width: usize) -> u32 {
-    fn go<T: Elt>(m: &mut EncMeta, x: &[u8], nb: usize) -> u32 {
-        for_blk(m, crate::pod::cast::<T>(x).expect("qlean: narrowed block misaligned"), nb)
-    }
-    let mut buf = crate::pod::Scr::<i64>::new(v.len()); // i64 lanes, so the narrowed bytes are aligned for every `T`
-    let x = narrow(width, v, crate::pod::bytes_mut(&mut buf));
-    crate::by_width!(int width, go(m, x, v.len()))
-}
 /// coc.rs `move_meta`, the branch where block `pb` of the column `f` is taken whole: its metadata is the block's,
 /// and its patch count is what the layout prefix-sums. Answers it, and leaves it in `m.nexc`. The branches that call
 /// back into the source (`ints`, `hint`, `fill`) stay C.
@@ -310,9 +301,6 @@ pub trait Producer: Sync {
     /// Elements `lo .. lo + nb` (block `b` of the writer's grid) at `w` bytes each: a slice of the producer's own memory, or
     /// written into `buf` (`16 * nb` bytes, 8-aligned).
     fn block<'s>(&'s self, b: usize, lo: usize, nb: usize, w: usize, buf: &'s mut [u8]) -> &'s [u8];
-    /// `block` written into `out` (`nb * w` bytes), the dense answer's own memory: a producer that computes its elements
-    /// computes them there, so the dense answer is written once; one that holds them (`Blocks`) copies them.
-    fn block_into(&self, b: usize, lo: usize, nb: usize, w: usize, buf: &mut [u8], out: &mut [u8]) { out.copy_from_slice(self.block(b, lo, nb, w, buf)) }
     /// Block `pb` of a column in the writer's own form that answer block `b` equals, with `pb`.
     fn take(&self, _b: usize) -> Option<(Cocf<'_>, usize)> { None }
     /// ALP: block `b`'s decimals `d`, exponents `ee` (negative = exception) of its first `nb` elements, and the block's exponent;
@@ -328,18 +316,9 @@ pub fn filled<'s>(fill: impl FnOnce(&mut [i64], usize), lo: usize, nb: usize, w:
     fill(v, lo);
     narrow(w, v, o)
 }
-/// `filled` into `out` (`nb * w` bytes): at 8 bytes the fill writes `out` itself (an 8-aligned one, as a Lean payload's
-/// blocks are), narrower it is narrowed into `out`.
-pub fn filled_into(fill: impl FnOnce(&mut [i64], usize), lo: usize, nb: usize, w: usize, buf: &mut [u8], out: &mut [u8]) {
-    if w == 8 && out.as_ptr() as usize % 8 == 0 { return fill(crate::pod::cast_mut(out).expect("qlean Sink: an answer block of whole i64s"), lo) }
-    let v = crate::pod::cast_mut::<i64>(&mut buf[..8 * nb]).expect("qlean Sink: a block buffer is misaligned for i64");
-    fill(v, lo);
-    if w == 8 { out.copy_from_slice(crate::pod::bytes(v)) } else { narrow(w, v, out); }
-}
 /// A closure is a producer with no `take`: the form every kernel that computes an answer a block at a time uses.
 impl<F: Fn(&mut [i64], usize) + Sync> Producer for F {
     fn block<'s>(&'s self, _: usize, lo: usize, nb: usize, w: usize, buf: &'s mut [u8]) -> &'s [u8] { filled(self, lo, nb, w, buf) }
-    fn block_into(&self, _: usize, lo: usize, nb: usize, w: usize, buf: &mut [u8], out: &mut [u8]) { filled_into(self, lo, nb, w, buf, out) }
 }
 /// A column read as the writer's elements: the encoder's input where it is dense, a transcode where it is not. A span on
 /// the column's own grid is read in place where it lies, any other is cut from the blocks it crosses.

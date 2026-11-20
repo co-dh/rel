@@ -2,10 +2,8 @@
 //! A coc block of width 1, base 0 and no patch is a bit vector: its `blk / 8` payload bytes are the `Column.bits`
 //! encoding of its rows, LSB first. The coc kernels ask `Coc::bit_blk` once per block, outside the element loops, and run
 //! the `bits.rs` / `search.rs` word algorithms on the payload instead of unpacking it (G3: bits folded into coc).
-use crate::bits::{popcount, some_bit};
 use crate::coc::Coc;
-use crate::cocops::{EQ, GE, GT, LE, LT, NE};
-use alloc::vec::Vec;
+use crate::cocops::{EQ, GT, LE, LT, NE};
 
 /// word `i` of a payload (8-byte aligned in length for every block: `blk * 1 / 8` is a multiple of 8)
 pub fn word(p: &[u8], i: usize) -> u64 { u64::from_le_bytes(p[i * 8..i * 8 + 8].try_into().expect("8 bytes")) }
@@ -22,14 +20,6 @@ impl<'a> Coc<'a> {
     }
 }
 
-/// `coc_sum_blk` of a bit block: the set bits among its first `nb` rows.
-pub fn ones(p: &[u8], nb: usize) -> usize { popcount(p, nb) }
-/// `coc_all` of a bit block: no row is 0.
-pub fn all_set(p: &[u8], nb: usize) -> bool { !some_bit(false, p, nb) }
-/// The `op` of two bits `x`, `y` as the word `a op b` (rows past `nb` left to the caller's mask).
-pub fn cmp_word(op: i32, a: u64, b: u64) -> u64 {
-    match op { EQ => !(a ^ b), NE => a ^ b, LT => !a & b, LE => !a | b, GT => a & !b, _ => { debug_assert!(op == GE); a | !b } }
-}
 /// `x op v` of a bit block into the zeroed words `out`: each of the two values 0, 1 passes or not, so the answer is
 /// none, all, the bits or their complement.
 pub fn mask_cmp(p: &[u8], nb: usize, op: i32, v: i64, out: &mut [u64]) {
@@ -40,43 +30,6 @@ pub fn mask_cmp(p: &[u8], nb: usize, op: i32, v: i64, out: &mut [u64]) {
         *o = if fill { live(nb, i) } else { (word(p, i) ^ inv) & live(nb, i) }
     }
 }
-/// `a op b` of two bit blocks into `out` (`nb.div_ceil(64)` words, overwritten).
-pub fn cmp2(pa: &[u8], pb: &[u8], nb: usize, op: i32, out: &mut [u64]) {
-    for (i, o) in out[..nb.div_ceil(64)].iter_mut().enumerate() { *o = cmp_word(op, word(pa, i), word(pb, i)) & live(nb, i) }
-}
-/// `coc_rows_eq` of a bit block: the rows `at + i` with `x[i] == v`, appended ascending. 0 and 1 are the only values a
-/// bit block holds.
-pub fn rows_eq(p: &[u8], nb: usize, at: usize, v: i64, rows: &mut Vec<i64>) {
-    if v != 0 && v != 1 { return }
-    for i in 0..nb.div_ceil(64) {
-        let mut w = (word(p, i) ^ if v == 0 { !0 } else { 0 }) & live(nb, i);
-        while w != 0 { rows.push((at + (i << 6) + w.trailing_zeros() as usize) as i64); w &= w - 1 }
-    }
-}
-/// `coc_find` of a bit block: the first row holding `v`.
-pub fn find(p: &[u8], nb: usize, v: i64) -> Option<usize> {
-    if v != 0 && v != 1 { return None }
-    (0..nb.div_ceil(64)).find_map(|i| {
-        let w = (word(p, i) ^ if v == 0 { !0 } else { 0 }) & live(nb, i);
-        (w != 0).then(|| (i << 6) + w.trailing_zeros() as usize)
-    })
-}
-/// `run_starts` of a bit block at row `at`: the rows whose bit differs from the row before, pushed at `out[*g..]`. `prev` is the
-/// previous row's key (any value: one that is not 0 or 1 differs from both), left as this block's last bit.
-pub fn run_starts(p: &[u8], nb: usize, at: usize, prev: &mut u64, g: &mut usize, out: &mut [i64]) {
-    let mut top = *prev & 1;
-    for k in 0..nb.div_ceil(64) {
-        let x = word(p, k);
-        let mut d = x ^ (x << 1 | top);
-        if k == 0 && *prev > 1 { d |= 1 }
-        top = x >> 63;
-        d &= live(nb, k);
-        while d != 0 { out[*g] = (at + (k << 6) + d.trailing_zeros() as usize) as i64; *g += 1; d &= d - 1 }
-    }
-    *prev = (p[(nb - 1) >> 3] >> ((nb - 1) & 7) & 1) as u64;
-}
-/// `coc_count_lt_blk` of a bit block: rows below `v`. The straddle case only: 0 < `v` <= 1 gives the zeros, v > 1 all.
-pub fn count_lt(p: &[u8], nb: usize, v: i64) -> usize { if v <= 0 { 0 } else if v == 1 { nb - ones(p, nb) } else { nb } }
 #[cfg(test)]
 mod tests {
     use super::*;

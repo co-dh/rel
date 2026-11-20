@@ -2,7 +2,6 @@
 //! The read views of coc.rs's `coc`: metadata, patch list, and the whole column.
 use crate::layout::{Tail, exc_layout};
 use crate::pod::{self, Elt};
-use alloc::vec::Vec;
 
 /// coc.rs: bit 8 of the patch list's element size, set when the frames follow
 pub const COC_EXC_FRM: usize = 0x100;
@@ -129,38 +128,6 @@ impl<'a> Coc<'a> {
 }
 
 impl Coc<'_> {
-    /// coc.rs `coc_count_lt_blk`: of block `b`'s first `nb` elements, how many are below `v`. A block with `maxv < v`
-    /// counts whole and one with its frame `>= v` not at all, neither reading a residual; a straddling one compares
-    /// `v - frame` in the encoded domain. `buf` is the lane buffer an odd width unpacks into, sized on first need so a
-    /// column that never straddles does not pay for it.
-    pub fn count_lt_blk(&self, b: usize, nb: usize, v: i64, buf: &mut Vec<u64>) -> usize {
-        let f = self.frame(b) as i64; // base <= f <= maxv, so f < v wherever the residuals count
-        let mut k = if self.meta.maxv[b] < v { nb } else if f >= v { 0 } else if let Some(p) = self.bit_blk(b) { crate::bitblk::count_lt(p, nb, v) } else {
-            let (w0, at) = (self.meta.width[b], self.meta.off[b] as usize);
-            if w0 & w0.wrapping_sub(1) != 0 && buf.is_empty() { buf.resize(self.meta.blk(), 0) }
-            let mut w = w0;
-            let p = lanes(&self.pack[at..at + self.meta.blk() * w0 as usize / 8], &mut w, nb, pod::bytes_mut(&mut buf[..]));
-            crate::res::res_count_lt(p, nb, w, (v as u64).wrapping_sub(f as u64))
-        };
-        // every case above scored an exception's slot as `frame < v`; the element is scored instead
-        if let Some(e) = self.exc.filter(|e| !e.pos.is_empty()) {
-            for j in e.off[b] as usize..e.off[b + 1] as usize {
-                if (e.pos[j] as usize) < nb { k = k.wrapping_add((self.exc(j) < v) as usize).wrapping_sub((f < v) as usize) }
-            }
-        }
-        k
-    }
-    /// coc.rs `coc_count_lt`: `((atoms c).filter (· < v)).length`, signed, exact.
-    pub fn count_lt(&self, v: i64) -> usize {
-        let mut buf = Vec::new();
-        crate::blocks::Blocks::from(*self).walk().map(|(b, _, nb)| self.count_lt_blk(b, nb, v, &mut buf)).sum()
-    }
-    /// coc.rs `coc_any_null`: whether an element is `nul`, the smallest value of its type, so `x < nul + 1` is
-    /// `x == nul`; stops at the first block that says yes.
-    pub fn any_null(&self, nul: i64) -> bool {
-        let mut buf = Vec::new();
-        crate::blocks::Blocks::from(*self).walk().any(|(b, _, nb)| self.count_lt_blk(b, nb, nul.wrapping_add(1), &mut buf) != 0)
-    }
 }
 
 /// coc.rs's `COC_LOAD_SUB`: residuals of `W` < 8 bits, `8 / W` to a byte, the shift a literal per byte so the loop

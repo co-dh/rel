@@ -5,23 +5,13 @@
 //! it, never dropped; a composition that discards a row sends it to a spare cell and cuts that cell off (WHERE,
 //! doc/rel-kernels.md). Its `foR` arguments are read a block at a time (`blocks`) and its answer written by the encoder's
 //! block step (`ffi::Sink`), so no column is decoded whole.
-use alloc::{format, string::String, vec, vec::Vec};
+use alloc::{format, string::String, vec};
 use crate::blocks::{Blocks, Grid};
 use crate::enc::Producer;
 use crate::ffi::{Form, Sink};
 use crate::scan::{op_eval, op_word};
 use crate::{lean, pod};
 
-/// `Kernel.scatterWords op is es n fill`: rows in order, each cell becoming `op_eval(op, cell, e)`; the first row whose
-/// index is not below `n`, or whose step fails, is the error. The word model `blocks` is tested against.
-pub fn words(op: u8, is: &[u64], es: &[u64], n: usize, fill: u64) -> Result<Vec<u64>, String> {
-    let mut o = vec![fill; n];
-    for (k, (&i, &x)) in is.iter().zip(es).enumerate() {
-        if i >= n as u64 { return Err(format!("scatter: index {i} at row {k} is not below n = {n}")) }
-        o[i as usize] = op_eval(op, o[i as usize], x).map_err(|s| format!("scatter: {s} at row {k}"))?;
-    }
-    Ok(o)
-}
 
 /// Rows `lo .. lo + nb` of `bl` as words, in `buf` (`16 * nb` bytes, 8-aligned) unless they lie in place.
 fn rows<'s>(bl: &'s Blocks, lo: usize, nb: usize, buf: &'s mut [u8]) -> &'s [u64] {
