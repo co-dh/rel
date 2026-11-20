@@ -741,9 +741,10 @@ def lLdiv (R S : Pre × OTy × OTy) : M (Pre × OTy × OTy) := do
   unify p "the source of `\\`'s right operand" S.2.1 R.2.1
   pure (lCompl I p (← lComp I p (lConv R) (lCompl I p S)))
 
+/-- `R/S = (S°\R°)°` lifted, through `lLdiv`, as the unlifted `rdiv` is: one definition of the division. -/
 def lRdiv (R S : Pre × OTy × OTy) : M (Pre × OTy × OTy) := do
   unify p "the target of `/`'s right operand" S.2.2 R.2.2
-  lComp I p (lCompl I p R) (lConv S)
+  return lConv (← lLdiv I p (lConv S) (lConv R))
 
 def lPair : Pre × OTy × OTy → Pre × OTy × OTy → M (Pre × OTy × OTy)
   | (R, a, b), (S, a', c) => do
