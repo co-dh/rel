@@ -995,8 +995,10 @@ partial def hyloG (p : Pos) (k : Nat) (a b : OTy) (t s : OTy) : M (Pre × OTy ×
 
 mutual
 
-/-- Elaborate `e` in the mode `m`: plain, or the body of a definition lifted to the index `I`. -/
-partial def elabE (env : Env) (m : Option OTy) : Expr → M Arg
+/-- Elaborate `e` in the mode `m`: plain, or the body of a definition lifted to the index `I`. `dfn` elaborates a
+    row's definition (`Prim.dfn`), or names the row whose definition `e` is: a parameter, not a call of `elabWith`
+    itself, keeps the recursion structural, so a definition mentions no row with a definition of its own. -/
+def elabWith (dfn : Except String (Prim → Env → Expr → M Arg)) (env : Env) (m : Option OTy) : Expr → M Arg
   | .name p n => do
     match env.params.lookup n with
     -- a fixed point's variable at the place it is used, which its errors name
@@ -1010,14 +1012,14 @@ partial def elabE (env : Env) (m : Option OTy) : Expr → M Arg
   -- `μX : c G(X) S` as written out by hand, `G` read off the types of `c` and `S`, and the children `c ∈_G`
   | .op p .hylo _ [c, s] => do
     if m.isSome then notLiftable p "hylo( )"
-    let (qc, a, t) := (← elabE env none c).plain; let (qs, s', b) := (← elabE env none s).plain
+    let (qc, a, t) := (← elabWith dfn env none c).plain; let (qs, s', b) := (← elabWith dfn env none s).plain
     let k ← modifyGet fun st => (st.fixes, { st with fixes := st.fixes + 1 })
     let mc ← Lean.getMCtx
     let (gx, gb, _) ← hyloG p k (zonk mc a) (zonk mc b) (zonk mc t) (zonk mc s')
     unify p "the source of hylo's algebra S, G(B)" s' gb
     pure (.rel (.hylo c.pos k (.comp (.comp qc gx) qs) a b) a b)
   | .op p o objs args => do
-    let as ← elabArgs env m args
+    let as ← elabArgs dfn env m args
     let a ← if args.isEmpty then constant env p o objs
       else match m with
         | some I => if as.any Arg.isFam then appliedL I p o as else applied env p o (as.map Arg.plain)
@@ -1027,13 +1029,17 @@ partial def elabE (env : Env) (m : Option OTy) : Expr → M Arg
     | .rel (.prim r xs s t none) s' t' => match r.dfn with
       | some e => do
         unless r.sig.1.isEmpty do throw ⟨p, s!"internal: {r.sym}'s definition takes none of its relations"⟩
-        let (q, u, v) := (← elabE env none e).plain
+        let f ← match dfn with
+          | .ok f => pure f
+          | .error o => throw ⟨p, s!"internal: {o}'s definition (Prim.dfn) mentions {r.sym}, which has a definition \
+              too; write {o}'s with {r.sym}'s definition in its place"⟩
+        let (q, u, v) := (← f r env e).plain
         unify p s!"the source of {r.sym}'s definition" u s; unify p s!"the target of {r.sym}'s definition" v t
         pure (.rel (.prim r xs s t (some (q.at p))) s' t')
       | none => pure a
     | a => pure a
   | .app p n args => do
-    let as ← elabArgs env m args
+    let as ← elabArgs dfn env m args
     match env.def? n with
     | some d =>
       if d.arity != as.length then throw ⟨p, s!"'{n}' takes {d.arity} arguments, found {as.length}"⟩
@@ -1041,26 +1047,26 @@ partial def elabE (env : Env) (m : Option OTy) : Expr → M Arg
     | none => throw ⟨p, s!"unknown name '{n}'"⟩
   -- `R n S`: the definition declared `_n_`, given `R` and `S` (§c)
   | .inf p n a b => do
-    let x ← elabE env m a; let y ← elabE env m b
+    let x ← elabWith dfn env m a; let y ← elabWith dfn env m b
     match env.infix? n with
     | some d => settle m p [x, y] (← d.apply p [x, y])
     | none => throw ⟨p, s!"unknown infix operator '{n}'"⟩
   | .comp a b => do
-    let x ← elabE env m a
+    let x ← elabWith dfn env m a
     let p := b.pos
     -- `Xest(Q)`, `Xthin(Q)` with `Q` a family: `est`, `thin` run one `Q` on every array, so the rows of §e
     -- work on `G ≜ X∋`, the values of each key; a closed `Q` takes the closed row below
     let q? ← match m, b with
       | some _, .op _ .est [] [qe] | some _, .op _ .thin [] [qe] => do
-        let y ← elabE env m qe; pure (if y.isFam then some y else none)
+        let y ← elabWith dfn env m qe; pure (if y.isFam then some y else none)
       | _, _ => pure none
     let est := match b with | .op _ .est _ _ => true | _ => false
     -- `X⦇R⦈` with `R` a family: the fold keyed by the index, on the arrays `X` gives each key (§e)
     let fold? ← match m, b with
       | some _, .fold _ false r => do
         let (y, z) ← foldParts env m p (← match r with
-          | .junc _ a s => do pure (.inl (← elabE env m a, ← elabE env m s))
-          | r => do pure (.inr (← elabE env m r)))
+          | .junc _ a s => do pure (.inl (← elabWith dfn env m a, ← elabWith dfn env m s))
+          | r => do pure (.inr (← elabWith dfn env m r)))
         pure (if y.isFam || z.isFam then some (y, z) else none)
       | _, _ => pure none
     if let (some I, some (y, z)) := (m, fold?) then
@@ -1075,7 +1081,7 @@ partial def elabE (env : Env) (m : Option OTy) : Expr → M Arg
         else do pure (lLam I none (← lSame p Pre.diff G (← lComp I p G (← lSame p Pre.diff Q (lConv Q)))))
       pure (.fam r.1 I r.2.1 r.2.2)
     | _, _ =>
-      let y ← elabE env m b
+      let y ← elabWith dfn env m b
       match m, x.isFam || y.isFam with
       | some I, true =>
         let r ← match x, y with
@@ -1087,21 +1093,21 @@ partial def elabE (env : Env) (m : Option OTy) : Expr → M Arg
         unify p "the source of the right factor of a composition" s' t
         pure (.rel (.comp q r) s t')
   | .bin p o a b => do
-    let x ← elabE env m a; let y ← elabE env m b
+    let x ← elabWith dfn env m a; let y ← elabWith dfn env m b
     match m, x.isFam || y.isFam with
     | some I, true => binaryL I p o x y
     | _, _ => binary p o x.plain y.plain
   | .conv p a => do
     -- `build` pushes the converse to the leaves when the term runs on demand (`convTm`)
-    match ← elabE env m a with
+    match ← elabWith dfn env m a with
     | .fam q i s t => let r := lConv (q, s, t); pure (.fam r.1 i r.2.1 r.2.2)
     | .rel q s t => pure (.rel (.conv (.close p q s "R°")) t s)
   | .compl p a => do
-    match ← elabE env m a with
+    match ← elabWith dfn env m a with
     | .fam q i s t => let r := lCompl i p (q, s, t); pure (.fam r.1 i r.2.1 r.2.2)
     | .rel q s t => pure (.rel (.diff (.top p s t none) q) s t)
   | .pair p a b => do
-    let x ← elabE env m a; let y ← elabE env m b
+    let x ← elabWith dfn env m a; let y ← elabWith dfn env m b
     match m, x.isFam || y.isFam with
     | some I, true => let r ← lPair p (← famOf I p x) (← famOf I p y); pure (.fam r.1 I r.2.1 r.2.2)
     | _, _ =>
@@ -1109,7 +1115,7 @@ partial def elabE (env : Env) (m : Option OTy) : Expr → M Arg
       unify p "the source of the pair's second part" s' s
       pure (.rel (.pair q r) s (.prod t t'))
   | .junc p a b => do
-    let x ← elabE env m a; let y ← elabE env m b
+    let x ← elabWith dfn env m a; let y ← elabWith dfn env m b
     match m, x.isFam || y.isFam with
     | some I, true => let r ← lJunc p (← famOf I p x) (← famOf I p y); pure (.fam r.1 I r.2.1 r.2.2)
     | _, _ =>
@@ -1119,8 +1125,8 @@ partial def elabE (env : Env) (m : Option OTy) : Expr → M Arg
       pure (.rel (.junc (.close p q s w) (.close p r s' w)) (.sum s s') t)
   | .fold p d r => do
     let (x, y) ← foldParts env m p (← match r with
-      | .junc _ a s => do pure (.inl (← elabE env m a, ← elabE env m s))
-      | r => do pure (.inr (← elabE env m r)))
+      | .junc _ a s => do pure (.inl (← elabWith dfn env m a, ← elabWith dfn env m s))
+      | r => do pure (.inr (← elabWith dfn env m r)))
     if x.isFam || y.isFam then
       throw ⟨p, "⦇R⦈ given a family is not liftable on its own: its arrays come from its left, X⦇R⦈ (§e), a left fold"⟩
     let (q, v, v') := x.plain; let (r, ev, w) := y.plain
@@ -1141,7 +1147,7 @@ partial def elabE (env : Env) (m : Option OTy) : Expr → M Arg
     if m.isSome then notLiftable p fx
     let a ← fresh; let c ← fresh
     let k ← modifyGet fun s => (s.fixes, { s with fixes := s.fixes + 1 })
-    let (q, s, t) := (← elabE { env with params := (x, .rel (.var p k a c none) a c) :: env.params } none b).plain
+    let (q, s, t) := (← elabWith dfn { env with params := (x, .rel (.var p k a c none) a c) :: env.params } none b).plain
     unify p s!"the source of {fx}'s body" s a; unify p s!"the target of {fx}'s body" t c
     if let some e := q.polarity k fx x true "" then throw e
     let S := q.bound k
@@ -1149,11 +1155,15 @@ partial def elabE (env : Env) (m : Option OTy) : Expr → M Arg
       throw ⟨p, s!"{fx} needs a bound: write S ∩ φ with S not mentioning {x} (⊤(A,B) for the whole object)"⟩
     pure (.rel (.fix p least k x S q a c) a c)
 
-partial def elabArgs (env : Env) (m : Option OTy) : List Expr → M (List Arg)
+def elabArgs (dfn : Except String (Prim → Env → Expr → M Arg)) (env : Env) (m : Option OTy) :
+    List Expr → M (List Arg)
   | [] => pure []
-  | e :: es => do let a ← elabE env m e; pure (a :: (← elabArgs env m es))
+  | e :: es => do let a ← elabWith dfn env m e; pure (a :: (← elabArgs dfn env m es))
 
 end
+
+/-- `elabWith` where a row's definition is elaborated with no row definition inside it. -/
+def elabE : Env → Option OTy → Expr → M Arg := elabWith (.ok fun r env e => elabWith (.error r.sym) env none e)
 
 /-- A declared type matched against an argument's: the variables' objects so far, no match, or a variable met
     at two objects. -/
