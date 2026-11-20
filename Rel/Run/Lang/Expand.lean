@@ -279,6 +279,16 @@ partial def primsFit {A B : Obj} (t : Tm A B) : MetaM Bool := do
   withLocalDeclsDND (ts.map (`x, ·)) fun xs => do
     pure (← primE r A B (xs.zip ts)).isSome <&&> as.allM fun ⟨_, _, c⟩ => primsFit c
 
+/-- The placeholders of a constant of `n` with `k` object variables in `env`: atoms no object in scope is stored at,
+    one per variable, or the definition is refused by name. A refusal of the definition, not of one form of it, so
+    `callDef` checks it where its fallback to the expansion cannot swallow it. -/
+def placeholdersFor (env : Env) (p : Pos) (n : String) (k : Nat) : Except Err (List Rel.QAtomicType) := do
+  let ph := placeholdersOf env.objs
+  if ph.length < k then
+    throw ⟨p, s!"`{n}` has {k} object variables, and only {ph.length} atoms no object in scope is stored at " ++
+      s!"stand for them ({repr ph})"⟩
+  pure ph
+
 /-- `n(qs) ≜ e : ty` built once (`elabOnce`); a body that needs keys stays a plan on them, and one that builds no
     relation but tests on pairs is its pair test (`test`, §a). A variable is generic (`varObj`) when the body builds
     with it an object of its own, else `.long`, a number object (`succ`, `sum` …). A body that does not build so is
@@ -289,11 +299,7 @@ def once (env : Env) (p : Pos) (n : String) (qs : List Param) (e : Expr) (ty : O
   -- per variable: generic over its object, and given its universe; one the call puts an unbounded number object at
   -- is `num`, one it puts an initial segment of ℕ at is `seg` (`nb`), so a row with a `dfn` there runs fused
   -- (`build`), as it does outside a body
-  -- the variables stand for atoms no object in scope is stored at, one each, or the definition is refused by name
-  let ph := placeholdersOf env.objs
-  if ph.length < vs.length then
-    throw ⟨p, s!"`{n}` has {vs.length} object variables, and only {ph.length} atoms no object in scope is stored at " ++
-      s!"stand for them ({repr ph})"⟩
+  let ph ← liftExcept (placeholdersFor env p n vs.length)
   let run (fl : List (Bool × Bool)) : EM (Once × List Once) := do
     let objs := vs.zipIdx.map (fun (v, k) =>
       let (gen, uni) := fl.getD k (false, true)
@@ -390,6 +396,8 @@ def callDef (env : Env) (dp : Pos) (n : String) (qs : List Param) (e : Expr) (ty
         | none, none => do
           let k := if c.getPrefix == emitter then key else emitter ++ key
           let vs := vs ++ (List.range ix.size).map idxVar
+          -- too few placeholders refuses the definition (an index variable counts), so it is not swallowed below
+          let _ ← liftExcept (placeholdersFor env dp n vs.length)
           -- a body that does not build alone at these forms (a family it reads whole, which only the use's
           -- context keys, §e) is no constant: the use is the expansion, whose build reports any error in its words
           match ← (once env dp n qs e ty vs key k fs nb (← get).specs).run with

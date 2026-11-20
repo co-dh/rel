@@ -329,9 +329,9 @@ open Lean Elab Term in
     constructor list: `obj F : f64` names an atom as Lean does, with no second spelling to keep in step. -/
 def atomNames : List (Lean.Name × Rel.QAtomicType) := by_elab do
   let .inductInfo i ← getConstInfo ``Rel.QAtomicType | throwError "Rel.QAtomicType is no inductive type"
-  let (n, t) := (mkConst ``Lean.Name, mkConst ``Rel.QAtomicType)
-  pure (mkListLit (mkApp2 (mkConst ``Prod [0, 0]) n t) (i.ctors.map fun c =>
-    mkApp4 (mkConst ``Prod.mk [0, 0]) n t (toExpr (Lean.Name.mkSimple c.getString!)) (mkConst c)))
+  let (n, t) := (Lean.mkConst ``Lean.Name, Lean.mkConst ``Rel.QAtomicType)
+  Meta.mkListLit (Lean.mkApp2 (Lean.mkConst ``Prod [0, 0]) n t) (i.ctors.map fun c =>
+    Lean.mkApp4 (Lean.mkConst ``Prod.mk [0, 0]) n t (toExpr (Lean.Name.mkSimple c.getString!)) (Lean.mkConst c))
 
 open Lean in deriving instance ToExpr for Rel.QAtomicType
 

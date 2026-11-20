@@ -79,11 +79,18 @@ def floatBits (w : Nat) (neg : Bool) (m : Nat) (s : Bool) (e : Nat) : UInt64 :=
 /-- The float of `w` bytes with bits `b` as its sign and `M`, `E`, its value `±M·2^E`; none at an infinity or a NaN
     (every exponent bit set). -/
 def floatParts (w : Nat) (b : UInt64) : Option (Bool × Nat × Int) :=
-  let (mb, eb) := if w == 4 then (23, 8) else (52, 11)
+  let (mb, eb) : Nat × Nat := if w == 4 then (23, 8) else (52, 11)
   let (fr, ex, neg) := (b.toNat % 2 ^ mb, b.toNat / 2 ^ mb % 2 ^ eb, b.toNat / 2 ^ (mb + eb) % 2 == 1)
   let bias : Int := 2 ^ (eb - 1) - 1
   if ex == 2 ^ eb - 1 then none
   else if ex == 0 then some (neg, fr, 1 - bias - mb) else some (neg, fr + 2 ^ mb, ex - bias - mb)
+
+/-- A float word of `w` bytes the language never holds (PLAN R7, decision G): a NaN, or the negative zero. Where a
+    float word is produced it is normalised to one zero (`-0 ↦ +0`), and a NaN has no row. -/
+def floatNonCanonical (w : Nat) (b : UInt64) : Bool :=
+  match floatParts w b with
+  | none => b.toNat % 2 ^ (if w == 4 then 23 else 52) != 0
+  | some (neg, M, _) => neg && M == 0
 
 /-- A number word's sign (`-`, which `Embed.wNeg` writes before the token) and its token as Lean reads a number
     literal: a whole number `k` as `(k, false, 0)`, a scientific one (`2.5`, `1e-3`, `1.5e10`) by
@@ -95,14 +102,17 @@ def numParts (w : String) : Option (Bool × Nat × Bool × Nat) :=
   | none => (Lean.Syntax.decodeScientificLitVal? d).map fun (m, s, e) => (neg, m, s, e)
 
 /-- The word `w` stored at the atom `t` of the object `n` (`litLayout`): a float of `t`'s width read as Lean reads a
-    float literal, a whole number included (`numParts`); an integer in `t`'s range. An error names `w` and `n` where
-    it is neither, or where it is no finite float: no literal writes an infinity or a NaN (NaN has no row). -/
+    float literal, a whole number included (`numParts`), normalised where it is produced (`floatNonCanonical`: `-0.0`
+    and a `-1e-400` that rounds to it are `0.0`); an integer in `t`'s range. An error names `w` and `n` where it is
+    neither, or where it is no finite float: no literal writes an infinity or a NaN (NaN has no row). -/
 def wordAt (p : Pos) (n : String) (t : Rel.QAtomicType) (w : String) : Except Err UInt64 :=
   let no := s!"'{w}' is not an element of {n}, an object of {atomName t}"
   match litLayout t with
   | none => throw ⟨p, s!"{n} is an object of {atomName t}, which has no literal"⟩
   | some (b, true, _) => match numParts w with
-    | some (neg, m, s, e) => let x := floatBits b neg m s e
+    | some (neg, m, s, e) =>
+      -- a literal writes no NaN, so the one non-canonical word it can produce is the negative zero
+      let x := if floatNonCanonical b (floatBits b neg m s e) then floatBits b false m s e else floatBits b neg m s e
       if (floatParts b x).isSome then pure x else throw ⟨p, s!"{no}: it is beyond the range of {atomName t}"⟩
     | none => throw ⟨p, no⟩
   | some (b, false, sg) => match w.toInt? with
@@ -1880,7 +1890,7 @@ def litCol (p : Pos) (n : USize) (o : OTy) (rows : List Tup) : Except Err ((A : 
           | r => throw ⟨p, s!"a literal's element of {o} is a word, found {r.show}"⟩
         let a := ws.toArray
         if h : a.size = n.toNat ∧ (t ≠ .u1 ∧ t.width.isSome) then
-          return ⟨.atom t, Arr.ofFn t n (fun i => a[i.val]'(h.1 ▸ i.isLt)) h.2⟩
+          return ⟨.atom t, Arr.ofFn t n (fun i => a[i.val]'(by have := i.isLt; omega)) h.2⟩
         else return ← internal dp s!"literal rows at {atomName t}"
     let cs ← rows.mapM fun
       | .leaf w => code objs mc p o w

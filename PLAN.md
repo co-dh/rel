@@ -224,8 +224,17 @@ Diff table 的「状态」列：✅ 后面是完成它的步骤；🔄 是部分
 - ✅ S0 fork A，每个 constant 自己的 placeholder（分支 `tb-s0`）：`Once.ph = placeholdersOf env.objs`，即 `varAtoms`
   中没有任何作用域内对象存储在其上的 atom；`Obj.inst ph σ`、`Tm.instObj ph σ`、`callTm … ph`、`Pre.call … ph`。
   `.long` 不在 `varAtoms` 中，所以任何 `ph` 都保持它（`fixed_long` 不加前提）。变量多于 `ph` 时 `once` 报错并给出定义名。
-- ⬜ S1 `ObjDef.num t`、`obj F : f64`；`ObjInfo.obj := .atom t`；`numU`、`code` 按 atom。
-- ⬜ S2 float 字面量与 float 的打印。
+- ✅ S1（分支 `tb-s1`）`obj F : t` 声明存储在 atom `t` 上的对象：`ObjDef.num (t := .i64)`，`objInfo` 给
+  `obj := .atom t`。atom 名只有一张表 `atomNames`（`Syntax.lean`），由 `QAtomicType` 的构造子生成，名字即构造子名。
+  能声明的 atom 是 `litLayout t`（`Kernel.ascLayout` 去掉 `u1`）有值者：`u8 i8 i16 i32 i64 f32 f64 char date
+  datetime`；`sym`、`general`、`u1` 和未知名字在解析时报错并列出可用 atom。`obj N` 不变（i64）。`numU` 在非 i64 的
+  声明对象上报错并给出 atom（`+`、`<` 等留给 S3）；`code` 不再把非 i64 对象当 i64。
+- ✅ S2 float 字面量：整数，或 Lean 的 scientific 字面量（`2.5`、`1e-3`、`1.5E10`），可带紧贴的 `-`；没有 NaN 或
+  无穷的写法，舍入为无穷的字面量报错。字面量按其所在对象定型（`Elab.wordAt`）：f64 对象上的 `1` 是 float，i64
+  对象上的 `2.5` 报错并给出字面量与对象；整数按宽度与符号查范围。产生 float 字的地方规范化（决定 G）：`-0.0` 读成
+  `0.0`；判断谓词 `Elab.floatNonCanonical w b`（NaN 或负零），合并时应与 `Rel.Lang.Table.nonCanonical` 合为一个定义。
+  打印 `Elab.floatText`：能读回同样位的最短十进制，首位数量级在 `[-7, 21)` 时用带小数点的普通写法（`2.5`、`0.0`、
+  `15000000000.0`），否则 `1e-8`、`1e21`。测试 `Rel/Lang/TestFloatObj.lean`。
 - ⬜ S3 `Tm.arith`、`leq`、`lt` 以 atom 为下标；`stepDen t`、`stepCols t`、`cmpOn (ltOp t)` 及定律。
 - ⬜ S4 行 `sqrt`；`sum` 按 atom。
 - ⬜ S5 float 上的 `Obj.key = ordCode`；`key_ordCode`、`ascBad`、float 上的 `LamLaw`。
