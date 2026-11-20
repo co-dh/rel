@@ -270,37 +270,112 @@ theorem inr_holds {n : USize} {Y : Vals B n} {T : Tab B (.sum A B)} (h : Tab.inr
   simp only [Tab.Holds, hrow, Core.Rel.inr, Core.Rel.graph]
   exact ⟨fun ⟨i, h1, h2⟩ => ⟨⟨i, h1⟩, by rw [← h2, h1]⟩, fun ⟨⟨i, h1⟩, h2⟩ => ⟨i, h1, by rw [h2, h1]⟩⟩
 
-/-- **`R.junc S` denotes `[R, S]`** (`Tm.den` at `junc`: `Core.Rel.junc`, `inl° ≫ R ∪ inr° ≫ S`). -/
-theorem junc_holds {R : Tab A C} {S : Tab B C} {T : Tab (.sum A B) C} (h : R.junc S = .ok T)
-    (s : (Obj.sum A B).El) (c : C.El) : T.Holds s c ↔ Core.Rel.junc R.Holds S.Holds s c := by
-  unfold Tab.junc at h
+/-- **`Tab.inlConv X` denotes `inl°` on the values `X`** (`idU X ≫ Core.Rel.inl°`): a sum value of `X` beside its
+left summand, where it has one. -/
+theorem inlConv_holds {n : USize} {X : Vals (.sum A B) n} {T : Tab (.sum A B) A} (h : Tab.inlConv X = .ok T)
+    (s : (Obj.sum A B).El) (a : A.El) : T.Holds s a ↔ (∃ i, X.row i = s) ∧ Core.Rel.inl a s := by
+  obtain ⟨l, r, tag, idx, x, y⟩ := X
+  unfold Tab.inlConv at h
   simp only [bind, Except.bind] at h
   split at h; · cases h
-  rename_i L hL
+  rename_i D hD
+  split at h
+  · split at h; · cases h
+    rename_i I hI
+    split at h; · cases h
+    rename_i C hC
+    split at h; · cases h
+    rename_i E hE
+    split at h; · cases h
+    rename_i F hF
+    split at h; · cases h
+    rename_i M hM
+    split at h
+    · rename_i hM0
+      rw [zero_holds h, false_iff]
+      rintro ⟨⟨i, hi⟩, hs⟩
+      simp only [Core.Rel.inl, Core.Rel.graph] at hs
+      have hd : D.Holds s s := (idU_holds hD _ _).2 ⟨rfl, i, hi⟩
+      have hn : ¬ M.Holds s s := fun ⟨j, _⟩ => by have := j.2; simp [hM0] at this
+      have hf : F.Holds s s := Classical.byContradiction fun hf => hn ((diff_holds hM _ _).2 ⟨hd, hf⟩)
+      obtain ⟨-, b, hb⟩ := (dom_holds hF _ _).1 hf
+      obtain ⟨s', hs', hc⟩ := (comp_holds hE _ _).1 hb
+      obtain ⟨rfl, -⟩ := (idU_holds hD _ _).1 hs'
+      have he := ((inr_holds hI _ _).1 ((conv_holds hC _ _).1 hc)).2
+      simp only [Core.Rel.inr, Core.Rel.graph] at he
+      exact absurd (hs.symm.trans he) (by simp)
+    · cases h
+  · rename_i hl
+    split at h; · cases h
+    rename_i I hI
+    split at h; · cases h
+    rename_i C hC
+    rw [comp_holds h]
+    constructor
+    · rintro ⟨s', hd, hc⟩
+      obtain ⟨rfl, hs⟩ := (idU_holds hD _ _).1 hd
+      exact ⟨hs, ((inl_holds hI _ _).1 ((conv_holds hC _ _).1 hc)).2⟩
+    · rintro ⟨⟨i, hi⟩, hs⟩
+      refine ⟨s, (idU_holds hD _ _).2 ⟨rfl, i, hi⟩, (conv_holds hC _ _).2 ((inl_holds hI _ _).2 ⟨?_, hs⟩)⟩
+      simp only [Core.Rel.inl, Core.Rel.graph] at hs
+      subst hs
+      simp only [Vals.row] at hi
+      split at hi
+      · cases hi
+      · rw [dif_pos (by omega)] at hi; exact ⟨_, Sum.inl.inj hi⟩
+
+/-- **`Tab.inrConv X` denotes `inr°` on the values `X`** (`idU X ≫ Core.Rel.inr°`): the mirror of `inlConv_holds`. -/
+theorem inrConv_holds {n : USize} {X : Vals (.sum A B) n} {T : Tab (.sum A B) B} (h : Tab.inrConv X = .ok T)
+    (s : (Obj.sum A B).El) (b : B.El) : T.Holds s b ↔ (∃ i, X.row i = s) ∧ Core.Rel.inr b s := by
+  obtain ⟨l, r, tag, idx, x, y⟩ := X
+  unfold Tab.inrConv at h
+  simp only [bind, Except.bind] at h
   split at h; · cases h
-  rename_i Lc hLc
-  split at h; · cases h
-  rename_i U hU
-  split at h; · cases h
-  rename_i M hM
-  split at h; · cases h
-  rename_i Mc hMc
-  split at h; · cases h
-  rename_i V hV
-  rw [union_holds h, comp_holds hU, comp_holds hV]
-  simp only [conv_holds hLc, conv_holds hMc, inl_holds hL, inr_holds hM]
-  have hk : ∀ {E : Obj} {Q : Tab E C} {e : E.El}, Q.Holds e c → ∃ i, Q.key.row i = e := fun ⟨i, hi, _⟩ => ⟨i, hi⟩
-  cases s with
-  | inl a =>
-    simp only [Core.Rel.junc, Core.Rel.union, Core.Rel.comp, Core.Rel.recip, Core.Rel.inl, Core.Rel.inr,
-      Core.Rel.graph]
-    exact ⟨fun | .inl ⟨_, ⟨_, e⟩, hr⟩ => .inl ⟨_, e, hr⟩ | .inr ⟨_, ⟨_, e⟩, _⟩ => absurd e (by simp),
-      fun | .inl ⟨_, e, hr⟩ => .inl ⟨_, ⟨hk hr, e⟩, hr⟩ | .inr ⟨_, e, _⟩ => absurd e (by simp)⟩
-  | inr b =>
-    simp only [Core.Rel.junc, Core.Rel.union, Core.Rel.comp, Core.Rel.recip, Core.Rel.inl, Core.Rel.inr,
-      Core.Rel.graph]
-    exact ⟨fun | .inr ⟨_, ⟨_, e⟩, hr⟩ => .inr ⟨_, e, hr⟩ | .inl ⟨_, ⟨_, e⟩, _⟩ => absurd e (by simp),
-      fun | .inr ⟨_, e, hr⟩ => .inr ⟨_, ⟨hk hr, e⟩, hr⟩ | .inl ⟨_, e, _⟩ => absurd e (by simp)⟩
+  rename_i D hD
+  split at h
+  · split at h; · cases h
+    rename_i I hI
+    split at h; · cases h
+    rename_i C hC
+    split at h; · cases h
+    rename_i E hE
+    split at h; · cases h
+    rename_i F hF
+    split at h; · cases h
+    rename_i M hM
+    split at h
+    · rename_i hM0
+      rw [zero_holds h, false_iff]
+      rintro ⟨⟨i, hi⟩, hs⟩
+      simp only [Core.Rel.inr, Core.Rel.graph] at hs
+      have hd : D.Holds s s := (idU_holds hD _ _).2 ⟨rfl, i, hi⟩
+      have hn : ¬ M.Holds s s := fun ⟨j, _⟩ => by have := j.2; simp [hM0] at this
+      have hf : F.Holds s s := Classical.byContradiction fun hf => hn ((diff_holds hM _ _).2 ⟨hd, hf⟩)
+      obtain ⟨-, a, ha⟩ := (dom_holds hF _ _).1 hf
+      obtain ⟨s', hs', hc⟩ := (comp_holds hE _ _).1 ha
+      obtain ⟨rfl, -⟩ := (idU_holds hD _ _).1 hs'
+      have he := ((inl_holds hI _ _).1 ((conv_holds hC _ _).1 hc)).2
+      simp only [Core.Rel.inl, Core.Rel.graph] at he
+      exact absurd (hs.symm.trans he) (by simp)
+    · cases h
+  · rename_i hr
+    split at h; · cases h
+    rename_i I hI
+    split at h; · cases h
+    rename_i C hC
+    rw [comp_holds h]
+    constructor
+    · rintro ⟨s', hd, hc⟩
+      obtain ⟨rfl, hs⟩ := (idU_holds hD _ _).1 hd
+      exact ⟨hs, ((inr_holds hI _ _).1 ((conv_holds hC _ _).1 hc)).2⟩
+    · rintro ⟨⟨i, hi⟩, hs⟩
+      refine ⟨s, (idU_holds hD _ _).2 ⟨rfl, i, hi⟩, (conv_holds hC _ _).2 ((inr_holds hI _ _).2 ⟨?_, hs⟩)⟩
+      simp only [Core.Rel.inr, Core.Rel.graph] at hs
+      subst hs
+      simp only [Vals.row] at hi
+      split at hi
+      · rw [dif_pos (by omega)] at hi; exact ⟨_, Sum.inr.inj hi⟩
+      · cases hi
 
 end Tab
 
@@ -382,22 +457,21 @@ private def injOk {A B : Obj} [BEq A.El] [BEq B.El] {n : USize} (X : Vals A n) (
     specOk (Tab.inl (B := B) X) ((Vals.rows X).map fun a => (a, .inl a)) &&
     specOk (Tab.inr (A := A) Y) ((Vals.rows Y).map fun b => (b, .inr b))
 
-/-- `[R, S]` against `inl° ≫ R ∪ inr° ≫ S` as a set. -/
-private def juncOk {A B C : Obj} [BEq A.El] [BEq B.El] [BEq C.El] (R : Tab A C) (S : Tab B C) : Bool :=
-    specOk (R.junc S) ((R.toList.map fun (a, c) => (.inl a, c)) ++ S.toList.map fun (b, c) => (.inr b, c))
+/-- `inl°`, `inr°` on the sum values `inl X` and `inr Y` give, against the converses as sets: `X`'s values on the
+left ones, none on the right ones (a payload of no value on the other side), and the mirror. -/
+private def injConvOk {A B : Obj} [BEq A.El] [BEq B.El] {n : USize} (X : Vals A n) (Y : Vals B n) : Bool :=
+  match Tab.inl (B := B) X, Tab.inr (A := A) Y with
+  | .ok L, .ok R =>
+    specOk (Tab.inlConv L.val) ((Vals.rows X).map fun a => (.inl a, a)) && specOk (Tab.inrConv L.val) [] &&
+    specOk (Tab.inrConv R.val) ((Vals.rows Y).map fun b => (.inr b, b)) && specOk (Tab.inlConv R.val) []
+  | _, _ => false
 
 -- `inl`, `inr`: duplicates, none, a float and a tuple summand
 #guard ints.all fun ps => let R := tabW ps; injOk R.key R.val
 #guard injOk F.val F.key && injOk P.val P.key
--- `[R, S]`: integers (duplicate rows, one side empty, both empty)
-#guard ints.all fun ps => ints.all fun qs => juncOk (tabW ps) (tabW qs)
--- a float value column, a tuple value, a float and a tuple key summand, each beside a side of none
-#guard juncOk F F && juncOk (A := .long) (B := .long) P P && juncOk F (⟨_, col [], Arr.ofFn .f64 _ fun _ => 0⟩ : Tab .long (.atom .f64)) &&
-  juncOk (⟨_, col [], Arr.ofFn .f64 _ fun _ => 0⟩ : Tab .long (.atom .f64)) F &&
-  juncOk (tabW []) (⟨F.n, F.val, F.key⟩ : Tab (.atom .f64) .long) &&
-  juncOk (⟨P.n, P.val, P.key⟩ : Tab (.prod .long .long) .long) (tabW (ints.getD 0 [])) &&
-  juncOk (tabW (ints.getD 1 [])) (⟨P.n, P.val, P.key⟩ : Tab (.prod .long .long) .long) &&
-  juncOk (⟨P.n, P.val, P.key⟩ : Tab (.prod .long .long) .long) (tabW [])
+-- `inl°`, `inr°`: duplicates, none, a float and a tuple summand
+#guard ints.all fun ps => let R := tabW ps; injConvOk R.key R.val
+#guard injConvOk F.val F.key && injConvOk P.val P.key
 
 end Checks
 
@@ -411,7 +485,8 @@ end Checks
 #print axioms Tab.prod_holds
 #print axioms Tab.inl_holds
 #print axioms Tab.inr_holds
-#print axioms Tab.junc_holds
+#print axioms Tab.inlConv_holds
+#print axioms Tab.inrConv_holds
 #print axioms Tab.flat_holds
 
 end Rel

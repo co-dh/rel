@@ -279,6 +279,8 @@ def snoc : RowCode := ⟨"snoc", fun σ => (.prod (.arr (σ₁ σ)) (σ₁ σ), 
 def unsnoc : RowCode := ⟨"unsnoc", fun σ => (.arr (σ₁ σ), .prod (.arr (σ₁ σ)) (σ₁ σ))⟩
 def setify : RowCode := ⟨"setify", fun σ => (.arr (σ₁ σ), .arr (σ₁ σ))⟩
 def positions : RowCode := ⟨"positions", fun σ => (.arr (σ₁ σ), .arr .long)⟩
+def inlC : RowCode := ⟨"inl°", fun σ => (.sum (σ₁ σ) (σ₂ σ), σ₁ σ)⟩
+def inrC : RowCode := ⟨"inr°", fun σ => (.sum (σ₁ σ) (σ₂ σ), σ₂ σ)⟩
 end RowCode
 
 /-- A row's meaning at its object variables `σ`, given its relation arguments' meanings. -/
@@ -322,7 +324,9 @@ def rowDens : List ((c : RowCode) × RowDen c) :=
    ⟨setify, fun σ _ => lamDen (fun xs a => a ∈ xs : Den (.arr (σ₁ σ)) (σ₁ σ))⟩,
    -- dataframe §3.1's `where(dom(xs ≫ p))`: the positions of `xs` whose element is in `dom(p)`, ascending
    ⟨positions, fun σ => Sem.one (X := σ₁ σ) (Y := σ₁ σ) fun T xs ys =>
-      ys = positionsL (fun x => decide (∃ y, T x y)) xs⟩]
+      ys = positionsL (fun x => decide (∃ y, T x y)) xs⟩,
+   ⟨inlC, fun _ _ s a => Core.Rel.inl a s⟩,
+   ⟨inrC, fun _ _ s b => Core.Rel.inr b s⟩]
 
 
 /-- The row `r`'s meaning at `A ⟶ B` given its relation arguments' meanings, found as `Prim.run` finds its code;
@@ -357,8 +361,6 @@ noncomputable def Tm.den : Val → {A B : Obj} → Tm A B → Den A B
   | ρ, _, _, .rdiv R S U V => rdivDen (R.den ρ) (S.den ρ) (U.den ρ) (V.den ρ)
   | ρ, _, _, .pair R S => rpair (R.den ρ) (S.den ρ)
   | ρ, _, _, .prod R S => rprodMap (R.den ρ) (S.den ρ)
-  | ρ, _, _, .junc R S => Core.Rel.junc (R.den ρ) (S.den ρ)
-  | ρ, _, _, .juncD R S => Core.Rel.junc (R.den ρ) (S.den ρ)
   | ρ, _, _, .lam R => lamDen (R.den ρ)
   | ρ, _, _, .E R => EDen (R.den ρ)
   | ρ, _, _, .est Q => estDen (Q.den ρ)
@@ -404,7 +406,7 @@ theorem Tm.den_congr : ∀ {A B : Obj} (t : Tm A B) (ρ ρ' : Val), (∀ i ∈ t
   | var _ k => intro ρ ρ' h; exact ⟨by simp only [Tm.den, h k (by simp [Tm.fv])], fun _ => rfl⟩
   | top V ih => intro ρ ρ' h; exact ⟨by simp only [Tm.den, (ih ρ ρ' fun i hi => h i (by simp [Tm.fv, hi])).1], fun _ => rfl⟩
   | comp R S ihR ihS | meet R S ihR ihS | join R S ihR ihS | diff R S ihR ihS | pair R S ihR ihS
-  | prod R S ihR ihS | junc R S ihR ihS | juncD R S ihR ihS | foldr R S ihR ihS | fold R S ihR ihS | foldI R S ihR ihS =>
+  | prod R S ihR ihS | foldr R S ihR ihS | fold R S ihR ihS | foldI R S ihR ihS =>
     intro ρ ρ' h
     exact ⟨by simp only [Tm.den, (ihR ρ ρ' fun i hi => h i (by simp [Tm.fv, hi])).1,
       (ihS ρ ρ' fun i hi => h i (by simp [Tm.fv, hi])).1], fun _ => rfl⟩
@@ -602,12 +604,6 @@ theorem pair_le {X X' : Den A B} {Y Y' : Den A C} (hX : X ⊑ X') (hY : Y ⊑ Y'
 theorem prod_le {X X' : Den A B} {Y Y' : Den C D} (hX : X ⊑ X') (hY : Y ⊑ Y') : rprodMap X Y ⊑ rprodMap X' Y' :=
   le_iff.2 fun _ _ h => ⟨le_iff.1 hX _ _ h.1, le_iff.1 hY _ _ h.2⟩
 
-theorem junc_le {X X' : Den A C} {Y Y' : Den B C} (hX : X ⊑ X') (hY : Y ⊑ Y') :
-    Core.Rel.junc X Y ⊑ Core.Rel.junc X' Y' :=
-  le_iff.2 fun x c h => by
-    simp only [Core.Rel.junc, union_apply, comp_apply] at h ⊢
-    exact h.imp (fun ⟨b, h1, h2⟩ => ⟨b, h1, le_iff.1 hX _ _ h2⟩) (fun ⟨b, h1, h2⟩ => ⟨b, h1, le_iff.1 hY _ _ h2⟩)
-
 -- `est` drops `b` only where `Q` fails, so a larger `Q` drops fewer
 theorem est_le {Q Q' : Den (.prod B B) (.prod B B)} (hQ : Q ⊑ Q') : estDen Q ⊑ estDen Q' :=
   le_iff.2 fun _ _ h => ⟨h.1, fun ⟨c, hc, hne, hq⟩ => h.2 ⟨c, hc, hne, fun h' => hq (le_iff.1 hQ _ _ h')⟩⟩
@@ -750,9 +746,6 @@ theorem Tm.den_pol (k : Nat) : ∀ {A B : Obj} (t : Tm A B) (s : Bool) (ρ ρ' :
   | prod R S ihR ihS =>
     intro s ρ ρ' hp g; simp only [Tm.pol, Bool.and_eq_true] at hp
     exact sle.map2 prod_le (ihR s ρ ρ' hp.1 g) (ihS s ρ ρ' hp.2 g)
-  | junc R S ihR ihS | juncD R S ihR ihS =>
-    intro s ρ ρ' hp g; simp only [Tm.pol, Bool.and_eq_true] at hp
-    exact sle.map2 junc_le (ihR s ρ ρ' hp.1 g) (ihS s ρ ρ' hp.2 g)
   | diff R S ihR ihS =>
     intro s ρ ρ' hp g; simp only [Tm.pol, Bool.and_eq_true] at hp
     exact sle.anti2 diff_le (ihR s ρ ρ' hp.1 g) (ihS (!s) ρ ρ' hp.2 g)
@@ -943,27 +936,6 @@ theorem Tm.den_local (k : Nat) {A B : Obj} (ρ : Val) (X Y : Den A B) : ∀ {C D
       subst hc
       exact and_congr (ihR _ hr a (fun a' h => hX a' (Or.inl h)) d.1)
         (ihS _ hs a (fun a' h => hX a' (Or.inr h)) d.2)
-    · exact free _ (Bool.eq_false_iff.mpr ‹_›) a d
-  | junc R S ihR ihS =>
-    intro c hc a hX d
-    unfold Tm.kids at hc; split at hc
-    · dsimp only at hc
-      cases hr : R.kids k A <;> cases hs : S.kids k A <;> simp only [hr, hs, reduceCtorEq, Option.some.injEq] at hc
-      subst hc
-      rename_i r s
-      exact or_congr (exists_congr fun m => and_congr_right fun e =>
-          ihR _ hr m (fun a' h => hX a' (Or.inl ⟨m, e, h⟩)) d)
-        (exists_congr fun m => and_congr_right fun e => ihS _ hs m (fun a' h => hX a' (Or.inr ⟨m, e, h⟩)) d)
-    · exact free _ (Bool.eq_false_iff.mpr ‹_›) a d
-  | juncD R S ihR ihS =>
-    intro c hc a hX d
-    unfold Tm.kids at hc; split at hc
-    · dsimp only at hc
-      cases hr : R.kids k A <;> cases hs : S.kids k A <;> simp only [hr, hs, reduceCtorEq, Option.some.injEq] at hc
-      subst hc
-      exact or_congr (exists_congr fun m => and_congr_right fun e =>
-          ihR _ hr m (fun a' h => hX a' (Or.inl ⟨m, e, h⟩)) d)
-        (exists_congr fun m => and_congr_right fun e => ihS _ hs m (fun a' h => hX a' (Or.inr ⟨m, e, h⟩)) d)
     · exact free _ (Bool.eq_false_iff.mpr ‹_›) a d
   | dom R ih =>
     intro c hc a hX d

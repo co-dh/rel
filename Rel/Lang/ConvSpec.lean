@@ -49,6 +49,12 @@ theorem Prim.den_iff {r : Prim} {x : (c : RowCode) × RowDen c} (e : rowDens.fin
     · simp [h]
     · simp [h]; exact ⟨fun h' => False.elim h', fun ⟨h', _⟩ => h'.elim⟩
 
+/-- `Prim.objs` of a row with a converse, computed: the variables its constant's type names, as `Prim.den_conv` reads them. -/
+local macro "objs_simp" : tactic => `(tactic| simp [Prim.objs, Prim.vars, OExp.vars, OExp.unify, List.eraseDups,
+  List.eraseDupsBy, List.eraseDupsBy.loop, consRow, inlRow, inrRow, inlConvRow, inrConvRow, RowCode.cons,
+  RowCode.uncons, RowCode.cat, RowCode.uncat, RowCode.snoc, RowCode.unsnoc, RowCode.inl, RowCode.inr, RowCode.inlC,
+  RowCode.inrC, List.lookup, σ₁, σ₂])
+
 /-- **Every row of `prims` with a converse row (`conv`) means that row's converse**, at all objects and arguments:
     `convTm`'s `prim` case. The rows are enumerated from `prims`, so a row given a `conv` it does not mean fails here. -/
 theorem Prim.den_conv : ∀ r ∈ prims, ∀ s r', r.conv = some s → Prim.find? s = some r' →
@@ -57,9 +63,9 @@ theorem Prim.den_conv : ∀ r ∈ prims, ∀ s r', r.conv = some s → Prim.find
   simp only [prims, List.mem_cons, List.not_mem_nil, or_false] at hr
   -- one goal per row, however many `prims` lists
   repeat' (first | subst hr | (obtain rfl | hr := hr))
-  all_goals simp only [consRow, memRow, inlRow, inrRow, mapRow, reduceCtorEq, Option.some.injEq] at hs
+  all_goals simp only [consRow, memRow, inlRow, inrRow, inlConvRow, inrConvRow, mapRow, reduceCtorEq, Option.some.injEq] at hs
   all_goals subst hs
-  all_goals simp [Prim.find?, prims, consRow, memRow, inlRow, inrRow, mapRow] at hr'
+  all_goals simp [Prim.find?, prims, consRow, memRow, inlRow, inrRow, inlConvRow, inrConvRow, mapRow] at hr'
   all_goals subst hr'
   all_goals
     intro A B ss
@@ -67,9 +73,11 @@ theorem Prim.den_conv : ∀ r ∈ prims, ∀ s r', r.conv = some s → Prim.find
     constructor
     all_goals
       rintro ⟨σ, -, ⟨rfl, rfl⟩, h⟩
-      refine ⟨[σ₁ σ], ?_, ⟨rfl, rfl⟩, h⟩
-      simp [Prim.objs, Prim.vars, OExp.vars, OExp.unify, List.eraseDups, List.eraseDupsBy, List.eraseDupsBy.loop,
-        consRow, RowCode.cons, RowCode.uncons, RowCode.cat, RowCode.uncat, RowCode.snoc, RowCode.unsnoc]
+      -- the converse row lists the variables in its own order: one, two in order, or the two swapped (`inr`/`inr°`)
+      first
+        | exact ⟨[σ₁ σ], by objs_simp, ⟨rfl, rfl⟩, h⟩
+        | exact ⟨[σ₁ σ, σ₂ σ], by objs_simp, ⟨rfl, rfl⟩, h⟩
+        | exact ⟨[σ₂ σ, σ₁ σ], by objs_simp, ⟨rfl, rfl⟩, h⟩
 
 /-- What `convTm_den` needs of `t` under `ρ` at the nodes whose converse `convTm` takes as given: a variable and
     `own` are their own converse (as a row's spine too), a number verb's universe is a coreflexive, a shared term
@@ -118,11 +126,11 @@ theorem convTm_den (ρ : Val) : ∀ {A B : Obj} (t : Tm A B), t.ConvOK ρ →
   intro A B t
   induction t with
   | val _ | uni _ | zero | conv _ _ | ran _ _ | ldiv _ _ _ _ _ _ _ _ | rdiv _ _ _ _ _ _ _ _ | prod _ _ _ _
-  | junc _ _ _ _ | leq _ _ | lt _ _ | nu _ _ _ _ _ | mu _ _ _ _ _ =>
+  | leq _ _ | lt _ _ | nu _ _ _ _ _ | mu _ _ _ _ _ =>
     exact fun _ => ⟨fun u hu => conv_false_den ρ u hu rfl, by noproj⟩
   | top _ _ | lam _ _ | E _ _ | est _ _ | thin _ _ | nil | atPos _ | foldr _ _ _ _ | fold _ _ _ _ | foldI _ _ _ _
   | flat _ _
-  | juncD _ _ _ _ | hylo _ _ _ _ => exact fun _ => ⟨by noconv, by noproj⟩
+  | hylo _ _ _ _ => exact fun _ => ⟨by noconv, by noproj⟩
   | id =>
     refine fun _ => ⟨fun u hu => ?_, by noproj⟩
     rw [convTm.eq_def, if_neg (by simp [Tm.dem])] at hu; cases hu
@@ -496,10 +504,10 @@ theorem convTm_instObj_den (σ : List Obj) (ρ : Val) : ∀ {A B : Obj} (t : Tm 
   intro A B t
   induction t with
   | val _ | uni _ | zero | conv _ _ | ran _ _ | ldiv _ _ _ _ _ _ _ _ | rdiv _ _ _ _ _ _ _ _ | prod _ _ _ _
-  | junc _ _ _ _ | leq _ _ | lt _ _ | nu _ _ _ _ _ | mu _ _ _ _ _ =>
+  | leq _ _ | lt _ _ | nu _ _ _ _ _ | mu _ _ _ _ _ =>
     exact fun t' ht _ => ⟨fun u u' hu hu' => inst_false_den σ ρ rfl hu hu' ht, by noproj'⟩
   | top _ _ | lam _ _ | E _ _ | est _ _ | thin _ _ | nil | atPos _ | foldr _ _ _ _ | fold _ _ _ _ | foldI _ _ _ _
-  | flat _ _ | juncD _ _ _ _ | hylo _ _ _ _ => exact fun _ _ _ => ⟨by noconv', by noproj'⟩
+  | flat _ _ | hylo _ _ _ _ => exact fun _ _ _ => ⟨by noconv', by noproj'⟩
   | id =>
     refine fun t' ht _ => ⟨fun u u' hu hu' => ?_, by noproj'⟩
     rw [convTm.eq_def, if_neg (by simp [Tm.dem])] at hu; cases hu

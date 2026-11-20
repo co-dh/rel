@@ -33,10 +33,6 @@ inductive Tm : Obj → Obj → Type where
   | rdiv {A B C : Obj} (R : Tm A C) (S : Tm B C) (UA : Tm A A) (UB : Tm B B) : Tm A B
   | pair {A B C : Obj} (R : Tm A B) (S : Tm A C) : Tm A (.prod B C)
   | prod {A B C D : Obj} (R : Tm A B) (S : Tm C D) : Tm (.prod A C) (.prod B D)
-  | junc {A B C : Obj} (R : Tm A C) (S : Tm B C) : Tm (.sum A B) C
-  /-- `[R,S]` on the keys in demand, a part with no universe to be read whole on: each part run on the values of
-      its side the demand holds. -/
-  | juncD {A B C : Obj} (R : Tm A C) (S : Tm B C) : Tm (.sum A B) C
   /-- `Λ(R)`, a map: total on the keys in demand, `[]` where `R` has no image, so it always runs on demand and a
       closed use reads its source's universe (`closeRes`). -/
   | lam {A B : Obj} (R : Tm A B) : Tm A (.arr B)
@@ -111,8 +107,8 @@ def Tm.dem : {A B : Obj} → Tm A B → Bool
   | _, _, .var d _ => d
   -- every leaf listed, as in `Tm.fv`
   | _, _, .val _ | _, _, .uni _ | _, _, .zero | _, _, .conv _ | _, _, .ran _ | _, _, .ldiv .. | _, _, .rdiv ..
-  | _, _, .prod .. | _, _, .junc .. | _, _, .leq _ | _, _, .lt _ | _, _, .nu .. | _, _, .mu .. => false
-  | _, _, .id | _, _, .top _ | _, _, .outl | _, _, .outr | _, _, .juncD .. | _, _, .lam _ | _, _, .E _
+  | _, _, .prod .. | _, _, .leq _ | _, _, .lt _ | _, _, .nu .. | _, _, .mu .. => false
+  | _, _, .id | _, _, .top _ | _, _, .outl | _, _, .outr | _, _, .lam _ | _, _, .E _
   | _, _, .est _ | _, _, .thin _ | _, _, .nil | _, _, .prim _ | _, _, .atPos _ | _, _, .succ _ | _, _, .arith ..
   | _, _, .foldr .. | _, _, .fold .. | _, _, .foldI .. | _, _, .flat _ | _, _, .hylo .. => true
 
@@ -132,8 +128,6 @@ def Tm.mapM {m : Type → Type} [Monad m] (f : {A B : Obj} → Tm A B → m (Tm 
   | _, _, .rdiv R S U V => return .rdiv (← f R) (← f S) (← f U) (← f V)
   | _, _, .pair R S => return .pair (← f R) (← f S)
   | _, _, .prod R S => return .prod (← f R) (← f S)
-  | _, _, .junc R S => return .junc (← f R) (← f S)
-  | _, _, .juncD R S => return .juncD (← f R) (← f S)
   | _, _, .lam R => return .lam (← f R)
   | _, _, .E R => return .E (← f R)
   | _, _, .est Q => return .est (← f Q)
@@ -173,8 +167,6 @@ def Tm.fv : {A B : Obj} → Tm A B → List Nat
   | _, _, .rdiv R S U V => R.fv ++ S.fv ++ U.fv ++ V.fv
   | _, _, .pair R S => R.fv ++ S.fv
   | _, _, .prod R S => R.fv ++ S.fv
-  | _, _, .junc R S => R.fv ++ S.fv
-  | _, _, .juncD R S => R.fv ++ S.fv
   | _, _, .lam R => R.fv
   | _, _, .E R => R.fv
   | _, _, .est Q => Q.fv
@@ -231,8 +223,6 @@ def Tm.subst : Tm.Sub → {A B : Obj} → Tm A B → Tm A B
   | σ, _, _, .rdiv R S U V => .rdiv (R.subst σ) (S.subst σ) (U.subst σ) (V.subst σ)
   | σ, _, _, .pair R S => .pair (R.subst σ) (S.subst σ)
   | σ, _, _, .prod R S => .prod (R.subst σ) (S.subst σ)
-  | σ, _, _, .junc R S => .junc (R.subst σ) (S.subst σ)
-  | σ, _, _, .juncD R S => .juncD (R.subst σ) (S.subst σ)
   | σ, _, _, .lam R => .lam (R.subst σ)
   | σ, _, _, .E R => .E (R.subst σ)
   | σ, _, _, .est Q => .est (Q.subst σ)
@@ -285,8 +275,6 @@ def Tm.pol (s : Bool) (k : Nat) : {A B : Obj} → Tm A B → Bool
   | _, _, .rdiv R S U V => R.pol s k && !S.fv.contains k && U.pol s k && V.pol s k
   | _, _, .pair R S => R.pol s k && S.pol s k
   | _, _, .prod R S => R.pol s k && S.pol s k
-  | _, _, .junc R S => R.pol s k && S.pol s k
-  | _, _, .juncD R S => R.pol s k && S.pol s k
   | _, _, .own R => R.pol s k
   | _, _, .nu j S b => S.pol s k && (j == k || b.pol s k)
   | _, _, .mu j _ _ b => j == k || b.pol s k
@@ -310,7 +298,7 @@ def Tm.size : {A B : Obj} → Tm A B → Nat
   | _, _, .share _ R | _, _, .mu _ _ _ R | _, _, .hylo _ _ R | _, _, .call _ _ _ R | _, _, .callCv _ _ _ _ R _ =>
     R.size + 1
   | _, _, .comp R S | _, _, .meet R S | _, _, .join R S | _, _, .diff R S | _, _, .pair R S | _, _, .prod R S
-  | _, _, .junc R S | _, _, .juncD R S | _, _, .foldr R S | _, _, .fold R S | _, _, .foldI R S | _, _, .arg R S
+  | _, _, .foldr R S | _, _, .fold R S | _, _, .foldI R S | _, _, .arg R S
   | _, _, .nu _ R S => R.size + S.size + 1
   | _, _, .ldiv R S U V | _, _, .rdiv R S U V => R.size + S.size + U.size + V.size + 1
   | _, _, .val _ | _, _, .uni _ | _, _, .zero | _, _, .id | _, _, .outl | _, _, .outr | _, _, .nil | _, _, .prim _
@@ -329,10 +317,6 @@ def Tm.kids (k : Nat) (A : Obj) {C D : Obj} (t : Tm C D) : Option (Tm C A) :=
       else match S.kids k A with | some s => some (.comp R s) | none => none
     | _, _, .meet R S | _, _, .join R S | _, _, .pair R S => match R.kids k A, S.kids k A with
       | some r, some s => some (.join r s) | _, _ => none
-    -- `juncD`, not `junc`: the children run on the nodes in demand, and `junc` reads its parts whole, so a part
-    -- that needs keys (`π₁ X` under `[𝟘, π₁ X]`) would read none
-    | _, _, .junc R S | _, _, .juncD R S => match R.kids k A, S.kids k A with
-      | some r, some s => some (.juncD r s) | _, _ => none
     | _, _, .dom R | _, _, .own R => R.kids k A
     -- `F(x)` reads `X` at the children of the members
     | _, _, .arg (.prim r) x =>
