@@ -230,6 +230,18 @@ compile η t : {r : Rel A B // rep r = ⟦t⟧ρ}       -- 方案 A：规格在�
 - `AscKey` 的 `cells`（草稿，待审）：一个 `arr` 侧作一个键，列的每个字是格号，格 = `[lo, hi)` 夹到共享 payload
   `[0, c)`；`els` 是 payload 的键列。两格按元素逐个比较序码（字典序），真前缀在前；格长相同且各元素序码相等才相等。
   `arr char` 是它在 `els = [atom char]` 时的特例。
+- 为什么 `arr` 侧是 `els` + `lo` + `hi`，不是 q 的 `els` + `starts`（owner 2026-11-20 定：保持 `lo`/`hi`）：
+  #table(columns: 4,
+    [布局], [数组], [格 `i`], [对 payload 的要求],
+    [q], [`els` `starts`], [`els[starts[i], starts[i+1])`], [各格按序铺满 payload，不能重叠],
+    [Rel], [`els` `lo` `hi`], [`els[lo[i], hi[i])`], [无：任意区间，可共享、可重叠],
+  )
+  - `cons°` 的尾是 `[s + 1, e)`，`snoc°` 的头是 `[s, e − 1)`，`cat°` 的两段是 `[s, s + u)`、`[s + u, e)`：都只写新的
+    `lo` `hi`，共享原 payload。`fold` 和 `hylo` 每一步都做 `cons°`，所以这是递归程序的主路径。
+  - `inits` `tails`：长 `n` 的数组有 `n` 个前缀（后缀），共享时是 `n` 个区间；按 q 的布局要把 payload 复制成
+    `n²/2` 个元素。
+  - `starts` 是 `hi[i] = lo[i+1]` 的特例；没有为它另设规范形式或快路径。
+  - `ix`（每行一个格号）只属于排序键 `AscKey.cells`：多行指向同一格而不复制 payload；它不是 `arr` 侧存储的一部分。
 
 - *map 与 fold 都是 scan*：map = 步骤不读累加值的 scan（`op` 只看当前元素）；fold = scan 的最后一个值
   （分段时取每段最后一个）。`Op` 标明自己是否读累加值、是否结合，Rust 据此并行：不读累加值或结合的 `op` 分块并行，其余顺序扫。
