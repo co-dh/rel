@@ -56,6 +56,11 @@ rel_program frameNullT where
     aq : P ⟶ (K×N)×(K×N) ≜ aj(π₁, π₂, π₁, π₂, x, q) ⟨π₁, π₂ [𝟙, {(∗,(B,0))}]⟩
     check aq = {(0,((B,5),(B,0))),(1,((A,3),(A,2))),(2,((B,5),(B,0))),(3,((C,1),(C,1))),(4,((A,7),(A,6))),
       (5,((C,2),(C,1))),(6,((B,1),(B,0))),(7,((A,3),(A,2)))}
+    -- aj on tied times, as q: A quotes 0 and 2 both at time 2, C quotes 1 and 4 both at 1; the later position wins
+    -- (A at 3 → 12, C at 1 and 2 → 14, A at 7 → 13); B has no quote: the null, read as 0
+    qt : P ⟶ K×(N×N) ≜ {(0,(A,(2,10))),(1,(C,(1,11))),(2,(A,(2,12))),(3,(A,(6,13))),(4,(C,(1,14))),(5,(C,(3,15)))}
+    check aj(π₁, π₂, π₁, π₂ π₁, x, qt) ⟨π₁, π₂ [π₂ π₂, {(∗,0)}]⟩ = {(0,((B,5),0)),(1,((A,3),12)),(2,((B,5),0)),
+      (3,((C,1),14)),(4,((A,7),13)),(5,((C,2),14)),(6,((B,1),0)),(7,((A,3),12))}
     -- pivot wide of (k, q, v): (A,a) 1+4, (B,a) 2, (A,b) 3, (C,b) 5; keys in first-occurrence order A B C, null as 0
     t3 : P ⟶ K×(S×N) ≜ {(0,(A,(a,1))),(1,(B,(a,2))),(2,(A,(b,3))),(3,(A,(a,4))),(4,(C,(b,5)))}
     pw : P ⟶ K×(N×N) ≜ pivotWide(π₁, π₂ π₁, {(∗,a)}, {(∗,b)}, F(t3 π₂ π₂) sum, t3) ⟨π₁, ⟨π₂ π₁ [𝟙, {(∗,0)}], π₂ π₂ [𝟙, {(∗,0)}]⟩⟩
