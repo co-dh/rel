@@ -231,7 +231,8 @@ end
 /-- The rows whose case of `Tm.gen_sound` is proved (`rowsProved_ok`), each with whether its proof reads `LamLaw`
     at its objects `A ⟶ [B]` (a row whose table is a `Λ`). -/
 def rowsProved : List (String × Bool) :=
-  [("∋", false), ("inl", false), ("inr", false), ("τ", true), ("setify", true)]
+  [("∋", false), ("inl", false), ("inr", false), ("τ", true), ("setify", true), ("snoc", false),
+   ("cons", false), ("cat", false)]
 
 /-- Some node of `t` has no proved case in `Tm.gen_sound`: no `GenK` lemma yet (`est thin atPos mu nu
     hylo`), a lemma that does not hold
@@ -248,6 +249,42 @@ def Tm.gap : {A B : Obj} → Tm A B → Bool
   | _, _, .juncD .. | _, _, .est _ | _, _, .thin _ | _, _, .atPos _
   | _, _, .mu .. | _, _, .nu .. | _, _, .hylo .. | _, _, .call ..
   | _, _, .arg .. => true
+
+/-- The head of the spine `t` (`Expand.spine`): its row's symbol, or `call`. -/
+def Tm.spineHead : {A B : Obj} → Tm A B → String
+  | _, _, .prim r => r.sym
+  | _, _, .arg f _ | _, _, .share _ f => f.spineHead
+  | _, _, .call .. => "call"
+  | _, _, _ => "no row"
+
+/-- The kinds of `t`'s gap nodes, by `Tm.gap`'s case split (`Tm.gap_eq`): a constructor's name, `prim s` for a row
+    `s` not in `rowsProved`, `arg s` for an argument given to a spine headed by `s`. -/
+def Tm.gapKinds : {A B : Obj} → Tm A B → List String
+  | _, _, .prim r => match rowsProved.lookup r.sym with
+    | some _ => []
+    | none => ["prim " ++ r.sym]
+  | _, _, .val _ | _, _, .uni _ | _, _, .zero | _, _, .id | _, _, .outl | _, _, .outr | _, _, .nil
+  | _, _, .var .. => []
+  | _, _, .top R | _, _, .conv R | _, _, .dom R | _, _, .ran R | _, _, .lam R | _, _, .E R | _, _, .own R
+  | _, _, .succ R | _, _, .arith _ R | _, _, .leq R | _, _, .lt R | _, _, .flat R | _, _, .share _ R => R.gapKinds
+  | _, _, .comp R S | _, _, .meet R S | _, _, .join R S | _, _, .diff R S | _, _, .pair R S | _, _, .prod R S
+  | _, _, .junc R S | _, _, .fold R S | _, _, .foldr R S | _, _, .foldI R S => R.gapKinds ++ S.gapKinds
+  | _, _, .ldiv R S U V | _, _, .rdiv R S U V => R.gapKinds ++ S.gapKinds ++ U.gapKinds ++ V.gapKinds
+  | _, _, .juncD .. => ["juncD"]
+  | _, _, .est _ => ["est"]
+  | _, _, .thin _ => ["thin"]
+  | _, _, .atPos _ => ["atPos"]
+  | _, _, .mu .. => ["mu"]
+  | _, _, .nu .. => ["nu"]
+  | _, _, .hylo .. => ["hylo"]
+  | _, _, .call .. => ["call"]
+  | _, _, .arg f _ => ["arg " ++ f.spineHead]
+
+theorem Tm.gap_eq {A B : Obj} (t : Tm A B) : t.gap = !t.gapKinds.isEmpty := by
+  induction t
+  case prim r => simp only [Tm.gap, Tm.gapKinds]; cases rowsProved.lookup r.sym <;> rfl
+  all_goals simp only [Tm.gap, Tm.gapKinds, *]
+  all_goals first | rfl | (rw [Bool.eq_iff_iff]; simp [Decidable.imp_iff_not_or, or_assoc])
 
 /-- `LamLaw` at each `Λ` and `E` of `t` (`E(R) = Λ(∋ ≫ R)`, at `[A] ⟶ [B]`), and at each row `rowsProved` marks. -/
 def Tm.LamLaws : {A B : Obj} → Tm A B → Prop
@@ -338,6 +375,33 @@ theorem rowOK_setify : RowOK "setify" := rowOK_of (c := RowCode.setify) rfl rfl 
   cases σ <;> refine ⟨GenK.ofVals_wf, fun hl => ?_⟩ <;> have hB := hl (by rw [hs]; decide) _ rfl <;>
     exact ⟨⟨rfl, rfl⟩, GenK.ofVals_row_sound fun _ _ _ h => Tab.setify_den h hB⟩
 
+/-- A row run after the keys (`GenK.after`) represents `P` when `f D`, on the keys' coreflexive `D`, holds `D ≫ P`. -/
+theorem GenK.after_row_sound {A B : Obj} {f : {K : Obj} → Tab K A → Except String (Tab K B)}
+    {P : Core.Rel A.El B.El}
+    (hf : ∀ {K : Obj} (D : Tab K A) t, f D = .ok t → ∀ k b, t.Holds k b ↔ ∃ a, D.Holds k a ∧ P a b) :
+    ∀ K, (GenK.after A B f).Reps K P :=
+  GenK.ofVals_row_sound fun _ X t h a b => by
+    cases hD : Tab.idU X with
+    | error e => rw [hD] at h; exact nomatch h
+    | ok D =>
+    rw [hD] at h
+    rw [hf D t h]
+    constructor
+    · rintro ⟨a', ha', hp⟩; obtain ⟨rfl, hx⟩ := (Tab.idU_holds hD a a').1 ha'; exact ⟨hx, hp⟩
+    · rintro ⟨hx, hp⟩; exact ⟨a, (Tab.idU_holds hD a a).2 ⟨rfl, hx⟩, hp⟩
+
+theorem rowOK_snoc : RowOK "snoc" := rowOK_of (c := RowCode.snoc) rfl rfl fun _ σ _ _ _ _ hv => by
+  cases hv
+  cases σ <;> exact ⟨GenK.ofVals_wf, fun _ => ⟨⟨rfl, rfl⟩, GenK.after_row_sound fun _ _ h => Tab.snoc_holds h⟩⟩
+
+theorem rowOK_cons : RowOK "cons" := rowOK_of (c := RowCode.cons) rfl rfl fun _ σ _ _ _ _ hv => by
+  cases hv
+  cases σ <;> exact ⟨GenK.ofVals_wf, fun _ => ⟨⟨rfl, rfl⟩, GenK.after_row_sound fun _ _ h => Tab.cons_holds h⟩⟩
+
+theorem rowOK_cat : RowOK "cat" := rowOK_of (c := RowCode.cat) rfl rfl fun _ σ _ _ _ _ hv => by
+  cases hv
+  cases σ <;> exact ⟨GenK.ofVals_wf, fun _ => ⟨⟨rfl, rfl⟩, GenK.after_row_sound fun _ _ h => Tab.cat_holds h⟩⟩
+
 /-- Every row of `rowsProved` is `RowOK`: the obligations enumerated from the list `Tm.gap` reads. -/
 theorem rowsProved_ok (r : Prim) (A B : Obj) (h : (rowsProved.lookup r.sym).isNone = false) :
     (primGen r A B []).Wf ∧
@@ -347,8 +411,11 @@ theorem rowsProved_ok (r : Prim) (A B : Obj) (h : (rowsProved.lookup r.sym).isNo
   by_cases h3 : r.sym = "inr"; · exact rowOK_inr r A B h3
   by_cases h4 : r.sym = "τ"; · exact rowOK_tau r A B h4
   by_cases h5 : r.sym = "setify"; · exact rowOK_setify r A B h5
+  by_cases h6 : r.sym = "snoc"; · exact rowOK_snoc r A B h6
+  by_cases h7 : r.sym = "cons"; · exact rowOK_cons r A B h7
+  by_cases h8 : r.sym = "cat"; · exact rowOK_cat r A B h8
   simp [rowsProved, List.lookup, beq_false_of_ne h1, beq_false_of_ne h2, beq_false_of_ne h3, beq_false_of_ne h4,
-    beq_false_of_ne h5] at h
+    beq_false_of_ne h5, beq_false_of_ne h6, beq_false_of_ne h7, beq_false_of_ne h8] at h
 
 theorem Tm.code_wf {η : Code} {A B : Obj} {t : Tm A B} (h : (t.gen η).Wf) : (t.code η).Wf := by
   rw [Tm.code]; split
