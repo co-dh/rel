@@ -44,6 +44,7 @@ import Rel.Lang.TestFrameQuery
 import Rel.Lang.TestCmpMeet
 import Rel.Lang.TestFrameScale
 import Rel.Lang.TestFrameSchema
+import Rel.Lang.TestFrameTyped
 import Rel.Lang.TestFrameUnbounded
 import Rel.Lang.TestFusedM
 import Rel.Lang.TestGenericLit
