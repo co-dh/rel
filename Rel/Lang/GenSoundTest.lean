@@ -30,7 +30,8 @@ open Lean Elab Command Rel.Lang Rel.Lang.Embed
     the registry's definitions elaborated once (`calls`), as `rel_program` reads it: a use of one is a `call` node
     holding its body at the call's objects (`Tm.den`, `Tm.gen` read the body), a use with no constant its
     expansion. The registry is the final one, not the one `n` was elaborated under: a key registered by a later
-    program is one `n` would have built itself (`walk`'s `once`), with the same body. -/
+    program is one `n` would have built itself (`walk`'s `once`), with the same body; a key registered twice is
+    read at its first `Once`, the second checked to be the same definition (`Registry.call?`). -/
 def reread (n : Name) : CommandElabM (Except Err Expand.Read) := do
   let env ← getEnv; let opts ← getOptions
   let reg := Expand.relRegistry.getState env
@@ -38,10 +39,15 @@ def reread (n : Name) : CommandElabM (Except Err Expand.Read) := do
   let resOf (h : Name) : String → Found := match reg.progs.find? (·.1 == h) with
     | some (_, ns, os) => (resolverAt env opts reg ns os).1
     | none => fun _ => .none
-  liftTermElabM (Expand.read (reg.calls.lookup ·) progs (← programOf n) n resOf).run
+  let calls ← liftTermElabM reg.call?
+  liftTermElabM (Expand.read calls progs (← programOf n) n resOf).run
 
 run_cmd do
   let reg := Expand.relRegistry.getState (← getEnv)
+  -- `call?` throws unless each key registered again has its first registration's body
+  let _ ← liftTermElabM reg.call?
+  logInfo m!"{(reg.again.map (·.key)).toList.eraseDups.length} keys registered more than once \
+    ({reg.again.size} registrations after the first), each the same definition as its first"
   -- every definition: each program's, and each one elaborated once, by its constant: the registry's (which the
   -- re-read finds, so builds no other) and any the re-read builds
   let mut defs : List (String × Res) := []
@@ -74,5 +80,22 @@ run_cmd do
     logInfo m!"gap `{k}`: blocks {b}, alone {a}"
   for x in ["Rel.Programs.chess.K", "Rel.Programs.chess.N", "Rel.Programs.blocks.r", "Rel.Programs.edit.ne"] do
     unless ok.contains x do throwError "GenSoundTest: {x} has a gap node or is no definition"
+
+/-- Two modules' registrations of the keys `j` and `k`, as `a.*` and `b.*`: each `k` calls its own module's `j`. -/
+def twice (k' : Tm .long .long) : Expand.Registry :=
+  let o (k c : Name) (t : Tm .long .long) : Once :=
+    { key := k, const := c, gen := [], params := [], res := ⟨_, _, t⟩, tst := false, kf := false }
+  [.call `j (o `j `a.j .id), .call `k (o `k `a.k (.call [] `a.j [] .id)),
+   .call `j (o `j `b.j .id), .call `k (o `k `b.k k')].foldl Expand.Registry.add {}
+
+-- the same body but for the name of the call's constant: one definition, read at its first constant
+#guard_msgs in
+run_meta do
+  let f ← (twice (.call [] `b.j [] .id)).call?
+  unless (f `k).map (·.const) == some `a.k do throwError "not the first registered"
+
+/-- error: rel registry: the key `k` is held by `a.k` and by `b.k`, built by two modules neither importing the other, with different bodies: at call: its fields differ -/
+#guard_msgs in
+run_meta discard (twice (.call [] `b.k [] .id)).call?
 
 end Rel.Lang.GenSoundTest
