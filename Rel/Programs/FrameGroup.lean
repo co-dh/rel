@@ -32,8 +32,8 @@ rel_program frameGroup where
     -- the `p/q` quantile (the percentile at `q` = 100; numpy's `midpoint`): the integer mean of the sorted rows `i`
     -- with `|q·i − p(count−1)| < q`, as `q·i + p < p·count + q` and `q·i + p + q > p·count` (no `count − 1` below 0)
     quantile(p : 1 ⟶ ν, q : 1 ⟶ ν, a : β ⟶ γ, x : ν ⟶ β) : 1 ⟶ γ ≜ summarize(F(m a) ⟨sum, length⟩div, m) where m ≜ dom(x) dom(⟨⟨𝟙, ⊤ q⟩times, ⊤ p⟩plus < (⟨⟨count(x), p⟩times, q⟩plus)°) dom(⟨⟨⟨𝟙, ⊤ q⟩times, ⊤ p⟩plus, ⊤ q⟩plus > (⟨count(x), p⟩times)°) sortBy(a, x)
-    -- `quantile(1, 2)`: a generic body holds no numeral ("no declared object has the elements [100]"), so `1` is
-    -- `count − count + 1`; `q = 2` keeps the median within a position object holding `2·count + 3`
-    median(a : β ⟶ γ, x : ν ⟶ β) : 1 ⟶ γ ≜ quantile(e, e succ, a, x) where e ≜ count(x) ⟨𝟙, 𝟙⟩minus succ
+    percentile(p : 1 ⟶ ν, a : β ⟶ γ, x : ν ⟶ β) : 1 ⟶ γ ≜ quantile(p, {(∗,100)}, a, x)
+    -- `q = 2` keeps the median within a position object holding `2·count + 3`
+    median(a : β ⟶ γ, x : ν ⟶ β) : 1 ⟶ γ ≜ quantile({(∗,1)}, {(∗,2)}, a, x)
 
 end Rel.Programs

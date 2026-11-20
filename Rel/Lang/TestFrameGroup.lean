@@ -56,6 +56,12 @@ rel_program frameGroupT where
     check quantile({(∗,75)}, {(∗,100)}, π₂, xq) = {(∗,5)}
     check quantile({(∗,90)}, {(∗,100)}, π₂, xq) = {(∗,6)}
     check quantile({(∗,100)}, {(∗,100)}, π₂, xq) = {(∗,7)}
+    check percentile({(∗,0)}, π₂, xq) = {(∗,1)}
+    check percentile({(∗,25)}, π₂, xq) = {(∗,1)}
+    check percentile({(∗,50)}, π₂, xq) = {(∗,3)}
+    check percentile({(∗,75)}, π₂, xq) = {(∗,5)}
+    check percentile({(∗,90)}, π₂, xq) = {(∗,6)}
+    check percentile({(∗,100)}, π₂, xq) = {(∗,7)}
 
 #guard frameGroupT.ok
 

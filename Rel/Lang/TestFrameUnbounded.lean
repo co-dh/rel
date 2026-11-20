@@ -109,6 +109,12 @@ rel_program frameUnboundedT where
     check quantile({(∗,75)}, {(∗,100)}, π₂, x) = {(∗,5)}
     check quantile({(∗,90)}, {(∗,100)}, π₂, x) = {(∗,6)}
     check quantile({(∗,100)}, {(∗,100)}, π₂, x) = {(∗,7)}
+    check percentile({(∗,0)}, π₂, x) = {(∗,1)}
+    check percentile({(∗,25)}, π₂, x) = {(∗,1)}
+    check percentile({(∗,50)}, π₂, x) = {(∗,3)}
+    check percentile({(∗,75)}, π₂, x) = {(∗,5)}
+    check percentile({(∗,90)}, π₂, x) = {(∗,6)}
+    check percentile({(∗,100)}, π₂, x) = {(∗,7)}
 
     -- TestFrameJoin
     y : N ⟶ K×N ≜ {(0,(A,9)),(1,(C,8)),(2,(A,6))}
