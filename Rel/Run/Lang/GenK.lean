@@ -161,8 +161,25 @@ def top (A B : Obj) (V : Fn false B B) : Fn true A B := .lazy fun K => match K.d
   | some c => .tab do Tab.top c.2 (← cut ⟨none, K.ran⟩ (← V.runE {})).val
 def outl (A B : Obj) : Fn true (.prod A B) A := ofVals _ _ fun X => Tab.outl X
 def outr (A B : Obj) : Fn true (.prod A B) B := ofVals _ _ fun X => Tab.outr X
-def pair (A B C : Obj) (d e : Bool) (R : Fn d A B) (S : Fn e A C) : Fn (d || e) A (.prod B C) :=
-  lift2 Tab.pair (fun K => ⟨K.dom, none⟩) (fun K => ⟨K.dom, none⟩) R S
+/-- `⟨T, S⟩`'s two tables on the domain `D`, `T` run first: `⟨T,S⟩ a (b,c)` needs `T a b`, so `T`'s table cut to `D`
+    bounds the domain `S` runs on (`bound`). -/
+def pairOn {A B C : Obj} (D : Option ((n : USize) × Vals A n)) (T : Rel A B) (S : Rel A C) :
+    Except String (Tab A B × Tab A C) := do
+  let p ← bound ⟨D, none⟩ (← T.runE ⟨D, none⟩); pure (p.1, ← S.runE ⟨p.2.dom, none⟩)
+
+/-- `⟨R, S⟩` on the domain `D`: the operand that is no `lazy` runs first and bounds the other (`pairOn`); of two lazy
+    ones `R`, or `S` where `R` cannot run on `D` alone. -/
+def pairK {A B C : Obj} (D : Option ((n : USize) × Vals A n)) (R : Rel A B) (S : Rel A C) :
+    Except String (Tab A (.prod B C)) := match R, S with
+  | .lazy _, .lazy _ => match pairOn D R S with
+    | .ok p => p.1.pair p.2
+    | .error _ => do let p ← pairOn D S R; p.2.pair p.1
+  | .lazy _, _ => do let p ← pairOn D S R; p.2.pair p.1
+  | _, _ => do let p ← pairOn D R S; p.1.pair p.2
+
+def pair (A B C : Obj) (d e : Bool) (R : Fn d A B) (S : Fn e A C) : Fn (d && e) A (.prod B C) := match R, S with
+  | .lazy _, _ | _, .lazy _ => .lazy fun K => .tab (pairK K.dom R S)
+  | R, S => lift2 Tab.pair (fun K => ⟨K.dom, none⟩) (fun K => ⟨K.dom, none⟩) R S
 /-- `R × S`: on the pairs `Z` a context knows, `⟨π₁ ≫ R, π₂ ≫ S⟩` on `Z`, each operand run knowing its domain is that
     side of `Z`; where none is known, CROSS of the two tables. -/
 def prod (A B C D : Obj) (R : Fn false A B) (S : Fn false C D) : Fn false (.prod A C) (.prod B D) :=

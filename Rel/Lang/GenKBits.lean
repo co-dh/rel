@@ -1934,6 +1934,9 @@ theorem lift2_wf {D E F : Obj} {f : Tab A B → Tab C D → Except String (Tab E
     {kr : Known E F → Known C D} (R : Rel A B) (S : Rel C D) : (lift2 f kl kr R S).Wf := by
   cases R <;> cases S <;> first | trivial | exact fun _ => trivial
 
+theorem pair_wf {d e : Bool} (R : Rel A B) (S : Rel A C) : (GenK.pair A B C d e R S).Wf := by
+  unfold GenK.pair; split <;> first | exact fun _ => trivial | exact lift2_wf _ _
+
 theorem diff_wf {d e : Bool} (R S : Rel A B) : (GenK.diff A B d e R S).Wf := by
   unfold GenK.diff; split
   · exact fun _ => trivial

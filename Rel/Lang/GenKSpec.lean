@@ -213,10 +213,48 @@ theorem top_sound {V : Rel B B} {Y : Core.Rel B.El B.El} (hV : ∀ K, V.Reps K Y
 
 /-! ### Products and sums: `pair prod outl outr junc flat` (`outl outr` by `ofVals_row_sound`) -/
 
+/-- `pairOn D T S`'s two tables relate a value of `D` as `X` and `Y` do: `S` agrees with `Y` on the domain of `T`'s
+    table (`bound_spec`), and off it both sides are false. -/
+theorem pairOn_sound {D : Option ((n : USize) × Vals A n)} {T : Rel A B} {S : Rel A C} {X : Core.Rel A.El B.El}
+    {Y : Core.Rel A.El C.El} (hT : ∀ K, T.Reps K X) (hS : ∀ K, S.Reps K Y) {p : Tab A B × Tab A C}
+    (h : pairOn D T S = .ok p) (a : A.El) (ha : (⟨D, none⟩ : Known A B).den.1 a a) (b : B.El) (c : C.El) :
+    rep p.1 a b ∧ rep p.2 a c ↔ X a b ∧ Y a c := by
+  obtain ⟨r, hr, h⟩ := bind_ok h
+  obtain ⟨q, hq, h⟩ := bind_ok h
+  obtain ⟨s, hs, h⟩ := bind_ok h
+  obtain rfl := Except.ok.inj h
+  obtain ⟨hu, hK⟩ := bound_spec hq
+  have er := (reps_iff _ _ _).1 (hT _) r hr a b ha rfl
+  have es := (reps_iff _ _ _).1 (hS _) s hs
+  have eu := hu a b ha rfl
+  refine ⟨fun ⟨u, v⟩ => ⟨er.1 (eu.1 u), (es a c (hK a b u).1 rfl).1 v⟩, fun ⟨u, v⟩ => ?_⟩
+  have u' := eu.2 (er.2 u)
+  exact ⟨u', (es a c (hK a b u').1 rfl).2 v⟩
+
+theorem pairK_sound {R : Rel A B} {S : Rel A C} {X : Core.Rel A.El B.El} {Y : Core.Rel A.El C.El}
+    (hR : ∀ K, R.Reps K X) (hS : ∀ K, S.Reps K Y) (K : Known A (.prod B C)) {t : Tab A (.prod B C)}
+    (h : pairK K.dom R S = .ok t) : Agrees K (rep t) (rpair X Y) := by
+  have L : ∀ p, pairOn K.dom R S = .ok p → p.1.pair p.2 = .ok t → Agrees K (rep t) (rpair X Y) :=
+    fun _ hp ht a q ha _ => (Tab.pair_holds ht a q).trans (pairOn_sound hR hS hp a ha q.1 q.2)
+  have M : ∀ p, pairOn K.dom S R = .ok p → p.2.pair p.1 = .ok t → Agrees K (rep t) (rpair X Y) :=
+    fun _ hp ht a q ha _ => (Tab.pair_holds ht a q).trans
+      (and_comm.trans ((pairOn_sound hS hR hp a ha q.2 q.1).trans and_comm))
+  unfold pairK at h; split at h
+  · split at h
+    · exact L _ ‹_› h
+    · obtain ⟨p, hp, ht⟩ := bind_ok h; exact M p hp ht
+  all_goals obtain ⟨p, hp, ht⟩ := bind_ok h
+  · exact M p hp ht
+  · exact L p hp ht
+
 theorem pair_sound {d e : Bool} {R : Rel A B} {S : Rel A C} {X : Core.Rel A.El B.El} {Y : Core.Rel A.El C.El}
-    (hR : ∀ K, R.Reps K X) (hS : ∀ K, S.Reps K Y) : ∀ K, (GenK.pair A B C d e R S).Reps K (rpair X Y) :=
-  lift2_sound hR hS fun _ _ _ _ ht hr hs a q ha _ =>
+    (hR : ∀ K, R.Reps K X) (hS : ∀ K, S.Reps K Y) : ∀ K, (GenK.pair A B C d e R S).Reps K (rpair X Y) := by
+  have hL : ∀ K, (Rel.lazy fun K => .tab (pairK K.dom R S) : Rel A (.prod B C)).Reps K (rpair X Y) := fun K =>
+    (reps_iff _ _ _).2 fun _ h => pairK_sound hR hS K h
+  have hT : ∀ K, (lift2 Tab.pair (fun K : Known A (.prod B C) => (⟨K.dom, none⟩ : Known A B))
+      (fun K => ⟨K.dom, none⟩) R S).Reps K (rpair X Y) := lift2_sound hR hS fun _ _ _ _ ht hr hs a q ha _ =>
     (Tab.pair_holds ht a q).trans (and_congr (hr a q.1 ha rfl) (hs a q.2 ha rfl))
+  cases R <;> cases S <;> first | exact hL | exact hT
 
 /-- `o ≫ r` on the pairs `Z`, `o` a projection `f` on `Z` (`Tab.outl`, `Tab.outr`): each pair to what `r` relates
     its `f`-side to. -/

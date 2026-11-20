@@ -111,7 +111,9 @@ def Tm.dem : {A B : Obj} → Tm A B → Bool
   | _, _, .arg R x => if R.whole then (!(R matches .prim _) && R.dem) || x.dem else R.dem
   | _, _, .comp R _ | _, _, .dom R | _, _, .own R | _, _, .share _ R => R.dem
   | _, _, .call _ _ _ R | _, _, .callCv _ _ _ _ R _ => R.dem
-  | _, _, .meet R S | _, _, .join R S | _, _, .diff R S | _, _, .pair R S => R.dem || S.dem
+  | _, _, .meet R S | _, _, .join R S | _, _, .diff R S => R.dem || S.dem
+  -- `⟨R,S⟩`'s domain is `dom R ∩ dom S`, so one closed operand bounds the other (`GenK.pairK`)
+  | _, _, .pair R S => R.dem && S.dem
   | _, _, .var d _ => d
   -- every leaf listed, as in `Tm.fv`
   | _, _, .val _ | _, _, .uni _ | _, _, .zero | _, _, .conv _ | _, _, .ran _ | _, _, .ldiv .. | _, _, .rdiv ..
