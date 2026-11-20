@@ -24,7 +24,7 @@ lean_lib RelCore where
 target relk.o pkg : System.FilePath := do
   let crate := pkg.dir / "crate"
   let src ← inputDir (crate / "src") (text := true) (·.extension == some "rs")
-  let cfg ← #["Cargo.toml", "Cargo.lock", "rust-toolchain.toml", "build.sh", "RELK.txt"].mapM
+  let cfg ← #["Cargo.toml", "Cargo.lock", "rust-toolchain.toml", "build.sh", "RELK.txt", "RELIO.txt"].mapM
     fun (f : String) => inputTextFile (crate / f)
   let dir := pkg.buildDir / "crate"
   buildFileAfterDep (dir / "relk.o") (cfg.foldl (fun j f => j.zipWith (fun s _ => s) f) src) fun _ => do

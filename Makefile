@@ -75,7 +75,7 @@ crate-test:
 	$(GATE)
 	CAP_MEM_MB=$(MEM) $(CAP) cargo test --manifest-path $(CURDIR)/crate/Cargo.toml --features std
 
-# cargo builds crate/ alone: its defined qlean_* equal crate/RELK.txt
+# cargo builds crate/ alone: its defined qlean_* equal crate/RELK.txt (kernels) + crate/RELIO.txt (IO)
 syms:
 	$(GATE)
 	sh $(CURDIR)/crate/build.sh syms

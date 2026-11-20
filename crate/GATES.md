@@ -8,9 +8,10 @@ never `|| true`.
 
 ## symbols
 
-`crate/RELK.txt` lists the `qlean_*` exports of this crate (no copy anywhere else). `sh crate/build.sh syms` builds the
-crate alone and requires its defined `qlean_*` to equal `RELK.txt` exactly (an extra name and a missing name both fail,
-exit 1), that the extern_lib object has no `DW.ref.rust_eh_personality`, and that `--no-default-features` defines no
+`crate/RELK.txt` lists the kernel `qlean_*` exports of this crate and `crate/RELIO.txt` the IO ones (no copy anywhere
+else). `sh crate/build.sh syms` builds the crate alone and requires its defined `qlean_*` to equal the union of the two
+files exactly (an extra name and a missing name both fail, exit 1), the two files to be disjoint (a name in both fails,
+naming it), that the extern_lib object has no `DW.ref.rust_eh_personality`, and that `--no-default-features` defines no
 `qlean_*`.
 
 Every runtime name a downstream Rust object (qlean's `qrs.o`) leaves undefined must be one that `crate/rt` (`qrt.o`)
