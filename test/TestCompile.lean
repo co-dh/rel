@@ -101,6 +101,22 @@ partial def argNoCode (ctors : List Name) {A B : Obj} : Tm A B → List String
   | _ => []
 end
 
+/-- One more than every variable `t` reads or binds outside a call's body: a number no binder of `t` shadows. -/
+partial def fresh {A B : Obj} (t : Tm A B) : Nat :=
+  let own := match t with | .var _ k | .nu k .. | .mu k .. | .hylo k .. => k + 1 | _ => 0
+  t.parts.foldl (fun m ⟨_, _, u⟩ => max m (fresh u)) own
+
+/-- `t` with each sub-term equal (`Tm.diffAt`) to an earlier definition of `prev` replaced by that definition's
+    variable, which the run binds to its table (`Code.bind`): a closed definition is in scope as its term, so a later
+    one holds it inline once per use, and `Tm.code` would run it again at each. `GenK.memo` of a closed term is
+    `.tab` of its table in every context, so the result is the same. A call's body is not entered (`Tm.mapM`):
+    `Code.args` rebinds the variables there. -/
+partial def reuse (prev : List (Nat × Res)) {A B : Obj} (t : Tm A B) : Tm A B :=
+  match prev.findSome? fun (k, ⟨C, D, u⟩) =>
+      if C == A && D == B && (Tm.diffAt id (fun _ => "") [] ⟨A, B, t⟩ ⟨C, D, u⟩).isNone then some k else none with
+  | some k => .var false k
+  | none => Id.run (t.mapM fun c => pure (reuse prev c))
+
 /-- A run slower than this many milliseconds is reported as slow. -/
 def slowMs : Nat := 60000
 
@@ -134,6 +150,10 @@ run_cmd do
       | .check _ (.lit ..) g _ | .check _ g (.lit ..) _ | .check _ (.op _ .zero _ []) g _
       | .check _ g (.op _ .zero _ []) _ => g.names
       | _ => []
+    -- the definitions run so far whose `Tm.gen` table is ok, each a variable numbered past every binder of `ds`
+    let base := ds.foldl (fun m (_, ⟨_, _, t⟩) => max m (fresh t)) 0
+    let mut prev : List (Nat × Res) := []
+    let mut η : Code := Code.empty
     for (x, ⟨A, B, c⟩) in gs do
       let nm := s!"{n}.{x}"
       unless lit.contains x do unchecked := unchecked ++ [nm]
@@ -148,8 +168,12 @@ run_cmd do
         if s != "ok" then open' := open' ++ [nm]
         if !t.hasCode then none' := none' ++ [(nm, (noCode ctors t).eraseDups)] else
           let t0 ← IO.monoMsNow
-          let r ← IO.lazyPure fun _ => result ((Tm.code Code.empty t).runE {})
+          let g ← IO.lazyPure fun _ => (Tm.code η (reuse prev t)).runE {}
+          let r := result g
           let ms := (← IO.monoMsNow) - t0
+          if let .ok T := g then
+            let k := base + prev.length
+            prev := (k, ⟨A', B', t⟩) :: prev; η := η.bind k (GenK.const A' B' (.ok T))
           times := times.push s!"{nm}\t{ms}"
           if ms > slowMs then slow := slow ++ [(nm, ms)]
           match r with
