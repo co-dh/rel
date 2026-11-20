@@ -103,11 +103,14 @@ def floatBits (E F : Nat) (v : Int × Int) : Option Nat :=
   let sgn := if v.1 < 0 then 2 ^ (E + F) else 0
   if bias < X then none
   else if 1 - bias ≤ X then
-    if a % 2 ^ (L - F) = 0 then some (sgn + (X + bias).toNat * 2 ^ F + (a / 2 ^ (L - F) * 2 ^ (F - L) - 2 ^ F))
+    -- the significand `a·2^(F-L)` lies in `[2^F, 2^(F+1))`: its top bit is the hidden one, the rest the fraction field
+    if a % 2 ^ (L - F) = 0 then some (sgn + (X + bias).toNat * 2 ^ F + a / 2 ^ (L - F) * 2 ^ (F - L) % 2 ^ F)
     else none
   else
     let low := 1 - bias - F
-    if a % 2 ^ (low - v.2).toNat = 0 then some (sgn + a / 2 ^ (low - v.2).toNat * 2 ^ (v.2 - low).toNat) else none
+    let fr := a / 2 ^ (low - v.2).toNat * 2 ^ (v.2 - low).toNat
+    -- a subnormal's whole significand is its fraction field, of `F` bits
+    if a % 2 ^ (low - v.2).toNat = 0 ∧ fr < 2 ^ F then some (sgn + fr) else none
 
 /-- The integer `m·2^e`, none where it is not one. -/
 def intOf (v : Int × Int) : Option Int :=
@@ -134,6 +137,89 @@ def embed (s t : QAtomicType) (x : Carrier s) : Option (Carrier t) := (value s x
 
 /-- The stored word of `x`, as a column holds it (`num`, two's complement past the sign). -/
 def word (t : QAtomicType) (x : Carrier t) : UInt64 := UInt64.ofInt (t.num x)
+
+/-- A word as a column holds it, read at `t`: its low `8·w` bits, as `Column.atomOfBits` reads them. -/
+def ofBits : (t : QAtomicType) → UInt64 → Carrier t
+  | .u1, v => v != 0
+  | .u8, v => v.toUInt8
+  | .char, v => v.toUInt8
+  | .i16, v => v.toUInt16.toInt16
+  | .i32, v => v.toUInt32.toInt32
+  | .date, v => v.toUInt32.toInt32
+  | .i8, v => v.toUInt8.toInt8
+  | .i64, v => v.toInt64
+  | .datetime, v => v.toInt64
+  | .f32, v => v.toUInt32
+  | .f64, v => v
+  | .sym, _ => ""
+  | .general, _ => default
+
+/-- **`embed` on stored words**, the body of `Op.cast s t`: the word of `t` holding the value of the word `x` read at
+    `s`, and `2^63` where there is none, which no image is (`word_ne_nul`), so the row is told by that word alone. -/
+def castWord (s t : QAtomicType) (x : UInt64) : UInt64 :=
+  ((embed s t (ofBits s x)).map (word t)).getD 0x8000000000000000
+
+/-- The fields of `floatBits`' word: sign `sg`, exponent `ex` (never all ones), fraction `fr`; a negative word is no
+    zero. -/
+theorem floatBits_some {E F : Nat} {v : Int × Int} {b : Nat} (h : floatBits E F v = some b) :
+    ∃ sg ex fr, b = sg * 2 ^ (E + F) + ex * 2 ^ F + fr ∧ sg < 2 ∧ ((ex : Int) ≤ 2 * (2 ^ (E - 1) - 1) ∨ ex = 0) ∧
+      fr < 2 ^ F ∧ (sg = 1 → 0 < ex ∨ 0 < fr) := by
+  unfold floatBits at h
+  dsimp only at h
+  have hsg : ∀ c : Prop, [Decidable c] → ∃ sg, (if c then 2 ^ (E + F) else 0) = sg * 2 ^ (E + F) ∧ sg < 2 ∧
+      (sg = 1 → c) := fun c _ => by
+    by_cases hc : c
+    · exact ⟨1, by simp [hc], by omega, fun _ => hc⟩
+    · exact ⟨0, by simp [hc], by omega, by omega⟩
+  split at h
+  · cases h; exact ⟨0, 0, 0, by simp, by omega, .inr rfl, Nat.two_pow_pos F, by omega⟩
+  rename_i h0
+  split at h; · cases h
+  split at h
+  · split at h
+    · cases h
+      obtain ⟨sg, hs, hs2, -⟩ := hsg (v.1 < 0)
+      exact ⟨sg, _, _, by rw [hs], hs2, .inl (by omega), Nat.mod_lt _ (Nat.two_pow_pos F), fun _ => .inl (by omega)⟩
+    · cases h
+  · split at h
+    · rename_i hd
+      cases h
+      obtain ⟨sg, hs, hs2, -⟩ := hsg (v.1 < 0)
+      have ha : 0 < v.1.natAbs := Int.natAbs_pos.2 h0
+      have hk := Nat.le_of_dvd ha (Nat.dvd_of_mod_eq_zero hd.1)
+      exact ⟨sg, 0, _, by rw [hs]; simp, hs2, .inr rfl, hd.2,
+        fun _ => .inr (Nat.mul_pos (Nat.div_pos hk (Nat.two_pow_pos _)) (Nat.two_pow_pos _))⟩
+    · cases h
+
+/-- **No image is the word `2^63`**: an integer image lies inside its atom's range, which leaves out `-2^63`, an `f32`
+    one below `2^32`, an `f64` one is no negative zero (`floatBits_some`). -/
+theorem word_ne_nul {s t : QAtomicType} {x : Carrier s} {y : Carrier t} (h : embed s t x = some y) :
+    word t y ≠ 0x8000000000000000 := by
+  obtain ⟨v, -, hv⟩ := Option.bind_eq_some_iff.1 h
+  intro he
+  have hn := congrArg UInt64.toNat he
+  cases t <;> simp only [ofValue, numFmt?, QAtomicType.width, Option.bind_eq_some_iff, Option.map_eq_some_iff,
+    NumFmt.lo, NumFmt.hi, reduceCtorEq, Option.ite_none_right_eq_some] at hv
+  case f32 =>
+    obtain ⟨b, hb, rfl⟩ := hv
+    cases hf : floatBits 8 23 v <;> simp [hf] at hb
+    subst hb
+    obtain ⟨sg, ex, fr, rfl, h1, h2, h3, h4⟩ := floatBits_some hf
+    simp [word, num, ofNum, UInt64.ofInt, UInt64.toNat_ofNat'] at hn
+    omega
+  case f64 =>
+    obtain ⟨b, hb, rfl⟩ := hv
+    cases hf : floatBits 11 52 v <;> simp [hf] at hb
+    subst hb
+    obtain ⟨sg, ex, fr, rfl, h1, h2, h3, h4⟩ := floatBits_some hf
+    simp [word, num, ofNum, UInt64.ofInt, UInt64.toNat_ofNat'] at hn
+    omega
+  case u8 | i8 | i16 | i32 | i64 =>
+    obtain ⟨k, -, ⟨h1, h2⟩, hy⟩ := hv
+    obtain rfl := Option.some.inj hy
+    simp [word, num, ofNum, UInt64.ofInt, UInt64.toNat_ofNat', Int8.toInt_ofInt, Int16.toInt_ofInt,
+      Int32.toInt_ofInt, Int64.toInt_ofInt, Int.bmod] at hn
+    omega
 
 /-- Equality of two words of an atom other than `general` (whose `QValue`s `$` never produces). -/
 def decEq : (t : QAtomicType) → t ≠ .general → DecidableEq (Carrier t)
