@@ -35,8 +35,10 @@ rel_program frameUnboundedT where
     check semiJoin(π₁, π₁, x, y) = {(0,(A,3)),(1,(C,1)),(2,(A,7)),(3,(C,2)),(4,(A,3))}
     check antiJoin(π₁, π₁, x, y) = {(0,(B,5)),(1,(B,5)),(2,(B,1))}
     -- `J`'s 8 pairs numbered in `(i, j)` order, each read in `x` and `y`: `joinOn`'s `asc(ran⟨𝟙, K⟩)` with `⟨𝟙, K⟩`
-    -- cut to `dom(K)`, which bounds the `𝟙` that `N` does not (`innerJoin` itself reads `⟨𝟙, K⟩` on `𝟙`)
+    -- cut to `dom(K)`, which bounds the `𝟙` that `N` does not
     check asc(ran(dom(J(π₁, π₁, x, y)) ⟨𝟙, J(π₁, π₁, x, y)⟩)) (x × y) ={(0,((A,3),(A,9))),(1,((A,3),(A,6))),(2,((C,1),(C,8))),(3,((A,7),(A,9))),(4,((A,7),(A,6))),(5,((C,2),(C,8))),(6,((A,3),(A,9))),(7,((A,3),(A,6)))}
+    -- the same rows by `innerJoin` itself: `⟨𝟙, K⟩` runs the table `K` first, whose domain bounds `𝟙` (`GenK.pairK`)
+    check innerJoin(π₁, π₁, x, y) ={(0,((A,3),(A,9))),(1,((A,3),(A,6))),(2,((C,1),(C,8))),(3,((A,7),(A,9))),(4,((A,7),(A,6))),(5,((C,2),(C,8))),(6,((A,3),(A,9))),(7,((A,3),(A,6)))}
     -- a top-level `asc` of a closed set: `j ↦` its `j`-th smallest element
     s : N ⟶ N ≜ {(9,9),(2,2),(5,5)}
     sa : N ⟶ N ≜ asc(s)

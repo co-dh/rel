@@ -43,7 +43,7 @@ rel_program pairN where
     check ⟨K, 𝟙⟩ = {(1,(7,1)),(3,(5,3)),(3,(8,3))}
     check K ⟨𝟙, 𝟙⟩ = {(1,(7,7)),(3,(5,5)),(3,(8,8))}
     check asc(ran(⟨c, 𝟙⟩)) π₂ = {(0,1),(1,3),(2,0),(3,2)}
-    bad : N ⟶ N×N ≜ ⟨𝟙, 𝟙⟩
+    bad : N ⟶ N×N ≜ ⟨<, <⟩
 
 open Rel.Programs.prelude in
 rel_program pairFin where
@@ -58,8 +58,10 @@ rel_program pairFin where
 -- by hand: `⟨𝟙, K⟩` relates `a` to `(a, b)` for each `(a, b)` of `K`, so its range is `K`'s three pairs, each to
 -- itself; `⟨K, 𝟙⟩` puts `K`'s value first. `K ⟨𝟙, 𝟙⟩` doubles each value of `K`. `ran⟨c, 𝟙⟩` is the pairs
 -- `(c(i), i)`: in value order `(10,1) (20,3) (30,0) (40,2)`, so `asc` numbers them 0…3 and `π₂` reads the positions
--- `1 3 0 2` (q's `iasc 30 10 40 20`). `bad` pairs two lazy `𝟙` with nothing to bound either: its one failure.
-#eval pairN.failures.map toString
+-- `1 3 0 2` (q's `iasc 30 10 40 20`). `bad` pairs two lazy `<` with nothing to bound either: `R` fails, then `S`, whose
+-- message is the one failure.
+#guard pairN.failures.map toString == ["bad: < on an unbounded object: nothing bounds its left side; compose it " ++
+  "with a table on that side (a leaf on demand ran with its domain unknown)"]
 #guard pairFin.ok
 
 end Rel.Lang.TestDemand
