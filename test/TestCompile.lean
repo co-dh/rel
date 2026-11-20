@@ -8,6 +8,7 @@ import Rel.Lang.TestHylo
 import Rel.Lang.TestDetab
 import Rel.Lang.TestEdit
 import Rel.ObjOrder
+import Rel.Lang.GenSoundTest
 -- every program of `Rel.Programs`, so the gate visits each, a test module or not
 import Rel.Programs.Blocks
 import Rel.Programs.Chess
@@ -27,12 +28,20 @@ import Rel.Programs.SudokuPC
 import Rel.Programs.SudokuPC9
 import Rel.Programs.Wumpus
 
-/-! A regression pin of the generated code's results, with no independent oracle: every closed definition of every
-    registered program, the constant `rel_program` generated for it (`GenK`), against the pin `compile-diff.json`
-    beside this file, by name. The pin is an earlier run's output, so a difference says a result CHANGED, and a
-    match says nothing about whether it is right. A definition's result is its status (`ok`, or why the constant
+/-! Two checks of the generated code's results. A definition's result is its status (`ok`, or why the constant
     vouches for nothing) and, where ok, its table as a SET of rows read as values (`rowsOf`), so a body that moves
     from `Obj.lt` order to `kasc` order, or to another encoding, reads the same.
+
+    - The differential test: each closed definition of every registered program, re-read as a `Tm`
+      (`GenSoundTest.reread`), with no `Tm.gap` node, run as `(Tm.code Code.empty t).runE {}` and required to
+      have the result of the constant `rel_program` generated (`n.expanded`). So on these definitions the generated
+      code equals `Tm.gen`'s, and `Tm.gen_sound` relates `Tm.gen` to `Tm.den` under its hypotheses (the bit-matrix
+      laws, `LamLaw` at each `Λ`); a definition with a gap node is listed with the constructors that put it there,
+      and the definitions elaborated once (`Once`) have no closed constant to compare.
+    - The regression pin, with no independent oracle: every closed definition's result against the pin
+      `compile-diff.json` beside this file, by name. The pin is an earlier run's output, so a difference says a
+      result CHANGED, and a match says nothing about whether it is right; for the definitions with a gap node it is
+      the only check.
 
     `REL_COMPILE_DIFF_WRITE=1` regenerates the baseline from the current run instead of comparing; the file is
     never edited by hand. -/
@@ -88,21 +97,70 @@ def diff (b : Json) (s : String) (rs : List (List Nat)) : Except String (Option 
     if n == rs.length && d == (hash rs).toNat then return none
     return some s!"rows differ: {rs.length} rows, digest {(hash rs).toNat} in the run; {n}, {d} in the baseline"
 
+/-- The constructors (`ctors`, by `Tm.ctorIdx`) of the nodes of `t` that are `Tm.gap` of their own: with each part
+    replaced by the gap-free `𝟘`. -/
+partial def gapCtors (ctors : List Name) {A B : Obj} (t : Tm A B) : List String :=
+  ((if (Id.run (t.mapM fun _ => pure .zero)).gap then [toString ((ctors.getD t.ctorIdx .anonymous).componentsRev.headD
+    .anonymous)] else []) ++ t.parts.flatMap fun ⟨_, _, u⟩ => gapCtors ctors u).eraseDups
+
+/-- A run slower than this many milliseconds is reported as slow. -/
+def slowMs : Nat := 60000
+
 run_cmd do
   let reg := relRegistry.getState (← getEnv)
+  let ctors := (← getConstInfoInduct ``Tm).ctors
   let mut run : Std.HashMap String (String × List (List Nat)) := {}
   let mut errs : Array String := #[]
   let mut open' : List String := []
+  -- the differential test's obligations: each definition is compared (`same` or `differ`), `gap`, or `once`
+  let mut same : List String := []
+  let mut differ : Array String := #[]
+  let mut gap : List (String × List String) := []
+  let mut once : List String := []
+  let mut slow : List (String × Nat) := []
+  let mut closed := 0
   for (n, _, _) in reg.progs do
     let gs ← unsafe IO.ofExcept ((← getEnv).evalConst (List (String × Gen.Gv)) (← getOptions) (n ++ `expanded))
-    for (x, ⟨_, _, c⟩) in gs do
+    let (ds, _, _, _, fs) ← match ← GenSoundTest.reread n with
+      | .ok r => pure r
+      | .error e => throwError "TestCompile: re-reading {n}: {e}"
+    for (x, _) in ds do
+      unless gs.any (·.1 == x) do throwError "TestCompile: `{n}.{x}` is re-read but not in `{n ++ `expanded}`"
+    once := once ++ fs.map (toString ·.const)
+    for (x, ⟨A, B, c⟩) in gs do
       let nm := s!"{n}.{x}"
+      closed := closed + 1
+      let some ⟨A', B', t⟩ := ds.lookup x | throwError "TestCompile: `{nm}` is in `{n ++ `expanded}` but not re-read"
+      unless A' == A && B' == B do throwError "TestCompile: `{nm}` is re-read at other objects than it is generated at"
       match result c with
       | .error e => errs := errs.push s!"`{nm}`: {e}"
       | .ok (s, rs) =>
         if run.contains nm then throwError "TestCompile: `{nm}` is visited twice"
         run := run.insert nm (s, rs)
         if s != "ok" then open' := open' ++ [nm]
+        if t.gap then gap := gap ++ [(nm, gapCtors ctors t)] else
+          let t0 ← IO.monoMsNow
+          let r ← IO.lazyPure fun _ => result ((Tm.code Code.empty t).runE {})
+          let ms := (← IO.monoMsNow) - t0
+          if ms > slowMs then slow := slow ++ [(nm, ms)]
+          match r with
+          | .error e => differ := differ.push s!"`{nm}`: `Tm.gen`'s result unreadable: {e}"
+          | .ok (s', rs') =>
+            if s' != s then differ := differ.push s!"`{nm}`: status: generated `{s}`, `Tm.gen` `{s'}`"
+            else if rs' != rs then differ := differ.push s!"`{nm}`: rows differ: {rs.length} generated, \
+              {rs'.length} by `Tm.gen`; only generated {few (rs.filter (!rs'.contains ·))}, only by `Tm.gen` \
+              {few (rs'.filter (!rs.contains ·))}"
+            else same := same ++ [nm]
+  logInfo m!"the differential test (generated code against `Tm.gen`): {same.length + differ.size} compared, \
+    {same.length} equal, {differ.size} different, {gap.length} with a gap node, {once.length} elaborated once (no \
+    closed constant), {slow.length} slow (over {slowMs} ms: {slow})\ngap: {gap}\nonce: {once}"
+  -- every closed definition of `n.expanded` is in exactly one of `same`, `differ`, `gap`, `errs` (which fails below)
+  unless same.length + differ.size + gap.length + errs.size == closed do
+    throwError "TestCompile: {closed} closed definitions, but {same.length} equal, {differ.size} different, \
+      {gap.length} gap and {errs.size} unreadable"
+  unless differ.isEmpty do
+    throwError "TestCompile: {differ.size} definitions differ between the generated code and `Tm.gen`:\
+      \n{"\n".intercalate differ.toList}"
   logInfo m!"the generated code is ok on {run.size - open'.length} definitions; not ok on \
     {open'.length}: {open'}"
   let names := (run.toList.map (·.1)).mergeSort fun a b => decide (a ≤ b)

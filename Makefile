@@ -48,7 +48,8 @@ build: main-only
 
 # A regression pin, not a correctness check: each closed definition of every registered program, as the constant
 # rel_program generated computes it (`expanded`), has the status and set of rows test/compile-diff.json pins, by name.
-# The pin is an earlier run's output and nothing else computes the rows, so red means changed, green not right.
+# The pin is an earlier run's output, so red means changed, green not right. The same run is the differential test:
+# each definition with no `Tm.gap` node also run as `Tm.code` (which `Tm.gen_sound` is about), and must agree.
 # `lake lean` builds the imports only and elaborates the gate every time: an olean would survive a new pin.
 compile-diff: main-only
 	$(GATE)
