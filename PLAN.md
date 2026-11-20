@@ -229,6 +229,9 @@ Diff table 的「状态」列：✅ 后面是完成它的步骤；🔄 是部分
   `csvWords_csvText`（写后读为恒等）已证，axioms `propext, Classical.choice, Quot.sound`。`Rel/Kernel/Db/CsvTest.lean`：
   case 表全部 `decide +kernel`，atom 用例按 `QAtomicType` 的 constructor 证（`atom_cases`）。C.5 的逐块解析编码是
   Rust（I6/I7）的要求；`.rel` 字面量的 `floatBits` 仍用 Lean `Float`，待改用 `readFloat`。选择记在 `/data/tmp/io/i5-notes.md`。
+  I6 ✅（分支 `io-i6`）：`qlean_csv_read`（`crate/src/csv.rs`、`ffi/csv.rs`，列入 `RELIO.txt`），`@[extern]` 在 `Db.csvRead`
+  上，body 即 `csvWords` + `wordsFoR`；一遍顺序扫描定记录与块起点，各列按块解析直接进 `Sink` 编码；`CsvTest` 读侧用例
+  合为一张 `decide` 表，extern 与 body 在 88 个文件上一致。选择记在 `/data/tmp/io/i6-notes.md`。
 - ✅ D.11 表层语法（`schema S = {k : K, v : N}`、`col S "v"`）已合并（da636a9）；`Schema` 层此前已合并（5ab6d2e，master 0fb9879，`Rel/Lang/Schema.lean`、`TestSchema.lean`）；余下：TestFrame 的
   frame 按 `Schema` 索引（随 D.9）。frame 的 schema 进入类型（owner 经 dataframe 会话决定，选 wrapper，不加 `Obj` constructor）：
   `Schema := List (String × Obj)`；`Schema.obj : Schema → Obj` 是 definition（按 `.d` 列序的嵌套 `prod`）；frame 的项按
