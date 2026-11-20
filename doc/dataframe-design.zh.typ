@@ -188,6 +188,7 @@ filterJust(c, x)  ≜ filterBy(dom(c inl°), x)
 filterNothing(c, x) ≜ filterBy(dom(c inr°), x)
 shift(n, x)       ≜ dom(x) tot(⟨𝟙, ⊤ n⟩minus x)                行 i 读行 i−n；q：xprev
 diff(n, x)        ≜ dom(x) tot(⟨x, ⟨𝟙, ⊤ n⟩minus x⟩minus)      x 是一列
+next(n, x)        ≜ dom(x) tot(⟨𝟙, ⊤ n⟩plus x)                 行 i 读行 i+n；q：next
 ```
 
 - `f` 的取法（`c = x v`）：`sum` 是 `F(c) sum`（prim `sum`，dfn `⦇[0, plus]⦈ʳ`），`count` 是 `length`，积是
@@ -220,7 +221,7 @@ diff(n, x)        ≜ dom(x) tot(⟨x, ⟨𝟙, ⊤ n⟩minus x⟩minus)      x 
   ([`groupBy`], [组 `group(x k)`；组的 key `firstOcc(x k) x k`], [], "full"),
   ([`aggregate`], [`aggregate(a, f, x) ≜ ⟨firstOcc(x a) x a, agg(group(x a), f)⟩`], [], "full"),
   ([`sum` `mean` `count` `countAll` `minimum` `maximum` `reduce`], [`summarize(f, x)`，`f` 见 3.1；`count(x)`],
-    [`mean` 只有整数除法，浮点：F4], "part"),
+    [`minimum` `maximum` 在 `f64`、`date` 列上按值的序；`mean` 要 `f64` 上的 `sum` 与 `div`，整数商不是均值：F4], "part"),
   ([`variance` `stddev` `skewness` `correlation` `zScore`],
     [无], [需要浮点 `arith` 和浮点 `div`；整数商不是方差：F4], "no"),
   ([`median` `percentile` `genericPercentile` `interQuartileRange`],
@@ -233,7 +234,7 @@ diff(n, x)        ≜ dom(x) tot(⟨x, ⟨𝟙, ⊤ n⟩minus x⟩minus)      x 
   ([`firstOrNothing` `lastOrNothing`], [`firstOrNothing(x) ≜ tot(summarize(head, x) x)`；`lastOrNothing(x) ≜ tot(summarize(last, x) x)`],
     [空 frame 得 null；每组一行：`firstOcc(x k) x`、`lastOcc(x k) x`], "full"),
   ([`topK` `bottomK` `kExtremes`], [`topK(n, a, x) ≜ take(n, sortByDesc(a, x))`；`bottomK` 是 `topBy`], [并列按位置顺序], "full"),
-  ([`valueCounts` `valueProportions` `frequencies`], [`valueCounts(a, x) ≜ aggregate(a, length, x)`], [比例要浮点除法：F4], "part"),
+  ([`valueCounts` `valueProportions` `frequencies`], [`valueCounts(a, x) ≜ aggregate(a, length, x)`], [比例：计数经 `$ F` 成为 `f64`，但 `f64` 上没有 `div`：F4], "part"),
   ([`summarize` `describeColumns`],
     [`describe(c) ≜ ⟨count(c), ⟨summarize(F(c) ⟨sum, length⟩div, c), ⟨summarize(F(c) Λ(∋) head, c), summarize(F(c) Λ(∋) last, c)⟩⟩⟩`],
     [整数列的 count、mean、min、max；浮点的 mean / std：F4], "part"),
@@ -254,11 +255,11 @@ diff(n, x)        ≜ dom(x) tot(⟨x, ⟨𝟙, ⊤ n⟩minus x⟩minus)      x 
   ([`recode` `recodeWithDefault`], [`x v T`；带缺省 `x v tot(T) [𝟙, c]`], [`T` 是 `Tm.val` 的字面量表], "full"),
   ([`lift` `lift2` `nullLift` `bind`], [无], [F7], "no"),
   ([`cast` `toDouble` `div` `mod` `pow` `relu` `eq` `lt` `and` `or` `not` …],
-    [`div` `mod` 是 `arith`；`eq` 是 `𝟙`，`lt` 是 `<`；`and` `or` `not` 是 coreflexive 的 `∩` `∪` `−`；`relu = ⟨𝟙, ⊤ 0⟩max`],
-    [整数 / 浮点转换、`pow`：F4], "part"),
+    [`div` `mod` 是 `arith`；`eq` 是 `𝟙`，`lt` 是 `<`；`and` `or` `not` 是 coreflexive 的 `∩` `∪` `−`；`relu = ⟨𝟙, ⊤ 0⟩max`；`toDouble` 是 `x v $ F`（`obj F : f64`）],
+    [`$` 只保值（整数 → 浮点、窄 → 宽）；浮点 → 整数、`pow`、`f64` 上的 `arith` 与 `<`：F4], "part"),
   ([`over`], [`over(a, f, x)`], [], "full"),
   ([`contains` `length` `splitOn` `match` `matchAll`], [`contains(s) ≜ dom(suffix prefix s)`；`length` 是 prim], [`splitOn` `match`：F3], "part"),
-  ([`parseDate` `daysBetween`], [无], [`daysBetween` 是 `date` 上的 `minus`：F4、F5；`parseDate`：F3], "no"),
+  ([`parseDate` `daysBetween`], [无], [`daysBetween` 是 `date` 上的 `minus`，`minus` 与 `date $ N` 都在 elaboration 被拒绝：F4、F5；`parseDate`：F3], "no"),
   ([`sample` `shuffle` `randomSplit` `kFolds` `stratifiedSample` `mkRandom`], [无], [F8], "no"),
   ([`fromList` `fromRows` `fromColumns` `fromUnboxedVector` `empty`], [字面量 `Tm.val`，或 `⟨x, y⟩`], [], "full"),
   ([`columnAsVector` `columnAsList` `toList` `toRowList` `to*Matrix`], [`summarize(F(x c), x)`], [位置顺序的数组], "full"),
@@ -277,11 +278,11 @@ diff(n, x)        ≜ dom(x) tot(⟨x, ⟨𝟙, ⊤ n⟩minus x⟩minus)      x 
   ([asof join], [`aj(k, t, h, u, x, y) ≜ ⟨x, dom(x) tot(agg(m, last) y)⟩ where r ≜ ⟨π₁, sums(counts(ran(x ⟨k, t⟩), (y ⟨h, u⟩)°))⟩, m ≜ x ⟨k, t⟩ r (y ⟨h, u⟩ r)°`；
     `counts(D, R) ≜ agg(R, length) ∪ ((D − dom(R)) ⊤ {(∗,0)})`],
     [`counts(D, R)` 在 `D` 的每个点上给 `R` 的像的长度，没有像的点为 0；q 的 `aj`：`r` 数同 key 的 `y` 行中时间不晚于该时间的个数，`m` 接上最新的 `u ≤ t`；`agg(m, last)` 是并列时取最后一行；
-    计数在 `y` 的位置对象 `μ` 里；`ι = 𝟙`], "full"),
+    计数在 `y` 的位置对象 `μ` 里；`ι = 𝟙`；`sums` 沿时间扫描，时间列须是数对象，`date` `datetime` 的时间列被拒绝：F4], "part"),
   ([`cum_sum` 等], [`cumAgg(f, x) ≜ agg(dom(x) ≥ dom(x), f)`；`cumSum(c) ≜ sumsBy(dom(c) ⊤ 𝟙(1), c)`；
     `sumsBy(g, c) ≜ ⟨g, 𝟙⟩ sums(⟨g, 𝟙⟩° c)`],
     [行 `i` 聚合 `j ≤ i` 的行；q：`sums`（`f` 为 `sum`）。`cumSum` 是 `cumAgg(F(c) sum, c)`，一组；`sumsBy` 是每组内的 `cum_sum().over(g)`], "full"),
-  ([`shift(k)`], [`shift(k, x)`], [前 `k` 个位置是 null], "full"),
+  ([`shift(k)`], [`shift(k, x)`；`shift(−k)` 是 `next(k, x)`], [前（`next`：后）`k` 个位置是 null], "full"),
   ([`diff`], [`diff(1, c)`], [`c(i) − c(i−1)`，第 0 行 null], "full"),
   ([`rolling(w)`], [`rolling(w, f, x)`], [], "full"),
   ([`forward_fill`], [`fills(c) ≜ (p ∪ (dom(c) − dom(p))) c where r ≜ cumSum(counts(dom(c), dom(c inl°))), p ≜ r (dom(c inl°) r)°`],
@@ -318,10 +319,12 @@ diff(n, x)        ≜ dom(x) tot(⟨x, ⟨𝟙, ⊤ n⟩minus x⟩minus)      x 
   读文件要声明 schema，或在 elaboration 时读 `.d`。
 - *F3 字符串别扭。* 字符串是 `arr char`，单元格里的值，不是 frame（F9）；`contains` 的规格要形成全部子串。
   正则是「步骤为转移表」的 fold，把正则编译成表在语言之外。
-- *F4 atom 覆盖。* `Tm.arith`、`leq`、`lt` 只在 `i64` 上；dataframe 需要它们在每个有序 atom 上（`date` 的 `minus` 即
-  `daysBetween`）。已决定：`arith`、`lt` 以 atom 为下标。`arith` 只有 `plus` `minus` `times` `div` `mod` `max` `min`：
-  没有浮点运算，所以 `mean` 只有整数除法，`stddev` `skewness` `correlation` `zScore` `valueProportions`、
-  浮点的 `percentile` 写不出；没有 `pow`，整数 / 浮点互转、`fround` 也没有。
+- *F4 atom 覆盖。* 列可以在声明的 atom 对象上（`obj F : f64`、`obj D : date`）：只比较、排序、匹配值的运算
+  （`sortBy` `topK` `distinct` `aggregate` 的组与 `min` `max`、join）照常运行（`TestFrameTyped`）。`Tm.arith`、`leq`、`lt`、
+  `sum`、`sums` 只在 `i64` 上；dataframe 需要它们在每个有序 atom 上（`date` 的 `minus` 即 `daysBetween`）。
+  已决定：`arith`、`lt` 以 atom 为下标。没有浮点运算：`mean` `stddev` `skewness` `correlation` `zScore`
+  `valueProportions`、浮点的 `percentile` 写不出（整数商不代替它们）；`$` 只给保值的整数 → 浮点、窄 → 宽，
+  没有 `pow`、`fround`、浮点 → 整数。`aj` 的时间沿 `sums` 扫描，所以只能是数对象。
 - *F5 时间类型。* `date`、`datetime` 是整数 code，没有时区。日历运算（取月份、截断到月）是整数算术加上与日历表的 join。
 - *F6 IO 在代数之外。* 程序读的 frame 是 `input` 语句声明的名字，路径与格式写在语句里；CSV 的解析是 crate 的 IO 导出，不是列上的关系。
 - *F7 宿主函数。* `lift`、`lift2`、`apply`、`bind` 接受任意 Haskell 函数；Rel 只有 `Op` 的有限集合及其复合。
