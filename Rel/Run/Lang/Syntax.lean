@@ -256,6 +256,13 @@ def prims : List Prim :=
      mono := false, aop := .error "AOP declares no numbering of a set by its order", whole := true },
    -- last, so the rows before keep their positions (`Rows.lean`'s numbering)
    inlConvRow, inrConvRow,
+   -- `sums(x)`: q's `sums` per key, `x : κ×ν ⟶ γ`, the key the source's first component; the fused form of
+   -- `agg(dom(x) (𝟙 × ≥) dom(x), F(x) ⦇[0, plus]⦈)` (`rowDens`). Not `mono`: a larger `x` changes the sums. Its `dfn`
+   -- waits, as `asc`'s, for a `dfn` that can read the row's relations
+   { sym := "sums",
+     sig := ([((.prod (.var {} "K") (.var {} "ℕ"), .var {} "ℕ"), some false)], .prod (.var {} "K") (.var {} "ℕ"),
+       .var {} "ℕ"),
+     mono := false, aop := .error "AOP declares no prefix sums per key", whole := true },
    -- `x $ F`: each value of `x : A ⟶ N` to the same number at `F`'s atom (`QAtomicType.embed`, typed base S6), written
    -- as its own infix form, which names the target object
    { sym := "$", sig := ([], .var {} "N", .var {} "F"), written := false,

@@ -22,7 +22,7 @@ rel_program castT where
 #guard castT.failures.map toString == []
 #guard castT.prints == ["af = {(0, 0.0), (1, -7.0), (2, 3.0), (3, 9007199254740992.0)}"]
 
-/-- error: -/
+/-- error: line 31, col 5: $ from F (f64) to N (i64): not every f64 value is a i64 value, and $ keeps a number's value -/
 #guard_msgs in
 rel_program floatToIntT where
     obj N
@@ -30,7 +30,7 @@ rel_program floatToIntT where
     x : F ⟶ F ≜ {(1.5,2.5)}
     y : F ⟶ N ≜ x $ N
 
-/-- error: -/
+/-- error: line 39, col 5: $ from N (i64) to I (i32): not every i64 value is a i32 value, and $ keeps a number's value -/
 #guard_msgs in
 rel_program narrowT where
     obj N
@@ -38,7 +38,7 @@ rel_program narrowT where
     x : N ⟶ N ≜ {(1,2)}
     y : N ⟶ I ≜ x $ I
 
-/-- error: -/
+/-- error: line 47, col 5: $ from N (i64) to D (date): not every i64 value is a date value, and $ keeps a number's value -/
 #guard_msgs in
 rel_program dateT where
     obj N
@@ -46,7 +46,7 @@ rel_program dateT where
     x : N ⟶ N ≜ {(1,2)}
     y : N ⟶ D ≜ x $ D
 
-/-- error: -/
+/-- error: line 54, col 5: $ from N (i64) to N×N (no atom): not every i64 value is a no atom value, and $ keeps a number's value -/
 #guard_msgs in
 rel_program prodT where
     obj N

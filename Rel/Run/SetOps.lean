@@ -76,6 +76,36 @@ def diag (q : Tab k k → Except String (Tab k k)) (D : Tab k k) : Except String
 /-- **`R ⊑ S`**: `R − S` has no row. -/
 def le (R S : Tab k v) : Except String Bool := (fun D => D.n == 0) <$> diff R S
 
+/-- **q's `sums` per key** (`rowDens`: `agg(dom(x) (𝟙 × ≥) dom(x), F(x) ⦇[0, plus]⦈)`): `canon` sorts `x` by
+`(κ, ν)`, so each key `κ` is one run; `kseen` on the whole key checks `x` simple (one value per `(κ, ν)`, else the
+error naming a doubled position), `kseen` on the `κ` columns gives each run's first row, ones `kscatter`ed there are
+the segment marks (`groupFold`'s first line), and a segmented `kscan .add` from `0` is the prefix sum `W`. A step is
+bad where it wrapped (`v` and `W − v` of one sign, `W` of the other) or reads or makes the null `-2^63`, as in
+`Tab.sum`; a segmented `kscan .or` carries it to the rest of its key, and those rows are dropped (`keep`). -/
+def sums {K : Obj} (x : Tab (.prod K .long) .long) : Except String (Tab (.prod K .long) .long) := do
+  let C ← canon x
+  let n := C.n
+  let (m, _, f) ← kseen n (← Vals.cols (A := .prod K .long) C.key)
+  if m ≠ n.toNat then
+    let firsts ← kscatter .last m.toUSize f (← colConst m.toUSize 1) n 0
+    let (d, sel) ← whereCol n (← colMap .eq n firsts (← colConst n 0))
+    let p ← Vals.gather (A := .long) d sel C.key.2
+    let at0 := if h : 0 < d.toNat then s!"{Vals.row (A := .long) p ⟨0, h⟩}" else "?"
+    throw s!"sums: x is not simple: two values at the position {at0} of one key ({n.toNat - m} doubled in all); \
+      sums folds one value per (key, position)"
+  let (gk, _, fk) ← kseen n (← Vals.cols C.key.1)
+  let seg ← kscatter .last gk.toUSize fk (← colConst gk.toUSize 1) n 0
+  let z ← colConst n 0
+  let v := Arr.enc (t := .i64) C.val
+  let W := (← kscan .add false .i64 .i64 n seg [z, v]).1
+  let sv ← colMap .lt n v z
+  let ovf ← colMap .and n (← colMap .eq n sv (← colMap .lt n (← colMap .sub n W v) z)) (← colMap .ne n sv
+    (← colMap .lt n W z))
+  let nul ← colConst n 0x8000000000000000
+  let bad ← colMap .or n ovf (← colMap .or n (← colMap .eq n W nul) (← colMap .eq n v nul))
+  let badR := (← kscan .or false .i64 .i64 n seg [z, bad]).1
+  keep ⟨n, C.key, ← colArr .add n W z⟩ (← colMap .not n badR badR)
+
 end Tab
 
 end Rel

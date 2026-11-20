@@ -29,11 +29,12 @@ open Rel.Kernel Ext.Enc
 an error at everything else. -/
 theorem foRWords_valid (what : String) (m : USize) (e : Enc) :
     (Enc.Valid m e → foRWords what m e = .ok (raw .i64 m e)) ∧ ∀ ws, foRWords what m e = .ok ws → Enc.Valid m e := by
+  have hv : foROk m e = true ↔ Enc.Valid m e := by cases e <;> simp [Enc.Valid]
   unfold foRWords
-  constructor
-  · intro h; cases e <;> simp_all [Enc.Valid]
-  · intro ws h
-    cases e <;> simp only [Enc.Valid] <;> first | trivial | (split at h <;> (try split at h) <;> simp_all) | cases h
+  refine ⟨fun h => by rw [if_pos (hv.2 h)], fun ws h => ?_⟩
+  split at h
+  · exact hv.1 ‹_›
+  · cases h
 
 /-- A valid `foR` column is `Ext.Enc.WF` at every fixed-width type, a boolean one where every element is `0` or `1`:
 `Coc.foRStd`'s block count covers the `n` elements, the layout part of `Ext.Enc.WF`. -/

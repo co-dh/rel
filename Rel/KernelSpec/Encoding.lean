@@ -521,6 +521,7 @@ theorem foRBits_of (M P : ByteArray) (i : Nat) (B : Nat) (hB : Column.blk M = B)
     Column.foRBits M P (Column.blockStarts M) i = base + fr + ((R (i % B)).toNat % 2 ^ wd).toUInt64 := by
   subst hB
   unfold Column.foRBits
+  simp only [blockStarts_get M (Nat.le_refl _)]
   rw [hx]
   simp only [hf, blockStarts_get M hb, h2, h3]
   rw [resAt_packRes (Column.blk M) wd (blk_dvd8 M) hwd R P _ h4 _ (Nat.mod_lt _ (blk_pos M))]
@@ -1225,6 +1226,7 @@ theorem foRBits_encode (lg : Nat) (hlg : 6 ≤ lg ∧ lg ≤ 16) (w : Nat) (hw0 
     rw [if_neg h0] at htail; subst htail
     rw [← hnb]
     unfold Column.foRBits
+    simp only [blockStarts_get _ (Nat.le_refl _)]
     rw [foRExc_excBlob M pack (2 ^ lg) hBM ⟨hBp, hB16⟩ w hw0 hw x exc hexs (h32' h0) _ _ (hword frm).1 he i
       (hnb ▸ hib), if_pos hin]
 
