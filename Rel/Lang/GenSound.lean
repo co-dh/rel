@@ -167,7 +167,7 @@ def Tm.gen (η : Code) {A B : Obj} (t : Tm A B) : Rel A B :=
   | .sum A B, C, .juncD R S => GenK.juncD A B C R.dem S.dem (R.code η) (S.code η)
   | A, B, .prim r => primGen r A B []
   | _, _, .arg f x => f.argGen η [⟨_, _, x.code η⟩]
-  | _, _, .call _ c .. => .tab (.error s!"Tm.gen: the call `{c}` is in the gap (Expand.spine)")
+  | _, _, .call _ c .. | _, _, .callCv _ c .. => .tab (.error s!"Tm.gen: the call `{c}` is in the gap (Expand.spine)")
 termination_by 2 * t.size
 decreasing_by all_goals simp only [Tm.size] at *; omega
 
@@ -210,7 +210,7 @@ def Tm.hasCode {A B : Obj} (t : Tm A B) : Bool :=
     ((b.kids k A).getD .zero).hasCode && b.hasCode
   | A, B, .prim r => primHasCode r A B []
   | _, _, .arg (C := C) (D := D) f x => f.argHasCode [(C, D)] && x.hasCode
-  | _, _, .call .. => false
+  | _, _, .call .. | _, _, .callCv .. => false
 termination_by t.size
 decreasing_by all_goals simp only [Tm.size] at *; omega
 
@@ -224,7 +224,7 @@ termination_by t.size
 decreasing_by all_goals simp only [Tm.size] at *; omega
 end
 
-#guard !(Tm.comp (Tm.call (A := .long) (B := .long) false `c [] none) .id).hasCode
+#guard !(Tm.comp (Tm.call (A := .long) (B := .long) [] `c [] .zero) .id).hasCode
 #guard !(Tm.arg (Tm.zero (A := .long) (B := .long)) (Tm.id (A := .long))).hasCode
 #guard (Tm.ldiv (A := .long) (B := .long) (C := .long) .id .id .id .id).hasCode
 
@@ -259,7 +259,7 @@ def Tm.gap : {A B : Obj} → Tm A B → Bool
   | _, _, .ldiv R S U V | _, _, .rdiv R S U V => R.gap || S.gap || U.gap || V.gap
   | _, _, .arg (C := C) (D := D) f x => f.argGap [(C, D)] || x.gap
   | _, _, .juncD .. | _, _, .est _ | _, _, .thin _ | _, _, .atPos _
-  | _, _, .mu .. | _, _, .nu .. | _, _, .hylo .. | _, _, .call .. => true
+  | _, _, .mu .. | _, _, .nu .. | _, _, .hylo .. | _, _, .call .. | _, _, .callCv .. => true
 
 /-- `Tm.argGen`'s case split: the spine `t` given later relations at the objects `os` has a gap node. -/
 def Tm.argGap : {A B : Obj} → Tm A B → List (Obj × Obj) → Bool
@@ -272,7 +272,7 @@ end
 def Tm.spineHead : {A B : Obj} → Tm A B → String
   | _, _, .prim r => r.sym
   | _, _, .arg f _ | _, _, .share _ f => f.spineHead
-  | _, _, .call .. => "call"
+  | _, _, .call .. | _, _, .callCv .. => "call"
   | _, _, _ => "no row"
 
 mutual
@@ -294,7 +294,7 @@ def Tm.gapKinds : {A B : Obj} → Tm A B → List String
   | _, _, .mu .. => ["mu"]
   | _, _, .nu .. => ["nu"]
   | _, _, .hylo .. => ["hylo"]
-  | _, _, .call .. => ["call"]
+  | _, _, .call .. | _, _, .callCv .. => ["call"]
   | _, _, .arg (C := C) (D := D) f x => f.argGapKinds [(C, D)] ++ x.gapKinds
 
 /-- `Tm.argGap`'s kinds: `arg s` for a spine headed by `s` that is no `Prim.proved` row at its relations. -/

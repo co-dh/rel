@@ -82,8 +82,10 @@ def varAtoms : List Rel.QAtomicType := [.general, .u1, .u8, .i16, .i32, .f32, .f
 /-- The placeholder of the object variable `k`; none past `varAtoms`, where the variable stays `.long`. -/
 def varObj (k : Nat) : Option Obj := varAtoms[k]?.map .atom
 
+deriving instance Repr for Rel.Obj
+
 /-- `A` with the placeholder of each object variable `k` (`varObj k`) replaced by `σ[k]`, kept where `σ` has none. -/
-def Obj.inst (σ : List Obj) : Obj → Obj
+def _root_.Rel.Obj.inst (σ : List Obj) : Obj → Obj
   | .atom t => match varAtoms.idxOf? t with | some k => σ.getD k (.atom t) | none => .atom t
   | .prod a b => .prod (a.inst σ) (b.inst σ)
   | .arr b => .arr (b.inst σ)
@@ -140,11 +142,11 @@ def Tm.instObj (σ : List Obj) : {A B : Obj} → Tm A B → Except String (Tm (A
 where
   /-- `t` at objects `X ⟶ Y` that `σ` must keep: decided, as `Obj.inst` reads `varAtoms` by search. -/
   fixed {X Y : Obj} (t : Tm X Y) : Except String (Tm (X.inst σ) (Y.inst σ)) :=
-    if h : X.inst σ = X ∧ Y.inst σ = Y then pure (h.1 ▸ h.2 ▸ t) else
+    if h : X.inst σ = X ∧ Y.inst σ = Y then pure (cast (by rw [h.1, h.2]) t) else
       throw s!"a table, a universe or a number verb at {repr X} ⟶ {repr Y}, objects the call changes"
   /-- `fixed` backwards: a part of such a node. -/
   back {X Y : Obj} (t : Tm (X.inst σ) (Y.inst σ)) : Except String (Tm X Y) :=
-    if h : X.inst σ = X ∧ Y.inst σ = Y then pure (h.1 ▸ h.2 ▸ t) else
+    if h : X.inst σ = X ∧ Y.inst σ = Y then pure (cast (by rw [h.1, h.2]) t) else
       throw s!"a table, a universe or a number verb at {repr X} ⟶ {repr Y}, objects the call changes"
 
 abbrev Objs := List (String × ObjInfo)
@@ -258,12 +260,8 @@ abbrev Form := Option Bool × Option Nat
 structure Sig where
   /-- The constant. -/
   const : Lean.Name
-  /-- Its plan's demand bit. -/
-  demand : Bool
   /-- Per object variable, whether it is generic over it and whether it reads its universe. -/
   vars : List (Bool × Bool)
-  /-- Its converse's constant and demand bit. -/
-  conv : Option (Lean.Name × Bool)
   /-- Whether it is a pair test. -/
   tst : Bool
   /-- Whether a family result `I ⟶ a×b` is its keyed form `I×a ⟶ b` (`keyed`). -/
@@ -288,6 +286,11 @@ structure Once where
   tst : Bool
   /-- Whether it is a family's keyed form. -/
   kf : Bool
+
+/-- The variables of `o`'s body its arguments bind, in the order a call gives them (`callArgs`): the universes it
+    reads, then its parameters. -/
+def Once.binds (o : Once) : List Nat :=
+  (List.range o.gen.length).filter o.res.2.2.fv.contains ++ (List.range o.params.length).map (o.gen.length + ·)
 
 structure St where
   /-- The fixed points so far: the next one's variable. -/
@@ -1588,6 +1591,22 @@ def paramOf (why : String) : Except Err Cor → Except Err ((B : Obj) × Tm (.pr
   | .error e => throw ⟨e.pos,
     s!"{why} runs its order on the pairs it compares, and the order is not testable on pairs (§a): {e.msg}"⟩
 
+/-- The call node of the constant `c` at `A ⟶ B`, its object variables at `us`: its body `t` (and its converse's)
+    at their objects (`Tm.instObj`), `os` those of the variables it is generic over. A variable it is not generic
+    over keeps its placeholder, so `σ` is the identity there. -/
+def callTm (pos : Pos) (c : Lean.Name) (us : List (OTy × Bool × Bool)) (ks : List Nat) (t : Res)
+    (cv : Option (Lean.Name × Res)) (A B : Obj) : Except Err (Tm A B) := do
+  let σ ← us.zipIdx.mapM fun ((u, gen, _), k) => if gen then toObj objs mc dp u else pure ((varObj k).getD .long)
+  let os := (σ.zip us).filterMap fun (o, _, gen, _) => if gen then some o else none
+  let inst {X Y : Obj} : Res → Except Err (Tm X Y)
+    | ⟨X₀, Y₀, b⟩ => do
+      let b ← (b.instObj σ).mapError fun e => (⟨pos, s!"`{c}` at the objects of this call: {e}"⟩ : Err)
+      if h : X₀.inst σ = X ∧ Y₀.inst σ = Y then pure (h.1 ▸ h.2 ▸ b)
+      else internal dp s!"`{c}`'s body is not at the objects of its call"
+  match cv with
+  | some (c', u) => return .callCv ks c c' os (← inst t) (← inst u)
+  | none => return .call ks c os (← inst t)
+
 mutual
 
 /-- `Pre` to `Tm` at the solved objects. Every check here holds by `elabE`'s unification except the
@@ -1745,7 +1764,7 @@ def build : Pre → Except Err Res
     throw ⟨pos, s!"`{c}` is tested on the pairs it compares, not run: its constant is its pair test (§a)"⟩
   | .call pos c us xs ts _ a b ks t cv false => do
     let A ← toObj objs mc dp a; let B ← toObj objs mc dp b
-    pure ⟨A, B, ← callArgs pos c us xs ts (← callTm objs mc pos c us ks t cv A B)⟩
+    pure ⟨A, B, ← callArgs pos c us xs ts (← callTm objs mc dp pos c us ks t cv A B)⟩
   -- the body read whole each round, on its source's universe when it needs keys
   | .fix p least k x S q a b => do
     let A ← toObj objs mc dp a; let B ← toObj objs mc dp b
@@ -1799,7 +1818,7 @@ def test (p : Pre) : Except Err Cor :=
     | .var _ k a b (some true) => do pure ⟨← toObj objs mc dp a, ← toObj objs mc dp b, .var true k⟩
     | .call pos c us xs ts _ a b ks t _ true => do
       let A ← toObj objs mc dp a; let B ← toObj objs mc dp b
-      pure ⟨A, B, ← callArgs pos c us xs ts (← callTm objs mc pos c us ks t none (.prod A B) (.prod A B))⟩
+      pure ⟨A, B, ← callArgs pos c us xs ts (← callTm objs mc dp pos c us ks t none (.prod A B) (.prod A B))⟩
     | .conv q => do let ⟨A, B, c⟩ ← test q; pure ⟨B, A, .comp swapTm (.comp c swapTm)⟩
     | .top _ a b none => do pure ⟨← toObj objs mc dp a, ← toObj objs mc dp b, .id⟩
     | .meet q r => do let c ← test q; let ⟨A, B, c₁⟩ := c; pure ⟨A, B, .meet c₁ (← corAt dp A B (← test r))⟩

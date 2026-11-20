@@ -169,14 +169,17 @@ theorem convTm_den (ρ : Val) : ∀ {A B : Obj} (t : Tm A B), t.ConvOK ρ →
         have e := Prim.den_conv r hok s r' hc hr'
         exact ⟨e _ _ [], fun ss => e _ _ ss⟩
     · cases hu
-  | @call A B d c os cv =>
+  | @call A B ks c os b _ =>
     refine fun _ => ⟨fun u hu => ?_, by noproj⟩
-    by_cases hd : (Tm.call d c os cv : Tm A B).dem = false
+    by_cases hd : (Tm.call ks c os b : Tm A B).dem = false
     · exact conv_false_den ρ u hu hd
-    rw [convTm.eq_def, if_neg hd] at hu; dsimp only at hu
-    split at hu
-    · cases hu; exact ⟨funext fun _ => funext fun _ => propext Iff.rfl, fun _ => rfl⟩
-    · cases hu
+    rw [convTm.eq_def, if_neg hd] at hu; dsimp only at hu; cases hu
+  | @callCv A B ks c c' os b v _ _ =>
+    refine fun _ => ⟨fun u hu => ?_, by noproj⟩
+    by_cases hd : (Tm.callCv ks c c' os b v : Tm A B).dem = false
+    · exact conv_false_den ρ u hu hd
+    rw [convTm.eq_def, if_neg hd] at hu; dsimp only at hu; cases hu
+    exact ⟨funext fun _ => funext fun _ => propext Iff.rfl, fun _ => rfl⟩
   | arg f x ihf _ =>
     refine fun hok => ⟨fun u hu => ?_, by noproj⟩
     by_cases hd : (Tm.arg f x).dem = false

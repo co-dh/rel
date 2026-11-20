@@ -216,7 +216,7 @@ def Tm.kernelNode {A B : Obj} : Tm A B → Bool
 partial def Tm.offKernel (twin : Lean.Name → Bool) {A B : Obj} (t : Tm A B) : List (Nat × String) :=
   match t with
   | .share _ R => R.offKernel twin
-  | .call _ c .. => if twin c then [] else [(t.ctorIdx, toString c)]
+  | .call _ c .. | .callCv _ c .. => if twin c then [] else [(t.ctorIdx, toString c)]
   | t => (if t.kernelNode then [] else [(t.ctorIdx, match t with | .prim r => r.sym | _ => "")]) ++
     t.parts.flatMap fun ⟨_, _, u⟩ => u.offKernel twin
 

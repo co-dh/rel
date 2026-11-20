@@ -141,12 +141,15 @@ def formKey (c : Lean.Name) (fs : List Form) : Lean.Name :=
   else fs.foldl (fun k (t, i) => .num k ((match t with | none => 0 | some false => 1 | some true => 2) +
     3 * (match i with | some i => i + 1 | none => 0))) (c ++ `form)
 
-/-- What a call reads of the constant `o` (`Sig`): the universes its body reads, its converse when it has one. -/
+/-- What a call reads of the constant `o` (`Sig`): the universes its body reads. -/
 def sigOf (o : Once) : Sig :=
   let ⟨_, _, t⟩ := o.res
-  let cv := if o.tst then none else (convTm t).toOption
-  { const := o.const, demand := t.dem, vars := o.gen.zip ((List.range o.gen.length).map t.fv.contains),
-    conv := cv.map fun u => (o.const ++ `conv, u.dem), tst := o.tst, kf := o.kf }
+  { const := o.const, vars := o.gen.zip ((List.range o.gen.length).map t.fv.contains), tst := o.tst, kf := o.kf }
+
+/-- The converse of `o`'s body, when it has one (`convTm`) and is not a pair test, and its constant. -/
+def convOf (o : Once) : Option (Lean.Name × Res) :=
+  if o.tst then none else match o.res with
+    | ⟨A, B, t⟩ => (convTm t).toOption.map fun u => (o.const ++ `conv, ⟨B, A, u⟩)
 
 /-- What a program reads: its closed definitions, its prints (text and term), its checks, its objects, and its
     definitions elaborated once. -/
@@ -316,7 +319,7 @@ def once (env : Env) (p : Pos) (n : String) (qs : List Param) (e : Expr) (ty : O
     `n` is the program `emitter`'s, else under `emitter`. The expansion gives the call's type and is what the
     analyses read. -/
 def callDef (env : Env) (dp : Pos) (n : String) (qs : List Param) (e : Expr) (ty : OExp × OExp) (vs : List String)
-    (c emitter : Lean.Name) (calls : Lean.Name → Option Sig) (d : Def) : Def :=
+    (c emitter : Lean.Name) (calls : Lean.Name → Option Once) (d : Def) : Def :=
   { d with apply := fun p as => do
       let r ← d.apply p as
       let (bs, m) ← (qs.zip as).foldlM (fun (bs, m) (P, a) => do
@@ -349,30 +352,31 @@ def callDef (env : Env) (dp : Pos) (n : String) (qs : List Param) (e : Expr) (ty
         fs := fs ++ [(f, k?)]; xs := xs ++ [(if f.isNone then Pre.close p x a why else x, f == some true)]
       let some us := vs.mapM (m.lookup ·) | throw ⟨p, s!"internal: `{c}` has an object variable no type names"⟩
       let key := formKey c fs
-      let sig? ← match calls key, (← get).specs.find? (·.key == key) with
-        | some g, _ => pure (some g)
-        | none, some o => pure (some (sigOf o))
+      let o? ← match calls key, (← get).specs.find? (·.key == key) with
+        | some o, _ | none, some o => pure (some o)
         | none, none => do
           let k := if c.getPrefix == emitter then key else emitter ++ key
           let vs := vs ++ (List.range ix.size).map idxVar
           -- a body that does not build alone at these forms (a family it reads whole, which only the use's
           -- context keys, §e) is no constant: the use is the expansion, whose build reports any error in its words
           match ← (once env dp n qs e ty vs key k fs (← get).specs).run with
-          | .ok (o, specs) => modify (fun st => { st with specs := specs ++ [o] }); pure (some (sigOf o))
+          | .ok (o, specs) => modify (fun st => { st with specs := specs ++ [o] }); pure (some o)
           | .error _ => pure none
-      let some { const := k, demand := dm, vars := fl, conv := cv, tst, kf } := sig? | return r
+      let some o := o? | return r
+      let { const := k, vars := fl, tst, kf } := sigOf o
+      let (ks, t, cv) := (o.binds, o.res, convOf o)
       let us := us ++ ix.toList
       unless us.length == fl.length do
         throw ⟨p, s!"internal: `{k}` has {fl.length} object variables in the registry, {us.length} here"⟩
       let (q, a, b) := r.plain
-      let call := Pre.call p k (us.zip fl) (xs.map (·.1)) (xs.map (·.2)) q a b dm cv tst
+      let call := Pre.call p k (us.zip fl) (xs.map (·.1)) (xs.map (·.2)) q a b ks t cv tst
       match r, kf with
       | .rel .., _ => pure (.rel call a b)
       | .fam _ i x y, false => pure (.fam call i x y)
       -- the constant `K : I×x ⟶ y` as the family `I ⟶ x×y`: the identity family then `K` (`compSh`), which
       -- `keyed` reads back as `⟨π₁,π₂𝟙⟩K`, so a use keys it as it keys any lifted composite
       | .fam _ i x y, true =>
-        let call := Pre.call p k (us.zip fl) (xs.map (·.1)) (xs.map (·.2)) (keyed i q x y) (.prod i x) y dm cv tst
+        let call := Pre.call p k (us.zip fl) (xs.map (·.1)) (xs.map (·.2)) (keyed i q x y) (.prod i x) y ks t cv tst
         pure (.fam (compSh i x x (liftConst i p (.id x) x x).1 call) i x y) }
 
 /-- A top-level term, `r` its elaboration `e` with the objects `st`: closed on its source's universe when it needs
@@ -406,7 +410,7 @@ def checkOf (env : Env) (p : Pos) (e f : Expr) (eq : Bool) (specs : List Once) :
     built once for `emit` (`once`) after the program is read, and called in the bodies built after it; else
     expanded at each use. `specs`: the constants built so far at the forms calls take (`callDef`), `emitter` the
     program that emits those built here; returned with the ones built here. -/
-def walk (prog : Program) (env : Env) (wrap : String → Def → Def) (own : Lean.Name) (calls : Lean.Name → Option Sig)
+def walk (prog : Program) (env : Env) (wrap : String → Def → Def) (own : Lean.Name) (calls : Lean.Name → Option Once)
     (emitting : Bool) (emitter : Lean.Name) (specs : List Once) (imported : Bool := false) :
     EM (Env × List (String × Res) × List (String × Top) × List Chk × List Once) := do
   let mut env := env
@@ -500,7 +504,7 @@ def walk (prog : Program) (env : Env) (wrap : String → Def → Def) (own : Lea
     and objects), each read in order with its own resolver `res h` (module design §2.3), its definitions in scope
     for the next by constant. A definition whose constant `calls` holds is called, not expanded. With no `res`, a
     text read outside any Lean scope: each program sees those before it unqualified (`Parse.openAll`). -/
-def read (calls : Lean.Name → Option Sig) (homes : List (Lean.Name × Program)) (prog : Program)
+def read (calls : Lean.Name → Option Once) (homes : List (Lean.Name × Program)) (prog : Program)
     (own : Lean.Name := .anonymous)
     (res : Lean.Name → String → Found := fun h => Parse.openAll (homes.takeWhile (·.1 != h))) : EM Read := do
   let mut ext : List (Lean.Name × Def) := []
@@ -618,7 +622,7 @@ partial def share (pre : Name) (A B : Obj) (v : Lean.Expr) : RM Name := do
 partial def spine (pre : Name) (ρ : List (Nat × Lean.Expr)) {A B : Obj} : Tm A B → RM Lean.Expr
   | .share _ f => spine pre ρ f
   | .arg f x => do return mkApp (← spine pre ρ f) (← code pre ρ x)
-  | .call _ c os _ => do return mkAppN (mkConst (kernelTwin c)) (os.map oE).toArray
+  | .call _ c os _ | .callCv _ c _ os .. => do return mkAppN (mkConst (kernelTwin c)) (os.map oE).toArray
   | _ => throwError "rel_program expansion: internal: a call's head is not a constant"
 
 /-- `φ`'s body as `fun X => …`, the variable `k` read as `X : Tab A B` (`GenK.nu`, `GenK.mu`). -/
@@ -690,7 +694,7 @@ partial def node (pre : Name) (ρ : List (Nat × Lean.Expr)) {A B : Obj} (t : Tm
         | throwError "rel_program expansion: row `{r.sym}` at {oE A} → {oE B} given {xs.size} relations fits none of its wrappers {primWrappers}"
       pure e
     | none => spine pre ρ t
-  | _, _, t@(.call ..) => spine pre ρ t
+  | _, _, t@(.call ..) | _, _, t@(.callCv ..) => spine pre ρ t
 
 end
 
@@ -705,7 +709,7 @@ def lams (tys : List Lean.Expr) (k : Array Lean.Expr → RM (Lean.Expr × Lean.E
     homes, the programs its names reach, in the order they are read (`read`); a program's scope, its namespace and
     `open`s, which its names resolve in; a definition or object of the program `home`. -/
 inductive RegEntry
-  | call (c : Name) (s : Sig)
+  | call (c : Name) (o : Once)
   | chain (n : Name) (ns : List Name)
   | prog (n : Name) (ns : Name) (opens : List OpenDecl)
   | ext (e : Ext) (home : Name)
@@ -715,7 +719,7 @@ inductive RegEntry
     the programs in the order they were defined (imported ones first) with their scopes, and every definition and
     object by its constant, with its program. -/
 structure Registry where
-  calls : List (Name × Sig) := []
+  calls : List (Name × Once) := []
   chains : List (Name × List Name) := []
   progs : Array (Name × Name × List OpenDecl) := #[]
   exts : Std.HashMap Name (Ext × Name) := {}
@@ -723,7 +727,7 @@ structure Registry where
 instance : Inhabited Registry := ⟨{}⟩
 
 def Registry.add (r : Registry) : RegEntry → Registry
-  | .call c s => { r with calls := (c, s) :: r.calls }
+  | .call c o => { r with calls := (c, o) :: r.calls }
   | .chain n ns => { r with chains := (n, ns) :: r.chains }
   | .prog n ns os => { r with progs := r.progs.push (n, ns, os) }
   | .ext e h => { r with exts := r.exts.insert e.const (e, h) }
@@ -769,7 +773,7 @@ def emit (n : Name) (r : Read) : MetaM Unit := do
   -- generic variables, then code in and out, the universes it reads then its parameters; `n.x.conv.kernel` its
   -- converse, when its body has one (`convTm`)
   let ((), st₀) ← (do
-    for o@{ key, const := c, gen, params := qs, res := ⟨A, B, t⟩, tst, .. } in fs do
+    for o@{ const := c, gen, params := qs, res := ⟨A, B, t⟩, .. } in fs do
       let nv := gen.length
       let reads := (List.range nv).map t.fv.contains
       let vo (k : Nat) : Obj := if gen.getD k false then (varObj k).getD .long else .long
@@ -782,7 +786,7 @@ def emit (n : Name) (r : Read) : MetaM Unit := do
           let sub (z : Lean.Expr) := z.replace fun s =>
             (gk.zip xs.toList).findSome? fun (k, a) => if (varObj k).map toExpr == some s then some a else none
           lams ((rk.map fun k => sub (pl (vo k) (vo k))) ++ qs.map fun (P, Q, _) => sub (pl P Q)) fun ys => do
-            let ρ := (rk ++ (List.range qs.length).map (nv + ·)).zip ys.toList
+            let ρ := o.binds.zip ys.toList
             pure (sub (pl X Y), sub (← code n ρ u))
         addConst k ty v
       -- each twin's numbered codes live under its own binders: built with an empty number cache, dropped after
@@ -791,10 +795,11 @@ def emit (n : Name) (r : Read) : MetaM Unit := do
         if u.onKernel fun c => env.contains (kernelTwin c) then
           let saved := (← get).2
           modify fun (m, _) => (m, {}); mk (kernelTwin k) X Y u; modify fun (m, _) => (m, saved)
-      let cv := if tst then none else (convTm t).toOption
-      if let some u := cv then twin (c ++ `conv) B A u
-      twin c A B t
-      modifyEnv (relRegistry.addEntry · (.call key (sigOf o))) : RM Unit).run ({}, {})
+      if let some (c', ⟨X, Y, u⟩) := convOf o then twin c' X Y u
+      twin c A B t : RM Unit).run ({}, {})
+  -- the registry holds each body as elaborated, not numbered: a call copies it (`callTm`), and the numbers are this
+  -- program's
+  for o in r.2.2.2.2 do modifyEnv (relRegistry.addEntry · (.call o.key o))
   -- every node of every term the program runs has a `GenK` body, a call one where its constant has a kernel twin
   let env ← getEnv
   let tw (c : Name) := env.contains (kernelTwin c)
