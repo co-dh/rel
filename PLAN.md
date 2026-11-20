@@ -563,6 +563,15 @@ Diff table 的「状态」列：✅ 后面是完成它的步骤；🔄 是部分
         - owner 定的顺序（C）：先做 architecture §4 已定的实现改动（`∩ − \` 分段 `scan`、`\` 不物化 join、
           `ldiv(tab, bits)` 在 bit matrix 上算、`μ` semi-naive），差分测试与回归固定保护；`ldiv meet diff mu fold` 与
           bit matrix 路径的证明（T11e 余项、`ReadsBack`）等实现稳定后再做。T11e5 只做 `arith`。
+        - 2026-11-20 01:59，master aa5060f：覆盖 218 / 235（新口径：17 个程序的定义加上每个注册的共享定义各算一次；旧口径 203 不再
+          打印）。check-57（4e82176）、check-58（3bd6f13）全绿，差分 478 / 478、compile-diff 476 / 2。已合入：s5t23（stage 5 T2/T3：
+          `den`/`gen` of `call` = body under `Val.args`/`Code.args`，`Sound.args`，`gen_sound_spine` 的 `call`/`callCv`/`share`
+          情形，`reread` 读 registry；`arg call` 从 gap 表消失）、p12rows（行 `thinL`、`tails`；`rowsProved` 条目改为 Λ 定律所在的
+          object 列表）。剩余 gap：`arg F` 17（6 单独）、`prim sum` 11（0 单独）。新增未证前提：`Tm.ConvOK` 在 `callCv` 处
+          （`u.den = (b.den)°`，只进 `convTm_den`；要证需 `Tm.instObj` 与 `den`/`convTm` 交换的引理）。`Tm.argDen_false` 已删（call 头
+          上为假）。回归：差分测试 3 项超过 60 s（`chess.mate` 246 s、`chess.m` 245 s、`chess.Pin₁` 91 s；此前 0 项），运行路径不受
+          影响。未检查：`reread` 读最终 registry 而非 elaboration 时的。在跑：p13F（行 `F`）、p14sum（行 `sum`）、s5slow（profile
+          差分测试）。
         - 2026-11-20 01:26，master 4e82176（check-57 在跑）：覆盖 166 / 203。已合入：p10wire（`est atPos mu nu hylo` 出 `Tm.gap`，
           `Sound.bind`，`Tm.LamLawsAt`/`Tm.monoOK`，`gen_sound_spine` 按 `Tm.size` 归纳）、s5t1（stage 5 T1：`Tm.call ks c os b`、
           `Tm.callCv … b u` 带实例化后的 body，`Tm.instObj`、`Once.binds`，registry 存整个 `Once`；差分 478 / 478、compile-diff 476 / 2
