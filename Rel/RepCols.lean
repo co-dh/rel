@@ -67,9 +67,10 @@ theorem colMap_raw {op : Op} {n : USize} {a b e : Enc} {s : QAtomicType} (h : co
   simp only [Array.getElem?_eq_getElem (show i < out.size by omega), Option.getD_some]
   rw [← this]; cases op.eval ((raw s n a)[i]?.getD 0) ((raw s n b)[i]?.getD 0) <;> rfl
 
-/-- **A number element is its word read at its type**: element `i` of a column of a number atom `t` (`numFmt?`) is
-`ofBits t` of word `i` of `Enc.raw t`, at every encoding `Enc.WF` admits (`Arr.get_i64` reads `i64`'s). -/
-theorem Arr.get_word {t : QAtomicType} {n : USize} (x : Arr t n) (ht : t.numFmt?.isSome) (i : Fin n.toNat) :
+/-- **An ordered element is its word read at its type**: element `i` of a column of an ordered atom `t` (`ordNum`: the
+number atoms, `char`, `date`, `datetime`) is `ofBits t` of word `i` of `Enc.raw t`, at every encoding `Enc.WF` admits
+(`Arr.get_i64` reads `i64`'s). -/
+theorem Arr.get_word {t : QAtomicType} {n : USize} (x : Arr t n) (ht : t.ordNum.isSome) (i : Fin n.toNat) :
     x.get i = QAtomicType.ofBits t ((raw t n x.enc)[i.1]?.getD 0) := by
   have hw := x.wf
   obtain ⟨w, hwd⟩ : ∃ w, t.width = some w := by cases t <;> first | exact absurd ht (by decide) | exact ⟨_, rfl⟩

@@ -33,15 +33,41 @@ theorem nil_holds {n : USize} {D : Vals A n} {T : Tab A (.arr B)} (h : Tab.nil D
 abbrev ordAt (s : Bool) (t : QAtomicType) (a c : (Obj.atom t).El) : Prop :=
   if s then Lang.ltAt t a c else Lang.leAt t a c
 
+/-- `ordOp_iff` at an ordered atom `t` widened through `Op.cast r .i64` (`r` its `ordNum`): the signed order of the
+widened words is `iordAt`, whichever stored words hold the two values (`castWord_ofBits`). -/
+private theorem iord_iff {s : Bool} {t r : QAtomicType} (hr : t.ordNum = some r)
+    (hw : ∀ {n : USize} (e : Enc), wideCol t n e = colMap (.cast r .i64) n e e .i64 t)
+    (hl : ∀ a c, ordAt s t a c ↔ Lang.iordAt (if s then .lt else .le) t a c)
+    {n : USize} (x y : Arr t n) {a' b' : Enc} (ha : wideCol t n x.enc = .ok a') (hb : wideCol t n y.enc = .ok b')
+    (i : Fin n.toNat) :
+    (∃ e : Bool, (if s then Op.lt else Op.le).eval ((raw .i64 n a')[i.1]?.getD 0) ((raw .i64 n b')[i.1]?.getD 0) =
+      .ok (if e then 1 else 0)) ∧
+    (ordAt s t (x.get i) (y.get i) ↔
+      (if s then Op.lt else Op.le).eval ((raw .i64 n a')[i.1]?.getD 0) ((raw .i64 n b')[i.1]?.getD 0) = .ok 1) := by
+  rw [hw] at ha hb
+  have ea := Except.ok.inj ((colMap_raw ha).2.2.2 i i.2)
+  have eb := Except.ok.inj ((colMap_raw hb).2.2.2 i i.2)
+  have hs : t.ordNum.isSome := by rw [hr]; rfl
+  rw [← ea, ← eb, hl, Arr.get_word x hs i, Arr.get_word y hs i]
+  refine ⟨by cases s <;> exact ⟨_, rfl⟩, ⟨?_, fun h => ⟨r, _, _, hr, rfl, rfl, h⟩⟩⟩
+  rintro ⟨r', x', y', hr', hx, hy, h⟩
+  rw [hr, Option.some.injEq] at hr'; subst hr'
+  rwa [QAtomicType.castWord_ofBits hr hx, QAtomicType.castWord_ofBits hr hy] at h
+
 /-- **`ordOp s t` tests `ordAt s t` on the `wideCol` words**, at every atom: a bit, `1` exactly where the order holds
-(`Int64`'s on the stored words at `i64`, IEEE's on the `f64` words at a float atom; `ordOp` refuses any other). -/
+(`Int64`'s on the stored words at `i64`, IEEE's on the `f64` words at a float atom, `Int64`'s on the widened words at
+any other ordered atom: `iord_iff`; `ordOp` refuses an atom with no order). -/
 theorem ordOp_iff {s : Bool} {t : QAtomicType} {op : Op} (hop : ordOp s t = .ok op) {n : USize} (x y : Arr t n)
     {a' b' : Enc} (ha : wideCol t n x.enc = .ok a') (hb : wideCol t n y.enc = .ok b') (i : Fin n.toNat) :
     (∃ e : Bool, op.eval ((raw .i64 n a')[i.1]?.getD 0) ((raw .i64 n b')[i.1]?.getD 0) = .ok (if e then 1 else 0)) ∧
     (ordAt s t (x.get i) (y.get i) ↔ op.eval ((raw .i64 n a')[i.1]?.getD 0) ((raw .i64 n b')[i.1]?.getD 0) = .ok 1) := by
-  cases t <;> simp only [ordOp, throw, throwThe, MonadExceptOf.throw, pure, Except.pure, reduceCtorEq,
-    Except.ok.injEq] at hop
-  · simp only [wideCol, pure, Except.pure, Except.ok.injEq] at ha hb; subst ha hb hop
+  cases t <;> simp (config := {decide := true}) only [ordOp, QAtomicType.ordNum, QAtomicType.numFmt?,
+    QAtomicType.width, Option.isSome, throw, throwThe, MonadExceptOf.throw, pure, Except.pure, reduceCtorEq,
+    Except.ok.injEq, ite_true, ite_false] at hop
+  case u8 | char | i16 | i32 | date | i8 | datetime =>
+    subst hop; exact iord_iff rfl (fun _ => rfl) (fun _ _ => by cases s <;> exact Iff.rfl) x y ha hb i
+  case i64 =>
+    simp only [wideCol, pure, Except.pure, Except.ok.injEq] at ha hb; subst ha hb hop
     rw [Arr.get_i64, Arr.get_i64]
     generalize (raw .i64 n x.enc)[i.1]?.getD 0 = A; generalize (raw .i64 n y.enc)[i.1]?.getD 0 = B
     cases s
@@ -51,7 +77,7 @@ theorem ordOp_iff {s : Bool} {t : QAtomicType} {op : Op} (hop : ordOp s t = .ok 
     · refine ⟨⟨_, rfl⟩, ?_⟩
       show A.toInt64 < B.toInt64 ↔ Except.ok (if decide (A.toInt64 < B.toInt64) = true then 1 else 0) = _
       by_cases h : A.toInt64 < B.toInt64 <;> simp [h]
-  all_goals
+  case f32 | f64 =>
     subst hop
     simp only [ordAt, Lang.ltAt, Lang.leAt, Lang.fordAt, wideCol_word x ha (by decide) i,
       wideCol_word y hb (by decide) i, Option.some.injEq, exists_eq_left']
