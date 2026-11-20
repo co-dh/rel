@@ -6,16 +6,6 @@ import Rel.Lang.GenKFold
 namespace Rel
 open Rel.Ext Rel.Kernel Rel.Verify Ext.Enc Rel.Rep
 
-/-- Every row below the summed widths lies in one run `[Σ_{<g} w, Σ_{<g} w + w g)`. -/
-theorem exists_run (wN : Nat → Nat) : ∀ k t, t < ((List.range k).map wN).sum →
-    ∃ g < k, ((List.range g).map wN).sum ≤ t ∧ t < ((List.range g).map wN).sum + wN g
-  | 0, t, h => by simp at h
-  | k + 1, t, h => by
-    rw [sum_range_succ'] at h
-    by_cases c : t < ((List.range k).map wN).sum
-    · obtain ⟨g, hg, h1, h2⟩ := exists_run wN k t c; exact ⟨g, by omega, h1, h2⟩
-    · exact ⟨k, by omega, by omega, h⟩
-
 /-- The rows below `Σ_{<i} w`, filtered, are the runs before `i` filtered one after another. -/
 theorem filter_runs (wN : Nat → Nat) (keep : Nat → Bool) : ∀ i,
     (List.range ((List.range i).map wN).sum).filter keep =
@@ -41,33 +31,6 @@ theorem getElem?_flatten_runs {α : Type} (F : Nat → List α) : ∀ n i d, i <
       rw [List.getElem?_append_left (by rw [hlen]; omega), getElem?_flatten_runs F n i d c hd]
     · obtain rfl : i = n := by omega
       rw [List.getElem?_append_right (by rw [hlen]; omega), hlen]; simp
-
-/-- **`Vals.cells` lays cell `i` out at `[Σ_{<i} w, Σ_{≤i} w)`** of its payload. -/
-theorem Vals.cells_row {B : Obj} {n T : USize} {w : Enc} {pay : Vals B T} {Y : Vals (.arr B) n}
-    (hY : Vals.cells n w pay = .ok Y) (wN : Nat → Nat) (hw : ∀ i < n.toNat, (raw .i64 n w)[i]?.getD 0 = (wN i).toUInt64)
-    (hT : ((List.range n.toNat).map wN).sum ≤ T.toNat) (hT63 : T.toNat < 2 ^ 63) (i : Fin n.toNat) :
-    Vals.row Y i = (List.range' ((List.range i.1).map wN).sum (wN i.1)).map
-      fun k => if h : k < T.toNat then Vals.row pay ⟨k, h⟩ else B.dflt := by
-  simp only [Vals.cells, bind] at hY
-  rw [Except.bind_eq_ok'] at hY; obtain ⟨P', hP', hY⟩ := hY
-  rw [Except.bind_eq_ok'] at hY; obtain ⟨lo', hlo', hY⟩ := hY
-  rw [Except.bind_eq_ok'] at hY; obtain ⟨c0, hc0, hY⟩ := hY
-  rw [Except.bind_eq_ok'] at hY; obtain ⟨hi', hhi', hY⟩ := hY
-  cases hY
-  have hP'w := colPrefix_add_sum hP' wN hw
-  have hgS : ((List.range i.1).map wN).sum + wN i.1 ≤ ((List.range n.toNat).map wN).sum := by
-    rw [← sum_range_succ']; exact sum_range_mono wN i.2
-  have hlo : (raw .i64 n lo'.enc)[i.1]?.getD 0 = ((List.range i.1).map wN).sum.toUInt64 := by
-    have es := (colMap_raw (colArr_ok hlo')).2.2.2 i.1 i.2
-    rw [hP'w i.1 i.2, hw i.1 i.2, sum_range_succ'] at es; simp only [Op.eval, Except.ok.injEq] at es
-    rw [← es, ← toUInt64_sub (by omega), Nat.add_sub_cancel]
-  have hhi : (raw .i64 n hi'.enc)[i.1]?.getD 0 = (((List.range i.1).map wN).sum + wN i.1).toUInt64 := by
-    have es := (colMap_raw (colArr_ok hhi')).2.2.2 i.1 i.2
-    rw [hP'w i.1 i.2, colConst_raw hc0, Array.getElem?_replicate, if_pos i.2, Option.getD_some,
-      sum_range_succ'] at es
-    simp only [Op.eval, Except.ok.injEq, UInt64.add_zero] at es
-    rw [← es]
-  rw [Vals.row_cell lo' hi' pay i hlo hhi (by omega) (by omega) hT63, Nat.add_sub_cancel_left]
 
 namespace Tab
 
@@ -169,24 +132,7 @@ theorem positions_holds {B : Obj} {n : USize} {P : Tab B B} {X : Vals (.arr B) n
   -- the rows naming cell `g` are its run
   have hfilt : ∀ g < n.toNat, (List.range T.toNat).filter (fun k => ((raw .i64 T G)[k]?.getD 0).toNat = g) =
       List.range' (off g) (wN g) := fun g hg => by
-    have hgS : off g + wN g ≤ T.toNat := by
-      rw [hTn, hoff, hoff, ← sum_range_succ']; exact sum_range_mono wN hg
-    have hnot : ∀ t < T.toNat, (t < off g ∨ off g + wN g ≤ t) → ((raw .i64 T G)[t]?.getD 0).toNat ≠ g :=
-      fun t ht ho => by
-        obtain ⟨g', hg', h1, h2⟩ := exists_run wN n.toNat t (by rw [← hoff, ← hTn]; exact ht)
-        simp only [← hoff] at h1 h2
-        rw [(hrun g' hg' t h1 h2).1, toNat_toUInt64 (by omega)]; rintro rfl; omega
-    rw [List.range_eq_range', show T.toNat = off g + (wN g + (T.toNat - off g - wN g)) by omega,
-      ← List.range'_append_1, ← List.range'_append_1, List.filter_append, List.filter_append,
-      List.filter_eq_nil_iff.2 (fun t ht => by
-        rw [List.mem_range'_1] at ht; simpa using hnot t (by omega) (by omega)),
-      List.filter_eq_self.2 (fun t ht => by
-        rw [List.mem_range'_1] at ht
-        have := (hrun g hg t (by omega) (by omega)).1
-        simp [this, toNat_toUInt64 (show g < 2 ^ 64 by omega)]),
-      List.filter_eq_nil_iff.2 (fun t ht => by
-        rw [List.mem_range'_1] at ht; simpa using hnot t (by omega) (by omega))]
-    simp
+    rw [hoff]; exact expand_group_run hex wN hww hsn hn63 g hg
   -- each cell's width is its count of kept rows
   obtain ⟨hGs, -, hcw⟩ := kscatter_words hcnt
   obtain ⟨-, hcf⟩ := scatterWords_fold (f := (· + ·)) (fun _ _ => rfl) hcw

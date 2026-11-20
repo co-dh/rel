@@ -381,6 +381,33 @@ theorem cellSpan_where {B : Obj} {n m M : USize} {lo up s e : Arr .i64 n} {lt se
   · obtain ⟨k, hk, e⟩ := (hmem i).2 ⟨hi, by rw [ltw i hi, if_pos c]; decide⟩
     exact ⟨k, hk, e⟩
 
+/-- **`Vals.cells` lays cell `i` out at `[Σ_{<i} w, Σ_{≤i} w)`** of its payload. -/
+theorem Vals.cells_row {B : Obj} {n T : USize} {w : Enc} {pay : Vals B T} {Y : Vals (.arr B) n}
+    (hY : Vals.cells n w pay = .ok Y) (wN : Nat → Nat) (hw : ∀ i < n.toNat, (raw .i64 n w)[i]?.getD 0 = (wN i).toUInt64)
+    (hT : ((List.range n.toNat).map wN).sum ≤ T.toNat) (hT63 : T.toNat < 2 ^ 63) (i : Fin n.toNat) :
+    Vals.row Y i = (List.range' ((List.range i.1).map wN).sum (wN i.1)).map
+      fun k => if h : k < T.toNat then Vals.row pay ⟨k, h⟩ else B.dflt := by
+  simp only [Vals.cells, bind] at hY
+  rw [Except.bind_eq_ok'] at hY; obtain ⟨P', hP', hY⟩ := hY
+  rw [Except.bind_eq_ok'] at hY; obtain ⟨lo', hlo', hY⟩ := hY
+  rw [Except.bind_eq_ok'] at hY; obtain ⟨c0, hc0, hY⟩ := hY
+  rw [Except.bind_eq_ok'] at hY; obtain ⟨hi', hhi', hY⟩ := hY
+  cases hY
+  have hP'w := colPrefix_add_sum hP' wN hw
+  have hgS : ((List.range i.1).map wN).sum + wN i.1 ≤ ((List.range n.toNat).map wN).sum := by
+    rw [← sum_range_succ']; exact sum_range_mono wN i.2
+  have hlo : (raw .i64 n lo'.enc)[i.1]?.getD 0 = ((List.range i.1).map wN).sum.toUInt64 := by
+    have es := (colMap_raw (colArr_ok hlo')).2.2.2 i.1 i.2
+    rw [hP'w i.1 i.2, hw i.1 i.2, sum_range_succ'] at es; simp only [Op.eval, Except.ok.injEq] at es
+    rw [← es, ← toUInt64_sub (by omega), Nat.add_sub_cancel]
+  have hhi : (raw .i64 n hi'.enc)[i.1]?.getD 0 = (((List.range i.1).map wN).sum + wN i.1).toUInt64 := by
+    have es := (colMap_raw (colArr_ok hhi')).2.2.2 i.1 i.2
+    rw [hP'w i.1 i.2, colConst_raw hc0, Array.getElem?_replicate, if_pos i.2, Option.getD_some,
+      sum_range_succ'] at es
+    simp only [Op.eval, Except.ok.injEq, UInt64.add_zero] at es
+    rw [← es]
+  rw [Vals.row_cell lo' hi' pay i hlo hhi (by omega) (by omega) hT63, Nat.add_sub_cancel_left]
+
 /-- **A payload laid out by the EXPANDed widths of `X`'s cells** (`Vals.pack`, `Tab.map`): the cells `n w pay` over a
 payload whose row `t` is `g` of `X`'s payload row at the gathered position `ix[t]` are `X`'s cells mapped by `g`; the
 output element `d` of cell `i` is payload row `Σ_{<i} w + d` (`expand_spec`, `colPrefix_add_sum`), there `SN i + d`. -/
@@ -392,12 +419,6 @@ theorem Vals.cells_expand_row {A B : Obj} {n m : USize} {lo up : Arr .i64 n} {f 
       Vals.row pay t = g (Vals.row f j))
     {Y : Vals (.arr B) n} (hY : Vals.cells n w pay = .ok Y) (i : Fin n.toNat) :
     Vals.row Y i = (Vals.row (A := .arr A) ⟨m, lo, up, f⟩ i).map g := by
-  simp only [Vals.cells, bind] at hY
-  rw [Except.bind_eq_ok'] at hY; obtain ⟨P', hP', hY⟩ := hY
-  rw [Except.bind_eq_ok'] at hY; obtain ⟨lo', hlo', hY⟩ := hY
-  rw [Except.bind_eq_ok'] at hY; obtain ⟨c0, hc0, hY⟩ := hY
-  rw [Except.bind_eq_ok'] at hY; obtain ⟨hi', hhi', hY⟩ := hY
-  cases hY
   have hm63 : m.toNat < 2 ^ 63 := by omega
   have hn63 : n.toNat < 2 ^ 63 := by omega
   have hnm : n.toNat * m.toNat < 2 ^ 63 := by omega
@@ -415,21 +436,9 @@ theorem Vals.cells_expand_row {A B : Obj} {n m : USize} {lo up : Arr .i64 n} {f 
     | succ k ih => rw [sum_range_succ', Nat.succ_mul]; have := hwm k; omega
   have hsn : ((List.range n.toNat).map wN).sum < 2 ^ 63 := by have := hsum n.toNat; omega
   obtain ⟨hTn, hrun⟩ := expand_spec hex wN hww hsn hn63
-  have hP'w := colPrefix_add_sum hP' wN hww
   have hgS : ((List.range i.1).map wN).sum + wN i.1 ≤ ((List.range n.toNat).map wN).sum := by
     rw [← sum_range_succ']; exact sum_range_mono wN i.2
-  have hlo : (raw .i64 n lo'.enc)[i.1]?.getD 0 = ((List.range i.1).map wN).sum.toUInt64 := by
-    have es := (colMap_raw (colArr_ok hlo')).2.2.2 i.1 i.2
-    rw [hP'w i.1 i.2, hww i.1 i.2, sum_range_succ'] at es; simp only [Op.eval, Except.ok.injEq] at es
-    rw [← es, ← toUInt64_sub (by omega), Nat.add_sub_cancel]
-  have hhi : (raw .i64 n hi'.enc)[i.1]?.getD 0 = (((List.range i.1).map wN).sum + wN i.1).toUInt64 := by
-    have es := (colMap_raw (colArr_ok hhi')).2.2.2 i.1 i.2
-    rw [hP'w i.1 i.2, colConst_raw hc0, Array.getElem?_replicate, if_pos i.2, Option.getD_some,
-      sum_range_succ'] at es
-    simp only [Op.eval, Except.ok.injEq, UInt64.add_zero] at es
-    rw [← es]
-  rw [Vals.row_cell lo' hi' pay i hlo hhi (by omega) (by omega) (by omega), hrow i, Nat.add_sub_cancel_left,
-    ← hwN, List.range'_eq_map_range, List.range'_eq_map_range, List.map_map, List.map_map, List.map_map]
+  rw [Vals.cells_row hY wN hww (by omega) (by omega) i, hrow i, ← hwN, List.range'_eq_map_range, List.range'_eq_map_range, List.map_map, List.map_map, List.map_map]
   refine List.map_congr_left fun d hd => ?_
   have hd' : d < wN i.1 := List.mem_range.mp hd
   have ht : ((List.range i.1).map wN).sum + d < T.toNat := by omega
@@ -979,16 +988,33 @@ theorem Int64.suffix_exact_iff : ∀ xs : List Int64,
       rw [← Int64.foldr_add_toInt xs hr] at he
       exact ⟨⟨hx, (Int64.add_exact_iff x _).2 he⟩, hr, hn⟩
 
-/-- Partial sums of naturals grow with the range. -/
-theorem psum_mono (f : Nat → Nat) {a b : Nat} (h : a ≤ b) :
-    ((List.range a).map f).sum ≤ ((List.range b).map f).sum := by
-  induction b with
-  | zero => obtain rfl := Nat.le_zero.1 h; exact Nat.le_refl _
-  | succ b ih =>
-    rcases Nat.lt_or_ge a (b + 1) with h' | h'
-    · have := ih (by omega); rw [List.range_succ, List.map_append]; simp; omega
-    · obtain rfl : a = b + 1 := by omega
-      exact Nat.le_refl _
+/-- **The rows EXPAND names group `g` are its run** `[Σ_{<g} w, Σ_{<g} w + w g)` (`expand_spec`). -/
+theorem expand_group_run {K T : USize} {w G u : Enc} (h : expand K w = .ok (T, G, u)) (wN : Nat → Nat)
+    (hw : ∀ g < K.toNat, (raw .i64 K w)[g]?.getD 0 = (wN g).toUInt64)
+    (hs : ((List.range K.toNat).map wN).sum < 2 ^ 63) (hK : K.toNat < 2 ^ 63) : ∀ g < K.toNat,
+    (List.range T.toNat).filter (fun k => ((raw .i64 T G)[k]?.getD 0).toNat = g) =
+      List.range' ((List.range g).map wN).sum (wN g) := fun g hg => by
+  obtain ⟨hTn, hrun⟩ := expand_spec h wN hw hs hK
+  obtain ⟨off, hoff⟩ : ∃ F : Nat → Nat, ∀ g, F g = ((List.range g).map wN).sum := ⟨_, fun _ => rfl⟩
+  simp only [← hoff] at hrun hTn ⊢
+  have hgS : off g + wN g ≤ T.toNat := by
+    rw [hTn, hoff, hoff, ← sum_range_succ']; exact sum_range_mono wN hg
+  have hnot : ∀ t < T.toNat, (t < off g ∨ off g + wN g ≤ t) → ((raw .i64 T G)[t]?.getD 0).toNat ≠ g :=
+    fun t ht ho => by
+      obtain ⟨g', hg', h1, h2⟩ := exists_group wN K.toNat t (by rw [← hoff, ← hTn]; exact ht)
+      simp only [← hoff] at h1 h2
+      rw [(hrun g' hg' t h1 h2).1, toNat_toUInt64 (by omega)]; rintro rfl; omega
+  rw [List.range_eq_range', show T.toNat = off g + (wN g + (T.toNat - off g - wN g)) by omega,
+    ← List.range'_append_1, ← List.range'_append_1, List.filter_append, List.filter_append,
+    List.filter_eq_nil_iff.2 (fun t ht => by
+      rw [List.mem_range'_1] at ht; simpa using hnot t (by omega) (by omega)),
+    List.filter_eq_self.2 (fun t ht => by
+      rw [List.mem_range'_1] at ht
+      have := (hrun g hg t (by omega) (by omega)).1
+      simp [this, toNat_toUInt64 (show g < 2 ^ 64 by omega)]),
+    List.filter_eq_nil_iff.2 (fun t ht => by
+      rw [List.mem_range'_1] at ht; simpa using hnot t (by omega) (by omega))]
+  simp
 
 namespace Tab
 
@@ -1058,12 +1084,9 @@ theorem sum_holds {n : USize} {X : Vals (.arr .long) n} {T : Tab (.arr .long) .l
   obtain ⟨off, hoff⟩ : ∃ F : Nat → Nat, ∀ g, F g = ((List.range g).map fun g => EN g - SN g).sum := ⟨_, fun _ => rfl⟩
   simp only [← hoff] at hT hrun
   have hle : ∀ g < n.toNat, off g + (EN g - SN g) ≤ T'.toNat := fun g hg => by
-    have := psum_mono (fun g => EN g - SN g) (show g + 1 ≤ n.toNat by omega)
+    have := sum_range_mono (fun g => EN g - SN g) (show g + 1 ≤ n.toNat by omega)
     rw [List.range_succ, List.map_append] at this; simp at this
     rw [hT, hoff, hoff]; omega
-  have hcover : ∀ t < T'.toNat, ∃ g < n.toNat, off g ≤ t ∧ t < off g + (EN g - SN g) := fun t ht => by
-    obtain ⟨g, hg, h1, h2⟩ := exists_group (fun g => EN g - SN g) n.toNat t (by rw [← hoff]; omega)
-    exact ⟨g, hg, by rw [hoff]; exact h1, by rw [hoff]; exact h2⟩
   -- the row words, one `colMap`/`kgather` each
   have eqW : ∀ a b o : UInt64, Op.eval .eq a b = .ok o → o = if a = b then 1 else 0 := fun a b o h => by
     have e : Op.eval .eq a b = .ok (if (a == b) = true then 1 else 0) := rfl
@@ -1223,23 +1246,7 @@ theorem sum_holds {n : USize} {X : Vals (.arr .long) n} {T : Tab (.arr .long) .l
   -- the rows naming cell `g` are its run `[off g, off g + (EN g - SN g))`
   have hfilt : ∀ g < n.toNat, (List.range T'.toNat).filter (fun k => ((raw .i64 T' G)[k]?.getD 0).toNat = g) =
       List.range' (off g) (EN g - SN g) := fun g hg => by
-    have hl := hle g hg
-    have hnot : ∀ t < T'.toNat, (t < off g ∨ off g + (EN g - SN g) ≤ t) →
-        ((raw .i64 T' G)[t]?.getD 0).toNat ≠ g := fun t ht ho => by
-      obtain ⟨g', hg', h1, h2⟩ := hcover t ht
-      rw [(hrun g' hg' t h1 h2).1, toNat_toUInt64 (by omega)]; rintro rfl; omega
-    rw [List.range_eq_range', show T'.toNat = off g + ((EN g - SN g) + (T'.toNat - off g - (EN g - SN g))) by omega,
-      ← List.range'_append_1, ← List.range'_append_1, List.filter_append, List.filter_append,
-      List.filter_eq_nil_iff.2 (fun t ht => by
-        rw [List.mem_range'_1] at ht; simpa using hnot t (by omega) (by omega)),
-      List.filter_eq_self.2 (fun t ht => by
-        rw [List.mem_range'_1] at ht
-        have := (hG2 g hg (t - off g) (by omega)).1
-        rw [show off g + (t - off g) = t by omega] at this
-        simp [this, toNat_toUInt64 (show g < 2 ^ 64 by omega)]),
-      List.filter_eq_nil_iff.2 (fun t ht => by
-        rw [List.mem_range'_1] at ht; simpa using hnot t (by omega) (by omega))]
-    simp
+    rw [hoff]; exact expand_group_run hTGu (fun g => EN g - SN g) hwv (by omega) hn63 g hg
   obtain ⟨hGs, -, hbw⟩ := kscatter_words hbadC
   obtain ⟨-, hbadCf⟩ := scatterWords_fold (f := (· ||| ·)) (fun _ _ => rfl) hbw
   obtain ⟨-, -, hsw'⟩ := kscatter_words hsc
