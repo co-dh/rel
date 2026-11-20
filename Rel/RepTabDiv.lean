@@ -2887,6 +2887,76 @@ theorem est_holds {B : Obj} {q : Tab (.prod B B) (.prod B B) → Except String (
     obtain rfl : b = b' := hb1
     exact hno ⟨c, ((eP xs _).1 hp).2.2, fun e => hne e.symm, hq'⟩
 
+/-- **`thin q X` denotes `thinDen`** (`Tab.thin`), its test `q` agreeing with `TQ` on the pairs it is given and `B`'s
+order codes agreeing with `B.lt` (`lam_den`'s `hB`): `(xs, c)` of `G = ∋` dropped exactly where some `(b, c)` of
+`D = ran ⟨G, G⟩` is in `dom TQ` and its swap is not; then `lam_den`. -/
+theorem thin_den {B : Obj} {q : Tab (.prod B B) (.prod B B) → Except String (Tab (.prod B B) (.prod B B))}
+    {TQ : Lang.Den (.prod B B) (.prod B B)}
+    (hq : ∀ D T, q D = .ok T → ∀ p p', (∃ i, D.val.row i = p) → (T.Holds p p' ↔ TQ p p'))
+    {n : USize} {X : Vals (.arr B) n} {T : Tab (.arr B) (.arr B)} (h : Tab.thin q X = .ok T)
+    (hB : ∀ (m : USize) (x : Vals (.prod (.arr B) B) m) es, Vals.cols x = .ok es → ∀ i i' : Fin m.toNat,
+      (x.row i).1 = (x.row i').1 → lexLe (ascKeys m es) i i' = true → seenKey m es i ≠ seenKey m es i' →
+        B.lt (x.row i).2 (x.row i').2)
+    (xs ys : List B.El) : T.Holds xs ys ↔ (∃ i, X.row i = xs) ∧ Lang.thinDen TQ xs ys := by
+  unfold Tab.thin at h; simp only [bind] at h
+  rw [Except.bind_eq_ok'] at h; obtain ⟨G, hG, h⟩ := h
+  rw [Except.bind_eq_ok'] at h; obtain ⟨P, hP, h⟩ := h
+  rw [Except.bind_eq_ok'] at h; obtain ⟨D, hD, h⟩ := h
+  rw [Except.bind_eq_ok'] at h; obtain ⟨o1, ho1, h⟩ := h
+  rw [Except.bind_eq_ok'] at h; obtain ⟨o2, ho2, h⟩ := h
+  rw [Except.bind_eq_ok'] at h; obtain ⟨w, hw, h⟩ := h
+  rw [Except.bind_eq_ok'] at h; obtain ⟨RW, hRW, h⟩ := h
+  rw [Except.bind_eq_ok'] at h; obtain ⟨QW, hQW, h⟩ := h
+  rw [Except.bind_eq_ok'] at h; obtain ⟨WQ, hWQ, h⟩ := h
+  rw [Except.bind_eq_ok'] at h; obtain ⟨S, hS, h⟩ := h
+  rw [Except.bind_eq_ok'] at h; obtain ⟨QD, hQD, h⟩ := h
+  rw [Except.bind_eq_ok'] at h; obtain ⟨DQ, hDQ, h⟩ := h
+  rw [Except.bind_eq_ok'] at h; obtain ⟨Y, hY, h⟩ := h
+  rw [Except.bind_eq_ok'] at h; obtain ⟨O, hO, h⟩ := h
+  rw [Except.bind_eq_ok'] at h; obtain ⟨PO, hPO, h⟩ := h
+  rw [Except.bind_eq_ok'] at h; obtain ⟨Gd, hGd, h⟩ := h
+  have eP : ∀ xs p, P.Holds xs p ↔ ((∃ i, X.row i = xs) ∧ p.1 ∈ xs) ∧ ((∃ i, X.row i = xs) ∧ p.2 ∈ xs) :=
+    fun xs p => (pair_holds hP xs p).trans (and_congr (mem_holds hG _ _) (mem_holds hG _ _))
+  -- `S` at a pair `p` of one array: its swap `(p.2, p.1)` is the one value of `w` there, a row of `ran w` on which `q`
+  -- agrees with `TQ`
+  have hS' : ∀ p, (∃ xs, P.Holds xs p) → ((∃ y, WQ.Holds p y) ↔ ∃ y, TQ (p.2, p.1) y) := fun p hp => by
+    obtain ⟨i, hk, -⟩ := (ran_holds hD p p).2 ⟨rfl, hp⟩
+    have hws : w.Holds p (p.2, p.1) :=
+      (pair_holds hw p _).2 ⟨(outr_holds ho1 p _).2 ⟨⟨i, hk⟩, rfl⟩, (outl_holds ho2 p _).2 ⟨⟨i, hk⟩, rfl⟩⟩
+    have hin : ∃ j, RW.val.row j = (p.2, p.1) := let ⟨j, _, e⟩ := (ran_holds hRW _ _).2 ⟨rfl, p, hws⟩; ⟨j, e⟩
+    simp only [comp_holds hWQ]
+    constructor
+    · rintro ⟨y, s, hs, hy⟩
+      obtain ⟨h1, h2⟩ := (pair_holds hw p s).1 hs
+      obtain rfl : s = (p.2, p.1) := Prod.ext ((outr_holds ho1 p _).1 h1).2 ((outl_holds ho2 p _).1 h2).2
+      exact ⟨y, (hq _ _ hQW _ y hin).1 hy⟩
+    · rintro ⟨y, hy⟩; exact ⟨y, _, hws, (hq _ _ hQW _ y hin).2 hy⟩
+  -- the keys of `Y` among the pairs of one array: in `dom TQ`, their swap not
+  have eY : ∀ p, (∃ xs, P.Holds xs p) → ((∃ p', Y.Holds p p') ↔ (∃ y, TQ p y) ∧ ¬∃ y, TQ (p.2, p.1) y) :=
+    fun p hp => by
+      obtain ⟨i, -, hv⟩ := (ran_holds hD p p).2 ⟨rfl, hp⟩
+      simp only [diff_holds hY, dom_holds hDQ, dom_holds hS]
+      constructor
+      · rintro ⟨p', ⟨rfl, y, hy⟩, hn⟩
+        exact ⟨⟨y, (hq _ _ hQD p y ⟨i, hv⟩).1 hy⟩, fun hs => hn ⟨rfl, (hS' p hp).2 hs⟩⟩
+      · rintro ⟨⟨y, hy⟩, hn⟩
+        exact ⟨p, ⟨rfl, y, (hq _ _ hQD p y ⟨i, hv⟩).2 hy⟩, fun ⟨_, hs⟩ => hn ((hS' p hp).1 hs)⟩
+  rw [lam_den h hB]
+  refine and_congr_right fun hx => ?_
+  simp only [Lang.thinDen, Lang.lamDen]
+  refine and_congr_right fun _ => forall_congr' fun c => iff_congr Iff.rfl ?_
+  rw [diff_holds hGd, mem_holds hG xs c, comp_holds hPO, and_iff_right hx]
+  refine and_congr_right fun hc => not_congr ⟨fun ⟨p, hp, ho⟩ => ?_, fun ⟨b, hb, hbt, hn⟩ => ?_⟩
+  · obtain ⟨hk, hc'⟩ := (outr_holds hO p c).1 ho
+    obtain ⟨p', hy⟩ := (Rep.keyRowRep Y p).1 hk
+    obtain ⟨hbt, hn⟩ := (eY p ⟨xs, hp⟩).1 ⟨p', hy⟩
+    obtain ⟨b, c'⟩ := p
+    subst hc'
+    exact ⟨b, ((eP xs _).1 hp).1.2, hbt, hn⟩
+  · have hp := (eP xs (b, c)).2 ⟨⟨hx, hb⟩, hx, hc⟩
+    obtain ⟨p', hy⟩ := (eY _ ⟨xs, hp⟩).2 ⟨hbt, hn⟩
+    exact ⟨(b, c), hp, (outr_holds hO _ c).2 ⟨(Rep.keyRowRep Y _).2 ⟨p', hy⟩, rfl⟩⟩
+
 end Tab
 
 namespace Tab
