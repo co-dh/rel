@@ -2,7 +2,9 @@ import Rel.Programs.FrameJoin
 
 /-! Five analytics queries, each a pipeline of frame verbs, on GENERATED frames at the unbounded `N` (the generator
     of `TestFrameScale`: `n` rows `0…n−1` as decimal digit strings), checked against closed forms in `T`, the rows per
-    key. `queryN` holds the queries once; a sized program feeds them `n` rows. -/
+    key. `queryN` holds the queries once; a sized program feeds them `n` rows. An argument a body reads several times
+    is evaluated at each read, so a sized program names the frame `q4t`, `q5` read (measured at 10⁴: 238 s → 34 s for
+    `q4t`, 6.7 s → 2.4 s for `q5`). -/
 
 namespace Rel.Lang.TestFrameQuery
 
@@ -31,18 +33,19 @@ rel_program queryN where
 
     -- row i = (i mod 10, i div 10)
     ticks(P : 1 ⟶ N) : N ⟶ N×N ≜ ran(P) ⟨⟨𝟙, ⊤ {(∗,10)}⟩mod, ⟨𝟙, ⊤ {(∗,10)}⟩div⟩
-    -- cumAgg within each key `a` (polars cum_sum().over(a)): `cumAgg`'s `≥` cut to the pairs of equal key
-    cumAggBy(a : β ⟶ γ, f : [ν] ⟶ δ, x : ν ⟶ β) : ν ⟶ δ ≜ agg((dom(x) ≥ dom(x)) ∩ (x a (x a)°), f)
+    -- cumAgg within each key `a` (polars cum_sum().over(a)): the equal-key pairs (i, j) with i − j ≥ 0 (max with 0
+    -- is itself); `(dom(x) ≥ dom(x)) ∩ (x a (x a)°)` and `(x a (x a)°) ∩ ≥` run out of memory at 10⁴ rows
+    cumAggBy(a : β ⟶ γ, f : [ν] ⟶ δ, x : ν ⟶ β) : ν ⟶ δ ≜ agg(⟨𝟙, x a (x a)°⟩ dom(⟨π₁, π₂⟩minus dom(⟨𝟙, ⊤ {(∗,0)}⟩max ∩ 𝟙)) π₂, f)
     -- Q4: sorted by key, (key, running sum of the value within the key)
     q4(x : N ⟶ N×N) : N ⟶ N×N ≜ ⟨s π₁, cumAggBy(π₁, F(s π₂) sum, s)⟩ where s ≜ sortBy(π₁, x)
-    -- Q4': the last running sum of each key is the key's total
-    q4t(x : N ⟶ N×N) : N ⟶ N×N ≜ aggregate(π₁, F(q4(x) π₂) last, q4(x))
+    -- Q4': on `r` = Q4's frame, the last running sum of each key is the key's total
+    q4t(r : N ⟶ N×N) : N ⟶ N×N ≜ aggregate(π₁, F(r π₂) last, r)
 
     -- dimension keys 0…49 only: (p, p+1)
     dim50 : N ⟶ N×N ≜ k50 ⟨𝟙, succ⟩
     lj5(x : N ⟶ N×N) : N ⟶ (N×N)×((N×N)+1) ≜ leftJoin(π₁, π₁, x, dim50)
-    -- Q5: (unmatched rows, sum of the dimension value over the matched rows)
-    q5(x : N ⟶ N×N) : 1 ⟶ N×N ≜ ⟨nulls(π₂, lj5(x)), summarize(F(m π₂ inl° π₂) sum, m)⟩ where m ≜ filterJust(π₂, lj5(x))
+    -- Q5: on `l` = `lj5`'s frame, (unmatched rows, sum of the dimension value over the matched rows)
+    q5(l : N ⟶ (N×N)×((N×N)+1)) : 1 ⟶ N×N ≜ ⟨nulls(π₂, l), summarize(F(m π₂ inl° π₂) sum, m)⟩ where m ≜ filterJust(π₂, l)
 
 -- n = 10³
 open Rel.Programs.prelude queryN in
@@ -56,10 +59,25 @@ rel_program query3 where
     check q3(sales(P)) = {(0,(0,61620)),(1,(1,61750)),(2,(2,56880)),(3,(3,57000))}
     -- T = 100 rows per key; sorted row p is (p div T, t = p mod T), running sum 0+…+t
     check q4(ticks(P)) = ran(P) ⟨⟨𝟙, ⊤ {(∗,100)}⟩div, ⟨𝟙, ⊤ {(∗,100)}⟩mod ⟨⟨𝟙, succ⟩times, ⊤ {(∗,2)}⟩div⟩
-    check q4t(ticks(P)) = ran(D) ⟨𝟙, ⊤ {(∗,4950)}⟩
+    r4 : N ⟶ N×N ≜ q4(ticks(P))
+    check q4t(r4) = ran(D) ⟨𝟙, ⊤ {(∗,4950)}⟩
     -- keys ≥ 50 unmatched: 50T rows; matched rows sum T(1+…+50)
-    check q5(sales(P)) = {(∗,(500,12750))}
+    l5 : N ⟶ (N×N)×((N×N)+1) ≜ lj5(sales(P))
+    check q5(l5) = {(∗,(500,12750))}
 
 #guard query3.failures.map toString == []
+
+-- n = 10⁴, the same closed forms; `q4t` left out (34 s alone, measured)
+open Rel.Programs.prelude queryN in
+rel_program query4 where
+    P : 1 ⟶ N ≜ ext(ext(ext(D)))
+    check q1(sales(P)) = {(0,(49,4999)),(1,(48,4998)),(2,(47,4997))}
+    check q2(cells(P)) = ran(ext({(∗,0),(∗,1)})) ⟨⊤ {(∗,19)}, 𝟙⟩minus ⟨⟨⟨𝟙, ⊤ {(∗,4)}⟩mod, ⟨𝟙, ⊤ {(∗,4)}⟩div⟩, ⟨⟨𝟙, ⊤ {(∗,500)}⟩times, ⊤ {(∗,2495000)}⟩plus⟩
+    check q3(sales(P)) = {(0,(0,6466200)),(1,(1,6467500)),(2,(2,5968800)),(3,(3,5970000))}
+    check q4(ticks(P)) = ran(P) ⟨⟨𝟙, ⊤ {(∗,1000)}⟩div, ⟨𝟙, ⊤ {(∗,1000)}⟩mod ⟨⟨𝟙, succ⟩times, ⊤ {(∗,2)}⟩div⟩
+    l5 : N ⟶ (N×N)×((N×N)+1) ≜ lj5(sales(P))
+    check q5(l5) = {(∗,(5000,127500))}
+
+#guard query4.failures.map toString == []
 
 end Rel.Lang.TestFrameQuery
