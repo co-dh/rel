@@ -13,15 +13,21 @@ spare cell and cuts that cell off (WHERE, `doc/rel-kernels.md`). The `k` in the 
 namespace Rel.Kernel
 open Ext.Enc
 
-/-- The `m` raw words of a `foR` or `pos` argument, as `Enc.raw` reads a 64-bit column, or why it does not hold them: a
-layout `Coc.foRStd` refuses at `m`, or a form other than these two, which no kernel of design §4 reads. `pos` is word
-`i = i` at every `m` (PLAN 6.13): the kernel's loop index. -/
+/-- Whether `e` is an argument every kernel reads at `m` rows: a `foR` column in the writers' layout (`Coc.foRStd`) with a
+stored `lg` the layout admits, or `pos`. It reads the metadata and the pack's size only, never an element, so a caller
+that asks only this calls it and not `foRWords`, whose answer is every word decoded in Lean. -/
+@[simp] def foROk (m : USize) : Enc → Bool
+  | .foR md pk => Column.lgOk md && Coc.foRStd m md pk
+  | .pos => true
+  | _ => false
+
+/-- The `m` raw words of an argument `foROk` admits, as `Enc.raw` reads a 64-bit column, or why it does not hold them: a
+layout `Coc.foRStd` refuses at `m`, or a form other than `foR` and `pos`, which no kernel of design §4 reads. `pos` is
+word `i = i` at every `m` (PLAN 6.13): the kernel's loop index. -/
 def foRWords (what : String) (m : USize) (e : Enc) : Except String (Array UInt64) :=
-  match e with
-  | .foR md pk => if Column.lgOk md && Coc.foRStd m md pk then .ok (Ext.Enc.raw .i64 m e)
-    else .error s!"{what}: foR: {Column.nblk md} blocks of 2^{Column.lgAt md} and a {pk.size}-byte pack are not the layout of {m} elements"
-  | .pos => .ok (Ext.Enc.raw .i64 m e)
-  | _ => .error s!"{what}: constructor {e.ctorIdx} is not foR"
+  if foROk m e then .ok (Ext.Enc.raw .i64 m e) else .error (match e with
+    | .foR md pk => s!"{what}: foR: {Column.nblk md} blocks of 2^{Column.lgAt md} and a {pk.size}-byte pack are not the layout of {m} elements"
+    | _ => s!"{what}: constructor {e.ctorIdx} is not foR")
 
 /-- Words as a `foR` answer of 8-byte elements, `foRWords`' converse: `Coc.encodeAt` at `lgEnc`, which
 `qlean_coc_encode` writes (`exports::scan::for_words`). -/

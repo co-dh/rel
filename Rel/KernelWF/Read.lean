@@ -35,7 +35,7 @@ theorem foRBits_nil (md pk : ByteArray) (i : Nat) : Column.foRBits md pk #[] i =
     | some v => v
     | none => Column.baseAt md (i / Column.blk md) + Column.foRFrame md pk (i / Column.blk md) +
         Column.resAt pk (Column.blockStart md (i / Column.blk md)) (Column.widthAt md (i / Column.blk md)) (i % Column.blk md) := by
-  unfold Column.foRBits; cases Column.foRExc md pk i <;> simp
+  unfold Column.foRBits; cases h : Column.foRExc md pk i <;> simp [h]
 
 /-- A pack that ends by its last block's residuals has no patch list. -/
 theorem foRExc_none {md pk : ByteArray} (h : pk.size ≤ Column.blockStart md (Column.nblk md)) (i : Nat) :

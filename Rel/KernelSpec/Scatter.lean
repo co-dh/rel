@@ -77,12 +77,7 @@ theorem foRWords_raw (what : String) (m : USize) (e : Enc) (ws : Array UInt64)
     (h : foRWords what m e = .ok ws) : ws = raw .i64 m e ∧ ws.size = m.toNat := by
   unfold foRWords at h
   split at h
-  · split at h
-    · cases h
-      exact ⟨rfl, by simp [raw, QAtomicType.width]⟩
-    · cases h
-  · cases h
-    exact ⟨rfl, by simp [raw]⟩
+  · cases h; refine ⟨rfl, ?_⟩; cases e <;> simp_all [raw, QAtomicType.width]
   · cases h
 
 /-- Design §4's `scatter` law, on words: the `n` words `ws` `Enc.raw` reads from an answer of `kscatter`, against the

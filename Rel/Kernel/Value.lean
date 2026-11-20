@@ -491,9 +491,10 @@ def alpSects (nblk nexc esz : Nat) : Nat × Nat × Nat :=
 
 /-- Element `i`'s own bits when the pack's patch list holds it: the list `rust/src/coc.rs` lays after the
 last block's residuals when some element is a null or an outlier, the ladder `alpSects` describes,
-an element sign-extended from its stored width as `baseAt` is (one byte, q's unsigned pair, is not). -/
-def foRExc (metadata pack : ByteArray) (i : Nat) : Option UInt64 :=
-  let e := blockStart metadata (nblk metadata)
+an element sign-extended from its stored width as `baseAt` is (one byte, q's unsigned pair, is not).
+`e`, where the last block's residuals end, is `blockStart` at `nblk`; `foRBits` passes its hoisted table's last entry
+(`Verify.blockStarts_get`), because the sum over every block on each element read is what made a column read quadratic. -/
+def foRExc (metadata pack : ByteArray) (i : Nat) (e : Nat := blockStart metadata (nblk metadata)) : Option UInt64 :=
   if pack.size ≤ e then none else
   let esz := (bitsAt pack (e + 8) 8).toNat % 256
   let (o, p, _) := alpSects (nblk metadata) (bitsAt pack e 8).toNat esz
@@ -508,9 +509,8 @@ def foRExc (metadata pack : ByteArray) (i : Nat) : Option UInt64 :=
 /-- How far block `b`'s frame, the value its residuals are measured from, lies above its minimum:
 the `u64` the patch list keeps per block after `exc_pos` when bit 8 of its width word says so, and
 `0` for a pack with no patch list or no frames. A
-frame above the minimum is what lets a low outlier be patched as a high one is. -/
-def foRFrame (metadata pack : ByteArray) (b : Nat) : UInt64 :=
-  let e := blockStart metadata (nblk metadata)
+frame above the minimum is what lets a low outlier be patched as a high one is. `e` is `foRExc`'s. -/
+def foRFrame (metadata pack : ByteArray) (b : Nat) (e : Nat := blockStart metadata (nblk metadata)) : UInt64 :=
   let f := (bitsAt pack (e + 8) 8).toNat
   if pack.size ≤ e || f / 256 % 2 == 0 then 0 else
   let (_, _, q) := alpSects (nblk metadata) (bitsAt pack e 8).toNat (f % 256)
@@ -528,9 +528,10 @@ instead, `blockStarts_get` being that this is the same number. It is not `0`, wh
 with the wrong element rather than decline. -/
 def foRBits (metadata pack : ByteArray) (starts : Array Nat) (i : Nat) : UInt64 :=
   let b := i / blk metadata
-  match foRExc metadata pack i with
+  let e := match starts[nblk metadata]? with | some s => s | none => blockStart metadata (nblk metadata)
+  match foRExc metadata pack i e with
   | some v => v
-  | none => baseAt metadata b + foRFrame metadata pack b +
+  | none => baseAt metadata b + foRFrame metadata pack b e +
     resAt pack (match starts[b]? with | some s => s | none => blockStart metadata b)
       (widthAt metadata b) (i % blk metadata)
 
