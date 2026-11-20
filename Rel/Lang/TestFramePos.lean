@@ -24,11 +24,10 @@ rel_program framePos where
     -- running sum and running max of `v = 5 3 5 1 7 2 1 3`
     check cumAgg(F(x π₂) sum, x) = {(0,5),(1,8),(2,13),(3,14),(4,21),(5,23),(6,24),(7,27)}
     check cumAgg(F(x π₂) Λ(∋) last, x) = {(0,5),(1,5),(2,5),(3,5),(4,7),(5,7),(6,7),(7,7)}
-    -- `x` with its positions in `N`, since `sums` puts the values at the source's position object; the running sum
-    -- as above, and per key: B at 0 2 6 is 5 10 11, A at 1 4 7 is 3 10 13, C at 3 5 is 1 3
-    xv : N ⟶ K×N ≜ {(0,(B,5)),(1,(A,3)),(2,(B,5)),(3,(C,1)),(4,(A,7)),(5,(C,2)),(6,(B,1)),(7,(A,3))}
-    check cumSum(xv π₂) = {(0,5),(1,8),(2,13),(3,14),(4,21),(5,23),(6,24),(7,27)}
-    check sumsBy(xv π₁, xv π₂) = {(0,5),(1,3),(2,10),(3,1),(4,10),(5,3),(6,11),(7,13)}
+    -- the running sum as above, in `v`'s object `N` apart from the positions `P`; per key: B at 0 2 6 is 5 10 11,
+    -- A at 1 4 7 is 3 10 13, C at 3 5 is 1 3
+    check cumSum(x π₂) = {(0,5),(1,8),(2,13),(3,14),(4,21),(5,23),(6,24),(7,27)}
+    check sumsBy(x π₁, x π₂) = {(0,5),(1,3),(2,10),(3,1),(4,10),(5,3),(6,11),(7,13)}
     -- first and last `v`; an empty frame gives the null, read here as 40
     check firstOrNothing(x π₂) [𝟙, {(∗,40)}] = {(∗,5)}
     check lastOrNothing(x π₂) [𝟙, {(∗,40)}] = {(∗,3)}

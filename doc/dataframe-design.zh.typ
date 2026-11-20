@@ -274,17 +274,16 @@ diff(n, x)        ≜ dom(x) tot(⟨x, ⟨𝟙, ⊤ n⟩minus x⟩minus)      x 
 #let pl = (
   ([semi / anti join], [`semiJoin(a, b, x, y) ≜ dom(x) asc(dom(J(a, b, x, y))) x`；`antiJoin(a, b, x, y) ≜ dom(x) asc(dom(x) − dom(J(a, b, x, y))) x`], [], "full"),
   ([cross join], [`crossJoin(x, y) ≜ innerJoin(⊤ 𝟙(1), ⊤ 𝟙(1), x, y)`], [], "full"),
-  ([asof join], [`aj(k, t, h, u, x, y) ≜ ⟨x, dom(x) tot(agg(m, last) y)⟩ where P ≜ ran(x ⟨k, t⟩), V ≜ ran(y ⟨h, u⟩), r ≜ ⟨π₁, sums((V ⊤ {(∗,1)}) ∪ ((P − V) ⊤ {(∗,0)}))⟩, m ≜ x ⟨k, t⟩ r (y ⟨h, u⟩ r)°`],
-    [q 的 `aj`：`r` 数同 key 的 `y` 时间不晚于该时间的个数，`m` 接上最新的 `u ≤ t`；`agg(m, last)` 是并列时取最后一行；
-    计数在时间对象 `τ` 里；`ι = 𝟙`], "full"),
+  ([asof join], [`aj(k, t, h, u, x, y) ≜ ⟨x, dom(x) tot(agg(m, last) y)⟩ where r ≜ ⟨π₁, sums(counts(ran(x ⟨k, t⟩), (y ⟨h, u⟩)°))⟩, m ≜ x ⟨k, t⟩ r (y ⟨h, u⟩ r)°`],
+    [q 的 `aj`：`r` 数同 key 的 `y` 行中时间不晚于该时间的个数，`m` 接上最新的 `u ≤ t`；`agg(m, last)` 是并列时取最后一行；
+    计数在 `y` 的位置对象 `μ` 里；`ι = 𝟙`], "full"),
   ([`cum_sum` 等], [`cumAgg(f, x) ≜ agg(dom(x) ≥ dom(x), f)`；`cumSum(c) ≜ sumsBy(dom(c) ⊤ 𝟙(1), c)`；
     `sumsBy(g, c) ≜ ⟨g, 𝟙⟩ sums(⟨g, 𝟙⟩° c)`],
-    [行 `i` 聚合 `j ≤ i` 的行；q：`sums`（`f` 为 `sum`）。`cumSum` 是 `cumAgg(F(c) sum, c)`，一组；`sumsBy` 是每组内的 `cum_sum().over(g)`；
-    `c` 的值与位置共用 `ν`（类型 `ν ⟶ ν`）], "full"),
+    [行 `i` 聚合 `j ≤ i` 的行；q：`sums`（`f` 为 `sum`）。`cumSum` 是 `cumAgg(F(c) sum, c)`，一组；`sumsBy` 是每组内的 `cum_sum().over(g)`], "full"),
   ([`shift(k)`], [`shift(k, x)`], [前 `k` 个位置是 null], "full"),
   ([`diff`], [`diff(1, c)`], [`c(i) − c(i−1)`，第 0 行 null], "full"),
   ([`rolling(w)`], [`rolling(w, f, x)`], [], "full"),
-  ([`forward_fill`], [`fills(c) ≜ (p ∪ (dom(c) − dom(p))) c where r ≜ cumSum(c [⊤ {(∗,1)}, {(∗,0)}]), p ≜ r (dom(c inl°) r)°`],
+  ([`forward_fill`], [`fills(c) ≜ (p ∪ (dom(c) − dom(p))) c where r ≜ cumSum(counts(dom(c), dom(c inl°))), p ≜ r (dom(c inl°) r)°`],
     [q 的 `fills`：`r(i)` 数不晚于 `i` 的有值行，`p` 把 `i` 送到计数相同的有值行，即不晚于 `i` 的最后一个；计数为 0 时没有，null 保留],
     "full"),
   ([`melt` / `unpivot`], [`pivotLong(i, s, a, t, b, x) ≜ append(x ⟨i, ⟨⊤ s, a⟩⟩, x ⟨i, ⟨⊤ t, b⟩⟩)`；`melt(s, a, t, b, x) ≜ pivotLong(𝟙, s, a, t, b, x) π₂`],

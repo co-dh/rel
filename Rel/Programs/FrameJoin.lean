@@ -19,9 +19,9 @@ rel_program frameJoin where
     -- `x × (y ⊕ 𝟙)` as its pair: `×` with a table on the left does not hand its right operand a domain at `N`
     leftJoin(a : β ⟶ κ, b : δ ⟶ κ, x : ν ⟶ β, y : μ ⟶ δ) : ρ ⟶ β×(δ+1) ≜ asc(ran(⟨𝟙, dom(x) tot(J(a, b, x, y))⟩)) ⟨π₁ x, π₂ (y ⊕ 𝟙)⟩
     rightJoin(a : β ⟶ κ, b : δ ⟶ κ, x : ν ⟶ β, y : μ ⟶ δ) : ρ ⟶ (β+1)×δ ≜ leftJoin(b, a, y, x) ⟨π₂, π₁⟩
-    -- q's aj, linear: `r` counts the `y` times of a key up to a time (`sums` along `τ`), so `m` meets the latest `u ≤ t`;
-    -- `agg(m, last)` is q's tie-break; `dom(x)` before `tot`: its `𝟙 − dom(R)` has no universe at an unbounded `ν`
-    aj(k : β ⟶ κ, t : β ⟶ τ, h : δ ⟶ κ, u : δ ⟶ τ, x : ν ⟶ β, y : μ ⟶ δ) : ν ⟶ β×(δ+1) ≜ ⟨x, dom(x) tot(agg(m, last) y)⟩ where P ≜ ran(x ⟨k, t⟩), V ≜ ran(y ⟨h, u⟩), r ≜ ⟨π₁, sums((V ⊤ {(∗,1)}) ∪ ((P − V) ⊤ {(∗,0)}))⟩, m ≜ x ⟨k, t⟩ r (y ⟨h, u⟩ r)°
+    -- q's aj, linear: `r` counts `y`'s rows of a key up to a time (`sums` along `τ`, in `μ`), so `m` meets the latest
+    -- `u ≤ t`; `agg(m, last)` is q's tie-break; `dom(x)` before `tot`: its `𝟙 − dom(R)` has no universe at unbounded `ν`
+    aj(k : β ⟶ κ, t : β ⟶ τ, h : δ ⟶ κ, u : δ ⟶ τ, x : ν ⟶ β, y : μ ⟶ δ) : ν ⟶ β×(δ+1) ≜ ⟨x, dom(x) tot(agg(m, last) y)⟩ where r ≜ ⟨π₁, sums(counts(ran(x ⟨k, t⟩), (y ⟨h, u⟩)°))⟩, m ≜ x ⟨k, t⟩ r (y ⟨h, u⟩ r)°
 
     -- `<>`: `y`'s positions shifted past `x`'s, written as `(dom(y) (+n))°` since `(+n)°` reads its whole universe
     append(x : ν ⟶ β, y : ν ⟶ β) : ν ⟶ β ≜ x ∪ ((dom(y) ⟨𝟙, ⊤ count(x)⟩plus)° y)
