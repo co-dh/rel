@@ -343,13 +343,23 @@ def header (cols : CsvCols) (h : List (List UInt8)) : Except String Unit :=
   | some (((c, _), f), j) => .error s!"line 1: header field {j} is {shown f}, the schema {names cols} has '{c}'"
   | none => .error s!"line 1: the header has {h.length} fields, the schema {names cols} has {cols.length}"
 
+/-- Field `f` of column `c` in row `r`, which starts on line `l`, read. -/
+def getCell (r l : Nat) : (String × QAtomicType × List String) × List UInt8 → Except String UInt64
+  | ((c, t, ns), f) => match readCell (t, ns) f with
+    | some w => .ok w
+    | none => .error s!"row {r} (line {l}), column '{c}': expected {form t ns}, found {shown f}"
+
+/-- Row `r` of column `c`, the words `a`, written. -/
+def putCell (r : Nat) : (String × QAtomicType × List String) × Array UInt64 → Except String (List UInt8)
+  | ((c, t, ns), a) => match cell (t, ns) (a.getD r 0) with
+    | some s => .ok s
+    | none => .error s!"row {r}, column '{c}': the word {a.getD r 0} has no text as {form t ns}"
+
 /-- Data record `r` starting at byte `p`: its words, one per column. -/
 def row (cols : CsvCols) (all : List UInt8) (r p : Nat) (fs : List (List UInt8)) : Except String (List UInt64) :=
   if fs.length ≠ cols.length then
     .error s!"row {r} (line {lineAt all p}): {fs.length} fields, the schema {names cols} has {cols.length}"
-  else (cols.zip fs).mapM fun ((c, t, ns), f) => match readCell (t, ns) f with
-    | some w => .ok w
-    | none => .error s!"row {r} (line {lineAt all p}), column '{c}': expected {form t ns}, found {shown f}"
+  else (cols.zip fs).mapM (getCell r (lineAt all p))
 
 /-- The data records from row `r`: each one's words. -/
 def rows (cols : CsvCols) (all : List UInt8) : Nat → List (Nat × List (List UInt8)) → Except String (List (List UInt64))
@@ -374,11 +384,11 @@ open Csv in
     `\n`; or the first word with no text (`cell`), named by row and column. -/
 def csvText (cols : CsvCols) (n : Nat) (ws : List (Array UInt64)) : Except String (List UInt8) := do
   schema cols
-  if ws.length ≠ cols.length then .error s!"{ws.length} word columns, the schema {names cols} has {cols.length}"
+  -- a term, not a `do` `if`: the `do` one would copy the rest of the block into both branches
+  let () ← (if ws.length = cols.length then .ok () else
+    .error s!"{ws.length} word columns, the schema {names cols} has {cols.length}" : Except String Unit)
   (cols.zip ws).forM fun ((c, _), a) => if a.size = n then .ok () else .error s!"column '{c}' holds {a.size} words, not {n}"
-  let rs ← (List.range n).mapM fun r => (cols.zip ws).mapM fun ((c, t, ns), a) => match cell (t, ns) (a.getD r 0) with
-    | some s => .ok s
-    | none => .error s!"row {r}, column '{c}': the word {a.getD r 0} has no text as {form t ns}"
+  let rs ← (List.range n).mapM fun r => (cols.zip ws).mapM (putCell r)
   pure (records (cols.map (bytes ·.1) :: rs))
 
 end Rel.Db
