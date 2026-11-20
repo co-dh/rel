@@ -82,6 +82,71 @@ def varAtoms : List Rel.QAtomicType := [.general, .u1, .u8, .i16, .i32, .f32, .f
 /-- The placeholder of the object variable `k`; none past `varAtoms`, where the variable stays `.long`. -/
 def varObj (k : Nat) : Option Obj := varAtoms[k]?.map .atom
 
+/-- `A` with the placeholder of each object variable `k` (`varObj k`) replaced by `σ[k]`, kept where `σ` has none. -/
+def Obj.inst (σ : List Obj) : Obj → Obj
+  | .atom t => match varAtoms.idxOf? t with | some k => σ.getD k (.atom t) | none => .atom t
+  | .prod a b => .prod (a.inst σ) (b.inst σ)
+  | .arr b => .arr (b.inst σ)
+  | .sum a b => .sum (a.inst σ) (b.inst σ)
+
+/-- `t`, built at the placeholders, at the objects `σ` (`Obj.inst`): a definition's body at a call's objects. A
+    node whose objects are fixed (a table, a universe, the number verbs at `.long`) keeps them, else the error
+    names them. -/
+def Tm.instObj (σ : List Obj) : {A B : Obj} → Tm A B → Except String (Tm (A.inst σ) (B.inst σ))
+  | _, _, .val R => fixed (.val R)
+  | _, _, .uni U => fixed (.uni U)
+  | _, _, .zero => pure .zero
+  | _, _, .id => pure .id
+  | _, _, .top V => return .top (← V.instObj σ)
+  | _, _, .outl => pure .outl
+  | _, _, .outr => pure .outr
+  | _, _, .comp R S => return .comp (← R.instObj σ) (← S.instObj σ)
+  | _, _, .conv R => return .conv (← R.instObj σ)
+  | _, _, .meet R S => return .meet (← R.instObj σ) (← S.instObj σ)
+  | _, _, .join R S => return .join (← R.instObj σ) (← S.instObj σ)
+  | _, _, .diff R S => return .diff (← R.instObj σ) (← S.instObj σ)
+  | _, _, .dom R => return .dom (← R.instObj σ)
+  | _, _, .ran R => return .ran (← R.instObj σ)
+  | _, _, .ldiv R S U V => return .ldiv (← R.instObj σ) (← S.instObj σ) (← U.instObj σ) (← V.instObj σ)
+  | _, _, .rdiv R S U V => return .rdiv (← R.instObj σ) (← S.instObj σ) (← U.instObj σ) (← V.instObj σ)
+  | _, _, .pair R S => return .pair (← R.instObj σ) (← S.instObj σ)
+  | _, _, .prod R S => return .prod (← R.instObj σ) (← S.instObj σ)
+  | _, _, .junc R S => return .junc (← R.instObj σ) (← S.instObj σ)
+  | _, _, .juncD R S => return .juncD (← R.instObj σ) (← S.instObj σ)
+  | _, _, .lam R => return .lam (← R.instObj σ)
+  | _, _, .E R => return .E (← R.instObj σ)
+  | _, _, .est Q => return .est (← Q.instObj σ)
+  | _, _, .thin Q => return .thin (← Q.instObj σ)
+  | _, _, .nil => pure .nil
+  | _, _, .prim r => pure (.prim r)
+  | _, _, .atPos k => pure (.atPos k)
+  | _, _, .own R => return .own (← R.instObj σ)
+  | _, _, .succ U => do fixed (.succ (← back (← U.instObj σ)))
+  | _, _, .arith k U => do fixed (.arith k (← back (← U.instObj σ)))
+  | _, _, .leq U => do fixed (.leq (← back (← U.instObj σ)))
+  | _, _, .lt U => do fixed (.lt (← back (← U.instObj σ)))
+  | _, _, .foldr e S => return .foldr (← e.instObj σ) (← S.instObj σ)
+  | _, _, .fold e S => return .fold (← e.instObj σ) (← S.instObj σ)
+  | _, _, .share k R => return .share k (← R.instObj σ)
+  | _, _, .foldI e S => return .foldI (← e.instObj σ) (← S.instObj σ)
+  | _, _, .flat R => return .flat (← R.instObj σ)
+  | _, _, .var d k => pure (.var d k)
+  | _, _, .call ks c os b => return .call ks c (os.map (·.inst σ)) (← b.instObj σ)
+  | _, _, .callCv ks c c' os b u => return .callCv ks c c' (os.map (·.inst σ)) (← b.instObj σ) (← u.instObj σ)
+  | _, _, .arg f x => return .arg (← f.instObj σ) (← x.instObj σ)
+  | _, _, .nu k S b => return .nu k (← S.instObj σ) (← b.instObj σ)
+  | _, _, .mu k w n b => return .mu k w n (← b.instObj σ)
+  | _, _, .hylo k w b => return .hylo k w (← b.instObj σ)
+where
+  /-- `t` at objects `X ⟶ Y` that `σ` must keep: decided, as `Obj.inst` reads `varAtoms` by search. -/
+  fixed {X Y : Obj} (t : Tm X Y) : Except String (Tm (X.inst σ) (Y.inst σ)) :=
+    if h : X.inst σ = X ∧ Y.inst σ = Y then pure (h.1 ▸ h.2 ▸ t) else
+      throw s!"a table, a universe or a number verb at {repr X} ⟶ {repr Y}, objects the call changes"
+  /-- `fixed` backwards: a part of such a node. -/
+  back {X Y : Obj} (t : Tm (X.inst σ) (Y.inst σ)) : Except String (Tm X Y) :=
+    if h : X.inst σ = X ∧ Y.inst σ = Y then pure (h.1 ▸ h.2 ▸ t) else
+      throw s!"a table, a universe or a number verb at {repr X} ⟶ {repr Y}, objects the call changes"
+
 abbrev Objs := List (String × ObjInfo)
 
 /-- The universe of an object, when every base object in it has one (§a): `cross` of a product's, the two
@@ -169,12 +234,13 @@ inductive Pre
   | hylo (pos : Pos) (k : Nat) (body : Pre) (a b : OTy)
   /-- The constant `c` at `pos`, at the objects `us` of its object variables, each with whether `c` is generic
       over it and whether `c` reads its universe, and the arguments `args`, each passed as its pair test where
-      `ts` says so (`Form`), its plan on keys in demand when `d`;
-      `cv` its converse's constant (`Tm.call`); `tst`: `c` is the pair test of a body that only tests (§a). `alt`
-      the definition's body expanded at the use, which every analysis reads and `build` does not. -/
+      `ts` says so (`Form`); `body` the constant's body at the placeholders, `ks` the variables the arguments bind
+      (`Once.binds`), `cv` its converse's constant and body (`Tm.callCv`); `tst`: `c` is the pair test of a body that
+      only tests (§a). `alt` the definition's body expanded at the use, which every analysis reads and `build` does
+      not. -/
   | call (pos : Pos) (c : Lean.Name) (us : List (OTy × Bool × Bool)) (args : List Pre) (ts : List Bool) (alt : Pre)
       (a b : OTy)
-      (d : Bool) (cv : Option (Lean.Name × Bool)) (tst : Bool)
+      (ks : List Nat) (body : Res) (cv : Option (Lean.Name × Res)) (tst : Bool)
 
 instance : Inhabited Pre := ⟨.id (.base "")⟩
 
@@ -311,7 +377,8 @@ def Pre.traverse {m : Type → Type} [Monad m] (fp : Pos → m Pos) (f : Option 
   | .var q k a b t => return .var (← fp q) k a b t
   | .fix q l k x S y a b => return .fix (← fp q) l k x (← S.mapM (f none)) (← mo y) a b
   | .hylo q k x a b => return .hylo (← fp q) k (← mo x) a b
-  | .call q c us xs ts alt a b d cv tst => return .call (← fp q) c us (← xs.mapM (f none)) ts (← mo alt) a b d cv tst
+  | .call q c us xs ts alt a b ks t cv tst =>
+    return .call (← fp q) c us (← xs.mapM (f none)) ts (← mo alt) a b ks t cv tst
   | x => pure x
 
 /-- The parts of `x`, each with how `x` reads it. A definition's body is expanded at its use, so the prelude's
@@ -1361,9 +1428,8 @@ def convTm {A B : Obj} (t : Tm A B) : Except String (Tm B A) :=
   | .arith k U => pure (.conv (.comp (.prod U U) (.arith k U)))
   -- a constant's plan on demand: its converse constant at the same arguments; with none, read whole on its
   -- source's universe
-  | .call d c os cv => match cv with
-    | some (c', e) => pure (.call e c' os (some (c, d)))
-    | none => throw s!"`{c}`"
+  | .callCv ks c c' os b u => pure (.callCv ks c' c os u b)
+  | .call _ c .. => throw s!"`{c}`"
   | .arg f x => do let f ← convTm f; pure (.arg f x)
   | .top _ => throw "⊤"
   | .outl => throw "π₁"
@@ -1675,12 +1741,11 @@ def build : Pre → Except Err Res
   | .var pos _ _ _ (some true) =>
     throw ⟨pos, "this parameter is tested on the pairs it compares, not run: its argument is a pair test (§a)"⟩
   -- a constant that is a pair test runs nowhere; `test` calls it
-  | .call pos c _ _ _ _ _ _ _ _ true =>
+  | .call pos c _ _ _ _ _ _ _ _ _ true =>
     throw ⟨pos, s!"`{c}` is tested on the pairs it compares, not run: its constant is its pair test (§a)"⟩
-  | .call pos c us xs ts _ a b d cv false => do
+  | .call pos c us xs ts _ a b ks t cv false => do
     let A ← toObj objs mc dp a; let B ← toObj objs mc dp b
-    let os ← (us.filter (·.2.1)).mapM fun (u, _) => toObj objs mc dp u
-    pure ⟨A, B, ← callArgs pos c us xs ts (Tm.call (A := A) (B := B) d c os cv)⟩
+    pure ⟨A, B, ← callArgs pos c us xs ts (← callTm objs mc pos c us ks t cv A B)⟩
   -- the body read whole each round, on its source's universe when it needs keys
   | .fix p least k x S q a b => do
     let A ← toObj objs mc dp a; let B ← toObj objs mc dp b
@@ -1732,10 +1797,9 @@ def test (p : Pre) : Except Err Cor :=
     -- a constant that is a pair test, `τ(c(…)) : A×B ⟶ A×B` (`once`)
     -- a parameter given a pair test (`Form`)
     | .var _ k a b (some true) => do pure ⟨← toObj objs mc dp a, ← toObj objs mc dp b, .var true k⟩
-    | .call pos c us xs ts _ a b _ _ true => do
+    | .call pos c us xs ts _ a b ks t _ true => do
       let A ← toObj objs mc dp a; let B ← toObj objs mc dp b
-      let os ← (us.filter (·.2.1)).mapM fun (u, _) => toObj objs mc dp u
-      pure ⟨A, B, ← callArgs pos c us xs ts (Tm.call (A := .prod A B) (B := .prod A B) true c os none)⟩
+      pure ⟨A, B, ← callArgs pos c us xs ts (← callTm objs mc pos c us ks t none (.prod A B) (.prod A B))⟩
     | .conv q => do let ⟨A, B, c⟩ ← test q; pure ⟨B, A, .comp swapTm (.comp c swapTm)⟩
     | .top _ a b none => do pure ⟨← toObj objs mc dp a, ← toObj objs mc dp b, .id⟩
     | .meet q r => do let c ← test q; let ⟨A, B, c₁⟩ := c; pure ⟨A, B, .meet c₁ (← corAt dp A B (← test r))⟩
