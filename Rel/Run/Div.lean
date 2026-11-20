@@ -68,8 +68,8 @@ def nil {n : USize} (D : Vals A n) : Except String (Tab A (.arr B)) := do
 `#{a | R a b ∧ S a c} = #{a | R a b}`, no complement (`doc/rel-architecture.zh.typ`, `R\S`): `Q = r° ≫ ⟨𝟙, s⟩`
 (`r`, `s` canonical, so `Q`'s rows `(b, (a, c))` are distinct and hold each `a` once; `compOne`, not the blocked
 `comp`: with no duplicate to remove, the expansion is `Q` itself and blocks would not lower the peak); GROUP over `(b, c)` and its
-row count `cnt` (`kscatter .add`); the count `d` of `R`'s rows of `b`, read at each group's first row by CODE over
-`r.val ++ Q.key` (the run of `r` rows of each `b` group, `kscatter .add` of `p < r.n`, each input row's group by
+row count `cnt` (`groupFold .add`, a segmented `kscan`); the count `d` of `R`'s rows of `b`, read at each group's first row by CODE over
+`r.val ++ Q.key` (the run of `r` rows of each `b` group, `groupFold .add` of `p < r.n`, each input row's group by
 `kscatter .last` through `p`); the groups with `cnt = d` (`whereCol`). The vacuous part is `(ran UB − ran R) × ran UC`,
 and the two are met by `∪`. -/
 def ldiv (R : Tab A B) (S : Tab A C) (UB : Tab B B) (UC : Tab C C) : Except String (Tab B C) := do
@@ -80,14 +80,14 @@ def ldiv (R : Tab A B) (S : Tab A C) (UB : Tab B B) (UC : Tab C C) : Except Stri
   let (vs, p) ← kasc Q.n es
   let (k, g, f) ← kseen Q.n ((es.map (·.1)).zip vs)
   let K := k.toUSize
-  let cnt ← kscatter .add Q.n g (← colConst Q.n 1) K 0
+  let cnt ← groupFold .add Q.n g f K 0 (← colConst Q.n 1)
   let (N, sh) ← catPlan r.n Q.n
   -- `.lt` reads positions signed: every one is below `N`
   if 2 ^ 63 ≤ N.toNat then throw s!"ldiv: {N} rows past 2^63"
   let bs ← Vals.cols (← Vals.concat N sh r.val Q.key)
   let (bv, bp) ← kasc N bs
-  let (bk, bg, _) ← kseen N ((bs.map (·.1)).zip bv)
-  let cR ← kscatter .add N bg (← colMap .lt N bp (← colConst N r.n.toUInt64)) bk.toUSize 0
+  let (bk, bg, bf) ← kseen N ((bs.map (·.1)).zip bv)
+  let cR ← groupFold .add N bg bf bk.toUSize 0 (← colMap .lt N bp (← colConst N r.n.toUInt64))
   let code ← kscatter .last N bp bg N 0
   let q ← kgather K f Q.n p
   let d ← kgather K (← kgather K (← colMap .add K q (← colConst K r.n.toUInt64)) N code) bk.toUSize cR
