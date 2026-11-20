@@ -356,7 +356,8 @@ theorem Tab.ldiv_holds {A B C : Obj} {R : Tab A B} {S : Tab A C} {UB : Tab B B} 
     ------------------------------------------------------------------ the words of `cnt`, `d`, `eqc`
     have hcntw : ∀ G < k, (raw .i64 k.toUSize cnt)[G]?.getD 0 =
         ((List.range Q.n.toNat).countP fun q => gr1 q == G && true).toUInt64 :=
-      fun G hG => scatter_add_count hcnt gr1 (fun _ => true) (fun q hq => (hg1 q hq).1)
+      fun G hG => fold_add_count (Tab.groupFold_ok (fn := (· + ·)) (fun _ _ => rfl) hseen hcnt).1
+        (Tab.groupFold_ok (fn := (· + ·)) (fun _ _ => rfl) hseen hcnt).2.2 gr1 (fun _ => true) (fun q hq => (hg1 q hq).1)
         (fun q hq => by have := (hg1 q hq).2; omega) (fun q hq => by rw [colConst_raw hc1]; simp [hq]) G (by omega)
     have hcntG : ∀ G < k, ∀ h : π1 (fs1 G) < Q.n.toNat, Q.key.row ⟨_, h⟩ = b → Q.val.2.row ⟨_, h⟩ = c →
         ((List.range Q.n.toNat).countP fun q => gr1 q == G && true) = (List.range Q.n.toNat).countP P1 := by
@@ -401,7 +402,9 @@ theorem Tab.ldiv_holds {A B C : Obj} {R : Tab A B} {S : Tab A C} {UB : Tab B B} 
           (hg2 q2 hq2).1]
       have hgq := (hg2 q2 hq2).2
       rw [(kgather_word hd G (by omega)).2, hcqw, toNat_toUInt64 (by omega),
-        scatter_add_count hcR gr2 (fun q => decide (π2 q < r.n.toNat)) (fun q hq => (hg2 q hq).1)
+        fold_add_count (Tab.groupFold_ok (fn := (· + ·)) (fun _ _ => rfl) hbseen hcR).1
+          (Tab.groupFold_ok (fn := (· + ·)) (fun _ _ => rfl) hbseen hcR).2.2 gr2 (fun q => decide (π2 q < r.n.toNat))
+          (fun q hq => (hg2 q hq).1)
           (fun q hq => by have := (hg2 q hq).2; omega) hltw (gr2 q2) (by omega), ← hcnt2 P2]
       have hz2 : ∀ h2 : π2 q2 < N.toNat, z.row ⟨_, h2⟩ = b := fun h2 => by
         rw [hzr, dif_neg (show ¬ π2 q2 < r.n.toNat by omega)]

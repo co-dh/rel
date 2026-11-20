@@ -62,27 +62,6 @@ theorem lexLe_congr_right : ∀ (ks : List (Array UInt64)) {i j j' : Nat},
     simp only [List.map_cons, List.cons.injEq] at h
     simp only [lexLe, h.1, lexLe_congr_right cs h.2]
 
-/-- Rows with equal codes are `lexLe` both ways. -/
-theorem lexLe_of_keys : ∀ (ks : List (Array UInt64)) {i j : Nat},
-    ks.map (·[i]?.getD 0) = ks.map (·[j]?.getD 0) → lexLe ks i j = true
-  | [], _, _, _ => rfl
-  | c :: cs, i, j, h => by
-    simp only [List.map_cons, List.cons.injEq] at h
-    simp [lexLe, h.1, lexLe_of_keys cs h.2]
-
-/-- Rows `lexLe` both ways have equal codes. -/
-theorem keys_of_lexLe : ∀ (ks : List (Array UInt64)) {i j : Nat}, lexLe ks i j = true → lexLe ks j i = true →
-    ks.map (·[i]?.getD 0) = ks.map (·[j]?.getD 0)
-  | [], _, _, _, _ => rfl
-  | c :: cs, i, j, h1, h2 => by
-    simp only [lexLe, Bool.or_eq_true, decide_eq_true_eq, Bool.and_eq_true, beq_iff_eq] at h1 h2
-    simp only [List.map_cons, List.cons.injEq]
-    rcases h1 with h1 | ⟨e1, h1⟩ <;> rcases h2 with h2 | ⟨e2, h2⟩
-    · have := UInt64.lt_iff_toNat_lt.1 h1; have := UInt64.lt_iff_toNat_lt.1 h2; omega
-    · rw [e2] at h1; exact absurd (UInt64.lt_iff_toNat_lt.1 h1) (Nat.lt_irrefl _)
-    · rw [e1] at h2; exact absurd (UInt64.lt_iff_toNat_lt.1 h2) (Nat.lt_irrefl _)
-    · exact ⟨e1, keys_of_lexLe cs h1 h2⟩
-
 /-- Splitting a count by a second predicate. -/
 theorem countP_split (p q : Nat → Bool) : ∀ l : List Nat,
     l.countP p = l.countP (fun x => p x && q x) + l.countP (fun x => p x && !q x)
@@ -185,13 +164,14 @@ theorem toUInt64_sub {x y : Nat} (h : y ≤ x) : (x - y).toUInt64 = x.toUInt64 -
   have e2 := UInt64.ofNat_add (x - y) y; rw [Nat.sub_add_cancel h] at e2
   show UInt64.ofNat (x - y) = UInt64.ofNat x - UInt64.ofNat y; rw [e2, UInt64.add_sub_cancel]
 
-/-- **`kscatter (.add)` of `0`/`1` words by group** is each group's count of rows with `P`. -/
-theorem scatter_add_count {N K : USize} {g e o : Enc} (h : kscatter .add N g e K 0 = .ok o) (gr : Nat → Nat)
+/-- **`.add` folded by group over `0`/`1` words** (`scatterWords_fold`'s form, which `kscatter .add` and
+`Tab.groupFold .add` answer) is each group's count of rows with `P`. -/
+theorem fold_add_count {N K : USize} {g e o : Enc} (hgs : (raw .i64 N g).size = N.toNat)
+    (hc : ∀ j < K.toNat, (raw .i64 K o)[j]?.getD 0 = (((List.range (raw .i64 N g).size).filter fun k =>
+      ((raw .i64 N g)[k]?.getD 0).toNat = j).map ((raw .i64 N e)[·]?.getD 0)).foldl (· + ·) 0) (gr : Nat → Nat)
     (P : Nat → Bool) (hg : ∀ q < N.toNat, (raw .i64 N g)[q]?.getD 0 = (gr q).toUInt64)
     (hgr : ∀ q < N.toNat, gr q < 2 ^ 64) (he : ∀ q < N.toNat, (raw .i64 N e)[q]?.getD 0 = if P q then 1 else 0) :
     ∀ G < K.toNat, (raw .i64 K o)[G]?.getD 0 = ((List.range N.toNat).countP fun q => gr q == G && P q).toUInt64 := by
-  obtain ⟨hgs, -, hw⟩ := kscatter_words h
-  obtain ⟨-, hc⟩ := scatterWords_fold (f := (· + ·)) (fun _ _ => rfl) hw
   intro G hG
   rw [hc G hG, hgs]
   have hf : (List.range N.toNat).filter (fun k => ((raw .i64 N g)[k]?.getD 0).toNat = G) =
@@ -200,6 +180,14 @@ theorem scatter_add_count {N K : USize} {g e o : Enc} (h : kscatter .add N g e K
   rw [hf, List.map_congr_left (g := fun q => if P q then (1 : UInt64) else 0)
     (fun q hq => he q (List.mem_range.1 (List.mem_filter.1 hq).1)), foldl_add_count, List.countP_filter]
   simp [Bool.and_comm]
+
+/-- **`kscatter (.add)` of `0`/`1` words by group** is each group's count of rows with `P` (`fold_add_count`). -/
+theorem scatter_add_count {N K : USize} {g e o : Enc} (h : kscatter .add N g e K 0 = .ok o) (gr : Nat → Nat)
+    (P : Nat → Bool) (hg : ∀ q < N.toNat, (raw .i64 N g)[q]?.getD 0 = (gr q).toUInt64)
+    (hgr : ∀ q < N.toNat, gr q < 2 ^ 64) (he : ∀ q < N.toNat, (raw .i64 N e)[q]?.getD 0 = if P q then 1 else 0) :
+    ∀ G < K.toNat, (raw .i64 K o)[G]?.getD 0 = ((List.range N.toNat).countP fun q => gr q == G && P q).toUInt64 :=
+  fold_add_count (kscatter_words h).1 (scatterWords_fold (f := (· + ·)) (fun _ _ => rfl) (kscatter_words h).2.2).2
+    gr P hg hgr he
 
 /-- Word `t` of the index column `.pos` is `t`. -/
 theorem raw_pos_word {n : USize} {t : Nat} (ht : t < n.toNat) : (raw .i64 n (.pos : Enc))[t]?.getD 0 = t.toUInt64 := by

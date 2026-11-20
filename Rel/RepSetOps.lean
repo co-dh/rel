@@ -144,6 +144,42 @@ theorem whereCol_size {m K : USize} {b o : Enc} (h : whereCol m b = .ok (K, o)) 
   obtain ⟨his, -, -, hoe⟩ := raw_kgather _ _ _ _ _ ho'
   rw [hoe, (wordsFoR_closed _ (by rw [Array.size_map, his])).2.1, Array.size_map, his]
 
+/-- Rows with equal codes are `lexLe` both ways. -/
+theorem lexLe_of_keys : ∀ (ks : List (Array UInt64)) {i j : Nat},
+    ks.map (·[i]?.getD 0) = ks.map (·[j]?.getD 0) → lexLe ks i j = true
+  | [], _, _, _ => rfl
+  | c :: cs, i, j, h => by
+    simp only [List.map_cons, List.cons.injEq] at h
+    simp [lexLe, h.1, lexLe_of_keys cs h.2]
+
+/-- Rows `lexLe` both ways have equal codes. -/
+theorem keys_of_lexLe : ∀ (ks : List (Array UInt64)) {i j : Nat}, lexLe ks i j = true → lexLe ks j i = true →
+    ks.map (·[i]?.getD 0) = ks.map (·[j]?.getD 0)
+  | [], _, _, _, _ => rfl
+  | c :: cs, i, j, h1, h2 => by
+    simp only [lexLe, Bool.or_eq_true, decide_eq_true_eq, Bool.and_eq_true, beq_iff_eq] at h1 h2
+    simp only [List.map_cons, List.cons.injEq]
+    rcases h1 with h1 | ⟨e1, h1⟩ <;> rcases h2 with h2 | ⟨e2, h2⟩
+    · have := UInt64.lt_iff_toNat_lt.1 h1; have := UInt64.lt_iff_toNat_lt.1 h2; omega
+    · rw [e2] at h1; exact absurd (UInt64.lt_iff_toNat_lt.1 h1) (Nat.lt_irrefl _)
+    · rw [e1] at h2; exact absurd (UInt64.lt_iff_toNat_lt.1 h2) (Nat.lt_irrefl _)
+    · exact ⟨e1, keys_of_lexLe cs h1 h2⟩
+
+/-- **The rows of one `kseen` key are one run** where `kseen` answers: its rows are in `kasc` order (`kseen_sorted`),
+so a row between two rows of one key is `lexLe` both ways with them (`lexLe_trans`). -/
+theorem kseen_runs {n : USize} {es : List (AscKey × Enc)} {r : Nat × Enc × Enc} (h : kseen n es = .ok r) :
+    ∀ a b c, a ≤ b → b ≤ c → c < n.toNat → seenKey n es a = seenKey n es c → seenKey n es b = seenKey n es a := by
+  have hs := kseen_sorted h
+  have up : ∀ d i, i + d < n.toNat → lexLe (ascKeys n es) i (i + d) = true := by
+    intro d; induction d with
+    | zero => intro i _; exact lexLe_of_keys _ rfl
+    | succ d ih => intro i hi; exact lexLe_trans _ _ _ _ (ih i (by omega)) (hs (i + d) (by omega))
+  have up' : ∀ i j, i ≤ j → j < n.toNat → lexLe (ascKeys n es) i j = true := fun i j hij hj => by
+    have := up (j - i) i (by omega); rwa [Nat.add_sub_of_le hij] at this
+  intro a b c hab hbc hc e
+  exact (keys_of_lexLe _ (up' a b hab (by omega))
+    (lexLe_trans _ _ _ _ (up' b c hbc hc) (lexLe_of_keys _ e.symm))).symm
+
 /-! ## CONCAT and `∪` -/
 namespace Tab
 variable {k v : Obj}
@@ -344,6 +380,165 @@ theorem concat_split {R S C : Tab k v} (h : R.concat S = .ok C) {a : k.El} {b : 
     · rw [rk, dif_neg (by simp)]; simpa using ha
     · rw [rv, dif_neg (by simp)]; simpa using hb
 
+/-- **`groupFold` over `kseen`'s groups is a fold per group** (design §4: a fold is a scan's last row): where `op` is
+the total `fn`, group `j`'s word is `fn` folded from `z` over `x` at the rows of `j` in row order, the form
+`scatterWords_fold` gives `kscatter`. A group's rows are one run (`kseen_runs`) opening at its first row, so `kscan`'s
+segment from that row holds at each row the fold of the group's rows up to it, and the group's last row is all of it. -/
+theorem groupFold_ok {op : Op} {fn : UInt64 → UInt64 → UInt64} (hop : ∀ a x, op.eval a x = .ok (fn a x))
+    {n : USize} {es : List (AscKey × Enc)} {m : Nat} {g f : Enc} (hr : kseen n es = .ok (m, g, f))
+    {z : UInt64} {x o : Enc} (h : groupFold op n g f m.toUSize z x = .ok o) :
+    (Enc.raw .i64 n g).size = n.toNat ∧ (Enc.raw .i64 m.toUSize o).size = m.toUSize.toNat ∧
+      ∀ j < m.toUSize.toNat, (Enc.raw .i64 m.toUSize o)[j]?.getD 0 =
+        (((List.range (Enc.raw .i64 n g).size).filter fun k => ((Enc.raw .i64 n g)[k]?.getD 0).toNat = j).map
+          ((Enc.raw .i64 n x)[·]?.getD 0)).foldl fn z := by
+  unfold groupFold at h
+  simp only [bind, Except.bind] at h
+  repeat (split at h; · cases h)
+  rename_i _ one h1 _ seg h2 _ zc h3 _ r h4
+  obtain ⟨sc, v⟩ := r
+  dsimp only at h
+  have hU : USize.size ≤ 2 ^ 64 := by rcases USize.size_eq with e | e <;> omega
+  have hn := n.toNat_lt_size
+  have hc64 : ∀ a, a < n.toNat → a.toUInt64.toNat = a := fun a ha => by simp; omega
+  have hruns := kseen_runs hr
+  obtain ⟨hK, hg, hf⟩ := kseen_ok hr
+  generalize seenKey n es = Kk at hK hg hf hruns
+  have fs := firsts_spec Kk n.toNat
+  have hmn : m ≤ n.toNat := by
+    rw [hK]; unfold firstsOf; exact Nat.le_trans (List.length_filter_le _ _) (by simp)
+  have hmU : m.toUSize.toNat = m := USize.toNat_ofNat_of_lt' (by omega)
+  have hgr : Enc.raw .i64 n g = Array.ofFn (n := n.toNat) fun i => (Verify.groupOf Kk n.toNat i.1).toUInt64 := by
+    rw [hg]; exact (wordsFoR_closed _ (by simp)).2.1
+  have hgs : (Enc.raw .i64 n g).size = n.toNat := by rw [hgr]; simp
+  have hgv : ∀ q < n.toNat, ((Enc.raw .i64 n g)[q]?.getD 0).toNat = Verify.groupOf Kk n.toNat q := fun q hq => by
+    obtain ⟨hgl, -⟩ := fs.2.2.2.2.2 q hq
+    rw [hgr, Array.getElem?_ofFn, dif_pos hq, Option.getD_some]; exact hc64 (Verify.groupOf Kk n.toNat q) (by omega)
+  have hFlt : ∀ G (hG : G < (firstsOf Kk n.toNat).length), (firstsOf Kk n.toNat)[G] < n.toNat :=
+    fun G hG => ((fs.2.1 _).1 (List.getElem_mem hG)).1
+  have hrf : Enc.raw .i64 m.toUSize f = ((firstsOf Kk n.toNat).map Nat.toUInt64).toArray := by
+    rw [hf]; exact (wordsFoR_closed _ (by rw [hmU, hK]; simp)).2.1
+  have hfsz : (Enc.raw .i64 m.toUSize f).size = (firstsOf Kk n.toNat).length := by rw [hrf]; simp
+  have hfw : ∀ G (hG : G < (firstsOf Kk n.toNat).length),
+      ((Enc.raw .i64 m.toUSize f)[G]?.getD 0).toNat = (firstsOf Kk n.toNat)[G] := fun G hG => by
+    rw [hrf]
+    simp only [List.getElem?_toArray, List.getElem?_map, List.getElem?_eq_getElem hG, Option.map_some,
+      Option.getD_some]
+    exact hc64 _ (hFlt G hG)
+  -- the segment marks: `1` exactly at the first rows
+  obtain ⟨hfs, -, hw2⟩ := kscatter_words h2
+  obtain ⟨hss, hsw⟩ := scatterWords_fold (f := fun _ y => y) (fun _ _ => rfl) hw2
+  have hlast1 : ∀ (l : List Nat) (a : UInt64),
+      (l.map fun _ => (1 : UInt64)).foldl (fun _ y => y) a = if l = [] then a else 1 := by
+    intro l; induction l with
+    | nil => intro a; rfl
+    | cons y l ih => intro a; simp [ih]
+  have hseg : ∀ i < n.toNat, (Enc.raw .i64 n seg)[i]?.getD 0 = if i ∈ firstsOf Kk n.toNat then 1 else 0 := by
+    intro i hi
+    have hmap : ((List.range (Enc.raw .i64 m.toUSize f).size).filter fun k =>
+        ((Enc.raw .i64 m.toUSize f)[k]?.getD 0).toNat = i).map ((Enc.raw .i64 m.toUSize one)[·]?.getD 0) =
+        ((List.range (Enc.raw .i64 m.toUSize f).size).filter fun k =>
+        ((Enc.raw .i64 m.toUSize f)[k]?.getD 0).toNat = i).map fun _ => (1 : UInt64) :=
+      List.map_congr_left fun k hk => by
+        rw [List.mem_filter, List.mem_range] at hk
+        have := hk.1
+        rw [colConst_raw h1, Array.getElem?_replicate, if_pos (by omega)]; rfl
+    have hiff : ((List.range (Enc.raw .i64 m.toUSize f).size).filter fun k =>
+        ((Enc.raw .i64 m.toUSize f)[k]?.getD 0).toNat = i) = [] ↔ i ∉ firstsOf Kk n.toNat := by
+      rw [List.filter_eq_nil_iff, List.mem_iff_getElem, hfsz]
+      constructor
+      · rintro hall ⟨G, hG, e⟩; exact hall G (List.mem_range.2 hG) (by rw [hfw G hG, e]; simp)
+      · intro hni G hG e
+        rw [decide_eq_true_eq, hfw G (List.mem_range.1 hG)] at e
+        exact hni ⟨G, List.mem_range.1 hG, e⟩
+    rw [hsw i hi, hmap, hlast1]
+    by_cases hm : i ∈ firstsOf Kk n.toNat
+    · rw [if_neg fun e => (hiff.1 e) hm, if_pos hm]
+    · rw [if_pos (hiff.2 hm), if_neg hm]
+  -- `kscan` reads them as booleans: `0` exactly off the first rows
+  have hsu : ∀ i < n.toNat, ((Enc.raw .u1 n seg)[i]?.getD 0 = 0 ↔ i ∉ firstsOf Kk n.toNat) := by
+    have hu : Enc.raw .u1 n seg = (Enc.raw .i64 n seg).map fun w => UInt64.ofNat (w.toNat % 2) := by
+      obtain ⟨hfo, -⟩ := raw_scatter m.toUSize f one n 0 seg h2
+      generalize Coc.encode _ _ = q at hfo; subst hfo
+      simp only [Enc.raw, QAtomicType.width, Array.map_map]
+      refine Array.ext (by simp) fun j _ _ => ?_
+      simp
+    intro i hi
+    have e := hseg i hi
+    rw [Array.getElem?_eq_getElem (by omega), Option.getD_some] at e
+    rw [hu, Array.getElem?_map, Array.getElem?_eq_getElem (by omega), Option.map_some, Option.getD_some, e]
+    by_cases hm : i ∈ firstsOf Kk n.toNat <;> simp [hm]
+  -- the scan: each row folds its own word into the previous row's, or into `z` on a first row
+  obtain ⟨-, -, c, cs, hccs, out, hos, hsc, -, hrow⟩ := raw_kscan op false .i64 .i64 8 rfl n seg [zc, x] _ h4
+  obtain ⟨rfl, rfl⟩ := List.cons.inj hccs
+  have hout : Enc.raw .i64 n sc = out := by
+    refine hsc.trans (Array.ext (by simp) fun i h1 h2 => ?_)
+    simp only [Bool.false_eq_true, ↓reduceIte, Array.getElem_map]
+    show UInt64.ofNat (out[i].toNat % 2 ^ 64) = out[i]
+    rw [Nat.mod_eq_of_lt (by have := out[i].toNat_lt_size; simp at this ⊢; omega)]
+    exact UInt64.ofNat_toNat
+  have hstep : ∀ i < n.toNat, out[i]?.getD 0 = fn (if 0 < i ∧ (Enc.raw .u1 n seg)[i]?.getD 0 = 0
+      then out[i - 1]?.getD 0 else z) ((Enc.raw .i64 n x)[i]?.getD 0) := by
+    intro i hi
+    have e := hrow i (by omega)
+    simp only [List.map_cons, List.map_nil, Bool.false_eq_true, ↓reduceIte, List.foldlM_cons, List.foldlM_nil,
+      hop, colConst_raw h3, Array.getElem?_replicate, hi, Option.getD_some, bind_pure, Except.ok.injEq] at e
+    rw [Array.getElem?_eq_getElem (by omega), Option.getD_some]; exact e.symm
+  have claim : ∀ i < n.toNat, out[i]?.getD 0 = (((List.range (i + 1)).filter fun q =>
+      Verify.groupOf Kk n.toNat q = Verify.groupOf Kk n.toNat i).map ((Enc.raw .i64 n x)[·]?.getD 0)).foldl fn z := by
+    intro i
+    induction i with
+    | zero => intro hi; rw [hstep 0 hi]; simp
+    | succ i ih =>
+      intro hi
+      have hsing : ([i + 1].filter fun q => decide (Verify.groupOf Kk n.toNat q = Verify.groupOf Kk n.toNat (i + 1))) =
+          [i + 1] := by simp
+      rw [hstep (i + 1) hi, List.range_succ, List.filter_append, hsing, List.map_append, List.foldl_append]
+      simp only [List.map_cons, List.map_nil, List.foldl_cons, List.foldl_nil]
+      congr 1
+      by_cases hs : (Enc.raw .u1 n seg)[i + 1]?.getD 0 = 0
+      · -- not a first row: the row before holds its key (`firsts_runs`), so its group
+        have hni := (hsu (i + 1) hi).1 hs
+        rw [firsts_runs hruns] at hni
+        have hK' : Kk i = Kk (i + 1) := Classical.byContradiction fun ne =>
+          hni ⟨hi, fun q e => by rw [show q = i by omega]; exact ne⟩
+        have hgi := (fs.2.2.1 i (by omega) (i + 1) hi).2 hK'
+        rw [if_pos ⟨by omega, hs⟩, Nat.add_sub_cancel, ih (by omega), hgi]
+      · -- a first row: no earlier row holds its key
+        have hm : i + 1 ∈ firstsOf Kk n.toNat := Classical.byContradiction fun hm => hs ((hsu (i + 1) hi).2 hm)
+        have hnil : ((List.range (i + 1)).filter fun q => Verify.groupOf Kk n.toNat q = Verify.groupOf Kk n.toNat (i + 1)) = [] :=
+          List.filter_eq_nil_iff.2 fun q hq e => by
+            rw [decide_eq_true_eq] at e
+            have hq := List.mem_range.1 hq
+            exact ((fs.2.1 _).1 hm).2 q hq ((fs.2.2.1 q (by omega) (i + 1) hi).1 e)
+        rw [if_neg fun h => hs h.2, hnil]; rfl
+  -- the last scatter keeps each group's last row
+  obtain ⟨-, -, hw⟩ := kscatter_words h
+  obtain ⟨hos', hfin⟩ := scatterWords_fold (f := fun _ y => y) (fun _ _ => rfl) hw
+  have last : ∀ j N', N' ≤ n.toNat →
+      (((List.range N').filter fun k => Verify.groupOf Kk n.toNat k = j).map (out[·]?.getD 0)).foldl (fun _ y => y) z =
+      (((List.range N').filter fun k => Verify.groupOf Kk n.toNat k = j).map ((Enc.raw .i64 n x)[·]?.getD 0)).foldl fn z := by
+    intro j N'
+    induction N' with
+    | zero => intro _; rfl
+    | succ N' ih =>
+      intro hN
+      by_cases e : Verify.groupOf Kk n.toNat N' = j
+      · have hs : ([N'].filter fun k => decide (Verify.groupOf Kk n.toNat k = j)) = [N'] := by simp [e]
+        simp only [List.range_succ, List.filter_append, hs, List.map_append, List.foldl_append, List.map_cons,
+          List.map_nil, List.foldl_cons, List.foldl_nil]
+        rw [claim N' (by omega), e]
+        simp only [List.range_succ, List.filter_append, hs, List.map_append, List.foldl_append, List.map_cons,
+          List.map_nil, List.foldl_cons, List.foldl_nil]
+      · have hs : ([N'].filter fun k => decide (Verify.groupOf Kk n.toNat k = j)) = [] := by simp [e]
+        simp only [List.range_succ, List.filter_append, hs, List.append_nil]
+        exact ih (by omega)
+  have hfl : ∀ j, ((List.range (Enc.raw .i64 n g).size).filter fun k => ((Enc.raw .i64 n g)[k]?.getD 0).toNat = j) =
+      (List.range n.toNat).filter fun k => Verify.groupOf Kk n.toNat k = j := fun j => by
+    rw [hgs]; exact List.filter_congr fun k hk => by rw [hgv k (List.mem_range.1 hk)]
+  refine ⟨hgs, hos', fun j hj => ?_⟩
+  rw [hfin j hj, hfl, hout]
+  exact last j n.toNat (Nat.le_refl _)
+
 /-- **What `select keep R S` answers**, `keep` answering per group a `0`/`1` word that is `1` iff
 `κ (and = 0) (or = 1)`: the pairs of `R ∪ S` whose flags pass `κ`, and, in `Tab.canon_sorted`'s form over
 `C = R.concat S`, its rows ascending with unequal codes. A group is a run of equal rows (`Vals.row_of_codes`,
@@ -442,10 +637,8 @@ theorem select_ok {keep : USize → Enc → Enc → Except String Enc} {κ : Pro
       refine ⟨this.1, ?_⟩
       rw [this.2]
       rcases hx with rfl | rfl <;> rcases hacc with rfl | rfl <;> simp
-  obtain ⟨hgs, hts2, hwmn⟩ := kscatter_words hmn
-  obtain ⟨-, -, hwmx⟩ := kscatter_words hmx
-  have hfmn := scatterWords_fold (f := (· &&& ·)) (fun _ _ => rfl) hwmn
-  have hfmx := scatterWords_fold (f := (· ||| ·)) (fun _ _ => rfl) hwmx
+  obtain ⟨hgs, hfmn⟩ := groupFold_ok (fn := (· &&& ·)) (fun _ _ => rfl) hr hmn
+  have hfmx := (groupFold_ok (fn := (· ||| ·)) (fun _ _ => rfl) hr hmx).2
   -- the list a group's fold reads, and its members
   have hl01 : ∀ G, ∀ x ∈ ((List.range (Enc.raw .i64 C.n g).size).filter fun q =>
       ((Enc.raw .i64 C.n g)[q]?.getD 0).toNat = G).map ((Enc.raw .i64 C.n ts)[·]?.getD 0), x = 0 ∨ x = 1 := by

@@ -5,7 +5,7 @@ encoded columns as they are, as `Tab.canon` (`Rel/Run/Canon.lean`) is. Two table
 (`doc/rel-kernels.md`): each side's rows are `kscatter`ed into one output of the summed length, `R`'s at `pos`, `S`'s
 at `R.n + pos`, and `colMap .add` sums the two outputs (`Rel/Run/Cols.lean`). `∪` is `Tab.canon` of the
 concatenation. `∩` and `−` tag each row with its source (`0` for `R`, `1` for `S`), group the concatenation's rows with
-`kasc ≫ kseen`, fold the tags of each group with `kscatter` (`and`: some row of `R`; `or`: some row of `S`), and keep
+`kasc ≫ kseen`, fold the tags of each group by a segmented `kscan` (`groupFold`; `and`: some row of `R`; `or`: some row of `S`), and keep
 the groups whose flag holds, their positions found by `whereCol`. No column is decoded or re-encoded between the
 calls. -/
 
@@ -35,9 +35,18 @@ def tagged (R S : Tab k v) : Except String (Tab k v × Enc) := do
 /-- **`R ∪ S`**: `Tab.canon` of the concatenation. -/
 def union (R S : Tab k v) : Except String (Tab k v) := R.concat S >>= canon
 
+/-- **The fold of each group of a sorted table** (design §4, rows `∩ −` and `R\S`): over `n` rows in `kasc` order
+whose `m` groups `g` are runs starting at the rows `f` (`kseen`), the segment marks are the rows `f` (`kscatter` of
+ones), a segmented `kscan` folds `op` over `x` from `z` within each run, and a group's answer is its run's last row
+(`kscatter .last` through `g`, the later row overwriting). -/
+def groupFold (op : Op) (n : USize) (g f : Enc) (m : USize) (z : UInt64) (x : Enc) : Except String Enc := do
+  let seg ← kscatter .last m f (← colConst m 1) n 0
+  let (o, _) ← kscan op false .i64 .i64 n seg [← colConst n z, x]
+  kscatter .last n g o m z
+
 /-- The groups of equal rows of `R.concat S` whose source flags pass `keep`, canonical: `kasc ≫ kseen` over the pair
 columns (`m` groups `g`, first sorted rows `f`), the tags in sorted order (`kgather` through `p`), per group the `and`
-of its tags (`0` iff it holds a row of `R`) and their `or` (`1` iff it holds a row of `S`) by `kscatter`, `keep` of
+of its tags (`0` iff it holds a row of `R`) and their `or` (`1` iff it holds a row of `S`) by `groupFold`, `keep` of
 the two (one `0`/`1` word per group), `whereCol` of that, and each kept group's first input row gathered. -/
 def select (keep : USize → Enc → Enc → Except String Enc) (R S : Tab k v) : Except String (Tab k v) := do
   let (C, tag) ← R.tagged S
@@ -46,8 +55,8 @@ def select (keep : USize → Enc → Enc → Except String Enc) (R S : Tab k v) 
   let (vs, p) ← kasc C.n es
   let (m, g, f) ← kseen C.n ((es.map (·.1)).zip vs)
   let ts ← kgather C.n p C.n tag
-  let mn ← kscatter .and C.n g ts m.toUSize 1
-  let mx ← kscatter .or C.n g ts m.toUSize 0
+  let mn ← groupFold .and C.n g f m.toUSize 1 ts
+  let mx ← groupFold .or C.n g f m.toUSize 0 ts
   let (K, sel) ← whereCol m.toUSize (← keep m.toUSize mn mx)
   let ix ← kgather K (← kgather K sel m.toUSize f) C.n p
   (fun y => ⟨K, y.1, y.2⟩) <$> Vals.gather K ix x
