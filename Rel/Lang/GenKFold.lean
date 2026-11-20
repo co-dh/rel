@@ -779,6 +779,115 @@ theorem Tab.mapFold_holds {A B : Obj} {n : USize} {R : Tab A B} {X : Vals (.arr 
     exact ⟨xs, [], (Tab.idU_holds hrest xs xs).2 ⟨rfl, hi⟩, (Tab.nil_holds hP0 xs []).2 ⟨hi, rfl⟩,
       (hfold _ _ _).2 ⟨ys, by simp, hl, hz⟩⟩
 
+/-- **`Vals.cells` places any payload under one layout**: its `lo` and `hi` read only the widths `w`. -/
+theorem Vals.cells_pay {B : Obj} {T n : USize} {w} {pay : Vals B T} {Y : Vals (.arr B) n}
+    (h : Vals.cells n w pay = .ok Y) {C : Obj} (pay' : Vals C T) :
+    ∃ lo hi : Arr .i64 n, Y = ⟨T, lo, hi, pay⟩ ∧ Vals.cells n w pay' = .ok ⟨T, lo, hi, pay'⟩ := by
+  simp only [Vals.cells, bind] at h ⊢
+  rw [Except.bind_eq_ok'] at h; obtain ⟨P, hP, h⟩ := h
+  rw [Except.bind_eq_ok'] at h; obtain ⟨lo, hlo, h⟩ := h
+  rw [Except.bind_eq_ok'] at h; obtain ⟨c0, hc0, h⟩ := h
+  rw [Except.bind_eq_ok'] at h; obtain ⟨hi, hhi, h⟩ := h
+  cases h
+  exact ⟨lo, hi, rfl, by simp [hP, hlo, hc0, hhi, Except.bind, pure, Except.pure]⟩
+
+/-- **`Tab.map`'s one pass has at most `n * m` rows**: the `T` EXPANDed rows are the summed widths of `n` cells over a
+payload of `m` (`cellSpan_spec`, `expand_spec`). -/
+theorem expand_cells_le {A : Obj} {n m : USize} {lo up : Arr .i64 n} {f : Vals A m} {s e : Arr .i64 n} {w G u}
+    {T : USize} (hb : ¬2 ^ 63 ≤ n.toNat * m.toNat + n.toNat + m.toNat) (hse : cellSpan m lo up = .ok (s, e))
+    (hw : colMap .sub n e.enc s.enc = .ok w) (hex : expand n w = .ok (T, G, u)) : T.toNat ≤ n.toNat * m.toNat := by
+  have hm63 : m.toNat < 2 ^ 63 := by omega
+  have hn63 : n.toNat < 2 ^ 63 := by omega
+  obtain ⟨SN, EN, hse', hb1, -⟩ := cellSpan_spec hse hm63 f
+  obtain ⟨wN, hwN⟩ : ∃ F : Nat → Nat, ∀ i, F i = EN i - SN i := ⟨_, fun _ => rfl⟩
+  have hww : ∀ i < n.toNat, (Ext.Enc.raw .i64 n w)[i]?.getD 0 = (wN i).toUInt64 := by
+    intro i hi
+    have es := (colMap_raw hw).2.2.2 i hi
+    rw [(hse' i hi).2, (hse' i hi).1] at es; simp only [Op.eval, Except.ok.injEq] at es
+    rw [← es, hwN, toUInt64_sub (hb1 i).1]
+  have hsum : ∀ k, ((List.range k).map wN).sum ≤ k * m.toNat := fun k => by
+    induction k with
+    | zero => simp
+    | succ k ih => rw [sum_range_succ', Nat.succ_mul]; have := hb1 k; rw [hwN]; omega
+  rw [(expand_spec hex wN hww (by have := hsum n.toNat; omega) hn63).1]; exact hsum _
+
+/-- **`F(R)` on the cells `X`** (`Tab.map`): each array `xs` of `X` to every `ys` of its length with `xs[t] R ys[t]`.
+The fold branch is `mapFold_holds`; in the one-pass branch every element `x` of a cell is a payload row `v[t]`, whose
+only image is `C`'s row `t` (`comp_pos_rows`), and the new cells are the old ones mapped by that image
+(`cells_expand_row`, once at `R`'s image and once at `id` over `v`). -/
+theorem Tab.map_holds {A B : Obj} {n : USize} {R : Tab A B} {X : Vals (.arr A) n} {res : Tab (.arr A) (.arr B)}
+    (h : Tab.map R X = .ok res) (xs : List A.El) (ys : List B.El) :
+    res.Holds xs ys ↔ (∃ i, X.row i = xs) ∧ ys.length = xs.length ∧
+      ∀ t (ht : t < xs.length) (ht' : t < ys.length), R.Holds (xs[t]'ht) (ys[t]'ht') := by
+  rcases X with ⟨m, lo, hi, f⟩
+  simp only [Tab.map] at h
+  split at h
+  · simp [bind, Except.bind] at h
+  rename_i hb
+  obtain ⟨_, -, h⟩ := GenK.bind_ok h
+  obtain ⟨⟨s, e⟩, hse, h⟩ := GenK.bind_ok h
+  obtain ⟨w, hw, h⟩ := GenK.bind_ok h
+  obtain ⟨⟨T, G, u⟩, hex, h⟩ := GenK.bind_ok h
+  dsimp only at h
+  obtain ⟨sg, hsg, h⟩ := GenK.bind_ok h
+  obtain ⟨ix, hix, h⟩ := GenK.bind_ok h
+  obtain ⟨v, hv, h⟩ := GenK.bind_ok h
+  obtain ⟨P, hP, h⟩ := GenK.bind_ok h
+  obtain ⟨C, hC, h⟩ := GenK.bind_ok h
+  obtain ⟨D, hD, h⟩ := GenK.bind_ok h
+  split at h
+  · classical
+    rename_i hcd
+    simp only [Bool.and_eq_true, beq_iff_eq] at hcd
+    obtain ⟨hn, hd⟩ := hcd
+    obtain ⟨Y, hY, hc⟩ := GenK.bind_ok h
+    have hT : T.toNat ≤ 2 ^ 63 := by have := expand_cells_le (f := f) hb hse hw hex; omega
+    have rows := Tab.comp_pos_rows hP hT hC hD hn hd
+    subst hn
+    -- `R`'s only image of payload row `t` is `C`'s row `t`
+    have himg : ∀ (t : Fin C.n.toNat) y, R.Holds (v.row t) y ↔ y = C.val.row t := fun t y => by
+      rw [← (rows t).2 y, (rows t).1, Tab.comp_holds hC]
+      constructor
+      · intro hR; exact ⟨v.row t, ⟨t, Arr.pos_get hP t, rfl⟩, hR⟩
+      · rintro ⟨b, ⟨i, hi, rfl⟩, hR⟩
+        have k : ∀ i : Fin C.n.toNat, i.1.toUInt64.toNat = i.1 := fun i => by have := i.2; simp; omega
+        have e : i = t := Fin.ext (by
+          have := congrArg UInt64.toNat (toInt64_inj ((Arr.pos_get hP i).symm.trans hi)); rwa [k, k] at this)
+        rwa [← e]
+    let g : A.El → B.El := fun a => if h : ∃ y, R.Holds a y then Classical.choose h else B.dflt
+    have hg : ∀ t, g (v.row t) = C.val.row t := fun t => by
+      have hx : ∃ y, R.Holds (v.row t) y := ⟨_, (himg t _).2 rfl⟩
+      simp only [g, dif_pos hx]; exact (himg t _).1 (Classical.choose_spec hx)
+    have hrow := Vals.cells_expand_row hb hse hw hex hsg hix g (fun t => by
+      obtain ⟨j, hj, hvj⟩ := Vals.gather_row f hv t
+      exact ⟨j, hj, by rw [← hvj, hg]⟩) hY
+    obtain ⟨lo', hi', -, hY'⟩ := Vals.cells_pay hY v
+    have hrow' := Vals.cells_expand_row hb hse hw hex hsg hix id (fun t => by
+      obtain ⟨j, hj, hvj⟩ := Vals.gather_row f hv t
+      exact ⟨j, hj, hvj⟩) hY'
+    -- every element of a cell is a payload row, so `R` maps it to `g` of it and nothing else
+    have hfun : ∀ i x, x ∈ Vals.row (A := .arr A) ⟨m, lo, hi, f⟩ i → ∀ y, R.Holds x y ↔ y = g x := fun i x hx y => by
+      have e := hrow' i; rw [List.map_id] at e; rw [← e] at hx
+      simp only [Vals.row, List.mem_filterMap] at hx
+      obtain ⟨j, -, hj⟩ := hx
+      split at hj
+      · cases hj; rw [hg]; exact himg j y
+      · cases hj
+    rw [Tab.canon_holds hc]
+    constructor
+    · rintro ⟨i, rfl, rfl⟩
+      rw [hrow i]
+      refine ⟨⟨i, rfl⟩, List.length_map .., fun t ht ht' => ?_⟩
+      rw [List.getElem_map]; exact (hfun i _ (List.getElem_mem ht) _).2 rfl
+    · rintro ⟨⟨i, rfl⟩, hl, hR⟩
+      refine ⟨i, rfl, ?_⟩
+      rw [hrow i]
+      apply List.ext_getElem (by rw [List.length_map, hl])
+      intro t h1 h2
+      rw [List.getElem_map]
+      exact ((hfun i _ (List.getElem_mem (by simpa using h1)) _).1 (hR t (by simpa using h1) h2)).symm
+  · exact Tab.mapFold_holds h xs ys
+
 /-- **`concat` on the cells of cells `X`** (`Tab.flatten`): each array of arrays of `X` to their concatenation, the
 left fold of `cat` from `[]` (`foldRoundsL_holds`). -/
 theorem Tab.flatten_holds {B : Obj} {n : USize} {X : Vals (.arr (.arr B)) n} {res : Tab (.arr (.arr B)) (.arr B)}
@@ -1260,6 +1369,26 @@ theorem filter_sound {B : Obj} {d : Bool} {R : Rel B B} {T : Den B B} (hR : ∀ 
       exact exists_congr fun y => ha x y ((side_some rfl x).2 ⟨j, hj⟩) rfl
     show t.Holds xs ys ↔ _
     rw [Tab.filter_holds h, and_iff_right hi, List.filter_congr fun x hm => decide_eq_decide.2 (hPT x hm)]
+
+/-- `F(R)`, `Expand.primE`'s fit of the row (`elems`, `Tab.map`): each array in demand to every array of its length
+related pointwise by `R`'s meaning `T`, `R` run knowing its domain is the elements, where it agrees with `T`. -/
+theorem map_sound {A B : Obj} {d : Bool} {R : Rel A B} {T : Den A B} (hR : ∀ K, R.Reps K T) :
+    ∀ K, (GenK.elems A B (.arr B) d R fun P X => Tab.map P X).Reps K
+      (fun xs ys => ys.length = xs.length ∧ ∀ t (ht : t < xs.length) (ht' : t < ys.length), T (xs[t]'ht) (ys[t]'ht')) := by
+  unfold GenK.elems
+  exact ofVals_sound fun _ _ X t hK h xs ys hx _ => by
+    obtain ⟨M, hM, h⟩ := bind_ok h
+    obtain ⟨k, hk, h⟩ := bind_ok h
+    obtain ⟨P, hP, h⟩ := bind_ok h
+    have hi := (side_some hK xs).1 hx
+    have ha := (reps_iff _ _ _).1 (hR ⟨some ⟨k.n, k.key⟩, none⟩) P hP
+    have hPT : ∀ x ∈ xs, ∀ y, P.Holds x y ↔ T x y := fun x hm y => by
+      obtain ⟨j, hj, -⟩ := (Tab.ran_holds hk x x).2 ⟨rfl, xs, (Tab.mem_holds hM xs x).2 ⟨hi, hm⟩⟩
+      exact ha x y ((side_some rfl x).2 ⟨j, hj⟩) rfl
+    show t.Holds xs ys ↔ _
+    rw [Tab.map_holds h, and_iff_right hi]
+    exact and_congr_right fun _ => forall_congr' fun s => forall_congr' fun hs => forall_congr' fun hs' =>
+      hPT _ (List.getElem_mem hs) _
 
 /-- `loop(F)`, `Expand.primE`'s fit of the row (`stepAfter`, `Tab.loop`): each `(c, ys)` in demand to the states
 of `rowDens`' `loop` iteration of `F`'s meaning `TF`, `F` run on the pairs each round meets (`compT_sound`). -/
