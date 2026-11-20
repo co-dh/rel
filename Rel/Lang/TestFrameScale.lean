@@ -31,8 +31,8 @@ rel_program frameScaleT where
 
 -- The same pipeline at the unbounded `N`: the positions
 -- `0…n−1` as decimal digit strings, `⟨P, D⟩` pairing each number of `P` with each digit `d` into `10p + d`.
--- At `N` no row reads a universe, so `n = 10⁵` runs where `M` stops below 10⁴; this module builds in 35 s with the
--- three joins, 6.9 s without (measured).
+-- At `N` no row reads a universe, so `n = 10⁵` runs where `M` stops below 10⁴; this module builds in 7.5 s with the
+-- three joins, 6.4 s without (measured).
 open Rel.Programs.prelude in
 rel_program scaleN where
     obj N
