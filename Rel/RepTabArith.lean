@@ -204,12 +204,15 @@ theorem stepCols_spec {k : UInt8} {n : USize} {a b : Enc} {w : Arr .i64 n} {keep
   cases h
 
 /-- **`Tab.succ` answers `D ≫ succDen U`** (`Rel/Lang/Den.lean`): a row `(x, w)` of the answer is a row `(x, u)` of `D`
-with `u` in `dom U`, `w = u + 1` (`Ew.intStep`, the null to itself), and `w` in `dom U`. -/
-theorem Tab.succ_holds {K : Obj} {D : Tab K .long} {U : Tab .long .long} {T : Tab K .long} (h : D.succ U = .ok T)
-    (x : K.El)
-    (w : Int64) : T.Holds x w ↔ ∃ u, D.Holds x u ∧ Lang.succDen U.Holds u w := by
+with `u` in `dom U`, `w = u + 1` (`Ew.intStep`, the null to itself), and `w` in `dom U`; `U X` agrees with `TU`
+at the values `X`. -/
+theorem Tab.succ_holds {K : Obj} {D : Tab K .long} {U : {n : USize} → Vals .long n → Except String (Tab .long .long)}
+    {TU : Core.Rel Int64 Int64}
+    (hU : ∀ n (X : Vals .long n) t, U X = .ok t → ∀ a v, (∃ i, X.row i = a) → (t.Holds a v ↔ TU a v))
+    {T : Tab K .long} (h : D.succ U = .ok T) (x : K.El)
+    (w : Int64) : T.Holds x w ↔ ∃ u, D.Holds x u ∧ Lang.succDen TU u w := by
   simp only [Tab.succ, bind, Except.bind_eq_ok'] at h
-  obtain ⟨du, hdu, E, hE, N, hN, ne, hne, s, hs, hT⟩ := h
+  obtain ⟨u₁, hu₁, du₁, hdu₁, E, hE, N, hN, ne, hne, s, hs, u₂, hu₂, du₂, hdu₂, hT⟩ := h
   have hrow : ∀ i : Fin E.n.toNat, Vals.row (A := .long) s i = Ew.intStep Ew.add Alg.nul (E.val.row i) 1 := by
     intro i
     show s.get i = Ew.intStep Ew.add Alg.nul (Arr.get E.val i) 1
@@ -230,15 +233,19 @@ theorem Tab.succ_holds {K : Obj} {D : Tab K .long} {U : Tab .long .long} {T : Ta
       show (a + 1).toUInt64.toInt64 = _
       simp [ha]
   rw [Tab.comp_holds hT]
+  have inD : ∀ {u}, D.Holds x u → ∃ j, D.val.row j = u := fun ⟨j, _, hj⟩ => ⟨j, hj⟩
   constructor
   · rintro ⟨b, ⟨i, hx, hb⟩, hd⟩
-    obtain ⟨rfl, y, hy⟩ := (Tab.dom_holds hdu _ _).1 hd
+    obtain ⟨rfl, y, hy⟩ := (Tab.dom_holds hdu₂ _ _).1 hd
     obtain ⟨u, hDu, hd'⟩ := (Tab.comp_holds hE x (E.val.row i)).1 ⟨i, hx, rfl⟩
-    obtain ⟨rfl, y', hy'⟩ := (Tab.dom_holds hdu _ _).1 hd'
-    exact ⟨_, hDu, ⟨y', hy'⟩, (hrow i ▸ hb).symm, y, hy⟩
+    obtain ⟨rfl, y', hy'⟩ := (Tab.dom_holds hdu₁ _ _).1 hd'
+    exact ⟨_, hDu, ⟨y', (hU _ _ _ hu₁ _ _ (inD hDu)).1 hy'⟩, (hrow i ▸ hb).symm, y,
+      (hU _ _ _ hu₂ _ _ ⟨i, hb⟩).1 hy⟩
   · rintro ⟨u, hDu, ⟨y', hy'⟩, rfl, y, hy⟩
-    obtain ⟨i, hx, hu⟩ := (Tab.comp_holds hE x u).2 ⟨u, hDu, (Tab.dom_holds hdu u u).2 ⟨rfl, y', hy'⟩⟩
-    exact ⟨_, ⟨i, hx, by show Vals.row (A := .long) s i = _; rw [hrow, hu]⟩, (Tab.dom_holds hdu _ _).2 ⟨rfl, y, hy⟩⟩
+    obtain ⟨i, hx, hu⟩ := (Tab.comp_holds hE x u).2
+      ⟨u, hDu, (Tab.dom_holds hdu₁ u u).2 ⟨rfl, y', (hU _ _ _ hu₁ _ _ (inD hDu)).2 hy'⟩⟩
+    have hsi : Vals.row (A := .long) s i = Ew.intStep Ew.add Alg.nul u 1 := by rw [hrow, hu]
+    exact ⟨_, ⟨i, hx, hsi⟩, (Tab.dom_holds hdu₂ _ _).2 ⟨rfl, y, (hU _ _ _ hu₂ _ _ ⟨i, hsi⟩).2 hy⟩⟩
 
 /-- `arithDen k TU` pointwise: both operands in `dom TU`, then `stepDen k ≫ TU`. -/
 theorem Lang.arithDen_iff (k : UInt8) (TU : Core.Rel Int64 Int64) (p : Int64 × Int64) (w : Int64) :
@@ -251,43 +258,47 @@ theorem Lang.arithDen_iff (k : UInt8) (TU : Core.Rel Int64 Int64) (p : Int64 × 
     exact ⟨p, ⟨rfl, c, ⟨_, rfl, h1⟩, _, rfl, h1⟩, p, ⟨rfl, c', ⟨_, rfl, h2⟩, _, rfl, h2⟩, v, hs, hv⟩
 
 /-- **`Tab.arith` answers `D ≫ arithDen k U`** (`Rel/Lang/Den.lean`): a row `(x, w)` of the answer is a row `(x, p)`
-of `D` with `p`'s operands in `dom U`, `v = stepDen k p` (no null, no wrap), and `v U w`. -/
-theorem Tab.arith_holds {K : Obj} {k : UInt8} {D : Tab K (.prod .long .long)} {U : Tab .long .long} {T : Tab K .long}
-    (h : D.arith k U = .ok T) (x : K.El) (w : Int64) :
-    T.Holds x w ↔ ∃ p, D.Holds x p ∧ Lang.arithDen k U.Holds p w := by
+of `D` with `p`'s operands in `dom U`, `v = stepDen k p` (no null, no wrap), and `v U w`; `U X` agrees with `TU` at
+the values `X`. -/
+theorem Tab.arith_holds {K : Obj} {k : UInt8} {D : Tab K (.prod .long .long)}
+    {U : {n : USize} → Vals .long n → Except String (Tab .long .long)} {TU : Core.Rel Int64 Int64}
+    (hU : ∀ n (X : Vals .long n) t, U X = .ok t → ∀ a v, (∃ i, X.row i = a) → (t.Holds a v ↔ TU a v))
+    {T : Tab K .long} (h : D.arith k U = .ok T) (x : K.El) (w : Int64) :
+    T.Holds x w ↔ ∃ p, D.Holds x p ∧ Lang.arithDen k TU p w := by
   simp only [Tab.arith, bind, Except.bind_eq_ok'] at h
-  obtain ⟨du, hdu, E₁, hE₁, E, hE, wb, hwb, h⟩ := h
+  obtain ⟨u₁, hu₁, du₁, hdu₁, E₁, hE₁, u₂, hu₂, du₂, hdu₂, E, hE, wb, hwb, h⟩ := h
   obtain ⟨w', b⟩ := wb
   simp only [bind, Except.bind_eq_ok'] at h
-  obtain ⟨Kp, hKp, hT⟩ := h
-  have hd := Tab.dom_holds hdu
+  obtain ⟨Kp, hKp, u₃, hu₃, hT⟩ := h
   have key : ∀ {A B : Obj} (T : Tab A B) a, (∃ i, T.key.row i = a) ↔ ∃ c, T.Holds a c :=
     fun _ _ => ⟨fun ⟨i, h⟩ => ⟨_, i, h, rfl⟩, fun ⟨_, i, h, _⟩ => ⟨i, h⟩⟩
-  have k1 : ∀ x p, (∃ i, E₁.key.row i = (x, p)) ↔ D.Holds x p ∧ ∃ y, U.Holds p.1 y := by
+  have k1 : ∀ x p, (∃ i, E₁.key.row i = (x, p)) ↔ D.Holds x p ∧ ∃ y, TU p.1 y := by
     intro x p
     rw [key]
     simp only [Tab.comp_holds hE₁]
     constructor
     · rintro ⟨c, b, ⟨i, hi, hb⟩, hdb⟩
-      obtain ⟨rfl, y, hy⟩ := (hd b c).1 hdb
+      obtain ⟨rfl, y, hy⟩ := (Tab.dom_holds hdu₁ b c).1 hdb
       have hi' : D.key.row i = x ∧ D.val.row i = p := Prod.ext_iff.1 hi
       have e : b = p.1 := hb.symm.trans (congrArg Prod.fst hi'.2)
-      exact ⟨⟨i, hi'.1, hi'.2⟩, y, e ▸ hy⟩
+      exact ⟨⟨i, hi'.1, hi'.2⟩, y, e ▸ (hU _ _ _ hu₁ _ _ ⟨i, hb⟩).1 hy⟩
     · rintro ⟨⟨i, rfl, rfl⟩, y, hy⟩
-      exact ⟨_, _, ⟨i, rfl, rfl⟩, (hd _ _).2 ⟨rfl, y, hy⟩⟩
-  have k2 : ∀ x p, (∃ i, E.key.row i = (x, p)) ↔ D.Holds x p ∧ (∃ y, U.Holds p.1 y) ∧ ∃ y, U.Holds p.2 y := by
+      exact ⟨_, _, ⟨i, rfl, rfl⟩, (Tab.dom_holds hdu₁ _ _).2 ⟨rfl, y, (hU _ _ _ hu₁ _ _ ⟨i, rfl⟩).2 hy⟩⟩
+  have k2 : ∀ x p, (∃ i, E.key.row i = (x, p)) ↔ D.Holds x p ∧ (∃ y, TU p.1 y) ∧ ∃ y, TU p.2 y := by
     intro x p
     rw [key]
     simp only [Tab.comp_holds hE]
     constructor
     · rintro ⟨c, b, ⟨i, hi, hb⟩, hdb⟩
-      obtain ⟨rfl, y, hy⟩ := (hd b c).1 hdb
+      obtain ⟨rfl, y, hy⟩ := (Tab.dom_holds hdu₂ b c).1 hdb
       have h1 := (k1 x p).1 ⟨i, hi⟩
       have e : b = p.2 := hb.symm.trans (congrArg (fun q : K.El × (Int64 × Int64) => q.2.2) hi)
-      exact ⟨h1.1, h1.2, y, e ▸ hy⟩
+      exact ⟨h1.1, h1.2, y, e ▸ (hU _ _ _ hu₂ _ _ ⟨i, hb⟩).1 hy⟩
     · rintro ⟨hD, h1, y, hy⟩
       obtain ⟨i, hi⟩ := (k1 x p).2 ⟨hD, h1⟩
-      exact ⟨_, _, ⟨i, hi, rfl⟩, (hd _ _).2 ⟨rfl, y, by show U.Holds (E₁.key.row i).2.2 y; rw [hi]; exact hy⟩⟩
+      exact ⟨_, _, ⟨i, hi, rfl⟩, (Tab.dom_holds hdu₂ _ _).2 ⟨rfl, y, (hU _ _ _ hu₂ _ _ ⟨i, rfl⟩).2
+        (by show TU (E₁.key.row i).2.2 y; rw [hi]; exact hy)⟩⟩
+  have inP : ∀ {v}, Kp.Holds x v → ∃ j, Kp.val.row j = v := fun ⟨j, _, hj⟩ => ⟨j, hj⟩
   have st : ∀ (i : Fin E.n.toNat) v, ((Enc.raw .i64 E.n b)[i.1]?.getD 0 ≠ 0 ∧ Vals.row (A := .long) w' i = v) ↔
       Lang.stepDen k (E.key.row i).2 v := by
     intro i v
@@ -297,15 +308,17 @@ theorem Tab.arith_holds {K : Obj} {k : UInt8} {D : Tab K (.prod .long .long)} {U
   rw [Tab.comp_holds hT]
   have kp := Tab.keep_holds hKp (fun i hi => (stepCols_spec hwb i hi).1)
   constructor
-  · rintro ⟨v, hk, hU⟩
+  · rintro ⟨v, hk, hvw⟩
     obtain ⟨i, h0, hx, hv⟩ := (kp x v).1 hk
     obtain ⟨hD, h1, h2⟩ := (k2 x (E.key.row i).2).1 ⟨i, Prod.ext hx rfl⟩
-    exact ⟨_, hD, (Lang.arithDen_iff k _ _ w).2 ⟨h1, h2, v, (st i v).1 ⟨h0, hv⟩, hU⟩⟩
+    exact ⟨_, hD, (Lang.arithDen_iff k _ _ w).2
+      ⟨h1, h2, v, (st i v).1 ⟨h0, hv⟩, (hU _ _ _ hu₃ _ _ (inP hk)).1 hvw⟩⟩
   · rintro ⟨p, hD, ha⟩
-    obtain ⟨h1, h2, v, hs, hU⟩ := (Lang.arithDen_iff k _ _ w).1 ha
+    obtain ⟨h1, h2, v, hs, hvw⟩ := (Lang.arithDen_iff k _ _ w).1 ha
     obtain ⟨i, hi⟩ := (k2 x p).2 ⟨hD, h1, h2⟩
     have e := (st i v).2 (by rw [hi]; exact hs)
-    exact ⟨v, (kp x v).2 ⟨i, e.1, congrArg Prod.fst hi, e.2⟩, hU⟩
+    have hk := (kp x v).2 ⟨i, e.1, congrArg Prod.fst hi, e.2⟩
+    exact ⟨v, hk, (hU _ _ _ hu₃ _ _ (inP hk)).2 hvw⟩
 
 section Checks
 
@@ -332,7 +345,7 @@ private def arithOk (k : UInt8) (d : List (Int64 × Int64 × Int64)) (u : List I
   let inU (x : Int64) := u.contains x
   let spec := d.filterMap fun (x, a, b) => let w := Ew.intStep k Alg.nul a b
     if inU a && inU b && w != Alg.nul && exactB k a b w && inU w then some (x, w) else none
-  match (dTab d).arith k (uTab u) with
+  match (dTab d).arith k (fun _ => pure (uTab u)) with
   | .ok T => sameSet T.toList spec
   | .error _ => false
 
@@ -341,7 +354,7 @@ private def succOk (d : List (Int64 × Int64)) (u : List Int64) : Bool :=
   let inU (x : Int64) := u.contains x
   let spec := d.filterMap fun (x, v) => let w := Ew.intStep Ew.add Alg.nul v 1
     if inU v && inU w then some (x, w) else none
-  match (⟨_, colOf (·.1) d, colOf (·.2) d⟩ : Tab .long .long).succ (uTab u) with
+  match (⟨_, colOf (·.1) d, colOf (·.2) d⟩ : Tab .long .long).succ (fun _ => pure (uTab u)) with
   | .ok T => sameSet T.toList spec
   | .error _ => false
 
@@ -361,7 +374,7 @@ private def ds : List (Int64 × Int64 × Int64) :=
 #guard [Ew.add, Ew.sub, Ew.mul, Ew.idiv, Ew.imod, Ew.greater, Ew.lesser].all fun k =>
   arithOk k ds us && arithOk k [] us && arithOk k ds [] && arithOk k ds (us.filter (· != Int64.minValue))
 -- a code outside `Op.table` is the error naming it
-#guard (dTab ds).arith 3 (uTab us) matches .error _
+#guard (dTab ds).arith 3 (fun _ => pure (uTab us)) matches .error _
 -- `succ`: the top of `U` goes nowhere, `maxValue` to the null only where `U` holds it, the null to itself
 #guard succOk ((List.range us.length).zip us |>.map fun (i, u) => (Int64.ofNat i, u)) us
 #guard succOk [(1, 3), (1, 3), (2, Int64.maxValue), (3, Int64.minValue), (4, 9), (5, 100)] [3, 4, 9, Int64.maxValue]

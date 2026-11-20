@@ -313,6 +313,9 @@ inductive ObjDef
   | alias (o : OExp)
   /-- `schema S = {k : K, v : N}`: the `Schema` of these columns, the object `Schema.obj` of it (`Expand.objInfo`). -/
   | schema (cs : List (String × OExp))
+  /-- `obj N` with no right side: an unbounded number object, every `Int64` its element and `𝟙` its universe, so
+      nothing of it is materialised and `<`, `succ`, the value verbs on it are bounded by their context (§0). -/
+  | num
   deriving Repr, Inhabited
 
 /-- A `calc` step's reason (`doc/rel-mss-proof-design.md` §3): `:= n(R, …)` cites the theorem `n` at the

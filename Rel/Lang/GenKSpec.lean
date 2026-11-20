@@ -40,6 +40,13 @@ theorem side_some {o : Option ((n : USize) × Vals C n)} {n : USize} {X : Vals C
     (x : C.El) : o.elim (𝟙 _) (fun c => (graph c.2.row)° ≫ graph c.2.row) x x ↔ ∃ i, X.row i = x := by
   subst h; exact ⟨fun ⟨i, e, _⟩ => ⟨i, e.symm⟩, fun ⟨i, e⟩ => ⟨i, e.symm, e.symm⟩⟩
 
+/-- A value both sides of `K` admit is admitted by whichever side is known first (`GenK.dom`, `GenK.ran`). -/
+theorem side_or {K : Known A A} {x : A.El} (h₁ : K.den.1 x x) (h₂ : K.den.2 x x) :
+    (K.dom <|> K.ran).elim (𝟙 _) (fun c => (graph c.2.row)° ≫ graph c.2.row) x x := by
+  obtain ⟨_ | _, _⟩ := K
+  · exact h₂
+  · exact h₁
+
 /-- `r` represents `X` in `K` iff every table `r` computes there agrees with `X` on `K`'s sides. -/
 theorem reps_iff (K : Known A B) (r : Rel A B) (X : Core.Rel A.El B.El) :
     r.Reps K X ↔ ∀ t, r.runE K = .ok t → Agrees K (rep t) X := by
@@ -138,19 +145,17 @@ theorem join_sound {d e : Bool} {R S : Rel A B} {X Y : Core.Rel A.El B.El} (hR :
 
 theorem dom_sound {d : Bool} {R : Rel A B} {X : Core.Rel A.El B.El} (hR : ∀ K, R.Reps K X) :
     ∀ K, (GenK.dom A B d R).Reps K (𝟙 _ ∩ X ≫ X°) :=
-  lift1_sound hR fun _ r _ ht hr x x' hx _ => by
-    have e : ∀ y, (rep r x y ↔ X x y) := fun y => hr x y hx rfl
+  lift1_sound hR fun _ r _ ht hr x x' hx hx' => by
     refine (Tab.dom_holds ht x x').trans ⟨?_, ?_⟩
-    · rintro ⟨rfl, y, h⟩; exact ⟨rfl, y, (e y).1 h, (e y).1 h⟩
-    · rintro ⟨rfl, y, h, -⟩; exact ⟨rfl, y, (e y).2 h⟩
+    · rintro ⟨rfl, y, h⟩; have e := hr _ y (side_or hx hx') rfl; exact ⟨rfl, y, e.1 h, e.1 h⟩
+    · rintro ⟨rfl, y, h, -⟩; exact ⟨rfl, y, (hr _ y (side_or hx hx') rfl).2 h⟩
 
 theorem ran_sound {R : Rel A B} {X : Core.Rel A.El B.El} (hR : ∀ K, R.Reps K X) :
     ∀ K, (GenK.ran A B R).Reps K (𝟙 _ ∩ X° ≫ X°°) :=
-  lift1_sound hR fun _ r _ ht hr y y' hy _ => by
-    have e : ∀ x, (rep r x y ↔ X x y) := fun x => hr x y rfl hy
+  lift1_sound hR fun _ r _ ht hr y y' hy hy' => by
     refine (Tab.ran_holds ht y y').trans (Iff.trans ⟨?_, ?_⟩ (ran_iff X y y').symm)
-    · rintro ⟨rfl, x, h⟩; exact ⟨rfl, x, (e x).1 h, (e x).1 h⟩
-    · rintro ⟨rfl, x, h, -⟩; exact ⟨rfl, x, (e x).2 h⟩
+    · rintro ⟨rfl, x, h⟩; have e := hr x _ rfl (side_or hy hy'); exact ⟨rfl, x, e.1 h, e.1 h⟩
+    · rintro ⟨rfl, x, h, -⟩; exact ⟨rfl, x, (hr x _ rfl (side_or hy hy')).2 h⟩
 
 theorem idU_comp_holds {n : USize} {X : Vals A n} {d : Tab A A} {r l : Tab A B} (hd : Tab.idU X = .ok d)
     (hl : d.comp r = .ok l) (x : A.El) (y : B.El) : l.Holds x y ↔ (∃ i, X.row i = x) ∧ r.Holds x y := by
@@ -266,22 +271,27 @@ theorem succ_sound {U : Rel .long .long} {TU : Core.Rel Int64 Int64} (hU : ∀ K
     ∀ K, (GenK.succ U).Reps K (succDen TU) := by
   unfold GenK.succ after
   exact ofVals_sound fun _ _ _ _ hK h x w hx _ => by
-    obtain ⟨D, hD, h⟩ := bind_ok h
-    obtain ⟨u, hu, ht⟩ := bind_ok h
-    rw [agrees_empty ((reps_iff _ _ _).1 (hU {}) u hu)]
-    refine (Tab.succ_holds ht x w).trans
+    obtain ⟨D, hD, ht⟩ := bind_ok h
+    have hu : ∀ n (X : Vals .long n) t, U.runE ⟨some ⟨n, X⟩, none⟩ = .ok t → ∀ a v, (∃ i, X.row i = a) →
+        (t.Holds a v ↔ TU a v) := fun n X t h a v ha =>
+      (reps_iff _ _ _).1 (hU ⟨some ⟨n, X⟩, none⟩) t h a v ((side_some rfl a).2 ha) rfl
+    refine (Tab.succ_holds hu ht x w).trans
       ⟨fun ⟨v, hv, h⟩ => ?_, fun h => ⟨x, (Tab.idU_holds hD x x).2 ⟨rfl, (side_some hK x).1 hx⟩, h⟩⟩
     obtain ⟨rfl, -⟩ := (Tab.idU_holds hD x v).1 hv; exact h
 
-theorem cmp_side {u d : Tab .long .long} (hd : u.dom = .ok d) {o : Option ((n : USize) × Vals .long n)}
-    {k : (n : USize) × Vals .long n}
-    (h : (o.elim (pure ⟨d.n, d.key⟩) (fun c => do let t ← (← Tab.idU c.2).comp d; pure ⟨t.n, t.key⟩) :
-      Except String ((n : USize) × Vals .long n)) = .ok k)
+theorem cmp_side {op w : String} {U : Rel .long .long} {TU : Core.Rel Int64 Int64} (hU : ∀ K, U.Reps K TU)
+    {o : Option ((n : USize) × Vals .long n)} {k : (n : USize) × Vals .long n} (h : GenK.cmpSide op w U o = .ok k)
     {a : Int64} (ha : o.elim (𝟙 _) (fun c => (graph c.2.row)° ≫ graph c.2.row) a a) :
-    (∃ i, k.2.row i = a) ↔ ∃ v, rep u a v := by
-  have key : (∃ i, d.key.row i = a) ↔ ∃ v, rep u a v := by
+    (∃ i, k.2.row i = a) ↔ ∃ v, TU a v := by
+  obtain ⟨u, hu', h⟩ := bind_ok h
+  have hu : U.runE ⟨o, none⟩ = .ok u := by
+    cases e : U.runE ⟨o, none⟩ <;> rw [e] at hu' <;> cases hu' <;> rfl
+  obtain ⟨d, hd, h⟩ := bind_ok h
+  have agr := (reps_iff _ _ _).1 (hU ⟨o, none⟩) u hu a
+  have key : (∃ i, d.key.row i = a) ↔ ∃ v, TU a v := by
     rw [keyRowRep]
-    exact ⟨fun ⟨_, h⟩ => ((Tab.dom_holds hd _ _).1 h).2, fun ⟨v, h⟩ => ⟨a, (Tab.dom_holds hd a a).2 ⟨rfl, v, h⟩⟩⟩
+    exact ⟨fun ⟨_, h⟩ => let ⟨_, v, hv⟩ := (Tab.dom_holds hd _ _).1 h; ⟨v, (agr v ha rfl).1 hv⟩,
+      fun ⟨v, h⟩ => ⟨a, (Tab.dom_holds hd a a).2 ⟨rfl, v, (agr v ha rfl).2 h⟩⟩⟩
   cases o with
   | none => obtain rfl := Except.ok.inj h; exact key
   | some c =>
@@ -294,19 +304,17 @@ theorem cmp_side {u d : Tab .long .long} (hd : u.dom = .ok d) {o : Option ((n : 
 
 /-- `cmp f U` is `f`'s relation on `U`'s domain, where `f`'s law is "a key of the first side, a key of the second,
     related by `P`": `leq` (`Tab.leq_holds`) and `lt` (`Tab.lt_holds`), whose right-hand sides are `leqDen`, `ltDen`. -/
-theorem cmp_sound {f : {n m : USize} → Vals .long n → Vals .long m → Except String (Tab .long .long)}
+theorem cmp_sound {op : String} {f : {n m : USize} → Vals .long n → Vals .long m → Except String (Tab .long .long)}
     {P : Int64 → Int64 → Prop}
     (hf : ∀ {n m : USize} (k : Vals .long n) (l : Vals .long m) t, f k l = .ok t →
       ∀ a c, t.Holds a c ↔ (∃ i, k.row i = a) ∧ (∃ j, l.row j = c) ∧ P a c)
     {U : Rel .long .long} {TU : Core.Rel Int64 Int64} (hU : ∀ K, U.Reps K TU) :
-    ∀ K, (GenK.cmp f U).Reps K (fun a b => (∃ v, TU a v) ∧ (∃ v, TU b v) ∧ P a b) := fun K => by
+    ∀ K, (GenK.cmp op f U).Reps K (fun a b => (∃ v, TU a v) ∧ (∃ v, TU b v) ∧ P a b) := fun K => by
   rw [reps_iff]; intro t h
-  obtain ⟨u, hu, h⟩ := bind_ok h
-  obtain ⟨d, hd, h⟩ := bind_ok h
   obtain ⟨k, hk, h⟩ := bind_ok h
   obtain ⟨l, hl, ht⟩ := bind_ok h
-  rw [agrees_empty ((reps_iff _ _ _).1 (hU {}) u hu)]
-  exact fun a c ha hc => (hf _ _ t ht a c).trans (and_congr (cmp_side hd hk ha) (and_congr (cmp_side hd hl hc) Iff.rfl))
+  exact fun a c ha hc =>
+    (hf _ _ t ht a c).trans (and_congr (cmp_side hU hk ha) (and_congr (cmp_side hU hl hc) Iff.rfl))
 
 example {U : Rel .long .long} {TU : Core.Rel Int64 Int64} (hU : ∀ K, U.Reps K TU) :
     ∀ K, (GenK.leq U).Reps K (leqDen TU) := cmp_sound (fun _ _ _ h => Tab.leq_holds h) hU

@@ -456,10 +456,18 @@ theorem memo_sound {A B : Obj} {R : Rel A B} {X : Core.Rel A.El B.El} (hR : ∀ 
     ∀ K, (GenK.memo A B R).Reps K X := fun K => by
   cases R with
   | tab t => exact hR K
-  | lazy f => exact (reps_iff _ _ _).2 fun t h x y _ _ => (reps_iff _ _ _).1 (hR {}) t h x y rfl rfl
+  | lazy f =>
+    simp only [GenK.memo]; split
+    next t h =>
+      refine (reps_iff _ _ _).2 fun t' h' x y _ _ => ?_
+      cases h'; exact (reps_iff _ _ _).1 (hR {}) t h x y rfl rfl
+    next => exact hR K
   | bits => exact (reps_iff _ _ _).2 fun t h x y _ _ => (reps_iff _ _ _).1 (hR {}) t h x y rfl rfl
 
-theorem memo_wf {A B : Obj} (R : Rel A B) : (GenK.memo A B R).Wf := by cases R <;> trivial
+theorem memo_wf {A B : Obj} {R : Rel A B} (h : R.Wf) : (GenK.memo A B R).Wf := by
+  cases R with
+  | lazy f => simp only [GenK.memo]; split <;> first | trivial | exact h
+  | _ => trivial
 
 end GenK
 
@@ -864,7 +872,7 @@ theorem Prim.proved_ok {r : Prim} {A B : Obj} {os : List (Obj × Obj)} (h : (!r.
 
 theorem Tm.code_wf {η : Code} {A B : Obj} {t : Tm A B} (h : (t.gen η).Wf) : (t.code η).Wf := by
   rw [Tm.code]; split
-  · exact GenK.memo_wf _
+  · exact GenK.memo_wf h
   · exact h
 
 /-- **Every bit matrix `Tm.gen` passes on is `Rel.Wf`** off the gap: only `comp` builds one (`GenK.comp_wf`), a

@@ -54,22 +54,24 @@ variable {K : Obj}
 
 /-- **`D ≫ arithDen k U`**: `D`'s rows whose first operand is in `dom U` (`Tab.comp` of the rows keyed by
 themselves with `dom U`), of those the ones whose second is, `stepCols` on their operands, the kept rows with their
-answers (`Tab.keep`), `≫ U` (`Tab.comp`). -/
-def arith (k : UInt8) (D : Tab K (.prod .long .long)) (U : Tab .long .long) : Except String (Tab K .long) := do
-  let du ← U.dom
+answers (`Tab.keep`), `≫ U` (`Tab.comp`). `U X` is the universe at the values `X`: an infinite one (`𝟙`) is run
+only where its values are known, so each test asks `U` at the column it tests. -/
+def arith (k : UInt8) (D : Tab K (.prod .long .long))
+    (U : {n : USize} → Vals .long n → Except String (Tab .long .long)) : Except String (Tab K .long) := do
   let E₁ : Tab (.prod K (.prod .long .long)) .long ←
-    Tab.comp ⟨D.n, ((D.key, D.val) : Vals K D.n × Vals (.prod .long .long) D.n), D.val.1⟩ du
-  let E : Tab (.prod K (.prod .long .long)) .long ← Tab.comp ⟨E₁.n, E₁.key, E₁.key.2.2⟩ du
+    Tab.comp ⟨D.n, ((D.key, D.val) : Vals K D.n × Vals (.prod .long .long) D.n), D.val.1⟩ (← (← U D.val.1).dom)
+  let E : Tab (.prod K (.prod .long .long)) .long ← Tab.comp ⟨E₁.n, E₁.key, E₁.key.2.2⟩ (← (← U E₁.key.2.2).dom)
   let (w, b) ← stepCols k E.n E.key.2.1.enc E.key.2.2.enc
-  Tab.comp (← Tab.keep ⟨E.n, E.key.1, w⟩ b) U
+  let P ← Tab.keep ⟨E.n, E.key.1, w⟩ b
+  Tab.comp P (← U P.val)
 
 /-- **`D ≫ succDen U`**: `D ≫ dom U`, each value `u` to `u + [u ≠ null]` (`Ew.intStep`'s wrapping `u + 1`, the
-null to itself) by two `colMap`s, `≫ dom U`. -/
-def succ (D : Tab K .long) (U : Tab .long .long) : Except String (Tab K .long) := do
-  let du ← U.dom
-  let E ← D.comp du
+null to itself) by two `colMap`s, `≫ dom U`; `U X` the universe at the values `X`, as in `arith`. -/
+def succ (D : Tab K .long) (U : {n : USize} → Vals .long n → Except String (Tab .long .long)) :
+    Except String (Tab K .long) := do
+  let E ← D.comp (← (← U D.val).dom)
   let s ← colArr .add E.n E.val.enc (← colMap .ne E.n E.val.enc (← colConst E.n nulWord))
-  Tab.comp ⟨E.n, E.key, s⟩ du
+  Tab.comp ⟨E.n, E.key, s⟩ (← (← U s).dom)
 
 end Tab
 
