@@ -119,6 +119,7 @@ rel_program thinDiag where
     obj N = 0…5
     x : N ⟶ [N] ≜ {(1,3 1 2),(2,[]),(3,1 2),(4,1 2)}
     qn : N×N ⟶ N×N ≜ {((1,2),(2,1)),((2,1),(2,1))}
+    pp : N ⟶ [N]×[N] ≜ {(1,([1],[2])),(2,([2],[1])),(3,([],[1]))}
 
 #guard thinDiag.ok
 #guard (do
@@ -126,6 +127,24 @@ rel_program thinDiag where
     let Q ← get thinDiag.expanded "qn" (.prod .long .long) (.prod .long .long)
     let l := ((Tab.thin (fun _ => .ok Q) X.val).toOption.map Tab.toList).getD []
     let e : List ((Obj.arr .long).El × (Obj.arr .long).El) := [([3, 1, 2], [2, 3]), ([], []), ([1, 2], [2])]
+    pure (e.all (l.contains ·) && l.all (e.contains ·))) == some true
+
+/-! `thinL` and `merge` read `qn` on the diagonal too (`diag`): `a ≤ b` is `(a,b) qn (a,b)`, so only `2 ≤ 1`.
+    `thinL`, right fold of `bump` from `[]`, by hand: `3 1 2`: `2` gives `[2]`; `1` meets `2`, `2 ≤ 1`, keeps `[2]`; `3`
+    meets `2`, neither, gives `3 2`. `1 2` gives `[2]`, `[]` gives `[]`. By domain `1 ≤ 2` too (`(1,2) ↦ (2,1)`), so
+    `3 1` and `[1]`. `merge` on `pp`: `[1] [2]`, not `1 ≤ 2`, takes `2` first: `2 1`; `[2] [1]`, `2 ≤ 1`: `2 1`;
+    `[] [1]`: `[1]`. By domain `[1] [2]` would give `1 2`. -/
+#guard (do
+    let X ← get thinDiag.expanded "x" .long (.arr .long)
+    let Q ← get thinDiag.expanded "qn" (.prod .long .long) (.prod .long .long)
+    let l := ((Tab.thinL (fun _ => .ok Q) X.val).toOption.map Tab.toList).getD []
+    let e : List ((Obj.arr .long).El × (Obj.arr .long).El) := [([3, 1, 2], [3, 2]), ([], []), ([1, 2], [2])]
+    pure (e.all (l.contains ·) && l.all (e.contains ·))) == some true
+#guard (do
+    let P ← get thinDiag.expanded "pp" .long (.prod (.arr .long) (.arr .long))
+    let Q ← get thinDiag.expanded "qn" (.prod .long .long) (.prod .long .long)
+    let l := ((Tab.merge (fun _ => .ok Q) P).toOption.map Tab.toList).getD []
+    let e : List ((Obj.long).El × (Obj.arr .long).El) := [(1, [2, 1]), (2, [2, 1]), (3, [1])]
     pure (e.all (l.contains ·) && l.all (e.contains ·))) == some true
 
 

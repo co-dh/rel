@@ -15,7 +15,7 @@ namespace GenK
 theorem est_sound {B : Obj} {Q : Rel (.prod B B) (.prod B B)} {TQ : Den (.prod B B) (.prod B B)}
     (hQ : ∀ K, Q.Reps K TQ) : ∀ K, (GenK.est B Q).Reps K (estDen TQ) :=
   ofVals_row_sound fun _ _ _ h => Tab.est_holds
-    (fun D _ hT p _ hp => (reps_iff ⟨some ⟨D.n, D.val⟩, none⟩ _ _).1 (hQ _) _ hT p _ ((side_some rfl p).2 hp) rfl) h
+    (fun D _ hT p hp => (reps_iff ⟨some ⟨D.n, D.val⟩, none⟩ _ _).1 (hQ _) _ hT p _ ((side_some rfl p).2 hp) rfl) h
 
 /-- `thin(Q)` (`GenK.thin`): `Q` as in `est_sound`, and `Λ`'s order law at `[B] ⟶ B` (`lam_sound`'s `hB`). -/
 theorem thin_sound {B : Obj} {Q : Rel (.prod B B) (.prod B B)} {TQ : Den (.prod B B) (.prod B B)}

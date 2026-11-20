@@ -1086,16 +1086,15 @@ theorem mergeRun_len {α : Type} (le : α → α → Bool) (p : List α × List 
     | some v' => rw [e, hs, Option.getD_some]; have := (mergeStep_len hs).1; omega
 
 open Classical in
-/-- **`P ≫ merge(Q)`** (`Tab.merge`), `Q` given the pairs `D` it is asked about acting as `TQ` there: each `(x, y)` of
-`P` to `List.merge x y` under `a ≤ b ⟺ ∃ c, (a, b) TQ c`. The fold keeps one state per key, the `mergeRun` of its
-clock read so far (the invariant of `foldRoundsL_holds`), so a round's pairs of heads are of one state. -/
+/-- **`P ≫ merge(Q)`** (`Tab.merge`), `Q` given the pairs `D` it is asked about acting as `TQ` on their diagonal: each
+`(x, y)` of `P` to `List.merge x y` under `a ≤ b ⟺ (a, b) TQ (a, b)`. The fold keeps one state per key, the `mergeRun`
+of its clock read so far (the invariant of `foldRoundsL_holds`), so a round's pairs of heads are of one state. -/
 theorem Tab.merge_holds {K B : Obj} {q : Tab (.prod B B) (.prod B B) → Except String (Tab (.prod B B) (.prod B B))}
-    {TQ : Den (.prod B B) (.prod B B)}
-    (hq : ∀ D T, q D = .ok T → ∀ p p', (∃ i, D.val.row i = p) → (T.Holds p p' ↔ TQ p p'))
+    {TQ : Den (.prod B B) (.prod B B)} (hq : Tab.QDiag q TQ)
     {P : Tab K (.prod (.arr B) (.arr B))} {res : Tab K (.arr B)} (h : Tab.merge q P = .ok res) (k : K.El)
     (zs : List B.El) : res.Holds k zs ↔
-      ∃ p : (Obj.prod (.arr B) (.arr B)).El, P.Holds k p ∧ zs = List.merge p.1 p.2 fun a b => decide (∃ c, TQ (a, b) c) := by
-  let le : B.El → B.El → Bool := fun a b => decide (∃ c, TQ (a, b) c)
+      ∃ p : (Obj.prod (.arr B) (.arr B)).El, P.Holds k p ∧ zs = List.merge p.1 p.2 fun a b => decide (TQ (a, b) (a, b)) := by
+  let le : B.El → B.El → Bool := fun a b => decide (TQ (a, b) (a, b))
   unfold Tab.merge at h
   obtain ⟨D, hD, h⟩ := GenK.bind_ok h
   obtain ⟨rest, hrest, h⟩ := GenK.bind_ok h
@@ -1201,18 +1200,19 @@ theorem Tab.merge_holds {K B : Obj} {q : Tab (.prod B B) (.prod B B) → Except 
       obtain ⟨sy, hsy, hT⟩ := GenK.bind_ok hT
       obtain ⟨c1, hc1, hT⟩ := GenK.bind_ok hT
       obtain ⟨c2, hc2, hT⟩ := GenK.bind_ok hT
-      -- `l`: the keys whose heads `(a, b)` `Q` takes, `Q` asked only at those pairs (`hq`)
+      -- `l`: the keys whose heads `(a, b)` `Q` takes on the diagonal (`diag_holds`)
       have hl' : ∀ k k', l.Holds k k' ↔ k = k' ∧ ∃ e : (Obj.prod B B).El,
-          (a.Holds k e.1 ∧ b.Holds k e.2) ∧ ∃ c, TQ e c := fun k k' => by
+          (a.Holds k e.1 ∧ b.Holds k e.2) ∧ TQ e e := fun k k' => by
         simp only [Tab.dom_holds hl, Tab.comp_holds hhc]
         refine and_congr_right fun _ => ?_
-        have hin : ∀ e, hp.Holds k e → ∃ i, hr.val.row i = e := fun e he => by
-          obtain ⟨i, -, hi⟩ := (Tab.ran_holds hhr e e).2 ⟨rfl, k, he⟩; exact ⟨i, hi⟩
+        have hd := Tab.diag_holds hq (fun e e' h => ((Tab.ran_holds hhr e e').1 h).1) hqt
         constructor
-        · rintro ⟨c, e, he, hqc⟩; exact ⟨e, (Tab.pair_holds hhp k e).1 he, c, (hq _ _ hqt e c (hin e he)).1 hqc⟩
-        · rintro ⟨e, he, c, hc'⟩
+        · rintro ⟨c, e, he, hqc⟩
+          obtain ⟨-, -, t⟩ := (hd e c).1 hqc
+          exact ⟨e, (Tab.pair_holds hhp k e).1 he, t⟩
+        · rintro ⟨e, he, t⟩
           have he' := (Tab.pair_holds hhp k e).2 he
-          exact ⟨c, e, he', (hq _ _ hqt e c (hin e he')).2 hc'⟩
+          exact ⟨e, e, he', (hd e e).2 ⟨rfl, (Tab.ran_holds hhr e e).2 ⟨rfl, k, he'⟩, t⟩⟩
       -- `tx`, `ty` are coreflexive: a row of `tx ≫ sx` at `k` is a row of `sx` at `k`
       have hc1' : ∀ s, c1.Holds k s ↔ tx.Holds k k ∧ sx.Holds k s := fun s => by
         rw [Tab.comp_holds hc1]
@@ -1251,16 +1251,16 @@ theorem Tab.merge_holds {K B : Obj} {q : Tab (.prod B B) (.prod B B) → Except 
             fun hh => by cases hh; exact ⟨⟨rfl, rfl⟩, _, _, ⟨rfl, rfl⟩, rfl⟩⟩
         case pos.cons.cons.cons a0 x1 b0 y1 _ _ =>
           obtain ⟨⟨_, _⟩, _⟩ := s; dsimp only
-          by_cases hab : ∃ a b, TQ (a0, b0) (a, b)
+          by_cases hab : TQ (a0, b0) (a0, b0)
           · rw [if_pos hab]
             refine ⟨fun hh => ?_, fun hh => by
               cases hh; exact Or.inl ⟨⟨a0, b0, ⟨rfl, rfl⟩, hab⟩, ⟨rfl, rfl⟩, _, _, ⟨rfl, rfl⟩, rfl⟩⟩
             rcases hh with ⟨-, ⟨h1, h2⟩, _, _, ⟨rfl, rfl⟩, h3⟩ | ⟨hn, -⟩
             · subst h1 h2 h3; rfl
-            · obtain ⟨a, b, h⟩ := hab; exact (hn a b h).elim
+            · exact (hn hab).elim
           · rw [if_neg hab]
             refine ⟨fun hh => ?_, fun hh => by
-              cases hh; exact Or.inr ⟨fun x y h => hab ⟨x, y, h⟩, ⟨rfl, rfl⟩, _, _, ⟨rfl, rfl⟩, rfl⟩⟩
+              cases hh; exact Or.inr ⟨hab, ⟨rfl, rfl⟩, _, _, ⟨rfl, rfl⟩, rfl⟩⟩
             rcases hh with ⟨⟨a, b, ⟨rfl, rfl⟩, h⟩, -⟩ | ⟨-, ⟨h1, h2⟩, _, _, ⟨rfl, rfl⟩, h3⟩
             · exact (hab h).elim
             · subst h1 h2 h3; rfl
@@ -1289,16 +1289,15 @@ theorem Tab.merge_holds {K B : Obj} {q : Tab (.prod B B) (.prod B B) → Except 
       (hfold _ _ _ (by simp)).2 (by simp)⟩)
 
 open Classical in
-/-- **`thinL(Q)` on the cells `X`** (`Tab.thinL`), `Q` given the pairs `D` it is asked about acting as `TQ` there:
-each array `xs` of `X` to `thinLDen`, the right fold from `[]` of `bump`, `x` into `ys` (`foldRoundsR_holds`). A
-round's step is keyed by the pair `(x, ys)` it meets, so it needs no invariant. -/
+/-- **`thinL(Q)` on the cells `X`** (`Tab.thinL`), `Q` given the pairs `D` it is asked about acting as `TQ` on their
+diagonal: each array `xs` of `X` to `thinLDen`, the right fold from `[]` of `bump`, `x` into `ys`
+(`foldRoundsR_holds`). A round's step is keyed by the pair `(x, ys)` it meets, so it needs no invariant. -/
 theorem Tab.thinL_holds {B : Obj} {n : USize}
     {q : Tab (.prod B B) (.prod B B) → Except String (Tab (.prod B B) (.prod B B))}
-    {TQ : Den (.prod B B) (.prod B B)}
-    (hq : ∀ D T, q D = .ok T → ∀ p p', (∃ i, D.val.row i = p) → (T.Holds p p' ↔ TQ p p'))
+    {TQ : Den (.prod B B) (.prod B B)} (hq : Tab.QDiag q TQ)
     {X : Vals (.arr B) n} {res : Tab (.arr B) (.arr B)} (h : Tab.thinL q X = .ok res) (xs w : List B.El) :
-    res.Holds xs w ↔ (∃ i, X.row i = xs) ∧ thinLDen (fun a b => decide (∃ c, TQ (a, b) c)) xs w := by
-  let le : B.El → B.El → Bool := fun a b => decide (∃ c, TQ (a, b) c)
+    res.Holds xs w ↔ (∃ i, X.row i = xs) ∧ thinLDen (fun a b => decide (TQ (a, b) (a, b))) xs w := by
+  let le : B.El → B.El → Bool := fun a b => decide (TQ (a, b) (a, b))
   -- `bump`: `x` into `v` (`thinLDen`'s clause at one index, `v = ys[t+1]`, `v' = ys[t]`)
   let St : (Obj.arr B).El → (Obj.arr B).El → B.El → (Obj.arr B).El → Prop := fun _ v x v' =>
     (v = [] ∧ v' = [x]) ∨ ∃ b bs, v = b :: bs ∧ ((le x b = true ∧ v' = x :: bs) ∨ (le b x = true ∧ v' = v) ∨
@@ -1370,31 +1369,27 @@ theorem Tab.thinL_holds {B : Obj} {n : USize}
         refine and_congr_right fun _ => ⟨fun ⟨c, hc⟩ => ?_, fun ⟨hk, hne⟩ => ?_⟩
         · obtain ⟨hk, he⟩ := (hu' e c).1 hc; exact ⟨hk, by rw [he]; exact List.cons_ne_nil _ _⟩
         · obtain ⟨a, l, he⟩ := List.exists_cons_of_ne_nil hne; exact ⟨(a, l), (hu' e _).2 ⟨hk, he⟩⟩
-      -- `up`, `down`: the pairs whose `(x, b)`, `(b, x)` `Q` takes, `Q` asked only at those pairs (`hq`)
+      -- `up`, `down`: the pairs whose `(x, b)`, `(b, x)` `Q` takes on the diagonal (`diag_holds`)
       have hup' : ∀ e e', up.Holds e e' ↔ e = e' ∧ ∃ c, b.Holds e c ∧ (∃ k, p.Holds k e) ∧ le e.1 c = true :=
         fun e e' => by
           simp only [Tab.dom_holds hup, Tab.comp_holds hca]
-          have hin : ∀ c, ab.Holds e c → ∃ i, abr.val.row i = c := fun c hc => by
-            obtain ⟨i, -, hi⟩ := (Tab.ran_holds habr c c).2 ⟨rfl, e, hc⟩; exact ⟨i, hi⟩
+          have hd := Tab.diag_holds hq (fun c c' h => ((Tab.ran_holds habr c c').1 h).1) hqa
           refine and_congr_right fun _ => ⟨fun ⟨y, c, hc, hy⟩ => ?_, fun ⟨c, hc, hk, hl⟩ => ?_⟩
           · obtain ⟨h1, h2⟩ := (Tab.pair_holds hab e c).1 hc
             obtain ⟨hk, he1⟩ := (hx' e _).1 h1
-            exact ⟨c.2, h2, hk, decide_eq_true ⟨y, by rw [← he1]; exact (hq _ _ hqa c y (hin c hc)).1 hy⟩⟩
-          · obtain ⟨y, hy⟩ := of_decide_eq_true hl
-            have hc' := (Tab.pair_holds hab e (e.1, c)).2 ⟨(hx' e _).2 ⟨hk, rfl⟩, hc⟩
-            exact ⟨y, (e.1, c), hc', (hq _ _ hqa _ y (hin _ hc')).2 hy⟩
+            exact ⟨c.2, h2, hk, decide_eq_true (by rw [← he1]; exact ((hd c y).1 hy).2.2)⟩
+          · have hc' := (Tab.pair_holds hab e (e.1, c)).2 ⟨(hx' e _).2 ⟨hk, rfl⟩, hc⟩
+            exact ⟨_, _, hc', (hd _ _).2 ⟨rfl, (Tab.ran_holds habr _ _).2 ⟨rfl, e, hc'⟩, of_decide_eq_true hl⟩⟩
       have hdown' : ∀ e e', down.Holds e e' ↔ e = e' ∧ ∃ c, b.Holds e c ∧ (∃ k, p.Holds k e) ∧ le c e.1 = true :=
         fun e e' => by
           simp only [Tab.dom_holds hdown, Tab.comp_holds hcb]
-          have hin : ∀ c, ba.Holds e c → ∃ i, bar.val.row i = c := fun c hc => by
-            obtain ⟨i, -, hi⟩ := (Tab.ran_holds hbar c c).2 ⟨rfl, e, hc⟩; exact ⟨i, hi⟩
+          have hd := Tab.diag_holds hq (fun c c' h => ((Tab.ran_holds hbar c c').1 h).1) hqb
           refine and_congr_right fun _ => ⟨fun ⟨y, c, hc, hy⟩ => ?_, fun ⟨c, hc, hk, hl⟩ => ?_⟩
           · obtain ⟨h1, h2⟩ := (Tab.pair_holds hba e c).1 hc
             obtain ⟨hk, he1⟩ := (hx' e _).1 h2
-            exact ⟨c.1, h1, hk, decide_eq_true ⟨y, by rw [← he1]; exact (hq _ _ hqb c y (hin c hc)).1 hy⟩⟩
-          · obtain ⟨y, hy⟩ := of_decide_eq_true hl
-            have hc' := (Tab.pair_holds hba e (c, e.1)).2 ⟨hc, (hx' e _).2 ⟨hk, rfl⟩⟩
-            exact ⟨y, (c, e.1), hc', (hq _ _ hqb _ y (hin _ hc')).2 hy⟩
+            exact ⟨c.1, h1, hk, decide_eq_true (by rw [← he1]; exact ((hd c y).1 hy).2.2)⟩
+          · have hc' := (Tab.pair_holds hba e (c, e.1)).2 ⟨hc, (hx' e _).2 ⟨hk, rfl⟩⟩
+            exact ⟨_, _, hc', (hd _ _).2 ⟨rfl, (Tab.ran_holds hbar _ _).2 ⟨rfl, e, hc'⟩, of_decide_eq_true hl⟩⟩
       -- `lone`, `up`, `down` are coreflexive: a row of `C ≫ S` at `e` is a row of `S` at `e`
       have hco : ∀ {Z : Obj} {C : Tab (Obj.prod B (.arr B)) (Obj.prod B (.arr B))} {S T : Tab (Obj.prod B (.arr B)) Z},
           (∀ e e', C.Holds e e' → e = e') → C.comp S = .ok T → ∀ e v, T.Holds e v ↔ C.Holds e e ∧ S.Holds e v :=

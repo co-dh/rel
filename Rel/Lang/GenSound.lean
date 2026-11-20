@@ -916,8 +916,8 @@ open Classical in
 theorem GenK.merge_sound {B : Obj} {Q : Rel (.prod B B) (.prod B B)} {TQ : Den (.prod B B) (.prod B B)}
     (hQ : ∀ K, Q.Reps K TQ) :
     ∀ K, (GenK.testAfter B (.prod (.arr B) (.arr B)) (.arr B) Q fun q P => Tab.merge q P).Reps K
-      (fun p zs => zs = List.merge p.1 p.2 fun a b => decide (∃ c, TQ (a, b) c)) :=
-  GenK.after_row_sound fun _ _ h k zs => Tab.merge_holds (fun D _ hT p _ hp =>
+      (fun p zs => zs = List.merge p.1 p.2 fun a b => decide (TQ (a, b) (a, b))) :=
+  GenK.after_row_sound fun _ _ h k zs => Tab.merge_holds (fun D _ hT p hp =>
     (GenK.reps_iff ⟨some ⟨D.n, D.val⟩, none⟩ _ _).1 (hQ _) _ hT p _ ((GenK.side_some rfl p).2 hp) rfl) h k zs
 
 theorem rowOK_merge : RowOK "merge" := rowOK_args (c := RowCode.merge) rfl rfl fun _ σ xs _ _ _ _ hn _ hv => by
@@ -947,8 +947,8 @@ open Classical in
 theorem GenK.thinL_sound {B : Obj} {Q : Rel (.prod B B) (.prod B B)} {TQ : Den (.prod B B) (.prod B B)}
     (hQ : ∀ K, Q.Reps K TQ) :
     ∀ K, (GenK.testVals B (.arr B) (.arr B) Q fun q X => Tab.thinL q X).Reps K
-      (thinLDen fun a b => decide (∃ c, TQ (a, b) c)) :=
-  GenK.ofVals_row_sound fun _ _ _ h xs w => Tab.thinL_holds (fun D _ hT p _ hp =>
+      (thinLDen fun a b => decide (TQ (a, b) (a, b))) :=
+  GenK.ofVals_row_sound fun _ _ _ h xs w => Tab.thinL_holds (fun D _ hT p hp =>
     (GenK.reps_iff ⟨some ⟨D.n, D.val⟩, none⟩ _ _).1 (hQ _) _ hT p _ ((GenK.side_some rfl p).2 hp) rfl) h xs w
 
 theorem rowOK_thinL : RowOK "thinL" := rowOK_args (c := RowCode.thinL) rfl rfl fun _ σ xs _ _ _ _ hn _ hv => by
