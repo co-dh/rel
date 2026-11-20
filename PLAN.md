@@ -92,7 +92,7 @@ Size：S = 一步，少于 20 次 tool call；M = 一到三步；L = 多于三�
 | 9  | `Tm.Ax` 写成等式               | `Syn.lean:21-42`, `:131-148`          | 12 个 constructor，12 条等式            | S    | ✅ 1.1      |
 | 10 | refold 改名 hylo               | `Tm.lean:91`, `Gen.lean:267`          | 120 个名字含 "refold"                   | S    | ✅ 2.1      |
 | 11 | foldI 成为 definition          | `Tm.lean:68`, `Den.lean:98`           | owner 选 D：留 ctor，证 `foldI_sound`   | M    | ✅ 4.3      |
-| 12 | flat 成为 definition           | `Pre.flat`, `Elab.lean:262`（p44）     | dfnR5：flat 融合；Chess 超 heartbeat，Knapsack +34% | M    | 🔄 4.2      |
+| 12 | flat 成为 definition           | `Pre.flat`, `Elab.lean:262`（p44）     | dfnR6：flat 融合，primFit 每实例拟合一次；绿，待合并 | M    | 🔄 4.2      |
 | 13 | inl、inr 是叶子                | `inlRow`…`inrConvRow`, `Syntax:176`   | 无：prim 行带 code、den、RowOK；R9      | S    | ✅ 4.1      |
 | 14 | junc 是 definition，没有 juncD | `Pre.junc`, `Elab.lean:256`           | 无：`inl°R ∪ inr°S`；不放 prelude       | M    | ✅ 4.1      |
 | 15 | 对称除法                       | `symDivDen`, `Den.lean:61`            | `Alg.symDiv` 已不存在；ctor 还是定义待定 | M    | ⏸ 4.4      |
@@ -277,7 +277,7 @@ Diff table 的「状态」列：✅ 后面是完成它的步骤；🔄 是部分
   - fold `⦇[e,S]⦈` 直接取两部分，不经过 junc。
   - 性能（`perf stat` 用户态指令数，626c084 → 1888ee2）：Quicksort 130.4G → 132.4G（+1.6%），
     Chess 483.8G → 483.7G，Edit 676.7G → 675.9G，Knapsack 15.72G → 15.74G。无回退，不需要融合 kernel。
-- 🔄 4.2 `flat` 成为 definition（分支 p44，b7d56c0，未合并）。
+- 🔄 4.2 `flat` 成为 definition：`flat` 留作融合行，由 `dfns` 与定义相连（分支 dfnR6，全量构建绿，待合并）。
   - `Rᴵ` 由 `Pre.flat`（`Elab.lean`，`Pre.junc` 之后）展开为 `⟨π₁R,π₂⟩dom(π₁π₁ ∩ π₂)π₁π₂`（pair、投影加相等测试，
     没有 converse）；`Tm.flat_den` 证明它的 `Den` 等于 `flatDen`。
   - `Tm.flat`、`GenK.flat`、`Pre.flat` 构造子、`flat_sound`、`flat_le` 及 `Den`、`GenSound`、`ConvSpec` 中的 flat
@@ -295,6 +295,15 @@ Diff table 的「状态」列：✅ 后面是完成它的步骤；🔄 是部分
     `Tm.dfnCut_den` 证明二者只在 universe 为全体数或 `0…k` 时相等；`flat` 没有 universe，处处跑融合行。
   - dfnR5：定义的起点 `zeroTm u` 改为 `build` 实际建出的闭合形式 `ran(u (⟨𝟙,𝟙⟩minus ∩ 𝟙))`，于是其他 universe
     上跑的 `d` 就是旧路径跑的定义（dfnR4 的 4 个 guard 失败来自裸起点无 key 可读、结果为空）。
+  - dfnR6：Chess 超 heartbeat 的原因是每个融合 `flat` 出现处（2507 个）都在 MetaM 里重新拟合 wrapper（`primE`，
+    `primsFit` 一次、`node` 再一次）。`Expand.primFit` 按 (row, 对象, 关系类型) 只拟合一次，结果是对关系抽象的
+    `fun xs => e`，`primsFit`、`node`、`GenSound` 的 `rowGens` 共用（`primMemo`）。全量构建绿，GenSoundTest
+    1183 of 1183，0 error table，`gen_sound` 无新前提。
+  - 性能（`perf stat -e instructions:u lake -R lean`，同一机器上 86fbf2a → dfnR6）：Knapsack 23.76G → 21.54G
+    （−9.3%），Quicksort 87.23G → 87.11G，Chess 321.5G → 285.7G（−11.1%），Edit 665.1G（旧数）→ 204.3G。
+    旧数（16.35G 等）比今天在 86fbf2a 上测得的少约 7.4G（`lake -R` 本身今天 8.62G），"Knapsack +34%" 来自与旧数
+    比较；`0…k` 上改跑定义 `d` 为 23.62G，`c.cut` 比定义便宜。R49 / R499 的 `rel_program` 均低于 200 ms
+    （原 6.29 s / 35.3 s），不随 |M| 增长。
 - ✅ 4.3 `foldI`：owner 选 D，constructor 保留为融合形式，
   用 `foldIDen_eq` + `foldI_sound` 与定义相连
   （已证，e172821 合并，无额外前提；`Gen.foldI` 的 step 是交 `S ∩ π₁π₁π₁°`）。
