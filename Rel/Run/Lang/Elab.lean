@@ -1554,7 +1554,12 @@ def uniPart (o : OTy) (A : Obj) : Except Err (Option (Tm A A)) := do
     pure (some (.prod u v))
   | .sum a b, .sum A B => do
     let (some u, some v) := (← uniPart a A, ← uniPart b B) | pure none
-    pure (some (.join (.ran (.comp u (.prim inlRow))) (.ran (.comp v (.prim inrRow)))))
+    -- `ran(u inl)` hands the values in demand to `inl`'s range, where it cannot run; a part on demand (an unbounded
+    -- `𝟙`) gives `dom(inl° u inl ∪ inr° v inr)`, which hands them to `inl°`'s domain, split by tag
+    if u.dem || v.dem then
+      pure (some (.dom (.join (.comp (.prim inlConvRow) (.comp u (.prim inlRow)))
+        (.comp (.prim inrConvRow) (.comp v (.prim inrRow))))))
+    else pure (some (.join (.ran (.comp u (.prim inlRow))) (.ran (.comp v (.prim inrRow)))))
   | _, _ => pure none
 
 /-- `o` is an unbounded number object (`ObjInfo.num`): a declared one, or an object variable a call puts one at. -/
