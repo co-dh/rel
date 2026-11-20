@@ -162,7 +162,7 @@ def ldiv2 (Q R S : List (Int64 × Int64)) (UB UC : List Int64) : Bool :=
 #guard ldiv2 [] (full 4) (full 4) [1, 2] [0, 7] && ldiv2 [(1, 10)] [] (full 4) [10, 20] [5, 6] &&
   ldiv2 (full 5) (full 5) (full 5) [0, 9] [3, 9]
 /-- A sum key whose `idx` column is a legal `bytes` column (`Enc.WF`) that `kgather` does not read: `compSelM` numbers
-its sides with `Vals.cols`, which must refuse it, so no matrix over it reaches `ofBits` (`GenK.ReadsBack`). -/
+its sides with `Vals.cols`, which must refuse it, so no matrix over it reaches `ofBits` (`Tab.compSelM_reads`). -/
 def bytesKey : Option String :=
   let idxB : Arr .i64 1 := Arr.mk (.bytes (ByteArray.mk #[0, 0, 0, 0, 0, 0, 0, 0])) (by
     show (ByteArray.mk #[0, 0, 0, 0, 0, 0, 0, 0]).size = (1 : USize).toNat * 8
