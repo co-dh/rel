@@ -269,13 +269,14 @@ theorem Tab.foldRoundsR_holds {K E V : Obj} {step : Tab K V → Tab K E → Exce
 
 namespace GenK
 
-/-- `arith(k)` on `U`'s universe: the keys' coreflexive `D`, then `D ≫ arithDen k U` (`Tab.arith_holds`). -/
-theorem arith_sound {k : UInt8} {U : Rel .long .long} {TU : Core.Rel Int64 Int64} (hU : ∀ K, U.Reps K TU) :
-    ∀ K, (GenK.arith k U).Reps K (arithDen k TU) := by
+/-- `arith t k` on `U`'s universe: the keys' coreflexive `D`, then `D ≫ arithDen t k U` (`Tab.arith_holds`). -/
+theorem arith_sound {t : QAtomicType} {k : UInt8} {U : Rel (.atom t) (.atom t)}
+    {TU : Core.Rel (Obj.atom t).El (Obj.atom t).El} (hU : ∀ K, U.Reps K TU) :
+    ∀ K, (GenK.arith t k U).Reps K (arithDen t k TU) := by
   unfold GenK.arith after
   exact ofVals_sound fun _ _ _ _ hK h x w hx _ _ => by
     obtain ⟨D, hD, ht⟩ := bind_ok h
-    have hu : ∀ n (X : Vals .long n) t, U.runE ⟨some ⟨n, X⟩, none, none⟩ = .ok t → ∀ a v, (∃ i, X.row i = a) →
+    have hu : ∀ n (X : Vals (.atom t) n) t, U.runE ⟨some ⟨n, X⟩, none, none⟩ = .ok t → ∀ a v, (∃ i, X.row i = a) →
         (t.Holds a v ↔ TU a v) := fun n X t h a v ha =>
       (reps_iff _ _ _).1 (hU ⟨some ⟨n, X⟩, none, none⟩) t h a v ((side_some rfl a).2 ha) rfl trivial
     refine (Tab.arith_holds hu ht x w).trans
