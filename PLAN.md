@@ -532,6 +532,40 @@ Diff table 的「状态」列：✅ 后面是完成它的步骤；🔄 是部分
       对象还在；旧模块里剩运行路径与定理仍读的定义（`Carrier`、`rank`、`ordKey`、`binStep`、`tilLongs`、`Ew.intStep` 等）。
       T10i（`t10i` a837f6c，未合入）：`crate/src` 17 540 → 7 709 行，默认配置 0 警告；但把现行 kernel 的测试也删了
       （`cargo test` 169 → 53），并去掉了 `build.sh` 无 feature 那一步的 `-D warnings`。T10j 在其上补回被测对象仍在的测试。
+      状态（2026-11-19 20:05，master `aa977bb`；`make check` 绿到 `91abf22`，其后两个合并只改 CLAUDE.md 与一个测试模块，
+      该模块单独 build 通过）：CLAUDE.md 的 Layout 改到现状（aafc4ce）；prelude 的 `pm od st py pz` 重新对照 list 上的含义
+      （`pregd` 55a6161：每个 key 配其数组的全部排列、按 `le` 有序的行、两者的交；用 `specOk` 按集合比）。
+      **T10 剩余**（迁移收尾，按顺序）：
+      - T10j（在跑，分支 `t10j`，基于 `t10i`）：补回 Rust 里被测对象仍在的测试，核实 `build.sh` 那一步原本检查什么。
+        通过后把 `t10i` + `t10j` 合入，`make check`。
+      - Rust own 格式的 kind 4（`enum`）读取：Lean 侧已不写；等 `sym` 的写入器（foR id + 排好序的字典，
+        `kasc ≫ kseen` + `kgather`）存在时一并改格式。现在没有程序用 `sym`。
+      - `Rel/KernelWF/Read.lean` 约 60 条、`KernelSpec` 里若干条引理无使用者但对象还在：留到 T11 的归纳定理写完，
+        仍无使用者的再删。
+      - 性能与 `Tab.toList` csimp 等见上面"未做"。
+    - **T11 生成代码的正确性**（分析：`/data/tmp/oracle/design.md`；依据 architecture `:117-119` "`compile` 返回自己的证明，
+      每个节点的 `Gen.*_sound` 是其定义的一部分"、`:352` "compile-diff = `compile` 对 `rel_program` 差分"、`:123-125`
+      "证明止于 Lean 定义，Rust 由 `decide` / `#guard` 测"）。现状：`Expand.node` 每个 `Tm` 构造子对一个 `GenK.*`，
+      55 个定义、0 条定理；陈述用的谓词 `Rel.Rel.Reps K r R`（`Rel/Rep.lean:28`）已存在而无定理使用；`Tm.gen` /
+      `compile` 已不在；`Tm.den (.call ..) = 𝟘`。不另写 list 上的求值器（那是第二份 `Tm.den`）。
+      - T11a（在跑，分支 `t11a`）：新模块 `Rel/Lang/GenKSpec.lean`，为已有 `Tab.*_holds` 的运算（`id comp conv meet dom
+        ran zero join top ldiv rdiv diff outl outr pair prod junc flat lam nil val uni succ leq lt`、行 `∋ τ setify inl
+        inr`）各写一条 `GenK.*_sound`：前提 `∀ K, R.Reps K X`，结论右边与 `Tm.den` 对应分支相同；从 `Tab` 定律到
+        `GenK` 引理的提升只证一次。需要附加条件的引理如实带上条件并列出。
+      - T11b：`Tm.gen`（把 `Expand.node` 那张表写成 `Tm → Fn` 的函数）与 `gen_sound : Sound η ρ → ∀ K,
+        (t.gen η).Reps K (t.den ρ)`，对 `Tm` 归纳；尚无引理的构造子进一个可判定的 gap 清单，定理先带清单落地再缩小。
+        `Expand` 与 `gen` 是两个递归，由差分测试绑定（architecture `:352`）。
+      - T11c：`test/TestCompile.lean` 改成 `(t.gen η).runE {}` 对生成的常量做差分；`compile-diff.json` 的固定只留给
+        gap 清单里的定义。
+      - T11d：`call` 的含义 = 内联被调用定义的项（Q11），`Tm.den (.call ..)` 不再是 `𝟘`，定理覆盖带调用的程序。
+      - T11e：补缺的 `Tab` 定律，gap 清单随之缩小：`arith est thin atPos mu nu fixOn foldRounds peelL peelR compSelM
+        compTabMat keepBits bitsMax pack`、25 个 `kernRows` 中的 20 个、plan 的 `groupIdsB arithB whereB`（可并行，
+        每条一个 agent）。
+      - T11f：六个只测"能跑且行数非零"的测试程序（`kernT2` 30、`kernT45` 34、`kernT68` 25、`kernT9` 31、`kernRows5` 18、
+        `kernMap` 9，共 147 个定义）补字面行的 `check`；`TestCompile` 报出没有任何 `check` 触及的定义。只有字面行的
+        `check` 能看到 `Elab` 给出的错 `Tm` 与固定时就错的结果。
+      - 度量：有 `_sound` 引理的 `GenK` 运算数（现 0 / 55）；gap 清单长度；被字面行 `check` 覆盖的定义数
+        （478 中约 35 + 测试程序里的若干，T11f 时用 `checkOf` 的 `Chk` 列表精确数）。
     - W3 留给后面的风险（清单 agent 提出，均未验证）：计数做 `\` 会物化 join（最多 `|R|·|S|` 行），SudokuPC9、
       blocks 可能超内存；规范序从 `Obj.lt` 变成 `kasc` 序码，打印的期望值与 `out/key`、`out/val` 可能变；
       `coc_block_start`、`coc_bools_of`、`structural_bits_of_for` 与 `Plan.abi` 点名的 12 个 export 在 W5 后仍有
