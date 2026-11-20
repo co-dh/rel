@@ -242,6 +242,14 @@ Diff table 的「状态」列：✅ 后面是完成它的步骤；🔄 是部分
   文件上的 `read (write x) = frame x` 只 `#guard`（extern）。sym 列仍报“等 sym writer（步骤 6）”。
   步骤 3 未开始：`Expand.emit` 的 `.io` twin。锚点：`walk` 的 pend 循环（`Expand.lean:527-531`，有 `qs`/`ty` 的声明
   类型与 `env₀.objs` 的 `ObjInfo.cols`/`num`）、kernel twin（`Expand.lean:873-901`）、`Rel.runE`（`Lazy.lean:27`）。
+  I2 ✅（分支 `io-i2`，未合并；不做文件 IO）：语句 `input n : A ⟶ B from [csv] "path"`、`output n to [csv] "path"`，
+  `check`/`print … where n ≜ {…}`（`Decl.input`/`Decl.output`，`Embed.stmt`，`Expand.walk` 的 `ioCols`/`bindIns`）。
+  input 是没有 body 的运行时名；无参数且直接提到运行时名的定义按已有的参数化定义 elaboration（运行时名即其参数，
+  无第二种绑定）；`check`/`print` 的 `where` 把 input 换成表、运行时定义换成对它的应用，未给表的 input 报错并指名。
+  A.1 的拒绝都有报错，`Rel/Lang/TestIO.lean` 每条一个 `#guard_msgs`；GenSoundTest 1298/1298（145 个程序）。
+  未做/与 design.md 不同：被 import 的程序带 input 被拒（等 I3）；带参数或 test 的定义提到 input 被拒（把 input 作参数
+  传入）；运行时定义仍 emit 已有的参数化常量（只 emit `.kernel` 在 I3）；sym/general 的 CSV 拒绝无法测（不能声明这种
+  object）；compile-diff 只在 main 跑（`main-only`）。
 - ✅ D.11 表层语法（`schema S = {k : K, v : N}`、`col S "v"`）已合并（da636a9）；`Schema` 层此前已合并（5ab6d2e，master 0fb9879，`Rel/Lang/Schema.lean`、`TestSchema.lean`）；余下：TestFrame 的
   frame 按 `Schema` 索引（随 D.9）。frame 的 schema 进入类型（owner 经 dataframe 会话决定，选 wrapper，不加 `Obj` constructor）：
   `Schema := List (String × Obj)`；`Schema.obj : Schema → Obj` 是 definition（按 `.d` 列序的嵌套 `prod`）；frame 的项按

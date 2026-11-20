@@ -53,7 +53,7 @@ def parsed (s : String) (out : Expr → String) : CM String := do
   let sc := preludeScope
   match ← readIn { sc with known := [("R", 0), ("S", 0), ("p", 0), ("e", 0)] ++ sc.known, objs := "X" :: sc.objs }
       ("print " ++ s) with
-  | .ok [.print _ e] => pure (out e)
+  | .ok [.print _ e _] => pure (out e)
   | .ok _ => throwError "'{s}' is no one term"
   | .error e => throwError "'{s}': {e}"
 /-- Each `s` of `ss` reads back as itself. -/
@@ -71,8 +71,8 @@ def sameSet {α : Type} [BEq α] (a b : List α) : Bool := a.all b.contains && b
 def reading : Decl → Option (String × String)
   | .defn _ n _ (.rel e) _ => some (n, e.render 0 true)
   | .defn _ n _ (.test e f) _ => some (n, s!"{e.render 0 true} ⊑ {f.render 0 true}")
-  | .print _ e => some ("print", e.render 0 true)
-  | .check _ e f eq => some ("check", s!"{e.render 0 true} {if eq then "=" else "⊑"} {f.render 0 true}")
+  | .print _ e _ => some ("print", e.render 0 true)
+  | .check _ e f eq _ => some ("check", s!"{e.render 0 true} {if eq then "=" else "⊑"} {f.render 0 true}")
   | _ => none
 
 end Rel.Lang.Test

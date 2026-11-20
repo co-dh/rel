@@ -15,7 +15,7 @@ elab "#rel_read " s:str : command => do
   match Parser.runParserCategory (← getEnv) `command txt with
   | .error e => logInfo e
   | .ok stx => match Embed.program (FileMap.ofString txt) (← Embed.scopeHere) stx[4].getArgs with
-    | .ok (ds, _) => ds.forM fun | .print _ e => logInfo (e.render 0 true) | _ => pure ()
+    | .ok (ds, _) => ds.forM fun | .print _ e _ => logInfo (e.render 0 true) | _ => pure ()
     | .error e => logInfo s!"{e}"
 
 /-- Fails unless the constant `c` exists. -/

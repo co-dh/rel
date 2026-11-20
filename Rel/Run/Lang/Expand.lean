@@ -466,6 +466,59 @@ def checkOf (env : Env) (p : Pos) (e f : Expr) (eq : Bool) (specs : List Once) :
   if h : A' = A ∧ B' = B then pure ((p, e.show, f.show, eq, s, t, ⟨A, B, R, h.1 ▸ h.2 ▸ S⟩), st.specs)
   else throw ⟨p, s!"check: the sides have types {s} ⟶ {t} and {s'} ⟶ {t'}"⟩
 
+/-- The columns of an `input`'s or `output`'s type `A ⟶ B` (`what`: the statement), checked: the key's, none where
+    `A` is an unbounded number object (positions), then the value's; a schema object its columns, any other object
+    the one column `key` or `val` (IO design A.1). Refused: an object variable, an undeclared object, a column
+    twice; for CSV a column of no atom, or of an atom no CSV text is written for yet (C.3). -/
+def ioCols (env : Env) (p : Pos) (what : String) (ty : OExp × OExp) (csv : Bool) : EM Unit := do
+  if let some v := (ty.1.vars ++ ty.2.vars).head? then
+    throw ⟨p, s!"{what}: its type {OExp.arrow ty} has the object variable '{v}'; write a declared object there"⟩
+  let side (o : OExp) (one : String) (key : Bool) : EM (Schema OTy) := do
+    let t ← try (oty env [] o).run' {} catch e => throw ⟨e.pos, s!"{what}: {e.msg}"⟩
+    let i := match o with | .name _ n => env.obj? n | _ => none
+    pure (match i with
+      | some i => if !i.cols.isEmpty then i.cols else if key && i.num then [] else [(one, t)]
+      | none => [(one, t)])
+  let cs := (← side ty.1 "key" true) ++ (← side ty.2 "val" false)
+  if let .error m := Schema.check cs then throw ⟨p, s!"{what}: {m}"⟩
+  if csv then
+    for (c, t) in cs do
+      let bad : Option String := match t with
+        | .base n => match ((env.obj? n).map (·.obj) : Option Obj) with
+          | some (.atom .sym) => some "is a symbol column, which waits for the own-format sym writer (D.9 step 6)"
+          | some (.atom .general) => some "is a general column, which the own format does not hold"
+          | _ => none
+        | .arr _ => some "is a list column, which is not read from CSV yet (IO step I8)"
+        | o => some s!"is {o}, no atom: a CSV field holds one atom; declare it a table directory (drop `csv`)"
+      if let some m := bad then throw ⟨p, s!"{what}: column '{c}' {m}"⟩
+
+/-- The term for each run-time name the terms `es` of a `check` or `print` (`what`) at `p` reach (IO design A.4),
+    put in place by `Expr.subst`: an input its `where` item in `bs`, a run-time definition applied to the terms of
+    its parameters: a variant program's replacement rule, as one use of the parametric definition. `rt`: the
+    run-time names in statement order, each with its declared type and its parameters (`none`: an input). Refused:
+    an input the terms reach that `bs` does not give, a `bs` name that is no input. -/
+def bindIns (rt : List (String × Param × Option (List String))) (p : Pos) (what : String) (es : List Expr)
+    (bs : List (String × Expr)) : Except Err (List (String × Expr)) := do
+  for (x, _) in bs do
+    unless rt.any fun (y, _, ys) => y == x && ys.isNone do
+      throw ⟨p, s!"{what}: `{x}` in its `where` is no input; a `where` here gives the table of an input " ++
+        s!"(`input {x} : A ⟶ B from …`)"⟩
+  -- each run-time name's inputs, and its term where every one of them is given
+  let reach := rt.foldl (init := ([] : List (String × List String))) fun r (y, _, ys) =>
+    r ++ [(y, match ys with | none => [y] | some ys => (ys.flatMap fun z => (r.lookup z).getD []).eraseDups)]
+  let σ := rt.foldl (init := ([] : List (String × Expr))) fun σ (y, _, ys) => match ys with
+    | none => match bs.lookup y with | some l => σ ++ [(y, l)] | none => σ
+    | some ys =>
+      if ys.all (σ.lookup · |>.isSome) then σ ++ [(y, Expr.app p y (ys.filterMap fun z => σ.lookup z))] else σ
+  for y in es.flatMap (·.names) do
+    if (rt.lookup y).isSome && (σ.lookup y).isNone then
+      let x := (((reach.lookup y).getD []).find? (bs.lookup · |>.isNone)).getD y
+      let ty := match rt.lookup x with | some (P, _) => P.ty.map OExp.arrow | none => none
+      throw ⟨p, s!"{what} reaches the input `{x}`{if x == y then "" else s!" (through `{y}`)"}, which has no " ++
+        s!"table at elaboration; give one: `{what} … where {x} ≜ " ++ "{…}`" ++
+        (ty.map (s!", a table {·}")).getD ""⟩
+  pure σ
+
 /-- The declarations of `prog`, in order, from the environment `env`: each closed definition (no keys) with its
     core term, each `print` and `check` with its terms; nothing evaluated: a definition is in scope as its built
     term. A parametric definition is called where `calls` gives its constant `own.x`; else, when `emitting`, it is
@@ -481,10 +534,37 @@ def walk (prog : Program) (env : Env) (wrap : String → Def → Def) (own : Lea
   let mut ds : List (String × Res) := []
   let mut pr : List (String × Top) := []
   let mut cs : List Chk := []
+  -- the run-time names in scope (IO design A.2): each input, and each definition whose body mentions one, a
+  -- parameter of the statements after it that mention it; with its declared type and, for a definition, its own
+  let mut rt : List (String × Param × Option (List String)) := []
+  -- each closed definition that computes a whole table, with its type; each output's path
+  let mut whole : List (String × (OExp × OExp)) := []
+  let mut outs : List (String × Pos) := []
   for d in prog do
-    -- an imported program's prints, checks and theorems ran where it was defined; only its scope is read here
-    if imported && (match d with | .print .. | .check .. | .«theorem» .. => true | _ => false) then continue
+    -- an imported program's prints, checks, theorems and outputs ran where it was defined; only its scope is read
+    if imported && (match d with | .print .. | .check .. | .«theorem» .. | .output .. => true | _ => false) then
+      continue
     match d with
+    | .input p n ty csv path =>
+      if imported then
+        throw ⟨p, s!"input `{n}`: an imported program's inputs are not the importer's yet (IO step I3); declare " ++
+          "it in the importing program and pass it to the definitions as a parameter"⟩
+      ioCols env p s!"input `{n}` from {if csv then "csv " else ""}\"{path}\"" ty csv
+      rt := rt ++ [(n, ⟨n, some ty⟩, none)]
+    | .output p n csv path =>
+      let what := s!"output `{n}` to {if csv then "csv " else ""}\"{path}\""
+      if let some q := outs.lookup path then
+        throw ⟨p, s!"{what}: the output at line {q.line} writes \"{path}\" already; give each output a path of its own"⟩
+      let ty ← match rt.lookup n, whole.lookup n with
+        | some (P, _), _ => pure P.ty
+        | none, some ty => pure (some ty)
+        | none, none => throw ⟨p, if (env.defs.lookup n).isSome then
+            s!"{what}: `{n}` computes no whole table: it has parameters or object variables, or needs keys (§a); " ++
+              s!"output a definition at declared objects whose source has a universe, as `{n}` after a set of " ++
+              "its sources"
+          else s!"{what}: `{n}` is not defined before it; an output names a definition or an input of the program"⟩
+      if let some ty := ty then ioCols env p what ty csv
+      outs := outs ++ [(path, p)]
     | .obj _ n od =>
       -- an imported program's object is its constant's, so the importer's types name the same object (§2.3);
       -- an alias stays the object it stands for
@@ -494,6 +574,16 @@ def walk (prog : Program) (env : Env) (wrap : String → Def → Def) (own : Lea
         env := { env with objs := (n, i) :: (c, i) :: env.objs }
       else env := { env with objs := (n, ← objInfo env n od) :: env.objs }
     | .defn p n ps b ty =>
+      -- the run-time names the body mentions, not its own parameters: the parameters of a definition written with
+      -- none, the existing parametric definition (IO design A.2)
+      let ys := rt.filter fun (y, _) =>
+        (match b with | .rel e => e.names | .test e f => e.names ++ f.names).contains y && !ps.any (·.name == y)
+      let ps ← match ys, ps, b with
+        | [], _, _ => pure ps
+        | _, [], .rel _ => rt := rt ++ [(n, ⟨n, ty⟩, some (ys.map (·.1)))]; pure (ys.map (·.2.1))
+        | (y, Y, _) :: _, _, _ => throw ⟨p, s!"`{n}` has parameters and mentions `{y}`, which has no table at " ++
+            s!"elaboration; add the parameter `{y}{(Y.ty.map (s!" : {OExp.arrow ·}")).getD ""}` to `{n}` and pass " ++
+            s!"`{y}` where `{n}` is used"⟩
       let missing := ps.any (·.ty.isNone) || match b with | .rel _ => ty.isNone | .test .. => false
       if missing then throw ⟨p, s!"`{n}` has no type; it is {← (inferSig env n ps b).run' {}}"⟩
       match ps, b, ty with
@@ -515,7 +605,9 @@ def walk (prog : Program) (env : Env) (wrap : String → Def → Def) (own : Lea
           | .error _, .ok _ => env := { env with defs := (n, each) :: env.defs }; continue
           | .error e, .error _ => throw e
         env := { env with defs := (n, wrap n { arity := 0, apply := fun _ _ => pure (.rel (.tm res) s t) }) :: env.defs }
-        if !tm.dem then ds := ds ++ [(n, res)]
+        if !tm.dem then
+          ds := ds ++ [(n, res)]
+          if let some ty := ty then whole := whole ++ [(n, ty)]
       | qs, b, ty =>
         let d := mkDef env n p qs b ty
         match b, ty with
@@ -530,12 +622,20 @@ def walk (prog : Program) (env : Env) (wrap : String → Def → Def) (own : Lea
           if emitting then pend := pend ++ [(env, p, n, qs, e, ty, vs, d)]
         | _, _ => pure ()
         env :={ env with defs := (n, wrap n d) :: env.defs }
-    | .print p e =>
+    | .print p e bs =>
+      let e := e.subst (← liftExcept (bindIns rt p "print" [e] bs))
       let (r, st) ← (do let r ← elabE env none e; settleOpen env p r.plain.1; pure r).run { specs, objs := env.objs }
       specs := st.specs
       pr := pr ++ [(e.show, ← top env (← Lean.getMCtx) p e r)]
-    | .check p e f eq => let (c, sp) ← checkOf env p e f eq specs; specs := sp; cs := cs ++ [c]
-    | .«theorem» p n ps e f eq on _ steps =>
+    | .check p e f eq bs =>
+      let σ ← liftExcept (bindIns rt p "check" [e, f] bs)
+      let (c, sp) ← checkOf env p (e.subst σ) (f.subst σ) eq specs; specs := sp; cs := cs ++ [c]
+    | .«theorem» p n ps e f eq on hyps steps =>
+      let ns := e.names ++ f.names ++ (on.map (·.names)).getD [] ++
+        hyps.flatMap (fun (a, b) => a.names ++ (b.map (·.2.names)).getD []) ++ steps.flatMap (·.2.2.1.names)
+      if let some (y, Y, _) := rt.find? fun (y, _) => ns.contains y && !ps.any (·.name == y) then
+        throw ⟨p, s!"theorem `{n}` mentions `{y}`, which has no table at elaboration; state it with `{y}` a " ++
+          s!"parameter: `theorem {n}({y}{(Y.ty.map (s!" : {OExp.arrow ·}")).getD ""}, …)`"⟩
       -- every term of the chain at the statement's type, the parameters at their declared ones (§3)
       let ((), st) ← (do
         let (_, env') ← bindSig env ps
