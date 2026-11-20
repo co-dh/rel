@@ -340,6 +340,9 @@ def callDef (env : Env) (dp : Pos) (n : String) (qs : List Param) (e : Expr) (ty
       let mut ix : Array OTy := #[]
       let mut fs : List Form := []
       let mut xs : List (Pre × Bool) := []
+      -- the forms with each argument that needs keys passed on demand (`fsL`, `xsL`): tried first, see below
+      let mut fsL : List Form := []
+      let mut xsL : List (Pre × Bool) := []
       for (b, j?) in bs do
         let (x, a, a') := b.plain
         -- an argument whose objects only the use's context solves, after this call returns, has no form yet: the
@@ -350,19 +353,25 @@ def callDef (env : Env) (dp : Pos) (n : String) (qs : List Param) (e : Expr) (ty
         -- the first form the argument (a family: its relation from the index) builds in: closed, run on demand,
         -- tested on pairs; else closed, whose build reports why
         let st ← get; let mc ← Lean.getMCtx
+        let bx := build st.objs mc p x
         let f : Option Bool :=
           if (build st.objs mc p (Pre.close p x a why)).toOption.isSome then none
-          else if (build st.objs mc p x).toOption.isSome then some false
+          else if bx.toOption.isSome then some false
           else if (test st.objs mc p x).toOption.isSome then some true else none
         fs := fs ++ [(f, k?)]; xs := xs ++ [(if f.isNone then Pre.close p x a why else x, f == some true)]
+        -- closed, an argument that needs keys would be read on its source's whole universe (`closeRes`); on demand it
+        -- runs bounded by what the body composes it with, as the inlined body runs it
+        let fl := match bx with | .ok ⟨_, _, t⟩ => if t.dem then some false else f | .error _ => f
+        fsL := fsL ++ [(fl, k?)]; xsL := xsL ++ [(if fl.isNone then Pre.close p x a why else x, fl == some true)]
       let some us := vs.mapM (m.lookup ·) | throw ⟨p, s!"internal: `{c}` has an object variable no type names"⟩
       -- the variables this call puts an unbounded number object at: the constant is built at them (`once`); an
       -- object still open here stays open in the call, so `build` knows the constant did not see it (`.call`)
       let mc ← Lean.getMCtx; let objs := (← get).objs
       let us := us.map (zonk mc)
       let nb := us.map (unbounded objs)
-      let key := formKey c fs nb
-      let o? ← match calls key, (← get).specs.find? (·.key == key) with
+      let get? (fs : List Form) : M (Option Once) := do
+        let key := formKey c fs nb
+        match calls key, (← get).specs.find? (·.key == key) with
         | some o, _ | none, some o => pure (some o)
         | none, none => do
           let k := if c.getPrefix == emitter then key else emitter ++ key
@@ -372,7 +381,13 @@ def callDef (env : Env) (dp : Pos) (n : String) (qs : List Param) (e : Expr) (ty
           match ← (once env dp n qs e ty vs key k fs nb (← get).specs).run with
           | .ok (o, specs) => modify (fun st => { st with specs := specs ++ [o] }); pure (some o)
           | .error _ => pure none
+      -- the arguments that need keys on demand where the body builds so (it composes them with what bounds them),
+      -- else closed on their sources' universes, where a body that reads them whole needs them
+      let (o?, ys) ← if fsL == fs then pure (← get? fs, xs) else match ← get? fsL with
+        | some o => pure (some o, xsL)
+        | none => pure (← get? fs, xs)
       let some o := o? | return r
+      xs := ys
       let { const := k, vars := fl, tst, kf } := sigOf o
       let (ks, t, cv) := (o.binds, o.res, convOf o)
       let us := us ++ ix.toList
