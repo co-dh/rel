@@ -125,7 +125,7 @@ rel_program thinDiag where
     let X ← get thinDiag.expanded "x" .long (.arr .long)
     let Q ← get thinDiag.expanded "qn" (.prod .long .long) (.prod .long .long)
     let l := ((Tab.thin (fun _ => .ok Q) X.val).toOption.map Tab.toList).getD []
-    let e : List (List Int × List Int) := [([3, 1, 2], [2, 3]), ([], []), ([1, 2], [2])]
+    let e : List ((Obj.arr .long).El × (Obj.arr .long).El) := [([3, 1, 2], [2, 3]), ([], []), ([1, 2], [2])]
     pure (e.all (l.contains ·) && l.all (e.contains ·))) == some true
 
 

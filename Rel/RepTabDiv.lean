@@ -2926,8 +2926,8 @@ theorem thin_den {B : Obj} {q : Tab (.prod B B) (.prod B B) → Except String (T
       exact ⟨rfl, hp, (hq _ _ hQD p ⟨i, hv⟩).1 hqd⟩
     · rintro ⟨rfl, hp, t⟩
       have hd := (ran_holds hD p p).2 ⟨rfl, hp⟩
-      obtain ⟨i, -, hv⟩ := hd
-      exact ⟨(hq _ _ hQD p ⟨i, hv⟩).2 t, hd⟩
+      obtain ⟨i, hk, hv⟩ := hd
+      exact ⟨(hq _ _ hQD p ⟨i, hv⟩).2 t, i, hk, hv⟩
   -- the keys of `Y` among the pairs of one array: `TQ` on their diagonal, not on their swap's
   have eY : ∀ p p', Y.Holds p p' ↔ p = p' ∧ (∃ xs, P.Holds xs p) ∧ TQ p p ∧ ¬TQ (p.2, p.1) (p.2, p.1) :=
     fun p p' => by
@@ -2940,7 +2940,7 @@ theorem thin_den {B : Obj} {q : Tab (.prod B B) (.prod B B) → Except String (T
         · obtain ⟨⟨h1, h2⟩, h3, h4⟩ := (eP xs p).1 hx
           exact (eD _ _).2 ⟨rfl, ⟨xs, (eP xs _).2 ⟨⟨h1, h4⟩, h3, h2⟩⟩, t'⟩
       · rintro ⟨rfl, hp, t, hn⟩
-        refine ⟨⟨rfl, hp, t⟩, fun ⟨-, y, hy⟩ => hn ?_⟩
+        refine ⟨⟨rfl, hp, t⟩, fun ⟨_, y, hy⟩ => hn ?_⟩
         obtain ⟨s, hs, hd⟩ := (comp_holds hWD _ _).1 hy
         obtain ⟨h1, h2⟩ := (pair_holds hw p s).1 hs
         obtain rfl : s = (p.2, p.1) := Prod.ext ((outr_holds ho1 p _).1 h1).2 ((outl_holds ho2 p _).1 h2).2
