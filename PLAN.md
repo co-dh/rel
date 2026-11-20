@@ -12,6 +12,7 @@
   tag 是 `Arr .u1`
   （原为 `.boolean`）；`char` 是 8 位，字符串是 `arr char`；装箱的 `general` 和时间类 atom 删除。
 - R7：浮点数先规范化（一个 NaN，`-0 ↦ +0`），再做保序的位映射；相等 = 规范化之后的位相等。
+  （由 G 细化：规范化只在产生 float 字的地方做；序码与 `Obj.key` 都是存储位上的单射 `ordCode`，代码已如此，见 G。）
 - R8：1.1 只写不是某条 `Core.Rel` 定律的复述的等式（`mu_unfold`、`nu_unfold`）；
   其余十条直接用作 `Core.Rel` 的定律。
 - Q1 删除 `RelAop/Syn.lean`；Q2 表层的 `refold` 也变成 `hylo`；Q3 `tab` 持有 `Option (Tab A B)`，结构
@@ -45,6 +46,10 @@
     是位（`Carrier .f64 = UInt64`）；`doc/rel-architecture.zh.typ:197` 写的就是纯位映射；规范化过的列上新旧序码
     相同，所以 R7 与 D.12 不被推翻；没有 Rel 程序用 float。后果：未规范化的列上 `-0.0` 与 `0.0` 是不同的行；
     mmap 进来的 float 列是否检查规范化，留给 owner。实现在分支 `ordcode`。
+    代码已按 G 办理（S5，分支 `tb-s5`）：`Obj.key` 在每个定宽 atom（f32/f64 在内）上是 `atomKey`，即 `ascOrd`
+    （`kasc` 用的同一个 `ordCode`）作用于存储位 `Column.bitsOf`；合并 NaN 与 `±0` 的 `Order.rank`（及
+    `rank32`/`rank64`、`foRKey`、`rank_ofNat_iff`）删除；`Obj.key_ordCode` 不再排除 float；`Obj.ascBad` 只拒绝
+    `sym`、`general`，`asc` 接受 float。`LamLaw` 与 `Obj.eq_of_not_lt` 的前提保留，原因只剩 `general`（key 为 `[]`）。
 - 非 log 的输出（baseline、row 分析）写进本文件或 `doc/`，不写进 `/data/tmp`。
 
 ## 0. 每一步都遵守的约定
