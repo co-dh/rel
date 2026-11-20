@@ -171,9 +171,14 @@ def memRow : Prim :=
 
 -- `inl`, `inr`, `F(R)` are written as their `Op`s, which `Calc.toTerm` reads as a coproduct's injections and a relator
 def inlRow : Prim :=
-  { sym := "inl", sig := ([], .var {} "A", .sum (.var {} "A") (.var {} "B")), written := false }
+  { sym := "inl", sig := ([], .var {} "A", .sum (.var {} "A") (.var {} "B")), conv := "inl°", written := false }
 def inrRow : Prim :=
-  { sym := "inr", sig := ([], .var {} "B", .sum (.var {} "A") (.var {} "B")), written := false }
+  { sym := "inr", sig := ([], .var {} "B", .sum (.var {} "A") (.var {} "B")), conv := "inr°", written := false }
+-- the injections' converses, which `[R,S] = inl°R ∪ inr°S` runs on the sum values in demand (`convTm`)
+def inlConvRow : Prim :=
+  { sym := "inl°", sig := ([], .sum (.var {} "A") (.var {} "B"), .var {} "A"), conv := "inl", written := false }
+def inrConvRow : Prim :=
+  { sym := "inr°", sig := ([], .sum (.var {} "A") (.var {} "B"), .var {} "B"), conv := "inr", written := false }
 def mapRow : Prim :=
   { sym := "F", sig := ([((.var {} "A", .var {} "B"), some false)], .list (.var {} "A"), .list (.var {} "B")),
     written := false }
@@ -236,7 +241,13 @@ def prims : List Prim :=
    -- positions, numbers of `ℕ`, so it has no `dfn` until `rank` can be written and no use where `ℕ` has a universe
    { sym := "positions",
      sig := ([((.var {} "B", .var {} "B"), some false)], .list (.var {} "B"), .list (.var {} "ℕ")),
-     mono := false, aop := .error "AOP declares no positions of the elements of a list that pass a test" }]
+     mono := false, aop := .error "AOP declares no positions of the elements of a list that pass a test" },
+   -- `asc(P)`: q's `asc` of the set `dom P`, `j ↦` its `j`-th smallest element in `Obj.lt` order; not `mono`: a
+   -- larger `P` renumbers. Its `dfn` `(dom(P) Λ(> P) length)°` waits for a `dfn` that can read the row's relations
+   { sym := "asc", sig := ([((.var {} "B", .var {} "B"), some false)], .var {} "ℕ", .var {} "B"),
+     mono := false, aop := .error "AOP declares no numbering of a set by its order" },
+   -- last, so the rows before keep their positions (`Rows.lean`'s numbering)
+   inlConvRow, inrConvRow]
 
 def Prim.find?(s : String) : Option Prim := prims.find? (·.sym == s)
 

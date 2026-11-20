@@ -15,6 +15,7 @@ rel_program prelude where
     frac(R : α ⟶ γ, S : β ⟶ γ) : α ⟶ β ≜ R/S ∩ (S/R)°           -- the symmetric division
     cor(S : α ⟶ β) : α×β ⟶ α×β ≜ dom(π₁S ∩ π₂)                  -- the pairs of S, as a coreflexive
     mid(R : α ⟶ α) : α ⟶ α×α ≜ ⟨R°,R⟩                            -- y ↦ (x,z) with x R y and y R z: mid(<) is x<y<z
+    iasc(c : β ⟶ α) : β ⟶ β ≜ asc(ran(⟨c,dom(c)⟩))π₂             -- q's iasc: j ↦ the position of c's j-th smallest, ties by position
 
     -- The list functions of B&dM written as their definitions (diagram order); `ran(nil)` is the fold's seed [].
 

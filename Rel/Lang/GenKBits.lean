@@ -1675,47 +1675,98 @@ open Rel.Core.Rel hiding id comp recip inter union zero le inl inr junc
 
 variable {A B C : Obj}
 
-theorem meet_runE {d e : Bool} (R S : Rel A B) (K : Known A B) :
-    (GenK.meet A B d e R S).runE K = (meetV (R.force K) (S.force K)).runE K := by
-  cases R <;> cases S <;> rfl
-
-theorem inter_case {R S : Rel A B} {K : Known A B} {X Y : Core.Rel A.El B.El} {t : Tab A B}
-    (h : (do Tab.inter (← R.runE {}) (← S.runE {})) = .ok t) (eR : ∀ r, R.runE {} = .ok r → Agrees K (rep r) X)
-    (eS : ∀ s, S.runE {} = .ok s → Agrees K (rep s) Y) : Agrees K (rep t) (X ∩ Y) := by
+theorem inter_law {R S : Rel A B} {t : Tab A B} (h : (do Tab.inter (← R.runE {}) (← S.runE {})) = .ok t) :
+    ∃ r s, R.runE {} = .ok r ∧ S.runE {} = .ok s ∧ ∀ a c, rep t a c ↔ rep r a c ∧ rep s a c := by
   obtain ⟨r, hr, h⟩ := bind_ok h
   obtain ⟨s, hs, ht⟩ := bind_ok h
-  exact fun x y hx hy => (Tab.inter_holds ht x y).trans (and_congr (eR r hr x y hx hy) (eS s hs x y hx hy))
+  exact ⟨r, s, hr, hs, Tab.inter_holds ht⟩
 
-theorem keep_case {K : Known A B} {P Q : Core.Rel A.El B.El} {n m : USize} {T : Except String (Tab A B)}
-    {g w : USize} {o ra rc : Enc} {x : Vals A n} {y : Vals B m} {t : Tab A B} (hw : BitsWf g w o x ra y rc)
-    (h : (T >>= (Tab.keepBits · g w o x ra y rc)) = .ok t) (eT : ∀ u, T = .ok u → Agrees K (rep u) P)
-    (eM : ∀ s, Tab.ofBits g w o x ra y rc = .ok s → Agrees K (rep s) Q) : Agrees K (rep t) (P ∩ Q) := by
+theorem keep_law {n m : USize} {T : Except String (Tab A B)} {g w : USize} {o ra rc : Enc} {x : Vals A n}
+    {y : Vals B m} {t : Tab A B} (hw : BitsWf g w o x ra y rc) (h : (T >>= (Tab.keepBits · g w o x ra y rc)) = .ok t) :
+    ∃ u s, T = .ok u ∧ Tab.ofBits g w o x ra y rc = .ok s ∧ ∀ a c, rep t a c ↔ rep u a c ∧ rep s a c := by
   obtain ⟨u, hu, h⟩ := bind_ok h
   obtain ⟨hr, hgw, ho, hx, hy⟩ := hw
   rcases hs : Tab.ofBits g w o x ra y rc with e | s
   · exact absurd hs (hr e)
-  rw [Tab.keepBits_law h hs hgw (fun a ha j hj => some_lt_two (ho a ha j hj)) hx hy]
-  exact fun a c ha hc => and_congr (eT u hu a c ha hc) (eM s hs a c ha hc)
+  refine ⟨u, s, hu, rfl, fun a c => ?_⟩
+  rw [Tab.keepBits_law h hs hgw (fun a ha j hj => some_lt_two (ho a ha j hj)) hx hy]; exact Iff.rfl
+
+/-- `meetV` of two values is the meet of the two tables they read as. -/
+theorem meetV_law {R S : Rel A B} (wR : R.Wf) (wS : S.Wf) {K : Known A B} {t : Tab A B}
+    (h : (meetV R S).runE K = .ok t) :
+    ∃ r s, R.runE {} = .ok r ∧ S.runE {} = .ok s ∧ ∀ a c, rep t a c ↔ rep r a c ∧ rep s a c := by
+  cases R <;> cases S <;> first
+    | exact inter_law h
+    | exact keep_law wS h
+    | (obtain ⟨u, s, hu, hs, e⟩ := keep_law wR h; exact ⟨s, u, hs, hu, fun a c => (e a c).trans and_comm⟩)
+
+/-- `meetOn K T S` agrees with `P ∩ Q` on `K`, where `T` agrees with `P`: on a pair of `T`'s table, inside the
+    `bound` it hands `S`, `S` agrees with `Q`; off it both sides are false. -/
+theorem meetOn_sound {K : Known A B} {T S : Rel A B} {P Q : Core.Rel A.El B.El} (wT : T.Wf)
+    (eT : ∀ r, T.runE {} = .ok r → Agrees K (rep r) P) (wS : S.Wf) (hS : ∀ K, S.Reps K Q) :
+    ∀ t, (meetOn K T S).runE K = .ok t → Agrees K (rep t) (P ∩ Q) := by
+  intro t h; unfold meetOn at h; split at h
+  · rename_i r0
+    split at h
+    · rename_i p hp
+      obtain ⟨r, s, hr, hs, e⟩ := meetV_law (R := .tab (.ok p.1)) trivial (wS.force p.2) h
+      obtain rfl := Except.ok.inj hr
+      obtain ⟨hu, hK⟩ := bound_spec hp
+      have er := eT r0 rfl
+      have es := (reps_iff _ _ _).1 (hS p.2) s ((force_runE S p.2 {}).symm.trans hs)
+      intro x y hx hy
+      refine (e x y).trans ⟨fun ⟨a, b⟩ => ⟨(er x y hx hy).1 ((hu x y hx hy).1 a),
+        (es x y (hK x y a).1 (hK x y a).2).1 b⟩, fun ⟨a, b⟩ => ?_⟩
+      have a' := (hu x y hx hy).2 ((er x y hx hy).2 a)
+      exact ⟨a', (es x y (hK x y a').1 (hK x y a').2).2 b⟩
+    · nomatch h
+  · obtain ⟨r, s, hr, hs, e⟩ := meetV_law wT (wS.force K) h
+    have es := (reps_iff _ _ _).1 (hS K) s ((force_runE S K {}).symm.trans hs)
+    exact fun x y hx hy => (e x y).trans (and_congr (eT r hr x y hx hy) (es x y hx hy))
+
+theorem meetK_sound {R S : Rel A B} {X Y : Core.Rel A.El B.El} (hR : ∀ K, R.Reps K X) (hS : ∀ K, S.Reps K Y)
+    (wR : R.Wf) (wS : S.Wf) (K : Known A B) : ∀ t, (meetK K R S).runE K = .ok t → Agrees K (rep t) (X ∩ Y) := by
+  intro t h
+  have eF : ∀ {Z : Rel A B} {W : Core.Rel A.El B.El}, (∀ K, Z.Reps K W) → ∀ r, (Z.force K).runE {} = .ok r →
+      Agrees K (rep r) W := fun hZ r h => (reps_iff _ _ _).1 (hZ K) r ((force_runE _ K {}).symm.trans h)
+  have sw : Agrees K (rep t) (Y ∩ X) → Agrees K (rep t) (X ∩ Y) := fun h x y hx hy => (h x y hx hy).trans and_comm
+  cases R <;> cases S
+  case lazy.lazy f g =>
+    simp only [meetK] at h
+    have e := eF hR; have w := wR.force K
+    generalize (Rel.lazy f).force K = F at e w h
+    rcases F with (_ | _) | _ | _ <;> first
+      | exact sw (meetOn_sound (wS.force K) (eF hS) wR hR t h)
+      | exact meetOn_sound w e wS hS t h
+  all_goals first
+    | exact sw (meetOn_sound (wS.force K) (eF hS) wR hR t h)
+    | exact meetOn_sound (wR.force K) (eF hR) wS hS t h
 
 theorem meet_sound {d e : Bool} {R S : Rel A B} {X Y : Core.Rel A.El B.El} (hR : ∀ K, R.Reps K X)
     (hS : ∀ K, S.Reps K Y) (wR : R.Wf) (wS : S.Wf) : ∀ K, (GenK.meet A B d e R S).Reps K (X ∩ Y) := fun K => by
   have eR := (reps_iff _ _ _).1 (hR K); have eS := (reps_iff _ _ _).1 (hS K)
-  rw [reps_iff, meet_runE]
-  have fR := force_runE R K; have fS := force_runE S K
-  have wR' := wR.force K; have wS' := wS.force K
-  generalize R.force K = R' at fR wR'; generalize S.force K = S' at fS wS'
-  have eR' : ∀ K' r, R'.runE K' = .ok r → Agrees K (rep r) X := fun K' r h => eR r ((fR K').symm.trans h)
-  have eS' : ∀ K' s, S'.runE K' = .ok s → Agrees K (rep s) Y := fun K' s h => eS s ((fS K').symm.trans h)
-  intro t h
-  cases R' <;> cases S' <;> first
-    | exact inter_case h (eR' {}) (eS' {})
-    | exact keep_case wS' h (eR' K) (eS' K)
-    | exact fun x y hx hy => (keep_case wR' h (eS' K) (eR' K) x y hx hy).trans and_comm
+  rw [reps_iff]
+  cases R <;> cases S <;> first
+    | exact meetK_sound hR hS wR wS K
+    | exact fun t h => let ⟨r, s, hr, hs, e⟩ := meetV_law wR wS h
+        fun x y hx hy => (e x y).trans (and_congr (eR r hr x y hx hy) (eS s hs x y hx hy))
 
 theorem meetV_wf (R S : Rel A B) : (meetV R S).Wf := by unfold meetV; split <;> trivial
 
+theorem meetOn_wf (K : Known A B) (T S : Rel A B) : (meetOn K T S).Wf := by
+  unfold meetOn; split
+  · split
+    · exact meetV_wf _ _
+    · trivial
+  · exact meetV_wf _ _
+
+theorem meetK_wf (K : Known A B) (R S : Rel A B) : (meetK K R S).Wf := by
+  unfold meetK; split
+  · split <;> exact meetOn_wf _ _ _
+  all_goals exact meetOn_wf _ _ _
+
 theorem meet_wf {d e : Bool} (R S : Rel A B) : (GenK.meet A B d e R S).Wf := by
-  unfold GenK.meet; split <;> first | exact fun _ => meetV_wf _ _ | exact meetV_wf _ _
+  unfold GenK.meet; split <;> first | exact meetV_wf _ _ | exact fun K => meetK_wf K _ _
 
 theorem compR_runE (r : Tab A B) (s : Tab B C) (K : Known A C) :
     (compR r s).runE K = Tab.compSel Tab.bitsMax r s := by
@@ -1882,6 +1933,11 @@ theorem lift1_wf {D : Obj} {f : Tab A B → Except String (Tab C D)} {k : Known 
 theorem lift2_wf {D E F : Obj} {f : Tab A B → Tab C D → Except String (Tab E F)} {kl : Known E F → Known A B}
     {kr : Known E F → Known C D} (R : Rel A B) (S : Rel C D) : (lift2 f kl kr R S).Wf := by
   cases R <;> cases S <;> first | trivial | exact fun _ => trivial
+
+theorem diff_wf {d e : Bool} (R S : Rel A B) : (GenK.diff A B d e R S).Wf := by
+  unfold GenK.diff; split
+  · exact fun _ => trivial
+  · exact lift2_wf _ _
 
 theorem ofVals_wf {f : {n : USize} → Vals A n → Except String (Tab A B)} : (ofVals A B f).Wf := by
   intro K; cases h : K.dom <;> simp [ofVals, h, Rel.Rel.Wf]

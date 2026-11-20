@@ -9,6 +9,7 @@ import Rel.Run.Div
 import Rel.Run.Bits
 import Rel.Run.Fix
 import Rel.Run.Where
+import Rel.Run.Asc
 
 /-! The code a program runs: one body per node of its terms (`Tm.onKernel`), each a composition of the `Tab`
     operators over the five kernels. A `tab` holds the message of the op that could not run, never a dropped
@@ -105,29 +106,54 @@ def lift2 {A B C D E F : Obj} (f : Tab A B → Tab C D → Except String (Tab E 
   | R, S => .lazy fun K => .tab do f (← R.runE (kl K)) (← S.runE (kr K))
 
 def conv (A B : Obj) (R : Fn false A B) : Fn false B A := lift1 Tab.conv (fun K => ⟨K.ran, K.dom⟩) R
+
+/-- `r` cut to the values `K` knows of its sides, `idU X ≫ r ≫ idU L`, a side left whole where it is unknown. -/
+def cut {A B : Obj} (K : Known A B) (r : Tab A B) : Except String (Tab A B) := do
+  let l ← match K.dom with | some c => do (← Tab.idU c.2).comp r | none => pure r
+  match K.ran with | some c => do l.comp (← Tab.idU c.2) | none => pure l
+
 /-- `R ∩ S` of two values that are no `lazy`: a table met with a bit matrix keeps its rows whose bit is set
     (`Tab.keepBits`), so the matrix is never read back as rows; else `Tab.inter` of the two tables. -/
 def meetV {A B : Obj} : Rel A B → Rel A B → Rel A B
   | .bits g w o x ra y rc, .tab t | .tab t, .bits g w o x ra y rc => .tab (t >>= (Tab.keepBits · g w o x ra y rc))
   | R, S => .tab do Tab.inter (← R.runE {}) (← S.runE {})
 
+/-- `r` cut to `K`'s sides (`cut`), and the context its own sides make: beside a table `t` with `dom t ⊆ K`,
+    `ran t ⊆ L`, `(K ≫ S ≫ L) ∩ t = S ∩ t`, so the other operand of `∩` or `−` runs knowing only `t`'s sides. -/
+def bound {A B : Obj} (K : Known A B) (r : Tab A B) : Except String (Tab A B × Known A B) := do
+  let t ← cut K r; let d ← Tab.dom t; let l ← Tab.ran t
+  pure (t, ⟨some ⟨d.n, d.key⟩, some ⟨l.n, l.key⟩⟩)
+
+/-- `T ∩ S` in `K`, `T` already run: a table bounds `S` (`bound`); anything else meets `S` run on `K`. -/
+def meetOn {A B : Obj} (K : Known A B) (T S : Rel A B) : Rel A B := match T with
+  | .tab (.ok r) => match bound K r with
+    | .ok p => meetV (.tab (.ok p.1)) (S.force p.2)
+    | .error e => .tab (.error e)
+  | T => meetV T (S.force K)
+
+/-- `R ∩ S` in `K`: the operand that is no `lazy` runs first and bounds the other (`meetOn`); of two lazy ones `R`,
+    or `S` where `R` cannot run on `K` alone. -/
+def meetK {A B : Obj} (K : Known A B) (R S : Rel A B) : Rel A B := match R, S with
+  | .lazy _, .lazy _ => match R.force K with
+    | .tab (.error _) => meetOn K (S.force K) R
+    | R' => meetOn K R' S
+  | .lazy _, S => meetOn K S R
+  | R, S => meetOn K R S
+
 def meet (A B : Obj) (d e : Bool) (R : Fn d A B) (S : Fn e A B) : Fn (d || e) A B := match R, S with
-  | .lazy _, _ | _, .lazy _ => .lazy fun K => meetV (R.force K) (S.force K)
+  | .lazy _, _ | _, .lazy _ => .lazy fun K => meetK K R S
   | R, S => meetV R S
 def join (A B : Obj) (d e : Bool) (R : Fn d A B) (S : Fn e A B) : Fn (d || e) A B :=
   lift2 Tab.union (fun K => K) (fun K => K) R S
-def diff (A B : Obj) (d e : Bool) (R : Fn d A B) (S : Fn e A B) : Fn (d || e) A B :=
-  lift2 Tab.diff (fun K => K) (fun K => K) R S
+/-- `R − S`: a lazy `S` is needed only on `R`'s pairs, so it runs knowing `R`'s sides (`bound`). -/
+def diff (A B : Obj) (d e : Bool) (R : Fn d A B) (S : Fn e A B) : Fn (d || e) A B := match S with
+  | .lazy _ => .lazy fun K => .tab do let p ← bound K (← R.runE K); Tab.diff p.1 (← S.runE p.2)
+  | S => lift2 Tab.diff (fun K => K) (fun K => K) R S
 /-- A coreflexive's two sides are one value set, so either side the context knows bounds `R`'s side. -/
 def dom (A B : Obj) (d : Bool) (R : Fn d A B) : Fn d A A := lift1 Tab.dom (fun K => ⟨K.dom <|> K.ran, none⟩) R
 def ran (A B : Obj) (R : Fn false A B) : Fn false B B := lift1 Tab.ran (fun K => ⟨none, K.dom <|> K.ran⟩) R
 
 /-! ### T3: `⊤ π₁ π₂ ⟨R,S⟩ × \ /`, `ν`, `μ` -/
-
-/-- `r` cut to the values `K` knows of its sides, `idU X ≫ r ≫ idU L`, a side left whole where it is unknown. -/
-def cut {A B : Obj} (K : Known A B) (r : Tab A B) : Except String (Tab A B) := do
-  let l ← match K.dom with | some c => do (← Tab.idU c.2).comp r | none => pure r
-  match K.ran with | some c => do l.comp (← Tab.idU c.2) | none => pure l
 
 /-- `X × L`: the known domain values by `V`'s values cut to the known range. -/
 def top (A B : Obj) (V : Fn false B B) : Fn true A B := .lazy fun K => match K.dom with
@@ -137,8 +163,14 @@ def outl (A B : Obj) : Fn true (.prod A B) A := ofVals _ _ fun X => Tab.outl X
 def outr (A B : Obj) : Fn true (.prod A B) B := ofVals _ _ fun X => Tab.outr X
 def pair (A B C : Obj) (d e : Bool) (R : Fn d A B) (S : Fn e A C) : Fn (d || e) A (.prod B C) :=
   lift2 Tab.pair (fun K => ⟨K.dom, none⟩) (fun K => ⟨K.dom, none⟩) R S
+/-- `R × S`: on the pairs `Z` a context knows, `⟨π₁ ≫ R, π₂ ≫ S⟩` on `Z`, each operand run knowing its domain is that
+    side of `Z`; where none is known, CROSS of the two tables. -/
 def prod (A B C D : Obj) (R : Fn false A B) (S : Fn false C D) : Fn false (.prod A C) (.prod B D) :=
-  lift2 Tab.prod (fun _ => {}) (fun _ => {}) R S
+  .lazy fun K => .tab <| match K.dom with
+    | some ⟨n, Z⟩ => do
+      let l ← (← Tab.outl Z).comp (← R.runE ⟨some ⟨n, Z.1⟩, none⟩)
+      l.pair (← (← Tab.outr Z).comp (← S.runE ⟨some ⟨n, Z.2⟩, none⟩))
+    | none => do Tab.prod (← R.runE {}) (← S.runE {})
 /-- `R/S` and `R\S` read both sides whole, with the universes `UA`, `UB` (`UB`, `UC`); `ldiv` is `Tab.ldivSel`, a bit
     matrix where `Tab.bitsWin` holds. -/
 def rdiv (A B C : Obj) (R : Fn false A C) (S : Fn false B C) (UA : Fn false A A) (UB : Fn false B B) :
@@ -176,12 +208,13 @@ def kernRows : List (String × Lean.Name) :=
   [("∋", ``Tab.mem), ("τ", ``Tab.tau), ("length", ``Tab.length), ("setify", ``Tab.setify),
    ("snoc", ``Tab.snoc), ("cons", ``Tab.cons), ("cat", ``Tab.cat), ("zip", ``Tab.zip), ("sum", ``Tab.sum),
    ("uncons", ``Tab.uncons), ("unsnoc", ``Tab.unsnoc), ("uncat", ``Tab.uncat), ("inl", ``Tab.inl),
-   ("inr", ``Tab.inr), ("prefix", ``Tab.«prefix»), ("suffix", ``Tab.suffix),
+   ("inr", ``Tab.inr), ("inl°", ``Tab.inlConv), ("inr°", ``Tab.inrConv), ("prefix", ``Tab.«prefix»), ("suffix", ``Tab.suffix),
    ("inits", ``Tab.inits),
    ("tails", ``Tab.tails),
    ("concat", ``Tab.flatten),
    ("filter", ``Tab.filter),
    ("positions", ``Tab.positions),
+   ("asc", ``Tab.asc),
    ("takewhile", ``Tab.takewhile),
    ("loop", ``Tab.loop),
    ("merge", ``Tab.merge),
@@ -206,7 +239,7 @@ def Tm.kernelNode {A B : Obj} : Tm A B → Bool
   | .est _ => true
   | .thin _ => true
   | .atPos _ => true
-  | .junc .. | .juncD .. | .fold .. | .foldr .. | .foldI .. | .flat _ => true
+  | .fold .. | .foldr .. | .foldI .. | .flat _ => true
   | .prim r => (kernRows.lookup r.sym).isSome
   | .top _ => true
   | .outl => true
@@ -284,6 +317,10 @@ def nil (A B : Obj) : Fn true A (.arr B) := ofVals _ _ fun X => Tab.nil X
 def elems (A B C : Obj) (d : Bool) (R : Fn d A B)
     (f : {n : USize} → Tab A B → Vals (.arr A) n → Except String (Tab (.arr A) C)) : Fn true (.arr A) C :=
   ofVals _ _ fun X => do let k ← (← Tab.mem X).ran; f (← R.runE ⟨some ⟨k.n, k.key⟩, none⟩) X
+/-- A row whose table `f` makes from its relation's whole table (`asc`): `R` run in no context, since the answer at
+    any key reads every row of `R`; the context cuts the table (`Rel.Reps` reads it on the context's sides). -/
+def ofRel (A B C D : Obj) (d : Bool) (R : Fn d A B) (f : Tab A B → Except String (Tab C D)) : Fn true C D :=
+  lift1 f (fun _ => {}) R
 
 /-- `est(Q)`, `thin(Q)` on the arrays in demand, the pair test `Q` run knowing its domain is the pairs `D` it is
     asked about (`Gen.est`'s `Q.at`). -/
@@ -293,16 +330,7 @@ def thin (B : Obj) (Q : Fn true (.prod B B) (.prod B B)) : Fn true (.arr B) (.ar
   ofVals _ _ fun X => Tab.thin (fun D => Q.runE ⟨some ⟨D.n, D.val⟩, none⟩) X
 def atPos (B : Obj) (k : Nat) : Fn true (.arr B) B := ofVals _ _ fun X => Tab.atPos k X
 
-/-! ### T6: `[R,S]`; T8: `⦇e,S⦈`, `⦇e,S⦈ʳ`, `⦇e,S⦈` given a family, `Rᴵ` -/
-
-/-- `[R,S]` = `inl° ≫ R ∪ inr° ≫ S` (`Tab.junc`), both parts read whole. -/
-def junc (A B C : Obj) (R : Fn false A C) (S : Fn false B C) : Fn false (.sum A B) C :=
-  lift2 Tab.junc (fun _ => {}) (fun _ => {}) R S
-/-- `[R,S]` on the sum values `X` in demand: `R` run on the left values `X` holds, `S` on the right, then `idU X ≫`. -/
-def juncD (A B C : Obj) (d e : Bool) (R : Fn d A C) (S : Fn e B C) : Fn true (.sum A B) C :=
-  ofVals _ _ fun X => do
-    let ⟨l, r, _, _, x, y⟩ := X
-    (← Tab.idU X).comp (← Tab.junc (← R.runE ⟨some ⟨l, x⟩, none⟩) (← S.runE ⟨some ⟨r, y⟩, none⟩))
+/-! ### T8: `⦇e,S⦈`, `⦇e,S⦈ʳ`, `⦇e,S⦈` given a family, `Rᴵ` -/
 
 /-- `⦇e,S⦈` on the arrays `X` in demand (§4 `fold`: a Lean loop of rounds, `Tab.foldRounds`): each array from every
     value of `e`, round `k` the pairs `(acc, x)` (`⟨P, el⟩`), `S` run on them (`compT`). -/
