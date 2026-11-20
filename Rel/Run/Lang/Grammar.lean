@@ -189,6 +189,7 @@ syntax (name := iDecl) relWord "≜" rel : relItem
 syntax (name := sElems) &"obj" relWord "=" "{" relWord,+ "}" : relStmt
 syntax (name := sRange) &"obj" relWord "=" relWord "…" relWord : relStmt
 syntax (name := sAlias) &"obj" relWord "=" relObj : relStmt
+syntax (name := sNum) &"obj" relWord : relStmt
 -- a schema's column `k : K`
 syntax relField := relWord ":" relObj
 syntax (name := sSchema) &"schema" relWord "=" "{" relField,+ "}" : relStmt

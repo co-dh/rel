@@ -65,6 +65,8 @@ structure ObjInfo where
   elems : List String := []
   range : Option (Int × Int) := none
   uni : Option ((m : USize) × Arr .i64 m) := none
+  /-- An unbounded number object (`ObjDef.num`): every `Int64` an element, `𝟙` its universe. -/
+  num : Bool := false
   /-- An object variable of a definition elaborated once: its universe is the variable `k`, an argument of the
       definition's constant. -/
   uniVar : Option Nat := none
@@ -813,7 +815,7 @@ def constant (env : Env) (p : Pos) (o : Op) (objs : List OExp) : M Arg := do
 /-- The declared objects holding all the words `ws` (named elements, or numbers in their range), each once: an
     imported object is in scope under its name and its constant, one object (`Expand.walk`). -/
 def holders (objs : Objs) (ws : List String) : List OTy :=
-  let holds (i : ObjInfo) (w : String) : Bool := i.elems.contains w ||
+  let holds (i : ObjInfo) (w : String) : Bool := i.elems.contains w || (i.num && w.toInt?.isSome) ||
     match i.range, w.toInt? with | some (lo, hi), some k => lo ≤ k && k ≤ hi | _, _ => false
   ((objs.filter fun (_, i) => ws.all (holds i)).map (·.2.ty)).eraseDups
 
@@ -1524,13 +1526,16 @@ def closed? {A B : Obj} (r : Res) : Except Err (Tm A B) := do
   let t ← at? dp (A := A) (B := B) r
   if t.dem then internal dp "a term that needs keys where none are supplied" else pure t
 
-/-- `𝟙` on the universe of `o`, or the error that `o` has none: a declared one's literal (`uniOf`); else built
-    from its parts, an object variable's being the universe its constant is given (`uniVar`). -/
+/-- `𝟙` on the universe of `o`, or the error that `o` has none: a declared one's literal (`uniOf`), an unbounded
+    number object's `𝟙` itself; else built from its parts, an object variable's being the universe its constant is
+    given (`uniVar`). -/
 def uniPart (o : OTy) (A : Obj) : Except Err (Option (Tm A A)) := do
   if let some ⟨A', _, U⟩ := uniOf objs o then
     return ← if h : A' = A then pure (some (.uni (h ▸ U))) else internal dp "universe objects disagree"
   match o, A with
-  | .base n, _ => pure (((objs.lookup n).bind (·.uniVar)).map (.var false))
+  | .base n, _ => match objs.lookup n with
+    | some { num := true, .. } => pure (some .id)
+    | i => pure ((i.bind (·.uniVar)).map (.var false))
   | .prod a b, .prod A B => do
     let (some u, some v) := (← uniPart a A, ← uniPart b B) | pure none
     pure (some (.prod u v))
@@ -1551,6 +1556,7 @@ def numU (p : Pos) (o : OTy) (op : String) : Except Err (Tm .long .long) :=
   match zonk mc o with
   | .base n => match objs.lookup n with
     | some { uni := some ⟨_, U⟩, .. } => pure (.uni (A := .long) U)
+    | some { num := true, .. } => pure .id
     | some { uniVar := some k, obj := .atom .i64, .. } => pure (.var false k)
     | some { uniVar := some _, .. } => throw ⟨p, s!"{op} on {n}: a number object, which its constant is not generic over"⟩
     | _ => throw ⟨p, s!"{op} on {n}: no universe"⟩
@@ -1564,6 +1570,7 @@ def code (p : Pos) (o : OTy) (w : String) : Except Err Int64 :=
       | some (lo, hi), _, some k => if lo ≤ k ∧ k ≤ hi then pure (Int64.ofInt k)
           else throw ⟨p, s!"{w} is not in {n} = {lo}…{hi}"⟩
       | none, some k, _ => pure (Int64.ofNat k)
+      | none, none, some k => if i.num then pure (Int64.ofInt k) else throw ⟨p, s!"'{w}' is not an element of {n}"⟩
       | _, _, _ => throw ⟨p, s!"'{w}' is not an element of {n}"⟩
     | none => throw ⟨p, s!"unknown object '{n}'"⟩
   | o => throw ⟨p, s!"a literal relates elements of declared objects, found {o}"⟩

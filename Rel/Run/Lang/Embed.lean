@@ -64,6 +64,7 @@ def stmt (s : Syntax) : C Decl := do
     if hi < lo then failAt s[5] s!"the range {lo}…{hi} is empty: {hi} is below {lo}"
     pure (.range lo hi)
   | ``sAlias => objDecl do pure (.alias (← obj s[3]))
+  | ``sNum => objDecl do pure .num
   | ``sSchema => objDecl do
     let cs ← s[4].getSepArgs.toList.mapM fun f => do pure (← wordOf f[0], ← obj f[2])
     -- a column twice is refused where it is written, by the check every `Schema` function makes
