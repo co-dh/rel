@@ -80,4 +80,16 @@ run_meta do
 #guard_msgs in
 run_meta discard (twice (.call [] `b.k [] .id)).call?
 
+/-- The placeholders of a constant built where an object `F` is stored at `.f64` (no form declares one yet), and
+    twelve call objects for its variables. -/
+def phF : List Rel.QAtomicType := placeholdersOf [("F", { ty := .base "F", obj := .atom .f64 })]
+def σ12 : List Obj := List.replicate 12 (.arr .long)
+
+-- `F`'s atom is none of the constant's placeholders: `F` passes through `Obj.inst` unchanged, where the global
+-- `varAtoms` took it for variable 6; each placeholder is its variable's object, and `.long` stays
+#guard !phF.contains .f64 ∧ phF.length = 11
+#guard (Obj.prod (.atom .f64) .long).inst phF σ12 == .prod (.atom .f64) .long
+#guard (Obj.atom .f64).inst varAtoms σ12 == .arr .long
+#guard phF.all fun t => (Obj.atom t).inst phF σ12 == .arr .long
+
 end Rel.Lang.GenSoundTest
