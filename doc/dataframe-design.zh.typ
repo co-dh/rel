@@ -222,9 +222,9 @@ diff(n, x)        ≜ dom(x) tot(⟨x, ⟨𝟙, ⊤ n⟩minus x⟩minus)      x 
     [`mean` 只有整数除法，浮点：F4], "part"),
   ([`variance` `stddev` `skewness` `correlation` `zScore`], [无], [要浮点算术：F4], "no"),
   ([`median` `percentile` `genericPercentile` `interQuartileRange`],
-    [`median(a, x) ≜ summarize(F(m a) ⟨sum, length⟩div, m) where m ≜ dom(x) dom(⟨𝟙,𝟙⟩plus ≤ count(x)°) dom(⟨𝟙,𝟙⟩plus succ succ ≥ count(x)°) sortBy(a, x)`；
-    `percentile(r) = ⟨⟨m, ⊤ r⟩times, ⊤ 100⟩div sortBy(a) a`],
-    [`where` 的 `m` 是排序后 `count(x) − 2 ≤ 2i ≤ count(x)` 的一或两行，取整数均值；`percentile` 尚不在库中，`r·m` 为浮点时 F4], "part"),
+    [`median(a, x) ≜ quantile(e, e succ, a, x) where e ≜ count(x) ⟨𝟙, 𝟙⟩minus succ`；
+    `quantile(p, q, a, x) ≜ summarize(F(m a) ⟨sum, length⟩div, m) where m ≜ dom(x) dom(⟨⟨𝟙, ⊤ q⟩times, ⊤ p⟩plus < (⟨⟨count(x), p⟩times, q⟩plus)°) dom(⟨⟨⟨𝟙, ⊤ q⟩times, ⊤ p⟩plus, ⊤ q⟩plus > (⟨count(x), p⟩times)°) sortBy(a, x)`],
+    [分数 `p/q`：`quantile` 保留排序后满足 `|q·i − p(count−1)| < q` 的行 `i`，取整数均值；`percentile(p, …) = quantile(p, 100, …)` 暂写不出，因为泛型的定义体不能含数字常量], "part"),
   ([`countDistinct` `mode`], [`countDistinct(x) ≜ count(distinct(x))`；`mode(a, x) ≜ summarize(head, s) s where s ≜ idesc(valueCounts(a, x) π₂) valueCounts(a, x) π₁`],
     [`mode` 在并列中取先出现的（`idesc` 稳定）], "full"),
   ([`collect`], [`collect(a, c, x) ≜ aggregate(a, F(x c), x)`], [结果列的类型是 `Obj.arr V`], "full"),
@@ -237,7 +237,7 @@ diff(n, x)        ≜ dom(x) tot(⟨x, ⟨𝟙, ⊤ n⟩minus x⟩minus)      x 
     [整数列的 count、mean、min、max；浮点的 mean / std：F4], "part"),
   ([`nulls`], [`nulls(c, x) ≜ count(filterNothing(c, x))`], [], "full"),
   ([`innerJoin` `join` `joinOn`], [`innerJoin(a, b, x, y) ≜ joinOn(J(a, b, x, y), x, y)`], [], "full"),
-  ([`leftJoin`], [`leftJoin(a, b, x, y) ≜ asc(ran(⟨𝟙, dom(x) tot(J(a, b, x, y))⟩)) (x × (y ⊕ 𝟙))`],
+  ([`leftJoin`], [`leftJoin(a, b, x, y) ≜ asc(ran(⟨𝟙, dom(x) tot(J(a, b, x, y))⟩)) ⟨π₁ x, π₂ (y ⊕ 𝟙)⟩`],
     [`y ⊕ 𝟙 = [y inl, 𝟙 inr]`（prelude 的 `⊕`）：没有匹配的行右侧为 null（`E+1`）], "full"),
   ([`rightJoin`], [`rightJoin(a, b, x, y) ≜ leftJoin(b, a, y, x) ⟨π₂, π₁⟩`], [], "full"),
   ([`fullOuterJoin`], [`fullOuterJoin(a, b, x, y) ≜ append(leftJoin(a, b, x, y) ⟨π₁ inl, π₂⟩, antiJoin(b, a, y, x) ⟨⊤ inr, inl⟩)`],
@@ -269,7 +269,7 @@ diff(n, x)        ≜ dom(x) tot(⟨x, ⟨𝟙, ⊤ n⟩minus x⟩minus)      x 
 
 #let pl = (
   ([semi / anti join], [`semiJoin(a, b, x, y) ≜ dom(x) asc(dom(J(a, b, x, y))) x`；`antiJoin(a, b, x, y) ≜ dom(x) asc(dom(x) − dom(J(a, b, x, y))) x`], [], "full"),
-  ([cross join], [`crossJoin(x, y) ≜ joinOn(dom(x) ⊤ dom(y), x, y)`], [], "full"),
+  ([cross join], [`crossJoin(x, y) ≜ innerJoin(⊤ 𝟙(1), ⊤ 𝟙(1), x, y)`], [], "full"),
   ([asof join], [`aj(k, t, h, u, x, y) ≜ ⟨x, dom(x) tot(m y)⟩ where m ≜ (x ⟨k, t⟩ (𝟙 × (ran(x t) ≥ ran(y u))) ⟨h, u⟩° y°) − (x ⟨k, t⟩ (𝟙 × (ran(x t) ≥ ran(y u))) ⟨h, u⟩° y° y u > u° y°)`],
     [q 的 `aj`：`m` 留下时间上没有别的候选超过的候选；`≥` 只在两个 frame 的时间之间；`ι = 𝟙`], "full"),
   ([`cum_sum` 等], [`cumAgg(f, x) ≜ agg(dom(x) ≥ dom(x), f)`], [行 `i` 聚合 `j ≤ i` 的行；q：`sums`（`f` 为 `sum`）], "full"),
