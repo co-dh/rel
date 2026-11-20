@@ -133,9 +133,21 @@ def rdiv (A B C : Obj) (R : Fn false A C) (S : Fn false B C) (UA : Fn false A A)
     Fn false A B :=
   lift2 (fun r s => do (← Tab.ldivSel Tab.bitsMax (← s.conv) (← r.conv) (← UB.runE {}) (← UA.runE {})).conv)
     (fun _ => {}) (fun _ => {}) R S
+/-- `r \ M` within `ub`, `uc`, `M` a bit matrix: divided on its bits (`Tab.ldivTabMat`) and kept a matrix; read back
+    and `Tab.ldivSel` only where the answer would pass `Tab.bitsMax`. -/
+def ldivM {A B C : Obj} (r : Tab A B) (ub : Tab B B) (uc : Tab C C) {n m : USize} (g w : USize) (o : Enc)
+    (x : Vals A n) (ra : Enc) (y : Vals C m) (rc : Enc) : Rel B C :=
+  match Tab.ldivTabMat r ub uc g w o x ra y rc with
+  | .ok (some (kb, kc, o', ⟨_, zb⟩, rb, ⟨_, zc⟩, rc')) => .bits kb kc o' zb rb zc rc'
+  | .ok none => .tab do Tab.ldivSel Tab.bitsMax r (← Tab.ofBits g w o x ra y rc) ub uc
+  | .error e => .tab (.error e)
+
 def ldiv (A B C : Obj) (R : Fn false A B) (S : Fn false A C) (UB : Fn false B B) (UC : Fn false C C) :
-    Fn false B C :=
-  lift2 (fun r s => do Tab.ldivSel Tab.bitsMax r s (← UB.runE {}) (← UC.runE {})) (fun _ => {}) (fun _ => {}) R S
+    Fn false B C := match S.force {} with
+  | .bits g w o x ra y rc => match R.runE {}, UB.runE {}, UC.runE {} with
+    | .ok r, .ok ub, .ok uc => ldivM r ub uc g w o x ra y rc
+    | .error e, _, _ | _, .error e, _ | _, _, .error e => .tab (.error e)
+  | S => lift2 (fun r s => do Tab.ldivSel Tab.bitsMax r s (← UB.runE {}) (← UC.runE {})) (fun _ => {}) (fun _ => {}) R S
 
 /-- `νX : S ∩ φ` by plain rounds (`Tab.nu`), no AC-3 delta rounds; `μX : φ` (`Tab.mu`), at most `cap` rounds. -/
 def nu (A B : Obj) (S : Fn false A B) (φ : Tab A B → Fn false A B) : Fn false A B :=

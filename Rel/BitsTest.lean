@@ -144,4 +144,42 @@ def full (n : Nat) : List (Int64 × Int64) :=
 #guard meet3 ((rnd 6 900 100).map fun (a, c) => (a % 9, 100 + c % 4)) [(7, 0), (7, 3), (8, 9)] denseR denseS &&
   meet3 (full 5) (full 5) (full 5) (full 5) && meet3 [] (full 5) (full 5) (full 5) && meet3 (full 5) [] (full 5) (full 5)
 
+/-- `Q \ (R ≫ S)` within `UB`, `UC`: the division on the matrix (`ldivTabMat`), read back. -/
+def ldiv2 (Q R S : List (Int64 × Int64)) (UB UC : List Int64) : Bool :=
+  same (do let r ← tab R; let s ← tab S; let (g, w, o, ra, rc) ← Tab.compMat r s
+           match ← Tab.ldivTabMat (← tab Q) (← diag UB) (← diag UC) g w o r.key ra s.val rc with
+           | some (kb, kc, o', ⟨_, zb⟩, rb, ⟨_, zc⟩, rc') => Tab.ofBits kb kc o' zb rb zc rc'
+           | none => throw "ldivTabMat: past bitsMax")
+    (do Tab.ldiv (← tab Q) (← Tab.comp (← tab R) (← tab S)) (← diag UB) (← diag UC))
+
+-- `10`: keys `1 2` share `5`; `20`: key `1`'s `5 6`; `30`: key `3` is no row of the matrix; `40`, no row of `Q`: `UC`
+#guard ldiv2 [(1, 10), (2, 10), (1, 20), (3, 30)] [(1, 50), (2, 51)] [(50, 5), (50, 6), (51, 5)] [10, 20, 30, 40]
+  [5, 6, 7]
+-- `UC` narrower than the matrix's columns, and disjoint from them; duplicates in `Q`
+#guard ldiv2 [(1, 10), (2, 10), (1, 20)] [(1, 50), (2, 51)] [(50, 5), (50, 6), (51, 5)] [10, 20, 40] [5] &&
+  ldiv2 [(1, 10), (1, 10), (2, 10)] [(1, 50), (2, 51)] [(50, 5), (50, 6), (51, 5)] [40] [8, 9]
+-- an empty `Q`, an empty matrix, all of `⊤`
+#guard ldiv2 [] (full 4) (full 4) [1, 2] [0, 7] && ldiv2 [(1, 10)] [] (full 4) [10, 20] [5, 6] &&
+  ldiv2 (full 5) (full 5) (full 5) [0, 9] [3, 9]
+/-- A sum key whose `idx` column is a legal `bytes` column (`Enc.WF`) that `kgather` does not read: `compSelM` numbers
+its sides with `Vals.cols`, which must refuse it, so no matrix over it reaches `ofBits` (`GenK.ReadsBack`). -/
+def bytesKey : Option String :=
+  let idxB : Arr .i64 1 := Arr.mk (.bytes (ByteArray.mk #[0, 0, 0, 0, 0, 0, 0, 0])) (by
+    show (ByteArray.mk #[0, 0, 0, 0, 0, 0, 0, 0]).size = (1 : USize).toNat * 8
+    rw [show (1 : USize).toNat = 1 from USize.toNat_one]; rfl)
+  let five : Arr .i64 1 := Arr.ofFn .i64 1 fun _ => 5
+  let R : Tab (.sum (.atom .i64) (.atom .i64)) (.atom .i64) :=
+    ⟨1, ⟨1, 1, Arr.bools 1 fun _ => false, idxB, five, five⟩, Arr.ofFn .i64 1 fun _ => 7⟩
+  let S : Tab (.atom .i64) (.atom .i64) := ⟨1, Arr.ofFn .i64 1 fun _ => 7, Arr.ofFn .i64 1 fun _ => 9⟩
+  match Tab.compSelM Tab.bitsMax R S with
+  | .ok (.inr (g, w, o, ra, rc)) => match Tab.ofBits g w o R.key ra S.val rc with
+    | .error e => some e
+    | .ok _ => none
+  | _ => none
+
+#guard bytesKey.isNone
+
+#guard ldiv2 ((rnd 7 300 40).map fun (a, b) => (a, b % 12)) ((rnd 1 300 40).map fun (a, b) => (a, b % 31))
+  ((rnd 2 400 97).map fun (b, c) => (b % 31, c % 23)) [0, 5, 50, 51] [1, 2, 99]
+
 end Rel.BitsTest

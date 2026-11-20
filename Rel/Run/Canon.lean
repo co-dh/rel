@@ -31,6 +31,10 @@ def Vals.cols : {A : Obj} → {n : USize} → Vals A n → Except String (List (
   | .arr _, n, ⟨c, lo, hi, f⟩ => do pure [(.cells n c lo.enc hi.enc (← Vals.cols f), .pos)]
   | .sum _ _, n, ⟨l, r, tag, idx, x, y⟩ =>
     if 2 ^ 63 < l.toNat ∨ 2 ^ 63 < r.toNat then .error s!"cols: a sum side of {l} and {r} rows, past an Int64 position"
+    -- `idx` is read here only by `colMap`, which takes more forms than `kgather` (`Vals.gather`); a side numbered
+    -- here must be one every kernel reads, as `kasc` checks the tag
+    else if (foRWords "" n idx.enc).toBool = false then
+      .error s!"cols: a sum side's idx column (constructor {idx.enc.ctorIdx}) is no foR column of {n} rows"
     else do
       let px ← colMap .mul n idx.enc (← colMap .not n tag.enc tag.enc)
       let py ← colMap .mul n idx.enc tag.enc

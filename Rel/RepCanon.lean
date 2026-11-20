@@ -310,6 +310,7 @@ theorem Vals.cols_sum {a b : Obj} {n l r : USize} {tag : Arr .u1 n} {idx : Arr .
   simp only [Vals.cols] at hes
   split at hes; · cases hes
   rename_i hlr
+  split at hes; · cases hes
   simp only [bind, Except.bind, pure, Except.pure] at hes
   split at hes; · cases hes
   rename_i nt hnt

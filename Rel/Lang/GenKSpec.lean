@@ -224,23 +224,12 @@ theorem flat_sound {I : Obj} {d : Bool} {R : Rel I (.prod A B)} {X : Core.Rel I.
 example : ∀ K, (GenK.outl A B).Reps K (graph Prod.fst) := ofVals_row_sound fun _ _ _ h => Tab.outl_holds h
 example : ∀ K, (GenK.outr A B).Reps K (graph Prod.snd) := ofVals_row_sound fun _ _ _ h => Tab.outr_holds h
 
-/-! ### `diff ldiv rdiv lam nil succ leq lt` (`nil` by `ofVals_row_sound`, `leq lt` by `cmp_sound`) -/
+/-! ### `diff rdiv lam nil succ leq lt` (`nil` by `ofVals_row_sound`, `leq lt` by `cmp_sound`) -/
 
 theorem diff_sound {d e : Bool} {R S : Rel A B} {X Y : Core.Rel A.El B.El} (hR : ∀ K, R.Reps K X)
     (hS : ∀ K, S.Reps K Y) : ∀ K, (GenK.diff A B d e R S).Reps K (diffDen X Y) :=
   lift2_sound hR hS fun _ _ _ _ ht hr hs x y hx hy =>
     (Tab.diff_holds ht x y).trans (and_congr (hr x y hx hy) (not_congr (hs x y hx hy)))
-
-theorem ldiv_sound {R : Rel A B} {S : Rel A C} {UB : Rel B B} {UC : Rel C C} {X : Core.Rel A.El B.El}
-    {Y : Core.Rel A.El C.El} {TB : Core.Rel B.El B.El} {TC : Core.Rel C.El C.El} (hR : ∀ K, R.Reps K X)
-    (hS : ∀ K, S.Reps K Y) (hB : ∀ K, UB.Reps K TB) (hC : ∀ K, UC.Reps K TC) :
-    ∀ K, (GenK.ldiv A B C R S UB UC).Reps K (ldivDen X Y TB TC) :=
-  lift2_sound hR hS fun _ _ _ _ ht hr hs => by
-    obtain ⟨ub, hub, ht⟩ := bind_ok ht
-    obtain ⟨uc, huc, ht⟩ := bind_ok ht
-    rw [agrees_empty hr, agrees_empty hs, agrees_empty ((reps_iff _ _ _).1 (hB {}) ub hub),
-      agrees_empty ((reps_iff _ _ _).1 (hC {}) uc huc)]
-    exact fun b c _ _ => Tab.ldivSel_holds ht b c
 
 theorem rdiv_sound {R : Rel A C} {S : Rel B C} {UA : Rel A A} {UB : Rel B B} {X : Core.Rel A.El C.El}
     {Y : Core.Rel B.El C.El} {TA : Core.Rel A.El A.El} {TB : Core.Rel B.El B.El} (hR : ∀ K, R.Reps K X)
