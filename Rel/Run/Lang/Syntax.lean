@@ -254,7 +254,11 @@ def prims : List Prim :=
    { sym := "asc", sig := ([((.var {} "B", .var {} "B"), some false)], .var {} "ℕ", .var {} "B"),
      mono := false, aop := .error "AOP declares no numbering of a set by its order", whole := true },
    -- last, so the rows before keep their positions (`Rows.lean`'s numbering)
-   inlConvRow, inrConvRow]
+   inlConvRow, inrConvRow,
+   -- `x $ F`: each value of `x : A ⟶ N` to the same number at `F`'s atom (`QAtomicType.embed`, typed base S6), written
+   -- as its own infix form, which names the target object
+   { sym := "$", sig := ([], .var {} "N", .var {} "F"), written := false,
+     aop := .error "AOP declares no change of a number's representation" }]
 
 def Prim.find?(s : String) : Option Prim := prims.find? (·.sym == s)
 

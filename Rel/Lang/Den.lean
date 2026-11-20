@@ -9,6 +9,7 @@ import Rel.AscOrder
 import Rel.Rep
 import Rel.ObjOrder
 import Rel.Core.Fix
+import Rel.Kernel.Cast
 
 namespace Rel.Lang
 
@@ -283,7 +284,14 @@ def positions : RowCode := ⟨"positions", fun σ => (.arr (σ₁ σ), .arr .lon
 def asc : RowCode := ⟨"asc", fun σ => (.long, σ₁ σ)⟩
 def inlC : RowCode := ⟨"inl°", fun σ => (.sum (σ₁ σ) (σ₂ σ), σ₁ σ)⟩
 def inrC : RowCode := ⟨"inr°", fun σ => (.sum (σ₁ σ) (σ₂ σ), σ₂ σ)⟩
+def cast : RowCode := ⟨"$", fun σ => (σ₁ σ, σ₂ σ)⟩
 end RowCode
+
+/-- `$` at `A ⟶ B`: the graph of the embedding of `A`'s atom in `B`'s (`QAtomicType.embed`), a partial function that
+    never rounds; `𝟘` where a side is no atom. -/
+def castDen : (A B : Obj) → Den A B
+  | .atom s, .atom t => fun x y => QAtomicType.embed s t x = some y
+  | _, _ => fun _ _ => False
 
 /-- A row's meaning at its object variables `σ`, given its relation arguments' meanings. -/
 abbrev RowDen (c : RowCode) := (σ : List Obj) → List Sem → Den (c.ty σ).1 (c.ty σ).2
@@ -330,7 +338,8 @@ def rowDens : List ((c : RowCode) × RowDen c) :=
    -- q's `asc` of the set `dom P`: `j` to its `j`-th element in `Obj.lt` order
    ⟨asc, fun σ => Sem.one (X := σ₁ σ) (Y := σ₁ σ) fun T => ascDen (σ₁ σ) fun b => ∃ c, T b c⟩,
    ⟨inlC, fun _ _ s a => Core.Rel.inl a s⟩,
-   ⟨inrC, fun _ _ s b => Core.Rel.inr b s⟩]
+   ⟨inrC, fun _ _ s b => Core.Rel.inr b s⟩,
+   ⟨cast, fun σ _ => castDen (σ₁ σ) (σ₂ σ)⟩]
 
 
 /-- The row `r`'s meaning at `A ⟶ B` given its relation arguments' meanings, found as `Prim.run` finds its code;

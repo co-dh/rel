@@ -2,6 +2,7 @@ import Rel.Run.Lang.Plan
 import Rel.Run.Lang.Schema
 import Rel.Kernel.Db.ObjectFile
 import Rel.RepCols
+import Rel.Kernel.Cast
 
 /-! # A table directory (PLAN D.9, `doc/dataframe-design.zh.typ` F6)
 
@@ -36,12 +37,10 @@ def writeVals {A : Obj} {n : USize} (dir p : String) (x : Vals A n) : IO Unit :=
       Db.ownWrite (file dir q) f.code f.attr f.kind f.count f.domain f.parts
 
 /-- The bit pattern of a word of type `t` that is not in the canonical form `Obj.key` and the kernels assume (typed
-    base design, R7 and decision D: a NaN has no row, `-0` is `+0`), `none` for a canonical word. The one predicate a
-    mapped column is checked against: typed base S5 defines canonical floats, and this is the hook it fills. -/
-def nonCanonical : (t : QAtomicType) → El t → Option Nat
-  | .f64, b => let w : UInt64 := b; if Bits.f64IsNaN w || w == 0x8000000000000000 then some w.toNat else none
-  | .f32, b => let w : UInt32 := b; if Bits.f32IsNaN w || w == 0x80000000 then some w.toNat else none
-  | _, _ => none
+    base design, R7 and decision D: a NaN has no row, `-0` is `+0`), `none` for a canonical word: the stored word
+    (`QAtomicType.word`) where `QAtomicType.nonCanonical`, the one predicate, holds of it. -/
+def nonCanonical (t : QAtomicType) (b : El t) : Option Nat :=
+  if t.nonCanonical (t.word b) then some (t.word b).toNat else none
 
 /-- The atom column of type `t` mapped from `path`: the header's type code and domain checked, the parts taken as
     they lie (`Db.ownEnc`) and entered through `Arr.of`, which decides `Enc.WF`; a float column's words checked to be
