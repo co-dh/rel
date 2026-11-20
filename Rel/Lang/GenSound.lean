@@ -250,12 +250,15 @@ end
 #guard !(Tm.arg (Tm.zero (A := .long) (B := .long)) (Tm.id (A := .long))).hasCode
 #guard (Tm.ldiv (A := .long) (B := .long) (C := .long) .id .id .id .id).hasCode
 
-/-- The rows whose case of `Tm.gen_sound` is proved (`rowsProved_ok`), each with whether its proof reads `LamLaw`
-    at its objects `A ⟶ [B]` (a row whose table is a `Λ`). -/
-def rowsProved : List (String × Bool) :=
-  [("∋", false), ("inl", false), ("inr", false), ("τ", true), ("setify", true), ("snoc", false),
-   ("cons", false), ("cat", false), ("uncat", false), ("zip", false),
-   ("length", false), ("loop", false), ("filter", false), ("concat", false), ("merge", false), ("thinL", false)]
+/-- The rows whose case of `Tm.gen_sound` is proved (`rowsProved_ok`), each with the objects, as a function of the
+    row's `A ⟶ B`, at which its proof reads `LamLaw` (`Tm.LamLawsAt`): none, `A ⟶ [B']` where its table is a `Λ` into
+    `B = [B']` (`τ`, `setify`), `[σ] ⟶ [[σ] × [σ]]` where it is `Λ(cat°)` on `A = [σ]` (`tails`). -/
+def rowsProved : List (String × (Obj → Obj → List (Obj × Obj))) :=
+  let no : Obj → Obj → List (Obj × Obj) := fun _ _ => []
+  let cod : Obj → Obj → List (Obj × Obj) := fun A B => match B with | .arr B' => [(A, B')] | _ => []
+  [("∋", no), ("inl", no), ("inr", no), ("τ", cod), ("setify", cod), ("snoc", no), ("cons", no), ("cat", no),
+   ("uncat", no), ("zip", no), ("length", no), ("loop", no), ("filter", no), ("concat", no), ("merge", no),
+   ("thinL", no), ("tails", fun A _ => match A with | .arr σ => [(.arr σ, .prod (.arr σ) (.arr σ))] | _ => [])]
 
 /-- The number of relations row `s` is given: its `prims` entry's, the one `rowGens` was generated from. A
     `rowGens` entry ignores a code past them, where `Prim.den` (`Sem.one`) is `𝟘`. -/
@@ -359,7 +362,7 @@ theorem Tm.gap_eq {A B : Obj} (t : Tm A B) : t.gap = !t.gapKinds.isEmpty := (Tm.
     and `E` (`E(R) = Λ(∋ ≫ R)`, at `[A] ⟶ [B]`) and at each row `rowsProved` marks, and the body of each fixed
     point positive in its variable (`Tm.pol`, which `Tm.den_mono` reads). -/
 def Tm.LamLawsAt (L : Obj → Obj → Prop) : {A B : Obj} → Tm A B → Prop
-  | A, B, .prim r => rowsProved.lookup r.sym = some true → ∀ B', B = .arr B' → L A B'
+  | A, B, .prim r => ∀ f, rowsProved.lookup r.sym = some f → ∀ p ∈ f A B, L p.1 p.2
   | _, _, .lam (A := A) (B := B) R => L A B ∧ R.LamLawsAt L
   | _, _, .E (A := A) (B := B) R => L (.arr A) B ∧ R.LamLawsAt L
   | _, _, .top R | _, _, .conv R | _, _, .dom R | _, _, .ran R | _, _, .own R | _, _, .succ R | _, _, .arith _ R
@@ -400,7 +403,7 @@ theorem Tm.LamLawsAt.mono {L L' : Obj → Obj → Prop} (h : ∀ A B, L A B → 
     t.LamLawsAt L → t.LamLawsAt L' := by
   induction t <;> simp only [Tm.LamLawsAt] <;> intro hx
   all_goals first
-    | exact fun e B' hB => h _ _ (hx e B' hB)
+    | exact fun f e p hp => h _ _ (hx f e p hp)
     | exact ⟨h _ _ hx.1, by simp_all⟩
     | simp_all
 
@@ -513,13 +516,76 @@ theorem rowOK_inr : RowOK "inr" := rowOK_of (c := RowCode.inr) rfl rfl fun _ σ 
 
 theorem rowOK_tau : RowOK "τ" := rowOK_of (c := RowCode.tau) rfl rfl fun _ σ _ _ _ hs hv => by
   cases hv
-  cases σ <;> refine ⟨GenK.ofVals_wf, fun hl => ?_⟩ <;> have hB := hl (by rw [hs]; decide) _ rfl <;>
+  cases σ <;> refine ⟨GenK.ofVals_wf, fun hl => ?_⟩ <;> have hB := hl _ (by rw [hs]; rfl) _ (List.mem_singleton_self _) <;>
     exact ⟨⟨rfl, rfl⟩, GenK.ofVals_row_sound fun _ _ _ h => Tab.tau_den h hB⟩
 
 theorem rowOK_setify : RowOK "setify" := rowOK_of (c := RowCode.setify) rfl rfl fun _ σ _ _ _ hs hv => by
   cases hv
-  cases σ <;> refine ⟨GenK.ofVals_wf, fun hl => ?_⟩ <;> have hB := hl (by rw [hs]; decide) _ rfl <;>
+  cases σ <;> refine ⟨GenK.ofVals_wf, fun hl => ?_⟩ <;> have hB := hl _ (by rw [hs]; rfl) _ (List.mem_singleton_self _) <;>
     exact ⟨⟨rfl, rfl⟩, GenK.ofVals_row_sound fun _ _ _ h => Tab.setify_den h hB⟩
+
+/-- An array is below itself extended by a non-empty one (`Obj.lt` on `[B]`: a proper prefix first). -/
+theorem arr_lt_append (B : Obj) : ∀ (xs ys : List B.El), ys ≠ [] → (Obj.arr B).lt xs (xs ++ ys)
+  | [], [], h => (h rfl).elim
+  | [], y :: ys, _ => Obj.lt_nil_cons B y ys
+  | x :: xs, ys, h => (Obj.lt_cons B x x xs (xs ++ ys)).2 (Or.inr ⟨rfl, arr_lt_append B xs ys h⟩)
+
+/-- **`Λ(cat°)` at `xs`**: the one list strictly ascending in `Obj.lt` of the splits `(p₁, p₂)` of `xs` is the splits by
+increasing split point, since a shorter first part is a proper prefix of a longer one. -/
+theorem lamDen_splits {B : Obj} {T : Den (.arr B) (.prod (.arr B) (.arr B))} (xs : List B.El)
+    (hT : ∀ p, T xs p ↔ xs = p.1 ++ p.2) (zs : List (Obj.prod (.arr B) (.arr B)).El) :
+    lamDen T xs zs ↔ zs = (List.range (xs.length + 1)).map fun k => (xs.take k, xs.drop k) := by
+  have hL : ((List.range (xs.length + 1)).map fun k => (xs.take k, xs.drop k)).Pairwise
+      (Obj.prod (.arr B) (.arr B)).lt := (pairwise_map_range_iff _ _ _).2 fun i j hij hj => by
+    have h := arr_lt_append B (xs.take i) ((xs.take j).drop i) fun h0 => by
+      have := congrArg List.length h0; simp at this; omega
+    have e : xs.take i ++ (xs.take j).drop i = xs.take j := by
+      have t := List.take_append_drop i (xs.take j)
+      rwa [List.take_take, Nat.min_eq_left (by omega)] at t
+    rw [e] at h
+    exact (Obj.lt_prod _ _ _ _ _ _).2 (Or.inl h)
+  have hmem : ∀ p, p ∈ ((List.range (xs.length + 1)).map fun k => (xs.take k, xs.drop k)) ↔ T xs p := fun p => by
+    rw [hT, List.mem_map]
+    constructor
+    · rintro ⟨k, -, rfl⟩; exact (List.take_append_drop k xs).symm
+    · intro h; subst h; exact ⟨p.1.length, by simp; omega, by simp⟩
+  exact ⟨fun ⟨hp, hm⟩ => pairwise_eq_of_mem (Obj.lt_irrefl _) (fun _ _ => Obj.lt_asymm _) hp hL
+    fun p => (hm p).trans (hmem p).symm, fun h => h ▸ ⟨hL, hmem⟩⟩
+
+/-- **`tails` on the cells `X`** (`Tab.tails`) = `Λ(cat°) ≫ F(π₂)`: each array of `X` to its suffixes by decreasing
+length, given the order law of `Λ` at `[B] ⟶ [[B] × [B]]`. -/
+theorem Tab.tails_den {B : Obj} {n : USize} {X : Vals (.arr B) n} {T : Tab (.arr B) (.arr (.arr B))}
+    (h : Tab.tails X = .ok T) (hB : LamLaw (.arr B) (.prod (.arr B) (.arr B))) (xs : List B.El)
+    (yss : List (List B.El)) :
+    T.Holds xs yss ↔ (∃ i, X.row i = xs) ∧ yss = (List.range (xs.length + 1)).map fun k => xs.drop k := by
+  unfold Tab.tails at h
+  obtain ⟨U, hU, h⟩ := GenK.bind_ok h
+  obtain ⟨L, hL, h⟩ := GenK.bind_ok h
+  rcases L with ⟨N, key, m, lo, hi, f⟩
+  simp only [pure, Except.pure, Except.ok.injEq] at h
+  subst h
+  -- the cells of `⟨m, lo, hi, f.2⟩` are those of `⟨m, lo, hi, f⟩` mapped by `Prod.snd`
+  have hrow : ∀ i, Vals.row (A := .arr (.arr B)) ⟨m, lo, hi, f.2⟩ i =
+      (Vals.row (A := .arr (.prod (.arr B) (.arr B))) ⟨m, lo, hi, f⟩ i).map Prod.snd := fun i => by
+    rw [Vals.row_arr, Vals.row_arr, List.map_map]
+    congr 1; funext k; simp only [Function.comp_apply, apply_dite Prod.snd]; rfl
+  have hs : ∀ (hx : ∃ i, X.row i = xs) zs, lamDen U.Holds xs zs ↔
+      zs = (List.range (xs.length + 1)).map fun k => (xs.take k, xs.drop k) :=
+    fun hx => lamDen_splits xs fun p => (Tab.uncat_holds hU xs p).trans (and_iff_right hx)
+  constructor
+  · rintro ⟨i, hk, hv⟩
+    obtain ⟨hx, hd⟩ := (Tab.lam_den hL hB xs _).1 ⟨i, hk, rfl⟩
+    refine ⟨hx, ?_⟩
+    rw [← hv, hrow, (hs hx _).1 hd, List.map_map]; rfl
+  · rintro ⟨hx, rfl⟩
+    obtain ⟨i, hk, hv⟩ := (Tab.lam_den hL hB xs _).2 ⟨hx, (hs hx _).2 rfl⟩
+    exact ⟨i, hk, by rw [hrow]; simp only at hv; rw [hv, List.map_map]; rfl⟩
+
+theorem rowOK_tails : RowOK "tails" := rowOK_of (c := RowCode.tails) rfl rfl fun _ σ _ _ _ hs hv => by
+  cases hv
+  cases σ <;> refine ⟨GenK.ofVals_wf, fun hl => ?_⟩ <;>
+    have hB := hl _ (by rw [hs]; rfl) _ (List.mem_singleton_self _) <;>
+    exact ⟨⟨rfl, rfl⟩, GenK.ofVals_row_sound fun _ _ _ h => Tab.tails_den h hB⟩
 
 /-- A row run after the keys (`GenK.after`) represents `P` when `f D`, on the keys' coreflexive `D`, holds `D ≫ P`. -/
 theorem GenK.after_row_sound {A B : Obj} {f : {K : Obj} → Tab K A → Except String (Tab K B)}
@@ -687,10 +753,11 @@ theorem rowsProved_ok (r : Prim) (h : (rowsProved.lookup r.sym).isSome) : RowOK 
   by_cases h14 : r.sym = "concat"; · rw [h14]; exact rowOK_concat
   by_cases h15 : r.sym = "merge"; · rw [h15]; exact rowOK_merge
   by_cases h16 : r.sym = "thinL"; · rw [h16]; exact rowOK_thinL
+  by_cases h17 : r.sym = "tails"; · rw [h17]; exact rowOK_tails
   simp [rowsProved, List.lookup, beq_false_of_ne h1, beq_false_of_ne h2, beq_false_of_ne h3, beq_false_of_ne h4,
     beq_false_of_ne h5, beq_false_of_ne h6, beq_false_of_ne h7, beq_false_of_ne h8, beq_false_of_ne h9,
     beq_false_of_ne h10, beq_false_of_ne h11, beq_false_of_ne h12, beq_false_of_ne h13, beq_false_of_ne h14,
-    beq_false_of_ne h15, beq_false_of_ne h16] at h
+    beq_false_of_ne h15, beq_false_of_ne h16, beq_false_of_ne h17] at h
 
 /-- A `Prim.proved` row is `RowOK`, given as many relations as it takes. -/
 theorem Prim.proved_ok {r : Prim} {A B : Obj} {os : List (Obj × Obj)} (h : (!r.proved A B os) = false) :
