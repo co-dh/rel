@@ -102,8 +102,8 @@ Rel 本身（`Obj`、`Tm`、kernel、编码、原子、`compile`）见 `rel-arch
   [`Char`], [`char`], [],
   [`Text`、Categorical], [`sym`], [],
   [装箱的值], [`general`], [boxed 值先编成 code：`rel-architecture` §4.1],
-  [`Day`], [`date`（`i32`）], [epoch 以来的天数],
-  [`UTCTime`], [`datetime`（`i64`）], [epoch 以来的纳秒，无时区],
+  [`Day`], [`date`（`i32`）], [1970-01-01 以来的天数],
+  [`UTCTime`], [`datetime`（`i64`）], [1970-01-01 00:00:00 以来的纳秒，无时区],
   [list 列（`collect`）], [`Obj.arr T`], [],
   [`Maybe a`], [`A+1`], [见 1.3],
 )
@@ -147,7 +147,8 @@ Rel 本身（`Obj`、`Tm`、kernel、编码、原子、`compile`）见 `rel-arch
   每个新位置的编号都是一次 `asc`；定义见 3.1。
 - *`N` 的元素是虚的。* frame 只有 `m`：位置不落盘。
 - *落盘（q / kdb 的方式）。* 目录 = 表；文件 = 列，是一个 mmap 的 `foR` `Enc`，没有序列化（`CLAUDE.md` 的 Goal）；
-  `.d` 文件 = `Schema` 的列顺序；`sym` 列共用一个字典文件。
+  `.d` 文件 = `Schema` 的列顺序；`sym` 列共用一个字典文件。键为 `N` 的输出写一张重编号的新表；其它键写成 key 表与 val 表，
+  磁盘上 `key/`、`val/` 两个目录。CSV 是第二种格式：一个文件，key 列在前、val 列在后，表头与声明的列名相同。
 
 // ───────────────────────────── 3
 = 运算
@@ -262,8 +263,10 @@ diff(n, x)        ≜ dom(x) tot(⟨x, ⟨𝟙, ⊤ n⟩minus x⟩minus)      x 
   ([`fromList` `fromRows` `fromColumns` `fromUnboxedVector` `empty`], [字面量 `Tm.val`，或 `⟨x, y⟩`], [], "full"),
   ([`columnAsVector` `columnAsList` `toList` `toRowList` `to*Matrix`], [`summarize(F(x c), x)`], [位置顺序的数组], "full"),
   ([`dimensions` `nRows` `nColumns` `columnNames`], [`count(x)`；`nColumns` `columnNames` 读 `Schema`], [列名只在 schema 里，frame 是位置的], "full"),
-  ([`readCsv` `readTsv` `readParquet` `readJSON` `writeCsv` `writeParquet`], [无], [F1、F6], "no"),
-  ([`scanCsv` `scanParquet` `fromDataFrame` `run`（Lazy）], [`main` 的关系参数（`input`）、`rel_program` 中的定义、`output`],
+  ([`readTsv` `readParquet` `readJSON` `writeParquet`], [无], [F6], "no"),
+  ([`readCsv` `writeCsv` `scanCsv`], [`input x : N ⟶ S from csv "f"` / `output x to csv "f"`],
+    [schema 在语句里声明（F1 不变）；CSV 解析是 crate 的 IO 导出（F6）], "full"),
+  ([`scanParquet` `fromDataFrame` `run`（Lazy）], [`rel_program` 中的定义],
     [`rel_program` 本身就是 plan：`rel-architecture` §1], "full"),
   ([`fold`、`display`、Plot、`DecisionTree`、`KMeans` 等], [不在本设计范围], [宿主层的工具与模型库], "out"),
 )
@@ -271,14 +274,19 @@ diff(n, x)        ≜ dom(x) tot(⟨x, ⟨𝟙, ⊤ n⟩minus x⟩minus)      x 
 #let pl = (
   ([semi / anti join], [`semiJoin(a, b, x, y) ≜ dom(x) asc(dom(J(a, b, x, y))) x`；`antiJoin(a, b, x, y) ≜ dom(x) asc(dom(x) − dom(J(a, b, x, y))) x`], [], "full"),
   ([cross join], [`crossJoin(x, y) ≜ innerJoin(⊤ 𝟙(1), ⊤ 𝟙(1), x, y)`], [], "full"),
-  ([asof join], [`aj(k, t, h, u, x, y) ≜ ⟨x, dom(x) tot(m y)⟩ where m ≜ (x ⟨k, t⟩ (𝟙 × (ran(x t) ≥ ran(y u))) ⟨h, u⟩° y°) − (x ⟨k, t⟩ (𝟙 × (ran(x t) ≥ ran(y u))) ⟨h, u⟩° y° y u > u° y°)`],
-    [q 的 `aj`：`m` 留下时间上没有别的候选超过的候选；`≥` 只在两个 frame 的时间之间；`ι = 𝟙`], "full"),
-  ([`cum_sum` 等], [`cumAgg(f, x) ≜ agg(dom(x) ≥ dom(x), f)`], [行 `i` 聚合 `j ≤ i` 的行；q：`sums`（`f` 为 `sum`）], "full"),
+  ([asof join], [`aj(k, t, h, u, x, y) ≜ ⟨x, dom(x) tot(agg(m, last) y)⟩ where P ≜ ran(x ⟨k, t⟩), V ≜ ran(y ⟨h, u⟩), r ≜ ⟨π₁, sums((V ⊤ {(∗,1)}) ∪ ((P − V) ⊤ {(∗,0)}))⟩, m ≜ x ⟨k, t⟩ r (y ⟨h, u⟩ r)°`],
+    [q 的 `aj`：`r` 数同 key 的 `y` 时间不晚于该时间的个数，`m` 接上最新的 `u ≤ t`；`agg(m, last)` 是并列时取最后一行；
+    计数在时间对象 `τ` 里；`ι = 𝟙`], "full"),
+  ([`cum_sum` 等], [`cumAgg(f, x) ≜ agg(dom(x) ≥ dom(x), f)`；`cumSum(c) ≜ sumsBy(dom(c) ⊤ 𝟙(1), c)`；
+    `sumsBy(g, c) ≜ ⟨g, 𝟙⟩ sums(⟨g, 𝟙⟩° c)`],
+    [行 `i` 聚合 `j ≤ i` 的行；q：`sums`（`f` 为 `sum`）。`cumSum` 是 `cumAgg(F(c) sum, c)`，一组；`sumsBy` 是每组内的 `cum_sum().over(g)`；
+    `c` 的值与位置共用 `ν`（类型 `ν ⟶ ν`）], "full"),
   ([`shift(k)`], [`shift(k, x)`], [前 `k` 个位置是 null], "full"),
   ([`diff`], [`diff(1, c)`], [`c(i) − c(i−1)`，第 0 行 null], "full"),
   ([`rolling(w)`], [`rolling(w, f, x)`], [], "full"),
-  ([`forward_fill`], [`fills(c) ≜ (m ∪ (dom(c) − dom(m))) c where m ≜ (dom(c) ≥ dom(c inl°)) − ((dom(c) ≥ dom(c inl°)) >)`],
-    [q 的 `fills`：行 `i` 读不晚于它的最后一个有值的行；之前没有值的 null 保留], "full"),
+  ([`forward_fill`], [`fills(c) ≜ (p ∪ (dom(c) − dom(p))) c where r ≜ cumSum(c [⊤ {(∗,1)}, {(∗,0)}]), p ≜ r (dom(c inl°) r)°`],
+    [q 的 `fills`：`r(i)` 数不晚于 `i` 的有值行，`p` 把 `i` 送到计数相同的有值行，即不晚于 `i` 的最后一个；计数为 0 时没有，null 保留],
+    "full"),
   ([`melt` / `unpivot`], [`pivotLong(i, s, a, t, b, x) ≜ append(x ⟨i, ⟨⊤ s, a⟩⟩, x ⟨i, ⟨⊤ t, b⟩⟩)`；`melt(s, a, t, b, x) ≜ pivotLong(𝟙, s, a, t, b, x) π₂`],
     [每行对每个值列一次，得 `(id, 列名, 值)`；各列要同类型], "full"),
   ([pivot（long）], [`aggregate(⟨k, q⟩, f, x)`], [long 形式就是 key 为 `K×P` 的 frame], "full"),
@@ -315,7 +323,7 @@ diff(n, x)        ≜ dom(x) tot(⟨x, ⟨𝟙, ⊤ n⟩minus x⟩minus)      x 
   没有浮点运算，所以 `mean` 只有整数除法，`stddev` `skewness` `correlation` `zScore` `valueProportions`、
   浮点的 `percentile` 写不出；没有 `pow`，整数 / 浮点互转、`fround` 也没有。
 - *F5 时间类型。* `date`、`datetime` 是整数 code，没有时区。日历运算（取月份、截断到月）是整数算术加上与日历表的 join。
-- *F6 IO 在代数之外。* 程序读的 frame 是 `main` 的关系参数（`input`）；CSV、Parquet、JSON 的解析不是列上的关系。
+- *F6 IO 在代数之外。* 程序读的 frame 是 `input` 语句声明的名字，路径与格式写在语句里；CSV 的解析是 crate 的 IO 导出，不是列上的关系。
 - *F7 宿主函数。* `lift`、`lift2`、`apply`、`bind` 接受任意 Haskell 函数；Rel 只有 `Op` 的有限集合及其复合。
   这也是 polars 表达式（不含 `map_elements`）同样的限制。
 - *F8 抽样。* `sample(n)` 是有多个像的关系（任意 n 行），实现选其中一个，是规格的 refinement，不是相等。

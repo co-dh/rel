@@ -216,6 +216,25 @@ Diff table 的「状态」列：✅ 后面是完成它的步骤；🔄 是部分
   key，只在写时重编号）；key 不是行号时是 q 的 keyed table：一个目录下 `key/`、`val/` 两个普通表目录（每列一个文件，按
   schema 字段命名）。不是 record 的一侧是一列，文件名就是该侧名 `key` / `val`（两侧同一规则）。mmap 读入的 float 列在读时
   检查规范形（NaN 无行、只有一个零），否则拒绝并报文件、行、位模式。
+  owner 2026-11-20 的裁定（语句形式见 `/data/tmp/io/design.md`）：
+  - F.1 J：语句里的字面量就是路径，运行时不替换；相对路径按运行的工作目录。
+  - F.2 L：`check`/`print` 用到没有 `where` 绑定的 `input` 时，elaboration 报错并指名该 input。
+  - F.3 N：`date`、`datetime` 的 epoch 是 1970-01-01。
+  - CSV 解析器是 `crate/` 的 Rust，两个 IO export（`csv_read`、`csv_write`）与 `own_map`、`own_write` 一起记在
+    `crate/RELIO.txt`，不计入“RELK 到 5”；CSV 直接读成编码列，类型取自声明的 schema，不推断。
+  - key 是 `N` 的输出写一张重编号的新表；其它 key 写 key 表 → val 表，磁盘上 `key/`、`val/`。
+  - 转换是 prim 行 `$`（`x $ F`），只做保值方向。
+  步骤表（每步单独合并；I4 已完成，I0 由本次完成，I2、I5 进行中）：
+  - ✅ I0 文档：`rel-architecture`、`dataframe-design`、本条。
+  - ⬜ I1 表代码移到 `Rel/Run/Table.lean`（`lean-refactor move`），律留在 lib `Rel`；需要 `d9step2` 合并。
+  - 🔄 I2 语法与 AST：`sInput`、`sOutput`、`check`/`print` 的 `where`；`Decl.input`/`output`；elaboration 拒绝；run-time 名作参数。
+  - ⬜ I3 `n.io`、`n.inputs`、`n.outputs`，推论 `Sound.inputs`；需要 I1、I2。
+  - ✅ I4 crate：导出分为 `RELK.txt`（kernel）与 `RELIO.txt`（IO），`syms` gate 读两个文件。
+  - 🔄 I5 Lean 里的 CSV 模型（`csvWords`、`csvText`、每个 atom 的读写、往返律），尚无 extern。
+  - ⬜ I6 `qlean_csv_read`；需要 I4、I5。 ⬜ I7 `qlean_csv_write`；需要 I6。
+  - ⬜ I8 可空列 `V+1`、文本列 `[C]`、`sym`（在步骤 6 之后）。
+  - ⬜ I9 `n.io` 中的 `from csv`/`to csv`，`relc run NAME`；需要 I3、I7。
+  - ⬜ I10 native：`abi` 加 `ownMap`、`csvRead`、`csvWrite`，`Plan.ofTm` 读 input 变量；需要 I9。
   步骤 2（分支 `d9step2`）：`Table.write S dir x`（一侧，按 schema 列名）、`Table.read S dir : IO (Tab .long S.obj)`
   （key 为位置）、`writeKeyed K S`/`readKeyed K S`（`key/`、`val/`）；缺文件、类型码不同、行数不同都报文件名与期望/实际；
   空 schema、重名列被拒。float 检查对唯一谓词 `Table.nonCanonical`（typed base S5 定义规范 float 后由它填）。定理：
@@ -431,7 +450,8 @@ Diff table 的「状态」列：✅ 后面是完成它的步骤；🔄 是部分
   删除的是 q 的编号和 wire 语义：`code`（q 类型码）、`width` 的 IPC/splayed 含义、doc comment 里的 q null 规则。
   未决：若没有 Rel 程序用 `date`/`datetime`，它们是否并入 `i32`/`i64`。（与上面的 q 类型码、`date`/`datetime`
   描述冲突之处，以本条为准。）
-  `date`（自 epoch 的天数，存为 i32）与 `datetime`（自 epoch 的纳秒，存为 i64，即 q 的 timestamp），都不带时区；存为 foR
+  `date`（自 1970-01-01 的天数，存为 i32）与 `datetime`（自 1970-01-01 的纳秒，存为 i64；q 的 epoch 是 2000-01-01，
+  差 10957 天，不同；owner 2026-11-20 选 N），都不带时区；存为 foR
   码，按整数比较和排序（owner 经 dataframe 会话提出）。
 - 🔄 6.10 已合并（master 2b042fd，make check 绿 241/25）：`gather` `scatter` `distinct` `asc` `scan` 直接在 foR 块上计算，
   共用一个 `for_view`（8196e68）；编码器选宽度提速，同一 plan（e340c19，`for_meta` 70% → 7–11%，`kgatherp` 4–8×）；

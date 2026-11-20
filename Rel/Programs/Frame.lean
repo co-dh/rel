@@ -32,6 +32,11 @@ rel_program frame where
     rolling(w : 1 ⟶ ν, f : [ν] ⟶ δ, x : ν ⟶ β) : ν ⟶ δ ≜ agg(win(w, x), f)
     -- cumulative aggregate (polars cum_sum, q's sums with `f` = sum): row `i` folds rows `j ≤ i`; m²/2 pairs
     cumAgg(f : [ν] ⟶ δ, x : ν ⟶ β) : ν ⟶ δ ≜ agg(dom(x) ≥ dom(x), f)
+    -- q's `sums` within each group `g` (polars cum_sum().over(g)), linear: the row `sums` scans `(g(i), i)` in order;
+    -- `c`'s values share `ν` because `sums : κ×ν ⟶ ν` does
+    sumsBy(g : ν ⟶ κ, c : ν ⟶ ν) : ν ⟶ ν ≜ ⟨g, 𝟙⟩ sums(⟨g, 𝟙⟩° c)
+    -- `cumAgg(F(c) sum, c)` in m rows, not m²/2: one group
+    cumSum(c : ν ⟶ ν) : ν ⟶ ν ≜ sumsBy(dom(c) ⊤ 𝟙(1), c)
 
     -- columns: `tot(R)` makes a partial column total, null where `R` has no value
     tot(R : α ⟶ β) : α ⟶ β+1 ≜ R inl ∪ ((𝟙 − dom(R)) ⊤ inr)
@@ -46,9 +51,9 @@ rel_program frame where
     lastOrNothing(x : ν ⟶ β) : 1 ⟶ β+1 ≜ tot(summarize(last, x) x)
     -- the null rows of the nullable column `c`
     nulls(c : β ⟶ γ+1, x : ν ⟶ β) : 1 ⟶ ν ≜ count(filterNothing(c, x))
-    -- q's fills: row `i` reads the last row `j ≤ i` holding a value (`m` drops each `j` below another);
-    -- a null before any value stays
-    fills(c : ν ⟶ γ+1) : ν ⟶ γ+1 ≜ (m ∪ (dom(c) − dom(m))) c where m ≜ (dom(c) ≥ dom(c inl°)) − ((dom(c) ≥ dom(c inl°)) >)
+    -- q's fills: `r(i)` counts the valued rows `j ≤ i`, so `p` sends `i` to the valued row of equal count, the last
+    -- one `≤ i`; at count 0 there is none and the null stays
+    fills(c : ν ⟶ γ+1) : ν ⟶ γ+1 ≜ (p ∪ (dom(c) − dom(p))) c where r ≜ cumSum(c [⊤ {(∗,1)}, {(∗,0)}]), p ≜ r (dom(c inl°) r)°
     -- describe, its integer part: count, mean, min, max of a column
     describe(c : ν ⟶ γ) : 1 ⟶ ν×(γ×(γ×γ)) ≜ ⟨count(c), ⟨summarize(F(c) ⟨sum, length⟩div, c), ⟨summarize(F(c) Λ(∋) head, c), summarize(F(c) Λ(∋) last, c)⟩⟩⟩
     -- `|||` (polars hstack, q's `,'`): the rows side by side, none unless both frames have the same length
