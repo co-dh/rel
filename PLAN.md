@@ -93,8 +93,8 @@ Size：S = 一步，少于 20 次 tool call；M = 一到三步；L = 多于三�
 | 10 | refold 改名 hylo               | `Tm.lean:91`, `Gen.lean:267`          | 120 个名字含 "refold"                   | S    | ✅ 2.1      |
 | 11 | foldI 成为 definition          | `Tm.lean:68`, `Den.lean:98`           | owner 选 D：留 ctor，证 `foldI_sound`   | M    | ✅ 4.3      |
 | 12 | flat 成为 definition           | `Tm.lean:72`, `Den.lean:103`          | 同上；`flat_sound` 消失                 | M    | ⬜ 4.2      |
-| 13 | inl、inr constructor           | prim 第 3、4 行, `Syntax.lean:150`    | 行已存在，constructor 不存在；R9        | S    | ⬜ 4.1      |
-| 14 | junc 是 definition，没有 juncD | `Tm.lean:35`, `:38`; `Gen.lean:247`   | `Core.Rel.junc` 已经是并集              | M    | ⬜ 4.1      |
+| 13 | inl、inr 是叶子                | `inlRow`…`inrConvRow`, `Syntax:176`   | 无：prim 行带 code、den、RowOK；R9      | S    | ✅ 4.1      |
+| 14 | junc 是 definition，没有 juncD | `Pre.junc`, `Elab.lean:256`           | 无：`inl°R ∪ inr°S`；不放 prelude       | M    | ✅ 4.1      |
 | 15 | 对称除法 ctor                  | `Alg.symDiv`, `Run/Alg.lean:293`      | 没有 `Tm` ctor，没有 `Den`              | M    | ⬜ 4.4      |
 | 16 | 拒绝非正的 μ/ν                 | `Tm.pol`, `Tm.lean:254`               | Elab `.fix`（1655-1670）：没有检查      | S    | ✅ 2.4      |
 | 17 | gap：open share                | `Rows.lean:125`, `Expand.lean:530`    | 没有找到 producer；R6                   | M    | ⬜ 5.1      |
@@ -264,9 +264,19 @@ Diff table 的「状态」列：✅ 后面是完成它的步骤；🔄 是部分
   3.12b ⬜ 未开始（`Out.Sound.memo`、`Dem`/`Dem.of`/`Cor`、多余的 `{d}` binder）。
 - ⬜ 3.13 inline `Den`。
 
-### P4 `Tm` 的 constructor 变更 — 2/5（串行，共用同样的 match 分支）
+### P4 `Tm` 的 constructor 变更 — 3/5（串行，共用同样的 match 分支）
 
-- ⬜ 4.1 加 `inl`、`inr`；`junc` 成为 definition；删除 `juncD`。
+- ✅ 4.1 `junc` 成为 definition，`juncD` 删除（junc41b，065b33f 合并，145e89c 进 master）：
+  - `Tm.junc`、`Tm.juncD`、`GenK.junc`、`GenK.juncD`、`junc_sound`、`Tab.junc` 及其 law 删除；
+    `Den`、`GenSound`、`ConvSpec` 中的 junc 分支随之删除。
+  - `[R,S]` 由 `Pre.junc`（`Elab.lean:256`）展开为 `inl°R ∪ inr°S`；`α` 与 `hyloG` 的 `G(X)` 用同一个定义。
+  - `inl`、`inr` 不加 constructor：prim 行 `inl`、`inr` 已是叶子；新增行 `inl°`、`inr°`（kernel
+    `Tab.inlConv/inrConv`，`rowOK_inlC/inrC`，`Prim.den_conv`）。
+  - 不放 prelude（与 P6 的 "prelude `.rel`" 不同）：`α`、`hyloG` 是 elaborator 自己的构造，prelude 可不加载；
+    `Tm.kids` 按 `join`/`comp` 结构读 `[ , ]`，`call` 给 `none`；`call` 的 `Tm.den` 仍是 gap。
+  - fold `⦇[e,S]⦈` 直接取两部分，不经过 junc。
+  - 性能（`perf stat` 用户态指令数，626c084 → 1888ee2）：Quicksort 130.4G → 132.4G（+1.6%），
+    Chess 483.8G → 483.7G，Edit 676.7G → 675.9G，Knapsack 15.72G → 15.74G。无回退，不需要融合 kernel。
 - ⬜ 4.2 `flat` 成为 definition。
 - ✅ 4.3 `foldI`：owner 选 D，constructor 保留为融合形式，
   用 `foldIDen_eq` + `foldI_sound` 与定义相连
@@ -395,8 +405,9 @@ Diff table 的「状态」列：✅ 后面是完成它的步骤；🔄 是部分
         - §1：`Tm` 的构造子组保持为构造子；§4 "allegory 运算 → kernel" 给出每个运算由哪些 kernel 复合（`R\S`、
           `R/S`、对称除不求补，按组比较个数；`Λ` 由 `asc ≫ seen` 给 `lo`/`hi`；`μ ν fold hylo` 是 Lean 里的循环
           `fixOn`）；§0：`Rel A B = tab | lazy`，`succ`、`arith`、`leq`、`⊤` 是 `lazy`。
-        - 成为 prelude 定义（`.rel`）的是 §7 TODO 列的：`junc = inl° ≫ R ∪ inr° ≫ S`（先加 `inl`、`inr`，删
-          `juncD`）、`flat`、`foldI`、`prims` 表里能写成 `fold`/`hylo` 的行；只留 kernel 级的原语。
+        - 成为定义的是 §7 TODO 列的：`junc = inl° ≫ R ∪ inr° ≫ S`（已完成，4.1：elaborator 的 `Pre.junc`，
+          不是 prelude `.rel`，原因见 4.1）、`flat`、`foldI`、`prims` 表里能写成 `fold`/`hylo` 的行（prelude
+          `.rel`）；只留 kernel 级的原语。
         - 我提过的两个形式（列是 `pos ⟶ α` 的 map —— 那是 dataframe 的 frame；全部算子写进 prelude）都被 owner
           否决，已撤回。
         - owner 选 G（2026-11-19）：`\`、`/`、`Λ`、pair 等保持为 `Tm` 的节点，kernel 复合写在 compiler 发的 Lean
