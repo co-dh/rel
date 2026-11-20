@@ -61,12 +61,14 @@ def Codes.at (xs : Codes) (i : Nat) (X Y : Obj) : Option (Rel X Y) := match xs[i
 open Lean Meta Elab Term Expand in
 run_elab do
   let pl (k : Nat) := oE ((varObj k).getD .long)
-  let some' ← elabTerm (← `(fun (A B : Obj) (v : Rel A B) => (some ⟨A, B, v⟩ : Option ((A : Obj) × (B : Obj) × Rel A B)))) none
-  let codesTy ← elabTerm (← `(Codes)) none
-  let genTy ← elabTerm (← `(List Obj → Codes → Option ((A : Obj) × (B : Obj) × Rel A B))) none
-  let bindE ← elabTerm (← `(@Option.bind)) none
-  let atE ← elabTerm (← `(Codes.at)) none
-  let resTy ← elabTerm (← `(Option ((A : Obj) × (B : Obj) × Rel A B))) none
+  let el (s : Lean.Term) : TermElabM Lean.Expr := do
+    let e ← elabTerm s none; synthesizeSyntheticMVarsNoPostponing; instantiateMVars e
+  let some' ← el (← `(fun (A B : Obj) (v : Rel A B) => (some ⟨A, B, v⟩ : Option ((A : Obj) × (B : Obj) × Rel A B))))
+  let codesTy ← el (← `(Codes))
+  let genTy ← el (← `(List Obj → Codes → Option ((A : Obj) × (B : Obj) × Rel A B)))
+  let bindE := Lean.mkConst ``Option.bind [0, 0]
+  let atE ← el (← `(Codes.at))
+  let resTy ← el (← `((A : Obj) × (B : Obj) × Rel A B))
   let es ← kernRows.mapM fun (s, _) => do
     let some r := prims.find? (·.sym == s) | throwError "rowGens: the kernel row `{s}` is no row of `prims`"
     let vs := r.vars
@@ -83,7 +85,7 @@ run_elab do
           let some v ← primE r (inst r.sig.2.1) (inst r.sig.2.2) (xs.zip ts) | return none
           withLocalDeclD `σ (mkApp (mkConst ``List [0]) (mkConst ``Obj)) fun σv =>
           withLocalDeclD `xs codesTy fun xsv => do
-            let body ← (ps.zip xs.toList).zipIdx.foldrM (init := mkApp3 some' (oE (inst r.sig.2.1)) (oE (inst r.sig.2.2)) v)
+            let body ← (ps.zip xs.toList).zipIdx.foldrM (init := (mkApp3 some' (oE (inst r.sig.2.1)) (oE (inst r.sig.2.2)) v).headBeta)
               fun (((X, Y), x), i) b => do
                 let ty := g ``Rel.Rel #[oE X, oE Y]
                 pure (mkAppN bindE #[ty, resTy, mkApp4 atE xsv (toExpr i) (oE X) (oE Y), ← mkLambdaFVars #[x] b])
@@ -259,35 +261,37 @@ theorem rowOK_of {s : String} {c : RowCode} {D : RowDen c} {f : List Obj → Cod
     · exact err _ _
 
 theorem rowOK_mem : RowOK "∋" := rowOK_of (c := RowCode.mem) rfl rfl fun _ σ _ _ _ _ hv _ => by
-  dsimp only at hv; cases hv
+  cases hv
   cases σ <;> exact ⟨⟨rfl, rfl⟩, GenK.ofVals_row_sound fun _ _ _ h => Tab.mem_holds h⟩
 
 theorem rowOK_inl : RowOK "inl" := rowOK_of (c := RowCode.inl) rfl rfl fun _ σ _ _ _ _ hv _ => by
-  dsimp only at hv; cases hv
+  cases hv
   rcases σ with _ | ⟨_, _ | _⟩ <;> exact ⟨⟨rfl, rfl⟩, GenK.ofVals_row_sound fun _ _ _ h => Tab.inl_holds h⟩
 
 theorem rowOK_inr : RowOK "inr" := rowOK_of (c := RowCode.inr) rfl rfl fun _ σ _ _ _ _ hv _ => by
-  dsimp only at hv; cases hv
+  cases hv
   rcases σ with _ | ⟨_, _ | _⟩ <;> exact ⟨⟨rfl, rfl⟩, GenK.ofVals_row_sound fun _ _ _ h => Tab.inr_holds h⟩
 
 theorem rowOK_tau : RowOK "τ" := rowOK_of (c := RowCode.tau) rfl rfl fun _ σ _ _ _ hs hv hl => by
-  dsimp only at hv; cases hv
+  cases hv
   have hB := hl (by rw [hs]; decide) _ rfl
   cases σ <;> exact ⟨⟨rfl, rfl⟩, GenK.ofVals_row_sound fun _ _ _ h => Tab.tau_den h hB⟩
 
 theorem rowOK_setify : RowOK "setify" := rowOK_of (c := RowCode.setify) rfl rfl fun _ σ _ _ _ hs hv hl => by
-  dsimp only at hv; cases hv
+  cases hv
   have hB := hl (by rw [hs]; decide) _ rfl
   cases σ <;> exact ⟨⟨rfl, rfl⟩, GenK.ofVals_row_sound fun _ _ _ h => Tab.setify_den h hB⟩
 
 /-- Every row of `rowsProved` is `RowOK`: the obligations enumerated from the list `Tm.gap` reads. -/
 theorem rowsProved_ok (r : Prim) (A B : Obj) (h : (rowsProved.lookup r.sym).isNone = false) :
     (Tm.prim (A := A) (B := B) r).LamLaws → ∀ K, (primGen r A B []).Reps K (Prim.den r A B []) := by
-  generalize hs : r.sym = s at h
-  simp only [rowsProved, List.lookup_cons, beq_iff_eq] at h
-  repeat' split at h
-  all_goals first | (subst_vars; first | exact rowOK_mem r A B hs | exact rowOK_inl r A B hs
-    | exact rowOK_inr r A B hs | exact rowOK_tau r A B hs | exact rowOK_setify r A B hs) | simp at h
+  by_cases h1 : r.sym = "∋"; · exact rowOK_mem r A B h1
+  by_cases h2 : r.sym = "inl"; · exact rowOK_inl r A B h2
+  by_cases h3 : r.sym = "inr"; · exact rowOK_inr r A B h3
+  by_cases h4 : r.sym = "τ"; · exact rowOK_tau r A B h4
+  by_cases h5 : r.sym = "setify"; · exact rowOK_setify r A B h5
+  simp [rowsProved, List.lookup, beq_false_of_ne h1, beq_false_of_ne h2, beq_false_of_ne h3, beq_false_of_ne h4,
+    beq_false_of_ne h5] at h
 
 /-- **`Tm.gen` is sound off the gap**: the code of a term with no `Tm.gap` node represents its meaning in every
     context, given the bit-matrix laws, `LamLaw` at each `Λ`, and an environment `η` that represents `ρ`. -/
