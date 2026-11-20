@@ -279,7 +279,7 @@ end
 def rowsProved : List (String × (Obj → Obj → List (Obj × Obj))) :=
   let no : Obj → Obj → List (Obj × Obj) := fun _ _ => []
   let cod : Obj → Obj → List (Obj × Obj) := fun A B => match B with | .arr B' => [(A, B')] | _ => []
-  [("∋", no), ("inl", no), ("inr", no), ("τ", cod), ("setify", cod), ("snoc", no), ("cons", no), ("cat", no),
+  [("∋", no), ("inl", no), ("inr", no), ("inl°", no), ("inr°", no), ("τ", cod), ("setify", cod), ("snoc", no), ("cons", no), ("cat", no),
    ("uncat", no), ("zip", no), ("length", no), ("sum", no), ("loop", no), ("filter", no), ("concat", no), ("merge", no),
    ("thinL", no), ("F", no), ("positions", no), ("tails", fun A _ => match A with | .arr σ => [(.arr σ, .prod (.arr σ) (.arr σ))] | _ => [])]
 
@@ -294,7 +294,7 @@ def Prim.proved (r : Prim) (A B : Obj) (os : List (Obj × Obj)) : Bool :=
 
 mutual
 /-- Some node of `t` has no proved case in `Tm.gen_sound`: no `GenK` lemma yet (`thin`), a `hylo` whose children's term
-    (`Tm.kids`) is none or has a gap node, a lemma that does not hold as stated (`juncD`), a row not `Prim.proved` at its relations' objects
+    (`Tm.kids`) is none or has a gap node, a row not `Prim.proved` at its relations' objects
     (`Tm.argGap`), or a spine headed by neither a row nor a call. A call reads its body (`Tm.size` counts it). -/
 def Tm.gap : {A B : Obj} → Tm A B → Bool
   | A, B, .prim r => !r.proved A B []
@@ -556,6 +556,16 @@ theorem rowOK_inr : RowOK "inr" := rowOK_of (c := RowCode.inr) rfl rfl fun _ σ 
   cases hv
   rcases σ with _ | ⟨_, _ | _⟩ <;>
     exact ⟨GenK.ofVals_wf, fun _ => ⟨⟨rfl, rfl⟩, GenK.ofVals_row_sound fun _ _ _ h => Tab.inr_holds h⟩⟩
+
+theorem rowOK_inlC : RowOK "inl°" := rowOK_of (c := RowCode.inlC) rfl rfl fun _ σ _ _ _ _ hv => by
+  cases hv
+  rcases σ with _ | ⟨_, _ | _⟩ <;>
+    exact ⟨GenK.ofVals_wf, fun _ => ⟨⟨rfl, rfl⟩, GenK.ofVals_row_sound fun _ _ _ h => Tab.inlConv_holds h⟩⟩
+
+theorem rowOK_inrC : RowOK "inr°" := rowOK_of (c := RowCode.inrC) rfl rfl fun _ σ _ _ _ _ hv => by
+  cases hv
+  rcases σ with _ | ⟨_, _ | _⟩ <;>
+    exact ⟨GenK.ofVals_wf, fun _ => ⟨⟨rfl, rfl⟩, GenK.ofVals_row_sound fun _ _ _ h => Tab.inrConv_holds h⟩⟩
 
 theorem rowOK_tau : RowOK "τ" := rowOK_of (c := RowCode.tau) rfl rfl fun _ σ _ _ _ hs hv => by
   cases hv
@@ -847,11 +857,13 @@ theorem rowsProved_ok (r : Prim) (h : (rowsProved.lookup r.sym).isSome) : RowOK 
   by_cases h18 : r.sym = "sum"; · rw [h18]; exact rowOK_sum
   by_cases h19 : r.sym = "F"; · rw [h19]; exact rowOK_F
   by_cases h20 : r.sym = "positions"; · rw [h20]; exact rowOK_positions
+  by_cases h21 : r.sym = "inl°"; · rw [h21]; exact rowOK_inlC
+  by_cases h22 : r.sym = "inr°"; · rw [h22]; exact rowOK_inrC
   simp [rowsProved, List.lookup, beq_false_of_ne h1, beq_false_of_ne h2, beq_false_of_ne h3, beq_false_of_ne h4,
     beq_false_of_ne h5, beq_false_of_ne h6, beq_false_of_ne h7, beq_false_of_ne h8, beq_false_of_ne h9,
     beq_false_of_ne h10, beq_false_of_ne h11, beq_false_of_ne h12, beq_false_of_ne h13, beq_false_of_ne h14,
     beq_false_of_ne h15, beq_false_of_ne h16, beq_false_of_ne h17, beq_false_of_ne h18,
-    beq_false_of_ne h19, beq_false_of_ne h20] at h
+    beq_false_of_ne h19, beq_false_of_ne h20, beq_false_of_ne h21, beq_false_of_ne h22] at h
 
 /-- A `Prim.proved` row is `RowOK`, given as many relations as it takes. -/
 theorem Prim.proved_ok {r : Prim} {A B : Obj} {os : List (Obj × Obj)} (h : (!r.proved A B os) = false) :

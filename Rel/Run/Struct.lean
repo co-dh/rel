@@ -3,8 +3,8 @@ import Rel.Run.Comp
 
 /-! The structural operators of the core term `Tm` (`Rel/Run/Lang/Tm.lean`) on `Tab`, as compositions of the five
 kernels (PLAN 6.14 W3), in the style of `Rel/Run/Comp.lean`: `zero`, `id` (on the values `X` its context gives),
-`top`, `outl`, `outr`, `pair`, `prod`, `inl`, `inr`, and the two the design (`doc/rel-architecture.zh.typ`, TODO)
-derives from them: `junc` = `inl° ≫ R ∪ inr° ≫ S` and `flat` from `outl`, `outr` and an equality test. Each law (`Rel/RepStruct.lean`) has the
+`top`, `outl`, `outr`, `pair`, `prod`, `inl`, `inr`, their converses `inlConv`, `inrConv` (on the sum values in
+demand, which `[R,S] = inl° ≫ R ∪ inr° ≫ S` runs on), and `flat` from `outl`, `outr` and an equality test. Each law (`Rel/RepStruct.lean`) has the
 constructor's denotation `Tm.den` (`Rel/Lang/Den.lean`) as its right-hand side. `Tm.join` is `Tab.union`
 (`Rel/Run/SetOps.lean`). No column is decoded or re-encoded between the calls.
 
