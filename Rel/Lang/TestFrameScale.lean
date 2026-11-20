@@ -86,15 +86,20 @@ rel_program frameScaleN4 where
     check count(j) = {(∗,5000)}
     check summarize(F(j π₂ π₂) sum, j) = {(∗,127500)}
     check aggregate(π₁, F(xf π₂) sum, xf) = k50 ⟨𝟙, ⟨⟨𝟙, ⊤ {(∗,100)}⟩times, ⊤ {(∗,495000)}⟩plus⟩
-    -- the comparison rows as at 10³; `cumAgg` (271 s) and `aj` (214 s) are left out (measured)
+    -- the comparison rows as at 10³, the running sum by `cumSum` (`cumAgg`'s m²/2 pairs do not fit; measured)
     t : N ⟶ N×N ≜ take({(∗,5000)}, x)
     check summarize(F(t π₂) sum, t) = {(∗,12497500)}
     dr : N ⟶ N×N ≜ drop({(∗,5000)}, x)
     check summarize(F(dr π₂) sum, dr) = {(∗,37497500)}
     r : N ⟶ N ≜ rolling({(∗,3)}, F(x π₂) sum, x)
     check summarize(F(r) sum, r) = {(∗,149955004)}
+    check cumSum(x π₂) = ran(d4) ⟨⟨𝟙, succ⟩times, ⊤ {(∗,2)}⟩div
     c : N ⟶ N+1 ≜ dom(x) tot(dom(x π₁ {(0,0)}) x π₂)
     check fills(c) [𝟙, {(∗,0)}] = ran(d4) ⟨⟨𝟙, ⊤ {(∗,100)}⟩div, ⊤ {(∗,100)}⟩times
+    -- Σ (i − 99) over i ≥ 100: (n−100)(n−99)/2
+    q : N ⟶ N×N ≜ x ⟨π₁, π₂ succ⟩
+    a : N ⟶ (N×N)×((N×N)+1) ≜ aj(π₁, π₂, π₁, π₂, x, q)
+    check summarize(F(a π₂ [π₂, {(∗,0)}]) sum, a) = {(∗,49009950)}
     check median(π₂, x) = {(∗,4999)}
     check topK({(∗,3)}, π₂, x) = {(0,(99,9999)),(1,(98,9998)),(2,(97,9997))}
     check sortBy(π₁, x) = ran(d4) ⟨⟨𝟙, ⊤ {(∗,100)}⟩div, ⟨⟨⟨𝟙, ⊤ {(∗,100)}⟩mod, ⊤ {(∗,100)}⟩times, ⟨𝟙, ⊤ {(∗,100)}⟩div⟩plus⟩
@@ -113,13 +118,16 @@ rel_program frameScaleN5 where
     check count(j) = {(∗,50000)}
     check summarize(F(j π₂ π₂) sum, j) = {(∗,1275000)}
     check aggregate(π₁, F(xf π₂) sum, xf) = k50 ⟨𝟙, ⟨⟨𝟙, ⊤ {(∗,1000)}⟩times, ⊤ {(∗,49950000)}⟩plus⟩
-    -- the comparison rows as at 10³ that finish within a minute; `fills` takes 81 s and 6.9 GB (measured)
+    -- the comparison rows as at 10³ that finish within 5 s; `aj` takes 11.8 s (measured)
     t : N ⟶ N×N ≜ take({(∗,50000)}, x)
     check summarize(F(t π₂) sum, t) = {(∗,1249975000)}
     dr : N ⟶ N×N ≜ drop({(∗,50000)}, x)
     check summarize(F(dr π₂) sum, dr) = {(∗,3749975000)}
     r : N ⟶ N ≜ rolling({(∗,3)}, F(x π₂) sum, x)
     check summarize(F(r) sum, r) = {(∗,14999550004)}
+    check cumSum(x π₂) = ran(d5) ⟨⟨𝟙, succ⟩times, ⊤ {(∗,2)}⟩div
+    c : N ⟶ N+1 ≜ dom(x) tot(dom(x π₁ {(0,0)}) x π₂)
+    check fills(c) [𝟙, {(∗,0)}] = ran(d5) ⟨⟨𝟙, ⊤ {(∗,100)}⟩div, ⊤ {(∗,100)}⟩times
     check median(π₂, x) = {(∗,49999)}
     check topK({(∗,3)}, π₂, x) = {(0,(99,99999)),(1,(98,99998)),(2,(97,99997))}
     check sortBy(π₁, x) = ran(d5) ⟨⟨𝟙, ⊤ {(∗,1000)}⟩div, ⟨⟨⟨𝟙, ⊤ {(∗,1000)}⟩mod, ⊤ {(∗,100)}⟩times, ⟨𝟙, ⊤ {(∗,1000)}⟩div⟩plus⟩
