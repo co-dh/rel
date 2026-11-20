@@ -26,7 +26,7 @@ def objInfo (env : Env) (n : String) : ObjDef → EM ObjInfo
   | .range lo hi =>
     pure { ty := .base n, range := some (lo, hi), uni := some ⟨_, col ((List.range (hi + 1 - lo).toNat).map fun k : Nat => Int64.ofInt (lo + k))⟩, seg := lo == 0 }
   | .alias o => do let (t, _) ← (oty env [] o).run {}; pure { ty := t }
-  | .num => pure { ty := .base n, num := true }
+  | .num t => pure { ty := .base n, num := true, obj := .atom t }
   -- the object `Schema.obj` lays out, at the program's objects; `col` reads the columns back (`elabE`)
   | .schema cs => do
     let cs ← cs.mapM fun (c, o) => return (c, (← (oty env [] o).run {}).1)
@@ -71,6 +71,8 @@ def showEl (objs : Objs) (item : Bool) : OTy → (A : Obj) → A.El → String
     match objs.lookup n with
     | some i => if i.range.isSome then toString v else (i.elems[v.toInt.toNat]?).getD (toString v)
     | none => toString v
+  -- an object declared at another atom: its word as a literal writes it (`wordText`)
+  | .base _, .atom t, x => match elWord t x with | some w => wordText t w | none => "?"
   | .prod a b, .prod A B, (x, y) => s!"({showEl objs false a A x}, {showEl objs false b B y})"
   | .sum a _, .sum A _, .inl x => s!"inl {showEl objs true a A x}"
   | .sum _ b, .sum _ B, .inr y => s!"inr {showEl objs true b B y}"
@@ -84,6 +86,10 @@ def cmpEl (objs : Objs) : OTy → (A : Obj) → A.El → A.El → Ordering
     let (v, w) : Int64 × Int64 := (x, y)
     if ((objs.lookup n).bind (·.range)).isSome then compare v.toInt w.toInt
     else compare (showEl objs false (.base n) (.atom .i64) x) (showEl objs false (.base n) (.atom .i64) y)
+  -- at another atom by value: the order code of its word (`Kernel.ascOrd`, a float's totalOrder)
+  | s, .atom t, x, y => match elWord t x, elWord t y, Kernel.ascOrd t with
+    | some u, some v, some f => compare (f u) (f v)
+    | _, _, _ => compare (showEl objs false s (.atom t) x) (showEl objs false s (.atom t) y)
   | .prod a b, .prod A B, (x, y), (x', y') => (cmpEl objs a A x x').then (cmpEl objs b B y y')
   | .sum a _, .sum A _, .inl x, .inl y => cmpEl objs a A x y
   | .sum _ b, .sum _ B, .inr x, .inr y => cmpEl objs b B x y
@@ -202,7 +208,6 @@ def elabOnce (env : Env) (p : Pos) (n : String) (qs : List Param) (e : Expr) (ty
 
 /-! ### A row of `prims` at its objects -/
 
-open Lean in deriving instance ToExpr for Rel.QAtomicType
 open Lean in deriving instance ToExpr for Rel.Obj
 open Lean in deriving instance ToExpr for MVarId
 open Lean in deriving instance ToExpr for OTy
@@ -274,6 +279,16 @@ partial def primsFit {A B : Obj} (t : Tm A B) : MetaM Bool := do
   withLocalDeclsDND (ts.map (`x, ·)) fun xs => do
     pure (← primE r A B (xs.zip ts)).isSome <&&> as.allM fun ⟨_, _, c⟩ => primsFit c
 
+/-- The placeholders of a constant of `n` with `k` object variables in `env`: atoms no object in scope is stored at,
+    one per variable, or the definition is refused by name. A refusal of the definition, not of one form of it, so
+    `callDef` checks it where its fallback to the expansion cannot swallow it. -/
+def placeholdersFor (env : Env) (p : Pos) (n : String) (k : Nat) : Except Err (List Rel.QAtomicType) := do
+  let ph := placeholdersOf env.objs
+  if ph.length < k then
+    throw ⟨p, s!"`{n}` has {k} object variables, and only {ph.length} atoms no object in scope is stored at " ++
+      s!"stand for them ({ph.map atomName})"⟩
+  pure ph
+
 /-- `n(qs) ≜ e : ty` built once (`elabOnce`); a body that needs keys stays a plan on them, and one that builds no
     relation but tests on pairs is its pair test (`test`, §a). A variable is generic (`varObj`) when the body builds
     with it an object of its own, else `.long`, a number object (`succ`, `sum` …). A body that does not build so is
@@ -284,11 +299,7 @@ def once (env : Env) (p : Pos) (n : String) (qs : List Param) (e : Expr) (ty : O
   -- per variable: generic over its object, and given its universe; one the call puts an unbounded number object at
   -- is `num`, one it puts an initial segment of ℕ at is `seg` (`nb`), so a row with a `dfn` there runs fused
   -- (`build`), as it does outside a body
-  -- the variables stand for atoms no object in scope is stored at, one each, or the definition is refused by name
-  let ph := placeholdersOf env.objs
-  if ph.length < vs.length then
-    throw ⟨p, s!"`{n}` has {vs.length} object variables, and only {ph.length} atoms no object in scope is stored at " ++
-      s!"stand for them ({repr ph})"⟩
+  let ph ← liftExcept (placeholdersFor env p n vs.length)
   let run (fl : List (Bool × Bool)) : EM (Once × List Once) := do
     let objs := vs.zipIdx.map (fun (v, k) =>
       let (gen, uni) := fl.getD k (false, true)
@@ -385,6 +396,8 @@ def callDef (env : Env) (dp : Pos) (n : String) (qs : List Param) (e : Expr) (ty
         | none, none => do
           let k := if c.getPrefix == emitter then key else emitter ++ key
           let vs := vs ++ (List.range ix.size).map idxVar
+          -- too few placeholders refuses the definition (an index variable counts), so it is not swallowed below
+          let _ ← liftExcept (placeholdersFor env dp n vs.length)
           -- a body that does not build alone at these forms (a family it reads whole, which only the use's
           -- context keys, §e) is no constant: the use is the expansion, whose build reports any error in its words
           match ← (once env dp n qs e ty vs key k fs nb (← get).specs).run with

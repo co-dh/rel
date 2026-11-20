@@ -64,7 +64,14 @@ def stmt (s : Syntax) : C Decl := do
     if hi < lo then failAt s[5] s!"the range {lo}…{hi} is empty: {hi} is below {lo}"
     pure (.range lo hi)
   | ``sAlias => objDecl do pure (.alias (← obj s[3]))
-  | ``sNum => objDecl do pure .num
+  | ``sNum => objDecl do pure (.num .i64)
+  -- the atom by its constructor's name (`atomNames`), refused where no literal column of it is built (`litLayout`)
+  | ``sNumAt => objDecl do
+    let ok := (atomNames.filter fun (_, t) => (litLayout t).isSome).map (·.1)
+    match atomNames.lookup s[3].getId with
+    | some t => if (litLayout t).isSome then pure (.num t) else
+        failAt s[3] s!"an object of {atomName t} is not declared: no literal of {atomName t} is stored; the atoms are {ok}"
+    | none => failAt s[3] s!"unknown atom '{s[3].getId}'; the atoms are {ok}"
   | ``sSchema => objDecl do
     let cs ← s[4].getSepArgs.toList.mapM fun f => do pure (← wordOf f[0], ← obj f[2])
     -- a column twice is refused where it is written, by the check every `Schema` function makes
