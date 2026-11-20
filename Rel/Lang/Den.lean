@@ -221,13 +221,11 @@ def Sem.one {X Y A B : Obj} (D : Den X Y → Den A B) : List Sem → Den A B
   | [⟨X', Y', T⟩] => if h : X' = X ∧ Y' = Y then D (h.1 ▸ h.2 ▸ T) else 𝟘
   | _ => 𝟘
 
-/-- The arguments `ss` bound to the variables `0, 1, …` in order, every other variable `𝟘`: what a call's body is
-    read under, `Val.empty.bind 0 ss₀ ⋯ .bind (n-1) ssₙ₋₁`. -/
-noncomputable def Val.args (ss : List Sem) : Val := go 0 ss where
-  /-- `ss` bound from the variable `k` on. -/
-  go (k : Nat) : List Sem → Val
-    | [] => Val.empty
-    | ⟨_, _, T⟩ :: ss => (go (k + 1) ss).bind k T
+/-- The arguments `ss` bound to the variables `ks`, one for one, the first outermost (as `List.lookup` finds the
+    first); every other variable `𝟘`: what a call's body is read under (`Tm.call`). -/
+noncomputable def Val.args : List Nat → List Sem → Val
+  | k :: ks, ⟨_, _, T⟩ :: ss => (Val.args ks ss).bind k T
+  | _, _ => Val.empty
 
 /-- The object variables `σ` that make the pattern `o` the object `A`, extending `σ`: none where they cannot. -/
 def OExp.unify : OExp → Obj → List (String × Obj) → Option (List (String × Obj))
@@ -333,7 +331,8 @@ def Prim.den (r : Prim) (A B : Obj) (ss : List Sem) : Den A B :=
 
 mutual
 /-- `⟦t⟧ρ`, one clause per constructor. A row and its arguments (`prim` under `arg`s) mean the row's meaning of
-    its arguments' (`Tm.argDen`). `𝟘` at `call` (a `let` node), whose meaning is not settled yet. -/
+    its arguments' (`Tm.argDen`). A call (the `let` node) is its body read under its arguments bound at `ks`
+    (`Val.args`), never under the caller's `ρ`; given none, under no variable. -/
 noncomputable def Tm.den : Val → {A B : Obj} → Tm A B → Den A B
   | _, _, _, .val R => rep R
   | _, _, _, .uni U => (graph U.row)° ≫ graph U.row
@@ -373,7 +372,7 @@ noncomputable def Tm.den : Val → {A B : Obj} → Tm A B → Den A B
   | ρ, _, _, .foldI e S => foldIDen (e.den ρ) (S.den ρ)
   | ρ, _, _, .flat R => flatDen (R.den ρ)
   | ρ, A, B, .var _ k => ρ k A B
-  | _, _, _, .call .. | _, _, _, .callCv .. => 𝟘
+  | _, _, _, .call ks _ _ b | _, _, _, .callCv ks _ _ _ b _ => b.den (Val.args ks [])
   | ρ, _, _, .arg f x => f.argDen ρ [⟨_, _, x.den ρ⟩]
   -- the rounds start at `⟦S⟧` and meet each with it (`Gen.nu`), so `S` bounds the greatest fixed point
   | ρ, _, _, .nu k S b => Core.Rel.nu fun X => S.den ρ ∩ b.den (ρ.bind k X)
@@ -381,10 +380,11 @@ noncomputable def Tm.den : Val → {A B : Obj} → Tm A B → Den A B
   | ρ, _, _, .hylo k _ b => Core.Rel.mu fun X => b.den (ρ.bind k X)
 
 /-- The spine `f` of a row given the meanings `ss` of its later arguments: the row's meaning of all of them, in
-    the order `compile` passes their codes; `𝟘` where `f` is not a row under `arg`s. `share` and `own` are seen
-    through, as `Tm.gen` passes their part's row on. -/
+    the order `compile` passes their codes; a call's body with them bound at its `ks`; `𝟘` where `f` is neither
+    a row nor a call under `arg`s. `share` and `own` are seen through, as `Tm.gen` passes their part's row on. -/
 noncomputable def Tm.argDen : Val → {A B : Obj} → Tm A B → List Sem → Den A B
   | _, A, B, .prim r, ss => Prim.den r A B ss
+  | _, _, _, .call ks _ _ b, ss | _, _, _, .callCv ks _ _ _ b _, ss => b.den (Val.args ks ss)
   | ρ, _, _, .arg f x, ss => f.argDen ρ (⟨_, _, x.den ρ⟩ :: ss)
   | _, _, _, .share _ R, ss => R.argDen Val.empty ss
   | ρ, _, _, .own R, ss => R.argDen ρ ss
