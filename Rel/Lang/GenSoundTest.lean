@@ -17,6 +17,24 @@ import Rel.Programs.SudokuAC
 import Rel.Programs.SudokuPC
 import Rel.Programs.SudokuPC9
 import Rel.Programs.Wumpus
+import Rel.Programs.Frame
+import Rel.Programs.FrameGroup
+import Rel.Programs.FrameJoin
+-- the test modules holding a `rel_program`, as `test/TestCompile.lean` imports them
+import Rel.Lang.TestAsc
+import Rel.Lang.TestDemand
+import Rel.Lang.TestFrame
+import Rel.Lang.TestFrameCols
+import Rel.Lang.TestFrameGroup
+import Rel.Lang.TestFrameJoin
+import Rel.Lang.TestFrameNull
+import Rel.Lang.TestFramePos
+import Rel.Lang.TestFrameUnbounded
+import Rel.Lang.TestNative
+import Rel.Lang.TestPositions
+import Rel.Lang.TestSchema
+import Rel.Lang.TestSum
+import Rel.Lang.TestUnbounded
 
 /-! `Tm.gen_sound` is not vacuous: each registered program re-read (`Expand.read`, at the homes and scope the
     registry recorded), the definitions with no `Tm.gap` node counted, and four of them, of 8 to 431 nodes, required
@@ -66,7 +84,9 @@ run_cmd do
   let mut big := 0
   for (x, ⟨_, _, t⟩) in defs do
     -- `monoOK` false makes `LamLaws` false (`Tm.LamLawsAt.mono`, `Tm.monoOK_iff`): `gen_sound` says nothing
-    if t.gap then ks := t.gapKinds.eraseDups :: ks
+    if t.gap then
+      ks := t.gapKinds.eraseDups :: ks
+      logInfo m!"gap in `{x}`: {t.gapKinds.eraseDups}"
     else if t.monoOK then
       ok := ok ++ [x]
       big := max big t.size

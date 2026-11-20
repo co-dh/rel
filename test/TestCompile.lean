@@ -7,6 +7,21 @@ import Rel.Lang.TestCircuit
 import Rel.Lang.TestHylo
 import Rel.Lang.TestDetab
 import Rel.Lang.TestEdit
+-- every test module holding a `rel_program` (the dataframe library's definitions are generic: its closed uses are here)
+import Rel.Lang.TestAsc
+import Rel.Lang.TestDemand
+import Rel.Lang.TestFrame
+import Rel.Lang.TestFrameCols
+import Rel.Lang.TestFrameGroup
+import Rel.Lang.TestFrameJoin
+import Rel.Lang.TestFrameNull
+import Rel.Lang.TestFramePos
+import Rel.Lang.TestFrameUnbounded
+import Rel.Lang.TestNative
+import Rel.Lang.TestPositions
+import Rel.Lang.TestSchema
+import Rel.Lang.TestSum
+import Rel.Lang.TestUnbounded
 import Rel.ObjOrder
 import Rel.Lang.GenSoundTest
 -- every program of `Rel.Programs`, so the gate visits each, a test module or not
