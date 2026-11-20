@@ -88,23 +88,25 @@ rel_program paramPT where
     check ran(q ∩ 𝟙) = {(2,2)}
     check ran(q − 𝟙) = {(5,5)}
 
--- a 1000-row frame `i ↦ (i,i)` in `M×M`, `|M×M| = 4·10⁸`: the argument `π₁` read on its universe does not fit memory
+-- a 1000-row frame `j ↦ (i,i)`, `i = j + 19000`, in `M×M`, `|M×M| = 4·10⁸`: the argument `π₁` read on its universe
+-- does not fit memory
 open Rel.Programs.prelude Rel.Programs.frame Rel.Programs.frameGroup Rel.Programs.frameJoin in
 rel_program paramBigT where
     obj M = 0…19999
-    -- `x`: `i ↦ (i,i)` at the `i` with `i − a` in `M`, `i = 19000…19999` (`<` would be stored whole: `GenK.memo`)
+    -- `x`: the positions `j` with `j + a` in `M`, `j = 0…999`, numbered from 0 as a frame's are (`filterBy`'s `dom(x)`
+    -- keeps the new positions among `x`'s); `<` would be stored whole: `GenK.memo`
     a : 1 ⟶ M ≜ {(∗,19000)}
     b : 1 ⟶ M ≜ {(∗,19950)}
-    x : M ⟶ M×M ≜ dom(⟨𝟙, ⊤ a⟩minus) ⟨𝟙, 𝟙⟩
+    x : M ⟶ M×M ≜ dom(⟨𝟙, ⊤ a⟩plus) ⟨𝟙, ⊤ a⟩plus ⟨𝟙, 𝟙⟩
     check filterBy(dom(π₁ dom(⟨𝟙, ⊤ b⟩minus)), x) = dom(⟨𝟙, ⊤ b⟩plus) ⟨𝟙, ⊤ b⟩plus ⟨𝟙, 𝟙⟩
     check innerJoin(π₁, π₁, x, x) = dom(⟨𝟙, ⊤ a⟩plus) ⟨𝟙, ⊤ a⟩plus ⟨⟨𝟙, 𝟙⟩, ⟨𝟙, 𝟙⟩⟩
 
 -- by hand: `xn` holds a value at rows 0 2 (B,5), the null at 1 3 (A),(C), renumbered 0 1; the values 3 5 are at
 -- rows 0 1 2; `x`'s keys B A B C meet `y`'s A C at (1,0), (3,1); `q ∩ 𝟙` keeps (2,2), `q − 𝟙` keeps (1,5); at `M`
--- the rows `i ≥ 19950` renumbered `j = i − 19950` (`j + 19950` in `M`: `j < 50`), and `x` joined with itself on
--- `π₁` matches each row with itself, pair `j` the row `19000 + j`.
+-- the rows with `i ≥ 19950` renumbered `j = i − 19950` (`j + 19950` in `M`: `j < 50`), and `x` joined with itself on
+-- `π₁` matches each row with itself, pair `j` the row `j`.
 #guard paramNT.failures.map toString == []
 #guard paramPT.failures.map toString == []
-#eval paramBigT.failures.map toString
+#guard paramBigT.failures.map toString == []
 
 end Rel.Lang.TestGenericN
