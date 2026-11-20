@@ -296,7 +296,8 @@ compile η t : {r : Rel A B // rep r = ⟦t⟧ρ}       -- 方案 A：规格在�
     `fold`」）的融合形式，定理 `⟦length 行⟧ = ⟦fold 定义⟧` 未证],
   [`at(k)`], [格界 → `scan` 测 `k < e − s` → where → `gather`（格，及 payload 第 `s + k` 个）；`m + k ≥ 2^63` 拒绝],
   [`est(Q)`], [`G = ∋`、`D = ran ⟨G, G⟩`、`V = ran G`；`Y = (D − Q(D)) − ran ⟨V, V⟩`（失败的对，去掉对角）；
-    结果 `G − ⟨G, G⟩ ≫ Y ≫ π₁`。只用 `∋` `⟨,⟩` `ran` `−` `≫` `π₁` 各行，`Q` 只在一个数组内的对 `D` 上跑],
+    结果 `G − ⟨G, G⟩ ≫ Y ≫ π₁`。只用 `∋` `⟨,⟩` `ran` `−` `≫` `π₁` 各行，`Q` 只在一个数组内的对 `D` 上跑；
+    `D` 是 coreflexive，`D − Q(D)` 只看 `Q p p`，即 `Q` 按对角读（`D − Q(D) = D − (Q(D) ∩ D)`）],
   [`thin(Q)`], [`G` `D` 同上；`Q` 按对角读（同 `est`）：`Δ = Q(D) ∩ D`（`D` 中 `Q p p` 的对 `p`）；
     `w = D ≫ ⟨π₂, π₁⟩`，`S = dom (w ≫ Δ)`（交换后也在 `Δ` 中的对；`D` 含每对的交换），`Y = Δ − S`
     （严格胜出的对）；结果 `Λ(G − ⟨G, G⟩ ≫ Y ≫ π₂)` on `X`。`Q` 只跑一次],
@@ -332,10 +333,12 @@ compile η t : {r : Rel A B // rep r = ⟦t⟧ρ}       -- 方案 A：规格在�
   [`loop(F)`（草稿，待审）], [`P ≫ loop(F)`：在 `ran P` 的每个 `(c, ys)` 上，以 `c` 起、沿 `ys` 的左折叠
     （`Tab.foldRounds` + `cons°`），每轮 `p ≫ F(ran p)`，`p` 为该轮的对 `(acc, y)`],
   [`merge(Q)`（草稿，待审）], [状态 `((x, y), acc)` 自 `((x, y), [])` 起，以 `cat(x, y)` 为时钟跑 `|x| + |y|` 轮
-    `Tab.foldRounds`：`l = dom(⟨a, b⟩ ≫ Q)`（`a`、`b` 为两侧 `cons°` 的头），`l` 或 `y` 空时取 `a`，否则取 `b`，
+    `Tab.foldRounds`：`Q` 按对角读（同 `thin`）：`l = dom(⟨a, b⟩ ≫ (Q(D) ∩ D))`，`D = ran ⟨a, b⟩`
+    （`a`、`b` 为两侧 `cons°` 的头；`(a, b) Q (a, b)` 的键），`l` 或 `y` 空时取 `a`，否则取 `b`，
     `snoc` 到 `acc`；结果 `π₂`],
   [`thinL(Q)`（草稿，待审）], [`⦇nil, bump(Q)⦈ʳ`（`Tab.foldRounds` + `snoc°`）；`bump` 在对 `(x, ys)` 上：
-    `u = ys ≫ cons°` 得 `(b, bs)`，`x Q b` 时 `x :: bs`，`b Q x` 时 `ys`，`ys` 空或两者皆否时 `cons`（`x :: ys`）],
+    `u = ys ≫ cons°` 得 `(b, bs)`，`Q` 按对角读（同 `thin`，`Q(D) ∩ D`）：`(x, b) Q (x, b)` 时 `x :: bs`，
+    `(b, x) Q (b, x)` 时 `ys`，`ys` 空或两者皆否时 `cons`（`x :: ys`）],
   [`F(R)`（草稿，待审）], [格界 → EXPAND → `gather` 元素成平铺 payload `v`（`T` 行）→ `⟨pos, v⟩ ≫ R`（按位置作键）；
     每个位置恰一个像（`R` 在这些元素上是函数）时，像按位置序即新 payload，格宽不变（`Vals.cells`），一遍完成；
     否则（某元素 0 个或 ≥ 2 个像）为左折叠 `⦇nil, ⟨π₁, π₂R⟩ snoc⦈`（`Tab.foldRounds` + `cons°`，每元素一轮）；

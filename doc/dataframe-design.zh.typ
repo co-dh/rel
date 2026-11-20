@@ -222,9 +222,9 @@ diff(n, x)        ≜ dom(x) tot(⟨x, ⟨𝟙, ⊤ n⟩minus x⟩minus)      x 
     [`mean` 只有整数除法，浮点：F4], "part"),
   ([`variance` `stddev` `skewness` `correlation` `zScore`], [无], [要浮点算术：F4], "no"),
   ([`median` `percentile` `genericPercentile` `interQuartileRange`],
-    [`median(a, x) ≜ quantile(e, e succ, a, x) where e ≜ count(x) ⟨𝟙, 𝟙⟩minus succ`；
+    [`median(a, x) ≜ quantile({(∗,1)}, {(∗,2)}, a, x)`；`percentile(p, a, x) ≜ quantile(p, {(∗,100)}, a, x)`；
     `quantile(p, q, a, x) ≜ summarize(F(m a) ⟨sum, length⟩div, m) where m ≜ dom(x) dom(⟨⟨𝟙, ⊤ q⟩times, ⊤ p⟩plus < (⟨⟨count(x), p⟩times, q⟩plus)°) dom(⟨⟨⟨𝟙, ⊤ q⟩times, ⊤ p⟩plus, ⊤ q⟩plus > (⟨count(x), p⟩times)°) sortBy(a, x)`],
-    [分数 `p/q`：`quantile` 保留排序后满足 `|q·i − p(count−1)| < q` 的行 `i`，取整数均值；`percentile(p, …) = quantile(p, 100, …)` 暂写不出，因为泛型的定义体不能含数字常量], "part"),
+    [分数 `p/q`：`quantile` 保留排序后满足 `|q·i − p(count−1)| < q` 的行 `i`，取整数均值], "full"),
   ([`countDistinct` `mode`], [`countDistinct(x) ≜ count(distinct(x))`；`mode(a, x) ≜ summarize(head, s) s where s ≜ idesc(valueCounts(a, x) π₂) valueCounts(a, x) π₁`],
     [`mode` 在并列中取先出现的（`idesc` 稳定）], "full"),
   ([`collect`], [`collect(a, c, x) ≜ aggregate(a, F(x c), x)`], [结果列的类型是 `Obj.arr V`], "full"),

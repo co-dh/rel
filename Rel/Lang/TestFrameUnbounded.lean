@@ -3,8 +3,7 @@ import Rel.Programs.FrameJoin
 /-! The dataframe library (plan M2) at the unbounded number object: positions and values in `obj N`, which declares
     no length, so no row below reads a bound the frame did not bring. The fixture and the hand-worked rows are those
     of `TestFrameCols`/`Pos`/`Group`/`Join`/`Null`, copied. `big` is written inline (as a table, `<°` has no right
-    bound at `N`), and `filterJust`/`filterNothing`/
-    `nulls` take `ran(xn) π₂`: the leaf `π₂` as their argument is read on its whole source at `N`. -/
+    bound at `N`). -/
 
 namespace Rel.Lang.TestFrameUnbounded
 
@@ -109,6 +108,12 @@ rel_program frameUnboundedT where
     check quantile({(∗,75)}, {(∗,100)}, π₂, x) = {(∗,5)}
     check quantile({(∗,90)}, {(∗,100)}, π₂, x) = {(∗,6)}
     check quantile({(∗,100)}, {(∗,100)}, π₂, x) = {(∗,7)}
+    check percentile({(∗,0)}, π₂, x) = {(∗,1)}
+    check percentile({(∗,25)}, π₂, x) = {(∗,1)}
+    check percentile({(∗,50)}, π₂, x) = {(∗,3)}
+    check percentile({(∗,75)}, π₂, x) = {(∗,5)}
+    check percentile({(∗,90)}, π₂, x) = {(∗,6)}
+    check percentile({(∗,100)}, π₂, x) = {(∗,7)}
 
     -- TestFrameJoin
     y : N ⟶ K×N ≜ {(0,(A,9)),(1,(C,8)),(2,(A,6))}
@@ -147,8 +152,8 @@ rel_program frameUnboundedT where
       (5,((B,0),(B,5))),(6,((B,0),(B,5))),(7,((B,0),(B,1)))}
     nc : N ⟶ N+1 ≜ dom(x) tot({(0,5),(2,5),(4,7),(7,3)})
     xn : N ⟶ K×(N+1) ≜ ⟨x π₁, nc⟩
-    check filterJust(ran(xn) π₂, xn) ⟨π₁, π₂ inl°⟩ = {(0,(B,5)),(1,(B,5)),(2,(A,7)),(3,(A,3))}
-    check filterNothing(ran(xn) π₂, xn) π₁ = {(0,A),(1,C),(2,C),(3,B)}
+    check filterJust(π₂, xn) ⟨π₁, π₂ inl°⟩ = {(0,(B,5)),(1,(B,5)),(2,(A,7)),(3,(A,3))}
+    check filterNothing(π₂, xn) π₁ = {(0,A),(1,C),(2,C),(3,B)}
     check shift({(∗,1)}, x π₂) [𝟙, {(∗,40)}] = {(0,40),(1,5),(2,3),(3,5),(4,1),(5,7),(6,2),(7,1)}
     check shift({(∗,2)}, x π₂) [𝟙, {(∗,40)}] = {(0,40),(1,40),(2,5),(3,3),(4,5),(5,1),(6,7),(7,2)}
     -- `N` holds the negatives `Z = -10…40` held in `TestFrameNull`
@@ -160,7 +165,7 @@ rel_program frameUnboundedT where
     check dom(nc inr°) = {(1,1),(3,3),(5,5),(6,6)}
     check nc (succ ⊕ 𝟙) [𝟙, {(∗,40)}] = {(0,6),(1,40),(2,6),(3,40),(4,8),(5,40),(6,40),(7,4)}
     check nc [𝟙, summarize(F(nc inl°) ⟨sum, length⟩div, nc inl°)] = {(0,5),(1,5),(2,5),(3,5),(4,7),(5,5),(6,5),(7,3)}
-    check nulls(ran(xn) π₂, xn) = {(∗,4)}
+    check nulls(π₂, xn) = {(∗,4)}
     check fills(nc) [𝟙, {(∗,40)}] = {(0,5),(1,5),(2,5),(3,5),(4,7),(5,7),(6,7),(7,3)}
     n2 : N ⟶ N+1 ≜ dom(x) tot({(2,4),(5,1)})
     check fills(n2) [𝟙, {(∗,40)}] = {(0,40),(1,40),(2,4),(3,4),(4,4),(5,1),(6,1),(7,1)}

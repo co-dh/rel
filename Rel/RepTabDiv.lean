@@ -2833,11 +2833,32 @@ open Rel.Ext Rel.Kernel Rel.Verify Ext.Enc
 
 namespace Tab
 
-/-- **`est q X` denotes `estDen`** (`Tab.est`), its test `q` agreeing with `TQ` on the pairs it is given (`D.val`):
-`(xs, b)` of `G = ∋` dropped exactly where some `(b, c)` of `ran ⟨G, G⟩` off the diagonal fails `TQ`. -/
+/-- **The test `q` agrees with `TQ` on the diagonal of the pairs it is given** (`D.val`): the one hypothesis on a test
+`Q` of `est`, `thin`, `thinL`, `merge`, which read `Q` only at `p Q p`. -/
+def QDiag {k : Obj} (q : Tab k k → Except String (Tab k k)) (TQ : k.El → k.El → Prop) : Prop :=
+  ∀ D T, q D = .ok T → ∀ p, (∃ i, D.val.row i = p) → (T.Holds p p ↔ TQ p p)
+
+/-- **`diag q D` denotes the rows `p` of a coreflexive `D` with `TQ p p`**, `q` agreeing with `TQ` there. -/
+theorem diag_holds {k : Obj} {q : Tab k k → Except String (Tab k k)} {TQ : k.El → k.El → Prop} (hq : QDiag q TQ)
+    {D Δ : Tab k k} (hD : ∀ p p', D.Holds p p' → p = p') (h : diag q D = .ok Δ) (p p' : k.El) :
+    Δ.Holds p p' ↔ p = p' ∧ D.Holds p p ∧ TQ p p := by
+  unfold diag at h; simp only [bind] at h
+  rw [Except.bind_eq_ok'] at h; obtain ⟨Q, hQ, h⟩ := h
+  rw [inter_holds h]
+  constructor
+  · rintro ⟨hqd, hd⟩
+    obtain rfl := hD _ _ hd
+    obtain ⟨i, -, hv⟩ := id hd
+    exact ⟨rfl, hd, (hq _ _ hQ p ⟨i, hv⟩).1 hqd⟩
+  · rintro ⟨rfl, hd, t⟩
+    obtain ⟨i, -, hv⟩ := id hd
+    exact ⟨(hq _ _ hQ p ⟨i, hv⟩).2 t, hd⟩
+
+/-- **`est q X` denotes `estDen`** (`Tab.est`), its test `q` agreeing with `TQ` on the diagonal of the pairs it is
+given (`QDiag`): `(xs, b)` of `G = ∋` dropped exactly where some `(b, c)` of `ran ⟨G, G⟩` off the diagonal fails
+`TQ`. -/
 theorem est_holds {B : Obj} {q : Tab (.prod B B) (.prod B B) → Except String (Tab (.prod B B) (.prod B B))}
-    {TQ : Lang.Den (.prod B B) (.prod B B)}
-    (hq : ∀ D T, q D = .ok T → ∀ p p', (∃ i, D.val.row i = p) → (T.Holds p p' ↔ TQ p p'))
+    {TQ : Lang.Den (.prod B B) (.prod B B)} (hq : QDiag q TQ)
     {n : USize} {X : Vals (.arr B) n} {T : Tab (.arr B) B} (h : Tab.est q X = .ok T) (xs : List B.El) (b : B.El) :
     T.Holds xs b ↔ (∃ i, X.row i = xs) ∧ Lang.estDen TQ xs b := by
   unfold Tab.est at h; simp only [bind] at h
@@ -2856,7 +2877,7 @@ theorem est_holds {B : Obj} {q : Tab (.prod B B) (.prod B B) → Except String (
     fun xs p => (pair_holds hP xs p).trans (and_congr (mem_holds hG _ _) (mem_holds hG _ _))
   -- a pair of one array's elements is a row of `D`, so `q D` agrees with `TQ` there
   have hQ : ∀ xs p, P.Holds xs p → (T1.Holds p p ↔ TQ p p) := fun xs p hx =>
-    hq D T1 hT1 p p (let ⟨i, _, e⟩ := (ran_holds hD p p).2 ⟨rfl, xs, hx⟩; ⟨i, e⟩)
+    hq D T1 hT1 p (let ⟨i, _, e⟩ := (ran_holds hD p p).2 ⟨rfl, xs, hx⟩; ⟨i, e⟩)
   -- `Y`: the pairs `q` is asked about, off the diagonal, failing `TQ`
   have eY : ∀ p p', Y.Holds p p' ↔ p = p' ∧ (∃ xs, P.Holds xs p) ∧ ¬TQ p p ∧ p.1 ≠ p.2 := by
     intro p p'
@@ -2891,8 +2912,7 @@ theorem est_holds {B : Obj} {q : Tab (.prod B B) (.prod B B) → Except String (
 given and `B`'s order codes agreeing with `B.lt` (`lam_den`'s `hB`): `(xs, c)` of `G = ∋` dropped exactly where some
 `(b, c)` of `D = ran ⟨G, G⟩` has `TQ (b, c) (b, c)` and its swap has not; then `lam_den`. -/
 theorem thin_den {B : Obj} {q : Tab (.prod B B) (.prod B B) → Except String (Tab (.prod B B) (.prod B B))}
-    {TQ : Lang.Den (.prod B B) (.prod B B)}
-    (hq : ∀ D T, q D = .ok T → ∀ p, (∃ i, D.val.row i = p) → (T.Holds p p ↔ TQ p p))
+    {TQ : Lang.Den (.prod B B) (.prod B B)} (hq : QDiag q TQ)
     {n : USize} {X : Vals (.arr B) n} {T : Tab (.arr B) (.arr B)} (h : Tab.thin q X = .ok T)
     (hB : ∀ (m : USize) (x : Vals (.prod (.arr B) B) m) es, Vals.cols x = .ok es → ∀ i i' : Fin m.toNat,
       (x.row i).1 = (x.row i').1 → lexLe (ascKeys m es) i i' = true → seenKey m es i ≠ seenKey m es i' →
@@ -2902,7 +2922,6 @@ theorem thin_den {B : Obj} {q : Tab (.prod B B) (.prod B B) → Except String (T
   rw [Except.bind_eq_ok'] at h; obtain ⟨G, hG, h⟩ := h
   rw [Except.bind_eq_ok'] at h; obtain ⟨P, hP, h⟩ := h
   rw [Except.bind_eq_ok'] at h; obtain ⟨D, hD, h⟩ := h
-  rw [Except.bind_eq_ok'] at h; obtain ⟨QD, hQD, h⟩ := h
   rw [Except.bind_eq_ok'] at h; obtain ⟨Dg, hDg, h⟩ := h
   rw [Except.bind_eq_ok'] at h; obtain ⟨o1, ho1, h⟩ := h
   rw [Except.bind_eq_ok'] at h; obtain ⟨o2, ho2, h⟩ := h
@@ -2915,19 +2934,10 @@ theorem thin_den {B : Obj} {q : Tab (.prod B B) (.prod B B) → Except String (T
   rw [Except.bind_eq_ok'] at h; obtain ⟨Gd, hGd, h⟩ := h
   have eP : ∀ xs p, P.Holds xs p ↔ ((∃ i, X.row i = xs) ∧ p.1 ∈ xs) ∧ ((∃ i, X.row i = xs) ∧ p.2 ∈ xs) :=
     fun xs p => (pair_holds hP xs p).trans (and_congr (mem_holds hG _ _) (mem_holds hG _ _))
-  -- `Δ = q(D) ∩ D`: the pairs of one array on whose diagonal `TQ` holds
+  -- `Δ = diag q D`: the pairs of one array on whose diagonal `TQ` holds
   have eD : ∀ p p', Dg.Holds p p' ↔ p = p' ∧ (∃ xs, P.Holds xs p) ∧ TQ p p := fun p p' => by
-    rw [inter_holds hDg]
-    constructor
-    · rintro ⟨hqd, hd⟩
-      obtain ⟨e, hp⟩ := (ran_holds hD p p').1 hd
-      subst e
-      obtain ⟨i, -, hv⟩ := hd
-      exact ⟨rfl, hp, (hq _ _ hQD p ⟨i, hv⟩).1 hqd⟩
-    · rintro ⟨rfl, hp, t⟩
-      have hd := (ran_holds hD p p).2 ⟨rfl, hp⟩
-      obtain ⟨i, hk, hv⟩ := hd
-      exact ⟨(hq _ _ hQD p ⟨i, hv⟩).2 t, i, hk, hv⟩
+    rw [diag_holds hq (fun p p' hd => ((ran_holds hD p p').1 hd).1) hDg]
+    simp only [ran_holds hD, true_and]
   -- the keys of `Y` among the pairs of one array: `TQ` on their diagonal, not on their swap's
   have eY : ∀ p p', Y.Holds p p' ↔ p = p' ∧ (∃ xs, P.Holds xs p) ∧ TQ p p ∧ ¬TQ (p.2, p.1) (p.2, p.1) :=
     fun p p' => by

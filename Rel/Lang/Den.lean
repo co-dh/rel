@@ -302,9 +302,9 @@ def rowDens : List ((c : RowCode) × RowDen c) :=
    ⟨takewhile, fun σ => Sem.one (X := σ₁ σ) (Y := σ₁ σ) fun T xs ys =>
       ys = xs.takeWhile fun x => decide (∃ y, T x y)⟩,
    ⟨thinL, fun σ => Sem.one (X := .prod (σ₁ σ) (σ₁ σ)) (Y := .prod (σ₁ σ) (σ₁ σ)) fun T =>
-      thinLDen fun a b => decide (∃ c, T (a, b) c)⟩,
+      thinLDen fun a b => decide (T (a, b) (a, b))⟩,
    ⟨merge, fun σ => Sem.one (X := .prod (σ₁ σ) (σ₁ σ)) (Y := .prod (σ₁ σ) (σ₁ σ)) fun T p zs =>
-      zs = List.merge p.1 p.2 fun a b => decide (∃ c, T (a, b) c)⟩,
+      zs = List.merge p.1 p.2 fun a b => decide (T (a, b) (a, b))⟩,
    ⟨loop, fun σ => Sem.one (X := .prod (σ₁ σ) (σ₂ σ)) (Y := σ₁ σ) fun T p c => ∃ g : Nat → (σ₁ σ).El, g 0 = p.1 ∧
       (∀ t (ht : t < p.2.length), T (g t, p.2[t]'ht) (g (t + 1))) ∧ c = g p.2.length⟩,
    ⟨uncons, fun _ _ xs p => xs = p.1 :: p.2⟩,

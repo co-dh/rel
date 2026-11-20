@@ -131,8 +131,19 @@ theorem uni_sound {m : USize} (U : Vals A m × Bool) :
     · rintro ⟨i, rfl, rfl⟩; exact ⟨rfl, i, rfl⟩
   · nomatch h
 
-theorem id_sound : ∀ K, (GenK.id A).Reps K (𝟙 _) :=
-  ofVals_row_sound fun _ _ _ h a b => (Tab.idU_holds h a b).trans and_comm
+theorem id_sound : ∀ K, (GenK.id A).Reps K (𝟙 _) := fun K => by
+  rw [reps_iff]; intro t h
+  have hs := @side_or A K
+  simp only [GenK.id, Rel.Rel.runE] at h
+  generalize (K.dom <|> K.ran) = o at h hs
+  cases o with
+  | none => simp [Option.elim, Rel.Rel.runE] at h
+  | some c =>
+    obtain ⟨n, X⟩ := c
+    simp only [Option.elim, Rel.Rel.runE] at h
+    intro a b ha hb
+    refine (Tab.idU_holds h a b).trans ⟨fun ⟨e, _⟩ => e, fun e => ⟨e, ?_⟩⟩
+    subst e; exact (side_some rfl a).1 (hs ha hb)
 
 theorem conv_sound {R : Rel A B} {X : Core.Rel A.El B.El} (hR : ∀ K, R.Reps K X) :
     ∀ K, (GenK.conv A B R).Reps K X° :=
@@ -203,13 +214,13 @@ theorem top_sound {V : Rel B B} {Y : Core.Rel B.El B.El} (hV : ∀ K, V.Reps K Y
     simp only [GenK.top, Rel.Rel.runE, hK] at h
     obtain ⟨v, hv, h⟩ := bind_ok h
     obtain ⟨w, hw, ht⟩ := bind_ok h
-    have ev := (reps_iff _ _ _).1 (hV {}) v hv
+    have ev := (reps_iff _ _ _).1 (hV ⟨none, K.ran⟩) v hv
     have ew := cut_agrees hw
     intro a b ha hb
     refine (Tab.top_val_holds ht a b).trans
       ⟨fun ⟨_, c, _, h⟩ => ⟨c, trivial, ?_⟩, fun ⟨c, _, h⟩ => ⟨(side_some hK a).1 ha, c, trivial, ?_⟩⟩
-    · exact (ev c b rfl rfl).1 ((ew c b rfl hb).1 h)
-    · exact (ew c b rfl hb).2 ((ev c b rfl rfl).2 h)
+    · exact (ev c b rfl hb).1 ((ew c b rfl hb).1 h)
+    · exact (ew c b rfl hb).2 ((ev c b rfl hb).2 h)
 
 /-! ### Products and sums: `pair prod outl outr junc flat` (`outl outr` by `ofVals_row_sound`) -/
 
