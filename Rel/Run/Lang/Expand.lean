@@ -713,8 +713,10 @@ partial def node (pre : Name) (ρ : List (Nat × Lean.Expr)) {A B : Obj} (t : Tm
   | A, B, .nu v S b => return g ``GenK.nu #[oE A, oE B, ← c S, ← body pre ρ A B v b]
   -- `μ` and hylo also take their text: they throw the message naming it
   | A, B, .mu v w n b => return g ``GenK.mu #[oE A, oE B, toExpr w, toExpr n, ← body pre ρ A B v b]
-  | A, B, .hylo v w b =>
-    let ch := (b.kids v A).getD .zero
+  | A, B, .hylo v w b => do
+    -- children read in no shape bound no recursion: running `𝟘` for them would compute something else
+    let some ch := b.kids v A
+      | throwError "rel_program expansion: {w}: the hylo's body reads its variable in a shape that gives no children (Tm.kids)"
     return g ``GenK.hylo #[oE A, oE B, toExpr w, bE ch.dem, bE b.dem, ← c ch, ← body pre ρ A B v b]
   | A, B, t@(.prim _) | A, B, t@(.arg ..) => match primOf t with
     | some (r, as) => do

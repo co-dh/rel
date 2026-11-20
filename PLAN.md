@@ -97,11 +97,11 @@ Size：S = 一步，少于 20 次 tool call；M = 一到三步；L = 多于三�
 | 14 | junc 是 definition，没有 juncD | `Pre.junc`, `Elab.lean:256`           | 无：`inl°R ∪ inr°S`；不放 prelude       | M    | ✅ 4.1      |
 | 15 | 对称除法 ctor                  | `Alg.symDiv`, `Run/Alg.lean:293`      | 没有 `Tm` ctor，没有 `Den`              | M    | ⬜ 4.4      |
 | 16 | 拒绝非正的 μ/ν                 | `Tm.pol`, `Tm.lean:254`               | Elab `.fix`（1655-1670）：没有检查      | S    | ✅ 2.4      |
-| 17 | gap：open share                | `Rows.lean:125`, `Expand.lean:530`    | 没有找到 producer；R6                   | M    | ⬜ 5.1      |
-| 18 | gap：setify、asc               | `rowGaps`, `Rows.lean:107`            | canonical 上已证；浮点 key 仍是 gap     | M    | 🔄 5.2      |
+| 17 | gap：open share                | `Rows.lean:125`, `Expand.lean:530`    | 无：share 读 `Val.empty`，情形已证      | M    | ✅ 5.1      |
+| 18 | gap：setify、asc               | `rowGaps`, `Rows.lean:107`            | 无 gap；浮点 key 是 `LamLaw` 前提       | M    | 🔄 5.2      |
 | 19 | gap：hylo                      | `rep_refold`, `RefoldSpec.lean:124`   | `onNodes` 修复、`hylo_sound`；去 `ch`   | M    | ✅ 5.3      |
 | 20 | gap：lam、E、thin              | `lamDen` `Den.lean:111`; `Canon`      | 三条已证；残留缺口：f32/f64 元素        | L    | ✅ 5.4c     |
-| 21 | gap：call                      | `Tm.lean:79`; den `𝟘`, `none'`        | stage 5 在代码里没有说明                | L    | 🔄 5.5      |
+| 21 | gap：call                      | `Tm.lean:79`; den 读 body             | 无：`Tm.den` 读 body，情形已证          | L    | ✅ 5.5      |
 | 22 | prim row 写成 fold/hylo        | 28 行, `Compile.lean:77-112`          | 没有逐行检查                            | M    | ✅ 2.6      |
 | 23 | scan、scatter primitive        | driver, `Kernel/Driver.lean:25-38`    | 有定律，无 caller（见 W2–W3）           | L    | 🔄 W2–W3    |
 | 24 | gather、asc、distinct          | `gatherPacked`, `Order.grade`, `nubC` | 无 caller；无 "= 复合" 定理（见 W2）    | L    | 🔄 W2       |
@@ -127,7 +127,7 @@ Size：S = 一步，少于 20 次 tool call；M = 一到三步；L = 多于三�
 | P2 不依赖 `Rel` 类型 | 6 / 6       | 100% |                                                             |
 | P3 `Rel` 类型        | 11 / 13     | 85%  | 3.12（3.12b 未开始）                                        |
 | P4 `Tm` constructor  | 2 / 5       | 40%  |                                                             |
-| P5 关闭 gap          | 4 / 8       | 50%  | 5.2、5.5                                                    |
+| P5 关闭 gap          | 7 / 8       | 88%  | 5.2（浮点 key 的 `LamLaw`）                                 |
 | P6 kernels           | 9 / 15      | 60%  | 6.9、6.10、6.11（`d56c`）、6.13（`d4pos2`、`d4pos3`）、6.14 |
 | P7 Plan A            | 2 / 4       | 50%  |                                                             |
 
@@ -284,9 +284,10 @@ Diff table 的「状态」列：✅ 后面是完成它的步骤；🔄 是部分
 - ⬜ 4.4 加 `symDiv` constructor。
 - ✅ 4.5 默认是 `[nil, snoc]` 上的左 fold；只用 `snoc` 构造。
 
-### P5 按既定顺序关闭 gap — 4/8（5.4a-c 并行，其余串行）
+### P5 按既定顺序关闭 gap — 7/8（5.4a-c 并行，其余串行）
 
-- ⬜ 5.1 share。
+- ✅ 5.1 share：`Tm.den` 在 `Val.empty` 下读 share，`Tm.gen` 在 `Code.empty` 下建它，`gen_sound` 的 share 情形已证；
+  没有 gap 留给它（p56）。
 - 🔄 5.2 Λ/thin/setify/asc 的 soundness：`Gen.thin_sound`、`Gen.setify_sound`、`Gen.asc_sound` 已证并接入（3006856）；
   `thin` 仍有缺口：元素对象不 canonical 或 pair test 不是 `Tm.cor`；浮点 key 仍有缺口。
 - ✅ 5.3 hylo：owner 选 H（删 `ch` 字段，`Tm.kids` 是唯一来源）再选 A
@@ -297,10 +298,17 @@ Diff table 的「状态」列：✅ 后面是完成它的步骤；🔄 是部分
   `d8hyloA`（d266a73：删 `ch`，`Tm.size`，`compile_sound` 按 size 归纳，`Tm.den_local`）经修复已合并为 296bab2
   （hylo 没有 `ch`：`Tm.kids` 是唯一来源，`Tm.size`，`compile_sound` 按 size 归纳）。
 - ✅ 5.4a ✅ `lam_sound`（d72cf71）、5.4b ✅ `E_sound`（0ac4f13），都在 `rel-lazy`；5.4c ✅ `thin_sound`（3006856，见 D.8）。
-- 🔄 5.5 call（stage 5）：提案 `doc/call-stage5.zh.pdf`（69a8e5d）。owner 定 B D F H J：保留按 form 的常量作共享代码，
+- ✅ 5.5 call（stage 5）：代码已是这个形状：`Tm.call` 带 body，`Tm.den` 读 body（`Val.args ks`），`gen_sound` 的
+  call 情形已证（p56 核对）。提案 `doc/call-stage5.zh.pdf`（69a8e5d）。owner 定 B D F H J：保留按 form 的常量作共享代码，
   与调用点 `rfl` 相等；`Tm.instObj` 实例化对象；`Code` 带实参的 `Pl`；`cv` 存逆的 body；registry 存 body `Res`。
   实现排在 P3、P4 之后（改 `Tm.call`）。
-- ⬜ 5.6 删除 `Tm.gap`；Done：compile-diff 0 个 not ok。
+- ✅ 5.6 删除 `Tm.gap`（61c77cb）。`Tm.gap` 不是 constructor，是 `GenSound` 里的 Bool 谓词；所有 29 行都在
+  `rowsProved`（`rowGens_proved`），剩下的 gap 情形是 error table，另有两个不是：row 给错关系个数、hylo 的
+  `Tm.kids = none`（`Tm.gen` 和 `Expand.node` 都跑 `𝟘` 当 children）。现在 `primGen` 对个数报错，`Tm.gen` 给
+  error table，`Expand.node` 在 `kids = none` 时报错。`Tm.gen_sound` 去掉 `t.gap = false` 前提；GenSoundTest 改数
+  `Tm.hasCode`：133 个程序 1181 / 1181。compile-diff：723 ok，4 个 not ok（`muGrow.g`、`pairN.bad`、
+  `hyloCycle.bad`、`unboundedT.bad`，是故意失败的测试，改动前同样 4 个）；pin 差 45 个，全是 "in the run, not in the
+  baseline"（pin 落后于新加的测试），没有改变的定义。
 
 ### P6 kernels — 9/15
 
@@ -865,7 +873,8 @@ relk 线程池空转 2 526（与前三项重叠）。
   link 参数，旧的 librelk.so 要重链接才带 build-id。cap 的 build-id 缓存在 947fbca。
 - ⬜ W.8 调查：Lean 的 module 系统（`module` + `public import`）能否让只改 kernel body 时不重建下游。
 - ✖ W.9 `SubagentStart` hook：首条命令被拒 0.4%，不值得多一个 hook（owner 选 B）。
-- ⬜ W.10 `compile` 在每个后面的定义里重新展开前面所有的定义，耗时沿链条每步翻倍（Q 0.5 s、C 1.3、W 2.4、K 5、
+- ✅ W.10 原因是差分测试的参照运行重跑了被 inline 的定义；在 `test/TestCompile.lean` 修复（99c595a），
+  14m22s → 7m41s。原记录：`compile` 在每个后面的定义里重新展开前面所有的定义，耗时沿链条每步翻倍（Q 0.5 s、C 1.3、W 2.4、K 5、
   Z 11、ζ 21、plan 25 s）。`blocks.*`、`table.*`、`cycle.*` 在 compile-diff 中合计约 200 s，0 次 split，与输入规模
   无关。修法：`compile`/`CodeEnv` 引用已经编译好的定义，不再重新展开。参见 W.5a：poolStat 的合并要和 qlean 同步。
 
