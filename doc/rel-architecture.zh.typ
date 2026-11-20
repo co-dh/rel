@@ -131,7 +131,7 @@ compile η t : {r : Rel A B // rep r = ⟦t⟧ρ}       -- 方案 A：规格在�
 #tbl(c-syn, (auto, 1fr), ([组], [构造子]),
   [allegory], [`id` `comp` `conv` `meet` `dom` `ran`],
   [distributive allegory], [`zero` `join` `top`],
-  [division allegory], [`ldiv` `rdiv`；symmetric division 只有运行时的 `Alg.symDiv`，`Tm` 中缺构造子],
+  [division allegory], [`ldiv` `rdiv`；symmetric division 不是构造子，是定义 `R/S ∩ (S/R)°`（`Pre.symDiv`，含义 `Tm.symDiv_den`）],
   [Boolean（有补）], [`diff`：需要补，不属于一般 allegory],
   [product / sum], [`outl` `outr` `pair` `prod`；`junc` = `[R,S]`（目标：加 `inl` `inr`，`[R,S] = inl° ≫ R ∪ inr° ≫ S` 成为定义；`juncD` 随 lazy `Rel` 消失）],
   [power], [`lam`（Λ） `E` `est` `thin` `nil` `atPos`],
@@ -391,6 +391,6 @@ index-complete · axioms · noreduce · panic · externs；另加 `lake -d freyd
 - 逐个检查 `prims` 的行能否写成 `fold`/`hylo`（如 `inits` `tails`），能写的改为定义，只留真正的 kernel 级原语。
 - `foldI`、`flat` 不再是构造子：`flat R` 由 `pair` `outl` `outr` 加相等测试写出（`(i,a) ↦ b` ⇔ `i R (a,b)`），`foldI` 是 carrier 为 `I × V` 的 `fold`（初值依赖 key）；先验证两者确实可写出，再删构造子及其 `Gen`、`den` 分支。`hylo` 改名 `hylo`。
 - 去掉 `Syn`、`Tm.Le`、`Tm.Eqv`、`Hom.den`（`Rel/Lang/Syn.lean`）与 #9；`Tm.Ax` 改为改写引理 `⟦lhs⟧ρ = ⟦rhs⟧ρ`；freyd 需要的范畴在 `relaop` 自建。
-- `Tm` 加 symmetric division 构造子（运行时已有 `Alg.symDiv`）。
+- symmetric division 不加构造子：它是定义 `R/S ∩ (S/R)°`（`Pre.symDiv`），由 `rdiv` `meet` `conv` 组成（已完成）。
 - 改名：去掉 `Den` `Dem` `Fn` `CRel`，`Rel k v` 改为 `Rel A B`（`tab` ┃ `lazy`），`Tm` 去掉 `d`。
 - kernel 缩到 5 个：原语 `scan` `scatter`，优化 `gather` `asc` `seen`（各配「= 原语复合」的定理）、编码只留 foR（块长 `lg` 每列可选）、原子 u1 char i8–i64 f32 f64 sym；q 专用 kernel 留在 qlean 的副本（tag `qlean-base`）。

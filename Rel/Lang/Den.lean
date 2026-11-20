@@ -402,6 +402,13 @@ noncomputable def Tm.argDen : Val → {A B : Obj} → Tm A B → List Sem → De
   | _, _, _, _, _ => 𝟘
 end
 
+/-- **Symmetric division is a definition**: the term `R/S ∩ (S/R)°` that `Pre.symDiv` builds means `R÷S` within the
+    universes `UA`, `UB`. -/
+theorem Tm.symDiv_den (ρ : Val) {A B C : Obj} (R : Tm A C) (S : Tm B C) (UA : Tm A A) (UB : Tm B B) :
+    (Tm.meet (.rdiv R S UA UB) (.conv (.rdiv S R UB UA))).den ρ =
+      symDivDen (UA.den ρ) (UB.den ρ) (R.den ρ) (S.den ρ) := by
+  simp only [Tm.den]
+
 /-- `⟦t⟧`, and `t`'s meaning as a row's spine, read `ρ` only at the variables free in `t`. -/
 theorem Tm.den_congr : ∀ {A B : Obj} (t : Tm A B) (ρ ρ' : Val), (∀ i ∈ t.fv, ρ i = ρ' i) →
     t.den ρ = t.den ρ' ∧ ∀ ss, t.argDen ρ ss = t.argDen ρ' ss := by

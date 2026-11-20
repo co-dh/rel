@@ -254,6 +254,16 @@ inductive Pre
 
 instance : Inhabited Pre := ⟨.id (.base "")⟩
 
+/-- `R/S : a ⟶ b` with its operands read whole (`close`), as `/` elaborates. -/
+def Pre.rdivWhole (pos : Pos) (r s : Pre) (a b : OTy) : Pre :=
+  let w := "R/S reads its operands whole outside a meet with a term run on demand"
+  .rdiv pos (.close pos r a w) (.close pos s b w) a b
+
+/-- Symmetric division `R÷S : a ⟶ b` is its definition `R/S ∩ (S/R)°` (architecture §1), not a node of its own: `x`
+    to `y` when `R x` and `S y` are one image, within the universes (`Tm.symDiv_den`). -/
+def Pre.symDiv (pos : Pos) (r s : Pre) (a b : OTy) : Pre :=
+  .meet (.rdivWhole pos r s a b) (.conv (.rdivWhole pos s r b a))
+
 /-- `[R,S] : a + b ⟶ _` is its definition `inl°R ∪ inr°S` (architecture §1, §7), not a node of its own: each part
     runs on the values of its summand in demand (`Tab.inlConv`), and is covered by the laws of `∪`, `≫` and the rows. -/
 def Pre.junc (r s : Pre) (a b : OTy) : Pre :=
@@ -982,8 +992,7 @@ def binary (p : Pos) (o : Bin) : Pre × OTy × OTy → Pre × OTy × OTy → M A
       pure (.rel x s t)
     | .rdiv => do
       unify p "the target of `/`'s right operand" t' t
-      let w := "R/S reads its operands whole outside a meet with a term run on demand"
-      pure (.rel (.rdiv p (.close p q s w) (.close p r s' w) s s') s s')
+      pure (.rel (Pre.rdivWhole p q r s s') s s')
     | .ldiv => do
       unify p "the source of `\\`'s right operand" s' s
       let w := "R\\S reads its operands whole outside a meet with a term run on demand"
