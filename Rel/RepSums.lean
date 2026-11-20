@@ -234,4 +234,95 @@ theorem sums_fold {α : Type} [DecidableEq α] {g : Nat → α} {m : Nat}
 
 end Lang
 
+/-- **`sumsDen` on a table of distinct keys whose groups `grp` (equal `κ`) ascend in `ν` with the row**: `(κ, ν)` to
+the left fold over the values of the rows `≤ t` of `t`'s group, `t` the row of `(κ, ν)`. -/
+theorem sumsDen_rows {K : Obj} (C : Tab (.prod K .long) .long) (grp : Nat → Nat)
+    (hD : ∀ i j : Fin C.n.toNat, C.key.row i = C.key.row j → i = j)
+    (hG : ∀ i j : Fin C.n.toNat, grp i = grp j ↔ (C.key.row i).1 = (C.key.row j).1)
+    (hO : ∀ i j : Fin C.n.toNat, i.1 < j.1 → (C.key.row i).1 = (C.key.row j).1 →
+      (C.key.row i).2 < (C.key.row j).2) (a : (Obj.prod K .long).El) (w : Int64) :
+    Lang.sumsDen (rep C) a w ↔ ∃ t : Fin C.n.toNat, C.key.row t = a ∧
+      Lang.foldDen (E := .long) (V := .long) (fun _ b => b = 0) (Lang.stepDen Ew.add)
+        (((List.range (t.1 + 1)).filter fun q => grp q = grp t).map fun q =>
+          if hq : q < C.n.toNat then C.val.row ⟨q, hq⟩ else 0) w := by
+  have hR : ∀ b v, rep C b v ↔ ∃ i, C.key.row i = b ∧ C.val.row i = v := fun _ _ => Iff.rfl
+  have hU : ∀ b c, Lang.upToDen (rep C) b c ↔ (∃ v, rep C b v) ∧ (∃ v, rep C c v) ∧ b.1 = c.1 ∧ c.2 ≤ b.2 :=
+    fun b c => Lang.upToDen_iff _ b c
+  have hle : ∀ y : Int64, y ≤ y := fun y => by rw [Int64.le_iff_toInt_le]; exact Int.le_refl _
+  have hP : ∀ t : Fin C.n.toNat, ∀ q ∈ (List.range (t.1 + 1)).filter (fun q => grp q = grp t),
+      q < C.n.toNat ∧ q ≤ t.1 ∧ grp q = grp t := fun t q hq => by
+    simp only [List.mem_filter, List.mem_range, decide_eq_true_eq] at hq; exact ⟨by omega, by omega, hq.2⟩
+  let kAt (t : Fin C.n.toNat) (q : Nat) : (Obj.prod K .long).El :=
+    if hq : q < C.n.toNat then C.key.row ⟨q, hq⟩ else C.key.row t
+  have hM : ∀ t : Fin C.n.toNat, ∀ b, b ∈ ((List.range (t.1 + 1)).filter fun q => grp q = grp t).map (kAt t) ↔
+      (∃ v, rep C b v) ∧ (C.key.row t).1 = b.1 ∧ b.2 ≤ (C.key.row t).2 := by
+    intro t b
+    rw [List.mem_map]
+    constructor
+    · rintro ⟨q, hq, rfl⟩
+      obtain ⟨hqn, hqt, hg⟩ := hP t q hq
+      simp only [kAt, dif_pos hqn]
+      refine ⟨⟨_, (hR _ _).2 ⟨⟨q, hqn⟩, rfl, rfl⟩⟩, ((hG ⟨q, hqn⟩ t).1 hg).symm, ?_⟩
+      rcases Nat.lt_or_ge q t.1 with h | h
+      · have := hO ⟨q, hqn⟩ t h ((hG ⟨q, hqn⟩ t).1 hg)
+        rw [Int64.lt_iff_toInt_lt] at this; rw [Int64.le_iff_toInt_le]; omega
+      · obtain rfl : t = ⟨q, hqn⟩ := Fin.ext (show t.1 = q by omega); exact hle _
+    · rintro ⟨⟨v, hv⟩, h1, h2⟩
+      obtain ⟨q, rfl, -⟩ := (hR _ _).1 hv
+      refine ⟨q.1, ?_, by simp only [kAt, dif_pos q.2]⟩
+      simp only [List.mem_filter, List.mem_range, decide_eq_true_eq]
+      refine ⟨?_, (hG q t).2 h1.symm⟩
+      apply Nat.lt_of_not_le; intro hc
+      have := hO t q (by omega) h1
+      rw [Int64.lt_iff_toInt_lt] at this; rw [Int64.le_iff_toInt_le] at h2; omega
+  have hS : ∀ t : Fin C.n.toNat,
+      (((List.range (t.1 + 1)).filter fun q => grp q = grp t).map (kAt t)).Pairwise (Obj.prod K .long).lt := by
+    intro t
+    rw [List.pairwise_map]
+    refine ((List.pairwise_lt_range).filter _).imp_of_mem fun {q q'} hq hq' hlt => ?_
+    obtain ⟨hqn, -, hg⟩ := hP t q hq; obtain ⟨hqn', -, hg'⟩ := hP t q' hq'
+    simp only [kAt, dif_pos hqn, dif_pos hqn']
+    have e := (hG ⟨q, hqn⟩ ⟨q', hqn'⟩).1 (hg.trans hg'.symm)
+    exact (Obj.lt_prod _ _ _ _ _ _).2 (Or.inr ⟨congrArg _ e, (Obj.lt_long _ _).2 (hO ⟨q, hqn⟩ ⟨q', hqn'⟩ hlt e)⟩)
+  have hrow : ∀ i : Fin C.n.toNat, ∀ v, rep C (C.key.row i) v ↔ v = C.val.row i := fun i v => by
+    rw [hR]; constructor
+    · rintro ⟨j, hj, rfl⟩; rw [hD j i hj]
+    · rintro rfl; exact ⟨i, rfl, rfl⟩
+  -- the values at the rows of `t`'s run are what `mapDen` pairs with its keys
+  have hV : ∀ t : Fin C.n.toNat, ∀ vs : List Int64,
+      Lang.mapDen (rep C) (((List.range (t.1 + 1)).filter fun q => grp q = grp t).map (kAt t)) vs ↔
+      vs = ((List.range (t.1 + 1)).filter fun q => grp q = grp t).map fun q =>
+        if hq : q < C.n.toNat then C.val.row ⟨q, hq⟩ else 0 := by
+    intro t vs
+    have hval : ∀ q ∈ (List.range (t.1 + 1)).filter (fun q => grp q = grp t), ∀ v,
+        rep C (kAt t q) v ↔ v = if hq : q < C.n.toNat then C.val.row ⟨q, hq⟩ else 0 := fun q hq v => by
+      have hqn := (hP t q hq).1
+      simp only [kAt, dif_pos hqn]; exact hrow _ v
+    constructor
+    · rintro ⟨hlen, hvs⟩
+      apply List.ext_getElem (by simpa using hlen)
+      intro i hi hi'
+      have := hvs i (by simpa [← hlen] using hi) hi
+      simp only [List.getElem_map] at this ⊢
+      exact (hval _ (List.getElem_mem _) _).1 this
+    · rintro rfl
+      refine ⟨by simp, fun i hi hi' => ?_⟩
+      simp only [List.getElem_map]
+      exact (hval _ (List.getElem_mem _) _).2 rfl
+  simp only [Lang.sumsDen, Core.Rel.comp, Core.Rel.inter, Core.Rel.id, Core.Rel.recip]
+  constructor
+  · rintro ⟨a', ⟨rfl, b, hb, -⟩, ys, ⟨hys, hmem⟩, vs, hmap, hf⟩
+    obtain ⟨⟨c, hc⟩, -⟩ := (hU _ _).1 hb
+    obtain ⟨t, rfl, -⟩ := (hR _ _).1 hc
+    have hy : ys = ((List.range (t.1 + 1)).filter fun q => grp q = grp t).map (kAt t) :=
+      lt_sorted_unique hys (hS t) fun b => (hmem b).trans ((hU _ _).trans
+        ⟨fun ⟨_, h⟩ => (hM t b).2 h, fun h => ⟨⟨_, (hR _ _).2 ⟨t, rfl, rfl⟩⟩, (hM t b).1 h⟩⟩)
+    subst hy
+    exact ⟨t, rfl, (hV t vs).1 hmap ▸ hf⟩
+  · rintro ⟨t, rfl, hf⟩
+    have hd : ∃ v, rep C (C.key.row t) v := ⟨_, (hR _ _).2 ⟨t, rfl, rfl⟩⟩
+    exact ⟨_, ⟨rfl, _, (hU _ _).2 ⟨hd, hd, rfl, hle _⟩, (hU _ _).2 ⟨hd, hd, rfl, hle _⟩⟩, _,
+      ⟨hS t, fun b => ((hM t b).trans ⟨fun h => ⟨hd, h⟩, fun ⟨_, h⟩ => h⟩).trans (hU _ _).symm⟩, _,
+      (hV t _).2 rfl, hf⟩
+
 end Rel
