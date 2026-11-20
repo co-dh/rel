@@ -2,11 +2,12 @@ import Rel.Lang.Test.Common
 
 namespace Rel.Lang.Test
 
-open Tab Rel.Lang Rel.Alg Rel
+open Tab Rel.Lang Rel
 
 /-- `plan`'s moves in the order of their step. -/
 def moves (gs : List (String × Gen.Gv)) : Option (List (Int64 × Int64)) :=
-  (get gs "plan" .long XX).map fun R => (R.nub.toList.mergeSort fun a b => decide (a.1 ≤ b.1)).map (·.2)
+  (get gs "plan" .long XX).bind fun R => R.canon.toOption.map fun C =>
+    (C.toList.mergeSort fun a b => decide (a.1 ≤ b.1)).map (·.2)
 
 open Rel.Programs.prelude Programs.blocks in
 rel_program given where

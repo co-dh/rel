@@ -17,9 +17,9 @@ open Rel Rel.Kernel
     phantom: the combinators still dispatch on it until they match on `tab`/`lazy` (3.6). -/
 abbrev Fn (_d : Bool) (A B : Obj) := Rel A B
 /-- A definition's value with its objects: what `rel_program n` lists as `n.expanded`. -/
-abbrev Gv := (A : Obj) × (B : Obj) × CRel A B
+abbrev Gv := (A : Obj) × (B : Obj) × Except String (Tab A B)
 
-def entry (n : String) (A B : Obj) (c : CRel A B) : String × Gv := (n, ⟨A, B, c⟩)
+def entry (n : String) (A B : Obj) (c : Except String (Tab A B)) : String × Gv := (n, ⟨A, B, c⟩)
 /-! ### Leaves: the values `build` put in the term, rebuilt from their payloads -/
 
 /-- The bytes of the hex text `s` (two lowercase digits a byte, as `Expand.hex` writes them). One string

@@ -1,4 +1,3 @@
-import Rel.Run.CRelDef
 import Rel.Run.Gather
 
 /-! A relation computed now (`tab`) or on what its context already knows of its two sides (`lazy`): the
@@ -23,17 +22,6 @@ inductive Rel (A B : Obj) where
       `Known` flows down, and `tab` holds rows. -/
   | bits {n m : USize} (g w : USize) (o : Enc) (x : Vals A n) (ra : Enc) (y : Vals B m) (rc : Enc)
 
-/-- An old-layer table as a `tab`'s: its one failure, a run past capacity, named. Goes with the old layer (W5). -/
-@[coe] def CRel.toE {A B : Obj} : CRel A B → Except String (Tab A B)
-  | some t => .ok t
-  | none => .error "an op of the old layer ran past capacity"
-
-instance {A B : Obj} : Coe (CRel A B) (Except String (Tab A B)) := ⟨CRel.toE⟩
-
-@[simp] theorem CRel.toE_some {A B : Obj} (t : Tab A B) : CRel.toE (some t) = .ok t := rfl
-@[simp] theorem CRel.toE_none {A B : Obj} : CRel.toE (none : CRel A B) = .error "an op of the old layer ran past capacity" := rfl
-@[simp] theorem CRel.toE_toOption {A B : Obj} (c : CRel A B) : c.toE.toOption = c := by cases c <;> rfl
-
 /-- The table `r` computes in the context `K`, or the message of the op that could not: a `lazy` one is run on
     `K` until it is a table. -/
 def Rel.runE {A B : Obj} : Rel A B → Known A B → Except String (Tab A B)
@@ -45,12 +33,6 @@ def Rel.runE {A B : Obj} : Rel A B → Known A B → Except String (Tab A B)
 def Rel.force {A B : Obj} : Rel A B → Known A B → Rel A B
   | .lazy f, K => (f K).force K
   | r, _ => r
-
-/-- `runE` as the old layer reads it, a run past capacity as `none`. Goes with the old layer (W5). -/
-def Rel.run {A B : Obj} : Rel A B → Known A B → CRel A B
-  | .tab t, _ => t.toOption
-  | .lazy f, K => (f K).run K
-  | .bits g w o x ra y rc, _ => (Tab.ofBits g w o x ra y rc).toOption
 
 /-- The message of the op that could not compute `r` closed; none where it computed. -/
 def Rel.err {A B : Obj} (r : Rel A B) : Option String := match r.runE {} with

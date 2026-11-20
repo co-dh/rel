@@ -1,10 +1,8 @@
 import Rel.Run.Comp
 import Rel.Run.SetOps
-import Rel.Run.CRelFoldDef
 import Rel.RepCols
 import Rel.RepCanon
 import Rel.RepSetOps
-import Rel.Run.CRelDef
 
 /-! The laws of `Tab.conv` and `Tab.comp` (`Rel/Run/Comp.lean`), from the five kernels' laws and `Tab.canon_holds`. -/
 
@@ -1012,16 +1010,17 @@ section Checks
 #guard ((tab [(3, 1), (1, 2), (3, 1), (-1, 2)]).conv.toOption.map Tab.toList) == some [(1, 3), (2, -1), (2, 1)]
 #guard ((tab [(3, 1), (1, 2), (-1, 2), (1, 2)]).comp (tab [(2, 5), (1, -3), (2, 6), (7, 7)])).toOption.map Tab.toList ==
   some [(-1, 5), (-1, 6), (1, 5), (1, 6), (3, -3)]
--- the five-kernel `comp` and `conv` against the old `CRel.comp` and `ofC (R°)` on the same tables: duplicates,
+-- the five-kernel `comp` and `conv` against `R ≫ S` and `R°` as sets of pairs, each pair once: duplicates,
 -- negatives, an empty side, no common middle value, a group whose run product is past 1
 #guard
   let ts : List (List (Int64 × Int64)) := [[(3, 1), (1, 2), (3, 1), (-1, 2), (1, 2), (2, 7), (-5, -5), (0, 0)],
     [(2, 5), (1, -3), (2, 6), (7, 7), (9, 0), (2, 5), (-5, 4), (0, 0)], [(-2, 9), (-2, 9), (7, -3)], [(4, 8)], []]
-  ts.all fun ps => (ts.all fun qs => ((tab ps).comp (tab qs)).toOption.isSome &&
-    ((tab ps).comp (tab qs)).toOption.map Tab.toList == Option.map Tab.toList (CRel.comp (some (tab ps)) (some (tab qs)))) &&
-    (tab ps).conv.toOption.isSome && ((tab ps).conv.toOption.map Tab.toList) ==
-      (let c := Alg.canonC (⟨(tab ps).n, (tab ps).val, (tab ps).key⟩ : Tab .long .long)
-       if c.2 then some c.1.toList else none)
+  let is (r : Except String (Tab .long .long)) (sp : List (Int64 × Int64)) := match r with
+    | .ok T => T.toList.eraseDups.length == T.toList.length && T.toList.all sp.contains && sp.all T.toList.contains
+    | .error _ => false
+  ts.all fun ps => (ts.all fun qs => is ((tab ps).comp (tab qs))
+    (ps.flatMap fun (a, b) => qs.filterMap fun (b', c) => if b == b' then some (a, c) else none)) &&
+    is (tab ps).conv (ps.map fun (a, b) => (b, a))
 
 /-- Whether `compWith b` (blocked past `b` rows) and `compOne` (one expansion) give the same rows. -/
 private def blockedOk (b : Nat) (ps qs : List (Int64 × Int64)) : Bool :=
@@ -1047,11 +1046,11 @@ private def blockCount (b : Nat) (ps qs : List (Int64 × Int64)) : Option Nat :=
 #guard blockCount 14 [(1, 1), (2, 1), (3, 1), (1, 2), (2, 2), (1, 3)] [(1, 10), (1, 11), (2, 10), (2, 12), (3, 10),
   (3, 13)] == some 1
 
-/-- Whether `comp` answers `R ≫ S`: the old `CRel.comp`'s list, and as a set the pairs `(a, c)` with `a {R} b {S} c`. -/
+/-- Whether `comp` answers `R ≫ S`: as a set the pairs `(a, c)` with `a {R} b {S} c`. -/
 private def compOk {A B C : Obj} [BEq A.El] [BEq B.El] [BEq C.El] (R : Tab A B) (S : Tab B C) : Bool :=
   let sp := R.toList.flatMap fun (a, b) => S.toList.filterMap fun (b', c) => if b == b' then some (a, c) else none
   match R.comp S with
-  | .ok T => some T.toList == Option.map Tab.toList (CRel.comp (some R) (some S)) && T.toList.all sp.contains &&
+  | .ok T => T.toList.all sp.contains &&
       sp.all T.toList.contains
   | .error _ => false
 
@@ -1069,17 +1068,14 @@ private def i8s : List UInt64 := [0xff, 0x80, 0x7f, 0, 1, 0xfe, 0x80, 0xff]
 #guard compOk (⟨8, Alg.col [3, 1, 2, 1, 4, 4, 0, 9], Arr.ofFn .f32 8 (f32s.getD · 0)⟩ : Tab .long (.atom .f32))
   (⟨5, Arr.ofFn .f32 5 (f32s.reverse.getD · 0), Alg.col [7, 8, 9, 7, 6]⟩ : Tab (.atom .f32) .long)
 
-/-- Two lists hold the same elements, each once: the old layer orders a float NaN first, `kasc` by `ordCode`. -/
-private def sameSet {α : Type} [BEq α] : Option (List α) → Option (List α) → Bool
-  | some a, some b => a.length == b.length && a.all b.contains && b.all a.contains
-  | _, _ => false
+/-- The answer `r` runs and holds the rows `sp` as a set, each once (`kasc` orders by `ordCode`, so not as listed). -/
+private def sameSet {A B : Obj} [BEq A.El] [BEq B.El] (r : Except String (Tab A B)) (sp : List (A.El × B.El)) :
+    Bool := match r with
+  | .ok T => let a := T.toList; let b := sp.eraseDups; a.length == b.length && a.all b.contains && b.all a.contains
+  | .error _ => false
 
-/-- The old layer's table in canonical form, as a list. -/
-private def oldList {A B : Obj} (c : CRel A B) : Option (List (A.El × B.El)) :=
-  c.bind fun t => let c := Alg.canonC t; if c.2 then some c.1.toList else none
-
-/-- The five-kernel `canon`, `∪`, `∩`, `−`, `⊑`, `conv` and `comp` against the old operators on the same tables, whose
-key, value or middle column holds the words `ws` at `t` (`Arr.ofFn`). -/
+/-- The five-kernel `canon`, `∪`, `∩`, `−`, `⊑`, `conv` and `comp` against their denotations as sets of pairs on the
+same tables, whose key, value or middle column holds the words `ws` at `t` (`Arr.ofFn`). -/
 private def typeOk (t : QAtomicType) [BEq (Obj.atom t).El] (ws : List UInt64) (hu : t ≠ .u1 ∧ t.width.isSome) : Bool :=
   let x := Arr.ofFn t 8 (ws.getD · 0) hu
   let ls : List Int64 := [5, 6, 5, 7, 5, 6, 8, 5]
@@ -1087,17 +1083,14 @@ private def typeOk (t : QAtomicType) [BEq (Obj.atom t).El] (ws : List UInt64) (h
   let V : Tab .long (.atom t) := ⟨8, Alg.col ls, x⟩
   let K₂ : Tab (.atom t) .long := ⟨8, x, Alg.col ls.reverse⟩
   let S : Tab (.atom t) .long := ⟨3, Arr.ofFn t 3 (ws.getD · 0) hu, Alg.col [5, 6, 3]⟩
-  let le (R S : Tab (.atom t) .long) := (R.le S).toOption == (let c := Alg.leC R S; if c.2 then some c.1 else none)
-  sameSet (K.canon.toOption.map Tab.toList) (oldList (some K)) &&
-  sameSet (V.canon.toOption.map Tab.toList) (oldList (some V)) &&
-  sameSet ((K.union K₂).toOption.map Tab.toList) (oldList (CRel.union (some K) (some K₂))) &&
-  sameSet ((K.inter K₂).toOption.map Tab.toList) (oldList (CRel.inter (some K) (some K₂))) &&
-  sameSet ((K.diff S).toOption.map Tab.toList) (oldList (CRel.diff (some K) (some S))) &&
-  sameSet ((S.diff K).toOption.map Tab.toList) (oldList (CRel.diff (some S) (some K))) &&
-  le K K && le K S && le S K &&
-  sameSet (K.conv.toOption.map Tab.toList) (oldList (some (⟨8, K.val, K.key⟩ : Tab .long (.atom t)))) &&
-  sameSet ((V.comp K).toOption.map Tab.toList) (Option.map Tab.toList (CRel.comp (some V) (some K))) &&
-  sameSet ((K.comp V).toOption.map Tab.toList) (Option.map Tab.toList (CRel.comp (some K) (some V)))
+  let k := K.toList; let k₂ := K₂.toList; let s := S.toList; let v := V.toList
+  let le (R S : Tab (.atom t) .long) := (R.le S).toOption == some (R.toList.all S.toList.contains)
+  let comp {A B C : Obj} [BEq B.El] (r : List (A.El × B.El)) (q : List (B.El × C.El)) : List (A.El × C.El) :=
+    r.flatMap fun (a, b) => q.filterMap fun (b', c) => if b == b' then some (a, c) else none
+  sameSet K.canon k && sameSet V.canon v && sameSet (K.union K₂) (k ++ k₂) &&
+  sameSet (K.inter K₂) (k.filter k₂.contains) && sameSet (K.diff S) (k.filter (!s.contains ·)) &&
+  sameSet (S.diff K) (s.filter (!k.contains ·)) && le K K && le K S && le S K &&
+  sameSet K.conv (k.map fun (a, b) => (b, a)) && sameSet (V.comp K) (comp v k) && sameSet (K.comp V) (comp k v)
 
 -- floats (`-0.0` apart from `+0.0`, two NaN payloads apart, `±inf`), a narrow signed integer and `datetime` as key,
 -- value and middle column

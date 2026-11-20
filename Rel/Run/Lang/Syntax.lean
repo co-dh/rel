@@ -1,18 +1,12 @@
 import Lean
 import Rel.Kernel.Elementwise
-import Rel.Run.CRelDef
-import Rel.Run.CRelArithDef
-import Rel.Run.CRelRelDef
-import Rel.Run.CRelListDef
-import Rel.Run.CRelFoldDef
-import Rel.Run.CRelPowerDef
-import Rel.Run.CRelLoopDef
+import Rel.Run.Core
 
 /-! The Rel language's surface syntax (`doc/rel-lang-design.md` §c, §h): objects, terms, declarations, each node
     with its source line and column. The builtin operators are one table, `Op.table`, read by the parser (symbol,
     arity), the elaborator (typing, lifted row) and the expander (the `Gen` op), each by the `Op` constructor; a
-    builtin run as one `CRel` kernel, given relations or none, is a row of `prims`, its type and relation
-    parameters read off that constant (`prim%`). -/
+    builtin run on the keys in demand, given relations or none, is a row of `prims` with its type and relation
+    parameters. -/
 
 namespace Rel.Lang
 
@@ -67,79 +61,16 @@ inductive OExp
   | list (a : OExp)
   deriving Repr, Inhabited
 
-/-! ### The builtins run as one kernel: one row each, typed by their `CRel` constant -/
-
-section Prim
-open Lean Elab Term Meta Rel.Alg
-
-/-- The object `e` of a `CRel` constant's type as written: an `Obj` binder the variable of its name, `.long` the
-    variable `ℕ` (each declared number object is stored as `.long`, F6, so `ℕ` is an object variable too). -/
-partial def objSyn (c : Name) (e : Lean.Expr) : MetaM Term := do
-  let e ← whnfR e
-  if let .fvar f := e then return ← `(OExp.var {} $(quote (← f.getUserName).toString))
-  match e.getAppFn.constName?, e.getAppArgs with
-  | some ``Obj.prod, #[a, b] => `(OExp.prod $(← objSyn c a) $(← objSyn c b))
-  | some ``Obj.sum, #[a, b] => `(OExp.sum $(← objSyn c a) $(← objSyn c b))
-  | some ``Obj.arr, #[a] => `(OExp.list $(← objSyn c a))
-  | some ``Obj.atom, #[t] =>
-    if t.isConstOf ``Rel.QAtomicType.i64 then `(OExp.var {} "ℕ")
-    else throwError "prim%: `{c}` names the atom `{t}`, which no declared object is stored as"
-  | _, _ => throwError "prim%: `{c}` has the object `{e}`, not built by `Obj`'s constructors"
-
-/-- A binder of a `CRel` constant that is no relation: an object or a size, solved by unification (`Expand.primE`). -/
-def objOrSize (t : Lean.Expr) : MetaM Bool := return (← whnfR t).isConstOf ``Obj || (← whnfR t).isConstOf ``USize
-
-/-- `t` as `CRel X Y`: its objects `X`, `Y`. Read off `whnfR t`, where the abbrev `CRel` is `Option (Tab X Y)`. -/
-def crel? (t : Lean.Expr) : MetaM (Option (Lean.Expr × Lean.Expr)) := do
-  return (← whnfR t).app1? ``Option >>= (·.app2? ``Tab)
-
-/-- A binder of a `CRel` constant as a relation parameter `X ⟶ Y` and its form (`Form`'s first part): `CRel X Y` a
-    relation run on the keys in demand; `CRel S S → CRel S T` one run on the keys `S` a round gives it, except that
-    with `S = T = B×B` it is the pair test `τ(Q)` of an order `Q : B ⟶ B`, as every kernel taking an order takes it
-    (§a). None: the binder is no relation. -/
-def paramSyn (c : Name) (t : Lean.Expr) : MetaM (Option Term) := do
-  let t ← whnfR t
-  if let some (x, y) ← crel? t then return some (← `((($(← objSyn c x), $(← objSyn c y)), some false)))
-  let .forallE _ dom r _ := t | return none
-  let (some (s, s'), some (s'', u)) := (← crel? dom, ← crel? r) | return none
-  unless !r.hasLooseBVars && s == s' && s == s'' do return none
-  if let (true, some (b, b')) := (u == s, s.app2? ``Obj.prod) then
-    if b == b' then return some (← `((($(← objSyn c b), $(← objSyn c b)), some true)))
-  return some (← `((($(← objSyn c s), $(← objSyn c u)), some false)))
-
-/-- `prim% c`: the `CRel` constant `c`, its relation parameters (`paramSyn`) and its type `A ⟶ B` as `OExp`s:
-    `c : Vals A n → CRel A B` reads its source's values, `c : CRel K A → CRel K B` composes after the keys `K`
-    (`Gen.ofVals`, `Gen.after`, and their forms with parameters); every other binder an object or a size. -/
-elab "prim% " i:ident : term => do
-  let c ← realizeGlobalConstNoOverloadWithInfo i
-  let (ps, src, tgt) ← forallTelescope (← getConstInfo c).type fun xs r => do
-    let some x := xs.back? | throwError "prim%: `{c}` takes no argument"
-    let mut ps : Array Term := #[]
-    for y in xs.pop do
-      let t ← inferType y
-      if ← objOrSize t then continue
-      let some p ← paramSyn c t
-        | throwError "prim%: `{c}` has the parameter `{y} : {t}`; a builtin's binders are objects, sizes and relations"
-      ps := ps.push p
-    let some (_, b) ← crel? r | throwError "prim%: `{c}` is `{r}`, not a `CRel`"
-    let tx ← inferType x
-    match ← crel? tx, tx.app2? ``Vals with
-    | some (_, a), _ | none, some (a, _) => pure (ps, ← objSyn c a, ← objSyn c b)
-    | _, _ => throwError "prim%: `{c}` takes `{x} : {← inferType x}`, neither the values `Vals A n` nor a `CRel K A`"
-  elabTerm (← `((($(quote c) : Lean.Name), ([$ps,*] : List ((OExp × OExp) × Option Bool)), ($src : OExp),
-    ($tgt : OExp)))) none
-
-end Prim
-
 /-- A builtin run on the keys in demand: `sym` as written (`written`), or the prelude's definition, the constant
     `prelude`, run as it (`Expand.useDef`), or neither: a converse only (`convTm`), or an `Op` of its own that
-    `Calc.toTerm` reads over any allegory (`Op.row`); `sig` its `CRel` constant, that constant's relation parameters
-    and type (`prim%`), which the elaborator instantiates and the expander applies; `conv` the row of its converse;
-    `aop` its AOP reading (`Calc.builtins`) or why it has none; `mono`: it reads its parameters monotonically (§e's
-    fixed points); `prelude` and `aop` named unchecked (`Test` and `Calc` check them, where they resolve). -/
+    `Calc.toTerm` reads over any allegory (`Op.row`); `sig` its relation parameters (each `X ⟶ Y` and its form:
+    `some true` an order `Q : B ⟶ B` taken as its pair test `τ(Q)`, §a) and its type `A ⟶ B`, object variables
+    (`ℕ` too: a declared number object is stored as `.long`, F6) instantiated by the elaborator; `conv` the row of
+    its converse; `aop` its AOP reading (`Calc.builtins`) or why it has none; `mono`: it reads its parameters
+    monotonically (§e's fixed points); `prelude` and `aop` named unchecked (`Test` and `Calc` check them). -/
 structure Prim where
   sym : String
-  sig : Lean.Name × List ((OExp × OExp) × Option Bool) × OExp × OExp
+  sig : List ((OExp × OExp) × Option Bool) × OExp × OExp
   conv : Option String := none
   written : Bool := true
   prelude : Option Lean.Name := none
@@ -148,62 +79,74 @@ structure Prim where
   deriving Inhabited
 
 def consRow : Prim :=
-  { sym := "cons", sig := prim% CRel.cons,
+  { sym := "cons", sig := ([], .prod (.var {} "B") (.list (.var {} "B")), .list (.var {} "B")),
     conv := "uncons", aop := .ok `Freyd.Alg.RelSet.ListRel.cons }
 
 def memRow : Prim :=
-  { sym := "∋", sig := prim% CRel.mem, aop := .ok `Freyd.Alg.PowerAllegory.eps }
+  { sym := "∋", sig := ([], .list (.var {} "B"), .var {} "B"), aop := .ok `Freyd.Alg.PowerAllegory.eps }
 
 -- `inl`, `inr`, `F(R)` are written as their `Op`s, which `Calc.toTerm` reads as a coproduct's injections and a relator
-def inlRow : Prim := { sym := "inl", sig := prim% CRel.inl, written := false }
-def inrRow : Prim := { sym := "inr", sig := prim% CRel.inr, written := false }
-def mapRow : Prim := { sym := "F", sig := prim% CRel.map, written := false }
+def inlRow : Prim :=
+  { sym := "inl", sig := ([], .var {} "A", .sum (.var {} "A") (.var {} "B")), written := false }
+def inrRow : Prim :=
+  { sym := "inr", sig := ([], .var {} "B", .sum (.var {} "A") (.var {} "B")), written := false }
+def mapRow : Prim :=
+  { sym := "F", sig := ([((.var {} "A", .var {} "B"), some false)], .list (.var {} "A"), .list (.var {} "B")),
+    written := false }
 
-/-- Every builtin run as a kernel on the keys in demand: adding one is adding its row. -/
+/-- Every builtin run on the keys in demand: adding one is adding its row. -/
 def prims : List Prim :=
-  [{ sym := "τ", sig := prim% CRel.τ,
+  [{ sym := "τ", sig := ([], .var {} "A", .list (.var {} "A")),
      aop := .ok `Freyd.Alg.singletonMap }, consRow, memRow, inlRow, inrRow, mapRow,
    -- `filter(p)`, `takewhile(p)` given one relation run as their mask forms (`rep_filterC`, `rep_takewhileC`, `elems_test`);
    -- not `mono`: a larger `p` keeps more elements, a different list, not a superset of pairs (`rowDens`)
-   { sym := "filter", sig := prim% CRel.filter,
+   { sym := "filter", sig := ([((.var {} "B", .var {} "B"), some false)], .list (.var {} "B"), .list (.var {} "B")),
      mono := false, prelude := `Rel.Programs.prelude.filter },
-   { sym := "takewhile", sig := prim% CRel.takewhile,
+   { sym := "takewhile",
+     sig := ([((.var {} "B", .var {} "B"), some false)], .list (.var {} "B"), .list (.var {} "B")),
      mono := false, prelude := `Rel.Programs.prelude.takewhile },
-   { sym := "thinL", sig := prim% CRel.thinLOn,
+   { sym := "thinL", sig := ([((.var {} "B", .var {} "B"), some true)], .list (.var {} "B"), .list (.var {} "B")),
      mono := false, aop := .ok `Freyd.Alg.RelSet.ListRel.thinL },
-   { sym := "merge", sig := prim% CRel.mergeOn,
+   { sym := "merge",
+     sig := ([((.var {} "B", .var {} "B"), some true)], .prod (.list (.var {} "B")) (.list (.var {} "B")),
+       .list (.var {} "B")),
      mono := false, aop := .ok `Freyd.Alg.RelSet.ListRel.merge },
-   { sym := "loop", sig := prim% CRel.loopOn, aop := .error "AOP declares no iteration to a fixed point from the left" },
-   { sym := "uncons", sig := prim% CRel.uncons,
+   { sym := "loop",
+     sig := ([((.prod (.var {} "X") (.var {} "Y"), .var {} "X"), some false)],
+       .prod (.var {} "X") (.list (.var {} "Y")), .var {} "X"),
+     aop := .error "AOP declares no iteration to a fixed point from the left" },
+   { sym := "uncons", sig := ([], .list (.var {} "B"), .prod (.var {} "B") (.list (.var {} "B"))),
      conv := "cons", written := false },
-   { sym := "length", sig := prim% CRel.length,
+   { sym := "length", sig := ([], .list (.var {} "E"), .var {} "ℕ"),
      aop := .ok `Freyd.Alg.RelSet.ListRel.length },
-   { sym := "sum", sig := prim% CRel.Arr.sum,
+   { sym := "sum", sig := ([], .list (.var {} "ℕ"), .var {} "ℕ"),
      aop := .ok `Freyd.Alg.RelSet.ListRel.sum },
-   { sym := "inits", sig := prim% CRel.inits,
+   { sym := "inits", sig := ([], .list (.var {} "B"), .list (.list (.var {} "B"))),
      aop := .ok `Freyd.Alg.RelSet.ListRel.initsR },
    -- the prelude's folds run as their slice forms (`rep_tailsC`, `rep_prefixC`, `rep_suffixC`, `rep_concatC`)
-   { sym := "tails", sig := prim% CRel.tails,
+   { sym := "tails", sig := ([], .list (.var {} "B"), .list (.list (.var {} "B"))),
      prelude := `Rel.Programs.prelude.tails },
-   { sym := "prefix", sig := prim% CRel.prefix,
+   { sym := "prefix", sig := ([], .list (.var {} "B"), .list (.var {} "B")),
      prelude := `Rel.Programs.prelude.prefix },
-   { sym := "suffix", sig := prim% CRel.suffix,
+   { sym := "suffix", sig := ([], .list (.var {} "B"), .list (.var {} "B")),
      prelude := `Rel.Programs.prelude.suffix },
-   { sym := "concat", sig := prim% CRel.concat,
+   { sym := "concat", sig := ([], .list (.list (.var {} "B")), .list (.var {} "B")),
      prelude := `Rel.Programs.prelude.concat },
-   { sym := "cat", sig := prim% CRel.cat,
+   { sym := "cat", sig := ([], .prod (.list (.var {} "B")) (.list (.var {} "B")), .list (.var {} "B")),
      conv := "uncat", aop := .ok `Freyd.Alg.RelSet.ListRel.cat },
-   { sym := "uncat", sig := prim% CRel.uncat,
+   { sym := "uncat", sig := ([], .list (.var {} "B"), .prod (.list (.var {} "B")) (.list (.var {} "B"))),
      conv := "cat", written := false },
-   { sym := "zip", sig := prim% CRel.zip,
+   { sym := "zip", sig := ([], .prod (.list (.var {} "A")) (.list (.var {} "B")),
+       .list (.prod (.var {} "A") (.var {} "B"))),
      aop := .ok `Freyd.Alg.RelSet.Pointfree.zip },
-   { sym := "snoc", sig := prim% CRel.snoc, conv := "unsnoc",
+   { sym := "snoc", sig := ([], .prod (.list (.var {} "B")) (.var {} "B"), .list (.var {} "B")), conv := "unsnoc",
      aop := .error "AOP's `snoc` is on snoc lists (`SL.snoc`), not on the cons lists `[α]` reads as" },
-   { sym := "unsnoc", sig := prim% CRel.unsnoc,
+   { sym := "unsnoc", sig := ([], .list (.var {} "B"), .prod (.list (.var {} "B")) (.var {} "B")),
      conv := "snoc", written := false },
-   { sym := "setify", sig := prim% CRel.setify, aop := .ok `Freyd.Alg.RelSet.ListRel.setify }]
+   { sym := "setify", sig := ([], .list (.var {} "B"), .list (.var {} "B")),
+     aop := .ok `Freyd.Alg.RelSet.ListRel.setify }]
 
-def Prim.find? (s : String) : Option Prim := prims.find? (·.sym == s)
+def Prim.find?(s : String) : Option Prim := prims.find? (·.sym == s)
 
 /-- The builtin operators of §b. A constant (arity 0) may take its objects, `⊤(A,B)`; the others take relations.
     `arith k` is the qlean kernel's integral value verb `k` on pairs of numbers (`Alg.arith`): one constructor, so
@@ -233,7 +176,7 @@ def Op.table : List (String × Op × Nat) :=
    ("est", .est, 1), ("thin", .thin, 1), ("F", .map, 1),
    ("hylo", .hylo, 2),
    ("at", .index 0, 0)] ++
-  (prims.filter fun r => r.written && r.prelude.isNone).map fun r => (r.sym, .prim r.sym, r.sig.2.1.length)
+  (prims.filter fun r => r.written && r.prelude.isNone).map fun r => (r.sym, .prim r.sym, r.sig.1.length)
 
 -- `at(i)` prints with its position, which no table row holds
 def Op.sym : Op → String
@@ -399,10 +342,10 @@ def OExp.vars : OExp → List String
 
 /-- The object variables of a row's parameters and type, in order, each once. -/
 def Prim.vars (r : Prim) : List String :=
-  ((r.sig.2.1.flatMap fun ((x, y), _) => x.vars ++ y.vars) ++ r.sig.2.2.1.vars ++ r.sig.2.2.2.vars).eraseDups
+  ((r.sig.1.flatMap fun ((x, y), _) => x.vars ++ y.vars) ++ r.sig.2.1.vars ++ r.sig.2.2.vars).eraseDups
 
 /-- The row's name as a leaf of an error: `sym`, with `( )` when it takes relations. -/
-def Prim.leaf (r : Prim) : String := if r.sig.2.1.isEmpty then r.sym else s!"{r.sym}( )"
+def Prim.leaf (r : Prim) : String := if r.sig.1.isEmpty then r.sym else s!"{r.sym}( )"
 
 /-- A definition's head and type as `typesOf` prints it and the parser reads it back:
     `n(R : A ⟶ B, …) : C ⟶ D`, each type given as its text; a test has no type of its own (§e). -/

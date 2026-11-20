@@ -3,9 +3,9 @@ import Rel.Run.Lang.GenK
 import Rel.Run.Lang.Elab
 import Rel.Run.Lang.Parse
 
-/-! The expander of `rel_program n`: each closed definition `x ≜ …` becomes the Lean definition `n.x : CRel A B`,
-    a composition of `CRel` ops (`Gen`), so its ok bit is the `&&` of the ops it runs. At elaboration time the
-    program is elaborated (`elabE`, `build`) to its core term `Tm`, as a run does; the term is then read into a
+/-! The expander of `rel_program n`: each closed definition `x ≜ …` becomes the Lean definition
+    `n.x : Except String (Tab A B)`, a composition of `GenK` ops run in the empty context (`Rel.runE`), or the
+    message of the op that failed. At elaboration time the program is elaborated (`elabE`, `build`) to its core term `Tm`, as a run does; the term is then read into a
     Lean `Expr` constructor by constructor. Every closed sub-term (no keys, no fixed-point variable) becomes one
     constant `n.c.<i>`, structurally equal ones the same constant, so it is computed once; a fixed point's body is a Lean `fun X => …`; a closed `≫`/`∩`/`−`/`\` runs as a bit-matrix plan. -/
 
@@ -47,8 +47,8 @@ def useDef (c : Lean.Name) (imported : Bool) (d : Def) : Def :=
       let rels := as.filterMap fun | .rel a s _ => some (a, s) | _ => none
       match c, r, row with
       | _, .rel q s t, some x =>
-        if rels.length == as.length && as.length == x.sig.2.1.length then
-          pure (.rel (.prim x ((x.sig.2.1.zip rels).map fun ((_, f), (a, s')) => x.pass p f a s') s t) s t)
+        if rels.length == as.length && as.length == x.sig.1.length then
+          pure (.rel (.prim x ((x.sig.1.zip rels).map fun ((_, f), (a, s')) => x.pass p f a s') s t) s t)
         else pure (.rel (if imported then q.at p else q) s t)
       | `Rel.Programs.prelude.perm, .rel q s t, _ => pure (.rel (.own (q.at p)) s t)
       | _, .rel q s t, _ => pure (.rel (if imported then q.at p else q) s t)
@@ -102,23 +102,24 @@ def showRel (objs : Objs) (s t : OTy) {A B : Obj} (R : Tab A B) : Except String 
 def infoOf (ty : OTy) (elems : List String) (range : Option (Int × Int)) : ObjInfo := { ty, elems, range }
 
 /-- A `print`'s line, the term's text `x` and its value; and the value's ok bit. -/
-def printText (A B : Obj) (objs : Objs) (x : String) (s t : OTy) (c : CRel A B) : String × Bool :=
-  match showRel objs s t c.rel with
-  | .ok r => (s!"{x} = {r}", c.ok)
+def printText (A B : Obj) (objs : Objs) (x : String) (s t : OTy) (c : Except String (Tab A B)) : String × Bool :=
+  match c >>= showRel objs s t with
+  | .ok r => (s!"{x} = {r}", true)
   | .error e => (s!"{x}: {e}", false)
 
 /-- A `check` at `p` that does not hold, `x ⊑ y` (and `y ⊑ x` for `=`), as its error; and the sides' ok bits. -/
-def checkErr (A B : Obj) (objs : Objs) (p : Pos) (x y : String) (eq : Bool) (s t : OTy) (R S : CRel A B) :
-    Option Err × Bool :=
-  let holds : Except String Bool := do pure ((← R.rel.le S.rel) && (!eq || (← S.rel.le R.rel)))
+def checkErr (A B : Obj) (objs : Objs) (p : Pos) (x y : String) (eq : Bool) (s t : OTy)
+    (R S : Except String (Tab A B)) : Option Err × Bool :=
+  let holds : Except String (Tab A B × Tab A B × Bool) := do
+    let a ← R; let b ← S; pure (a, b, (← a.le b) && (!eq || (← b.le a)))
   (match holds with
-   | .ok true => none
-   | .ok false => some ⟨p, match showRel objs s t R.rel, showRel objs s t S.rel with
+   | .ok (_, _, true) => none
+   | .ok (a, b, false) => some ⟨p, match showRel objs s t a, showRel objs s t b with
      | .ok r, .ok q => s!"check failed: {x} = {r}, {y} = {q}"
      | .error e, _ | _, .error e => s!"check failed: {x}, {y}: {e}"⟩
-   | .error e => some ⟨p, s!"check {x}, {y}: {e}"⟩, R.ok && S.ok)
+   | .error e => some ⟨p, s!"check {x}, {y}: {e}"⟩, R.toBool && S.toBool)
 
-/-- A program's failures: each `check` that does not hold, and each term that threw (`Rel.run`), named by `es`,
+/-- A program's failures: each `check` that does not hold, and each term that threw (`Rel.runE`), named by `es`,
     `μ` cap included. -/
 def failures (cs : List (Option Err × Bool)) (es : List (String × Option String)) : List Err :=
   cs.filterMap (·.1) ++ es.filterMap (fun (x, e) => e.map fun m => ⟨{}, s!"{x}: {m}"⟩)
@@ -233,9 +234,13 @@ def fitConst (c : Lean.Name) (sel : Lean.Expr → MetaM Bool) (hs : Array (Lean.
   return if v.hasMVar then none else some v
 
 open Lean Meta in
+/-- A binder of a row's constant that is no relation: an object or a size, solved by unification (`primE`). -/
+def objOrSize (t : Lean.Expr) : MetaM Bool := return (← whnfR t).isConstOf ``Obj || (← whnfR t).isConstOf ``USize
+
+open Lean Meta in
 /-- Row `r`'s constant at `A ⟶ B` given its relations `xs` (codes with their types), under the first wrapper it
-    fits: the wrapper's `Fn` parts are `xs`, its function's explicit binders the constant's that are relations (as
-    `prim%` reads them, `objOrSize`), every other solved by unifying the types. The constant is the row's
+    fits: the wrapper's `Fn` parts are `xs`, its function's explicit binders the constant's that are relations (not
+    `objOrSize`), every other solved by unifying the types. The constant is the row's
     `kernRows` operator. -/
 def primE (r : Prim) (A B : Obj) (xs : Array (Lean.Expr × Lean.Expr)) : MetaM (Option Lean.Expr) := do
   let some c := kernRows.lookup r.sym | return none
@@ -757,7 +762,7 @@ def emit (n : Name) (r : Read) : MetaM Unit := do
   -- at its field's type, read off the field's default (which has no executable code of its own)
   let app (A B : Obj) (t : Lean.Expr) : MetaM Lean.Expr := do
     let none' (f : Name) := return mkApp (mkConst ``Option.none [0]) (← inferType (g f #[oE A, oE B])).appArg!
-    pure (g ``Rel.Rel.run #[oE A, oE B, t,
+    pure (g ``Rel.Rel.runE #[oE A, oE B, t,
       g ``Rel.Known.mk #[oE A, oE B, ← none' ``Rel.Known.dom._default, ← none' ``Rel.Known.ran._default]])
   -- each definition elaborated once whose body has a kernel body at every node: its kernel twin
   -- `n.x.kernel : (A₁ … : Obj) → Rel U₁ → … → Rel R₁ → … → Rel A B` (`kernelTwin`), generic over the objects of its
@@ -807,7 +812,7 @@ def emit (n : Name) (r : Read) : MetaM Unit := do
       let v ← code n [] t
       let k := Parse.constOf n x
       unless !t.dem do throwError "rel_program expansion: internal: `{x}` needs keys"
-      addConst k (mkApp2 (mkConst ``CRel) (oE A) (oE B)) (← app A B v)
+      addConst k (mkApp2 (mkConst ``Except [0, 0]) (mkConst ``String) (mkApp2 (mkConst ``Tab) (oE A) (oE B))) (← app A B v)
       es := es ++ [g ``Gen.entry #[toExpr x, oE A, oE B, mkConst k]]
     -- each term's error message, so `failures` names the op that could not run
     let one (x : String) {A B : Obj} (t : Tm A B) : RM Lean.Expr := do

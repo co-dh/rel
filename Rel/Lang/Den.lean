@@ -240,7 +240,7 @@ def OExp.unify : OExp → Obj → List (String × Obj) → Option (List (String 
 
 /-- The row `r`'s object variables (`Prim.vars` order) at `A ⟶ B`, read off its constant's type. -/
 def Prim.objs (r : Prim) (A B : Obj) : Option (List Obj) := do
-  let σ ← r.sig.2.2.1.unify A [] >>= r.sig.2.2.2.unify B
+  let σ ← r.sig.2.1.unify A [] >>= r.sig.2.2.unify B
   r.vars.mapM fun v => List.lookup v σ
 
 /-- A row of `prims`: its symbol and its objects at its object variables `σ`. -/
@@ -336,7 +336,7 @@ mutual
     its arguments' (`Tm.argDen`). `𝟘` at `call` (a `let` node), whose meaning is not settled yet. -/
 noncomputable def Tm.den : Val → {A B : Obj} → Tm A B → Den A B
   | _, _, _, .val R => rep R
-  | _, _, _, .uni U => rep (Alg.idU U)
+  | _, _, _, .uni U => Core.Rel.corefl fun x => ∃ i, U.row i = x
   | _, _, _, .zero => 𝟘
   | _, _, _, .id => 𝟙 _
   | ρ, _, _, .top V => Core.Rel.top ≫ V.den ρ

@@ -33,20 +33,6 @@ rel_program pre where
     z : K ⟶ [[N]] ≜ {(a,[1 2] [3] []),(b,[] [])}
     pz : K ⟶ [[N]] ≜ z perm
 
-def same {A B : Obj} (R S : Tab A B) : Bool := R ⊑ S && S ⊑ R
-def is {B : Obj} (gs : List (String × Gen.Gv)) (n : String) (R : Tab .long B) : Bool :=
-  ((get gs n .long B).map (same · R)).getD false
-
-#guard let o := pre.expanded
-  match get o "x" .long (.arr .long), get o "le" .long .long with
-  | some X, some Le =>
-    let U := (Alg.ran X).val; let P := Alg.perm U
-    is o "pm" (X ≫ P) && is o "od" (X ≫ Alg.ordered Le U) && is o "st" (X ≫ P ≫ Alg.ordered Le (Alg.ran P).val)
-  | _, _ => false
-#guard let o := pre.expanded
-  match get o "y" .long (.arr .long), get o "z" .long (.arr (.arr .long)) with
-  | some Y, some Z => is o "py" (Y ≫ Alg.perm (Alg.ran Y).val) && is o "pz" (Z ≫ Alg.perm (Alg.ran Z).val)
-  | _, _ => false
 
 -- the converses: `perm° = perm` (the one rule kept for a definition), `ordered(Q)` a coreflexive, and
 -- `sort(Q)° = ordered(Q)° perm°` from them

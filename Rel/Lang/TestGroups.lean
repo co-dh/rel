@@ -36,26 +36,25 @@ def filter : Fn false .long .long := comp _ _ _ false R p
 
 /-- The groups' count, their rows in all, and whether every list ascends strictly; read through `toList`, the
     proof-side decoder, so it stays outside the timed run. -/
-def summary (r : CRel .long (.arr .long)) : Nat × Nat × Bool :=
-  let l := r.rel.toList
-  (l.length, (l.map (·.2.length)).sum,
-    r.ok && l.all fun (_, ys) => (ys.zip ys.tail).all fun (a, b) => decide ((a : Int64) < b))
+def summary (r : Tab .long (.arr .long)) : Nat × Nat × Bool :=
+  let l := r.toList
+  (l.length, (l.map (·.2.length)).sum, l.all fun (_, ys) => (ys.zip ys.tail).all fun (a, b) => decide ((a : Int64) < b))
 
 /-- The run of `groups(k)` and its wall time; the row count forces it. -/
-def timed (k : Fn false .long .long) : IO (Nat × CRel .long (.arr .long)) := do
-  let t0 ← IO.monoMsNow; let r : CRel .long (.arr .long) := (groups k).run {}
-  let _ ← IO.ofExcept (if r.rel.n = 0 then .error "groups: no rows" else .ok ())
+def timed (k : Fn false .long .long) : IO (Nat × Tab .long (.arr .long)) := do
+  let t0 ← IO.monoMsNow; let r ← IO.ofExcept ((groups k).runE {})
+  let _ ← IO.ofExcept (if r.n = 0 then .error "groups: no rows" else .ok ())
   let t1 ← IO.monoMsNow; pure (t1 - t0, r)
 
 #eval show IO Unit from do
   -- `filter` first: it builds the frame `R`, so neither timed run pays for building it
-  let f : CRel .long .long := filter.run {}
-  let _ ← IO.ofExcept (if f.rel.n = 0 then .error "filter: no rows" else .ok ())
+  let f ← IO.ofExcept (filter.runE {})
+  let _ ← IO.ofExcept (if f.n = 0 then .error "filter: no rows" else .ok ())
   let (t1, r1) ← timed (key 1); let s1 := summary r1
   let (tk, rk) ← timed (key 1000); let sk := summary rk
-  IO.println s!"one key: {t1} ms {s1}; 1000 keys: {tk} ms {sk}; filter: {f.rel.n} rows"
+  IO.println s!"one key: {t1} ms {s1}; 1000 keys: {tk} ms {sk}; filter: {f.n} rows"
   unless s1 == (1, n, true) && sk == (1000, n, true) do throw (IO.userError s!"groups: {s1} {sk}")
-  unless f.ok && f.rel.n.toNat == n / 2 do throw (IO.userError s!"filter: {f.rel.n} rows, ok {f.ok}")
+  unless f.n.toNat == n / 2 do throw (IO.userError s!"filter: {f.n} rows")
   -- one key's run is the unit a fold per key costs; 1000 keys within a small factor of it read no universe
   unless tk ≤ 3 * t1 + 200 do throw (IO.userError s!"groups: 1000 keys {tk} ms against one key {t1} ms")
 

@@ -1,4 +1,4 @@
-import Rel.Run.Algebra
+import Rel.Run.Struct
 import Rel.Run.Lang.Syntax
 
 /-! The core term `Tm` of the Rel language, indexed by its source and target, and `Tm.dem`, whether it runs on
@@ -6,7 +6,7 @@ import Rel.Run.Lang.Syntax
 
 namespace Rel.Lang
 
-open Tab Rel.Alg
+open Tab
 
 /-! ### The core term -/
 
