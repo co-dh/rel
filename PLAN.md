@@ -563,6 +563,16 @@ Diff table 的「状态」列：✅ 后面是完成它的步骤；🔄 是部分
         - owner 定的顺序（C）：先做 architecture §4 已定的实现改动（`∩ − \` 分段 `scan`、`\` 不物化 join、
           `ldiv(tab, bits)` 在 bit matrix 上算、`μ` semi-naive），差分测试与回归固定保护；`ldiv meet diff mu fold` 与
           bit matrix 路径的证明（T11e 余项、`ReadsBack`）等实现稳定后再做。T11e5 只做 `arith`。
+        - 2026-11-20 02:40，master 66bb2cc（check-60 在跑；check-59 在 6f29cc5 全绿）：**覆盖 235 / 235，`Tm.gap` 在 17 个程序的
+          定义上不再命中**。已合入：p13F + p15F（行 `F`：`Obj.key_ordCode`——整数 atom 类型上 `kasc` 的 code 序即 `Obj.lt`，float
+          不在其中；`Tab.mapFold_holds`、`Vals.cells_expand_row`、`Tab.comp_pos_rows`、`Tab.map_holds`、`GenK.map_sound`）、p14sum
+          （行 `sum`：`Tab.sum_holds`，`raw_kscan_rev` 对每个 `Op`）、dry1（删 `cellBounds`，`Tab.length`/`Tab.atPos` 调 `cellSpan`；
+          `Tab.mu_holds`、`GenK.mu_sound` 由 `Tab.fixOn_inv` 推出）。差分测试慢的 3 项已查：不是回归，这 3 个定义此前"无代码"不参加
+          比较；`Tm.gen` 一侧每个调用点重算 body（`chess.mate` 260 次调用 / 13 个被调定义），时间全在 kernel；决定不改（带缓存的
+          求值器要复制 `Tm.gen` 的分情形）。`gen_sound` 仍带的前提：`LamLaws`（`Λ`/`E`/`τ`/`setify`/`tails` 处的 `LamLaw`，加循环体
+          单调——后者可判定且全部通过）。待做：`Tm.ConvOK` 的 `callCv` 前提（`instObj` 与 `den`/`convTm` 交换）；`reread` 读最终
+          registry 的检查；`Arr.pos_get`/`Arr.pos_clamp`、`expand_cells_le`/`Vals.cells_expand_row` 两处重复证明文本；`Tm.spineHead`
+          的死分支。
         - 2026-11-20 01:59，master aa5060f：覆盖 218 / 235（新口径：17 个程序的定义加上每个注册的共享定义各算一次；旧口径 203 不再
           打印）。check-57（4e82176）、check-58（3bd6f13）全绿，差分 478 / 478、compile-diff 476 / 2。已合入：s5t23（stage 5 T2/T3：
           `den`/`gen` of `call` = body under `Val.args`/`Code.args`，`Sound.args`，`gen_sound_spine` 的 `call`/`callCv`/`share`
