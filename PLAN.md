@@ -563,6 +563,10 @@ Diff table 的「状态」列：✅ 后面是完成它的步骤；🔄 是部分
         - owner 定的顺序（C）：先做 architecture §4 已定的实现改动（`∩ − \` 分段 `scan`、`\` 不物化 join、
           `ldiv(tab, bits)` 在 bit matrix 上算、`μ` semi-naive），差分测试与回归固定保护；`ldiv meet diff mu fold` 与
           bit matrix 路径的证明（T11e 余项、`ReadsBack`）等实现稳定后再做。T11e5 只做 `arith`。
+        - 2026-11-20 00:17，master edb7413，`make check` 全绿（check-55）：覆盖 127 / 203，差分 478 比较、0 不同。`gen_sound` 无未证前提
+          （`ReadsBack` 三项已证并删除，p3reads）；`fold foldr foldI` 出 gap（p2fold + p2bfold：`uncons/unsnoc/pack_holds`，
+          `foldRounds_holds` 的步骤可依赖 key；`Vals.pack` 补 2^63 检查）。check-54 红过一次：p2bfold 与 p3reads 合起来不编译，
+          4 行修复。architecture 的 `seen` 三处已统一为"行须已按 `asc` 序"（91f583f）。在做：`p4rows`（gap 统计 + `prim` 行定律）。
         - 23:44，master ad90237，`make check` 全绿（check-53）：覆盖 122 / 203，差分 478 比较、0 不同（compile-diff 一步 432 s）。
           在做：`p2fold`（`pack/uncons/unsnoc` 三条定律，`fold foldr foldI` 出 gap）、`p3reads`（证 `ReadsBack`，去掉 `gen_sound` 的前提）。
           待 owner 定：architecture `:223` 对 `:244`、`:257` 在 `seen` 是否要求已排序上矛盾（代码 = `:223`）。
