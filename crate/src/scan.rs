@@ -189,7 +189,10 @@ pub fn op_code(o: crate::lean::B) -> u8 {
 pub fn cast_word(code: u8, x: u64) -> u64 {
     const NONE: u64 = 1 << 63;
     #[derive(Clone, Copy)] enum V { I(i64), F(f64) }
-    let (s, t) = ((code - CAST) / 13, (code - CAST) % 13);
+    // an ordered atom holding no number reads as the number atom it is stored as (`ordNum`, `storeFmt?`):
+    // `char` as `u8`, `date` as `i32`, `datetime` as `i64`
+    let store = |a: u8| match a { 7 => 1, 10 => 3, 11 => 4, a => a };
+    let (s, t) = (store((code - CAST) / 13), store((code - CAST) % 13));
     let int = |k: i64, nul: i64| if k == nul { None } else { Some(V::I(k)) };
     let v = match s {
         1 => Some(V::I(x as u8 as i64)),

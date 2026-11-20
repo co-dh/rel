@@ -61,13 +61,17 @@ rel_program daysMinusT where
     d : N ⟶ D ≜ {(0,19000),(1,18990)}
     e : N ⟶ D ≜ ⟨d, d⟩minus
 
-/-- error: line 70, col 5: $ from D (date) to N (i64): not every date value is a i64 value, and $ keeps a number's value -/
-#guard_msgs in
+-- the days between two dates: the composition `⟨a $ N, b $ N⟩minus` of their day counts (`daysBetween`, S8)
 rel_program daysCastT where
     obj N
     obj D : date
     d : N ⟶ D ≜ {(0,19000),(1,18990)}
-    e : N ⟶ N ≜ d $ N
+    e : N ⟶ D ≜ {(0,18995),(1,19000)}
+    check d $ N = {(0,19000),(1,18990)}
+    -- by hand: 19000 − 18995 = 5, 18990 − 19000 = −10
+    check ⟨d $ N, e $ N⟩minus = {(0,5),(1,-10)}
+
+#guard daysCastT.failures.map toString == []
 
 -- the orders and `max`/`min` at a `date` and an `f64` column: the integer order of the days, IEEE's order
 open Rel.Programs.prelude Rel.Programs.frame in
