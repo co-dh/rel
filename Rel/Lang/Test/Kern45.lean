@@ -71,8 +71,8 @@ rel_program kernT45 where
     check tu = {(1,[2]),(2,[3]),(3,[3])}
     check ln = {(1,3),(2,0),(3,2),(4,2)}
     check st = {(1,1 2 3),(2,[]),(3,1 2),(4,1 2)}
-    -- FINDING, no check: by the spec `sm` is `{(2,0),(3,3),(4,3)}` (`6` is not in `N`, as `pl` drops `7`), the run
-    -- gives `{(1,6),(2,0),(3,3),(4,3)}`: `sum` does not keep to its target `N`
+    -- `3+1+2 = 6` is not in `N = 0…5`, as `pl` drops `7`
+    check sm = {(2,0),(3,3),(4,3)}
     check sn = {(1,3 1 2),(2,[4]),(3,3 1 2)}
     check cn = {(1,2 3 1),(2,[4])}
     check ct = {(1,3 1 2 2),(2,[4]),(3,[])}

@@ -1699,13 +1699,17 @@ def build : Pre → Except Err Res
   | .est p => do let ⟨_, c⟩ ← param p; pure ⟨_, _, .est c⟩
   | .thin p => do let ⟨_, c⟩ ← param p; pure ⟨_, _, .thin c⟩
   | .nil a b => return ⟨_, _, .nil (A := ← toObj objs mc dp a) (B := ← toObj objs mc dp b)⟩
-  -- the row's objects are checked where `Expand.primE` fits its constant at them (`primsFit`, `node`)
+  -- the row's objects are checked where `Expand.primE` fits its constant at them (`primsFit`, `node`); its result
+  -- kept in the universe of its target where that has one, as the number verbs keep theirs (`arithDen`'s `≫ TU`)
   | .prim r xs s t => do
     let A ← toObj objs mc dp s; let B ← toObj objs mc dp t
-    (r.sig.1.zip xs.attach).foldlM (init := (⟨A, B, .prim r⟩ : Res)) fun ⟨A, B, f⟩ ((_, form), ⟨x, h⟩) => do
+    let ⟨A, B, f⟩ ← (r.sig.1.zip xs.attach).foldlM (init := (⟨A, B, .prim r⟩ : Res)) fun ⟨A, B, f⟩ ((_, form), ⟨x, h⟩) => do
       have := List.sizeOf_lt_of_mem h
       if form == some true then let ⟨_, c⟩ ← param x; pure ⟨A, B, .arg f c⟩
       else let ⟨_, _, u⟩ ← build x; pure ⟨A, B, .arg f u⟩
+    match ← uniPart objs dp (zonk mc t) B with
+    | some u => pure ⟨A, B, .comp f u⟩
+    | none => pure ⟨A, B, f⟩
   | .own p => do
     let ⟨A, B, t⟩ ← build p
     if h : B = A then pure ⟨A, A, .own (h ▸ t)⟩ else internal dp "perm's objects"
