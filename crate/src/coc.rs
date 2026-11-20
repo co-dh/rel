@@ -2,7 +2,6 @@
 //! The read views of coc.rs's `coc`: metadata, patch list, and the whole column.
 use crate::layout::{Tail, exc_layout};
 use crate::pod::{self, Elt};
-use alloc::vec::Vec;
 
 /// coc.rs: bit 8 of the patch list's element size, set when the frames follow
 pub const COC_EXC_FRM: usize = 0x100;
@@ -11,8 +10,6 @@ pub const COC_EXC_FRM: usize = 0x100;
 #[derive(Clone, Copy)]
 pub struct Meta<'a> {
     pub base: &'a [i64], pub maxv: &'a [i64], pub off: &'a [u64], pub bsum: &'a [i64], pub width: &'a [u8],
-    /// one slot each, read by value
-    pub sumnul: i64, pub sumn: u64,
     /// the block size is `1 << lg`, `MIN_LG <= lg <= MAX_LG`
     pub lg: u32,
     /// slices are mblk long; nblk <= mblk is what n reaches
@@ -40,7 +37,7 @@ impl<'a> Meta<'a> {
         Some(Meta {
             base: pod::cast(base)?, maxv: pod::cast(maxv)?, off: pod::cast(off)?, bsum: pod::cast(bsum)?,
             width: &tail[..nb],
-            sumnul: pod::cast::<i64>(&sums[..8])?[0], sumn: pod::cast::<u64>(&sums[8..16])?[0], lg,
+            lg,
             n, nblk: n.div_ceil(1 << lg), mblk: nb,
         })
     }
@@ -129,38 +126,6 @@ impl<'a> Coc<'a> {
 }
 
 impl Coc<'_> {
-    /// coc.rs `coc_count_lt_blk`: of block `b`'s first `nb` elements, how many are below `v`. A block with `maxv < v`
-    /// counts whole and one with its frame `>= v` not at all, neither reading a residual; a straddling one compares
-    /// `v - frame` in the encoded domain. `buf` is the lane buffer an odd width unpacks into, sized on first need so a
-    /// column that never straddles does not pay for it.
-    pub fn count_lt_blk(&self, b: usize, nb: usize, v: i64, buf: &mut Vec<u64>) -> usize {
-        let f = self.frame(b) as i64; // base <= f <= maxv, so f < v wherever the residuals count
-        let mut k = if self.meta.maxv[b] < v { nb } else if f >= v { 0 } else if let Some(p) = self.bit_blk(b) { crate::bitblk::count_lt(p, nb, v) } else {
-            let (w0, at) = (self.meta.width[b], self.meta.off[b] as usize);
-            if w0 & w0.wrapping_sub(1) != 0 && buf.is_empty() { buf.resize(self.meta.blk(), 0) }
-            let mut w = w0;
-            let p = lanes(&self.pack[at..at + self.meta.blk() * w0 as usize / 8], &mut w, nb, pod::bytes_mut(&mut buf[..]));
-            crate::res::res_count_lt(p, nb, w, (v as u64).wrapping_sub(f as u64))
-        };
-        // every case above scored an exception's slot as `frame < v`; the element is scored instead
-        if let Some(e) = self.exc.filter(|e| !e.pos.is_empty()) {
-            for j in e.off[b] as usize..e.off[b + 1] as usize {
-                if (e.pos[j] as usize) < nb { k = k.wrapping_add((self.exc(j) < v) as usize).wrapping_sub((f < v) as usize) }
-            }
-        }
-        k
-    }
-    /// coc.rs `coc_count_lt`: `((atoms c).filter (· < v)).length`, signed, exact.
-    pub fn count_lt(&self, v: i64) -> usize {
-        let mut buf = Vec::new();
-        crate::blocks::Blocks::from(*self).walk().map(|(b, _, nb)| self.count_lt_blk(b, nb, v, &mut buf)).sum()
-    }
-    /// coc.rs `coc_any_null`: whether an element is `nul`, the smallest value of its type, so `x < nul + 1` is
-    /// `x == nul`; stops at the first block that says yes.
-    pub fn any_null(&self, nul: i64) -> bool {
-        let mut buf = Vec::new();
-        crate::blocks::Blocks::from(*self).walk().any(|(b, _, nb)| self.count_lt_blk(b, nb, nul.wrapping_add(1), &mut buf) != 0)
-    }
 }
 
 /// coc.rs's `COC_LOAD_SUB`: residuals of `W` < 8 bits, `8 / W` to a byte, the shift a literal per byte so the loop
@@ -227,7 +192,7 @@ mod tests {
         for w in 0..=64u8 {
             let pack: Vec<u8> = (0..BLK * w as usize / 8).map(|_| { s ^= s << 13; s ^= s >> 7; s ^= s << 17; s as u8 }).collect();
             let base = [s as i64]; let (z, off, width) = ([0i64], [0u64], [w]);
-            let meta = super::Meta { lg: crate::DEFAULT_LG, base: &base, maxv: &z, off: &off, bsum: &z, width: &width, sumnul: 0, sumn: 0,
+            let meta = super::Meta { lg: crate::DEFAULT_LG, base: &base, maxv: &z, off: &off, bsum: &z, width: &width,
                                      n: BLK, nblk: 1, mblk: 1 };
             let c = super::Coc { meta, pack: &pack, exc: None, fdelta: None };
             for nb in [1, 7, 63, 64, 1023, 1024] {
@@ -243,10 +208,11 @@ mod tests {
         (0..w as usize).map(|k| { let bit = i * w as usize + k; ((p[bit / 8] >> (bit % 8)) & 1) as u64 }).enumerate()
             .fold(0, |a, (k, b)| a | b << k)
     }
+    #[test] fn decode_blk_every_width() { check::<u8>(1); check::<i16>(2); check::<i32>(3); check::<i64>(4) }
     // expected values: coc.rs's coc_attach (aborts) and coc_meta_view at 152d98f
     #[test] fn attach_refuses_what_c_aborts_on() {
         let (z, off, width) = ([0i64], [0u64], [8u8]);
-        let meta = super::Meta { lg: crate::DEFAULT_LG, base: &z, maxv: &z, off: &off, bsum: &z, width: &width, sumnul: 0, sumn: 0, n: 1, nblk: 1, mblk: 1 };
+        let meta = super::Meta { lg: crate::DEFAULT_LG, base: &z, maxv: &z, off: &off, bsum: &z, width: &width, n: 1, nblk: 1, mblk: 1 };
         let res = BLK; // one block of width 8
         assert!(super::Coc::attach(meta, &vec![0u8; res]).is_some());
         assert!(super::Coc::attach(meta, &vec![0u8; res + 8]).is_none());
@@ -257,7 +223,7 @@ mod tests {
     // `get` binary-searches ascending positions and scans any other order, the first match winning either way
     #[test] fn get_finds_the_first_patch_in_any_order() {
         let (base, off, width, raw) = ([100i64], [0u64], [0u8], [7i64, 8, 9].map(i64::to_ne_bytes).concat());
-        let meta = super::Meta { lg: crate::DEFAULT_LG, base: &base, maxv: &base, off: &off, bsum: &base, width: &width, sumnul: 0, sumn: 0, n: 20, nblk: 1, mblk: 1 };
+        let meta = super::Meta { lg: crate::DEFAULT_LG, base: &base, maxv: &base, off: &off, bsum: &base, width: &width, n: 20, nblk: 1, mblk: 1 };
         for (pos, want) in [([2u16, 5, 9], [100, 7, 100, 8, 9]), ([5, 2, 5], [100, 8, 100, 7, 100]), ([9, 5, 2], [100, 9, 100, 8, 7])] {
             let exc = super::Exc { off: &[0, 3], pos: &pos, raw: &raw, esz: 8, asc: super::ascending(&[0, 3], &pos) };
             assert_eq!(exc.asc, pos == [2, 5, 9]);
@@ -274,5 +240,4 @@ mod tests {
         assert!(super::Meta::new(&b[1..58], 1).is_none());
         assert!(super::Meta::new(&b[..40], 1).is_none());
     }
-    #[test] fn decode_blk_every_width() { check::<u8>(1); check::<i16>(2); check::<i32>(3); check::<i64>(4) }
 }

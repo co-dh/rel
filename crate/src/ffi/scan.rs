@@ -1,20 +1,13 @@
 //! scan.rs's twelve Lean exports: the running scans, `avg`, `ema` and the moving-window family over a payload or an encoded
 //! column, each an answer sized by `crate::scan` and filled by it.
 #![deny(unsafe_code)]
-use crate::lean::{O, SArr, export};
+use crate::lean::export;
 #[cfg(all(feature = "ffi", not(any(test, feature = "std"))))]
-use {crate::lean::B, crate::scan};
+use {crate::lean::{B, O}, crate::scan};
 
 #[cfg(all(feature = "ffi", not(any(test, feature = "std"))))]
-use {crate::{blocks::Blocks, ffi::{Form, Sink}, lean::{box_u64, boxed, ctor, string}}, alloc::{string::String, vec::Vec}};
+use {crate::lean::{box_u64, boxed, ctor, string}, alloc::{string::String, vec::Vec}};
 
-/// `Coc.encode 8` of the words `ws` as an `Enc.foR`, every cache filled: the answer of a design-§4 kernel at a
-/// fixed-width type other than `boolean`, which `Enc.raw` reads back cut to that type's width.
-#[cfg(all(feature = "ffi", not(any(test, feature = "std"))))]
-pub fn for_words(ws: &[u64]) -> O {
-    let b: Vec<u8> = ws.iter().flat_map(|v| v.to_le_bytes()).collect();
-    Sink::new(ws.len(), 8, Form::For).enc().answer(&Blocks::dense(&b, 8))
-}
 
 /// `kscan` (`crate::scan::kscan`) of the Lean list `es`.
 #[cfg(all(feature = "ffi", not(any(test, feature = "std"))))]
@@ -24,12 +17,6 @@ fn kscan(op: u8, rev: bool, s: u8, t: u8, n: usize, seg: B, es: B) -> Result<(O,
     scan::kscan(op, rev, s, t, n, seg, &v)
 }
 
-/// A fresh answer of `n` bytes, filled by `fill`.
-pub fn answer(n: usize, fill: impl FnOnce(&mut [u8])) -> O {
-    let mut o = SArr::new(1, n);
-    fill(o.bytes_mut());
-    o.into()
-}
 
 export! {
 

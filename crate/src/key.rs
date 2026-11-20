@@ -20,7 +20,6 @@ pub const SK_KEY: u8 = SK_KINDS_N;
 /// on first touch; `fork` is a worker's own copy (a fresh window over the same column).
 pub trait Keys: Sync {
     fn at(&mut self, i: usize) -> u64;
-    fn fork(&self) -> Self where Self: Sized;
     /// How many keys `at` reads without a bounds failure: a pass asserts its `n` against it once, so the per-key bounds
     /// test folds away and the loop vectorises (a window decodes on a miss and has no such bound).
     fn len(&self) -> usize { usize::MAX }
@@ -37,7 +36,6 @@ macro_rules! dense {
         impl Keys for $name<'_> {
             #[inline(always)]
             fn at(&mut self, $i: usize) -> u64 { let $s = self.0; $e }
-            fn fork(&self) -> Self { *self }
             #[inline(always)]
             fn len(&self) -> usize { self.0.len() * $per }
         }

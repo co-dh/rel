@@ -7,111 +7,108 @@ extern crate alloc;
 
 /// The block size every encoder writes, as `lg` in a column's metadata trailer (`blk = 1 << lg`, `MIN_LG <= lg <= MAX_LG`):
 /// the one place 10 is written.
-pub const DEFAULT_LG: u32 = 10;
+pub(crate) const DEFAULT_LG: u32 = 10;
 /// tests that name the default block by its size
 #[cfg(any(test, feature = "std"))]
-pub const BLK: usize = 1 << DEFAULT_LG;
-pub const MIN_LG: u32 = 6;
-pub const MAX_LG: u32 = 16;
+pub(crate) const BLK: usize = 1 << DEFAULT_LG;
+pub(crate) const MIN_LG: u32 = 6;
+pub(crate) const MAX_LG: u32 = 16;
 
-/// Costs per element, named so a call site says why rather than what; the one definition.
-/// one indexed load and one store
-pub const QLEAN_COST_GATHER: u32 = 1;
 /// a straight-line move, no arithmetic. 3, not 2: a move writes a fresh answer and its page faults are the cost, so
 /// at 2 a 4 MB answer ran on one thread -- `prev` on 1M reals or 500k floats 120-148us serial against 22-33 split
-pub const QLEAN_COST_COPY: u32 = 3;
+pub(crate) const QLEAN_COST_COPY: u32 = 3;
 /// the element-wise verbs and the comparisons
-pub const QLEAN_COST_ARITH: u32 = 4;
-/// a conversion, a rounding and a range test
-pub const QLEAN_COST_CAST: u32 = 6;
+pub(crate) const QLEAN_COST_ARITH: u32 = 4;
 /// a libm call
-pub const QLEAN_COST_MATH: u32 = 12;
+pub(crate) const QLEAN_COST_MATH: u32 = 12;
 
 // the runtime and the C declarations are not interface: cbindgen skips both
 /// cbindgen:ignore
 #[cfg(not(any(test, feature = "std")))]
 mod rt;
 /// cbindgen:ignore
-pub mod c;
+mod c;
 /// cbindgen:ignore
-pub mod ffi;
-pub mod lean;
-pub mod os;
+mod ffi;
+mod lean;
+mod os;
 /// The Lean externs, one file per C file they replace. Not under `cargo test`: they call the Lean runtime, which only
 /// a Lean link (or rust/rt) provides. A module of its own, not `ffi::`, because ffi.rs imports the kernel modules of
 /// the same names.
 #[path = "ffi"]
-pub mod exports {
-    pub mod asc;
-    pub mod coc;
-    pub mod seen;
-    pub mod env;
-    pub mod gather;
-    pub mod own;
-    pub mod reduce;
-    pub mod scan;
-    pub mod scatter;
+mod exports {
+    mod asc;
+    mod coc;
+    mod seen;
+    mod env;
+    mod gather;
+    mod own;
+    mod reduce;
+    mod scan;
+    mod scatter;
 }
 /// cbindgen:ignore
-pub mod pod;
+mod pod;
 /// cbindgen:ignore
-pub mod simd;
+mod simd;
 /// cbindgen:ignore
-pub mod pool;
+mod pool;
 
 /// cbindgen:ignore
-pub mod bits;
+mod bits;
 /// cbindgen:ignore
-pub mod blocks;
+mod blocks;
 /// cbindgen:ignore
-pub mod bitblk;
+mod bitblk;
 /// cbindgen:ignore
-pub mod alp;
+mod alp;
 /// cbindgen:ignore
-pub mod asc;
+mod asc;
 /// cbindgen:ignore
-pub mod coc;
+mod coc;
 /// cbindgen:ignore
-pub mod cocops;
+mod cocops;
 /// cbindgen:ignore
-pub mod gather;
+mod gather;
 /// cbindgen:ignore
-pub mod codec;
+mod codec;
 /// cbindgen:ignore
-pub mod seen;
+mod seen;
 /// cbindgen:ignore
-pub mod enc;
+mod enc;
 /// cbindgen:ignore
-pub mod ew;
+mod ew;
 /// cbindgen:ignore
-pub mod reduce;
+mod reduce;
 /// cbindgen:ignore
-pub mod res;
+mod res;
 /// cbindgen:ignore
-pub mod scan;
+mod scan;
 /// cbindgen:ignore
-pub mod scatter;
+mod scatter;
 /// cbindgen:ignore
-pub mod search;
+mod search;
 /// cbindgen:ignore
-pub mod sort;
+mod sort;
 /// cbindgen:ignore
-pub mod structural;
+mod structural;
 /// cbindgen:ignore
-pub mod sym;
+mod sym;
 /// cbindgen:ignore
-pub mod group;
+mod group;
 /// cbindgen:ignore
-pub mod ids;
+mod ids;
 /// cbindgen:ignore
-pub mod key;
+mod key;
 /// cbindgen:ignore
-pub mod kwin;
+mod kwin;
 /// cbindgen:ignore
-pub mod layout;
+mod layout;
 /// cbindgen:ignore
-pub mod own;
+mod own;
 /// cbindgen:ignore
-pub mod unpack;
+mod unpack;
 /// cbindgen:ignore
-pub mod why;
+mod why;
+#[cfg(test)]
+mod testutil;

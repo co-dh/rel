@@ -6,12 +6,6 @@ use alloc::{format, string::String, vec::Vec};
 use core::sync::atomic::{AtomicUsize, Ordering::Relaxed};
 use crate::{blocks::Blocks, coc::Coc, codec, enc::Producer, ffi::{Form, Sink}, lean, pod, structural};
 
-/// `Kernel.gatherWords is es`: `es[is[i]]` for each row `i`; the first row whose index is not below `es.len()` is the
-/// error.
-pub fn words(is: &[u64], es: &[u64]) -> Result<Vec<u64>, String> {
-    is.iter().enumerate().map(|(k, &i)| if i < es.len() as u64 { Ok(es[i as usize]) }
-        else { Err(format!("gather: index {i} at row {k} is not below n = {}", es.len())) }).collect()
-}
 
 /// `words` on the encoded columns `ix` (`ix.meta.n` rows) and `e` (`e.meta.n` elements), answered as `Coc.encode 8`
 /// writes `words`' result (`Enc.foR`), with `words`' error text.
@@ -79,12 +73,18 @@ impl Producer for Take<'_> {
         self.fill(b, lo, nb, w, i, o);
         o
     }
-    fn block_into(&self, b: usize, lo: usize, nb: usize, w: usize, buf: &mut [u8], out: &mut [u8]) { self.fill(b, lo, nb, w, buf, out) }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// `Kernel.gatherWords is es`: `es[is[i]]` for each row `i`; the first row whose index is not below `es.len()` is the
+    /// error. The word model `enc` and `of_pos` are tested against.
+    fn words(is: &[u64], es: &[u64]) -> Result<Vec<u64>, String> {
+        is.iter().enumerate().map(|(k, &i)| if i < es.len() as u64 { Ok(es[i as usize]) }
+            else { Err(format!("gather: index {i} at row {k} is not below n = {}", es.len())) }).collect()
+    }
 
     #[test] fn reads_each_row() {
         assert_eq!(words(&[2, 0, 2, 3], &[10, 11, 12, 13]), Ok(vec![12, 10, 12, 13]));

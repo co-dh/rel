@@ -15,20 +15,12 @@ unsafe impl Pod for i64 {}
 unsafe impl Pod for f32 {}
 unsafe impl Pod for f64 {}
 // packed: no padding, and a key with its element index is any twelve bytes
-unsafe impl Pod for crate::group::KeyAt {}
 
 /// The one element trait: every number a column, a lane or a counter holds, so a kernel is generic over `T: Elt` and
 /// `by_width!` picks `T` once per column. An op's own per-type code (a SIMD register) is a subtrait, never a second one.
 pub trait Elt: Pod + Default + PartialOrd + Send + Sync + 'static {
     /// bytes an element
     const W: usize;
-    /// a float: `wrap`/`bits` are its bit pattern, `i` its value truncated
-    const F: bool;
-    const ZERO: Self;
-    const ONE: Self;
-    /// the least and the greatest value, the identities of max and min (`-inf` and `inf` at a float)
-    const LO: Self;
-    const HI: Self;
     /// the element whose bits are the low `8·W` of `v`: `base + residual` truncated, wrapping (`COC_T` of `decode_blk`)
     fn wrap(v: u64) -> Self;
     /// the bits, zero-extended: `wrap(x.bits()) == x`
@@ -37,25 +29,17 @@ pub trait Elt: Pod + Default + PartialOrd + Send + Sync + 'static {
     fn i(self) -> i64;
     fn f(self) -> f64;
     fn of_f(v: f64) -> Self;
-    /// the element at the start of `b`, native order
-    fn rd(b: &[u8]) -> Self;
 }
-macro_rules! elt { ($f:literal, $z:literal, $o:literal, $lo:expr, $hi:expr; $($t:ty: $u:ty),*) => {$(impl Elt for $t {
+macro_rules! elt { ($($t:ty: $u:ty),*) => {$(impl Elt for $t {
     const W: usize = size_of::<$t>();
-    const F: bool = $f;
-    const ZERO: $t = $z;
-    const ONE: $t = $o;
-    const LO: $t = $lo;
-    const HI: $t = $hi;
     #[inline(always)] fn wrap(v: u64) -> $t { <$t>::from_ne_bytes((v as $u).to_ne_bytes()) }
     #[inline(always)] fn bits(self) -> u64 { <$u>::from_ne_bytes(self.to_ne_bytes()) as u64 }
     #[inline(always)] fn i(self) -> i64 { self as i64 }
     #[inline(always)] fn f(self) -> f64 { self as f64 }
     #[inline(always)] fn of_f(v: f64) -> $t { v as $t }
-    #[inline(always)] fn rd(b: &[u8]) -> $t { <$t>::from_ne_bytes(b[..size_of::<$t>()].try_into().expect("pod::Elt::rd: a short element")) }
 })*} }
-elt!(false, 0, 1, Self::MIN, Self::MAX; u8: u8, u16: u16, i16: u16, u32: u32, i32: u32, u64: u64, i64: u64, usize: usize);
-elt!(true, 0.0, 1.0, Self::NEG_INFINITY, Self::INFINITY; f32: u32, f64: u64);
+elt!(u8: u8, u16: u16, i16: u16, u32: u32, i32: u32, u64: u64, i64: u64, usize: usize);
+elt!(f32: u32, f64: u64);
 
 /// None when `b` is misaligned for `T` or `b.len() % size_of::<T>() != 0`.
 pub fn cast<T: Pod>(b: &[u8]) -> Option<&[T]> {
@@ -75,13 +59,6 @@ pub fn cast_mut<T: Pod>(b: &mut [u8]) -> Option<&mut [T]> {
 pub fn bytes<T: Pod>(s: &[T]) -> &[u8] {
     // Safety: a `Pod` has no padding, so every byte is initialised
     unsafe { core::slice::from_raw_parts(s.as_ptr().cast::<u8>(), size_of_val(s)) }
-}
-/// `s` as atomics, so workers whose indices are disjoint but not contiguous (a scatter) share one output: a relaxed
-/// store is a plain store on the targets we ship, and overlapping indices stay defined (last writer wins).
-pub fn atomics(s: &mut [i64]) -> &[core::sync::atomic::AtomicI64] {
-    // Safety: `AtomicI64` has the size and alignment of `i64` on this target, and the `&mut` borrow means nothing
-    // else touches `s` for as long as the atomic view lives
-    unsafe { core::slice::from_raw_parts(s.as_ptr().cast::<core::sync::atomic::AtomicI64>(), s.len()) }
 }
 /// `n` elements with no initialisation, as C's `xalloc`: for a buffer every slot of which is written before it is read,
 /// where `vec![0; n]` would write it twice.
@@ -132,33 +109,6 @@ impl<'a, T: Pod + Default, const N: usize> IntoIterator for &'a mut Scr<T, N> {
     fn into_iter(self) -> Self::IntoIter { (**self).iter_mut() }
 }
 
-/// `bytes` bytes of 64-byte aligned scratch with no initialisation, kept for the next call so that faulting a large buffer in
-/// is paid once (C's `static __thread` chunk of `qlean_alp_sum_f64`). A call takes the kept buffer or allocates one, and puts
-/// it back unless another call already has; the buffer one call asks for is the size every call asks for.
-pub fn with_kept<R>(bytes: usize, f: impl FnOnce(&mut [u8]) -> R) -> R {
-    use core::sync::atomic::{AtomicPtr, AtomicUsize, Ordering::{AcqRel, Acquire, Release}};
-    static KEEP: AtomicPtr<u8> = AtomicPtr::new(core::ptr::null_mut());
-    static SIZE: AtomicUsize = AtomicUsize::new(0);
-    let lay = |n: usize| alloc::alloc::Layout::from_size_align(n.max(1), 64).expect("pod::with_kept: layout");
-    let mut p = KEEP.swap(core::ptr::null_mut(), AcqRel);
-    // the holder of the pointer is the only writer of SIZE until it publishes the pointer again
-    if !p.is_null() && SIZE.load(Acquire) != bytes {
-        unsafe { alloc::alloc::dealloc(p, lay(SIZE.load(Acquire))) };
-        p = core::ptr::null_mut();
-    }
-    if p.is_null() {
-        p = unsafe { alloc::alloc::alloc(lay(bytes)) };
-        if p.is_null() {
-            crate::os::eprint(format_args!("qlean: out of memory for a {bytes}-byte scratch buffer\n")).expect("qlean: stderr");
-            alloc::alloc::handle_alloc_error(lay(bytes))
-        }
-    }
-    // Safety: `p` is a live allocation of `bytes` bytes that nothing else holds until it is put back below
-    let r = f(unsafe { core::slice::from_raw_parts_mut(p, bytes) });
-    SIZE.store(bytes, Release);
-    if KEEP.compare_exchange(core::ptr::null_mut(), p, Release, Acquire).is_err() { unsafe { alloc::alloc::dealloc(p, lay(bytes)) } }
-    r
-}
 
 #[cfg(test)]
 mod tests {

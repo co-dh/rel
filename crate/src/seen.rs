@@ -4,20 +4,13 @@
 //! compose `kasc ≫ kseen`, so a group is a run of adjacent equal rows and one pass, each row against the one before it,
 //! finds the runs: no hash, no direct-addressing table. Rows out of order are the error, naming the first such pair.
 //! Owner approval (PLAN 6.10) S: one block decoded into an L1 scratch counts as per block.
-use alloc::{collections::BTreeMap, format, string::String, vec, vec::Vec};
+use alloc::{format, string::String, vec};
 use core::cmp::Ordering;
 use crate::asc::Col;
 use crate::blocks::{Blocks, Grid};
 use crate::ffi::{Form, Sink};
 use crate::lean;
 
-/// `Kernel.kseen`'s word model over the code columns `cs` at `n` rows: `(g, first)`. The model `blocks` is tested
-/// against.
-pub fn words(cs: &[Vec<u64>], n: usize) -> (Vec<u64>, Vec<u64>) {
-    let (mut ids, mut first) = (BTreeMap::new(), Vec::new());
-    let g = (0..n).map(|i| *ids.entry(cs.iter().map(|c| c[i]).collect::<Vec<u64>>()).or_insert_with(|| { first.push(i as u64); first.len() as u64 - 1 })).collect();
-    (g, first)
-}
 
 /// `Kernel.kseen`'s error where row `i + 1` sorts before row `i`, word for word the Lean body's.
 pub fn unsorted(i: usize) -> String {
@@ -97,6 +90,15 @@ mod tests {
     use super::*;
     use alloc::vec;
     use crate::{coc, pod};
+    use alloc::{collections::BTreeMap, vec::Vec};
+
+    /// `Kernel.kseen`'s word model over the code columns `cs` at `n` rows: `(g, first)`. The model `blocks` is tested
+    /// against.
+    fn words(cs: &[Vec<u64>], n: usize) -> (Vec<u64>, Vec<u64>) {
+        let (mut ids, mut first) = (BTreeMap::new(), Vec::new());
+        let g = (0..n).map(|i| *ids.entry(cs.iter().map(|c| c[i]).collect::<Vec<u64>>()).or_insert_with(|| { first.push(i as u64); first.len() as u64 - 1 })).collect();
+        (g, first)
+    }
 
     #[test] fn words_numbers_by_first_occurrence() {
         // `B A B`, and two columns (1,0) (2,0) (1,0) (2,1) (1,0); no column: one group; no row: none

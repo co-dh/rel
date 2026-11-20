@@ -6,7 +6,6 @@ use crate::layout::{Tail, exc_layout};
 use crate::pod;
 use crate::enc::{EncMeta, EncPack};
 use crate::pod::Elt;
-use alloc::vec::Vec;
 
 /// coc.rs `cocf`: the integer column `c` (the FoR encoding of the decimals `d`) plus each block's exponent and
 /// the float patches. `'a` as `Coc`'s. Built from C by `ffi::CCocf::view`.
@@ -76,62 +75,6 @@ impl<'a> Cocf<'a> {
     }
 }
 impl Cocf<'_> {
-    /// coc.rs `exc_val`: patch `j` widened to a double, as the reduction layer reads it.
-    fn exc_val(&self, j: usize) -> f64 {
-        let r = &self.exc_raw;
-        if self.f32 { f32::from_ne_bytes(r[j * 4..j * 4 + 4].try_into().unwrap()) as f64 }
-        else { f64::from_ne_bytes(r[j * 8..j * 8 + 8].try_into().unwrap()) }
-    }
-    /// coc.rs `alp_dec`: `d / 10^e`, cast through the column's element type; the decoder's own expression.
-    fn dec(&self, d: i64, e: i32) -> f64 {
-        let v = d as f64 / POW10[e as usize];
-        if self.f32 { v as f32 as f64 } else { v }
-    }
-    /// coc.rs `alp_thresh`: `x < v` in the value domain is `d < t` in the block's integer domain at exponent `e`, with
-    /// `t = ceil(v * 10^e)` corrected against the decoder. Out of reach either way clamps outside 2^53, so every `d`
-    /// counts (or none does): a value a block could hold would answer a different question.
-    pub fn thresh(&self, v: f64, e: i32) -> i64 {
-        let y = ceil(v * POW10[e as usize]);
-        if !(y > -P53) { return i64::MIN / 2 } // the negated form also catches NaN
-        if !(y < P53) { return i64::MAX / 2 }
-        let mut t = y as i64;
-        for _ in 0..4 { if self.dec(t - 1, e) >= v { t -= 1 } else { break } }
-        for _ in 0..4 { if self.dec(t, e) < v { t += 1 } else { break } }
-        t
-    }
-    /// coc.rs `cocf_min`: metadata and the patch list only; NaN loses every comparison, and the `+inf` seed is q's `0w`.
-    /// A block of nothing but patches has no base to offer.
-    pub fn min(&self) -> f64 {
-        let m = (0..self.c.meta.nblk).filter(|&b| (self.exc_off[b + 1] - self.exc_off[b]) as usize != crate::blocks::Blocks::from(*self).span(b).1)
-            .fold(f64::INFINITY, |m, b| { let v = self.dec(self.c.meta.base[b], self.exp[b] as i32); if v < m { v } else { m } });
-        (0..self.exc_pos.len()).fold(m, |m, j| { let v = self.exc_val(j); if v < m { v } else { m } })
-    }
-    /// coc.rs `cocf_max`, dually seeded with `-inf`.
-    pub fn max(&self) -> f64 {
-        let m = (0..self.c.meta.nblk).filter(|&b| (self.exc_off[b + 1] - self.exc_off[b]) as usize != crate::blocks::Blocks::from(*self).span(b).1)
-            .fold(f64::NEG_INFINITY, |m, b| { let v = self.dec(self.c.meta.maxv[b], self.exp[b] as i32); if v > m { v } else { m } });
-        (0..self.exc_pos.len()).fold(m, |m, j| { let v = self.exc_val(j); if v > m { v } else { m } })
-    }
-    /// each block's threshold, from its exponent, the threshold moved into the integer domain once per exponent
-    fn thresholds(&self, v: f64) -> Vec<i64> {
-        let t: Vec<i64> = (0..=MAXE as i32).map(|e| self.thresh(v, e)).collect();
-        self.exp[..self.c.meta.nblk].iter().map(|&e| t[e as usize]).collect()
-    }
-    /// coc.rs `cocf_mask_lt`: `x < v` into `out` (`ceil(n / 64)` words, zeroed here), a patch scored by its own value.
-    pub fn mask_lt(&self, v: f64, out: &mut [u64]) {
-        out.fill(0);
-        crate::codec::mask_blks(&self.c, crate::cocops::LT, &self.thresholds(v), out);
-        for b in 0..self.c.meta.nblk {
-            let at = (b << self.c.meta.lg >> 6).min(out.len());
-            let w64 = &mut out[at..];
-            for j in self.exc_off[b] as usize..self.exc_off[b + 1] as usize {
-                let p = self.exc_pos[j] as usize;
-                let one = 1u64 << (p & 63);
-                // a patch past the bitmap belongs to an element a clamped view does not show; C wrote past `out` for it
-                if let Some(w) = w64.get_mut(p >> 6) { *w = (*w & !one) | if self.exc_val(j) < v { one } else { 0 } }
-            }
-        }
-    }
 }
 /// `cocf_load_range`'s decimals: `base + residual` as an integer over `p10`, narrowed to `F`. `p` is read at `w` bits.
 pub fn restore<F: Elt>(base: u64, p10: f64, p: &[u8], w: u8, i0: usize, i1: usize, out: &mut [u8]) {
@@ -174,8 +117,6 @@ pub const P49: f64 = 562949953421312.0;
 /// C's `nearbyint` (ties to even, the default mode) for |s| < 2^53, without libm: adding and removing 2^52 of the
 /// sign of `s` rounds at the unit place; from 2^52 on every double is already an integer.
 pub fn rint(s: f64) -> f64 { let c = 4503599627370496.0f64.copysign(s); if s.abs() < 4503599627370496.0 { (s + c) - c } else { s } }
-/// libm's `ceil` below 2^52, where a double is not yet an integer; at or past it, and NaN, `x` itself (core has none).
-pub fn ceil(x: f64) -> f64 { if x.abs() < 4503599627370496.0 { let t = x as i64 as f64; if t < x { t + 1.0 } else { t } } else { x } }
 /// `cvt_nearest` for a whole block, where the intrinsic would stop the loop vectorising: `rint`, then the integer
 /// read off the bits (|s| < 2^53, so the shift is at most 52 and a value under 1 shifts out to 0).
 pub fn nearest(s: f64) -> i64 {
@@ -194,16 +135,6 @@ pub fn dat<F: Elt>(x: F, e: i32) -> Option<i64> {
     if !(s.abs() < P53) { return None }
     let r = crate::simd::cvt_nearest(s);
     (F::of_f(dec(r, e)).bits() == x.bits()).then_some(r)
-}
-/// coc.rs `dexp_f32`/`dexp_f64`: the smallest exponent at which `x` round-trips; -1 = none. At `f64` a
-/// non-decimal fails three trials from the largest `E` with |x| 10^E < 2^49, and then fails every exponent.
-pub fn dexp<F: Elt>(x: F) -> i32 {
-    if F::W != 4 {
-        let v = x.f().abs();
-        let e = (1..=MAXE).rev().find(|&e| v * POW10[e] < P49).unwrap_or(0);
-        if v * POW10[e] < P49 && !(e..=(e + 2).min(MAXE)).any(|t| dat(x, t as i32).is_some()) { return -1 }
-    }
-    (0..=MAXE).find(|&e| dat(x, e as i32).is_some()).map_or(-1, |e| e as i32)
 }
 /// coc.rs `dat_blk`: `dat` at one exponent over a block, branch-free so that it vectorises: `ok[i]`, and `d[i]`
 /// where it is set. A sentinel is never ok, its product being NaN or infinite.
@@ -292,39 +223,6 @@ pub fn alp_meta_exp<F: Elt>(m: &mut EncMeta, x: &[F], nb: usize, be: i32) -> u32
 }
 /// `alp_meta_exp`'s marks: only a sentinel is an exception beforehand.
 pub fn exp_marks<F: Elt>(x: &[F], nb: usize, ee: &mut [i8]) { for (e, &v) in ee.iter_mut().zip(&x[..nb]) { *e = if sent(v) { -1 } else { 0 } } }
-/// coc.rs `alp_patch_blk`: block `b` of `o` with the `ix.len()` writes `ix`/`v` applied, as pass 1 wants it at
-/// the block's OLD exponent, no search: `d` the old decimals patched, `ee[i]` -1 at an old exception not overwritten and
-/// -2 at a new one (a sentinel, or not exact at that exponent). Answers the exponent the search would raise it to, or -1:
-/// only a new value can need more than the old exponent, and the caller keeps whichever leaves fewer exceptions.
-pub fn alp_patch_blk<F: Elt>(o: &Cocf, b: usize, nb: usize, ix: &[u64], v: &[F], d: &mut [i64], ee: &mut [i8]) -> i32 {
-    let (e, mut alt, ee) = (o.exp[b] as i32, -1, &mut ee[..nb]);
-    o.c.decode_blk(b, nb, &mut d[..nb]);
-    ee.fill(0);
-    for &i in &o.exc_pos[o.exc_off[b] as usize..o.exc_off[b + 1] as usize] { ee[i as usize] = -1 }
-    for (&k, &v) in ix.iter().zip(v) {
-        let i = (k - (b << o.c.meta.lg) as u64) as usize;
-        if sent(v) { ee[i] = -2; continue }
-        if let Some(r) = dat(v, e) { d[i] = r; ee[i] = 0; continue }
-        ee[i] = -2;
-        let de = dexp(v);
-        if de > e && de > alt { alt = de }
-    }
-    alt
-}
-/// coc.rs `alp_patch_pack`: the pack step for a block `alp_patch_blk` rewrote.
-pub fn alp_patch_pack<F: Elt>(p: &mut EncPack, o: &Cocf, ix: &[u64], v: &[F], d: &mut [i64], ee: &[i8], raw: &mut [F]) {
-    let (b, nb, lo) = (p.b, p.nb, (p.b << o.c.meta.lg) as u64);
-    let oraw = pod::cast::<F>(o.exc_raw).expect("qlean: alp_patch_pack: old patches misaligned");
-    let (mut j, mut k, mut q) = (o.exc_off[b] as usize, 0, 0);
-    for i in (0..nb).filter(|&i| ee[i] < 0) {
-        d[i] = p.base;
-        p.pos[q] = i as u16;
-        // both sources ascend by position, so one cursor each finds them
-        raw[q] = if ee[i] == -2 { while ix[k] - lo != i as u64 { k += 1 } v[k] } else { while o.exc_pos[j] as usize != i { j += 1 } oraw[j] };
-        q += 1;
-    }
-    crate::enc::pack_block(&mut *p.res, &d[..nb], nb, p.base, p.width)
-}
 /// coc.rs `alp_pack_blk`: residuals and float patches of one block at exponent `be`. An exception is an element
 /// `dat` refuses at `be`, which is pass 1's set: a sentinel fails `dat` on its magnitude, a non-decimal at every e.
 pub fn alp_pack_blk<F: Elt>(p: &mut EncPack, be: i32, x: &[F], raw: &mut [F]) {
@@ -349,32 +247,10 @@ impl<'a> Cocf<'a> {
     }
 }
 #[cfg(test)]
+#[cfg(test)]
 mod tests {
     use super::*;
     use crate::{BLK, pod::bytes_mut};
-
-    // Expected values from coc.rs's alp_thresh: the clamps outside 2^53 and the ceil at an exponent
-    #[test] fn thresh_clamps_and_rounds_up() {
-        let (z, o, w) = ([0i64], [0u64], [0u8]);
-        let meta = Meta { lg: crate::DEFAULT_LG, base: &z, maxv: &z, off: &o, bsum: &z, width: &w, sumnul: 0, sumn: 0, n: 1, nblk: 1, mblk: 1 };
-        let f = Cocf { c: Coc { meta, pack: &[], exc: None, fdelta: None }, exp: &[0], exc_off: &[0, 0], exc_pos: &[], exc_raw: &[], f32: false };
-        assert_eq!([f.thresh(f64::NAN, 0), f.thresh(1e300, 0), f.thresh(-1e300, 3), f.thresh(f64::INFINITY, 2)],
-                   [i64::MIN / 2, i64::MAX / 2, i64::MIN / 2, i64::MAX / 2]);
-        assert_eq!([f.thresh(2.5, 0), f.thresh(-2.5, 0), f.thresh(3.0, 0), f.thresh(1.5, 1), f.thresh(0.1, 1), f.thresh(0.3, 1)], [3, -2, 3, 15, 1, 3]);
-    }
-    // Expected values come from the original C: `encode_f64` of [1.5, 2.25, NaN, 100.0] (exponent 2, base 150, width 14, one
-    // patch) patched by [1 -> 1.25, 3 -> 0.1234567], /data/tmp/qrs/A17/one2.c; the random comparison is /data/tmp/qrs/A17/diff.c.
-    #[test] fn patch_blk_keeps_the_old_exponent_and_answers_the_one_the_search_would_pick() {
-        let (base, maxv, off, bsum, width) = ([150i64], [10000i64], [0u64], [0i64], [14u8]);
-        let meta = Meta { lg: crate::DEFAULT_LG, base: &base, maxv: &maxv, off: &off, bsum: &bsum, width: &width, sumnul: 0, sumn: 4, n: 4, nblk: 1, mblk: 1 };
-        let mut pack = vec![0u8; BLK * 14 / 8];
-        pack[..7].copy_from_slice(&[0, 192, 18, 0, 0, 232, 153]); // residuals 0, 75, 0, 9850
-        let raw = f64::NAN.to_ne_bytes();
-        let o = Cocf { c: Coc { meta, pack: &pack, exc: None, fdelta: None }, exp: &[2], exc_off: &[0, 1], exc_pos: &[2], exc_raw: &raw, f32: false };
-        let (mut d, mut ee) = ([0i64; BLK], [0i8; BLK]);
-        assert_eq!(alp_patch_blk(&o, 0, 4, &[1, 3], &[1.25f64, 0.1234567], &mut d, &mut ee), 7);
-        assert_eq!((&d[..4], &ee[..4]), (&[150, 125, 150, 10000][..], &[0, 0, -1, -2][..]));
-    }
 
     struct Cur { w: Vec<u64>, at: usize }
     impl Cur {
@@ -421,7 +297,6 @@ mod tests {
                     for b in 0..f.c.meta.nblk { let (lo, nb) = (b * BLK, (n - b * BLK).min(BLK)); f.load_blk(b, nb, &mut bytes_mut(&mut out)[lo * esz..(lo + nb) * esz]) }
                     assert_eq!(fnv(&bytes_mut(&mut out)[..n * esz]), c.u(), "decode n {n}");
                     for b in 0..f.c.meta.nblk {
-                        let full = (n - b * BLK).min(BLK);
                         for _ in 0..3 {
                             let (mut buf, mut lb) = ([0xabababababababab_u64; BLK], [0xcdcdcdcdcdcdcdcd_u64; BLK]);
                             let nb = c.u() as usize;
@@ -438,9 +313,7 @@ mod tests {
                             assert_eq!(fnv_w(&buf), c.u(), "load_range b {b} {i0}..{i1} n {n}");
                             checks += 3;
                         }
-                        let mut k = [0u64; BLK];
-                        crate::kwin::keys_blk_alp(&f, b, &mut k[..full]);
-                        assert_eq!(fnv_w(&k[..full]), c.u(), "keys_blk_alp b {b} n {n}");
+                        c.u(); // keys_blk_alp's hash: that kernel is gone, the stream still holds it
                         checks += 1;
                     }
                     cols += 1; checks += 1;
@@ -489,8 +362,7 @@ mod tests {
             assert_eq!((fnv(&ok), h(&d), fnv(&oks), h(&ds), h(&full)), (c.u(), c.u(), c.u(), c.u(), c.u()), "dat e {e} nb {nb}");
             n += 1;
         }
-        let dx: Vec<u8> = x.iter().flat_map(|&v| dexp(v).to_ne_bytes()).collect();
-        assert_eq!(fnv(&dx), c.u(), "dexp nb {nb}");
+        c.u(); // dexp's hash: `dexp` is gone, the stream still holds it
         for be in [0, 1, 2, 5, 10, 18] { for lim in [1, 3, 1 << 30] { assert_eq!(alp_exc_at(x, be, lim) as u64, c.u(), "alp_exc_at be {be} lim {lim}"); n += 1 } }
         let ee_nexc = |ee: &mut [i8], be: i32| { let mut d = vec![0i64; nb]; recheck(x, nb, be, ee, &mut d); exc_as_base(&mut d, ee, nb) as u64 };
         let mut ee = vec![0i8; nb];

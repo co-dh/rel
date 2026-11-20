@@ -28,7 +28,7 @@ pub struct EncMeta<'a> {
 }
 /// Block `b`'s output region in a column being written: residuals and patch slots, from the layout's offsets.
 pub struct EncPack<'a> {
-    pub b: usize, pub nb: usize,
+    pub nb: usize,
     pub base: i64, pub frame: u64, pub width: u8, pub exp: i8,
     /// `blk * width / 8` bytes at `off[b]`
     pub res: &'a mut [u8],
@@ -233,15 +233,6 @@ pub fn narrow<'b>(width: usize, v: &'b [i64], out: &'b mut [u8]) -> &'b [u8] {
     assert!(matches!(width, 1 | 2 | 4 | 8), "qlean: a Frame of Reference element of {width} bytes; the writer has 1, 2, 4 and 8");
     crate::by_width!(int width, put(v, out))
 }
-/// coc.rs `coc_enc_blk_meta`: block metadata from decoded `v`; answers the patch count.
-pub fn blk_meta(m: &mut EncMeta, v: &[i64], width: usize) -> u32 {
-    fn go<T: Elt>(m: &mut EncMeta, x: &[u8], nb: usize) -> u32 {
-        for_blk(m, crate::pod::cast::<T>(x).expect("qlean: narrowed block misaligned"), nb)
-    }
-    let mut buf = crate::pod::Scr::<i64>::new(v.len()); // i64 lanes, so the narrowed bytes are aligned for every `T`
-    let x = narrow(width, v, crate::pod::bytes_mut(&mut buf));
-    crate::by_width!(int width, go(m, x, v.len()))
-}
 /// coc.rs `move_meta`, the branch where block `pb` of the column `f` is taken whole: its metadata is the block's,
 /// and its patch count is what the layout prefix-sums. Answers it, and leaves it in `m.nexc`. The branches that call
 /// back into the source (`ints`, `hint`, `fill`) stay C.
@@ -310,9 +301,6 @@ pub trait Producer: Sync {
     /// Elements `lo .. lo + nb` (block `b` of the writer's grid) at `w` bytes each: a slice of the producer's own memory, or
     /// written into `buf` (`16 * nb` bytes, 8-aligned).
     fn block<'s>(&'s self, b: usize, lo: usize, nb: usize, w: usize, buf: &'s mut [u8]) -> &'s [u8];
-    /// `block` written into `out` (`nb * w` bytes), the dense answer's own memory: a producer that computes its elements
-    /// computes them there, so the dense answer is written once; one that holds them (`Blocks`) copies them.
-    fn block_into(&self, b: usize, lo: usize, nb: usize, w: usize, buf: &mut [u8], out: &mut [u8]) { out.copy_from_slice(self.block(b, lo, nb, w, buf)) }
     /// Block `pb` of a column in the writer's own form that answer block `b` equals, with `pb`.
     fn take(&self, _b: usize) -> Option<(Cocf<'_>, usize)> { None }
     /// ALP: block `b`'s decimals `d`, exponents `ee` (negative = exception) of its first `nb` elements, and the block's exponent;
@@ -328,18 +316,9 @@ pub fn filled<'s>(fill: impl FnOnce(&mut [i64], usize), lo: usize, nb: usize, w:
     fill(v, lo);
     narrow(w, v, o)
 }
-/// `filled` into `out` (`nb * w` bytes): at 8 bytes the fill writes `out` itself (an 8-aligned one, as a Lean payload's
-/// blocks are), narrower it is narrowed into `out`.
-pub fn filled_into(fill: impl FnOnce(&mut [i64], usize), lo: usize, nb: usize, w: usize, buf: &mut [u8], out: &mut [u8]) {
-    if w == 8 && out.as_ptr() as usize % 8 == 0 { return fill(crate::pod::cast_mut(out).expect("qlean Sink: an answer block of whole i64s"), lo) }
-    let v = crate::pod::cast_mut::<i64>(&mut buf[..8 * nb]).expect("qlean Sink: a block buffer is misaligned for i64");
-    fill(v, lo);
-    if w == 8 { out.copy_from_slice(crate::pod::bytes(v)) } else { narrow(w, v, out); }
-}
 /// A closure is a producer with no `take`: the form every kernel that computes an answer a block at a time uses.
 impl<F: Fn(&mut [i64], usize) + Sync> Producer for F {
     fn block<'s>(&'s self, _: usize, lo: usize, nb: usize, w: usize, buf: &'s mut [u8]) -> &'s [u8] { filled(self, lo, nb, w, buf) }
-    fn block_into(&self, _: usize, lo: usize, nb: usize, w: usize, buf: &mut [u8], out: &mut [u8]) { filled_into(self, lo, nb, w, buf, out) }
 }
 /// A column read as the writer's elements: the encoder's input where it is dense, a transcode where it is not. A span on
 /// the column's own grid is read in place where it lies, any other is cut from the blocks it crosses.
@@ -405,11 +384,16 @@ mod a17_tests {
     }
     #[test] #[should_panic(expected = "a Frame of Reference element of 3 bytes; the writer has 1, 2, 4 and 8")]
     fn narrow_refuses_an_odd_width() { narrow(3, &[0], &mut [0; 8]); }
+    /// `for_blk`'s answer on `v` as elements of `width` bytes: (patches, base, maxv, bsum, residual width, frame)
     fn meta(v: &[i64], width: usize) -> (u32, i64, i64, i64, u8, u64) {
         let (mut base, mut maxv, mut width_, mut bsum, mut nexc, mut frm) = (0, 0, 0, 0, 0, 7u64);
         let mut m = EncMeta { b: 0, base: &mut base, maxv: &mut maxv, width: &mut width_, bsum: &mut bsum, frm: Some(&mut frm),
                               nexc: &mut nexc, exp: None, patch: true };
-        let ne = blk_meta(&mut m, v, width);
+        let ne = match width {
+            2 => for_blk(&mut m, &v.iter().map(|&x| x as i16).collect::<Vec<_>>(), v.len()),
+            4 => for_blk(&mut m, &v.iter().map(|&x| x as i32).collect::<Vec<_>>(), v.len()),
+            _ => for_blk(&mut m, v, v.len()),
+        };
         (ne, base, maxv, bsum, width_, frm)
     }
     #[test] fn blk_meta_at_each_width() {
@@ -424,10 +408,10 @@ mod a17_tests {
     #[test] fn move_pack_zero_pads_a_short_pack() {
         // block 0 of width 8 whose pack holds 3 of its 1024 bytes: the rest reads as zeros, `Column.resAt`'s convention
         let (base, z, off, width) = ([5i64], [0i64], [0u64], [8u8]);
-        let meta = crate::coc::Meta { lg: crate::DEFAULT_LG, base: &base, maxv: &z, off: &off, bsum: &z, width: &width, sumnul: 0, sumn: 0, n: 3, nblk: 1, mblk: 1 };
+        let meta = crate::coc::Meta { lg: crate::DEFAULT_LG, base: &base, maxv: &z, off: &off, bsum: &z, width: &width, n: 3, nblk: 1, mblk: 1 };
         let f = Cocf { c: Coc { meta, pack: &[1, 2, 3], exc: None, fdelta: None }, exp: &[], exc_off: &[], exc_pos: &[], exc_raw: &[], f32: false };
         let mut res = [0xa5u8; crate::BLK];
-        let mut p = EncPack { b: 0, nb: 3, base: 5, frame: 5, width: 8, exp: 0, res: &mut res, pos: &mut [], raw: &mut [] };
+        let mut p = EncPack { nb: 3, base: 5, frame: 5, width: 8, exp: 0, res: &mut res, pos: &mut [], raw: &mut [] };
         move_pack(&mut p, &f, 0, false, 2);
         assert_eq!(&res[..4], [1, 2, 3, 0]);
         assert!(res[3..].iter().all(|&x| x == 0));
@@ -502,14 +486,14 @@ mod tests {
             let nb = BLK.min(n - b * BLK);
             let (e0, e1) = (eo[b] as usize, (eo[b] + ne[b]) as usize);
             eo[b + 1] = eo[b] + ne[b];
-            let mut p = EncPack { b, nb, base: base[b], frame: (base[b] as u64).wrapping_add(frm[b]), width: width[b], exp: 0,
+            let mut p = EncPack { nb, base: base[b], frame: (base[b] as u64).wrapping_add(frm[b]), width: width[b], exp: 0,
                                   res: &mut pack[at..at + (nb * width[b] as usize).div_ceil(8)],
                                   pos: &mut pos[e0..e1], raw: &mut raw[e0 * size_of::<T>()..e1 * size_of::<T>()] };
             pack_exc_blk(&mut p, &x[b * BLK..], ne[b]);
             at += BLK * width[b] as usize / 8;
         }
         let nbk = n.div_ceil(BLK);
-        let c = Coc { meta: crate::coc::Meta { lg: crate::DEFAULT_LG, base: &base, maxv: &maxv, off: &off, bsum: &bsum, width: &width, sumnul: 0, sumn: 0,
+        let c = Coc { meta: crate::coc::Meta { lg: crate::DEFAULT_LG, base: &base, maxv: &maxv, off: &off, bsum: &bsum, width: &width,
                                                 n, nblk: nbk, mblk: 2 },
                       pack: &pack, exc: Some(crate::coc::Exc { off: &eo, pos: &pos, raw: &raw, esz: size_of::<T>(), asc: crate::coc::ascending(&eo, &pos) }),
                       fdelta: Some(&frm) };
@@ -517,6 +501,16 @@ mod tests {
         decode(&c, &mut out);
         assert_eq!(out, x);
         ne.iter().sum()
+    }
+    #[test] fn decode_round_trip_with_patches() {
+        let mut x: Vec<i64> = (0..BLK as i64 + 300).map(|i| 1_000_000 + (i * 37) % 500).collect();
+        x[3] = -5; x[900] = 1 << 40; x[1100] = i64::MIN; x[1200] = 7;
+        assert!(round(&x) >= 4);
+        let y: Vec<i16> = (0..2000).map(|i| if i % 97 == 0 { i16::MIN } else { 300 + (i % 11) as i16 }).collect();
+        assert!(round(&y) > 0);
+        let z: Vec<u8> = (0..BLK as u32 + 5).map(|i| if i == 5 { 0 } else { 200 + (i % 5) as u8 }).collect();
+        round(&z);
+        round(&[i32::MIN; 7]);
     }
     /// The search `plan` replaced: `frame_at` at every width `0 ..= top`, the first least cost winning.
     fn plan_ref<T: Elt>(x: &[T], top: usize) -> (usize, i64, usize) {
@@ -587,16 +581,6 @@ mod tests {
     #[test] #[ignore] fn bench_for_blk_random() {
         let mut s = 7u64;
         assert!(bench(&(0..BLK).map(|_| { s ^= s << 13; s ^= s >> 7; s ^= s << 17; (s & 0xfff) as i64 }).collect::<Vec<_>>(), 100_000) > 0)
-    }
-    #[test] fn decode_round_trip_with_patches() {
-        let mut x: Vec<i64> = (0..BLK as i64 + 300).map(|i| 1_000_000 + (i * 37) % 500).collect();
-        x[3] = -5; x[900] = 1 << 40; x[1100] = i64::MIN; x[1200] = 7;
-        assert!(round(&x) >= 4);
-        let y: Vec<i16> = (0..2000).map(|i| if i % 97 == 0 { i16::MIN } else { 300 + (i % 11) as i16 }).collect();
-        assert!(round(&y) > 0);
-        let z: Vec<u8> = (0..BLK as u32 + 5).map(|i| if i == 5 { 0 } else { 200 + (i % 5) as u8 }).collect();
-        round(&z);
-        round(&[i32::MIN; 7]);
     }
 }
 

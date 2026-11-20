@@ -57,8 +57,6 @@ pub const SLICES: usize = 2;
 pub const DECLINED: usize = 3;
 /// passes entered while another was in flight, run as the same slices in turn on their own thread
 pub const CONTENDED: usize = 4;
-/// `rdtsc` ticks inside the slices of split passes, summed over threads; against `WALL` it is the parallelism had
-pub const BUSY: usize = 5;
 /// `rdtsc` ticks from the hand-off of each split pass to its join
 pub const WALL: usize = 6;
 
@@ -96,25 +94,6 @@ pub struct Pool {
 // read by the workers after the release of `generation` that published it.
 unsafe impl Sync for Pool {}
 
-/// A mutex on one futex word (0 free, 1 held, 2 held with a sleeper), for the one cache the pool's callers share: no
-/// `pthread_mutex_*`, which would be one more undefined name.
-pub struct Lock(AtomicU32);
-impl Lock {
-    pub const fn new() -> Lock { Lock(AtomicU32::new(0)) }
-    pub fn lock(&self) {
-        if self.0.compare_exchange(0, 1, Acquire, Relaxed).is_ok() { return }
-        while self.0.swap(2, Acquire) != 0 {
-            // Safety: FUTEX_WAIT on a live u32 that outlives the call; a changed value returns EAGAIN at once
-            unsafe { sys::syscall(SYS_FUTEX, self.0.as_ptr(), FUTEX_WAIT_PRIVATE, 2 as c_long, null::<c_void>(), null::<c_void>(), 0 as c_long) };
-        }
-    }
-    pub fn unlock(&self) {
-        if self.0.swap(0, Release) == 2 {
-            // Safety: FUTEX_WAKE on a live u32 that outlives the call
-            unsafe { sys::syscall(SYS_FUTEX, self.0.as_ptr(), FUTEX_WAKE_PRIVATE, 1 as c_long, null::<c_void>(), null::<c_void>(), 0 as c_long) };
-        }
-    }
-}
 /// Slice `k` of `[0, n)` cut `parts` ways, the remainder spread over the first slices.
 pub fn cut(n: usize, parts: u32, k: u32) -> (usize, usize) {
     let (q, r, k) = (n / parts as usize, n % parts as usize, k as usize);
@@ -206,10 +185,6 @@ impl Pool {
         self.width() > 1 && n.wrapping_mul(cost as usize).wrapping_mul(wide) >= SPLIT_AT
     }
 
-    pub fn stat(&self, k: u8) -> u64 {
-        if k as usize == BUSY { return self.spent.iter().map(|b| b.0.load(Relaxed)).fold(0, u64::wrapping_add) }
-        self.ctr.0.get(k as usize).map_or(0, |c| c.load(Relaxed))
-    }
 
     fn add(&self, k: usize, v: u64) { self.ctr.0[k].fetch_add(v, Relaxed); }
 
@@ -317,8 +292,6 @@ pub unsafe extern "C" fn run_c(f: Worker, n: usize, cost: u32, wide: usize, p: *
     unsafe { THE.enter(n, cost, wide, call, f as *const (), p.cast()) }
 }
 
-/// Counter `k` of the process's pool (`PASSES` .. `WALL`), 0 for any other.
-pub fn stat(k: u8) -> u64 { THE.stat(k) }
 
 #[cfg(test)]
 pub mod tests {
@@ -328,8 +301,6 @@ pub mod tests {
         /// the largest `n * cost * wide` this thread entered the pool with since `seen`
         pub(crate) static SEEN: core::cell::Cell<usize> = const { core::cell::Cell::new(0) };
     }
-    /// The largest pass `f` asked the pool for, as `n * cost * wide`.
-    pub(crate) fn seen(f: impl FnOnce()) -> usize { SEEN.with(|s| s.set(0)); f(); SEEN.with(|s| s.get()) }
 
     fn gettid() -> i64 { unsafe { sys::syscall(186 as c_long) as i64 } }
 
@@ -360,29 +331,9 @@ pub mod tests {
             assert_eq!(sum.load(Relaxed), (n as u64) * (n as u64).saturating_sub(1) / 2);
             assert_eq!(parts, if n == 0 { 1 } else { 8 });
         }); });
-        assert_eq!(pool.stat(PASSES as u8), 16 * 7);
-        assert_eq!(pool.stat(SPLITS as u8) + pool.stat(CONTENDED as u8) + pool.stat(DECLINED as u8), 16 * 7);
-    }
-
-    // A 2^24-element input to each kernel asks for a pass the production threshold splits (at width 4: `worth`'s
-    // other half). Kernels whose input needs an encoded column are covered by the bench's `spread` gate instead.
-    #[test] fn pool_parts() {
-        use crate::c::qlean_run_c as run;
-        use std::{vec, vec::Vec};
-        const N: usize = 1 << 24;
-        let big = |what: &str, s: usize| assert!(s >= SPLIT, "pool_parts: {what} at 2^24 asks for {s} < {SPLIT}: never splits");
-        let mut o = vec![0i64; N];
-        big("til", seen(|| crate::structural::til(run, &mut o)));
-        let (a, b) = (vec![1u8; N / 2], vec![2u8; N / 2]);
-        let mut ob = vec![0u8; N];
-        big("concat", seen(|| crate::structural::concat(run, &[&a, &b], &mut ob)));
-        let src = vec![7u8; 8 * N];
-        let idx: Vec<i64> = (0..N as i64).collect();
-        let mut o8 = vec![0u8; 8 * N];
-        big("gather", seen(|| crate::structural::gather(run, 8, 0, &src, &idx, &mut o8)));
-        let w = vec![0x5555_5555_5555_5555u64; N];
-        let mut ow = vec![0u64; N];
-        big("bitw", seen(|| crate::ew::bitw(run, 0, crate::pod::bytes(&w), crate::pod::bytes(&w), N, crate::pod::bytes_mut(&mut ow))));
+        let stat = |k: usize| pool.ctr.0[k].load(Relaxed);
+        assert_eq!(stat(PASSES), 16 * 7);
+        assert_eq!(stat(SPLITS) + stat(CONTENDED) + stat(DECLINED), 16 * 7);
     }
 
     // the threshold: one unit below declines, at it splits; `wide = 0` always declines
