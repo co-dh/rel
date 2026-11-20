@@ -218,6 +218,15 @@ Diff table 的「状态」列：✅ 后面是完成它的步骤；🔄 是部分
   决定 F 已落地（5617318，2026-11-19）：上面的 "引擎" 一句作废。`kseen` 在乱序行上报固定错误（指出第一处乱序的行），
   `seenEngine`/`keySpan`/`foRBounds` 与 Rust 的 `seen::direct` 删除（`Seen.lean` 74 → 32 行）；新引理 `kseen_sorted`。
   未做：1024 行块边界只有 Rust 测试，Lean 例子因 `decide +kernel` 归约不动而缺（与决定 C 有出入）。
+- 🔄 D.13 `sums`（dataframe 请求，q 的 `sums`，分支 `sums`）：prim 行 `sums : κ×ν ⟶ γ ↦ κ×ν ⟶ γ`，key 在源对象里，
+  每个 key 内按位置升序的左 fold 前缀和，溢出或 null 之后该 key 余下的行无像。含义（`rowDens`）是
+  `agg(dom(x) (𝟙 × ≥) dom(x), F(x) ⦇[0, plus]⦈)`（`Den.lean` 的 `sumsDen`）。
+  ✅ 已落地：`Tab.sums`（`Rel/Run/SetOps.lean`）只用 `kseen`、`kscatter`、`kscan .add`、`colMap`，无新 kernel，不解码；
+  非 simple 的 x 报错并指出位置；`TestSums`（含 10⁶ 行：10⁵ 约 10 ms，10⁶ 约 55 ms，线性）；doc §4 行（草稿，待审）；
+  `segScan_ok`（`RepSetOps`）：分段 `kscan` 在每行给出本组到该行的 fold，`groupFold_ok` 改为引用它。
+  ⬜ 未做：`Tab.sums_holds`，所以该行不进 `kernRows`/`rowsProved`（`rowGens_proved` 要求两者一致），程序里用 `sums`
+  还不走 kernel；`Prim.dfn` 条目（上面的组合式）等 dfn 能读行的关系参数（与 `asc` 相同）；`Plan.ofTm` 没有 prim 的
+  recipe，不需要加。
 
 ### P0 baseline — 1/1
 
