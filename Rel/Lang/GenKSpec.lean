@@ -67,6 +67,23 @@ theorem force_runE (r : Rel A B) (K K' : Known A B) : (r.force K).runE K' = r.ru
   | tab _ => rfl
   | bits => rfl
 
+theorem retryE_ok {α : Type} {e : String} {t : Except String α} {x : α} (h : retryE e t = .ok x) : t = .ok x := by
+  cases t with
+  | error => nomatch h
+  | ok => exact h
+
+/-- A retried value computes what `r` computes, only its message changed. -/
+theorem retried_ok {e : String} {r : Rel A B} {K : Known A B} {t : Tab A B} (h : (r.retried e).runE K = .ok t) :
+    r.runE K = .ok t := by
+  induction r with
+  | tab t0 => exact retryE_ok h
+  | lazy f ih => exact ih K h
+  | bits => exact h
+
+theorem retried_reps {e : String} {r : Rel A B} {K : Known A B} {X : Core.Rel A.El B.El} (h : r.Reps K X) :
+    (r.retried e).Reps K X :=
+  (reps_iff _ _ _).2 fun t ht => (reps_iff _ _ _).1 h t (retried_ok ht)
+
 /-! ### The lifting: an op on tables (`lift1`, `lift2`, `ofVals`) is sound where its table step is -/
 
 theorem lift1_runE (f : Tab A B → Except String (Tab C D)) (k : Known C D → Known A B) (R : Rel A B)
@@ -260,7 +277,7 @@ theorem pairK_sound {R : Rel A B} {S : Rel A C} {X : Core.Rel A.El B.El} {Y : Co
   unfold pairK at h; split at h
   · split at h
     · exact L _ ‹_› h
-    · obtain ⟨p, hp, ht⟩ := bind_ok h; exact M p hp ht
+    · obtain ⟨p, hp, ht⟩ := bind_ok (retryE_ok h); exact M p hp ht
   all_goals obtain ⟨p, hp, ht⟩ := bind_ok h
   · exact M p hp ht
   · exact L p hp ht

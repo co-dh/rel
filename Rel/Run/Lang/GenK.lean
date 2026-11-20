@@ -86,10 +86,10 @@ def comp (A B C : Obj) (e : Bool) (R : Fn true A B) (S : Fn e B C) : Fn true A C
     | S => if K.dom.isNone && K.ran.isSome then
         match S.runE ⟨none, K.ran, none⟩ with
         | .ok s => compS (.lazy f) K.dom (.ok s)
-        | .error _ => compT ((Rel.lazy f).runE ⟨K.dom, none, none⟩) S
+        | .error e => (compT ((Rel.lazy f).runE ⟨K.dom, none, none⟩) S).retried e
       else match (Rel.lazy f).runE ⟨K.dom, none, none⟩ with
         | .ok r => compT (.ok r) S
-        | .error _ => compS (.lazy f) K.dom (S.runE ⟨none, K.ran, none⟩)
+        | .error e => (compS (.lazy f) K.dom (S.runE ⟨none, K.ran, none⟩)).retried e
 
 /-- The code of a closed term with `dem = false` as its table, computed once: such a term has one table whatever
     the context, so this changes no result and saves re-running it at each use (a fold reading it in every round). -/
@@ -147,7 +147,7 @@ def meetOn {A B : Obj} (K : Known A B) (T S : Rel A B) : Rel A B := match T with
     or `S` where `R` cannot run on `K` alone. -/
 def meetK {A B : Obj} (K : Known A B) (R S : Rel A B) : Rel A B := match R, S with
   | .lazy _, .lazy _ => match R.force K with
-    | .tab (.error _) => meetOn K (S.force K) R
+    | .tab (.error e) => (meetOn K (S.force K) R).retried e
     | R' => meetOn K R' S
   | .lazy _, S => meetOn K S R
   | R, S => meetOn K R S
@@ -188,7 +188,7 @@ def pairK {A B C : Obj} (D : Option ((n : USize) × Vals A n)) (R : Rel A B) (S 
     Except String (Tab A (.prod B C)) := match R, S with
   | .lazy _, .lazy _ => match pairOn D R S with
     | .ok p => p.1.pair p.2
-    | .error _ => do let p ← pairOn D S R; p.2.pair p.1
+    | .error e => retryE e do let p ← pairOn D S R; p.2.pair p.1
   | .lazy _, _ => do let p ← pairOn D S R; p.2.pair p.1
   | _, _ => do let p ← pairOn D R S; p.1.pair p.2
 
