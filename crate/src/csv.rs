@@ -9,9 +9,24 @@ use alloc::{borrow::Cow, format, string::String, vec::Vec};
 use core::ffi::CStr;
 use core::sync::atomic::{AtomicUsize, Ordering::Relaxed};
 
-/// A column as the schema declares it (`CsvCols`): header name, `QAtomicType` constructor index, the names of a
-/// named-element object in declared order (empty for every other object).
-pub struct Col<'a> { pub name: &'a str, pub t: u8, pub names: Vec<&'a str> }
+/// A column as the schema declares it (`CsvCols`): header name, `CsvShape` constructor index (`SH_*`), `QAtomicType`
+/// constructor index, the names of a named-element object in declared order (empty for every other object).
+pub struct Col<'a> { pub name: &'a str, pub shape: u8, pub t: u8, pub names: Vec<&'a str> }
+
+/// `CsvShape`'s constructors: one atom; `V+1` (tag, idx, values, nulls); `[C]` (lo, hi, bytes).
+pub const SH_ATOM: u8 = 0;
+pub const SH_NULL: u8 = 1;
+pub const SH_TEXT: u8 = 2;
+
+/// The parts a column is stored as (`CsvShape.parts`), and how many of them hold a word per row (`rowParts`).
+pub fn nparts(shape: u8) -> usize { match shape { SH_NULL => 4, SH_TEXT => 3, _ => 1 } }
+fn row_parts(shape: u8) -> usize { match shape { SH_ATOM => 1, _ => 2 } }
+
+/// A field's byte count as the file means it: a quoted one's `""` counted once.
+fn clen(b: &[u8], x: &Field) -> usize {
+    let s = &b[x.lo..x.hi];
+    if x.quoted { s.len() - s.iter().filter(|&&c| c == b'"').count() / 2 } else { s.len() }
+}
 
 /// The file's bytes, mapped; an empty file has no mapping (`mmap` refuses length 0).
 pub fn map(path: &CStr) -> Result<Option<Map>, Fail> {
@@ -96,13 +111,17 @@ fn record(b: &[u8], mut p: usize, mut f: impl FnMut(usize, &Field)) -> Result<us
 }
 
 /// What the sequential pass learns: the header's fields, the data record count, the byte each block of `2^lg` data
-/// records starts at, and the first data record whose field count is not the schema's (row, count, first byte).
-pub struct Lexed { pub n: usize, lg: u32, starts: Vec<usize>, head: Vec<Vec<u8>>, short: Option<(usize, usize, usize)> }
+/// records starts at, the first data record whose field count is not the schema's (row, count, first byte), and per
+/// column the payload count before each block (`base`) and in all (`tot`): values of a `null` column, bytes of a `text`
+/// one, so each block finds its positions and each payload block its first row without the blocks before it.
+pub struct Lexed { pub n: usize, lg: u32, starts: Vec<usize>, head: Vec<Vec<u8>>, short: Option<(usize, usize, usize)>,
+    base: Vec<Vec<usize>>, tot: Vec<usize> }
 
 /// The one sequential pass (a quoted field may hold a newline, so no record can be found without the ones before it):
 /// every record split once, the structure of the whole file checked before anything else is (C.4's order).
-pub fn lex(b: &[u8], ncols: usize, lg: u32) -> Result<Lexed, String> {
-    let mut lx = Lexed { n: 0, lg, starts: Vec::new(), head: Vec::new(), short: None };
+pub fn lex(b: &[u8], cols: &[Col], lg: u32) -> Result<Lexed, String> {
+    let mut lx = Lexed { n: 0, lg, starts: Vec::new(), head: Vec::new(), short: None,
+        base: cols.iter().map(|_| Vec::new()).collect(), tot: alloc::vec![0; cols.len()] };
     let (mut p, mut r) = (0, 0usize);
     while p < b.len() {
         let st = p;
@@ -111,15 +130,32 @@ pub fn lex(b: &[u8], ncols: usize, lg: u32) -> Result<Lexed, String> {
             p = record(b, p, |_, x| h.push(content(b, x).into_owned()))?;
             lx.head = h;
         } else {
-            if (r - 1) & ((1 << lg) - 1) == 0 { lx.starts.push(st) }
-            let mut k = 0;
-            p = record(b, p, |_, _| k += 1)?;
-            if k != ncols && lx.short.is_none() { lx.short = Some((r - 1, k, st)) }
+            if (r - 1) & ((1 << lg) - 1) == 0 {
+                lx.starts.push(st);
+                for (bs, &t) in lx.base.iter_mut().zip(&lx.tot) { bs.push(t) }
+            }
+            let (mut k, tot) = (0, &mut lx.tot);
+            p = record(b, p, |j, x| {
+                k += 1;
+                match cols.get(j).map(|c| c.shape) {
+                    Some(SH_NULL) if clen(b, x) > 0 => tot[j] += 1,
+                    Some(SH_TEXT) => tot[j] += clen(b, x),
+                    _ => {}
+                }
+            })?;
+            if k != cols.len() && lx.short.is_none() { lx.short = Some((r - 1, k, st)) }
         }
         r += 1;
     }
     lx.n = r.saturating_sub(1);
     Ok(lx)
+}
+
+/// Each part's count of column `c` (`layout`'s): an atom's `n`; a sum's `n`, `n`, its values, its nulls; a text's
+/// `n`, `n`, its bytes.
+pub fn counts(lx: &Lexed, c: usize, col: &Col) -> Vec<usize> {
+    let (n, t) = (lx.n, lx.tot[c]);
+    match col.shape { SH_NULL => alloc::vec![n, n, t, n - t], SH_TEXT => alloc::vec![n, n, t], _ => alloc::vec![n] }
 }
 
 /// The schema's names as the errors list them (`names`).
@@ -133,6 +169,12 @@ pub fn schema(cols: &[Col]) -> Result<(), String> {
             QT_SYM => return Err(format!("column '{}' is a symbol column, which waits for the own-format sym writer (D.9 step 6)", c.name)),
             QT_GENERAL => return Err(format!("column '{}' is a general column, which the own format does not hold", c.name)),
             _ => {}
+        }
+        if c.shape == SH_TEXT && (c.t != QT_CHAR || !c.names.is_empty()) {
+            return Err(format!("column '{}' is a list of {}; a CSV field holds a list of char only (text)", c.name, form(c)));
+        }
+        if c.shape == SH_NULL && cell(c, b"").is_some() {
+            return Err(format!("column '{}' is nullable, and the empty field, its null, is also a text of {}", c.name, form(c)));
         }
     }
     Ok(())
@@ -149,19 +191,71 @@ pub fn header(cols: &[Col], lx: &Lexed) -> Result<(), String> {
     Ok(())
 }
 
-/// Rows `lo .. lo + out.len()` (one block of the encoder's grid) of column `c` read into `out`; a row whose field is no
-/// text of the column lowers `bad` to its index and gets the word 0, which `refusal` then refuses.
-pub fn fill(b: &[u8], lx: &Lexed, c: usize, col: &Col, lo: usize, out: &mut [i64], bad: &AtomicUsize) {
-    let mut p = lx.starts[lo >> lx.lg];
-    for (i, o) in out.iter_mut().enumerate() {
-        let mut w = None;
-        match record(b, p, |k, x| if k == c { w = cell(col, &content(b, x)) }) {
-            Ok(q) => p = q,
-            // `lex` split every record, so this is never taken; were it, `refusal` walks to this row and answers the text
-            Err(_) => { bad.fetch_min(lo + i, Relaxed); return }
-        }
-        match w { Some(v) => *o = v as i64, None => { bad.fetch_min(lo + i, Relaxed); *o = 0 } }
+/// The data records from the one starting at byte `p`, `f(field c's bytes)` for each (empty where the record is short,
+/// which `refusal` refuses), until `f` answers false.
+fn walk(b: &[u8], mut p: usize, c: usize, mut f: impl FnMut(&[u8]) -> bool) -> Result<(), String> {
+    loop {
+        let mut x = Cow::Borrowed(&[][..]);
+        p = record(b, p, |k, fl| if k == c { x = content(b, fl) })?;
+        if !f(&x) || p >= b.len() { return Ok(()) }
     }
+}
+
+/// Elements `lo .. lo + out.len()` (one block of the encoder's grid) of part `part` of column `c` (`layout`'s parts) read
+/// into `out`. A row part's block is a block of rows; a payload's (`null`'s values, `text`'s bytes) starts at the row
+/// block whose `base` it falls in. A row whose field is no text of the column lowers `bad` to its index and gets the word
+/// 0, which `refusal` then refuses: checked in part 0 only, so once per field.
+pub fn fill(b: &[u8], lx: &Lexed, c: usize, col: &Col, part: usize, lo: usize, out: &mut [i64], bad: &AtomicUsize) {
+    let len = out.len();
+    let rows = |f: &mut dyn FnMut(usize, &[u8])| {
+        let mut i = 0;
+        // `lex` split every record, so `walk` never fails; were it, `refusal` walks to this row and answers the text
+        if walk(b, lx.starts[lo >> lx.lg], c, |x| { f(i, x); i += 1; i < len }).is_err() { bad.fetch_min(lo, Relaxed); }
+    };
+    let base = lx.base[c].get(lo >> lx.lg).copied().unwrap_or(0);
+    match (col.shape, part) {
+        (SH_NULL, 3) => out.fill(0),
+        (SH_NULL, 2) | (SH_TEXT, 2) => {
+            let blk = lx.base[c].partition_point(|&x| x <= lo).saturating_sub(1);
+            let (mut j, end) = (lx.base[c].get(blk).copied().unwrap_or(0), lo + out.len());
+            let st = match lx.starts.get(blk) { Some(&s) => s, None => return };
+            let r = walk(b, st, c, |x| {
+                if col.shape == SH_NULL {
+                    if !x.is_empty() { if j >= lo { out[j - lo] = cell(col, x).unwrap_or(0) as i64 } j += 1 }
+                } else {
+                    for (k, &y) in x.iter().enumerate() { if (lo..end).contains(&(j + k)) { out[j + k - lo] = y as i64 } }
+                    j += x.len();
+                }
+                j < end
+            });
+            if r.is_err() { bad.fetch_min(0, Relaxed); }
+        }
+        (SH_NULL, 1) => {
+            let (mut a, mut z) = (base, lo - base);
+            rows(&mut |i, x| if x.is_empty() { out[i] = z as i64; z += 1 } else { out[i] = a as i64; a += 1 });
+        }
+        (SH_TEXT, _) => {
+            let mut k = base;
+            rows(&mut |i, x| { out[i] = (if part == 0 { k } else { k + x.len() }) as i64; k += x.len() });
+        }
+        _ => {
+            let mut fails = None;
+            rows(&mut |i, x| {
+                let w = if col.shape == SH_NULL && x.is_empty() { Some(1) } else if col.shape == SH_NULL { cell(col, x).map(|_| 0) } else { cell(col, x) };
+                out[i] = w.unwrap_or(0) as i64;
+                if w.is_none() && fails.is_none() { fails = Some(lo + i) }
+            });
+            if let Some(r) = fails { bad.fetch_min(r, Relaxed); }
+        }
+    }
+}
+
+/// A field read at its column's shape (`readField`): whether it is a text of the column.
+fn reads(c: &Col, f: &[u8]) -> bool { c.shape == SH_TEXT || (c.shape == SH_NULL && f.is_empty()) || cell(c, f).is_some() }
+
+/// What a column's field must be, at its shape (`formOf`).
+fn form_of(c: &Col) -> String {
+    match c.shape { SH_NULL => format!("{}, or the empty field (the null)", form(c)), SH_TEXT => "text: any bytes".into(), _ => form(c) }
 }
 
 /// The first refusal of the data records in the model's order (`rows`): the first failing row, in it the field count,
@@ -176,7 +270,7 @@ pub fn refusal(b: &[u8], lx: &Lexed, cols: &[Col], bad: &[AtomicUsize]) -> Resul
     for _ in 0..r & ((1 << lx.lg) - 1) { p = record(b, p, |_, _| ())? }
     let mut f = Vec::new();
     record(b, p, |k, x| if k == c { f = content(b, x).into_owned() })?;
-    Err(format!("row {r} (line {}), column '{}': expected {}, found {}", line(b, p), cols[c].name, form(&cols[c]), shown(&f)))
+    Err(format!("row {r} (line {}), column '{}': expected {}, found {}", line(b, p), cols[c].name, form_of(&cols[c]), shown(&f)))
 }
 
 /// The writer is given `k` word columns, one per schema column (`arity`).
