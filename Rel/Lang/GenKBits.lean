@@ -26,7 +26,9 @@ theorem Tab.colIota_raw {n : USize} {e : Enc} (h : Tab.colIota n = .ok e) :
   have hsum : ∀ k, ((List.range k).map fun _ => (1 : Nat)).sum = k := by
     intro k; induction k with
     | zero => rfl
-    | succ k ih => rw [List.range_succ, List.map_append, List.sum_append, ih]; rfl
+    | succ k ih =>
+      rw [List.range_succ_eq_map, List.map_cons, List.sum_cons, List.map_map]
+      exact (congrArg (1 + ·) ih).trans (Nat.add_comm 1 k)
   rw [hsum] at e1
   simp only [Op.eval, Except.ok.injEq] at e1
   rw [← e1]
@@ -70,6 +72,13 @@ theorem Tab.index_spec {g n : USize} {xr : Vals A g} {v : Vals A n} {e : Enc} (h
     rw [hf, Option.getD_some, USize.toNat_toUInt64]
     exact .inr ⟨rfl, fun a e' => hex ⟨a.1, a.2, (hxv a j).2 e'⟩⟩
 
+/-- `index`'s words are at most `g`. -/
+theorem Tab.index_le {g n : USize} {xr : Vals A g} {v : Vals A n} {e : Enc} (h : Tab.index xr v = .ok e)
+    (j : Fin n.toNat) : ((raw .i64 n e)[j.1]?.getD 0).toNat ≤ g.toNat := by
+  rcases Tab.index_spec h j with ⟨a, ea, -⟩ | ⟨ea, -⟩
+  · rw [ea]; exact Nat.le_of_lt a.2
+  · exact Nat.le_of_eq ea
+
 /-- `Tab.ofBits` answering bounds its matrix: `whereCol` refuses `2^63` cells or more. -/
 theorem Tab.ofBits_lt {n m g w : USize} {o ra rc : Enc} {x : Vals A n} {y : Vals C m} {X : Tab A C}
     (h : Tab.ofBits g w o x ra y rc = .ok X) : (g * w).toNat < 2 ^ 63 := by
@@ -90,7 +99,7 @@ theorem whereCol_mem {m K : USize} {b o : Enc} (h : whereCol m b = .ok (K, o))
   rw [← hmem, List.mem_map]
   constructor
   · rintro ⟨k, hk, rfl⟩
-    refine ⟨_, Array.getElem_mem_toList (by omega), ?_⟩
+    refine ⟨_, Array.getElem_mem_toList (by rw [hsz]; exact hk : k < (raw .i64 K o).size), ?_⟩
     rw [getElem?_pos (raw .i64 K o) k (by omega), Option.getD_some]
   · rintro ⟨v, hv, rfl⟩
     obtain ⟨k, hk, rfl⟩ := List.getElem_of_mem hv
@@ -126,7 +135,7 @@ theorem Tab.keepBits_law {n m : USize} {T : Tab A C} {g w : USize} {o : Enc} {x 
   rw [Except.bind_eq_ok'] at h; obtain ⟨cw, hcw, h⟩ := h
   rw [Except.bind_eq_ok'] at h; obtain ⟨mu, hmu, h⟩ := h
   rw [Except.bind_eq_ok'] at h; obtain ⟨gc, hgc, h⟩ := h
-  rw [Except.bind_eq_ok'] at h; obtain ⟨pos, hpos, h⟩ := h
+  rw [Except.bind_eq_ok'] at h; obtain ⟨ps, hpos, h⟩ := h
   rw [Except.bind_eq_ok'] at h; obtain ⟨bw, hbw, h⟩ := h
   have hU64 : USize.size ≤ 2 ^ 64 := by rcases USize.size_eq with h | h <;> omega
   have hb := hgw ▸ Tab.ofBits_lt hs
@@ -151,16 +160,16 @@ theorem Tab.keepBits_law {n m : USize} {T : Tab A C} {g w : USize} {o : Enc} {x 
   show u.Holds a c ↔ T.Holds a c ∧ s.Holds a c
   rw [hS a c, ← Tab.canon_holds ht a c]
   -- no bit: `kgather` reads no row of an empty matrix, so `u` is empty, and so is `s`
-  rcases Nat.eq_zero_or_pos (g.toNat * w.toNat) with h0 | hpos
+  rcases Nat.eq_zero_or_pos (g.toNat * w.toNat) with h0 | hgw0
   · have hM0 : M.toNat = 0 := Nat.eq_zero_of_not_pos fun hM => by
       have := (kgather_word hbw 0 hM).1; omega
     rw [Tab.keep_holds h (fun i hi => by simp only at hi; omega)]
     constructor
     · rintro ⟨⟨k, hk⟩, -⟩; simp only at hk; omega
     · rintro ⟨-, a0, ha0, j, hj, -⟩
-      have := Nat.mul_le_mul ha0 hj; omega
-  have hg1 : 0 < g.toNat := Nat.pos_of_mul_pos_right hpos
-  have hw1 : 0 < w.toNat := Nat.pos_of_mul_pos_left hpos
+      have := Nat.mul_pos (show 0 < g.toNat by omega) (show 0 < w.toNat by omega); omega
+  have hg1 : 0 < g.toNat := Nat.pos_of_mul_pos_right hgw0
+  have hw1 : 0 < w.toNat := Nat.pos_of_mul_pos_left hgw0
   have hg63 : g.toNat < 2 ^ 63 := by have := Nat.le_mul_of_pos_right g.toNat hw1; omega
   have hw63 : w.toNat < 2 ^ 63 := by have := Nat.le_mul_of_pos_left w.toNat hg1; omega
   have hmulb : ∀ a0 < g.toNat, ∀ j < w.toNat, a0 * w.toNat + j < g.toNat * w.toNat := fun a0 ha j hj => by
@@ -177,17 +186,11 @@ theorem Tab.keepBits_law {n m : USize} {T : Tab A C} {g w : USize} {o : Enc} {x 
         show N.toUInt64 = N.toNat.toUInt64 from UInt64.toNat_inj.mp (by simp),
         eval_lt_nat (by omega) hN, Except.ok.injEq] at e1
       exact e1.symm
-  have hle : ∀ {N p : USize} {Z : Vals A N} {W : Vals A p} {e : Enc}, Tab.index Z W = .ok e →
-      ∀ i < p.toNat, ((raw .i64 p e)[i]?.getD 0).toNat ≤ N.toNat := fun he i hi => by
-    rcases Tab.index_spec he ⟨i, hi⟩ with ⟨a', e', -⟩ | ⟨e', -⟩ <;> omega
-  have hle' : ∀ {N p : USize} {Z : Vals C N} {W : Vals C p} {e : Enc}, Tab.index Z W = .ok e →
-      ∀ i < p.toNat, ((raw .i64 p e)[i]?.getD 0).toNat ≤ N.toNat := fun he i hi => by
-    rcases Tab.index_spec he ⟨i, hi⟩ with ⟨a', e', -⟩ | ⟨e', -⟩ <;> omega
   have hokw : ∀ i < t.n.toNat, (raw .i64 t.n ok)[i]?.getD 0 < 2 ∧ ((raw .i64 t.n ok)[i]?.getD 0 ≠ 0 ↔
       ((raw .i64 t.n ia)[i]?.getD 0).toNat < g.toNat ∧ ((raw .i64 t.n ic)[i]?.getD 0).toNat < w.toNat) :=
     fun i hi => by
       have e3 := (colMap_raw hok).2.2.2 i hi
-      rw [hcol hc1 hl1 hg63 i hi (hle hia i hi), hcol hc2 hl2 hw63 i hi (hle' hic i hi)] at e3
+      rw [hcol hc1 hl1 hg63 i hi (Tab.index_le hia ⟨i, hi⟩), hcol hc2 hl2 hw63 i hi (Tab.index_le hic ⟨i, hi⟩)] at e3
       simp only [Op.eval, Except.ok.injEq] at e3
       rw [← e3]
       by_cases p : ((raw .i64 t.n ia)[i]?.getD 0).toNat < g.toNat <;>
@@ -195,13 +198,14 @@ theorem Tab.keepBits_law {n m : USize} {T : Tab A C} {g w : USize} {o : Enc} {x 
   -- answer row `k` of `u0` is row `sel[k]` of `t`, at bit `ia·w + ic` of `o`
   have hrow : ∀ k (hk : k < M.toNat), ∃ i : Fin t.n.toNat, ((raw .i64 M sel)[k]?.getD 0).toNat = i.1 ∧
       K0.row ⟨k, hk⟩ = t.key.row i ∧ V0.row ⟨k, hk⟩ = t.val.row i ∧
-      ((raw .i64 M pos)[k]?.getD 0).toNat =
+      ((raw .i64 M ps)[k]?.getD 0).toNat =
         ((raw .i64 t.n ia)[i.1]?.getD 0).toNat * w.toNat + ((raw .i64 t.n ic)[i.1]?.getD 0).toNat ∧
       ((raw .i64 t.n ia)[i.1]?.getD 0).toNat < g.toNat ∧ ((raw .i64 t.n ic)[i.1]?.getD 0).toNat < w.toNat := by
     intro k hk
     obtain ⟨i, hi, rk⟩ := Vals.gather_row _ hK0 ⟨k, hk⟩
     obtain ⟨i', hi', rv⟩ := Vals.gather_row _ hV0 ⟨k, hk⟩
-    obtain rfl : i' = i := Fin.ext (hi'.symm.trans hi)
+    have e : i' = i := Fin.ext (hi'.symm.trans hi)
+    rw [e] at rv
     have hin := (whereCol_mem hM (fun i hi => (hokw i hi).1) i.1).1 ⟨k, hk, hi⟩
     obtain ⟨hA, hC⟩ := (hokw i.1 i.2).2.1 hin.2
     refine ⟨i, hi, rk, rv, ?_, hA, hC⟩
@@ -215,7 +219,7 @@ theorem Tab.keepBits_law {n m : USize} {T : Tab A C} {g w : USize} {o : Enc} {x 
     have := hmulb _ hA _ hC
     have hm : ((raw .i64 t.n ia)[i.1]?.getD 0).toNat * w.toNat < 2 ^ 64 := by omega
     rw [Nat.mod_eq_of_lt hm, Nat.mod_eq_of_lt (by omega)]
-  have hbw : ∀ k < M.toNat, (raw .i64 M bw)[k]?.getD 0 = (raw .i64 (g * w) o)[((raw .i64 M pos)[k]?.getD 0).toNat]?.getD 0 :=
+  have hbw : ∀ k < M.toNat, (raw .i64 M bw)[k]?.getD 0 = (raw .i64 (g * w) o)[((raw .i64 M ps)[k]?.getD 0).toNat]?.getD 0 :=
     fun k hk => (kgather_word hbw k hk).2
   have hbw2 : ∀ k < M.toNat, (raw .i64 M bw)[k]?.getD 0 < 2 := fun k hk => by
     obtain ⟨i, -, -, -, ep, hA, hC⟩ := hrow k hk
@@ -229,7 +233,7 @@ theorem Tab.keepBits_law {n m : USize} {T : Tab A C} {g w : USize} {o : Enc} {x 
   · rintro ⟨⟨k, hk⟩, hb1, rfl, rfl⟩
     obtain ⟨i, -, rk, rv, ep, hA, hC⟩ := hrow k hk
     refine ⟨⟨i, rk.symm, rv.symm⟩, _, hA, _, hC, ?_, ?_, ?_⟩
-    · rw [← ep, ← hbw k hk]; exact (one _ (hbw2 k hk)).1 hb1
+    · dsimp only; rw [← ep, ← hbw k hk]; exact (one _ (hbw2 k hk)).1 hb1
     · rcases Tab.index_spec hia i with ⟨a', ea, ra'⟩ | ⟨ea, -⟩
       · obtain ⟨i0, h0, r0⟩ := Vals.gather_row _ hX' a'
         exact ⟨i0, by rw [ea]; exact h0, by rw [← r0, ra', ← rk]⟩
@@ -241,22 +245,23 @@ theorem Tab.keepBits_law {n m : USize} {T : Tab A C} {g w : USize} {o : Enc} {x 
   · rintro ⟨⟨i, rfl, rfl⟩, a0, ha0, j, hj, hP, ⟨i0, h0, r0⟩, ⟨i1, h1, r1⟩⟩
     have hA : ((raw .i64 t.n ia)[i.1]?.getD 0).toNat = a0 := by
       obtain ⟨i0', h0', r0'⟩ := Vals.gather_row _ hX' ⟨a0, ha0⟩
-      obtain rfl : i0' = i0 := Fin.ext (h0'.symm.trans h0)
+      have e : i0' = i0 := Fin.ext (h0'.symm.trans h0)
       rcases Tab.index_spec hia i with ⟨a', ea, ra'⟩ | ⟨-, hn⟩
       · obtain ⟨i2, h2, r2⟩ := Vals.gather_row _ hX' a'
-        rw [ea]; exact congrArg Fin.val (hx a' ⟨a0, ha0⟩ i2 i0' h2 h0' (by rw [← r2, ← r0', ra', r0]))
-      · exact absurd (by rw [r0', r0]) (hn ⟨a0, ha0⟩)
+        rw [ea]; exact congrArg Fin.val (hx a' ⟨a0, ha0⟩ i2 i0 h2 h0 (by rw [← r2, ra', ← r0]))
+      · exact (hn ⟨a0, ha0⟩ (by rw [r0', e, r0])).elim
     have hC : ((raw .i64 t.n ic)[i.1]?.getD 0).toNat = j := by
       obtain ⟨i1', h1', r1'⟩ := Vals.gather_row _ hY' ⟨j, hj⟩
-      obtain rfl : i1' = i1 := Fin.ext (h1'.symm.trans h1)
+      have e : i1' = i1 := Fin.ext (h1'.symm.trans h1)
       rcases Tab.index_spec hic i with ⟨c', ec, rc'⟩ | ⟨-, hn⟩
       · obtain ⟨i2, h2, r2⟩ := Vals.gather_row _ hY' c'
-        rw [ec]; exact congrArg Fin.val (hy c' ⟨j, hj⟩ i2 i1' h2 h1' (by rw [← r2, ← r1', rc', r1]))
-      · exact absurd (by rw [r1', r1]) (hn ⟨j, hj⟩)
+        rw [ec]; exact congrArg Fin.val (hy c' ⟨j, hj⟩ i2 i1 h2 h1 (by rw [← r2, rc', ← r1]))
+      · exact (hn ⟨j, hj⟩ (by rw [r1', e, r1])).elim
     obtain ⟨k, hk, hki⟩ := (whereCol_mem hM (fun i hi => (hokw i hi).1) i.1).2
       ⟨i.2, (hokw i.1 i.2).2.2 ⟨by omega, by omega⟩⟩
     obtain ⟨i', hi', rk, rv, ep, -⟩ := hrow k hk
-    obtain rfl : i' = i := Fin.ext (hi'.symm.trans hki)
+    have e : i' = i := Fin.ext (hi'.symm.trans hki)
+    rw [e] at rk rv ep
     refine ⟨⟨k, hk⟩, ?_, rk, rv⟩
     rw [hbw k hk, ep, hA, hC, hP]; decide
 
