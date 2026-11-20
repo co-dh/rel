@@ -563,6 +563,13 @@ Diff table 的「状态」列：✅ 后面是完成它的步骤；🔄 是部分
         - owner 定的顺序（C）：先做 architecture §4 已定的实现改动（`∩ − \` 分段 `scan`、`\` 不物化 join、
           `ldiv(tab, bits)` 在 bit matrix 上算、`μ` semi-naive），差分测试与回归固定保护；`ldiv meet diff mu fold` 与
           bit matrix 路径的证明（T11e 余项、`ReadsBack`）等实现稳定后再做。T11e5 只做 `arith`。
+        - 2026-11-20 01:04，master 2b74cb8，`make check` 全绿（check-56）：覆盖 145 / 203，差分 478 / 478。已合入：p7munu（`GenK.nu_sound`、
+          `mu_sound`，`GenKFix.lean`）、p8est（`est_sound`、`atPos_sound`、`hylo_sound`，`GenKEst.lean`、`GenKHylo.lean`）、p9arg（`RowOK`
+          带参数码，`Tm.argGap`，`gen_sound_spine`；行 `loop filter`）。在做：p10wire（把 est atPos mu nu hylo 接进 `gen_sound`，hylo 按
+          `Tm.size` 递归；单调条件计入测试）、s5t1（stage 5 运行侧：`call ks c os b` / `callCv` 带 body，计划 `/data/tmp/s5plan/plan.md`；
+          我定：两个平构造子、`ks : List Nat`、保留 `os`、只靠差分测试绑定、`reread` 先保持 `calls = none`）。
+          缺口：共享常量路径没有和 `Tm.gen` 比过（闭定义里没有 call 节点）；stage 5 后让 `reread` 读 elaborate 时的 registry。
+          待清：`Tab.fixOn_inv` 与 `Tab.mu_holds` 重复；行 `F sum merge thinL tails`（都不单独挡住定义）。
         - 2026-11-20 00:33，master 7de1951（未跑全 gate，三次合并后各自构建过）：覆盖 143 / 203。p4rows：`Tm.gapKinds` + `gap_eq`，
           `GenSoundTest` 按 gap 种类报"挡住 / 单独挡住"；行 `snoc cons cat` 已证。p5rows：行 `uncat zip length` 已证。p6arg：
           `Tab.loop_holds`、`GenK.loop_sound`。剩余（挡住/单独）：`arg call` 23/22、`nu` 8/8、`est` 10/6、`hylo` 6/5、`atPos` 7/4、
