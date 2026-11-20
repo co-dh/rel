@@ -202,19 +202,64 @@ info: ([(0, 0, 10), (1, 2, 30)], [(0, 10), (2, 30)], [(0, 10), (1, 30)],
   IO.FS.removeDirAll d
   return (big.toList, pxOf.toList, px.toList, files)
 
--- the refusals at run time, each before any file is written: a CSV output (its writer is IO step I7), refused before
--- any read; an input whose files are missing, the OS error naming the file
+-- the refusal at run time before any file is written: an input whose files are missing, the OS error naming the file
 rel_program missingIO where
     obj N
     input t : N ⟶ N from "/data/tmp/rel-test-io-none/t"
     output t to "/data/tmp/rel-test-io-none/out"
 
 /--
-info: output `bigPx` to csv "bigpx.csv": the CSV writer is IO step I7, not yet here; write a table directory (drop `csv`)
-no such file or directory (error code: 2)
+info: no such file or directory (error code: 2)
   file: /data/tmp/rel-test-io-none/t/val
 -/
 #guard_msgs in
 #eval show IO Unit from do
-  for r in [← trades.io.toBaseIO, ← missingIO.io.toBaseIO] do
-    match r with | .ok _ => IO.println "ok" | .error e => IO.println e
+  match ← missingIO.io.toBaseIO with | .ok _ => IO.println "ok" | .error e => IO.println e
+
+/-! ## `output … to csv` (step I9): CSV in, CSV out, read back by a second program's `from csv` -/
+
+-- `tradesIO`'s `big` and `pxOf`, written to CSV: `big` keyed by positions, so its value columns only; `pxOf` keyed by
+-- `K`, so the key column `key` then the value column `val`, one header
+open Rel.Programs.prelude Rel.Programs.frame in
+rel_program csvOutIO where
+    obj N
+    obj K = {A,B,C}
+    schema Trade = {sym : K, px : N, qty : N}
+    schema Big   = {sym : K, px : N}
+    input t : N ⟶ Trade from csv "/data/tmp/rel-test-io-csv/trades.csv"
+    big : N ⟶ Big ≜ filterBy(dom(col Trade "qty" dom(<°{(100,∗)})), t) ⟨col Trade "sym", col Trade "px"⟩
+    pxOf : K ⟶ N ≜ (big col Big "sym")° big col Big "px"
+    output big to csv "/data/tmp/rel-test-io-csv/big.csv"
+    output pxOf to csv "/data/tmp/rel-test-io-csv/pxof.csv"
+
+#guard csvOutIO.outputs ==
+  [("big", true, "/data/tmp/rel-test-io-csv/big.csv"), ("pxOf", true, "/data/tmp/rel-test-io-csv/pxof.csv")]
+
+-- the two files read back under the same types, each copied to a table directory
+rel_program csvBackIO where
+    obj N
+    obj K = {A,B,C}
+    schema Big = {sym : K, px : N}
+    input b : N ⟶ Big from csv "/data/tmp/rel-test-io-csv/big.csv"
+    input q : K ⟶ N from csv "/data/tmp/rel-test-io-csv/pxof.csv"
+    output b to "/data/tmp/rel-test-io-csv/b"
+    output q to "/data/tmp/rel-test-io-csv/q"
+
+-- by hand: qty 500 and 101 pass, rows (A,10) and (C,30); A = 0, C = 2; the texts as the writer gives them (C.3: a
+-- named element by its name, an integer in shortest decimal), the tables as read back
+/--
+info: ("sym,px\nA,10\nC,30\n", "key,val\nA,10\nC,30\n", [(0, 0, 10), (1, 2, 30)], [(0, 10), (2, 30)])
+-/
+#guard_msgs in
+#eval show IO _ from do
+  let d := "/data/tmp/rel-test-io-csv"
+  if ← System.FilePath.pathExists d then IO.FS.removeDirAll d
+  IO.FS.createDirAll d
+  IO.FS.writeFile (d ++ "/trades.csv") "sym,px,qty\nA,10,500\nB,20,50\nC,30,101\n"
+  csvOutIO.io; csvBackIO.io
+  let big ← IO.FS.readFile (d ++ "/big.csv")
+  let pxOf ← IO.FS.readFile (d ++ "/pxof.csv")
+  let b ← Table.read [("sym", .long), ("px", .long)] (d ++ "/b")
+  let q ← Table.readKeyed [("key", .long)] [("val", .long)] (d ++ "/q")
+  IO.FS.removeDirAll d
+  return (big, pxOf, b.toList, q.toList)

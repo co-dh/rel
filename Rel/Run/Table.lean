@@ -24,7 +24,7 @@ one-column schema named by the side, `[("key", A)]` or `[("val", B)]`. The two f
 
 Which form a result takes is decided by its key OBJECT where the program is elaborated (`Expand.emit`), never by
 reading the key column. A CSV file is the same two forms in one file, key columns then value columns (IO design D),
-read straight into encoded columns (`Db.csvRead`). This is the code `n.io` calls (lib `RelRun`); the laws about it
+read straight into encoded columns (`Db.csvRead`) and written straight from them (`Db.csvWrite`). This is the code `n.io` calls (lib `RelRun`); the laws about it
 are in `Rel.Lang.Table`. -/
 
 namespace Rel.Lang.Table
@@ -161,6 +161,20 @@ def readCsv (K S : Schema) (cols : Db.CsvCols) (path : String) : IO (Tab K.obj S
   match K with
   | [] => IO.ofExcept (frame v)
   | K => IO.ofExcept (do canon path ⟨n, ← side K (es.take K.length), v⟩)
+
+/-- The encodings of the side `x`'s columns in schema order (`Vals.cols`), the converse of `encCols`: each an atom
+    column's encoding as it lies; a list or sum column is no CSV column. -/
+def csvEncs {A : Obj} {n : USize} (path : String) (x : Vals A n) : Except String (List Enc) := do
+  (← (Vals.cols x).mapError (s!"{path}: " ++ ·)).mapM fun
+    | (.atom _, e) => .ok e
+    | _ => .error s!"{path}: a list or sum column, which a CSV field does not hold"
+
+/-- The table `t : K ⟶ S` as the CSV file `path`, the converse of `readCsv`: its header `cols`, then each row's key
+    columns and value columns, written from their encodings (`Db.csvWrite`); `K = []`: positions, the value columns
+    only, rows renumbered by their order, as `write` drops the key. -/
+def writeCsv (K S : Schema) (cols : Db.CsvCols) (path : String) (t : Tab K.obj S.obj) : IO Unit := do
+  let ks ← match K with | [] => pure [] | _ => IO.ofExcept (csvEncs path t.key)
+  Db.csvWrite path cols t.n (ks ++ (← IO.ofExcept (csvEncs path t.val)))
 
 /-- The table of the run-time definition `x` (IO design B): its code run closed, as a closed definition's is
     (`Expand.emit`), its error the op's message after `x`. -/
