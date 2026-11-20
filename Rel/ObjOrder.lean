@@ -3,6 +3,7 @@
   `QLean/Kernel/Sort.lean`), lifted from atoms to products, arrays and sums.
 -/
 import Rel.Run.Core
+import Rel.Kernel.Asc
 
 namespace Rel
 
@@ -179,6 +180,43 @@ theorem Obj.lt_cons (b : Obj) (x y : b.El) (xs ys : List b.El) :
   · rw [e, lt_append_left_iff]
     exact ⟨fun h => .inr ⟨rfl, h⟩, fun h => h.elim (fun h => by rw [Obj.lt, e] at h; exact absurd h (List.lt_irrefl _)) (·.2)⟩
   · rw [b.lt_append_iff e]; exact ⟨.inl, fun h => h.elim id fun h => absurd h.1 e⟩
+
+/-- **An integral atom's key is its order code**: at a type `ascLayout` orders as no float, `Obj.key` of the atom a
+raw word `a` reads as (`atomOfBits`, at `u1` a word below `2`) is `[ordCode a]`, so `kasc`'s code order on such a
+column is the value order `Obj.lt`. A float's code is IEEE totalOrder while its key merges NaNs and zeros: excluded. -/
+theorem Obj.key_ordCode {t : QAtomicType} {w : Nat} {s : Bool} (ht : ascLayout t = some (w, false, s))
+    (hg : t ≠ .general) (a : UInt64) (hu : t = .u1 → a < 2) :
+    Obj.key (.atom t) ((Carrier.of? t (.atom (Column.atomOfBits t a hg))).getD default) =
+      [(ordCode w false s a).toNat] := by
+  have e7 : (128 : UInt8).toNat = 2 ^ 7 := rfl
+  have e15 : (32768 : UInt64).toNat = 2 ^ 15 := rfl
+  have e31 : (2147483648 : UInt64).toNat = 2 ^ 31 := rfl
+  have e63 : (9223372036854775808 : UInt64).toNat = 2 ^ 63 := rfl
+  have m64 : (18446744073709551615 : UInt64).toNat = 2 ^ 64 - 1 := rfl
+  cases t <;> simp only [ascLayout, orderKind, Option.map_some, Option.map_none, reduceCtorEq, Option.some.injEq,
+    Prod.mk.injEq, and_false, false_and] at ht <;> obtain ⟨rfl, -, rfl⟩ := ht <;>
+    simp only [Obj.key, Column.atomOfBits, Carrier.of?, Option.getD_some, ordCode, Order.rank, Scan.Kind.width,
+      List.cons.injEq, and_true, Bool.false_eq_true, if_false, if_true, beq_iff_eq]
+  case u1 =>
+    have ha : a.toNat < 2 := hu rfl
+    rcases (by omega : a.toNat = 0 ∨ a.toNat = 1) with h | h
+    · obtain rfl : a = 0 := UInt64.toNat_inj.1 h; rfl
+    · obtain rfl : a = 1 := UInt64.toNat_inj.1 h; rfl
+  -- bit by bit: the stored word's low `8 * w` bits, the sign bit flipped where signed
+  all_goals
+    apply Nat.eq_of_testBit_eq; intro i
+    simp only [Nat.reduceMul, Nat.reduceSub, Nat.reduceEqDiff, if_false, UInt8.toNat_xor, UInt64.toNat_xor,
+      UInt64.toNat_and, Nat.testBit_xor, Nat.testBit_and, UInt8.toUInt8_toInt8, UInt64.toNat_toUInt8, Nat.toUInt64_eq,
+      UInt64.toNat_ofNat', Nat.testBit_mod_two_pow, Nat.testBit_two_pow, Nat.testBit_two_pow_sub_one, e7, e15, e31,
+      e63, m64, UInt16.toUInt16_toInt16, UInt32.toUInt32_toInt32, UInt64.toUInt64_toInt64, UInt64.toNat_toUInt16,
+      UInt64.toNat_toUInt32, UInt16.toNat_toUInt64, UInt32.toNat_toUInt64]
+    have hb : a.toNat.testBit i = true → i < 64 := fun h => by
+      refine Classical.byContradiction fun hc => ?_
+      rw [Nat.testBit_lt_two_pow (Nat.lt_of_lt_of_le (UInt64.toNat_lt a) (Nat.pow_le_pow_right (by omega)
+        (by omega)))] at h
+      cases h
+    generalize a.toNat.testBit i = b at hb
+    cases b <;> by_cases h64 : i < 64 <;> simp [h64] at hb ⊢ <;> (try intros) <;> omega
 
 #guard (Obj.arr .long).key ([] : List Int64) < (Obj.arr .long).key ([1] : List Int64)
 #guard (Obj.arr .long).key ([1] : List Int64) < (Obj.arr .long).key ([1, 0] : List Int64)
