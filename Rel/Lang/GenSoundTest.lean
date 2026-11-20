@@ -3,8 +3,8 @@ import Rel.Run.Lang.Embed
 import Rel.Lang.AllPrograms
 
 /-! `Tm.gen_sound` is not vacuous: each registered program re-read (`Expand.read`, at the homes and scope the
-    registry recorded), the definitions with no `Tm.gap` node counted, and four of them, of 8 to 431 nodes, required
-    to be among them. -/
+    registry recorded), the definitions whose code has no error table (`Tm.hasCode`) counted, and four of them, of 8
+    to 431 nodes, required to be among them. -/
 
 namespace Rel.Lang.GenSoundTest
 
@@ -44,28 +44,24 @@ run_cmd do
     if let some (_, o) := reg.calls.find? (·.2.const == c) then
       unless defs.any (·.1 == toString c) do defs := defs ++ [(toString c, o.res)]
   let mut ok : List String := []
-  let mut ks : List (List String) := []
+  let mut noCode : List String := []
   let mut nonmono : List String := []
   -- the counted terms' largest `Tm.size`, every call's body unfolded in it
   let mut big := 0
   for (x, ⟨_, _, t⟩) in defs do
-    -- `monoOK` false makes `LamLaws` false (`Tm.LamLawsAt.mono`, `Tm.monoOK_iff`): `gen_sound` says nothing
-    if t.gap then
-      ks := t.gapKinds.eraseDups :: ks
-      logInfo m!"gap in `{x}`: {t.gapKinds.eraseDups}"
+    -- an error table represents every meaning, and `monoOK` false makes `LamLaws` false (`Tm.LamLawsAt.mono`,
+    -- `Tm.monoOK_iff`): in either case `gen_sound` says nothing about a run
+    if !t.hasCode then noCode := noCode ++ [x]
     else if t.monoOK then
       ok := ok ++ [x]
       big := max big t.size
     else nonmono := nonmono ++ [x]
-  logInfo m!"{ok.length} of {defs.length} definitions of {reg.progs.size} programs have no gap node and pass \
+  logInfo m!"{ok.length} of {defs.length} definitions of {reg.progs.size} programs have code at every node and pass \
     Tm.monoOK; the largest has {big} nodes, call bodies unfolded"
-  logInfo m!"{nonmono.length} with no gap node fail Tm.monoOK (a fixed point's body not positive): {nonmono}"
-  -- per gap kind: the definitions it blocks, and those it blocks alone (their only gap kind)
-  let rows := ks.flatten.eraseDups.map fun k => (k, (ks.filter (·.contains k)).length, (ks.filter (· == [k])).length)
-  for (k, b, a) in rows.mergeSort fun (_, b, a) (_, b', a') => a > a' || (a == a' && b ≥ b') do
-    logInfo m!"gap `{k}`: blocks {b}, alone {a}"
+  logInfo m!"{noCode.length} have an error table at some node (Tm.hasCode): {noCode}"
+  logInfo m!"{nonmono.length} with code fail Tm.monoOK (a fixed point's body not positive): {nonmono}"
   for x in ["Rel.Programs.chess.K", "Rel.Programs.chess.N", "Rel.Programs.blocks.r", "Rel.Programs.edit.ne"] do
-    unless ok.contains x do throwError "GenSoundTest: {x} has a gap node or is no definition"
+    unless ok.contains x do throwError "GenSoundTest: {x} has an error table, fails Tm.monoOK, or is no definition"
 
 /-- Two modules' registrations of the keys `j` and `k`, as `a.*` and `b.*`: each `k` calls its own module's `j`. -/
 def twice (k' : Tm .long .long) : Expand.Registry :=
