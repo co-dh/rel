@@ -286,7 +286,7 @@ def placeholdersFor (env : Env) (p : Pos) (n : String) (k : Nat) : Except Err (L
   let ph := placeholdersOf env.objs
   if ph.length < k then
     throw ⟨p, s!"`{n}` has {k} object variables, and only {ph.length} atoms no object in scope is stored at " ++
-      s!"stand for them ({repr ph})"⟩
+      s!"stand for them ({ph.map atomName})"⟩
   pure ph
 
 /-- `n(qs) ≜ e : ty` built once (`elabOnce`); a body that needs keys stays a plan on them, and one that builds no

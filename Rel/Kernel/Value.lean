@@ -40,6 +40,13 @@ def f32IsNaN (b : UInt32) : Bool := (b >>> 23) &&& 0xff == 0xff && b &&& 0x7ffff
 
 end Bits
 
+/-- A word of the atom `t` the language never holds (PLAN R7, decision G): at `f32`, `f64` a NaN or the negative
+    zero, none at any other atom. Where a float word is produced it is normalised to one zero; a NaN has no row. -/
+def QAtomicType.nonCanonical : QAtomicType → UInt64 → Bool
+  | .f64, b => Bits.f64IsNaN b || b == 0x8000000000000000
+  | .f32, b => Bits.f32IsNaN b.toUInt32 || b.toUInt32 == 0x80000000
+  | _, _ => false
+
 /-- A q atom. One constructor per atomic type so that no ill-typed atom is representable;
 the payload is the raw wire value, including null and infinity sentinels. -/
 inductive QAtom

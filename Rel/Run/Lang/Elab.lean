@@ -85,13 +85,6 @@ def floatParts (w : Nat) (b : UInt64) : Option (Bool × Nat × Int) :=
   if ex == 2 ^ eb - 1 then none
   else if ex == 0 then some (neg, fr, 1 - bias - mb) else some (neg, fr + 2 ^ mb, ex - bias - mb)
 
-/-- A float word of `w` bytes the language never holds (PLAN R7, decision G): a NaN, or the negative zero. Where a
-    float word is produced it is normalised to one zero (`-0 ↦ +0`), and a NaN has no row. -/
-def floatNonCanonical (w : Nat) (b : UInt64) : Bool :=
-  match floatParts w b with
-  | none => b.toNat % 2 ^ (if w == 4 then 23 else 52) != 0
-  | some (neg, M, _) => neg && M == 0
-
 /-- A number word's sign (`-`, which `Embed.wNeg` writes before the token) and its token as Lean reads a number
     literal: a whole number `k` as `(k, false, 0)`, a scientific one (`2.5`, `1e-3`, `1.5e10`) by
     `Syntax.decodeScientificLitVal?`, `m·10^(∓e)` as `(m, s, e)`. -/
@@ -102,7 +95,7 @@ def numParts (w : String) : Option (Bool × Nat × Bool × Nat) :=
   | none => (Lean.Syntax.decodeScientificLitVal? d).map fun (m, s, e) => (neg, m, s, e)
 
 /-- The word `w` stored at the atom `t` of the object `n` (`litLayout`): a float of `t`'s width read as Lean reads a
-    float literal, a whole number included (`numParts`), normalised where it is produced (`floatNonCanonical`: `-0.0`
+    float literal, a whole number included (`numParts`), normalised where it is produced (`QAtomicType.nonCanonical`: `-0.0`
     and a `-1e-400` that rounds to it are `0.0`); an integer in `t`'s range. An error names `w` and `n` where it is
     neither, or where it is no finite float: no literal writes an infinity or a NaN (NaN has no row). -/
 def wordAt (p : Pos) (n : String) (t : Rel.QAtomicType) (w : String) : Except Err UInt64 :=
@@ -112,7 +105,7 @@ def wordAt (p : Pos) (n : String) (t : Rel.QAtomicType) (w : String) : Except Er
   | some (b, true, _) => match numParts w with
     | some (neg, m, s, e) =>
       -- a literal writes no NaN, so the one non-canonical word it can produce is the negative zero
-      let x := if floatNonCanonical b (floatBits b neg m s e) then floatBits b false m s e else floatBits b neg m s e
+      let x := if t.nonCanonical (floatBits b neg m s e) then floatBits b false m s e else floatBits b neg m s e
       if (floatParts b x).isSome then pure x else throw ⟨p, s!"{no}: it is beyond the range of {atomName t}"⟩
     | none => throw ⟨p, no⟩
   | some (b, false, sg) => match w.toInt? with
@@ -981,12 +974,28 @@ def constant (env : Env) (p : Pos) (o : Op) (objs : List OExp) : M Arg := do
   | _ => throw ⟨p, s!"{o.sym} takes at most two objects, found {objs.length}"⟩
   pure (.rel q s t)
 
-/-- The declared objects holding all the words `ws` (named elements, or numbers in their range), each once: an
-    imported object is in scope under its name and its constant, one object (`Expand.walk`). -/
+/-- Whether the declared object `i`, named `n`, holds the word `w`, by its own reader: one of its named elements, a
+    number in its range, or (`obj F : t`, `obj N` at `i64`) a word `wordAt` reads at its atom; else why not. -/
+def ObjInfo.member (i : ObjInfo) (n w : String) : Except String Unit :=
+  if i.elems.contains w then pure () else
+  match i.range, i.num, i.obj with
+  | some (lo, hi), _, _ => match w.toInt? with
+    | some k => if lo ≤ k ∧ k ≤ hi then pure () else throw s!"{w} is not in {n} = {lo}…{hi}"
+    | none => throw s!"'{w}' is not an element of {n}"
+  | none, true, .atom t => match wordAt {} n t w with | .ok _ => pure () | .error e => throw e.msg
+  | _, _, _ => throw s!"'{w}' is not an element of {n}"
+
+/-- The declared objects holding all the words `ws` (`ObjInfo.member`), each once: an imported object is in scope
+    under its name and its constant, one object (`Expand.walk`). -/
 def holders (objs : Objs) (ws : List String) : List OTy :=
-  let holds (i : ObjInfo) (w : String) : Bool := i.elems.contains w || (i.num && w.toInt?.isSome) ||
-    match i.range, w.toInt? with | some (lo, hi), some k => lo ≤ k && k ≤ hi | _, _ => false
-  ((objs.filter fun (_, i) => ws.all (holds i)).map (·.2.ty)).eraseDups
+  ((objs.filter fun (n, i) => ws.all fun w => (i.member n w).toBool).map (·.2.ty)).eraseDups
+
+/-- Why no declared object holds all the words `ws`: each object's reader on the first word it refuses. -/
+def refusals (objs : Objs) (ws : List String) : String :=
+  let rs := objs.foldl (fun (acc : List (OTy × String)) (n, i) => if acc.any (·.1 == i.ty) then acc else
+    match (ws.findSome? fun w => match i.member n w with | .error e => some e | .ok _ => none) with
+    | some e => acc ++ [(i.ty, e)] | none => acc) []
+  s!"no declared object has the elements {ws}" ++ (if rs.isEmpty then "" else s!" ({"; ".intercalate (rs.map (·.2))})")
 
 /-- Why the rows `ts` of a literal's position do not determine its object: they are none (an empty array's
     elements), or several declared objects hold their words. -/
@@ -1012,7 +1021,7 @@ partial def litTy (objs : Objs) (gd : Option String) (p : Pos) (ts : List Tup) :
     if gd.isSome && ws.all (·.toInt?.isSome) then fresh else
     match holders objs ws with
     | [o] => pure o
-    | [] => throw ⟨p, s!"no declared object has the elements {ws}"⟩
+    | [] => throw ⟨p, refusals objs ws⟩
     | _ => fresh
   | _, .pair .. =>
     pure (.prod (← litTy objs gd p (ts.map fun | .pair a _ => a | r => r))
@@ -1028,7 +1037,7 @@ partial def settleLit (objs : Objs) (p : Pos) (d : String) (ts : List Tup) (o : 
     let ws := ts.filterMap fun | .leaf w => some w | _ => none
     match holders objs ws with
     | [h] => unify p "the literal's object" o h
-    | [] => throw ⟨p, s!"`{d}`: no declared object has the elements {ws}, and no object variable is put at them"⟩
+    | [] => throw ⟨p, s!"`{d}`: {refusals objs ws}, and no object variable is put at them"⟩
     | _ => pure ()
   | .prod x y, .pair .. :: _ => do
     settleLit objs p d (ts.map fun | .pair a _ => a | r => r) x
@@ -1835,16 +1844,18 @@ where
 def code (p : Pos) (o : OTy) (w : String) : Except Err Int64 :=
   match zonk mc o with
   | .base n => match objs.lookup n with
-    | some i => match i.range, i.elems.idxOf? w, w.toInt? with
+    | some i =>
+      -- a number object's words are `wordAt`'s at its atom; one at another atom than `i64` holds no long (`litCol`)
+      if i.num then match i.obj with
+        | .long => (wordAt p n .i64 w).map (·.toInt64)
+        | o => throw ⟨p, s!"{w} at {n}, an object of {repr o}: no long"⟩
+      else match i.range, i.elems.idxOf? w, w.toInt? with
       | some (lo, hi), _, some k => if lo ≤ k ∧ k ≤ hi then pure (Int64.ofInt k)
           else throw ⟨p, s!"{w} is not in {n} = {lo}…{hi}"⟩
       | none, some k, _ => pure (Int64.ofNat k)
       | none, none, some k =>
-        -- an object declared at another atom holds no long: its words are `wordAt`'s (`litCol`)
-        if i.num then
-          if i.obj == .long then pure (Int64.ofInt k) else throw ⟨p, s!"{w} at {n}, an object of {repr i.obj}: no long"⟩
         -- each call checks its object holds the number (`build`'s `.call`)
-        else if i.ovar then
+        if i.ovar then
           if i.obj == .long then pure (Int64.ofInt k)
           else throw ⟨p, s!"the number {w} at {n}, an object variable its constant is generic over"⟩
         else throw ⟨p, s!"'{w}' is not an element of {n}"⟩
