@@ -12,6 +12,9 @@ rel_program frameGroup where
     idesc(c : ν ⟶ γ) : ν ⟶ ν ≜ r asc(ran(⟨c, r⟩)) π₂ r where r ≜ dom(c) ⟨⊤ count(c), succ⟩minus
     sortBy(a : β ⟶ γ, x : ν ⟶ β) : ν ⟶ β ≜ dom(x) iasc(x a) x
     topBy(n : 1 ⟶ ν, a : β ⟶ γ, x : ν ⟶ β) : ν ⟶ β ≜ take(n, sortBy(a, x))
+    sortByDesc(a : β ⟶ γ, x : ν ⟶ β) : ν ⟶ β ≜ dom(x) idesc(x a) x
+    -- the `n` rows of largest `a`, ties in position order (`bottomK` is `topBy`)
+    topK(n : 1 ⟶ ν, a : β ⟶ γ, x : ν ⟶ β) : ν ⟶ β ≜ take(n, sortByDesc(a, x))
 
     -- `head` of the ascending image is the first position of each key: no self-join
     firstOcc(c : ν ⟶ γ) : ν ⟶ ν ≜ dom(c) asc(ran(agg(c°, head)))
@@ -27,6 +30,6 @@ rel_program frameGroup where
     -- the most frequent value; among ties the first to occur (`idesc` is stable)
     mode(a : β ⟶ γ, x : ν ⟶ β) : 1 ⟶ γ ≜ summarize(head, s) s where s ≜ idesc(valueCounts(a, x) π₂) valueCounts(a, x) π₁
     -- the mean of the middle sorted rows, those with `count − 2 ≤ 2i ≤ count` (one row or two), in integers
-    median(a : β ⟶ γ, x : ν ⟶ β) : 1 ⟶ γ ≜ summarize(F(m a) ⟨sum, length⟩div, m) where m ≜ dom(⟨𝟙,𝟙⟩plus ≤ count(x)°) dom(⟨𝟙,𝟙⟩plus succ succ ≥ count(x)°) sortBy(a, x)
+    median(a : β ⟶ γ, x : ν ⟶ β) : 1 ⟶ γ ≜ summarize(F(m a) ⟨sum, length⟩div, m) where m ≜ dom(x) dom(⟨𝟙,𝟙⟩plus ≤ count(x)°) dom(⟨𝟙,𝟙⟩plus succ succ ≥ count(x)°) sortBy(a, x)
 
 end Rel.Programs

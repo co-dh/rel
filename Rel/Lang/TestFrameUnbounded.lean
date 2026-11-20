@@ -2,48 +2,164 @@ import Rel.Programs.FrameJoin
 
 /-! The dataframe library (plan M2) at the unbounded number object: positions and values in `obj N`, which declares
     no length, so no row below reads a bound the frame did not bring. The fixture and the hand-worked rows are those
-    of `TestFrameCols`/`Pos`/`Group`/`Join`. A closed `asc(P)` needs no keys (`Prim.whole`), so a join, whose
-    `asc(ran⟨𝟙,K⟩)` has no demand, runs whole at `N`; generic constants holding `length`, `sum` are `TestGenericN`. -/
+    of `TestFrameCols`/`Pos`/`Group`/`Join`/`Null`, copied. The joins numbered by `joinOn`'s `asc(ran⟨𝟙, K⟩)`
+    (`crossJoin`, `leftJoin`, `rightJoin`, `fullOuterJoin`) are left out: `⟨𝟙, K⟩` does not bound `𝟙`
+    at `N` there (`innerJoin` runs the table `K` first, which does). `big` is written inline (as a table, `<°` has no right bound at `N`), and `filterJust`/`filterNothing`/
+    `nulls` take `ran(xn) π₂`: the leaf `π₂` as their argument is read on its whole source at `N`. -/
 
 namespace Rel.Lang.TestFrameUnbounded
 
 open Rel.Programs.prelude Rel.Programs.frame Rel.Programs.frameGroup Rel.Programs.frameJoin in
 rel_program frameUnboundedT where
     obj K = {A,B,C}
+    obj S = {a,b}
     obj N
     x : N ⟶ K×N ≜ {(0,(B,5)),(1,(A,3)),(2,(B,5)),(3,(C,1)),(4,(A,7)),(5,(C,2)),(6,(B,1)),(7,(A,3))}
+
     -- plan R1: `(+n)°` as `minus`, `Λ` with its domain written, `F(v) sum`; `v − 1` = 4 2 4 0 6 1 0 2
     check x π₂ ⟨𝟙, ⊤ {(∗,1)}⟩minus = {(0,4),(1,2),(2,4),(3,0),(4,6),(5,1),(6,0),(7,2)}
     check agg((x π₁)°, length) = {(A,3),(B,3),(C,2)}
+
+    -- TestFrameCols
+    z : N ⟶ N ≜ {(0,1),(1,2),(2,3)}
+    w : N ⟶ N+1 ≜ dom(z) tot({(0,5),(2,3)})
+    c : N ⟶ [K] ≜ {(0,A B C),(1,B A),(2,C A B)}
+    code : K ⟶ N ≜ {(A,1),(B,2)}
+    check x π₁ = {(0,B),(1,A),(2,B),(3,C),(4,A),(5,C),(6,B),(7,A)}
+    check x ⟨π₁, π₂ ⟨𝟙,𝟙⟩plus⟩ = {(0,(B,10)),(1,(A,6)),(2,(B,10)),(3,(C,2)),(4,(A,14)),(5,(C,4)),(6,(B,2)),(7,(A,6))}
+    check x applyWhere(dom(π₁ {(A,A)}), ⟨π₁, π₂ succ⟩) =
+      {(0,(B,5)),(1,(A,4)),(2,(B,5)),(3,(C,1)),(4,(A,8)),(5,(C,2)),(6,(B,1)),(7,(A,4))}
+    ix : N ⟶ N ≜ {(0,3),(1,0),(2,3)}
+    check ix x = {(0,(C,1)),(1,(B,5)),(2,(C,1))}
     check summarize(F(x π₂) sum, x) = {(∗,27)}
-    -- generic constants at `N`: row windows, first and last row
+    check count(x) = {(∗,8)}
+    check summarize(F(x π₂) ⟨sum, length⟩div, x) = {(∗,3)}
+    check summarize(F(x π₂) Λ(∋) last, x) = {(∗,7)}
+    check summarize(F(x π₂) Λ(∋) head, x) = {(∗,1)}
+    check summarize(F(x π₁), x) = {(∗,B A B C A C B A)}
+    check ⟨x, z⟩ = {(0,((B,5),1)),(1,((A,3),2)),(2,((B,5),3))}
+    check w [𝟙, {(∗,0)}] = {(0,5),(1,0),(2,3)}
+    check x π₁ code = {(0,2),(1,1),(2,2),(4,1),(6,2),(7,1)}
+    check x π₁ tot(code) [𝟙, {(∗,0)}] = {(0,2),(1,1),(2,2),(3,0),(4,1),(5,0),(6,2),(7,1)}
+    check over(π₁, F(x π₂) sum, x) = {(0,((B,5),11)),(1,((A,3),13)),(2,((B,5),11)),(3,((C,1),3)),(4,((A,7),13)),
+      (5,((C,2),3)),(6,((B,1),11)),(7,((A,3),13))}
+    check dom(c contains({(A B,A B)})) = {(0,0),(2,2)}
+    cl : N ⟶ N ≜ c length
+    check cl = {(0,3),(1,2),(2,3)}
+    check summarize(F(x π₂) ⦇[{(∗,0)}, max]⦈, x) = {(∗,7)}
+    check describe(x π₂) = {(∗,(8,(3,(1,7))))}
+    check x π₂ ⟨𝟙, ⊤ {(∗,2)}⟩div = {(0,2),(1,1),(2,2),(3,0),(4,3),(5,1),(6,0),(7,1)}
+    check x π₂ ⟨𝟙, ⊤ {(∗,2)}⟩mod = {(0,1),(1,1),(2,1),(3,1),(4,1),(5,0),(6,1),(7,1)}
+    check filterBy(dom(π₁ {(A,A)}) ∩ dom(π₂ dom(<°{(2,∗)})), x) = {(0,(A,3)),(1,(A,7)),(2,(A,3))}
+    seven : N ⟶ N ≜ {(7,7)}
+    check filterBy(dom(π₁ {(C,C)}) ∪ dom(π₂ seven), x) = {(0,(C,1)),(1,(A,7)),(2,(C,2))}
+    check filterBy(𝟙 − dom(π₂ dom(<°{(2,∗)})), x) = {(0,(C,1)),(1,(C,2)),(2,(B,1))}
+
+    -- TestFramePos
     check take({(∗,3)}, x) = {(0,(B,5)),(1,(A,3)),(2,(B,5))}
     check drop({(∗,3)}, x) = {(0,(C,1)),(1,(A,7)),(2,(C,2)),(3,(B,1)),(4,(A,3))}
     check range({(∗,2)}, {(∗,5)}, x) = {(0,(B,5)),(1,(C,1)),(2,(A,7))}
+    pz : N ⟶ N ≜ asc(dom(x π₂ dom(<°{(2,∗)})))
+    check pz = {(0,0),(1,1),(2,2),(3,4),(4,7)}
+    check filterBy(dom(π₂ dom(<°{(2,∗)})), x) = {(0,(B,5)),(1,(A,3)),(2,(B,5)),(3,(A,7)),(4,(A,3))}
+    check takeLast({(∗,3)}, x) = {(0,(C,2)),(1,(B,1)),(2,(A,3))}
+    check takeLast({(∗,10)}, x) = x
+    check dropLast({(∗,3)}, x) = {(0,(B,5)),(1,(A,3)),(2,(B,5)),(3,(C,1)),(4,(A,7))}
+    check dropLast({(∗,10)}, x) = 𝟘
+    check rolling({(∗,3)}, F(x π₂) sum, x) = {(0,5),(1,8),(2,13),(3,9),(4,13),(5,10),(6,10),(7,6)}
+    check cumAgg(F(x π₂) sum, x) = {(0,5),(1,8),(2,13),(3,14),(4,21),(5,23),(6,24),(7,27)}
+    check cumAgg(F(x π₂) Λ(∋) last, x) = {(0,5),(1,5),(2,5),(3,5),(4,7),(5,7),(6,7),(7,7)}
     check firstOrNothing(x π₂) [𝟙, {(∗,40)}] = {(∗,5)}
     check lastOrNothing(x π₂) [𝟙, {(∗,40)}] = {(∗,3)}
     check firstOrNothing(take({(∗,0)}, x π₂)) [𝟙, {(∗,40)}] = {(∗,40)}
-    check filterBy(dom(π₂ {(3,3),(5,5),(7,7)}), x) = {(0,(B,5)),(1,(A,3)),(2,(B,5)),(3,(A,7)),(4,(A,3))}
-    check dom(x) iasc(x π₁) = {(0,1),(1,4),(2,7),(3,0),(4,2),(5,6),(6,3),(7,5)}
+
+    -- TestFrameGroup
+    check iasc(x π₁) = {(0,1),(1,4),(2,7),(3,0),(4,2),(5,6),(6,3),(7,5)}
+    check idesc(x π₁) = {(0,3),(1,5),(2,0),(3,2),(4,6),(5,1),(6,4),(7,7)}
     check sortBy(π₁, x) = {(0,(A,3)),(1,(A,7)),(2,(A,3)),(3,(B,5)),(4,(B,5)),(5,(B,1)),(6,(C,1)),(7,(C,2))}
+    check topBy({(∗,2)}, π₁, x) = {(0,(A,3)),(1,(A,7))}
+    check sortByDesc(π₁, x) = {(0,(C,1)),(1,(C,2)),(2,(B,5)),(3,(B,5)),(4,(B,1)),(5,(A,3)),(6,(A,7)),(7,(A,3))}
+    check topK({(∗,3)}, π₂, x) = {(0,(A,7)),(1,(B,5)),(2,(B,5))}
     check firstOcc(x π₁) = {(0,0),(1,1),(2,3)}
     check group(x π₁)° = {(0,0),(1,1),(2,0),(3,2),(4,1),(5,2),(6,0),(7,1)}
     check lastOcc(x π₁) = {(0,6),(1,7),(2,5)}
+    check firstOcc(x) = {(0,0),(1,1),(2,3),(3,4),(4,5),(5,6)}
     check distinct(x) = {(0,(B,5)),(1,(A,3)),(2,(C,1)),(3,(A,7)),(4,(C,2)),(5,(B,1))}
+    check aggregate(π₁, F(x π₂) sum, x) = {(0,(B,11)),(1,(A,13)),(2,(C,3))}
+    check aggregate(π₁, F(x π₂) Λ(∋) last, x) = {(0,(B,5)),(1,(A,7)),(2,(C,2))}
+    check aggregate(π₁, F(x π₂) Λ(∋) head, x) = {(0,(B,1)),(1,(A,3)),(2,(C,1))}
+    vc : N ⟶ K×N ≜ valueCounts(π₁, x)
+    check vc = {(0,(B,3)),(1,(A,3)),(2,(C,2))}
+    check collect(π₁, π₂, x) = {(0,(B,5 5 1)),(1,(A,3 7 3)),(2,(C,1 2))}
+    check aggregate(π₁, F(x π₂) head, x) = {(0,(B,5)),(1,(A,3)),(2,(C,1))}
+    check aggregate(π₁, F(x π₂) last, x) = {(0,(B,1)),(1,(A,3)),(2,(C,2))}
+    check countDistinct(x π₁) = {(∗,3)}
+    check countDistinct(x π₂) = {(∗,5)}
+    check countDistinct(x) = {(∗,6)}
+    check mode(π₁, x) = {(∗,B)}
+    check mode(π₂, x) = {(∗,5)}
+    check median(π₂, x) = {(∗,3)}
+    check median(π₂, take({(∗,5)}, x)) = {(∗,5)}
+    check median(π₂, take({(∗,4)}, x)) = {(∗,4)}
+
+    -- TestFrameJoin, without the `joinOn` rows
     y : N ⟶ K×N ≜ {(0,(A,9)),(1,(C,8)),(2,(A,6))}
+    y2 : N ⟶ K×N ≜ {(0,(A,3)),(1,(C,2)),(2,(B,4))}
+    wj : N ⟶ N×N ≜ {(0,(1,2)),(1,(3,4)),(2,(5,6))}
     check J(π₁, π₁, x, y) = {(1,0),(1,2),(3,1),(4,0),(4,2),(5,1),(7,0),(7,2)}
     check semiJoin(π₁, π₁, x, y) = {(0,(A,3)),(1,(C,1)),(2,(A,7)),(3,(C,2)),(4,(A,3))}
     check antiJoin(π₁, π₁, x, y) = {(0,(B,5)),(1,(B,5)),(2,(B,1))}
-    -- `J`'s 8 pairs numbered in `(i, j)` order, each read in `x` and `y`: `joinOn`'s `asc(ran⟨𝟙, K⟩)` with `⟨𝟙, K⟩`
-    -- cut to `dom(K)`, which bounds the `𝟙` that `N` does not
-    check asc(ran(dom(J(π₁, π₁, x, y)) ⟨𝟙, J(π₁, π₁, x, y)⟩)) (x × y) ={(0,((A,3),(A,9))),(1,((A,3),(A,6))),(2,((C,1),(C,8))),(3,((A,7),(A,9))),(4,((A,7),(A,6))),(5,((C,2),(C,8))),(6,((A,3),(A,9))),(7,((A,3),(A,6)))}
+    -- `ij`'s rows by `joinOn`'s own body with `⟨𝟙, K⟩` cut to `dom(K)`, which bounds the `𝟙` that `N` does not
+    check asc(ran(dom(J(π₁, π₁, x, y)) ⟨𝟙, J(π₁, π₁, x, y)⟩)) (x × y) = {(0,((A,3),(A,9))),(1,((A,3),(A,6))),
+      (2,((C,1),(C,8))),(3,((A,7),(A,9))),(4,((A,7),(A,6))),(5,((C,2),(C,8))),(6,((A,3),(A,9))),(7,((A,3),(A,6)))}
     -- the same rows by `innerJoin` itself: `⟨𝟙, K⟩` runs the table `K` first, whose domain bounds `𝟙` (`GenK.pairK`)
-    check innerJoin(π₁, π₁, x, y) ={(0,((A,3),(A,9))),(1,((A,3),(A,6))),(2,((C,1),(C,8))),(3,((A,7),(A,9))),(4,((A,7),(A,6))),(5,((C,2),(C,8))),(6,((A,3),(A,9))),(7,((A,3),(A,6)))}
+    check innerJoin(π₁, π₁, x, y) = {(0,((A,3),(A,9))),(1,((A,3),(A,6))),(2,((C,1),(C,8))),(3,((A,7),(A,9))),
+      (4,((A,7),(A,6))),(5,((C,2),(C,8))),(6,((A,3),(A,9))),(7,((A,3),(A,6)))}
+    check append(x, y) = {(0,(B,5)),(1,(A,3)),(2,(B,5)),(3,(C,1)),(4,(A,7)),(5,(C,2)),(6,(B,1)),(7,(A,3)),
+      (8,(A,9)),(9,(C,8)),(10,(A,6))}
+    check union(x, y) = {(0,(B,5)),(1,(A,3)),(2,(C,1)),(3,(A,7)),(4,(C,2)),(5,(B,1)),(6,(A,9)),(7,(C,8)),(8,(A,6))}
+    check intersect(x, y2) = {(0,(A,3)),(1,(C,2))}
+    check difference(x, y2) = {(0,(B,5)),(1,(C,1)),(2,(A,7)),(3,(B,1))}
+    check symmetricDifference(x, y2) = {(0,(B,5)),(1,(C,1)),(2,(A,7)),(3,(B,1)),(4,(B,4))}
+    check melt({(∗,a)}, π₁, {(∗,b)}, π₂, wj) = {(0,(a,1)),(1,(a,3)),(2,(a,5)),(3,(b,2)),(4,(b,4)),(5,(b,6))}
+    t : N ⟶ K×(N×N) ≜ {(0,(A,(1,2))),(1,(B,(3,4))),(2,(C,(5,6)))}
+    check pivotLong(π₁, {(∗,a)}, π₂ π₁, {(∗,b)}, π₂ π₂, t) =
+      {(0,(A,(a,1))),(1,(B,(a,3))),(2,(C,(a,5))),(3,(A,(b,2))),(4,(B,(b,4))),(5,(C,(b,6)))}
+
+    -- TestFrameNull, without leftJoin, rightJoin, fullOuterJoin
+    nc : N ⟶ N+1 ≜ dom(x) tot({(0,5),(2,5),(4,7),(7,3)})
+    xn : N ⟶ K×(N+1) ≜ ⟨x π₁, nc⟩
+    check filterJust(ran(xn) π₂, xn) ⟨π₁, π₂ inl°⟩ = {(0,(B,5)),(1,(B,5)),(2,(A,7)),(3,(A,3))}
+    check filterNothing(ran(xn) π₂, xn) π₁ = {(0,A),(1,C),(2,C),(3,B)}
+    check shift({(∗,1)}, x π₂) [𝟙, {(∗,40)}] = {(0,40),(1,5),(2,3),(3,5),(4,1),(5,7),(6,2),(7,1)}
+    check shift({(∗,2)}, x π₂) [𝟙, {(∗,40)}] = {(0,40),(1,40),(2,5),(3,3),(4,5),(5,1),(6,7),(7,2)}
+    -- `N` holds the negatives `Z = -10…40` held in `TestFrameNull`
+    v : N ⟶ N ≜ {(0,5),(1,3),(2,5),(3,1),(4,7),(5,2),(6,1),(7,3)}
+    check diff({(∗,1)}, v) [𝟙, {(∗,40)}] = {(0,40),(1,-2),(2,2),(3,-4),(4,6),(5,-5),(6,-1),(7,2)}
+    check x π₂ inl [𝟙, {(∗,40)}] = x π₂
+    check nc inl° = {(0,5),(2,5),(4,7),(7,3)}
+    check dom(nc inl°) = {(0,0),(2,2),(4,4),(7,7)}
+    check dom(nc inr°) = {(1,1),(3,3),(5,5),(6,6)}
+    check nc (succ ⊕ 𝟙) [𝟙, {(∗,40)}] = {(0,6),(1,40),(2,6),(3,40),(4,8),(5,40),(6,40),(7,4)}
+    check nc [𝟙, summarize(F(nc inl°) ⟨sum, length⟩div, nc inl°)] = {(0,5),(1,5),(2,5),(3,5),(4,7),(5,5),(6,5),(7,3)}
+    check nulls(ran(xn) π₂, xn) = {(∗,4)}
+    check fills(nc) [𝟙, {(∗,40)}] = {(0,5),(1,5),(2,5),(3,5),(4,7),(5,7),(6,7),(7,3)}
+    n2 : N ⟶ N+1 ≜ dom(x) tot({(2,4),(5,1)})
+    check fills(n2) [𝟙, {(∗,40)}] = {(0,40),(1,40),(2,4),(3,4),(4,4),(5,1),(6,1),(7,1)}
+    check v ⟨𝟙, ⊤ {(∗,3)}⟩minus ⟨𝟙, ⊤ {(∗,0)}⟩max = {(0,2),(1,0),(2,2),(3,0),(4,4),(5,0),(6,0),(7,0)}
+    q : N ⟶ K×N ≜ {(0,(A,2)),(1,(A,6)),(2,(C,1)),(3,(B,9))}
+    aq : N ⟶ (K×N)×(K×N) ≜ aj(π₁, π₂, π₁, π₂, x, q) ⟨π₁, π₂ [𝟙, {(∗,(B,0))}]⟩
+    check aq = {(0,((B,5),(B,0))),(1,((A,3),(A,2))),(2,((B,5),(B,0))),(3,((C,1),(C,1))),(4,((A,7),(A,6))),
+      (5,((C,2),(C,1))),(6,((B,1),(B,0))),(7,((A,3),(A,2)))}
+    t3 : N ⟶ K×(S×N) ≜ {(0,(A,(a,1))),(1,(B,(a,2))),(2,(A,(b,3))),(3,(A,(a,4))),(4,(C,(b,5)))}
+    pw : N ⟶ K×(N×N) ≜ pivotWide(π₁, π₂ π₁, {(∗,a)}, {(∗,b)}, F(t3 π₂ π₂) sum, t3) ⟨π₁, ⟨π₂ π₁ [𝟙, {(∗,0)}], π₂ π₂ [𝟙, {(∗,0)}]⟩⟩
+    check pw = {(0,(A,(5,3))),(1,(B,(2,0))),(2,(C,(0,5)))}
+
     -- a top-level `asc` of a closed set: `j ↦` its `j`-th smallest element
     s : N ⟶ N ≜ {(9,9),(2,2),(5,5)}
     sa : N ⟶ N ≜ asc(s)
     check sa = {(0,2),(1,5),(2,9)}
 
-#guard frameUnboundedT.ok
+#guard frameUnboundedT.failures.map toString == []
 
 end Rel.Lang.TestFrameUnbounded

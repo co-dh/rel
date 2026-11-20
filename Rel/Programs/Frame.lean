@@ -29,6 +29,8 @@ rel_program frame where
     -- rolling window: `j ≤ i < j + w`, written from the `j` side so no position below 0 is formed
     win(w : 1 ⟶ ν, x : ν ⟶ β) : ν ⟶ ν ≜ ≥ ∩ (dom(x) ⟨𝟙, ⊤ w⟩plus > dom(x))°
     rolling(w : 1 ⟶ ν, f : [ν] ⟶ δ, x : ν ⟶ β) : ν ⟶ δ ≜ agg(win(w, x), f)
+    -- cumulative aggregate (polars cum_sum, q's sums with `f` = sum): row `i` folds rows `j ≤ i`; m²/2 pairs
+    cumAgg(f : [ν] ⟶ δ, x : ν ⟶ β) : ν ⟶ δ ≜ agg(dom(x) ≥ dom(x), f)
 
     -- columns: `tot(R)` makes a partial column total, null where `R` has no value
     tot(R : α ⟶ β) : α ⟶ β+1 ≜ R inl ∪ ((𝟙 − dom(R)) ⊤ inr)
@@ -41,6 +43,13 @@ rel_program frame where
     -- the first and last row, null on an empty frame (`head` of the ascending positions is the first)
     firstOrNothing(x : ν ⟶ β) : 1 ⟶ β+1 ≜ tot(summarize(head, x) x)
     lastOrNothing(x : ν ⟶ β) : 1 ⟶ β+1 ≜ tot(summarize(last, x) x)
+    -- the null rows of the nullable column `c`
+    nulls(c : β ⟶ γ+1, x : ν ⟶ β) : 1 ⟶ ν ≜ count(filterNothing(c, x))
+    -- q's fills: row `i` reads the last row `j ≤ i` holding a value (`m` drops each `j` below another);
+    -- a null before any value stays
+    fills(c : ν ⟶ γ+1) : ν ⟶ γ+1 ≜ (m ∪ (dom(c) − dom(m))) c where m ≜ (dom(c) ≥ dom(c inl°)) − ((dom(c) ≥ dom(c inl°)) >)
+    -- describe, its integer part: count, mean, min, max of a column
+    describe(c : ν ⟶ γ) : 1 ⟶ ν×(γ×(γ×γ)) ≜ ⟨count(c), ⟨summarize(F(c) ⟨sum, length⟩div, c), ⟨summarize(F(c) Λ(∋) head, c), summarize(F(c) Λ(∋) last, c)⟩⟩⟩
     applyWhere(p : β ⟶ β, e : β ⟶ β) : β ⟶ β ≜ (p e) ∪ (𝟙 − p)
     contains(s : [α] ⟶ [α]) : [α] ⟶ [α] ≜ dom(suffix prefix s)
 
