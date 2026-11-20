@@ -60,4 +60,33 @@ rel_program sumsP where
 
 #guard sumsP.failures.isEmpty
 
+-- The positions and the values are two objects: positions in `P = 0…9`, values in `N`. Key 0: 3, 3+4, 7+5;
+-- key 1: −2, −2+6, 4+9 at positions 2, 8, 9.
+rel_program sumsPN where
+    obj N
+    obj P = 0…9
+    x : N×P ⟶ N ≜ {((0,0),3),((0,1),4),((0,3),5),((1,2),-2),((1,9),9),((1,8),6)}
+    s : N×P ⟶ N ≜ sums(x)
+    check s = {((0,0),3),((0,1),7),((0,3),12),((1,2),-2),((1,8),4),((1,9),13)}
+
+#guard sumsPN.failures.isEmpty
+
+-- The values summed by `plus`, so they are a number object of i64 as `plus`'s are: an object of i32 or of f64 is
+-- refused, naming it, its atom and the one accepted.
+/-- error: line 82, col 5: sums on I: I is an object of i32, and sums runs on objects of i64 only -/
+#guard_msgs in
+rel_program sumsI where
+    obj N
+    obj I : i32
+    x : N×N ⟶ I ≜ {((0,0),3),((0,1),4)}
+    s : N×N ⟶ I ≜ sums(x)
+
+/-- error: line 90, col 5: sums on F: F is an object of f64, and sums runs on objects of i64 only -/
+#guard_msgs in
+rel_program sumsF where
+    obj N
+    obj F : f64
+    x : N×N ⟶ F ≜ {((0,0),3.5),((0,1),4)}
+    s : N×N ⟶ F ≜ sums(x)
+
 end Rel.Lang.TestSums

@@ -156,6 +156,9 @@ structure Prim where
   /-- Its table is made from its relations' whole tables (`GenK.ofRel`): it needs no keys where they need none
       (`Tm.dem`), so a closed `asc(P)` runs whole at a source with no universe. -/
   whole : Bool := false
+  /-- Its object variables that the value verbs compute on (`sums`'s `V`, summed by `plus`): each must be a number
+      object, refused as `plus` refuses one (`Elab.numObj`), since its constant reads them at `.long`. -/
+  num : List String := []
   deriving Inhabited
 
 def consRow : Prim :=
@@ -255,8 +258,9 @@ def prims : List Prim :=
    inlConvRow, inrConvRow,
    -- `sums(x)`: q's `sums` per key, `x : κ×ν ⟶ γ`, the key the source's first component; the fused form of
    -- `agg(dom(x) (𝟙 × ≥) dom(x), F(x) ⦇[0, plus]⦈)` (`rowDens`). Not `mono`: a larger `x` changes the sums. Its
-   -- definition is, as `asc`'s, no `Elab.dfns` row
-   { sym := "sums",
+   -- definition is, as `asc`'s, no `Elab.dfns` row. The positions `ℕ` and the values `V` are two objects: only
+   -- `V` is summed, so only `V` is a number object (`num`)
+   { sym := "sums", num := ["V"],
      sig := ([((.prod (.var {} "K") (.var {} "ℕ"), .var {} "V"), some false)], .prod (.var {} "K") (.var {} "ℕ"),
        .var {} "V"),
      mono := false, aop := .error "AOP declares no prefix sums per key", whole := true },
