@@ -223,6 +223,12 @@ Diff table 的「状态」列：✅ 后面是完成它的步骤；🔄 是部分
   文件上的 `read (write x) = frame x` 只 `#guard`（extern）。sym 列仍报“等 sym writer（步骤 6）”。
   步骤 3 未开始：`Expand.emit` 的 `.io` twin。锚点：`walk` 的 pend 循环（`Expand.lean:527-531`，有 `qs`/`ty` 的声明
   类型与 `env₀.objs` 的 `ObjInfo.cols`/`num`）、kernel twin（`Expand.lean:873-901`）、`Rel.runE`（`Lazy.lean:27`）。
+  I5 ✅（分支 `io-i5`）：CSV 的 Lean 模型，无 extern。`Rel/Kernel/Db/Csv.lean`：`csvWords cols b`、`csvText cols n ws`、
+  逐 atom 的读写（`readAtom`/`fmtAtom`，float 精确舍入 + 最短文本，date/datetime 以 1970-01-01 为原点）、C.4 的拒绝；
+  写出只在文本能读回同一 word 时写（`cell`），NaN、`-0`、越界 date 都由这一条拒绝。`Rel/KernelSpec/Csv.lean`：
+  `csvWords_csvText`（写后读为恒等）已证，axioms `propext, Classical.choice, Quot.sound`。`Rel/Kernel/Db/CsvTest.lean`：
+  case 表全部 `decide +kernel`，atom 用例按 `QAtomicType` 的 constructor 证（`atom_cases`）。C.5 的逐块解析编码是
+  Rust（I6/I7）的要求；`.rel` 字面量的 `floatBits` 仍用 Lean `Float`，待改用 `readFloat`。选择记在 `/data/tmp/io/i5-notes.md`。
 - ✅ D.11 表层语法（`schema S = {k : K, v : N}`、`col S "v"`）已合并（da636a9）；`Schema` 层此前已合并（5ab6d2e，master 0fb9879，`Rel/Lang/Schema.lean`、`TestSchema.lean`）；余下：TestFrame 的
   frame 按 `Schema` 索引（随 D.9）。frame 的 schema 进入类型（owner 经 dataframe 会话决定，选 wrapper，不加 `Obj` constructor）：
   `Schema := List (String × Obj)`；`Schema.obj : Schema → Obj` 是 definition（按 `.d` 列序的嵌套 `prod`）；frame 的项按
