@@ -474,8 +474,10 @@ Diff table 的「状态」列：✅ 后面是完成它的步骤；🔄 是部分
       T10 之前还欠的：`hyloCycle` 的固定和各 `Kern*` 模块的旧路径对照（随旧层删）；第三个 gate 的 `arithOut` 一半与
       `TestNative` 的 `gplan` 全是旧 export，T10 会弄断，保留它需要 W6 先做（写出路径 `lit` + `own_write` 那一半不受影响）。
       未做（性能，不挡 T10）：`ldiv(tab, bits)` 每轮把 matrix 读回约 2800 万行再排序约 4 次，是 `sudokupc9` 剩下的主要
-      开销（按排序来源推出，perf 无 Lean 侧调用栈）；不 decode 的做法约 40 行、无证明、估计到约 7 s。μ 每轮只规范化
-      `f(X) − X`（semi-naive）可去掉 `asc::cmp_rows` 的大部分。
+      开销（按排序来源推出，perf 无 Lean 侧调用栈）；不 decode 的做法约 40 行、无证明、估计到约 7 s。μ 的 semi-naive：不做（2026-11-19，
+      owner 交我定）。试过 `Δ = f(X) − X` 再 `X ∪ Δ`：每轮排序两次，`muGrow` 66 s → 79 s，已撤回。要省需要循环体对
+      `∪` 分配的判定（`X ≫ X`、带 `\` 的不满足）和已排序表的归并（新 kernel）；17 个程序里只有 `Party` 用 `μ`，
+      运行时间可忽略。出现受益的程序时再议。
       未证：`Tab.keepBits_holds`、`Tab.compTabMat_holds`（命题已写在 `bitsfin` 的报告里，缺 `index` 与 `colMap` 的 spec）、
       `Tab.pack`、`Tab.map`、新行、`GenK.hylo`。
       状态（2026-11-19 17:58，master `a2f1f9b`；`make check` 绿到 `6a91b10`，其后的合并未构建）：已合入 `frame1b`（`frame`
