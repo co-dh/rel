@@ -55,6 +55,12 @@ Rel is a programming language of its own, not an implementation of k or q:
 - **Notation follows freyd's.** Composition in diagram order by juxtaposition or `≫` (`R ≫ S`: first `R`, then `S`);
   applying an operator takes parentheses (`F(R)`, `thin(Q)`, `f(a)`); a converse with a name of its own is written by
   that name (`≥`, not `≤°`; `∈`, not `∋°`).
+- **Everything is a relation: that is the design goal** — a prim row or a library definition takes relations and
+  returns a relation (`asc(P) : ℕ ⟶ α` numbers a set by value), never a function on list cells standing in for one
+  (`[B] ⟶ [ℕ]`), because every verb and every law composes relations, and a list-shaped row needs a second row to
+  turn its cell back into a relation before a program can use it.
+- **A row or a definition is named by the kdb/q function it computes** — the sort permutation is `iasc`, `asc` is
+  the sort itself, likewise `idesc`/`desc`, `distinct`, `group`, because a reader who knows q then knows the result.
 - **A spec is a composition of relations first** — before writing or shortening a program, say which relations it
   composes; definition bodies are point-free (no `∃` in a body), because a pointwise body hides the composition the
   laws are about.
