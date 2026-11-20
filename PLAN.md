@@ -169,13 +169,12 @@ Diff table 的「状态」列：✅ 后面是完成它的步骤；🔄 是部分
 - ✅ D.6（已合并）`scan` 的方向参数（反向扫描，van Herk）：`kscan` 的扩展，不是新 kernel。
   与 D.5 同一个 agent，在 `scan` 合并之后。
 - 🔄 D.7 第一部分 F-e 已合并（ca8f45c，master 78b01ed）：`Rel.Db.pushPart`、`Rel.Kernel.enlistLong`，native gate 比较
-  整个 `out` 目录。第二部分只有列的 mmap（`d7store` d3926fd：`qlean_own_map` 移进 relk，`Rel.Db.fileMap`），未合并：
-  qlean 的 HEAD 按路径用 rel 的主 checkout，合并后 `qlean_own_map` 重复定义；qlean 工作区另有未提交的改动把 rel 钉在
-  `qlean-base` = e024297。删副本还是保持钉住，由 owner 在 qlean 会话里定。表目录未做，按规则已定：reader 用 qlean 现有的
-  `ownColumn` 移进 Rel（DRY）；`.d` 是自有格式的 sym 列（no serialization）；共享字典用列头已有的 `domain` 字段。
-  第二部分（mmap reader）owner 说需要：master 上只有 writer，没有 reader（`crate/src/os.rs` 的 `mmap`/`Map` 无人使用，
-  没有 `own_map` export）；分支 `d7map` fbb31f7（未合并）：reader 是 mmap（`ownMap`），定律 `ownParse_ownImage`；
-  未决：`own::check` 没有 Lean model。
+  整个 `out` 目录。第二部分（列的 mmap reader）也已合并：`d7map` fbb31f7 与 `d7store` d3926fd 都经 75a2d45 进了
+  master；reader 叫 `Rel.Db.ownMap`（`@[extern "qlean_own_map"]`，body `ownParse`，不是 `fileMap`），定律
+  `ownParse_ownImage`（`Rel/KernelSpec/Own.lean`）。qlean HEAD 仍在 `rust/qrs/src/ffi/own.rs` 定义一份 `qlean_own_map`，
+  但它的工作区把 rel 钉在 `qlean-base` = e024297（不含 75a2d45），所以现在没有重复定义；qlean 把钉子移过 75a2d45 时删
+  自己那份（DRY），是 qlean 会话的事。表目录见 D.9。`.d` 是自有格式的 sym 列（no serialization）；共享字典用列头已有的
+  `domain` 字段。未决：`own::check` 没有 Lean model。
   原条目：stage 2 存储的 runtime 部分：export 把 column 目录 mmap 成 `Tab`（目录 = 表，文件 = 一列的 foR `Enc`，`.d` 列序，
   共享 sym 字典文件；`pos` 一侧不落盘，按 6.13）。只动 `crate/rt` 与 `Rel.Kernel`，6.9 合并后与 D.4 并行。
   同一 agent 补 dataframe F-e：`relc`/`rel-native` 跑不了算出来的程序，缺两条 plan 指令：把算出的 buffer 交给
@@ -198,6 +197,11 @@ Diff table 的「状态」列：✅ 后面是完成它的步骤；🔄 是部分
   `environment already contains 'Rel.Lang.Row.mk.injEq'`，`Tm.gap` 因此不能在运行程序的模块里调用。在 master 上修，立即派。
 - ⬜ D.9 语言里的 `input`/`output` 声明：改 `Elab`/`Expand`，在 3.10/3.11（去掉 demand bit 的 `Elab`、`Expand`）之后。
   D.11 的表层语法也在这里：`.rel` 里的 `col "…"`，以及带 schema 的 `input`/`output`。
+  步骤 1（与语言表层无关，分支 `d9table`）：`Rel/Lang/Table.lean` 的 `readVals` 是 `cols` 的逆：从目录里每列一个自有格式文件
+  （按 `cols` 的路径加列名前缀）mmap（`ownMap`）出值一侧，经 `Arr.of` 检查进入；位置 key 不落盘。唯一的 writer 是
+  `writeVals`，`writeRel` 是它的实例（`key`、`val` 两个前缀）。`ownParts`/`ownFile` 对 `Enc.pos` 答 `none`（不写文件），
+  不再报错。`f32`/`f64`、`sym` 与 enumeration 列被拒（float 规则未定；sym 等 sym writer）。往返测试
+  `Rel/Lang/TestTable.lean`。
 - ✅ D.11 表层语法（`schema S = {k : K, v : N}`、`col S "v"`）已合并（da636a9）；`Schema` 层此前已合并（5ab6d2e，master 0fb9879，`Rel/Lang/Schema.lean`、`TestSchema.lean`）；余下：TestFrame 的
   frame 按 `Schema` 索引（随 D.9）。frame 的 schema 进入类型（owner 经 dataframe 会话决定，选 wrapper，不加 `Obj` constructor）：
   `Schema := List (String × Obj)`；`Schema.obj : Schema → Obj` 是 definition（按 `.d` 列序的嵌套 `prod`）；frame 的项按
