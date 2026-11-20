@@ -563,13 +563,18 @@ Diff table 的「状态」列：✅ 后面是完成它的步骤；🔄 是部分
         - owner 定的顺序（C）：先做 architecture §4 已定的实现改动（`∩ − \` 分段 `scan`、`\` 不物化 join、
           `ldiv(tab, bits)` 在 bit matrix 上算、`μ` semi-naive），差分测试与回归固定保护；`ldiv meet diff mu fold` 与
           bit matrix 路径的证明（T11e 余项、`ReadsBack`）等实现稳定后再做。T11e5 只做 `arith`。
+        - 2026-11-20 00:33，master 7de1951（未跑全 gate，三次合并后各自构建过）：覆盖 143 / 203。p4rows：`Tm.gapKinds` + `gap_eq`，
+          `GenSoundTest` 按 gap 种类报"挡住 / 单独挡住"；行 `snoc cons cat` 已证。p5rows：行 `uncat zip length` 已证。p6arg：
+          `Tab.loop_holds`、`GenK.loop_sound`。剩余（挡住/单独）：`arg call` 23/22、`nu` 8/8、`est` 10/6、`hylo` 6/5、`atPos` 7/4、
+          `arg loop` 4/4、`mu` 2/2。`arg call` 证不了：`Tm.call` 只带 `Lean.Name`，`den = 𝟘`，`gen` 给 error 表；按
+          `doc/rel-denotation-design.md` stage 5 做 `let` 节点（在 p9arg 合入后派）。在做：p7munu（`mu nu`）、p8est（`est atPos hylo`）、
+          p9arg（`RowOK` 推广到带参数的行，`loop filter merge thinL F`，`tails` 的 `LamLaws` 对象）。
+          待清：`cellBounds`（`Rel/Run/Power.lean`）是 `cellSpan` 的重复；`GenSoundTest.reread` 的 docstring 说"no call node is left"，对 Once 体不成立。
         - 2026-11-20 00:17，master edb7413，`make check` 全绿（check-55）：覆盖 127 / 203，差分 478 比较、0 不同。`gen_sound` 无未证前提
           （`ReadsBack` 三项已证并删除，p3reads）；`fold foldr foldI` 出 gap（p2fold + p2bfold：`uncons/unsnoc/pack_holds`，
           `foldRounds_holds` 的步骤可依赖 key；`Vals.pack` 补 2^63 检查）。check-54 红过一次：p2bfold 与 p3reads 合起来不编译，
-          4 行修复。architecture 的 `seen` 三处已统一为"行须已按 `asc` 序"（91f583f）。在做：`p4rows`（gap 统计 + `prim` 行定律）。
+          4 行修复。architecture 的 `seen` 三处已统一为"行须已按 `asc` 序"（91f583f）。
         - 23:44，master ad90237，`make check` 全绿（check-53）：覆盖 122 / 203，差分 478 比较、0 不同（compile-diff 一步 432 s）。
-          在做：`p2fold`（`pack/uncons/unsnoc` 三条定律，`fold foldr foldI` 出 gap）、`p3reads`（证 `ReadsBack`，去掉 `gen_sound` 的前提）。
-          待 owner 定：architecture `:223` 对 `:244`、`:257` 在 `seen` 是否要求已排序上矛盾（代码 = `:223`）。
         - 关机前的状态（2026-11-19 21:50 左右）：master ad90237 = 10342bc + d1diff（差分测试按 `Tm.hasCode` 跳过，分支上 478 比较、
           0 不同）+ p1ldiv 6f2aa59（`Tab.ldivTabMat_law/_wf`、`GenK.ldiv_sound/_wf` 已证，`ldiv` 出 gap，分支上 122 / 203；
           `ReadsBack` 多了第三个合取项）。**master 上还没构建、没跑 `make check`**（下一个是 check-53）。I1 前后计时：316 个定义合计 120.9 s → 121.1–124.5 s，两次"之后"相差 3.4 s，差别在噪声内，没有可测的变慢。
