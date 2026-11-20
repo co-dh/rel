@@ -1,4 +1,5 @@
 import Rel.Lang.GenKFold
+import Rel.Lang.GenKEst
 import Rel.Lang.Den
 import Rel.Run.Lang.Expand
 
@@ -264,21 +265,20 @@ def Prim.proved (r : Prim) (A B : Obj) (os : List (Obj × Obj)) : Bool :=
   (rowsProved.lookup r.sym).isSome && os.length == rowArity r.sym && primHasCode r A B os
 
 mutual
-/-- Some node of `t` has no proved case in `Tm.gen_sound`: no `GenK` lemma yet (`est thin atPos mu nu
-    hylo`), a lemma that does not hold as stated (`juncD`), a row not `Prim.proved` at its relations' objects
+/-- Some node of `t` has no proved case in `Tm.gen_sound`: no `GenK` lemma yet (`thin mu nu hylo`), a lemma that does not hold as stated (`juncD`), a row not `Prim.proved` at its relations' objects
     (`Tm.argGap`), or no mirror in `Tm.gen` (`call`, a spine headed by no row). -/
 def Tm.gap : {A B : Obj} → Tm A B → Bool
   | A, B, .prim r => !r.proved A B []
   | _, _, .val _ | _, _, .uni _ | _, _, .zero | _, _, .id | _, _, .outl | _, _, .outr | _, _, .nil
-  | _, _, .var .. => false
+  | _, _, .atPos _ | _, _, .var .. => false
   | _, _, .top R | _, _, .conv R | _, _, .dom R | _, _, .ran R | _, _, .lam R | _, _, .E R | _, _, .own R
-  | _, _, .succ R | _, _, .arith _ R | _, _, .leq R | _, _, .lt R | _, _, .flat R | _, _, .share _ R => R.gap
+  | _, _, .succ R | _, _, .arith _ R | _, _, .leq R | _, _, .lt R | _, _, .flat R | _, _, .share _ R
+  | _, _, .est R => R.gap
   | _, _, .comp R S | _, _, .meet R S | _, _, .join R S | _, _, .diff R S | _, _, .pair R S | _, _, .prod R S
   | _, _, .junc R S | _, _, .fold R S | _, _, .foldr R S | _, _, .foldI R S => R.gap || S.gap
   | _, _, .ldiv R S U V | _, _, .rdiv R S U V => R.gap || S.gap || U.gap || V.gap
   | _, _, .arg (C := C) (D := D) f x => f.argGap [(C, D)] || x.gap
-  | _, _, .juncD .. | _, _, .est _ | _, _, .thin _ | _, _, .atPos _
-  | _, _, .mu .. | _, _, .nu .. | _, _, .hylo .. | _, _, .call .. => true
+  | _, _, .juncD .. | _, _, .thin _ | _, _, .mu .. | _, _, .nu .. | _, _, .hylo .. | _, _, .call .. => true
 
 /-- `Tm.argGen`'s case split: the spine `t` given later relations at the objects `os` has a gap node. -/
 def Tm.argGap : {A B : Obj} → Tm A B → List (Obj × Obj) → Bool
@@ -300,16 +300,15 @@ mutual
 def Tm.gapKinds : {A B : Obj} → Tm A B → List String
   | A, B, .prim r => if r.proved A B [] then [] else ["prim " ++ r.sym]
   | _, _, .val _ | _, _, .uni _ | _, _, .zero | _, _, .id | _, _, .outl | _, _, .outr | _, _, .nil
-  | _, _, .var .. => []
+  | _, _, .atPos _ | _, _, .var .. => []
   | _, _, .top R | _, _, .conv R | _, _, .dom R | _, _, .ran R | _, _, .lam R | _, _, .E R | _, _, .own R
-  | _, _, .succ R | _, _, .arith _ R | _, _, .leq R | _, _, .lt R | _, _, .flat R | _, _, .share _ R => R.gapKinds
+  | _, _, .succ R | _, _, .arith _ R | _, _, .leq R | _, _, .lt R | _, _, .flat R | _, _, .share _ R
+  | _, _, .est R => R.gapKinds
   | _, _, .comp R S | _, _, .meet R S | _, _, .join R S | _, _, .diff R S | _, _, .pair R S | _, _, .prod R S
   | _, _, .junc R S | _, _, .fold R S | _, _, .foldr R S | _, _, .foldI R S => R.gapKinds ++ S.gapKinds
   | _, _, .ldiv R S U V | _, _, .rdiv R S U V => R.gapKinds ++ S.gapKinds ++ U.gapKinds ++ V.gapKinds
   | _, _, .juncD .. => ["juncD"]
-  | _, _, .est _ => ["est"]
   | _, _, .thin _ => ["thin"]
-  | _, _, .atPos _ => ["atPos"]
   | _, _, .mu .. => ["mu"]
   | _, _, .nu .. => ["nu"]
   | _, _, .hylo .. => ["hylo"]
@@ -347,7 +346,7 @@ def Tm.LamLaws : {A B : Obj} → Tm A B → Prop
   | _, _, .lam (A := A) (B := B) R => LamLaw A B ∧ R.LamLaws
   | _, _, .E (A := A) (B := B) R => LamLaw (.arr A) B ∧ R.LamLaws
   | _, _, .top R | _, _, .conv R | _, _, .dom R | _, _, .ran R | _, _, .own R | _, _, .succ R | _, _, .arith _ R
-  | _, _, .leq R | _, _, .lt R | _, _, .flat R | _, _, .share _ R => R.LamLaws
+  | _, _, .leq R | _, _, .lt R | _, _, .flat R | _, _, .share _ R | _, _, .est R => R.LamLaws
   | _, _, .comp R S | _, _, .meet R S | _, _, .join R S | _, _, .diff R S | _, _, .pair R S | _, _, .prod R S
   | _, _, .junc R S | _, _, .fold R S | _, _, .foldr R S | _, _, .foldI R S => R.LamLaws ∧ S.LamLaws
   | _, _, .ldiv R S U V | _, _, .rdiv R S U V => R.LamLaws ∧ S.LamLaws ∧ U.LamLaws ∧ V.LamLaws
@@ -693,6 +692,8 @@ theorem Tm.gen_sound_spine {A B : Obj} (t : Tm A B) :
     exact code_of (ih.1 Code.empty Val.empty hg hl ⟨fun _ _ _ => GenK.zero_sound, fun _ _ _ => trivial⟩)
   case flat R ih => exact GenK.flat_sound (code_of (ih.1 η ρ hg hl hs))
   case var k => exact hs.1 k _ _
+  case est Q ih => exact GenK.est_sound (code_of (ih.1 η ρ hg hl hs))
+  case atPos k => exact GenK.atPos_sound k
 
 /-- **`Tm.gen` is sound off the gap**: the code of a term with no `Tm.gap` node represents its meaning in every
     context, given `LamLaw` at each `Λ`, and an environment `η` that represents `ρ`. -/
