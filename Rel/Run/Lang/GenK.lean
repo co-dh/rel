@@ -64,7 +64,7 @@ def compT {A B C : Obj} : Except String (Tab A B) → Rel B C → Rel A C
   | .error e, _ => .tab (.error e)
   | .ok r, .lazy g => if r.n == 0 then .tab Tab.zero else
     .lazy fun K => match Tab.ran r with
-      | .ok d => compV r ((Rel.lazy g).force ⟨some ⟨d.n, d.key⟩, K.ran⟩)
+      | .ok d => compV r ((Rel.lazy g).force ⟨some ⟨d.n, d.key⟩, K.ran, none⟩)
       | .error e => .tab (.error e)
   | .ok r, S => compV r S
 
@@ -72,7 +72,7 @@ def compT {A B C : Obj} : Except String (Tab A B) → Rel B C → Rel A C
     and its range is `s`'s key column. -/
 def compS {A B C : Obj} (R : Rel A B) (D : Option ((n : USize) × Vals A n)) : Except String (Tab B C) → Rel A C
   | .error e => .tab (.error e)
-  | .ok s => match R.runE ⟨D, some ⟨s.n, s.key⟩⟩ with | .ok r => compR r s | .error e => .tab (.error e)
+  | .ok s => match R.runE ⟨D, some ⟨s.n, s.key⟩, none⟩ with | .ok r => compR r s | .error e => .tab (.error e)
 
 /-- `R S` (`Tab.compSel`: a bit matrix where `Tab.bitsWin` holds), `R` lazy: one operand runs first on the side of
     the context it touches and hands its other side to the second as a bound (§0) — `S` where it is a table or the
@@ -83,12 +83,12 @@ def comp (A B C : Obj) (e : Bool) (R : Fn true A B) (S : Fn e B C) : Fn true A C
   | .lazy f => .lazy fun K => match S with
     | .tab s => compS (.lazy f) K.dom s
     | S => if K.dom.isNone && K.ran.isSome then
-        match S.runE ⟨none, K.ran⟩ with
+        match S.runE ⟨none, K.ran, none⟩ with
         | .ok s => compS (.lazy f) K.dom (.ok s)
-        | .error _ => compT ((Rel.lazy f).runE ⟨K.dom, none⟩) S
-      else match (Rel.lazy f).runE ⟨K.dom, none⟩ with
+        | .error _ => compT ((Rel.lazy f).runE ⟨K.dom, none, none⟩) S
+      else match (Rel.lazy f).runE ⟨K.dom, none, none⟩ with
         | .ok r => compT (.ok r) S
-        | .error _ => compS (.lazy f) K.dom (S.runE ⟨none, K.ran⟩)
+        | .error _ => compS (.lazy f) K.dom (S.runE ⟨none, K.ran, none⟩)
 
 /-- The code of a closed term with `dem = false` as its table, computed once: such a term has one table whatever
     the context, so this changes no result and saves re-running it at each use (a fold reading it in every round). -/
@@ -109,7 +109,10 @@ def lift2 {A B C D E F : Obj} (f : Tab A B → Tab C D → Except String (Tab E 
   | .tab r, .tab s => .tab do f (← r) (← s)
   | R, S => .lazy fun K => .tab do f (← R.runE (kl K)) (← S.runE (kr K))
 
-def conv (A B : Obj) (R : Fn false A B) : Fn false B A := lift1 Tab.conv (fun K => ⟨K.ran, K.dom⟩) R
+/-- `R°` reads `R` on the converse of every side the context knows, its pairs too (`T ∩ ≥` tests `T°`'s against
+    `≤`). -/
+def conv (A B : Obj) (R : Fn false A B) : Fn false B A :=
+  lift1 Tab.conv (fun K => ⟨K.ran, K.dom, K.pairs.map fun p => ⟨p.n, p.val, p.key⟩⟩) R
 
 /-- `r` cut to the values `K` knows of its sides, `idU X ≫ r ≫ idU L`, a side left whole where it is unknown. -/
 def cut {A B : Obj} (K : Known A B) (r : Tab A B) : Except String (Tab A B) := do
@@ -122,11 +125,12 @@ def meetV {A B : Obj} : Rel A B → Rel A B → Rel A B
   | .bits g w o x ra y rc, .tab t | .tab t, .bits g w o x ra y rc => .tab (t >>= (Tab.keepBits · g w o x ra y rc))
   | R, S => .tab do Tab.inter (← R.runE {}) (← S.runE {})
 
-/-- `r` cut to `K`'s sides (`cut`), and the context its own sides make: beside a table `t` with `dom t ⊆ K`,
-    `ran t ⊆ L`, `(K ≫ S ≫ L) ∩ t = S ∩ t`, so the other operand of `∩` or `−` runs knowing only `t`'s sides. -/
+/-- `r` cut to `K`'s sides (`cut`), and the context it makes: `t`'s sides and `t` itself as the pairs, since
+    `S ∩ t` reads `S` only on `t`'s pairs, so the other operand of `∩` or `−` need agree with its denotation on no
+    other pair (a comparison tests those pairs, never `dom t × ran t`). -/
 def bound {A B : Obj} (K : Known A B) (r : Tab A B) : Except String (Tab A B × Known A B) := do
   let t ← cut K r; let d ← Tab.dom t; let l ← Tab.ran t
-  pure (t, ⟨some ⟨d.n, d.key⟩, some ⟨l.n, l.key⟩⟩)
+  pure (t, ⟨some ⟨d.n, d.key⟩, some ⟨l.n, l.key⟩, some t⟩)
 
 /-- `T ∩ S` in `K`, `T` already run: its table bounds `S` (`bound`), a bit matrix's read back as rows (in `ν` the
     `ldiv` beside a parameter run on demand is one); a lazy or failed `T` meets `S` run on `K`. -/
@@ -157,8 +161,10 @@ def diff (A B : Obj) (d e : Bool) (R : Fn d A B) (S : Fn e A B) : Fn d A B := ma
   | .lazy _ => .lazy fun K => .tab do let p ← bound K (← R.runE K); Tab.diff p.1 (← S.runE p.2)
   | S => lift2 Tab.diff (fun K => K) (fun K => K) R S
 /-- A coreflexive's two sides are one value set, so either side the context knows bounds `R`'s side. -/
-def dom (A B : Obj) (d : Bool) (R : Fn d A B) : Fn d A A := lift1 Tab.dom (fun K => ⟨K.dom <|> K.ran, none⟩) R
-def ran (A B : Obj) (R : Fn false A B) : Fn false B B := lift1 Tab.ran (fun K => ⟨none, K.dom <|> K.ran⟩) R
+def dom (A B : Obj) (d : Bool) (R : Fn d A B) : Fn d A A :=
+  lift1 Tab.dom (fun K => ⟨K.dom <|> K.ran, none, none⟩) R
+def ran (A B : Obj) (R : Fn false A B) : Fn false B B :=
+  lift1 Tab.ran (fun K => ⟨none, K.dom <|> K.ran, none⟩) R
 
 /-! ### T3: `⊤ π₁ π₂ ⟨R,S⟩ × \ /`, `ν`, `μ` -/
 
@@ -166,14 +172,14 @@ def ran (A B : Obj) (R : Fn false A B) : Fn false B B := lift1 Tab.ran (fun K =>
     between two bounded neighbours `P ⊤ Q` reads only `P`'s and `Q`'s values, never `B`'s whole universe. -/
 def top (A B : Obj) (V : Fn false B B) : Fn true A B := .lazy fun K => match K.dom with
   | none => .tab (.error "⊤ ran with its domain unknown")
-  | some c => .tab do Tab.top c.2 (← cut ⟨none, K.ran⟩ (← V.runE ⟨none, K.ran⟩)).val
+  | some c => .tab do Tab.top c.2 (← cut ⟨none, K.ran, none⟩ (← V.runE ⟨none, K.ran, none⟩)).val
 def outl (A B : Obj) : Fn true (.prod A B) A := ofVals _ _ fun X => Tab.outl X
 def outr (A B : Obj) : Fn true (.prod A B) B := ofVals _ _ fun X => Tab.outr X
 /-- `⟨T, S⟩`'s two tables on the domain `D`, `T` run first: `⟨T,S⟩ a (b,c)` needs `T a b`, so `T`'s table cut to `D`
     bounds the domain `S` runs on (`bound`). -/
 def pairOn {A B C : Obj} (D : Option ((n : USize) × Vals A n)) (T : Rel A B) (S : Rel A C) :
     Except String (Tab A B × Tab A C) := do
-  let p ← bound ⟨D, none⟩ (← T.runE ⟨D, none⟩); pure (p.1, ← S.runE ⟨p.2.dom, none⟩)
+  let p ← bound ⟨D, none, none⟩ (← T.runE ⟨D, none, none⟩); pure (p.1, ← S.runE ⟨p.2.dom, none, none⟩)
 
 /-- `⟨R, S⟩` on the domain `D`: the operand that is no `lazy` runs first and bounds the other (`pairOn`); of two lazy
     ones `R`, or `S` where `R` cannot run on `D` alone. -/
@@ -187,14 +193,14 @@ def pairK {A B C : Obj} (D : Option ((n : USize) × Vals A n)) (R : Rel A B) (S 
 
 def pair (A B C : Obj) (d e : Bool) (R : Fn d A B) (S : Fn e A C) : Fn (d && e) A (.prod B C) := match R, S with
   | .lazy _, _ | _, .lazy _ => .lazy fun K => .tab (pairK K.dom R S)
-  | R, S => lift2 Tab.pair (fun K => ⟨K.dom, none⟩) (fun K => ⟨K.dom, none⟩) R S
+  | R, S => lift2 Tab.pair (fun K => ⟨K.dom, none, none⟩) (fun K => ⟨K.dom, none, none⟩) R S
 /-- `R × S`: on the pairs `Z` a context knows, `⟨π₁ ≫ R, π₂ ≫ S⟩` on `Z`, each operand run knowing its domain is that
     side of `Z`; where none is known, CROSS of the two tables. -/
 def prod (A B C D : Obj) (R : Fn false A B) (S : Fn false C D) : Fn false (.prod A C) (.prod B D) :=
   .lazy fun K => .tab <| match K.dom with
     | some ⟨n, Z⟩ => do
-      let l ← (← Tab.outl Z).comp (← R.runE ⟨some ⟨n, Z.1⟩, none⟩)
-      l.pair (← (← Tab.outr Z).comp (← S.runE ⟨some ⟨n, Z.2⟩, none⟩))
+      let l ← (← Tab.outl Z).comp (← R.runE ⟨some ⟨n, Z.1⟩, none, none⟩)
+      l.pair (← (← Tab.outr Z).comp (← S.runE ⟨some ⟨n, Z.2⟩, none, none⟩))
     | none => do Tab.prod (← R.runE {}) (← S.runE {})
 /-- `R/S` and `R\S` read both sides whole, with the universes `UA`, `UB` (`UB`, `UC`); `ldiv` is `Tab.ldivSel`, a bit
     matrix where `Tab.bitsWin` holds. -/
@@ -310,31 +316,33 @@ def after (A B : Obj) (f : {K : Obj} → Tab K A → Except String (Tab K B)) : 
     `D ≫ arithDen k U` (`Tab.arith`), `U` run knowing its domain is the values each step asks about, so an infinite
     universe (`𝟙`) is as good as a table. -/
 def succ (U : Fn false .long .long) : Fn true .long .long :=
-  after _ _ fun D => Tab.succ D fun X => U.runE ⟨some ⟨_, X⟩, none⟩
+  after _ _ fun D => Tab.succ D fun X => U.runE ⟨some ⟨_, X⟩, none, none⟩
 def arith (k : UInt8) (U : Fn false .long .long) : Fn true (.prod .long .long) .long :=
-  after _ _ fun D => Tab.arith k D fun X => U.runE ⟨some ⟨_, X⟩, none⟩
+  after _ _ fun D => Tab.arith k D fun X => U.runE ⟨some ⟨_, X⟩, none, none⟩
 
 /-- One side of `cmp`: `U` run knowing its domain is the values `s` the context knows of that side, its `dom`, cut
     to `s` (`idU ≫ dom U`); `dom U` run closed where the context knows none, and where that fails (an infinite
     universe, `𝟙`) the message naming `op` and the side `w`. -/
 def cmpSide (op w : String) (U : Rel .long .long) (s : Option ((n : USize) × Vals .long n)) :
     Except String ((n : USize) × Vals .long n) := do
-  let u ← (U.runE ⟨s, none⟩).mapError fun e => if s.isSome then e else
+  let u ← (U.runE ⟨s, none, none⟩).mapError fun e => if s.isSome then e else
     s!"{op} on an unbounded object: nothing bounds its {w} side; compose it with a table on that side ({e})"
   let d ← u.dom
   s.elim (pure ⟨d.n, d.key⟩) fun c => do let t ← (← Tab.idU c.2).comp d; pure ⟨t.n, t.key⟩
 
-/-- `K ≫ op ≫ L` on `U`'s universe (`Tab.leq`, `Tab.lt`, CROSS of the two sides `cmpSide` reads, §0 `Known`). -/
-def cmp (op : String) (f : {n m : USize} → Vals .long n → Vals .long m → Except String (Tab .long .long))
-    (U : Fn false .long .long) : Fn false .long .long := .lazy fun K => .tab do
+/-- `K ≫ o ≫ L` on `U`'s universe, the two sides as `cmpSide` reads them (§0 `Known`): on the pairs `P` a meet hands
+    it, `P` cut to those sides and tested pair by pair (`Tab.cmpPairs`); else CROSS of the sides (`Tab.cmpOn`). -/
+def cmp (op : String) (o : Kernel.Op) (U : Fn false .long .long) : Fn false .long .long := .lazy fun K => .tab do
   let k ← cmpSide op "left" U K.dom; let l ← cmpSide op "right" U K.ran
-  f k.2 l.2
-def leq (U : Fn false .long .long) : Fn false .long .long := cmp "≤" Tab.leq U
-def lt (U : Fn false .long .long) : Fn false .long .long := cmp "<" Tab.lt U
+  match K.pairs with
+  | some p => Tab.cmpPairs o (← cut ⟨some k, some l, none⟩ p)
+  | none => Tab.cmpOn o k.2 l.2
+def leq (U : Fn false .long .long) : Fn false .long .long := cmp "≤" .le U
+def lt (U : Fn false .long .long) : Fn false .long .long := cmp "<" .lt U
 
 /-- `Λ(R)` on the keys `X` (`Tab.lam`), `R` run knowing its domain is `X`. -/
 def lam (A B : Obj) (d : Bool) (R : Fn d A B) : Fn true A (.arr B) :=
-  ofVals _ _ fun X => do Tab.lam X (← R.runE ⟨some ⟨_, X⟩, none⟩)
+  ofVals _ _ fun X => do Tab.lam X (← R.runE ⟨some ⟨_, X⟩, none, none⟩)
 /-- `E(R) = Λ(∋ ≫ R)` (`Tab.E`'s composition): `R` runs knowing its domain is `ran(∋)` at the arrays in demand. -/
 def E (A B : Obj) (d : Bool) (R : Fn d A B) : Fn true (.arr A) (.arr B) :=
   lam _ _ true (comp _ _ _ d (ofVals _ _ fun X => Tab.mem X) R)
@@ -343,7 +351,7 @@ def nil (A B : Obj) : Fn true A (.arr B) := ofVals _ _ fun X => Tab.nil X
     rows given a relation on elements (`filter`, `takewhile`). -/
 def elems (A B C : Obj) (d : Bool) (R : Fn d A B)
     (f : {n : USize} → Tab A B → Vals (.arr A) n → Except String (Tab (.arr A) C)) : Fn true (.arr A) C :=
-  ofVals _ _ fun X => do let k ← (← Tab.mem X).ran; f (← R.runE ⟨some ⟨k.n, k.key⟩, none⟩) X
+  ofVals _ _ fun X => do let k ← (← Tab.mem X).ran; f (← R.runE ⟨some ⟨k.n, k.key⟩, none, none⟩) X
 /-- A row whose table `f` makes from its relation's whole table (`asc`): `R` run in no context, since the answer at
     any key reads every row of `R`; the context cuts the table (`Rel.Reps` reads it on the context's sides). -/
 def ofRel (A B C D : Obj) (d : Bool) (R : Fn d A B) (f : Tab A B → Except String (Tab C D)) : Fn true C D :=
@@ -352,14 +360,14 @@ def ofRel (A B C D : Obj) (d : Bool) (R : Fn d A B) (f : Tab A B → Except Stri
     given a family `R : I ⟶ C` (`flat`). -/
 def onKeys (I A B C : Obj) (d : Bool) (R : Fn d I C)
     (f : {n : USize} → Vals (.prod I A) n → Tab I C → Except String (Tab (.prod I A) B)) : Fn true (.prod I A) B :=
-  ofVals _ _ fun X => do f X (← R.runE ⟨some ⟨_, X.1⟩, none⟩)
+  ofVals _ _ fun X => do f X (← R.runE ⟨some ⟨_, X.1⟩, none, none⟩)
 
 /-- `est(Q)`, `thin(Q)` on the arrays in demand, the pair test `Q` run knowing its domain is the pairs `D` it is
     asked about (`Gen.est`'s `Q.at`). -/
 def est (B : Obj) (Q : Fn true (.prod B B) (.prod B B)) : Fn true (.arr B) B :=
-  ofVals _ _ fun X => Tab.est (fun D => Q.runE ⟨some ⟨D.n, D.val⟩, none⟩) X
+  ofVals _ _ fun X => Tab.est (fun D => Q.runE ⟨some ⟨D.n, D.val⟩, none, none⟩) X
 def thin (B : Obj) (Q : Fn true (.prod B B) (.prod B B)) : Fn true (.arr B) (.arr B) :=
-  ofVals _ _ fun X => Tab.thin (fun D => Q.runE ⟨some ⟨D.n, D.val⟩, none⟩) X
+  ofVals _ _ fun X => Tab.thin (fun D => Q.runE ⟨some ⟨D.n, D.val⟩, none, none⟩) X
 def atPos (B : Obj) (k : Nat) : Fn true (.arr B) B := ofVals _ _ fun X => Tab.atPos k X
 
 /-! ### T8: `⦇e,S⦈`, `⦇e,S⦈ʳ`, `⦇e,S⦈` given a family, `Rᴵ` -/
@@ -397,11 +405,11 @@ def foldI (I E V : Obj) (d d' : Bool) (e : Fn d I (.prod V V)) (S : Fn d' (.prod
 def testVals (B A C : Obj) (Q : Fn true (.prod B B) (.prod B B))
     (f : {n : USize} → (Tab (.prod B B) (.prod B B) → Except String (Tab (.prod B B) (.prod B B))) → Vals A n →
       Except String (Tab A C)) : Fn true A C :=
-  ofVals _ _ fun X => f (fun D => Q.runE ⟨some ⟨D.n, D.val⟩, none⟩) X
+  ofVals _ _ fun X => f (fun D => Q.runE ⟨some ⟨D.n, D.val⟩, none, none⟩) X
 def testAfter (B A C : Obj) (Q : Fn true (.prod B B) (.prod B B))
     (f : {K : Obj} → (Tab (.prod B B) (.prod B B) → Except String (Tab (.prod B B) (.prod B B))) → Tab K A →
       Except String (Tab K C)) : Fn true A C :=
-  after _ _ fun P => f (fun D => Q.runE ⟨some ⟨D.n, D.val⟩, none⟩) P
+  after _ _ fun P => f (fun D => Q.runE ⟨some ⟨D.n, D.val⟩, none, none⟩) P
 /-- The twin of `Gen.stepAfter`: the step `F` given the coreflexive `D` of the pairs a round meets, `D ≫ F`
     (`compT`: not run on no pair). -/
 def stepAfter (S T A C : Obj) (d : Bool) (F : Fn d S T)

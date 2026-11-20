@@ -22,16 +22,20 @@ def _root_.Rel.Known.den (K : Known A B) : Core.Rel A.El A.El × Core.Rel B.El B
   (K.dom.elim (𝟙 _) fun c => (graph c.2.row)° ≫ graph c.2.row,
    K.ran.elim (𝟙 _) fun c => (graph c.2.row)° ≫ graph c.2.row)
 
-/-- `r` represents `R` in the context `K`, as `run` computes it there: a table agrees with `R` on `K`'s sides
-    only, since `Gen.Sound` fixes a term only at the keys it is given and a caller that passes `K.ran` cuts the
-    result itself; a `tab none` (a run past capacity) represents anything. -/
+/-- The pairs `K` admits: every pair where it hands no `pairs`, else the pairs of that table (§0: the operand of a
+    meet is read only on the other operand's pairs). -/
+def _root_.Rel.Known.on (K : Known A B) (x : A.El) (y : B.El) : Prop := K.pairs.elim True fun p => rep p x y
+
+/-- `r` represents `R` in the context `K`, as `run` computes it there: a table agrees with `R` on the pairs `K`
+    admits, inside its sides, only, since `Gen.Sound` fixes a term only at the keys it is given and a caller that
+    passes `K.ran` or `K.pairs` cuts the result itself; a `tab none` (a run past capacity) represents anything. -/
 def _root_.Rel.Rel.Reps (K : Known A B) : Rel A B → Core.Rel A.El B.El → Prop
   | .tab (.error _), _ => True
-  | .tab (.ok t), R => K.den.1 ≫ rep t ≫ K.den.2 = K.den.1 ≫ R ≫ K.den.2
+  | .tab (.ok t), R => ∀ x y, K.den.1 x x → K.den.2 y y → K.on x y → (rep t x y ↔ R x y)
   | .lazy f, R => (f K).Reps K R
   | .bits g w o x ra y rc, R => match Tab.ofBits g w o x ra y rc with
     | .error _ => True
-    | .ok t => K.den.1 ≫ rep t ≫ K.den.2 = K.den.1 ≫ R ≫ K.den.2
+    | .ok t => ∀ x y, K.den.1 x x → K.den.2 y y → K.on x y → (rep t x y ↔ R x y)
 
 /-- `rep R x y` is `R.Holds x y`, by definition. -/
 theorem rep_apply (R : Tab A B) (x : A.El) (y : B.El) : rep R x y = R.Holds x y := rfl
