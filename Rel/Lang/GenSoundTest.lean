@@ -26,8 +26,9 @@ namespace Rel.Lang.GenSoundTest
 
 open Lean Elab Command Rel.Lang Rel.Lang.Embed
 
-/-- What the registered program `n` reads, re-read at its recorded homes (`.chain`) and scopes (`.prog`), the
-    registry's own constants of `n` left out as `define` had them. -/
+/-- What the registered program `n` reads, re-read at its recorded homes (`.chain`) and scopes (`.prog`), every
+    parametric definition expanded at its use, as `walk` expands one with no constant: a call means its callee's
+    term with the arguments put for its parameters (Q11), so no `call` node is left for `Tm.den` to read. -/
 def reread (n : Name) : CommandElabM (Except Err Expand.Read) := do
   let env ← getEnv; let opts ← getOptions
   let reg := Expand.relRegistry.getState env
@@ -35,8 +36,7 @@ def reread (n : Name) : CommandElabM (Except Err Expand.Read) := do
   let resOf (h : Name) : String → Found := match reg.progs.find? (·.1 == h) with
     | some (_, ns, os) => (resolverAt env opts reg ns os).1
     | none => fun _ => .none
-  liftTermElabM (Expand.read (fun k => if n.isPrefixOf k then none else reg.calls.lookup k) progs (← programOf n) n
-    resOf).run
+  liftTermElabM (Expand.read (fun _ => none) progs (← programOf n) n resOf).run
 
 run_cmd do
   let reg := Expand.relRegistry.getState (← getEnv)
