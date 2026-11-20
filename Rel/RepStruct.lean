@@ -50,6 +50,7 @@ theorem Vals.cross_rows {A B : Obj} {n m : USize} {x : Vals A n} {y : Vals B m}
   unfold Vals.cross at h
   simp only [bind, Except.bind, pure, Except.pure] at h
   split at h; · cases h
+  split at h; · cases h
   rename_i c hc
   obtain ⟨T, iR, iS⟩ := c
   split at h; · cases h

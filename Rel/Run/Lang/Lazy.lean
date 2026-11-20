@@ -11,6 +11,9 @@ namespace Rel
 structure Known (A B : Obj) where
   dom : Option ((n : USize) × Vals A n) := none
   ran : Option ((n : USize) × Vals B n) := none
+  /-- The pairs the context meets the result with (`GenK.meetOn`): off them the result is never read, so a relation
+      that tests a pair at a time (a comparison) tests these instead of building `dom × ran`. -/
+  pairs : Option (Tab A B) := none
 
 /-- A relation as a table, or as a function of what is `Known` of its sides; a function, not a demand bit,
     so a lazy term reads its keys from the context it runs in. -/

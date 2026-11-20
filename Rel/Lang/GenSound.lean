@@ -365,10 +365,10 @@ theorem memo_sound {A B : Obj} {R : Rel A B} {X : Core.Rel A.El B.El} (hR : ∀ 
   | lazy f =>
     simp only [GenK.memo]; split
     next t h =>
-      refine (reps_iff _ _ _).2 fun t' h' x y _ _ => ?_
-      cases h'; exact (reps_iff _ _ _).1 (hR {}) t h x y rfl rfl
+      refine (reps_iff _ _ _).2 fun t' h' x y _ _ _ => ?_
+      cases h'; exact (reps_iff _ _ _).1 (hR {}) t h x y rfl rfl trivial
     next => exact hR K
-  | bits => exact (reps_iff _ _ _).2 fun t h x y _ _ => (reps_iff _ _ _).1 (hR {}) t h x y rfl rfl
+  | bits => exact (reps_iff _ _ _).2 fun t h x y _ _ _ => (reps_iff _ _ _).1 (hR {}) t h x y rfl rfl trivial
 
 theorem memo_wf {A B : Obj} {R : Rel A B} (h : R.Wf) : (GenK.memo A B R).Wf := by
   cases R with
@@ -852,7 +852,8 @@ theorem GenK.merge_sound {B : Obj} {Q : Rel (.prod B B) (.prod B B)} {TQ : Den (
     ∀ K, (GenK.testAfter B (.prod (.arr B) (.arr B)) (.arr B) Q fun q P => Tab.merge q P).Reps K
       (fun p zs => zs = List.merge p.1 p.2 fun a b => decide (TQ (a, b) (a, b))) :=
   GenK.after_row_sound fun _ _ h k zs => Tab.merge_holds (fun D _ hT p hp =>
-    (GenK.reps_iff ⟨some ⟨D.n, D.val⟩, none⟩ _ _).1 (hQ _) _ hT p _ ((GenK.side_some rfl p).2 hp) rfl) h k zs
+    (GenK.reps_iff ⟨some ⟨D.n, D.val⟩, none, none⟩ _ _).1 (hQ _) _ hT p _ ((GenK.side_some rfl p).2 hp) rfl trivial)
+    h k zs
 
 theorem rowOK_merge : RowOK "merge" := rowOK_args (c := RowCode.merge) rfl rfl fun _ σ xs _ _ _ _ hn _ hv => by
   have h1 : rowArity "merge" = 1 := by decide
@@ -883,7 +884,8 @@ theorem GenK.thinL_sound {B : Obj} {Q : Rel (.prod B B) (.prod B B)} {TQ : Den (
     ∀ K, (GenK.testVals B (.arr B) (.arr B) Q fun q X => Tab.thinL q X).Reps K
       (thinLDen fun a b => decide (TQ (a, b) (a, b))) :=
   GenK.ofVals_row_sound fun _ _ _ h xs w => Tab.thinL_holds (fun D _ hT p hp =>
-    (GenK.reps_iff ⟨some ⟨D.n, D.val⟩, none⟩ _ _).1 (hQ _) _ hT p _ ((GenK.side_some rfl p).2 hp) rfl) h xs w
+    (GenK.reps_iff ⟨some ⟨D.n, D.val⟩, none, none⟩ _ _).1 (hQ _) _ hT p _ ((GenK.side_some rfl p).2 hp) rfl trivial)
+    h xs w
 
 theorem rowOK_thinL : RowOK "thinL" := rowOK_args (c := RowCode.thinL) rfl rfl fun _ σ xs _ _ _ _ hn _ hv => by
   have h1 : rowArity "thinL" = 1 := by decide
@@ -911,12 +913,12 @@ demand, kept where `a'` is its source, `R` run on the keys in demand. -/
 theorem GenK.flat_sound {I A B : Obj} {d : Bool} {R : Rel I (.prod A B)} {X : Core.Rel I.El (Obj.prod A B).El}
     (hR : ∀ K, R.Reps K X) :
     ∀ K, (GenK.onKeys I A B (.prod A B) d R fun X r => Tab.flat X r).Reps K (flatDen X) :=
-  GenK.ofVals_sound fun _ _ Xs _ hK h p b hp _ => by
+  GenK.ofVals_sound fun _ _ Xs _ hK h p b hp _ _ => by
     obtain ⟨r, hr, ht⟩ := GenK.bind_ok h
     have er := (GenK.reps_iff _ _ _).1 (hR _) r hr
     obtain ⟨i, rfl⟩ := (GenK.side_some hK p).1 hp
     exact (Tab.flat_holds ht _ b).trans ((and_iff_right ⟨i, rfl⟩).trans
-      (er _ _ ((GenK.side_some rfl _).2 ⟨i, rfl⟩) rfl))
+      (er _ _ ((GenK.side_some rfl _).2 ⟨i, rfl⟩) rfl trivial))
 
 theorem rowOK_flat : RowOK "flat" := rowOK_args (c := RowCode.flat) rfl rfl fun _ σ xs _ _ _ _ hn _ hv => by
   have h1 : rowArity "flat" = 1 := by decide
@@ -1079,7 +1081,7 @@ theorem Tm.gen_sound_spine {A B : Obj} (t : Tm A B) :
           ∀ K, (t.argGen η xs).Reps K (t.argDen ρ ss) from H _ t (Nat.le_refl _)
   -- a fixed point's round binds its variable to its table (`Sound.bind`)
   have hconst {A B : Obj} (Y : Tab A B) : ∀ K, (GenK.const A B (.ok Y)).Reps K (rep Y) :=
-    fun _ => (GenK.reps_iff _ _ _).2 fun t ht x y _ _ => by cases ht; exact Iff.rfl
+    fun _ => (GenK.reps_iff _ _ _).2 fun t ht x y _ _ _ => by cases ht; exact Iff.rfl
   -- an error table runs to no table, so it represents every meaning
   have herr {A B : Obj} (e : String) (X : Den A B) : ∀ K, (Rel.tab (A := A) (B := B) (.error e)).Reps K X :=
     fun _ => (GenK.reps_iff _ _ _).2 fun t h => by simp [Rel.Rel.runE] at h
@@ -1166,8 +1168,12 @@ theorem Tm.gen_sound_spine {A B : Obj} (t : Tm A B) :
   case own R ih => exact code_of ((ih (by omega)).1 η ρ hl hs)
   case succ U ih => exact GenK.succ_sound (code_of ((ih (by omega)).1 η ρ hl hs))
   case arith U ih => exact GenK.arith_sound (code_of ((ih (by omega)).1 η ρ hl hs))
-  case leq U ih => exact GenK.cmp_sound (fun _ _ _ h => Tab.leq_holds h) (code_of ((ih (by omega)).1 η ρ hl hs))
-  case lt U ih => exact GenK.cmp_sound (fun _ _ _ h => Tab.lt_holds h) (code_of ((ih (by omega)).1 η ρ hl hs))
+  case leq U ih =>
+    exact GenK.cmp_sound (o := .le) (r := fun x y => decide (x ≤ y)) (P := fun x y => x ≤ y) (fun _ _ => rfl)
+      (fun _ _ => decide_eq_true_iff) (code_of ((ih (by omega)).1 η ρ hl hs))
+  case lt U ih =>
+    exact GenK.cmp_sound (o := .lt) (r := fun x y => decide (x < y)) (P := fun x y => x < y) (fun _ _ => rfl)
+      (fun _ _ => decide_eq_true_iff) (code_of ((ih (by omega)).1 η ρ hl hs))
   case var k => exact hs.1 k _ _
   case est Q ih => exact GenK.est_sound (code_of ((ih (by omega)).1 η ρ hl hs))
   case thin Q ih => exact GenK.thin_sound (code_of ((ih (by omega)).1 η ρ hl.2 hs)) hl.1

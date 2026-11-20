@@ -36,10 +36,18 @@ def crossIx (n m : USize) : Except String (USize × Enc × Enc) := do
   let c ← colConst T m.toUInt64
   pure (T, ← colMap .div T .pos c, ← colMap .mod T .pos c)
 
+/-- The most pairs `Vals.cross` builds, `2^28`: two `i64` columns of 4 GiB, a fifth of the memory cap. -/
+def crossMax : Nat := 2 ^ 28
+
 /-- **CROSS of two sides**, `x` and `y` side by side at every pair of their rows: `x` gathered at `iR`, `y` at `iS`
 (`crossIx`). -/
 def Vals.cross {A B : Obj} {n m : USize} (x : Vals A n) (y : Vals B m) :
     Except String ((T : USize) × Vals A T × Vals B T) := do
+  -- checked here, not left to the allocator: past memory the Rust side aborts the process instead of returning
+  if crossMax < n.toNat * m.toNat then
+    throw s!"cross: {n} values of the left object by {m} of the right is {n.toNat * m.toNat} pairs, past the bound \
+      {crossMax}: a relation on two whole objects (`≤`, `<`, `⊤`) read where nothing bounds it to fewer pairs; \
+      meet it with a table (`T ∩ ≤` tests T's pairs only) or compose a smaller table on each side (`K ≤ L`)"
   let (T, iR, iS) ← crossIx n m
   pure ⟨T, ← Vals.gather T iR x, ← Vals.gather T iS y⟩
 

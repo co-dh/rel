@@ -582,7 +582,11 @@ Diff table 的「状态」列：✅ 后面是完成它的步骤；🔄 是部分
         `\ / Λ E ∋ nil lt leq`、`succ`。有算子无定律：`arith`（`Tab.arith_holds` 未证）。
       - 缺算子：`est thin atPos fold foldr foldI mu nu hylo`、对称除、`val` 的包装、`prim` 各行。
       - 与 architecture §4 不同、待改：`∩ − \` 的按组折叠用了 `kscatter` 而不是分段 `scan`；`\` 物化 join；
-        `lt leq top` 在整个 universe 上做 cross，§0 要 `lazy`（`K ≫ leq ≫ L`）；`°` 之后多跑一次 `canon`。
+        `°` 之后多跑一次 `canon`。
+      - `lt leq`（`GenK.cmp`，cmpmeet）：已是 `lazy`，`dom`、`ran` 都已知才算；与表求交时（`T ∩ ≥`、`T − <`）
+        `Known.pairs` 带来 `T` 的对，只逐对比较 n 对再选行（`Tab.cmpPairs`），不做 `K × L` 的 cross。
+        仍做 cross 的：没有表可求交的比较（`P ≤ P`）与 `top`（`top` 尚未用 `pairs`）；`Vals.cross` 超过
+        `crossMax = 2^28` 对时返回 error，不再在 Rust 侧 abort。
       - 定律的缺口：`lam_den`/`E_den`（等于 `lamDen`/`EDen`）带前提 `hB`（序码的序与 `B.lt` 一致），未对任何
         `Obj` 证掉；float 上本来不成立（`±0.0`、NaN）。
       - 合并记录：w3arrcat fe67914，w3arith 0f77c2f，w3struct+w3sumcat 4b6f121，w3div+w3divlaw+w3lam 803cd89，

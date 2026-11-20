@@ -998,7 +998,8 @@ def emit (n : Name) (r : Read) : MetaM Unit := do
   let app (A B : Obj) (t : Lean.Expr) : MetaM Lean.Expr := do
     let none' (f : Name) := return mkApp (mkConst ``Option.none [0]) (← inferType (g f #[oE A, oE B])).appArg!
     pure (g ``Rel.Rel.runE #[oE A, oE B, t,
-      g ``Rel.Known.mk #[oE A, oE B, ← none' ``Rel.Known.dom._default, ← none' ``Rel.Known.ran._default]])
+      g ``Rel.Known.mk #[oE A, oE B, ← none' ``Rel.Known.dom._default, ← none' ``Rel.Known.ran._default,
+        ← none' ``Rel.Known.pairs._default]])
   -- each definition elaborated once whose body has a kernel body at every node: its kernel twin
   -- `n.x.kernel : (A₁ … : Obj) → Rel U₁ → … → Rel R₁ → … → Rel A B` (`kernelTwin`), generic over the objects of its
   -- generic variables, then code in and out, the universes it reads then its parameters; `n.x.conv.kernel` its

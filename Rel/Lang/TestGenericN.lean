@@ -109,4 +109,13 @@ rel_program paramBigT where
 #guard paramPT.failures.map toString == []
 #guard paramBigT.failures.map toString == []
 
+-- the universe of `M×M` is built when a term reads it, so `paramBigT` declares `M×M` and runs; `whole` reads it
+-- (`𝟙` on demand, closed on its source's universe), 4·10⁸ pairs past `crossMax`: the program's error
+/-- error: line 119, col 5: the universe of M × M: cross: 20000 values of the left object by 20000 of the right is 400000000 pairs, past the bound 268435456: a relation on two whole objects (`≤`, `<`, `⊤`) read where nothing bounds it to fewer pairs; meet it with a table (`T ∩ ≤` tests T's pairs only) or compose a smaller table on each side (`K ≤ L`) -/
+#guard_msgs in
+rel_program bigUniT where
+    obj M = 0…19999
+    whole : M×M ⟶ M×M ≜ 𝟙
+    check whole = whole
+
 end Rel.Lang.TestGenericN
