@@ -332,7 +332,13 @@ Diff table 的「状态」列：✅ 后面是完成它的步骤；🔄 是部分
   除法。`convTm_instObj_den` 的 arith 情形用 `fixed_ok`/`back_ok`（任意 `X Y`：`σ` 保持对象时节点即 `t` 本身沿该等式
   移动），代替 `fixed_long`/`fixed_arith`/`back_long`，因为 f32/f64 在 `varAtoms` 中、`Obj.inst` 不归约。途中修正两个
   运行代码错误：`colMap` 不论列的 atom 都按 i64 读输入（现在带输入 atom `s`）；`wideCol .f32` 误读 f32 字节。
-- ⬜ S4 行 `sqrt`；`sum` 按 atom。
+- 🟡 S4（分支 `tb-s4`）序不需要算术：`QAtomicType.ordNum` 给出有序 atom 的存储数类型（数 atom 自身，`char` 为 `u8`，
+  `date` 为 `i32`，`datetime` 为 `i64`），`<`、`≤` 在每个有序 atom 上运行：i64/f32/f64 照旧，其余为 `iordAt`，即存储值
+  经 `Op.cast r .i64` 加宽后的 `Int64` 序（`wideCol`、`ordOp`，定律 `iord_iff`、`castWord_ofBits`）；`max`/`min` 在没有
+  值算子的有序 atom 上是组合 `τ(≤)π₂ ∪ τ(>)π₁`（`Elab.build`），在 i64/f32/f64 上仍是融合的 `arith`。以 `.long` 读对象
+  变量的行在 `Prim.num` 中声明它（`length`、`sum`、`positions`、`asc` 的 `ℕ`，`sums` 的 `ℕ` 与 `V`），在其它 atom 上按名
+  报错；常量不泛化的对象变量在 `callTm` 中先检查，`cumSum(f)`（f64）不再报 internal。未做：float 上的 `sum`/`sums`
+  （右折叠与逐块扫描在 float 上结果不同，需裁定求和顺序）、`sums` 的位置对象为任意有序 atom、行 `sqrt`。
 - ⬜ S5 float 上的 `Obj.key = ordCode`；`key_ordCode`、`ascBad`、float 上的 `LamLaw`。
 - 🟡 S6 行 `$`（分支 `tb-s6`，owner 裁定 J）：`x $ F` 与 `QAtomicType.embed s t` 的图复合（`castDen`），部分映射、不舍入；
   允许的对由 `castOK` 从两个 atom 的格式读出（加宽、整数 → 浮点）；有损方向在 elaboration 报错。`Tab.cast`（分支
