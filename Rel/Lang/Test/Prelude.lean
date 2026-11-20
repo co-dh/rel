@@ -1,4 +1,5 @@
 import Rel.Lang.Test.Common
+import Rel.RepCanon
 
 namespace Rel.Lang.Test
 
@@ -33,6 +34,24 @@ rel_program pre where
     z : K ⟶ [[N]] ≜ {(a,[1 2] [3] []),(b,[] [])}
     pz : K ⟶ [[N]] ≜ z perm
 
+/-- The rows `(k, ys)` with `(k, xs)` a row of `rs` and `ys` a permutation of `xs` (`List.Perm`, decided by `isPerm`,
+    among the arrays of its length drawn from its elements): the rows of `R perm` (B&dM p.130) for `R` of rows `rs`. -/
+def permRows {κ α : Type} [BEq α] (rs : List (κ × List α)) : List (κ × List α) :=
+  rs.flatMap fun (k, xs) => ((List.replicate xs.length xs).foldr (fun c acc => c.flatMap fun a => acc.map (a :: ·))
+    [[]]).filter (·.isPerm xs) |>.map (k, ·)
+
+-- each definition against its meaning on its argument's rows, as sets (`specOk`): `R perm` by `permRows`,
+-- `R ordered(Q)` keeps the rows whose array has `Q` from each element to every later one (`List.Pairwise`), and
+-- `R sort(Q) = R perm ordered(Q)` the permuted rows so ordered; `Q` is the program's `le`
+#guard let o := pre.expanded
+  let t (n : String) (B : Obj) : Except String (Tab .long B) := (get o n .long B).elim (.error n) .ok
+  match t "x" (.arr .long), t "le" .long, t "y" (.arr .long), t "z" (.arr (.arr .long)) with
+  | .ok X, .ok Le, .ok Y, .ok Z =>
+    let ord (xs : List Int64) := decide (xs.Pairwise fun a b => Le.toList.contains (a, b))
+    specOk (t "pm" (.arr .long)) (permRows X.toList) && specOk (t "od" (.arr .long)) (X.toList.filter (ord ·.2)) &&
+      specOk (t "st" (.arr .long)) ((permRows X.toList).filter (ord ·.2)) &&
+      specOk (t "py" (.arr .long)) (permRows Y.toList) && specOk (t "pz" (.arr (.arr .long))) (permRows Z.toList)
+  | _, _, _, _ => false
 
 -- the converses: `perm° = perm` (the one rule kept for a definition), `ordered(Q)` a coreflexive, and
 -- `sort(Q)° = ordered(Q)° perm°` from them
