@@ -148,6 +148,90 @@ theorem stepDen_add_word {acc v : Int64} (ha : acc ≠ Alg.nul) :
   · rintro ⟨hv, hn, ho⟩; have := e.1 ⟨hn, ho⟩; exact ⟨ha, hv, by omega, by omega, rfl⟩
   · rintro ⟨-, hv, h1, h2, -⟩; obtain ⟨hn, ho⟩ := e.2 ⟨by omega, by omega⟩; exact ⟨hv, hn, ho⟩
 
+/-- **One `plus` step read from the words**: from a non-null sum `acc = W - v`, the step takes `(acc, v)` to `w`
+exactly when the row's bad word is `0` and `w` is the row's sum `W`. -/
+theorem sums_step {acc : Int64} (ha : acc ≠ Alg.nul) {v W bad : UInt64} (hWv : (W - v).toInt64 = acc)
+    (hbad : bad = 0 ↔ v.toInt64 ≠ Alg.nul ∧ W.toInt64 ≠ Alg.nul ∧
+      ¬((v.toInt64 < 0 ↔ (W - v).toInt64 < 0) ∧ ¬(v.toInt64 < 0 ↔ W.toInt64 < 0))) (w : Int64) :
+    stepDen Ew.add (acc, v.toInt64) w ↔ bad = 0 ∧ w = W.toInt64 := by
+  have hW : W.toInt64 = acc + v.toInt64 := by
+    rw [← hWv]; show W.toInt64 = (W - v + v).toInt64; rw [UInt64.sub_add_cancel]
+  rw [hbad, hWv, hW, stepDen_add_word ha]
+  constructor
+  · intro h; obtain ⟨-, -, -, -, rfl⟩ := (stepDen_add_iff _ _ _).1 h; exact ⟨h, rfl⟩
+  · rintro ⟨h, rfl⟩; exact h
+
+/-- **The left fold of a run one row longer**: if the fold of the rows `P` is their sum `A` exactly when no row of `P`
+is bad, so is the fold of `P ++ [q]` with `q`'s sum `W q`, `W q - v q = A`. -/
+theorem sums_snoc {v W bad : Nat → UInt64} {P : List Nat} {A : Int64} {q : Nat}
+    (hfold : ∀ w, foldDen (E := .long) (V := .long) (fun _ b => b = 0) (stepDen Ew.add)
+      (P.map fun p => (v p).toInt64) w ↔ (∀ p ∈ P, bad p = 0) ∧ w = A)
+    (hA : (∀ p ∈ P, bad p = 0) → A ≠ Alg.nul) (hsub : (W q - v q).toInt64 = A)
+    (hbq : bad q = 0 ↔ (v q).toInt64 ≠ Alg.nul ∧ (W q).toInt64 ≠ Alg.nul ∧
+      ¬(((v q).toInt64 < 0 ↔ (W q - v q).toInt64 < 0) ∧ ¬((v q).toInt64 < 0 ↔ (W q).toInt64 < 0))) (w : Int64) :
+    foldDen (E := .long) (V := .long) (fun _ b => b = 0) (stepDen Ew.add)
+      ((P ++ [q]).map fun p => (v p).toInt64) w ↔ (∀ p ∈ P ++ [q], bad p = 0) ∧ w = (W q).toInt64 := by
+  rw [List.map_append, List.map_singleton, foldDen_snoc]
+  simp only [List.mem_append, List.mem_singleton, or_imp, forall_and, forall_eq]
+  constructor
+  · rintro ⟨u, hu, hs⟩
+    obtain ⟨hb, rfl⟩ := (hfold u).1 hu
+    have := (sums_step (hA hb) hsub hbq w).1 hs
+    exact ⟨⟨hb, this.1⟩, this.2⟩
+  · rintro ⟨⟨hb, hq⟩, rfl⟩
+    exact ⟨A, (hfold A).2 ⟨hb, rfl⟩, (sums_step (hA hb) hsub hbq _).2 ⟨hq, rfl⟩⟩
+
+/-- The rows `≤ t + 1` of `t + 1`'s group: those of `t`'s group when `t` is in it (groups are runs), then `t + 1`. -/
+theorem groupRows_succ {α : Type} [DecidableEq α] {g : Nat → α} {m : Nat}
+    (hrun : ∀ a b c, a ≤ b → b ≤ c → c < m → g a = g c → g b = g a) {t : Nat} (ht : t + 1 < m) :
+    (List.range (t + 2)).filter (fun q => Verify.groupOf g m q = Verify.groupOf g m (t + 1)) =
+      (if g t = g (t + 1) then (List.range (t + 1)).filter (fun q => Verify.groupOf g m q = Verify.groupOf g m t) else []) ++
+        [t + 1] := by
+  have hG := (firsts_spec g m).2.2.1
+  rw [List.range_succ, List.filter_append]
+  congr 1
+  · split
+    · rename_i h
+      apply List.filter_congr; intro q hq; rw [List.mem_range] at hq
+      rw [decide_eq_decide, hG q (by omega) (t + 1) ht, hG q (by omega) t (by omega), h]
+    · rename_i h
+      apply List.filter_eq_nil_iff.2; intro q hq; rw [List.mem_range] at hq
+      simp only [decide_eq_true_eq]; rw [hG q (by omega) (t + 1) ht]; intro hq'
+      exact h ((hrun q t (t + 1) (by omega) (by omega) ht hq').trans hq')
+  · simp
+
+/-- **The prefix sums of a key, as a left fold**: over the rows `≤ t` of `t`'s group, `⦇[0, plus]⦈` of their values
+is `t`'s scanned sum `W t` exactly when none of their bad words is set (`segScan_ok`, `badWord_spec`). -/
+theorem sums_fold {α : Type} [DecidableEq α] {g : Nat → α} {m : Nat}
+    (hrun : ∀ a b c, a ≤ b → b ≤ c → c < m → g a = g c → g b = g a) (v W bad : Nat → UInt64)
+    (hW : ∀ t < m, W t =
+      (((List.range (t + 1)).filter fun q => Verify.groupOf g m q = Verify.groupOf g m t).map v).foldl (· + ·) 0)
+    (hbad : ∀ t < m, (bad t = 0 ↔ (v t).toInt64 ≠ Alg.nul ∧ (W t).toInt64 ≠ Alg.nul ∧
+        ¬(((v t).toInt64 < 0 ↔ (W t - v t).toInt64 < 0) ∧ ¬((v t).toInt64 < 0 ↔ (W t).toInt64 < 0)))) :
+    ∀ t < m, ∀ w, foldDen (E := .long) (V := .long) (fun _ b => b = 0) (stepDen Ew.add)
+      (((List.range (t + 1)).filter fun q => Verify.groupOf g m q = Verify.groupOf g m t).map fun q => (v q).toInt64) w ↔
+      (∀ q ∈ (List.range (t + 1)).filter (fun q => Verify.groupOf g m q = Verify.groupOf g m t), bad q = 0) ∧
+        w = (W t).toInt64 := by
+  have h0 : ∀ q < m, ((List.range (q + 1)).filter fun p => Verify.groupOf g m p = Verify.groupOf g m q) = [] ++ [q] →
+      ∀ w, foldDen (E := .long) (V := .long) (fun _ b => b = 0) (stepDen Ew.add)
+        (([] ++ [q]).map fun p => (v p).toInt64) w ↔ (∀ p ∈ [] ++ [q], bad p = 0) ∧ w = (W q).toInt64 :=
+    fun q hq e => sums_snoc (A := 0) (fun w => by rw [List.map_nil, foldDen_nil]; simp) (fun _ => by decide)
+      (by rw [hW q hq, e]; simp) (hbad q hq)
+  intro t
+  induction t with
+  | zero => intro ht; have e : ((List.range 1).filter fun p => Verify.groupOf g m p = Verify.groupOf g m 0) = [] ++ [0] := by simp
+            rw [e]; exact h0 0 ht e
+  | succ t ih =>
+    intro ht
+    have e := groupRows_succ hrun ht
+    rw [e]
+    split
+    · rename_i hg
+      have hmem : t ∈ (List.range (t + 1)).filter (fun q => Verify.groupOf g m q = Verify.groupOf g m t) := by simp
+      refine sums_snoc (ih (by omega)) (fun hb => ((hbad t (by omega)).1 (hb t hmem)).2.1) ?_ (hbad (t + 1) ht)
+      rw [hW (t + 1) ht, hW t (by omega), e, if_pos hg, List.map_append, List.foldl_append]; simp
+    · rename_i hg; rw [if_neg hg] at e; exact h0 (t + 1) ht e
+
 end Lang
 
 end Rel
