@@ -213,10 +213,42 @@ theorem pair_sound {d e : Bool} {R : Rel A B} {S : Rel A C} {X : Core.Rel A.El B
   lift2_sound hR hS fun _ _ _ _ ht hr hs a q ha _ =>
     (Tab.pair_holds ht a q).trans (and_congr (hr a q.1 ha rfl) (hs a q.2 ha rfl))
 
+/-- `o ≫ r` on the pairs `Z`, `o` a projection `f` on `Z` (`Tab.outl`, `Tab.outr`): each pair to what `r` relates
+    its `f`-side to. -/
+theorem proj_comp_holds {P : Obj} {n : USize} {Z : Vals (.prod A C) n} {f : (Obj.prod A C).El → P.El}
+    {o : Tab (.prod A C) P} {r : Tab P B} {l : Tab (.prod A C) B} {X : Core.Rel P.El B.El}
+    (ho : ∀ p a, o.Holds p a ↔ (∃ i, Z.row i = p) ∧ graph f p a) (hl : o.comp r = .ok l)
+    (er : ∀ i b, r.Holds (f (Z.row i)) b ↔ X (f (Z.row i)) b) (i : Fin n.toNat) (b : B.El) :
+    l.Holds (Z.row i) b ↔ X (f (Z.row i)) b :=
+  (Tab.comp_holds hl _ _).trans ⟨fun ⟨_, h1, h2⟩ => by obtain ⟨-, rfl⟩ := (ho _ _).1 h1; exact (er i b).1 h2,
+    fun h => ⟨_, (ho _ _).2 ⟨⟨i, rfl⟩, rfl⟩, (er i b).2 h⟩⟩
+
 theorem prod_sound {R : Rel A B} {S : Rel C D} {X : Core.Rel A.El B.El} {Y : Core.Rel C.El D.El}
-    (hR : ∀ K, R.Reps K X) (hS : ∀ K, S.Reps K Y) : ∀ K, (GenK.prod A B C D R S).Reps K (rprodMap X Y) :=
-  lift2_sound hR hS fun _ _ _ _ ht hr hs p q _ _ =>
-    (Tab.prod_holds ht p q).trans (and_congr (hr p.1 q.1 rfl rfl) (hs p.2 q.2 rfl rfl))
+    (hR : ∀ K, R.Reps K X) (hS : ∀ K, S.Reps K Y) : ∀ K, (GenK.prod A B C D R S).Reps K (rprodMap X Y) := fun K => by
+  rw [reps_iff]; intro t h
+  cases hK : K.dom with
+  | none =>
+    simp only [GenK.prod, Rel.Rel.runE, hK] at h
+    obtain ⟨r, hr, h⟩ := bind_ok h
+    obtain ⟨s, hs, ht⟩ := bind_ok h
+    have er := (reps_iff _ _ _).1 (hR {}) r hr; have es := (reps_iff _ _ _).1 (hS {}) s hs
+    exact fun p q _ _ => (Tab.prod_holds ht p q).trans (and_congr (er p.1 q.1 rfl rfl) (es p.2 q.2 rfl rfl))
+  | some c =>
+    obtain ⟨n, Z⟩ := c
+    simp only [GenK.prod, Rel.Rel.runE, hK] at h
+    obtain ⟨o₁, ho₁, h⟩ := bind_ok h
+    obtain ⟨r, hr, h⟩ := bind_ok h
+    obtain ⟨l, hl, h⟩ := bind_ok h
+    obtain ⟨o₂, ho₂, h⟩ := bind_ok h
+    obtain ⟨s, hs, h⟩ := bind_ok h
+    obtain ⟨m, hm, ht⟩ := bind_ok h
+    have er := (reps_iff _ _ _).1 (hR _) r hr
+    have es := (reps_iff _ _ _).1 (hS _) s hs
+    intro p q hp _
+    obtain ⟨i, rfl⟩ := (side_some hK p).1 hp
+    exact (Tab.pair_holds ht _ q).trans (and_congr
+      (proj_comp_holds (Tab.outl_holds ho₁) hl (fun j b => er _ b ((side_some rfl _).2 ⟨j, rfl⟩) rfl) i q.1)
+      (proj_comp_holds (Tab.outr_holds ho₂) hm (fun j d => es _ d ((side_some rfl _).2 ⟨j, rfl⟩) rfl) i q.2))
 
 theorem junc_sound {R : Rel A C} {S : Rel B C} {X : Core.Rel A.El C.El} {Y : Core.Rel B.El C.El}
     (hR : ∀ K, R.Reps K X) (hS : ∀ K, S.Reps K Y) : ∀ K, (GenK.junc A B C R S).Reps K (Core.Rel.junc X Y) :=

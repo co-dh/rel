@@ -153,8 +153,14 @@ def outl (A B : Obj) : Fn true (.prod A B) A := ofVals _ _ fun X => Tab.outl X
 def outr (A B : Obj) : Fn true (.prod A B) B := ofVals _ _ fun X => Tab.outr X
 def pair (A B C : Obj) (d e : Bool) (R : Fn d A B) (S : Fn e A C) : Fn (d || e) A (.prod B C) :=
   lift2 Tab.pair (fun K => ⟨K.dom, none⟩) (fun K => ⟨K.dom, none⟩) R S
+/-- `R × S`: on the pairs `Z` a context knows, `⟨π₁ ≫ R, π₂ ≫ S⟩` on `Z`, each operand run knowing its domain is that
+    side of `Z`; where none is known, CROSS of the two tables. -/
 def prod (A B C D : Obj) (R : Fn false A B) (S : Fn false C D) : Fn false (.prod A C) (.prod B D) :=
-  lift2 Tab.prod (fun _ => {}) (fun _ => {}) R S
+  .lazy fun K => .tab <| match K.dom with
+    | some ⟨n, Z⟩ => do
+      let l ← (← Tab.outl Z).comp (← R.runE ⟨some ⟨n, Z.1⟩, none⟩)
+      l.pair (← (← Tab.outr Z).comp (← S.runE ⟨some ⟨n, Z.2⟩, none⟩))
+    | none => do Tab.prod (← R.runE {}) (← S.runE {})
 /-- `R/S` and `R\S` read both sides whole, with the universes `UA`, `UB` (`UB`, `UC`); `ldiv` is `Tab.ldivSel`, a bit
     matrix where `Tab.bitsWin` holds. -/
 def rdiv (A B C : Obj) (R : Fn false A C) (S : Fn false B C) (UA : Fn false A A) (UB : Fn false B B) :
