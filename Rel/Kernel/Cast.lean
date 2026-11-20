@@ -31,6 +31,16 @@ def numFmt? (t : QAtomicType) : Option NumFmt :=
   | .f64, _ => some (.float 11 52)
   | _, _ => none
 
+/-- The number atom an ordered atom is stored as and ordered by: a number atom itself, `char` as `u8`, `date` as `i32`
+    (days), `datetime` as `i64` (nanoseconds); none at an atom with no order (`u1 sym general`). Order needs no
+    arithmetic, so it is read off the storage and not off `numFmt?`, which keeps `$` off `date`. -/
+def ordNum (t : QAtomicType) : Option QAtomicType :=
+  match t with
+  | .char => some .u8
+  | .date => some .i32
+  | .datetime => some .i64
+  | t => if t.numFmt?.isSome then some t else none
+
 /-- The least and the greatest integer of an integer format; a signed one's least word is q's null, no value. -/
 def NumFmt.lo : NumFmt → Int
   | .int true b => 1 - 2 ^ (b - 1)
