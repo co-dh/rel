@@ -257,8 +257,8 @@ def prims : List Prim :=
    -- `agg(dom(x) (𝟙 × ≥) dom(x), F(x) ⦇[0, plus]⦈)` (`rowDens`). Not `mono`: a larger `x` changes the sums. Its
    -- definition is, as `asc`'s, no `Elab.dfns` row
    { sym := "sums",
-     sig := ([((.prod (.var {} "K") (.var {} "ℕ"), .var {} "ℕ"), some false)], .prod (.var {} "K") (.var {} "ℕ"),
-       .var {} "ℕ"),
+     sig := ([((.prod (.var {} "K") (.var {} "ℕ"), .var {} "V"), some false)], .prod (.var {} "K") (.var {} "ℕ"),
+       .var {} "V"),
      mono := false, aop := .error "AOP declares no prefix sums per key", whole := true },
    flatRow]
 
