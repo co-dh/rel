@@ -35,7 +35,7 @@ rel_program genLitQT where
 #guard genLitNT.failures.map toString == []
 #guard genLitQT.failures.map toString == []
 
-/-- error: line 49, col 10: `percentile` at the objects of this call: 100 is not in P = 0…15 -/
+/-- error: line 46, col 11: `percentile` at the objects of this call: 100 is not in P = 0…15 -/
 #guard_msgs in
 open Rel.Programs.prelude genLitG in
 rel_program genLitPT where
