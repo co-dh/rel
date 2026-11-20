@@ -32,6 +32,11 @@ rel_program frame where
     rolling(w : 1 ⟶ ν, f : [ν] ⟶ δ, x : ν ⟶ β) : ν ⟶ δ ≜ agg(win(w, x), f)
     -- cumulative aggregate (polars cum_sum, q's sums with `f` = sum): row `i` folds rows `j ≤ i`; m²/2 pairs
     cumAgg(f : [ν] ⟶ δ, x : ν ⟶ β) : ν ⟶ δ ≜ agg(dom(x) ≥ dom(x), f)
+    -- q's `sums` within each group `g` (polars cum_sum().over(g)), linear: the row `sums` scans `(g(i), i)` in order;
+    -- `c`'s values share `ν` because `sums : κ×ν ⟶ ν` does
+    sumsBy(g : ν ⟶ κ, c : ν ⟶ ν) : ν ⟶ ν ≜ ⟨g, 𝟙⟩ sums(⟨g, 𝟙⟩° c)
+    -- `cumAgg(F(c) sum, c)` in m rows, not m²/2: one group
+    cumSum(c : ν ⟶ ν) : ν ⟶ ν ≜ sumsBy(dom(c) ⊤ 𝟙(1), c)
 
     -- columns: `tot(R)` makes a partial column total, null where `R` has no value
     tot(R : α ⟶ β) : α ⟶ β+1 ≜ R inl ∪ ((𝟙 − dom(R)) ⊤ inr)
