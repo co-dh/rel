@@ -561,6 +561,19 @@ Diff table 的「状态」列：✅ 后面是完成它的步骤；🔄 是部分
         - owner 定的顺序（C）：先做 architecture §4 已定的实现改动（`∩ − \` 分段 `scan`、`\` 不物化 join、
           `ldiv(tab, bits)` 在 bit matrix 上算、`μ` semi-naive），差分测试与回归固定保护；`ldiv meet diff mu fold` 与
           bit matrix 路径的证明（T11e 余项、`ReadsBack`）等实现稳定后再做。T11e5 只做 `arith`。
+        - 21:40，master 10342bc，`make check` 全绿（check-52）：覆盖 116 / 203，差分 302 比较、0 不同。
+          - I1 ✅ `∩ − \ /` 的按组折叠走 `Tab.groupFold`（分段 `kscan`，`Rel/Run/SetOps.lean`；`Tab.groupFold_ok`），
+            `inter_holds diff_holds ldiv_holds` 已对新实现重证。`\` 仍物化 join（`Σₐ |R a|·|S a|` 行）：不物化要换算法，待定。
+          - I2 ✅ `R \ bits` 在 matrix 上算（`Tab.ldivTabMat`，`GenK.ldivM`；`sudokupc9` 13.5 s → 3.1 s）；`Vals.cols` 拒绝
+            `kgather` 读不了的 sum `idx` 列（`bytes` 反例已修，`Rel/BitsTest.lean` 的 `bytesKey`）。待证：
+            `Tab.ldivTabMat_law`（陈述在 `ldivTabMat` 的注释里）、`ldivTabMat_wf`；`GenK.ldiv_sound` 已删，`ldiv` 在
+            `Tm.gap`。差分测试跳过带 gap 节点的定义，`ldiv` 的 14 个定义不再被比较：待改成对 `Tm.gen` 有真实代码的
+            gap 定义也比较。
+          - I3 ✗ `μ` semi-naive 按 `:477` 的写法更慢（每轮两次排序；`muGrow` 66 s → 79 s），已撤回。要省需要循环体对
+            `∪` 分配的判定和已排序表的归并（新 kernel）；只有 `Party` 用 `μ`。等 owner 定做不做。
+          - T11e5 ✅ `Tab.arith_holds`、`GenK.arith_sound`；`foldRounds_holds`（轮不变式）已证，`fold foldr foldI` 仍缺
+            `Tab.pack_holds`、`Tab.uncons_holds`、`Tab.unsnoc_holds`。
+          - T11d：读入时内联是 architecture §7 与 Q11 的做法；运行时的项仍含 `call`，`Tm.den (.call ..) = 𝟘` 一支不再被读到。
       - T11a ✅：新模块 `Rel/Lang/GenKSpec.lean`，为已有 `Tab.*_holds` 的运算（`id comp conv meet dom
         ran zero join top ldiv rdiv diff outl outr pair prod junc flat lam nil val uni succ leq lt`、行 `∋ τ setify inl
         inr`）各写一条 `GenK.*_sound`：前提 `∀ K, R.Reps K X`，结论右边与 `Tm.den` 对应分支相同；从 `Tab` 定律到
