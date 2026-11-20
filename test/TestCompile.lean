@@ -138,7 +138,7 @@ run_cmd do
   let mut unchecked : List String := []
   for (n, _, _) in reg.progs do
     let gs ← unsafe IO.ofExcept ((← getEnv).evalConst (List (String × Gen.Gv)) (← getOptions) (n ++ `expanded))
-    let (ds, _, _, _, fs) ← match ← GenSoundTest.reread n with
+    let (ds, _, _, _, fs, _) ← match ← GenSoundTest.reread n with
       | .ok r => pure r
       | .error e => throwError "TestCompile: re-reading {n}: {e}"
     for (x, _) in ds do

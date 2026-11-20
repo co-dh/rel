@@ -1105,7 +1105,8 @@ def ioGo (inst : Lean.Expr) (reach : List String)
       throwError "rel_program: the kernel twin `{tw}` of `{x}` takes {arity} arguments, and `{x}` mentions the \
         run-time names {ds}; a run-time definition takes no object variable"
     let ty ← instantiateForall ci.type args.toArray
-    let (A, B) := (ty.appFn!.appArg!, ty.appArg!)
+    let .app (.app _ A) B := ty.consumeMData
+      | throwError "rel_program expansion: internal: the kernel twin `{tw}` of `{x}` is at {ty}, no `Rel A B`"
     bindIO inst (mkApp4 (mkConst ``Table.ofRun) A B (toExpr x) (mkAppN (mkConst tw) args.toArray))
       (mkApp2 (mkConst ``Tab) A B) x fun t => ioGo inst reach fin ss ((x, A, B, t) :: σ)
   | .output .. :: ss, σ => ioGo inst reach fin ss σ
