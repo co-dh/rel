@@ -410,4 +410,345 @@ theorem Tab.compTabMat_law {n m M : USize} {r : Tab A B} {g w ka : USize} {o o' 
       ⟨i, hi, by rw [keyrow (gr p) hgp i hi ⟨p, hp⟩ rfl, rk, eq']⟩, hv⟩
     rw [hidx k hk, hkp, hpq, hA, hP]; decide
 
+/-- **A bit matrix as its producers (`compMat`, `compTabMat`) build it**: it reads back as rows (`Tab.ofBits`), `g · w`
+    does not wrap, each of its `g · w` words is `0` or `1`, and each side's rows `x[ra[·]]`, `y[rc[·]]` are distinct:
+    the hypotheses of `Tab.keepBits_law` and `Tab.compTabMat_law`. -/
+def BitsWf {n m : USize} (g w : USize) (o : Enc) (x : Vals A n) (ra : Enc) (y : Vals C m) (rc : Enc) : Prop :=
+  (∀ e, Tab.ofBits g w o x ra y rc ≠ .error e) ∧ (g * w).toNat = g.toNat * w.toNat ∧
+  (∀ a < g.toNat, ∀ j < w.toNat, ((raw .i64 (g * w) o)[a * w.toNat + j]?).any (· < 2) = true) ∧
+  (∀ a a' : Fin g.toNat, ∀ i i' : Fin n.toNat, ((raw .i64 g ra)[a.1]?.getD 0).toNat = i.1 →
+    ((raw .i64 g ra)[a'.1]?.getD 0).toNat = i'.1 → x.row i = x.row i' → a = a') ∧
+  ∀ c c' : Fin w.toNat, ∀ i i' : Fin m.toNat, ((raw .i64 w rc)[c.1]?.getD 0).toNat = i.1 →
+    ((raw .i64 w rc)[c'.1]?.getD 0).toNat = i'.1 → y.row i = y.row i' → c = c'
+
+/-- Every `bits` value `r` yields, run on any context (`force`), is `BitsWf`. -/
+def Rel.Wf {A B : Obj} : Rel A B → Prop
+  | .tab _ => True
+  | .lazy f => ∀ K, (f K).Wf
+  | .bits g w o x ra y rc => BitsWf g w o x ra y rc
+
+theorem Rel.Wf.force {r : Rel A B} (h : r.Wf) (K : Known A B) : (r.force K).Wf := by
+  induction r with
+  | lazy f ih => simp only [Rel.force]; exact ih K (h K)
+  | tab => exact h
+  | bits => exact h
+
+/-- `BitsWf`'s word clause in the form `Tab.ofBits_set` reads. -/
+theorem some_lt_two {xs : Array UInt64} {k : Nat} (h : (xs[k]?).any (· < 2) = true) :
+    ∃ v : UInt64, xs[k]? = some v ∧ v < 2 := by
+  cases hk : xs[k]? with
+  | none => rw [hk] at h; cases h
+  | some v => rw [hk] at h; exact ⟨v, rfl, of_decide_eq_true h⟩
+
+/-- `Vals.code`'s `rep` names distinct rows: two numbers whose rows are equal are one. -/
+theorem Vals.code_rep_inj {n k : USize} {x : Vals A n} {c rep : Enc} (h : Vals.code x = .ok (k, c, rep)) :
+    ∀ a a' : Fin k.toNat, ∀ i i' : Fin n.toNat, ((raw .i64 k rep)[a.1]?.getD 0).toNat = i.1 →
+      ((raw .i64 k rep)[a'.1]?.getD 0).toNat = i'.1 → x.row i = x.row i' → a = a' := by
+  obtain ⟨-, -, hrep, hc⟩ := Vals.code_spec h
+  intro a a' i i' hi hi' e
+  obtain ⟨j, hj, hja⟩ := hrep a.1 a.2
+  obtain ⟨j', hj', hja'⟩ := hrep a'.1 a'.2
+  obtain rfl : j = i := Fin.ext (hj.symm.trans hi)
+  obtain rfl : j' = i' := Fin.ext (hj'.symm.trans hi')
+  exact Fin.ext (hja.symm.trans ((congrArg UInt64.toNat ((hc j j').2 e)).trans hja'))
+
+/-- **`compSelM`'s matrix is `BitsWf`** where it reads back: `kbitrows` gives the `0`/`1` words and `g · w`, and
+    `Vals.code` the distinct rows of each side. -/
+theorem Tab.compSelM_wf {r : Tab A B} {s : Tab B C} {g w : USize} {o ra rc : Enc}
+    (h : Tab.compSelM Tab.bitsMax r s = .ok (.inr (g, w, o, ra, rc)))
+    (hr : ∀ e, Tab.ofBits g w o r.key ra s.val rc ≠ .error e) : BitsWf g w o r.key ra s.val rc := by
+  simp only [Tab.compSelM, bind] at h
+  rw [Except.bind_eq_ok'] at h; obtain ⟨_, -, h⟩ := h
+  rw [Except.bind_eq_ok'] at h; obtain ⟨_, -, h⟩ := h
+  split at h
+  · rw [Except.bind_eq_ok'] at h; obtain ⟨_, -, h⟩ := h; cases h
+  rw [Except.bind_eq_ok'] at h; obtain ⟨_, -, h⟩ := h
+  rw [Except.bind_eq_ok'] at h; obtain ⟨_, -, h⟩ := h
+  split at h
+  · rw [Except.bind_eq_ok'] at h; obtain ⟨mm, hm, h⟩ := h
+    simp only [pure, Except.pure, Except.ok.injEq, Sum.inr.injEq] at h; subst h
+    simp only [Tab.compMat, bind] at hm
+    rw [Except.bind_eq_ok'] at hm; obtain ⟨_, -, hm⟩ := hm
+    rw [Except.bind_eq_ok'] at hm; obtain ⟨⟨ka, aR, ra'⟩, hca, hm⟩ := hm; try dsimp only at hm
+    rw [Except.bind_eq_ok'] at hm; obtain ⟨⟨kc, cS, rc'⟩, hcc, hm⟩ := hm; try dsimp only at hm
+    split at hm; · cases hm
+    rw [Except.bind_eq_ok'] at hm; obtain ⟨_, -, hm⟩ := hm
+    rw [Except.bind_eq_ok'] at hm; obtain ⟨_, -, hm⟩ := hm
+    rw [Except.bind_eq_ok'] at hm; obtain ⟨_, -, hm⟩ := hm
+    rw [Except.bind_eq_ok'] at hm; obtain ⟨o0, hko, hm⟩ := hm
+    simp only [pure, Except.pure, Except.ok.injEq, Prod.mk.injEq] at hm
+    obtain ⟨rfl, rfl, rfl, rfl, rfl⟩ := hm
+    obtain ⟨-, hgw, -, -, -, -, -, hbit⟩ := raw_kbitrows hko
+    refine ⟨hr, hgw, fun a ha j hj => ?_, Vals.code_rep_inj hca, Vals.code_rep_inj hcc⟩
+    obtain ⟨v, -, hv, hv2, -⟩ := hbit a ha j hj
+    rw [hv]; exact decide_eq_true hv2
+  · rw [Except.bind_eq_ok'] at h; obtain ⟨_, -, h⟩ := h; cases h
+
+/-- **`compTabMat` keeps a matrix `BitsWf`** where its own reads back: its words and `g · w` from `kbitrows`, its rows
+    `key[ra'[·]]` from `Vals.code`, and its columns `y[rc[·]]` unchanged. -/
+theorem Tab.compTabMat_wf {n m M : USize} {r : Tab A B} {g w ka : USize} {o o' ra ra' rc : Enc}
+    {x : Vals B n} {key : Vals A M} {y : Vals C m}
+    (h : Tab.compTabMat r g w o x ra = .ok (ka, o', ⟨M, key⟩, ra'))
+    (hr : ∀ e, Tab.ofBits ka w o' key ra' y rc ≠ .error e) (hw : BitsWf g w o x ra y rc) :
+    BitsWf ka w o' key ra' y rc := by
+  simp only [Tab.compTabMat, bind] at h
+  rw [Except.bind_eq_ok'] at h; obtain ⟨_, -, h⟩ := h
+  rw [Except.bind_eq_ok'] at h; obtain ⟨_, -, h⟩ := h
+  rw [Except.bind_eq_ok'] at h; obtain ⟨_, -, h⟩ := h
+  rw [Except.bind_eq_ok'] at h; obtain ⟨_, -, h⟩ := h
+  rw [Except.bind_eq_ok'] at h; obtain ⟨⟨M0, sel⟩, -, h⟩ := h; try dsimp only at h
+  rw [Except.bind_eq_ok'] at h; obtain ⟨key0, -, h⟩ := h
+  rw [Except.bind_eq_ok'] at h; obtain ⟨⟨ka0, aR, ra0⟩, hcode, h⟩ := h; try dsimp only at h
+  rw [Except.bind_eq_ok'] at h; obtain ⟨_, -, h⟩ := h
+  rw [Except.bind_eq_ok'] at h; obtain ⟨_, -, h⟩ := h
+  rw [Except.bind_eq_ok'] at h; obtain ⟨o0, hko, h⟩ := h
+  simp only [pure, Except.pure, Except.ok.injEq, Prod.mk.injEq] at h
+  obtain ⟨e1, e2, hS, e3⟩ := h
+  subst ka0 o0 ra0
+  obtain ⟨eM, eK⟩ := Sigma.mk.inj hS
+  subst M0
+  have eK' := eq_of_heq eK
+  subst key0
+  obtain ⟨-, hgw, -, -, -, -, -, hbit⟩ := raw_kbitrows hko
+  refine ⟨hr, hgw, fun a ha j hj => ?_, Vals.code_rep_inj hcode, hw.2.2.2.2⟩
+  obtain ⟨v, -, hv, hv2, -⟩ := hbit a ha j hj
+  rw [hv]; exact decide_eq_true hv2
+
 end Rel
+
+/-! ### `comp` and `meet`: the two ops that read a bit matrix, sound on a `Rel.Wf` argument -/
+
+namespace Rel.Lang.GenK
+
+open Rel Rel.Rep Rel.Kernel Rel.Verify Gen
+open scoped Rel.Core.Rel
+open Rel.Core.Rel hiding id comp recip inter union zero le inl inr junc
+
+variable {A B C : Obj}
+
+/-- `Tab.ofBits` reads back every matrix `compSelM` builds, and every one `compTabMat` builds from a `BitsWf` matrix
+    within `Tab.bitsMax`. Not proved: it needs each kernel `ofBits` calls to succeed on in-range indices. -/
+def ReadsBack : Prop :=
+  (∀ {A B C : Obj} (r : Tab A B) (s : Tab B C) (g w : USize) (o ra rc : Enc) (e : String),
+    Tab.compSelM Tab.bitsMax r s = .ok (.inr (g, w, o, ra, rc)) → Tab.ofBits g w o r.key ra s.val rc ≠ .error e) ∧
+  ∀ {A B C : Obj} {n m M : USize} (r : Tab A B) (g w ka : USize) (o o' ra ra' rc : Enc) (x : Vals B n)
+    (key : Vals A M) (y : Vals C m) (e : String), BitsWf g w o x ra y rc →
+    Tab.compTabMat r g w o x ra = .ok (ka, o', ⟨M, key⟩, ra') → ka.toNat * w.toNat ≤ Tab.bitsMax →
+    Tab.ofBits ka w o' key ra' y rc ≠ .error e
+
+theorem meet_runE {d e : Bool} (R S : Rel A B) (K : Known A B) :
+    (GenK.meet A B d e R S).runE K = (meetV (R.force K) (S.force K)).runE K := by
+  cases R <;> cases S <;> rfl
+
+theorem inter_case {R S : Rel A B} {K : Known A B} {X Y : Core.Rel A.El B.El} {t : Tab A B}
+    (h : (do Tab.inter (← R.runE {}) (← S.runE {})) = .ok t) (eR : ∀ r, R.runE {} = .ok r → Agrees K (rep r) X)
+    (eS : ∀ s, S.runE {} = .ok s → Agrees K (rep s) Y) : Agrees K (rep t) (X ∩ Y) := by
+  obtain ⟨r, hr, h⟩ := bind_ok h
+  obtain ⟨s, hs, ht⟩ := bind_ok h
+  exact fun x y hx hy => (Tab.inter_holds ht x y).trans (and_congr (eR r hr x y hx hy) (eS s hs x y hx hy))
+
+theorem keep_case {K : Known A B} {P Q : Core.Rel A.El B.El} {n m : USize} {T : Except String (Tab A B)}
+    {g w : USize} {o ra rc : Enc} {x : Vals A n} {y : Vals B m} {t : Tab A B} (hw : BitsWf g w o x ra y rc)
+    (h : (T >>= (Tab.keepBits · g w o x ra y rc)) = .ok t) (eT : ∀ u, T = .ok u → Agrees K (rep u) P)
+    (eM : ∀ s, Tab.ofBits g w o x ra y rc = .ok s → Agrees K (rep s) Q) : Agrees K (rep t) (P ∩ Q) := by
+  obtain ⟨u, hu, h⟩ := bind_ok h
+  obtain ⟨hr, hgw, ho, hx, hy⟩ := hw
+  rcases hs : Tab.ofBits g w o x ra y rc with e | s
+  · exact absurd hs (hr e)
+  rw [Tab.keepBits_law h hs hgw (fun a ha j hj => some_lt_two (ho a ha j hj)) hx hy]
+  exact fun a c ha hc => and_congr (eT u hu a c ha hc) (eM s hs a c ha hc)
+
+theorem meet_sound {d e : Bool} {R S : Rel A B} {X Y : Core.Rel A.El B.El} (hR : ∀ K, R.Reps K X)
+    (hS : ∀ K, S.Reps K Y) (wR : R.Wf) (wS : S.Wf) : ∀ K, (GenK.meet A B d e R S).Reps K (X ∩ Y) := fun K => by
+  have eR := (reps_iff _ _ _).1 (hR K); have eS := (reps_iff _ _ _).1 (hS K)
+  rw [reps_iff, meet_runE]
+  have fR := force_runE R K; have fS := force_runE S K
+  have wR' := wR.force K; have wS' := wS.force K
+  generalize R.force K = R' at fR wR'; generalize S.force K = S' at fS wS'
+  have eR' : ∀ K' r, R'.runE K' = .ok r → Agrees K (rep r) X := fun K' r h => eR r ((fR K').symm.trans h)
+  have eS' : ∀ K' s, S'.runE K' = .ok s → Agrees K (rep s) Y := fun K' s h => eS s ((fS K').symm.trans h)
+  intro t h
+  cases R' <;> cases S' <;> first
+    | exact inter_case h (eR' {}) (eS' {})
+    | exact keep_case wS' h (eR' K) (eS' K)
+    | exact fun x y hx hy => (keep_case wR' h (eS' K) (eR' K) x y hx hy).trans and_comm
+
+theorem meetV_wf (R S : Rel A B) : (meetV R S).Wf := by unfold meetV; split <;> trivial
+
+theorem meet_wf {d e : Bool} (R S : Rel A B) : (GenK.meet A B d e R S).Wf := by
+  unfold GenK.meet; split <;> first | exact fun _ => meetV_wf _ _ | exact meetV_wf _ _
+
+theorem compR_runE (r : Tab A B) (s : Tab B C) (K : Known A C) :
+    (compR r s).runE K = Tab.compSel Tab.bitsMax r s := by
+  unfold compR Tab.compSel
+  rcases Tab.compSelM Tab.bitsMax r s with e | t | ⟨g, w, o, ra, rc⟩ <;> rfl
+
+theorem compR_sound {r : Tab A B} {s : Tab B C} {K : Known A C} {Z : Core.Rel A.El C.El}
+    (H : Agrees K (rep r ≫ rep s) Z) : (compR r s).Reps K Z := by
+  rw [reps_iff, compR_runE]; intro t ht x z hx hz
+  exact (Tab.compSel_holds ht x z).trans (H x z hx hz)
+
+theorem compR_wf (hb : ReadsBack) (r : Tab A B) (s : Tab B C) : (compR r s).Wf := by
+  unfold compR; split
+  next g w o ra rc h => exact Tab.compSelM_wf h fun e => hb.1 r s g w o ra rc e h
+  all_goals trivial
+
+theorem compV_sound {r : Tab A B} {S : Rel B C} {K : Known A C} {Z : Core.Rel A.El C.El} (wS : S.Wf)
+    (H : ∀ s, S.runE {} = .ok s → Agrees K (rep r ≫ rep s) Z) : (compV r S).Reps K Z := by
+  cases S with
+  | bits g w o x ra y rc =>
+    obtain ⟨hr, -, ho, hx, -⟩ := (wS : BitsWf g w o x ra y rc)
+    rcases hc : Tab.compTabMat r g w o x ra with e | ⟨ka, o', ⟨M, key⟩, ra'⟩
+    · simp only [compV, hc]; rw [reps_iff]; intro t ht; nomatch ht
+    · simp only [compV, hc]
+      rcases hs : Tab.ofBits g w o x ra y rc with e | s
+      · exact absurd hs (hr e)
+      split
+      · rw [reps_iff]; intro t ht
+        rw [Tab.compTabMat_law hc ht hs (fun a ha j hj => some_lt_two (ho a ha j hj)) hx]; exact H s hs
+      · exact compR_sound (H s hs)
+  | tab t0 =>
+    cases t0 with
+    | error e => rw [reps_iff]; intro t ht; nomatch ht
+    | ok s => exact compR_sound (H s rfl)
+  | lazy f =>
+    show (match (Rel.lazy f).runE {} with | .ok s => compR r s | .error e => .tab (.error e)).Reps K Z
+    rcases hs : (Rel.lazy f).runE {} with e | s
+    · rw [reps_iff]; intro t ht; nomatch ht
+    · exact compR_sound (H s hs)
+
+theorem compV_wf (hb : ReadsBack) (r : Tab A B) {S : Rel B C} (wS : S.Wf) : (compV r S).Wf := by
+  cases S with
+  | bits g w o x ra y rc =>
+    rcases hc : Tab.compTabMat r g w o x ra with e | ⟨ka, o', ⟨M, key⟩, ra'⟩
+    · simp only [compV, hc]; trivial
+    · simp only [compV, hc]
+      split
+      · next hle => exact Tab.compTabMat_wf hc (fun e => hb.2 r g w ka o o' ra ra' rc x key y e wS hc hle) wS
+      · split
+        · exact compR_wf hb r _
+        · trivial
+  | tab t0 => cases t0 with
+    | error e => trivial
+    | ok s => exact compR_wf hb r s
+  | lazy f =>
+    show (match (Rel.lazy f).runE {} with | .ok s => compR r s | .error e => .tab (.error e)).Wf
+    rcases (Rel.lazy f).runE {} with e | s
+    · trivial
+    · exact compR_wf hb r s
+
+theorem compT_sound {r' : Except String (Tab A B)} {S : Rel B C} {K : Known A C}
+    {X : Core.Rel A.El B.El} {Y : Core.Rel B.El C.El}
+    (hr : ∀ r, r' = .ok r → Agrees ⟨K.dom, none⟩ (rep r) X) (hS : ∀ K, S.Reps K Y) (wS : S.Wf) :
+    (compT r' S).Reps K (X ≫ Y) := by
+  rcases r' with e | r
+  · rw [reps_iff]; intro t ht; nomatch ht
+  have er := hr r rfl
+  cases S with
+  | lazy g =>
+    simp only [compT]
+    split
+    · next hn =>
+      rw [reps_iff]; intro t ht x z hx _
+      refine (Tab.zero_holds ht x z).trans ⟨False.elim, fun ⟨b, h, _⟩ => ?_⟩
+      obtain ⟨i, _, _⟩ := (er x b hx rfl).2 h
+      have := i.2; simp [beq_iff_eq.1 hn] at this
+    · simp only [Rel.Rel.Reps]
+      rcases hd : Tab.ran r with e | d
+      · rw [reps_iff]; intro t ht; nomatch ht
+      refine compV_sound (wS.force _) fun s hs a c ha hc => exists_congr fun b => ?_
+      rw [force_runE] at hs
+      have es := (reps_iff _ _ _).1 (hS _) s hs
+      have inRan : rep r a b → (⟨some ⟨d.n, d.key⟩, K.ran⟩ : Known B C).den.1 b b := fun h =>
+        (side_some rfl b).2 ((keyRowRep d b).2 ⟨b, (Tab.ran_holds hd b b).2 ⟨rfl, a, h⟩⟩)
+      have e1 := er a b ha rfl
+      exact ⟨fun ⟨h1, h2⟩ => ⟨e1.1 h1, (es b c (inRan h1) hc).1 h2⟩,
+        fun ⟨h1, h2⟩ => ⟨e1.2 h1, (es b c (inRan (e1.2 h1)) hc).2 h2⟩⟩
+  | tab t0 =>
+    exact compV_sound wS fun (s : Tab B C) hs a c ha _ => exists_congr fun b =>
+      and_congr (er a b ha rfl) ((reps_iff _ _ _).1 (hS {}) s hs b c rfl rfl)
+  | bits g w o x ra y rc =>
+    exact compV_sound wS fun (s : Tab B C) hs a c ha _ => exists_congr fun b =>
+      and_congr (er a b ha rfl) ((reps_iff _ _ _).1 (hS {}) s hs b c rfl rfl)
+
+theorem compT_wf (hb : ReadsBack) (r' : Except String (Tab A B)) {S : Rel B C} (wS : S.Wf) : (compT r' S).Wf := by
+  rcases r' with e | r
+  · trivial
+  cases S with
+  | lazy g =>
+    simp only [compT]
+    split
+    · trivial
+    · intro K; dsimp only; split
+      · exact compV_wf hb r (wS.force _)
+      · trivial
+  | tab _ => exact compV_wf hb r wS
+  | bits => exact compV_wf hb r wS
+
+theorem compS_sound {R : Rel A B} {s' : Except String (Tab B C)}
+    {L : (n : USize) × Vals C n} {X : Core.Rel A.El B.El} {Y : Core.Rel B.El C.El} (hR : ∀ K, R.Reps K X)
+    (hs : ∀ s, s' = .ok s → Agrees ⟨none, some L⟩ (rep s) Y) : (compS R s').Reps ⟨none, some L⟩ (X ≫ Y) := by
+  rcases s' with e | s
+  · rw [reps_iff]; intro t ht; nomatch ht
+  have es := hs s rfl
+  simp only [compS]
+  rcases hr : R.runE ⟨none, some ⟨s.n, s.key⟩⟩ with e | r
+  · rw [reps_iff]; intro t ht; nomatch ht
+  have er := (reps_iff _ R X).1 (hR _) r hr
+  refine compR_sound fun a c _ hc => exists_congr fun b => ?_
+  have key : ∀ {b}, rep s b c → (⟨none, some ⟨s.n, s.key⟩⟩ : Known A B).den.2 b b := fun h =>
+    (side_some rfl _).2 ((keyRowRep s _).2 ⟨c, h⟩)
+  exact ⟨fun ⟨h1, h2⟩ => ⟨(er a b rfl (key h2)).1 h1, (es b c rfl hc).1 h2⟩,
+    fun ⟨h1, h2⟩ => have h2' := (es b c rfl hc).2 h2; ⟨(er a b rfl (key h2')).2 h1, h2'⟩⟩
+
+theorem compS_wf (hb : ReadsBack) (R : Rel A B) (s' : Except String (Tab B C)) : (compS R s').Wf := by
+  rcases s' with e | s
+  · trivial
+  simp only [compS]; split
+  · exact compR_wf hb _ _
+  · trivial
+
+theorem comp_sound {e : Bool} {R : Rel A B} {S : Rel B C} {X : Core.Rel A.El B.El}
+    {Y : Core.Rel B.El C.El} (hR : ∀ K, R.Reps K X) (hS : ∀ K, S.Reps K Y) (wS : S.Wf) :
+    ∀ K, (GenK.comp A B C e R S).Reps K (X ≫ Y) := fun K => by
+  have eR := fun K => (reps_iff K R X).1 (hR K)
+  cases R with
+  | tab r => exact compT_sound (eR _) hS wS
+  | bits g w o x ra y rc => exact compT_sound (fun t h => eR ⟨K.dom, none⟩ t h) hS wS
+  | lazy f =>
+    simp only [GenK.comp, Rel.Rel.Reps]
+    split
+    · split
+      · exact compT_sound (eR _) hS wS
+      · exact compS_sound (fun K => hR K) ((reps_iff _ _ _).1 (hS _))
+    · exact compT_sound (eR _) hS wS
+
+theorem comp_wf (hb : ReadsBack) {e : Bool} (R : Rel A B) {S : Rel B C} (wS : S.Wf) :
+    (GenK.comp A B C e R S).Wf := by
+  cases R with
+  | tab r => exact compT_wf hb r wS
+  | bits => exact compT_wf hb _ wS
+  | lazy f =>
+    intro K; simp only [GenK.comp]
+    split
+    · split
+      · exact compT_wf hb _ wS
+      · exact compS_wf hb _ _
+    · exact compT_wf hb _ wS
+
+/-! ### `Rel.Wf` of the ops that build no `bits` value -/
+
+theorem lift1_wf {D : Obj} {f : Tab A B → Except String (Tab C D)} {k : Known C D → Known A B} (R : Rel A B) :
+    (lift1 f k R).Wf := by cases R <;> first | trivial | exact fun _ => trivial
+
+theorem lift2_wf {D E F : Obj} {f : Tab A B → Tab C D → Except String (Tab E F)} {kl : Known E F → Known A B}
+    {kr : Known E F → Known C D} (R : Rel A B) (S : Rel C D) : (lift2 f kl kr R S).Wf := by
+  cases R <;> cases S <;> first | trivial | exact fun _ => trivial
+
+theorem ofVals_wf {f : {n : USize} → Vals A n → Except String (Tab A B)} : (ofVals A B f).Wf := by
+  intro K; cases h : K.dom <;> simp [ofVals, h, Rel.Rel.Wf]
+
+theorem top_wf {V : Rel B B} : (GenK.top A B V).Wf := by
+  intro K; cases h : K.dom <;> simp [GenK.top, h, Rel.Rel.Wf]
+
+end Rel.Lang.GenK
