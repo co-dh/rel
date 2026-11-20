@@ -231,7 +231,8 @@ end
 /-- The rows whose case of `Tm.gen_sound` is proved (`rowsProved_ok`), each with whether its proof reads `LamLaw`
     at its objects `A ⟶ [B]` (a row whose table is a `Λ`). -/
 def rowsProved : List (String × Bool) :=
-  [("∋", false), ("inl", false), ("inr", false), ("τ", true), ("setify", true), ("snoc", false)]
+  [("∋", false), ("inl", false), ("inr", false), ("τ", true), ("setify", true), ("snoc", false),
+   ("cons", false)]
 
 /-- Some node of `t` has no proved case in `Tm.gen_sound`: no `GenK` lemma yet (`est thin atPos mu nu
     hylo`), a lemma that does not hold
@@ -393,6 +394,10 @@ theorem rowOK_snoc : RowOK "snoc" := rowOK_of (c := RowCode.snoc) rfl rfl fun _ 
   cases hv
   cases σ <;> exact ⟨GenK.ofVals_wf, fun _ => ⟨⟨rfl, rfl⟩, GenK.after_row_sound fun _ _ h => Tab.snoc_holds h⟩⟩
 
+theorem rowOK_cons : RowOK "cons" := rowOK_of (c := RowCode.cons) rfl rfl fun _ σ _ _ _ _ hv => by
+  cases hv
+  cases σ <;> exact ⟨GenK.ofVals_wf, fun _ => ⟨⟨rfl, rfl⟩, GenK.after_row_sound fun _ _ h => Tab.cons_holds h⟩⟩
+
 /-- Every row of `rowsProved` is `RowOK`: the obligations enumerated from the list `Tm.gap` reads. -/
 theorem rowsProved_ok (r : Prim) (A B : Obj) (h : (rowsProved.lookup r.sym).isNone = false) :
     (primGen r A B []).Wf ∧
@@ -403,8 +408,9 @@ theorem rowsProved_ok (r : Prim) (A B : Obj) (h : (rowsProved.lookup r.sym).isNo
   by_cases h4 : r.sym = "τ"; · exact rowOK_tau r A B h4
   by_cases h5 : r.sym = "setify"; · exact rowOK_setify r A B h5
   by_cases h6 : r.sym = "snoc"; · exact rowOK_snoc r A B h6
+  by_cases h7 : r.sym = "cons"; · exact rowOK_cons r A B h7
   simp [rowsProved, List.lookup, beq_false_of_ne h1, beq_false_of_ne h2, beq_false_of_ne h3, beq_false_of_ne h4,
-    beq_false_of_ne h5, beq_false_of_ne h6] at h
+    beq_false_of_ne h5, beq_false_of_ne h6, beq_false_of_ne h7] at h
 
 theorem Tm.code_wf {η : Code} {A B : Obj} {t : Tm A B} (h : (t.gen η).Wf) : (t.code η).Wf := by
   rw [Tm.code]; split
