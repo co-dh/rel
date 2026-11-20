@@ -274,6 +274,11 @@ Diff table 的「状态」列：✅ 后面是完成它的步骤；🔄 是部分
   ✅ `Tab.sums_holds`（`Rel/RepSums.lean`）：`Tab.sums x = .ok T → rep T = sumsDen (rep x)`，无前提；该行已进
   `kernRows` 与 `rowsProved`（`("sums", no)`，`rowOK_sums`），`gen_sound` 不加前提；程序里写 `sums(x)`
   （`x : N×N ⟶ N`）走 kernel，`TestSums.sumsP` 以 `check` 验分组、单 key、负数、溢出、null。
+  ✅ 位置 ν 与值 γ 是两个对象（分支 `sumsG`）：原先签名里两者是同一个变量 `ℕ`，所以 `x : K×P ⟶ N` 报
+  "found N, expected P"；运行、`sumsDen`、`Tab.sums_holds`、`rowOK_sums` 都在存储层（`.long`）上，本来就不限
+  γ = ν，无需改。γ 是 `plus` 所接受的数对象（存为 i64，`Prim.num`、`Elab.numObj` 与 `plus` 同一检查）；
+  i32、f64 等对象被拒："sums on I: I is an object of i32, and sums runs on objects of i64 only"
+  （`TestSums.sumsPN`、`sumsI`、`sumsF`）。窄整数 γ 要等值算子支持窄整数。
   ⬜ 未做：`Prim.dfn` 条目（上面的组合式）等 dfn 能读行的关系参数（与 `asc` 相同）；`Plan.ofTm` 没有 prim 的
   recipe，不需要加。
 
