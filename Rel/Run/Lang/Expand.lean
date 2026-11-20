@@ -723,11 +723,18 @@ structure Registry where
   chains : List (Name × List Name) := []
   progs : Array (Name × Name × List OpenDecl) := #[]
   exts : Std.HashMap Name (Ext × Name) := {}
+  /-- Each key registered a second time, with the constant registered first and the one refused (`add`). -/
+  clashes : List (Name × Name × Name) := []
 
 instance : Inhabited Registry := ⟨{}⟩
 
+/-- A `call` is added once per key: `emit` registers only the constants its program built, which `callDef` builds
+    only for a key the registry lacks, so a second one comes from two imports that each built the key, with their
+    own constants (`emitter ++ key`). That one is kept out and recorded; `Registry.call?` refuses to read past it. -/
 def Registry.add (r : Registry) : RegEntry → Registry
-  | .call c o => { r with calls := (c, o) :: r.calls }
+  | .call c o => match r.calls.lookup c with
+    | some o' => { r with clashes := r.clashes ++ [(c, o'.const, o.const)] }
+    | none => { r with calls := (c, o) :: r.calls }
   | .chain n ns => { r with chains := (n, ns) :: r.chains }
   | .prog n ns os => { r with progs := r.progs.push (n, ns, os) }
   | .ext e h => { r with exts := r.exts.insert e.const (e, h) }
@@ -736,6 +743,15 @@ initialize relRegistry : SimplePersistentEnvExtension RegEntry Registry ←
   registerSimplePersistentEnvExtension {
     addEntryFn := Registry.add
     addImportedFn := fun ess => ess.foldl (fun r es => es.foldl Registry.add r) {} }
+
+/-- The constant the registry holds for each key, the one body a call by that key reads; the error when a key was
+    registered twice (`Registry.add`), since its two constants' bodies name different nested constants. -/
+def Registry.call? (r : Registry) : Except String (Name → Option Once) :=
+  match r.clashes with
+  | [] => pure (r.calls.lookup ·)
+  | (k, c, c') :: _ => throw s!"the registry key `{k}` is registered twice, as `{c}` and as `{c'}`: two imported \
+      modules, neither importing the other, each built it; import one from the other so the second calls the \
+      first's constant"
 
 def pairT (a b : Lean.Expr) : Lean.Expr := mkApp2 (mkConst ``Prod [0, 0]) a b
 def listT (a : Lean.Expr) : Lean.Expr := mkApp (mkConst ``List [0]) a
