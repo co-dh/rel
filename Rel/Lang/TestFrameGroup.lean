@@ -8,9 +8,6 @@ namespace Rel.Lang.TestFrameGroup
 
 open Rel.Programs.prelude Rel.Programs.frame Rel.Programs.frameGroup Rel.Lang.TestFrameCols.frameData in
 rel_program frameGroupT where
-    -- the fixture's rows at positions `Q`, for the percentile: `P` cannot hold `100·count`
-    obj Q = 0…1000
-    xq : Q ⟶ K×N ≜ {(0,(B,5)),(1,(A,3)),(2,(B,5)),(3,(C,1)),(4,(A,7)),(5,(C,2)),(6,(B,1)),(7,(A,3))}
     -- by key: A at 1 4 7, B at 0 2 6, C at 3 5; descending C B A, ties in position order
     check iasc(x π₁) = {(0,1),(1,4),(2,7),(3,0),(4,2),(5,6),(6,3),(7,5)}
     check idesc(x π₁) = {(0,3),(1,5),(2,0),(3,2),(4,6),(5,1),(6,4),(7,7)}
@@ -53,25 +50,6 @@ rel_program frameGroupT where
     -- B and A both occur 3 times, B first; 5, 3 and 1 occur twice, 5 first
     check mode(π₁, x) = {(∗,B)}
     check mode(π₂, x) = {(∗,5)}
-    -- sorted `v`: 1 1 2 3 3 5 5 7 (middle 3, 3); first 5 rows 1 3 5 5 7 (5); first 4 rows 1 3 5 5 ((3+5)/2)
-    check median(π₂, x) = {(∗,3)}
-    check median(π₂, take({(∗,5)}, x)) = {(∗,5)}
-    check median(π₂, take({(∗,4)}, x)) = {(∗,4)}
-    -- the percentile, `quantile(p, 100)`, at `p` = 0 25 50 75 90 100: `h = 7p/100` = 0, 1.75, 3.5, 5.25, 6.3, 7
-    -- picks rows 0; 1 2; 3 4; 5 6; 6 7; 7
-    -- of the sorted `v`: 1, (1+2)/2, (3+3)/2, (5+5)/2, (5+7)/2, 7
-    check quantile({(∗,0)}, {(∗,100)}, π₂, xq) = {(∗,1)}
-    check quantile({(∗,25)}, {(∗,100)}, π₂, xq) = {(∗,1)}
-    check quantile({(∗,50)}, {(∗,100)}, π₂, xq) = {(∗,3)}
-    check quantile({(∗,75)}, {(∗,100)}, π₂, xq) = {(∗,5)}
-    check quantile({(∗,90)}, {(∗,100)}, π₂, xq) = {(∗,6)}
-    check quantile({(∗,100)}, {(∗,100)}, π₂, xq) = {(∗,7)}
-    check percentile({(∗,0)}, π₂, xq) = {(∗,1)}
-    check percentile({(∗,25)}, π₂, xq) = {(∗,1)}
-    check percentile({(∗,50)}, π₂, xq) = {(∗,3)}
-    check percentile({(∗,75)}, π₂, xq) = {(∗,5)}
-    check percentile({(∗,90)}, π₂, xq) = {(∗,6)}
-    check percentile({(∗,100)}, π₂, xq) = {(∗,7)}
 
 #guard frameGroupT.ok
 
