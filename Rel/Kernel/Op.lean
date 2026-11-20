@@ -219,15 +219,20 @@ def fval : (t : QAtomicType) → Dep.Carrier t → Option UInt64
   | .f32, x => some (Op.widen32 x.toUInt64)
   | _, _ => none
 
-/-- The value verb `k` on two `f64` words, as q computes it on floats: `+ - * max min` by their `f` ops, `div` the
-    floor of the quotient (`ffloor` of `fdiv`), `mod` `x - y·(x div y)` (`q.k`: `mod:{x-y*x div y}`). -/
-def fverb (k : UInt8) (x y : UInt64) : Except String UInt64 :=
-  if k == Ew.add then Op.fadd.eval x y else if k == Ew.sub then Op.fsub.eval x y
-  else if k == Ew.mul then Op.fmul.eval x y else if k == Ew.greater then Op.fmax.eval x y
-  else if k == Ew.lesser then Op.fmin.eval x y
-  else if k == Ew.idiv then do Op.ffloor.eval 0 (← Op.fdiv.eval x y)
-  else if k == Ew.imod then do Op.fsub.eval x (← Op.fmul.eval y (← Op.ffloor.eval 0 (← Op.fdiv.eval x y)))
+/-- The value verb `k` as a composition of float `Op`s, each applied by `ap` (to two words by `Op.eval`, to two
+    columns by `colMap`), as q computes it on floats: `+ - * max min` by their `f` ops, `div` the floor of the
+    quotient (`ffloor` of `fdiv`), `mod` `x - y·(x div y)` (`q.k`: `mod:{x-y*x div y}`). A unary op reads its second
+    operand. -/
+def fverbBy {α : Type} (ap : Op → α → α → Except String α) (k : UInt8) (x y : α) : Except String α :=
+  if k == Ew.add then ap .fadd x y else if k == Ew.sub then ap .fsub x y
+  else if k == Ew.mul then ap .fmul x y else if k == Ew.greater then ap .fmax x y
+  else if k == Ew.lesser then ap .fmin x y
+  else if k == Ew.idiv then do let q ← ap .fdiv x y; ap .ffloor q q
+  else if k == Ew.imod then do let q ← ap .fdiv x y; let f ← ap .ffloor q q; ap .fsub x (← ap .fmul y f)
   else .error s!"arith: verb code {k} is none of + - * div mod max min"
+
+/-- `fverbBy` on two `f64` words. -/
+abbrev fverb : UInt8 → UInt64 → UInt64 → Except String UInt64 := fverbBy Op.eval
 
 /-- The value verb `k` at the float atom `t` on the `f64` words `x`, `y`: `fverb`, then `fto t`, which answers `2^63`
     where the IEEE answer is NaN. -/

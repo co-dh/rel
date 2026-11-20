@@ -823,9 +823,9 @@ partial def node (pre : Name) (ph : List Lean.Expr) (ρ : List (Nat × Lean.Expr
   | .arr B, _, .atPos k => return g ``GenK.atPos #[oE B, toExpr k]
   | _, _, .own R => c R
   | _, _, .succ U => return g ``GenK.succ #[← c U]
-  | _, _, .arith k U => return g ``GenK.arith #[toExpr k, ← c U]
-  | _, _, .leq U => return g ``GenK.leq #[← c U]
-  | _, _, .lt U => return g ``GenK.lt #[← c U]
+  | _, _, .arith t k U => return g ``GenK.arith #[toExpr t, toExpr k, ← c U]
+  | _, _, .leq t U => return g ``GenK.leq #[toExpr t, ← c U]
+  | _, _, .lt t U => return g ``GenK.lt #[toExpr t, ← c U]
   | .arr Y, V, .foldr e S => return g ``GenK.foldr #[oE Y, oE V, bE S.dem, ← c e, ← c S]
   | .arr Y, V, .fold e S => return g ``GenK.fold #[oE Y, oE V, bE S.dem, ← c e, ← c S]
   | _, _, .share _ R => c R
@@ -889,7 +889,7 @@ def Tm.fieldsEq (key : Lean.Name → Lean.Name) {A B C D : Obj} (t : Tm A B) (u 
   | .call ks c os _ => match u with | .call ks' c' os' _ => ks == ks' && key c == key c' && os == os' | _ => false
   | .callCv ks c _ os .. => match u with
     | .callCv ks' c' _ os' .. => ks == ks' && key c == key c' && os == os' | _ => false
-  | .arith k _ => match u with | .arith k' _ => k == k' | _ => false
+  | .arith t k _ => match u with | .arith t' k' _ => t == t' && k == k' | _ => false
   | .nu k .. => match u with | .nu k' .. => k == k' | _ => false
   | .mu k w n _ => match u with | .mu k' w' n' _ => k == k' && w == w' && n == n' | _ => false
   | .hylo k w _ => match u with | .hylo k' w' _ => k == k' && w == w' | _ => false

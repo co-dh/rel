@@ -264,8 +264,8 @@ def kernRows : List (String × Lean.Name) :=
 def Tm.kernelNode {A B : Obj} : Tm A B → Bool
   | .val _ | .uni _ | .zero | .id | .comp .. | .conv _ | .meet .. | .join .. | .diff .. | .dom _ | .ran _
   | .own _ => true
-  | .leq _ => true
-  | .lt _ => true
+  | .leq .. => true
+  | .lt .. => true
   | .succ _ => true
   | .arith .. => true
   | .lam _ => true
@@ -319,14 +319,15 @@ def after (A B : Obj) (f : {K : Obj} → Tab K A → Except String (Tab K B)) : 
     universe (`𝟙`) is as good as a table. -/
 def succ (U : Fn false .long .long) : Fn true .long .long :=
   after _ _ fun D => Tab.succ D fun X => U.runE ⟨some ⟨_, X⟩, none, none⟩
-def arith (k : UInt8) (U : Fn false .long .long) : Fn true (.prod .long .long) .long :=
-  after _ _ fun D => Tab.arith k D fun X => U.runE ⟨some ⟨_, X⟩, none, none⟩
+def arith (t : QAtomicType) (k : UInt8) (U : Fn false (.atom t) (.atom t)) :
+    Fn true (.prod (.atom t) (.atom t)) (.atom t) :=
+  after _ _ fun D => Tab.arith t k D fun X => U.runE ⟨some ⟨_, X⟩, none, none⟩
 
 /-- One side of `cmp`: `U` run knowing its domain is the values `s` the context knows of that side, its `dom`, cut
     to `s` (`idU ≫ dom U`); `dom U` run closed where the context knows none, and where that fails (an infinite
     universe, `𝟙`) the message naming `op` and the side `w`. -/
-def cmpSide (op w : String) (U : Rel .long .long) (s : Option ((n : USize) × Vals .long n)) :
-    Except String ((n : USize) × Vals .long n) := do
+def cmpSide (op w : String) {t : QAtomicType} (U : Rel (.atom t) (.atom t)) (s : Option ((n : USize) × Vals (.atom t) n)) :
+    Except String ((n : USize) × Vals (.atom t) n) := do
   let u ← (U.runE ⟨s, none, none⟩).mapError fun e => if s.isSome then e else
     s!"{op} on an unbounded object: nothing bounds its {w} side; compose it with a table on that side ({e})"
   let d ← u.dom
@@ -334,13 +335,17 @@ def cmpSide (op w : String) (U : Rel .long .long) (s : Option ((n : USize) × Va
 
 /-- `K ≫ o ≫ L` on `U`'s universe, the two sides as `cmpSide` reads them (§0 `Known`): on the pairs `P` a meet hands
     it, `P` cut to those sides and tested pair by pair (`Tab.cmpPairs`); else CROSS of the sides (`Tab.cmpOn`). -/
-def cmp (op : String) (o : Kernel.Op) (U : Fn false .long .long) : Fn false .long .long := .lazy fun K => .tab do
+def cmp (op : String) {t : QAtomicType} (o : Except String Kernel.Op) (U : Fn false (.atom t) (.atom t)) :
+    Fn false (.atom t) (.atom t) := .lazy fun K => .tab do
+  let o ← o
   let k ← cmpSide op "left" U K.dom; let l ← cmpSide op "right" U K.ran
   match K.pairs with
   | some p => Tab.cmpPairs o (← cut ⟨some k, some l, none⟩ p)
   | none => Tab.cmpOn o k.2 l.2
-def leq (U : Fn false .long .long) : Fn false .long .long := cmp "≤" .le U
-def lt (U : Fn false .long .long) : Fn false .long .long := cmp "<" .lt U
+def leq (t : QAtomicType) (U : Fn false (.atom t) (.atom t)) : Fn false (.atom t) (.atom t) :=
+  cmp "≤" (Tab.ordOp false t) U
+def lt (t : QAtomicType) (U : Fn false (.atom t) (.atom t)) : Fn false (.atom t) (.atom t) :=
+  cmp "<" (Tab.ordOp true t) U
 
 /-- `Λ(R)` on the keys `X` (`Tab.lam`), `R` run knowing its domain is `X`. -/
 def lam (A B : Obj) (d : Bool) (R : Fn d A B) : Fn true A (.arr B) :=
