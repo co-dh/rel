@@ -40,6 +40,13 @@ theorem side_some {o : Option ((n : USize) × Vals C n)} {n : USize} {X : Vals C
     (x : C.El) : o.elim (𝟙 _) (fun c => (graph c.2.row)° ≫ graph c.2.row) x x ↔ ∃ i, X.row i = x := by
   subst h; exact ⟨fun ⟨i, e, _⟩ => ⟨i, e.symm⟩, fun ⟨i, e⟩ => ⟨i, e.symm, e.symm⟩⟩
 
+/-- A value both sides of `K` admit is admitted by whichever side is known first (`GenK.dom`, `GenK.ran`). -/
+theorem side_or {K : Known A A} {x : A.El} (h₁ : K.den.1 x x) (h₂ : K.den.2 x x) :
+    (K.dom <|> K.ran).elim (𝟙 _) (fun c => (graph c.2.row)° ≫ graph c.2.row) x x := by
+  obtain ⟨_ | _, _⟩ := K
+  · exact h₂
+  · exact h₁
+
 /-- `r` represents `X` in `K` iff every table `r` computes there agrees with `X` on `K`'s sides. -/
 theorem reps_iff (K : Known A B) (r : Rel A B) (X : Core.Rel A.El B.El) :
     r.Reps K X ↔ ∀ t, r.runE K = .ok t → Agrees K (rep t) X := by
@@ -138,19 +145,17 @@ theorem join_sound {d e : Bool} {R S : Rel A B} {X Y : Core.Rel A.El B.El} (hR :
 
 theorem dom_sound {d : Bool} {R : Rel A B} {X : Core.Rel A.El B.El} (hR : ∀ K, R.Reps K X) :
     ∀ K, (GenK.dom A B d R).Reps K (𝟙 _ ∩ X ≫ X°) :=
-  lift1_sound hR fun _ r _ ht hr x x' hx _ => by
-    have e : ∀ y, (rep r x y ↔ X x y) := fun y => hr x y hx rfl
+  lift1_sound hR fun _ r _ ht hr x x' hx hx' => by
     refine (Tab.dom_holds ht x x').trans ⟨?_, ?_⟩
-    · rintro ⟨rfl, y, h⟩; exact ⟨rfl, y, (e y).1 h, (e y).1 h⟩
-    · rintro ⟨rfl, y, h, -⟩; exact ⟨rfl, y, (e y).2 h⟩
+    · rintro ⟨rfl, y, h⟩; have e := hr _ y (side_or hx hx') rfl; exact ⟨rfl, y, e.1 h, e.1 h⟩
+    · rintro ⟨rfl, y, h, -⟩; exact ⟨rfl, y, (hr _ y (side_or hx hx') rfl).2 h⟩
 
 theorem ran_sound {R : Rel A B} {X : Core.Rel A.El B.El} (hR : ∀ K, R.Reps K X) :
     ∀ K, (GenK.ran A B R).Reps K (𝟙 _ ∩ X° ≫ X°°) :=
-  lift1_sound hR fun _ r _ ht hr y y' hy _ => by
-    have e : ∀ x, (rep r x y ↔ X x y) := fun x => hr x y rfl hy
+  lift1_sound hR fun _ r _ ht hr y y' hy hy' => by
     refine (Tab.ran_holds ht y y').trans (Iff.trans ⟨?_, ?_⟩ (ran_iff X y y').symm)
-    · rintro ⟨rfl, x, h⟩; exact ⟨rfl, x, (e x).1 h, (e x).1 h⟩
-    · rintro ⟨rfl, x, h, -⟩; exact ⟨rfl, x, (e x).2 h⟩
+    · rintro ⟨rfl, x, h⟩; have e := hr x _ rfl (side_or hy hy'); exact ⟨rfl, x, e.1 h, e.1 h⟩
+    · rintro ⟨rfl, x, h, -⟩; exact ⟨rfl, x, (hr x _ rfl (side_or hy hy')).2 h⟩
 
 theorem idU_comp_holds {n : USize} {X : Vals A n} {d : Tab A A} {r l : Tab A B} (hd : Tab.idU X = .ok d)
     (hl : d.comp r = .ok l) (x : A.El) (y : B.El) : l.Holds x y ↔ (∃ i, X.row i = x) ∧ r.Holds x y := by

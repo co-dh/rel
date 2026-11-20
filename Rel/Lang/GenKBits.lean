@@ -1824,23 +1824,24 @@ theorem compT_wf (r' : Except String (Tab A B)) {S : Rel B C} (wS : S.Wf) : (com
   | tab _ => exact compV_wf r wS
   | bits => exact compV_wf r wS
 
-theorem compS_sound {R : Rel A B} {s' : Except String (Tab B C)}
-    {L : (n : USize) × Vals C n} {X : Core.Rel A.El B.El} {Y : Core.Rel B.El C.El} (hR : ∀ K, R.Reps K X)
-    (hs : ∀ s, s' = .ok s → Agrees ⟨none, some L⟩ (rep s) Y) : (compS R s').Reps ⟨none, some L⟩ (X ≫ Y) := by
+theorem compS_sound {R : Rel A B} {s' : Except String (Tab B C)} {K : Known A C} {X : Core.Rel A.El B.El}
+    {Y : Core.Rel B.El C.El} (hR : ∀ K, R.Reps K X) (hs : ∀ s, s' = .ok s → Agrees ⟨none, K.ran⟩ (rep s) Y) :
+    (compS R K.dom s').Reps K (X ≫ Y) := by
   rcases s' with e | s
   · rw [reps_iff]; intro t ht; nomatch ht
   have es := hs s rfl
   simp only [compS]
-  rcases hr : R.runE ⟨none, some ⟨s.n, s.key⟩⟩ with e | r
+  rcases hr : R.runE ⟨K.dom, some ⟨s.n, s.key⟩⟩ with e | r
   · rw [reps_iff]; intro t ht; nomatch ht
   have er := (reps_iff _ R X).1 (hR _) r hr
-  refine compR_sound fun a c _ hc => exists_congr fun b => ?_
-  have key : ∀ {b}, rep s b c → (⟨none, some ⟨s.n, s.key⟩⟩ : Known A B).den.2 b b := fun h =>
+  refine compR_sound fun a c ha hc => exists_congr fun b => ?_
+  have key : ∀ {b}, rep s b c → (⟨K.dom, some ⟨s.n, s.key⟩⟩ : Known A B).den.2 b b := fun h =>
     (side_some rfl _).2 ((keyRowRep s _).2 ⟨c, h⟩)
-  exact ⟨fun ⟨h1, h2⟩ => ⟨(er a b rfl (key h2)).1 h1, (es b c rfl hc).1 h2⟩,
-    fun ⟨h1, h2⟩ => have h2' := (es b c rfl hc).2 h2; ⟨(er a b rfl (key h2')).2 h1, h2'⟩⟩
+  exact ⟨fun ⟨h1, h2⟩ => ⟨(er a b ha (key h2)).1 h1, (es b c rfl hc).1 h2⟩,
+    fun ⟨h1, h2⟩ => have h2' := (es b c rfl hc).2 h2; ⟨(er a b ha (key h2')).2 h1, h2'⟩⟩
 
-theorem compS_wf (R : Rel A B) (s' : Except String (Tab B C)) : (compS R s').Wf := by
+theorem compS_wf (R : Rel A B) (D : Option ((n : USize) × Vals A n)) (s' : Except String (Tab B C)) :
+    (compS R D s').Wf := by
   rcases s' with e | s
   · trivial
   simp only [compS]; split
@@ -1851,16 +1852,18 @@ theorem comp_sound {e : Bool} {R : Rel A B} {S : Rel B C} {X : Core.Rel A.El B.E
     {Y : Core.Rel B.El C.El} (hR : ∀ K, R.Reps K X) (hS : ∀ K, S.Reps K Y) (wS : S.Wf) :
     ∀ K, (GenK.comp A B C e R S).Reps K (X ≫ Y) := fun K => by
   have eR := fun K => (reps_iff K R X).1 (hR K)
+  have eS := fun K => (reps_iff K S Y).1 (hS K)
   cases R with
   | tab r => exact compT_sound (eR _) hS wS
   | bits g w o x ra y rc => exact compT_sound (fun t h => eR ⟨K.dom, none⟩ t h) hS wS
   | lazy f =>
     simp only [GenK.comp, Rel.Rel.Reps]
-    split
-    · split
-      · exact compT_sound (eR _) hS wS
-      · exact compS_sound (fun K => hR K) ((reps_iff _ _ _).1 (hS _))
-    · exact compT_sound (eR _) hS wS
+    -- each leaf runs one operand on the side of `K` it touches, so its table agrees there
+    split <;> (try split) <;> (try split) <;> first
+      | exact compS_sound hR (eS _)
+      | exact compT_sound (eR _) hS wS
+      | (refine compS_sound hR fun t ht => ?_; injection ht with h; subst h; exact eS _ _ ‹_›)
+      | (refine compT_sound (fun t ht => ?_) hS wS; injection ht with h; subst h; exact eR _ _ ‹_›)
 
 theorem comp_wf {e : Bool} (R : Rel A B) {S : Rel B C} (wS : S.Wf) :
     (GenK.comp A B C e R S).Wf := by
@@ -1869,11 +1872,7 @@ theorem comp_wf {e : Bool} (R : Rel A B) {S : Rel B C} (wS : S.Wf) :
   | bits => exact compT_wf _ wS
   | lazy f =>
     intro K; simp only [GenK.comp]
-    split
-    · split
-      · exact compT_wf _ wS
-      · exact compS_wf _ _
-    · exact compT_wf _ wS
+    split <;> (try split) <;> (try split) <;> first | exact compS_wf _ _ _ | exact compT_wf _ wS
 
 /-! ### `Rel.Wf` of the ops that build no `bits` value -/
 

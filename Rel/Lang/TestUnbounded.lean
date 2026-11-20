@@ -34,6 +34,7 @@ rel_program unboundedT where
 -- run closed. A failing definition is reported at its check and twice by name.
 private def unb (w : String) : String :=
   s!"< on an unbounded object: nothing bounds its {w} side; compose it with a table on that side (a leaf on demand ran with its domain unknown)"
+#eval unboundedT.failures.map toString
 #guard unboundedT.failures.map toString ==
   ["line 25, col 5: check tk, {(0, 30), (1, 10)}: " ++ unb "left",
    "line 28, col 5: check lt2, {(0, 1), (0, 2), (0, 3), (1, 2), (1, 3), (2, 3)}: " ++ unb "right",

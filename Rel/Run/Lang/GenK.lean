@@ -63,19 +63,27 @@ def compT {A B C : Obj} : Except String (Tab A B) → Rel B C → Rel A C
       | .error e => .tab (.error e)
   | .ok r, S => compV r S
 
-/-- `R s`, `s` the table of `S`: the mirror of `compT`, `R` run knowing its range is `s`'s key column. -/
-def compS {A B C : Obj} (R : Rel A B) : Except String (Tab B C) → Rel A C
+/-- `R s`, `s` the table of `S`: the mirror of `compT`, `R` run knowing its domain is `D` (what the context knows)
+    and its range is `s`'s key column. -/
+def compS {A B C : Obj} (R : Rel A B) (D : Option ((n : USize) × Vals A n)) : Except String (Tab B C) → Rel A C
   | .error e => .tab (.error e)
-  | .ok s => match R.runE ⟨none, some ⟨s.n, s.key⟩⟩ with | .ok r => compR r s | .error e => .tab (.error e)
+  | .ok s => match R.runE ⟨D, some ⟨s.n, s.key⟩⟩ with | .ok r => compR r s | .error e => .tab (.error e)
 
-/-- `R S` (`Tab.compSel`: a bit matrix where `Tab.bitsWin` holds): `S` runs first, on the range, only where the context
-    knows only the range and `S` is closed; else `R` runs first and hands its range to `S` as its domain (§0). -/
+/-- `R S` (`Tab.compSel`: a bit matrix where `Tab.bitsWin` holds), `R` lazy: one operand runs first on the side of
+    the context it touches and hands its other side to the second as a bound (§0) — `S` where it is a table or the
+    context bounds only the range, else `R`; where the first cannot run, the other goes first. -/
 def comp (A B C : Obj) (e : Bool) (R : Fn true A B) (S : Fn e B C) : Fn true A C := match R with
   | .tab r => compT r S
   | R@(.bits ..) => compT (R.runE {}) S
-  | .lazy f => .lazy fun
-    | ⟨none, some L⟩ => if e then compT ((Rel.lazy f).runE {}) S else compS (.lazy f) (S.runE ⟨none, some L⟩)
-    | K => compT ((Rel.lazy f).runE ⟨K.dom, none⟩) S
+  | .lazy f => .lazy fun K => match S with
+    | .tab s => compS (.lazy f) K.dom s
+    | S => if K.dom.isNone && K.ran.isSome then
+        match S.runE ⟨none, K.ran⟩ with
+        | .ok s => compS (.lazy f) K.dom (.ok s)
+        | .error _ => compT ((Rel.lazy f).runE ⟨K.dom, none⟩) S
+      else match (Rel.lazy f).runE ⟨K.dom, none⟩ with
+        | .ok r => compT (.ok r) S
+        | .error _ => compS (.lazy f) K.dom (S.runE ⟨none, K.ran⟩)
 
 /-- The code of a closed term with `dem = false` as its table, computed once: such a term has one table whatever
     the context, so this changes no result and saves re-running it at each use (a fold reading it in every round). -/
@@ -110,8 +118,9 @@ def join (A B : Obj) (d e : Bool) (R : Fn d A B) (S : Fn e A B) : Fn (d || e) A 
   lift2 Tab.union (fun K => K) (fun K => K) R S
 def diff (A B : Obj) (d e : Bool) (R : Fn d A B) (S : Fn e A B) : Fn (d || e) A B :=
   lift2 Tab.diff (fun K => K) (fun K => K) R S
-def dom (A B : Obj) (d : Bool) (R : Fn d A B) : Fn d A A := lift1 Tab.dom (fun K => ⟨K.dom, none⟩) R
-def ran (A B : Obj) (R : Fn false A B) : Fn false B B := lift1 Tab.ran (fun K => ⟨none, K.dom⟩) R
+/-- A coreflexive's two sides are one value set, so either side the context knows bounds `R`'s side. -/
+def dom (A B : Obj) (d : Bool) (R : Fn d A B) : Fn d A A := lift1 Tab.dom (fun K => ⟨K.dom <|> K.ran, none⟩) R
+def ran (A B : Obj) (R : Fn false A B) : Fn false B B := lift1 Tab.ran (fun K => ⟨none, K.dom <|> K.ran⟩) R
 
 /-! ### T3: `⊤ π₁ π₂ ⟨R,S⟩ × \ /`, `ν`, `μ` -/
 
