@@ -389,14 +389,6 @@ noncomputable def Tm.den : Val → {A B : Obj} → Tm A B → Den A B
   | ρ, _, _, .mu k _ _ b => Core.Rel.mu fun X => b.den (ρ.bind k X)
   | ρ, _, _, .hylo k _ b => Core.Rel.mu fun X => b.den (ρ.bind k X)
 
-/-- `Rᴵ`'s definition `⟨π₁R,π₂⟩dom(π₁π₁ ∩ π₂)π₁π₂` (`Pre.flat`) means `flatDen`: the `(a', b)` of `R` at the key,
-    kept where `a'` is the source, then `b`. -/
-theorem Tm.flat_den (ρ : Val) {I A B : Obj} (R : Tm I (.prod A B)) :
-    (Tm.comp (.pair (.comp .outl R) .outr) (.comp (.dom (.meet (.comp .outl .outl) .outr)) (.comp .outl .outr))).den ρ
-      = flatDen (R.den ρ) := by
-  apply Core.Rel.ext; intro x b
-  simp [Tm.den, flatDen, Core.Rel.comp, Core.Rel.rpair, Core.Rel.inter, Core.Rel.recip, Core.Rel.graph]
-
 /-- The spine `f` of a row given the meanings `ss` of its later arguments: the row's meaning of all of them, in
     the order `compile` passes their codes; a call's body with them bound at its `ks`; `𝟘` where `f` is neither
     a row nor a call under `arg`s. `share` and `own` are seen through, as `Tm.gen` passes their part's row on. -/
@@ -408,6 +400,18 @@ noncomputable def Tm.argDen : Val → {A B : Obj} → Tm A B → List Sem → De
   | ρ, _, _, .own R, ss => R.argDen ρ ss
   | _, _, _, _, _ => 𝟘
 end
+
+/-- `Rᴵ`'s definition `⟨π₁R,π₂⟩dom(π₁π₁ ∩ π₂)π₁π₂` (`Pre.flat`) means `flatDen`: the `(a', b)` of `R` at the key,
+    kept where `a'` is the source, then `b`. -/
+theorem Tm.flat_den (ρ : Val) {I A B : Obj} (R : Tm I (.prod A B)) :
+    (Tm.comp (.pair (.comp .outl R) .outr) (.comp (.dom (.meet (.comp .outl .outl) .outr)) (.comp .outl .outr))).den ρ
+      = flatDen (R.den ρ) := by
+  apply Core.Rel.ext; intro x b
+  simp [Tm.den, flatDen, Core.Rel.comp, Core.Rel.rpair, Core.Rel.inter, Core.Rel.recip, Core.Rel.graph]
+  constructor
+  · rintro ⟨a, b', ⟨h, rfl⟩, he⟩
+    cases (show ((x.2, b'), x.2) = ((x.2, b), x.2) from he); exact h
+  · intro h; exact ⟨_, _, ⟨h, rfl⟩, rfl⟩
 
 /-- `⟦t⟧`, and `t`'s meaning as a row's spine, read `ρ` only at the variables free in `t`. -/
 theorem Tm.den_congr : ∀ {A B : Obj} (t : Tm A B) (ρ ρ' : Val), (∀ i ∈ t.fv, ρ i = ρ' i) →
