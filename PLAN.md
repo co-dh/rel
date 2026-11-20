@@ -92,10 +92,10 @@ Size：S = 一步，少于 20 次 tool call；M = 一到三步；L = 多于三�
 | 9  | `Tm.Ax` 写成等式               | `Syn.lean:21-42`, `:131-148`          | 12 个 constructor，12 条等式            | S    | ✅ 1.1      |
 | 10 | refold 改名 hylo               | `Tm.lean:91`, `Gen.lean:267`          | 120 个名字含 "refold"                   | S    | ✅ 2.1      |
 | 11 | foldI 成为 definition          | `Tm.lean:68`, `Den.lean:98`           | owner 选 D：留 ctor，证 `foldI_sound`   | M    | ✅ 4.3      |
-| 12 | flat 成为 definition           | `Tm.lean:72`, `Den.lean:103`          | 同上；`flat_sound` 消失                 | M    | ⬜ 4.2      |
+| 12 | flat 成为 definition           | `Pre.flat`, `Elab.lean:262`（p44）     | Chess 指令数 +21%（> 20%），需融合行    | M    | 🔄 4.2      |
 | 13 | inl、inr 是叶子                | `inlRow`…`inrConvRow`, `Syntax:176`   | 无：prim 行带 code、den、RowOK；R9      | S    | ✅ 4.1      |
 | 14 | junc 是 definition，没有 juncD | `Pre.junc`, `Elab.lean:256`           | 无：`inl°R ∪ inr°S`；不放 prelude       | M    | ✅ 4.1      |
-| 15 | 对称除法 ctor                  | `Alg.symDiv`, `Run/Alg.lean:293`      | 没有 `Tm` ctor，没有 `Den`              | M    | ⬜ 4.4      |
+| 15 | 对称除法                       | `symDivDen`, `Den.lean:61`            | `Alg.symDiv` 已不存在；ctor 还是定义待定 | M    | ⏸ 4.4      |
 | 16 | 拒绝非正的 μ/ν                 | `Tm.pol`, `Tm.lean:254`               | Elab `.fix`（1655-1670）：没有检查      | S    | ✅ 2.4      |
 | 17 | gap：open share                | `Rows.lean:125`, `Expand.lean:530`    | 没有找到 producer；R6                   | M    | ⬜ 5.1      |
 | 18 | gap：setify、asc               | `rowGaps`, `Rows.lean:107`            | canonical 上已证；浮点 key 仍是 gap     | M    | 🔄 5.2      |
@@ -277,11 +277,28 @@ Diff table 的「状态」列：✅ 后面是完成它的步骤；🔄 是部分
   - fold `⦇[e,S]⦈` 直接取两部分，不经过 junc。
   - 性能（`perf stat` 用户态指令数，626c084 → 1888ee2）：Quicksort 130.4G → 132.4G（+1.6%），
     Chess 483.8G → 483.7G，Edit 676.7G → 675.9G，Knapsack 15.72G → 15.74G。无回退，不需要融合 kernel。
-- ⬜ 4.2 `flat` 成为 definition。
+- 🔄 4.2 `flat` 成为 definition（分支 p44，b7d56c0，未合并）。
+  - `Rᴵ` 由 `Pre.flat`（`Elab.lean`，`Pre.junc` 之后）展开为 `⟨π₁R,π₂⟩dom(π₁π₁ ∩ π₂)π₁π₂`（pair、投影加相等测试，
+    没有 converse）；`Tm.flat_den` 证明它的 `Den` 等于 `flatDen`。
+  - `Tm.flat`、`GenK.flat`、`Pre.flat` 构造子、`flat_sound`、`flat_le` 及 `Den`、`GenSound`、`ConvSpec` 中的 flat
+    分支删除；全量构建绿，GenSoundTest 1181 of 1181，没有 gap。
+  - 性能（`perf stat` 用户态指令数，2281e0f → p44）：Knapsack 16.35G → 16.43G（+0.5%），
+    Quicksort 79.77G → 79.96G（+0.2%），Edit 665.1G → 690.8G（+3.9%），Chess 314.0G → 379.8G（+21.0%）。
+    改写为 `⟨π₁R,π₂⟩⟨π₁π₁ ∩ π₂, π₁π₂⟩π₂`（不用 `dom`）更慢：Chess 383.2G（+22.0%）。
+  - Chess 超过 20%，所以按规则要把 `Tab.flat` 留作融合行并用 `Prim.dfn` 与定义相连；但 `Prim.dfn` 目前只支持
+    没有关系参数的行（`Syntax.lean` 中 `rank` 一行的注释："waits for a `dfn` that can read the row's
+    relations"），`flat` 的行要带参数 `R`。待 owner 决定：扩展 `dfn` 机制，或接受 +21%。`Tab.flat`、
+    `Tab.flat_holds` 暂时保留。
 - ✅ 4.3 `foldI`：owner 选 D，constructor 保留为融合形式，
   用 `foldIDen_eq` + `foldI_sound` 与定义相连
   （已证，e172821 合并，无额外前提；`Gen.foldI` 的 step 是交 `S ∩ π₁π₁π₁°`）。
-- ⬜ 4.4 加 `symDiv` constructor。
+- ⏸ 4.4 对称除法：待 owner 决定构造子还是定义。
+  - 运行时的 `Alg.symDiv`（`Run/Alg.lean`）已不存在，没有任何 `symDiv` 代码；只有 `symDivDen`（`Den.lean:61`，
+    无人引用）`= R/S ∩ (S/R)°`。
+  - 文档（§1 表 division allegory 一行、TODO "Tm 加 symmetric division 构造子"）说加构造子。
+  - 代码和 DRY 规则说是定义：`R/S ∩ (S/R)°` 只用已有的 `Tm.rdiv`、`Tm.meet`、`Tm.conv`；§4 中 `R\S R/S 对称除`
+    一行没有给对称除法单独的 kernel 复合。若选定义，做法同 `Pre.junc`：
+    `Pre.symDiv r s a b := .meet (.rdiv p r s a b) (.conv (.rdiv p s r b a))`，定律由 `symDivDen` 直接得到。
 - ✅ 4.5 默认是 `[nil, snoc]` 上的左 fold；只用 `snoc` 构造。
 
 ### P5 按既定顺序关闭 gap — 4/8（5.4a-c 并行，其余串行）
