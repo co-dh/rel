@@ -59,8 +59,8 @@ def rowCap : Nat := 512
 
 /-- A definition's result, `c` its value as `n.expanded` lists it: its status and, where ok, its rows. An error is
     a result the baseline may not hold: a side `rowsOf` cannot read. -/
-def result {A B : Obj} (c : CRel A B) : Except String (String × List (List Nat)) := do
-  let some g := c | return ("not ok: the generated constant vouches for nothing", [])
+def result {A B : Obj} (c : Except String (Tab A B)) : Except String (String × List (List Nat)) := do
+  let .ok g := c | return ("not ok: the generated constant vouches for nothing", [])
   if !(keyed A && keyed B) then throw "a side holds a `general` atom, whose `Obj.key` is `[]`"
   pure ("ok", rowsOf g)
 
