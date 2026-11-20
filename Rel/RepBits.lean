@@ -116,7 +116,7 @@ theorem Vals.code2_spec {n₁ n₂ : USize} {x : Vals A n₁} {y : Vals A n₂} 
       rw [← hct, heq _ (by omega) t t.2, zy j j.2]
 
 /-- A `P` below `N` has a last one: no later `k'` below `N` is a `P`. -/
-private theorem last_of_exists {P : Nat → Prop} {N : Nat} :
+theorem last_of_exists {P : Nat → Prop} {N : Nat} :
     ∀ {k}, k < N → P k → ∃ k, k < N ∧ P k ∧ ∀ k', k < k' → k' < N → ¬P k' := by
   intro k hk hP
   suffices H : ∀ d k, N - k ≤ d → k < N → P k → ∃ k, k < N ∧ P k ∧ ∀ k', k < k' → k' < N → ¬P k' from
