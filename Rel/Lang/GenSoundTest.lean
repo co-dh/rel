@@ -26,9 +26,11 @@ namespace Rel.Lang.GenSoundTest
 
 open Lean Elab Command Rel.Lang Rel.Lang.Embed
 
-/-- What the registered program `n` reads, re-read at its recorded homes (`.chain`) and scopes (`.prog`), every
-    parametric definition expanded at its use, as `walk` expands one with no constant: a call means its callee's
-    term with the arguments put for its parameters (Q11), so no `call` node is left for `Tm.den` to read. -/
+/-- What the registered program `n` reads, re-read at its recorded homes (`.chain`) and scopes (`.prog`) and with
+    the registry's definitions elaborated once (`calls`), as `rel_program` reads it: a use of one is a `call` node
+    holding its body at the call's objects (`Tm.den`, `Tm.gen` read the body), a use with no constant its
+    expansion. The registry is the final one, not the one `n` was elaborated under: a key registered by a later
+    program is one `n` would have built itself (`walk`'s `once`), with the same body. -/
 def reread (n : Name) : CommandElabM (Except Err Expand.Read) := do
   let env ← getEnv; let opts ← getOptions
   let reg := Expand.relRegistry.getState env
@@ -36,24 +38,35 @@ def reread (n : Name) : CommandElabM (Except Err Expand.Read) := do
   let resOf (h : Name) : String → Found := match reg.progs.find? (·.1 == h) with
     | some (_, ns, os) => (resolverAt env opts reg ns os).1
     | none => fun _ => .none
-  liftTermElabM (Expand.read (fun _ => none) progs (← programOf n) n resOf).run
+  liftTermElabM (Expand.read (reg.calls.lookup ·) progs (← programOf n) n resOf).run
 
 run_cmd do
   let reg := Expand.relRegistry.getState (← getEnv)
-  let mut total := 0
-  let mut ok : List String := []
-  let mut ks : List (List String) := []
-  let mut nonmono : List String := []
+  -- every definition: each program's, and each one elaborated once, by its constant: the registry's (which the
+  -- re-read finds, so builds no other) and any the re-read builds
+  let mut defs : List (String × Res) := []
   for (n, _, _) in reg.progs do
     match ← reread n with
     | .error e => throwError "GenSoundTest: re-reading {n}: {e}"
     | .ok (ds, _, _, _, fs) =>
-      for (x, ⟨_, _, t⟩) in ds ++ fs.map fun o => (toString o.const, o.res) do
-        total := total + 1
-        -- `monoOK` false makes `LamLaws` false (`Tm.LamLawsAt.mono`, `Tm.monoOK_iff`): `gen_sound` says nothing
-        if t.gap then ks := t.gapKinds.eraseDups :: ks
-        else if t.monoOK then ok := ok ++ [s!"{n}.{x}"] else nonmono := nonmono ++ [s!"{n}.{x}"]
-  logInfo m!"{ok.length} of {total} definitions of {reg.progs.size} programs have no gap node and pass Tm.monoOK"
+      defs := defs ++ ds.map (fun (x, r) => (s!"{n}.{x}", r)) ++ fs.map fun o => (toString o.const, o.res)
+  for c in (reg.calls.map (·.2.const)).eraseDups do
+    if let some (_, o) := reg.calls.find? (·.2.const == c) then
+      unless defs.any (·.1 == toString c) do defs := defs ++ [(toString c, o.res)]
+  let mut ok : List String := []
+  let mut ks : List (List String) := []
+  let mut nonmono : List String := []
+  -- the counted terms' largest `Tm.size`, every call's body unfolded in it
+  let mut big := 0
+  for (x, ⟨_, _, t⟩) in defs do
+    -- `monoOK` false makes `LamLaws` false (`Tm.LamLawsAt.mono`, `Tm.monoOK_iff`): `gen_sound` says nothing
+    if t.gap then ks := t.gapKinds.eraseDups :: ks
+    else if t.monoOK then
+      ok := ok ++ [x]
+      big := max big t.size
+    else nonmono := nonmono ++ [x]
+  logInfo m!"{ok.length} of {defs.length} definitions of {reg.progs.size} programs have no gap node and pass \
+    Tm.monoOK; the largest has {big} nodes, call bodies unfolded"
   logInfo m!"{nonmono.length} with no gap node fail Tm.monoOK (a fixed point's body not positive): {nonmono}"
   -- per gap kind: the definitions it blocks, and those it blocks alone (their only gap kind)
   let rows := ks.flatten.eraseDups.map fun k => (k, (ks.filter (·.contains k)).length, (ks.filter (· == [k])).length)
