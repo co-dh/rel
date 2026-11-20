@@ -37,6 +37,17 @@ def Rel.force {A B : Obj} : Rel A B → Known A B → Rel A B
   | .lazy f, K => (f K).force K
   | r, _ => r
 
+/-- `t`, computed in the order tried second after the first failed with `e`: its failure names both, since its
+    own message alone hides why the first order could not run (a bound it passed, `crossMax`). -/
+def retryE {α : Type} (e : String) (t : Except String α) : Except String α :=
+  t.mapError fun e' => s!"{e}; run the other operand first: {e'}"
+
+/-- `r` as `retryE` makes a table: run in the order tried second after the first failed with `e`. -/
+def Rel.retried {A B : Obj} (e : String) : Rel A B → Rel A B
+  | .tab t => .tab (retryE e t)
+  | .lazy f => .lazy fun K => (f K).retried e
+  | .bits g w o x ra y rc => .bits g w o x ra y rc
+
 /-- The message of the op that could not compute `r` closed; none where it computed. -/
 def Rel.err {A B : Obj} (r : Rel A B) : Option String := match r.runE {} with
   | .error e => some e

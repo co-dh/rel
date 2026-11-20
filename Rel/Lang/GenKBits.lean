@@ -433,6 +433,12 @@ theorem Rel.Wf.force {r : Rel A B} (h : r.Wf) (K : Known A B) : (r.force K).Wf :
   | tab => exact h
   | bits => exact h
 
+theorem Rel.Wf.retried {r : Rel A B} (h : r.Wf) (e : String) : (r.retried e).Wf := by
+  induction r with
+  | lazy f ih => exact fun K => ih K (h K)
+  | tab => trivial
+  | bits => exact h
+
 /-- `BitsWf`'s word clause in the form `Tab.ofBits_set` reads. -/
 theorem some_lt_two {xs : Array UInt64} {k : Nat} (h : (xs[k]?).any (· < 2) = true) :
     ∃ v : UInt64, xs[k]? = some v ∧ v < 2 := by
@@ -1739,7 +1745,7 @@ theorem meetK_sound {R S : Rel A B} {X Y : Core.Rel A.El B.El} (hR : ∀ K, R.Re
     have e := eF hR; have w := wR.force K
     generalize (Rel.lazy f).force K = F at e w h
     rcases F with (_ | _) | _ | _ <;> first
-      | exact sw (meetOn_sound (wS.force K) (eF hS) wR hR t h)
+      | exact sw (meetOn_sound (wS.force K) (eF hS) wR hR t (retried_ok h))
       | exact meetOn_sound w e wS hS t h
   all_goals first
     | exact sw (meetOn_sound (wS.force K) (eF hS) wR hR t h)
@@ -1767,7 +1773,9 @@ theorem meetOn_wf (K : Known A B) (T S : Rel A B) : (meetOn K T S).Wf := by
 
 theorem meetK_wf (K : Known A B) (R S : Rel A B) : (meetK K R S).Wf := by
   unfold meetK; split
-  · split <;> exact meetOn_wf _ _ _
+  · split
+    · exact (meetOn_wf _ _ _).retried _
+    · exact meetOn_wf _ _ _
   all_goals exact meetOn_wf _ _ _
 
 theorem meet_wf {d e : Bool} (R S : Rel A B) : (GenK.meet A B d e R S).Wf := by
@@ -1918,6 +1926,8 @@ theorem comp_sound {e : Bool} {R : Rel A B} {S : Rel B C} {X : Core.Rel A.El B.E
     split <;> (try split) <;> (try split) <;> first
       | exact compS_sound hR (eS _)
       | exact compT_sound (eR _) hS wS
+      | exact retried_reps (compS_sound hR (eS _))
+      | exact retried_reps (compT_sound (eR _) hS wS)
       | (refine compS_sound hR fun t ht => ?_; injection ht with h; subst h; exact eS _ _ ‹_›)
       | (refine compT_sound (fun t ht => ?_) hS wS; injection ht with h; subst h; exact eR _ _ ‹_›)
 
@@ -1928,7 +1938,8 @@ theorem comp_wf {e : Bool} (R : Rel A B) {S : Rel B C} (wS : S.Wf) :
   | bits => exact compT_wf _ wS
   | lazy f =>
     intro K; simp only [GenK.comp]
-    split <;> (try split) <;> (try split) <;> first | exact compS_wf _ _ _ | exact compT_wf _ wS
+    split <;> (try split) <;> (try split) <;> first
+      | exact compS_wf _ _ _ | exact compT_wf _ wS | exact (compS_wf _ _ _).retried _ | exact (compT_wf _ wS).retried _
 
 /-! ### `Rel.Wf` of the ops that build no `bits` value -/
 
