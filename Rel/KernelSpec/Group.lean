@@ -134,9 +134,6 @@ def ids (b : ByteArray) : List Nat := (List.range (b.size / 8)).map fun i => (Co
 theorem usize_lt (n : USize) : n.toNat < 2 ^ 64 := Nat.lt_of_lt_of_le n.toNat_lt_size USize.size_le
 
 
-/-- Element `i`'s key read off the encoded form: `Order.rank` of the `foRBits` element cut to the kind's width. -/
-def foRKey (k : Kind) (md pk : ByteArray) (i : Nat) : UInt64 :=
-  Order.rank k (UInt64.ofNat ((Column.foRBits md pk (Column.blockStarts md) i).toNat % 2 ^ (8 * k.width)))
 
 
 
