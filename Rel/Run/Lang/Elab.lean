@@ -1789,11 +1789,11 @@ def build : Pre → Except Err Res
   -- a row is the fused form of its definition (§4): the definition built, then replaced by the form `Tm.dfnCut?`
   -- reads it back to where `Tm.dfnCut_den` proves them equal: the fused row at an unbounded object (universe `𝟙`),
   -- the row cut to the universe at an initial segment `0…k` (one pass, where the fold reads the universe in every
-  -- round); elsewhere, or read back to nothing, the definition runs. A target with no universe has no definition
-  -- to run (`succ`, `plus` need one): the row runs.
+  -- round); elsewhere, or read back to nothing, the definition runs. A target with no universe, or an unbounded
+  -- one (its base `0` needs keys none supply), has no definition to run: the row runs.
   | .prim r xs s t (some q) => do
     have : 0 < sizeOf q := by cases q <;> simp <;> omega
-    let one ← if unbounded objs (zonk mc t) then pure (some true) else
+    let one ← if unbounded objs (zonk mc t) then pure none else
       match ← uniPart objs dp (zonk mc t) (← toObj objs mc dp t) with
       | some .id => pure (some true)
       | some _ => pure (some false)
