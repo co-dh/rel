@@ -105,6 +105,9 @@ def natOf (ds : List UInt8) : Nat := ds.foldl (fun a d => 10 * a + (d.toNat - 48
 /-- `n` in decimal, left-padded with `0` to `k` digits. -/
 def pad (k n : Nat) : List UInt8 := let s := bytes (toString n); List.replicate (k - s.length) 48 ++ s
 
+/-- An integer in shortest decimal. Not `toString`: `Int.repr` does not reduce in the kernel, and `decide` must. -/
+def intText (x : Int) : List UInt8 := (if x < 0 then [45] else []) ++ bytes (toString x.natAbs)
+
 /-- An integer `-`? digits. -/
 def intOf (f : List UInt8) : Option Int :=
   let (neg, d) := if f.head? = some 45 then (true, f.tail) else (false, f)
@@ -170,7 +173,7 @@ def sci (d : Nat) (p : Int) : List UInt8 :=
     if 0 ≤ p then s ++ List.replicate p.toNat 48
     else if 0 < s.length + p then s.take (s.length + p).toNat ++ 46 :: s.drop (s.length + p).toNat
     else bytes "0." ++ List.replicate (-(s.length + p)).toNat 48 ++ s
-  else s.take 1 ++ (if 1 < s.length then 46 :: s.drop 1 else []) ++ 101 :: bytes (toString x)
+  else s.take 1 ++ (if 1 < s.length then 46 :: s.drop 1 else []) ++ 101 :: intText x
 
 /-- A float word of `mb` fraction and `eb` exponent bits written (C.3): the shortest decimal whose nearest float is the
     word (of `k ≤ 17` digits; the nearer of the two `k`-digit neighbours, ties to the even one), `0w`, `-0w`; none at a
@@ -292,7 +295,7 @@ def fmtAtom : QAtomicType → UInt64 → Option (List UInt8)
     some (pad 4 y.toNat ++ 45 :: pad 2 m ++ 45 :: pad 2 d ++ 68 :: pad 2 (r / 3600000000000) ++ 58 ::
       pad 2 (r / 60000000000 % 60) ++ 58 :: pad 2 (r / 1000000000 % 60) ++ 46 :: pad 9 (r % 1000000000))
   | .sym, _ | .general, _ => none
-  | t, w => t.width.map fun k => bytes (toString (signed k w))
+  | t, w => t.width.map fun k => intText (signed k w)
 
 /-- A column's field read: one of its names (the word is the name's index), or else a text of its atom. -/
 def readCell : QAtomicType × List String → List UInt8 → Option UInt64

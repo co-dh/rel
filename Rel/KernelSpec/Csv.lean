@@ -142,7 +142,7 @@ theorem rows_back (cols : CsvCols) (ws : List (Array UInt64)) (hl : ws.length = 
   | 0, s, rs, h => by
     simp only [List.range'_zero, List.mapM_nil, pure, Except.pure, Except.ok.injEq] at h; subst h
     refine ⟨rfl, by simp, fun tail r0 ht => ?_⟩
-    simp at ht; subst ht; simp [rows, pure, Except.pure]
+    simp at ht; subst ht; simp [rows]
   | n + 1, s, rs, h => by
     simp only [List.range'_succ, List.mapM_cons, ok_bind] at h
     obtain ⟨fs, hfs, rs', hrs, h⟩ := h
@@ -207,14 +207,17 @@ theorem Rel.Db.csvWords_csvText {cols : Rel.Db.CsvCols} {n : Nat} {ws : List (Ar
       intro c hc
       have := forM_ok hsz (cols[c]'(hl ▸ hc), ws[c]) (by
         rw [List.mem_iff_getElem]; exact ⟨c, by simp [hl] at hc ⊢; omega, by simp⟩)
-      simp at this; split at this <;> simp_all
+      simpa using this
     have hlt : tail.length = n := by rw [← List.length_map (f := (·.2)), ht, hlen]
     simp only [Rel.Db.csvWords, hs, hlex, bind, Except.bind, List.head?_cons, Option.map_some, Option.getD_some,
       List.tail_cons, hrows tail 0 ht, pure, Except.pure, hh, header, if_true, hlt]
     congr 1
-    refine ⟨rfl, List.ext_getElem (by simp [hl]) fun c h1 h2 => ?_⟩
+    refine Prod.ext (by simp) (List.ext_getElem (by simp [hl]) fun c h1 h2 => ?_)
     simp only [List.getElem_map, List.getElem_range, List.map_map]
-    rw [← Array.toArray_toList (ws[c])]
+    rw [← Array.toArray_toList (xs := ws[c])]
     congr 1
     refine List.ext_getElem (by simp [hsz' c h2]) fun i i1 i2 => ?_
-    simp [List.getElem_range', List.getD_eq_getElem?_getD, Array.getD_eq_getD_getElem?]
+    have hc : c < ws.length := by simpa using h2
+    have hi : i < ws[c].size := by simpa using i2
+    simp [List.getElem_range', List.getD_eq_getElem?_getD, Array.getD_eq_getD_getElem?, List.getElem?_eq_getElem hc,
+      Array.getElem?_eq_getElem hi]
