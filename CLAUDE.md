@@ -4,11 +4,15 @@ kernels its programs run on. It was split out of freyd's `leetq/` and qlean's `Q
 
 ## Layout
 - `Rel/Core/` — the concrete allegory core: `Rel α β` a predicate on pairs, its operators, `mu`/`nu`. Toolchain only.
-- `Rel/Kernel/` — each kernel as one `@[extern "qlean_…"] def` whose Lean body is its specification; `Column`,
-  `QAtom` (`Value`). `Rel/KernelSpec/` — the lemmas about them that the rest cites.
-- `Rel/Run/` — what `rel_program` runs at elaboration time: the expander, the code it emits, their imports.
-- `Rel/` (everything else) — `CRel*`/`Rep*` laws, `KernelWF`, `Lang` (denotation, plan, C emitter, tests),
-  `Programs` (the `.rel` programs), tests.
+- `Rel/Kernel/` — each kernel as one `@[extern "qlean_…"] def` whose Lean body is its specification (`Scan`,
+  `Scatter`, `Gather`, `Asc`, `Seen`, `BitRows`, `Coc`, `Db/ObjectFile`: the exports of `crate/RELK.txt`); `Column`,
+  `QAtom` (`Value`); and plain Lean the run path and the specs read: the op table `Op`, `Need`, the own-file writer
+  `Db/Own`, the atom type map `Dep/*`, `Eval/Val`, and what is left of `Elementwise`, `Search`, `Sort`, `Structural`.
+  `Rel/KernelSpec/` — the lemmas about them that the rest cites.
+- `Rel/Run/` — what `rel_program` runs at elaboration time: the expander, the code it emits (`GenK.*`), their
+  imports. A program definition's value is `Except String (Tab A B)`.
+- `Rel/` (everything else) — `Rep*` laws and checks, `KernelWF/Read` (read lemmas), `HyloSpec`, `Lang` (denotation,
+  plan, C emitter, tests), `Programs` (the `.rel` programs), tests.
 - `crate/` — the Rust crate `relk`: the kernels the externs name (`RELK.txt` lists its exports). `crate/rt/` — the
   Lean runtime a native Rel program links instead of `libleanshared` (a package of its own).
 - Lake libraries (`lakefile.lean`): `RelCore`, `RelKernel` (precompiled; `Rel.Kernel.*` + `Rel.KernelSpec.*`),
