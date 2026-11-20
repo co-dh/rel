@@ -82,12 +82,14 @@ theorem zeroTm_den (u₀ : Tm .long .long) (ρ : Val) {P : Int64 → Prop} (hU :
     · rintro ⟨rfl, rfl, h0⟩
       have hu : u₀.den ρ 0 0 := (hU _ _).2 ⟨rfl, h0⟩
       exact ⟨⟨(0, 0), ⟨rfl, rfl⟩, (arithDen_iff _ _ _ _).2 ⟨⟨0, hu⟩, ⟨0, hu⟩, 0, by decide, hu⟩⟩, rfl⟩
-  simp only [zeroTm, Tm.den, Core.Rel.inter, Core.Rel.comp, Core.Rel.recip, Core.Rel.id, hz, hU]
+  simp only [zeroTm]
+  generalize (Tm.meet (.comp (.pair .id .id) (.arith Rel.Kernel.Ew.sub u₀)) .id : Tm .long .long) = z at hz ⊢
+  simp only [Tm.den, Core.Rel.inter, Core.Rel.comp, Core.Rel.recip, Core.Rel.id, hz, hU]
   constructor
-  · rintro ⟨a, rfl, x, ⟨y, ⟨rfl, -⟩, rfl, rfl, h0⟩, -⟩
-    exact ⟨rfl, h0⟩
+  · rintro ⟨a, rfl, b, -, b₁, -, -, h0, hP⟩
+    exact ⟨h0, hP⟩
   · rintro ⟨rfl, h0⟩
-    exact ⟨0, rfl, 0, ⟨0, ⟨rfl, h0⟩, rfl, rfl, h0⟩, ⟨0, ⟨rfl, h0⟩, rfl, rfl, h0⟩⟩
+    exact ⟨0, rfl, 0, ⟨0, ⟨rfl, h0⟩, rfl, rfl, h0⟩, 0, ⟨rfl, h0⟩, rfl, rfl, h0⟩
 
 /-- `Int64`'s `+` with no null and no wrap: the integer sum. -/
 theorem stepDen_add_iff (x v w : Int64) : stepDen Ew.add (x, v) w ↔
