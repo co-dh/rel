@@ -1,5 +1,6 @@
 import Rel.Lang.GenKFold
 import Rel.Lang.GenKEst
+import Rel.Lang.GenKFix
 import Rel.Lang.Den
 import Rel.Run.Lang.Expand
 
@@ -265,7 +266,7 @@ def Prim.proved (r : Prim) (A B : Obj) (os : List (Obj × Obj)) : Bool :=
   (rowsProved.lookup r.sym).isSome && os.length == rowArity r.sym && primHasCode r A B os
 
 mutual
-/-- Some node of `t` has no proved case in `Tm.gen_sound`: no `GenK` lemma yet (`thin mu nu hylo`), a lemma that does not hold as stated (`juncD`), a row not `Prim.proved` at its relations' objects
+/-- Some node of `t` has no proved case in `Tm.gen_sound`: no `GenK` lemma yet (`thin hylo`), a lemma that does not hold as stated (`juncD`), a row not `Prim.proved` at its relations' objects
     (`Tm.argGap`), or no mirror in `Tm.gen` (`call`, a spine headed by no row). -/
 def Tm.gap : {A B : Obj} → Tm A B → Bool
   | A, B, .prim r => !r.proved A B []
@@ -273,12 +274,12 @@ def Tm.gap : {A B : Obj} → Tm A B → Bool
   | _, _, .atPos _ | _, _, .var .. => false
   | _, _, .top R | _, _, .conv R | _, _, .dom R | _, _, .ran R | _, _, .lam R | _, _, .E R | _, _, .own R
   | _, _, .succ R | _, _, .arith _ R | _, _, .leq R | _, _, .lt R | _, _, .flat R | _, _, .share _ R
-  | _, _, .est R => R.gap
+  | _, _, .est R | _, _, .mu _ _ _ R => R.gap
   | _, _, .comp R S | _, _, .meet R S | _, _, .join R S | _, _, .diff R S | _, _, .pair R S | _, _, .prod R S
-  | _, _, .junc R S | _, _, .fold R S | _, _, .foldr R S | _, _, .foldI R S => R.gap || S.gap
+  | _, _, .junc R S | _, _, .fold R S | _, _, .foldr R S | _, _, .foldI R S | _, _, .nu _ R S => R.gap || S.gap
   | _, _, .ldiv R S U V | _, _, .rdiv R S U V => R.gap || S.gap || U.gap || V.gap
   | _, _, .arg (C := C) (D := D) f x => f.argGap [(C, D)] || x.gap
-  | _, _, .juncD .. | _, _, .thin _ | _, _, .mu .. | _, _, .nu .. | _, _, .hylo .. | _, _, .call .. => true
+  | _, _, .juncD .. | _, _, .thin _ | _, _, .hylo .. | _, _, .call .. => true
 
 /-- `Tm.argGen`'s case split: the spine `t` given later relations at the objects `os` has a gap node. -/
 def Tm.argGap : {A B : Obj} → Tm A B → List (Obj × Obj) → Bool
@@ -303,14 +304,13 @@ def Tm.gapKinds : {A B : Obj} → Tm A B → List String
   | _, _, .atPos _ | _, _, .var .. => []
   | _, _, .top R | _, _, .conv R | _, _, .dom R | _, _, .ran R | _, _, .lam R | _, _, .E R | _, _, .own R
   | _, _, .succ R | _, _, .arith _ R | _, _, .leq R | _, _, .lt R | _, _, .flat R | _, _, .share _ R
-  | _, _, .est R => R.gapKinds
+  | _, _, .est R | _, _, .mu _ _ _ R => R.gapKinds
   | _, _, .comp R S | _, _, .meet R S | _, _, .join R S | _, _, .diff R S | _, _, .pair R S | _, _, .prod R S
-  | _, _, .junc R S | _, _, .fold R S | _, _, .foldr R S | _, _, .foldI R S => R.gapKinds ++ S.gapKinds
+  | _, _, .junc R S | _, _, .fold R S | _, _, .foldr R S | _, _, .foldI R S | _, _, .nu _ R S =>
+    R.gapKinds ++ S.gapKinds
   | _, _, .ldiv R S U V | _, _, .rdiv R S U V => R.gapKinds ++ S.gapKinds ++ U.gapKinds ++ V.gapKinds
   | _, _, .juncD .. => ["juncD"]
   | _, _, .thin _ => ["thin"]
-  | _, _, .mu .. => ["mu"]
-  | _, _, .nu .. => ["nu"]
   | _, _, .hylo .. => ["hylo"]
   | _, _, .call .. => ["call"]
   | _, _, .arg (C := C) (D := D) f x => f.argGapKinds [(C, D)] ++ x.gapKinds
@@ -340,18 +340,53 @@ theorem Tm.gap_eq_spine {A B : Obj} (t : Tm A B) :
 
 theorem Tm.gap_eq {A B : Obj} (t : Tm A B) : t.gap = !t.gapKinds.isEmpty := (Tm.gap_eq_spine t).1
 
-/-- `LamLaw` at each `Λ` and `E` of `t` (`E(R) = Λ(∋ ≫ R)`, at `[A] ⟶ [B]`), and at each row `rowsProved` marks. -/
-def Tm.LamLaws : {A B : Obj} → Tm A B → Prop
-  | A, B, .prim r => rowsProved.lookup r.sym = some true → ∀ B', B = .arr B' → LamLaw A B'
-  | _, _, .lam (A := A) (B := B) R => LamLaw A B ∧ R.LamLaws
-  | _, _, .E (A := A) (B := B) R => LamLaw (.arr A) B ∧ R.LamLaws
+/-- What `Tm.gen_sound` asks of `t` besides no `Tm.gap` node, with `L` for the order law of a `Λ`: `L` at each `Λ`
+    and `E` (`E(R) = Λ(∋ ≫ R)`, at `[A] ⟶ [B]`) and at each row `rowsProved` marks, and the body of each fixed
+    point positive in its variable (`Tm.pol`, which `Tm.den_mono` reads). -/
+def Tm.LamLawsAt (L : Obj → Obj → Prop) : {A B : Obj} → Tm A B → Prop
+  | A, B, .prim r => rowsProved.lookup r.sym = some true → ∀ B', B = .arr B' → L A B'
+  | _, _, .lam (A := A) (B := B) R => L A B ∧ R.LamLawsAt L
+  | _, _, .E (A := A) (B := B) R => L (.arr A) B ∧ R.LamLawsAt L
   | _, _, .top R | _, _, .conv R | _, _, .dom R | _, _, .ran R | _, _, .own R | _, _, .succ R | _, _, .arith _ R
-  | _, _, .leq R | _, _, .lt R | _, _, .flat R | _, _, .share _ R | _, _, .est R => R.LamLaws
+  | _, _, .leq R | _, _, .lt R | _, _, .flat R | _, _, .share _ R | _, _, .est R => R.LamLawsAt L
   | _, _, .comp R S | _, _, .meet R S | _, _, .join R S | _, _, .diff R S | _, _, .pair R S | _, _, .prod R S
-  | _, _, .junc R S | _, _, .fold R S | _, _, .foldr R S | _, _, .foldI R S => R.LamLaws ∧ S.LamLaws
-  | _, _, .ldiv R S U V | _, _, .rdiv R S U V => R.LamLaws ∧ S.LamLaws ∧ U.LamLaws ∧ V.LamLaws
-  | _, _, .arg f x => f.LamLaws ∧ x.LamLaws
-  | _, _, _ => True
+  | _, _, .junc R S | _, _, .fold R S | _, _, .foldr R S | _, _, .foldI R S => R.LamLawsAt L ∧ S.LamLawsAt L
+  | _, _, .ldiv R S U V | _, _, .rdiv R S U V => R.LamLawsAt L ∧ S.LamLawsAt L ∧ U.LamLawsAt L ∧ V.LamLawsAt L
+  | _, _, .arg f x => f.LamLawsAt L ∧ x.LamLawsAt L
+  | _, _, .nu k S b => b.pol true k = true ∧ S.LamLawsAt L ∧ b.LamLawsAt L
+  | _, _, .mu k _ _ b => b.pol true k = true ∧ b.LamLawsAt L
+  -- every other constructor spelled out: a catch-all's equation lemmas time `simp` out
+  | _, _, .val _ | _, _, .uni _ | _, _, .zero | _, _, .id | _, _, .outl | _, _, .outr | _, _, .nil
+  | _, _, .atPos _ | _, _, .var .. | _, _, .thin _ | _, _, .juncD .. | _, _, .hylo .. | _, _, .call .. => True
+
+/-- `Tm.LamLawsAt` with `LamLaw`, the premise of `Tm.gen_sound`. -/
+abbrev Tm.LamLaws {A B : Obj} (t : Tm A B) : Prop := t.LamLawsAt LamLaw
+
+/-- The decidable part of `Tm.LamLawsAt`, every conjunct but `L` (`Tm.monoOK_iff`): what `GenSoundTest` evaluates
+    beside `Tm.gap`, since `LamLawsAt L` implies it for every `L` (`Tm.LamLawsAt.mono`). -/
+def Tm.monoOK : {A B : Obj} → Tm A B → Bool
+  | _, _, .lam R | _, _, .E R | _, _, .top R | _, _, .conv R | _, _, .dom R | _, _, .ran R | _, _, .own R
+  | _, _, .succ R | _, _, .arith _ R | _, _, .leq R | _, _, .lt R | _, _, .flat R | _, _, .share _ R
+  | _, _, .est R => R.monoOK
+  | _, _, .comp R S | _, _, .meet R S | _, _, .join R S | _, _, .diff R S | _, _, .pair R S | _, _, .prod R S
+  | _, _, .junc R S | _, _, .fold R S | _, _, .foldr R S | _, _, .foldI R S | _, _, .arg R S => R.monoOK && S.monoOK
+  | _, _, .ldiv R S U V | _, _, .rdiv R S U V => R.monoOK && S.monoOK && U.monoOK && V.monoOK
+  | _, _, .nu k S b => b.pol true k && S.monoOK && b.monoOK
+  | _, _, .mu k _ _ b => b.pol true k && b.monoOK
+  | _, _, .val _ | _, _, .uni _ | _, _, .zero | _, _, .id | _, _, .outl | _, _, .outr | _, _, .nil
+  | _, _, .atPos _ | _, _, .var .. | _, _, .thin _ | _, _, .juncD .. | _, _, .hylo .. | _, _, .call ..
+  | _, _, .prim _ => true
+
+theorem Tm.monoOK_iff {A B : Obj} (t : Tm A B) : t.monoOK = true ↔ t.LamLawsAt fun _ _ => True := by
+  induction t <;> simp [Tm.monoOK, Tm.LamLawsAt, and_assoc, *]
+
+theorem Tm.LamLawsAt.mono {L L' : Obj → Obj → Prop} (h : ∀ A B, L A B → L' A B) {A B : Obj} (t : Tm A B) :
+    t.LamLawsAt L → t.LamLawsAt L' := by
+  induction t <;> simp only [Tm.LamLawsAt] <;> intro hx
+  all_goals first
+    | exact fun e B' hB => h _ _ (hx e B' hB)
+    | exact ⟨h _ _ hx.1, by simp_all⟩
+    | simp_all
 
 namespace GenK
 
@@ -634,13 +669,13 @@ theorem Tm.gen_sound_spine {A B : Obj} (t : Tm A B) :
           · exact hx y hy)
         ⟨by rw [dif_pos ⟨rfl, rfl⟩]; exact code_of (ihx.1 η ρ hg.2 hl.2 hs), hr⟩
     refine ⟨fun η ρ hg hl hs => ?_, fun η ρ xs ss hg hl hs hx hr => ?_⟩ <;>
-      simp only [Tm.gap, Tm.argGap, Bool.or_eq_false_iff] at hg <;> simp only [Tm.LamLaws] at hl <;>
+      simp only [Tm.gap, Tm.argGap, Bool.or_eq_false_iff] at hg <;> simp only [Tm.LamLaws, Tm.LamLawsAt] at hl <;>
       simp only [Tm.gen, Tm.den, Tm.argGen, Tm.argDen]
     · exact step η ρ [] [] hg hl hs (fun _ h => nomatch h) trivial
     · exact step η ρ xs ss hg hl hs hx hr
   all_goals refine ⟨fun η ρ hg hl hs => ?_, fun η ρ xs ss hg => by simp [Tm.argGap] at hg⟩
   all_goals simp only [Tm.gap, Bool.or_eq_false_iff, Bool.true_eq_false] at hg <;>
-    simp only [Tm.LamLaws] at hl <;> simp only [Tm.gen, Tm.den]
+    simp only [Tm.LamLaws, Tm.LamLawsAt] at hl <;> simp only [Tm.gen, Tm.den]
   case val R => exact GenK.val_sound (R, true)
   case uni U => exact GenK.uni_sound (U, true)
   case zero => exact GenK.zero_sound
@@ -694,6 +729,11 @@ theorem Tm.gen_sound_spine {A B : Obj} (t : Tm A B) :
   case var k => exact hs.1 k _ _
   case est Q ih => exact GenK.est_sound (code_of (ih.1 η ρ hg hl hs))
   case atPos k => exact GenK.atPos_sound k
+  case nu k S b ihS ihb =>
+    exact GenK.nu_sound (code_of (ihS.1 η ρ hg.1 hl.2.1 hs))
+      (fun X => code_of (ihb.1 _ _ hg.2 hl.2.2 (hs.bind k X))) fun _ _ h => Tm.den_mono hl.1 h
+  case mu k w n b ih =>
+    exact GenK.mu_sound (fun X => code_of (ih.1 _ _ hg hl.2 (hs.bind k X))) fun _ _ h => Tm.den_mono hl.1 h
 
 /-- **`Tm.gen` is sound off the gap**: the code of a term with no `Tm.gap` node represents its meaning in every
     context, given `LamLaw` at each `Λ`, and an environment `η` that represents `ρ`. -/
