@@ -27,6 +27,7 @@ import Rel.Lang.TestAsc
 import Rel.Lang.TestChess
 import Rel.Lang.TestCircuit
 import Rel.Lang.TestDemand
+import Rel.Lang.TestFloatObj
 import Rel.Lang.TestTopProd
 import Rel.Lang.TestDetab
 import Rel.Lang.TestEdit
@@ -52,6 +53,7 @@ import Rel.Lang.TestPositions
 import Rel.Lang.TestSchema
 import Rel.Lang.TestSelsort
 import Rel.Lang.TestSum
+import Rel.Lang.TestSums
 import Rel.Lang.TestLiftDiv
 import Rel.Lang.TestSymDiv
 import Rel.Lang.TestUnbounded

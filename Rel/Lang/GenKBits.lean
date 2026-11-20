@@ -1323,9 +1323,7 @@ theorem Vals.gather_ok_of_cols {M : USize} {ix : Enc} (hi : Enc.Valid M ix) :
       split at hes; · cases hes
       split at hes; · cases hes
       rename_i h
-      cases hw : foRWords "" n idx.enc with
-      | error => rw [hw] at h; exact absurd rfl h
-      | ok ws => exact (foRWords_valid _ _ _).2 _ hw
+      exact (foRWords_valid "" _ _).2 _ (by unfold foRWords; rw [if_pos (by simpa using h)])
     obtain ⟨xs, ys, rfl, -⟩ := Vals.cols_sum hes
     obtain ⟨k, hk⟩ := hc _ List.mem_cons_self
     obtain ⟨a', ha'⟩ := Arr.gather_ok tag (ascCol_valid hk) hi hr

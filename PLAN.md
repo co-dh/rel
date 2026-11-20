@@ -30,8 +30,9 @@
   - I（6.9）：`QAtomicType` 的 13 个 constructor 全部保留（`u1 u8 i16 i32 i64 f32 f64 char i8 sym date datetime
     general`）；删除的是 q 的编号和 wire 语义：`code`（q 类型码）、`width` 的 IPC/splayed 含义、doc comment 里的 q null
     规则。未决：若没有 Rel 程序用 `date`/`datetime`，它们是否并入 `i32`/`i64`。
-  - reader 是 mmap（`ownMap`）；`crate/RELK.txt` 的目标：五个 kernel + `stop`、`coc_encode`、`coc_decode`、`own_write`、
-    `own_map`（owner 没有说 "5" 是否取字面）。
+  - reader 是 mmap（`ownMap`）；`crate/RELK.txt` 的目标：五个 kernel + `stop`、`coc_encode`、`coc_decode`
+    （owner 没有说 "5" 是否取字面）。IO export（`own_write`、`own_map`）已分到 `crate/RELIO.txt`（I4），不计入 RELK；
+    现在 RELK.txt 9 行，RELIO.txt 2 行，`syms` gate 要求二者不相交且并集 = crate 定义的 `qlean_*`。
   - `pointfree` gate 的范围 = L（只管类型以关系类型开头的 def）；gate G = 三个 gate，allowlist 只减不增。
   - `CLAUDE.md` 已提交（a2104f5）：Goal 是 "Rel is its own language, not k/q"；规则 "a kernel computes on the encoded
     column"。
@@ -112,7 +113,7 @@ Size：S = 一步，少于 20 次 tool call；M = 一到三步；L = 多于三�
 | 24 | gather、asc、distinct          | `gatherPacked`, `Order.grade`, `nubC` | 无 caller；无 "= 复合" 定理（见 W2）    | L    | 🔄 W2       |
 | 25 | 一种编码 `foR`              | `Ext.Enc`, 7 个 ctor, `Value.lean`    | 460 个 decl 依赖 `Enc`                  | L    | 🔄 W1b      |
 | 26 | 九个 atom                      | `QAtomicType`, 18 个 ctor, `Value:13` | 1718 个 decl；boolean、general；R5      | L    | 🔄 6.9      |
-| 27 | RELK.txt 84 → 5 + 5            | `crate/RELK.txt`, `crate/src/ffi/`    | native gate 需要更多；R4                | L    | 🔄 W5       |
+| 27 | RELK.txt 84 → 5 + 保留的（现 9；IO 2 个在 RELIO.txt） | `crate/RELK.txt`, `crate/RELIO.txt`, `crate/src/ffi/` | native gate 需要更多；R4                | L    | 🔄 W5       |
 | 28 | q-only kernel 删除             | 84 个 extern（`RELK.txt`）            | q 专用 kernel 仍导出（W0）              | S    | 🔄 W0       |
 | 29 | seen-set scan `kseen`          | `kdistinct`, `Order.groupIds`         | foR 上的 `g` 与 `first`；agent 在做     | L    | 🔄 D.12     |
 
@@ -242,14 +243,40 @@ Diff table 的「状态」列：✅ 后面是完成它的步骤；🔄 是部分
   决定 F 已落地（5617318，2026-11-19）：上面的 "引擎" 一句作废。`kseen` 在乱序行上报固定错误（指出第一处乱序的行），
   `seenEngine`/`keySpan`/`foRBounds` 与 Rust 的 `seen::direct` 删除（`Seen.lean` 74 → 32 行）；新引理 `kseen_sorted`。
   未做：1024 行块边界只有 Rust 测试，Lean 例子因 `decide +kernel` 归约不动而缺（与决定 C 有出入）。
+  ✅ 运行路径上的平方解码（nodecode 765527b）：`foRBits` 每个元素重算 trailer 偏移 O(nblk)，`Vals.cols` 为判形状解码整列；
+  改为 `foROk` 判形状、`foRExc`/`foRFrame` 取 `blockStarts` 的 trailer；10⁵ 行 leftJoin 40.2s→0.96s、带 null 的 group-by
+  187s→1.54s；`make decode` 列出仍可达 `foRBits`/`alpBits` 的编译定义（`decode-allow.txt`，150 个，余为单元素读与 u1 位图）。
+- 🔄 D.13 `sums`（dataframe 请求，q 的 `sums`，分支 `sums`）：prim 行 `sums : κ×ν ⟶ γ ↦ κ×ν ⟶ γ`，key 在源对象里，
+  每个 key 内按位置升序的左 fold 前缀和，溢出或 null 之后该 key 余下的行无像。含义（`rowDens`）是
+  `agg(dom(x) (𝟙 × ≥) dom(x), F(x) ⦇[0, plus]⦈)`（`Den.lean` 的 `sumsDen`）。
+  ✅ 已落地：`Tab.sums`（`Rel/Run/SetOps.lean`）只用 `kseen`、`kscatter`、`kscan .add`、`colMap`，无新 kernel，不解码；
+  非 simple 的 x 报错并指出位置；`TestSums`（含 10⁶ 行：10⁵ 约 10 ms，10⁶ 约 55 ms，线性）；doc §4 行；
+  `segScan_ok`（`RepSetOps`）：分段 `kscan` 在每行给出本组到该行的 fold，`groupFold_ok` 改为引用它。
+  ✅ `Tab.sums_holds`（`Rel/RepSums.lean`）：`Tab.sums x = .ok T → rep T = sumsDen (rep x)`，无前提；该行已进
+  `kernRows` 与 `rowsProved`（`("sums", no)`，`rowOK_sums`），`gen_sound` 不加前提；程序里写 `sums(x)`
+  （`x : N×N ⟶ N`）走 kernel，`TestSums.sumsP` 以 `check` 验分组、单 key、负数、溢出、null。
+  ⬜ 未做：`Prim.dfn` 条目（上面的组合式）等 dfn 能读行的关系参数（与 `asc` 相同）；`Plan.ofTm` 没有 prim 的
+  recipe，不需要加。
 
 ### typed base objects（`/data/tmp/typedbase/design.md` §7：float `arith`/`div`、`sqrt`、`date` 上的 `minus`）
 
 - ✅ S0 fork A，每个 constant 自己的 placeholder（分支 `tb-s0`）：`Once.ph = placeholdersOf env.objs`，即 `varAtoms`
   中没有任何作用域内对象存储在其上的 atom；`Obj.inst ph σ`、`Tm.instObj ph σ`、`callTm … ph`、`Pre.call … ph`。
   `.long` 不在 `varAtoms` 中，所以任何 `ph` 都保持它（`fixed_long` 不加前提）。变量多于 `ph` 时 `once` 报错并给出定义名。
-- ⬜ S1 `ObjDef.num t`、`obj F : f64`；`ObjInfo.obj := .atom t`；`numU`、`code` 按 atom。
-- ⬜ S2 float 字面量与 float 的打印。
+- ✅ S1（分支 `tb-s1b`）`obj F : t` 声明存储在 atom `t` 上的对象：`ObjDef.num (t := .i64)`，`objInfo` 给
+  `obj := .atom t`。atom 名只有一张表 `atomNames`（`Syntax.lean`），由 `QAtomicType` 的构造子生成，名字即构造子名。
+  能声明的 atom 是 `litLayout t`（`Kernel.ascLayout` 去掉 `u1`）有值者：`u8 i8 i16 i32 i64 f32 f64 char date
+  datetime`；`sym`、`general`、`u1` 和未知名字在解析时报错并列出可用 atom。`obj N` 不变（i64）。`numU` 在非 i64 的
+  声明对象上报错并给出 atom（`+`、`<` 等留给 S3）；`code` 不再把非 i64 对象当 i64。
+- ✅ S2 float 字面量：整数，或 Lean 的 scientific 字面量（`2.5`、`1e-3`、`1.5E10`），可带紧贴的 `-`；没有 NaN 或
+  无穷的写法，舍入为无穷的字面量报错。一个字是否属于某对象只有一条规则 `ObjInfo.member`：命名元素、range 内的数，
+  或数对象（`obj N` 即 i64 在内）的 atom 上 `Elab.wordAt` 读得出；`holders` 由它决定字面量的对象，没有对象接受时
+  `refusals` 给出每个对象拒绝的理由（i64 对象上的 `2.5`：`'2.5' is not an element of N, an object of i64`）。
+  `code` 的数对象分支也经 `wordAt`（i64 查范围）。产生 float 字的地方规范化（决定 G）：`-0.0` 读成 `0.0`；判断谓词
+  `Rel.QAtomicType.nonCanonical t b`（`Rel/Kernel/Value.lean`，f32/f64 上 NaN 或负零，其余 atom 为 false），合并时
+  `Rel.Lang.Table.nonCanonical` 由它定义。打印 `Elab.floatText`：能读回同样位的最短十进制，首位数量级在 `[-7, 21)`
+  时用带小数点的普通写法（`2.5`、`-0.00000015`、`15000000000.0`），否则 `1e-8`、`1e21`。object 变量多于 placeholder
+  时调用处报错（`Expand.placeholdersFor`）。测试 `Rel/Lang/TestFloatObj.lean`；GenSoundTest 1235/1235。
 - ⬜ S3 `Tm.arith`、`leq`、`lt` 以 atom 为下标；`stepDen t`、`stepCols t`、`cmpOn (ltOp t)` 及定律。
 - ⬜ S4 行 `sqrt`；`sum` 按 atom。
 - ⬜ S5 float 上的 `Obj.key = ordCode`；`key_ordCode`、`ascBad`、float 上的 `LamLaw`。

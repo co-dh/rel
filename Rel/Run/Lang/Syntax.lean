@@ -254,7 +254,14 @@ def prims : List Prim :=
    { sym := "asc", sig := ([((.var {} "B", .var {} "B"), some false)], .var {} "ℕ", .var {} "B"),
      mono := false, aop := .error "AOP declares no numbering of a set by its order", whole := true },
    -- last, so the rows before keep their positions (`Rows.lean`'s numbering)
-   inlConvRow, inrConvRow]
+   inlConvRow, inrConvRow,
+   -- `sums(x)`: q's `sums` per key, `x : κ×ν ⟶ γ`, the key the source's first component; the fused form of
+   -- `agg(dom(x) (𝟙 × ≥) dom(x), F(x) ⦇[0, plus]⦈)` (`rowDens`). Not `mono`: a larger `x` changes the sums. Its `dfn`
+   -- waits, as `asc`'s, for a `dfn` that can read the row's relations
+   { sym := "sums",
+     sig := ([((.prod (.var {} "K") (.var {} "ℕ"), .var {} "ℕ"), some false)], .prod (.var {} "K") (.var {} "ℕ"),
+       .var {} "ℕ"),
+     mono := false, aop := .error "AOP declares no prefix sums per key", whole := true }]
 
 def Prim.find?(s : String) : Option Prim := prims.find? (·.sym == s)
 
@@ -324,6 +331,17 @@ structure Param where
   ty : Option (OExp × OExp)
   deriving Repr, Inhabited
 
+open Lean Elab Term in
+/-- Each atom by its name, the name of its `QAtomicType` constructor (`f64`, `datetime`), read from the inductive's own
+    constructor list: `obj F : f64` names an atom as Lean does, with no second spelling to keep in step. -/
+def atomNames : List (Lean.Name × Rel.QAtomicType) := by_elab do
+  let .inductInfo i ← getConstInfo ``Rel.QAtomicType | throwError "Rel.QAtomicType is no inductive type"
+  let (n, t) := (Lean.mkConst ``Lean.Name, Lean.mkConst ``Rel.QAtomicType)
+  Meta.mkListLit (Lean.mkApp2 (Lean.mkConst ``Prod [0, 0]) n t) (i.ctors.map fun c =>
+    Lean.mkApp4 (Lean.mkConst ``Prod.mk [0, 0]) n t (toExpr (Lean.Name.mkSimple c.getString!)) (Lean.mkConst c))
+
+open Lean in deriving instance ToExpr for Rel.QAtomicType
+
 /-- An object declaration's right side: named elements, a signed number range `lo ≤ hi`, or a derived object. -/
 inductive ObjDef
   | elems (ws : List String)
@@ -332,8 +350,9 @@ inductive ObjDef
   /-- `schema S = {k : K, v : N}`: the `Schema` of these columns, the object `Schema.obj` of it (`Expand.objInfo`). -/
   | schema (cs : List (String × OExp))
   /-- `obj N` with no right side: an unbounded number object, every `Int64` its element and `𝟙` its universe, so
-      nothing of it is materialised and `<`, `succ`, the value verbs on it are bounded by their context (§0). -/
-  | num
+      nothing of it is materialised and `<`, `succ`, the value verbs on it are bounded by their context (§0).
+      `obj F : f64`: the same at the atom `t` (`atomNames`), every element of `t` an element of `F`. -/
+  | num (t : Rel.QAtomicType := .i64)
   deriving Repr, Inhabited
 
 /-- A `calc` step's reason (`doc/rel-mss-proof-design.md` §3): `:= n(R, …)` cites the theorem `n` at the
