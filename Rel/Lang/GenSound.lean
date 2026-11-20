@@ -255,7 +255,7 @@ end
 def rowsProved : List (String × Bool) :=
   [("∋", false), ("inl", false), ("inr", false), ("τ", true), ("setify", true), ("snoc", false),
    ("cons", false), ("cat", false), ("uncat", false), ("zip", false),
-   ("length", false), ("loop", false), ("filter", false)]
+   ("length", false), ("loop", false), ("filter", false), ("concat", false)]
 
 /-- The number of relations row `s` is given: its `prims` entry's, the one `rowGens` was generated from. A
     `rowGens` entry ignores a code past them, where `Prim.den` (`Sem.one`) is `𝟘`. -/
@@ -557,6 +557,10 @@ theorem rowOK_zip : RowOK "zip" := rowOK_of (c := RowCode.zip) rfl rfl fun _ σ 
   rcases σ with _ | ⟨_, _ | _⟩ <;>
     exact ⟨GenK.ofVals_wf, fun _ => ⟨⟨rfl, rfl⟩, GenK.after_row_sound fun _ _ h => Tab.zip_holds h⟩⟩
 
+theorem rowOK_concat : RowOK "concat" := rowOK_of (c := RowCode.concat) rfl rfl fun _ σ _ _ _ _ hv => by
+  cases hv
+  cases σ <;> exact ⟨GenK.ofVals_wf, fun _ => ⟨⟨rfl, rfl⟩, GenK.ofVals_row_sound fun _ _ _ h => Tab.flatten_holds h⟩⟩
+
 theorem rowOK_length : RowOK "length" := rowOK_of (c := RowCode.length) rfl rfl fun _ σ _ _ _ _ hv => by
   cases hv
   cases σ <;> exact ⟨GenK.ofVals_wf, fun _ => ⟨⟨rfl, rfl⟩, GenK.ofVals_row_sound fun _ _ _ h => Tab.length_holds h⟩⟩
@@ -618,9 +622,10 @@ theorem rowsProved_ok (r : Prim) (h : (rowsProved.lookup r.sym).isSome) : RowOK 
   by_cases h11 : r.sym = "length"; · rw [h11]; exact rowOK_length
   by_cases h12 : r.sym = "loop"; · rw [h12]; exact rowOK_loop
   by_cases h13 : r.sym = "filter"; · rw [h13]; exact rowOK_filter
+  by_cases h14 : r.sym = "concat"; · rw [h14]; exact rowOK_concat
   simp [rowsProved, List.lookup, beq_false_of_ne h1, beq_false_of_ne h2, beq_false_of_ne h3, beq_false_of_ne h4,
     beq_false_of_ne h5, beq_false_of_ne h6, beq_false_of_ne h7, beq_false_of_ne h8, beq_false_of_ne h9,
-    beq_false_of_ne h10, beq_false_of_ne h11, beq_false_of_ne h12, beq_false_of_ne h13] at h
+    beq_false_of_ne h10, beq_false_of_ne h11, beq_false_of_ne h12, beq_false_of_ne h13, beq_false_of_ne h14] at h
 
 /-- A `Prim.proved` row is `RowOK`, given as many relations as it takes. -/
 theorem Prim.proved_ok {r : Prim} {A B : Obj} {os : List (Obj × Obj)} (h : (!r.proved A B os) = false) :

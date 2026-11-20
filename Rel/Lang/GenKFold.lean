@@ -536,6 +536,46 @@ theorem Tab.filter_holds {B : Obj} {n : USize} {P : Tab B B} {X : Vals (.arr B) 
     exact ⟨xs, [], (Tab.idU_holds hrest xs xs).2 ⟨rfl, hi⟩, (Tab.nil_holds hP0 xs []).2 ⟨hi, rfl⟩,
       (hfold _ _ _).2 (by simp)⟩
 
+/-- **`concat` on the cells of cells `X`** (`Tab.flatten`): each array of arrays of `X` to their concatenation, the
+left fold of `cat` from `[]` (`foldRoundsL_holds`). -/
+theorem Tab.flatten_holds {B : Obj} {n : USize} {X : Vals (.arr (.arr B)) n} {res : Tab (.arr (.arr B)) (.arr B)}
+    (h : Tab.flatten X = .ok res) (xss : List (List B.El)) (ys : List B.El) :
+    res.Holds xss ys ↔ (∃ i, X.row i = xss) ∧ ys = xss.flatten := by
+  unfold Tab.flatten at h
+  obtain ⟨rest, hrest, h⟩ := GenK.bind_ok h
+  obtain ⟨P0, hP0, h⟩ := GenK.bind_ok h
+  obtain ⟨z, hz, h⟩ := GenK.bind_ok h
+  have hfold : ∀ (ws : List (List B.El)) (v w : List B.El), foldDen (E := .arr B) (V := .arr B)
+      (fun _ b => b = v) (fun q v' => v' = q.1 ++ q.2) ws w ↔ w = v ++ ws.flatten := by
+    intro ws
+    induction ws with
+    | nil => intro v w; rw [foldDen_nil]; simp
+    | cons x ws ih =>
+      intro v w
+      rw [foldDen_cons]
+      constructor
+      · rintro ⟨_, v', ⟨_, rfl⟩, rfl, hw⟩; rw [ih] at hw; subst hw; simp
+      · intro hw; subst hw; exact ⟨v, v ++ x, ⟨v, rfl⟩, rfl, (ih _ _).2 (by simp)⟩
+  have hfr := Tab.foldRoundsL_holds (fun _ v x v' => v' = v ++ x)
+    (fun S el T hT _ k v' => by
+      obtain ⟨p, hp, hT⟩ := GenK.bind_ok hT
+      rw [Tab.cat_holds hT]
+      constructor
+      · rintro ⟨q, hq, rfl⟩; obtain ⟨h1, h2⟩ := (Tab.pair_holds hp k q).1 hq; exact ⟨q.1, q.2, h1, h2, rfl⟩
+      · rintro ⟨v, x, h1, h2, rfl⟩; exact ⟨(v, x), (Tab.pair_holds hp k (v, x)).2 ⟨h1, h2⟩, rfl⟩)
+    _ _ _ _ _ h
+    (fun k a b ha hb => ((Tab.idU_holds hrest k a).1 ha).1.symm.trans ((Tab.idU_holds hrest k b).1 hb).1)
+    (fun k v hv => ⟨k, (Tab.idU_holds hrest k k).2 ⟨rfl, ((Tab.nil_holds hP0 k v).1 hv).1⟩⟩)
+  rw [hfr, Tab.zero_holds hz, false_or]
+  constructor
+  · rintro ⟨r, v, hr, hv, hW⟩
+    obtain ⟨rfl, hi⟩ := (Tab.idU_holds hrest xss r).1 hr
+    obtain ⟨-, rfl⟩ := (Tab.nil_holds hP0 xss v).1 hv
+    exact ⟨hi, by simpa using (hfold _ _ _).1 hW⟩
+  · rintro ⟨hi, rfl⟩
+    exact ⟨xss, [], (Tab.idU_holds hrest xss xss).2 ⟨rfl, hi⟩, (Tab.nil_holds hP0 xss []).2 ⟨hi, rfl⟩,
+      (hfold _ _ _).2 (by simp)⟩
+
 namespace GenK
 
 open Classical in
