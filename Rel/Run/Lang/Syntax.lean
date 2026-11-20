@@ -61,93 +61,6 @@ inductive OExp
   | list (a : OExp)
   deriving Repr, Inhabited
 
-/-- A builtin run on the keys in demand: `sym` as written (`written`), or the prelude's definition, the constant
-    `prelude`, run as it (`Expand.useDef`), or neither: a converse only (`convTm`), or an `Op` of its own that
-    `Calc.toTerm` reads over any allegory (`Op.row`); `sig` its relation parameters (each `X ⟶ Y` and its form:
-    `some true` an order `Q : B ⟶ B` taken as its pair test `τ(Q)`, §a) and its type `A ⟶ B`, object variables
-    (`ℕ` too: a declared number object is stored as `.long`, F6) instantiated by the elaborator; `conv` the row of
-    its converse; `aop` its AOP reading (`Calc.builtins`) or why it has none; `mono`: it reads its parameters
-    monotonically (§e's fixed points); `prelude` and `aop` named unchecked (`Test` and `Calc` check them). -/
-structure Prim where
-  sym : String
-  sig : List ((OExp × OExp) × Option Bool) × OExp × OExp
-  conv : Option String := none
-  written : Bool := true
-  prelude : Option Lean.Name := none
-  aop : Except String Lean.Name := .error "it is not written"
-  mono : Bool := true
-  deriving Inhabited
-
-def consRow : Prim :=
-  { sym := "cons", sig := ([], .prod (.var {} "B") (.list (.var {} "B")), .list (.var {} "B")),
-    conv := "uncons", aop := .ok `Freyd.Alg.RelSet.ListRel.cons }
-
-def memRow : Prim :=
-  { sym := "∋", sig := ([], .list (.var {} "B"), .var {} "B"), aop := .ok `Freyd.Alg.PowerAllegory.eps }
-
--- `inl`, `inr`, `F(R)` are written as their `Op`s, which `Calc.toTerm` reads as a coproduct's injections and a relator
-def inlRow : Prim :=
-  { sym := "inl", sig := ([], .var {} "A", .sum (.var {} "A") (.var {} "B")), written := false }
-def inrRow : Prim :=
-  { sym := "inr", sig := ([], .var {} "B", .sum (.var {} "A") (.var {} "B")), written := false }
-def mapRow : Prim :=
-  { sym := "F", sig := ([((.var {} "A", .var {} "B"), some false)], .list (.var {} "A"), .list (.var {} "B")),
-    written := false }
-
-/-- Every builtin run on the keys in demand: adding one is adding its row. -/
-def prims : List Prim :=
-  [{ sym := "τ", sig := ([], .var {} "A", .list (.var {} "A")),
-     aop := .ok `Freyd.Alg.singletonMap }, consRow, memRow, inlRow, inrRow, mapRow,
-   -- `filter(p)`, `takewhile(p)` given one relation run as their mask forms (`rep_filterC`, `rep_takewhileC`, `elems_test`);
-   -- not `mono`: a larger `p` keeps more elements, a different list, not a superset of pairs (`rowDens`)
-   { sym := "filter", sig := ([((.var {} "B", .var {} "B"), some false)], .list (.var {} "B"), .list (.var {} "B")),
-     mono := false, prelude := `Rel.Programs.prelude.filter },
-   { sym := "takewhile",
-     sig := ([((.var {} "B", .var {} "B"), some false)], .list (.var {} "B"), .list (.var {} "B")),
-     mono := false, prelude := `Rel.Programs.prelude.takewhile },
-   { sym := "thinL", sig := ([((.var {} "B", .var {} "B"), some true)], .list (.var {} "B"), .list (.var {} "B")),
-     mono := false, aop := .ok `Freyd.Alg.RelSet.ListRel.thinL },
-   { sym := "merge",
-     sig := ([((.var {} "B", .var {} "B"), some true)], .prod (.list (.var {} "B")) (.list (.var {} "B")),
-       .list (.var {} "B")),
-     mono := false, aop := .ok `Freyd.Alg.RelSet.ListRel.merge },
-   { sym := "loop",
-     sig := ([((.prod (.var {} "X") (.var {} "Y"), .var {} "X"), some false)],
-       .prod (.var {} "X") (.list (.var {} "Y")), .var {} "X"),
-     aop := .error "AOP declares no iteration to a fixed point from the left" },
-   { sym := "uncons", sig := ([], .list (.var {} "B"), .prod (.var {} "B") (.list (.var {} "B"))),
-     conv := "cons", written := false },
-   { sym := "length", sig := ([], .list (.var {} "E"), .var {} "ℕ"),
-     aop := .ok `Freyd.Alg.RelSet.ListRel.length },
-   { sym := "sum", sig := ([], .list (.var {} "ℕ"), .var {} "ℕ"),
-     aop := .ok `Freyd.Alg.RelSet.ListRel.sum },
-   { sym := "inits", sig := ([], .list (.var {} "B"), .list (.list (.var {} "B"))),
-     aop := .ok `Freyd.Alg.RelSet.ListRel.initsR },
-   -- the prelude's folds run as their slice forms (`rep_tailsC`, `rep_prefixC`, `rep_suffixC`, `rep_concatC`)
-   { sym := "tails", sig := ([], .list (.var {} "B"), .list (.list (.var {} "B"))),
-     prelude := `Rel.Programs.prelude.tails },
-   { sym := "prefix", sig := ([], .list (.var {} "B"), .list (.var {} "B")),
-     prelude := `Rel.Programs.prelude.prefix },
-   { sym := "suffix", sig := ([], .list (.var {} "B"), .list (.var {} "B")),
-     prelude := `Rel.Programs.prelude.suffix },
-   { sym := "concat", sig := ([], .list (.list (.var {} "B")), .list (.var {} "B")),
-     prelude := `Rel.Programs.prelude.concat },
-   { sym := "cat", sig := ([], .prod (.list (.var {} "B")) (.list (.var {} "B")), .list (.var {} "B")),
-     conv := "uncat", aop := .ok `Freyd.Alg.RelSet.ListRel.cat },
-   { sym := "uncat", sig := ([], .list (.var {} "B"), .prod (.list (.var {} "B")) (.list (.var {} "B"))),
-     conv := "cat", written := false },
-   { sym := "zip", sig := ([], .prod (.list (.var {} "A")) (.list (.var {} "B")),
-       .list (.prod (.var {} "A") (.var {} "B"))),
-     aop := .ok `Freyd.Alg.RelSet.Pointfree.zip },
-   { sym := "snoc", sig := ([], .prod (.list (.var {} "B")) (.var {} "B"), .list (.var {} "B")), conv := "unsnoc",
-     aop := .error "AOP's `snoc` is on snoc lists (`SL.snoc`), not on the cons lists `[α]` reads as" },
-   { sym := "unsnoc", sig := ([], .list (.var {} "B"), .prod (.list (.var {} "B")) (.var {} "B")),
-     conv := "snoc", written := false },
-   { sym := "setify", sig := ([], .list (.var {} "B"), .list (.var {} "B")),
-     aop := .ok `Freyd.Alg.RelSet.ListRel.setify }]
-
-def Prim.find?(s : String) : Option Prim := prims.find? (·.sym == s)
-
 /-- The builtin operators of §b. A constant (arity 0) may take its objects, `⊤(A,B)`; the others take relations.
     `arith k` is the qlean kernel's integral value verb `k` on pairs of numbers (`Alg.arith`): one constructor, so
     every verb is typed, lifted and run by one path; `prim s` the row `s` of `prims`. `inl`, `inr`, `map` run as
@@ -162,27 +75,6 @@ inductive Op
   /-- `at(i)`, the element at position `i` from `0`; `i` a number literal, read by `Embed.atomOf`. -/
   | index (i : Nat)
   deriving Repr, BEq, Inhabited
-
-/-- The one table of builtins: symbol and arity. A program may not define or take as a parameter a name
-    in it (§c). -/
-def Op.table : List (String × Op × Nat) :=
-  [("𝟙", .id, 0), ("𝟘", .zero, 0), ("⊤", .top, 0), ("π₁", .outl, 0),
-   ("π₂", .outr, 0), ("inl", .inl, 0), ("inr", .inr, 0), ("≤", .leq, 0), ("<", .lt, 0), ("succ", .succ, 0),
-   ("plus", .arith Rel.Kernel.Ew.add, 0), ("times", .arith Rel.Kernel.Ew.mul, 0),
-   ("minus", .arith Rel.Kernel.Ew.sub, 0), ("div", .arith Rel.Kernel.Ew.idiv, 0),
-   ("mod", .arith Rel.Kernel.Ew.imod, 0), ("max", .arith Rel.Kernel.Ew.greater, 0),
-   ("min", .arith Rel.Kernel.Ew.lesser, 0), ("nil", .nil, 0), ("α", .alpha, 0),
-   ("dom", .dom, 1), ("ran", .ran, 1), ("Λ", .lam, 1), ("E", .E, 1),
-   ("est", .est, 1), ("thin", .thin, 1), ("F", .map, 1),
-   ("hylo", .hylo, 2),
-   ("at", .index 0, 0)] ++
-  (prims.filter fun r => r.written && r.prelude.isNone).map fun r => (r.sym, .prim r.sym, r.sig.1.length)
-
--- `at(i)` prints with its position, which no table row holds
-def Op.sym : Op → String
-  | .index i => s!"at({i})"
-  | .prim s => s
-  | o => ((Op.table.find? (·.2.1 == o)).map (·.1)).getD "?"
 
 /-- The builtin infix operators: `∩ ∪ − / \ ×`, one level with composition and the declared ones (`_⇒_`),
     left to right (§c). -/
@@ -244,6 +136,125 @@ def Expr.pos : Expr → Pos
   | .name p _ | .op p .. | .app p .. | .bin p .. | .inf p .. | .conv p _ | .compl p _ | .pair p .. | .junc p .. | .fold p ..
   | .lit p _ | .fix p .. | .col p .. => p
   | .comp a _ => a.pos
+
+/-- A builtin run on the keys in demand: `sym` as written (`written`), or the prelude's definition, the constant
+    `prelude`, run as it (`Expand.useDef`), or neither: a converse only (`convTm`), or an `Op` of its own that
+    `Calc.toTerm` reads over any allegory (`Op.row`); `sig` its relation parameters (each `X ⟶ Y` and its form:
+    `some true` an order `Q : B ⟶ B` taken as its pair test `τ(Q)`, §a) and its type `A ⟶ B`, object variables
+    (`ℕ` too: a declared number object is stored as `.long`, F6) instantiated by the elaborator; `conv` the row of
+    its converse; `aop` its AOP reading (`Calc.builtins`) or why it has none; `mono`: it reads its parameters
+    monotonically (§e's fixed points); `prelude` and `aop` named unchecked (`Test` and `Calc` check them); `dfn`
+    the term the row is the fused form of (§4), which it runs as where its target has a universe (`build`). -/
+structure Prim where
+  sym : String
+  sig : List ((OExp × OExp) × Option Bool) × OExp × OExp
+  conv : Option String := none
+  written : Bool := true
+  prelude : Option Lean.Name := none
+  aop : Except String Lean.Name := .error "it is not written"
+  mono : Bool := true
+  dfn : Option Expr := none
+  deriving Inhabited
+
+/-- A fold's base `0` at a number object, the coreflexive `⟨𝟙,𝟙⟩minus ∩ 𝟙`: `x − x` kept where it is `x`; none
+    where `0` is not in the object (`minus` keeps its result there). -/
+def zeroE : Expr :=
+  let o (x : Op) : Expr := .op {} x [] []
+  .bin {} .meet (.comp (.pair {} (o .id) (o .id)) (o (.arith Rel.Kernel.Ew.sub))) (o .id)
+
+def consRow : Prim :=
+  { sym := "cons", sig := ([], .prod (.var {} "B") (.list (.var {} "B")), .list (.var {} "B")),
+    conv := "uncons", aop := .ok `Freyd.Alg.RelSet.ListRel.cons }
+
+def memRow : Prim :=
+  { sym := "∋", sig := ([], .list (.var {} "B"), .var {} "B"), aop := .ok `Freyd.Alg.PowerAllegory.eps }
+
+-- `inl`, `inr`, `F(R)` are written as their `Op`s, which `Calc.toTerm` reads as a coproduct's injections and a relator
+def inlRow : Prim :=
+  { sym := "inl", sig := ([], .var {} "A", .sum (.var {} "A") (.var {} "B")), written := false }
+def inrRow : Prim :=
+  { sym := "inr", sig := ([], .var {} "B", .sum (.var {} "A") (.var {} "B")), written := false }
+def mapRow : Prim :=
+  { sym := "F", sig := ([((.var {} "A", .var {} "B"), some false)], .list (.var {} "A"), .list (.var {} "B")),
+    written := false }
+
+/-- Every builtin run on the keys in demand: adding one is adding its row. -/
+def prims : List Prim :=
+  [{ sym := "τ", sig := ([], .var {} "A", .list (.var {} "A")),
+     aop := .ok `Freyd.Alg.singletonMap }, consRow, memRow, inlRow, inrRow, mapRow,
+   -- `filter(p)`, `takewhile(p)` given one relation run as their mask forms (`rep_filterC`, `rep_takewhileC`, `elems_test`);
+   -- not `mono`: a larger `p` keeps more elements, a different list, not a superset of pairs (`rowDens`)
+   { sym := "filter", sig := ([((.var {} "B", .var {} "B"), some false)], .list (.var {} "B"), .list (.var {} "B")),
+     mono := false, prelude := `Rel.Programs.prelude.filter },
+   { sym := "takewhile",
+     sig := ([((.var {} "B", .var {} "B"), some false)], .list (.var {} "B"), .list (.var {} "B")),
+     mono := false, prelude := `Rel.Programs.prelude.takewhile },
+   { sym := "thinL", sig := ([((.var {} "B", .var {} "B"), some true)], .list (.var {} "B"), .list (.var {} "B")),
+     mono := false, aop := .ok `Freyd.Alg.RelSet.ListRel.thinL },
+   { sym := "merge",
+     sig := ([((.var {} "B", .var {} "B"), some true)], .prod (.list (.var {} "B")) (.list (.var {} "B")),
+       .list (.var {} "B")),
+     mono := false, aop := .ok `Freyd.Alg.RelSet.ListRel.merge },
+   { sym := "loop",
+     sig := ([((.prod (.var {} "X") (.var {} "Y"), .var {} "X"), some false)],
+       .prod (.var {} "X") (.list (.var {} "Y")), .var {} "X"),
+     aop := .error "AOP declares no iteration to a fixed point from the left" },
+   { sym := "uncons", sig := ([], .list (.var {} "B"), .prod (.var {} "B") (.list (.var {} "B"))),
+     conv := "cons", written := false },
+   -- `length = ⦇[0, π₁ succ]⦈`, `sum = ⦇[0, plus]⦈ʳ` (§4): each step kept in the object, as `succ`, `plus` keep theirs
+   { sym := "length", sig := ([], .list (.var {} "E"), .var {} "ℕ"),
+     aop := .ok `Freyd.Alg.RelSet.ListRel.length,
+     dfn := Expr.fold {} false (.junc {} zeroE (.comp (.op {} .outl [] []) (.op {} .succ [] []))) },
+   { sym := "sum", sig := ([], .list (.var {} "ℕ"), .var {} "ℕ"),
+     aop := .ok `Freyd.Alg.RelSet.ListRel.sum,
+     dfn := Expr.fold {} true (.junc {} zeroE (.op {} (.arith Rel.Kernel.Ew.add) [] [])) },
+   { sym := "inits", sig := ([], .list (.var {} "B"), .list (.list (.var {} "B"))),
+     aop := .ok `Freyd.Alg.RelSet.ListRel.initsR },
+   -- the prelude's folds run as their slice forms (`rep_tailsC`, `rep_prefixC`, `rep_suffixC`, `rep_concatC`)
+   { sym := "tails", sig := ([], .list (.var {} "B"), .list (.list (.var {} "B"))),
+     prelude := `Rel.Programs.prelude.tails },
+   { sym := "prefix", sig := ([], .list (.var {} "B"), .list (.var {} "B")),
+     prelude := `Rel.Programs.prelude.prefix },
+   { sym := "suffix", sig := ([], .list (.var {} "B"), .list (.var {} "B")),
+     prelude := `Rel.Programs.prelude.suffix },
+   { sym := "concat", sig := ([], .list (.list (.var {} "B")), .list (.var {} "B")),
+     prelude := `Rel.Programs.prelude.concat },
+   { sym := "cat", sig := ([], .prod (.list (.var {} "B")) (.list (.var {} "B")), .list (.var {} "B")),
+     conv := "uncat", aop := .ok `Freyd.Alg.RelSet.ListRel.cat },
+   { sym := "uncat", sig := ([], .list (.var {} "B"), .prod (.list (.var {} "B")) (.list (.var {} "B"))),
+     conv := "cat", written := false },
+   { sym := "zip", sig := ([], .prod (.list (.var {} "A")) (.list (.var {} "B")),
+       .list (.prod (.var {} "A") (.var {} "B"))),
+     aop := .ok `Freyd.Alg.RelSet.Pointfree.zip },
+   { sym := "snoc", sig := ([], .prod (.list (.var {} "B")) (.var {} "B"), .list (.var {} "B")), conv := "unsnoc",
+     aop := .error "AOP's `snoc` is on snoc lists (`SL.snoc`), not on the cons lists `[α]` reads as" },
+   { sym := "unsnoc", sig := ([], .list (.var {} "B"), .prod (.list (.var {} "B")) (.var {} "B")),
+     conv := "snoc", written := false },
+   { sym := "setify", sig := ([], .list (.var {} "B"), .list (.var {} "B")),
+     aop := .ok `Freyd.Alg.RelSet.ListRel.setify }]
+
+def Prim.find?(s : String) : Option Prim := prims.find? (·.sym == s)
+
+/-- The one table of builtins: symbol and arity. A program may not define or take as a parameter a name
+    in it (§c). -/
+def Op.table : List (String × Op × Nat) :=
+  [("𝟙", .id, 0), ("𝟘", .zero, 0), ("⊤", .top, 0), ("π₁", .outl, 0),
+   ("π₂", .outr, 0), ("inl", .inl, 0), ("inr", .inr, 0), ("≤", .leq, 0), ("<", .lt, 0), ("succ", .succ, 0),
+   ("plus", .arith Rel.Kernel.Ew.add, 0), ("times", .arith Rel.Kernel.Ew.mul, 0),
+   ("minus", .arith Rel.Kernel.Ew.sub, 0), ("div", .arith Rel.Kernel.Ew.idiv, 0),
+   ("mod", .arith Rel.Kernel.Ew.imod, 0), ("max", .arith Rel.Kernel.Ew.greater, 0),
+   ("min", .arith Rel.Kernel.Ew.lesser, 0), ("nil", .nil, 0), ("α", .alpha, 0),
+   ("dom", .dom, 1), ("ran", .ran, 1), ("Λ", .lam, 1), ("E", .E, 1),
+   ("est", .est, 1), ("thin", .thin, 1), ("F", .map, 1),
+   ("hylo", .hylo, 2),
+   ("at", .index 0, 0)] ++
+  (prims.filter fun r => r.written && r.prelude.isNone).map fun r => (r.sym, .prim r.sym, r.sig.1.length)
+
+-- `at(i)` prints with its position, which no table row holds
+def Op.sym : Op → String
+  | .index i => s!"at({i})"
+  | .prim s => s
+  | o => ((Op.table.find? (·.2.1 == o)).map (·.1)).getD "?"
 
 /-- Each name of `σ` replaced by its term: a `where` item put in place in its body (§c). -/
 partial def Expr.subst (σ : List (String × Expr)) : Expr → Expr
