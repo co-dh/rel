@@ -95,8 +95,12 @@ instance : Reg Kernel.Op := ⟨.obj, fun
   | .ctor k #[] #[a, b] => do
     let o := Kernel.Op.cast (← Reg.get? a) (← Reg.get? b)
     if o.ctorIdx == k then some o else none
+  | .ctor k #[] #[a] => do
+    let o := Kernel.Op.fto (← Reg.get? a)
+    if o.ctorIdx == k then some o else none
   | _ => none, fun
   | .cast s t => .ctor (Kernel.Op.cast s t).ctorIdx #[] #[Reg.put s, Reg.put t]
+  | .fto t => .ctor (Kernel.Op.fto t).ctorIdx #[] #[Reg.put t]
   | o => .ctor o.ctorIdx #[] #[]⟩
 
 /-- A pair: constructor `0`, its two components boxed object fields. -/
