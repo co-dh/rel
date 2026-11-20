@@ -863,6 +863,466 @@ theorem length_holds {n : USize} {X : Vals (.arr B) n} {T : Tab (.arr B) .long} 
 
 end Tab
 
+/-- A `foR` column read as booleans is its words read at `i64`, each cut to its low bit. -/
+theorem raw_u1_foR (n : USize) (md pk : ByteArray) :
+    raw .u1 n (.foR md pk : Enc) = (raw .i64 n (.foR md pk : Enc)).map fun w => UInt64.ofNat (w.toNat % 2) := by
+  simp only [raw, QAtomicType.width, Array.map_map]
+  refine Array.ext (by simp) fun j _ _ => ?_
+  simp
+
+/-- Folding `op` over columns of `n` words reversed, at row `n - 1 - i`, is folding it over the columns at row `i`. -/
+theorem foldlM_reverse_row {op : Op} {n i : Nat} (hi : i < n) : ∀ (l : List (Array UInt64)) (a : UInt64),
+    (∀ x ∈ l, x.size = n) → (l.map (·.reverse)).foldlM (fun a x => op.eval a (x[n - 1 - i]?.getD 0)) a =
+      l.foldlM (fun a x => op.eval a (x[i]?.getD 0)) a
+  | [], _, _ => rfl
+  | x :: l, a, hl => by
+    have hx := hl x List.mem_cons_self
+    simp only [List.map_cons, List.foldlM_cons]
+    rw [Array.getElem?_reverse (by omega), hx, show n - 1 - (n - 1 - i) = i by omega]
+    congr 1; funext b; exact foldlM_reverse_row hi l b fun y hy => hl y (List.mem_cons_of_mem _ hy)
+
+/-- **The backward `kscan`** (`rev`, `raw_kscan` read in forward row order): row `i` of the answer, read at `t`, is the
+cut of `out[i]`, which is `op` folded over the columns after the first at row `i`, from the next row's `out[i + 1]`, or
+from the first column's row `i` where `seg` starts a segment there (the last row always). -/
+theorem raw_kscan_rev {op : Op} {s t : QAtomicType} {w : Nat} (ht : t.width = some w) {n : USize} {seg c : Enc}
+    {cs : List Enc} {r : Enc × Option UInt64} (h : kscan op true s t n seg (c :: cs) = .ok r) :
+    ∃ out : Array UInt64, out.size = n.toNat ∧
+      r.1.raw t n = out.map (fun v => UInt64.ofNat (v.toNat % 2 ^ (if t = .u1 then 1 else 8 * w))) ∧
+      ∀ i (hi : i < out.size), (cs.map (·.raw s n)).foldlM (fun a x => op.eval a (x[i]?.getD 0))
+        (if i + 1 < n.toNat ∧ (seg.raw .u1 n)[i]?.getD 0 = 0 then out[i + 1]?.getD 0 else (c.raw s n)[i]?.getD 0) =
+          .ok out[i] := by
+  obtain ⟨hg, hxs, c', cs', hc, out, hos, he, -, hrow⟩ := raw_kscan op true s t w ht n seg (c :: cs) r h
+  simp only [List.cons.injEq] at hc; obtain ⟨h1, h2⟩ := hc; subst h1; subst h2
+  simp only [if_true] at he hrow
+  refine ⟨out.reverse, by simp [hos], by rw [he], fun i hi => ?_⟩
+  simp only [Array.size_reverse] at hi
+  have := hrow (n.toNat - 1 - i) (by omega)
+  have hcs : ∀ x ∈ cs.map (raw s n), x.size = n.toNat := fun x hx => by
+    obtain ⟨y, hy, rfl⟩ := List.mem_map.1 hx; exact hxs y (List.mem_cons_of_mem _ hy)
+  have hc := hxs c List.mem_cons_self
+  rw [foldlM_reverse_row (by omega) _ _ hcs, Array.getElem?_reverse (by omega), Array.getElem?_reverse (by omega), hg,
+    hc, show n.toNat - 1 - (n.toNat - 1 - i) = i by omega] at this
+  have e : out.reverse[i] = out[n.toNat - 1 - i]'(by omega) := by simp [Array.getElem_reverse, hos]
+  rw [e]
+  by_cases hl : i + 1 < n.toNat
+  · have e2 : out.reverse[i + 1]? = out[n.toNat - 1 - i - 1]? := by
+      rw [Array.getElem?_reverse (by omega), hos]; congr 1
+    rw [e2]
+    simpa only [show 0 < n.toNat - 1 - i by omega, true_and, hl] using this
+  · simpa only [show ¬ 0 < n.toNat - 1 - i by omega, false_and, hl, if_false] using this
+
+/-- An `or` fold of `0`/`1` words from a `0`/`1` word is `0`/`1`, and `0` exactly when every word is. -/
+theorem foldl_or01 : ∀ (l : List UInt64) (a : UInt64), (a = 0 ∨ a = 1) → (∀ y ∈ l, y = 0 ∨ y = 1) →
+    (l.foldl (· ||| ·) a = 0 ∨ l.foldl (· ||| ·) a = 1) ∧ (l.foldl (· ||| ·) a = 0 ↔ a = 0 ∧ ∀ y ∈ l, y = 0)
+  | [], a, ha, _ => by simpa using ha
+  | y :: l, a, ha, hl => by
+    have hy := hl y List.mem_cons_self
+    have hay : (a ||| y = 0 ∨ a ||| y = 1) ∧ (a ||| y = 0 ↔ a = 0 ∧ y = 0) := by
+      rcases ha with rfl | rfl <;> rcases hy with rfl | rfl <;> decide
+    obtain ⟨h1, h2⟩ := foldl_or01 l (a ||| y) hay.1 fun z hz => hl z (List.mem_cons_of_mem _ hz)
+    simp only [List.foldl_cons, List.forall_mem_cons]
+    exact ⟨h1, h2.trans (by rw [hay.2, and_assoc])⟩
+
+/-- The wrapping `+` fold of longs, read as words, is the words' `+` fold. -/
+theorem foldl_add_toUInt64 : ∀ (xs : List Int64) (a : UInt64),
+    (xs.map Int64.toUInt64).foldl (· + ·) a = a + (xs.foldr (· + ·) 0).toUInt64
+  | [], a => by simp; rfl
+  | x :: xs, a => by
+    simp only [List.map_cons, List.foldl_cons, List.foldr_cons, Int64.toUInt64_add, foldl_add_toUInt64 xs]
+    rw [UInt64.add_assoc]
+
+/-- **A long `a + b` is exact** when it is not the null and does not overflow (`a` and `b` of one sign, `a + b` of the
+other): exactly when `a + b` lies strictly inside `(-2^63, 2^63)`. -/
+theorem Int64.add_exact_iff (a b : Int64) : (a + b ≠ Alg.nul ∧ ¬((a < 0 ↔ b < 0) ∧ ¬(a < 0 ↔ a + b < 0))) ↔
+    -2 ^ 63 < a.toInt + b.toInt ∧ a.toInt + b.toInt < 2 ^ 63 := by
+  have := Int64.le_toInt a; have := Int64.toInt_lt a; have := Int64.le_toInt b; have := Int64.toInt_lt b
+  have hs := Int64.toInt_add a b
+  rw [Int.bmod_def] at hs
+  simp only [Int64.lt_iff_toInt_lt, Int64.toInt_zero, ne_eq, ← Int64.toInt_inj, Alg.nul, Int64.toInt_minValue, hs]
+  split at hs <;> omega
+
+/-- The `+` fold of longs whose every suffix sum lies inside the longs is exact. -/
+theorem Int64.foldr_add_toInt : ∀ xs : List Int64, (∀ t, t ≤ xs.length →
+    -2 ^ 63 < (List.map Int64.toInt (List.drop t xs)).sum ∧ (List.map Int64.toInt (List.drop t xs)).sum < 2 ^ 63) →
+    (xs.foldr (· + ·) 0).toInt = (xs.map Int64.toInt).sum
+  | [], _ => by simp
+  | x :: xs, h => by
+    have ih := Int64.foldr_add_toInt xs fun t ht => h (t + 1) (by rw [List.length_cons]; omega)
+    have h0 := h 0 (Nat.zero_le _)
+    simp only [List.drop_zero, List.map_cons, List.sum_cons] at h0
+    simp only [List.foldr_cons, List.map_cons, List.sum_cons, Int64.toInt_add, ih]
+    rw [Int.bmod_def]; split <;> omega
+
+/-- **The bad elements of `Tab.sum`'s cell are none exactly when its sum is in range**: no element is the null, no
+suffix sum is, and no suffix sum `xs[k] + S` overflowed, exactly when every suffix sum lies strictly inside
+`(-2^63, 2^63)` and no element is the null; induction from the right. -/
+theorem Int64.suffix_exact_iff : ∀ xs : List Int64,
+    (∀ k (hk : k < xs.length), xs[k] ≠ Alg.nul ∧ (xs.drop k).foldr (· + ·) 0 ≠ Alg.nul ∧
+      ¬((xs[k] < 0 ↔ (xs.drop (k + 1)).foldr (· + ·) 0 < 0) ∧ ¬(xs[k] < 0 ↔ (xs.drop k).foldr (· + ·) 0 < 0))) ↔
+    (∀ t, t ≤ xs.length → -2 ^ 63 < (List.map Int64.toInt (List.drop t xs)).sum ∧
+      (List.map Int64.toInt (List.drop t xs)).sum < 2 ^ 63) ∧ ∀ x ∈ xs, x ≠ Alg.nul
+  | [] => by simp
+  | x :: xs => by
+    have ih := Int64.suffix_exact_iff xs
+    have hk : (∀ k (hk : k < (x :: xs).length), (x :: xs)[k] ≠ Alg.nul ∧ ((x :: xs).drop k).foldr (· + ·) 0 ≠ Alg.nul ∧
+        ¬(((x :: xs)[k] < 0 ↔ ((x :: xs).drop (k + 1)).foldr (· + ·) 0 < 0) ∧
+          ¬((x :: xs)[k] < 0 ↔ ((x :: xs).drop k).foldr (· + ·) 0 < 0))) ↔
+        (x ≠ Alg.nul ∧ x + xs.foldr (· + ·) 0 ≠ Alg.nul ∧
+          ¬((x < 0 ↔ xs.foldr (· + ·) 0 < 0) ∧ ¬(x < 0 ↔ x + xs.foldr (· + ·) 0 < 0))) ∧
+        ∀ k (hk : k < xs.length), xs[k] ≠ Alg.nul ∧ (xs.drop k).foldr (· + ·) 0 ≠ Alg.nul ∧
+          ¬((xs[k] < 0 ↔ (xs.drop (k + 1)).foldr (· + ·) 0 < 0) ∧ ¬(xs[k] < 0 ↔ (xs.drop k).foldr (· + ·) 0 < 0)) :=
+      ⟨fun h => ⟨by simpa using h 0 (by simp), fun k hk => by simpa using h (k + 1) (by simp; omega)⟩,
+        fun h k hk => by
+          rcases k with _ | k
+          · simpa using h.1
+          · simpa using h.2 k (by simpa using hk)⟩
+    have ht : (∀ t, t ≤ (x :: xs).length → -2 ^ 63 < (List.map Int64.toInt (List.drop t (x :: xs))).sum ∧
+        (List.map Int64.toInt (List.drop t (x :: xs))).sum < 2 ^ 63) ↔
+        (-2 ^ 63 < x.toInt + (xs.map Int64.toInt).sum ∧ x.toInt + (xs.map Int64.toInt).sum < 2 ^ 63) ∧
+        ∀ t, t ≤ xs.length → -2 ^ 63 < (List.map Int64.toInt (List.drop t xs)).sum ∧
+          (List.map Int64.toInt (List.drop t xs)).sum < 2 ^ 63 :=
+      ⟨fun h => ⟨by simpa using h 0 (by simp), fun t ht => by simpa using h (t + 1) (by rw [List.length_cons]; omega)⟩,
+        fun h t ht => by
+          rcases t with _ | t
+          · simpa using h.1
+          · simpa using h.2 t (by simpa using ht)⟩
+    rw [hk, ht, ih, List.forall_mem_cons]
+    constructor
+    · rintro ⟨⟨hx, he⟩, hr, hn⟩
+      rw [← Int64.foldr_add_toInt xs hr]
+      exact ⟨⟨(Int64.add_exact_iff x _).1 he, hr⟩, hx, hn⟩
+    · rintro ⟨⟨he, hr⟩, hx, hn⟩
+      rw [← Int64.foldr_add_toInt xs hr] at he
+      exact ⟨⟨hx, (Int64.add_exact_iff x _).2 he⟩, hr, hn⟩
+
+/-- Partial sums of naturals grow with the range. -/
+theorem psum_mono (f : Nat → Nat) {a b : Nat} (h : a ≤ b) :
+    ((List.range a).map f).sum ≤ ((List.range b).map f).sum := by
+  induction b with
+  | zero => obtain rfl := Nat.le_zero.1 h; exact Nat.le_refl _
+  | succ b ih =>
+    rcases Nat.lt_or_ge a (b + 1) with h' | h'
+    · have := ih (by omega); rw [List.range_succ, List.map_append]; simp; omega
+    · obtain rfl : a = b + 1 := by omega
+      exact Nat.le_refl _
+
+namespace Tab
+
+/-- **`sum X` denotes `rowDens`' `sum` on the arrays of longs `X`**: a cell is kept, with its wrapped total
+`foldr (+) 0`, exactly when every suffix sum lies strictly inside `(-2^63, 2^63)` and no element is the null; the
+backward `kscan` (`raw_kscan_rev`) gives each element its cell's suffix sum, and `Int64.suffix_exact_iff` says the
+rows `Tab.sum` marks bad are none exactly then. -/
+theorem sum_holds {n : USize} {X : Vals (.arr .long) n} {T : Tab (.arr .long) .long} (h : Tab.sum X = .ok T)
+    (xs : List Int64) (c : Int64) : T.Holds xs c ↔ (∃ i, X.row i = xs) ∧
+      (∀ t, t ≤ xs.length → -2 ^ 63 < (List.map Int64.toInt (List.drop t xs)).sum ∧
+        (List.map Int64.toInt (List.drop t xs)).sum < 2 ^ 63) ∧ (∀ x ∈ xs, x ≠ Alg.nul) ∧
+        c = xs.foldr (· + ·) 0 := by
+  obtain ⟨m, lo, up, f⟩ := X
+  dsimp only [Tab.sum] at h
+  split at h; · cases h
+  rename_i hb
+  simp only [bind] at h
+  rw [Except.bind_eq_ok'] at h; obtain ⟨_, -, h⟩ := h
+  rw [Except.bind_eq_ok'] at h; obtain ⟨⟨s, e⟩, hse, h⟩ := h
+  rw [Except.bind_eq_ok'] at h; obtain ⟨w, hw, h⟩ := h
+  rw [Except.bind_eq_ok'] at h; obtain ⟨⟨T', G, u⟩, hTGu, h⟩ := h
+  rw [Except.bind_eq_ok'] at h; obtain ⟨g1, hg1, h⟩ := h
+  rw [Except.bind_eq_ok'] at h; obtain ⟨a1, ha1, h⟩ := h
+  rw [Except.bind_eq_ok'] at h; obtain ⟨v, hv, h⟩ := h
+  rw [Except.bind_eq_ok'] at h; obtain ⟨z, hz, h⟩ := h
+  rw [Except.bind_eq_ok'] at h; obtain ⟨gw, hgw, h⟩ := h
+  rw [Except.bind_eq_ok'] at h; obtain ⟨one, hone, h⟩ := h
+  rw [Except.bind_eq_ok'] at h; obtain ⟨wm1, hwm1, h⟩ := h
+  rw [Except.bind_eq_ok'] at h; obtain ⟨last, hlast, h⟩ := h
+  rw [Except.bind_eq_ok'] at h; obtain ⟨r, hr, h⟩ := h
+  rw [Except.bind_eq_ok'] at h; obtain ⟨sv, hsv, h⟩ := h
+  rw [Except.bind_eq_ok'] at h; obtain ⟨d, hd, h⟩ := h
+  rw [Except.bind_eq_ok'] at h; obtain ⟨sd, hsd, h⟩ := h
+  rw [Except.bind_eq_ok'] at h; obtain ⟨e1, he1, h⟩ := h
+  rw [Except.bind_eq_ok'] at h; obtain ⟨sw, hsw, h⟩ := h
+  rw [Except.bind_eq_ok'] at h; obtain ⟨e2, he2, h⟩ := h
+  rw [Except.bind_eq_ok'] at h; obtain ⟨ovf, hovf, h⟩ := h
+  rw [Except.bind_eq_ok'] at h; obtain ⟨nl, hnl, h⟩ := h
+  rw [Except.bind_eq_ok'] at h; obtain ⟨eW, heW, h⟩ := h
+  rw [Except.bind_eq_ok'] at h; obtain ⟨ev, hev, h⟩ := h
+  rw [Except.bind_eq_ok'] at h; obtain ⟨o1, ho1, h⟩ := h
+  rw [Except.bind_eq_ok'] at h; obtain ⟨bad, hbad, h⟩ := h
+  rw [Except.bind_eq_ok'] at h; obtain ⟨badC, hbadC, h⟩ := h
+  rw [Except.bind_eq_ok'] at h; obtain ⟨sc, hsc, h⟩ := h
+  rw [Except.bind_eq_ok'] at h; obtain ⟨z2, hz2, h⟩ := h
+  rw [Except.bind_eq_ok'] at h; obtain ⟨tot, htot, h⟩ := h
+  rw [Except.bind_eq_ok'] at h; obtain ⟨kp, hkp, h⟩ := h
+  rw [Except.bind_eq_ok'] at h; obtain ⟨K, hK, h⟩ := h
+  dsimp only at hw hTGu hg1 ha1 hv hz hgw hone hwm1 hlast hr hsv hd hsd he1 hsw he2 hovf hnl heW hev ho1 hbad
+  dsimp only at hbadC hsc hK
+  have hm63 : m.toNat < 2 ^ 63 := by omega
+  have hn63 : n.toNat < 2 ^ 63 := by omega
+  -- the cells `[SN g, EN g)`, their widths `EN g - SN g` at `w`, laid out by EXPAND at the offsets `off g`
+  obtain ⟨SN, EN, hw1, hb1, hrow⟩ := cellSpan_spec hse hm63 f
+  have hwv : ∀ g < n.toNat, (raw .i64 n w)[g]?.getD 0 = (EN g - SN g).toUInt64 := fun g hg => by
+    have es := (colMap_raw hw).2.2.2 g hg
+    rw [(hw1 g hg).2, (hw1 g hg).1] at es; simp only [Op.eval, Except.ok.injEq] at es
+    rw [← es, ← toUInt64_sub (hb1 g).1]
+  have hwm : ∀ g, EN g - SN g ≤ m.toNat := fun g => by rcases (hb1 g).2.2 with h | h <;> omega
+  have hsum : ∀ k, ((List.range k).map fun g => EN g - SN g).sum ≤ k * m.toNat := fun k => by
+    induction k with
+    | zero => simp
+    | succ k ih => rw [List.range_succ, List.map_append]; simp [Nat.succ_mul]; have := hwm k; omega
+  have hnm := hsum n.toNat
+  have hnm' : n.toNat * m.toNat < 2 ^ 63 := by omega
+  obtain ⟨hT, hrun⟩ := expand_spec hTGu (fun g => EN g - SN g) hwv (by omega) hn63
+  obtain ⟨off, hoff⟩ : ∃ F : Nat → Nat, ∀ g, F g = ((List.range g).map fun g => EN g - SN g).sum := ⟨_, fun _ => rfl⟩
+  simp only [← hoff] at hT hrun
+  have hle : ∀ g < n.toNat, off g + (EN g - SN g) ≤ T'.toNat := fun g hg => by
+    have := psum_mono (fun g => EN g - SN g) (show g + 1 ≤ n.toNat by omega)
+    rw [List.range_succ, List.map_append] at this; simp at this
+    rw [hT, hoff, hoff]; omega
+  have hcover : ∀ t < T'.toNat, ∃ g < n.toNat, off g ≤ t ∧ t < off g + (EN g - SN g) := fun t ht => by
+    obtain ⟨g, hg, h1, h2⟩ := exists_group (fun g => EN g - SN g) n.toNat t (by rw [← hoff]; omega)
+    exact ⟨g, hg, by rw [hoff]; exact h1, by rw [hoff]; exact h2⟩
+  -- the row words, one `colMap`/`kgather` each
+  have eqW : ∀ a b o : UInt64, Op.eval .eq a b = .ok o → o = if a = b then 1 else 0 := fun a b o h => by
+    have e : Op.eval .eq a b = .ok (if (a == b) = true then 1 else 0) := rfl
+    rw [e, Except.ok.injEq] at h; rw [← h]; simp only [beq_iff_eq]
+  have neW : ∀ a b o : UInt64, Op.eval .ne a b = .ok o → o = if a ≠ b then 1 else 0 := fun a b o h => by
+    have e : Op.eval .ne a b = .ok (if (a != b) = true then 1 else 0) := rfl
+    rw [e, Except.ok.injEq] at h; rw [← h]; simp only [bne_iff_ne]
+  have ltW : ∀ a b o : UInt64, Op.eval .lt a b = .ok o → o = if a.toInt64 < b.toInt64 then 1 else 0 :=
+    fun a b o h => by
+      have e : Op.eval .lt a b = .ok (if decide (a.toInt64 < b.toInt64) = true then 1 else 0) := rfl
+      rw [e, Except.ok.injEq] at h; rw [← h]; simp only [decide_eq_true_eq]
+  have hGt := kgather_word hg1
+  have hA := (colMap_raw ha1).2.2.2
+  have hVt := kgather_word hv
+  have hZ := colConst_raw hz
+  have hGW := kgather_word hgw
+  have hONE := colConst_raw hone
+  have hWM := (colMap_raw hwm1).2.2.2
+  have hL := (colMap_raw hlast).2.2.2
+  have hSV := (colMap_raw hsv).2.2.2
+  have hD := (colMap_raw hd).2.2.2
+  have hSD := (colMap_raw hsd).2.2.2
+  have hE1 := (colMap_raw he1).2.2.2
+  have hSW := (colMap_raw hsw).2.2.2
+  have hE2 := (colMap_raw he2).2.2.2
+  have hOVF := (colMap_raw hovf).2.2.2
+  have hNL := colConst_raw hnl
+  have hEW := (colMap_raw heW).2.2.2
+  have hEV := (colMap_raw hev).2.2.2
+  have hO1 := (colMap_raw ho1).2.2.2
+  have hBAD := (colMap_raw hbad).2.2.2
+  obtain ⟨out, hos, hWr, hrec⟩ := raw_kscan_rev (w := 8) rfl hr
+  simp only [show ∀ v : UInt64, UInt64.ofNat (v.toNat % 2 ^ (if QAtomicType.i64 = .u1 then 1 else 8 * 8)) = v from
+    fun v => by rw [if_neg (by decide)]; simp, Array.map_id'] at hWr
+  -- `last` is a `foR` column, so read as booleans it is its words' low bits
+  have hlf : ∃ md pk, last = .foR md pk := by
+    unfold colMap at hlast; simp only [bind, Except.bind] at hlast; split at hlast; · cases hlast
+    split at hlast; · cases hlast
+    rename_i q hq; simp only [pure, Except.pure, Except.ok.injEq] at hlast; subst hlast; exact kscan_foR hq
+  -- each row's bad word is `0`/`1`, `0` exactly when the row's sum `W = v + (W - v)` is exact and not the null
+  have hbad0 : ∀ t < T'.toNat, ((raw .i64 T' bad)[t]?.getD 0 = 0 ∨ (raw .i64 T' bad)[t]?.getD 0 = 1) ∧
+      ((raw .i64 T' bad)[t]?.getD 0 = 0 ↔ ((raw .i64 T' v)[t]?.getD 0).toInt64 ≠ Alg.nul ∧
+        ((raw .i64 T' r.1)[t]?.getD 0).toInt64 ≠ Alg.nul ∧
+        ¬((((raw .i64 T' v)[t]?.getD 0).toInt64 < 0 ↔
+            ((raw .i64 T' r.1)[t]?.getD 0 - (raw .i64 T' v)[t]?.getD 0).toInt64 < 0) ∧
+          ¬(((raw .i64 T' v)[t]?.getD 0).toInt64 < 0 ↔ ((raw .i64 T' r.1)[t]?.getD 0).toInt64 < 0))) := by
+    intro t ht
+    have hsv' := ltW _ _ _ (hSV t ht)
+    have hd' := hD t ht; simp only [Op.eval, Except.ok.injEq] at hd'
+    have hsd' := ltW _ _ _ (hSD t ht)
+    have he1' := eqW _ _ _ (hE1 t ht)
+    have hsw' := ltW _ _ _ (hSW t ht)
+    have he2' := neW _ _ _ (hE2 t ht)
+    have hovf' := hOVF t ht; simp only [Op.eval, Except.ok.injEq] at hovf'
+    have heW' := eqW _ _ _ (hEW t ht)
+    have hev' := eqW _ _ _ (hEV t ht)
+    have ho1' := hO1 t ht; simp only [Op.eval, Except.ok.injEq] at ho1'
+    have hbad' := hBAD t ht; simp only [Op.eval, Except.ok.injEq] at hbad'
+    rw [hZ, Array.getElem?_replicate, if_pos ht, Option.getD_some] at hsv' hsd' hsw'
+    rw [hNL, Array.getElem?_replicate, if_pos ht, Option.getD_some] at heW' hev'
+    rw [← hd'] at hsd'
+    rw [← hbad', ← ho1', ← hovf', he1', he2', hsv', hsd', hsw', heW', hev']
+    have hn : ∀ x : UInt64, x = 0x8000000000000000 ↔ x.toInt64 = Alg.nul := fun x =>
+      ⟨fun h => by rw [h]; decide, fun h => by rw [← UInt64.toUInt64_toInt64 x, h]; decide⟩
+    simp only [hn, show (0 : UInt64).toInt64 = 0 from rfl]
+    generalize ((raw .i64 T' r.1)[t]?.getD 0 - (raw .i64 T' v)[t]?.getD 0).toInt64 = q
+    generalize ((raw .i64 T' r.1)[t]?.getD 0).toInt64 = sW
+    generalize ((raw .i64 T' v)[t]?.getD 0).toInt64 = sV
+    by_cases p1 : sV < 0 <;> by_cases p2 : q < 0 <;> by_cases p3 : sW < 0 <;> by_cases p4 : sW = Alg.nul <;>
+      by_cases p5 : sV = Alg.nul <;> simp (config := { decide := true }) [p1, p2, p3, p4, p5]
+  -- each cell `g`'s rows `off g + k`: its group and offset, its element, and the segment start at its last row
+  have hG2 : ∀ g < n.toNat, ∀ k < EN g - SN g, (raw .i64 T' G)[off g + k]?.getD 0 = g.toUInt64 ∧
+      (raw .i64 T' u)[off g + k]?.getD 0 = k.toUInt64 := fun g hg k hk => by
+    have := hrun g hg (off g + k) (by omega) (by omega); simpa using this
+  have hxl : ∀ g (hg : g < n.toNat), (Vals.row (A := .arr .long) ⟨m, lo, up, f⟩ ⟨g, hg⟩).length = EN g - SN g :=
+    fun g hg => by rw [hrow]; simp
+  have hvx : ∀ g (hg : g < n.toNat) k (hk : k < EN g - SN g), (raw .i64 T' v)[off g + k]?.getD 0 =
+      ((Vals.row (A := .arr .long) ⟨m, lo, up, f⟩ ⟨g, hg⟩)[k]'(by rw [hxl]; exact hk)).toUInt64 := by
+    intro g hg k hk
+    have ht : off g + k < T'.toNat := by have := hle g hg; omega
+    obtain ⟨hGk, hUk⟩ := hG2 g hg k hk
+    obtain ⟨-, hg1t⟩ := hGt _ ht
+    have ha := hA _ ht; simp only [Op.eval, Except.ok.injEq] at ha
+    obtain ⟨-, hvt⟩ := hVt _ ht
+    rw [hGk, toNat_toUInt64 (by omega), (hw1 g hg).1] at hg1t
+    rw [hg1t, hUk] at ha
+    have hkm : SN g + k < m.toNat := by rcases (hb1 g).2.2 with h | h <;> omega
+    have han : ((SN g).toUInt64 + k.toUInt64).toNat = SN g + k := by
+      rw [UInt64.toNat_add, toNat_toUInt64 (by omega), toNat_toUInt64 (by omega)]; omega
+    rw [hvt, ← ha, han]
+    simp only [hrow ⟨g, hg⟩, List.getElem_map, List.getElem_range', Nat.one_mul, hkm, dif_pos, Vals.row_atom,
+      Arr.get_i64, UInt64.toUInt64_toInt64]
+  have hsegk : ∀ g (hg : g < n.toNat) k (hk : k < EN g - SN g),
+      (raw .u1 T' last)[off g + k]?.getD 0 = 0 ↔ k + 1 ≠ EN g - SN g := by
+    intro g hg k hk
+    have ht : off g + k < T'.toNat := by have := hle g hg; omega
+    obtain ⟨hGk, hUk⟩ := hG2 g hg k hk
+    have hl := eqW _ _ _ (hL _ ht)
+    have hwq := hWM _ ht; simp only [Op.eval, Except.ok.injEq] at hwq
+    obtain ⟨-, hgwt⟩ := hGW _ ht
+    rw [hGk, toNat_toUInt64 (by omega), hwv g hg] at hgwt
+    rw [hONE, Array.getElem?_replicate, if_pos ht, Option.getD_some, hgwt,
+      show (1 : UInt64) = (1 : Nat).toUInt64 from rfl, ← toUInt64_sub (by omega)] at hwq
+    rw [← hwq, hUk] at hl
+    have hlsz := (colMap_raw hlast).2.2.1
+    obtain ⟨md, pk, hfo⟩ := hlf
+    rw [hfo] at hl hlsz ⊢
+    rw [raw_u1_foR, Array.getElem?_map, Array.getElem?_eq_getElem (by omega)]
+    rw [Array.getElem?_eq_getElem (by omega), Option.getD_some] at hl
+    simp only [Option.map_some, Option.getD_some, hl]
+    have := hwm g
+    have e : k.toUInt64 = (EN g - SN g - 1).toUInt64 ↔ k + 1 = EN g - SN g :=
+      ⟨fun h => by have := congrArg UInt64.toNat h; rw [toNat_toUInt64 (by omega), toNat_toUInt64 (by omega)] at this
+                   omega, fun h => by rw [show EN g - SN g - 1 = k by omega]⟩
+    by_cases hk1 : k + 1 = EN g - SN g
+    · rw [if_pos (e.2 hk1)]; simp only [hk1, ne_eq, not_true_eq_false, iff_false]; decide
+    · rw [if_neg (fun h => hk1 (e.1 h))]; simp only [ne_eq, hk1, not_false_eq_true, iff_true]; decide
+  -- the backward scan gives row `off g + k` its cell's suffix sum from `k`
+  have hWk : ∀ g (hg : g < n.toNat) k (hk : k < EN g - SN g), (raw .i64 T' r.1)[off g + k]?.getD 0 =
+      (((Vals.row (A := .arr .long) ⟨m, lo, up, f⟩ ⟨g, hg⟩).drop k).foldr (· + ·) 0).toUInt64 := by
+    intro g hg
+    have key : ∀ dd k (hk : k + dd + 1 = EN g - SN g), (raw .i64 T' r.1)[off g + k]?.getD 0 =
+        (((Vals.row (A := .arr .long) ⟨m, lo, up, f⟩ ⟨g, hg⟩).drop k).foldr (· + ·) 0).toUInt64 := by
+      intro dd
+      induction dd with
+      | zero =>
+        intro k hk
+        have ht : off g + k < T'.toNat := by have := hle g hg; omega
+        have hre := hrec (off g + k) (by omega)
+        simp only [List.map_cons, List.map_nil, List.foldlM_cons, List.foldlM_nil, Op.eval, bind, Except.bind,
+          pure, Except.pure, Except.ok.injEq] at hre
+        rw [if_neg (fun h => ((hsegk g hg k (by omega)).1 h.2) (by omega)), hZ, Array.getElem?_replicate,
+          if_pos ht, Option.getD_some, hvx g hg k (by omega)] at hre
+        rw [hWr, Array.getElem?_eq_getElem (by omega), Option.getD_some, ← hre,
+          List.drop_eq_getElem_cons (by rw [hxl]; omega), List.drop_eq_nil_of_le (by rw [hxl]; omega)]
+        simp only [List.foldr_cons, List.foldr_nil, Int64.toUInt64_add, UInt64.zero_add,
+          show Int64.toUInt64 0 = 0 from rfl, UInt64.add_zero]
+      | succ dd ih =>
+        intro k hk
+        have ht : off g + k + 1 < T'.toNat := by have := hle g hg; omega
+        have hre := hrec (off g + k) (by omega)
+        simp only [List.map_cons, List.map_nil, List.foldlM_cons, List.foldlM_nil, Op.eval, bind, Except.bind,
+          pure, Except.pure, Except.ok.injEq] at hre
+        have hn1 := ih (k + 1) (by omega)
+        rw [← Nat.add_assoc, hWr] at hn1
+        rw [if_pos ⟨ht, (hsegk g hg k (by omega)).2 (by omega)⟩, hn1, hvx g hg k (by omega)] at hre
+        rw [hWr, Array.getElem?_eq_getElem (by omega), Option.getD_some, ← hre]
+        conv => rhs; rw [List.drop_eq_getElem_cons (by rw [hxl]; omega), List.foldr_cons, Int64.toUInt64_add]
+        exact UInt64.add_comm _ _
+    intro k hk; exact key (EN g - SN g - 1 - k) k (by omega)
+  have hWv : ∀ g (hg : g < n.toNat) k (hk : k < EN g - SN g),
+      (raw .i64 T' r.1)[off g + k]?.getD 0 - (raw .i64 T' v)[off g + k]?.getD 0 =
+        (((Vals.row (A := .arr .long) ⟨m, lo, up, f⟩ ⟨g, hg⟩).drop (k + 1)).foldr (· + ·) 0).toUInt64 := by
+    intro g hg k hk
+    rw [hWk g hg k hk, hvx g hg k hk, List.drop_eq_getElem_cons (by rw [hxl]; exact hk), List.foldr_cons,
+      Int64.toUInt64_add, UInt64.add_comm, UInt64.add_sub_cancel]
+  -- the rows naming cell `g` are its run `[off g, off g + (EN g - SN g))`
+  have hfilt : ∀ g < n.toNat, (List.range T'.toNat).filter (fun k => ((raw .i64 T' G)[k]?.getD 0).toNat = g) =
+      List.range' (off g) (EN g - SN g) := fun g hg => by
+    have hl := hle g hg
+    have hnot : ∀ t < T'.toNat, (t < off g ∨ off g + (EN g - SN g) ≤ t) →
+        ((raw .i64 T' G)[t]?.getD 0).toNat ≠ g := fun t ht ho => by
+      obtain ⟨g', hg', h1, h2⟩ := hcover t ht
+      rw [(hrun g' hg' t h1 h2).1, toNat_toUInt64 (by omega)]; rintro rfl; omega
+    rw [List.range_eq_range', show T'.toNat = off g + ((EN g - SN g) + (T'.toNat - off g - (EN g - SN g))) by omega,
+      ← List.range'_append_1, ← List.range'_append_1, List.filter_append, List.filter_append,
+      List.filter_eq_nil_iff.2 (fun t ht => by
+        rw [List.mem_range'_1] at ht; simpa using hnot t (by omega) (by omega)),
+      List.filter_eq_self.2 (fun t ht => by
+        rw [List.mem_range'_1] at ht
+        have := (hG2 g hg (t - off g) (by omega)).1
+        rw [show off g + (t - off g) = t by omega] at this
+        simp [this, toNat_toUInt64 (show g < 2 ^ 64 by omega)]),
+      List.filter_eq_nil_iff.2 (fun t ht => by
+        rw [List.mem_range'_1] at ht; simpa using hnot t (by omega) (by omega))]
+    simp
+  obtain ⟨hGs, -, hbw⟩ := kscatter_words hbadC
+  obtain ⟨-, hbadCf⟩ := scatterWords_fold (f := (· ||| ·)) (fun _ _ => rfl) hbw
+  obtain ⟨-, -, hsw'⟩ := kscatter_words hsc
+  obtain ⟨-, hscf⟩ := scatterWords_fold (f := (· + ·)) (fun _ _ => rfl) hsw'
+  rw [hGs] at hbadCf hscf
+  have hbadCg : ∀ g (hg : g < n.toNat), ((raw .i64 n badC)[g]?.getD 0 = 0 ∨ (raw .i64 n badC)[g]?.getD 0 = 1) ∧
+      ((raw .i64 n badC)[g]?.getD 0 = 0 ↔ ∀ k < EN g - SN g, (raw .i64 T' bad)[off g + k]?.getD 0 = 0) := by
+    intro g hg
+    rw [hbadCf g hg, hfilt g hg]
+    obtain ⟨h1, h2⟩ := foldl_or01 ((List.range' (off g) (EN g - SN g)).map ((raw .i64 T' bad)[·]?.getD 0)) 0
+      (Or.inl rfl) (fun y hy => by
+        obtain ⟨t, ht, rfl⟩ := List.mem_map.1 hy; rw [List.mem_range'_1] at ht
+        exact (hbad0 t (by have := hle g hg; omega)).1)
+    refine ⟨h1, h2.trans ⟨fun h k hk => h.2 _ (List.mem_map.2 ⟨off g + k, List.mem_range'_1.2 ⟨by omega, by omega⟩,
+      rfl⟩), fun h => ⟨rfl, fun y hy => ?_⟩⟩⟩
+    obtain ⟨t, ht, rfl⟩ := List.mem_map.1 hy; rw [List.mem_range'_1] at ht
+    have := h (t - off g) (by omega); rwa [show off g + (t - off g) = t by omega] at this
+  have htotg : ∀ g (hg : g < n.toNat), (raw .i64 n tot.enc)[g]?.getD 0 =
+      ((Vals.row (A := .arr .long) ⟨m, lo, up, f⟩ ⟨g, hg⟩).foldr (· + ·) 0).toUInt64 := by
+    intro g hg
+    have ht := (colMap_raw (colArr_ok htot)).2.2.2 g hg
+    simp only [Op.eval, Except.ok.injEq] at ht
+    rw [← ht, colConst_raw hz2, Array.getElem?_replicate, if_pos hg, Option.getD_some, UInt64.add_zero, hscf g hg,
+      hfilt g hg]
+    have e : (List.range' (off g) (EN g - SN g)).map ((raw .i64 T' v)[·]?.getD 0) =
+        (Vals.row (A := .arr .long) ⟨m, lo, up, f⟩ ⟨g, hg⟩).map Int64.toUInt64 := by
+      apply List.ext_getElem (by simp [hxl])
+      intro k h1 h2
+      simp only [List.getElem_map, List.getElem_range', Nat.one_mul]
+      exact hvx g hg k (by simpa using h1)
+    rw [e, foldl_add_toUInt64, UInt64.zero_add]
+  have hkpg : ∀ g < n.toNat, (raw .i64 n kp)[g]?.getD 0 = (raw .i64 n badC)[g]?.getD 0 ^^^ 1 := fun g hg => by
+    have := (colMap_raw hkp).2.2.2 g hg; simp only [Op.eval, Except.ok.injEq] at this; exact this.symm
+  have hkp2 : ∀ g < n.toNat, (raw .i64 n kp)[g]?.getD 0 < 2 := fun g hg => by
+    rw [hkpg g hg]; rcases (hbadCg g hg).1 with h | h <;> rw [h] <;> decide
+  have hgood : ∀ i : Fin n.toNat, (raw .i64 n kp)[i.1]?.getD 0 ≠ 0 ↔
+      (∀ t, t ≤ (Vals.row (A := .arr .long) ⟨m, lo, up, f⟩ i).length →
+        -2 ^ 63 < (List.map Int64.toInt (List.drop t (Vals.row (A := .arr .long) ⟨m, lo, up, f⟩ i))).sum ∧
+        (List.map Int64.toInt (List.drop t (Vals.row (A := .arr .long) ⟨m, lo, up, f⟩ i))).sum < 2 ^ 63) ∧
+      ∀ x ∈ Vals.row (A := .arr .long) ⟨m, lo, up, f⟩ i, x ≠ Alg.nul := fun ⟨g, hg⟩ => by
+    rw [hkpg g hg, ← Int64.suffix_exact_iff]
+    have e : (raw .i64 n badC)[g]?.getD 0 ^^^ 1 ≠ 0 ↔ (raw .i64 n badC)[g]?.getD 0 = 0 := by
+      rcases (hbadCg g hg).1 with h | h <;> rw [h] <;> decide
+    rw [e, (hbadCg g hg).2]
+    constructor
+    · intro h k hk
+      have hk' : k < EN g - SN g := by rwa [hxl] at hk
+      have := (hbad0 (off g + k) (by have := hle g hg; omega)).2.1 (h k hk')
+      rw [hWv g hg k hk'] at this
+      rw [hvx g hg k hk', hWk g hg k hk'] at this
+      simpa only [Int64.toInt64_toUInt64] using this
+    · intro h k hk'
+      apply (hbad0 (off g + k) (by have := hle g hg; omega)).2.2
+      rw [hWv g hg k hk', hvx g hg k hk', hWk g hg k hk']
+      simpa only [Int64.toInt64_toUInt64] using h k (by rw [hxl]; exact hk')
+  have hval : ∀ i : Fin n.toNat, Vals.row (A := .long) tot i =
+      (Vals.row (A := .arr .long) ⟨m, lo, up, f⟩ i).foldr (· + ·) 0 := fun ⟨g, hg⟩ => by
+    rw [Vals.row_atom, Arr.get_i64, htotg g hg, Int64.toInt64_toUInt64]
+  rw [canon_holds h, keep_holds hK hkp2]
+  constructor
+  · rintro ⟨i, hk, rfl, rfl⟩
+    exact ⟨⟨i, rfl⟩, ((hgood i).1 hk).1, ((hgood i).1 hk).2, hval i⟩
+  · rintro ⟨⟨i, rfl⟩, hR, hN, rfl⟩
+    exact ⟨i, (hgood i).2 ⟨hR, hN⟩, rfl, hval i⟩
+
+end Tab
+
 /-- An `i64` column gathered (`Arr.gather`) reads at `j` the word of `x` at `ix[j]`. -/
 theorem Arr.gather_raw {m n : USize} {ix : Enc} (x : Arr .i64 n) {y : Arr .i64 m} (h : Arr.gather m ix x = .ok y)
     (j : Fin m.toNat) : ∃ i : Fin n.toNat, ((raw .i64 m ix)[j.1]?.getD 0).toNat = i.1 ∧
