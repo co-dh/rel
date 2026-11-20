@@ -172,12 +172,12 @@ define pointfree_NOW
 $(LAKE) build gates
 $(MODS) | xargs $(LAKE) env $(GATES) pointfree | sort -u > $(T)/pointfree.txt
 endef
-# every kernel, an @[extern] declaration whose symbol crate/RELK.txt lists, is mentioned (index `use_site`: a
+# every export, an @[extern] declaration whose symbol crate/RELK.txt or crate/RELIO.txt lists, is mentioned (index `use_site`: a
 # declaration, `#guard` or `example`) in a module whose name matches *Test*; loops over the kernels, not the tests
 define kernel-tested_NOW
 $(LAKE) build gates
 $(LAKE) query RelKernel:modules | xargs $(LAKE) env $(GATES) externs | sort -t$$'\t' -k1,1 > $(T)/kt-extern.tsv
-sort -u crate/RELK.txt | join -t$$'\t' -o 1.2 $(T)/kt-extern.tsv - | sort -u > $(T)/kernels.txt
+sort -u crate/RELK.txt crate/RELIO.txt | join -t$$'\t' -o 1.2 $(T)/kt-extern.tsv - | sort -u > $(T)/kernels.txt
 $(SQL) "select distinct name from use_site where use_module glob '*Test*'" | sort -u > $(T)/tested.txt
 comm -23 $(T)/kernels.txt $(T)/tested.txt > $(T)/kernel-tested.txt
 echo "kernel-tested: $$(wc -l < $(T)/kernel-tested.txt) of $$(wc -l < $(T)/kernels.txt) kernels have no use in a *Test* module"
