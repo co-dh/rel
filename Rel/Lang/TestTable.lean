@@ -89,7 +89,7 @@ def trades (n : USize) (id px qty : List Int64) : IO (Vals Trade.obj n) :=
 
 -- a positional table: the files are the schema's columns, no key file; read back by the schema, its key the positions
 /--
-info: ([((0 : Int64), ((10 : Int64), (500 : Int64)), (5 : Int64)), (1, (20, 50), 7), (2, (30, 900), 9)], ["id", "px", "qty"])
+info: ([(0, (10, 500), 5), (1, (20, 50), 7), (2, (30, 900), 9)], ["id", "px", "qty"])
 -/
 #guard_msgs in
 #eval show IO _ from do
@@ -101,7 +101,7 @@ info: ([((0 : Int64), ((10 : Int64), (500 : Int64)), (5 : Int64)), (1, (20, 50),
 -- a filtered result keeps its keys (rows 0 and 2 of the trades): written, its rows are renumbered `0, 1` in key
 -- order (`frame_holds`)
 /--
-info: [((0 : Int64), ((10 : Int64), (500 : Int64)), (5 : Int64)), (1, (30, 900), 9)]
+info: [(0, (10, 500), 5), (1, (30, 900), 9)]
 -/
 #guard_msgs in
 #eval show IO _ from do
@@ -122,7 +122,8 @@ info: (true, ["key", "val"], ["key"], ["px", "qty"])
   let t : Tab .long V.obj := ⟨2, ← longs 2 [7, 9], (← longs 2 [500, 50], ← longs 2 [5, 6])⟩
   writeKeyed [("key", .long)] V dir t
   let u ← readKeyed [("key", .long)] V dir
-  return ((u.toList : List (Int64 × Int64 × Int64)) == (t.toList : List (Int64 × Int64 × Int64)), ← names dir, ← names (file dir "key"),
+  let l : List (Int64 × Int64 × Int64) := u.toList; let l0 : List (Int64 × Int64 × Int64) := t.toList
+  return (l == l0, ← names dir, ← names (file dir "key"),
     ← names (file dir "val"))
 
 -- a record key: the key table has a file per key column
@@ -136,7 +137,8 @@ info: (true, ["a", "b"], ["val"])
   let t : Tab K.obj .long := ⟨3, (← longs 3 [1, 1, 2], ← longs 3 [5, 6, 5]), ← longs 3 [100, 200, 300]⟩
   writeKeyed K [("val", .long)] dir t
   let u ← readKeyed K [("val", .long)] dir
-  return ((u.toList : List ((Int64 × Int64) × Int64)) == (t.toList : List ((Int64 × Int64) × Int64)), ← names (file dir "key"), ← names (file dir "val"))
+  let l : List ((Int64 × Int64) × Int64) := u.toList; let l0 : List ((Int64 × Int64) × Int64) := t.toList
+  return (l == l0, ← names (file dir "key"), ← names (file dir "val"))
 
 -- an empty table: its files hold no row, and it reads back empty
 /--
@@ -162,7 +164,7 @@ info: [(0, 4609434218613702656), (1, 0)]
   let dir ← fresh "floats"
 
   write S dir (floats 2 [0x3ff8000000000000, 0])
-  IO.println ((← read S dir).toList : List (Int64 × UInt64))
+  let l : List (Int64 × UInt64) := (← read S dir).toList; IO.println l
   write S dir (floats 2 [0x3ff8000000000000, 0x8000000000000000])
   IO.println (say (← (read S dir).toBaseIO))
   write S dir (floats 1 [0x7ff8000000000000])

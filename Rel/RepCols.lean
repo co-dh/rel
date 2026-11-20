@@ -368,7 +368,6 @@ theorem Arr.pos_get {n : USize} {P : Arr .i64 n} (h : Arr.pos n = .ok P) (c : Fi
     rw [Arr.get_i64]
     show ((raw .i64 n o)[c.1]?.getD 0).toInt64 = _
     rw [shiftCol_raw ho c.1 c.2, UInt64.add_zero]
-    rfl
   · cases h
 
 /-- **`Arr.pos n` read as positions**: row `c` clamped into `n` rows is `c`, `n` at most `2^63`. -/
