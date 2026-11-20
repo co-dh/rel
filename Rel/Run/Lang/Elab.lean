@@ -1816,17 +1816,27 @@ def uniTm (p : Pos) (o : OTy) (A : Obj) (what : String) : Except Err (Tm A A) :=
   | some t => pure t
   | none => throw ⟨p, s!"{what}: {zonk mc o} has no universe; compose a set of its elements before it (§a)"⟩
 
-/-- The universe of a number object, for `succ`, the value verbs (`plus`, …), `≤`, `<`: a declared object's,
-    or the one a constant is given for an object variable. -/
-def numU (p : Pos) (o : OTy) (op : String) : Except Err (Tm .long .long) :=
+/-- The name of `o`, a number object `op` computes on: a declared object, not one declared at another atom than i64. -/
+def numObj (p : Pos) (o : OTy) (op : String) : Except Err String :=
   match zonk mc o with
   | .base n => match objs.lookup n with
     -- the number verbs run on `i64` words: at an object declared at another atom they are refused, never run on bits
     | some { obj := .atom t, ovar := false, .. } =>
       if t != .i64 then throw ⟨p, s!"{op} on {n}: {n} is an object of {atomName t}, and {op} runs on objects of i64 only"⟩
-      else declared n
-    | _ => declared n
+      else pure n
+    | _ => pure n
   | o => throw ⟨p, s!"{op} runs on a declared object, found {o}"⟩
+
+/-- The object the variable `v` of the pattern `e` stands for in `o`, `o` of `e`'s form; none where `e` has no `v`. -/
+def OExp.varAt (v : String) : OExp → OTy → Option OTy
+  | .var _ n, o => if n == v then some o else none
+  | .prod a b, .prod x y | .sum a b, .sum x y => (a.varAt v x).orElse fun _ => b.varAt v y
+  | .list a, .arr x => a.varAt v x
+  | _, _ => none
+
+/-- The universe of a number object, for `succ`, the value verbs (`plus`, …), `≤`, `<`: a declared object's,
+    or the one a constant is given for an object variable. -/
+def numU (p : Pos) (o : OTy) (op : String) : Except Err (Tm .long .long) := do declared (← numObj objs mc p o op)
 where
   declared (n : String) : Except Err (Tm .long .long) := match objs.lookup n with
     | some { uni := some ⟨_, U⟩, .. } => pure (.uni (A := .long) U)
@@ -2027,6 +2037,9 @@ def build : Pre → Except Err Res
   -- `0`, or an object variable no call fixed to one of those) the two differ — `[−3,3,3] sum` on `−3…3` is `𝟘` by
   -- `d`, `3` by the cut — so `d` runs. With no universe, the row runs (the base `0` would need keys none supply).
   | .prim r xs s t => do
+    r.num.forM fun v => do
+      if let some o := (r.sig.2.2.varAt v (zonk mc t)).orElse fun _ => r.sig.2.1.varAt v (zonk mc s) then
+        discard <| numObj objs mc dp o r.sym
     let A ← toObj objs mc dp s; let B ← toObj objs mc dp t
     -- `$` is typed by unification at any two objects; which atoms it joins is `castOK`'s, read off their formats
     if r.sym == "$" then

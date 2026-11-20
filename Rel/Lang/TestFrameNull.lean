@@ -11,6 +11,7 @@ open Rel.Programs.prelude Rel.Programs.frame Rel.Programs.frameGroup Rel.Program
 rel_program frameNullT where
     obj Z = -10…40
     obj S = {a,b}
+    obj T = 0…99
     -- a nullable column beside `k`: a value at positions 0 2 4 7, null at 1 3 5 6
     nc : P ⟶ N+1 ≜ dom(x) tot({(0,5),(2,5),(4,7),(7,3)})
     xn : P ⟶ K×(N+1) ≜ ⟨x π₁, nc⟩
@@ -61,6 +62,12 @@ rel_program frameNullT where
     qt : P ⟶ K×(N×N) ≜ {(0,(A,(2,10))),(1,(C,(1,11))),(2,(A,(2,12))),(3,(A,(6,13))),(4,(C,(1,14))),(5,(C,(3,15)))}
     check aj(π₁, π₂, π₁, π₂ π₁, x, qt) ⟨π₁, π₂ [π₂ π₂, {(∗,0)}]⟩ = {(0,((B,5),0)),(1,((A,3),12)),(2,((B,5),0)),
       (3,((C,1),14)),(4,((A,7),13)),(5,((C,2),14)),(6,((B,1),0)),(7,((A,3),12))}
+    -- aj with the times in `T`, apart from the positions `P` and the values `N`: A at 50 meets A's quote at 30, B at 20
+    -- the one at 20, A at 10 none (0), A at 70 the two at 60, the later (4) winning
+    x2 : P ⟶ K×T ≜ {(0,(A,50)),(1,(B,20)),(2,(A,10)),(3,(A,70))}
+    q2 : P ⟶ K×(T×N) ≜ {(0,(A,(30,1))),(1,(A,(60,2))),(2,(B,(20,3))),(3,(A,(60,4)))}
+    check aj(π₁, π₂, π₁, π₂ π₁, x2, q2) ⟨π₁, π₂ [π₂ π₂, {(∗,0)}]⟩ = {(0,((A,50),1)),(1,((B,20),3)),(2,((A,10),0)),
+      (3,((A,70),4))}
     -- pivot wide of (k, q, v): (A,a) 1+4, (B,a) 2, (A,b) 3, (C,b) 5; keys in first-occurrence order A B C, null as 0
     t3 : P ⟶ K×(S×N) ≜ {(0,(A,(a,1))),(1,(B,(a,2))),(2,(A,(b,3))),(3,(A,(a,4))),(4,(C,(b,5)))}
     pw : P ⟶ K×(N×N) ≜ pivotWide(π₁, π₂ π₁, {(∗,a)}, {(∗,b)}, F(t3 π₂ π₂) sum, t3) ⟨π₁, ⟨π₂ π₁ [𝟙, {(∗,0)}], π₂ π₂ [𝟙, {(∗,0)}]⟩⟩
