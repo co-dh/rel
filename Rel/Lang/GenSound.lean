@@ -9,8 +9,8 @@ import Rel.Run.Lang.Expand
 
 /-! `Tm.gen`: `Expand.node` as a Lean function from a term to its `GenK` code, one `GenK` op per constructor with
     `Expand.node`'s argument order, and `Tm.code` as `Expand.code` (a closed part memoised, `GenK.memo`). Then
-    `Tm.gen_sound`: on a term with no `Tm.gap` constructor, under `Sound`, the code represents `Tm.den` in every
-    context, each case one `GenK.*_sound` (`GenKSpec`, `GenKBits`). A bit matrix the code passes on is `Rel.Wf`
+    `Tm.gen_sound`: on every term, under `Sound`, the code represents `Tm.den` in every context (an error table
+    represents anything: where `Tm.hasCode` is false the run fails), each case one `GenK.*_sound` (`GenKSpec`, `GenKBits`). A bit matrix the code passes on is `Rel.Wf`
     (`Tm.gen_wf`) (`Tab.ofBits` reads back what `compSelM`, `compTabMat`, `ldivTabMat` build); the order law of each
     `Λ` (`LamLaw`, false at a float atom) is a hypothesis. -/
 
@@ -141,9 +141,14 @@ run_elab do
   let val ← mkListLit (mkApp2 (mkConst ``Prod [0, 0]) (mkConst ``String) genTy) es
   addAndCompile (.defnDecl (mkDefinitionValEx `Rel.Lang.rowGens [] ty val .abbrev .safe [`Rel.Lang.rowGens]))
 
+/-- The number of relations row `s` is given: its `prims` entry's, the one `rowGens` was generated from. -/
+def rowArity (s : String) : Nat := ((prims.find? (·.sym == s)).map (·.sig.1.length)).getD 0
+
 /-- Row `r`'s code at `A ⟶ B` given its relations' codes `xs`: its `rowGens` entry at `r.objs A B`, as `primE`
-    fits it; an error table where it has none there. -/
+    fits it; an error table where it has none there, or where `xs` are not as many as it takes (a `rowGens` entry
+    ignores a code past them, which `Prim.den` reads). -/
 def primGen (r : Prim) (A B : Obj) (xs : Codes) : Rel A B :=
+  if xs.length ≠ rowArity r.sym then .tab (.error s!"Tm.gen: the row `{r.sym}` is given {xs.length} relations") else
   match rowGens.lookup r.sym, r.objs A B with
   | some f, some σ => match f σ xs with
     | some ⟨A', B', v⟩ => if h : A' = A ∧ B' = B then h.1 ▸ h.2 ▸ v else
@@ -202,8 +207,10 @@ def Tm.gen (η : Code) {A B : Obj} (t : Tm A B) : Rel A B :=
   | A, B, .var _ k => η k A B
   | A, B, .nu k S b => GenK.nu A B (S.code η) fun X => b.code (η.bind k (GenK.const A B (.ok X)))
   | A, B, .mu k w n b => GenK.mu A B w n fun X => b.code (η.bind k (GenK.const A B (.ok X)))
+  -- children `Tm.kids` reads in no shape bound no recursion: `Expand.node` refuses it, as here
   | A, B, .hylo k w b =>
     have : ((b.kids k A).getD .zero).size ≤ b.size := Tm.size_kids k A b
+    if (b.kids k A).isNone then .tab (.error s!"Tm.gen: {w} gives the hylo no children (Tm.kids)") else
     GenK.hylo A B w ((b.kids k A).getD .zero).dem b.dem (((b.kids k A).getD .zero).code η) fun X => b.code (η.bind k (GenK.const A B (.ok X)))
   | A, B, .prim r => primGen r A B []
   | _, _, .arg f x => f.argGen η [⟨_, _, x.code η⟩]
@@ -213,14 +220,14 @@ decreasing_by all_goals simp only [Tm.size] at *; omega
 
 /-- A spine `f` given its later relations' codes `xs` (`Expand.primOf`, `Expand.spine`), in the order `Tm.argDen`
     reads their meanings: a row's code of all of them, or a call's body's code with them bound at its `ks`; `share`
-    seen through, built under no variable. A spine headed by neither is an error table, in the gap. -/
+    seen through, built under no variable. A spine headed by neither is an error table. -/
 def Tm.argGen (η : Code) {A B : Obj} (t : Tm A B) (xs : Codes) : Rel A B :=
   match A, B, t with
   | A, B, .prim r => primGen r A B xs
   | _, _, .arg f x => f.argGen η (⟨_, _, x.code η⟩ :: xs)
   | _, _, .share _ R => R.argGen Code.empty xs
   | _, _, .call ks _ _ b | _, _, .callCv ks _ _ _ b _ => b.code (Code.args ks xs)
-  | _, _, _ => .tab (.error "Tm.gen: a spine headed by neither a row nor a call is in the gap")
+  | _, _, _ => .tab (.error "Tm.gen: a spine headed by neither a row nor a call")
 termination_by 2 * t.size
 decreasing_by all_goals simp only [Tm.size] at *; omega
 end
@@ -228,7 +235,7 @@ end
 /-- Whether `primGen r A B` given codes at the objects `xs` returns code, not its error table: the same lookups.
     A `rowGens` entry reads only its codes' objects (`Codes.at`), so `𝟘` at each stands for any code there. -/
 def primHasCode (r : Prim) (A B : Obj) (xs : List (Obj × Obj)) : Bool :=
-  match rowGens.lookup r.sym, r.objs A B with
+  xs.length == rowArity r.sym && match rowGens.lookup r.sym, r.objs A B with
   | some f, some σ => match f σ (xs.map fun (X, Y) => ⟨X, Y, GenK.zero X Y⟩) with
     | some ⟨A', B', _⟩ => decide (A' = A ∧ B' = B)
     | none => false
@@ -236,7 +243,7 @@ def primHasCode (r : Prim) (A B : Obj) (xs : List (Obj × Obj)) : Bool :=
 
 mutual
 /-- Whether `Tm.gen` emits real code at every node of `t`, by `Tm.gen`'s case split: false exactly where some node's
-    `gen` (or `argGen`) returns its error table. Not `Tm.gap`, which says what is proved. -/
+    `gen` (or `argGen`) returns its error table, where `Tm.gen_sound` holds because the code fails. -/
 def Tm.hasCode {A B : Obj} (t : Tm A B) : Bool :=
   match A, B, t with
   | _, _, .val _ | _, _, .uni _ | _, _, .zero | _, _, .id | _, _, .outl | _, _, .outr | _, _, .nil
@@ -250,7 +257,7 @@ def Tm.hasCode {A B : Obj} (t : Tm A B) : Bool :=
   | _, _, .ldiv R S U V | _, _, .rdiv R S U V => R.hasCode && S.hasCode && U.hasCode && V.hasCode
   | A, _, .hylo k _ b =>
     have : ((b.kids k A).getD .zero).size ≤ b.size := Tm.size_kids k A b
-    ((b.kids k A).getD .zero).hasCode && b.hasCode
+    (b.kids k A).isSome && ((b.kids k A).getD .zero).hasCode && b.hasCode
   | A, B, .prim r => primHasCode r A B []
   | _, _, .arg (C := C) (D := D) f x => f.argHasCode [(C, D)] && x.hasCode
   | _, _, .call _ _ _ b | _, _, .callCv _ _ _ _ b _ => b.hasCode
@@ -286,110 +293,7 @@ def rowsProved : List (String × (Obj → Obj → List (Obj × Obj))) :=
    ("thinL", no), ("F", no), ("positions", no), ("asc", fun A B => [(A, B)]), ("inl°", no), ("inr°", no), ("tails", fun A _ => match A with | .arr σ => [(.arr σ, .prod (.arr σ) (.arr σ))] | _ => []),
    ("takewhile", no)]
 
-/-- The number of relations row `s` is given: its `prims` entry's, the one `rowGens` was generated from. A
-    `rowGens` entry ignores a code past them, where `Prim.den` (`Sem.one`) is `𝟘`. -/
-def rowArity (s : String) : Nat := ((prims.find? (·.sym == s)).map (·.sig.1.length)).getD 0
-
-/-- Row `r` at `A ⟶ B` given relations at the objects `os` has a proved case: it is in `rowsProved`, given as many
-    relations as it takes, and has code there (`primHasCode`), so no case holds through an error table. -/
-def Prim.proved (r : Prim) (A B : Obj) (os : List (Obj × Obj)) : Bool :=
-  (rowsProved.lookup r.sym).isSome && os.length == rowArity r.sym && primHasCode r A B os
-
-mutual
-/-- Some node of `t` has no proved case in `Tm.gen_sound`: a `hylo` whose children's term
-    (`Tm.kids`) is none or has a gap node, a row not `Prim.proved` at its relations' objects
-    (`Tm.argGap`), or a spine headed by neither a row nor a call. A call reads its body (`Tm.size` counts it). -/
-def Tm.gap : {A B : Obj} → Tm A B → Bool
-  | A, B, .prim r => !r.proved A B []
-  | _, _, .val _ | _, _, .uni _ | _, _, .zero | _, _, .id | _, _, .outl | _, _, .outr | _, _, .nil
-  | _, _, .atPos _ | _, _, .var .. => false
-  | _, _, .top R | _, _, .conv R | _, _, .dom R | _, _, .ran R | _, _, .lam R | _, _, .E R | _, _, .own R
-  | _, _, .succ R | _, _, .arith _ R | _, _, .leq R | _, _, .lt R | _, _, .flat R | _, _, .share _ R
-  | _, _, .est R | _, _, .thin R | _, _, .mu _ _ _ R | _, _, .call _ _ _ R | _, _, .callCv _ _ _ _ R _ => R.gap
-  | _, _, .comp R S | _, _, .meet R S | _, _, .join R S | _, _, .diff R S | _, _, .pair R S | _, _, .prod R S
-  | _, _, .fold R S | _, _, .foldr R S | _, _, .foldI R S | _, _, .nu _ R S => R.gap || S.gap
-  | _, _, .ldiv R S U V | _, _, .rdiv R S U V => R.gap || S.gap || U.gap || V.gap
-  | _, _, .arg (C := C) (D := D) f x => f.argGap [(C, D)] || x.gap
-  -- the children's term is no subterm (`Tm.kids`), only no larger than the body (`Tm.size_kids`)
-  | A, _, .hylo k _ b =>
-    have : ((b.kids k A).getD .zero).size ≤ b.size := Tm.size_kids k A b
-    b.gap || (b.kids k A).isNone || ((b.kids k A).getD .zero).gap
-termination_by _ _ t => t.size
-decreasing_by all_goals simp only [Tm.size] at *; omega
-
-/-- `Tm.argGen`'s case split: the spine `t` given later relations at the objects `os` has a gap node. -/
-def Tm.argGap : {A B : Obj} → Tm A B → List (Obj × Obj) → Bool
-  | A, B, .prim r, os => !r.proved A B os
-  | _, _, .arg (C := C) (D := D) f x, os => f.argGap ((C, D) :: os) || x.gap
-  | _, _, .share _ R, os => R.argGap os
-  | _, _, .call _ _ _ R, _ | _, _, .callCv _ _ _ _ R _, _ => R.gap
-  | _, _, _, _ => true
-termination_by _ _ t _ => t.size
-decreasing_by all_goals simp only [Tm.size] at *; omega
-end
-
-/-- The head of the spine `t` (`Expand.spine`): its row's symbol, or `call`. -/
-def Tm.spineHead : {A B : Obj} → Tm A B → String
-  | _, _, .prim r => r.sym
-  | _, _, .arg f _ | _, _, .share _ f => f.spineHead
-  | _, _, .call .. | _, _, .callCv .. => "call"
-  | _, _, _ => "no row"
-
-mutual
-/-- The kinds of `t`'s gap nodes, by `Tm.gap`'s case split (`Tm.gap_eq`): a constructor's name, `prim s` for a row
-    `s` not in `rowsProved`, `arg s` for an argument given to a spine headed by `s`. -/
-def Tm.gapKinds : {A B : Obj} → Tm A B → List String
-  | A, B, .prim r => if r.proved A B [] then [] else ["prim " ++ r.sym]
-  | _, _, .val _ | _, _, .uni _ | _, _, .zero | _, _, .id | _, _, .outl | _, _, .outr | _, _, .nil
-  | _, _, .atPos _ | _, _, .var .. => []
-  | _, _, .top R | _, _, .conv R | _, _, .dom R | _, _, .ran R | _, _, .lam R | _, _, .E R | _, _, .own R
-  | _, _, .succ R | _, _, .arith _ R | _, _, .leq R | _, _, .lt R | _, _, .flat R | _, _, .share _ R
-  | _, _, .est R | _, _, .thin R | _, _, .mu _ _ _ R | _, _, .call _ _ _ R | _, _, .callCv _ _ _ _ R _ =>
-    R.gapKinds
-  | _, _, .comp R S | _, _, .meet R S | _, _, .join R S | _, _, .diff R S | _, _, .pair R S | _, _, .prod R S
-  | _, _, .fold R S | _, _, .foldr R S | _, _, .foldI R S | _, _, .nu _ R S =>
-    R.gapKinds ++ S.gapKinds
-  | _, _, .ldiv R S U V | _, _, .rdiv R S U V => R.gapKinds ++ S.gapKinds ++ U.gapKinds ++ V.gapKinds
-  -- a `hylo` whose children `Tm.kids` reads in no shape, or whose children's term has a gap node
-  | A, _, .hylo k _ b =>
-    b.gapKinds ++ if (b.kids k A).isNone || ((b.kids k A).getD .zero).gap then ["hylo"] else []
-  | _, _, .arg (C := C) (D := D) f x => f.argGapKinds [(C, D)] ++ x.gapKinds
-
-/-- `Tm.argGap`'s kinds: `arg s` for a spine headed by `s` that is no `Prim.proved` row at its relations. -/
-def Tm.argGapKinds : {A B : Obj} → Tm A B → List (Obj × Obj) → List String
-  | A, B, .prim r, os => if r.proved A B os then [] else ["arg " ++ r.sym]
-  | _, _, .arg (C := C) (D := D) f x, os => f.argGapKinds ((C, D) :: os) ++ x.gapKinds
-  | _, _, .share _ R, os => R.argGapKinds os
-  | _, _, .call _ _ _ R, _ | _, _, .callCv _ _ _ _ R _, _ => R.gapKinds
-  | _, _, t, _ => ["arg " ++ t.spineHead]
-end
-
-theorem Tm.gap_eq_spine {A B : Obj} (t : Tm A B) :
-    t.gap = !t.gapKinds.isEmpty ∧ ∀ os, t.argGap os = !(t.argGapKinds os).isEmpty := by
-  induction t
-  case prim r =>
-    refine ⟨?_, fun os => ?_⟩
-    · simp only [Tm.gap, Tm.gapKinds]; split <;> simp_all
-    · simp only [Tm.argGap, Tm.argGapKinds]; split <;> simp_all
-  case arg f x ihf ihx =>
-    refine ⟨?_, fun os => ?_⟩ <;>
-      simp only [Tm.gap, Tm.gapKinds, Tm.argGap, Tm.argGapKinds, ihf.2, ihx.1] <;>
-      exact (fun a b => by cases a <;> cases b <;> rfl :
-        ∀ a b : List String, (!a.isEmpty || !b.isEmpty) = !(a ++ b).isEmpty) _ _
-  case share _ R ih =>
-    exact ⟨by simp only [Tm.gap, Tm.gapKinds, ih.1], fun os => by simp only [Tm.argGap, Tm.argGapKinds, ih.2 os]⟩
-  case call _ _ _ b ih | callCv _ _ _ _ b _ ih _ =>
-    exact ⟨by simp only [Tm.gap, Tm.gapKinds, ih.1], fun _ => by simp only [Tm.argGap, Tm.argGapKinds, ih.1]⟩
-  all_goals refine ⟨?_, fun os => by simp [Tm.argGap, Tm.argGapKinds]⟩
-  all_goals simp only [Tm.gap, Tm.gapKinds, *]
-  all_goals first
-    | rfl
-    | (rw [Bool.eq_iff_iff]; simp [Decidable.imp_iff_not_or, or_assoc])
-    | (split <;> simp_all [Bool.or_assoc])
-
-theorem Tm.gap_eq {A B : Obj} (t : Tm A B) : t.gap = !t.gapKinds.isEmpty := (Tm.gap_eq_spine t).1
-
-/-- What `Tm.gen_sound` asks of `t` besides no `Tm.gap` node, with `L` for the order law of a `Λ`: `L` at each `Λ`
+/-- What `Tm.gen_sound` asks of `t`, with `L` for the order law of a `Λ`: `L` at each `Λ`
     and `E` (`E(R) = Λ(∋ ≫ R)`, at `[A] ⟶ [B]`) and at each row `rowsProved` marks, and the body of each fixed
     point positive in its variable (`Tm.pol`, which `Tm.den_mono` reads). -/
 def Tm.LamLawsAt (L : Obj → Obj → Prop) : {A B : Obj} → Tm A B → Prop
@@ -415,7 +319,7 @@ def Tm.LamLawsAt (L : Obj → Obj → Prop) : {A B : Obj} → Tm A B → Prop
 abbrev Tm.LamLaws {A B : Obj} (t : Tm A B) : Prop := t.LamLawsAt LamLaw
 
 /-- The decidable part of `Tm.LamLawsAt`, every conjunct but `L` (`Tm.monoOK_iff`): what `GenSoundTest` evaluates
-    beside `Tm.gap`, since `LamLawsAt L` implies it for every `L` (`Tm.LamLawsAt.mono`). -/
+    beside `Tm.hasCode`, since `LamLawsAt L` implies it for every `L` (`Tm.LamLawsAt.mono`). -/
 def Tm.monoOK : {A B : Obj} → Tm A B → Bool
   | _, _, .lam R | _, _, .E R | _, _, .top R | _, _, .conv R | _, _, .dom R | _, _, .ran R | _, _, .own R
   | _, _, .succ R | _, _, .arith _ R | _, _, .leq R | _, _, .lt R | _, _, .flat R | _, _, .share _ R
@@ -521,7 +425,7 @@ theorem rowOK_args {s : String} {c : RowCode} {D : RowDen c}
   have err (e : String) (X : List Sem → Den A B) : (Rel.tab (A := A) (B := B) (.error e)).Wf ∧ ∀ ss,
       CodesRep xs ss → (Tm.prim (A := A) (B := B) r).LamLaws → ∀ K, (Rel.tab (A := A) (B := B) (.error e)).Reps K (X ss) :=
     ⟨trivial, fun _ _ _ _ => (GenK.reps_iff _ _ _).2 fun t h => by simp [Rel.Rel.runE] at h⟩
-  unfold primGen Prim.den; rw [hs, hf, hD]
+  unfold primGen Prim.den; rw [hs, if_neg fun h => h hn, hf, hD]
   cases hσ : r.objs A B with
   | none => exact err _ _
   | some σ =>
@@ -972,7 +876,7 @@ theorem rowOK_thinL : RowOK "thinL" := rowOK_args (c := RowCode.thinL) rfl rfl f
     · exact GenK.thinL_sound hss
     · rename_i h; exact absurd ⟨rfl, rfl⟩ h
 
-/-- Every row of `rowsProved` is `RowOK`: the obligations enumerated from the list `Tm.gap` reads. -/
+/-- Every row of `rowsProved` is `RowOK`: the obligations enumerated from the list `rowGens_proved` checks. -/
 theorem rowsProved_ok (r : Prim) (h : (rowsProved.lookup r.sym).isSome) : RowOK r.sym := by
   by_cases h1 : r.sym = "∋"; · rw [h1]; exact rowOK_mem
   by_cases h2 : r.sym = "inl"; · rw [h2]; exact rowOK_inl
@@ -1011,51 +915,72 @@ theorem rowsProved_ok (r : Prim) (h : (rowsProved.lookup r.sym).isSome) : RowOK 
     beq_false_of_ne h24, beq_false_of_ne h25, beq_false_of_ne h26, beq_false_of_ne h27, beq_false_of_ne h28,
     beq_false_of_ne h29] at h
 
-/-- A `Prim.proved` row is `RowOK`, given as many relations as it takes. -/
-theorem Prim.proved_ok {r : Prim} {A B : Obj} {os : List (Obj × Obj)} (h : (!r.proved A B os) = false) :
-    RowOK r.sym ∧ os.length = rowArity r.sym := by
-  simp only [Prim.proved, Bool.not_eq_eq_eq_not, Bool.not_false, Bool.and_eq_true, beq_iff_eq] at h
-  exact ⟨rowsProved_ok r h.1.1, h.1.2⟩
+/-- Every row `rowGens` has a code for is in `rowsProved`. -/
+theorem rowGens_proved {s : String} {f : List Obj → Codes → Option ((A : Obj) × (B : Obj) × Rel A B)}
+    (h : rowGens.lookup s = some f) : (rowsProved.lookup s).isSome := by
+  suffices ∀ l : List (String × (List Obj → Codes → Option ((A : Obj) × (B : Obj) × Rel A B))),
+      (∀ p ∈ l, (rowsProved.lookup p.1).isSome) → l.lookup s = some f → (rowsProved.lookup s).isSome from
+    this _ (by decide) h
+  intro l; induction l with
+  | nil => intro _ h; nomatch h
+  | cons p l ih =>
+    obtain ⟨k, v⟩ := p
+    intro hl h
+    simp only [List.lookup] at h
+    split at h
+    · next he => rw [beq_iff_eq.1 he]; exact hl _ List.mem_cons_self
+    · exact ih (fun q hq => hl q (List.mem_cons_of_mem _ hq)) h
+
+/-- Every row's code given `Wf` codes is `Wf` and represents its meaning: `RowOK` where it is given as many
+    relations as it takes and `rowGens` has it (`rowGens_proved`), an error table elsewhere. -/
+theorem primGen_ok (r : Prim) (A B : Obj) (xs : Codes) (hw : ∀ x ∈ xs, x.2.2.Wf) : (primGen r A B xs).Wf ∧
+    ∀ ss, CodesRep xs ss → (Tm.prim (A := A) (B := B) r).LamLaws → ∀ K, (primGen r A B xs).Reps K (Prim.den r A B ss) := by
+  have err (e : String) : (Rel.tab (A := A) (B := B) (.error e)).Wf ∧ ∀ ss, CodesRep xs ss →
+      (Tm.prim (A := A) (B := B) r).LamLaws → ∀ K, (Rel.tab (A := A) (B := B) (.error e)).Reps K (Prim.den r A B ss) :=
+    ⟨trivial, fun _ _ _ _ => (GenK.reps_iff _ _ _).2 fun t h => by simp [Rel.Rel.runE] at h⟩
+  by_cases hn : xs.length = rowArity r.sym
+  · cases hg : rowGens.lookup r.sym with
+    | some f => exact rowsProved_ok r (rowGens_proved hg) r A B xs rfl hn hw
+    | none => unfold primGen; rw [if_neg fun h => h hn, hg]; exact err _
+  · unfold primGen; rw [if_pos hn]; exact err _
 
 theorem Tm.code_wf {η : Code} {A B : Obj} {t : Tm A B} (h : (t.gen η).Wf) : (t.code η).Wf := by
   rw [Tm.code]; split
   · exact GenK.memo_wf h
   · exact h
 
-/-- **Every bit matrix `Tm.gen` passes on is `Rel.Wf`** off the gap: only `comp` builds one (`GenK.comp_wf`), a
-    variable reads `η`'s, and every other op returns tables. -/
+/-- **Every bit matrix `Tm.gen` passes on is `Rel.Wf`**: only `comp` builds one (`GenK.comp_wf`), a variable reads
+    `η`'s, and every other op returns tables. -/
 theorem Tm.gen_wf_spine {A B : Obj} (t : Tm A B) :
-    (∀ η : Code, t.gap = false → (∀ k A B, (η k A B).Wf) → (t.gen η).Wf) ∧
-    ∀ (η : Code) (xs : Codes), t.argGap (xs.map fun x => (x.1, x.2.1)) = false → (∀ k A B, (η k A B).Wf) →
-      (∀ x ∈ xs, x.2.2.Wf) → (t.argGen η xs).Wf := by
+    (∀ η : Code, (∀ k A B, (η k A B).Wf) → (t.gen η).Wf) ∧
+    ∀ (η : Code) (xs : Codes), (∀ k A B, (η k A B).Wf) → (∀ x ∈ xs, x.2.2.Wf) → (t.argGen η xs).Wf := by
   induction t
   case prim r =>
-    refine ⟨fun η hg _ => ?_, fun η xs hg _ hx => ?_⟩ <;> simp only [Tm.gap, Tm.argGap] at hg <;>
-      simp only [Tm.gen, Tm.argGen] <;> obtain ⟨ok, hn⟩ := Prim.proved_ok hg
-    · exact (ok r _ _ [] rfl hn (fun _ h => nomatch h)).1
-    · exact (ok r _ _ xs rfl (by simpa using hn) hx).1
+    refine ⟨fun η _ => ?_, fun η xs _ hx => ?_⟩ <;> simp only [Tm.gen, Tm.argGen]
+    · exact (primGen_ok r _ _ [] fun _ h => nomatch h).1
+    · exact (primGen_ok r _ _ xs hx).1
   case arg f x ihf ihx =>
-    refine ⟨fun η hg hη => ?_, fun η xs hg hη hx => ?_⟩ <;> simp only [Tm.gap, Tm.argGap, Bool.or_eq_false_iff] at hg <;>
-      simp only [Tm.gen, Tm.argGen] <;> refine ihf.2 η _ hg.1 hη fun y hy => ?_ <;>
+    refine ⟨fun η hη => ?_, fun η xs hη hx => ?_⟩ <;>
+      simp only [Tm.gen, Tm.argGen] <;> refine ihf.2 η _ hη fun y hy => ?_ <;>
       rcases List.mem_cons.1 hy with rfl | hy
-    any_goals exact code_wf (ihx.1 η hg.2 hη)
+    any_goals exact code_wf (ihx.1 η hη)
     all_goals first | exact hx y hy | simp at hy
   case share _ R ih =>
-    refine ⟨fun η hg _ => ?_, fun η xs hg _ hx => ?_⟩ <;> simp only [Tm.gap, Tm.argGap] at hg <;>
-      simp only [Tm.gen, Tm.argGen]
-    · exact code_wf (ih.1 Code.empty hg fun _ _ _ => trivial)
-    · exact ih.2 Code.empty xs hg (fun _ _ _ => trivial) hx
+    refine ⟨fun η _ => ?_, fun η xs _ hx => ?_⟩ <;> simp only [Tm.gen, Tm.argGen]
+    · exact code_wf (ih.1 Code.empty fun _ _ _ => trivial)
+    · exact ih.2 Code.empty xs (fun _ _ _ => trivial) hx
   case call ks _ _ b ih | callCv ks _ _ _ b _ ih _ =>
-    refine ⟨fun η hg _ => ?_, fun η xs hg _ hx => ?_⟩ <;> simp only [Tm.gap, Tm.argGap] at hg <;>
-      simp only [Tm.gen, Tm.argGen]
-    · exact code_wf (ih.1 _ hg (Code.args_wf ks [] fun _ h => nomatch h))
-    · exact code_wf (ih.1 _ hg (Code.args_wf ks xs hx))
-  all_goals refine ⟨fun η hg hη => ?_, fun η xs hg => by simp [Tm.argGap] at hg⟩
-  all_goals simp only [Tm.gap, Bool.or_eq_false_iff, Bool.true_eq_false] at hg <;> simp only [Tm.gen]
-  case comp R S ihR ihS => exact GenK.comp_wf _ (code_wf (ihS.1 η hg.2 hη))
-  case ldiv R S U V ihR ihS ihU ihV => exact GenK.ldiv_wf _ _ _ (code_wf (ihS.1 η hg.1.1.2 hη))
-  case own R ih => exact code_wf (ih.1 η hg hη)
+    refine ⟨fun η _ => ?_, fun η xs _ hx => ?_⟩ <;> simp only [Tm.gen, Tm.argGen]
+    · exact code_wf (ih.1 _ (Code.args_wf ks [] fun _ h => nomatch h))
+    · exact code_wf (ih.1 _ (Code.args_wf ks xs hx))
+  -- a spine headed by neither a row nor a call is an error table
+  all_goals refine ⟨fun η hη => ?_, fun η xs _ _ => by unfold Tm.argGen; exact trivial⟩
+  all_goals simp only [Tm.gen]
+  case comp R S ihR ihS => exact GenK.comp_wf _ (code_wf (ihS.1 η hη))
+  case ldiv R S U V ihR ihS ihU ihV => exact GenK.ldiv_wf _ _ _ (code_wf (ihS.1 η hη))
+  case own R ih => exact code_wf (ih.1 η hη)
   case var k => exact hη k _ _
+  case hylo => split <;> first | trivial | exact fun _ => trivial | (intro K; cases h : K.dom <;> simp [h, Rel.Rel.Wf])
   all_goals first
     | trivial
     | exact GenK.ofVals_wf
@@ -1069,26 +994,29 @@ theorem Tm.gen_wf_spine {A B : Obj} (t : Tm A B) :
     | exact fun _ => trivial
     | (intro K; cases h : K.dom <;> simp [h, Rel.Rel.Wf])
 
-/-- **Every bit matrix `Tm.gen` passes on is `Rel.Wf`** off the gap (`Tm.gen_wf_spine`, its first half). -/
+/-- **Every bit matrix `Tm.gen` passes on is `Rel.Wf`** (`Tm.gen_wf_spine`, its first half). -/
 theorem Tm.gen_wf {A B : Obj} (t : Tm A B) :
-    ∀ η : Code, t.gap = false → (∀ k A B, (η k A B).Wf) → (t.gen η).Wf := (Tm.gen_wf_spine t).1
+    ∀ η : Code, (∀ k A B, (η k A B).Wf) → (t.gen η).Wf := (Tm.gen_wf_spine t).1
 
-/-- `Tm.gen_sound` with its spine half: a spine with no gap node, given codes `xs` that are `Wf` and represent
-    `ss`, generates code that represents its meaning of `ss` (`Tm.argGen`, `Tm.argDen`). -/
+/-- `Tm.gen_sound` with its spine half: a spine given codes `xs` that are `Wf` and represent `ss` generates code
+    that represents its meaning of `ss` (`Tm.argGen`, `Tm.argDen`). -/
 theorem Tm.gen_sound_spine {A B : Obj} (t : Tm A B) :
-    (∀ (η : Code) (ρ : Val), t.gap = false → t.LamLaws → Sound η ρ → ∀ K, (t.gen η).Reps K (t.den ρ)) ∧
-    ∀ (η : Code) (ρ : Val) (xs : Codes) (ss : List Sem), t.argGap (xs.map fun x => (x.1, x.2.1)) = false →
+    (∀ (η : Code) (ρ : Val), t.LamLaws → Sound η ρ → ∀ K, (t.gen η).Reps K (t.den ρ)) ∧
+    ∀ (η : Code) (ρ : Val) (xs : Codes) (ss : List Sem),
       t.LamLaws → Sound η ρ → (∀ x ∈ xs, x.2.2.Wf) → CodesRep xs ss →
         ∀ K, (t.argGen η xs).Reps K (t.argDen ρ ss) := by
   -- strong induction on `Tm.size`: a `hylo`'s children's term (`Tm.kids`) is no subterm, only no larger than its body
   suffices H : ∀ n {A B : Obj} (t : Tm A B), t.size ≤ n →
-      (∀ (η : Code) (ρ : Val), t.gap = false → t.LamLaws → Sound η ρ → ∀ K, (t.gen η).Reps K (t.den ρ)) ∧
-      ∀ (η : Code) (ρ : Val) (xs : Codes) (ss : List Sem), t.argGap (xs.map fun x => (x.1, x.2.1)) = false →
+      (∀ (η : Code) (ρ : Val), t.LamLaws → Sound η ρ → ∀ K, (t.gen η).Reps K (t.den ρ)) ∧
+      ∀ (η : Code) (ρ : Val) (xs : Codes) (ss : List Sem),
         t.LamLaws → Sound η ρ → (∀ x ∈ xs, x.2.2.Wf) → CodesRep xs ss →
           ∀ K, (t.argGen η xs).Reps K (t.argDen ρ ss) from H _ t (Nat.le_refl _)
   -- a fixed point's round binds its variable to its table (`Sound.bind`)
   have hconst {A B : Obj} (Y : Tab A B) : ∀ K, (GenK.const A B (.ok Y)).Reps K (rep Y) :=
     fun _ => (GenK.reps_iff _ _ _).2 fun t ht x y _ _ => by cases ht; exact Iff.rfl
+  -- an error table runs to no table, so it represents every meaning
+  have herr {A B : Obj} (e : String) (X : Den A B) : ∀ K, (Rel.tab (A := A) (B := B) (.error e)).Reps K X :=
+    fun _ => (GenK.reps_iff _ _ _).2 fun t h => by simp [Rel.Rel.runE] at h
   intro n
   induction n
   case zero => intro A B t h; cases t <;> simp [Tm.size] at h
@@ -1096,114 +1024,114 @@ theorem Tm.gen_sound_spine {A B : Obj} (t : Tm A B) :
   intro A B t
   induction t <;> intro hn <;> simp only [Tm.size] at hn
   case prim r =>
-    refine ⟨fun η ρ hg hl _ => ?_, fun η ρ xs ss hg hl _ hx hr => ?_⟩ <;> simp only [Tm.gap, Tm.argGap] at hg <;>
-      simp only [Tm.gen, Tm.den, Tm.argGen, Tm.argDen] <;> obtain ⟨ok, hn⟩ := Prim.proved_ok hg
-    · exact (ok r _ _ [] rfl hn (fun _ h => nomatch h)).2 [] trivial hl
-    · exact (ok r _ _ xs rfl (by simpa using hn) hx).2 ss hr hl
+    refine ⟨fun η ρ hl _ => ?_, fun η ρ xs ss hl _ hx hr => ?_⟩ <;>
+      simp only [Tm.gen, Tm.den, Tm.argGen, Tm.argDen]
+    · exact (primGen_ok r _ _ [] fun _ h => nomatch h).2 [] trivial hl
+    · exact (primGen_ok r _ _ xs hx).2 ss hr hl
   case arg C D f x ihf ihx =>
     have step (η ρ) (xs : Codes) (ss : List Sem)
-        (hg : f.argGap ((C, D) :: xs.map fun x => (x.1, x.2.1)) = false ∧ x.gap = false)
         (hl : f.LamLaws ∧ x.LamLaws) (hs : Sound η ρ) (hx : ∀ y ∈ xs, y.2.2.Wf) (hr : CodesRep xs ss) :
         ∀ K, (f.argGen η (⟨C, D, x.code η⟩ :: xs)).Reps K (f.argDen ρ (⟨C, D, x.den ρ⟩ :: ss)) :=
-      (ihf (by omega)).2 η ρ _ _ hg.1 hl.1 hs (fun y hy => by
+      (ihf (by omega)).2 η ρ _ _ hl.1 hs (fun y hy => by
           rcases List.mem_cons.1 hy with rfl | hy
-          · exact code_wf (gen_wf x η hg.2 hs.2)
+          · exact code_wf (gen_wf x η hs.2)
           · exact hx y hy)
-        ⟨by rw [dif_pos ⟨rfl, rfl⟩]; exact code_of ((ihx (by omega)).1 η ρ hg.2 hl.2 hs), hr⟩
-    refine ⟨fun η ρ hg hl hs => ?_, fun η ρ xs ss hg hl hs hx hr => ?_⟩ <;>
-      simp only [Tm.gap, Tm.argGap, Bool.or_eq_false_iff] at hg <;> simp only [Tm.LamLaws, Tm.LamLawsAt] at hl <;>
-      simp only [Tm.gen, Tm.den, Tm.argGen, Tm.argDen]
-    · exact step η ρ [] [] hg hl hs (fun _ h => nomatch h) trivial
-    · exact step η ρ xs ss hg hl hs hx hr
+        ⟨by rw [dif_pos ⟨rfl, rfl⟩]; exact code_of ((ihx (by omega)).1 η ρ hl.2 hs), hr⟩
+    refine ⟨fun η ρ hl hs => ?_, fun η ρ xs ss hl hs hx hr => ?_⟩ <;>
+      simp only [Tm.LamLaws, Tm.LamLawsAt] at hl <;> simp only [Tm.gen, Tm.den, Tm.argGen, Tm.argDen]
+    · exact step η ρ [] [] hl hs (fun _ h => nomatch h) trivial
+    · exact step η ρ xs ss hl hs hx hr
   case share _ R ih =>
     have he : Sound Code.empty Val.empty := ⟨fun _ _ _ => GenK.zero_sound, fun _ _ _ => trivial⟩
-    refine ⟨fun η ρ hg hl _ => ?_, fun η ρ xs ss hg hl _ hx hr => ?_⟩ <;> simp only [Tm.gap, Tm.argGap] at hg <;>
+    refine ⟨fun η ρ hl _ => ?_, fun η ρ xs ss hl _ hx hr => ?_⟩ <;>
       simp only [Tm.LamLaws, Tm.LamLawsAt] at hl <;> simp only [Tm.gen, Tm.den, Tm.argGen, Tm.argDen]
-    · exact code_of ((ih (by omega)).1 Code.empty Val.empty hg hl he)
-    · exact (ih (by omega)).2 Code.empty Val.empty xs ss hg hl he hx hr
+    · exact code_of ((ih (by omega)).1 Code.empty Val.empty hl he)
+    · exact (ih (by omega)).2 Code.empty Val.empty xs ss hl he hx hr
   -- the body under its arguments bound at `ks` (`Sound.args`), whatever the caller's `η`, `ρ`
   case call ks _ _ b ih | callCv ks _ _ _ b _ ih _ =>
-    refine ⟨fun η ρ hg hl _ => ?_, fun η ρ xs ss hg hl _ hx hr => ?_⟩ <;> simp only [Tm.gap, Tm.argGap] at hg <;>
+    refine ⟨fun η ρ hl _ => ?_, fun η ρ xs ss hl _ hx hr => ?_⟩ <;>
       simp only [Tm.LamLaws, Tm.LamLawsAt] at hl <;> simp only [Tm.gen, Tm.den, Tm.argGen, Tm.argDen]
-    · exact code_of ((ih (by omega)).1 _ _ hg hl (Sound.args ks [] [] (fun _ h => nomatch h) trivial))
-    · exact code_of ((ih (by omega)).1 _ _ hg hl (Sound.args ks xs ss hx hr))
-  all_goals refine ⟨fun η ρ hg hl hs => ?_, fun η ρ xs ss hg => by simp [Tm.argGap] at hg⟩
-  all_goals simp only [Tm.gap, Bool.or_eq_false_iff, Bool.true_eq_false] at hg <;>
-    simp only [Tm.LamLaws, Tm.LamLawsAt] at hl <;> simp only [Tm.gen, Tm.den]
+    · exact code_of ((ih (by omega)).1 _ _ hl (Sound.args ks [] [] (fun _ h => nomatch h) trivial))
+    · exact code_of ((ih (by omega)).1 _ _ hl (Sound.args ks xs ss hx hr))
+  -- a spine headed by neither a row nor a call is an error table
+  all_goals refine ⟨fun η ρ hl hs => ?_, fun η ρ xs ss _ _ _ _ => by unfold Tm.argGen; exact herr _ _⟩
+  all_goals simp only [Tm.LamLaws, Tm.LamLawsAt] at hl <;> simp only [Tm.gen, Tm.den]
   case val R => exact GenK.val_sound (R, true)
   case uni U => exact GenK.uni_sound (U, true)
   case zero => exact GenK.zero_sound
   case id => exact GenK.id_sound
-  case top V ih => exact GenK.top_sound (code_of ((ih (by omega)).1 η ρ hg hl hs))
+  case top V ih => exact GenK.top_sound (code_of ((ih (by omega)).1 η ρ hl hs))
   case outl => exact GenK.ofVals_row_sound fun _ _ _ h => Tab.outl_holds h
   case outr => exact GenK.ofVals_row_sound fun _ _ _ h => Tab.outr_holds h
   case comp R S ihR ihS =>
-    exact GenK.comp_sound (code_of ((ihR (by omega)).1 η ρ hg.1 hl.1 hs)) (code_of ((ihS (by omega)).1 η ρ hg.2 hl.2 hs))
-      (code_wf (gen_wf S η hg.2 hs.2))
-  case conv R ih => exact GenK.conv_sound (code_of ((ih (by omega)).1 η ρ hg hl hs))
+    exact GenK.comp_sound (code_of ((ihR (by omega)).1 η ρ hl.1 hs)) (code_of ((ihS (by omega)).1 η ρ hl.2 hs))
+      (code_wf (gen_wf S η hs.2))
+  case conv R ih => exact GenK.conv_sound (code_of ((ih (by omega)).1 η ρ hl hs))
   case meet R S ihR ihS =>
-    exact GenK.meet_sound (code_of ((ihR (by omega)).1 η ρ hg.1 hl.1 hs)) (code_of ((ihS (by omega)).1 η ρ hg.2 hl.2 hs))
-      (code_wf (gen_wf R η hg.1 hs.2)) (code_wf (gen_wf S η hg.2 hs.2))
-  case join R S ihR ihS => exact GenK.join_sound (code_of ((ihR (by omega)).1 η ρ hg.1 hl.1 hs)) (code_of ((ihS (by omega)).1 η ρ hg.2 hl.2 hs))
-  case diff R S ihR ihS => exact GenK.diff_sound (code_of ((ihR (by omega)).1 η ρ hg.1 hl.1 hs)) (code_of ((ihS (by omega)).1 η ρ hg.2 hl.2 hs))
-  case dom R ih => exact GenK.dom_sound (code_of ((ih (by omega)).1 η ρ hg hl hs))
-  case ran R ih => exact GenK.ran_sound (code_of ((ih (by omega)).1 η ρ hg hl hs))
+    exact GenK.meet_sound (code_of ((ihR (by omega)).1 η ρ hl.1 hs)) (code_of ((ihS (by omega)).1 η ρ hl.2 hs))
+      (code_wf (gen_wf R η hs.2)) (code_wf (gen_wf S η hs.2))
+  case join R S ihR ihS => exact GenK.join_sound (code_of ((ihR (by omega)).1 η ρ hl.1 hs)) (code_of ((ihS (by omega)).1 η ρ hl.2 hs))
+  case diff R S ihR ihS => exact GenK.diff_sound (code_of ((ihR (by omega)).1 η ρ hl.1 hs)) (code_of ((ihS (by omega)).1 η ρ hl.2 hs))
+  case dom R ih => exact GenK.dom_sound (code_of ((ih (by omega)).1 η ρ hl hs))
+  case ran R ih => exact GenK.ran_sound (code_of ((ih (by omega)).1 η ρ hl hs))
   case rdiv R S U V ihR ihS ihU ihV =>
-    exact GenK.rdiv_sound (code_of ((ihR (by omega)).1 η ρ hg.1.1.1 hl.1 hs)) (code_of ((ihS (by omega)).1 η ρ hg.1.1.2 hl.2.1 hs))
-      (code_of ((ihU (by omega)).1 η ρ hg.1.2 hl.2.2.1 hs)) (code_of ((ihV (by omega)).1 η ρ hg.2 hl.2.2.2 hs))
+    exact GenK.rdiv_sound (code_of ((ihR (by omega)).1 η ρ hl.1 hs)) (code_of ((ihS (by omega)).1 η ρ hl.2.1 hs))
+      (code_of ((ihU (by omega)).1 η ρ hl.2.2.1 hs)) (code_of ((ihV (by omega)).1 η ρ hl.2.2.2 hs))
   case ldiv R S U V ihR ihS ihU ihV =>
-    exact GenK.ldiv_sound (code_of ((ihR (by omega)).1 η ρ hg.1.1.1 hl.1 hs)) (code_of ((ihS (by omega)).1 η ρ hg.1.1.2 hl.2.1 hs))
-      (code_of ((ihU (by omega)).1 η ρ hg.1.2 hl.2.2.1 hs)) (code_of ((ihV (by omega)).1 η ρ hg.2 hl.2.2.2 hs))
-      (code_wf (gen_wf S η hg.1.1.2 hs.2))
-  case pair R S ihR ihS => exact GenK.pair_sound (code_of ((ihR (by omega)).1 η ρ hg.1 hl.1 hs)) (code_of ((ihS (by omega)).1 η ρ hg.2 hl.2 hs))
-  case prod R S ihR ihS => exact GenK.prod_sound (code_of ((ihR (by omega)).1 η ρ hg.1 hl.1 hs)) (code_of ((ihS (by omega)).1 η ρ hg.2 hl.2 hs))
+    exact GenK.ldiv_sound (code_of ((ihR (by omega)).1 η ρ hl.1 hs)) (code_of ((ihS (by omega)).1 η ρ hl.2.1 hs))
+      (code_of ((ihU (by omega)).1 η ρ hl.2.2.1 hs)) (code_of ((ihV (by omega)).1 η ρ hl.2.2.2 hs))
+      (code_wf (gen_wf S η hs.2))
+  case pair R S ihR ihS => exact GenK.pair_sound (code_of ((ihR (by omega)).1 η ρ hl.1 hs)) (code_of ((ihS (by omega)).1 η ρ hl.2 hs))
+  case prod R S ihR ihS => exact GenK.prod_sound (code_of ((ihR (by omega)).1 η ρ hl.1 hs)) (code_of ((ihS (by omega)).1 η ρ hl.2 hs))
   case fold R S ihR ihS =>
-    exact GenK.fold_sound (code_of ((ihR (by omega)).1 η ρ hg.1 hl.1 hs)) (code_of ((ihS (by omega)).1 η ρ hg.2 hl.2 hs))
-      (code_wf (gen_wf S η hg.2 hs.2))
+    exact GenK.fold_sound (code_of ((ihR (by omega)).1 η ρ hl.1 hs)) (code_of ((ihS (by omega)).1 η ρ hl.2 hs))
+      (code_wf (gen_wf S η hs.2))
   case foldr R S ihR ihS =>
-    exact GenK.foldr_sound (code_of ((ihR (by omega)).1 η ρ hg.1 hl.1 hs)) (code_of ((ihS (by omega)).1 η ρ hg.2 hl.2 hs))
-      (code_wf (gen_wf S η hg.2 hs.2))
+    exact GenK.foldr_sound (code_of ((ihR (by omega)).1 η ρ hl.1 hs)) (code_of ((ihS (by omega)).1 η ρ hl.2 hs))
+      (code_wf (gen_wf S η hs.2))
   case foldI R S ihR ihS =>
-    exact GenK.foldI_sound (code_of ((ihR (by omega)).1 η ρ hg.1 hl.1 hs)) (code_wf (gen_wf R η hg.1 hs.2))
-      (code_of ((ihS (by omega)).1 η ρ hg.2 hl.2 hs)) (code_wf (gen_wf S η hg.2 hs.2))
-  case lam R ih => exact GenK.lam_sound (code_of ((ih (by omega)).1 η ρ hg hl.2 hs)) hl.1
+    exact GenK.foldI_sound (code_of ((ihR (by omega)).1 η ρ hl.1 hs)) (code_wf (gen_wf R η hs.2))
+      (code_of ((ihS (by omega)).1 η ρ hl.2 hs)) (code_wf (gen_wf S η hs.2))
+  case lam R ih => exact GenK.lam_sound (code_of ((ih (by omega)).1 η ρ hl.2 hs)) hl.1
   case E R ih =>
     exact GenK.lam_sound (GenK.comp_sound (GenK.ofVals_row_sound fun _ _ _ h => Tab.mem_holds h)
-      (code_of ((ih (by omega)).1 η ρ hg hl.2 hs)) (code_wf (gen_wf R η hg hs.2))) hl.1
+      (code_of ((ih (by omega)).1 η ρ hl.2 hs)) (code_wf (gen_wf R η hs.2))) hl.1
   case nil => exact GenK.ofVals_row_sound fun _ _ _ h => Tab.nil_holds h
-  case own R ih => exact code_of ((ih (by omega)).1 η ρ hg hl hs)
-  case succ U ih => exact GenK.succ_sound (code_of ((ih (by omega)).1 η ρ hg hl hs))
-  case arith U ih => exact GenK.arith_sound (code_of ((ih (by omega)).1 η ρ hg hl hs))
-  case leq U ih => exact GenK.cmp_sound (fun _ _ _ h => Tab.leq_holds h) (code_of ((ih (by omega)).1 η ρ hg hl hs))
-  case lt U ih => exact GenK.cmp_sound (fun _ _ _ h => Tab.lt_holds h) (code_of ((ih (by omega)).1 η ρ hg hl hs))
-  case flat R ih => exact GenK.flat_sound (code_of ((ih (by omega)).1 η ρ hg hl hs))
+  case own R ih => exact code_of ((ih (by omega)).1 η ρ hl hs)
+  case succ U ih => exact GenK.succ_sound (code_of ((ih (by omega)).1 η ρ hl hs))
+  case arith U ih => exact GenK.arith_sound (code_of ((ih (by omega)).1 η ρ hl hs))
+  case leq U ih => exact GenK.cmp_sound (fun _ _ _ h => Tab.leq_holds h) (code_of ((ih (by omega)).1 η ρ hl hs))
+  case lt U ih => exact GenK.cmp_sound (fun _ _ _ h => Tab.lt_holds h) (code_of ((ih (by omega)).1 η ρ hl hs))
+  case flat R ih => exact GenK.flat_sound (code_of ((ih (by omega)).1 η ρ hl hs))
   case var k => exact hs.1 k _ _
-  case est Q ih => exact GenK.est_sound (code_of ((ih (by omega)).1 η ρ hg hl hs))
-  case thin Q ih => exact GenK.thin_sound (code_of ((ih (by omega)).1 η ρ hg hl.2 hs)) hl.1
+  case est Q ih => exact GenK.est_sound (code_of ((ih (by omega)).1 η ρ hl hs))
+  case thin Q ih => exact GenK.thin_sound (code_of ((ih (by omega)).1 η ρ hl.2 hs)) hl.1
   case atPos k => exact GenK.atPos_sound k
   case nu k S b ihS ihb =>
-    exact GenK.nu_sound (code_of ((ihS (by omega)).1 η ρ hg.1 hl.2.1 hs))
-      (fun X => code_of ((ihb (by omega)).1 _ _ hg.2 hl.2.2 (hs.bind k (hconst X) (by trivial)))) fun _ _ h => Tm.den_mono hl.1 h
+    exact GenK.nu_sound (code_of ((ihS (by omega)).1 η ρ hl.2.1 hs))
+      (fun X => code_of ((ihb (by omega)).1 _ _ hl.2.2 (hs.bind k (hconst X) (by trivial)))) fun _ _ h => Tm.den_mono hl.1 h
   case mu k w m b ih =>
-    exact GenK.mu_sound (fun X => code_of ((ih (by omega)).1 _ _ hg hl.2 (hs.bind k (hconst X) (by trivial)))) fun _ _ h => Tm.den_mono hl.1 h
+    exact GenK.mu_sound (fun X => code_of ((ih (by omega)).1 _ _ hl.2 (hs.bind k (hconst X) (by trivial)))) fun _ _ h => Tm.den_mono hl.1 h
+  -- children `Tm.kids` reads in no shape: `Tm.gen`'s error table
   case hylo A' B' k w b ih =>
     have hc := Tm.lamLawsAt_kids k A' b hl.2
     have hsz := Tm.size_kids k A' b
-    revert hg hc hsz
+    revert hc hsz
     cases hk : b.kids k A' with
-    | none => simp
+    | none => intro _ _; simp only [Option.isNone_none, ↓reduceIte]; exact herr _ _
     | some c =>
-      intro hg hc hsz
-      simp only [Option.isNone_some, Option.getD_some, and_true] at hg hc hsz ⊢
-      exact GenK.hylo_sound ((H c (by omega)).1 η ρ hg.2 hc hs |> code_of) (code_wf (gen_wf c η hg.2 hs.2))
-        (fun Y => code_of ((ih (by omega)).1 _ _ hg.1 hl.2 (hs.bind k (hconst Y) (by trivial))))
-        (fun Y => code_wf (gen_wf b _ hg.1 (hs.bind k (hconst Y) (by trivial)).2))
+      intro hc hsz
+      simp only [Option.isNone_some, Option.getD_some, Bool.false_eq_true, ↓reduceIte] at hc hsz ⊢
+      exact GenK.hylo_sound ((H c (by omega)).1 η ρ hc hs |> code_of) (code_wf (gen_wf c η hs.2))
+        (fun Y => code_of ((ih (by omega)).1 _ _ hl.2 (hs.bind k (hconst Y) (by trivial))))
+        (fun Y => code_wf (gen_wf b _ (hs.bind k (hconst Y) (by trivial)).2))
         (fun _ _ h => Tm.den_mono hl.1 h) (fun X Y a h => Tm.den_local k ρ X Y b c hk a h)
 
-/-- **`Tm.gen` is sound off the gap**: the code of a term with no `Tm.gap` node represents its meaning in every
-    context, given `LamLaw` at each `Λ`, and an environment `η` that represents `ρ`. -/
+/-- **`Tm.gen` is sound**: the code of every term represents its meaning in every context, given `LamLaw` at each
+    `Λ`, and an environment `η` that represents `ρ`; where the code is an error table (`Tm.hasCode` false) the run
+    fails, which represents every meaning. -/
 theorem Tm.gen_sound {A B : Obj} (t : Tm A B) :
-    ∀ (η : Code) (ρ : Val), t.gap = false → t.LamLaws → Sound η ρ → ∀ K, (t.gen η).Reps K (t.den ρ) :=
+    ∀ (η : Code) (ρ : Val), t.LamLaws → Sound η ρ → ∀ K, (t.gen η).Reps K (t.den ρ) :=
   (Tm.gen_sound_spine t).1
 
 end Rel.Lang
