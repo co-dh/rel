@@ -58,9 +58,11 @@ rel_program pairFin where
 -- by hand: `⟨𝟙, K⟩` relates `a` to `(a, b)` for each `(a, b)` of `K`, so its range is `K`'s three pairs, each to
 -- itself; `⟨K, 𝟙⟩` puts `K`'s value first. `K ⟨𝟙, 𝟙⟩` doubles each value of `K`. `ran⟨c, 𝟙⟩` is the pairs
 -- `(c(i), i)`: in value order `(10,1) (20,3) (30,0) (40,2)`, so `asc` numbers them 0…3 and `π₂` reads the positions
--- `1 3 0 2` (q's `iasc 30 10 40 20`). `bad` pairs two lazy `<` with nothing to bound either: `R` fails, then `S`, whose
--- message is the one failure.
+-- `1 3 0 2` (q's `iasc 30 10 40 20`). `bad` pairs two lazy `<` with nothing to bound either: `R` fails, then `S`; the
+-- failure names both (`retryE`).
 #guard pairN.failures.map toString == ["bad: < on an unbounded object: nothing bounds its left side; compose it " ++
+  "with a table on that side (a leaf on demand ran with its domain unknown); run the other operand first: " ++
+  "< on an unbounded object: nothing bounds its left side; compose it " ++
   "with a table on that side (a leaf on demand ran with its domain unknown)"]
 #guard pairFin.ok
 

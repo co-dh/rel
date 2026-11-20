@@ -130,4 +130,17 @@ rel_program frameScaleN5 where
 
 #guard frameScaleN5.ok
 
+-- `cumAgg` reads `dom(x) ≥ dom(x)`, 10¹⁰ pairs at 10⁵ rows: the message is the cross bound's, which `GenK.comp`
+-- once dropped for the one of the order it tried second ("a leaf on demand ran with its domain unknown")
+open Rel.Programs.prelude Rel.Programs.frame scaleN frameScaleN5 in
+rel_program cumAggPast where
+    check cumAgg(F(x π₂) sum, x) = x π₂
+
+/--
+info: ["check cumAgg(F(x π₂) sum, x), x π₂: cross: 100000 values of the left object by 100000 of the right is 10000000000 pairs, past the bound 268435456: a relation on two whole objects (`≤`, `<`, `⊤`) read where nothing bounds it to fewer pairs; meet it with a table (`T ∩ ≤` tests T's pairs only) or compose a smaller table on each side (`K ≤ L`); run the other operand first: a leaf on demand ran with its domain unknown; run the other operand first: a leaf on demand ran with its domain unknown; run the other operand first: a leaf on demand ran with its domain unknown",
+  "cumAgg(F(x π₂) sum, x): cross: 100000 values of the left object by 100000 of the right is 10000000000 pairs, past the bound 268435456: a relation on two whole objects (`≤`, `<`, `⊤`) read where nothing bounds it to fewer pairs; meet it with a table (`T ∩ ≤` tests T's pairs only) or compose a smaller table on each side (`K ≤ L`); run the other operand first: a leaf on demand ran with its domain unknown; run the other operand first: a leaf on demand ran with its domain unknown; run the other operand first: a leaf on demand ran with its domain unknown"]
+-/
+#guard_msgs in
+#eval cumAggPast.failures.map (·.msg)
+
 end Rel.Lang.TestFrameScale
