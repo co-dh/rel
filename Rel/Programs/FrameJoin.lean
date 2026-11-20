@@ -11,11 +11,13 @@ rel_program frameJoin where
     J(a : β ⟶ κ, b : δ ⟶ κ, x : ν ⟶ β, y : μ ⟶ δ) : ν ⟶ μ ≜ x a (y b)°
     joinOn(K : ν ⟶ μ, x : ν ⟶ β, y : μ ⟶ δ) : ρ ⟶ β×δ ≜ asc(ran(⟨𝟙, K⟩)) (x × y)
     innerJoin(a : β ⟶ κ, b : δ ⟶ κ, x : ν ⟶ β, y : μ ⟶ δ) : ρ ⟶ β×δ ≜ joinOn(J(a, b, x, y), x, y)
-    crossJoin(x : ν ⟶ β, y : μ ⟶ δ) : ρ ⟶ β×δ ≜ joinOn(dom(x) ⊤ dom(y), x, y)
+    -- the inner join on the constant key: `⊤ : ν ⟶ μ` would read the universe of `μ`, which an unbounded `μ` has not
+    crossJoin(x : ν ⟶ β, y : μ ⟶ δ) : ρ ⟶ β×δ ≜ innerJoin(⊤ 𝟙(1), ⊤ 𝟙(1), x, y)
     semiJoin(a : β ⟶ κ, b : δ ⟶ κ, x : ν ⟶ β, y : μ ⟶ δ) : ν ⟶ β ≜ dom(x) asc(dom(J(a, b, x, y))) x
     antiJoin(a : β ⟶ κ, b : δ ⟶ κ, x : ν ⟶ β, y : μ ⟶ δ) : ν ⟶ β ≜ dom(x) asc(dom(x) − dom(J(a, b, x, y))) x
     -- every row of `x` with each match in `y`, or once with the null when it has none
-    leftJoin(a : β ⟶ κ, b : δ ⟶ κ, x : ν ⟶ β, y : μ ⟶ δ) : ρ ⟶ β×(δ+1) ≜ asc(ran(⟨𝟙, dom(x) tot(J(a, b, x, y))⟩)) (x × (y ⊕ 𝟙))
+    -- `x × (y ⊕ 𝟙)` as its pair: `×` with a table on the left does not hand its right operand a domain at `N`
+    leftJoin(a : β ⟶ κ, b : δ ⟶ κ, x : ν ⟶ β, y : μ ⟶ δ) : ρ ⟶ β×(δ+1) ≜ asc(ran(⟨𝟙, dom(x) tot(J(a, b, x, y))⟩)) ⟨π₁ x, π₂ (y ⊕ 𝟙)⟩
     rightJoin(a : β ⟶ κ, b : δ ⟶ κ, x : ν ⟶ β, y : μ ⟶ δ) : ρ ⟶ (β+1)×δ ≜ leftJoin(b, a, y, x) ⟨π₂, π₁⟩
     -- q's aj: each row of `x` with the row of `y` of equal key `k`/`h` and the latest time `u` not after its `t`;
     -- `m` keeps the candidates `l` that no candidate exceeds in time; `dom(x)` before `tot`: its `𝟙 − dom(R)` has

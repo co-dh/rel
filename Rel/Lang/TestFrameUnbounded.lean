@@ -2,9 +2,8 @@ import Rel.Programs.FrameJoin
 
 /-! The dataframe library (plan M2) at the unbounded number object: positions and values in `obj N`, which declares
     no length, so no row below reads a bound the frame did not bring. The fixture and the hand-worked rows are those
-    of `TestFrameCols`/`Pos`/`Group`/`Join`/`Null`, copied. The joins numbered by `joinOn`'s `asc(ran⟨𝟙, K⟩)`
-    (`crossJoin`, `leftJoin`, `rightJoin`, `fullOuterJoin`) are left out: `⟨𝟙, K⟩` does not bound `𝟙`
-    at `N` there (`innerJoin` runs the table `K` first, which does). `big` is written inline (as a table, `<°` has no right bound at `N`), and `filterJust`/`filterNothing`/
+    of `TestFrameCols`/`Pos`/`Group`/`Join`/`Null`, copied. `big` is written inline (as a table, `<°` has no right
+    bound at `N`), and `filterJust`/`filterNothing`/
     `nulls` take `ran(xn) π₂`: the leaf `π₂` as their argument is read on its whole source at `N`. -/
 
 namespace Rel.Lang.TestFrameUnbounded
@@ -170,7 +169,6 @@ rel_program frameUnboundedT where
     sa : N ⟶ N ≜ asc(s)
     check sa = {(0,2),(1,5),(2,9)}
 
-#eval frameUnboundedT.failures.map toString
 #guard frameUnboundedT.failures.map toString == []
 
 end Rel.Lang.TestFrameUnbounded
