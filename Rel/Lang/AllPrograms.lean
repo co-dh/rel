@@ -37,6 +37,7 @@ import Rel.Lang.TestFrameJoin
 import Rel.Lang.TestFrameNull
 import Rel.Lang.TestFramePos
 import Rel.Lang.TestFrameScale
+import Rel.Lang.TestFrameSchema
 import Rel.Lang.TestFrameUnbounded
 import Rel.Lang.TestFusedM
 import Rel.Lang.TestGenericLit
