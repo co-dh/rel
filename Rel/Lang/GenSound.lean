@@ -102,7 +102,7 @@ def Codes.at (xs : Codes) (i : Nat) (X Y : Obj) : Option (Rel X Y) := match xs[i
 
 open Lean Meta Elab Term Expand in
 run_elab do
-  let pl (k : Nat) := oE ((varObj k).getD .long)
+  let pl (k : Nat) := oE ((varObj varAtoms k).getD .long)
   let el (s : Lean.Term) : TermElabM Lean.Expr := do
     let e ← elabTerm s none; synthesizeSyntheticMVarsNoPostponing; instantiateMVars e
   let some' ← el (← `(fun (A B : Obj) (v : Rel A B) => (some ⟨A, B, v⟩ : Option ((A : Obj) × (B : Obj) × Rel A B))))
@@ -117,7 +117,7 @@ run_elab do
     let choices := ((List.range (2 ^ vs.length)).map fun m => (List.range vs.length).map m.testBit).mergeSort
       fun a b => a.count true ≤ b.count true
     let some e ← choices.findSomeM? fun lg => do
-        let σ := (List.range vs.length).map fun k => if lg.getD k false then .long else (varObj k).getD .long
+        let σ := (List.range vs.length).map fun k => if lg.getD k false then .long else (varObj varAtoms k).getD .long
         let inst (o : OExp) := o.at vs σ
         -- a parameter taken as its pair test (`some true`, §a) is a code at `X×Y ⟶ X×Y`, as `rowDens` reads it
         let ps := r.sig.1.map fun ((x, y), fm) =>
