@@ -279,7 +279,6 @@ theorem inlConv_holds {n : USize} {X : Vals (.sum A B) n} {T : Tab (.sum A B) A}
   simp only [bind, Except.bind] at h
   split at h; · cases h
   rename_i D hD
-  dsimp only at h
   split at h
   · split at h; · cases h
     rename_i I hI
@@ -304,7 +303,7 @@ theorem inlConv_holds {n : USize} {X : Vals (.sum A B) n} {T : Tab (.sum A B) A}
       obtain ⟨rfl, -⟩ := (idU_holds hD _ _).1 hs'
       have he := ((inr_holds hI _ _).1 ((conv_holds hC _ _).1 hc)).2
       simp only [Core.Rel.inr, Core.Rel.graph] at he
-      exact Sum.noConfusion (he.trans hs.symm)
+      exact absurd (hs.symm.trans he) (by simp)
     · cases h
   · rename_i hl
     split at h; · cases h
@@ -333,7 +332,6 @@ theorem inrConv_holds {n : USize} {X : Vals (.sum A B) n} {T : Tab (.sum A B) B}
   simp only [bind, Except.bind] at h
   split at h; · cases h
   rename_i D hD
-  dsimp only at h
   split at h
   · split at h; · cases h
     rename_i I hI
@@ -358,7 +356,7 @@ theorem inrConv_holds {n : USize} {X : Vals (.sum A B) n} {T : Tab (.sum A B) B}
       obtain ⟨rfl, -⟩ := (idU_holds hD _ _).1 hs'
       have he := ((inl_holds hI _ _).1 ((conv_holds hC _ _).1 hc)).2
       simp only [Core.Rel.inl, Core.Rel.graph] at he
-      exact Sum.noConfusion (he.trans hs.symm)
+      exact absurd (hs.symm.trans he) (by simp)
     · cases h
   · rename_i hr
     split at h; · cases h

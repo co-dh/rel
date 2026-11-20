@@ -208,11 +208,6 @@ theorem prod_sound {R : Rel A B} {S : Rel C D} {X : Core.Rel A.El B.El} {Y : Cor
   lift2_sound hR hS fun _ _ _ _ ht hr hs p q _ _ =>
     (Tab.prod_holds ht p q).trans (and_congr (hr p.1 q.1 rfl rfl) (hs p.2 q.2 rfl rfl))
 
-theorem junc_sound {R : Rel A C} {S : Rel B C} {X : Core.Rel A.El C.El} {Y : Core.Rel B.El C.El}
-    (hR : ∀ K, R.Reps K X) (hS : ∀ K, S.Reps K Y) : ∀ K, (GenK.junc A B C R S).Reps K (Core.Rel.junc X Y) :=
-  lift2_sound hR hS fun _ _ _ _ ht hr hs x c _ _ => by
-    rw [agrees_empty hr, agrees_empty hs]; exact Tab.junc_holds ht x c
-
 theorem flat_sound {I : Obj} {d : Bool} {R : Rel I (.prod A B)} {X : Core.Rel I.El (Obj.prod A B).El}
     (hR : ∀ K, R.Reps K X) : ∀ K, (GenK.flat I A B d R).Reps K (flatDen X) :=
   ofVals_sound fun _ _ Xs _ hK h p b hp _ => by

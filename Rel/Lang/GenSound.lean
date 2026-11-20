@@ -182,7 +182,6 @@ def Tm.gen (η : Code) {A B : Obj} (t : Tm A B) : Rel A B :=
   | A, B, .rdiv (C := C) R S UA UB => GenK.rdiv A B C (R.code η) (S.code η) (UA.code η) (UB.code η)
   | A, .prod B C, .pair R S => GenK.pair A B C R.dem S.dem (R.code η) (S.code η)
   | .prod A C, .prod B D, .prod R S => GenK.prod A B C D (R.code η) (S.code η)
-  | .sum A B, C, .junc R S => GenK.junc A B C (R.code η) (S.code η)
   | A, .arr B, .lam R => GenK.lam A B R.dem (R.code η)
   | .arr A, .arr B, .E R => GenK.E A B R.dem (R.code η)
   | _, B, .est Q => GenK.est B (Q.code η)
@@ -205,7 +204,6 @@ def Tm.gen (η : Code) {A B : Obj} (t : Tm A B) : Rel A B :=
   | A, B, .hylo k w b =>
     have : ((b.kids k A).getD .zero).size ≤ b.size := Tm.size_kids k A b
     GenK.hylo A B w ((b.kids k A).getD .zero).dem b.dem (((b.kids k A).getD .zero).code η) fun X => b.code (η.bind k (GenK.const A B (.ok X)))
-  | .sum A B, C, .juncD R S => GenK.juncD A B C R.dem S.dem (R.code η) (S.code η)
   | A, B, .prim r => primGen r A B []
   | _, _, .arg f x => f.argGen η [⟨_, _, x.code η⟩]
   | _, _, .call ks _ _ b | _, _, .callCv ks _ _ _ b _ => b.code (Code.args ks [])
@@ -246,7 +244,7 @@ def Tm.hasCode {A B : Obj} (t : Tm A B) : Bool :=
   | _, _, .thin R | _, _, .own R | _, _, .succ R | _, _, .arith _ R | _, _, .leq R | _, _, .lt R | _, _, .flat R
   | _, _, .share _ R | _, _, .mu _ _ _ R => R.hasCode
   | _, _, .comp R S | _, _, .meet R S | _, _, .join R S | _, _, .diff R S | _, _, .pair R S | _, _, .prod R S
-  | _, _, .junc R S | _, _, .juncD R S | _, _, .foldr R S | _, _, .fold R S | _, _, .foldI R S
+  | _, _, .foldr R S | _, _, .fold R S | _, _, .foldI R S
   | _, _, .nu _ R S => R.hasCode && S.hasCode
   | _, _, .ldiv R S U V | _, _, .rdiv R S U V => R.hasCode && S.hasCode && U.hasCode && V.hasCode
   | A, _, .hylo k _ b =>
@@ -306,10 +304,10 @@ def Tm.gap : {A B : Obj} → Tm A B → Bool
   | _, _, .succ R | _, _, .arith _ R | _, _, .leq R | _, _, .lt R | _, _, .flat R | _, _, .share _ R
   | _, _, .est R | _, _, .mu _ _ _ R | _, _, .call _ _ _ R | _, _, .callCv _ _ _ _ R _ => R.gap
   | _, _, .comp R S | _, _, .meet R S | _, _, .join R S | _, _, .diff R S | _, _, .pair R S | _, _, .prod R S
-  | _, _, .junc R S | _, _, .fold R S | _, _, .foldr R S | _, _, .foldI R S | _, _, .nu _ R S => R.gap || S.gap
+  | _, _, .fold R S | _, _, .foldr R S | _, _, .foldI R S | _, _, .nu _ R S => R.gap || S.gap
   | _, _, .ldiv R S U V | _, _, .rdiv R S U V => R.gap || S.gap || U.gap || V.gap
   | _, _, .arg (C := C) (D := D) f x => f.argGap [(C, D)] || x.gap
-  | _, _, .juncD .. | _, _, .thin _ => true
+  | _, _, .thin _ => true
   -- the children's term is no subterm (`Tm.kids`), only no larger than the body (`Tm.size_kids`)
   | A, _, .hylo k _ b =>
     have : ((b.kids k A).getD .zero).size ≤ b.size := Tm.size_kids k A b
@@ -346,10 +344,9 @@ def Tm.gapKinds : {A B : Obj} → Tm A B → List String
   | _, _, .succ R | _, _, .arith _ R | _, _, .leq R | _, _, .lt R | _, _, .flat R | _, _, .share _ R
   | _, _, .est R | _, _, .mu _ _ _ R | _, _, .call _ _ _ R | _, _, .callCv _ _ _ _ R _ => R.gapKinds
   | _, _, .comp R S | _, _, .meet R S | _, _, .join R S | _, _, .diff R S | _, _, .pair R S | _, _, .prod R S
-  | _, _, .junc R S | _, _, .fold R S | _, _, .foldr R S | _, _, .foldI R S | _, _, .nu _ R S =>
+  | _, _, .fold R S | _, _, .foldr R S | _, _, .foldI R S | _, _, .nu _ R S =>
     R.gapKinds ++ S.gapKinds
   | _, _, .ldiv R S U V | _, _, .rdiv R S U V => R.gapKinds ++ S.gapKinds ++ U.gapKinds ++ V.gapKinds
-  | _, _, .juncD .. => ["juncD"]
   | _, _, .thin _ => ["thin"]
   -- a `hylo` whose children `Tm.kids` reads in no shape, or whose children's term has a gap node
   | A, _, .hylo k _ b =>
@@ -401,7 +398,7 @@ def Tm.LamLawsAt (L : Obj → Obj → Prop) : {A B : Obj} → Tm A B → Prop
   | _, _, .leq R | _, _, .lt R | _, _, .flat R | _, _, .share _ R | _, _, .est R | _, _, .call _ _ _ R
   | _, _, .callCv _ _ _ _ R _ => R.LamLawsAt L
   | _, _, .comp R S | _, _, .meet R S | _, _, .join R S | _, _, .diff R S | _, _, .pair R S | _, _, .prod R S
-  | _, _, .junc R S | _, _, .fold R S | _, _, .foldr R S | _, _, .foldI R S => R.LamLawsAt L ∧ S.LamLawsAt L
+  | _, _, .fold R S | _, _, .foldr R S | _, _, .foldI R S => R.LamLawsAt L ∧ S.LamLawsAt L
   | _, _, .ldiv R S U V | _, _, .rdiv R S U V => R.LamLawsAt L ∧ S.LamLawsAt L ∧ U.LamLawsAt L ∧ V.LamLawsAt L
   | _, _, .arg f x => f.LamLawsAt L ∧ x.LamLawsAt L
   | _, _, .nu k S b => b.pol true k = true ∧ S.LamLawsAt L ∧ b.LamLawsAt L
@@ -409,7 +406,7 @@ def Tm.LamLawsAt (L : Obj → Obj → Prop) : {A B : Obj} → Tm A B → Prop
   | _, _, .mu k _ _ b | _, _, .hylo k _ b => b.pol true k = true ∧ b.LamLawsAt L
   -- every other constructor spelled out: a catch-all's equation lemmas time `simp` out
   | _, _, .val _ | _, _, .uni _ | _, _, .zero | _, _, .id | _, _, .outl | _, _, .outr | _, _, .nil
-  | _, _, .atPos _ | _, _, .var .. | _, _, .thin _ | _, _, .juncD .. => True
+  | _, _, .atPos _ | _, _, .var .. | _, _, .thin _ => True
 
 /-- `Tm.LamLawsAt` with `LamLaw`, the premise of `Tm.gen_sound`. -/
 abbrev Tm.LamLaws {A B : Obj} (t : Tm A B) : Prop := t.LamLawsAt LamLaw
@@ -421,12 +418,12 @@ def Tm.monoOK : {A B : Obj} → Tm A B → Bool
   | _, _, .succ R | _, _, .arith _ R | _, _, .leq R | _, _, .lt R | _, _, .flat R | _, _, .share _ R
   | _, _, .est R | _, _, .call _ _ _ R | _, _, .callCv _ _ _ _ R _ => R.monoOK
   | _, _, .comp R S | _, _, .meet R S | _, _, .join R S | _, _, .diff R S | _, _, .pair R S | _, _, .prod R S
-  | _, _, .junc R S | _, _, .fold R S | _, _, .foldr R S | _, _, .foldI R S | _, _, .arg R S => R.monoOK && S.monoOK
+  | _, _, .fold R S | _, _, .foldr R S | _, _, .foldI R S | _, _, .arg R S => R.monoOK && S.monoOK
   | _, _, .ldiv R S U V | _, _, .rdiv R S U V => R.monoOK && S.monoOK && U.monoOK && V.monoOK
   | _, _, .nu k S b => b.pol true k && S.monoOK && b.monoOK
   | _, _, .mu k _ _ b | _, _, .hylo k _ b => b.pol true k && b.monoOK
   | _, _, .val _ | _, _, .uni _ | _, _, .zero | _, _, .id | _, _, .outl | _, _, .outr | _, _, .nil
-  | _, _, .atPos _ | _, _, .var .. | _, _, .thin _ | _, _, .juncD .. | _, _, .prim _ => true
+  | _, _, .atPos _ | _, _, .var .. | _, _, .thin _ | _, _, .prim _ => true
 
 theorem Tm.monoOK_iff {A B : Obj} (t : Tm A B) : t.monoOK = true ↔ t.LamLawsAt fun _ _ => True := by
   induction t <;> simp [Tm.monoOK, Tm.LamLawsAt, and_assoc, *]
@@ -999,7 +996,6 @@ theorem Tm.gen_sound_spine {A B : Obj} (t : Tm A B) :
       (code_wf (gen_wf S η hg.1.1.2 hs.2))
   case pair R S ihR ihS => exact GenK.pair_sound (code_of ((ihR (by omega)).1 η ρ hg.1 hl.1 hs)) (code_of ((ihS (by omega)).1 η ρ hg.2 hl.2 hs))
   case prod R S ihR ihS => exact GenK.prod_sound (code_of ((ihR (by omega)).1 η ρ hg.1 hl.1 hs)) (code_of ((ihS (by omega)).1 η ρ hg.2 hl.2 hs))
-  case junc R S ihR ihS => exact GenK.junc_sound (code_of ((ihR (by omega)).1 η ρ hg.1 hl.1 hs)) (code_of ((ihS (by omega)).1 η ρ hg.2 hl.2 hs))
   case fold R S ihR ihS =>
     exact GenK.fold_sound (code_of ((ihR (by omega)).1 η ρ hg.1 hl.1 hs)) (code_of ((ihS (by omega)).1 η ρ hg.2 hl.2 hs))
       (code_wf (gen_wf S η hg.2 hs.2))
