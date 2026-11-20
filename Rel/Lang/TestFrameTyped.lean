@@ -53,7 +53,7 @@ rel_program ajDateT where
     a : N ⟶ (K×D)×(K×(D×N)) ≜ aj(π₁, π₂, π₁, π₂ π₁, xa, q) ⟨π₁, π₂ [𝟙, {(∗,(C,(0,0)))}]⟩
 
 -- `daysBetween`: `minus` at a date, or the date read as its day number
-/-- error: line 62, col 23: minus on D: D is an object of date, and minus runs on objects of i64 only -/
+/-- error: line 62, col 23: minus on D: D is an object of date, and minus runs on objects of i64, f32, f64 only -/
 #guard_msgs in
 rel_program daysMinusT where
     obj N
