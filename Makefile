@@ -19,6 +19,7 @@ DB      := $(CURDIR)/.lake/build/refactor-index.db
 T       := /data/tmp/rel-gates/$(notdir $(CURDIR))
 GATES   := $(CURDIR)/.lake/build/bin/gates
 NATIVE  := $(CURDIR)/.lake/build/native/rel-native
+RELC    := $(CURDIR)/.lake/build/bin/relc
 RELKA   := $(CURDIR)/.lake/build/lib/librelk.a
 QRT     := $(CURDIR)/.lake/build/native/cargo/qrt.o
 SQL     := sqlite3 -readonly $(DB)
@@ -69,14 +70,23 @@ syms:
 	$(GATE)
 	sh $(CURDIR)/crate/build.sh syms
 
-# out/key and out/val of the native executable equal what `relc plan` writes from Lean
+# out/ of the native executable equals the out/ `relc plan` writes from Lean (`Plan.exec`, the same plan): the same
+# entries, and each file byte for byte. The obligations are the Lean side's files, so a file the native run left out fails.
+NAT     := $(T)/native
 native:
 	$(GATE)
 	$(LAKE) build relc rel-native
-	rm -rf $(T)/nat; mkdir -p $(T)/nat/lean $(T)/nat/native
-	$(LAKE) exe relc plan $(T)/nat/lean
-	cd $(T)/nat/native; $(NATIVE)
-	diff -r $(T)/nat/lean/out $(T)/nat/native/out
+	rm -rf $(NAT); mkdir -p $(NAT)/lean $(NAT)/native
+	# `lake env`, not `lake exe`: relc is built above, and `planIO` imports the modules from the LEAN_PATH it sets
+	$(LAKE) env $(RELC) plan $(NAT)/lean
+	(cd $(NAT)/native; $(NATIVE))
+	test -d $(NAT)/lean/out || { echo "native: no $(NAT)/lean/out; it is written by: $(LAKE) env $(RELC) plan $(NAT)/lean" >&2; exit 1; }
+	test -d $(NAT)/native/out || { echo "native: no $(NAT)/native/out; it is written by: $(NATIVE), run in $(NAT)/native" >&2; exit 1; }
+	find $(NAT)/lean/out -mindepth 1 -printf '%y %P\n' | sort > $(NAT)/lean.entries
+	find $(NAT)/native/out -mindepth 1 -printf '%y %P\n' | sort > $(NAT)/native.entries
+	test -s $(NAT)/lean.entries || { echo "native: relc plan wrote nothing under $(NAT)/lean/out" >&2; exit 1; }
+	cmp $(NAT)/lean.entries $(NAT)/native.entries || { echo "native: the entries of out/ differ (< lean, > native):" >&2; comm -3 $(NAT)/lean.entries $(NAT)/native.entries >&2; exit 1; }
+	find $(NAT)/lean/out -type f -printf '%P\n' | sort | xargs -I{} cmp $(NAT)/lean/out/{} $(NAT)/native/out/{}
 
 # the native executable needs libc, libm and libpthread only (plus the loader and the vdso)
 ldd: native
