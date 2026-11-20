@@ -211,8 +211,7 @@ def define (stx id : Syntax) (prog : Program) (used : List Name) (more : List Na
     match reg.progs.find? (·.1 == h) with
     | some (_, ns, os) => (resolverAt env opts reg ns os).1
     | none => fun _ => .none
-  let calls ← match reg.call? with | .ok f => pure f | .error e => throwErrorAt stx e
-  match ← liftTermElabM (Expand.read calls progs prog n resOf).run with
+  match ← liftTermElabM (Expand.read (reg.calls.lookup ·) progs prog n resOf).run with
   | .error e => throwErrorAt stx "{e}"
   | .ok r =>
     liftTermElabM (Expand.emit n r)

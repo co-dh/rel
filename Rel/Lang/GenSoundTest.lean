@@ -29,18 +29,16 @@ open Lean Elab Command Rel.Lang Rel.Lang.Embed
 /-- What the registered program `n` reads, re-read at its recorded homes (`.chain`) and scopes (`.prog`) and with
     the registry's definitions elaborated once (`calls`), as `rel_program` reads it: a use of one is a `call` node
     holding its body at the call's objects (`Tm.den`, `Tm.gen` read the body), a use with no constant its
-    expansion. The registry is the final one, not the one `n` was elaborated under, and holds the same `Once` at
-    every key `n` reads: one `n` found was registered before `n`, one `n` built (`callDef`) `n` registered itself
-    (`emit`), and a key is registered once (`Registry.add`; `Registry.call?` refuses a second). -/
+    expansion. The registry is the final one, not the one `n` was elaborated under: a key registered by a later
+    program is one `n` would have built itself (`walk`'s `once`), with the same body. -/
 def reread (n : Name) : CommandElabM (Except Err Expand.Read) := do
   let env ← getEnv; let opts ← getOptions
   let reg := Expand.relRegistry.getState env
-  let calls ← match reg.call? with | .ok f => pure f | .error e => throwError "GenSoundTest: {e}"
   let progs ← ((reg.chains.lookup n).getD []).mapM fun m => return (m, ← programOf m)
   let resOf (h : Name) : String → Found := match reg.progs.find? (·.1 == h) with
     | some (_, ns, os) => (resolverAt env opts reg ns os).1
     | none => fun _ => .none
-  liftTermElabM (Expand.read calls progs (← programOf n) n resOf).run
+  liftTermElabM (Expand.read (reg.calls.lookup ·) progs (← programOf n) n resOf).run
 
 run_cmd do
   let reg := Expand.relRegistry.getState (← getEnv)
