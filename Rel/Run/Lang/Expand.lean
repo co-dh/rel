@@ -3,6 +3,7 @@ import Rel.Run.Lang.GenK
 import Rel.Run.Lang.Elab
 import Rel.Run.Lang.Parse
 import Rel.Run.ValEq
+import Rel.Run.Table
 
 /-! The expander of `rel_program n`: each closed definition `x ≜ …` becomes the Lean definition
     `n.x : Except String (Tab A B)`, a composition of `GenK` ops run in the empty context (`Rel.runE`), or the
@@ -165,9 +166,31 @@ def convOf (o : Once) : Option (Lean.Name × Res) :=
   if o.tst || dem then none else match o.res with
     | ⟨A, B, t⟩ => (convTm t).toOption.map fun u => (o.const ++ `conv, ⟨B, A, u⟩)
 
-/-- What a program reads: its closed definitions, its prints (text and term), its checks, its objects, and its
-    definitions elaborated once. -/
-abbrev Read := List (String × Res) × List (String × Top) × List Chk × Objs × List Once
+/-- A statement `n.io` runs (IO design B), in statement order; a name is the spelling the program's statements reach
+    it by: its own short name, an imported one's constant (`Parse.constOf`). -/
+inductive Io
+  /-- `input n : A ⟶ B from path`: the table of key columns `key` (`[]`: positions) and value columns `val`, read from
+      the table directory `path`, or from the CSV file `path` with the header `csv`. -/
+  | input (n : String) (A B : Obj) (key val : Schema) (csv : Option Db.CsvCols) (path : String)
+  /-- A run-time definition: the kernel twin of its constant `c` applied to the tables of the run-time names `deps`. -/
+  | defn (n : String) (c : Lean.Name) (deps : List String)
+  /-- `output n to path`: the table of `n` written as `key ⟶ val`, `n` a run-time name or the closed definition whose
+      constant is `closed`. -/
+  | output (n : String) (A B : Obj) (key val : Schema) (csv : Bool) (path : String) (closed : Option Lean.Name)
+
+/-- `s` with each name `f` renames. -/
+def Io.rename (f : String → String) : Io → Io
+  | .input n A B k v c p => .input (f n) A B k v c p
+  | .defn n c ds => .defn (f n) c (ds.map f)
+  | .output n A B k v c p cl => .output (f n) A B k v c p cl
+
+/-- The run-time names in scope (IO design A.2), in statement order: each input, and each definition whose body
+    mentions one, with its declared type and, for a definition, the run-time names it mentions. -/
+abbrev Rt := List (String × Param × Option (List String))
+
+/-- What a program reads: its closed definitions, its prints (text and term), its checks, its objects, its
+    definitions elaborated once, and the statements `n.io` runs, its imports' inputs and run-time definitions first. -/
+abbrev Read := List (String × Res) × List (String × Top) × List Chk × Objs × List Once × List Io
 
 /-- The object variables of a definition, in order, each once: its parameters' then its type's. -/
 def varsOf (qs : List Param) (ty : OExp × OExp) : List String :=
@@ -535,15 +558,27 @@ def bindIns (rt : List (String × Param × Option (List String))) (p : Pos) (wha
         (ty.map (s!", a table {·}")).getD ""⟩
   pure σ
 
+/-- The spelling the statements use for the written name `y` (IO design A.2): an imported run-time name (in `rt` by its
+    constant, `read`) its constant, which Lean's resolver reads in any scope; any other name as written. -/
+def rtName (env : Env) (rt : Rt) (y : String) : String :=
+  if (env.defs.lookup y).isSome || rt.any (·.1 == y) then y else match env.res y with
+    | .ext e => if rt.any (·.1 == e.const.toString) then e.const.toString else y
+    | _ => y
+
+/-- `e` with each imported run-time name it mentions spelled as `rtName` spells it. -/
+def rtNamesE (env : Env) (rt : Rt) (e : Expr) : Expr :=
+  e.subst (e.names.filterMap fun y => let c := rtName env rt y; if c == y then none else some (y, .name e.pos c))
+
 /-- The declarations of `prog`, in order, from the environment `env`: each closed definition (no keys) with its
     core term, each `print` and `check` with its terms; nothing evaluated: a definition is in scope as its built
     term. A parametric definition is called where `calls` gives its constant `own.x`; else, when `emitting`, it is
     built once for `emit` (`once`) after the program is read, and called in the bodies built after it; else
     expanded at each use. `specs`: the constants built so far at the forms calls take (`callDef`), `emitter` the
-    program that emits those built here; returned with the ones built here. -/
+    program that emits those built here; returned with the ones built here, the run-time names in scope after it
+    (`rt₀` those of its imports), and the statements `n.io` runs (`Io`). -/
 def walk (prog : Program) (env : Env) (wrap : String → Def → Def) (own : Lean.Name) (calls : Lean.Name → Option Once)
-    (emitting : Bool) (emitter : Lean.Name) (specs : List Once) (imported : Bool := false) :
-    EM (Env × List (String × Res) × List (String × Top) × List Chk × List Once) := do
+    (emitting : Bool) (emitter : Lean.Name) (specs : List Once) (imported : Bool := false) (rt₀ : Rt := []) :
+    EM (Env × List (String × Res) × List (String × Top) × List Chk × List Once × Rt × List Io) := do
   let mut env := env
   let mut specs := specs
   let mut pend : List (Env × Pos × String × List Param × Expr × (OExp × OExp) × List String × Def) := []
@@ -552,7 +587,8 @@ def walk (prog : Program) (env : Env) (wrap : String → Def → Def) (own : Lea
   let mut cs : List Chk := []
   -- the run-time names in scope (IO design A.2): each input, and each definition whose body mentions one, a
   -- parameter of the statements after it that mention it; with its declared type and, for a definition, its own
-  let mut rt : List (String × Param × Option (List String)) := []
+  let mut rt : Rt := rt₀
+  let mut io : List Io := []
   -- each closed definition that computes a whole table, with its type; each output's path
   let mut whole : List (String × (OExp × OExp)) := []
   let mut outs : List (String × Pos) := []
@@ -562,13 +598,13 @@ def walk (prog : Program) (env : Env) (wrap : String → Def → Def) (own : Lea
       continue
     match d with
     | .input p n ty csv path =>
-      if imported then
-        throw ⟨p, s!"input `{n}`: an imported program's inputs are not the importer's yet (IO step I3); declare " ++
-          "it in the importing program and pass it to the definitions as a parameter"⟩
-      ioCols env p s!"input `{n}` from {if csv then "csv " else ""}\"{path}\"" ty csv
+      -- an imported program's input is the importer's (IO design A.2), read by the importer's `n.io`
+      let (A, B, K, S, hdr) ← ioCols env p s!"input `{n}` from {if csv then "csv " else ""}\"{path}\"" ty csv
       rt := rt ++ [(n, ⟨n, some ty⟩, none)]
+      io := io ++ [.input n A B K S (if csv then some hdr else none) path]
     | .output p n csv path =>
       let what := s!"output `{n}` to {if csv then "csv " else ""}\"{path}\""
+      let n := rtName env rt n
       if let some q := outs.lookup path then
         throw ⟨p, s!"{what}: the output at line {q.line} writes \"{path}\" already; give each output a path of its own"⟩
       let ty ← match rt.lookup n, whole.lookup n with
@@ -579,7 +615,9 @@ def walk (prog : Program) (env : Env) (wrap : String → Def → Def) (own : Lea
               s!"output a definition at declared objects whose source has a universe, as `{n}` after a set of " ++
               "its sources"
           else s!"{what}: `{n}` is not defined before it; an output names a definition or an input of the program"⟩
-      if let some ty := ty then ioCols env p what ty csv
+      let some ty := ty | throw ⟨p, s!"{what}: `{n}` declares no type"⟩
+      let (A, B, K, S, _) ← ioCols env p what ty csv
+      io := io ++ [.output n A B K S csv path (if (rt.lookup n).isSome then none else some (Parse.constOf own n))]
       outs := outs ++ [(path, p)]
     | .obj _ n od =>
       -- an imported program's object is its constant's, so the importer's types name the same object (§2.3);
@@ -590,13 +628,19 @@ def walk (prog : Program) (env : Env) (wrap : String → Def → Def) (own : Lea
         env := { env with objs := (n, i) :: (c, i) :: env.objs }
       else env := { env with objs := (n, ← objInfo env n od) :: env.objs }
     | .defn p n ps b ty =>
+      let b := match b with
+        | .rel e => .rel (rtNamesE env rt e)
+        | .test e f => .test (rtNamesE env rt e) (rtNamesE env rt f)
       -- the run-time names the body mentions, not its own parameters: the parameters of a definition written with
       -- none, the existing parametric definition (IO design A.2)
       let ys := rt.filter fun (y, _) =>
         (match b with | .rel e => e.names | .test e f => e.names ++ f.names).contains y && !ps.any (·.name == y)
       let ps ← match ys, ps, b with
         | [], _, _ => pure ps
-        | _, [], .rel _ => rt := rt ++ [(n, ⟨n, ty⟩, some (ys.map (·.1)))]; pure (ys.map (·.2.1))
+        | _, [], .rel _ =>
+          rt := rt ++ [(n, ⟨n, ty⟩, some (ys.map (·.1)))]
+          io := io ++ [.defn n (Parse.constOf own n) (ys.map (·.1))]
+          pure (ys.map (·.2.1))
         | (y, Y, _) :: _, _, _ => throw ⟨p, s!"`{n}` has parameters and mentions `{y}`, which has no table at " ++
             s!"elaboration; add the parameter `{y}{(Y.ty.map (s!" : {OExp.arrow ·}")).getD ""}` to `{n}` and pass " ++
             s!"`{y}` where `{n}` is used"⟩
@@ -639,16 +683,19 @@ def walk (prog : Program) (env : Env) (wrap : String → Def → Def) (own : Lea
         | _, _ => pure ()
         env :={ env with defs := (n, wrap n d) :: env.defs }
     | .print p e bs =>
+      let (e, bs) := (rtNamesE env rt e, bs.map fun (x, l) => (rtName env rt x, l))
       let e := e.subst (← liftExcept (bindIns rt p "print" [e] bs))
       let (r, st) ← (do let r ← elabE env none e; settleOpen env p r.plain.1; pure r).run { specs, objs := env.objs }
       specs := st.specs
       pr := pr ++ [(e.show, ← top env (← Lean.getMCtx) p e r)]
     | .check p e f eq bs =>
+      let (e, f, bs) := (rtNamesE env rt e, rtNamesE env rt f, bs.map fun (x, l) => (rtName env rt x, l))
       let σ ← liftExcept (bindIns rt p "check" [e, f] bs)
       let (c, sp) ← checkOf env p (e.subst σ) (f.subst σ) eq specs; specs := sp; cs := cs ++ [c]
     | .«theorem» p n ps e f eq on hyps steps =>
       let ns := e.names ++ f.names ++ (on.map (·.names)).getD [] ++
         hyps.flatMap (fun (a, b) => a.names ++ (b.map (·.2.names)).getD []) ++ steps.flatMap (·.2.2.1.names)
+      let ns := ns.map (rtName env rt)
       if let some (y, Y, _) := rt.find? fun (y, _) => ns.contains y && !ps.any (·.name == y) then
         throw ⟨p, s!"theorem `{n}` mentions `{y}`, which has no table at elaboration; state it with `{y}` a " ++
           s!"parameter: `theorem {n}({y}{(Y.ty.map (s!" : {OExp.arrow ·}")).getD ""}, …)`"⟩
@@ -676,7 +723,7 @@ def walk (prog : Program) (env : Env) (wrap : String → Def → Def) (own : Lea
     let (o, sp) ← once { env₀ with defs := mine ++ env₀.defs } p n qs e ty vs c c (qs.map fun _ => (none, none)) [] specs
     specs := sp ++ [o]
     mine := (n, wrap n (callDef env₀ p n qs e ty vs c emitter calls d)) :: mine
-  pure (env, ds, pr, cs, specs)
+  pure (env, ds, pr, cs, specs, rt, io)
 
 /-- What the program `own` declares, `prog`, read after the programs `homes` its names reach (their definitions
     and objects), each read in order with its own resolver `res h` (module design §2.3), its definitions in scope
@@ -689,11 +736,17 @@ def read (calls : Lean.Name → Option Once) (homes : List (Lean.Name × Program
   let mut xo : List (Lean.Name × ObjInfo) := []
   -- the constants a call builds at a form no registered constant takes (`callDef`), which `own` emits
   let mut specs : List Once := []
+  -- the imports' run-time names and the statements `n.io` runs for them, each by its constant (`rtName`)
+  let mut rt : Rt := []
+  let mut io : List Io := []
   for (h, hp) in homes do
     let env : Env := { res := res h, ext, extObjs := xo, objs := xo.map fun (c, i) => (c.toString, i) }
-    let (e, _, _, _, sp) ← (walk hp env (fun k => useDef (Parse.constOf h k) true) h calls false own specs true).adapt
-      (Err.inProg h.toString)
+    let (e, _, _, _, sp, rt', io') ←
+      (walk hp env (fun k => useDef (Parse.constOf h k) true) h calls false own specs true rt).adapt (Err.inProg h.toString)
     specs := sp
+    let cn (y : String) : String := if rt.any (·.1 == y) then y else (Parse.constOf h y).toString
+    io := io ++ io'.map (·.rename cn)
+    rt := rt'.map fun (y, P, ys) => (cn y, { P with name := cn P.name }, ys.map (·.map cn))
     for d in hp do
       if let some (k, x) := Parse.extOf h d then
         match x.obj, e.objs.lookup x.const.toString, e.defs.lookup k with
@@ -701,8 +754,9 @@ def read (calls : Lean.Name → Option Once) (homes : List (Lean.Name × Program
         | false, _, some df => ext := (x.const, df) :: ext
         | _, _, _ => pure ()
   let env : Env := { res := res own, ext, extObjs := xo, objs := xo.map fun (c, i) => (c.toString, i) }
-  let (e, ds, ps, cs, os) ← walk prog env (fun k => useDef (Parse.constOf own k) false) own calls true own specs
-  pure (ds, ps, cs, e.objs, os)
+  let (e, ds, ps, cs, os, _, io') ← walk prog env (fun k => useDef (Parse.constOf own k) false) own calls true own specs
+    false rt
+  pure (ds, ps, cs, e.objs, os, io ++ io')
 
 /-! ### The core term as an `Expr` -/
 
@@ -996,12 +1050,90 @@ def objsE (objs : Objs) : MetaM Lean.Expr := do
   mkListLit ty (objs.map fun (x, i) => mkApp4 (mkConst ``Prod.mk [0, 0]) (mkConst ``String) (mkConst ``ObjInfo)
     (toExpr x) (g ``infoOf #[toExpr i.ty, toExpr i.elems, toExpr i.range]))
 
+/-- `t : Tab A B` as a relation computed now (`Rel.tab`), the form a kernel twin takes its parameters in. -/
+def tabRel (A B t : Lean.Expr) : Lean.Expr :=
+  mkApp3 (mkConst ``Rel.Rel.tab) A B (mkApp3 (mkConst ``Except.ok [0, 0]) (mkConst ``String) (mkApp2 (mkConst ``Tab) A B) t)
+
+/-- `m >>= fun x => k x` in `IO`, `x : α`, the rest an `IO Unit` (`ioE`). -/
+def bindIO (inst m α : Lean.Expr) (x : String) (k : Lean.Expr → MetaM Lean.Expr) : MetaM Lean.Expr :=
+  withLocalDeclD (.mkSimple x) α fun v => do
+    pure (mkAppN (mkConst ``Bind.bind [0, 0]) #[mkConst ``IO, inst, α, mkConst ``Unit, m, ← mkLambdaFVars #[v] (← k v)])
+
+/-- The writes of `n.io` (`ioE`), after each output's table is bound: `ws` the writes so far, `σ` the run-time names'
+    tables (name, `A`, `B`, table); a closed definition's table from its constant (`Rel.tab`), run as a run-time one's
+    (`Table.ofRun`). An output keyed by positions writes its value side, renumbered (`Table.write`), any other the key
+    table and the value table (`Table.writeKeyed`). -/
+def ioOut (inst done : Lean.Expr) (σ : List (String × Lean.Expr × Lean.Expr × Lean.Expr)) :
+    List (String × Obj × Obj × Schema × Schema × String × Option Lean.Name) → List Lean.Expr → MetaM Lean.Expr
+  | [], ws => ws.foldrM (fun w r => bindIO inst w (mkConst ``Unit) "_" fun _ => pure r) done
+  | (x, A, B, k, v, p, cl) :: os, ws => do
+    let write (t : Lean.Expr) : Lean.Expr := if k.isEmpty
+      then mkApp4 (mkConst ``Table.write) (mkApp3 (mkConst ``Tab.n) (oE A) (oE B) t) (toExpr v) (toExpr p)
+        (mkApp3 (mkConst ``Tab.val) (oE A) (oE B) t)
+      else mkApp4 (mkConst ``Table.writeKeyed) (toExpr k) (toExpr v) (toExpr p) t
+    match cl, σ.lookup x with
+    | some c, _ =>
+      bindIO inst (mkApp4 (mkConst ``Table.ofRun) (oE A) (oE B) (toExpr x) (mkApp3 (mkConst ``Rel.Rel.tab) (oE A) (oE B)
+        (mkConst c))) (mkApp2 (mkConst ``Tab) (oE A) (oE B)) x fun t => ioOut inst done σ os (ws ++ [write t])
+    | none, some (_, _, t) => ioOut inst done σ os (ws ++ [write t])
+    | none, none => throwError "rel_program expansion: internal: the output `{x}` is no run-time name bound before it"
+
+/-- The reads and run-time definitions of `n.io` (`ioE`) from `ss` on, each one `reach` holds bound once in statement
+    order: an input read from its path (`Table.read`, `readKeyed`, `readCsv`), a definition its kernel twin applied
+    to the tables of its run-time names and run (`Table.ofRun`); then `fin` of the tables bound. -/
+def ioGo (inst : Lean.Expr) (reach : List String)
+    (fin : List (String × Lean.Expr × Lean.Expr × Lean.Expr) → MetaM Lean.Expr) :
+    List Io → List (String × Lean.Expr × Lean.Expr × Lean.Expr) → MetaM Lean.Expr
+  | [], σ => fin σ
+  | .input x A B k v c p :: ss, σ => if !reach.contains x then ioGo inst reach fin ss σ else
+    let m := match c with
+      | some h => mkApp4 (mkConst ``Table.readCsv) (toExpr k) (toExpr v) (toExpr h) (toExpr p)
+      | none => if k.isEmpty then mkApp2 (mkConst ``Table.read) (toExpr v) (toExpr p)
+        else mkApp3 (mkConst ``Table.readKeyed) (toExpr k) (toExpr v) (toExpr p)
+    bindIO inst m (mkApp2 (mkConst ``Tab) (oE A) (oE B)) x fun t =>
+      ioGo inst reach fin ss ((x, oE A, oE B, t) :: σ)
+  | .defn x c ds :: ss, σ => if !reach.contains x then ioGo inst reach fin ss σ else do
+    let tw := kernelTwin c
+    let some ci := (← getEnv).find? tw
+      | throwError "rel_program: `{x}` reaches an output and has no kernel twin `{tw}` (a node of its body has no \
+          GenK body), so `io` cannot compute it"
+    let args ← ds.mapM fun d => match σ.lookup d with
+      | some (A, B, t) => pure (tabRel A B t)
+      | none => throwError "rel_program expansion: internal: `{d}` is not bound before `{x}`"
+    let arity ← forallTelescope ci.type fun xs _ => pure xs.size
+    unless arity == args.length do
+      throwError "rel_program: the kernel twin `{tw}` of `{x}` takes {arity} arguments, and `{x}` mentions the \
+        run-time names {ds}; a run-time definition takes no object variable"
+    let ty ← instantiateForall ci.type args.toArray
+    let (A, B) := (ty.appFn!.appArg!, ty.appArg!)
+    bindIO inst (mkApp4 (mkConst ``Table.ofRun) A B (toExpr x) (mkAppN (mkConst tw) args.toArray))
+      (mkApp2 (mkConst ``Tab) A B) x fun t => ioGo inst reach fin ss ((x, A, B, t) :: σ)
+  | .output .. :: ss, σ => ioGo inst reach fin ss σ
+
+/-- `n.io : IO Unit` (IO design B): the inputs the outputs reach read and the run-time definitions they reach
+    computed, once each in statement order (`ioGo`); every output's table; then the writes in statement order
+    (`ioOut`), so a failure writes no file. A CSV output fails before any read: its writer is IO step I7. -/
+def ioE (io : List Io) : MetaM Lean.Expr := do
+  let inst ← synthInstance (mkApp (mkConst ``Bind [0, 0]) (mkConst ``IO))
+  let outs := io.filterMap fun | .output x A B k v c p cl => some (x, A, B, k, v, c, p, cl) | _ => none
+  if let some (x, _, _, _, _, _, p, _) := outs.find? (·.2.2.2.2.2.1) then
+    return ← mkAppM ``IO.ofExcept #[mkApp3 (mkConst ``Except.error [0, 0]) (mkConst ``String) (mkConst ``Unit)
+      (toExpr s!"output `{x}` to csv \"{p}\": the CSV writer is IO step I7, not yet here; write a table directory \
+        (drop `csv`)")]
+  let done ← mkAppOptM ``Pure.pure #[mkConst ``IO, none, mkConst ``Unit, mkConst ``Unit.unit]
+  -- the run-time names the outputs reach, through each definition's own (each mentions only names before it)
+  let reach := io.reverse.foldl (init := outs.map (·.1)) fun r s => match s with
+    | .defn x _ ds => if r.contains x then r ++ ds else r
+    | _ => r
+  ioGo inst reach (fun σ => ioOut inst done σ (outs.map fun (x, A, B, k, v, _, p, cl) => (x, A, B, k, v, p, cl)) []) io []
+
 /-- The Lean definitions of what the program `n` reads (`read`): `n.x` for each closed definition, its
     sub-terms' constants `n.c.c<i>`, `n.expanded` (the definitions with their objects), `n.objs`, `n.printed`
     (each `print`'s line and ok bit), `n.prints` (the lines), `n.failures` (`failures`: each `check` that does not
-    hold, and each term that threw) and `n.ok`, that there is none. -/
+    hold, and each term that threw) and `n.ok`, that there is none; `n.inputs`, `n.outputs` (each statement's name,
+    `csv`, path, an import's inputs first) and `n.io` (`ioE`). -/
 def emit (n : Name) (r : Read) : MetaM Unit := do
-  let (ds, ps, cs, objs, os) := r
+  let (ds, ps, cs, objs, os, io) := r
   -- one numbering over the whole program, as the code of each number is kept across it
   let ((ds, ps, cs), fs) := Prod.fst <| (do
     let fs ← os.mapM fun o => do let ⟨A, B, t⟩ := o.res; return { o with res := ⟨A, B, ← number t⟩ }
@@ -1050,7 +1182,7 @@ def emit (n : Name) (r : Read) : MetaM Unit := do
       twin c A B t : RM Unit).run ({}, {})
   -- the registry holds each body as elaborated, not numbered: a call copies it (`callTm`), and the numbers are this
   -- program's
-  for o in r.2.2.2.2 do modifyEnv (relRegistry.addEntry · (.call o.key o))
+  for o in r.2.2.2.2.1 do modifyEnv (relRegistry.addEntry · (.call o.key o))
   -- every node of every term the program runs has a `GenK` body, a call one where its constant has a kernel twin
   let env ← getEnv
   let tw (c : Name) := env.contains (kernelTwin c)
@@ -1096,6 +1228,11 @@ def emit (n : Name) (r : Read) : MetaM Unit := do
     (g ``failures #[← mkListLit cty checked,
       ← mkListLit (pairT (mkConst ``String) (mkApp (mkConst ``Option [0]) (mkConst ``String))) errs])
   addConst (n ++ `ok) (mkConst ``Bool) (mkApp2 (mkConst ``List.isEmpty [0]) (mkConst ``Err) (mkConst (n ++ `failures)))
+  -- IO design B: what the program reads and writes, by statement, and the one action that does it
+  let lty := listT (pairT (mkConst ``String) (pairT (mkConst ``Bool) (mkConst ``String)))
+  addConst (n ++ `inputs) lty (toExpr (io.filterMap fun | .input x _ _ _ _ c p => some (x, c.isSome, p) | _ => none))
+  addConst (n ++ `outputs) lty (toExpr (io.filterMap fun | .output x _ _ _ _ c p _ => some (x, c, p) | _ => none))
+  addConst (n ++ `io) (mkApp (mkConst ``IO) (mkConst ``Unit)) (← ioE io)
 
 end Expand
 
