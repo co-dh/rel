@@ -1522,30 +1522,46 @@ def divTest {A B C : Obj} (c : Tm (.prod A C) (.prod A C)) (s : Tm B C) :
     Tm (.prod A B) (.prod A B) :=
   .diff .id (.dom (.comp (.pair .outl (.comp .outr s)) (.diff .id c)))
 
-/-- A row's definition as `build` makes it, read back by `Tm.dfnCut?`: its base `0` on the universe `u₀`, its step
-    on `u`, the row it is the fused form of, and that row cut to `u`. -/
-structure DfnCut (A B : Obj) where
-  u₀ : Tm .long .long
-  u : Tm .long .long
-  fused : Tm A B
-  cut : Tm A B
+/-- The fold base `0` as `zeroE` builds it on the universe `u`: `⟨𝟙,𝟙⟩ minus ∩ 𝟙`. -/
+def zeroTm (u : Tm .long .long) : Tm .long .long := .meet (.comp (.pair .id .id) (.arith Rel.Kernel.Ew.sub u)) .id
 
-/-- The fold base `0` as `zeroE` builds it, `⟨𝟙,𝟙⟩ minus ∩ 𝟙`, and its universe. -/
-def zeroU? : {V : Obj} → Tm V V → Option (Tm .long .long)
-  | .long, .meet (.comp (.pair .id .id) (.arith k u)) .id => if k == Rel.Kernel.Ew.sub then some u else none
-  | _, _ => none
+/-- `e` read back as `zeroTm u`, with the equation (the law cites it, not a match on `e`). -/
+def zeroU? : (e : Tm .long .long) → Option {u // e = zeroTm u}
+  | .meet (.comp (.pair .id .id) (.arith k u)) .id =>
+    if h : k = Rel.Kernel.Ew.sub then some ⟨u, by subst h; rfl⟩ else none
+  | _ => none
 
-/-- `⦇[0, π₁ succ]⦈` (`lengthRow`'s definition) and `⦇[0, plus]⦈ʳ` (`sumRow`'s) read back, each with its row and the
-    row cut to its universe: `sum`'s cut tests its elements in it first (`F(u)`), as `plus` does. Any other term,
-    none: `build` then runs it as written. `Tm.dfnCut_den` proves each equal to its cut at `𝟙` and at `0…k`. -/
-def Tm.dfnCut? : {A B : Obj} → Tm A B → Option (DfnCut A B)
+/-- A row's definition as `build` makes it: `⦇[0, π₁ succ]⦈` (`lengthRow`'s) and `⦇[0, plus]⦈ʳ` (`sumRow`'s), the
+    base `0` on the universe `u₀`, the step on `u`. Indexed by the term, so the law takes it apart by `cases`. -/
+inductive DfnCut : {A B : Obj} → Tm A B → Type
+  | length {E : Obj} (u₀ u : Tm .long .long) :
+    DfnCut (A := .arr E) (B := .long) (.fold (zeroTm u₀) (.comp .outl (.succ u)))
+  | sum (u₀ u : Tm .long .long) :
+    DfnCut (A := .arr .long) (B := .long) (.foldr (zeroTm u₀) (.arith Rel.Kernel.Ew.add u))
+
+/-- The universes of the base and of the step. -/
+def DfnCut.u₀ {A B : Obj} {d : Tm A B} : DfnCut d → Tm .long .long
+  | .length u₀ _ | .sum u₀ _ => u₀
+def DfnCut.u {A B : Obj} {d : Tm A B} : DfnCut d → Tm .long .long
+  | .length _ u | .sum _ u => u
+
+/-- The row the definition is the fused form of. -/
+def DfnCut.fused {A B : Obj} {d : Tm A B} : DfnCut d → Tm A B
+  | .length _ _ => .prim lengthRow
+  | .sum _ _ => .prim sumRow
+
+/-- The row cut to its universe: `sum`'s tests its elements in it first (`F(u)`), as `plus` does. -/
+def DfnCut.cut {A B : Obj} {d : Tm A B} : DfnCut d → Tm A B
+  | .length _ u => .comp (.prim lengthRow) u
+  | .sum _ u => .comp (.comp (.arg (.prim mapRow : Tm (.arr .long) (.arr .long)) u) (.prim sumRow : Tm (.arr .long) .long)) u
+
+/-- `d` read back as a `DfnCut`; any other term, none: `build` then runs it as written. `Tm.dfnCut_den` proves the
+    definition equal to its cut at `𝟙` and at `0…k`. -/
+def Tm.dfnCut? : {A B : Obj} → (d : Tm A B) → Option (DfnCut d)
   | .arr _, .long, .fold e (.comp .outl (.succ u)) =>
-    (zeroU? e).map fun u₀ => ⟨u₀, u, .prim lengthRow, .comp (.prim lengthRow) u⟩
+    (zeroU? e).map fun ⟨u₀, h⟩ => by subst h; exact .length u₀ u
   | .arr .long, .long, .foldr e (.arith k u) =>
-    if k == Rel.Kernel.Ew.add then
-      (zeroU? e).map fun u₀ => ⟨u₀, u, .prim sumRow,
-        .comp (.comp (.arg (.prim mapRow : Tm (.arr .long) (.arr .long)) u) (.prim sumRow : Tm (.arr .long) .long)) u⟩
-    else none
+    if hk : k = Rel.Kernel.Ew.add then (zeroU? e).map fun ⟨u₀, h⟩ => by subst h hk; exact .sum u₀ u else none
   | _, _, _ => none
 
 section Build
