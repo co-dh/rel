@@ -563,6 +563,9 @@ Diff table 的「状态」列：✅ 后面是完成它的步骤；🔄 是部分
         - owner 定的顺序（C）：先做 architecture §4 已定的实现改动（`∩ − \` 分段 `scan`、`\` 不物化 join、
           `ldiv(tab, bits)` 在 bit matrix 上算、`μ` semi-naive），差分测试与回归固定保护；`ldiv meet diff mu fold` 与
           bit matrix 路径的证明（T11e 余项、`ReadsBack`）等实现稳定后再做。T11e5 只做 `arith`。
+        - 23:44，master ad90237，`make check` 全绿（check-53）：覆盖 122 / 203，差分 478 比较、0 不同（compile-diff 一步 432 s）。
+          在做：`p2fold`（`pack/uncons/unsnoc` 三条定律，`fold foldr foldI` 出 gap）、`p3reads`（证 `ReadsBack`，去掉 `gen_sound` 的前提）。
+          待 owner 定：architecture `:223` 对 `:244`、`:257` 在 `seen` 是否要求已排序上矛盾（代码 = `:223`）。
         - 关机前的状态（2026-11-19 21:50 左右）：master ad90237 = 10342bc + d1diff（差分测试按 `Tm.hasCode` 跳过，分支上 478 比较、
           0 不同）+ p1ldiv 6f2aa59（`Tab.ldivTabMat_law/_wf`、`GenK.ldiv_sound/_wf` 已证，`ldiv` 出 gap，分支上 122 / 203；
           `ReadsBack` 多了第三个合取项）。**master 上还没构建、没跑 `make check`**（下一个是 check-53）。I1 前后计时：316 个定义合计 120.9 s → 121.1–124.5 s，两次"之后"相差 3.4 s，差别在噪声内，没有可测的变慢。
