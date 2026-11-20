@@ -301,6 +301,7 @@ def asc : RowCode := ⟨"asc", fun σ => (.long, σ₁ σ)⟩
 def inlC : RowCode := ⟨"inl°", fun σ => (.sum (σ₁ σ) (σ₂ σ), σ₁ σ)⟩
 def inrC : RowCode := ⟨"inr°", fun σ => (.sum (σ₁ σ) (σ₂ σ), σ₂ σ)⟩
 def sums : RowCode := ⟨"sums", fun σ => (.prod (σ₁ σ) .long, .long)⟩
+def flat : RowCode := ⟨"flat", fun σ => (.prod (σ₁ σ) (σ₂ σ), σ.getD 2 .long)⟩
 def cast : RowCode := ⟨"$", fun σ => (σ₁ σ, σ₂ σ)⟩
 end RowCode
 
@@ -356,6 +357,7 @@ def rowDens : List ((c : RowCode) × RowDen c) :=
    ⟨inlC, fun _ _ s a => Core.Rel.inl a s⟩,
    ⟨inrC, fun _ _ s b => Core.Rel.inr b s⟩,
    ⟨sums, fun σ => Sem.one (X := .prod (σ₁ σ) .long) (Y := .long) sumsDen⟩,
+   ⟨flat, fun σ => Sem.one (X := σ₁ σ) (Y := .prod (σ₂ σ) (σ.getD 2 .long)) flatDen⟩,
    ⟨cast, fun σ _ => castDen (σ₁ σ) (σ₂ σ)⟩]
 
 
@@ -407,7 +409,6 @@ noncomputable def Tm.den : Val → {A B : Obj} → Tm A B → Den A B
   | ρ, _, _, .fold e S => foldDen (e.den ρ) (S.den ρ)
   | _, _, _, .share _ R => R.den Val.empty
   | ρ, _, _, .foldI e S => foldIDen (e.den ρ) (S.den ρ)
-  | ρ, _, _, .flat R => flatDen (R.den ρ)
   | ρ, A, B, .var _ k => ρ k A B
   | _, _, _, .call ks _ _ b | _, _, _, .callCv ks _ _ _ b _ => b.den (Val.args ks [])
   | ρ, _, _, .arg f x => f.argDen ρ [⟨_, _, x.den ρ⟩]
@@ -427,6 +428,18 @@ noncomputable def Tm.argDen : Val → {A B : Obj} → Tm A B → List Sem → De
   | ρ, _, _, .own R, ss => R.argDen ρ ss
   | _, _, _, _, _ => 𝟘
 end
+
+/-- `Rᴵ`'s definition `⟨π₁R,π₂⟩dom(π₁π₁ ∩ π₂)π₁π₂` (`Pre.flat`) means `flatDen`: the `(a', b)` of `R` at the key,
+    kept where `a'` is the source, then `b`. -/
+theorem Tm.flat_den (ρ : Val) {I A B : Obj} (R : Tm I (.prod A B)) :
+    (Tm.comp (.pair (.comp .outl R) .outr) (.comp (.dom (.meet (.comp .outl .outl) .outr)) (.comp .outl .outr))).den ρ
+      = flatDen (R.den ρ) := by
+  apply Core.Rel.ext; intro x b
+  simp [Tm.den, flatDen, Core.Rel.comp, Core.Rel.rpair, Core.Rel.inter, Core.Rel.recip, Core.Rel.graph]
+  constructor
+  · rintro ⟨a, b', ⟨h, rfl⟩, he⟩
+    cases (show ((x.2, b'), x.2) = ((x.2, b), x.2) from he); exact h
+  · intro h; exact ⟨_, _, ⟨h, rfl⟩, rfl⟩
 
 /-- **Symmetric division is a definition**: the term `R/S ∩ (S/R)°` that `Pre.symDiv` builds means `R÷S` within the
     universes `UA`, `UB`. -/
@@ -457,7 +470,7 @@ theorem Tm.den_congr : ∀ {A B : Obj} (t : Tm A B) (ρ ρ' : Val), (∀ i ∈ t
     have e := ih ρ ρ' fun i hi => h i (by simp [Tm.fv, hi])
     exact ⟨by simp only [Tm.den, e.1], fun _ => by simp only [Tm.argDen, e.2]⟩
   | conv R ih | dom R ih | ran R ih | est R ih | succ R ih | arith _ R ih | leq R ih | lt R ih
-  | flat R ih | lam R ih | E R ih | thin R ih =>
+  | lam R ih | E R ih | thin R ih =>
     intro ρ ρ' h; exact ⟨by simp only [Tm.den, (ih ρ ρ' fun i hi => h i (by simp [Tm.fv, hi])).1], fun _ => rfl⟩
   | ldiv R S U V ihR ihS ihU ihV | rdiv R S U V ihR ihS ihU ihV =>
     intro ρ ρ' h
@@ -675,9 +688,6 @@ theorem foldI_le {e e' : Den C (.prod B B)} {S S' : Den (.prod (.prod C B) A) (.
   le_iff.2 fun _ _ h => le_iff.1 (fold_le (le_iff.2 fun _ _ h => le_iff.1 he _ _ h)
     (le_iff.2 fun _ _ h => le_iff.1 hS _ _ h)) _ _ h
 
-theorem flat_le {T T' : Den C (.prod A B)} (hT : T ⊑ T') : flatDen T ⊑ flatDen T' :=
-  le_iff.2 fun _ _ h => le_iff.1 hT _ _ h
-
 end ops
 
 theorem Sem.one_mono {X Y A B X' Y' : Obj} {D : Den X Y → Den A B} (hD : ∀ {T T'}, T ⊑ T' → D T ⊑ D T')
@@ -693,14 +703,16 @@ theorem rowDens_mono : ∀ e ∈ rowDens, (Prim.find? e.1.sym).any (·.mono) = t
     ∀ σ {X Y : Obj} {T T' : Den X Y}, T ⊑ T' → e.2 σ [⟨X, Y, T⟩] ⊑ e.2 σ [⟨X, Y, T'⟩] := by
   intro e he hm σ X Y T T' h
   simp only [rowDens, List.mem_cons, List.not_mem_nil, or_false] at he
-  -- one goal per row, however many `rowDens` has
-  repeat' rcases he with rfl | he
+  -- one case per row whatever their number, in `rowDens` order
+  repeat' first | (rcases he with rfl | he) | subst he
   all_goals first | exact Core.Rel.le_refl _ | exact absurd hm (by decide) | skip
   · dsimp only; refine Sem.one_mono (fun hT => le_iff.2 fun _ _ hm => ?_) h
     exact ⟨hm.1, fun t ht ht' => le_iff.1 hT _ _ (hm.2 t ht ht')⟩
   · dsimp only; refine Sem.one_mono (fun hT => le_iff.2 fun _ _ hm => ?_) h
     obtain ⟨g, h0, hs, hc⟩ := hm
     exact ⟨g, h0, fun t ht => le_iff.1 hT _ _ (hs t ht), hc⟩
+  · dsimp only; refine Sem.one_mono (fun hT => le_iff.2 fun _ _ hm => ?_) h
+    exact le_iff.1 hT _ _ hm
 
 theorem Prim.den_mono {r : Prim} (hr : (Prim.find? r.sym).any (·.mono) = true) {A B X Y : Obj} {T T' : Den X Y}
     (h : T ⊑ T') : Prim.den r A B [⟨X, Y, T⟩] ⊑ Prim.den r A B [⟨X, Y, T'⟩] := by
@@ -825,7 +837,6 @@ theorem Tm.den_pol (k : Nat) : ∀ {A B : Obj} (t : Tm A B) (s : Bool) (ρ ρ' :
   | arith _ U ih => intro s ρ ρ' hp g; exact sle.map1 arith_le (ih s ρ ρ' hp g)
   | leq U ih => intro s ρ ρ' hp g; exact sle.map1 leq_le (ih s ρ ρ' hp g)
   | lt U ih => intro s ρ ρ' hp g; exact sle.map1 lt_le (ih s ρ ρ' hp g)
-  | flat R ih => intro s ρ ρ' hp g; exact sle.map1 flat_le (ih s ρ ρ' hp g)
   | foldr e S ihe ihS =>
     intro s ρ ρ' hp g; simp only [Tm.pol, Bool.and_eq_true] at hp
     exact sle.map2 foldr_le (ihe s ρ ρ' hp.1 g) (ihS s ρ ρ' hp.2 g)

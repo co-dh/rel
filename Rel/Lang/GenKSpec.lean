@@ -222,7 +222,7 @@ theorem top_sound {V : Rel B B} {Y : Core.Rel B.El B.El} (hV : ∀ K, V.Reps K Y
     · exact (ev c b rfl hb).1 ((ew c b rfl hb).1 h)
     · exact (ew c b rfl hb).2 ((ev c b rfl hb).2 h)
 
-/-! ### Products and sums: `pair prod outl outr junc flat` (`outl outr` by `ofVals_row_sound`) -/
+/-! ### Products and sums: `pair prod outl outr` (`outl outr` by `ofVals_row_sound`) -/
 
 /-- `pairOn D T S`'s two tables relate a value of `D` as `X` and `Y` do: `S` agrees with `Y` on the domain of `T`'s
     table (`bound_spec`), and off it both sides are false. -/
@@ -303,14 +303,6 @@ theorem prod_sound {R : Rel A B} {S : Rel C D} {X : Core.Rel A.El B.El} {Y : Cor
     exact (Tab.pair_holds ht _ q).trans (and_congr
       (proj_comp_holds (Tab.outl_holds ho₁) hl (fun j b => er _ b ((side_some rfl _).2 ⟨j, rfl⟩) rfl) i q.1)
       (proj_comp_holds (Tab.outr_holds ho₂) hm (fun j d => es _ d ((side_some rfl _).2 ⟨j, rfl⟩) rfl) i q.2))
-
-theorem flat_sound {I : Obj} {d : Bool} {R : Rel I (.prod A B)} {X : Core.Rel I.El (Obj.prod A B).El}
-    (hR : ∀ K, R.Reps K X) : ∀ K, (GenK.flat I A B d R).Reps K (flatDen X) :=
-  ofVals_sound fun _ _ Xs _ hK h p b hp _ => by
-    obtain ⟨r, hr, ht⟩ := bind_ok h
-    have er := (reps_iff _ _ _).1 (hR _) r hr
-    obtain ⟨i, rfl⟩ := (side_some hK p).1 hp
-    exact (Tab.flat_holds ht _ b).trans ((and_iff_right ⟨i, rfl⟩).trans (er _ _ ((side_some rfl _).2 ⟨i, rfl⟩) rfl))
 
 example : ∀ K, (GenK.outl A B).Reps K (graph Prod.fst) := ofVals_row_sound fun _ _ _ h => Tab.outl_holds h
 example : ∀ K, (GenK.outr A B).Reps K (graph Prod.snd) := ofVals_row_sound fun _ _ _ h => Tab.outr_holds h

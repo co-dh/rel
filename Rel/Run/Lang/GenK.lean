@@ -247,6 +247,7 @@ def kernRows : List (String × Lean.Name) :=
    ("merge", ``Tab.merge),
    ("thinL", ``Tab.thinL),
    ("F", ``Tab.map),
+   ("flat", ``Tab.flat),
    ("$", ``Tab.cast)]
 
 -- every kernel row is a row of `prims`
@@ -267,7 +268,7 @@ def Tm.kernelNode {A B : Obj} : Tm A B → Bool
   | .est _ => true
   | .thin _ => true
   | .atPos _ => true
-  | .fold .. | .foldr .. | .foldI .. | .flat _ => true
+  | .fold .. | .foldr .. | .foldI .. => true
   | .prim r => (kernRows.lookup r.sym).isSome
   | .top _ => true
   | .outl => true
@@ -349,6 +350,11 @@ def elems (A B C : Obj) (d : Bool) (R : Fn d A B)
     any key reads every row of `R`; the context cuts the table (`Rel.Reps` reads it on the context's sides). -/
 def ofRel (A B C D : Obj) (d : Bool) (R : Fn d A B) (f : Tab A B → Except String (Tab C D)) : Fn true C D :=
   lift1 f (fun _ => {}) R
+/-- `f` on the pairs `X = (i, a)` in demand and `R` run knowing its domain is their keys `i`: the wrapper of a row
+    given a family `R : I ⟶ C` (`flat`). -/
+def onKeys (I A B C : Obj) (d : Bool) (R : Fn d I C)
+    (f : {n : USize} → Vals (.prod I A) n → Tab I C → Except String (Tab (.prod I A) B)) : Fn true (.prod I A) B :=
+  ofVals _ _ fun X => do f X (← R.runE ⟨some ⟨_, X.1⟩, none⟩)
 
 /-- `est(Q)`, `thin(Q)` on the arrays in demand, the pair test `Q` run knowing its domain is the pairs `D` it is
     asked about (`Gen.est`'s `Q.at`). -/
@@ -385,9 +391,6 @@ def foldI (I E V : Obj) (d d' : Bool) (e : Fn d I (.prod V V)) (S : Fn d' (.prod
     (← Tab.zero)
   out.comp (← Tab.outr out.val)
 
-/-- `Rᴵ` on the pairs `X = (i, a)` in demand (`Tab.flat`), `R` run on their keys `i`. -/
-def flat (I A B : Obj) (d : Bool) (R : Fn d I (.prod A B)) : Fn true (.prod I A) B :=
-  ofVals _ _ fun X => do Tab.flat X (← R.runE ⟨some ⟨_, X.1⟩, none⟩)
 
 /-! ### T9: `hylo(c, S)`, and the wrappers of the rows given a pair test or a step (`merge thinL loop`) -/
 
