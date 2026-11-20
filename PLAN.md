@@ -207,6 +207,21 @@ Diff table 的「状态」列：✅ 后面是完成它的步骤；🔄 是部分
   `writeVals`，`writeRel` 是它的实例（`key`、`val` 两个前缀）。`ownParts`/`ownFile` 对 `Enc.pos` 答 `none`（不写文件），
   不再报错。`f32`/`f64`、`sym` 与 enumeration 列被拒（float 规则未定；sym 等 sym writer）。往返测试
   `Rel/Lang/TestTable.lean`。
+  owner 裁定（最终）：不定义新数据结构，不转换；目录 = 表，文件 = 列，内存结构即磁盘结构（mmap）。IO 写在 `.rel`
+  程序里：语句 `input … from …` / `output … to …`（owner 2026-11-20 选 G，取代此前“输入绑定在 host 一侧”的做法；语法设计在
+  `/data/tmp/io/design.md`）。Rel 读写 mmap 表与 CSV；CSV 解析器是 `crate/` 里的 Rust，读、写两个新 export（owner 同日选
+  A），算 IO export，不计入“RELK 到 5”。输出按结果 key 的 OBJECT（类型，不是运行时看
+  key 列）分两种：key 是行号（`N ⟶ S`）时写一张新表，列按 key 序、行重编号 `0…n−1`、无 key 文件（程序内部 filter 保留原
+  key，只在写时重编号）；key 不是行号时是 q 的 keyed table：一个目录下 `key/`、`val/` 两个普通表目录（每列一个文件，按
+  schema 字段命名）。不是 record 的一侧是一列，文件名就是该侧名 `key` / `val`（两侧同一规则）。mmap 读入的 float 列在读时
+  检查规范形（NaN 无行、只有一个零），否则拒绝并报文件、行、位模式。
+  步骤 2（分支 `d9step2`）：`Table.write S dir x`（一侧，按 schema 列名）、`Table.read S dir : IO (Tab .long S.obj)`
+  （key 为位置）、`writeKeyed K S`/`readKeyed K S`（`key/`、`val/`）；缺文件、类型码不同、行数不同都报文件名与期望/实际；
+  空 schema、重名列被拒。float 检查对唯一谓词 `Table.nonCanonical`（typed base S5 定义规范 float 后由它填）。定理：
+  `Arr.pos_get`（`pos_clamp` 由它推出）、`Table.frame_holds`（重编号即 `ι ≫ t`，`ι = {(j, key j)}`，key 两两不同时）；
+  文件上的 `read (write x) = frame x` 只 `#guard`（extern）。sym 列仍报“等 sym writer（步骤 6）”。
+  步骤 3 未开始：`Expand.emit` 的 `.io` twin。锚点：`walk` 的 pend 循环（`Expand.lean:527-531`，有 `qs`/`ty` 的声明
+  类型与 `env₀.objs` 的 `ObjInfo.cols`/`num`）、kernel twin（`Expand.lean:873-901`）、`Rel.runE`（`Lazy.lean:27`）。
 - ✅ D.11 表层语法（`schema S = {k : K, v : N}`、`col S "v"`）已合并（da636a9）；`Schema` 层此前已合并（5ab6d2e，master 0fb9879，`Rel/Lang/Schema.lean`、`TestSchema.lean`）；余下：TestFrame 的
   frame 按 `Schema` 索引（随 D.9）。frame 的 schema 进入类型（owner 经 dataframe 会话决定，选 wrapper，不加 `Obj` constructor）：
   `Schema := List (String × Obj)`；`Schema.obj : Schema → Obj` 是 definition（按 `.d` 列序的嵌套 `prod`）；frame 的项按

@@ -16,7 +16,6 @@ rel_program frameData where
 
 open Rel.Programs.prelude Rel.Programs.frame frameData in
 rel_program frameCols where
-    obj Q = 0…1000
     z : P ⟶ N ≜ {(0,1),(1,2),(2,3)}
     -- a sum literal does not parse, so the null column is built with `tot`: null at position 1
     w : P ⟶ N+1 ≜ dom(z) tot({(0,5),(2,3)})
@@ -44,13 +43,6 @@ rel_program frameCols where
     check ⟨x, z⟩ = {(0,((B,5),1)),(1,((A,3),2)),(2,((B,5),3))}
     check hstack(x, z) = 𝟘
     check hstack(take({(∗,3)}, x), z) = {(0,((B,5),1)),(1,((A,3),2)),(2,((B,5),3))}
-    -- variance: `v` at a value object holding `n·Σv²`; n 8, Σv 27, Σv² 123, 8·123 − 27² = 255:
-    -- var 255 div 64 = 3, svar 255 div 56 = 4; rows 5 3 5 1: 4·60 − 14² = 44, var 44 div 16 = 2, svar 44 div 12 = 3
-    v : P ⟶ Q ≜ {(0,5),(1,3),(2,5),(3,1),(4,7),(5,2),(6,1),(7,3)}
-    check var(v) = {(∗,3)}
-    check svar(v) = {(∗,4)}
-    check var(take({(∗,4)}, v)) = {(∗,2)}
-    check svar(take({(∗,4)}, v)) = {(∗,3)}
     -- impute, recode, recode with default
     check w [𝟙, {(∗,0)}] = {(0,5),(1,0),(2,3)}
     check x π₁ code = {(0,2),(1,1),(2,2),(4,1),(6,2),(7,1)}

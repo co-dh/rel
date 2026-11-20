@@ -221,8 +221,7 @@ diff(n, x)        ≜ dom(x) tot(⟨x, ⟨𝟙, ⊤ n⟩minus x⟩minus)      x 
   ([`sum` `mean` `count` `countAll` `minimum` `maximum` `reduce`], [`summarize(f, x)`，`f` 见 3.1；`count(x)`],
     [`mean` 只有整数除法，浮点：F4], "part"),
   ([`variance` `stddev` `skewness` `correlation` `zScore`],
-    [`moment2(d, c) ≜ summarize(F(c) ⟨⟨⟨length, F(⟨𝟙, 𝟙⟩times) sum⟩times, sum ⟨𝟙, 𝟙⟩times⟩minus, d⟩div, c)`；`var(c) ≜ moment2(⟨length, length⟩times, c)`；`svar(c) ≜ moment2(⟨length, length ⟨𝟙, ⊤ {(∗,1)}⟩minus⟩times, c)`],
-    [`var` `svar` 是总体 / 样本方差，精确的整数商 `(n·Σc² − (Σc)²) div d`；`stddev` `skewness` `correlation` `zScore` 要开方或浮点除法：F4], "part"),
+    [无], [需要浮点 `arith` 和浮点 `div`；整数商不是方差：F4], "no"),
   ([`median` `percentile` `genericPercentile` `interQuartileRange`],
     [`median(a, x) ≜ quantile({(∗,1)}, {(∗,2)}, a, x)`；`percentile(p, a, x) ≜ quantile(p, {(∗,100)}, a, x)`；
     `quantile(p, q, a, x) ≜ summarize(F(m a) ⟨sum, length⟩div, m) where m ≜ dom(x) dom(⟨⟨𝟙, ⊤ q⟩times, ⊤ p⟩plus < (⟨⟨count(x), p⟩times, q⟩plus)°) dom(⟨⟨⟨𝟙, ⊤ q⟩times, ⊤ p⟩plus, ⊤ q⟩plus > (⟨count(x), p⟩times)°) sortBy(a, x)`],
