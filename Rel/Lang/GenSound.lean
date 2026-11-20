@@ -231,7 +231,7 @@ end
 /-- The rows whose case of `Tm.gen_sound` is proved (`rowsProved_ok`), each with whether its proof reads `LamLaw`
     at its objects `A ⟶ [B]` (a row whose table is a `Λ`). -/
 def rowsProved : List (String × Bool) :=
-  [("∋", false), ("inl", false), ("inr", false), ("τ", true), ("setify", true)]
+  [("∋", false), ("inl", false), ("inr", false), ("τ", true), ("setify", true), ("snoc", false)]
 
 /-- Some node of `t` has no proved case in `Tm.gen_sound`: no `GenK` lemma yet (`est thin atPos mu nu
     hylo`), a lemma that does not hold
@@ -374,6 +374,25 @@ theorem rowOK_setify : RowOK "setify" := rowOK_of (c := RowCode.setify) rfl rfl 
   cases σ <;> refine ⟨GenK.ofVals_wf, fun hl => ?_⟩ <;> have hB := hl (by rw [hs]; decide) _ rfl <;>
     exact ⟨⟨rfl, rfl⟩, GenK.ofVals_row_sound fun _ _ _ h => Tab.setify_den h hB⟩
 
+/-- A row run after the keys (`GenK.after`) represents `P` when `f D`, on the keys' coreflexive `D`, holds `D ≫ P`. -/
+theorem GenK.after_row_sound {A B : Obj} {f : {K : Obj} → Tab K A → Except String (Tab K B)}
+    {P : Core.Rel A.El B.El}
+    (hf : ∀ {K : Obj} (D : Tab K A) t, f D = .ok t → ∀ k b, t.Holds k b ↔ ∃ a, D.Holds k a ∧ P a b) :
+    ∀ K, (GenK.after A B f).Reps K P :=
+  GenK.ofVals_row_sound fun _ X t h a b => by
+    cases hD : Tab.idU X with
+    | error e => rw [hD] at h; exact nomatch h
+    | ok D =>
+    rw [hD] at h
+    rw [hf D t h]
+    constructor
+    · rintro ⟨a', ha', hp⟩; obtain ⟨rfl, hx⟩ := (Tab.idU_holds hD a a').1 ha'; exact ⟨hx, hp⟩
+    · rintro ⟨hx, hp⟩; exact ⟨a, (Tab.idU_holds hD a a).2 ⟨rfl, hx⟩, hp⟩
+
+theorem rowOK_snoc : RowOK "snoc" := rowOK_of (c := RowCode.snoc) rfl rfl fun _ σ _ _ _ _ hv => by
+  cases hv
+  cases σ <;> exact ⟨GenK.ofVals_wf, fun _ => ⟨⟨rfl, rfl⟩, GenK.after_row_sound fun _ _ h => Tab.snoc_holds h⟩⟩
+
 /-- Every row of `rowsProved` is `RowOK`: the obligations enumerated from the list `Tm.gap` reads. -/
 theorem rowsProved_ok (r : Prim) (A B : Obj) (h : (rowsProved.lookup r.sym).isNone = false) :
     (primGen r A B []).Wf ∧
@@ -383,8 +402,9 @@ theorem rowsProved_ok (r : Prim) (A B : Obj) (h : (rowsProved.lookup r.sym).isNo
   by_cases h3 : r.sym = "inr"; · exact rowOK_inr r A B h3
   by_cases h4 : r.sym = "τ"; · exact rowOK_tau r A B h4
   by_cases h5 : r.sym = "setify"; · exact rowOK_setify r A B h5
+  by_cases h6 : r.sym = "snoc"; · exact rowOK_snoc r A B h6
   simp [rowsProved, List.lookup, beq_false_of_ne h1, beq_false_of_ne h2, beq_false_of_ne h3, beq_false_of_ne h4,
-    beq_false_of_ne h5] at h
+    beq_false_of_ne h5, beq_false_of_ne h6] at h
 
 theorem Tm.code_wf {η : Code} {A B : Obj} {t : Tm A B} (h : (t.gen η).Wf) : (t.code η).Wf := by
   rw [Tm.code]; split
