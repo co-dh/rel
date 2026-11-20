@@ -157,3 +157,23 @@ private def neg1 : UInt64 := 0xffffffffffffffff
 
 end Op
 end Rel.Kernel
+
+/-! The value verb codes `Ew.intStep` (`Rel.Kernel.Elementwise`) reads; here, beside `Op`, because the run path names
+a verb by its code (`Lang.Op.arith`, `stepCols`) and computes it with `Op` on the kernels, never with `Ew`. -/
+
+namespace Rel.Kernel.Ew
+
+/-- Value verbs: `+ - * % ^ & |`. -/
+def add : UInt8 := 0
+def sub : UInt8 := 1
+def mul : UInt8 := 2
+def fill : UInt8 := 4
+def lesser : UInt8 := 5
+def greater : UInt8 := 6
+
+/-- `div` and `mod`, numbered after the seven q spells as glyphs, because `Ew.intStep` runs them in the same loop over
+the same two payloads; `~/q/q.k` line 4 defines `mod:{x-y*x div y}` and `Ew.intStep` says exactly that. -/
+def idiv : UInt8 := 7
+def imod : UInt8 := 8
+
+end Rel.Kernel.Ew

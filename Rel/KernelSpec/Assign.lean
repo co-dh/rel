@@ -116,10 +116,6 @@ theorem symBytes_push (ob ob' : ByteArray) (oo : Array Nat) (j : Nat) (s : List 
 #guard_msgs in #print axioms set_field
 /-- info: 'Rel.Verify.set!_getElem?' depends on axioms: [propext] -/
 #guard_msgs in #print axioms set!_getElem?
-/-- info: 'Rel.Verify.scatterPacked_sub' depends on axioms: [propext, Quot.sound] -/
-#guard_msgs in #print axioms scatterPacked_sub
-/-- info: 'Rel.Verify.scatterPacked_ids' depends on axioms: [propext, Quot.sound] -/
-#guard_msgs in #print axioms scatterPacked_ids
 /-- info: 'Rel.Verify.copySlice_end' depends on axioms: [propext, Quot.sound] -/
 #guard_msgs in #print axioms copySlice_end
 /-- info: 'Rel.Verify.push_get!' depends on axioms: [propext, Quot.sound] -/

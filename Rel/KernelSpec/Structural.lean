@@ -93,6 +93,5 @@ theorem tilLongs_spec (n : USize) : (elemsW 8 (tilLongs n)).map UInt64.toNat = L
 
 end Rel.Verify
 
-#print axioms Rel.Verify.scatterPacked_spec
 #print axioms Rel.Verify.expandBytes_spec
 #print axioms Rel.Verify.tilLongs_spec

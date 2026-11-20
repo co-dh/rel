@@ -350,7 +350,6 @@ end Segs
 #print axioms groups_congr
 #print axioms groupIds_spec
 #print axioms groupIdsFoR_spec
-#print axioms atI64_eq
 /-- info: 'Rel.Verify.idsCap_packIds' depends on axioms: [propext, Quot.sound] -/
 #guard_msgs in #print axioms idsCap_packIds
 
