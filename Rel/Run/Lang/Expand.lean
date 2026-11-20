@@ -150,9 +150,12 @@ def sigOf (o : Once) : Sig :=
   let ⟨_, _, t⟩ := o.res
   { const := o.const, vars := o.gen.zip ((List.range o.gen.length).map t.fv.contains), tst := o.tst, kf := o.kf }
 
-/-- The converse of `o`'s body, when it has one (`convTm`) and is not a pair test, and its constant. -/
+/-- The converse of `o`'s body, when it has one (`convTm`) and is not a pair test, and its constant. `convTm` takes
+    a parameter for its own converse (`Tm.ConvOK`), true of one tested on pairs only: a body reading a parameter run
+    on demand (`R : A ⟶ B`, whose converse is no parameter) has none. -/
 def convOf (o : Once) : Option (Lean.Name × Res) :=
-  if o.tst then none else match o.res with
+  let dem := o.res.2.2.dem && o.forms.zipIdx.any fun (f, i) => f == some false && o.res.2.2.fv.contains (o.gen.length + i)
+  if o.tst || dem then none else match o.res with
     | ⟨A, B, t⟩ => (convTm t).toOption.map fun u => (o.const ++ `conv, ⟨B, A, u⟩)
 
 /-- What a program reads: its closed definitions, its prints (text and term), its checks, its objects, and its
@@ -292,7 +295,7 @@ def once (env : Env) (p : Pos) (n : String) (qs : List Param) (e : Expr) (ty : O
     -- a family that does not build whole (its index has no universe) builds keyed, run on the (key, source) pairs
     let kq := match r with | .fam q i a b => some (keyed i q a b) | .rel .. => none
     let mk (res : Res) (tst kf : Bool) : Once × List Once :=
-      ({ key := k, const := c, gen, params := os, res, tst, kf }, st.specs)
+      ({ key := k, const := c, gen, params := os, forms := fs.map (·.1), res, tst, kf }, st.specs)
     -- a term whose rows do not fit their objects (`primsFit`) does not build
     let fits (x : Except Err Res) : EM (Except Err Res) := do
       if let .ok ⟨A, B, t⟩ := x then unless ← primsFit t do
@@ -340,6 +343,9 @@ def callDef (env : Env) (dp : Pos) (n : String) (qs : List Param) (e : Expr) (ty
       let mut ix : Array OTy := #[]
       let mut fs : List Form := []
       let mut xs : List (Pre × Bool) := []
+      -- the forms with each argument that needs keys passed on demand (`fsL`, `xsL`): tried first, see below
+      let mut fsL : List Form := []
+      let mut xsL : List (Pre × Bool) := []
       for (b, j?) in bs do
         let (x, a, a') := b.plain
         -- an argument whose objects only the use's context solves, after this call returns, has no form yet: the
@@ -350,19 +356,25 @@ def callDef (env : Env) (dp : Pos) (n : String) (qs : List Param) (e : Expr) (ty
         -- the first form the argument (a family: its relation from the index) builds in: closed, run on demand,
         -- tested on pairs; else closed, whose build reports why
         let st ← get; let mc ← Lean.getMCtx
+        let bx := build st.objs mc p x
         let f : Option Bool :=
           if (build st.objs mc p (Pre.close p x a why)).toOption.isSome then none
-          else if (build st.objs mc p x).toOption.isSome then some false
+          else if bx.toOption.isSome then some false
           else if (test st.objs mc p x).toOption.isSome then some true else none
         fs := fs ++ [(f, k?)]; xs := xs ++ [(if f.isNone then Pre.close p x a why else x, f == some true)]
+        -- closed, an argument that needs keys would be read on its source's whole universe (`closeRes`); on demand it
+        -- runs bounded by what the body composes it with, as the inlined body runs it
+        let fl := match bx with | .ok ⟨_, _, t⟩ => if t.dem then some false else f | .error _ => f
+        fsL := fsL ++ [(fl, k?)]; xsL := xsL ++ [(if fl.isNone then Pre.close p x a why else x, fl == some true)]
       let some us := vs.mapM (m.lookup ·) | throw ⟨p, s!"internal: `{c}` has an object variable no type names"⟩
       -- the variables this call puts an unbounded number object at: the constant is built at them (`once`); an
       -- object still open here stays open in the call, so `build` knows the constant did not see it (`.call`)
       let mc ← Lean.getMCtx; let objs := (← get).objs
       let us := us.map (zonk mc)
       let nb := us.map (unbounded objs)
-      let key := formKey c fs nb
-      let o? ← match calls key, (← get).specs.find? (·.key == key) with
+      let get? (fs : List Form) : M (Option Once) := do
+        let key := formKey c fs nb
+        match calls key, (← get).specs.find? (·.key == key) with
         | some o, _ | none, some o => pure (some o)
         | none, none => do
           let k := if c.getPrefix == emitter then key else emitter ++ key
@@ -372,7 +384,13 @@ def callDef (env : Env) (dp : Pos) (n : String) (qs : List Param) (e : Expr) (ty
           match ← (once env dp n qs e ty vs key k fs nb (← get).specs).run with
           | .ok (o, specs) => modify (fun st => { st with specs := specs ++ [o] }); pure (some o)
           | .error _ => pure none
+      -- the arguments that need keys on demand where the body builds so (it composes them with what bounds them),
+      -- else closed on their sources' universes, where a body that reads them whole needs them
+      let (o?, ys) ← if fsL == fs then pure (← get? fs, xs) else match ← get? fsL with
+        | some o => pure (some o, xsL)
+        | none => pure (← get? fs, xs)
       let some o := o? | return r
+      xs := ys
       let { const := k, vars := fl, tst, kf } := sigOf o
       let (ks, t, cv) := (o.binds, o.res, convOf o)
       let us := us ++ ix.toList

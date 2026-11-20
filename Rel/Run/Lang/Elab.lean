@@ -285,6 +285,8 @@ structure Once where
   gen : List Bool
   /-- Its parameters' objects and demand bits as the constant takes them (the variables from `n` on). -/
   params : List (Obj × Obj × Bool)
+  /-- Its parameters' forms (`Form`'s first part): `convOf` reads which run on demand. -/
+  forms : List (Option Bool)
   /-- Its body. -/
   res : Res
   /-- Whether that body is its pair test (it builds no relation, §a). -/
@@ -412,6 +414,12 @@ def settleNil (one : OTy) (p : Pos) (x : Pre) : M Unit := x.nilSrcs.forM fun a =
 partial def Pre.occ (k : Nat) : Pre → Option Pos
   | .var p j _ _ _ => if j == k then some p else none
   | x => x.parts.findSome? (·.1.occ k)
+
+/-- Whether `x` reads a parameter run on demand (`Form` `some false`), its argument at a call or a definition's
+    expansion included. Its `Tm.var true k` is no converse of itself (`convTm` takes a variable for a pair test's). -/
+partial def Pre.onDemand : Pre → Bool
+  | .var _ _ _ _ (some false) => true
+  | x => (x.traverse (m := StateM Bool) pure (fun _ y => do modify (· || y.onDemand); pure y) |>.run false).2
 
 /-- The first occurrence of `X`, the variable `k` of `fx` (`μX`, `νX`), where the body is not monotonic in it:
     under an operator that is not, or under an odd number of antitone places, `why` the last of them. -/
@@ -1493,6 +1501,12 @@ def convProj {A₁ A₂ B : Obj} (t : Tm (.prod A₁ A₂) B) : Except String (P
 
 end
 
+/-- `convTm t`, `t` built from `q`: a `t` on demand reading a parameter run on demand has none, since `convTm` takes
+    a variable for a pair test's, its own converse, and such a parameter `R : A ⟶ B` is not (`Pre.onDemand`); a
+    closed `t` is conversed whole. -/
+def convPre {A B : Obj} (q : Pre) (t : Tm A B) : Except String (Tm B A) :=
+  if t.dem && q.onDemand then throw "a parameter run on demand" else convTm t
+
 /-- A pair test: `τ(R) : A×B ⟶ A×B`, the coreflexive on the pairs `(a,b)` in demand with `a R b`. -/
 abbrev Cor := (A : Obj) × (B : Obj) × Tm (.prod A B) (.prod A B)
 
@@ -1668,7 +1682,7 @@ def build : Pre → Except Err Res
   | .conv (.close _ (.conv (.close _ q _ _)) _ _) => build q
   | .conv (.close pos q a _) => do
     let ⟨A, B, t⟩ ← build q
-    match convTm t with
+    match convPre q t with
     | .ok u => pure ⟨B, A, u⟩
     | .error leaf => do
       let U ← uniTm objs mc dp pos a A s!"the converse of {leaf} does not run on demand, so R° reads R whole"
@@ -1865,7 +1879,7 @@ def test (p : Pre) : Except Err Cor :=
         let c ← test r; let ⟨_, B, _⟩ := c
         pure ⟨A, B, .dom (.comp (.pair (.comp .outl t) .outr) (← corAt dp M B c))⟩
       | .error _ => match build r with
-        | .ok ⟨M, B, u⟩ => match convTm u with
+        | .ok ⟨M, B, u⟩ => match convPre r u with
           | .ok v => do
             let c ← test q; let ⟨A, _, _⟩ := c
             pure ⟨A, B, .dom (.comp (.pair .outl (.comp .outr v)) (← corAt dp A M c))⟩
@@ -1880,7 +1894,7 @@ def test (p : Pre) : Except Err Cor :=
     -- `R\S`, `R : A ⟶ B` with `R°` run on the `b`s, `S : A ⟶ C` tested: `τ = 𝟙 − dom(⟨π₁R°,π₂⟩(𝟙 − τ(S)))`
     | .ldiv _ (.close _ q _ _) (.close _ r _ _) _ _ => do
       let ⟨A, B, t⟩ ← build q
-      match convTm t with
+      match convPre q t with
       | .ok v => do
         let c ← test r; let ⟨_, C, _⟩ := c
         pure ⟨B, C, .diff .id (.dom (.comp (.pair (.comp .outl v) .outr) (.diff .id (← corAt dp A C c))))⟩

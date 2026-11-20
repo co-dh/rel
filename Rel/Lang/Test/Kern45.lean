@@ -110,5 +110,23 @@ rel_program sumFold where
 #guard ["le", "a1", "ms", "sm", "es"].all fun d => ((get kernT45.expanded d .long .long).map (·.n.toNat != 0)) == some true
 #guard ((get kernT45.expanded "th" .long (.arr .long)).map (·.n.toNat != 0)) == some true
 
+/-! `thin` reads its test on the diagonal (`thinDen`: `TQ (b,c) (b,c)`), so a `Q` that is not coreflexive counts
+    only at its diagonal. `qn` has `(2,1) ↦ (2,1)` and `(1,2) ↦ (2,1)`: on the diagonal `2` beats `1` strictly
+    (`(1,2) ↦ (1,2)` is absent), and `(1,2) ↦ (2,1)` counts for nothing. Worked by hand on `x`: `3 1 2` keeps `2 3`,
+    `1 2` keeps `2`, `[]` keeps `[]`. A reading by domain would keep `1 2 3` and `1 2`; `Q(D) − dom(swap)` on pairs
+    would keep `1 3` and `[1]`. -/
+rel_program thinDiag where
+    obj N = 0…5
+    x : N ⟶ [N] ≜ {(1,3 1 2),(2,[]),(3,1 2),(4,1 2)}
+    qn : N×N ⟶ N×N ≜ {((1,2),(2,1)),((2,1),(2,1))}
+
+#guard thinDiag.ok
+#guard (do
+    let X ← get thinDiag.expanded "x" .long (.arr .long)
+    let Q ← get thinDiag.expanded "qn" (.prod .long .long) (.prod .long .long)
+    let l := ((Tab.thin (fun _ => .ok Q) X.val).toOption.map Tab.toList).getD []
+    let e : List ((Obj.arr .long).El × (Obj.arr .long).El) := [([3, 1, 2], [2, 3]), ([], []), ([1, 2], [2])]
+    pure (e.all (l.contains ·) && l.all (e.contains ·))) == some true
+
 
 end Rel.Lang.Test

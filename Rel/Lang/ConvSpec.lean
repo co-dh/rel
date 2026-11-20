@@ -233,9 +233,14 @@ theorem convTm_den (ρ : Val) : ∀ {A B : Obj} (t : Tm A B), t.ConvOK ρ →
           rw [Proj.den_pre, hs, (ihR hok.1).2 _ _ rfl x hR]; exact (recip_comp' _ _).symm
   | join R S ihR ihS | diff R S ihR ihS =>
     refine fun hok => ⟨fun u hu => ?_, by noproj⟩
-    by_cases hd : (R.dem || S.dem) = false
-    · exact conv_false_den ρ u hu hd
-    first | rw [convTm.eq_def, if_neg (show ¬ (Tm.join R S).dem = false from hd)] at hu | rw [convTm.eq_def, if_neg (show ¬ (Tm.diff R S).dem = false from hd)] at hu
+    -- `join` needs keys where either operand does, `diff` where `R` does (`Tm.dem`): the alternative of `hu`'s term
+    first
+      | (by_cases hd : (Tm.join R S).dem = false
+         · exact conv_false_den ρ u hu hd
+         rw [convTm.eq_def, if_neg hd] at hu)
+      | (by_cases hd : (Tm.diff R S).dem = false
+         · exact conv_false_den ρ u hu hd
+         rw [convTm.eq_def, if_neg hd] at hu)
     cases hR : convTm R with
     | error l => simp only [hR] at hu; cases hu
     | ok r =>
@@ -648,9 +653,13 @@ theorem convTm_instObj_den (σ : List Obj) (ρ : Val) : ∀ {A B : Obj} (t : Tm 
     simp only [Tm.instObj, bind_ok_iff, pure_ok_iff] at ht
     obtain ⟨R', hR', S', hS', rfl⟩ := ht
     refine ⟨fun u u' hu hu' => ?_, by noproj'⟩
-    by_cases hd : (R.dem || S.dem) = false
-    · exact inst_false_den σ ρ hd hu hu' ht0
-    first | rw [convTm.eq_def, if_neg (show ¬ (Tm.join R S).dem = false from hd)] at hu | rw [convTm.eq_def, if_neg (show ¬ (Tm.diff R S).dem = false from hd)] at hu
+    first
+      | (by_cases hd : (Tm.join R S).dem = false
+         · exact inst_false_den σ ρ hd hu hu' ht0
+         rw [convTm.eq_def, if_neg hd] at hu)
+      | (by_cases hd : (Tm.diff R S).dem = false
+         · exact inst_false_den σ ρ hd hu hu' ht0
+         rw [convTm.eq_def, if_neg hd] at hu)
     cases hR : convTm R with
     | error l => simp only [hR] at hu; cases hu
     | ok r =>

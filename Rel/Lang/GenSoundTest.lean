@@ -1,56 +1,6 @@
 import Rel.Lang.GenSound
 import Rel.Run.Lang.Embed
-import Rel.Programs.Blocks
-import Rel.Programs.Chess
-import Rel.Programs.Circuit
-import Rel.Programs.CSP
-import Rel.Programs.Detab
-import Rel.Programs.Edit
-import Rel.Programs.JobShop
-import Rel.Programs.Knapsack
-import Rel.Programs.Mss
-import Rel.Programs.Party
-import Rel.Programs.Prelude
-import Rel.Programs.Quicksort
-import Rel.Programs.Selsort
-import Rel.Programs.SudokuAC
-import Rel.Programs.SudokuPC
-import Rel.Programs.SudokuPC9
-import Rel.Programs.Wumpus
-import Rel.Programs.Frame
-import Rel.Programs.FrameGroup
-import Rel.Programs.FrameJoin
--- the test modules holding a `rel_program`, as `test/TestCompile.lean` imports them
-import Rel.Lang.TestAsc
-import Rel.Lang.TestDemand
-import Rel.Lang.TestFrame
-import Rel.Lang.TestFrameCols
-import Rel.Lang.TestFrameGroup
-import Rel.Lang.TestFrameJoin
-import Rel.Lang.TestFrameNull
-import Rel.Lang.TestFramePos
-import Rel.Lang.TestFrameScale
-import Rel.Lang.TestFrameUnbounded
-import Rel.Lang.TestGenericN
-import Rel.Lang.TestNative
-import Rel.Lang.TestPositions
-import Rel.Lang.TestSchema
-import Rel.Lang.TestSum
-import Rel.Lang.TestUnbounded
-import Rel.Lang.TestArcs
-import Rel.Lang.TestChess
-import Rel.Lang.TestGroups
-import Rel.Lang.EmbedTest
-import Rel.Lang.ModuleTest
-import Rel.Lang.Test
-import Rel.Lang.TestMss
-import Rel.Lang.TestWumpus
-import Rel.Lang.TestSelsort
-import Rel.Lang.TestKnapsack
-import Rel.Lang.TestCircuit
-import Rel.Lang.TestHylo
-import Rel.Lang.TestDetab
-import Rel.Lang.TestEdit
+import Rel.Lang.AllPrograms
 
 /-! `Tm.gen_sound` is not vacuous: each registered program re-read (`Expand.read`, at the homes and scope the
     registry recorded), the definitions with no `Tm.gap` node counted, and four of them, of 8 to 431 nodes, required
@@ -120,7 +70,7 @@ run_cmd do
 /-- Two modules' registrations of the keys `j` and `k`, as `a.*` and `b.*`: each `k` calls its own module's `j`. -/
 def twice (k' : Tm .long .long) : Expand.Registry :=
   let o (k c : Name) (t : Tm .long .long) : Once :=
-    { key := k, const := c, gen := [], params := [], res := ⟨_, _, t⟩, tst := false, kf := false }
+    { key := k, const := c, gen := [], params := [], forms := [], res := ⟨_, _, t⟩, tst := false, kf := false }
   [.call `j (o `j `a.j .id), .call `k (o `k `a.k (.call [] `a.j [] .id)),
    .call `j (o `j `b.j .id), .call `k (o `k `b.k k')].foldl Expand.Registry.add {}
 

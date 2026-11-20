@@ -1705,24 +1705,29 @@ theorem meetV_law {R S : Rel A B} (wR : R.Wf) (wS : S.Wf) {K : Known A B} {t : T
 theorem meetOn_sound {K : Known A B} {T S : Rel A B} {P Q : Core.Rel A.El B.El} (wT : T.Wf)
     (eT : ∀ r, T.runE {} = .ok r → Agrees K (rep r) P) (wS : S.Wf) (hS : ∀ K, S.Reps K Q) :
     ∀ t, (meetOn K T S).runE K = .ok t → Agrees K (rep t) (P ∩ Q) := by
-  intro t h; unfold meetOn at h; split at h
-  · rename_i r0
-    split at h
-    · rename_i p hp
-      obtain ⟨r, s, hr, hs, e⟩ := meetV_law (R := .tab (.ok p.1)) trivial (wS.force p.2) h
-      obtain rfl := Except.ok.inj hr
-      obtain ⟨hu, hK⟩ := bound_spec hp
-      have er := eT r0 rfl
-      have es := (reps_iff _ _ _).1 (hS p.2) s ((force_runE S p.2 {}).symm.trans hs)
-      intro x y hx hy
-      refine (e x y).trans ⟨fun ⟨a, b⟩ => ⟨(er x y hx hy).1 ((hu x y hx hy).1 a),
-        (es x y (hK x y a).1 (hK x y a).2).1 b⟩, fun ⟨a, b⟩ => ?_⟩
-      have a' := (hu x y hx hy).2 ((er x y hx hy).2 a)
-      exact ⟨a', (es x y (hK x y a').1 (hK x y a').2).2 b⟩
-    · nomatch h
-  · obtain ⟨r, s, hr, hs, e⟩ := meetV_law wT (wS.force K) h
+  intro t h
+  have fb : (meetV T (S.force K)).runE K = .ok t → Agrees K (rep t) (P ∩ Q) := fun h => by
+    obtain ⟨r, s, hr, hs, e⟩ := meetV_law wT (wS.force K) h
     have es := (reps_iff _ _ _).1 (hS K) s ((force_runE S K {}).symm.trans hs)
     exact fun x y hx hy => (e x y).trans (and_congr (eT r hr x y hx hy) (es x y hx hy))
+  unfold meetOn at h; split at h
+  · exact fb h
+  · split at h
+    · rename_i r0 h0
+      split at h
+      · rename_i p hp
+        obtain ⟨r, s, hr, hs, e⟩ := meetV_law (R := .tab (.ok p.1)) trivial (wS.force p.2) h
+        obtain rfl := Except.ok.inj hr
+        obtain ⟨hu, hK⟩ := bound_spec hp
+        have er := eT r0 h0
+        have es := (reps_iff _ _ _).1 (hS p.2) s ((force_runE S p.2 {}).symm.trans hs)
+        intro x y hx hy
+        refine (e x y).trans ⟨fun ⟨a, b⟩ => ⟨(er x y hx hy).1 ((hu x y hx hy).1 a),
+          (es x y (hK x y a).1 (hK x y a).2).1 b⟩, fun ⟨a, b⟩ => ?_⟩
+        have a' := (hu x y hx hy).2 ((er x y hx hy).2 a)
+        exact ⟨a', (es x y (hK x y a').1 (hK x y a').2).2 b⟩
+      · nomatch h
+    · exact fb h
 
 theorem meetK_sound {R S : Rel A B} {X Y : Core.Rel A.El B.El} (hR : ∀ K, R.Reps K X) (hS : ∀ K, S.Reps K Y)
     (wR : R.Wf) (wS : S.Wf) (K : Known A B) : ∀ t, (meetK K R S).runE K = .ok t → Agrees K (rep t) (X ∩ Y) := by
@@ -1755,10 +1760,12 @@ theorem meetV_wf (R S : Rel A B) : (meetV R S).Wf := by unfold meetV; split <;> 
 
 theorem meetOn_wf (K : Known A B) (T S : Rel A B) : (meetOn K T S).Wf := by
   unfold meetOn; split
-  · split
-    · exact meetV_wf _ _
-    · trivial
   · exact meetV_wf _ _
+  · split
+    · split
+      · exact meetV_wf _ _
+      · trivial
+    · exact meetV_wf _ _
 
 theorem meetK_wf (K : Known A B) (R S : Rel A B) : (meetK K R S).Wf := by
   unfold meetK; split
