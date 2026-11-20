@@ -563,6 +563,12 @@ Diff table 的「状态」列：✅ 后面是完成它的步骤；🔄 是部分
         - owner 定的顺序（C）：先做 architecture §4 已定的实现改动（`∩ − \` 分段 `scan`、`\` 不物化 join、
           `ldiv(tab, bits)` 在 bit matrix 上算、`μ` semi-naive），差分测试与回归固定保护；`ldiv meet diff mu fold` 与
           bit matrix 路径的证明（T11e 余项、`ReadsBack`）等实现稳定后再做。T11e5 只做 `arith`。
+        - 2026-11-20 03:23，master 0229322：**check-62 全绿**（476/2、478/478，235 / 235）。check-61 在 cbfe5a4 失败：registry 的
+          冲突检查（d2b163a）在真实程序上触发——`Rel.Lang.Test.given` 与 `Rel.Lang.Test.orders` 互不 import，各登记
+          `Rel.Programs.blocks.R.form.4`，import 两者的测试模块全部报错；s5conv 报告的"58 个不同 key、0 重复"只查了它构建的
+          模块。d2b163a 已 revert（`Registry.clashes` 随之去掉）；`callTm_convOK` 保留。未解决：同一 key 两个常量
+          （`emitter ++ key`），`lookup` 静默取后登记的，"同 key 同 body"仍未检查；方向是让常量名不依赖登记它的模块（会改
+          `compile-diff.json` 的常量名，先不动）。下面 03:01 一条里关于 `Registry.clashes`/`call?` 的内容作废。
         - 2026-11-20 03:01，master cbfe5a4（check-61 在跑；check-60 在 66bb2cc 全绿，476/2、478/478）：s5conv 合入，235 / 235。
           `callCv` 的 `ConvOK` 前提由构造推出（`callTm_convOK`、`convTm_instObj_den`；前提换成实例化后 body 的结构性 `ConvOK`；
           没有字面的"`instObj` 与 `den` 交换"引理——两边元素类型不同）。registry：key = `formKey c fs`；两个互不 import 的模块
