@@ -358,20 +358,26 @@ theorem Arr.concat_valid {t : QAtomicType} {n₁ n₂ n : USize} {off : Enc} {x 
   rename_i b hb
   exact ⟨kscatter_valid ha, kscatter_valid hb⟩
 
-/-- **`Arr.pos n` read as positions**: row `c` clamped into `n` rows is `c`, `n` at most `2^63`. -/
-theorem Arr.pos_clamp {n : USize} {P : Arr .i64 n} (h : Arr.pos n = .ok P) (hn : n.toNat ≤ 2 ^ 63) (c : Fin n.toNat)
-    (h0 : 0 < n.toNat) : clampFin (P.get c) n.toNat h0 = c := by
+/-- **`Arr.pos n` holds the positions**: row `c` is `c`. -/
+theorem Arr.pos_get {n : USize} {P : Arr .i64 n} (h : Arr.pos n = .ok P) (c : Fin n.toNat) :
+    P.get c = c.1.toUInt64.toInt64 := by
   unfold Arr.pos at h
   split at h
   · rename_i o ho
     cases h
     rw [Arr.get_i64]
-    show clampFin ((raw .i64 n o)[c.1]?.getD 0).toInt64 _ _ = _
-    have hc : (c.1.toUInt64).toNat = c.1 := by
-      have := c.2; have := n.toNat_lt_size; have := USize.size_le; simp; omega
+    show ((raw .i64 n o)[c.1]?.getD 0).toInt64 = _
     rw [shiftCol_raw ho c.1 c.2, UInt64.add_zero]
-    exact (clampFin_word h0 (by rw [hc]; exact c.2) hn).trans (Fin.ext hc)
+    rfl
   · cases h
+
+/-- **`Arr.pos n` read as positions**: row `c` clamped into `n` rows is `c`, `n` at most `2^63`. -/
+theorem Arr.pos_clamp {n : USize} {P : Arr .i64 n} (h : Arr.pos n = .ok P) (hn : n.toNat ≤ 2 ^ 63) (c : Fin n.toNat)
+    (h0 : 0 < n.toNat) : clampFin (P.get c) n.toNat h0 = c := by
+  have hc : (c.1.toUInt64).toNat = c.1 := by
+    have := c.2; have := n.toNat_lt_size; have := USize.size_le; simp; omega
+  rw [Arr.pos_get h c]
+  exact (clampFin_word h0 (by rw [hc]; exact c.2) hn).trans (Fin.ext hc)
 
 /-- **A `tagCount` of `0`**: no row is tagged into the summand `s`. -/
 theorem tagCount_zero {n : USize} {s : Bool} {tag : Arr .u1 n} (h : tagCount n s tag = .ok 0)
