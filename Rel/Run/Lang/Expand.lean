@@ -383,10 +383,11 @@ def callDef (env : Env) (dp : Pos) (n : String) (qs : List Param) (e : Expr) (ty
           | .error _ => pure none
       -- the arguments that need keys on demand where the body builds so (it composes them with what bounds them),
       -- else closed on their sources' universes, where a body that reads them whole needs them
-      let (o?, xs) ← if fsL == fs then pure (← get? fs, xs) else match ← get? fsL with
+      let (o?, ys) ← if fsL == fs then pure (← get? fs, xs) else match ← get? fsL with
         | some o => pure (some o, xsL)
         | none => pure (← get? fs, xs)
       let some o := o? | return r
+      xs := ys
       let { const := k, vars := fl, tst, kf } := sigOf o
       let (ks, t, cv) := (o.binds, o.res, convOf o)
       let us := us ++ ix.toList

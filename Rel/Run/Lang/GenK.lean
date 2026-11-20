@@ -140,13 +140,13 @@ def meetK {A B : Obj} (K : Known A B) (R S : Rel A B) : Rel A B := match R, S wi
   | .lazy _, S => meetOn K S R
   | R, S => meetOn K R S
 
-def meet (A B : Obj) (d e : Bool) (R : Fn d A B) (S : Fn e A B) : Fn (d || e) A B := match R, S with
+def meet (A B : Obj) (d e : Bool) (R : Fn d A B) (S : Fn e A B) : Fn (d && e) A B := match R, S with
   | .lazy _, _ | _, .lazy _ => .lazy fun K => meetK K R S
   | R, S => meetV R S
 def join (A B : Obj) (d e : Bool) (R : Fn d A B) (S : Fn e A B) : Fn (d || e) A B :=
   lift2 Tab.union (fun K => K) (fun K => K) R S
 /-- `R − S`: a lazy `S` is needed only on `R`'s pairs, so it runs knowing `R`'s sides (`bound`). -/
-def diff (A B : Obj) (d e : Bool) (R : Fn d A B) (S : Fn e A B) : Fn (d || e) A B := match S with
+def diff (A B : Obj) (d e : Bool) (R : Fn d A B) (S : Fn e A B) : Fn d A B := match S with
   | .lazy _ => .lazy fun K => .tab do let p ← bound K (← R.runE K); Tab.diff p.1 (← S.runE p.2)
   | S => lift2 Tab.diff (fun K => K) (fun K => K) R S
 /-- A coreflexive's two sides are one value set, so either side the context knows bounds `R`'s side. -/
