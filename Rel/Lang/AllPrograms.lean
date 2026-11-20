@@ -36,6 +36,7 @@ import Rel.Lang.TestFrameGroup
 import Rel.Lang.TestFrameJoin
 import Rel.Lang.TestFrameNull
 import Rel.Lang.TestFramePos
+import Rel.Lang.TestFrameQuery
 import Rel.Lang.TestFrameScale
 import Rel.Lang.TestFrameSchema
 import Rel.Lang.TestFrameUnbounded
