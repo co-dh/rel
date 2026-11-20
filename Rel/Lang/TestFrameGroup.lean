@@ -42,7 +42,6 @@ rel_program frameGroupT where
     check median(π₂, take({(∗,5)}, x)) = {(∗,5)}
     check median(π₂, take({(∗,4)}, x)) = {(∗,4)}
 
-#eval frameGroupT.failures.map toString
 #guard frameGroupT.ok
 
 end Rel.Lang.TestFrameGroup

@@ -38,7 +38,6 @@ rel_program frameJoinT where
     check pivotLong(π₁, {(∗,a)}, π₂ π₁, {(∗,b)}, π₂ π₂, t) =
       {(0,(A,(a,1))),(1,(B,(a,3))),(2,(C,(a,5))),(3,(A,(b,2))),(4,(B,(b,4))),(5,(C,(b,6)))}
 
-#eval frameJoinT.failures.map toString
 #guard frameJoinT.ok
 
 end Rel.Lang.TestFrameJoin
