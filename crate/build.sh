@@ -44,8 +44,9 @@ if [ "${1:-}" = syms ]; then
     sh "$here/build.sh" "$CARGO_TARGET_DIR/relk.syms.o"
     echo "build.sh syms: no $eh in the extern_lib object"
     # a crate that links beside the rel package's object (which defines every qlean_*) must define none
-    # no export is a root here, so every item is dead: the default build above, with -D warnings, is the dead-code gate
-    RUSTFLAGS="-C target-cpu=native" cargo build --release --lib --no-default-features
+    # no export is a root here, so every item is dead: the default build above, with -D warnings, is the dead-code gate.
+    # Every other warning (an import or variable only this configuration leaves unused) still fails here.
+    RUSTFLAGS="-C target-cpu=native -D warnings -A dead_code" cargo build --release --lib --no-default-features
     nm -g --defined-only --format=just-symbols "$lib" | { grep '^qlean_' || true; } | sort -u > "$CARGO_TARGET_DIR/relk.nofeat"
     [ ! -s "$CARGO_TARGET_DIR/relk.nofeat" ] || { echo "build.sh syms: --no-default-features still defines qlean_*:" >&2; cat "$CARGO_TARGET_DIR/relk.nofeat" >&2; exit 1; }
     echo "build.sh syms: --no-default-features defines 0 qlean_*"

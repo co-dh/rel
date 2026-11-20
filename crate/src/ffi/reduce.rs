@@ -2,9 +2,9 @@
 //! Each unboxes its arguments, allocates the answer and makes one call into `reduce.rs`, which owns the loops and the
 //! split over the pool (`c::pool()`). Lean passes `Int64` as C's `uint64_t` and `Bool` as `uint8_t`.
 #![deny(unsafe_code)]
-use crate::lean::{B, export};
+use crate::lean::export;
 #[cfg(all(feature = "ffi", not(any(test, feature = "std"))))]
-use {crate::lean::O, crate::{c, reduce}, alloc::{format, string::String, vec::Vec},
+use {crate::lean::{B, O}, crate::{c, reduce}, alloc::{format, string::String, vec::Vec},
      crate::{exports::scatter::{blocks_view, except, for_view}, ffi::{Form, Sink}}};
 
 

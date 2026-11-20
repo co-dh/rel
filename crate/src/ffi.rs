@@ -445,7 +445,7 @@ mod sink_tests {
     use super::{Form, Sink};
     use crate::blocks::Blocks;
     use crate::lean::{self, Object};
-    use crate::{coc, cocops, ew, ids, pod};
+    use crate::{coc, pod};
     // the Lean runtime's allocation entries, which `cargo test` does not link: `malloc`, and nothing is freed
     unsafe extern "C" { fn malloc(n: usize) -> *mut u8; }
     #[unsafe(no_mangle)] extern "C" fn lean_alloc_object(sz: usize) -> *mut Object { unsafe { malloc(sz).cast() } }
@@ -453,9 +453,45 @@ mod sink_tests {
     #[unsafe(no_mangle)] extern "C" fn lean_dec_ref_cold(_: *mut Object) {}
     #[unsafe(no_mangle)] extern "C" fn lean_inc_heartbeat() {}
     #[unsafe(no_mangle)] extern "C" fn lean_internal_panic_out_of_memory() -> ! { panic!("qlean sink_tests: out of memory") }
-    // every producer of a column writes the bytes the dense encoder writes for its elements: a fill (`coc_scale`'s,
-    // `ew::mon_fill`), a fill narrowed to 2 and 4 bytes, and an encoded column read back as a `Blocks` source
+    fn pair(o: &lean::O) -> [alloc::vec::Vec<u8>; 2] { [0, 1].map(|i| o.borrow().field(i).bytes().to_vec()) }
+    /// `x` with every 97th element far outside its block's range, so the writer leaves patches
+    fn col(n: usize) -> alloc::vec::Vec<i64> { (0..n as i64).map(|i| if i % 97 == 5 { i * 1_000_003 } else { 1000 + (i * 7919) % 8000 }).collect() }
+    // every producer of a column writes the bytes the dense encoder writes for its elements: a fill narrowed to 2, 4 and
+    // 8 bytes, and an encoded column read back as a `Blocks` source
+    #[test] fn producers_write_what_the_dense_encoder_writes() {
+        for n in [0usize, 1, 1000, 2500] {
+            let x = col(n);
+            let dense = |v: &[i64], w: usize| {
+                let b: alloc::vec::Vec<u8> = v.iter().flat_map(|e| e.to_le_bytes()[..w].to_vec()).collect();
+                pair(&Sink::new(n, w, Form::For).answer(&Blocks::dense(&b, w)))
+            };
+            let e = Sink::new(n, 8, Form::For).answer(&Blocks::dense(pod::bytes(&x), 8));
+            let [m, p] = pair(&e);
+            let c = coc::view(&m, &p, n).unwrap_or_else(|e| panic!("sink_tests: the sink's own column does not view: {e}"));
+            for w in [2, 4, 8] {
+                let fill = |buf: &mut [i64], i0: usize| buf.copy_from_slice(&x[i0..i0 + buf.len()]);
+                assert_eq!(pair(&Sink::new(n, w, Form::For).answer(&fill)), dense(&x, w), "fill at width {w}, n {n}");
+            }
+            assert_eq!(pair(&Sink::new(n, 8, Form::For).answer(&Blocks::from(c))), [m.clone(), p.clone()], "transcode, n {n}");
+        }
+    }
     // the size test answers exactly where the full encoding is not below the dense bytes, and ALP restores its floats
+    // (read back block by block through `Cocf::load_blk`)
+    #[test] fn shrinks_and_alp() {
+        let n = 3000;
+        let wide: alloc::vec::Vec<i64> = (0..n as i64).map(|i| i.wrapping_mul(0x1E37_79B9_7F4A_7C15)).collect();
+        assert!(Sink::new(n, 8, Form::For).write(&Blocks::dense(pod::bytes(&wide), 8), true).is_none());
+        let x = col(n);
+        let s = Sink::new(n, 8, Form::For).write(&Blocks::dense(pod::bytes(&x), 8), true).expect("sink_tests: a narrow column shrinks");
+        assert_eq!(pair(&s), pair(&Sink::new(n, 8, Form::For).answer(&Blocks::dense(pod::bytes(&x), 8))));
+        let f: alloc::vec::Vec<f64> = (0..n).map(|i| ((i * 7919) % 100000) as f64 / 100.0).collect();
+        let a = Sink::new(n, 8, Form::Alp).answer(&Blocks::dense(pod::bytes(&f), 8));
+        let (m, rest) = (a.borrow().field(0).bytes(), a.borrow().field(1));
+        let cf = crate::alp::Cocf::view(m, rest.field(0).bytes(), rest.field(1).bytes(), n).expect("sink_tests: the sink's ALP column views");
+        let mut got = alloc::vec![0u8; n * 8];
+        for b in 0..cf.c.meta.nblk { let (lo, nb) = (b * crate::BLK, (n - b * crate::BLK).min(crate::BLK)); cf.load_blk(b, nb, &mut got[lo * 8..(lo + nb) * 8]) }
+        assert_eq!(got, pod::bytes(&f));
+    }
     // `bools` against its rule: a mixed block width 1 with the bitmap as residuals, a uniform block width 0 at base 0 or 1
     // and no residual, the elements decoding back; uniform runs crossing block edges, a short last block, no element
     #[test] fn bools_is_u1_for() {

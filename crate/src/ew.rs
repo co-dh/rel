@@ -107,6 +107,14 @@ mod a46b {
 #[cfg(test)]
 mod a42 {
     use super::*;
+    // the live part of the deleted `floor_bounds` (its subject `floor_lane` is gone): `floor64` at the edges the lane met
+    #[test] fn floor64_edges() {
+        assert_eq!([floor64(-2.5), floor64(2.5), floor64(9.2e18), floor64(9.3e18), floor64(-9.3e18), floor64(-0.0), floor64(0.0)],
+                   [-3.0, 2.0, 9.2e18, 9.3e18, -9.3e18, -0.0, 0.0]);
+        assert!(floor64(f64::NAN).is_nan());
+        assert_eq!([floor64(f64::INFINITY), floor64(f64::NEG_INFINITY)], [f64::INFINITY, f64::NEG_INFINITY]);
+        assert!(floor64(-0.0).is_sign_negative());
+    }
 }
 #[cfg(test)]
 mod tests43 {

@@ -6,6 +6,7 @@ use crate::lean::{O, ctor, export, string};
 #[cfg(all(feature = "ffi", not(any(test, feature = "std"))))]
 use {alloc::format, crate::{blocks::Blocks, coc, lean::B, scatter}};
 
+#[cfg(all(feature = "ffi", not(any(test, feature = "std"))))]
 pub use crate::blocks::tag::{FOR, POS};
 
 /// `Kernel.foRWords what m e` as a block source: `pos` is the positions `0 .. m` (`Blocks::pos`), a `foR` is `for_view`'s

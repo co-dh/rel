@@ -1,9 +1,9 @@
 //! scan.rs's twelve Lean exports: the running scans, `avg`, `ema` and the moving-window family over a payload or an encoded
 //! column, each an answer sized by `crate::scan` and filled by it.
 #![deny(unsafe_code)]
-use crate::lean::{O, export};
+use crate::lean::export;
 #[cfg(all(feature = "ffi", not(any(test, feature = "std"))))]
-use {crate::lean::B, crate::scan};
+use {crate::lean::{B, O}, crate::scan};
 
 #[cfg(all(feature = "ffi", not(any(test, feature = "std"))))]
 use {crate::lean::{box_u64, boxed, ctor, string}, alloc::{string::String, vec::Vec}};
