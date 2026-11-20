@@ -225,7 +225,8 @@ def fnTy (t : Res) : Lean.Expr := g ``Gen.Fn #[bE t.2.2.dem, oE t.1, oE t.2.1]
 
 /-- The wrappers a row's constant runs under (`GenK.ofVals` …), tried in order. -/
 def primWrappers : List Lean.Name :=
-  [``GenK.ofVals, ``GenK.after, ``GenK.elems, ``GenK.testVals, ``GenK.testAfter, ``GenK.stepAfter, ``GenK.ofRel]
+  [``GenK.ofVals, ``GenK.after, ``GenK.elems, ``GenK.testVals, ``GenK.testAfter, ``GenK.stepAfter, ``GenK.ofRel,
+   ``GenK.onKeys]
 
 open Lean Meta in
 /-- `c` at fresh metavariables: those whose type `sel` picks are `hs` in order (each given with its type), and `ok`

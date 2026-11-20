@@ -259,6 +259,17 @@ theorem Prim.den_sumRow : Prim.den sumRow (.arr .long) .long [] = sumDen := by
         w = xs.foldr (· + ·) 0⟩ := rfl
   unfold Prim.den; rw [hf, ho]; dsimp only; rw [dif_pos ⟨rfl, rfl⟩]
 
+/-- `flatRow` at `I×A ⟶ B` given `R : I ⟶ A×B` is `flatDen`. -/
+theorem Prim.den_flatRow {I A B : Obj} (T : Den I (.prod A B)) :
+    Prim.den flatRow (.prod I A) B [⟨I, .prod A B, T⟩] = flatDen T := by
+  have ho : flatRow.objs (.prod I A) B = some [I, A, B] := by
+    simp [Prim.objs, flatRow, OExp.unify, Prim.vars, OExp.vars, List.eraseDups, List.eraseDupsBy,
+      List.eraseDupsBy.loop, List.lookup]
+  have hf : rowDens.find? (·.1.sym == flatRow.sym) = some ⟨RowCode.flat, fun σ =>
+      Sem.one (X := σ₁ σ) (Y := .prod (σ₂ σ) (σ.getD 2 .long)) flatDen⟩ := rfl
+  unfold Prim.den; rw [hf, ho]; dsimp only; rw [dif_pos ⟨rfl, rfl⟩]
+  simp only [Sem.one]; exact dif_pos ⟨rfl, rfl⟩
+
 /-- `F(U)` at `[ℕ] ⟶ [ℕ]`, `U` the coreflexive on `P`: the lists whose elements are all in `P`. -/
 theorem Prim.den_mapRow_corefl {TU : Den .long .long} {P : Int64 → Prop} (hU : ∀ x y, TU x y ↔ x = y ∧ P x)
     (xs ys : List Int64) :
@@ -287,13 +298,19 @@ theorem Prim.den_mapRow_corefl {TU : Den .long .long} {P : Int64 → Prop} (hU :
     source a run holds (`Short`): the count of a list of `2^63` elements or more wraps in the fused row, not in
     the definition. -/
 theorem Tm.dfnCut_den {A B : Obj} {d : Tm A B} (c : DfnCut d) (ρ : Val)
-    {P : Int64 → Prop} (hP : (∀ x, P x) ∨ InitSeg P) (hU₀ : ∀ x y, c.u₀.den ρ x y ↔ x = y ∧ P x)
-    (hU : ∀ x y, c.u.den ρ x y ↔ x = y ∧ P x) (x : A.El) (hx : Short A x) (w : B.El) :
+    {P : Int64 → Prop} (hP : (∀ x, P x) ∨ InitSeg P)
+    (hUs : ∀ u₀ u, c.uni = some (u₀, u) → (∀ x y, u₀.den ρ x y ↔ x = y ∧ P x) ∧ ∀ x y, u.den ρ x y ↔ x = y ∧ P x)
+    (x : A.El) (hx : Short A x) (w : B.El) :
     (d.den ρ x w ↔ c.cut.den ρ x w) ∧ ((∀ x, P x) → (d.den ρ x w ↔ c.fused.den ρ x w)) := by
   cases c with
+  | flat R =>
+    -- `⟨π₁R,π₂⟩dom(π₁π₁ ∩ π₂)π₁π₂` is `flatDen` (`Tm.flat_den`), the row's meaning at every object
+    have hd := congrFun (congrFun (Tm.flat_den ρ R) x) w
+    simp only [DfnCut.cut, DfnCut.fused, Tm.den, Tm.argDen, Prim.den_flatRow] at hd ⊢
+    exact ⟨hd.to_iff, fun _ => hd.to_iff⟩
   | length u₀ u =>
     -- `⦇[0, π₁ succ]⦈`: the counts `0…n` rise from `0`, so all are in `P` iff `n` is
-    dsimp only [DfnCut.u₀, DfnCut.u] at hU₀ hU
+    obtain ⟨hU₀, hU⟩ := hUs u₀ u rfl
     have hd := count_iff (zeroTm_den u₀ ρ hU₀) hU x hx w
     simp only [Tm.den, DfnCut.cut, DfnCut.fused, Prim.den_lengthRow]
     rw [hd]
@@ -308,7 +325,7 @@ theorem Tm.dfnCut_den {A B : Obj} {d : Tm A B} (c : DfnCut d) (ρ : Val)
     exact ⟨hc.2 hp, hw.symm⟩
   | sum u₀ u =>
     -- `⦇[0, plus]⦈ʳ`: the suffix sums of elements of `0…k` rise from `0` to the result, so all are in it
-    dsimp only [DfnCut.u₀, DfnCut.u] at hU₀ hU
+    obtain ⟨hU₀, hU⟩ := hUs u₀ u rfl
     simp only [Tm.den, Tm.argDen, DfnCut.cut, DfnCut.fused, Prim.den_sumRow]
     rw [foldrDen_start]
     simp only [zeroTm_den u₀ ρ hU₀]
@@ -350,13 +367,9 @@ theorem Tm.dfnCut_den {A B : Obj} {d : Tm A B} (c : DfnCut d) (ρ : Val)
       · intro hs
         exact ⟨0, ⟨rfl, h0⟩, (plus_iff hU h0 x w).2 ⟨fun _ _ => hall _, fun _ _ => hall _, hs⟩⟩
 
-/-- **Every row of `prims` with a definition is one `Tm.dfnCut?` reads back** (`lengthRow`, `sumRow`), whose
-    replacement `Tm.dfnCut_den` proves. The rows are enumerated from `prims`: a row given a `dfn` that is not one of
-    them fails here, named in the unsolved goal. -/
-theorem Prim.dfn_read : ∀ r ∈ prims, r.dfn.isSome → r = lengthRow ∨ r = sumRow := by
-  intro r hr hd
-  simp only [prims, List.mem_cons, List.not_mem_nil, or_false] at hr
-  repeat' (first | subst hr | (obtain rfl | hr := hr))
-  all_goals first | exact Or.inl rfl | exact Or.inr rfl | exact absurd hd (by decide)
+/-- **Every row of `dfns` is one `Tm.dfnCut?` reads back** (`lengthRow`, `sumRow`, `flatRow`: the rows of
+    `DfnCut`), whose replacement `Tm.dfnCut_den` proves. Enumerated over `dfns`: a row given a definition that is not
+    one of them fails here. -/
+theorem Prim.dfn_read : ∀ p ∈ dfns, p.1 = lengthRow.sym ∨ p.1 = sumRow.sym ∨ p.1 = flatRow.sym := by decide
 
 end Rel.Lang
