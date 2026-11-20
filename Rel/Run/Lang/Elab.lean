@@ -1785,7 +1785,13 @@ def build : Pre → Except Err Res
   -- a constant that is a pair test runs nowhere; `test` calls it
   | .call pos c _ _ _ _ _ _ _ _ _ true =>
     throw ⟨pos, s!"`{c}` is tested on the pairs it compares, not run: its constant is its pair test (§a)"⟩
-  | .call pos c us xs ts _ a b ks t cv false => do
+  | .call pos c us xs ts q a b ks t cv false => do
+    -- a constant built reading the universe of a variable this call puts an unbounded number object at (its object
+    -- unsolved when the call was made, `callDef`) chose its rows' forms (`.prim`) at a bounded one: the expansion
+    -- chooses them at the call's objects
+    let unb ← us.anyM fun (u, _, reads) => do
+      pure (reads && (← uniPart objs dp (zonk mc u) (← toObj objs mc dp u)) matches some .id)
+    if unb then return ← build q
     let A ← toObj objs mc dp a; let B ← toObj objs mc dp b
     pure ⟨A, B, ← callArgs pos c us xs ts (← callTm objs mc dp pos c us ks t cv A B)⟩
   -- the body read whole each round, on its source's universe when it needs keys

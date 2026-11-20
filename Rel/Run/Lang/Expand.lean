@@ -137,11 +137,13 @@ abbrev Chk := Pos × String × String × Bool × OTy × OTy × ((A : Obj) × (B 
 /-- The object variable of the family index class `i` at a call (§e): a name no declaration can write. -/
 def idxVar (i : Nat) : String := s!"ι#{i}"
 
-/-- The registry key of the constant of `c` at the argument forms `fs`: `c` itself when every argument is closed. -/
-def formKey (c : Lean.Name) (fs : List Form) : Lean.Name :=
-  if fs.all (· == (none, none)) then c
-  else fs.foldl (fun k (t, i) => .num k ((match t with | none => 0 | some false => 1 | some true => 2) +
-    3 * (match i with | some i => i + 1 | none => 0))) (c ++ `form)
+/-- The registry key of the constant of `c` at the argument forms `fs` and, per object variable, whether the call
+    puts an unbounded number object there (`nb`): `c` itself when every argument is closed and no variable is. -/
+def formKey (c : Lean.Name) (fs : List Form) (nb : List Bool := []) : Lean.Name :=
+  let k := if fs.all (· == (none, none)) then c
+    else fs.foldl (fun k (t, i) => .num k ((match t with | none => 0 | some false => 1 | some true => 2) +
+      3 * (match i with | some i => i + 1 | none => 0))) (c ++ `form)
+  if nb.any id then nb.foldl (fun k b => .num k b.toNat) (k ++ `num) else k
 
 /-- What a call reads of the constant `o` (`Sig`): the universes its body reads. -/
 def sigOf (o : Once) : Sig :=
@@ -276,13 +278,15 @@ partial def primsFit {A B : Obj} (t : Tm A B) : MetaM Bool := do
     an error. `k` its registry key, `c` its constant, `fs` its parameters' forms; with the constants built so far
     and on the way (`specs`). -/
 def once (env : Env) (p : Pos) (n : String) (qs : List Param) (e : Expr) (ty : OExp × OExp) (vs : List String)
-    (k c : Lean.Name) (fs : List Form) (specs : List Once) : EM (Once × List Once) := do
-  -- per variable: generic over its object, and given its universe
+    (k c : Lean.Name) (fs : List Form) (nb : List Bool) (specs : List Once) : EM (Once × List Once) := do
+  -- per variable: generic over its object, and given its universe; one the call puts an unbounded number object at
+  -- (`nb`) is one, its universe `𝟙`, so a row with a `dfn` there runs fused (`build`), as it does outside a body
   let run (fl : List (Bool × Bool)) : EM (Once × List Once) := do
     let objs := vs.zipIdx.map (fun (v, k) =>
       let (gen, uni) := fl.getD k (false, true)
       let obj := if gen then (varObj k).getD .long else .long
-      (v, ({ ty := .base v, uniVar := if uni then some k else none, obj } : ObjInfo))) ++ env.objs
+      let num := nb.getD k false
+      (v, ({ ty := .base v, uniVar := if uni && !num then some k else none, obj, num } : ObjInfo))) ++ env.objs
     let (os, r, st) ← elabOnce env p n qs e ty vs fs objs specs
     let (q, _, _) := r.plain
     let gen := fl.map (·.1)
@@ -353,7 +357,10 @@ def callDef (env : Env) (dp : Pos) (n : String) (qs : List Param) (e : Expr) (ty
           else if (test st.objs mc p x).toOption.isSome then some true else none
         fs := fs ++ [(f, k?)]; xs := xs ++ [(if f.isNone then Pre.close p x a why else x, f == some true)]
       let some us := vs.mapM (m.lookup ·) | throw ⟨p, s!"internal: `{c}` has an object variable no type names"⟩
-      let key := formKey c fs
+      -- the variables this call puts an unbounded number object at: the constant is built at them (`once`)
+      let mc ← Lean.getMCtx; let objs := (← get).objs
+      let nb := us.map fun u => match zonk mc u with | .base o => (objs.lookup o).any (·.num) | _ => false
+      let key := formKey c fs nb
       let o? ← match calls key, (← get).specs.find? (·.key == key) with
         | some o, _ | none, some o => pure (some o)
         | none, none => do
@@ -361,7 +368,7 @@ def callDef (env : Env) (dp : Pos) (n : String) (qs : List Param) (e : Expr) (ty
           let vs := vs ++ (List.range ix.size).map idxVar
           -- a body that does not build alone at these forms (a family it reads whole, which only the use's
           -- context keys, §e) is no constant: the use is the expansion, whose build reports any error in its words
-          match ← (once env dp n qs e ty vs key k fs (← get).specs).run with
+          match ← (once env dp n qs e ty vs key k fs nb (← get).specs).run with
           | .ok (o, specs) => modify (fun st => { st with specs := specs ++ [o] }); pure (some o)
           | .error _ => pure none
       let some o := o? | return r
@@ -497,7 +504,7 @@ def walk (prog : Program) (env : Env) (wrap : String → Def → Def) (own : Lea
   let mut mine : List (String × Def) := []
   for (env₀, p, n, qs, e, ty, vs, d) in pend do
     let c := Parse.constOf own n
-    let (o, sp) ← once { env₀ with defs := mine ++ env₀.defs } p n qs e ty vs c c (qs.map fun _ => (none, none)) specs
+    let (o, sp) ← once { env₀ with defs := mine ++ env₀.defs } p n qs e ty vs c c (qs.map fun _ => (none, none)) [] specs
     specs := sp ++ [o]
     mine := (n, wrap n (callDef env₀ p n qs e ty vs c emitter calls d)) :: mine
   pure (env, ds, pr, cs, specs)
