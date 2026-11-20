@@ -236,7 +236,10 @@ def prims : List Prim :=
    -- positions, numbers of `ℕ`, so it has no `dfn` until `rank` can be written and no use where `ℕ` has a universe
    { sym := "positions",
      sig := ([((.var {} "B", .var {} "B"), some false)], .list (.var {} "B"), .list (.var {} "ℕ")),
-     mono := false, aop := .error "AOP declares no positions of the elements of a list that pass a test" }]
+     mono := false, aop := .error "AOP declares no positions of the elements of a list that pass a test" },
+   -- `asc`: dataframe §3.1's `σ`, each list to its stable sort permutation; positions again, so no `dfn` (as above)
+   { sym := "asc", sig := ([], .list (.var {} "B"), .list (.var {} "ℕ")),
+     mono := false, aop := .error "AOP declares no sort permutation of a list" }]
 
 def Prim.find?(s : String) : Option Prim := prims.find? (·.sym == s)
 
