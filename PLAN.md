@@ -92,7 +92,7 @@ Size：S = 一步，少于 20 次 tool call；M = 一到三步；L = 多于三�
 | 9  | `Tm.Ax` 写成等式               | `Syn.lean:21-42`, `:131-148`          | 12 个 constructor，12 条等式            | S    | ✅ 1.1      |
 | 10 | refold 改名 hylo               | `Tm.lean:91`, `Gen.lean:267`          | 120 个名字含 "refold"                   | S    | ✅ 2.1      |
 | 11 | foldI 成为 definition          | `Tm.lean:68`, `Den.lean:98`           | owner 选 D：留 ctor，证 `foldI_sound`   | M    | ✅ 4.3      |
-| 12 | flat 成为 definition           | `Pre.flat`, `Elab.lean:262`（p44）     | Chess 指令数 +21%（> 20%），需融合行    | M    | 🔄 4.2      |
+| 12 | flat 成为 definition           | `Pre.flat`, `Elab.lean:262`（p44）     | dfnR5：flat 融合；Chess 超 heartbeat，Knapsack +34% | M    | 🔄 4.2      |
 | 13 | inl、inr 是叶子                | `inlRow`…`inrConvRow`, `Syntax:176`   | 无：prim 行带 code、den、RowOK；R9      | S    | ✅ 4.1      |
 | 14 | junc 是 definition，没有 juncD | `Pre.junc`, `Elab.lean:256`           | 无：`inl°R ∪ inr°S`；不放 prelude       | M    | ✅ 4.1      |
 | 15 | 对称除法                       | `symDivDen`, `Den.lean:61`            | `Alg.symDiv` 已不存在；ctor 还是定义待定 | M    | ⏸ 4.4      |
@@ -285,10 +285,16 @@ Diff table 的「状态」列：✅ 后面是完成它的步骤；🔄 是部分
   - 性能（`perf stat` 用户态指令数，2281e0f → p44）：Knapsack 16.35G → 16.43G（+0.5%），
     Quicksort 79.77G → 79.96G（+0.2%），Edit 665.1G → 690.8G（+3.9%），Chess 314.0G → 379.8G（+21.0%）。
     改写为 `⟨π₁R,π₂⟩⟨π₁π₁ ∩ π₂, π₁π₂⟩π₂`（不用 `dom`）更慢：Chess 383.2G（+22.0%）。
-  - Chess 超过 20%，所以按规则要把 `Tab.flat` 留作融合行并用 `Prim.dfn` 与定义相连；但 `Prim.dfn` 目前只支持
-    没有关系参数的行（`Syntax.lean` 中 `rank` 一行的注释："waits for a `dfn` that can read the row's
-    relations"），`flat` 的行要带参数 `R`。待 owner 决定：扩展 `dfn` 机制，或接受 +21%。`Tab.flat`、
-    `Tab.flat_holds` 暂时保留。
+  - Chess 超过 20%，所以 `flat` 留作融合行，用 `dfns`（`Elab.lean`）与定义相连（分支 dfnR2 → dfnR5）。
+  - 读回（`Tm.dfnCut?` 把建好的定义认回融合行）从未匹配：trace 中带定义的 81 个 row（47 `length`、33 `sum`、1 个
+    T49 的 `length`）0 个跑融合行，81 个跑定义；原因是定义的起点建成 `ran(U ⟨𝟙,𝟙⟩minus ∩ 𝟙)`，读回只认裸
+    `⟨𝟙,𝟙⟩minus ∩ 𝟙`。dfnR4 删去读回：`build` 的 `.prim` 分支直接由 row 自己的关系和 target 的 universe
+    选择：无界 → 融合行；`0…k` → 融合行后接 target 的 `𝟙`（`c.cut`）；其他 universe → 定义。
+  - "融合行后接 `𝟙_B`" 不是所有 universe 上的含义（§4 `sum` 行：每一步都留在对象内）：`−3…3` 上
+    `[−3,3,3] sum` 按定义为 `𝟘`（中间和 6），按 cut 为 3；`1…5` 上 `length` 按定义为 `𝟘`（从 0 起步）。
+    `Tm.dfnCut_den` 证明二者只在 universe 为全体数或 `0…k` 时相等；`flat` 没有 universe，处处跑融合行。
+  - dfnR5：定义的起点 `zeroTm u` 改为 `build` 实际建出的闭合形式 `ran(u (⟨𝟙,𝟙⟩minus ∩ 𝟙))`，于是其他 universe
+    上跑的 `d` 就是旧路径跑的定义（dfnR4 的 4 个 guard 失败来自裸起点无 key 可读、结果为空）。
 - ✅ 4.3 `foldI`：owner 选 D，constructor 保留为融合形式，
   用 `foldIDen_eq` + `foldI_sound` 与定义相连
   （已证，e172821 合并，无额外前提；`Gen.foldI` 的 step 是交 `S ∩ π₁π₁π₁°`）。
