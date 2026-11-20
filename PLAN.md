@@ -226,9 +226,9 @@ Diff table 的「状态」列：✅ 后面是完成它的步骤；🔄 是部分
   - 转换是 prim 行 `$`（`x $ F`），只做保值方向。
   步骤表（每步单独合并；I4 已完成，I0 由本次完成，I2、I5 进行中）：
   - ✅ I0 文档：`rel-architecture`、`dataframe-design`、本条。
-  - ⬜ I1 表代码移到 `Rel/Run/Table.lean`（`lean-refactor move`），律留在 lib `Rel`；需要 `d9step2` 合并。
+  - ✅ I1 表代码移到 `Rel/Run/Table.lean`（`lean-refactor move`），律留在 lib `Rel`；需要 `d9step2` 合并。
   - 🔄 I2 语法与 AST：`sInput`、`sOutput`、`check`/`print` 的 `where`；`Decl.input`/`output`；elaboration 拒绝；run-time 名作参数。
-  - ⬜ I3 `n.io`、`n.inputs`、`n.outputs`，推论 `Sound.inputs`；需要 I1、I2。
+  - ✅ I3 `n.io`、`n.inputs`、`n.outputs`，推论 `Sound.inputs`；需要 I1、I2。
   - ✅ I4 crate：导出分为 `RELK.txt`（kernel）与 `RELIO.txt`（IO），`syms` gate 读两个文件。
   - 🔄 I5 Lean 里的 CSV 模型（`csvWords`、`csvText`、每个 atom 的读写、往返律），尚无 extern。
   - ⬜ I6 `qlean_csv_read`；需要 I4、I5。 ⬜ I7 `qlean_csv_write`；需要 I6。
@@ -240,8 +240,14 @@ Diff table 的「状态」列：✅ 后面是完成它的步骤；🔄 是部分
   空 schema、重名列被拒。float 检查对唯一谓词 `Table.nonCanonical`（typed base S5 定义规范 float 后由它填）。定理：
   `Arr.pos_get`（`pos_clamp` 由它推出）、`Table.frame_holds`（重编号即 `ι ≫ t`，`ι = {(j, key j)}`，key 两两不同时）；
   文件上的 `read (write x) = frame x` 只 `#guard`（extern）。sym 列仍报“等 sym writer（步骤 6）”。
-  步骤 3 未开始：`Expand.emit` 的 `.io` twin。锚点：`walk` 的 pend 循环（`Expand.lean:527-531`，有 `qs`/`ty` 的声明
-  类型与 `env₀.objs` 的 `ObjInfo.cols`/`num`）、kernel twin（`Expand.lean:873-901`）、`Rel.runE`（`Lazy.lean:27`）。
+  步骤 3 由 IO I3 完成（`n.io` 在 `Expand.emit`，见下面 I3 行）。
+  I1 ✅、I3 ✅（分支 `io-i3`，未合并）：表代码移到 `Rel/Run/Table.lean`（lib `RelRun`；`frame_holds` 留在
+  `Rel/Lang/Table.lean`），加 `readCsv`（`Db.csvRead` 直接进编码列）、`ofRun`，keyed 读入经 `Tab.canon`。`Expand.emit`
+  对每个程序加 `n.inputs`、`n.outputs : List (String × Bool × String)`（名、csv、路径）与 `n.io : IO Unit`：读 output
+  所及的 input，按序用 kernel twin 算所及的运行时定义，key 为位置的 output 写 `write`（重编号），其余写 `key/`、`val/`；
+  `to csv` 在任何读之前报"I7 未到"。import 的程序的 input 与运行时定义按常量名继承（`importT`、`pxIO`）。推论
+  `Sound.inputs`（`GenSound.lean`）。`TestIO`：CSV input → 位置 output 与 keyed output，importer 的 output，拒绝都 pin；
+  GenSoundTest 1341/1341（154 个程序）。与 design.md 不同：`from csv` 的读已在 I3（design.md 排在 I9）。
   I2 ✅（分支 `io-i2`，未合并；不做文件 IO）：语句 `input n : A ⟶ B from [csv] "path"`、`output n to [csv] "path"`，
   `check`/`print … where n ≜ {…}`（`Decl.input`/`Decl.output`，`Embed.stmt`，`Expand.walk` 的 `ioCols`/`bindIns`）。
   input 是没有 body 的运行时名；无参数且直接提到运行时名的定义按已有的参数化定义 elaboration（运行时名即其参数，

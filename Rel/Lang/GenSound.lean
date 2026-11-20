@@ -55,6 +55,17 @@ theorem Sound.bind {η : Code} {ρ : Val} (hs : Sound η ρ) (k : Nat) {A B : Ob
       · rw [dif_neg ho]; trivial
     · simp only [Code.bind, hj, if_false]; exact hs.2 j A' B'
 
+/-- **A program's run-time names bound in statement order** (IO design A.3, the environment `n.io` computes in):
+    each `(k, A, B, r, X)` of `bs` bound in turn, `r` a `Wf` code that represents `X` (an input's table,
+    `GenK.val_sound`; a run-time definition's code, `Tm.gen_sound` of its body at the names before it), leaves the
+    environment sound; then `Tm.gen_sound` of an output's term gives that its table represents its meaning. -/
+theorem Sound.inputs {η : Code} {ρ : Val} (hs : Sound η ρ) :
+    ∀ bs : List (Nat × (A : Obj) × (B : Obj) × (Rel A B × Den A B)),
+      (∀ b ∈ bs, (∀ K, b.2.2.2.1.Reps K b.2.2.2.2) ∧ b.2.2.2.1.Wf) →
+      Sound (bs.foldl (fun η b => η.bind b.1 b.2.2.2.1) η) (bs.foldl (fun ρ b => ρ.bind b.1 b.2.2.2.2) ρ)
+  | [], _ => hs
+  | b :: bs, h => Sound.inputs (hs.bind b.1 (h b (.head _)).1 (h b (.head _)).2) bs fun c hc => h c (.tail _ hc)
+
 /-- The hypothesis of `Tab.lam_den` at `A ⟶ [B]`: two rows of one key whose codes ascend strictly hold values
     ascending in `B.lt`. It is asked per `Λ`, never for every object: a general atom keys as `[]` (`Obj.key`). -/
 def LamLaw (A B : Obj) : Prop := ∀ (m : USize) (x : Vals (.prod A B) m) es, Vals.cols x = .ok es →

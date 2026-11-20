@@ -54,6 +54,14 @@ Rel.Lang.GenK.stepAfter
 Rel.Lang.GenK.succ
 Rel.Lang.GenK.thin
 Rel.Lang.GenK.top
+Rel.Lang.Table.encCols
+Rel.Lang.Table.read
+Rel.Lang.Table.readArr
+Rel.Lang.Table.readCols
+Rel.Lang.Table.readCsv
+Rel.Lang.Table.readKeyed
+Rel.Lang.Table.readSide
+Rel.Lang.Table.readVals
 Rel.Lang.build
 Rel.Lang.callArgs
 Rel.Lang.checkErr

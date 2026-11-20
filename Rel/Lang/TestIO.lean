@@ -130,8 +130,91 @@ rel_program theoremT where
     input t : N ⟶ N from "t"
     theorem conv : t°° = t
 
-/-- error: in the program `Rel.Lang.TestIO.trades`, line 17, col 5: input `t`: an imported program's inputs are not the importer's yet (IO step I3); declare it in the importing program and pass it to the definitions as a parameter -/
-#guard_msgs in
+-- an importer's inputs are its imports' (IO design A.2): `x` mentions `trades.bigPx`, which is run-time, so `x` is
+-- `x(trades.bigPx : N ⟶ N)`, the imported name spelled as its constant
 open trades in
 rel_program importT where
     x : N ⟶ N ≜ bigPx
+
+#guard importT.inputs == [("Rel.Lang.TestIO.trades.t", true, "trades.csv")]
+#guard importT.outputs == []
+
+/-- error: line 147, col 5: input `t` from "t": the key is positions, stored Rel.Obj.atom (Rel.QAtomicType.i64), and F ⟶ N stores it Rel.Obj.atom (Rel.QAtomicType.f64); declare the key an object stored i64 -/
+#guard_msgs in
+rel_program floatKeyT where
+    obj F : f64
+    obj N
+    input t : F ⟶ N from "t"
+
+/-! ## `n.io` (step I3): a CSV input, a positional and a keyed output, in a directory the test makes and removes -/
+
+-- `big` keeps the rows of `t` whose qty is above 100, renumbered from 0 when written; `pxOf : K ⟶ N` (symbol ↦ px of
+-- those rows) is keyed by `K`, so it is written as a key table and a value table
+open Rel.Programs.prelude Rel.Programs.frame in
+rel_program tradesIO where
+    obj N
+    obj K = {A,B,C}
+    schema Trade = {sym : K, px : N, qty : N}
+    schema Big   = {sym : K, px : N}
+    input t : N ⟶ Trade from csv "/data/tmp/rel-test-io/trades.csv"
+    big : N ⟶ Big ≜ filterBy(dom(col Trade "qty" dom(<°{(100,∗)})), t) ⟨col Trade "sym", col Trade "px"⟩
+    pxOf : K ⟶ N ≜ (big col Big "sym")° big col Big "px"
+    output big to "/data/tmp/rel-test-io/big"
+    output pxOf to "/data/tmp/rel-test-io/pxof"
+
+#guard tradesIO.inputs == [("t", true, "/data/tmp/rel-test-io/trades.csv")]
+#guard tradesIO.outputs == [("big", false, "/data/tmp/rel-test-io/big"), ("pxOf", false, "/data/tmp/rel-test-io/pxof")]
+
+-- an importer inherits `t`; its output reaches `t` through `tradesIO.big`, which its `io` computes by `big`'s twin
+open tradesIO in
+rel_program pxIO where
+    px : N ⟶ N ≜ big col Big "px"
+    output px to "/data/tmp/rel-test-io/px"
+
+#guard pxIO.inputs == [("Rel.Lang.TestIO.tradesIO.t", true, "/data/tmp/rel-test-io/trades.csv")]
+#guard pxIO.outputs == [("px", false, "/data/tmp/rel-test-io/px")]
+
+/-- The names under the directory `d`, each directory's after it, sorted. -/
+partial def tree (d : String) : IO (List String) := do
+  let es := ((← System.FilePath.readDir d).map (·.fileName)).qsort (· < ·)
+  es.toList.flatMapM fun (e : String) => do
+    let p := (System.FilePath.mk d / e).toString
+    if ← System.FilePath.isDir p then return e :: (← tree p).map (e ++ "/" ++ ·) else return [e]
+
+-- by hand: qty 500 and 101 pass, rows (A,10) and (C,30) of three, A = 0 and C = 2; `big` renumbered 0, 1; `pxOf`
+-- keyed by symbol; `px` the importer's, the px column of `big`
+/--
+info: ([(0, 0, 10), (1, 2, 30)], [(0, 10), (2, 30)], [(0, 10), (1, 30)],
+  ["big", "big/px", "big/sym", "px", "px/val", "pxof", "pxof/key", "pxof/key/key", "pxof/val", "pxof/val/val",
+    "trades.csv"])
+-/
+#guard_msgs in
+#eval show IO _ from do
+  let d := "/data/tmp/rel-test-io"
+  if ← System.FilePath.pathExists d then IO.FS.removeDirAll d
+  IO.FS.createDirAll d
+  IO.FS.writeFile (d ++ "/trades.csv") "sym,px,qty\nA,10,500\nB,20,50\nC,30,101\n"
+  tradesIO.io; pxIO.io
+  let big ← Table.read [("sym", .long), ("px", .long)] (d ++ "/big")
+  let pxOf ← Table.readKeyed [("key", .long)] [("val", .long)] (d ++ "/pxof")
+  let px ← Table.read [("val", .long)] (d ++ "/px")
+  let files ← tree d
+  IO.FS.removeDirAll d
+  return (big.toList, pxOf.toList, px.toList, files)
+
+-- the refusals at run time, each before any file is written: a CSV output (its writer is IO step I7), refused before
+-- any read; an input whose files are missing, the OS error naming the file
+rel_program missingIO where
+    obj N
+    input t : N ⟶ N from "/data/tmp/rel-test-io-none/t"
+    output t to "/data/tmp/rel-test-io-none/out"
+
+/--
+info: output `bigPx` to csv "bigpx.csv": the CSV writer is IO step I7, not yet here; write a table directory (drop `csv`)
+no such file or directory (error code: 2)
+  file: /data/tmp/rel-test-io-none/t/val
+-/
+#guard_msgs in
+#eval show IO Unit from do
+  for r in [← trades.io.toBaseIO, ← missingIO.io.toBaseIO] do
+    match r with | .ok _ => IO.println "ok" | .error e => IO.println e
