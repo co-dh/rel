@@ -76,14 +76,14 @@ inductive Op
   | index (i : Nat)
   deriving Repr, BEq, Inhabited
 
-/-- The builtin infix operators: `∩ ∪ − / \ ×`, one level with composition and the declared ones (`_⇒_`),
-    left to right (§c). -/
+/-- The builtin infix operators: `∩ ∪ − / \ ÷ ×`, one level with composition and the declared ones (`_⇒_`),
+    left to right (§c). `÷` is symmetric division, the definition `R/S ∩ (S/R)°` (`Pre.symDiv`). -/
 inductive Bin
-  | meet | join | diff | rdiv | ldiv | prod
+  | meet | join | diff | rdiv | ldiv | symDiv | prod
   deriving Repr, BEq, Inhabited
 
 def Bin.table : List (Char × Bin) :=
-  [('∩', .meet), ('∪', .join), ('−', .diff), ('/', .rdiv), ('\\', .ldiv), ('×', .prod)]
+  [('∩', .meet), ('∪', .join), ('−', .diff), ('/', .rdiv), ('\\', .ldiv), ('÷', .symDiv), ('×', .prod)]
 
 def Bin.sym (o : Bin) : String := ((Bin.table.find? (·.2 == o)).map (·.1.toString)).getD "?"
 

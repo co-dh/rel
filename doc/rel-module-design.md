@@ -181,7 +181,7 @@ rel_program sudokuac where
 
 - Lean 的 `import` 和 `.olean` 只是运输:registry 的条目和 constant 随 `.olean` 到达 import 它的文件。
 - kernel 表是唯一一处 `rel_program` 之外、Rel body 够得着的东西。`Bin.table`(`Lang/Syntax.lean:82`)的
-  `∩ ∪ − / \ ×` 是 grammar 的 reserved 字符,不是名字,不经过名字查找。
+  `∩ ∪ − / \ ÷ ×` 是 grammar 的 reserved 字符,不是名字,不经过名字查找。
 - 一个名字 `x`(或 `m.x`)的解析,顺序固定:
   1. 参数、fixed point 变量、本 program 已定义的名字(`Parse.S.known`);
   2. kernel 表;
