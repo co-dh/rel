@@ -769,6 +769,9 @@ partial def code (pre : Name) (ph : List Lean.Expr) (ρ : List (Nat × Lean.Expr
     if (v.find? ph.contains).isSome then return v
     -- a term demanding nothing of its context (`dem = false`) has one table, so it is computed once
     return mkConst (← share pre A B (if !t.dem then g ``GenK.memo #[oE A, oE B, v] else v))
+  -- one reading a call's parameters or a round's table has one table per call or round: computed once there, where
+  -- left lazy each context that forces it would run it again (a twin's body reading `x ⟨k, t⟩` at each use)
+  else if !t.dem then return g ``GenK.memo #[oE A, oE B, ← node pre ph ρ t]
   else node pre ph ρ t
 
 /-- The constant of the closed code `v : Rel A B`: one per structurally equal value, so a closed term with
