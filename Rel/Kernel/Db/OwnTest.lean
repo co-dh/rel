@@ -45,7 +45,7 @@ def roundTrip (f : OwnFile) : IO OwnFile := do
 
 /-- The column `v` is written as (`ownFile`), round-tripped, and its `Enc` rebuilt from the mapped parts. -/
 def column (v : QValue) : IO Unit := do
-  let f ← IO.ofExcept (ownFile v)
+  let some f ← IO.ofExcept (ownFile v) | throw (IO.userError "positions, which have no file")
   let g ← roundTrip f
   match ownEnc (X := Empty) g.kind g.parts with
   | some (.foR m p) => IO.println s!"foR: metadata {m.size} bytes, pack {p.size} bytes"
@@ -76,13 +76,13 @@ bytes: 24 bytes
 #guard_msgs in
 #eval column (.enum "dom" (.vector .i64 3 (.bytes (dense [2, 0, 1])) none))
 
--- positions are never written (PLAN 6.13): `ownFile` refuses them; a symbol column too (no writer of the sorted
--- dictionary yet); and the writer refuses kind 5, a number that is no kind
-/-- info: (Except.error "positions, which are never written: `n` is the other side's (PLAN 6.13)",
+-- positions are never written (PLAN 6.13): `ownFile` answers no file; a symbol column is refused (no writer of the
+-- sorted dictionary yet); and the writer refuses kind 5, a number that is no kind
+/-- info: (Except.ok none,
  Except.error "a `syms` column, which the own format does not hold: a symbol column is stored as `foR` ids into a sorted dictionary (doc/rel-architecture.zh.typ §4), and no writer builds that yet") -/
 #guard_msgs in
-#eval ((ownFile (X := Empty) (.vector .i64 5 .pos none)).map key,
-  (ownFile (X := Empty) (.vector .sym 1 (.syms (ByteArray.mk #[97, 0]) #[0, 2]) none)).map key)
+#eval ((ownFile (X := Empty) (.vector .i64 5 .pos none)).map (·.map key),
+  (ownFile (X := Empty) (.vector .sym 1 (.syms (ByteArray.mk #[97, 0]) #[0, 2]) none)).map (·.map key))
 /--
 info: ("error: a column of kind and part count 0:1, 2:2, 3:3 or 4:2 and a domain name under 65536 bytes, given kind 5 with 0 parts and a 0-byte name",
  "error: a column of kind and part count 0:1, 2:2, 3:3 or 4:2 and a domain name under 65536 bytes, given kind 5 with 0 parts and a 0-byte name")
