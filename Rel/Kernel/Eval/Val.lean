@@ -31,33 +31,5 @@ def nullAtom (t : QAtomicType) (h : t ≠ .general := by first | decide | assump
   | .datetime => .datetime Int64.minValue
   | .i8 => .i8 Int8.minValue
 
-/-- q's `~`, which compares bit patterns, so a null matches a null and `1~1b` is false. -/
-def identicalFuel [ValueExt X] (ae : QAtom → QAtom → Bool) (ce : QAtomicType → USize → Ext.Enc X → USize → Ext.Enc X → Bool) :
-    Nat → Ext.QValue X → Ext.QValue X → Bool
-  | 0, _, _ => false
-  -- `~` does not see an attribute: measured, `` (`s#1 2 3)~1 2 3 `` is `1b`
-  -- the domain is part of the value: measured, `(`d$`b)~`b` is `0b`
-  | fuel + 1, .enum da a, .enum db b => da == db && identicalFuel ae ce fuel a b
-  | _ + 1, .atom a, .atom b => ae a b
-  -- before `atoms`, which boxed **both** columns to compare them element by element
-  | fuel + 1, .general a _ _, .general b _ _ =>
-      a.size == b.size && (List.range a.size).all fun i => identicalFuel ae ce fuel a[i]! b[i]!
-  -- `ta == tb` guards `ce`: `matchColumn` compares payloads and does not read the type
-  | _ + 1, .vector ta na ea _, .vector tb nb eb _ =>
-      ta != .general && ta == tb && na == nb && ce ta na ea nb eb
-  -- a `slices` **is** the general list it denotes, so `~` compares it as one against either shape:
-  -- what q sends back over the wire is a list, and the layout is ours
-  | fuel + 1, .slices t n e a o, b => identicalFuel ae ce fuel (.ofArray (QValue.slicesExpand t n e a o)) b
-  | fuel + 1, a, .slices t n e c o => identicalFuel ae ce fuel a (.ofArray (QValue.slicesExpand t n e c o))
-  | fuel + 1, .dict ka va _, .dict kb vb _ =>
-      identicalFuel ae ce fuel ka kb && identicalFuel ae ce fuel va vb
-  | fuel + 1, .table (.mk na ca _), .table (.mk nb cb _) =>
-      na == nb && identicalFuel ae ce fuel (.ofArray ca) (.ofArray cb)
-  | fuel + 1, .keyed ka va _, .keyed kb vb _ =>
-      identicalFuel ae ce fuel (.table ka) (.table kb) && identicalFuel ae ce fuel (.table va) (.table vb)
-  | fuel + 1, .func ca a, .func cb b => ca == cb && identicalFuel ae ce fuel (.ofArray a) (.ofArray b)
-  | _ + 1, .err a, .err b => a == b
-  | _ + 1, .ext a, .ext b => ValueExt.identical a b
-  | _ + 1, _, _ => false
 
 end Rel.Eval

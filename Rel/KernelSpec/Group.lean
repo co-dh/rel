@@ -338,11 +338,6 @@ theorem get!_eq (b : ByteArray) (k : Nat) : b.get! k = b[k]?.getD 0 := by
   · rw [getElem?_pos (ByteArray.mk a) k h]; simp [ByteArray.get!, h, ByteArray.getElem_eq_getElem_data]
   · rw [getElem?_neg (ByteArray.mk a) k h]; simp [ByteArray.get!, h]; rfl
 
-/-- **`atI64` reads the eight bytes `bitsAt` does.** -/
-theorem atI64_eq (b : ByteArray) (i : Nat) : atI64 b i = (Column.bitsAt b (i * 8) 8).toInt64 := by
-  simp only [Column.bitsAt_succ, show Column.bitsAt b (i * 8) 0 = 0 from rfl, UInt64.zero_or, atI64, get!_eq,
-    Nat.add_zero, show (8 * 0 : Nat).toUInt64 = 0 from rfl, UInt64.shiftLeft_zero]
-  rfl
 
 section Segs
 
@@ -355,7 +350,6 @@ end Segs
 #print axioms groups_congr
 #print axioms groupIds_spec
 #print axioms groupIdsFoR_spec
-#print axioms atI64_eq
 /-- info: 'Rel.Verify.idsCap_packIds' depends on axioms: [propext, Quot.sound] -/
 #guard_msgs in #print axioms idsCap_packIds
 

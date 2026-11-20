@@ -1,5 +1,5 @@
 import Lean
-import Rel.Kernel.Elementwise
+import Rel.Kernel.Op
 import Rel.Run.Core
 
 /-! The Rel language's surface syntax (`doc/rel-lang-design.md` §c, §h): objects, terms, declarations, each node

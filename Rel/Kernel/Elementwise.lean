@@ -1,5 +1,5 @@
 import Rel.Kernel.Coc
-import Rel.Kernel.Driver
+import Rel.Kernel.Op
 import Rel.Kernel.Value
 
 /-! The part of `Rel.Kernel.Elementwise` the Rel kernels reach; `Rel.Kernel.Elementwise` imports it. -/
@@ -17,21 +17,6 @@ def i64 : UInt8 := 3
 def f32 : UInt8 := 4
 def f64 : UInt8 := 5
 def bits : UInt8 := 6
-
-/-- Value verbs: `+ - * % ^ & |`. -/
-def add : UInt8 := 0
-def sub : UInt8 := 1
-def mul : UInt8 := 2
-def fill : UInt8 := 4
-def lesser : UInt8 := 5
-def greater : UInt8 := 6
-
-/-- `div` and `mod`, numbered after the seven q spells as glyphs. They are here rather than in an
-engine of their own because they are the same loop over the same two payloads; what is not shared is
-the *result type*, which `Eval.divModType` gives and which is not always at or above both operands.
-`~/q/q.k` line 4 defines `mod:{x-y*x div y}` and both steps below say exactly that. -/
-def idiv : UInt8 := 7
-def imod : UInt8 := 8
 
 /-- `x xexp y`. Here and not among the monadic maps because it takes two operands, and here at all
 because `~/q/q.k` line 4 defines `xlog:{log[y]%log x}` and defines **no** `xexp` — q has a primitive
@@ -408,9 +393,6 @@ def foRShift (neg : Bool) (k : Int64) (metadata pack : @& ByteArray) (n : USize)
     some (Coc.encode 8 (if neg then val sub i64 av Int64.minValue atom dense n
                         else val add i64 va Int64.minValue dense atom n))
 
-/-- Whether an exact integer is still an `Int64`. The two value kernels below decline a block whose
-extremes leave it: q wraps there, and a wrapped `base` is no longer the block's own minimum. -/
-def inI64 (x : Int) : Bool := Int64.minValue.toInt ≤ x && x ≤ Int64.maxValue.toInt
 
 /-- `&`, `|` and `^` over two boolean bitmaps — the one value result that is not a dense payload,
 and the reason `x within (lo;hi)` no longer boxes: the two comparisons it is built from already

@@ -7,17 +7,6 @@ import Rel.Kernel.Elementwise
 
 namespace Rel.Kernel
 
-/-- The `i`th `Int64`, little-endian. Reads past the end answer `0`: the specification is only
-called under `wellFormed`, where the length is a multiple of the width, and the bounds check
-belongs to the caller. -/
-def atI64 (b : ByteArray) (i : Nat) : Int64 :=
-  let o := i * 8
-  (b.get! o).toUInt64 |||
-  ((b.get! (o+1)).toUInt64 <<< 8) ||| ((b.get! (o+2)).toUInt64 <<< 16) |||
-  ((b.get! (o+3)).toUInt64 <<< 24) ||| ((b.get! (o+4)).toUInt64 <<< 32) |||
-  ((b.get! (o+5)).toUInt64 <<< 40) ||| ((b.get! (o+6)).toUInt64 <<< 48) |||
-  ((b.get! (o+7)).toUInt64 <<< 56)
-  |>.toInt64
 
 /-- What the fold answers when nothing survives, at the class the payload is read as. For a signed
 type this is `Over.seed`: its null is its minimum, so `~~~nul` is the type's maximum and `nul + 1`
@@ -40,19 +29,6 @@ def overBytes (op : Coc.Over) (cls : UInt8) (nul : Int64) (b : @& ByteArray) : I
     let x := Ew.signed cls (Ew.elem cls b i)
     if !op.boolCast && x == nul then acc else op.step acc x
 
-/-- How `groupCells` reads a group's cell off its fold `s` and live count `k`. -/
-inductive GroupCell where
-  /-- `s`'s low `w` bytes: an integral fold, wrapped or not narrowed at all -/
-  | wrap
-  /-- `s`, or the `int` null where it leaves the `int` range: `Coc.narrowed`'s `prd` -/
-  | clamp
-  /-- `s / k` as a float, `0n` at `k = 0`: an integral `avg` -/
-  | avgInt
-  /-- `s` as float bits, rounded to `real` at `w = 4` -/
-  | float
-  /-- `s / k`, `s` float bits, `0n` at `k = 0` or a NaN quotient: a float `avg` -/
-  | avgFloat
-  deriving BEq
 
 end Rel.Kernel
 
