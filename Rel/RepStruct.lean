@@ -308,15 +308,6 @@ end Tab
 
 section Checks
 
-/-- Two lists hold the same elements, in any order. -/
-private def setEq {α : Type} [BEq α] (a b : List α) : Bool := a.all b.contains && b.all a.contains
-
-/-- The answer `r` runs, holds no row twice, and holds the rows `sp` (as a set). -/
-private def specOk {A B : Obj} [BEq A.El] [BEq B.El] (r : Except String (Tab A B)) (sp : List (A.El × B.El)) : Bool :=
-  match r with
-  | .ok T => T.toList.eraseDups.length == T.toList.length && setEq T.toList sp
-  | .error _ => false
-
 /-- The `i64` column of the integers `ws`, `foR` (`Arr.ofFn`). -/
 private def col (ws : List Int64) : Arr .i64 ws.length.toUSize := Arr.ofFn .i64 _ fun i => (ws.getD i.1 0).toUInt64
 
@@ -344,15 +335,13 @@ private def P : Tab .long (.prod .long .long) := ⟨5, col [3, 1, 3, 1, 3], (col
 -- `𝟙` on the values `X`: duplicates, a float, a tuple, none
 #guard ints.all fun ps => let R := tabW ps
   specOk (Tab.idU R.key) (R.key.toList.map fun a => (a, a))
-#guard specOk (Tab.idU F.val) ((List.ofFn (Vals.row F.val)).map fun a => (a, a)) &&
-  specOk (Tab.idU P.val) ((List.ofFn (Vals.row P.val)).map fun a => (a, a))
+#guard specOk (Tab.idU F.val) ((Vals.rows F.val).map fun a => (a, a)) &&
+  specOk (Tab.idU P.val) ((Vals.rows P.val).map fun a => (a, a))
 
-/-- The rows of a side, in position order. -/
-private def rows {A : Obj} {n : USize} (X : Vals A n) : List A.El := List.ofFn (Vals.row X)
 
 /-- `top X Y` against `X × Y` as a set. -/
 private def topOk {A B : Obj} [BEq A.El] [BEq B.El] {n m : USize} (X : Vals A n) (Y : Vals B m) : Bool :=
-    specOk (Tab.top X Y) ((rows X).flatMap fun a => (rows Y).map fun b => (a, b))
+    specOk (Tab.top X Y) ((Vals.rows X).flatMap fun a => (Vals.rows Y).map fun b => (a, b))
 
 -- `⊤`: integers (an empty side on either end), a float, a tuple
 #guard ints.all fun ps => ints.all fun qs => topOk (tabW ps).key (tabW qs).val
@@ -360,7 +349,7 @@ private def topOk {A B : Obj} [BEq A.El] [BEq B.El] {n m : USize} (X : Vals A n)
 
 /-- `outl X`, `outr X` against the projections as sets. -/
 private def outOk {A B : Obj} [BEq A.El] [BEq B.El] {n : USize} (X : Vals (.prod A B) n) : Bool :=
-    specOk (Tab.outl X) ((rows X).map fun p => (p, p.1)) && specOk (Tab.outr X) ((rows X).map fun p => (p, p.2))
+    specOk (Tab.outl X) ((Vals.rows X).map fun p => (p, p.1)) && specOk (Tab.outr X) ((Vals.rows X).map fun p => (p, p.2))
 
 -- `π₁`, `π₂`: integer pairs with duplicates, none, a float component, a tuple component
 #guard ints.all fun ps => let R := tabW ps; outOk (A := .long) (B := .long) (R.key, R.val)
@@ -380,7 +369,7 @@ private def prodOk {A B C D : Obj} [BEq A.El] [BEq B.El] [BEq C.El] [BEq D.El] (
 /-- `flat X R` against `Rᴵ` on `X` as a set: `((i, a), b)` for `(i, a)` of `X` and `(i, (a, b))` of `R`. -/
 private def flatOk {I A B : Obj} [BEq I.El] [BEq A.El] [BEq B.El] {n : USize} (X : Vals (.prod I A) n)
     (R : Tab I (.prod A B)) : Bool :=
-  specOk (Tab.flat X R) ((rows X).flatMap fun p => R.toList.filterMap fun (i, a, b) =>
+  specOk (Tab.flat X R) ((Vals.rows X).flatMap fun p => R.toList.filterMap fun (i, a, b) =>
     if p.1 == i && p.2 == a then some (p, b) else none)
 
 -- `Rᴵ`: a tuple family on integer pairs (duplicates, a pair `R` misses), on none, and a float source
@@ -390,8 +379,8 @@ private def flatOk {I A B : Obj} [BEq I.El] [BEq A.El] [BEq B.El] {n : USize} (X
 
 /-- `inl X` and `inr X` against the injections as sets. -/
 private def injOk {A B : Obj} [BEq A.El] [BEq B.El] {n : USize} (X : Vals A n) (Y : Vals B n) : Bool :=
-    specOk (Tab.inl (B := B) X) ((rows X).map fun a => (a, .inl a)) &&
-    specOk (Tab.inr (A := A) Y) ((rows Y).map fun b => (b, .inr b))
+    specOk (Tab.inl (B := B) X) ((Vals.rows X).map fun a => (a, .inl a)) &&
+    specOk (Tab.inr (A := A) Y) ((Vals.rows Y).map fun b => (b, .inr b))
 
 /-- `[R, S]` against `inl° ≫ R ∪ inr° ≫ S` as a set. -/
 private def juncOk {A B C : Obj} [BEq A.El] [BEq B.El] [BEq C.El] (R : Tab A C) (S : Tab B C) : Bool :=

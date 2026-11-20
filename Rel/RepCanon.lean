@@ -1073,6 +1073,16 @@ section Checks
 def tab (ps : List (Int64 × Int64)) : Tab .long .long :=
   ⟨ps.length.toUSize, List.length_map _ ▸ Alg.col (ps.map (·.1)), List.length_map _ ▸ Alg.col (ps.map (·.2))⟩
 
+/-- The answer `r` runs and holds the rows `sp` as a set, each once (`kasc` orders by `ordCode`, so not as listed):
+the check of every operation against its denotation on lists. -/
+def specOk {A B : Obj} [BEq A.El] [BEq B.El] (r : Except String (Tab A B)) (sp : List (A.El × B.El)) : Bool :=
+  match r with
+  | .ok T => let a := T.toList; let b := sp.eraseDups; a.length == b.length && a.all b.contains && b.all a.contains
+  | .error _ => false
+
+/-- The rows of a side, in position order. -/
+def Vals.rows {A : Obj} {n : USize} (X : Vals A n) : List A.El := List.ofFn (Vals.row X)
+
 #guard ((tab [(3, 1), (1, 2), (3, 1), (-1, 2), (1, 2), (2, 7)]).canon.toOption.map Tab.toList) ==
   some [(-1, 2), (1, 2), (2, 7), (3, 1)]
 #guard ((tab [(3, 1), (1, 2), (3, 5), (0, -4)]).ran.toOption.map Tab.toList) == some [(-4, -4), (1, 1), (2, 2), (5, 5)]
@@ -1081,10 +1091,8 @@ def tab (ps : List (Int64 × Int64)) : Tab .long .long :=
 /-- The five-kernel `canon`, `ran`, `dom` of `R` against their denotations on `R`'s rows as sets, each row once: `R`,
 `𝟙 ∩ R° ≫ R°°` and `𝟙 ∩ R ≫ R°` (`kasc` orders by `ordCode`, so not as listed). -/
 def canonAgrees {k v : Obj} [BEq k.El] [BEq v.El] (R : Tab k v) : Bool :=
-  let is {A B : Obj} [BEq A.El] [BEq B.El] (x : Except String (Tab A B)) (sp : List (A.El × B.El)) := match x with
-    | .ok T => let a := T.toList; let b := sp.eraseDups; a.length == b.length && a.all b.contains && b.all a.contains
-    | .error _ => false
-  is R.canon R.toList && is R.ran (R.toList.map fun (_, b) => (b, b)) && is R.dom (R.toList.map fun (a, _) => (a, a))
+  specOk R.canon R.toList && specOk R.ran (R.toList.map fun (_, b) => (b, b)) &&
+    specOk R.dom (R.toList.map fun (a, _) => (a, a))
 
 #guard [[(3, 1), (1, 2), (3, 1), (-1, 2), (1, 2), (2, 7), (-5, -5), (0, 0)], [(-2, 9), (-2, 9), (7, -3)], []].all
   fun ps => canonAgrees (tab ps)
