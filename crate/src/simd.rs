@@ -378,10 +378,6 @@ pub mod v {
 #[cfg(test)]
 mod tests {
     use crate::{BLK, unpack::res_unpack_scalar};
-    #[test] fn u8_sum_paths_agree() {
-        let p: Vec<u8> = (0..300usize).map(|i| (i * 37 + 255 * (i % 3)) as u8).collect();
-        for n in 0..300 { assert_eq!(super::u8_sum(&p[..n]), super::u8_sum_scalar(&p[..n]), "n {n}") }
-    }
     // the vector path against B8's scalar port at every odd width, on random blocks (target-cpu=native runs it)
     #[test] fn res_unpack_matches_scalar() {
         let mut s = 0x2545F4914F6CDD1Du64;

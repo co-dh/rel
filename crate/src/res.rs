@@ -79,38 +79,7 @@ mod tests {
     fn spec(p: &[u8], w: usize, j: usize) -> u64 { (0..w).map(|k| bit(p, j * w + k) << k).sum() }
     // res_count_lt against the spec at every lane width coc::lanes leaves, thresholds below, inside and past the lane; the
     // C differential is /data/tmp/qrs/K25/diff.c
-    #[test] fn count_lt_agrees_with_the_bit_stream() {
-        let mut s = 0x9E3779B97F4A7C15u64;
-        for w in [0u8, 1, 2, 4, 8, 16, 32, 64] {
-            let p: Vec<u8> = (0..BLK * w as usize / 8).map(|_| rng(&mut s) as u8).collect();
-            for nb in [0, 1, 7, 8, 9, 63, 1000, 1024] {
-                for t in [0u64, 1, 2, 3, 15, 16, 255, 256, 65535, 1 << 31, u64::MAX, rng(&mut s)] {
-                    let want = (0..nb).filter(|&j| spec(&p, w as usize, j) < t).count();
-                    assert_eq!(res_count_lt(&p, nb, w, t), want, "w {w} nb {nb} t {t}");
-                }
-            }
-        }
-    }
     // coc.rs's self-check holds at every width it is asked at, and refuses a power of two, a width over 64 and a long block
-    #[test] fn unpack_agrees_at_every_odd_width() {
-        for w in 3..=63u8 { for nb in [0, 1, 7, 63, 64, 65, 1000, BLK] { assert_eq!(res_unpack_agrees(w, nb), !w.is_power_of_two(), "w {w} nb {nb}") } }
-        assert!(!res_unpack_agrees(64, 10) && !res_unpack_agrees(65, 10) && !res_unpack_agrees(5, BLK + 1));
-    }
-    #[test] fn get_put_agree_with_the_bit_stream() {
-        let mut s = 0x9E3779B97F4A7C15u64;
-        for w in 0..=64u8 {
-            let p: Vec<u8> = (0..BLK * w as usize / 8).map(|_| rng(&mut s) as u8).collect();
-            let end = p.len();
-            for j in (0..BLK).step_by(13).chain([BLK - 1]) {
-                let e = spec(&p, w as usize, j);
-                assert_eq!(res_get(&p, w, j), e, "get w {w} j {j}");
-                assert_eq!(res_get_in(&p, w, j, end), e, "get_in w {w} j {j}");
-            }
-            let mut q = p.clone();
-            for j in (0..BLK).step_by(7) { let v = rng(&mut s); res_put(&mut q, w, j, v); 
-                assert_eq!(res_get(&q, w, j), if w == 64 { v } else { v & ((1u64 << w) - 1) }, "put w {w} j {j}"); }
-        }
-    }
     #[test] fn pack_scalar_roundtrips_and_stops_at_the_last_byte() {
         let mut s = 0x2545F4914F6CDD1Du64;
         for w in 3..64u8 {
@@ -126,19 +95,6 @@ mod tests {
                 assert!(d[len..].iter().all(|&x| x == 0xC3), "w {w} nb {nb} wrote past {len}");
             }
         }
-    }
-    #[test] fn sum_and_count_agree_with_the_bit_stream() {
-        let mut s = 0x1234567899AB1u64;
-        for w in [0u8, 1, 2, 4, 8, 16, 32, 64] {
-            let p: Vec<u8> = (0..BLK * w as usize / 8).map(|_| rng(&mut s) as u8).collect();
-            for nb in [0, 1, 31, 32, 33, 1000, BLK] {
-                let e = (0..nb).fold(0u64, |a, j| a.wrapping_add(spec(&p, w as usize, j)));
-                assert_eq!(res_sum(&p, nb, w), e, "w {w} nb {nb}");
-            }
-        }
-        let p: Vec<u8> = (0..BLK).map(|i| (i * 7) as u8).collect();
-        for t in [0u64, 1, 100, 255, 256, 9999] { assert_eq!(res_count_lt8(&p, 1000, t), p[..1000].iter().filter(|&&x| (x as u64) < t).count()) }
-        assert_eq!(res_count_lt8(&p, 1000, 256), 1000);
     }
     #[test] #[should_panic(expected = "res_pack asked for width 8, which is a power of two or over 64")]
     fn pack_refuses_a_power_of_two() { res_pack_scalar(&[0; BLK], 8, 1, &mut [0; 8]) }

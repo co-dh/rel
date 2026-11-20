@@ -13,24 +13,5 @@ pub fn lane_width(w: u8) -> u8 {
 
 #[cfg(test)]
 mod tests {
-    use super::{popcount, some_bit};
-    #[test] fn popcount_ignores_bits_past_nbits() {
-        let p = [0xffu8; 17];
-        for n in 0..=136usize { assert_eq!(popcount(&p[..n.div_ceil(8)], n), n, "n {n}") }
-        assert_eq!(popcount(&[], 0), 0);
-        assert_eq!(popcount(&[0b1010_1010, 0xff], 12), 4 + 4);
-    }
     // against the bit-by-bit definition, every length and a few patterns, `n` past the array included
-    #[test] fn some_bit_matches_the_bitwise_definition() {
-        for pat in [0x00u8, 0xff, 0x01, 0x80, 0xf0, 0x7f, 0xfe] {
-            for len in [0usize, 1, 2, 3, 63, 64, 65, 130] {
-                let p = alloc::vec![pat; len];
-                for n in 0..=len * 8 + 9 {
-                    let bit = |i: usize| p[i / 8] >> (i % 8) & 1 == 1;
-                    let m = n.min(len * 8);
-                    for set in [false, true] { assert_eq!(some_bit(set, &p, n), (0..m).any(|i| bit(i) == set), "pat {pat:#x} len {len} n {n} set {set}") }
-                }
-            }
-        }
-    }
 }

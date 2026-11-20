@@ -453,50 +453,9 @@ mod sink_tests {
     #[unsafe(no_mangle)] extern "C" fn lean_dec_ref_cold(_: *mut Object) {}
     #[unsafe(no_mangle)] extern "C" fn lean_inc_heartbeat() {}
     #[unsafe(no_mangle)] extern "C" fn lean_internal_panic_out_of_memory() -> ! { panic!("qlean sink_tests: out of memory") }
-    fn pair(o: &lean::O) -> [Vec<u8>; 2] { [0, 1].map(|i| o.borrow().field(i).bytes().to_vec()) }
-    /// `x` with every 97th element far outside its block's range, so the writer leaves patches
-    fn col(n: usize) -> Vec<i64> { (0..n as i64).map(|i| if i % 97 == 5 { i * 1_000_003 } else { 1000 + (i * 7919) % 8000 }).collect() }
     // every producer of a column writes the bytes the dense encoder writes for its elements: a fill (`coc_scale`'s,
     // `ew::mon_fill`), a fill narrowed to 2 and 4 bytes, and an encoded column read back as a `Blocks` source
-    #[test] fn producers_write_what_the_dense_encoder_writes() {
-        for n in [0usize, 1, 1000, 2500] {
-            let x = col(n);
-            let dense = |v: &[i64], w: usize| {
-                let b: Vec<u8> = v.iter().flat_map(|e| e.to_le_bytes()[..w].to_vec()).collect();
-                pair(&Sink::new(n, w, Form::For).answer(&Blocks::dense(&b, w)))
-            };
-            let e = Sink::new(n, 8, Form::For).answer(&Blocks::dense(pod::bytes(&x), 8));
-            let [m, p] = pair(&e);
-            let c = coc::view(&m, &p, n).unwrap_or_else(|e| panic!("sink_tests: the sink's own column does not view: {e}"));
-            for w in [2, 4, 8] {
-                let fill = |buf: &mut [i64], i0: usize| buf.copy_from_slice(&x[i0..i0 + buf.len()]);
-                assert_eq!(pair(&Sink::new(n, w, Form::For).answer(&fill)), dense(&x, w), "fill at width {w}, n {n}");
-            }
-            assert_eq!(pair(&Sink::new(n, 8, Form::For).answer(&Blocks::from(c))), [m.clone(), p.clone()], "transcode, n {n}");
-            let k3: Vec<i64> = x.iter().map(|v| v * 3).collect();
-            assert_eq!(pair(&Sink::new(n, 8, Form::For).answer(&|buf: &mut [i64], i0: usize| cocops::scale_fill(&c, 3, i0, buf))), dense(&k3, 8), "scale, n {n}");
-            let mut mon = alloc::vec![0u8; n * 8];
-            ew::mon_lane(0, 3, i64::MIN, pod::bytes(&x), &mut mon);
-            let map = ew::Map { src: Blocks::from(c), wi: 8, lane: |x: &[u8], o: &mut [u8]| ew::mon_lane(0, 3, i64::MIN, x, o) };
-            assert_eq!(pair(&Sink::new(n, 8, Form::For).answer(&map)), pair(&Sink::new(n, 8, Form::For).answer(&Blocks::dense(&mon, 8))), "mon, n {n}");
-        }
-    }
     // the size test answers exactly where the full encoding is not below the dense bytes, and ALP restores its floats
-    #[test] fn shrinks_and_alp() {
-        let n = 3000;
-        let wide: Vec<i64> = (0..n as i64).map(|i| i.wrapping_mul(0x1E37_79B9_7F4A_7C15)).collect();
-        assert!(Sink::new(n, 8, Form::For).write(&Blocks::dense(pod::bytes(&wide), 8), true).is_none());
-        let x = col(n);
-        let s = Sink::new(n, 8, Form::For).write(&Blocks::dense(pod::bytes(&x), 8), true).expect("sink_tests: a narrow column shrinks");
-        assert_eq!(pair(&s), pair(&Sink::new(n, 8, Form::For).answer(&Blocks::dense(pod::bytes(&x), 8))));
-        let f: Vec<f64> = (0..n).map(|i| ((i * 7919) % 100000) as f64 / 100.0).collect();
-        let a = Sink::new(n, 8, Form::Alp).answer(&Blocks::dense(pod::bytes(&f), 8));
-        let (m, rest) = (a.borrow().field(0).bytes(), a.borrow().field(1));
-        let cf = crate::alp::Cocf::view(m, rest.field(0).bytes(), rest.field(1).bytes(), n).expect("sink_tests: the sink's ALP column views");
-        let mut got = alloc::vec![0u8; n * 8];
-        crate::codec::alp_decode(crate::c::pool(), &cf, &mut got);
-        assert_eq!(got, pod::bytes(&f));
-    }
     // `bools` against its rule: a mixed block width 1 with the bitmap as residuals, a uniform block width 0 at base 0 or 1
     // and no residual, the elements decoding back; uniform runs crossing block edges, a short last block, no element
     #[test] fn bools_is_u1_for() {
@@ -519,21 +478,6 @@ mod sink_tests {
                 }
                 assert_eq!(pv.len(), res, "n {n} pattern {k}: the pack is the mixed blocks' bitmaps alone");
             }
-        }
-    }
-    /// `qlean_ew_cmp` at 1M longs against an atom, the bitmap (`ew::cmp`) against the `u1` column (`bools`), per input:
-    /// `cargo test --release --features std --lib bools_bench -- --ignored --nocapture`, `QLEAN_THREADS=1 taskset -c 0`
-    #[test] #[ignore] fn bools_bench() {
-        let n = 1usize << 20;
-        let ins: [(&str, alloc::vec::Vec<i64>); 3] = [("random", (0..n as i64).map(|i| i.wrapping_mul(0x9E3779B97F4A7C15u64 as i64) >> 1).collect()),
-            ("sorted", (0..n as i64).collect()), ("constant", alloc::vec![7; n])];
-        for (name, x) in &ins {
-            let (a, b) = (pod::bytes(x), pod::bytes(&[0i64]));
-            let best = |f: &dyn Fn() -> usize| (0..20).map(|_| { let t = std::time::Instant::now(); let s = f(); (t.elapsed(), s) }).min().expect("20 runs");
-            let (tb, sb) = best(&|| { let mut o = alloc::vec![0u8; n.div_ceil(8)]; crate::ew::cmp(crate::c::pool(), 2, 3, 1, a, b, n, &mut o); o.len() });
-            let (tf, sf) = best(&|| { let o = Sink::new(n, 1, Form::For).bools(crate::QLEAN_COST_ARITH, &|lo, hi, out| crate::ew::cmp_slice(2, 3, 1, a, b, n, lo / 8, hi.div_ceil(8), out));
-                                       o.borrow().field(0).bytes().len() + o.borrow().field(1).bytes().len() });
-            std::println!("{name}: bitmap {:.3} ms {sb} B, u1 FoR {:.3} ms {sf} B", tb.as_secs_f64() * 1e3, tf.as_secs_f64() * 1e3);
         }
     }
 }

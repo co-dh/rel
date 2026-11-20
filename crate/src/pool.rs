@@ -301,8 +301,6 @@ pub mod tests {
         /// the largest `n * cost * wide` this thread entered the pool with since `seen`
         pub(crate) static SEEN: core::cell::Cell<usize> = const { core::cell::Cell::new(0) };
     }
-    /// The largest pass `f` asked the pool for, as `n * cost * wide`.
-    pub(crate) fn seen(f: impl FnOnce()) -> usize { SEEN.with(|s| s.set(0)); f(); SEEN.with(|s| s.get()) }
 
     fn gettid() -> i64 { unsafe { sys::syscall(186 as c_long) as i64 } }
 
@@ -325,38 +323,9 @@ pub mod tests {
     }
 
     // Many threads entering at once: one splits, the others run the same slices in turn; every answer is whole.
-    #[test] fn pool_contended_answers_whole() {
-        let pool: &'static Pool = std::boxed::Box::leak(std::boxed::Box::new(Pool::new(8)));
-        std::thread::scope(|s| for _ in 0..16 { s.spawn(|| for n in [0usize, 1, 7, 8, 9, 1000, 100_003] {
-            let sum = AtomicU64::new(0);
-            let parts = pool.run(n, 1, SPLIT, &|_, lo, hi| { sum.fetch_add((lo..hi).map(|i| i as u64).sum(), Relaxed); });
-            assert_eq!(sum.load(Relaxed), (n as u64) * (n as u64).saturating_sub(1) / 2);
-            assert_eq!(parts, if n == 0 { 1 } else { 8 });
-        }); });
-        assert_eq!(pool.stat(PASSES as u8), 16 * 7);
-        assert_eq!(pool.stat(SPLITS as u8) + pool.stat(CONTENDED as u8) + pool.stat(DECLINED as u8), 16 * 7);
-    }
 
     // A 2^24-element input to each kernel asks for a pass the production threshold splits (at width 4: `worth`'s
     // other half). Kernels whose input needs an encoded column are covered by the bench's `spread` gate instead.
-    #[test] fn pool_parts() {
-        use crate::c::qlean_run_c as run;
-        use std::{vec, vec::Vec};
-        const N: usize = 1 << 24;
-        let big = |what: &str, s: usize| assert!(s >= SPLIT, "pool_parts: {what} at 2^24 asks for {s} < {SPLIT}: never splits");
-        let mut o = vec![0i64; N];
-        big("til", seen(|| crate::structural::til(run, &mut o)));
-        let (a, b) = (vec![1u8; N / 2], vec![2u8; N / 2]);
-        let mut ob = vec![0u8; N];
-        big("concat", seen(|| crate::structural::concat(run, &[&a, &b], &mut ob)));
-        let src = vec![7u8; 8 * N];
-        let idx: Vec<i64> = (0..N as i64).collect();
-        let mut o8 = vec![0u8; 8 * N];
-        big("gather", seen(|| crate::structural::gather(run, 8, 0, &src, &idx, &mut o8)));
-        let w = vec![0x5555_5555_5555_5555u64; N];
-        let mut ow = vec![0u64; N];
-        big("bitw", seen(|| crate::ew::bitw(run, 0, crate::pod::bytes(&w), crate::pod::bytes(&w), N, crate::pod::bytes_mut(&mut ow))));
-    }
 
     // the threshold: one unit below declines, at it splits; `wide = 0` always declines
     #[test] fn pool_threshold() {

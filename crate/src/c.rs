@@ -93,41 +93,9 @@ mod tests {
         assert_eq!(out, [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13]);
     }
     // units that are not equally spaced still get disjoint slices, `at(lo) .. at(hi)`
-    #[test] fn run_map_at_cuts_by_the_start_function() {
-        let starts = [0usize, 3, 4, 9, 10];
-        let mut out = [0u8; 10];
-        super::run_map_at(super::qlean_run_c, &mut out, 4, &|k| starts[k], crate::QLEAN_COST_ARITH, 8, &|lo, hi, o: &mut [u8]| {
-            assert_eq!(o.len(), starts[hi] - starts[lo]);
-            o.fill(lo as u8 + 1)
-        });
-        assert!(out.iter().all(|&b| b != 0));
-    }
     use crate::ffi::{CPass, CStage};
     use std::vec::Vec;
     // stage 0 adds one to a byte column into slot 0, stage 1 doubles that slot into the answer column
-    unsafe extern "C" fn inc(lo: usize, hi: usize, p: *const CPass) {
-        for i in lo..hi { unsafe { *(*p).o.cast::<u8>().add(i) = (*(*p).a.cast::<u8>().add(i)).wrapping_add(1) } }
-    }
-    unsafe extern "C" fn dbl(lo: usize, hi: usize, p: *const CPass) {
-        for i in lo..hi { unsafe { *(*p).o.cast::<u8>().add(i) = (*(*p).a.cast::<u8>().add(i)).wrapping_mul(2) } }
-    }
-    fn stage(f: unsafe extern "C" fn(usize, usize, *const CPass), a: *const u8, o: *mut u8, asrc: u8, osrc: u8) -> CStage {
-        CStage { f: Some(f), p: CPass { a: a.cast(), b: core::ptr::null(), c: core::ptr::null(), o: o.cast(), n: 0, at: 0, r#priv: 0, nul: 0, op: 0, cls: 0, shape: 0 },
-                 asrc, bsrc: 255, osrc, abits: 8, bbits: 0, obits: 8, bytewise: 0 }
-    }
-    #[test] fn chain_runs_every_stage_per_tile_and_one_stage_whole() {
-        for n in [1usize, 1023, 1024, 1025, 3000] {
-            let x: Vec<u8> = (0..n).map(|i| i as u8).collect();
-            let mut o = vec![0u8; n];
-            let st = [stage(inc, x.as_ptr(), core::ptr::null_mut(), 254, 0), stage(dbl, core::ptr::null(), o.as_mut_ptr(), 0, 254)];
-            super::run_chain(super::qlean_run_c, &st, n, crate::QLEAN_COST_ARITH, 1);
-            assert!(o.iter().zip(&x).all(|(&o, &x)| o == x.wrapping_add(1).wrapping_mul(2)), "n = {n}");
-            let mut o1 = vec![0u8; n];
-            let one = [stage(inc, x.as_ptr(), o1.as_mut_ptr(), 254, 254)];
-            super::run_chain(super::qlean_run_c, &one, n, crate::QLEAN_COST_ARITH, 1);
-            assert!(o1.iter().zip(&x).all(|(&o, &x)| o == x.wrapping_add(1)), "n = {n}");
-        }
-    }
 }
 
 

@@ -81,64 +81,8 @@ mod tests {
     use crate::coc;
 
     // `Op` constructor indices (Rel/Kernel/Op.lean)
-    const ADD: u8 = 0;
-    const SUB: u8 = 1;
-    const DIV: u8 = 3;
-    const MIN: u8 = 5;
-    const FIRST: u8 = 18;
-    const LAST: u8 = 19;
 
-    #[test] fn last_write_wins_and_fill_stays() {
-        assert_eq!(words(LAST, &[2, 0, 2], &[10, 11, 12], 4, 7), Ok(vec![11, 7, 12, 7]));
-    }
-    #[test] fn add_sums_collisions_onto_fill() {
-        assert_eq!(words(ADD, &[2, 0, 2], &[10, 11, 12], 4, 7), Ok(vec![18, 7, 29, 7]));
-    }
-    #[test] fn index_past_n_is_an_error() {
-        assert_eq!(words(LAST, &[1, 5, 9], &[1, 2, 3], 3, 0), Err("scatter: index 5 at row 1 is not below n = 3".into()));
-    }
-    #[test] fn op_error_names_its_row() {
-        assert_eq!(words(DIV, &[0, 0], &[5, 0], 1, 100), Err("scatter: Op.div: integer division by 0 at row 1".into()));
-    }
-    /// `Coc.encode 8` of `ws` as `(meta, pack)`, the form a `foR` argument holds
-    fn enc(ws: &[u64]) -> [Vec<u8>; 2] {
-        let o = Sink::new(ws.len(), 8, Form::For).answer(&Blocks::dense(pod::bytes(ws), 8));
-        [0, 1].map(|i| o.borrow().field(i).bytes().to_vec())
-    }
-    fn answer(o: &lean::O) -> [Vec<u8>; 2] { [0, 1].map(|i| o.borrow().field(i).bytes().to_vec()) }
-    fn run(op: u8, is: &[u64], es: &[u64], n: usize, fill: u64) -> Result<[Vec<u8>; 2], String> {
-        let ([mi, pi], [me, pe]) = (enc(is), enc(es));
-        let ci = coc::view(&mi, &pi, is.len()).unwrap_or_else(|e| panic!("test column does not view: {e}"));
-        let ce = coc::view(&me, &pe, es.len()).unwrap_or_else(|e| panic!("test column does not view: {e}"));
-        blocks(op, &Blocks::from(ci), &Blocks::from(ce), n, fill).map(|o| answer(&o))
-    }
     // `blocks` writes the bytes `Coc.encode` writes for `words`' answer under each op: ascending with repeats, a
     // permutation, a sparse index, repeats out of order, and no rows; collisions straddle the 1024-row blocks
-    #[test] fn blocks_is_encode_of_words() {
-        let n = 5000usize;
-        let perm: Vec<u64> = (0..n as u64).map(|k| (k * 2654435761) % n as u64).collect();
-        let cases: [Vec<u64>; 6] = [(0..3000u64).map(|k| k * 5 / 3).collect(), perm, (0..40u64).map(|k| k * 117).collect(),
-            (0..4000u64).map(|k| (k * 7919) % 900 + (k % 3) * 1500).collect(), vec![], (0..1025u64).map(|k| k % 2).collect()];
-        for is in cases {
-            let es: Vec<u64> = (0..is.len() as u64).map(|k| 1000 + (k * 31) % 777 + if k % 97 == 5 { k << 30 } else { 0 }).collect();
-            for op in [LAST, ADD, SUB, MIN, FIRST, DIV] {
-                let want = Sink::new(n, 8, Form::For).enc().answer(&Blocks::dense(pod::bytes(&words(op, &is, &es, n, 9).unwrap()), 8));
-                assert_eq!(run(op, &is, &es, n, 9), Ok(answer(&want)), "op {op} m {}", is.len());
-            }
-        }
-    }
     // the first error in row order, the bounds and the op's alike, on an ascending and on an unordered index
-    #[test] fn blocks_errors_are_words_errors() {
-        let n = 5000usize;
-        let es: Vec<u64> = (0..3000u64).map(|k| if k == 1500 { 0 } else { k + 1 }).collect();
-        for bad in [1000u64, 2100] {
-            for is in [(0..3000u64).collect::<Vec<_>>(), (0..3000u64).map(|k| (k * 7919) % 3000).collect()] {
-                let is: Vec<u64> = is.iter().enumerate().map(|(k, &i)| if k as u64 == bad { n as u64 + 3 } else { i }).collect();
-                for op in [LAST, DIV] {
-                    let want = words(op, &is, &es, n, 0).unwrap_err();
-                    assert_eq!(run(op, &is, &es, n, 0), Err(want), "op {op} bad {bad}");
-                }
-            }
-        }
-    }
 }

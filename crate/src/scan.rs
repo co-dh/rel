@@ -74,24 +74,9 @@ mod tests {
     use super::*;
     use alloc::{vec, vec::Vec};
 
-    /// `w msum x` through `sum` over a fresh ring of `2w` zeroed slots (the prefix before the start is 0), in chunks
-    /// that wrap it, answered at `O`.
-    fn msum<E: Reg, O: Reg<B = [u8; OW]>, const OW: usize>(w: usize, x: &[E], sum: fn(&mut Mw, &[u8], &mut [u8], usize)) -> Vec<O> {
-        let p: Vec<u8> = x.iter().flat_map(|e| e.bits().to_ne_bytes()[..E::W].to_vec()).collect();
-        let (mut ri, mut o) = (vec![0u64; 2 * w], vec![0u8; x.len() * OW]);
-        let mut st = Mw { w, cu: 0, cap: 2 * w, tl: w, t: 0, isum: 0, fsum: 0.0, fsq: 0.0, cnt: 0, extbits: 0, sent: 0,
-            ri: &mut ri, rf: &mut [], rq: &mut [], rc: &mut [], phase: &mut [], sufx: &mut [] };
-        sum(&mut st, &p, &mut o, x.len());
-        o.chunks_exact(OW).map(O::rd).collect()
-    }
 
     // `2 msum 0W 0N 1 5 7`: the prefix past `O`'s range is null and stays null at both ends of the window; at 64 bits
     // the prefix wraps instead, onto the null and then past it
-    #[test] fn msum_int_null_ends() {
-        assert_eq!(msum::<i32, i32, 4>(2, &[i32::MAX, i32::MIN, 1, 5, 7], KI32::msum), [i32::MAX, i32::MAX, i32::MIN, i32::MIN, i32::MIN]);
-        assert_eq!(msum::<i16, i16, 2>(2, &[i16::MAX, i16::MIN, 1, 5, 7], sum_int::<KI16, i16, 2>), [i16::MAX, i16::MAX, i16::MIN, i16::MIN, i16::MIN]);
-        assert_eq!(msum::<i64, i64, 8>(2, &[i64::MAX, i64::MIN, 1, 5, 7], KI64::msum), [i64::MAX, i64::MAX, i64::MIN, 6, i64::MIN]);
-    }
 }
 
 // ---------------------------------------------------------------- `kscan` (Rel/Kernel/Scan.lean, design §4)

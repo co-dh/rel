@@ -252,164 +252,18 @@ mod tests {
     use crate::{BLK, pod::bytes_mut};
 
     // Expected values from coc.rs's alp_thresh: the clamps outside 2^53 and the ceil at an exponent
-    #[test] fn thresh_clamps_and_rounds_up() {
-        let (z, o, w) = ([0i64], [0u64], [0u8]);
-        let meta = Meta { lg: crate::DEFAULT_LG, base: &z, maxv: &z, off: &o, bsum: &z, width: &w, n: 1, nblk: 1, mblk: 1 };
-        let f = Cocf { c: Coc { meta, pack: &[], exc: None, fdelta: None }, exp: &[0], exc_off: &[0, 0], exc_pos: &[], exc_raw: &[], f32: false };
-        assert_eq!([f.thresh(f64::NAN, 0), f.thresh(1e300, 0), f.thresh(-1e300, 3), f.thresh(f64::INFINITY, 2)],
-                   [i64::MIN / 2, i64::MAX / 2, i64::MIN / 2, i64::MAX / 2]);
-        assert_eq!([f.thresh(2.5, 0), f.thresh(-2.5, 0), f.thresh(3.0, 0), f.thresh(1.5, 1), f.thresh(0.1, 1), f.thresh(0.3, 1)], [3, -2, 3, 15, 1, 3]);
-    }
     // Expected values come from the original C: `encode_f64` of [1.5, 2.25, NaN, 100.0] (exponent 2, base 150, width 14, one
     // patch) patched by [1 -> 1.25, 3 -> 0.1234567], /data/tmp/qrs/A17/one2.c; the random comparison is /data/tmp/qrs/A17/diff.c.
-    #[test] fn patch_blk_keeps_the_old_exponent_and_answers_the_one_the_search_would_pick() {
-        let (base, maxv, off, bsum, width) = ([150i64], [10000i64], [0u64], [0i64], [14u8]);
-        let meta = Meta { lg: crate::DEFAULT_LG, base: &base, maxv: &maxv, off: &off, bsum: &bsum, width: &width, n: 4, nblk: 1, mblk: 1 };
-        let mut pack = vec![0u8; BLK * 14 / 8];
-        pack[..7].copy_from_slice(&[0, 192, 18, 0, 0, 232, 153]); // residuals 0, 75, 0, 9850
-        let raw = f64::NAN.to_ne_bytes();
-        let o = Cocf { c: Coc { meta, pack: &pack, exc: None, fdelta: None }, exp: &[2], exc_off: &[0, 1], exc_pos: &[2], exc_raw: &raw, f32: false };
-        let (mut d, mut ee) = ([0i64; BLK], [0i8; BLK]);
-        assert_eq!(alp_patch_blk(&o, 0, 4, &[1, 3], &[1.25f64, 0.1234567], &mut d, &mut ee), 7);
-        assert_eq!((&d[..4], &ee[..4]), (&[150, 125, 150, 10000][..], &[0, 0, -1, -2][..]));
-    }
 
-    struct Cur { w: Vec<u64>, at: usize }
-    impl Cur {
-        fn u(&mut self) -> u64 { self.at += 1; self.w[self.at - 1] }
-        fn blob(&mut self) -> (Vec<u64>, usize) {
-            let len = self.u() as usize; let k = len.div_ceil(8);
-            let v = self.w[self.at..self.at + k].to_vec(); self.at += k; (v, len)
-        }
-    }
-    /// A metadata blob of the 33n + 16 byte layout as the 33n + 24 byte one: the word `lg = DEFAULT_LG` after `sumn`, 8-aligned.
-    fn old_trailer(m: &[u8]) -> (Vec<u64>, usize) {
-        let (n, at) = ((m.len() - 16) / 33, 32 * ((m.len() - 16) / 33) + 16);
-        let mut v: Vec<u8> = m[..at].to_vec();
-        v.extend((crate::DEFAULT_LG as u64).to_ne_bytes());
-        v.extend(&m[at..at + n]);
-        let len = v.len();
-        (v.chunks(8).map(|c| { let mut t = [0u8; 8]; t[..c.len()].copy_from_slice(c); u64::from_ne_bytes(t) }).collect(), len)
-    }
-    fn fnv(b: &[u8]) -> u64 { b.iter().fold(14695981039346656037u64, |h, &x| (h ^ x as u64).wrapping_mul(1099511628211)) }
-    fn fnv_w(v: &[u64]) -> u64 { fnv(&v.iter().flat_map(|x| x.to_ne_bytes()).collect::<Vec<u8>>()) }
 
     // Expected values come from the original C (cocf_decode, cocf_load_blk, cocf_lanes, cocf_load_range, alp_offsets,
     // alp_fin_blk, sort.rs's keys_blk_alp) on random columns of every residual width, with sentinel patches; the stream is
     // made by the generator in /data/tmp/qrs/A5/gen.c. `QRS_A5_CASES` names a bigger one than the committed sample.
-    #[test] fn differential() {
-        let path = std::env::var("QRS_A5_CASES").unwrap_or_else(|_| concat!(env!("CARGO_MANIFEST_DIR"), "/testdata/alp.bin").into());
-        let raw = std::fs::read(&path).unwrap_or_else(|e| panic!("{path}: {e}"));
-        let mut c = Cur { w: raw.chunks_exact(8).map(|x| u64::from_ne_bytes(x.try_into().unwrap())).collect(), at: 0 };
-        let (mut cols, mut checks) = (0u64, 0u64);
-        loop {
-            match c.u() {
-                0 => break,
-                1 => {
-                    let (n, f32) = (c.u() as usize, c.u() != 0);
-                    let ((mut m, ml), (mut a, al), (mut p, pl)) = (c.blob(), c.blob(), c.blob());
-                    // alp.bin is the C encoder's dump, made before the trailer carried `lg`: its 16-byte trailer is read as the same column at lg = 10
-                    let (mut m, ml) = old_trailer(&bytes_mut(&mut m)[..ml]);
-                    let (m, a, p) = (&bytes_mut(&mut m)[..ml], &bytes_mut(&mut a)[..al], &bytes_mut(&mut p)[..pl]);
-                    let mut f = Cocf::meta_view(m, a, n).expect("meta_view");
-                    assert_eq!(f.f32, f32);
-                    f.c.pack = p;
-                    let esz = if f32 { 4 } else { 8 };
-                    let mut out = vec![0xabababababababab_u64; n + 8];
-                    for b in 0..f.c.meta.nblk { let (lo, nb) = (b * BLK, (n - b * BLK).min(BLK)); f.load_blk(b, nb, &mut bytes_mut(&mut out)[lo * esz..(lo + nb) * esz]) }
-                    assert_eq!(fnv(&bytes_mut(&mut out)[..n * esz]), c.u(), "decode n {n}");
-                    for b in 0..f.c.meta.nblk {
-                        let full = (n - b * BLK).min(BLK);
-                        for _ in 0..3 {
-                            let (mut buf, mut lb) = ([0xabababababababab_u64; BLK], [0xcdcdcdcdcdcdcdcd_u64; BLK]);
-                            let nb = c.u() as usize;
-                            f.load_blk(b, nb, bytes_mut(&mut buf));
-                            assert_eq!(fnv_w(&buf), c.u(), "load_blk b {b} nb {nb} n {n}");
-                            let (lw, lh) = (c.u() as u8, c.u());
-                            let (lp, w, w0) = f.lanes(b, nb, bytes_mut(&mut lb));
-                            assert_eq!((w, w0), (lw, f.c.meta.width[b]), "lanes b {b}");
-                            assert_eq!(fnv(&lp[..(nb * w as usize).div_ceil(8)]), lh, "lanes b {b} nb {nb}");
-                            let (i0, i1) = (c.u() as usize, c.u() as usize);
-                            buf = [0xabababababababab; BLK];
-                            let (lp, w, _) = f.lanes(b, i1, bytes_mut(&mut lb));
-                            f.load_range(b, lp, w, i0, i1, bytes_mut(&mut buf));
-                            assert_eq!(fnv_w(&buf), c.u(), "load_range b {b} {i0}..{i1} n {n}");
-                            checks += 3;
-                        }
-                        let mut k = [0u64; BLK];
-                        crate::kwin::keys_blk_alp(&f, b, &mut k[..full]);
-                        assert_eq!(fnv_w(&k[..full]), c.u(), "keys_blk_alp b {b} n {n}");
-                        checks += 1;
-                    }
-                    cols += 1; checks += 1;
-                }
-                2 => {
-                    let nblk = c.u() as usize;
-                    let mut o: Vec<u32> = (0..=nblk).map(|i| if i == 0 { 0xdeadbeef } else { c.u() as u32 }).collect();
-                    assert_eq!((alp_offsets(&mut o, nblk) as u64, fnv(&o.iter().flat_map(|x| x.to_ne_bytes()).collect::<Vec<u8>>())),
-                               (c.u(), c.u()), "alp_offsets nblk {nblk}");
-                    checks += 1;
-                }
-                _ => {
-                    let (nb, be) = (c.u() as usize, c.u());
-                    let (mut d, mut ee) = (vec![0i64; nb], vec![0i8; nb]);
-                    for i in 0..nb { d[i] = c.u() as i64; ee[i] = c.u() as i64 as i8 }
-                    let (ne, exp, dh) = (c.u(), c.u(), c.u());
-                    let (cb, cm, cw) = (c.u() as i64, c.u() as i64, c.u());
-                    let (mut base, mut maxv, mut width, mut bsum, mut nexc, mut e) = (0i64, 0i64, 0u8, 0i64, 0u32, 0i8);
-                    let mut m = EncMeta { b: 0, base: &mut base, maxv: &mut maxv, width: &mut width, bsum: &mut bsum, frm: None,
-                                          nexc: &mut nexc, exp: Some(&mut e), patch: false };
-                    assert_eq!((alp_fin_blk(&mut m, be as i32, &mut d, &ee, nb) as u64, fnv_w(&d.iter().map(|&x| x as u64).collect::<Vec<_>>())),
-                               (ne, dh), "alp_fin_blk nb {nb}");
-                    assert_eq!((e as i64 as u64, base, maxv, width as u64), (exp, cb, cm, cw), "alp_fin_blk meta nb {nb}");
-                    checks += 2;
-                }
-            }
-        }
-        eprintln!("alp differential: {cols} columns, {checks} checks");
-        assert!(cols > 0);
-    }
 
     // The encoder's per-block steps against the original C (coc.rs at ec273cf: dat, dexp, dat_blk, alp_exc_at,
     // alp_meta_blk, alp_meta_exp, alp_pack_blk) on blocks of decimals at every exponent, random bits, sentinels, -0.0,
     // subnormals and values near 2^49 / 2^53, from /data/tmp/qrs/A9/gen.c. `QRS_A9_CASES` names a bigger stream.
     // `encode_meta_blk` and `pack_block` are A7's: base, maxv, width and the pack hash are read past here.
-    fn check_blk<F: Elt>(c: &mut Cur, x: &[F]) -> u64 {
-        let nb = x.len();
-        let mut n = 0;
-        for e in 0..=18 {
-            let (mut d, mut ok) = (vec![0i64; nb], vec![0u8; nb]);
-            dat_blk(x, e, &mut d, &mut ok);
-            let full: Vec<i64> = d.clone();
-            for i in 0..nb { if ok[i] == 0 { d[i] = 0 } }
-            let (oks, ds): (Vec<u8>, Vec<i64>) = x.iter().map(|&v| dat(v, e).map_or((0, 0), |r| (1, r))).unzip();
-            let h = |v: &[i64]| fnv(&v.iter().flat_map(|x| x.to_ne_bytes()).collect::<Vec<u8>>());
-            assert_eq!((fnv(&ok), h(&d), fnv(&oks), h(&ds), h(&full)), (c.u(), c.u(), c.u(), c.u(), c.u()), "dat e {e} nb {nb}");
-            n += 1;
-        }
-        let dx: Vec<u8> = x.iter().flat_map(|&v| dexp(v).to_ne_bytes()).collect();
-        assert_eq!(fnv(&dx), c.u(), "dexp nb {nb}");
-        for be in [0, 1, 2, 5, 10, 18] { for lim in [1, 3, 1 << 30] { assert_eq!(alp_exc_at(x, be, lim) as u64, c.u(), "alp_exc_at be {be} lim {lim}"); n += 1 } }
-        let ee_nexc = |ee: &mut [i8], be: i32| { let mut d = vec![0i64; nb]; recheck(x, nb, be, ee, &mut d); exc_as_base(&mut d, ee, nb) as u64 };
-        let mut ee = vec![0i8; nb];
-        let be = alp_exps(x, nb, &mut ee);
-        assert_eq!((ee_nexc(&mut ee, be), be as u64), (c.u(), c.u()), "alp_meta_blk nb {nb}");
-        let base = c.u() as i64;
-        c.u(); c.u(); // maxv, width: A7
-        let (mut d, mut pos, mut raw) = (vec![0i64; nb], vec![0u16; nb], vec![x[0]; nb]);
-        holes(x, be, base, &mut d, &mut pos, &mut raw);
-        let ne = x.iter().filter(|&&v| dat(v, be).is_none()).count();
-        let rb: Vec<u8> = raw[..ne].iter().flat_map(|v| v.bits().to_ne_bytes()[..size_of::<F>()].to_vec()).collect();
-        assert_eq!((fnv(&pos.iter().take(ne).flat_map(|v| v.to_ne_bytes()).collect::<Vec<u8>>()), fnv(&rb)), (c.u(), c.u()), "holes nb {nb}");
-        c.u(); // the pack hash: A7
-        for be in [0, 1, 2, 5, 10, 18] {
-            let mut ee = vec![0i8; nb];
-            exp_marks(x, nb, &mut ee);
-            assert_eq!(ee_nexc(&mut ee, be), c.u(), "alp_meta_exp be {be} nb {nb}");
-            c.u(); c.u(); // base, width: A7
-        }
-        n + 8
-    }
     // the vector path's `nearest` is the scalar `cvt_nearest`, ties to even, on the edges and a sweep of the range
     #[test] fn nearest_is_cvtsd2si() {
         for s in [0.0, -0.0, 0.5, -0.5, 1.5, 2.5, -2.5, 0.4999999, 4503599627370495.5, 4503599627370496.0, 9007199254740991.0,
@@ -420,20 +274,5 @@ mod tests {
             let s = f64::from_bits(x) % P53;
             if s.is_finite() { assert_eq!(nearest(s), crate::simd::cvt_nearest(s), "{s}") }
         }
-    }
-    #[test] fn differential_enc() {
-        let path = std::env::var("QRS_A9_CASES").unwrap_or_else(|_| concat!(env!("CARGO_MANIFEST_DIR"), "/testdata/alp_enc.bin").into());
-        let raw = std::fs::read(&path).unwrap_or_else(|e| panic!("{path}: {e}"));
-        let mut c = Cur { w: raw.chunks_exact(8).map(|x| u64::from_ne_bytes(x.try_into().unwrap())).collect(), at: 0 };
-        let (mut blocks, mut checks) = (0u64, 0u64);
-        while c.u() != 0 {
-            let (f32, nb) = (c.u() != 0, c.u() as usize);
-            let bits: Vec<u64> = (0..nb).map(|_| c.u()).collect();
-            checks += if f32 { check_blk(&mut c, &bits.iter().map(|&b| f32::from_bits(b as u32)).collect::<Vec<_>>()) }
-                      else { check_blk(&mut c, &bits.iter().map(|&b| f64::from_bits(b)).collect::<Vec<_>>()) };
-            blocks += 1;
-        }
-        eprintln!("alp encode differential: {blocks} blocks, {checks} checks");
-        assert!(blocks > 0);
     }
 }

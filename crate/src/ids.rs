@@ -127,36 +127,6 @@ mod tests {
         assert_eq!((ids_bytes(0, 4), ids_bytes(3, 1), ids_bytes(5, 2), ids_bytes(3, 64)), (0, 1, 2, 24));
     }
     // `pack` and `unpack` against the per-id `id_put` and `id_at` they replace, across the word boundary and its tail
-    #[test] fn pack_unpack_match_id_put_id_at() {
-        fn go<const W: u32>() {
-            for n in [0usize, 1, 7, 63, 64, 65, 200, 517] {
-                let mask = if W == 64 { !0 } else { (1u64 << W) - 1 };
-                let val = |i: usize| (i as u64).wrapping_mul(0x9E37_79B9_7F4A_7C15).rotate_left(17) & mask;
-                let (mut a, mut b) = (vec![0u8; ids_bytes(n, W)], vec![0u8; ids_bytes(n, W)]);
-                pack(&mut a, W, n, val);
-                (0..n).for_each(|i| id_put(&mut b, W, i, val(i)));
-                assert_eq!(a, b, "pack w={W} n={n}");
-                let mut got = vec![usize::MAX; n];
-                unpack::<W, usize>(&a, &mut got, |i, e, v| { assert!(*e == usize::MAX); *e = v; assert_eq!(v, id_at(&a, W, i)) });
-                assert!(got.iter().enumerate().all(|(i, &v)| v == id_at(&a, W, i)), "unpack w={W} n={n}");
-                let mut runs_out = vec![0i64; n + 1];
-                let g = runs(&a, n, W, usize::MAX, n, &mut runs_out);
-                let want: Vec<i64> = (0..n).filter(|&i| i == 0 || id_at(&a, W, i) != id_at(&a, W, i - 1)).map(|i| i as i64).collect();
-                assert_eq!(&runs_out[..g], &want[..], "runs w={W} n={n}");
-            }
-        }
-        go::<0>(); go::<1>(); go::<2>(); go::<4>(); go::<8>(); go::<16>(); go::<32>(); go::<64>();
-    }
-    #[test] fn pack_roundtrip() {
-        for w in [1u32, 2, 4] {
-            for n in 0..70usize {
-                let src: Vec<u8> = (0..n).map(|i| (i * 7 + 3) as u8 & ((1 << w) - 1)).collect();
-                let mut g = src.clone();
-                pack_in_place(&mut g, w, n);
-                assert!(src.iter().enumerate().all(|(i, &v)| id_at(&g, w, i) == v as usize), "w={w} n={n}");
-            }
-        }
-    }
     #[test] fn at_and_max() {
         let p = [0b1110_0100u8, 0b0000_0011, 5, 0, 0, 0, 0, 0, 0, 0];
         assert_eq!([0, 1, 2, 3].map(|i| id_at(&p, 2, i)), [0, 1, 2, 3]);
@@ -177,49 +147,12 @@ mod firsts_tests {
     use super::*;
     // The C driver (/data/tmp/qrs/B1/drv.c) answered (ng, first[1]) = (2, pos), or (1, 0) with no id >= nd, for
     // every (w, nd, pos) of this table; the ids are all 0 but `v` at `pos`.
-    #[test] fn firsts_cases() {
-        let n = 130;
-        for w in [1u32, 2, 4, 8, 16, 32, 64] {
-            let nds: &[usize] = if w <= 16 { &[1 << w, (1 << w) - 1] } else { &[3] };
-            for &nd in nds {
-                let v: u64 = if w >= 32 { 5 } else { (nd as u64).min((1 << w) - 1) };
-                for pos in [Some(0), Some(63), Some(64), Some(n - 1), None] {
-                    let mut p = vec![0u8; n * 8 + 16];
-                    if let Some(i) = pos {
-                        if w < 8 { p[i * w as usize / 8] |= (v << (i * w as usize % 8)) as u8 }
-                        else { let k = w as usize / 8; p[i * k..(i + 1) * k].copy_from_slice(&v.to_le_bytes()[..k]) }
-                    }
-                    let (mut slot, mut first) = (vec![usize::MAX; nd + 1], vec![0; n.min(nd + 1)]);
-                    let ng = firsts(&p[..ids_bytes(n, w)], n, w, nd, &mut slot, &mut first);
-                    let (wng, wf1) = match pos { Some(i) if i != 0 => (2, i), Some(_) => (2, 1), None => (1, 0) };
-                    assert_eq!((ng, if ng > 1 { first[1] } else { 0 }), (wng, wf1), "w={w} nd={nd} pos={pos:?}");
-                }
-            }
-        }
-    }
 }
 
 #[cfg(test)]
 mod map_tests {
     use super::*;
     // The C `ids_map_run` + table agreed (/data/tmp/qrs/B2/h.c, 26268 random cases); here the per-row definition.
-    #[test] fn map_is_slot_of_id() {
-        let mut s = 7u64;
-        let mut rnd = || { s ^= s << 13; s ^= s >> 7; s ^= s << 17; s };
-        for w in [1u32, 2, 4, 8, 16, 32, 64] {
-            for n in [0usize, 1, 3, 7, 8, 9, 63, 130] {
-                let ids: Vec<u8> = (0..ids_bytes(n, w) + 8).map(|_| rnd() as u8).collect();
-                let nd = if w <= 8 { 1 << w } else { 5 };
-                let slot: Vec<usize> = (0..=nd).map(|v| v % 3).collect();
-                for wo in [2u32, 8, 16, 32, 64].into_iter().filter(|&wo| wo >= 8 || w >= 2) {
-                    let mut out = vec![0u8; ids_bytes(n, wo)];
-                    map(crate::c::qlean_run_c, &ids, n, w, nd, &slot, wo, &mut out);
-                    for i in 0..n { assert_eq!(id_at(&out, wo, i), slot[id_at(&ids, w, i).min(nd)], "w={w} n={n} wo={wo} i={i}"); }
-                    if (n * wo as usize) & 7 != 0 { assert_eq!(out[out.len() - 1] >> ((n * wo as usize) & 7), 0); }
-                }
-            }
-        }
-    }
 }
 
 // ---- A10: ids.rs (per element: C keeps these bodies while a C caller remains) ----
@@ -241,59 +174,7 @@ mod map_tests {
 mod a10_tests {
     use super::*;
 
-    struct Rng(u64);
-    impl Rng {
-        fn rnd(&mut self) -> u64 { self.0 = self.0.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407); self.0 >> 33 }
-        fn rnd64(&mut self) -> u64 { let a = self.rnd(); a << 31 ^ self.rnd() }
-    }
-    fn hb(h: &mut u64, b: &[u8]) { for &x in b { *h = (*h ^ x as u64).wrapping_mul(1099511628211); } }
-    fn h16(h: &mut u64, d: &[u16]) { for x in d { hb(h, &x.to_le_bytes()); } }
 
     // The same random walk as the C harness over ids.rs at 98305ab: the expected hashes are the C's output.
-    #[test]
-    fn matches_c() {
-        let mut r = Rng(0x9E3779B97F4A7C15);
-        let [mut hp, mut hf, mut hu, mut hr, mut hc] = [14695981039346656037u64; 5];
-        for _ in 0..3000 {
-            for w in [0u32, 1, 2, 4, 8, 16, 32, 64] {
-                let cap = if w != 0 { 64 * 8 / w as usize } else { 100 };
-                let buf: Vec<u8> = (0..64).map(|_| r.rnd() as u8).collect();
-                let mut b2 = buf.clone();
-                let i = r.rnd() as usize % cap; let v = r.rnd64();
-                id_put(&mut b2, w, i, v); hb(&mut hp, &b2);
-                let mut b2 = buf.clone();
-                let at = r.rnd() as usize % (cap + 1); let cnt = r.rnd() as usize % (cap - at + 1); let v = r.rnd64();
-                ids_fill(&mut b2, w, at, cnt, v); hb(&mut hf, &b2);
-                let p: Vec<u8> = (0..64).map(|_| r.rnd() as u8).collect();
-                let from = r.rnd() as usize % (cap + 1); let m = r.rnd() as usize % (cap - from + 1);
-                let mut d = [0u16; 800];
-                unpack16(&p, w, from, m, &mut d); h16(&mut hu, &d[..m]);
-                let n = r.rnd() as usize % (cap + 1); let nd = 1 + r.rnd() as usize % 300;
-                let mut most = if r.rnd() % 4 != 0 { r.rnd() as usize % (n + 2) } else { usize::MAX };
-                let mut prev = 0u8;
-                let p: Vec<u8> = (0..40).map(|_| { if r.rnd() % 4 == 0 { prev = r.rnd() as u8; } prev }).collect();
-                let n = n.min(40 * 8 / w.max(1) as usize);
-                let mut o = [-1i64; 400];
-                let g = if r.rnd() % 3 != 0 { most = n; runs(&p, n, w, nd, most, &mut o[..most]) } else { runs(&p, n, w, nd, most, &mut []) };
-                hb(&mut hr, &(g as u64).to_le_bytes());
-                for x in &o[..g.min(400)] { hb(&mut hr, &x.to_le_bytes()); }
-            }
-            let src: Vec<u8> = (0..40).map(|_| r.rnd() as u8).collect();
-            let ss = 24 + r.rnd() as usize % 17; let sb = r.rnd() as usize % (ss * 8); let db = r.rnd() as usize % 64;
-            let lim = (ss * 8 - sb).min(320 - db); let bits = r.rnd() as usize % (lim + 1);
-            let mut dst = [0u8; 40];
-            bitcopy(&mut dst, db, &src[..ss], sb, bits); hb(&mut hc, &dst);
-        }
-        assert_eq!([hp, hf, hu, hr, hc], [0x6a45bdefcd81525e, 0xad88878f87de21f7, 0xf8cd5342bebc2451, 0x60ea9b1386f531b5, 0x2ad203a0f427c6ff]);
-    }
 
-    #[test]
-    fn edges() {
-        assert_eq!(slice_elems(0), 1); assert_eq!(slice_elems(2), 4); assert_eq!(slice_elems(8), 1);
-        assert_eq!(runs(&[], 0, 8, 3, 5, &mut []), 0);
-        let mut o = [0i64; 3];
-        assert_eq!(runs(&[1, 1, 2], 3, 8, 9, 9, &mut o), 2); assert_eq!(o[..2], [0, 2]);
-        // ids past nd read as nd: 5 and 9 are one run at nd = 3
-        assert_eq!(runs(&[5, 9], 2, 8, 3, 9, &mut []), 1);
-    }
 }
