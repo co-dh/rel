@@ -563,10 +563,10 @@ Diff table 的「状态」列：✅ 后面是完成它的步骤；🔄 是部分
         - owner 定的顺序（C）：先做 architecture §4 已定的实现改动（`∩ − \` 分段 `scan`、`\` 不物化 join、
           `ldiv(tab, bits)` 在 bit matrix 上算、`μ` semi-naive），差分测试与回归固定保护；`ldiv meet diff mu fold` 与
           bit matrix 路径的证明（T11e 余项、`ReadsBack`）等实现稳定后再做。T11e5 只做 `arith`。
-        - 关机前的状态（2026-11-19 21:40 左右）：master 8e26eb3 = 10342bc + d1diff（差分测试按 `Tm.hasCode` 跳过，分支上 478 比较、
-          0 不同），**master 上还没跑 `make check`**（下一个是 check-53）。分支 `p1ldiv`（ed44b1f，WIP，未构建）：
-          `Tab.ldivTabMat_law/_wf`、`GenK.ldiv_sound/_wf`、`ldiv` 出 gap，未合入。I1 前后计时未完成；计时用的两个 worktree
-          `/data/tmp/d1diff/{before,after}`（已 lock）待 unlock 后删除。每小时偏离检查已查到 8e26eb3。
+        - 关机前的状态（2026-11-19 21:50 左右）：master ad90237 = 10342bc + d1diff（差分测试按 `Tm.hasCode` 跳过，分支上 478 比较、
+          0 不同）+ p1ldiv 6f2aa59（`Tab.ldivTabMat_law/_wf`、`GenK.ldiv_sound/_wf` 已证，`ldiv` 出 gap，分支上 122 / 203；
+          `ReadsBack` 多了第三个合取项）。**master 上还没构建、没跑 `make check`**（下一个是 check-53）。I1 前后计时未完成；
+          计时用的两个 worktree `/data/tmp/d1diff/{before,after}`（已 lock）待 unlock 后删除。每小时偏离检查已查到 8e26eb3。
         - 21:40，master 10342bc，`make check` 全绿（check-52）：覆盖 116 / 203，差分 302 比较、0 不同。
           - I1 ✅ `∩ − \ /` 的按组折叠走 `Tab.groupFold`（分段 `kscan`，`Rel/Run/SetOps.lean`；`Tab.groupFold_ok`），
             `inter_holds diff_holds ldiv_holds` 已对新实现重证。`\` 仍物化 join（`Σₐ |R a|·|S a|` 行）：不物化要换算法，待定。
