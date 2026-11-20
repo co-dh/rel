@@ -30,7 +30,9 @@ mod rt;
 mod c;
 /// cbindgen:ignore
 mod ffi;
-mod lean;
+// `pub`: `crate/rt` includes this file by path and uses items no export here reaches, so dead-code analysis of
+// this crate alone must not prune it
+pub mod lean;
 mod os;
 /// The Lean externs, one file per C file they replace. Not under `cargo test`: they call the Lean runtime, which only
 /// a Lean link (or rust/rt) provides. A module of its own, not `ffi::`, because ffi.rs imports the kernel modules of
