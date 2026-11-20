@@ -413,13 +413,13 @@ theorem Tm.gen_sound {A B : Obj} (t : Tm A B) :
   case junc R S ihR ihS => exact GenK.junc_sound (code_of (ihR η ρ hg.1 hl.1 hs)) (code_of (ihS η ρ hg.2 hl.2 hs))
   case fold R S ihR ihS =>
     exact GenK.fold_sound (code_of (ihR η ρ hg.1 hl.1 hs)) (code_of (ihS η ρ hg.2 hl.2 hs))
-      (code_wf (gen_wf hb S η hg.2 hs.2))
+      (code_wf (gen_wf S η hg.2 hs.2))
   case foldr R S ihR ihS =>
     exact GenK.foldr_sound (code_of (ihR η ρ hg.1 hl.1 hs)) (code_of (ihS η ρ hg.2 hl.2 hs))
-      (code_wf (gen_wf hb S η hg.2 hs.2))
+      (code_wf (gen_wf S η hg.2 hs.2))
   case foldI R S ihR ihS =>
-    exact GenK.foldI_sound (code_of (ihR η ρ hg.1 hl.1 hs)) (code_wf (gen_wf hb R η hg.1 hs.2))
-      (code_of (ihS η ρ hg.2 hl.2 hs)) (code_wf (gen_wf hb S η hg.2 hs.2))
+    exact GenK.foldI_sound (code_of (ihR η ρ hg.1 hl.1 hs)) (code_wf (gen_wf R η hg.1 hs.2))
+      (code_of (ihS η ρ hg.2 hl.2 hs)) (code_wf (gen_wf S η hg.2 hs.2))
   case lam R ih => exact GenK.lam_sound (code_of (ih η ρ hg hl.2 hs)) hl.1
   case E R ih =>
     exact GenK.lam_sound (GenK.comp_sound (GenK.ofVals_row_sound fun _ _ _ h => Tab.mem_holds h)
