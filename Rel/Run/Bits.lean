@@ -171,20 +171,7 @@ def compTabMat (R : Tab A B) {n : USize} (g w : USize) (o : Enc) (x : Vals B n) 
 `R` row (`UB`'s alone) every column of `UC`; the `kb · w` bits are scattered to `M`'s columns numbered with `UC`'s
 (`Vals.code2`): `kb` rows of `kc` bits, with `zb[rb[·]]`, `zc[rc'[·]]`. `none` where a matrix passes `bitsMax`.
 
-The open law (unproved; `ldiv` is in `Tm.gap` until it is):
-```
-theorem Tab.ldivTabMat_law {n m N N' : USize} {r : Tab A B} {ub : Tab B B} {uc : Tab C C} {g w kb kc : USize}
-    {o o' ra rb rc rc' : Enc} {x : Vals A n} {y : Vals C m} {zb : Vals B N} {zc : Vals C N'} {t : Tab B C}
-    {s : Tab A C}
-    (h : Tab.ldivTabMat r ub uc g w o x ra y rc = .ok (some (kb, kc, o', ⟨N, zb⟩, rb, ⟨N', zc⟩, rc')))
-    (ht : Tab.ofBits kb kc o' zb rb zc rc' = .ok t) (hs : Tab.ofBits g w o x ra y rc = .ok s)
-    (ho : ∀ a < g.toNat, ∀ j < w.toNat, ∃ v : UInt64, (raw .i64 (g * w) o)[a * w.toNat + j]? = some v ∧ v < 2)
-    (hx : ∀ a a' : Fin g.toNat, ∀ i i' : Fin n.toNat, ((raw .i64 g ra)[a.1]?.getD 0).toNat = i.1 →
-      ((raw .i64 g ra)[a'.1]?.getD 0).toNat = i'.1 → x.row i = x.row i' → a = a')
-    (hy : ∀ j j' : Fin w.toNat, ∀ i i' : Fin m.toNat, ((raw .i64 w rc)[j.1]?.getD 0).toNat = i.1 →
-      ((raw .i64 w rc)[j'.1]?.getD 0).toNat = i'.1 → y.row i = y.row i' → j = j') :
-    rep t = Lang.ldivDen (rep r) (rep s) (rep ub) (rep uc)
-``` -/
+Its law is `Tab.ldivTabMat_law` (`Rel/Lang/GenKBits.lean`). -/
 def ldivTabMat (R : Tab A B) (UB : Tab B B) (UC : Tab C C) {n m : USize} (g w : USize) (o : Enc) (x : Vals A n)
     (ra : Enc) (y : Vals C m) (rc : Enc) : Except String
       (Option (USize × USize × Enc × ((N : USize) × Vals B N) × Enc × ((N : USize) × Vals C N) × Enc)) := do

@@ -6,7 +6,7 @@ import Rel.Run.Lang.Expand
     `Expand.node`'s argument order, and `Tm.code` as `Expand.code` (a closed part memoised, `GenK.memo`). Then
     `Tm.gen_sound`: on a term with no `Tm.gap` constructor, under `Sound`, the code represents `Tm.den` in every
     context, each case one `GenK.*_sound` (`GenKSpec`, `GenKBits`). A bit matrix the code passes on is `Rel.Wf`
-    (`Tm.gen_wf`); `GenK.ReadsBack` (`ofBits` reads back what `compSelM`, `compTabMat` build) and the order law of each
+    (`Tm.gen_wf`); `GenK.ReadsBack` (`ofBits` reads back what `compSelM`, `compTabMat`, `ldivTabMat` build) and the order law of each
     `Λ` (`LamLaw`, false at a float atom) are hypotheses. -/
 
 namespace Rel.Lang
@@ -234,7 +234,7 @@ def rowsProved : List (String × Bool) :=
   [("∋", false), ("inl", false), ("inr", false), ("τ", true), ("setify", true)]
 
 /-- Some node of `t` has no proved case in `Tm.gen_sound`: no `GenK` lemma yet (`est thin atPos fold foldr
-    foldI mu nu hylo`; `ldiv`, whose bit-matrix path waits on `Tab.ldivTabMat`'s law), a lemma that does not hold
+    foldI mu nu hylo`), a lemma that does not hold
     as stated (`juncD`), a row not in `rowsProved`, or no mirror in `Tm.gen` (`arg call`). -/
 def Tm.gap : {A B : Obj} → Tm A B → Bool
   | _, _, .prim r => (rowsProved.lookup r.sym).isNone
@@ -244,8 +244,8 @@ def Tm.gap : {A B : Obj} → Tm A B → Bool
   | _, _, .succ R | _, _, .arith _ R | _, _, .leq R | _, _, .lt R | _, _, .flat R | _, _, .share _ R => R.gap
   | _, _, .comp R S | _, _, .meet R S | _, _, .join R S | _, _, .diff R S | _, _, .pair R S | _, _, .prod R S
   | _, _, .junc R S => R.gap || S.gap
-  | _, _, .rdiv R S U V => R.gap || S.gap || U.gap || V.gap
-  | _, _, .ldiv .. | _, _, .juncD .. | _, _, .est _ | _, _, .thin _ | _, _, .atPos _ | _, _, .fold ..
+  | _, _, .ldiv R S U V | _, _, .rdiv R S U V => R.gap || S.gap || U.gap || V.gap
+  | _, _, .juncD .. | _, _, .est _ | _, _, .thin _ | _, _, .atPos _ | _, _, .fold ..
   | _, _, .foldr .. | _, _, .foldI .. | _, _, .mu .. | _, _, .nu .. | _, _, .hylo .. | _, _, .call ..
   | _, _, .arg .. => true
 
@@ -362,6 +362,7 @@ theorem Tm.gen_wf (hb : GenK.ReadsBack) {A B : Obj} (t : Tm A B) :
   induction t <;> intro η hg hη <;> simp only [Tm.gap, Bool.or_eq_false_iff, Bool.true_eq_false] at hg <;>
     simp only [Tm.gen]
   case comp R S ihR ihS => exact GenK.comp_wf hb _ (code_wf (ihS η hg.2 hη))
+  case ldiv R S U V ihR ihS ihU ihV => exact GenK.ldiv_wf hb _ _ _ (code_wf (ihS η hg.1.1.2 hη))
   case own R ih => exact code_wf (ih η hg hη)
   case share R ih => exact code_wf (ih Code.empty hg fun _ _ _ => trivial)
   case var k => exact hη k _ _
@@ -403,6 +404,10 @@ theorem Tm.gen_sound (hb : GenK.ReadsBack) {A B : Obj} (t : Tm A B) :
   case rdiv R S U V ihR ihS ihU ihV =>
     exact GenK.rdiv_sound (code_of (ihR η ρ hg.1.1.1 hl.1 hs)) (code_of (ihS η ρ hg.1.1.2 hl.2.1 hs))
       (code_of (ihU η ρ hg.1.2 hl.2.2.1 hs)) (code_of (ihV η ρ hg.2 hl.2.2.2 hs))
+  case ldiv R S U V ihR ihS ihU ihV =>
+    exact GenK.ldiv_sound (code_of (ihR η ρ hg.1.1.1 hl.1 hs)) (code_of (ihS η ρ hg.1.1.2 hl.2.1 hs))
+      (code_of (ihU η ρ hg.1.2 hl.2.2.1 hs)) (code_of (ihV η ρ hg.2 hl.2.2.2 hs))
+      (code_wf (gen_wf hb S η hg.1.1.2 hs.2))
   case pair R S ihR ihS => exact GenK.pair_sound (code_of (ihR η ρ hg.1 hl.1 hs)) (code_of (ihS η ρ hg.2 hl.2 hs))
   case prod R S ihR ihS => exact GenK.prod_sound (code_of (ihR η ρ hg.1 hl.1 hs)) (code_of (ihS η ρ hg.2 hl.2 hs))
   case junc R S ihR ihS => exact GenK.junc_sound (code_of (ihR η ρ hg.1 hl.1 hs)) (code_of (ihS η ρ hg.2 hl.2 hs))
