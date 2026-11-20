@@ -150,9 +150,12 @@ def sigOf (o : Once) : Sig :=
   let ⟨_, _, t⟩ := o.res
   { const := o.const, vars := o.gen.zip ((List.range o.gen.length).map t.fv.contains), tst := o.tst, kf := o.kf }
 
-/-- The converse of `o`'s body, when it has one (`convTm`) and is not a pair test, and its constant. -/
+/-- The converse of `o`'s body, when it has one (`convTm`) and is not a pair test, and its constant. `convTm` takes
+    a parameter for its own converse (`Tm.ConvOK`), true of one tested on pairs only: a body reading a parameter run
+    on demand (`R : A ⟶ B`, whose converse is no parameter) has none. -/
 def convOf (o : Once) : Option (Lean.Name × Res) :=
-  if o.tst then none else match o.res with
+  let dem := o.res.2.2.dem && o.forms.zipIdx.any fun (f, i) => f == some false && o.res.2.2.fv.contains (o.gen.length + i)
+  if o.tst || dem then none else match o.res with
     | ⟨A, B, t⟩ => (convTm t).toOption.map fun u => (o.const ++ `conv, ⟨B, A, u⟩)
 
 /-- What a program reads: its closed definitions, its prints (text and term), its checks, its objects, and its
@@ -292,7 +295,7 @@ def once (env : Env) (p : Pos) (n : String) (qs : List Param) (e : Expr) (ty : O
     -- a family that does not build whole (its index has no universe) builds keyed, run on the (key, source) pairs
     let kq := match r with | .fam q i a b => some (keyed i q a b) | .rel .. => none
     let mk (res : Res) (tst kf : Bool) : Once × List Once :=
-      ({ key := k, const := c, gen, params := os, res, tst, kf }, st.specs)
+      ({ key := k, const := c, gen, params := os, forms := fs.map (·.1), res, tst, kf }, st.specs)
     -- a term whose rows do not fit their objects (`primsFit`) does not build
     let fits (x : Except Err Res) : EM (Except Err Res) := do
       if let .ok ⟨A, B, t⟩ := x then unless ← primsFit t do
