@@ -6,6 +6,8 @@
 //! Owner approvals (PLAN 6.10): a key block is decoded into an L1 scratch one block at a time (S); the grade keeps a
 //! permutation work array, and a dense array of order codes for a key that is not graded off its blocks: a column whose
 //! codes do not ascend with its words, or several columns, which become one mixed-radix code per row (X).
+//! No comparison reads a word at its address: every key column is first its working key, one code a row read a block at
+//! a time (`work`; a `cells` column's is its cell's rank, `Cells::codes`), and the sort compares those.
 use alloc::{format, string::String, vec, vec::Vec};
 use core::ops::Range;
 use crate::blocks::Blocks;
@@ -47,18 +49,15 @@ pub fn pos_rows(m: usize) -> Result<(), String> {
 }
 
 /// One key column of `kasc`: the encoded column, its type's `order`, and the least and greatest word as its block
-/// metadata bounds them (`kwin::range`, no residual read), and `uw`, the width its blocks share (`Coc::one_width`).
+/// metadata bounds them (`kwin::range`, no residual read).
 #[derive(Clone, Copy)]
-pub struct Key<'a> { pub c: Coc<'a>, w: usize, float: bool, signed: bool, lo: i64, hi: i64, uw: u8 }
+pub struct Key<'a> { pub c: Coc<'a>, w: usize, float: bool, signed: bool, lo: i64, hi: i64 }
 impl<'a> Key<'a> {
     pub fn new(c: Coc<'a>, (w, float, signed): (usize, bool, bool)) -> Self {
         let (mn, mx) = kwin::range(SK_I64, &c);
-        // `one_width` reads every block's width, so it is read once here and not at each word (`at`)
-        Key { c, w, float, signed, lo: (mn ^ 1 << 63) as i64, hi: (mx ^ 1 << 63) as i64, uw: c.one_width() }
+        Key { c, w, float, signed, lo: (mn ^ 1 << 63) as i64, hi: (mx ^ 1 << 63) as i64 }
     }
     pub(crate) fn code(&self, v: u64) -> u64 { ord_key(self.w, self.float, self.signed, v) }
-    /// Row `i`'s code, its word read at its address (`Coc::get_w`).
-    pub(crate) fn at(&self, i: usize) -> u64 { self.code(self.c.get_w(self.uw, i) as u64) }
     /// Every word lies where `ord_key` is `v + s` for one `s`: the type's signed range (`s` its sign bit), its unsigned
     /// range (`s = 0`), or for a float every word with the sign bit clear, `+0.0 ..= +NaN` (`s` the sign bit, which
     /// `ord_key` sets there). There the column's own order is its code order.
@@ -73,12 +72,23 @@ impl<'a> Key<'a> {
         else { (0, if self.w == 8 { !0 } else { (1 << (8 * self.w)) - 1 }) }
     }
     /// The codes of rows `at .. at + out.len()`, the blocks they cross decoded into `buf` one at a time (S).
-    pub(crate) fn codes(&self, at: usize, out: &mut [u64], buf: &mut [u64]) {
-        let src = Blocks::from(self.c);
-        let x = src.block(0, at, out.len(), 8, pod::bytes_mut(buf));
-        let x = pod::cast::<u64>(x).expect("asc: a decoded block is misaligned");
-        for (o, &v) in out.iter_mut().zip(x) { *o = self.code(v) }
-    }
+    pub(crate) fn codes(&self, at: usize, out: &mut [u64], buf: &mut [u64]) { words(&self.c, at, out, buf, |v| self.code(v)) }
+}
+
+/// `f` of the words of `c` at rows `at .. at + out.len()`, the blocks they cross decoded into `buf` one at a time (S).
+fn words(c: &Coc, at: usize, out: &mut [u64], buf: &mut [u64], f: impl Fn(u64) -> u64) {
+    let src = Blocks::from(*c);
+    let x = src.block(0, at, out.len(), 8, pod::bytes_mut(buf));
+    let x = pod::cast::<u64>(x).expect("asc: a decoded block is misaligned");
+    for (o, &v) in out.iter_mut().zip(x) { *o = f(v) }
+}
+
+/// `f` of every word of `c`, read a block at a time (S) into the sort's dense working array (X).
+fn dense(c: &Coc, m: usize, f: impl Fn(u64) -> u64) -> Vec<u64> {
+    let g = Blocks::from(*c).g;
+    let (mut o, mut buf) = (vec![0u64; m], vec![0u64; 2 * g.blk()]);
+    for (_, at, cnt) in g.walk() { words(c, at, &mut o[at..at + cnt], &mut buf, &f) }
+    o
 }
 
 /// A column of words read at its address: a `pos` column (word `i` is `i`) or a `foR` one (`Coc::get_w`).
@@ -87,24 +97,36 @@ pub enum Ix<'a> { Pos, For(Coc<'a>, u8) }
 impl<'a> Ix<'a> {
     pub fn of(c: Option<Coc<'a>>) -> Self { c.map_or(Ix::Pos, |c| Ix::For(c, c.one_width())) }
     pub fn get(&self, i: usize) -> i64 { match self { Ix::Pos => i as i64, Ix::For(c, uw) => c.get_w(*uw, i) } }
+    /// Words `0 .. m`, a block at a time (`dense`).
+    fn dense(&self, m: usize) -> Vec<u64> { match self { Ix::Pos => (0..m as u64).collect(), Ix::For(c, _) => dense(c, m, |v| v) } }
 }
 
 /// A `cells` key column (`Kernel.AscKey.cells`): row `i` names the cell `ix[i]`, that cell the payload rows
-/// `lo .. hi` clamped to `0 .. c`, each payload row keyed by `els` (`Kernel.cellFns`). Every word is read at its
-/// address in its encoded column, one at a time, and no column is decoded.
+/// `lo .. hi` clamped to `0 .. c`, each payload row keyed by `els` (`Kernel.cellFns`).
 pub struct Cells<'a> { pub ix: Ix<'a>, pub c: usize, pub lo: Ix<'a>, pub hi: Ix<'a>, pub els: Vec<Col<'a>> }
 impl Cells<'_> {
-    /// Row `i`'s cell as its first payload row and its length.
-    fn span(&self, i: usize) -> (usize, usize) {
-        let r = self.ix.get(i) as usize;
-        let s = self.lo.get(r).clamp(0, self.c as i64) as usize;
-        (s, (self.hi.get(r).clamp(0, self.c as i64) as usize).saturating_sub(s))
+    /// Cell `q`'s payload rows, clamped to `0 .. c`.
+    fn span(&self, q: usize) -> Range<usize> {
+        let s = self.lo.get(q).clamp(0, self.c as i64) as usize;
+        s..(self.hi.get(q).clamp(0, self.c as i64) as usize).max(s)
     }
-    /// Row `i`'s cell against row `j`'s in `cellFns`' `lexLe` order: the first element that differs decides, else
-    /// the shorter cell, a proper prefix, comes first.
-    pub fn cmp(&self, i: usize, j: usize) -> core::cmp::Ordering {
-        let ((si, li), (sj, lj)) = (self.span(i), self.span(j));
-        (0..li.min(lj)).map(|k| cmp_rows(&self.els, si + k, sj + k)).find(|o| o.is_ne()).unwrap_or_else(|| li.cmp(&lj))
+    /// The working key of rows `0 .. m`: the rank of each row's cell in `cellFns`' `lexLe` order (the first element
+    /// that differs decides, else a proper prefix first). The payload rows are ranked once (`rank`), each cell named by
+    /// some row reads its `lo`/`hi` once, and only those cells are sorted, as slices of the payload ranks: a row never
+    /// compares, so rows that share a cell cost nothing past their one rank.
+    pub fn codes(&self, m: usize) -> Vec<u64> {
+        let (r, ix) = (rank(&self.els, self.c), self.ix.dense(m));
+        let mut q = ix.clone();
+        q.sort_unstable();
+        q.dedup();
+        let sp: Vec<Range<usize>> = q.iter().map(|&x| self.span(x as usize)).collect();
+        let cell = |k: usize| &r[sp[k].clone()];
+        let mut o: Vec<usize> = (0..q.len()).collect();
+        o.sort_unstable_by(|&a, &b| cell(a).cmp(cell(b)));
+        let mut rk = vec![0u64; q.len()];
+        for w in 1..o.len() { rk[o[w]] = rk[o[w - 1]] + (cell(o[w - 1]) != cell(o[w])) as u64 }
+        // every word of `ix` is in `q`, so the search finds it
+        ix.iter().map(|x| rk[q.binary_search(x).unwrap_or_else(|i| i)]).collect()
     }
 }
 
@@ -114,23 +136,41 @@ pub enum Col<'a> { Atom(Key<'a>), Pos, Cells(Cells<'a>) }
 /// The atom keys of `cs`, where every column is a `foR` atom.
 pub fn atoms<'a>(cs: &[Col<'a>]) -> Option<Vec<Key<'a>>> { cs.iter().map(|c| match c { Col::Atom(k) => Some(*k), _ => None }).collect() }
 
-/// Row `i` against row `j` in `lexLe` order over the codes of `cs`: the first column where they differ decides.
-pub fn cmp_rows(cs: &[Col], i: usize, j: usize) -> core::cmp::Ordering {
-    cs.iter().map(|c| match c {
-        Col::Atom(k) => k.at(i).cmp(&k.at(j)),
-        Col::Pos => i.cmp(&j),
-        Col::Cells(a) => a.cmp(i, j),
-    }).find(|o| o.is_ne()).unwrap_or(core::cmp::Ordering::Equal)
+/// Column `c`'s working key at rows `0 .. m`: one code a row whose order is `c`'s order, read a block at a time.
+pub fn work(c: &Col, m: usize) -> Vec<u64> {
+    match c { Col::Atom(k) => dense(&k.c, m, |v| k.code(v)), Col::Pos => (0..m as u64).collect(), Col::Cells(a) => a.codes(m) }
 }
 
-/// `grade` over any key columns: all `foR` atoms go to `grade`; else `None` where every row is no later than the next
-/// (`cmp_rows`), or a stable comparison sort of `til m` by `cmp_rows`.
+/// The stable grade of `0 .. m` by the working keys `vs` in `lexLe` order: `None` where every row is no later than
+/// the next, else LSD, the last key first, each a stable grade (`sort::grade_keys`) of its keys read through the
+/// permutation so far.
+fn lsd(vs: &[Vec<u64>], m: usize) -> Option<Vec<i64>> {
+    let le = |i: usize, j: usize| vs.iter().map(|v| v[i].cmp(&v[j])).find(|o| o.is_ne()).is_none_or(|o| o.is_lt());
+    if (1..m).all(|i| le(i - 1, i)) { return None }
+    let mut p: Option<Vec<i64>> = None;
+    for v in vs.iter().rev() {
+        let k: Vec<u64> = match &p { None => v.clone(), Some(p) => p.iter().map(|&i| v[i as usize]).collect() };
+        let ((mn, mx), mut o) = (sort::keys_range(&k), vec![0i64; m]);
+        sort::grade_keys(&k, false, mn, mx, &mut o);
+        p = Some(match p { None => o, Some(p) => o.iter().map(|&j| p[j as usize]).collect() });
+    }
+    p
+}
+
+/// The dense rank of each of rows `0 .. m` under `cs`' `lexLe` order: equal rows one rank, the least 0.
+pub fn rank(cs: &[Col], m: usize) -> Vec<u64> {
+    if let [c] = cs { return work(c, m) }
+    let vs: Vec<Vec<u64>> = cs.iter().map(|c| work(c, m)).collect();
+    let p: Vec<usize> = lsd(&vs, m).map_or_else(|| (0..m).collect(), |p| p.into_iter().map(|i| i as usize).collect());
+    let mut r = vec![0u64; m];
+    for w in 1..m { let (a, b) = (p[w - 1], p[w]); r[b] = r[a] + vs.iter().any(|v| v[a] != v[b]) as u64 }
+    r
+}
+
+/// `grade` over any key columns: all `foR` atoms go to `grade`; else `lsd` over every column's working key (`work`).
 pub fn grade_cols(run: Runner, cs: &[Col], m: usize) -> Option<Vec<i64>> {
     if let Some(ks) = atoms(cs) { return grade(run, &ks, m) }
-    if (1..m).all(|i| cmp_rows(cs, i - 1, i).is_le()) { return None }
-    let mut p: Vec<i64> = (0..m as i64).collect();
-    p.sort_by(|&a, &b| cmp_rows(cs, a as usize, b as usize));
-    Some(p)
+    lsd(&cs.iter().map(|c| work(c, m)).collect::<Vec<_>>(), m)
 }
 
 /// The rows of `ks` a block at a time on the first column's grid: `f(at, codes)` with column `c`'s codes of rows
@@ -180,23 +220,19 @@ fn groups(ks: &[Key]) -> Vec<Range<usize>> {
     g
 }
 
-/// The mixed-radix code of the run `ks` (its first column the most significant) at each row `i`, or at row `p[i]` under
-/// a permutation (one random read a column, `Coc::get_w`), with the least and greatest of them.
+/// The mixed-radix code of the run `ks` (its first column the most significant) at each row `i`, a block at a time, or
+/// at row `p[i]` under a permutation (the row-order codes read through it), with the least and greatest of them.
 fn mixed(ks: &[Key], m: usize, p: Option<&[i64]>) -> (Vec<u64>, u64, u64) {
     let sp: Vec<(u64, u64)> = ks.iter().map(Key::span).collect();
     // a span of every 64-bit code is a run of its own (`groups`), so its radix `2^64` wraps to 0 against an `acc` of 0
     let mix = |acc: u64, (a, b): (u64, u64), x: u64| acc.wrapping_mul((b - a).wrapping_add(1)).wrapping_add(x - a);
     let mut c = vec![0u64; m];
-    match p {
-        Some(p) => for (k, &s) in ks.iter().zip(&sp) {
-            for (x, &i) in c.iter_mut().zip(p) { *x = mix(*x, s, k.at(i as usize)) }
-        },
-        None => blocks(ks, |at, cnt, t| {
-            let blk = t.len() / ks.len();
-            for (j, x) in c[at..at + cnt].iter_mut().enumerate() { *x = sp.iter().enumerate().fold(0, |acc, (k, &s)| mix(acc, s, t[k * blk + j])) }
-            true
-        }),
-    }
+    blocks(ks, |at, cnt, t| {
+        let blk = t.len() / ks.len();
+        for (j, x) in c[at..at + cnt].iter_mut().enumerate() { *x = sp.iter().enumerate().fold(0, |acc, (k, &s)| mix(acc, s, t[k * blk + j])) }
+        true
+    });
+    if let Some(p) = p { c = p.iter().map(|&i| c[i as usize]).collect() }
     let (mn, mx) = sort::keys_range(&c);
     (c, mn, mx)
 }
