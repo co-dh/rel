@@ -36,6 +36,8 @@ def Vals.pack : {A : Obj} → {n : USize} → Vals A n → Except String (Vals A
   | .atom _, _, x => pure x
   | .prod _ _, _, x => do pure (← Vals.pack x.1, ← Vals.pack x.2)
   | .arr _, n, ⟨m, lo, hi, f⟩ => do
+    -- `cellSpan`, the widths, their prefix sums and the positions `s + u` are read signed: each below `n * m + n + m`
+    if 2 ^ 63 ≤ n.toNat * m.toNat + n.toNat + m.toNat then throw s!"pack: {n} cells over {m} elements past 2^63"
     let (s, e) ← cellSpan m lo hi
     let w ← colMap .sub n e.enc s.enc
     match hP : colPrefix .add n w with

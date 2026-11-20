@@ -233,8 +233,8 @@ end
 def rowsProved : List (String × Bool) :=
   [("∋", false), ("inl", false), ("inr", false), ("τ", true), ("setify", true)]
 
-/-- Some node of `t` has no proved case in `Tm.gen_sound`: no `GenK` lemma yet (`est thin atPos fold foldr
-    foldI mu nu hylo`), a lemma that does not hold
+/-- Some node of `t` has no proved case in `Tm.gen_sound`: no `GenK` lemma yet (`est thin atPos mu nu
+    hylo`), a lemma that does not hold
     as stated (`juncD`), a row not in `rowsProved`, or no mirror in `Tm.gen` (`arg call`). -/
 def Tm.gap : {A B : Obj} → Tm A B → Bool
   | _, _, .prim r => (rowsProved.lookup r.sym).isNone
@@ -243,10 +243,10 @@ def Tm.gap : {A B : Obj} → Tm A B → Bool
   | _, _, .top R | _, _, .conv R | _, _, .dom R | _, _, .ran R | _, _, .lam R | _, _, .E R | _, _, .own R
   | _, _, .succ R | _, _, .arith _ R | _, _, .leq R | _, _, .lt R | _, _, .flat R | _, _, .share _ R => R.gap
   | _, _, .comp R S | _, _, .meet R S | _, _, .join R S | _, _, .diff R S | _, _, .pair R S | _, _, .prod R S
-  | _, _, .junc R S => R.gap || S.gap
+  | _, _, .junc R S | _, _, .fold R S | _, _, .foldr R S | _, _, .foldI R S => R.gap || S.gap
   | _, _, .ldiv R S U V | _, _, .rdiv R S U V => R.gap || S.gap || U.gap || V.gap
-  | _, _, .juncD .. | _, _, .est _ | _, _, .thin _ | _, _, .atPos _ | _, _, .fold ..
-  | _, _, .foldr .. | _, _, .foldI .. | _, _, .mu .. | _, _, .nu .. | _, _, .hylo .. | _, _, .call ..
+  | _, _, .juncD .. | _, _, .est _ | _, _, .thin _ | _, _, .atPos _
+  | _, _, .mu .. | _, _, .nu .. | _, _, .hylo .. | _, _, .call ..
   | _, _, .arg .. => true
 
 /-- `LamLaw` at each `Λ` and `E` of `t` (`E(R) = Λ(∋ ≫ R)`, at `[A] ⟶ [B]`), and at each row `rowsProved` marks. -/
@@ -257,7 +257,7 @@ def Tm.LamLaws : {A B : Obj} → Tm A B → Prop
   | _, _, .top R | _, _, .conv R | _, _, .dom R | _, _, .ran R | _, _, .own R | _, _, .succ R | _, _, .arith _ R
   | _, _, .leq R | _, _, .lt R | _, _, .flat R | _, _, .share _ R => R.LamLaws
   | _, _, .comp R S | _, _, .meet R S | _, _, .join R S | _, _, .diff R S | _, _, .pair R S | _, _, .prod R S
-  | _, _, .junc R S => R.LamLaws ∧ S.LamLaws
+  | _, _, .junc R S | _, _, .fold R S | _, _, .foldr R S | _, _, .foldI R S => R.LamLaws ∧ S.LamLaws
   | _, _, .ldiv R S U V | _, _, .rdiv R S U V => R.LamLaws ∧ S.LamLaws ∧ U.LamLaws ∧ V.LamLaws
   | _, _, _ => True
 
@@ -411,6 +411,15 @@ theorem Tm.gen_sound {A B : Obj} (t : Tm A B) :
   case pair R S ihR ihS => exact GenK.pair_sound (code_of (ihR η ρ hg.1 hl.1 hs)) (code_of (ihS η ρ hg.2 hl.2 hs))
   case prod R S ihR ihS => exact GenK.prod_sound (code_of (ihR η ρ hg.1 hl.1 hs)) (code_of (ihS η ρ hg.2 hl.2 hs))
   case junc R S ihR ihS => exact GenK.junc_sound (code_of (ihR η ρ hg.1 hl.1 hs)) (code_of (ihS η ρ hg.2 hl.2 hs))
+  case fold R S ihR ihS =>
+    exact GenK.fold_sound (code_of (ihR η ρ hg.1 hl.1 hs)) (code_of (ihS η ρ hg.2 hl.2 hs))
+      (code_wf (gen_wf hb S η hg.2 hs.2))
+  case foldr R S ihR ihS =>
+    exact GenK.foldr_sound (code_of (ihR η ρ hg.1 hl.1 hs)) (code_of (ihS η ρ hg.2 hl.2 hs))
+      (code_wf (gen_wf hb S η hg.2 hs.2))
+  case foldI R S ihR ihS =>
+    exact GenK.foldI_sound (code_of (ihR η ρ hg.1 hl.1 hs)) (code_wf (gen_wf hb R η hg.1 hs.2))
+      (code_of (ihS η ρ hg.2 hl.2 hs)) (code_wf (gen_wf hb S η hg.2 hs.2))
   case lam R ih => exact GenK.lam_sound (code_of (ih η ρ hg hl.2 hs)) hl.1
   case E R ih =>
     exact GenK.lam_sound (GenK.comp_sound (GenK.ofVals_row_sound fun _ _ _ h => Tab.mem_holds h)
