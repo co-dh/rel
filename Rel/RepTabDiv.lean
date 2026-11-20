@@ -2512,3 +2512,85 @@ theorem atPos_holds {B : Obj} {k : Nat} {n : USize} {X : Vals (.arr B) n} {T : T
 end Tab
 
 end Rel
+
+namespace Rel
+open Rel.Ext Rel.Kernel Rel.Verify Ext.Enc
+
+namespace Tab
+
+/-- **The rounds of `Tab.mu`**, its step `f` acting on relations as `F`: the table it returns satisfies every
+property `S` that `𝟘` has and each round `X ↦ X ∪ F(X)` keeps, and is a prefixed point of `F`. A round's table is
+canonical (`union_sorted`) and `pack` keeps its rows, so an equal row count is an equal relation
+(`nodup_length_eq_iff`). -/
+theorem mu_holds {A B : Obj} {what : String} {cap : Nat} {f : Tab A B → Except String (Tab A B)}
+    {F : Core.Rel A.El B.El → Core.Rel A.El B.El} (hf : ∀ X T, f X = .ok T → ∀ a b, T.Holds a b ↔ F X.Holds a b)
+    (S : Core.Rel A.El B.El → Prop) (h0 : S fun _ _ => False) (hS : ∀ X, S X → S fun a b => X a b ∨ F X a b)
+    {Y : Tab A B} (h : Tab.mu what cap f = .ok Y) : S Y.Holds ∧ ∀ a b, F Y.Holds a b → Y.Holds a b := by
+  classical
+  let L : Tab A B → List (A.El × B.El) := fun R => (List.finRange R.n.toNat).map fun j => (R.key.row j, R.val.row j)
+  have hL : ∀ R p, p ∈ L R ↔ R.Holds p.1 p.2 := fun R p => by
+    simp only [L, List.mem_map, List.mem_finRange, true_and]
+    exact ⟨fun ⟨j, e⟩ => ⟨j, congrArg Prod.fst e, congrArg Prod.snd e⟩, fun ⟨j, e1, e2⟩ => ⟨j, Prod.ext e1 e2⟩⟩
+  let Dist : Tab A B → Prop := fun R => ∀ j j' : Fin R.n.toNat, j ≠ j' →
+    (R.key.row j, R.val.row j) ≠ (R.key.row j', R.val.row j')
+  have hnd : ∀ R, Dist R → (L R).Nodup := fun R d => by
+    rw [List.Nodup, List.pairwise_iff_getElem]
+    intro i j hi hj hij
+    simp only [L, List.getElem_map, List.getElem_finRange]
+    exact d _ _ fun e => by have := congrArg Fin.val e; simp at this; omega
+  unfold Tab.mu at h; simp only [bind] at h
+  rw [Except.bind_eq_ok'] at h; obtain ⟨Z, hZ, h⟩ := h
+  suffices key : ∀ n (X : Tab A B), S X.Holds → Dist X → Tab.fixOn (capMsg what cap)
+      (fun X => f X >>= X.union) n X = .ok Y → S Y.Holds ∧ ∀ a b, F Y.Holds a b → Y.Holds a b by
+    refine key _ Z ?_ ?_ h
+    · have e : Z.Holds = fun _ _ => False := funext fun a => funext fun b => propext (zero_holds hZ a b)
+      rw [e]; exact h0
+    · intro j
+      have : Z.n = 0 := by
+        simp only [Tab.zero, bind] at hZ
+        rw [Except.bind_eq_ok'] at hZ; obtain ⟨_, -, hZ⟩ := hZ
+        rw [Except.bind_eq_ok'] at hZ; obtain ⟨_, -, hZ⟩ := hZ
+        cases hZ; rfl
+      have h0 : Z.n.toNat = 0 := by rw [this]; rfl
+      have := j.2; omega
+  intro n
+  induction n with
+  | zero => intro X _ _ h; simp [Tab.fixOn] at h
+  | succ n ih =>
+    intro X hSX hdX h
+    simp only [Tab.fixOn, bind] at h
+    rw [Except.bind_eq_ok'] at h; obtain ⟨Y', hY', h⟩ := h
+    rw [Except.bind_eq_ok'] at hY'; obtain ⟨U, hU, hP⟩ := hY'
+    rw [Except.bind_eq_ok'] at hU; obtain ⟨T, hT, hU⟩ := hU
+    have eY : ∀ a b, Y'.Holds a b ↔ X.Holds a b ∨ F X.Holds a b := fun a b => by
+      rw [pack_holds hP, union_holds hU, hf X T hT]
+    have eY' : Y'.Holds = fun a b => X.Holds a b ∨ F X.Holds a b :=
+      funext fun a => funext fun b => propext (eY a b)
+    have hdY : Dist Y' := by
+      obtain ⟨C, -, hC⟩ := union_sorted hU
+      simp only [Tab.pack, bind] at hP
+      rw [Except.bind_eq_ok'] at hP; obtain ⟨k', hk', hP⟩ := hP
+      rw [Except.bind_eq_ok'] at hP; obtain ⟨v', hv', hP⟩ := hP
+      cases hP
+      intro j j' hj
+      show (k'.row j, v'.row j) ≠ (k'.row j', v'.row j')
+      rw [Vals.pack_row _ hk', Vals.pack_row _ hk', Vals.pack_row _ hv', Vals.pack_row _ hv']
+      exact canon_distinct hC hj
+    split at h
+    · rename_i hn
+      have hYY : Y' = Y := by cases h; rfl
+      subst hYY
+      have hsub : L X ⊆ L Y' := fun p hp => (hL _ p).2 ((eY _ _).2 (Or.inl ((hL _ p).1 hp)))
+      have hlen : (L X).length = (L Y').length := by
+        simp only [L, List.length_map, List.length_finRange]; exact (beq_iff_eq.1 hn).symm ▸ rfl
+      have hback := (nodup_length_eq_iff (hnd X hdX) (hnd Y' hdY) hsub).1 hlen
+      have eXY : Y'.Holds = X.Holds := funext fun a => funext fun b => propext
+        ⟨fun hy => (hL X (a, b)).1 (hback ((hL Y' (a, b)).2 hy)), fun hx => (eY a b).2 (Or.inl hx)⟩
+      refine ⟨eY' ▸ hS _ hSX, fun a b hF => ?_⟩
+      rw [eXY] at hF ⊢
+      exact (hL X (a, b)).1 (hback ((hL Y' (a, b)).2 ((eY a b).2 (Or.inr hF))))
+    · exact ih Y' (eY' ▸ hS _ hSX) hdY h
+
+end Tab
+
+end Rel
