@@ -25,7 +25,7 @@ theorem thin_sound {B : Obj} {Q : Rel (.prod B B) (.prod B B)} {TQ : Den (.prod 
         B.lt (x.row i).2 (x.row i').2) :
     ∀ K, (GenK.thin B Q).Reps K (thinDen TQ) :=
   ofVals_row_sound fun _ _ _ h => Tab.thin_den
-    (fun D _ hT p _ hp => (reps_iff ⟨some ⟨D.n, D.val⟩, none⟩ _ _).1 (hQ _) _ hT p _ ((side_some rfl p).2 hp) rfl) h hB
+    (fun D _ hT p hp => (reps_iff ⟨some ⟨D.n, D.val⟩, none⟩ _ _).1 (hQ _) _ hT p _ ((side_some rfl p).2 hp) rfl) h hB
 
 theorem atPos_sound {B : Obj} (k : Nat) : ∀ K, (GenK.atPos B k).Reps K (atDen k) :=
   ofVals_row_sound fun _ _ _ h => Tab.atPos_holds h
