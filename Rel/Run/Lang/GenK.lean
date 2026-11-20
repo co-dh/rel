@@ -97,28 +97,53 @@ def lift2 {A B C D E F : Obj} (f : Tab A B → Tab C D → Except String (Tab E 
   | R, S => .lazy fun K => .tab do f (← R.runE (kl K)) (← S.runE (kr K))
 
 def conv (A B : Obj) (R : Fn false A B) : Fn false B A := lift1 Tab.conv (fun K => ⟨K.ran, K.dom⟩) R
+
+/-- `r` cut to the values `K` knows of its sides, `idU X ≫ r ≫ idU L`, a side left whole where it is unknown. -/
+def cut {A B : Obj} (K : Known A B) (r : Tab A B) : Except String (Tab A B) := do
+  let l ← match K.dom with | some c => do (← Tab.idU c.2).comp r | none => pure r
+  match K.ran with | some c => do l.comp (← Tab.idU c.2) | none => pure l
+
 /-- `R ∩ S` of two values that are no `lazy`: a table met with a bit matrix keeps its rows whose bit is set
     (`Tab.keepBits`), so the matrix is never read back as rows; else `Tab.inter` of the two tables. -/
 def meetV {A B : Obj} : Rel A B → Rel A B → Rel A B
   | .bits g w o x ra y rc, .tab t | .tab t, .bits g w o x ra y rc => .tab (t >>= (Tab.keepBits · g w o x ra y rc))
   | R, S => .tab do Tab.inter (← R.runE {}) (← S.runE {})
 
+/-- `r` cut to `K`'s sides (`cut`), and the context its own sides make: beside a table `t` with `dom t ⊆ K`,
+    `ran t ⊆ L`, `(K ≫ S ≫ L) ∩ t = S ∩ t`, so the other operand of `∩` or `−` runs knowing only `t`'s sides. -/
+def bound {A B : Obj} (K : Known A B) (r : Tab A B) : Except String (Tab A B × Known A B) := do
+  let t ← cut K r; let d ← Tab.dom t; let l ← Tab.ran t
+  pure (t, ⟨some ⟨d.n, d.key⟩, some ⟨l.n, l.key⟩⟩)
+
+/-- `T ∩ S` in `K`, `T` already run: a table bounds `S` (`bound`); anything else meets `S` run on `K`. -/
+def meetOn {A B : Obj} (K : Known A B) (T S : Rel A B) : Rel A B := match T with
+  | .tab (.ok r) => match bound K r with
+    | .ok p => meetV (.tab (.ok p.1)) (S.force p.2)
+    | .error e => .tab (.error e)
+  | T => meetV T (S.force K)
+
+/-- `R ∩ S` in `K`: the operand that is no `lazy` runs first and bounds the other (`meetOn`); of two lazy ones `R`,
+    or `S` where `R` cannot run on `K` alone. -/
+def meetK {A B : Obj} (K : Known A B) (R S : Rel A B) : Rel A B := match R, S with
+  | .lazy _, .lazy _ => match R.force K with
+    | .tab (.error _) => meetOn K (S.force K) R
+    | R' => meetOn K R' S
+  | .lazy _, S => meetOn K S R
+  | R, S => meetOn K R S
+
 def meet (A B : Obj) (d e : Bool) (R : Fn d A B) (S : Fn e A B) : Fn (d || e) A B := match R, S with
-  | .lazy _, _ | _, .lazy _ => .lazy fun K => meetV (R.force K) (S.force K)
+  | .lazy _, _ | _, .lazy _ => .lazy fun K => meetK K R S
   | R, S => meetV R S
 def join (A B : Obj) (d e : Bool) (R : Fn d A B) (S : Fn e A B) : Fn (d || e) A B :=
   lift2 Tab.union (fun K => K) (fun K => K) R S
-def diff (A B : Obj) (d e : Bool) (R : Fn d A B) (S : Fn e A B) : Fn (d || e) A B :=
-  lift2 Tab.diff (fun K => K) (fun K => K) R S
+/-- `R − S`: a lazy `S` is needed only on `R`'s pairs, so it runs knowing `R`'s sides (`bound`). -/
+def diff (A B : Obj) (d e : Bool) (R : Fn d A B) (S : Fn e A B) : Fn (d || e) A B := match S with
+  | .lazy _ => .lazy fun K => .tab do let p ← bound K (← R.runE K); Tab.diff p.1 (← S.runE p.2)
+  | S => lift2 Tab.diff (fun K => K) (fun K => K) R S
 def dom (A B : Obj) (d : Bool) (R : Fn d A B) : Fn d A A := lift1 Tab.dom (fun K => ⟨K.dom, none⟩) R
 def ran (A B : Obj) (R : Fn false A B) : Fn false B B := lift1 Tab.ran (fun K => ⟨none, K.dom⟩) R
 
 /-! ### T3: `⊤ π₁ π₂ ⟨R,S⟩ × \ /`, `ν`, `μ` -/
-
-/-- `r` cut to the values `K` knows of its sides, `idU X ≫ r ≫ idU L`, a side left whole where it is unknown. -/
-def cut {A B : Obj} (K : Known A B) (r : Tab A B) : Except String (Tab A B) := do
-  let l ← match K.dom with | some c => do (← Tab.idU c.2).comp r | none => pure r
-  match K.ran with | some c => do l.comp (← Tab.idU c.2) | none => pure l
 
 /-- `X × L`: the known domain values by `V`'s values cut to the known range. -/
 def top (A B : Obj) (V : Fn false B B) : Fn true A B := .lazy fun K => match K.dom with

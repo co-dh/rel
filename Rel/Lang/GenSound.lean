@@ -914,6 +914,7 @@ theorem Tm.gen_wf_spine {A B : Obj} (t : Tm A B) :
     | exact GenK.ofVals_wf
     | exact GenK.top_wf
     | exact GenK.meet_wf _ _
+    | exact GenK.diff_wf _ _
     | exact GenK.lift1_wf _
     | exact GenK.lift2_wf _ _
     | exact fun _ => trivial
