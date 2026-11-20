@@ -371,4 +371,110 @@ theorem foldI_sound {I E V : Obj} {d d' : Bool} {e : Rel I (.prod V V)} {S : Rel
 
 end GenK
 
+/-- The left fold from `c` along `ys` is the iteration `rowDens` states for `loop`: states `g 0 = c`, each step
+`TF (g t, ys[t]) (g (t+1))`, ending at `g |ys|`. -/
+theorem foldDen_iter {X Y : Obj} (TF : Den (.prod X Y) X) :
+    ∀ (ys : List Y.El) (c w : X.El), foldDen (fun _ b => b = c) TF ys w ↔
+      ∃ g : Nat → X.El, g 0 = c ∧ (∀ t (ht : t < ys.length), TF (g t, ys[t]'ht) (g (t + 1))) ∧ w = g ys.length
+  | [], c, w => by
+    rw [foldDen_nil]
+    exact ⟨fun h => ⟨fun _ => c, rfl, fun _ ht => absurd ht (Nat.not_lt_zero _), h⟩,
+      fun ⟨_, h0, _, hw⟩ => hw.trans h0⟩
+  | y :: ys, c, w => by
+    rw [foldDen_cons]
+    constructor
+    · rintro ⟨v, v', ⟨_, hv⟩, hs, h⟩
+      obtain ⟨g, h0, hg, hw⟩ := (foldDen_iter TF ys v' w).1 h
+      refine ⟨fun | 0 => c | t + 1 => g t, rfl, fun t ht => ?_, hw⟩
+      cases t with
+      | zero => obtain rfl : v = c := hv; show TF (v, y) (g 0); rw [h0]; exact hs
+      | succ t => exact hg t (Nat.lt_of_succ_lt_succ ht)
+    · rintro ⟨g, h0, hg, hw⟩
+      refine ⟨c, g 1, ⟨c, rfl⟩, h0 ▸ hg 0 (Nat.zero_lt_succ _), (foldDen_iter TF ys (g 1) w).2
+        ⟨fun t => g (t + 1), rfl, fun t ht => hg (t + 1) (Nat.succ_lt_succ ht), hw⟩⟩
+
+/-- **`P ≫ loop(F)`** (`Tab.loop`), its step `F` given the pairs `D` a round meets acting as `D ≫ TF`: each `(c, ys)`
+of `P` to the left fold of `TF` along `ys` from `c` (`foldRoundsL_holds`, keyed by `ran P`). -/
+theorem Tab.loop_holds {K X Y : Obj} {F : Tab (.prod X Y) (.prod X Y) → Except String (Tab (.prod X Y) X)}
+    {TF : Den (.prod X Y) X} (hF : ∀ D T, F D = .ok T → ∀ q x, T.Holds q x ↔ ∃ q', D.Holds q q' ∧ TF q' x)
+    {P : Tab K (.prod X (.arr Y))} {res : Tab K X} (h : Tab.loop F P = .ok res) (k : K.El) (c : X.El) :
+    res.Holds k c ↔ ∃ p : (Obj.prod X (.arr Y)).El, P.Holds k p ∧ foldDen (fun _ b => b = p.1) TF p.2 c := by
+  unfold Tab.loop at h
+  obtain ⟨D, hD, h⟩ := GenK.bind_ok h
+  obtain ⟨o1, ho1, h⟩ := GenK.bind_ok h
+  obtain ⟨rest, hrest, h⟩ := GenK.bind_ok h
+  obtain ⟨o2, ho2, h⟩ := GenK.bind_ok h
+  obtain ⟨P0, hP0, h⟩ := GenK.bind_ok h
+  obtain ⟨z, hz, h⟩ := GenK.bind_ok h
+  obtain ⟨fr, hfr, h⟩ := GenK.bind_ok h
+  have hrest' : ∀ p r, rest.Holds p r ↔ (∃ x, P.Holds x p) ∧ r = p.2 := fun p r => by
+    rw [Tab.comp_holds hrest]
+    constructor
+    · rintro ⟨b, hb, ho⟩
+      obtain ⟨rfl, hx⟩ := (Tab.ran_holds hD p b).1 hb
+      exact ⟨hx, ((Tab.outr_holds ho1 p r).1 ho).2⟩
+    · rintro ⟨hx, rfl⟩
+      have hb := (Tab.ran_holds hD p p).2 ⟨rfl, hx⟩
+      obtain ⟨i, -, hi⟩ := hb
+      exact ⟨p, (Tab.ran_holds hD p p).2 ⟨rfl, hx⟩, (Tab.outr_holds ho1 p p.2).2 ⟨⟨i, hi⟩, rfl⟩⟩
+  have hP0' : ∀ p v, P0.Holds p v ↔ (∃ x, P.Holds x p) ∧ v = p.1 := fun p v => by
+    rw [Tab.comp_holds hP0]
+    constructor
+    · rintro ⟨b, hb, ho⟩
+      obtain ⟨rfl, hx⟩ := (Tab.ran_holds hD p b).1 hb
+      exact ⟨hx, ((Tab.outl_holds ho2 p v).1 ho).2⟩
+    · rintro ⟨hx, rfl⟩
+      have hb := (Tab.ran_holds hD p p).2 ⟨rfl, hx⟩
+      obtain ⟨i, -, hi⟩ := hb
+      exact ⟨p, (Tab.ran_holds hD p p).2 ⟨rfl, hx⟩, (Tab.outl_holds ho2 p p.1).2 ⟨⟨i, hi⟩, rfl⟩⟩
+  have hfr' := Tab.foldRoundsL_holds (fun _ v x v' => TF (v, x) v') (fun S el T hT k v' => by
+      obtain ⟨p, hp, hT⟩ := GenK.bind_ok hT
+      obtain ⟨Dp, hDp, hT⟩ := GenK.bind_ok hT
+      obtain ⟨T', hT', hT⟩ := GenK.bind_ok hT
+      rw [Tab.comp_holds hT]
+      constructor
+      · rintro ⟨q, hq, hTq⟩
+        obtain ⟨q', hd, hq'⟩ := (hF _ _ hT' q v').1 hTq
+        obtain ⟨rfl, -⟩ := (Tab.ran_holds hDp q q').1 hd
+        obtain ⟨h1, h2⟩ := (Tab.pair_holds hp k q).1 hq
+        exact ⟨q.1, q.2, h1, h2, hq'⟩
+      · rintro ⟨v, x, h1, h2, h3⟩
+        have hq := (Tab.pair_holds hp k (v, x)).2 ⟨h1, h2⟩
+        exact ⟨(v, x), hq, (hF _ _ hT' _ v').2 ⟨(v, x), (Tab.ran_holds hDp _ _).2 ⟨rfl, k, hq⟩, h3⟩⟩)
+    _ _ _ _ _ hfr (fun p a b ha hb => ((hrest' p a).1 ha).2.trans ((hrest' p b).1 hb).2.symm)
+    (fun p v hv => ⟨p.2, (hrest' p p.2).2 ⟨((hP0' p v).1 hv).1, rfl⟩⟩)
+  rw [Tab.comp_holds h]
+  refine exists_congr fun p => and_congr_right fun hp => ?_
+  rw [hfr', Tab.zero_holds hz, false_or]
+  constructor
+  · rintro ⟨r, v, hr, hv, hW⟩
+    obtain ⟨-, rfl⟩ := (hrest' p r).1 hr
+    obtain ⟨-, rfl⟩ := (hP0' p v).1 hv
+    exact hW
+  · exact fun hW => ⟨p.2, p.1, (hrest' p p.2).2 ⟨⟨k, hp⟩, rfl⟩, (hP0' p p.1).2 ⟨⟨k, hp⟩, rfl⟩, hW⟩
+
+namespace GenK
+
+/-- `loop(F)`, `Expand.primE`'s fit of the row (`stepAfter`, `Tab.loop`): each `(c, ys)` in demand to the states
+of `rowDens`' `loop` iteration of `F`'s meaning `TF`, `F` run on the pairs each round meets (`compT_sound`). -/
+theorem loop_sound {X Y : Obj} {d : Bool} {F : Rel (.prod X Y) X} {TF : Den (.prod X Y) X}
+    (hF : ∀ K, F.Reps K TF) (wF : F.Wf) :
+    ∀ K, (GenK.stepAfter (.prod X Y) X (.prod X (.arr Y)) X d F fun F P => Tab.loop F P).Reps K
+      (fun p c => ∃ g : Nat → X.El, g 0 = p.1 ∧
+        (∀ t (ht : t < p.2.length), TF (g t, p.2[t]'ht) (g (t + 1))) ∧ c = g p.2.length) := by
+  have hF' : ∀ (D : Tab (.prod X Y) (.prod X Y)) T, (compT (.ok D) F).runE {} = .ok T →
+      ∀ q x, T.Holds q x ↔ ∃ q', D.Holds q q' ∧ TF q' x := fun D T hT q x =>
+    (reps_iff _ _ _).1 (compT_sound (r' := .ok D) (K := {}) (X := rep D)
+      (fun _ hr a b _ _ => by cases hr; exact Iff.rfl) hF wF) T hT q x rfl rfl
+  unfold GenK.stepAfter GenK.after
+  exact ofVals_sound fun _ _ V t hK h p c hx _ => by
+    obtain ⟨D, hD, h⟩ := bind_ok h
+    refine (Tab.loop_holds hF' h p c).trans ?_
+    rw [← foldDen_iter]
+    constructor
+    · rintro ⟨p', hp', hW⟩; obtain ⟨rfl, -⟩ := (Tab.idU_holds hD p p').1 hp'; exact hW
+    · exact fun hW => ⟨p, (Tab.idU_holds hD p p).2 ⟨rfl, (side_some hK p).1 hx⟩, hW⟩
+
+end GenK
+
 end Rel.Lang
