@@ -250,9 +250,6 @@ pub fn fill(b: &[u8], lx: &Lexed, c: usize, col: &Col, part: usize, lo: usize, o
     }
 }
 
-/// A field read at its column's shape (`readField`): whether it is a text of the column.
-fn reads(c: &Col, f: &[u8]) -> bool { c.shape == SH_TEXT || (c.shape == SH_NULL && f.is_empty()) || cell(c, f).is_some() }
-
 /// What a column's field must be, at its shape (`formOf`).
 fn form_of(c: &Col) -> String {
     match c.shape { SH_NULL => format!("{}, or the empty field (the null)", form(c)), SH_TEXT => "text: any bytes".into(), _ => form(c) }
@@ -273,30 +270,99 @@ pub fn refusal(b: &[u8], lx: &Lexed, cols: &[Col], bad: &[AtomicUsize]) -> Resul
     Err(format!("row {r} (line {}), column '{}': expected {}, found {}", line(b, p), cols[c].name, form_of(&cols[c]), shown(&f)))
 }
 
-/// The writer is given `k` word columns, one per schema column (`arity`).
+/// The writer is given `k` parts, as many as the schema's columns are stored as (`arity`).
 pub fn arity(cols: &[Col], k: usize) -> Result<(), String> {
-    if k == cols.len() { Ok(()) } else { Err(format!("{k} word columns, the schema {} has {}", names(cols), cols.len())) }
+    let m: usize = cols.iter().map(|c| nparts(c.shape)).sum();
+    if k == m { Ok(()) } else { Err(format!("{k} word columns, the schema {} is stored as {m}", names(cols))) }
 }
 
-/// The writer (`csvText`, after `csvWrite`'s checks): the header, then the `n` rows `2^lg` at a time — `load(c, lo, out)`
-/// puts column `c`'s words of rows `lo ..` into `out` from its encoding, each row's cells are formatted (`text`) into the
-/// chunk's bytes, and the chunk is appended to the temporary `own::replace_by` renames over `target`. The first word with
-/// no text in row order, then column order (the model's), is the refusal, and `target` keeps what it held.
-pub fn write(target: &CStr, cols: &[Col], n: usize, lg: u32, mut load: impl FnMut(usize, usize, &mut [u64])) -> Result<(), Fail> {
+/// The block of a payload part holding the last position asked for: a position's word is read from it, and a block
+/// is loaded (`load`) only when a position falls outside it, so no payload is held decoded.
+struct Cache { at: usize, ws: Vec<u64> }
+impl Cache {
+    fn get(&mut self, part: usize, p: usize, m: usize, blk: usize, load: &mut impl FnMut(usize, usize, &mut [u64])) -> u64 {
+        let st = p & !(blk - 1);
+        if self.at != st { let k = blk.min(m - st); self.ws.resize(k, 0); load(part, st, &mut self.ws[..k]); self.at = st }
+        self.ws[p - st]
+    }
+}
+
+/// Row `i`'s positions of a column checked against its payloads (`fieldAt`'s refusals); `rw[j]` its row part `j`'s
+/// words of the block, `cnt` its parts' counts.
+fn at(col: &Col, rw: &[Vec<u64>], cnt: &[usize], i: usize) -> Result<(), String> {
+    let (a, b) = (rw[0][i], rw.get(1).map_or(0, |x| x[i]));
+    match col.shape {
+        SH_NULL if a == 0 => if b < cnt[2] as u64 { Ok(()) } else { Err(format!("position {b} past the {} values of its left side", cnt[2])) },
+        SH_NULL if a == 1 => if b < cnt[3] as u64 { Ok(()) } else { Err(format!("position {b} past the {} values of its right side", cnt[3])) },
+        SH_NULL => Err(format!("tag {a}, not 0 or 1")),
+        SH_TEXT => if a <= b && b <= cnt[2] as u64 { Ok(()) } else { Err(format!("cell [{a}, {b}) outside the {} bytes", cnt[2])) },
+        _ => Ok(()),
+    }
+}
+
+/// A field's words written (`fieldText`) into `s`, and only if the text reads back as them.
+fn field_text(c: &Col, ws: &[u64], s: &mut Vec<u8>) -> Option<()> {
+    match (c.shape, ws) {
+        (SH_TEXT, _) => { s.clear(); for &w in ws { s.push(u8::try_from(w).ok()?) } Some(()) }
+        (SH_NULL, []) => { s.clear(); Some(()) }
+        (_, [w]) => { text(c, *w, s)?; (c.shape != SH_NULL || !s.is_empty()).then_some(()) }
+        _ => None,
+    }
+}
+
+/// The words as an error names them (`wordsShown`).
+fn words_shown(ws: &[u64]) -> String {
+    if let [w] = ws { return format!("the word {w}") }
+    format!("the words [{}]", ws.iter().map(|w| format!("{w}")).collect::<Vec<_>>().join(", "))
+}
+
+/// The writer (`csvText`, after `csvWrite`'s checks), `cnt` each part's count and `load(part, lo, out)` its words from
+/// `lo` from its encoding. In the model's order: each row part's count; then every row's positions (`fieldsOf`, its row
+/// parts read `2^lg` rows at a time, no payload); then the header and the rows `2^lg` at a time, each field's words
+/// taken from its payload block (`Cache`) and formatted (`field_text`) into the chunk's bytes, the chunk appended to the
+/// temporary `own::replace_by` renames over `target`. The first refusal, row by row and column by column, is the
+/// answer, and `target` keeps what it held.
+pub fn write(target: &CStr, cols: &[Col], n: usize, cnt: &[usize], lg: u32, mut load: impl FnMut(usize, usize, &mut [u64])) -> Result<(), Fail> {
+    let first: Vec<usize> = cols.iter().scan(0, |a, c| { let f = *a; *a += nparts(c.shape); Some(f) }).collect();
+    for (col, &f) in cols.iter().zip(&first) {
+        if let Some(&m) = cnt[f..f + row_parts(col.shape)].iter().find(|&&m| m != n) {
+            return Err(Fail::User(format!("column '{}' holds {m} words, not {n}", col.name)));
+        }
+    }
+    let blk = 1usize << lg;
+    let mut rw: Vec<Vec<Vec<u64>>> = cols.iter().map(|c| (0..row_parts(c.shape)).map(|_| alloc::vec![0; blk.min(n)]).collect()).collect();
+    let rows = |lo: usize, rw: &mut Vec<Vec<Vec<u64>>>, load: &mut dyn FnMut(usize, usize, &mut [u64])| {
+        for (c, ps) in rw.iter_mut().enumerate() { for (j, w) in ps.iter_mut().enumerate() { load(first[c] + j, lo, &mut w[..blk.min(n - lo)]) } }
+    };
+    for lo in (0..n).step_by(blk) {
+        rows(lo, &mut rw, &mut load);
+        for i in 0..blk.min(n - lo) {
+            for (c, col) in cols.iter().enumerate() {
+                at(col, &rw[c], &cnt[first[c]..first[c] + nparts(col.shape)], i)
+                    .map_err(|e| Fail::User(format!("row {}, column '{}': {e}", lo + i, col.name)))?;
+            }
+        }
+    }
     crate::own::replace_by(target, |f| {
-        let (blk, mut out, mut s) = (1usize << lg, Vec::new(), Vec::new());
+        let (mut out, mut s, mut ws) = (Vec::new(), Vec::new(), Vec::new());
+        let mut pay: Vec<Cache> = cols.iter().map(|_| Cache { at: usize::MAX, ws: Vec::new() }).collect();
         for (k, c) in cols.iter().enumerate() { if k > 0 { out.push(b',') } field_out(c.name.as_bytes(), &mut out) }
         out.push(b'\n');
-        let mut ws: Vec<Vec<u64>> = cols.iter().map(|_| alloc::vec![0; blk.min(n)]).collect();
         for lo in (0..n).step_by(blk) {
-            let cnt = blk.min(n - lo);
-            for (c, w) in ws.iter_mut().enumerate() { load(c, lo, &mut w[..cnt]) }
-            for i in 0..cnt {
+            rows(lo, &mut rw, &mut load);
+            for i in 0..blk.min(n - lo) {
                 for (c, col) in cols.iter().enumerate() {
                     if c > 0 { out.push(b',') }
-                    let w = ws[c][i];
-                    if text(col, w, &mut s).is_none() {
-                        return Err(Fail::User(format!("row {}, column '{}': the word {w} has no text as {}", lo + i, col.name, form(col))));
+                    let (r, p) = (&rw[c], first[c] + 2);
+                    ws.clear();
+                    match col.shape {
+                        SH_NULL if r[0][i] == 0 => ws.push(pay[c].get(p, r[1][i] as usize, cnt[p], blk, &mut load)),
+                        SH_NULL => {}
+                        SH_TEXT => for q in r[0][i] as usize..r[1][i] as usize { ws.push(pay[c].get(p, q, cnt[p], blk, &mut load)) },
+                        _ => ws.push(r[0][i]),
+                    }
+                    if field_text(col, &ws, &mut s).is_none() {
+                        return Err(Fail::User(format!("row {}, column '{}': {} has no text as {}", lo + i, col.name, words_shown(&ws), form_of(col))));
                     }
                     field_out(&s, &mut out);
                 }
@@ -428,7 +494,8 @@ fn civil(z: i64) -> (i64, i64, i64) {
 }
 
 /// `QAtomicType`'s constructor indices (Rel/Kernel/Value.lean's order; `scan::qtype_width` reads the same).
-const QT_U1: u8 = 0;
+pub const QT_U1: u8 = 0;
+pub const QT_I64: u8 = 4;
 const QT_U8: u8 = 1;
 const QT_F32: u8 = 5;
 const QT_F64: u8 = 6;
@@ -556,7 +623,7 @@ fn stamp(f: &[u8]) -> Option<i64> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    fn col(t: u8) -> Col<'static> { Col { name: "x", t, names: Vec::new() } }
+    fn col(t: u8) -> Col<'static> { Col { name: "x", shape: SH_ATOM, t, names: Vec::new() } }
     // the model's float cases (`CsvTest`): ties to even, zeros, underflow, the end of the range, the forms refused
     #[test] fn floats_as_the_model() {
         let c = col(QT_F64);
@@ -575,12 +642,13 @@ mod tests {
     }
     // the records' refusals at the model's lines, and the order: the quotes of the whole file before the header
     #[test] fn records_as_the_model() {
-        let err = |s: &str| lex(s.as_bytes(), 2, 10).err();
+        let two = [col(QT_U1), col(QT_U1)];
+        let err = |s: &str| lex(s.as_bytes(), &two, 10).err();
         assert_eq!(err("a,b\n1,x\"y\n").as_deref(), Some("line 2: a '\"' inside an unquoted field"));
         assert_eq!(err("a,b\n1,\"x\n").as_deref(), Some("a quoted field opened at line 2 is not closed"));
         assert_eq!(err("a,b\n1,\"x\"y\n").as_deref(), Some("line 2: after a closing '\"' comes 'y', not ',' or a record end"));
         assert_eq!(err("a,b\n1,\"x\"\rx\n").as_deref(), Some("line 2: after a closing '\"' comes '\\x0d' with no '\\x0a' after it"));
-        let lx = lex(b"a,\"b\"\r\n\"1\",\"\n\"\n2,\"\r\"\n", 2, 10).unwrap_or_else(|e| panic!("csv tests: {e}"));
+        let lx = lex(b"a,\"b\"\r\n\"1\",\"\n\"\n2,\"\r\"\n", &two, 10).unwrap_or_else(|e| panic!("csv tests: {e}"));
         assert_eq!((lx.n, lx.head.clone(), lx.short), (2, alloc::vec![b"a".to_vec(), b"b".to_vec()], None));
         assert_eq!(shown(&[0xef, b'a']), "'\\xefa'");
     }

@@ -520,6 +520,14 @@ def csvText (cols : CsvCols) (n : Nat) (ws : List (Array UInt64)) : Except Strin
   let rs ← rowsText cols 0 (← fieldsOf cols n ws)
   pure (records (cols.map (bytes ·.1) :: rs))
 
+/-- The parts `es`, each with its count, as their raw words (`Kernel.rawAll` at each part's atom, `CsvShape.atoms`; of
+    the null's values only the count), after the part count is checked (`arity`). -/
+def Csv.raws (cols : CsvCols) (es : List (USize × Enc)) : Except String (List (Array UInt64)) := do
+  arity cols es.length
+  ((cols.flatMap fun (_, s, t, _) => s.atoms t).zip es).mapM fun
+    | (some t, m, e) => Kernel.rawAll t m e
+    | (none, m, _) => pure (Array.replicate m.toNat 0)
+
 open Csv in
 /-- **The CSV writer**, IO export `qlean_csv_write` (IO design C.1): the `n` rows of the parts `es` (each with its
 count) under the schema `cols` as the file at `path`, `csvText` of each part's raw words (`Kernel.rawAll`, so an `Enc`
@@ -531,12 +539,7 @@ and writes the formatted rows to a temporary renamed over `path` (`crate/src/csv
 @[extern "qlean_csv_write"]
 def csvWrite (path : @& String) (cols : @& CsvCols) (n : USize) (es : @& List (USize × Enc)) : IO Unit := do
   if let some d := (System.FilePath.mk path).parent then IO.FS.createDirAll d
-  let b ← IO.ofExcept ((do
-    arity cols es.length
-    let ws ← ((cols.flatMap fun (_, s, t, _) => s.atoms t).zip es).mapM fun
-      | (some t, m, e) => Kernel.rawAll t m e
-      | (none, m, _) => pure (Array.replicate m.toNat 0)
-    csvText cols n.toNat ws : Except String (List UInt8)).mapError (s!"{path}: {·}"))
+  let b ← IO.ofExcept ((do csvText cols n.toNat (← raws cols es) : Except String (List UInt8)).mapError (s!"{path}: {·}"))
   IO.FS.writeBinFile path ⟨b.toArray⟩
 
 end Rel.Db
