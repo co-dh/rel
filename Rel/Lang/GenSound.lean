@@ -1,4 +1,4 @@
-import Rel.Lang.GenKBits
+import Rel.Lang.GenKFold
 import Rel.Lang.Den
 import Rel.Run.Lang.Expand
 
@@ -187,7 +187,7 @@ end
 def rowsProved : List (String × Bool) :=
   [("∋", false), ("inl", false), ("inr", false), ("τ", true), ("setify", true)]
 
-/-- Some node of `t` has no proved case in `Tm.gen_sound`: no `GenK` lemma yet (`arith est thin atPos fold foldr
+/-- Some node of `t` has no proved case in `Tm.gen_sound`: no `GenK` lemma yet (`est thin atPos fold foldr
     foldI mu nu hylo`), a lemma that does not hold as stated (`juncD`), a row not in `rowsProved`, or no mirror in
     `Tm.gen` (`arg call`). -/
 def Tm.gap : {A B : Obj} → Tm A B → Bool
@@ -195,11 +195,11 @@ def Tm.gap : {A B : Obj} → Tm A B → Bool
   | _, _, .val _ | _, _, .uni _ | _, _, .zero | _, _, .id | _, _, .outl | _, _, .outr | _, _, .nil
   | _, _, .var .. => false
   | _, _, .top R | _, _, .conv R | _, _, .dom R | _, _, .ran R | _, _, .lam R | _, _, .E R | _, _, .own R
-  | _, _, .succ R | _, _, .leq R | _, _, .lt R | _, _, .flat R | _, _, .share _ R => R.gap
+  | _, _, .succ R | _, _, .arith _ R | _, _, .leq R | _, _, .lt R | _, _, .flat R | _, _, .share _ R => R.gap
   | _, _, .comp R S | _, _, .meet R S | _, _, .join R S | _, _, .diff R S | _, _, .pair R S | _, _, .prod R S
   | _, _, .junc R S => R.gap || S.gap
   | _, _, .ldiv R S U V | _, _, .rdiv R S U V => R.gap || S.gap || U.gap || V.gap
-  | _, _, .juncD .. | _, _, .arith .. | _, _, .est _ | _, _, .thin _ | _, _, .atPos _ | _, _, .fold ..
+  | _, _, .juncD .. | _, _, .est _ | _, _, .thin _ | _, _, .atPos _ | _, _, .fold ..
   | _, _, .foldr .. | _, _, .foldI .. | _, _, .mu .. | _, _, .nu .. | _, _, .hylo .. | _, _, .call ..
   | _, _, .arg .. => true
 
@@ -208,8 +208,8 @@ def Tm.LamLaws : {A B : Obj} → Tm A B → Prop
   | A, B, .prim r => rowsProved.lookup r.sym = some true → ∀ B', B = .arr B' → LamLaw A B'
   | _, _, .lam (A := A) (B := B) R => LamLaw A B ∧ R.LamLaws
   | _, _, .E (A := A) (B := B) R => LamLaw (.arr A) B ∧ R.LamLaws
-  | _, _, .top R | _, _, .conv R | _, _, .dom R | _, _, .ran R | _, _, .own R | _, _, .succ R | _, _, .leq R
-  | _, _, .lt R | _, _, .flat R | _, _, .share _ R => R.LamLaws
+  | _, _, .top R | _, _, .conv R | _, _, .dom R | _, _, .ran R | _, _, .own R | _, _, .succ R | _, _, .arith _ R
+  | _, _, .leq R | _, _, .lt R | _, _, .flat R | _, _, .share _ R => R.LamLaws
   | _, _, .comp R S | _, _, .meet R S | _, _, .join R S | _, _, .diff R S | _, _, .pair R S | _, _, .prod R S
   | _, _, .junc R S => R.LamLaws ∧ S.LamLaws
   | _, _, .ldiv R S U V | _, _, .rdiv R S U V => R.LamLaws ∧ S.LamLaws ∧ U.LamLaws ∧ V.LamLaws
@@ -370,6 +370,7 @@ theorem Tm.gen_sound (hb : GenK.ReadsBack) {A B : Obj} (t : Tm A B) :
   case nil => exact GenK.ofVals_row_sound fun _ _ _ h => Tab.nil_holds h
   case own R ih => exact code_of (ih η ρ hg hl hs)
   case succ U ih => exact GenK.succ_sound (code_of (ih η ρ hg hl hs))
+  case arith U ih => exact GenK.arith_sound (code_of (ih η ρ hg hl hs))
   case leq U ih => exact GenK.cmp_sound (fun _ _ _ h => Tab.leq_holds h) (code_of (ih η ρ hg hl hs))
   case lt U ih => exact GenK.cmp_sound (fun _ _ _ h => Tab.lt_holds h) (code_of (ih η ρ hg hl hs))
   case share R ih =>
