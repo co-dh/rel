@@ -12,42 +12,6 @@ namespace Rel.Kernel.Order
 
 open Rel.Kernel.Scan (Kind)
 
-/-- q's order on a `float`'s bits, as an unsigned key. Three folds and a monotone map:
-
-* any NaN answers `0`, which is q's null sorting below everything and every NaN equal to every
-  other. `0` is not reachable otherwise — the only `b` with `~~~b = 0` is `0xffffffffffffffff`,
-  which is itself a NaN;
-* `-0.0` answers `+0.0`'s key;
-* a negative answers `~~~b`, which reverses the magnitude ordering IEEE gives it, and a non-negative
-  answers `b` with the sign bit set, which lifts every positive above every negative. -/
-def rank64 (b : UInt64) : UInt64 :=
-  if Bits.f64IsNaN b then 0
-  else if b == 0x8000000000000000 then 0x8000000000000000
-  else if b >>> 63 == 1 then ~~~b
-  else b ||| 0x8000000000000000
-
-/-- `rank64` at four bytes. Written out rather than widening through `Float32.toFloat`, which is a
-native function and would stop `decide` on every proposition that mentions a `real`. -/
-def rank32 (b : UInt32) : UInt32 :=
-  if Bits.f32IsNaN b then 0
-  else if b == 0x80000000 then 0x80000000
-  else if b >>> 31 == 1 then ~~~b
-  else b ||| 0x80000000
-
-/-- The unsigned key these raw bits sort by, at each layout. The integral widths flip their sign bit
-*within their own width*, which turns q's two's-complement payload order into unsigned order and
-puts `0N` — the minimum payload — at key `0`; `byte` and `char` are q's unsigned types and are
-already their own key; the float widths rank. A `.bit` is `0` or `1` and needs neither. -/
-def rank (k : Kind) (v : UInt64) : UInt64 :=
-  match k with
-  | .bit | .u8 | .c8 => v
-  | .i8 => v ^^^ 0x80
-  | .i16 => v ^^^ 0x8000
-  | .i32 => v ^^^ 0x80000000
-  | .i64 => v ^^^ 0x8000000000000000
-  | .f32 => (rank32 v.toUInt32).toUInt64
-  | .f64 => rank64 v
-
 
 
 

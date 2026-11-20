@@ -110,7 +110,7 @@ instance : Reg Enc := ⟨.obj, fun
   | .ctor 6 #[] #[] => some .pos
   | .ctor k ps #[] => if [0, 2, 3].contains k then
       ps.mapM (fun | .bytes b => some b | _ => none) >>= Db.ownEnc k.toUInt8 else none
-  | _ => none, fun e => .ctor e.ctorIdx (match Db.ownParts e with | .ok (_, ps) => ps.map .bytes | .error _ => #[]) #[]⟩
+  | _ => none, fun e => .ctor e.ctorIdx (match Db.ownParts e with | .ok (some (_, ps)) => ps.map .bytes | _ => #[]) #[]⟩
 
 mutual
 /-- `atom t` is constructor `0` of the byte `t`; `cells n c lo hi els` constructor `1` of the objects `lo hi els`
@@ -412,18 +412,19 @@ def cols : (A : Obj) → {n : USize} → Vals A n → String → List (String ×
   | .sum a b, _, ⟨_, _, tag, idx, x, y⟩, p =>
     [(p ++ ".tag", tag.1), (p ++ ".idx", idx.1)] ++ cols a x (p ++ ".l") ++ cols b y (p ++ ".r")
 
-/-- A column as qlean's column writer takes it (`Db.ownFile`): `code`, `attr`, `kind`, `count`, `domain`, `parts`. -/
-def ownFile (p : String) (v : QValue) : Except String Db.OwnFile :=
+/-- A column as qlean's column writer takes it (`Db.ownFile`): `code`, `attr`, `kind`, `count`, `domain`, `parts`;
+    `none` for positions, which have no file. -/
+def ownFile (p : String) (v : QValue) : Except String (Option Db.OwnFile) :=
   (Db.ownFile v).mapError fun e => s!"column `{p}`: {e}"
 
 /-- A side's registers: each column's path and its six `ownFile` registers. -/
 abbrev Side := List (String × Array Nat)
 
-/-- The side's columns as `lit`s. -/
+/-- The side's columns as `lit`s; a positions column has none. -/
 def litSide {A : Obj} {n : USize} (x : Vals A n) : Bld Side :=
-  (cols A x "").mapM fun (p, v) => do
-    let f ← ownFile p v
-    return (p, ← #[.u8 f.code, .u8 f.attr, .u8 f.kind, .size f.count, .str f.domain, .parts f.parts].mapM lit)
+  (cols A x "").filterMapM fun (p, v) => do
+    let some f ← ownFile p v | return none
+    return some (p, ← #[.u8 f.code, .u8 f.attr, .u8 f.kind, .size f.count, .str f.domain, .parts f.parts].mapM lit)
 
 /-- The registers of a closed term's value, key side then value side. Stage 1a builds a literal and a converse,
     which swaps the sides and emits nothing; any other node is refused. -/

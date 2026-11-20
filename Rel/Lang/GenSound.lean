@@ -54,7 +54,7 @@ theorem Sound.bind {η : Code} {ρ : Val} (hs : Sound η ρ) (k : Nat) {A B : Ob
     · simp only [Code.bind, hj, if_false]; exact hs.2 j A' B'
 
 /-- The hypothesis of `Tab.lam_den` at `A ⟶ [B]`: two rows of one key whose codes ascend strictly hold values
-    ascending in `B.lt`. It fails at a float atom, so it is asked per `Λ`, never for every object. -/
+    ascending in `B.lt`. It is asked per `Λ`, never for every object: a general atom keys as `[]` (`Obj.key`). -/
 def LamLaw (A B : Obj) : Prop := ∀ (m : USize) (x : Vals (.prod A B) m) es, Vals.cols x = .ok es →
   ∀ i i' : Fin m.toNat, (x.row i).1 = (x.row i').1 → lexLe (ascKeys m es) i i' = true →
     seenKey m es i ≠ seenKey m es i' → B.lt (x.row i).2 (x.row i').2
@@ -102,7 +102,7 @@ def Codes.at (xs : Codes) (i : Nat) (X Y : Obj) : Option (Rel X Y) := match xs[i
 
 open Lean Meta Elab Term Expand in
 run_elab do
-  let pl (k : Nat) := oE ((varObj k).getD .long)
+  let pl (k : Nat) := oE ((varObj varAtoms k).getD .long)
   let el (s : Lean.Term) : TermElabM Lean.Expr := do
     let e ← elabTerm s none; synthesizeSyntheticMVarsNoPostponing; instantiateMVars e
   let some' ← el (← `(fun (A B : Obj) (v : Rel A B) => (some ⟨A, B, v⟩ : Option ((A : Obj) × (B : Obj) × Rel A B))))
@@ -117,7 +117,7 @@ run_elab do
     let choices := ((List.range (2 ^ vs.length)).map fun m => (List.range vs.length).map m.testBit).mergeSort
       fun a b => a.count true ≤ b.count true
     let some e ← choices.findSomeM? fun lg => do
-        let σ := (List.range vs.length).map fun k => if lg.getD k false then .long else (varObj k).getD .long
+        let σ := (List.range vs.length).map fun k => if lg.getD k false then .long else (varObj varAtoms k).getD .long
         let inst (o : OExp) := o.at vs σ
         -- a parameter taken as its pair test (`some true`, §a) is a code at `X×Y ⟶ X×Y`, as `rowDens` reads it
         let ps := r.sig.1.map fun ((x, y), fm) =>
