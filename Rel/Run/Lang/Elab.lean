@@ -1522,6 +1522,32 @@ def divTest {A B C : Obj} (c : Tm (.prod A C) (.prod A C)) (s : Tm B C) :
     Tm (.prod A B) (.prod A B) :=
   .diff .id (.dom (.comp (.pair .outl (.comp .outr s)) (.diff .id c)))
 
+/-- A row's definition as `build` makes it, read back by `Tm.dfnCut?`: its base `0` on the universe `u₀`, its step
+    on `u`, the row it is the fused form of, and that row cut to `u`. -/
+structure DfnCut (A B : Obj) where
+  u₀ : Tm .long .long
+  u : Tm .long .long
+  fused : Tm A B
+  cut : Tm A B
+
+/-- The fold base `0` as `zeroE` builds it, `⟨𝟙,𝟙⟩ minus ∩ 𝟙`, and its universe. -/
+def zeroU? : {V : Obj} → Tm V V → Option (Tm .long .long)
+  | .long, .meet (.comp (.pair .id .id) (.arith k u)) .id => if k == Rel.Kernel.Ew.sub then some u else none
+  | _, _ => none
+
+/-- `⦇[0, π₁ succ]⦈` (`lengthRow`'s definition) and `⦇[0, plus]⦈ʳ` (`sumRow`'s) read back, each with its row and the
+    row cut to its universe: `sum`'s cut tests its elements in it first (`F(u)`), as `plus` does. Any other term,
+    none: `build` then runs it as written. `Tm.dfnCut_den` proves each equal to its cut at `𝟙` and at `0…k`. -/
+def Tm.dfnCut? : {A B : Obj} → Tm A B → Option (DfnCut A B)
+  | .arr _, .long, .fold e (.comp .outl (.succ u)) =>
+    (zeroU? e).map fun u₀ => ⟨u₀, u, .prim lengthRow, .comp (.prim lengthRow) u⟩
+  | .arr .long, .long, .foldr e (.arith k u) =>
+    if k == Rel.Kernel.Ew.add then
+      (zeroU? e).map fun u₀ => ⟨u₀, u, .prim sumRow,
+        .comp (.comp (.arg (.prim mapRow : Tm (.arr .long) (.arr .long)) u) (.prim sumRow : Tm (.arr .long) .long)) u⟩
+    else none
+  | _, _, _ => none
+
 section Build
 
 variable (objs : Objs) (mc : Lean.MetavarContext) (dp : Pos)
@@ -1744,18 +1770,24 @@ def build : Pre → Except Err Res
   | .est p => do let ⟨_, c⟩ ← param p; pure ⟨_, _, .est c⟩
   | .thin p => do let ⟨_, c⟩ ← param p; pure ⟨_, _, .thin c⟩
   | .nil a b => return ⟨_, _, .nil (A := ← toObj objs mc dp a) (B := ← toObj objs mc dp b)⟩
-  -- a row is the fused form of its definition (§4), a fold from `0` whose steps, kept in the object as `succ`, `plus`
-  -- keep theirs, never decrease the value: at an unbounded object (universe `𝟙`) the fused row is the definition; at
-  -- an initial segment `0…k` of ℕ a step leaves it only if the result does, so the definition is the fused row cut
-  -- to the universe `U`, one pass; elsewhere the definition runs, a round per element each reading `U`
+  -- a row is the fused form of its definition (§4): the definition built, then replaced by the form `Tm.dfnCut?`
+  -- reads it back to where `Tm.dfnCut_den` proves them equal: the fused row at an unbounded object (universe `𝟙`),
+  -- the row cut to the universe at an initial segment `0…k` (one pass, where the fold reads the universe in every
+  -- round); elsewhere, or read back to nothing, the definition runs. A target with no universe has no definition
+  -- to run (`succ`, `plus` need one): the row runs.
   | .prim r xs s t (some q) => do
     have : 0 < sizeOf q := by cases q <;> simp <;> omega
-    if unbounded objs (zonk mc t) then build (.prim r xs s t none) else
-    match ← uniPart objs dp (zonk mc t) (← toObj objs mc dp t) with
-    | some .id | none => build (.prim r xs s t none)
-    | some u => if !initSeg objs (zonk mc t) then build q else do
-      let f ← build (.prim r xs s t none); let ⟨A, _, _⟩ := f
-      pure ⟨A, _, .comp (← at? dp (A := A) f) u⟩
+    let one ← if unbounded objs (zonk mc t) then pure (some true) else
+      match ← uniPart objs dp (zonk mc t) (← toObj objs mc dp t) with
+      | some .id => pure (some true)
+      | some _ => pure (some false)
+      | none => pure none
+    match one with
+    | none => build (.prim r xs s t none)
+    | some one => do
+      let ⟨A, B, d⟩ ← build q
+      let c := d.dfnCut?
+      pure ⟨A, B, (if one then c.map (·.fused) else if initSeg objs (zonk mc t) then c.map (·.cut) else none).getD d⟩
   -- the row's objects are checked where `Expand.primE` fits its constant at them (`primsFit`, `node`)
   | .prim r xs s t none => do
     let A ← toObj objs mc dp s; let B ← toObj objs mc dp t
