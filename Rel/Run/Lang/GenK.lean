@@ -124,12 +124,15 @@ def bound {A B : Obj} (K : Known A B) (r : Tab A B) : Except String (Tab A B × 
   let t ← cut K r; let d ← Tab.dom t; let l ← Tab.ran t
   pure (t, ⟨some ⟨d.n, d.key⟩, some ⟨l.n, l.key⟩⟩)
 
-/-- `T ∩ S` in `K`, `T` already run: a table bounds `S` (`bound`); anything else meets `S` run on `K`. -/
+/-- `T ∩ S` in `K`, `T` already run: its table bounds `S` (`bound`), a bit matrix's read back as rows (in `ν` the
+    `ldiv` beside a parameter run on demand is one); a lazy or failed `T` meets `S` run on `K`. -/
 def meetOn {A B : Obj} (K : Known A B) (T S : Rel A B) : Rel A B := match T with
-  | .tab (.ok r) => match bound K r with
-    | .ok p => meetV (.tab (.ok p.1)) (S.force p.2)
-    | .error e => .tab (.error e)
-  | T => meetV T (S.force K)
+  | .lazy _ => meetV T (S.force K)
+  | T => match T.runE {} with
+    | .ok r => match bound K r with
+      | .ok p => meetV (.tab (.ok p.1)) (S.force p.2)
+      | .error e => .tab (.error e)
+    | .error _ => meetV T (S.force K)
 
 /-- `R ∩ S` in `K`: the operand that is no `lazy` runs first and bounds the other (`meetOn`); of two lazy ones `R`,
     or `S` where `R` cannot run on `K` alone. -/
