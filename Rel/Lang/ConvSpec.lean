@@ -185,12 +185,14 @@ theorem convTm_den (ρ : Val) : ∀ {A B : Obj} (t : Tm A B), t.ConvOK ρ →
     refine fun hok => ⟨fun u hu => ?_, by noproj⟩
     by_cases hd : (Tm.arg f x).dem = false
     · exact conv_false_den ρ u hu hd
-    rw [convTm.eq_def, if_neg hd] at hu
+    rw [convTm.eq_def, if_neg hd] at hu; dsimp only at hu
+    by_cases hd' : f.dem = true
+    case neg => rw [if_neg hd'] at hu; cases hu
+    rw [if_pos hd'] at hu
     cases hf : convTm f with
     | error l => simp only [hf] at hu; cases hu
     | ok f' =>
       simp only [hf] at hu; cases hu
-      have hd' : f.dem = true := by simpa [Tm.dem] using hd
       exact ⟨((ihf hok).1 _ hf).2 hd' _, fun _ _ => ((ihf hok).1 _ hf).2 hd' _⟩
   | share k R ih =>
     refine fun hok => ⟨fun u hu => ?_, fun A₁ A₂ h p hp => ?_⟩
@@ -579,7 +581,10 @@ theorem convTm_instObj_den (σ : List Obj) (ρ : Val) : ∀ {A B : Obj} (t : Tm 
     refine fun t' ht hok => ⟨fun u u' hu hu' => ?_, by noproj'⟩
     by_cases hd : (Tm.arg f x).dem = false
     · exact inst_false_den σ ρ hd hu hu' ht
-    rw [convTm.eq_def, if_neg hd] at hu
+    rw [convTm.eq_def, if_neg hd] at hu; dsimp only at hu
+    by_cases hd' : f.dem = true
+    case neg => rw [if_neg hd'] at hu; cases hu
+    rw [if_pos hd'] at hu
     cases hf : convTm f with
     | error l => simp only [hf] at hu; cases hu
     | ok f₀ =>
@@ -588,7 +593,6 @@ theorem convTm_instObj_den (σ : List Obj) (ρ : Val) : ∀ {A B : Obj} (t : Tm 
       obtain ⟨F', hF, x', hx, rfl⟩ := ht
       obtain ⟨f', hf', x'', hx', rfl⟩ := hu'
       rw [hx] at hx'; cases hx'
-      have hd' : f.dem = true := by simpa [Tm.dem] using hd
       have e := ((ihf F' hF hok).1 f₀ f' hf hf').2 hd'
       exact ⟨e _, fun _ _ => e _⟩
   | share k R ih =>

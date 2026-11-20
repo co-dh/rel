@@ -13,6 +13,9 @@ rel_program frameGroupT where
     check idesc(x π₁) = {(0,3),(1,5),(2,0),(3,2),(4,6),(5,1),(6,4),(7,7)}
     check sortBy(π₁, x) = {(0,(A,3)),(1,(A,7)),(2,(A,3)),(3,(B,5)),(4,(B,5)),(5,(B,1)),(6,(C,1)),(7,(C,2))}
     check topBy({(∗,2)}, π₁, x) = {(0,(A,3)),(1,(A,7))}
+    check sortByDesc(π₁, x) = {(0,(C,1)),(1,(C,2)),(2,(B,5)),(3,(B,5)),(4,(B,1)),(5,(A,3)),(6,(A,7)),(7,(A,3))}
+    -- `v` descending, ties by position: 7 at 4, 5 at 0 and 2
+    check topK({(∗,3)}, π₂, x) = {(0,(A,7)),(1,(B,5)),(2,(B,5))}
     -- groups numbered by first occurrence: B 0, A 1, C 2
     check firstOcc(x π₁) = {(0,0),(1,1),(2,3)}
     check group(x π₁)° = {(0,0),(1,1),(2,0),(3,2),(4,1),(5,2),(6,0),(7,1)}
