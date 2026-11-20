@@ -1,6 +1,7 @@
 import Rel.Run.Lang.Plan
 import Rel.Run.Lang.Expand
 import Rel.Kernel.Db.ObjectFile
+import Rel.Lang.Table
 
 /-! # `relc`: a plan printed as C (`doc/rel-native-design.md` §6, stage 1a)
 
@@ -51,13 +52,10 @@ def outputOf (chain : List (Lean.Name × Program)) (prog : Program) (x : String)
     let some ⟨_, _, t⟩ := ds.lookup x | throw s!"`{x}` is no closed definition of the program"
     pure (do output dir (← ofTm t))
 
-/-- The Lean side of the same output: `R`'s columns written by `Db.ownWrite` under the names `output` gives them,
-    from the value Lean computed, not from a plan. -/
+/-- The Lean side of the same output: `R`'s two sides written by the table writer under the names `output` gives
+    them, from the value Lean computed, not from a plan. -/
 def writeRel {A B : Obj} (dir : String) (R : Tab A B) : IO Unit := do
-  for (side, cs) in [("key", cols A R.key ""), ("val", cols B R.val "")] do
-    for (p, v) in cs do
-      let f ← IO.ofExcept (ownFile (side ++ p) v)
-      Db.ownWrite (System.FilePath.mk dir / (side ++ p)).toString f.code f.attr f.kind f.count f.domain f.parts
+  Table.writeVals dir "key" R.key; Table.writeVals dir "val" R.val
 
 /-! ### The C -/
 

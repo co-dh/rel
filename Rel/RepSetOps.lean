@@ -380,39 +380,28 @@ theorem concat_split {R S C : Tab k v} (h : R.concat S = .ok C) {a : k.El} {b : 
     · rw [rk, dif_neg (by simp)]; simpa using ha
     · rw [rv, dif_neg (by simp)]; simpa using hb
 
-/-- **`groupFold` over `kseen`'s groups is a fold per group** (design §4: a fold is a scan's last row): where `op` is
-the total `fn`, group `j`'s word is `fn` folded from `z` over `x` at the rows of `j` in row order, the form
-`scatterWords_fold` gives `kscatter`. A group's rows are one run (`kseen_runs`) opening at its first row, so `kscan`'s
-segment from that row holds at each row the fold of the group's rows up to it, and the group's last row is all of it. -/
-theorem groupFold_ok {op : Op} {fn : UInt64 → UInt64 → UInt64} (hop : ∀ a x, op.eval a x = .ok (fn a x))
+/-- **A segmented `kscan` over `kseen`'s groups is a prefix fold per group** (`groupFold`'s first two kernels, and
+`Tab.sums`'s): with ones `kscatter`ed to the first rows `f` as the segment marks, row `i` of the scan holds `fn` (the
+total `op`) folded from `z` over `x` at the rows `≤ i` of `i`'s group, in row order. A group's rows are one run
+(`kseen_runs`) opening at its first row, which is the one row that starts a segment. -/
+theorem segScan_ok {op : Op} {fn : UInt64 → UInt64 → UInt64} (hop : ∀ a x, op.eval a x = .ok (fn a x))
     {n : USize} {es : List (AscKey × Enc)} {m : Nat} {g f : Enc} (hr : kseen n es = .ok (m, g, f))
-    {z : UInt64} {x o : Enc} (h : groupFold op n g f m.toUSize z x = .ok o) :
-    (Enc.raw .i64 n g).size = n.toNat ∧ (Enc.raw .i64 m.toUSize o).size = m.toUSize.toNat ∧
-      ∀ j < m.toUSize.toNat, (Enc.raw .i64 m.toUSize o)[j]?.getD 0 =
-        (((List.range (Enc.raw .i64 n g).size).filter fun k => ((Enc.raw .i64 n g)[k]?.getD 0).toNat = j).map
-          ((Enc.raw .i64 n x)[·]?.getD 0)).foldl fn z := by
-  unfold groupFold at h
-  simp only [bind, Except.bind] at h
-  repeat (split at h; · cases h)
-  rename_i _ one h1 _ seg h2 _ zc h3 _ r h4
-  obtain ⟨sc, v⟩ := r
-  dsimp only at h
+    {z : UInt64} {one seg zc x sc : Enc} {v : Option UInt64} (h1 : colConst m.toUSize 1 = .ok one)
+    (h2 : kscatter .last m.toUSize f one n 0 = .ok seg) (h3 : colConst n z = .ok zc)
+    (h4 : kscan op false .i64 .i64 n seg [zc, x] = .ok (sc, v)) :
+    (Enc.raw .i64 n sc).size = n.toNat ∧ ∀ i < n.toNat, (Enc.raw .i64 n sc)[i]?.getD 0 =
+      (((List.range (i + 1)).filter fun q => Verify.groupOf (seenKey n es) n.toNat q =
+        Verify.groupOf (seenKey n es) n.toNat i).map ((Enc.raw .i64 n x)[·]?.getD 0)).foldl fn z := by
   have hU : USize.size ≤ 2 ^ 64 := by rcases USize.size_eq with e | e <;> omega
   have hn := n.toNat_lt_size
   have hc64 : ∀ a, a < n.toNat → a.toUInt64.toNat = a := fun a ha => by simp; omega
   have hruns := kseen_runs hr
-  obtain ⟨hK, hg, hf⟩ := kseen_ok hr
-  generalize seenKey n es = Kk at hK hg hf hruns
+  obtain ⟨hK, -, hf⟩ := kseen_ok hr
+  generalize seenKey n es = Kk at hK hf hruns ⊢
   have fs := firsts_spec Kk n.toNat
   have hmn : m ≤ n.toNat := by
     rw [hK]; unfold firstsOf; exact Nat.le_trans (List.length_filter_le _ _) (by simp)
   have hmU : m.toUSize.toNat = m := USize.toNat_ofNat_of_lt' (by omega)
-  have hgr : Enc.raw .i64 n g = Array.ofFn (n := n.toNat) fun i => (Verify.groupOf Kk n.toNat i.1).toUInt64 := by
-    rw [hg]; exact (wordsFoR_closed _ (by simp)).2.1
-  have hgs : (Enc.raw .i64 n g).size = n.toNat := by rw [hgr]; simp
-  have hgv : ∀ q < n.toNat, ((Enc.raw .i64 n g)[q]?.getD 0).toNat = Verify.groupOf Kk n.toNat q := fun q hq => by
-    obtain ⟨hgl, -⟩ := fs.2.2.2.2.2 q hq
-    rw [hgr, Array.getElem?_ofFn, dif_pos hq, Option.getD_some]; exact hc64 (Verify.groupOf Kk n.toNat q) (by omega)
   have hFlt : ∀ G (hG : G < (firstsOf Kk n.toNat).length), (firstsOf Kk n.toNat)[G] < n.toNat :=
     fun G hG => ((fs.2.1 _).1 (List.getElem_mem hG)).1
   have hrf : Enc.raw .i64 m.toUSize f = ((firstsOf Kk n.toNat).map Nat.toUInt64).toArray := by
@@ -511,11 +500,45 @@ theorem groupFold_ok {op : Op} {fn : UInt64 → UInt64 → UInt64} (hop : ∀ a 
             have hq := List.mem_range.1 hq
             exact ((fs.2.1 _).1 hm).2 q hq ((fs.2.2.1 q (by omega) (i + 1) hi).1 e)
         rw [if_neg fun h => hs h.2, hnil]; rfl
+  exact ⟨by rw [hout]; exact hos, fun i hi => by rw [hout]; exact claim i hi⟩
+
+/-- **`groupFold` over `kseen`'s groups is a fold per group** (design §4: a fold is a scan's last row): where `op` is
+the total `fn`, group `j`'s word is `fn` folded from `z` over `x` at the rows of `j` in row order, the form
+`scatterWords_fold` gives `kscatter`. Each row of the segmented scan holds the fold of its group's rows up to it
+(`segScan_ok`), so the group's last row is all of it. -/
+theorem groupFold_ok {op : Op} {fn : UInt64 → UInt64 → UInt64} (hop : ∀ a x, op.eval a x = .ok (fn a x))
+    {n : USize} {es : List (AscKey × Enc)} {m : Nat} {g f : Enc} (hr : kseen n es = .ok (m, g, f))
+    {z : UInt64} {x o : Enc} (h : groupFold op n g f m.toUSize z x = .ok o) :
+    (Enc.raw .i64 n g).size = n.toNat ∧ (Enc.raw .i64 m.toUSize o).size = m.toUSize.toNat ∧
+      ∀ j < m.toUSize.toNat, (Enc.raw .i64 m.toUSize o)[j]?.getD 0 =
+        (((List.range (Enc.raw .i64 n g).size).filter fun k => ((Enc.raw .i64 n g)[k]?.getD 0).toNat = j).map
+          ((Enc.raw .i64 n x)[·]?.getD 0)).foldl fn z := by
+  unfold groupFold at h
+  simp only [bind, Except.bind] at h
+  repeat (split at h; · cases h)
+  rename_i _ one h1 _ seg h2 _ zc h3 _ r h4
+  obtain ⟨sc, v⟩ := r
+  dsimp only at h
+  obtain ⟨-, claim⟩ := segScan_ok hop hr h1 h2 h3 h4
+  have hU : USize.size ≤ 2 ^ 64 := by rcases USize.size_eq with e | e <;> omega
+  have hn := n.toNat_lt_size
+  have hc64 : ∀ a, a < n.toNat → a.toUInt64.toNat = a := fun a ha => by simp; omega
+  obtain ⟨hK, hg, -⟩ := kseen_ok hr
+  generalize seenKey n es = Kk at hK hg claim
+  have fs := firsts_spec Kk n.toNat
+  have hmn : m ≤ n.toNat := by
+    rw [hK]; unfold firstsOf; exact Nat.le_trans (List.length_filter_le _ _) (by simp)
+  have hgr : Enc.raw .i64 n g = Array.ofFn (n := n.toNat) fun i => (Verify.groupOf Kk n.toNat i.1).toUInt64 := by
+    rw [hg]; exact (wordsFoR_closed _ (by simp)).2.1
+  have hgs : (Enc.raw .i64 n g).size = n.toNat := by rw [hgr]; simp
+  have hgv : ∀ q < n.toNat, ((Enc.raw .i64 n g)[q]?.getD 0).toNat = Verify.groupOf Kk n.toNat q := fun q hq => by
+    obtain ⟨hgl, -⟩ := fs.2.2.2.2.2 q hq
+    rw [hgr, Array.getElem?_ofFn, dif_pos hq, Option.getD_some]; exact hc64 (Verify.groupOf Kk n.toNat q) (by omega)
   -- the last scatter keeps each group's last row
   obtain ⟨-, -, hw⟩ := kscatter_words h
   obtain ⟨hos', hfin⟩ := scatterWords_fold (f := fun _ y => y) (fun _ _ => rfl) hw
   have last : ∀ j N', N' ≤ n.toNat →
-      (((List.range N').filter fun k => Verify.groupOf Kk n.toNat k = j).map (out[·]?.getD 0)).foldl (fun _ y => y) z =
+      (((List.range N').filter fun k => Verify.groupOf Kk n.toNat k = j).map ((Enc.raw .i64 n sc)[·]?.getD 0)).foldl (fun _ y => y) z =
       (((List.range N').filter fun k => Verify.groupOf Kk n.toNat k = j).map ((Enc.raw .i64 n x)[·]?.getD 0)).foldl fn z := by
     intro j N'
     induction N' with
@@ -536,7 +559,7 @@ theorem groupFold_ok {op : Op} {fn : UInt64 → UInt64 → UInt64} (hop : ∀ a 
       (List.range n.toNat).filter fun k => Verify.groupOf Kk n.toNat k = j := fun j => by
     rw [hgs]; exact List.filter_congr fun k hk => by rw [hgv k (List.mem_range.1 hk)]
   refine ⟨hgs, hos', fun j hj => ?_⟩
-  rw [hfin j hj, hfl, hout]
+  rw [hfin j hj, hfl]
   exact last j n.toNat (Nat.le_refl _)
 
 /-- **What `select keep R S` answers**, `keep` answering per group a `0`/`1` word that is `1` iff

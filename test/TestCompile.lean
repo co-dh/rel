@@ -18,8 +18,8 @@ import Rel.Lang.GenSoundTest
       result CHANGED, and a match says nothing about whether it is right; for the definitions with no code it is the
       only check.
 
-    `REL_COMPILE_DIFF_WRITE=1` regenerates the baseline from the current run instead of comparing; the file is
-    never edited by hand. -/
+    `REL_COMPILE_DIFF_OUT=<file>` also writes the current run there, in the pin's format; `make compile-diff-write`
+    copies that file over the pin, which is never edited by hand. -/
 
 namespace Rel.Lang.TestCompile
 
@@ -210,11 +210,11 @@ run_cmd do
   -- `REL_COMPILE_DIFF_BASELINE` names another baseline: a scratch copy, to show the gate red on a broken one
   let path := (← IO.getEnv "REL_COMPILE_DIFF_BASELINE").getD
     ((System.FilePath.mk (← getFileName)).withFileName "compile-diff.json").toString
-  if (← IO.getEnv "REL_COMPILE_DIFF_WRITE") == some "1" then
+  -- the run is written out before the comparison, so re-pinning copies it instead of computing it a second time
+  if let some out ← IO.getEnv "REL_COMPILE_DIFF_OUT" then
     let lines := names.filterMap fun nm => run[nm]?.map fun (s, rs) => s!"{(toJson nm).compress}: {(toEntry s rs).compress}"
-    IO.FS.writeFile path ("{\n" ++ ",\n".intercalate lines ++ "\n}\n")
-    logInfo m!"wrote {path}: {lines.length} definitions"
-    return
+    IO.FS.writeFile out ("{\n" ++ ",\n".intercalate lines ++ "\n}\n")
+    logInfo m!"wrote {out}: {lines.length} definitions"
   let text ← try IO.FS.readFile path catch e =>
     throwError "TestCompile: read {path}: {e.toMessageData}; regenerate it with `make compile-diff-write`"
   let base ← IO.ofExcept (Json.parse text >>= (·.getObj?))

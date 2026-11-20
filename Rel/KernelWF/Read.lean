@@ -35,7 +35,7 @@ theorem foRBits_nil (md pk : ByteArray) (i : Nat) : Column.foRBits md pk #[] i =
     | some v => v
     | none => Column.baseAt md (i / Column.blk md) + Column.foRFrame md pk (i / Column.blk md) +
         Column.resAt pk (Column.blockStart md (i / Column.blk md)) (Column.widthAt md (i / Column.blk md)) (i % Column.blk md) := by
-  unfold Column.foRBits; cases Column.foRExc md pk i <;> simp
+  unfold Column.foRBits; cases h : Column.foRExc md pk i <;> simp [h]
 
 /-- A pack that ends by its last block's residuals has no patch list. -/
 theorem foRExc_none {md pk : ByteArray} (h : pk.size ≤ Column.blockStart md (Column.nblk md)) (i : Nat) :
@@ -682,17 +682,6 @@ theorem idAt_packIds_past {w n i : Nat} {f : Nat → Nat} (hw : w = 1 ∨ w = 2 
   simp only [List.foldl_cons, List.foldl_nil, Nat.zero_add, getElem?_neg P q (by omega), Option.getD_none]
   rw [show UInt8.toNat 0 = 0 from rfl, Nat.zero_mul, Nat.zero_div, Nat.zero_mod]; rfl
 
-/-- `rank .i64` of a `Nat` below `2⁶⁴` keeps it apart from every other. -/
-theorem rank_ofNat_iff {x y : Nat} (hx : x < 2 ^ 64) (hy : y < 2 ^ 64) :
-    Order.rank .i64 (UInt64.ofNat (x.toUInt64.toNat % 2 ^ 64)) = Order.rank .i64 (UInt64.ofNat (y.toUInt64.toNat % 2 ^ 64)) ↔
-      x = y := by
-  refine ⟨fun e => ?_, fun e => by rw [e]⟩
-  have t : ∀ a, (UInt64.ofNat a).toNat = a % 2 ^ 64 := fun a => BitVec.toNat_ofNat _ _
-  have e := congrArg UInt64.toNat (UInt64.xor_left_inj _ |>.1 e)
-  simp only [t, Nat.toUInt64_eq] at e
-  simp only [Nat.mod_eq_of_lt hx, Nat.mod_eq_of_lt hy] at e
-  exact e
-
 end Rel.Alg
 
 -- from Rel.KernelWF.AscSpec
@@ -749,8 +738,7 @@ theorem arr_lt_take {b : Obj} : ∀ (T : Nat) (xs ys : List b.El),
     exact h.imp_right fun ⟨e, h⟩ => ⟨e, arr_lt_take T xs ys h⟩
 
 /-- **`¬ Obj.lt` is antisymmetric where `Obj.key` is injective**: neither below the other means equal keys
-    (`lt_trichotomy`), so equal elements. `Ordered` alone does not give it: a float key (`rank64`) sends every NaN to
-    one key and `-0.0` to `+0.0`'s, so distinct elements of an ordered side can share a key. -/
+    (`lt_trichotomy`), so equal elements. `Ordered` alone does not give it: every general atom keys as `[]`. -/
 theorem _root_.Rel.Obj.eq_of_not_lt (A : Obj) (hA : ∀ x y : A.El, A.key x = A.key y → x = y) {x y : A.El}
     (h1 : ¬ A.lt x y) (h2 : ¬ A.lt y x) : x = y :=
   hA x y (((A.lt_trichotomy x y).resolve_left h1).resolve_right h2)

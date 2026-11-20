@@ -12,6 +12,7 @@
   tag 是 `Arr .u1`
   （原为 `.boolean`）；`char` 是 8 位，字符串是 `arr char`；装箱的 `general` 和时间类 atom 删除。
 - R7：浮点数先规范化（一个 NaN，`-0 ↦ +0`），再做保序的位映射；相等 = 规范化之后的位相等。
+  （由 G 细化：规范化只在产生 float 字的地方做；序码与 `Obj.key` 都是存储位上的单射 `ordCode`，代码已如此，见 G。）
 - R8：1.1 只写不是某条 `Core.Rel` 定律的复述的等式（`mu_unfold`、`nu_unfold`）；
   其余十条直接用作 `Core.Rel` 的定律。
 - Q1 删除 `RelAop/Syn.lean`；Q2 表层的 `refold` 也变成 `hylo`；Q3 `tab` 持有 `Option (Tab A B)`，结构
@@ -29,8 +30,9 @@
   - I（6.9）：`QAtomicType` 的 13 个 constructor 全部保留（`u1 u8 i16 i32 i64 f32 f64 char i8 sym date datetime
     general`）；删除的是 q 的编号和 wire 语义：`code`（q 类型码）、`width` 的 IPC/splayed 含义、doc comment 里的 q null
     规则。未决：若没有 Rel 程序用 `date`/`datetime`，它们是否并入 `i32`/`i64`。
-  - reader 是 mmap（`ownMap`）；`crate/RELK.txt` 的目标：五个 kernel + `stop`、`coc_encode`、`coc_decode`、`own_write`、
-    `own_map`（owner 没有说 "5" 是否取字面）。
+  - reader 是 mmap（`ownMap`）；`crate/RELK.txt` 的目标：五个 kernel + `stop`、`coc_encode`、`coc_decode`
+    （owner 没有说 "5" 是否取字面）。IO export（`own_write`、`own_map`）已分到 `crate/RELIO.txt`（I4），不计入 RELK；
+    现在 RELK.txt 9 行，RELIO.txt 2 行，`syms` gate 要求二者不相交且并集 = crate 定义的 `qlean_*`。
   - `pointfree` gate 的范围 = L（只管类型以关系类型开头的 def）；gate G = 三个 gate，allowlist 只减不增。
   - `CLAUDE.md` 已提交（a2104f5）：Goal 是 "Rel is its own language, not k/q"；规则 "a kernel computes on the encoded
     column"。
@@ -45,6 +47,10 @@
     是位（`Carrier .f64 = UInt64`）；`doc/rel-architecture.zh.typ:197` 写的就是纯位映射；规范化过的列上新旧序码
     相同，所以 R7 与 D.12 不被推翻；没有 Rel 程序用 float。后果：未规范化的列上 `-0.0` 与 `0.0` 是不同的行；
     mmap 进来的 float 列是否检查规范化，留给 owner。实现在分支 `ordcode`。
+    代码已按 G 办理（S5，分支 `tb-s5`）：`Obj.key` 在每个定宽 atom（f32/f64 在内）上是 `atomKey`，即 `ascOrd`
+    （`kasc` 用的同一个 `ordCode`）作用于存储位 `Column.bitsOf`；合并 NaN 与 `±0` 的 `Order.rank`（及
+    `rank32`/`rank64`、`foRKey`、`rank_ofNat_iff`）删除；`Obj.key_ordCode` 不再排除 float；`Obj.ascBad` 只拒绝
+    `sym`、`general`，`asc` 接受 float。`LamLaw` 与 `Obj.eq_of_not_lt` 的前提保留，原因只剩 `general`（key 为 `[]`）。
 - 非 log 的输出（baseline、row 分析）写进本文件或 `doc/`，不写进 `/data/tmp`。
 
 ## 0. 每一步都遵守的约定
@@ -95,7 +101,7 @@ Size：S = 一步，少于 20 次 tool call；M = 一到三步；L = 多于三�
 | 12 | flat 成为 definition           | `Pre.flat`, `Elab.lean:262`（p44）     | dfnR6：flat 融合，primFit 每实例拟合一次；绿，待合并 | M    | 🔄 4.2      |
 | 13 | inl、inr 是叶子                | `inlRow`…`inrConvRow`, `Syntax:176`   | 无：prim 行带 code、den、RowOK；R9      | S    | ✅ 4.1      |
 | 14 | junc 是 definition，没有 juncD | `Pre.junc`, `Elab.lean:256`           | 无：`inl°R ∪ inr°S`；不放 prelude       | M    | ✅ 4.1      |
-| 15 | 对称除法                       | `symDivDen`, `Den.lean:61`            | `Alg.symDiv` 已不存在；ctor 还是定义待定 | M    | ⏸ 4.4      |
+| 15 | 对称除法是 definition          | `Pre.symDiv`, `Elab.lean:264`         | 无：`R/S ∩ (S/R)°`；表层语法 `R ÷ S`    | M    | ✅ 4.4      |
 | 16 | 拒绝非正的 μ/ν                 | `Tm.pol`, `Tm.lean:254`               | Elab `.fix`（1655-1670）：没有检查      | S    | ✅ 2.4      |
 | 17 | gap：open share                | `Rows.lean:125`, `Expand.lean:530`    | 无：share 读 `Val.empty`，情形已证      | M    | ✅ 5.1      |
 | 18 | gap：setify、asc               | `rowGaps`, `Rows.lean:107`            | 无 gap；浮点 key 是 `LamLaw` 前提       | M    | 🔄 5.2      |
@@ -107,7 +113,7 @@ Size：S = 一步，少于 20 次 tool call；M = 一到三步；L = 多于三�
 | 24 | gather、asc、distinct          | `gatherPacked`, `Order.grade`, `nubC` | 无 caller；无 "= 复合" 定理（见 W2）    | L    | 🔄 W2       |
 | 25 | 一种编码 `foR`              | `Ext.Enc`, 7 个 ctor, `Value.lean`    | 460 个 decl 依赖 `Enc`                  | L    | 🔄 W1b      |
 | 26 | 九个 atom                      | `QAtomicType`, 18 个 ctor, `Value:13` | 1718 个 decl；boolean、general；R5      | L    | 🔄 6.9      |
-| 27 | RELK.txt 84 → 5 + 5            | `crate/RELK.txt`, `crate/src/ffi/`    | native gate 需要更多；R4                | L    | 🔄 W5       |
+| 27 | RELK.txt 84 → 5 + 保留的（现 9；IO 2 个在 RELIO.txt） | `crate/RELK.txt`, `crate/RELIO.txt`, `crate/src/ffi/` | native gate 需要更多；R4                | L    | 🔄 W5       |
 | 28 | q-only kernel 删除             | 84 个 extern（`RELK.txt`）            | q 专用 kernel 仍导出（W0）              | S    | 🔄 W0       |
 | 29 | seen-set scan `kseen`          | `kdistinct`, `Order.groupIds`         | foR 上的 `g` 与 `first`；agent 在做     | L    | 🔄 D.12     |
 
@@ -169,13 +175,12 @@ Diff table 的「状态」列：✅ 后面是完成它的步骤；🔄 是部分
 - ✅ D.6（已合并）`scan` 的方向参数（反向扫描，van Herk）：`kscan` 的扩展，不是新 kernel。
   与 D.5 同一个 agent，在 `scan` 合并之后。
 - 🔄 D.7 第一部分 F-e 已合并（ca8f45c，master 78b01ed）：`Rel.Db.pushPart`、`Rel.Kernel.enlistLong`，native gate 比较
-  整个 `out` 目录。第二部分只有列的 mmap（`d7store` d3926fd：`qlean_own_map` 移进 relk，`Rel.Db.fileMap`），未合并：
-  qlean 的 HEAD 按路径用 rel 的主 checkout，合并后 `qlean_own_map` 重复定义；qlean 工作区另有未提交的改动把 rel 钉在
-  `qlean-base` = e024297。删副本还是保持钉住，由 owner 在 qlean 会话里定。表目录未做，按规则已定：reader 用 qlean 现有的
-  `ownColumn` 移进 Rel（DRY）；`.d` 是自有格式的 sym 列（no serialization）；共享字典用列头已有的 `domain` 字段。
-  第二部分（mmap reader）owner 说需要：master 上只有 writer，没有 reader（`crate/src/os.rs` 的 `mmap`/`Map` 无人使用，
-  没有 `own_map` export）；分支 `d7map` fbb31f7（未合并）：reader 是 mmap（`ownMap`），定律 `ownParse_ownImage`；
-  未决：`own::check` 没有 Lean model。
+  整个 `out` 目录。第二部分（列的 mmap reader）也已合并：`d7map` fbb31f7 与 `d7store` d3926fd 都经 75a2d45 进了
+  master；reader 叫 `Rel.Db.ownMap`（`@[extern "qlean_own_map"]`，body `ownParse`，不是 `fileMap`），定律
+  `ownParse_ownImage`（`Rel/KernelSpec/Own.lean`）。qlean HEAD 仍在 `rust/qrs/src/ffi/own.rs` 定义一份 `qlean_own_map`，
+  但它的工作区把 rel 钉在 `qlean-base` = e024297（不含 75a2d45），所以现在没有重复定义；qlean 把钉子移过 75a2d45 时删
+  自己那份（DRY），是 qlean 会话的事。表目录见 D.9。`.d` 是自有格式的 sym 列（no serialization）；共享字典用列头已有的
+  `domain` 字段。未决：`own::check` 没有 Lean model。
   原条目：stage 2 存储的 runtime 部分：export 把 column 目录 mmap 成 `Tab`（目录 = 表，文件 = 一列的 foR `Enc`，`.d` 列序，
   共享 sym 字典文件；`pos` 一侧不落盘，按 6.13）。只动 `crate/rt` 与 `Rel.Kernel`，6.9 合并后与 D.4 并行。
   同一 agent 补 dataframe F-e：`relc`/`rel-native` 跑不了算出来的程序，缺两条 plan 指令：把算出的 buffer 交给
@@ -198,6 +203,26 @@ Diff table 的「状态」列：✅ 后面是完成它的步骤；🔄 是部分
   `environment already contains 'Rel.Lang.Row.mk.injEq'`，`Tm.gap` 因此不能在运行程序的模块里调用。在 master 上修，立即派。
 - ⬜ D.9 语言里的 `input`/`output` 声明：改 `Elab`/`Expand`，在 3.10/3.11（去掉 demand bit 的 `Elab`、`Expand`）之后。
   D.11 的表层语法也在这里：`.rel` 里的 `col "…"`，以及带 schema 的 `input`/`output`。
+  步骤 1（与语言表层无关，分支 `d9table`）：`Rel/Lang/Table.lean` 的 `readVals` 是 `cols` 的逆：从目录里每列一个自有格式文件
+  （按 `cols` 的路径加列名前缀）mmap（`ownMap`）出值一侧，经 `Arr.of` 检查进入；位置 key 不落盘。唯一的 writer 是
+  `writeVals`，`writeRel` 是它的实例（`key`、`val` 两个前缀）。`ownParts`/`ownFile` 对 `Enc.pos` 答 `none`（不写文件），
+  不再报错。`f32`/`f64`、`sym` 与 enumeration 列被拒（float 规则未定；sym 等 sym writer）。往返测试
+  `Rel/Lang/TestTable.lean`。
+  owner 裁定（最终）：不定义新数据结构，不转换；目录 = 表，文件 = 列，内存结构即磁盘结构（mmap）。IO 写在 `.rel`
+  程序里：语句 `input … from …` / `output … to …`（owner 2026-11-20 选 G，取代此前“输入绑定在 host 一侧”的做法；语法设计在
+  `/data/tmp/io/design.md`）。Rel 读写 mmap 表与 CSV；CSV 解析器是 `crate/` 里的 Rust，读、写两个新 export（owner 同日选
+  A），算 IO export，不计入“RELK 到 5”。输出按结果 key 的 OBJECT（类型，不是运行时看
+  key 列）分两种：key 是行号（`N ⟶ S`）时写一张新表，列按 key 序、行重编号 `0…n−1`、无 key 文件（程序内部 filter 保留原
+  key，只在写时重编号）；key 不是行号时是 q 的 keyed table：一个目录下 `key/`、`val/` 两个普通表目录（每列一个文件，按
+  schema 字段命名）。不是 record 的一侧是一列，文件名就是该侧名 `key` / `val`（两侧同一规则）。mmap 读入的 float 列在读时
+  检查规范形（NaN 无行、只有一个零），否则拒绝并报文件、行、位模式。
+  步骤 2（分支 `d9step2`）：`Table.write S dir x`（一侧，按 schema 列名）、`Table.read S dir : IO (Tab .long S.obj)`
+  （key 为位置）、`writeKeyed K S`/`readKeyed K S`（`key/`、`val/`）；缺文件、类型码不同、行数不同都报文件名与期望/实际；
+  空 schema、重名列被拒。float 检查对唯一谓词 `Table.nonCanonical`（typed base S5 定义规范 float 后由它填）。定理：
+  `Arr.pos_get`（`pos_clamp` 由它推出）、`Table.frame_holds`（重编号即 `ι ≫ t`，`ι = {(j, key j)}`，key 两两不同时）；
+  文件上的 `read (write x) = frame x` 只 `#guard`（extern）。sym 列仍报“等 sym writer（步骤 6）”。
+  步骤 3 未开始：`Expand.emit` 的 `.io` twin。锚点：`walk` 的 pend 循环（`Expand.lean:527-531`，有 `qs`/`ty` 的声明
+  类型与 `env₀.objs` 的 `ObjInfo.cols`/`num`）、kernel twin（`Expand.lean:873-901`）、`Rel.runE`（`Lazy.lean:27`）。
 - ✅ D.11 表层语法（`schema S = {k : K, v : N}`、`col S "v"`）已合并（da636a9）；`Schema` 层此前已合并（5ab6d2e，master 0fb9879，`Rel/Lang/Schema.lean`、`TestSchema.lean`）；余下：TestFrame 的
   frame 按 `Schema` 索引（随 D.9）。frame 的 schema 进入类型（owner 经 dataframe 会话决定，选 wrapper，不加 `Obj` constructor）：
   `Schema := List (String × Obj)`；`Schema.obj : Schema → Obj` 是 definition（按 `.d` 列序的嵌套 `prod`）；frame 的项按
@@ -218,6 +243,48 @@ Diff table 的「状态」列：✅ 后面是完成它的步骤；🔄 是部分
   决定 F 已落地（5617318，2026-11-19）：上面的 "引擎" 一句作废。`kseen` 在乱序行上报固定错误（指出第一处乱序的行），
   `seenEngine`/`keySpan`/`foRBounds` 与 Rust 的 `seen::direct` 删除（`Seen.lean` 74 → 32 行）；新引理 `kseen_sorted`。
   未做：1024 行块边界只有 Rust 测试，Lean 例子因 `decide +kernel` 归约不动而缺（与决定 C 有出入）。
+  ✅ 运行路径上的平方解码（nodecode 765527b）：`foRBits` 每个元素重算 trailer 偏移 O(nblk)，`Vals.cols` 为判形状解码整列；
+  改为 `foROk` 判形状、`foRExc`/`foRFrame` 取 `blockStarts` 的 trailer；10⁵ 行 leftJoin 40.2s→0.96s、带 null 的 group-by
+  187s→1.54s；`make decode` 列出仍可达 `foRBits`/`alpBits` 的编译定义（`decode-allow.txt`，150 个，余为单元素读与 u1 位图）。
+- 🔄 D.13 `sums`（dataframe 请求，q 的 `sums`，分支 `sums`）：prim 行 `sums : κ×ν ⟶ γ ↦ κ×ν ⟶ γ`，key 在源对象里，
+  每个 key 内按位置升序的左 fold 前缀和，溢出或 null 之后该 key 余下的行无像。含义（`rowDens`）是
+  `agg(dom(x) (𝟙 × ≥) dom(x), F(x) ⦇[0, plus]⦈)`（`Den.lean` 的 `sumsDen`）。
+  ✅ 已落地：`Tab.sums`（`Rel/Run/SetOps.lean`）只用 `kseen`、`kscatter`、`kscan .add`、`colMap`，无新 kernel，不解码；
+  非 simple 的 x 报错并指出位置；`TestSums`（含 10⁶ 行：10⁵ 约 10 ms，10⁶ 约 55 ms，线性）；doc §4 行；
+  `segScan_ok`（`RepSetOps`）：分段 `kscan` 在每行给出本组到该行的 fold，`groupFold_ok` 改为引用它。
+  ✅ `Tab.sums_holds`（`Rel/RepSums.lean`）：`Tab.sums x = .ok T → rep T = sumsDen (rep x)`，无前提；该行已进
+  `kernRows` 与 `rowsProved`（`("sums", no)`，`rowOK_sums`），`gen_sound` 不加前提；程序里写 `sums(x)`
+  （`x : N×N ⟶ N`）走 kernel，`TestSums.sumsP` 以 `check` 验分组、单 key、负数、溢出、null。
+  ⬜ 未做：`Prim.dfn` 条目（上面的组合式）等 dfn 能读行的关系参数（与 `asc` 相同）；`Plan.ofTm` 没有 prim 的
+  recipe，不需要加。
+
+### typed base objects（`/data/tmp/typedbase/design.md` §7：float `arith`/`div`、`sqrt`、`date` 上的 `minus`）
+
+- ✅ S0 fork A，每个 constant 自己的 placeholder（分支 `tb-s0`）：`Once.ph = placeholdersOf env.objs`，即 `varAtoms`
+  中没有任何作用域内对象存储在其上的 atom；`Obj.inst ph σ`、`Tm.instObj ph σ`、`callTm … ph`、`Pre.call … ph`。
+  `.long` 不在 `varAtoms` 中，所以任何 `ph` 都保持它（`fixed_long` 不加前提）。变量多于 `ph` 时 `once` 报错并给出定义名。
+- ✅ S1（分支 `tb-s1b`）`obj F : t` 声明存储在 atom `t` 上的对象：`ObjDef.num (t := .i64)`，`objInfo` 给
+  `obj := .atom t`。atom 名只有一张表 `atomNames`（`Syntax.lean`），由 `QAtomicType` 的构造子生成，名字即构造子名。
+  能声明的 atom 是 `litLayout t`（`Kernel.ascLayout` 去掉 `u1`）有值者：`u8 i8 i16 i32 i64 f32 f64 char date
+  datetime`；`sym`、`general`、`u1` 和未知名字在解析时报错并列出可用 atom。`obj N` 不变（i64）。`numU` 在非 i64 的
+  声明对象上报错并给出 atom（`+`、`<` 等留给 S3）；`code` 不再把非 i64 对象当 i64。
+- ✅ S2 float 字面量：整数，或 Lean 的 scientific 字面量（`2.5`、`1e-3`、`1.5E10`），可带紧贴的 `-`；没有 NaN 或
+  无穷的写法，舍入为无穷的字面量报错。一个字是否属于某对象只有一条规则 `ObjInfo.member`：命名元素、range 内的数，
+  或数对象（`obj N` 即 i64 在内）的 atom 上 `Elab.wordAt` 读得出；`holders` 由它决定字面量的对象，没有对象接受时
+  `refusals` 给出每个对象拒绝的理由（i64 对象上的 `2.5`：`'2.5' is not an element of N, an object of i64`）。
+  `code` 的数对象分支也经 `wordAt`（i64 查范围）。产生 float 字的地方规范化（决定 G）：`-0.0` 读成 `0.0`；判断谓词
+  `Rel.QAtomicType.nonCanonical t b`（`Rel/Kernel/Value.lean`，f32/f64 上 NaN 或负零，其余 atom 为 false），合并时
+  `Rel.Lang.Table.nonCanonical` 由它定义。打印 `Elab.floatText`：能读回同样位的最短十进制，首位数量级在 `[-7, 21)`
+  时用带小数点的普通写法（`2.5`、`-0.00000015`、`15000000000.0`），否则 `1e-8`、`1e21`。object 变量多于 placeholder
+  时调用处报错（`Expand.placeholdersFor`）。测试 `Rel/Lang/TestFloatObj.lean`；GenSoundTest 1235/1235。
+- ⬜ S3 `Tm.arith`、`leq`、`lt` 以 atom 为下标；`stepDen t`、`stepCols t`、`cmpOn (ltOp t)` 及定律。
+- ⬜ S4 行 `sqrt`；`sum` 按 atom。
+- ⬜ S5 float 上的 `Obj.key = ordCode`；`key_ordCode`、`ascBad`、float 上的 `LamLaw`。
+- ⬜ S6 行 `$`（relabel、加宽、符号扩展）；`colMap` 带源 atom。需要 owner 对文档差异 #5 的同意。
+- ⬜ S7 `Op` `i64 → f64`（kernel 扩展）。
+- ⬜ S8 库定义 `mean` `stddev` `correlation` `skewness` `zScore` `valueProportions` float `describe` `daysBetween`
+  （dataframe 会话）。
+- ⬜ S9 文档：architecture §1、§4.3，dataframe F4，PLAN（随各步）。
 
 ### P0 baseline — 1/1
 
@@ -307,13 +374,9 @@ Diff table 的「状态」列：✅ 后面是完成它的步骤；🔄 是部分
 - ✅ 4.3 `foldI`：owner 选 D，constructor 保留为融合形式，
   用 `foldIDen_eq` + `foldI_sound` 与定义相连
   （已证，e172821 合并，无额外前提；`Gen.foldI` 的 step 是交 `S ∩ π₁π₁π₁°`）。
-- ⏸ 4.4 对称除法：待 owner 决定构造子还是定义。
-  - 运行时的 `Alg.symDiv`（`Run/Alg.lean`）已不存在，没有任何 `symDiv` 代码；只有 `symDivDen`（`Den.lean:61`，
-    无人引用）`= R/S ∩ (S/R)°`。
-  - 文档（§1 表 division allegory 一行、TODO "Tm 加 symmetric division 构造子"）说加构造子。
-  - 代码和 DRY 规则说是定义：`R/S ∩ (S/R)°` 只用已有的 `Tm.rdiv`、`Tm.meet`、`Tm.conv`；§4 中 `R\S R/S 对称除`
-    一行没有给对称除法单独的 kernel 复合。若选定义，做法同 `Pre.junc`：
-    `Pre.symDiv r s a b := .meet (.rdiv p r s a b) (.conv (.rdiv p s r b a))`，定律由 `symDivDen` 直接得到。
+- ✅ 4.4 owner 决定：symmetric division 是定义，不是 `Tm` 构造子。`Pre.symDiv` = `R/S ∩ (S/R)°`（与 `/` 共用
+  `Pre.rdivWhole`），`Tm.symDiv_den` 证其含义是 `symDivDen`，`TestSymDiv` 测行。表层语法是中缀 `R ÷ S`
+  （owner 2026-11-20 决定；`Bin.table` 的一项，与 `/` 同一优先级），`TestSymDiv` 测它与手写定义行相同。
 - ✅ 4.5 默认是 `[nil, snoc]` 上的左 fold；只用 `snoc` 构造。
 
 ### P5 按既定顺序关闭 gap — 7/8（5.4a-c 并行，其余串行）

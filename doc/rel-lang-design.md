@@ -172,7 +172,7 @@ so the prelude's folds `prefix concat subseq tails filter takewhile`).
 | `dom(R)`, `ran(R)`             | coreflexives on keys, on values           | `dom`, `ran`                   |
 | `R\S`                          | `y (R\S) z ⟺ ∀x. xRy → xSz`               | `leftDiv`                      |
 | `R/S`                          | right division                            | `rightDiv`                     |
-| `frac(R,S)`                    | symmetric division, `R/S ∩ (S/R)°`        | prelude                        |
+| `R ÷ S`                        | symmetric division, `R/S ∩ (S/R)°`        | `Pre.symDiv`                   |
 | `⟨R,S⟩`, `π₁`, `π₂`            | pair, projections                         | `pair`, `outl`, `outr`         |
 | `R×S`                          | product                                   | `prod`                         |
 | `[R,S]`, `inl`, `inr`          | case, injections                          | `junc`, `inl`, `inr`           |
@@ -260,7 +260,6 @@ they lift, run on demand and converse as their bodies do. The `LeetQ` library `n
 | `R ⇒ S`      | `_⇒_(R : α ⟶ β, S : α ⟶ β) : α ⟶ β ≜ ∼R ∪ S`                   | implication                                 |
 | `R ⊕ S`      | `_⊕_(R : α ⟶ β, S : γ ⟶ δ) : α+γ ⟶ β+δ ≜ [R inl, S inr]`       | the sum of relations                        |
 | `R + S`      | `_+_(R : α ⟶ β, S : α ⟶ β) : α ⟶ β ≜ ⟨R,S⟩plus`                | the sum of two values                       |
-| `frac(R,S)`  | `frac(R : α ⟶ γ, S : β ⟶ γ) : α ⟶ β ≜ R/S ∩ (S/R)°`            | the symmetric division                      |
 | `cor(S)`     | `cor(S : α ⟶ β) : α×β ⟶ α×β ≜ dom(π₁S ∩ π₂)`                  | the pairs of `S`, as a coreflexive          |
 | `mid(R)`     | `mid(R : α ⟶ α) : α ⟶ α×α ≜ ⟨R°,R⟩`                            | y ↦ (x,z) with x R y and y R z              |
 | `head`       | `head : [α] ⟶ α ≜ cons° π₁`                                    | the first element (B&dM p.267)              |
@@ -304,7 +303,7 @@ they lift, run on demand and converse as their bodies do. The `LeetQ` library `n
 
 ## c. Grammar and precedence
 
-Composition by juxtaposition and the infix operators `∩ ∪ − / \ ×`, with every declared infix name (`_⇒_`, the
+Composition by juxtaposition and the infix operators `∩ ∪ − / \ ÷ ×`, with every declared infix name (`_⇒_`, the
 prelude's `⇒ ⊕ +`, a program's own `_≼_`), are one precedence level, left to right;
 any other grouping is written with parentheses: `M(S) ≜ ∼(R(S)°⊤ ∪ (⊤R(S)))`.
 
@@ -527,7 +526,7 @@ every key of a three-key family, and the `est` and `thin` rows against the close
 | `ran(R)` ✓                      | `R⟨π₂,π₂⟩`                                 | each row `(a,b)` gives `(b,b)`       |
 | `R\S`, `S : I ⟶ A×C`            | `∼(R°(∼S))` by the rows                    | universes of `A×C`, `B×C`            |
 | `R/S`, `S : I ⟶ C×B`            | `∼((∼R)S°)` by the rows                    | universes of `A×B`, `A×C`            |
-| `frac(R,S)`, `S : I ⟶ C×B`      | `R/S ∩ (S/R)°` by the rows                 | both inclusions                      |
+| `R ÷ S`, `S : I ⟶ C×B`          | `R/S ∩ (S/R)°` by the rows                 | both inclusions                      |
 | `⟨R,S⟩`, `S : I ⟶ A×C`          | `⟨R,S⟩(𝟙∩(π₁π₁(π₂π₁)°))⟨π₁π₁,⟨π₁π₂,π₂π₂⟩⟩` | pairs of rows of one source          |
 | `π₁ π₂ inl inr`                 | closed                                     | the same map at every key            |
 | `R×S`, `S : I ⟶ A'×B'`          | `⟨R,S⟩⟨⟨π₁π₁,π₂π₁⟩,⟨π₁π₂,π₂π₂⟩⟩`           | each row of `R` with each of `S`     |

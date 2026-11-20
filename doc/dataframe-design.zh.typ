@@ -172,7 +172,7 @@ agg(R, f)         ≜ dom(R) Λ(R) f                R : A ⟶ N；Λ(R) 是 R �
 summarize(f, x)   ≜ agg((dom(x) ⊤)°, f)          1 ⟶ D：整个 frame 是一组
 count(x)          ≜ summarize(length, x)         m : 1 ⟶ N；prim length
 over(a, f, x)     ≜ ⟨x, x a agg((x a)°, f)⟩      每行带上它那一组的聚合，位置不变
-win(w, x)         ≜ ≥ ∩ (dom(x) ⟨𝟙, ⊤ w⟩plus > dom(x))°   i ↦ i−w < j ≤ i 的每个 j
+win(w, x)         ≜ (dom(x) ⟨𝟙, ⊤ (dom(x) < w°)°⟩plus dom(x))°   对偏移 d < w 形成 i = j + d，所以建 (行数 × w) 个对
 rolling(w, f, x)  ≜ agg(win(w, x), f)
 // 行的窗口
 take(n, x)        ≜ dom(< n°) x
@@ -220,7 +220,8 @@ diff(n, x)        ≜ dom(x) tot(⟨x, ⟨𝟙, ⊤ n⟩minus x⟩minus)      x 
   ([`aggregate`], [`aggregate(a, f, x) ≜ ⟨firstOcc(x a) x a, agg(group(x a), f)⟩`], [], "full"),
   ([`sum` `mean` `count` `countAll` `minimum` `maximum` `reduce`], [`summarize(f, x)`，`f` 见 3.1；`count(x)`],
     [`mean` 只有整数除法，浮点：F4], "part"),
-  ([`variance` `stddev` `skewness` `correlation` `zScore`], [无], [要浮点算术：F4], "no"),
+  ([`variance` `stddev` `skewness` `correlation` `zScore`],
+    [无], [需要浮点 `arith` 和浮点 `div`；整数商不是方差：F4], "no"),
   ([`median` `percentile` `genericPercentile` `interQuartileRange`],
     [`median(a, x) ≜ quantile({(∗,1)}, {(∗,2)}, a, x)`；`percentile(p, a, x) ≜ quantile(p, {(∗,100)}, a, x)`；
     `quantile(p, q, a, x) ≜ summarize(F(m a) ⟨sum, length⟩div, m) where m ≜ dom(x) dom(⟨⟨𝟙, ⊤ q⟩times, ⊤ p⟩plus < (⟨⟨count(x), p⟩times, q⟩plus)°) dom(⟨⟨⟨𝟙, ⊤ q⟩times, ⊤ p⟩plus, ⊤ q⟩plus > (⟨count(x), p⟩times)°) sortBy(a, x)`],
@@ -246,7 +247,7 @@ diff(n, x)        ≜ dom(x) tot(⟨x, ⟨𝟙, ⊤ n⟩minus x⟩minus)      x 
   ([`intersect`], [`intersect(x, y) ≜ distinct(semiJoin(𝟙, 𝟙, x, y))`], [], "full"),
   ([`difference` `symmetricDifference`], [`difference(x, y) ≜ distinct(antiJoin(𝟙, 𝟙, x, y))`；`symmetricDifference(x, y) ≜ append(difference(x, y), difference(y, x))`], [], "full"),
   ([`<>`（行拼接）], [`append(x, y) ≜ x ∪ ((dom(y) ⟨𝟙, ⊤ count(x)⟩plus)° y)`], [`sym` 列先合并字典（`rel-architecture` §4.3）], "full"),
-  ([`|||`（列拼接）], [`⟨x, y⟩`], [不等长时取较短的：F9], "part"),
+  ([`|||`（列拼接）], [`hstack(x, y) ≜ dom(⟨x, y⟩ ⊤ count(x) count(y)°) ⟨x, y⟩`], [两个 frame 行数不同时结果是 `𝟘`：F9], "full"),
   ([`impute` `imputeWith` `fromMaybe` `castWithDefault`], [`x v [𝟙, c]`；`imputeWith` 是 `x v [𝟙, summarize(f, x)]`], [`c : 1 ⟶ V`], "full"),
   ([`toMaybe` `isJust` `isNothing` `isNull` `fromJust` `whenPresent`], [`inl`、`dom(inl°)`、`dom(inr°)`、`dom(inr°)`、`inl°`、`e ⊕ 𝟙`], [复合，库中没有定义], "full"),
   ([`recode` `recodeWithDefault`], [`x v T`；带缺省 `x v tot(T) [𝟙, c]`], [`T` 是 `Tm.val` 的字面量表], "full"),
@@ -311,7 +312,7 @@ diff(n, x)        ≜ dom(x) tot(⟨x, ⟨𝟙, ⊤ n⟩minus x⟩minus)      x 
   正则是「步骤为转移表」的 fold，把正则编译成表在语言之外。
 - *F4 atom 覆盖。* `Tm.arith`、`leq`、`lt` 只在 `i64` 上；dataframe 需要它们在每个有序 atom 上（`date` 的 `minus` 即
   `daysBetween`）。已决定：`arith`、`lt` 以 atom 为下标。`arith` 只有 `plus` `minus` `times` `div` `mod` `max` `min`：
-  没有浮点运算，所以 `mean` 只有整数除法，`variance` `stddev` `skewness` `correlation` `zScore` `valueProportions`、
+  没有浮点运算，所以 `mean` 只有整数除法，`stddev` `skewness` `correlation` `zScore` `valueProportions`、
   浮点的 `percentile` 写不出；没有 `pow`，整数 / 浮点互转、`fround` 也没有。
 - *F5 时间类型。* `date`、`datetime` 是整数 code，没有时区。日历运算（取月份、截断到月）是整数算术加上与日历表的 join。
 - *F6 IO 在代数之外。* 程序读的 frame 是 `main` 的关系参数（`input`）；CSV、Parquet、JSON 的解析不是列上的关系。
@@ -319,4 +320,4 @@ diff(n, x)        ≜ dom(x) tot(⟨x, ⟨𝟙, ⊤ n⟩minus x⟩minus)      x 
   这也是 polars 表达式（不含 `map_elements`）同样的限制。
 - *F8 抽样。* `sample(n)` 是有多个像的关系（任意 n 行），实现选其中一个，是规格的 refinement，不是相等。
 - *F9 位置模型之外的两处。* 单元格里的 list（`Obj.arr`：字符串、`collect` 的结果）是一个值，`N` 只给 frame 的行编号。
-  `⟨x, y⟩` 的定义域是 `dom(x) ∩ dom(y)`，长度不等时取较短的；要「不等长无像」须另加 `dom(x) = dom(y)` 的检查。
+  `⟨x, y⟩` 的定义域是 `dom(x) ∩ dom(y)`，长度不等时取较短的；`hstack` 另加行数相等的检查，不等长时是 `𝟘`。

@@ -135,6 +135,9 @@ syntax (name := wId) ident : relWord
 syntax (name := wNum) num : relWord
 syntax (name := wSym) relSym : relWord
 syntax (name := wNeg) "-" noWs num : relWord
+-- a float, as Lean's scientific literal (`2.5`, `1e-3`, `1.5e10`), read at the object it is used at (`Elab.wordAt`)
+syntax (name := wSci) scientific : relWord
+syntax (name := wNegSci) "-" noWs scientific : relWord
 
 syntax (name := hId) ident : relHead
 syntax (name := hSym) relSym : relHead
@@ -190,6 +193,8 @@ syntax (name := sElems) &"obj" relWord "=" "{" relWord,+ "}" : relStmt
 syntax (name := sRange) &"obj" relWord "=" relWord "…" relWord : relStmt
 syntax (name := sAlias) &"obj" relWord "=" relObj : relStmt
 syntax (name := sNum) &"obj" relWord : relStmt
+-- `obj F : f64`: an unbounded object of the atom named so (`atomNames`)
+syntax (name := sNumAt) &"obj" relWord ":" ident : relStmt
 -- a schema's column `k : K`
 syntax relField := relWord ":" relObj
 syntax (name := sSchema) &"schema" relWord "=" "{" relField,+ "}" : relStmt
@@ -254,9 +259,16 @@ def tokText (s : Syntax) : String := match s with
   | .atom _ v => v
   | _ => if s.isOfKind numLitKind then s[0].getAtomVal else ""
 
+/-- A word's text: a float token as Lean's tokenizer read it (`Elab.numParts` reads it back), every other one through
+    `Parse.word`; the sign of `-3`, `-2.5` written before it. -/
 def wordOf (s : Syntax) : C String := match s.getKind with
   | ``wNeg => do pure ("-" ++ (← onText s[1] (tokText s[1]) Parse.word))
+  | ``wSci => sci s[0]
+  | ``wNegSci => do pure ("-" ++ (← sci s[1]))
   | _ => onText s (tokText s[0]) Parse.word
+where sci (t : Syntax) : C String := match t.isScientificLit?, t[0].isAtom with
+  | some _, true => pure t[0].getAtomVal
+  | _, _ => failAt t "expected a number"
 
 /-- The names a run of letters is, each where it starts: `Parse.name` to the end of the token. -/
 partial def namesOf (s : Syntax) (t : String := tokText s) : C (List (Lang.Pos × String)) :=

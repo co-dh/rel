@@ -26,7 +26,7 @@ def objInfo (env : Env) (n : String) : ObjDef → EM ObjInfo
   | .range lo hi =>
     pure { ty := .base n, range := some (lo, hi), uni := some ⟨_, col ((List.range (hi + 1 - lo).toNat).map fun k : Nat => Int64.ofInt (lo + k))⟩, seg := lo == 0 }
   | .alias o => do let (t, _) ← (oty env [] o).run {}; pure { ty := t }
-  | .num => pure { ty := .base n, num := true }
+  | .num t => pure { ty := .base n, num := true, obj := .atom t }
   -- the object `Schema.obj` lays out, at the program's objects; `col` reads the columns back (`elabE`)
   | .schema cs => do
     let cs ← cs.mapM fun (c, o) => return (c, (← (oty env [] o).run {}).1)
@@ -71,6 +71,8 @@ def showEl (objs : Objs) (item : Bool) : OTy → (A : Obj) → A.El → String
     match objs.lookup n with
     | some i => if i.range.isSome then toString v else (i.elems[v.toInt.toNat]?).getD (toString v)
     | none => toString v
+  -- an object declared at another atom: its word as a literal writes it (`wordText`)
+  | .base _, .atom t, x => match elWord t x with | some w => wordText t w | none => "?"
   | .prod a b, .prod A B, (x, y) => s!"({showEl objs false a A x}, {showEl objs false b B y})"
   | .sum a _, .sum A _, .inl x => s!"inl {showEl objs true a A x}"
   | .sum _ b, .sum _ B, .inr y => s!"inr {showEl objs true b B y}"
@@ -84,6 +86,10 @@ def cmpEl (objs : Objs) : OTy → (A : Obj) → A.El → A.El → Ordering
     let (v, w) : Int64 × Int64 := (x, y)
     if ((objs.lookup n).bind (·.range)).isSome then compare v.toInt w.toInt
     else compare (showEl objs false (.base n) (.atom .i64) x) (showEl objs false (.base n) (.atom .i64) y)
+  -- at another atom by value: the order code of its word (`Kernel.ascOrd`, a float's totalOrder)
+  | s, .atom t, x, y => match elWord t x, elWord t y, Kernel.ascOrd t with
+    | some u, some v, some f => compare (f u) (f v)
+    | _, _, _ => compare (showEl objs false s (.atom t) x) (showEl objs false s (.atom t) y)
   | .prod a b, .prod A B, (x, y), (x', y') => (cmpEl objs a A x x').then (cmpEl objs b B y y')
   | .sum a _, .sum A _, .inl x, .inl y => cmpEl objs a A x y
   | .sum _ b, .sum _ B, .inr x, .inr y => cmpEl objs b B x y
@@ -202,7 +208,6 @@ def elabOnce (env : Env) (p : Pos) (n : String) (qs : List Param) (e : Expr) (ty
 
 /-! ### A row of `prims` at its objects -/
 
-open Lean in deriving instance ToExpr for Rel.QAtomicType
 open Lean in deriving instance ToExpr for Rel.Obj
 open Lean in deriving instance ToExpr for MVarId
 open Lean in deriving instance ToExpr for OTy
@@ -211,8 +216,6 @@ open Lean in def oE (A : Obj) : Lean.Expr := toExpr A
 open Lean in def uE (n : USize) : Lean.Expr := mkApp (mkConst ``USize.ofNat) (toExpr n.toNat)
 open Lean in def bE (b : Bool) : Lean.Expr := toExpr b
 open Lean in def g (n : Lean.Name) (as : Array Lean.Expr) : Lean.Expr := mkAppN (mkConst n) as
-/-- The objects variables stand for (`varObj`), built once: `code` looks for them in every closed value. -/
-def placeholders : List Lean.Expr := varAtoms.map (oE <| .atom ·)
 
 /-- The row a spine of `arg`s is headed by, and its relations in order. -/
 def primOf : {A B : Obj} → Tm A B → Option (Prim × List Res)
@@ -291,6 +294,16 @@ partial def primsFit {A B : Obj} (t : Tm A B) : MetaM Bool := do
   let some (r, as) := primOf t | t.parts.allM fun ⟨_, _, c⟩ => primsFit c
   pure (← primFit r A B (as.toArray.map fnTy)).isSome <&&> as.allM fun ⟨_, _, c⟩ => primsFit c
 
+/-- The placeholders of a constant of `n` with `k` object variables in `env`: atoms no object in scope is stored at,
+    one per variable, or the definition is refused by name. A refusal of the definition, not of one form of it, so
+    `callDef` checks it where its fallback to the expansion cannot swallow it. -/
+def placeholdersFor (env : Env) (p : Pos) (n : String) (k : Nat) : Except Err (List Rel.QAtomicType) := do
+  let ph := placeholdersOf env.objs
+  if ph.length < k then
+    throw ⟨p, s!"`{n}` has {k} object variables, and only {ph.length} atoms no object in scope is stored at " ++
+      s!"stand for them ({ph.map atomName})"⟩
+  pure ph
+
 /-- `n(qs) ≜ e : ty` built once (`elabOnce`); a body that needs keys stays a plan on them, and one that builds no
     relation but tests on pairs is its pair test (`test`, §a). A variable is generic (`varObj`) when the body builds
     with it an object of its own, else `.long`, a number object (`succ`, `sum` …). A body that does not build so is
@@ -301,10 +314,11 @@ def once (env : Env) (p : Pos) (n : String) (qs : List Param) (e : Expr) (ty : O
   -- per variable: generic over its object, and given its universe; one the call puts an unbounded number object at
   -- is `num`, one it puts an initial segment of ℕ at is `seg` (`nb`), so a row with a `dfn` there runs fused
   -- (`build`), as it does outside a body
+  let ph ← liftExcept (placeholdersFor env p n vs.length)
   let run (fl : List (Bool × Bool)) : EM (Once × List Once) := do
     let objs := vs.zipIdx.map (fun (v, k) =>
       let (gen, uni) := fl.getD k (false, true)
-      let obj := if gen then (varObj k).getD .long else .long
+      let obj := if gen then (varObj ph k).getD .long else .long
       let (num, seg) := nb.getD k (false, false)
       (v, ({ ty := .base v, uniVar := if uni then some k else none, obj, num, seg, ovar := true } : ObjInfo))) ++ env.objs
     let (os, r, st) ← elabOnce env p n qs e ty vs fs objs specs
@@ -313,7 +327,7 @@ def once (env : Env) (p : Pos) (n : String) (qs : List Param) (e : Expr) (ty : O
     -- a family that does not build whole (its index has no universe) builds keyed, run on the (key, source) pairs
     let kq := match r with | .fam q i a b => some (keyed i q a b) | .rel .. => none
     let mk (res : Res) (tst kf : Bool) : Once × List Once :=
-      ({ key := k, const := c, gen, params := os, forms := fs.map (·.1), res, tst, kf }, st.specs)
+      ({ key := k, const := c, gen, ph, params := os, forms := fs.map (·.1), res, tst, kf }, st.specs)
     -- a term whose rows do not fit their objects (`primsFit`) does not build
     let fits (x : Except Err Res) : EM (Except Err Res) := do
       if let .ok ⟨A, B, t⟩ := x then unless ← primsFit t do
@@ -331,7 +345,7 @@ def once (env : Env) (p : Pos) (n : String) (qs : List Param) (e : Expr) (ty : O
   -- with every variable `.long` the body built above, so one whose own object fails the build is a number object;
   -- one that builds without its universe takes the routes run on demand or tested on pairs, which every object has,
   -- where its universe would refuse a call at an array (§a)
-  for i in List.range (min vs.length varAtoms.length) do
+  for i in List.range vs.length do
     for b in [(true, false), (true, true)] do
       -- a body that built stays built: a pair test runs nowhere (`build`'s `.call`)
       if let some o := (← tryCatch (some <$> run (fl.set i b)) fun _ => pure none) then if o.1.tst ≤ out.1.tst then fl := fl.set i b; out := o; break
@@ -397,6 +411,8 @@ def callDef (env : Env) (dp : Pos) (n : String) (qs : List Param) (e : Expr) (ty
         | none, none => do
           let k := if c.getPrefix == emitter then key else emitter ++ key
           let vs := vs ++ (List.range ix.size).map idxVar
+          -- too few placeholders refuses the definition (an index variable counts), so it is not swallowed below
+          let _ ← liftExcept (placeholdersFor env dp n vs.length)
           -- a body that does not build alone at these forms (a family it reads whole, which only the use's
           -- context keys, §e) is no constant: the use is the expansion, whose build reports any error in its words
           match ← (once env dp n qs e ty vs key k fs nb (← get).specs).run with
@@ -410,19 +426,19 @@ def callDef (env : Env) (dp : Pos) (n : String) (qs : List Param) (e : Expr) (ty
       let some o := o? | return r
       xs := ys
       let { const := k, vars := fl, tst, kf } := sigOf o
-      let (ks, t, cv) := (o.binds, o.res, convOf o)
+      let (ks, ph, t, cv) := (o.binds, o.ph, o.res, convOf o)
       let us := us ++ ix.toList
       unless us.length == fl.length do
         throw ⟨p, s!"internal: `{k}` has {fl.length} object variables in the registry, {us.length} here"⟩
       let (q, a, b) := r.plain
-      let call := Pre.call p k (us.zip fl) (xs.map (·.1)) (xs.map (·.2)) q a b ks t cv tst
+      let call := Pre.call p k (us.zip fl) (xs.map (·.1)) (xs.map (·.2)) q a b ks ph t cv tst
       match r, kf with
       | .rel .., _ => pure (.rel call a b)
       | .fam _ i x y, false => pure (.fam call i x y)
       -- the constant `K : I×x ⟶ y` as the family `I ⟶ x×y`: the identity family then `K` (`compSh`), which
       -- `keyed` reads back as `⟨π₁,π₂𝟙⟩K`, so a use keys it as it keys any lifted composite
       | .fam _ i x y, true =>
-        let call := Pre.call p k (us.zip fl) (xs.map (·.1)) (xs.map (·.2)) (keyed i q x y) (.prod i x) y ks t cv tst
+        let call := Pre.call p k (us.zip fl) (xs.map (·.1)) (xs.map (·.2)) (keyed i q x y) (.prod i x) y ks ph t cv tst
         pure (.fam (compSh i x x (liftConst i p (.id x) x x).1 call) i x y) }
 
 /-- A top-level term, `r` its elaboration `e` with the objects `st`: closed on its source's universe when it needs
@@ -642,18 +658,18 @@ mutual
 
 /-- `t`'s code, `Gen.Fn d A B`: a closed `t` is its constant (`share`), any other its node; a numbered sub-term's
     is built once. -/
-partial def code (pre : Name) (ρ : List (Nat × Lean.Expr)) {A B : Obj} (t : Tm A B) : RM Lean.Expr := do
+partial def code (pre : Name) (ph : List Lean.Expr) (ρ : List (Nat × Lean.Expr)) {A B : Obj} (t : Tm A B) : RM Lean.Expr := do
   if let .share k R := t then
     if let some e := (← get).2[k]? then return e
-    let e ← code pre ρ R
+    let e ← code pre ph ρ R
     modify fun (m, cs) => (m, cs.insert k e); return e
   if closed t then
-    let v ← node pre ρ t
-    -- at an object variable's placeholder (`varObj`) the value lives under a generic constant's binders: not shared
-    if (v.find? placeholders.contains).isSome then return v
+    let v ← node pre ph ρ t
+    -- at a placeholder of the constant being built (`Once.ph`, here `ph`) the value lives under its binders: not shared
+    if (v.find? ph.contains).isSome then return v
     -- a term demanding nothing of its context (`dem = false`) has one table, so it is computed once
     return mkConst (← share pre A B (if !t.dem then g ``GenK.memo #[oE A, oE B, v] else v))
-  else node pre ρ t
+  else node pre ph ρ t
 
 /-- The constant of the closed code `v : Rel A B`: one per structurally equal value, so a closed term with
     `dem = false` (wrapped in `GenK.memo` by `code`) is computed once and any other runs on the context it is given. -/
@@ -665,21 +681,21 @@ partial def share (pre : Name) (A B : Obj) (v : Lean.Expr) : RM Name := do
   modify fun (m, cs) => (m.insert v c, cs); pure c
 
 /-- A call, its constant's kernel twin applied to its arguments' code: a `Rel`. -/
-partial def spine (pre : Name) (ρ : List (Nat × Lean.Expr)) {A B : Obj} : Tm A B → RM Lean.Expr
-  | .share _ f => spine pre ρ f
-  | .arg f x => do return mkApp (← spine pre ρ f) (← code pre ρ x)
+partial def spine (pre : Name) (ph : List Lean.Expr) (ρ : List (Nat × Lean.Expr)) {A B : Obj} : Tm A B → RM Lean.Expr
+  | .share _ f => spine pre ph ρ f
+  | .arg f x => do return mkApp (← spine pre ph ρ f) (← code pre ph ρ x)
   | .call _ c os _ | .callCv _ c _ os .. => do return mkAppN (mkConst (kernelTwin c)) (os.map oE).toArray
   | _ => throwError "rel_program expansion: internal: a call's head is not a constant"
 
 /-- `φ`'s body as `fun X => …`, the variable `k` read as `X : Tab A B` (`GenK.nu`, `GenK.mu`). -/
-partial def body (pre : Name) (ρ : List (Nat × Lean.Expr)) (A B : Obj) (k : Nat) (b : Tm A B) :
+partial def body (pre : Name) (ph : List Lean.Expr) (ρ : List (Nat × Lean.Expr)) (A B : Obj) (k : Nat) (b : Tm A B) :
     RM Lean.Expr := do
   withLocalDeclD `X (mkApp2 (mkConst ``Rel.Tab) (oE A) (oE B)) fun x => do
-    mkLambdaFVars #[x] (← code pre ((k, x) :: ρ) b)
+    mkLambdaFVars #[x] (← code pre ph ((k, x) :: ρ) b)
 
 /-- `t`'s own node, its `GenK` body with its parts by `code`. -/
-partial def node (pre : Name) (ρ : List (Nat × Lean.Expr)) {A B : Obj} (t : Tm A B) : RM Lean.Expr := do
-  let c {X Y : Obj} (u : Tm X Y) := code pre ρ u
+partial def node (pre : Name) (ph : List Lean.Expr) (ρ : List (Nat × Lean.Expr)) {A B : Obj} (t : Tm A B) : RM Lean.Expr := do
+  let c {X Y : Obj} (u : Tm X Y) := code pre ph ρ u
   match A, B, t with
   | A, B, .val R => return g ``GenK.val #[oE A, oE B, ← liftE (relE R)]
   | A, _, .uni (m := m) U => return g ``GenK.uni #[oE A, uE m, ← liftE (valsE A m U)]
@@ -724,21 +740,21 @@ partial def node (pre : Name) (ρ : List (Nat × Lean.Expr)) {A B : Obj} (t : Tm
         return g ``GenK.const #[oE A, oE B, mkApp3 (mkConst ``Except.ok [0, 0]) (mkConst ``String) ty x]
       throwError "rel_program expansion: internal: the variable {v} is bound to neither code nor a table: {ty}"
     | none => throwError "rel_program expansion: internal: the variable {v} is not bound here"
-  | A, B, .nu v S b => return g ``GenK.nu #[oE A, oE B, ← c S, ← body pre ρ A B v b]
+  | A, B, .nu v S b => return g ``GenK.nu #[oE A, oE B, ← c S, ← body pre ph ρ A B v b]
   -- `μ` and hylo also take their text: they throw the message naming it
-  | A, B, .mu v w n b => return g ``GenK.mu #[oE A, oE B, toExpr w, toExpr n, ← body pre ρ A B v b]
+  | A, B, .mu v w n b => return g ``GenK.mu #[oE A, oE B, toExpr w, toExpr n, ← body pre ph ρ A B v b]
   | A, B, .hylo v w b => do
     -- children read in no shape bound no recursion: running `𝟘` for them would compute something else
     let some ch := b.kids v A
       | throwError "rel_program expansion: {w}: the hylo's body reads its variable in a shape that gives no children (Tm.kids)"
-    return g ``GenK.hylo #[oE A, oE B, toExpr w, bE ch.dem, bE b.dem, ← c ch, ← body pre ρ A B v b]
+    return g ``GenK.hylo #[oE A, oE B, toExpr w, bE ch.dem, bE b.dem, ← c ch, ← body pre ph ρ A B v b]
   | A, B, t@(.prim _) | A, B, t@(.arg ..) => match primOf t with
     | some (r, as) => do
       let some f ← primFit r A B (as.toArray.map fnTy)
         | throwError "rel_program expansion: row `{r.sym}` at {oE A} → {oE B} given {as.length} relations fits none of its wrappers {primWrappers}"
-      pure (f.beta (← as.toArray.mapM fun x => code pre ρ x.2.2))
-    | none => spine pre ρ t
-  | _, _, t@(.call ..) | _, _, t@(.callCv ..) => spine pre ρ t
+      pure (f.beta (← as.toArray.mapM fun x => code pre ph ρ x.2.2))
+    | none => spine pre ph ρ t
+  | _, _, t@(.call ..) | _, _, t@(.callCv ..) => spine pre ph ρ t
 
 end
 
@@ -891,7 +907,7 @@ def emit (n : Name) (r : Read) : MetaM Unit := do
     for o@{ const := c, gen, params := qs, res := ⟨A, B, t⟩, .. } in fs do
       let nv := gen.length
       let reads := (List.range nv).map t.fv.contains
-      let vo (k : Nat) : Obj := if gen.getD k false then (varObj k).getD .long else .long
+      let vo (k : Nat) : Obj := if gen.getD k false then (varObj o.ph k).getD .long else .long
       let rk := (List.range nv).filter (reads.getD · false)
       let gk := (List.range nv).filter (gen.getD · false)
       let mk (k : Name) (X Y : Obj) (u : Tm X Y) : RM Unit := do
@@ -899,10 +915,10 @@ def emit (n : Name) (r : Read) : MetaM Unit := do
         let (ty, v) ← lams (gk.map fun _ => mkConst ``Obj) fun xs => do
           -- each placeholder `varObj k` becomes its binder
           let sub (z : Lean.Expr) := z.replace fun s =>
-            (gk.zip xs.toList).findSome? fun (k, a) => if (varObj k).map toExpr == some s then some a else none
+            (gk.zip xs.toList).findSome? fun (k, a) => if (varObj o.ph k).map toExpr == some s then some a else none
           lams ((rk.map fun k => sub (pl (vo k) (vo k))) ++ qs.map fun (P, Q, _) => sub (pl P Q)) fun ys => do
             let ρ := o.binds.zip ys.toList
-            pure (sub (pl X Y), sub (← code n ρ u))
+            pure (sub (pl X Y), sub (← code n (o.ph.map (oE <| .atom ·)) ρ u))
         addConst k ty v
       -- each twin's numbered codes live under its own binders: built with an empty number cache, dropped after
       let twin (k : Name) (X Y : Obj) (u : Tm X Y) : RM Unit := do
@@ -929,7 +945,7 @@ def emit (n : Name) (r : Read) : MetaM Unit := do
   let ((entries, printed, checked, errs), _) ← (do
     let mut es := []
     for (x, ⟨A, B, t⟩) in ds do
-      let v ← code n [] t
+      let v ← code n [] [] t
       let k := Parse.constOf n x
       unless !t.dem do throwError "rel_program expansion: internal: `{x}` needs keys"
       addConst k (mkApp2 (mkConst ``Except [0, 0]) (mkConst ``String) (mkApp2 (mkConst ``Tab) (oE A) (oE B))) (← app A B v)
@@ -937,15 +953,15 @@ def emit (n : Name) (r : Read) : MetaM Unit := do
     -- each term's error message, so `failures` names the op that could not run
     let one (x : String) {A B : Obj} (t : Tm A B) : RM Lean.Expr := do
       pure (mkApp4 (mkConst ``Prod.mk [0, 0]) (mkConst ``String) (mkApp (mkConst ``Option [0]) (mkConst ``String))
-        (toExpr x) (g ``Rel.Rel.err #[oE A, oE B, ← code n [] t]))
+        (toExpr x) (g ``Rel.Rel.err #[oE A, oE B, ← code n [] [] t]))
     let errs := (← ds.mapM fun (x, ⟨_, _, t⟩) => one x t) ++ (← ps.mapM fun (x, ⟨_, _, t⟩, _, _) => one x t) ++
       (← cs.mapM fun (_, x, _, _, _, _, ⟨_, _, R, _⟩) => one x R) ++
       (← cs.mapM fun (_, _, y, _, _, _, ⟨_, _, _, S⟩) => one y S)
     let ps ← ps.mapM fun (x, ⟨A, B, t⟩, s, u) => do
-      pure (g ``printText #[oE A, oE B, os, toExpr x, toExpr s, toExpr u, ← app A B (← code n [] t)])
+      pure (g ``printText #[oE A, oE B, os, toExpr x, toExpr s, toExpr u, ← app A B (← code n [] [] t)])
     let cs ← cs.mapM fun (p, x, y, eq, s, u, ⟨A, B, R, S⟩) => do
       pure (g ``checkErr #[oE A, oE B, os, toExpr p, toExpr x, toExpr y, toExpr eq, toExpr s, toExpr u,
-        ← app A B (← code n [] R), ← app A B (← code n [] S)])
+        ← app A B (← code n [] [] R), ← app A B (← code n [] [] S)])
     pure (es, ps, cs, errs) : RM (List Lean.Expr × List Lean.Expr × List Lean.Expr × List Lean.Expr)).run st₀
   let ety := pairT (mkConst ``String) (mkConst ``Gen.Gv)
   addConst (n ++ `expanded) (listT ety) (← mkListLit ety entries)

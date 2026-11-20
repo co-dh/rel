@@ -39,8 +39,10 @@ rel_program frameCols where
     check summarize(F(x π₂) Λ(∋) last, x) = {(∗,7)}
     check summarize(F(x π₂) Λ(∋) head, x) = {(∗,1)}
     check summarize(F(x π₁), x) = {(∗,B A B C A C B A)}
-    -- `|||`: rows where both frames have one
+    -- the pair: rows where both frames have one; `|||` (hstack): none unless the lengths agree
     check ⟨x, z⟩ = {(0,((B,5),1)),(1,((A,3),2)),(2,((B,5),3))}
+    check hstack(x, z) = 𝟘
+    check hstack(take({(∗,3)}, x), z) = {(0,((B,5),1)),(1,((A,3),2)),(2,((B,5),3))}
     -- impute, recode, recode with default
     check w [𝟙, {(∗,0)}] = {(0,5),(1,0),(2,3)}
     check x π₁ code = {(0,2),(1,1),(2,2),(4,1),(6,2),(7,1)}

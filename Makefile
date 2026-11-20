@@ -27,8 +27,8 @@ SQL     := sqlite3 -readonly $(DB)
 GATE     = SECONDS=0; trap 'echo "[$@] $$SECONDS s, exit $$?"' EXIT; mkdir -p $(T)
 
 # cheapest first: compile-diff takes minutes, so a gate that fails in seconds is reported before it starts
-GATES_LIST := build allcov crate-test syms native ldd index-complete axioms noreduce panic bang pointfree kernel-tested externs compile-diff
-.PHONY: check main-only index compile-diff-write panic-allow bang-allow pointfree-allow kernel-tested-allow $(GATES_LIST)
+GATES_LIST := build allcov crate-test syms native ldd index-complete axioms noreduce panic bang pointfree decode kernel-tested externs compile-diff
+.PHONY: check main-only index compile-diff-write panic-allow bang-allow pointfree-allow decode-allow kernel-tested-allow $(GATES_LIST)
 check: main-only $(GATES_LIST)
 	$(GATE)
 	echo "make check: every gate passed"
@@ -60,18 +60,22 @@ allcov: build
 # `lake lean` builds the imports only and elaborates the gate every time: an olean would survive a new pin.
 compile-diff: main-only
 	$(GATE)
-	CAP_MEM_MB=$(MEM) $(CAP) $(LAKE) lean $(CURDIR)/test/TestCompile.lean
+	REL_COMPILE_DIFF_OUT=$(T)/compile-diff.json CAP_MEM_MB=$(MEM) $(CAP) $(LAKE) lean $(CURDIR)/test/TestCompile.lean
 
-# re-pins test/compile-diff.json to the current run; read the diff before committing it, since nothing else checks it
+# re-pins test/compile-diff.json to the run `make compile-diff` just wrote (a copy: the run takes minutes, so it is
+# computed once); read the diff that gate printed before committing, since nothing else checks the pin. Refuses a
+# run older than a built module, which is a run of other sources.
 compile-diff-write: main-only
 	$(GATE)
-	REL_COMPILE_DIFF_WRITE=1 CAP_MEM_MB=$(MEM) $(CAP) $(LAKE) lean $(CURDIR)/test/TestCompile.lean
+	test -f $(T)/compile-diff.json || { echo "compile-diff-write: no run at $(T)/compile-diff.json; run 'make compile-diff' first" >&2; exit 1; }
+	new=$$(find $(CURDIR)/.lake/build/lib/lean -name '*.olean' -newer $(T)/compile-diff.json -print -quit) || exit 1; test -z "$$new" || { echo "compile-diff-write: $$new is newer than the run at $(T)/compile-diff.json; run 'make compile-diff' first" >&2; exit 1; }
+	cp $(T)/compile-diff.json $(CURDIR)/test/compile-diff.json
 
 crate-test:
 	$(GATE)
 	CAP_MEM_MB=$(MEM) $(CAP) cargo test --manifest-path $(CURDIR)/crate/Cargo.toml --features std
 
-# cargo builds crate/ alone: its defined qlean_* equal crate/RELK.txt
+# cargo builds crate/ alone: its defined qlean_* equal crate/RELK.txt (kernels) + crate/RELIO.txt (IO)
 syms:
 	$(GATE)
 	sh $(CURDIR)/crate/build.sh syms
@@ -168,12 +172,19 @@ define pointfree_NOW
 $(LAKE) build gates
 $(MODS) | xargs $(LAKE) env $(GATES) pointfree | sort -u > $(T)/pointfree.txt
 endef
-# every kernel, an @[extern] declaration whose symbol crate/RELK.txt lists, is mentioned (index `use_site`: a
+# no element decode in Lean on the run path: a compiled declaration of RelRun whose code, followed through the IR (an
+# @[extern] a call, an @[implemented_by] its implementation), reaches a per-element reader (gates/Gates.lean `decoders`);
+# the chain from each to the reader is in $(T)/decode.chains
+define decode_NOW
+$(LAKE) build RelRun gates
+$(LAKE) query RelRun:modules | xargs $(LAKE) env $(GATES) decode 2> $(T)/decode.chains | sort -u > $(T)/decode.txt
+endef
+# every export, an @[extern] declaration whose symbol crate/RELK.txt or crate/RELIO.txt lists, is mentioned (index `use_site`: a
 # declaration, `#guard` or `example`) in a module whose name matches *Test*; loops over the kernels, not the tests
 define kernel-tested_NOW
 $(LAKE) build gates
 $(LAKE) query RelKernel:modules | xargs $(LAKE) env $(GATES) externs | sort -t$$'\t' -k1,1 > $(T)/kt-extern.tsv
-sort -u crate/RELK.txt | join -t$$'\t' -o 1.2 $(T)/kt-extern.tsv - | sort -u > $(T)/kernels.txt
+sort -u crate/RELK.txt crate/RELIO.txt | join -t$$'\t' -o 1.2 $(T)/kt-extern.tsv - | sort -u > $(T)/kernels.txt
 $(SQL) "select distinct name from use_site where use_module glob '*Test*'" | sort -u > $(T)/tested.txt
 comm -23 $(T)/kernels.txt $(T)/tested.txt > $(T)/kernel-tested.txt
 echo "kernel-tested: $$(wc -l < $(T)/kernel-tested.txt) of $$(wc -l < $(T)/kernels.txt) kernels have no use in a *Test* module"
@@ -189,13 +200,18 @@ pointfree: index
 	$(pointfree_NOW)
 	$(call ALLOWED,pointfree)
 
+decode: index
+	$(GATE)
+	$(decode_NOW)
+	$(call ALLOWED,decode)
+
 kernel-tested: index
 	$(GATE)
 	$(kernel-tested_NOW)
 	$(call ALLOWED,kernel-tested)
 
 # regenerate an allowlist from what violates today; read the diff before committing it
-bang-allow pointfree-allow kernel-tested-allow: %-allow: index
+bang-allow pointfree-allow decode-allow kernel-tested-allow: %-allow: index
 	$(GATE)
 	$($*_NOW)
 	cp $(T)/$*.txt $*-allow.txt

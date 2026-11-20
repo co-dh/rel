@@ -59,6 +59,119 @@ def OTy.exp : OTy → OExp
 
 instance : ToString OTy := ⟨(·.exp.show)⟩
 
+/-! ### An element of an atom: how a literal word is stored and printed back -/
+
+/-- How an element of the atom `t` is written: `(width, float, signed)`, `t`'s layout in the kernels' own table
+    (`Kernel.ascLayout`); none where no literal column is built (`Arr.ofFn` takes no `u1`, whose elements are bits,
+    and `sym`, `general` have no width). `obj F : t` declares an object at such a `t` only. -/
+def litLayout (t : Rel.QAtomicType) : Option (Nat × Bool × Bool) := if t == .u1 then none else Kernel.ascLayout t
+
+/-- The atom `t` by its name (`atomNames`). -/
+def atomName (t : Rel.QAtomicType) : String :=
+  match atomNames.find? (·.2 == t) with | some (n, _) => n.toString | none => s!"{repr t}"
+
+/-- The bits of the float of `w` bytes nearest `±m·10^e` (`s` false) or `±m·10^(-e)` (`s` true): `OfScientific`,
+    the reader of Lean's own float literals; `neg` its sign, so `-0.0` is the negative zero. -/
+def floatBits (w : Nat) (neg : Bool) (m : Nat) (s : Bool) (e : Nat) : UInt64 :=
+  if w == 4 then let x : Float32 := OfScientific.ofScientific m s e; (if neg then -x else x).toBits.toUInt64
+  else let x : Float := OfScientific.ofScientific m s e; (if neg then -x else x).toBits
+
+/-- The float of `w` bytes with bits `b` as its sign and `M`, `E`, its value `±M·2^E`; none at an infinity or a NaN
+    (every exponent bit set). -/
+def floatParts (w : Nat) (b : UInt64) : Option (Bool × Nat × Int) :=
+  let (mb, eb) : Nat × Nat := if w == 4 then (23, 8) else (52, 11)
+  let (fr, ex, neg) := (b.toNat % 2 ^ mb, b.toNat / 2 ^ mb % 2 ^ eb, b.toNat / 2 ^ (mb + eb) % 2 == 1)
+  let bias : Int := 2 ^ (eb - 1) - 1
+  if ex == 2 ^ eb - 1 then none
+  else if ex == 0 then some (neg, fr, 1 - bias - mb) else some (neg, fr + 2 ^ mb, ex - bias - mb)
+
+/-- A number word's sign (`-`, which `Embed.wNeg` writes before the token) and its token as Lean reads a number
+    literal: a whole number `k` as `(k, false, 0)`, a scientific one (`2.5`, `1e-3`, `1.5e10`) by
+    `Syntax.decodeScientificLitVal?`, `m·10^(∓e)` as `(m, s, e)`. -/
+def numParts (w : String) : Option (Bool × Nat × Bool × Nat) :=
+  let (neg, d) := match w.toList with | '-' :: cs => (true, String.ofList cs) | cs => (false, String.ofList cs)
+  match d.toNat? with
+  | some k => some (neg, k, false, 0)
+  | none => (Lean.Syntax.decodeScientificLitVal? d).map fun (m, s, e) => (neg, m, s, e)
+
+/-- The word `w` stored at the atom `t` of the object `n` (`litLayout`): a float of `t`'s width read as Lean reads a
+    float literal, a whole number included (`numParts`), normalised where it is produced (`QAtomicType.nonCanonical`: `-0.0`
+    and a `-1e-400` that rounds to it are `0.0`); an integer in `t`'s range. An error names `w` and `n` where it is
+    neither, or where it is no finite float: no literal writes an infinity or a NaN (NaN has no row). -/
+def wordAt (p : Pos) (n : String) (t : Rel.QAtomicType) (w : String) : Except Err UInt64 :=
+  let no := s!"'{w}' is not an element of {n}, an object of {atomName t}"
+  match litLayout t with
+  | none => throw ⟨p, s!"{n} is an object of {atomName t}, which has no literal"⟩
+  | some (b, true, _) => match numParts w with
+    | some (neg, m, s, e) =>
+      -- a literal writes no NaN, so the one non-canonical word it can produce is the negative zero
+      let x := if t.nonCanonical (floatBits b neg m s e) then floatBits b false m s e else floatBits b neg m s e
+      if (floatParts b x).isSome then pure x else throw ⟨p, s!"{no}: it is beyond the range of {atomName t}"⟩
+    | none => throw ⟨p, no⟩
+  | some (b, false, sg) => match w.toInt? with
+    | some k => let (lo, hi) : Int × Int := if sg then (-2 ^ (8 * b - 1), 2 ^ (8 * b - 1)) else (0, 2 ^ (8 * b))
+      if lo ≤ k ∧ k < hi then pure (Int64.ofInt k).toUInt64 else throw ⟨p, s!"{no}: it is not in {lo}…{hi - 1}"⟩
+    | none => throw ⟨p, no⟩
+
+/-- `D·10^k` with the trailing zeros of `D` moved into `k`. -/
+def stripZeros : Nat → Nat → Int → Nat × Int
+  | f + 1, D, k => if D % 10 == 0 && D != 0 then stripZeros f (D / 10) (k + 1) else (D, k)
+  | 0, D, k => (D, k)
+
+/-- The float of `w` bytes with bits `b` printed as the shortest decimal that reads back to `b` (`numParts`,
+    `floatBits`): of the nearest decimals `D·10^k` with 1, 2, … significant digits, the first that reads back to the
+    same bits (the longest, 9 or 17 digits, always does). Plain with a point where the leading digit's place is
+    `10^-7 … 10^20` (`2.5`, `-0.0`, `100.0`), else with an exponent (`1.5e-8`, `1e21`). An infinity or a NaN, which
+    no literal writes, prints as q prints it (`0w`, `-0w`, `0n`). -/
+def floatText (w : Nat) (b : UInt64) : String :=
+  match floatParts w b with
+  | none => if b.toNat % 2 ^ (if w == 4 then 23 else 52) != 0 then "0n"
+    else if b.toNat / 2 ^ (8 * w - 1) % 2 == 1 then "-0w" else "0w"
+  | some (neg, 0, _) => if neg then "-0.0" else "0.0"
+  | some (neg, M, E) =>
+    let (num, den) : Nat × Nat := if E ≥ 0 then (M * 2 ^ E.toNat, 1) else (M, 2 ^ (-E).toNat)
+    -- the place of the leading digit: `10^L ≤ num/den < 10^(L+1)`
+    let L : Int := if num ≥ den then ((Nat.toDigits 10 (num / den)).length : Int) - 1
+      else -((((List.range 400).find? fun j => num * 10 ^ (j + 1) ≥ den).getD 400 : Nat) + 1 : Int)
+    let near (d : Nat) : Nat × Int :=
+      let k := L - d + 1
+      let (a, c) := if k ≥ 0 then (num, den * 10 ^ k.toNat) else (num * 10 ^ (-k).toNat, den)
+      ((2 * a + c) / (2 * c), k)
+    let mx := if w == 4 then 9 else 17
+    let (D, k) := (((List.range mx).map (near ∘ (· + 1))).find? fun (D, k) => floatBits w neg D (k < 0) k.natAbs == b).getD (near mx)
+    let (D, k) := stripZeros 20 D k
+    let s := toString D
+    let P : Int := (s.length : Int) - 1 + k
+    let zeros (j : Nat) := String.ofList (List.replicate j '0')
+    let body :=
+      if -7 ≤ P ∧ P < 21 then
+        if k ≥ 0 then s ++ zeros k.toNat ++ ".0"
+        else if P ≥ 0 then String.ofList (s.toList.take (P.toNat + 1)) ++ "." ++ String.ofList (s.toList.drop (P.toNat + 1))
+        else "0." ++ zeros ((-P).toNat - 1) ++ s
+      else (if s.length == 1 then s else String.ofList (s.toList.take 1) ++ "." ++ String.ofList (s.toList.drop 1)) ++ s!"e{P}"
+    (if neg then "-" else "") ++ body
+
+/-- The stored word of an element of the atom `t`, as `Arr.ofFn` takes it; none at `sym`, `general`, which have none. -/
+def elWord : (t : Rel.QAtomicType) → (Obj.atom t).El → Option UInt64
+  | .u1, x => some (if (x : Bool) then 1 else 0)
+  | .u8, x | .char, x => some (x : UInt8).toUInt64
+  | .i16, x => some (x : Int16).toUInt16.toUInt64
+  | .i32, x | .date, x => some (x : Int32).toUInt32.toUInt64
+  | .i8, x => some (x : Int8).toUInt8.toUInt64
+  | .i64, x | .datetime, x => some (x : Int64).toUInt64
+  | .f32, x => some (x : UInt32).toUInt64
+  | .f64, x => some (x : UInt64)
+  | .sym, _ | .general, _ => none
+
+/-- The word `x` of the atom `t` printed as `wordAt` reads it back: a float by `floatText`, an integer by its value at
+    `t`'s width and sign. -/
+def wordText (t : Rel.QAtomicType) (x : UInt64) : String :=
+  match litLayout t with
+  | some (b, true, _) => floatText b x
+  | some (b, false, sg) => let u := x.toNat % 2 ^ (8 * b)
+    toString (if sg ∧ u ≥ 2 ^ (8 * b - 1) then (u : Int) - 2 ^ (8 * b) else u)
+  | none => "?"
+
 /-- A declared object: what it stands for, and, for a base object, its elements and universe. -/
 structure ObjInfo where
   ty : OTy
@@ -76,82 +189,96 @@ structure ObjInfo where
   /-- An object variable of a definition elaborated once: a numeral there is the number, which each call checks its
       object holds (`build`'s `.call`). -/
   ovar : Bool := false
-  /-- How it is stored: `.long` for a declared object (F6); `varObj k` for the object variable `k` of a constant
-      generic over it. -/
+  /-- How it is stored: `.long` for a declared object (F6), `.atom t` for one declared `obj F : t`; `varObj k` for the
+      object variable `k` of a constant generic over it. -/
   obj : Obj := .long
   /-- A schema's columns (`schema S = {…}`), `ty` their `Schema.objAt`; none for any other object. -/
   cols : Schema OTy := []
 
-/-- The atoms no declared object is stored as (every one is `.long`, F6): each the placeholder of one object
-    variable while a constant generic over it is built, its binder `(A : Obj)` once emitted. -/
+/-- The atoms a placeholder may be: every atom but `.long`'s, which the number verbs fix (`Tm.instObj.fixed`). -/
 def varAtoms : List Rel.QAtomicType := [.general, .u1, .u8, .i16, .i32, .f32, .f64, .char, .sym,
   .i8, .date, .datetime]
 
-/-- The placeholder of the object variable `k`; none past `varAtoms`, where the variable stays `.long`. -/
-def varObj (k : Nat) : Option Obj := varAtoms[k]?.map .atom
+/-- The atoms at the leaves of `A`. -/
+def _root_.Rel.Obj.atoms : Obj → List Rel.QAtomicType
+  | .atom t => [t]
+  | .prod a b | .sum a b => a.atoms ++ b.atoms
+  | .arr b => b.atoms
+
+/-- The placeholders of a constant built where `objs` are declared: the `varAtoms` none of them is stored at, so
+    no object its body can name is taken for one of its variables (`Obj.inst`), whatever atom it is stored at. -/
+def placeholdersOf (objs : List (String × ObjInfo)) : List Rel.QAtomicType :=
+  varAtoms.filter fun t => !objs.any fun (_, i) => i.obj.atoms.contains t
+
+/-- The placeholder of the object variable `k` among `ph`; none past `ph`. -/
+def varObj (ph : List Rel.QAtomicType) (k : Nat) : Option Obj := ph[k]?.map .atom
 
 deriving instance Repr for Rel.Obj
 
-/-- `A` with the placeholder of each object variable `k` (`varObj k`) replaced by `σ[k]`, kept where `σ` has none. -/
-def _root_.Rel.Obj.inst (σ : List Obj) : Obj → Obj
-  | .atom t => match varAtoms.idxOf? t with | some k => σ.getD k (.atom t) | none => .atom t
-  | .prod a b => .prod (a.inst σ) (b.inst σ)
-  | .arr b => .arr (b.inst σ)
-  | .sum a b => .sum (a.inst σ) (b.inst σ)
+/-- `A` with the placeholder `ph[k]` of each object variable `k` replaced by `σ[k]`, kept where `σ` has none. An
+    atom outside `varAtoms` is no placeholder whatever `ph` holds, so `.long` is kept by every `ph`. -/
+def _root_.Rel.Obj.inst (ph : List Rel.QAtomicType) (σ : List Obj) : Obj → Obj
+  | .atom t => match varAtoms.idxOf? t with
+    | none => .atom t
+    | some _ => match ph.idxOf? t with | some k => σ.getD k (.atom t) | none => .atom t
+  | .prod a b => .prod (a.inst ph σ) (b.inst ph σ)
+  | .arr b => .arr (b.inst ph σ)
+  | .sum a b => .sum (a.inst ph σ) (b.inst ph σ)
 
 /-- `t`, built at the placeholders, at the objects `σ` (`Obj.inst`): a definition's body at a call's objects. A
     node whose objects are fixed (a table, a universe, the number verbs at `.long`) keeps them, else the error
     names them. -/
-def Tm.instObj (σ : List Obj) : {A B : Obj} → Tm A B → Except String (Tm (A.inst σ) (B.inst σ))
+def Tm.instObj (ph : List Rel.QAtomicType) (σ : List Obj) : {A B : Obj} → Tm A B →
+    Except String (Tm (A.inst ph σ) (B.inst ph σ))
   | _, _, .val R => fixed (.val R)
   | _, _, .uni U => fixed (.uni U)
   | _, _, .zero => pure .zero
   | _, _, .id => pure .id
-  | _, _, .top V => return .top (← V.instObj σ)
+  | _, _, .top V => return .top (← V.instObj ph σ)
   | _, _, .outl => pure .outl
   | _, _, .outr => pure .outr
-  | _, _, .comp R S => return .comp (← R.instObj σ) (← S.instObj σ)
-  | _, _, .conv R => return .conv (← R.instObj σ)
-  | _, _, .meet R S => return .meet (← R.instObj σ) (← S.instObj σ)
-  | _, _, .join R S => return .join (← R.instObj σ) (← S.instObj σ)
-  | _, _, .diff R S => return .diff (← R.instObj σ) (← S.instObj σ)
-  | _, _, .dom R => return .dom (← R.instObj σ)
-  | _, _, .ran R => return .ran (← R.instObj σ)
-  | _, _, .ldiv R S U V => return .ldiv (← R.instObj σ) (← S.instObj σ) (← U.instObj σ) (← V.instObj σ)
-  | _, _, .rdiv R S U V => return .rdiv (← R.instObj σ) (← S.instObj σ) (← U.instObj σ) (← V.instObj σ)
-  | _, _, .pair R S => return .pair (← R.instObj σ) (← S.instObj σ)
-  | _, _, .prod R S => return .prod (← R.instObj σ) (← S.instObj σ)
-  | _, _, .lam R => return .lam (← R.instObj σ)
-  | _, _, .E R => return .E (← R.instObj σ)
-  | _, _, .est Q => return .est (← Q.instObj σ)
-  | _, _, .thin Q => return .thin (← Q.instObj σ)
+  | _, _, .comp R S => return .comp (← R.instObj ph σ) (← S.instObj ph σ)
+  | _, _, .conv R => return .conv (← R.instObj ph σ)
+  | _, _, .meet R S => return .meet (← R.instObj ph σ) (← S.instObj ph σ)
+  | _, _, .join R S => return .join (← R.instObj ph σ) (← S.instObj ph σ)
+  | _, _, .diff R S => return .diff (← R.instObj ph σ) (← S.instObj ph σ)
+  | _, _, .dom R => return .dom (← R.instObj ph σ)
+  | _, _, .ran R => return .ran (← R.instObj ph σ)
+  | _, _, .ldiv R S U V => return .ldiv (← R.instObj ph σ) (← S.instObj ph σ) (← U.instObj ph σ) (← V.instObj ph σ)
+  | _, _, .rdiv R S U V => return .rdiv (← R.instObj ph σ) (← S.instObj ph σ) (← U.instObj ph σ) (← V.instObj ph σ)
+  | _, _, .pair R S => return .pair (← R.instObj ph σ) (← S.instObj ph σ)
+  | _, _, .prod R S => return .prod (← R.instObj ph σ) (← S.instObj ph σ)
+  | _, _, .lam R => return .lam (← R.instObj ph σ)
+  | _, _, .E R => return .E (← R.instObj ph σ)
+  | _, _, .est Q => return .est (← Q.instObj ph σ)
+  | _, _, .thin Q => return .thin (← Q.instObj ph σ)
   | _, _, .nil => pure .nil
   | _, _, .prim r => pure (.prim r)
   | _, _, .atPos k => pure (.atPos k)
-  | _, _, .own R => return .own (← R.instObj σ)
-  | _, _, .succ U => do fixed (.succ (← back (← U.instObj σ)))
-  | _, _, .arith k U => do fixed (.arith k (← back (← U.instObj σ)))
-  | _, _, .leq U => do fixed (.leq (← back (← U.instObj σ)))
-  | _, _, .lt U => do fixed (.lt (← back (← U.instObj σ)))
-  | _, _, .foldr e S => return .foldr (← e.instObj σ) (← S.instObj σ)
-  | _, _, .fold e S => return .fold (← e.instObj σ) (← S.instObj σ)
-  | _, _, .share k R => return .share k (← R.instObj σ)
-  | _, _, .foldI e S => return .foldI (← e.instObj σ) (← S.instObj σ)
+  | _, _, .own R => return .own (← R.instObj ph σ)
+  | _, _, .succ U => do fixed (.succ (← back (← U.instObj ph σ)))
+  | _, _, .arith k U => do fixed (.arith k (← back (← U.instObj ph σ)))
+  | _, _, .leq U => do fixed (.leq (← back (← U.instObj ph σ)))
+  | _, _, .lt U => do fixed (.lt (← back (← U.instObj ph σ)))
+  | _, _, .foldr e S => return .foldr (← e.instObj ph σ) (← S.instObj ph σ)
+  | _, _, .fold e S => return .fold (← e.instObj ph σ) (← S.instObj ph σ)
+  | _, _, .share k R => return .share k (← R.instObj ph σ)
+  | _, _, .foldI e S => return .foldI (← e.instObj ph σ) (← S.instObj ph σ)
   | _, _, .var d k => pure (.var d k)
-  | _, _, .call ks c os b => return .call ks c (os.map (·.inst σ)) (← b.instObj σ)
-  | _, _, .callCv ks c c' os b u => return .callCv ks c c' (os.map (·.inst σ)) (← b.instObj σ) (← u.instObj σ)
-  | _, _, .arg f x => return .arg (← f.instObj σ) (← x.instObj σ)
-  | _, _, .nu k S b => return .nu k (← S.instObj σ) (← b.instObj σ)
-  | _, _, .mu k w n b => return .mu k w n (← b.instObj σ)
-  | _, _, .hylo k w b => return .hylo k w (← b.instObj σ)
+  | _, _, .call ks c os b => return .call ks c (os.map (·.inst ph σ)) (← b.instObj ph σ)
+  | _, _, .callCv ks c c' os b u => return .callCv ks c c' (os.map (·.inst ph σ)) (← b.instObj ph σ) (← u.instObj ph σ)
+  | _, _, .arg f x => return .arg (← f.instObj ph σ) (← x.instObj ph σ)
+  | _, _, .nu k S b => return .nu k (← S.instObj ph σ) (← b.instObj ph σ)
+  | _, _, .mu k w n b => return .mu k w n (← b.instObj ph σ)
+  | _, _, .hylo k w b => return .hylo k w (← b.instObj ph σ)
 where
   /-- `t` at objects `X ⟶ Y` that `σ` must keep: decided, as `Obj.inst` reads `varAtoms` by search. -/
-  fixed {X Y : Obj} (t : Tm X Y) : Except String (Tm (X.inst σ) (Y.inst σ)) :=
-    if h : X.inst σ = X ∧ Y.inst σ = Y then pure (cast (by rw [h.1, h.2]) t) else
+  fixed {X Y : Obj} (t : Tm X Y) : Except String (Tm (X.inst ph σ) (Y.inst ph σ)) :=
+    if h : X.inst ph σ = X ∧ Y.inst ph σ = Y then pure (cast (by rw [h.1, h.2]) t) else
       throw s!"a table, a universe or a number verb at {repr X} ⟶ {repr Y}, objects the call changes"
   /-- `fixed` backwards: a part of such a node. -/
-  back {X Y : Obj} (t : Tm (X.inst σ) (Y.inst σ)) : Except String (Tm X Y) :=
-    if h : X.inst σ = X ∧ Y.inst σ = Y then pure (cast (by rw [h.1, h.2]) t) else
+  back {X Y : Obj} (t : Tm (X.inst ph σ) (Y.inst ph σ)) : Except String (Tm X Y) :=
+    if h : X.inst ph σ = X ∧ Y.inst ph σ = Y then pure (cast (by rw [h.1, h.2]) t) else
       throw s!"a table, a universe or a number verb at {repr X} ⟶ {repr Y}, objects the call changes"
 
 abbrev Objs := List (String × ObjInfo)
@@ -242,15 +369,25 @@ inductive Pre
   | hylo (pos : Pos) (k : Nat) (body : Pre) (a b : OTy)
   /-- The constant `c` at `pos`, at the objects `us` of its object variables, each with whether `c` is generic
       over it and whether `c` reads its universe, and the arguments `args`, each passed as its pair test where
-      `ts` says so (`Form`); `body` the constant's body at the placeholders, `ks` the variables the arguments bind
-      (`Once.binds`), `cv` its converse's constant and body (`Tm.callCv`); `tst`: `c` is the pair test of a body that
-      only tests (§a). `alt` the definition's body expanded at the use, which every analysis reads and `build` does
-      not. -/
+      `ts` says so (`Form`); `body` the constant's body at its placeholders `ph` (`Once.ph`), `ks` the variables the
+      arguments bind (`Once.binds`), `cv` its converse's constant and body (`Tm.callCv`); `tst`: `c` is the pair test
+      of a body that only tests (§a). `alt` the definition's body expanded at the use, which every analysis reads and
+      `build` does not. -/
   | call (pos : Pos) (c : Lean.Name) (us : List (OTy × Bool × Bool)) (args : List Pre) (ts : List Bool) (alt : Pre)
       (a b : OTy)
-      (ks : List Nat) (body : Res) (cv : Option (Lean.Name × Res)) (tst : Bool)
+      (ks : List Nat) (ph : List Rel.QAtomicType) (body : Res) (cv : Option (Lean.Name × Res)) (tst : Bool)
 
 instance : Inhabited Pre := ⟨.id (.base "")⟩
+
+/-- `R/S : a ⟶ b` with its operands read whole (`close`), as `/` elaborates. -/
+def Pre.rdivWhole (pos : Pos) (r s : Pre) (a b : OTy) : Pre :=
+  let w := "R/S reads its operands whole outside a meet with a term run on demand"
+  .rdiv pos (.close pos r a w) (.close pos s b w) a b
+
+/-- Symmetric division `R÷S : a ⟶ b` is its definition `R/S ∩ (S/R)°` (architecture §1), not a node of its own: `x`
+    to `y` when `R x` and `S y` are one image, within the universes (`Tm.symDiv_den`). -/
+def Pre.symDiv (pos : Pos) (r s : Pre) (a b : OTy) : Pre :=
+  .meet (.rdivWhole pos r s a b) (.conv (.rdivWhole pos s r b a))
 
 /-- `[R,S] : a + b ⟶ _` is its definition `inl°R ∪ inr°S` (architecture §1, §7), not a node of its own: each part
     runs on the values of its summand in demand (`Tab.inlConv`), and is covered by the laws of `∪`, `≫` and the rows. -/
@@ -298,6 +435,9 @@ structure Once where
   /-- Per object variable whether the constant is generic over it (the variables' universes are the term
       variables `0 … n-1`). -/
   gen : List Bool
+  /-- The atoms its variables are built at (`placeholdersOf`), the `k`-th the variable `k`'s: none is an atom an
+      object its body names is stored at. -/
+  ph : List Rel.QAtomicType
   /-- Its parameters' objects and demand bits as the constant takes them (the variables from `n` on). -/
   params : List (Obj × Obj × Bool)
   /-- Its parameters' forms (`Form`'s first part): `convOf` reads which run on demand. -/
@@ -400,8 +540,8 @@ def Pre.traverse {m : Type → Type} [Monad m] (fp : Pos → m Pos) (f : Option 
   | .var q k a b t => return .var (← fp q) k a b t
   | .fix q l k x S y a b => return .fix (← fp q) l k x (← S.mapM (f none)) (← mo y) a b
   | .hylo q k x a b => return .hylo (← fp q) k (← mo x) a b
-  | .call q c us xs ts alt a b ks t cv tst =>
-    return .call (← fp q) c us (← xs.mapM (f none)) ts (← mo alt) a b ks t cv tst
+  | .call q c us xs ts alt a b ks ph t cv tst =>
+    return .call (← fp q) c us (← xs.mapM (f none)) ts (← mo alt) a b ks ph t cv tst
   | x => pure x
 
 /-- The parts of `x`, each with how `x` reads it. A definition's body is expanded at its use, so the prelude's
@@ -516,7 +656,8 @@ def oty (env : Env) (vs : List (String × OTy) := []) : OExp → M OTy
   | .sum a b => return .sum (← oty env vs a) (← oty env vs b)
   | .list a => return .arr (← oty env vs a)
 
-/-- A solved object's `Obj`: every declared base object is `long`, an object variable as `ObjInfo.obj` stores it. -/
+/-- A solved object's `Obj`: a declared base object as `ObjInfo.obj` stores it (`long` but for `obj F : t`), an
+    object variable likewise. -/
 def objOf (objs : Objs) (dp : Pos) : OTy → Except Err Obj
   | .base n => pure ((objs.lookup n).elim .long (·.obj))
   | .prod a b => return .prod (← objOf objs dp a) (← objOf objs dp b)
@@ -738,9 +879,10 @@ def lLdiv (R S : Pre × OTy × OTy) : M (Pre × OTy × OTy) := do
   unify p "the source of `\\`'s right operand" S.2.1 R.2.1
   pure (lCompl I p (← lComp I p (lConv R) (lCompl I p S)))
 
+/-- `R/S = (S°\R°)°` lifted, through `lLdiv`, as the unlifted `rdiv` is: one definition of the division. -/
 def lRdiv (R S : Pre × OTy × OTy) : M (Pre × OTy × OTy) := do
   unify p "the target of `/`'s right operand" S.2.2 R.2.2
-  lComp I p (lCompl I p R) (lConv S)
+  return lConv (← lLdiv I p (lConv S) (lConv R))
 
 def lPair : Pre × OTy × OTy → Pre × OTy × OTy → M (Pre × OTy × OTy)
   | (R, a, b), (S, a', c) => do
@@ -840,12 +982,28 @@ def constant (env : Env) (p : Pos) (o : Op) (objs : List OExp) : M Arg := do
   | _ => throw ⟨p, s!"{o.sym} takes at most two objects, found {objs.length}"⟩
   pure (.rel q s t)
 
-/-- The declared objects holding all the words `ws` (named elements, or numbers in their range), each once: an
-    imported object is in scope under its name and its constant, one object (`Expand.walk`). -/
+/-- Whether the declared object `i`, named `n`, holds the word `w`, by its own reader: one of its named elements, a
+    number in its range, or (`obj F : t`, `obj N` at `i64`) a word `wordAt` reads at its atom; else why not. -/
+def ObjInfo.member (i : ObjInfo) (n w : String) : Except String Unit :=
+  if i.elems.contains w then pure () else
+  match i.range, i.num, i.obj with
+  | some (lo, hi), _, _ => match w.toInt? with
+    | some k => if lo ≤ k ∧ k ≤ hi then pure () else throw s!"{w} is not in {n} = {lo}…{hi}"
+    | none => throw s!"'{w}' is not an element of {n}"
+  | none, true, .atom t => match wordAt {} n t w with | .ok _ => pure () | .error e => throw e.msg
+  | _, _, _ => throw s!"'{w}' is not an element of {n}"
+
+/-- The declared objects holding all the words `ws` (`ObjInfo.member`), each once: an imported object is in scope
+    under its name and its constant, one object (`Expand.walk`). -/
 def holders (objs : Objs) (ws : List String) : List OTy :=
-  let holds (i : ObjInfo) (w : String) : Bool := i.elems.contains w || (i.num && w.toInt?.isSome) ||
-    match i.range, w.toInt? with | some (lo, hi), some k => lo ≤ k && k ≤ hi | _, _ => false
-  ((objs.filter fun (_, i) => ws.all (holds i)).map (·.2.ty)).eraseDups
+  ((objs.filter fun (n, i) => ws.all fun w => (i.member n w).toBool).map (·.2.ty)).eraseDups
+
+/-- Why no declared object holds all the words `ws`: each object's reader on the first word it refuses. -/
+def refusals (objs : Objs) (ws : List String) : String :=
+  let rs := objs.foldl (fun (acc : List (OTy × String)) (n, i) => if acc.any (·.1 == i.ty) then acc else
+    match (ws.findSome? fun w => match i.member n w with | .error e => some e | .ok _ => none) with
+    | some e => acc ++ [(i.ty, e)] | none => acc) []
+  s!"no declared object has the elements {ws}" ++ (if rs.isEmpty then "" else s!" ({"; ".intercalate (rs.map (·.2))})")
 
 /-- Why the rows `ts` of a literal's position do not determine its object: they are none (an empty array's
     elements), or several declared objects hold their words. -/
@@ -871,7 +1029,7 @@ partial def litTy (objs : Objs) (gd : Option String) (p : Pos) (ts : List Tup) :
     if gd.isSome && ws.all (·.toInt?.isSome) then fresh else
     match holders objs ws with
     | [o] => pure o
-    | [] => throw ⟨p, s!"no declared object has the elements {ws}"⟩
+    | [] => throw ⟨p, refusals objs ws⟩
     | _ => fresh
   | _, .pair .. =>
     pure (.prod (← litTy objs gd p (ts.map fun | .pair a _ => a | r => r))
@@ -887,7 +1045,7 @@ partial def settleLit (objs : Objs) (p : Pos) (d : String) (ts : List Tup) (o : 
     let ws := ts.filterMap fun | .leaf w => some w | _ => none
     match holders objs ws with
     | [h] => unify p "the literal's object" o h
-    | [] => throw ⟨p, s!"`{d}`: no declared object has the elements {ws}, and no object variable is put at them"⟩
+    | [] => throw ⟨p, s!"`{d}`: {refusals objs ws}, and no object variable is put at them"⟩
     | _ => pure ()
   | .prod x y, .pair .. :: _ => do
     settleLit objs p d (ts.map fun | .pair a _ => a | r => r) x
@@ -989,8 +1147,10 @@ def binary (p : Pos) (o : Bin) : Pre × OTy × OTy → Pre × OTy × OTy → M A
       pure (.rel x s t)
     | .rdiv => do
       unify p "the target of `/`'s right operand" t' t
-      let w := "R/S reads its operands whole outside a meet with a term run on demand"
-      pure (.rel (.rdiv p (.close p q s w) (.close p r s' w) s s') s s')
+      pure (.rel (Pre.rdivWhole p q r s s') s s')
+    | .symDiv => do
+      unify p "the target of `÷`'s right operand" t' t
+      pure (.rel (Pre.symDiv p q r s s') s s')
     | .ldiv => do
       unify p "the source of `\\`'s right operand" s' s
       let w := "R\\S reads its operands whole outside a meet with a term run on demand"
@@ -1006,6 +1166,8 @@ def binaryL (I : OTy) (p : Pos) (o : Bin) (x y : Arg) : M Arg := do
     | .join => lSame p Pre.join R S
     | .diff => lSame p Pre.diff R S
     | .rdiv => lRdiv I p R S
+    -- `R/S ∩ (S/R)°` lifted part by part, as `Pre.symDiv` is outside a family
+    | .symDiv => lSame p Pre.meet (← lRdiv I p R S) (lConv (← lRdiv I p S R))
     | .ldiv => lLdiv I p R S
     | .prod => pure (lProd R S)
   pure (.fam r.1 I r.2.1 r.2.2)
@@ -1656,25 +1818,36 @@ def uniTm (p : Pos) (o : OTy) (A : Obj) (what : String) : Except Err (Tm A A) :=
 def numU (p : Pos) (o : OTy) (op : String) : Except Err (Tm .long .long) :=
   match zonk mc o with
   | .base n => match objs.lookup n with
+    -- the number verbs run on `i64` words: at an object declared at another atom they are refused, never run on bits
+    | some { obj := .atom t, ovar := false, .. } =>
+      if t != .i64 then throw ⟨p, s!"{op} on {n}: {n} is an object of {atomName t}, and {op} runs on objects of i64 only"⟩
+      else declared n
+    | _ => declared n
+  | o => throw ⟨p, s!"{op} runs on a declared object, found {o}"⟩
+where
+  declared (n : String) : Except Err (Tm .long .long) := match objs.lookup n with
     | some { uni := some ⟨_, U⟩, .. } => pure (.uni (A := .long) U)
     | some { num := true, .. } => pure .id
     | some { uniVar := some k, obj := .atom .i64, .. } => pure (.var false k)
     | some { uniVar := some _, .. } => throw ⟨p, s!"{op} on {n}: a number object, which its constant is not generic over"⟩
     | _ => throw ⟨p, s!"{op} on {n}: no universe"⟩
-  | o => throw ⟨p, s!"{op} runs on a declared object, found {o}"⟩
 
 /-- The element `w` of the declared base object `o`: its position among the named elements, or the number. -/
 def code (p : Pos) (o : OTy) (w : String) : Except Err Int64 :=
   match zonk mc o with
   | .base n => match objs.lookup n with
-    | some i => match i.range, i.elems.idxOf? w, w.toInt? with
+    | some i =>
+      -- a number object's words are `wordAt`'s at its atom; one at another atom than `i64` holds no long (`litCol`)
+      if i.num then match i.obj with
+        | .long => (wordAt p n .i64 w).map (·.toInt64)
+        | o => throw ⟨p, s!"{w} at {n}, an object of {repr o}: no long"⟩
+      else match i.range, i.elems.idxOf? w, w.toInt? with
       | some (lo, hi), _, some k => if lo ≤ k ∧ k ≤ hi then pure (Int64.ofInt k)
           else throw ⟨p, s!"{w} is not in {n} = {lo}…{hi}"⟩
       | none, some k, _ => pure (Int64.ofNat k)
       | none, none, some k =>
-        if i.num then pure (Int64.ofInt k)
         -- each call checks its object holds the number (`build`'s `.call`)
-        else if i.ovar then
+        if i.ovar then
           if i.obj == .long then pure (Int64.ofInt k)
           else throw ⟨p, s!"the number {w} at {n}, an object variable its constant is generic over"⟩
         else throw ⟨p, s!"'{w}' is not an element of {n}"⟩
@@ -1712,6 +1885,16 @@ def litCol (p : Pos) (n : USize) (o : OTy) (rows : List Tup) : Except Err ((A : 
         (Rel.Ext.Enc.blank_WF .i64 0), u, v⟩⟩ : Except Err ((A : Obj) × Vals A 0))
     else throw ⟨p, s!"a literal relates elements of declared objects, found {o}"⟩
   | o => do
+    -- an object declared at another atom (`obj F : f64`): each word stored at that atom (`wordAt`)
+    if let .base m := o then if let some { num := true, ovar := false, obj := .atom t, .. } := objs.lookup m then
+      if t != .i64 then
+        let ws ← rows.mapM fun
+          | .leaf w => wordAt p m t w
+          | r => throw ⟨p, s!"a literal's element of {o} is a word, found {r.show}"⟩
+        let a := ws.toArray
+        if h : a.size = n.toNat ∧ (t ≠ .u1 ∧ t.width.isSome) then
+          return ⟨.atom t, Arr.ofFn t n (fun i => a[i.val]'(by have := i.isLt; omega)) h.2⟩
+        else return ← internal dp s!"literal rows at {atomName t}"
     let cs ← rows.mapM fun
       | .leaf w => code objs mc p o w
       | r => throw ⟨p, s!"a literal's element of {o} is a word, found {r.show}"⟩
@@ -1732,16 +1915,16 @@ def paramOf (why : String) : Except Err Cor → Except Err ((B : Obj) × Tm (.pr
     s!"{why} runs its order on the pairs it compares, and the order is not testable on pairs (§a): {e.msg}"⟩
 
 /-- The call node of the constant `c` at `A ⟶ B`, its object variables at `us`: its body `t` (and its converse's)
-    at their objects (`Tm.instObj`), `os` those of the variables it is generic over. A variable it is not generic
-    over keeps its placeholder, so `σ` is the identity there. -/
-def callTm (pos : Pos) (c : Lean.Name) (us : List (OTy × Bool × Bool)) (ks : List Nat) (t : Res)
-    (cv : Option (Lean.Name × Res)) (A B : Obj) : Except Err (Tm A B) := do
-  let σ ← us.zipIdx.mapM fun ((u, gen, _), k) => if gen then toObj objs mc dp u else pure ((varObj k).getD .long)
+    at their objects (`Tm.instObj` at its placeholders `ph`), `os` those of the variables it is generic over. A
+    variable it is not generic over keeps its placeholder, so `σ` is the identity there. -/
+def callTm (pos : Pos) (c : Lean.Name) (us : List (OTy × Bool × Bool)) (ks : List Nat) (ph : List Rel.QAtomicType)
+    (t : Res) (cv : Option (Lean.Name × Res)) (A B : Obj) : Except Err (Tm A B) := do
+  let σ ← us.zipIdx.mapM fun ((u, gen, _), k) => if gen then toObj objs mc dp u else pure ((varObj ph k).getD .long)
   let os := (σ.zip us).filterMap fun (o, _, gen, _) => if gen then some o else none
   let inst {X Y : Obj} : Res → Except Err (Tm X Y)
     | ⟨X₀, Y₀, b⟩ => do
-      let b ← (b.instObj σ).mapError fun e => (⟨pos, s!"`{c}` at the objects of this call: {e}"⟩ : Err)
-      if h : X₀.inst σ = X ∧ Y₀.inst σ = Y then pure (h.1 ▸ h.2 ▸ b)
+      let b ← (b.instObj ph σ).mapError fun e => (⟨pos, s!"`{c}` at the objects of this call: {e}"⟩ : Err)
+      if h : X₀.inst ph σ = X ∧ Y₀.inst ph σ = Y then pure (h.1 ▸ h.2 ▸ b)
       else internal dp s!"`{c}`'s body is not at the objects of its call"
   match cv with
   | some (c', u) => return .callCv ks c c' os (← inst t) (← inst u)
@@ -1901,16 +2084,16 @@ def build : Pre → Except Err Res
   | .var pos _ _ _ (some true) =>
     throw ⟨pos, "this parameter is tested on the pairs it compares, not run: its argument is a pair test (§a)"⟩
   -- a constant that is a pair test runs nowhere; `test` calls it
-  | .call pos c _ _ _ _ _ _ _ _ _ true =>
+  | .call pos c _ _ _ _ _ _ _ _ _ _ true =>
     throw ⟨pos, s!"`{c}` is tested on the pairs it compares, not run: its constant is its pair test (§a)"⟩
-  | .call pos c us xs ts q a b ks t cv false => do
+  | .call pos c us xs ts q a b ks ph t cv false => do
     -- a variable whose object was open when the call was made (`callDef`) and is unbounded: the constant chose its
     -- rows' forms (`.prim`) without it, so the expansion, built at the call's objects, runs instead
     if us.any fun (u, _, reads) => reads && !u.mvs.isEmpty && unbounded objs (zonk mc u) then return ← build q
     -- the constant took a numeral at an object variable as the number; the expansion has it at the call's object
     q.lits.forM fun (p, a, b, ps, d) => discard (litRes objs mc dp p a b ps (some d))
     let A ← toObj objs mc dp a; let B ← toObj objs mc dp b
-    pure ⟨A, B, ← callArgs pos c us xs ts (← callTm objs mc dp pos c us ks t cv A B)⟩
+    pure ⟨A, B, ← callArgs pos c us xs ts (← callTm objs mc dp pos c us ks ph t cv A B)⟩
   -- the body read whole each round, on its source's universe when it needs keys
   | .fix p least k x S q a b => do
     let A ← toObj objs mc dp a; let B ← toObj objs mc dp b
@@ -1962,9 +2145,9 @@ def test (p : Pre) : Except Err Cor :=
     -- a constant that is a pair test, `τ(c(…)) : A×B ⟶ A×B` (`once`)
     -- a parameter given a pair test (`Form`)
     | .var _ k a b (some true) => do pure ⟨← toObj objs mc dp a, ← toObj objs mc dp b, .var true k⟩
-    | .call pos c us xs ts _ a b ks t _ true => do
+    | .call pos c us xs ts _ a b ks ph t _ true => do
       let A ← toObj objs mc dp a; let B ← toObj objs mc dp b
-      pure ⟨A, B, ← callArgs pos c us xs ts (← callTm objs mc dp pos c us ks t none (.prod A B) (.prod A B))⟩
+      pure ⟨A, B, ← callArgs pos c us xs ts (← callTm objs mc dp pos c us ks ph t none (.prod A B) (.prod A B))⟩
     | .conv q => do let ⟨A, B, c⟩ ← test q; pure ⟨B, A, .comp swapTm (.comp c swapTm)⟩
     | .top _ a b none => do pure ⟨← toObj objs mc dp a, ← toObj objs mc dp b, .id⟩
     | .meet q r => do let c ← test q; let ⟨A, B, c₁⟩ := c; pure ⟨A, B, .meet c₁ (← corAt dp A B (← test r))⟩

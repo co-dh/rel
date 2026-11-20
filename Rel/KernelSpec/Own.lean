@@ -1,4 +1,5 @@
 import Rel.Kernel.Db.ObjectFile
+import Rel.Kernel.Db.Own
 
 /-! The own-format column file read back. `ownWrite` writes `ownImage`'s bytes and `ownMap` answers `ownParse` of the
 file's bytes; both are `IO`, so the law is stated on those two pure bodies: every column the writer accepts is parsed
@@ -151,5 +152,11 @@ theorem ownParse_ownImage (f : OwnFile) (b : ByteArray) (h : ownImage f = .ok b)
   simp only [bind, Except.bind, hu]
   rw [if_neg (by simpa using hz)]
   simp [UInt8.ofNat_toNat, USize.ofNat_toNat]
+
+/-- **`ownEnc` puts back what `ownParts` took apart**, each part as it was. With `ownParse_ownImage`, a column
+`Table.writeVals` writes is mapped back by `Table.readVals` as the `Enc` written; the `IO` around both is not stated. -/
+theorem ownEnc_ownParts {X : Type} {e : Ext.Enc X} {k : UInt8} {ps : Array ByteArray}
+    (h : ownParts e = .ok (some (k, ps))) : ownEnc k ps = some e := by
+  cases e <;> simp only [ownParts] at h <;> cases h <;> rfl
 
 end Rel.Db

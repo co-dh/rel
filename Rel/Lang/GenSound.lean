@@ -1,6 +1,7 @@
 import Rel.Lang.GenKFold
 import Rel.RepWhere
 import Rel.RepAsc
+import Rel.RepSums
 import Rel.Lang.GenKEst
 import Rel.Lang.GenKFix
 import Rel.Lang.GenKHylo
@@ -54,7 +55,7 @@ theorem Sound.bind {η : Code} {ρ : Val} (hs : Sound η ρ) (k : Nat) {A B : Ob
     · simp only [Code.bind, hj, if_false]; exact hs.2 j A' B'
 
 /-- The hypothesis of `Tab.lam_den` at `A ⟶ [B]`: two rows of one key whose codes ascend strictly hold values
-    ascending in `B.lt`. It fails at a float atom, so it is asked per `Λ`, never for every object. -/
+    ascending in `B.lt`. It is asked per `Λ`, never for every object: a general atom keys as `[]` (`Obj.key`). -/
 def LamLaw (A B : Obj) : Prop := ∀ (m : USize) (x : Vals (.prod A B) m) es, Vals.cols x = .ok es →
   ∀ i i' : Fin m.toNat, (x.row i).1 = (x.row i').1 → lexLe (ascKeys m es) i i' = true →
     seenKey m es i ≠ seenKey m es i' → B.lt (x.row i).2 (x.row i').2
@@ -102,7 +103,7 @@ def Codes.at (xs : Codes) (i : Nat) (X Y : Obj) : Option (Rel X Y) := match xs[i
 
 open Lean Meta Elab Term Expand in
 run_elab do
-  let pl (k : Nat) := oE ((varObj k).getD .long)
+  let pl (k : Nat) := oE ((varObj varAtoms k).getD .long)
   let el (s : Lean.Term) : TermElabM Lean.Expr := do
     let e ← elabTerm s none; synthesizeSyntheticMVarsNoPostponing; instantiateMVars e
   let some' ← el (← `(fun (A B : Obj) (v : Rel A B) => (some ⟨A, B, v⟩ : Option ((A : Obj) × (B : Obj) × Rel A B))))
@@ -117,7 +118,7 @@ run_elab do
     let choices := ((List.range (2 ^ vs.length)).map fun m => (List.range vs.length).map m.testBit).mergeSort
       fun a b => a.count true ≤ b.count true
     let some e ← choices.findSomeM? fun lg => do
-        let σ := (List.range vs.length).map fun k => if lg.getD k false then .long else (varObj k).getD .long
+        let σ := (List.range vs.length).map fun k => if lg.getD k false then .long else (varObj varAtoms k).getD .long
         let inst (o : OExp) := o.at vs σ
         -- a parameter taken as its pair test (`some true`, §a) is a code at `X×Y ⟶ X×Y`, as `rowDens` reads it
         let ps := r.sig.1.map fun ((x, y), fm) =>
@@ -291,7 +292,7 @@ def rowsProved : List (String × (Obj → Obj → List (Obj × Obj))) :=
   [("∋", no), ("inl", no), ("inr", no), ("τ", cod), ("setify", cod), ("snoc", no), ("cons", no), ("cat", no),
    ("uncat", no), ("prefix", no), ("suffix", no), ("uncons", no), ("unsnoc", no), ("inits", cod), ("zip", no), ("length", no), ("sum", no), ("loop", no), ("filter", no), ("concat", no), ("merge", no),
    ("thinL", no), ("F", no), ("positions", no), ("asc", fun A B => [(A, B)]), ("inl°", no), ("inr°", no), ("tails", fun A _ => match A with | .arr σ => [(.arr σ, .prod (.arr σ) (.arr σ))] | _ => []),
-   ("takewhile", no), ("flat", no)]
+   ("takewhile", no), ("sums", no), ("flat", no)]
 
 /-- What `Tm.gen_sound` asks of `t`, with `L` for the order law of a `Λ`: `L` at each `Λ`
     and `E` (`E(R) = Λ(∋ ≫ R)`, at `[A] ⟶ [B]`) and at each row `rowsProved` marks, and the body of each fixed
@@ -793,6 +794,28 @@ theorem rowOK_asc : RowOK "asc" :=
     · exact GenK.ofRel_sound hss fun _ _ h hr => by subst hr; exact Tab.asc_holds h hB
     · rename_i h; exact absurd ⟨rfl, rfl⟩ h
 
+theorem rowOK_sums : RowOK "sums" :=
+  rowOK_args (c := RowCode.sums) rfl rfl fun _ σ xs _ _ _ _ hn _ hv => by
+  have h1 : rowArity "sums" = 1 := by decide
+  rcases xs with _ | ⟨⟨X, Y, x⟩, _ | ⟨_, _⟩⟩ <;> simp only [List.length_cons, List.length_nil, h1] at hn <;>
+    try omega
+  rcases σ with _ | ⟨a, σ⟩ <;>
+    simp only [Codes.at, List.getElem?_cons_zero, List.getD_cons_zero, List.getD_nil] at hv
+  all_goals
+    split at hv
+    case isFalse => simp at hv
+    rename_i he; revert hv; obtain ⟨h1, h2⟩ := he; subst h1; subst h2; intro hv
+    cases hv
+    refine ⟨by unfold GenK.ofRel; exact GenK.lift1_wf _, fun ss hss _ => ⟨⟨rfl, rfl⟩, ?_⟩⟩
+    rcases ss with _ | ⟨⟨X', Y', T⟩, _ | ⟨_, _⟩⟩ <;> simp only [CodesRep, and_true, and_false] at hss
+    split at hss
+    case isFalse => exact hss.elim
+    rename_i he; revert hss; obtain ⟨h1, h2⟩ := he; subst h1; subst h2; intro hss
+    simp only [Sem.one]
+    split
+    · exact GenK.ofRel_sound hss fun _ _ h hr => by subst hr; exact Tab.sums_holds h
+    · rename_i h; exact absurd ⟨rfl, trivial⟩ h
+
 theorem rowOK_F : RowOK "F" := rowOK_args (c := RowCode.map) rfl rfl fun _ σ xs _ _ _ _ hn _ hv => by
   have h1 : rowArity "F" = 1 := by decide
   rcases xs with _ | ⟨⟨X, Y, x⟩, _ | ⟨_, _⟩⟩ <;> simp only [List.length_cons, List.length_nil, h1] at hn <;>
@@ -940,14 +963,15 @@ theorem rowsProved_ok (r : Prim) (h : (rowsProved.lookup r.sym).isSome) : RowOK 
   by_cases h27 : r.sym = "unsnoc"; · rw [h27]; exact rowOK_unsnoc
   by_cases h28 : r.sym = "inits"; · rw [h28]; exact rowOK_inits
   by_cases h29 : r.sym = "takewhile"; · rw [h29]; exact rowOK_takewhile
-  by_cases h30 : r.sym = "flat"; · rw [h30]; exact rowOK_flat
+  by_cases h30 : r.sym = "sums"; · rw [h30]; exact rowOK_sums
+  by_cases h31 : r.sym = "flat"; · rw [h31]; exact rowOK_flat
   simp [rowsProved, List.lookup, beq_false_of_ne h1, beq_false_of_ne h2, beq_false_of_ne h3, beq_false_of_ne h4,
     beq_false_of_ne h5, beq_false_of_ne h6, beq_false_of_ne h7, beq_false_of_ne h8, beq_false_of_ne h9,
     beq_false_of_ne h10, beq_false_of_ne h11, beq_false_of_ne h12, beq_false_of_ne h13, beq_false_of_ne h14,
     beq_false_of_ne h15, beq_false_of_ne h16, beq_false_of_ne h17, beq_false_of_ne h18,
     beq_false_of_ne h19, beq_false_of_ne h20, beq_false_of_ne h21, beq_false_of_ne h22, beq_false_of_ne h23,
     beq_false_of_ne h24, beq_false_of_ne h25, beq_false_of_ne h26, beq_false_of_ne h27, beq_false_of_ne h28,
-    beq_false_of_ne h29, beq_false_of_ne h30] at h
+    beq_false_of_ne h29, beq_false_of_ne h30, beq_false_of_ne h31] at h
 
 /-- Every row `rowGens` has a code for is in `rowsProved`. -/
 theorem rowGens_proved {s : String} {f : List Obj → Codes → Option ((A : Obj) × (B : Obj) × Rel A B)}

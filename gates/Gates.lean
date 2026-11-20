@@ -60,6 +60,30 @@ partial def relational (t : Expr) : MetaM Bool := withReducible do
   if let some u ← unfoldDefinition? t then return ← relational u
   t.getAppArgs.anyM fun a => lambdaTelescope a fun _ e => do if ← isType e then relational e else pure false
 
+/-- The per-element readers of an encoded column, the denotation every whole-column Lean decode maps over a range
+    (`Ext.Enc.raw`, `Coc.elems`). A kernel reads the encoded blocks itself; on the run path these run in Lean. -/
+def decoders : List Name := [`Rel.Column.foRBits, `Rel.Column.alpBits]
+
+/-- The compiled code `n` runs, transitively, each callee mapped to the caller that first reached it (`n ↦ n`). It
+    reads the IR, the code the compiler emitted: an `@[extern]` declaration is a call with no Lean body, an
+    `@[implemented_by]` one its implementation, and a proof or a type is not there at all. -/
+partial def irReach (env : Environment) (n : Name) : Std.HashMap Name Name :=
+  go (({} : Std.HashMap Name Name).insert n n) [n]
+where
+  go (seen : Std.HashMap Name Name) : List Name → Std.HashMap Name Name
+    | [] => seen
+    | c :: cs => match IR.findEnvDecl env c with
+      | some d =>
+        let new := (IR.collectUsedDecls env d).toList.filter (!seen.contains ·)
+        go (new.foldl (fun s x => s.insert x c) seen) (new ++ cs)
+      | none => go seen cs
+
+/-- The call chain from the root of `r` to `t`, root first. -/
+partial def chain (r : Std.HashMap Name Name) (t : Name) (acc : List Name := []) : List Name :=
+  match r.get? t with
+  | some p => if p == t then t :: acc else chain r p (t :: acc)
+  | none => t :: acc
+
 def runMeta (env : Environment) (x : MetaM α) : IO α :=
   Prod.fst <$> (x.run' {}).toIO { fileName := "<gates>", fileMap := default } { env }
 
@@ -105,5 +129,15 @@ def main : List String → IO UInt32
       for n in bad do IO.println n
       IO.eprintln s!"gates pointfree: {bad.size} relation-valued of {cand.size} defs with ∃ among {ds.size} declarations"
       return 0
-    | _ => throw (IO.userError s!"gates: unknown command {cmd} (axioms | externs | bang | pointfree)")
-  | [] => throw (IO.userError "usage: gates axioms|externs|bang|pointfree MODULE...")
+    | "decode" =>
+      -- every declaration of the modules with compiled code that reaches a per-element decoder (`decoders`), with
+      -- the call chain on stderr: the run path reads encoded columns through the kernels, never element by element
+      let compiled := ds.filter fun n => written env n && (IR.findEnvDecl env n).isSome
+      let bad := compiled.filterMap fun n =>
+        let r := irReach env n
+        (r.keys.find? fun c => decoders.any (·.isPrefixOf c)).map fun t => (n, chain r t)
+      for (n, p) in bad do IO.println n; IO.eprintln s!"{n}: {" → ".intercalate (p.map toString)}"
+      IO.eprintln s!"gates decode: {bad.size} of {compiled.size} compiled declarations of {mods.size} modules reach {decoders}"
+      return 0
+    | _ => throw (IO.userError s!"gates: unknown command {cmd} (axioms | externs | bang | pointfree | decode)")
+  | [] => throw (IO.userError "usage: gates axioms|externs|bang|pointfree|decode MODULE...")

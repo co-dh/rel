@@ -204,6 +204,22 @@ abbrev estDen (TQ : Den (.prod B B) (.prod B B)) : Den (.arr B) B :=
     order `Rel.Canon` puts a table's rows in; no list where that image has no such list. -/
 abbrev lamDen (T : Den A B) : Den A (.arr B) := fun a ys => ys.Pairwise B.lt ∧ ∀ b, b ∈ ys ↔ T a b
 
+/-- `F(T)`: two arrays of one length, related elementwise by `T`. -/
+abbrev mapDen {A B : Obj} (T : Den A B) : Den (.arr A) (.arr B) := fun xs ys => ys.length = xs.length ∧
+  ∀ t (ht : t < xs.length) (ht' : t < ys.length), T (xs[t]'ht) (ys[t]'ht')
+
+/-- `dom(T) (𝟙 × ≥) dom(T)`: `(k, i)` to `(k, j)`, both in `dom(T)`, `j ≤ i`; `𝟙 × ≥` is `π₁ π₁° ∩ π₂ ≥ π₂°`. -/
+abbrev upToDen {K : Obj} (T : Den (.prod K .long) .long) : Den (.prod K .long) (.prod K .long) :=
+  (𝟙 _ ∩ T ≫ T°) ≫ ((graph Prod.fst ≫ (graph Prod.fst)°) ∩
+    (graph Prod.snd ≫ (fun a b : Int64 => b ≤ a : Den .long .long) ≫ (graph Prod.snd)°)) ≫ (𝟙 _ ∩ T ≫ T°)
+
+/-- q's `sums` per key, `agg(dom(x) (𝟙 × ≥) dom(x), F(x) ⦇[0, plus]⦈)` with `agg(R, f) = dom(R) Λ(R) f`: `(k, i)` to
+    the left fold of `plus` from `0` over `x`'s values at `(k, j)`, `j ≤ i` ascending; none at or after a step that
+    `plus` refuses (a wrap or the null). -/
+abbrev sumsDen {K : Obj} (T : Den (.prod K .long) .long) : Den (.prod K .long) .long :=
+  (𝟙 _ ∩ upToDen T ≫ (upToDen T)°) ≫ lamDen (upToDen T) ≫ mapDen T ≫
+    foldDen (fun _ b => b = 0 : Den .long .long) (stepDen Ew.add)
+
 /-- `E(T) = Λ(∋ T)`: an array to the canonical list of the images of its elements. -/
 abbrev EDen (T : Den A B) : Den (.arr A) (.arr B) := lamDen ((fun xs a => a ∈ xs : Den (.arr A) A) ≫ T)
 
@@ -283,6 +299,7 @@ def positions : RowCode := ⟨"positions", fun σ => (.arr (σ₁ σ), .arr .lon
 def asc : RowCode := ⟨"asc", fun σ => (.long, σ₁ σ)⟩
 def inlC : RowCode := ⟨"inl°", fun σ => (.sum (σ₁ σ) (σ₂ σ), σ₁ σ)⟩
 def inrC : RowCode := ⟨"inr°", fun σ => (.sum (σ₁ σ) (σ₂ σ), σ₂ σ)⟩
+def sums : RowCode := ⟨"sums", fun σ => (.prod (σ₁ σ) .long, .long)⟩
 def flat : RowCode := ⟨"flat", fun σ => (.prod (σ₁ σ) (σ₂ σ), σ.getD 2 .long)⟩
 end RowCode
 
@@ -297,8 +314,7 @@ def rowDens : List ((c : RowCode) × RowDen c) :=
    ⟨mem, fun σ _ (xs : List (σ₁ σ).El) x => x ∈ xs⟩,
    ⟨inl, fun _ _ => Core.Rel.inl⟩,
    ⟨inr, fun _ _ => Core.Rel.inr⟩,
-   ⟨map, fun σ => Sem.one (X := σ₁ σ) (Y := σ₂ σ) fun T (xs : List (σ₁ σ).El) (ys : List (σ₂ σ).El) => ys.length = xs.length ∧
-      ∀ t (ht : t < xs.length) (ht' : t < ys.length), T (xs[t]'ht) (ys[t]'ht')⟩,
+   ⟨map, fun σ => Sem.one (X := σ₁ σ) (Y := σ₂ σ) mapDen⟩,
    ⟨filter, fun σ => Sem.one (X := σ₁ σ) (Y := σ₁ σ) fun T xs ys => ys = xs.filter fun x => decide (∃ y, T x y)⟩,
    ⟨takewhile, fun σ => Sem.one (X := σ₁ σ) (Y := σ₁ σ) fun T xs ys =>
       ys = xs.takeWhile fun x => decide (∃ y, T x y)⟩,
@@ -332,6 +348,7 @@ def rowDens : List ((c : RowCode) × RowDen c) :=
    ⟨asc, fun σ => Sem.one (X := σ₁ σ) (Y := σ₁ σ) fun T => ascDen (σ₁ σ) fun b => ∃ c, T b c⟩,
    ⟨inlC, fun _ _ s a => Core.Rel.inl a s⟩,
    ⟨inrC, fun _ _ s b => Core.Rel.inr b s⟩,
+   ⟨sums, fun σ => Sem.one (X := .prod (σ₁ σ) .long) (Y := .long) sumsDen⟩,
    ⟨flat, fun σ => Sem.one (X := σ₁ σ) (Y := .prod (σ₂ σ) (σ.getD 2 .long)) flatDen⟩]
 
 
@@ -414,6 +431,13 @@ theorem Tm.flat_den (ρ : Val) {I A B : Obj} (R : Tm I (.prod A B)) :
   · rintro ⟨a, b', ⟨h, rfl⟩, he⟩
     cases (show ((x.2, b'), x.2) = ((x.2, b), x.2) from he); exact h
   · intro h; exact ⟨_, _, ⟨h, rfl⟩, rfl⟩
+
+/-- **Symmetric division is a definition**: the term `R/S ∩ (S/R)°` that `Pre.symDiv` builds means `R÷S` within the
+    universes `UA`, `UB`. -/
+theorem Tm.symDiv_den (ρ : Val) {A B C : Obj} (R : Tm A C) (S : Tm B C) (UA : Tm A A) (UB : Tm B B) :
+    (Tm.meet (.rdiv R S UA UB) (.conv (.rdiv S R UB UA))).den ρ =
+      symDivDen (UA.den ρ) (UB.den ρ) (R.den ρ) (S.den ρ) := by
+  simp only [Tm.den]
 
 /-- `⟦t⟧`, and `t`'s meaning as a row's spine, read `ρ` only at the variables free in `t`. -/
 theorem Tm.den_congr : ∀ {A B : Obj} (t : Tm A B) (ρ ρ' : Val), (∀ i ∈ t.fv, ρ i = ρ' i) →
@@ -670,8 +694,8 @@ theorem rowDens_mono : ∀ e ∈ rowDens, (Prim.find? e.1.sym).any (·.mono) = t
     ∀ σ {X Y : Obj} {T T' : Den X Y}, T ⊑ T' → e.2 σ [⟨X, Y, T⟩] ⊑ e.2 σ [⟨X, Y, T'⟩] := by
   intro e he hm σ X Y T T' h
   simp only [rowDens, List.mem_cons, List.not_mem_nil, or_false] at he
-  rcases he with rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl |
-    rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl
+  -- one case per row whatever their number, in `rowDens` order
+  repeat' first | (rcases he with rfl | he) | subst he
   all_goals first | exact Core.Rel.le_refl _ | exact absurd hm (by decide) | skip
   · dsimp only; refine Sem.one_mono (fun hT => le_iff.2 fun _ _ hm => ?_) h
     exact ⟨hm.1, fun t ht ht' => le_iff.1 hT _ _ (hm.2 t ht ht')⟩
