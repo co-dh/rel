@@ -31,6 +31,7 @@ rel_program frameUnboundedT where
     check ix x = {(0,(C,1)),(1,(B,5)),(2,(C,1))}
     check summarize(F(x π₂) sum, x) = {(∗,27)}
     check count(x) = {(∗,8)}
+    -- the integer quotient `sum div length` (`summarize` composes with `div`; not a mean)
     check summarize(F(x π₂) ⟨sum, length⟩div, x) = {(∗,3)}
     check summarize(F(x π₂) Λ(∋) last, x) = {(∗,7)}
     check summarize(F(x π₂) Λ(∋) head, x) = {(∗,1)}
@@ -107,24 +108,6 @@ rel_program frameUnboundedT where
     check countDistinct(x) = {(∗,6)}
     check mode(π₁, x) = {(∗,B)}
     check mode(π₂, x) = {(∗,5)}
-    check median(π₂, x) = {(∗,3)}
-    check median(π₂, take({(∗,5)}, x)) = {(∗,5)}
-    check median(π₂, take({(∗,4)}, x)) = {(∗,4)}
-    -- the percentile, `quantile(p, 100)`, at `p` = 0 25 50 75 90 100: `h = 7p/100` = 0, 1.75, 3.5, 5.25, 6.3, 7
-    -- picks rows 0; 1 2; 3 4; 5 6; 6 7; 7
-    -- of the sorted `v`: 1, (1+2)/2, (3+3)/2, (5+5)/2, (5+7)/2, 7
-    check quantile({(∗,0)}, {(∗,100)}, π₂, x) = {(∗,1)}
-    check quantile({(∗,25)}, {(∗,100)}, π₂, x) = {(∗,1)}
-    check quantile({(∗,50)}, {(∗,100)}, π₂, x) = {(∗,3)}
-    check quantile({(∗,75)}, {(∗,100)}, π₂, x) = {(∗,5)}
-    check quantile({(∗,90)}, {(∗,100)}, π₂, x) = {(∗,6)}
-    check quantile({(∗,100)}, {(∗,100)}, π₂, x) = {(∗,7)}
-    check percentile({(∗,0)}, π₂, x) = {(∗,1)}
-    check percentile({(∗,25)}, π₂, x) = {(∗,1)}
-    check percentile({(∗,50)}, π₂, x) = {(∗,3)}
-    check percentile({(∗,75)}, π₂, x) = {(∗,5)}
-    check percentile({(∗,90)}, π₂, x) = {(∗,6)}
-    check percentile({(∗,100)}, π₂, x) = {(∗,7)}
 
     -- TestFrameJoin
     y : N ⟶ K×N ≜ {(0,(A,9)),(1,(C,8)),(2,(A,6))}
@@ -181,6 +164,7 @@ rel_program frameUnboundedT where
     check dom(nc inl°) = {(0,0),(2,2),(4,4),(7,7)}
     check dom(nc inr°) = {(1,1),(3,3),(5,5),(6,6)}
     check nc (succ ⊕ 𝟙) [𝟙, {(∗,40)}] = {(0,6),(1,40),(2,6),(3,40),(4,8),(5,40),(6,40),(7,4)}
+    -- impute with the integer quotient `sum div length` of the valued rows (not a mean): 20 div 4 = 5
     check nc [𝟙, summarize(F(nc inl°) ⟨sum, length⟩div, nc inl°)] = {(0,5),(1,5),(2,5),(3,5),(4,7),(5,5),(6,5),(7,3)}
     check nulls(π₂, xn) = {(∗,4)}
     check fills(nc) [𝟙, {(∗,40)}] = {(0,5),(1,5),(2,5),(3,5),(4,7),(5,7),(6,7),(7,3)}

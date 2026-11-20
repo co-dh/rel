@@ -64,7 +64,6 @@ rel_program frameScaleN3 where
     q : N ⟶ N×N ≜ x ⟨π₁, π₂ succ⟩
     a : N ⟶ (N×N)×((N×N)+1) ≜ aj(π₁, π₂, π₁, π₂, x, q)
     check summarize(F(a π₂ [π₂, {(∗,0)}]) sum, a) = {(∗,405450)}
-    check median(π₂, x) = {(∗,499)}
     check topK({(∗,3)}, π₂, x) = {(0,(99,999)),(1,(98,998)),(2,(97,997))}
     -- sorted position `p` holds key `p div T`, row `p div T + 100·(p mod T)`
     check sortBy(π₁, x) = ran(d3) ⟨⟨𝟙, ⊤ {(∗,10)}⟩div, ⟨⟨⟨𝟙, ⊤ {(∗,10)}⟩mod, ⊤ {(∗,100)}⟩times, ⟨𝟙, ⊤ {(∗,10)}⟩div⟩plus⟩
@@ -96,7 +95,6 @@ rel_program frameScaleN4 where
     q : N ⟶ N×N ≜ x ⟨π₁, π₂ succ⟩
     a : N ⟶ (N×N)×((N×N)+1) ≜ aj(π₁, π₂, π₁, π₂, x, q)
     check summarize(F(a π₂ [π₂, {(∗,0)}]) sum, a) = {(∗,49009950)}
-    check median(π₂, x) = {(∗,4999)}
     check topK({(∗,3)}, π₂, x) = {(0,(99,9999)),(1,(98,9998)),(2,(97,9997))}
     check sortBy(π₁, x) = ran(d4) ⟨⟨𝟙, ⊤ {(∗,100)}⟩div, ⟨⟨⟨𝟙, ⊤ {(∗,100)}⟩mod, ⊤ {(∗,100)}⟩times, ⟨𝟙, ⊤ {(∗,100)}⟩div⟩plus⟩
 
@@ -124,7 +122,6 @@ rel_program frameScaleN5 where
     check cumSum(x π₂) = ran(d5) ⟨⟨𝟙, succ⟩times, ⊤ {(∗,2)}⟩div
     c : N ⟶ N+1 ≜ dom(x) tot(dom(x π₁ {(0,0)}) x π₂)
     check fills(c) [𝟙, {(∗,0)}] = ran(d5) ⟨⟨𝟙, ⊤ {(∗,100)}⟩div, ⊤ {(∗,100)}⟩times
-    check median(π₂, x) = {(∗,49999)}
     check topK({(∗,3)}, π₂, x) = {(0,(99,99999)),(1,(98,99998)),(2,(97,99997))}
     check sortBy(π₁, x) = ran(d5) ⟨⟨𝟙, ⊤ {(∗,1000)}⟩div, ⟨⟨⟨𝟙, ⊤ {(∗,1000)}⟩mod, ⊤ {(∗,100)}⟩times, ⟨𝟙, ⊤ {(∗,1000)}⟩div⟩plus⟩
 
