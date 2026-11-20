@@ -29,7 +29,9 @@ import Rel.Lang.TestFrameGroup
 import Rel.Lang.TestFrameJoin
 import Rel.Lang.TestFrameNull
 import Rel.Lang.TestFramePos
+import Rel.Lang.TestFrameScale
 import Rel.Lang.TestFrameUnbounded
+import Rel.Lang.TestGenericN
 import Rel.Lang.TestNative
 import Rel.Lang.TestPositions
 import Rel.Lang.TestSchema
