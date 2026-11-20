@@ -510,6 +510,21 @@ Diff table 的「状态」列：✅ 后面是完成它的步骤；🔄 是部分
       `Tab` 上。未完成：旧 kernel 仍以普通 Lean 定义存在，`Code`、`Alg`、`CRel*Def`、`Run/KernelWF` 未删；ffi 背后的
       Rust 库模块未删。在做 T10e：`Syntax.prims` 的行类型直接写出、`CRel` 类型换成 `Tab` / `Rel`、`Den` / `Rep` 去掉
       `Alg.*`、`Rep*` 的对照 `#guard` 改成固定的期望行，然后删上述模块与无 export 可达的 Rust 模块。
+      状态（2026-11-19 19:24，master `c96ebc8`，`make check` 全绿，RELK 11，compile-diff 476 ok / 2 按预期报错）：
+      `t10e`（4c1ed12）、`pfree`（ffeec8d）、`t10f`（18224ec）、`t10g`（3088ee5）合入。`Rel/Run/{Code,Alg,Algebra}`、
+      7 个 `CRel*Def`、`Rel/Run/KernelWF/*` 已删；`Prim.sig` 直接写出（`prim% CRel.*` 删）；`CRel` 类型换成
+      `Except String (Tab A B)`（`Rel.runE` 的返回类型）；`Rep*` 的对照检查改成对 list 上的 denotation 比（19 组）或
+      字面行（ν、μ），按集合比较，不再覆盖行序；`Known.den` / `Tm.den` 里 column 取值上的 coreflexive 写成
+      `(graph row)° ≫ graph row`（pointfree gate）。删掉的定理：`Rep` 里 9 条关于 `Alg.idU zero outl outr conv` 的
+      （`Tab.*_holds` 已有同样的定律）。
+      旧 kernel 模块（`Db.Own Dep.* Driver Elementwise Eval.Val Reduce Search Sort Structural`）里 267 个声明的去向
+      （`/data/tmp/t10g/holders.md`）：41 个无人使用，已删；164 个只被上面已删的模块持有，现在可删；36 个只在定理 /
+      陈述里用，保留；26 个在运行路径上——动词编码常量（搬到 `Kernel/Op.lean`）、原子类型映射 `Dep.Carrier` 与空原子
+      （数据定义，保留）、以及 `Column.intern`（`Db.ownParts` 写 `syms` 列时建字典，O(n²) 的 Lean list 代码，首次出现序，
+      own 文件 kind 4 `enum`）。按 architecture §4（`sym` = 保序字典 id，intern = `asc ≫ seen`，字典排好序）与本文件
+      "`.syms`、enum 编码删除"，`Column.intern` 与 own 的 `enum` 种类删除，不另问 owner。
+      Rust：无整模块可删（`sort structural ew group ids` 各有部分被现行 kernel 使用）；模块设为私有后 894 个无用项，逐项清。
+      在做：T10h（删那 164 个声明与 `Driver`，去掉 `Column.intern` / own `enum`）；T10i（Rust 无用项清理）。
     - W3 留给后面的风险（清单 agent 提出，均未验证）：计数做 `\` 会物化 join（最多 `|R|·|S|` 行），SudokuPC9、
       blocks 可能超内存；规范序从 `Obj.lt` 变成 `kasc` 序码，打印的期望值与 `out/key`、`out/val` 可能变；
       `coc_block_start`、`coc_bools_of`、`structural_bits_of_for` 与 `Plan.abi` 点名的 12 个 export 在 W5 后仍有
