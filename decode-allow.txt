@@ -125,6 +125,7 @@ Rel.Tab.snoc
 Rel.Tab.succ
 Rel.Tab.suffix
 Rel.Tab.sum
+Rel.Tab.sums
 Rel.Tab.tagged
 Rel.Tab.tails
 Rel.Tab.takewhile
