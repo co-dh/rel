@@ -1352,11 +1352,16 @@ theorem Tab.thinL_holds {B : Obj} {n : USize}
 namespace GenK
 
 open Classical in
-/-- `filter(p)`, `Expand.primE`'s fit of the row (`elems`, `Tab.filter`): each array in demand to its elements in
-`dom T`, `p` run knowing its domain is those elements, where it agrees with its meaning `T`. -/
-theorem filter_sound {B : Obj} {d : Bool} {R : Rel B B} {T : Den B B} (hR : ∀ K, R.Reps K T) :
-    ∀ K, (GenK.elems B B (.arr B) d R fun P X => Tab.filter P X).Reps K
-      (fun xs ys => ys = xs.filter fun x => decide (∃ y, T x y)) := by
+/-- A row given one test `p`, run on the arrays in demand (`elems`) as `f`, whose law reads `P` only through the test
+`∃ y, P x y` on the array's elements, by `F` (which reads its test only on the elements): it represents `F` of the
+test of `p`'s meaning `T`, `p` run knowing its domain is those elements, where it agrees with `T`. -/
+theorem elemsTest_sound {B C : Obj} {d : Bool} {R : Rel B B} {T : Den B B}
+    {f : {n : USize} → Tab B B → Vals (.arr B) n → Except String (Tab (.arr B) C)}
+    {F : (B.El → Bool) → List B.El → C.El}
+    (hf : ∀ {n : USize} {P : Tab B B} {X : Vals (.arr B) n} {t : Tab (.arr B) C}, f P X = .ok t → ∀ xs ys,
+      t.Holds xs ys ↔ (∃ i, X.row i = xs) ∧ ys = F (fun x => decide (∃ y, P.Holds x y)) xs)
+    (hF : ∀ p q xs, (∀ x ∈ xs, p x = q x) → F p xs = F q xs) (hR : ∀ K, R.Reps K T) :
+    ∀ K, (GenK.elems B B C d R f).Reps K (fun xs ys => ys = F (fun x => decide (∃ y, T x y)) xs) := by
   unfold GenK.elems
   exact ofVals_sound fun _ _ X t hK h xs ys hx _ => by
     obtain ⟨M, hM, h⟩ := bind_ok h
@@ -1368,7 +1373,16 @@ theorem filter_sound {B : Obj} {d : Bool} {R : Rel B B} {T : Den B B} (hR : ∀ 
       obtain ⟨j, hj, -⟩ := (Tab.ran_holds hk x x).2 ⟨rfl, xs, (Tab.mem_holds hM xs x).2 ⟨hi, hm⟩⟩
       exact exists_congr fun y => ha x y ((side_some rfl x).2 ⟨j, hj⟩) rfl
     show t.Holds xs ys ↔ _
-    rw [Tab.filter_holds h, and_iff_right hi, List.filter_congr fun x hm => decide_eq_decide.2 (hPT x hm)]
+    rw [hf h, and_iff_right hi, hF _ _ xs fun x hm => decide_eq_decide.2 (hPT x hm)]
+
+open Classical in
+/-- `filter(p)`, `Expand.primE`'s fit of the row (`elems`, `Tab.filter`): each array in demand to its elements in
+`dom T` (`elemsTest_sound`). -/
+theorem filter_sound {B : Obj} {d : Bool} {R : Rel B B} {T : Den B B} (hR : ∀ K, R.Reps K T) :
+    ∀ K, (GenK.elems B B (.arr B) d R fun P X => Tab.filter P X).Reps K
+      (fun xs ys => ys = xs.filter fun x => decide (∃ y, T x y)) :=
+  elemsTest_sound (C := .arr B) (F := fun p (xs : List B.El) => xs.filter p) (fun h xs ys => Tab.filter_holds h xs ys)
+    (fun _ _ _ h => List.filter_congr h) hR
 
 /-- `F(R)`, `Expand.primE`'s fit of the row (`elems`, `Tab.map`): each array in demand to every array of its length
 related pointwise by `R`'s meaning `T`, `R` run knowing its domain is the elements, where it agrees with `T`. -/

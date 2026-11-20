@@ -4,6 +4,7 @@
   (`≫ ° ∩ ∪ 𝟙 𝟘`, D3 = E); `μ`, `ν` are `Core.Rel.mu`, `nu`, defined for every body, so no monotonicity is assumed here.
 -/
 import Rel.Run.Lang.Tm
+import Rel.Run.Where
 import Rel.Rep
 import Rel.ObjOrder
 import Rel.Core.Fix
@@ -277,6 +278,7 @@ def zip : RowCode := ⟨"zip", fun σ => (.prod (.arr (σ₁ σ)) (.arr (σ₂ �
 def snoc : RowCode := ⟨"snoc", fun σ => (.prod (.arr (σ₁ σ)) (σ₁ σ), .arr (σ₁ σ))⟩
 def unsnoc : RowCode := ⟨"unsnoc", fun σ => (.arr (σ₁ σ), .prod (.arr (σ₁ σ)) (σ₁ σ))⟩
 def setify : RowCode := ⟨"setify", fun σ => (.arr (σ₁ σ), .arr (σ₁ σ))⟩
+def positions : RowCode := ⟨"positions", fun σ => (.arr (σ₁ σ), .arr .long)⟩
 end RowCode
 
 /-- A row's meaning at its object variables `σ`, given its relation arguments' meanings. -/
@@ -317,7 +319,10 @@ def rowDens : List ((c : RowCode) × RowDen c) :=
    ⟨zip, fun _ _ p zs => zs = p.1.zip p.2⟩,
    ⟨snoc, fun _ _ p ys => ys = p.1 ++ [p.2]⟩,
    ⟨unsnoc, fun _ _ xs p => xs = p.1 ++ [p.2]⟩,
-   ⟨setify, fun σ _ => lamDen (fun xs a => a ∈ xs : Den (.arr (σ₁ σ)) (σ₁ σ))⟩]
+   ⟨setify, fun σ _ => lamDen (fun xs a => a ∈ xs : Den (.arr (σ₁ σ)) (σ₁ σ))⟩,
+   -- dataframe §3.1's `where(dom(xs ≫ p))`: the positions of `xs` whose element is in `dom(p)`, ascending
+   ⟨positions, fun σ => Sem.one (X := σ₁ σ) (Y := σ₁ σ) fun T xs ys =>
+      ys = positionsL (fun x => decide (∃ y, T x y)) xs⟩]
 
 
 /-- The row `r`'s meaning at `A ⟶ B` given its relation arguments' meanings, found as `Prim.run` finds its code;

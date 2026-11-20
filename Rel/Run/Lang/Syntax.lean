@@ -231,7 +231,12 @@ def prims : List Prim :=
    { sym := "unsnoc", sig := ([], .list (.var {} "B"), .prod (.list (.var {} "B")) (.var {} "B")),
      conv := "snoc", written := false },
    { sym := "setify", sig := ([], .list (.var {} "B"), .list (.var {} "B")),
-     aop := .ok `Freyd.Alg.RelSet.ListRel.setify }]
+     aop := .ok `Freyd.Alg.RelSet.ListRel.setify },
+   -- `positions(p)`: dataframe §3.1's `where(dom(xs ≫ p))`, named so because `where` is a keyword (§c); it makes
+   -- positions, numbers of `ℕ`, so it has no `dfn` until `rank` can be written and no use where `ℕ` has a universe
+   { sym := "positions",
+     sig := ([((.var {} "B", .var {} "B"), some false)], .list (.var {} "B"), .list (.var {} "ℕ")),
+     mono := false, aop := .error "AOP declares no positions of the elements of a list that pass a test" }]
 
 def Prim.find?(s : String) : Option Prim := prims.find? (·.sym == s)
 
