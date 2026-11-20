@@ -89,7 +89,7 @@ def Tm.ConvOK (ρ : Val) : {A B : Obj} → Tm A B → Prop
   | _, _, .own R => (R.den ρ)° = R.den ρ ∧ ∀ ss, (R.argDen ρ ss)° = R.argDen ρ ss
   | _, _, .prim r => r ∈ prims
   | _, _, .succ U => ∀ x y, U.den ρ x y → x = y
-  | _, _, .arith _ U => ∀ x y, U.den ρ x y → x = y
+  | _, _, .arith _ _ U => ∀ x y, U.den ρ x y → x = y
   | _, _, .share _ R => R.fv = [] ∧ R.ConvOK ρ
   | _, _, .comp R S => R.ConvOK ρ ∧ S.ConvOK ρ
   | _, _, .meet R S => R.ConvOK ρ ∧ S.ConvOK ρ
@@ -128,7 +128,7 @@ theorem convTm_den (ρ : Val) : ∀ {A B : Obj} (t : Tm A B), t.ConvOK ρ →
   intro A B t
   induction t with
   | val _ | uni _ | zero | conv _ _ | ran _ _ | ldiv _ _ _ _ _ _ _ _ | rdiv _ _ _ _ _ _ _ _ | prod _ _ _ _
-  | leq _ _ | lt _ _ | nu _ _ _ _ _ | mu _ _ _ _ _ =>
+  | leq _ _ _ | lt _ _ _ | nu _ _ _ _ _ | mu _ _ _ _ _ =>
     exact fun _ => ⟨fun u hu => conv_false_den ρ u hu rfl, by noproj⟩
   | top _ _ | lam _ _ | E _ _ | est _ _ | thin _ _ | nil | atPos _ | foldr _ _ _ _ | fold _ _ _ _ | foldI _ _ _ _
   | hylo _ _ _ _ => exact fun _ => ⟨by noconv, by noproj⟩
@@ -261,11 +261,11 @@ theorem convTm_den (ρ : Val) : ∀ {A B : Obj} (t : Tm A B), t.ConvOK ρ →
     refine ⟨?_, fun _ _ => rfl⟩
     refine congrArg (·°) (funext fun a => funext fun w => propext ⟨fun ⟨v, hv, h⟩ => (hok _ _ hv) ▸ h, fun h => ⟨a, ?_, h⟩⟩)
     obtain ⟨v, hv⟩ := h.1; obtain rfl := hok _ _ hv; exact hv
-  | arith k U _ =>
+  | arith t k U _ =>
     refine fun hok => ⟨fun u hu => ?_, by noproj⟩
     rw [convTm.eq_def, if_neg (by simp [Tm.dem])] at hu; cases hu
     refine ⟨?_, fun _ _ => rfl⟩
-    have key : ∀ p w, arithDen k (U.den ρ) p w → U.den ρ p.1 p.1 ∧ U.den ρ p.2 p.2 := by
+    have key : ∀ p w, arithDen t k (U.den ρ) p w → U.den ρ p.1 p.1 ∧ U.den ρ p.2 p.2 := by
       rintro p w ⟨p', ⟨rfl, c, ⟨a', e1, h1⟩, -⟩, p'', ⟨rfl, c', ⟨b', e2, h2⟩, -⟩, -⟩
       subst e1 e2
       refine ⟨?_, ?_⟩
@@ -512,7 +512,7 @@ theorem convTm_instObj_den (ph : List Rel.QAtomicType) (σ : List Obj) (ρ : Val
   intro A B t
   induction t with
   | val _ | uni _ | zero | conv _ _ | ran _ _ | ldiv _ _ _ _ _ _ _ _ | rdiv _ _ _ _ _ _ _ _ | prod _ _ _ _
-  | leq _ _ | lt _ _ | nu _ _ _ _ _ | mu _ _ _ _ _ =>
+  | leq _ _ _ | lt _ _ _ | nu _ _ _ _ _ | mu _ _ _ _ _ =>
     exact fun t' ht _ => ⟨fun u u' hu hu' => inst_false_den ph σ ρ rfl hu hu' ht, by noproj'⟩
   | top _ _ | lam _ _ | E _ _ | est _ _ | thin _ _ | nil | atPos _ | foldr _ _ _ _ | fold _ _ _ _ | foldI _ _ _ _
   | hylo _ _ _ _ => exact fun _ _ _ => ⟨by noconv', by noproj'⟩
@@ -686,7 +686,7 @@ theorem convTm_instObj_den (ph : List Rel.QAtomicType) (σ : List Obj) (ρ : Val
     refine ⟨?_, fun _ _ => rfl⟩
     refine congrArg (·°) (funext fun a => funext fun w => propext ⟨fun ⟨v, hv, h⟩ => (hok _ _ hv) ▸ h, fun h => ⟨a, ?_, h⟩⟩)
     obtain ⟨v, hv⟩ := h.1; obtain rfl := hok _ _ hv; exact hv
-  | arith k U _ =>
+  | arith t k U _ =>
     refine fun t' ht hok => ⟨fun u u' hu hu' => ?_, by noproj'⟩
     rw [convTm.eq_def, if_neg (by simp [Tm.dem])] at hu; cases hu
     simp only [Tm.instObj, bind_ok_iff, pure_ok_iff, back_long, fixed_arith] at ht hu'
