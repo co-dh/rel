@@ -1,5 +1,6 @@
 import Rel.Kernel.Value
 import Rel.Kernel.Scatter
+import Rel.Kernel.Scan
 
 /-! CSV both ways, the model of the IO exports `qlean_csv_read` and `qlean_csv_write` (IO design C): `csvWords` reads
 a file's bytes into each declared column's raw words, `csvText` writes them. One dialect, RFC 4180 and strict (C.2);
@@ -393,16 +394,34 @@ def csvRead (path : @& String) (cols : @& CsvCols) : IO (USize × List Enc) := d
   let (n, ws) ← IO.ofExcept ((csvWords cols (← IO.FS.readBinFile path).data.toList).mapError (s!"{path}: {·}"))
   return (n.toUSize, ws.map Kernel.wordsFoR)
 
+/-- The writer is given `k` word columns, one per schema column. -/
+def Csv.arity (cols : CsvCols) (k : Nat) : Except String Unit :=
+  if k = cols.length then .ok () else .error s!"{k} word columns, the schema {Csv.names cols} has {cols.length}"
+
 open Csv in
 /-- The writer's model (C.1): `n` rows of the columns' words `ws` as a file, the header first, each record ending in
     `\n`; or the first word with no text (`cell`), named by row and column. -/
 def csvText (cols : CsvCols) (n : Nat) (ws : List (Array UInt64)) : Except String (List UInt8) := do
   schema cols
-  -- a term, not a `do` `if`: the `do` one would copy the rest of the block into both branches
-  let () ← (if ws.length = cols.length then .ok () else
-    .error s!"{ws.length} word columns, the schema {names cols} has {cols.length}" : Except String Unit)
+  arity cols ws.length
   (cols.zip ws).forM fun ((c, _), a) => if a.size = n then .ok () else .error s!"column '{c}' holds {a.size} words, not {n}"
   let rs ← (List.range n).mapM fun r => (cols.zip ws).mapM (putCell r)
   pure (records (cols.map (bytes ·.1) :: rs))
+
+open Csv in
+/-- **The CSV writer**, IO export `qlean_csv_write` (IO design C.1): the `n` rows of the columns `es` under the schema
+`cols` as the file at `path`, `csvText` of each column's raw words (`Kernel.rawAll`, so an `Enc` of any form), or the
+first refusal after `{path}: ` — the column count, a column with no raw words, then `csvText`'s; the parent directory
+is made first, as `ownWrite` does. The extern reads each column a block of rows at a time from its encoding and writes
+the formatted block to a temporary renamed over `path` (`crate/src/csv.rs` `write`), so a refusal leaves `path` as it
+was and no column is held decoded; `Rel.Kernel.Db.CsvTest` runs it beside this body on every case of the table. -/
+@[extern "qlean_csv_write"]
+def csvWrite (path : @& String) (cols : @& CsvCols) (n : USize) (es : @& List Enc) : IO Unit := do
+  if let some d := (System.FilePath.mk path).parent then IO.FS.createDirAll d
+  let b ← IO.ofExcept ((do
+    arity cols es.length
+    csvText cols n.toNat (← (cols.zip es).mapM fun (c, e) => Kernel.rawAll c.2.1 n e) : Except String (List UInt8)).mapError
+      (s!"{path}: {·}"))
+  IO.FS.writeBinFile path ⟨b.toArray⟩
 
 end Rel.Db

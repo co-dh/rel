@@ -179,6 +179,160 @@ pub fn refusal(b: &[u8], lx: &Lexed, cols: &[Col], bad: &[AtomicUsize]) -> Resul
     Err(format!("row {r} (line {}), column '{}': expected {}, found {}", line(b, p), cols[c].name, form(&cols[c]), shown(&f)))
 }
 
+/// The writer is given `k` word columns, one per schema column (`arity`).
+pub fn arity(cols: &[Col], k: usize) -> Result<(), String> {
+    if k == cols.len() { Ok(()) } else { Err(format!("{k} word columns, the schema {} has {}", names(cols), cols.len())) }
+}
+
+/// The writer (`csvText`, after `csvWrite`'s checks): the header, then the `n` rows `2^lg` at a time — `load(c, lo, out)`
+/// puts column `c`'s words of rows `lo ..` into `out` from its encoding, each row's cells are formatted (`text`) into the
+/// chunk's bytes, and the chunk is appended to the temporary `own::replace_by` renames over `target`. The first word with
+/// no text in row order, then column order (the model's), is the refusal, and `target` keeps what it held.
+pub fn write(target: &CStr, cols: &[Col], n: usize, lg: u32, mut load: impl FnMut(usize, usize, &mut [u64])) -> Result<(), Fail> {
+    crate::own::replace_by(target, |f| {
+        let (blk, mut out, mut s) = (1usize << lg, Vec::new(), Vec::new());
+        for (k, c) in cols.iter().enumerate() { if k > 0 { out.push(b',') } field_out(c.name.as_bytes(), &mut out) }
+        out.push(b'\n');
+        let mut ws: Vec<Vec<u64>> = cols.iter().map(|_| alloc::vec![0; blk.min(n)]).collect();
+        for lo in (0..n).step_by(blk) {
+            let cnt = blk.min(n - lo);
+            for (c, w) in ws.iter_mut().enumerate() { load(c, lo, &mut w[..cnt]) }
+            for i in 0..cnt {
+                for (c, col) in cols.iter().enumerate() {
+                    if c > 0 { out.push(b',') }
+                    let w = ws[c][i];
+                    if text(col, w, &mut s).is_none() {
+                        return Err(Fail::User(format!("row {}, column '{}': the word {w} has no text as {}", lo + i, col.name, form(col))));
+                    }
+                    field_out(&s, &mut out);
+                }
+                out.push(b'\n');
+            }
+            f.write_all(&out)?;
+            out.clear();
+        }
+        Ok(f.write_all(&out)?)
+    })
+}
+
+/// A field as written (`field`): quoted iff it holds `,` `"` `\r` `\n`, a `"` inside doubled.
+fn field_out(f: &[u8], out: &mut Vec<u8>) {
+    if !f.iter().any(|c| matches!(c, b',' | b'"' | b'\r' | b'\n')) { return out.extend_from_slice(f) }
+    out.push(b'"');
+    for &c in f { out.push(c); if c == b'"' { out.push(b'"') } }
+    out.push(b'"');
+}
+
+/// A column's word written (`cell`) into `s`: its name or its atom's text, and only if that reads back as the word.
+fn text(c: &Col, w: u64, s: &mut Vec<u8>) -> Option<()> {
+    s.clear();
+    if c.names.is_empty() { atom_text(c.t, w, s)? } else { s.extend_from_slice(c.names.get(usize::try_from(w).ok()?)?.as_bytes()) }
+    (cell(c, s) == Some(w)).then_some(())
+}
+
+/// `fmt` into the bytes `s`; a `Vec` takes every byte, so `None` is never the answer.
+fn put(s: &mut Vec<u8>, a: core::fmt::Arguments) -> Option<()> {
+    struct V<'a>(&'a mut Vec<u8>);
+    impl core::fmt::Write for V<'_> { fn write_str(&mut self, x: &str) -> core::fmt::Result { self.0.extend_from_slice(x.as_bytes()); Ok(()) } }
+    core::fmt::Write::write_fmt(&mut V(s), a).ok()
+}
+
+/// A word written at an atom (`fmtAtom`), before `text` checks that it reads back.
+fn atom_text(t: u8, w: u64, s: &mut Vec<u8>) -> Option<()> {
+    match t {
+        QT_U1 => s.push(if w == 0 { b'0' } else { b'1' }),
+        QT_U8 => s.extend_from_slice(&[HEX[(w >> 4 & 15) as usize], HEX[(w & 15) as usize]]),
+        QT_CHAR => s.push(w as u8),
+        QT_F32 => { let v = f32::from_bits(w as u32); float_text(s, v.is_nan(), v.is_infinite(), v == 0.0, v.is_sign_negative(), format_args!("{:e}", v.abs()),
+            v.abs() as f64, |t| t.parse::<f32>() == Ok(v.abs()))? }
+        QT_F64 => { let v = f64::from_bits(w); float_text(s, v.is_nan(), v.is_infinite(), v == 0.0, v.is_sign_negative(), format_args!("{:e}", v.abs()),
+            v.abs(), |t| t.parse::<f64>() == Ok(v.abs()))? }
+        QT_DATE => { let (y, m, d) = civil(w as u32 as i32 as i64); put(s, format_args!("{:04}-{m:02}-{d:02}", y.max(0)))? }
+        QT_DATETIME => {
+            const DAY: i64 = 86_400_000_000_000;
+            let x = w as i64;
+            let ((y, m, d), r) = (civil(x.div_euclid(DAY)), x.rem_euclid(DAY));
+            put(s, format_args!("{:04}-{m:02}-{d:02}D{:02}:{:02}:{:02}.{:09}", y.max(0), r / 3_600_000_000_000,
+                r / 60_000_000_000 % 60, r / 1_000_000_000 % 60, r % 1_000_000_000))?
+        }
+        QT_SYM | QT_GENERAL => return None,
+        t => {
+            let b = 8 * crate::scan::qtype_width(t)? as u32;
+            // `signed`: the low `b` bits as a two's complement integer
+            put(s, format_args!("{}", ((w as i128) << (128 - b)) >> (128 - b)))?
+        }
+    }
+    Some(())
+}
+
+const HEX: &[u8; 16] = b"0123456789abcdef";
+
+/// A float written (`fmtFloat`): `0w`, `-0w`, `0` for a zero of either sign (which `cell` then refuses at `-0`), none at a
+/// NaN; else the shortest digits that read back, nearest the value (`e` is core's `{:e}` of the magnitude, whose digits
+/// are those), in the model's form (`sci`): plain for a decimal exponent in `[-5, 17)`, else `d.ddde-x`. `v` is the
+/// magnitude exactly (an `f32` widens exactly) and `back` says whether a decimal reads back to it at the atom's width.
+fn float_text(s: &mut Vec<u8>, nan: bool, inf: bool, zero: bool, neg: bool, e: core::fmt::Arguments, v: f64,
+              back: impl Fn(&str) -> bool) -> Option<()> {
+    if nan { return None }
+    if neg && !zero { s.push(b'-') }
+    if inf { s.extend_from_slice(b"0w"); return Some(()) }
+    if zero { s.extend_from_slice(b"0"); return Some(()) }
+    let (d, x) = sci_parts(e)?;
+    let (mut d, mut p) = even_tie(d.clone(), x - (d.len() as i32 - 1), v, back)?;
+    while d.len() > 1 && d.last() == Some(&b'0') { d.pop(); p += 1 }
+    let (len, zeros) = (d.len() as i32, |s: &mut Vec<u8>, k: i32| s.extend(core::iter::repeat_n(b'0', k as usize)));
+    let x = p + len - 1;
+    if (-5..17).contains(&x) {
+        if p >= 0 { s.extend_from_slice(&d); zeros(s, p) }
+        else if len + p > 0 { let k = (len + p) as usize; s.extend_from_slice(&d[..k]); s.push(b'.'); s.extend_from_slice(&d[k..]) }
+        else { s.extend_from_slice(b"0."); zeros(s, -(len + p)); s.extend_from_slice(&d) }
+    } else {
+        s.push(d[0]);
+        if len > 1 { s.push(b'.'); s.extend_from_slice(&d[1..]) }
+        put(s, format_args!("e{x}"))?
+    }
+    Some(())
+}
+
+/// The digits and decimal exponent of core's `{:e}` text: `d.ddde-x` as (`dddd`, `-x`).
+fn sci_parts(e: core::fmt::Arguments) -> Option<(Vec<u8>, i32)> {
+    let mut m = Vec::new();
+    put(&mut m, e)?;
+    let at = m.iter().position(|&c| c == b'e')?;
+    Some((m[..at].iter().copied().filter(|&c| c != b'.').collect(), core::str::from_utf8(&m[at + 1..]).ok()?.parse().ok()?))
+}
+
+/// `fmtFloat`'s tie rule on the shortest digits `d` (the value `d * 10 ^ p`): when `v` lies exactly halfway between
+/// the two neighbours at `p` and the even one reads back, that one, else `d`. Core's shortest digits break a tie upward.
+fn even_tie(d: Vec<u8>, p: i32, v: f64, back: impl Fn(&str) -> bool) -> Option<(Vec<u8>, i32)> {
+    if d.last()? % 2 == 0 { return Some((d, p)) }
+    // 800 places hold every finite f64 exactly (at most 767 significant digits), so the text is `v` itself
+    let (s, xs) = sci_parts(format_args!("{:.800e}", v))?;
+    let c = usize::try_from(xs - p + 1).ok();
+    if !c.is_some_and(|c| s.get(c) == Some(&b'5') && s[c + 1..].iter().all(|&z| z == b'0')) { return Some((d, p)) }
+    let c = c?;
+    let lo: u64 = if c == 0 { 0 } else { core::str::from_utf8(&s[..c]).ok()?.parse().ok()? };
+    let dn: u64 = core::str::from_utf8(&d).ok()?.parse().ok()?;
+    let alt = if dn == lo { lo + 1 } else { lo };
+    let mut t = Vec::new();
+    put(&mut t, format_args!("{alt}e{p}"))?;
+    if alt == 0 || !back(core::str::from_utf8(&t).ok()?) { return Some((d, p)) }
+    t.truncate(t.iter().position(|&z| z == b'e')?);
+    Some((t, p))
+}
+
+/// The day `z` days after 1970-01-01 as year, month, day (`civil`, H. Hinnant's `civil_from_days`).
+fn civil(z: i64) -> (i64, i64, i64) {
+    let z = z + 719468;
+    let era = z.div_euclid(146097);
+    let doe = z - era * 146097;
+    let yoe = (doe - doe / 1460 + doe / 36524 - doe / 146096) / 365;
+    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+    let mp = (5 * doy + 2) / 153;
+    let (d, m) = (doy - (153 * mp + 2) / 5 + 1, if mp < 10 { mp + 3 } else { mp - 9 });
+    (yoe + era * 400 + if m <= 2 { 1 } else { 0 }, m, d)
+}
+
 /// `QAtomicType`'s constructor indices (Rel/Kernel/Value.lean's order; `scan::qtype_width` reads the same).
 const QT_U1: u8 = 0;
 const QT_U8: u8 = 1;

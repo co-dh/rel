@@ -100,8 +100,6 @@ pub fn text(buf: &[u8]) -> String {
 /// `own_write_all` over a file: every segment whole (`os::write_all` continues a short write and retries `EINTR`).
 pub fn write_segs(f: &File, segs: &[&[u8]]) -> Result<(), i32> { segs.iter().try_for_each(|s| f.write_all(s)) }
 
-/// `r`, else the `close` error: the write's errno is the one reported when both fail.
-pub fn close_after(f: File, r: Result<(), i32>) -> Result<(), i32> { let c = f.close(); r.and(c) }
 
 /// every missing ancestor directory of `target`, outermost first, mode 0o777 under the umask; `EEXIST` is success (another
 /// writer made it), any other errno is returned. A POSIX path: the separator is the byte `/`, empty components are skipped.
@@ -121,15 +119,20 @@ pub fn mkdirs(target: &CStr) -> Result<(), i32> {
 /// (truncating a mapped path would turn the next read of its pages into SIGBUS; the old mapping keeps the old inode).
 /// A link is written through as `open` would, and a device, fifo or socket is written in place: the name is the thing
 /// itself and cannot be renamed over.
-pub fn replace(target: &CStr, segs: &[&[u8]]) -> Result<(), i32> {
+pub fn replace(target: &CStr, segs: &[&[u8]]) -> Result<(), i32> { replace_by(target, |f| write_segs(f, segs)) }
+
+/// `replace` with the content written by `write` into the open file, for a writer that produces it in pieces; an error
+/// of `write` (an errno or a refusal of its own) leaves `target` as it was.
+pub fn replace_by<E: From<i32>>(target: &CStr, write: impl FnOnce(&File) -> Result<(), E>) -> Result<(), E> {
     static SERIAL: AtomicUsize = AtomicUsize::new(0);
-    let st = match os::stat(target) { Ok(s) => Some(s), Err(os::ENOENT) => None, Err(e) => return Err(e) };
+    let st = match os::stat(target) { Ok(s) => Some(s), Err(os::ENOENT) => None, Err(e) => return Err(E::from(e)) };
     let mut real = [0u8; os::PATH_MAX];
     let target = if st.is_some() { os::realpath(target, &mut real)? } else { target };
     if st.as_ref().is_some_and(|s| s.mode & os::S_IFMT != os::S_IFREG) {
         let f = File::open(target, os::O_WRONLY | os::O_CLOEXEC, 0)?;
-        let w = write_segs(&f, segs);
-        return close_after(f, w);
+        let w = write(&f);
+        let c = f.close();
+        return w.and(c.map_err(E::from));
     }
     let mut tmp = target.to_bytes().to_vec();
     tmp.extend_from_slice(format!(".{}.{}.tmp\0", os::getpid(), SERIAL.fetch_add(1, Ordering::Relaxed)).as_bytes());
@@ -140,8 +143,10 @@ pub fn replace(target: &CStr, segs: &[&[u8]]) -> Result<(), i32> {
         Err(os::ENOENT) if st.is_none() => { mkdirs(target)?; File::open(tmp, flags, 0o666)? }
         r => r?,
     };
-    let w = write_segs(&f, segs).and_then(|()| match &st { Some(s) => f.fchmod(s.mode & 0o7777), None => Ok(()) });
-    let r = close_after(f, w).and_then(|()| os::rename(tmp, target));
+    let w = write(&f).and_then(|()| match &st { Some(s) => f.fchmod(s.mode & 0o7777).map_err(E::from), None => Ok(()) });
+    // closed whatever `w` is; the write's error is the one reported when both fail
+    let c = f.close();
+    let r = w.and(c.map_err(E::from)).and_then(|()| os::rename(tmp, target).map_err(E::from));
     // the write's errno is the one reported; a temporary that also cannot be removed stays behind
     if r.is_err() { let _ = os::unlink(tmp); }
     r

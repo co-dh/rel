@@ -210,7 +210,17 @@ type Seg = [u64; BLK / 64];
 /// or a block source of `w`-byte elements cut by the mask `m` (`!0`, or `1` for a boolean `foR`, which `raw` reads at
 /// its one bit). Each form reads 0 past what it holds, as `raw` does.
 #[derive(Clone, Copy)]
-enum Col<'a> { Dense(&'a [u8], usize), Blk(Blocks<'a>, usize, u64) }
+pub(crate) enum Col<'a> { Dense(&'a [u8], usize), Blk(Blocks<'a>, usize, u64) }
+
+/// `rawAll t n e` (Rel/Kernel/Scan.lean): `e` read as `Enc.raw t n`, whose every arm holds `n` words but the `#[]` ones,
+/// which are the refusal unless `n = 0`. The CSV writer reads its columns through it too.
+pub(crate) fn raw_all<'a>(t: u8, n: usize, e: B<'a>) -> Result<Col<'a>, String> {
+    match Col::of(t, n, e) {
+        Some(c) => Ok(c),
+        None if n == 0 => Ok(Col::Dense(&[], 8)),
+        None => Err(format!("kscan: a column holds 0 raw elements, not {n}")),
+    }
+}
 
 impl<'a> Col<'a> {
     /// `Enc.raw s n e`'s arms; `None` where `raw` is `#[]`.
@@ -230,7 +240,7 @@ impl<'a> Col<'a> {
     }
     /// Rows `lo .. lo + out.len()` as words into `out`, each zero-extended from its width. `tmp` holds a block at 8
     /// bytes a row; a source on the writer's grid is decoded one block straight into it (or into `out` at 8 bytes).
-    fn load(&self, lo: usize, out: &mut [u64], tmp: &mut [u8]) {
+    pub(crate) fn load(&self, lo: usize, out: &mut [u64], tmp: &mut [u8]) {
         match *self {
             Col::Dense(p, w) => widen(p.get(lo * w..).unwrap_or(&[]), w, out),
             Col::Blk(bl, w, m) => {
@@ -406,14 +416,8 @@ impl Scan<'_> {
 /// The fold result is the row the fold visits last (row `n - 1`, row 0 under `rev`), taken from the block the writer
 /// fills and cut to `t`'s width as `Enc.raw t` reads it back; `None` at `n = 0`, where no row is visited.
 pub fn kscan<'a>(op: u8, rev: bool, s: u8, t: u8, n: usize, seg: B<'a>, es: &[B<'a>]) -> Result<(O, Option<u64>), String> {
-    // `None` is `raw`'s `#[]`, of size 0: at `n = 0` that is every row
-    let all = |t: u8, e: B<'a>| match Col::of(t, n, e) {
-        Some(c) => Ok(c),
-        None if n == 0 => Ok(Col::Dense(&[], 8)),
-        None => Err(format!("kscan: a column holds 0 raw elements, not {n}")),
-    };
-    let g = all(QT_BOOLEAN, seg)?;
-    let cols = es.iter().map(|&e| all(s, e)).collect::<Result<Vec<_>, _>>()?;
+    let g = raw_all(QT_BOOLEAN, n, seg)?;
+    let cols = es.iter().map(|&e| raw_all(s, n, e)).collect::<Result<Vec<_>, _>>()?;
     let Some((&seed, xs)) = cols.split_first() else { return Err("kscan: es is empty; its first column is the seed".into()) };
     let mut r = Scan { op, rev, n, seg: g, seed, xs, carry: Vec::new() };
     if let Err(m) = op_eval(op, 0, 0) && r.zero() { return Err(m.into()) }
