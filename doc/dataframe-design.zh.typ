@@ -65,7 +65,7 @@ Rel 本身（`Obj`、`Tm`、kernel、编码、原子、`compile`）见 `rel-arch
 - frame 是 `Vals C n`（`Rel/Run/Core.lean:456`），不新增类型；列的布局见 `rel-architecture` §4.3『原子类型：都是 foR 的 code』。
   它表示的关系、行的编号与落盘方式在第 2 节。
 - 一个运算是 `[C] ⟶ [C']`，与 Haskell 的 `DataFrame -> DataFrame` 一一对应。
-- 值为集合的结果（组的 key、`distinct`）按 Rel 的 canonical 约定存成 `asc` 之后 `distinct`：见 `rel-architecture` §4.5『allegory 运算 → kernel』。
+- 值为集合的结果（组的 key、`distinct`）按 Rel 的 canonical 约定存成 `asc → seen → gather`（`canon`）：见 `rel-architecture` §4.5『allegory 运算 → kernel』。
 
 == schema 与列名
 
@@ -112,8 +112,8 @@ Rel 本身（`Obj`、`Tm`、kernel、编码、原子、`compile`）见 `rel-arch
 一个实例：frame `[(A,1),(B,2),(A,1)]` 是 `a : N ⟶ K`、`b : N ⟶ V`，`m = 3`：`0 {a} A`，`0 {b} 1`，`2 {a} A`，`2 {b} 1`，`3` 没有像。
 第 0 行与第 2 行是 `N` 的不同元素，所以是两行；`a° ≫ b` 只有 `A ↦ 1`、`B ↦ 2` 两对。
 
-- *语义是集合。* 没有 bag，也没有 list 对象。frame 是一族从同一个 `N` 出发的部分 map，定义域都是 `(<m)`。以 `N` 为 key 它已经是
-  `asc`、`distinct` 的，不需要排序。`a° ≫ b : A ⟶ B`（排序并去重）只在运算的规格需要它时才形成：join、`distinct`、成员判断。
+- *语义是集合。* 没有 bag，也没有 list 对象。frame 是一族从同一个 `N` 出发的部分 map，定义域都是 `(<m)`。以 `N` 为 key 它已经
+  有序且无重复，不需要排序。`a° ≫ b : A ⟶ B`（排序并去重）只在运算的规格需要它时才形成：join、`distinct`、成员判断。
 - *新 frame = 位置关系后接列。* 结果是新 frame 的运算给出 `ι : N ⟶ N`（新位置 ↦ 旧位置），结果是 `ι ≫ x`。
 - *`(lo, hi)` 窗口在 frame 上，所有列共用。* 每个运算对所有列施加同一个 `ι : N ⟶ N`，所以窗口不属于某一列。
   key 仍是位置 `pos`，`m = hi − lo`；`take`、`drop` 只移动 `lo`、`hi`；构造新数组的运算（按 `σ` 的 `gather`、`filter` 的压紧、
@@ -145,12 +145,12 @@ take(n)       = (<n) ≫ x                       hi := min(hi, lo+n)
 drop(n)       = (+n) ≫ x                       lo += n；长度 m ∸ n，因为 x 在 ≥ m 处无像
 range(a, b)   = (<b−a) ≫ (+a) ≫ x              takeLast(n) = drop(m ∸ n)    dropLast(n) = take(m ∸ n)
 where(P)      : N ⟶ N                          (<size(P)) 到 P 的唯一单调双射：新位置 j ↦ P 的第 j 个元素
-                                               q：where m；实现：r[(sums m)-m] 处写入 i，一次 scan 加一次 scatter
+                                               q：where m；实现见 `rel-architecture` §4 的 where 行
 filter(p)     = where(dom(x ≫ p)) ≫ x
 σ = asc(x ≫ a)                                 (<m) 上的双射，按 ⟨x ≫ a, 𝟙⟩ 的字典序单调，所以唯一
 firstOcc(a)   : N ⟶ N = where((<m) − dom(x ≫ a ∩ >ₙ ≫ x ≫ a))
                                                每个 a 值第一次出现的位置（之前没有相同的 a），按第一次出现的顺序；
-                                               q：x?distinct x；scan，carrier 是已见集合
+                                               q：x?distinct x
 g(a)          : N ⟶ N = x ≫ a ≫ (firstOcc(a) ≫ x ≫ a)°            组号：i 的 a 值在 firstOcc(a) 中的编号；q：(distinct x)?x
 lastOcc(a)    : N ⟶ N = agg(max, g(a)°, 𝟙)      每个 a 值最后一次出现的位置，按组号：位置按 g 覆盖写入
 J             = x ≫ k ≫ h° ≫ y°  : N ⟶ N        key 相等的左右位置对；k : C ⟶ K，h : E ⟶ K
@@ -159,9 +159,10 @@ agg(⊕, R, y)  = Λ(R) ≫ fold(⊕, y)              R : A ⟶ N；每个 a 对
 win(w)        = ≥ₙ ∩ <ₙ ≫ (+w)°                i ↦ i−w < j ≤ i 的每个 j
 ```
 
-- 一个实例：`x ≫ a = B A B`：`0` 时已见 `∅`，留；`1` 时 `A ∉ {B}`，留；`2` 时 `B ∈ {B, A}`，丢。`firstOcc = 0 1`，`g = 0 1 0`。
-  规则：`firstOcc`、`g` 是同一次 scan，已见集合在编码列（sym、字典 id，值是 `0..card−1`）上是 card 位的 bitmap，
-  一般值上是 hash；扫描一遍，O(m)。列已有序时已见集合退化为「前一个值」。
+- 一个实例：`x ≫ a = B A B`：`σ = 1 0 2`（排好是 `A B B`）；`seen` 在 `A B B` 上给 `first = 0 1`，经 `σ` 回到原位置 `1 0`；
+  这 `k = 2` 个位置升序排列得 `firstOcc = 0 1`，`g = 0 1 0`。
+  规则：`firstOcc`、`g` = `asc ≫ seen`，再对 `k` 个代表位置做一次 `asc`，把组号从 key 顺序换成第一次出现的顺序；
+  `seen` 只收已按 `asc` 排好的行（`rel-architecture` §4 的 `seen` 行），所以是 O(m log m)，不是 hash 的 O(m)。
 
 - 一个实例：`take(3)` 在 `m = 4` 的 `x` 上：`2 {(<3)} 2 {x} (A,1)`；`3` 被 `(<3)` 挡住，没有像。
   规则：结果是 `ι ≫ x`；coreflexive `(<n)` 收 `hi`，`(+n)` 移 `lo`，其余的 `ι` 得到 `lo = 0` 的新 frame（第 2 节）。
@@ -184,9 +185,9 @@ win(w)        = ≥ₙ ∩ <ₙ ≫ (+w)°                i ↦ i−w < j ≤ i 
   [`selectRows`], [`ix ≫ x`，`ix : N ⟶ N` 是输入的下标 frame], [下标来自数据],
   [`sortBy`], [`σ ≫ x`，`σ = asc(x ≫ a)`], [位置 `𝟙` 作次 key，`σ` 唯一：稳定排序就是规格，是相等而不是 refinement],
   [`topBy`], [`(<n) ≫ σ ≫ x`], [],
-  [`distinct`], [`firstOcc(𝟙) ≫ x`], [按第一次出现的顺序；一次 scan 加 `where`。`B A B` → `B A`],
+  [`distinct`], [`firstOcc(𝟙) ≫ x`], [按第一次出现的顺序；`asc ≫ seen`，再排 `k` 个代表位置。`B A B` → `B A`],
   [`groupBy`], [组号 `g(k)`；组是 `g(k)° : N ⟶ N`，组的 key 是 `firstOcc(k) ≫ x ≫ k`], [组按 key 第一次出现的顺序],
-  [`aggregate`], [`⟨firstOcc(k) ≫ x ≫ k, agg(⊕, g(k)°, x ≫ v)⟩`], [`g` 一次 scan；按组号累加 `⊕` 也是一遍，但要求写入时带 `⊕` 的 scatter（今天的 `scatter` 只覆盖）],
+  [`aggregate`], [`⟨firstOcc(k) ≫ x ≫ k, agg(⊕, g(k)°, x ≫ v)⟩`], [按组号累加 `⊕` 是一次带 `Op` 的 `scatter`（`.add`；`lastOcc` 用 `.last`）],
   [`sum` `mean` `count` `countAll` `minimum` `maximum` `reduce`], [`fold(⊕, x ≫ v)(dom(x))`，`⊕ = add`、`min`、…；`count = m`；`mean = ⟨sum, count⟩ ≫ fdiv`], [`Op` 的 fold],
   [`variance` `stddev` `skewness` `correlation` `zScore`], [若干 fold 的 pair 再做算术], [],
   [`median` `percentile` `genericPercentile` `interQuartileRange`], [`i ≫ σ ≫ x ≫ v`，`σ = asc(x ≫ v)`，`i = ⌊r·m⌋ : 1 ⟶ N`],
