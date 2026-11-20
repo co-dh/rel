@@ -230,7 +230,7 @@ Beside the answer it returns the **fold result**: the word of the row the fold v
 An `Op.eval` error, a column short of `n` raw words, an empty `es` or a `t` of no width is the `.error`, never a default.
 Temporary name until 6.11: `Kernel.scan` (`Driver.lean`) and `qlean_scan` exist. -/
 @[extern "qlean_k_scan"]
-def kscan (op : Op) (rev : Bool) (s t : QAtomicType) (n : USize) (seg : @& Enc) (es : @& List Enc) :
+def kscan (op : @& Op) (rev : Bool) (s t : QAtomicType) (n : USize) (seg : @& Enc) (es : @& List Enc) :
     Except String (Enc × Option UInt64) := do
   let rv := fun a : Array UInt64 => if rev then a.reverse else a
   let g ← rawAll .u1 n seg

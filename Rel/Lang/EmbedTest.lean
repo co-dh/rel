@@ -37,16 +37,21 @@ elab "#rel_parse " s:str : command => do
 #guard_msgs in #rel_parse "f : A ⟶ A ≜ R where x := 1"
 
 -- Lean gives every category the antiquotation `$x`, `$(…)` at any quotation depth, so these parse; reading the
--- program refuses them. Only where a term is: an operator's place takes no `$x`, so a juxtaposed one ends the term as
--- any name does (the statements after it, at the end of this file)
+-- program refuses them. Only where a term starts: after a term, `$` is the cast row (`x $ F`), so `𝟙 $x` is a cast
+-- whose object is missing.
 /-- info: parsed f:A⟶A≜$x -/
 #guard_msgs in #rel_parse "f : A ⟶ A ≜ $x"
 /-- info: parsed f:A⟶A≜$(fun x => x) -/
 #guard_msgs in #rel_parse "f : A ⟶ A ≜ $(fun x => x)"
-/-- error: line 50, col 19: `$` is no term of the Rel language: an antiquotation has no place in a program -/
+/-- error: line 50, col 17: `$` is no term of the Rel language: an antiquotation has no place in a program -/
 #guard_msgs in
 open Rel.Programs.prelude in
 rel_program antiquot where
+    f : 1 ⟶ 1 ≜ $x
+/-- error: line 55, col 17: expected a term -/
+#guard_msgs in
+open Rel.Programs.prelude in
+rel_program antiquot2 where
     f : 1 ⟶ 1 ≜ 𝟙 $x
 
 /-! `theorem n : e = f := calc` (`doc/rel-mss-proof-design.md` §3, §8): each step `_ = x := n` cites a theorem, `≜ n`
@@ -72,7 +77,7 @@ rel_program thm where
 #guard (thm.filterMap fun | .«theorem» _ n _ _ _ _ _ _ ss => some (n, ss.length) | _ => none) ==
   [("unit", 0), ("good", 2), ("le", 2)]
 
-/-- error: line 80, col 7: theorem `t`: this step x is Rel.Lang.EmbedTest.thm.K ⟶ Rel.Lang.EmbedTest.thm.N, the statement's two is Rel.Lang.EmbedTest.thm.N ⟶ Rel.Lang.EmbedTest.thm.N -/
+/-- error: line 85, col 7: theorem `t`: this step x is Rel.Lang.EmbedTest.thm.K ⟶ Rel.Lang.EmbedTest.thm.N, the statement's two is Rel.Lang.EmbedTest.thm.N ⟶ Rel.Lang.EmbedTest.thm.N -/
 #guard_msgs in
 open Rel.Programs.prelude thm in
 rel_program thmType where
@@ -80,42 +85,42 @@ rel_program thmType where
       _ = x := unit
       _ = two := unit
 
-/-- error: line 88, col 11: `unit` is a theorem, not a relation -/
+/-- error: line 93, col 11: `unit` is a theorem, not a relation -/
 #guard_msgs in
 open Rel.Programs.prelude thm in
 rel_program thmAsRel where
     theorem t : two = two := calc
       _ = unit := unit
 
-/-- error: line 95, col 18: `two` is a definition; write `≜ two` -/
+/-- error: line 100, col 18: `two` is a definition; write `≜ two` -/
 #guard_msgs in
 open Rel.Programs.prelude thm in
 rel_program relAsThm where
     theorem t : two = two := calc
       _ = two := two
 
-/-- error: line 102, col 20: `unit` is a theorem, not a definition -/
+/-- error: line 107, col 20: `unit` is a theorem, not a definition -/
 #guard_msgs in
 open Rel.Programs.prelude thm in
 rel_program thmAsDef where
     theorem t : two = two := calc
       _ = two := ≜ unit
 
-/-- error: line 109, col 18: unknown theorem 'nope' -/
+/-- error: line 114, col 18: unknown theorem 'nope' -/
 #guard_msgs in
 open Rel.Programs.prelude thm in
 rel_program thmUnknown where
     theorem t : two = two := calc
       _ = two := nope
 
-/-- error: line 116, col 7: the chain of `t` ends at two 𝟙, not at its right side two -/
+/-- error: line 121, col 7: the chain of `t` ends at two 𝟙, not at its right side two -/
 #guard_msgs in
 open Rel.Programs.prelude thm in
 rel_program thmEnds where
     theorem t : two 𝟙 = two := calc
       _ = two 𝟙 := unit
 
-/-- error: line 123, col 7: `t` states `=`: a step `⊑` proves only `⊑` -/
+/-- error: line 128, col 7: `t` states `=`: a step `⊑` proves only `⊑` -/
 #guard_msgs in
 open Rel.Programs.prelude thm in
 rel_program thmLe where

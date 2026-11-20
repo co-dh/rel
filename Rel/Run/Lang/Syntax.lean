@@ -1,6 +1,7 @@
 import Lean
 import Rel.Kernel.Op
 import Rel.Run.Core
+import Rel.Kernel.Cast
 
 /-! The Rel language's surface syntax (`doc/rel-lang-design.md` §c, §h): objects, terms, declarations, each node
     with its source line and column. The builtin operators are one table, `Op.table`, read by the parser (symbol,
@@ -260,7 +261,11 @@ def prims : List Prim :=
      sig := ([((.prod (.var {} "K") (.var {} "ℕ"), .var {} "ℕ"), some false)], .prod (.var {} "K") (.var {} "ℕ"),
        .var {} "ℕ"),
      mono := false, aop := .error "AOP declares no prefix sums per key", whole := true },
-   flatRow]
+   flatRow,
+   -- `x $ F`: each value of `x : A ⟶ N` to the same number at `F`'s atom (`QAtomicType.embed`, typed base S6), written
+   -- as its own infix form, which names the target object
+   { sym := "$", sig := ([], .var {} "N", .var {} "F"), written := false,
+     aop := .error "AOP declares no change of a number's representation" }]
 
 def Prim.find?(s : String) : Option Prim := prims.find? (·.sym == s)
 
@@ -366,8 +371,14 @@ inductive Decl
   | obj (p : Pos) (n : String) (d : ObjDef)
   /-- `ty`: the declared type `A ⟶ B`, required on a relation and absent on a test (§e). -/
   | defn (p : Pos) (n : String) (ps : List Param) (b : Body) (ty : Option (OExp × OExp))
-  | print (p : Pos) (e : Expr)
-  | check (p : Pos) (e f : Expr) (eq : Bool)
+  /-- `binds`: the `where` items, each an input of the program and the table that stands for it here (IO design A.4). -/
+  | print (p : Pos) (e : Expr) (binds : List (String × Expr))
+  | check (p : Pos) (e f : Expr) (eq : Bool) (binds : List (String × Expr))
+  /-- `input n : A ⟶ B from p`: a relation with no body, a parameter of the statements after it that mention it
+      (IO design A.2); read from the table directory `path`, or the CSV file `path` when `csv`. -/
+  | input (p : Pos) (n : String) (ty : OExp × OExp) (csv : Bool) (path : String)
+  /-- `output n to path`: the table of the definition or input `n` written to `path` (`csv`: as one CSV file). -/
+  | output (p : Pos) (n : String) (csv : Bool) (path : String)
   /-- `theorem n(ps) on A : e = f := calc` (`⊑` when `eq` is false), each step `_ = x := why` with its line; no
       steps: the proof is owed to Lean. `on A`: each step is also evaluated as `check A x = A y` (§3). -/
   | «theorem» (p : Pos) (n : String) (ps : List Param) (e f : Expr) (eq : Bool) (on : Option Expr)

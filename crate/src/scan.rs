@@ -133,16 +133,73 @@ pub fn op_word(op: u8, a: u64, x: u64) -> u64 {
         34 => fw(m::tan(f(x))), 35 => fw(m::asin(f(x))), 36 => fw(m::acos(f(x))), 37 => fw(m::atan(f(x))),
         38 => fw(crate::ew::floor64(f(x))),
         39 => w(f(a) == f(x)), 40 => w(f(a) != f(x)), 41 => w(f(a) < f(x)), 42 => w(f(a) <= f(x)), 43 => w(f(x) < f(a)), 44 => w(f(x) <= f(a)),
-        // 45, `f32to64`: the last constructor, and Lean passes no other index
-        _ => widen32(x),
+        45 => widen32(x),
+        // `cast s t`, the last constructor: its code is `CAST + 13 s + t` (`op_code`)
+        _ => cast_word(op, x),
     }
 }
 
-/// `body` with the const `$k` bound to the op `op` (0 ..= 45), so a loop over rows is compiled once per op and its
-/// `op_word` folds to that op's arm: the `match` on the op runs once per block, not once per row.
+/// The code of `Op.cast s t` is `CAST + 13 * s + t` (`s`, `t` `QAtomicType` indices, below 13): one `u8` names every op.
+pub const CAST: u8 = 46;
+
+/// The op code of the Lean `Op` `o`: a nullary op is the scalar of its constructor index, `cast s t` (tag 46) a ctor
+/// whose two `QAtomicType` fields are its scalar bytes 0 and 1.
+#[cfg(all(feature = "ffi", not(any(test, feature = "std"))))]
+pub fn op_code(o: crate::lean::B) -> u8 {
+    if o.is_scalar() { o.unbox() as u8 } else { CAST + 13 * o.u8_field(0) + o.u8_field(1) }
+}
+
+/// `Op.eval (.cast s t)` (Rel/Kernel/Cast.lean `castWord`) at the code `CAST + 13 s + t`: the word `x` read at `s`
+/// (`ofBits`), its value, and the word of `t` holding exactly that value (`QAtomicType.embed`, `word`: an integer
+/// sign-extended, a float's bits, `+0` the one zero); `2^63` where there is none (a null, an infinity, a NaN, a value
+/// `t` does not hold exactly, an atom holding no number). Lean's rounding-free `floatBits` is the native conversion
+/// checked exact by converting back.
+pub fn cast_word(code: u8, x: u64) -> u64 {
+    const NONE: u64 = 1 << 63;
+    #[derive(Clone, Copy)] enum V { I(i64), F(f64) }
+    let (s, t) = ((code - CAST) / 13, (code - CAST) % 13);
+    let int = |k: i64, nul: i64| if k == nul { None } else { Some(V::I(k)) };
+    let v = match s {
+        1 => Some(V::I(x as u8 as i64)),
+        8 => int(x as u8 as i8 as i64, i8::MIN as i64),
+        2 => int(x as u16 as i16 as i64, i16::MIN as i64),
+        3 => int(x as u32 as i32 as i64, i32::MIN as i64),
+        4 => int(x as i64, i64::MIN),
+        5 => Some(f32::from_bits(x as u32) as f64).filter(|f| f.is_finite()).map(V::F),
+        6 => Some(f64::from_bits(x)).filter(|f| f.is_finite()).map(V::F),
+        _ => None,
+    };
+    // an integer `t` holds `k` where `k` is in its range; a float holds `k` where the conversion back is `k`
+    let at = |lo: i64, hi: i64| v.and_then(|v| match v {
+        V::I(k) => Some(k),
+        // `f as i64` is exact below 2^63 in magnitude; converting back tests integrality without `fract` (not in `core`)
+        V::F(f) => (-9223372036854775808.0 <= f && f < 9223372036854775808.0 && f as i64 as f64 == f).then_some(f as i64),
+    }).filter(|k| lo <= *k && *k <= hi).map(|k| k as u64);
+    let zero = |b: u64, z: bool| if z { 0 } else { b };
+    let r = match t {
+        1 => at(0, 255),
+        8 => at(-(i8::MAX as i64), i8::MAX as i64),
+        2 => at(-(i16::MAX as i64), i16::MAX as i64),
+        3 => at(-(i32::MAX as i64), i32::MAX as i64),
+        4 => at(-i64::MAX, i64::MAX),
+        5 => v.and_then(|v| match v {
+            V::I(k) => { let g = k as f32; (g as i128 == k as i128).then(|| zero(g.to_bits() as u64, g == 0.0)) }
+            V::F(f) => { let g = f as f32; (g.is_finite() && g as f64 == f).then(|| zero(g.to_bits() as u64, g == 0.0)) }
+        }),
+        6 => v.and_then(|v| match v {
+            V::I(k) => { let g = k as f64; (g as i128 == k as i128).then(|| zero(g.to_bits(), g == 0.0)) }
+            V::F(f) => Some(zero(f.to_bits(), f == 0.0)),
+        }),
+        _ => None,
+    };
+    r.unwrap_or(NONE)
+}
+
+/// `body` with the const `$k` bound to the op `op` (0 ..= 45, `CAST` for every cast), so a loop over rows is compiled
+/// once per op and its `op_word` folds to that op's arm: the `match` on the op runs once per block, not once per row.
 macro_rules! by_op { ($op:expr, $k:ident => $body:expr) => { by_op!(@ $op, $k, $body; 0 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17
-    18 19 20 21 22 23 24 25 26 27 28 29 30 31 32 33 34 35 36 37 38 39 40 41 42 43 44) };
-    (@ $op:expr, $k:ident, $body:expr; $($n:literal)*) => { match $op { $($n => { const $k: u8 = $n; $body })* _ => { const $k: u8 = 45; $body } } } }
+    18 19 20 21 22 23 24 25 26 27 28 29 30 31 32 33 34 35 36 37 38 39 40 41 42 43 44 45) };
+    (@ $op:expr, $k:ident, $body:expr; $($n:literal)*) => { match $op { $($n => { const $k: u8 = $n; $body })* _ => { const $k: u8 = CAST; $body } } } }
 
 /// The writer's block size, `kscan`'s answer grid: a block of rows is computed whole in one scratch of this many words.
 const BLK: usize = 1 << crate::DEFAULT_LG;
@@ -245,7 +302,8 @@ impl Scan<'_> {
     /// none) and one folded column are loops of their own, so the map shape vectorises.
     #[inline(always)]
     fn fold<const OP: u8>(&self, g: &Seg, lo: usize, mut c: u64, out: &mut [u64]) {
-        let (nb, f) = (out.len(), |a, x| op_word(OP, a, x));
+        // a cast's code carries its two atoms, so `CAST` stands for all of them and the row reads `self.op`
+        let (nb, f) = (out.len(), |a, x| op_word(if OP == CAST { self.op } else { OP }, a, x));
         let at = |i: usize| g[i >> 6] >> (i & 63) & 1 == 1;
         let none = g.iter().all(|&w| w == 0);
         let all = (0..nb.div_ceil(64)).all(|k| g[k] == if 64 * (k + 1) <= nb { !0 } else { !0 >> (64 - (nb & 63)) });

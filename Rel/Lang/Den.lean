@@ -9,6 +9,7 @@ import Rel.AscOrder
 import Rel.Rep
 import Rel.ObjOrder
 import Rel.Core.Fix
+import Rel.Kernel.Cast
 
 namespace Rel.Lang
 
@@ -301,7 +302,14 @@ def inlC : RowCode := ⟨"inl°", fun σ => (.sum (σ₁ σ) (σ₂ σ), σ₁ �
 def inrC : RowCode := ⟨"inr°", fun σ => (.sum (σ₁ σ) (σ₂ σ), σ₂ σ)⟩
 def sums : RowCode := ⟨"sums", fun σ => (.prod (σ₁ σ) .long, .long)⟩
 def flat : RowCode := ⟨"flat", fun σ => (.prod (σ₁ σ) (σ₂ σ), σ.getD 2 .long)⟩
+def cast : RowCode := ⟨"$", fun σ => (σ₁ σ, σ₂ σ)⟩
 end RowCode
+
+/-- `$` at `A ⟶ B`: the graph of the embedding of `A`'s atom in `B`'s (`QAtomicType.embed`), a partial function that
+    never rounds; `𝟘` where a side is no atom. -/
+def castDen : (A B : Obj) → Den A B
+  | .atom s, .atom t => fun x y => QAtomicType.embed s t x = some y
+  | _, _ => fun _ _ => False
 
 /-- A row's meaning at its object variables `σ`, given its relation arguments' meanings. -/
 abbrev RowDen (c : RowCode) := (σ : List Obj) → List Sem → Den (c.ty σ).1 (c.ty σ).2
@@ -349,7 +357,8 @@ def rowDens : List ((c : RowCode) × RowDen c) :=
    ⟨inlC, fun _ _ s a => Core.Rel.inl a s⟩,
    ⟨inrC, fun _ _ s b => Core.Rel.inr b s⟩,
    ⟨sums, fun σ => Sem.one (X := .prod (σ₁ σ) .long) (Y := .long) sumsDen⟩,
-   ⟨flat, fun σ => Sem.one (X := σ₁ σ) (Y := .prod (σ₂ σ) (σ.getD 2 .long)) flatDen⟩]
+   ⟨flat, fun σ => Sem.one (X := σ₁ σ) (Y := .prod (σ₂ σ) (σ.getD 2 .long)) flatDen⟩,
+   ⟨cast, fun σ _ => castDen (σ₁ σ) (σ₂ σ)⟩]
 
 
 /-- The row `r`'s meaning at `A ⟶ B` given its relation arguments' meanings, found as `Prim.run` finds its code;
