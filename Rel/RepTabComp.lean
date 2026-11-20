@@ -1015,12 +1015,9 @@ section Checks
 #guard
   let ts : List (List (Int64 × Int64)) := [[(3, 1), (1, 2), (3, 1), (-1, 2), (1, 2), (2, 7), (-5, -5), (0, 0)],
     [(2, 5), (1, -3), (2, 6), (7, 7), (9, 0), (2, 5), (-5, 4), (0, 0)], [(-2, 9), (-2, 9), (7, -3)], [(4, 8)], []]
-  let is (r : Except String (Tab .long .long)) (sp : List (Int64 × Int64)) := match r with
-    | .ok T => T.toList.eraseDups.length == T.toList.length && T.toList.all sp.contains && sp.all T.toList.contains
-    | .error _ => false
-  ts.all fun ps => (ts.all fun qs => is ((tab ps).comp (tab qs))
+  ts.all fun ps => (ts.all fun qs => specOk ((tab ps).comp (tab qs))
     (ps.flatMap fun (a, b) => qs.filterMap fun (b', c) => if b == b' then some (a, c) else none)) &&
-    is (tab ps).conv (ps.map fun (a, b) => (b, a))
+    specOk (tab ps).conv (ps.map fun (a, b) => (b, a))
 
 /-- Whether `compWith b` (blocked past `b` rows) and `compOne` (one expansion) give the same rows. -/
 private def blockedOk (b : Nat) (ps qs : List (Int64 × Int64)) : Bool :=
@@ -1068,12 +1065,6 @@ private def i8s : List UInt64 := [0xff, 0x80, 0x7f, 0, 1, 0xfe, 0x80, 0xff]
 #guard compOk (⟨8, Alg.col [3, 1, 2, 1, 4, 4, 0, 9], Arr.ofFn .f32 8 (f32s.getD · 0)⟩ : Tab .long (.atom .f32))
   (⟨5, Arr.ofFn .f32 5 (f32s.reverse.getD · 0), Alg.col [7, 8, 9, 7, 6]⟩ : Tab (.atom .f32) .long)
 
-/-- The answer `r` runs and holds the rows `sp` as a set, each once (`kasc` orders by `ordCode`, so not as listed). -/
-private def sameSet {A B : Obj} [BEq A.El] [BEq B.El] (r : Except String (Tab A B)) (sp : List (A.El × B.El)) :
-    Bool := match r with
-  | .ok T => let a := T.toList; let b := sp.eraseDups; a.length == b.length && a.all b.contains && b.all a.contains
-  | .error _ => false
-
 /-- The five-kernel `canon`, `∪`, `∩`, `−`, `⊑`, `conv` and `comp` against their denotations as sets of pairs on the
 same tables, whose key, value or middle column holds the words `ws` at `t` (`Arr.ofFn`). -/
 private def typeOk (t : QAtomicType) [BEq (Obj.atom t).El] (ws : List UInt64) (hu : t ≠ .u1 ∧ t.width.isSome) : Bool :=
@@ -1087,10 +1078,10 @@ private def typeOk (t : QAtomicType) [BEq (Obj.atom t).El] (ws : List UInt64) (h
   let le (R S : Tab (.atom t) .long) := (R.le S).toOption == some (R.toList.all S.toList.contains)
   let comp {A B C : Obj} [BEq B.El] (r : List (A.El × B.El)) (q : List (B.El × C.El)) : List (A.El × C.El) :=
     r.flatMap fun (a, b) => q.filterMap fun (b', c) => if b == b' then some (a, c) else none
-  sameSet K.canon k && sameSet V.canon v && sameSet (K.union K₂) (k ++ k₂) &&
-  sameSet (K.inter K₂) (k.filter k₂.contains) && sameSet (K.diff S) (k.filter (!s.contains ·)) &&
-  sameSet (S.diff K) (s.filter (!k.contains ·)) && le K K && le K S && le S K &&
-  sameSet K.conv (k.map fun (a, b) => (b, a)) && sameSet (V.comp K) (comp v k) && sameSet (K.comp V) (comp k v)
+  specOk K.canon k && specOk V.canon v && specOk (K.union K₂) (k ++ k₂) &&
+  specOk (K.inter K₂) (k.filter k₂.contains) && specOk (K.diff S) (k.filter (!s.contains ·)) &&
+  specOk (S.diff K) (s.filter (!k.contains ·)) && le K K && le K S && le S K &&
+  specOk K.conv (k.map fun (a, b) => (b, a)) && specOk (V.comp K) (comp v k) && specOk (K.comp V) (comp k v)
 
 -- floats (`-0.0` apart from `+0.0`, two NaN payloads apart, `±inf`), a narrow signed integer and `datetime` as key,
 -- value and middle column

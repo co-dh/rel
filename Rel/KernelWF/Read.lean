@@ -18,9 +18,7 @@ import Rel.KernelSpec.Search
 import Rel.KernelSpec.Structural
 import Rel.KernelSpec.SymFind
 import Rel.ObjOrder
-import Rel.Run.Alg
-import Rel.Run.Code
-import Rel.Run.KernelWF.Raze
+import Rel.Run.Core
 import Rel.Rep
 
 /-! Read lemmas of the run path's own definitions (`Enc.get`, `Enc.raw`, `Vals.row`, the foR block layout, the
@@ -128,6 +126,43 @@ theorem foRFrame_congr {md P Q : ByteArray} (hs : P.size = Q.size)
     Verify.bitsAt_shift P Q _ _ w fun k _ => by rw [Nat.add_assoc]; exact h _
   unfold Column.foRFrame
   simp only [hs, Nat.add_assoc, hb, hb0]
+
+end Rel.KernelWF
+
+-- from Rel.Run.KernelWF.Raze
+-- the lane widths an id pack may have: one home for the disjunction every lane hypothesis states
+notation "laneOK(" w ")" => (w = 1 ∨ w = 2 ∨ w = 4 ∨ w = 8 ∨ w = 16 ∨ w = 32 ∨ w = 64)
+
+namespace Rel.KernelWF
+
+open Rel.Kernel Rel
+
+/-- A `Nat.fold` that pushes a byte a step answers one byte per step. -/
+private theorem fold_push_size (g : Nat → UInt8) :
+    ∀ (k : Nat) (b : ByteArray), (Nat.fold k (fun i _ acc => acc.push (g i)) b).size = b.size + k
+  | 0, b => by simp
+  | k + 1, b => by
+    rw [Nat.fold_succ, ← Nat.add_assoc, ← fold_push_size g k b]
+    simp only [ByteArray.size, ByteArray.push, Array.size_push]
+
+/-- **`packIds` at a lane is `⌈n·w/8⌉` bytes**, the size `Enc.WF` asks of an id pack. -/
+theorem packIds_size {w : Nat} (hw : w = 0 ∨ laneOK(w))
+    (n : Nat) (f : Nat → Nat) : (Column.packIds w n f).size = (n * w + 7) / 8 := by
+  have hbytes : ∀ c, 1 ≤ c → c ≤ 8 → (Column.packIds (8 * c) n f).size = (n * (8 * c) + 7) / 8 :=
+    fun c h1 h8 => by rw [(Verify.packIds_bytes c n f h1 h8).1, Nat.mul_comm n, Nat.mul_assoc]; omega
+  have hsub : ∀ w, 1 ≤ w → w < 8 → (Column.packIds w n f).size = (n + 8 / w - 1) / (8 / w) := fun w h1 h8 => by
+    unfold Column.packIds
+    rw [if_neg (by omega), if_neg (by omega)]
+    exact (fold_push_size _ _ _).trans (Nat.zero_add _)
+  rcases hw with rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl
+  · simp [Column.packIds]
+  · rw [hsub 1 (by decide) (by decide)]; omega
+  · rw [hsub 2 (by decide) (by decide)]; omega
+  · rw [hsub 4 (by decide) (by decide)]; omega
+  · exact hbytes 1 (by decide) (by decide)
+  · exact hbytes 2 (by decide) (by decide)
+  · exact hbytes 4 (by decide) (by decide)
+  · exact hbytes 8 (by decide) (by decide)
 
 end Rel.KernelWF
 
@@ -540,12 +575,6 @@ theorem raw_small_int {t : QAtomicType} {k : Scan.Kind} (ht : orderKind t = some
     exact ⟨fun b => by simp [Enc.raw, QAtomicType.width, Scan.Kind.width, List.getD_eq_getElem?_getD, hi],
       fun md pk => by simp [Enc.raw, QAtomicType.width, Scan.Kind.width, List.getD_eq_getElem?_getD, hi]⟩
 
-/-- **`packIds` at a lane of at least one bit is `⌈m·W/8⌉` bytes**: `KernelWF.packIds_size` at a nonzero lane,
-    the shape the code lemmas state their widths in. -/
-theorem packIds_size {W : Nat} (hW : laneOK(W))
-    (m : Nat) (f : Nat → Nat) : (Column.packIds W m f).size = (m * W + 7) / 8 :=
-  KernelWF.packIds_size (Or.inr hW) m f
-
 /-- An eight-byte integral type's facts: its layout is eight bytes, its payload dense or encoded, its
     encoded null `nul`. -/
 theorem long_facts {t : QAtomicType} (ht : orderKind t = some .i64) :
@@ -652,7 +681,7 @@ open Tab Rel.Dep Rel.Kernel Rel.Verify Rel
     and a byte past the payload is missing, which `resAt` reads as `0`. -/
 theorem idAt_packIds_past {w n i : Nat} {f : Nat → Nat} (hw : w = 1 ∨ w = 2 ∨ w = 4) (hi : n ≤ i) :
     Column.idAt (Column.packIds w n f) w i = 0 := by
-  have hs := packIds_size (W := w) (by omega) n f
+  have hs := KernelWF.packIds_size (w := w) (by omega) n f
   obtain ⟨per, hper, hwp⟩ : ∃ per, 8 / w = per ∧ (w = 1 ∧ per = 8 ∨ w = 2 ∧ per = 4 ∨ w = 4 ∧ per = 2) := by
     rcases hw with rfl | rfl | rfl <;> exact ⟨_, rfl, by decide⟩
   have hp : 0 < per := by rcases hwp with ⟨_, rfl⟩ | ⟨_, rfl⟩ | ⟨_, rfl⟩ <;> decide
@@ -779,6 +808,74 @@ end Rel.Alg
 namespace Rel.Alg
 
 open Tab Rel.Kernel Rel.Verify Rel Rel.KernelWF
+
+/-- **Run starts group a column whose equal elements are contiguous.** `r 0 < … < r m = n` lists every
+    run start of `key` below `n` and nothing else; then the run keys `key (r j)` are one-to-one and
+    `key s = key (r j) ⟺ r j ≤ s < r (j+1)`. Encoding-free: each lane's kernel answers these hypotheses. -/
+theorem runs_group {α : Type} {n m : Nat} (key : Nat → α) (r : Nat → Nat) (hlast : r m = n)
+    (hasc : ∀ i j, i < j → j ≤ m → r i < r j) (h0 : 0 < n → r 0 = 0)
+    (hstart : ∀ j, j < m → r j = 0 ∨ key (r j) ≠ key (r j - 1))
+    (hall : ∀ s, s < n → (s = 0 ∨ key s ≠ key (s - 1)) → ∃ j, j < m ∧ r j = s)
+    (hcont : ∀ s t u, s ≤ t → t ≤ u → u < n → key s = key u → key t = key s) :
+    (∀ j j', j < m → j' < m → key (r j) = key (r j') → j = j') ∧
+    (∀ s j, s < n → j < m → (key s = key (r j) ↔ r j ≤ s ∧ s < r (j + 1))) := by
+  have hle : ∀ i j, i ≤ j → j ≤ m → r i ≤ r j := fun i j h hj => by
+    rcases Nat.lt_or_eq_of_le h with h | rfl
+    · exact Nat.le_of_lt (hasc i j h hj)
+    · exact Nat.le_refl _
+  -- inside a run, every row holds its start's element
+  have hin : ∀ j, j < m → ∀ s, r j ≤ s → s < r (j + 1) → key s = key (r j) := by
+    intro j hj s
+    induction s with
+    | zero => intro h _; rw [Nat.le_zero.1 h]
+    | succ s ih =>
+      intro h1 h2
+      rcases Nat.lt_or_eq_of_le h1 with h1 | h1
+      · have hn : s + 1 < n := hlast ▸ Nat.lt_of_lt_of_le h2 (hle (j + 1) m hj (Nat.le_refl m))
+        by_cases hk : key (s + 1) = key s
+        · exact hk.trans (ih (Nat.le_of_lt_succ h1) (by omega))
+        · exfalso
+          obtain ⟨j', hj', e⟩ := hall (s + 1) hn (.inr hk)
+          rcases Nat.lt_or_ge j' (j + 1) with h | h
+          · have := hle j' j (by omega) (by omega); omega
+          · have := hle (j + 1) j' h (by omega); omega
+      · rw [← h1]
+  have hcov : ∀ s, s < n → ∃ j, j < m ∧ r j ≤ s ∧ s < r (j + 1) := by
+    intro s
+    induction s with
+    | zero =>
+      intro hn
+      have hm : 0 < m := Nat.pos_of_ne_zero fun e => by subst e; have := h0 hn; omega
+      exact ⟨0, hm, Nat.le_of_eq (h0 hn), by have := hasc 0 (0 + 1) (by omega) hm; have := h0 hn; omega⟩
+    | succ s ih =>
+      intro hn
+      obtain ⟨j, hj, h1, h2⟩ := ih (by omega)
+      rcases Nat.lt_or_eq_of_le (Nat.succ_le_of_lt h2) with h | h
+      · exact ⟨j, hj, by omega, h⟩
+      · have hj1 : j + 1 < m := by
+          rcases Nat.lt_or_ge (j + 1) m with h' | h'
+          · exact h'
+          · have : j + 1 = m := by omega
+            subst this; omega
+        exact ⟨j + 1, hj1, by omega, by have := hasc (j + 1) (j + 1 + 1) (by omega) hj1; omega⟩
+  have hinj : ∀ j j', j < j' → j' < m → key (r j) ≠ key (r j') := by
+    intro j j' hjj hj' e
+    have hlt := hasc j j' hjj (by omega)
+    have hn : r j' < n := hlast ▸ hasc j' m hj' (Nat.le_refl _)
+    rcases hstart j' hj' with h | h
+    · omega
+    · exact h ((hcont (r j) (r j' - 1) (r j') (by omega) (by omega) hn e).trans e).symm
+  refine ⟨fun j j' hj hj' e => ?_, fun s j hs hj => ⟨fun e => ?_, fun ⟨h1, h2⟩ => hin j hj s h1 h2⟩⟩
+  · rcases Nat.lt_trichotomy j j' with h | h | h
+    · exact absurd e (hinj j j' h hj')
+    · exact h
+    · exact absurd e.symm (hinj j' j h hj)
+  · obtain ⟨j', hj', h1, h2⟩ := hcov s hs
+    have e' := (hin j' hj' s h1 h2).symm.trans e
+    rcases Nat.lt_trichotomy j' j with h | h | h
+    · exact absurd e' (hinj j' j h hj)
+    · subst h; exact ⟨h1, h2⟩
+    · exact absurd e'.symm (hinj j j' h hj')
 
 /-- **The run-start fold cuts a column into its runs**, for any `f`: `B` holds `m` starts and then `n`, read
     back as naturals, ascending; where `key` agrees exactly where `f` does and its equal elements stand

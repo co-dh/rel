@@ -718,10 +718,8 @@ private def T₃ : List (Int64 × Int64) := [(0, 0), (9, 9)]
 `R` and `S` as sets, each row once. -/
 private def setOk {k v : Obj} [BEq k.El] [BEq v.El] (R S : Tab k v) : Bool :=
   let r := R.toList; let s := S.toList
-  let is (x : Except String (Tab k v)) (sp : List (k.El × v.El)) := match x with
-    | .ok T => let a := T.toList; let b := sp.eraseDups; a.length == b.length && a.all b.contains && b.all a.contains
-    | .error _ => false
-  is (R.union S) (r ++ s) && is (R.inter S) (r.filter s.contains) && is (R.diff S) (r.filter (!s.contains ·)) &&
+  specOk (R.union S) (r ++ s) && specOk (R.inter S) (r.filter s.contains) &&
+  specOk (R.diff S) (r.filter (!s.contains ·)) &&
   (R.le S).toOption == some (r.all s.contains)
 
 -- both orders of every pair of tables
