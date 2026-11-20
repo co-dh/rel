@@ -266,7 +266,10 @@ Diff table 的「状态」列：✅ 后面是完成它的步骤；🔄 是部分
 - ⬜ S3 `Tm.arith`、`leq`、`lt` 以 atom 为下标；`stepDen t`、`stepCols t`、`cmpOn (ltOp t)` 及定律。
 - ⬜ S4 行 `sqrt`；`sum` 按 atom。
 - ⬜ S5 float 上的 `Obj.key = ordCode`；`key_ordCode`、`ascBad`、float 上的 `LamLaw`。
-- ⬜ S6 行 `$`（relabel、加宽、符号扩展）；`colMap` 带源 atom。需要 owner 对文档差异 #5 的同意。
+- 🟡 S6 行 `$`（分支 `tb-s6`，owner 裁定 J）：`x $ F` 与 `QAtomicType.embed s t` 的图复合（`castDen`），部分映射、不舍入；
+  允许的对由 `castOK` 从两个 atom 的格式读出（加宽、整数 → 浮点）；有损方向在 elaboration 报错。`Tab.cast` 由 Lean 逐元素
+  读值、写列（`Arr.ofFn`），逐行回读检查（`castRow`），不是编码列上的 `colMap`：没有整数 → 浮点的 `Op`（S7）。定律
+  `Tab.cast_holds`、`rowOK_cast`；`Table.nonCanonical` 由 `QAtomicType.nonCanonical` 定义。测试 `Rel/Lang/TestCast.lean`。
 - ⬜ S7 `Op` `i64 → f64`（kernel 扩展）。
 - ⬜ S8 库定义 `mean` `stddev` `correlation` `skewness` `zScore` `valueProportions` float `describe` `daysBetween`
   （dataframe 会话）。
