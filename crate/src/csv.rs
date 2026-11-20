@@ -243,8 +243,10 @@ fn atom_text(t: u8, w: u64, s: &mut Vec<u8>) -> Option<()> {
         QT_U1 => s.push(if w == 0 { b'0' } else { b'1' }),
         QT_U8 => s.extend_from_slice(&[HEX[(w >> 4 & 15) as usize], HEX[(w & 15) as usize]]),
         QT_CHAR => s.push(w as u8),
-        QT_F32 => { let v = f32::from_bits(w as u32); float_text(s, v.is_nan(), v.is_infinite(), v == 0.0, v.is_sign_negative(), format_args!("{:e}", v.abs()))? }
-        QT_F64 => { let v = f64::from_bits(w); float_text(s, v.is_nan(), v.is_infinite(), v == 0.0, v.is_sign_negative(), format_args!("{:e}", v.abs()))? }
+        QT_F32 => { let v = f32::from_bits(w as u32); float_text(s, v.is_nan(), v.is_infinite(), v == 0.0, v.is_sign_negative(), format_args!("{:e}", v.abs()),
+            v.abs() as f64, |t| t.parse::<f32>() == Ok(v.abs()))? }
+        QT_F64 => { let v = f64::from_bits(w); float_text(s, v.is_nan(), v.is_infinite(), v == 0.0, v.is_sign_negative(), format_args!("{:e}", v.abs()),
+            v.abs(), |t| t.parse::<f64>() == Ok(v.abs()))? }
         QT_DATE => { let (y, m, d) = civil(w as u32 as i32 as i64); put(s, format_args!("{:04}-{m:02}-{d:02}", y.max(0)))? }
         QT_DATETIME => {
             const DAY: i64 = 86_400_000_000_000;
@@ -267,20 +269,19 @@ const HEX: &[u8; 16] = b"0123456789abcdef";
 
 /// A float written (`fmtFloat`): `0w`, `-0w`, `0` for a zero of either sign (which `cell` then refuses at `-0`), none at a
 /// NaN; else the shortest digits that read back, nearest the value (`e` is core's `{:e}` of the magnitude, whose digits
-/// are those), in the model's form (`sci`): plain for a decimal exponent in `[-5, 17)`, else `d.ddde-x`.
-fn float_text(s: &mut Vec<u8>, nan: bool, inf: bool, zero: bool, neg: bool, e: core::fmt::Arguments) -> Option<()> {
+/// are those), in the model's form (`sci`): plain for a decimal exponent in `[-5, 17)`, else `d.ddde-x`. `v` is the
+/// magnitude exactly (an `f32` widens exactly) and `back` says whether a decimal reads back to it at the atom's width.
+fn float_text(s: &mut Vec<u8>, nan: bool, inf: bool, zero: bool, neg: bool, e: core::fmt::Arguments, v: f64,
+              back: impl Fn(&str) -> bool) -> Option<()> {
     if nan { return None }
     if neg && !zero { s.push(b'-') }
     if inf { s.extend_from_slice(b"0w"); return Some(()) }
     if zero { s.extend_from_slice(b"0"); return Some(()) }
-    let mut m = Vec::new();
-    put(&mut m, e)?;
-    let at = m.iter().position(|&c| c == b'e')?;
-    let x: i32 = core::str::from_utf8(&m[at + 1..]).ok()?.parse().ok()?;
-    let mut d: Vec<u8> = m[..at].iter().copied().filter(|&c| c != b'.').collect();
-    while d.len() > 1 && d.last() == Some(&b'0') { d.pop(); }
+    let (d, x) = sci_parts(e)?;
+    let (mut d, mut p) = even_tie(d.clone(), x - (d.len() as i32 - 1), v, back)?;
+    while d.len() > 1 && d.last() == Some(&b'0') { d.pop(); p += 1 }
     let (len, zeros) = (d.len() as i32, |s: &mut Vec<u8>, k: i32| s.extend(core::iter::repeat_n(b'0', k as usize)));
-    let p = x - (len - 1);
+    let x = p + len - 1;
     if (-5..17).contains(&x) {
         if p >= 0 { s.extend_from_slice(&d); zeros(s, p) }
         else if len + p > 0 { let k = (len + p) as usize; s.extend_from_slice(&d[..k]); s.push(b'.'); s.extend_from_slice(&d[k..]) }
@@ -291,6 +292,33 @@ fn float_text(s: &mut Vec<u8>, nan: bool, inf: bool, zero: bool, neg: bool, e: c
         put(s, format_args!("e{x}"))?
     }
     Some(())
+}
+
+/// The digits and decimal exponent of core's `{:e}` text: `d.ddde-x` as (`dddd`, `-x`).
+fn sci_parts(e: core::fmt::Arguments) -> Option<(Vec<u8>, i32)> {
+    let mut m = Vec::new();
+    put(&mut m, e)?;
+    let at = m.iter().position(|&c| c == b'e')?;
+    Some((m[..at].iter().copied().filter(|&c| c != b'.').collect(), core::str::from_utf8(&m[at + 1..]).ok()?.parse().ok()?))
+}
+
+/// `fmtFloat`'s tie rule on the shortest digits `d` (the value `d * 10 ^ p`): when `v` lies exactly halfway between
+/// the two neighbours at `p` and the even one reads back, that one, else `d`. Core's shortest digits break a tie upward.
+fn even_tie(d: Vec<u8>, p: i32, v: f64, back: impl Fn(&str) -> bool) -> Option<(Vec<u8>, i32)> {
+    if d.last()? % 2 == 0 { return Some((d, p)) }
+    // 800 places hold every finite f64 exactly (at most 767 significant digits), so the text is `v` itself
+    let (s, xs) = sci_parts(format_args!("{:.800e}", v))?;
+    let c = usize::try_from(xs - p + 1).ok();
+    if !c.is_some_and(|c| s.get(c) == Some(&b'5') && s[c + 1..].iter().all(|&z| z == b'0')) { return Some((d, p)) }
+    let c = c?;
+    let lo: u64 = if c == 0 { 0 } else { core::str::from_utf8(&s[..c]).ok()?.parse().ok()? };
+    let dn: u64 = core::str::from_utf8(&d).ok()?.parse().ok()?;
+    let alt = if dn == lo { lo + 1 } else { lo };
+    let mut t = Vec::new();
+    put(&mut t, format_args!("{alt}e{p}"))?;
+    if alt == 0 || !back(core::str::from_utf8(&t).ok()?) { return Some((d, p)) }
+    t.truncate(t.iter().position(|&z| z == b'e')?);
+    Some((t, p))
 }
 
 /// The day `z` days after 1970-01-01 as year, month, day (`civil`, H. Hinnant's `civil_from_days`).

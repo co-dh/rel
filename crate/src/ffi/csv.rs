@@ -4,7 +4,7 @@
 use crate::lean::export;
 #[cfg(all(feature = "ffi", not(any(test, feature = "std"))))]
 use {alloc::{format, string::String, vec::Vec}, core::sync::atomic::AtomicUsize,
-     crate::{BLK, DEFAULT_LG, csv::{self, Col}, ffi::{Form, Sink}, lean::{B, O, box_usize_o, boxed, ctor}, own::{self, Fail}, scan}};
+     crate::{DEFAULT_LG, csv::{self, Col}, ffi::{Form, Sink}, lean::{B, O, box_usize_o, boxed, ctor}, own::{self, Fail}, scan}};
 
 /// The schema `CsvCols` (`List (String × QAtomicType × List String)`) as columns: each pair a ctor of two fields, the
 /// enum `QAtomicType` a boxed constructor index.
@@ -56,7 +56,7 @@ fn write(path: B, cs: B, n: usize, es: B) -> Result<O, Fail> {
     csv::arity(&cs, v.len()).map_err(at)?;
     let src = cs.iter().zip(&v).map(|(c, &e)| scan::raw_all(c.t, n, e)).collect::<Result<Vec<_>, _>>().map_err(at)?;
     csv::schema(&cs).map_err(at)?;
-    let mut tmp = alloc::vec![0u8; BLK * 8];
+    let mut tmp = alloc::vec![0u8; 8 << DEFAULT_LG];
     csv::write(path.cstr(), &cs, n, DEFAULT_LG, |c, lo, out| src[c].load(lo, out, &mut tmp))
         .map_err(|e| match e { Fail::User(t) => at(t), e => e })?;
     Ok(boxed(0))

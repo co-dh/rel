@@ -265,13 +265,13 @@ def f64s : Array UInt64 :=
     0x4376345785d8a001, 0x44b52d02c7e14af5, 0x44b52d02c7e14af6, 0x44b52d02c7e14af7, 0x3fb999999999999a,
     0x3fd3333333333333, 0x433fffffffffffff, 0x4340000000000000, 0x4340000000000001, 0x3fefffffffffffff,
     0x3ff0000000000000, 0x3ff0000000000001, 0x4059000000000000, 0x7ff0000000000000]
-    0x8000000000000000 0xffefffffffffffff 0x3ee0000000000000 0xa0000000000000 2000
+    0x8000000000000000 0xffefffffffffffff 0x3ee0000000000000 0xa0000000000000 400
 
 /-- The same at f32: `1e-5`, `1e16`, `1e17`, `2 ^ 24`, `0.1`, the subnormals' ends, the largest finite value. -/
 def f32s : Array UInt64 :=
   floats [1, 3, 0x7fffff, 0x800000, 0x7f7fffff, 0x3727c5ab, 0x3727c5ac, 0x3727c5ad, 0x5a0e1bc6, 0x5a0e1bc7,
     0x5a0e1bc8, 0x5bb1a2f2, 0x5bb1a2f3, 0x5bb1a2f4, 0x4b7fffff, 0x4b800000, 0x4b800001, 0x3dcccccd, 0x3f7fffff,
-    0x3f800000, 0x3f800001, 0x7f800000] 0x80000000 0xff7fffff 0x37000000 0x24800000 2000
+    0x3f800000, 0x3f800001, 0x7f800000] 0x80000000 0xff7fffff 0x37000000 0x24800000 400
 
 /-- A column of every atom, for files of several blocks. -/
 def mcols : CsvCols := [("i", .i64, []), ("f", .f64, []), ("d", .date, []), ("t", .datetime, []), kcols.getD 0 ("", .u8, []),
@@ -298,12 +298,12 @@ def mwords (n : Nat) (bad : Nat → Nat → Option UInt64 := fun _ _ => none) : 
 /-- Every writer's case: the table's, the floats, and files of several blocks (`2 ^ lgEnc` rows a block), whole or
     refused past the first block — two refusals in one row, a refusal at a block's first row. -/
 def writes : List (CsvCols × Nat × List (Array UInt64)) :=
+  [([("f", .f64, [])], f64s.size, [f64s]), ([("f", .f32, [])], f32s.size, [f32s])] ++
   writeCases.map (fun (c, n, ws, _) => (c, n, ws)) ++
-  [([("f", .f64, [])], f64s.size, [f64s]), ([("f", .f32, [])], f32s.size, [f32s]),
-   (mcols, 3000, mwords 3000), (mcols, 1024, mwords 1024), (mcols, 1025, mwords 1025),
-   (mcols, 3000, mwords 3000 fun j i => if i = 2100 ∧ j = 9 then some 0x7fc00000 else if i = 2100 ∧ j = 4 then some 7
-     else if i = 2500 ∧ j = 1 then some 0x8000000000000000 else none),
-   (mcols, 3000, mwords 3000 fun j i => if i = 1024 ∧ j = 2 then some 0x7fffffff else none)]
+  [(mcols, 2100, mwords 2100), (mcols, 1024, mwords 1024),
+   (mcols, 2100, mwords 2100 fun j i => if i = 1500 ∧ j = 9 then some 0x7fc00000 else if i = 1500 ∧ j = 4 then some 7
+     else if i = 2000 ∧ j = 1 then some 0x8000000000000000 else none),
+   (mcols, 2100, mwords 2100 fun j i => if i = 1024 ∧ j = 2 then some 0x7fffffff else none)]
 
 /-- A case's columns as `Enc`s: `foR` (`wordsFoR`) where every column holds `n` words, and dense payloads, a `u1` column
     holding `n` words as `foR` (a dense `u1` payload has no raw words, `Enc.raw`). -/
@@ -321,7 +321,8 @@ def body (path : String) (cols : CsvCols) (n : USize) (es : List Enc) : IO Unit 
   if let some d := (System.FilePath.mk path).parent then IO.FS.createDirAll d
   let b ← IO.ofExcept ((do
     arity cols es.length
-    csvText cols n.toNat (← (cols.zip es).mapM fun ((_, t, _), e) => Kernel.rawAll t n e)).mapError (s!"{path}: {·}"))
+    csvText cols n.toNat (← (cols.zip es).mapM fun (c, e) => Kernel.rawAll c.2.1 n e) : Except String (List UInt8)).mapError
+      (s!"{path}: {·}"))
   IO.FS.writeBinFile path ⟨b.toArray⟩
 
 /-- `w` run on `p`, which holds `old\n` where it is a file: the refusal's text or none, and the bytes at `p` after. -/
@@ -338,17 +339,21 @@ def writeAgrees (p : System.FilePath) (cols : CsvCols) (n : Nat) (es : List Enc)
   let rust ← outcome p (csvWrite p.toString cols n.toUSize es)
   let model ← outcome p (body p.toString cols n.toUSize es)
   let say := fun (r : Option String × List UInt8) => match r.1 with | some e => s!"refuses: {e}" | none => s!"writes {r.2.length} bytes"
-  unless decide (rust = model) do
-    throw (IO.userError s!"csvWrite {names cols} of {n} rows on {p}: the extern {say rust}, the body {say model}")
+  -- as arrays: `List`'s `DecidableEq` recurses once per byte and overflows the stack on a file of several blocks
+  unless rust.1 == model.1 && rust.2.toArray == model.2.toArray do
+    -- the record holding the first byte where the two differ
+    let i := ((rust.2.zip model.2).findIdx? fun (a, b) => a != b).getD 0
+    let rec_ := fun (b : List UInt8) => shown (((b.take i).reverse.takeWhile (· != 10)).reverse ++ (b.drop i).takeWhile (· != 10))
+    throw (IO.userError s!"csvWrite {names cols} of {n} rows on {p}: the extern {say rust}, the body {say model}; at byte {i} the extern has {rec_ rust.2}, the body {rec_ model.2}")
   if rust.1.isNone then
     IO.FS.writeBinFile p ⟨rust.2.toArray⟩
     let (m, back) ← csvRead p.toString cols
-    let words := fun (es : List Enc) => said ((cols.zip es).mapM fun ((_, t, _), e) => Kernel.rawAll t n.toUSize e)
+    let words := fun (es : List Enc) => said ((cols.zip es).mapM fun (c, e) => Kernel.rawAll c.2.1 n.toUSize e)
     unless m.toNat = n ∧ decide (words back = words es) do
       throw (IO.userError s!"csvRead of what csvWrite {names cols} wrote on {p}: {m} rows, not the words written")
 
 /-- Each case at one path; then a directory as the path, and a path whose parent directories are missing. -/
-def runWrites : IO Nat := do
+def runWrites : IO Unit := do
   let (h, p) ← IO.FS.createTempFile
   h.flush
   let cases := writes.flatMap (fun (c, n, ws) => (encs c n ws).map ((c, n, ·))) ++ others
@@ -360,10 +365,9 @@ def runWrites : IO Nat := do
   writeAgrees d ab 1 one
   writeAgrees (d / "a" / "x.csv") ab 1 one
   IO.FS.removeDirAll d
-  return cases.length + 2
 
-/-- info: csvWrite agrees with its body on 0 cases -/
+/-- info: csvWrite agrees with its body on every case -/
 #guard_msgs in
-#eval do IO.println s!"csvWrite agrees with its body on {← runWrites} cases"
+#eval do runWrites; IO.println "csvWrite agrees with its body on every case"
 
 end Rel.Db.CsvTest

@@ -420,7 +420,8 @@ def csvWrite (path : @& String) (cols : @& CsvCols) (n : USize) (es : @& List En
   if let some d := (System.FilePath.mk path).parent then IO.FS.createDirAll d
   let b ← IO.ofExcept ((do
     arity cols es.length
-    csvText cols n.toNat (← (cols.zip es).mapM fun ((_, t, _), e) => Kernel.rawAll t n e)).mapError (s!"{path}: {·}"))
+    csvText cols n.toNat (← (cols.zip es).mapM fun (c, e) => Kernel.rawAll c.2.1 n e) : Except String (List UInt8)).mapError
+      (s!"{path}: {·}"))
   IO.FS.writeBinFile path ⟨b.toArray⟩
 
 end Rel.Db
