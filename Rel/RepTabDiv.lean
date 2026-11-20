@@ -2097,7 +2097,8 @@ private def fsides : List ((n : USize) × Vals (.atom .f64) n) :=
   [⟨_, fcol []⟩, ⟨_, fcol [0x3ff8000000000000, 0x8000000000000000, 0x3ff8000000000000]⟩,
    ⟨_, fcol [0, 0x7ff8000000000001, 0x7ff0000000000000]⟩, ⟨_, FU⟩]
 
--- `<`, `≤`, `⊤` on the known sides `K`, `L` against `K ≫ (both sides dom U) ≫ L`, every pair of sides; `⊤` on `f64`
+-- `<`, `≤`, `⊤` on the known sides `K`, `L` against `K ≫ (both sides dom U) ≫ L`, every pair of sides, at `i64`
+-- and at `f64` (`FU`: `-0.0 = +0.0`, a NaN in no pair of `<` or `≤`)
 #guard sides.all fun ⟨_, K⟩ => sides.all fun ⟨_, L⟩ =>
   sidesOk (Tab.lt .i64) (idT U) K L && sidesOk (Tab.leq .i64) (idT U) K L && sidesOk Tab.top (idT U) K L
 #guard fsides.all fun ⟨_, K⟩ => fsides.all fun ⟨_, L⟩ =>
