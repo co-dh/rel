@@ -23,7 +23,6 @@ macro_rules! by_width {
         32 => $($f).+::<$($($t,)*)? 32>($($a),*), _ => $($f).+::<$($($t,)*)? 64>($($a),*),
     } };
 }
-pub use by_width;
 
 
 /// `Column.idWidth`: zero at one entry and at none -- there is one id, so nothing is stored.
@@ -52,19 +51,6 @@ pub fn lane<const W: u32>(p: &[u8], i: usize) -> u64 {
         16 => u16::from_le_bytes(le(p, i)) as u64,
         32 => u32::from_le_bytes(le(p, i)) as u64,
         _ => u64::from_le_bytes(le(p, i)),
-    }
-}
-/// `v` stored as element `i` of `p` at the lane width `W`: `lane`'s inverse; a narrow field is a read-modify-write of
-/// its shared byte.
-#[inline(always)]
-pub fn lane_put<const W: u32>(p: &mut [u8], i: usize, v: u64) {
-    match W {
-        0 => {}
-        1 | 2 | 4 => {
-            let (b, s, m) = (i * W as usize >> 3, (i * W as usize & 7) as u32, ((1u16 << W) - 1) as u8);
-            p[b] = p[b] & !(m << s) | ((v as u8 & m) << s);
-        }
-        _ => { let k = W as usize / 8; p[i * k..i * k + k].copy_from_slice(&v.to_le_bytes()[..k]) }
     }
 }
 /// Element `i` of `p` at `W` bytes.
@@ -237,9 +223,6 @@ mod map_tests {
 }
 
 // ---- A10: ids.rs (per element: C keeps these bodies while a C caller remains) ----
-/// ids.rs `id_put`: id `v` at index `i`, `w` bits each; a narrow field is a read-modify-write of its shared byte.
-#[inline(always)]
-pub fn id_put(p: &mut [u8], w: u32, i: usize, v: u64) { by_width!(w, lane_put(p, i, v)) }
 
 
 // One destination byte of `bitcopy`: up to the byte's end of the `bits - i` left, from bit `sb + i` of the source.

@@ -11,12 +11,12 @@
 
 /// `EW_*` codes of ew.rs that this section reads; the two lists cannot change apart.
 pub mod k {
-    pub const I16: u8 = 1; pub const I32: u8 = 2; pub const I64: u8 = 3;
-    pub const F32: u8 = 4; pub const BITS: u8 = 6; pub const ABS: u8 = 1;
-    pub const ADD: u8 = 0; pub const SUB: u8 = 1; pub const MUL: u8 = 2; pub const DIV: u8 = 3; pub const FILL: u8 = 4;
-    pub const LESSER: u8 = 5; pub const GREATER: u8 = 6; pub const IDIV: u8 = 7; pub const IMOD: u8 = 8; pub const POW: u8 = 9;
-    pub const EQ: u8 = 0; pub const NE: u8 = 1; pub const LT: u8 = 2; pub const LE: u8 = 3; pub const GT: u8 = 4; pub const GE: u8 = 5;
-    pub const VV: u8 = 0; pub const VA: u8 = 1; pub const AV: u8 = 2;
+    
+    
+    
+    
+    
+    
 }
 
 
@@ -38,11 +38,11 @@ pub fn floor64(x: f64) -> f64 {
 // ---- A44: ew.rs ----
 /// `EW_*` codes of ew.rs this section reads (the verbs `k` does not hold).
 mod k44 {
-    pub(super) const BITS: u32 = 6; pub(super) const F32: u8 = 4; pub(super) const F64: u8 = 5;
-    pub(super) const NEG: u8 = 0; pub(super) const ABS: u8 = 1; pub(super) const SQRT: u8 = 2; pub(super) const ATAN: u8 = 10;
+    
+    
     // `EW_BCMP + EW_EQ ..= EW_GE`
-    pub(super) const BEQ: u8 = 16; pub(super) const BNE: u8 = 17; pub(super) const BLT: u8 = 18;
-    pub(super) const BLE: u8 = 19; pub(super) const BGT: u8 = 20; pub(super) const BGE: u8 = 21;
+    
+    
 }
 
 
@@ -60,18 +60,18 @@ mod k44 {
 // ---- A46b: ew.rs (the stage workers stay C until `c::run_chain` calls Rust ones) ----
 /// ew.rs's engine codes, the `Ew.Engine` constants of QLean/Kernel/Elementwise.lean.
 pub mod eng {
-    pub const VAL: u32 = 0; pub const CMP: u32 = 1; pub const MON: u32 = 2; pub const WIDEN: u32 = 3;
-    pub const BIT: u32 = 4; pub const FLOOR: u32 = 5; pub const CAST: u32 = 6; pub const DECODE: u32 = 7;
+    
+    
     // 10 was the encoder's pack pass, which `ENC` now stages in its one pass
-    pub const ALP: u32 = 8; pub const ENC: u32 = 9; pub const TICK: u32 = 11;
-    pub const IDS: u32 = 12; pub const PACK: u32 = 13;
+    
+    
 }
 
 // ---- K9: the chain's tile workers over a packed id column (ew.rs `ew_ids_run`, :1315 `ew_pack_run`) ----
 
 // ---- K10: the statistics fold, a chain's last stage (ew.rs `ew_stats_run`, `ew_stats_sum`) ----
 /// ew.rs's `ST_*`: the five phases, each one pass over the column.
-pub mod st { pub const SUMS: u8 = 0; pub const CENTRED: u8 = 1; pub const DOTS: u8 = 2; pub const DOTS32: u8 = 3; pub const SERIAL: u8 = 4; }
+pub mod st { }
 
 
 
@@ -387,7 +387,7 @@ mod tests43 {
         let n = 2 * BLK + 452;
         let (pack, base, off, _, bsum) = coc_data();
         let (maxv, width) = (vec![base[0] + 255, 77, base[2] + 255], [8u8, 0, 8]);
-        let meta = Meta { lg: crate::DEFAULT_LG, base: &base, maxv: &maxv, off: &off, bsum: &bsum, width: &width, sumnul: 0, sumn: 0, n, nblk: 3, mblk: 3 };
+        let meta = Meta { lg: crate::DEFAULT_LG, base: &base, maxv: &maxv, off: &off, bsum: &bsum, width: &width, n, nblk: 3, mblk: 3 };
         let c = Coc { meta, pack: &pack, exc: None, fdelta: None };
         let mut dense = vec![0i64; 3 * BLK];
         for b in 0..3 { c.decode_blk::<i64>(b, if b < 2 { BLK } else { 452 }, &mut dense[b * BLK..]) }
@@ -512,7 +512,7 @@ mod tests44 {
         let mut off = [0u64; 3];
         let mut pack: Vec<u8> = vec![];
         for b in 0..nblk { off[b] = pack.len() as u64; pack.extend((0..crate::BLK * width[b] as usize / 8).map(|i| (i * 37 + b * 11) as u8)) }
-        let meta = Meta { lg: crate::DEFAULT_LG, base: &base, maxv: &maxv, off: &off, bsum: &bsum, width: &width, sumnul: 0, sumn: 0, n, nblk, mblk: nblk };
+        let meta = Meta { lg: crate::DEFAULT_LG, base: &base, maxv: &maxv, off: &off, bsum: &bsum, width: &width, n, nblk, mblk: nblk };
         let c = Coc { meta, pack: &pack, exc: None, fdelta: None };
         for (cls, w) in [(1u8, 2usize), (2, 4), (3, 8)] {
             for op in 0..2u8 {

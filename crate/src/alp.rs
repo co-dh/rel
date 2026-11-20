@@ -254,7 +254,7 @@ mod tests {
     // Expected values from coc.rs's alp_thresh: the clamps outside 2^53 and the ceil at an exponent
     #[test] fn thresh_clamps_and_rounds_up() {
         let (z, o, w) = ([0i64], [0u64], [0u8]);
-        let meta = Meta { lg: crate::DEFAULT_LG, base: &z, maxv: &z, off: &o, bsum: &z, width: &w, sumnul: 0, sumn: 0, n: 1, nblk: 1, mblk: 1 };
+        let meta = Meta { lg: crate::DEFAULT_LG, base: &z, maxv: &z, off: &o, bsum: &z, width: &w, n: 1, nblk: 1, mblk: 1 };
         let f = Cocf { c: Coc { meta, pack: &[], exc: None, fdelta: None }, exp: &[0], exc_off: &[0, 0], exc_pos: &[], exc_raw: &[], f32: false };
         assert_eq!([f.thresh(f64::NAN, 0), f.thresh(1e300, 0), f.thresh(-1e300, 3), f.thresh(f64::INFINITY, 2)],
                    [i64::MIN / 2, i64::MAX / 2, i64::MIN / 2, i64::MAX / 2]);
@@ -264,7 +264,7 @@ mod tests {
     // patch) patched by [1 -> 1.25, 3 -> 0.1234567], /data/tmp/qrs/A17/one2.c; the random comparison is /data/tmp/qrs/A17/diff.c.
     #[test] fn patch_blk_keeps_the_old_exponent_and_answers_the_one_the_search_would_pick() {
         let (base, maxv, off, bsum, width) = ([150i64], [10000i64], [0u64], [0i64], [14u8]);
-        let meta = Meta { lg: crate::DEFAULT_LG, base: &base, maxv: &maxv, off: &off, bsum: &bsum, width: &width, sumnul: 0, sumn: 4, n: 4, nblk: 1, mblk: 1 };
+        let meta = Meta { lg: crate::DEFAULT_LG, base: &base, maxv: &maxv, off: &off, bsum: &bsum, width: &width, n: 4, nblk: 1, mblk: 1 };
         let mut pack = vec![0u8; BLK * 14 / 8];
         pack[..7].copy_from_slice(&[0, 192, 18, 0, 0, 232, 153]); // residuals 0, 75, 0, 9850
         let raw = f64::NAN.to_ne_bytes();

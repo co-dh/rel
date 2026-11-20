@@ -56,9 +56,6 @@ mod sys {
         pub fn lean_apply_5(f: *mut Object, a1: *mut Object, a2: *mut Object, a3: *mut Object, a4: *mut Object,
                             a5: *mut Object) -> *mut Object;
         pub fn lean_apply_n(f: *mut Object, n: u32, args: *mut *mut Object) -> *mut Object;
-        pub fn lean_mark_mt(o: *mut Object);
-        pub fn lean_mark_persistent(o: *mut Object);
-        pub fn lean_copy_byte_array(a: *mut Object) -> *mut Object;
         pub fn lean_big_usize_to_nat(n: usize) -> *mut Object;
     }
 }
@@ -163,7 +160,6 @@ use sys::*;
 }
 #[inline(always)] pub unsafe fn sarray_elem_size(o: *const Object) -> u32 { unsafe { ptr_other(o) as u32 } }
 #[inline(always)] pub unsafe fn sarray_size(o: *const Object) -> usize { unsafe { (*o.cast::<SArray>()).size } }
-#[inline(always)] pub unsafe fn sarray_capacity(o: *const Object) -> usize { unsafe { (*o.cast::<SArray>()).capacity } }
 #[inline(always)] pub unsafe fn sarray_cptr(o: *mut Object) -> *mut u8 { unsafe { (&raw mut (*o.cast::<SArray>()).data).cast() } }
 
 #[inline(always)] fn box_scalar<T: Copy>(v: T) -> *mut Object {
@@ -270,11 +266,6 @@ impl SArr {
     pub fn bytes_mut(&mut self) -> &mut [u8] {
         let p = self.0.0.as_ptr();
         unsafe { core::slice::from_raw_parts_mut(sarray_cptr(p), sarray_size(p) * sarray_elem_size(p) as usize) }
-    }
-    /// All `capacity * elem_size` bytes the allocation holds, those past the size included (a kernel that writes whole words)
-    pub fn capacity_mut(&mut self) -> &mut [u8] {
-        let p = self.0.0.as_ptr();
-        unsafe { core::slice::from_raw_parts_mut(sarray_cptr(p), sarray_capacity(p) * sarray_elem_size(p) as usize) }
     }
 }
 impl From<SArr> for O { fn from(a: SArr) -> O { a.0 } }

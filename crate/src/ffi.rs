@@ -111,7 +111,7 @@ impl CEnc {
         let c = &self.c;
         unsafe {
             let (base, w) = (*c.base.add(b), *c.width.add(b));
-            EncPack { b, nb, base, frame: (base as u64).wrapping_add(if c.fdelta.is_null() { 0 } else { *c.fdelta.add(b) }), width: w,
+            EncPack { nb, base, frame: (base as u64).wrapping_add(if c.fdelta.is_null() { 0 } else { *c.fdelta.add(b) }), width: w,
                       exp: if self.exp.is_null() { 0 } else { *self.exp.add(b) },
                       res: sl_mut(res, (if whole { 1usize << c.lg() } else { nb } * w as usize).div_ceil(8)),
                       pos: sl_mut(pos, ne), raw: sl_mut(raw, ne * self.width) }
@@ -183,7 +183,7 @@ impl CCoc {
 
 /// A `Sink`'s form: Frame of Reference, ALP, or ids at `lw` bits (a bit column is `Ids(1)`, decision B).
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
-pub enum Form { For, Alp, Ids(u32) }
+pub enum Form { For, Alp }
 /// coc.rs `coc_alloc`: 64-byte aligned, never size 0, abort on failure.
 pub unsafe fn coc_alloc(bytes: usize) -> *mut u8 {
     let want = bytes.next_multiple_of(64).max(64);
@@ -350,19 +350,10 @@ unsafe extern "C" fn sink_run(b0: usize, b1: usize, p: *const CPass) {
 }
 impl Drop for Sink { fn drop(&mut self) { unsafe { enc_free(&mut self.e) } } }
 impl Sink {
-    /// `n` elements of `width` bytes in `form`: coc.rs `coc_enc_open` for an encoded form; for ids the payload, its
-    /// capacity whole 64-bit words, as a word kernel (`words`) writes them.
+    /// `n` elements of `width` bytes in `form`: coc.rs `coc_enc_open`.
     pub fn new(n: usize, width: usize, form: Form) -> Sink {
         let mut s = Sink { e: unsafe { core::mem::zeroed() }, g: Grid { n, lg: DEFAULT_LG }, form, enc: false };
-        match form {
-            Form::Ids(lw) => {
-                let sz = crate::ids::ids_bytes(n, lw);
-                let mut a = lean::SArr::with_capacity(1, sz, sz.div_ceil(8) * 8);
-                (s.e.n, s.e.width, s.e.out) = (n, width, a.capacity_mut().as_mut_ptr());
-                s.e.pack = lean::O::from(a).into_raw().cast();
-            }
-            _ => unsafe { qrs_coc_enc_open(&mut s.e, n, width, (form == Form::Alp) as c_int) },
-        }
+        unsafe { qrs_coc_enc_open(&mut s.e, n, width, (form == Form::Alp) as c_int) }
         s
     }
     /// `step` over every block on the pool; `sized` makes it the sizing pass of the size test.
@@ -377,20 +368,6 @@ impl Sink {
     /// (`Enc.shrinks`, `CLAUDE.md`'s "nothing is encoded that the encoding does not shrink").
     pub fn write<P: Producer + ?Sized>(mut self, p: &P, shrinks: bool) -> Option<lean::O> {
         let (w, n) = (self.e.width, self.g.n);
-        if let Form::Ids(lw) = self.form {
-            let out = self.e.out as usize;
-            // a block is a multiple of 8 elements, so block `b` starts on a byte and its bytes are its own
-            self.each(false, crate::QLEAN_COST_COPY, &|_, b, lo, nb, buf| {
-                let o = unsafe { sl_mut((out as *mut u8).add(lo * lw as usize / 8), crate::ids::ids_bytes(nb, lw)) };
-                o.fill(0);
-                for (k, x) in p.block(b, lo, nb, w, buf).chunks_exact(w).enumerate() {
-                    let mut v = [0u8; 8];
-                    v[..w.min(8)].copy_from_slice(&x[..w.min(8)]);
-                    crate::ids::id_put(o, lw, k, u64::from_le_bytes(v))
-                }
-            });
-            return Some(self.finish());
-        }
         let (alp, below) = (self.form == Form::Alp, if shrinks { n * w } else { usize::MAX });
         // what the residuals and exceptions may come to before the size test is already failed, the metadata being fixed
         let msz = unsafe { lean::sarray_size(self.e.meta.cast()) };
@@ -453,11 +430,8 @@ impl Sink {
         match (self.form, self.enc) {
             (Form::For, false) => lean::ctor(0, [o(m), o(b)], &[]),
             (Form::Alp, false) => lean::ctor(0, [o(m), lean::ctor(0, [o(b), o(a)], &[])], &[]),
-            (Form::Ids(_), false) => o(b),
             (Form::For, true) => lean::ctor(crate::blocks::tag::FOR as u8, [o(m), o(b)], &[]),
             (Form::Alp, true) => lean::ctor(crate::blocks::tag::ALP as u8, [o(m), o(b), o(a)], &[]),
-            // a boolean column is a `u1` `foR` (`Sink::bools`), never ids at width 1
-            (Form::Ids(lw), true) => panic!("qlean Sink: ids at {lw} bits are an `Enc` only with a dictionary (`enum`)"),
         }
     }
     /// The sink answering the `Enc` object of its form rather than the form's parts.
@@ -522,16 +496,6 @@ mod sink_tests {
         let mut got = alloc::vec![0u8; n * 8];
         crate::codec::alp_decode(crate::c::pool(), &cf, &mut got);
         assert_eq!(got, pod::bytes(&f));
-    }
-    // the ids form packs each element at `lw` bits as `id_put` does, a bit column being `Ids(1)`; the bits past the
-    // last id are 0
-    #[test] fn ids_form() {
-        for (n, lw) in [(2500usize, 1u32), (2500, 4), (1030, 8), (7, 2)] {
-            let x: Vec<u16> = (0..n).map(|i| ((i * 31 + i / 7) % (1 << lw)) as u16).collect();
-            let mut want = alloc::vec![0u8; ids::ids_bytes(n, lw)];
-            for (i, &v) in x.iter().enumerate() { ids::id_put(&mut want, lw, i, v as u64) }
-            assert_eq!(Sink::new(n, 2, Form::Ids(lw)).answer(&Blocks::dense(pod::bytes(&x), 2)).borrow().bytes(), &want[..], "lw {lw}");
-        }
     }
     // `bools` against its rule: a mixed block width 1 with the bitmap as residuals, a uniform block width 0 at base 0 or 1
     // and no residual, the elements decoding back; uniform runs crossing block edges, a short last block, no element

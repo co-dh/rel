@@ -10,8 +10,6 @@ pub const COC_EXC_FRM: usize = 0x100;
 #[derive(Clone, Copy)]
 pub struct Meta<'a> {
     pub base: &'a [i64], pub maxv: &'a [i64], pub off: &'a [u64], pub bsum: &'a [i64], pub width: &'a [u8],
-    /// one slot each, read by value
-    pub sumnul: i64, pub sumn: u64,
     /// the block size is `1 << lg`, `MIN_LG <= lg <= MAX_LG`
     pub lg: u32,
     /// slices are mblk long; nblk <= mblk is what n reaches
@@ -39,7 +37,7 @@ impl<'a> Meta<'a> {
         Some(Meta {
             base: pod::cast(base)?, maxv: pod::cast(maxv)?, off: pod::cast(off)?, bsum: pod::cast(bsum)?,
             width: &tail[..nb],
-            sumnul: pod::cast::<i64>(&sums[..8])?[0], sumn: pod::cast::<u64>(&sums[8..16])?[0], lg,
+            lg,
             n, nblk: n.div_ceil(1 << lg), mblk: nb,
         })
     }
@@ -213,7 +211,7 @@ mod tests {
     // expected values: coc.rs's coc_attach (aborts) and coc_meta_view at 152d98f
     #[test] fn attach_refuses_what_c_aborts_on() {
         let (z, off, width) = ([0i64], [0u64], [8u8]);
-        let meta = super::Meta { lg: crate::DEFAULT_LG, base: &z, maxv: &z, off: &off, bsum: &z, width: &width, sumnul: 0, sumn: 0, n: 1, nblk: 1, mblk: 1 };
+        let meta = super::Meta { lg: crate::DEFAULT_LG, base: &z, maxv: &z, off: &off, bsum: &z, width: &width, n: 1, nblk: 1, mblk: 1 };
         let res = BLK; // one block of width 8
         assert!(super::Coc::attach(meta, &vec![0u8; res]).is_some());
         assert!(super::Coc::attach(meta, &vec![0u8; res + 8]).is_none());
@@ -224,7 +222,7 @@ mod tests {
     // `get` binary-searches ascending positions and scans any other order, the first match winning either way
     #[test] fn get_finds_the_first_patch_in_any_order() {
         let (base, off, width, raw) = ([100i64], [0u64], [0u8], [7i64, 8, 9].map(i64::to_ne_bytes).concat());
-        let meta = super::Meta { lg: crate::DEFAULT_LG, base: &base, maxv: &base, off: &off, bsum: &base, width: &width, sumnul: 0, sumn: 0, n: 20, nblk: 1, mblk: 1 };
+        let meta = super::Meta { lg: crate::DEFAULT_LG, base: &base, maxv: &base, off: &off, bsum: &base, width: &width, n: 20, nblk: 1, mblk: 1 };
         for (pos, want) in [([2u16, 5, 9], [100, 7, 100, 8, 9]), ([5, 2, 5], [100, 8, 100, 7, 100]), ([9, 5, 2], [100, 9, 100, 8, 7])] {
             let exc = super::Exc { off: &[0, 3], pos: &pos, raw: &raw, esz: 8, asc: super::ascending(&[0, 3], &pos) };
             assert_eq!(exc.asc, pos == [2, 5, 9]);

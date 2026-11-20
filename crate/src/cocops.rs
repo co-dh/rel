@@ -84,7 +84,7 @@ mod tests {
     // is /data/tmp/qrs/A1/{gen.c,diff_test.rs}
     #[test] fn load_run_fills_both_ends_and_a_run_off_one_end() {
         let (z, base, off, width) = ([0i64], [7i64], [0u64], [0u8]);
-        let meta = Meta { lg: crate::DEFAULT_LG, base: &base, maxv: &z, off: &off, bsum: &z, width: &width, sumnul: 0, sumn: 0, n: 3, nblk: 1, mblk: 1 };
+        let meta = Meta { lg: crate::DEFAULT_LG, base: &base, maxv: &z, off: &off, bsum: &z, width: &width, n: 3, nblk: 1, mblk: 1 };
         let c = Coc { meta, pack: &[], exc: None, fdelta: None };
         let mut out = [0i64; 8];
         c.load_run(-2, 99, &mut out);
@@ -96,14 +96,14 @@ mod tests {
     }
     // expected values: the C of 7091572 (/data/tmp/qrs/A4/diff.c: 312000 checks, 0 mismatches)
     #[test] fn folds_of_a_column_with_no_element_are_q_seeds() {
-        let meta = Meta { lg: crate::DEFAULT_LG, base: &[], maxv: &[], off: &[], bsum: &[], width: &[], sumnul: 0, sumn: 0, n: 0, nblk: 0, mblk: 0 };
+        let meta = Meta { lg: crate::DEFAULT_LG, base: &[], maxv: &[], off: &[], bsum: &[], width: &[], n: 0, nblk: 0, mblk: 0 };
         let c = Coc { meta, pack: &[], exc: None, fdelta: None };
         assert_eq!((c.prd(i64::MIN), c.min(i64::MIN), c.max(i64::MIN)), (1, i64::MAX, i64::MIN + 1));
         assert_eq!((c.all(), c.any()), (true, false));
     }
     #[test] fn all_null_block_and_all_zero_block() {
         fn mk(v: &[i64; 1]) -> Coc<'_> {
-            Coc { meta: Meta { lg: crate::DEFAULT_LG, base: v, maxv: v, off: &[0], bsum: &[0], width: &[0], sumnul: 0, sumn: 0, n: 3, nblk: 1, mblk: 1 }, pack: &[], exc: None, fdelta: None }
+            Coc { meta: Meta { lg: crate::DEFAULT_LG, base: v, maxv: v, off: &[0], bsum: &[0], width: &[0], n: 3, nblk: 1, mblk: 1 }, pack: &[], exc: None, fdelta: None }
         }
         let n = mk(&[i64::MIN]);
         assert_eq!((n.min(i64::MIN), n.max(i64::MIN), n.prd(i64::MIN)), (i64::MAX, i64::MIN + 1, 1));
@@ -143,7 +143,7 @@ mod tests {
     // expected values: the C of e16b3fd (/data/tmp/qrs/K26/diff.c: 720000 vv/scale checks, shifts at i64's ends included, 0 mismatches)
     #[test] fn vv_scale_refusals_and_shift_bounds() {
         let cm = |base: &[i64], maxv: &[i64]| Coc { meta: Meta { lg: crate::DEFAULT_LG, base: &base.to_vec().leak()[..], maxv: &maxv.to_vec().leak()[..], off: &[0; 2],
-            bsum: &[0; 2], width: &[0; 2], sumnul: i64::MIN, sumn: 2048, n: 2048, nblk: 2, mblk: 2 }, pack: &[], exc: None, fdelta: None };
+            bsum: &[0; 2], width: &[0; 2], n: 2048, nblk: 2, mblk: 2 }, pack: &[], exc: None, fdelta: None };
         let (a, b) = (cm(&[i64::MAX - 1, 0], &[i64::MAX, 0]), cm(&[2, 2], &[8, 8]));
         assert_eq!((a.vv_ok(&b, 0, 0, 0), a.vv_ok(&b, 1, 0, 0), a.vv_ok(&b, 2, 0, 0)), (false, true, false));
         assert_eq!((b.shift_bounds(0, 1024, 0, 0), b.shift_bounds(0, 1024, 1, 7)), ((2, 8), (2, 8)));
@@ -158,7 +158,7 @@ mod tests {
     // expected values: the C of 336b87b (/data/tmp/qrs/A6b/gen.c: 3000 columns, 63000 comparisons, 0 mismatches)
     #[test] fn shift_refusals_paths_and_sums() {
         let cm = |base: &[i64], maxv: &[i64]| Coc { meta: Meta { lg: crate::DEFAULT_LG, base: &base.to_vec().leak()[..], maxv: &maxv.to_vec().leak()[..], off: &[0; 2],
-            bsum: &[0; 2], width: &[0; 2], sumnul: i64::MIN, sumn: 2048, n: 2048, nblk: 2, mblk: 2 }, pack: &[], exc: None, fdelta: None };
+            bsum: &[0; 2], width: &[0; 2], n: 2048, nblk: 2, mblk: 2 }, pack: &[], exc: None, fdelta: None };
         let c = cm(&[1, 5], &[9, 9]);
         assert_eq!((c.shift_ok(1, false), c.shift_ok(1, true), c.shift_ok(i64::MIN, false)), (1, 2, 0));
         assert_eq!((c.shift_ok(i64::MAX - 8, false), c.shift_ok(i64::MAX - 9, false)), (0, 1));

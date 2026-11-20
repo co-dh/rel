@@ -52,7 +52,7 @@ mod tests {
     fn float_at_two_bytes_aborts() { kind_of(2, true, "find_vec"); }
     fn col<'a>(base: &'a [i64], maxv: &'a [i64], off: &'a [u64], width: &'a [u8], n: usize, exc: Option<Exc<'a>>) -> Coc<'a> {
         let m = base.len();
-        Coc { meta: Meta { lg: crate::DEFAULT_LG, base, maxv, off, bsum: base, width, sumnul: 0, sumn: 0, n, nblk: m, mblk: m }, pack: &[], exc, fdelta: None }
+        Coc { meta: Meta { lg: crate::DEFAULT_LG, base, maxv, off, bsum: base, width, n, nblk: m, mblk: m }, pack: &[], exc, fdelta: None }
     }
     #[test] fn srange_and_exc_within() {
         let (raw, pos, off) = ([(-9i64).to_ne_bytes(), 40i64.to_ne_bytes()].concat(), [1u16, 2], [0u32, 0, 2]);
@@ -421,5 +421,5 @@ mod tests {
     }
 }
 // ---- K17: search.rs `coc_may_hold64`, `remap_ids_run`, the index's slots (`ix_*`) ----
-pub trait IdsFn<R> { fn go<const W: u32>(self) -> R; }
+
 // ---- A33: search.rs, 1539-1830, 2004-2099: the per-element callers of A32's walk, whole loops in Rust ----

@@ -3,7 +3,7 @@
 //! column's key range from its metadata. The ALP arm (`kwin.f`, sort.rs) is `alp`, `None` for an integral column.
 
 use crate::coc::Coc;
-use crate::key::{Keys, SK_C8, SK_I8, SK_F32, SK_F64, SK_I16, SK_I32, SK_I64, SK_U8};
+use crate::key::{SK_C8, SK_I8, SK_F32, SK_F64, SK_I16, SK_I32, SK_I64, SK_U8};
 
 
 /// `sk_dense_width` (coc.rs) in bits; C exits at the kinds with no dense width, which an encoded column never has.

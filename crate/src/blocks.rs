@@ -10,8 +10,8 @@ use crate::pod::{self, Elt};
 /// `Ext.Enc`'s constructor tags, in `Rel/Kernel/Value.lean`'s order; every Rust reader and writer of an `Enc` names
 /// them from here, so a constructor added or removed there is one edit here.
 pub mod tag {
-    pub const BYTES: u32 = 0; pub const SYMS: u32 = 1; pub const FOR: u32 = 2; pub const ALP: u32 = 3;
-    pub const ENUM: u32 = 4; pub const GEN: u32 = 5; pub const POS: u32 = 6;
+    pub const BYTES: u32 = 0; pub const FOR: u32 = 2; pub const ALP: u32 = 3;
+    pub const ENUM: u32 = 4; pub const POS: u32 = 6;
 }
 
 /// The kinds a column's blocks come from: a dense payload, FoR (`Coc`), ALP (`Cocf`), or ids at `lw` bits. A bit column

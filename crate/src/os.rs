@@ -9,7 +9,6 @@ pub mod sys {
         pub fn __errno_location() -> *mut i32;
         /// the XSI `strerror_r` C reaches without `_GNU_SOURCE`: fills `buf`, answers 0 or an errno
         pub fn __xpg_strerror_r(e: i32, buf: *mut u8, n: usize) -> i32;
-        pub fn tzset();
     }
 }
 use sys::*;
@@ -61,7 +60,6 @@ pub mod sys2 {
     unsafe extern "C" {
         pub fn open(path: *const c_char, flags: i32, ...) -> i32;
         pub fn close(fd: i32) -> i32;
-        pub fn pread(fd: i32, buf: *mut u8, n: usize, off: i64) -> isize;
         pub fn write(fd: i32, buf: *const u8, n: usize) -> isize;
         pub fn fstat(fd: i32, st: *mut Stat) -> i32;
         pub fn stat(path: *const c_char, st: *mut Stat) -> i32;
@@ -73,12 +71,6 @@ pub mod sys2 {
         pub fn mkdir(path: *const c_char, mode: u32) -> i32;
         pub fn realpath(path: *const c_char, out: *mut c_char) -> *mut c_char;
         pub fn getpid() -> i32;
-        pub fn dlopen(path: *const c_char, flags: i32) -> *mut c_void;
-        pub fn dlsym(h: *mut c_void, name: *const c_char) -> *mut c_void;
-        pub fn dlerror() -> *const c_char;
-        pub fn socket(domain: i32, ty: i32, proto: i32) -> i32;
-        pub fn connect(fd: i32, addr: *const u8, len: u32) -> i32;
-        pub fn setenv(name: *const c_char, value: *const c_char, overwrite: i32) -> i32;
         pub fn getenv(name: *const c_char) -> *const c_char;
         pub fn sysconf(name: i32) -> i64;
         pub fn exit(code: i32) -> !;
