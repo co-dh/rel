@@ -563,6 +563,19 @@ Diff table 的「状态」列：✅ 后面是完成它的步骤；🔄 是部分
         - owner 定的顺序（C）：先做 architecture §4 已定的实现改动（`∩ − \` 分段 `scan`、`\` 不物化 join、
           `ldiv(tab, bits)` 在 bit matrix 上算、`μ` semi-naive），差分测试与回归固定保护；`ldiv meet diff mu fold` 与
           bit matrix 路径的证明（T11e 余项、`ReadsBack`）等实现稳定后再做。T11e5 只做 `arith`。
+        - 2026-11-20 06:21，master bfa135d + pin：**check-67 全绿**（481/2、483/483，235 / 235；定义数 478 → 483 是新测试
+          `sumFold` 的 5 个）。owner 的两项决定已落地：
+          - **E**（`sum`/`length` 在有 universe 的对象上等于 fold，逐步检查；sumE af94837）：`Prim.dfn : Option Expr` 是 row 表里
+            每个 row 的定义（`length.dfn = ⦇[0, π₁ succ]⦈`，`sum.dfn = ⦇[0, plus]⦈ʳ`）；`Elab.build` 在 target 有 universe 时
+            构建定义，否则用融合 row（`long` 上 `rowOK_sum`/`Tab.sum_holds` 不动）。a9998a7 的 `row ≫ U` 已删。附带改动：
+            `elabE`/`elabArgs` 变 `partial`；`foldParts.base` 对 source = target 同一未解对象的 base 不再设成 `1`。
+            新测试 `sumFold`（手算）：`M = -3…3` 的 `[-3,3,3] sum` 无结果，`P = 1…5` 的 `length = 𝟘`。已有固定值全部不变，
+            `compile-diff.json` 只新增 5 条；compile-diff 一步 936 → 928 s，没有可见变慢。
+          - **registry B**（regB 11f19aa；check-66 在 fac8d01 全绿）：同一 key 的第二次登记必须是同一定义（`Registry.again`、
+            `Registry.call?`、`Tm.diffAt`/`Tm.fieldsEq`，嵌套调用按 key 比），否则报错；`lookup` 返回先登记的。A（常量名只由 key
+            决定）不可行：互不 import 的两个模块声明同名常量，同时 import 时 Lean 拒绝。整棵树 113 个 key、4 个登记多次
+            （`blocks` 的 `R.form.4`、`M.form.4`、`S'.form.4.4`、`L.form.0.1`），全部相同——这个计数未进 gate。
+          - 04:52 一条里"待 owner 决定"的两项作废。
         - 2026-11-20 04:52，master 643bc17 + pin：**check-65 全绿**（476/2、478/478，235 / 235）。
           - T11f 合入（t11f b61c2d8）：六个 kern 测试程序 147 个定义中 146 个有手算的字面行 `check`；`TestCompile` 列出没有任何
             字面行 `check` 提到的定义：436 → 290（共 478）。
