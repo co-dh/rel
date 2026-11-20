@@ -51,7 +51,7 @@ def scatterWords (op : Op) (is es : Array UInt64) (n : Nat) (fill : UInt64) : Ex
 /-- `scatter` over `m` rows of `ix` and `e` into `n` cells under `op`: `scatterWords` of their words, encoded by
 `Coc.encode` at 8 bytes, every cache filled. The first error in the order `ix`, `e`, the rows is the answer. -/
 @[extern "qlean_k_scatter"]
-def kscatter (op : Op) (m : USize) (ix e : @& Enc) (n : USize) (fill : UInt64) : Except String Enc := do
+def kscatter (op : @& Op) (m : USize) (ix e : @& Enc) (n : USize) (fill : UInt64) : Except String Enc := do
   let o ← scatterWords op (← foRWords "scatter: ix" m ix) (← foRWords "scatter: e" m e) n.toNat fill
   -- `ofNat32`, not the literal `8`, whose `toNat` is `8 % 2 ^ numBits` and stops `decide` at the opaque `numBits`
   let r := Coc.encode (USize.ofNat32 8 (by decide)) (o.foldl (init := .empty) fun acc w => Column.pushBits acc w 8)

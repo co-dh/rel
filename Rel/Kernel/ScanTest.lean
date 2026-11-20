@@ -72,6 +72,34 @@ example : kwords ((List.range 4).foldlM (kscanRow .gt #[0, 1, 0, 1] #[100, 100, 
 #guard kbool (kscan .gt true .i64 .u1 4 kseg kcols) = [1, 0, 1, 1]
 -- a boolean answer cut to its low bit: `add` of `1 2 3 4` from 100 at rows 0 and 2 is `101 103 103 107`
 #guard kbool (kscan .add false .i64 .u1 4 kseg kcols) = [1, 1, 1, 1]
+
+/-- `$` (`Op.cast s t`) as a map over the `n` words `ws` of a `w`-byte column read at `s`, every row a segment: the
+    row model by `decide`, the Rust by `#guard`. `2^63` is a row with no image. -/
+private def castRows (s t : QAtomicType) (ws : List UInt64) : List UInt64 :=
+  kwords ((List.range ws.length).foldlM (kscanRow (.cast s t) (ws.map fun _ => 1).toArray ws.toArray [ws.toArray]) #[])
+private def castRun (s t : QAtomicType) (w : Nat) (ws : List UInt64) : List UInt64 :=
+  let c : Enc := .bytes (Column.packIds (8 * w) ws.length fun i => (ws.getD i 0).toNat)
+  match kscan (.cast s t) false s t (USize.ofNat ws.length) (.foR (Coc.bools ws.length fun _ => true).1
+      (Coc.bools ws.length fun _ => true).2) [c, c] with
+  | .ok (e, _) => (e.raw .i64 (USize.ofNat ws.length)).toList
+  | .error _ => []
+-- `i64 → f64` at 0, ±1, -7, 2^53, 2^53 + 1 (no image), 2^62, the null, 2^63 - 1 (no image)
+private def i64s : List UInt64 := [0, 1, (-1 : Int64).toUInt64, (-7 : Int64).toUInt64, 9007199254740992,
+  9007199254740993, 4611686018427387904, 0x8000000000000000, 0x7fffffffffffffff]
+private def i64f64 : List UInt64 := [0, 0x3ff0000000000000, 0xbff0000000000000, 0xc01c000000000000,
+  0x4340000000000000, 0x8000000000000000, 0x43d0000000000000, 0x8000000000000000, 0x8000000000000000]
+example : castRows .i64 .f64 i64s = i64f64 := by decide
+#guard castRun .i64 .f64 8 i64s = i64f64
+-- `i32 → i64` at -5, 0, the `i32` null (no image), `2^31 - 1`; `f32 → f64` at 1.5, the least subnormal, `inf` and
+-- `-0` (to `+0`)
+example : castRows .i32 .i64 [0xfffffffb, 0, 0x80000000, 0x7fffffff] =
+    [0xfffffffffffffffb, 0, 0x8000000000000000, 0x7fffffff] := by decide
+#guard castRun .i32 .i64 4 [0xfffffffb, 0, 0x80000000, 0x7fffffff] =
+    [0xfffffffffffffffb, 0, 0x8000000000000000, 0x7fffffff]
+example : castRows .f32 .f64 [0x3fc00000, 1, 0x7f800000, 0x80000000] =
+    [0x3ff8000000000000, 0x36a0000000000000, 0x8000000000000000, 0] := by decide
+#guard castRun .f32 .f64 4 [0x3fc00000, 1, 0x7f800000, 0x80000000] =
+    [0x3ff8000000000000, 0x36a0000000000000, 0x8000000000000000, 0]
 -- a `foR` boolean is a `seg` and a boolean column: the compare's own answer `1 0 1 0` segments as `kseg` does, and
 -- reversed, `or` of it with itself carries row 2's `1` back into row 1: rows `0 | 1|1, 1|0 | 1|1`
 #guard kread (kscan .gt false .i64 .u1 4 kseg kcols >>= fun g => kscan .add false .i64 .i64 4 g.1 kcols) =
