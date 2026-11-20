@@ -198,8 +198,12 @@ syntax (name := sNumAt) &"obj" relWord ":" ident : relStmt
 -- a schema's column `k : K`
 syntax relField := relWord ":" relObj
 syntax (name := sSchema) &"schema" relWord "=" "{" relField,+ "}" : relStmt
-syntax (name := sPrint) &"print" rel : relStmt
-syntax (name := sCheck) &"check" rel cmpOp rel : relStmt
+-- `where t ≜ L`: the table `L` for the input `t` (IO design A.4)
+syntax (name := sPrint) &"print" rel ("where" relItem,+)? : relStmt
+syntax (name := sCheck) &"check" rel cmpOp rel ("where" relItem,+)? : relStmt
+-- IO design A.1: no keyword a table directory, `csv` one CSV file; `&`, so `input output csv` stay names
+syntax (name := sInput) &"input" relWord relType &" from " (&"csv")? str : relStmt
+syntax (name := sOutput) &"output" relWord &" to " (&"csv")? str : relStmt
 syntax (name := sDefn) relWord ("(" relParam,+ ")")? (relType)? "≜" rel ("⊑" rel)? ("where" relItem,+)? : relStmt
 syntax (name := sInfix) "_" relWord "_" "(" relParam,+ ")" (relType)? "≜" rel ("⊑" rel)? ("where" relItem,+)? :
   relStmt

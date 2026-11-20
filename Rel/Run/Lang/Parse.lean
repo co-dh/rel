@@ -207,6 +207,7 @@ def after (s : S) (prog : Program) : S := prog.foldl (init := s) fun s d => matc
   | .defn p k ps _ _ => { s with known := (k, ps.length) :: s.known, taken := (k, at_ p) :: s.taken }
   | .obj p n _ => { s with objs := n :: s.objs, taken := (n, at_ p) :: s.taken }
   | .«theorem» p n .. => { s with thms := n :: s.thms, taken := (n, at_ p) :: s.taken }
+  | .input p n .. => { s with known := (n, 0) :: s.known, taken := (n, at_ p) :: s.taken }
   | _ => s
 
 /-- The operator `n` of an infix key `_n_`, read back by the reader that reads its declaration; none for a name. -/

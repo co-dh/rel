@@ -366,8 +366,14 @@ inductive Decl
   | obj (p : Pos) (n : String) (d : ObjDef)
   /-- `ty`: the declared type `A ⟶ B`, required on a relation and absent on a test (§e). -/
   | defn (p : Pos) (n : String) (ps : List Param) (b : Body) (ty : Option (OExp × OExp))
-  | print (p : Pos) (e : Expr)
-  | check (p : Pos) (e f : Expr) (eq : Bool)
+  /-- `binds`: the `where` items, each an input of the program and the table that stands for it here (IO design A.4). -/
+  | print (p : Pos) (e : Expr) (binds : List (String × Expr))
+  | check (p : Pos) (e f : Expr) (eq : Bool) (binds : List (String × Expr))
+  /-- `input n : A ⟶ B from p`: a relation with no body, a parameter of the statements after it that mention it
+      (IO design A.2); read from the table directory `path`, or the CSV file `path` when `csv`. -/
+  | input (p : Pos) (n : String) (ty : OExp × OExp) (csv : Bool) (path : String)
+  /-- `output n to path`: the table of the definition or input `n` written to `path` (`csv`: as one CSV file). -/
+  | output (p : Pos) (n : String) (csv : Bool) (path : String)
   /-- `theorem n(ps) on A : e = f := calc` (`⊑` when `eq` is false), each step `_ = x := why` with its line; no
       steps: the proof is owed to Lean. `on A`: each step is also evaluated as `check A x = A y` (§3). -/
   | «theorem» (p : Pos) (n : String) (ps : List Param) (e f : Expr) (eq : Bool) (on : Option Expr)

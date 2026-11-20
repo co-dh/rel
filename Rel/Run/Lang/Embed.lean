@@ -57,6 +57,15 @@ def stmt (s : Syntax) : C Decl := do
   let objDecl (d : C ObjDef) : C Decl := do let n ← objName; pure (.obj p n (← d))
   let num (w : Syntax) : C Int := do onText w[0] "" (Parse.num (← wordOf w))
   let opt (o : Syntax) := if o.getNumArgs == 0 then #[] else o[1].getSepArgs
+  -- a `check`'s or `print`'s `where`: each item read in the statement's scope, each name once (`walk` checks it is
+  -- an input)
+  let binds (o : Syntax) : C (List (String × Expr)) := (opt o).foldlM (init := []) fun σ i => do
+    let n ← wordOf i[0]
+    if σ.any (·.1 == n) then failAt i s!"`{n}` is already an item of this `where`"
+    pure (σ ++ [(n, ← expr i[2])])
+  let path (t : Syntax) : C String := match t.isStrLit? with
+    | some f => pure f
+    | none => failAt t "expected the path as a string literal"
   match s.getKind with
   | ``sElems => objDecl do pure (.elems (← s[4].getSepArgs.toList.mapM wordOf))
   | ``sRange => objDecl do
@@ -77,8 +86,13 @@ def stmt (s : Syntax) : C Decl := do
     -- a column twice is refused where it is written, by the check every `Schema` function makes
     if let .error m := Schema.check cs then failAt s[4] m
     pure (.schema cs)
-  | ``sPrint => pure (.print p (← expr s[1]))
-  | ``sCheck => pure (.check p (← expr s[1]) (← expr s[3]) (atomIn s[2] == "="))
+  | ``sPrint => pure (.print p (← expr s[1]) (← binds s[2]))
+  | ``sCheck => pure (.check p (← expr s[1]) (← expr s[3]) (atomIn s[2] == "=") (← binds s[4]))
+  | ``sInput => do
+    let n ← wordOf s[1]
+    Parse.fresh p n (← get).taken
+    pure (.input p n (← typeOf s[2]) (s[4].getNumArgs != 0) (← path s[5]))
+  | ``sOutput => do pure (.output p (← wordOf s[1]) (s[3].getNumArgs != 0) (← path s[4]))
   | ``sDefn =>
     -- `_on_` is one Lean identifier: its text read as a head, `_n_` the infix `n`
     let (w, key) ← if s[0].getKind == ``wNeg then (do let w ← wordOf s[0]; pure (w, w)) else onText s[0] (tokText s[0][0]) do
