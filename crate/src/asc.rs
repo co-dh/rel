@@ -6,6 +6,8 @@
 //! Owner approvals (PLAN 6.10): a key block is decoded into an L1 scratch one block at a time (S); the grade keeps a
 //! permutation work array, and a dense array of order codes for a key that is not graded off its blocks: a column whose
 //! codes do not ascend with its words, or several columns, which become one mixed-radix code per row (X).
+//! Owner approval 2026-11-20 (R12): a `cells` key column's `lo`/`hi` are read once per distinct cell into a span
+//! array; it counts as the dense working array of (X), not as a decoded copy of the column.
 //! No comparison reads a word at its address: every key column is first its working key, one code a row read a block at
 //! a time (`work`; a `cells` column's is its cell's rank, `Cells::codes`), and the sort compares those.
 use alloc::{format, string::String, vec, vec::Vec};
