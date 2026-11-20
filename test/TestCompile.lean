@@ -144,6 +144,8 @@ run_cmd do
   let mut slow : List (String × Nat) := []
   let mut times : Array String := #[]
   let mut closed := 0
+  -- each closed definition no literal-row `check` of its program mentions
+  let mut unchecked : List String := []
   for (n, _, _) in reg.progs do
     let gs ← unsafe IO.ofExcept ((← getEnv).evalConst (List (String × Gen.Gv)) (← getOptions) (n ++ `expanded))
     let (ds, _, _, _, fs) ← match ← GenSoundTest.reread n with
@@ -152,8 +154,15 @@ run_cmd do
     for (x, _) in ds do
       unless gs.any (·.1 == x) do throwError "TestCompile: `{n}.{x}` is re-read but not in `{n ++ `expanded}`"
     once := once ++ fs.map (toString ·.const)
+    -- the names the other side of each literal-row `check` mentions (`𝟘` the literal with no rows, which `{…}`
+    -- cannot write): only those see a wrong `Tm` or a wrong pin
+    let lit := (← Embed.programOf n).flatMap fun
+      | .check _ (.lit ..) g _ | .check _ g (.lit ..) _ | .check _ (.op _ .zero _ []) g _
+      | .check _ g (.op _ .zero _ []) _ => g.names
+      | _ => []
     for (x, ⟨A, B, c⟩) in gs do
       let nm := s!"{n}.{x}"
+      unless lit.contains x do unchecked := unchecked ++ [nm]
       closed := closed + 1
       let some ⟨A', B', t⟩ := ds.lookup x | throwError "TestCompile: `{nm}` is in `{n ++ `expanded}` but not re-read"
       unless A' == A && B' == B do throwError "TestCompile: `{nm}` is re-read at other objects than it is generated at"
@@ -184,6 +193,8 @@ run_cmd do
   logInfo m!"the differential test (generated code against `Tm.gen`): {same.length + differ.size} compared, \
     {same.length} equal, {differ.size} different, {none'.length} with no code ({kinds}), {once.length} elaborated \
     once (no closed constant), {slow.length} slow (over {slowMs} ms: {slow})\nno code: {none'}\nonce: {once}"
+  logInfo m!"{closed - unchecked.length} of {closed} closed definitions are mentioned by a literal-row `check`; \
+    {unchecked.length} are not: {unchecked}"
   -- every closed definition of `n.expanded` is in exactly one of `same`, `differ`, `none'`, `errs` (fails below)
   unless same.length + differ.size + none'.length + errs.size == closed do
     throwError "TestCompile: {closed} closed definitions, but {same.length} equal, {differ.size} different, \
