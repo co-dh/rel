@@ -33,15 +33,16 @@ import Rel.Programs.Wumpus
     from `Obj.lt` order to `kasc` order, or to another encoding, reads the same.
 
     - The differential test: each closed definition of every registered program, re-read as a `Tm`
-      (`GenSoundTest.reread`), with no `Tm.gap` node, run as `(Tm.code Code.empty t).runE {}` and required to
-      have the result of the constant `rel_program` generated (`n.expanded`). So on these definitions the generated
-      code equals `Tm.gen`'s, and `Tm.gen_sound` relates `Tm.gen` to `Tm.den` under its hypotheses (the bit-matrix
-      laws, `LamLaw` at each `Λ`); a definition with a gap node is listed with the constructors that put it there,
-      and the definitions elaborated once (`Once`) have no closed constant to compare.
+      (`GenSoundTest.reread`) where `Tm.gen` has code at every node (`Tm.hasCode`), run as
+      `(Tm.code Code.empty t).runE {}` and required to have the result of the constant `rel_program` generated
+      (`n.expanded`). So on these definitions the generated code equals `Tm.gen`'s, and where the term has no
+      `Tm.gap` node `Tm.gen_sound` relates `Tm.gen` to `Tm.den` under its hypotheses (the bit-matrix laws, `LamLaw`
+      at each `Λ`); a definition with no code is listed with the nodes that have none, and the definitions
+      elaborated once (`Once`) have no closed constant to compare.
     - The regression pin, with no independent oracle: every closed definition's result against the pin
       `compile-diff.json` beside this file, by name. The pin is an earlier run's output, so a difference says a
-      result CHANGED, and a match says nothing about whether it is right; for the definitions with a gap node it is
-      the only check.
+      result CHANGED, and a match says nothing about whether it is right; for the definitions with no code it is the
+      only check.
 
     `REL_COMPILE_DIFF_WRITE=1` regenerates the baseline from the current run instead of comparing; the file is
     never edited by hand. -/
@@ -97,11 +98,34 @@ def diff (b : Json) (s : String) (rs : List (List Nat)) : Except String (Option 
     if n == rs.length && d == (hash rs).toNat then return none
     return some s!"rows differ: {rs.length} rows, digest {(hash rs).toNat} in the run; {n}, {d} in the baseline"
 
-/-- The constructors (`ctors`, by `Tm.ctorIdx`) of the nodes of `t` that are `Tm.gap` of their own: with each part
-    replaced by the gap-free `𝟘`. -/
-partial def gapCtors (ctors : List Name) {A B : Obj} (t : Tm A B) : List String :=
-  ((if (Id.run (t.mapM fun _ => pure .zero)).gap then [toString ((ctors.getD t.ctorIdx .anonymous).componentsRev.headD
-    .anonymous)] else []) ++ t.parts.flatMap fun ⟨_, _, u⟩ => gapCtors ctors u).eraseDups
+/-- `t`'s constructor's name (`ctors`, by `Tm.ctorIdx`). -/
+def ctorName (ctors : List Name) {A B : Obj} (t : Tm A B) : String :=
+  toString ((ctors.getD t.ctorIdx .anonymous).componentsRev.headD .anonymous)
+
+/-- The head of the spine `t`: its row (`arg` of a row with no code at these objects), or another constructor. -/
+partial def spineHead (ctors : List Name) {A B : Obj} : Tm A B → String
+  | .arg f _ => spineHead ctors f
+  | .prim r => s!"arg {r.sym}"
+  | t => s!"arg headed by {ctorName ctors t}"
+
+mutual
+/-- The nodes of `t` where `Tm.gen` returns its error table (`Tm.hasCode` false there, true at their parts): the
+    constructor, and for a row or a spine its row's symbol. -/
+partial def noCode (ctors : List Name) {A B : Obj} (t : Tm A B) : List String :=
+  if t.hasCode then [] else match t with
+  | .prim r => [s!"prim {r.sym}"]
+  | .arg .. => match argNoCode ctors t with
+    | [] => [spineHead ctors t]
+    | l => l
+  | _ => match t.parts.flatMap fun ⟨_, _, u⟩ => noCode ctors u with
+    | [] => [ctorName ctors t]
+    | l => l
+
+/-- The nodes with no code in the arguments of the spine `t`. -/
+partial def argNoCode (ctors : List Name) {A B : Obj} : Tm A B → List String
+  | .arg f x => argNoCode ctors f ++ noCode ctors x
+  | _ => []
+end
 
 /-- A run slower than this many milliseconds is reported as slow. -/
 def slowMs : Nat := 60000
@@ -112,12 +136,13 @@ run_cmd do
   let mut run : Std.HashMap String (String × List (List Nat)) := {}
   let mut errs : Array String := #[]
   let mut open' : List String := []
-  -- the differential test's obligations: each definition is compared (`same` or `differ`), `gap`, or `once`
+  -- the differential test's obligations: each definition is compared (`same` or `differ`), `none'`, or `once`
   let mut same : List String := []
   let mut differ : Array String := #[]
-  let mut gap : List (String × List String) := []
+  let mut none' : List (String × List String) := []
   let mut once : List String := []
   let mut slow : List (String × Nat) := []
+  let mut times : Array String := #[]
   let mut closed := 0
   for (n, _, _) in reg.progs do
     let gs ← unsafe IO.ofExcept ((← getEnv).evalConst (List (String × Gen.Gv)) (← getOptions) (n ++ `expanded))
@@ -138,10 +163,11 @@ run_cmd do
         if run.contains nm then throwError "TestCompile: `{nm}` is visited twice"
         run := run.insert nm (s, rs)
         if s != "ok" then open' := open' ++ [nm]
-        if t.gap then gap := gap ++ [(nm, gapCtors ctors t)] else
+        if !t.hasCode then none' := none' ++ [(nm, (noCode ctors t).eraseDups)] else
           let t0 ← IO.monoMsNow
           let r ← IO.lazyPure fun _ => result ((Tm.code Code.empty t).runE {})
           let ms := (← IO.monoMsNow) - t0
+          times := times.push s!"{nm}\t{ms}"
           if ms > slowMs then slow := slow ++ [(nm, ms)]
           match r with
           | .error e => differ := differ.push s!"`{nm}`: `Tm.gen`'s result unreadable: {e}"
@@ -151,13 +177,17 @@ run_cmd do
               {rs'.length} by `Tm.gen`; only generated {few (rs.filter (!rs'.contains ·))}, only by `Tm.gen` \
               {few (rs'.filter (!rs.contains ·))}"
             else same := same ++ [nm]
+  -- `REL_COMPILE_TIMES` names a file for each compared definition's run time, tab-separated, in ms
+  if let some p ← IO.getEnv "REL_COMPILE_TIMES" then IO.FS.writeFile p ("\n".intercalate times.toList ++ "\n")
+  -- each node kind with no code, with the number of definitions it is in
+  let kinds := (none'.flatMap (·.2)).eraseDups.map fun k => (k, (none'.filter (·.2.contains k)).length)
   logInfo m!"the differential test (generated code against `Tm.gen`): {same.length + differ.size} compared, \
-    {same.length} equal, {differ.size} different, {gap.length} with a gap node, {once.length} elaborated once (no \
-    closed constant), {slow.length} slow (over {slowMs} ms: {slow})\ngap: {gap}\nonce: {once}"
-  -- every closed definition of `n.expanded` is in exactly one of `same`, `differ`, `gap`, `errs` (which fails below)
-  unless same.length + differ.size + gap.length + errs.size == closed do
+    {same.length} equal, {differ.size} different, {none'.length} with no code ({kinds}), {once.length} elaborated \
+    once (no closed constant), {slow.length} slow (over {slowMs} ms: {slow})\nno code: {none'}\nonce: {once}"
+  -- every closed definition of `n.expanded` is in exactly one of `same`, `differ`, `none'`, `errs` (fails below)
+  unless same.length + differ.size + none'.length + errs.size == closed do
     throwError "TestCompile: {closed} closed definitions, but {same.length} equal, {differ.size} different, \
-      {gap.length} gap and {errs.size} unreadable"
+      {none'.length} with no code and {errs.size} unreadable"
   unless differ.isEmpty do
     throwError "TestCompile: {differ.size} definitions differ between the generated code and `Tm.gen`:\
       \n{"\n".intercalate differ.toList}"
