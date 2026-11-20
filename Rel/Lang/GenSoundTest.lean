@@ -43,14 +43,18 @@ run_cmd do
   let mut total := 0
   let mut ok : List String := []
   let mut ks : List (List String) := []
+  let mut nonmono : List String := []
   for (n, _, _) in reg.progs do
     match ← reread n with
     | .error e => throwError "GenSoundTest: re-reading {n}: {e}"
     | .ok (ds, _, _, _, fs) =>
       for (x, ⟨_, _, t⟩) in ds ++ fs.map fun o => (toString o.const, o.res) do
         total := total + 1
-        if !t.gap then ok := ok ++ [s!"{n}.{x}"] else ks := t.gapKinds.eraseDups :: ks
-  logInfo m!"{ok.length} of {total} definitions of {reg.progs.size} programs have no gap node"
+        -- `monoOK` false makes `LamLaws` false (`Tm.LamLawsAt.mono`, `Tm.monoOK_iff`): `gen_sound` says nothing
+        if t.gap then ks := t.gapKinds.eraseDups :: ks
+        else if t.monoOK then ok := ok ++ [s!"{n}.{x}"] else nonmono := nonmono ++ [s!"{n}.{x}"]
+  logInfo m!"{ok.length} of {total} definitions of {reg.progs.size} programs have no gap node and pass Tm.monoOK"
+  logInfo m!"{nonmono.length} with no gap node fail Tm.monoOK (a fixed point's body not positive): {nonmono}"
   -- per gap kind: the definitions it blocks, and those it blocks alone (their only gap kind)
   let rows := ks.flatten.eraseDups.map fun k => (k, (ks.filter (·.contains k)).length, (ks.filter (· == [k])).length)
   for (k, b, a) in rows.mergeSort fun (_, b, a) (_, b', a') => a > a' || (a == a' && b ≥ b') do

@@ -1,4 +1,7 @@
 import Rel.Lang.GenKFold
+import Rel.Lang.GenKEst
+import Rel.Lang.GenKFix
+import Rel.Lang.GenKHylo
 import Rel.Lang.Den
 import Rel.Run.Lang.Expand
 
@@ -28,6 +31,25 @@ def Code.bind (η : Code) (k : Nat) {A B : Obj} (r : Rel A B) : Code := fun j A'
 /-- The code environment `η` represents the meaning environment `ρ`, at every variable and object, in every
     context, and every bit matrix it holds is `Rel.Wf`. -/
 def Sound (η : Code) (ρ : Val) : Prop := (∀ k A B K, (η k A B).Reps K (ρ k A B)) ∧ ∀ k A B, (η k A B).Wf
+
+/-- `η` with `k` bound to the table `Y` represents `ρ` with `k` bound to `rep Y`: a fixed point's round. -/
+theorem Sound.bind {η : Code} {ρ : Val} (hs : Sound η ρ) (k : Nat) {A B : Obj} (Y : Tab A B) :
+    Sound (η.bind k (GenK.const A B (.ok Y))) (ρ.bind k (rep Y)) := by
+  refine ⟨fun j A' B' K => ?_, fun j A' B' => ?_⟩
+  · by_cases hj : j = k
+    · simp only [Code.bind, Val.bind, hj, if_true]
+      by_cases ho : A = A' ∧ B = B'
+      · obtain ⟨rfl, rfl⟩ := ho
+        rw [dif_pos ⟨rfl, rfl⟩, dif_pos ⟨rfl, rfl⟩]
+        exact (GenK.reps_iff _ _ _).2 fun t ht x y _ _ => by cases ht; exact Iff.rfl
+      · rw [dif_neg ho, dif_neg ho]; exact GenK.zero_sound K
+    · simp only [Code.bind, Val.bind, hj, if_false]; exact hs.1 j A' B' K
+  · by_cases hj : j = k
+    · simp only [Code.bind, hj, if_true]
+      by_cases ho : A = A' ∧ B = B'
+      · obtain ⟨rfl, rfl⟩ := ho; rw [dif_pos ⟨rfl, rfl⟩]; trivial
+      · rw [dif_neg ho]; trivial
+    · simp only [Code.bind, hj, if_false]; exact hs.2 j A' B'
 
 /-- The hypothesis of `Tab.lam_den` at `A ⟶ [B]`: two rows of one key whose codes ascend strictly hold values
     ascending in `B.lt`. It fails at a float atom, so it is asked per `Λ`, never for every object. -/
@@ -245,27 +267,35 @@ def Prim.proved (r : Prim) (A B : Obj) (os : List (Obj × Obj)) : Bool :=
   (rowsProved.lookup r.sym).isSome && os.length == rowArity r.sym && primHasCode r A B os
 
 mutual
-/-- Some node of `t` has no proved case in `Tm.gen_sound`: no `GenK` lemma yet (`est thin atPos mu nu
-    hylo`), a lemma that does not hold as stated (`juncD`), a row not `Prim.proved` at its relations' objects
+/-- Some node of `t` has no proved case in `Tm.gen_sound`: no `GenK` lemma yet (`thin`), a `hylo` whose children's term
+    (`Tm.kids`) is none or has a gap node, a lemma that does not hold as stated (`juncD`), a row not `Prim.proved` at its relations' objects
     (`Tm.argGap`), or no mirror in `Tm.gen` (`call`, a spine headed by no row). -/
 def Tm.gap : {A B : Obj} → Tm A B → Bool
   | A, B, .prim r => !r.proved A B []
   | _, _, .val _ | _, _, .uni _ | _, _, .zero | _, _, .id | _, _, .outl | _, _, .outr | _, _, .nil
-  | _, _, .var .. => false
+  | _, _, .atPos _ | _, _, .var .. => false
   | _, _, .top R | _, _, .conv R | _, _, .dom R | _, _, .ran R | _, _, .lam R | _, _, .E R | _, _, .own R
-  | _, _, .succ R | _, _, .arith _ R | _, _, .leq R | _, _, .lt R | _, _, .flat R | _, _, .share _ R => R.gap
+  | _, _, .succ R | _, _, .arith _ R | _, _, .leq R | _, _, .lt R | _, _, .flat R | _, _, .share _ R
+  | _, _, .est R | _, _, .mu _ _ _ R => R.gap
   | _, _, .comp R S | _, _, .meet R S | _, _, .join R S | _, _, .diff R S | _, _, .pair R S | _, _, .prod R S
-  | _, _, .junc R S | _, _, .fold R S | _, _, .foldr R S | _, _, .foldI R S => R.gap || S.gap
+  | _, _, .junc R S | _, _, .fold R S | _, _, .foldr R S | _, _, .foldI R S | _, _, .nu _ R S => R.gap || S.gap
   | _, _, .ldiv R S U V | _, _, .rdiv R S U V => R.gap || S.gap || U.gap || V.gap
   | _, _, .arg (C := C) (D := D) f x => f.argGap [(C, D)] || x.gap
-  | _, _, .juncD .. | _, _, .est _ | _, _, .thin _ | _, _, .atPos _
-  | _, _, .mu .. | _, _, .nu .. | _, _, .hylo .. | _, _, .call .. => true
+  | _, _, .juncD .. | _, _, .thin _ | _, _, .call .. => true
+  -- the children's term is no subterm (`Tm.kids`), only no larger than the body (`Tm.size_kids`)
+  | A, _, .hylo k _ b =>
+    have : ((b.kids k A).getD .zero).size ≤ b.size := Tm.size_kids k A b
+    b.gap || (b.kids k A).isNone || ((b.kids k A).getD .zero).gap
+termination_by _ _ t => t.size
+decreasing_by all_goals simp only [Tm.size] at *; omega
 
 /-- `Tm.argGen`'s case split: the spine `t` given later relations at the objects `os` has a gap node. -/
 def Tm.argGap : {A B : Obj} → Tm A B → List (Obj × Obj) → Bool
   | A, B, .prim r, os => !r.proved A B os
   | _, _, .arg (C := C) (D := D) f x, os => f.argGap ((C, D) :: os) || x.gap
   | _, _, _, _ => true
+termination_by _ _ t _ => t.size
+decreasing_by all_goals simp only [Tm.size] at *; omega
 end
 
 /-- The head of the spine `t` (`Expand.spine`): its row's symbol, or `call`. -/
@@ -281,19 +311,19 @@ mutual
 def Tm.gapKinds : {A B : Obj} → Tm A B → List String
   | A, B, .prim r => if r.proved A B [] then [] else ["prim " ++ r.sym]
   | _, _, .val _ | _, _, .uni _ | _, _, .zero | _, _, .id | _, _, .outl | _, _, .outr | _, _, .nil
-  | _, _, .var .. => []
+  | _, _, .atPos _ | _, _, .var .. => []
   | _, _, .top R | _, _, .conv R | _, _, .dom R | _, _, .ran R | _, _, .lam R | _, _, .E R | _, _, .own R
-  | _, _, .succ R | _, _, .arith _ R | _, _, .leq R | _, _, .lt R | _, _, .flat R | _, _, .share _ R => R.gapKinds
+  | _, _, .succ R | _, _, .arith _ R | _, _, .leq R | _, _, .lt R | _, _, .flat R | _, _, .share _ R
+  | _, _, .est R | _, _, .mu _ _ _ R => R.gapKinds
   | _, _, .comp R S | _, _, .meet R S | _, _, .join R S | _, _, .diff R S | _, _, .pair R S | _, _, .prod R S
-  | _, _, .junc R S | _, _, .fold R S | _, _, .foldr R S | _, _, .foldI R S => R.gapKinds ++ S.gapKinds
+  | _, _, .junc R S | _, _, .fold R S | _, _, .foldr R S | _, _, .foldI R S | _, _, .nu _ R S =>
+    R.gapKinds ++ S.gapKinds
   | _, _, .ldiv R S U V | _, _, .rdiv R S U V => R.gapKinds ++ S.gapKinds ++ U.gapKinds ++ V.gapKinds
   | _, _, .juncD .. => ["juncD"]
-  | _, _, .est _ => ["est"]
   | _, _, .thin _ => ["thin"]
-  | _, _, .atPos _ => ["atPos"]
-  | _, _, .mu .. => ["mu"]
-  | _, _, .nu .. => ["nu"]
-  | _, _, .hylo .. => ["hylo"]
+  -- a `hylo` whose children `Tm.kids` reads in no shape, or whose children's term has a gap node
+  | A, _, .hylo k _ b =>
+    b.gapKinds ++ if (b.kids k A).isNone || ((b.kids k A).getD .zero).gap then ["hylo"] else []
   | _, _, .call .. => ["call"]
   | _, _, .arg (C := C) (D := D) f x => f.argGapKinds [(C, D)] ++ x.gapKinds
 
@@ -318,22 +348,72 @@ theorem Tm.gap_eq_spine {A B : Obj} (t : Tm A B) :
         ∀ a b : List String, (!a.isEmpty || !b.isEmpty) = !(a ++ b).isEmpty) _ _
   all_goals refine ⟨?_, fun os => by simp [Tm.argGap, Tm.argGapKinds]⟩
   all_goals simp only [Tm.gap, Tm.gapKinds, *]
-  all_goals first | rfl | (rw [Bool.eq_iff_iff]; simp [Decidable.imp_iff_not_or, or_assoc])
+  all_goals first
+    | rfl
+    | (rw [Bool.eq_iff_iff]; simp [Decidable.imp_iff_not_or, or_assoc])
+    | (split <;> simp_all [Bool.or_assoc])
 
 theorem Tm.gap_eq {A B : Obj} (t : Tm A B) : t.gap = !t.gapKinds.isEmpty := (Tm.gap_eq_spine t).1
 
-/-- `LamLaw` at each `Λ` and `E` of `t` (`E(R) = Λ(∋ ≫ R)`, at `[A] ⟶ [B]`), and at each row `rowsProved` marks. -/
-def Tm.LamLaws : {A B : Obj} → Tm A B → Prop
-  | A, B, .prim r => rowsProved.lookup r.sym = some true → ∀ B', B = .arr B' → LamLaw A B'
-  | _, _, .lam (A := A) (B := B) R => LamLaw A B ∧ R.LamLaws
-  | _, _, .E (A := A) (B := B) R => LamLaw (.arr A) B ∧ R.LamLaws
+/-- What `Tm.gen_sound` asks of `t` besides no `Tm.gap` node, with `L` for the order law of a `Λ`: `L` at each `Λ`
+    and `E` (`E(R) = Λ(∋ ≫ R)`, at `[A] ⟶ [B]`) and at each row `rowsProved` marks, and the body of each fixed
+    point positive in its variable (`Tm.pol`, which `Tm.den_mono` reads). -/
+def Tm.LamLawsAt (L : Obj → Obj → Prop) : {A B : Obj} → Tm A B → Prop
+  | A, B, .prim r => rowsProved.lookup r.sym = some true → ∀ B', B = .arr B' → L A B'
+  | _, _, .lam (A := A) (B := B) R => L A B ∧ R.LamLawsAt L
+  | _, _, .E (A := A) (B := B) R => L (.arr A) B ∧ R.LamLawsAt L
   | _, _, .top R | _, _, .conv R | _, _, .dom R | _, _, .ran R | _, _, .own R | _, _, .succ R | _, _, .arith _ R
-  | _, _, .leq R | _, _, .lt R | _, _, .flat R | _, _, .share _ R => R.LamLaws
+  | _, _, .leq R | _, _, .lt R | _, _, .flat R | _, _, .share _ R | _, _, .est R => R.LamLawsAt L
   | _, _, .comp R S | _, _, .meet R S | _, _, .join R S | _, _, .diff R S | _, _, .pair R S | _, _, .prod R S
-  | _, _, .junc R S | _, _, .fold R S | _, _, .foldr R S | _, _, .foldI R S => R.LamLaws ∧ S.LamLaws
-  | _, _, .ldiv R S U V | _, _, .rdiv R S U V => R.LamLaws ∧ S.LamLaws ∧ U.LamLaws ∧ V.LamLaws
-  | _, _, .arg f x => f.LamLaws ∧ x.LamLaws
-  | _, _, _ => True
+  | _, _, .junc R S | _, _, .fold R S | _, _, .foldr R S | _, _, .foldI R S => R.LamLawsAt L ∧ S.LamLawsAt L
+  | _, _, .ldiv R S U V | _, _, .rdiv R S U V => R.LamLawsAt L ∧ S.LamLawsAt L ∧ U.LamLawsAt L ∧ V.LamLawsAt L
+  | _, _, .arg f x => f.LamLawsAt L ∧ x.LamLawsAt L
+  | _, _, .nu k S b => b.pol true k = true ∧ S.LamLawsAt L ∧ b.LamLawsAt L
+  -- the children's term asks no more than the body (`Tm.lamLawsAt_kids`)
+  | _, _, .mu k _ _ b | _, _, .hylo k _ b => b.pol true k = true ∧ b.LamLawsAt L
+  -- every other constructor spelled out: a catch-all's equation lemmas time `simp` out
+  | _, _, .val _ | _, _, .uni _ | _, _, .zero | _, _, .id | _, _, .outl | _, _, .outr | _, _, .nil
+  | _, _, .atPos _ | _, _, .var .. | _, _, .thin _ | _, _, .juncD .. | _, _, .call .. => True
+
+/-- `Tm.LamLawsAt` with `LamLaw`, the premise of `Tm.gen_sound`. -/
+abbrev Tm.LamLaws {A B : Obj} (t : Tm A B) : Prop := t.LamLawsAt LamLaw
+
+/-- The decidable part of `Tm.LamLawsAt`, every conjunct but `L` (`Tm.monoOK_iff`): what `GenSoundTest` evaluates
+    beside `Tm.gap`, since `LamLawsAt L` implies it for every `L` (`Tm.LamLawsAt.mono`). -/
+def Tm.monoOK : {A B : Obj} → Tm A B → Bool
+  | _, _, .lam R | _, _, .E R | _, _, .top R | _, _, .conv R | _, _, .dom R | _, _, .ran R | _, _, .own R
+  | _, _, .succ R | _, _, .arith _ R | _, _, .leq R | _, _, .lt R | _, _, .flat R | _, _, .share _ R
+  | _, _, .est R => R.monoOK
+  | _, _, .comp R S | _, _, .meet R S | _, _, .join R S | _, _, .diff R S | _, _, .pair R S | _, _, .prod R S
+  | _, _, .junc R S | _, _, .fold R S | _, _, .foldr R S | _, _, .foldI R S | _, _, .arg R S => R.monoOK && S.monoOK
+  | _, _, .ldiv R S U V | _, _, .rdiv R S U V => R.monoOK && S.monoOK && U.monoOK && V.monoOK
+  | _, _, .nu k S b => b.pol true k && S.monoOK && b.monoOK
+  | _, _, .mu k _ _ b | _, _, .hylo k _ b => b.pol true k && b.monoOK
+  | _, _, .val _ | _, _, .uni _ | _, _, .zero | _, _, .id | _, _, .outl | _, _, .outr | _, _, .nil
+  | _, _, .atPos _ | _, _, .var .. | _, _, .thin _ | _, _, .juncD .. | _, _, .call ..
+  | _, _, .prim _ => true
+
+theorem Tm.monoOK_iff {A B : Obj} (t : Tm A B) : t.monoOK = true ↔ t.LamLawsAt fun _ _ => True := by
+  induction t <;> simp [Tm.monoOK, Tm.LamLawsAt, and_assoc, *]
+
+theorem Tm.LamLawsAt.mono {L L' : Obj → Obj → Prop} (h : ∀ A B, L A B → L' A B) {A B : Obj} (t : Tm A B) :
+    t.LamLawsAt L → t.LamLawsAt L' := by
+  induction t <;> simp only [Tm.LamLawsAt] <;> intro hx
+  all_goals first
+    | exact fun e B' hB => h _ _ (hx e B' hB)
+    | exact ⟨h _ _ hx.1, by simp_all⟩
+    | simp_all
+
+/-- The children's term of `t` (`Tm.kids`) asks no more than `t`: `kids` builds it of `t`'s parts, `𝟙`, `𝟘`, `∪`,
+    `juncD` and `∋`, none of which asks anything. -/
+theorem Tm.lamLawsAt_kids {L : Obj → Obj → Prop} (k : Nat) (A : Obj) {C D : Obj} (t : Tm C D)
+    (h : t.LamLawsAt L) : ((t.kids k A).getD .zero).LamLawsAt L := by
+  induction t
+  case arg f x _ _ =>
+    cases f <;> unfold Tm.kids <;> (try dsimp only) <;> (repeat' split) <;>
+      simp_all (config := {decide := true}) [Tm.LamLawsAt, rowsProved, memRow]
+  all_goals unfold Tm.kids <;> (try dsimp only) <;> (repeat' split) <;> (try subst_vars) <;>
+    simp_all [Tm.LamLawsAt]
 
 namespace GenK
 
@@ -599,7 +679,18 @@ theorem Tm.gen_sound_spine {A B : Obj} (t : Tm A B) :
     ∀ (η : Code) (ρ : Val) (xs : Codes) (ss : List Sem), t.argGap (xs.map fun x => (x.1, x.2.1)) = false →
       t.LamLaws → Sound η ρ → (∀ x ∈ xs, x.2.2.Wf) → CodesRep xs ss →
         ∀ K, (t.argGen η xs).Reps K (t.argDen ρ ss) := by
-  induction t
+  -- strong induction on `Tm.size`: a `hylo`'s children's term (`Tm.kids`) is no subterm, only no larger than its body
+  suffices H : ∀ n {A B : Obj} (t : Tm A B), t.size ≤ n →
+      (∀ (η : Code) (ρ : Val), t.gap = false → t.LamLaws → Sound η ρ → ∀ K, (t.gen η).Reps K (t.den ρ)) ∧
+      ∀ (η : Code) (ρ : Val) (xs : Codes) (ss : List Sem), t.argGap (xs.map fun x => (x.1, x.2.1)) = false →
+        t.LamLaws → Sound η ρ → (∀ x ∈ xs, x.2.2.Wf) → CodesRep xs ss →
+          ∀ K, (t.argGen η xs).Reps K (t.argDen ρ ss) from H _ t (Nat.le_refl _)
+  intro n
+  induction n
+  case zero => intro A B t h; cases t <;> simp [Tm.size] at h
+  rename_i n H
+  intro A B t
+  induction t <;> intro hn <;> simp only [Tm.size] at hn
   case prim r =>
     refine ⟨fun η ρ hg hl _ => ?_, fun η ρ xs ss hg hl _ hx hr => ?_⟩ <;> simp only [Tm.gap, Tm.argGap] at hg <;>
       simp only [Tm.gen, Tm.den, Tm.argGen, Tm.argDen] <;> obtain ⟨ok, hn⟩ := Prim.proved_ok hg
@@ -610,70 +701,90 @@ theorem Tm.gen_sound_spine {A B : Obj} (t : Tm A B) :
         (hg : f.argGap ((C, D) :: xs.map fun x => (x.1, x.2.1)) = false ∧ x.gap = false)
         (hl : f.LamLaws ∧ x.LamLaws) (hs : Sound η ρ) (hx : ∀ y ∈ xs, y.2.2.Wf) (hr : CodesRep xs ss) :
         ∀ K, (f.argGen η (⟨C, D, x.code η⟩ :: xs)).Reps K (f.argDen ρ (⟨C, D, x.den ρ⟩ :: ss)) :=
-      ihf.2 η ρ _ _ hg.1 hl.1 hs (fun y hy => by
+      (ihf (by omega)).2 η ρ _ _ hg.1 hl.1 hs (fun y hy => by
           rcases List.mem_cons.1 hy with rfl | hy
           · exact code_wf (gen_wf x η hg.2 hs.2)
           · exact hx y hy)
-        ⟨by rw [dif_pos ⟨rfl, rfl⟩]; exact code_of (ihx.1 η ρ hg.2 hl.2 hs), hr⟩
+        ⟨by rw [dif_pos ⟨rfl, rfl⟩]; exact code_of ((ihx (by omega)).1 η ρ hg.2 hl.2 hs), hr⟩
     refine ⟨fun η ρ hg hl hs => ?_, fun η ρ xs ss hg hl hs hx hr => ?_⟩ <;>
-      simp only [Tm.gap, Tm.argGap, Bool.or_eq_false_iff] at hg <;> simp only [Tm.LamLaws] at hl <;>
+      simp only [Tm.gap, Tm.argGap, Bool.or_eq_false_iff] at hg <;> simp only [Tm.LamLaws, Tm.LamLawsAt] at hl <;>
       simp only [Tm.gen, Tm.den, Tm.argGen, Tm.argDen]
     · exact step η ρ [] [] hg hl hs (fun _ h => nomatch h) trivial
     · exact step η ρ xs ss hg hl hs hx hr
   all_goals refine ⟨fun η ρ hg hl hs => ?_, fun η ρ xs ss hg => by simp [Tm.argGap] at hg⟩
   all_goals simp only [Tm.gap, Bool.or_eq_false_iff, Bool.true_eq_false] at hg <;>
-    simp only [Tm.LamLaws] at hl <;> simp only [Tm.gen, Tm.den]
+    simp only [Tm.LamLaws, Tm.LamLawsAt] at hl <;> simp only [Tm.gen, Tm.den]
   case val R => exact GenK.val_sound (R, true)
   case uni U => exact GenK.uni_sound (U, true)
   case zero => exact GenK.zero_sound
   case id => exact GenK.id_sound
-  case top V ih => exact GenK.top_sound (code_of (ih.1 η ρ hg hl hs))
+  case top V ih => exact GenK.top_sound (code_of ((ih (by omega)).1 η ρ hg hl hs))
   case outl => exact GenK.ofVals_row_sound fun _ _ _ h => Tab.outl_holds h
   case outr => exact GenK.ofVals_row_sound fun _ _ _ h => Tab.outr_holds h
   case comp R S ihR ihS =>
-    exact GenK.comp_sound (code_of (ihR.1 η ρ hg.1 hl.1 hs)) (code_of (ihS.1 η ρ hg.2 hl.2 hs))
+    exact GenK.comp_sound (code_of ((ihR (by omega)).1 η ρ hg.1 hl.1 hs)) (code_of ((ihS (by omega)).1 η ρ hg.2 hl.2 hs))
       (code_wf (gen_wf S η hg.2 hs.2))
-  case conv R ih => exact GenK.conv_sound (code_of (ih.1 η ρ hg hl hs))
+  case conv R ih => exact GenK.conv_sound (code_of ((ih (by omega)).1 η ρ hg hl hs))
   case meet R S ihR ihS =>
-    exact GenK.meet_sound (code_of (ihR.1 η ρ hg.1 hl.1 hs)) (code_of (ihS.1 η ρ hg.2 hl.2 hs))
+    exact GenK.meet_sound (code_of ((ihR (by omega)).1 η ρ hg.1 hl.1 hs)) (code_of ((ihS (by omega)).1 η ρ hg.2 hl.2 hs))
       (code_wf (gen_wf R η hg.1 hs.2)) (code_wf (gen_wf S η hg.2 hs.2))
-  case join R S ihR ihS => exact GenK.join_sound (code_of (ihR.1 η ρ hg.1 hl.1 hs)) (code_of (ihS.1 η ρ hg.2 hl.2 hs))
-  case diff R S ihR ihS => exact GenK.diff_sound (code_of (ihR.1 η ρ hg.1 hl.1 hs)) (code_of (ihS.1 η ρ hg.2 hl.2 hs))
-  case dom R ih => exact GenK.dom_sound (code_of (ih.1 η ρ hg hl hs))
-  case ran R ih => exact GenK.ran_sound (code_of (ih.1 η ρ hg hl hs))
+  case join R S ihR ihS => exact GenK.join_sound (code_of ((ihR (by omega)).1 η ρ hg.1 hl.1 hs)) (code_of ((ihS (by omega)).1 η ρ hg.2 hl.2 hs))
+  case diff R S ihR ihS => exact GenK.diff_sound (code_of ((ihR (by omega)).1 η ρ hg.1 hl.1 hs)) (code_of ((ihS (by omega)).1 η ρ hg.2 hl.2 hs))
+  case dom R ih => exact GenK.dom_sound (code_of ((ih (by omega)).1 η ρ hg hl hs))
+  case ran R ih => exact GenK.ran_sound (code_of ((ih (by omega)).1 η ρ hg hl hs))
   case rdiv R S U V ihR ihS ihU ihV =>
-    exact GenK.rdiv_sound (code_of (ihR.1 η ρ hg.1.1.1 hl.1 hs)) (code_of (ihS.1 η ρ hg.1.1.2 hl.2.1 hs))
-      (code_of (ihU.1 η ρ hg.1.2 hl.2.2.1 hs)) (code_of (ihV.1 η ρ hg.2 hl.2.2.2 hs))
+    exact GenK.rdiv_sound (code_of ((ihR (by omega)).1 η ρ hg.1.1.1 hl.1 hs)) (code_of ((ihS (by omega)).1 η ρ hg.1.1.2 hl.2.1 hs))
+      (code_of ((ihU (by omega)).1 η ρ hg.1.2 hl.2.2.1 hs)) (code_of ((ihV (by omega)).1 η ρ hg.2 hl.2.2.2 hs))
   case ldiv R S U V ihR ihS ihU ihV =>
-    exact GenK.ldiv_sound (code_of (ihR.1 η ρ hg.1.1.1 hl.1 hs)) (code_of (ihS.1 η ρ hg.1.1.2 hl.2.1 hs))
-      (code_of (ihU.1 η ρ hg.1.2 hl.2.2.1 hs)) (code_of (ihV.1 η ρ hg.2 hl.2.2.2 hs))
+    exact GenK.ldiv_sound (code_of ((ihR (by omega)).1 η ρ hg.1.1.1 hl.1 hs)) (code_of ((ihS (by omega)).1 η ρ hg.1.1.2 hl.2.1 hs))
+      (code_of ((ihU (by omega)).1 η ρ hg.1.2 hl.2.2.1 hs)) (code_of ((ihV (by omega)).1 η ρ hg.2 hl.2.2.2 hs))
       (code_wf (gen_wf S η hg.1.1.2 hs.2))
-  case pair R S ihR ihS => exact GenK.pair_sound (code_of (ihR.1 η ρ hg.1 hl.1 hs)) (code_of (ihS.1 η ρ hg.2 hl.2 hs))
-  case prod R S ihR ihS => exact GenK.prod_sound (code_of (ihR.1 η ρ hg.1 hl.1 hs)) (code_of (ihS.1 η ρ hg.2 hl.2 hs))
-  case junc R S ihR ihS => exact GenK.junc_sound (code_of (ihR.1 η ρ hg.1 hl.1 hs)) (code_of (ihS.1 η ρ hg.2 hl.2 hs))
+  case pair R S ihR ihS => exact GenK.pair_sound (code_of ((ihR (by omega)).1 η ρ hg.1 hl.1 hs)) (code_of ((ihS (by omega)).1 η ρ hg.2 hl.2 hs))
+  case prod R S ihR ihS => exact GenK.prod_sound (code_of ((ihR (by omega)).1 η ρ hg.1 hl.1 hs)) (code_of ((ihS (by omega)).1 η ρ hg.2 hl.2 hs))
+  case junc R S ihR ihS => exact GenK.junc_sound (code_of ((ihR (by omega)).1 η ρ hg.1 hl.1 hs)) (code_of ((ihS (by omega)).1 η ρ hg.2 hl.2 hs))
   case fold R S ihR ihS =>
-    exact GenK.fold_sound (code_of (ihR.1 η ρ hg.1 hl.1 hs)) (code_of (ihS.1 η ρ hg.2 hl.2 hs))
+    exact GenK.fold_sound (code_of ((ihR (by omega)).1 η ρ hg.1 hl.1 hs)) (code_of ((ihS (by omega)).1 η ρ hg.2 hl.2 hs))
       (code_wf (gen_wf S η hg.2 hs.2))
   case foldr R S ihR ihS =>
-    exact GenK.foldr_sound (code_of (ihR.1 η ρ hg.1 hl.1 hs)) (code_of (ihS.1 η ρ hg.2 hl.2 hs))
+    exact GenK.foldr_sound (code_of ((ihR (by omega)).1 η ρ hg.1 hl.1 hs)) (code_of ((ihS (by omega)).1 η ρ hg.2 hl.2 hs))
       (code_wf (gen_wf S η hg.2 hs.2))
   case foldI R S ihR ihS =>
-    exact GenK.foldI_sound (code_of (ihR.1 η ρ hg.1 hl.1 hs)) (code_wf (gen_wf R η hg.1 hs.2))
-      (code_of (ihS.1 η ρ hg.2 hl.2 hs)) (code_wf (gen_wf S η hg.2 hs.2))
-  case lam R ih => exact GenK.lam_sound (code_of (ih.1 η ρ hg hl.2 hs)) hl.1
+    exact GenK.foldI_sound (code_of ((ihR (by omega)).1 η ρ hg.1 hl.1 hs)) (code_wf (gen_wf R η hg.1 hs.2))
+      (code_of ((ihS (by omega)).1 η ρ hg.2 hl.2 hs)) (code_wf (gen_wf S η hg.2 hs.2))
+  case lam R ih => exact GenK.lam_sound (code_of ((ih (by omega)).1 η ρ hg hl.2 hs)) hl.1
   case E R ih =>
     exact GenK.lam_sound (GenK.comp_sound (GenK.ofVals_row_sound fun _ _ _ h => Tab.mem_holds h)
-      (code_of (ih.1 η ρ hg hl.2 hs)) (code_wf (gen_wf R η hg hs.2))) hl.1
+      (code_of ((ih (by omega)).1 η ρ hg hl.2 hs)) (code_wf (gen_wf R η hg hs.2))) hl.1
   case nil => exact GenK.ofVals_row_sound fun _ _ _ h => Tab.nil_holds h
-  case own R ih => exact code_of (ih.1 η ρ hg hl hs)
-  case succ U ih => exact GenK.succ_sound (code_of (ih.1 η ρ hg hl hs))
-  case arith U ih => exact GenK.arith_sound (code_of (ih.1 η ρ hg hl hs))
-  case leq U ih => exact GenK.cmp_sound (fun _ _ _ h => Tab.leq_holds h) (code_of (ih.1 η ρ hg hl hs))
-  case lt U ih => exact GenK.cmp_sound (fun _ _ _ h => Tab.lt_holds h) (code_of (ih.1 η ρ hg hl hs))
+  case own R ih => exact code_of ((ih (by omega)).1 η ρ hg hl hs)
+  case succ U ih => exact GenK.succ_sound (code_of ((ih (by omega)).1 η ρ hg hl hs))
+  case arith U ih => exact GenK.arith_sound (code_of ((ih (by omega)).1 η ρ hg hl hs))
+  case leq U ih => exact GenK.cmp_sound (fun _ _ _ h => Tab.leq_holds h) (code_of ((ih (by omega)).1 η ρ hg hl hs))
+  case lt U ih => exact GenK.cmp_sound (fun _ _ _ h => Tab.lt_holds h) (code_of ((ih (by omega)).1 η ρ hg hl hs))
   case share R ih =>
-    exact code_of (ih.1 Code.empty Val.empty hg hl ⟨fun _ _ _ => GenK.zero_sound, fun _ _ _ => trivial⟩)
-  case flat R ih => exact GenK.flat_sound (code_of (ih.1 η ρ hg hl hs))
+    exact code_of ((ih (by omega)).1 Code.empty Val.empty hg hl ⟨fun _ _ _ => GenK.zero_sound, fun _ _ _ => trivial⟩)
+  case flat R ih => exact GenK.flat_sound (code_of ((ih (by omega)).1 η ρ hg hl hs))
   case var k => exact hs.1 k _ _
+  case est Q ih => exact GenK.est_sound (code_of ((ih (by omega)).1 η ρ hg hl hs))
+  case atPos k => exact GenK.atPos_sound k
+  case nu k S b ihS ihb =>
+    exact GenK.nu_sound (code_of ((ihS (by omega)).1 η ρ hg.1 hl.2.1 hs))
+      (fun X => code_of ((ihb (by omega)).1 _ _ hg.2 hl.2.2 (hs.bind k X))) fun _ _ h => Tm.den_mono hl.1 h
+  case mu k w m b ih =>
+    exact GenK.mu_sound (fun X => code_of ((ih (by omega)).1 _ _ hg hl.2 (hs.bind k X))) fun _ _ h => Tm.den_mono hl.1 h
+  case hylo A' B' k w b ih =>
+    have hc := Tm.lamLawsAt_kids k A' b hl.2
+    have hsz := Tm.size_kids k A' b
+    revert hg hc hsz
+    cases hk : b.kids k A' with
+    | none => simp
+    | some c =>
+      intro hg hc hsz
+      simp only [Option.isNone_some, Option.getD_some, and_true] at hg hc hsz ⊢
+      exact GenK.hylo_sound ((H c (by omega)).1 η ρ hg.2 hc hs |> code_of) (code_wf (gen_wf c η hg.2 hs.2))
+        (fun Y => code_of ((ih (by omega)).1 _ _ hg.1 hl.2 (hs.bind k Y)))
+        (fun Y => code_wf (gen_wf b _ hg.1 (hs.bind k Y).2))
+        (fun _ _ h => Tm.den_mono hl.1 h) (fun X Y a h => Tm.den_local k ρ X Y b c hk a h)
 
 /-- **`Tm.gen` is sound off the gap**: the code of a term with no `Tm.gap` node represents its meaning in every
     context, given `LamLaw` at each `Λ`, and an environment `η` that represents `ρ`. -/
