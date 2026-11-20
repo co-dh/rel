@@ -26,8 +26,9 @@ rel_program frame where
     -- drops, since `i + n` or `count − n` may fall outside a declared object
     dropLast(n : 1 ⟶ ν, x : ν ⟶ β) : ν ⟶ β ≜ take(⟨count(x), n⟩minus, x)
     takeLast(n : 1 ⟶ ν, x : ν ⟶ β) : ν ⟶ β ≜ dom(x) asc(dom(x) − dom(dropLast(n, x))) x
-    -- rolling window: `j ≤ i < j + w`, written from the `j` side so no position below 0 is formed
-    win(w : 1 ⟶ ν, x : ν ⟶ β) : ν ⟶ ν ≜ ≥ ∩ (dom(x) ⟨𝟙, ⊤ w⟩plus > dom(x))°
+    -- rolling window: `i = j + d`, `d < w`, written from the `j` side so no position below 0 is formed; the offsets
+    -- `d` are `x`'s own positions below `w`, so m·w pairs are built, not the m²/2 of `≥ ∩ (j + w > i)`
+    win(w : 1 ⟶ ν, x : ν ⟶ β) : ν ⟶ ν ≜ (dom(x) ⟨𝟙, ⊤ (dom(x) < w°)°⟩plus dom(x))°
     rolling(w : 1 ⟶ ν, f : [ν] ⟶ δ, x : ν ⟶ β) : ν ⟶ δ ≜ agg(win(w, x), f)
     -- cumulative aggregate (polars cum_sum, q's sums with `f` = sum): row `i` folds rows `j ≤ i`; m²/2 pairs
     cumAgg(f : [ν] ⟶ δ, x : ν ⟶ β) : ν ⟶ δ ≜ agg(dom(x) ≥ dom(x), f)
