@@ -3,29 +3,25 @@ import Rel.Programs.FrameJoin
 /-! Plan M3: the frame verbs on a GENERATED frame of `n` rows, row `i` = (`i mod 100`, `i`), built from `𝟙` and
     `mod` at a declared object, checked against closed forms. With `T = n/100` rows per key, the rows of key `k < 50`
     are `i = k + 100t`, `t < T`, so the filter keeps `50T` rows, key `k`'s sum is `Tk + 100·T(T−1)/2`, and the join
-    with `y : k ↦ (k, k+1)` keeps every kept row and sums its `k+1` to `T·(1+…+50) = 1275T`. Here `n = 1000`: at `n = 10⁴`, `M` must hold 499900 (at 10⁵, 49999000).
-    At 8cf4a7f `Λ` at a declared object still grows with |M|: at |M| = 5·10⁵ the list `Λ` of 1000 rows takes
-    39.5 s, `count` of it 78.5 s, `summarize(sum)` 58.9 s, so the pipeline at 10⁴ did not finish in 4 minutes (measured). -/
+    with `y : k ↦ (k, k+1)` keeps every kept row and sums its `k+1` to `T·(1+…+50) = 1275T`. Here `n = 10⁴`, `T = 100`: `M` must hold the largest sum 499900 (at 10⁵, 49999000). -/
 
 namespace Rel.Lang.TestFrameScale
 
 open Rel.Programs.prelude Rel.Programs.frame Rel.Programs.frameGroup Rel.Programs.frameJoin in
 rel_program frameScaleT where
-    -- one object for positions, keys and values, holding the largest sum: 49T + 50T(T−1) = 4990, 1275T = 12750
-    obj M = 0…19999
+    -- one object for positions, keys and values, holding the largest sum: 49T + 50T(T−1) = 499900, 1275T = 127500
+    obj M = 0…499999
     -- `i < b` as `i div b = 0`: `dom(< b̂°)` reads `<` on M×M, |M|² pairs
     below(b : 1 ⟶ M) : M ⟶ M ≜ dom(⟨𝟙, ⊤ b⟩div {(0,0)})
-    x : M ⟶ M×M ≜ below({(∗,1000)}) ⟨⟨𝟙, ⊤ {(∗,100)}⟩mod, 𝟙⟩
+    x : M ⟶ M×M ≜ below({(∗,10000)}) ⟨⟨𝟙, ⊤ {(∗,100)}⟩mod, 𝟙⟩
     y : M ⟶ M×M ≜ below({(∗,100)}) ⟨𝟙, succ⟩
-    -- each relation argument is cut to the rows of its frame, `ran(x)`: bare, the three cost this module 15 s and
-    -- 6.4 GB against 7.4 s and 1.4 GB (measured), though arguments are passed on demand
-    xf : M ⟶ M×M ≜ filterBy(ran(x) dom(π₁ below({(∗,50)})), x)
-    check count(xf) = {(∗,500)}
-    -- group `j` is key `j` (keys 0…49 first occur at positions 0…49): `(j, 10j + 4500)`
-    check aggregate(ran(xf) π₁, F(xf π₂) sum, xf) = below({(∗,50)}) ⟨𝟙, ⟨𝟙, ⊤ {(∗,10)}⟩times ⟨𝟙, ⊤ {(∗,4500)}⟩plus⟩
-    j : M ⟶ (M×M)×(M×M) ≜ innerJoin(ran(xf) π₁, ran(y) π₁, xf, y)
-    check count(j) = {(∗,500)}
-    check summarize(F(j π₂ π₂) sum, j) = {(∗,12750)}
+    xf : M ⟶ M×M ≜ filterBy(dom(π₁ below({(∗,50)})), x)
+    check count(xf) = {(∗,5000)}
+    -- group `j` is key `j` (keys 0…49 first occur at positions 0…49): `(j, 100j + 495000)`
+    check aggregate(π₁, F(xf π₂) sum, xf) = below({(∗,50)}) ⟨𝟙, ⟨𝟙, ⊤ {(∗,100)}⟩times ⟨𝟙, ⊤ {(∗,495000)}⟩plus⟩
+    j : M ⟶ (M×M)×(M×M) ≜ innerJoin(π₁, π₁, xf, y)
+    check count(j) = {(∗,5000)}
+    check summarize(F(j π₂ π₂) sum, j) = {(∗,127500)}
 
 #guard frameScaleT.ok
 
@@ -118,7 +114,7 @@ rel_program frameScaleN5 where
     check count(j) = {(∗,50000)}
     check summarize(F(j π₂ π₂) sum, j) = {(∗,1275000)}
     check aggregate(π₁, F(xf π₂) sum, xf) = k50 ⟨𝟙, ⟨⟨𝟙, ⊤ {(∗,1000)}⟩times, ⊤ {(∗,49950000)}⟩plus⟩
-    -- the comparison rows as at 10³ that finish within 5 s; `aj` takes 11.8 s (measured)
+    -- the comparison rows as at 10³ that finish within 5 s; `aj` takes 5.0 s here (measured), so it stays at 10⁴
     t : N ⟶ N×N ≜ take({(∗,50000)}, x)
     check summarize(F(t π₂) sum, t) = {(∗,1249975000)}
     dr : N ⟶ N×N ≜ drop({(∗,50000)}, x)
