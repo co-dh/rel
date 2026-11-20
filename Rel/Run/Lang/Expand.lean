@@ -2,6 +2,7 @@ import Lean
 import Rel.Run.Lang.GenK
 import Rel.Run.Lang.Elab
 import Rel.Run.Lang.Parse
+import Rel.Run.ValEq
 
 /-! The expander of `rel_program n`: each closed definition `x ≜ …` becomes the Lean definition
     `n.x : Except String (Tab A B)`, a composition of `GenK` ops run in the empty context (`Rel.runE`), or the
@@ -705,6 +706,50 @@ def lams (tys : List Lean.Expr) (k : Array Lean.Expr → RM (Lean.Expr × Lean.E
   | [] => do let (t, v) ← k xs; pure (← mkForallFVars xs t, ← mkLambdaFVars xs v)
   | ty :: tys => withLocalDeclD `x ty fun x => lams tys k (xs.push x)
 
+/-- `x` and `y` are the same columns: of one object, column by column the same vector (`valEq`). -/
+def valsEq : (A : Obj) → {n : USize} → Vals A n → (C : Obj) → {m : USize} → Vals C m → Bool
+  | .atom _, _, x, .atom _, _, y => valEq x.1 y.1
+  | .prod a b, _, x, .prod c d, _, y => valsEq a x.1 c y.1 && valsEq b x.2 d y.2
+  | .arr b, _, ⟨_, lo, hi, p⟩, .arr d, _, ⟨_, lo', hi', q⟩ =>
+    valEq lo.1 lo'.1 && valEq hi.1 hi'.1 && valsEq b p d q
+  | .sum a b, _, ⟨_, _, tag, idx, x, y⟩, .sum c d, _, ⟨_, _, tag', idx', x', y'⟩ =>
+    valEq tag.1 tag'.1 && valEq idx.1 idx'.1 && valsEq a x c x' && valsEq b y d y'
+  | _, _, _, _, _, _ => false
+
+/-- `t` and `u`, of one constructor, agree in their fields that are not terms; a call's constant compared by its
+    registry key (`key`), since each module names the constant it built `emitter ++ key`. A `callCv`'s converse
+    constant is its constant's converse's (`convOf`), so it follows the constant. -/
+def Tm.fieldsEq (key : Lean.Name → Lean.Name) {A B C D : Obj} (t : Tm A B) (u : Tm C D) : Bool :=
+  match t with
+  | .val R => match u with | .val S => valsEq _ R.key _ S.key && valsEq _ R.val _ S.val | _ => false
+  | .uni (A := A) U => match u with | .uni (A := C) V => valsEq A U C V | _ => false
+  | .prim r => match u with | .prim r' => r.sym == r'.sym | _ => false
+  | .atPos k => match u with | .atPos k' => k == k' | _ => false
+  | .share k _ => match u with | .share k' _ => k == k' | _ => false
+  | .var d k => match u with | .var d' k' => d == d' && k == k' | _ => false
+  | .call ks c os _ => match u with | .call ks' c' os' _ => ks == ks' && key c == key c' && os == os' | _ => false
+  | .callCv ks c _ os .. => match u with
+    | .callCv ks' c' _ os' .. => ks == ks' && key c == key c' && os == os' | _ => false
+  | .arith k _ => match u with | .arith k' _ => k == k' | _ => false
+  | .nu k .. => match u with | .nu k' .. => k == k' | _ => false
+  | .mu k w n _ => match u with | .mu k' w' n' _ => k == k' && w == w' && n == n' | _ => false
+  | .hylo k w _ => match u with | .hylo k' w' _ => k == k' && w == w' | _ => false
+  | _ => true
+
+/-- The first node, from the root, where the bodies `t`, `u` of one registry key differ, as its path of
+    constructors (`ctor`); `none` when they are the same definition: per node its constructor, objects and other
+    fields (`Tm.fieldsEq`), then its parts (`Tm.parts`, a `share`'s term) in order. A call's body is not entered:
+    it is its key's, compared at that key. -/
+partial def Tm.diffAt (key : Lean.Name → Lean.Name) (ctor : Nat → String) (path : List String := []) :
+    Res → Res → Option String
+  | ⟨A, B, t⟩, ⟨C, D, u⟩ =>
+    let p := path ++ [ctor t.ctorIdx]
+    let parts {X Y : Obj} : Tm X Y → List Res | .share _ R => [⟨_, _, R⟩] | t => t.parts
+    if t.ctorIdx != u.ctorIdx then some s!"{" / ".intercalate p} against `{ctor u.ctorIdx}`"
+    else if !(A == C && B == D) then some s!"{" / ".intercalate p}: {repr A} ⟶ {repr B} against {repr C} ⟶ {repr D}"
+    else if !Tm.fieldsEq key t u then some s!"{" / ".intercalate p}: its fields differ"
+    else ((parts t).zip (parts u)).findSome? fun (x, y) => Tm.diffAt key ctor p x y
+
 /-- An entry of the registry (module design §2.3): a definition elaborated once, its constant (`once`); a program's
     homes, the programs its names reach, in the order they are read (`read`); a program's scope, its namespace and
     `open`s, which its names resolve in; a definition or object of the program `home`. -/
@@ -723,11 +768,17 @@ structure Registry where
   chains : List (Name × List Name) := []
   progs : Array (Name × Name × List OpenDecl) := #[]
   exts : Std.HashMap Name (Ext × Name) := {}
+  /-- Each `call` whose key `calls` already held, in the order added (`add`). -/
+  again : Array Once := #[]
 
 instance : Inhabited Registry := ⟨{}⟩
 
+/-- A key is held once, by the `Once` registered first; one registered again goes to `again`. `callDef` builds a
+    key only when the registry lacks it, so it comes again only from two imports, neither importing the other, that
+    each built it under its own constant (`emitter ++ key`). Two constants are kept since Lean refuses to import
+    one name declared by two modules. `Registry.call?` checks their bodies. -/
 def Registry.add (r : Registry) : RegEntry → Registry
-  | .call c o => { r with calls := (c, o) :: r.calls }
+  | .call c o => if (r.calls.lookup c).isSome then { r with again := r.again.push o } else { r with calls := (c, o) :: r.calls }
   | .chain n ns => { r with chains := (n, ns) :: r.chains }
   | .prog n ns os => { r with progs := r.progs.push (n, ns, os) }
   | .ext e h => { r with exts := r.exts.insert e.const (e, h) }
@@ -736,6 +787,27 @@ initialize relRegistry : SimplePersistentEnvExtension RegEntry Registry ←
   registerSimplePersistentEnvExtension {
     addEntryFn := Registry.add
     addImportedFn := fun ess => ess.foldl (fun r es => es.foldl Registry.add r) {} }
+
+open Lean Meta in
+/-- The `Once` a call by each key reads, the first registered (`Registry.add`). A key registered again is the same
+    definition when its `Once` agrees with the first in every field but the constant, bodies compared by `Tm.diffAt`;
+    else the error names the key, both constants and the first node that differs. -/
+def Registry.call? (r : Registry) : MetaM (Lean.Name → Option Once) := do
+  unless r.again.isEmpty do
+    let ctors := (← getConstInfoInduct ``Tm).ctors
+    let ctor (i : Nat) := toString ((ctors.getD i .anonymous).componentsRev.headD .anonymous)
+    let keys : Std.HashMap Lean.Name Lean.Name :=
+      (r.calls.map (·.2) ++ r.again.toList).foldl (fun m o => m.insert o.const o.key) {}
+    let key (c : Lean.Name) := keys.getD c c
+    for o' in r.again do
+      let some o := r.calls.lookup o'.key
+        | throwError "rel registry: internal: `{o'.key}` registered again but never first"
+      let why := if o.gen != o'.gen || o.params != o'.params || o.tst != o'.tst || o.kf != o'.kf
+        then some "their object variables, parameters or forms differ" else Tm.diffAt key ctor [] o.res o'.res
+      if let some d := why then
+        throwError "rel registry: the key `{o.key}` is held by `{o.const}` and by `{o'.const}`, built by two \
+          modules neither importing the other, with different bodies: at {d}"
+  pure (r.calls.lookup ·)
 
 def pairT (a b : Lean.Expr) : Lean.Expr := mkApp2 (mkConst ``Prod [0, 0]) a b
 def listT (a : Lean.Expr) : Lean.Expr := mkApp (mkConst ``List [0]) a
