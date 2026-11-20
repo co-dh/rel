@@ -70,6 +70,9 @@ structure ObjInfo where
   /-- An object variable of a definition elaborated once: its universe is the variable `k`, an argument of the
       definition's constant. -/
   uniVar : Option Nat := none
+  /-- An object variable of a definition elaborated once: a numeral there is the number, which each call checks its
+      object holds (`build`'s `.call`). -/
+  ovar : Bool := false
   /-- How it is stored: `.long` for a declared object (F6); `varObj k` for the object variable `k` of a constant
       generic over it. -/
   obj : Obj := .long
@@ -222,7 +225,9 @@ inductive Pre
   | fold (right : Bool) (e s : Pre)
   | foldI (e s : Pre)
   | flat (p : Pre)
-  | lit (pos : Pos) (a b : OTy) (ps : List (Tup × Tup))
+  /-- A literal; `gd` the generic definition whose body holds it (`Env.gdef`), where its numerals' objects are
+      the call's, checked at each call. -/
+  | lit (pos : Pos) (a b : OTy) (ps : List (Tup × Tup)) (gd : Option String)
   | close (pos : Pos) (p : Pre) (a : OTy) (why : String)
   /-- The variable `k` of a fixed point `X : a ⟶ b`, at the place `pos` it is used; or a constant's parameter,
       its argument's form (`Form`): closed (`none`), run on demand (`some false`), tested on pairs and never run
@@ -381,7 +386,7 @@ def Pre.traverse {m : Type → Type} [Monad m] (fp : Pos → m Pos) (f : Option 
   | .fold d e s => return .fold d (← mo e) (← mo s)
   | .foldI e s => return .foldI (← mo e) (← mo s)
   | .flat x => return .flat (← mo x)
-  | .lit q a b ps => return .lit (← fp q) a b ps
+  | .lit q a b ps gd => return .lit (← fp q) a b ps gd
   | .close q x a why => return .close (← fp q) (← mo x) a why
   | .var q k a b t => return .var (← fp q) k a b t
   | .fix q l k x S y a b => return .fix (← fp q) l k x (← S.mapM (f none)) (← mo y) a b
@@ -405,10 +410,11 @@ partial def Pre.nilSrcs : Pre → List OTy
   | .nil a _ => [a]
   | x => x.parts.flatMap (·.1.nilSrcs)
 
-/-- A `nil` whose source no context fixed, once the whole term is elaborated, starts at `1`: B&dM's
-    `nil : 1 ⟶ [A]`, `one` the object `1` in scope (`Env.one`) (§e). -/
-def settleNil (one : OTy) (p : Pos) (x : Pre) : M Unit := x.nilSrcs.forM fun a => do
-  if let .mv _ := zonk (← Lean.getMCtx) a then unify p "nil's source" a one
+/-- Each literal of a generic definition's body in `x` (`Env.gdef`), the definition's name last; its expansion at a
+    use included. -/
+partial def Pre.lits : Pre → List (Pos × OTy × OTy × List (Tup × Tup) × String)
+  | .lit p a b ps (some d) => [(p, a, b, ps, d)]
+  | x => x.parts.flatMap (·.1.lits)
 
 /-- Where the variable `k` first occurs in `x`. -/
 partial def Pre.occ (k : Nat) : Pre → Option Pos
@@ -469,6 +475,9 @@ structure Env where
   res : String → Found := fun _ => .none
   ext : List (Lean.Name × Def) := []
   extObjs : List (Lean.Name × ObjInfo) := []
+  /-- The definition generic over objects whose body this is: a numeral literal in it takes its object from the
+      context, an object variable the call decides (`litTy`), not from the declared objects. -/
+  gdef : Option String := none
 
 /-- The definition `n`: the program's, else the one the resolver gives. -/
 def Env.def? (env : Env) (n : String) : Option Def :=
@@ -838,8 +847,10 @@ def litOpen (objs : Objs) (p : Pos) (ts : List Tup) : Err :=
 /-- The object of a literal's position, `ts` the sides there, one per row or array element (§c): a word's is the
     one declared object holding all the words, a pair's the product of its parts', an array's `[O]`, `O` the
     object of the elements of all its arrays together. Where the rows do not determine it (`litOpen`) it is an
-    open object, which the context fixes as it fixes `nil`'s; `litCol` reports one still open at `build`. -/
-partial def litTy (objs : Objs) (p : Pos) (ts : List Tup) : M OTy := do
+    open object, which the context fixes as it fixes `nil`'s; `litCol` reports one still open at `build`. In the
+    body of a generic definition `gd` numerals are open first: their object may be an object variable, which each
+    call puts an object at, so the declared objects decide only what the context leaves open (`settleOpen`). -/
+partial def litTy (objs : Objs) (gd : Option String) (p : Pos) (ts : List Tup) : M OTy := do
   let t := ts.headD default
   if let some r := ts.find? (!·.like t) then
     throw ⟨p, s!"the rows of a literal nest alike: found {r.show}, expected the form of {t.show}"⟩
@@ -847,14 +858,39 @@ partial def litTy (objs : Objs) (p : Pos) (ts : List Tup) : M OTy := do
   | [], _ => fresh
   | _, .leaf _ =>
     let ws := ts.filterMap fun | .leaf w => some w | _ => none
+    if gd.isSome && ws.all (·.toInt?.isSome) then fresh else
     match holders objs ws with
     | [o] => pure o
     | [] => throw ⟨p, s!"no declared object has the elements {ws}"⟩
     | _ => fresh
   | _, .pair .. =>
-    pure (.prod (← litTy objs p (ts.map fun | .pair a _ => a | r => r))
-      (← litTy objs p (ts.map fun | .pair _ b => b | r => r)))
-  | _, .arr _ => pure (.arr (← litTy objs p (ts.flatMap fun | .arr es => es | _ => [])))
+    pure (.prod (← litTy objs gd p (ts.map fun | .pair a _ => a | r => r))
+      (← litTy objs gd p (ts.map fun | .pair _ b => b | r => r)))
+  | _, .arr _ => pure (.arr (← litTy objs gd p (ts.flatMap fun | .arr es => es | _ => [])))
+
+/-- The object `o` of a literal's position `ts` that the context left open: the one declared object holding its
+    words (`litTy`'s rule), or still open where several do. -/
+partial def settleLit (objs : Objs) (p : Pos) (d : String) (ts : List Tup) (o : OTy) : M Unit := do
+  match zonk (← Lean.getMCtx) o, ts with
+  | _, [] => pure ()
+  | .mv _, .leaf _ :: _ =>
+    let ws := ts.filterMap fun | .leaf w => some w | _ => none
+    match holders objs ws with
+    | [h] => unify p "the literal's object" o h
+    | [] => throw ⟨p, s!"`{d}`: no declared object has the elements {ws}, and no object variable is put at them"⟩
+    | _ => pure ()
+  | .prod x y, .pair .. :: _ => do
+    settleLit objs p d (ts.map fun | .pair a _ => a | r => r) x
+    settleLit objs p d (ts.map fun | .pair _ b => b | r => r) y
+  | .arr x, .arr _ :: _ => settleLit objs p d (ts.flatMap fun | .arr es => es | _ => []) x
+  | _, _ => pure ()
+
+/-- What no context fixed once the whole term `x` is elaborated: a `nil`'s source starts at `1`, B&dM's
+    `nil : 1 ⟶ [A]`, `Env.one` (§e); a generic body's literal takes the declared object holding its words. -/
+def settleOpen (env : Env) (p : Pos) (x : Pre) : M Unit := do
+  x.nilSrcs.forM fun a => do if let .mv _ := zonk (← Lean.getMCtx) a then unify p "nil's source" a env.one
+  x.lits.forM fun (q, a, b, ps, d) => do
+    settleLit env.objs q d (ps.map (·.1)) a; settleLit env.objs q d (ps.map (·.2)) b
 
 /-- The argument `q : s ⟶ _` of row `r` in the form `f` its parameter takes it: a pair test is tested on the pairs
     the row compares (`build`, `param`), not read whole. -/
@@ -1144,8 +1180,8 @@ def elabWith (dfn : Except String (Prim → Env → Expr → M Arg)) (env : Env)
     unify p "the target of the fold's step" w v
     pure (.rel (.fold d (.close p q v "the fold's start is read whole") r) (.arr e) v)
   | .lit p ps => do
-    let a ← litTy env.objs p (ps.map (·.1)); let b ← litTy env.objs p (ps.map (·.2))
-    pure (.rel (.lit p a b ps) a b)
+    let a ← litTy env.objs env.gdef p (ps.map (·.1)); let b ← litTy env.objs env.gdef p (ps.map (·.2))
+    pure (.rel (.lit p a b ps env.gdef) a b)
   -- a built term, as a closed definition is (`walk`)
   | .col p s c => do let (r, a, b) ← MonadExcept.ofExcept (colOf env p s c); settle m p [] (.rel (.tm r) a b)
   -- `X : a ⟶ b` in scope in the body, which has that type and is monotonic in `X`; `ν` from the conjuncts
@@ -1358,7 +1394,8 @@ def mkDef (env : Env) (n : String) (dp : Pos) (ps : List Param) (body : Body) (t
     let bound := (bs.zip pl).map fun (((n, a), _), k?) => match a, k?, idx with
       | .fam q _ s t, some k, some P => if ix.size > 1 then (n, .fam (.comp (proj ix k) q) P s t) else (n, a)
       | _, _, _ => (n, a)
-    let env' := { env with params := bound }
+    let tys := ty.toList ++ ps.filterMap (·.ty)
+    let env' := { env with params := bound, gdef := if tys.any (fun (x, y) => !(x.vars ++ y.vars).isEmpty) then some n else none }
     match body, idx with
     | .rel e, none => do
       let r ← elabE env' none e
@@ -1588,7 +1625,13 @@ def code (p : Pos) (o : OTy) (w : String) : Except Err Int64 :=
       | some (lo, hi), _, some k => if lo ≤ k ∧ k ≤ hi then pure (Int64.ofInt k)
           else throw ⟨p, s!"{w} is not in {n} = {lo}…{hi}"⟩
       | none, some k, _ => pure (Int64.ofNat k)
-      | none, none, some k => if i.num then pure (Int64.ofInt k) else throw ⟨p, s!"'{w}' is not an element of {n}"⟩
+      | none, none, some k =>
+        if i.num then pure (Int64.ofInt k)
+        -- each call checks its object holds the number (`build`'s `.call`)
+        else if i.ovar then
+          if i.obj == .long then pure (Int64.ofInt k)
+          else throw ⟨p, s!"the number {w} at {n}, an object variable its constant is generic over"⟩
+        else throw ⟨p, s!"'{w}' is not an element of {n}"⟩
       | _, _, _ => throw ⟨p, s!"'{w}' is not an element of {n}"⟩
     | none => throw ⟨p, s!"unknown object '{n}'"⟩
   | o => throw ⟨p, s!"a literal relates elements of declared objects, found {o}"⟩
@@ -1657,6 +1700,15 @@ def callTm (pos : Pos) (c : Lean.Name) (us : List (OTy × Bool × Bool)) (ks : L
   match cv with
   | some (c', u) => return .callCv ks c c' os (← inst t) (← inst u)
   | none => return .call ks c os (← inst t)
+
+/-- The literal `ps` at `a ⟶ b`, a table; in the body of the generic definition `gd` an error is that use's. -/
+def litRes (p : Pos) (a b : OTy) (ps : List (Tup × Tup)) (gd : Option String) : Except Err Res :=
+  (needSize ps.length "literal rows" (fun _ => internal dp "literal rows") fun n => do
+    let ⟨A, k⟩ ← litCol objs mc dp p n (zonk mc a) (ps.map (·.1))
+    let ⟨B, v⟩ ← litCol objs mc dp p n (zonk mc b) (ps.map (·.2))
+    pure ⟨A, B, .val ⟨n, k, v⟩⟩).mapError fun e => match gd with
+      | some d => ⟨e.pos, s!"`{d}` at the objects of this call: {e.msg}"⟩
+      | none => e
 
 mutual
 
@@ -1789,11 +1841,7 @@ def build : Pre → Except Err Res
     match ← build p with
     | ⟨I, .prod A B, t⟩ => pure ⟨.prod I A, B, .flat t⟩
     | _ => internal dp "a family's objects"
-  | .lit p a b ps =>
-    needSize ps.length "literal rows" (fun _ => internal dp "literal rows") fun n => do
-    let ⟨A, k⟩ ← litCol objs mc dp p n (zonk mc a) (ps.map (·.1))
-    let ⟨B, v⟩ ← litCol objs mc dp p n (zonk mc b) (ps.map (·.2))
-    pure ⟨A, B, .val ⟨n, k, v⟩⟩
+  | .lit p a b ps gd => litRes objs mc dp p a b ps gd
   | .close p q a why => do closeRes objs mc dp p a why (← build q)
   -- the children and the body run on the nodes in demand, no universe read
   | .hylo p k q a b => do
@@ -1812,6 +1860,8 @@ def build : Pre → Except Err Res
     -- a variable whose object was open when the call was made (`callDef`) and is unbounded: the constant chose its
     -- rows' forms (`.prim`) without it, so the expansion, built at the call's objects, runs instead
     if us.any fun (u, _, reads) => reads && !u.mvs.isEmpty && unbounded objs (zonk mc u) then return ← build q
+    -- the constant took a numeral at an object variable as the number; the expansion has it at the call's object
+    q.lits.forM fun (p, a, b, ps, d) => discard (litRes objs mc dp p a b ps (some d))
     let A ← toObj objs mc dp a; let B ← toObj objs mc dp b
     pure ⟨A, B, ← callArgs pos c us xs ts (← callTm objs mc dp pos c us ks t cv A B)⟩
   -- the body read whole each round, on its source's universe when it needs keys

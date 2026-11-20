@@ -195,7 +195,7 @@ def elabOnce (env : Env) (p : Pos) (n : String) (qs : List Param) (e : Expr) (ty
     -- a variable only the declared result names is rigid too, as `mkDef` leaves it to the use
     let (s, u) := match r with | .rel _ s u => (s, u) | .fam _ _ a b => (a, b)
     declared env' p n rigid ty s u
-    settleNil env'.one p r.plain.1
+    settleOpen env' p r.plain.1
     pure (r, os) : M (Arg × List (Obj × Obj × Bool))).run { fixes := nv + qs.length, specs, objs }
   pure (os, r, st)
 
@@ -288,7 +288,7 @@ def once (env : Env) (p : Pos) (n : String) (qs : List Param) (e : Expr) (ty : O
     let objs := vs.zipIdx.map (fun (v, k) =>
       let (gen, uni) := fl.getD k (false, true)
       let obj := if gen then (varObj k).getD .long else .long
-      (v, ({ ty := .base v, uniVar := if uni then some k else none, obj, num := nb.getD k false } : ObjInfo))) ++ env.objs
+      (v, ({ ty := .base v, uniVar := if uni then some k else none, obj, num := nb.getD k false, ovar := true } : ObjInfo))) ++ env.objs
     let (os, r, st) ← elabOnce env p n qs e ty vs fs objs specs
     let (q, _, _) := r.plain
     let gen := fl.map (·.1)
@@ -424,7 +424,7 @@ def checkOf (env : Env) (p : Pos) (e f : Expr) (eq : Bool) (specs : List Once) :
     let mc ← Lean.getMCtx
     try unify p "" s' s; unify p "" t' t
     catch _ => throw ⟨p, s!"check: the sides have types {zonk mc s} ⟶ {zonk mc t} and {zonk mc s'} ⟶ {zonk mc t'}"⟩
-    settleNil env.one p r.plain.1; settleNil env.one p r'.plain.1
+    settleOpen env p r.plain.1; settleOpen env p r'.plain.1
     pure (r, r') : M (Arg × Arg)).run { specs, objs := env.objs }
   let mc ← Lean.getMCtx
   let (⟨A, B, R⟩, s, t) ← top env mc p e r
@@ -468,7 +468,7 @@ def walk (prog : Program) (env : Env) (wrap : String → Def → Def) (own : Lea
         let (r, st) ← (do
           let r ← elabE env none e
           if let some ty := ty then let (_, s, t) := r.plain; declared env p n rigid ty s t
-          settleNil env.one p r.plain.1
+          settleOpen env p r.plain.1
           pure r).run { specs, objs := env.objs }
         specs := st.specs
         let mc ← Lean.getMCtx; let (q, s, t) := r.plain
@@ -497,7 +497,7 @@ def walk (prog : Program) (env : Env) (wrap : String → Def → Def) (own : Lea
         | _, _ => pure ()
         env :={ env with defs := (n, wrap n d) :: env.defs }
     | .print p e =>
-      let (r, st) ← (do let r ← elabE env none e; settleNil env.one p r.plain.1; pure r).run { specs, objs := env.objs }
+      let (r, st) ← (do let r ← elabE env none e; settleOpen env p r.plain.1; pure r).run { specs, objs := env.objs }
       specs := st.specs
       pr := pr ++ [(e.show, ← top env (← Lean.getMCtx) p e r)]
     | .check p e f eq => let (c, sp) ← checkOf env p e f eq specs; specs := sp; cs := cs ++ [c]
