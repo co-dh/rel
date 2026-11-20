@@ -165,6 +165,40 @@ def compTabMat (R : Tab A B) {n : USize} (g w : USize) (o : Enc) (x : Vals B n) 
   let (ends, idx) ← csr M ka aR (← kgather M sel R.n ix)
   pure (ka, ← kbitrows false w g M ka ends idx o, (⟨M, key⟩ : (M : USize) × Vals A M), ra')
 
+/-- **`R \ M` within `UB`, `UC`, `M` as in `keepBits`, on its matrix** (`ldivDen`): `R`'s rows whose key is a row of
+`M` (`index`) grouped by value (`csr`; values numbered with `UB`'s, `Vals.code2`), each group the `∧` of its rows of
+`M` (`kbitrows true`), so `M` is never read back as rows. A value with a key outside `M` keeps no bit, a value of no
+`R` row (`UB`'s alone) every column of `UC`; the `kb · w` bits are scattered to `M`'s columns numbered with `UC`'s
+(`Vals.code2`): `kb` rows of `kc` bits, with `zb[rb[·]]`, `zc[rc'[·]]`. `none` where a matrix passes `bitsMax`. -/
+def ldivTabMat (R : Tab A B) (UB : Tab B B) (UC : Tab C C) {n m : USize} (g w : USize) (o : Enc) (x : Vals A n)
+    (ra : Enc) (y : Vals C m) (rc : Enc) : Except String
+      (Option (USize × USize × Enc × ((N : USize) × Vals B N) × Enc × ((N : USize) × Vals C N) × Enc)) := do
+  let (kb, bR, _, ⟨_, zb, rb⟩) ← Vals.code2 R.val UB.val
+  let (kc, cM, cU, ⟨_, zc, rc'⟩) ← Vals.code2 (← Vals.gather w rc y) UC.val
+  if bitsMax < kb.toNat * w.toNat ∨ bitsMax < kb.toNat * kc.toNat ∨ bitsMax < kb.toNat * UC.n.toNat then
+    return none
+  let ix ← index (← Vals.gather g ra x) R.key
+  let on ← colMap .lt R.n ix (← colConst R.n g.toUInt64)
+  let (P, sel) ← whereCol R.n on
+  let (ends, idx) ← csr P kb (← kgather P sel R.n bR) (← kgather P sel R.n ix)
+  let o1 ← kbitrows true w g P kb ends idx o
+  let cnt ← kscatter .add R.n bR (← colConst R.n 1) kb 0
+  let vac ← colMap .eq kb cnt (← colConst kb 0)
+  -- `keep`: some `R` row, and every one's key a row of `M`
+  let keep ← colMap .lt kb vac (← colMap .eq kb cnt (← kscatter .add R.n bR on kb 0))
+  let N := kb * w
+  let i ← colIota N
+  let r ← colMap .div N i (← colConst N w.toUInt64)
+  let p1 ← colMap .add N (← colMap .mul N r (← colConst N kc.toUInt64))
+    (← kgather N (← colMap .mod N i (← colConst N w.toUInt64)) w cM)
+  let s1 ← kscatter .last N p1 (← colMap .mul N o1 (← kgather N r kb keep)) (kb * kc) 0
+  let (E, eb) ← whereCol kb vac
+  let NU := E * UC.n
+  let j ← colIota NU
+  let s2 ← bitMatrix NU kb kc (← kgather NU (← colMap .div NU j (← colConst NU UC.n.toUInt64)) E eb)
+    (← kgather NU (← colMap .mod NU j (← colConst NU UC.n.toUInt64)) UC.n cU)
+  pure (some (kb, kc, ← colMap .add (kb * kc) s1 s2, ⟨_, zb⟩, rb, ⟨_, zc⟩, rc'))
+
 end Tab
 
 end Rel
