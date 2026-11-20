@@ -6,8 +6,8 @@ import Rel.Run.Lang.Expand
     `Expand.node`'s argument order, and `Tm.code` as `Expand.code` (a closed part memoised, `GenK.memo`). Then
     `Tm.gen_sound`: on a term with no `Tm.gap` constructor, under `Sound`, the code represents `Tm.den` in every
     context, each case one `GenK.*_sound` (`GenKSpec`, `GenKBits`). A bit matrix the code passes on is `Rel.Wf`
-    (`Tm.gen_wf`); `GenK.ReadsBack` (`ofBits` reads back what `compSelM`, `compTabMat`, `ldivTabMat` build) and the order law of each
-    `Λ` (`LamLaw`, false at a float atom) are hypotheses. -/
+    (`Tm.gen_wf`) (`Tab.ofBits` reads back what `compSelM`, `compTabMat`, `ldivTabMat` build); the order law of each
+    `Λ` (`LamLaw`, false at a float atom) is a hypothesis. -/
 
 namespace Rel.Lang
 
@@ -357,12 +357,12 @@ theorem Tm.code_wf {η : Code} {A B : Obj} {t : Tm A B} (h : (t.gen η).Wf) : (t
 
 /-- **Every bit matrix `Tm.gen` passes on is `Rel.Wf`** off the gap: only `comp` builds one (`GenK.comp_wf`), a
     variable reads `η`'s, and every other op returns tables. -/
-theorem Tm.gen_wf (hb : GenK.ReadsBack) {A B : Obj} (t : Tm A B) :
+theorem Tm.gen_wf {A B : Obj} (t : Tm A B) :
     ∀ η : Code, t.gap = false → (∀ k A B, (η k A B).Wf) → (t.gen η).Wf := by
   induction t <;> intro η hg hη <;> simp only [Tm.gap, Bool.or_eq_false_iff, Bool.true_eq_false] at hg <;>
     simp only [Tm.gen]
-  case comp R S ihR ihS => exact GenK.comp_wf hb _ (code_wf (ihS η hg.2 hη))
-  case ldiv R S U V ihR ihS ihU ihV => exact GenK.ldiv_wf hb _ _ _ (code_wf (ihS η hg.1.1.2 hη))
+  case comp R S ihR ihS => exact GenK.comp_wf _ (code_wf (ihS η hg.2 hη))
+  case ldiv R S U V ihR ihS ihU ihV => exact GenK.ldiv_wf _ _ _ (code_wf (ihS η hg.1.1.2 hη))
   case own R ih => exact code_wf (ih η hg hη)
   case share R ih => exact code_wf (ih Code.empty hg fun _ _ _ => trivial)
   case var k => exact hη k _ _
@@ -378,8 +378,8 @@ theorem Tm.gen_wf (hb : GenK.ReadsBack) {A B : Obj} (t : Tm A B) :
     | (intro K; cases h : K.dom <;> simp [h, Rel.Rel.Wf])
 
 /-- **`Tm.gen` is sound off the gap**: the code of a term with no `Tm.gap` node represents its meaning in every
-    context, given `ReadsBack`, `LamLaw` at each `Λ`, and an environment `η` that represents `ρ`. -/
-theorem Tm.gen_sound (hb : GenK.ReadsBack) {A B : Obj} (t : Tm A B) :
+    context, given `LamLaw` at each `Λ`, and an environment `η` that represents `ρ`. -/
+theorem Tm.gen_sound {A B : Obj} (t : Tm A B) :
     ∀ (η : Code) (ρ : Val), t.gap = false → t.LamLaws → Sound η ρ → ∀ K, (t.gen η).Reps K (t.den ρ) := by
   induction t <;> intro η ρ hg hl hs <;> simp only [Tm.gap, Bool.or_eq_false_iff, Bool.true_eq_false] at hg <;>
     simp only [Tm.LamLaws] at hl <;> simp only [Tm.gen, Tm.den]
@@ -392,11 +392,11 @@ theorem Tm.gen_sound (hb : GenK.ReadsBack) {A B : Obj} (t : Tm A B) :
   case outr => exact GenK.ofVals_row_sound fun _ _ _ h => Tab.outr_holds h
   case comp R S ihR ihS =>
     exact GenK.comp_sound (code_of (ihR η ρ hg.1 hl.1 hs)) (code_of (ihS η ρ hg.2 hl.2 hs))
-      (code_wf (gen_wf hb S η hg.2 hs.2))
+      (code_wf (gen_wf S η hg.2 hs.2))
   case conv R ih => exact GenK.conv_sound (code_of (ih η ρ hg hl hs))
   case meet R S ihR ihS =>
     exact GenK.meet_sound (code_of (ihR η ρ hg.1 hl.1 hs)) (code_of (ihS η ρ hg.2 hl.2 hs))
-      (code_wf (gen_wf hb R η hg.1 hs.2)) (code_wf (gen_wf hb S η hg.2 hs.2))
+      (code_wf (gen_wf R η hg.1 hs.2)) (code_wf (gen_wf S η hg.2 hs.2))
   case join R S ihR ihS => exact GenK.join_sound (code_of (ihR η ρ hg.1 hl.1 hs)) (code_of (ihS η ρ hg.2 hl.2 hs))
   case diff R S ihR ihS => exact GenK.diff_sound (code_of (ihR η ρ hg.1 hl.1 hs)) (code_of (ihS η ρ hg.2 hl.2 hs))
   case dom R ih => exact GenK.dom_sound (code_of (ih η ρ hg hl hs))
@@ -407,14 +407,14 @@ theorem Tm.gen_sound (hb : GenK.ReadsBack) {A B : Obj} (t : Tm A B) :
   case ldiv R S U V ihR ihS ihU ihV =>
     exact GenK.ldiv_sound (code_of (ihR η ρ hg.1.1.1 hl.1 hs)) (code_of (ihS η ρ hg.1.1.2 hl.2.1 hs))
       (code_of (ihU η ρ hg.1.2 hl.2.2.1 hs)) (code_of (ihV η ρ hg.2 hl.2.2.2 hs))
-      (code_wf (gen_wf hb S η hg.1.1.2 hs.2))
+      (code_wf (gen_wf S η hg.1.1.2 hs.2))
   case pair R S ihR ihS => exact GenK.pair_sound (code_of (ihR η ρ hg.1 hl.1 hs)) (code_of (ihS η ρ hg.2 hl.2 hs))
   case prod R S ihR ihS => exact GenK.prod_sound (code_of (ihR η ρ hg.1 hl.1 hs)) (code_of (ihS η ρ hg.2 hl.2 hs))
   case junc R S ihR ihS => exact GenK.junc_sound (code_of (ihR η ρ hg.1 hl.1 hs)) (code_of (ihS η ρ hg.2 hl.2 hs))
   case lam R ih => exact GenK.lam_sound (code_of (ih η ρ hg hl.2 hs)) hl.1
   case E R ih =>
     exact GenK.lam_sound (GenK.comp_sound (GenK.ofVals_row_sound fun _ _ _ h => Tab.mem_holds h)
-      (code_of (ih η ρ hg hl.2 hs)) (code_wf (gen_wf hb R η hg hs.2))) hl.1
+      (code_of (ih η ρ hg hl.2 hs)) (code_wf (gen_wf R η hg hs.2))) hl.1
   case nil => exact GenK.ofVals_row_sound fun _ _ _ h => Tab.nil_holds h
   case own R ih => exact code_of (ih η ρ hg hl hs)
   case succ U ih => exact GenK.succ_sound (code_of (ih η ρ hg hl hs))
