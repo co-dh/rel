@@ -563,6 +563,13 @@ Diff table 的「状态」列：✅ 后面是完成它的步骤；🔄 是部分
         - owner 定的顺序（C）：先做 architecture §4 已定的实现改动（`∩ − \` 分段 `scan`、`\` 不物化 join、
           `ldiv(tab, bits)` 在 bit matrix 上算、`μ` semi-naive），差分测试与回归固定保护；`ldiv meet diff mu fold` 与
           bit matrix 路径的证明（T11e 余项、`ReadsBack`）等实现稳定后再做。T11e5 只做 `arith`。
+        - 2026-11-20 01:26，master 4e82176（check-57 在跑）：覆盖 166 / 203。已合入：p10wire（`est atPos mu nu hylo` 出 `Tm.gap`，
+          `Sound.bind`，`Tm.LamLawsAt`/`Tm.monoOK`，`gen_sound_spine` 按 `Tm.size` 归纳）、s5t1（stage 5 T1：`Tm.call ks c os b`、
+          `Tm.callCv … b u` 带实例化后的 body，`Tm.instObj`、`Once.binds`，registry 存整个 `Once`；差分 478 / 478、compile-diff 476 / 2
+          不变；`Tm.size` 总和 4182 → 9550，olean +0.3%，elaboration 时间不变）、p11rows（行 `concat`、`merge`；
+          `Tab.foldRounds_holds` 加 round invariant `I`，旧的 `hstep` 前提对 `merge` 为假）。剩余 gap（挡住 / 单独）：`arg call` 23 / 23、
+          `arg F` 13 / 3、`prim tails` 1 / 1、`prim sum` 10 / 0、`arg thinL` 1 / 0。在跑：s5t23（`den`/`gen` of call = body，`Sound.args`，
+          `reread` 读 registry）、p12rows（`F`：缺"kasc code 序 = 数值序"引理；`thinL`、`tails`、`sum`）。
         - 2026-11-20 01:04，master 2b74cb8，`make check` 全绿（check-56）：覆盖 145 / 203，差分 478 / 478。已合入：p7munu（`GenK.nu_sound`、
           `mu_sound`，`GenKFix.lean`）、p8est（`est_sound`、`atPos_sound`、`hylo_sound`，`GenKEst.lean`、`GenKHylo.lean`）、p9arg（`RowOK`
           带参数码，`Tm.argGap`，`gen_sound_spine`；行 `loop filter`）。在做：p10wire（把 est atPos mu nu hylo 接进 `gen_sound`，hylo 按
