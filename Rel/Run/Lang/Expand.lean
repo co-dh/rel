@@ -26,7 +26,7 @@ def objInfo (env : Env) (n : String) : ObjDef → EM ObjInfo
   | .range lo hi =>
     pure { ty := .base n, range := some (lo, hi), uni := some ⟨_, col ((List.range (hi + 1 - lo).toNat).map fun k : Nat => Int64.ofInt (lo + k))⟩, seg := lo == 0 }
   | .alias o => do let (t, _) ← (oty env [] o).run {}; pure { ty := t }
-  | .num => pure { ty := .base n, num := true }
+  | .num t => pure { ty := .base n, num := true, obj := .atom t }
   -- the object `Schema.obj` lays out, at the program's objects; `col` reads the columns back (`elabE`)
   | .schema cs => do
     let cs ← cs.mapM fun (c, o) => return (c, (← (oty env [] o).run {}).1)
@@ -71,6 +71,8 @@ def showEl (objs : Objs) (item : Bool) : OTy → (A : Obj) → A.El → String
     match objs.lookup n with
     | some i => if i.range.isSome then toString v else (i.elems[v.toInt.toNat]?).getD (toString v)
     | none => toString v
+  -- an object declared at another atom: its word as a literal writes it (`wordText`)
+  | .base _, .atom t, x => match elWord t x with | some w => wordText t w | none => "?"
   | .prod a b, .prod A B, (x, y) => s!"({showEl objs false a A x}, {showEl objs false b B y})"
   | .sum a _, .sum A _, .inl x => s!"inl {showEl objs true a A x}"
   | .sum _ b, .sum _ B, .inr y => s!"inr {showEl objs true b B y}"
@@ -84,6 +86,10 @@ def cmpEl (objs : Objs) : OTy → (A : Obj) → A.El → A.El → Ordering
     let (v, w) : Int64 × Int64 := (x, y)
     if ((objs.lookup n).bind (·.range)).isSome then compare v.toInt w.toInt
     else compare (showEl objs false (.base n) (.atom .i64) x) (showEl objs false (.base n) (.atom .i64) y)
+  -- at another atom by value: the order code of its word (`Kernel.ascOrd`, a float's totalOrder)
+  | s, .atom t, x, y => match elWord t x, elWord t y, Kernel.ascOrd t with
+    | some u, some v, some f => compare (f u) (f v)
+    | _, _, _ => compare (showEl objs false s (.atom t) x) (showEl objs false s (.atom t) y)
   | .prod a b, .prod A B, (x, y), (x', y') => (cmpEl objs a A x x').then (cmpEl objs b B y y')
   | .sum a _, .sum A _, .inl x, .inl y => cmpEl objs a A x y
   | .sum _ b, .sum _ B, .inr x, .inr y => cmpEl objs b B x y
@@ -202,7 +208,6 @@ def elabOnce (env : Env) (p : Pos) (n : String) (qs : List Param) (e : Expr) (ty
 
 /-! ### A row of `prims` at its objects -/
 
-open Lean in deriving instance ToExpr for Rel.QAtomicType
 open Lean in deriving instance ToExpr for Rel.Obj
 open Lean in deriving instance ToExpr for MVarId
 open Lean in deriving instance ToExpr for OTy

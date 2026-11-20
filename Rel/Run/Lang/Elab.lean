@@ -59,6 +59,116 @@ def OTy.exp : OTy → OExp
 
 instance : ToString OTy := ⟨(·.exp.show)⟩
 
+/-! ### An element of an atom: how a literal word is stored and printed back -/
+
+/-- How an element of the atom `t` is written: `(width, float, signed)`, `t`'s layout in the kernels' own table
+    (`Kernel.ascLayout`); none where no literal column is built (`Arr.ofFn` takes no `u1`, whose elements are bits,
+    and `sym`, `general` have no width). `obj F : t` declares an object at such a `t` only. -/
+def litLayout (t : Rel.QAtomicType) : Option (Nat × Bool × Bool) := if t == .u1 then none else Kernel.ascLayout t
+
+/-- The atom `t` by its name (`atomNames`). -/
+def atomName (t : Rel.QAtomicType) : String :=
+  match atomNames.find? (·.2 == t) with | some (n, _) => n.toString | none => s!"{repr t}"
+
+/-- The bits of the float of `w` bytes nearest `±m·10^e` (`s` false) or `±m·10^(-e)` (`s` true): `OfScientific`,
+    the reader of Lean's own float literals; `neg` its sign, so `-0.0` is the negative zero. -/
+def floatBits (w : Nat) (neg : Bool) (m : Nat) (s : Bool) (e : Nat) : UInt64 :=
+  if w == 4 then let x : Float32 := OfScientific.ofScientific m s e; (if neg then -x else x).toBits.toUInt64
+  else let x : Float := OfScientific.ofScientific m s e; (if neg then -x else x).toBits
+
+/-- The float of `w` bytes with bits `b` as its sign and `M`, `E`, its value `±M·2^E`; none at an infinity or a NaN
+    (every exponent bit set). -/
+def floatParts (w : Nat) (b : UInt64) : Option (Bool × Nat × Int) :=
+  let (mb, eb) := if w == 4 then (23, 8) else (52, 11)
+  let (fr, ex, neg) := (b.toNat % 2 ^ mb, b.toNat / 2 ^ mb % 2 ^ eb, b.toNat / 2 ^ (mb + eb) % 2 == 1)
+  let bias : Int := 2 ^ (eb - 1) - 1
+  if ex == 2 ^ eb - 1 then none
+  else if ex == 0 then some (neg, fr, 1 - bias - mb) else some (neg, fr + 2 ^ mb, ex - bias - mb)
+
+/-- A number word's sign (`-`, which `Embed.wNeg` writes before the token) and its token as Lean reads a number
+    literal: a whole number `k` as `(k, false, 0)`, a scientific one (`2.5`, `1e-3`, `1.5e10`) by
+    `Syntax.decodeScientificLitVal?`, `m·10^(∓e)` as `(m, s, e)`. -/
+def numParts (w : String) : Option (Bool × Nat × Bool × Nat) :=
+  let (neg, d) := match w.toList with | '-' :: cs => (true, String.ofList cs) | cs => (false, String.ofList cs)
+  match d.toNat? with
+  | some k => some (neg, k, false, 0)
+  | none => (Lean.Syntax.decodeScientificLitVal? d).map fun (m, s, e) => (neg, m, s, e)
+
+/-- The word `w` stored at the atom `t` of the object `n` (`litLayout`): a float of `t`'s width read as Lean reads a
+    float literal, a whole number included (`numParts`); an integer in `t`'s range. An error names `w` and `n` where
+    it is neither, or where it is no finite float: no literal writes an infinity or a NaN (NaN has no row). -/
+def wordAt (p : Pos) (n : String) (t : Rel.QAtomicType) (w : String) : Except Err UInt64 :=
+  let no := s!"'{w}' is not an element of {n}, an object of {atomName t}"
+  match litLayout t with
+  | none => throw ⟨p, s!"{n} is an object of {atomName t}, which has no literal"⟩
+  | some (b, true, _) => match numParts w with
+    | some (neg, m, s, e) => let x := floatBits b neg m s e
+      if (floatParts b x).isSome then pure x else throw ⟨p, s!"{no}: it is beyond the range of {atomName t}"⟩
+    | none => throw ⟨p, no⟩
+  | some (b, false, sg) => match w.toInt? with
+    | some k => let (lo, hi) : Int × Int := if sg then (-2 ^ (8 * b - 1), 2 ^ (8 * b - 1)) else (0, 2 ^ (8 * b))
+      if lo ≤ k ∧ k < hi then pure (Int64.ofInt k).toUInt64 else throw ⟨p, s!"{no}: it is not in {lo}…{hi - 1}"⟩
+    | none => throw ⟨p, no⟩
+
+/-- `D·10^k` with the trailing zeros of `D` moved into `k`. -/
+def stripZeros : Nat → Nat → Int → Nat × Int
+  | f + 1, D, k => if D % 10 == 0 && D != 0 then stripZeros f (D / 10) (k + 1) else (D, k)
+  | 0, D, k => (D, k)
+
+/-- The float of `w` bytes with bits `b` printed as the shortest decimal that reads back to `b` (`numParts`,
+    `floatBits`): of the nearest decimals `D·10^k` with 1, 2, … significant digits, the first that reads back to the
+    same bits (the longest, 9 or 17 digits, always does). Plain with a point where the leading digit's place is
+    `10^-7 … 10^20` (`2.5`, `-0.0`, `100.0`), else with an exponent (`1.5e-8`, `1e21`). An infinity or a NaN, which
+    no literal writes, prints as q prints it (`0w`, `-0w`, `0n`). -/
+def floatText (w : Nat) (b : UInt64) : String :=
+  match floatParts w b with
+  | none => if b.toNat % 2 ^ (if w == 4 then 23 else 52) != 0 then "0n"
+    else if b.toNat / 2 ^ (8 * w - 1) % 2 == 1 then "-0w" else "0w"
+  | some (neg, 0, _) => if neg then "-0.0" else "0.0"
+  | some (neg, M, E) =>
+    let (num, den) : Nat × Nat := if E ≥ 0 then (M * 2 ^ E.toNat, 1) else (M, 2 ^ (-E).toNat)
+    -- the place of the leading digit: `10^L ≤ num/den < 10^(L+1)`
+    let L : Int := if num ≥ den then ((Nat.toDigits 10 (num / den)).length : Int) - 1
+      else -((((List.range 400).find? fun j => num * 10 ^ (j + 1) ≥ den).getD 400 : Nat) + 1 : Int)
+    let near (d : Nat) : Nat × Int :=
+      let k := L - d + 1
+      let (a, c) := if k ≥ 0 then (num, den * 10 ^ k.toNat) else (num * 10 ^ (-k).toNat, den)
+      ((2 * a + c) / (2 * c), k)
+    let mx := if w == 4 then 9 else 17
+    let (D, k) := (((List.range mx).map (near ∘ (· + 1))).find? fun (D, k) => floatBits w neg D (k < 0) k.natAbs == b).getD (near mx)
+    let (D, k) := stripZeros 20 D k
+    let s := toString D
+    let P : Int := (s.length : Int) - 1 + k
+    let zeros (j : Nat) := String.ofList (List.replicate j '0')
+    let body :=
+      if -7 ≤ P ∧ P < 21 then
+        if k ≥ 0 then s ++ zeros k.toNat ++ ".0"
+        else if P ≥ 0 then String.ofList (s.toList.take (P.toNat + 1)) ++ "." ++ String.ofList (s.toList.drop (P.toNat + 1))
+        else "0." ++ zeros ((-P).toNat - 1) ++ s
+      else (if s.length == 1 then s else String.ofList (s.toList.take 1) ++ "." ++ String.ofList (s.toList.drop 1)) ++ s!"e{P}"
+    (if neg then "-" else "") ++ body
+
+/-- The stored word of an element of the atom `t`, as `Arr.ofFn` takes it; none at `sym`, `general`, which have none. -/
+def elWord : (t : Rel.QAtomicType) → (Obj.atom t).El → Option UInt64
+  | .u1, x => some (if (x : Bool) then 1 else 0)
+  | .u8, x | .char, x => some (x : UInt8).toUInt64
+  | .i16, x => some (x : Int16).toUInt16.toUInt64
+  | .i32, x | .date, x => some (x : Int32).toUInt32.toUInt64
+  | .i8, x => some (x : Int8).toUInt8.toUInt64
+  | .i64, x | .datetime, x => some (x : Int64).toUInt64
+  | .f32, x => some (x : UInt32).toUInt64
+  | .f64, x => some (x : UInt64)
+  | .sym, _ | .general, _ => none
+
+/-- The word `x` of the atom `t` printed as `wordAt` reads it back: a float by `floatText`, an integer by its value at
+    `t`'s width and sign. -/
+def wordText (t : Rel.QAtomicType) (x : UInt64) : String :=
+  match litLayout t with
+  | some (b, true, _) => floatText b x
+  | some (b, false, sg) => let u := x.toNat % 2 ^ (8 * b)
+    toString (if sg ∧ u ≥ 2 ^ (8 * b - 1) then (u : Int) - 2 ^ (8 * b) else u)
+  | none => "?"
+
 /-- A declared object: what it stands for, and, for a base object, its elements and universe. -/
 structure ObjInfo where
   ty : OTy
@@ -76,8 +186,8 @@ structure ObjInfo where
   /-- An object variable of a definition elaborated once: a numeral there is the number, which each call checks its
       object holds (`build`'s `.call`). -/
   ovar : Bool := false
-  /-- How it is stored: `.long` for a declared object (F6); `varObj k` for the object variable `k` of a constant
-      generic over it. -/
+  /-- How it is stored: `.long` for a declared object (F6), `.atom t` for one declared `obj F : t`; `varObj k` for the
+      object variable `k` of a constant generic over it. -/
   obj : Obj := .long
   /-- A schema's columns (`schema S = {…}`), `ty` their `Schema.objAt`; none for any other object. -/
   cols : Schema OTy := []
@@ -537,7 +647,8 @@ def oty (env : Env) (vs : List (String × OTy) := []) : OExp → M OTy
   | .sum a b => return .sum (← oty env vs a) (← oty env vs b)
   | .list a => return .arr (← oty env vs a)
 
-/-- A solved object's `Obj`: every declared base object is `long`, an object variable as `ObjInfo.obj` stores it. -/
+/-- A solved object's `Obj`: a declared base object as `ObjInfo.obj` stores it (`long` but for `obj F : t`), an
+    object variable likewise. -/
 def objOf (objs : Objs) (dp : Pos) : OTy → Except Err Obj
   | .base n => pure ((objs.lookup n).elim .long (·.obj))
   | .prod a b => return .prod (← objOf objs dp a) (← objOf objs dp b)
@@ -1696,12 +1807,19 @@ def uniTm (p : Pos) (o : OTy) (A : Obj) (what : String) : Except Err (Tm A A) :=
 def numU (p : Pos) (o : OTy) (op : String) : Except Err (Tm .long .long) :=
   match zonk mc o with
   | .base n => match objs.lookup n with
+    -- the number verbs run on `i64` words: at an object declared at another atom they are refused, never run on bits
+    | some { obj := .atom t, ovar := false, .. } =>
+      if t != .i64 then throw ⟨p, s!"{op} on {n}: {n} is an object of {atomName t}, and {op} runs on objects of i64 only"⟩
+      else declared n
+    | _ => declared n
+  | o => throw ⟨p, s!"{op} runs on a declared object, found {o}"⟩
+where
+  declared (n : String) : Except Err (Tm .long .long) := match objs.lookup n with
     | some { uni := some ⟨_, U⟩, .. } => pure (.uni (A := .long) U)
     | some { num := true, .. } => pure .id
     | some { uniVar := some k, obj := .atom .i64, .. } => pure (.var false k)
     | some { uniVar := some _, .. } => throw ⟨p, s!"{op} on {n}: a number object, which its constant is not generic over"⟩
     | _ => throw ⟨p, s!"{op} on {n}: no universe"⟩
-  | o => throw ⟨p, s!"{op} runs on a declared object, found {o}"⟩
 
 /-- The element `w` of the declared base object `o`: its position among the named elements, or the number. -/
 def code (p : Pos) (o : OTy) (w : String) : Except Err Int64 :=
@@ -1712,7 +1830,9 @@ def code (p : Pos) (o : OTy) (w : String) : Except Err Int64 :=
           else throw ⟨p, s!"{w} is not in {n} = {lo}…{hi}"⟩
       | none, some k, _ => pure (Int64.ofNat k)
       | none, none, some k =>
-        if i.num then pure (Int64.ofInt k)
+        -- an object declared at another atom holds no long: its words are `wordAt`'s (`litCol`)
+        if i.num then
+          if i.obj == .long then pure (Int64.ofInt k) else throw ⟨p, s!"{w} at {n}, an object of {repr i.obj}: no long"⟩
         -- each call checks its object holds the number (`build`'s `.call`)
         else if i.ovar then
           if i.obj == .long then pure (Int64.ofInt k)
@@ -1752,6 +1872,16 @@ def litCol (p : Pos) (n : USize) (o : OTy) (rows : List Tup) : Except Err ((A : 
         (Rel.Ext.Enc.blank_WF .i64 0), u, v⟩⟩ : Except Err ((A : Obj) × Vals A 0))
     else throw ⟨p, s!"a literal relates elements of declared objects, found {o}"⟩
   | o => do
+    -- an object declared at another atom (`obj F : f64`): each word stored at that atom (`wordAt`)
+    if let .base m := o then if let some { num := true, ovar := false, obj := .atom t, .. } := objs.lookup m then
+      if t != .i64 then
+        let ws ← rows.mapM fun
+          | .leaf w => wordAt p m t w
+          | r => throw ⟨p, s!"a literal's element of {o} is a word, found {r.show}"⟩
+        let a := ws.toArray
+        if h : a.size = n.toNat ∧ (t ≠ .u1 ∧ t.width.isSome) then
+          return ⟨.atom t, Arr.ofFn t n (fun i => a[i.val]'(h.1 ▸ i.isLt)) h.2⟩
+        else return ← internal dp s!"literal rows at {atomName t}"
     let cs ← rows.mapM fun
       | .leaf w => code objs mc p o w
       | r => throw ⟨p, s!"a literal's element of {o} is a word, found {r.show}"⟩
