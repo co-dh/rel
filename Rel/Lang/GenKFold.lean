@@ -567,6 +567,69 @@ theorem Tab.filter_holds {B : Obj} {n : USize} {P : Tab B B} {X : Vals (.arr B) 
     exact ⟨xs, [], (Tab.idU_holds hrest xs xs).2 ⟨rfl, hi⟩, (Tab.nil_holds hP0 xs []).2 ⟨hi, rfl⟩,
       (hfold _ _ _).2 (by simp)⟩
 
+/-- **`F(R)`'s fold branch on the cells `X`** (`Tab.map` where some element has no image or two): each array `xs` of
+`X` to every `ys` of its length with `xs[t] R ys[t]`, the left fold from `[]` of `⟨π₁, π₂ ≫ R⟩ ≫ snoc`
+(`foldRoundsL_holds`, the step `v ↦ v ++ [y]` for a `y` with `x R y`). -/
+theorem Tab.mapFold_holds {A B : Obj} {n : USize} {R : Tab A B} {X : Vals (.arr A) n} {res : Tab (.arr A) (.arr B)}
+    (h : (do Tab.foldRounds Tab.peelL (fun (acc : Tab (.arr A) (.arr B)) (el : Tab (.arr A) A) => do
+      Tab.snoc (← acc.pair (← el.comp R))) (X.1.toNat + 2) (← Tab.idU X) (← Tab.nil X) (← Tab.zero)) = .ok res)
+    (xs : List A.El) (ys : List B.El) :
+    res.Holds xs ys ↔ (∃ i, X.row i = xs) ∧ ys.length = xs.length ∧
+      ∀ t (ht : t < xs.length) (ht' : t < ys.length), R.Holds (xs[t]'ht) (ys[t]'ht') := by
+  obtain ⟨rest, hrest, h⟩ := GenK.bind_ok h
+  obtain ⟨P0, hP0, h⟩ := GenK.bind_ok h
+  obtain ⟨z, hz, h⟩ := GenK.bind_ok h
+  have hfold : ∀ (ws : List A.El) (v w : List B.El), foldDen (E := A) (V := .arr B) (fun _ b => b = v)
+      (fun q v' => ∃ y, R.Holds q.2 y ∧ v' = q.1 ++ [y]) ws w ↔ ∃ zs : List B.El, w = v ++ zs ∧
+        zs.length = ws.length ∧ ∀ t (ht : t < ws.length) (ht' : t < zs.length), R.Holds (ws[t]'ht) (zs[t]'ht') := by
+    intro ws
+    induction ws with
+    | nil =>
+      intro v w; rw [foldDen_nil]
+      exact ⟨fun h => ⟨[], by simp [h], rfl, fun t ht => absurd ht (by simp)⟩,
+        fun ⟨zs, hw, hl, _⟩ => by rw [List.length_nil, List.length_eq_zero_iff] at hl; simp [hw, hl]⟩
+    | cons x ws ih =>
+      intro v w
+      rw [foldDen_cons]
+      constructor
+      · rintro ⟨_, v', ⟨_, rfl⟩, ⟨y, hy, rfl⟩, hw⟩
+        obtain ⟨zs, rfl, hl, hz⟩ := (ih _ _).1 hw
+        refine ⟨y :: zs, by simp, by simp [hl], fun t ht ht' => ?_⟩
+        cases t with
+        | zero => exact hy
+        | succ t => exact hz t (by simpa using ht) (by simpa using ht')
+      · rintro ⟨zs, rfl, hl, hz⟩
+        cases zs with
+        | nil => simp at hl
+        | cons y zs =>
+          refine ⟨v, v ++ [y], ⟨v, rfl⟩, ⟨y, hz 0 (by simp) (by simp), rfl⟩, (ih _ _).2 ⟨zs, by simp, by simpa using hl,
+            fun t ht ht' => hz (t + 1) (by simpa using ht) (by simpa using ht')⟩⟩
+  have hfr := Tab.foldRoundsL_holds (fun _ v x v' => ∃ y, R.Holds x y ∧ v' = v ++ [y])
+    (fun _ _ _ => True) (fun _ _ _ _ _ _ _ => trivial) (fun S el T hT _ _ k v' => by
+      obtain ⟨c, hc, hT⟩ := GenK.bind_ok hT
+      obtain ⟨p, hp, hT⟩ := GenK.bind_ok hT
+      rw [Tab.snoc_holds hT]
+      constructor
+      · rintro ⟨q, hq, rfl⟩
+        obtain ⟨h1, h2⟩ := (Tab.pair_holds hp k q).1 hq
+        obtain ⟨x, hx, hR⟩ := (Tab.comp_holds hc k q.2).1 h2
+        exact ⟨q.1, x, h1, hx, q.2, hR, rfl⟩
+      · rintro ⟨v, x, h1, h2, y, hR, rfl⟩
+        exact ⟨(v, y), (Tab.pair_holds hp k (v, y)).2 ⟨h1, (Tab.comp_holds hc k y).2 ⟨x, h2, hR⟩⟩, rfl⟩)
+    _ _ _ _ _ h
+    (fun k a b ha hb => ((Tab.idU_holds hrest k a).1 ha).1.symm.trans ((Tab.idU_holds hrest k b).1 hb).1)
+    (fun k v hv => ⟨k, (Tab.idU_holds hrest k k).2 ⟨rfl, ((Tab.nil_holds hP0 k v).1 hv).1⟩, trivial⟩)
+  rw [hfr, Tab.zero_holds hz, false_or]
+  constructor
+  · rintro ⟨r, v, hr, hv, hW⟩
+    obtain ⟨rfl, hi⟩ := (Tab.idU_holds hrest xs r).1 hr
+    obtain ⟨-, rfl⟩ := (Tab.nil_holds hP0 xs v).1 hv
+    obtain ⟨zs, rfl, hl, hz⟩ := (hfold _ _ _).1 hW
+    exact ⟨hi, by simpa using hl, by simpa using hz⟩
+  · rintro ⟨hi, hl, hz⟩
+    exact ⟨xs, [], (Tab.idU_holds hrest xs xs).2 ⟨rfl, hi⟩, (Tab.nil_holds hP0 xs []).2 ⟨hi, rfl⟩,
+      (hfold _ _ _).2 ⟨ys, by simp, hl, hz⟩⟩
+
 /-- **`concat` on the cells of cells `X`** (`Tab.flatten`): each array of arrays of `X` to their concatenation, the
 left fold of `cat` from `[]` (`foldRoundsL_holds`). -/
 theorem Tab.flatten_holds {B : Obj} {n : USize} {X : Vals (.arr (.arr B)) n} {res : Tab (.arr (.arr B)) (.arr B)}
