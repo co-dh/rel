@@ -21,6 +21,6 @@ rel_program frameGroup where
 
     aggregate(a : β ⟶ γ, f : [ν] ⟶ δ, x : ν ⟶ β) : ν ⟶ γ×δ ≜ ⟨firstOcc(a, x) x a, agg(g(a, x)°, f)⟩
     collect(a : β ⟶ γ, c : β ⟶ δ, x : ν ⟶ β) : ν ⟶ γ×[δ] ≜ aggregate(a, F(x c), x)
-    valueCounts(a : β ⟶ γ, x : ν ⟶ β) : ν ⟶ γ×ℕ ≜ aggregate(a, length, x)
+    valueCounts(a : β ⟶ γ, x : ν ⟶ β) : ν ⟶ γ×δ ≜ aggregate(a, length, x)
 
 end Rel.Programs
