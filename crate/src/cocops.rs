@@ -81,9 +81,12 @@ impl<'a> Coc<'a> {
 mod tests {
     use super::*;
     // expected values: /data/tmp/qrs/A1/ex.c (coc.rs's own functions at 152d98f), run; the 24600-case C differential
-    // is /data/tmp/qrs/A1/{gen.c,diff_test.rs}
-    // expected values: the C of 7091572 (/data/tmp/qrs/A4/diff.c: 312000 checks, 0 mismatches)
-    // expected values: the C of d995c59 (/data/tmp/qrs/A3/diff.c: 185232 checks, 0 mismatches)
-    // expected values: the C of e16b3fd (/data/tmp/qrs/K26/diff.c: 720000 vv/scale checks, shifts at i64's ends included, 0 mismatches)
-    // expected values: the C of 336b87b (/data/tmp/qrs/A6b/gen.c: 3000 columns, 63000 comparisons, 0 mismatches)
+    // is /data/tmp/qrs/A1/{gen.c,diff_test.rs}; only the `std` and `one_width` assertions of that test have a live subject
+    #[test] fn std_grid_and_one_width_of_a_constant_column() {
+        let (z, base, off, width) = ([0i64], [7i64], [0u64], [0u8]);
+        let meta = Meta { lg: crate::DEFAULT_LG, base: &base, maxv: &z, off: &off, bsum: &z, width: &width, n: 3, nblk: 1, mblk: 1 };
+        let c = Coc { meta, pack: &[], exc: None, fdelta: None };
+        assert_eq!((c.std(3), c.std(1025), c.std(0)), (true, false, false));
+        assert_eq!(c.one_width(), 0);
+    }
 }

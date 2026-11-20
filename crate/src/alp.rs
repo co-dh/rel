@@ -297,7 +297,6 @@ mod tests {
                     for b in 0..f.c.meta.nblk { let (lo, nb) = (b * BLK, (n - b * BLK).min(BLK)); f.load_blk(b, nb, &mut bytes_mut(&mut out)[lo * esz..(lo + nb) * esz]) }
                     assert_eq!(fnv(&bytes_mut(&mut out)[..n * esz]), c.u(), "decode n {n}");
                     for b in 0..f.c.meta.nblk {
-                        let full = (n - b * BLK).min(BLK);
                         for _ in 0..3 {
                             let (mut buf, mut lb) = ([0xabababababababab_u64; BLK], [0xcdcdcdcdcdcdcdcd_u64; BLK]);
                             let nb = c.u() as usize;
