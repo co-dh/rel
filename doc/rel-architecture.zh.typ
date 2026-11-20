@@ -220,7 +220,7 @@ compile η t : {r : Rel A B // rep r = ⟦t⟧ρ}       -- 方案 A：规格在�
   [`scatter`], [`(ix : Enc) (e : Enc) (n) (fill) : Enc`，`out[ix[i]] = e[i]`], [`raw_scatter`（新）], [—],
   [`asc`（草稿，待审）], [`(m) (es : List (AscKey × Enc)) : List Enc × Enc`，`AscKey = atom t ┃ cells n c lo hi els`；
     按若干列字典序稳定排序：每列排好的值 + 排列], [`asc_sorted` + `asc_perm`（新）], [—],
-  [`seen`（草稿，待审）], [`(n) (es : List (AscKey × Enc)) : (k, g, first)`，各列按 `asc` 的方式读；行须已按 `asc` 序，否则报错（先跑 `asc`）：`k` 为组数，`g` 为每行的组号（按首次出现编号），`first` 为每组第一行的位置；如键 `B A B`：`k = 2`，`g = 0 1 0`，`first = 0 1`], [—（`asc ≫ seen` 给出 `asc` 的并列组编号；定理待写）], [—],
+  [`seen`（草稿，待审）], [`(n) (es : List (AscKey × Enc)) : (k, g, first)`，各列按 `asc` 的方式读；行须已按 `asc` 序，否则报错（先跑 `asc`）：`k` 为组数，`g` 为每行的组号（按首次出现编号），`first` 为每组第一行的位置；如键 `A B B`：`k = 2`，`g = 0 1 1`，`first = 0 1`], [—（`asc ≫ seen` 给出 `asc` 的并列组编号；定理待写）], [—],
   [`bitrows`（融合 kernel，草稿，待审）], [`(all : Bool) (w na ni g) (ends idx m : Enc) : Enc`，`m` 是 `na · w` 位的 `u1` 位矩阵（第 `i` 行占 `[i·w, (i+1)·w)` 位）；输出 `g · w` 位：第 `r` 行 = 第 `r` 段 `[ends[r-1], ends[r])` 中各 `idx[k]` 行的 `∨`（`all = false`，即 `≫`，空段为 0）或 `∧`（`all = true`，即 `\`，空段为 1）。只在位矩阵小时选用：`|A|·|B| ≤ 2²⁷`（`sudokupc9` 的 `π₁\(sup(X) X)`：作表 1.9e8 行，作矩阵 4.3e7 位）。选用规则（草稿，待审）：kernel 路径的 `≫`、`\`（`GenK` 经 `Tab.compSel`、`Tab.ldivSel`）先由 `compGroups` 的前缀和得展开行数 `T`，当输入矩阵 `na·w` 与输出矩阵 `g·w` 各 `≤ 2²⁷` 且 `< 2³²`、两者之和小于展开所写的 `64·T` 位（每行至少一个 64 位字）时（`Tab.bitsWin`）用位矩阵，否则用分块展开或计数。
     结果不展开（草稿，待审）：`≫` 选了位矩阵就返回 `Rel.bits`（`Tab.compSelM`），下一个运算若也读位矩阵则直接接上——
     `tab ≫ bits` 以左表值在 `bits` 行值中的序号选行，再 `bitrows`（`Tab.compTabMat`，输出 `≤ 2²⁷` 位时）；
@@ -241,7 +241,7 @@ compile η t : {r : Rel A B // rep r = ⟦t⟧ρ}       -- 方案 A：规格在�
 #tbl(c-rs, (auto, auto, 1fr, auto), ([层], [kernel], [由原语写出（定理）], [单独实现的理由]),
   [原语], [`scan`], [—：唯一做计算的], [—],
   [原语], [`scatter`], [—：唯一把数据写到计算出的位置的], [—],
-  [优化], [`seen`], [Lean body = `Order.idsBy` 的 foR 形式（`Order.firstsBy` 取每组第一行，行的组号 = 其键在其中的下标）；未写成 `scan` / `scatter` 的复合], [不排序：直接寻址一遍扫描，有序输入用游程检测；`∩ ∪ − ≫ dom ran` 都以它结尾],
+  [优化], [`seen`], [Lean body = `Order.idsBy` 的 foR 形式（`Order.firstsBy` 取每组第一行，行的组号 = 其键在其中的下标）；未写成 `scan` / `scatter` 的复合], [行须已按 `asc` 序：一遍扫描做游程检测；`∩ ∪ − ≫ dom ran` 都以它结尾],
   [优化], [`asc`], [radix sort：每一位 `scan`（直方图、前缀偏移）→ `scatter`；`arr char` 用 MSD], [比较排序常数小],
   [优化], [`gather`], [`(ix[i], i)` 与 `(j, e[j])` 拼接 → `asc` → `scan` 向后填 `e` → `scatter` 回 `i`], [O(n)，不必排序],
 )
@@ -254,7 +254,7 @@ compile η t : {r : Rel A B // rep r = ⟦t⟧ρ}       -- 方案 A：规格在�
 
 #tbl(c-sem, (auto, 1fr), ([运算], [由哪些 kernel 复合]),
   [`°`], [交换 key / val 两列，无 kernel],
-  [code（相等 ⇔ code 相等）], [`seen`（`g` 即 code，按首次出现编号，无需排序）],
+  [code（相等 ⇔ code 相等）], [`seen`（`g` 即 code，按首次出现编号；行须已按 `asc` 序）],
   [`∪`], [两表拼接 → `asc`（key, val 两列）→ `seen`（`first` 取代表行）],
   [`∩` `−`], [两表拼接、带来源标记 → `asc` → 每组相等行数 `scan` → 保留出现在两侧（`∩`）或只在左侧（`−`）的组],
   [`≫`], [两侧按中间列 `asc`、取组（`seen`）、组内展开（`scan` 偏移、`scatter` 组头、`scan(max)` 填充）、`gather` 取行、`asc` + `seen`。（草稿，待审）展开总行数超过 `blockRows` 时分块：在组的边界切开，每块至多约 `blockRows` 行（单个大组自成一块），每块先 `asc` + `seen` 去重，再与前面的结果做 `∪`；块只切 `R` 的行，`S` 每块整体参与（`Tab.compWith`，`Rel/Run/Comp.lean`）],
