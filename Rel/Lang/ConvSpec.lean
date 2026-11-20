@@ -63,9 +63,11 @@ theorem Prim.den_conv : ∀ r ∈ prims, ∀ s r', r.conv = some s → Prim.find
   simp only [prims, List.mem_cons, List.not_mem_nil, or_false] at hr
   -- one goal per row, however many `prims` lists
   repeat' (first | subst hr | (obtain rfl | hr := hr))
-  all_goals simp only [consRow, memRow, inlRow, inrRow, inlConvRow, inrConvRow, mapRow, reduceCtorEq, Option.some.injEq] at hs
+  all_goals simp only [consRow, memRow, inlRow, inrRow, inlConvRow, inrConvRow, mapRow, lengthRow, sumRow, reduceCtorEq,
+    Option.some.injEq] at hs
   all_goals subst hs
-  all_goals simp [Prim.find?, prims, consRow, memRow, inlRow, inrRow, inlConvRow, inrConvRow, mapRow] at hr'
+  all_goals simp [Prim.find?, prims, consRow, memRow, inlRow, inrRow, inlConvRow, inrConvRow, mapRow, lengthRow,
+    sumRow] at hr'
   all_goals subst hr'
   all_goals
     intro A B ss
