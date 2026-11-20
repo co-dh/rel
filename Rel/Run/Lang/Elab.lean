@@ -1458,7 +1458,8 @@ def convTm {A B : Obj} (t : Tm A B) : Except String (Tm B A) :=
   -- source's universe
   | .callCv ks c c' os b u => pure (.callCv ks c' c os u b)
   | .call _ c .. => throw s!"`{c}`"
-  | .arg f x => do let f ← convTm f; pure (.arg f x)
+  -- a closed spine under a demand argument (a whole row, `Tm.whole`) has no converse spine: `convTm f` gives `f°`
+  | .arg f x => if f.dem then do let f ← convTm f; pure (.arg f x) else throw "a whole row's closed spine"
   | .top _ => throw "⊤"
   | .outl => throw "π₁"
   | .outr => throw "π₂"
