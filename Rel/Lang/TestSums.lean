@@ -40,4 +40,24 @@ def ones (n : USize) : Except String (Nat × Int64) := do
 
 #guard (ones 1000000).toOption == some (1000000, 1000000)
 
+-- The row `sums(x)` in a program, run on the kernel path (`kernRows`), each `check` against rows worked by hand:
+-- `one` one key, as `sumsT.one`; `grp` key 0: −3, −3+4, 1+5; key 1: 7, 8; `ovf` as `sumsT.ovf`; `nul` key 0:
+-- 1, then the null −2^63, so it and key 0's later rows have no image; key 1: −6, −6+2.
+rel_program sumsP where
+    obj N
+    one : N×N ⟶ N ≜ {((0,0),3),((0,1),4),((0,3),5),((0,7),-2)}
+    grp : N×N ⟶ N ≜ {((1,5),1),((0,0),-3),((1,0),7),((0,2),5),((0,1),4)}
+    ovf : N×N ⟶ N ≜ {((0,0),9223372036854775807),((0,1),1),((0,2),5),((1,0),2),((1,1),-3)}
+    nul : N×N ⟶ N ≜ {((0,0),1),((0,1),-9223372036854775808),((0,2),4),((1,0),-6),((1,4),2)}
+    sone : N×N ⟶ N ≜ sums(one)
+    sgrp : N×N ⟶ N ≜ sums(grp)
+    sovf : N×N ⟶ N ≜ sums(ovf)
+    snul : N×N ⟶ N ≜ sums(nul)
+    check sone = {((0,0),3),((0,1),7),((0,3),12),((0,7),10)}
+    check sgrp = {((0,0),-3),((0,1),1),((0,2),6),((1,0),7),((1,5),8)}
+    check sovf = {((0,0),9223372036854775807),((1,0),2),((1,1),-1)}
+    check snul = {((0,0),1),((1,0),-6),((1,4),-4)}
+
+#guard sumsP.failures.isEmpty
+
 end Rel.Lang.TestSums

@@ -321,7 +321,7 @@ compile η t : {r : Rel A B // rep r = ⟦t⟧ρ}       -- 方案 A：规格在�
     前缀和 `W` → `scan` 测溢出（`v` 与 `W − v` 同号、`W` 异号）或 null `−2^63` → 分段 `scan(or)` 把坏步传到该 key
     之后各行 → where 留无坏步的行（同 `sum`，不报错）。不排序 `canon` 之外的东西、不回置换。含义是组合
     `agg(dom(x) (𝟙 × ≥) dom(x), F(x) ⦇[0, plus]⦈)`（左折叠，`rowDens` 即此组合），本行是它的融合形式（定理
-    `Tab.sums_holds`）。`Prim.dfn` 同 `asc`：待 `dfn` 能读行的关系参数（草稿，待审）],
+    `Tab.sums_holds`，无前提，故 `rowsProved` 条目不读 `LamLaw`）。`Prim.dfn` 同 `asc`：待 `dfn` 能读行的关系参数],
   [`cons°`], [格界 → where(`s < e`) → `gather`：首元素 = payload 第 `s` 个，尾 = 格 `[s + 1, e)`（`scan`），
     共享原 payload，不建新 payload；`n + m + 1 ≥ 2^63` 拒绝],
   [`snoc°`], [同 `cons°`：格 `[s, e − 1)` 与 payload 第 `e − 1` 个],

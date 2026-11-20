@@ -240,6 +240,7 @@ def kernRows : List (String × Lean.Name) :=
    ("filter", ``Tab.filter),
    ("positions", ``Tab.positions),
    ("asc", ``Tab.asc),
+   ("sums", ``Tab.sums),
    ("takewhile", ``Tab.takewhile),
    ("loop", ``Tab.loop),
    ("merge", ``Tab.merge),
