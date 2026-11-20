@@ -280,13 +280,12 @@ partial def primsFit {A B : Obj} (t : Tm A B) : MetaM Bool := do
 def once (env : Env) (p : Pos) (n : String) (qs : List Param) (e : Expr) (ty : OExp × OExp) (vs : List String)
     (k c : Lean.Name) (fs : List Form) (nb : List Bool) (specs : List Once) : EM (Once × List Once) := do
   -- per variable: generic over its object, and given its universe; one the call puts an unbounded number object at
-  -- (`nb`) is one, its universe `𝟙`, so a row with a `dfn` there runs fused (`build`), as it does outside a body
+  -- (`nb`) is `num`, so a row with a `dfn` there runs fused (`build`), as it does outside a body
   let run (fl : List (Bool × Bool)) : EM (Once × List Once) := do
     let objs := vs.zipIdx.map (fun (v, k) =>
       let (gen, uni) := fl.getD k (false, true)
       let obj := if gen then (varObj k).getD .long else .long
-      let num := nb.getD k false
-      (v, ({ ty := .base v, uniVar := if uni && !num then some k else none, obj, num } : ObjInfo))) ++ env.objs
+      (v, ({ ty := .base v, uniVar := if uni then some k else none, obj, num := nb.getD k false } : ObjInfo))) ++ env.objs
     let (os, r, st) ← elabOnce env p n qs e ty vs fs objs specs
     let (q, _, _) := r.plain
     let gen := fl.map (·.1)
@@ -357,9 +356,11 @@ def callDef (env : Env) (dp : Pos) (n : String) (qs : List Param) (e : Expr) (ty
           else if (test st.objs mc p x).toOption.isSome then some true else none
         fs := fs ++ [(f, k?)]; xs := xs ++ [(if f.isNone then Pre.close p x a why else x, f == some true)]
       let some us := vs.mapM (m.lookup ·) | throw ⟨p, s!"internal: `{c}` has an object variable no type names"⟩
-      -- the variables this call puts an unbounded number object at: the constant is built at them (`once`)
+      -- the variables this call puts an unbounded number object at: the constant is built at them (`once`); an
+      -- object still open here stays open in the call, so `build` knows the constant did not see it (`.call`)
       let mc ← Lean.getMCtx; let objs := (← get).objs
-      let nb := us.map fun u => match zonk mc u with | .base o => (objs.lookup o).any (·.num) | _ => false
+      let us := us.map (zonk mc)
+      let nb := us.map (unbounded objs)
       let key := formKey c fs nb
       let o? ← match calls key, (← get).specs.find? (·.key == key) with
         | some o, _ | none, some o => pure (some o)
