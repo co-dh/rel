@@ -98,9 +98,23 @@ def inr {n : USize} (Y : Vals B n) : Except String (Tab B (.sum A B)) := do
   let (tag, idx) ← injCols n true
   canon ⟨n, Y, ⟨0, n, tag, idx, ← Vals.none A, Y⟩⟩
 
-/-- **`[R, S]`** = `inl° ≫ R ∪ inr° ≫ S` (`Core.Rel.junc`), `inl` on `R`'s keys and `inr` on `S`'s. -/
-def junc (R : Tab A C) (S : Tab B C) : Except String (Tab (.sum A B) C) := do
-  union (← comp (← conv (← inl (B := B) R.key)) R) (← comp (← conv (← inr (A := A) S.key)) S)
+/-- **`inl°` on the sum values `X`**, `idU X ≫ inl°`: `X` beside `(inl x)°`, `x` its left payload, which every
+left row reads. A left payload of no value reads `A.dflt` at a left row (`Vals.row`), which `x` cannot give: there
+the answer is none where `X` has only right rows (`idU X − dom(idU X ≫ (inr y)°)` empty), else the error. -/
+def inlConv {n : USize} (X : Vals (.sum A B) n) : Except String (Tab (.sum A B) A) := do
+  let D ← idU X
+  if X.1.toNat = 0 then
+    if (← D.diff (← (← D.comp (← (← inr (A := A) X.2.2.2.2.2).conv)).dom)).n = 0 then zero
+    else throw "inl°: a left row over a left payload of no value"
+  else D.comp (← (← inl (B := B) X.2.2.2.2.1).conv)
+
+/-- **`inr°` on the sum values `X`**, `idU X ≫ inr°`: the mirror of `inlConv`. -/
+def inrConv {n : USize} (X : Vals (.sum A B) n) : Except String (Tab (.sum A B) B) := do
+  let D ← idU X
+  if X.2.1.toNat = 0 then
+    if (← D.diff (← (← D.comp (← (← inl (B := B) X.2.2.2.2.1).conv)).dom)).n = 0 then zero
+    else throw "inr°: a right row over a right payload of no value"
+  else D.comp (← (← inr (A := A) X.2.2.2.2.2).conv)
 
 /-- **`Rᴵ` on the pairs `X`**, `idU X ≫ Rᴵ` = `((π₁ ≫ R) ∩ (π₂ ≫ π₁°)) ≫ π₂` (`flatDen_eq`): the rows `(i, a)` of `X`
 beside `R`'s `(a', b)` at `i`, kept where the equality test `a = a'` holds (`∩` with `π₂ ≫ π₁°` on `R`'s values), then
