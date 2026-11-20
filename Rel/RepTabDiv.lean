@@ -7,6 +7,7 @@ import Rel.RepCanon
 import Rel.RepSetOps
 import Rel.RepTabComp
 import Rel.Lang.Den
+import Rel.RepTabArith
 
 /-! The laws of the operators of `Rel/Run/Div.lean` (`ldiv`, `rdiv`, `lam`, `E`, `nil`, `lt`, `leq`), and the checks
 of those, `Rel/Run/Fix.lean`'s, `Rel/Run/Power.lean`'s and `Rel/Run/List.lean`'s operators on `foR` tables against their
@@ -28,50 +29,85 @@ theorem nil_holds {n : USize} {D : Vals A n} {T : Tab A (.arr B)} (h : Tab.nil D
   simp only [Tab.Holds, Vals.row]
   exact ⟨fun ⟨i, h1, h2⟩ => ⟨⟨i, h1⟩, h2.symm⟩, fun ⟨⟨i, h1⟩, h2⟩ => ⟨i, h1, h2.symm⟩⟩
 
-/-- **`cmpPairs op X` is `X ∩ r`**, `op` testing `r` on the signed words: row `i` of `X` kept where `op` answers
-`1`. -/
-theorem cmpPairs_holds {op : Op} {r : Int64 → Int64 → Bool}
-    (hop : ∀ x y : UInt64, op.eval x y = .ok (if r x.toInt64 y.toInt64 then 1 else 0))
-    {X T : Tab .long .long} (h : cmpPairs op X = .ok T) (a c : Int64) :
-    T.Holds a c ↔ X.Holds a c ∧ r a c = true := by
+/-- The order of the atom `t` (`<` at `s`, else `≤`): `ltAt` or `leAt`. -/
+abbrev ordAt (s : Bool) (t : QAtomicType) (a c : (Obj.atom t).El) : Prop :=
+  if s then Lang.ltAt t a c else Lang.leAt t a c
+
+/-- **`ordOp s t` tests `ordAt s t` on the `wideCol` words**, at every atom: a bit, `1` exactly where the order holds
+(`Int64`'s on the stored words at `i64`, IEEE's on the `f64` words at a float atom; `ordOp` refuses any other). -/
+theorem ordOp_iff {s : Bool} {t : QAtomicType} {op : Op} (hop : ordOp s t = .ok op) {n : USize} (x y : Arr t n)
+    {a' b' : Enc} (ha : wideCol t n x.enc = .ok a') (hb : wideCol t n y.enc = .ok b') (i : Fin n.toNat) :
+    (∃ e : Bool, op.eval ((raw .i64 n a')[i.1]?.getD 0) ((raw .i64 n b')[i.1]?.getD 0) = .ok (if e then 1 else 0)) ∧
+    (ordAt s t (x.get i) (y.get i) ↔ op.eval ((raw .i64 n a')[i.1]?.getD 0) ((raw .i64 n b')[i.1]?.getD 0) = .ok 1) := by
+  cases t <;> simp only [ordOp, throw, throwThe, MonadExceptOf.throw, pure, Except.pure, reduceCtorEq,
+    Except.ok.injEq] at hop
+  · simp only [wideCol, pure, Except.pure, Except.ok.injEq] at ha hb; subst ha hb hop
+    rw [Arr.get_i64, Arr.get_i64]
+    generalize (raw .i64 n x.enc)[i.1]?.getD 0 = A; generalize (raw .i64 n y.enc)[i.1]?.getD 0 = B
+    cases s
+    · refine ⟨⟨_, rfl⟩, ?_⟩
+      show A.toInt64 ≤ B.toInt64 ↔ Except.ok (if decide (A.toInt64 ≤ B.toInt64) = true then 1 else 0) = _
+      by_cases h : A.toInt64 ≤ B.toInt64 <;> simp [h]
+    · refine ⟨⟨_, rfl⟩, ?_⟩
+      show A.toInt64 < B.toInt64 ↔ Except.ok (if decide (A.toInt64 < B.toInt64) = true then 1 else 0) = _
+      by_cases h : A.toInt64 < B.toInt64 <;> simp [h]
+  all_goals
+    subst hop
+    simp only [ordAt, Lang.ltAt, Lang.leAt, Lang.fordAt, wideCol_word x ha (by decide) i,
+      wideCol_word y hb (by decide) i, Option.some.injEq, exists_eq_left']
+    cases s <;> simp only [Bool.false_eq_true, ↓reduceIte] <;>
+      exact ⟨⟨_, rfl⟩, fun ⟨_, _, e1, e2, h⟩ => e1 ▸ e2 ▸ h, fun h => ⟨_, _, rfl, rfl, h⟩⟩
+
+/-- **`cmpPairs op X` is `X ∩ ordAt s t`**, `op` the order `ordOp s t`: row `i` of `X` kept where `op` answers `1`. -/
+theorem cmpPairs_holds {s : Bool} {t : QAtomicType} {op : Op} (hop : ordOp s t = .ok op)
+    {X T : Tab (.atom t) (.atom t)} (h : cmpPairs op X = .ok T) (a c : (Obj.atom t).El) :
+    T.Holds a c ↔ X.Holds a c ∧ ordAt s t a c := by
   unfold cmpPairs at h; simp only [bind, Except.bind] at h
+  split at h; · cases h
+  rename_i ka hka
+  split at h; · cases h
+  rename_i kv hkv
   split at h; · cases h
   rename_i w hw
   obtain ⟨-, -, -, hev⟩ := colMap_raw hw
-  have hwv : ∀ i : Fin X.n.toNat, (raw .i64 X.n w)[i.1]?.getD 0 =
-      if r (X.key.row i) (X.val.row i) then 1 else 0 := by
+  have hwv : ∀ i : Fin X.n.toNat, (raw .i64 X.n w)[i.1]?.getD 0 < 2 ∧
+      ((raw .i64 X.n w)[i.1]?.getD 0 ≠ 0 ↔ ordAt s t (X.key.row i) (X.val.row i)) := by
     intro i
-    have := hev i.1 i.2
-    rw [hop] at this
-    rw [← Except.ok.inj this, Vals.row_atom, Vals.row_atom, Arr.get_i64, Arr.get_i64]
-  rw [keep_holds h (fun i hi => by rw [hwv ⟨i, hi⟩]; split <;> decide)]
+    obtain ⟨⟨e, he⟩, hP⟩ := ordOp_iff hop X.key X.val hka hkv i
+    rw [Vals.row_atom, Vals.row_atom, hP, he, ← Except.ok.inj (he.symm.trans (hev i.1 i.2))]
+    cases e <;> simp
+  rw [keep_holds h (fun i hi => (hwv ⟨i, hi⟩).1)]
   simp only [Tab.Holds]
   constructor
   · rintro ⟨i, hi, rfl, rfl⟩
-    rw [hwv i] at hi
-    exact ⟨⟨i, rfl, rfl⟩, by cases hr : r (X.key.row i) (X.val.row i) <;> simp_all⟩
+    exact ⟨⟨i, rfl, rfl⟩, (hwv i).2.1 hi⟩
   · rintro ⟨⟨i, rfl, rfl⟩, hr⟩
-    exact ⟨i, by rw [hwv i, if_pos hr]; decide, rfl, rfl⟩
+    exact ⟨i, (hwv i).2.2 hr, rfl, rfl⟩
 
-/-- **`cmpOn op K L` is `K ≫ r ≫ L`**: `cmpPairs` of `cross K L`. -/
-theorem cmpOn_holds {op : Op} {r : Int64 → Int64 → Bool}
-    (hop : ∀ x y : UInt64, op.eval x y = .ok (if r x.toInt64 y.toInt64 then 1 else 0))
-    {n m : USize} {K : Vals .long n} {L : Vals .long m} {T : Tab .long .long} (h : cmpOn op K L = .ok T)
-    (a c : Int64) : T.Holds a c ↔ (∃ i, K.row i = a) ∧ (∃ j, L.row j = c) ∧ r a c = true := by
+/-- **`cmpOn op K L` is `K ≫ ordAt s t ≫ L`**: `cmpPairs` of `cross K L`. -/
+theorem cmpOn_holds {s : Bool} {t : QAtomicType} {op : Op} (hop : ordOp s t = .ok op)
+    {n m : USize} {K : Vals (.atom t) n} {L : Vals (.atom t) m} {T : Tab (.atom t) (.atom t)} (h : cmpOn op K L = .ok T)
+    (a c : (Obj.atom t).El) : T.Holds a c ↔ (∃ i, K.row i = a) ∧ (∃ j, L.row j = c) ∧ ordAt s t a c := by
   unfold cmpOn at h; simp only [bind, Except.bind] at h
   split at h; · cases h
   rename_i X hX
   rw [cmpPairs_holds hop h, cross_holds hX, and_assoc]
 
-/-- **`lt K L` denotes `K ≫ < ≫ L`**. -/
-theorem lt_holds {n m : USize} {K : Vals .long n} {L : Vals .long m} {T : Tab .long .long} (h : Tab.lt K L = .ok T)
-    (a c : Int64) : T.Holds a c ↔ (∃ i, K.row i = a) ∧ (∃ j, L.row j = c) ∧ a < c := by
-  rw [cmpOn_holds (r := fun x y => decide (x < y)) (fun _ _ => rfl) h, decide_eq_true_eq]
+/-- **`lt t K L` denotes `K ≫ ltAt t ≫ L`**. -/
+theorem lt_holds {t : QAtomicType} {n m : USize} {K : Vals (.atom t) n} {L : Vals (.atom t) m}
+    {T : Tab (.atom t) (.atom t)} (h : Tab.lt t K L = .ok T) (a c : (Obj.atom t).El) :
+    T.Holds a c ↔ (∃ i, K.row i = a) ∧ (∃ j, L.row j = c) ∧ Lang.ltAt t a c := by
+  unfold Tab.lt at h; simp only [bind, Except.bind] at h
+  split at h; · cases h
+  exact cmpOn_holds (s := true) (by assumption) h a c
 
-/-- **`leq K L` denotes `K ≫ ≤ ≫ L`**. -/
-theorem leq_holds {n m : USize} {K : Vals .long n} {L : Vals .long m} {T : Tab .long .long}
-    (h : Tab.leq K L = .ok T) (a c : Int64) : T.Holds a c ↔ (∃ i, K.row i = a) ∧ (∃ j, L.row j = c) ∧ a ≤ c := by
-  rw [cmpOn_holds (r := fun x y => decide (x ≤ y)) (fun _ _ => rfl) h, decide_eq_true_eq]
+/-- **`leq t K L` denotes `K ≫ leAt t ≫ L`**. -/
+theorem leq_holds {t : QAtomicType} {n m : USize} {K : Vals (.atom t) n} {L : Vals (.atom t) m}
+    {T : Tab (.atom t) (.atom t)} (h : Tab.leq t K L = .ok T) (a c : (Obj.atom t).El) :
+    T.Holds a c ↔ (∃ i, K.row i = a) ∧ (∃ j, L.row j = c) ∧ Lang.leAt t a c := by
+  unfold Tab.leq at h; simp only [bind, Except.bind] at h
+  split at h; · cases h
+  exact cmpOn_holds (s := false) (by assumption) h a c
 
 /-- The keys of `dom U` are the keys of `U`. -/
 private theorem dom_key {k v : Obj} {U : Tab k v} {d : Tab k k} (hd : U.dom = .ok d) (x : k.El) :
@@ -81,13 +117,13 @@ private theorem dom_key {k v : Obj} {U : Tab k v} {d : Tab k k} (hd : U.dom = .o
   · intro hv; obtain ⟨i, hi, -⟩ := (dom_holds hd x x).2 ⟨rfl, hv⟩; exact ⟨i, hi⟩
 
 /-- **`lt` on both sides `dom U` denotes `ltDen`**: `lt_holds` at `K = L = dom U`. -/
-theorem lt_dom_holds {U d T : Tab .long .long} (hd : U.dom = .ok d) (h : Tab.lt d.key d.key = .ok T)
-    (a c : Int64) : T.Holds a c ↔ Lang.ltDen U.Holds a c := by
+theorem lt_dom_holds {t : QAtomicType} {U d T : Tab (.atom t) (.atom t)} (hd : U.dom = .ok d)
+    (h : Tab.lt t d.key d.key = .ok T) (a c : (Obj.atom t).El) : T.Holds a c ↔ Lang.ltDen t U.Holds a c := by
   rw [lt_holds h, dom_key hd, dom_key hd]
 
 /-- **`leq` on both sides `dom U` denotes `leqDen`**: `leq_holds` at `K = L = dom U`. -/
-theorem leq_dom_holds {U d T : Tab .long .long} (hd : U.dom = .ok d) (h : Tab.leq d.key d.key = .ok T)
-    (a c : Int64) : T.Holds a c ↔ Lang.leqDen U.Holds a c := by
+theorem leq_dom_holds {t : QAtomicType} {U d T : Tab (.atom t) (.atom t)} (hd : U.dom = .ok d)
+    (h : Tab.leq t d.key d.key = .ok T) (a c : (Obj.atom t).El) : T.Holds a c ↔ Lang.leqDen t U.Holds a c := by
   rw [leq_holds h, dom_key hd, dom_key hd]
 
 /-- **`mem X` denotes `∋` on the arrays `X`**: each cell of `X` to each of its elements. Cell `i` is `[s, e)` with
@@ -2040,11 +2076,11 @@ private def sidesOk {A : Obj} [BEq A.El] (f : ∀ {n m : USize}, Vals A n → Va
     fun T => specOk (f K L) T.toList
 
 -- `<`, `≤` on both sides `dom U` against `ltDen`, `leqDen`, on `U` and on no values
-#guard canonOk (whole Tab.lt (idT U)) && canonOk (whole Tab.leq (idT U)) &&
-  specOk (whole Tab.lt (idT U)) (us.flatMap fun a => (us.filter (a < ·)).map (a, ·)) &&
-  specOk (whole Tab.leq (idT U)) (us.flatMap fun a => (us.filter (a ≤ ·)).map (a, ·)) &&
-  newL (whole Tab.lt (tab [])) == some [] &&
-  newL (whole Tab.leq (tab [(4, 0), (2, 0)])) == some [(2, 2), (2, 4), (4, 4)]
+#guard canonOk (whole (Tab.lt .i64) (idT U)) && canonOk (whole (Tab.leq .i64) (idT U)) &&
+  specOk (whole (Tab.lt .i64) (idT U)) (us.flatMap fun a => (us.filter (a < ·)).map (a, ·)) &&
+  specOk (whole (Tab.leq .i64) (idT U)) (us.flatMap fun a => (us.filter (a ≤ ·)).map (a, ·)) &&
+  newL (whole (Tab.lt .i64) (tab [])) == some [] &&
+  newL (whole (Tab.leq .i64) (tab [(4, 0), (2, 0)])) == some [(2, 2), (2, 4), (4, 4)]
 
 /-- Known sides inside `U`: none, a value twice, and two that differ. -/
 private def sides : List ((n : USize) × Vals .long n) :=
@@ -2063,8 +2099,9 @@ private def fsides : List ((n : USize) × Vals (.atom .f64) n) :=
 
 -- `<`, `≤`, `⊤` on the known sides `K`, `L` against `K ≫ (both sides dom U) ≫ L`, every pair of sides; `⊤` on `f64`
 #guard sides.all fun ⟨_, K⟩ => sides.all fun ⟨_, L⟩ =>
-  sidesOk Tab.lt (idT U) K L && sidesOk Tab.leq (idT U) K L && sidesOk Tab.top (idT U) K L
-#guard fsides.all fun ⟨_, K⟩ => fsides.all fun ⟨_, L⟩ => sidesOk Tab.top (idT FU) K L
+  sidesOk (Tab.lt .i64) (idT U) K L && sidesOk (Tab.leq .i64) (idT U) K L && sidesOk Tab.top (idT U) K L
+#guard fsides.all fun ⟨_, K⟩ => fsides.all fun ⟨_, L⟩ =>
+  sidesOk Tab.top (idT FU) K L && sidesOk (Tab.lt .f64) (idT FU) K L && sidesOk (Tab.leq .f64) (idT FU) K L
 
 /-- The keys `3 1 4 -1 3`: `3` twice, `4` the key of no row. -/
 private def ds : List Int64 := [3, 1, 4, -1, 3]

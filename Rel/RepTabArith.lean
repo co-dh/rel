@@ -278,11 +278,12 @@ theorem fverbBy_map {α β : Type} {ap : Op → α → α → Except String α} 
 /-- **`wideCol` reads a float column as `fval`**: row `i` of `wideCol t` of the column `x` is the `f64` word of element
 `i` (an `f32` one read at `f32` and widened). -/
 theorem wideCol_word {t : QAtomicType} {n : USize} (x : Arr t n) {a' : Enc} (h : wideCol t n x.enc = .ok a')
-    (hf : t = .f32 ∨ t = .f64) (i : Fin n.toNat) : fval t (x.get i) = some (wd n a' i) := by
+    (hf : t = .f32 ∨ t = .f64) (i : Fin n.toNat) : fval t (x.get i) = some ((raw .i64 n a')[i.1]?.getD 0) := by
   rcases hf with rfl | rfl
   · have e := Except.ok.inj ((colMap_raw (s := .f32) h).2.2.2 i i.2)
     rw [Arr.get_word x (by decide) i, ← e]
-    simp only [fval, QAtomicType.ofBits, Op.eval, Option.some.injEq, Op.widen32, UInt64.toUInt32_toUInt64]
+    generalize (raw .f32 n x.enc)[i.1]?.getD 0 = W
+    simp only [fval, QAtomicType.ofBits, Op.widen32, show W.toUInt32.toUInt64.toUInt32 = W.toUInt32 from UInt32.toNat_inj.mp (by simp [Nat.mod_mod])]
   · simp only [wideCol, pure, Except.pure, Except.ok.injEq] at h; subst h
     have hw := x.wf
     rw [Arr.get_word x (by decide) i]
@@ -297,22 +298,29 @@ theorem fstepCols_spec {t : QAtomicType} {k : UInt8} {n : USize} {x y w : Arr t 
       fval t (y.get i) = some Y ∧ fstep t k X Y = .ok R ∧ R ≠ 0x8000000000000000 ∧ v = QAtomicType.ofBits t R := by
   simp only [fstepCols, bind, Except.bind_eq_ok', pure, Except.pure, Except.ok.injEq, Prod.mk.injEq] at h
   obtain ⟨a', ha, b', hb, r, hr, w', hw', N, hN, kp, hkp, rfl, rfl⟩ := h
-  have hr' := fverbBy_map (fun e => wd n e i) (fun hc => (colMap_raw hc).2.2.2 i i.2) hr
+  have hr' := fverbBy_map (ap := fun o x y => colMap o n x y) (ap' := Op.eval) (fun e => wd n e i)
+    (fun hc => (colMap_raw hc).2.2.2 i i.2) hr
   obtain ⟨v0, hv0, hwi⟩ := (colMap_get (colArr_ok hw')).2 i i.2
   have hkv := (colMap_raw hkp).2.2.2 i i.2
   rw [colConst_raw hN] at hkv
   simp only [Array.getElem?_replicate, i.2, if_true, Option.getD_some, ev_ne] at hkv
+  rw [show nulWord = 0x8000000000000000 from rfl] at hkv
+  have ev : ∀ A B, (Op.fto t).eval A B = .ok (Op.ftoWord t B) := fun _ _ => rfl
   have hfs : fstep t k (wd n a' i) (wd n b' i) = .ok v0 := by
-    simp only [fstep, bind, Except.bind]; rw [show fverb k _ _ = _ from hr', ← hv0]; rfl
+    show (fverb k _ _ >>= fun q => (Op.fto t).eval 0 q) = _
+    rw [show fverb k (wd n a' i) (wd n b' i) = .ok (wd n r i) from hr']
+    exact (ev 0 _).trans ((ev _ _).symm.trans hv0)
   have hg : t ≠ .general := by rcases hf with rfl | rfl <;> decide
   have hs : t ≠ .sym := by rcases hf with rfl | rfl <;> decide
   obtain ⟨a, ha0, -, ew⟩ := Arr.get_raw_atom w' (colMap_closed (colArr_ok hw')).1 hg hs i
-  have hu : (if t = .u1 then v0 % 2 else v0) = v0 := by rcases hf with rfl | rfl <;> rfl
-  rw [hwi, hu, Option.some.injEq] at ha0; subst ha0
-  have ew' : w'.get i = QAtomicType.ofBits t v0 := by rw [ew]; rcases hf with rfl | rfl <;> rfl
-  have hwd : wd n w'.enc i = v0 := by simp only [wd, hwi, hu, Option.getD_some]
+  have hu : (if t = .u1 then v0 % 2 else v0) = v0 := if_neg (by rcases hf with rfl | rfl <;> decide)
+  rw [hwi, hu, Option.some.injEq] at ha0; subst a
+  have ew' : w'.get i = QAtomicType.ofBits t v0 := by
+    rw [ew]; rcases hf with rfl | rfl <;> simp only [Column.atomOfBits, Dep.Carrier.of?, Option.getD_some,
+      QAtomicType.ofBits]
+  have hwd : (raw .i64 n w'.enc)[i.1]?.getD 0 = v0 := by simp only [hwi, hu, Option.getD_some]
   rw [hwd] at hkv
-  rw [← Except.ok.inj hkv, wideCol_word x ha hf i, wideCol_word y hb hf i]
+  simp only [wd] at hfs ⊢; rw [← Except.ok.inj hkv, wideCol_word x ha hf i, wideCol_word y hb hf i]
   refine ⟨bit_lt _, fun v => ?_⟩
   rw [bit_ne, ew']
   constructor
@@ -328,7 +336,8 @@ theorem stepColsAt_spec {t : QAtomicType} {k : UInt8} {n : USize} {x y w : Arr t
   cases t <;> simp only [stepColsAt, throw, throwThe, MonadExceptOf.throw, reduceCtorEq] at h
   · obtain ⟨h2, hv⟩ := stepCols_spec h i.1 i.2
     refine ⟨h2, fun v => ?_⟩
-    rw [Arr.get_i64, Arr.get_i64, Arr.get_i64, ← hv, eq_comm]; rfl
+    rw [Arr.get_i64, Arr.get_i64, Arr.get_i64]
+    exact (and_congr Iff.rfl eq_comm).trans (hv v)
   all_goals first | cases h | exact fstepCols_spec (by decide) h i
 
 /-- `arithDen t k TU` pointwise: both operands in `dom TU`, then `stepAt t k ≫ TU`. -/
