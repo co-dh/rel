@@ -81,6 +81,8 @@ lean_lib Rel where
     (`lean DIR`, `plan DIR`). -/
 lean_exe relc where
   root := `Rel.Lang.TestNative
+  -- `relc run` interprets a program's `io`, which calls compiled code (`Init`, the externs): the symbols exported
+  supportInterpreter := true
 
 /-- The C `relc` prints, linked with `librelk.a` and `qrt.o` and nothing of Lean's: the archive contributes the kernels
     the program calls, and `qrt.o` (`crate/build.sh rt`, from `crate/rt`) the runtime symbols those reach. -/
