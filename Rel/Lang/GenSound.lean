@@ -283,7 +283,8 @@ def rowsProved : List (String × (Obj → Obj → List (Obj × Obj))) :=
   let cod : Obj → Obj → List (Obj × Obj) := fun A B => match B with | .arr B' => [(A, B')] | _ => []
   [("∋", no), ("inl", no), ("inr", no), ("τ", cod), ("setify", cod), ("snoc", no), ("cons", no), ("cat", no),
    ("uncat", no), ("prefix", no), ("suffix", no), ("uncons", no), ("unsnoc", no), ("inits", cod), ("zip", no), ("length", no), ("sum", no), ("loop", no), ("filter", no), ("concat", no), ("merge", no),
-   ("thinL", no), ("F", no), ("positions", no), ("asc", fun A B => [(A, B)]), ("inl°", no), ("inr°", no), ("tails", fun A _ => match A with | .arr σ => [(.arr σ, .prod (.arr σ) (.arr σ))] | _ => [])]
+   ("thinL", no), ("F", no), ("positions", no), ("asc", fun A B => [(A, B)]), ("inl°", no), ("inr°", no), ("tails", fun A _ => match A with | .arr σ => [(.arr σ, .prod (.arr σ) (.arr σ))] | _ => []),
+   ("takewhile", no)]
 
 /-- The number of relations row `s` is given: its `prims` entry's, the one `rowGens` was generated from. A
     `rowGens` entry ignores a code past them, where `Prim.den` (`Sem.one`) is `𝟘`. -/
@@ -295,7 +296,7 @@ def Prim.proved (r : Prim) (A B : Obj) (os : List (Obj × Obj)) : Bool :=
   (rowsProved.lookup r.sym).isSome && os.length == rowArity r.sym && primHasCode r A B os
 
 mutual
-/-- Some node of `t` has no proved case in `Tm.gen_sound`: no `GenK` lemma yet (`thin`), a `hylo` whose children's term
+/-- Some node of `t` has no proved case in `Tm.gen_sound`: a `hylo` whose children's term
     (`Tm.kids`) is none or has a gap node, a row not `Prim.proved` at its relations' objects
     (`Tm.argGap`), or a spine headed by neither a row nor a call. A call reads its body (`Tm.size` counts it). -/
 def Tm.gap : {A B : Obj} → Tm A B → Bool
@@ -304,12 +305,11 @@ def Tm.gap : {A B : Obj} → Tm A B → Bool
   | _, _, .atPos _ | _, _, .var .. => false
   | _, _, .top R | _, _, .conv R | _, _, .dom R | _, _, .ran R | _, _, .lam R | _, _, .E R | _, _, .own R
   | _, _, .succ R | _, _, .arith _ R | _, _, .leq R | _, _, .lt R | _, _, .flat R | _, _, .share _ R
-  | _, _, .est R | _, _, .mu _ _ _ R | _, _, .call _ _ _ R | _, _, .callCv _ _ _ _ R _ => R.gap
+  | _, _, .est R | _, _, .thin R | _, _, .mu _ _ _ R | _, _, .call _ _ _ R | _, _, .callCv _ _ _ _ R _ => R.gap
   | _, _, .comp R S | _, _, .meet R S | _, _, .join R S | _, _, .diff R S | _, _, .pair R S | _, _, .prod R S
   | _, _, .fold R S | _, _, .foldr R S | _, _, .foldI R S | _, _, .nu _ R S => R.gap || S.gap
   | _, _, .ldiv R S U V | _, _, .rdiv R S U V => R.gap || S.gap || U.gap || V.gap
   | _, _, .arg (C := C) (D := D) f x => f.argGap [(C, D)] || x.gap
-  | _, _, .thin _ => true
   -- the children's term is no subterm (`Tm.kids`), only no larger than the body (`Tm.size_kids`)
   | A, _, .hylo k _ b =>
     have : ((b.kids k A).getD .zero).size ≤ b.size := Tm.size_kids k A b
@@ -344,12 +344,12 @@ def Tm.gapKinds : {A B : Obj} → Tm A B → List String
   | _, _, .atPos _ | _, _, .var .. => []
   | _, _, .top R | _, _, .conv R | _, _, .dom R | _, _, .ran R | _, _, .lam R | _, _, .E R | _, _, .own R
   | _, _, .succ R | _, _, .arith _ R | _, _, .leq R | _, _, .lt R | _, _, .flat R | _, _, .share _ R
-  | _, _, .est R | _, _, .mu _ _ _ R | _, _, .call _ _ _ R | _, _, .callCv _ _ _ _ R _ => R.gapKinds
+  | _, _, .est R | _, _, .thin R | _, _, .mu _ _ _ R | _, _, .call _ _ _ R | _, _, .callCv _ _ _ _ R _ =>
+    R.gapKinds
   | _, _, .comp R S | _, _, .meet R S | _, _, .join R S | _, _, .diff R S | _, _, .pair R S | _, _, .prod R S
   | _, _, .fold R S | _, _, .foldr R S | _, _, .foldI R S | _, _, .nu _ R S =>
     R.gapKinds ++ S.gapKinds
   | _, _, .ldiv R S U V | _, _, .rdiv R S U V => R.gapKinds ++ S.gapKinds ++ U.gapKinds ++ V.gapKinds
-  | _, _, .thin _ => ["thin"]
   -- a `hylo` whose children `Tm.kids` reads in no shape, or whose children's term has a gap node
   | A, _, .hylo k _ b =>
     b.gapKinds ++ if (b.kids k A).isNone || ((b.kids k A).getD .zero).gap then ["hylo"] else []
@@ -396,6 +396,7 @@ def Tm.LamLawsAt (L : Obj → Obj → Prop) : {A B : Obj} → Tm A B → Prop
   | A, B, .prim r => ∀ f, rowsProved.lookup r.sym = some f → ∀ p ∈ f A B, L p.1 p.2
   | _, _, .lam (A := A) (B := B) R => L A B ∧ R.LamLawsAt L
   | _, _, .E (A := A) (B := B) R => L (.arr A) B ∧ R.LamLawsAt L
+  | _, .arr B, .thin Q => L (.arr B) B ∧ Q.LamLawsAt L
   | _, _, .top R | _, _, .conv R | _, _, .dom R | _, _, .ran R | _, _, .own R | _, _, .succ R | _, _, .arith _ R
   | _, _, .leq R | _, _, .lt R | _, _, .flat R | _, _, .share _ R | _, _, .est R | _, _, .call _ _ _ R
   | _, _, .callCv _ _ _ _ R _ => R.LamLawsAt L
@@ -408,7 +409,7 @@ def Tm.LamLawsAt (L : Obj → Obj → Prop) : {A B : Obj} → Tm A B → Prop
   | _, _, .mu k _ _ b | _, _, .hylo k _ b => b.pol true k = true ∧ b.LamLawsAt L
   -- every other constructor spelled out: a catch-all's equation lemmas time `simp` out
   | _, _, .val _ | _, _, .uni _ | _, _, .zero | _, _, .id | _, _, .outl | _, _, .outr | _, _, .nil
-  | _, _, .atPos _ | _, _, .var .. | _, _, .thin _ => True
+  | _, _, .atPos _ | _, _, .var .. => True
 
 /-- `Tm.LamLawsAt` with `LamLaw`, the premise of `Tm.gen_sound`. -/
 abbrev Tm.LamLaws {A B : Obj} (t : Tm A B) : Prop := t.LamLawsAt LamLaw
@@ -418,14 +419,14 @@ abbrev Tm.LamLaws {A B : Obj} (t : Tm A B) : Prop := t.LamLawsAt LamLaw
 def Tm.monoOK : {A B : Obj} → Tm A B → Bool
   | _, _, .lam R | _, _, .E R | _, _, .top R | _, _, .conv R | _, _, .dom R | _, _, .ran R | _, _, .own R
   | _, _, .succ R | _, _, .arith _ R | _, _, .leq R | _, _, .lt R | _, _, .flat R | _, _, .share _ R
-  | _, _, .est R | _, _, .call _ _ _ R | _, _, .callCv _ _ _ _ R _ => R.monoOK
+  | _, _, .est R | _, _, .thin R | _, _, .call _ _ _ R | _, _, .callCv _ _ _ _ R _ => R.monoOK
   | _, _, .comp R S | _, _, .meet R S | _, _, .join R S | _, _, .diff R S | _, _, .pair R S | _, _, .prod R S
   | _, _, .fold R S | _, _, .foldr R S | _, _, .foldI R S | _, _, .arg R S => R.monoOK && S.monoOK
   | _, _, .ldiv R S U V | _, _, .rdiv R S U V => R.monoOK && S.monoOK && U.monoOK && V.monoOK
   | _, _, .nu k S b => b.pol true k && S.monoOK && b.monoOK
   | _, _, .mu k _ _ b | _, _, .hylo k _ b => b.pol true k && b.monoOK
   | _, _, .val _ | _, _, .uni _ | _, _, .zero | _, _, .id | _, _, .outl | _, _, .outr | _, _, .nil
-  | _, _, .atPos _ | _, _, .var .. | _, _, .thin _ | _, _, .prim _ => true
+  | _, _, .atPos _ | _, _, .var .. | _, _, .prim _ => true
 
 theorem Tm.monoOK_iff {A B : Obj} (t : Tm A B) : t.monoOK = true ↔ t.LamLawsAt fun _ _ => True := by
   induction t <;> simp [Tm.monoOK, Tm.LamLawsAt, and_assoc, *]
@@ -821,6 +822,28 @@ theorem rowOK_filter : RowOK "filter" := rowOK_args (c := RowCode.filter) rfl rf
     · exact GenK.filter_sound hss
     · rename_i h; exact absurd ⟨rfl, rfl⟩ h
 
+theorem rowOK_takewhile : RowOK "takewhile" :=
+  rowOK_args (c := RowCode.takewhile) rfl rfl fun _ σ xs _ _ _ _ hn _ hv => by
+  have h1 : rowArity "takewhile" = 1 := by decide
+  rcases xs with _ | ⟨⟨X, Y, x⟩, _ | ⟨_, _⟩⟩ <;> simp only [List.length_cons, List.length_nil, h1] at hn <;>
+    try omega
+  rcases σ with _ | ⟨a, σ⟩ <;>
+    simp only [Codes.at, List.getElem?_cons_zero, List.getD_cons_zero, List.getD_nil] at hv
+  all_goals
+    split at hv
+    case isFalse => simp at hv
+    rename_i he; revert hv; obtain ⟨h1, h2⟩ := he; subst h1; subst h2; intro hv
+    cases hv
+    refine ⟨by unfold GenK.elems; exact GenK.ofVals_wf, fun ss hss _ => ⟨⟨rfl, rfl⟩, ?_⟩⟩
+    rcases ss with _ | ⟨⟨X', Y', T⟩, _ | ⟨_, _⟩⟩ <;> simp only [CodesRep, and_true, and_false] at hss
+    split at hss
+    case isFalse => exact hss.elim
+    rename_i he; revert hss; obtain ⟨h1, h2⟩ := he; subst h1; subst h2; intro hss
+    simp only [Sem.one]
+    split
+    · exact GenK.takewhile_sound hss
+    · rename_i h; exact absurd ⟨rfl, rfl⟩ h
+
 theorem rowOK_positions : RowOK "positions" :=
   rowOK_args (c := RowCode.positions) rfl rfl fun _ σ xs _ _ _ _ hn _ hv => by
   have h1 : rowArity "positions" = 1 := by decide
@@ -979,12 +1002,14 @@ theorem rowsProved_ok (r : Prim) (h : (rowsProved.lookup r.sym).isSome) : RowOK 
   by_cases h26 : r.sym = "uncons"; · rw [h26]; exact rowOK_uncons
   by_cases h27 : r.sym = "unsnoc"; · rw [h27]; exact rowOK_unsnoc
   by_cases h28 : r.sym = "inits"; · rw [h28]; exact rowOK_inits
+  by_cases h29 : r.sym = "takewhile"; · rw [h29]; exact rowOK_takewhile
   simp [rowsProved, List.lookup, beq_false_of_ne h1, beq_false_of_ne h2, beq_false_of_ne h3, beq_false_of_ne h4,
     beq_false_of_ne h5, beq_false_of_ne h6, beq_false_of_ne h7, beq_false_of_ne h8, beq_false_of_ne h9,
     beq_false_of_ne h10, beq_false_of_ne h11, beq_false_of_ne h12, beq_false_of_ne h13, beq_false_of_ne h14,
     beq_false_of_ne h15, beq_false_of_ne h16, beq_false_of_ne h17, beq_false_of_ne h18,
     beq_false_of_ne h19, beq_false_of_ne h20, beq_false_of_ne h21, beq_false_of_ne h22, beq_false_of_ne h23,
-    beq_false_of_ne h24, beq_false_of_ne h25, beq_false_of_ne h26, beq_false_of_ne h27, beq_false_of_ne h28] at h
+    beq_false_of_ne h24, beq_false_of_ne h25, beq_false_of_ne h26, beq_false_of_ne h27, beq_false_of_ne h28,
+    beq_false_of_ne h29] at h
 
 /-- A `Prim.proved` row is `RowOK`, given as many relations as it takes. -/
 theorem Prim.proved_ok {r : Prim} {A B : Obj} {os : List (Obj × Obj)} (h : (!r.proved A B os) = false) :
@@ -1153,6 +1178,7 @@ theorem Tm.gen_sound_spine {A B : Obj} (t : Tm A B) :
   case flat R ih => exact GenK.flat_sound (code_of ((ih (by omega)).1 η ρ hg hl hs))
   case var k => exact hs.1 k _ _
   case est Q ih => exact GenK.est_sound (code_of ((ih (by omega)).1 η ρ hg hl hs))
+  case thin Q ih => exact GenK.thin_sound (code_of ((ih (by omega)).1 η ρ hg hl.2 hs)) hl.1
   case atPos k => exact GenK.atPos_sound k
   case nu k S b ihS ihb =>
     exact GenK.nu_sound (code_of ((ihS (by omega)).1 η ρ hg.1 hl.2.1 hs))

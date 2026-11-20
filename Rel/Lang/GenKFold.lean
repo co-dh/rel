@@ -568,6 +568,96 @@ theorem Tab.filter_holds {B : Obj} {n : USize} {P : Tab B B} {X : Vals (.arr B) 
     exact ⟨xs, [], (Tab.idU_holds hrest xs xs).2 ⟨rfl, hi⟩, (Tab.nil_holds hP0 xs []).2 ⟨hi, rfl⟩,
       (hfold _ _ _).2 (by simp)⟩
 
+open Classical in
+/-- **`takewhile(p)` on the cells `X`** (`Tab.takewhile`): each array of `X` to its longest prefix of keys of `P`; a
+round puts `x` before `acc` where `x ∈ dom P` and gives `[]` otherwise (`foldRoundsR_holds`, one `x` per key). -/
+theorem Tab.takewhile_holds {B : Obj} {n : USize} {P : Tab B B} {X : Vals (.arr B) n} {res : Tab (.arr B) (.arr B)}
+    (h : Tab.takewhile P X = .ok res) (xs ys : List B.El) :
+    res.Holds xs ys ↔ (∃ i, X.row i = xs) ∧ ys = xs.takeWhile fun x => decide (∃ y, P.Holds x y) := by
+  unfold Tab.takewhile at h
+  obtain ⟨D, hD, h⟩ := GenK.bind_ok h
+  obtain ⟨rest, hrest, h⟩ := GenK.bind_ok h
+  obtain ⟨P0, hP0, h⟩ := GenK.bind_ok h
+  obtain ⟨z, hz, h⟩ := GenK.bind_ok h
+  let g : B.El → List B.El → List B.El := fun x acc => if decide (∃ y, P.Holds x y) then x :: acc else []
+  have htw : ∀ ws : List B.El, (ws.takeWhile fun x => decide (∃ y, P.Holds x y)) = ws.foldr g [] := by
+    intro ws
+    induction ws with
+    | nil => rfl
+    | cons x ws ih => cases hx : decide (∃ y, P.Holds x y) <;> simp only [List.takeWhile, List.foldr_cons, g, hx, ih] <;> rfl
+  -- the right fold peels the last element (`foldrDen_snoc`), so the induction runs on the reversed list
+  have hfold' : ∀ (rs v w : List B.El), foldrDen (E := B) (V := .arr B) (fun _ b => b = v)
+      (fun q v' => ((∃ y, P.Holds q.1 y) ∧ v' = q.1 :: q.2) ∨ ((¬∃ y, P.Holds q.1 y) ∧ v' = [])) rs.reverse w ↔
+      w = rs.reverse.foldr g v := by
+    intro rs
+    induction rs with
+    | nil => intro v w; rw [List.reverse_nil, foldrDen_nil]; rfl
+    | cons x ws ih =>
+      intro v w
+      rw [List.reverse_cons, foldrDen_snoc, List.foldr_append, List.foldr_cons, List.foldr_nil]
+      constructor
+      · rintro ⟨_, v', ⟨_, rfl⟩, hs, hw⟩
+        rw [ih] at hw; subst hw
+        rcases hs with ⟨hy, rfl⟩ | ⟨hn, rfl⟩
+        · simp [g, hy]
+        · simp [g, hn]
+      · intro hw; subst hw
+        by_cases hx : ∃ y, P.Holds x y
+        · exact ⟨v, x :: v, ⟨v, rfl⟩, Or.inl ⟨hx, rfl⟩, (ih _ _).2 (by simp [g, hx])⟩
+        · exact ⟨v, [], ⟨v, rfl⟩, Or.inr ⟨hx, rfl⟩, (ih _ _).2 (by simp [g, hx])⟩
+  have hfold : ∀ (ws v w : List B.El), foldrDen (E := B) (V := .arr B) (fun _ b => b = v)
+      (fun q v' => ((∃ y, P.Holds q.1 y) ∧ v' = q.1 :: q.2) ∨ ((¬∃ y, P.Holds q.1 y) ∧ v' = [])) ws w ↔
+      w = ws.foldr g v := fun ws v w => by simpa only [List.reverse_reverse] using hfold' ws.reverse v w
+  have hfr := Tab.foldRoundsR_holds
+    (fun _ v x v' => ((∃ y, P.Holds x y) ∧ v' = x :: v) ∨ ((¬∃ y, P.Holds x y) ∧ v' = []))
+    (fun _ _ _ => True) (fun _ _ _ _ _ _ _ => trivial) (fun S el T hT hu _ k v' => by
+      obtain ⟨kk, hk, hT⟩ := GenK.bind_ok hT
+      obtain ⟨pk, hpk, hT⟩ := GenK.bind_ok hT
+      obtain ⟨c, hc, hT⟩ := GenK.bind_ok hT
+      obtain ⟨ed, hed, hT⟩ := GenK.bind_ok hT
+      obtain ⟨kd, hkd, hT⟩ := GenK.bind_ok hT
+      obtain ⟨df, hdf, hT⟩ := GenK.bind_ok hT
+      obtain ⟨ca, hca, hT⟩ := GenK.bind_ok hT
+      obtain ⟨nl, hnl, hT⟩ := GenK.bind_ok hT
+      obtain ⟨cn, hcn, hT⟩ := GenK.bind_ok hT
+      have hkk : ∀ b, kk.Holds k b ↔ el.Holds k b ∧ ∃ y, P.Holds b y := fun b => by
+        rw [Tab.comp_holds hk]
+        exact ⟨fun ⟨x, hx, hd⟩ => by obtain ⟨rfl, hy⟩ := (Tab.dom_holds hD x b).1 hd; exact ⟨hx, hy⟩,
+          fun ⟨hx, hy⟩ => ⟨b, hx, (Tab.dom_holds hD b b).2 ⟨rfl, hy⟩⟩⟩
+      have hdf' : ∀ k', df.Holds k k' ↔ k = k' ∧ (∃ x, el.Holds k x) ∧ ¬∃ x, kk.Holds k x := fun k' => by
+        rw [Tab.diff_holds hdf, Tab.dom_holds hed, Tab.dom_holds hkd]
+        exact ⟨fun ⟨⟨e, hx⟩, hn⟩ => ⟨e, hx, fun hy => hn ⟨e, hy⟩⟩, fun ⟨e, hx, hn⟩ => ⟨⟨e, hx⟩, fun ⟨_, hy⟩ => hn hy⟩⟩
+      rw [Tab.union_holds hT, Tab.cons_holds hc, Tab.comp_holds hcn]
+      constructor
+      · rintro (⟨p, hp, rfl⟩ | ⟨v, hv, hn⟩)
+        · obtain ⟨hb, hv⟩ := (Tab.pair_holds hpk k p).1 hp
+          obtain ⟨hx, hy⟩ := (hkk _).1 hb
+          exact ⟨p.2, p.1, hv, hx, Or.inl ⟨hy, rfl⟩⟩
+        · obtain ⟨k', hd, hv⟩ := (Tab.comp_holds hca k v).1 hv
+          obtain ⟨rfl, ⟨x, hx⟩, hno⟩ := (hdf' k').1 hd
+          obtain ⟨-, rfl⟩ := (Tab.nil_holds hnl v v').1 hn
+          exact ⟨v, x, hv, hx, Or.inr ⟨fun hy => hno ⟨x, (hkk x).2 ⟨hx, hy⟩⟩, rfl⟩⟩
+      · rintro ⟨v, x, hv, hx, ⟨hy, rfl⟩ | ⟨hn, rfl⟩⟩
+        · exact Or.inl ⟨(x, v), (Tab.pair_holds hpk k (x, v)).2 ⟨(hkk x).2 ⟨hx, hy⟩, hv⟩, rfl⟩
+        · obtain ⟨i, -, hi⟩ := id hv
+          refine Or.inr ⟨v, (Tab.comp_holds hca k v).2 ⟨k, (hdf' k).2 ⟨rfl, ⟨x, hx⟩, fun ⟨b, hb⟩ => ?_⟩, hv⟩,
+            (Tab.nil_holds hnl v []).2 ⟨⟨i, hi⟩, rfl⟩⟩
+          obtain ⟨hb', hy⟩ := (hkk b).1 hb
+          obtain rfl := hu k x b hx hb'
+          exact hn hy)
+    _ _ _ _ _ h
+    (fun k a b ha hb => ((Tab.idU_holds hrest k a).1 ha).1.symm.trans ((Tab.idU_holds hrest k b).1 hb).1)
+    (fun k v hv => ⟨k, (Tab.idU_holds hrest k k).2 ⟨rfl, ((Tab.nil_holds hP0 k v).1 hv).1⟩, trivial⟩)
+  rw [hfr, Tab.zero_holds hz, false_or]
+  constructor
+  · rintro ⟨r, v, hr, hv, hW⟩
+    obtain ⟨rfl, hi⟩ := (Tab.idU_holds hrest xs r).1 hr
+    obtain ⟨-, rfl⟩ := (Tab.nil_holds hP0 xs v).1 hv
+    exact ⟨hi, by rw [(hfold _ _ _).1 hW, htw]⟩
+  · rintro ⟨hi, rfl⟩
+    exact ⟨xs, [], (Tab.idU_holds hrest xs xs).2 ⟨rfl, hi⟩, (Tab.nil_holds hP0 xs []).2 ⟨hi, rfl⟩,
+      (hfold _ _ _).2 (htw xs)⟩
+
 section
 open Rel.Ext
 
@@ -1384,6 +1474,19 @@ theorem filter_sound {B : Obj} {d : Bool} {R : Rel B B} {T : Den B B} (hR : ∀ 
       (fun xs ys => ys = xs.filter fun x => decide (∃ y, T x y)) :=
   elemsTest_sound (C := .arr B) (F := fun p (xs : List B.El) => xs.filter p) (fun h xs ys => Tab.filter_holds h xs ys)
     (fun _ _ _ h => List.filter_congr h) hR
+
+open Classical in
+/-- `takewhile(p)`, `Expand.primE`'s fit of the row (`elems`, `Tab.takewhile`): each array in demand to its longest
+prefix in `dom T` (`elemsTest_sound`). -/
+theorem takewhile_sound {B : Obj} {d : Bool} {R : Rel B B} {T : Den B B} (hR : ∀ K, R.Reps K T) :
+    ∀ K, (GenK.elems B B (.arr B) d R fun P X => Tab.takewhile P X).Reps K
+      (fun xs ys => ys = xs.takeWhile fun x => decide (∃ y, T x y)) :=
+  elemsTest_sound (C := .arr B) (F := fun p (xs : List B.El) => xs.takeWhile p)
+    (fun h xs ys => Tab.takewhile_holds h xs ys) (fun p q xs h => by
+      induction xs with
+      | nil => rfl
+      | cons x xs ih =>
+        simp only [List.takeWhile, h x List.mem_cons_self, ih fun y hy => h y (List.mem_cons_of_mem _ hy)]) hR
 
 /-- `F(R)`, `Expand.primE`'s fit of the row (`elems`, `Tab.map`): each array in demand to every array of its length
 related pointwise by `R`'s meaning `T`, `R` run knowing its domain is the elements, where it agrees with `T`. -/
