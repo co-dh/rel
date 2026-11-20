@@ -20,15 +20,15 @@ def run (x : Except String (Tab (.prod .long .long) .long)) : Except String (Lis
   pure (← Tab.sums (← x)).toList
 
 -- one key: 3, 3+4, 3+4+5, 12−2; position 2 is missing, so position 3 follows position 1
-#guard run sumsT.one == .ok [((0,0),3),((0,1),7),((0,3),12),((0,7),10)]
+#guard (run sumsT.one).toOption == some [((0,0),3),((0,1),7),((0,3),12),((0,7),10)]
 -- key 0: 3, 7, 12; key 1 starts again from 0: 7, 8
-#guard run sumsT.grp == .ok [((0,0),3),((0,1),7),((0,2),12),((1,0),7),((1,5),8)]
+#guard (run sumsT.grp).toOption == some [((0,0),3),((0,1),7),((0,2),12),((1,0),7),((1,5),8)]
 -- two values at (0,0): the error names position 0
 #guard match run sumsT.dup with
   | .error e => e.startsWith "sums: x is not simple: two values at the position 0 "
   | .ok _ => false
 -- key 0: 2^63−1, then +1 wraps, so it and every later row of key 0 are dropped; key 1: 2, −1
-#guard run sumsT.ovf == .ok [((0,0),9223372036854775807),((1,0),2),((1,1),-1)]
+#guard (run sumsT.ovf).toOption == some [((0,0),9223372036854775807),((1,0),2),((1,1),-1)]
 
 /-- `n` rows `(0, i) ↦ 1`, one key: the row count and the last sum, both `n`. -/
 def ones (n : USize) : Except String (Nat × Int64) := do
@@ -38,6 +38,6 @@ def ones (n : USize) : Except String (Nat × Int64) := do
   if h : 0 < t.n.toNat then pure (t.n.toNat, Vals.row (A := .long) t.val ⟨t.n.toNat - 1, by omega⟩)
   else throw "sums: no rows"
 
-#guard ones 1000000 == .ok (1000000, 1000000)
+#guard (ones 1000000).toOption == some (1000000, 1000000)
 
 end Rel.Lang.TestSums
