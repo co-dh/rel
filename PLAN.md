@@ -281,10 +281,13 @@ Diff table 的「状态」列：✅ 后面是完成它的步骤；🔄 是部分
 - ⬜ S4 行 `sqrt`；`sum` 按 atom。
 - ⬜ S5 float 上的 `Obj.key = ordCode`；`key_ordCode`、`ascBad`、float 上的 `LamLaw`。
 - 🟡 S6 行 `$`（分支 `tb-s6`，owner 裁定 J）：`x $ F` 与 `QAtomicType.embed s t` 的图复合（`castDen`），部分映射、不舍入；
-  允许的对由 `castOK` 从两个 atom 的格式读出（加宽、整数 → 浮点）；有损方向在 elaboration 报错。`Tab.cast` 由 Lean 逐元素
-  读值、写列（`Arr.ofFn`），逐行回读检查（`castRow`），不是编码列上的 `colMap`：没有整数 → 浮点的 `Op`（S7）。定律
-  `Tab.cast_holds`、`rowOK_cast`；`Table.nonCanonical` 由 `QAtomicType.nonCanonical` 定义。测试 `Rel/Lang/TestCast.lean`。
-- ⬜ S7 `Op` `i64 → f64`（kernel 扩展）。
+  允许的对由 `castOK` 从两个 atom 的格式读出（加宽、整数 → 浮点）；有损方向在 elaboration 报错。`Tab.cast`（分支
+  `tb-s6c`）是编码列上一次 `scan` map（`Op.cast s t`，无像写 null 字 `2^63`）+ `colMap .ne` 标志 + `keep` + `canon`，
+  不在 `castOK` 中的对报错。定律 `Tab.cast_holds`（无前提，已证）、`rowOK_cast`、`embed_canonical`（全部输入）、
+  `ofBits_word`；`Table.nonCanonical` 由 `QAtomicType.nonCanonical` 定义。测试 `Rel/Lang/TestCast.lean`。未完：
+  `Rel/Lang/EmbedTest.lean:46` 的 `𝟙 $x` 现在被读成 cast 行，报 `expected a term` 而不是 antiquotation 错误（待裁定）。
+- ✅ S7 `Op.cast s t`（`Op` 的最后一个构造子，带两个字段）：`kscan`/`kscatter` 以 `@& Op` 传对象，Rust `cast_word`
+  （`CAST = 46`），无新导出；`Reg Op` 按对象传（`nullOps`）。所有数值对一个构造子，不只 `i64 → f64`。
 - ⬜ S8 库定义 `mean` `stddev` `correlation` `skewness` `zScore` `valueProportions` float `describe` `daysBetween`
   （dataframe 会话）。
 - ⬜ S9 文档：architecture §1、§4.3，dataframe F4，PLAN（随各步）。
