@@ -1,4 +1,4 @@
-import Rel.Run.Div
+import Rel.Run.List
 
 /-! The power operators `est`, `thin`, `atPos` of `Tm` (`Rel/Run/Lang/Tm.lean`) and the `prims` rows `τ`, `length`,
 `setify` (`rowDens`) as operators on `Tab` over the five kernels (PLAN 6.14 W3, step T5), on the encoded columns as they
@@ -9,12 +9,6 @@ are, as `Rel/Run/Div.lean`. Each is run on the values in demand `X` its context 
 
 namespace Rel
 open Rel.Ext Rel.Kernel Rel.Verify
-
-/-- The cells `[lo, hi)` of `n` rows clamped to a payload's `[0, m)`: `s = max lo 0` and `e = max (min hi m) s`
-(`colMap` maps), so the width `e - s` is never negative and never wraps, as `Vals.row` reads a cell. -/
-def cellBounds (n m : USize) (lo hi : Arr .i64 n) : Except String (Enc × Enc) := do
-  let s ← colMap .max n lo.enc (← colConst n 0)
-  pure (s, ← colMap .max n (← colMap .min n hi.enc (← colConst n m.toUInt64)) s)
 
 namespace Tab
 variable {A B : Obj}
@@ -27,14 +21,14 @@ once (`lam` of `mem`). -/
 def setify {n : USize} (X : Vals (.arr B) n) : Except String (Tab (.arr B) (.arr B)) := do lam X (← mem X)
 
 /-- **`length` on the arrays `X`** (`rowDens`: `w = xs.length`), the fused form of the fold: each cell to its width
-`e - s` (`cellBounds`, a `colMap .sub`); then `canon`. A payload of `2^63` rows or more, whose width an `Int64`
+`e - s` (`cellSpan`, a `colMap .sub`); then `canon`. A payload of `2^63` rows or more, whose width an `Int64`
 cannot hold, is the error. -/
 def length {n : USize} (X : Vals (.arr B) n) : Except String (Tab (.arr B) .long) :=
   match X with
   | ⟨m, lo, hi, f⟩ => do
     if 2 ^ 63 ≤ m.toNat then throw s!"length: a payload of {m} rows, past an Int64 count"
-    let (s, e) ← cellBounds n m lo hi
-    Tab.canon ⟨n, ⟨m, lo, hi, f⟩, ← colArr .sub n e s⟩
+    let (s, e) ← cellSpan m lo hi
+    Tab.canon ⟨n, ⟨m, lo, hi, f⟩, ← colArr .sub n e.enc s.enc⟩
 
 /-- **`at(k)` on the arrays `X`** (`atDen`), positions from `0`: the cells wider than `k` (`whereCol` of
 `k < e - s`), each to the payload at `s + k` (`kgather` there); then `canon`. `s + k` and the widths are read signed,
@@ -43,10 +37,10 @@ def atPos {n : USize} (k : Nat) (X : Vals (.arr B) n) : Except String (Tab (.arr
   match X with
   | ⟨m, lo, hi, f⟩ => do
     if 2 ^ 63 ≤ m.toNat + k then throw s!"at: position {k} in a payload of {m} rows, past 2^63"
-    let (s, e) ← cellBounds n m lo hi
+    let (s, e) ← cellSpan m lo hi
     let kc ← colConst n k.toUInt64
-    let (M, sel) ← whereCol n (← colMap .lt n kc (← colMap .sub n e s))
-    let ix ← kgather M sel n (← colMap .add n s kc)
+    let (M, sel) ← whereCol n (← colMap .lt n kc (← colMap .sub n e.enc s.enc))
+    let ix ← kgather M sel n (← colMap .add n s.enc kc)
     Tab.canon ⟨M, ← Vals.gather (A := .arr B) M sel ⟨m, lo, hi, f⟩, ← Vals.gather M ix f⟩
 
 /-- **`est(Q)` on the arrays `X`** (`estDen`), `Q` the test `q` run on the pairs `D = ran ⟨G, G⟩` of elements of one

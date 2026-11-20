@@ -336,21 +336,6 @@ theorem colArr_of_ok {op : Op} {n : USize} {a b o : Enc} {t : QAtomicType} (h : 
   · rename_i o' h'; have := h.symm.trans h'; cases this; rfl
   · rename_i s' h'; have := h.symm.trans h'; cases this
 
-/-- **`cellBounds` is `cellSpan`** on the columns: the same four maps, its answer unwrapped from `Arr`. -/
-theorem cellBounds_span {n m : USize} {lo up : Arr .i64 n} {s e : Enc} (h : cellBounds n m lo up = .ok (s, e)) :
-    ∃ s' e' : Arr .i64 n, cellSpan m lo up = .ok (s', e') ∧ s'.enc = s ∧ e'.enc = e := by
-  simp only [cellBounds, bind] at h
-  rw [Except.bind_eq_ok'] at h; obtain ⟨c0, hc0, h⟩ := h
-  rw [Except.bind_eq_ok'] at h; obtain ⟨s1, hs, h⟩ := h
-  rw [Except.bind_eq_ok'] at h; obtain ⟨cm, hcm, h⟩ := h
-  rw [Except.bind_eq_ok'] at h; obtain ⟨mn, hmn, h⟩ := h
-  rw [Except.bind_eq_ok'] at h; obtain ⟨e1, he, h⟩ := h
-  cases h
-  refine ⟨Arr.mk s (colMap_closed hs).2, Arr.mk e (colMap_closed he).2, ?_, rfl, rfl⟩
-  unfold cellSpan
-  simp only [bind, Except.bind, hc0, colArr_of_ok hs, hcm, hmn, pure, Except.pure]
-  erw [colArr_of_ok he] <;> rfl
-
 /-- **The non-empty cells** (`uncons`, `unsnoc`): `whereCol` of `s < e` after `cellSpan` lists exactly the cells
 `[SN, EN)` with `SN < EN`. -/
 theorem cellSpan_where {B : Obj} {n m M : USize} {lo up s e : Arr .i64 n} {lt sel : Enc}
@@ -832,8 +817,8 @@ theorem zip_holds {A : Obj} {P : Tab K (.prod (.arr A) (.arr B))} {T : Tab K (.a
   · rintro ⟨j, rfl, rfl⟩; exact ⟨_, ⟨j, rfl, rfl⟩, hrow j⟩
   · rintro ⟨p, ⟨j, rfl, rfl⟩, rfl⟩; exact ⟨j, rfl, hrow j⟩
 
-/-- **`length X` denotes `length` on the arrays `X`**: each cell `[SN, EN)` (`cellSpan_spec`, through
-`cellBounds_span`) to its width `EN - SN`. -/
+/-- **`length X` denotes `length` on the arrays `X`**: each cell `[SN, EN)` (`cellSpan_spec`) to its width
+`EN - SN`. -/
 theorem length_holds {n : USize} {X : Vals (.arr B) n} {T : Tab (.arr B) .long} (h : Tab.length X = .ok T)
     (xs : List B.El) (w : Int64) : T.Holds xs w ↔ (∃ i, X.row i = xs) ∧ w = Int64.ofNat xs.length := by
   obtain ⟨m, lo, up, f⟩ := X
@@ -842,11 +827,10 @@ theorem length_holds {n : USize} {X : Vals (.arr B) n} {T : Tab (.arr B) .long} 
   rename_i hb
   simp only [bind] at h
   rw [Except.bind_eq_ok'] at h; obtain ⟨_, -, h⟩ := h
-  rw [Except.bind_eq_ok'] at h; obtain ⟨⟨s, e⟩, hse, h⟩ := h; try dsimp only at h
+  rw [Except.bind_eq_ok'] at h; obtain ⟨⟨s', e'⟩, hse', h⟩ := h; try dsimp only at h
   rw [Except.bind_eq_ok'] at h; obtain ⟨wd, hwd, h⟩ := h
   rw [canon_holds h]
   have hm63 : m.toNat < 2 ^ 63 := by omega
-  obtain ⟨s', e', hse', rfl, rfl⟩ := cellBounds_span hse
   obtain ⟨SN, EN, hw1, hb1, hrow⟩ := cellSpan_spec hse' hm63 f
   have hv : ∀ i : Fin n.toNat,
       Vals.row (A := .long) wd i = Int64.ofNat (Vals.row (A := .arr B) ⟨m, lo, up, f⟩ i).length := by
@@ -2911,7 +2895,7 @@ theorem atPos_holds {B : Obj} {k : Nat} {n : USize} {X : Vals (.arr B) n} {T : T
   rename_i hb
   simp only [bind] at h
   rw [Except.bind_eq_ok'] at h; obtain ⟨_, -, h⟩ := h
-  rw [Except.bind_eq_ok'] at h; obtain ⟨⟨s, e⟩, hse, h⟩ := h; try dsimp only at h
+  rw [Except.bind_eq_ok'] at h; obtain ⟨⟨s', e'⟩, hse', h⟩ := h; try dsimp only at h
   rw [Except.bind_eq_ok'] at h; obtain ⟨kc, hkc, h⟩ := h
   rw [Except.bind_eq_ok'] at h; obtain ⟨w, hw, h⟩ := h
   rw [Except.bind_eq_ok'] at h; obtain ⟨lt, hlt, h⟩ := h
@@ -2923,7 +2907,6 @@ theorem atPos_holds {B : Obj} {k : Nat} {n : USize} {X : Vals (.arr B) n} {T : T
   rw [canon_holds h]
   have hm63 : m.toNat < 2 ^ 63 := by omega
   have hk63 : k < 2 ^ 63 := by omega
-  obtain ⟨s', e', hse', rfl, rfl⟩ := cellBounds_span hse
   obtain ⟨SN, EN, hw1, hb1, hrow⟩ := cellSpan_spec hse' hm63 f
   have hwl : ∀ i, EN i - SN i < 2 ^ 63 := fun i => by have := hb1 i; omega
   have hkw : ∀ i < n.toNat, (raw .i64 n kc)[i]?.getD 0 = k.toUInt64 := fun i hi => by
