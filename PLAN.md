@@ -207,8 +207,10 @@ Diff table 的「状态」列：✅ 后面是完成它的步骤；🔄 是部分
   `writeVals`，`writeRel` 是它的实例（`key`、`val` 两个前缀）。`ownParts`/`ownFile` 对 `Enc.pos` 答 `none`（不写文件），
   不再报错。`f32`/`f64`、`sym` 与 enumeration 列被拒（float 规则未定；sym 等 sym writer）。往返测试
   `Rel/Lang/TestTable.lean`。
-  owner 裁定（最终）：不定义新数据结构，不转换；目录 = 表，文件 = 列，内存结构即磁盘结构（mmap）。输入绑定在 host 一侧：
-  入口定义的关系参数就是输入，没有 `input … from` 语句，`.rel` 不加 token。输出按结果 key 的 OBJECT（类型，不是运行时看
+  owner 裁定（最终）：不定义新数据结构，不转换；目录 = 表，文件 = 列，内存结构即磁盘结构（mmap）。IO 写在 `.rel`
+  程序里：语句 `input … from …` / `output … to …`（owner 2026-11-20 选 G，取代此前“输入绑定在 host 一侧”的做法；语法设计在
+  `/data/tmp/io/design.md`）。Rel 读写 mmap 表与 CSV；CSV 解析器是 `crate/` 里的 Rust，读、写两个新 export（owner 同日选
+  A），算 IO export，不计入“RELK 到 5”。输出按结果 key 的 OBJECT（类型，不是运行时看
   key 列）分两种：key 是行号（`N ⟶ S`）时写一张新表，列按 key 序、行重编号 `0…n−1`、无 key 文件（程序内部 filter 保留原
   key，只在写时重编号）；key 不是行号时是 q 的 keyed table：一个目录下 `key/`、`val/` 两个普通表目录（每列一个文件，按
   schema 字段命名）。不是 record 的一侧是一列，文件名就是该侧名 `key` / `val`（两侧同一规则）。mmap 读入的 float 列在读时
