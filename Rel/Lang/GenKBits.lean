@@ -475,9 +475,8 @@ theorem Tab.compSelM_wf {r : Tab A B} {s : Tab B C} {g w : USize} {o ra rc : Enc
     rw [Except.bind_eq_ok'] at hm; obtain ⟨_, -, hm⟩ := hm
     rw [Except.bind_eq_ok'] at hm; obtain ⟨_, -, hm⟩ := hm
     rw [Except.bind_eq_ok'] at hm; obtain ⟨_, -, hm⟩ := hm
-    split at hm; · cases hm
-    rename_i o0 hko
-    simp only [Except.ok.injEq, Prod.mk.injEq] at hm
+    rw [Except.bind_eq_ok'] at hm; obtain ⟨o0, hko, hm⟩ := hm
+    simp only [pure, Except.pure, Except.ok.injEq, Prod.mk.injEq] at hm
     obtain ⟨rfl, rfl, rfl, rfl, rfl⟩ := hm
     obtain ⟨-, hgw, -, -, -, -, -, hbit⟩ := raw_kbitrows hko
     refine ⟨hr, hgw, fun a ha j hj => ?_, Vals.code_rep_inj hca, Vals.code_rep_inj hcc⟩

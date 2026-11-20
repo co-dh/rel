@@ -162,6 +162,7 @@ theorem Tm.gen_wf (hb : GenK.ReadsBack) {A B : Obj} (t : Tm A B) :
     | exact GenK.lift1_wf _
     | exact GenK.lift2_wf _ _
     | exact fun _ => trivial
+    | (intro K; cases h : K.dom <;> simp [h, Rel.Rel.Wf])
 
 /-- **`Tm.gen` is sound off the gap**: the code of a term with no `Tm.gap` node represents its meaning in every
     context, given `ReadsBack`, `LamLaw` at each `Λ`, and an environment `η` that represents `ρ`. -/
