@@ -298,7 +298,10 @@ compile η t : {r : Rel A B // rep r = ⟦t⟧ρ}       -- 方案 A：规格在�
   [`sum`（`⦇0, +⦈ʳ`）], [格界 → EXPAND → `gather` 元素 `v` → `scan` 标每格末元素 → 反向分段 `scan(add)` 得后缀和
     `W` → `scan` 测溢出（`v` 与 `W − v` 同号、`W` 异号）或 null `−2^63` → `scatter(or)` 得坏格、`scatter(add)`
     得每格回绕总和 → where 留无坏元素的格（坏格不出现在结果中，不报错）；`n·m + n + m ≥ 2^63` 拒绝。
-    `foldr` 的融合形式，`⟦sum 行⟧ = ⟦定义⟧` 未证],
+    `foldr` 的融合形式，`⟦sum 行⟧ = ⟦定义⟧` 未证。融合行只用在没有 universe 的对象（`long`）上；target 有 universe
+    （声明的有限对象，或泛型常量里的数变量）时 elaborator 构建定义本身（row 表的 `Prim.dfn`：`sum` 是 `⦇[0, plus]⦈ʳ`，
+    `length` 是 `⦇[0, π₁ succ]⦈`），所以每一步都留在对象内：`−3…3` 上 `[−3,3,3] sum` 无结果（中间和 6），`1…5` 上
+    `length` 为 `𝟘`（fold 从 0 起步）。造出新数的 row 必须带 `dfn`],
   [`cons°`], [格界 → where(`s < e`) → `gather`：首元素 = payload 第 `s` 个，尾 = 格 `[s + 1, e)`（`scan`），
     共享原 payload，不建新 payload；`n + m + 1 ≥ 2^63` 拒绝],
   [`snoc°`], [同 `cons°`：格 `[s, e − 1)` 与 payload 第 `e − 1` 个],
