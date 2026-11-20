@@ -9,16 +9,16 @@ namespace Rel.Lang.TestFrameGroup
 open Rel.Programs.prelude Rel.Programs.frame Rel.Programs.frameGroup Rel.Lang.TestFrameCols.frameData in
 rel_program frameGroupT where
     -- by key: A at 1 4 7, B at 0 2 6, C at 3 5; descending C B A, ties in position order
-    check iasc(π₁, x) = {(0,1),(1,4),(2,7),(3,0),(4,2),(5,6),(6,3),(7,5)}
-    check idesc(π₁, x) = {(0,3),(1,5),(2,0),(3,2),(4,6),(5,1),(6,4),(7,7)}
+    check iasc(x π₁) = {(0,1),(1,4),(2,7),(3,0),(4,2),(5,6),(6,3),(7,5)}
+    check idesc(x π₁) = {(0,3),(1,5),(2,0),(3,2),(4,6),(5,1),(6,4),(7,7)}
     check sortBy(π₁, x) = {(0,(A,3)),(1,(A,7)),(2,(A,3)),(3,(B,5)),(4,(B,5)),(5,(B,1)),(6,(C,1)),(7,(C,2))}
     check topBy({(∗,2)}, π₁, x) = {(0,(A,3)),(1,(A,7))}
     -- groups numbered by first occurrence: B 0, A 1, C 2
-    check firstOcc(π₁, x) = {(0,0),(1,1),(2,3)}
-    check g(π₁, x) = {(0,0),(1,1),(2,0),(3,2),(4,1),(5,2),(6,0),(7,1)}
-    check lastOcc(π₁, x) = {(0,6),(1,7),(2,5)}
+    check firstOcc(x π₁) = {(0,0),(1,1),(2,3)}
+    check group(x π₁)° = {(0,0),(1,1),(2,0),(3,2),(4,1),(5,2),(6,0),(7,1)}
+    check lastOcc(x π₁) = {(0,6),(1,7),(2,5)}
     -- rows 2 and 7 repeat rows 0 and 1
-    check firstOcc(𝟙, x) = {(0,0),(1,1),(2,3),(3,4),(4,5),(5,6)}
+    check firstOcc(x) = {(0,0),(1,1),(2,3),(3,4),(4,5),(5,6)}
     check distinct(x) = {(0,(B,5)),(1,(A,3)),(2,(C,1)),(3,(A,7)),(4,(C,2)),(5,(B,1))}
     -- sum, max, min, count per group: B 5 5 1, A 3 7 3, C 1 2
     check aggregate(π₁, F(x π₂) sum, x) = {(0,(B,11)),(1,(A,13)),(2,(C,3))}
