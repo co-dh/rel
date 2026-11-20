@@ -53,6 +53,7 @@ import Rel.Lang.TestPositions
 import Rel.Lang.TestSchema
 import Rel.Lang.TestSelsort
 import Rel.Lang.TestSum
+import Rel.Lang.TestSums
 import Rel.Lang.TestLiftDiv
 import Rel.Lang.TestSymDiv
 import Rel.Lang.TestUnbounded
