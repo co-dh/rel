@@ -367,9 +367,8 @@ theorem Tm.dfnCut_den {A B : Obj} {d : Tm A B} (c : DfnCut d) (ρ : Val)
       · intro hs
         exact ⟨0, ⟨rfl, h0⟩, (plus_iff hU h0 x w).2 ⟨fun _ _ => hall _, fun _ _ => hall _, hs⟩⟩
 
-/-- **Every row of `dfns` is one `Tm.dfnCut?` reads back** (`lengthRow`, `sumRow`, `flatRow`: the rows of
-    `DfnCut`), whose replacement `Tm.dfnCut_den` proves. Enumerated over `dfns`: a row given a definition that is not
-    one of them fails here. -/
-theorem Prim.dfn_read : ∀ p ∈ dfns, p.1 = lengthRow.sym ∨ p.1 = sumRow.sym ∨ p.1 = flatRow.sym := by decide
+/-- **The rows of `dfns` are those of `DfnCut`** (`lengthRow`, `sumRow`, `flatRow`), whose replacement
+    `Tm.dfnCut_den` proves: a row given a definition that is not one of them fails here. -/
+theorem Prim.dfn_read : dfns.map (·.1) = [lengthRow.sym, sumRow.sym, flatRow.sym] := rfl
 
 end Rel.Lang

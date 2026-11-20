@@ -215,9 +215,9 @@ inductive Pre
   | est (p : Pre)
   | thin (p : Pre)
   | nil (a b : OTy)
-  /-- The row `r` of `prims` at `s ⟶ t`, an instance of its type, given the relations `args` (`Prim.inst`);
-      `dfn` its definition (`dfns`) at the row's objects, which `build` runs or replaces by the row. -/
-  | prim (r : Prim) (args : List Pre) (s t : OTy) (dfn : Option Pre)
+  /-- The row `r` of `prims` at `s ⟶ t`, an instance of its type, given the relations `args` (`Prim.inst`); a row
+      of `dfns` is the fused form of its definition, which `build` cuts to `t`'s universe. -/
+  | prim (r : Prim) (args : List Pre) (s t : OTy)
   | atPos (k : Nat) (b : OTy)
   | own (p : Pre)
   | succ (pos : Pos) (n : OTy)
@@ -255,15 +255,7 @@ instance : Inhabited Pre := ⟨.id (.base "")⟩
 /-- `[R,S] : a + b ⟶ _` is its definition `inl°R ∪ inr°S` (architecture §1, §7), not a node of its own: each part
     runs on the values of its summand in demand (`Tab.inlConv`), and is covered by the laws of `∪`, `≫` and the rows. -/
 def Pre.junc (r s : Pre) (a b : OTy) : Pre :=
-  .join (.comp (.prim inlConvRow [] (.sum a b) a none) r) (.comp (.prim inrConvRow [] (.sum a b) b none) s)
-
-/-- The family `R : i ⟶ a×b` as one relation of the key and the source, `Rᴵ : i×a ⟶ b`, is its definition
-    `⟨π₁R,π₂⟩dom(π₁π₁ ∩ π₂)π₁π₂` (architecture §7; `Tm.flat_den`): pair, projections and an equality test, no
-    converse, so `R` runs on the keys in demand and the parts' laws cover it. -/
-def Pre.flat (r : Pre) (i a b : OTy) : Pre :=
-  .comp (.pair (.comp (.outl i a) r) (.outr i a))
-    (.comp (.dom (.meet (.comp (.outl (.prod a b) a) (.outl a b)) (.outr (.prod a b) a)))
-      (.comp (.outl (.prod a b) a) (.outr a b)))
+  .join (.comp (.prim inlConvRow [] (.sum a b) a) r) (.comp (.prim inrConvRow [] (.sum a b) b) s)
 
 /-- A fold's base `0` at the number object `n`, the coreflexive `⟨𝟙,𝟙⟩minus ∩ 𝟙`: `x − x` kept where it is `x`;
     none where `0` is not in `n` (`minus` keeps its result there). -/
@@ -273,23 +265,6 @@ def Pre.zero0 (p : Pos) (n : OTy) : Pre := .meet (.comp (.pair (.id n) (.id n)) 
 def Pre.fold0 (p : Pos) (right : Bool) (n : OTy) (s : Pre) : Pre :=
   .fold right (.close p (.ran (.close p (Pre.zero0 p n) n "ran( ) reads its argument whole")) n
     "the fold's start is read whole") s
-
-/-- The rows that are the fused form of a definition (§4), each with the definition at the row's position, given
-    its relations and its object variables (`Prim.vars` order); none where they are not the row's. `build` runs the
-    definition, or the row where `Tm.dfnCut?` reads the built definition back (`Tm.dfnCut_den`, `Prim.dfn_read`). -/
-def dfns : List (String × (Pos → List Pre → List OTy → Option Pre)) :=
-  [("length", fun p _ σ => match σ with
-     | [e, n] => some (Pre.fold0 p false n (.comp (.outl n e) (.succ p n))) | _ => none),
-   ("sum", fun p _ σ => match σ with | [n] => some (Pre.fold0 p true n (.arith p Rel.Kernel.Ew.add n)) | _ => none),
-   ("flat", fun _ xs σ => match xs, σ with | [r], [i, a, b] => some (Pre.flat r i a b) | _, _ => none)]
-
-/-- Row `r` at the relations `xs` and objects `σ` (`Prim.inst`), with its definition where `dfns` has one. -/
-def Prim.withDfn (r : Prim) (p : Pos) (xs : List Pre) (σ : List OTy) (s t : OTy) : Except Err Pre :=
-  match dfns.lookup r.sym with
-  | none => pure (.prim r xs s t none)
-  | some f => match f p xs σ with
-    | some q => pure (.prim r xs s t (some q))
-    | none => throw ⟨p, s!"internal: {r.sym}'s definition (dfns) takes other relations or objects"⟩
 
 /-- The `why` of a top-level term's `close`. -/
 def noLeft : String := "the term here needs keys and has no left context"
@@ -413,7 +388,7 @@ def Pre.traverse {m : Type → Type} [Monad m] (fp : Pos → m Pos) (f : Option 
   | .est x => return .est (← mo x)
   | .thin x => return .thin (← f (some (.not "thin")) x)
   | .own x => return .own (← mo x)
-  | .prim r xs s t d => return .prim r (← xs.mapM (f (some (if r.mono then .mono else .not r.sym)))) s t (← d.mapM (f none))
+  | .prim r xs s t => return .prim r (← xs.mapM (f (some (if r.mono then .mono else .not r.sym)))) s t
   | .succ q n => return .succ (← fp q) n
   | .arith q k n => return .arith (← fp q) k n
   | .leq q n => return .leq (← fp q) n
@@ -728,7 +703,7 @@ def liftRows : List LiftRow := [
     runs on the keys in demand, so `I` needs no universe (a converse or `ran` here would close over all of `I`). -/
 partial def keyed (R : Pre) (a b : OTy) : Pre :=
   ((liftRows I).findSome? fun r => r.match? R >>= r.keyed (keyed · · ·) a b).getD
-    (.prim flatRow [R] (.prod I a) b (some (Pre.flat R I a b)))
+    (.prim flatRow [R] (.prod I a) b)
 
 def lComp : Pre × OTy × OTy → Pre × OTy × OTy → M (Pre × OTy × OTy)
   | (R, a, b), (S, b', c) => do
@@ -1574,15 +1549,9 @@ def divTest {A B C : Obj} (c : Tm (.prod A C) (.prod A C)) (s : Tm B C) :
 /-- The fold base `0` as `Pre.zero0` builds it on the universe `u`: `⟨𝟙,𝟙⟩ minus ∩ 𝟙`. -/
 def zeroTm (u : Tm .long .long) : Tm .long .long := .meet (.comp (.pair .id .id) (.arith Rel.Kernel.Ew.sub u)) .id
 
-/-- `e` read back as `zeroTm u`, with the equation (the law cites it, not a match on `e`). -/
-def zeroU? : (e : Tm .long .long) → Option {u // e = zeroTm u}
-  | .meet (.comp (.pair .id .id) (.arith k u)) .id =>
-    if h : k = Rel.Kernel.Ew.sub then some ⟨u, by subst h; rfl⟩ else none
-  | _ => none
-
-/-- A row's definition as `build` makes it (`dfns`): `⦇[0, π₁ succ]⦈` (`lengthRow`'s) and `⦇[0, plus]⦈ʳ`
-    (`sumRow`'s), the base `0` on the universe `u₀`, the step on `u`; `⟨π₁R,π₂⟩dom(π₁π₁ ∩ π₂)π₁π₂` (`flatRow`'s, of
-    the family `R`). Indexed by the term, so the law takes it apart by `cases`. -/
+/-- A row's definition (§4): `⦇[0, π₁ succ]⦈` (`lengthRow`'s) and `⦇[0, plus]⦈ʳ` (`sumRow`'s), the base `0` on the
+    universe `u₀`, the step on `u`; `⟨π₁R,π₂⟩dom(π₁π₁ ∩ π₂)π₁π₂` (`flatRow`'s, of the family `R`). Indexed by the
+    term, so the law takes it apart by `cases`; `dfns` builds it from the row's own relations and target universe. -/
 inductive DfnCut : {A B : Obj} → Tm A B → Type
   | length {E : Obj} (u₀ u : Tm .long .long) :
     DfnCut (A := .arr E) (B := .long) (.fold (zeroTm u₀) (.comp .outl (.succ u)))
@@ -1610,20 +1579,16 @@ def DfnCut.cut {A B : Obj} {d : Tm A B} : DfnCut d → Tm A B
   | .sum _ u => .comp (.comp (.arg (.prim mapRow : Tm (.arr .long) (.arr .long)) u) (.prim sumRow : Tm (.arr .long) .long)) u
   | .flat R => .arg (.prim flatRow) R
 
-/-- `d` read back as a `DfnCut`; any other term, none: `build` then runs it as written. `Tm.dfnCut_den` proves the
-    definition equal to its cut, and at `𝟙` to its fused row. -/
-def Tm.dfnCut? : {A B : Obj} → (d : Tm A B) → Option (DfnCut d)
-  | .arr _, .long, .fold e (.comp .outl (.succ u)) =>
-    (zeroU? e).map fun ⟨u₀, h⟩ => by subst h; exact .length u₀ u
-  | .arr .long, .long, .foldr e (.arith k u) =>
-    if hk : k = Rel.Kernel.Ew.add then (zeroU? e).map fun ⟨u₀, h⟩ => by subst h hk; exact .sum u₀ u else none
-  | .prod _ _, _, .comp (.pair (.comp .outl R) .outr) (.comp (.dom (.meet (.comp .outl .outl) .outr)) (.comp .outl .outr)) =>
-    some (.flat R)
-  | _, _, _ => none
-
--- `Pre.flat` as `build` makes it is read back
-#guard (Tm.dfnCut? (A := .prod .long .long) (B := .long) (.comp (.pair (.comp .outl (.zero : Tm .long (.prod .long .long)))
-  .outr) (.comp (.dom (.meet (.comp .outl .outl) .outr)) (.comp .outl .outr)))).isSome
+/-- The rows that are the fused form of a definition (§4), keyed by `sym`: each builds the `DfnCut` of its
+    definition from the row's built relations and the universe `u` of its target (base and step both on it), at
+    the row's objects `A ⟶ B`; none at other objects. `build` runs `c.fused` or `c.cut`, never the definition, and
+    `Tm.dfnCut_den` proves each equal to it: no read-back of a built term decides which runs. -/
+def dfns : List (String × ((A B : Obj) → List Res → Tm B B → Option ((d : Tm A B) × DfnCut d))) :=
+  [("length", fun A B _ u => match A, B, u with | .arr _, .long, u => some ⟨_, .length u u⟩ | _, _, _ => none),
+   ("sum", fun A B _ u => match A, B, u with | .arr .long, .long, u => some ⟨_, .sum u u⟩ | _, _, _ => none),
+   ("flat", fun A B xs _ => match A, xs with
+     | .prod I A, [⟨I', AB, R⟩] => if h : I' = I ∧ AB = .prod A B then some ⟨_, .flat (h.1 ▸ h.2 ▸ R)⟩ else none
+     | _, _ => none)]
 
 section Build
 
@@ -1867,33 +1832,27 @@ def build : Pre → Except Err Res
   | .est p => do let ⟨_, c⟩ ← param p; pure ⟨_, _, .est c⟩
   | .thin p => do let ⟨_, c⟩ ← param p; pure ⟨_, _, .thin c⟩
   | .nil a b => return ⟨_, _, .nil (A := ← toObj objs mc dp a) (B := ← toObj objs mc dp b)⟩
-  -- a row is the fused form of its definition (§4): the definition built, then replaced by the form `Tm.dfnCut?`
-  -- reads it back to where `Tm.dfnCut_den` proves them equal: the fused row at an unbounded object (universe `𝟙`),
-  -- the row cut to the universe at an initial segment `0…k` (one pass, where the fold reads the universe in every
-  -- round) or where the law needs no universe (`DfnCut.uni`); elsewhere, or read back to nothing, the definition
-  -- runs. A target with no universe, or an unbounded one (its base `0` needs keys none supply), has no definition
-  -- to run: the row runs.
-  | .prim r xs s t (some q) => do
-    have : 0 < sizeOf q := by cases q <;> simp <;> omega
-    let one ← if unbounded objs (zonk mc t) then pure none else
-      match ← uniPart objs dp (zonk mc t) (← toObj objs mc dp t) with
-      | some .id => pure (some true)
-      | some _ => pure (some false)
-      | none => pure none
-    match one with
-    | none => build (.prim r xs s t none)
-    | some one => do
-      let ⟨A, B, d⟩ ← build q
-      let c := d.dfnCut?
-      pure ⟨A, B, (c.bind fun c => if one then some c.fused
-        else if c.uni.isNone || initSeg objs (zonk mc t) then some c.cut else none).getD d⟩
-  -- the row's objects are checked where `Expand.primE` fits its constant at them (`primsFit`, `node`)
-  | .prim r xs s t none => do
+  -- the row's objects are checked where `Expand.primE` fits its constant at them (`primsFit`, `node`). A row of
+  -- `dfns` is the fused form of its definition (§4), which `Tm.dfnCut_den` proves equal to the row at an unbounded
+  -- target (universe `𝟙`) or where the law needs no universe (`DfnCut.uni`), and to the row cut to the universe
+  -- at an initial segment `0…k` (one pass, where the definition's fold reads the universe in every round). At any
+  -- other universe they differ, and the row is refused rather than its definition run; with none, the row runs
+  -- (the definition's base `0` would need keys none supply).
+  | .prim r xs s t => do
     let A ← toObj objs mc dp s; let B ← toObj objs mc dp t
-    (r.sig.1.zip xs.attach).foldlM (init := (⟨A, B, .prim r⟩ : Res)) fun ⟨A, B, f⟩ ((_, form), ⟨x, h⟩) => do
-      have := List.sizeOf_lt_of_mem h
-      if form == some true then let ⟨_, c⟩ ← param x; pure ⟨A, B, .arg f c⟩
-      else let ⟨_, _, u⟩ ← build x; pure ⟨A, B, .arg f u⟩
+    let row (_ : Unit) : Except Err Res :=
+      (r.sig.1.zip xs.attach).foldlM (init := (⟨A, B, .prim r⟩ : Res)) fun ⟨A, B, f⟩ ((_, form), ⟨x, h⟩) => do
+        have := List.sizeOf_lt_of_mem h
+        if form == some true then let ⟨_, c⟩ ← param x; pure ⟨A, B, .arg f c⟩
+        else let ⟨_, _, u⟩ ← build x; pure ⟨A, B, .arg f u⟩
+    let some mk := dfns.lookup r.sym | row ()
+    let o := zonk mc t
+    let some u ← uniPart objs dp o B | row ()
+    let args ← xs.attach.mapM fun ⟨x, h⟩ => have := List.sizeOf_lt_of_mem h; build x
+    let some ⟨_, c⟩ := mk A B args u | internal dp s!"{r.sym}'s definition (dfns) takes other relations or objects"
+    if unbounded objs o || c.uni.isNone then pure ⟨A, B, c.fused⟩
+    else if initSeg objs o then pure ⟨A, B, c.cut⟩
+    else throw ⟨dp, s!"{r.sym} into {o}: the row equals its definition only at an unbounded number object or an initial segment 0…k (Tm.dfnCut_den), and {o}'s universe is neither; declare it from 0"⟩
   | .own p => do
     let ⟨A, B, t⟩ ← build p
     if h : B = A then pure ⟨A, A, .own (h ▸ t)⟩ else internal dp "perm's objects"
