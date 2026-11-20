@@ -1736,7 +1736,10 @@ def build : Pre → Except Err Res
   -- step kept in the object as `succ`, `plus` keep theirs; the fused row only where no step can leave it
   | .prim r xs s t (some q) => do
     have : 0 < sizeOf q := by cases q <;> simp <;> omega
-    if (← uniPart objs dp (zonk mc t) (← toObj objs mc dp t)).isSome then build q else build (.prim r xs s t none)
+    -- an unbounded object's universe `𝟙` drops no step, so there the fused row is the definition, and it needs no keys
+    match ← uniPart objs dp (zonk mc t) (← toObj objs mc dp t) with
+    | some .id | none => build (.prim r xs s t none)
+    | some _ => build q
   -- the row's objects are checked where `Expand.primE` fits its constant at them (`primsFit`, `node`)
   | .prim r xs s t none => do
     let A ← toObj objs mc dp s; let B ← toObj objs mc dp t
