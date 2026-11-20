@@ -4,8 +4,7 @@
 //! compose `kasc ≫ kseen`, so a group is a run of adjacent equal rows and one pass, each row against the one before it,
 //! finds the runs: no hash, no direct-addressing table. Rows out of order are the error, naming the first such pair.
 //! Owner approval (PLAN 6.10) S: one block decoded into an L1 scratch counts as per block.
-use alloc::{format, string::String, vec};
-use core::cmp::Ordering;
+use alloc::{format, string::String, vec, vec::Vec};
 use crate::asc::Col;
 use crate::blocks::{Blocks, Grid};
 use crate::ffi::{Form, Sink};
@@ -29,25 +28,22 @@ pub fn blocks(ks: &[Col], n: usize, pos: bool) -> Result<(usize, lean::O, lean::
     // `last[c]`: atom key `c`'s code at the row before the block; `st[j]`: row `j` against the row before it, 0 equal so
     // far, 1 greater, 2 less, decided by the first column where the two differ
     let (mut last, mut st) = (vec![0u64; ks.len()], vec![0u8; blk]);
+    // a `cells` column's working key, its cell's rank a row (`Cells::codes`), built once and then read as an atom's codes
+    let cc: Vec<Option<Vec<u64>>> = ks.iter().map(|k| match k { Col::Cells(a) => Some(a.codes(n)), _ => None }).collect();
     for (_, lo, nb) in g.walk() {
         st[..nb].fill(0);
-        for (k, l) in ks.iter().zip(last.iter_mut()) {
-            match k {
-                Col::Atom(k) => {
-                    k.codes(lo, &mut x[..nb], &mut buf);
-                    for (j, s) in st[..nb].iter_mut().enumerate() {
-                        let p = if j == 0 { *l } else { x[j - 1] };
-                        if *s == 0 && (lo > 0 || j > 0) && x[j] != p { *s = if x[j] > p { 1 } else { 2 } }
-                    }
-                    *l = x[nb - 1];
-                }
-                // a row against the one before it, its cells read where they lie (`Cells::cmp`)
-                Col::Cells(a) => for (j, s) in st[..nb].iter_mut().enumerate() {
-                    if *s == 0 && lo + j > 0 { *s = match a.cmp(lo + j - 1, lo + j) { Ordering::Less => 1, Ordering::Greater => 2, Ordering::Equal => 0 } }
-                },
+        for ((k, l), cc) in ks.iter().zip(last.iter_mut()).zip(&cc) {
+            let x: &[u64] = match (k, cc) {
+                (Col::Atom(k), _) => { k.codes(lo, &mut x[..nb], &mut buf); &x[..nb] }
+                (_, Some(c)) => &c[lo..lo + nb],
                 // a `pos` column ascends with no ties: every row after the first is greater
-                Col::Pos => for (j, s) in st[..nb].iter_mut().enumerate() { if *s == 0 && lo + j > 0 { *s = 1 } },
+                _ => { for (j, s) in st[..nb].iter_mut().enumerate() { if *s == 0 && lo + j > 0 { *s = 1 } } continue }
+            };
+            for (j, s) in st[..nb].iter_mut().enumerate() {
+                let p = if j == 0 { *l } else { x[j - 1] };
+                if *s == 0 && (lo > 0 || j > 0) && x[j] != p { *s = if x[j] > p { 1 } else { 2 } }
             }
+            *l = x[nb - 1];
         }
         if let Some(j) = st[..nb].iter().position(|&s| s == 2) { return Err(unsorted(lo + j - 1)) }
         let w = &mut bits[lo / 64..(lo + nb).div_ceil(64)];
