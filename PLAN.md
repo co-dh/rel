@@ -271,8 +271,10 @@ Diff table 的「状态」列：✅ 后面是完成它的步骤；🔄 是部分
   模块 `MOD`、`evalConst` 程序 `NAME` 的 `io` 并运行（与 design.md 的 `relc run NAME` 不同：多一个模块参数；解释器要
   `supportInterpreter := true` 才找到 extern 与 `Init` 的编译代码）。`TestIO`：
   CSV 输入 → 位置与 keyed 的 CSV 输出 → 第二个程序 `from csv` 读回，文本与读回的行都按手算 pin。
-  I8 未做：文本列 `[C]` 与可空列 `V+1` 都要改 `CsvCols` 的形状，即改 `qlean_csv_read`/`qlean_csv_write` 的 ABI（crate），
-  `V+1` 的存储形状还是 design.md 的未决问题；`sym` 等步骤 6。见 `/data/tmp/io/i8-notes.md`。
+  I8 ✅（分支 `io-i8b`）：`CsvCols` 每列加形状 `CsvShape`（`atom | null | text`），export 名不变，每个 part 带自己的行数
+  （`List (USize × Enc)`）。可空列 `V+1` 存为 tag(`u1`) + idx + l + r，空字段即 null，写侧把 null 写成空字段；某个 atom
+  能印成空文本时在 elaboration 拒绝该列。文本列 `[C]` 存为 lo/hi + 一个扁平字节 payload，引号规则同其余字段。读写都按块，
+  不整列解码；往返定律改为按行（`fieldsOf`）成立，布局不唯一。`sym` 仍拒绝（等步骤 6）。见 `/data/tmp/io/i8b-notes.md`。
   I7 ✅（分支 `io-i7`）：`qlean_csv_write`（列入 `RELIO.txt`），`@[extern]` 在 `Db.csvWrite` 上，body 即 `rawAll` + `csvText`；按 1024 行一块读编码列、逐行格式化、临时文件 rename；写侧 case 表 `decide +kernel`，extern 与 body 及读回在全部用例上一致。选择记在 `/data/tmp/io/i7-notes.md`。
 - ✅ D.11 表层语法（`schema S = {k : K, v : N}`、`col S "v"`）已合并（da636a9）；`Schema` 层此前已合并（5ab6d2e，master 0fb9879，`Rel/Lang/Schema.lean`、`TestSchema.lean`）；余下：TestFrame 的
   frame 按 `Schema` 索引（随 D.9）。frame 的 schema 进入类型（owner 经 dataframe 会话决定，选 wrapper，不加 `Obj` constructor）：

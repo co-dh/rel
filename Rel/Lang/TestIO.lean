@@ -51,14 +51,14 @@ rel_program twiceT where
     schema Row = {sym : K, px : N}
     input t : Key ⟶ Row from "t"
 
-/-- error: line 59, col 5: input `t` from csv "t.csv": column 'val' is K×N, no atom: a CSV field holds one atom; declare it a table directory (drop `csv`) -/
+/-- error: line 59, col 5: input `t` from csv "t.csv": column 'val' is K×N; a CSV field holds an atom, a nullable atom `V+1` (`1` an object of one element) or a text `[C]`; declare it a table directory (drop `csv`) -/
 #guard_msgs in
 rel_program csvProdT where
     obj K = {A,B}
     obj N
     input t : N ⟶ K×N from csv "t.csv"
 
-/-- error: line 66, col 5: input `t` from csv "t.csv": column 'val' is a list column, which is not read from CSV yet (IO step I8) -/
+/-- error: line 66, col 5: input `t` from csv "t.csv": column 'val' is a list of one of A, B; a CSV field holds a list of char only (text) -/
 #guard_msgs in
 rel_program csvListT where
     obj K = {A,B}
@@ -263,3 +263,41 @@ info: ("sym,px\nA,10\nC,30\n", "key,val\nA,10\nC,30\n", [(0, 0, 10), (1, 2, 30)]
   let q ← Table.readKeyed [("key", .long)] [("val", .long)] (d ++ "/q")
   IO.FS.removeDirAll d
   return (big, pxOf, b.toList, q.toList)
+
+/-! ## A nullable and a text column in CSV (step I8) -/
+
+-- `name : [C]` a text (the field's bytes, `"…"` quoted where they hold `,` `"` or a line end), `px : N+1` nullable
+-- (the empty field its null); read and written back unchanged
+open Rel.Programs.prelude in
+rel_program csvNullIO where
+    obj N
+    obj C : char
+    schema Row = {name : [C], px : N+1}
+    input t : N ⟶ Row from csv "/data/tmp/rel-test-io-null/in.csv"
+    output t to csv "/data/tmp/rel-test-io-null/out.csv"
+
+-- by hand: the rows ("abc", 10), ("x,\"y\"", null), ("", 7); `px`'s values 10 and 7 at positions 0 and 1 of its left
+-- side, the null at 0 of its right side (`inr ∗`); `name`'s cells `[0,3) [3,8) [8,8)` of the bytes `abcx,"y"`
+/--
+info: ("name,px\nabc,10\n\"x,\"\"y\"\"\",\n,7\n",
+ [(0, [97, 98, 99], Sum.inl 10), (1, [120, 44, 34, 121, 34], Sum.inr 0), (2, [], Sum.inl 7)])
+-/
+#guard_msgs in
+#eval show IO _ from do
+  let d := "/data/tmp/rel-test-io-null"
+  if ← System.FilePath.pathExists d then IO.FS.removeDirAll d
+  IO.FS.createDirAll d
+  IO.FS.writeFile (d ++ "/in.csv") "name,px\nabc,10\n\"x,\"\"y\"\"\",\n,7\n"
+  csvNullIO.io
+  let out ← IO.FS.readFile (d ++ "/out.csv")
+  let back ← Table.readCsv [] [("name", .arr (.atom .char)), ("px", .sum .long (.atom .u8))]
+    [("name", .text, .char, []), ("px", .null, .i64, [])] (d ++ "/out.csv")
+  IO.FS.removeDirAll d
+  return (out, back.toList)
+
+-- refused at elaboration: a nullable column whose `1` is no one-element object, and a text of no `char`
+/-- error: line 304, col 5: input `t` from csv "t.csv": column 'val' is N+N; a CSV field holds an atom, a nullable atom `V+1` (`1` an object of one element) or a text `[C]`; declare it a table directory (drop `csv`) -/
+#guard_msgs in
+rel_program csvSumT where
+    obj N
+    input t : N ⟶ N+N from csv "t.csv"
