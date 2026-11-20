@@ -147,8 +147,8 @@ run_cmd do
     -- the names the other side of each literal-row `check` mentions (`𝟘` the literal with no rows, which `{…}`
     -- cannot write): only those see a wrong `Tm` or a wrong pin
     let lit := (← Embed.programOf n).flatMap fun
-      | .check _ (.lit ..) g _ | .check _ g (.lit ..) _ | .check _ (.op _ .zero _ []) g _
-      | .check _ g (.op _ .zero _ []) _ => g.names
+      | .check _ (.lit ..) g _ _ | .check _ g (.lit ..) _ _ | .check _ (.op _ .zero _ []) g _ _
+      | .check _ g (.op _ .zero _ []) _ _ => g.names
       | _ => []
     -- the definitions run so far whose `Tm.gen` table is ok, each a variable numbered past every binder of `ds`
     let base := ds.foldl (fun m (_, ⟨_, _, t⟩) => max m (fresh t)) 0
