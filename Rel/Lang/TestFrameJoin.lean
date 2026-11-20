@@ -2,7 +2,7 @@ import Rel.Lang.TestFrameCols
 import Rel.Programs.FrameJoin
 
 /-! The join and concatenation rows of `Rel.Programs.frameJoin` (plan M1): the fixture of `TestFrameCols` against
-    a second table `y` (keys A C A) and a third `u` sharing rows with `x`, against rows worked by hand. -/
+    a second table `y` (keys A C A) and a third `y2` sharing rows with `x`, against rows worked by hand. -/
 
 namespace Rel.Lang.TestFrameJoin
 
@@ -12,7 +12,7 @@ rel_program frameJoinT where
     obj Q = 0…31
     obj S = {a,b}
     y : P ⟶ K×N ≜ {(0,(A,9)),(1,(C,8)),(2,(A,6))}
-    u : P ⟶ K×N ≜ {(0,(A,3)),(1,(C,2)),(2,(B,4))}
+    y2 : P ⟶ K×N ≜ {(0,(A,3)),(1,(C,2)),(2,(B,4))}
     w : P ⟶ N×N ≜ {(0,(1,2)),(1,(3,4)),(2,(5,6))}
     -- x's A rows 1 4 7 meet y's 0 2, its C rows 3 5 meet y's 1; numbered in (i, j) order
     check J(π₁, π₁, x, y) = {(1,0),(1,2),(3,1),(4,0),(4,2),(5,1),(7,0),(7,2)}
@@ -30,9 +30,9 @@ rel_program frameJoinT where
     check append(x, y) = {(0,(B,5)),(1,(A,3)),(2,(B,5)),(3,(C,1)),(4,(A,7)),(5,(C,2)),(6,(B,1)),(7,(A,3)),
       (8,(A,9)),(9,(C,8)),(10,(A,6))}
     check union(x, y) = {(0,(B,5)),(1,(A,3)),(2,(C,1)),(3,(A,7)),(4,(C,2)),(5,(B,1)),(6,(A,9)),(7,(C,8)),(8,(A,6))}
-    -- x's rows in u: (A,3) at 1 7, (C,2) at 5
-    check intersect(x, u) = {(0,(A,3)),(1,(C,2))}
-    check difference(x, u) = {(0,(B,5)),(1,(C,1)),(2,(A,7)),(3,(B,1))}
+    -- x's rows in y2: (A,3) at 1 7, (C,2) at 5
+    check intersect(x, y2) = {(0,(A,3)),(1,(C,2))}
+    check difference(x, y2) = {(0,(B,5)),(1,(C,1)),(2,(A,7)),(3,(B,1))}
     check melt({(∗,a)}, π₁, {(∗,b)}, π₂, w) = {(0,(a,1)),(1,(a,3)),(2,(a,5)),(3,(b,2)),(4,(b,4)),(5,(b,6))}
 
 #guard frameJoinT.ok
