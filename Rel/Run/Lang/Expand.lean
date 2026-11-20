@@ -700,7 +700,6 @@ partial def node (pre : Name) (ρ : List (Nat × Lean.Expr)) {A B : Obj} (t : Tm
   | _, _, .share _ R => c R
   | .prod I (.arr Y), V, .foldI e S =>
     return g ``GenK.foldI #[oE I, oE Y, oE V, bE e.dem, bE S.dem, ← c e, ← c S]
-  | .prod I A, B, .flat R => return g ``GenK.flat #[oE I, oE A, oE B, bE R.dem, ← c R]
   | A, B, .var _ v => match ρ.lookup v with
     -- by what the binder holds: a kernel twin's parameter (code), a fixed point's variable (a `Tab`)
     | some x => do

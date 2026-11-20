@@ -66,9 +66,6 @@ inductive Tm : Obj → Obj → Type where
       each key by the fibre of `e` there, its step `S` given `((i,v),x)` and carrying the key `i`. -/
   | foldI {I E V : Obj} (e : Tm I (.prod V V)) (S : Tm (.prod (.prod I V) E) (.prod I V)) :
       Tm (.prod I (.arr E)) V
-  /-- `Rᴵ`, the family `R : I ⟶ A×B` as one relation of the key and the source, on the pairs (key, source) in
-      demand: `R` at their keys, each row `(i,(a,b))` re-keyed as `((i,a),b)`, then joined with the pairs. -/
-  | flat {I A B : Obj} (R : Tm I (.prod A B)) : Tm (.prod I A) B
   /-- The variable `k` of the fixed point that binds it: its value in the round being run; or a constant's
       parameter, on the keys in demand when its argument is a pair test (`Form`). `d`: its demand bit, which the
       use site fixes, as `call` stores its own. -/
@@ -122,7 +119,7 @@ def Tm.dem : {A B : Obj} → Tm A B → Bool
   | _, _, .prod .. | _, _, .leq _ | _, _, .lt _ | _, _, .nu .. | _, _, .mu .. => false
   | _, _, .id | _, _, .top _ | _, _, .outl | _, _, .outr | _, _, .lam _ | _, _, .E _
   | _, _, .est _ | _, _, .thin _ | _, _, .nil | _, _, .prim _ | _, _, .atPos _ | _, _, .succ _ | _, _, .arith ..
-  | _, _, .foldr .. | _, _, .fold .. | _, _, .foldI .. | _, _, .flat _ | _, _, .hylo .. => true
+  | _, _, .foldr .. | _, _, .fold .. | _, _, .foldI .. | _, _, .hylo .. => true
 
 /-- `t` with each of its parts through `f`, one level down; every walk over `Tm` is an instance (`Tm.parts`,
     `Tm.fv`, `Expand.mus`, `Expand.number`). A `share` is closed and numbered, so no walk enters it. -/
@@ -152,7 +149,6 @@ def Tm.mapM {m : Type → Type} [Monad m] (f : {A B : Obj} → Tm A B → m (Tm 
   | _, _, .foldr e S => return .foldr (← f e) (← f S)
   | _, _, .fold e S => return .fold (← f e) (← f S)
   | _, _, .foldI e S => return .foldI (← f e) (← f S)
-  | _, _, .flat R => return .flat (← f R)
   | _, _, .arg g x => return .arg (← f g) (← f x)
   | _, _, .nu k S b => return .nu k (← f S) (← f b)
   | _, _, .mu k w n b => return .mu k w n (← f b)
@@ -190,7 +186,6 @@ def Tm.fv : {A B : Obj} → Tm A B → List Nat
   | _, _, .lt U => U.fv
   | _, _, .foldr e S | _, _, .fold e S => e.fv ++ S.fv
   | _, _, .foldI e S => e.fv ++ S.fv
-  | _, _, .flat R => R.fv
   | _, _, .arg g x => g.fv ++ x.fv
   | _, _, .nu k S b => S.fv ++ b.fv.filter (· != k)
   | _, _, .mu k _ _ b => b.fv.filter (· != k)
@@ -247,7 +242,6 @@ def Tm.subst : Tm.Sub → {A B : Obj} → Tm A B → Tm A B
   | σ, _, _, .foldr e S => .foldr (e.subst σ) (S.subst σ)
   | σ, _, _, .fold e S => .fold (e.subst σ) (S.subst σ)
   | σ, _, _, .foldI e S => .foldI (e.subst σ) (S.subst σ)
-  | σ, _, _, .flat R => .flat (R.subst σ)
   | σ, _, _, .arg g x => .arg (g.subst σ) (x.subst σ)
   | σ, A, B, .nu k S b =>
     .nu (fresh (b.fv ++ σ.fvs)) (S.subst σ) (b.subst ((k, ⟨A, B, .var false (fresh (b.fv ++ σ.fvs))⟩) :: σ))
@@ -294,7 +288,6 @@ def Tm.pol (s : Bool) (k : Nat) : {A B : Obj} → Tm A B → Bool
   | _, _, .est Q => Q.pol s k
   | _, _, .succ U | _, _, .arith _ U | _, _, .leq U | _, _, .lt U => U.pol s k
   | _, _, .foldr e S | _, _, .fold e S | _, _, .foldI e S => e.pol s k && S.pol s k
-  | _, _, .flat R => R.pol s k
   | _, _, t@(.arg (.prim r) x) => (Prim.find? r.sym).any (·.mono) && x.pol s k || !t.fv.contains k
   | _, _, t@(.lam _) | _, _, t@(.E _) | _, _, t@(.thin _) | _, _, t@(.arg ..) => !t.fv.contains k
   | _, _, .val _ | _, _, .uni _ | _, _, .zero | _, _, .id | _, _, .outl | _, _, .outr
@@ -306,7 +299,7 @@ def Tm.pol (s : Bool) (k : Nat) : {A B : Obj} → Tm A B → Bool
     (`size_kids`), since `Tm.gen` recurses into `kids` of a `hylo`'s body. -/
 def Tm.size : {A B : Obj} → Tm A B → Nat
   | _, _, .top R | _, _, .conv R | _, _, .dom R | _, _, .ran R | _, _, .lam R | _, _, .E R | _, _, .est R
-  | _, _, .thin R | _, _, .own R | _, _, .succ R | _, _, .arith _ R | _, _, .leq R | _, _, .lt R | _, _, .flat R
+  | _, _, .thin R | _, _, .own R | _, _, .succ R | _, _, .arith _ R | _, _, .leq R | _, _, .lt R
   | _, _, .share _ R | _, _, .mu _ _ _ R | _, _, .hylo _ _ R | _, _, .call _ _ _ R | _, _, .callCv _ _ _ _ R _ =>
     R.size + 1
   | _, _, .comp R S | _, _, .meet R S | _, _, .join R S | _, _, .diff R S | _, _, .pair R S | _, _, .prod R S

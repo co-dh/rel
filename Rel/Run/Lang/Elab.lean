@@ -137,7 +137,6 @@ def Tm.instObj (σ : List Obj) : {A B : Obj} → Tm A B → Except String (Tm (A
   | _, _, .fold e S => return .fold (← e.instObj σ) (← S.instObj σ)
   | _, _, .share k R => return .share k (← R.instObj σ)
   | _, _, .foldI e S => return .foldI (← e.instObj σ) (← S.instObj σ)
-  | _, _, .flat R => return .flat (← R.instObj σ)
   | _, _, .var d k => pure (.var d k)
   | _, _, .call ks c os b => return .call ks c (os.map (·.inst σ)) (← b.instObj σ)
   | _, _, .callCv ks c c' os b u => return .callCv ks c c' (os.map (·.inst σ)) (← b.instObj σ) (← u.instObj σ)
@@ -227,7 +226,6 @@ inductive Pre
   | lt (pos : Pos) (n : OTy)
   | fold (right : Bool) (e s : Pre)
   | foldI (e s : Pre)
-  | flat (p : Pre)
   /-- A literal; `gd` the generic definition whose body holds it (`Env.gdef`), where its numerals' objects are
       the call's, checked at each call. -/
   | lit (pos : Pos) (a b : OTy) (ps : List (Tup × Tup)) (gd : Option String)
@@ -258,6 +256,14 @@ instance : Inhabited Pre := ⟨.id (.base "")⟩
     runs on the values of its summand in demand (`Tab.inlConv`), and is covered by the laws of `∪`, `≫` and the rows. -/
 def Pre.junc (r s : Pre) (a b : OTy) : Pre :=
   .join (.comp (.prim inlConvRow [] (.sum a b) a none) r) (.comp (.prim inrConvRow [] (.sum a b) b none) s)
+
+/-- The family `R : i ⟶ a×b` as one relation of the key and the source, `Rᴵ : i×a ⟶ b`, is its definition
+    `⟨π₁R,π₂⟩dom(π₁π₁ ∩ π₂)π₁π₂` (architecture §7; `Tm.flat_den`): pair, projections and an equality test, no
+    converse, so `R` runs on the keys in demand and the parts' laws cover it. -/
+def Pre.flat (r : Pre) (i a b : OTy) : Pre :=
+  .comp (.pair (.comp (.outl i a) r) (.outr i a))
+    (.comp (.dom (.meet (.comp (.outl (.prod a b) a) (.outl a b)) (.outr (.prod a b) a)))
+      (.comp (.outl (.prod a b) a) (.outr a b)))
 
 /-- The `why` of a top-level term's `close`. -/
 def noLeft : String := "the term here needs keys and has no left context"
@@ -388,7 +394,6 @@ def Pre.traverse {m : Type → Type} [Monad m] (fp : Pos → m Pos) (f : Option 
   | .lt q n => return .lt (← fp q) n
   | .fold d e s => return .fold d (← mo e) (← mo s)
   | .foldI e s => return .foldI (← mo e) (← mo s)
-  | .flat x => return .flat (← mo x)
   | .lit q a b ps gd => return .lit (← fp q) a b ps gd
   | .close q x a why => return .close (← fp q) (← mo x) a why
   | .var q k a b t => return .var (← fp q) k a b t
@@ -696,7 +701,7 @@ def liftRows : List LiftRow := [
     Any other family is read whole at each key and cut to the source, `⟨π₁R,π₂⟩dom(π₁π₁ ∩ π₂)π₁π₂`: every part
     runs on the keys in demand, so `I` needs no universe (a converse or `ran` here would close over all of `I`). -/
 partial def keyed (R : Pre) (a b : OTy) : Pre :=
-  ((liftRows I).findSome? fun r => r.match? R >>= r.keyed (keyed · · ·) a b).getD (flat R)
+  ((liftRows I).findSome? fun r => r.match? R >>= r.keyed (keyed · · ·) a b).getD (Pre.flat R I a b)
 
 def lComp : Pre × OTy × OTy → Pre × OTy × OTy → M (Pre × OTy × OTy)
   | (R, a, b), (S, b', c) => do
@@ -1521,7 +1526,6 @@ def convTm {A B : Obj} (t : Tm A B) : Except String (Tm B A) :=
   | .foldr .. => throw "⦇e,S⦈ʳ"
   | .fold .. => throw "⦇e,S⦈"
   | .foldI .. => throw "a lifted fold"
-  | .flat _ => throw "a lifted family"
 
 /-- `t° = Zπᵢ°` (`Proj`): `π₁° = 𝟙π₁°`, `(RS)° = S°(Zπᵢ°)`, and a meet or pair of two on one projection
     (`Proj.meet`). The error is only that `t` is not of that form: the caller reports its own leaf. -/
@@ -1901,10 +1905,6 @@ def build : Pre → Except Err Res
       let S ← at? dp (A := .prod (.prod I V) E) (B := .prod I V) sr
       pure ⟨_, _, .foldI et S⟩
     | _, _ => internal dp "the lifted fold's objects"
-  | .flat p => do
-    match ← build p with
-    | ⟨I, .prod A B, t⟩ => pure ⟨.prod I A, B, .flat t⟩
-    | _ => internal dp "a family's objects"
   | .lit p a b ps gd => litRes objs mc dp p a b ps gd
   | .close p q a why => do closeRes objs mc dp p a why (← build q)
   -- the children and the body run on the nodes in demand, no universe read

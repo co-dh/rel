@@ -381,7 +381,6 @@ noncomputable def Tm.den : Val → {A B : Obj} → Tm A B → Den A B
   | ρ, _, _, .fold e S => foldDen (e.den ρ) (S.den ρ)
   | _, _, _, .share _ R => R.den Val.empty
   | ρ, _, _, .foldI e S => foldIDen (e.den ρ) (S.den ρ)
-  | ρ, _, _, .flat R => flatDen (R.den ρ)
   | ρ, A, B, .var _ k => ρ k A B
   | _, _, _, .call ks _ _ b | _, _, _, .callCv ks _ _ _ b _ => b.den (Val.args ks [])
   | ρ, _, _, .arg f x => f.argDen ρ [⟨_, _, x.den ρ⟩]
@@ -401,6 +400,18 @@ noncomputable def Tm.argDen : Val → {A B : Obj} → Tm A B → List Sem → De
   | ρ, _, _, .own R, ss => R.argDen ρ ss
   | _, _, _, _, _ => 𝟘
 end
+
+/-- `Rᴵ`'s definition `⟨π₁R,π₂⟩dom(π₁π₁ ∩ π₂)π₁π₂` (`Pre.flat`) means `flatDen`: the `(a', b)` of `R` at the key,
+    kept where `a'` is the source, then `b`. -/
+theorem Tm.flat_den (ρ : Val) {I A B : Obj} (R : Tm I (.prod A B)) :
+    (Tm.comp (.pair (.comp .outl R) .outr) (.comp (.dom (.meet (.comp .outl .outl) .outr)) (.comp .outl .outr))).den ρ
+      = flatDen (R.den ρ) := by
+  apply Core.Rel.ext; intro x b
+  simp [Tm.den, flatDen, Core.Rel.comp, Core.Rel.rpair, Core.Rel.inter, Core.Rel.recip, Core.Rel.graph]
+  constructor
+  · rintro ⟨a, b', ⟨h, rfl⟩, he⟩
+    cases (show ((x.2, b'), x.2) = ((x.2, b), x.2) from he); exact h
+  · intro h; exact ⟨_, _, ⟨h, rfl⟩, rfl⟩
 
 /-- `⟦t⟧`, and `t`'s meaning as a row's spine, read `ρ` only at the variables free in `t`. -/
 theorem Tm.den_congr : ∀ {A B : Obj} (t : Tm A B) (ρ ρ' : Val), (∀ i ∈ t.fv, ρ i = ρ' i) →
@@ -424,7 +435,7 @@ theorem Tm.den_congr : ∀ {A B : Obj} (t : Tm A B) (ρ ρ' : Val), (∀ i ∈ t
     have e := ih ρ ρ' fun i hi => h i (by simp [Tm.fv, hi])
     exact ⟨by simp only [Tm.den, e.1], fun _ => by simp only [Tm.argDen, e.2]⟩
   | conv R ih | dom R ih | ran R ih | est R ih | succ R ih | arith _ R ih | leq R ih | lt R ih
-  | flat R ih | lam R ih | E R ih | thin R ih =>
+  | lam R ih | E R ih | thin R ih =>
     intro ρ ρ' h; exact ⟨by simp only [Tm.den, (ih ρ ρ' fun i hi => h i (by simp [Tm.fv, hi])).1], fun _ => rfl⟩
   | ldiv R S U V ihR ihS ihU ihV | rdiv R S U V ihR ihS ihU ihV =>
     intro ρ ρ' h
@@ -642,9 +653,6 @@ theorem foldI_le {e e' : Den C (.prod B B)} {S S' : Den (.prod (.prod C B) A) (.
   le_iff.2 fun _ _ h => le_iff.1 (fold_le (le_iff.2 fun _ _ h => le_iff.1 he _ _ h)
     (le_iff.2 fun _ _ h => le_iff.1 hS _ _ h)) _ _ h
 
-theorem flat_le {T T' : Den C (.prod A B)} (hT : T ⊑ T') : flatDen T ⊑ flatDen T' :=
-  le_iff.2 fun _ _ h => le_iff.1 hT _ _ h
-
 end ops
 
 theorem Sem.one_mono {X Y A B X' Y' : Obj} {D : Den X Y → Den A B} (hD : ∀ {T T'}, T ⊑ T' → D T ⊑ D T')
@@ -792,7 +800,6 @@ theorem Tm.den_pol (k : Nat) : ∀ {A B : Obj} (t : Tm A B) (s : Bool) (ρ ρ' :
   | arith _ U ih => intro s ρ ρ' hp g; exact sle.map1 arith_le (ih s ρ ρ' hp g)
   | leq U ih => intro s ρ ρ' hp g; exact sle.map1 leq_le (ih s ρ ρ' hp g)
   | lt U ih => intro s ρ ρ' hp g; exact sle.map1 lt_le (ih s ρ ρ' hp g)
-  | flat R ih => intro s ρ ρ' hp g; exact sle.map1 flat_le (ih s ρ ρ' hp g)
   | foldr e S ihe ihS =>
     intro s ρ ρ' hp g; simp only [Tm.pol, Bool.and_eq_true] at hp
     exact sle.map2 foldr_le (ihe s ρ ρ' hp.1 g) (ihS s ρ ρ' hp.2 g)
