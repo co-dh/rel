@@ -3,7 +3,7 @@ import Rel.Kernel.Asc
 /-! `seen` (PLAN D.12): over rows already in `kasc` order, each row's group and each group's first row. Its callers
 compose `kasc ≫ kseen`, so the kernel needs no hash and no direct-addressing table: on sorted rows a group is a run of
 adjacent equal rows, found by comparing each row with the one before it. Rows out of order are the error, naming the
-first such pair. The body states the answer as `Order.idsBy` does, `Order.firstsBy` over the rows and a row's group
+first such pair. The body states the answer as `Order.firstsBy` over the rows and a row's group
 `Order.groupIn` them, which on sorted rows numbers the runs.
 
 Equality is `kasc`'s: two rows are equal when every column's order code at its type (`ascCol`) is, and the code is one

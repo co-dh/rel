@@ -76,7 +76,7 @@ theorem elemsW_append (w : Nat) (hw : 0 < w) (a b : ByteArray) (ha : a.size % w 
       rw [show i * w + t = a.size + ((i - q) * w + t) by omega, ba_append_right]
 
 /-- A left fold of joins, read in `w`-byte elements, is its parts' elements in order, when every part
-ends on an element. `concatBytes` is this fold. -/
+ends on an element. -/
 theorem elemsW_foldl_append (w : Nat) (hw : 0 < w) (parts : List ByteArray) (acc : ByteArray)
     (ha : acc.size % w = 0) (hp : ∀ p ∈ parts, p.size % w = 0) :
     elemsW w (parts.foldl (· ++ ·) acc) = elemsW w acc ++ (parts.map (elemsW w)).flatten := by

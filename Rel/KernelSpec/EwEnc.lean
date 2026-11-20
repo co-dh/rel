@@ -102,8 +102,8 @@ end Rel.Verify
 
 
 
--- `Classical.choice` below is each statement's, not its proof's: `Ew.val`, `Ew.cmpStep`, `Build.run`
--- (a chain names every engine), `Enc.answer` (ALP) and `Eval.arithAtoms` all name a `Float` decode.
+-- `Classical.choice` below is each statement's, not its proof's: `Ew.cmpStep` and `Enc.answer` (ALP) name a
+-- `Float` decode.
 
 
 /-- info: 'Rel.Verify.answer_foR' depends on axioms: [propext, Classical.choice, Quot.sound] -/

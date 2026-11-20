@@ -103,13 +103,14 @@ instance {α : Type} [Reg α] : Reg (List α) :=
 
 /-- An `Enc` is the constructor `Db.ownParts` takes apart: its tag, and its parts as its fields, which they are for
     the forms whose fields are all buffers (`bytes`, `foR`, `alp`) and for `pos`, which has none; `Db.ownEnc` puts
-    them back. Every other form (`syms`, `enum`, `gen`) has a field that is no part, so `get?` refuses it: a run that
-    reaches one fails naming the register, never reads a constructor the C does not hold. -/
+    them back. Every other form (`syms`, `enum`, `gen`) has a field that is no part: `Db.ownParts` refuses it, so it
+    is put with no fields and `get?` refuses its tag — a run that reaches one fails naming the register, never reads
+    a constructor the C does not hold. -/
 instance : Reg Enc := ⟨.obj, fun
   | .ctor 6 #[] #[] => some .pos
   | .ctor k ps #[] => if [0, 2, 3].contains k then
       ps.mapM (fun | .bytes b => some b | _ => none) >>= Db.ownEnc k.toUInt8 else none
-  | _ => none, fun e => .ctor e.ctorIdx ((Db.ownParts e).2.map .bytes) #[]⟩
+  | _ => none, fun e => .ctor e.ctorIdx (match Db.ownParts e with | .ok (_, ps) => ps.map .bytes | .error _ => #[]) #[]⟩
 
 mutual
 /-- `atom t` is constructor `0` of the byte `t`; `cells n c lo hi els` constructor `1` of the objects `lo hi els`
@@ -413,9 +414,7 @@ def cols : (A : Obj) → {n : USize} → Vals A n → String → List (String ×
 
 /-- A column as qlean's column writer takes it (`Db.ownFile`): `code`, `attr`, `kind`, `count`, `domain`, `parts`. -/
 def ownFile (p : String) (v : QValue) : Except String Db.OwnFile :=
-  match Db.ownFile v with
-  | some f => pure f
-  | none => throw s!"column `{p}`: a general list, which qlean's own column format does not hold"
+  (Db.ownFile v).mapError fun e => s!"column `{p}`: {e}"
 
 /-- A side's registers: each column's path and its six `ownFile` registers. -/
 abbrev Side := List (String × Array Nat)

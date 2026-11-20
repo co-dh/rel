@@ -206,7 +206,7 @@ inductive Enc (X : Type)
   is the count: `Kernel.Structural.appendFoR` answers a longer column with the metadata of a shorter
   one, so `sumn` says how many elements these sums covered and a column of any other length
   recomputes. A `float` never reaches either test: over a float this encoding is over raw IEEE bits,
-  whose total is not the column's total in any domain, and `Coc.nullOf` declines a float before the
+  whose total is not the column's total in any domain, and a float is declined before the
   question is asked.
 
   The element count is the header's for the reason `bits`' is: `nblk` only bounds it to a multiple
@@ -292,7 +292,7 @@ export Ext (QValue.atom QValue.vector QValue.dict QValue.table QValue.keyed QVal
 /-- What a rel function that recurses through `gen`, `dict` or `table` must do at an `ext`; a field is added when
 another such function must. -/
 class ValueExt (X : Type) where
-  /-- q's `~` on two extension values, read by `Eval.identicalFuel`. -/
+  /-- q's `~` on two extension values. -/
   identical : X → X → Bool
 
 instance : ValueExt Empty := ⟨nofun⟩
@@ -665,7 +665,7 @@ def packIds (w n : Nat) (f : Nat → Nat) : ByteArray :=
 end Column
 
 /-- A `syms` payload as every writer of one lays it out: at least one start, the first `0`, the last the blob's
-size, none past the blob, and none before the one ahead of it. `concatSyms` reads part `p`'s entries back only from
+size, none past the blob, and none before the one ahead of it. A join reads part `p`'s entries back only from
 parts that hold this, and a cycling `sliceSyms` rebuilds the starts as a running total that matches its blob only
 where they do not decrease. -/
 structure SymsWF (b : ByteArray) (o : Array Nat) : Prop where

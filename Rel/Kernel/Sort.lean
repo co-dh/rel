@@ -74,40 +74,6 @@ def groupIn {α : Type} [BEq α] (fs : List Nat) (key : Nat → α) (i : Nat) : 
 
 
 
-/-- `firsts` over a symbol column. Equality is the bytes, so it is `Column.symCmp … = .eq` and not a second
-statement of what two symbols being the same means. -/
-def symFirsts (blob : ByteArray) (offs : Array Nat) : List Nat :=
-  (List.range (offs.size - 1)).filter fun i =>
-    (List.range i).all fun j => Column.symCmp (Column.symKey blob offs j) (Column.symKey blob offs i) != .eq
-
-/-- The blob and offsets of these symbols, in `Column.syms` layout: each one's bytes followed by its
-NUL, and the `g + 1` starts. -/
-def symsAt (blob : ByteArray) (offs : Array Nat) (is : List Nat) : ByteArray × Array Nat :=
-  ( is.foldl (init := ByteArray.empty) fun acc i => (acc ++ Column.symKey blob offs i).push 0
-  , (is.foldl (init := (#[0], 0)) fun (o, pos) i =>
-      (o.push (pos + (Column.symKey blob offs i).size + 1), pos + (Column.symKey blob offs i).size + 1)).1 )
-
-
-
-
-
-/-- q's `distinct` over a symbol column, as the payload a `Column.syms` is made of. -/
-def distinctSyms (blob : @& ByteArray) (offs : @& Array Nat) : ByteArray × Array Nat :=
-  symsAt blob offs (symFirsts blob offs)
-
-/-- A symbol column interned: the distinct symbols in `syms` layout, and one id per element
-indexing them, packed at `Column.idWidth` — the fields of `Column.enum`, whose docstring says why
-the dictionary is the column's own and not a process-wide table.
-
-The specification is the two kernels beside it, so there is one statement of what "the distinct
-symbols" are and one of where a symbol is found: `distinctSyms` in first-occurrence order, and
-`findSymScalar` against it. The C does both in the pass `sym_group` already makes — the group of an
-element *is* its dictionary index, the groups being numbered in that same order. -/
-def internSyms (blob : @& ByteArray) (offs : @& Array Nat) :
-    ByteArray × Array Nat × ByteArray :=
-  let (db, dof) := distinctSyms blob offs
-  (db, dof, Column.packIds (Column.idWidth dof) (offs.size - 1) fun i =>
-    (findSymScalar db dof (Column.symKey blob offs i)).toNat)
 
 end Rel.Kernel.Order
 
@@ -136,57 +102,3 @@ def orderKind : QAtomicType → Option Kind
 
 end Rel.Kernel
 
-namespace Rel.Column
-
-
-/-- The same column interned, and unchanged where it is not a symbol payload. `Column.blobOf` is the
-other direction and the two are inverse on the symbols, which is the whole obligation: interning is a
-choice of representation and owes nothing else, exactly as `Column.encode` owes only its round trip.
-
-Here and not beside `Column.symsOf` for the reason `Column.encode` is here and not beside
-`Column.ofAtoms`: the kernel that does the work is downstream of `QLean/Value.lean`, and the place a
-column is *materialised* is `Eval.vectorOf`, which reaches both of these together.
-
-**The order the arms land in decides whether this pays, and it nearly did not.** With only `distinct`,
-`group`, `in` and `?` migrated, calling this from `Eval.vectorOf` lost 16M `1000#xs` 7µs→1035ms,
-`xs=xs` 24ms→3.1s and `asc` 109ms→2.5s, because every verb still reaching `Column.blobOf` expands the
-dictionary back to a blob. With `#`, `reverse`, `=`, `~`, the gather and the two symbol maps given
-arms it wins every line: `reverse` 817ms→3.0, `hsym` 50→3.6, `lower` 35→3.7, `=` 24→6.2, `like`
-21→5.9, `asc` 100→43. The maps are where the win is — they run on the *dictionary*, three entries
-against sixteen million. -/
-def intern (e : Ext.Enc X) : Ext.Enc X :=
-  match e with
-  | .syms blob offs =>
-    let (db, dof, ids) := Rel.Kernel.Order.internSyms blob offs
-    .enum db dof ids
-  | e => e
-
-end Rel.Column
-
-namespace Rel.Kernel
-
-end Rel.Kernel
-
-
-namespace Rel.Kernel.Order
-
-open Rel.Kernel.Scan (Kind)
-
-end Rel.Kernel.Order
-
-namespace Rel.Kernel
-
-open Rel.Kernel.Scan (Kind)
-open Rel.Kernel.Order
-
-
-
-end Rel.Kernel
-
-namespace Rel.Column
-
-end Rel.Column
-
-namespace Rel.Kernel
-
-end Rel.Kernel

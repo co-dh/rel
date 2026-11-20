@@ -52,7 +52,7 @@ end Rel.Verify
 namespace Rel.Verify
 open Rel Rel.Kernel
 
-/-- `whereBits`' list: below `n`, ascending, and exactly the indices whose bit is set. -/
+/-- The indices below `n` whose bit is set: ascending, and exactly those. -/
 theorem whereBits_indices (n : Nat) (bits : ByteArray) :
     ((List.range n).filter (Column.bitAt bits)).Pairwise (· < ·) ∧
     ∀ i, i ∈ (List.range n).filter (Column.bitAt bits) ↔ i < n ∧ Column.bitAt bits i = true :=

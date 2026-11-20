@@ -45,10 +45,6 @@ def normalise (w : Nat) (float : Bool) (v : UInt64) : UInt64 :=
 
 
 
-/-- The least index whose symbol bytes are `ndl`, and the symbol count when there is none. -/
-def findSymScalar (blob : @& ByteArray) (offs : @& Array Nat) (ndl : @& ByteArray) : USize :=
-  let n := offs.size - 1
-  (((List.range n).find? fun i => (Column.symKey blob offs i).data == ndl.data).getD n).toUSize
 
 /-- A **monotone unsigned key**: `x < y` in q's order exactly when this is smaller. Ordering is what
 `bin` needs and `normalise` above gives equality, so the two are separate maps over the same bits.
@@ -108,12 +104,6 @@ def binBytes (w : USize) (float signed right : Bool) (hay : @& ByteArray) (keys 
 
 
 
-
-
-end Rel.Kernel
-
-
-namespace Rel.Kernel
 
 
 end Rel.Kernel

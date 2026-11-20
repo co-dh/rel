@@ -50,7 +50,7 @@ theorem foldl_lastWrite {σ β : Type} (size : σ → Nat) (N : Nat → Nat) (re
     · rw [if_neg hk, if_neg (fun h => hk (beq_iff_eq.1 h))]
 
 
-/-- The nested fold `expandBytes` runs, each `i` writing its value `c i` times, is one fold over the
+/-- A nested fold, each `i` writing its value `c i` times, is one fold over the
 values each repeated. -/
 theorem foldl_replicate (w : Nat) (c : Nat → Nat) (v : Nat → UInt64) (L : List Nat) (acc : ByteArray) :
     L.foldl (fun acc i => (Array.range (c i)).foldl (init := acc) fun acc _ => Column.pushBits acc (v i) w) acc =

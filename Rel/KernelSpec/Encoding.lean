@@ -1379,8 +1379,7 @@ theorem idAt_packIds_sub {w n i : Nat} {f : Nat → Nat} (hw : w = 1 ∨ w = 2 �
     if_pos hi, Nat.mod_eq_of_lt hf]
 
 /-- **`idAt` inverts `packIds`** at every lane width `Column.laneWidth` answers: `0`, the sub-byte
-lanes and every whole-byte lane, which is what `groupIds_spec`'s ids are read at by `overGroups_spec`
-and `groupSizes`. -/
+lanes and every whole-byte lane. -/
 theorem idAt_packIds {w n i : Nat} {f : Nat → Nat}
     (hw : w = 0 ∨ w = 1 ∨ w = 2 ∨ w = 4 ∨ w = 8 ∨ w = 16 ∨ w = 32 ∨ w = 64)
     (hi : i < n) (hf : f i < 2 ^ w) : Column.idAt (Column.packIds w n f) w i = f i := by

@@ -36,7 +36,7 @@ theorem resAt_field (P : ByteArray) (w per i : Nat) (hw : w = 1 ∧ per = 8 ∨ 
     Nat.lt_of_lt_of_le (Nat.mod_lt _ (Nat.two_pow_pos _)) (Nat.pow_le_pow_right (by decide) (by omega))
   simp only [UInt64.zero_or, Nat.toUInt64_eq, UInt64.toNat_ofNat', Nat.mod_eq_of_lt hlt]
 
-/-- `scatterPacked`'s write of field `r` of a byte: field `r` becomes `v`, every other field keeps its bits.
+/-- The write of field `r` of a packed byte: field `r` becomes `v`, every other field keeps its bits.
 By `decide` over every byte, field and value. -/
 theorem set_field (w per : Nat) (hw : w = 1 ∧ per = 8 ∨ w = 2 ∧ per = 4 ∨ w = 4 ∧ per = 2) :
     ∀ b < 256, ∀ r < per, ∀ v < 2 ^ w, ∀ r' < per,
