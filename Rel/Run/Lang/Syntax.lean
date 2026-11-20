@@ -144,7 +144,8 @@ def Expr.pos : Expr → Pos
     (`ℕ` too: a declared number object is stored as `.long`, F6) instantiated by the elaborator; `conv` the row of
     its converse; `aop` its AOP reading (`Calc.builtins`) or why it has none; `mono`: it reads its parameters
     monotonically (§e's fixed points); `prelude` and `aop` named unchecked (`Test` and `Calc` check them); `dfn`
-    the term the row is the fused form of (§4), which it runs as where its target has a universe (`build`). -/
+    the term the row is the fused form of (§4), which runs as written where its target has a universe unless
+    `Tm.dfnCut?` reads its built term back to a form `Tm.dfnCut_den` proves equal (`build`). -/
 structure Prim where
   sym : String
   sig : List ((OExp × OExp) × Option Bool) × OExp × OExp
@@ -185,6 +186,15 @@ def inrConvRow : Prim :=
 def mapRow : Prim :=
   { sym := "F", sig := ([((.var {} "A", .var {} "B"), some false)], .list (.var {} "A"), .list (.var {} "B")),
     written := false }
+-- `length = ⦇[0, π₁ succ]⦈`, `sum = ⦇[0, plus]⦈ʳ` (§4): each step kept in the object, as `succ`, `plus` keep theirs
+def lengthRow : Prim :=
+  { sym := "length", sig := ([], .list (.var {} "E"), .var {} "ℕ"),
+    aop := .ok `Freyd.Alg.RelSet.ListRel.length,
+    dfn := Expr.fold {} false (.junc {} zeroE (.comp (.op {} .outl [] []) (.op {} .succ [] []))) }
+def sumRow : Prim :=
+  { sym := "sum", sig := ([], .list (.var {} "ℕ"), .var {} "ℕ"),
+    aop := .ok `Freyd.Alg.RelSet.ListRel.sum,
+    dfn := Expr.fold {} true (.junc {} zeroE (.op {} (.arith Rel.Kernel.Ew.add) [] [])) }
 
 /-- Every builtin run on the keys in demand: adding one is adding its row. -/
 def prims : List Prim :=
@@ -209,13 +219,7 @@ def prims : List Prim :=
      aop := .error "AOP declares no iteration to a fixed point from the left" },
    { sym := "uncons", sig := ([], .list (.var {} "B"), .prod (.var {} "B") (.list (.var {} "B"))),
      conv := "cons", written := false },
-   -- `length = ⦇[0, π₁ succ]⦈`, `sum = ⦇[0, plus]⦈ʳ` (§4): each step kept in the object, as `succ`, `plus` keep theirs
-   { sym := "length", sig := ([], .list (.var {} "E"), .var {} "ℕ"),
-     aop := .ok `Freyd.Alg.RelSet.ListRel.length,
-     dfn := Expr.fold {} false (.junc {} zeroE (.comp (.op {} .outl [] []) (.op {} .succ [] []))) },
-   { sym := "sum", sig := ([], .list (.var {} "ℕ"), .var {} "ℕ"),
-     aop := .ok `Freyd.Alg.RelSet.ListRel.sum,
-     dfn := Expr.fold {} true (.junc {} zeroE (.op {} (.arith Rel.Kernel.Ew.add) [] [])) },
+   lengthRow, sumRow,
    { sym := "inits", sig := ([], .list (.var {} "B"), .list (.list (.var {} "B"))),
      aop := .ok `Freyd.Alg.RelSet.ListRel.initsR },
    -- the prelude's folds run as their slice forms (`rep_tailsC`, `rep_prefixC`, `rep_suffixC`, `rep_concatC`)

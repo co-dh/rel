@@ -22,9 +22,9 @@ def OTy.poly : OTy → Bool
   | .base _ => false
 
 def objInfo (env : Env) (n : String) : ObjDef → EM ObjInfo
-  | .elems ws => pure { ty := .base n, elems := ws, uni := some ⟨_, col ((List.range ws.length).map Int64.ofNat)⟩ }
+  | .elems ws => pure { ty := .base n, elems := ws, uni := some ⟨_, col ((List.range ws.length).map Int64.ofNat)⟩, seg := true }
   | .range lo hi =>
-    pure { ty := .base n, range := some (lo, hi), uni := some ⟨_, col ((List.range (hi + 1 - lo).toNat).map fun k : Nat => Int64.ofInt (lo + k))⟩ }
+    pure { ty := .base n, range := some (lo, hi), uni := some ⟨_, col ((List.range (hi + 1 - lo).toNat).map fun k : Nat => Int64.ofInt (lo + k))⟩, seg := lo == 0 }
   | .alias o => do let (t, _) ← (oty env [] o).run {}; pure { ty := t }
   | .num => pure { ty := .base n, num := true }
   -- the object `Schema.obj` lays out, at the program's objects; `col` reads the columns back (`elabE`)
@@ -138,12 +138,13 @@ abbrev Chk := Pos × String × String × Bool × OTy × OTy × ((A : Obj) × (B 
 def idxVar (i : Nat) : String := s!"ι#{i}"
 
 /-- The registry key of the constant of `c` at the argument forms `fs` and, per object variable, whether the call
-    puts an unbounded number object there (`nb`): `c` itself when every argument is closed and no variable is. -/
-def formKey (c : Lean.Name) (fs : List Form) (nb : List Bool := []) : Lean.Name :=
+    puts an unbounded number object there and whether one whose universe is an initial segment of ℕ (`nb`, `num` and
+    `seg`): `c` itself when every argument is closed and no variable is either. -/
+def formKey (c : Lean.Name) (fs : List Form) (nb : List (Bool × Bool) := []) : Lean.Name :=
   let k := if fs.all (· == (none, none)) then c
     else fs.foldl (fun k (t, i) => .num k ((match t with | none => 0 | some false => 1 | some true => 2) +
       3 * (match i with | some i => i + 1 | none => 0))) (c ++ `form)
-  if nb.any id then nb.foldl (fun k b => .num k b.toNat) (k ++ `num) else k
+  if nb.any (fun (u, s) => u || s) then nb.foldl (fun k (u, s) => .num k (u.toNat + 2 * s.toNat)) (k ++ `num) else k
 
 /-- What a call reads of the constant `o` (`Sig`): the universes its body reads. -/
 def sigOf (o : Once) : Sig :=
@@ -281,14 +282,16 @@ partial def primsFit {A B : Obj} (t : Tm A B) : MetaM Bool := do
     an error. `k` its registry key, `c` its constant, `fs` its parameters' forms; with the constants built so far
     and on the way (`specs`). -/
 def once (env : Env) (p : Pos) (n : String) (qs : List Param) (e : Expr) (ty : OExp × OExp) (vs : List String)
-    (k c : Lean.Name) (fs : List Form) (nb : List Bool) (specs : List Once) : EM (Once × List Once) := do
+    (k c : Lean.Name) (fs : List Form) (nb : List (Bool × Bool)) (specs : List Once) : EM (Once × List Once) := do
   -- per variable: generic over its object, and given its universe; one the call puts an unbounded number object at
-  -- (`nb`) is `num`, so a row with a `dfn` there runs fused (`build`), as it does outside a body
+  -- is `num`, one it puts an initial segment of ℕ at is `seg` (`nb`), so a row with a `dfn` there runs fused
+  -- (`build`), as it does outside a body
   let run (fl : List (Bool × Bool)) : EM (Once × List Once) := do
     let objs := vs.zipIdx.map (fun (v, k) =>
       let (gen, uni) := fl.getD k (false, true)
       let obj := if gen then (varObj k).getD .long else .long
-      (v, ({ ty := .base v, uniVar := if uni then some k else none, obj, num := nb.getD k false, ovar := true } : ObjInfo))) ++ env.objs
+      let (num, seg) := nb.getD k (false, false)
+      (v, ({ ty := .base v, uniVar := if uni then some k else none, obj, num, seg, ovar := true } : ObjInfo))) ++ env.objs
     let (os, r, st) ← elabOnce env p n qs e ty vs fs objs specs
     let (q, _, _) := r.plain
     let gen := fl.map (·.1)
@@ -371,7 +374,7 @@ def callDef (env : Env) (dp : Pos) (n : String) (qs : List Param) (e : Expr) (ty
       -- object still open here stays open in the call, so `build` knows the constant did not see it (`.call`)
       let mc ← Lean.getMCtx; let objs := (← get).objs
       let us := us.map (zonk mc)
-      let nb := us.map (unbounded objs)
+      let nb := us.map fun u => (unbounded objs u, initSeg objs u)
       let get? (fs : List Form) : M (Option Once) := do
         let key := formKey c fs nb
         match calls key, (← get).specs.find? (·.key == key) with

@@ -67,6 +67,9 @@ structure ObjInfo where
   uni : Option ((m : USize) × Arr .i64 m) := none
   /-- An unbounded number object (`ObjDef.num`): every `Int64` an element, `𝟙` its universe. -/
   num : Bool := false
+  /-- Its universe is an initial segment `0…k` of ℕ (a range from `0`, or named elements, coded `0…n−1`; or an
+      object variable a call puts one at): there a row's `dfn` is its fused row cut to the universe (`build`). -/
+  seg : Bool := false
   /-- An object variable of a definition elaborated once: its universe is the variable `k`, an argument of the
       definition's constant. -/
   uniVar : Option Nat := none
@@ -1556,6 +1559,48 @@ def divTest {A B C : Obj} (c : Tm (.prod A C) (.prod A C)) (s : Tm B C) :
     Tm (.prod A B) (.prod A B) :=
   .diff .id (.dom (.comp (.pair .outl (.comp .outr s)) (.diff .id c)))
 
+/-- The fold base `0` as `zeroE` builds it on the universe `u`: `⟨𝟙,𝟙⟩ minus ∩ 𝟙`. -/
+def zeroTm (u : Tm .long .long) : Tm .long .long := .meet (.comp (.pair .id .id) (.arith Rel.Kernel.Ew.sub u)) .id
+
+/-- `e` read back as `zeroTm u`, with the equation (the law cites it, not a match on `e`). -/
+def zeroU? : (e : Tm .long .long) → Option {u // e = zeroTm u}
+  | .meet (.comp (.pair .id .id) (.arith k u)) .id =>
+    if h : k = Rel.Kernel.Ew.sub then some ⟨u, by subst h; rfl⟩ else none
+  | _ => none
+
+/-- A row's definition as `build` makes it: `⦇[0, π₁ succ]⦈` (`lengthRow`'s) and `⦇[0, plus]⦈ʳ` (`sumRow`'s), the
+    base `0` on the universe `u₀`, the step on `u`. Indexed by the term, so the law takes it apart by `cases`. -/
+inductive DfnCut : {A B : Obj} → Tm A B → Type
+  | length {E : Obj} (u₀ u : Tm .long .long) :
+    DfnCut (A := .arr E) (B := .long) (.fold (zeroTm u₀) (.comp .outl (.succ u)))
+  | sum (u₀ u : Tm .long .long) :
+    DfnCut (A := .arr .long) (B := .long) (.foldr (zeroTm u₀) (.arith Rel.Kernel.Ew.add u))
+
+/-- The universes of the base and of the step. -/
+def DfnCut.u₀ {A B : Obj} {d : Tm A B} : DfnCut d → Tm .long .long
+  | .length u₀ _ | .sum u₀ _ => u₀
+def DfnCut.u {A B : Obj} {d : Tm A B} : DfnCut d → Tm .long .long
+  | .length _ u | .sum _ u => u
+
+/-- The row the definition is the fused form of. -/
+def DfnCut.fused {A B : Obj} {d : Tm A B} : DfnCut d → Tm A B
+  | .length _ _ => .prim lengthRow
+  | .sum _ _ => .prim sumRow
+
+/-- The row cut to its universe: `sum`'s tests its elements in it first (`F(u)`), as `plus` does. -/
+def DfnCut.cut {A B : Obj} {d : Tm A B} : DfnCut d → Tm A B
+  | .length _ u => .comp (.prim lengthRow) u
+  | .sum _ u => .comp (.comp (.arg (.prim mapRow : Tm (.arr .long) (.arr .long)) u) (.prim sumRow : Tm (.arr .long) .long)) u
+
+/-- `d` read back as a `DfnCut`; any other term, none: `build` then runs it as written. `Tm.dfnCut_den` proves the
+    definition equal to its cut at `𝟙` and at `0…k`. -/
+def Tm.dfnCut? : {A B : Obj} → (d : Tm A B) → Option (DfnCut d)
+  | .arr _, .long, .fold e (.comp .outl (.succ u)) =>
+    (zeroU? e).map fun ⟨u₀, h⟩ => by subst h; exact .length u₀ u
+  | .arr .long, .long, .foldr e (.arith k u) =>
+    if hk : k = Rel.Kernel.Ew.add then (zeroU? e).map fun ⟨u₀, h⟩ => by subst h hk; exact .sum u₀ u else none
+  | _, _, _ => none
+
 section Build
 
 variable (objs : Objs) (mc : Lean.MetavarContext) (dp : Pos)
@@ -1602,6 +1647,11 @@ def uniPart (o : OTy) (A : Obj) : Except Err (Option (Tm A A)) := do
 /-- `o` is an unbounded number object (`ObjInfo.num`): a declared one, or an object variable a call puts one at. -/
 def unbounded (objs : Objs) : OTy → Bool
   | .base n => (objs.lookup n).any (·.num)
+  | _ => false
+
+/-- `o`'s universe is an initial segment `0…k` of ℕ (`ObjInfo.seg`). -/
+def initSeg (objs : Objs) : OTy → Bool
+  | .base n => (objs.lookup n).any (·.seg)
   | _ => false
 
 /-- `uniPart`, or the error naming the whole object `o` that has no universe. -/
@@ -1793,15 +1843,24 @@ def build : Pre → Except Err Res
   | .est p => do let ⟨_, c⟩ ← param p; pure ⟨_, _, .est c⟩
   | .thin p => do let ⟨_, c⟩ ← param p; pure ⟨_, _, .thin c⟩
   | .nil a b => return ⟨_, _, .nil (A := ← toObj objs mc dp a) (B := ← toObj objs mc dp b)⟩
-  -- a row is the fused form of its definition (§4): where its target has a universe, the definition runs, each
-  -- step kept in the object as `succ`, `plus` keep theirs; the fused row only where no step can leave it
+  -- a row is the fused form of its definition (§4): the definition built, then replaced by the form `Tm.dfnCut?`
+  -- reads it back to where `Tm.dfnCut_den` proves them equal: the fused row at an unbounded object (universe `𝟙`),
+  -- the row cut to the universe at an initial segment `0…k` (one pass, where the fold reads the universe in every
+  -- round); elsewhere, or read back to nothing, the definition runs. A target with no universe, or an unbounded
+  -- one (its base `0` needs keys none supply), has no definition to run: the row runs.
   | .prim r xs s t (some q) => do
     have : 0 < sizeOf q := by cases q <;> simp <;> omega
-    -- an unbounded object's universe `𝟙` drops no step, so there the fused row is the definition, and it needs no keys
-    if unbounded objs (zonk mc t) then build (.prim r xs s t none) else
-    match ← uniPart objs dp (zonk mc t) (← toObj objs mc dp t) with
-    | some .id | none => build (.prim r xs s t none)
-    | some _ => build q
+    let one ← if unbounded objs (zonk mc t) then pure none else
+      match ← uniPart objs dp (zonk mc t) (← toObj objs mc dp t) with
+      | some .id => pure (some true)
+      | some _ => pure (some false)
+      | none => pure none
+    match one with
+    | none => build (.prim r xs s t none)
+    | some one => do
+      let ⟨A, B, d⟩ ← build q
+      let c := d.dfnCut?
+      pure ⟨A, B, (if one then c.map (·.fused) else if initSeg objs (zonk mc t) then c.map (·.cut) else none).getD d⟩
   -- the row's objects are checked where `Expand.primE` fits its constant at them (`primsFit`, `node`)
   | .prim r xs s t none => do
     let A ← toObj objs mc dp s; let B ← toObj objs mc dp t
