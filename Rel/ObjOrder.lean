@@ -4,29 +4,36 @@
 -/
 import Rel.Run.Core
 import Rel.Kernel.Asc
+import Rel.KernelSpec.Search
 
 namespace Rel
 
 open Tab Rel.Dep Rel.Kernel
 
-/-- The key of an element, a list of naturals compared lexicographically (`Obj.lt`). At an atom it is
-    the key qlean's grade sorts by (`Order.rank` of the raw bits, `QLean/Kernel/Sort.lean`): a number by
-    its value with every null and NaN lowest and equal, `±0.0` equal; `byte`/`char` unsigned; a symbol by
-    its unsigned bytes, a prefix before what extends it. Each key is
+/-- A fixed-width atom's key: the order code `kasc` sorts by (`ascOrd`) of its stored bits (`Column.bitsOf`), one to
+    one on those bits (`ordCode_inj`), so a float's NaNs and zeros are as many keys as bit patterns (PLAN decision G). -/
+def atomKey (a : QAtom) : List Nat := match ascOrd a.type with
+  | some f => [(f (Column.bitsOf a)).toNat]
+  | none => []
+
+/-- The key of an element, a list of naturals compared lexicographically (`Obj.lt`). At a fixed-width atom it is
+    `atomKey`; a symbol keys by its unsigned bytes, a prefix before what extends it. Each key is
     self-delimiting (`Obj.key_prefix`), so a pair's key is its components' keys side by side and orders
     them lexicographically; an array's elements each follow a `1` and the array ends in `0`, so a proper
     prefix sorts first; a sum's tag leads, `inl` before `inr`. A general atom has no kernel order
     (`orderKind .general = none`) and keys as `[]`: all general atoms tie. -/
 def Obj.key : (A : Obj) → A.El → List Nat
-  | .atom .u1, x => [if (x : Bool) then 1 else 0]
-  | .atom .u8, x | .atom .char, x => [(x : UInt8).toNat]
-  | .atom .i16, x => [(Order.rank .i16 (x : Int16).toUInt16.toUInt64).toNat]
-  | .atom .i8, x => [((x : Int8).toUInt8 ^^^ 0x80).toNat]
-  | .atom .i32, x | .atom .date, x => [(Order.rank .i32 (x : Int32).toUInt32.toUInt64).toNat]
-  | .atom .i64, x | .atom .datetime, x =>
-    [(Order.rank .i64 (x : Int64).toUInt64).toNat]
-  | .atom .f32, x => [(Order.rank .f32 (x : UInt32).toUInt64).toNat]
-  | .atom .f64, x => [(Order.rank .f64 (x : UInt64)).toNat]
+  | .atom .u1, x => atomKey (.u1 (x : Bool))
+  | .atom .u8, x => atomKey (.u8 (x : UInt8))
+  | .atom .char, x => atomKey (.char (x : UInt8))
+  | .atom .i8, x => atomKey (.i8 (x : Int8))
+  | .atom .i16, x => atomKey (.i16 (x : Int16))
+  | .atom .i32, x => atomKey (.i32 (x : Int32))
+  | .atom .date, x => atomKey (.date (x : Int32))
+  | .atom .i64, x => atomKey (.i64 (x : Int64))
+  | .atom .datetime, x => atomKey (.datetime (x : Int64))
+  | .atom .f32, x => atomKey (.f32 (x : UInt32))
+  | .atom .f64, x => atomKey (.f64 (x : UInt64))
   | .atom .sym, x => (x : String).toUTF8.data.toList.map (·.toNat + 1) ++ [0]
   | .atom .general, _ => []
   | .prod a b, (x, y) => a.key x ++ b.key y
@@ -45,8 +52,7 @@ theorem Obj.lt_trans (A : Obj) {x y z : A.El} : A.lt x y → A.lt y z → A.lt x
 
 theorem Obj.lt_asymm (A : Obj) {x y : A.El} : A.lt x y → ¬ A.lt y x := List.lt_asymm
 
-/-- **Trichotomy**: two elements are ordered one way, the other, or have one key — q's `~`, which merges
-    every NaN and both zeros of a float. -/
+/-- **Trichotomy**: two elements are ordered one way, the other, or have one key. -/
 theorem Obj.lt_trichotomy (A : Obj) (x y : A.El) : A.lt x y ∨ A.key x = A.key y ∨ A.lt y x := by
   unfold Obj.lt
   generalize A.key x = a; generalize A.key y = b
@@ -90,7 +96,7 @@ theorem Obj.key_prefix : (A : Obj) → (x y : A.El) → (r s : List Nat) →
         (m := (y : String).toUTF8.data.toList.map (·.toNat + 1)) (by simp) (by simp)
         (by simpa only [List.append_assoc] using h)
       rw [this]
-    all_goals exact (List.append_inj h (by simp [Obj.key])).1
+    all_goals exact (List.append_inj h (by simp [Obj.key, atomKey, QAtom.type, ascOrd, ascLayout, orderKind])).1
   | .prod a b, (x, y), (x', y'), r, s, h => by
     simp only [Obj.key, List.append_assoc] at h ⊢
     have e := Obj.key_prefix a x x' _ _ h
@@ -181,48 +187,39 @@ theorem Obj.lt_cons (b : Obj) (x y : b.El) (xs ys : List b.El) :
     exact ⟨fun h => .inr ⟨rfl, h⟩, fun h => h.elim (fun h => by rw [Obj.lt, e] at h; exact absurd h (List.lt_irrefl _)) (·.2)⟩
   · rw [b.lt_append_iff e]; exact ⟨.inl, fun h => h.elim id fun h => absurd h.1 e⟩
 
-/-- **An integral atom's key is its order code**: at a type `ascLayout` orders as no float, `Obj.key` of the atom a
+/-- **An atom's key is its order code**: at every type `ascLayout` orders, a float included, `Obj.key` of the atom a
 raw word `a` reads as (`atomOfBits`, at `u1` a word below `2`) is `[ordCode a]`, so `kasc`'s code order on such a
-column is the value order `Obj.lt`. A float's code is IEEE totalOrder while its key merges NaNs and zeros: excluded. -/
-theorem Obj.key_ordCode {t : QAtomicType} {w : Nat} {s : Bool} (ht : ascLayout t = some (w, false, s))
+column is the value order `Obj.lt`. -/
+theorem Obj.key_ordCode {t : QAtomicType} {w : Nat} {f s : Bool} (ht : ascLayout t = some (w, f, s))
     (hg : t ≠ .general) (a : UInt64) (hu : t = .u1 → a < 2) :
     Obj.key (.atom t) ((Carrier.of? t (.atom (Column.atomOfBits t a hg))).getD default) =
-      [(ordCode w false s a).toNat] := by
-  have e7 : (128 : UInt8).toNat = 2 ^ 7 := rfl
-  have e15 : (32768 : UInt64).toNat = 2 ^ 15 := rfl
-  have e31 : (2147483648 : UInt64).toNat = 2 ^ 31 := rfl
-  have e63 : (9223372036854775808 : UInt64).toNat = 2 ^ 63 := rfl
-  have m64 : (18446744073709551615 : UInt64).toNat = 2 ^ 64 - 1 := rfl
+      [(ordCode w f s a).toNat] := by
+  -- `ordCode` reads only the low `8 * w` bits (`toNat_and_mask`), which `bitsOf ∘ atomOfBits` keeps
+  have low : ∀ {w : Nat} (x : UInt64), 1 ≤ w → w ≤ 8 → x.toNat % 2 ^ (8 * w) = a.toNat % 2 ^ (8 * w) →
+      [(ordCode w f s x).toNat] = [(ordCode w f s a).toNat] := fun x h1 h8 h => by
+    have hm := UInt64.toNat_inj.1 ((Verify.toNat_and_mask h1 h8 x).trans (h.trans (Verify.toNat_and_mask h1 h8 a).symm))
+    simp only [ordCode, hm]
   cases t <;> simp only [ascLayout, orderKind, Option.map_some, Option.map_none, reduceCtorEq, Option.some.injEq,
-    Prod.mk.injEq, and_false, false_and] at ht <;> obtain ⟨rfl, -, rfl⟩ := ht <;>
-    simp only [Obj.key, Column.atomOfBits, Carrier.of?, Option.getD_some, ordCode, Order.rank, Scan.Kind.width,
-      List.cons.injEq, and_true, Bool.false_eq_true, if_false, if_true, beq_iff_eq]
+    Prod.mk.injEq] at ht <;> obtain ⟨rfl, rfl, rfl⟩ := ht <;>
+    simp only [Obj.key, atomKey, Column.atomOfBits, Carrier.of?, Option.getD_some, QAtom.type, ascOrd, ascLayout,
+      orderKind, Option.map_some, Column.bitsOf, Scan.Kind.width]
   case u1 =>
     have ha : a.toNat < 2 := hu rfl
     rcases (by omega : a.toNat = 0 ∨ a.toNat = 1) with h | h
     · obtain rfl : a = 0 := UInt64.toNat_inj.1 h; rfl
     · obtain rfl : a = 1 := UInt64.toNat_inj.1 h; rfl
-  -- bit by bit: the stored word's low `8 * w` bits, the sign bit flipped where signed
-  all_goals
-    apply Nat.eq_of_testBit_eq; intro i
-    simp only [Nat.reduceMul, Nat.reduceSub, Nat.reduceEqDiff, if_false, UInt8.toNat_xor, UInt64.toNat_xor,
-      UInt64.toNat_and, Nat.testBit_xor, Nat.testBit_and, UInt8.toUInt8_toInt8, UInt64.toNat_toUInt8, Nat.toUInt64_eq,
-      UInt64.toNat_ofNat', Nat.testBit_mod_two_pow, Nat.testBit_two_pow, Nat.testBit_two_pow_sub_one, e7, e15, e31,
-      e63, m64, UInt16.toUInt16_toInt16, UInt32.toUInt32_toInt32, UInt64.toUInt64_toInt64, UInt64.toNat_toUInt16,
-      UInt64.toNat_toUInt32, UInt16.toNat_toUInt64, UInt32.toNat_toUInt64]
-    have hb : a.toNat.testBit i = true → i < 64 := fun h => by
-      refine Classical.byContradiction fun hc => ?_
-      rw [Nat.testBit_lt_two_pow (Nat.lt_of_lt_of_le (UInt64.toNat_lt a) (Nat.pow_le_pow_right (by omega)
-        (by omega)))] at h
-      cases h
-    generalize a.toNat.testBit i = b at hb
-    cases b <;> by_cases h64 : i < 64 <;> simp [h64] at hb ⊢ <;> (try intros) <;> omega
+  all_goals exact low _ (by decide) (by decide) (by simp)
 
 #guard (Obj.arr .long).key ([] : List Int64) < (Obj.arr .long).key ([1] : List Int64)
 #guard (Obj.arr .long).key ([1] : List Int64) < (Obj.arr .long).key ([1, 0] : List Int64)
 #guard (Obj.atom .i64).key (-1 : Int64) < (Obj.atom .i64).key (0 : Int64)
 #guard (Obj.atom .sym).key "a" < (Obj.atom .sym).key "aa"
 #guard (Obj.atom .sym).key "aa" < (Obj.atom .sym).key "ab"
+-- a float by its bits: `-1.0 < -0.0 < 0.0 < 1.0`, the two zeros two keys
+#guard (Obj.atom .f64).key (0xbff0000000000000 : UInt64) < (Obj.atom .f64).key (0x8000000000000000 : UInt64)
+#guard (Obj.atom .f64).key (0x8000000000000000 : UInt64) < (Obj.atom .f64).key (0 : UInt64)
+#guard (Obj.atom .f64).key (0 : UInt64) < (Obj.atom .f64).key (0x3ff0000000000000 : UInt64)
+#guard (Obj.atom .f32).key (0x80000000 : UInt32) < (Obj.atom .f32).key (0 : UInt32)
 
 #print axioms Obj.lt_trichotomy
 #print axioms Obj.lt_prod
