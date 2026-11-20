@@ -66,14 +66,14 @@ rel_program hugeT where
     obj F : f64
     x : F ⟶ F ≜ {(1e400,1)}
 
-/-- error: line 74, col 24: plus on F: F is an object of f64, and plus runs on objects of i64 only -/
+-- S3: `plus` runs at f64 (`Rel/Lang/TestFloatArith.lean`); no message
 #guard_msgs in
 rel_program plusT where
     obj F : f64
     x : F ⟶ F ≜ {(2.5,1)}
     d : F ⟶ F ≜ x ⟨𝟙,𝟙⟩plus
 
-/-- error: line 81, col 24: < on F: F is an object of f64, and < runs on objects of i64 only -/
+-- S3: `<` runs at f64; no message
 #guard_msgs in
 rel_program ltT where
     obj F : f64

@@ -74,18 +74,18 @@ abbrev succDen (TU : Den .long .long) : Den .long .long :=
 
 /-- The float order `o` (`Op.flt`, `Op.fle`) on two values of `t`: IEEE's on their `f64` words (`fval`); no pair at an
     atom holding no float. -/
-abbrev fordAt (o : Op) (t : QAtomicType) (a b : (Obj.atom t).El) : Prop :=
+abbrev fordAt (o : Rel.Kernel.Op) (t : QAtomicType) (a b : (Obj.atom t).El) : Prop :=
   ∃ x y, fval t a = some x ∧ fval t b = some y ∧ o.eval x y = .ok 1
 
 /-- `<` on the values of the atom `t`: `Int64`'s at `i64`, IEEE's at a float atom (`fordAt .flt`), none elsewhere. -/
 def ltAt : (t : QAtomicType) → (Obj.atom t).El → (Obj.atom t).El → Prop
   | .i64, a, b => a < b
-  | t, a, b => fordAt .flt t a b
+  | t, a, b => fordAt Rel.Kernel.Op.flt t a b
 
 /-- `≤` on the values of the atom `t`, as `ltAt`. -/
 def leAt : (t : QAtomicType) → (Obj.atom t).El → (Obj.atom t).El → Prop
   | .i64, a, b => a ≤ b
-  | t, a, b => fordAt .fle t a b
+  | t, a, b => fordAt Rel.Kernel.Op.fle t a b
 
 /-- `≤` on the universe `TU` of the atom `t`. -/
 abbrev leqDen (t : QAtomicType) (TU : Den (.atom t) (.atom t)) : Den (.atom t) (.atom t) :=
