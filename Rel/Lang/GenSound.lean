@@ -313,7 +313,9 @@ theorem Tm.gap_eq_spine {A B : Obj} (t : Tm A B) :
     · simp only [Tm.argGap, Tm.argGapKinds]; split <;> simp_all
   case arg f x ihf ihx =>
     refine ⟨?_, fun os => ?_⟩ <;>
-      simp only [Tm.gap, Tm.gapKinds, Tm.argGap, Tm.argGapKinds, ihf.2, ihx.1, List.isEmpty_append, Bool.not_and]
+      simp only [Tm.gap, Tm.gapKinds, Tm.argGap, Tm.argGapKinds, ihf.2, ihx.1] <;>
+      exact (fun a b => by cases a <;> cases b <;> rfl :
+        ∀ a b : List String, (!a.isEmpty || !b.isEmpty) = !(a ++ b).isEmpty) _ _
   all_goals refine ⟨?_, fun os => by simp [Tm.argGap, Tm.argGapKinds]⟩
   all_goals simp only [Tm.gap, Tm.gapKinds, *]
   all_goals first | rfl | (rw [Bool.eq_iff_iff]; simp [Decidable.imp_iff_not_or, or_assoc])
@@ -483,12 +485,22 @@ theorem rowOK_loop : RowOK "loop" := rowOK_args (c := RowCode.loop) rfl rfl fun 
   have h1 : rowArity "loop" = 1 := by decide
   rcases xs with _ | ⟨⟨X, Y, x⟩, _ | ⟨_, _⟩⟩ <;> simp only [List.length_cons, List.length_nil, h1] at hn <;>
     try omega
-  rcases σ with _ | ⟨a, _ | ⟨b, σ⟩⟩ <;> simp only [Codes.at, List.getElem?_cons_zero] at hv <;> split at hv <;>
-    (try simp at hv) <;> rename_i he <;> obtain ⟨rfl, rfl⟩ := he <;> cases hv <;>
-    refine ⟨GenK.ofVals_wf, fun ss hss _ => ⟨⟨rfl, rfl⟩, ?_⟩⟩ <;>
-    rcases ss with _ | ⟨⟨X', Y', T⟩, _ | ⟨_, _⟩⟩ <;> simp only [CodesRep, and_true] at hss <;> split at hss <;>
-    (try exact hss.elim) <;> rename_i he <;> obtain ⟨rfl, rfl⟩ := he <;> simp only [Sem.one, dite_true, and_self] <;>
-    exact GenK.loop_sound hss (hw _ (List.mem_singleton_self _))
+  rcases σ with _ | ⟨a, _ | ⟨b, σ⟩⟩ <;>
+    simp only [Codes.at, List.getElem?_cons_zero, List.getD_cons_zero, List.getD_cons_succ, List.getD_nil] at hv
+  all_goals
+    split at hv
+    case isFalse => simp at hv
+    rename_i he; revert hv; obtain ⟨h1, h2⟩ := he; subst h1; subst h2; intro hv
+    cases hv
+    refine ⟨by unfold GenK.stepAfter GenK.after; exact GenK.ofVals_wf, fun ss hss _ => ⟨⟨rfl, rfl⟩, ?_⟩⟩
+    rcases ss with _ | ⟨⟨X', Y', T⟩, _ | ⟨_, _⟩⟩ <;> simp only [CodesRep, and_true, and_false] at hss
+    split at hss
+    case isFalse => exact hss.elim
+    rename_i he; revert hss; obtain ⟨h1, h2⟩ := he; subst h1; subst h2; intro hss
+    simp only [Sem.one]
+    split
+    · exact GenK.loop_sound hss (hw _ (List.mem_singleton_self _))
+    · rename_i h; exact absurd ⟨rfl, rfl⟩ h
 
 /-- Every row of `rowsProved` is `RowOK`: the obligations enumerated from the list `Tm.gap` reads. -/
 theorem rowsProved_ok (r : Prim) (h : (rowsProved.lookup r.sym).isSome) : RowOK r.sym := by
@@ -571,15 +583,21 @@ theorem Tm.gen_sound_spine {A B : Obj} (t : Tm A B) :
       simp only [Tm.gen, Tm.den, Tm.argGen, Tm.argDen] <;> obtain ⟨ok, hn⟩ := Prim.proved_ok hg
     · exact (ok r _ _ [] rfl hn (fun _ h => nomatch h)).2 [] trivial hl
     · exact (ok r _ _ xs rfl (by simpa using hn) hx).2 ss hr hl
-  case arg f x ihf ihx =>
+  case arg C D f x ihf ihx =>
+    have step (η ρ) (xs : Codes) (ss : List Sem)
+        (hg : f.argGap ((C, D) :: xs.map fun x => (x.1, x.2.1)) = false ∧ x.gap = false)
+        (hl : f.LamLaws ∧ x.LamLaws) (hs : Sound η ρ) (hx : ∀ y ∈ xs, y.2.2.Wf) (hr : CodesRep xs ss) :
+        ∀ K, (f.argGen η (⟨C, D, x.code η⟩ :: xs)).Reps K (f.argDen ρ (⟨C, D, x.den ρ⟩ :: ss)) :=
+      ihf.2 η ρ _ _ hg.1 hl.1 hs (fun y hy => by
+          rcases List.mem_cons.1 hy with rfl | hy
+          · exact code_wf (gen_wf x η hg.2 hs.2)
+          · exact hx y hy)
+        ⟨by rw [dif_pos ⟨rfl, rfl⟩]; exact code_of (ihx.1 η ρ hg.2 hl.2 hs), hr⟩
     refine ⟨fun η ρ hg hl hs => ?_, fun η ρ xs ss hg hl hs hx hr => ?_⟩ <;>
       simp only [Tm.gap, Tm.argGap, Bool.or_eq_false_iff] at hg <;> simp only [Tm.LamLaws] at hl <;>
-      simp only [Tm.gen, Tm.den, Tm.argGen, Tm.argDen] <;>
-      refine ihf.2 η ρ _ _ hg.1 hl.1 hs (fun y hy => ?_)
-        ⟨by rw [dif_pos ⟨rfl, rfl⟩]; exact code_of (ihx.1 η ρ hg.2 hl.2 hs), ?_⟩ <;>
-      first | rcases List.mem_cons.1 hy with rfl | hy | skip
-    any_goals exact code_wf (gen_wf x η hg.2 hs.2)
-    all_goals first | exact hx y hy | simp at hy | trivial | exact hr
+      simp only [Tm.gen, Tm.den, Tm.argGen, Tm.argDen]
+    · exact step η ρ [] [] hg hl hs (fun _ h => nomatch h) trivial
+    · exact step η ρ xs ss hg hl hs hx hr
   all_goals refine ⟨fun η ρ hg hl hs => ?_, fun η ρ xs ss hg => by simp [Tm.argGap] at hg⟩
   all_goals simp only [Tm.gap, Bool.or_eq_false_iff, Bool.true_eq_false] at hg <;>
     simp only [Tm.LamLaws] at hl <;> simp only [Tm.gen, Tm.den]
