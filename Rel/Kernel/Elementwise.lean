@@ -408,9 +408,6 @@ def foRShift (neg : Bool) (k : Int64) (metadata pack : @& ByteArray) (n : USize)
     some (Coc.encode 8 (if neg then val sub i64 av Int64.minValue atom dense n
                         else val add i64 va Int64.minValue dense atom n))
 
-/-- Whether an exact integer is still an `Int64`. The two value kernels below decline a block whose
-extremes leave it: q wraps there, and a wrapped `base` is no longer the block's own minimum. -/
-def inI64 (x : Int) : Bool := Int64.minValue.toInt ≤ x && x ≤ Int64.maxValue.toInt
 
 /-- `&`, `|` and `^` over two boolean bitmaps — the one value result that is not a dense payload,
 and the reason `x within (lo;hi)` no longer boxes: the two comparisons it is built from already

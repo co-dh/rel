@@ -43,14 +43,6 @@ time, over a payload that is a fraction of the dense one's size. `off < n` and `
 def cycleIds (n off m w : USize) (ids : @& ByteArray) : ByteArray :=
   Column.packIds w.toNat m.toNat fun j => Column.idAt ids w.toNat ((off.toNat + j) % n.toNat)
 
-/-- Where element `j` of a shift by `k` reads from, and `none` where that is off either end.
-
-The same shape as `gatherAt` because it is the same question asked of an index the caller did not
-have to build: a shift is a gather at `til n - k`, and the C runs the identical unsigned compare, so
-`j - k` wrapping below zero and running past `n` are one rejection and not two. -/
-def shiftAt (n : Nat) (k : Int) (j : Nat) : Option Nat :=
-  let i := (j : Int) - k
-  if 0 ≤ i && i < (n : Int) then some i.toNat else none
 
 /-- `,` and `raze` at a dense payload, which at one element type is concatenation.
 
@@ -181,26 +173,6 @@ def gatherFoR (w : USize) (fill : UInt64) (smeta : @& ByteArray) (spack : @& Byt
     (idx : @& ByteArray) : ByteArray :=
   gatherBytes w fill (Coc.decode w smeta spack n) idx
 
-/-- `dst` with the `wb`-bit field at each long of `idx` replaced, in order, by field `soff + k` of
-`src` — field `soff` for every `k` under `bcast`. Fields below a byte pack low field first, which is
-`Column.resAt`'s layout, so a bitmap is `wb = 1` and an interned column's ids are `Column.idWidth`.
-In order, so the last write to a repeated index stays: q's `:`. An index past `dst` writes nothing,
-`amendRounds` having raised it already. -/
-def scatterPacked (wb : USize) (dst : ByteArray) (idx : @& ByteArray) (src : @& ByteArray) (soff : USize)
-    (bcast : Bool) : ByteArray :=
-  let wb := wb.toNat
-  if wb == 0 then dst else
-  (List.range (idx.size / 8)).foldl (init := dst) fun acc k =>
-    let u := (Column.bitsAt idx (k * 8) 8).toNat
-    let e := soff.toNat + (if bcast then 0 else k)
-    if acc.size * 8 / wb ≤ u then acc
-    else if 8 ≤ wb then src.copySlice (e * (wb / 8)) acc (u * (wb / 8)) (wb / 8)
-    else
-      let per := 8 / wb
-      let sh := ((u % per) * wb).toUInt8
-      let mask : UInt8 := (1 <<< wb.toUInt8) - 1
-      acc.set! (u / per) ((acc.get! (u / per) &&& ~~~(mask <<< sh)) |||
-        ((Column.resAt src 0 wb e).toUInt8 <<< sh))
 
 /-- q's `til`, as little-endian `Int64`s. Measured — `til 5` is `0 1 2 3 4`, `til 0` is the empty long
 vector, `type til 5` is `7h` and `til 2h` is `0 1`, so the answer is `long` whatever the count's own

@@ -50,57 +50,6 @@ theorem foldl_lastWrite {σ β : Type} (size : σ → Nat) (N : Nat → Nat) (re
       cases (L.filter (u · == i)).getLast? <;> rfl
     · rw [if_neg hk, if_neg (fun h => hk (beq_iff_eq.1 h))]
 
-/-- **`scatterPacked` keeps the last write**: at a width of `w` bytes, element `i` of the answer is the
-source element of the last index naming `i`, and `dst`'s element `i` where no index does. The answer is
-`dst`'s size, an index past `dst` writing nothing. `src` holds the elements read: one under `bcast`. -/
-theorem scatterPacked_spec (w : Nat) (hw0 : 0 < w) (wb : USize) (hwb : wb.toNat = 8 * w)
-    (dst idx src : ByteArray) (soff : USize) (bcast : Bool)
-    (hsrc : (soff.toNat + if bcast then 1 else idx.size / 8) * w ≤ src.size) :
-    (scatterPacked wb dst idx src soff bcast).size = dst.size ∧
-    ∀ i < dst.size / w, Column.bitsAt (scatterPacked wb dst idx src soff bcast) (i * w) w =
-      match ((List.range (idx.size / 8)).filter fun k => (Column.bitsAt idx (k * 8) 8).toNat == i).getLast? with
-      | some k => Column.bitsAt src ((soff.toNat + if bcast then 0 else k) * w) w
-      | none => Column.bitsAt dst (i * w) w := by
-  unfold scatterPacked
-  simp only [hwb, show (8 * w == 0) = false by simp; omega, Nat.mul_div_cancel_left w (by decide : 0 < 8),
-    show 8 ≤ 8 * w by omega, if_true, show ∀ s, s * 8 / (8 * w) = s / w from fun s => by
-      rw [Nat.mul_comm 8 w, Nat.mul_div_mul_right _ _ (by decide)]]
-  refine foldl_lastWrite ByteArray.size (· / w) (fun b i => Column.bitsAt b (i * w) w) _ (fun k => (Column.bitsAt idx (k * 8) 8).toNat)
-    (fun k => Column.bitsAt src ((soff.toNat + if bcast then 0 else k) * w) w) _ (fun acc k => ?_)
-    (fun acc k hk i hi => ?_) dst
-  · dsimp only
-    split
-    · rfl
-    · rename_i hu
-      have h := (Nat.le_div_iff_mul_le hw0).1 (Nat.lt_of_not_le hu)
-      rw [Nat.succ_mul] at h
-      simp only [ByteArray.size, ByteArray.copySlice, Array.size_append, Array.size_extract] at h ⊢; omega
-  · have hk := List.mem_range.1 hk
-    dsimp only at hi ⊢
-    split
-    · rename_i hu
-      rw [if_neg (by omega)]
-    · rename_i hu
-      generalize hu' : (Column.bitsAt idx (k * 8) 8).toNat = u at hu
-      generalize he : soff.toNat + (if bcast then 0 else k) = e
-      have hue : (u + 1) * w ≤ acc.size := (Nat.le_div_iff_mul_le hw0).1 (by omega)
-      have hie : (i + 1) * w ≤ acc.size := (Nat.le_div_iff_mul_le hw0).1 (by omega)
-      have hee : (e + 1) * w ≤ src.size :=
-        Nat.le_trans (Nat.mul_le_mul_right w (by cases bcast <;> simp at he ⊢ <;> omega)) hsrc
-      rw [Nat.succ_mul] at hue hie hee
-      have hc := copySlice_getElem? src acc (e * w) (u * w) w
-      by_cases hui : u = i
-      · subst hui
-        rw [if_pos rfl]
-        exact bitsAt_shift _ _ _ _ _ fun t ht => by
-          rw [hc _ hue hee, if_pos (by omega), if_pos (by omega), Nat.add_sub_cancel_left]
-      · rw [if_neg hui]
-        refine bitsAt_shift _ _ _ _ _ fun t ht => ?_
-        rcases Nat.lt_or_gt_of_ne hui with h | h
-        · have := Nat.mul_le_mul_right w (Nat.succ_le_of_lt h); rw [Nat.succ_mul] at this
-          rw [hc _ hue hee, if_pos (by omega), if_neg (by omega)]
-        · have := Nat.mul_le_mul_right w (Nat.succ_le_of_lt h); rw [Nat.succ_mul] at this
-          rw [hc _ hue hee, if_neg (by omega)]
 
 /-- The nested fold `expandBytes` runs, each `i` writing its value `c i` times, is one fold over the
 values each repeated. -/

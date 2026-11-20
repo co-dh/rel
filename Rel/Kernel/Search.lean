@@ -297,22 +297,5 @@ end Rel.Kernel
 
 namespace Rel.Kernel
 
-/-- A search operand as the C reads it where it lies: an encoded column's `metadata` and `pack`
-holding `n` elements, or — under an empty `metadata` — the dense payload `pack` itself. -/
-def operandBytes (w : USize) (metadata pack : ByteArray) (n : USize) : ByteArray :=
-  if metadata.isEmpty then pack else Coc.decode w metadata pack n
-
-/-- The types whose equality folds `-0.0` onto `0.0`. `datetime` is one: it is an eight-byte IEEE
-value and `QAtom.identical` treats it exactly as `float`. -/
-def foldsZero : QAtomicType → Bool
-  | .f32 | .f64 => true
-  | _ => false
-
-/-- A column as `operandBytes` reads it: encoded where it lies, and otherwise its dense payload under
-an empty metadata. -/
-def operand (t : QAtomicType) (n : USize) (e : Ext.Enc X) : Option (USize × ByteArray × ByteArray) :=
-  match foRColumn t n e with
-  | some s => some s
-  | none => (Enc.bytesOf t n e).map fun b => (0, ByteArray.empty, b)
 
 end Rel.Kernel
