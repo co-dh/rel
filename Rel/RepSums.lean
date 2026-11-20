@@ -64,10 +64,10 @@ theorem ordCode_i64_le (a b : Int64) :
 
 /-- **q's order on longs is `Int64`'s**. -/
 theorem Obj.lt_long (a b : Int64) : Obj.lt .long a b ↔ a < b := by
-  have := Int64.le_toInt a; have := Int64.toInt_lt a; have := Int64.le_toInt b; have := Int64.toInt_lt b
-  show [(Order.rank .i64 a.toUInt64).toNat] < [(Order.rank .i64 b.toUInt64).toNat] ↔ a < b
-  simp only [List.cons_lt_cons_iff, List.lt_irrefl, and_false, or_false, Order.rank, Int64.code_toNat,
-    Int64.lt_iff_toInt_lt]
+  have h := ordCode_i64_le b a
+  show [(ordCode 8 false true a.toUInt64).toNat] < [(ordCode 8 false true b.toUInt64).toNat] ↔ a < b
+  simp only [List.cons_lt_cons_iff, List.lt_irrefl, and_false, or_false, Int64.lt_iff_toInt_lt,
+    Int64.le_iff_toInt_le] at h ⊢
   omega
 
 /-- `kseen` read every column it was given: `ascCol` answers on each. -/
