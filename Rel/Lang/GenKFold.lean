@@ -273,11 +273,11 @@ namespace GenK
 theorem arith_sound {k : UInt8} {U : Rel .long .long} {TU : Core.Rel Int64 Int64} (hU : ∀ K, U.Reps K TU) :
     ∀ K, (GenK.arith k U).Reps K (arithDen k TU) := by
   unfold GenK.arith after
-  exact ofVals_sound fun _ _ _ _ hK h x w hx _ => by
+  exact ofVals_sound fun _ _ _ _ hK h x w hx _ _ => by
     obtain ⟨D, hD, ht⟩ := bind_ok h
-    have hu : ∀ n (X : Vals .long n) t, U.runE ⟨some ⟨n, X⟩, none⟩ = .ok t → ∀ a v, (∃ i, X.row i = a) →
+    have hu : ∀ n (X : Vals .long n) t, U.runE ⟨some ⟨n, X⟩, none, none⟩ = .ok t → ∀ a v, (∃ i, X.row i = a) →
         (t.Holds a v ↔ TU a v) := fun n X t h a v ha =>
-      (reps_iff _ _ _).1 (hU ⟨some ⟨n, X⟩, none⟩) t h a v ((side_some rfl a).2 ha) rfl
+      (reps_iff _ _ _).1 (hU ⟨some ⟨n, X⟩, none, none⟩) t h a v ((side_some rfl a).2 ha) rfl trivial
     refine (Tab.arith_holds hu ht x w).trans
       ⟨fun ⟨v, hv, h⟩ => ?_, fun h => ⟨x, (Tab.idU_holds hD x x).2 ⟨rfl, (side_some hK x).1 hx⟩, h⟩⟩
     obtain ⟨rfl, -⟩ := (Tab.idU_holds hD x v).1 hv; exact h
@@ -288,7 +288,7 @@ theorem pairStep_holds {K C D B : Obj} {S : Rel (.prod C D) B} {TS : Den (.prod 
     (wS : S.Wf) {L : Tab K C} {M : Tab K D} {T : Tab K B} (hT : (compT (L.pair M) S).runE {} = .ok T) (k : K.El)
     (b : B.El) : T.Holds k b ↔ ∃ c d, L.Holds k c ∧ M.Holds k d ∧ TS (c, d) b :=
   ((reps_iff _ _ _).1 (compT_sound (r' := L.pair M) (K := {}) (X := rpair L.Holds M.Holds)
-      (fun _ hp a q _ _ => Tab.pair_holds hp a q) hS wS) T hT k b rfl rfl).trans
+      (fun _ hp a q _ _ _ => Tab.pair_holds hp a q) hS wS) T hT k b rfl rfl trivial).trans
     ⟨fun ⟨q, ⟨h1, h2⟩, h3⟩ => ⟨q.1, q.2, h1, h2, h3⟩, fun ⟨c, d, h1, h2, h3⟩ => ⟨(c, d), ⟨h1, h2⟩, h3⟩⟩
 
 /-- `⦇e,S⦈` on the arrays in demand: `foldRoundsL_holds` from `idU X` (each array whole) and `top X e` (each value
@@ -296,7 +296,7 @@ of `e`), the step `TS (v, x)`. -/
 theorem fold_sound {E V : Obj} {d : Bool} {e : Rel V V} {S : Rel (.prod V E) V} {Te : Den V V}
     {TS : Den (.prod V E) V} (he : ∀ K, e.Reps K Te) (hS : ∀ K, S.Reps K TS) (wS : S.Wf) :
     ∀ K, (GenK.fold E V d e S).Reps K (foldDen Te TS) :=
-  ofVals_sound fun _ _ X t hK h xs w hx _ => by
+  ofVals_sound fun _ _ X t hK h xs w hx _ _ => by
     obtain ⟨r, hr, h⟩ := bind_ok h
     obtain ⟨te, hte, h⟩ := bind_ok h
     obtain ⟨P, hP, h⟩ := bind_ok h
@@ -312,16 +312,16 @@ theorem fold_sound {E V : Obj} {d : Bool} {e : Rel V V} {S : Rel (.prod V E) V} 
     · rintro ⟨r', v, hr', hv, hW⟩
       obtain ⟨rfl, -⟩ := (Tab.idU_holds hr xs r').1 hr'
       obtain ⟨-, j, hj⟩ := (Tab.top_holds hP xs v).1 hv
-      exact ⟨v, ⟨_, (ee _ _ rfl rfl).1 ⟨j, rfl, hj⟩⟩, hW⟩
+      exact ⟨v, ⟨_, (ee _ _ rfl rfl trivial).1 ⟨j, rfl, hj⟩⟩, hW⟩
     · rintro ⟨v, ⟨a, ha⟩, hW⟩
-      obtain ⟨j, -, hj⟩ := (ee a v rfl rfl).2 ha
+      obtain ⟨j, -, hj⟩ := (ee a v rfl rfl trivial).2 ha
       exact ⟨xs, v, (Tab.idU_holds hr xs xs).2 ⟨rfl, hX⟩, (Tab.top_holds hP xs v).2 ⟨hX, j, hj⟩, hW⟩
 
 /-- `⦇e,S⦈ʳ` on the arrays in demand: `foldRoundsR_holds` from `idU X` and `top X e`, the step `TS (x, v)`. -/
 theorem foldr_sound {E V : Obj} {d : Bool} {e : Rel V V} {S : Rel (.prod E V) V} {Te : Den V V}
     {TS : Den (.prod E V) V} (he : ∀ K, e.Reps K Te) (hS : ∀ K, S.Reps K TS) (wS : S.Wf) :
     ∀ K, (GenK.foldr E V d e S).Reps K (foldrDen Te TS) :=
-  ofVals_sound fun _ _ X t hK h xs w hx _ => by
+  ofVals_sound fun _ _ X t hK h xs w hx _ _ => by
     obtain ⟨r, hr, h⟩ := bind_ok h
     obtain ⟨te, hte, h⟩ := bind_ok h
     obtain ⟨P, hP, h⟩ := bind_ok h
@@ -339,9 +339,9 @@ theorem foldr_sound {E V : Obj} {d : Bool} {e : Rel V V} {S : Rel (.prod E V) V}
     · rintro ⟨r', v, hr', hv, hW⟩
       obtain ⟨rfl, -⟩ := (Tab.idU_holds hr xs r').1 hr'
       obtain ⟨-, j, hj⟩ := (Tab.top_holds hP xs v).1 hv
-      exact ⟨v, ⟨_, (ee _ _ rfl rfl).1 ⟨j, rfl, hj⟩⟩, hW⟩
+      exact ⟨v, ⟨_, (ee _ _ rfl rfl trivial).1 ⟨j, rfl, hj⟩⟩, hW⟩
     · rintro ⟨v, ⟨a, ha⟩, hW⟩
-      obtain ⟨j, -, hj⟩ := (ee a v rfl rfl).2 ha
+      obtain ⟨j, -, hj⟩ := (ee a v rfl rfl trivial).2 ha
       exact ⟨xs, v, (Tab.idU_holds hr xs xs).2 ⟨rfl, hX⟩, (Tab.top_holds hP xs v).2 ⟨hX, j, hj⟩, hW⟩
 
 /-- `⦇e,S⦈` given a family on the pairs `p = (i, xs)` in demand: `foldRoundsL_holds` on the carrier `I×V`, the step
@@ -350,7 +350,7 @@ theorem foldr_sound {E V : Obj} {d : Bool} {e : Rel V V} {S : Rel (.prod E V) V}
 theorem foldI_sound {I E V : Obj} {d d' : Bool} {e : Rel I (.prod V V)} {S : Rel (.prod (.prod I V) E) (.prod I V)}
     {Te : Den I (.prod V V)} {TS : Den (.prod (.prod I V) E) (.prod I V)} (he : ∀ K, e.Reps K Te) (we : e.Wf)
     (hS : ∀ K, S.Reps K TS) (wS : S.Wf) : ∀ K, (GenK.foldI I E V d d' e S).Reps K (foldIDen Te TS) :=
-  ofVals_sound fun _ _ X t hK h p v hp _ => by
+  ofVals_sound fun _ _ X t hK h p v hp _ _ => by
     obtain ⟨i, hi, h⟩ := bind_ok h
     obtain ⟨es, hes, h⟩ := bind_ok h
     dsimp only at h
@@ -363,7 +363,7 @@ theorem foldI_sound {I E V : Obj} {d d' : Bool} {e : Rel I (.prod V V)} {S : Rel
     obtain ⟨o2, ho2, h⟩ := bind_ok h
     have hX := (side_some hK p).1 hp
     have ees := (reps_iff _ _ _).1 (compT_sound (r' := .ok i) (K := {}) (X := i.Holds)
-      (fun _ h' _ _ _ _ => by cases h'; exact Iff.rfl) he we) es hes
+      (fun _ h' _ _ _ _ _ => by cases h'; exact Iff.rfl) he we) es hes
     have hip : ∀ k a, i.Holds k a ↔ (∃ j, X.row j = k) ∧ a = k.1 := fun k a => Tab.outl_holds hi k a
     have hout' := Tab.foldRoundsL_holds (fun k q x q' => TS (q, x) q' ∧ i.Holds k q'.1)
       (fun _ _ _ => True) (fun _ _ _ _ _ _ _ => trivial) (fun P el T hT _ _ k q' => by
@@ -396,11 +396,11 @@ theorem foldI_sound {I E V : Obj} {d d' : Bool} {e : Rel I (.prod V V)} {S : Rel
       obtain rfl : q1 = p.1 := (hQ q1).1 hq1
       obtain ⟨⟨a0, b0⟩, hq0, ho'⟩ := (Tab.comp_holds hc1 p q2).1 hq2
       obtain ⟨-, rfl⟩ := (Tab.outr_holds ho1 _ q2).1 ho'
-      obtain ⟨a, ha, hTe⟩ := (ees p _ rfl rfl).1 hq0
+      obtain ⟨a, ha, hTe⟩ := (ees p _ rfl rfl trivial).1 hq0
       obtain rfl := (hQ a).1 ha
       exact ⟨_, ⟨a0, hTe⟩, ((foldDen_fibre TS (i.Holds p) p.1 hQ p.2 _ w).1 hW).2⟩
     · rintro ⟨b0, ⟨a0, ha0⟩, hW⟩
-      have hes' : es.Holds p (a0, b0) := (ees p _ rfl rfl).2 ⟨p.1, (hQ _).2 rfl, ha0⟩
+      have hes' : es.Holds p (a0, b0) := (ees p _ rfl rfl trivial).2 ⟨p.1, (hQ _).2 rfl, ha0⟩
       obtain ⟨j, -, hj⟩ := _root_.id hes'
       have hw : out.Holds p (p.1, v) := (hout' _).2 (Or.inr ⟨p.2, (p.1, b0),
         (Tab.outr_holds hrest p p.2).2 ⟨hX, rfl⟩,
@@ -1449,15 +1449,15 @@ theorem elemsTest_sound {B C : Obj} {d : Bool} {R : Rel B B} {T : Den B B}
     (hF : ∀ p q xs, (∀ x ∈ xs, p x = q x) → F p xs = F q xs) (hR : ∀ K, R.Reps K T) :
     ∀ K, (GenK.elems B B C d R f).Reps K (fun xs ys => ys = F (fun x => decide (∃ y, T x y)) xs) := by
   unfold GenK.elems
-  exact ofVals_sound fun _ _ X t hK h xs ys hx _ => by
+  exact ofVals_sound fun _ _ X t hK h xs ys hx _ _ => by
     obtain ⟨M, hM, h⟩ := bind_ok h
     obtain ⟨k, hk, h⟩ := bind_ok h
     obtain ⟨P, hP, h⟩ := bind_ok h
     have hi := (side_some hK xs).1 hx
-    have ha := (reps_iff _ _ _).1 (hR ⟨some ⟨k.n, k.key⟩, none⟩) P hP
+    have ha := (reps_iff _ _ _).1 (hR ⟨some ⟨k.n, k.key⟩, none, none⟩) P hP
     have hPT : ∀ x ∈ xs, (∃ y, P.Holds x y) ↔ ∃ y, T x y := fun x hm => by
       obtain ⟨j, hj, -⟩ := (Tab.ran_holds hk x x).2 ⟨rfl, xs, (Tab.mem_holds hM xs x).2 ⟨hi, hm⟩⟩
-      exact exists_congr fun y => ha x y ((side_some rfl x).2 ⟨j, hj⟩) rfl
+      exact exists_congr fun y => ha x y ((side_some rfl x).2 ⟨j, hj⟩) rfl trivial
     show t.Holds xs ys ↔ _
     rw [hf h, and_iff_right hi, hF _ _ xs fun x hm => decide_eq_decide.2 (hPT x hm)]
 
@@ -1489,15 +1489,15 @@ theorem map_sound {A B : Obj} {d : Bool} {R : Rel A B} {T : Den A B} (hR : ∀ K
     ∀ K, (GenK.elems A B (.arr B) d R fun P X => Tab.map P X).Reps K
       (fun xs ys => ys.length = xs.length ∧ ∀ t (ht : t < xs.length) (ht' : t < ys.length), T (xs[t]'ht) (ys[t]'ht')) := by
   unfold GenK.elems
-  exact ofVals_sound fun _ _ X t hK h xs ys hx _ => by
+  exact ofVals_sound fun _ _ X t hK h xs ys hx _ _ => by
     obtain ⟨M, hM, h⟩ := bind_ok h
     obtain ⟨k, hk, h⟩ := bind_ok h
     obtain ⟨P, hP, h⟩ := bind_ok h
     have hi := (side_some hK xs).1 hx
-    have ha := (reps_iff _ _ _).1 (hR ⟨some ⟨k.n, k.key⟩, none⟩) P hP
+    have ha := (reps_iff _ _ _).1 (hR ⟨some ⟨k.n, k.key⟩, none, none⟩) P hP
     have hPT : ∀ x ∈ xs, ∀ y, P.Holds x y ↔ T x y := fun x hm y => by
       obtain ⟨j, hj, -⟩ := (Tab.ran_holds hk x x).2 ⟨rfl, xs, (Tab.mem_holds hM xs x).2 ⟨hi, hm⟩⟩
-      exact ha x y ((side_some rfl x).2 ⟨j, hj⟩) rfl
+      exact ha x y ((side_some rfl x).2 ⟨j, hj⟩) rfl trivial
     show t.Holds xs ys ↔ _
     rw [Tab.map_holds h, and_iff_right hi]
     exact and_congr_right fun _ => forall_congr' fun s => forall_congr' fun hs => forall_congr' fun hs' =>
@@ -1513,9 +1513,9 @@ theorem loop_sound {X Y : Obj} {d : Bool} {F : Rel (.prod X Y) X} {TF : Den (.pr
   have hF' : ∀ (D : Tab (.prod X Y) (.prod X Y)) T, (compT (.ok D) F).runE {} = .ok T →
       ∀ q x, T.Holds q x ↔ ∃ q', D.Holds q q' ∧ TF q' x := fun D T hT q x =>
     (reps_iff _ _ _).1 (compT_sound (r' := .ok D) (K := {}) (X := rep D)
-      (fun _ hr a b _ _ => by cases hr; exact Iff.rfl) hF wF) T hT q x rfl rfl
+      (fun _ hr a b _ _ _ => by cases hr; exact Iff.rfl) hF wF) T hT q x rfl rfl trivial
   unfold GenK.stepAfter GenK.after
-  exact ofVals_sound fun _ _ V t hK h p c hx _ => by
+  exact ofVals_sound fun _ _ V t hK h p c hx _ _ => by
     obtain ⟨D, hD, h⟩ := bind_ok h
     refine (Tab.loop_holds hF' h p c).trans ?_
     rw [← foldDen_iter]

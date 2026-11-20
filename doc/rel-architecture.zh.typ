@@ -85,6 +85,7 @@ Obj.El : Obj → Type                     -- 解码：atom ↦ 原子的 Lean �
 structure Known (A B : Obj) where
   dom : Option (Σ n, Vals A n)          -- 已知的定义域 K
   ran : Option (Σ n, Vals B n)          -- 已知的值域 L
+  pairs : Option (Tab A B) := none      -- 上下文要与结果求交的表 P：结果只需在 P 的对上正确
 
 inductive Rel (A B : Obj)
   | tab  (t : Except String (Tab A B))            -- 两列等长数组；error = 失败及其消息（原 CRel 的 ok = false），一路到 check、print
@@ -102,6 +103,10 @@ compile η t : {r : Rel A B // rep r = ⟦t⟧ρ}       -- 方案 A：规格在�
     需要边界的闭项（`𝟙`、`≤`、`⊤` 等无限关系）仍是 `lazy`，在每个上下文里按边界求值。否则一个闭的 `lazy` 值在 `fold` 的每一轮重算。],
   card(c-run, [需要几侧边界])[`succ`（函数）：`dom` 已知即返回 `tab`。`leq`：`Λ(leq)(3) = {3,4,…}` 无限，
     `dom` 与 `ran` 都已知才返回 `tab (K ≫ leq ≫ L)`。`⊤`：`K × L`。],
+  card(c-run, [对的需求 `pairs`])[`T ∩ R`、`T − R` 把 `T` 自己作为 `pairs` 交给 `R`：`rep (f ⟨K, L, P⟩) ∩ P = (K ≫ R ≫ L) ∩ P`。
+    `≤ <`（经 `°` 得 `≥ >`，经 `∪` 往下传）用它：只在 `P` 的 n 对上逐对比较再选行，不做 `K × L` 的 cross。
+    `𝟙`、`succ`、`arith`、`π₁ π₂`、`Λ` 是函数或 coreflexive，结果行数已是 `|K|`，不看 `pairs`；`⊤` 可以用（`P` 切到 `V`），尚未用。
+    没有表可求交的比较（`P ≤ P`）仍做 cross，超过 `crossMax` 对时 `Vals.cross` 返回 error 而不是 abort。],
 )
 
 - 删除的类型：`CRel`（`ok` 并入 `tab` 的 `Option`）、`Fn`、`Dem`（定义域就是 `Known.dom`）、`Den`（直接写 `Core.Rel`）。

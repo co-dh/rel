@@ -28,15 +28,13 @@ theorem nil_holds {n : USize} {D : Vals A n} {T : Tab A (.arr B)} (h : Tab.nil D
   simp only [Tab.Holds, Vals.row]
   exact ⟨fun ⟨i, h1, h2⟩ => ⟨⟨i, h1⟩, h2.symm⟩, fun ⟨⟨i, h1⟩, h2⟩ => ⟨i, h1, h2.symm⟩⟩
 
-/-- **`cmpOn op K L` is `K ≫ r ≫ L`**, `op` testing `r` on the signed words: `keep` of `cross K L`, row `i` kept
-where `op` answers `1`. -/
-theorem cmpOn_holds {op : Op} {r : Int64 → Int64 → Bool}
+/-- **`cmpPairs op X` is `X ∩ r`**, `op` testing `r` on the signed words: row `i` of `X` kept where `op` answers
+`1`. -/
+theorem cmpPairs_holds {op : Op} {r : Int64 → Int64 → Bool}
     (hop : ∀ x y : UInt64, op.eval x y = .ok (if r x.toInt64 y.toInt64 then 1 else 0))
-    {n m : USize} {K : Vals .long n} {L : Vals .long m} {T : Tab .long .long} (h : cmpOn op K L = .ok T)
-    (a c : Int64) : T.Holds a c ↔ (∃ i, K.row i = a) ∧ (∃ j, L.row j = c) ∧ r a c = true := by
-  unfold cmpOn at h; simp only [bind, Except.bind] at h
-  split at h; · cases h
-  rename_i X hX
+    {X T : Tab .long .long} (h : cmpPairs op X = .ok T) (a c : Int64) :
+    T.Holds a c ↔ X.Holds a c ∧ r a c = true := by
+  unfold cmpPairs at h; simp only [bind, Except.bind] at h
   split at h; · cases h
   rename_i w hw
   obtain ⟨-, -, -, hev⟩ := colMap_raw hw
@@ -46,7 +44,7 @@ theorem cmpOn_holds {op : Op} {r : Int64 → Int64 → Bool}
     have := hev i.1 i.2
     rw [hop] at this
     rw [← Except.ok.inj this, Vals.row_atom, Vals.row_atom, Arr.get_i64, Arr.get_i64]
-  rw [keep_holds h (fun i hi => by rw [hwv ⟨i, hi⟩]; split <;> decide), ← and_assoc, ← cross_holds hX a c]
+  rw [keep_holds h (fun i hi => by rw [hwv ⟨i, hi⟩]; split <;> decide)]
   simp only [Tab.Holds]
   constructor
   · rintro ⟨i, hi, rfl, rfl⟩
@@ -54,6 +52,16 @@ theorem cmpOn_holds {op : Op} {r : Int64 → Int64 → Bool}
     exact ⟨⟨i, rfl, rfl⟩, by cases hr : r (X.key.row i) (X.val.row i) <;> simp_all⟩
   · rintro ⟨⟨i, rfl, rfl⟩, hr⟩
     exact ⟨i, by rw [hwv i, if_pos hr]; decide, rfl, rfl⟩
+
+/-- **`cmpOn op K L` is `K ≫ r ≫ L`**: `cmpPairs` of `cross K L`. -/
+theorem cmpOn_holds {op : Op} {r : Int64 → Int64 → Bool}
+    (hop : ∀ x y : UInt64, op.eval x y = .ok (if r x.toInt64 y.toInt64 then 1 else 0))
+    {n m : USize} {K : Vals .long n} {L : Vals .long m} {T : Tab .long .long} (h : cmpOn op K L = .ok T)
+    (a c : Int64) : T.Holds a c ↔ (∃ i, K.row i = a) ∧ (∃ j, L.row j = c) ∧ r a c = true := by
+  unfold cmpOn at h; simp only [bind, Except.bind] at h
+  split at h; · cases h
+  rename_i X hX
+  rw [cmpPairs_holds hop h, cross_holds hX, and_assoc]
 
 /-- **`lt K L` denotes `K ≫ < ≫ L`**. -/
 theorem lt_holds {n m : USize} {K : Vals .long n} {L : Vals .long m} {T : Tab .long .long} (h : Tab.lt K L = .ok T)

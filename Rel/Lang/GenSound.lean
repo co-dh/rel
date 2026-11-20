@@ -1158,8 +1158,10 @@ theorem Tm.gen_sound_spine {A B : Obj} (t : Tm A B) :
   case own R ih => exact code_of ((ih (by omega)).1 η ρ hl hs)
   case succ U ih => exact GenK.succ_sound (code_of ((ih (by omega)).1 η ρ hl hs))
   case arith U ih => exact GenK.arith_sound (code_of ((ih (by omega)).1 η ρ hl hs))
-  case leq U ih => exact GenK.cmp_sound (fun _ _ _ h => Tab.leq_holds h) (code_of ((ih (by omega)).1 η ρ hl hs))
-  case lt U ih => exact GenK.cmp_sound (fun _ _ _ h => Tab.lt_holds h) (code_of ((ih (by omega)).1 η ρ hl hs))
+  case leq U ih => exact GenK.cmp_sound (r := fun x y => decide (x ≤ y)) (P := fun x y => x ≤ y) (fun _ _ => rfl)
+    (fun _ _ => decide_eq_true_iff) (code_of ((ih (by omega)).1 η ρ hl hs))
+  case lt U ih => exact GenK.cmp_sound (r := fun x y => decide (x < y)) (P := fun x y => x < y) (fun _ _ => rfl)
+    (fun _ _ => decide_eq_true_iff) (code_of ((ih (by omega)).1 η ρ hl hs))
   case var k => exact hs.1 k _ _
   case est Q ih => exact GenK.est_sound (code_of ((ih (by omega)).1 η ρ hl hs))
   case thin Q ih => exact GenK.thin_sound (code_of ((ih (by omega)).1 η ρ hl.2 hs)) hl.1

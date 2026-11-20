@@ -83,7 +83,7 @@ theorem nu_sound {A B : Obj} {S : Rel A B} {φ : Tab A B → Rel A B} {TS : Den 
     obtain ⟨hx, hΦ⟩ := (ht a b).1 hab
     show (rep s ∩ Φ (rep t)) a b
     rw [← hXt, inter_apply]; exact ⟨le_iff.1 sX a b hx, hΦ⟩
-  exact fun x y _ _ => by rw [e]
+  exact fun x y _ _ _ => by rw [e]
 
 /-- **`μX : φ`** (`Tab.mu`): from `𝟘`, rounds `X ↦ X ∪ φ(X)` (`Tab.mu_holds`). Each round lies inside `μ` (`Φ`
     monotone, so `X ∪ Φ(X) ⊑ μ ∪ Φ(μ) = μ`); the answer is a prefixed point of `Φ`, so `μ` lies inside it
@@ -100,7 +100,7 @@ theorem mu_sound {A B : Obj} {w : String} {cap : Nat} {φ : Tab A B → Rel A B}
       fun hx => le_iff.1 (mu_prefixed hm) a b (le_iff.1 (hm _ _ mX) a b hx))
     (show Tab.mu w cap (fun X => (φ X).runE {}) = .ok t from h)
   have e : rep t = Core.Rel.mu Φ := Core.Rel.le_antisymm mt (mu_le (le_iff.2 ft))
-  exact fun x y _ _ => by rw [e]
+  exact fun x y _ _ _ => by rw [e]
 
 end GenK
 

@@ -18,7 +18,7 @@ theorem compT_holds {A B C : Obj} {S : Rel B C} {Y : Core.Rel B.El C.El} (hS : �
     (M : Tab A B) (T : Tab A C) (h : (compT (.ok M) S).runE {} = .ok T) (a : A.El) (c : C.El) :
     T.Holds a c ↔ ∃ b, M.Holds a b ∧ Y b c :=
   (reps_iff _ _ _).1 (compT_sound (r' := .ok M) (K := {}) (X := rep M)
-    (fun _ hr a b _ _ => by cases hr; exact Iff.rfl) hS wS) T h a c rfl rfl
+    (fun _ hr a b _ _ _ => by cases hr; exact Iff.rfl) hS wS) T h a c rfl rfl trivial
 
 /-- **`hylo(c, S)` represents `μX : Φ(X)`** (`GenK.hylo`), given the children's code `ch` representing `CH`, the
 body `φ Y` representing `Φ (rep Y)` for every table `Y`, `Φ` monotonic and local along `CH` (`Tm.den_local`). The
@@ -31,7 +31,7 @@ theorem hylo_sound {A B : Obj} {what : String} {d e : Bool} {ch : Rel A A} {CH :
     (hl : ∀ X Y a, (∀ a', CH a a' → ∀ b, (X a' b ↔ Y a' b)) → ∀ b, (Φ X a b ↔ Φ Y a b)) :
     ∀ K, (GenK.hylo A B what d e ch φ).Reps K (Core.Rel.mu Φ) := by
   unfold GenK.hylo
-  exact ofVals_sound fun _ _ _ t hK h a b ha _ => by
+  exact ofVals_sound fun _ _ _ t hK h a b ha _ _ => by
     obtain ⟨D, hD, h⟩ := bind_ok h
     obtain ⟨N, hN, h⟩ := bind_ok h
     obtain ⟨C, -, h⟩ := bind_ok h

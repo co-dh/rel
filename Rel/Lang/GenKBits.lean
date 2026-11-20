@@ -1707,7 +1707,7 @@ theorem meetOn_sound {K : Known A B} {T S : Rel A B} {P Q : Core.Rel A.El B.El} 
   have fb : (meetV T (S.force K)).runE K = .ok t → Agrees K (rep t) (P ∩ Q) := fun h => by
     obtain ⟨r, s, hr, hs, e⟩ := meetV_law wT (wS.force K) h
     have es := (reps_iff _ _ _).1 (hS K) s ((force_runE S K {}).symm.trans hs)
-    exact fun x y hx hy => (e x y).trans (and_congr (eT r hr x y hx hy) (es x y hx hy))
+    exact fun x y hx hy ho => (e x y).trans (and_congr (eT r hr x y hx hy ho) (es x y hx hy ho))
   unfold meetOn at h; split at h
   · exact fb h
   · split at h
@@ -1719,11 +1719,11 @@ theorem meetOn_sound {K : Known A B} {T S : Rel A B} {P Q : Core.Rel A.El B.El} 
         obtain ⟨hu, hK⟩ := bound_spec hp
         have er := eT r0 h0
         have es := (reps_iff _ _ _).1 (hS p.2) s ((force_runE S p.2 {}).symm.trans hs)
-        intro x y hx hy
-        refine (e x y).trans ⟨fun ⟨a, b⟩ => ⟨(er x y hx hy).1 ((hu x y hx hy).1 a),
-          (es x y (hK x y a).1 (hK x y a).2).1 b⟩, fun ⟨a, b⟩ => ?_⟩
-        have a' := (hu x y hx hy).2 ((er x y hx hy).2 a)
-        exact ⟨a', (es x y (hK x y a').1 (hK x y a').2).2 b⟩
+        intro x y hx hy ho
+        refine (e x y).trans ⟨fun ⟨a, b⟩ => ⟨(er x y hx hy ho).1 ((hu x y hx hy ho).1 a),
+          (es x y (hK x y a).1 (hK x y a).2.1 (hK x y a).2.2).1 b⟩, fun ⟨a, b⟩ => ?_⟩
+        have a' := (hu x y hx hy ho).2 ((er x y hx hy ho).2 a)
+        exact ⟨a', (es x y (hK x y a').1 (hK x y a').2.1 (hK x y a').2.2).2 b⟩
       · nomatch h
     · exact fb h
 
@@ -1732,7 +1732,7 @@ theorem meetK_sound {R S : Rel A B} {X Y : Core.Rel A.El B.El} (hR : ∀ K, R.Re
   intro t h
   have eF : ∀ {Z : Rel A B} {W : Core.Rel A.El B.El}, (∀ K, Z.Reps K W) → ∀ r, (Z.force K).runE {} = .ok r →
       Agrees K (rep r) W := fun hZ r h => (reps_iff _ _ _).1 (hZ K) r ((force_runE _ K {}).symm.trans h)
-  have sw : Agrees K (rep t) (Y ∩ X) → Agrees K (rep t) (X ∩ Y) := fun h x y hx hy => (h x y hx hy).trans and_comm
+  have sw : Agrees K (rep t) (Y ∩ X) → Agrees K (rep t) (X ∩ Y) := fun h x y hx hy ho => (h x y hx hy ho).trans and_comm
   cases R <;> cases S
   case lazy.lazy f g =>
     simp only [meetK] at h
@@ -1752,7 +1752,7 @@ theorem meet_sound {d e : Bool} {R S : Rel A B} {X Y : Core.Rel A.El B.El} (hR :
   cases R <;> cases S <;> first
     | exact meetK_sound hR hS wR wS K
     | exact fun t h => let ⟨r, s, hr, hs, e⟩ := meetV_law wR wS h
-        fun x y hx hy => (e x y).trans (and_congr (eR r hr x y hx hy) (eS s hs x y hx hy))
+        fun x y hx hy ho => (e x y).trans (and_congr (eR r hr x y hx hy ho) (eS s hs x y hx hy ho))
 
 theorem meetV_wf (R S : Rel A B) : (meetV R S).Wf := by unfold meetV; split <;> trivial
 
@@ -1780,8 +1780,8 @@ theorem compR_runE (r : Tab A B) (s : Tab B C) (K : Known A C) :
 
 theorem compR_sound {r : Tab A B} {s : Tab B C} {K : Known A C} {Z : Core.Rel A.El C.El}
     (H : Agrees K (rep r ≫ rep s) Z) : (compR r s).Reps K Z := by
-  rw [reps_iff, compR_runE]; intro t ht x z hx hz
-  exact (Tab.compSel_holds ht x z).trans (H x z hx hz)
+  rw [reps_iff, compR_runE]; intro t ht x z hx hz ho
+  exact (Tab.compSel_holds ht x z).trans (H x z hx hz ho)
 
 theorem compR_wf (r : Tab A B) (s : Tab B C) : (compR r s).Wf := by
   unfold compR; split
@@ -1834,7 +1834,7 @@ theorem compV_wf (r : Tab A B) {S : Rel B C} (wS : S.Wf) : (compV r S).Wf := by
 
 theorem compT_sound {r' : Except String (Tab A B)} {S : Rel B C} {K : Known A C}
     {X : Core.Rel A.El B.El} {Y : Core.Rel B.El C.El}
-    (hr : ∀ r, r' = .ok r → Agrees ⟨K.dom, none⟩ (rep r) X) (hS : ∀ K, S.Reps K Y) (wS : S.Wf) :
+    (hr : ∀ r, r' = .ok r → Agrees ⟨K.dom, none, none⟩ (rep r) X) (hS : ∀ K, S.Reps K Y) (wS : S.Wf) :
     (compT r' S).Reps K (X ≫ Y) := by
   rcases r' with e | r
   · rw [reps_iff]; intro t ht; nomatch ht
@@ -1844,27 +1844,27 @@ theorem compT_sound {r' : Except String (Tab A B)} {S : Rel B C} {K : Known A C}
     simp only [compT]
     split
     · next hn =>
-      rw [reps_iff]; intro t ht x z hx _
+      rw [reps_iff]; intro t ht x z hx _ _
       refine (Tab.zero_holds ht x z).trans ⟨False.elim, fun ⟨b, h, _⟩ => ?_⟩
-      obtain ⟨i, _, _⟩ := (er x b hx rfl).2 h
+      obtain ⟨i, _, _⟩ := (er x b hx rfl trivial).2 h
       have := i.2; simp [beq_iff_eq.1 hn] at this
     · simp only [Rel.Rel.Reps]
       rcases hd : Tab.ran r with e | d
       · rw [reps_iff]; intro t ht; nomatch ht
-      refine compV_sound (wS.force _) fun s hs a c ha hc => exists_congr fun b => ?_
+      refine compV_sound (wS.force _) fun s hs a c ha hc _ => exists_congr fun b => ?_
       rw [force_runE] at hs
       have es := (reps_iff _ _ _).1 (hS _) s hs
-      have inRan : rep r a b → (⟨some ⟨d.n, d.key⟩, K.ran⟩ : Known B C).den.1 b b := fun h =>
+      have inRan : rep r a b → (⟨some ⟨d.n, d.key⟩, K.ran, none⟩ : Known B C).den.1 b b := fun h =>
         (side_some rfl b).2 ((keyRowRep d b).2 ⟨b, (Tab.ran_holds hd b b).2 ⟨rfl, a, h⟩⟩)
-      have e1 := er a b ha rfl
-      exact ⟨fun ⟨h1, h2⟩ => ⟨e1.1 h1, (es b c (inRan h1) hc).1 h2⟩,
-        fun ⟨h1, h2⟩ => ⟨e1.2 h1, (es b c (inRan (e1.2 h1)) hc).2 h2⟩⟩
+      have e1 := er a b ha rfl trivial
+      exact ⟨fun ⟨h1, h2⟩ => ⟨e1.1 h1, (es b c (inRan h1) hc trivial).1 h2⟩,
+        fun ⟨h1, h2⟩ => ⟨e1.2 h1, (es b c (inRan (e1.2 h1)) hc trivial).2 h2⟩⟩
   | tab t0 =>
-    exact compV_sound wS fun (s : Tab B C) hs a c ha _ => exists_congr fun b =>
-      and_congr (er a b ha rfl) ((reps_iff _ _ _).1 (hS {}) s hs b c rfl rfl)
+    exact compV_sound wS fun (s : Tab B C) hs a c ha _ _ => exists_congr fun b =>
+      and_congr (er a b ha rfl trivial) ((reps_iff _ _ _).1 (hS {}) s hs b c rfl rfl trivial)
   | bits g w o x ra y rc =>
-    exact compV_sound wS fun (s : Tab B C) hs a c ha _ => exists_congr fun b =>
-      and_congr (er a b ha rfl) ((reps_iff _ _ _).1 (hS {}) s hs b c rfl rfl)
+    exact compV_sound wS fun (s : Tab B C) hs a c ha _ _ => exists_congr fun b =>
+      and_congr (er a b ha rfl trivial) ((reps_iff _ _ _).1 (hS {}) s hs b c rfl rfl trivial)
 
 theorem compT_wf (r' : Except String (Tab A B)) {S : Rel B C} (wS : S.Wf) : (compT r' S).Wf := by
   rcases r' with e | r
@@ -1881,20 +1881,20 @@ theorem compT_wf (r' : Except String (Tab A B)) {S : Rel B C} (wS : S.Wf) : (com
   | bits => exact compV_wf r wS
 
 theorem compS_sound {R : Rel A B} {s' : Except String (Tab B C)} {K : Known A C} {X : Core.Rel A.El B.El}
-    {Y : Core.Rel B.El C.El} (hR : ∀ K, R.Reps K X) (hs : ∀ s, s' = .ok s → Agrees ⟨none, K.ran⟩ (rep s) Y) :
+    {Y : Core.Rel B.El C.El} (hR : ∀ K, R.Reps K X) (hs : ∀ s, s' = .ok s → Agrees ⟨none, K.ran, none⟩ (rep s) Y) :
     (compS R K.dom s').Reps K (X ≫ Y) := by
   rcases s' with e | s
   · rw [reps_iff]; intro t ht; nomatch ht
   have es := hs s rfl
   simp only [compS]
-  rcases hr : R.runE ⟨K.dom, some ⟨s.n, s.key⟩⟩ with e | r
+  rcases hr : R.runE ⟨K.dom, some ⟨s.n, s.key⟩, none⟩ with e | r
   · rw [reps_iff]; intro t ht; nomatch ht
   have er := (reps_iff _ R X).1 (hR _) r hr
-  refine compR_sound fun a c ha hc => exists_congr fun b => ?_
-  have key : ∀ {b}, rep s b c → (⟨K.dom, some ⟨s.n, s.key⟩⟩ : Known A B).den.2 b b := fun h =>
+  refine compR_sound fun a c ha hc _ => exists_congr fun b => ?_
+  have key : ∀ {b}, rep s b c → (⟨K.dom, some ⟨s.n, s.key⟩, none⟩ : Known A B).den.2 b b := fun h =>
     (side_some rfl _).2 ((keyRowRep s _).2 ⟨c, h⟩)
-  exact ⟨fun ⟨h1, h2⟩ => ⟨(er a b ha (key h2)).1 h1, (es b c rfl hc).1 h2⟩,
-    fun ⟨h1, h2⟩ => have h2' := (es b c rfl hc).2 h2; ⟨(er a b ha (key h2')).2 h1, h2'⟩⟩
+  exact ⟨fun ⟨h1, h2⟩ => ⟨(er a b ha (key h2) trivial).1 h1, (es b c rfl hc trivial).1 h2⟩,
+    fun ⟨h1, h2⟩ => have h2' := (es b c rfl hc trivial).2 h2; ⟨(er a b ha (key h2') trivial).2 h1, h2'⟩⟩
 
 theorem compS_wf (R : Rel A B) (D : Option ((n : USize) × Vals A n)) (s' : Except String (Tab B C)) :
     (compS R D s').Wf := by
@@ -1911,7 +1911,7 @@ theorem comp_sound {e : Bool} {R : Rel A B} {S : Rel B C} {X : Core.Rel A.El B.E
   have eS := fun K => (reps_iff K S Y).1 (hS K)
   cases R with
   | tab r => exact compT_sound (eR _) hS wS
-  | bits g w o x ra y rc => exact compT_sound (fun t h => eR ⟨K.dom, none⟩ t h) hS wS
+  | bits g w o x ra y rc => exact compT_sound (fun t h => eR ⟨K.dom, none, none⟩ t h) hS wS
   | lazy f =>
     simp only [GenK.comp, Rel.Rel.Reps]
     -- each leaf runs one operand on the side of `K` it touches, so its table agrees there
@@ -1951,7 +1951,7 @@ theorem ofVals_wf {f : {n : USize} → Vals A n → Except String (Tab A B)} : (
   intro K; cases h : K.dom <;> simp [ofVals, h, Rel.Rel.Wf]
 
 theorem id_wf : (GenK.id A).Wf := by
-  intro ⟨d, r⟩; cases d <;> cases r <;> simp [GenK.id, Rel.Rel.Wf]
+  intro ⟨d, r, _⟩; cases d <;> cases r <;> simp [GenK.id, Rel.Rel.Wf]
 
 theorem top_wf {V : Rel B B} : (GenK.top A B V).Wf := by
   intro K; cases h : K.dom <;> simp [GenK.top, h, Rel.Rel.Wf]
@@ -1964,7 +1964,7 @@ theorem ldiv_sound {R : Rel A B} {S : Rel A C} {UB : Rel B B} {UC : Rel C C} {X 
     ∀ K, (GenK.ldiv A B C R S UB UC).Reps K (ldivDen X Y TB TC) := fun K => by
   have eY : ∀ s, S.runE {} = .ok s → Y = rep s := fun s h => agrees_empty ((reps_iff _ _ _).1 (hS {}) s h)
   have hF : ∀ K, (S.force {}).Reps K Y := fun K => (reps_iff _ _ _).2 fun t ht => by
-    rw [force_runE] at ht; rw [eY t ht]; exact fun _ _ _ _ => Iff.rfl
+    rw [force_runE] at ht; rw [eY t ht]; exact fun _ _ _ _ _ => Iff.rfl
   have wF := wS.force {}
   have fF := force_runE S {} {}
   simp only [GenK.ldiv]
@@ -1984,12 +1984,12 @@ theorem ldiv_sound {R : Rel A B} {S : Rel A C} {UB : Rel B B} {UC : Rel C C} {X 
     · nomatch ht
     · obtain ⟨s, hs, ht⟩ := bind_ok ht
       rw [rX, eY s (fF.symm.trans hs), rB, rC]
-      exact fun b c _ _ => Tab.ldivSel_holds ht b c
+      exact fun b c _ _ _ => Tab.ldivSel_holds ht b c
     · rcases hs : Tab.ofBits g w o x ra y rc with e | s
       · exact absurd hs (hr0 e)
       rw [Tab.ldivTabMat_law hm ht hs (fun a ha j hj => some_lt_two (ho a ha j hj)) hx hy, rX,
         eY s (fF.symm.trans hs), rB, rC]
-      exact fun _ _ _ _ => Iff.rfl
+      exact fun _ _ _ _ _ => Iff.rfl
   all_goals
     dsimp only
     refine lift2_sound hR hF (fun _ _ _ _ ht hr hs => ?_) K
@@ -1997,7 +1997,7 @@ theorem ldiv_sound {R : Rel A B} {S : Rel A C} {UB : Rel B B} {UC : Rel C C} {X 
     obtain ⟨uc, huc, ht⟩ := bind_ok ht
     rw [agrees_empty hr, agrees_empty hs, agrees_empty ((reps_iff _ _ _).1 (hB {}) ub hub),
       agrees_empty ((reps_iff _ _ _).1 (hC {}) uc huc)]
-    exact fun b c _ _ => Tab.ldivSel_holds ht b c
+    exact fun b c _ _ _ => Tab.ldivSel_holds ht b c
 
 theorem ldiv_wf (R : Rel A B) {S : Rel A C} (UB : Rel B B) (UC : Rel C C) (wS : S.Wf) :
     (GenK.ldiv A B C R S UB UC).Wf := by
