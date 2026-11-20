@@ -188,8 +188,8 @@ def rowsProved : List (String × Bool) :=
   [("∋", false), ("inl", false), ("inr", false), ("τ", true), ("setify", true)]
 
 /-- Some node of `t` has no proved case in `Tm.gen_sound`: no `GenK` lemma yet (`est thin atPos fold foldr
-    foldI mu nu hylo`), a lemma that does not hold as stated (`juncD`), a row not in `rowsProved`, or no mirror in
-    `Tm.gen` (`arg call`). -/
+    foldI mu nu hylo`; `ldiv`, whose bit-matrix path waits on `Tab.ldivTabMat`'s law), a lemma that does not hold
+    as stated (`juncD`), a row not in `rowsProved`, or no mirror in `Tm.gen` (`arg call`). -/
 def Tm.gap : {A B : Obj} → Tm A B → Bool
   | _, _, .prim r => (rowsProved.lookup r.sym).isNone
   | _, _, .val _ | _, _, .uni _ | _, _, .zero | _, _, .id | _, _, .outl | _, _, .outr | _, _, .nil
@@ -198,8 +198,8 @@ def Tm.gap : {A B : Obj} → Tm A B → Bool
   | _, _, .succ R | _, _, .arith _ R | _, _, .leq R | _, _, .lt R | _, _, .flat R | _, _, .share _ R => R.gap
   | _, _, .comp R S | _, _, .meet R S | _, _, .join R S | _, _, .diff R S | _, _, .pair R S | _, _, .prod R S
   | _, _, .junc R S => R.gap || S.gap
-  | _, _, .ldiv R S U V | _, _, .rdiv R S U V => R.gap || S.gap || U.gap || V.gap
-  | _, _, .juncD .. | _, _, .est _ | _, _, .thin _ | _, _, .atPos _ | _, _, .fold ..
+  | _, _, .rdiv R S U V => R.gap || S.gap || U.gap || V.gap
+  | _, _, .ldiv .. | _, _, .juncD .. | _, _, .est _ | _, _, .thin _ | _, _, .atPos _ | _, _, .fold ..
   | _, _, .foldr .. | _, _, .foldI .. | _, _, .mu .. | _, _, .nu .. | _, _, .hylo .. | _, _, .call ..
   | _, _, .arg .. => true
 
@@ -354,9 +354,6 @@ theorem Tm.gen_sound (hb : GenK.ReadsBack) {A B : Obj} (t : Tm A B) :
   case diff R S ihR ihS => exact GenK.diff_sound (code_of (ihR η ρ hg.1 hl.1 hs)) (code_of (ihS η ρ hg.2 hl.2 hs))
   case dom R ih => exact GenK.dom_sound (code_of (ih η ρ hg hl hs))
   case ran R ih => exact GenK.ran_sound (code_of (ih η ρ hg hl hs))
-  case ldiv R S U V ihR ihS ihU ihV =>
-    exact GenK.ldiv_sound (code_of (ihR η ρ hg.1.1.1 hl.1 hs)) (code_of (ihS η ρ hg.1.1.2 hl.2.1 hs))
-      (code_of (ihU η ρ hg.1.2 hl.2.2.1 hs)) (code_of (ihV η ρ hg.2 hl.2.2.2 hs))
   case rdiv R S U V ihR ihS ihU ihV =>
     exact GenK.rdiv_sound (code_of (ihR η ρ hg.1.1.1 hl.1 hs)) (code_of (ihS η ρ hg.1.1.2 hl.2.1 hs))
       (code_of (ihU η ρ hg.1.2 hl.2.2.1 hs)) (code_of (ihV η ρ hg.2 hl.2.2.2 hs))
