@@ -183,7 +183,7 @@ whatever the writer accepts, the reader gives back, row count and every column w
 writer refuses what text cannot hold (`cell`). -/
 theorem Rel.Db.csvWords_csvText {cols : Rel.Db.CsvCols} {n : Nat} {ws : List (Array UInt64)} {b : List UInt8}
     (h : Rel.Db.csvText cols n ws = .ok b) : Rel.Db.csvWords cols b = .ok (n, ws) := by
-  simp only [Rel.Db.csvText, ok_bind] at h
+  simp only [Rel.Db.csvText, Rel.Db.Csv.arity, ok_bind] at h
   obtain ⟨u, hs, u2, hl, u3, hsz, rs, hrs, h⟩ := h
   simp only [pure, Except.pure, Except.ok.injEq] at h; subst h
   have hl : ws.length = cols.length := by split at hl <;> simp_all
