@@ -189,7 +189,7 @@ def Tm.gen (η : Code) {A B : Obj} (t : Tm A B) : Rel A B :=
   | .sum A B, C, .juncD R S => GenK.juncD A B C R.dem S.dem (R.code η) (S.code η)
   | A, B, .prim r => primGen r A B []
   | _, _, .arg f x => f.argGen η [⟨_, _, x.code η⟩]
-  | _, _, .call _ c .. => .tab (.error s!"Tm.gen: the call `{c}` is in the gap (Expand.spine)")
+  | _, _, .call _ c .. | _, _, .callCv _ c .. => .tab (.error s!"Tm.gen: the call `{c}` is in the gap (Expand.spine)")
 termination_by 2 * t.size
 decreasing_by all_goals simp only [Tm.size] at *; omega
 
@@ -232,7 +232,7 @@ def Tm.hasCode {A B : Obj} (t : Tm A B) : Bool :=
     ((b.kids k A).getD .zero).hasCode && b.hasCode
   | A, B, .prim r => primHasCode r A B []
   | _, _, .arg (C := C) (D := D) f x => f.argHasCode [(C, D)] && x.hasCode
-  | _, _, .call .. => false
+  | _, _, .call .. | _, _, .callCv .. => false
 termination_by t.size
 decreasing_by all_goals simp only [Tm.size] at *; omega
 
@@ -246,7 +246,7 @@ termination_by t.size
 decreasing_by all_goals simp only [Tm.size] at *; omega
 end
 
-#guard !(Tm.comp (Tm.call (A := .long) (B := .long) false `c [] none) .id).hasCode
+#guard !(Tm.comp (Tm.call (A := .long) (B := .long) [] `c [] .zero) .id).hasCode
 #guard !(Tm.arg (Tm.zero (A := .long) (B := .long)) (Tm.id (A := .long))).hasCode
 #guard (Tm.ldiv (A := .long) (B := .long) (C := .long) .id .id .id .id).hasCode
 
@@ -281,7 +281,7 @@ def Tm.gap : {A B : Obj} → Tm A B → Bool
   | _, _, .junc R S | _, _, .fold R S | _, _, .foldr R S | _, _, .foldI R S | _, _, .nu _ R S => R.gap || S.gap
   | _, _, .ldiv R S U V | _, _, .rdiv R S U V => R.gap || S.gap || U.gap || V.gap
   | _, _, .arg (C := C) (D := D) f x => f.argGap [(C, D)] || x.gap
-  | _, _, .juncD .. | _, _, .thin _ | _, _, .call .. => true
+  | _, _, .juncD .. | _, _, .thin _ | _, _, .call .. | _, _, .callCv .. => true
   -- the children's term is no subterm (`Tm.kids`), only no larger than the body (`Tm.size_kids`)
   | A, _, .hylo k _ b =>
     have : ((b.kids k A).getD .zero).size ≤ b.size := Tm.size_kids k A b
@@ -302,7 +302,7 @@ end
 def Tm.spineHead : {A B : Obj} → Tm A B → String
   | _, _, .prim r => r.sym
   | _, _, .arg f _ | _, _, .share _ f => f.spineHead
-  | _, _, .call .. => "call"
+  | _, _, .call .. | _, _, .callCv .. => "call"
   | _, _, _ => "no row"
 
 mutual
@@ -324,7 +324,7 @@ def Tm.gapKinds : {A B : Obj} → Tm A B → List String
   -- a `hylo` whose children `Tm.kids` reads in no shape, or whose children's term has a gap node
   | A, _, .hylo k _ b =>
     b.gapKinds ++ if (b.kids k A).isNone || ((b.kids k A).getD .zero).gap then ["hylo"] else []
-  | _, _, .call .. => ["call"]
+  | _, _, .call .. | _, _, .callCv .. => ["call"]
   | _, _, .arg (C := C) (D := D) f x => f.argGapKinds [(C, D)] ++ x.gapKinds
 
 /-- `Tm.argGap`'s kinds: `arg s` for a spine headed by `s` that is no `Prim.proved` row at its relations. -/
@@ -373,7 +373,7 @@ def Tm.LamLawsAt (L : Obj → Obj → Prop) : {A B : Obj} → Tm A B → Prop
   | _, _, .mu k _ _ b | _, _, .hylo k _ b => b.pol true k = true ∧ b.LamLawsAt L
   -- every other constructor spelled out: a catch-all's equation lemmas time `simp` out
   | _, _, .val _ | _, _, .uni _ | _, _, .zero | _, _, .id | _, _, .outl | _, _, .outr | _, _, .nil
-  | _, _, .atPos _ | _, _, .var .. | _, _, .thin _ | _, _, .juncD .. | _, _, .call .. => True
+  | _, _, .atPos _ | _, _, .var .. | _, _, .thin _ | _, _, .juncD .. | _, _, .call .. | _, _, .callCv .. => True
 
 /-- `Tm.LamLawsAt` with `LamLaw`, the premise of `Tm.gen_sound`. -/
 abbrev Tm.LamLaws {A B : Obj} (t : Tm A B) : Prop := t.LamLawsAt LamLaw
@@ -390,7 +390,7 @@ def Tm.monoOK : {A B : Obj} → Tm A B → Bool
   | _, _, .nu k S b => b.pol true k && S.monoOK && b.monoOK
   | _, _, .mu k _ _ b | _, _, .hylo k _ b => b.pol true k && b.monoOK
   | _, _, .val _ | _, _, .uni _ | _, _, .zero | _, _, .id | _, _, .outl | _, _, .outr | _, _, .nil
-  | _, _, .atPos _ | _, _, .var .. | _, _, .thin _ | _, _, .juncD .. | _, _, .call ..
+  | _, _, .atPos _ | _, _, .var .. | _, _, .thin _ | _, _, .juncD .. | _, _, .call .. | _, _, .callCv ..
   | _, _, .prim _ => true
 
 theorem Tm.monoOK_iff {A B : Obj} (t : Tm A B) : t.monoOK = true ↔ t.LamLawsAt fun _ _ => True := by

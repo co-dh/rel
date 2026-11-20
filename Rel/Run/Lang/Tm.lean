@@ -77,10 +77,13 @@ inductive Tm : Obj → Obj → Type where
       parameter, on the keys in demand when its argument is a pair test (`Form`). `d`: its demand bit, which the
       use site fixes, as `call` stores its own. -/
   | var {A B : Obj} (d : Bool) (k : Nat) : Tm A B
-  /-- The constant `c` a parametric definition was elaborated once to, before its arguments (`arg`): called, its
-      body not expanded; its plan runs on the keys in demand when `d`. `os`: the objects of the object variables it
-      is generic over; `cv`: its converse's constant and demand bit, when its body has a converse (`convTm`). -/
-  | call {A B : Obj} (d : Bool) (c : Lean.Name) (os : List Obj) (cv : Option (Lean.Name × Bool)) : Tm A B
+  /-- `let ks := args in b`: the definition elaborated once to the constant `c`, called before its arguments
+      (`arg`). `b` its body at the call's objects (`Tm.instObj`), `ks` the variables of `b` its arguments bind, in
+      the order `arg` gives them; `c` at `os`, the objects of the variables it is generic over, its shared code. -/
+  | call {A B : Obj} (ks : List Nat) (c : Lean.Name) (os : List Obj) (b : Tm A B) : Tm A B
+  /-- A `call` whose body has a converse `u` (`convTm`), the constant `c'` that converse's. Its own constructor:
+      an `Option (Tm B A)` field makes a nested family the kernel refuses. -/
+  | callCv {A B : Obj} (ks : List Nat) (c c' : Lean.Name) (os : List Obj) (b : Tm A B) (u : Tm B A) : Tm A B
   /-- `f` given one more argument `x`: a relation, a pair test, or the universe of one of its object variables. -/
   | arg {A B C D : Obj} (f : Tm A B) (x : Tm C D) : Tm A B
   /-- `νX : φ`, `X` the variable `k`: rounds of `body` from `S`, the conjuncts of `φ` without `X`, down to the
@@ -100,11 +103,12 @@ abbrev Res := (A : Obj) × (B : Obj) × Tm A B
 instance {A B : Obj} : Inhabited (Tm A B) := ⟨.var false 0⟩
 
 /-- `t` runs on demand (§a): read only at the keys its left context supplies. A function of the constructor and its
-    parts, except `var` and `call`, which store their bit. -/
+    parts, except `var`, which stores its bit. -/
 def Tm.dem : {A B : Obj} → Tm A B → Bool
   | _, _, .comp R _ | _, _, .dom R | _, _, .own R | _, _, .share _ R | _, _, .arg R _ => R.dem
+  | _, _, .call _ _ _ R | _, _, .callCv _ _ _ _ R _ => R.dem
   | _, _, .meet R S | _, _, .join R S | _, _, .diff R S | _, _, .pair R S => R.dem || S.dem
-  | _, _, .var d _ | _, _, .call d .. => d
+  | _, _, .var d _ => d
   -- every leaf listed, as in `Tm.fv`
   | _, _, .val _ | _, _, .uni _ | _, _, .zero | _, _, .conv _ | _, _, .ran _ | _, _, .ldiv .. | _, _, .rdiv ..
   | _, _, .prod .. | _, _, .junc .. | _, _, .leq _ | _, _, .lt _ | _, _, .nu .. | _, _, .mu .. => false
@@ -189,7 +193,7 @@ def Tm.fv : {A B : Obj} → Tm A B → List Nat
   | _, _, .hylo k _ b => b.fv.filter (· != k)
   -- every leaf listed: a wildcard makes the equation lemmas of this 40-constructor family slow to build
   | _, _, .val _ | _, _, .uni _ | _, _, .zero | _, _, .id | _, _, .outl | _, _, .outr
-  | _, _, .nil | _, _, .prim _ | _, _, .atPos _ | _, _, .share .. | _, _, .call .. => []
+  | _, _, .nil | _, _, .prim _ | _, _, .atPos _ | _, _, .share .. | _, _, .call .. | _, _, .callCv .. => []
 
 /-! ### Substitution -/
 
@@ -259,7 +263,8 @@ def Tm.subst : Tm.Sub → {A B : Obj} → Tm A B → Tm A B
   | _, _, _, .prim r => .prim r
   | _, _, _, .atPos k => .atPos k
   | _, _, _, .share k R => .share k R
-  | _, _, _, .call d c os cv => .call d c os cv
+  | _, _, _, .call ks c os b => .call ks c os b
+  | _, _, _, .callCv ks c c' os b u => .callCv ks c c' os b u
 
 /-- `X`, the variable `k`, occurs in `t` only with sign `s` (`true` positive): the one monotonicity check (D5 = J),
     `den_mono`/`den_anti`. A node with no rule below must not mention `k` at all. `ldiv`'s `R` and `rdiv`'s `S`
@@ -293,7 +298,7 @@ def Tm.pol (s : Bool) (k : Nat) : {A B : Obj} → Tm A B → Bool
   | _, _, t@(.arg (.prim r) x) => (Prim.find? r.sym).any (·.mono) && x.pol s k || !t.fv.contains k
   | _, _, t@(.lam _) | _, _, t@(.E _) | _, _, t@(.thin _) | _, _, t@(.arg ..) => !t.fv.contains k
   | _, _, .val _ | _, _, .uni _ | _, _, .zero | _, _, .id | _, _, .outl | _, _, .outr
-  | _, _, .nil | _, _, .prim _ | _, _, .atPos _ | _, _, .share .. | _, _, .call .. => true
+  | _, _, .nil | _, _, .prim _ | _, _, .atPos _ | _, _, .share .. | _, _, .call .. | _, _, .callCv .. => true
 
 /-! ### The children of a recursion -/
 
@@ -302,13 +307,14 @@ def Tm.pol (s : Bool) (k : Nat) : {A B : Obj} → Tm A B → Bool
 def Tm.size : {A B : Obj} → Tm A B → Nat
   | _, _, .top R | _, _, .conv R | _, _, .dom R | _, _, .ran R | _, _, .lam R | _, _, .E R | _, _, .est R
   | _, _, .thin R | _, _, .own R | _, _, .succ R | _, _, .arith _ R | _, _, .leq R | _, _, .lt R | _, _, .flat R
-  | _, _, .share _ R | _, _, .mu _ _ _ R | _, _, .hylo _ _ R => R.size + 1
+  | _, _, .share _ R | _, _, .mu _ _ _ R | _, _, .hylo _ _ R | _, _, .call _ _ _ R | _, _, .callCv _ _ _ _ R _ =>
+    R.size + 1
   | _, _, .comp R S | _, _, .meet R S | _, _, .join R S | _, _, .diff R S | _, _, .pair R S | _, _, .prod R S
   | _, _, .junc R S | _, _, .juncD R S | _, _, .foldr R S | _, _, .fold R S | _, _, .foldI R S | _, _, .arg R S
   | _, _, .nu _ R S => R.size + S.size + 1
   | _, _, .ldiv R S U V | _, _, .rdiv R S U V => R.size + S.size + U.size + V.size + 1
   | _, _, .val _ | _, _, .uni _ | _, _, .zero | _, _, .id | _, _, .outl | _, _, .outr | _, _, .nil | _, _, .prim _
-  | _, _, .atPos _ | _, _, .var .. | _, _, .call .. => 1
+  | _, _, .atPos _ | _, _, .var .. => 1
 
 /-- The children `t` reads the variable `k : A ⟶ _` at: from `t`'s source to the nodes of `A` (`Tm.den_local`);
     `𝟘` where `t` does not mention `k`, `none` where it reads `k` in a shape no relation bounds. The shapes are

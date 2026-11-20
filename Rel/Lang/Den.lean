@@ -373,7 +373,7 @@ noncomputable def Tm.den : Val → {A B : Obj} → Tm A B → Den A B
   | ρ, _, _, .foldI e S => foldIDen (e.den ρ) (S.den ρ)
   | ρ, _, _, .flat R => flatDen (R.den ρ)
   | ρ, A, B, .var _ k => ρ k A B
-  | _, _, _, .call .. => 𝟘
+  | _, _, _, .call .. | _, _, _, .callCv .. => 𝟘
   | ρ, _, _, .arg f x => f.argDen ρ [⟨_, _, x.den ρ⟩]
   -- the rounds start at `⟦S⟧` and meet each with it (`Gen.nu`), so `S` bounds the greatest fixed point
   | ρ, _, _, .nu k S b => Core.Rel.nu fun X => S.den ρ ∩ b.den (ρ.bind k X)
