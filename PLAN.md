@@ -563,6 +563,11 @@ Diff table 的「状态」列：✅ 后面是完成它的步骤；🔄 是部分
         - owner 定的顺序（C）：先做 architecture §4 已定的实现改动（`∩ − \` 分段 `scan`、`\` 不物化 join、
           `ldiv(tab, bits)` 在 bit matrix 上算、`μ` semi-naive），差分测试与回归固定保护；`ldiv meet diff mu fold` 与
           bit matrix 路径的证明（T11e 余项、`ReadsBack`）等实现稳定后再做。T11e5 只做 `arith`。
+        - 2026-11-20 03:01，master cbfe5a4（check-61 在跑；check-60 在 66bb2cc 全绿，476/2、478/478）：s5conv 合入，235 / 235。
+          `callCv` 的 `ConvOK` 前提由构造推出（`callTm_convOK`、`convTm_instObj_den`；前提换成实例化后 body 的结构性 `ConvOK`；
+          没有字面的"`instObj` 与 `den` 交换"引理——两边元素类型不同）。registry：key = `formKey c fs`；两个互不 import 的模块
+          原来可以各建同一 key，`Registry.add` 静默取最新；现在保留第一条、记入新字段 `Registry.clashes`，`Registry.call?` 报错
+          （key、两个常量名、修法），`Embed.define` 与 `reread` 都走它。今天的树里 58 条 call、58 个不同 key。
         - 2026-11-20 02:40，master 66bb2cc（check-60 在跑；check-59 在 6f29cc5 全绿）：**覆盖 235 / 235，`Tm.gap` 在 17 个程序的
           定义上不再命中**。已合入：p13F + p15F（行 `F`：`Obj.key_ordCode`——整数 atom 类型上 `kasc` 的 code 序即 `Obj.lt`，float
           不在其中；`Tab.mapFold_holds`、`Vals.cells_expand_row`、`Tab.comp_pos_rows`、`Tab.map_holds`、`GenK.map_sound`）、p14sum
