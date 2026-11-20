@@ -42,14 +42,19 @@ run_cmd do
   let reg := Expand.relRegistry.getState (← getEnv)
   let mut total := 0
   let mut ok : List String := []
+  let mut ks : List (List String) := []
   for (n, _, _) in reg.progs do
     match ← reread n with
     | .error e => throwError "GenSoundTest: re-reading {n}: {e}"
     | .ok (ds, _, _, _, fs) =>
       for (x, ⟨_, _, t⟩) in ds ++ fs.map fun o => (toString o.const, o.res) do
         total := total + 1
-        if !t.gap then ok := ok ++ [s!"{n}.{x}"]
+        if !t.gap then ok := ok ++ [s!"{n}.{x}"] else ks := t.gapKinds.eraseDups :: ks
   logInfo m!"{ok.length} of {total} definitions of {reg.progs.size} programs have no gap node"
+  -- per gap kind: the definitions it blocks, and those it blocks alone (their only gap kind)
+  let rows := ks.flatten.eraseDups.map fun k => (k, (ks.filter (·.contains k)).length, (ks.filter (· == [k])).length)
+  for (k, b, a) in rows.mergeSort fun (_, b, a) (_, b', a') => a > a' || (a == a' && b ≥ b') do
+    logInfo m!"gap `{k}`: blocks {b}, alone {a}"
   for x in ["Rel.Programs.chess.K", "Rel.Programs.chess.N", "Rel.Programs.blocks.r", "Rel.Programs.edit.ne"] do
     unless ok.contains x do throwError "GenSoundTest: {x} has a gap node or is no definition"
 

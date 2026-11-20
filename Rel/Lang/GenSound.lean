@@ -249,6 +249,42 @@ def Tm.gap : {A B : Obj} → Tm A B → Bool
   | _, _, .mu .. | _, _, .nu .. | _, _, .hylo .. | _, _, .call ..
   | _, _, .arg .. => true
 
+/-- The head of the spine `t` (`Expand.spine`): its row's symbol, or `call`. -/
+def Tm.spineHead : {A B : Obj} → Tm A B → String
+  | _, _, .prim r => r.sym
+  | _, _, .arg f _ | _, _, .share _ f => f.spineHead
+  | _, _, .call .. => "call"
+  | _, _, _ => "no row"
+
+/-- The kinds of `t`'s gap nodes, by `Tm.gap`'s case split (`Tm.gap_eq`): a constructor's name, `prim s` for a row
+    `s` not in `rowsProved`, `arg s` for an argument given to a spine headed by `s`. -/
+def Tm.gapKinds : {A B : Obj} → Tm A B → List String
+  | _, _, .prim r => match rowsProved.lookup r.sym with
+    | some _ => []
+    | none => ["prim " ++ r.sym]
+  | _, _, .val _ | _, _, .uni _ | _, _, .zero | _, _, .id | _, _, .outl | _, _, .outr | _, _, .nil
+  | _, _, .var .. => []
+  | _, _, .top R | _, _, .conv R | _, _, .dom R | _, _, .ran R | _, _, .lam R | _, _, .E R | _, _, .own R
+  | _, _, .succ R | _, _, .arith _ R | _, _, .leq R | _, _, .lt R | _, _, .flat R | _, _, .share _ R => R.gapKinds
+  | _, _, .comp R S | _, _, .meet R S | _, _, .join R S | _, _, .diff R S | _, _, .pair R S | _, _, .prod R S
+  | _, _, .junc R S | _, _, .fold R S | _, _, .foldr R S | _, _, .foldI R S => R.gapKinds ++ S.gapKinds
+  | _, _, .ldiv R S U V | _, _, .rdiv R S U V => R.gapKinds ++ S.gapKinds ++ U.gapKinds ++ V.gapKinds
+  | _, _, .juncD .. => ["juncD"]
+  | _, _, .est _ => ["est"]
+  | _, _, .thin _ => ["thin"]
+  | _, _, .atPos _ => ["atPos"]
+  | _, _, .mu .. => ["mu"]
+  | _, _, .nu .. => ["nu"]
+  | _, _, .hylo .. => ["hylo"]
+  | _, _, .call .. => ["call"]
+  | _, _, .arg f _ => ["arg " ++ f.spineHead]
+
+theorem Tm.gap_eq {A B : Obj} (t : Tm A B) : t.gap = !t.gapKinds.isEmpty := by
+  induction t
+  case prim r => simp only [Tm.gap, Tm.gapKinds]; cases rowsProved.lookup r.sym <;> rfl
+  all_goals simp only [Tm.gap, Tm.gapKinds, *]
+  all_goals first | rfl | (rw [Bool.eq_iff_iff]; simp [Decidable.imp_iff_not_or, or_assoc])
+
 /-- `LamLaw` at each `Λ` and `E` of `t` (`E(R) = Λ(∋ ≫ R)`, at `[A] ⟶ [B]`), and at each row `rowsProved` marks. -/
 def Tm.LamLaws : {A B : Obj} → Tm A B → Prop
   | A, B, .prim r => rowsProved.lookup r.sym = some true → ∀ B', B = .arr B' → LamLaw A B'
