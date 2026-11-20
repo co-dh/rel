@@ -284,22 +284,25 @@ where
 abbrev Objs := List (String × ObjInfo)
 
 /-- The universe of an object, when every base object in it has one (§a): `cross` of a product's, the two
-    sides of a sum's; an `arr` has none. -/
-def uniOf (objs : Objs) : OTy → Option ((A : Obj) × (m : USize) × Vals A m)
-  | .base n => do let ⟨m, U⟩ ← (← objs.lookup n).uni; pure ⟨.long, m, U⟩
+    sides of a sum's; an `arr` has none. Whether it has one is decided here; its values are built when a reader
+    forces the thunk, so an object whose universe is past `crossMax` costs nothing until a term reads it. -/
+def uniOf (objs : Objs) : OTy → Option ((A : Obj) × Thunk (Except String ((m : USize) × Vals A m)))
+  | .base n => do let ⟨m, U⟩ ← (← objs.lookup n).uni; pure ⟨.long, .pure (.ok ⟨m, U⟩)⟩
   | .prod a b => do
-    let ⟨A, _, Ua⟩ ← uniOf objs a; let ⟨B, _, Ub⟩ ← uniOf objs b
-    match Vals.cross Ua Ub with
-    | .ok ⟨_, x, y⟩ => pure ⟨.prod A B, _, (x, y)⟩
-    | .error e => Rel.Kernel.stop (fun _ => s!"the universe of {a} × {b}: {e}") fun _ => none
+    let ⟨A, ua⟩ ← uniOf objs a; let ⟨B, ub⟩ ← uniOf objs b
+    pure ⟨.prod A B, .mk fun _ => do
+      let ⟨_, Ua⟩ ← ua.get; let ⟨_, Ub⟩ ← ub.get
+      let ⟨_, x, y⟩ ← (Vals.cross Ua Ub).mapError (s!"the universe of {a} × {b}: {·}")
+      pure ⟨_, (x, y)⟩⟩
   | .sum a b => do
-    let ⟨A, _, Ua⟩ ← uniOf objs a; let ⟨B, _, Ub⟩ ← uniOf objs b
-    -- the values of `inl` on `Ua` and of `inr` on `Ub`: `ran(inl) ∪ ran(inr)`
-    let u : Except String (Tab (.sum A B) (.sum A B)) := do
-      Tab.union (← Tab.ran (← Tab.inl (B := B) Ua)) (← Tab.ran (← Tab.inr (A := A) Ub))
-    match u with
-    | .ok U => pure ⟨_, _, U.key⟩
-    | .error e => Rel.Kernel.stop (fun _ => s!"the universe of {a} + {b}: {e}") fun _ => none
+    let ⟨A, ua⟩ ← uniOf objs a; let ⟨B, ub⟩ ← uniOf objs b
+    pure ⟨.sum A B, .mk fun _ => do
+      let ⟨_, Ua⟩ ← ua.get; let ⟨_, Ub⟩ ← ub.get
+      -- the values of `inl` on `Ua` and of `inr` on `Ub`: `ran(inl) ∪ ran(inr)`
+      let U ← (show Except String (Tab (.sum A B) (.sum A B)) from do
+        Tab.union (← Tab.ran (← Tab.inl (B := B) Ua)) (← Tab.ran (← Tab.inr (A := A) Ub))).mapError
+        (s!"the universe of {a} + {b}: {·}")
+      pure ⟨_, U.key⟩⟩
   | _ => none
 
 /-- The rounds a `μ` runs at most when an object of it has no universe: Kleene rounds from `𝟘` stop at the least
@@ -1776,7 +1779,9 @@ def closed? {A B : Obj} (r : Res) : Except Err (Tm A B) := do
     number object's `𝟙` itself; else built from its parts, an object variable's being the universe its constant is
     given (`uniVar`). -/
 def uniPart (o : OTy) (A : Obj) : Except Err (Option (Tm A A)) := do
-  if let some ⟨A', _, U⟩ := uniOf objs o then
+  if let some ⟨A', U⟩ := uniOf objs o then
+    -- the one reader that forces the universe: a product past `crossMax` fails the definition that reads it
+    let ⟨_, U⟩ ← U.get.mapError fun e => (⟨dp, e⟩ : Err)
     return ← if h : A' = A then pure (some (.uni (h ▸ U))) else internal dp "universe objects disagree"
   match o, A with
   -- an object variable's universe is its constant's argument even where the call puts an unbounded object (`num`)
