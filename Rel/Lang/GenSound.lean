@@ -1,12 +1,13 @@
-import Rel.Lang.GenKSpec
+import Rel.Lang.GenKBits
 import Rel.Lang.Den
 import Rel.Run.Lang.Expand
 
 /-! `Tm.gen`: `Expand.node` as a Lean function from a term to its `GenK` code, one `GenK` op per constructor with
     `Expand.node`'s argument order, and `Tm.code` as `Expand.code` (a closed part memoised, `GenK.memo`). Then
     `Tm.gen_sound`: on a term with no `Tm.gap` constructor, under `Sound`, the code represents `Tm.den` in every
-    context, each case one `GenK.*_sound` (`GenKSpec`). The bit-matrix laws `CompTabMatLaw`, `KeepBitsLaw` and the
-    order law of each `Λ` (`LamLaw`, false at a float atom) are hypotheses. -/
+    context, each case one `GenK.*_sound` (`GenKSpec`, `GenKBits`). A bit matrix the code passes on is `Rel.Wf`
+    (`Tm.gen_wf`); `GenK.ReadsBack` (`ofBits` reads back what `compSelM`, `compTabMat` build) and the order law of each
+    `Λ` (`LamLaw`, false at a float atom) are hypotheses. -/
 
 namespace Rel.Lang
 
@@ -25,8 +26,8 @@ def Code.bind (η : Code) (k : Nat) {A B : Obj} (r : Rel A B) : Code := fun j A'
   if j = k then (if h : A = A' ∧ B = B' then h.1 ▸ h.2 ▸ r else GenK.zero A' B') else η j A' B'
 
 /-- The code environment `η` represents the meaning environment `ρ`, at every variable and object, in every
-    context. -/
-def Sound (η : Code) (ρ : Val) : Prop := ∀ k A B K, (η k A B).Reps K (ρ k A B)
+    context, and every bit matrix it holds is `Rel.Wf`. -/
+def Sound (η : Code) (ρ : Val) : Prop := (∀ k A B K, (η k A B).Reps K (ρ k A B)) ∧ ∀ k A B, (η k A B).Wf
 
 /-- The hypothesis of `Tab.lam_den` at `A ⟶ [B]`: two rows of one key whose codes ascend strictly hold values
     ascending in `B.lt`. It fails at a float atom, so it is asked per `Λ`, never for every object. -/
@@ -128,6 +129,8 @@ theorem memo_sound {A B : Obj} {R : Rel A B} {X : Core.Rel A.El B.El} (hR : ∀ 
   | lazy f => exact (reps_iff _ _ _).2 fun t h x y _ _ => (reps_iff _ _ _).1 (hR {}) t h x y rfl rfl
   | bits => exact (reps_iff _ _ _).2 fun t h x y _ _ => (reps_iff _ _ _).1 (hR {}) t h x y rfl rfl
 
+theorem memo_wf {A B : Obj} (R : Rel A B) : (GenK.memo A B R).Wf := by cases R <;> trivial
+
 end GenK
 
 theorem Tm.code_of {η : Code} {A B : Obj} {t : Tm A B} {X : Core.Rel A.El B.El} (h : ∀ K, (t.gen η).Reps K X) :
@@ -136,9 +139,33 @@ theorem Tm.code_of {η : Code} {A B : Obj} {t : Tm A B} {X : Core.Rel A.El B.El}
   · exact GenK.memo_sound h
   · exact h
 
+theorem Tm.code_wf {η : Code} {A B : Obj} {t : Tm A B} (h : (t.gen η).Wf) : (t.code η).Wf := by
+  rw [Tm.code]; split
+  · exact GenK.memo_wf _
+  · exact h
+
+/-- **Every bit matrix `Tm.gen` passes on is `Rel.Wf`** off the gap: only `comp` builds one (`GenK.comp_wf`), a
+    variable reads `η`'s, and every other op returns tables. -/
+theorem Tm.gen_wf (hb : GenK.ReadsBack) {A B : Obj} (t : Tm A B) :
+    ∀ η : Code, t.gap = false → (∀ k A B, (η k A B).Wf) → (t.gen η).Wf := by
+  induction t <;> intro η hg hη <;> simp only [Tm.gap, Bool.or_eq_false_iff, Bool.true_eq_false] at hg <;>
+    simp only [Tm.gen]
+  case comp R S ihR ihS => exact GenK.comp_wf hb _ (code_wf (ihS η hg.2 hη))
+  case own R ih => exact code_wf (ih η hg hη)
+  case share R ih => exact code_wf (ih Code.empty hg fun _ _ _ => trivial)
+  case var k => exact hη k _ _
+  all_goals first
+    | trivial
+    | exact GenK.ofVals_wf
+    | exact GenK.top_wf
+    | exact GenK.meet_wf _ _
+    | exact GenK.lift1_wf _
+    | exact GenK.lift2_wf _ _
+    | exact fun _ => trivial
+
 /-- **`Tm.gen` is sound off the gap**: the code of a term with no `Tm.gap` node represents its meaning in every
-    context, given the bit-matrix laws, `LamLaw` at each `Λ`, and an environment `η` that represents `ρ`. -/
-theorem Tm.gen_sound (hm : GenK.CompTabMatLaw) (hk : GenK.KeepBitsLaw) {A B : Obj} (t : Tm A B) :
+    context, given `ReadsBack`, `LamLaw` at each `Λ`, and an environment `η` that represents `ρ`. -/
+theorem Tm.gen_sound (hb : GenK.ReadsBack) {A B : Obj} (t : Tm A B) :
     ∀ (η : Code) (ρ : Val), t.gap = false → t.LamLaws → Sound η ρ → ∀ K, (t.gen η).Reps K (t.den ρ) := by
   induction t <;> intro η ρ hg hl hs <;> simp only [Tm.gap, Bool.or_eq_false_iff, Bool.true_eq_false] at hg <;>
     simp only [Tm.LamLaws] at hl <;> simp only [Tm.gen, Tm.den]
@@ -150,10 +177,12 @@ theorem Tm.gen_sound (hm : GenK.CompTabMatLaw) (hk : GenK.KeepBitsLaw) {A B : Ob
   case outl => exact GenK.ofVals_row_sound fun _ _ _ h => Tab.outl_holds h
   case outr => exact GenK.ofVals_row_sound fun _ _ _ h => Tab.outr_holds h
   case comp R S ihR ihS =>
-    exact GenK.comp_sound hm (code_of (ihR η ρ hg.1 hl.1 hs)) (code_of (ihS η ρ hg.2 hl.2 hs))
+    exact GenK.comp_sound (code_of (ihR η ρ hg.1 hl.1 hs)) (code_of (ihS η ρ hg.2 hl.2 hs))
+      (code_wf (gen_wf hb S η hg.2 hs.2))
   case conv R ih => exact GenK.conv_sound (code_of (ih η ρ hg hl hs))
   case meet R S ihR ihS =>
-    exact GenK.meet_sound hk (code_of (ihR η ρ hg.1 hl.1 hs)) (code_of (ihS η ρ hg.2 hl.2 hs))
+    exact GenK.meet_sound (code_of (ihR η ρ hg.1 hl.1 hs)) (code_of (ihS η ρ hg.2 hl.2 hs))
+      (code_wf (gen_wf hb R η hg.1 hs.2)) (code_wf (gen_wf hb S η hg.2 hs.2))
   case join R S ihR ihS => exact GenK.join_sound (code_of (ihR η ρ hg.1 hl.1 hs)) (code_of (ihS η ρ hg.2 hl.2 hs))
   case diff R S ihR ihS => exact GenK.diff_sound (code_of (ihR η ρ hg.1 hl.1 hs)) (code_of (ihS η ρ hg.2 hl.2 hs))
   case dom R ih => exact GenK.dom_sound (code_of (ih η ρ hg hl hs))
@@ -169,15 +198,16 @@ theorem Tm.gen_sound (hm : GenK.CompTabMatLaw) (hk : GenK.KeepBitsLaw) {A B : Ob
   case junc R S ihR ihS => exact GenK.junc_sound (code_of (ihR η ρ hg.1 hl.1 hs)) (code_of (ihS η ρ hg.2 hl.2 hs))
   case lam R ih => exact GenK.lam_sound (code_of (ih η ρ hg hl.2 hs)) hl.1
   case E R ih =>
-    exact GenK.lam_sound (GenK.comp_sound hm (GenK.ofVals_row_sound fun _ _ _ h => Tab.mem_holds h)
-      (code_of (ih η ρ hg hl.2 hs))) hl.1
+    exact GenK.lam_sound (GenK.comp_sound (GenK.ofVals_row_sound fun _ _ _ h => Tab.mem_holds h)
+      (code_of (ih η ρ hg hl.2 hs)) (code_wf (gen_wf hb R η hg hs.2))) hl.1
   case nil => exact GenK.ofVals_row_sound fun _ _ _ h => Tab.nil_holds h
   case own R ih => exact code_of (ih η ρ hg hl hs)
   case succ U ih => exact GenK.succ_sound (code_of (ih η ρ hg hl hs))
   case leq U ih => exact GenK.cmp_sound (fun _ _ _ h => Tab.leq_holds h) (code_of (ih η ρ hg hl hs))
   case lt U ih => exact GenK.cmp_sound (fun _ _ _ h => Tab.lt_holds h) (code_of (ih η ρ hg hl hs))
-  case share R ih => exact code_of (ih Code.empty Val.empty hg hl fun _ _ _ => GenK.zero_sound)
+  case share R ih =>
+    exact code_of (ih Code.empty Val.empty hg hl ⟨fun _ _ _ => GenK.zero_sound, fun _ _ _ => trivial⟩)
   case flat R ih => exact GenK.flat_sound (code_of (ih η ρ hg hl hs))
-  case var k => exact hs k _ _
+  case var k => exact hs.1 k _ _
 
 end Rel.Lang
