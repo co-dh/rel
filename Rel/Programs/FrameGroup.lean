@@ -21,6 +21,11 @@ rel_program frameGroup where
 
     aggregate(a : β ⟶ γ, f : [ν] ⟶ δ, x : ν ⟶ β) : ν ⟶ γ×δ ≜ ⟨firstOcc(a, x) x a, agg(g(a, x)°, f)⟩
     collect(a : β ⟶ γ, c : β ⟶ δ, x : ν ⟶ β) : ν ⟶ γ×[δ] ≜ aggregate(a, F(x c), x)
-    valueCounts(a : β ⟶ γ, x : ν ⟶ β) : ν ⟶ γ×δ ≜ aggregate(a, length, x)
+    valueCounts(a : β ⟶ γ, x : ν ⟶ β) : ν ⟶ γ×ν ≜ aggregate(a, length, x)
+    countDistinct(x : ν ⟶ β) : 1 ⟶ ν ≜ count(distinct(x))
+    -- the most frequent value; among ties the first to occur (`idesc` is stable)
+    mode(a : β ⟶ γ, x : ν ⟶ β) : 1 ⟶ γ ≜ summarize(head, s) s where s ≜ idesc(π₂, valueCounts(a, x)) valueCounts(a, x) π₁
+    -- the mean of the middle sorted rows, those with `count − 2 ≤ 2i ≤ count` (one row or two), in integers
+    median(a : β ⟶ γ, x : ν ⟶ β) : 1 ⟶ γ ≜ summarize(F(m a) ⟨sum, length⟩div, m) where m ≜ dom(⟨𝟙,𝟙⟩plus ≤ count(x)°) dom(⟨𝟙,𝟙⟩plus succ succ ≥ count(x)°) sortBy(a, x)
 
 end Rel.Programs

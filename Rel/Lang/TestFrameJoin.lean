@@ -34,7 +34,11 @@ rel_program frameJoinT where
     check intersect(x, y2) = {(0,(A,3)),(1,(C,2))}
     check difference(x, y2) = {(0,(B,5)),(1,(C,1)),(2,(A,7)),(3,(B,1))}
     check melt({(∗,a)}, π₁, {(∗,b)}, π₂, w) = {(0,(a,1)),(1,(a,3)),(2,(a,5)),(3,(b,2)),(4,(b,4)),(5,(b,6))}
+    t : P ⟶ K×(N×N) ≜ {(0,(A,(1,2))),(1,(B,(3,4))),(2,(C,(5,6)))}
+    check pivotLong(π₁, {(∗,a)}, π₂ π₁, {(∗,b)}, π₂ π₂, t) =
+      {(0,(A,(a,1))),(1,(B,(a,3))),(2,(C,(a,5))),(3,(A,(b,2))),(4,(B,(b,4))),(5,(C,(b,6)))}
 
+#eval frameJoinT.failures.map toString
 #guard frameJoinT.ok
 
 end Rel.Lang.TestFrameJoin
