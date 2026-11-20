@@ -52,6 +52,17 @@ rel_program frameCols where
     check dom(c contains({(A B,A B)})) = {(0,0),(2,2)}
     cl : P ⟶ N ≜ c length
     check cl = {(0,3),(1,2),(2,3)}
+    -- reduce by a given `arith`: `max` from 0 over 5 3 5 1 7 2 1 3
+    check summarize(F(x π₂) ⦇[{(∗,0)}, max]⦈, x) = {(∗,7)}
+    -- describe `v`: count 8, mean 27 div 8 = 3, min 1, max 7
+    check describe(x π₂) = {(∗,(8,(3,(1,7))))}
+    -- arith verbs: `v div 2`, `v mod 2`; `and`, `or`, `not` of tests as `∩`, `∪`, `−` of coreflexives
+    check x π₂ ⟨𝟙, ⊤ {(∗,2)}⟩div = {(0,2),(1,1),(2,2),(3,0),(4,3),(5,1),(6,0),(7,1)}
+    check x π₂ ⟨𝟙, ⊤ {(∗,2)}⟩mod = {(0,1),(1,1),(2,1),(3,1),(4,1),(5,0),(6,1),(7,1)}
+    check filterBy(dom(π₁ {(A,A)}) ∩ dom(π₂ big), x) = {(0,(A,3)),(1,(A,7)),(2,(A,3))}
+    seven : N ⟶ N ≜ {(7,7)}
+    check filterBy(dom(π₁ {(C,C)}) ∪ dom(π₂ seven), x) = {(0,(C,1)),(1,(A,7)),(2,(C,2))}
+    check filterBy(𝟙 − dom(π₂ big), x) = {(0,(C,1)),(1,(C,2)),(2,(B,1))}
 
 -- by hand from the fixture `k = B A B C A C B A`, `v = 5 3 5 1 7 2 1 3`: sum 27, mean 27 div 8 = 3
 #guard frameCols.ok
