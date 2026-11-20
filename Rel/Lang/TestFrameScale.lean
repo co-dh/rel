@@ -29,9 +29,10 @@ rel_program frameScaleT where
 
 #guard frameScaleT.ok
 
--- The same pipeline at the unbounded `N`, without the join (`joinOn` at `N` waits on `ran⟨𝟙, K⟩`): the positions
+-- The same pipeline at the unbounded `N`: the positions
 -- `0…n−1` as decimal digit strings, `⟨P, D⟩` pairing each number of `P` with each digit `d` into `10p + d`.
--- At `N` no row reads a universe, so `n = 10⁵` costs about 1.5 s (measured), where `M` stops below 10⁴.
+-- At `N` no row reads a universe, so `n = 10⁵` runs where `M` stops below 10⁴; this module builds in 35 s with the
+-- three joins, 6.9 s without (measured).
 open Rel.Programs.prelude in
 rel_program scaleN where
     obj N
@@ -39,36 +40,46 @@ rel_program scaleN where
     d2 : 1 ⟶ N ≜ ⟨D, D⟩ ⟨⟨π₁, ⊤ {(∗,10)}⟩times, π₂⟩plus
     d3 : 1 ⟶ N ≜ ⟨d2, D⟩ ⟨⟨π₁, ⊤ {(∗,10)}⟩times, π₂⟩plus
     k50 : N ⟶ N ≜ ran(⟨{(∗,0),(∗,1),(∗,2),(∗,3),(∗,4)}, D⟩ ⟨⟨π₁, ⊤ {(∗,10)}⟩times, π₂⟩plus)
+    y : N ⟶ N×N ≜ ran(d2) ⟨𝟙, succ⟩
 
 -- n = 10³, T = 10
-open Rel.Programs.prelude Rel.Programs.frame Rel.Programs.frameGroup scaleN in
+open Rel.Programs.prelude Rel.Programs.frame Rel.Programs.frameGroup Rel.Programs.frameJoin scaleN in
 rel_program frameScaleN3 where
     x : N ⟶ N×N ≜ ran(d3) ⟨⟨𝟙, ⊤ {(∗,100)}⟩mod, 𝟙⟩
     xf : N ⟶ N×N ≜ filterBy(dom(π₁ k50), x)
     check count(xf) = {(∗,500)}
+    j : N ⟶ (N×N)×(N×N) ≜ innerJoin(π₁, π₁, xf, y)
+    check count(j) = {(∗,500)}
+    check summarize(F(j π₂ π₂) sum, j) = {(∗,12750)}
     check aggregate(π₁, F(xf π₂) sum, xf) = k50 ⟨𝟙, ⟨⟨𝟙, ⊤ {(∗,10)}⟩times, ⊤ {(∗,4500)}⟩plus⟩
 
 #guard frameScaleN3.ok
 
 -- n = 10⁴, T = 100: key `k` sums to `100k + 50·100·99`
-open Rel.Programs.prelude Rel.Programs.frame Rel.Programs.frameGroup scaleN in
+open Rel.Programs.prelude Rel.Programs.frame Rel.Programs.frameGroup Rel.Programs.frameJoin scaleN in
 rel_program frameScaleN4 where
     d4 : 1 ⟶ N ≜ ⟨d3, D⟩ ⟨⟨π₁, ⊤ {(∗,10)}⟩times, π₂⟩plus
     x : N ⟶ N×N ≜ ran(d4) ⟨⟨𝟙, ⊤ {(∗,100)}⟩mod, 𝟙⟩
     xf : N ⟶ N×N ≜ filterBy(dom(π₁ k50), x)
     check count(xf) = {(∗,5000)}
+    j : N ⟶ (N×N)×(N×N) ≜ innerJoin(π₁, π₁, xf, y)
+    check count(j) = {(∗,5000)}
+    check summarize(F(j π₂ π₂) sum, j) = {(∗,127500)}
     check aggregate(π₁, F(xf π₂) sum, xf) = k50 ⟨𝟙, ⟨⟨𝟙, ⊤ {(∗,100)}⟩times, ⊤ {(∗,495000)}⟩plus⟩
 
 #guard frameScaleN4.ok
 
 -- n = 10⁵, T = 1000: key `k` sums to `1000k + 50·1000·999`
-open Rel.Programs.prelude Rel.Programs.frame Rel.Programs.frameGroup scaleN in
+open Rel.Programs.prelude Rel.Programs.frame Rel.Programs.frameGroup Rel.Programs.frameJoin scaleN in
 rel_program frameScaleN5 where
     d4 : 1 ⟶ N ≜ ⟨d3, D⟩ ⟨⟨π₁, ⊤ {(∗,10)}⟩times, π₂⟩plus
     d5 : 1 ⟶ N ≜ ⟨d4, D⟩ ⟨⟨π₁, ⊤ {(∗,10)}⟩times, π₂⟩plus
     x : N ⟶ N×N ≜ ran(d5) ⟨⟨𝟙, ⊤ {(∗,100)}⟩mod, 𝟙⟩
     xf : N ⟶ N×N ≜ filterBy(dom(π₁ k50), x)
     check count(xf) = {(∗,50000)}
+    j : N ⟶ (N×N)×(N×N) ≜ innerJoin(π₁, π₁, xf, y)
+    check count(j) = {(∗,50000)}
+    check summarize(F(j π₂ π₂) sum, j) = {(∗,1275000)}
     check aggregate(π₁, F(xf π₂) sum, xf) = k50 ⟨𝟙, ⟨⟨𝟙, ⊤ {(∗,1000)}⟩times, ⊤ {(∗,49950000)}⟩plus⟩
 
 #guard frameScaleN5.ok

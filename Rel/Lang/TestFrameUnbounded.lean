@@ -2,9 +2,8 @@ import Rel.Programs.FrameJoin
 
 /-! The dataframe library (plan M2) at the unbounded number object: positions and values in `obj N`, which declares
     no length, so no row below reads a bound the frame did not bring. The fixture and the hand-worked rows are those
-    of `TestFrameCols`/`Pos`/`Group`/`Join`/`Null`, copied. The joins numbered by `joinOn`'s `asc(ran⟨𝟙, K⟩)`
-    (`crossJoin`, `leftJoin`, `rightJoin`, `fullOuterJoin`) are left out: `⟨𝟙, K⟩` does not bound `𝟙`
-    at `N` there (`innerJoin` runs the table `K` first, which does). `big` is written inline (as a table, `<°` has no right bound at `N`), and `filterJust`/`filterNothing`/
+    of `TestFrameCols`/`Pos`/`Group`/`Join`/`Null`, copied. `big` is written inline (as a table, `<°` has no right
+    bound at `N`), and `filterJust`/`filterNothing`/
     `nulls` take `ran(xn) π₂`: the leaf `π₂` as their argument is read on its whole source at `N`. -/
 
 namespace Rel.Lang.TestFrameUnbounded
@@ -101,20 +100,29 @@ rel_program frameUnboundedT where
     check median(π₂, x) = {(∗,3)}
     check median(π₂, take({(∗,5)}, x)) = {(∗,5)}
     check median(π₂, take({(∗,4)}, x)) = {(∗,4)}
+    -- the percentile, `quantile(p, 100)`, at `p` = 0 25 50 75 90 100: `h = 7p/100` = 0, 1.75, 3.5, 5.25, 6.3, 7
+    -- picks rows 0; 1 2; 3 4; 5 6; 6 7; 7
+    -- of the sorted `v`: 1, (1+2)/2, (3+3)/2, (5+5)/2, (5+7)/2, 7
+    check quantile({(∗,0)}, {(∗,100)}, π₂, x) = {(∗,1)}
+    check quantile({(∗,25)}, {(∗,100)}, π₂, x) = {(∗,1)}
+    check quantile({(∗,50)}, {(∗,100)}, π₂, x) = {(∗,3)}
+    check quantile({(∗,75)}, {(∗,100)}, π₂, x) = {(∗,5)}
+    check quantile({(∗,90)}, {(∗,100)}, π₂, x) = {(∗,6)}
+    check quantile({(∗,100)}, {(∗,100)}, π₂, x) = {(∗,7)}
 
-    -- TestFrameJoin, without the `joinOn` rows
+    -- TestFrameJoin
     y : N ⟶ K×N ≜ {(0,(A,9)),(1,(C,8)),(2,(A,6))}
     y2 : N ⟶ K×N ≜ {(0,(A,3)),(1,(C,2)),(2,(B,4))}
     wj : N ⟶ N×N ≜ {(0,(1,2)),(1,(3,4)),(2,(5,6))}
     check J(π₁, π₁, x, y) = {(1,0),(1,2),(3,1),(4,0),(4,2),(5,1),(7,0),(7,2)}
     check semiJoin(π₁, π₁, x, y) = {(0,(A,3)),(1,(C,1)),(2,(A,7)),(3,(C,2)),(4,(A,3))}
     check antiJoin(π₁, π₁, x, y) = {(0,(B,5)),(1,(B,5)),(2,(B,1))}
-    -- `ij`'s rows by `joinOn`'s own body with `⟨𝟙, K⟩` cut to `dom(K)`, which bounds the `𝟙` that `N` does not
-    check asc(ran(dom(J(π₁, π₁, x, y)) ⟨𝟙, J(π₁, π₁, x, y)⟩)) (x × y) = {(0,((A,3),(A,9))),(1,((A,3),(A,6))),
-      (2,((C,1),(C,8))),(3,((A,7),(A,9))),(4,((A,7),(A,6))),(5,((C,2),(C,8))),(6,((A,3),(A,9))),(7,((A,3),(A,6)))}
-    -- the same rows by `innerJoin` itself: `⟨𝟙, K⟩` runs the table `K` first, whose domain bounds `𝟙` (`GenK.pairK`)
     check innerJoin(π₁, π₁, x, y) = {(0,((A,3),(A,9))),(1,((A,3),(A,6))),(2,((C,1),(C,8))),(3,((A,7),(A,9))),
       (4,((A,7),(A,6))),(5,((C,2),(C,8))),(6,((A,3),(A,9))),(7,((A,3),(A,6)))}
+    cj : N ⟶ N×N ≜ crossJoin(dom(x), dom(y))
+    check cj = {(0,(0,0)),(1,(0,1)),(2,(0,2)),(3,(1,0)),(4,(1,1)),(5,(1,2)),(6,(2,0)),(7,(2,1)),(8,(2,2)),
+      (9,(3,0)),(10,(3,1)),(11,(3,2)),(12,(4,0)),(13,(4,1)),(14,(4,2)),(15,(5,0)),(16,(5,1)),(17,(5,2)),
+      (18,(6,0)),(19,(6,1)),(20,(6,2)),(21,(7,0)),(22,(7,1)),(23,(7,2))}
     check append(x, y) = {(0,(B,5)),(1,(A,3)),(2,(B,5)),(3,(C,1)),(4,(A,7)),(5,(C,2)),(6,(B,1)),(7,(A,3)),
       (8,(A,9)),(9,(C,8)),(10,(A,6))}
     check union(x, y) = {(0,(B,5)),(1,(A,3)),(2,(C,1)),(3,(A,7)),(4,(C,2)),(5,(B,1)),(6,(A,9)),(7,(C,8)),(8,(A,6))}
@@ -126,7 +134,17 @@ rel_program frameUnboundedT where
     check pivotLong(π₁, {(∗,a)}, π₂ π₁, {(∗,b)}, π₂ π₂, t) =
       {(0,(A,(a,1))),(1,(B,(a,3))),(2,(C,(a,5))),(3,(A,(b,2))),(4,(B,(b,4))),(5,(C,(b,6)))}
 
-    -- TestFrameNull, without leftJoin, rightJoin, fullOuterJoin
+    -- TestFrameNull
+    yl : N ⟶ K×N ≜ {(0,(A,9)),(1,(C,8))}
+    lj : N ⟶ (K×N)×(K×N) ≜ leftJoin(π₁, π₁, x, yl) ⟨π₁, π₂ [𝟙, {(∗,(B,0))}]⟩
+    check lj = {(0,((B,5),(B,0))),(1,((A,3),(A,9))),(2,((B,5),(B,0))),(3,((C,1),(C,8))),(4,((A,7),(A,9))),
+      (5,((C,2),(C,8))),(6,((B,1),(B,0))),(7,((A,3),(A,9)))}
+    rj : N ⟶ (K×N)×(K×N) ≜ rightJoin(π₁, π₁, yl, x) ⟨π₁ [𝟙, {(∗,(B,0))}], π₂⟩
+    check rj = {(0,((B,0),(B,5))),(1,((A,9),(A,3))),(2,((B,0),(B,5))),(3,((C,8),(C,1))),(4,((A,9),(A,7))),
+      (5,((C,8),(C,2))),(6,((B,0),(B,1))),(7,((A,9),(A,3)))}
+    fj : N ⟶ (K×N)×(K×N) ≜ fullOuterJoin(π₁, π₁, yl, x) ⟨π₁ [𝟙, {(∗,(B,0))}], π₂ [𝟙, {(∗,(B,0))}]⟩
+    check fj = {(0,((A,9),(A,3))),(1,((A,9),(A,7))),(2,((A,9),(A,3))),(3,((C,8),(C,1))),(4,((C,8),(C,2))),
+      (5,((B,0),(B,5))),(6,((B,0),(B,5))),(7,((B,0),(B,1)))}
     nc : N ⟶ N+1 ≜ dom(x) tot({(0,5),(2,5),(4,7),(7,3)})
     xn : N ⟶ K×(N+1) ≜ ⟨x π₁, nc⟩
     check filterJust(ran(xn) π₂, xn) ⟨π₁, π₂ inl°⟩ = {(0,(B,5)),(1,(B,5)),(2,(A,7)),(3,(A,3))}
