@@ -274,10 +274,11 @@ theorem arith_sound {k : UInt8} {U : Rel .long .long} {TU : Core.Rel Int64 Int64
     ∀ K, (GenK.arith k U).Reps K (arithDen k TU) := by
   unfold GenK.arith after
   exact ofVals_sound fun _ _ _ _ hK h x w hx _ => by
-    obtain ⟨D, hD, h⟩ := bind_ok h
-    obtain ⟨u, hu, ht⟩ := bind_ok h
-    rw [agrees_empty ((reps_iff _ _ _).1 (hU {}) u hu)]
-    refine (Tab.arith_holds ht x w).trans
+    obtain ⟨D, hD, ht⟩ := bind_ok h
+    have hu : ∀ n (X : Vals .long n) t, U.runE ⟨some ⟨n, X⟩, none⟩ = .ok t → ∀ a v, (∃ i, X.row i = a) →
+        (t.Holds a v ↔ TU a v) := fun n X t h a v ha =>
+      (reps_iff _ _ _).1 (hU ⟨some ⟨n, X⟩, none⟩) t h a v ((side_some rfl a).2 ha) rfl
+    refine (Tab.arith_holds hu ht x w).trans
       ⟨fun ⟨v, hv, h⟩ => ?_, fun h => ⟨x, (Tab.idU_holds hD x x).2 ⟨rfl, (side_some hK x).1 hx⟩, h⟩⟩
     obtain ⟨rfl, -⟩ := (Tab.idU_holds hD x v).1 hv; exact h
 

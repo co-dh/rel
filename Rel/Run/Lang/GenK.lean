@@ -81,6 +81,8 @@ def comp (A B C : Obj) (e : Bool) (R : Fn true A B) (S : Fn e B C) : Fn true A C
     the context, so this changes no result and saves re-running it at each use (a fold reading it in every round). -/
 def memo (A B : Obj) : Rel A B → Rel A B
   | .tab t => .tab t
+  -- a lazy one that cannot run closed (`<` on an infinite universe) needs its context: kept lazy, never frozen
+  | .lazy f => match (Rel.lazy f).runE {} with | .ok t => .tab (.ok t) | .error _ => .lazy f
   | R => .tab (R.runE {})
 
 /-- An op on one table: a table now, or lazy, its argument run on what `k` makes of the context. -/
@@ -236,22 +238,30 @@ def after (A B : Obj) (f : {K : Obj} → Tab K A → Except String (Tab K B)) : 
   ofVals A B fun X => do f (← Tab.idU X)
 
 /-- `succ`, a value verb on `U`'s universe: the keys' coreflexive `D`, then `D ≫ succDen U` (`Tab.succ`),
-    `D ≫ arithDen k U` (`Tab.arith`). -/
-def succ (U : Fn false .long .long) : Fn true .long .long := after _ _ fun D => do Tab.succ D (← U.runE {})
+    `D ≫ arithDen k U` (`Tab.arith`), `U` run knowing its domain is the values each step asks about, so an infinite
+    universe (`𝟙`) is as good as a table. -/
+def succ (U : Fn false .long .long) : Fn true .long .long :=
+  after _ _ fun D => Tab.succ D fun X => U.runE ⟨some ⟨_, X⟩, none⟩
 def arith (k : UInt8) (U : Fn false .long .long) : Fn true (.prod .long .long) .long :=
-  after _ _ fun D => do Tab.arith k D (← U.runE {})
+  after _ _ fun D => Tab.arith k D fun X => U.runE ⟨some ⟨_, X⟩, none⟩
 
-/-- `K ≫ op ≫ L` on `U`'s universe (`Tab.leq`, `Tab.lt`, CROSS of the two sides): each side the values the context
-    knows of it cut to `dom U` (`idU ≫ dom U`), `dom U` where it knows none (§0, `Known`). -/
-def cmp (f : {n m : USize} → Vals .long n → Vals .long m → Except String (Tab .long .long))
+/-- One side of `cmp`: `U` run knowing its domain is the values `s` the context knows of that side, its `dom`, cut
+    to `s` (`idU ≫ dom U`); `dom U` run closed where the context knows none, and where that fails (an infinite
+    universe, `𝟙`) the message naming `op` and the side `w`. -/
+def cmpSide (op w : String) (U : Rel .long .long) (s : Option ((n : USize) × Vals .long n)) :
+    Except String ((n : USize) × Vals .long n) := do
+  let u ← (U.runE ⟨s, none⟩).mapError fun e => if s.isSome then e else
+    s!"{op} on an unbounded object: nothing bounds its {w} side; compose it with a table on that side ({e})"
+  let d ← u.dom
+  s.elim (pure ⟨d.n, d.key⟩) fun c => do let t ← (← Tab.idU c.2).comp d; pure ⟨t.n, t.key⟩
+
+/-- `K ≫ op ≫ L` on `U`'s universe (`Tab.leq`, `Tab.lt`, CROSS of the two sides `cmpSide` reads, §0 `Known`). -/
+def cmp (op : String) (f : {n m : USize} → Vals .long n → Vals .long m → Except String (Tab .long .long))
     (U : Fn false .long .long) : Fn false .long .long := .lazy fun K => .tab do
-  let d ← (← U.runE {}).dom
-  let side (s : Option ((n : USize) × Vals .long n)) : Except String ((n : USize) × Vals .long n) :=
-    s.elim (pure ⟨d.n, d.key⟩) fun c => do let t ← (← Tab.idU c.2).comp d; pure ⟨t.n, t.key⟩
-  let k ← side K.dom; let l ← side K.ran
+  let k ← cmpSide op "left" U K.dom; let l ← cmpSide op "right" U K.ran
   f k.2 l.2
-def leq (U : Fn false .long .long) : Fn false .long .long := cmp Tab.leq U
-def lt (U : Fn false .long .long) : Fn false .long .long := cmp Tab.lt U
+def leq (U : Fn false .long .long) : Fn false .long .long := cmp "≤" Tab.leq U
+def lt (U : Fn false .long .long) : Fn false .long .long := cmp "<" Tab.lt U
 
 /-- `Λ(R)` on the keys `X` (`Tab.lam`), `R` run knowing its domain is `X`. -/
 def lam (A B : Obj) (d : Bool) (R : Fn d A B) : Fn true A (.arr B) :=
