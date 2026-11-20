@@ -124,7 +124,8 @@ run_elab do
           if fm == some true then (.prod (inst x) (inst y), .prod (inst x) (inst y)) else (inst x, inst y)
         let ts := ps.toArray.map fun (X, Y) => g ``Gen.Fn #[bE true, oE X, oE Y]
         withLocalDeclsDND (ts.map (`x, ·)) fun xs => do
-          let some v ← primE r (inst r.sig.2.1) (inst r.sig.2.2) (xs.zip ts) | return none
+          let some f ← primFit r (inst r.sig.2.1) (inst r.sig.2.2) ts | return none
+          let v := f.beta xs
           withLocalDeclD `σ (mkApp (mkConst ``List [0]) (mkConst ``Obj)) fun σv =>
           withLocalDeclD `xs codesTy fun xsv => do
             let body ← (ps.zip xs.toList).zipIdx.foldrM (init := (mkApp3 some' (oE (inst r.sig.2.1)) (oE (inst r.sig.2.2)) v).headBeta)
