@@ -32,6 +32,31 @@ rel_program kernRows5 where
     Fm : K ⟶ N×N ≜ {(0,(2,2)),(0,(4,4)),(1,(3,3)),(2,(1,1)),(2,(2,2))}
     h(R : N ⟶ N) : N ⟶ [[N]] ≜ R x tails
     hF : K ⟶ N×[[N]] ≜ h(Fm)
+    -- the rows worked by hand from each definition's relations, not read from a run
+    check x = {(1,3 1 2),(2,[]),(3,2 2),(4,2 2),(5,[4])}
+    check L = {(1,[1 2] [] [1 2]),(2,[]),(3,[[4]]),(4,[] [])}
+    check p = {(2,2),(4,1),(5,5)}
+    check z = 𝟘
+    -- `Λ(prefix)`: the prefixes by increasing length, `[]` first
+    check i1 = {(1,[] [3] [3 1] [3 1 2]),(2,[[]]),(3,[] [2] [2 2]),(4,[] [2] [2 2]),(5,[] [4])}
+    -- the suffixes by decreasing length, `[]` last
+    check t1 = {(1,[3 1 2] [1 2] [2] []),(2,[[]]),(3,[2 2] [2] []),(4,[2 2] [2] []),(5,[4] [])}
+    check c1 = {(1,1 2 1 2),(2,[]),(3,[4]),(4,[])}
+    check c2 = {(1,3 3 1 3 1 2),(2,[]),(3,2 2 2),(4,2 2 2),(5,[4])}
+    check c3 = {(1,3 1 2 1 2 2),(2,[]),(3,2 2 2),(4,2 2 2),(5,[4])}
+    -- `filter(p)` keeps the elements in `dom(p) = {2,4,5}`; `filter(z)` keeps none
+    check a1 = {(1,[2]),(2,[]),(3,2 2),(4,2 2),(5,[4])}
+    check a2 = {(1,[]),(2,[]),(3,[]),(4,[]),(5,[])}
+    -- `x°` then `dom(p)`: the cells of `x` at the keys `2 4 5`
+    check q = {([],[]),(2 2,2 2),([4],[4])}
+    check a3 = {(1,[[]]),(2,[]),(3,[[4]]),(4,[] [])}
+    -- the longest prefix whose elements are all in `dom(p)`
+    check w1 = {(1,[]),(2,[]),(3,2 2),(4,2 2),(5,[4])}
+    check w2 = {(1,[]),(2,[]),(3,[]),(4,[]),(5,[])}
+    check w3 = {(1,[]),(2,[]),(3,[[4]]),(4,[] [])}
+    check Fm = {(0,(2,2)),(0,(4,4)),(1,(3,3)),(2,(1,1)),(2,(2,2))}
+    -- each `k` with `(n, tails(x(m)))` for `(n, m)` in `Fm(k)`
+    check hF = {(0,(2,[[]])),(0,(4,[2 2] [2] [])),(1,(3,[2 2] [2] [])),(2,(1,[3 1 2] [1 2] [2] [])),(2,(2,[[]]))}
 
 #guard kernRows5.ok
 -- not vacuous: the kernel tables have rows

@@ -22,6 +22,22 @@ rel_program kernMap where
     kids : E ⟶ [E] ≜ Λ(boss°)
     S : E×[N] ⟶ N ≜ π₂ sum succ
     sz : E ⟶ N ≜ hylo(⟨𝟙, kids⟩, S)
+    -- the rows worked by hand from each definition's relations, not read from a run
+    check x = {(1,3 1 2),(2,[]),(3,1 2),(4,2 2),(5,4 4),(6,5 1 1 3),(7,[3]),(8,2 9)}
+    check r = {(1,1),(1,7),(2,2),(3,3),(4,4),(5,5)}
+    check z = 𝟘
+    -- `F(succ)`: each element plus one, the shape kept
+    check f1 = {(1,4 2 3),(2,[]),(3,2 3),(4,3 3),(5,5 5),(6,6 2 2 4),(7,[4]),(8,3 10)}
+    -- `F(r)`: each element by `r`, one row per choice: `1` has two images, `9` none (so `8` has no row)
+    check f2 = {(1,3 1 2),(1,3 7 2),(2,[]),(3,1 2),(3,7 2),(4,2 2),(5,4 4),(6,5 1 1 3),(6,5 1 7 3),(6,5 7 1 3),(6,5 7 7 3),(7,[3])}
+    check f3 = 𝟘
+    check boss = {(1,0),(2,0),(3,1),(4,3),(5,3)}
+    -- `Λ(boss°)`: each element of `E` with the set of the elements whose boss it is, empty included
+    check kids = {(0,1 2),(1,[3]),(2,[]),(3,4 5),(4,[]),(5,[]),(6,[])}
+    -- `π₂ sum succ`: the sum of the array, plus one
+    check ⟨𝟙,{(0,1 2),(1,[]),(2,3 3)}⟩ S = {(0,4),(1,1),(2,7)}
+    -- the size of each subtree: `sz(e) = 1 + Σ sz(kids(e))`
+    check sz = {(0,6),(1,4),(2,1),(3,3),(4,1),(5,1),(6,1)}
 
 #guard kernMap.ok
 -- not vacuous: the kernel tables have rows where the input does, none on the empty demand

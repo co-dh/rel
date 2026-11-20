@@ -45,6 +45,44 @@ rel_program kernT9 where
     z1 : N ⟶ 1 ≜ {(0,∗)}
     dd : N ⟶ N ≜ {(0,0),(1,1),(3,3),(5,5)}
     dbl : N ⟶ N ≜ dd hylo((z1 inl) ∪ (succ° inr), [zr, succ succ])
+    -- the rows worked by hand from each definition's relations, not read from a run
+    check x = {(1,3 1 2),(2,[]),(3,1 2),(4,2 2),(5,4 4),(6,5 1 1 3)}
+    check xs = {(1,1 2 3),(2,[]),(3,1 2),(4,2 2),(5,4 4),(6,1 1 3 5)}
+    check y = {(1,2 4),(2,1 1),(3,[]),(4,1 2 3),(5,[]),(6,3 3)}
+    check z = 𝟘
+    check zr = {(∗,0)}
+    -- `n` plus the sum of `x(n)`, every partial sum in `N = 0…10` (`5`: 13, `6`: 11 are not)
+    check l1 = {(1,7),(2,2),(3,6),(4,8)}
+    -- `n` plus the sum of any subsequence of `x(n)`, at most 10
+    check l2 = {(1,1),(1,2),(1,3),(1,4),(1,5),(1,6),(1,7),(2,2),(3,3),(3,4),(3,5),(3,6),(4,4),(4,6),(4,8),(5,5),(5,9),(6,6),(6,7),(6,8),(6,9),(6,10)}
+    check l3 = 𝟘
+    -- the head of the first array is taken where it is `Q` the other's head, or the other is empty
+    check m1 = {(1,1 2 2 3 4),(2,1 1),(3,1 2),(4,1 2 2 2 3),(5,4 4),(6,1 1 3 3 3 5)}
+    check m2 = {(1,2 3 1 2 4),(2,1 1),(3,1 2),(4,1 2 2 2 3),(5,4 4),(6,3 3 5 1 1 3)}
+    check m3 = 𝟘
+    check p = {(1,(1,5) (2,3)),(2,[(3,1)]),(3,[]),(4,(2,2) (2,2) (5,0))}
+    check q = {(1,(1,7) (2,9) (2,0)),(2,(3,1) (3,1)),(3,[(4,4)]),(4,(2,2) (5,0) (5,0))}
+    check m4 = {(1,(1,5) (1,7) (2,3) (2,9) (2,0)),(2,(3,1) (3,1) (3,1)),(3,[(4,4)]),(4,(2,2) (2,2) (2,2) (5,0) (5,0) (5,0))}
+    check m5 = {(1,(1,7) (1,7) (2,9) (2,0) (2,9) (2,0)),(2,(3,1) (3,1) (3,1) (3,1)),(3,(4,4) (4,4)),(4,(2,2) (2,2) (5,0) (5,0) (5,0) (5,0))}
+    check m6 = {(1,(1,5) (1,7) (2,3) (2,9) (2,0)),(2,(3,1) (3,1) (3,1)),(3,[(4,4)]),(4,(2,2) (2,2) (2,2) (5,0) (5,0) (5,0))}
+    -- from the right: an element `Q` the chain's head replaces it, one the head is `Q` to is dropped, else pushed
+    check t1 = {(1,[1]),(2,[]),(3,[1]),(4,[2]),(5,[4]),(6,[1])}
+    check t2 = {(1,[1]),(2,[]),(3,[1]),(4,2 2),(5,4 4),(6,1 1)}
+    check t3 = 𝟘
+    check boss = {(1,0),(2,0),(3,1),(4,3),(5,3)}
+    check rt = {(0,∗)}
+    check ee = {(0,∗),(1,∗),(2,∗),(3,∗),(4,∗),(5,∗),(6,∗)}
+    -- the depth under `boss`; `6` reaches no root
+    check sub = {(0,0),(1,1),(2,1),(3,2),(4,3),(5,3)}
+    check lf = {(2,2),(4,4),(6,6)}
+    check leaf = {(2,1),(4,3)}
+    check ze = 𝟘
+    check sube = 𝟘
+    -- `0`, or one more than a value of the boss: every depth up to the node's own
+    check ch = {(0,0),(1,0),(1,1),(2,0),(2,1),(3,0),(3,1),(3,2),(4,0),(4,1),(4,2),(4,3),(5,0),(5,1),(5,2),(5,3),(6,0)}
+    check z1 = {(0,∗)}
+    check dd = {(0,0),(1,1),(3,3),(5,5)}
+    check dbl = {(0,0),(1,2),(3,6),(5,10)}
 
 #guard kernT9.ok
 -- not vacuous: the kernel tables have rows where the input does, none on the empty demand

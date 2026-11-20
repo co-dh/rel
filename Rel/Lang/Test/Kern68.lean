@@ -38,6 +38,43 @@ rel_program kernT68 where
     pF : K ⟶ N×N ≜ p(Fm)
     pr : N ⟶ [N] ≜ x prefix
     su : N ⟶ [N] ≜ x suffix
+    -- the rows worked by hand from each definition's relations, not read from a run; a sum side is read by its two
+    -- summands, `[𝟙,𝟘]` and `[𝟘,𝟙]`, since a literal writes no `inl`/`inr`
+    check r = {(1,2),(2,3),(3,3)}
+    check s = {(2,1),(3,4),(3,3)}
+    check w = {(1,(1,2)),(2,(3,4)),(3,(5,5))}
+    check x = {(1,3 1 2),(2,[]),(3,1 2),(4,1 2),(5,2 2)}
+    check z = 𝟘
+    check zr = {(∗,0)}
+    check il [𝟙,𝟘] = {(1,2),(2,3),(3,3)}
+    check il [𝟘,𝟙] = 𝟘
+    check ir [𝟙,𝟘] = 𝟘
+    check ir [𝟘,𝟙] = {(2,1),(3,4),(3,3)}
+    check sm [𝟙,𝟘] = {(1,2),(2,3),(3,3)}
+    check sm [𝟘,𝟙] = {(2,1),(3,4),(3,3)}
+    -- left summands by `r°`, right ones by `s`
+    check j1 = {(1,1),(2,2),(2,3),(3,2),(3,3),(3,4)}
+    check j2 = {(1,(3,4)),(2,(5,5)),(2,(1,1)),(3,(5,5)),(3,(4,4)),(3,(3,3))}
+    check j3 = {(2,1),(3,4),(3,3)}
+    -- the sum: `3+1+2 = 6` is not in `N = 0…5`, so `1` has no row
+    check f1 = {(2,0),(3,3),(4,3),(5,4)}
+    -- each step keeps the accumulator or takes the element: `0` and every element
+    check f2 = {(1,0),(1,1),(1,2),(1,3),(2,0),(3,0),(3,1),(3,2),(4,0),(4,1),(4,2),(5,0),(5,2)}
+    check f3 = {(1,0),(1,1),(1,2),(1,3),(2,0),(3,0),(3,1),(3,2),(4,0),(4,1),(4,2),(5,0),(5,2)}
+    -- every subsequence
+    check f4 = {(1,[]),(1,[3]),(1,[1]),(1,[2]),(1,3 1),(1,3 2),(1,1 2),(1,3 1 2),(2,[]),(3,[]),(3,[1]),(3,[2]),(3,1 2),(4,[]),(4,[1]),(4,[2]),(4,1 2),(5,[]),(5,[2]),(5,2 2)}
+    -- the reverse
+    check f5 = {(1,2 1 3),(2,[]),(3,2 1),(4,2 1),(5,2 2)}
+    check f6 = {(1,3 1 2),(2,[]),(3,1 2),(4,1 2),(5,2 2)}
+    -- (sum, length); `1`'s sum 6 is not in `N`
+    check f7 = {(2,(0,0)),(3,(3,2)),(4,(3,2)),(5,(4,2))}
+    check f8 = {(2,0)}
+    check f9 = 𝟘
+    check Fm = {(0,(1,2)),(0,(2,3)),(1,(3,3)),(2,(1,1))}
+    -- `p(R)` is the identity on `{0} ∪ R({1,2,3})`, the elements of `x` being `1 2 3`
+    check pF = {(0,(0,0)),(0,(2,2)),(0,(3,3)),(1,(0,0)),(1,(3,3)),(2,(0,0)),(2,(1,1))}
+    check pr = {(1,[]),(1,[3]),(1,3 1),(1,3 1 2),(2,[]),(3,[]),(3,[1]),(3,1 2),(4,[]),(4,[1]),(4,1 2),(5,[]),(5,[2]),(5,2 2)}
+    check su = {(1,3 1 2),(1,1 2),(1,[2]),(1,[]),(2,[]),(3,1 2),(3,[2]),(3,[]),(4,1 2),(4,[2]),(4,[]),(5,2 2),(5,[2]),(5,[])}
 
 #guard kernT68.ok
 -- not vacuous: the kernel tables have rows
