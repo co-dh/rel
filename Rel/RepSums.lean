@@ -325,4 +325,146 @@ theorem sumsDen_rows {K : Obj} (C : Tab (.prod K .long) .long) (grp : Nat → Na
       ⟨hS t, fun b => ((hM t b).trans ⟨fun h => ⟨hd, h⟩, fun ⟨_, h⟩ => h⟩).trans (hU _ _).symm⟩, _,
       (hV t _).2 rfl, hf⟩
 
+namespace Tab
+
+/-- **`canon` ascends in `ν` within a `κ`**: its rows are sorted by the codes of `κ`'s columns, then `ν`'s, then the
+value's (`canon_sorted`), so two distinct rows of one `κ` ascend strictly in `ν`. -/
+theorem canon_pos_lt {K : Obj} {x C : Tab (.prod K .long) .long} (hC : x.canon = .ok C)
+    (hD : ∀ i j : Fin C.n.toNat, C.key.row i = C.key.row j → i = j) (i j : Fin C.n.toNat) (hij : i.1 < j.1)
+    (hk : (C.key.row i).1 = (C.key.row j).1) : (C.key.row i).2 < (C.key.row j).2 := by
+  obtain ⟨es, cs, hes, hcs⟩ := canon_codes hC
+  obtain ⟨sel, hsel, hord⟩ := canon_sorted hC hes
+  have hki : ∀ j, C.key.row j = x.key.row (sel j) := fun j => congrArg Prod.fst (hsel j)
+  cases heK : Vals.cols x.key.1 with
+  | error s => simp [Vals.cols, heK, bind, Except.bind] at hes
+  | ok eK =>
+  have hes' : es = eK ++ [(.atom .i64, Arr.enc (t := .i64) x.key.2), (.atom .i64, Arr.enc (t := .i64) x.val)] := by
+    simp only [Vals.cols, heK, bind, Except.bind, pure, Except.pure, Except.ok.injEq] at hes; rw [← hes]; simp
+  rw [hes'] at hcs
+  obtain ⟨csK, -, hcsK, -, -⟩ := mapM_append_ok hcs
+  have hκ : x.key.1.row (sel i) = x.key.1.row (sel j) := by rw [hki, hki] at hk; exact hk
+  have hcode := Vals.codes_of_row x.key.1 heK hcsK (sel i) (sel j) hκ
+  have hlex := (hord i j hij).1
+  rw [hes', ascKeys_append, lexLe_append_of_eq _ _ hcode] at hlex
+  have hle := Lang.Arr.lexLe_i64 x.key.2 _ hlex
+  rw [ordCode_i64_le] at hle
+  have hne : (C.key.row i).2 ≠ (C.key.row j).2 := fun e => absurd (hD i j (Prod.ext hk e)) (fun h => by
+    rw [h] at hij; exact Nat.lt_irrefl _ hij)
+  rw [hki, hki] at hne ⊢
+  show x.key.2.row (sel i) < x.key.2.row (sel j)
+  rw [Vals.row_atom, Vals.row_atom] at *
+  rw [Int64.le_iff_toInt_le] at hle
+  rw [Int64.lt_iff_toInt_lt]
+  have : (x.key.2.get (sel i)).toInt ≠ (x.key.2.get (sel j)).toInt := fun e => hne (Int64.toInt_inj.1 e)
+  omega
+
+/-- **`sums x` denotes `sumsDen`** (`Rel/Lang/Den.lean`): `x` simple (one value per `(κ, ν)`, else the error), the
+segmented `kscan .add` holds each row's prefix sum over its `κ`'s rows ascending in `ν`, and the segmented `kscan .or`
+of the bad words keeps a row exactly when no `plus` step of its key up to it wrapped or met the null. -/
+theorem sums_holds {K : Obj} {x T : Tab (.prod K .long) .long} (h : Tab.sums x = .ok T) :
+    rep T = Lang.sumsDen (rep x) := by
+  dsimp only [Tab.sums] at h
+  simp only [bind] at h
+  rw [Except.bind_eq_ok'] at h; obtain ⟨C, hC, h⟩ := h
+  rw [Except.bind_eq_ok'] at h; obtain ⟨e1, he1, h⟩ := h
+  rw [Except.bind_eq_ok'] at h; obtain ⟨⟨m, g1, f1⟩, hk1, h⟩ := h
+  split at h
+  · iterate 6 (rw [Except.bind_eq_ok'] at h; obtain ⟨_, -, h⟩ := h)
+    rw [Except.bind_eq_ok'] at h; obtain ⟨_, h, -⟩ := h; cases h
+  rename_i hmn; simp only [ne_eq, Decidable.not_not] at hmn
+  rw [Except.bind_eq_ok'] at h; obtain ⟨-, -, h⟩ := h
+  rw [Except.bind_eq_ok'] at h; obtain ⟨e2, he2, h⟩ := h
+  rw [Except.bind_eq_ok'] at h; obtain ⟨⟨gk, g2, fk⟩, hk2, h⟩ := h
+  rw [Except.bind_eq_ok'] at h; obtain ⟨one, hone, h⟩ := h
+  rw [Except.bind_eq_ok'] at h; obtain ⟨seg, hseg, h⟩ := h
+  rw [Except.bind_eq_ok'] at h; obtain ⟨z, hz, h⟩ := h
+  rw [Except.bind_eq_ok'] at h; obtain ⟨⟨W, W2⟩, hr, h⟩ := h
+  rw [Except.bind_eq_ok'] at h; obtain ⟨sv, hsv, h⟩ := h
+  rw [Except.bind_eq_ok'] at h; obtain ⟨d, hd, h⟩ := h
+  rw [Except.bind_eq_ok'] at h; obtain ⟨sd, hsd, h⟩ := h
+  rw [Except.bind_eq_ok'] at h; obtain ⟨q1, hq1, h⟩ := h
+  rw [Except.bind_eq_ok'] at h; obtain ⟨sw, hsw, h⟩ := h
+  rw [Except.bind_eq_ok'] at h; obtain ⟨q2, hq2, h⟩ := h
+  rw [Except.bind_eq_ok'] at h; obtain ⟨ovf, hovf, h⟩ := h
+  rw [Except.bind_eq_ok'] at h; obtain ⟨nl, hnl, h⟩ := h
+  rw [Except.bind_eq_ok'] at h; obtain ⟨eW, heW, h⟩ := h
+  rw [Except.bind_eq_ok'] at h; obtain ⟨ev, hev, h⟩ := h
+  rw [Except.bind_eq_ok'] at h; obtain ⟨o1, ho1, h⟩ := h
+  rw [Except.bind_eq_ok'] at h; obtain ⟨bad, hbad, h⟩ := h
+  rw [Except.bind_eq_ok'] at h; obtain ⟨⟨R, R2⟩, hr2, h⟩ := h
+  rw [Except.bind_eq_ok'] at h; obtain ⟨Wa, hWa, h⟩ := h
+  rw [Except.bind_eq_ok'] at h; obtain ⟨nb, hnb, h⟩ := h
+  -- distinct keys: `kseen` over the whole key found `n` runs, so every row is the first of its run
+  obtain ⟨cs1, hcs1⟩ := kseen_codes hk1
+  obtain ⟨cs2, hcs2⟩ := kseen_codes hk2
+  have hfs1 := firsts_spec (seenKey C.n e1) C.n.toNat
+  have hall : firstsOf (seenKey C.n e1) C.n.toNat = List.range C.n.toNat :=
+    List.filter_sublist.eq_of_length (by rw [List.length_range]; exact (kseen_ok hk1).1.symm.trans hmn)
+  have hfirst : ∀ i j : Fin C.n.toNat, i.1 < j.1 → C.key.row i ≠ C.key.row j := fun i j h e =>
+    ((hfs1.2.1 j).1 (by rw [hall]; exact List.mem_range.2 j.2)).2 i h (Vals.codes_of_row C.key he1 hcs1 i j e)
+  have hD : ∀ i j : Fin C.n.toNat, C.key.row i = C.key.row j → i = j := fun i j e => by
+    rcases Nat.lt_trichotomy i.1 j.1 with h' | h' | h'
+    · exact absurd e (hfirst i j h')
+    · exact Fin.ext h'
+    · exact absurd e.symm (hfirst j i h')
+  have hG : ∀ i j : Fin C.n.toNat, Verify.groupOf (seenKey C.n e2) C.n.toNat i =
+      Verify.groupOf (seenKey C.n e2) C.n.toNat j ↔ (C.key.row i).1 = (C.key.row j).1 := fun i j =>
+    ((firsts_spec (seenKey C.n e2) C.n.toNat).2.2.1 i i.2 j j.2).trans
+      ⟨Vals.row_of_codes C.key.1 he2 hcs2 i j, Vals.codes_of_row C.key.1 he2 hcs2 i j⟩
+  -- the scans: prefix sums and prefix `|` of the bad words over each row's group
+  have hbw := badWord_spec hz hsv hd hsd hq1 hsw hq2 hovf hnl heW hev ho1 hbad
+  have hW := (segScan_ok (op := .add) (fn := (· + ·)) (fun _ _ => rfl) hk2 hone hseg hz hr).2
+  have hB := (segScan_ok (op := .or) (fn := (· ||| ·)) (fun _ _ => rfl) hk2 hone hseg hz hr2).2
+  have hF := Lang.sums_fold (kseen_runs hk2) (fun q => (Enc.raw .i64 C.n (Arr.enc (t := .i64) C.val))[q]?.getD 0)
+    (fun q => (Enc.raw .i64 C.n W)[q]?.getD 0) (fun q => (Enc.raw .i64 C.n bad)[q]?.getD 0) hW
+    (fun t ht => (hbw t ht).2)
+  have hBR : ∀ t < C.n.toNat, ((Enc.raw .i64 C.n R)[t]?.getD 0 = 0 ∨ (Enc.raw .i64 C.n R)[t]?.getD 0 = 1) ∧
+      ((Enc.raw .i64 C.n R)[t]?.getD 0 = 0 ↔ ∀ q ∈ (List.range (t + 1)).filter (fun q =>
+        Verify.groupOf (seenKey C.n e2) C.n.toNat q = Verify.groupOf (seenKey C.n e2) C.n.toNat t),
+        (Enc.raw .i64 C.n bad)[q]?.getD 0 = 0) := fun t ht => by
+    rw [hB t ht]
+    have := foldl_or01 (((List.range (t + 1)).filter (fun q =>
+        Verify.groupOf (seenKey C.n e2) C.n.toNat q = Verify.groupOf (seenKey C.n e2) C.n.toNat t)).map
+        ((Enc.raw .i64 C.n bad)[·]?.getD 0)) 0 (Or.inl rfl) (fun y hy => by
+      obtain ⟨q, hq, rfl⟩ := List.mem_map.1 hy
+      simp only [List.mem_filter, List.mem_range] at hq
+      exact (hbw q (by omega)).1)
+    exact ⟨this.1, this.2.trans ((and_iff_right rfl).trans List.forall_mem_map)⟩
+  have hNB : ∀ t < C.n.toNat, (Enc.raw .i64 C.n nb)[t]?.getD 0 = (Enc.raw .i64 C.n R)[t]?.getD 0 ^^^ 1 :=
+    fun t ht => by
+      have := (colMap_raw hnb).2.2.2 t ht
+      simp only [Op.eval, Except.ok.injEq] at this; exact this.symm
+  have hWa : ∀ i : Fin C.n.toNat, Vals.row (A := .long) Wa i = ((Enc.raw .i64 C.n W)[i.1]?.getD 0).toInt64 :=
+    fun i => by
+      have := (colMap_raw (colArr_ok hWa)).2.2.2 i i.2
+      rw [colConst_raw hz, Array.getElem?_replicate, if_pos i.2, Option.getD_some] at this
+      simp only [Op.eval, Except.ok.injEq, UInt64.add_zero] at this
+      rw [Vals.row_atom, Arr.get_i64, ← this]
+  have hx : rep x = rep C := funext fun a => funext fun c => propext (canon_holds hC a c).symm
+  rw [hx]
+  funext a c
+  apply propext
+  rw [sumsDen_rows C (Verify.groupOf (seenKey C.n e2) C.n.toNat) hD hG (canon_pos_lt hC hD) a c]
+  show T.Holds a c ↔ _
+  rw [keep_holds h (fun i hi => by
+    rw [hNB i hi]; rcases (hBR i hi).1 with e | e <;> rw [e] <;> decide) a c]
+  apply exists_congr; intro t
+  have hmap : (((List.range (t.1 + 1)).filter fun q => Verify.groupOf (seenKey C.n e2) C.n.toNat q =
+      Verify.groupOf (seenKey C.n e2) C.n.toNat t).map fun q =>
+        if hq : q < C.n.toNat then C.val.row ⟨q, hq⟩ else 0) =
+      ((List.range (t.1 + 1)).filter fun q => Verify.groupOf (seenKey C.n e2) C.n.toNat q =
+        Verify.groupOf (seenKey C.n e2) C.n.toNat t).map
+        fun q => ((Enc.raw .i64 C.n (Arr.enc (t := .i64) C.val))[q]?.getD 0).toInt64 := by
+    apply List.map_congr_left; intro q hq
+    simp only [List.mem_filter, List.mem_range] at hq
+    rw [dif_pos (by omega), Vals.row_atom, Arr.get_i64]
+  rw [hmap, hF t t.2 c, hNB t t.2, hWa t]
+  have hb := hBR t t.2
+  have hx1 : (Enc.raw .i64 C.n R)[t.1]?.getD 0 ^^^ 1 ≠ 0 ↔ (Enc.raw .i64 C.n R)[t.1]?.getD 0 = 0 := by
+    rcases hb.1 with e | e <;> rw [e] <;> decide
+  rw [hx1, hb.2]
+  constructor <;> rintro ⟨h1, h2, h3⟩ <;> exact ⟨h2, h1, h3.symm⟩
+
+end Tab
+
 end Rel
