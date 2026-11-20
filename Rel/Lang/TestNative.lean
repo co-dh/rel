@@ -108,19 +108,31 @@ def planIO : IO Plan := do
   unless p.main.length == 16 && p.main.all fun | .call s _ => s == "qlean_own_write" | .fail .. => false | _ => true do
     throwError "the plan has {p.main.length} instructions, not sixteen `lit`s and `qlean_own_write` calls"
 
+/-- `NAME.io` (IO design B) of the program `NAME` elaborated in the module `MOD`, both read by Lean's name parser,
+    run in the environment of the modules on `LEAN_PATH` (as `planIO`); its error is the program's. -/
+unsafe def runIOImpl (mod name : String) : IO Unit := do
+  Lean.initSearchPath (← Lean.findSysroot)
+  Lean.enableInitializersExecution
+  let env ← Lean.importModules #[{ module := mod.toName }] {}
+  (← IO.ofExcept (env.evalConst (IO Unit) {} (name.toName ++ `io)))
+
+@[implemented_by runIOImpl] opaque runIO (mod name : String) : IO Unit
+
 end Rel.Lang.TestNative
 
 open Rel.Lang.Plan Rel.Lang.TestNative in
-/-- The `relc-1a` exe (`lakefile.lean`): `c FILE`, `lean DIR`, `plan DIR`, as the module doc says. -/
+/-- The `relc-1a` exe (`lakefile.lean`): `c FILE`, `lean DIR`, `plan DIR`, as the module doc says; `run MOD NAME`
+    runs the reads, computations and writes of the program `NAME` (`runIO`). -/
 def main (args : List String) : IO UInt32 := do
   try
     match args with
+    | ["run", mod, name] => runIO mod name
     | ["c", file] => IO.FS.writeFile file (← IO.ofExcept (relc abiOf (← planIO)))
     | ["lean", dir] =>
       let x ← IO.ofExcept native1a.x
       writeRel (System.FilePath.mk dir / "out").toString x
     | ["plan", dir] => IO.Process.setCurrentDir dir; discard <| (← planIO).exec abiOf
     | ["g", file] => IO.FS.writeFile file (← IO.ofExcept (gplan codes >>= relc abiOf))
-    | _ => throw (IO.userError "usage: relc-1a c FILE | lean DIR | plan DIR | g FILE")
+    | _ => throw (IO.userError "usage: relc-1a c FILE | lean DIR | plan DIR | g FILE | run MOD NAME")
     pure 0
   catch e => IO.eprintln e; pure 1

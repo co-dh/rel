@@ -233,7 +233,7 @@ Diff table 的「状态」列：✅ 后面是完成它的步骤；🔄 是部分
   - 🔄 I5 Lean 里的 CSV 模型（`csvWords`、`csvText`、每个 atom 的读写、往返律），尚无 extern。
   - ⬜ I6 `qlean_csv_read`；需要 I4、I5。 ⬜ I7 `qlean_csv_write`；需要 I6。
   - ⬜ I8 可空列 `V+1`、文本列 `[C]`、`sym`（在步骤 6 之后）。
-  - ⬜ I9 `n.io` 中的 `from csv`/`to csv`，`relc run NAME`；需要 I3、I7。
+  - ✅ I9 `n.io` 中的 `from csv`/`to csv`，`relc run MOD NAME`；需要 I3、I7。
   - ⬜ I10 native：`abi` 加 `ownMap`、`csvRead`、`csvWrite`，`Plan.ofTm` 读 input 变量；需要 I9。
   步骤 2（分支 `d9step2`）：`Table.write S dir x`（一侧，按 schema 列名）、`Table.read S dir : IO (Tab .long S.obj)`
   （key 为位置）、`writeKeyed K S`/`readKeyed K S`（`key/`、`val/`）；缺文件、类型码不同、行数不同都报文件名与期望/实际；
@@ -265,6 +265,14 @@ Diff table 的「状态」列：✅ 后面是完成它的步骤；🔄 是部分
   I6 ✅（分支 `io-i6`）：`qlean_csv_read`（`crate/src/csv.rs`、`ffi/csv.rs`，列入 `RELIO.txt`），`@[extern]` 在 `Db.csvRead`
   上，body 即 `csvWords` + `wordsFoR`；一遍顺序扫描定记录与块起点，各列按块解析直接进 `Sink` 编码；`CsvTest` 读侧用例
   合为一张 `decide` 表，extern 与 body 在 88 个文件上一致。选择记在 `/data/tmp/io/i6-notes.md`。
+  I9 ✅（分支 `io-i8`）：`output n to csv "p"` 由 `Table.writeCsv` 写（`Db.csvWrite`，各列编码直接交给 extern）：key 为位置的
+  output 只写值列（按行序重编号，同 `write`），其余一个文件、一个表头，key 列在前、值列在后（同 `readCsv` 读的形式）；
+  `Io.output` 带表头 `Option Db.CsvCols`（同 `Io.input`），"I7 未到"的拒绝及其 pin 删除。`relc run MOD NAME`：import
+  模块 `MOD`、`evalConst` 程序 `NAME` 的 `io` 并运行（与 design.md 的 `relc run NAME` 不同：多一个模块参数；解释器要
+  `supportInterpreter := true` 才找到 extern 与 `Init` 的编译代码）。`TestIO`：
+  CSV 输入 → 位置与 keyed 的 CSV 输出 → 第二个程序 `from csv` 读回，文本与读回的行都按手算 pin。
+  I8 未做：文本列 `[C]` 与可空列 `V+1` 都要改 `CsvCols` 的形状，即改 `qlean_csv_read`/`qlean_csv_write` 的 ABI（crate），
+  `V+1` 的存储形状还是 design.md 的未决问题；`sym` 等步骤 6。见 `/data/tmp/io/i8-notes.md`。
   I7 ✅（分支 `io-i7`）：`qlean_csv_write`（列入 `RELIO.txt`），`@[extern]` 在 `Db.csvWrite` 上，body 即 `rawAll` + `csvText`；按 1024 行一块读编码列、逐行格式化、临时文件 rename；写侧 case 表 `decide +kernel`，extern 与 body 及读回在全部用例上一致。选择记在 `/data/tmp/io/i7-notes.md`。
 - ✅ D.11 表层语法（`schema S = {k : K, v : N}`、`col S "v"`）已合并（da636a9）；`Schema` 层此前已合并（5ab6d2e，master 0fb9879，`Rel/Lang/Schema.lean`、`TestSchema.lean`）；余下：TestFrame 的
   frame 按 `Schema` 索引（随 D.9）。frame 的 schema 进入类型（owner 经 dataframe 会话决定，选 wrapper，不加 `Obj` constructor）：

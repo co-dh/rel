@@ -174,9 +174,10 @@ inductive Io
   | input (n : String) (A B : Obj) (key val : Schema) (csv : Option Db.CsvCols) (path : String)
   /-- A run-time definition: the kernel twin of its constant `c` applied to the tables of the run-time names `deps`. -/
   | defn (n : String) (c : Lean.Name) (deps : List String)
-  /-- `output n to path`: the table of `n` written as `key ⟶ val`, `n` a run-time name or the closed definition whose
-      constant is `closed`. -/
-  | output (n : String) (A B : Obj) (key val : Schema) (csv : Bool) (path : String) (closed : Option Lean.Name)
+  /-- `output n to path`: the table of `n` written as `key ⟶ val`, to the table directory `path`, or to the CSV file
+      `path` with the header `csv`; `n` a run-time name or the closed definition whose constant is `closed`. -/
+  | output (n : String) (A B : Obj) (key val : Schema) (csv : Option Db.CsvCols) (path : String)
+      (closed : Option Lean.Name)
 
 /-- `s` with each name `f` renames. -/
 def Io.rename (f : String → String) : Io → Io
@@ -616,8 +617,8 @@ def walk (prog : Program) (env : Env) (wrap : String → Def → Def) (own : Lea
               "its sources"
           else s!"{what}: `{n}` is not defined before it; an output names a definition or an input of the program"⟩
       let some ty := ty | throw ⟨p, s!"{what}: `{n}` declares no type"⟩
-      let (A, B, K, S, _) ← ioCols env p what ty csv
-      io := io ++ [.output n A B K S csv path (if (rt.lookup n).isSome then none else some (Parse.constOf own n))]
+      let (A, B, K, S, hdr) ← ioCols env p what ty csv
+      io := io ++ [.output n A B K S (if csv then some hdr else none) path (if (rt.lookup n).isSome then none else some (Parse.constOf own n))]
       outs := outs ++ [(path, p)]
     | .obj _ n od =>
       -- an imported program's object is its constant's, so the importer's types name the same object (§2.3);
@@ -1062,15 +1063,18 @@ def bindIO (inst m α : Lean.Expr) (x : String) (k : Lean.Expr → MetaM Lean.Ex
 /-- The writes of `n.io` (`ioE`), after each output's table is bound: `ws` the writes so far, `σ` the run-time names'
     tables (name, `A`, `B`, table); a closed definition's table from its constant (`Rel.tab`), run as a run-time one's
     (`Table.ofRun`). An output keyed by positions writes its value side, renumbered (`Table.write`), any other the key
-    table and the value table (`Table.writeKeyed`). -/
+    table and the value table (`Table.writeKeyed`); a CSV output both forms in one file (`Table.writeCsv`). -/
 def ioOut (inst done : Lean.Expr) (σ : List (String × Lean.Expr × Lean.Expr × Lean.Expr)) :
-    List (String × Obj × Obj × Schema × Schema × String × Option Lean.Name) → List Lean.Expr → MetaM Lean.Expr
+    List (String × Obj × Obj × Schema × Schema × Option Db.CsvCols × String × Option Lean.Name) → List Lean.Expr →
+      MetaM Lean.Expr
   | [], ws => ws.foldrM (fun w r => bindIO inst w (mkConst ``Unit) "_" fun _ => pure r) done
-  | (x, A, B, k, v, p, cl) :: os, ws => do
-    let write (t : Lean.Expr) : Lean.Expr := if k.isEmpty
-      then mkApp4 (mkConst ``Table.write) (mkApp3 (mkConst ``Tab.n) (oE A) (oE B) t) (toExpr v) (toExpr p)
-        (mkApp3 (mkConst ``Tab.val) (oE A) (oE B) t)
-      else mkApp4 (mkConst ``Table.writeKeyed) (toExpr k) (toExpr v) (toExpr p) t
+  | (x, A, B, k, v, c, p, cl) :: os, ws => do
+    let write (t : Lean.Expr) : Lean.Expr := match c with
+      | some h => mkApp5 (mkConst ``Table.writeCsv) (toExpr k) (toExpr v) (toExpr h) (toExpr p) t
+      | none => if k.isEmpty
+        then mkApp4 (mkConst ``Table.write) (mkApp3 (mkConst ``Tab.n) (oE A) (oE B) t) (toExpr v) (toExpr p)
+          (mkApp3 (mkConst ``Tab.val) (oE A) (oE B) t)
+        else mkApp4 (mkConst ``Table.writeKeyed) (toExpr k) (toExpr v) (toExpr p) t
     match cl, σ.lookup x with
     | some c, _ =>
       bindIO inst (mkApp4 (mkConst ``Table.ofRun) (oE A) (oE B) (toExpr x) (mkApp3 (mkConst ``Rel.Rel.tab) (oE A) (oE B)
@@ -1113,20 +1117,16 @@ def ioGo (inst : Lean.Expr) (reach : List String)
 
 /-- `n.io : IO Unit` (IO design B): the inputs the outputs reach read and the run-time definitions they reach
     computed, once each in statement order (`ioGo`); every output's table; then the writes in statement order
-    (`ioOut`), so a failure writes no file. A CSV output fails before any read: its writer is IO step I7. -/
+    (`ioOut`), so a failure in reading or computing writes no file. -/
 def ioE (io : List Io) : MetaM Lean.Expr := do
   let inst ← synthInstance (mkApp (mkConst ``Bind [0, 0]) (mkConst ``IO))
   let outs := io.filterMap fun | .output x A B k v c p cl => some (x, A, B, k, v, c, p, cl) | _ => none
-  if let some (x, _, _, _, _, _, p, _) := outs.find? (·.2.2.2.2.2.1) then
-    return ← mkAppM ``IO.ofExcept #[mkApp3 (mkConst ``Except.error [0, 0]) (mkConst ``String) (mkConst ``Unit)
-      (toExpr s!"output `{x}` to csv \"{p}\": the CSV writer is IO step I7, not yet here; write a table directory \
-        (drop `csv`)")]
   let done ← mkAppOptM ``Pure.pure #[mkConst ``IO, none, mkConst ``Unit, mkConst ``Unit.unit]
   -- the run-time names the outputs reach, through each definition's own (each mentions only names before it)
   let reach := io.reverse.foldl (init := outs.map (·.1)) fun r s => match s with
     | .defn x _ ds => if r.contains x then r ++ ds else r
     | _ => r
-  ioGo inst reach (fun σ => ioOut inst done σ (outs.map fun (x, A, B, k, v, _, p, cl) => (x, A, B, k, v, p, cl)) []) io []
+  ioGo inst reach (fun σ => ioOut inst done σ outs []) io []
 
 /-- The Lean definitions of what the program `n` reads (`read`): `n.x` for each closed definition, its
     sub-terms' constants `n.c.c<i>`, `n.expanded` (the definitions with their objects), `n.objs`, `n.printed`
@@ -1232,7 +1232,7 @@ def emit (n : Name) (r : Read) : MetaM Unit := do
   -- IO design B: what the program reads and writes, by statement, and the one action that does it
   let lty := listT (pairT (mkConst ``String) (pairT (mkConst ``Bool) (mkConst ``String)))
   addConst (n ++ `inputs) lty (toExpr (io.filterMap fun | .input x _ _ _ _ c p => some (x, c.isSome, p) | _ => none))
-  addConst (n ++ `outputs) lty (toExpr (io.filterMap fun | .output x _ _ _ _ c p _ => some (x, c, p) | _ => none))
+  addConst (n ++ `outputs) lty (toExpr (io.filterMap fun | .output x _ _ _ _ c p _ => some (x, c.isSome, p) | _ => none))
   addConst (n ++ `io) (mkApp (mkConst ``IO) (mkConst ``Unit)) (← ioE io)
 
 end Expand
