@@ -36,7 +36,11 @@ def zero (A B : Obj) : Fn false A B := const A B Tab.zero
 def ofVals (A B : Obj) (f : {n : USize} → Vals A n → Except String (Tab A B)) : Fn true A B :=
   .lazy fun K => K.dom.elim (.tab (.error "a leaf on demand ran with its domain unknown")) fun c => .tab (f c.2)
 
-def id (A : Obj) : Fn true A A := ofVals A A fun X => Tab.idU X
+/-- `𝟙` on the values its context knows of either side: a coreflexive's two sides are one value set (as `dom`), so
+    a known range bounds it as a known domain does (`⊤`'s value side runs on the range alone). -/
+def id (A : Obj) : Fn true A A :=
+  .lazy fun K => (K.dom <|> K.ran).elim (.tab (.error "a leaf on demand ran with its domain unknown"))
+    fun c => .tab (Tab.idU c.2)
 
 /-- `r ≫ s` (`Tab.compSelM`): its bit matrix kept as `bits` where `Tab.bitsWin` takes it, else its table. -/
 def compR {A B C : Obj} (r : Tab A B) (s : Tab B C) : Rel A C := match Tab.compSelM Tab.bitsMax r s with
@@ -158,10 +162,11 @@ def ran (A B : Obj) (R : Fn false A B) : Fn false B B := lift1 Tab.ran (fun K =>
 
 /-! ### T3: `⊤ π₁ π₂ ⟨R,S⟩ × \ /`, `ν`, `μ` -/
 
-/-- `X × L`: the known domain values by `V`'s values cut to the known range. -/
+/-- `X × L`: the known domain values by `V`'s values cut to the known range. `V` runs knowing that range, so
+    between two bounded neighbours `P ⊤ Q` reads only `P`'s and `Q`'s values, never `B`'s whole universe. -/
 def top (A B : Obj) (V : Fn false B B) : Fn true A B := .lazy fun K => match K.dom with
   | none => .tab (.error "⊤ ran with its domain unknown")
-  | some c => .tab do Tab.top c.2 (← cut ⟨none, K.ran⟩ (← V.runE {})).val
+  | some c => .tab do Tab.top c.2 (← cut ⟨none, K.ran⟩ (← V.runE ⟨none, K.ran⟩)).val
 def outl (A B : Obj) : Fn true (.prod A B) A := ofVals _ _ fun X => Tab.outl X
 def outr (A B : Obj) : Fn true (.prod A B) B := ofVals _ _ fun X => Tab.outr X
 /-- `⟨T, S⟩`'s two tables on the domain `D`, `T` run first: `⟨T,S⟩ a (b,c)` needs `T a b`, so `T`'s table cut to `D`
