@@ -133,14 +133,17 @@ theorem uni_sound {m : USize} (U : Vals A m × Bool) :
 
 theorem id_sound : ∀ K, (GenK.id A).Reps K (𝟙 _) := fun K => by
   rw [reps_iff]; intro t h
-  cases hK : (K.dom <|> K.ran) with
-  | none => simp [GenK.id, Rel.Rel.runE, hK] at h
+  have hs := @side_or A K
+  simp only [GenK.id, Rel.Rel.runE] at h
+  generalize (K.dom <|> K.ran) = o at h hs
+  cases o with
+  | none => simp [Option.elim, Rel.Rel.runE] at h
   | some c =>
     obtain ⟨n, X⟩ := c
-    simp only [GenK.id, Rel.Rel.runE, hK, Option.elim] at h
+    simp only [Option.elim, Rel.Rel.runE] at h
     intro a b ha hb
     refine (Tab.idU_holds h a b).trans ⟨fun ⟨e, _⟩ => e, fun e => ⟨e, ?_⟩⟩
-    subst e; exact (side_some hK a).1 (side_or ha hb)
+    subst e; exact (side_some rfl a).1 (hs ha hb)
 
 theorem conv_sound {R : Rel A B} {X : Core.Rel A.El B.El} (hR : ∀ K, R.Reps K X) :
     ∀ K, (GenK.conv A B R).Reps K X° :=
