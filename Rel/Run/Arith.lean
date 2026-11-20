@@ -49,6 +49,28 @@ def stepCols (k : UInt8) (n : USize) (a b : Enc) : Except String (Arr .i64 n × 
     pure (w, ← ne w.enc)
   else throw s!"arith: verb code {k} is none of + - * div mod max min"
 
+/-- The words the verbs and orders of the atom `t` compute on, of the `n` words `a`: an `f32` column read at `f32` and
+    widened to `f64` (`Op.f32to64`, `fval`), any other as stored. -/
+def wideCol (t : QAtomicType) (n : USize) (a : Enc) : Except String Enc :=
+  match t with
+  | .f32 => colMap .f32to64 n a a .i64 .f32
+  | _ => pure a
+
+/-- **The value verb `k` at the float atom `t`** on the `n` operand rows `a`, `b` (`stepAt`): `fverbBy` with `colMap`
+    on their `f64` words, `Op.fto t` writing the word of `t`, kept where that is not `nulWord` (a NaN answer). -/
+def fstepCols (t : QAtomicType) (k : UInt8) (n : USize) (a b : Enc) : Except String (Arr t n × Enc) := do
+  let r ← fverbBy (fun o x y => colMap o n x y) k (← wideCol t n a) (← wideCol t n b)
+  let w ← colArr (.fto t) n r r t
+  pure (w, ← colMap .ne n w.enc (← colConst n nulWord))
+
+/-- The value verb `k` at the atom `t`: `stepCols` at `i64`, `fstepCols` at a float atom, the error naming any other
+    (`stepAt` has no row there). -/
+def stepColsAt : (t : QAtomicType) → UInt8 → (n : USize) → Enc → Enc → Except String (Arr t n × Enc)
+  | .i64, k, n, a, b => stepCols k n a b
+  | .f32, k, n, a, b => fstepCols .f32 k n a b
+  | .f64, k, n, a, b => fstepCols .f64 k n a b
+  | t, _, _, _, _ => throw s!"arith on objects of {repr t}: no value verb"
+
 namespace Tab
 variable {K : Obj}
 
@@ -56,12 +78,15 @@ variable {K : Obj}
 themselves with `dom U`), of those the ones whose second is, `stepCols` on their operands, the kept rows with their
 answers (`Tab.keep`), `≫ U` (`Tab.comp`). `U X` is the universe at the values `X`: an infinite one (`𝟙`) is run
 only where its values are known, so each test asks `U` at the column it tests. -/
-def arith (k : UInt8) (D : Tab K (.prod .long .long))
-    (U : {n : USize} → Vals .long n → Except String (Tab .long .long)) : Except String (Tab K .long) := do
-  let E₁ : Tab (.prod K (.prod .long .long)) .long ←
-    Tab.comp ⟨D.n, ((D.key, D.val) : Vals K D.n × Vals (.prod .long .long) D.n), D.val.1⟩ (← (← U D.val.1).dom)
-  let E : Tab (.prod K (.prod .long .long)) .long ← Tab.comp ⟨E₁.n, E₁.key, E₁.key.2.2⟩ (← (← U E₁.key.2.2).dom)
-  let (w, b) ← stepCols k E.n E.key.2.1.enc E.key.2.2.enc
+def arith (t : QAtomicType) (k : UInt8) (D : Tab K (.prod (.atom t) (.atom t)))
+    (U : {n : USize} → Vals (.atom t) n → Except String (Tab (.atom t) (.atom t))) :
+    Except String (Tab K (.atom t)) := do
+  let E₁ : Tab (.prod K (.prod (.atom t) (.atom t))) (.atom t) ←
+    Tab.comp ⟨D.n, ((D.key, D.val) : Vals K D.n × Vals (.prod (.atom t) (.atom t)) D.n), D.val.1⟩
+      (← (← U D.val.1).dom)
+  let E : Tab (.prod K (.prod (.atom t) (.atom t))) (.atom t) ←
+    Tab.comp ⟨E₁.n, E₁.key, E₁.key.2.2⟩ (← (← U E₁.key.2.2).dom)
+  let (w, b) ← stepColsAt t k E.n E.key.2.1.enc E.key.2.2.enc
   let P ← Tab.keep ⟨E.n, E.key.1, w⟩ b
   Tab.comp P (← U P.val)
 

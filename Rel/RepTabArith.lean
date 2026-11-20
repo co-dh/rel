@@ -247,9 +247,103 @@ theorem Tab.succ_holds {K : Obj} {D : Tab K .long} {U : {n : USize} → Vals .lo
     have hsi : Vals.row (A := .long) s i = Ew.intStep Ew.add Alg.nul u 1 := by rw [hrow, hu]
     exact ⟨_, ⟨i, hx, hsi⟩, (Tab.dom_holds hdu₂ _ _).2 ⟨rfl, y, (hU _ _ _ hu₂ _ _ ⟨i, hsi⟩).2 hy⟩⟩
 
-/-- `arithDen k TU` pointwise: both operands in `dom TU`, then `stepDen k ≫ TU`. -/
-theorem Lang.arithDen_iff (k : UInt8) (TU : Core.Rel Int64 Int64) (p : Int64 × Int64) (w : Int64) :
-    Lang.arithDen k TU p w ↔ (∃ c, TU p.1 c) ∧ (∃ c, TU p.2 c) ∧ ∃ v, Lang.stepDen k p v ∧ TU v w := by
+/-! ### The value verbs at a float atom: `fstepCols` computes `stepAt` -/
+
+/-- **`fverbBy` commutes with a reading of its operands**: a map `f` taking each step `ap` to the step `ap'` takes the
+whole verb (`ap = colMap`, `ap' = Op.eval`, `f` reading row `i` is the column form agreeing with the word form). -/
+theorem fverbBy_map {α β : Type} {ap : Op → α → α → Except String α} {ap' : Op → β → β → Except String β}
+    (f : α → β) (hap : ∀ {o x y z}, ap o x y = .ok z → ap' o (f x) (f y) = .ok (f z)) {k : UInt8} {x y z : α}
+    (h : fverbBy ap k x y = .ok z) : fverbBy ap' k (f x) (f y) = .ok (f z) := by
+  unfold fverbBy at h ⊢
+  by_cases c1 : (k == Ew.add) = true <;> simp only [c1, ↓reduceIte, Bool.false_eq_true] at h ⊢
+  · exact hap h
+  by_cases c2 : (k == Ew.sub) = true <;> simp only [c2, ↓reduceIte, Bool.false_eq_true] at h ⊢
+  · exact hap h
+  by_cases c3 : (k == Ew.mul) = true <;> simp only [c3, ↓reduceIte, Bool.false_eq_true] at h ⊢
+  · exact hap h
+  by_cases c4 : (k == Ew.greater) = true <;> simp only [c4, ↓reduceIte, Bool.false_eq_true] at h ⊢
+  · exact hap h
+  by_cases c5 : (k == Ew.lesser) = true <;> simp only [c5, ↓reduceIte, Bool.false_eq_true] at h ⊢
+  · exact hap h
+  by_cases c6 : (k == Ew.idiv) = true <;> simp only [c6, ↓reduceIte, Bool.false_eq_true] at h ⊢
+  · simp only [bind, Except.bind_eq_ok'] at h ⊢
+    obtain ⟨q, hq, hz⟩ := h
+    exact ⟨_, hap hq, hap hz⟩
+  by_cases c7 : (k == Ew.imod) = true <;> simp only [c7, ↓reduceIte, Bool.false_eq_true] at h ⊢
+  · simp only [bind, Except.bind_eq_ok'] at h ⊢
+    obtain ⟨q, hq, g, hg, m, hm, hz⟩ := h
+    exact ⟨_, hap hq, _, hap hg, _, hap hm, hap hz⟩
+  · cases h
+
+/-- **`wideCol` reads a float column as `fval`**: row `i` of `wideCol t` of the column `x` is the `f64` word of element
+`i` (an `f32` one read at `f32` and widened). -/
+theorem wideCol_word {t : QAtomicType} {n : USize} (x : Arr t n) {a' : Enc} (h : wideCol t n x.enc = .ok a')
+    (hf : t = .f32 ∨ t = .f64) (i : Fin n.toNat) : fval t (x.get i) = some ((raw .i64 n a')[i.1]?.getD 0) := by
+  rcases hf with rfl | rfl
+  · have e := Except.ok.inj ((colMap_raw (s := .f32) h).2.2.2 i i.2)
+    rw [Arr.get_word x (by decide) i, ← e]
+    generalize (raw .f32 n x.enc)[i.1]?.getD 0 = W
+    simp only [fval, QAtomicType.ofBits, Op.widen32, show W.toUInt32.toUInt64.toUInt32 = W.toUInt32 from UInt32.toNat_inj.mp (by simp [Nat.mod_mod])]
+  · simp only [wideCol, pure, Except.pure, Except.ok.injEq] at h; subst h
+    have hw := x.wf
+    rw [Arr.get_word x (by decide) i]
+    simp only [fval, QAtomicType.ofBits, wd, Option.some.injEq]
+    cases hc : x.enc <;> rw [hc] at hw <;> simp_all [raw, Enc.WF, QAtomicType.width]
+
+/-- **`fstepCols t k` computes `stepAt t k` row by row** at a float atom `t`: the keep flag is a bit, set exactly where
+`fstep` of the operands' `f64` words answers a word of `t` (not `2^63`), and then that word is the answer. -/
+theorem fstepCols_spec {t : QAtomicType} {k : UInt8} {n : USize} {x y w : Arr t n} {keep : Enc}
+    (hf : t = .f32 ∨ t = .f64) (h : fstepCols t k n x.enc y.enc = .ok (w, keep)) (i : Fin n.toNat) :
+    wd n keep i < 2 ∧ ∀ v, (wd n keep i ≠ 0 ∧ w.get i = v) ↔ ∃ X Y R, fval t (x.get i) = some X ∧
+      fval t (y.get i) = some Y ∧ fstep t k X Y = .ok R ∧ R ≠ 0x8000000000000000 ∧ v = QAtomicType.ofBits t R := by
+  simp only [fstepCols, bind, Except.bind_eq_ok', pure, Except.pure, Except.ok.injEq, Prod.mk.injEq] at h
+  obtain ⟨a', ha, b', hb, r, hr, w', hw', N, hN, kp, hkp, rfl, rfl⟩ := h
+  have hr' := fverbBy_map (ap := fun o x y => colMap o n x y) (ap' := Op.eval) (fun e => wd n e i)
+    (fun hc => (colMap_raw hc).2.2.2 i i.2) hr
+  obtain ⟨v0, hv0, hwi⟩ := (colMap_get (colArr_ok hw')).2 i i.2
+  have hkv := (colMap_raw hkp).2.2.2 i i.2
+  rw [colConst_raw hN] at hkv
+  simp only [Array.getElem?_replicate, i.2, if_true, Option.getD_some, ev_ne] at hkv
+  rw [show nulWord = 0x8000000000000000 from rfl] at hkv
+  have ev : ∀ A B, (Op.fto t).eval A B = .ok (Op.ftoWord t B) := fun _ _ => rfl
+  have hfs : fstep t k (wd n a' i) (wd n b' i) = .ok v0 := by
+    show (fverb k _ _ >>= fun q => (Op.fto t).eval 0 q) = _
+    rw [show fverb k (wd n a' i) (wd n b' i) = .ok (wd n r i) from hr']
+    exact (ev 0 _).trans ((ev _ _).symm.trans hv0)
+  have hg : t ≠ .general := by rcases hf with rfl | rfl <;> decide
+  have hs : t ≠ .sym := by rcases hf with rfl | rfl <;> decide
+  obtain ⟨a, ha0, -, ew⟩ := Arr.get_raw_atom w' (colMap_closed (colArr_ok hw')).1 hg hs i
+  have hu : (if t = .u1 then v0 % 2 else v0) = v0 := if_neg (by rcases hf with rfl | rfl <;> decide)
+  rw [hwi, hu, Option.some.injEq] at ha0; subst a
+  have ew' : w'.get i = QAtomicType.ofBits t v0 := by
+    rw [ew]; rcases hf with rfl | rfl <;> simp only [Column.atomOfBits, Dep.Carrier.of?, Option.getD_some,
+      QAtomicType.ofBits]
+  have hwd : (raw .i64 n w'.enc)[i.1]?.getD 0 = v0 := by simp only [hwi, hu, Option.getD_some]
+  rw [hwd] at hkv
+  simp only [wd] at hfs ⊢; rw [← Except.ok.inj hkv, wideCol_word x ha hf i, wideCol_word y hb hf i]
+  refine ⟨bit_lt _, fun v => ?_⟩
+  rw [bit_ne, ew']
+  constructor
+  · rintro ⟨hn, rfl⟩; exact ⟨_, _, _, rfl, rfl, hfs, hn, rfl⟩
+  · rintro ⟨X, Y, R, hX, hY, hR, hn, rfl⟩
+    cases hX; cases hY; rw [hfs] at hR; cases hR; exact ⟨hn, rfl⟩
+
+/-- **`stepColsAt t k` computes `stepAt t k` row by row**, at every atom: `stepCols_spec` at `i64`, `fstepCols_spec` at
+a float atom, and no answer at any other (`stepColsAt` refuses it). -/
+theorem stepColsAt_spec {t : QAtomicType} {k : UInt8} {n : USize} {x y w : Arr t n} {keep : Enc}
+    (h : stepColsAt t k n x.enc y.enc = .ok (w, keep)) (i : Fin n.toNat) :
+    wd n keep i < 2 ∧ ∀ v, (wd n keep i ≠ 0 ∧ w.get i = v) ↔ Lang.stepAt t k (x.get i, y.get i) v := by
+  cases t <;> simp only [stepColsAt, throw, throwThe, MonadExceptOf.throw, reduceCtorEq] at h
+  · obtain ⟨h2, hv⟩ := stepCols_spec h i.1 i.2
+    refine ⟨h2, fun v => ?_⟩
+    rw [Arr.get_i64, Arr.get_i64, Arr.get_i64]
+    exact (and_congr Iff.rfl eq_comm).trans (hv v)
+  all_goals first | cases h | exact fstepCols_spec (by decide) h i
+
+/-- `arithDen t k TU` pointwise: both operands in `dom TU`, then `stepAt t k ≫ TU`. -/
+theorem Lang.arithDen_iff (t : QAtomicType) (k : UInt8) (TU : Core.Rel (Obj.atom t).El (Obj.atom t).El)
+    (p : (Obj.atom t).El × (Obj.atom t).El) (w : (Obj.atom t).El) :
+    Lang.arithDen t k TU p w ↔ (∃ c, TU p.1 c) ∧ (∃ c, TU p.2 c) ∧ ∃ v, Lang.stepAt t k p v ∧ TU v w := by
   simp only [Lang.arithDen, Core.Rel.comp, Core.Rel.inter, Core.Rel.recip, Core.Rel.id, Core.Rel.graph]
   constructor
   · rintro ⟨_, ⟨rfl, c, ⟨_, rfl, h1⟩, -⟩, _, ⟨rfl, c', ⟨_, rfl, h2⟩, -⟩, v, hs, hv⟩
@@ -260,11 +354,12 @@ theorem Lang.arithDen_iff (k : UInt8) (TU : Core.Rel Int64 Int64) (p : Int64 × 
 /-- **`Tab.arith` answers `D ≫ arithDen k U`** (`Rel/Lang/Den.lean`): a row `(x, w)` of the answer is a row `(x, p)`
 of `D` with `p`'s operands in `dom U`, `v = stepDen k p` (no null, no wrap), and `v U w`; `U X` agrees with `TU` at
 the values `X`. -/
-theorem Tab.arith_holds {K : Obj} {k : UInt8} {D : Tab K (.prod .long .long)}
-    {U : {n : USize} → Vals .long n → Except String (Tab .long .long)} {TU : Core.Rel Int64 Int64}
-    (hU : ∀ n (X : Vals .long n) t, U X = .ok t → ∀ a v, (∃ i, X.row i = a) → (t.Holds a v ↔ TU a v))
-    {T : Tab K .long} (h : D.arith k U = .ok T) (x : K.El) (w : Int64) :
-    T.Holds x w ↔ ∃ p, D.Holds x p ∧ Lang.arithDen k TU p w := by
+theorem Tab.arith_holds {K : Obj} {t : QAtomicType} {k : UInt8} {D : Tab K (.prod (.atom t) (.atom t))}
+    {U : {n : USize} → Vals (.atom t) n → Except String (Tab (.atom t) (.atom t))}
+    {TU : Core.Rel (Obj.atom t).El (Obj.atom t).El}
+    (hU : ∀ n (X : Vals (.atom t) n) u, U X = .ok u → ∀ a v, (∃ i, X.row i = a) → (u.Holds a v ↔ TU a v))
+    {T : Tab K (.atom t)} (h : D.arith t k U = .ok T) (x : K.El) (w : (Obj.atom t).El) :
+    T.Holds x w ↔ ∃ p, D.Holds x p ∧ Lang.arithDen t k TU p w := by
   simp only [Tab.arith, bind, Except.bind_eq_ok'] at h
   obtain ⟨u₁, hu₁, du₁, hdu₁, E₁, hE₁, u₂, hu₂, du₂, hdu₂, E, hE, wb, hwb, h⟩ := h
   obtain ⟨w', b⟩ := wb
@@ -292,29 +387,25 @@ theorem Tab.arith_holds {K : Obj} {k : UInt8} {D : Tab K (.prod .long .long)}
     · rintro ⟨c, b, ⟨i, hi, hb⟩, hdb⟩
       obtain ⟨rfl, y, hy⟩ := (Tab.dom_holds hdu₂ b c).1 hdb
       have h1 := (k1 x p).1 ⟨i, hi⟩
-      have e : b = p.2 := hb.symm.trans (congrArg (fun q : K.El × (Int64 × Int64) => q.2.2) hi)
+      have e : b = p.2 := hb.symm.trans (congrArg (fun q : K.El × ((Obj.atom t).El × (Obj.atom t).El) => q.2.2) hi)
       exact ⟨h1.1, h1.2, y, e ▸ (hU _ _ _ hu₂ _ _ ⟨i, hb⟩).1 hy⟩
     · rintro ⟨hD, h1, y, hy⟩
       obtain ⟨i, hi⟩ := (k1 x p).2 ⟨hD, h1⟩
       exact ⟨_, _, ⟨i, hi, rfl⟩, (Tab.dom_holds hdu₂ _ _).2 ⟨rfl, y, (hU _ _ _ hu₂ _ _ ⟨i, rfl⟩).2
         (by show TU (E₁.key.row i).2.2 y; rw [hi]; exact hy)⟩⟩
   have inP : ∀ {v}, Kp.Holds x v → ∃ j, Kp.val.row j = v := fun ⟨j, _, hj⟩ => ⟨j, hj⟩
-  have st : ∀ (i : Fin E.n.toNat) v, ((Enc.raw .i64 E.n b)[i.1]?.getD 0 ≠ 0 ∧ Vals.row (A := .long) w' i = v) ↔
-      Lang.stepDen k (E.key.row i).2 v := by
-    intro i v
-    show _ ∧ Arr.get w' i = v ↔ Lang.stepDen k (Arr.get E.key.2.1 i, Arr.get E.key.2.2 i) v
-    rw [Arr.get_i64, Arr.get_i64, Arr.get_i64]
-    exact (and_congr Iff.rfl eq_comm).trans ((stepCols_spec hwb i.1 i.2).2 v)
+  have st : ∀ (i : Fin E.n.toNat) v, ((Enc.raw .i64 E.n b)[i.1]?.getD 0 ≠ 0 ∧ Vals.row (A := .atom t) w' i = v) ↔
+      Lang.stepAt t k (E.key.row i).2 v := (stepColsAt_spec hwb · |>.2)
   rw [Tab.comp_holds hT]
-  have kp := Tab.keep_holds hKp (fun i hi => (stepCols_spec hwb i hi).1)
+  have kp := Tab.keep_holds hKp (fun i hi => (stepColsAt_spec hwb ⟨i, hi⟩).1)
   constructor
   · rintro ⟨v, hk, hvw⟩
     obtain ⟨i, h0, hx, hv⟩ := (kp x v).1 hk
     obtain ⟨hD, h1, h2⟩ := (k2 x (E.key.row i).2).1 ⟨i, Prod.ext hx rfl⟩
-    exact ⟨_, hD, (Lang.arithDen_iff k _ _ w).2
+    exact ⟨_, hD, (Lang.arithDen_iff t k _ _ w).2
       ⟨h1, h2, v, (st i v).1 ⟨h0, hv⟩, (hU _ _ _ hu₃ _ _ (inP hk)).1 hvw⟩⟩
   · rintro ⟨p, hD, ha⟩
-    obtain ⟨h1, h2, v, hs, hvw⟩ := (Lang.arithDen_iff k _ _ w).1 ha
+    obtain ⟨h1, h2, v, hs, hvw⟩ := (Lang.arithDen_iff t k _ _ w).1 ha
     obtain ⟨i, hi⟩ := (k2 x p).2 ⟨hD, h1, h2⟩
     have e := (st i v).2 (by rw [hi]; exact hs)
     have hk := (kp x v).2 ⟨i, e.1, congrArg Prod.fst hi, e.2⟩
@@ -345,7 +436,7 @@ private def arithOk (k : UInt8) (d : List (Int64 × Int64 × Int64)) (u : List I
   let inU (x : Int64) := u.contains x
   let spec := d.filterMap fun (x, a, b) => let w := Ew.intStep k Alg.nul a b
     if inU a && inU b && w != Alg.nul && exactB k a b w && inU w then some (x, w) else none
-  match (dTab d).arith k (fun _ => pure (uTab u)) with
+  match (dTab d).arith .i64 k (fun _ => pure (uTab u)) with
   | .ok T => sameSet T.toList spec
   | .error _ => false
 
@@ -374,7 +465,7 @@ private def ds : List (Int64 × Int64 × Int64) :=
 #guard [Ew.add, Ew.sub, Ew.mul, Ew.idiv, Ew.imod, Ew.greater, Ew.lesser].all fun k =>
   arithOk k ds us && arithOk k [] us && arithOk k ds [] && arithOk k ds (us.filter (· != Int64.minValue))
 -- a code outside `Op.table` is the error naming it
-#guard (dTab ds).arith 3 (fun _ => pure (uTab us)) matches .error _
+#guard (dTab ds).arith .i64 3 (fun _ => pure (uTab us)) matches .error _
 -- `succ`: the top of `U` goes nowhere, `maxValue` to the null only where `U` holds it, the null to itself
 #guard succOk ((List.range us.length).zip us |>.map fun (i, u) => (Int64.ofNat i, u)) us
 #guard succOk [(1, 3), (1, 3), (2, Int64.maxValue), (3, Int64.minValue), (4, 9), (5, 100)] [3, 4, 9, Int64.maxValue]

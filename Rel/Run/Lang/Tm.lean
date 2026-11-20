@@ -50,11 +50,12 @@ inductive Tm : Obj → Obj → Type where
       definition, because `perm° = perm` is a theorem it cannot derive from the fold `perm` is. -/
   | own {A : Obj} (R : Tm A A) : Tm A A
   /-- `succ`, the kernel's value verb `k` (`plus`, `times`, …), `≤`, `<` on the number universe `U`: a declared
-      object's (`uni`), or the one a constant is given for an object variable (`var`). -/
+      object's (`uni`), or the one a constant is given for an object variable (`var`). The value verbs and the
+      orders are indexed by the atom `t` the object is stored at (`stepAt`, `ltAt`); `succ` is `i64`'s. -/
   | succ (U : Tm .long .long) : Tm .long .long
-  | arith (k : UInt8) (U : Tm .long .long) : Tm (.prod .long .long) .long
-  | leq (U : Tm .long .long) : Tm .long .long
-  | lt (U : Tm .long .long) : Tm .long .long
+  | arith (t : QAtomicType) (k : UInt8) (U : Tm (.atom t) (.atom t)) : Tm (.prod (.atom t) (.atom t)) (.atom t)
+  | leq (t : QAtomicType) (U : Tm (.atom t) (.atom t)) : Tm (.atom t) (.atom t)
+  | lt (t : QAtomicType) (U : Tm (.atom t) (.atom t)) : Tm (.atom t) (.atom t)
   /-- `⦇e,S⦈ʳ`, the right fold, on the arrays in demand: each read from its end, `S` on `(x, acc)`. -/
   | foldr {E V : Obj} (e : Tm V V) (S : Tm (.prod E V) V) : Tm (.arr E) V
   /-- `⦇e,S⦈`, the left fold, on the arrays in demand: each read from index 0, `S` on `(acc, x)`. -/
@@ -116,7 +117,7 @@ def Tm.dem : {A B : Obj} → Tm A B → Bool
   | _, _, .var d _ => d
   -- every leaf listed, as in `Tm.fv`
   | _, _, .val _ | _, _, .uni _ | _, _, .zero | _, _, .conv _ | _, _, .ran _ | _, _, .ldiv .. | _, _, .rdiv ..
-  | _, _, .prod .. | _, _, .leq _ | _, _, .lt _ | _, _, .nu .. | _, _, .mu .. => false
+  | _, _, .prod .. | _, _, .leq .. | _, _, .lt .. | _, _, .nu .. | _, _, .mu .. => false
   | _, _, .id | _, _, .top _ | _, _, .outl | _, _, .outr | _, _, .lam _ | _, _, .E _
   | _, _, .est _ | _, _, .thin _ | _, _, .nil | _, _, .prim _ | _, _, .atPos _ | _, _, .succ _ | _, _, .arith ..
   | _, _, .foldr .. | _, _, .fold .. | _, _, .foldI .. | _, _, .hylo .. => true
@@ -143,9 +144,9 @@ def Tm.mapM {m : Type → Type} [Monad m] (f : {A B : Obj} → Tm A B → m (Tm 
   | _, _, .thin Q => return .thin (← f Q)
   | _, _, .own R => return .own (← f R)
   | _, _, .succ U => return .succ (← f U)
-  | _, _, .arith k U => return .arith k (← f U)
-  | _, _, .leq U => return .leq (← f U)
-  | _, _, .lt U => return .lt (← f U)
+  | _, _, .arith t k U => return .arith t k (← f U)
+  | _, _, .leq t U => return .leq t (← f U)
+  | _, _, .lt t U => return .lt t (← f U)
   | _, _, .foldr e S => return .foldr (← f e) (← f S)
   | _, _, .fold e S => return .fold (← f e) (← f S)
   | _, _, .foldI e S => return .foldI (← f e) (← f S)
@@ -181,9 +182,9 @@ def Tm.fv : {A B : Obj} → Tm A B → List Nat
   | _, _, .thin Q => Q.fv
   | _, _, .own R => R.fv
   | _, _, .succ U => U.fv
-  | _, _, .arith _ U => U.fv
-  | _, _, .leq U => U.fv
-  | _, _, .lt U => U.fv
+  | _, _, .arith _ _ U => U.fv
+  | _, _, .leq _ U => U.fv
+  | _, _, .lt _ U => U.fv
   | _, _, .foldr e S | _, _, .fold e S => e.fv ++ S.fv
   | _, _, .foldI e S => e.fv ++ S.fv
   | _, _, .arg g x => g.fv ++ x.fv
@@ -236,9 +237,9 @@ def Tm.subst : Tm.Sub → {A B : Obj} → Tm A B → Tm A B
   | σ, _, _, .thin Q => .thin (Q.subst σ)
   | σ, _, _, .own R => .own (R.subst σ)
   | σ, _, _, .succ U => .succ (U.subst σ)
-  | σ, _, _, .arith k U => .arith k (U.subst σ)
-  | σ, _, _, .leq U => .leq (U.subst σ)
-  | σ, _, _, .lt U => .lt (U.subst σ)
+  | σ, _, _, .arith t k U => .arith t k (U.subst σ)
+  | σ, _, _, .leq t U => .leq t (U.subst σ)
+  | σ, _, _, .lt t U => .lt t (U.subst σ)
   | σ, _, _, .foldr e S => .foldr (e.subst σ) (S.subst σ)
   | σ, _, _, .fold e S => .fold (e.subst σ) (S.subst σ)
   | σ, _, _, .foldI e S => .foldI (e.subst σ) (S.subst σ)
@@ -286,7 +287,7 @@ def Tm.pol (s : Bool) (k : Nat) : {A B : Obj} → Tm A B → Bool
   | _, _, .mu j _ _ b => j == k || b.pol s k
   | _, _, .hylo j _ b => j == k || b.pol s k
   | _, _, .est Q => Q.pol s k
-  | _, _, .succ U | _, _, .arith _ U | _, _, .leq U | _, _, .lt U => U.pol s k
+  | _, _, .succ U | _, _, .arith _ _ U | _, _, .leq _ U | _, _, .lt _ U => U.pol s k
   | _, _, .foldr e S | _, _, .fold e S | _, _, .foldI e S => e.pol s k && S.pol s k
   | _, _, t@(.arg (.prim r) x) => (Prim.find? r.sym).any (·.mono) && x.pol s k || !t.fv.contains k
   | _, _, t@(.lam _) | _, _, t@(.E _) | _, _, t@(.thin _) | _, _, t@(.arg ..) => !t.fv.contains k
@@ -299,7 +300,7 @@ def Tm.pol (s : Bool) (k : Nat) : {A B : Obj} → Tm A B → Bool
     (`size_kids`), since `Tm.gen` recurses into `kids` of a `hylo`'s body. -/
 def Tm.size : {A B : Obj} → Tm A B → Nat
   | _, _, .top R | _, _, .conv R | _, _, .dom R | _, _, .ran R | _, _, .lam R | _, _, .E R | _, _, .est R
-  | _, _, .thin R | _, _, .own R | _, _, .succ R | _, _, .arith _ R | _, _, .leq R | _, _, .lt R
+  | _, _, .thin R | _, _, .own R | _, _, .succ R | _, _, .arith _ _ R | _, _, .leq _ R | _, _, .lt _ R
   | _, _, .share _ R | _, _, .mu _ _ _ R | _, _, .hylo _ _ R | _, _, .call _ _ _ R | _, _, .callCv _ _ _ _ R _ =>
     R.size + 1
   | _, _, .comp R S | _, _, .meet R S | _, _, .join R S | _, _, .diff R S | _, _, .pair R S | _, _, .prod R S

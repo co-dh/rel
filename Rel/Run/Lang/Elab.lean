@@ -257,9 +257,9 @@ def Tm.instObj (ph : List Rel.QAtomicType) (σ : List Obj) : {A B : Obj} → Tm 
   | _, _, .atPos k => pure (.atPos k)
   | _, _, .own R => return .own (← R.instObj ph σ)
   | _, _, .succ U => do fixed (.succ (← back (← U.instObj ph σ)))
-  | _, _, .arith k U => do fixed (.arith k (← back (← U.instObj ph σ)))
-  | _, _, .leq U => do fixed (.leq (← back (← U.instObj ph σ)))
-  | _, _, .lt U => do fixed (.lt (← back (← U.instObj ph σ)))
+  | _, _, .arith t k U => do fixed (.arith t k (← back (← U.instObj ph σ)))
+  | _, _, .leq t U => do fixed (.leq t (← back (← U.instObj ph σ)))
+  | _, _, .lt t U => do fixed (.lt t (← back (← U.instObj ph σ)))
   | _, _, .foldr e S => return .foldr (← e.instObj ph σ) (← S.instObj ph σ)
   | _, _, .fold e S => return .fold (← e.instObj ph σ) (← S.instObj ph σ)
   | _, _, .share k R => return .share k (← R.instObj ph σ)
@@ -487,9 +487,17 @@ def zonk (mc : Lean.MetavarContext) (o : OTy) : OTy := .ofExpr (Lean.instantiate
 /-- `x` and `y` made one object by Lean's unifier, which leaves the variables as they were when it fails. -/
 def defEq (x y : OTy) : M Bool := Lean.Meta.isDefEq x.toExpr y.toExpr
 
-/-- Unify `x` (found) with `y` (expected); the error names both as the program wrote them. -/
+/-- The parts of `x` and `y` that unify, unified: what a failed `defEq` of the whole rolled back. -/
+partial def defEqParts : OTy → OTy → M Unit
+  | .prod a b, .prod c d | .sum a b, .sum c d => do defEqParts a c; defEqParts b d
+  | .arr a, .arr c => defEqParts a c
+  | a, c => discard (defEq a c)
+
+/-- Unify `x` (found) with `y` (expected); the error names both with every part that does unify filled in
+    (`defEqParts`), so a mismatch shows the objects that differ, never the variables left open by the rollback. -/
 def unify (p : Pos) (what : String) (x y : OTy) : M Unit := do
   unless ← defEq x y do
+    defEqParts x y
     let mc ← Lean.getMCtx
     throw ⟨p, s!"{what}: found {zonk mc x}, expected {zonk mc y}"⟩
 
@@ -1618,8 +1626,8 @@ def convTm {A B : Obj} (t : Tm A B) : Except String (Tm B A) :=
   | .ldiv R S U V => pure (.conv (.ldiv R S U V))
   | .rdiv R S U V => pure (.conv (.rdiv R S U V))
   | .prod R S => pure (.conv (.prod R S))
-  | .leq U => pure (.conv (.leq U))
-  | .lt U => pure (.conv (.lt U))
+  | .leq t U => pure (.conv (.leq t U))
+  | .lt t U => pure (.conv (.lt t U))
   | .id => pure .id
   | .dom R => pure (.dom R)
   | .own R => pure (.own R)
@@ -1657,7 +1665,7 @@ def convTm {A B : Obj} (t : Tm A B) : Except String (Tm B A) :=
     | none => throw r.leaf
   -- the number verbs are closed on their universe: their converse is read whole there
   | .succ U => pure (.conv (.comp U (.succ U)))
-  | .arith k U => pure (.conv (.comp (.prod U U) (.arith k U)))
+  | .arith t k U => pure (.conv (.comp (.prod U U) (.arith t k U)))
   -- a constant's plan on demand: its converse constant at the same arguments; with none, read whole on its
   -- source's universe
   | .callCv ks c c' os b u => pure (.callCv ks c' c os u b)
@@ -1717,7 +1725,7 @@ def divTest {A B C : Obj} (c : Tm (.prod A C) (.prod A C)) (s : Tm B C) :
 /-- The fold base `0` as `Pre.fold0` builds it on the universe `u`: `ran(u (⟨𝟙,𝟙⟩ minus ∩ 𝟙))`, closed on `u`
     (`closeRes`), since the fold reads its start whole; the bare `⟨𝟙,𝟙⟩ minus ∩ 𝟙` needs keys and runs empty there. -/
 def zeroTm (u : Tm .long .long) : Tm .long .long :=
-  .ran (.comp u (.meet (.comp (.pair .id .id) (.arith Rel.Kernel.Ew.sub u)) .id))
+  .ran (.comp u (.meet (.comp (.pair .id .id) (.arith .i64 Rel.Kernel.Ew.sub u)) .id))
 
 /-- A row's definition (§4): `⦇[0, π₁ succ]⦈` (`lengthRow`'s) and `⦇[0, plus]⦈ʳ` (`sumRow`'s), the base `0` on the
     universe `u₀`, the step on `u`; `⟨π₁R,π₂⟩dom(π₁π₁ ∩ π₂)π₁π₂` (`flatRow`'s, of the family `R`). Indexed by the
@@ -1726,7 +1734,7 @@ inductive DfnCut : {A B : Obj} → Tm A B → Type
   | length {E : Obj} (u₀ u : Tm .long .long) :
     DfnCut (A := .arr E) (B := .long) (.fold (zeroTm u₀) (.comp .outl (.succ u)))
   | sum (u₀ u : Tm .long .long) :
-    DfnCut (A := .arr .long) (B := .long) (.foldr (zeroTm u₀) (.arith Rel.Kernel.Ew.add u))
+    DfnCut (A := .arr .long) (B := .long) (.foldr (zeroTm u₀) (.arith .i64 Rel.Kernel.Ew.add u))
   | flat {I A B : Obj} (R : Tm I (.prod A B)) :
     DfnCut (A := .prod I A) (B := B)
       (.comp (.pair (.comp .outl R) .outr) (.comp (.dom (.meet (.comp .outl .outl) .outr)) (.comp .outl .outr)))
@@ -1821,15 +1829,21 @@ def uniTm (p : Pos) (o : OTy) (A : Obj) (what : String) : Except Err (Tm A A) :=
   | some t => pure t
   | none => throw ⟨p, s!"{what}: {zonk mc o} has no universe; compose a set of its elements before it (§a)"⟩
 
-/-- The name of `o`, a number object `op` computes on: a declared object, not one declared at another atom than i64. -/
-def numObj (p : Pos) (o : OTy) (op : String) : Except Err String :=
+/-- The atoms the value verbs (`plus`, …) and the orders `≤`, `<` run on (`stepAt`, `ltAt`): `i64`, and every float
+    atom, whose verbs are computed on `f64` words (`fval`). -/
+def valueAtom (t : QAtomicType) : Bool := t == .i64 || t.numFmt?.any (· matches .float ..)
+
+/-- The name and atom of `o`, a number object `op` computes on: a declared object stored at an atom `ok` admits
+    (`valueAtom` for the value verbs and orders, `i64` alone for `succ` and `sums`). -/
+def numObj (p : Pos) (o : OTy) (op : String) (ok : QAtomicType → Bool) : Except Err (String × QAtomicType) :=
   match zonk mc o with
   | .base n => match objs.lookup n with
-    -- the number verbs run on `i64` words: at an object declared at another atom they are refused, never run on bits
+    -- at an object declared at an atom `op` has no step for, it is refused, never run on the bits
     | some { obj := .atom t, ovar := false, .. } =>
-      if t != .i64 then throw ⟨p, s!"{op} on {n}: {n} is an object of {atomName t}, and {op} runs on objects of i64 only"⟩
-      else pure n
-    | _ => pure n
+      if ok t then pure (n, t) else
+        let ats := ", ".intercalate ((atomNames.filter (ok ·.2)).map (atomName ·.2))
+        throw ⟨p, s!"{op} on {n}: {n} is an object of {atomName t}, and {op} runs on objects of {ats} only"⟩
+    | _ => pure (n, .i64)
   | o => throw ⟨p, s!"{op} runs on a declared object, found {o}"⟩
 
 /-- The object the variable `v` of the pattern `e` stands for in `o`, `o` of `e`'s form; none where `e` has no `v`. -/
@@ -1841,12 +1855,22 @@ def OExp.varAt (v : String) : OExp → OTy → Option OTy
 
 /-- The universe of a number object, for `succ`, the value verbs (`plus`, …), `≤`, `<`: a declared object's,
     or the one a constant is given for an object variable. -/
-def numU (p : Pos) (o : OTy) (op : String) : Except Err (Tm .long .long) := do declared (← numObj objs mc p o op)
+def numU (p : Pos) (o : OTy) (op : String) (ok : QAtomicType → Bool) :
+    Except Err ((t : QAtomicType) × Tm (.atom t) (.atom t)) := do
+  let (n, t) ← numObj objs mc p o op ok
+  return ⟨t, ← declared n t⟩
 where
-  declared (n : String) : Except Err (Tm .long .long) := match objs.lookup n with
-    | some { uni := some ⟨_, U⟩, .. } => pure (.uni (A := .long) U)
-    | some { num := true, .. } => pure .id
-    | some { uniVar := some k, obj := .atom .i64, .. } => pure (.var false k)
+  -- an object stored at another atom than `i64` is a declared number object, its universe `𝟙` (S1)
+  declared (n : String) : (t : QAtomicType) → Except Err (Tm (.atom t) (.atom t))
+    | .i64 => match objs.lookup n with
+      | some { uni := some ⟨_, U⟩, .. } => pure (.uni (A := .long) U)
+      | some { num := true, .. } => pure .id
+      | some { uniVar := some k, obj := .atom .i64, .. } => pure (.var false k)
+      | i => refuse n i
+    | _ => match objs.lookup n with
+      | some { num := true, .. } => pure .id
+      | i => refuse n i
+  refuse {X : Type} (n : String) : Option ObjInfo → Except Err X
     | some { uniVar := some _, .. } => throw ⟨p, s!"{op} on {n}: a number object, which its constant is not generic over"⟩
     | _ => throw ⟨p, s!"{op} on {n}: no universe"⟩
 
@@ -2044,7 +2068,7 @@ def build : Pre → Except Err Res
   | .prim r xs s t => do
     r.num.forM fun v => do
       if let some o := (r.sig.2.2.varAt v (zonk mc t)).orElse fun _ => r.sig.2.1.varAt v (zonk mc s) then
-        discard <| numObj objs mc dp o r.sym
+        discard <| numObj objs mc dp o r.sym (· == .i64)
     let A ← toObj objs mc dp s; let B ← toObj objs mc dp t
     -- `$` is typed by unification at any two objects; which atoms it joins is `castOK`'s, read off their formats
     if r.sym == "$" then
@@ -2069,10 +2093,12 @@ def build : Pre → Except Err Res
     let ⟨A, B, t⟩ ← build p
     if h : B = A then pure ⟨A, A, .own (h ▸ t)⟩ else internal dp "perm's objects"
   | .atPos k b => return ⟨_, _, .atPos k (B := ← toObj objs mc dp b)⟩
-  | .succ p n => return ⟨_, _, .succ (← numU objs mc p n "succ")⟩
-  | .arith p k n => return ⟨_, _, .arith k (← numU objs mc p n (Op.arith k).sym)⟩
-  | .leq p n => return ⟨_, _, .leq (← numU objs mc p n "≤")⟩
-  | .lt p n => return ⟨_, _, .lt (← numU objs mc p n "<")⟩
+  | .succ p n => do
+    let (m, _) ← numObj objs mc p n "succ" (· == .i64)
+    return ⟨_, _, .succ (← numU.declared objs p "succ" m .i64)⟩
+  | .arith p k n => do let ⟨t, U⟩ ← numU objs mc p n (Op.arith k).sym valueAtom; return ⟨_, _, .arith t k U⟩
+  | .leq p n => do let ⟨t, U⟩ ← numU objs mc p n "≤" valueAtom; return ⟨_, _, .leq t U⟩
+  | .lt p n => do let ⟨t, U⟩ ← numU objs mc p n "<" valueAtom; return ⟨_, _, .lt t U⟩
   | .fold true e s => do
     let r ← build e; let ⟨V, _, _⟩ := r
     match ← build s with

@@ -24,6 +24,9 @@ inductive Op
   /-- `$` (S6/S7): the word of `t` holding the value of the word read at `s` (`QAtomicType.castWord`), `2^63` where
       none; one constructor for every pair, so `Op` reaches Rust as an object (`op_code`), not a byte. -/
   | cast (s t : QAtomicType)
+  /-- The float verbs at a float atom `t` (S3): the `f64` answer as the canonical word of `t` nearest it
+      (`ftoWord`: rounded to nearest, a zero as `+0`), `2^63` at a NaN, which no answer is. -/
+  | fto (t : QAtomicType)
   deriving DecidableEq, Repr, Inhabited
 
 namespace Op
@@ -32,7 +35,7 @@ namespace Op
 unary ops and `last` look at the element alone. -/
 def readsAcc : Op → Bool
   | neg | abs | not | last | fneg | fabs | fsqrt | fexp | flog | fsin | fcos | ftan | fasin | facos | fatan | ffloor
-  | f32to64 | cast .. => false
+  | f32to64 | cast .. | fto _ => false
   | _ => true
 
 /-- Whether `eval (eval a b) c = eval a (eval b c)`, so a scan may be cut into blocks and the blocks' totals combined.
@@ -49,10 +52,20 @@ private def fw (x : Float) : UInt64 := x.toBits
 private def fle' (x y : UInt64) : Bool := (f x).isNaN || (!(f y).isNaN && (f x ≤ f y))
 
 /-- A NaN keeps the sign of the `f32` NaN it widens (q's null is the negative one). -/
-private def widen32 (x : UInt64) : UInt64 :=
+def widen32 (x : UInt64) : UInt64 :=
   let b := x.toUInt32
   let v := Float32.ofBits b
   if v.isNaN then ((b >>> 31).toUInt64 <<< 63) ||| 0x7ff8000000000000 else v.toFloat.toBits
+
+/-- `fto t`'s word: the `f64` word `x` as the word of the float atom `t` nearest it (IEEE round to nearest even, so
+    an `f32` verb computed on widened words and rounded once is the `f32` verb: 53 ≥ 2·24 + 2), a zero as `+0`
+    (decision G: no `-0` in a column); `2^63` at a NaN or at an atom holding no float. -/
+def ftoWord (t : QAtomicType) (x : UInt64) : UInt64 :=
+  let f := Float.ofBits x
+  if f.isNaN then 0x8000000000000000 else match t with
+  | .f64 => if f == 0 then 0 else x
+  | .f32 => let g := f.toFloat32; if g == 0 then 0 else g.toBits.toUInt64
+  | _ => 0x8000000000000000
 
 /-- Total, with the failure typed: integer `div`/`mod` by `0` is `.error`, not a null (`Ew.intStep` answers q's `0N`
 there, a value the raw word cannot tell from an ordinary one). The unary ops ignore `acc`. -/
@@ -108,6 +121,7 @@ def eval : Op → UInt64 → UInt64 → Except String UInt64
   | fge, a, x => .ok (w (f x ≤ f a))
   | f32to64, _, x => .ok (widen32 x)
   | cast s t, _, x => .ok (QAtomicType.castWord s t x)
+  | fto t, _, x => .ok (ftoWord t x)
 
 private def one (n : Float) : UInt64 := n.toBits
 private def neg1 : UInt64 := 0xffffffffffffffff
@@ -160,6 +174,15 @@ private def neg1 : UInt64 := 0xffffffffffffffff
 #guard Op.fgt.eval (one 1.0) (one 2.0) matches .ok 0
 #guard Op.fge.eval (one 2.0) (one 1.0) matches .ok 1
 #guard Op.f32to64.eval 0 0x3fc00000 matches .ok 0x3ff8000000000000
+#guard (Op.fto .f64).eval 0 (one 2.5) matches .ok 0x4004000000000000
+#guard (Op.fto .f64).eval 0 0x8000000000000000 matches .ok 0
+#guard (Op.fto .f64).eval 0 (one (0.0 / 0.0)) matches .ok 0x8000000000000000
+#guard (Op.fto .f32).eval 0 (one 1.5) matches .ok 0x3fc00000
+-- `0.1` rounded to the nearest `f32`; a tiny negative `f64` rounds to `-0` and is written `+0`
+#guard (Op.fto .f32).eval 0 (one 0.1) matches .ok 0x3dcccccd
+#guard (Op.fto .f32).eval 0 (one (-1e-50)) matches .ok 0
+#guard (Op.fto .f32).eval 0 (one 1e300) matches .ok 0x7f800000
+#guard (Op.fto .i64).eval 0 (one 1.0) matches .ok 0x8000000000000000
 
 end Op
 end Rel.Kernel
@@ -183,3 +206,45 @@ def idiv : UInt8 := 7
 def imod : UInt8 := 8
 
 end Rel.Kernel.Ew
+
+/-! The value verbs at a float atom (typed base S3), on the `f64` words of their operands, as `Op`s compose them:
+    the specification `stepAt` states and `fstepCols` runs. -/
+
+namespace Rel.Kernel
+
+/-- The `f64` word of a value of the float atom `t` (`Op.f32to64` widens an `f32`), none at an atom holding no float:
+    the float verbs and orders read their operands at `f64`. -/
+def fval : (t : QAtomicType) → Dep.Carrier t → Option UInt64
+  | .f64, x => some x
+  | .f32, x => some (Op.widen32 x.toUInt64)
+  | _, _ => none
+
+/-- The value verb `k` as a composition of float `Op`s, each applied by `ap` (to two words by `Op.eval`, to two
+    columns by `colMap`), as q computes it on floats: `+ - * max min` by their `f` ops, `div` the floor of the
+    quotient (`ffloor` of `fdiv`), `mod` `x - y·(x div y)` (`q.k`: `mod:{x-y*x div y}`). A unary op reads its second
+    operand. -/
+def fverbBy {α : Type} (ap : Op → α → α → Except String α) (k : UInt8) (x y : α) : Except String α :=
+  if k == Ew.add then ap .fadd x y else if k == Ew.sub then ap .fsub x y
+  else if k == Ew.mul then ap .fmul x y else if k == Ew.greater then ap .fmax x y
+  else if k == Ew.lesser then ap .fmin x y
+  else if k == Ew.idiv then do let q ← ap .fdiv x y; ap .ffloor q q
+  else if k == Ew.imod then do let q ← ap .fdiv x y; let f ← ap .ffloor q q; ap .fsub x (← ap .fmul y f)
+  else .error s!"arith: verb code {k} is none of + - * div mod max min"
+
+/-- `fverbBy` on two `f64` words. -/
+abbrev fverb : UInt8 → UInt64 → UInt64 → Except String UInt64 := fverbBy Op.eval
+
+/-- The value verb `k` at the float atom `t` on the `f64` words `x`, `y`: `fverb`, then `fto t`, which answers `2^63`
+    where the IEEE answer is NaN. -/
+def fstep (t : QAtomicType) (k : UInt8) (x y : UInt64) : Except String UInt64 := do
+  (Op.fto t).eval 0 (← fverb k x y)
+
+private def bits (n : Float) : UInt64 := n.toBits
+#guard fstep .f64 Ew.add (bits 1.5) (bits 2.0) matches .ok 0x400c000000000000
+#guard fstep .f64 Ew.idiv (bits 7.5) (bits 2.0) matches .ok 0x4008000000000000
+#guard fstep .f64 Ew.imod (bits 7.5) (bits 2.0) matches .ok 0x3ff8000000000000
+#guard fstep .f64 Ew.sub (bits 0.0) (bits 0.0) matches .ok 0
+#guard fstep .f64 Ew.idiv (bits 0.0) (bits 0.0) matches .ok 0x8000000000000000
+#guard fstep .f32 Ew.add (bits 0.1) (bits 0.2) matches .ok 0x3e99999a
+
+end Rel.Kernel

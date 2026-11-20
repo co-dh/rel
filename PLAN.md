@@ -310,7 +310,7 @@ Diff table 的「状态」列：✅ 后面是完成它的步骤；🔄 是部分
 
 - ✅ S0 fork A，每个 constant 自己的 placeholder（分支 `tb-s0`）：`Once.ph = placeholdersOf env.objs`，即 `varAtoms`
   中没有任何作用域内对象存储在其上的 atom；`Obj.inst ph σ`、`Tm.instObj ph σ`、`callTm … ph`、`Pre.call … ph`。
-  `.long` 不在 `varAtoms` 中，所以任何 `ph` 都保持它（`fixed_long` 不加前提）。变量多于 `ph` 时 `once` 报错并给出定义名。
+  `.long` 不在 `varAtoms` 中，所以任何 `ph` 都保持它（S3 起由 `fixed_ok` 读出，不加前提）。变量多于 `ph` 时 `once` 报错并给出定义名。
 - ✅ S1（分支 `tb-s1b`）`obj F : t` 声明存储在 atom `t` 上的对象：`ObjDef.num (t := .i64)`，`objInfo` 给
   `obj := .atom t`。atom 名只有一张表 `atomNames`（`Syntax.lean`），由 `QAtomicType` 的构造子生成，名字即构造子名。
   能声明的 atom 是 `litLayout t`（`Kernel.ascLayout` 去掉 `u1`）有值者：`u8 i8 i16 i32 i64 f32 f64 char date
@@ -325,7 +325,13 @@ Diff table 的「状态」列：✅ 后面是完成它的步骤；🔄 是部分
   `Rel.Lang.Table.nonCanonical` 由它定义。打印 `Elab.floatText`：能读回同样位的最短十进制，首位数量级在 `[-7, 21)`
   时用带小数点的普通写法（`2.5`、`-0.00000015`、`15000000000.0`），否则 `1e-8`、`1e21`。object 变量多于 placeholder
   时调用处报错（`Expand.placeholdersFor`）。测试 `Rel/Lang/TestFloatObj.lean`；GenSoundTest 1235/1235。
-- ⬜ S3 `Tm.arith`、`leq`、`lt` 以 atom 为下标；`stepDen t`、`stepCols t`、`cmpOn (ltOp t)` 及定律。
+- ✅ S3（分支 `tb-s3c`）`Tm.arith t k`、`leq t`、`lt t` 以 atom 为下标：`stepAt t k`、`ltAt t`/`leAt t`（i64 上为
+  `Int64` 的，f32/f64 上为 IEEE 的，读 `fval` 给出的 f64 字），运行侧 `stepColsAt`、`cmpOn (ordOp s t)`，定律
+  `Tab.arith_holds {t}`、`cmp_sound`/`arith_sound` 对任意 atom 一条，i64 是其实例。PLAN 未定的部分映射已决定：
+  `0/0` 与 `1 mod 0` 无行（IEEE 答 NaN）；`x/0` 与溢出保留 ±∞；`−0` 写作 `+0`。float atom 上的 `div` 是 q 的向下取整
+  除法。`convTm_instObj_den` 的 arith 情形用 `fixed_ok`/`back_ok`（任意 `X Y`：`σ` 保持对象时节点即 `t` 本身沿该等式
+  移动），代替 `fixed_long`/`fixed_arith`/`back_long`，因为 f32/f64 在 `varAtoms` 中、`Obj.inst` 不归约。途中修正两个
+  运行代码错误：`colMap` 不论列的 atom 都按 i64 读输入（现在带输入 atom `s`）；`wideCol .f32` 误读 f32 字节。
 - ⬜ S4 行 `sqrt`；`sum` 按 atom。
 - ⬜ S5 float 上的 `Obj.key = ordCode`；`key_ordCode`、`ascBad`、float 上的 `LamLaw`。
 - 🟡 S6 行 `$`（分支 `tb-s6`，owner 裁定 J）：`x $ F` 与 `QAtomicType.embed s t` 的图复合（`castDen`），部分映射、不舍入；

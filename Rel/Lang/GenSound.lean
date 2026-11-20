@@ -210,9 +210,9 @@ def Tm.gen (η : Code) {A B : Obj} (t : Tm A B) : Rel A B :=
   | .arr B, _, .atPos k => GenK.atPos B k
   | _, _, .own R => R.code η
   | _, _, .succ U => GenK.succ (U.code η)
-  | _, _, .arith k U => GenK.arith k (U.code η)
-  | _, _, .leq U => GenK.leq (U.code η)
-  | _, _, .lt U => GenK.lt (U.code η)
+  | _, _, .arith t k U => GenK.arith t k (U.code η)
+  | _, _, .leq t U => GenK.leq t (U.code η)
+  | _, _, .lt t U => GenK.lt t (U.code η)
   | .arr Y, V, .foldr e S => GenK.foldr Y V S.dem (e.code η) (S.code η)
   | .arr Y, V, .fold e S => GenK.fold Y V S.dem (e.code η) (S.code η)
   | _, _, .share _ R => R.code Code.empty
@@ -262,7 +262,7 @@ def Tm.hasCode {A B : Obj} (t : Tm A B) : Bool :=
   | _, _, .val _ | _, _, .uni _ | _, _, .zero | _, _, .id | _, _, .outl | _, _, .outr | _, _, .nil
   | _, _, .atPos _ | _, _, .var .. => true
   | _, _, .top R | _, _, .conv R | _, _, .dom R | _, _, .ran R | _, _, .lam R | _, _, .E R | _, _, .est R
-  | _, _, .thin R | _, _, .own R | _, _, .succ R | _, _, .arith _ R | _, _, .leq R | _, _, .lt R
+  | _, _, .thin R | _, _, .own R | _, _, .succ R | _, _, .arith _ _ R | _, _, .leq _ R | _, _, .lt _ R
   | _, _, .share _ R | _, _, .mu _ _ _ R => R.hasCode
   | _, _, .comp R S | _, _, .meet R S | _, _, .join R S | _, _, .diff R S | _, _, .pair R S | _, _, .prod R S
   | _, _, .foldr R S | _, _, .fold R S | _, _, .foldI R S
@@ -314,8 +314,8 @@ def Tm.LamLawsAt (L : Obj → Obj → Prop) : {A B : Obj} → Tm A B → Prop
   | _, _, .lam (A := A) (B := B) R => L A B ∧ R.LamLawsAt L
   | _, _, .E (A := A) (B := B) R => L (.arr A) B ∧ R.LamLawsAt L
   | _, .arr B, .thin Q => L (.arr B) B ∧ Q.LamLawsAt L
-  | _, _, .top R | _, _, .conv R | _, _, .dom R | _, _, .ran R | _, _, .own R | _, _, .succ R | _, _, .arith _ R
-  | _, _, .leq R | _, _, .lt R | _, _, .share _ R | _, _, .est R | _, _, .call _ _ _ R
+  | _, _, .top R | _, _, .conv R | _, _, .dom R | _, _, .ran R | _, _, .own R | _, _, .succ R | _, _, .arith _ _ R
+  | _, _, .leq _ R | _, _, .lt _ R | _, _, .share _ R | _, _, .est R | _, _, .call _ _ _ R
   | _, _, .callCv _ _ _ _ R _ => R.LamLawsAt L
   | _, _, .comp R S | _, _, .meet R S | _, _, .join R S | _, _, .diff R S | _, _, .pair R S | _, _, .prod R S
   | _, _, .fold R S | _, _, .foldr R S | _, _, .foldI R S => R.LamLawsAt L ∧ S.LamLawsAt L
@@ -335,7 +335,7 @@ abbrev Tm.LamLaws {A B : Obj} (t : Tm A B) : Prop := t.LamLawsAt LamLaw
     beside `Tm.hasCode`, since `LamLawsAt L` implies it for every `L` (`Tm.LamLawsAt.mono`). -/
 def Tm.monoOK : {A B : Obj} → Tm A B → Bool
   | _, _, .lam R | _, _, .E R | _, _, .top R | _, _, .conv R | _, _, .dom R | _, _, .ran R | _, _, .own R
-  | _, _, .succ R | _, _, .arith _ R | _, _, .leq R | _, _, .lt R | _, _, .share _ R
+  | _, _, .succ R | _, _, .arith _ _ R | _, _, .leq _ R | _, _, .lt _ R | _, _, .share _ R
   | _, _, .est R | _, _, .thin R | _, _, .call _ _ _ R | _, _, .callCv _ _ _ _ R _ => R.monoOK
   | _, _, .comp R S | _, _, .meet R S | _, _, .join R S | _, _, .diff R S | _, _, .pair R S | _, _, .prod R S
   | _, _, .fold R S | _, _, .foldr R S | _, _, .foldI R S | _, _, .arg R S => R.monoOK && S.monoOK
@@ -1179,12 +1179,8 @@ theorem Tm.gen_sound_spine {A B : Obj} (t : Tm A B) :
   case own R ih => exact code_of ((ih (by omega)).1 η ρ hl hs)
   case succ U ih => exact GenK.succ_sound (code_of ((ih (by omega)).1 η ρ hl hs))
   case arith U ih => exact GenK.arith_sound (code_of ((ih (by omega)).1 η ρ hl hs))
-  case leq U ih =>
-    exact GenK.cmp_sound (o := .le) (r := fun x y => decide (x ≤ y)) (P := fun x y => x ≤ y) (fun _ _ => rfl)
-      (fun _ _ => decide_eq_true_iff) (code_of ((ih (by omega)).1 η ρ hl hs))
-  case lt U ih =>
-    exact GenK.cmp_sound (o := .lt) (r := fun x y => decide (x < y)) (P := fun x y => x < y) (fun _ _ => rfl)
-      (fun _ _ => decide_eq_true_iff) (code_of ((ih (by omega)).1 η ρ hl hs))
+  case leq U ih => exact GenK.cmp_sound (s := false) (code_of ((ih (by omega)).1 η ρ hl hs))
+  case lt U ih => exact GenK.cmp_sound (s := true) (code_of ((ih (by omega)).1 η ρ hl hs))
   case var k => exact hs.1 k _ _
   case est Q ih => exact GenK.est_sound (code_of ((ih (by omega)).1 η ρ hl hs))
   case thin Q ih => exact GenK.thin_sound (code_of ((ih (by omega)).1 η ρ hl.2 hs)) hl.1

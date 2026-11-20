@@ -74,6 +74,18 @@ mod tests {
     use super::*;
     use alloc::{vec, vec::Vec};
 
+    // `Op.fto` (Rel/Kernel/Op.lean's `#guard`s): rounding to `f32`, `-0` and an underflow to `-0` as `+0`, NaN as `2^63`
+    #[test]
+    fn fto() {
+        let b = f64::to_bits;
+        assert_eq!(op_word(FTO + 6, 0, b(2.5)), b(2.5));
+        assert_eq!(op_word(FTO + 6, 0, b(-0.0)), 0);
+        assert_eq!(op_word(FTO + 6, 0, b(f64::NAN)), 1 << 63);
+        assert_eq!(op_word(FTO + 5, 0, b(0.1)), 0x3dcc_cccd);
+        assert_eq!(op_word(FTO + 5, 0, b(-1e-50)), 0);
+        assert_eq!(op_word(FTO + 5, 0, b(1e300)), 0x7f80_0000);
+        assert_eq!(op_word(FTO + 4, 0, b(1.0)), 1 << 63);
+    }
 
     // `2 msum 0W 0N 1 5 7`: the prefix past `O`'s range is null and stays null at both ends of the window; at 64 bits
     // the prefix wraps instead, onto the null and then past it
@@ -134,8 +146,26 @@ pub fn op_word(op: u8, a: u64, x: u64) -> u64 {
         38 => fw(crate::ew::floor64(f(x))),
         39 => w(f(a) == f(x)), 40 => w(f(a) != f(x)), 41 => w(f(a) < f(x)), 42 => w(f(a) <= f(x)), 43 => w(f(x) < f(a)), 44 => w(f(x) <= f(a)),
         45 => widen32(x),
-        // `cast s t`, the last constructor: its code is `CAST + 13 s + t` (`op_code`)
+        // `fto t`, the last constructor: its code is `FTO + t`; `cast s t`: `CAST + 13 s + t` (`op_code`)
+        c if c >= FTO => fto_word(c - FTO, x),
         _ => cast_word(op, x),
+    }
+}
+
+/// The code of `Op.fto t` is `FTO + t` (`t` a `QAtomicType` index), past every cast's code.
+pub const FTO: u8 = CAST + 13 * 13;
+
+/// `Op.eval (.fto t)` (Rel/Kernel/Op.lean `ftoWord`): the `f64` word `x` as the word of the float atom `t` nearest it
+/// (`as f32` rounds to nearest even, as Lean's `Float.toFloat32`), a zero as `+0`; `2^63` at a NaN or a `t` holding
+/// no float.
+pub fn fto_word(t: u8, x: u64) -> u64 {
+    const NONE: u64 = 1 << 63;
+    let f = f64::from_bits(x);
+    if f.is_nan() { return NONE }
+    match t {
+        6 => if f == 0.0 { 0 } else { x },
+        5 => { let g = f as f32; if g == 0.0 { 0 } else { g.to_bits() as u64 } }
+        _ => NONE,
     }
 }
 
@@ -143,10 +173,12 @@ pub fn op_word(op: u8, a: u64, x: u64) -> u64 {
 pub const CAST: u8 = 46;
 
 /// The op code of the Lean `Op` `o`: a nullary op is the scalar of its constructor index, `cast s t` (tag 46) a ctor
-/// whose two `QAtomicType` fields are its scalar bytes 0 and 1.
+/// whose two `QAtomicType` fields are its scalar bytes 0 and 1, `fto t` (tag 47) one whose field is byte 0.
 #[cfg(all(feature = "ffi", not(any(test, feature = "std"))))]
 pub fn op_code(o: crate::lean::B) -> u8 {
-    if o.is_scalar() { o.unbox() as u8 } else { CAST + 13 * o.u8_field(0) + o.u8_field(1) }
+    if o.is_scalar() { o.unbox() as u8 }
+    else if o.tag() == CAST as u32 { CAST + 13 * o.u8_field(0) + o.u8_field(1) }
+    else { FTO + o.u8_field(0) }
 }
 
 /// `Op.eval (.cast s t)` (Rel/Kernel/Cast.lean `castWord`) at the code `CAST + 13 s + t`: the word `x` read at `s`

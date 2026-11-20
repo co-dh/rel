@@ -72,11 +72,28 @@ abbrev atDen (k : Nat) : Den (.arr B) B := fun xs x => ∃ h : k < xs.length, x 
 abbrev succDen (TU : Den .long .long) : Den .long .long :=
   fun u w => (∃ v, TU u v) ∧ w = Ew.intStep Ew.add Alg.nul u 1 ∧ ∃ v, TU w v
 
-/-- `≤` on the universe `TU`. -/
-abbrev leqDen (TU : Den .long .long) : Den .long .long := fun a b => (∃ v, TU a v) ∧ (∃ v, TU b v) ∧ a ≤ b
+/-- The float order `o` (`Op.flt`, `Op.fle`) on two values of `t`: IEEE's on their `f64` words (`fval`); no pair at an
+    atom holding no float. -/
+abbrev fordAt (o : Rel.Kernel.Op) (t : QAtomicType) (a b : (Obj.atom t).El) : Prop :=
+  ∃ x y, fval t a = some x ∧ fval t b = some y ∧ o.eval x y = .ok 1
 
-/-- `<` on the universe `TU`. -/
-abbrev ltDen (TU : Den .long .long) : Den .long .long := fun a b => (∃ v, TU a v) ∧ (∃ v, TU b v) ∧ a < b
+/-- `<` on the values of the atom `t`: `Int64`'s at `i64`, IEEE's at a float atom (`fordAt .flt`), none elsewhere. -/
+def ltAt : (t : QAtomicType) → (Obj.atom t).El → (Obj.atom t).El → Prop
+  | .i64, a, b => a < b
+  | t, a, b => fordAt Rel.Kernel.Op.flt t a b
+
+/-- `≤` on the values of the atom `t`, as `ltAt`. -/
+def leAt : (t : QAtomicType) → (Obj.atom t).El → (Obj.atom t).El → Prop
+  | .i64, a, b => a ≤ b
+  | t, a, b => fordAt Rel.Kernel.Op.fle t a b
+
+/-- `≤` on the universe `TU` of the atom `t`. -/
+abbrev leqDen (t : QAtomicType) (TU : Den (.atom t) (.atom t)) : Den (.atom t) (.atom t) :=
+  fun a b => (∃ v, TU a v) ∧ (∃ v, TU b v) ∧ leAt t a b
+
+/-- `<` on the universe `TU` of the atom `t`. -/
+abbrev ltDen (t : QAtomicType) (TU : Den (.atom t) (.atom t)) : Den (.atom t) (.atom t) :=
+  fun a b => (∃ v, TU a v) ∧ (∃ v, TU b v) ∧ ltAt t a b
 
 /-- The value verb `k` itself (`Alg.arith`): `Int64`'s step, not the null and, for `+ - *`, not wrapped. -/
 abbrev stepDen (k : UInt8) : Den (.prod .long .long) .long :=
@@ -84,11 +101,19 @@ abbrev stepDen (k : UInt8) : Den (.prod .long .long) .long :=
     (if k == Ew.add then (0 ≤ p.2 ↔ p.1 ≤ w) else if k == Ew.sub then (0 ≤ p.2 ↔ w ≤ p.1)
      else if k == Ew.mul then (Ew.intStep Ew.idiv Alg.nul w p.1 = p.2 ∨ p.1 = 0) else True)
 
-/-- The value verb `k` on the universe `TU`: both inputs in `TU` (`dom(π₁ TU)`, `dom(π₂ TU)`), as `succDen`'s,
-    then the step, its result in `TU`. The input test makes `(TU×TU) arith = arith` at a coreflexive `TU`. -/
-abbrev arithDen (k : UInt8) (TU : Den .long .long) : Den (.prod .long .long) .long :=
+/-- The value verb `k` at the atom `t`: `stepDen k` at `i64`; at a float atom `fstep` on the operands' `f64` words
+    (`fval`), the word of `t` it answers, no row where that is `2^63` (the IEEE answer is NaN); none elsewhere. -/
+def stepAt : (t : QAtomicType) → UInt8 → Den (.prod (.atom t) (.atom t)) (.atom t)
+  | .i64, k => stepDen k
+  | t, k => fun p w => ∃ x y r, fval t p.1 = some x ∧ fval t p.2 = some y ∧ fstep t k x y = .ok r ∧
+      r ≠ 0x8000000000000000 ∧ w = QAtomicType.ofBits t r
+
+/-- The value verb `k` on the universe `TU` of the atom `t`: both inputs in `TU` (`dom(π₁ TU)`, `dom(π₂ TU)`), as
+    `succDen`'s, then the step, its result in `TU`. The input test makes `(TU×TU) arith = arith` at a coreflexive
+    `TU`. -/
+abbrev arithDen (t : QAtomicType) (k : UInt8) (TU : Den (.atom t) (.atom t)) : Den (.prod (.atom t) (.atom t)) (.atom t) :=
   (𝟙 _ ∩ (graph Prod.fst ≫ TU) ≫ (graph Prod.fst ≫ TU)°) ≫
-    ((𝟙 _ ∩ (graph Prod.snd ≫ TU) ≫ (graph Prod.snd ≫ TU)°) ≫ (stepDen k ≫ TU))
+    ((𝟙 _ ∩ (graph Prod.snd ≫ TU) ≫ (graph Prod.snd ≫ TU)°) ≫ (stepAt t k ≫ TU))
 
 /-- `fold(e, S)`: a chain of values `ys`, its last from `e`, each the step `S` of the element and the next value. -/
 abbrev foldrDen {E V : Obj} (Te : Den V V) (TS : Den (.prod E V) V) : Den (.arr E) V :=
@@ -402,9 +427,9 @@ noncomputable def Tm.den : Val → {A B : Obj} → Tm A B → Den A B
   | _, _, _, .atPos k => atDen k
   | ρ, _, _, .own R => R.den ρ
   | ρ, _, _, .succ U => succDen (U.den ρ)
-  | ρ, _, _, .arith k U => arithDen k (U.den ρ)
-  | ρ, _, _, .leq U => leqDen (U.den ρ)
-  | ρ, _, _, .lt U => ltDen (U.den ρ)
+  | ρ, _, _, .arith t k U => arithDen t k (U.den ρ)
+  | ρ, _, _, .leq t U => leqDen t (U.den ρ)
+  | ρ, _, _, .lt t U => ltDen t (U.den ρ)
   | ρ, _, _, .foldr e S => foldrDen (e.den ρ) (S.den ρ)
   | ρ, _, _, .fold e S => foldDen (e.den ρ) (S.den ρ)
   | _, _, _, .share _ R => R.den Val.empty
@@ -469,7 +494,7 @@ theorem Tm.den_congr : ∀ {A B : Obj} (t : Tm A B) (ρ ρ' : Val), (∀ i ∈ t
     intro ρ ρ' h
     have e := ih ρ ρ' fun i hi => h i (by simp [Tm.fv, hi])
     exact ⟨by simp only [Tm.den, e.1], fun _ => by simp only [Tm.argDen, e.2]⟩
-  | conv R ih | dom R ih | ran R ih | est R ih | succ R ih | arith _ R ih | leq R ih | lt R ih
+  | conv R ih | dom R ih | ran R ih | est R ih | succ R ih | arith _ _ R ih | leq _ R ih | lt _ R ih
   | lam R ih | E R ih | thin R ih =>
     intro ρ ρ' h; exact ⟨by simp only [Tm.den, (ih ρ ρ' fun i hi => h i (by simp [Tm.fv, hi])).1], fun _ => rfl⟩
   | ldiv R S U V ihR ihS ihU ihV | rdiv R S U V ihR ihS ihU ihV =>
@@ -661,13 +686,14 @@ theorem est_le {Q Q' : Den (.prod B B) (.prod B B)} (hQ : Q ⊑ Q') : estDen Q �
 theorem succ_le {U U' : Den .long .long} (hU : U ⊑ U') : succDen U ⊑ succDen U' :=
   le_iff.2 fun _ _ ⟨⟨v, hv⟩, e, v', hv'⟩ => ⟨⟨v, le_iff.1 hU _ _ hv⟩, e, v', le_iff.1 hU _ _ hv'⟩
 
-theorem leq_le {U U' : Den .long .long} (hU : U ⊑ U') : leqDen U ⊑ leqDen U' :=
+theorem leq_le {t : QAtomicType} {U U' : Den (.atom t) (.atom t)} (hU : U ⊑ U') : leqDen t U ⊑ leqDen t U' :=
   le_iff.2 fun _ _ ⟨⟨v, hv⟩, ⟨v', hv'⟩, e⟩ => ⟨⟨v, le_iff.1 hU _ _ hv⟩, ⟨v', le_iff.1 hU _ _ hv'⟩, e⟩
 
-theorem lt_le {U U' : Den .long .long} (hU : U ⊑ U') : ltDen U ⊑ ltDen U' :=
+theorem lt_le {t : QAtomicType} {U U' : Den (.atom t) (.atom t)} (hU : U ⊑ U') : ltDen t U ⊑ ltDen t U' :=
   le_iff.2 fun _ _ ⟨⟨v, hv⟩, ⟨v', hv'⟩, e⟩ => ⟨⟨v, le_iff.1 hU _ _ hv⟩, ⟨v', le_iff.1 hU _ _ hv'⟩, e⟩
 
-theorem arith_le {k : UInt8} {U U' : Den .long .long} (hU : U ⊑ U') : arithDen k U ⊑ arithDen k U' :=
+theorem arith_le {t : QAtomicType} {k : UInt8} {U U' : Den (.atom t) (.atom t)} (hU : U ⊑ U') :
+    arithDen t k U ⊑ arithDen t k U' :=
   comp_le' (inter_le' (Core.Rel.le_refl _) (comp_le' (comp_le' (Core.Rel.le_refl _) hU)
       (conv_le' (comp_le' (Core.Rel.le_refl _) hU))))
     (comp_le' (inter_le' (Core.Rel.le_refl _) (comp_le' (comp_le' (Core.Rel.le_refl _) hU)
@@ -834,9 +860,9 @@ theorem Tm.den_pol (k : Nat) : ∀ {A B : Obj} (t : Tm A B) (s : Bool) (ρ ρ' :
       exact sle.lfp fun X => ih s _ _ hp (g.bind e X)
   | est Q ih => intro s ρ ρ' hp g; exact sle.map1 est_le (ih s ρ ρ' hp g)
   | succ U ih => intro s ρ ρ' hp g; exact sle.map1 succ_le (ih s ρ ρ' hp g)
-  | arith _ U ih => intro s ρ ρ' hp g; exact sle.map1 arith_le (ih s ρ ρ' hp g)
-  | leq U ih => intro s ρ ρ' hp g; exact sle.map1 leq_le (ih s ρ ρ' hp g)
-  | lt U ih => intro s ρ ρ' hp g; exact sle.map1 lt_le (ih s ρ ρ' hp g)
+  | arith _ _ U ih => intro s ρ ρ' hp g; exact sle.map1 arith_le (ih s ρ ρ' hp g)
+  | leq _ U ih => intro s ρ ρ' hp g; exact sle.map1 leq_le (ih s ρ ρ' hp g)
+  | lt _ U ih => intro s ρ ρ' hp g; exact sle.map1 lt_le (ih s ρ ρ' hp g)
   | foldr e S ihe ihS =>
     intro s ρ ρ' hp g; simp only [Tm.pol, Bool.and_eq_true] at hp
     exact sle.map2 foldr_le (ihe s ρ ρ' hp.1 g) (ihS s ρ ρ' hp.2 g)

@@ -100,22 +100,32 @@ def ldiv (R : Tab A B) (S : Tab A C) (UB : Tab B B) (UC : Tab C C) : Except Stri
 def rdiv (R : Tab A C) (S : Tab B C) (UA : Tab A A) (UB : Tab B B) : Except String (Tab A B) := do
   (← ldiv (← S.conv) (← R.conv) UB UA).conv
 
-/-- `T ∩ op`: the rows of `T` whose `i64` words pass `op` (signed), `keep` of `colMap op` of its two columns, one
-element-wise test per row. -/
-def cmpPairs (op : Op) (T : Tab .long .long) : Except String (Tab .long .long) := do
-  T.keep (← colMap op T.n T.key.enc T.val.enc)
+/-- The order `Op` of the atom `t` (`ltAt`, `leAt`): `<` (`s`) or `≤`, signed at `i64`, IEEE's at a float atom on
+the `wideCol` words; the error naming any other atom. -/
+def ordOp (s : Bool) : QAtomicType → Except String Op
+  | .i64 => pure (if s then .lt else .le)
+  | .f32 | .f64 => pure (if s then .flt else .fle)
+  | t => throw s!"{if s then "<" else "≤"} on objects of {repr t}: no order"
 
-/-- `K ≫ op ≫ L`: the pairs `(a, c)` of `K × L` whose `i64` words pass `op` (signed, as `Int64`'s order): CROSS of
-the two known sides, then `keep` of `colMap op` of the two columns. A side not known is `dom U`, exact since the
-denotation (`ltDen`, `leqDen`) lies inside `U` (`doc/rel-architecture.zh.typ` §0). -/
-def cmpOn (op : Op) {n m : USize} (K : Vals .long n) (L : Vals .long m) : Except String (Tab .long .long) := do
+/-- `T ∩ op`: the rows of `T` whose words pass `op`, `keep` of `colMap op` of its two columns as the atom `t`'s
+order reads them (`wideCol`), one element-wise test per row. -/
+def cmpPairs (op : Op) {t : QAtomicType} (T : Tab (.atom t) (.atom t)) : Except String (Tab (.atom t) (.atom t)) := do
+  T.keep (← colMap op T.n (← wideCol t T.n T.key.enc) (← wideCol t T.n T.val.enc))
+
+/-- `K ≫ op ≫ L`: the pairs `(a, c)` of `K × L` whose words pass `op`: CROSS of the two known sides, then
+`cmpPairs`. A side not known is `dom U`, exact since the denotation (`ltDen`, `leqDen`) lies inside `U`
+(`doc/rel-architecture.zh.typ` §0). -/
+def cmpOn (op : Op) {t : QAtomicType} {n m : USize} (K : Vals (.atom t) n) (L : Vals (.atom t) m) :
+    Except String (Tab (.atom t) (.atom t)) := do
   cmpPairs op (← cross K L)
 
-/-- **`K ≫ < ≫ L`** (`ltDen` on `dom U` when `K = L = dom U`). -/
-def lt {n m : USize} (K : Vals .long n) (L : Vals .long m) : Except String (Tab .long .long) := cmpOn .lt K L
+/-- **`K ≫ < ≫ L`** at the atom `t` (`ltDen t` on `dom U` when `K = L = dom U`). -/
+def lt (t : QAtomicType) {n m : USize} (K : Vals (.atom t) n) (L : Vals (.atom t) m) :
+    Except String (Tab (.atom t) (.atom t)) := do cmpOn (← ordOp true t) K L
 
-/-- **`K ≫ ≤ ≫ L`** (`leqDen` on `dom U` when `K = L = dom U`). -/
-def leq {n m : USize} (K : Vals .long n) (L : Vals .long m) : Except String (Tab .long .long) := cmpOn .le K L
+/-- **`K ≫ ≤ ≫ L`** at the atom `t` (`leqDen t` on `dom U` when `K = L = dom U`). -/
+def leq (t : QAtomicType) {n m : USize} (K : Vals (.atom t) n) (L : Vals (.atom t) m) :
+    Except String (Tab (.atom t) (.atom t)) := do cmpOn (← ordOp false t) K L
 
 end Tab
 

@@ -394,9 +394,10 @@ theorem succ_sound {U : Rel .long .long} {TU : Core.Rel Int64 Int64} (hU : ∀ K
       ⟨fun ⟨v, hv, h⟩ => ?_, fun h => ⟨x, (Tab.idU_holds hD x x).2 ⟨rfl, (side_some hK x).1 hx⟩, h⟩⟩
     obtain ⟨rfl, -⟩ := (Tab.idU_holds hD x v).1 hv; exact h
 
-theorem cmp_side {op w : String} {U : Rel .long .long} {TU : Core.Rel Int64 Int64} (hU : ∀ K, U.Reps K TU)
-    {o : Option ((n : USize) × Vals .long n)} {k : (n : USize) × Vals .long n} (h : GenK.cmpSide op w U o = .ok k)
-    {a : Int64} (ha : o.elim (𝟙 _) (fun c => (graph c.2.row)° ≫ graph c.2.row) a a) :
+theorem cmp_side {op w : String} {t : QAtomicType} {U : Rel (.atom t) (.atom t)}
+    {TU : Core.Rel (Obj.atom t).El (Obj.atom t).El} (hU : ∀ K, U.Reps K TU)
+    {o : Option ((n : USize) × Vals (.atom t) n)} {k : (n : USize) × Vals (.atom t) n}
+    (h : GenK.cmpSide op w U o = .ok k) {a : (Obj.atom t).El} (ha : o.elim (𝟙 _) (fun c => (graph c.2.row)° ≫ graph c.2.row) a a) :
     (∃ i, k.2.row i = a) ↔ ∃ v, TU a v := by
   obtain ⟨u, hu', h⟩ := bind_ok h
   have hu : U.runE ⟨o, none, none⟩ = .ok u := by
@@ -412,20 +413,20 @@ theorem cmp_side {op w : String} {U : Rel .long .long} {TU : Core.Rel Int64 Int6
   | some c =>
     obtain ⟨n, X⟩ := c
     obtain ⟨e, he, h⟩ := bind_ok h
-    obtain ⟨t, ht, h⟩ := bind_ok h
+    obtain ⟨T, ht, h⟩ := bind_ok h
     obtain rfl := Except.ok.inj h
-    exact (keyRowRep t a).trans ((exists_congr fun b => (idU_comp_holds he ht a b).trans
-      (and_iff_right ((side_some (C := .long) rfl a).1 ha))).trans ((keyRowRep d a).symm.trans key))
+    exact (keyRowRep T a).trans ((exists_congr fun b => (idU_comp_holds he ht a b).trans
+      (and_iff_right ((side_some (C := .atom t) rfl a).1 ha))).trans ((keyRowRep d a).symm.trans key))
 
-/-- `cmp o U` is `o`'s relation `P` on `U`'s domain, `o` testing `r` on the signed words (`r a c ↔ P a c`): on the
-    pairs `p` a meet hands it, `p` cut to the two sides then tested (`Tab.cmpPairs_holds`), agreeing with `P` on
-    exactly `p`; else on the cross of the sides (`Tab.cmpOn_holds`). `leq` and `lt` give `leqDen`, `ltDen`. -/
-theorem cmp_sound {op : String} {o : Kernel.Op} {r : Int64 → Int64 → Bool} {P : Int64 → Int64 → Prop}
-    (hop : ∀ x y : UInt64, o.eval x y = .ok (if r x.toInt64 y.toInt64 then 1 else 0))
-    (hr : ∀ a c, r a c = true ↔ P a c) {U : Rel .long .long} {TU : Core.Rel Int64 Int64}
-    (hU : ∀ K, U.Reps K TU) :
-    ∀ K, (GenK.cmp op o U).Reps K (fun a b => (∃ v, TU a v) ∧ (∃ v, TU b v) ∧ P a b) := fun K => by
-  rw [reps_iff]; intro t h
+/-- `cmp (ordOp s t) U` is the order `ordAt s t` of the atom `t` on `U`'s domain: on the pairs `p` a meet hands it,
+    `p` cut to the two sides then tested (`Tab.cmpPairs_holds`), agreeing with the order on exactly `p`; else on the
+    cross of the sides (`Tab.cmpOn_holds`). `leq t` and `lt t` give `leqDen t`, `ltDen t`. -/
+theorem cmp_sound {op : String} {s : Bool} {t : QAtomicType} {U : Rel (.atom t) (.atom t)}
+    {TU : Core.Rel (Obj.atom t).El (Obj.atom t).El} (hU : ∀ K, U.Reps K TU) :
+    ∀ K, (GenK.cmp op (Tab.ordOp s t) U).Reps K
+      (fun a b => (∃ v, TU a v) ∧ (∃ v, TU b v) ∧ Tab.ordAt s t a b) := fun K => by
+  rw [reps_iff]; intro T h
+  obtain ⟨o, hop, h⟩ := bind_ok h
   obtain ⟨k, hk, h⟩ := bind_ok h
   obtain ⟨l, hl, h⟩ := bind_ok h
   intro a c ha hc ho
@@ -433,20 +434,18 @@ theorem cmp_sound {op : String} {o : Kernel.Op} {r : Int64 → Int64 → Bool} {
   cases hP : K.pairs with
   | none =>
     simp only [hP] at h
-    exact (Tab.cmpOn_holds hop h a c).trans (and_congr sk (and_congr sl (hr a c)))
+    exact (Tab.cmpOn_holds hop h a c).trans (and_congr sk (and_congr sl Iff.rfl))
   | some p =>
     simp only [hP] at h
     obtain ⟨q, hq, h⟩ := bind_ok h
     have hp : rep p a c := by unfold Known.on at ho; rw [hP] at ho; exact ho
-    refine ((Tab.cmpPairs_holds hop h a c).trans (and_congr ((cut_holds hq a c).trans ?_) (hr a c))).trans and_assoc
+    refine ((Tab.cmpPairs_holds hop h a c).trans (and_congr ((cut_holds hq a c).trans ?_) Iff.rfl)).trans and_assoc
     rw [← sk, ← sl]; exact ⟨fun ⟨x, _, z⟩ => ⟨x, z⟩, fun ⟨x, z⟩ => ⟨x, hp, z⟩⟩
 
-example {U : Rel .long .long} {TU : Core.Rel Int64 Int64} (hU : ∀ K, U.Reps K TU) :
-    ∀ K, (GenK.leq U).Reps K (leqDen TU) :=
-  cmp_sound (r := fun x y => decide (x ≤ y)) (P := fun x y => x ≤ y) (fun _ _ => rfl) (fun _ _ => decide_eq_true_iff) hU
-example {U : Rel .long .long} {TU : Core.Rel Int64 Int64} (hU : ∀ K, U.Reps K TU) :
-    ∀ K, (GenK.lt U).Reps K (ltDen TU) :=
-  cmp_sound (r := fun x y => decide (x < y)) (P := fun x y => x < y) (fun _ _ => rfl) (fun _ _ => decide_eq_true_iff) hU
+example {t : QAtomicType} {U : Rel (.atom t) (.atom t)} {TU : Core.Rel (Obj.atom t).El (Obj.atom t).El}
+    (hU : ∀ K, U.Reps K TU) : ∀ K, (GenK.leq t U).Reps K (leqDen t TU) := cmp_sound (s := false) hU
+example {t : QAtomicType} {U : Rel (.atom t) (.atom t)} {TU : Core.Rel (Obj.atom t).El (Obj.atom t).El}
+    (hU : ∀ K, U.Reps K TU) : ∀ K, (GenK.lt t U).Reps K (ltDen t TU) := cmp_sound (s := true) hU
 
 /-! ### The rows with a law, under `ofVals` (the wrapper `Expand.primE` fits a row on values alone to) -/
 

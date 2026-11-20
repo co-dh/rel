@@ -64,14 +64,14 @@ theorem foldrDen_cons {E V : Obj} (Te : Den V V) (TS : Den (.prod E V) V) (x : E
 theorem zeroTm_den (u₀ : Tm .long .long) (ρ : Val) {P : Int64 → Prop} (hU : ∀ x y, u₀.den ρ x y ↔ x = y ∧ P x)
     (v : Int64) : (∃ a, (zeroTm u₀).den ρ a v) ↔ v = 0 ∧ P 0 := by
   -- `⟨𝟙,𝟙⟩ minus ∩ 𝟙` keeps `0` alone, where `0` is in the universe
-  have hz : ∀ y w, (Tm.meet (.comp (.pair .id .id) (.arith Rel.Kernel.Ew.sub u₀)) .id : Tm .long .long).den ρ y w ↔
+  have hz : ∀ y w, (Tm.meet (.comp (.pair .id .id) (.arith .i64 Rel.Kernel.Ew.sub u₀)) .id : Tm .long .long).den ρ y w ↔
       y = w ∧ w = 0 ∧ P 0 := fun y w => by
     simp only [Tm.den, Core.Rel.inter, Core.Rel.comp, Core.Rel.rpair, Core.Rel.id]
     constructor
     · rintro ⟨⟨⟨a1, a2⟩, ⟨h1, h2⟩, hA⟩, rfl⟩
       dsimp only at h1 h2
       subst h1 h2
-      obtain ⟨-, -, v', ⟨hv, hn, -⟩, hv'⟩ := (arithDen_iff _ _ _ _).1 hA
+      obtain ⟨-, -, v', ⟨hv, hn, -⟩, hv'⟩ := (arithDen_iff _ _ _ _ _).1 hA
       obtain ⟨rfl, hPa⟩ := (hU _ _).1 hv'
       rw [Rel.Verify.Ew.intStep_sub] at hv
       split at hv
@@ -81,9 +81,9 @@ theorem zeroTm_den (u₀ : Tm .long .long) (ρ : Val) {P : Int64 → Prop} (hU :
       exact ⟨rfl, rfl, hPa⟩
     · rintro ⟨rfl, rfl, h0⟩
       have hu : u₀.den ρ 0 0 := (hU _ _).2 ⟨rfl, h0⟩
-      exact ⟨⟨(0, 0), ⟨rfl, rfl⟩, (arithDen_iff _ _ _ _).2 ⟨⟨0, hu⟩, ⟨0, hu⟩, 0, by decide, hu⟩⟩, rfl⟩
+      exact ⟨⟨(0, 0), ⟨rfl, rfl⟩, (arithDen_iff _ _ _ _ _).2 ⟨⟨0, hu⟩, ⟨0, hu⟩, 0, (by decide : stepDen Ew.sub ((0 : Int64), (0 : Int64)) 0), hu⟩⟩, rfl⟩
   simp only [zeroTm]
-  generalize (Tm.meet (.comp (.pair .id .id) (.arith Rel.Kernel.Ew.sub u₀)) .id : Tm .long .long) = z at hz ⊢
+  generalize (Tm.meet (.comp (.pair .id .id) (.arith .i64 Rel.Kernel.Ew.sub u₀)) .id : Tm .long .long) = z at hz ⊢
   simp only [Tm.den, Core.Rel.inter, Core.Rel.comp, Core.Rel.recip, Core.Rel.id, hz, hU]
   constructor
   · rintro ⟨a, rfl, b, -, b₁, -, -, h0, hP⟩
@@ -192,7 +192,7 @@ abbrev sumDen (xs : List Int64) (w : Int64) : Prop :=
     in `TU`, and `sum`'s meaning. -/
 theorem plus_iff {TU : Den .long .long} {P : Int64 → Prop} (hU : ∀ x y, TU x y ↔ x = y ∧ P x) (h0 : P 0) :
     ∀ (xs : List Int64) (w : Int64),
-      foldrDen (E := .long) (V := .long) (fun _ b => b = 0) (arithDen Ew.add TU) xs w ↔
+      foldrDen (E := .long) (V := .long) (fun _ b => b = 0) (arithDen .i64 Ew.add TU) xs w ↔
         (∀ x ∈ xs, P x) ∧ (∀ t ≤ xs.length, P ((xs.drop t).foldr (· + ·) 0)) ∧ sumDen xs w := by
   have hd : ∀ x, (∃ v, TU x v) ↔ P x := fun x =>
     ⟨fun ⟨_, h⟩ => ((hU _ _).1 h).2, fun h => ⟨x, (hU _ _).2 ⟨rfl, h⟩⟩⟩
@@ -207,7 +207,7 @@ theorem plus_iff {TU : Den .long .long} {P : Int64 → Prop} (hU : ∀ x y, TU x
     · rintro ⟨-, -, -, -, rfl⟩; rfl
   | cons x xs ih =>
     intro w
-    have hA : ∀ v, arithDen Ew.add TU (x, v) w ↔ P x ∧ P v ∧ (x ≠ Alg.nul ∧ v ≠ Alg.nul ∧
+    have hA : ∀ v, arithDen .i64 Ew.add TU (x, v) w ↔ P x ∧ P v ∧ (x ≠ Alg.nul ∧ v ≠ Alg.nul ∧
         -2 ^ 63 < x.toInt + v.toInt ∧ x.toInt + v.toInt < 2 ^ 63 ∧ w = x + v) ∧ P w := fun v => by
       rw [arithDen_iff]
       constructor

@@ -48,14 +48,15 @@ theorem Arr.kgather_wf {t : QAtomicType} {n m : USize} {ix o : Enc} (x : Arr t n
 /-- `n` cells holding the word `w`: `kscatter` of no rows. -/
 def colConst (n : USize) (w : UInt64) : Except String Enc := kscatter .last 0 .pos .pos n w
 
-/-- `op` row by row over the `n` words of `a` and `b`, `out[i] = op(a[i], b[i])` written at `t`: `kscan` with every row
-starting a segment (`colConst n 1`). -/
-def colMap (op : Op) (n : USize) (a b : Enc) (t : QAtomicType := .i64) : Except String Enc := do
-  let r ← kscan op false .i64 t n (← colConst n 1) [a, b]
+/-- `op` row by row over the `n` words of `a` and `b` read at `s`, `out[i] = op(a[i], b[i])` written at `t`: `kscan`
+with every row starting a segment (`colConst n 1`). -/
+def colMap (op : Op) (n : USize) (a b : Enc) (t : QAtomicType := .i64) (s : QAtomicType := .i64) :
+    Except String Enc := do
+  let r ← kscan op false s t n (← colConst n 1) [a, b]
   pure r.1
 
 /-- `colMap`'s answer is a column every kernel reads, `Enc.WF` at `t` (`kscan_closed`). -/
-theorem colMap_closed {op : Op} {n : USize} {a b o : Enc} {t : QAtomicType} (h : colMap op n a b t = .ok o) :
+theorem colMap_closed {op : Op} {n : USize} {a b o : Enc} {t s : QAtomicType} (h : colMap op n a b t s = .ok o) :
     Kernel.Enc.Valid n o ∧ Enc.WF t n o := by
   unfold colMap at h; simp only [bind, Except.bind] at h; split at h; · cases h
   split at h; · cases h
