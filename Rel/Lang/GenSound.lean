@@ -233,7 +233,7 @@ end
 def rowsProved : List (String × Bool) :=
   [("∋", false), ("inl", false), ("inr", false), ("τ", true), ("setify", true), ("snoc", false),
    ("cons", false), ("cat", false), ("uncat", false), ("zip", false),
-   ("length", false), ("loop", false)]
+   ("length", false), ("loop", false), ("filter", false)]
 
 /-- The number of relations row `s` is given: its `prims` entry's, the one `rowGens` was generated from. A
     `rowGens` entry ignores a code past them, where `Prim.den` (`Sem.one`) is `𝟘`. -/
@@ -502,6 +502,27 @@ theorem rowOK_loop : RowOK "loop" := rowOK_args (c := RowCode.loop) rfl rfl fun 
     · exact GenK.loop_sound hss (hw _ (List.mem_singleton_self _))
     · rename_i h; exact absurd ⟨rfl, rfl⟩ h
 
+theorem rowOK_filter : RowOK "filter" := rowOK_args (c := RowCode.filter) rfl rfl fun _ σ xs _ _ _ _ hn _ hv => by
+  have h1 : rowArity "filter" = 1 := by decide
+  rcases xs with _ | ⟨⟨X, Y, x⟩, _ | ⟨_, _⟩⟩ <;> simp only [List.length_cons, List.length_nil, h1] at hn <;>
+    try omega
+  rcases σ with _ | ⟨a, σ⟩ <;>
+    simp only [Codes.at, List.getElem?_cons_zero, List.getD_cons_zero, List.getD_nil] at hv
+  all_goals
+    split at hv
+    case isFalse => simp at hv
+    rename_i he; revert hv; obtain ⟨h1, h2⟩ := he; subst h1; subst h2; intro hv
+    cases hv
+    refine ⟨by unfold GenK.elems; exact GenK.ofVals_wf, fun ss hss _ => ⟨⟨rfl, rfl⟩, ?_⟩⟩
+    rcases ss with _ | ⟨⟨X', Y', T⟩, _ | ⟨_, _⟩⟩ <;> simp only [CodesRep, and_true, and_false] at hss
+    split at hss
+    case isFalse => exact hss.elim
+    rename_i he; revert hss; obtain ⟨h1, h2⟩ := he; subst h1; subst h2; intro hss
+    simp only [Sem.one]
+    split
+    · exact GenK.filter_sound hss
+    · rename_i h; exact absurd ⟨rfl, rfl⟩ h
+
 /-- Every row of `rowsProved` is `RowOK`: the obligations enumerated from the list `Tm.gap` reads. -/
 theorem rowsProved_ok (r : Prim) (h : (rowsProved.lookup r.sym).isSome) : RowOK r.sym := by
   by_cases h1 : r.sym = "∋"; · rw [h1]; exact rowOK_mem
@@ -516,9 +537,10 @@ theorem rowsProved_ok (r : Prim) (h : (rowsProved.lookup r.sym).isSome) : RowOK 
   by_cases h10 : r.sym = "zip"; · rw [h10]; exact rowOK_zip
   by_cases h11 : r.sym = "length"; · rw [h11]; exact rowOK_length
   by_cases h12 : r.sym = "loop"; · rw [h12]; exact rowOK_loop
+  by_cases h13 : r.sym = "filter"; · rw [h13]; exact rowOK_filter
   simp [rowsProved, List.lookup, beq_false_of_ne h1, beq_false_of_ne h2, beq_false_of_ne h3, beq_false_of_ne h4,
     beq_false_of_ne h5, beq_false_of_ne h6, beq_false_of_ne h7, beq_false_of_ne h8, beq_false_of_ne h9,
-    beq_false_of_ne h10, beq_false_of_ne h11, beq_false_of_ne h12] at h
+    beq_false_of_ne h10, beq_false_of_ne h11, beq_false_of_ne h12, beq_false_of_ne h13] at h
 
 /-- A `Prim.proved` row is `RowOK`, given as many relations as it takes. -/
 theorem Prim.proved_ok {r : Prim} {A B : Obj} {os : List (Obj × Obj)} (h : (!r.proved A B os) = false) :
