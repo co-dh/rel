@@ -563,6 +563,11 @@ Diff table 的「状态」列：✅ 后面是完成它的步骤；🔄 是部分
         - owner 定的顺序（C）：先做 architecture §4 已定的实现改动（`∩ − \` 分段 `scan`、`\` 不物化 join、
           `ldiv(tab, bits)` 在 bit matrix 上算、`μ` semi-naive），差分测试与回归固定保护；`ldiv meet diff mu fold` 与
           bit matrix 路径的证明（T11e 余项、`ReadsBack`）等实现稳定后再做。T11e5 只做 `arith`。
+        - 2026-11-20 07:03，master d42a7d5：**check-68 全绿**（481/2、483/483，235 / 235）。`elabE` / `elabArgs`
+          恢复成全函数（owner 选 B；elabTotal 493222d）：row 的定义通过 `elabWith` 的参数 `dfn` elaborate，不是自调用；
+          定义里出现带定义的 row 时在 elaboration 报错并指出两个 row（只在该 row 被程序用到时触发，不是对整张表预查）。
+          dataframe 的 gap 清单（`/data/tmp/df-gaps.md`）：owner 选 gap 1（universe 来自数据，选项在
+          `/data/tmp/uniA/`，待 owner 选）与 gap 0（row `where` / `asc` / `firstOcc`，分支 `dfrows`）并行。
         - 2026-11-20 06:21，master bfa135d + pin：**check-67 全绿**（481/2、483/483，235 / 235；定义数 478 → 483 是新测试
           `sumFold` 的 5 个）。owner 的两项决定已落地：
           - **E**（`sum`/`length` 在有 universe 的对象上等于 fold，逐步检查；sumE af94837）：`Prim.dfn : Option Expr` 是 row 表里
