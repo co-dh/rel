@@ -282,7 +282,7 @@ def rowsProved : List (String × (Obj → Obj → List (Obj × Obj))) :=
   let no : Obj → Obj → List (Obj × Obj) := fun _ _ => []
   let cod : Obj → Obj → List (Obj × Obj) := fun A B => match B with | .arr B' => [(A, B')] | _ => []
   [("∋", no), ("inl", no), ("inr", no), ("τ", cod), ("setify", cod), ("snoc", no), ("cons", no), ("cat", no),
-   ("uncat", no), ("zip", no), ("length", no), ("sum", no), ("loop", no), ("filter", no), ("concat", no), ("merge", no),
+   ("uncat", no), ("prefix", no), ("suffix", no), ("zip", no), ("length", no), ("sum", no), ("loop", no), ("filter", no), ("concat", no), ("merge", no),
    ("thinL", no), ("F", no), ("positions", no), ("asc", fun A B => [(A, B)]), ("inl°", no), ("inr°", no), ("tails", fun A _ => match A with | .arr σ => [(.arr σ, .prod (.arr σ) (.arr σ))] | _ => [])]
 
 /-- The number of relations row `s` is given: its `prims` entry's, the one `rowGens` was generated from. A
@@ -681,6 +681,46 @@ theorem rowOK_uncat : RowOK "uncat" := rowOK_of (c := RowCode.uncat) rfl rfl fun
   cases hv
   cases σ <;> exact ⟨GenK.ofVals_wf, fun _ => ⟨⟨rfl, rfl⟩, GenK.ofVals_row_sound fun _ _ _ h => Tab.uncat_holds h⟩⟩
 
+/-- **`cat° ≫ graph f`** on the cells `X` (`Tab.prefix`, `Tab.suffix`): `uncat`'s splits composed with a table `g` of
+them that holds `graph f`. -/
+theorem Tab.uncat_comp_holds {B : Obj} {n : USize} {X : Vals (.arr B) n}
+    {g : {m : USize} → Vals (.prod (.arr B) (.arr B)) m → Except String (Tab (.prod (.arr B) (.arr B)) (.arr B))}
+    {f : (Obj.prod (.arr B) (.arr B)).El → List B.El}
+    (hg : ∀ m (P : Vals (.prod (.arr B) (.arr B)) m) t, g P = .ok t → ∀ p ys,
+      t.Holds p ys ↔ (∃ i, P.row i = p) ∧ Core.Rel.graph f p ys)
+    {T : Tab (.arr B) (.arr B)} (h : (do let u ← Tab.uncat X; u.comp (← g u.val)) = .ok T) (xs ys : List B.El) :
+    T.Holds xs ys ↔ (∃ i, X.row i = xs) ∧ ∃ p : (Obj.prod (.arr B) (.arr B)).El, xs = p.1 ++ p.2 ∧ ys = f p := by
+  obtain ⟨U, hU, h⟩ := GenK.bind_ok h
+  obtain ⟨G, hG, h⟩ := GenK.bind_ok h
+  rw [Tab.comp_holds h]
+  constructor
+  · rintro ⟨p, hp, hq⟩
+    exact ⟨((Tab.uncat_holds hU xs p).1 hp).1, p, ((Tab.uncat_holds hU xs p).1 hp).2, ((hg _ _ _ hG p ys).1 hq).2⟩
+  · rintro ⟨hx, p, he, rfl⟩
+    have hp := (Tab.uncat_holds hU xs p).2 ⟨hx, he⟩
+    obtain ⟨i, -, hv⟩ := hp
+    exact ⟨p, (Tab.uncat_holds hU xs p).2 ⟨hx, he⟩, (hg _ _ _ hG p _).2 ⟨⟨i, hv⟩, rfl⟩⟩
+
+/-- **`prefix`** (`Tab.prefix`) = `cat° ≫ π₁`: each array of `X` to its initial segments. -/
+theorem Tab.prefix_holds {B : Obj} {n : USize} {X : Vals (.arr B) n} {T : Tab (.arr B) (.arr B)}
+    (h : Tab.prefix X = .ok T) (xs ys : List B.El) : T.Holds xs ys ↔ (∃ i, X.row i = xs) ∧ ys <+: xs := by
+  rw [Tab.uncat_comp_holds (g := fun P => Tab.outl P) (f := Prod.fst) (fun _ _ _ h => Tab.outl_holds h) h]
+  exact and_congr_right fun _ => ⟨fun ⟨p, he, hy⟩ => ⟨p.2, by rw [hy, he]⟩, fun ⟨t, ht⟩ => ⟨(ys, t), ht.symm, rfl⟩⟩
+
+/-- **`suffix`** (`Tab.suffix`) = `cat° ≫ π₂`: each array of `X` to its final segments. -/
+theorem Tab.suffix_holds {B : Obj} {n : USize} {X : Vals (.arr B) n} {T : Tab (.arr B) (.arr B)}
+    (h : Tab.suffix X = .ok T) (xs ys : List B.El) : T.Holds xs ys ↔ (∃ i, X.row i = xs) ∧ ys <:+ xs := by
+  rw [Tab.uncat_comp_holds (g := fun P => Tab.outr P) (f := Prod.snd) (fun _ _ _ h => Tab.outr_holds h) h]
+  exact and_congr_right fun _ => ⟨fun ⟨p, he, hy⟩ => ⟨p.1, by rw [hy, he]⟩, fun ⟨t, ht⟩ => ⟨(t, ys), ht.symm, rfl⟩⟩
+
+theorem rowOK_prefix : RowOK "prefix" := rowOK_of (c := RowCode.prefix) rfl rfl fun _ σ _ _ _ _ hv => by
+  cases hv
+  cases σ <;> exact ⟨GenK.ofVals_wf, fun _ => ⟨⟨rfl, rfl⟩, GenK.ofVals_row_sound fun _ _ _ h => Tab.prefix_holds h⟩⟩
+
+theorem rowOK_suffix : RowOK "suffix" := rowOK_of (c := RowCode.suffix) rfl rfl fun _ σ _ _ _ _ hv => by
+  cases hv
+  cases σ <;> exact ⟨GenK.ofVals_wf, fun _ => ⟨⟨rfl, rfl⟩, GenK.ofVals_row_sound fun _ _ _ h => Tab.suffix_holds h⟩⟩
+
 theorem rowOK_zip : RowOK "zip" := rowOK_of (c := RowCode.zip) rfl rfl fun _ σ _ _ _ _ hv => by
   cases hv
   rcases σ with _ | ⟨_, _ | _⟩ <;>
@@ -893,11 +933,14 @@ theorem rowsProved_ok (r : Prim) (h : (rowsProved.lookup r.sym).isSome) : RowOK 
   by_cases h21 : r.sym = "asc"; · rw [h21]; exact rowOK_asc
   by_cases h22 : r.sym = "inl°"; · rw [h22]; exact rowOK_inlC
   by_cases h23 : r.sym = "inr°"; · rw [h23]; exact rowOK_inrC
+  by_cases h24 : r.sym = "prefix"; · rw [h24]; exact rowOK_prefix
+  by_cases h25 : r.sym = "suffix"; · rw [h25]; exact rowOK_suffix
   simp [rowsProved, List.lookup, beq_false_of_ne h1, beq_false_of_ne h2, beq_false_of_ne h3, beq_false_of_ne h4,
     beq_false_of_ne h5, beq_false_of_ne h6, beq_false_of_ne h7, beq_false_of_ne h8, beq_false_of_ne h9,
     beq_false_of_ne h10, beq_false_of_ne h11, beq_false_of_ne h12, beq_false_of_ne h13, beq_false_of_ne h14,
     beq_false_of_ne h15, beq_false_of_ne h16, beq_false_of_ne h17, beq_false_of_ne h18,
-    beq_false_of_ne h19, beq_false_of_ne h20, beq_false_of_ne h21, beq_false_of_ne h22, beq_false_of_ne h23] at h
+    beq_false_of_ne h19, beq_false_of_ne h20, beq_false_of_ne h21, beq_false_of_ne h22, beq_false_of_ne h23,
+    beq_false_of_ne h24, beq_false_of_ne h25] at h
 
 /-- A `Prim.proved` row is `RowOK`, given as many relations as it takes. -/
 theorem Prim.proved_ok {r : Prim} {A B : Obj} {os : List (Obj × Obj)} (h : (!r.proved A B os) = false) :
