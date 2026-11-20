@@ -29,6 +29,25 @@ def Code.bind (η : Code) (k : Nat) {A B : Obj} (r : Rel A B) : Code := fun j A'
     context, and every bit matrix it holds is `Rel.Wf`. -/
 def Sound (η : Code) (ρ : Val) : Prop := (∀ k A B K, (η k A B).Reps K (ρ k A B)) ∧ ∀ k A B, (η k A B).Wf
 
+/-- `η` with `k` bound to the table `Y` represents `ρ` with `k` bound to `rep Y`: a fixed point's round. -/
+theorem Sound.bind {η : Code} {ρ : Val} (hs : Sound η ρ) (k : Nat) {A B : Obj} (Y : Tab A B) :
+    Sound (η.bind k (GenK.const A B (.ok Y))) (ρ.bind k (rep Y)) := by
+  refine ⟨fun j A' B' K => ?_, fun j A' B' => ?_⟩
+  · by_cases hj : j = k
+    · simp only [Code.bind, Val.bind, hj, if_true]
+      by_cases ho : A = A' ∧ B = B'
+      · obtain ⟨rfl, rfl⟩ := ho
+        rw [dif_pos ⟨rfl, rfl⟩, dif_pos ⟨rfl, rfl⟩]
+        exact (GenK.reps_iff _ _ _).2 fun t ht x y _ _ => by cases ht; exact Iff.rfl
+      · rw [dif_neg ho, dif_neg ho]; exact GenK.zero_sound K
+    · simp only [Code.bind, Val.bind, hj, if_false]; exact hs.1 j A' B' K
+  · by_cases hj : j = k
+    · simp only [Code.bind, hj, if_true]
+      by_cases ho : A = A' ∧ B = B'
+      · obtain ⟨rfl, rfl⟩ := ho; rw [dif_pos ⟨rfl, rfl⟩]; trivial
+      · rw [dif_neg ho]; trivial
+    · simp only [Code.bind, hj, if_false]; exact hs.2 j A' B'
+
 /-- The hypothesis of `Tab.lam_den` at `A ⟶ [B]`: two rows of one key whose codes ascend strictly hold values
     ascending in `B.lt`. It fails at a float atom, so it is asked per `Λ`, never for every object. -/
 def LamLaw (A B : Obj) : Prop := ∀ (m : USize) (x : Vals (.prod A B) m) es, Vals.cols x = .ok es →
