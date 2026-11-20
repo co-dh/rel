@@ -182,6 +182,52 @@ termination_by 2 * t.size
 decreasing_by all_goals simp only [Tm.size] at *; omega
 end
 
+/-- Whether `primGen r A B` given codes at the objects `xs` returns code, not its error table: the same lookups.
+    A `rowGens` entry reads only its codes' objects (`Codes.at`), so `𝟘` at each stands for any code there. -/
+def primHasCode (r : Prim) (A B : Obj) (xs : List (Obj × Obj)) : Bool :=
+  match rowGens.lookup r.sym, r.objs A B with
+  | some f, some σ => match f σ (xs.map fun (X, Y) => ⟨X, Y, GenK.zero X Y⟩) with
+    | some ⟨A', B', _⟩ => decide (A' = A ∧ B' = B)
+    | none => false
+  | _, _ => false
+
+mutual
+/-- Whether `Tm.gen` emits real code at every node of `t`, by `Tm.gen`'s case split: false exactly where some node's
+    `gen` (or `argGen`) returns its error table. Not `Tm.gap`, which says what is proved. -/
+def Tm.hasCode {A B : Obj} (t : Tm A B) : Bool :=
+  match A, B, t with
+  | _, _, .val _ | _, _, .uni _ | _, _, .zero | _, _, .id | _, _, .outl | _, _, .outr | _, _, .nil
+  | _, _, .atPos _ | _, _, .var .. => true
+  | _, _, .top R | _, _, .conv R | _, _, .dom R | _, _, .ran R | _, _, .lam R | _, _, .E R | _, _, .est R
+  | _, _, .thin R | _, _, .own R | _, _, .succ R | _, _, .arith _ R | _, _, .leq R | _, _, .lt R | _, _, .flat R
+  | _, _, .share _ R | _, _, .mu _ _ _ R => R.hasCode
+  | _, _, .comp R S | _, _, .meet R S | _, _, .join R S | _, _, .diff R S | _, _, .pair R S | _, _, .prod R S
+  | _, _, .junc R S | _, _, .juncD R S | _, _, .foldr R S | _, _, .fold R S | _, _, .foldI R S
+  | _, _, .nu _ R S => R.hasCode && S.hasCode
+  | _, _, .ldiv R S U V | _, _, .rdiv R S U V => R.hasCode && S.hasCode && U.hasCode && V.hasCode
+  | A, _, .hylo k _ b =>
+    have : ((b.kids k A).getD .zero).size ≤ b.size := Tm.size_kids k A b
+    ((b.kids k A).getD .zero).hasCode && b.hasCode
+  | A, B, .prim r => primHasCode r A B []
+  | _, _, .arg (C := C) (D := D) f x => f.argHasCode [(C, D)] && x.hasCode
+  | _, _, .call .. => false
+termination_by t.size
+decreasing_by all_goals simp only [Tm.size] at *; omega
+
+/-- `Tm.argGen`'s case split: the spine `f` given later relations at the objects `xs` has code. -/
+def Tm.argHasCode {A B : Obj} (t : Tm A B) (xs : List (Obj × Obj)) : Bool :=
+  match A, B, t with
+  | A, B, .prim r => primHasCode r A B xs
+  | _, _, .arg (C := C) (D := D) f x => f.argHasCode ((C, D) :: xs) && x.hasCode
+  | _, _, _ => false
+termination_by t.size
+decreasing_by all_goals simp only [Tm.size] at *; omega
+end
+
+#guard !(Tm.comp (Tm.call (A := .long) (B := .long) false `c [] none) .id).hasCode
+#guard !(Tm.arg (Tm.zero (A := .long) (B := .long)) (Tm.id (A := .long))).hasCode
+#guard (Tm.ldiv (A := .long) (B := .long) (C := .long) .id .id .id .id).hasCode
+
 /-- The rows whose case of `Tm.gen_sound` is proved (`rowsProved_ok`), each with whether its proof reads `LamLaw`
     at its objects `A ⟶ [B]` (a row whose table is a `Λ`). -/
 def rowsProved : List (String × Bool) :=
