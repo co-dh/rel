@@ -278,13 +278,14 @@ end
 
 /-- The rows whose case of `Tm.gen_sound` is proved (`rowsProved_ok`), each with the objects, as a function of the
     row's `A ⟶ B`, at which its proof reads `LamLaw` (`Tm.LamLawsAt`): none, `A ⟶ [B']` where its table is a `Λ` into
-    `B = [B']` (`τ`, `setify`), `[σ] ⟶ [[σ] × [σ]]` where it is `Λ(cat°)` on `A = [σ]` (`tails`). -/
+    `B = [B']` (`τ`, `setify`), `[σ] ⟶ [[σ] × [σ]]` where it is `Λ(cat°)` on `A = [σ]` (`tails`), `ℕ ⟶ B` itself where
+    it numbers a set in `canon`'s order (`asc`). -/
 def rowsProved : List (String × (Obj → Obj → List (Obj × Obj))) :=
   let no : Obj → Obj → List (Obj × Obj) := fun _ _ => []
   let cod : Obj → Obj → List (Obj × Obj) := fun A B => match B with | .arr B' => [(A, B')] | _ => []
   [("∋", no), ("inl", no), ("inr", no), ("τ", cod), ("setify", cod), ("snoc", no), ("cons", no), ("cat", no),
    ("uncat", no), ("zip", no), ("length", no), ("sum", no), ("loop", no), ("filter", no), ("concat", no), ("merge", no),
-   ("thinL", no), ("F", no), ("positions", no), ("asc", no), ("tails", fun A _ => match A with | .arr σ => [(.arr σ, .prod (.arr σ) (.arr σ))] | _ => [])]
+   ("thinL", no), ("F", no), ("positions", no), ("asc", fun A B => [(A, B)]), ("tails", fun A _ => match A with | .arr σ => [(.arr σ, .prod (.arr σ) (.arr σ))] | _ => [])]
 
 /-- The number of relations row `s` is given: its `prims` entry's, the one `rowGens` was generated from. A
     `rowGens` entry ignores a code past them, where `Prim.den` (`Sem.one`) is `𝟘`. -/
@@ -754,9 +755,28 @@ theorem rowOK_positions : RowOK "positions" :=
     · exact GenK.positions_sound hss
     · rename_i h; exact absurd ⟨rfl, rfl⟩ h
 
-theorem rowOK_asc : RowOK "asc" := rowOK_of (c := RowCode.asc) rfl rfl fun _ σ _ _ _ _ hv => by
-  cases hv
-  cases σ <;> exact ⟨GenK.ofVals_wf, fun _ => ⟨⟨rfl, rfl⟩, GenK.ofVals_row_sound fun _ _ _ h => Tab.asc_holds h⟩⟩
+theorem rowOK_asc : RowOK "asc" :=
+  rowOK_args (c := RowCode.asc) rfl rfl fun _ σ xs _ _ _ hs hn _ hv => by
+  have h1 : rowArity "asc" = 1 := by decide
+  rcases xs with _ | ⟨⟨X, Y, x⟩, _ | ⟨_, _⟩⟩ <;> simp only [List.length_cons, List.length_nil, h1] at hn <;>
+    try omega
+  rcases σ with _ | ⟨a, σ⟩ <;>
+    simp only [Codes.at, List.getElem?_cons_zero, List.getD_cons_zero, List.getD_nil] at hv
+  all_goals
+    split at hv
+    case isFalse => simp at hv
+    rename_i he; revert hv; obtain ⟨h1, h2⟩ := he; subst h1; subst h2; intro hv
+    cases hv
+    refine ⟨by unfold GenK.ofRel; exact GenK.lift1_wf _, fun ss hss hl => ⟨⟨rfl, rfl⟩, ?_⟩⟩
+    have hB := hl _ (by rw [hs]; rfl) _ (List.mem_singleton_self _)
+    rcases ss with _ | ⟨⟨X', Y', T⟩, _ | ⟨_, _⟩⟩ <;> simp only [CodesRep, and_true, and_false] at hss
+    split at hss
+    case isFalse => exact hss.elim
+    rename_i he; revert hss; obtain ⟨h1, h2⟩ := he; subst h1; subst h2; intro hss
+    simp only [Sem.one]
+    split
+    · exact GenK.ofRel_sound hss fun _ _ h hr => by subst hr; exact Tab.asc_holds h hB
+    · rename_i h; exact absurd ⟨rfl, rfl⟩ h
 
 theorem rowOK_F : RowOK "F" := rowOK_args (c := RowCode.map) rfl rfl fun _ σ xs _ _ _ _ hn _ hv => by
   have h1 : rowArity "F" = 1 := by decide

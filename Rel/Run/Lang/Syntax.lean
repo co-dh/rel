@@ -237,9 +237,10 @@ def prims : List Prim :=
    { sym := "positions",
      sig := ([((.var {} "B", .var {} "B"), some false)], .list (.var {} "B"), .list (.var {} "ℕ")),
      mono := false, aop := .error "AOP declares no positions of the elements of a list that pass a test" },
-   -- `asc`: dataframe §3.1's `σ`, each list to its stable sort permutation; positions again, so no `dfn` (as above)
-   { sym := "asc", sig := ([], .list (.var {} "B"), .list (.var {} "ℕ")),
-     mono := false, aop := .error "AOP declares no sort permutation of a list" }]
+   -- `asc(P)`: q's `asc` of the set `dom P`, `j ↦` its `j`-th smallest element in `Obj.lt` order; not `mono`: a
+   -- larger `P` renumbers. Its `dfn` `(dom(P) Λ(> P) length)°` waits for a `dfn` that can read the row's relations
+   { sym := "asc", sig := ([((.var {} "B", .var {} "B"), some false)], .var {} "ℕ", .var {} "B"),
+     mono := false, aop := .error "AOP declares no numbering of a set by its order" }]
 
 def Prim.find?(s : String) : Option Prim := prims.find? (·.sym == s)
 

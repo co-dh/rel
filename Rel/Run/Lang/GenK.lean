@@ -286,6 +286,10 @@ def nil (A B : Obj) : Fn true A (.arr B) := ofVals _ _ fun X => Tab.nil X
 def elems (A B C : Obj) (d : Bool) (R : Fn d A B)
     (f : {n : USize} → Tab A B → Vals (.arr A) n → Except String (Tab (.arr A) C)) : Fn true (.arr A) C :=
   ofVals _ _ fun X => do let k ← (← Tab.mem X).ran; f (← R.runE ⟨some ⟨k.n, k.key⟩, none⟩) X
+/-- A row whose table `f` makes from its relation's whole table (`asc`): `R` run in no context, since the answer at
+    any key reads every row of `R`; the context cuts the table (`Rel.Reps` reads it on the context's sides). -/
+def ofRel (A B C D : Obj) (d : Bool) (R : Fn d A B) (f : Tab A B → Except String (Tab C D)) : Fn true C D :=
+  lift1 f (fun _ => {}) R
 
 /-- `est(Q)`, `thin(Q)` on the arrays in demand, the pair test `Q` run knowing its domain is the pairs `D` it is
     asked about (`Gen.est`'s `Q.at`). -/
