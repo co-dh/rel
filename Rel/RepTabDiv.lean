@@ -396,8 +396,72 @@ theorem cellSpan_where {B : Obj} {n m M : USize} {lo up s e : Arr .i64 n} {lt se
   · obtain ⟨k, hk, e⟩ := (hmem i).2 ⟨hi, by rw [ltw i hi, if_pos c]; decide⟩
     exact ⟨k, hk, e⟩
 
+/-- **A payload laid out by the EXPANDed widths of `X`'s cells** (`Vals.pack`, `Tab.map`): the cells `n w pay` over a
+payload whose row `t` is `g` of `X`'s payload row at the gathered position `ix[t]` are `X`'s cells mapped by `g`; the
+output element `d` of cell `i` is payload row `Σ_{<i} w + d` (`expand_spec`, `colPrefix_add_sum`), there `SN i + d`. -/
+theorem Vals.cells_expand_row {A B : Obj} {n m : USize} {lo up : Arr .i64 n} {f : Vals A m} {s e : Arr .i64 n}
+    {w G u sg ix : Enc} {T : USize} (hb : ¬2 ^ 63 ≤ n.toNat * m.toNat + n.toNat + m.toNat)
+    (hse : cellSpan m lo up = .ok (s, e)) (hw : colMap .sub n e.enc s.enc = .ok w) (hex : expand n w = .ok (T, G, u))
+    (hsg : kgather T G n s.enc = .ok sg) (hix : colMap .add T sg u = .ok ix) (g : A.El → B.El) {pay : Vals B T}
+    (hp : ∀ t : Fin T.toNat, ∃ j : Fin m.toNat, ((raw .i64 T ix)[t.1]?.getD 0).toNat = j.1 ∧
+      Vals.row pay t = g (Vals.row f j))
+    {Y : Vals (.arr B) n} (hY : Vals.cells n w pay = .ok Y) (i : Fin n.toNat) :
+    Vals.row Y i = (Vals.row (A := .arr A) ⟨m, lo, up, f⟩ i).map g := by
+  simp only [Vals.cells, bind] at hY
+  rw [Except.bind_eq_ok'] at hY; obtain ⟨P', hP', hY⟩ := hY
+  rw [Except.bind_eq_ok'] at hY; obtain ⟨lo', hlo', hY⟩ := hY
+  rw [Except.bind_eq_ok'] at hY; obtain ⟨c0, hc0, hY⟩ := hY
+  rw [Except.bind_eq_ok'] at hY; obtain ⟨hi', hhi', hY⟩ := hY
+  cases hY
+  have hm63 : m.toNat < 2 ^ 63 := by omega
+  have hn63 : n.toNat < 2 ^ 63 := by omega
+  have hnm : n.toNat * m.toNat < 2 ^ 63 := by omega
+  obtain ⟨SN, EN, hse', hb1, hrow⟩ := cellSpan_spec hse hm63 f
+  obtain ⟨wN, hwN⟩ : ∃ F : Nat → Nat, ∀ i, F i = EN i - SN i := ⟨_, fun _ => rfl⟩
+  have hww : ∀ i < n.toNat, (raw .i64 n w)[i]?.getD 0 = (wN i).toUInt64 := by
+    intro i hi
+    have es := (colMap_raw hw).2.2.2 i hi
+    rw [(hse' i hi).2, (hse' i hi).1] at es; simp only [Op.eval, Except.ok.injEq] at es
+    rw [← es, hwN, toUInt64_sub (hb1 i).1]
+  have hwm : ∀ i, wN i ≤ m.toNat := fun i => by have := hb1 i; rw [hwN]; omega
+  have hsum : ∀ k, ((List.range k).map wN).sum ≤ k * m.toNat := fun k => by
+    induction k with
+    | zero => simp
+    | succ k ih => rw [sum_range_succ', Nat.succ_mul]; have := hwm k; omega
+  have hsn : ((List.range n.toNat).map wN).sum < 2 ^ 63 := by have := hsum n.toNat; omega
+  obtain ⟨hTn, hrun⟩ := expand_spec hex wN hww hsn hn63
+  have hP'w := colPrefix_add_sum hP' wN hww
+  have hgS : ((List.range i.1).map wN).sum + wN i.1 ≤ ((List.range n.toNat).map wN).sum := by
+    rw [← sum_range_succ']; exact sum_range_mono wN i.2
+  have hlo : (raw .i64 n lo'.enc)[i.1]?.getD 0 = ((List.range i.1).map wN).sum.toUInt64 := by
+    have es := (colMap_raw (colArr_ok hlo')).2.2.2 i.1 i.2
+    rw [hP'w i.1 i.2, hww i.1 i.2, sum_range_succ'] at es; simp only [Op.eval, Except.ok.injEq] at es
+    rw [← es, ← toUInt64_sub (by omega), Nat.add_sub_cancel]
+  have hhi : (raw .i64 n hi'.enc)[i.1]?.getD 0 = (((List.range i.1).map wN).sum + wN i.1).toUInt64 := by
+    have es := (colMap_raw (colArr_ok hhi')).2.2.2 i.1 i.2
+    rw [hP'w i.1 i.2, colConst_raw hc0, Array.getElem?_replicate, if_pos i.2, Option.getD_some,
+      sum_range_succ'] at es
+    simp only [Op.eval, Except.ok.injEq, UInt64.add_zero] at es
+    rw [← es]
+  rw [Vals.row_cell lo' hi' pay i hlo hhi (by omega) (by omega) (by omega), hrow i, Nat.add_sub_cancel_left,
+    ← hwN, List.range'_eq_map_range, List.range'_eq_map_range, List.map_map, List.map_map, List.map_map]
+  refine List.map_congr_left fun d hd => ?_
+  have hd' : d < wN i.1 := List.mem_range.mp hd
+  have ht : ((List.range i.1).map wN).sum + d < T.toNat := by omega
+  have hEm : SN i.1 + d < m.toNat := by have := hb1 i.1; rw [hwN] at hd'; omega
+  simp only [Function.comp_apply, dif_pos ht, dif_pos hEm]
+  obtain ⟨j, hj, hgj⟩ := hp ⟨_, ht⟩
+  rw [hgj]; congr 2; apply Fin.ext; rw [← hj]; dsimp only
+  obtain ⟨hG, hu⟩ := hrun i.1 i.2 (((List.range i.1).map wN).sum + d) (by omega) (by omega)
+  have es := (colMap_raw hix).2.2.2 _ ht
+  rw [(kgather_word hsg _ ht).2, hG, toNat_toUInt64 (by omega), (hse' i.1 i.2).1, hu] at es
+  simp only [Op.eval, Except.ok.injEq] at es
+  rw [← es, ← UInt64.ofNat_add, Nat.add_sub_cancel_left,
+    toNat_toUInt64 (by have := (hb1 i.1).2.1; have := hwm i.1; omega)]
+
 /-- **`Vals.pack` keeps every row**: where a payload is cut, cell `i` (`[SN, EN)`, `cellSpan_spec`) is laid out at
-`[Σ_{<i} w, Σ_{≤i} w)` (`Vals.cells`), whose row `Σ_{<i} w + d` is gathered from payload row `SN + d` (`expand_spec`). -/
+`[Σ_{<i} w, Σ_{≤i} w)` (`Vals.cells`), whose row `Σ_{<i} w + d` is gathered from payload row `SN + d`
+(`Vals.cells_expand_row` at `g = id`). -/
 theorem Vals.pack_row : {A : Obj} → {n : USize} → (x : Vals A n) → {y : Vals A n} → Vals.pack x = .ok y →
     ∀ i, Vals.row y i = Vals.row x i
   | .atom _, _, x, _, h, i => by
@@ -438,58 +502,9 @@ theorem Vals.pack_row : {A : Obj} → {n : USize} → (x : Vals A n) → {y : Va
     rw [Except.bind_eq_ok'] at h; obtain ⟨ix, hix, h⟩ := h
     rw [Except.bind_eq_ok'] at h; obtain ⟨g', hg', h⟩ := h
     rw [Except.bind_eq_ok'] at h; obtain ⟨p, hp, h⟩ := h
-    simp only [Vals.cells, bind] at h
-    rw [Except.bind_eq_ok'] at h; obtain ⟨P', hP', h⟩ := h
-    rw [Except.bind_eq_ok'] at h; obtain ⟨lo', hlo', h⟩ := h
-    rw [Except.bind_eq_ok'] at h; obtain ⟨c0, hc0, h⟩ := h
-    rw [Except.bind_eq_ok'] at h; obtain ⟨hi', hhi', h⟩ := h
-    cases h
-    have hm63 : m.toNat < 2 ^ 63 := by omega
-    have hn63 : n.toNat < 2 ^ 63 := by omega
-    have hnm : n.toNat * m.toNat < 2 ^ 63 := by omega
-    obtain ⟨SN, EN, hse', hb1, hrow⟩ := cellSpan_spec hse hm63 f
-    obtain ⟨wN, hwN⟩ : ∃ F : Nat → Nat, ∀ i, F i = EN i - SN i := ⟨_, fun _ => rfl⟩
-    have hww : ∀ i < n.toNat, (raw .i64 n w)[i]?.getD 0 = (wN i).toUInt64 := by
-      intro i hi
-      have es := (colMap_raw hw).2.2.2 i hi
-      rw [(hse' i hi).2, (hse' i hi).1] at es; simp only [Op.eval, Except.ok.injEq] at es
-      rw [← es, hwN, toUInt64_sub (hb1 i).1]
-    have hwm : ∀ i, wN i ≤ m.toNat := fun i => by have := hb1 i; rw [hwN]; omega
-    have hsum : ∀ k, ((List.range k).map wN).sum ≤ k * m.toNat := fun k => by
-      induction k with
-      | zero => simp
-      | succ k ih => rw [sum_range_succ', Nat.succ_mul]; have := hwm k; omega
-    have hsn : ((List.range n.toNat).map wN).sum < 2 ^ 63 := by have := hsum n.toNat; omega
-    obtain ⟨hTn, hrun⟩ := expand_spec hex wN hww hsn hn63
-    have hP'w := colPrefix_add_sum hP' wN hww
-    have hgS : ((List.range i.1).map wN).sum + wN i.1 ≤ ((List.range n.toNat).map wN).sum := by
-      rw [← sum_range_succ']; exact sum_range_mono wN i.2
-    have hlo : (raw .i64 n lo'.enc)[i.1]?.getD 0 = ((List.range i.1).map wN).sum.toUInt64 := by
-      have es := (colMap_raw (colArr_ok hlo')).2.2.2 i.1 i.2
-      rw [hP'w i.1 i.2, hww i.1 i.2, sum_range_succ'] at es; simp only [Op.eval, Except.ok.injEq] at es
-      rw [← es, ← toUInt64_sub (by omega), Nat.add_sub_cancel]
-    have hhi : (raw .i64 n hi'.enc)[i.1]?.getD 0 = (((List.range i.1).map wN).sum + wN i.1).toUInt64 := by
-      have es := (colMap_raw (colArr_ok hhi')).2.2.2 i.1 i.2
-      rw [hP'w i.1 i.2, colConst_raw hc0, Array.getElem?_replicate, if_pos i.2, Option.getD_some,
-        sum_range_succ'] at es
-      simp only [Op.eval, Except.ok.injEq, UInt64.add_zero] at es
-      rw [← es]
-    rw [Vals.row_cell lo' hi' p i hlo hhi (by omega) (by omega) (by omega), hrow i, Nat.add_sub_cancel_left,
-      ← hwN, List.range'_eq_map_range, List.range'_eq_map_range, List.map_map, List.map_map]
-    refine List.map_congr_left fun d hd => ?_
-    have hd' : d < wN i.1 := List.mem_range.mp hd
-    have ht : ((List.range i.1).map wN).sum + d < T.toNat := by omega
-    have hEm : SN i.1 + d < m.toNat := by have := hb1 i.1; rw [hwN] at hd'; omega
-    simp only [Function.comp_apply, dif_pos ht, dif_pos hEm]
-    rw [Vals.pack_row g' hp]
-    obtain ⟨j, hj, hgj⟩ := Vals.gather_row f hg' ⟨_, ht⟩
-    rw [hgj]; congr 1; apply Fin.ext; rw [← hj]; dsimp only
-    obtain ⟨hG, hu⟩ := hrun i.1 i.2 (((List.range i.1).map wN).sum + d) (by omega) (by omega)
-    have es := (colMap_raw hix).2.2.2 _ ht
-    rw [(kgather_word hsg _ ht).2, hG, toNat_toUInt64 (by omega), (hse' i.1 i.2).1, hu] at es
-    simp only [Op.eval, Except.ok.injEq] at es
-    rw [← es, ← UInt64.ofNat_add, Nat.add_sub_cancel_left,
-      toNat_toUInt64 (by have := (hb1 i.1).2.1; have := hwm i.1; omega)]
+    rw [Vals.cells_expand_row hb hse hw hex hsg hix id (fun t => by
+      obtain ⟨j, hj, hgj⟩ := Vals.gather_row f hg' t
+      exact ⟨j, hj, (Vals.pack_row g' hp t).trans hgj⟩) h i, List.map_id]
 
 /-- **`Vals.cat` joins cell by cell**, below `2^63` cells (its guard): output element `d` of cell `i` (`expand_spec`)
 reads the joined payload (`Vals.concat_row`) at `SN₁ + d` where `d < w₁`, else at `m₁ + SN₂ + (d - w₁)`. -/
