@@ -754,8 +754,8 @@ def lProd : Pre × OTy × OTy → Pre × OTy × OTy → Pre × OTy × OTy
 def lJunc : Pre × OTy × OTy → Pre × OTy × OTy → M (Pre × OTy × OTy)
   | (R, a, c), (S, b, c') => do
     unify p "the target of the case's second part" c' c
-    pure (join (comp R (pair (comp (outl a c) (Pre.prim inlRow [] a (.sum a b) none)) (outr a c)))
-      (comp S (pair (comp (outl b c) (Pre.prim inrRow [] b (.sum a b) none)) (outr b c))), .sum a b, c)
+    pure (join (comp R (pair (comp (outl a c) (Pre.prim inlRow [] a (.sum a b))) (outr a c)))
+      (comp S (pair (comp (outl b c) (Pre.prim inrRow [] b (.sum a b))) (outr b c))), .sum a b, c)
 
 /-- `Λ(R)` lifted on the sources `S : I ⟶ a` of each key, `Rπ₁` (`dom`) when none: `⟨𝟙,S⟩⟨π₂,Λ(Rᴵ)⟩`. `Λ` takes
     `S = ⊤` onto `a`'s universe, being total; `E` and `thin` take `dom`, as their `a = [x]` has no universe. -/
@@ -814,9 +814,9 @@ def constant (env : Env) (p : Pos) (o : Op) (objs : List OExp) : M Arg := do
   let a ← fresh; let b ← fresh
   let row ← match ← o.row p with
     | some r => do
-      let (ps, s, t, σ) ← r.inst env
+      let (ps, s, t, _) ← r.inst env
       unless ps.isEmpty do throw ⟨p, s!"{r.sym} takes {ps.length} arguments, found 0"⟩
-      pure (some (← MonadExcept.ofExcept (r.withDfn p [] σ s t), s, t))
+      pure (some (.prim r [] s t, s, t))
     | none => pure none
   let (q, s, t) : Pre × OTy × OTy := row.getD <| match o with
     | .id => (.id a, a, a)
@@ -829,7 +829,7 @@ def constant (env : Env) (p : Pos) (o : Op) (objs : List OExp) : M Arg := do
     | .succ => (.succ p a, a, a)
     | .arith k => (.arith p k a, .prod a a, a)
     | .nil => (.nil a b, a, .arr b)
-    | .alpha => (.junc (.nil a b) (.prim consRow [] (.prod b (.arr b)) (.arr b) none) a (.prod b (.arr b)),
+    | .alpha => (.junc (.nil a b) (.prim consRow [] (.prod b (.arr b)) (.arr b)) a (.prod b (.arr b)),
         .sum a (.prod b (.arr b)), .arr b)
     | .index k => (.atPos k b, .arr b, b)
     | _ => (.id a, a, a)
@@ -912,12 +912,12 @@ def Prim.pass (r : Prim) (p : Pos) (f : Option Bool) (q : Pre) (s : OTy) : Pre :
 /-- A row applied to relations: each unified with its parameter's type and passed in its form (`Form`): a pair
     test, run on demand, or read whole. -/
 def appliedRow (env : Env) (p : Pos) (r : Prim) (qs : List (Pre × OTy × OTy)) : M Arg := do
-  let (ps, s, t, σ) ← r.inst env
+  let (ps, s, t, _) ← r.inst env
   unless ps.length == qs.length do throw ⟨p, s!"{r.sym}: wrong number of arguments, found {qs.length}"⟩
   let xs ← (ps.zip qs).mapM fun (((x, y), f), (q, s', t')) => do
     unify p s!"the source of {r.sym}'s argument" s' x; unify p s!"the target of {r.sym}'s argument" t' y
     pure (r.pass p f q s')
-  pure (.rel (← MonadExcept.ofExcept (r.withDfn p xs σ s t)) s t)
+  pure (.rel (.prim r xs s t) s t)
 
 /-- A builtin applied to relations, every argument one relation. -/
 def applied (env : Env) (p : Pos) (o : Op) (as : List (Pre × OTy × OTy)) : M Arg := do
@@ -944,7 +944,7 @@ def appliedL (I : OTy) (p : Pos) (o : Op) (as : List Arg) : M Arg := do
     | .dom, [R] => pure (lDom R)
     | .ran, [R] => pure (lRan R)
     | .lam, [R] => pure (lLam I (some (.top p I R.2.1 none)) R)
-    | .E, [R] => do let b ← fresh; pure (lLam I none (← lComp I p (liftConst I p (.prim memRow [] (.arr b) b none) (.arr b) b) R))
+    | .E, [R] => do let b ← fresh; pure (lLam I none (← lComp I p (liftConst I p (.prim memRow [] (.arr b) b) (.arr b) b) R))
     | o, _ => notLiftable p s!"{o.sym}( )"
   pure (.fam r.1 I r.2.1 r.2.2)
 
@@ -1037,12 +1037,12 @@ partial def hyloG (p : Pos) (k : Nat) (a b : OTy) (t s : OTy) : M (Pre × OTy ×
     let s₂ := match s with | .sum _ s₂ => s₂ | _ => s₁
     let (g₁, u₁, m₁) ← hyloG p k a b t₁ s₁; let (g₂, u₂, m₂) ← hyloG p k a b t₂ s₂
     if !m₁ && !m₂ then return (.id t, t, false)
-    return (.junc (.comp g₁ (.prim inlRow [] u₁ (.sum u₁ u₂) none)) (.comp g₂ (.prim inrRow [] u₂ (.sum u₁ u₂) none)) t₁ t₂,
+    return (.junc (.comp g₁ (.prim inlRow [] u₁ (.sum u₁ u₂))) (.comp g₂ (.prim inrRow [] u₂ (.sum u₁ u₂))) t₁ t₂,
       .sum u₁ u₂, true)
   | .arr t₁, .arr s₁ | .arr t₁, s₁@(.mv _) =>
     let (g₁, u₁, m₁) ← hyloG p k a b t₁ s₁
     if !m₁ then return (.id t, t, false)
-    return (.prim mapRow [g₁] (.arr t₁) (.arr u₁) none, .arr u₁, true)
+    return (.prim mapRow [g₁] (.arr t₁) (.arr u₁), .arr u₁, true)
   | _, _ =>
     if t == s || any then return (.id t, t, false)
     throw ⟨p, s!"hylo(c, S): c's target and S's source differ at {t} against {s}, which is neither {a} against {b} \
@@ -1114,7 +1114,7 @@ def elabE (env : Env) (m : Option OTy) : Expr → M Arg
     match m, q? with
     | some I, some q => do
       let e ← fresh
-      let G ← lThen p (← famOf I p x) (.prim memRow [] (.arr e) e none, .arr e, e)
+      let G ← lThen p (← famOf I p x) (.prim memRow [] (.arr e) e, .arr e, e)
       let Q ← famOf I p q
       let r ← if est then do lSame p Pre.meet G (← lLdiv I p (lConv G) (lConv Q))
         else do pure (lLam I none (← lSame p Pre.diff G (← lComp I p G (← lSame p Pre.diff Q (lConv Q)))))
@@ -1836,8 +1836,8 @@ def build : Pre → Except Err Res
   -- `dfns` is the fused form of its definition (§4), which `Tm.dfnCut_den` proves equal to the row at an unbounded
   -- target (universe `𝟙`) or where the law needs no universe (`DfnCut.uni`), and to the row cut to the universe
   -- at an initial segment `0…k` (one pass, where the definition's fold reads the universe in every round). At any
-  -- other universe they differ, and the row is refused rather than its definition run; with none, the row runs
-  -- (the definition's base `0` would need keys none supply).
+  -- other universe (an object variable of a generic body, or one not from 0) the definition `d`, the DfnCut's index,
+  -- runs; with no universe, the row runs (the definition's base `0` would need keys none supply).
   | .prim r xs s t => do
     let A ← toObj objs mc dp s; let B ← toObj objs mc dp t
     let row (_ : Unit) : Except Err Res :=
@@ -1845,14 +1845,14 @@ def build : Pre → Except Err Res
         have := List.sizeOf_lt_of_mem h
         if form == some true then let ⟨_, c⟩ ← param x; pure ⟨A, B, .arg f c⟩
         else let ⟨_, _, u⟩ ← build x; pure ⟨A, B, .arg f u⟩
-    let some mk := dfns.lookup r.sym | row ()
+    let some dfn := dfns.lookup r.sym | row ()
     let o := zonk mc t
     let some u ← uniPart objs dp o B | row ()
     let args ← xs.attach.mapM fun ⟨x, h⟩ => have := List.sizeOf_lt_of_mem h; build x
-    let some ⟨_, c⟩ := mk A B args u | internal dp s!"{r.sym}'s definition (dfns) takes other relations or objects"
+    let some ⟨d, c⟩ := dfn A B args u | internal dp s!"{r.sym}'s definition (dfns) takes other relations or objects"
     if unbounded objs o || c.uni.isNone then pure ⟨A, B, c.fused⟩
     else if initSeg objs o then pure ⟨A, B, c.cut⟩
-    else throw ⟨dp, s!"{r.sym} into {o}: the row equals its definition only at an unbounded number object or an initial segment 0…k (Tm.dfnCut_den), and {o}'s universe is neither; declare it from 0"⟩
+    else pure ⟨A, B, d⟩
   | .own p => do
     let ⟨A, B, t⟩ ← build p
     if h : B = A then pure ⟨A, A, .own (h ▸ t)⟩ else internal dp "perm's objects"

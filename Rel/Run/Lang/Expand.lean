@@ -50,7 +50,7 @@ def useDef (c : Lean.Name) (imported : Bool) (d : Def) : Def :=
       match c, r, row with
       | _, .rel q s t, some x =>
         if rels.length == as.length && as.length == x.sig.1.length then
-          pure (.rel (.prim x ((x.sig.1.zip rels).map fun ((_, f), (a, s')) => x.pass p f a s') s t none) s t)
+          pure (.rel (.prim x ((x.sig.1.zip rels).map fun ((_, f), (a, s')) => x.pass p f a s') s t) s t)
         else pure (.rel (if imported then q.at p else q) s t)
       | `Rel.Programs.prelude.perm, .rel q s t, _ => pure (.rel (.own (q.at p)) s t)
       | _, .rel q s t, _ => pure (.rel (if imported then q.at p else q) s t)
