@@ -37,6 +37,20 @@ import Rel.Lang.TestPositions
 import Rel.Lang.TestSchema
 import Rel.Lang.TestSum
 import Rel.Lang.TestUnbounded
+import Rel.Lang.TestArcs
+import Rel.Lang.TestChess
+import Rel.Lang.TestGroups
+import Rel.Lang.EmbedTest
+import Rel.Lang.ModuleTest
+import Rel.Lang.Test
+import Rel.Lang.TestMss
+import Rel.Lang.TestWumpus
+import Rel.Lang.TestSelsort
+import Rel.Lang.TestKnapsack
+import Rel.Lang.TestCircuit
+import Rel.Lang.TestHylo
+import Rel.Lang.TestDetab
+import Rel.Lang.TestEdit
 
 /-! `Tm.gen_sound` is not vacuous: each registered program re-read (`Expand.read`, at the homes and scope the
     registry recorded), the definitions with no `Tm.gap` node counted, and four of them, of 8 to 431 nodes, required
