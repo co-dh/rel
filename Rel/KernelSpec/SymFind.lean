@@ -89,17 +89,6 @@ theorem arr_beq_iff (a b : Array UInt8) : (a == b) = true ↔ a = b := by
   -- not `beq_self_eq_true`: its `ReflBEq UInt8` is found through `UInt8.instLawfulEqOrd`, which is classical
   · rintro rfl; exact ⟨rfl, fun i _ => decide_eq_true rfl⟩
 
-/-- `findSymScalar` is the first index of the needle's bytes among the blob's symbols. -/
-theorem findSymScalar_toNat (b : ByteArray) (o : Array Nat) (k : ByteArray) (h : o.size - 1 < USize.size) :
-    (findSymScalar b o k).toNat = ((List.range (o.size - 1)).map (symAt b o)).idxOf k.data.toList := by
-  have hb : ∀ i, ((Column.symKey b o i).data == k.data) = (symAt b o i == k.data.toList) := fun i =>
-    Bool.eq_iff_iff.2 (by rw [arr_beq_iff, beq_iff_eq, symAt, Array.toList_inj])
-  unfold findSymScalar
-  simp only [hb, find?_range_getD]
-  have := idxOf_le_length k.data.toList ((List.range (o.size - 1)).map (symAt b o))
-  rw [List.length_map, List.length_range] at this
-  exact USize.toNat_ofNat_of_lt' (by omega)
-
 /-- **The values at the first occurrences, in order, are the list with its repeats erased.** -/
 theorem firstsOf_eraseDups {α : Type} [DecidableEq α] [BEq α] [LawfulBEq α] (g : Nat → α) (m : Nat) :
     (firstsOf g m).map g = ((List.range m).map g).eraseDups := by
@@ -137,76 +126,6 @@ theorem append_push_toList (a k : ByteArray) :
     ((a ++ k).push 0).data.toList = a.data.toList ++ (k.data.toList ++ [0]) := by
   show ((a ++ k).data.push 0).toList = _
   rw [Array.toList_push, ByteArray.data_append, Array.toList_append, List.append_assoc]
-
-/-- `symsAt`'s offsets: one start per chosen symbol and one past the last, the first `0` and the last the blob's
-size, none past the blob, and symbol `t` the `t`-th chosen one with its NUL. -/
-theorem symsAt_inv (blob : ByteArray) (offs : Array Nat) (is : List Nat) :
-    (Order.symsAt blob offs is).2.size = is.length + 1 ∧ (Order.symsAt blob offs is).2[0]! = 0 ∧
-      (Order.symsAt blob offs is).2[is.length]! = (Order.symsAt blob offs is).1.size ∧
-      (∀ t ≤ is.length, (Order.symsAt blob offs is).2[t]! ≤ (Order.symsAt blob offs is).1.size) ∧
-      ∀ t (ht : t < is.length), symBytes (Order.symsAt blob offs is).1 (Order.symsAt blob offs is).2 t =
-        symAt blob offs is[t] ++ [0] := by
-  let B : List Nat → ByteArray := fun is => is.foldl (init := ByteArray.empty) fun acc i =>
-    (acc ++ Column.symKey blob offs i).push 0
-  let P : List Nat → Array Nat × Nat := fun is => is.foldl (init := (#[0], 0)) fun (o, pos) i =>
-    (o.push (pos + (Column.symKey blob offs i).size + 1), pos + (Column.symKey blob offs i).size + 1)
-  have inv : ∀ is : List Nat, (P is).1.size = is.length + 1 ∧ (P is).1[0]! = 0 ∧ (P is).1[is.length]! = (B is).size ∧
-      (P is).2 = (B is).size ∧ (∀ t ≤ is.length, (P is).1[t]! ≤ (B is).size) ∧
-      ∀ t (ht : t < is.length), symBytes (B is) (P is).1 t = symAt blob offs is[t] ++ [0] := by
-    intro is
-    induction is using list_rev_ind with
-    | nil => exact ⟨rfl, rfl, rfl, rfl, fun t ht => by simp at ht; subst ht; exact Nat.le_refl _, fun t ht => absurd ht (by simp)⟩
-    | append_singleton l i ih =>
-      obtain ⟨h1, h0, h2, h3, h4, h5⟩ := ih
-      have hB : B (l ++ [i]) = (B l ++ Column.symKey blob offs i).push 0 := by simp [B, List.foldl_append]
-      have hP : P (l ++ [i]) = ((P l).1.push ((B (l ++ [i])).size), (B (l ++ [i])).size) := by
-        have : P (l ++ [i]) = ((P l).1.push ((P l).2 + (Column.symKey blob offs i).size + 1),
-            (P l).2 + (Column.symKey blob offs i).size + 1) := by simp [P, List.foldl_append]
-        have hsz : (B (l ++ [i])).size = (B l).size + (Column.symKey blob offs i).size + 1 := by
-          have := congrArg List.length (append_push_toList (B l) (Column.symKey blob offs i))
-          simp only [Array.length_toList, List.length_append, List.length_singleton] at this
-          rw [hB]; show ((B l ++ _).push 0).data.size = (B l).data.size + (Column.symKey blob offs i).data.size + 1
-          omega
-        rw [this, hsz, h3]
-      have hob : (B (l ++ [i])).data.toList = (B l).data.toList ++ (symAt blob offs i ++ [0]) := by
-        simp only [hB, append_push_toList, symAt]
-      obtain ⟨g1, g2, g3, g4, g5⟩ := symBytes_push (B l) (B (l ++ [i])) (P l).1 l.length _ h1 h2 h4 hob
-      rw [hP]
-      simp only [List.length_append, List.length_singleton]
-      refine ⟨g1, by rw [push_get!, if_pos (by omega)]; exact h0, g2, trivial, g3, fun t ht => ?_⟩
-      rcases Nat.lt_or_eq_of_le (Nat.le_of_lt_succ ht) with ht | rfl
-      · rw [g5 t ht, h5 t ht, List.getElem_append_left ht]
-      · rw [g4, List.getElem_append_right (Nat.le_refl _)]; simp
-  obtain ⟨h1, h0, h2, -, h4, h5⟩ := inv is
-  exact ⟨h1, h0, h2, h4, h5⟩
-
-/-- `symsAt` lays the chosen symbols out as a blob that reads back as them. -/
-theorem symsAt_spec (blob : ByteArray) (offs : Array Nat) (is : List Nat) :
-    symsOf (X := X) ((Order.symsAt blob offs is).2.size - 1) (.syms (Order.symsAt blob offs is).1 (Order.symsAt blob offs is).2) =
-      is.map (symAt blob offs) := by
-  obtain ⟨h1, -, -, h4, h5⟩ := symsAt_inv blob offs is
-  simp only [symsOf, h1, Nat.add_sub_cancel]
-  apply List.ext_getElem (by simp)
-  intro t ht _
-  simp only [List.getElem_map, List.getElem_range]
-  simp only [List.length_map, List.length_range] at ht
-  rw [symAt_eq_dropLast _ _ _ (h4 (t + 1) ht), h5 t ht, List.dropLast_concat]
-
-/-- **`distinctSyms` answers the column's symbols with their repeats erased**, first occurrences in order. -/
-theorem distinctSyms_eraseDups (blob : ByteArray) (offs : Array Nat) :
-    symsOf (X := X) ((Order.distinctSyms blob offs).2.size - 1)
-      (.syms (Order.distinctSyms blob offs).1 (Order.distinctSyms blob offs).2) =
-      (symsOf (X := X) (offs.size - 1) (.syms blob offs)).eraseDups := by
-  have hf : Order.symFirsts blob offs = firstsOf (symAt blob offs) (offs.size - 1) := by
-    unfold Order.symFirsts firstsOf
-    refine List.filter_congr fun i _ => List.all_congr rfl fun j => ?_
-    have := symCmp_eq_iff (Column.symKey blob offs j) (Column.symKey blob offs i)
-    cases hc : Column.symCmp (Column.symKey blob offs j) (Column.symKey blob offs i) <;>
-      simp_all [symAt]
-  rw [Order.distinctSyms, symsAt_spec, hf, firstsOf_eraseDups]; rfl
-
-/-- info: 'Rel.Verify.distinctSyms_eraseDups' depends on axioms: [propext, Quot.sound] -/
-#guard_msgs in #print axioms distinctSyms_eraseDups
 
 /-- **An id below the dictionary's count reads back from `packIds` at that count's width.** -/
 theorem idAt_packIds_idWidthOf {nd n i : Nat} {f : Nat → Nat} (hnd : nd ≤ 2 ^ 64) (hi : i < n) (hf : f i < nd) :
@@ -251,63 +170,6 @@ theorem idxOf_lt_of_mem {α : Type} [BEq α] [LawfulBEq α] {l : List α} {k : �
       exact Nat.succ_lt_succ (ih hl)
     · simp only [List.idxOf_cons, hb, cond_true, List.length_cons]; exact Nat.succ_pos _
 
-/-- **`internSyms` round trip**: element `i`'s id names a dictionary entry, and that entry is element `i`'s
-symbol. -/
-theorem internSyms_symAt (blob : ByteArray) (offs : Array Nat) (h : offs.size - 1 < USize.size) {i : Nat}
-    (hi : i < offs.size - 1) :
-    Column.idAt (Order.internSyms blob offs).2.2 (Column.idWidth (Order.internSyms blob offs).2.1) i <
-        (Order.internSyms blob offs).2.1.size - 1 ∧
-      symAt (Order.internSyms blob offs).1 (Order.internSyms blob offs).2.1
-          (Column.idAt (Order.internSyms blob offs).2.2 (Column.idWidth (Order.internSyms blob offs).2.1) i) =
-        symAt blob offs i := by
-  have hD := distinctSyms_eraseDups (X := Empty) blob offs
-  have e : Order.internSyms blob offs = ((Order.distinctSyms blob offs).1, (Order.distinctSyms blob offs).2,
-      Column.packIds (Column.idWidth (Order.distinctSyms blob offs).2) (offs.size - 1) fun j =>
-        (findSymScalar (Order.distinctSyms blob offs).1 (Order.distinctSyms blob offs).2
-          (Column.symKey blob offs j)).toNat) := rfl
-  rw [e]
-  generalize Order.distinctSyms blob offs = r at hD ⊢
-  obtain ⟨db, dof⟩ := r
-  dsimp only [symsOf] at hD ⊢
-  simp only [← firstsOf_eraseDups] at hD
-  have hlen : dof.size - 1 ≤ offs.size - 1 := by
-    have := congrArg List.length hD
-    simp only [List.length_map, List.length_range] at this
-    rw [this]; unfold firstsOf
-    exact Nat.le_trans (List.length_filter_le _ _) (Nat.le_of_eq (List.length_range ..))
-  have hmem : symAt blob offs i ∈ (List.range (dof.size - 1)).map (symAt db dof) := by
-    rw [hD]; exact mem_firstsOf _ hi
-  have hidx := idxOf_lt_of_mem hmem
-  rw [List.length_map, List.length_range] at hidx
-  have hf : (findSymScalar db dof (Column.symKey blob offs i)).toNat =
-      ((List.range (dof.size - 1)).map (symAt db dof)).idxOf (symAt blob offs i) :=
-    findSymScalar_toNat db dof _ (by omega)
-  have hs : USize.size ≤ 2 ^ 64 := USize.size_le
-  rw [Column.idWidth, idAt_packIds_idWidthOf (f := fun j => (findSymScalar db dof (Column.symKey blob offs j)).toNat)
-    (by omega) hi (by show (findSymScalar db dof (Column.symKey blob offs i)).toNat < _; rw [hf]; exact hidx), hf]
-  refine ⟨hidx, ?_⟩
-  have := getElem_idxOf' _ _ (by rw [List.length_map, List.length_range]; exact hidx)
-  rwa [List.getElem_map, List.getElem_range] at this
-
-/-- `internSyms` writes its dictionary well formed (`SymsWF`): each entry holds at least its NUL, so the starts
-grow. -/
-theorem symsWF_internSyms (blob : ByteArray) (offs : Array Nat) :
-    SymsWF (Order.internSyms blob offs).1 (Order.internSyms blob offs).2.1 := by
-  obtain ⟨h1, h0, h2, h4, h5⟩ := symsAt_inv blob offs (Order.symFirsts blob offs)
-  show SymsWF (Order.symsAt blob offs (Order.symFirsts blob offs)).1 (Order.symsAt blob offs (Order.symFirsts blob offs)).2
-  refine ⟨by omega, h0, by rw [h1, Nat.add_sub_cancel]; exact h2, fun k hk => h4 k (by omega), fun k hk => ?_⟩
-  have h5k := h5 k (by omega)
-  unfold symBytes at h5k
-  apply Nat.le_of_not_lt; intro hc
-  rw [Nat.sub_eq_zero_of_le (Nat.le_of_lt hc), List.take_zero] at h5k
-  exact absurd h5k.symm (by simp)
-
-/-- info: 'Rel.Verify.internSyms_symAt' depends on axioms: [propext, Quot.sound] -/
-#guard_msgs in #print axioms internSyms_symAt
-
-/-- info: 'Rel.Verify.symsWF_internSyms' depends on axioms: [propext, Quot.sound] -/
-#guard_msgs in #print axioms symsWF_internSyms
-
 /-- info: 'Rel.Verify.idAt_packIds_idWidthOf' depends on axioms: [propext, Quot.sound] -/
 #guard_msgs in #print axioms idAt_packIds_idWidthOf
 
@@ -346,7 +208,7 @@ theorem bitsAt_foldl8 (m : Nat) (g : Nat → UInt64) (a : ByteArray) (ha : a.siz
   simp only [ha, Nat.zero_add, List.getElem_range] at this
   rw [Nat.mul_comm, this, UInt64.toNat_ofNat', Nat.mod_mod, Nat.mod_eq_of_lt (UInt64.toNat_lt _)]
 
-/-- One step of `concatSyms`' fold: the part's starts after its leading `0`, shifted past the blob so far, keep
+/-- One step of the fold that joins `syms` parts: the part's starts after its leading `0`, shifted past the blob so far, keep
 every earlier entry and read the part's entry `k` at `k` past the earlier ones. -/
 theorem concatSyms_step {blob b : ByteArray} {offs o : Array Nat} (hA : SymsWF blob offs) (hB : SymsWF b o) :
     SymsWF (blob ++ b) (offs ++ (o.extract 1 o.size).map (· + blob.size)) ∧
@@ -418,7 +280,7 @@ theorem concatSyms_step {blob b : ByteArray} {offs o : Array Nat} (hA : SymsWF b
     rw [hlo, hhi, hl, ← hbl, List.drop_append, Nat.add_sub_add_left, List.drop_eq_nil_of_le (by omega),
       List.nil_append, Nat.add_sub_cancel_left]
 
-/-- `concatSyms`' fold over a list of well-formed parts from a well-formed blob: well formed, one entry per entry
+/-- The fold that joins `syms` parts, over a list of well-formed parts from a well-formed blob: well formed, one entry per entry
 of the parts, the blob's own entries kept, and part `p`'s entry `k` past the blob's and the parts' before `p`. -/
 theorem concatSyms_foldl (L : List (ByteArray × Array Nat)) (hL : ∀ x ∈ L, SymsWF x.1 x.2) (acc : ByteArray × Array Nat)
     (hacc : SymsWF acc.1 acc.2) :
@@ -454,33 +316,6 @@ theorem concatSyms_foldl (L : List (ByteArray × Array Nat)) (hL : ∀ x ∈ L, 
         rw [← i4 p (Nat.lt_of_succ_lt_succ hp') k hk, s2]
         congr 1; omega
 
-/-- **`,` of symbol blobs keeps every part's entries**: `concatSyms` over well-formed parts answers a well-formed
-blob with one entry per part entry, and part `p`'s entry `k` is the answer's entry `k` past the parts before `p`. -/
-theorem symBytes_concatSyms {parts : Array (ByteArray × Array Nat)} (hw : ∀ x ∈ parts, SymsWF x.1 x.2)
-    {t n a} {b : ByteArray} {o : Array Nat} (h : Kernel.concatSyms (X := X) parts = .vector t n (.syms b o) a) :
-    SymsWF b o ∧ o.size - 1 = (parts.toList.map fun x => x.2.size - 1).sum ∧
-      ∀ p (hp : p < parts.size), ∀ k < parts[p].2.size - 1,
-        symBytes b o (((parts.toList.take p).map fun x => x.2.size - 1).sum + k) = symBytes parts[p].1 parts[p].2 k := by
-  have hc : Kernel.concatSyms (X := X) parts = .vector .sym
-      ((parts.toList.foldl (fun acc x => (acc.1 ++ x.1, acc.2 ++ (x.2.extract 1 x.2.size).map (· + acc.1.size)))
-        (ByteArray.empty, #[0])).2.size - 1 |> fun c => needSize c "concatSyms: symbols" (fun _ => 0) id) (.syms
-      (parts.toList.foldl (fun acc x => (acc.1 ++ x.1, acc.2 ++ (x.2.extract 1 x.2.size).map (· + acc.1.size)))
-        (ByteArray.empty, #[0])).1
-      (parts.toList.foldl (fun acc x => (acc.1 ++ x.1, acc.2 ++ (x.2.extract 1 x.2.size).map (· + acc.1.size)))
-        (ByteArray.empty, #[0])).2) none := by
-    unfold Kernel.concatSyms; rw [Array.foldl_toList]
-  rw [hc] at h
-  injection h with _ _ he _
-  injection he with hb ho
-  subst hb ho
-  obtain ⟨f1, f2, -, f4⟩ := concatSyms_foldl parts.toList (fun x hx => hw x (Array.mem_def.2 hx))
-    (ByteArray.empty, #[0]) ⟨by decide, rfl, rfl,
-      fun k hk => by rw [show k = 0 by simpa using hk]; exact Nat.le_refl _, fun k hk => absurd hk (Nat.not_lt_zero k)⟩
-  refine ⟨f1, by rw [f2]; exact Nat.zero_add _, fun p hp k hk => ?_⟩
-  have := f4 p (by rw [Array.length_toList]; exact hp) k (by rw [Array.getElem_toList]; exact hk)
-  rwa [Array.getElem_toList, show (#[0] : Array Nat).size - 1 = 0 from rfl, Nat.zero_add] at this
 
-/-- info: 'Rel.Verify.symBytes_concatSyms' depends on axioms: [propext, Quot.sound] -/
-#guard_msgs in #print axioms symBytes_concatSyms
 
 end Rel.Verify

@@ -4,7 +4,7 @@ import Rel.KernelSpec.Codes
 
 /-! `seen`'s laws (PLAN D.12): `kseen_ok` reads its answer as `firstsOf`/`groupOf` of the rows' order codes
 (`seenKey`), `kseen_sorted` says it answers only rows in `kasc` order, and the first-occurrence laws hold over any key (`firsts_spec`, `firsts_runs`, `firsts_all`): `groupIds`
-answers the same `firstsOf`/`groupOf` (`groupIds_spec`), so they are its laws too. -/
+answers the same `firstsOf`/`groupOf`, so they are its laws too. -/
 
 namespace Rel.Verify
 open Rel.Kernel Ext.Enc

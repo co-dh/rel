@@ -3,7 +3,6 @@ import Rel.KernelSpec.Encoding
 import Rel.KernelSpec.Group
 import Rel.KernelSpec.Distinct
 import Rel.Kernel.Structural
-import Rel.Kernel.Reduce
 import Rel.Kernel.Value
 
 /-! The part of `Rel.Verify.Structural` the Rel kernels reach; `Rel.Verify.Structural` imports it. -/
@@ -51,7 +50,7 @@ theorem foldl_lastWrite {σ β : Type} (size : σ → Nat) (N : Nat → Nat) (re
     · rw [if_neg hk, if_neg (fun h => hk (beq_iff_eq.1 h))]
 
 
-/-- The nested fold `expandBytes` runs, each `i` writing its value `c i` times, is one fold over the
+/-- A nested fold, each `i` writing its value `c i` times, is one fold over the
 values each repeated. -/
 theorem foldl_replicate (w : Nat) (c : Nat → Nat) (v : Nat → UInt64) (L : List Nat) (acc : ByteArray) :
     L.foldl (fun acc i => (Array.range (c i)).foldl (init := acc) fun acc _ => Column.pushBits acc (v i) w) acc =
@@ -62,23 +61,6 @@ theorem foldl_replicate (w : Nat) (c : Nat → Nat) (v : Nat → UInt64) (L : Li
     rw [List.foldl_cons, ih, List.flatMap_cons, List.foldl_append, ← Array.foldl_toList, toList_range,
       show List.replicate (c i) (v i) = (List.range (c i)).map fun _ => v i by rw [List.map_const', List.length_range], List.foldl_map]
 
-/-- **`expandBytes` repeats each element its width's times**: read back, the answer is source element
-`i`, or `fill` past the source, repeated `widths[i]` times (a negative width none), for each `i` in order. -/
-theorem expandBytes_spec (w : USize) (hw0 : 0 < w.toNat) (hw : w.toNat ≤ 8) (fill : UInt64)
-    (hf : fill.toNat < 2 ^ (8 * w.toNat)) (src widths : ByteArray) :
-    elemsW w.toNat (expandBytes w fill src widths) =
-      (List.range (widths.size / 8)).flatMap fun i =>
-        List.replicate (Column.bitsAt widths (i * 8) 8).toInt64.toInt.toNat ((elemsW w.toNat src).getD i fill) := by
-  unfold expandBytes
-  rw [← Array.foldl_toList, toList_range, foldl_replicate, elemsW_foldl (fun x => x) w.toNat hw0 hw _ (fun e he => by
-    obtain ⟨i, -, he⟩ := List.mem_flatMap.1 he
-    rw [(List.mem_replicate.1 he).2]
-    split
-    · exact bitsAt_lt _ _ _ hw
-    · exact hf), List.map_id']
-  congr 1; funext i; congr 1
-  simp only [elemsW, List.getD_eq_getElem?_getD, List.getElem?_map]
-  split <;> simp_all
 
 /-- **`tilLongs` is `til n`**: read back as eight-byte elements, the answer is `0, 1, …, n - 1`. -/
 theorem tilLongs_spec (n : USize) : (elemsW 8 (tilLongs n)).map UInt64.toNat = List.range n.toNat := by
@@ -93,5 +75,4 @@ theorem tilLongs_spec (n : USize) : (elemsW 8 (tilLongs n)).map UInt64.toNat = L
 
 end Rel.Verify
 
-#print axioms Rel.Verify.expandBytes_spec
 #print axioms Rel.Verify.tilLongs_spec

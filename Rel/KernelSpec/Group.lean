@@ -1,7 +1,6 @@
 import Rel.KernelSpec.Encoding
 import Rel.Kernel.Sort
 import Rel.Kernel.Coc
-import Rel.Kernel.Reduce
 import Rel.Kernel.Scan
 import Rel.Kernel.Value
 import Rel.KernelSpec.Raw
@@ -131,66 +130,15 @@ end Firsts
 /-- An eight-byte payload read back as the numbers it holds, as `overGroups` reads its ids. -/
 def ids (b : ByteArray) : List Nat := (List.range (b.size / 8)).map fun i => (Column.bitsAt b (i * 8) 8).toNat
 
-theorem ids_indices (is : List Nat) (h : ∀ i ∈ is, i < 2 ^ 64) : ids (Order.indices is) = is := by
-  obtain ⟨hs, -, hg⟩ := foldl_pushBits (fun i : Nat => (Int64.ofNat i).toUInt64) 8 (by decide) is ByteArray.empty
-  have hs : (Order.indices is).size = 8 * is.length := by rw [Order.indices, hs]; simp
-  apply List.ext_getElem (by rw [ids, List.length_map, List.length_range, hs]; omega)
-  intro j _ h2
-  have e := hg j h2
-  rw [show ByteArray.empty.size + 8 * j = j * 8 by simp [Nat.mul_comm]] at e
-  simp only [ids, List.getElem_map, List.getElem_range]
-  rw [Order.indices, e,
-    show (UInt64.ofNat _).toNat = _ from BitVec.toNat_ofNat _ _,
-    show ((Int64.ofNat is[j]).toUInt64).toNat = _ from BitVec.toNat_ofNat _ _,
-    show 8 * 8 = 64 from rfl, Nat.mod_mod, Nat.mod_mod, Nat.mod_eq_of_lt (h _ (List.getElem_mem h2))]
 
 theorem usize_lt (n : USize) : n.toNat < 2 ^ 64 := Nat.lt_of_lt_of_le n.toNat_lt_size USize.size_le
 
-/-- **`groupIds` answers each element's group and the first occurrences**, keyed by `Order.keyAt` over the
-`m` elements it reads. With `rows_groupOf`, group `j`'s rows are `bucketOf` of the `j`-th first index. -/
-theorem groupIds_spec (k : Kind) (n : USize) (b : ByteArray) :
-    (Order.groupIds k n b).1 =
-        Column.packIds (Column.idWidthOf (firstsOf (Order.keyAt k b) (min n.toNat (k.avail b))).length)
-          (min n.toNat (k.avail b)) (groupOf (Order.keyAt k b) (min n.toNat (k.avail b))) ∧
-      ids (Order.groupIds k n b).2 = firstsOf (Order.keyAt k b) (min n.toNat (k.avail b)) := by
-  have hm : min n.toNat (k.avail b) < 2 ^ 64 := Nat.lt_of_le_of_lt (Nat.min_le_left _ _) (usize_lt n)
-  exact ⟨rfl, ids_indices _ fun i hi => Nat.lt_trans (firsts_lt _ _ hi) hm⟩
 
 /-- Element `i`'s key read off the encoded form: `Order.rank` of the `foRBits` element cut to the kind's width. -/
 def foRKey (k : Kind) (md pk : ByteArray) (i : Nat) : UInt64 :=
   Order.rank k (UInt64.ofNat ((Column.foRBits md pk (Column.blockStarts md) i).toNat % 2 ^ (8 * k.width)))
 
-/-- The decoded payload holds all `n` elements, and its keys are `foRKey`'s. -/
-theorem decode_keyAt (k : Kind) (hk : k ≠ .bit) (n : USize) (md pk : ByteArray) :
-    k.avail (Coc.decode k.width.toUSize md pk n) = n.toNat ∧
-      ∀ i < n.toNat, Order.keyAt k (Coc.decode k.width.toUSize md pk n) i = foRKey k md pk i := by
-  have hw8 : k.width ≤ 8 := by cases k <;> decide
-  have hw0 : 0 < k.width := by cases k <;> decide
-  have hw : k.width.toUSize.toNat = k.width :=
-    USize.toNat_ofNat_of_lt' (Nat.lt_of_le_of_lt hw8 (Nat.lt_of_lt_of_le (by decide) USize.le_size))
-  obtain ⟨hs, hg⟩ := decodeW _ (by rw [hw]; exact hw8) md pk n
-  rw [hw] at hs hg
-  refine ⟨?_, fun i hi => ?_⟩
-  · have : k.avail (Coc.decode k.width.toUSize md pk n) = (Coc.decode k.width.toUSize md pk n).size / k.width := by
-      cases k <;> first | exact absurd rfl hk | rfl
-    rw [this, hs, Nat.mul_div_cancel_left _ hw0]
-  · rw [foRKey, ← hg i hi]
-    cases k <;> first | exact absurd rfl hk | rfl
 
-/-- **`groupIdsFoR` answers `groupIds_spec` over the decoded elements**, keyed by `foRKey` over all `n`
-elements. -/
-theorem groupIdsFoR_spec (k : Kind) (hk : k ≠ .bit) (n : USize) (md pk : ByteArray) :
-    (Order.groupIdsFoR k n md pk).1 = Column.packIds (Column.idWidthOf (firstsOf (foRKey k md pk) n.toNat).length)
-        n.toNat (groupOf (foRKey k md pk) n.toNat) ∧
-      ids (Order.groupIdsFoR k n md pk).2 = firstsOf (foRKey k md pk) n.toNat := by
-  obtain ⟨hav, hkey⟩ := decode_keyAt k hk n md pk
-  have hc := groups_congr (Order.keyAt k (Coc.decode k.width.toUSize md pk n)) n.toNat
-    (fun i hi j hj => by rw [hkey i hi, hkey j hj])
-  obtain ⟨h1, h2⟩ := groupIds_spec k n (Coc.decode k.width.toUSize md pk n)
-  rw [hav, Nat.min_self] at h1 h2
-  refine ⟨h1.trans ?_, h2.trans hc.1⟩
-  rw [hc.1]
-  exact packIds_congr _ _ fun i hi => hc.2.2 i hi
 
 section Over
 
@@ -348,8 +296,6 @@ end Segs
 #print axioms groupOf_eq_iff
 #print axioms rows_groupOf
 #print axioms groups_congr
-#print axioms groupIds_spec
-#print axioms groupIdsFoR_spec
 /-- info: 'Rel.Verify.idsCap_packIds' depends on axioms: [propext, Quot.sound] -/
 #guard_msgs in #print axioms idsCap_packIds
 
@@ -377,12 +323,6 @@ theorem ids_get {b : ByteArray} {l : List Nat} (h : ids b = l) {j : Nat} (hj : j
     Option.some.injEq] at this
   exact this
 
-/-- At every kind but the boolean and the two floats the key is the stored bits, sign bit flipped or not, so
-two keys agree exactly when the elements do. -/
-theorem keyAt_eq_iff {k : Kind} (hk : k ≠ .bit ∧ k ≠ .f32 ∧ k ≠ .f64) (b : ByteArray)
-    (i j : Nat) : Order.keyAt k b i = Order.keyAt k b j ↔
-      Column.bitsAt b (i * k.width) k.width = Column.bitsAt b (j * k.width) k.width := by
-  cases k <;> simp at hk <;> first | exact Iff.rfl | exact UInt64.xor_left_inj _
 
 section Over
 
@@ -395,7 +335,6 @@ section Segs
 variable (op : Coc.Over) (cls : UInt8) (nul : Int64) (offs b : ByteArray)
 
 end Segs
-#print axioms keyAt_eq_iff
 #print axioms ids_get
 
 end Rel.Verify

@@ -1,6 +1,5 @@
 import Rel.KernelSpec.FindMember
 import Rel.KernelSpec.Encoding
-import Rel.Kernel.Reduce
 import Rel.Kernel.Value
 import Rel.Kernel.Elementwise
 import Rel.Kernel.Eval.Val
@@ -14,7 +13,7 @@ open Rel
 
 open Rel.Kernel in
 /-- **`packOf`'s bitmap**: bit `i` is set exactly when `i < n` and `f i`, so the last byte's tail is
-    zero. The byte fold is `memberVec_mem`'s; `Ew.cmp`, `Ew.bit` and `shiftBits` are each this fold. -/
+    zero. `Ew.cmp`, `Ew.bit` and `shiftBits` are each this fold. -/
 theorem packOf_bitAt (n : Nat) (f : Nat → Bool) :
     (packOf n f).size = (n + 7) / 8 ∧
     ∀ i < 8 * ((n + 7) / 8), Column.bitAt (packOf n f) i = (decide (i < n) && f i) := by

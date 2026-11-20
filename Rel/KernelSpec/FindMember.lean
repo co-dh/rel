@@ -47,57 +47,7 @@ theorem idxOf_lt_length {α : Type} [BEq α] [LawfulBEq α] (y : α) (l : List �
       exact ⟨Or.inr, fun o => o.elim (fun e => absurd e hne) id⟩
     · exact ⟨fun _ => Or.inl (beq_iff_eq.1 h).symm, fun _ => Nat.succ_pos _⟩
 
-/-- **`findScalar` is `List.idxOf` on the decoded haystack**: the least index whose key is the
-needle's, and the count when no key is. The count must fit a `USize`, which is what the C indexes by. -/
-theorem findScalar_idxOf (w : USize) (float : Bool) (hay : ByteArray) (k : UInt64)
-    (hn : hay.size / w.toNat < USize.size) :
-    (findScalar w float hay k).toNat =
-      ((elemsW w.toNat hay).map (normalise w.toNat float)).idxOf (normalise w.toNat float k) := by
-  have hl := idxOf_le_length (normalise w.toNat float k) ((elemsW w.toNat hay).map (normalise w.toNat float))
-  simp only [elemsW, List.map_map, List.length_map, List.length_range] at hl ⊢
-  simp only [findScalar]
-  rw [find?_range_getD (key w.toNat float hay)]
-  exact USize.toNat_ofNat_of_lt' (Nat.lt_of_le_of_lt hl hn)
 
-/-- **`findVec`'s answer is one index per needle**, eight bytes each: at a width up to eight the
-`findScalar` index of the needle's key, and above eight the first haystack element
-whose bytes are the needle's, both `List.idxOf` on the decoded haystack. -/
-theorem findVec_idxOf (w : USize) (float : Bool) (hay ndl : ByteArray)
-    (hn : hay.size / w.toNat < USize.size) :
-    (findVec w float hay ndl).size = 8 * (ndl.size / w.toNat) ∧
-    ∀ j < ndl.size / w.toNat, (Column.bitsAt (findVec w float hay ndl) (j * 8) 8).toNat =
-      if w.toNat ≤ 8 then ((elemsW w.toNat hay).map (normalise w.toNat float)).idxOf
-          (normalise w.toNat float (Column.bitsAt ndl (j * w.toNat) w.toNat))
-      else ((List.range (hay.size / w.toNat)).map fun i =>
-          (hay.extract (i * w.toNat) (i * w.toNat + w.toNat)).data).idxOf
-            (ndl.extract (j * w.toNat) (j * w.toNat + w.toNat)).data := by
-  let G : Nat → Nat := fun j =>
-    if w.toNat ≤ 8 then (findScalar w float hay (Column.bitsAt ndl (j * w.toNat) w.toNat)).toNat
-    else ((List.range (hay.size / w.toNat)).find? fun i => (hay.extract (i * w.toNat) (i * w.toNat + w.toNat)).data
-      == (ndl.extract (j * w.toNat) (j * w.toNat + w.toNat)).data).getD (hay.size / w.toNat)
-  obtain ⟨hs, -, hg⟩ := foldl_pushBits (fun j => (G j).toUInt64) 8 (Nat.le_refl 8)
-    (List.range (ndl.size / w.toNat)) ByteArray.empty
-  have hf : findVec w float hay ndl =
-      (List.range (ndl.size / w.toNat)).foldl (fun acc j => Column.pushBits acc (G j).toUInt64 8) ByteArray.empty := rfl
-  rw [hf]
-  refine ⟨by simpa using hs, fun j hj => ?_⟩
-  have h := hg j (by simpa using hj)
-  simp only [ByteArray.size_empty, Nat.zero_add, List.getElem_range] at h
-  rw [Nat.mul_comm j, h, show 8 * 8 = 64 from rfl, ofNat_toNat_mod64, Nat.toUInt64_eq, UInt64.toNat_ofNat']
-  have h64 : USize.size ≤ 2 ^ 64 := USize.size_le
-  by_cases hw : w.toNat ≤ 8
-  · simp only [G, hw, ↓reduceIte]
-    rw [findScalar_idxOf w float hay _ hn]
-    have hl := idxOf_le_length (normalise w.toNat float (Column.bitsAt ndl (j * w.toNat) w.toNat))
-      ((elemsW w.toNat hay).map (normalise w.toNat float))
-    rw [List.length_map, elemsW, List.length_map, List.length_range] at hl
-    exact Nat.mod_eq_of_lt (Nat.lt_of_le_of_lt hl (Nat.lt_of_lt_of_le hn h64))
-  · simp only [G, hw, ↓reduceIte]
-    rw [find?_range_getD]
-    have hl := idxOf_le_length (ndl.extract (j * w.toNat) (j * w.toNat + w.toNat)).data
-      ((List.range (hay.size / w.toNat)).map fun i => (hay.extract (i * w.toNat) (i * w.toNat + w.toNat)).data)
-    simp only [List.length_map, List.length_range] at hl
-    exact Nat.mod_eq_of_lt (by omega)
 
 theorem bit_eq_testBit (x : UInt8) (j : Nat) (hj : j < 8) :
     ((x >>> j.toUInt8) &&& 1 == 1) = x.toNat.testBit j := by
@@ -133,63 +83,5 @@ theorem foldl_setBit (c : Nat → Bool) (l : List Nat) (hl : ∀ t ∈ l, t < 8)
     · simp only [↓reduceIte, Bool.and_true]
       rw [toNat_or_bit _ _ (hl t List.mem_cons_self), Nat.testBit_or, Nat.testBit_two_pow, Bool.or_assoc]
 
-/-- **`memberVec`'s bitmap is membership in the decoded haystack**: bit `i` is set exactly when `i` is
-below the needle count and needle `i` is among the haystack's elements, so the last byte's tail bits
-are zero: at a width up to eight compared by key, and above eight by its bytes whole. -/
-theorem memberVec_mem (w : USize) (float : Bool) (xs hay : ByteArray)
-    (hn : hay.size / w.toNat < USize.size) :
-    (memberVecBitmap w float xs hay).size = (xs.size / w.toNat + 7) / 8 ∧
-    ∀ i < 8 * ((xs.size / w.toNat + 7) / 8), Column.bitAt (memberVecBitmap w float xs hay) i =
-      (decide (i < xs.size / w.toNat) &&
-        if w.toNat ≤ 8 then decide (normalise w.toNat float (Column.bitsAt xs (i * w.toNat) w.toNat) ∈
-          (elemsW w.toNat hay).map (normalise w.toNat float))
-        else decide ((xs.extract (i * w.toNat) (i * w.toNat + w.toNat)).data.toList ∈
-          (List.range (hay.size / w.toNat)).map fun k =>
-            (hay.extract (k * w.toNat) (k * w.toNat + w.toNat)).data.toList)) := by
-  let C : Nat → Bool := fun i => decide (i < xs.size / w.toNat) &&
-    if w.toNat ≤ 8 then decide (findScalar w float hay (Column.bitsAt xs (i * w.toNat) w.toNat) < (hay.size / w.toNat).toUSize)
-    else decide (((List.range (hay.size / w.toNat)).find? fun k =>
-      (hay.extract (k * w.toNat) (k * w.toNat + w.toNat)).data.toList
-        == (xs.extract (i * w.toNat) (i * w.toNat + w.toNat)).data.toList).getD (hay.size / w.toNat) < hay.size / w.toNat)
-  let B : Nat → UInt8 := fun b =>
-    (List.range 8).foldl (fun byte t => if C (b * 8 + t) then byte ||| (1 <<< t.toUInt8) else byte) 0
-  have hf : memberVecBitmap w float xs hay =
-      (List.range ((xs.size / w.toNat + 7) / 8)).foldl (fun acc b => acc.push (B b)) ByteArray.empty := rfl
-  obtain ⟨hs, -, hg⟩ := foldl_push8 B (List.range ((xs.size / w.toNat + 7) / 8)) ByteArray.empty
-  rw [hf]
-  refine ⟨by simpa using hs, fun i hi => ?_⟩
-  have hb : i / 8 < (xs.size / w.toNat + 7) / 8 := by omega
-  have h := hg (i / 8) (by simpa using hb)
-  simp only [ByteArray.size_empty, Nat.zero_add, List.getElem_range] at h
-  have hm8 : i % 8 < 8 := Nat.mod_lt _ (by decide)
-  have hbit : Column.bitAt ((List.range ((xs.size / w.toNat + 7) / 8)).foldl (fun acc b => acc.push (B b))
-      ByteArray.empty) i = C i := by
-    simp only [Column.bitAt, h, Option.getD_some]
-    rw [bit_eq_testBit _ _ hm8, foldl_setBit _ _ (fun t ht => List.mem_range.1 ht), UInt8.toNat_zero,
-      Nat.zero_testBit, Bool.false_or]
-    apply Bool.eq_iff_iff.mpr
-    rw [List.any_eq_true]
-    constructor
-    · rintro ⟨t, -, ht⟩
-      rw [Bool.and_eq_true, decide_eq_true_eq] at ht
-      obtain ⟨e, hc⟩ := ht
-      subst e
-      rwa [Nat.mul_comm, Nat.div_add_mod] at hc
-    · intro hc
-      refine ⟨i % 8, List.mem_range.2 hm8, ?_⟩
-      rw [Bool.and_eq_true, decide_eq_true_eq, Nat.mul_comm, Nat.div_add_mod]
-      exact ⟨rfl, hc⟩
-  rw [hbit]
-  simp only [C]
-  congr 1
-  by_cases hw : w.toNat ≤ 8
-  · simp only [hw, ↓reduceIte]
-    apply decide_eq_decide.mpr
-    rw [USize.lt_iff_toNat_lt, findScalar_idxOf w float hay _ hn, USize.toNat_ofNat_of_lt' hn, ← idxOf_lt_length]
-    simp only [elemsW, List.length_map, List.length_range]
-  · simp only [hw, ↓reduceIte]
-    apply decide_eq_decide.mpr
-    rw [find?_range_getD, ← idxOf_lt_length]
-    simp only [List.length_map, List.length_range]
 
 end Rel.Verify

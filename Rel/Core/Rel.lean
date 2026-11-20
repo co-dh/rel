@@ -86,10 +86,6 @@ theorem le_iff {R S : Rel α β} : R ⊑ S ↔ ∀ a b, R a b → S a b :=
 
 @[simp] theorem union_apply (R S : Rel α β) (a : α) (b : β) : (R ∪ S) a b = (R a b ∨ S a b) := rfl
 
-/-- `f° ≫ f`, the coreflexive on the values of a map `f`, read pointwise. -/
-theorem recip_graph_comp_graph (f : α → β) : (graph f)° ≫ graph f = corefl fun b => ∃ a, f a = b :=
-  ext fun _ _ => ⟨fun ⟨a, h, h'⟩ => ⟨h.trans h'.symm, a, h.symm⟩, fun ⟨e, a, h⟩ => ⟨a, h.symm, e.symm.trans h.symm⟩⟩
-
 /-! ### Laws -/
 
 theorem comp_assoc (R : Rel α β) (S : Rel β γ) (T : Rel γ δ) : (R ≫ S) ≫ T = R ≫ (S ≫ T) :=

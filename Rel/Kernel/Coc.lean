@@ -181,7 +181,7 @@ def bools (n : Nat) (p : Nat → Bool) : ByteArray × ByteArray :=
   encodeAt Rel.Column.lgEnc (USize.ofNat32 1 (by decide)) (Rel.Column.packIds 8 n fun i => (p i).toNat) false
 
 /-- The first `n` bits of the bitmap `b` as the `u1` column `bools` lays out, a bit past `b` being `0`: the writer a
-kernel whose answer is a bitmap (`gatherBits`, `concatBits`) hands it to, so no boolean answer is a bitmap `Enc`. -/
+kernel whose answer is a bitmap hands it to, so no boolean answer is a bitmap `Enc`. -/
 def boolsOf (n : USize) (b : @& ByteArray) : ByteArray × ByteArray := bools n.toNat (Rel.Column.bitAt b)
 
 
@@ -212,8 +212,7 @@ def foRStd (n : USize) (md pk : ByteArray) : Bool :=
     && (List.range (Rel.Column.nblk md)).all fun b => Rel.Column.widthAt md b ≤ 64
 
 /-- The elements as raw bits. Every specification below is a fold over this, `decode` included, so it
-is the one place that mentions `base`, the block starts and the residual layout. `Ew.foRShift` is
-stated over it too, for that reason, which is why it is not `private`. -/
+is the one place that mentions `base`, the block starts and the residual layout. -/
 def elems (metadata pack : ByteArray) (n : USize) : List UInt64 :=
   let starts := Rel.Column.blockStarts metadata
   (List.range n.toNat).map (Rel.Column.foRBits metadata pack starts)
@@ -577,7 +576,7 @@ def packOf (n : Nat) (f : Nat → Bool) : ByteArray :=
     acc.push ((List.range 8).foldl (init := (0 : UInt8)) fun byte t =>
       if k * 8 + t < n && f (k * 8 + t) then byte ||| (1 <<< t.toUInt8) else byte)
 
-/-- A boolean `foR` (`u1`) as the bitmap `concatBits` joins: bit `i` is element `i`'s low bit, which is what
+/-- A boolean `foR` (`u1`) as a bitmap: bit `i` is element `i`'s low bit, which is what
 `Enc.raw` reads at a boolean, and a row past the blocks is `0`. The C copies a width-1, frame-0 block's residual
 words whole — they already are its bitmap — and builds any other block in one block of L1 scratch. -/
 def bitsOfFoR (metadata pack : @& ByteArray) (n : USize) : ByteArray :=

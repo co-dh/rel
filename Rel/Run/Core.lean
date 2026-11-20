@@ -733,7 +733,7 @@ theorem bitsAt_one (v : UInt64) : Column.bitsAt (one v) 0 8 = v := by
   simpa using Verify.bitsAt_pushBits8 ByteArray.empty v
 
 /-- `Ew.cmp`'s `u1` `foR` read through `boolBits` (its `foR` branch, `bitsOfFoR`): the bitmap a bitmap consumer
-    (`whereBits`, `Ew.notBits`) takes, one name for the read so no consumer restates it. -/
+    (`Ew.notBits`) takes, one name for the read so no consumer restates it. -/
 def Ew.cmpBits (op cls shape : UInt8) (a b : ByteArray) (n : USize) : ByteArray :=
   let c := Ew.cmp op cls shape a b n; bitsOfFoR c.1 c.2 n
 

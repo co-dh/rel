@@ -43,7 +43,7 @@ private def fw (x : Float) : UInt64 := x.toBits
 /-- A NaN is the least value, as `Ew.ord64` orders the floats; so the `fmin`/`fmax` choice is total. -/
 private def fle' (x y : UInt64) : Bool := (f x).isNaN || (!(f y).isNaN && (f x ≤ f y))
 
-/-- A NaN keeps the sign of the `f32` NaN it widens (q's null is the negative one), as `Ew.widen`. -/
+/-- A NaN keeps the sign of the `f32` NaN it widens (q's null is the negative one). -/
 private def widen32 (x : UInt64) : UInt64 :=
   let b := x.toUInt32
   let v := Float32.ofBits b
