@@ -31,9 +31,12 @@ rel_program unboundedT where
 -- positions below 2; `5 0 7 0` has its elements of {3,5,7} at positions 0 and 2, `pss` those plus one; `lt2` the
 -- pairs of positions in order. `sp dbl ps pss` hold. `tk`, `lt2` do NOT yet: `GenK.comp` runs a lazy `<` before
 -- the table on its right, so nothing bounds that side (the hand values above stay the expectation); `bad` is `<`
--- run closed. All five failures are the unbounded-side message, and only those.
-#guard unboundedT.failures.length == 5
-#guard (unboundedT.failures.map toString).all fun s =>
-  (s.splitOn "< on an unbounded object: nothing bounds its").length == 2
+-- run closed. A failing definition is reported at its check and twice by name.
+private def unb (w : String) : String :=
+  s!"< on an unbounded object: nothing bounds its {w} side; compose it with a table on that side (a leaf on demand ran with its domain unknown)"
+#guard unboundedT.failures.map toString ==
+  ["line 25, col 5: check tk, {(0, 30), (1, 10)}: " ++ unb "left",
+   "line 28, col 5: check lt2, {(0, 1), (0, 2), (0, 3), (1, 2), (1, 3), (2, 3)}: " ++ unb "right",
+   "tk: " ++ unb "left", "lt2: " ++ unb "right", "bad: " ++ unb "left", "tk: " ++ unb "left", "lt2: " ++ unb "right"]
 
 end Rel.Lang.TestUnbounded
