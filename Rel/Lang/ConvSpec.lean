@@ -444,16 +444,22 @@ theorem mapError_ok_iff {ε ε' α : Type} {f : ε → ε'} {x : Except ε α} {
     x.mapError f = .ok b ↔ x = .ok b := by
   cases x <;> simp [Except.mapError]
 
-/-- The number verbs' objects are fixed by every `σ` (`Tm.instObj.fixed`). -/
-theorem fixed_long (ph : List Rel.QAtomicType) (σ : List Obj) (t : Tm .long .long) : Tm.instObj.fixed ph σ t = pure t := by
-  unfold Tm.instObj.fixed; rw [dif_pos ⟨rfl, rfl⟩]; rfl
+/-- A node `Tm.instObj.fixed` keeps: `σ` keeps its objects and the node is `t` itself, moved along that equality.
+    Stated for any `X Y`, because at an atom in `varAtoms` (a float) `Obj.inst` does not reduce. -/
+theorem fixed_ok (ph : List Rel.QAtomicType) (σ : List Obj) {X Y : Obj} {t : Tm X Y} {t'}
+    (h : Tm.instObj.fixed ph σ t = .ok t') :
+    ∃ e : X.inst ph σ = X ∧ Y.inst ph σ = Y, t' = cast (by rw [e.1, e.2]) t := by
+  unfold Tm.instObj.fixed at h; split at h
+  · rename_i e; exact ⟨e, (pure_ok_iff.1 h).symm⟩
+  · cases h
 
-theorem fixed_arith (ph : List Rel.QAtomicType) (σ : List Obj) (t : Tm (.prod .long .long) .long) : Tm.instObj.fixed ph σ t = pure t := by
-  unfold Tm.instObj.fixed; rw [dif_pos ⟨rfl, rfl⟩]; rfl
-
-theorem back_long (ph : List Rel.QAtomicType) (σ : List Obj) (t : Tm (Obj.inst ph σ .long) (Obj.inst ph σ .long)) :
-    Tm.instObj.back ph σ (X := .long) (Y := .long) t = pure t := by
-  unfold Tm.instObj.back; rw [dif_pos ⟨rfl, rfl⟩]; rfl
+/-- `fixed_ok` backwards (`Tm.instObj.back`). -/
+theorem back_ok (ph : List Rel.QAtomicType) (σ : List Obj) {X Y : Obj} {t : Tm (X.inst ph σ) (Y.inst ph σ)} {t'}
+    (h : Tm.instObj.back ph σ t = .ok t') :
+    ∃ e : X.inst ph σ = X ∧ Y.inst ph σ = Y, t' = cast (by rw [e.1, e.2]) t := by
+  unfold Tm.instObj.back at h; split at h
+  · rename_i e; exact ⟨e, (pure_ok_iff.1 h).symm⟩
+  · cases h
 
 /-- `p` at the objects `σ`: its term's `Tm.instObj`. -/
 def Proj.instObj (ph : List Rel.QAtomicType) (σ : List Obj) {B A₁ A₂ : Obj} :
@@ -679,30 +685,41 @@ theorem convTm_instObj_den (ph : List Rel.QAtomicType) (σ : List Obj) (ρ : Val
   | succ U _ =>
     refine fun t' ht hok => ⟨fun u u' hu hu' => ?_, by noproj'⟩
     rw [convTm.eq_def, if_neg (by simp [Tm.dem])] at hu; cases hu
-    simp only [Tm.instObj, bind_ok_iff, pure_ok_iff, back_long, fixed_long] at ht hu'
-    obtain ⟨U', hU, _, rfl, rfl⟩ := ht
-    obtain ⟨_, ⟨_, h1, _, ⟨_, h3, _, rfl, rfl⟩, rfl⟩, rfl⟩ := hu'
-    rw [hU] at h1 h3; cases h1; cases h3
+    simp only [Tm.instObj, bind_ok_iff, pure_ok_iff] at ht hu'
+    obtain ⟨U', hU, U'', hb, hf⟩ := ht
+    obtain ⟨_, ⟨_, h1, _, ⟨_, h3, _, hb3, hf3⟩, rfl⟩, rfl⟩ := hu'
+    rw [hU] at h1 h3; cases h1; cases h3; rw [hb] at hb3; cases hb3; rw [hf] at hf3; cases hf3
+    obtain ⟨_, rfl⟩ := back_ok ph σ hb; obtain ⟨_, rfl⟩ := fixed_ok ph σ hf
     refine ⟨?_, fun _ _ => rfl⟩
     refine congrArg (·°) (funext fun a => funext fun w => propext ⟨fun ⟨v, hv, h⟩ => (hok _ _ hv) ▸ h, fun h => ⟨a, ?_, h⟩⟩)
     obtain ⟨v, hv⟩ := h.1; obtain rfl := hok _ _ hv; exact hv
   | arith t k U _ =>
     refine fun t' ht hok => ⟨fun u u' hu hu' => ?_, by noproj'⟩
     rw [convTm.eq_def, if_neg (by simp [Tm.dem])] at hu; cases hu
-    simp only [Tm.instObj, bind_ok_iff, pure_ok_iff, back_long, fixed_arith] at ht hu'
-    obtain ⟨U', hU, _, rfl, rfl⟩ := ht
-    obtain ⟨_, ⟨_, ⟨_, h1, _, h2, rfl⟩, _, ⟨_, h3, _, rfl, rfl⟩, rfl⟩, rfl⟩ := hu'
-    rw [hU] at h1 h2 h3; cases h1; cases h2; cases h3
-    refine ⟨?_, fun _ _ => rfl⟩
-    have key : ∀ p w, arithDen k (U'.den ρ) p w → U'.den ρ p.1 p.1 ∧ U'.den ρ p.2 p.2 := by
-      rintro p w ⟨p', ⟨rfl, c, ⟨a', e1, h1⟩, -⟩, p'', ⟨rfl, c', ⟨b', e2, h2⟩, -⟩, -⟩
-      subst e1 e2
-      refine ⟨?_, ?_⟩
-      · obtain rfl := hok _ _ h1; exact h1
-      · obtain rfl := hok _ _ h2; exact h2
-    refine congrArg (·°) (funext fun p => funext fun w => propext ⟨fun ⟨q, ⟨h1, h2⟩, ha⟩ => ?_, fun ha => ⟨p, key p w ha, ha⟩⟩)
-    have e : p = q := Prod.ext (hok _ _ h1) (hok _ _ h2)
-    subst e; exact ha
+    simp only [Tm.instObj, bind_ok_iff, pure_ok_iff] at ht hu'
+    obtain ⟨U', hU, U'', hb, hf⟩ := ht
+    obtain ⟨_, ⟨_, ⟨_, h1, _, h2, rfl⟩, _, ⟨_, h3, _, hb3, hf3⟩, rfl⟩, rfl⟩ := hu'
+    rw [hU] at h1 h2 h3; cases h1; cases h2; cases h3; rw [hb] at hb3; cases hb3; rw [hf] at hf3; cases hf3
+    obtain ⟨e, rfl⟩ := back_ok ph σ hb; obtain ⟨_, rfl⟩ := fixed_ok ph σ hf
+    -- `(atom t).inst ph σ` does not reduce at a float `t`: the case is proved at any `X` equal to `atom t`
+    have key : ∀ {X : Obj} (_ : X = .atom t) (V : Tm X X) (q1 : Tm (.prod (.atom t) (.atom t)) (.atom t) = Tm (.prod X X) X)
+        (q2 : Tm X X = Tm (.atom t) (.atom t)), (cast q1 (Tm.arith t k (cast q2 V))).ConvOK ρ →
+        (Tm.conv (Tm.comp (Tm.prod V V) (cast q1 (Tm.arith t k (cast q2 V))))).den ρ =
+          ((cast q1 (Tm.arith t k (cast q2 V))).den ρ)° ∧
+        ∀ ss, (Tm.conv (Tm.comp (Tm.prod V V) (cast q1 (Tm.arith t k (cast q2 V))))).argDen ρ ss =
+          ((cast q1 (Tm.arith t k (cast q2 V))).argDen ρ ss)° := by
+      intro X e V q1 q2 hok; subst e
+      refine ⟨?_, fun _ => rfl⟩
+      have key : ∀ p w, arithDen t k (V.den ρ) p w → V.den ρ p.1 p.1 ∧ V.den ρ p.2 p.2 := by
+        rintro p w ⟨p', ⟨rfl, c, ⟨a', e1, h1⟩, -⟩, p'', ⟨rfl, c', ⟨b', e2, h2⟩, -⟩, -⟩
+        subst e1 e2
+        refine ⟨?_, ?_⟩
+        · obtain rfl := hok _ _ h1; exact h1
+        · obtain rfl := hok _ _ h2; exact h2
+      refine congrArg (·°) (funext fun p => funext fun w => propext ⟨fun ⟨q, ⟨h1, h2⟩, ha⟩ => ?_, fun ha => ⟨p, key p w ha, ha⟩⟩)
+      have e : p = q := Prod.ext (hok _ _ h1) (hok _ _ h2)
+      subst e; exact ha
+    exact ⟨(key e.1 U' _ _ hok).1, fun _ => (key e.1 U' _ _ hok).2⟩
   | @meet A' _ R S ihR ihS =>
     refine fun t' ht hok => ?_
     have ht0 := ht
