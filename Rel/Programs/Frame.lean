@@ -48,6 +48,8 @@ rel_program frame where
     -- q's xprev: row `i` reads row `i − n`, null where there is none; `diff` subtracts it from row `i`
     shift(n : 1 ⟶ ν, x : ν ⟶ β) : ν ⟶ β+1 ≜ dom(x) tot(⟨𝟙, ⊤ n⟩minus x)
     diff(n : 1 ⟶ ν, x : ν ⟶ γ) : ν ⟶ γ+1 ≜ dom(x) tot(⟨x, ⟨𝟙, ⊤ n⟩minus x⟩minus)
+    -- q's next, `n` rows ahead (polars shift(−n), q's `(−n) xprev`): `plus`, as `−n` is no element of a bounded `ν`
+    next(n : 1 ⟶ ν, x : ν ⟶ β) : ν ⟶ β+1 ≜ dom(x) tot(⟨𝟙, ⊤ n⟩plus x)
     -- the first and last row, null on an empty frame (`head` of the ascending positions is the first)
     firstOrNothing(x : ν ⟶ β) : 1 ⟶ β+1 ≜ tot(summarize(head, x) x)
     lastOrNothing(x : ν ⟶ β) : 1 ⟶ β+1 ≜ tot(summarize(last, x) x)
