@@ -5,6 +5,7 @@ import Rel.Programs.Prelude
 
 namespace Rel.Lang.TestPositions
 
+open Rel.Programs.prelude in
 rel_program positionsT where
     obj N = 0…9
     big : N ⟶ N ≜ dom(<°{(2,∗)})
@@ -15,7 +16,8 @@ rel_program positionsT where
     pall : 1 ⟶ [N] ≜ all positions(big)
     pnone : 1 ⟶ [N] ≜ none positions(big)
     nnone : 1 ⟶ N ≜ pnone length
-    nempty : 1 ⟶ N ≜ pnone positions(big) length
+    pempty : 1 ⟶ [N] ≜ pnone positions(big)
+    nempty : 1 ⟶ N ≜ pempty length
     check pdup = {(∗,0 2 4 5)}
     check pall = {(∗,0 1 2)}
     check nnone = {(∗,0)}
