@@ -1952,6 +1952,9 @@ theorem diff_wf {d e : Bool} (R S : Rel A B) : (GenK.diff A B d e R S).Wf := by
 theorem ofVals_wf {f : {n : USize} → Vals A n → Except String (Tab A B)} : (ofVals A B f).Wf := by
   intro K; cases h : K.dom <;> simp [ofVals, h, Rel.Rel.Wf]
 
+theorem id_wf : (GenK.id A).Wf := by
+  intro ⟨d, r⟩; cases d <;> cases r <;> simp [GenK.id, Rel.Rel.Wf]
+
 theorem top_wf {V : Rel B B} : (GenK.top A B V).Wf := by
   intro K; cases h : K.dom <;> simp [GenK.top, h, Rel.Rel.Wf]
 

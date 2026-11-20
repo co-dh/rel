@@ -1060,6 +1060,7 @@ theorem Tm.gen_wf_spine {A B : Obj} (t : Tm A B) :
     | trivial
     | exact GenK.ofVals_wf
     | exact GenK.top_wf
+    | exact GenK.id_wf
     | exact GenK.meet_wf _ _
     | exact GenK.diff_wf _ _
     | exact GenK.pair_wf _ _
