@@ -125,13 +125,17 @@ compile η t : {r : Rel A B // rep r = ⟦t⟧ρ}       -- 方案 A：规格在�
 
 #card(c-rs, [Lean 证明不到的边界])[
   证明连到 Lean 定义为止。`@[extern]` kernel 的 Rust 实现只由 `decide`（kernel 中用 Lean body 算）与 `#guard`
-  （运行编译后的 Rust）成对测试；Lean 编译器本身是信任基。kernel 越少，这条只有测试的边界越窄。]
+  （运行编译后的 Rust）成对测试；Lean 编译器本身是信任基。kernel 越少，这条只有测试的边界越窄。
+  读入侧也在这条边界内：文件字节读成表（`own_map` 的 `own::check`、`csv_read`）没有 Lean 模型能证明「读到的表就是文件的含义」，
+  写出的文件能读回（往返律）同样只有测试。]
 
 
 // ───────────────────────────── 1
 = 语法：allegory 的项 `Tm : Obj → Obj → Type`
 
 - 前端：`Parse` → `Elab`（得到 `Tm`）→ `Expand`（`rel_program`，elaboration 时编号 `share`、产出代码）。
+- 语句 `input x : A ⟶ B from "路径"` / `output x to "路径"`（后接 `csv` 为 CSV，否则为 mmap 表目录；路径就是语句里的字面量）
+  不是 `Tm` 的构造子：`input` 声明一个只有类型的名字，是后续语句里程序层的 `var`；`output` 指名一个定义或 `input`。下表「绑定 / 复用」一行不变。
 
 #tbl(c-syn, (auto, 1fr), ([组], [构造子]),
   [allegory], [`id` `comp` `conv` `meet` `dom` `ran`],
@@ -153,6 +157,7 @@ compile η t : {r : Rel A B // rep r = ⟦t⟧ρ}       -- 方案 A：规格在�
 
 - 按结构递归、全函数、point-free：每个节点是若干关系的复合，与该节点的 `Gen.*_sound` 引理一致。
   例：`⟦nu k S b⟧ρ = Core.Rel.nu (X ↦ ⟦S⟧ρ ∩ ⟦b⟧(ρ[k ↦ X]))`（最大不动点）。
+- 有 `input` 时，`⟦d⟧ρ` 在 `ρ` 把每个输入名绑到它的表上读（`Tm.gen_sound` 本来就对环境 `η` `ρ` 量化）；没有 `input` 的闭程序仍从 `Val.empty` 开始。
 - 与 `Tm.argDen` 互递归：一行 `arg` 脊的含义（`rowDens`）。
 - `Rel.Core` 只用 `{propext, Quot.sound}`（构造性），freyd bridge 把它按 `rfl` 映到 freyd 的 `RelSet`。
 
@@ -358,9 +363,20 @@ compile η t : {r : Rel A B // rep r = ⟦t⟧ρ}       -- 方案 A：规格在�
 
 == Rust 侧
 
+#tbl(c-rs, (auto, 1.3fr, 1fr, 1fr), ([IO 导出（不是 kernel）], [形状], [Lean 模型], [定律]),
+  [`own_map`], [`(path) : IO OwnFile`：mmap 一个列文件，`own::check` 拒绝会读越界的块], [`ownParse`（不含 `own::check`）], [—],
+  [`own_write`], [`(path code attr kind count domain parts) : IO Unit`：写临时文件再 rename], [`ownImage`], [`ownParse_ownImage`],
+  [`csv_read`], [`(path cols) : IO (USize × List Enc)`：CSV 直接读成按声明的 schema 定型的 foR 列，不经解码的整列], [`csvWords`], [—],
+  [`csv_write`], [`(path cols n es) : IO Unit`：每块取列的一段，格式化后按序写临时文件再 rename], [`csvText`], [`csvWords_csvText`],
+)
+- IO 导出读写文件，不做关系运算，所以不在上面「allegory 运算 → kernel」表里占行，也不计入 5 个 kernel。
+  输出键是 `N` 时写一张重编号的新表；其它键写 key 表与 val 表（磁盘上 `key/`、`val/`）。mmap 读入的 float 列读时检查规范形。
+
 #grid(columns: (1fr, 1fr), gutter: 8pt,
   card(c-rs, [crate 结构])[`scan.rs` `gather.rs` `scatter.rs` `asc.rs` `seen.rs` 各一个导出；`pack.rs` 是分块编解码（不导出）；
-    `pod::Elt`、`by_width!`（u1、char、i8–i64、f32、f64）、`pool` 保留。`RELK.txt` 从 99 行变为 5 行。],
+    `pod::Elt`、`by_width!`（u1、char、i8–i64、f32、f64）、`pool` 保留。`RELK.txt` = 5 个 kernel 加保留的 `stop`、
+    `coc_encode`、`coc_decode`（`PLAN.md` 第 5 节 R4）；`RELIO.txt` = IO 导出（`own_map` `own_write` `csv_read` `csv_write`）。
+    `syms` gate 读两个文件：二者不相交，并集 = crate 定义的 `qlean_*`。],
   card(c-rs, [融合 kernel])[如 join、intern、group ids：只是优化，每个配一条定理说明它等于上表中的某个复合；
     在第二个真实需要出现前不加。],
 )
@@ -373,14 +389,14 @@ compile η t : {r : Rel A B // rep r = ⟦t⟧ρ}       -- 方案 A：规格在�
   text(fill: c-run)[kernel spec], [`Rel/KernelSpec/`], [RelKernel], [其余部分引用的 kernel 引理], [],
   text(fill: c-run)[run-time], [`Rel/Run/`], [RelRun], [`Obj` `Vals` `Rel` `Known` `Alg` `Tm` `Gen` `compile`], [precompiled],
   text(fill: c-syn)[证明 + 语言], [`Rel/`、`Rel/Lang/`], [Rel], [`Rep*` 律、`KernelWF`、`Lang.Den`（语义）、`CompileSpec`], [],
-  text(fill: c-rs)[Rust], [`crate/`], [`relk`], [5 个 `qlean_*`], [—],
+  text(fill: c-rs)[Rust], [`crate/`], [`relk`], [5 个 kernel 的 `qlean_*`（`RELK.txt`）与 IO 导出（`RELIO.txt`）], [—],
   text(fill: c-rs)[native rt], [`crate/rt/`], [独立 package], [替代 `libleanshared` 的 Lean runtime], [—],
 )
 
 = Gate
 
 `make check` = #box[build] · compile-diff（`compile` 对 `rel_program` 差分）· crate-test · syms · native · ldd · index ·
-index-complete · axioms · noreduce · panic · externs；另加 `lake -d freyd/relaop build RelAop -R -K rel=…`。
+index-complete · axioms · noreduce · panic · externs；`syms` 读 `RELK.txt` 与 `RELIO.txt` 两个列表；另加 `lake -d freyd/relaop build RelAop -R -K rel=…`。
 
 // ───────────────────────────── 7
 = TODO：清零 gap，然后把 `compile` 改成带证明的类型
