@@ -993,6 +993,9 @@ def binary (p : Pos) (o : Bin) : Pre × OTy × OTy → Pre × OTy × OTy → M A
     | .rdiv => do
       unify p "the target of `/`'s right operand" t' t
       pure (.rel (Pre.rdivWhole p q r s s') s s')
+    | .symDiv => do
+      unify p "the target of `÷`'s right operand" t' t
+      pure (.rel (Pre.symDiv p q r s s') s s')
     | .ldiv => do
       unify p "the source of `\\`'s right operand" s' s
       let w := "R\\S reads its operands whole outside a meet with a term run on demand"
@@ -1008,6 +1011,8 @@ def binaryL (I : OTy) (p : Pos) (o : Bin) (x y : Arg) : M Arg := do
     | .join => lSame p Pre.join R S
     | .diff => lSame p Pre.diff R S
     | .rdiv => lRdiv I p R S
+    -- `R/S ∩ (S/R)°` lifted part by part, as `Pre.symDiv` is outside a family
+    | .symDiv => lSame p Pre.meet (← lRdiv I p R S) (lConv (← lRdiv I p S R))
     | .ldiv => lLdiv I p R S
     | .prod => pure (lProd R S)
   pure (.fam r.1 I r.2.1 r.2.2)
