@@ -484,7 +484,7 @@ def ioCols (env : Env) (p : Pos) (what : String) (ty : OExp × OExp) (csv : Bool
   if csv then
     for (c, t) in cs do
       let bad : Option String := match t with
-        | .base n => match (env.obj? n).map (·.obj) with
+        | .base n => match ((env.obj? n).map (·.obj) : Option Obj) with
           | some (.atom .sym) => some "is a symbol column, which waits for the own-format sym writer (D.9 step 6)"
           | some (.atom .general) => some "is a general column, which the own format does not hold"
           | _ => none
@@ -494,9 +494,9 @@ def ioCols (env : Env) (p : Pos) (what : String) (ty : OExp × OExp) (csv : Bool
 
 /-- The term for each run-time name the terms `es` of a `check` or `print` (`what`) at `p` reach (IO design A.4),
     put in place by `Expr.subst`: an input its `where` item in `bs`, a run-time definition applied to the terms of
-    its parameters. The replacement rule of a variant program, as one use of the parametric definition. `rt`: the run-time names in
-    statement order, each with its declared type and its parameters (`none`: an input). Refused: an input the
-    terms reach that `bs` does not give, a `bs` name that is no input. -/
+    its parameters: a variant program's replacement rule, as one use of the parametric definition. `rt`: the
+    run-time names in statement order, each with its declared type and its parameters (`none`: an input). Refused:
+    an input the terms reach that `bs` does not give, a `bs` name that is no input. -/
 def bindIns (rt : List (String × Param × Option (List String))) (p : Pos) (what : String) (es : List Expr)
     (bs : List (String × Expr)) : Except Err (List (String × Expr)) := do
   for (x, _) in bs do
@@ -504,11 +504,12 @@ def bindIns (rt : List (String × Param × Option (List String))) (p : Pos) (wha
       throw ⟨p, s!"{what}: `{x}` in its `where` is no input; a `where` here gives the table of an input " ++
         s!"(`input {x} : A ⟶ B from …`)"⟩
   -- each run-time name's inputs, and its term where every one of them is given
-  let reach := rt.foldl (init := []) fun r (y, _, ys) =>
+  let reach := rt.foldl (init := ([] : List (String × List String))) fun r (y, _, ys) =>
     r ++ [(y, match ys with | none => [y] | some ys => (ys.flatMap fun z => (r.lookup z).getD []).eraseDups)]
-  let σ := rt.foldl (init := []) fun σ (y, _, ys) => match ys with
+  let σ := rt.foldl (init := ([] : List (String × Expr))) fun σ (y, _, ys) => match ys with
     | none => match bs.lookup y with | some l => σ ++ [(y, l)] | none => σ
-    | some ys => if ys.all (σ.lookup · |>.isSome) then σ ++ [(y, Expr.app p y (ys.filterMap σ.lookup))] else σ
+    | some ys =>
+      if ys.all (σ.lookup · |>.isSome) then σ ++ [(y, Expr.app p y (ys.filterMap fun z => σ.lookup z))] else σ
   for y in es.flatMap (·.names) do
     if (rt.lookup y).isSome && (σ.lookup y).isNone then
       let x := (((reach.lookup y).getD []).find? (bs.lookup · |>.isNone)).getD y
@@ -541,7 +542,8 @@ def walk (prog : Program) (env : Env) (wrap : String → Def → Def) (own : Lea
   let mut outs : List (String × Pos) := []
   for d in prog do
     -- an imported program's prints, checks, theorems and outputs ran where it was defined; only its scope is read
-    if imported && (match d with | .print .. | .check .. | .«theorem» .. | .output .. => true | _ => false) then continue
+    if imported && (match d with | .print .. | .check .. | .«theorem» .. | .output .. => true | _ => false) then
+      continue
     match d with
     | .input p n ty csv path =>
       if imported then
@@ -558,7 +560,8 @@ def walk (prog : Program) (env : Env) (wrap : String → Def → Def) (own : Lea
         | none, some ty => pure (some ty)
         | none, none => throw ⟨p, if (env.defs.lookup n).isSome then
             s!"{what}: `{n}` computes no whole table: it has parameters or object variables, or needs keys (§a); " ++
-              s!"output a definition at declared objects whose source has a universe, as `{n}` after a set of its sources"
+              s!"output a definition at declared objects whose source has a universe, as `{n}` after a set of " ++
+              "its sources"
           else s!"{what}: `{n}` is not defined before it; an output names a definition or an input of the program"⟩
       if let some ty := ty then ioCols env p what ty csv
       outs := outs ++ [(path, p)]
