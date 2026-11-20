@@ -1,3 +1,5 @@
+import Rel.Kernel.Cast
+
 /-! The finite set of operations `scan` runs (design §4): a closed enumeration rather than a Lean closure, because the
 Rust side can only execute a fixed set, and the Lean body of a kernel interprets it with `Op.eval`.
 
@@ -19,6 +21,9 @@ inductive Op
   | fsqrt | fexp | flog | fsin | fcos | ftan | fasin | facos | fatan | ffloor
   | feq | fne | flt | fle | fgt | fge
   | f32to64
+  /-- `$` (S6/S7): the word of `t` holding the value of the word read at `s` (`QAtomicType.castWord`), `2^63` where
+      none; one constructor for every pair, so `Op` reaches Rust as an object (`op_code`), not a byte. -/
+  | cast (s t : QAtomicType)
   deriving DecidableEq, Repr, Inhabited
 
 namespace Op
@@ -27,7 +32,7 @@ namespace Op
 unary ops and `last` look at the element alone. -/
 def readsAcc : Op → Bool
   | neg | abs | not | last | fneg | fabs | fsqrt | fexp | flog | fsin | fcos | ftan | fasin | facos | fatan | ffloor
-  | f32to64 => false
+  | f32to64 | cast .. => false
   | _ => true
 
 /-- Whether `eval (eval a b) c = eval a (eval b c)`, so a scan may be cut into blocks and the blocks' totals combined.
@@ -102,6 +107,7 @@ def eval : Op → UInt64 → UInt64 → Except String UInt64
   | fgt, a, x => .ok (w (f x < f a))
   | fge, a, x => .ok (w (f x ≤ f a))
   | f32to64, _, x => .ok (widen32 x)
+  | cast s t, _, x => .ok (QAtomicType.castWord s t x)
 
 private def one (n : Float) : UInt64 := n.toBits
 private def neg1 : UInt64 := 0xffffffffffffffff

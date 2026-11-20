@@ -24,8 +24,8 @@ export! {
     /// `Kernel.kscan op rev s t n seg es` (Rel/Kernel/Scan.lean): `Except String (Enc × Option UInt64)`, the error (tag 0)
     /// carrying the model's text, the answer (tag 1) a pair (tag 0) of an `Enc.foR` (tag 3) at every `t`, a boolean one
     /// a `foR` of `u1`, and the fold result: `none` (the scalar 0) at `n = 0`, else `some` (tag 1) of a boxed `UInt64`.
-    fn qlean_k_scan(op: u8, rev: u8, s: u8, t: u8, n: usize, seg: B, es: B) -> O {
-        match kscan(op, rev != 0, s, t, n, seg, es) {
+    fn qlean_k_scan(op: B, rev: u8, s: u8, t: u8, n: usize, seg: B, es: B) -> O {
+        match kscan(scan::op_code(op), rev != 0, s, t, n, seg, es) {
             Ok((e, v)) => ctor(1, [ctor(0, [e, v.map_or_else(|| boxed(0), |v| ctor(1, [box_u64(v)], &[]))], &[])], &[]),
             Err(m) => ctor(0, [string(&m)], &[]),
         }

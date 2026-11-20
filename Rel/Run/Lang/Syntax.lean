@@ -1,6 +1,7 @@
 import Lean
 import Rel.Kernel.Op
 import Rel.Run.Core
+import Rel.Kernel.Cast
 
 /-! The Rel language's surface syntax (`doc/rel-lang-design.md` §c, §h): objects, terms, declarations, each node
     with its source line and column. The builtin operators are one table, `Op.table`, read by the parser (symbol,
@@ -260,7 +261,11 @@ def prims : List Prim :=
      sig := ([((.prod (.var {} "K") (.var {} "ℕ"), .var {} "ℕ"), some false)], .prod (.var {} "K") (.var {} "ℕ"),
        .var {} "ℕ"),
      mono := false, aop := .error "AOP declares no prefix sums per key", whole := true },
-   flatRow]
+   flatRow,
+   -- `x $ F`: each value of `x : A ⟶ N` to the same number at `F`'s atom (`QAtomicType.embed`, typed base S6), written
+   -- as its own infix form, which names the target object
+   { sym := "$", sig := ([], .var {} "N", .var {} "F"), written := false,
+     aop := .error "AOP declares no change of a number's representation" }]
 
 def Prim.find?(s : String) : Option Prim := prims.find? (·.sym == s)
 

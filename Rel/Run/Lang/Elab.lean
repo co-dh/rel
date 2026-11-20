@@ -977,7 +977,10 @@ def constant (env : Env) (p : Pos) (o : Op) (objs : List OExp) : M Arg := do
     | _ => (.id a, a, a)
   match objs with
   | [] => pure ()
-  | [x] => unify p s!"the object of {o.sym}" s (← oty env [] x)
+  -- `x $ F` names the one object no other constant takes alone, its target
+  | [x] => do
+    let tgt := o == .prim "$"
+    unify p s!"the {if tgt then "target" else "object"} of {o.sym}" (if tgt then t else s) (← oty env [] x)
   | [x, y] => do unify p s!"the source of {o.sym}" s (← oty env [] x); unify p s!"the target of {o.sym}" t (← oty env [] y)
   | _ => throw ⟨p, s!"{o.sym} takes at most two objects, found {objs.length}"⟩
   pure (.rel q s t)
@@ -2025,6 +2028,12 @@ def build : Pre → Except Err Res
   -- `d`, `3` by the cut — so `d` runs. With no universe, the row runs (the base `0` would need keys none supply).
   | .prim r xs s t => do
     let A ← toObj objs mc dp s; let B ← toObj objs mc dp t
+    -- `$` is typed by unification at any two objects; which atoms it joins is `castOK`'s, read off their formats
+    if r.sym == "$" then
+      let nm : Obj → String := fun | .atom a => atomName a | _ => "no atom"
+      unless (match A, B with | .atom a, .atom b => QAtomicType.castOK a b | _, _ => false) do
+        throw ⟨dp, s!"$ from {zonk mc s} ({nm A}) to {zonk mc t} ({nm B}): not every {nm A} value is a {nm B} \
+          value, and $ keeps a number's value"⟩
     let row (_ : Unit) : Except Err Res :=
       (r.sig.1.zip xs.attach).foldlM (init := (⟨A, B, .prim r⟩ : Res)) fun ⟨A, B, f⟩ ((_, form), ⟨x, h⟩) => do
         have := List.sizeOf_lt_of_mem h

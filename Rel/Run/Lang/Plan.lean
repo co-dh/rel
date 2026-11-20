@@ -78,8 +78,26 @@ def Reg.enum {α : Type} (ofNat : Nat → α) (idx : α → Nat) : Reg α := ⟨
   | _ => none, fun k => .u8 (idx k).toUInt8⟩
 
 instance : Reg Scan.Kind := Reg.enum Scan.Kind.ofNat Scan.Kind.ctorIdx
-instance : Reg Kernel.Op := Reg.enum Kernel.Op.ofNat Kernel.Op.ctorIdx
 instance : Reg QAtomicType := Reg.enum QAtomicType.ofNat QAtomicType.ctorIdx
+
+/-- The `Op`s with no field, by constructor index: `Op` is no enum since `cast s t` (S6), so it has no `ofNat`. -/
+def nullOps : List Kernel.Op :=
+  [.add, .sub, .mul, .div, .mod, .min, .max, .neg, .abs, .eq, .ne, .lt, .le, .gt, .ge, .and, .or, .not, .first, .last,
+   .fadd, .fsub, .fmul, .fdiv, .fpow, .fmin, .fmax, .fneg, .fabs, .fsqrt, .fexp, .flog, .fsin, .fcos, .ftan, .fasin,
+   .facos, .fatan, .ffloor, .feq, .fne, .flt, .fle, .fgt, .fge, .f32to64]
+-- every index below `cast`'s, the last constructor, holds its own `Op`
+#guard nullOps.zipIdx.all (fun (o, i) => o.ctorIdx == i) && nullOps.length == (Kernel.Op.cast .i64 .i64).ctorIdx
+
+/-- An `Op` as the runtime passes it (`@& Op`): a field-less one is `lean_box` of its index, `cast s t` a constructor
+    holding the two atom types as `u8` scalars. -/
+instance : Reg Kernel.Op := ⟨.obj, fun
+  | .ctor k #[] #[] => nullOps[k]?
+  | .ctor k #[] #[a, b] => do
+    let o := Kernel.Op.cast (← Reg.get? a) (← Reg.get? b)
+    if o.ctorIdx == k then some o else none
+  | _ => none, fun
+  | .cast s t => .ctor (Kernel.Op.cast s t).ctorIdx #[] #[Reg.put s, Reg.put t]
+  | o => .ctor o.ctorIdx #[] #[]⟩
 
 /-- A pair: constructor `0`, its two components boxed object fields. -/
 instance {α β : Type} [Reg α] [Reg β] : Reg (α × β) := ⟨.obj, fun

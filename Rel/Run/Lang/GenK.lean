@@ -10,6 +10,7 @@ import Rel.Run.Bits
 import Rel.Run.Fix
 import Rel.Run.Where
 import Rel.Run.Asc
+import Rel.Run.Cast
 
 /-! The code a program runs: one body per node of its terms (`Tm.onKernel`), each a composition of the `Tab`
     operators over the five kernels. A `tab` holds the message of the op that could not run, never a dropped
@@ -246,7 +247,8 @@ def kernRows : List (String × Lean.Name) :=
    ("merge", ``Tab.merge),
    ("thinL", ``Tab.thinL),
    ("F", ``Tab.map),
-   ("flat", ``Tab.flat)]
+   ("flat", ``Tab.flat),
+   ("$", ``Tab.cast)]
 
 -- every kernel row is a row of `prims`
 #guard kernRows.all fun (s, _) => prims.any (·.sym == s)
