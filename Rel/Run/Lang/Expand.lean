@@ -469,18 +469,30 @@ def checkOf (env : Env) (p : Pos) (e f : Expr) (eq : Bool) (specs : List Once) :
 /-- The columns of an `input`'s or `output`'s type `A ⟶ B` (`what`: the statement), checked: the key's, none where
     `A` is an unbounded number object (positions), then the value's; a schema object its columns, any other object
     the one column `key` or `val` (IO design A.1). Refused: an object variable, an undeclared object, a column
-    twice; for CSV a column of no atom, or of an atom no CSV text is written for yet (C.3). -/
-def ioCols (env : Env) (p : Pos) (what : String) (ty : OExp × OExp) (csv : Bool) : EM Unit := do
+    twice; for CSV a column of no atom, or of an atom no CSV text is written for yet (C.3). Returned: `A`, `B`, the
+    key's columns (`[]`: positions, whose `Schema.obj` is `.long`) and the value's as `Obj`s, and for CSV the header
+    (`Db.CsvCols`: each column's atom and, for named elements, their names). -/
+def ioCols (env : Env) (p : Pos) (what : String) (ty : OExp × OExp) (csv : Bool) :
+    EM (Obj × Obj × Schema × Schema × Db.CsvCols) := do
   if let some v := (ty.1.vars ++ ty.2.vars).head? then
     throw ⟨p, s!"{what}: its type {OExp.arrow ty} has the object variable '{v}'; write a declared object there"⟩
-  let side (o : OExp) (one : String) (key : Bool) : EM (Schema OTy) := do
+  let side (o : OExp) (one : String) (key : Bool) : EM (Obj × Schema OTy) := do
     let t ← try (oty env [] o).run' {} catch e => throw ⟨e.pos, s!"{what}: {e.msg}"⟩
     let i := match o with | .name _ n => env.obj? n | _ => none
-    pure (match i with
+    pure (← liftExcept (objOf env.objs p t), match i with
       | some i => if !i.cols.isEmpty then i.cols else if key && i.num then [] else [(one, t)]
       | none => [(one, t)])
-  let cs := (← side ty.1 "key" true) ++ (← side ty.2 "val" false)
+  let (A, ks) ← side ty.1 "key" true
+  let (B, vs) ← side ty.2 "val" false
+  let cs := ks ++ vs
   if let .error m := Schema.check cs then throw ⟨p, s!"{what}: {m}"⟩
+  let objs (S : Schema OTy) : EM Schema := S.mapM fun (c, t) => return (c, ← liftExcept (objOf env.objs p t))
+  let (K, S) := (← objs ks, ← objs vs)
+  -- the files' objects are the declared ones: positions are stored `.long` (`Schema.obj []`)
+  unless K.obj == A && S.obj == B do
+    throw ⟨p, s!"{what}: the key is positions, stored {repr Obj.long}, and {OExp.arrow ty} stores it {repr A}; " ++
+      "declare the key an object stored i64"⟩
+  let mut hdr : Db.CsvCols := []
   if csv then
     for (c, t) in cs do
       let bad : Option String := match t with
@@ -491,6 +503,10 @@ def ioCols (env : Env) (p : Pos) (what : String) (ty : OExp × OExp) (csv : Bool
         | .arr _ => some "is a list column, which is not read from CSV yet (IO step I8)"
         | o => some s!"is {o}, no atom: a CSV field holds one atom; declare it a table directory (drop `csv`)"
       if let some m := bad then throw ⟨p, s!"{what}: column '{c}' {m}"⟩
+      let .atom a ← liftExcept (objOf env.objs p t)
+        | throw ⟨p, s!"{what}: column '{c}' is stored as no atom; a CSV field holds one atom"⟩
+      hdr := hdr ++ [(c, a, match t with | .base n => ((env.obj? n).map (·.elems)).getD [] | _ => [])]
+  pure (A, B, K, S, hdr)
 
 /-- The term for each run-time name the terms `es` of a `check` or `print` (`what`) at `p` reach (IO design A.4),
     put in place by `Expr.subst`: an input its `where` item in `bs`, a run-time definition applied to the terms of
