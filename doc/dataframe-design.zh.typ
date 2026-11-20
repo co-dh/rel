@@ -274,8 +274,9 @@ diff(n, x)        ≜ dom(x) tot(⟨x, ⟨𝟙, ⊤ n⟩minus x⟩minus)      x 
 #let pl = (
   ([semi / anti join], [`semiJoin(a, b, x, y) ≜ dom(x) asc(dom(J(a, b, x, y))) x`；`antiJoin(a, b, x, y) ≜ dom(x) asc(dom(x) − dom(J(a, b, x, y))) x`], [], "full"),
   ([cross join], [`crossJoin(x, y) ≜ innerJoin(⊤ 𝟙(1), ⊤ 𝟙(1), x, y)`], [], "full"),
-  ([asof join], [`aj(k, t, h, u, x, y) ≜ ⟨x, dom(x) tot(agg(m, last) y)⟩ where r ≜ ⟨π₁, sums(counts(ran(x ⟨k, t⟩), (y ⟨h, u⟩)°))⟩, m ≜ x ⟨k, t⟩ r (y ⟨h, u⟩ r)°`],
-    [q 的 `aj`：`r` 数同 key 的 `y` 行中时间不晚于该时间的个数，`m` 接上最新的 `u ≤ t`；`agg(m, last)` 是并列时取最后一行；
+  ([asof join], [`aj(k, t, h, u, x, y) ≜ ⟨x, dom(x) tot(agg(m, last) y)⟩ where r ≜ ⟨π₁, sums(counts(ran(x ⟨k, t⟩), (y ⟨h, u⟩)°))⟩, m ≜ x ⟨k, t⟩ r (y ⟨h, u⟩ r)°`；
+    `counts(D, R) ≜ agg(R, length) ∪ ((D − dom(R)) ⊤ {(∗,0)})`],
+    [`counts(D, R)` 在 `D` 的每个点上给 `R` 的像的长度，没有像的点为 0；q 的 `aj`：`r` 数同 key 的 `y` 行中时间不晚于该时间的个数，`m` 接上最新的 `u ≤ t`；`agg(m, last)` 是并列时取最后一行；
     计数在 `y` 的位置对象 `μ` 里；`ι = 𝟙`], "full"),
   ([`cum_sum` 等], [`cumAgg(f, x) ≜ agg(dom(x) ≥ dom(x), f)`；`cumSum(c) ≜ sumsBy(dom(c) ⊤ 𝟙(1), c)`；
     `sumsBy(g, c) ≜ ⟨g, 𝟙⟩ sums(⟨g, 𝟙⟩° c)`],
