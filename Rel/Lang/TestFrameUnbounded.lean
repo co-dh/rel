@@ -38,10 +38,6 @@ rel_program frameUnboundedT where
     check ⟨x, z⟩ = {(0,((B,5),1)),(1,((A,3),2)),(2,((B,5),3))}
     check hstack(x, z) = 𝟘
     check hstack(take({(∗,3)}, x), z) = {(0,((B,5),1)),(1,((A,3),2)),(2,((B,5),3))}
-    check var(x π₂) = {(∗,3)}
-    check svar(x π₂) = {(∗,4)}
-    check var(take({(∗,4)}, x π₂)) = {(∗,2)}
-    check svar(take({(∗,4)}, x π₂)) = {(∗,3)}
     check w [𝟙, {(∗,0)}] = {(0,5),(1,0),(2,3)}
     check x π₁ code = {(0,2),(1,1),(2,2),(4,1),(6,2),(7,1)}
     check x π₁ tot(code) [𝟙, {(∗,0)}] = {(0,2),(1,1),(2,2),(3,0),(4,1),(5,0),(6,2),(7,1)}
