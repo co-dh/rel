@@ -49,25 +49,27 @@ def stepCols (k : UInt8) (n : USize) (a b : Enc) : Except String (Arr .i64 n × 
     pure (w, ← ne w.enc)
   else throw s!"arith: verb code {k} is none of + - * div mod max min"
 
-/-- The words the verbs and orders of the atom `t` compute on, of the `n` words `a`: an `f32` column widened to `f64`
-    (`Op.f32to64`, `fval`), any other as stored. -/
+/-- The words the verbs and orders of the atom `t` compute on, of the `n` words `a`: an `f32` column read at `f32` and
+    widened to `f64` (`Op.f32to64`, `fval`), any other as stored. -/
 def wideCol (t : QAtomicType) (n : USize) (a : Enc) : Except String Enc :=
   match t with
-  | .f32 => colMap .f32to64 n a a
+  | .f32 => colMap .f32to64 n a a .i64 .f32
   | _ => pure a
 
 /-- **The value verb `k` at the float atom `t`** on the `n` operand rows `a`, `b` (`stepAt`): `fverbBy` with `colMap`
-    on their `f64` words, `Op.fto t` writing the word of `t`, kept where that is not `nulWord` (a NaN answer). At an
-    atom holding no float `fto` answers `nulWord` everywhere, so no row is kept. -/
+    on their `f64` words, `Op.fto t` writing the word of `t`, kept where that is not `nulWord` (a NaN answer). -/
 def fstepCols (t : QAtomicType) (k : UInt8) (n : USize) (a b : Enc) : Except String (Arr t n × Enc) := do
   let r ← fverbBy (fun o x y => colMap o n x y) k (← wideCol t n a) (← wideCol t n b)
   let w ← colArr (.fto t) n r r t
   pure (w, ← colMap .ne n w.enc (← colConst n nulWord))
 
-/-- The value verb `k` at the atom `t`: `stepCols` at `i64`, `fstepCols` at any other. -/
+/-- The value verb `k` at the atom `t`: `stepCols` at `i64`, `fstepCols` at a float atom, the error naming any other
+    (`stepAt` has no row there). -/
 def stepColsAt : (t : QAtomicType) → UInt8 → (n : USize) → Enc → Enc → Except String (Arr t n × Enc)
   | .i64, k, n, a, b => stepCols k n a b
-  | t, k, n, a, b => fstepCols t k n a b
+  | .f32, k, n, a, b => fstepCols .f32 k n a b
+  | .f64, k, n, a, b => fstepCols .f64 k n a b
+  | t, _, _, _, _ => throw s!"arith on objects of {repr t}: no value verb"
 
 namespace Tab
 variable {K : Obj}

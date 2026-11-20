@@ -45,16 +45,16 @@ theorem colPrefix_raw {op : Op} {n : USize} {a e : Enc} (h : colPrefix op n a = 
 
 /-- **`colMap op n a b` is `op` row by row**: both arguments hold `n` words, and row `i` of the answer is
 `op.eval a[i] b[i]`. -/
-theorem colMap_raw {op : Op} {n : USize} {a b e : Enc} (h : colMap op n a b = .ok e) :
-    (raw .i64 n a).size = n.toNat ∧ (raw .i64 n b).size = n.toNat ∧ (raw .i64 n e).size = n.toNat ∧
-      ∀ i < n.toNat, op.eval ((raw .i64 n a)[i]?.getD 0) ((raw .i64 n b)[i]?.getD 0) = .ok ((raw .i64 n e)[i]?.getD 0) := by
+theorem colMap_raw {op : Op} {n : USize} {a b e : Enc} {s : QAtomicType} (h : colMap op n a b .i64 s = .ok e) :
+    (raw s n a).size = n.toNat ∧ (raw s n b).size = n.toNat ∧ (raw .i64 n e).size = n.toNat ∧
+      ∀ i < n.toNat, op.eval ((raw s n a)[i]?.getD 0) ((raw s n b)[i]?.getD 0) = .ok ((raw .i64 n e)[i]?.getD 0) := by
   unfold colMap at h
   simp only [bind, Except.bind] at h
   split at h; · cases h
   rename_i one hone
   split at h; · cases h
   rename_i r hr; simp only [pure, Except.pure, Except.ok.injEq] at h; subst h
-  obtain ⟨hg, hxs, c, cs, hc, out, hout, he, -, hrow⟩ := raw_kscan op false .i64 .i64 8 rfl n one [a, b] r hr
+  obtain ⟨hg, hxs, c, cs, hc, out, hout, he, -, hrow⟩ := raw_kscan op false s .i64 8 rfl n one [a, b] r hr
   simp only [List.cons.injEq] at hc; obtain ⟨rfl, rfl⟩ := hc
   simp only [Bool.false_eq_true, ↓reduceIte, mod_i64, Array.map_id'] at he hrow
   -- `one` read as booleans: each word `1`, so every row starts a segment
@@ -65,7 +65,26 @@ theorem colMap_raw {op : Op} {n : USize} {a b e : Enc} (h : colMap op n a b = .o
   simp only [hc, ↓reduceIte, List.map_cons, List.map_nil, List.foldlM_cons, List.foldlM_nil] at this
   rw [he]
   simp only [Array.getElem?_eq_getElem (show i < out.size by omega), Option.getD_some]
-  rw [← this]; cases op.eval ((raw .i64 n a)[i]?.getD 0) ((raw .i64 n b)[i]?.getD 0) <;> rfl
+  rw [← this]; cases op.eval ((raw s n a)[i]?.getD 0) ((raw s n b)[i]?.getD 0) <;> rfl
+
+/-- **A number element is its word read at its type**: element `i` of a column of a number atom `t` (`numFmt?`) is
+`ofBits t` of word `i` of `Enc.raw t`, at every encoding `Enc.WF` admits (`Arr.get_i64` reads `i64`'s). -/
+theorem Arr.get_word {t : QAtomicType} {n : USize} (x : Arr t n) (ht : t.numFmt?.isSome) (i : Fin n.toNat) :
+    x.get i = QAtomicType.ofBits t ((raw t n x.enc)[i.1]?.getD 0) := by
+  have hw := x.wf
+  obtain ⟨w, hwd⟩ : ∃ w, t.width = some w := by cases t <;> first | exact absurd ht (by decide) | exact ⟨_, rfl⟩
+  have hg := QAtomicType.ne_general_of_width hwd
+  have hu : t ≠ .u1 := by rintro rfl; exact absurd ht (by decide)
+  have ofA : ∀ a, (Dep.Carrier.of? t (.atom (Column.atomOfBits t a hg))).getD default = QAtomicType.ofBits t a := by
+    intro a; cases t <;> first | rfl | exact absurd ht (by decide)
+  rw [Arr.get_ne x i hg, ← ofA]
+  suffices e : Enc.get t n x.enc i.1 = some (Column.atomOfBits t ((raw t n x.enc)[i.1]?.getD 0) hg) by rw [e]; rfl
+  cases t <;> first | exact absurd ht (by decide) | skip
+  all_goals
+    cases hc : x.enc <;> rw [hc] at hw <;> simp only [Enc.WF, QAtomicType.width] at hw <;>
+      simp only [Enc.get, raw, if_pos i.2, QAtomicType.width, Array.getElem?_map, Array.getElem?_range, i.2, if_true,
+        Option.map_some, Option.getD_some, foRBits_starts, alpBits_starts, Option.some.injEq] <;>
+      first | rfl | exact (atomOfBits_mod rfl (by decide) _).symm | simp_all
 
 /-- **`shiftCol n s` is the words `k + s`**. -/
 theorem shiftCol_raw {n : USize} {s : UInt64} {o : Enc} (h : shiftCol n s = .ok o) :
