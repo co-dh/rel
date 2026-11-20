@@ -228,6 +228,22 @@ Diff table 的「状态」列：✅ 后面是完成它的步骤；🔄 是部分
   `seenEngine`/`keySpan`/`foRBounds` 与 Rust 的 `seen::direct` 删除（`Seen.lean` 74 → 32 行）；新引理 `kseen_sorted`。
   未做：1024 行块边界只有 Rust 测试，Lean 例子因 `decide +kernel` 归约不动而缺（与决定 C 有出入）。
 
+### typed base objects（`/data/tmp/typedbase/design.md` §7：float `arith`/`div`、`sqrt`、`date` 上的 `minus`）
+
+- ✅ S0 fork A，每个 constant 自己的 placeholder（分支 `tb-s0`）：`Once.ph = placeholdersOf env.objs`，即 `varAtoms`
+  中没有任何作用域内对象存储在其上的 atom；`Obj.inst ph σ`、`Tm.instObj ph σ`、`callTm … ph`、`Pre.call … ph`。
+  `.long` 不在 `varAtoms` 中，所以任何 `ph` 都保持它（`fixed_long` 不加前提）。变量多于 `ph` 时 `once` 报错并给出定义名。
+- ⬜ S1 `ObjDef.num t`、`obj F : f64`；`ObjInfo.obj := .atom t`；`numU`、`code` 按 atom。
+- ⬜ S2 float 字面量与 float 的打印。
+- ⬜ S3 `Tm.arith`、`leq`、`lt` 以 atom 为下标；`stepDen t`、`stepCols t`、`cmpOn (ltOp t)` 及定律。
+- ⬜ S4 行 `sqrt`；`sum` 按 atom。
+- ⬜ S5 float 上的 `Obj.key = ordCode`；`key_ordCode`、`ascBad`、float 上的 `LamLaw`。
+- ⬜ S6 行 `$`（relabel、加宽、符号扩展）；`colMap` 带源 atom。需要 owner 对文档差异 #5 的同意。
+- ⬜ S7 `Op` `i64 → f64`（kernel 扩展）。
+- ⬜ S8 库定义 `mean` `stddev` `correlation` `skewness` `zScore` `valueProportions` float `describe` `daysBetween`
+  （dataframe 会话）。
+- ⬜ S9 文档：architecture §1、§4.3，dataframe F4，PLAN（随各步）。
+
 ### P0 baseline — 1/1
 
 - ✅ 0.1 建 index，`make check` 定 baseline：compile-diff 241 个 definition，25 个 not ok。
