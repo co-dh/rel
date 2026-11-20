@@ -29,7 +29,11 @@ rel_program frameGroup where
     countDistinct(x : ν ⟶ β) : 1 ⟶ ν ≜ count(distinct(x))
     -- the most frequent value; among ties the first to occur (`idesc` is stable)
     mode(a : β ⟶ γ, x : ν ⟶ β) : 1 ⟶ γ ≜ summarize(head, s) s where s ≜ idesc(valueCounts(a, x) π₂) valueCounts(a, x) π₁
-    -- the mean of the middle sorted rows, those with `count − 2 ≤ 2i ≤ count` (one row or two), in integers
-    median(a : β ⟶ γ, x : ν ⟶ β) : 1 ⟶ γ ≜ summarize(F(m a) ⟨sum, length⟩div, m) where m ≜ dom(x) dom(⟨𝟙,𝟙⟩plus ≤ count(x)°) dom(⟨𝟙,𝟙⟩plus succ succ ≥ count(x)°) sortBy(a, x)
+    -- the `p/q` quantile (the percentile at `q` = 100; numpy's `midpoint`): the integer mean of the sorted rows `i`
+    -- with `|q·i − p(count−1)| < q`, as `q·i + p < p·count + q` and `q·i + p + q > p·count` (no `count − 1` below 0)
+    quantile(p : 1 ⟶ ν, q : 1 ⟶ ν, a : β ⟶ γ, x : ν ⟶ β) : 1 ⟶ γ ≜ summarize(F(m a) ⟨sum, length⟩div, m) where m ≜ dom(x) dom(⟨⟨𝟙, ⊤ q⟩times, ⊤ p⟩plus < (⟨⟨count(x), p⟩times, q⟩plus)°) dom(⟨⟨⟨𝟙, ⊤ q⟩times, ⊤ p⟩plus, ⊤ q⟩plus > (⟨count(x), p⟩times)°) sortBy(a, x)
+    -- `quantile(1, 2)`: a generic body holds no numeral ("no declared object has the elements [100]"), so `1` is
+    -- `count − count + 1`; `q = 2` keeps the median within a position object holding `2·count + 3`
+    median(a : β ⟶ γ, x : ν ⟶ β) : 1 ⟶ γ ≜ quantile(e, e succ, a, x) where e ≜ count(x) ⟨𝟙, 𝟙⟩minus succ
 
 end Rel.Programs

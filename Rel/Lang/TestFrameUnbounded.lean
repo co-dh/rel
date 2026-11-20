@@ -100,6 +100,15 @@ rel_program frameUnboundedT where
     check median(π₂, x) = {(∗,3)}
     check median(π₂, take({(∗,5)}, x)) = {(∗,5)}
     check median(π₂, take({(∗,4)}, x)) = {(∗,4)}
+    -- the percentile, `quantile(p, 100)`, at `p` = 0 25 50 75 90 100: `h = 7p/100` = 0, 1.75, 3.5, 5.25, 6.3, 7
+    -- picks rows 0; 1 2; 3 4; 5 6; 6 7; 7
+    -- of the sorted `v`: 1, (1+2)/2, (3+3)/2, (5+5)/2, (5+7)/2, 7
+    check quantile({(∗,0)}, {(∗,100)}, π₂, x) = {(∗,1)}
+    check quantile({(∗,25)}, {(∗,100)}, π₂, x) = {(∗,1)}
+    check quantile({(∗,50)}, {(∗,100)}, π₂, x) = {(∗,3)}
+    check quantile({(∗,75)}, {(∗,100)}, π₂, x) = {(∗,5)}
+    check quantile({(∗,90)}, {(∗,100)}, π₂, x) = {(∗,6)}
+    check quantile({(∗,100)}, {(∗,100)}, π₂, x) = {(∗,7)}
 
     -- TestFrameJoin
     y : N ⟶ K×N ≜ {(0,(A,9)),(1,(C,8)),(2,(A,6))}
