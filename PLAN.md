@@ -268,7 +268,8 @@ Diff table 的「状态」列：✅ 后面是完成它的步骤；🔄 是部分
   I9 ✅（分支 `io-i8`）：`output n to csv "p"` 由 `Table.writeCsv` 写（`Db.csvWrite`，各列编码直接交给 extern）：key 为位置的
   output 只写值列（按行序重编号，同 `write`），其余一个文件、一个表头，key 列在前、值列在后（同 `readCsv` 读的形式）；
   `Io.output` 带表头 `Option Db.CsvCols`（同 `Io.input`），"I7 未到"的拒绝及其 pin 删除。`relc run MOD NAME`：import
-  模块 `MOD`、`evalConst` 程序 `NAME` 的 `io` 并运行（与 design.md 的 `relc run NAME` 不同：多一个模块参数）。`TestIO`：
+  模块 `MOD`、`evalConst` 程序 `NAME` 的 `io` 并运行（与 design.md 的 `relc run NAME` 不同：多一个模块参数；解释器要
+  `supportInterpreter := true` 才找到 extern 与 `Init` 的编译代码）。`TestIO`：
   CSV 输入 → 位置与 keyed 的 CSV 输出 → 第二个程序 `from csv` 读回，文本与读回的行都按手算 pin。
   I8 未做：文本列 `[C]` 与可空列 `V+1` 都要改 `CsvCols` 的形状，即改 `qlean_csv_read`/`qlean_csv_write` 的 ABI（crate），
   `V+1` 的存储形状还是 design.md 的未决问题；`sym` 等步骤 6。见 `/data/tmp/io/i8-notes.md`。
