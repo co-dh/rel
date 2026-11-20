@@ -1529,9 +1529,11 @@ def uniPart (o : OTy) (A : Obj) : Except Err (Option (Tm A A)) := do
   if let some ⟨A', _, U⟩ := uniOf objs o then
     return ← if h : A' = A then pure (some (.uni (h ▸ U))) else internal dp "universe objects disagree"
   match o, A with
+  -- an object variable's universe is its constant's argument even where the call puts an unbounded object (`num`)
   | .base n, _ => match objs.lookup n with
+    | some { uniVar := some k, .. } => pure (some (.var false k))
     | some { num := true, .. } => pure (some .id)
-    | i => pure ((i.bind (·.uniVar)).map (.var false))
+    | _ => pure none
   | .prod a b, .prod A B => do
     let (some u, some v) := (← uniPart a A, ← uniPart b B) | pure none
     pure (some (.prod u v))
@@ -1539,6 +1541,11 @@ def uniPart (o : OTy) (A : Obj) : Except Err (Option (Tm A A)) := do
     let (some u, some v) := (← uniPart a A, ← uniPart b B) | pure none
     pure (some (.join (.ran (.comp u (.prim inlRow))) (.ran (.comp v (.prim inrRow)))))
   | _, _ => pure none
+
+/-- `o` is an unbounded number object (`ObjInfo.num`): a declared one, or an object variable a call puts one at. -/
+def unbounded (objs : Objs) : OTy → Bool
+  | .base n => (objs.lookup n).any (·.num)
+  | _ => false
 
 /-- `uniPart`, or the error naming the whole object `o` that has no universe. -/
 def uniTm (p : Pos) (o : OTy) (A : Obj) (what : String) : Except Err (Tm A A) := do
@@ -1719,6 +1726,7 @@ def build : Pre → Except Err Res
   | .prim r xs s t (some q) => do
     have : 0 < sizeOf q := by cases q <;> simp <;> omega
     -- an unbounded object's universe `𝟙` drops no step, so there the fused row is the definition, and it needs no keys
+    if unbounded objs (zonk mc t) then build (.prim r xs s t none) else
     match ← uniPart objs dp (zonk mc t) (← toObj objs mc dp t) with
     | some .id | none => build (.prim r xs s t none)
     | some _ => build q
@@ -1785,7 +1793,10 @@ def build : Pre → Except Err Res
   -- a constant that is a pair test runs nowhere; `test` calls it
   | .call pos c _ _ _ _ _ _ _ _ _ true =>
     throw ⟨pos, s!"`{c}` is tested on the pairs it compares, not run: its constant is its pair test (§a)"⟩
-  | .call pos c us xs ts _ a b ks t cv false => do
+  | .call pos c us xs ts q a b ks t cv false => do
+    -- a variable whose object was open when the call was made (`callDef`) and is unbounded: the constant chose its
+    -- rows' forms (`.prim`) without it, so the expansion, built at the call's objects, runs instead
+    if us.any fun (u, _, reads) => reads && !u.mvs.isEmpty && unbounded objs (zonk mc u) then return ← build q
     let A ← toObj objs mc dp a; let B ← toObj objs mc dp b
     pure ⟨A, B, ← callArgs pos c us xs ts (← callTm objs mc dp pos c us ks t cv A B)⟩
   -- the body read whole each round, on its source's universe when it needs keys

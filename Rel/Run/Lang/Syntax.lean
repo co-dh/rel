@@ -154,6 +154,9 @@ structure Prim where
   aop : Except String Lean.Name := .error "it is not written"
   mono : Bool := true
   dfn : Option Expr := none
+  /-- Its table is made from its relations' whole tables (`GenK.ofRel`): it needs no keys where they need none
+      (`Tm.dem`), so a closed `asc(P)` runs whole at a source with no universe. -/
+  whole : Bool := false
   deriving Inhabited
 
 /-- A fold's base `0` at a number object, the coreflexive `⟨𝟙,𝟙⟩minus ∩ 𝟙`: `x − x` kept where it is `x`; none
@@ -245,7 +248,7 @@ def prims : List Prim :=
    -- `asc(P)`: q's `asc` of the set `dom P`, `j ↦` its `j`-th smallest element in `Obj.lt` order; not `mono`: a
    -- larger `P` renumbers. Its `dfn` `(dom(P) Λ(> P) length)°` waits for a `dfn` that can read the row's relations
    { sym := "asc", sig := ([((.var {} "B", .var {} "B"), some false)], .var {} "ℕ", .var {} "B"),
-     mono := false, aop := .error "AOP declares no numbering of a set by its order" },
+     mono := false, aop := .error "AOP declares no numbering of a set by its order", whole := true },
    -- last, so the rows before keep their positions (`Rows.lean`'s numbering)
    inlConvRow, inrConvRow]
 

@@ -2,9 +2,8 @@ import Rel.Programs.FrameJoin
 
 /-! The dataframe library (plan M2) at the unbounded number object: positions and values in `obj N`, which declares
     no length, so no row below reads a bound the frame did not bring. The fixture and the hand-worked rows are those
-    of `TestFrameCols`/`Pos`/`Group`/`Join`. Not here: a generic constant whose body holds `length`, `sum` or `F` ("a
-    leaf on demand ran with its domain unknown"), and the joins, whose `asc(ran⟨𝟙,K⟩)` has no demand ("N has no
-    universe"); both wait on requests. -/
+    of `TestFrameCols`/`Pos`/`Group`/`Join`. A closed `asc(P)` needs no keys (`Prim.whole`), so a join, whose
+    `asc(ran⟨𝟙,K⟩)` has no demand, runs whole at `N`; generic constants holding `length`, `sum` are `TestGenericN`. -/
 
 namespace Rel.Lang.TestFrameUnbounded
 
@@ -35,6 +34,13 @@ rel_program frameUnboundedT where
     check J(π₁, π₁, x, y) = {(1,0),(1,2),(3,1),(4,0),(4,2),(5,1),(7,0),(7,2)}
     check semiJoin(π₁, π₁, x, y) = {(0,(A,3)),(1,(C,1)),(2,(A,7)),(3,(C,2)),(4,(A,3))}
     check antiJoin(π₁, π₁, x, y) = {(0,(B,5)),(1,(B,5)),(2,(B,1))}
+    -- `J`'s 8 pairs numbered in `(i, j)` order, each read in `x` and `y`: `joinOn`'s `asc(ran⟨𝟙, K⟩)` with `⟨𝟙, K⟩`
+    -- cut to `dom(K)`, which bounds the `𝟙` that `N` does not (`innerJoin` itself reads `⟨𝟙, K⟩` on `𝟙`)
+    check asc(ran(dom(J(π₁, π₁, x, y)) ⟨𝟙, J(π₁, π₁, x, y)⟩)) (x × y) ={(0,((A,3),(A,9))),(1,((A,3),(A,6))),(2,((C,1),(C,8))),(3,((A,7),(A,9))),(4,((A,7),(A,6))),(5,((C,2),(C,8))),(6,((A,3),(A,9))),(7,((A,3),(A,6)))}
+    -- a top-level `asc` of a closed set: `j ↦` its `j`-th smallest element
+    s : N ⟶ N ≜ {(9,9),(2,2),(5,5)}
+    sa : N ⟶ N ≜ asc(s)
+    check sa = {(0,2),(1,5),(2,9)}
 
 #guard frameUnboundedT.ok
 

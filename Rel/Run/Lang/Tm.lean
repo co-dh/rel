@@ -98,10 +98,18 @@ abbrev Res := (A : Obj) × (B : Obj) × Tm A B
 
 instance {A B : Obj} : Inhabited (Tm A B) := ⟨.var false 0⟩
 
+/-- The spine `t` is headed by a row whose table is made from its relations' whole tables (`Prim.whole`). -/
+def Tm.whole : {A B : Obj} → Tm A B → Bool
+  | _, _, .prim r => r.whole
+  | _, _, .arg f _ => f.whole
+  | _, _, _ => false
+
 /-- `t` runs on demand (§a): read only at the keys its left context supplies. A function of the constructor and its
-    parts, except `var`, which stores its bit. -/
+    parts, except `var`, which stores its bit; a row made from its relations' whole tables (`Tm.whole`) given all of
+    them needs keys where one of them does, its head alone (`prim`) is no term that runs. -/
 def Tm.dem : {A B : Obj} → Tm A B → Bool
-  | _, _, .comp R _ | _, _, .dom R | _, _, .own R | _, _, .share _ R | _, _, .arg R _ => R.dem
+  | _, _, .arg R x => if R.whole then (!(R matches .prim _) && R.dem) || x.dem else R.dem
+  | _, _, .comp R _ | _, _, .dom R | _, _, .own R | _, _, .share _ R => R.dem
   | _, _, .call _ _ _ R | _, _, .callCv _ _ _ _ R _ => R.dem
   | _, _, .meet R S | _, _, .join R S | _, _, .diff R S | _, _, .pair R S => R.dem || S.dem
   | _, _, .var d _ => d
