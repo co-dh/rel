@@ -18,8 +18,8 @@ rel_program queryN where
 
     -- row i = (i mod 100, i): key and value
     sales(P : 1 ⟶ N) : N ⟶ N×N ≜ ran(P) ⟨⟨𝟙, ⊤ {(∗,100)}⟩mod, 𝟙⟩
-    -- Q1: keys < 50, per key (sum, count), the 3 keys of largest integer mean, as (key, mean)
-    q1(x : N ⟶ N×N) : N ⟶ N×N ≜ topK({(∗,3)}, π₂ div, aggregate(π₁, F(f π₂) ⟨sum, length⟩, f)) ⟨π₁, π₂ div⟩ where f ≜ filterBy(dom(π₁ k50), x)
+    -- Q1: keys < 50, the sum per key, the 3 keys of largest sum, as (key, sum)
+    q1(x : N ⟶ N×N) : N ⟶ N×N ≜ topK({(∗,3)}, π₂, aggregate(π₁, F(f π₂) sum, f)) where f ≜ filterBy(dom(π₁ k50), x)
 
     -- row i = (i mod 4, ((i div 4) mod 5, i)): two key columns and a value
     cells(P : 1 ⟶ N) : N ⟶ N×(N×N) ≜ ran(P) ⟨⟨𝟙, ⊤ {(∗,4)}⟩mod, ⟨⟨𝟙, ⊤ {(∗,4)}⟩div ⟨𝟙, ⊤ {(∗,5)}⟩mod, 𝟙⟩⟩
@@ -48,8 +48,8 @@ rel_program queryN where
 open Rel.Programs.prelude queryN in
 rel_program query3 where
     P : 1 ⟶ N ≜ ext(ext(D))
-    -- T = 10: key k sums Tk + 50T(T−1) over T rows, mean k + 50(T−1)
-    check q1(sales(P)) = {(0,(49,499)),(1,(48,498)),(2,(47,497))}
+    -- T = 10: key k sums Tk + 50T(T−1) over T rows (increasing in k): 4990, 4980, 4970 for k = 49, 48, 47
+    check q1(sales(P)) = {(0,(49,4990)),(1,(48,4980)),(2,(47,4970))}
     -- T = 50 rows per r = i mod 20 = a + 4b, sum Tr + 10T(T−1); group r is position r, sorted r = 19…0
     check q2(cells(P)) = ran(ext({(∗,0),(∗,1)})) ⟨⊤ {(∗,19)}, 𝟙⟩minus ⟨⟨⟨𝟙, ⊤ {(∗,4)}⟩mod, ⟨𝟙, ⊤ {(∗,4)}⟩div⟩, ⟨⟨𝟙, ⊤ {(∗,50)}⟩times, ⊤ {(∗,24500)}⟩plus⟩
     -- region g: products p < 50, p ≡ g (4): 13,13,12,12 of them summing 312,325,288,300; T·Σp + |S|·50T(T−1)
@@ -68,7 +68,8 @@ rel_program query3 where
 open Rel.Programs.prelude queryN in
 rel_program query4 where
     P : 1 ⟶ N ≜ ext(ext(ext(D)))
-    check q1(sales(P)) = {(0,(49,4999)),(1,(48,4998)),(2,(47,4997))}
+    -- T = 100: 100k + 495000, 499900, 499800, 499700 for k = 49, 48, 47
+    check q1(sales(P)) = {(0,(49,499900)),(1,(48,499800)),(2,(47,499700))}
     check q2(cells(P)) = ran(ext({(∗,0),(∗,1)})) ⟨⊤ {(∗,19)}, 𝟙⟩minus ⟨⟨⟨𝟙, ⊤ {(∗,4)}⟩mod, ⟨𝟙, ⊤ {(∗,4)}⟩div⟩, ⟨⟨𝟙, ⊤ {(∗,500)}⟩times, ⊤ {(∗,2495000)}⟩plus⟩
     check q3(sales(P)) = {(0,(0,6466200)),(1,(1,6467500)),(2,(2,5968800)),(3,(3,5970000))}
     check q4(ticks(P)) = ran(P) ⟨⟨𝟙, ⊤ {(∗,1000)}⟩div, ⟨𝟙, ⊤ {(∗,1000)}⟩mod ⟨⟨𝟙, succ⟩times, ⊤ {(∗,2)}⟩div⟩

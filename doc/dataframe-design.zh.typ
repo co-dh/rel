@@ -118,7 +118,7 @@ Rel 本身（`Obj`、`Tm`、kernel、编码、原子、`compile`）见 `rel-arch
 
 - `inl°`、`inr°` 是 `prims` 的行；`[R, S] = inl° R ∪ inr° S`：按 tag 分情况，null 一支读 `S : 1 ⟶ B`。
 - `tot(R)`（3.1）把部分的 `R : A ⟶ B` 变回全的 `A ⟶ B+1`：`R` 有值取值，否则 null。
-- 存储：`V+1` 是 tag 列加等长的值列（就地布局），没有位置列，因为位置不存储（第 2 节）。
+- 存储：`V+1` 是 tag 列加各分支内的位置，每个分支的值各自成列（`rel-architecture` 第 0 节的 `sum`）。
 
 // ───────────────────────────── 2
 = 存储与顺序
@@ -225,9 +225,7 @@ next(n, x)        ≜ dom(x) tot(⟨𝟙, ⊤ n⟩plus x)                 行 i 
   ([`variance` `stddev` `skewness` `correlation` `zScore`],
     [无], [需要浮点 `arith` 和浮点 `div`；整数商不是方差：F4], "no"),
   ([`median` `percentile` `genericPercentile` `interQuartileRange`],
-    [`median(a, x) ≜ quantile({(∗,1)}, {(∗,2)}, a, x)`；`percentile(p, a, x) ≜ quantile(p, {(∗,100)}, a, x)`；
-    `quantile(p, q, a, x) ≜ summarize(F(m a) ⟨sum, length⟩div, m) where m ≜ dom(x) dom(⟨⟨𝟙, ⊤ q⟩times, ⊤ p⟩plus < (⟨⟨count(x), p⟩times, q⟩plus)°) dom(⟨⟨⟨𝟙, ⊤ q⟩times, ⊤ p⟩plus, ⊤ q⟩plus > (⟨count(x), p⟩times)°) sortBy(a, x)`],
-    [分数 `p/q`：`quantile` 保留排序后满足 `|q·i − p(count−1)| < q` 的行 `i`，取整数均值], "full"),
+    [无], [需要 `f64` 上的 `sum` 与 `div`；中点的整数商不是分位数：F4], "no"),
   ([`countDistinct` `mode`], [`countDistinct(x) ≜ count(distinct(x))`；`mode(a, x) ≜ summarize(head, s) s where s ≜ idesc(valueCounts(a, x) π₂) valueCounts(a, x) π₁`],
     [`mode` 在并列中取先出现的（`idesc` 稳定）], "full"),
   ([`collect`], [`collect(a, c, x) ≜ aggregate(a, F(x c), x)`], [结果列的类型是 `Obj.arr V`], "full"),
@@ -323,7 +321,7 @@ next(n, x)        ≜ dom(x) tot(⟨𝟙, ⊤ n⟩plus x)                 行 i 
   （`sortBy` `topK` `distinct` `aggregate` 的组与 `min` `max`、join）照常运行（`TestFrameTyped`）。`Tm.arith`、`leq`、`lt`、
   `sum`、`sums` 只在 `i64` 上；dataframe 需要它们在每个有序 atom 上（`date` 的 `minus` 即 `daysBetween`）。
   已决定：`arith`、`lt` 以 atom 为下标。没有浮点运算：`mean` `stddev` `skewness` `correlation` `zScore`
-  `valueProportions`、浮点的 `percentile` 写不出（整数商不代替它们）；`$` 只给保值的整数 → 浮点、窄 → 宽，
+  `valueProportions` `median` `percentile` `quantile` 写不出（整数商不代替它们）；`$` 只给保值的整数 → 浮点、窄 → 宽，
   没有 `pow`、`fround`、浮点 → 整数。`aj` 的时间沿 `sums` 扫描，所以只能是数对象。
 - *F5 时间类型。* `date`、`datetime` 是整数 code，没有时区。日历运算（取月份、截断到月）是整数算术加上与日历表的 join。
 - *F6 IO 在代数之外。* 程序读的 frame 是 `input` 语句声明的名字，路径与格式写在语句里；CSV 的解析是 crate 的 IO 导出，不是列上的关系。
