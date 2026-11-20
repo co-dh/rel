@@ -563,6 +563,18 @@ Diff table 的「状态」列：✅ 后面是完成它的步骤；🔄 是部分
         - owner 定的顺序（C）：先做 architecture §4 已定的实现改动（`∩ − \` 分段 `scan`、`\` 不物化 join、
           `ldiv(tab, bits)` 在 bit matrix 上算、`μ` semi-naive），差分测试与回归固定保护；`ldiv meet diff mu fold` 与
           bit matrix 路径的证明（T11e 余项、`ReadsBack`）等实现稳定后再做。T11e5 只做 `arith`。
+        - 2026-11-20 04:52，master 643bc17 + pin：**check-65 全绿**（476/2、478/478，235 / 235）。
+          - T11f 合入（t11f b61c2d8）：六个 kern 测试程序 147 个定义中 146 个有手算的字面行 `check`；`TestCompile` 列出没有任何
+            字面行 `check` 提到的定义：436 → 290（共 478）。
+          - T11f 的发现：`kernT45.sm ≜ x sum`（`N = 0…5`）给出 `(1,6)`，`6 ∉ N`。原因：row（`.prim`）只通过 `toObj` 用
+            source/target，声明对象的 universe 在那里丢失；`plus` 不是 row，`Tm.arith` 自带 `≫ U`。`length` 同样出界。
+            `gen_sound` 看不到：`sum` 的 denotation 也写在 `long` 上。
+          - 修法（sumN a9998a7，`Elab.build` 的 `.prim` 分支）：row 的实例化 target 有 universe 时合成 `row ≫ U`（`uniPart`）；
+            无新 constructor/kernel/证明。`compile-diff.json` 只改 `kernT45.sm` 一条（去掉 `(1,6)`）。
+          - **待 owner 决定**：(a) 有限对象上 `row ≫ U` 只查最终结果，与 §4 的 `sum = ⦇0,+⦈ʳ`、`length` = fold 不等
+            （`N = -3…3`、`[-3,3,3]`；`N = 1…5` 的 `length`）——D 接受并在 §4 注明 / E 把 `U` 传进 `Tab.sum` 与 `length` 逐步查 /
+            F 只在 `long` 上定义；现为 D。(b) registry 同 key 两个常量——A 常量名只由 key 决定 / B 检查两 body 相同 / C 留着。
+          - 代价：`∋ loop inl inr` 在有限对象上多一次与 universe 的 join。
         - 2026-11-20 03:23，master 0229322：**check-62 全绿**（476/2、478/478，235 / 235）。check-61 在 cbfe5a4 失败：registry 的
           冲突检查（d2b163a）在真实程序上触发——`Rel.Lang.Test.given` 与 `Rel.Lang.Test.orders` 互不 import，各登记
           `Rel.Programs.blocks.R.form.4`，import 两者的测试模块全部报错；s5conv 报告的"58 个不同 key、0 重复"只查了它构建的
