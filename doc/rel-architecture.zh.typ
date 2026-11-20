@@ -131,7 +131,7 @@ compile η t : {r : Rel A B // rep r = ⟦t⟧ρ}       -- 方案 A：规格在�
 #tbl(c-syn, (auto, 1fr), ([组], [构造子]),
   [allegory], [`id` `comp` `conv` `meet` `dom` `ran`],
   [distributive allegory], [`zero` `join` `top`],
-  [division allegory], [`ldiv` `rdiv`；symmetric division 只有运行时的 `Alg.symDiv`，`Tm` 中缺构造子],
+  [division allegory], [`ldiv` `rdiv`；symmetric division 不是构造子，是定义 `R/S ∩ (S/R)°`（`Pre.symDiv`，含义 `Tm.symDiv_den`），表层写作中缀 `R ÷ S`（`Bin.table`，与 `/` 同一优先级、左结合）],
   [Boolean（有补）], [`diff`：需要补，不属于一般 allegory],
   [product / sum], [`outl` `outr` `pair` `prod`；`junc` = `[R,S]`（目标：加 `inl` `inr`，`[R,S] = inl° ≫ R ∪ inr° ≫ S` 成为定义；`juncD` 随 lazy `Rel` 消失）],
   [power], [`lam`（Λ） `E` `est` `thin` `nil` `atPos`],
@@ -271,7 +271,7 @@ compile η t : {r : Rel A B // rep r = ⟦t⟧ρ}       -- 方案 A：规格在�
   [`∩` `−`], [两表拼接、带来源标记 → `asc` → 每组相等行数 `scan` → 保留出现在两侧（`∩`）或只在左侧（`−`）的组],
   [`≫`], [两侧按中间列 `asc`、取组（`seen`）、组内展开（`scan` 偏移、`scatter` 组头、`scan(max)` 填充）、`gather` 取行、`asc` + `seen`。（草稿，待审）展开总行数超过 `blockRows` 时分块：在组的边界切开，每块至多约 `blockRows` 行（单个大组自成一块），每块先 `asc` + `seen` 去重，再与前面的结果做 `∪`；块只切 `R` 的行，`S` 每块整体参与（`Tab.compWith`，`Rel/Run/Comp.lean`）],
   [`dom` `ran`], [取一列 → `asc` → `seen`（`first` 取代表行）],
-  [`R\S` `R/S` 对称除], [不求补：按组比较「R 的 b 的个数」与「其中满足 S 的个数」，即分段 `scan`],
+  [`R\S` `R/S` 对称除 `R ÷ S`], [不求补：按组比较「R 的 b 的个数」与「其中满足 S 的个数」，即分段 `scan`],
   [Λ（`arr` 侧）], [`asc ≫ seen` 的组号 `g` 与 `first` 给出 `lo`/`hi`],
   [`μ` `ν` `fold` `hylo`], [Lean 中的循环（`fixOn`），每轮调用上面的运算，行数不变即停；semi-naive 只多一个 `−`],
 )
@@ -391,6 +391,6 @@ index-complete · axioms · noreduce · panic · externs；另加 `lake -d freyd
 - 逐个检查 `prims` 的行能否写成 `fold`/`hylo`（如 `inits` `tails`），能写的改为定义，只留真正的 kernel 级原语。
 - `foldI`、`flat` 不再是构造子：`flat R` 由 `pair` `outl` `outr` 加相等测试写出（`(i,a) ↦ b` ⇔ `i R (a,b)`），`foldI` 是 carrier 为 `I × V` 的 `fold`（初值依赖 key）；先验证两者确实可写出，再删构造子及其 `Gen`、`den` 分支。`hylo` 改名 `hylo`。
 - 去掉 `Syn`、`Tm.Le`、`Tm.Eqv`、`Hom.den`（`Rel/Lang/Syn.lean`）与 #9；`Tm.Ax` 改为改写引理 `⟦lhs⟧ρ = ⟦rhs⟧ρ`；freyd 需要的范畴在 `relaop` 自建。
-- `Tm` 加 symmetric division 构造子（运行时已有 `Alg.symDiv`）。
+- symmetric division 不加构造子：它是定义 `R/S ∩ (S/R)°`（`Pre.symDiv`），由 `rdiv` `meet` `conv` 组成，表层语法 `R ÷ S`（已完成）。
 - 改名：去掉 `Den` `Dem` `Fn` `CRel`，`Rel k v` 改为 `Rel A B`（`tab` ┃ `lazy`），`Tm` 去掉 `d`。
 - kernel 缩到 5 个：原语 `scan` `scatter`，优化 `gather` `asc` `seen`（各配「= 原语复合」的定理）、编码只留 foR（块长 `lg` 每列可选）、原子 u1 char i8–i64 f32 f64 sym；q 专用 kernel 留在 qlean 的副本（tag `qlean-base`）。

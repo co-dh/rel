@@ -3,9 +3,9 @@ import Rel.Programs.FrameJoin
 /-! Plan M3: the frame verbs on a GENERATED frame of `n` rows, row `i` = (`i mod 100`, `i`), built from `𝟙` and
     `mod` at a declared object, checked against closed forms. With `T = n/100` rows per key, the rows of key `k < 50`
     are `i = k + 100t`, `t < T`, so the filter keeps `50T` rows, key `k`'s sum is `Tk + 100·T(T−1)/2`, and the join
-    with `y : k ↦ (k, k+1)` keeps every kept row and sums its `k+1` to `T·(1+…+50) = 1275T`. Here `n = 1000`: at `n = 10⁴`, `M` must hold 499900, and `length`/`sum`
-    at a declared object cost (list length)·|M| (measured: `count` of 1000 rows takes 1.5 s, 11 s, 22 s at
-    |M| = 4·10³, 10⁵, 2·10⁵), so one `count` of 5000 rows would take minutes; 10⁴ did not finish in 4 minutes. -/
+    with `y : k ↦ (k, k+1)` keeps every kept row and sums its `k+1` to `T·(1+…+50) = 1275T`. Here `n = 1000`: at `n = 10⁴`, `M` must hold 499900 (at 10⁵, 49999000).
+    At 8cf4a7f `Λ` at a declared object still grows with |M|: at |M| = 5·10⁵ the list `Λ` of 1000 rows takes
+    39.5 s, `count` of it 78.5 s, `summarize(sum)` 58.9 s, so the pipeline at 10⁴ did not finish in 4 minutes (measured). -/
 
 namespace Rel.Lang.TestFrameScale
 
@@ -52,6 +52,26 @@ rel_program frameScaleN3 where
     check count(j) = {(∗,500)}
     check summarize(F(j π₂ π₂) sum, j) = {(∗,12750)}
     check aggregate(π₁, F(xf π₂) sum, xf) = k50 ⟨𝟙, ⟨⟨𝟙, ⊤ {(∗,10)}⟩times, ⊤ {(∗,4500)}⟩plus⟩
+    -- the comparison rows, `x π₂ = i`: `take`/`drop` of n/2 sum to h(h−1)/2 and the rest of n(n−1)/2; the window of
+    -- 3 ending at `i` sums all three times but rows 0, 1, n−2, n−1: 3n(n−1)/2 − 3n + 4
+    t : N ⟶ N×N ≜ take({(∗,500)}, x)
+    check summarize(F(t π₂) sum, t) = {(∗,124750)}
+    dr : N ⟶ N×N ≜ drop({(∗,500)}, x)
+    check summarize(F(dr π₂) sum, dr) = {(∗,374750)}
+    r : N ⟶ N ≜ rolling({(∗,3)}, F(x π₂) sum, x)
+    check summarize(F(r) sum, r) = {(∗,1495504)}
+    check cumAgg(F(x π₂) sum, x) = ran(d3) ⟨⟨𝟙, succ⟩times, ⊤ {(∗,2)}⟩div
+    -- `c` holds a value at key 0, i.e. at multiples of 100: `fills` reads `100·(i div 100)`
+    c : N ⟶ N+1 ≜ dom(x) tot(dom(x π₁ {(0,0)}) x π₂)
+    check fills(c) [𝟙, {(∗,0)}] = ran(d3) ⟨⟨𝟙, ⊤ {(∗,100)}⟩div, ⊤ {(∗,100)}⟩times
+    -- `q` is `x` one step later: row `i ≥ 100` meets `i − 99` of its key, so Σ (i − 99) = (n−100)(n−99)/2
+    q : N ⟶ N×N ≜ x ⟨π₁, π₂ succ⟩
+    a : N ⟶ (N×N)×((N×N)+1) ≜ aj(π₁, π₂, π₁, π₂, x, q)
+    check summarize(F(a π₂ [π₂, {(∗,0)}]) sum, a) = {(∗,405450)}
+    check median(π₂, x) = {(∗,499)}
+    check topK({(∗,3)}, π₂, x) = {(0,(99,999)),(1,(98,998)),(2,(97,997))}
+    -- sorted position `p` holds key `p div T`, row `p div T + 100·(p mod T)`
+    check sortBy(π₁, x) = ran(d3) ⟨⟨𝟙, ⊤ {(∗,10)}⟩div, ⟨⟨⟨𝟙, ⊤ {(∗,10)}⟩mod, ⊤ {(∗,100)}⟩times, ⟨𝟙, ⊤ {(∗,10)}⟩div⟩plus⟩
 
 #guard frameScaleN3.ok
 
@@ -66,6 +86,18 @@ rel_program frameScaleN4 where
     check count(j) = {(∗,5000)}
     check summarize(F(j π₂ π₂) sum, j) = {(∗,127500)}
     check aggregate(π₁, F(xf π₂) sum, xf) = k50 ⟨𝟙, ⟨⟨𝟙, ⊤ {(∗,100)}⟩times, ⊤ {(∗,495000)}⟩plus⟩
+    -- the comparison rows as at 10³; `cumAgg` (271 s) and `aj` (214 s) are left out (measured)
+    t : N ⟶ N×N ≜ take({(∗,5000)}, x)
+    check summarize(F(t π₂) sum, t) = {(∗,12497500)}
+    dr : N ⟶ N×N ≜ drop({(∗,5000)}, x)
+    check summarize(F(dr π₂) sum, dr) = {(∗,37497500)}
+    r : N ⟶ N ≜ rolling({(∗,3)}, F(x π₂) sum, x)
+    check summarize(F(r) sum, r) = {(∗,149955004)}
+    c : N ⟶ N+1 ≜ dom(x) tot(dom(x π₁ {(0,0)}) x π₂)
+    check fills(c) [𝟙, {(∗,0)}] = ran(d4) ⟨⟨𝟙, ⊤ {(∗,100)}⟩div, ⊤ {(∗,100)}⟩times
+    check median(π₂, x) = {(∗,4999)}
+    check topK({(∗,3)}, π₂, x) = {(0,(99,9999)),(1,(98,9998)),(2,(97,9997))}
+    check sortBy(π₁, x) = ran(d4) ⟨⟨𝟙, ⊤ {(∗,100)}⟩div, ⟨⟨⟨𝟙, ⊤ {(∗,100)}⟩mod, ⊤ {(∗,100)}⟩times, ⟨𝟙, ⊤ {(∗,100)}⟩div⟩plus⟩
 
 #guard frameScaleN4.ok
 
@@ -81,6 +113,16 @@ rel_program frameScaleN5 where
     check count(j) = {(∗,50000)}
     check summarize(F(j π₂ π₂) sum, j) = {(∗,1275000)}
     check aggregate(π₁, F(xf π₂) sum, xf) = k50 ⟨𝟙, ⟨⟨𝟙, ⊤ {(∗,1000)}⟩times, ⊤ {(∗,49950000)}⟩plus⟩
+    -- the comparison rows as at 10³ that finish within a minute; `fills` takes 81 s and 6.9 GB (measured)
+    t : N ⟶ N×N ≜ take({(∗,50000)}, x)
+    check summarize(F(t π₂) sum, t) = {(∗,1249975000)}
+    dr : N ⟶ N×N ≜ drop({(∗,50000)}, x)
+    check summarize(F(dr π₂) sum, dr) = {(∗,3749975000)}
+    r : N ⟶ N ≜ rolling({(∗,3)}, F(x π₂) sum, x)
+    check summarize(F(r) sum, r) = {(∗,14999550004)}
+    check median(π₂, x) = {(∗,49999)}
+    check topK({(∗,3)}, π₂, x) = {(0,(99,99999)),(1,(98,99998)),(2,(97,99997))}
+    check sortBy(π₁, x) = ran(d5) ⟨⟨𝟙, ⊤ {(∗,1000)}⟩div, ⟨⟨⟨𝟙, ⊤ {(∗,1000)}⟩mod, ⊤ {(∗,100)}⟩times, ⟨𝟙, ⊤ {(∗,1000)}⟩div⟩plus⟩
 
 #guard frameScaleN5.ok
 

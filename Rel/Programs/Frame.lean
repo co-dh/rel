@@ -26,8 +26,9 @@ rel_program frame where
     -- drops, since `i + n` or `count − n` may fall outside a declared object
     dropLast(n : 1 ⟶ ν, x : ν ⟶ β) : ν ⟶ β ≜ take(⟨count(x), n⟩minus, x)
     takeLast(n : 1 ⟶ ν, x : ν ⟶ β) : ν ⟶ β ≜ dom(x) asc(dom(x) − dom(dropLast(n, x))) x
-    -- rolling window: `j ≤ i < j + w`, written from the `j` side so no position below 0 is formed
-    win(w : 1 ⟶ ν, x : ν ⟶ β) : ν ⟶ ν ≜ ≥ ∩ (dom(x) ⟨𝟙, ⊤ w⟩plus > dom(x))°
+    -- rolling window: `i = j + d`, `d < w`, written from the `j` side so no position below 0 is formed; the offsets
+    -- `d` are `x`'s own positions below `w`, so m·w pairs are built, not the m²/2 of `≥ ∩ (j + w > i)`
+    win(w : 1 ⟶ ν, x : ν ⟶ β) : ν ⟶ ν ≜ (dom(x) ⟨𝟙, ⊤ (dom(x) < w°)°⟩plus dom(x))°
     rolling(w : 1 ⟶ ν, f : [ν] ⟶ δ, x : ν ⟶ β) : ν ⟶ δ ≜ agg(win(w, x), f)
     -- cumulative aggregate (polars cum_sum, q's sums with `f` = sum): row `i` folds rows `j ≤ i`; m²/2 pairs
     cumAgg(f : [ν] ⟶ δ, x : ν ⟶ β) : ν ⟶ δ ≜ agg(dom(x) ≥ dom(x), f)
@@ -50,6 +51,12 @@ rel_program frame where
     fills(c : ν ⟶ γ+1) : ν ⟶ γ+1 ≜ (m ∪ (dom(c) − dom(m))) c where m ≜ (dom(c) ≥ dom(c inl°)) − ((dom(c) ≥ dom(c inl°)) >)
     -- describe, its integer part: count, mean, min, max of a column
     describe(c : ν ⟶ γ) : 1 ⟶ ν×(γ×(γ×γ)) ≜ ⟨count(c), ⟨summarize(F(c) ⟨sum, length⟩div, c), ⟨summarize(F(c) Λ(∋) head, c), summarize(F(c) Λ(∋) last, c)⟩⟩⟩
+    -- variance as the exact integer quotient `(n·Σc² − (Σc)²) div d`: `d = n·n` is q's var, `d = n·(n−1)` its svar
+    moment2(d : [γ] ⟶ γ, c : ν ⟶ γ) : 1 ⟶ γ ≜ summarize(F(c) ⟨⟨⟨length, F(⟨𝟙, 𝟙⟩times) sum⟩times, sum ⟨𝟙, 𝟙⟩times⟩minus, d⟩div, c)
+    var(c : ν ⟶ γ) : 1 ⟶ γ ≜ moment2(⟨length, length⟩times, c)
+    svar(c : ν ⟶ γ) : 1 ⟶ γ ≜ moment2(⟨length, length ⟨𝟙, ⊤ {(∗,1)}⟩minus⟩times, c)
+    -- `|||` (polars hstack, q's `,'`): the rows side by side, none unless both frames have the same length
+    hstack(x : ν ⟶ β, y : ν ⟶ δ) : ν ⟶ β×δ ≜ dom(⟨x, y⟩ ⊤ count(x) count(y)°) ⟨x, y⟩
     applyWhere(p : β ⟶ β, e : β ⟶ β) : β ⟶ β ≜ (p e) ∪ (𝟙 − p)
     contains(s : [α] ⟶ [α]) : [α] ⟶ [α] ≜ dom(suffix prefix s)
 
