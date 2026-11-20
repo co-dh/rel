@@ -1,52 +1,6 @@
-import Rel.Lang.Test
-import Rel.Lang.TestMss
-import Rel.Lang.TestWumpus
-import Rel.Lang.TestSelsort
-import Rel.Lang.TestKnapsack
-import Rel.Lang.TestCircuit
-import Rel.Lang.TestHylo
-import Rel.Lang.TestDetab
-import Rel.Lang.TestEdit
--- every test module holding a `rel_program` (the dataframe library's definitions are generic: its closed uses are here)
-import Rel.Lang.TestAsc
-import Rel.Lang.TestDemand
-import Rel.Lang.TestFrame
-import Rel.Lang.TestFrameCols
-import Rel.Lang.TestFrameGroup
-import Rel.Lang.TestFrameJoin
-import Rel.Lang.TestFrameNull
-import Rel.Lang.TestFramePos
-import Rel.Lang.TestFrameScale
-import Rel.Lang.TestFrameUnbounded
-import Rel.Lang.TestGenericN
-import Rel.Lang.TestNative
-import Rel.Lang.TestPositions
-import Rel.Lang.TestSchema
-import Rel.Lang.TestSum
-import Rel.Lang.TestUnbounded
+import Rel.Lang.AllPrograms
 import Rel.ObjOrder
 import Rel.Lang.GenSoundTest
--- every program of `Rel.Programs`, so the gate visits each, a test module or not
-import Rel.Programs.Blocks
-import Rel.Programs.Chess
-import Rel.Programs.Circuit
-import Rel.Programs.CSP
-import Rel.Programs.Detab
-import Rel.Programs.Edit
-import Rel.Programs.Frame
-import Rel.Programs.FrameGroup
-import Rel.Programs.FrameJoin
-import Rel.Programs.JobShop
-import Rel.Programs.Knapsack
-import Rel.Programs.Mss
-import Rel.Programs.Party
-import Rel.Programs.Prelude
-import Rel.Programs.Quicksort
-import Rel.Programs.Selsort
-import Rel.Programs.SudokuAC
-import Rel.Programs.SudokuPC
-import Rel.Programs.SudokuPC9
-import Rel.Programs.Wumpus
 
 /-! Two checks of the generated code's results. A definition's result is its status (`ok`, or why the constant
     vouches for nothing) and, where ok, its table as a SET of rows read as values (`rowsOf`), so a body that moves
