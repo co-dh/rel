@@ -1,4 +1,5 @@
 import Rel.Kernel.Value
+import Rel.Kernel.Scatter
 
 /-! CSV both ways, the model of the IO exports `qlean_csv_read` and `qlean_csv_write` (IO design C): `csvWords` reads
 a file's bytes into each declared column's raw words, `csvText` writes them. One dialect, RFC 4180 and strict (C.2);
@@ -381,6 +382,16 @@ def csvWords (cols : CsvCols) (b : List UInt8) : Except String (Nat × List (Arr
   header cols (recs.head?.map (·.2) |>.getD [])
   let ws ← rows cols b 0 recs.tail
   pure (recs.tail.length, (List.range cols.length).map fun c => (ws.map (·.getD c 0)).toArray)
+
+/-- **The CSV reader**, IO export `qlean_csv_read` (IO design C.1): the file at `path` read under the schema `cols` as
+the row count and each column's words as a `foR` of 8-byte words (`Kernel.wordsFoR`, `kscan`'s answer form), or the
+first refusal of `csvWords` after `{path}: `. The extern maps the file and reads it a block of rows at a time straight
+into each column's encoder (`crate/src/csv.rs`), never holding a column decoded; `Rel.Kernel.Db.CsvTest` runs it beside
+this body on every case of the table. -/
+@[extern "qlean_csv_read"]
+def csvRead (path : @& String) (cols : @& CsvCols) : IO (USize × List Enc) := do
+  let (n, ws) ← IO.ofExcept ((csvWords cols (← IO.FS.readBinFile path).data.toList).mapError (s!"{path}: {·}"))
+  return (n.toUSize, ws.map Kernel.wordsFoR)
 
 open Csv in
 /-- The writer's model (C.1): `n` rows of the columns' words `ws` as a file, the header first, each record ending in
