@@ -143,9 +143,8 @@ def Expr.pos : Expr → Pos
     `some true` an order `Q : B ⟶ B` taken as its pair test `τ(Q)`, §a) and its type `A ⟶ B`, object variables
     (`ℕ` too: a declared number object is stored as `.long`, F6) instantiated by the elaborator; `conv` the row of
     its converse; `aop` its AOP reading (`Calc.builtins`) or why it has none; `mono`: it reads its parameters
-    monotonically (§e's fixed points); `prelude` and `aop` named unchecked (`Test` and `Calc` check them); `dfn`
-    the term the row is the fused form of (§4), which runs as written where its target has a universe unless
-    `Tm.dfnCut?` reads its built term back to a form `Tm.dfnCut_den` proves equal (`build`). -/
+    monotonically (§e's fixed points); `prelude` and `aop` named unchecked (`Test` and `Calc` check them). A row
+    that is the fused form of a definition (§4) is keyed in `Elab.dfns`, which builds the definition. -/
 structure Prim where
   sym : String
   sig : List ((OExp × OExp) × Option Bool) × OExp × OExp
@@ -154,17 +153,10 @@ structure Prim where
   prelude : Option Lean.Name := none
   aop : Except String Lean.Name := .error "it is not written"
   mono : Bool := true
-  dfn : Option Expr := none
   /-- Its table is made from its relations' whole tables (`GenK.ofRel`): it needs no keys where they need none
       (`Tm.dem`), so a closed `asc(P)` runs whole at a source with no universe. -/
   whole : Bool := false
   deriving Inhabited
-
-/-- A fold's base `0` at a number object, the coreflexive `⟨𝟙,𝟙⟩minus ∩ 𝟙`: `x − x` kept where it is `x`; none
-    where `0` is not in the object (`minus` keeps its result there). -/
-def zeroE : Expr :=
-  let o (x : Op) : Expr := .op {} x [] []
-  .bin {} .meet (.comp (.pair {} (o .id) (o .id)) (o (.arith Rel.Kernel.Ew.sub))) (o .id)
 
 def consRow : Prim :=
   { sym := "cons", sig := ([], .prod (.var {} "B") (.list (.var {} "B")), .list (.var {} "B")),
@@ -186,15 +178,20 @@ def inrConvRow : Prim :=
 def mapRow : Prim :=
   { sym := "F", sig := ([((.var {} "A", .var {} "B"), some false)], .list (.var {} "A"), .list (.var {} "B")),
     written := false }
--- `length = ⦇[0, π₁ succ]⦈`, `sum = ⦇[0, plus]⦈ʳ` (§4): each step kept in the object, as `succ`, `plus` keep theirs
+-- `length = ⦇[0, π₁ succ]⦈`, `sum = ⦇[0, plus]⦈ʳ` (§4, `Elab.dfns`): each step kept in the object, as `succ`,
+-- `plus` keep theirs
 def lengthRow : Prim :=
   { sym := "length", sig := ([], .list (.var {} "E"), .var {} "ℕ"),
-    aop := .ok `Freyd.Alg.RelSet.ListRel.length,
-    dfn := Expr.fold {} false (.junc {} zeroE (.comp (.op {} .outl [] []) (.op {} .succ [] []))) }
+    aop := .ok `Freyd.Alg.RelSet.ListRel.length }
 def sumRow : Prim :=
   { sym := "sum", sig := ([], .list (.var {} "ℕ"), .var {} "ℕ"),
-    aop := .ok `Freyd.Alg.RelSet.ListRel.sum,
-    dfn := Expr.fold {} true (.junc {} zeroE (.op {} (.arith Rel.Kernel.Ew.add) [] [])) }
+    aop := .ok `Freyd.Alg.RelSet.ListRel.sum }
+/-- `Rᴵ`: the family `R : I ⟶ A×B` as one relation `I×A ⟶ B`, the fused form of its definition
+    `⟨π₁R,π₂⟩dom(π₁π₁ ∩ π₂)π₁π₂` (`Elab.dfns`), `R` run on the keys in demand (`Tab.flat`). -/
+def flatRow : Prim :=
+  { sym := "flat", sig := ([((.var {} "I", .prod (.var {} "A") (.var {} "B")), some false)],
+      .prod (.var {} "I") (.var {} "A"), .var {} "B"),
+    written := false, aop := .error "AOP declares no family read as one relation of the key and the source" }
 
 /-- Every builtin run on the keys in demand: adding one is adding its row. -/
 def prims : List Prim :=
@@ -254,7 +251,7 @@ def prims : List Prim :=
    { sym := "asc", sig := ([((.var {} "B", .var {} "B"), some false)], .var {} "ℕ", .var {} "B"),
      mono := false, aop := .error "AOP declares no numbering of a set by its order", whole := true },
    -- last, so the rows before keep their positions (`Rows.lean`'s numbering)
-   inlConvRow, inrConvRow]
+   inlConvRow, inrConvRow, flatRow]
 
 def Prim.find?(s : String) : Option Prim := prims.find? (·.sym == s)
 
