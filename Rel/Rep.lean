@@ -19,8 +19,8 @@ def rep (R : Tab A B) : Core.Rel (A.El) (B.El) := R.Holds
 /-- The coreflexives `K` confines a relation's two sides to: `𝟙` on an unknown side, the coreflexive on `c`'s
     values on a known one. -/
 def _root_.Rel.Known.den (K : Known A B) : Core.Rel A.El A.El × Core.Rel B.El B.El :=
-  (K.dom.elim (𝟙 _) fun c => corefl fun x => ∃ i, c.2.row i = x,
-   K.ran.elim (𝟙 _) fun c => corefl fun y => ∃ i, c.2.row i = y)
+  (K.dom.elim (𝟙 _) fun c => (graph c.2.row)° ≫ graph c.2.row,
+   K.ran.elim (𝟙 _) fun c => (graph c.2.row)° ≫ graph c.2.row)
 
 /-- `r` represents `R` in the context `K`, as `run` computes it there: a table agrees with `R` on `K`'s sides
     only, since `Gen.Sound` fixes a term only at the keys it is given and a caller that passes `K.ran` cuts the
@@ -48,10 +48,10 @@ theorem atKey {P : Core.Rel A.El A.El} {R S : Core.Rel A.El B.El} (hP : ∀ x y,
 /-- What a context knows of each side is a coreflexive. -/
 theorem _root_.Rel.Known.cor (K : Known A B) : (∀ x y, K.den.1 x y → x = y) ∧ (∀ x y, K.den.2 x y → x = y) := by
   have e : ∀ {C : Obj} (o : Option ((n : USize) × Vals C n)) (x y : C.El),
-      o.elim (𝟙 _) (fun c => corefl fun x => ∃ i, c.2.row i = x) x y → x = y := fun o x y h => by
+      o.elim (𝟙 _) (fun c => (graph c.2.row)° ≫ graph c.2.row) x y → x = y := fun o x y h => by
     cases o with
     | none => exact h
-    | some _ => exact h.1
+    | some _ => obtain ⟨_, h₁, h₂⟩ := h; exact h₁.trans h₂.symm
   exact ⟨e K.dom, e K.ran⟩
 
 /-- Inside `K`'s sides, `X` cut to them is `X`. -/

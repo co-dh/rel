@@ -336,7 +336,7 @@ mutual
     its arguments' (`Tm.argDen`). `𝟘` at `call` (a `let` node), whose meaning is not settled yet. -/
 noncomputable def Tm.den : Val → {A B : Obj} → Tm A B → Den A B
   | _, _, _, .val R => rep R
-  | _, _, _, .uni U => Core.Rel.corefl fun x => ∃ i, U.row i = x
+  | _, _, _, .uni U => (graph U.row)° ≫ graph U.row
   | _, _, _, .zero => 𝟘
   | _, _, _, .id => 𝟙 _
   | ρ, _, _, .top V => Core.Rel.top ≫ V.den ρ
