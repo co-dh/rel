@@ -33,14 +33,85 @@ pub fn mask_cmp(p: &[u8], nb: usize, op: i32, v: i64, out: &mut [u64]) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::cocops::{GE, GT};
+    use alloc::{vec, vec::Vec};
+    fn bits(s: &mut u64, nb: usize) -> Vec<u8> {
+        let mut p = vec![0u8; 1024 / 8];
+        for i in 0..nb { *s ^= *s << 13; *s ^= *s >> 7; *s ^= *s << 17; if *s & 1 != 0 { p[i >> 3] |= 1 << (i & 7) } }
+        p
+    }
+    fn bit(p: &[u8], i: usize) -> i64 { (p[i >> 3] >> (i & 7) & 1) as i64 }
+    #[test] fn bit_block_kernels_equal_the_per_row_answers() {
+        let mut s = 88172645463325252u64;
+        for nb in [1, 7, 63, 64, 65, 200, 1023, 1024] {
+            let a = bits(&mut s, nb);
+            for op in [EQ, NE, LT, LE, GT, GE] {
+                let c = |x: i64, y: i64| match op { EQ => x == y, NE => x != y, LT => x < y, LE => x <= y, GT => x > y, _ => x >= y };
+                for v in [-1, 0, 1, 2] {
+                    let mut o = vec![0u64; 16];
+                    mask_cmp(&a, nb, op, v, &mut o);
+                    for i in 0..nb { assert_eq!(o[i >> 6] >> (i & 63) & 1 == 1, c(bit(&a, i), v), "mask op {op} v {v} nb {nb}") }
+                    assert_eq!(o.iter().map(|w| w.count_ones() as usize).sum::<usize>(), (0..nb).filter(|&i| c(bit(&a, i), v)).count());
+                }
+            }
+        }
+    }
 }
 
-/// Coc-level checks and the G3a measurement: a width-1, base-0 column built by hand against the `_bits` kernels.
+/// Coc-level check: a width-1, base-0 column built by hand, answered per block by `codec::mask_blk` (its bit-block path).
 #[cfg(test)]
 mod coc_tests {
     use crate::coc::{view, Coc};
     use crate::cocops::{EQ, GE, GT, LE, LT, NE};
-    use crate::{bits, codec, pod};
+    use crate::{codec, pod};
+    use alloc::{vec, vec::Vec};
 
-
+    /// `n` rows of `payload` (`Column.bits`, LSB first) as a coc of block size `1 << lg`: (metadata words, pack words)
+    fn build(payload: &[u8], n: usize, lg: u32) -> (Vec<u64>, Vec<u64>) {
+        let (blk, nb) = (1usize << lg, n.div_ceil(1 << lg));
+        let mut pack = vec![0u8; nb * blk / 8];
+        pack[..payload.len()].copy_from_slice(payload);
+        let mut m = vec![0u64; (33 * nb + 24).div_ceil(8) + 1];
+        let any = |b: usize| (b * blk / 8..((b + 1) * blk / 8).min(payload.len())).any(|i| payload[i] != 0);
+        for b in 0..nb {
+            m[nb + b] = any(b) as u64; // maxv; base 0
+            m[2 * nb + b] = (b * blk / 8) as u64; // off
+        }
+        m[4 * nb + 2] = lg as u64; // trailer: sumnul, sumn, lg
+        let mb = pod::bytes_mut(&mut m);
+        mb[32 * nb + 24..33 * nb + 24].fill(1); // width
+        let pk = pack.chunks(8).map(|c| u64::from_le_bytes(c.try_into().unwrap())).collect();
+        (m, pk)
+    }
+    fn rnd(s: &mut u64, n: usize, dens: u64) -> Vec<u8> {
+        let mut p = vec![0u8; n.div_ceil(8)];
+        for i in 0..n { *s ^= *s << 13; *s ^= *s >> 7; *s ^= *s << 17; if *s % dens == 0 { p[i >> 3] |= 1 << (i & 7) } }
+        p
+    }
+    fn bit(p: &[u8], i: usize) -> i64 { (p[i >> 3] >> (i & 7) & 1) as i64 }
+    fn view_of<'a>(m: &'a [u64], p: &'a [u64], n: usize, lg: u32) -> Coc<'a> {
+        let nb = n.div_ceil(1 << lg);
+        view(&pod::bytes(m)[..33 * nb + 24], pod::bytes(p), n).unwrap_or_else(|e| panic!("{e}"))
+    }
+    #[test] fn coc_w1_answers_equal_the_bits_answers() {
+        let mut s = 0x9E3779B97F4A7C15u64;
+        for lg in [6u32, 10, 16] { for n in [1usize, 63, 64, 65, 1000, 1024, 1025, 3000, 70000, 131073] { for dens in [1u64, 2, 16] {
+            let pa = rnd(&mut s, n, dens);
+            let (ma, ka) = build(&pa, n, lg);
+            let a = view_of(&ma, &ka, n, lg);
+            let (blk, mut scratch) = (1usize << lg, vec![0u8; 8usize << lg]);
+            for op in [EQ, NE, LT, LE, GT, GE] {
+                let c = |x: i64, y: i64| match op { EQ => x == y, NE => x != y, LT => x < y, LE => x <= y, GT => x > y, _ => x >= y };
+                for v in [-1, 0, 1, 2] {
+                    let mut o = vec![0u64; n.div_ceil(64)];
+                    for b in 0..a.meta.nblk {
+                        let (lo, nb) = (b * blk, (n - b * blk).min(blk));
+                        codec::mask_blk(&a, b, nb, op, v, &mut o[lo / 64..], &mut scratch);
+                    }
+                    for i in 0..n { assert_eq!(o[i >> 6] >> (i & 63) & 1 == 1, c(bit(&pa, i), v), "mask op {op} v {v} lg {lg} n {n} i {i}") }
+                    assert!(o.iter().map(|w| w.count_ones() as usize).sum::<usize>() <= n);
+                }
+            }
+        } } }
+    }
 }

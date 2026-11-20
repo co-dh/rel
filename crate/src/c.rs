@@ -93,9 +93,15 @@ mod tests {
         assert_eq!(out, [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13]);
     }
     // units that are not equally spaced still get disjoint slices, `at(lo) .. at(hi)`
-    use crate::ffi::{CPass, CStage};
-    use std::vec::Vec;
-    // stage 0 adds one to a byte column into slot 0, stage 1 doubles that slot into the answer column
+    #[test] fn run_map_at_cuts_by_the_start_function() {
+        let starts = [0usize, 3, 4, 9, 10];
+        let mut out = [0u8; 10];
+        super::map_at(super::qlean_run_c, &mut out, 4, &|k| starts[k], crate::QLEAN_COST_ARITH, 8, &|lo, hi, o: &mut [u8]| {
+            assert_eq!(o.len(), starts[hi] - starts[lo]);
+            o.fill(lo as u8 + 1)
+        });
+        assert!(out.iter().all(|&b| b != 0));
+    }
 }
 
 

@@ -137,4 +137,23 @@ impl<'a> Blocks<'a> {
 mod tests {
     use super::*;
     // every kind's `view` against its elements, and the walk's spans covering `0..n` once
+    #[test]
+    fn kinds_agree() {
+        let n = 2100usize;
+        let v: alloc::vec::Vec<u32> = (0..n as u32).map(|i| i % 13).collect();
+        let d = Blocks::dense(pod::bytes(&v), 4);
+        let mut p = alloc::vec![0u8; ids::ids_bytes(n, 4)];
+        for (k, &x) in v.iter().enumerate() { crate::testutil::id_put(&mut p, 4, k, x as u64) }
+        let i = Blocks::ids(&p, n, 4);
+        let mut got = 0;
+        for (b, lo, nb) in d.walk() {
+            assert_eq!(lo, got);
+            got += nb;
+            let (mut x, mut y) = (pod::Scr::<u64>::new(1024), pod::Scr::<u64>::new(1024));
+            assert_eq!(d.view(b, 4, pod::bytes_mut(&mut x)), i.view(b, 4, pod::bytes_mut(&mut y)));
+        }
+        assert_eq!(got, n);
+        let mut r = alloc::vec![0u8; 4 * 100];
+        assert_eq!(i.range(1000, 100, 4, &mut r), &pod::bytes(&v)[4000..4400]);
+    }
 }

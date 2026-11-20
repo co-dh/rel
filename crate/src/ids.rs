@@ -116,17 +116,32 @@ pub fn ids_max(p: &[u8], w: u32, n: usize) -> usize {
 
 
 
-
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::testutil::id_put;
     #[test] fn widths() {
         assert_eq!((width_for(0), width_for(1), width_for(255), width_for(256), width_for(u64::MAX)), (0, 1, 8, 9, 64));
         assert_eq!([0, 1, 2, 3, 4, 5, 8, 9, 16, 17, 32, 33, 64].map(lane_width), [0, 1, 2, 4, 4, 8, 8, 16, 16, 32, 32, 64, 64]);
         assert_eq!([0, 1, 2, 3, 4, 5, 256, 257, 65537].map(id_width), [0, 0, 1, 2, 2, 4, 8, 16, 32]);
         assert_eq!((ids_bytes(0, 4), ids_bytes(3, 1), ids_bytes(5, 2), ids_bytes(3, 64)), (0, 1, 2, 24));
     }
-    // `pack` and `unpack` against the per-id `id_put` and `id_at` they replace, across the word boundary and its tail
+    // `unpack` against the per-id `id_at` on ids written by `id_put`, across the word boundary and its tail
+    #[test] fn unpack_matches_id_at() {
+        fn go<const W: u32>() {
+            for n in [0usize, 1, 7, 63, 64, 65, 200, 517] {
+                let mask = if W == 64 { !0 } else { (1u64 << W) - 1 };
+                let val = |i: usize| (i as u64).wrapping_mul(0x9E37_79B9_7F4A_7C15).rotate_left(17) & mask;
+                let mut a = alloc::vec![0u8; ids_bytes(n, W)];
+                (0..n).for_each(|i| id_put(&mut a, W, i, val(i)));
+                assert!((0..n).all(|i| id_at(&a, W, i) as u64 == val(i)), "id_at w={W} n={n}");
+                let mut got = alloc::vec![usize::MAX; n];
+                unpack::<W, usize>(&a, &mut got, |i, e, v| { assert!(*e == usize::MAX); *e = v; assert_eq!(v, id_at(&a, W, i)) });
+                assert!(got.iter().enumerate().all(|(i, &v)| v == id_at(&a, W, i)), "unpack w={W} n={n}");
+            }
+        }
+        go::<0>(); go::<1>(); go::<2>(); go::<4>(); go::<8>(); go::<16>(); go::<32>(); go::<64>();
+    }
     #[test] fn at_and_max() {
         let p = [0b1110_0100u8, 0b0000_0011, 5, 0, 0, 0, 0, 0, 0, 0];
         assert_eq!([0, 1, 2, 3].map(|i| id_at(&p, 2, i)), [0, 1, 2, 3]);
@@ -140,41 +155,4 @@ mod tests {
         }
         assert_eq!(ids_max(&p, 0, 5), 0);
     }
-}
-
-#[cfg(test)]
-mod firsts_tests {
-    use super::*;
-    // The C driver (/data/tmp/qrs/B1/drv.c) answered (ng, first[1]) = (2, pos), or (1, 0) with no id >= nd, for
-    // every (w, nd, pos) of this table; the ids are all 0 but `v` at `pos`.
-}
-
-#[cfg(test)]
-mod map_tests {
-    use super::*;
-    // The C `ids_map_run` + table agreed (/data/tmp/qrs/B2/h.c, 26268 random cases); here the per-row definition.
-}
-
-// ---- A10: ids.rs (per element: C keeps these bodies while a C caller remains) ----
-
-
-// One destination byte of `bitcopy`: up to the byte's end of the `bits - i` left, from bit `sb + i` of the source.
-
-
-
-
-
-// The head test of `runs`: field `i` raw value `raw` is a head where `min(raw, nd)` differs from the field before.
-// Taken by value into `runs_at`, so its fields live in registers; `get_mut` is the C's `if (out)` and the store's
-// bounds test in one compare (a non-empty `out` holds every head).
-
-
-
-#[cfg(test)]
-mod a10_tests {
-    use super::*;
-
-
-    // The same random walk as the C harness over ids.rs at 98305ab: the expected hashes are the C's output.
-
 }
