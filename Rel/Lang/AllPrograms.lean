@@ -34,6 +34,7 @@ import Rel.Lang.TestTopProd
 import Rel.Lang.TestDetab
 import Rel.Lang.TestEdit
 import Rel.Lang.TestFrame
+import Rel.Lang.TestFrameApp
 import Rel.Lang.TestFrameBound
 import Rel.Lang.TestFrameCols
 import Rel.Lang.TestFrameGroup
