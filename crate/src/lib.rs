@@ -41,6 +41,7 @@ mod os;
 mod exports {
     mod asc;
     mod coc;
+    mod csv;
     mod seen;
     mod env;
     mod gather;
@@ -70,6 +71,8 @@ mod asc;
 mod coc;
 /// cbindgen:ignore
 mod cocops;
+/// cbindgen:ignore
+mod csv;
 /// cbindgen:ignore
 mod gather;
 /// cbindgen:ignore

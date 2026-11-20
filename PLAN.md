@@ -250,6 +250,15 @@ Diff table 的「状态」列：✅ 后面是完成它的步骤；🔄 是部分
   未做/与 design.md 不同：被 import 的程序带 input 被拒（等 I3）；带参数或 test 的定义提到 input 被拒（把 input 作参数
   传入）；运行时定义仍 emit 已有的参数化常量（只 emit `.kernel` 在 I3）；sym/general 的 CSV 拒绝无法测（不能声明这种
   object）；compile-diff 只在 main 跑（`main-only`）。
+  I5 ✅（分支 `io-i5`）：CSV 的 Lean 模型，无 extern。`Rel/Kernel/Db/Csv.lean`：`csvWords cols b`、`csvText cols n ws`、
+  逐 atom 的读写（`readAtom`/`fmtAtom`，float 精确舍入 + 最短文本，date/datetime 以 1970-01-01 为原点）、C.4 的拒绝；
+  写出只在文本能读回同一 word 时写（`cell`），NaN、`-0`、越界 date 都由这一条拒绝。`Rel/KernelSpec/Csv.lean`：
+  `csvWords_csvText`（写后读为恒等）已证，axioms `propext, Classical.choice, Quot.sound`。`Rel/Kernel/Db/CsvTest.lean`：
+  case 表全部 `decide +kernel`，atom 用例按 `QAtomicType` 的 constructor 证（`atom_cases`）。C.5 的逐块解析编码是
+  Rust（I6/I7）的要求；`.rel` 字面量的 `floatBits` 仍用 Lean `Float`，待改用 `readFloat`。选择记在 `/data/tmp/io/i5-notes.md`。
+  I6 ✅（分支 `io-i6`）：`qlean_csv_read`（`crate/src/csv.rs`、`ffi/csv.rs`，列入 `RELIO.txt`），`@[extern]` 在 `Db.csvRead`
+  上，body 即 `csvWords` + `wordsFoR`；一遍顺序扫描定记录与块起点，各列按块解析直接进 `Sink` 编码；`CsvTest` 读侧用例
+  合为一张 `decide` 表，extern 与 body 在 88 个文件上一致。选择记在 `/data/tmp/io/i6-notes.md`。
 - ✅ D.11 表层语法（`schema S = {k : K, v : N}`、`col S "v"`）已合并（da636a9）；`Schema` 层此前已合并（5ab6d2e，master 0fb9879，`Rel/Lang/Schema.lean`、`TestSchema.lean`）；余下：TestFrame 的
   frame 按 `Schema` 索引（随 D.9）。frame 的 schema 进入类型（owner 经 dataframe 会话决定，选 wrapper，不加 `Obj` constructor）：
   `Schema := List (String × Obj)`；`Schema.obj : Schema → Obj` 是 definition（按 `.d` 列序的嵌套 `prod`）；frame 的项按
