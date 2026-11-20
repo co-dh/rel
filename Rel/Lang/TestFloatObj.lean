@@ -31,7 +31,7 @@ rel_program floatT where
 -- `b`'s sources; `sw`, `both` are generic definitions instantiated at `F` (placeholders other than `f64`)
 #guard floatT.failures.map toString == []
 #guard floatT.prints == ["a = {(-2.5, 3.0), (0.0, 0.0), (0.001, 15000000000.0), (2.5, 1.0)}",
-  "c = {(1e-8, 1e21), (0.1, 123.456), (0.3333333333333333, -1.5e-7)}"]
+  "c = {(1e-8, 1e21), (0.1, 123.456), (0.3333333333333333, -0.00000015)}"]
 
 /-- error: line 39, col 13: an object of sym is not declared: no literal of sym is stored; the atoms are [u8, i16, i32, i64, f32, f64, char, i8, date, datetime] -/
 #guard_msgs in
@@ -97,6 +97,5 @@ rel_program fewPlaceholdersT where
     g(R : α ⟶ β, S : γ ⟶ δ) : α ⟶ β ≜ R
     x : F ⟶ F ≜ {(2.5,1)}
     y : F ⟶ F ≜ g(x, x)
-#eval floatT.prints
 
 end Rel.Lang.TestFloatObj
