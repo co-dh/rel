@@ -77,9 +77,18 @@ mod tests {
     // the reference: residual j is bits [j*w, j*w+w) of the stream, the spec of coc.rs
     fn bit(p: &[u8], i: usize) -> u64 { (p[i >> 3] >> (i & 7)) as u64 & 1 }
     fn spec(p: &[u8], w: usize, j: usize) -> u64 { (0..w).map(|k| bit(p, j * w + k) << k).sum() }
-    // res_count_lt against the spec at every lane width coc::lanes leaves, thresholds below, inside and past the lane; the
-    // C differential is /data/tmp/qrs/K25/diff.c
-    // coc.rs's self-check holds at every width it is asked at, and refuses a power of two, a width over 64 and a long block
+    #[test] fn get_agrees_with_the_bit_stream() {
+        let mut s = 0x9E3779B97F4A7C15u64;
+        for w in 0..=64u8 {
+            let p: Vec<u8> = (0..BLK * w as usize / 8).map(|_| rng(&mut s) as u8).collect();
+            let end = p.len();
+            for j in (0..BLK).step_by(13).chain([BLK - 1]) {
+                let e = spec(&p, w as usize, j);
+                assert_eq!(res_get(&p, w, j), e, "get w {w} j {j}");
+                assert_eq!(res_get_in(&p, w, j, end), e, "get_in w {w} j {j}");
+            }
+        }
+    }
     #[test] fn pack_scalar_roundtrips_and_stops_at_the_last_byte() {
         let mut s = 0x2545F4914F6CDD1Du64;
         for w in 3..64u8 {

@@ -323,9 +323,18 @@ pub mod tests {
     }
 
     // Many threads entering at once: one splits, the others run the same slices in turn; every answer is whole.
-
-    // A 2^24-element input to each kernel asks for a pass the production threshold splits (at width 4: `worth`'s
-    // other half). Kernels whose input needs an encoded column are covered by the bench's `spread` gate instead.
+    #[test] fn pool_contended_answers_whole() {
+        let pool: &'static Pool = std::boxed::Box::leak(std::boxed::Box::new(Pool::new(8)));
+        std::thread::scope(|s| for _ in 0..16 { s.spawn(|| for n in [0usize, 1, 7, 8, 9, 1000, 100_003] {
+            let sum = AtomicU64::new(0);
+            let parts = pool.run(n, 1, SPLIT, &|_, lo, hi| { sum.fetch_add((lo..hi).map(|i| i as u64).sum(), Relaxed); });
+            assert_eq!(sum.load(Relaxed), (n as u64) * (n as u64).saturating_sub(1) / 2);
+            assert_eq!(parts, if n == 0 { 1 } else { 8 });
+        }); });
+        let stat = |k: usize| pool.ctr.0[k].load(Relaxed);
+        assert_eq!(stat(PASSES), 16 * 7);
+        assert_eq!(stat(SPLITS) + stat(CONTENDED) + stat(DECLINED), 16 * 7);
+    }
 
     // the threshold: one unit below declines, at it splits; `wide = 0` always declines
     #[test] fn pool_threshold() {

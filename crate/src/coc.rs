@@ -188,6 +188,27 @@ mod tests {
     use crate::BLK;
     // decode_blk at every width 0..=64 and element type against B8's scalar unpack plus the frame, on a block of
     // random residuals; the patches are checked against the C decoder in ffi.rs
+    fn check<T: crate::pod::Elt + PartialEq + core::fmt::Debug>(mut s: u64) {
+        for w in 0..=64u8 {
+            let pack: Vec<u8> = (0..BLK * w as usize / 8).map(|_| { s ^= s << 13; s ^= s >> 7; s ^= s << 17; s as u8 }).collect();
+            let base = [s as i64]; let (z, off, width) = ([0i64], [0u64], [w]);
+            let meta = super::Meta { lg: crate::DEFAULT_LG, base: &base, maxv: &z, off: &off, bsum: &z, width: &width,
+                                     n: BLK, nblk: 1, mblk: 1 };
+            let c = super::Coc { meta, pack: &pack, exc: None, fdelta: None };
+            for nb in [1, 7, 63, 64, 1023, 1024] {
+                let mut got = vec![T::wrap(0x5A); nb];
+                c.decode_blk(0, nb, &mut got);
+                let want: Vec<T> = (0..nb).map(|i| T::wrap((s as u64).wrapping_add(res_get(&pack, w, i)))).collect();
+                assert_eq!(got, want, "w {w} nb {nb}");
+            }
+        }
+    }
+    /// residual i of a block at width w, bit by bit
+    fn res_get(p: &[u8], w: u8, i: usize) -> u64 {
+        (0..w as usize).map(|k| { let bit = i * w as usize + k; ((p[bit / 8] >> (bit % 8)) & 1) as u64 }).enumerate()
+            .fold(0, |a, (k, b)| a | b << k)
+    }
+    #[test] fn decode_blk_every_width() { check::<u8>(1); check::<i16>(2); check::<i32>(3); check::<i64>(4) }
     // expected values: coc.rs's coc_attach (aborts) and coc_meta_view at 152d98f
     #[test] fn attach_refuses_what_c_aborts_on() {
         let (z, off, width) = ([0i64], [0u64], [8u8]);
