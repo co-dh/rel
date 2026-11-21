@@ -321,7 +321,13 @@ macro_rules! rows { ($rev:expr, $it:expr, $p:pat => $body:block) => { if $rev { 
 
 /// `kscan`'s columns, read a block of rows at a time, and the carry into each block (`carry[b]`, the answer of the row
 /// the fold reaches the block from: `lo - 1`, or `lo + nb` under `rev`).
-struct Scan<'a> { op: u8, rev: bool, n: usize, seg: Col<'a>, seed: Col<'a>, xs: &'a [Col<'a>], carry: Vec<u64> }
+struct Scan<'a> { op: u8, rev: bool, n: usize, seg: Option<Col<'a>>, seed: Col<'a>, xs: &'a [Col<'a>], pre: &'a [(u8, u64)], carry: Vec<u64> }
+
+/// `chainAll c` (Rel/Kernel/Scan.lean) on a block in place: each step `(o, k)` maps every word `x` to `o.eval k x`, the
+/// steps being pure, step by step over the block rather than word by word, each step's loop compiled for its op.
+fn chain(c: &[(u8, u64)], v: &mut [u64]) {
+    for &(op, k) in c { by_op!(op, OP => { let o = if OP == CAST { op } else { OP }; for x in v.iter_mut() { *x = op_word(o, k, *x) } }) }
+}
 
 impl Scan<'_> {
     /// The `seg` bits of the `nb` rows from `lo` (a block of the writer's grid), the first row the fold reaches always a
@@ -329,9 +335,15 @@ impl Scan<'_> {
     fn seg(&self, lo: usize, nb: usize) -> Seg {
         let mut g = [0u64; BLK / 64];
         // a `foR` boolean: the block decoded into the L1 scratch, each row's bit packed
-        let (mut v, mut tmp) = (pod::Scr::<u64>::new(nb), pod::Scr::<u64>::new(nb));
-        self.seg.load(lo, &mut v, pod::bytes_mut(&mut tmp));
-        for (k, &x) in v.iter().enumerate() { g[k >> 6] |= (x & 1) << (k & 63) }
+        match &self.seg {
+            Some(s) => {
+                let (mut v, mut tmp) = (pod::Scr::<u64>::new(nb), pod::Scr::<u64>::new(nb));
+                s.load(lo, &mut v, pod::bytes_mut(&mut tmp));
+                for (k, &x) in v.iter().enumerate() { g[k >> 6] |= (x & 1) << (k & 63) }
+            }
+            // `segAll none`: every row starts a segment
+            None => g.fill(!0),
+        }
         if nb & 63 != 0 { g[nb >> 6] &= !0 >> (64 - (nb & 63)) }
         if self.rev { if lo + nb == self.n { g[(nb - 1) >> 6] |= 1 << ((nb - 1) & 63) } } else if lo == 0 { g[0] |= 1 }
         g
@@ -355,19 +367,20 @@ impl Scan<'_> {
         let mut tmp = pod::Scr::<u64>::new(nb);
         // the seed is read only at a segment start
         let mut sd = pod::Scr::<u64>::new(if none { 0 } else { nb });
-        if !none { self.seed.load(lo, &mut sd, pod::bytes_mut(&mut tmp)) }
+        if !none { self.seed.load(lo, &mut sd, pod::bytes_mut(&mut tmp)); chain(self.pre, &mut sd) }
         let Some((x0, rest)) = self.xs.split_first() else {
             rows!(self.rev, out.iter_mut().enumerate(), (i, o) => { if at(i) { c = sd[i] } *o = c });
             return
         };
         x0.load(lo, out, pod::bytes_mut(&mut tmp));
+        chain(self.pre, out);
         if rest.is_empty() {
             if all { for (o, &a) in out.iter_mut().zip(sd.iter()) { *o = f(a, *o) } }
             else if none { rows!(self.rev, out.iter_mut(), o => { c = f(c, *o); *o = c }) }
             else { rows!(self.rev, out.iter_mut().enumerate(), (i, o) => { c = f(if at(i) { sd[i] } else { c }, *o); *o = c }) }
             return
         }
-        let xr: Vec<pod::Scr<u64>> = rest.iter().map(|x| { let mut v = pod::Scr::<u64>::new(nb); x.load(lo, &mut v, pod::bytes_mut(&mut tmp)); v }).collect();
+        let xr: Vec<pod::Scr<u64>> = rest.iter().map(|x| { let mut v = pod::Scr::<u64>::new(nb); x.load(lo, &mut v, pod::bytes_mut(&mut tmp)); chain(self.pre, &mut v); v }).collect();
         rows!(self.rev, out.iter_mut().enumerate(), (i, o) => {
             let mut a = f(if at(i) { sd[i] } else { c }, *o);
             for x in &xr { a = f(a, x[i]) }
@@ -381,6 +394,8 @@ impl Scan<'_> {
         let m = |f: &dyn Fn(u64, Coc) -> Option<u64>| self.xs.iter().try_fold(c, |a, x| f(a, x.coc(b)?));
         match self.op {
             _ if self.xs.is_empty() => Some(c),
+            // the metadata describe the stored words, not the words `pre` maps them to
+            _ if !self.pre.is_empty() => None,
             0 | 1 => m(&|a, k| (k.meta.base[b] != i64::MIN).then(|| op_word(self.op, a, k.meta.bsum[b] as u64))),
             5 => m(&|a, k| Some(op_word(5, a, k.meta.base[b] as u64))),
             6 => m(&|a, k| Some(op_word(6, a, k.meta.maxv[b] as u64))),
@@ -414,8 +429,8 @@ impl Scan<'_> {
         let g = Grid { n: self.n, lg: crate::DEFAULT_LG };
         let (mut v, mut tmp) = (pod::Scr::<u64>::new(self.n.min(BLK)), pod::Scr::<u64>::new(self.n.min(BLK)));
         self.xs.iter().any(|x| g.walk().any(|(b, lo, nb)| match x.coc(b) {
-            Some(c) if c.meta.base[b] > 0 || c.meta.maxv[b] < 0 => false,
-            _ => { x.load(lo, &mut v[..nb], pod::bytes_mut(&mut tmp)); v[..nb].contains(&0) }
+            Some(c) if self.pre.is_empty() && (c.meta.base[b] > 0 || c.meta.maxv[b] < 0) => false,
+            _ => { x.load(lo, &mut v[..nb], pod::bytes_mut(&mut tmp)); chain(self.pre, &mut v[..nb]); v[..nb].contains(&0) }
         }))
     }
     /// Block `b` of a boolean answer straight from the compare kernel where it is a map of one column against a
@@ -423,7 +438,7 @@ impl Scan<'_> {
     /// tests the residuals in place when not. `false` where the block is not of that shape.
     fn cmp_blk(&self, b: usize, lo: usize, nb: usize, w64: &mut [u64], scratch: &mut [u8]) -> bool {
         use crate::cocops::{EQ, GE, GT, LE, LT, NE};
-        let ([x], 9..=14) = (self.xs, self.op) else { return false };
+        let ([x], 9..=14, []) = (self.xs, self.op, self.pre) else { return false };
         let g = self.seg(lo, nb);
         if !(0..nb.div_ceil(64)).all(|k| g[k] == if 64 * (k + 1) <= nb { !0 } else { !0 >> (64 - (nb & 63)) }) { return false }
         // the row is `seed op x`: against a constant seed the column is `x`, the order turned round
@@ -450,11 +465,13 @@ impl Scan<'_> {
 /// Under `rev` the blocks are walked backwards and each block's rows from its end: no column is reversed in memory.
 /// The fold result is the row the fold visits last (row `n - 1`, row 0 under `rev`), taken from the block the writer
 /// fills and cut to `t`'s width as `Enc.raw t` reads it back; `None` at `n = 0`, where no row is visited.
-pub fn kscan<'a>(op: u8, rev: bool, s: u8, t: u8, n: usize, seg: B<'a>, es: &[B<'a>]) -> Result<(O, Option<u64>), String> {
-    let g = raw_all(QT_BOOLEAN, n, seg)?;
+pub fn kscan<'a>(op: u8, rev: bool, s: u8, t: u8, n: usize, seg: Option<B<'a>>, es: &[B<'a>], pre: &'a [(u8, u64)], post: &[(u8, u64)])
+    -> Result<(O, Option<u64>), String> {
+    if pre.iter().chain(post).any(|p| p.0 == 3 || p.0 == 4) { return Err("kscan: a chain step is div or mod, which fails at 0".into()) }
+    let g = seg.map(|e| raw_all(QT_BOOLEAN, n, e)).transpose()?;
     let cols = es.iter().map(|&e| raw_all(s, n, e)).collect::<Result<Vec<_>, _>>()?;
     let Some((&seed, xs)) = cols.split_first() else { return Err("kscan: es is empty; its first column is the seed".into()) };
-    let mut r = Scan { op, rev, n, seg: g, seed, xs, carry: Vec::new() };
+    let mut r = Scan { op, rev, n, seg: g, seed, xs, pre, carry: Vec::new() };
     if let Err(m) = op_eval(op, 0, 0) && r.zero() { return Err(m.into()) }
     let tw = qtype_width(t).ok_or("kscan: the answer type has no fixed width")?;
     r.carries();
@@ -471,8 +488,10 @@ pub fn kscan<'a>(op: u8, rev: bool, s: u8, t: u8, n: usize, seg: B<'a>, es: &[B<
             for (k, v) in o.iter_mut().enumerate() { *v = w64[k >> 6] >> (k & 63) & 1 }
         } else {
             r.block(lo, r.carry[b], o);
-            if low != !0 { for v in o.iter_mut() { *v &= low } }
         }
+        // `post` maps the answer words, never the carry `r.block` folds from
+        chain(post, o);
+        if low != !0 { for v in o.iter_mut() { *v &= low } }
         if (lo..lo + nb).contains(&last) { fin.store(o[last - lo] & cut, core::sync::atomic::Ordering::Relaxed) }
     });
     // every row is written, so at `n > 0` the block holding `last` stored it
@@ -511,21 +530,32 @@ mod kscan_tests {
     fn column(n: usize, k: u64) -> Vec<u64> {
         (0..n as u64).map(|i| match i % 301 { 7 => i64::MIN as u64, _ if i % 211 == 11 => 0xfff8_0000_0000_0000, _ if i % 97 == 5 => i.wrapping_mul(1_000_003 * k), _ => (1000 + (i * 7919 * k) % 8000).wrapping_sub(3000) }).collect()
     }
-    /// Both directions, `seg` as bits and as a boolean `foR` (`kscan`'s own boolean answer, at 8 bytes).
+    /// Chains `kscan` is checked under beside the empty one: `f32to64` on load and a compare against `2^63` on the
+    /// answer; `neg` then `+ 3` on load and `fsqrt` then `fto f64` on the answer.
+    const CHAINS: [(&[(u8, u64)], &[(u8, u64)]); 2] = [(&[(45, 0)], &[(10, 1 << 63)]), (&[(7, 0), (0, 3)], &[(29, 0), (FTO + 6, 0)])];
+    /// `chain` on words, as `chainAll` states it.
+    fn chained(c: &[(u8, u64)], v: &[u64]) -> Vec<u64> { v.iter().map(|&x| c.iter().fold(x, |x, &(o, k)| op_word(o, k, x))).collect() }
+    /// Both directions, `seg` as bits and as a boolean `foR` (`kscan`'s own boolean answer, at 8 bytes), as `none` where
+    /// every row starts a segment, and under each of `CHAINS`.
     fn check(op: u8, s: u8, t: u8, n: usize, seg: &[u64], es: &[(O, Vec<u64>)]) {
-        for rev in [false, true] { for g in [enc_bits(seg), enc_for(seg, 8)] { check1(op, rev, s, t, n, seg, &g, es) } }
+        for rev in [false, true] {
+            for g in [enc_bits(seg), enc_for(seg, 8)] { check1(op, rev, s, t, n, seg, Some(&g), es, &[], &[]) }
+            if seg.iter().all(|&b| b & 1 == 1) { check1(op, rev, s, t, n, seg, None, es, &[], &[]) }
+            for (pre, post) in CHAINS { check1(op, rev, s, t, n, seg, Some(&enc_bits(seg)), es, pre, post) }
+        }
     }
-    fn check1(op: u8, rev: bool, s: u8, t: u8, n: usize, seg: &[u64], g: &O, es: &[(O, Vec<u64>)]) {
-        let xs: Vec<Vec<u64>> = es.iter().skip(1).map(|e| e.1.clone()).collect();
+    #[allow(clippy::too_many_arguments)]
+    fn check1(op: u8, rev: bool, s: u8, t: u8, n: usize, seg: &[u64], g: Option<&O>, es: &[(O, Vec<u64>)], pre: &'static [(u8, u64)], post: &[(u8, u64)]) {
+        let xs: Vec<Vec<u64>> = es.iter().skip(1).map(|e| chained(pre, &e.1)).collect();
         let want = match es.first() {
             None => Err("kscan: es is empty; its first column is the seed".into()),
-            Some(sd) => rows(op, rev, seg, &sd.1, &xs).map_err(String::from).and_then(|r| match qtype_width(t) {
+            Some(sd) => rows(op, rev, seg, &chained(pre, &sd.1), &xs).map(|r| chained(post, &r)).map_err(String::from).and_then(|r| match qtype_width(t) {
                 None => Err("kscan: the answer type has no fixed width".into()),
                 Some(w) => { let ws: Vec<u64> = r.iter().map(|v| if t == QT_BOOLEAN { v & 1 } else { *v }).collect(); let fin = if rev { ws.first() } else { ws.last() }; Ok((parts(&enc_for(&ws, 8)), fin.map(|v| if w < 8 { v & ((1 << (8 * w)) - 1) } else { *v }))) }
             }),
         };
         let bs: Vec<B> = es.iter().map(|e| e.0.borrow()).collect();
-        assert_eq!(kscan(op, rev, s, t, n, g.borrow(), &bs).map(|(o, v)| (parts(&o), v)), want, "op {op} rev {rev} s {s} t {t} n {n}");
+        assert_eq!(kscan(op, rev, s, t, n, g.map(|g| g.borrow()), &bs, pre, post).map(|(o, v)| (parts(&o), v)), want, "op {op} rev {rev} s {s} t {t} n {n}");
     }
     // every shape (map, scan, segmented, fill) and op against the row model, over FoR columns with patches and nulls at
     // each width, a dense column cut short, and a constant seed (the compare kernel's path) beside a varying one
@@ -561,7 +591,7 @@ mod kscan_tests {
             check(3, 6, 6, n, &segs[0], &[(enc_for(&z, 8), z.clone()), (enc_for(&z, 8), z.clone())]);
             if n > 0 {
                 let e = enc_dense(&bytes(&z, 1));
-                assert_eq!(kscan(0, false, QT_BOOLEAN, 6, n, enc_bits(&segs[0]).borrow(), &[e.borrow()]).map(|(o, v)| (parts(&o), v)),
+                assert_eq!(kscan(0, false, QT_BOOLEAN, 6, n, Some(enc_bits(&segs[0]).borrow()), &[e.borrow()], &[], &[]).map(|(o, v)| (parts(&o), v)),
                            Err(format!("kscan: a column holds 0 raw elements, not {n}")));
             }
             let (a, b): (Vec<u64>, Vec<u64>) = ((0..n as u64).map(|i| i % 3 & 1).collect(), (0..n as u64).map(|i| i % 5 & 1).collect());
@@ -587,6 +617,15 @@ mod kscan_tests {
                 check(op, 6, 6, k, &vec![1; k], &[(enc_for(&p, 8), p.clone()), (enc_for(&vec![v; k], 8), vec![v; k])]);
                 check(op, 6, 6, k, &vec![1; k], &[(enc_for(&vec![v; k], 8), vec![v; k]), (enc_for(&p, 8), p.clone())]);
             }
+        }
+    }
+    // a `div` or `mod` step is refused before any column is read
+    #[test] fn kscan_refuses_a_failing_chain_step() {
+        let x = enc_for(&[1, 2], 8);
+        for c in [[(3u8, 1u64)], [(4, 1)]] {
+            let e = Err("kscan: a chain step is div or mod, which fails at 0".into());
+            assert_eq!(kscan(0, false, 6, 6, 2, None, &[x.borrow()], &c, &[]).map(|_| ()), e);
+            assert_eq!(kscan(0, false, 6, 6, 2, None, &[x.borrow()], &[], &c).map(|_| ()), e);
         }
     }
     #[test] fn op_eval_floors_and_types_its_errors() {
