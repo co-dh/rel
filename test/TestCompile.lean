@@ -11,8 +11,8 @@ import Rel.Lang.GenSoundTest
       `(Tm.code η t).runE {}`, `η` the table of the program's closed parts (`Code.program`), and required to have
       the result of the constant `rel_program` generated
       (`n.expanded`). So on these definitions the generated code equals `Tm.gen`'s, and where the term has no
-      `Tm.gap` node `Tm.gen_sound` relates `Tm.gen` to `Tm.den` under its hypotheses (the bit-matrix laws, `LamLaw`
-      at each `Λ`); a definition with no code is listed with the nodes that have none, and the definitions
+      `Tm.gap` node `Tm.gen_sound` relates `Tm.gen` to `Tm.den` under its hypotheses (the bit-matrix laws,
+      `Tm.GenHyp`); a definition with no code is listed with the nodes that have none, and the definitions
       elaborated once (`Once`) have no closed constant to compare.
     - The regression pin, with no independent oracle: every closed definition's result against the pin
       `compile-diff.json` beside this file, by name. The pin is an earlier run's output, so a difference says a
