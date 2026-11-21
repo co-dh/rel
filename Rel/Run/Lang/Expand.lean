@@ -319,7 +319,7 @@ open Lean Meta in
     object variable's placeholder (`varObj`) that its constant reads at `.long` (`sum` at `[β]`) does not, and that
     is how `once` finds the variable a number object. -/
 partial def primsFit {A B : Obj} (t : Tm A B) : MetaM Bool := do
-  let some (r, as) := primOf t | t.parts.allM fun ⟨_, _, c⟩ => primsFit c
+  let some (r, as) := primOf t | t.inner.allM fun ⟨_, _, c⟩ => primsFit c
   pure (← primFit r A B (as.toArray.map fnTy)).isSome <&&> as.allM fun ⟨_, _, c⟩ => primsFit c
 
 /-- The placeholders of a constant of `n` with `k` object variables in `env`: atoms no object in scope is stored at,
@@ -465,6 +465,11 @@ def callDef (env : Env) (dp : Pos) (n : String) (qs : List Param) (e : Expr) (ty
         | some o => pure (some o, xsL)
         | none => pure (← get? fs, xs)
       let some o := o? | return r
+      -- a call's body sees only the variables its call binds (`Code.args`): one read beyond them would run as `𝟘`;
+      -- checked here, where the fallback to the expansion cannot swallow it
+      let free := o.res.2.2.fv.eraseDups.filter (!o.binds.contains ·)
+      unless free.isEmpty do
+        throw ⟨p, s!"internal: `{o.const}`'s body reads the variables {free}, which its call binds not ({o.binds})"⟩
       xs := ys
       let { const := k, vars := fl, tst, kf } := sigOf o
       let (ks, ph, t, cv) := (o.binds, o.ph, o.res, convOf o)
@@ -891,17 +896,16 @@ def Tm.fieldsEq (key : Lean.Name → Lean.Name) {A B C D : Obj} (t : Tm A B) (u 
 
 /-- The first node, from the root, where the bodies `t`, `u` of one registry key differ, as its path of
     constructors (`ctor`); `none` when they are the same definition: per node its constructor, objects and other
-    fields (`Tm.fieldsEq`), then its parts (`Tm.parts`, a `share`'s term) in order. A call's body is not entered:
-    it is its key's, compared at that key. -/
+    fields (`Tm.fieldsEq`), then its parts (`Tm.parts`, a `share`'s term, a call's body) in order. A call's body is
+    entered: a `callOf` call has no registry key, so its name does not determine its body. -/
 partial def Tm.diffAt (key : Lean.Name → Lean.Name) (ctor : Nat → String) (path : List String := []) :
     Res → Res → Option String
   | ⟨A, B, t⟩, ⟨C, D, u⟩ =>
     let p := path ++ [ctor t.ctorIdx]
-    let parts {X Y : Obj} : Tm X Y → List Res | .share _ R => [⟨_, _, R⟩] | t => t.parts
     if t.ctorIdx != u.ctorIdx then some s!"{" / ".intercalate p} against `{ctor u.ctorIdx}`"
     else if !(A == C && B == D) then some s!"{" / ".intercalate p}: {repr A} ⟶ {repr B} against {repr C} ⟶ {repr D}"
     else if !Tm.fieldsEq key t u then some s!"{" / ".intercalate p}: its fields differ"
-    else ((parts t).zip (parts u)).findSome? fun (x, y) => Tm.diffAt key ctor p x y
+    else (t.inner.zip u.inner).findSome? fun (x, y) => Tm.diffAt key ctor p x y
 
 /-- An entry of the registry (module design §2.3): a definition elaborated once, its constant (`once`); a program's
     homes, the programs its names reach, in the order they are read (`read`); a program's scope, its namespace and

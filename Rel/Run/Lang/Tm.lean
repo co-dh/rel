@@ -174,6 +174,13 @@ def Tm.mapM {m : Type → Type} [Monad m] (f : {A B : Obj} → Tm A B → m (Tm 
 def Tm.parts {A B : Obj} (t : Tm A B) : List Res :=
   (Id.run ((t.mapM (m := StateM (List Res)) fun c => do modify (· ++ [⟨_, _, c⟩]); pure c).run [])).2
 
+/-- The terms a check over every node of `t` visits next: its parts, and the term `Tm.mapM` does not enter, a
+    `share`'s and a call's body (and its converse's), since a `callOf` call's body is no registry constant's. -/
+def Tm.inner {A B : Obj} : Tm A B → List Res
+  | .share _ R | .call _ _ _ R => [⟨_, _, R⟩]
+  | .callCv _ _ _ _ R U => [⟨_, _, R⟩, ⟨_, _, U⟩]
+  | t => t.parts
+
 /-- The variables free in `t`: a binder (`μ`, `ν`, `hylo`) drops its own, and a `share` is closed. Structural,
     so `den_congr` can be stated with it. -/
 def Tm.fv : {A B : Obj} → Tm A B → List Nat
