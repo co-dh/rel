@@ -30,7 +30,8 @@ def defn (s : Syntax) (w key : String) (ps : Array Syntax) (ty body test wh : Sy
     failAt s s!"the infix operator `{w}` takes two parameters, `{key}(R, S)`, found {ps.length}"
   let ty ← ty.getOptional?.mapM typeOf
   let outer := (← get).known
-  modify fun st => { st with known := ps.map (fun q => (q.name, 0)) ++ st.known }
+  let ovars := ((ty.toList ++ ps.filterMap (·.ty)).flatMap fun (a, b) => a.vars ++ b.vars).eraseDups
+  modify fun st => { st with known := ps.map (fun q => (q.name, 0)) ++ st.known, ovars }
   -- the `where` items first: each in scope in the items after it and in the body (§c)
   let σ ← (if wh.getNumArgs == 0 then #[] else wh[1].getSepArgs).foldlM (init := []) fun σ i => do
     let q ← posOf i
@@ -45,7 +46,7 @@ def defn (s : Syntax) (w key : String) (ps : Array Syntax) (ty body test wh : Sy
   let b ← if test.getNumArgs == 0 then pure (Body.rel e) else do pure (Body.test e ((← expr test[1]).subst σ))
   if let (.test .., some t) := (b, ty) then
     failAt s s!"the test `{w}` has no type of its own: drop ': {OExp.arrow t}' (§e)"
-  modify fun st => { st with known := outer }
+  modify fun st => { st with known := outer, ovars := [] }
   pure (.defn p key ps b ty)
 
 def stmt (s : Syntax) : C Decl := do
