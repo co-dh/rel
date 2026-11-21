@@ -157,6 +157,10 @@ compile η t : {r : Rel A B // rep r = ⟦t⟧ρ}       -- 方案 A：规格在�
     （单态化，`Pre.call` 的 `alt`），`numCheck` 在具体对象上运行；所以 `GenSound` 的 `rowOK` 只面对具体 atom，不变。
   - 使用解出变量的对象后，`mkDef` 在展开上先跑 `numCheck`，报错写出调用、变量和它得到的对象：
     `` `avg` at this call, where φ is N: divide on N: … ``（`Rel/Lang/TestGenericNum.lean`）。
+- 定义的体留下的、类型与参数都够不到的开放对象（`length $ F` 里 `length` 的 ℕ），按 let 泛化成该定义的隐式对象变量
+  `n#i`（`Elab.generalise`，`mkDef` 的每次使用与无参定义都经过它）：没有使用能确定它，所以每次使用都取常量建变量时的
+  对象 `.long`（未声明名字的 `objOf`），数检查照常在它上面跑（`numObj`、`numCheck`）。字面量与 `nil` 的开放对象仍归
+  `settleOpen`；`check` 不是定义，其中仍开放的对象照旧报错。
 
 #tbl(c-syn, (auto, 1fr), ([组], [构造子]),
   [allegory], [`id` `comp` `conv` `meet` `dom` `ran`],
