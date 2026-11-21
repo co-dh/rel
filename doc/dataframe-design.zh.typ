@@ -246,7 +246,7 @@ next(n, x)        ≜ dom(x) tot(⟨𝟙, ⊤ n⟩plus x)                 行 i 
     可接在 `aggregate` 里每组用；`zScore` 每行 (x − 均值)/样本标准差（DataHaskell 的 `variance'` 是 n − 1），一行时无像；
     整数列与 `f64` 列上都可用], "full"),
   ([`median` `percentile` `genericPercentile` `interQuartileRange`],
-    [`quantile(p, c) ≜ summarize(F(q) sum, q) where m ≜ count(c) $ φ, hi ≜ ⟨m, m⟩%, lo ≜ ⟨m, m⟩minus, h ≜ dom(⟨lo, p⟩ cor(≤)) dom(⟨p, hi⟩ cor(≤)) ⟨p, ⟨m, hi⟩minus⟩times, d ≜ ⟨dom(c) $ φ, ⊤ h⟩minus, w ≜ ⟨⊤ hi, ⟨d, ⟨⊤ lo, d⟩minus⟩max⟩minus, q ≜ dom(⟨⊤ lo, w⟩ cor(<)) ⟨w, sortBy(𝟙, c) $ φ⟩times`；
+    [`quantile(p, c) ≜ summarize(F(q) sum, q) where m ≜ count(c) $ φ, hi ≜ {(∗,1.0)}, lo ≜ {(∗,0.0)}, h ≜ dom(⟨lo, p⟩ cor(≤)) dom(⟨p, hi⟩ cor(≤)) ⟨p, ⟨m, hi⟩minus⟩times, d ≜ ⟨dom(c) $ φ, ⊤ h⟩minus, w ≜ ⟨⊤ hi, ⟨d, ⟨⊤ lo, d⟩minus⟩max⟩minus, q ≜ dom(⟨⊤ lo, w⟩ cor(<)) ⟨w, sortBy(𝟙, c) $ φ⟩times`；
     `median` 是 `quantile({(∗,0.5)}, c)`，`percentile` 是 `quantile` 在 k/100，`interQuartileRange` 是 `⟨quantile({(∗,0.75)}, c), quantile({(∗,0.25)}, c)⟩minus`],
     [线性插值（DataHaskell 的 `quantiles'`、polars 的 `linear`）：排序后的位置 h = p·(n−1)，值 = lower + frac·(upper − lower)，
     即 |i − h| < 1 的行以权 1 − |i − h| 求和，不取 h 的整数部分；q 的 `med` 是 p = 0.5，不另写；p 不在 [0, 1] 时无像；
@@ -353,7 +353,7 @@ next(n, x)        ≜ dom(x) tot(⟨𝟙, ⊤ n⟩plus x)                 行 i 
   (1) `sums` 在 `i64` `f64` 上，`cumSum` `sumsBy` 在 `f64` 列上运行（`TestFrameStat`），`f32` 列被拒、先 `$` 到 `f64`；
   (2) 已解决（请求 10/11）：统计对结果的 float 对象 `φ` 泛型，由用处的期望类型确定（`TestGenericNum.avgGT`），库不再声明
   `F`；数的运算（`sqrt` `times` …）不把结果对象连到操作数，作操作数的统计写 `𝟙(φ)`。`f32` 的结果被 prim `sum` 拒
-  （`TestFrameStat.frameStatF32T`）；`quantile` 的 0、1 是行数 m 的 m/m、m − m：`φ` 中的 float 字面量无对象可读；(3) 浮点 → 整数、`pow`、`fround`；分位数不需要前者：权 1 − |i − h| 选出 h 两侧的行，`skewness` 的立方是 `times`；
+  （`TestFrameStat.frameStatF32T`）；泛型定义中的数字字面量在每处使用的对象上构造（请求 12、13），故 `quantile` 直接写 `0.0`、`1.0`；(3) 浮点 → 整数、`pow`、`fround`；分位数不需要前者：权 1 − |i − h| 选出 h 两侧的行，`skewness` 的立方是 `times`；
   (4) `aj` 的时间沿 `sums` 扫描：`date` `datetime` 的时间列运行（`TestFrameTyped.ajDateT` `sumsTimeT`），`f64` 的
   时间列被拒，`f64` 的 canon 序在 S5 之前是位的序（`TestFrameTyped.sumsFloatPosT`）。
 - *F5 时间类型。* `date`、`datetime` 是整数 code，没有时区。日历运算（取月份、截断到月）是整数算术加上与日历表的 join。
