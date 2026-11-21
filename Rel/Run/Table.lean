@@ -144,25 +144,31 @@ def readKeyed (K S : Schema) (dir : String) : IO (Tab K.obj S.obj) := do
   let (fv, v) ← readSide S (file dir "val")
   IO.ofExcept (canon dir ⟨n, k, ← same fk n fv v⟩)
 
+/-- The first part of `es` as an atom column of type `t`, entered through `Arr.of` as `readArr` enters a mapped one;
+    its count, and the parts left over. -/
+def encArr (path : String) (t : QAtomicType) : List (USize × Enc) →
+    Except String ((n : USize) × Arr t n × List (USize × Enc))
+  | (k, e) :: es => do pure ⟨k, ← Arr.of t k (.vector t k e none) s!"{path}: a {repr t} column part of {k} rows", es⟩
+  | [] => .error s!"{path}: no column part left for a {repr t} column"
+
 /-- A side of object `A` from its atom columns' encodings `es`, each with its count, in `cols`' order (a sum's tags,
     positions and two payloads; a list's bounds and payload), the converse of `csvEncs`: each entered through `Arr.of`
     as `readArr` enters a mapped one; the side's count, and the parts left over. -/
 def encVals (path : String) : (A : Obj) → List (USize × Enc) →
     Except String ((n : USize) × Vals A n × List (USize × Enc))
-  | .atom t, (k, e) :: es => do pure ⟨k, ← Arr.of t k (.vector t k e none) s!"{path}: a column part of {k} rows", es⟩
-  | .atom t, [] => .error s!"{path}: no column part left for a {repr t} column"
+  | .atom t, es => encArr path t es
   | .prod a b, es => do
     let ⟨n, x, es⟩ ← encVals path a es
     let ⟨m, y, es⟩ ← encVals path b es
     if h : m = n then pure ⟨n, (x, h ▸ y), es⟩ else .error s!"{path}: columns of {n} and {m} rows on one side"
   | .arr b, es => do
-    let ⟨n, lo, es⟩ ← encVals path (.atom .i64) es
-    let ⟨m, hi, es⟩ ← encVals path (.atom .i64) es
+    let ⟨n, lo, es⟩ ← encArr path .i64 es
+    let ⟨m, hi, es⟩ ← encArr path .i64 es
     let ⟨k, f, es⟩ ← encVals path b es
     if h : m = n then pure ⟨n, ⟨k, lo, h ▸ hi, f⟩, es⟩ else .error s!"{path}: list bounds of {n} and {m} rows"
   | .sum a b, es => do
-    let ⟨n, tag, es⟩ ← encVals path (.atom .u1) es
-    let ⟨m, idx, es⟩ ← encVals path (.atom .i64) es
+    let ⟨n, tag, es⟩ ← encArr path .u1 es
+    let ⟨m, idx, es⟩ ← encArr path .i64 es
     let ⟨l, x, es⟩ ← encVals path a es
     let ⟨r, y, es⟩ ← encVals path b es
     if h : m = n then pure ⟨n, ⟨l, r, tag, h ▸ idx, x, y⟩, es⟩ else .error s!"{path}: sum tags of {n} and positions of {m} rows"

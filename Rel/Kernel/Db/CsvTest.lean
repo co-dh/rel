@@ -299,7 +299,7 @@ def run : IO Nat := do
   agrees p ab
   return files.length + 1
 
-/-- info: csvRead agrees with its body on 90 files -/
+/-- info: csvRead agrees with its body on 97 files -/
 #guard_msgs in
 #eval do IO.println s!"csvRead agrees with its body on {← run} files"
 
