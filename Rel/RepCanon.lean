@@ -112,49 +112,65 @@ theorem colConst_u1 {n : USize} {w : UInt64} {e : Enc} (h : colConst n w = .ok e
     refine Array.ext (by simp) fun j _ _ => ?_
     simp
   rw [hu, Array.getElem?_map, he, Array.getElem?_replicate, if_pos hi]; rfl
+/-- **`colMap op n a b t s pre post` at any answer type `t`**: both arguments hold `n` words read at `s`, and word `i`
+of the answer is `chain post` of `op` of `a`'s and `b`'s words `i` through `chain pre`, a boolean answer's cut to its
+bit. -/
+theorem colMap_chain {op : Op} {t s : QAtomicType} {n : USize} {a b o : Enc} {pre post : List (Op × UInt64)}
+    (h : colMap op n a b t s pre post = .ok o) :
+    (raw s n a).size = n.toNat ∧ (raw s n b).size = n.toNat ∧ (raw .i64 n o).size = n.toNat ∧ ∀ i < n.toNat,
+      ∃ x y v w, chain pre ((raw s n a)[i]?.getD 0) = .ok x ∧ chain pre ((raw s n b)[i]?.getD 0) = .ok y ∧
+        op.eval x y = .ok v ∧ chain post v = .ok w ∧ (raw .i64 n o)[i]? = some (if t = .u1 then w % 2 else w) := by
+  unfold colMap at h
+  simp only [bind, Except.bind] at h
+  split at h; · cases h
+  rename_i r hr; simp only [pure, Except.pure, Except.ok.injEq] at h; subst h
+  unfold kscan at hr
+  by_cases hd : ((pre ++ post).any fun p => p.1 == .div || p.1 == .mod) = true
+  · simp [hd, bind, Except.bind, throw, throwThe, MonadExceptOf.throw] at hr
+  simp only [hd, Bool.false_eq_true, if_false, bind, Except.bind, pure, Except.pure, segAll] at hr
+  split at hr; · cases hr
+  rename_i cs hc
+  obtain ⟨hl, hP⟩ := mapM_chain hc
+  rcases cs with _ | ⟨ca, _ | ⟨cb, _ | ⟨_, _⟩⟩⟩ <;> simp at hl
+  obtain ⟨ha, -, hra⟩ := hP (a, ca) (by simp)
+  obtain ⟨hb, -, hrb⟩ := hP (b, cb) (by simp)
+  simp only at hr
+  split at hr; · cases hr
+  rename_i out₀ hf
+  split at hr; · cases hr
+  rename_i out hp
+  split at hr; · cases hr
+  simp only [Except.ok.injEq] at hr
+  have ho : r.1 = wordsFoR (out.map fun v => if t = .u1 then v % 2 else v) := by rw [← hr]; rfl
+  rw [ho]; clear ho hr
+  obtain ⟨hos, hrow⟩ := foldlM_kscanRow _ _ _ _ _ _ hf
+  obtain ⟨hps, hpr⟩ := chainAll_ok hp
+  have hW : (out.map fun v => if t = .u1 then v % 2 else v).size = n.toNat := by simp [hps, hos]
+  refine ⟨ha, hb, ?_, fun i hi => ?_⟩
+  · rw [(wordsFoR_closed _ hW.symm).2.1]; exact hW
+  rw [(wordsFoR_closed _ hW.symm).2.1]
+  have hr := hrow i (by omega)
+  rw [if_neg (fun hh => by simp [hi] at hh)] at hr
+  simp only [List.foldlM_cons, List.foldlM_nil, bind, Except.bind] at hr
+  cases he : op.eval (ca[i]?.getD 0) (cb[i]?.getD 0) with
+  | error e => rw [he] at hr; cases hr
+  | ok v =>
+    rw [he] at hr; simp only [pure, Except.pure, Except.ok.injEq] at hr
+    have hq := hpr i (by omega)
+    refine ⟨_, _, v, _, hra i hi, hrb i hi, he, by rw [← hr]; exact hq, ?_⟩
+    rw [Array.getElem?_map, Array.getElem?_eq_getElem (by omega)]; rfl
+
 /-- **`colMap op n a b t` at any answer type `t`**: word `i` is `op` of `a`'s and `b`'s words `i`, a boolean answer's
-cut to its bit (`colMap_raw` is the `i64` case with the argument sizes). -/
+cut to its bit (`colMap_chain` at no chain; `colMap_raw` is the `i64` case with the argument sizes). -/
 theorem colMap_get {op : Op} {t : QAtomicType} {n : USize} {a b o : Enc} (h : colMap op n a b t = .ok o) :
     (raw .i64 n o).size = n.toNat ∧ ∀ i < n.toNat, ∃ v,
       op.eval ((raw .i64 n a)[i]?.getD 0) ((raw .i64 n b)[i]?.getD 0) = .ok v ∧
       (raw .i64 n o)[i]? = some (if t = .u1 then v % 2 else v) := by
-  unfold colMap at h
-  simp only [bind, Except.bind] at h
-  split at h; · cases h
-  rename_i one1 h1
-  have hone : ∀ i < n.toNat, (raw .u1 n one1)[i]?.getD 0 ≠ 0 := fun i hi => by rw [colConst_u1 h1 i hi]; decide
-  unfold kscan at h
-  cases hg : rawAll .u1 n one1 with
-  | error m => simp [hg, bind, Except.bind] at h
-  | ok g =>
-    obtain ⟨rfl, hgs⟩ := rawAll_ok hg
-    cases hc : [a, b].mapM (rawAll .i64 n) with
-    | error m => simp [hg, hc, bind, Except.bind] at h
-    | ok cs =>
-      obtain ⟨rfl, hsz⟩ := mapM_rawAll hc
-      cases hf : (List.range n.toNat).foldlM (kscanRow op (raw .u1 n one1) (raw .i64 n a) [raw .i64 n b]) #[] with
-      | error m => simp [hg, hc, hf, bind, Except.bind] at h
-      | ok out =>
-        obtain ⟨hos, hrow⟩ := foldlM_kscanRow _ _ _ _ _ _ hf
-        cases ht : t.width with
-        | none => simp [hg, hc, hf, ht, bind, Except.bind] at h
-        | some w =>
-          simp only [hg, hc, hf, ht, bind, Except.bind, List.map_cons, List.map_nil, pure, Except.pure,
-            Bool.false_eq_true, if_false, Except.ok.injEq] at h
-          change wordsFoR _ = o at h
-          cases h
-          have hW : (out.map fun v => if t = .u1 then v % 2 else v).size = n.toNat := by simp [hos]
-          rw [(wordsFoR_closed _ hW.symm).2.1]
-          refine ⟨hW, fun i hi => ?_⟩
-          have hr := hrow i (by omega)
-          rw [if_neg (fun hh => hone i hi hh.2)] at hr
-          simp only [List.foldlM_cons, List.foldlM_nil, bind, Except.bind] at hr
-          cases he : op.eval ((raw .i64 n a)[i]?.getD 0) ((raw .i64 n b)[i]?.getD 0) with
-          | error s => rw [he] at hr; cases hr
-          | ok v =>
-            rw [he] at hr; simp only [pure, Except.pure, Except.ok.injEq] at hr
-            refine ⟨v, rfl, ?_⟩
-            rw [Array.getElem?_map, Array.getElem?_eq_getElem (by omega), ← hr]; rfl
+  obtain ⟨-, -, hs, hr⟩ := colMap_chain h
+  refine ⟨hs, fun i hi => ?_⟩
+  obtain ⟨x, y, v, w, hx, hy, hv, hw, ho⟩ := hr i hi
+  cases hx; cases hy; cases hw
+  exact ⟨v, hv, ho⟩
 
 
 /-- An `i64` element is its raw word read as an `Int64`, at every encoding `Enc.WF` admits. -/

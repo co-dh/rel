@@ -30,7 +30,9 @@ fn kscan(op: u8, rev: bool, s: u8, t: u8, n: usize, seg: B, es: B, pre: B, post:
 export! {
 
 
-    /// `Kernel.kscan op rev s t n seg es` (Rel/Kernel/Scan.lean): `Except String (Enc × Option UInt64)`, the error (tag 0)
+    /// `Kernel.kscan op rev s t n seg es pre post` (Rel/Kernel/Scan.lean): `seg` an `Option Enc` (`none` the scalar 0,
+    /// every row its own segment), `pre`/`post` lists of `(Op × UInt64)` pairs, each `UInt64` boxed.
+    /// `Except String (Enc × Option UInt64)`, the error (tag 0)
     /// carrying the model's text, the answer (tag 1) a pair (tag 0) of an `Enc.foR` (tag 3) at every `t`, a boolean one
     /// a `foR` of `u1`, and the fold result: `none` (the scalar 0) at `n = 0`, else `some` (tag 1) of a boxed `UInt64`.
     fn qlean_k_scan(op: B, rev: u8, s: u8, t: u8, n: usize, seg: B, es: B, pre: B, post: B) -> O {

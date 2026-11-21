@@ -108,16 +108,21 @@ theorem scatterWords_size {op : Op} {is es : Array UInt64} {n : Nat} {fill : UIn
     · cases h
 
 /-- **`kscan` closes**: its answer is valid at its `n` rows and `Ext.Enc.WF` at its answer type `t`. -/
-theorem kscan_closed {op : Op} {rev : Bool} {s t : QAtomicType} {n : USize} {seg : Enc} {es : List Enc}
-    {r : Enc × Option UInt64} (h : kscan op rev s t n seg es = .ok r) : Enc.Valid n r.1 ∧ Ext.Enc.WF t n r.1 := by
+theorem kscan_closed {op : Op} {rev : Bool} {s t : QAtomicType} {n : USize} {seg : Option Enc} {es : List Enc}
+    {pre post : List (Op × UInt64)} {r : Enc × Option UInt64} (h : kscan op rev s t n seg es pre post = .ok r) :
+    Enc.Valid n r.1 ∧ Ext.Enc.WF t n r.1 := by
   unfold kscan at h
-  simp only [bind, Except.bind] at h
+  by_cases hd : ((pre ++ post).any fun p => p.1 == .div || p.1 == .mod) = true
+  · simp [hd, bind, Except.bind, throw, throwThe, MonadExceptOf.throw] at h
+  simp only [hd, Bool.false_eq_true, if_false, bind, Except.bind, pure, Except.pure] at h
   split at h; · cases h
   split at h; · cases h
   split at h; · cases h
   split at h; · cases h
-  rename_i out hf
-  have hos := (foldlM_kscanRow _ _ _ _ _ _ hf).1
+  rename_i out₀ hf
+  split at h; · cases h
+  rename_i out hp
+  have hos := (chainAll_ok hp).1.trans (foldlM_kscanRow _ _ _ _ _ _ hf).1
   split at h; · cases h
   rename_i ht
   simp only [pure, Except.pure, Except.ok.injEq] at h
