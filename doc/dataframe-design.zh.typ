@@ -246,11 +246,15 @@ next(n, x)        ≜ dom(x) tot(⟨𝟙, ⊤ n⟩plus x)                 行 i 
     可接在 `aggregate` 里每组用；`zScore` 每行 (x − 均值)/样本标准差（DataHaskell 的 `variance'` 是 n − 1），一行时无像；
     整数列与 `f64` 列上都可用], "full"),
   ([`median` `percentile` `genericPercentile` `interQuartileRange`],
-    [`quantile(p, c) ≜ summarize(F(q) sum, q) where m ≜ count(c) $ φ, hi ≜ {(∗,1.0)}, lo ≜ {(∗,0.0)}, h ≜ dom(⟨lo, p⟩ cor(≤)) dom(⟨p, hi⟩ cor(≤)) ⟨p, ⟨m, hi⟩minus⟩times, d ≜ ⟨dom(c) $ φ, ⊤ h⟩minus, w ≜ ⟨⊤ hi, ⟨d, ⟨⊤ lo, d⟩minus⟩max⟩minus, q ≜ dom(⟨⊤ lo, w⟩ cor(<)) ⟨w, sortBy(𝟙, c) $ φ⟩times`；
+    [`quantilePos(p, c) ≜ dom(⟨lo, p⟩ cor(≤)) dom(⟨p, hi⟩ cor(≤)) ⟨p, ⟨count(c) $ φ, hi⟩minus⟩times where hi ≜ {(∗,1.0)}, lo ≜ {(∗,0.0)}`；
+    `quantile(p, c) ≜ summarize(F(q) sum, q) where hi ≜ {(∗,1.0)}, lo ≜ {(∗,0.0)}, d ≜ ⟨dom(c) $ φ, ⊤ quantilePos(p, c)⟩minus, w ≜ ⟨⊤ hi, ⟨d, ⟨⊤ lo, d⟩minus⟩max⟩minus, q ≜ dom(⟨⊤ lo, w⟩ cor(<)) ⟨w, sortBy(𝟙, c) $ φ⟩times`；
+    `genericPercentile(p, c) ≜ quantilePos(p, c) floor 𝟙(Z) (dom(c) $ Z)° sortBy(𝟙, c)`；
     `median` 是 `quantile({(∗,0.5)}, c)`，`percentile` 是 `quantile` 在 k/100，`interQuartileRange` 是 `⟨quantile({(∗,0.75)}, c), quantile({(∗,0.25)}, c)⟩minus`],
-    [线性插值（DataHaskell 的 `quantiles'`、polars 的 `linear`）：排序后的位置 h = p·(n−1)，值 = lower + frac·(upper − lower)，
-    即 |i − h| < 1 的行以权 1 − |i − h| 求和，不取 h 的整数部分；q 的 `med` 是 p = 0.5，不另写；p 不在 [0, 1] 时无像；
-    是 `c` 上的关系，不是数组上的，故不接在 `aggregate` 里；整数列与 `f64` 列上都可用；`genericPercentile`（任意 `Ord`，不插值）未写：F4], "part"),
+    [`quantilePos` 是排序后的位置 h = p·(n−1)，p 不在 [0, 1] 时无像。`quantile` 线性插值（DataHaskell 的 `quantiles'`、polars 的 `linear`）：
+    值 = lower + frac·(upper − lower)，即 |i − h| < 1 的行以权 1 − |i − h| 求和；q 的 `med` 是 p = 0.5，不另写；整数列与 `f64` 列上都可用。
+    `genericPercentile` 不插值（DataHaskell 的 `quantilesOrd'`）：排序后位置 ⌊h⌋ 的值本身，`floor` 把 h 变为 `i64` 的 `Z`，
+    故任何有序的列都可用（整数、`f64`、`date`、枚举对象，`TestFrameStat`）；DataHaskell 的参数是整数 k、p = k/100。
+    都是 `c` 上的关系，不是数组上的，故不接在 `aggregate` 里], "full"),
   ([`countDistinct` `mode`], [`countDistinct(x) ≜ count(distinct(x))`；`mode(a, x) ≜ summarize(head, s) s where s ≜ idesc(valueCounts(a, x) π₂) valueCounts(a, x) π₁`],
     [`mode` 在并列中取先出现的（`idesc` 稳定）], "full"),
   ([`collect`], [`collect(a, c, x) ≜ aggregate(a, F(x c), x)`], [结果列的类型是 `Obj.arr V`], "full"),
@@ -280,7 +284,8 @@ next(n, x)        ≜ dom(x) tot(⟨𝟙, ⊤ n⟩plus x)                 行 i 
   ([`lift` `lift2` `nullLift` `bind`], [无], [F7], "no"),
   ([`cast` `toDouble` `div` `mod` `pow` `relu` `eq` `lt` `and` `or` `not` …],
     [`div` `mod` 是 `arith`；`eq` 是 `𝟙`，`lt` 是 `<`；`and` `or` `not` 是 coreflexive 的 `∩` `∪` `−`；`relu = ⟨𝟙, ⊤ 0⟩max`；`toDouble` 是 `x v $ F`（`obj F : f64`）],
-    [`$` 只保值（整数 → 浮点、窄 → 宽）；`arith` 与 `<` 在 `f64` `f32` 上（`TestFloatArith`），`div` 是取整的商，`%` 是真商；浮点 → 整数、`pow`：F4], "part"),
+    [`$` 只保值（整数 → 浮点、窄 → 宽）；`arith` 与 `<` 在 `f64` `f32` 上（`TestFloatArith`），`div` 是取整的商，`%` 是真商；浮点 → 整数是 `floor`（`f32` `f64` 到 `i64`，NaN 与越界无像，`TestFloatArith.unaryT`）；
+    `pow` 未写：F4], "part"),
   ([`over`], [`over(a, f, x)`], [], "full"),
   ([`contains` `length` `splitOn` `match` `matchAll`], [`contains(s) ≜ dom(suffix prefix s)`；`length` 是 prim], [`splitOn` `match`：F3], "part"),
   ([`parseDate` `daysBetween`], [`daysBetween(a, b) ≜ ⟨a $ Z, b $ Z⟩minus`],
@@ -353,7 +358,10 @@ next(n, x)        ≜ dom(x) tot(⟨𝟙, ⊤ n⟩plus x)                 行 i 
   (1) `sums` 在 `i64` `f64` 上，`cumSum` `sumsBy` 在 `f64` 列上运行（`TestFrameStat`），`f32` 列被拒、先 `$` 到 `f64`；
   (2) 已解决（请求 10/11）：统计对结果的 float 对象 `φ` 泛型，由用处的期望类型确定（`TestGenericNum.avgGT`），库不再声明
   `F`；数的运算（`sqrt` `times` …）不把结果对象连到操作数，作操作数的统计写 `𝟙(φ)`。`f32` 的结果被 prim `sum` 拒
-  （`TestFrameStat.frameStatF32T`）；泛型定义中的数字字面量在每处使用的对象上构造（请求 12、13），故 `quantile` 直接写 `0.0`、`1.0`；(3) 浮点 → 整数、`pow`、`fround`；分位数不需要前者：权 1 − |i − h| 选出 h 两侧的行，`skewness` 的立方是 `times`；
+  （`TestFrameStat.frameStatF32T`）；泛型定义中的数字字面量在每处使用的对象上构造（请求 12、13），故 `quantile` 直接写 `0.0`、`1.0`；(3) 浮点 → 整数是一元的 `floor`（`f32` `f64` 到 `i64`），`genericPercentile` 用它取 ⌊h⌋；仍缺 `pow` 与 `fround`。
+  DataHaskell 的 `pow x i` 是 Haskell 的 `x ^ i`，`i` 是 `Int` 字面量：对一个固定的 `i` 是 `i` 个 `times` 的复合
+  （`skewness` 的立方即是），但对参数 `i` 的定义要每行 `i` 份同一个值的数组再 fold，而 `Λ` 的像是集合，同值只得一份；
+  `exp(y·log x)` 不是这个函数（结果差末位，`x ≤ 0` 无像），不当作 `pow`；
   (4) `aj` 的时间沿 `sums` 扫描：`date` `datetime` 的时间列运行（`TestFrameTyped.ajDateT` `sumsTimeT`），`f64` 的
   时间列被拒，`f64` 的 canon 序在 S5 之前是位的序（`TestFrameTyped.sumsFloatPosT`）。
 - *F5 时间类型。* `date`、`datetime` 是整数 code，没有时区。日历运算（取月份、截断到月）是整数算术加上与日历表的 join。

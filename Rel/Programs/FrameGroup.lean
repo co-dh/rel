@@ -54,9 +54,14 @@ rel_program frameStat where
     -- skewness, population (DataHaskell's `skewness'`, g1 = m3/m2^1.5): m3 = E[x³] − 3μσ² − μ³ over σ²·σ; each value
     -- is cast to `φ` before it is cubed, never a cube in γ
     skewness : [γ] ⟶ φ ≜ ⟨⟨F(𝟙 $ φ ⟨⟨𝟙, 𝟙⟩times, 𝟙⟩times 𝟙(φ)) avg 𝟙(φ), ⟨avg 𝟙(φ), ⟨⟨var 𝟙(φ), ⟨var 𝟙(φ), var 𝟙(φ)⟩plus⟩plus, ⟨avg 𝟙(φ), avg 𝟙(φ)⟩times⟩plus⟩times⟩minus, ⟨var 𝟙(φ), dev 𝟙(φ)⟩times⟩%
-    -- linear interpolation (DataHaskell `quantiles'`, polars "linear"): at h = p·(n−1) on `c` sorted, the rows `i` with
-    -- |i − h| < 1 weighted 1 − |i − h|, i.e. lower + frac·(upper − lower); q's `med` is p = 0.5; no row unless 0 ≤ p ≤ 1
-    quantile(p : 1 ⟶ φ, c : ν ⟶ γ) : 1 ⟶ φ ≜ summarize(F(q) sum, q) where m ≜ count(c) $ φ, hi ≜ {(∗,1.0)}, lo ≜ {(∗,0.0)}, h ≜ dom(⟨lo, p⟩ cor(≤)) dom(⟨p, hi⟩ cor(≤)) ⟨p, ⟨m, hi⟩minus⟩times, d ≜ ⟨dom(c) $ φ, ⊤ h⟩minus, w ≜ ⟨⊤ hi, ⟨d, ⟨⊤ lo, d⟩minus⟩max⟩minus, q ≜ dom(⟨⊤ lo, w⟩ cor(<)) ⟨w, sortBy(𝟙, c) $ φ⟩times
+    -- the position h = p·(n−1) on `c` sorted (DataHaskell's `quantiles'` and `quantilesOrd'`), none unless 0 ≤ p ≤ 1
+    quantilePos(p : 1 ⟶ φ, c : ν ⟶ γ) : 1 ⟶ φ ≜ dom(⟨lo, p⟩ cor(≤)) dom(⟨p, hi⟩ cor(≤)) ⟨p, ⟨count(c) $ φ, hi⟩minus⟩times where hi ≜ {(∗,1.0)}, lo ≜ {(∗,0.0)}
+    -- linear interpolation (DataHaskell `quantiles'`, polars "linear"): at h on `c` sorted, the rows `i` with
+    -- |i − h| < 1 weighted 1 − |i − h|, i.e. lower + frac·(upper − lower); q's `med` is p = 0.5
+    quantile(p : 1 ⟶ φ, c : ν ⟶ γ) : 1 ⟶ φ ≜ summarize(F(q) sum, q) where hi ≜ {(∗,1.0)}, lo ≜ {(∗,0.0)}, d ≜ ⟨dom(c) $ φ, ⊤ quantilePos(p, c)⟩minus, w ≜ ⟨⊤ hi, ⟨d, ⟨⊤ lo, d⟩minus⟩max⟩minus, q ≜ dom(⟨⊤ lo, w⟩ cor(<)) ⟨w, sortBy(𝟙, c) $ φ⟩times
+    -- no interpolation, so any ordered `γ` (DataHaskell `genericPercentile`): the sorted row at position ⌊h⌋, the
+    -- position read as an integer `Z` and matched against each row's own position cast to `Z`
+    genericPercentile(p : 1 ⟶ φ, c : ν ⟶ γ) : 1 ⟶ γ ≜ quantilePos(p, c) floor 𝟙(Z) (dom(c) $ Z)° sortBy(𝟙, c)
     -- per row (x − mean)/std, the sample std as DataHaskell's `variance'` (n − 1); none at one row
     zScore(c : ν ⟶ γ) : ν ⟶ φ ≜ ⟨⟨c $ φ, ⊤ m⟩minus, ⊤ s⟩% where m ≜ summarize(F(c) avg 𝟙(φ), c), s ≜ summarize(F(c) sdev 𝟙(φ), c)
     valueProportions(a : β ⟶ γ, x : ν ⟶ β) : ν ⟶ γ×φ ≜ valueCounts(a, x) ⟨π₁, ⟨π₂ $ φ, ⊤ count(x) $ φ⟩%⟩
