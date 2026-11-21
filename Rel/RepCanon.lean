@@ -151,14 +151,16 @@ theorem colMap_chain {op : Op} {t s : QAtomicType} {n : USize} {a b o : Enc} {pr
   rw [(wordsFoR_closed _ hW.symm).2.1]
   have hr := hrow i (by omega)
   rw [if_neg (fun hh => by simp [hi] at hh)] at hr
-  simp only [List.foldlM_cons, List.foldlM_nil, bind, Except.bind] at hr
+  simp only [List.map_cons, List.map_nil, Bool.false_eq_true, ↓reduceIte, List.foldlM_cons, List.foldlM_nil, bind,
+    Except.bind] at hr
   cases he : op.eval (ca[i]?.getD 0) (cb[i]?.getD 0) with
   | error e => rw [he] at hr; cases hr
   | ok v =>
     rw [he] at hr; simp only [pure, Except.pure, Except.ok.injEq] at hr
     have hq := hpr i (by omega)
-    refine ⟨_, _, v, _, hra i hi, hrb i hi, he, by rw [← hr]; exact hq, ?_⟩
-    rw [Array.getElem?_map, Array.getElem?_eq_getElem (by omega)]; rfl
+    refine ⟨_, _, v, _, hra i hi, hrb i hi, he,
+      by rw [hr]; simpa [Array.getElem?_eq_getElem (show i < out₀.size by omega)] using hq, ?_⟩
+    simp [Array.getElem?_eq_getElem (show i < out.size by omega)]
 
 /-- **`colMap op n a b t` at any answer type `t`**: word `i` is `op` of `a`'s and `b`'s words `i`, a boolean answer's
 cut to its bit (`colMap_chain` at no chain; `colMap_raw` is the `i64` case with the argument sizes). -/
