@@ -75,7 +75,7 @@ rel_program frameStatT where
 
 -- `avg` of an `f64` column: its entry cast to `Z` keeps values, and prim `sum`, which would take `F` instead, runs on
 -- `i64` only (the float summation order is undecided, PLAN S4)
-/-- error: line 84, col 5: $ from Rel.Programs.frameStat.F (f64) to Rel.Programs.frameStat.Z (i64): not every f64 value is a i64 value, and $ keeps a number's value -/
+/-- error: line 84, col 5: $ from F (f64) to Z (i64): not every f64 value is a i64 value, and $ keeps a number's value -/
 #guard_msgs in
 open Rel.Programs.prelude Rel.Programs.frame Rel.Programs.frameGroup Rel.Programs.frameStat in
 rel_program avgFloatT where

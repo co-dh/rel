@@ -226,7 +226,7 @@ def elabOnce (env : Env) (p : Pos) (n : String) (qs : List Param) (e : Expr) (ty
     -- a variable only the declared result names is rigid too, as `mkDef` leaves it to the use
     let (s, u) := match r with | .rel _ s u => (s, u) | .fam _ _ a b => (a, b)
     declared env' p n rigid ty s u
-    settleOpen env' p r.plain.1
+    settleOpen env' p [r.plain.1]
     pure (r, os) : M (Arg × List (Obj × Obj × Bool))).run { fixes := nv + qs.length, specs, objs }
   pure (os, r, st)
 
@@ -484,7 +484,7 @@ def checkOf (env : Env) (p : Pos) (e f : Expr) (eq : Bool) (specs : List Once) :
     let mc ← Lean.getMCtx
     try unify p "" s' s; unify p "" t' t
     catch _ => throw ⟨p, s!"check: the sides have types {zonk mc s} ⟶ {zonk mc t} and {zonk mc s'} ⟶ {zonk mc t'}"⟩
-    settleOpen env p r.plain.1; settleOpen env p r'.plain.1
+    settleOpen env p [r.plain.1, r'.plain.1]
     pure (r, r') : M (Arg × Arg)).run { specs, objs := env.objs }
   let mc ← Lean.getMCtx
   let (⟨A, B, R⟩, s, t) ← top env mc p e r
@@ -492,10 +492,30 @@ def checkOf (env : Env) (p : Pos) (e f : Expr) (eq : Bool) (specs : List Once) :
   if h : A' = A ∧ B' = B then pure ((p, e.show, f.show, eq, s, t, ⟨A, B, R, h.1 ▸ h.2 ▸ S⟩), st.specs)
   else throw ⟨p, s!"check: the sides have types {s} ⟶ {t} and {s'} ⟶ {t'}"⟩
 
+/-- The CSV columns of a side written `o` (IO design D), each with the labels that name it, outermost first, the
+    object as written and as resolved. A schema's columns are its fields; a product's are its factors' columns, a factor
+    that is a named object labelling its own (`Trade×(Quote+1)`: `Trade.sym` … `Quote.sym` …; `K×N`: `K`, `N`); a
+    sum `S+1` is one column `V+1` per column `V` of `S`, labelled as `S`'s, so the `1` is every one of them null
+    together; any other object is one column. `top`: `o` is the whole side, whose own name labels nothing. -/
+def csvLeaves (env : Env) (o : OExp) (top : Bool) : EM (List (List String × OExp × OTy)) := do
+  let t ← (oty env [] o).run' {}
+  match o with
+  | .name _ n =>
+    let pre := if top then [] else [n]
+    match env.obj? n with
+    | some i => if i.cols.isEmpty then pure [(pre, o, t)] else pure (i.cols.map fun (c, f) => (pre ++ [c], f.exp, f))
+    | none => pure [(pre, o, t)]
+  | .prod a b => return (← csvLeaves env a false) ++ (← csvLeaves env b false)
+  | .sum a b =>
+    let u ← (oty env [] b).run' {}
+    return (← csvLeaves env a top).map fun (ls, e, s) => (ls, .sum e b, .sum s u)
+  | _ => pure [([], o, t)]
+
 /-- The columns of an `input`'s or `output`'s type `A ⟶ B` (`what`: the statement), checked: the key's, none where
-    `A` is an unbounded number object (positions), then the value's; a schema object its columns, any other object
-    the one column `key` or `val` (IO design A.1). Refused: an object variable, an undeclared object, a column
-    twice; for CSV a column that is no atom, nullable atom or text, or that `Db.Csv.schema` refuses (C.3). Returned: `A`, `B`, the
+    `A` is the positions (a number object stored `.long`), then the value's; a schema object its columns, any other
+    object the one column `key` or `val` (IO design A.1). For CSV the header is `csvLeaves`'s columns, named by their
+    labels joined by `.`, or `key`, `val` where none labels them. Refused: an object variable, an undeclared object, a
+    column twice; for CSV a column that is no atom, nullable atom or text, or that `Db.Csv.schema` refuses (C.3). Returned: `A`, `B`, the
     key's columns (`[]`: positions, whose `Schema.obj` is `.long`) and the value's as `Obj`s, and for CSV the header
     (`Db.CsvCols`: each column's atom and, for named elements, their names). -/
 def ioCols (env : Env) (p : Pos) (what : String) (ty : OExp × OExp) (csv : Bool) :
@@ -506,22 +526,24 @@ def ioCols (env : Env) (p : Pos) (what : String) (ty : OExp × OExp) (csv : Bool
     let t ← try (oty env [] o).run' {} catch e => throw ⟨e.pos, s!"{what}: {e.msg}"⟩
     let i := match o with | .name _ n => env.obj? n | _ => none
     pure (← liftExcept (objOf env.objs p t), match i with
-      | some i => if !i.cols.isEmpty then i.cols else if key && i.num then [] else [(one, t)]
+      -- positions: the number object whose element is the row number (stored `.long`); any other key object is a
+      -- key column, a keyed table (ruling H), whatever its atom
+      | some i => if !i.cols.isEmpty then i.cols else if key && i.num && i.obj == .long then [] else [(one, t)]
       | none => [(one, t)])
   let (A, ks) ← side ty.1 "key" true
   let (B, vs) ← side ty.2 "val" false
   let cs := ks ++ vs
   if let .error m := Schema.check cs then throw ⟨p, s!"{what}: {m}"⟩
+  -- each column's `Obj` is `objOf`'s, so `K.obj = A` and `S.obj = B` hold by construction
   let objs (S : Schema OTy) : EM Schema := S.mapM fun (c, t) => return (c, ← liftExcept (objOf env.objs p t))
   let (K, S) := (← objs ks, ← objs vs)
-  -- the files' objects are the declared ones: positions are stored `.long` (`Schema.obj []`)
-  unless K.obj == A && S.obj == B do
-    throw ⟨p, s!"{what}: the key is positions, stored {repr Obj.long}, and {OExp.arrow ty} stores it {repr A}; " ++
-      "declare the key an object stored i64"⟩
   let mut hdr : Db.CsvCols := []
   if csv then
     let elems (n : String) := ((env.obj? n).map (·.elems)).getD []
-    for (c, t) in cs do
+    let kl ← if ks.isEmpty then pure [] else csvLeaves env ty.1 true
+    let leaves := kl.map ("key", ·) ++ (← csvLeaves env ty.2 true).map ("val", ·)
+    for (one, ls, e, t) in leaves do
+      let c := if ls.isEmpty then one else ".".intercalate ls
       -- the column's shape by its declared type and its stored object together; which atoms each takes is `schema`'s
       let col : Option (Db.CsvShape × QAtomicType × List String) := match t, ← liftExcept (objOf env.objs p t) with
         | .base n, .atom a => some (.atom, a, elems n)
@@ -529,9 +551,10 @@ def ioCols (env : Env) (p : Pos) (what : String) (ty : OExp × OExp) (csv : Bool
         | .arr (.base n), .arr (.atom a) => some (.text, a, elems n)
         | _, _ => none
       let some (s, a, ns) := col
-        | throw ⟨p, s!"{what}: column '{c}' is {t}; a CSV field holds an atom, a nullable atom `V+1` (`1` an object of \
-            one element) or a text `[C]`; declare it a table directory (drop `csv`)"⟩
+        | throw ⟨p, s!"{what}: column '{c}' is {e.show}; a CSV field holds an atom, a nullable atom `V+1` (`1` an \
+            object of one element) or a text `[C]`; declare it a table directory (drop `csv`)"⟩
       hdr := hdr ++ [(c, s, a, ns)]
+    if let .error m := Schema.check hdr then throw ⟨p, s!"{what}: {m}"⟩
     if let .error m := Db.Csv.schema hdr then throw ⟨p, s!"{what}: {m}"⟩
   pure (A, B, K, S, hdr)
 
@@ -549,8 +572,13 @@ def bindIns (rt : List (String × Param × Option (List String))) (p : Pos) (wha
   -- each run-time name's inputs, and its term where every one of them is given
   let reach := rt.foldl (init := ([] : List (String × List String))) fun r (y, _, ys) =>
     r ++ [(y, match ys with | none => [y] | some ys => (ys.flatMap fun z => (r.lookup z).getD []).eraseDups)]
-  let σ := rt.foldl (init := ([] : List (String × Expr))) fun σ (y, _, ys) => match ys with
-    | none => match bs.lookup y with | some l => σ ++ [(y, l)] | none => σ
+  -- a literal table stands where its input does at the input's declared type, so its words are read at the input's
+  -- objects as a typed definition's are (`Expr.lit`'s `ty`)
+  let σ := rt.foldl (init := ([] : List (String × Expr))) fun σ (y, P, ys) => match ys with
+    | none => match bs.lookup y with
+      | some (.lit q ps _) => σ ++ [(y, .lit q ps P.ty)]
+      | some l => σ ++ [(y, l)]
+      | none => σ
     | some ys =>
       if ys.all (σ.lookup · |>.isSome) then σ ++ [(y, Expr.app p y (ys.filterMap fun z => σ.lookup z))] else σ
   for y in es.flatMap (·.names) do
@@ -656,7 +684,7 @@ def walk (prog : Program) (env : Env) (wrap : String → Def → Def) (own : Lea
         let (r, st) ← (do
           let r ← elabE env none e
           if let some ty := ty then let (_, s, t) := r.plain; declared env p n rigid ty s t
-          settleOpen env p r.plain.1
+          settleOpen env p [r.plain.1]
           pure r).run { specs, objs := env.objs }
         specs := st.specs
         let mc ← Lean.getMCtx; let (q, s, t) := r.plain
@@ -689,7 +717,7 @@ def walk (prog : Program) (env : Env) (wrap : String → Def → Def) (own : Lea
     | .print p e bs =>
       let (e, bs) := (rtNamesE env rt e, bs.map fun (x, l) => (rtName env rt x, l))
       let e := e.subst (← liftExcept (bindIns rt p "print" [e] bs))
-      let (r, st) ← (do let r ← elabE env none e; settleOpen env p r.plain.1; pure r).run { specs, objs := env.objs }
+      let (r, st) ← (do let r ← elabE env none e; settleOpen env p [r.plain.1]; pure r).run { specs, objs := env.objs }
       specs := st.specs
       pr := pr ++ [(e.show, ← top env (← Lean.getMCtx) p e r)]
     | .check p e f eq bs =>

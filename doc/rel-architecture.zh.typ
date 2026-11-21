@@ -136,11 +136,18 @@ compile η t : {r : Rel A B // rep r = ⟦t⟧ρ}       -- 方案 A：规格在�
 - 前端：`Parse` → `Elab`（得到 `Tm`）→ `Expand`（`rel_program`，elaboration 时编号 `share`、产出代码）。
 - 语句 `input x : A ⟶ B from "路径"` / `output x to "路径"`（后接 `csv` 为 CSV，否则为 mmap 表目录；路径就是语句里的字面量）
   不是 `Tm` 的构造子：`input` 声明一个只有类型的名字，是后续语句里程序层的 `var`；`output` 指名一个定义或 `input`。下表「绑定 / 复用」一行不变。
+  key 是位置（不落盘）当且仅当 key 对象是存为 `.long` 的数对象；其它 key 对象都是 key 列。CSV 的列按对象结构展开，
+  `S+1` 是 `S` 每列一个可空列（`dataframe-design` F6 的落盘一条）。
 - 字面量 `{(a,b),…}` 里的一个词按它所在对象的 atom 读成存储字（`Elab.wordAt`）：整数 `3` `-3`；浮点 `2.5` `1e-3`
   （按 Lean 的浮点字面量读）；`date` 上也可写 q 的日期 `2024.01.15`，`datetime` 上写 q 的时间
   `2024.01.15D12:30:00.5`（小数 1–9 位）。日期、时间是一个词（中间无空格），值是 1970-01-01 起的天数、纳秒数（公历外推，
   年份 0001–9999），由 CSV 的读法 `Db.Csv.ymd`、`Db.Csv.stamp` 以 `.` 为日期分隔符读出（`Elab.qForm`）。词不在该 atom
   里（不存在的日子如 `2024.02.30`、超出 atom 范围、写在别的 atom 的对象上）时 elaboration 报错，写出这个词、对象和 atom。
+- 文本 `"TK, main"` 是 Lean 的字符串字面量（转义按 Lean：`\"` `\\` `\n` `\t` `\xHH` 等），即它的 UTF-8 字节组成的数组：
+  每个字节是 `char` 上的一个词（q 的写法 `"a"`、`"\ooo"`，`Tup.ofText`、`Elab.qForm`），所以只在元素对象是 `char` 的
+  `[C]` 上成立，不是另一种机制。
+- 字面量的对象：唯一持有它的词的已声明对象；多个对象都持有时，取其中每个作用在该位置上的数值运算（行的 `num`、`succ`、
+  算术、`≤`、`<`）都接受的那一个（`Elab.settleLit`，`Pre.nums`），检查的两边一起定。`where` 里输入的表按该输入声明的类型读。
 
 #tbl(c-syn, (auto, 1fr), ([组], [构造子]),
   [allegory], [`id` `comp` `conv` `meet` `dom` `ran`],
