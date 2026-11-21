@@ -2212,9 +2212,17 @@ def build : Pre → Except Err Res
         else let ⟨_, _, u⟩ ← build x; pure ⟨A, B, .arg f u⟩
     let some dfn := dfns.lookup r.sym | row ()
     let o := zonk mc t
-    let some u ← uniPart objs dp o B | row ()
+    let some u ← uniPart objs dp o B | do
+      -- an object variable with no universe may be called at a bounded object, where the uncut row is not `d` unless
+      -- `d` needs no universe (`DfnCut.uni`, asked with `𝟙` standing for it)
+      if let .base n := o then if (objs.lookup n).any fun i => i.ovar && !i.num then
+        let args ← xs.attach.mapM fun ⟨x, h⟩ => have := List.sizeOf_lt_of_mem h; build x
+        if (dfn A B args .id).all (·.2.uni.isSome) then
+          throw ⟨dp, s!"{r.sym} at the object variable {n} needs its universe: its definition is cut to it (§4)"⟩
+      row ()
     let args ← xs.attach.mapM fun ⟨x, h⟩ => have := List.sizeOf_lt_of_mem h; build x
-    let some ⟨d, c⟩ := dfn A B args u | internal dp s!"{r.sym}'s definition (dfns) takes other relations or objects"
+    -- none at an atom with no literal `0` (`zeroCol`): a placeholder, so the constant stays at `.long` (`Expand.once`)
+    let some ⟨d, c⟩ := dfn A B args u | throw ⟨dp, s!"{r.sym}'s definition (dfns) has no form at {repr A} ⟶ {repr B}"⟩
     if unbounded objs o || c.uni.isNone then pure ⟨A, B, c.fused⟩
     else if initSeg objs o then pure ⟨A, B, c.cut⟩
     else pure ⟨A, B, d⟩

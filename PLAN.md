@@ -380,9 +380,13 @@ Diff table 的「状态」列：✅ 后面是完成它的步骤；🔄 是部分
   `Tab.sum_holds`（任意 `V`：`T.Holds xs c ↔ (∃ i, X.row i = xs) ∧ sumAt V xs c`）、`runScan_ok`、`seenSeg_ok`；
   `rowOK_sum` 用 `Tab.sum_holds`。测试 `TestFrameTyped.sumFloatT`（`1, 1e16, −1e16 → 0`）、`Kern45.sumFold`
   （`3 3 −3` 的中间和 6 ∉ `−3…3`）。
-  🔄 未完：`DfnCut.sum`/`dfns`/`zeroTm` 仍只在 `.arr .long ⟶ .long`，所以 f64 对象上的 `sum` 报
-  "internal: sum's definition (dfns) takes other relations or objects"，泛型常量（`sumG`、`sm`）的体在占位 atom 上
-  以无 universe 的形式建成，跑融合行不截断（`TestFusedM.gz`、`TestGenericN.sm(y)` 失败）。见 `/data/tmp/typedbase/sumL2-notes.md`。
+  分支 `sumL3`（owner 裁定 B）：`DfnCut.sum`/`dfns`/`zeroTm` 在任意有序 atom `t` 上，`.arr (.atom t) ⟶ .atom t`，
+  步 `.arith t add`；基 `0` 是 atom 的字面零字 `ofBits t 0`（`zeroCol`：一行 `wordsFoR #[0]` 的 `uni`，
+  `ran(u {0})`），不再是 `⟨𝟙,𝟙⟩ minus ∩ 𝟙`，故无需浮点减法的事实。`Tm.dfnCut_den` 对任意 atom 成立：universe
+  `P : B.El → Prop`，`Seg B P`（`i64` 上为 `InitSeg`，其余 atom 为 `False`）；`plus_iff`、`zeroTm_den`、`zeroCol_row`、
+  `Prim.den_sumRow`、`Prim.den_mapRow_corefl` 泛化，无 sorry。`build`：没有 universe 的对象变量（非 `num`）上，
+  定义需要 universe（`DfnCut.uni`）的行报错而不再跑未截断的融合行；占位 atom（无字面 `0`）上 `dfns` 无形式，
+  所以含 `sum` 的泛型常量留在 `.long`（`Expand.once`），f64 上的 `sum` 只在单态处跑。
 - ⬜ S5 float 上的 `Obj.key = ordCode`；`key_ordCode`、`ascBad`、float 上的 `LamLaw`。
 - 🟡 S6 行 `$`（分支 `tb-s6`，owner 裁定 J）：`x $ F` 与 `QAtomicType.embed s t` 的图复合（`castDen`），部分映射、不舍入；
   允许的对由 `castOK` 从两个 atom 的格式读出（加宽、整数 → 浮点）；有损方向在 elaboration 报错。`Tab.cast`（分支
