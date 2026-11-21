@@ -429,6 +429,11 @@ Diff table 的「状态」列：✅ 后面是完成它的步骤；🔄 是部分
     是该定义的隐式对象变量 `n#i`（`Elab.generalise`，let 泛化），每次使用都在 `.long` 上，数检查照常；`check` 里
     仍报错。测试 `TestGenericNum.lenT`（`length $ F`）、`wsumT`（`positions(p) sum $ ψ` 的 ℕ）、
     `openCheckT`（`check` 里仍报错）。
+  - ✅ 只在结果类型里的对象变量（dataframe 请求 10，分支 `rq10`）：类型含对象变量的定义无论有无参数都是泛型
+    （`Expand.read` 不再把无参数的泛型定义当常量体），每次使用由期望类型实例化（`mkDef`、`callDef` 的合一）；使用
+    返回时变量未解的，其数检查记入 `St.uses`，在项 elaborate 完（`settleOpen`、`generalise` 之后）由
+    `Elab.settleUses` 在实例上跑；无物固定的变量报错，写出变量、定义与使用处。测试 `TestGenericNum.avgGT`
+    （`avgG : [Z] ⟶ φ` 在两个 f64 对象上）、`avgGOpen`（`print x avgG` 报错）。
 - ⬜ S9 文档：architecture §1、§4.3，dataframe F4，PLAN（随各步）。
 
 ### P0 baseline — 1/1
