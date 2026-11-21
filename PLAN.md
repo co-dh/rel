@@ -56,6 +56,8 @@
   - date 字面量写作 q 的 `2024.01.15`，新 token（实现：分支 `datelit`，`Elab.qForm`；值为 1970-01-01 起的天数）。
   - 浮点 `sum`/`sums` 按从左到右求和（q 的顺序，与 `sums` 前缀和一致）；整数上右折叠定义不变，浮点的含义写为左折叠。
   - cast 逐值偏：没有像的值没有行，不报错。
+- 文本字面量 `"…"`（分支 `txtlit`）：`[C]` 上字节的数组，`Tup.ofText`；未写类型的检查里字面量的对象由其上的数值运算定
+  （`Elab.settleLit`），`where` 表按输入的声明类型读（`Expr.lit` 的 `ty`）。测试 `Rel/Lang/TestDateLit.lean`。
 
 ## 0. 每一步都遵守的约定
 

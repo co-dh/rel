@@ -226,7 +226,7 @@ def elabOnce (env : Env) (p : Pos) (n : String) (qs : List Param) (e : Expr) (ty
     -- a variable only the declared result names is rigid too, as `mkDef` leaves it to the use
     let (s, u) := match r with | .rel _ s u => (s, u) | .fam _ _ a b => (a, b)
     declared env' p n rigid ty s u
-    settleOpen env' p r.plain.1
+    settleOpen env' p [r.plain.1]
     pure (r, os) : M (Arg × List (Obj × Obj × Bool))).run { fixes := nv + qs.length, specs, objs }
   pure (os, r, st)
 
@@ -484,7 +484,7 @@ def checkOf (env : Env) (p : Pos) (e f : Expr) (eq : Bool) (specs : List Once) :
     let mc ← Lean.getMCtx
     try unify p "" s' s; unify p "" t' t
     catch _ => throw ⟨p, s!"check: the sides have types {zonk mc s} ⟶ {zonk mc t} and {zonk mc s'} ⟶ {zonk mc t'}"⟩
-    settleOpen env p r.plain.1; settleOpen env p r'.plain.1
+    settleOpen env p [r.plain.1, r'.plain.1]
     pure (r, r') : M (Arg × Arg)).run { specs, objs := env.objs }
   let mc ← Lean.getMCtx
   let (⟨A, B, R⟩, s, t) ← top env mc p e r
@@ -572,8 +572,13 @@ def bindIns (rt : List (String × Param × Option (List String))) (p : Pos) (wha
   -- each run-time name's inputs, and its term where every one of them is given
   let reach := rt.foldl (init := ([] : List (String × List String))) fun r (y, _, ys) =>
     r ++ [(y, match ys with | none => [y] | some ys => (ys.flatMap fun z => (r.lookup z).getD []).eraseDups)]
-  let σ := rt.foldl (init := ([] : List (String × Expr))) fun σ (y, _, ys) => match ys with
-    | none => match bs.lookup y with | some l => σ ++ [(y, l)] | none => σ
+  -- a literal table stands where its input does at the input's declared type, so its words are read at the input's
+  -- objects as a typed definition's are (`Expr.lit`'s `ty`)
+  let σ := rt.foldl (init := ([] : List (String × Expr))) fun σ (y, P, ys) => match ys with
+    | none => match bs.lookup y with
+      | some (.lit q ps _) => σ ++ [(y, .lit q ps P.ty)]
+      | some l => σ ++ [(y, l)]
+      | none => σ
     | some ys =>
       if ys.all (σ.lookup · |>.isSome) then σ ++ [(y, Expr.app p y (ys.filterMap fun z => σ.lookup z))] else σ
   for y in es.flatMap (·.names) do
@@ -679,7 +684,7 @@ def walk (prog : Program) (env : Env) (wrap : String → Def → Def) (own : Lea
         let (r, st) ← (do
           let r ← elabE env none e
           if let some ty := ty then let (_, s, t) := r.plain; declared env p n rigid ty s t
-          settleOpen env p r.plain.1
+          settleOpen env p [r.plain.1]
           pure r).run { specs, objs := env.objs }
         specs := st.specs
         let mc ← Lean.getMCtx; let (q, s, t) := r.plain
@@ -712,7 +717,7 @@ def walk (prog : Program) (env : Env) (wrap : String → Def → Def) (own : Lea
     | .print p e bs =>
       let (e, bs) := (rtNamesE env rt e, bs.map fun (x, l) => (rtName env rt x, l))
       let e := e.subst (← liftExcept (bindIns rt p "print" [e] bs))
-      let (r, st) ← (do let r ← elabE env none e; settleOpen env p r.plain.1; pure r).run { specs, objs := env.objs }
+      let (r, st) ← (do let r ← elabE env none e; settleOpen env p [r.plain.1]; pure r).run { specs, objs := env.objs }
       specs := st.specs
       pr := pr ++ [(e.show, ← top env (← Lean.getMCtx) p e r)]
     | .check p e f eq bs =>

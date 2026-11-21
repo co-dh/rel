@@ -110,6 +110,28 @@ def Tup.render (item : Bool) : Tup → String
 
 def Tup.show (t : Tup) : String := t.render false
 
+/-- The bytes `32…126` but `"` and `\`, which q writes as themselves inside a char's quotes. -/
+def charPlain (c : Nat) : Bool := 32 ≤ c && c < 127 && c != 34 && c != 92
+
+/-- A byte as q writes a char: `"a"` for a `charPlain` byte, else `"\ooo"`, its three octal digits; `charOf` reads it
+    back, the text form of the atom `char` (`Elab.qForm`). -/
+def charText (b : UInt8) : String :=
+  let n := b.toNat
+  if charPlain n then s!"\"{Char.ofNat n}\"" else s!"\"\\{n / 64}{n / 8 % 8}{n % 8}\""
+
+/-- The byte whose `charText` has the bytes `f`; none for any other text. -/
+def charOf : List UInt8 → Option Int
+  | [34, c, 34] => if charPlain c.toNat then some c.toNat else none
+  | [34, 92, a, b, c, 34] =>
+    if 48 ≤ a && a ≤ 51 && [b, c].all (fun d => 48 ≤ d && d ≤ 55) then
+      some (64 * (a.toNat - 48) + 8 * (b.toNat - 48) + (c.toNat - 48))
+    else none
+  | _ => none
+
+/-- A string literal (Lean's, its escapes decoded) as the array of its UTF-8 bytes, each a char word (`charText`):
+    a text `[C]` is an array of `C`s, so `"NY"` is the literal `["N" "Y"]` of the object of `char`s it is used at. -/
+def Tup.ofText (s : String) : Tup := .arr (s.toUTF8.toList.map (.leaf ∘ charText))
+
 /-- A term of §c. `name` is a program's definition or parameter; `op` a builtin with its objects and arguments;
     `app` a program's operator applied. Composition is juxtaposition. -/
 inductive Expr
@@ -125,7 +147,9 @@ inductive Expr
   | pair (p : Pos) (a b : Expr)
   | junc (p : Pos) (a b : Expr)
   | fold (p : Pos) (right : Bool) (r : Expr)
-  | lit (p : Pos) (ps : List (Tup × Tup))
+  /-- A table; `ty` the declared type of the input whose `where` table it is (`Expand.bindIns`), which its objects
+      are unified with as a typed definition's are. -/
+  | lit (p : Pos) (ps : List (Tup × Tup)) (ty : Option (OExp × OExp) := none)
   /-- `col S "c"`: the column `c` of the schema `S`, `S ⟶ C` where `("c", C) ∈ S` (`Schema.col?`). -/
   | col (p : Pos) (s : OExp) (c : String)
   /-- `μX : φ` (`least`) or `νX : φ`: the least or the greatest `X` with `X = φ(X)`; the body reaches to the
@@ -136,7 +160,7 @@ inductive Expr
 /-- The position a term starts at. -/
 def Expr.pos : Expr → Pos
   | .name p _ | .op p .. | .app p .. | .bin p .. | .inf p .. | .conv p _ | .compl p _ | .pair p .. | .junc p .. | .fold p ..
-  | .lit p _ | .fix p .. | .col p .. => p
+  | .lit p .. | .fix p .. | .col p .. => p
   | .comp a _ => a.pos
 
 /-- The atom the counting rows (`length`, `sum`, `sums`, `succ`) run on. -/
@@ -320,7 +344,7 @@ partial def Expr.subst (σ : List (String × Expr)) : Expr → Expr
   | .pair p a b => .pair p (a.subst σ) (b.subst σ)
   | .junc p a b => .junc p (a.subst σ) (b.subst σ)
   | .fold p d r => .fold p d (r.subst σ)
-  | .lit p ps => .lit p ps
+  | .lit p ps ty => .lit p ps ty
   | .col p s c => .col p s c
   -- `x` is bound in the body, so an outer `x` is not replaced there
   | .fix p l x b => .fix p l x (b.subst (σ.filter (·.1 != x)))
@@ -467,7 +491,7 @@ def Expr.render (l : Nat) (full : Bool := false) : Expr → String
   | .pair _ a b => s!"⟨{a.render 0 full}, {b.render 0 full}⟩"
   | .junc _ a b => s!"[{a.render 0 full}, {b.render 0 full}]"
   | .fold _ d r => s!"⦇{r.render 0 full}⦈{if d then "ʳ" else ""}"
-  | .lit _ ps => "{" ++ ", ".intercalate (ps.map fun (a, b) => (Tup.pair a b).show) ++ "}"
+  | .lit _ ps _ => "{" ++ ", ".intercalate (ps.map fun (a, b) => (Tup.pair a b).show) ++ "}"
   | .col _ s c => s!"col {s.render true} {c.quote}"
   | .fix _ least x b =>
     let s := s!"{if least then "μ" else "ν"}{x} : {b.render 0 full}"; if full || l ≥ 1 then s!"({s})" else s
