@@ -1,4 +1,4 @@
-import Rel.Programs.Frame
+import Rel.Programs.FrameGroup
 
 /-! The dataframe fixture every `TestFrame*` file reads, and the column rows of `Rel.Programs.frame` (plan M0): each
     API row once, against rows worked by hand. -/
@@ -56,8 +56,6 @@ rel_program frameCols where
     check cl = {(0,3),(1,2),(2,3)}
     -- reduce by a given `arith`: `max` from 0 over 5 3 5 1 7 2 1 3
     check summarize(F(x π₂) ⦇[{(∗,0)}, max]⦈, x) = {(∗,7)}
-    -- describe `v`: count 8, min 1, max 7
-    check describe(x π₂) = {(∗,(8,(1,7)))}
     -- arith verbs: `v div 2`, `v mod 2`; `and`, `or`, `not` of tests as `∩`, `∪`, `−` of coreflexives
     check x π₂ ⟨𝟙, ⊤ {(∗,2)}⟩div = {(0,2),(1,1),(2,2),(3,0),(4,3),(5,1),(6,0),(7,1)}
     check x π₂ ⟨𝟙, ⊤ {(∗,2)}⟩mod = {(0,1),(1,1),(2,1),(3,1),(4,1),(5,0),(6,1),(7,1)}
@@ -68,5 +66,16 @@ rel_program frameCols where
 
 -- by hand from the fixture `k = B A B C A C B A`, `v = 5 3 5 1 7 2 1 3`: sum 27, quotient 27 div 8 = 3
 #guard frameCols.ok
+
+-- describe `v` (`frameStat`, a program of its own: its float objects would take part in reading the literals above):
+-- count 8, mean 27/8 = 3.375, min 1, max 7; `var` squares `v` in its object `N = 0…40`, where 7·7 = 49 is no
+-- element, so the variance has no image and the std is null (read back as -1)
+open Rel.Programs.prelude Rel.Programs.frame Rel.Programs.frameStat frameData in
+rel_program frameDescribe where
+    check describe(x π₂) ⟨π₁, ⟨π₂ π₁, π₂ π₂ π₂⟩⟩ = {(∗,(8,(3.375,(1,7))))}
+    check describe(x π₂) π₂ π₂ π₁ [𝟙, {(∗,-1.0)}] = {(∗,-1.0)}
+    check summarize(F(x π₂) var, x) = 𝟘
+
+#guard frameDescribe.failures.map toString == []
 
 end Rel.Lang.TestFrameCols
