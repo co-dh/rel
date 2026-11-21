@@ -421,18 +421,19 @@ def callDef (env : Env) (dp : Pos) (n : String) (qs : List Param) (e : Expr) (ty
         -- use is the expansion, which reads the arguments where `build` has every object solved. Its type's objects,
         -- and those inside it that `settleOpen` settles last (a literal's, `nil`'s source): a form chosen before
         -- reads a literal at no object, in a generic body (`litTy`) or not
-        let mc ← Lean.getMCtx
-        let inner := x.lits.flatMap (fun (_, s, t, _, _) => [s, t]) ++ x.nilSrcs
+        -- all read off what `x` computes: a variable of a call's body (`callOf`) is its argument (`St.args`)
+        let mc ← Lean.getMCtx; let xe := (← get).expand x
+        let inner := xe.lits.flatMap (fun (_, s, t, _, _) => [s, t]) ++ xe.nilSrcs
         if ([a, a'] ++ inner).any fun o => !(zonk mc o).mvs.isEmpty then return r
         let (ix', k?) ← idxClass ix j?; ix := ix'
         -- the first form the argument (a family: its relation from the index) builds in: closed, run on demand,
         -- tested on pairs; else closed, whose build reports why
         let st ← get; let mc ← Lean.getMCtx
-        let bx := build st.objs mc p x
+        let bx := build st.objs mc p xe
         let f : Option Bool :=
-          if (build st.objs mc p (Pre.close p x a why)).toOption.isSome then none
+          if (build st.objs mc p (Pre.close p xe a why)).toOption.isSome then none
           else if bx.toOption.isSome then some false
-          else if (test st.objs mc p x).toOption.isSome then some true else none
+          else if (test st.objs mc p xe).toOption.isSome then some true else none
         fs := fs ++ [(f, k?)]; xs := xs ++ [(if f.isNone then Pre.close p x a why else x, f == some true)]
         -- closed, an argument that needs keys would be read on its source's whole universe (`closeRes`); on demand it
         -- runs bounded by what the body composes it with, as the inlined body runs it

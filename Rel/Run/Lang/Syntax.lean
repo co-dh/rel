@@ -155,13 +155,15 @@ inductive Expr
   /-- `μX : φ` (`least`) or `νX : φ`: the least or the greatest `X` with `X = φ(X)`; the body reaches to the
       closing parenthesis or the end of the declaration. -/
   | fix (p : Pos) (least : Bool) (x : String) (body : Expr)
+  /-- `body where x ≜ e`: the item `e` computed once, `x` in `body` its parameter (`Elab.callOf`). -/
+  | whr (p : Pos) (x : String) (e body : Expr)
   deriving Repr, Inhabited
 
 /-- The position a term starts at. -/
 def Expr.pos : Expr → Pos
   | .name p _ | .op p .. | .app p .. | .bin p .. | .inf p .. | .conv p _ | .compl p _ | .pair p .. | .junc p .. | .fold p ..
   | .lit p .. | .fix p .. | .col p .. => p
-  | .comp a _ => a.pos
+  | .comp a _ | .whr _ _ _ a => a.pos
 
 /-- The atom the counting rows (`length`, `succ`, the positions of `positions`, `asc`) run on. -/
 def intAtoms : List QAtomicType := [.i64]
@@ -356,6 +358,7 @@ partial def Expr.subst (σ : List (String × Expr)) : Expr → Expr
   | .col p s c => .col p s c
   -- `x` is bound in the body, so an outer `x` is not replaced there
   | .fix p l x b => .fix p l x (b.subst (σ.filter (·.1 != x)))
+  | .whr p x e b => .whr p x (e.subst σ) (b.subst (σ.filter (·.1 != x)))
 
 /-- Every name `e` mentions, bound or free, operators applied included: a variable not among them captures nothing
     in `e`. -/
@@ -369,6 +372,7 @@ partial def Expr.names : Expr → List String
   | .conv _ a | .compl _ a => a.names
   | .lit .. | .col .. => []
   | .fix _ _ x b => x :: b.names
+  | .whr _ x e b => x :: (e.names ++ b.names)
 
 /-- A body: a relation, or a test `e ⊑ f` (§e). -/
 inductive Body
@@ -484,7 +488,7 @@ def Expr.lhs : Expr → Nat
     composite or infix term, `1` its right operand or the operand of `∼` (a composite or infix term in
     parentheses), `2` under `°` (a complement too). `full` puts every composite and infix term in parentheses:
     the parser guards compare it with the reading written out. -/
-def Expr.render (l : Nat) (full : Bool := false) : Expr → String
+partial def Expr.render (l : Nat) (full : Bool := false) : Expr → String
   | .name _ n => n
   | .op _ o objs args =>
     let os := if objs.isEmpty then "" else "(" ++ ", ".intercalate (objs.map OExp.show) ++ ")"
@@ -503,6 +507,8 @@ def Expr.render (l : Nat) (full : Bool := false) : Expr → String
   | .col _ s c => s!"col {s.render true} {c.quote}"
   | .fix _ least x b =>
     let s := s!"{if least then "μ" else "ν"}{x} : {b.render 0 full}"; if full || l ≥ 1 then s!"({s})" else s
+  -- printed as its expansion, the item in place, so a message reads the term as written in use
+  | .whr _ x e b => (b.subst [(x, e)]).render l full
 
 def Expr.show (e : Expr) : String := e.render 0
 

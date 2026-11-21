@@ -39,11 +39,13 @@ def defn (s : Syntax) (w key : String) (ps : Array Syntax) (ty body test wh : Sy
     Parse.fresh q n ((key, Parse.at_ p) :: (← get).taken)
     if ps.any (·.name == n) then failAt i s!"`{n}` is already a parameter of `{w}`"
     if σ.any (·.1 == n) then failAt i s!"`{n}` is already an item of this `where`"
-    let σ := σ ++ [(n, (← expr i[2]).subst σ)]
+    let σ := σ ++ [(n, q, ← expr i[2])]
     modify fun st => { st with known := (n, 0) :: st.known }
     pure σ
-  let e := (← expr body).subst σ
-  let b ← if test.getNumArgs == 0 then pure (Body.rel e) else do pure (Body.test e ((← expr test[1]).subst σ))
+  -- each item a binder around the items after it and the body, computed once (`Expr.whr`)
+  let wh (e : Expr) : Expr := σ.foldr (fun (n, q, i) b => .whr q n i b) e
+  let e := wh (← expr body)
+  let b ← if test.getNumArgs == 0 then pure (Body.rel e) else do pure (Body.test e (wh (← expr test[1])))
   if let (.test .., some t) := (b, ty) then
     failAt s s!"the test `{w}` has no type of its own: drop ': {OExp.arrow t}' (§e)"
   modify fun st => { st with known := outer, ovars := [] }
