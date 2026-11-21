@@ -1224,7 +1224,6 @@ theorem sum_holds {n : USize} {X : Vals (.arr .long) n} {T : Tab (.arr .long) .l
   -- `last` is a `foR` column, so read as booleans it is its words' low bits
   have hlf : ∃ md pk, last = .foR md pk := by
     unfold colMap at hlast; simp only [bind, Except.bind] at hlast; split at hlast; · cases hlast
-    split at hlast; · cases hlast
     rename_i q hq; simp only [pure, Except.pure, Except.ok.injEq] at hlast; subst hlast; exact kscan_foR hq
   have hbad0 := badWord_spec hz hsv hd hsd he1 hsw he2 hovf hnl heW hev ho1 hbad
   -- each cell `g`'s rows `off g + k`: its group and offset, its element, and the segment start at its last row

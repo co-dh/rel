@@ -123,6 +123,11 @@ partial def listGet? {α : Type} [Reg α] : Val → Option (List α)
 instance {α : Type} [Reg α] : Reg (List α) :=
   ⟨.obj, listGet?, fun l => l.foldr (fun a r => .ctor 1 #[Reg.put a, r] #[]) (.ctor 0 #[] #[])⟩
 
+/-- An `Option` as the runtime lays it out: `none` the scalar `0` (as `[]`), `some a` constructor `1` of `a`. -/
+instance {α : Type} [Reg α] : Reg (Option α) :=
+  ⟨.obj, fun | .ctor 0 #[] #[] => some none | .ctor 1 #[a] #[] => some <$> Reg.get? a | _ => none,
+   fun | none => .ctor 0 #[] #[] | some a => .ctor 1 #[Reg.put a] #[]⟩
+
 /-- An `Enc` is the constructor `Db.ownParts` takes apart: its tag, and its parts as its fields, which they are for
     the forms whose fields are all buffers (`bytes`, `foR`, `alp`) and for `pos`, which has none; `Db.ownEnc` puts
     them back. Every other form (`syms`, `enum`, `gen`) has a field that is no part: `Db.ownParts` refuses it, so it

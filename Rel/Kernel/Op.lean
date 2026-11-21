@@ -222,17 +222,24 @@ def fval : (t : QAtomicType) → Dep.Carrier t → Option UInt64
   | .f32, x => some (Op.widen32 x.toUInt64)
   | _, _ => none
 
+/-- The value verb `k` as one binary float `Op` and the unary `Op`s after it (a `kscan` chain), where it is that:
+    `+ - * % max min` their `f` ops, `div` the floor of the quotient; none at `mod`, which reads `x` twice. -/
+def fverbOne (k : UInt8) : Option (Op × List (Op × UInt64)) :=
+  if k == Ew.add then some (.fadd, []) else if k == Ew.sub then some (.fsub, [])
+  else if k == Ew.mul then some (.fmul, []) else if k == Ew.greater then some (.fmax, [])
+  else if k == Ew.lesser then some (.fmin, []) else if k == Ew.divide then some (.fdiv, [])
+  else if k == Ew.idiv then some (.fdiv, [(.ffloor, 0)]) else none
+
 /-- The value verb `k` as a composition of float `Op`s, each applied by `ap` (to two words by `Op.eval`, to two
     columns by `colMap`), as q computes it on floats: `+ - * % max min` by their `f` ops, `div` the floor of the
     quotient (`ffloor` of `fdiv`), `mod` `x - y·(x div y)` (`q.k`: `mod:{x-y*x div y}`). A unary op reads its second
     operand. -/
 def fverbBy {α : Type} (ap : Op → α → α → Except String α) (k : UInt8) (x y : α) : Except String α :=
-  if k == Ew.add then ap .fadd x y else if k == Ew.sub then ap .fsub x y
-  else if k == Ew.mul then ap .fmul x y else if k == Ew.greater then ap .fmax x y
-  else if k == Ew.lesser then ap .fmin x y else if k == Ew.divide then ap .fdiv x y
-  else if k == Ew.idiv then do let q ← ap .fdiv x y; ap .ffloor q q
-  else if k == Ew.imod then do let q ← ap .fdiv x y; let f ← ap .ffloor q q; ap .fsub x (← ap .fmul y f)
-  else .error s!"arith: verb code {k} is none of + - * % div mod max min"
+  match fverbOne k with
+  | some (o, c) => do c.foldlM (fun q p => ap p.1 q q) (← ap o x y)
+  | none =>
+    if k == Ew.imod then do let q ← ap .fdiv x y; let f ← ap .ffloor q q; ap .fsub x (← ap .fmul y f)
+    else .error s!"arith: verb code {k} is none of + - * % div mod max min"
 
 /-- `fverbBy` on two `f64` words. -/
 abbrev fverb : UInt8 → UInt64 → UInt64 → Except String UInt64 := fverbBy Op.eval
