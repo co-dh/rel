@@ -123,11 +123,6 @@ partial def listGet? {α : Type} [Reg α] : Val → Option (List α)
 instance {α : Type} [Reg α] : Reg (List α) :=
   ⟨.obj, listGet?, fun l => l.foldr (fun a r => .ctor 1 #[Reg.put a, r] #[]) (.ctor 0 #[] #[])⟩
 
-/-- An `Option` as the runtime lays it out: `none` the scalar `0` (as `[]`), `some a` constructor `1` of `a`. -/
-instance {α : Type} [Reg α] : Reg (Option α) :=
-  ⟨.obj, fun | .ctor 0 #[] #[] => some none | .ctor 1 #[a] #[] => some <$> Reg.get? a | _ => none,
-   fun | none => .ctor 0 #[] #[] | some a => .ctor 1 #[Reg.put a] #[]⟩
-
 /-- An `Enc` is the constructor `Db.ownParts` takes apart: its tag, and its parts as its fields, which they are for
     the forms whose fields are all buffers (`bytes`, `foR`, `alp`) and for `pos`, which has none; `Db.ownEnc` puts
     them back. Every other form (`syms`, `enum`, `gen`) has a field that is no part: `Db.ownParts` refuses it, so it
@@ -495,38 +490,40 @@ def constB (n fill : Nat) : Bld Nat := do
   let e ← lit (Reg.put (wordsFoR #[]))
   call1 (kernel% kscatter) #[← lit (Reg.put Kernel.Op.last), ← lit (.size 0), e, e, n, fill]
 
-/-- `kscan op` at `t` over the `n` rows of the columns `es`, a segment starting at each row `seg` sets: the column and
-    the fold result. -/
-def scanB (op : Kernel.Op) (t : QAtomicType) (n seg : Nat) (es : List Nat) : Bld (Array Nat) := do
-  callK (kernel% kscan) #[← lit (Reg.put op), ← lit (.bit false), ← lit (Reg.put t), ← lit (Reg.put t), n, seg, ← listB es]
+/-- `kscan op` at `t` over the `n` rows of the columns `es`, a segment starting at each row `seg` sets (`none`: every
+    row, a map), no chain: the column and the fold result. -/
+def scanB (op : Kernel.Op) (t : QAtomicType) (n : Nat) (seg : Option Nat) (es : List Nat) : Bld (Array Nat) := do
+  let g ← match seg with | some s => ctorB 1 #[s] #[] | none => ctorB 0 #[] #[]
+  callK (kernel% kscan) #[← lit (Reg.put op), ← lit (.bit false), ← lit (Reg.put t), ← lit (Reg.put t), n, g,
+    ← listB es, ← listB [], ← listB []]
 
 /-- `where` (design §4: scan → scatter, no sort): the count `r` (a `size`) and the positions, in order, of the rows the
     `n`-row mask `keep` sets. The inclusive prefix sum `P` (`kscan add`, one segment) numbers the kept rows `1 … r`
     and its fold is `r` (`0` at `n = 0`, where no row is folded); row `i` goes to cell `keep[i] · P[i]` of `r + 1`
     (`kscatter`), a dropped row to the spare cell `0`, which the `kgather` of cells `1 … r` cuts off. -/
 def whereB (n keep : Nat) : Bld (Nat × Nat) := do
-  let z ← constB n (← lit (.u64 0)); let one ← constB n (← lit (.u64 1))
-  let ps ← scanB .add .i64 n z [z, keep]
+  let z ← constB n (← lit (.u64 0))
+  let ps ← scanB .add .i64 n (some z) [z, keep]
   let p ← nth ps 0 "kscan"
   let fold ← nth ps 1 "kscan"
   let empty ← call1 (kernel% USize.decEq) #[n, ← lit (.size 0)]
   let r ← call1 (kernel% UInt64.toUSize) #[← nth (← ite empty (do pure #[← lit (.u64 0)])
     (do pure #[← projB fold 1 0 .u64])) 0 "if"]
-  let ix ← nth (← scanB .mul .i64 n one [keep, p]) 0 "kscan"
+  let ix ← nth (← scanB .mul .i64 n none [keep, p]) 0 "kscan"
   let r1 ← call1 (kernel% USize.add) #[r, ← lit (.size 1)]
   let ix1 ← call1 (kernel% kscatter) #[← lit (Reg.put Kernel.Op.last), n, ix, ← lit (Reg.put (Ext.Enc.pos : Enc)), r1,
     ← lit (.u64 0)]
   let zr ← constB r (← lit (.u64 0))
-  let cut ← nth (← scanB .add .i64 r zr [zr, ← constB r (← lit (.u64 1))]) 0 "kscan"
+  let cut ← nth (← scanB .add .i64 r (some zr) [zr, ← constB r (← lit (.u64 1))]) 0 "kscan"
   pure (r, ← call1 (kernel% kgather) #[r, cut, r1, ix1])
 
 /-- `Alg.arith op` (`add`, `sub`, `mul`) on the `i64` columns `u`, `v` of `n` rows: `s = u op v` wrapped (a `kscan`
     map: every row a segment), the rows kept where no operand and not `s` is null and `s` did not wrap (`kscan` maps
     of compares), `whereB` of them, and the columns gathered there (`kgather`): the count, then `u`, `v`, `s`. -/
 def arithB (op : Kernel.Op) (n u v : Nat) : Bld (Array Nat) := do
-  let one ← constB n (← lit (.u64 1)); let z ← constB n (← lit (.u64 0))
+  let z ← constB n (← lit (.u64 0))
   let nul ← constB n (← lit (.u64 Alg.nul.toUInt64))
-  let m (o : Kernel.Op) (a b : Nat) : Bld Nat := do nth (← scanB o .i64 n one [a, b]) 0 "kscan"
+  let m (o : Kernel.Op) (a b : Nat) : Bld Nat := do nth (← scanB o .i64 n none [a, b]) 0 "kscan"
   let s ← m op u v
   -- `s` wrapped iff the sign of `v` disagrees with the side of `u` that `s` lies on; a product iff `s / u ≠ v`
   let exact ← match op with

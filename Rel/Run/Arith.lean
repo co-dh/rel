@@ -49,33 +49,46 @@ def stepCols (k : UInt8) (n : USize) (a b : Enc) : Except String (Arr .i64 n × 
     pure (w, ← ne w.enc)
   else throw s!"arith: verb code {k} is none of + - * div mod max min"
 
-/-- The words the verbs and orders of the atom `t` compute on, of the `n` words `a`: an `f32` column read at `f32` and
-    widened to `f64` (`Op.f32to64`, `fval`); `i64` and `f64` as stored; any other ordered atom read at itself and
-    widened to the `i64` words of its values (`Op.cast r .i64`, `r` its `ordNum`: `iordAt`); any other as stored. -/
-def wideCol (t : QAtomicType) (n : USize) (a : Enc) : Except String Enc :=
+/-- The `kscan` chain taking a word of the atom `t` to the word its verbs and orders compute on: an `f32` word widened to
+    `f64` (`Op.f32to64`, `fval`); `i64` and `f64` as stored; any other ordered atom to the `i64` word of its value
+    (`Op.cast r .i64`, `r` its `ordNum`: `iordAt`); any other as stored. -/
+def widen (t : QAtomicType) : List (Op × UInt64) :=
   match t with
-  | .f32 => colMap .f32to64 n a a .i64 .f32
-  | .i64 | .f64 => pure a
+  | .f32 => [(.f32to64, 0)]
+  | .i64 | .f64 => []
   | t => match t.ordNum with
-    | some r => colMap (.cast r .i64) n a a .i64 t
-    | none => pure a
+    | some r => [(.cast r .i64, 0)]
+    | none => []
 
-/-- The `n` `f64` answers `r` as words of the float atom `t` (`Op.fto t`), kept where that is not `nulWord` (a NaN
-    answer): the tail every float verb shares. -/
-def ftoCols (t : QAtomicType) (n : USize) (r : Enc) : Except String (Arr t n × Enc) := do
-  let w ← colArr (.fto t) n r r t
-  pure (w, ← colMap .ne n w.enc (← colConst n nulWord))
+/-- The `n` words of `a` read at `t` through `widen t`, as a column: `a` itself where the chain is empty. -/
+def wideCol (t : QAtomicType) (n : USize) (a : Enc) : Except String Enc :=
+  if widen t = [] then pure a else colMap .first n a a .i64 t (widen t)
 
-/-- **The value verb `k` at the float atom `t`** on the `n` operand rows `a`, `b` (`stepAt`): `fverbBy` with `colMap`
-    on their `f64` words, then `ftoCols`. -/
+/-- The keep flag of a float answer `w`: each word not `nulWord` (`Op.fto`'s NaN), one pass reading `w`'s words. -/
+def nanFlag (n : USize) (w : Enc) : Except String Enc := colMap .first n w w .u1 .i64 [] [(.ne, nulWord)]
+
+/-- The answer column of the value verb `k` at the float atom `t` on the `n` operand rows `a`, `b`: one pass of the
+    verb's `fverbOne`, the operands through `widen t` and the answer through the verb's chain and `Op.fto t`; a verb
+    with no `fverbOne` (`mod`, which reads `x` twice) by `fverbBy` with `colMap` on the widened columns, then
+    `Op.fto t`. -/
+def fstepArr (t : QAtomicType) (k : UInt8) (n : USize) (a b : Enc) : Except String (Arr t n) :=
+  match fverbOne k with
+  | some (o, c) => colArr o n a b t t (widen t) (c ++ [(.fto t, 0)])
+  | none => do
+    let r ← fverbBy (fun o x y => colMap o n x y) k (← wideCol t n a) (← wideCol t n b)
+    colArr (.fto t) n r r t
+
+/-- **The value verb `k` at the float atom `t`** on the `n` operand rows `a`, `b` (`stepAt`): `fstepArr`, then
+    `nanFlag`. -/
 def fstepCols (t : QAtomicType) (k : UInt8) (n : USize) (a b : Enc) : Except String (Arr t n × Enc) := do
-  ftoCols t n (← fverbBy (fun o x y => colMap o n x y) k (← wideCol t n a) (← wideCol t n b))
+  let w ← fstepArr t k n a b
+  pure (w, ← nanFlag n w.enc)
 
-/-- **The unary float `Op` `o` at the float atom `t`** on the `n` words `a` (`unaryDen`): `o` by `colMap` on their `f64`
-    words (a unary `Op` reads its second operand), then `ftoCols`. -/
+/-- **The unary float `Op` `o` at the float atom `t`** on the `n` words `a` (`unaryDen`): one pass, each word through
+    `widen t`, `o` (a unary `Op` reads its second operand) and `Op.fto t`; then `nanFlag`. -/
 def fmapCols (t : QAtomicType) (o : Op) (n : USize) (a : Enc) : Except String (Arr t n × Enc) := do
-  let x ← wideCol t n a
-  ftoCols t n (← colMap o n x x)
+  let w ← colArr o n a a t t (widen t) [(.fto t, 0)]
+  pure (w, ← nanFlag n w.enc)
 
 /-- The value verb `k` at the atom `t`: `stepCols` at `i64`, `fstepCols` at a float atom, the error naming any other
     (`stepAt` has no row there). -/

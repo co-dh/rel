@@ -13,7 +13,8 @@ open Rel.Ext Rel.Kernel
 namespace Tab
 
 /-- **`$` on the values `X`** (`rowDens`: the graph of `QAtomicType.embed s t`): each value `x` of `X` to the word of
-    `t` holding the number `x` holds (`colArr (.cast s t)`), kept where that word is not `nulWord`; then `canon`. -/
+    `t` holding the number `x` holds (`colArr (.cast s t)`), kept where that word is not `nulWord`
+    (`Tab.keep`, which keeps a canonical table canonical: no `canon`). -/
 def cast {A B : Obj} {n : USize} (X : Vals A n) : Except String (Tab A B) :=
   match A, B, X with
   | .atom s, .atom t, X =>
@@ -21,7 +22,7 @@ def cast {A B : Obj} {n : USize} (X : Vals A n) : Except String (Tab A B) :=
     if QAtomicType.castOK s t then do
       let w ← colArr (.cast s t) n X.enc X.enc t
       let flag ← colMap .ne n w.enc (← colConst n nulWord)
-      Tab.keep (k := .atom s) (v := .atom t) ⟨n, X, w⟩ flag >>= Tab.canon
+      Tab.keep (k := .atom s) (v := .atom t) ⟨n, X, w⟩ flag
     else .error s!"$: no cast from {repr s} to {repr t}"
   | _, _, _ => .error "$: casts a number object to a number object"
 
@@ -36,14 +37,15 @@ def unaryOps : List (String × Op) :=
 namespace Tab
 
 /-- **The row `s` of `unaryOps` on the values `X`** (`rowDens`: `unaryDen`): `fmapCols` of its `Op` at `X`'s float
-    atom, each value to the answer, kept where that is a word of the atom (not a NaN); then `canon`. The row is the
+    atom, each value to the answer, kept where that is a word of the atom (not a NaN;
+    `Tab.keep`, no `canon`). The row is the
     first argument so `kernRows` names one constant for every name. -/
 def unary (s : String) {A : Obj} {n : USize} (X : Vals A n) : Except String (Tab A A) :=
   match unaryOps.lookup s, A, X with
   | some o, .atom t, X =>
     if t = .f32 ∨ t = .f64 then do
       let (w, flag) ← fmapCols t o n X.enc
-      Tab.keep (k := .atom t) (v := .atom t) ⟨n, X, w⟩ flag >>= Tab.canon
+      Tab.keep (k := .atom t) (v := .atom t) ⟨n, X, w⟩ flag
     else .error s!"{s} runs on a float object, found one of {repr t}"
   | some _, _, _ => .error s!"{s} runs on a float object"
   | none, _, _ => .error s!"{s}: no unary float verb"
