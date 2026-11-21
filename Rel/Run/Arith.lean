@@ -50,11 +50,15 @@ def stepCols (k : UInt8) (n : USize) (a b : Enc) : Except String (Arr .i64 n × 
   else throw s!"arith: verb code {k} is none of + - * div mod max min"
 
 /-- The words the verbs and orders of the atom `t` compute on, of the `n` words `a`: an `f32` column read at `f32` and
-    widened to `f64` (`Op.f32to64`, `fval`), any other as stored. -/
+    widened to `f64` (`Op.f32to64`, `fval`); `i64` and `f64` as stored; any other ordered atom read at itself and
+    widened to the `i64` words of its values (`Op.cast r .i64`, `r` its `ordNum`: `iordAt`); any other as stored. -/
 def wideCol (t : QAtomicType) (n : USize) (a : Enc) : Except String Enc :=
   match t with
   | .f32 => colMap .f32to64 n a a .i64 .f32
-  | _ => pure a
+  | .i64 | .f64 => pure a
+  | t => match t.ordNum with
+    | some r => colMap (.cast r .i64) n a a .i64 t
+    | none => pure a
 
 /-- **The value verb `k` at the float atom `t`** on the `n` operand rows `a`, `b` (`stepAt`): `fverbBy` with `colMap`
     on their `f64` words, `Op.fto t` writing the word of `t`, kept where that is not `nulWord` (a NaN answer). -/

@@ -72,8 +72,47 @@ rel_program orderT where
 
 #guard orderT.failures.map toString == []
 
+-- `< ≤ max min` at every ordered atom with no value step (`ordNum`): the integer order of the stored values,
+-- `date` as its days, `datetime` as its nanoseconds; `max`/`min` pick an operand by `≤`
+rel_program orderIntT where
+    obj N
+    obj B : u8
+    obj C : i8
+    obj H : i16
+    obj I : i32
+    obj D : date
+    obj T : datetime
+    b : N ⟶ B ≜ {(0,200),(1,3)}
+    b2 : N ⟶ B ≜ {(0,100),(1,250)}
+    c : N ⟶ C ≜ {(0,-5),(1,3)}
+    c2 : N ⟶ C ≜ {(0,3),(1,-7)}
+    h : N ⟶ H ≜ {(0,-300),(1,300)}
+    i : N ⟶ I ≜ {(0,-70000),(1,70000)}
+    d : N ⟶ D ≜ {(0,19000),(1,-1)}
+    d2 : N ⟶ D ≜ {(0,18000),(1,0)}
+    t : N ⟶ T ≜ {(0,5),(1,-5)}
+    check b < b° = {(1,0)}
+    check b ≤ b° = {(0,0),(1,0),(1,1)}
+    check c < c° = {(0,1)}
+    check h < h° = {(0,1)}
+    check i < i° = {(0,1)}
+    check d < d° = {(1,0)}
+    check dom(d < d°) = {(1,1)}
+    check t < t° = {(1,0)}
+    check t ≤ t° = {(0,0),(1,0),(1,1)}
+    check ⟨b, b2⟩ max = {(0,200),(1,250)}
+    check ⟨b, b2⟩ min = {(0,100),(1,3)}
+    check ⟨c, c2⟩ max = {(0,3),(1,3)}
+    check ⟨c, c2⟩ min = {(0,-5),(1,-7)}
+    check ⟨d, d2⟩ max = {(0,19000),(1,0)}
+    check ⟨d, d2⟩ min = {(0,18000),(1,-1)}
+    check ⟨t, t⟩ max = {(0,5),(1,-5)}
+
+-- by hand: `u8` 200 > 3 (unsigned); `i8` -5 < 3; `date` -1 (1969-12-31) < 19000; equal operands give themselves
+#guard orderIntT.failures.map toString == []
+
 -- an `i64` and an `f64` operand: refused naming both objects; the program casts one with `$` first
-/-- error: line 83, col 24: the source of the right factor of a composition: found N×N, expected N×F -/
+/-- error: line 122, col 24: the source of the right factor of a composition: found N×N, expected N×F -/
 #guard_msgs in
 rel_program mixedT where
     obj N
@@ -83,7 +122,7 @@ rel_program mixedT where
     c : N ⟶ F ≜ ⟨a, b⟩ plus
 
 -- an atom with no value step (`valueAtom`): refused, the error listing the atoms that have one
-/-- error: line 92, col 24: plus on I: I is an object of i32, and plus runs on objects of i64, f32, f64 only -/
+/-- error: line 131, col 24: plus on I: I is an object of i32, and plus runs on objects of i64, f32, f64 only -/
 #guard_msgs in
 rel_program narrowT where
     obj N
@@ -92,7 +131,7 @@ rel_program narrowT where
     c : N ⟶ I ≜ ⟨a, a⟩ plus
 
 -- `succ` stays on `i64`: a float has no successor
-/-- error: line 101, col 19: succ on F: F is an object of f64, and succ runs on objects of i64 only -/
+/-- error: line 140, col 19: succ on F: F is an object of f64, and succ runs on objects of i64 only -/
 #guard_msgs in
 rel_program succFT where
     obj N

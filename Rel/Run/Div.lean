@@ -100,12 +100,13 @@ def ldiv (R : Tab A B) (S : Tab A C) (UB : Tab B B) (UC : Tab C C) : Except Stri
 def rdiv (R : Tab A C) (S : Tab B C) (UA : Tab A A) (UB : Tab B B) : Except String (Tab A B) := do
   (← ldiv (← S.conv) (← R.conv) UB UA).conv
 
-/-- The order `Op` of the atom `t` (`ltAt`, `leAt`): `<` (`s`) or `≤`, signed at `i64`, IEEE's at a float atom on
-the `wideCol` words; the error naming any other atom. -/
-def ordOp (s : Bool) : QAtomicType → Except String Op
-  | .i64 => pure (if s then .lt else .le)
+/-- The order `Op` of the atom `t` (`ltAt`, `leAt`): `<` (`s`) or `≤` on the `wideCol` words, IEEE's at a float
+atom, signed at every other ordered atom (`ordNum`); the error naming an atom with no order. -/
+def ordOp (s : Bool) (t : QAtomicType) : Except String Op :=
+  match t with
   | .f32 | .f64 => pure (if s then .flt else .fle)
-  | t => throw s!"{if s then "<" else "≤"} on objects of {repr t}: no order"
+  | t => if t.ordNum.isSome then pure (if s then .lt else .le)
+    else throw s!"{if s then "<" else "≤"} on objects of {repr t}: no order"
 
 /-- `T ∩ op`: the rows of `T` whose words pass `op`, `keep` of `colMap op` of its two columns as the atom `t`'s
 order reads them (`wideCol`), one element-wise test per row. -/

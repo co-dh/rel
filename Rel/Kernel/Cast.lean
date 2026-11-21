@@ -31,6 +31,16 @@ def numFmt? (t : QAtomicType) : Option NumFmt :=
   | .f64, _ => some (.float 11 52)
   | _, _ => none
 
+/-- The number atom an ordered atom is stored as and ordered by: a number atom itself, `char` as `u8`, `date` as `i32`
+    (days), `datetime` as `i64` (nanoseconds); none at an atom with no order (`u1 sym general`). Order needs no
+    arithmetic, so it is read off the storage and not off `numFmt?`, which keeps `$` off `date`. -/
+def ordNum (t : QAtomicType) : Option QAtomicType :=
+  match t with
+  | .char => some .u8
+  | .date => some .i32
+  | .datetime => some .i64
+  | t => if t.numFmt?.isSome then some t else none
+
 /-- The least and the greatest integer of an integer format; a signed one's least word is q's null, no value. -/
 def NumFmt.lo : NumFmt → Int
   | .int true b => 1 - 2 ^ (b - 1)
@@ -158,6 +168,14 @@ def ofBits : (t : QAtomicType) → UInt64 → Carrier t
     `s`, and `2^63` where there is none, which no image is (`word_ne_nul`), so the row is told by that word alone. -/
 def castWord (s t : QAtomicType) (x : UInt64) : UInt64 :=
   ((embed s t (ofBits s x)).map (word t)).getD 0x8000000000000000
+
+/-- **An ordered atom's words widen by its value**: two words holding one value of `t` widen through `t`'s
+    `ordNum` to one `i64` word, so an order read on the widened words (`iordAt`) is one of the values. -/
+theorem castWord_ofBits {t r : QAtomicType} (hr : t.ordNum = some r) {x y : UInt64} (h : ofBits t x = ofBits t y) :
+    castWord r .i64 x = castWord r .i64 y := by
+  cases t <;> simp (config := {decide := true}) only [ordNum, numFmt?, width, Option.isSome, reduceCtorEq,
+    Option.some.injEq, ite_true, ite_false] at hr <;> subst hr <;>
+    exact congrArg (fun v => ((embed _ .i64 v).map (word .i64)).getD 0x8000000000000000) h
 
 /-- The fields of `floatBits`' word: sign `sg`, exponent `ex` (never all ones), fraction `fr`; a negative word is no
     zero. -/

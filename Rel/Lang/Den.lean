@@ -77,15 +77,28 @@ abbrev succDen (TU : Den .long .long) : Den .long .long :=
 abbrev fordAt (o : Rel.Kernel.Op) (t : QAtomicType) (a b : (Obj.atom t).El) : Prop :=
   ∃ x y, fval t a = some x ∧ fval t b = some y ∧ o.eval x y = .ok 1
 
-/-- `<` on the values of the atom `t`: `Int64`'s at `i64`, IEEE's at a float atom (`fordAt .flt`), none elsewhere. -/
+/-- The integer order `o` (`Op.lt`, `Op.le`) on two values of the ordered atom `t` stored as the number atom `r`
+    (`ordNum`): `Int64`'s on the `i64` words of their values (`castWord r .i64`, q's null the least), read from any
+    words that hold them (`ofBits`); no pair at an atom with no order. -/
+abbrev iordAt (o : Rel.Kernel.Op) (t : QAtomicType) (a b : (Obj.atom t).El) : Prop :=
+  ∃ r x y, t.ordNum = some r ∧ QAtomicType.ofBits t x = a ∧ QAtomicType.ofBits t y = b ∧
+    o.eval (QAtomicType.castWord r .i64 x) (QAtomicType.castWord r .i64 y) = .ok 1
+
+/-- `<` on the values of the atom `t`: `Int64`'s at `i64`, IEEE's at a float atom (`fordAt .flt`), the integer order
+    of the stored values at every other ordered atom (`iordAt .lt`: the narrow integers, `char`, `date`,
+    `datetime`), none elsewhere. -/
 def ltAt : (t : QAtomicType) → (Obj.atom t).El → (Obj.atom t).El → Prop
   | .i64, a, b => a < b
-  | t, a, b => fordAt Rel.Kernel.Op.flt t a b
+  | .f32, a, b => fordAt Rel.Kernel.Op.flt .f32 a b
+  | .f64, a, b => fordAt Rel.Kernel.Op.flt .f64 a b
+  | t, a, b => iordAt Rel.Kernel.Op.lt t a b
 
 /-- `≤` on the values of the atom `t`, as `ltAt`. -/
 def leAt : (t : QAtomicType) → (Obj.atom t).El → (Obj.atom t).El → Prop
   | .i64, a, b => a ≤ b
-  | t, a, b => fordAt Rel.Kernel.Op.fle t a b
+  | .f32, a, b => fordAt Rel.Kernel.Op.fle .f32 a b
+  | .f64, a, b => fordAt Rel.Kernel.Op.fle .f64 a b
+  | t, a, b => iordAt Rel.Kernel.Op.le t a b
 
 /-- `≤` on the universe `TU` of the atom `t`. -/
 abbrev leqDen (t : QAtomicType) (TU : Den (.atom t) (.atom t)) : Den (.atom t) (.atom t) :=

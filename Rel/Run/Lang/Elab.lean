@@ -1961,7 +1961,13 @@ def paramOf (why : String) : Except Err Cor → Except Err ((B : Obj) × Tm (.pr
     variable it is not generic over keeps its placeholder, so `σ` is the identity there. -/
 def callTm (pos : Pos) (c : Lean.Name) (us : List (OTy × Bool × Bool)) (ks : List Nat) (ph : List Rel.QAtomicType)
     (t : Res) (cv : Option (Lean.Name × Res)) (A B : Obj) : Except Err (Tm A B) := do
-  let σ ← us.zipIdx.mapM fun ((u, gen, _), k) => if gen then toObj objs mc dp u else pure ((varObj ph k).getD .long)
+  -- a variable the constant is not generic over was built at `.long`: any other object is refused here, before the
+  -- body is put at the call's objects, where it would not fit
+  let σ ← us.zipIdx.mapM fun ((u, gen, _), k) => do
+    if gen then return ← toObj objs mc dp u
+    unless (← toObj objs mc dp u) == .long do
+      throw ⟨pos, s!"`{c}`: an object variable is {zonk mc u} here; its constant is not generic over it, a number object"⟩
+    pure ((varObj ph k).getD .long)
   let os := (σ.zip us).filterMap fun (o, _, gen, _) => if gen then some o else none
   let inst {X Y : Obj} : Res → Except Err (Tm X Y)
     | ⟨X₀, Y₀, b⟩ => do
@@ -2096,9 +2102,19 @@ def build : Pre → Except Err Res
   | .succ p n => do
     let (m, _) ← numObj objs mc p n "succ" (· == .i64)
     return ⟨_, _, .succ (← numU.declared objs p "succ" m .i64)⟩
-  | .arith p k n => do let ⟨t, U⟩ ← numU objs mc p n (Op.arith k).sym valueAtom; return ⟨_, _, .arith t k U⟩
-  | .leq p n => do let ⟨t, U⟩ ← numU objs mc p n "≤" valueAtom; return ⟨_, _, .leq t U⟩
-  | .lt p n => do let ⟨t, U⟩ ← numU objs mc p n "<" valueAtom; return ⟨_, _, .lt t U⟩
+  -- `max`/`min` need no arithmetic: at an ordered atom with no value step they are `τ(≤)π₂ ∪ τ(>)π₁` (`min` the
+  -- projections swapped), the order picking an operand; at a value atom the fused verb runs
+  | .arith p k n => do
+    let mm := k == Rel.Kernel.Ew.greater || k == Rel.Kernel.Ew.lesser
+    let ⟨t, U⟩ ← numU objs mc p n (Op.arith k).sym fun t => valueAtom t || mm && t.ordNum.isSome
+    if valueAtom t then return ⟨_, _, .arith t k U⟩
+    let le : Tm (.prod (.atom t) (.atom t)) _ := pairTest (.leq t U)
+    let gt : Tm (.prod (.atom t) (.atom t)) _ := .comp swapTm (.comp (pairTest (.lt t U)) swapTm)
+    let (hi, lo) : Tm (.prod (.atom t) (.atom t)) (.atom t) × Tm (.prod (.atom t) (.atom t)) (.atom t) :=
+      if k == Rel.Kernel.Ew.greater then (.outr, .outl) else (.outl, .outr)
+    return ⟨_, _, .join (.comp le hi) (.comp gt lo)⟩
+  | .leq p n => do let ⟨t, U⟩ ← numU objs mc p n "≤" (·.ordNum.isSome); return ⟨_, _, .leq t U⟩
+  | .lt p n => do let ⟨t, U⟩ ← numU objs mc p n "<" (·.ordNum.isSome); return ⟨_, _, .lt t U⟩
   | .fold true e s => do
     let r ← build e; let ⟨V, _, _⟩ := r
     match ← build s with
@@ -2176,10 +2192,9 @@ termination_by x => (sizeOf x, 0)
     variable the constant is not generic over is a number object (`.long`). -/
 def callArgs (pos : Pos) (c : Lean.Name) (us : List (OTy × Bool × Bool)) (xs : List Pre) (ts : List Bool) {A B : Obj}
     (f : Tm A B) : Except Err (Tm A B) := do
-  let f ← us.foldlM (init := f) fun f (u, gen, reads) => do
+  -- a variable it is not generic over is `.long` here (`callTm` refused any other)
+  let f ← us.foldlM (init := f) fun f (u, _, reads) => do
     let U ← toObj objs mc dp u
-    unless gen || U == .long do
-      throw ⟨pos, s!"`{c}`: an object variable is {zonk mc u} here; its constant is not generic over it, a number object"⟩
     if reads then return .arg f (← uniTm objs mc dp pos u U s!"`{c}`") else pure f
   xs.attach.zipIdx.foldlM (init := f) fun f (⟨x, h⟩, i) => do
     have : sizeOf x < sizeOf xs := List.sizeOf_lt_of_mem h
