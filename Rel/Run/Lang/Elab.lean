@@ -1857,10 +1857,8 @@ def mkDef (env : Env) (n : String) (dp : Pos) (ps : List Param) (body : Body) (t
     let gdef := if tys.any (fun (x, y) => !(x.vars ++ y.vars).isEmpty) then some n else none
     let env' := { env with params := bound, ovars := vs, gdef }
     let r : Arg ← match body, idx with
-    -- TODO(callshare): the body as `callOf env' p n bound` builds TestFrameBench (b13 563 nodes) but runs
-    -- TestFrameNull's `fullOuterJoin(π₁, π₁, y, x)` without its `antiJoin` rows, so a use is still the expansion
     | .rel e, none => do
-      let r ← elabE env' none e
+      let r ← callOf env' p n bound fun env'' => elabE env'' none e
       let (_, s, t) := r.plain; check s t; pure r
     | .rel e, some I => do
       let r ← famOf I p (← elabE env' (some I) e)
@@ -2222,6 +2220,11 @@ def litRes (p : Pos) (a b : OTy) (ps : List (Tup × Tup)) (gd : Option String) :
       | some d => ⟨e.pos, s!"`{d}` at the objects of this call: {e.msg}"⟩
       | none => e
 
+/-- The objects at which `t` reads the variable `k` outside any call (a call reads only its own). -/
+partial def Tm.varAt (k : Nat) : {A B : Obj} → Tm A B → List (Obj × Obj)
+  | A, B, .var _ j => if j == k then [(A, B)] else []
+  | _, _, t => t.parts.flatMap fun ⟨_, _, c⟩ => c.varAt k
+
 mutual
 
 /-- `Pre` to `Tm` at the solved objects. Every check here holds by `elabE`'s unification except the
@@ -2425,6 +2428,8 @@ def build : Pre → Except Err Res
       -- only an argument given a variable of its own (`callOf`) takes the form chosen here
       let dem := (xs.zip rs).any fun (x, r) => !(x matches .var ..) && r.2.2.dem
       let ⟨A', B', t⟩ ← if dem then build od else build cl
+      (ks.zip rs).forM fun (k, ⟨X, Y, _⟩) => (t.varAt k).forM fun (X', Y') =>
+        unless X' == X && Y' == Y do throw ⟨dp, s!"DIAG `{c}` reads {k} at {repr X'} ⟶ {repr Y'}, arg {repr X} ⟶ {repr Y}"⟩
       -- `od` reads every parameter on demand; one whose argument is closed is read whole, as it is given, so the
       -- call needs keys only where its expansion does
       let t := if !dem then t else t.subst (((ks.zip xs).zip rs).filterMap fun ((k, x), ⟨A, B, r⟩) =>
@@ -2436,7 +2441,7 @@ def build : Pre → Except Err Res
       else internal dp s!"`{c}`'s body is not at the objects of its call"
     match viaCall with
     | .ok r => pure r
-    | .error _ => build alt
+    | .error e => if e.msg.startsWith "DIAG" then throw e else build alt
   -- the body read whole each round, on its source's universe when it needs keys
   | .fix p least k x S q a b => do
     let A ← toObj objs mc dp a; let B ← toObj objs mc dp b
