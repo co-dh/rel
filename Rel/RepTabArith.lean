@@ -416,27 +416,31 @@ theorem fstepCols_spec {t : QAtomicType} {k : UInt8} {n : USize} {x y w : Arr t 
   · rintro ⟨X', Y', R, hX', hY', hR, h1, rfl⟩
     rw [hX] at hX'; cases hX'; rw [hY] at hY'; cases hY'; rw [hst] at hR; cases hR; exact ⟨h1, rfl⟩
 
-/-- **`fmapCols t u o` computes `o` row by row** from a float atom `t` to a number atom `u`, for an `o` that reads one
-operand: `o` on the `f64` word (`colMap_widen`), then `Op.ofF64 u`, kept where that is not `2^63` (`nanFlag_spec`). -/
-theorem fmapCols_spec {t u : QAtomicType} {o : Op} {n : USize} {x : Arr t n} {w : Arr u n} {keep : Enc}
-    (hf : t = .f32 ∨ t = .f64) (hu : u.storeFmt?.isSome) (ho : o.readsAcc = false)
-    (h : fmapCols t u o n x.enc = .ok (w, keep)) (i : Fin n.toNat) :
-    wd n keep i < 2 ∧ ∀ v, (wd n keep i ≠ 0 ∧ w.get i = v) ↔ ∃ X Y R, fval t (x.get i) = some X ∧
-      o.eval 0 X = .ok Y ∧ (Op.ofF64 u).eval 0 Y = .ok R ∧ R ≠ 0x8000000000000000 ∧ v = QAtomicType.ofBits u R := by
+/-- An `Op` that reads no running value answers the same from any: `eval a x = eval 0 x`. -/
+theorem Op.eval_acc {o : Op} (ho : o.readsAcc = false) (a x : UInt64) : o.eval a x = o.eval 0 x := by
+  cases o <;> first | rfl | exact absurd ho (by decide)
+
+/-- **`fmapCols t u o` computes `o` row by row** from a float atom `t` to a number atom `u` on the operand rows `x`,
+`y`: `o` on their `f64` words (`colMap_widen`), then `Op.ofF64 u`, kept where that is not `2^63` (`nanFlag_spec`). -/
+theorem fmapCols_spec {t u : QAtomicType} {o : Op} {n : USize} {x y : Arr t n} {w : Arr u n} {keep : Enc}
+    (hf : t = .f32 ∨ t = .f64) (hu : u.storeFmt?.isSome)
+    (h : fmapCols t u o n x.enc y.enc = .ok (w, keep)) (i : Fin n.toNat) :
+    wd n keep i < 2 ∧ ∀ v, (wd n keep i ≠ 0 ∧ w.get i = v) ↔ ∃ X X' Y R, fval t (x.get i) = some X ∧
+      fval t (y.get i) = some X' ∧ o.eval X X' = .ok Y ∧ (Op.ofF64 u).eval 0 Y = .ok R ∧ R ≠ 0x8000000000000000 ∧
+      v = QAtomicType.ofBits u R := by
   simp only [fmapCols, bind, Except.bind_eq_ok', pure, Except.pure, Except.ok.injEq, Prod.mk.injEq] at h
   obtain ⟨w', hw', kp, hkp, rfl, rfl⟩ := h
   have hc := colArr_ok hw'
-  obtain ⟨X, Y, v, hX, hY, hv, hW⟩ := colMap_widen hf (Tab.storeFmt_ne hu).2.2 hc i
-  rw [hX] at hY; cases hY
-  have hv' : o.eval 0 X = .ok v := by rw [← hv]; cases o <;> first | rfl | exact absurd ho (by decide)
+  obtain ⟨X, X', v, hX, hX', hv, hW⟩ := colMap_widen hf (Tab.storeFmt_ne hu).2.2 hc i
   have hW' : (Op.ofF64 u).eval 0 v = .ok (wd n w'.enc i) := by
     simpa only [chain, List.foldlM_cons, List.foldlM_nil, bind_pure] using hW
   obtain ⟨h2, hn⟩ := nanFlag_spec hu (colMap_closed hc).1 hkp i
   refine ⟨h2, fun v' => (hn v').trans ?_⟩
   constructor
-  · rintro ⟨h1, rfl⟩; exact ⟨X, v, _, hX, hv', hW', h1, rfl⟩
-  · rintro ⟨X', Y', R, hX', hY', hR, h1, rfl⟩
-    rw [hX] at hX'; cases hX'; rw [hv'] at hY'; cases hY'; rw [hW'] at hR; cases hR; exact ⟨h1, rfl⟩
+  · rintro ⟨h1, rfl⟩; exact ⟨X, X', v, _, hX, hX', hv, hW', h1, rfl⟩
+  · rintro ⟨X₁, X₂, Y', R, hX₁, hX₂, hY', hR, h1, rfl⟩
+    rw [hX] at hX₁; cases hX₁; rw [hX'] at hX₂; cases hX₂; rw [hv] at hY'; cases hY'; rw [hW'] at hR; cases hR
+    exact ⟨h1, rfl⟩
 
 /-- **`stepColsAt t k` computes `stepAt t k` row by row**, at every atom: `stepCols_spec` at `i64`, `fstepCols_spec` at
 a float atom, and no answer at any other (`stepColsAt` refuses it). -/

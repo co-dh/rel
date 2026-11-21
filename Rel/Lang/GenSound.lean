@@ -77,7 +77,7 @@ def rowsProved : List (String × (Obj → Obj → List (Obj × Obj))) :=
   [("∋", no), ("inl", no), ("inr", no), ("τ", cod), ("setify", cod), ("snoc", no), ("cons", no), ("cat", no),
    ("uncat", no), ("prefix", no), ("suffix", no), ("uncons", no), ("unsnoc", no), ("inits", cod), ("zip", no), ("length", no), ("sum", no), ("loop", no), ("filter", no), ("concat", no), ("merge", no),
    ("thinL", no), ("F", no), ("positions", no), ("asc", fun A B => [(A, B)]), ("inl°", no), ("inr°", no), ("tails", fun A _ => match A with | .arr σ => [(.arr σ, .prod (.arr σ) (.arr σ))] | _ => []),
-   ("takewhile", no), ("sums", no), ("flat", no), ("$", no)] ++ unaryOps.map fun (s, _) => (s, no)
+   ("takewhile", no), ("sums", no), ("flat", no), ("$", no)] ++ floatOps.map fun (s, _) => (s, no)
 
 /-- What `Tm.gen_sound` asks of `t`, with `L` for the order law of a `Λ`: `L` at each `Λ`
     and `E` (`E(R) = Λ(∋ ≫ R)`, at `[A] ⟶ [B]`) and at each row `rowsProved` marks, and the body of each fixed
@@ -472,16 +472,21 @@ theorem rowOK_cast : RowOK "$" := rowOK_of (c := RowCode.cast) rfl rfl fun _ σ 
   rcases σ with _ | ⟨_, _ | ⟨_, _⟩⟩ <;>
     exact ⟨GenK.ofVals_wf, fun _ => ⟨⟨rfl, rfl⟩, GenK.ofVals_row_sound fun _ _ _ h => Tab.cast_den h⟩⟩
 
-/-- A `unaryOps` row at the object `σ` names: the graph `unaryDen` of its `Op`, one case per row. -/
-theorem rowOK_unary {s : String} (hs : s ∈ unaryOps.map (·.1)) : RowOK s := by
-  simp only [unaryOps, List.map, List.mem_cons, List.not_mem_nil, or_false] at hs
+/-- A `floatOps` row at the object `σ` names: the graph `floatDen` of its `Op`, one case per row. -/
+theorem rowOK_float {s : String} (hs : s ∈ floatOps.map (·.1)) : RowOK s := by
+  simp only [floatOps, List.map, List.mem_cons, List.not_mem_nil, or_false] at hs
   repeat' (rcases hs with rfl | hs)
   all_goals first | (subst hs) | skip
-  all_goals
-    exact rowOK_of (c := ⟨_, fun σ => (σ₁ σ, σ₂ σ)⟩) rfl rfl fun _ σ _ _ _ _ hv => by
-      cases hv
-      rcases σ with _ | ⟨_, _ | ⟨_, _⟩⟩ <;>
-        exact ⟨GenK.ofVals_wf, fun _ => ⟨⟨rfl, rfl⟩, GenK.ofVals_row_sound fun _ _ _ h => Tab.unary_den rfl h⟩⟩
+  -- a row whose `Op` reads one operand runs from `F`, one reading two from `F×F` (`rowDens`)
+  all_goals first
+    | exact rowOK_of (c := ⟨_, fun σ => (σ₁ σ, σ₂ σ)⟩) rfl rfl fun _ σ _ _ _ _ hv => by
+        cases hv
+        rcases σ with _ | ⟨_, _ | ⟨_, _⟩⟩ <;>
+          exact ⟨GenK.ofVals_wf, fun _ => ⟨⟨rfl, rfl⟩, GenK.ofVals_row_sound fun _ _ _ h => Tab.floatOp_den rfl h⟩⟩
+    | exact rowOK_of (c := ⟨_, fun σ => (.prod (σ₁ σ) (σ₁ σ), σ₂ σ)⟩) rfl rfl fun _ σ _ _ _ _ hv => by
+        cases hv
+        rcases σ with _ | ⟨_, _ | ⟨_, _⟩⟩ <;>
+          exact ⟨GenK.ofVals_wf, fun _ => ⟨⟨rfl, rfl⟩, GenK.ofVals_row_sound fun _ _ _ h => Tab.floatOp_den rfl h⟩⟩
 
 theorem rowOK_sum : RowOK "sum" := rowOK_of (c := RowCode.sum) rfl rfl fun _ σ _ _ _ _ hv => by
   cases hv
@@ -769,11 +774,11 @@ theorem rowsProved_ok (r : Prim) (h : (rowsProved.lookup r.sym).isSome) : RowOK 
   by_cases h30 : r.sym = "sums"; · rw [h30]; exact rowOK_sums
   by_cases h31 : r.sym = "flat"; · rw [h31]; exact rowOK_flat
   by_cases h32 : r.sym = "$"; · rw [h32]; exact rowOK_cast
-  by_cases hu : r.sym ∈ unaryOps.map (·.1); · exact rowOK_unary hu
-  have hu' : ∀ p ∈ unaryOps, (r.sym == p.1) = false := fun p hp =>
+  by_cases hu : r.sym ∈ floatOps.map (·.1); · exact rowOK_float hu
+  have hu' : ∀ p ∈ floatOps, (r.sym == p.1) = false := fun p hp =>
     beq_false_of_ne fun he => hu (he ▸ List.mem_map_of_mem hp)
-  simp only [unaryOps, List.forall_mem_cons] at hu'
-  simp [rowsProved, List.lookup, unaryOps, hu', beq_false_of_ne h1, beq_false_of_ne h2, beq_false_of_ne h3, beq_false_of_ne h4,
+  simp only [floatOps, List.forall_mem_cons] at hu'
+  simp [rowsProved, List.lookup, floatOps, hu', beq_false_of_ne h1, beq_false_of_ne h2, beq_false_of_ne h3, beq_false_of_ne h4,
     beq_false_of_ne h5, beq_false_of_ne h6, beq_false_of_ne h7, beq_false_of_ne h8, beq_false_of_ne h9,
     beq_false_of_ne h10, beq_false_of_ne h11, beq_false_of_ne h12, beq_false_of_ne h13, beq_false_of_ne h14,
     beq_false_of_ne h15, beq_false_of_ne h16, beq_false_of_ne h17, beq_false_of_ne h18,

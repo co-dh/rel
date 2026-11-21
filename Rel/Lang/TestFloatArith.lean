@@ -176,7 +176,7 @@ rel_program divideIntT where
     a : N ⟶ N ≜ {(0,1)}
     c : N ⟶ N ≜ ⟨a, a⟩ %
 
--- the unary float verbs (`unaryOps`): each a row `F ⟶ D`, its `Op` on the `f64` word, then `Op.ofF64` at `D`'s atom
+-- the unary float verbs (`floatOps`): each a row `F ⟶ D`, its `Op` on the `f64` word, then `Op.ofF64` at `D`'s atom
 -- (`f64`; `i64` for `floor`); no row where that has no word (NaN, or no `i64` value)
 rel_program unaryT where
     obj N
@@ -218,8 +218,31 @@ rel_program unaryT where
   (QAtomicType.castWord .f64 .i64) ==
     [0xfffffffffffffffd, 0x8000000000000000, 0x8000000000000000, 0x8000000000000000, 0x8000000000000000]
 
+-- `xexp` (q's `x xexp y`, `x^y`): the `floatOps` row whose `Op` `fpow` reads two operands, so a row `F×F ⟶ D`; libm
+-- `pow` on the `f64` words, answered at `f64`; no row where that is NaN
+rel_program xexpT where
+    obj N
+    obj F : f64
+    obj G : f32
+    obj L : i64
+    two : N ⟶ F ≜ {(0,2.0),(1,-2.0),(2,-8.0),(3,0.0)}
+    y : N ⟶ F ≜ {(0,10.0),(1,3.0),(2,0.5),(3,0.0)}
+    k : N ⟶ L ≜ {(0,3),(1,2)}
+    g : N ⟶ G ≜ {(0,2.0),(1,4.0)}
+    h : N ⟶ G ≜ {(0,3.0),(1,0.5)}
+    check ⟨two, y⟩ xexp = {(0,1024.0),(1,-8.0),(3,1.0)}
+    kf : N ⟶ F ≜ k $ F
+    check ⟨two, kf⟩ xexp = {(0,8.0),(1,4.0)}
+    gh : N ⟶ F ≜ ⟨g, h⟩ xexp
+    check gh = {(0,8.0),(1,2.0)}
+
+-- by hand: `2^10 = 1024`, `(-2)^3 = -8` (an integer exponent on a negative base, which `exp(y·log x)` has no value
+-- for), `(-8)^0.5` NaN no row 2, `0^0 = 1` as libm's `pow`; `2^3`, `(-2)^2` with the `i64` exponents cast by `$`;
+-- the `f32` operands widened, the answer at `f64`
+#guard xexpT.failures.map toString == []
+
 -- `sqrt` at an integer object: refused by name, with the cast the program writes first
-/-- error: line 227, col 5: sqrt on N: N is an object of i64, and sqrt runs on objects of f32, f64 only; cast first, `x $ F` with `F` an object of f32, f64 -/
+/-- error: line 250, col 5: sqrt on N: N is an object of i64, and sqrt runs on objects of f32, f64 only; cast first, `x $ F` with `F` an object of f32, f64 -/
 #guard_msgs in
 rel_program sqrtIntT where
     obj N
