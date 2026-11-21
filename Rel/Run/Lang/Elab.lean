@@ -509,6 +509,9 @@ structure St where
   /-- The objects of the program elaborating, where a call tries its arguments' forms (`callDef`): a definition's
       own scope does not hold the caller's objects nor the universes of its object variables. -/
   objs : Objs := []
+  /-- The argument each variable of a call's body (`callOf`) stands for, outer calls' variables put in place: a
+      call in that body picks its arguments' forms by what they compute (`Expand.callDef`), as its expansion does. -/
+  args : List (Nat × Pre) := []
 
 /-- Elaboration outside a term: the program's error, over Lean's metavariables. -/
 abbrev EM := ExceptT Err Lean.Meta.MetaM
@@ -665,6 +668,9 @@ def Pre.bound (k : Nat) (x : Pre) : Option Pre :=
 partial def Pre.mapVar (g : Pos → Nat → OTy → OTy → Option Bool → Pre) : Pre → Pre
   | .var p k a b t => g p k a b t
   | x => Id.run (x.traverse pure fun _ y => pure (y.mapVar g))
+
+/-- `x` with each variable of a call's body (`St.args`) the argument it stands for: what `x` computes. -/
+def St.expand (st : St) (x : Pre) : Pre := x.mapVar fun p k a b t => (st.args.lookup k).getD (.var p k a b t)
 
 /-! ### Elaboration: environments and the lifted rows of §e -/
 
@@ -1356,9 +1362,10 @@ def callOf (env : Env) (p : Pos) (c : String) (bs : List (String × Arg)) (body 
   let ks ← rels.mapM fun (_, q, _) => match own q with
     | some k => pure k
     | none => modifyGet fun s => (s.fixes, { s with fixes := s.fixes + 1 })
+  let σ := (ks.zip (rels.map (·.2.1))).filter fun (_, q) => (own q).isNone
+  modify fun st => { st with args := st.args ++ σ.map fun (k, q) => (k, st.expand q) }
   let r ← body { env with params := (rels.zip ks).map fun ((n, q, s, t), k) =>
     (n, if (own q).isSome then .rel q s t else .rel (.var p k s t none) s t) }
-  let σ := (ks.zip (rels.map (·.2.1))).filter fun (_, q) => (own q).isNone
   let alt (q : Pre) := q.mapVar fun p' k a b t => (σ.lookup k).getD (.var p' k a b t)
   let form (q : Pre) (f : Option Bool) :=
     q.mapVar fun p' k a b t => .var p' k a b (if (σ.lookup k).isSome then f else t)
@@ -1850,10 +1857,9 @@ def mkDef (env : Env) (n : String) (dp : Pos) (ps : List Param) (body : Body) (t
     let gdef := if tys.any (fun (x, y) => !(x.vars ++ y.vars).isEmpty) then some n else none
     let env' := { env with params := bound, ovars := vs, gdef }
     let r : Arg ← match body, idx with
-    -- TODO(callshare): the body as `callOf env' p n bound` fails b3 of TestFrameBench (`closed?`: a term that needs
-    -- keys where none are supplied), so a use is still the expansion
+    -- each argument computed once, the body read at it (`callOf`)
     | .rel e, none => do
-      let r ← elabE env' none e
+      let r ← callOf env' p n bound fun env'' => elabE env'' none e
       let (_, s, t) := r.plain; check s t; pure r
     | .rel e, some I => do
       let r ← famOf I p (← elabE env' (some I) e)
@@ -2418,7 +2424,11 @@ def build : Pre → Except Err Res
       -- only an argument given a variable of its own (`callOf`) takes the form chosen here
       let dem := (xs.zip rs).any fun (x, r) => !(x matches .var ..) && r.2.2.dem
       let ⟨A', B', t⟩ ← if dem then build od else build cl
-      let u := rs.foldl (fun f ⟨_, _, x⟩ => .arg f x) (Tm.call ks (.mkSimple c) [] t)
+      -- `od` reads every parameter on demand; one whose argument is closed is read whole, as it is given, so the
+      -- call needs keys only where its expansion does
+      let t := if !dem then t else t.subst (((ks.zip xs).zip rs).filterMap fun ((k, x), ⟨A, B, r⟩) =>
+        if !(x matches .var ..) && !r.dem then some (k, ⟨A, B, .var false k⟩) else none)
+      let u :=rs.foldl (fun f ⟨_, _, x⟩ => .arg f x) (Tm.call ks (.mkSimple c) [] t)
       -- `Tm.dem` counts an argument run on demand even where the body closes it: that call is the expansion's
       if u.dem && !t.dem then internal dp s!"`{c}` closes an argument that needs keys"
       if h : A' = A ∧ B' = B then pure ⟨A, B, h.1 ▸ h.2 ▸ u⟩

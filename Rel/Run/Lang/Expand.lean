@@ -427,12 +427,13 @@ def callDef (env : Env) (dp : Pos) (n : String) (qs : List Param) (e : Expr) (ty
         let (ix', k?) ← idxClass ix j?; ix := ix'
         -- the first form the argument (a family: its relation from the index) builds in: closed, run on demand,
         -- tested on pairs; else closed, whose build reports why
-        let st ← get; let mc ← Lean.getMCtx
-        let bx := build st.objs mc p x
+        -- the forms are those of what `x` computes, a variable of a call's body (`callOf`) its argument
+        let st ← get; let mc ← Lean.getMCtx; let xe := st.expand x
+        let bx := build st.objs mc p xe
         let f : Option Bool :=
-          if (build st.objs mc p (Pre.close p x a why)).toOption.isSome then none
+          if (build st.objs mc p (Pre.close p xe a why)).toOption.isSome then none
           else if bx.toOption.isSome then some false
-          else if (test st.objs mc p x).toOption.isSome then some true else none
+          else if (test st.objs mc p xe).toOption.isSome then some true else none
         fs := fs ++ [(f, k?)]; xs := xs ++ [(if f.isNone then Pre.close p x a why else x, f == some true)]
         -- closed, an argument that needs keys would be read on its source's whole universe (`closeRes`); on demand it
         -- runs bounded by what the body composes it with, as the inlined body runs it
