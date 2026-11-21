@@ -945,7 +945,6 @@ theorem sum_holds {V : Obj} {n : USize} {X : Vals (.arr V) n} {T : Tab (.arr V) 
   -- the segment marks: `1` exactly where the offset in the cell is `0`, the cell's first row
   have hsf : ∃ md pk, seg = .foR md pk := by
     unfold colMap at hseg; simp only [bind, Except.bind] at hseg; split at hseg; · cases hseg
-    split at hseg; · cases hseg
     rename_i q hq; simp only [pure, Except.pure, Except.ok.injEq] at hseg; subst hseg; exact kscan_foR hq
   have hT63 : T'.toNat < 2 ^ 63 := by rw [hT, hoff]; omega
   have hsu : ∀ t < T'.toNat, ((Enc.raw .u1 T' seg)[t]?.getD 0 = 0 ↔
