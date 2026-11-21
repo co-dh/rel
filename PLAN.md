@@ -406,8 +406,17 @@ Diff table 的「状态」列：✅ 后面是完成它的步骤；🔄 是部分
     与 `fstepCols` 共用）+ `keep` + `canon`；语义 `unaryDen o`（`fval`、`o.eval 0`、`fto`、非 `2^63`）。定律
     `fmapCols_spec`、`Tab.unary_den`、`rowOK_unary`；`keep_canon_holds` 是 `$` 与本族共用的"列映射后滤去 null"，
     `cast_holds` 由它导出。`kernRows` 的项是常量加其前置参数（`Tab.unary` 带行名）。`Prim.num` 改为对象变量 →
-    允许的 atom 表（`intAtoms`、`floatAtoms`），整数对象上按名报错并给出 `$` 提示（`numObj`）。`floor` 在此为
-    `F ⟶ F`（`Op.ffloor` 的值），不是 q 的 `floor`（q 回 long）。测试 `TestFloatArith.unaryT`、`sqrtIntT`。
+    允许的 atom 表（`intAtoms`、`floatAtoms`），整数对象上按名报错并给出 `$` 提示（`numObj`）。`floor` 后改为
+    `F ⟶ D`、`D` 为 `i64`（见下一项）。测试 `TestFloatArith.unaryT`、`sqrtIntT`。
+  - ✅ 一趟 element-wise（分支 `kchain3`，批准 A）：`kscan` 带每行 Op 链 `pre`/`post`、`seg : Option Enc`（`none`
+    即 map），只改签名、无新导出。`fverbOne k`（动词 = 一个二元 `Op` + 一元链；`mod` 无，仍多趟）定义 `fverbBy`；
+    `widen t`（`wideCol` 的链）、`fstepArr`（`colArr o … (widen t) (c ++ [fto t])`，一趟）、`nanFlag`（`post` 链
+    `ne nulWord`，一趟，无 `colConst`）；`fmapCols` 一趟。`Tab.unary`/`Tab.cast` 在 `keep` 后不再 `canon`
+    （`keep_map_holds`）。native plan 的 `scanB` 读 `Option`，map 不再造常量 `1` 列。一元行改为 `F ⟶ D`：
+    `unaryOps` 每行带答案 atom（`floor` 为 `i64`，同 q；其余 `f64`），`prims` 的 `num` 为 `F` float、`D` 该 atom；
+    链尾 `Op.ofF64 u`（float atom 用 `fto`，保留 `±∞`；否则 `cast f64 u`，NaN、`±∞`、越界为 `2^63`，由
+    `nanFlag` 滤去，`#guard` 钉住）。`unaryDen o A B`、`Tab.unary : Tab A B`、`nanFlag_spec` 在任何数 atom。
+    sqrt 10^6 行（最好一次）：f64 4493 → 762 µs，f32 5322 → 1279 µs。
   - 🟡 float `sum`/`sums`：`mean`、float `describe` 需要它。`sums` 取 i64 或 f64 值（S4e/S4f），f32 按名报错；
     f64 `sum`（格）未做。
   - ✅ 对象变量上的数动词与 `$`（分支 `objvar`，dataframe 请求，architecture §1）：泛型定义的体可写自己的对象变量
