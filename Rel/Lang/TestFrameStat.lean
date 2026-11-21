@@ -11,6 +11,7 @@ open Rel.Programs.prelude Rel.Programs.frame Rel.Programs.frameGroup Rel.Program
 rel_program frameStatT where
     obj K = {A,B}
     obj N
+    obj F : f64
     f : N ⟶ F ≜ {(0,1.5),(1,0.25),(2,2.0)}
     w1 : N ⟶ F ≜ {(0,0.5)}
     e : N ⟶ F ≜ 𝟘
@@ -101,6 +102,7 @@ rel_program frameStatT where
 open Rel.Programs.prelude Rel.Programs.frame Rel.Programs.frameGroup Rel.Programs.frameStat in
 rel_program frameStatFloatT where
     obj N
+    obj F : f64
     -- 0.5 2 3.5: mean 2; mean square (0.25 + 4 + 12.25)/3 = 5.5, var 5.5 − 4 = 1.5, svar 1.5·3/2 = 2.25, sdev 1.5
     f : N ⟶ F ≜ {(0,0.5),(1,2.0),(2,3.5)}
     check summarize(F(f) avg, f) = {(∗,2.0)}
@@ -132,10 +134,22 @@ rel_program frameStatFloatT where
 
 #guard frameStatFloatT.failures.map toString == []
 
+-- the result at an `f32` object: the typed definition fixes `φ` at `H`; 1 4 7 (exact in f32): 12/3 = 4
+open Rel.Programs.prelude Rel.Programs.frame Rel.Programs.frameGroup Rel.Programs.frameStat in
+rel_program frameStatF32T where
+    obj N
+    obj H : f32
+    t : N ⟶ N ≜ {(0,1),(1,4),(2,7)}
+    m : 1 ⟶ H ≜ summarize(F(t) avg, t)
+    check m = {(∗,4.0)}
+
+#guard frameStatF32T.failures.map toString == []
+
 -- a bounded object: 7³ = 343 and 40³ lie outside `N`, so the cubes, deviations and weights are computed in `F`
 open Rel.Programs.prelude Rel.Programs.frame Rel.Programs.frameGroup Rel.Programs.frameStat in
 rel_program frameStatBoundT where
     obj N = 0…40
+    obj F : f64
     t : N ⟶ N ≜ {(0,7),(1,1),(2,4)}
     -- sorted 1 4 7: p = 0.75 gives h = 1.5, (4 + 7)/2 = 5.5; skewness 0 (symmetric); zScore (x − 4)/3
     check quantile({(∗,0.75)}, t) = {(∗,5.5)}

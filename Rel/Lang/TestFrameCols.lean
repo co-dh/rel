@@ -72,6 +72,7 @@ rel_program frameCols where
 -- 2.125² = 4.515625 < 255/56 < 5.0625 = 2.25²
 open Rel.Programs.prelude Rel.Programs.frame Rel.Programs.frameStat frameData in
 rel_program frameDescribe where
+    obj F : f64
     check describe(x π₂) ⟨π₁, ⟨π₂ π₁, π₂ π₂ π₂⟩⟩ = {(∗,(8,(3.375,(1,7))))}
     check describe(x π₂) π₂ π₂ π₁ [𝟙, {(∗,-1.0)}] <° {(2.125,∗)} = {(∗,∗)}
     check describe(x π₂) π₂ π₂ π₁ [𝟙, {(∗,-1.0)}] < {(2.25,∗)} = {(∗,∗)}
