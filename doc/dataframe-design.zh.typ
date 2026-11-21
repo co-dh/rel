@@ -108,12 +108,14 @@ Rel 本身（`Obj`、`Tm`、kernel、编码、原子、`compile`）见 `rel-arch
   [`Maybe a`], [`A+1`], [见 1.3],
 )
 
-== null
+== null 的表示
 
-#tbl(c-sem, (auto, auto, 1fr), ([读法], [第 3 行为 null], [结论]),
+例：一列 `[1, 2, null, 4]`，第 3 个元素为 null；表的第二列是它在各读法下的样子。
+
+#tbl(c-sem, (auto, auto, 1fr), ([读法], [例：第 3 个元素], [结论]),
   [q 的哨兵值], [第 3 个元素是 `0N`], [带内表示；q 语义不在 Rel 中（`rel-architecture` §4.1）],
   [和类型 `v : C ⟶ V+1`], [第 3 个元素是 `inr(∗)`], [*采用*：每列都是全函数，`x ⟨a, v⟩` 不丢行],
-  [部分列 `v inl°`], [第 3 行没有像], [派生的读法：表达式里与 null 比较的行被 `filterBy` 去掉，和 polars 一致],
+  [部分列 `v inl°`], [第 3 个元素没有像], [派生的读法：表达式里与 null 比较的行被 `filterBy` 去掉，和 polars 一致],
 )
 
 - `inl°`、`inr°` 是 `prims` 的行；`[R, S] = inl° R ∪ inr° S`：按 tag 分情况，null 一支读 `S : 1 ⟶ B`。
