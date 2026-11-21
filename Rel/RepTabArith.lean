@@ -10,7 +10,7 @@ against the meanings `arithDen`, `succDen` of
 namespace Rel
 open Rel.Ext Rel.Kernel Rel.Verify Ext.Enc
 /-- Word `i` of the `n`-word `i64` column `e`. -/
-private abbrev wd (n : USize) (e : Enc) (i : Nat) : UInt64 := (raw .i64 n e)[i]?.getD 0
+abbrev wd (n : USize) (e : Enc) (i : Nat) : UInt64 := (raw .i64 n e)[i]?.getD 0
 
 /-! ### `Op.eval` of the steps `stepCols` runs, on raw words -/
 
@@ -292,26 +292,21 @@ theorem wideCol_word {t : QAtomicType} {n : USize} (x : Arr t n) {a' : Enc} (h :
     simp only [fval, QAtomicType.ofBits, wd, Option.some.injEq]
     cases hc : x.enc <;> rw [hc] at hw <;> simp_all [raw, Enc.WF, QAtomicType.width]
 
-/-- **`fstepCols t k` computes `stepAt t k` row by row** at a float atom `t`: the keep flag is a bit, set exactly where
-`fstep` of the operands' `f64` words answers a word of `t` (not `2^63`), and then that word is the answer. -/
-theorem fstepCols_spec {t : QAtomicType} {k : UInt8} {n : USize} {x y w : Arr t n} {keep : Enc}
-    (hf : t = .f32 ∨ t = .f64) (h : fstepCols t k n x.enc y.enc = .ok (w, keep)) (i : Fin n.toNat) :
-    wd n keep i < 2 ∧ ∀ v, (wd n keep i ≠ 0 ∧ w.get i = v) ↔ ∃ X Y R, fval t (x.get i) = some X ∧
-      fval t (y.get i) = some Y ∧ fstep t k X Y = .ok R ∧ R ≠ 0x8000000000000000 ∧ v = QAtomicType.ofBits t R := by
-  simp only [fstepCols, bind, Except.bind_eq_ok', pure, Except.pure, Except.ok.injEq, Prod.mk.injEq] at h
-  obtain ⟨a', ha, b', hb, r, hr, w', hw', N, hN, kp, hkp, rfl, rfl⟩ := h
-  have hr' := fverbBy_map (ap := fun o x y => colMap o n x y) (ap' := Op.eval) (fun e => wd n e i)
-    (fun hc => (colMap_raw hc).2.2.2 i i.2) hr
+/-- **`ftoCols t` writes `Op.fto t` row by row** at a float atom `t`: the keep flag is a bit, set exactly where
+`fto t` of the `f64` word is a word of `t` (not `2^63`), and then that word is the answer. -/
+theorem ftoCols_spec {t : QAtomicType} {n : USize} {r : Enc} {w : Arr t n} {keep : Enc}
+    (hf : t = .f32 ∨ t = .f64) (h : ftoCols t n r = .ok (w, keep)) (i : Fin n.toNat) :
+    wd n keep i < 2 ∧ ∀ v, (wd n keep i ≠ 0 ∧ w.get i = v) ↔ ∃ R, (Op.fto t).eval 0 (wd n r i) = .ok R ∧
+      R ≠ 0x8000000000000000 ∧ v = QAtomicType.ofBits t R := by
+  simp only [ftoCols, bind, Except.bind_eq_ok', pure, Except.pure, Except.ok.injEq, Prod.mk.injEq] at h
+  obtain ⟨w', hw', N, hN, kp, hkp, rfl, rfl⟩ := h
   obtain ⟨v0, hv0, hwi⟩ := (colMap_get (colArr_ok hw')).2 i i.2
   have hkv := (colMap_raw hkp).2.2.2 i i.2
   rw [colConst_raw hN] at hkv
   simp only [Array.getElem?_replicate, i.2, if_true, Option.getD_some, ev_ne] at hkv
   rw [show nulWord = 0x8000000000000000 from rfl] at hkv
   have ev : ∀ A B, (Op.fto t).eval A B = .ok (Op.ftoWord t B) := fun _ _ => rfl
-  have hfs : fstep t k (wd n a' i) (wd n b' i) = .ok v0 := by
-    show (fverb k _ _ >>= fun q => (Op.fto t).eval 0 q) = _
-    rw [show fverb k (wd n a' i) (wd n b' i) = .ok (wd n r i) from hr']
-    exact (ev 0 _).trans ((ev _ _).symm.trans hv0)
+  have hfs : (Op.fto t).eval 0 (wd n r i) = .ok v0 := (ev 0 _).trans ((ev _ _).symm.trans hv0)
   have hg : t ≠ .general := by rcases hf with rfl | rfl <;> decide
   have hs : t ≠ .sym := by rcases hf with rfl | rfl <;> decide
   obtain ⟨a, ha0, -, ew⟩ := Arr.get_raw_atom w' (colMap_closed (colArr_ok hw')).1 hg hs i
@@ -322,13 +317,52 @@ theorem fstepCols_spec {t : QAtomicType} {k : UInt8} {n : USize} {x y w : Arr t 
       QAtomicType.ofBits]
   have hwd : (raw .i64 n w'.enc)[i.1]?.getD 0 = v0 := by simp only [hwi, hu, Option.getD_some]
   rw [hwd] at hkv
-  simp only [wd] at hfs ⊢; rw [← Except.ok.inj hkv, wideCol_word x ha hf i, wideCol_word y hb hf i]
+  simp only [wd] at hfs ⊢; rw [← Except.ok.inj hkv]
   refine ⟨bit_lt _, fun v => ?_⟩
   rw [bit_ne, ew']
   constructor
-  · rintro ⟨hn, rfl⟩; exact ⟨_, _, _, rfl, rfl, hfs, hn, rfl⟩
+  · rintro ⟨hn, rfl⟩; exact ⟨_, hfs, hn, rfl⟩
+  · rintro ⟨R, hR, hn, rfl⟩; rw [hfs] at hR; cases hR; exact ⟨hn, rfl⟩
+
+/-- **`fstepCols t k` computes `stepAt t k` row by row** at a float atom `t`: `ftoCols_spec` of the `fverb` answer on
+the operands' `f64` words (`wideCol_word`). -/
+theorem fstepCols_spec {t : QAtomicType} {k : UInt8} {n : USize} {x y w : Arr t n} {keep : Enc}
+    (hf : t = .f32 ∨ t = .f64) (h : fstepCols t k n x.enc y.enc = .ok (w, keep)) (i : Fin n.toNat) :
+    wd n keep i < 2 ∧ ∀ v, (wd n keep i ≠ 0 ∧ w.get i = v) ↔ ∃ X Y R, fval t (x.get i) = some X ∧
+      fval t (y.get i) = some Y ∧ fstep t k X Y = .ok R ∧ R ≠ 0x8000000000000000 ∧ v = QAtomicType.ofBits t R := by
+  simp only [fstepCols, bind, Except.bind_eq_ok'] at h
+  obtain ⟨a', ha, b', hb, r, hr, h⟩ := h
+  have hr' := fverbBy_map (ap := fun o x y => colMap o n x y) (ap' := Op.eval) (fun e => wd n e i)
+    (fun hc => (colMap_raw hc).2.2.2 i i.2) hr
+  have hfs : fstep t k (wd n a' i) (wd n b' i) = (Op.fto t).eval 0 (wd n r i) := by
+    show (fverb k _ _ >>= fun q => (Op.fto t).eval 0 q) = _
+    rw [show fverb k (wd n a' i) (wd n b' i) = .ok (wd n r i) from hr']; rfl
+  obtain ⟨h2, hv⟩ := ftoCols_spec hf h i
+  refine ⟨h2, fun v => (hv v).trans ?_⟩
+  rw [wideCol_word x ha hf i, wideCol_word y hb hf i]
+  constructor
+  · rintro ⟨R, hR, hn, rfl⟩; exact ⟨_, _, R, rfl, rfl, hfs ▸ hR, hn, rfl⟩
   · rintro ⟨X, Y, R, hX, hY, hR, hn, rfl⟩
-    cases hX; cases hY; rw [hfs] at hR; cases hR; exact ⟨hn, rfl⟩
+    cases hX; cases hY; exact ⟨R, hfs ▸ hR, hn, rfl⟩
+
+/-- **`fmapCols t o` computes `o` row by row** at a float atom `t`, for an `o` that reads one operand: `ftoCols_spec` of
+`o` on the `f64` word (`wideCol_word`). -/
+theorem fmapCols_spec {t : QAtomicType} {o : Op} {n : USize} {x w : Arr t n} {keep : Enc}
+    (hf : t = .f32 ∨ t = .f64) (ho : o.readsAcc = false) (h : fmapCols t o n x.enc = .ok (w, keep))
+    (i : Fin n.toNat) :
+    wd n keep i < 2 ∧ ∀ v, (wd n keep i ≠ 0 ∧ w.get i = v) ↔ ∃ X Y R, fval t (x.get i) = some X ∧
+      o.eval 0 X = .ok Y ∧ (Op.fto t).eval 0 Y = .ok R ∧ R ≠ 0x8000000000000000 ∧ v = QAtomicType.ofBits t R := by
+  simp only [fmapCols, bind, Except.bind_eq_ok'] at h
+  obtain ⟨a', ha, r, hr, h⟩ := h
+  have hr' : o.eval 0 (wd n a' i) = .ok (wd n r i) := by
+    rw [← (colMap_raw hr).2.2.2 i i.2]; cases o <;> first | rfl | exact absurd ho (by decide)
+  obtain ⟨h2, hv⟩ := ftoCols_spec hf h i
+  refine ⟨h2, fun v => (hv v).trans ?_⟩
+  rw [wideCol_word x ha hf i]
+  constructor
+  · rintro ⟨R, hR, hn, rfl⟩; exact ⟨_, _, R, rfl, hr', hR, hn, rfl⟩
+  · rintro ⟨X, Y, R, hX, hY, hR, hn, rfl⟩
+    cases hX; rw [hr'] at hY; cases hY; exact ⟨R, hR, hn, rfl⟩
 
 /-- **`stepColsAt t k` computes `stepAt t k` row by row**, at every atom: `stepCols_spec` at `i64`, `fstepCols_spec` at
 a float atom, and no answer at any other (`stepColsAt` refuses it). -/

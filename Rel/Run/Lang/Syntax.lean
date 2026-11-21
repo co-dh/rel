@@ -278,8 +278,9 @@ def prims : List Prim :=
    { sym := "$", sig := ([], .var {} "N", .var {} "F"), written := false,
      aop := .error "AOP declares no change of a number's representation" }] ++
   -- `sqrt`, `neg`, …: each a relation `F ⟶ F` on a float object `F` (`num` its float atoms), one row per name
-  unaryOps.map fun (s, _) => { sym := s, sig := ([], .var {} "F", .var {} "F"), num := [("F", floatAtom)],
-    aop := .error "AOP declares no floating-point function" }
+  unaryOps.map fun (s, _) =>
+    { sym := s, sig := ([], .var {} "F", .var {} "F"), num := [("F", floatAtom)],
+      aop := .error "AOP declares no floating-point function" }
 
 def Prim.find?(s : String) : Option Prim := prims.find? (·.sym == s)
 

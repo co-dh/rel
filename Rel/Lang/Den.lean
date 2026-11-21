@@ -750,8 +750,11 @@ theorem Sem.one_mono {X Y A B X' Y' : Obj} {D : Den X Y → Den A B} (hD : ∀ {
 theorem rowDens_mono : ∀ e ∈ rowDens, (Prim.find? e.1.sym).any (·.mono) = true →
     ∀ σ {X Y : Obj} {T T' : Den X Y}, T ⊑ T' → e.2 σ [⟨X, Y, T⟩] ⊑ e.2 σ [⟨X, Y, T'⟩] := by
   intro e he hm σ X Y T T' h
-  simp only [rowDens, List.mem_cons, List.not_mem_nil, or_false] at he
-  -- one case per row whatever their number, in `rowDens` order
+  simp only [rowDens, List.mem_append, List.mem_map, List.mem_cons, List.not_mem_nil, or_false] at he
+  -- a `unaryOps` row takes no relation; then one case per row whatever their number, in `rowDens` order
+  rcases he with he | ⟨_, -, rfl⟩
+  rotate_left
+  · exact Core.Rel.le_refl _
   repeat' first | (rcases he with rfl | he) | subst he
   all_goals first | exact Core.Rel.le_refl _ | exact absurd hm (by decide) | skip
   · dsimp only; refine Sem.one_mono (fun hT => le_iff.2 fun _ _ hm => ?_) h
