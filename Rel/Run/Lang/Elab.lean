@@ -1055,10 +1055,9 @@ def numObj (objs : Objs) (mc : Lean.MetavarContext) (p : Pos) (o : OTy) (op : St
     let t := match objs.lookup n with | some { obj := .atom t, ovar := false, .. } => t | _ => .i64
     if ok t then pure (n, t) else
       let ats := ", ".intercalate ((atomNames.filter (ok ·.2)).map (atomName ·.2))
-      let int (a : QAtomicType) := a.numFmt?.any (· matches .int ..)
-      -- an op with no integer step at all (`%`): its answer is no integer, so the program casts (`$`), explicitly
-      let cast := if int t && !atomNames.any (fun a => ok a.2 && int a.2) then
-        s!"; its answer is no integer: cast first, `x $ F` with `F` an object of {ats}" else ""
+      -- the atoms `op` runs at that `t` casts to without loss (`castOK`): the program casts (`$`), explicitly
+      let tos := (atomNames.filter fun a => ok a.2 && t.castOK a.2).map (atomName ·.2)
+      let cast := if tos.isEmpty then "" else s!"; cast first, `x $ F` with `F` an object of {", ".intercalate tos}"
       throw ⟨p, s!"{op} on {n}: {n} is an object of {atomName t}, and {op} runs on objects of {ats} only{cast}"⟩
   | o => throw ⟨p, s!"{op} runs on a declared object, found {o}"⟩
 
@@ -2134,6 +2133,16 @@ def build : Pre → Except Err Res
   -- `d`, `3` by the cut — so `d` runs. With no universe, the row runs (the base `0` would need keys none supply).
   | .prim r xs s t => do
     (Pre.prim r xs s t).numsAt mc |>.forM fun (o, op, ok) => discard <| numObj objs mc dp o op ok
+    -- an object whose canon order is not its value order (a float's bits, a symbol's bytes) is refused by name
+    r.ord.forM fun v => do
+      if let some o := (r.sig.2.2.varAt v (zonk mc t)).orElse fun _ => r.sig.2.1.varAt v (zonk mc s) then
+        let ats := ", ".intercalate ((atomNames.filter (·.2.intOrd)).map (atomName ·.2))
+        match zonk mc o with
+        | .base n => match objs.lookup n with
+          | some { obj := .atom a, ovar := false, .. } => unless a.intOrd do
+              throw ⟨dp, s!"{r.sym}' position object {n} is an object of {atomName a}; {r.sym} orders positions of {ats}"⟩
+          | _ => pure ()
+        | o => throw ⟨dp, s!"{r.sym}' position object {o} is no atom; {r.sym} orders positions of {ats}"⟩
     let A ← toObj objs mc dp s; let B ← toObj objs mc dp t
     -- `$` is typed by unification at any two objects; which atoms it joins is `castOK`'s, read off their formats
     if r.sym == "$" then

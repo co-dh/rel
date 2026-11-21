@@ -122,7 +122,7 @@ rel_program mixedT where
     c : N ⟶ F ≜ ⟨a, b⟩ plus
 
 -- an atom with no value step (`valueAtom`): refused, the error listing the atoms that have one
-/-- error: line 131, col 24: plus on I: I is an object of i32, and plus runs on objects of i64, f32, f64 only -/
+/-- error: line 131, col 24: plus on I: I is an object of i32, and plus runs on objects of i64, f32, f64 only; cast first, `x $ F` with `F` an object of i64, f32, f64 -/
 #guard_msgs in
 rel_program narrowT where
     obj N
@@ -169,7 +169,7 @@ rel_program divideT where
 #guard divideT.failures.map toString == []
 
 -- `%` at an integer object: refused, the quotient of two integers being no integer; the program casts with `$` first
-/-- error: line 177, col 24: divide on N: N is an object of i64, and divide runs on objects of f32, f64 only; its answer is no integer: cast first, `x $ F` with `F` an object of f32, f64 -/
+/-- error: line 177, col 24: divide on N: N is an object of i64, and divide runs on objects of f32, f64 only; cast first, `x $ F` with `F` an object of f32, f64 -/
 #guard_msgs in
 rel_program divideIntT where
     obj N
@@ -208,7 +208,7 @@ rel_program unaryT where
 #guard unaryT.failures.map toString == []
 
 -- `sqrt` at an integer object: refused by name, with the cast the program writes first
-/-- error: line 216, col 5: sqrt on N: N is an object of i64, and sqrt runs on objects of f32, f64 only; its answer is no integer: cast first, `x $ F` with `F` an object of f32, f64 -/
+/-- error: line 216, col 5: sqrt on N: N is an object of i64, and sqrt runs on objects of f32, f64 only; cast first, `x $ F` with `F` an object of f32, f64 -/
 #guard_msgs in
 rel_program sqrtIntT where
     obj N
