@@ -21,7 +21,11 @@ use crate::{blocks::Blocks, coc::Coc, codec, enc::Producer, ffi::{Form, Sink}, l
 /// is `structural::enc`'s own test, `one_width() == 255` (blocks of unequal widths, or a patch list).
 pub fn enc(ix: &Blocks, e: &Coc) -> Result<lean::O, String> {
     let sw = e.one_width();
-    let d = (ix.n >= e.meta.n && sw == 255).then(|| { let mut d = alloc::vec![0i64; e.meta.n]; codec::decode(crate::c::pool(), e, &mut d); d });
+    let d = if ix.n >= e.meta.n && sw == 255 {
+        let mut d = pod::vec_of("gather", "the dense e", e.meta.n, 0i64)?;
+        codec::decode(crate::c::pool(), e, &mut d);
+        Some(d)
+    } else { None };
     let t = Take { ix: *ix, e: *e, sw, d, bad: AtomicUsize::new(usize::MAX) };
     let o = Sink::new(ix.n, 8, Form::For).enc().answer(&t);
     match t.bad.into_inner() {

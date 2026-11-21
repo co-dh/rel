@@ -6,6 +6,7 @@
 //! Owner approval (PLAN 6.10) S: one block decoded into an L1 scratch counts as per block.
 use alloc::{format, string::String, vec, vec::Vec};
 use crate::asc::Col;
+use crate::pod;
 use crate::blocks::{Blocks, Grid};
 use crate::ffi::{Form, Sink};
 use crate::lean;
@@ -24,7 +25,7 @@ pub fn blocks(ks: &[Col], n: usize, pos: bool) -> Result<(usize, lean::O, lean::
     let g = Grid { n, lg: crate::DEFAULT_LG };
     let (blk, wb) = (g.blk(), g.blk() / 64);
     // bit `i` of `bits`: row `i` starts a run (row 0, and each row greater than the one before it)
-    let (mut bits, mut x, mut buf) = (vec![0u64; n.div_ceil(64)], vec![0u64; blk], vec![0u64; 2 * blk]);
+    let (mut bits, mut x, mut buf) = (pod::vec_of("seen", "the run starts' bits", n.div_ceil(64), 0u64)?, vec![0u64; blk], vec![0u64; 2 * blk]);
     // `last[c]`: atom key `c`'s code at the row before the block; `st[j]`: row `j` against the row before it, 0 equal so
     // far, 1 greater, 2 less, decided by the first column where the two differ
     let (mut last, mut st) = (vec![0u64; ks.len()], vec![0u8; blk]);
@@ -56,7 +57,7 @@ pub fn blocks(ks: &[Col], n: usize, pos: bool) -> Result<(usize, lean::O, lean::
     }
     let bit = |i: usize| bits[i >> 6] >> (i & 63) & 1 == 1;
     // `at[b]`: the starts before block `b`
-    let mut at = vec![0usize; g.nblk() + 1];
+    let mut at = pod::vec_of("seen", "the blocks' start counts", g.nblk() + 1, 0usize)?;
     for b in 0..g.nblk() { at[b + 1] = at[b] + bits[b * wb..(b * wb + wb).min(bits.len())].iter().map(|w| w.count_ones() as usize).sum::<usize>() }
     let k = at[g.nblk()];
     let go = Sink::new(n, 8, Form::For).enc().answer(&|o: &mut [i64], i0: usize| {

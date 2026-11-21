@@ -235,6 +235,7 @@ def elabOnce (env : Env) (p : Pos) (n : String) (qs : List Param) (e : Expr) (ty
 open Lean in deriving instance ToExpr for Rel.Obj
 open Lean in deriving instance ToExpr for MVarId
 open Lean in deriving instance ToExpr for OTy
+open Lean in deriving instance ToExpr for Rel.Db.CsvShape
 
 open Lean in def oE (A : Obj) : Lean.Expr := toExpr A
 open Lean in def uE (n : USize) : Lean.Expr := mkApp (mkConst ``USize.ofNat) (toExpr n.toNat)
@@ -493,7 +494,7 @@ def checkOf (env : Env) (p : Pos) (e f : Expr) (eq : Bool) (specs : List Once) :
 /-- The columns of an `input`'s or `output`'s type `A ⟶ B` (`what`: the statement), checked: the key's, none where
     `A` is an unbounded number object (positions), then the value's; a schema object its columns, any other object
     the one column `key` or `val` (IO design A.1). Refused: an object variable, an undeclared object, a column
-    twice; for CSV a column of no atom, or of an atom no CSV text is written for yet (C.3). Returned: `A`, `B`, the
+    twice; for CSV a column that is no atom, nullable atom or text, or that `Db.Csv.schema` refuses (C.3). Returned: `A`, `B`, the
     key's columns (`[]`: positions, whose `Schema.obj` is `.long`) and the value's as `Obj`s, and for CSV the header
     (`Db.CsvCols`: each column's atom and, for named elements, their names). -/
 def ioCols (env : Env) (p : Pos) (what : String) (ty : OExp × OExp) (csv : Bool) :
@@ -518,18 +519,19 @@ def ioCols (env : Env) (p : Pos) (what : String) (ty : OExp × OExp) (csv : Bool
       "declare the key an object stored i64"⟩
   let mut hdr : Db.CsvCols := []
   if csv then
+    let elems (n : String) := ((env.obj? n).map (·.elems)).getD []
     for (c, t) in cs do
-      let bad : Option String := match t with
-        | .base n => match ((env.obj? n).map (·.obj) : Option Obj) with
-          | some (.atom .sym) => some "is a symbol column, which waits for the own-format sym writer (D.9 step 6)"
-          | some (.atom .general) => some "is a general column, which the own format does not hold"
-          | _ => none
-        | .arr _ => some "is a list column, which is not read from CSV yet (IO step I8)"
-        | o => some s!"is {o}, no atom: a CSV field holds one atom; declare it a table directory (drop `csv`)"
-      if let some m := bad then throw ⟨p, s!"{what}: column '{c}' {m}"⟩
-      let .atom a ← liftExcept (objOf env.objs p t)
-        | throw ⟨p, s!"{what}: column '{c}' is stored as no atom; a CSV field holds one atom"⟩
-      hdr := hdr ++ [(c, a, match t with | .base n => ((env.obj? n).map (·.elems)).getD [] | _ => [])]
+      -- the column's shape by its declared type and its stored object together; which atoms each takes is `schema`'s
+      let col : Option (Db.CsvShape × QAtomicType × List String) := match t, ← liftExcept (objOf env.objs p t) with
+        | .base n, .atom a => some (.atom, a, elems n)
+        | .sum (.base n) (.base u), .sum (.atom a) (.atom _) => if (elems u).length == 1 then some (.null, a, elems n) else none
+        | .arr (.base n), .arr (.atom a) => some (.text, a, elems n)
+        | _, _ => none
+      let some (s, a, ns) := col
+        | throw ⟨p, s!"{what}: column '{c}' is {t}; a CSV field holds an atom, a nullable atom `V+1` (`1` an object of \
+            one element) or a text `[C]`; declare it a table directory (drop `csv`)"⟩
+      hdr := hdr ++ [(c, s, a, ns)]
+    if let .error m := Db.Csv.schema hdr then throw ⟨p, s!"{what}: {m}"⟩
   pure (A, B, K, S, hdr)
 
 /-- The term for each run-time name the terms `es` of a `check` or `print` (`what`) at `p` reach (IO design A.4),
@@ -834,15 +836,18 @@ partial def code (pre : Name) (ph : List Lean.Expr) (ρ : List (Nat × Lean.Expr
     if let some e := (← get).2[k]? then return e
     let e ← code pre ph ρ R
     modify fun (m, cs) => (m, cs.insert k e); return e
+  -- a term demanding nothing of its context (`dem = false`) has one table, so it is computed once; but `R × S`'s is
+  -- the CROSS of its parts' (already computed once): it runs on the pairs its context knows (`GenK.prod`), as
+  -- `⟨π₁ R, π₂ S⟩` does, and whole only where none is known
+  let once := !t.dem && !(t matches .prod ..)
   if closed t then
     let v ← node pre ph ρ t
     -- at a placeholder of the constant being built (`Once.ph`, here `ph`) the value lives under its binders: not shared
     if (v.find? ph.contains).isSome then return v
-    -- a term demanding nothing of its context (`dem = false`) has one table, so it is computed once
-    return mkConst (← share pre A B (if !t.dem then g ``GenK.memo #[oE A, oE B, v] else v))
+    return mkConst (← share pre A B (if once then g ``GenK.memo #[oE A, oE B, v] else v))
   -- one reading a call's parameters or a round's table has one table per call or round: computed once there, where
   -- left lazy each context that forces it would run it again (a twin's body reading `x ⟨k, t⟩` at each use)
-  else if !t.dem then return g ``GenK.memo #[oE A, oE B, ← node pre ph ρ t]
+  else if once then return g ``GenK.memo #[oE A, oE B, ← node pre ph ρ t]
   else node pre ph ρ t
 
 /-- The constant of the closed code `v : Rel A B`: one per structurally equal value, so a closed term with

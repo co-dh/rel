@@ -52,6 +52,10 @@
     `rank32`/`rank64`、`foRKey`、`rank_ofNat_iff`）删除；`Obj.key_ordCode` 不再排除 float；`Obj.ascBad` 只拒绝
     `sym`、`general`，`asc` 接受 float。`LamLaw` 与 `Obj.eq_of_not_lt` 的前提保留，原因只剩 `general`（key 为 `[]`）。
 - 非 log 的输出（baseline、row 分析）写进本文件或 `doc/`，不写进 `/data/tmp`。
+- owner 决定（2026-11-20，最终）：
+  - date 字面量写作 q 的 `2024.01.15`，新 token（实现：分支 `datelit`，`Elab.qForm`；值为 1970-01-01 起的天数）。
+  - 浮点 `sum`/`sums` 按从左到右求和（q 的顺序，与 `sums` 前缀和一致）；整数上右折叠定义不变，浮点的含义写为左折叠。
+  - cast 逐值偏：没有像的值没有行，不报错。
 
 ## 0. 每一步都遵守的约定
 
@@ -232,7 +236,7 @@ Diff table 的「状态」列：✅ 后面是完成它的步骤；🔄 是部分
   - ✅ I4 crate：导出分为 `RELK.txt`（kernel）与 `RELIO.txt`（IO），`syms` gate 读两个文件。
   - 🔄 I5 Lean 里的 CSV 模型（`csvWords`、`csvText`、每个 atom 的读写、往返律），尚无 extern。
   - ⬜ I6 `qlean_csv_read`；需要 I4、I5。 ⬜ I7 `qlean_csv_write`；需要 I6。
-  - ⬜ I8 可空列 `V+1`、文本列 `[C]`、`sym`（在步骤 6 之后）。
+  - ✅ I8 可空列 `V+1`、文本列 `[C]`；`sym` 仍在步骤 6 之后。
   - ✅ I9 `n.io` 中的 `from csv`/`to csv`，`relc run MOD NAME`；需要 I3、I7。
   - ⬜ I10 native：`abi` 加 `ownMap`、`csvRead`、`csvWrite`，`Plan.ofTm` 读 input 变量；需要 I9。
   步骤 2（分支 `d9step2`）：`Table.write S dir x`（一侧，按 schema 列名）、`Table.read S dir : IO (Tab .long S.obj)`
@@ -271,8 +275,10 @@ Diff table 的「状态」列：✅ 后面是完成它的步骤；🔄 是部分
   模块 `MOD`、`evalConst` 程序 `NAME` 的 `io` 并运行（与 design.md 的 `relc run NAME` 不同：多一个模块参数；解释器要
   `supportInterpreter := true` 才找到 extern 与 `Init` 的编译代码）。`TestIO`：
   CSV 输入 → 位置与 keyed 的 CSV 输出 → 第二个程序 `from csv` 读回，文本与读回的行都按手算 pin。
-  I8 未做：文本列 `[C]` 与可空列 `V+1` 都要改 `CsvCols` 的形状，即改 `qlean_csv_read`/`qlean_csv_write` 的 ABI（crate），
-  `V+1` 的存储形状还是 design.md 的未决问题；`sym` 等步骤 6。见 `/data/tmp/io/i8-notes.md`。
+  I8 ✅（分支 `io-i8b`）：`CsvCols` 每列加形状 `CsvShape`（`atom | null | text`），export 名不变，每个 part 带自己的行数
+  （`List (USize × Enc)`）。可空列 `V+1` 存为 tag(`u1`) + idx + l + r，空字段即 null，写侧把 null 写成空字段；某个 atom
+  能印成空文本时在 elaboration 拒绝该列。文本列 `[C]` 存为 lo/hi + 一个扁平字节 payload，引号规则同其余字段。读写都按块，
+  不整列解码；往返定律改为按行（`fieldsOf`）成立，布局不唯一。`sym` 仍拒绝（等步骤 6）。见 `/data/tmp/io/i8b-notes.md`。
   I7 ✅（分支 `io-i7`）：`qlean_csv_write`（列入 `RELIO.txt`），`@[extern]` 在 `Db.csvWrite` 上，body 即 `rawAll` + `csvText`；按 1024 行一块读编码列、逐行格式化、临时文件 rename；写侧 case 表 `decide +kernel`，extern 与 body 及读回在全部用例上一致。选择记在 `/data/tmp/io/i7-notes.md`。
 - ✅ D.11 表层语法（`schema S = {k : K, v : N}`、`col S "v"`）已合并（da636a9）；`Schema` 层此前已合并（5ab6d2e，master 0fb9879，`Rel/Lang/Schema.lean`、`TestSchema.lean`）；余下：TestFrame 的
   frame 按 `Schema` 索引（随 D.9）。frame 的 schema 进入类型（owner 经 dataframe 会话决定，选 wrapper，不加 `Obj` constructor）：
@@ -354,10 +360,23 @@ Diff table 的「状态」列：✅ 后面是完成它的步骤；🔄 是部分
   不在 `castOK` 中的对报错。定律 `Tab.cast_holds`（无前提，已证）、`rowOK_cast`、`embed_canonical`（全部输入）、
   `ofBits_word`；`Table.nonCanonical` 由 `QAtomicType.nonCanonical` 定义。测试 `Rel/Lang/TestCast.lean`。未完：
   `Rel/Lang/EmbedTest.lean:46` 的 `𝟙 $x` 现在被读成 cast 行，报 `expected a term` 而不是 antiquotation 错误（待裁定）。
+  S4b（分支 `tb-s4b`）：没有数 atom 的有序 atom（`date`、`datetime`、`char`）持有其存储字所计的数，`storeFmt?`
+  即其 `ordNum` 的格式（`date` 为 1970-01-01 起的 `i32` 天数）；`value`/`ofValue`/`castOK` 都读 `storeFmt?`，同一条
+  规则给出 `date → i32/i64`、`datetime → i64`、`i32 → date`、`i64 → datetime`（`i64 → date` 是收窄，报错）；两个各有
+  单位的 atom 之间不 cast（`date ↔ datetime`）。Rust `cast_word` 把 `char`/`date`/`datetime` 的码读作 `u8`/`i32`/`i64`，
+  无新 op、无新导出。`Tab.cast_holds` 仍是一条（前提改读 `storeFmt?`）。`daysBetween` 是 `⟨a $ N, b $ N⟩minus`，按 S8
+  留给 dataframe 库；`minus` 在 `date` 上仍报错（`TestFrameTyped.daysCastT` 钉住组合的行）。
 - ✅ S7 `Op.cast s t`（`Op` 的最后一个构造子，带两个字段）：`kscan`/`kscatter` 以 `@& Op` 传对象，Rust `cast_word`
   （`CAST = 46`），无新导出；`Reg Op` 按对象传（`nullOps`）。所有数值对一个构造子，不只 `i64 → f64`。
 - ⬜ S8 库定义 `mean` `stddev` `correlation` `skewness` `zScore` `valueProportions` float `describe` `daysBetween`
-  （dataframe 会话）。
+  （dataframe 会话）。前提：
+  - ✅ 真商 `%`（q 的 `divide`，分支 `fdiv`）：`arith` 族的又一个值动词 `Ew.divide = 3`（q 的动词号），`fverbBy` 中为
+    `fdiv`，`stepAt`、`fstepCols`、`arith_sound` 不变即覆盖它（`fverbBy_map` 多一个情形）。名字 `divide` 与 `%` 都在
+    `Op.table`，`%` 是一个字符的符号名，不改词法。只在 f32/f64 上；在整数对象上按名报错，提示先 `$` 转换
+    （`numObj`：没有整数 step 的动词在整数 atom 上都如此；未声明 atom 的对象按 `i64` 一样检查）。`x % 0.0` 为 ±∞
+    （值），`0.0 % 0.0` 无行（NaN）。测试 `TestFloatArith.divideT`、`divideIntT`。
+  - ⬜ `sqrt`：`Op.fsqrt` 与 Rust（`scan.rs` op 29，libm `sqrt`）已有；语言层没有一元值动词族，按 design §3.3 是
+    `prims` 行（同 `$` 的 `Tab.cast`：一个 `colArr` 加 keep），待裁定后做。
 - ⬜ S9 文档：architecture §1、§4.3，dataframe F4，PLAN（随各步）。
 
 ### P0 baseline — 1/1
@@ -623,6 +642,18 @@ Diff table 的「状态」列：✅ 后面是完成它的步骤；🔄 是部分
         `Known.pairs` 带来 `T` 的对，只逐对比较 n 对再选行（`Tab.cmpPairs`），不做 `K × L` 的 cross。
         仍做 cross 的：没有表可求交的比较（`P ≤ P`）与 `top`（`top` 尚未用 `pairs`）；`Vals.cross` 超过
         `crossMax = 2^28` 对时返回 error，不再在 Rust 侧 abort。
+      - ✅ `R × S` 与 `⟨π₁ R, π₂ S⟩` 同一 plan（分支 `prodplan`，dataframe 报告）：闭的 `x × y`（`dem = false`）原先被
+        `Expand.code` 包进 `GenK.memo`，无上下文地算出整个 CROSS（`Tab.prod`），复合 `asc(ran⟨𝟙,K⟩) (x × y)` 来不及把
+        `K` 的对交给它；pair 写法 `dem = true`，从不冻结。现在 product 节点不 memo（其两个操作数照旧 memo），已知定义域时
+        `GenK.prod` 就是 pair 写法，没有边界时才 CROSS。`TestFrameBench.joinBig`（1500 × 55001 对，1500 个匹配）：
+        3.84 s / 4.7 GB → 0.34 s，与 pair 写法相同；`TestFrameJoin` 比较两种写法的行。
+      - 🔄 kernel 分配失败是 error 不是 abort（分支 `prodplan`）：`pod::vec_of` / `pod::try_uninit`（`try_reserve_exact`）
+        给出 `"<kernel>: cannot allocate <bytes> bytes for <what> (<n> elements)"`，经 `except` 成为 `Except.error`；
+        已接入：`gather` 的整列 `e`，`scatter` 的行偏移、行值、块计数，`seen` 的游程位、块计数，`bitrows` 的
+        `ends`/`idx`/结果位。未接入：`asc` 的工作数组（`asc.rs` `dense` `work` `codes` `lsd` `rank` `mixed` `grade`，
+        `sort.rs` 的 `cnt` `ba/bb` `ia/ib`：返回 `Option`/`()` 的函数链，要改成 `Result`）、`Sink` 的输出（经 Lean 的
+        `lean_alloc_object`，失败在 Lean 运行时内）与 `coc_alloc`（`exit(1)`）、`Ext.Enc.encode`（签名无 `Except`，
+        要改 extern 签名）。
       - 定律的缺口：`lam_den`/`E_den`（等于 `lamDen`/`EDen`）带前提 `hB`（序码的序与 `B.lt` 一致），未对任何
         `Obj` 证掉；float 上本来不成立（`±0.0`、NaN）。
       - 合并记录：w3arrcat fe67914，w3arith 0f77c2f，w3struct+w3sumcat 4b6f121，w3div+w3divlaw+w3lam 803cd89，

@@ -54,7 +54,8 @@ Rel.Lang.GenK.stepAfter
 Rel.Lang.GenK.succ
 Rel.Lang.GenK.thin
 Rel.Lang.GenK.top
-Rel.Lang.Table.encCols
+Rel.Lang.Table.encArr
+Rel.Lang.Table.encVals
 Rel.Lang.Table.read
 Rel.Lang.Table.readArr
 Rel.Lang.Table.readCols

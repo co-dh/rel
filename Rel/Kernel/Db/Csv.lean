@@ -15,9 +15,30 @@ namespace Rel.Db
 
 open Rel
 
-/-- A column as the file names and types it: header name, atom, and the names of a named-element object in declared
-order (empty for every other object). -/
-abbrev CsvCols := List (String × QAtomicType × List String)
+/-- How a column's object holds its field (IO step I8), and so the parts it is stored as:
+- `atom`: the field is a text of the atom; one column of words.
+- `null`: `V+1`, `V` the atom and `1` an object of one value: the empty field is the null (`inr`), any other field a
+  text of `V` (`inl`); `Obj.sum`'s parts `tag` (`1` at a null), `idx` (the row's position in its side), `V`'s values,
+  the null's values (all the one value, word `0`).
+- `text`: `[C]`, `C` the atom `char`: the field's bytes are the cell; `Obj.arr`'s parts `lo`, `hi` (the row's cell is
+  `[lo, hi)` of the payload) and the payload, every cell's bytes in file order. -/
+inductive CsvShape | atom | null | text
+  deriving DecidableEq, Repr, Inhabited
+
+/-- The parts a column of shape `s` is stored as, in order (`Obj.sum`'s `tag idx l r`, `Obj.arr`'s `lo hi e`). -/
+def CsvShape.parts : CsvShape → Nat | .atom => 1 | .null => 4 | .text => 3
+
+/-- How many of the parts hold one word per row (the rest are payloads of their own count). -/
+def CsvShape.rowParts : CsvShape → Nat | .atom => 1 | .null => 2 | .text => 2
+
+/-- Each part's atom as the writer reads it (`Kernel.rawAll`), the column's atom being `t`; `none` for the null's
+    values, of which only the count is read: they are all the one value. -/
+def CsvShape.atoms (t : QAtomicType) : CsvShape → List (Option QAtomicType)
+  | .atom => [some t] | .null => [some .u1, some .i64, some t, none] | .text => [some .i64, some .i64, some t]
+
+/-- A column as the file names and types it: header name, shape, atom, and the names of a named-element object in
+declared order (empty for every other object). -/
+abbrev CsvCols := List (String × CsvShape × QAtomicType × List String)
 
 namespace Csv
 
@@ -227,12 +248,18 @@ def mdays (y m : Nat) : Nat :=
   if m = 2 then (if y % 4 = 0 ∧ (y % 100 ≠ 0 ∨ y % 400 = 0) then 29 else 28)
   else if m = 4 ∨ m = 6 ∨ m = 9 ∨ m = 11 then 30 else 31
 
-/-- `YYYY-MM-DD`, a valid day of years 0001–9999, as days since 1970-01-01. -/
-def ymd (f : List UInt8) : Option Int :=
+/-- The day `z` days after 1970-01-01 written `YYYY-MM-DD`, `sep` in place of `-`: `ymd sep` reads it back to `z` on
+    the years 0001–9999 (`#guard`s in `Rel.Lang.TestDateLit`). -/
+def dayText (sep : UInt8) (z : Int) : List UInt8 :=
+  let (y, m, d) := civil z; pad 4 y.toNat ++ sep :: pad 2 m ++ sep :: pad 2 d
+
+/-- `YYYY-MM-DD` (`sep` the byte `-`; a Rel literal reads q's `YYYY.MM.DD` at `.`, `Elab.qForm`), a valid day of
+    years 0001–9999, as days since 1970-01-01. -/
+def ymd (sep : UInt8) (f : List UInt8) : Option Int :=
   match f with
   | [a, b, c, d, s, e, g, s', h, i] =>
     let (y, m, dd) := (natOf [a, b, c, d], natOf [e, g], natOf [h, i])
-    if s = 45 ∧ s' = 45 ∧ [a, b, c, d, e, g, h, i].all isDig ∧ 1 ≤ y ∧ 1 ≤ m ∧ m ≤ 12 ∧ 1 ≤ dd ∧ dd ≤ mdays y m
+    if s = sep ∧ s' = sep ∧ [a, b, c, d, e, g, h, i].all isDig ∧ 1 ≤ y ∧ 1 ≤ m ∧ m ≤ 12 ∧ 1 ≤ dd ∧ dd ≤ mdays y m
     then some (daysFrom y m dd) else none
   | _ => none
 
@@ -241,9 +268,10 @@ def frac : List UInt8 → Option Nat
   | [] => some 0
   | c :: fr => if c = 46 ∧ fr ≠ [] ∧ fr.length ≤ 9 ∧ fr.all isDig then some (natOf fr * 10 ^ (9 - fr.length)) else none
 
-/-- `YYYY-MM-DDDhh:mm:ss` with an optional `.` and 1–9 fraction digits, as nanoseconds since 1970-01-01 in `i64`. -/
-def stamp (f : List UInt8) : Option Int :=
-  match ymd (f.take 10), f.drop 10 with
+/-- `YYYY-MM-DDDhh:mm:ss` (the day's separator `sep`, as `ymd`) with an optional `.` and 1–9 fraction digits, as
+    nanoseconds since 1970-01-01 in `i64`. -/
+def stamp (sep : UInt8) (f : List UInt8) : Option Int :=
+  match ymd sep (f.take 10), f.drop 10 with
   | some d, t :: h1 :: h2 :: c1 :: m1 :: m2 :: c2 :: s1 :: s2 :: r =>
     let (hh, mm, ss) := (natOf [h1, h2], natOf [m1, m2], natOf [s1, s2])
     if t = 68 ∧ c1 = 58 ∧ c2 = 58 ∧ [h1, h2, m1, m2, s1, s2].all isDig ∧ hh < 24 ∧ mm < 60 ∧ ss < 60 then
@@ -274,8 +302,8 @@ def readAtom : QAtomicType → List UInt8 → Option UInt64
   | .char, _ => none
   | .f32, f => readFloat 23 8 f
   | .f64, f => readFloat 52 11 f
-  | .date, f => (ymd f).map (wordOf 4)
-  | .datetime, f => (stamp f).map (wordOf 8)
+  | .date, f => (ymd 45 f).map (wordOf 4)
+  | .datetime, f => (stamp 45 f).map (wordOf 8)
   | .sym, _ | .general, _ => none
   | t, f => do
     let w ← t.width
@@ -289,12 +317,11 @@ def fmtAtom : QAtomicType → UInt64 → Option (List UInt8)
   | .char, w => some [w.toUInt8]
   | .f32, w => fmtFloat 23 8 w
   | .f64, w => fmtFloat 52 11 w
-  | .date, w => let (y, m, d) := civil (signed 4 w); some (pad 4 y.toNat ++ 45 :: pad 2 m ++ 45 :: pad 2 d)
+  | .date, w => some (dayText 45 (signed 4 w))
   | .datetime, w =>
     let x := signed 8 w
-    let (y, m, d) := civil (x / 86400000000000)
     let r := (x % 86400000000000).toNat
-    some (pad 4 y.toNat ++ 45 :: pad 2 m ++ 45 :: pad 2 d ++ 68 :: pad 2 (r / 3600000000000) ++ 58 ::
+    some (dayText 45 (x / 86400000000000) ++ 68 :: pad 2 (r / 3600000000000) ++ 58 ::
       pad 2 (r / 60000000000 % 60) ++ 58 :: pad 2 (r / 1000000000 % 60) ++ 46 :: pad 9 (r % 1000000000))
   | .sym, _ | .general, _ => none
   | t, w => t.width.map fun k => intText (signed k w)
@@ -335,9 +362,14 @@ def names (cols : CsvCols) : String := s!"[{", ".intercalate (cols.map (·.1))}]
 /-- The refusals of a schema, before any byte: no column, or a column CSV does not hold (C.3). -/
 def schema (cols : CsvCols) : Except String Unit :=
   if cols = [] then .error "the schema has no column, and a CSV record has at least one field" else
-  cols.forM fun (c, t, _) =>
+  cols.forM fun (c, s, t, ns) =>
     if t = .sym then .error s!"column '{c}' is a symbol column, which waits for the own-format sym writer (D.9 step 6)"
     else if t = .general then .error s!"column '{c}' is a general column, which the own format does not hold"
+    else if s = .text ∧ (t ≠ .char ∨ ns ≠ []) then
+      .error s!"column '{c}' is a list of {form t ns}; a CSV field holds a list of char only (text)"
+    -- the null is the empty field, so it must be no text of the atom (decision 3 of step I8)
+    else if s = .null ∧ (readCell (t, ns) []).isSome then
+      .error s!"column '{c}' is nullable, and the empty field, its null, is also a text of {form t ns}"
     else .ok ()
 
 /-- The header: its fields are the schema's names, in order. Refused at the first field that differs, else (one is a
@@ -348,80 +380,172 @@ def header (cols : CsvCols) (h : List (List UInt8)) : Except String Unit :=
   | some (((c, _), f), j) => .error s!"line 1: header field {j} is {shown f}, the schema {names cols} has '{c}'"
   | none => .error s!"line 1: the header has {h.length} fields, the schema {names cols} has {cols.length}"
 
+/-- A field read at a column's shape (`CsvShape`), as its words: an atom's `[w]`, the null's `[]`, a text's bytes. -/
+def readField : CsvShape × QAtomicType × List String → List UInt8 → Option (List UInt64)
+  | (.text, _), f => some (f.map (·.toUInt64))
+  | (.null, _), [] => some []
+  | (_, c), f => (readCell c f).map ([·])
+
+/-- A field's words written at a column's shape, before `fieldText` checks that it reads back. -/
+def fmtField : CsvShape × QAtomicType × List String → List UInt64 → Option (List UInt8)
+  | (.text, _), ws => some (ws.map (·.toUInt8))
+  | (.null, _), [] => some []
+  | (_, c), [w] => cell c w
+  | _, _ => none
+
+/-- A field's words written, and only if the text reads back as them (`cell`'s rule, at the field): so a null
+    column's value whose text is empty, or a text byte past `255`, has no text. -/
+def fieldText (k : CsvShape × QAtomicType × List String) (ws : List UInt64) : Option (List UInt8) :=
+  (fmtField k ws).bind fun s => if readField k s = some ws then some s else none
+
+/-- What a column's field must be, as an error names it. -/
+def formOf : CsvShape × QAtomicType × List String → String
+  | (.atom, t, ns) => form t ns
+  | (.null, t, ns) => s!"{form t ns}, or the empty field (the null)"
+  | (.text, _) => "text: any bytes"
+
+/-- The words as an error names them. -/
+def wordsShown : List UInt64 → String | [w] => s!"the word {w}" | ws => s!"the words {ws}"
+
 /-- Field `f` of column `c` in row `r`, which starts on line `l`, read. -/
-def getCell (r l : Nat) : (String × QAtomicType × List String) × List UInt8 → Except String UInt64
-  | ((c, t, ns), f) => match readCell (t, ns) f with
-    | some w => .ok w
-    | none => .error s!"row {r} (line {l}), column '{c}': expected {form t ns}, found {shown f}"
+def getField (r l : Nat) : (String × CsvShape × QAtomicType × List String) × List UInt8 → Except String (List UInt64)
+  | ((c, k), f) => match readField k f with
+    | some ws => .ok ws
+    | none => .error s!"row {r} (line {l}), column '{c}': expected {formOf k}, found {shown f}"
 
-/-- Row `r` of column `c`, the words `a`, written. -/
-def putCell (r : Nat) : (String × QAtomicType × List String) × Array UInt64 → Except String (List UInt8)
-  | ((c, t, ns), a) => match cell (t, ns) (a.getD r 0) with
+/-- Row `r`'s field of column `c`, its words `ws`, written. -/
+def putField (r : Nat) : (String × CsvShape × QAtomicType × List String) × List UInt64 → Except String (List UInt8)
+  | ((c, k), ws) => match fieldText k ws with
     | some s => .ok s
-    | none => .error s!"row {r}, column '{c}': the word {a.getD r 0} has no text as {form t ns}"
+    | none => .error s!"row {r}, column '{c}': {wordsShown ws} has no text as {formOf k}"
 
-/-- Data record `r` starting at byte `p`: its words, one per column. -/
-def row (cols : CsvCols) (all : List UInt8) (r p : Nat) (fs : List (List UInt8)) : Except String (List UInt64) :=
+/-- Data record `r` starting at byte `p`: its fields' words, one list per column. -/
+def row (cols : CsvCols) (all : List UInt8) (r p : Nat) (fs : List (List UInt8)) : Except String (List (List UInt64)) :=
   if fs.length ≠ cols.length then
     .error s!"row {r} (line {lineAt all p}): {fs.length} fields, the schema {names cols} has {cols.length}"
-  else (cols.zip fs).mapM (getCell r (lineAt all p))
+  else (cols.zip fs).mapM (getField r (lineAt all p))
 
-/-- The data records from row `r`: each one's words. -/
-def rows (cols : CsvCols) (all : List UInt8) : Nat → List (Nat × List (List UInt8)) → Except String (List (List UInt64))
+/-- The data records from row `r`: each one's fields' words. -/
+def rows (cols : CsvCols) (all : List UInt8) : Nat → List (Nat × List (List UInt8)) →
+    Except String (List (List (List UInt64)))
   | _, [] => .ok []
   | r, (p, fs) :: rest => do pure ((← row cols all r p fs) :: (← rows cols all (r + 1) rest))
+
+/-- Each row's position in its side of a sum, rows in order: a null (`[]`) the count of nulls before it, a value the
+    count of values before it; `a` values and `b` nulls so far. -/
+def idxs : Nat → Nat → List (List UInt64) → List UInt64
+  | _, _, [] => []
+  | a, b, [] :: fs => b.toUInt64 :: idxs a (b + 1) fs
+  | a, b, _ :: fs => a.toUInt64 :: idxs (a + 1) b fs
+
+/-- Each cell's `[lo, hi)` in the payload of the cells in order, from `k`. -/
+def spans : Nat → List (List UInt64) → List (UInt64 × UInt64)
+  | _, [] => []
+  | k, f :: fs => (k.toUInt64, (k + f.length).toUInt64) :: spans (k + f.length) fs
+
+/-- A column's parts from its fields' words, rows in order (the reader's layout, `CsvShape`): an atom its words; a
+    sum its tags, positions, values in row order and as many nulls; a text its spans and its bytes in row order. -/
+def layout : CsvShape → List (List UInt64) → List (Array UInt64)
+  | .atom, fs => [(fs.map (·.headD 0)).toArray]
+  | .null, fs => [(fs.map fun f => if f = [] then 1 else 0).toArray, (idxs 0 0 fs).toArray, fs.flatten.toArray,
+      (List.replicate (fs.filter (· = [])).length 0).toArray]
+  | .text, fs => [((spans 0 fs).map (·.1)).toArray, ((spans 0 fs).map (·.2)).toArray, fs.flatten.toArray]
+
+/-- The columns' parts from the rows' fields' words `rs` (row × column), each column's in turn. -/
+def wordsOf (cols : CsvCols) (rs : List (List (List UInt64))) : List (Array UInt64) :=
+  cols.zipIdx.flatMap fun ((_, s, _), c) => layout s (rs.map (·.getD c []))
+
+/-- Row `i`'s field from a column's parts (the writer's reading of `layout`'s form, and of any other layout of the same
+    rows): a position past its side, a tag other than `0`/`1`, a span outside the payload is the refusal. -/
+def fieldAt : CsvShape → List (Array UInt64) → Nat → Except String (List UInt64)
+  | .atom, [a], i => .ok [a.getD i 0]
+  | .null, [tag, idx, l, r], i =>
+    let k := (idx.getD i 0).toNat
+    if tag.getD i 0 = 0 then
+      if k < l.size then .ok [l.getD k 0] else .error s!"position {k} past the {l.size} values of its left side"
+    else if tag.getD i 0 = 1 then
+      if k < r.size then .ok [] else .error s!"position {k} past the {r.size} values of its right side"
+    else .error s!"tag {tag.getD i 0}, not 0 or 1"
+  | .text, [lo, hi, e], i =>
+    let (a, b) := ((lo.getD i 0).toNat, (hi.getD i 0).toNat)
+    if a ≤ b ∧ b ≤ e.size then .ok (e.extract a b).toList else .error s!"cell [{a}, {b}) outside the {e.size} bytes"
+  | s, ps, _ => .error s!"{ps.length} parts, the shape {repr s} has {s.parts}"
+
+/-- The parts `ws` cut into each column's, in order. -/
+def groups : CsvCols → List (Array UInt64) → List (List (Array UInt64))
+  | [], _ => []
+  | (_, s, _) :: cols, ws => ws.take s.parts :: groups cols (ws.drop s.parts)
+
+/-- The rows' fields' words from the columns' parts, `n` rows. -/
+def fieldsOf (cols : CsvCols) (n : Nat) (ws : List (Array UInt64)) : Except String (List (List (List UInt64))) :=
+  (List.range n).mapM fun r => (cols.zip (groups cols ws)).mapM fun ((c, s, _), ps) =>
+    (fieldAt s ps r).mapError (s!"row {r}, column '{c}': " ++ ·)
+
+/-- The rows' fields written from row `r`, each a record's fields. -/
+def rowsText (cols : CsvCols) : Nat → List (List (List UInt64)) → Except String (List (List (List UInt8)))
+  | _, [] => .ok []
+  | r, f :: fs => do pure ((← (cols.zip f).mapM (putField r)) :: (← rowsText cols (r + 1) fs))
 
 end Csv
 
 open Csv in
-/-- The reader's model (C.1): the file's bytes read under the schema `cols`, as the row count and each column's words,
-    or the first refusal in C.4's order — the schema, the records (quotes), the header, then the first failing row:
-    its field count, then its first failing column. -/
+/-- The reader's model (C.1): the file's bytes read under the schema `cols`, as the row count and each column's parts
+    (`layout`), or the first refusal in C.4's order — the schema, the records (quotes), the header, then the first
+    failing row: its field count, then its first failing column. -/
 def csvWords (cols : CsvCols) (b : List UInt8) : Except String (Nat × List (Array UInt64)) := do
   schema cols
   let recs ← lex b b .plain 0 [] [] 0 []
   header cols (recs.head?.map (·.2) |>.getD [])
-  let ws ← rows cols b 0 recs.tail
-  pure (recs.tail.length, (List.range cols.length).map fun c => (ws.map (·.getD c 0)).toArray)
+  let rs ← rows cols b 0 recs.tail
+  pure (recs.tail.length, wordsOf cols rs)
 
 /-- **The CSV reader**, IO export `qlean_csv_read` (IO design C.1): the file at `path` read under the schema `cols` as
-the row count and each column's words as a `foR` of 8-byte words (`Kernel.wordsFoR`, `kscan`'s answer form), or the
-first refusal of `csvWords` after `{path}: `. The extern maps the file and reads it a block of rows at a time straight
-into each column's encoder (`crate/src/csv.rs`), never holding a column decoded; `Rel.Kernel.Db.CsvTest` runs it beside
-this body on every case of the table. -/
+the row count and each column's parts (`CsvShape`), each with its count, as a `foR` of 8-byte words (`Kernel.wordsFoR`,
+`kscan`'s answer form), or the first refusal of `csvWords` after `{path}: `. The extern maps the file and reads it a
+block at a time straight into each part's encoder (`crate/src/csv.rs`), never holding a column decoded;
+`Rel.Kernel.Db.CsvTest` runs it beside this body on every case of the table. -/
 @[extern "qlean_csv_read"]
-def csvRead (path : @& String) (cols : @& CsvCols) : IO (USize × List Enc) := do
+def csvRead (path : @& String) (cols : @& CsvCols) : IO (USize × List (USize × Enc)) := do
   let (n, ws) ← IO.ofExcept ((csvWords cols (← IO.FS.readBinFile path).data.toList).mapError (s!"{path}: {·}"))
-  return (n.toUSize, ws.map Kernel.wordsFoR)
+  return (n.toUSize, ws.map fun a => (a.size.toUSize, Kernel.wordsFoR a))
 
-/-- The writer is given `k` word columns, one per schema column. -/
+/-- The writer is given `k` parts, as many as the schema's columns are stored as (`CsvShape.parts`). -/
 def Csv.arity (cols : CsvCols) (k : Nat) : Except String Unit :=
-  if k = cols.length then .ok () else .error s!"{k} word columns, the schema {Csv.names cols} has {cols.length}"
+  let m := (cols.map (·.2.1.parts)).sum
+  if k = m then .ok () else .error s!"{k} word columns, the schema {Csv.names cols} is stored as {m}"
 
 open Csv in
-/-- The writer's model (C.1): `n` rows of the columns' words `ws` as a file, the header first, each record ending in
-    `\n`; or the first word with no text (`cell`), named by row and column. -/
+/-- The writer's model (C.1): `n` rows of the columns' parts `ws` as a file, the header first, each record ending in
+    `\n`; or the first refusal, by row and then column: a part of the wrong count, a position outside its payload
+    (`fieldAt`), a field with no text (`fieldText`). -/
 def csvText (cols : CsvCols) (n : Nat) (ws : List (Array UInt64)) : Except String (List UInt8) := do
   schema cols
   arity cols ws.length
-  (cols.zip ws).forM fun ((c, _), a) => if a.size = n then .ok () else .error s!"column '{c}' holds {a.size} words, not {n}"
-  let rs ← (List.range n).mapM fun r => (cols.zip ws).mapM (putCell r)
+  (cols.zip (groups cols ws)).forM fun ((c, s, _), ps) => (ps.take s.rowParts).forM fun a =>
+    if a.size = n then .ok () else .error s!"column '{c}' holds {a.size} words, not {n}"
+  let rs ← rowsText cols 0 (← fieldsOf cols n ws)
   pure (records (cols.map (bytes ·.1) :: rs))
 
+/-- The parts `es`, each with its count, as their raw words (`Kernel.rawAll` at each part's atom, `CsvShape.atoms`; of
+    the null's values only the count), after the part count is checked (`arity`). -/
+def Csv.raws (cols : CsvCols) (es : List (USize × Enc)) : Except String (List (Array UInt64)) := do
+  arity cols es.length
+  ((cols.flatMap fun (_, s, t, _) => s.atoms t).zip es).mapM fun
+    | (some t, m, e) => Kernel.rawAll t m e
+    | (none, m, _) => pure (Array.replicate m.toNat 0)
+
 open Csv in
-/-- **The CSV writer**, IO export `qlean_csv_write` (IO design C.1): the `n` rows of the columns `es` under the schema
-`cols` as the file at `path`, `csvText` of each column's raw words (`Kernel.rawAll`, so an `Enc` of any form), or the
-first refusal after `{path}: ` — the column count, a column with no raw words, then `csvText`'s; the parent directory
-is made first, as `ownWrite` does. The extern reads each column a block of rows at a time from its encoding and writes
-the formatted block to a temporary renamed over `path` (`crate/src/csv.rs` `write`), so a refusal leaves `path` as it
-was and no column is held decoded; `Rel.Kernel.Db.CsvTest` runs it beside this body on every case of the table. -/
+/-- **The CSV writer**, IO export `qlean_csv_write` (IO design C.1): the `n` rows of the parts `es` (each with its
+count) under the schema `cols` as the file at `path`, `csvText` of each part's raw words (`Kernel.rawAll`, so an `Enc`
+of any form; of the null's values only the count, `CsvShape.atoms`), or the first refusal after `{path}: ` — the part
+count, a part with no raw words, then `csvText`'s; the parent directory is made first, as `ownWrite` does. The extern
+reads each row part a block of rows at a time from its encoding, a payload the block holding the position it needs,
+and writes the formatted rows to a temporary renamed over `path` (`crate/src/csv.rs` `write`), so a refusal leaves
+`path` as it was and no column is held decoded; `Rel.Kernel.Db.CsvTest` runs it beside this body on every case. -/
 @[extern "qlean_csv_write"]
-def csvWrite (path : @& String) (cols : @& CsvCols) (n : USize) (es : @& List Enc) : IO Unit := do
+def csvWrite (path : @& String) (cols : @& CsvCols) (n : USize) (es : @& List (USize × Enc)) : IO Unit := do
   if let some d := (System.FilePath.mk path).parent then IO.FS.createDirAll d
-  let b ← IO.ofExcept ((do
-    arity cols es.length
-    csvText cols n.toNat (← (cols.zip es).mapM fun (c, e) => Kernel.rawAll c.2.1 n e) : Except String (List UInt8)).mapError
-      (s!"{path}: {·}"))
+  let b ← IO.ofExcept ((do csvText cols n.toNat (← raws cols es) : Except String (List UInt8)).mapError (s!"{path}: {·}"))
   IO.FS.writeBinFile path ⟨b.toArray⟩
 
 end Rel.Db

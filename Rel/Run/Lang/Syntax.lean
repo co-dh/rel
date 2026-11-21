@@ -282,7 +282,9 @@ def Op.table : List (String × Op × Nat) :=
    ("plus", .arith Rel.Kernel.Ew.add, 0), ("times", .arith Rel.Kernel.Ew.mul, 0),
    ("minus", .arith Rel.Kernel.Ew.sub, 0), ("div", .arith Rel.Kernel.Ew.idiv, 0),
    ("mod", .arith Rel.Kernel.Ew.imod, 0), ("max", .arith Rel.Kernel.Ew.greater, 0),
-   ("min", .arith Rel.Kernel.Ew.lesser, 0), ("nil", .nil, 0), ("α", .alpha, 0),
+   ("min", .arith Rel.Kernel.Ew.lesser, 0),
+   -- q's `%` by its word and its glyph; `Op.sym` prints the first
+   ("divide", .arith Rel.Kernel.Ew.divide, 0), ("%", .arith Rel.Kernel.Ew.divide, 0), ("nil", .nil, 0), ("α", .alpha, 0),
    ("dom", .dom, 1), ("ran", .ran, 1), ("Λ", .lam, 1), ("E", .E, 1),
    ("est", .est, 1), ("thin", .thin, 1), ("F", .map, 1),
    ("hylo", .hylo, 2),

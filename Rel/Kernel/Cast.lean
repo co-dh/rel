@@ -9,7 +9,10 @@ value of the word of `s`, none where `t` holds no such word. It never rounds.
 
 Which pairs `$` admits (`castOK`) is read off the two formats, not listed: `s → t` where every value of `s` is a value
 of `t` (`NumFmt.exact`), and integer → float in every case, where `embed` is then partial (`i64 → f64` has no image at
-`2^53 + 1`). A float → integer or a wide → narrow pair is refused where the program is elaborated. -/
+`2^53 + 1`). A float → integer or a wide → narrow pair is refused where the program is elaborated. An ordered atom
+that is no number atom (`date`, `datetime`, `char`) holds the number its stored word counts (`storeFmt?`, its
+`ordNum`'s format: `date` the days since 1970-01-01), so it casts to and from the number atoms by that count; two
+such atoms count in different units, so none casts to another. -/
 
 namespace Rel.QAtomicType
 open Rel.Dep
@@ -41,6 +44,9 @@ def ordNum (t : QAtomicType) : Option QAtomicType :=
   | .datetime => some .i64
   | t => if t.numFmt?.isSome then some t else none
 
+/-- The format of the number an ordered atom's word holds: its `ordNum`'s (`date` an `i32` day count). -/
+def storeFmt? (t : QAtomicType) : Option NumFmt := t.ordNum.bind numFmt?
+
 /-- The least and the greatest integer of an integer format; a signed one's least word is q's null, no value. -/
 def NumFmt.lo : NumFmt → Int
   | .int true b => 1 - 2 ^ (b - 1)
@@ -58,9 +64,11 @@ def NumFmt.exact : NumFmt → NumFmt → Bool
   | .float e p, .float e' p' => e ≤ e' && p ≤ p'
   | .float .., .int .. => false
 
-/-- `$` admits `s → t`: both number atoms, and every value of `s` exact at `t`, or an integer to a float. -/
+/-- `$` admits `s → t`: both hold a number (`storeFmt?`), at most one counts in a unit of its own (no number atom:
+    `date` days, `datetime` its stored unit), and every value of `s` exact at `t`, or an integer to a float. -/
 def castOK (s t : QAtomicType) : Bool :=
-  match s.numFmt?, t.numFmt? with
+  (s == t || s.numFmt?.isSome || t.numFmt?.isSome) &&
+  match s.storeFmt?, t.storeFmt? with
   | some (.int ..), some (.float ..) => true
   | some f, some g => f.exact g
   | _, _ => false
@@ -74,6 +82,9 @@ def num : (t : QAtomicType) → Carrier t → Int
   | .i64, x => x.toInt
   | .f32, x => x.toNat
   | .f64, x => x.toNat
+  | .char, x => x.toNat
+  | .date, x => x.toInt
+  | .datetime, x => x.toInt
   | _, _ => 0
 
 /-- The word of `t` holding the integer `k` (`num`'s inverse on `t`'s range). -/
@@ -85,11 +96,11 @@ def ofNum : (t : QAtomicType) → Int → Carrier t
   | .i64, k => Int64.ofInt k
   | .f32, k => UInt32.ofNat k.toNat
   | .f64, k => UInt64.ofNat k.toNat
+  | .char, k => UInt8.ofNat k.toNat
+  | .date, k => Int32.ofInt k
+  | .datetime, k => Int64.ofInt k
   | .u1, _ => default
-  | .char, _ => default
   | .sym, _ => default
-  | .date, _ => default
-  | .datetime, _ => default
   | .general, _ => default
 
 /-- The value `m·2^e` of the float bits `b`: none at an infinity or a NaN (q's float null). -/
@@ -130,14 +141,14 @@ def intOf (v : Int × Int) : Option Int :=
 /-- The value `m·2^e` of a word of `t`: none at an atom holding no number, at q's integer null, at a float's infinity
     or NaN. -/
 def value (t : QAtomicType) (x : Carrier t) : Option (Int × Int) :=
-  match t.numFmt? with
+  match t.storeFmt? with
   | some f@(.int ..) => if f.lo ≤ t.num x then some (t.num x, 0) else none
   | some (.float E F) => floatValue E F (t.num x).toNat
   | none => none
 
 /-- The word of `t` holding exactly the value `v`, none where `t` holds no such word. -/
 def ofValue (t : QAtomicType) (v : Int × Int) : Option (Carrier t) :=
-  match t.numFmt? with
+  match t.storeFmt? with
   | some f@(.int ..) => (intOf v).bind fun k => if f.lo ≤ k ∧ k ≤ f.hi then some (t.ofNum k) else none
   | some (.float E F) => (floatBits E F v).map fun b => t.ofNum b
   | none => none
@@ -216,8 +227,9 @@ theorem word_ne_nul {s t : QAtomicType} {x : Carrier s} {y : Carrier t} (h : emb
   obtain ⟨v, -, hv⟩ := Option.bind_eq_some_iff.1 h
   intro he
   have hn := congrArg UInt64.toNat he
-  cases t <;> simp only [ofValue, numFmt?, QAtomicType.width, Option.bind_eq_some_iff, Option.map_eq_some_iff,
-    NumFmt.lo, NumFmt.hi, reduceCtorEq, Option.ite_none_right_eq_some] at hv
+  cases t <;> simp (config := {decide := true}) only [ofValue, storeFmt?, ordNum, numFmt?, QAtomicType.width,
+    ite_true, ite_false, Option.bind_some, Option.bind_none, Option.bind_eq_some_iff,
+    Option.map_eq_some_iff, NumFmt.lo, NumFmt.hi, reduceCtorEq, Option.ite_none_right_eq_some] at hv
   case f32 =>
     obtain ⟨b, hb, rfl⟩ := hv
     cases hf : floatBits 8 23 v <;> simp [hf] at hb
@@ -232,7 +244,7 @@ theorem word_ne_nul {s t : QAtomicType} {x : Carrier s} {y : Carrier t} (h : emb
     obtain ⟨sg, ex, fr, rfl, h1, h2, h3, h4⟩ := floatBits_some hf
     simp [word, num, ofNum, UInt64.ofInt, UInt64.toNat_ofNat'] at hn
     omega
-  case u8 | i8 | i16 | i32 | i64 =>
+  case u8 | i8 | i16 | i32 | i64 | char | date | datetime =>
     obtain ⟨k, -, ⟨h1, h2⟩, hy⟩ := hv
     obtain rfl := Option.some.inj hy
     simp [word, num, ofNum, UInt64.ofInt, UInt64.toNat_ofNat', Int8.toInt_ofInt, Int16.toInt_ofInt,
@@ -260,8 +272,9 @@ theorem embed_canonical {s t : QAtomicType} {x : Carrier s} {y : Carrier t} (h :
   have hnul := word_ne_nul h
   obtain ⟨v, -, hv⟩ := Option.bind_eq_some_iff.1 h
   have k (x : Nat) (j : Nat) : x &&& (2 ^ j - 1) = x % 2 ^ j := Nat.and_two_pow_sub_one_eq_mod x j
-  cases t <;> simp only [ofValue, numFmt?, QAtomicType.width, Option.bind_eq_some_iff, Option.map_eq_some_iff,
-    NumFmt.lo, NumFmt.hi, reduceCtorEq, Option.ite_none_right_eq_some] at hv
+  cases t <;> simp (config := {decide := true}) only [ofValue, storeFmt?, ordNum, numFmt?, QAtomicType.width,
+    ite_true, ite_false, Option.bind_some, Option.bind_none, Option.bind_eq_some_iff,
+    Option.map_eq_some_iff, NumFmt.lo, NumFmt.hi, reduceCtorEq, Option.ite_none_right_eq_some] at hv
   case f32 =>
     obtain ⟨b, hb, rfl⟩ := hv
     cases hf : floatBits 8 23 v <;> simp [hf] at hb
@@ -301,9 +314,9 @@ theorem embed_canonical {s t : QAtomicType} {x : Carrier s} {y : Carrier t} (h :
   all_goals rfl
 
 /-- **A number atom's stored word read back at its type is the atom** (`ofBits` after `word`). -/
-theorem ofBits_word {t : QAtomicType} (y : Carrier t) (h : t.numFmt?.isSome) : ofBits t (word t y) = y := by
+theorem ofBits_word {t : QAtomicType} (y : Carrier t) (h : t.storeFmt?.isSome) : ofBits t (word t y) = y := by
   cases t <;> first | exact absurd h (by decide) | simp only [ofBits, word, num]
-  case u8 => apply UInt8.toNat_inj.1; simp [UInt64.ofInt]; have := y.toNat_lt; omega
+  case u8 | char => apply UInt8.toNat_inj.1; simp [UInt64.ofInt]; have := y.toNat_lt; omega
   case f32 => apply UInt32.toNat_inj.1; simp [UInt64.ofInt]; have := y.toNat_lt; omega
   case f64 => apply UInt64.toNat_inj.1; simp [UInt64.ofInt]; have := y.toNat_lt; omega
   case i8 =>
@@ -312,18 +325,27 @@ theorem ofBits_word {t : QAtomicType} (y : Carrier t) (h : t.numFmt?.isSome) : o
   case i16 =>
     apply Int16.toBitVec_inj.1; simp only [UInt64.ofInt, Int16.toInt]; apply BitVec.eq_of_toNat_eq
     simp [BitVec.toInt_eq_toNat_cond]; have := y.toBitVec.isLt; split <;> omega
-  case i32 =>
+  case i32 | date =>
     apply Int32.toBitVec_inj.1; simp only [UInt64.ofInt, Int32.toInt]; apply BitVec.eq_of_toNat_eq
     simp [BitVec.toInt_eq_toNat_cond]; have := y.toBitVec.isLt; split <;> omega
-  case i64 =>
+  case i64 | datetime =>
     apply Int64.toBitVec_inj.1; simp only [UInt64.ofInt, Int64.toInt]; apply BitVec.eq_of_toNat_eq
     simp [BitVec.toInt_eq_toNat_cond]; have := y.toBitVec.isLt; split <;> omega
 
--- the pairs `$` admits: widenings and integer → float; no float → integer, no narrowing, no non-number atom
+-- the pairs `$` admits: widenings and integer → float; no float → integer, no narrowing, no atom holding no number
 #guard castOK .i32 .i64 && castOK .i64 .f64 && castOK .i32 .f64 && castOK .f32 .f64 && castOK .u8 .i16 &&
   castOK .i64 .f32 && castOK .i64 .i64
 #guard !castOK .f64 .i64 && !castOK .i64 .i32 && !castOK .f64 .f32 && !castOK .i8 .u8 && !castOK .i64 .sym &&
-  !castOK .date .i64 && !castOK .i64 .char
+  !castOK .i64 .char
+-- a date or datetime casts by its count, by the same rule: `i64 → date` narrows (a date is an `i32` count); two
+-- atoms counting in units of their own never meet
+#guard castOK .date .i32 && castOK .date .i64 && castOK .datetime .i64 && castOK .i32 .date &&
+  castOK .i64 .datetime && castOK .date .date
+#guard !castOK .i64 .date && !castOK .datetime .i32 && !castOK .date .datetime && !castOK .datetime .date &&
+  !castOK .char .date
+example : embed .date .i64 (-5) = some (-5) := by decide
+example : embed .date .i64 Int32.minValue = none := by decide
+example : embed .i32 .date 19000 = some 19000 := by decide
 -- `i32 → f64` is total, `i64 → f64` is not: the format rule says which
 #guard (numFmt? .i32).bind (fun f => (numFmt? .f64).map f.exact) == some true
 #guard (numFmt? .i64).bind (fun f => (numFmt? .f64).map f.exact) == some false

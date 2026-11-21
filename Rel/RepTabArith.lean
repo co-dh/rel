@@ -265,6 +265,8 @@ theorem fverbBy_map {α β : Type} {ap : Op → α → α → Except String α} 
   · exact hap h
   by_cases c5 : (k == Ew.lesser) = true <;> simp only [c5, ↓reduceIte, Bool.false_eq_true] at h ⊢
   · exact hap h
+  by_cases c5' : (k == Ew.divide) = true <;> simp only [c5', ↓reduceIte, Bool.false_eq_true] at h ⊢
+  · exact hap h
   by_cases c6 : (k == Ew.idiv) = true <;> simp only [c6, ↓reduceIte, Bool.false_eq_true] at h ⊢
   · simp only [bind, Except.bind_eq_ok'] at h ⊢
     obtain ⟨q, hq, hz⟩ := h
@@ -464,8 +466,8 @@ private def ds : List (Int64 × Int64 × Int64) :=
 -- the null (so a wrapped `max + 1` is not in `U`)
 #guard [Ew.add, Ew.sub, Ew.mul, Ew.idiv, Ew.imod, Ew.greater, Ew.lesser].all fun k =>
   arithOk k ds us && arithOk k [] us && arithOk k ds [] && arithOk k ds (us.filter (· != Int64.minValue))
--- a code outside `Op.table` is the error naming it
-#guard (dTab ds).arith .i64 3 (fun _ => pure (uTab us)) matches .error _
+-- `%` (`Ew.divide`) has no step at `i64`, which the elaborator refuses before: here it is the error naming the code
+#guard (dTab ds).arith .i64 Ew.divide (fun _ => pure (uTab us)) matches .error _
 -- `succ`: the top of `U` goes nowhere, `maxValue` to the null only where `U` holds it, the null to itself
 #guard succOk ((List.range us.length).zip us |>.map fun (i, u) => (Int64.ofNat i, u)) us
 #guard succOk [(1, 3), (1, 3), (2, Int64.maxValue), (3, Int64.minValue), (4, 9), (5, 100)] [3, 4, 9, Int64.maxValue]
