@@ -8,6 +8,7 @@ import Rel.RepSetOps
 import Rel.RepTabComp
 import Rel.Lang.Den
 import Rel.RepTabArith
+import Rel.RepOrder
 
 /-! The laws of the operators of `Rel/Run/Div.lean` (`ldiv`, `rdiv`, `lam`, `E`, `nil`, `lt`, `leq`), and the checks
 of those, `Rel/Run/Fix.lean`'s, `Rel/Run/Power.lean`'s and `Rel/Run/List.lean`'s operators on `foR` tables against their
@@ -2484,18 +2485,13 @@ theorem lam_holds {n : USize} {D : Vals A n} {R : Tab A B} {T : Tab A (.arr B)} 
     obtain ⟨hm0, ho0⟩ := fwd L hLp hLm
     exact ⟨hD, L, hLp, hLm, pairwise_eq_of_mem lirr lasym (pw ys ho) (pw _ ho0) fun b => by rw [hm, hm0]⟩
 
-/-- **`lam D R` denotes `lamDen R` on the keys `D`** (`Tm.lam`), where `B`'s order codes agree with `B.lt`: `hB` says
-that on any table of pairs, two rows of one key whose codes ascend strictly (`lexLe`, distinct `seenKey`) hold
-values ascending in `B.lt` (`Obj.key`). `lam_holds`'s cell is then `B.lt`-ascending, and `lamDen`'s list is that
-cell (`pairwise_eq_of_mem`). `hB` fails at a float atom: `ordCode` is IEEE totalOrder on stored bits, `Obj.key`
-puts every NaN lowest and `-0.0 = +0.0`. -/
+/-- **`lam D R` denotes `lamDen R` on the keys `D`** (`Tm.lam`): two rows of one key whose codes ascend strictly
+(`lexLe`, distinct `seenKey`) hold values ascending in `B.lt` (`Vals.lamLaw`, `kasc`'s order is `Obj.lt`), so
+`lam_holds`'s cell is `B.lt`-ascending, and `lamDen`'s list is that cell (`pairwise_eq_of_mem`). -/
 theorem lam_den {n : USize} {D : Vals A n} {R : Tab A B} {T : Tab A (.arr B)} (h : Tab.lam D R = .ok T)
-    (hB : ∀ (m : USize) (x : Vals (.prod A B) m) es, Vals.cols x = .ok es → ∀ i i' : Fin m.toNat,
-      (x.row i).1 = (x.row i').1 → lexLe (ascKeys m es) i i' = true → seenKey m es i ≠ seenKey m es i' →
-        B.lt (x.row i).2 (x.row i').2)
     (a : A.El) (ys : List B.El) : T.Holds a ys ↔ (∃ i, D.row i = a) ∧ Lang.lamDen R.Holds a ys := by
   obtain ⟨r, U, hr, hU, hH⟩ := lam_canon h
-  obtain ⟨es0, -, hes0, -⟩ := canon_codes hr
+  obtain ⟨es0, cs0, hes0, hcs0⟩ := canon_codes hr
   have lirr : ∀ x, ¬B.lt x x := fun x => List.lt_irrefl _
   have lasym : ∀ x y, B.lt x y → ¬B.lt y x := fun _ _ => List.lt_asymm
   have up : ∀ ys : List B.El, (∀ es, Vals.cols (A := .prod A B) (R.key, R.val) = .ok es →
@@ -2506,7 +2502,7 @@ theorem lam_den {n : USize} {D : Vals A n} {R : Tab A B} {T : Tab A (.arr B)} (h
     refine List.pairwise_iff_getElem.2 fun u u' hu hu' hlt => ?_
     obtain ⟨h1, h2⟩ := hs ⟨u, hu⟩; obtain ⟨h3, h4⟩ := hs ⟨u', hu'⟩
     obtain ⟨hl, hne⟩ := hord ⟨u, hu⟩ ⟨u', hu'⟩ hlt
-    have := hB R.n (R.key, R.val) es0 hes0 (s ⟨u, hu⟩) (s ⟨u', hu'⟩) (h1.trans h3.symm) hl hne
+    have := Vals.lamLaw (A := A) (B := B) (R.key, R.val) hes0 hcs0 (s ⟨u, hu⟩) (s ⟨u', hu'⟩) (h1.trans h3.symm) hl hne
     simp only [Fin.getElem_fin] at h2 h4
     rw [← h2, ← h4]; exact this
   rw [lam_holds h]
@@ -2550,15 +2546,11 @@ theorem E_holds {n : USize} {X : Vals (.arr A) n} {R : Tab A B} {T : Tab (.arr A
   · rintro ⟨hX, hm, ho⟩
     exact ⟨hX, fun b => (hm b).trans ((hQ xs b).trans ⟨fun h => h.2, fun h => ⟨hX, h⟩⟩).symm, ho⟩
 
-/-- **`E X R` denotes `EDen R` on the arrays `X`** (`Tm.E`), where `B`'s order codes agree with `B.lt` on tables of
-pairs keyed by arrays of `A` (`lam_den`'s `hB` at `.arr A`). -/
+/-- **`E X R` denotes `EDen R` on the arrays `X`** (`Tm.E`): `lam_den` at the pairs keyed by arrays of `A`. -/
 theorem E_den {n : USize} {X : Vals (.arr A) n} {R : Tab A B} {T : Tab (.arr A) (.arr B)} (h : Tab.E X R = .ok T)
-    (hB : ∀ (m : USize) (x : Vals (.prod (.arr A) B) m) es, Vals.cols x = .ok es → ∀ i i' : Fin m.toNat,
-      (x.row i).1 = (x.row i').1 → lexLe (ascKeys m es) i i' = true → seenKey m es i ≠ seenKey m es i' →
-        B.lt (x.row i).2 (x.row i').2)
     (xs : List A.El) (ys : List B.El) : T.Holds xs ys ↔ (∃ i, X.row i = xs) ∧ Lang.EDen R.Holds xs ys := by
   obtain ⟨Q, hl, hQ⟩ := E_lam h
-  rw [lam_den hl hB]
+  rw [lam_den hl]
   simp only [Lang.EDen, Lang.lamDen, Core.Rel.comp, hQ]
   constructor
   · rintro ⟨hX, hp, hm⟩
@@ -2566,33 +2558,26 @@ theorem E_den {n : USize} {X : Vals (.arr A) n} {R : Tab A B} {T : Tab (.arr A) 
   · rintro ⟨hX, hp, hm⟩
     exact ⟨hX, hp, fun b => (hm b).trans ⟨fun ⟨a, ha, hr⟩ => ⟨hX, a, ha, hr⟩, fun ⟨_, a, ha, hr⟩ => ⟨a, ha, hr⟩⟩⟩
 
-/-- **`setify X` denotes `Λ(∋)` on the arrays `X`** (`rowDens`'s `setify`), where `B`'s order codes agree with
-`B.lt` (`lam_den`'s `hB`): `lam_den` of `mem_holds`. -/
+/-- **`setify X` denotes `Λ(∋)` on the arrays `X`** (`rowDens`'s `setify`): `lam_den` of `mem_holds`. -/
 theorem setify_den {n : USize} {X : Vals (.arr B) n} {T : Tab (.arr B) (.arr B)} (h : Tab.setify X = .ok T)
-    (hB : ∀ (m : USize) (x : Vals (.prod (.arr B) B) m) es, Vals.cols x = .ok es → ∀ i i' : Fin m.toNat,
-      (x.row i).1 = (x.row i').1 → lexLe (ascKeys m es) i i' = true → seenKey m es i ≠ seenKey m es i' →
-        B.lt (x.row i).2 (x.row i').2)
     (xs : List B.El) (ys : List B.El) :
     T.Holds xs ys ↔ (∃ i, X.row i = xs) ∧ Lang.lamDen (fun xs b => b ∈ xs : Lang.Den (.arr B) B) xs ys := by
   unfold Tab.setify at h; simp only [bind] at h
   rw [Except.bind_eq_ok'] at h; obtain ⟨G, hG, h⟩ := h
-  rw [lam_den h hB]
+  rw [lam_den h]
   constructor
   · rintro ⟨hX, hp, hm⟩
     exact ⟨hX, hp, fun b => (hm b).trans ((mem_holds hG xs b).trans (and_iff_right hX))⟩
   · rintro ⟨hX, hp, hm⟩
     exact ⟨hX, hp, fun b => (hm b).trans ((mem_holds hG xs b).trans (and_iff_right hX)).symm⟩
 
-/-- **`tau X` denotes `τ` on `X`** (`rowDens`: `Y = [a]`), where `A`'s order codes agree with `A.lt`: `lam_den` of
-`idU_holds`, the one list of `A.lt`-ascending elements `{a}` being `[a]` (`pairwise_eq_of_mem`). -/
+/-- **`tau X` denotes `τ` on `X`** (`rowDens`: `Y = [a]`): `lam_den` of `idU_holds`, the one list of
+`A.lt`-ascending elements `{a}` being `[a]` (`pairwise_eq_of_mem`). -/
 theorem tau_den {A : Obj} {n : USize} {X : Vals A n} {T : Tab A (.arr A)} (h : Tab.tau X = .ok T)
-    (hB : ∀ (m : USize) (x : Vals (.prod A A) m) es, Vals.cols x = .ok es → ∀ i i' : Fin m.toNat,
-      (x.row i).1 = (x.row i').1 → lexLe (ascKeys m es) i i' = true → seenKey m es i ≠ seenKey m es i' →
-        A.lt (x.row i).2 (x.row i').2)
     (a : A.El) (ys : List A.El) : T.Holds a ys ↔ (∃ i, X.row i = a) ∧ ys = [a] := by
   unfold Tab.tau at h; simp only [bind] at h
   rw [Except.bind_eq_ok'] at h; obtain ⟨I, hI, h⟩ := h
-  rw [lam_den h hB]
+  rw [lam_den h]
   have lirr : ∀ x, ¬A.lt x x := fun x => List.lt_irrefl _
   have lasym : ∀ x y, A.lt x y → ¬A.lt y x := fun _ _ => List.lt_asymm
   constructor
@@ -2688,14 +2673,11 @@ theorem est_holds {B : Obj} {q : Tab (.prod B B) (.prod B B) → Except String (
     exact hno ⟨c, ((eP xs _).1 hp).2.2, fun e => hne e.symm, hq'⟩
 
 /-- **`thin q X` denotes `thinDen`** (`Tab.thin`), its test `q` agreeing with `TQ` on the diagonal of the pairs it is
-given and `B`'s order codes agreeing with `B.lt` (`lam_den`'s `hB`): `(xs, c)` of `G = ∋` dropped exactly where some
-`(b, c)` of `D = ran ⟨G, G⟩` has `TQ (b, c) (b, c)` and its swap has not; then `lam_den`. -/
+given: `(xs, c)` of `G = ∋` dropped exactly where some `(b, c)` of `D = ran ⟨G, G⟩` has `TQ (b, c) (b, c)` and its
+swap has not; then `lam_den`. -/
 theorem thin_den {B : Obj} {q : Tab (.prod B B) (.prod B B) → Except String (Tab (.prod B B) (.prod B B))}
     {TQ : Lang.Den (.prod B B) (.prod B B)} (hq : QDiag q TQ)
     {n : USize} {X : Vals (.arr B) n} {T : Tab (.arr B) (.arr B)} (h : Tab.thin q X = .ok T)
-    (hB : ∀ (m : USize) (x : Vals (.prod (.arr B) B) m) es, Vals.cols x = .ok es → ∀ i i' : Fin m.toNat,
-      (x.row i).1 = (x.row i').1 → lexLe (ascKeys m es) i i' = true → seenKey m es i ≠ seenKey m es i' →
-        B.lt (x.row i).2 (x.row i').2)
     (xs ys : List B.El) : T.Holds xs ys ↔ (∃ i, X.row i = xs) ∧ Lang.thinDen TQ xs ys := by
   unfold Tab.thin at h; simp only [bind] at h
   rw [Except.bind_eq_ok'] at h; obtain ⟨G, hG, h⟩ := h
@@ -2734,7 +2716,7 @@ theorem thin_den {B : Obj} {q : Tab (.prod B B) (.prod B B) → Except String (T
         obtain ⟨h1, h2⟩ := (pair_holds hw p s).1 hs
         obtain rfl : s = (p.2, p.1) := Prod.ext ((outr_holds ho1 p _).1 h1).2 ((outl_holds ho2 p _).1 h2).2
         exact ((eD _ _).1 hd).2.2
-  rw [lam_den h hB]
+  rw [lam_den h]
   refine and_congr_right fun hx => ?_
   simp only [Lang.thinDen, Lang.lamDen]
   refine and_congr_right fun _ => forall_congr' fun c => iff_congr Iff.rfl ?_
