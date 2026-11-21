@@ -369,7 +369,14 @@ Diff table 的「状态」列：✅ 后面是完成它的步骤；🔄 是部分
 - ✅ S7 `Op.cast s t`（`Op` 的最后一个构造子，带两个字段）：`kscan`/`kscatter` 以 `@& Op` 传对象，Rust `cast_word`
   （`CAST = 46`），无新导出；`Reg Op` 按对象传（`nullOps`）。所有数值对一个构造子，不只 `i64 → f64`。
 - ⬜ S8 库定义 `mean` `stddev` `correlation` `skewness` `zScore` `valueProportions` float `describe` `daysBetween`
-  （dataframe 会话）。
+  （dataframe 会话）。前提：
+  - ✅ 真商 `%`（q 的 `divide`，分支 `fdiv`）：`arith` 族的又一个值动词 `Ew.divide = 3`（q 的动词号），`fverbBy` 中为
+    `fdiv`，`stepAt`、`fstepCols`、`arith_sound` 不变即覆盖它（`fverbBy_map` 多一个情形）。名字 `divide` 与 `%` 都在
+    `Op.table`，`%` 是一个字符的符号名，不改词法。只在 f32/f64 上；在整数对象上按名报错，提示先 `$` 转换
+    （`numObj`：没有整数 step 的动词在整数 atom 上都如此；未声明 atom 的对象按 `i64` 一样检查）。`x % 0.0` 为 ±∞
+    （值），`0.0 % 0.0` 无行（NaN）。测试 `TestFloatArith.divideT`、`divideIntT`。
+  - ⬜ `sqrt`：`Op.fsqrt` 与 Rust（`scan.rs` op 29，libm `sqrt`）已有；语言层没有一元值动词族，按 design §3.3 是
+    `prims` 行（同 `$` 的 `Tab.cast`：一个 `colArr` 加 keep），待裁定后做。
 - ⬜ S9 文档：architecture §1、§4.3，dataframe F4，PLAN（随各步）。
 
 ### P0 baseline — 1/1

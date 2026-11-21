@@ -139,4 +139,41 @@ rel_program succFT where
     a : N ⟶ F ≜ {(0,1.5)}
     c : N ⟶ F ≜ a succ
 
+-- `%` (q's `divide`): the quotient itself, `fdiv` then `fto`
+rel_program divideT where
+    obj N
+    obj F : f64
+    obj G : f32
+    a : N ⟶ F ≜ {(0,1.0),(1,1.0),(2,-7.5)}
+    b : N ⟶ F ≜ {(0,2.0),(1,3.0),(2,2.5)}
+    one : N ⟶ F ≜ {(0,1.0)}
+    m : N ⟶ F ≜ {(0,-1.0)}
+    z : N ⟶ F ≜ {(0,0.0)}
+    big : N ⟶ F ≜ {(0,1e308)}
+    ten : N ⟶ F ≜ {(0,10.0)}
+    g : N ⟶ G ≜ {(0,1.0),(1,1.0)}
+    h : N ⟶ G ≜ {(0,2.0),(1,3.0)}
+    g0 : N ⟶ G ≜ {(0,0.0)}
+    check ⟨a, b⟩ % = {(0,0.5),(1,0.3333333333333333),(2,-3.0)}
+    check ⟨a, b⟩ divide = ⟨a, b⟩ %
+    check ⟨one, z⟩ % = ⟨big, ten⟩ times
+    check dom(⟨m, z⟩ %) = {(0,0)}
+    check (⟨m, z⟩ %) ∩ (⟨one, z⟩ %) = 𝟘
+    check ⟨z, z⟩ % = 𝟘
+    check ⟨g, h⟩ % = {(0,0.5),(1,0.33333334)}
+    check ⟨g0, g0⟩ % = 𝟘
+
+-- by hand: `1/3` is the `f64` nearest a third, the literal `0.3333333333333333` reads as; `-7.5/2.5 = -3` exact;
+-- `1/0 = ∞` is a value (the one `1e308·10` overflows to), `-1/0 = -∞` another, `0/0` NaN, no row; at `f32` `1/3` is
+-- the `f32` nearest a third (`0x3eaaaaab`), the word `0.33333334` reads as
+#guard divideT.failures.map toString == []
+
+-- `%` at an integer object: refused, the quotient of two integers being no integer; the program casts with `$` first
+/-- error: line 177, col 24: divide on N: N is an object of i64, and divide runs on objects of f32, f64 only; its answer is no integer: cast first, `x $ F` with `F` an object of f32, f64 -/
+#guard_msgs in
+rel_program divideIntT where
+    obj N
+    a : N ⟶ N ≜ {(0,1)}
+    c : N ⟶ N ≜ ⟨a, a⟩ %
+
 end Rel.Lang.TestFloatArith

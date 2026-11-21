@@ -199,6 +199,9 @@ def mul : UInt8 := 2
 def fill : UInt8 := 4
 def lesser : UInt8 := 5
 def greater : UInt8 := 6
+/-- `%`, q's `divide`: the quotient itself, at the float atoms only (`fverbBy`); `intStep` has no case for it, since the
+    quotient of two integers is not an integer. -/
+def divide : UInt8 := 3
 
 /-- `div` and `mod`, numbered after the seven q spells as glyphs, because `Ew.intStep` runs them in the same loop over
 the same two payloads; `~/q/q.k` line 4 defines `mod:{x-y*x div y}` and `Ew.intStep` says exactly that. -/
@@ -220,16 +223,16 @@ def fval : (t : QAtomicType) → Dep.Carrier t → Option UInt64
   | _, _ => none
 
 /-- The value verb `k` as a composition of float `Op`s, each applied by `ap` (to two words by `Op.eval`, to two
-    columns by `colMap`), as q computes it on floats: `+ - * max min` by their `f` ops, `div` the floor of the
+    columns by `colMap`), as q computes it on floats: `+ - * % max min` by their `f` ops, `div` the floor of the
     quotient (`ffloor` of `fdiv`), `mod` `x - y·(x div y)` (`q.k`: `mod:{x-y*x div y}`). A unary op reads its second
     operand. -/
 def fverbBy {α : Type} (ap : Op → α → α → Except String α) (k : UInt8) (x y : α) : Except String α :=
   if k == Ew.add then ap .fadd x y else if k == Ew.sub then ap .fsub x y
   else if k == Ew.mul then ap .fmul x y else if k == Ew.greater then ap .fmax x y
-  else if k == Ew.lesser then ap .fmin x y
+  else if k == Ew.lesser then ap .fmin x y else if k == Ew.divide then ap .fdiv x y
   else if k == Ew.idiv then do let q ← ap .fdiv x y; ap .ffloor q q
   else if k == Ew.imod then do let q ← ap .fdiv x y; let f ← ap .ffloor q q; ap .fsub x (← ap .fmul y f)
-  else .error s!"arith: verb code {k} is none of + - * div mod max min"
+  else .error s!"arith: verb code {k} is none of + - * % div mod max min"
 
 /-- `fverbBy` on two `f64` words. -/
 abbrev fverb : UInt8 → UInt64 → UInt64 → Except String UInt64 := fverbBy Op.eval
@@ -246,5 +249,9 @@ private def bits (n : Float) : UInt64 := n.toBits
 #guard fstep .f64 Ew.sub (bits 0.0) (bits 0.0) matches .ok 0
 #guard fstep .f64 Ew.idiv (bits 0.0) (bits 0.0) matches .ok 0x8000000000000000
 #guard fstep .f32 Ew.add (bits 0.1) (bits 0.2) matches .ok 0x3e99999a
+#guard fstep .f64 Ew.divide (bits 1.0) (bits 2.0) matches .ok 0x3fe0000000000000
+#guard fstep .f64 Ew.divide (bits 1.0) (bits 0.0) matches .ok 0x7ff0000000000000
+#guard fstep .f64 Ew.divide (bits 0.0) (bits 0.0) matches .ok 0x8000000000000000
+#guard fstep .f32 Ew.divide (bits 1.0) (bits 3.0) matches .ok 0x3eaaaaab
 
 end Rel.Kernel

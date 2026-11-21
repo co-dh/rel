@@ -295,7 +295,7 @@ atom 的位宽、符号、指数和尾数位读出，不逐对列出），另加
   [`≫`], [两侧按中间列 `asc`、取组（`seen`）、组内展开（`scan` 偏移、`scatter` 组头、`scan(max)` 填充）、`gather` 取行、`asc` + `seen`。（草稿，待审）展开总行数超过 `blockRows` 时分块：在组的边界切开，每块至多约 `blockRows` 行（单个大组自成一块），每块先 `asc` + `seen` 去重，再与前面的结果做 `∪`；块只切 `R` 的行，`S` 每块整体参与（`Tab.compWith`，`Rel/Run/Comp.lean`）],
   [`dom` `ran`], [取一列 → `asc` → `seen`（`first` 取代表行）],
   [`R\S` `R/S` 对称除 `R ÷ S`], [不求补：按组比较「R 的 b 的个数」与「其中满足 S 的个数」，即分段 `scan`],
-  [值动词 `plus` `minus` `times` `div` `mod` `max` `min`（`Tm.arith t`）], [两个操作数各与 `dom U` 复合（`≫`）→ 一次 `scan` 链：`i64` 上是整数 `Op` 加回绕/null 标记（`stepCols`）；浮点 atom 上先 `f32to64` 宽化，再 `fadd` `fsub` `fmul` `fmax` `fmin`，`div` 为 `ffloor(fdiv)`、`mod` 为 `x − y·ffloor(x/y)`（q 的定义），最后 `fto t` 写回 `t` 的规范字（`f32` 舍入、`−0` 写成 `+0`、NaN 写成 null）→ 非 null 的行 `keep` → `≫ U`；无新 kernel],
+  [值动词 `plus` `minus` `times` `divide`（`%`，只在浮点 atom 上）`div` `mod` `max` `min`（`Tm.arith t`）], [两个操作数各与 `dom U` 复合（`≫`）→ 一次 `scan` 链：`i64` 上是整数 `Op` 加回绕/null 标记（`stepCols`）；浮点 atom 上先 `f32to64` 宽化，再 `fadd` `fsub` `fmul` `fdiv` `fmax` `fmin`，`div` 为 `ffloor(fdiv)`、`mod` 为 `x − y·ffloor(x/y)`（q 的定义），最后 `fto t` 写回 `t` 的规范字（`f32` 舍入、`−0` 写成 `+0`、NaN 写成 null）→ 非 null 的行 `keep` → `≫ U`；无新 kernel],
   [`<` `≤`（`Tm.lt t`、`Tm.leq t`）], [两侧（`K` 的 `pairs`，或 `dom U` 的 CROSS）→ `scan` 一次比较：`i64` 用有符号 `lt` `le`，浮点 atom 宽化到 `f64` 后用 IEEE 的 `flt` `fle`（`Tab.ordOp`）→ `keep`],
   [Λ（`arr` 侧）], [`asc ≫ seen` 的组号 `g` 与 `first` 给出 `lo`/`hi`],
   [`μ` `ν` `fold` `hylo`], [Lean 中的循环（`fixOn`），每轮调用上面的运算，行数不变即停；semi-naive 只多一个 `−`],
