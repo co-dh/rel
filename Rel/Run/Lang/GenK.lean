@@ -235,8 +235,8 @@ end GenK
 
 /-- The rows of `prims` with a kernel body: each row's `Tab` operator, run under the `GenK` twin of the wrapper its
     old constant runs under (`Expand.primE`), as `RowCode` gives the old ones; a row not here keeps a program off
-    the kernel path (`Tm.kernelNode`). The operator is a constant given its leading arguments first: the `unaryOps`
-    rows share `Tab.unary`, given the row. -/
+    the kernel path (`Tm.kernelNode`). The operator is a constant given its leading arguments first: the `floatOps`
+    rows share `Tab.floatOp`, given the row. -/
 def kernRows : List (String × Lean.Name × List Lean.Expr) :=
   ([("∋", ``Tab.mem), ("τ", ``Tab.tau), ("length", ``Tab.length), ("setify", ``Tab.setify),
    ("snoc", ``Tab.snoc), ("cons", ``Tab.cons), ("cat", ``Tab.cat), ("zip", ``Tab.zip), ("sum", ``Tab.sum),
@@ -256,7 +256,7 @@ def kernRows : List (String × Lean.Name × List Lean.Expr) :=
    ("F", ``Tab.map),
    ("flat", ``Tab.flat),
    ("$", ``Tab.cast)].map fun (s, c) => (s, c, [])) ++
-  unaryOps.map fun (s, _) => (s, ``Tab.unary, [Lean.mkStrLit s])
+  floatOps.map fun (s, _) => (s, ``Tab.floatOp, [Lean.mkStrLit s])
 
 -- every kernel row is a row of `prims`
 #guard kernRows.all fun (s, _) => prims.any (·.sym == s)

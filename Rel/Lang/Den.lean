@@ -352,11 +352,14 @@ def castDen : (A B : Obj) → Den A B
   | .atom s, .atom t => fun x y => QAtomicType.embed s t x = some y
   | _, _ => fun _ _ => False
 
-/-- A unary float verb `o` of `unaryOps` at `F ⟶ D`: `o` on the value's `f64` word (`fval`), then the word of `D`'s atom
-    for the answer (`Op.ofF64`), no row where that is `2^63` (NaN, or no value of `D`'s atom); `𝟘` where a side is no
-    atom. -/
-def unaryDen (o : Rel.Kernel.Op) : (A B : Obj) → Den A B
-  | .atom t, .atom u => fun x w => ∃ X Y R, fval t x = some X ∧ o.eval 0 X = .ok Y ∧
+/-- A float verb `o` of `floatOps`: at `F ⟶ D` for an `o` reading one operand, `o` on the value's `f64` word (`fval`);
+    at `F×F ⟶ D` for one reading two, `o` on the two components' words; then the word of `D`'s atom for the answer
+    (`Op.ofF64`), no row where that is `2^63` (NaN, or no value of `D`'s atom); `𝟘` at any other objects. -/
+def floatDen (o : Rel.Kernel.Op) : (A B : Obj) → Den A B
+  | .atom t, .atom u => fun x w => o.readsAcc = false ∧ ∃ X Y R, fval t x = some X ∧ o.eval 0 X = .ok Y ∧
+      (Rel.Kernel.Op.ofF64 u).eval 0 Y = .ok R ∧ R ≠ 0x8000000000000000 ∧ w = QAtomicType.ofBits u R
+  | .prod (.atom t) (.atom t'), .atom u => fun x w => o.readsAcc = true ∧ t = t' ∧ ∃ X X' Y R,
+      fval t x.1 = some X ∧ fval t' x.2 = some X' ∧ o.eval X X' = .ok Y ∧
       (Rel.Kernel.Op.ofF64 u).eval 0 Y = .ok R ∧ R ≠ 0x8000000000000000 ∧ w = QAtomicType.ofBits u R
   | _, _ => fun _ _ => False
 
@@ -405,7 +408,8 @@ def rowDens : List ((c : RowCode) × RowDen c) :=
    ⟨sums, fun σ => Sem.one (X := .prod (σ₁ σ) (σ₂ σ)) (Y := σ.getD 2 .long) (sumsAt (σ₁ σ) (σ₂ σ) (σ.getD 2 .long))⟩,
    ⟨flat, fun σ => Sem.one (X := σ₁ σ) (Y := .prod (σ₂ σ) (σ.getD 2 .long)) flatDen⟩,
    ⟨cast, fun σ _ => castDen (σ₁ σ) (σ₂ σ)⟩] ++
-  unaryOps.map fun (s, o, _) => ⟨⟨s, fun σ => (σ₁ σ, σ₂ σ)⟩, fun σ _ => unaryDen o (σ₁ σ) (σ₂ σ)⟩
+  floatOps.map fun (s, o, _) =>
+    ⟨⟨s, fun σ => (if o.readsAcc then .prod (σ₁ σ) (σ₁ σ) else σ₁ σ, σ₂ σ)⟩, fun _ _ => floatDen o _ _⟩
 
 
 /-- The row `r`'s meaning at `A ⟶ B` given its relation arguments' meanings, found as `Prim.run` finds its code;
@@ -751,7 +755,7 @@ theorem rowDens_mono : ∀ e ∈ rowDens, (Prim.find? e.1.sym).any (·.mono) = t
     ∀ σ {X Y : Obj} {T T' : Den X Y}, T ⊑ T' → e.2 σ [⟨X, Y, T⟩] ⊑ e.2 σ [⟨X, Y, T'⟩] := by
   intro e he hm σ X Y T T' h
   simp only [rowDens, List.mem_append, List.mem_map, List.mem_cons, List.not_mem_nil, or_false] at he
-  -- a `unaryOps` row takes no relation; then one case per row whatever their number, in `rowDens` order
+  -- a `floatOps` row takes no relation; then one case per row whatever their number, in `rowDens` order
   rcases he with he | ⟨_, -, rfl⟩
   rotate_left
   · exact Core.Rel.le_refl _

@@ -23,17 +23,16 @@ theorem gather_valid {u : QAtomicType} {m n : USize} {ix : Enc} {x : Arr u n} {y
 /-- **A column map followed by a filter of nulls** (`$`, the unary float verbs): `Tab.keep` of the rows `(X i, w i)` at
 the flag `flag` holds `a b` exactly where `a` is a value of `X` and `P a b`, given that row by row the flag is a bit,
 set exactly where `P` relates the value to the answer `w i`. -/
-theorem keep_map_holds {s t : QAtomicType} {n : USize} {X : Arr s n} {w : Arr t n} {flag : Enc}
-    {T : Tab (.atom s) (.atom t)} {P : (Obj.atom s).El → (Obj.atom t).El → Prop}
-    (hU : Tab.keep (k := .atom s) (v := .atom t) ⟨n, X, w⟩ flag = .ok T)
-    (row : ∀ i : Fin n.toNat, wd n flag i < 2 ∧ ∀ v, (wd n flag i ≠ 0 ∧ w.get i = v) ↔ P (X.get i) v)
-    (a : (Obj.atom s).El) (b : (Obj.atom t).El) : T.Holds a b ↔ (∃ i, Vals.row (A := .atom s) X i = a) ∧ P a b := by
+theorem keep_map_holds {A : Obj} {t : QAtomicType} {n : USize} {X : Vals A n} {w : Arr t n} {flag : Enc}
+    {T : Tab A (.atom t)} {P : A.El → (Obj.atom t).El → Prop}
+    (hU : Tab.keep (k := A) (v := .atom t) ⟨n, X, w⟩ flag = .ok T)
+    (row : ∀ i : Fin n.toNat, wd n flag i < 2 ∧ ∀ v, (wd n flag i ≠ 0 ∧ w.get i = v) ↔ P (X.row i) v)
+    (a : A.El) (b : (Obj.atom t).El) : T.Holds a b ↔ (∃ i, X.row i = a) ∧ P a b := by
   rw [keep_holds hU (fun i hi => (row ⟨i, hi⟩).1)]
   constructor
   · rintro ⟨i, hf, rfl, rfl⟩
-    exact ⟨⟨i, rfl⟩, by rw [Vals.row_atom, Vals.row_atom]; exact ((row i).2 _).1 ⟨hf, rfl⟩⟩
+    exact ⟨⟨i, rfl⟩, by rw [Vals.row_atom w]; exact ((row i).2 _).1 ⟨hf, rfl⟩⟩
   · rintro ⟨⟨i, rfl⟩, hp⟩
-    rw [Vals.row_atom] at hp
     obtain ⟨hf, hw⟩ := ((row i).2 b).2 hp
     exact ⟨i, hf, rfl, by rw [Vals.row_atom]; exact hw⟩
 
@@ -90,33 +89,44 @@ theorem cast_holds {s t : QAtomicType} {n : USize} {X : Vals (.atom s) n} {T : T
       · rw [hfv]; simp [QAtomicType.castWord, he, nulWord, hy]
       · simp [QAtomicType.castWord, he, QAtomicType.ofBits_word y hst.2]
   refine keep_map_holds (P := fun x y => QAtomicType.embed s t x = some y) hU (fun i => ?_) a b
-  rcases row i with h | h <;> simp only [wd, h.1, h.2] <;> simp
+  rcases row i with h | h <;> simp only [wd, Vals.row_atom, h.1, h.2] <;> simp
 
-/-- The `Op` a `unaryOps` row runs reads one operand. -/
-theorem unaryOps_readsAcc : ∀ {l : List (String × Op × QAtomicType)}, (∀ p ∈ l, p.2.1.readsAcc = false) → ∀ {s o},
-    l.lookup s = some o → o.1.readsAcc = false
-  | [], _, _, _, h => nomatch h
-  | (k, v) :: l, hl, s, o, h => by
-    simp only [List.lookup] at h; split at h
-    · cases h; exact hl _ List.mem_cons_self
-    · exact unaryOps_readsAcc (fun p hp => hl p (List.mem_cons_of_mem _ hp)) h
-
-/-- **A `unaryOps` row `s` on the values `X`** denotes `unaryDen o` of its `Op` there: no row at an object holding no
+/-- **A `floatOps` row `s` on the values `X`** denotes `floatDen o` of its `Op` there: no row at an object holding no
 float or a target holding no number, nor where the answer has no word at the target. -/
-theorem unary_den {A B : Obj} {n : USize} {X : Vals A n} {T : Tab A B} {s : String} {o : Op} {u : QAtomicType}
-    (hs : unaryOps.lookup s = some (o, u)) (h : Tab.unary s X = .ok T) (a : A.El) (b : B.El) :
-    T.Holds a b ↔ (∃ i, X.row i = a) ∧ Lang.unaryDen o A B a b := by
-  have ho := unaryOps_readsAcc (by decide) hs
+theorem floatOp_den {A B : Obj} {n : USize} {X : Vals A n} {T : Tab A B} {s : String} {o : Op} {u : QAtomicType}
+    (hs : floatOps.lookup s = some (o, u)) (h : Tab.floatOp s X = .ok T) (a : A.El) (b : B.El) :
+    T.Holds a b ↔ (∃ i, X.row i = a) ∧ Lang.floatDen o A B a b := by
   match A, B, X, T, h, a, b with
   | .atom t, .atom u, X, T, h, a, b =>
-    simp only [Tab.unary, hs] at h
+    simp only [Tab.floatOp, hs] at h
     split at h
     case isFalse => cases h
     rename_i hf
     obtain ⟨⟨w, flag⟩, hm, hU⟩ := Except.bind_eq_ok'.1 h
-    exact keep_map_holds hU (fmapCols_spec hf.1 hf.2 ho hm) a b
+    refine keep_map_holds hU (fun i => ?_) a b
+    obtain ⟨h2, hi⟩ := fmapCols_spec hf.2.1 hf.2.2 hm i
+    -- a unary `Op` reads its second operand alone (`Op.eval_acc`), so `X X` is `0 X`
+    refine ⟨h2, fun v => (hi v).trans ⟨fun ⟨X, X', Y, R, hX, hX', hY, hR⟩ => ?_,
+      fun ⟨_, X, Y, R, hX, hY, hR⟩ => ⟨X, X, Y, R, hX, hX, by rw [Op.eval_acc hf.1]; exact hY, hR⟩⟩⟩
+    rw [hX] at hX'; cases hX'
+    exact ⟨hf.1, X, Y, R, hX, by rw [← Op.eval_acc hf.1 X X]; exact hY, hR⟩
+  | .prod (.atom t) (.atom t'), .atom u, X, T, h, a, b =>
+    simp only [Tab.floatOp, hs] at h
+    split at h
+    case isFalse => cases h
+    rename_i hf
+    obtain ⟨ho, rfl, hf, hu⟩ := hf
+    obtain ⟨⟨w, flag⟩, hm, hU⟩ := Except.bind_eq_ok'.1 h
+    refine keep_map_holds hU (fun i => ?_) a b
+    obtain ⟨h2, hi⟩ := fmapCols_spec hf hu hm i
+    exact ⟨h2, fun v => (hi v).trans ⟨fun hr => ⟨ho, rfl, hr⟩, fun ⟨_, _, hr⟩ => hr⟩⟩
   | .atom _, .prod .., _, _, h, _, _ | .atom _, .arr _, _, _, h, _, _ | .atom _, .sum .., _, _, h, _, _
-  | .prod .., _, _, _, h, _, _ | .arr _, _, _, _, h, _, _ | .sum .., _, _, _, h, _, _ => simp [Tab.unary, hs] at h
+  | .prod (.atom _) (.atom _), .prod .., _, _, h, _, _ | .prod (.atom _) (.atom _), .arr _, _, _, h, _, _
+  | .prod (.atom _) (.atom _), .sum .., _, _, h, _, _
+  | .prod (.atom _) (.prod ..), _, _, _, h, _, _ | .prod (.atom _) (.arr _), _, _, _, h, _, _
+  | .prod (.atom _) (.sum ..), _, _, _, h, _, _
+  | .prod (.prod ..) _, _, _, _, h, _, _ | .prod (.arr _) _, _, _, _, h, _, _ | .prod (.sum ..) _, _, _, _, h, _, _
+  | .arr _, _, _, _, h, _, _ | .sum .., _, _, _, h, _, _ => simp [Tab.floatOp, hs] at h
 
 /-- `$` at any objects: the graph `castDen A B` on the values `X`, no row where a side is no atom. -/
 theorem cast_den {A B : Obj} {n : USize} {X : Vals A n} {T : Tab A B} (h : Tab.cast X = .ok T) (a : A.El) (b : B.El) :

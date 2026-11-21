@@ -28,28 +28,36 @@ def cast {A B : Obj} {n : USize} (X : Vals A n) : Except String (Tab A B) :=
 
 end Tab
 
-/-- The unary float verbs, each a row `F ⟶ D` of `prims` under its q name with its `Op` and the atom of `D`: the `Op`
-    on each value's `f64` word, the answer written at `D` (`Tab.unary`). Every `Op` that reads one operand at `f64` and
-    answers one there; `floor` answers at `i64` as q's `floor` does, the rest at `f64`. -/
-def unaryOps : List (String × Op × QAtomicType) :=
+/-- The float verbs, each a row of `prims` under its q name with its `Op` and the atom of its target `D`: the `Op` on
+    the operands' `f64` words, the answer written at `D` (`Tab.floatOp`). An `Op` that reads one operand
+    (`Op.readsAcc` false) is a row `F ⟶ D`, one that reads two a row `F×F ⟶ D` (`x xexp y` is `x^y`, libm `pow`, so a
+    negative base with an integer exponent has its value). `floor` answers at `i64` as q's `floor` does, the rest at
+    `f64`. -/
+def floatOps : List (String × Op × QAtomicType) :=
   [("sqrt", .fsqrt, .f64), ("neg", .fneg, .f64), ("abs", .fabs, .f64), ("exp", .fexp, .f64), ("log", .flog, .f64),
    ("sin", .fsin, .f64), ("cos", .fcos, .f64), ("tan", .ftan, .f64), ("asin", .fasin, .f64), ("acos", .facos, .f64),
-   ("atan", .fatan, .f64), ("floor", .ffloor, .i64)]
+   ("atan", .fatan, .f64), ("floor", .ffloor, .i64), ("xexp", .fpow, .f64)]
 
 namespace Tab
 
-/-- **The row `s` of `unaryOps` on the values `X`** (`rowDens`: `unaryDen`): `fmapCols` of its `Op` from `X`'s float
-    atom to `B`'s number atom, each value to the answer, kept where that is a word of `B`'s atom (`Tab.keep`, no
-    `canon`). The row is the first argument so `kernRows` names one constant for every name. -/
-def unary (s : String) {A B : Obj} {n : USize} (X : Vals A n) : Except String (Tab A B) :=
-  match unaryOps.lookup s, A, B, X with
+/-- **The row `s` of `floatOps` on the values `X`** (`rowDens`: `floatDen`): `fmapCols` of its `Op` from `X`'s float
+    atom (each component's, for a row reading two operands) to `B`'s number atom, each value to the answer, kept where
+    that is a word of `B`'s atom (`Tab.keep`, no `canon`). The row is the first argument so `kernRows` names one
+    constant for every name. -/
+def floatOp (s : String) {A B : Obj} {n : USize} (X : Vals A n) : Except String (Tab A B) :=
+  match floatOps.lookup s, A, B, X with
   | some (o, _), .atom t, .atom u, X =>
-    if (t = .f32 ∨ t = .f64) ∧ u.storeFmt?.isSome then do
-      let (w, flag) ← fmapCols t u o n X.enc
+    if o.readsAcc = false ∧ (t = .f32 ∨ t = .f64) ∧ u.storeFmt?.isSome then do
+      let (w, flag) ← fmapCols t u o n X.enc X.enc
       Tab.keep (k := .atom t) (v := .atom u) ⟨n, X, w⟩ flag
     else .error s!"{s} runs from a float object to a number object, found {repr t} to {repr u}"
-  | some _, _, _, _ => .error s!"{s} runs from a float object to a number object"
-  | none, _, _, _ => .error s!"{s}: no unary float verb"
+  | some (o, _), .prod (.atom t) (.atom t'), .atom u, X =>
+    if o.readsAcc = true ∧ t = t' ∧ (t = .f32 ∨ t = .f64) ∧ u.storeFmt?.isSome then do
+      let (w, flag) ← fmapCols t u o n X.1.enc X.2.enc
+      Tab.keep (k := .prod (.atom t) (.atom t')) (v := .atom u) ⟨n, X, w⟩ flag
+    else .error s!"{s} runs from a pair of one float object to a number object, found {repr t}×{repr t'} to {repr u}"
+  | some _, _, _, _ => .error s!"{s} runs from a float object, or a pair of one, to a number object"
+  | none, _, _, _ => .error s!"{s}: no float verb"
 
 end Tab
 end Rel

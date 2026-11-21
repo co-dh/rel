@@ -307,10 +307,11 @@ def prims : List Prim :=
    -- as its own infix form, which names the target object
    { sym := "$", sig := ([], .var {} "N", .var {} "F"), written := false,
      aop := .error "AOP declares no change of a number's representation" }] ++
-  -- `sqrt`, `neg`, …: each a relation `F ⟶ D` from a float object `F` (`num` its float atoms) to an object `D` of the
-  -- row's answer atom (`unaryOps`), one row per name
-  unaryOps.map fun (s, _, u) =>
-    { sym := s, sig := ([], .var {} "F", .var {} "D"), num := [("F", floatAtoms), ("D", [u])],
+  -- `sqrt`, `neg`, …, `xexp`: each a relation `F ⟶ D` (`F×F ⟶ D` where its `Op` reads two operands) from a float
+  -- object `F` (`num` its float atoms) to an object `D` of the row's answer atom (`floatOps`), one row per name
+  floatOps.map fun (s, o, u) =>
+    { sym := s, sig := ([], if o.readsAcc then .prod (.var {} "F") (.var {} "F") else .var {} "F", .var {} "D"),
+      num := [("F", floatAtoms), ("D", [u])],
       aop := .error "AOP declares no floating-point function" }
 
 def Prim.find?(s : String) : Option Prim := prims.find? (·.sym == s)
