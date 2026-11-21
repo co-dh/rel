@@ -2,7 +2,7 @@ import Rel.Programs.FrameGroup
 
 /-! The float statistics the library can state today on an `f64` column: the sum as the fold `⦇[{(∗,0)}, plus]⦈ʳ` (the
     prim `sum` runs on `i64` only), the sum of squares, per group through `aggregate`. A mean, a variance or a proportion
-    needs a true float quotient, which no verb gives (`div` floors): `doc/dataframe-design.zh.typ` F4. Expected rows
+    divides by the true float quotient `%` (q's `divide`; `div` floors): `doc/dataframe-design.zh.typ` F4. Expected rows
     worked by hand with values exact in binary. -/
 
 namespace Rel.Lang.TestFrameStat

@@ -1837,13 +1837,17 @@ def valueAtom (t : QAtomicType) : Bool := t == .i64 || t.numFmt?.any (· matches
     (`valueAtom` for the value verbs and orders, `i64` alone for `succ` and `sums`). -/
 def numObj (p : Pos) (o : OTy) (op : String) (ok : QAtomicType → Bool) : Except Err (String × QAtomicType) :=
   match zonk mc o with
-  | .base n => match objs.lookup n with
-    -- at an object declared at an atom `op` has no step for, it is refused, never run on the bits
-    | some { obj := .atom t, ovar := false, .. } =>
-      if ok t then pure (n, t) else
-        let ats := ", ".intercalate ((atomNames.filter (ok ·.2)).map (atomName ·.2))
-        throw ⟨p, s!"{op} on {n}: {n} is an object of {atomName t}, and {op} runs on objects of {ats} only"⟩
-    | _ => pure (n, .i64)
+  | .base n =>
+    -- an object declared at no atom is stored at `i64` (S1); at an atom `op` has no step for, `op` is refused, never
+    -- run on the bits
+    let t := match objs.lookup n with | some { obj := .atom t, ovar := false, .. } => t | _ => .i64
+    if ok t then pure (n, t) else
+      let ats := ", ".intercalate ((atomNames.filter (ok ·.2)).map (atomName ·.2))
+      let int (a : QAtomicType) := a.numFmt?.any (· matches .int ..)
+      -- an op with no integer step at all (`%`): its answer is no integer, so the program casts (`$`), explicitly
+      let cast := if int t && !atomNames.any (fun a => ok a.2 && int a.2) then
+        s!"; its answer is no integer: cast first, `x $ F` with `F` an object of {ats}" else ""
+      throw ⟨p, s!"{op} on {n}: {n} is an object of {atomName t}, and {op} runs on objects of {ats} only{cast}"⟩
   | o => throw ⟨p, s!"{op} runs on a declared object, found {o}"⟩
 
 /-- The object the variable `v` of the pattern `e` stands for in `o`, `o` of `e`'s form; none where `e` has no `v`. -/
@@ -2106,7 +2110,9 @@ def build : Pre → Except Err Res
   -- projections swapped), the order picking an operand; at a value atom the fused verb runs
   | .arith p k n => do
     let mm := k == Rel.Kernel.Ew.greater || k == Rel.Kernel.Ew.lesser
-    let ⟨t, U⟩ ← numU objs mc p n (Op.arith k).sym fun t => valueAtom t || mm && t.ordNum.isSome
+    -- `%` has no integer step (`intStep`): float atoms only
+    let ⟨t, U⟩ ← numU objs mc p n (Op.arith k).sym fun t =>
+      (valueAtom t && (k != Rel.Kernel.Ew.divide || t != .i64)) || mm && t.ordNum.isSome
     if valueAtom t then return ⟨_, _, .arith t k U⟩
     let le : Tm (.prod (.atom t) (.atom t)) _ := pairTest (.leq t U)
     let gt : Tm (.prod (.atom t) (.atom t)) _ := .comp swapTm (.comp (pairTest (.lt t U)) swapTm)
