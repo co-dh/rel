@@ -425,16 +425,16 @@ def liftE {α : Type} (x : Except String α) : MetaM α := match x with
 def pairT (a b : Lean.Expr) : Lean.Expr := mkApp2 (mkConst ``Prod [0, 0]) a b
 def listT (a : Lean.Expr) : Lean.Expr := mkApp (mkConst ``List [0]) a
 
-/-- `(A : Obj) × (B : Obj) × F A B`, `F` the family `Tm` (a `Res`) or `Rel.Rel` (an entry of `Codes`). -/
-def sigT (F : Name) : Lean.Expr :=
+/-- `fun A => (B : Obj) × F A B`, `F` the family `Tm` (a `Res` is a `Sigma` over it) or `Rel.Rel` (an entry of
+    `Codes`). -/
+def sigM (F : Name) : Lean.Expr :=
   let o := mkConst ``Obj
-  mkApp2 (mkConst ``Sigma [0, 0]) o (.lam `A o (mkApp2 (mkConst ``Sigma [0, 0]) o
-    (.lam `B o (mkApp2 (mkConst F) (.bvar 1) (.bvar 0)) .default)) .default)
+  .lam `A o (mkApp2 (mkConst ``Sigma [0, 0]) o (.lam `B o (mkApp2 (mkConst F) (.bvar 1) (.bvar 0)) .default)) .default
 
-/-- `⟨A, B, x⟩ : sigT F`. -/
+/-- `⟨A, B, x⟩ : (A : Obj) × sigM F A`. -/
 def sigE (F : Name) (A B : Obj) (x : Lean.Expr) : Lean.Expr :=
   let o := mkConst ``Obj
-  mkApp4 (mkConst ``Sigma.mk [0, 0]) o (sigT F).appArg! (oE A) (mkApp4 (mkConst ``Sigma.mk [0, 0]) o
+  mkApp4 (mkConst ``Sigma.mk [0, 0]) o (sigM F) (oE A) (mkApp4 (mkConst ``Sigma.mk [0, 0]) o
     (.lam `B o (mkApp2 (mkConst F) (oE A) (.bvar 0)) .default) (oE B) x)
 
 /-- The objects `objs` as a print reads them (`infoOf`). -/
@@ -505,7 +505,7 @@ def ioGo (inst sh : Lean.Expr) (body : Lean.Name → Option (Once × Lean.Expr))
       unless X == P && Y == Q do
         throwError "rel_program expansion: internal: `{d}` is a table at {repr X} ⟶ {repr Y}, and `{x}` reads it \
           at {repr P} ⟶ {repr Q}"
-    let xs ← mkListLit (sigT ``Rel.Rel) (args.map fun (X, Y, t) => sigE ``Rel.Rel X Y (tabRel (oE X) (oE Y) t))
+    let xs ← mkListLit (mkApp2 (mkConst ``Sigma [0, 0]) (mkConst ``Obj) (sigM ``Rel.Rel)) (args.map fun (X, Y, t) => sigE ``Rel.Rel X Y (tabRel (oE X) (oE Y) t))
     let v := g ``Tm.gen #[g ``Code.args #[sh, toExpr o.binds, xs], oE A, oE B, e]
     bindIO inst (mkApp4 (mkConst ``Table.ofRun) (oE A) (oE B) (toExpr x) v) (mkApp2 (mkConst ``Tab) (oE A) (oE B)) x
       fun t => ioGo inst sh body reach fin ss ((x, A, B, t) :: σ)
