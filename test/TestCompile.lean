@@ -25,17 +25,7 @@ namespace Rel.Lang.TestCompile
 
 open Lean Elab Command Tab Rel.Lang Rel.Lang.Expand
 
-/-- Whether `Obj.key` reads `A`'s elements as values: every atom but `general`, which keys as `[]` (all tie). A
-    float's key merges NaNs and `±0`, as q's equality does. -/
-def keyed : Obj → Bool
-  | .atom t => t != .general
-  | .prod a b | .sum a b => keyed a && keyed b
-  | .arr b => keyed b
-
-/-- `R`'s rows as a set of values: each row `Obj.key` of the pair (the order code q's `asc` sorts by, independent
-    of row order and of the storage encoding), sorted, each once. -/
-def rowsOf {A B : Obj} (R : Tab A B) : List (List Nat) :=
-  ((R.toList.map fun (x, y) => (Obj.prod A B).key (x, y)).mergeSort fun a b => !decide (b < a)).eraseReps
+open GenSoundTest (keyed rowsOf)
 
 /-- A table over this many rows is stored as its row count and `hash` of its `rowsOf`: its rows would make the
     baseline too large to review. A toolchain whose `hash` changes regenerates the baseline. -/
