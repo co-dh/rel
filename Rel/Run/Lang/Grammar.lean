@@ -138,6 +138,10 @@ syntax (name := wNeg) "-" noWs num : relWord
 -- a float, as Lean's scientific literal (`2.5`, `1e-3`, `1.5e10`), read at the object it is used at (`Elab.wordAt`)
 syntax (name := wSci) scientific : relWord
 syntax (name := wNegSci) "-" noWs scientific : relWord
+-- q's date `2024.01.15` and time `2024.01.15D12:30:00.5`, one word with no space inside: Lean's tokenizer reads
+-- `2024.01` `.` `15` (`D12` an identifier), so the word is these tokens adjacent, read at its object (`Elab.qForm`)
+syntax (name := wDate) scientific noWs "." noWs num : relWord
+syntax (name := wStamp) scientific noWs "." noWs num noWs ident noWs ":" noWs num noWs ":" noWs (num <|> scientific) : relWord
 
 syntax (name := hId) ident : relHead
 syntax (name := hSym) relSym : relHead
@@ -271,6 +275,10 @@ def wordOf (s : Syntax) : C String := match s.getKind with
   | ``wNeg => do pure ("-" ++ (← onText s[1] (tokText s[1]) Parse.word))
   | ``wSci => sci s[0]
   | ``wNegSci => do pure ("-" ++ (← sci s[1]))
+  -- its source text, the tokens adjacent (`noWs`)
+  | ``wDate | ``wStamp => match s.getSubstring? (withLeading := false) (withTrailing := false) with
+    | some t => pure t.toString
+    | none => failAt s "expected a date"
   | _ => onText s (tokText s[0]) Parse.word
 where sci (t : Syntax) : C String := match t.isScientificLit?, t[0].isAtom with
   | some _, true => pure t[0].getAtomVal
