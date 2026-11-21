@@ -82,15 +82,16 @@ error naming a doubled position), `kseen` on the `κ` columns gives each run's f
 the segment marks (`groupFold`'s first line), and a segmented `kscan .add` from `0` is the prefix sum `W`. A step is
 bad where it wrapped (`v` and `W − v` of one sign, `W` of the other) or reads or makes the null `-2^63`, as in
 `Tab.sum`; a segmented `kscan .or` carries it to the rest of its key, and those rows are dropped (`keep`). -/
-def sums {K : Obj} (x : Tab (.prod K .long) .long) : Except String (Tab (.prod K .long) .long) := do
+def sumsOn {K : Obj} {t : QAtomicType} (x : Tab (.prod K (.atom t)) .long) :
+    Except String (Tab (.prod K (.atom t)) .long) := do
   let C ← canon x
   let n := C.n
-  let (m, _, f) ← kseen n (← Vals.cols (A := .prod K .long) C.key)
+  let (m, _, f) ← kseen n (← Vals.cols (A := .prod K (.atom t)) C.key)
   if m ≠ n.toNat then
     let firsts ← kscatter .last m.toUSize f (← colConst m.toUSize 1) n 0
     let (d, sel) ← whereCol n (← colMap .eq n firsts (← colConst n 0))
-    let p ← Vals.gather (A := .long) d sel C.key.2
-    let at0 := if h : 0 < d.toNat then s!"{Vals.row (A := .long) p ⟨0, h⟩}" else "?"
+    let p ← Vals.gather (A := .atom t) d sel C.key.2
+    let at0 := if h : 0 < d.toNat then s!"{t.num (Vals.row (A := .atom t) p ⟨0, h⟩)}" else "?"
     throw s!"sums: x is not simple: two values at the position {at0} of one key ({n.toNat - m} doubled in all); \
       sums folds one value per (key, position)"
   let (gk, _, fk) ← kseen n (← Vals.cols C.key.1)
@@ -105,6 +106,12 @@ def sums {K : Obj} (x : Tab (.prod K .long) .long) : Except String (Tab (.prod K
   let bad ← colMap .or n ovf (← colMap .or n (← colMap .eq n W nul) (← colMap .eq n v nul))
   let badR := (← kscan .or false .i64 .i64 n seg [z, bad]).1
   keep ⟨n, C.key, ← colArr .add n W z⟩ (← colMap .not n badR badR)
+
+/-- **`sums` at the position object `P`**: `sumsOn` where `P` is an integer-stored atom (`intOrd`), whose canon
+order is its value order; the error at any other object. -/
+def sums {K : Obj} : {P : Obj} → Tab (.prod K P) .long → Except String (Tab (.prod K P) .long)
+  | .atom t, x => if t.intOrd then sumsOn x else throw s!"sums: positions of {repr t} are not ordered by value"
+  | .prod .., _ | .sum .., _ | .arr _, _ => throw "sums: the positions are no atom"
 
 end Tab
 

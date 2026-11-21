@@ -161,6 +161,9 @@ structure Prim where
       `sum`'s `ℕ`): each must be an `i64` number object, refused as `succ` refuses one (`Elab.numObj`), never left to
       fail inside its definition. -/
   num : List String := []
+  /-- Its object variables whose canon order it reads as their value order (`sums`'s positions): each must be an
+      object of an atom stored as an integer (`QAtomicType.intOrd`), refused by name elsewhere (`Elab.build`). -/
+  ord : List String := []
   deriving Inhabited
 
 def consRow : Prim :=
@@ -260,10 +263,10 @@ def prims : List Prim :=
    inlConvRow, inrConvRow,
    -- `sums(x)`: q's `sums` per key, `x : κ×ν ⟶ γ`, the key the source's first component; the fused form of
    -- `agg(dom(x) (𝟙 × ≥) dom(x), F(x) ⦇[0, plus]⦈)` (`rowDens`). Not `mono`: a larger `x` changes the sums. Its
-   -- definition is, as `asc`'s, no `Elab.dfns` row. The positions `ℕ` and the values `V` are two objects: only
-   -- `V` is summed, so only `V` is a number object (`num`)
-   { sym := "sums", num := ["ℕ", "V"],
-     sig := ([((.prod (.var {} "K") (.var {} "ℕ"), .var {} "V"), some false)], .prod (.var {} "K") (.var {} "ℕ"),
+   -- definition is, as `asc`'s, no `Elab.dfns` row. The positions `P` and the values `V` are two objects: only
+   -- `V` is summed, so only `V` is a number object (`num`); `P` is only ordered (`ord`)
+   { sym := "sums", num := ["V"], ord := ["P"],
+     sig := ([((.prod (.var {} "K") (.var {} "P"), .var {} "V"), some false)], .prod (.var {} "K") (.var {} "P"),
        .var {} "V"),
      mono := false, aop := .error "AOP declares no prefix sums per key", whole := true },
    flatRow,
