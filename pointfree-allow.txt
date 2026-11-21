@@ -12,3 +12,4 @@ Rel.Lang.rowDens
 Rel.Lang.stepAt
 Rel.Lang.succDen
 Rel.Lang.thinDen
+Rel.Lang.unaryDen
