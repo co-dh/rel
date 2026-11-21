@@ -126,8 +126,9 @@ def sumsOn {K : Obj} {t u : QAtomicType} (x : Tab (.prod K (.atom t)) (.atom u))
 /-- **`sums` at the position object `P`, the value object `V`**: `sumsOn` where `P` is an integer-stored atom
 (`intOrd`), whose canon order is its value order, and `V` an atom; the error at any other object. -/
 def sums {K : Obj} : {P V : Obj} → Tab (.prod K P) V → Except String (Tab (.prod K P) V)
-  | .atom t, .atom _, x =>
+  | .atom t, .atom .i64, x | .atom t, .atom .f64, x =>
     if t.intOrd then sumsOn x else throw s!"sums: positions of {repr t} are not ordered by value"
+  | .atom _, .atom u, _ => throw s!"sums: values of {repr u} have no sum here; cast them to f64 or i64 first (x $ F)"
   | .atom _, .prod .., _ | .atom _, .sum .., _ | .atom _, .arr _, _ => throw "sums: the values are no atom"
   | .prod .., _, _ | .sum .., _, _ | .arr _, _, _ => throw "sums: the positions are no atom"
 

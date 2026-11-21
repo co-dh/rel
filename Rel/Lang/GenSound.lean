@@ -817,8 +817,8 @@ theorem rowOK_sums : RowOK "sums" :=
   have h1 : rowArity "sums" = 1 := by decide
   rcases xs with _ | ⟨⟨X, Y, x⟩, _ | ⟨_, _⟩⟩ <;> simp only [List.length_cons, List.length_nil, h1] at hn <;>
     try omega
-  rcases σ with _ | ⟨a, σ⟩ <;>
-    simp only [Codes.at, List.getElem?_cons_zero, List.getD_cons_zero, List.getD_nil] at hv
+  rcases σ with _ | ⟨a, _ | ⟨b, _ | ⟨c, σ⟩⟩⟩ <;>
+    simp only [Codes.at, List.getElem?_cons_zero, List.getD_cons_zero, List.getD_cons_succ, List.getD_nil] at hv
   all_goals
     split at hv
     case isFalse => simp at hv

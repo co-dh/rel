@@ -157,10 +157,10 @@ structure Prim where
   /-- Its table is made from its relations' whole tables (`GenK.ofRel`): it needs no keys where they need none
       (`Tm.dem`), so a closed `asc(P)` runs whole at a source with no universe. -/
   whole : Bool := false
-  /-- Its object variables its constant reads at `.long` (`sums`'s positions `ℕ` and values `V`, `length`'s and
-      `sum`'s `ℕ`): each must be an `i64` number object, refused as `succ` refuses one (`Elab.numObj`), never left to
-      fail inside its definition. -/
-  num : List String := []
+  /-- Its number object variables, each with the atoms it runs at (`length`'s and `sum`'s `ℕ` at `i64`, `sums`'s values
+      `V` at `i64` and `f64`): an object of any other atom is refused as `succ` refuses one (`Elab.numObj`), never left
+      to fail inside its definition. -/
+  num : List (String × List Rel.QAtomicType) := []
   /-- Its object variables whose canon order it reads as their value order (`sums`'s positions): each must be an
       object of an atom stored as an integer (`QAtomicType.intOrd`), refused by name elsewhere (`Elab.build`). -/
   ord : List String := []
@@ -189,10 +189,10 @@ def mapRow : Prim :=
 -- `length = ⦇[0, π₁ succ]⦈`, `sum = ⦇[0, plus]⦈ʳ` (§4, `Elab.dfns`): each step kept in the object, as `succ`,
 -- `plus` keep theirs
 def lengthRow : Prim :=
-  { sym := "length", num := ["ℕ"], sig := ([], .list (.var {} "E"), .var {} "ℕ"),
+  { sym := "length", num := [("ℕ", [.i64])], sig := ([], .list (.var {} "E"), .var {} "ℕ"),
     aop := .ok `Freyd.Alg.RelSet.ListRel.length }
 def sumRow : Prim :=
-  { sym := "sum", num := ["ℕ"], sig := ([], .list (.var {} "ℕ"), .var {} "ℕ"),
+  { sym := "sum", num := [("ℕ", [.i64])], sig := ([], .list (.var {} "ℕ"), .var {} "ℕ"),
     aop := .ok `Freyd.Alg.RelSet.ListRel.sum }
 /-- `Rᴵ`: the family `R : I ⟶ A×B` as one relation `I×A ⟶ B`, the fused form of its definition
     `⟨π₁R,π₂⟩dom(π₁π₁ ∩ π₂)π₁π₂` (`Elab.dfns`), `R` run on the keys in demand (`Tab.flat`). -/
@@ -251,13 +251,13 @@ def prims : List Prim :=
      aop := .ok `Freyd.Alg.RelSet.ListRel.setify },
    -- `positions(p)`: dataframe §3.1's `where(dom(xs ≫ p))`, named so because `where` is a keyword (§c); it makes
    -- positions, numbers of `ℕ`, so it has no `dfn` until `rank` can be written and no use where `ℕ` has a universe
-   { sym := "positions", num := ["ℕ"],
+   { sym := "positions", num := [("ℕ", [.i64])],
      sig := ([((.var {} "B", .var {} "B"), some false)], .list (.var {} "B"), .list (.var {} "ℕ")),
      mono := false, aop := .error "AOP declares no positions of the elements of a list that pass a test" },
    -- `asc(P)`: q's `asc` of the set `dom P`, `j ↦` its `j`-th smallest element in `Obj.lt` order; not `mono`: a
    -- larger `P` renumbers. Its definition `(dom(P) Λ(> P) length)°` is no `Elab.dfns` row: `>` on any object
    -- (`Obj.lt`) has no term (`lt` is on ℕ's universe only), and no law proves `ascDen` equal to it
-   { sym := "asc", num := ["ℕ"], sig := ([((.var {} "B", .var {} "B"), some false)], .var {} "ℕ", .var {} "B"),
+   { sym := "asc", num := [("ℕ", [.i64])], sig := ([((.var {} "B", .var {} "B"), some false)], .var {} "ℕ", .var {} "B"),
      mono := false, aop := .error "AOP declares no numbering of a set by its order", whole := true },
    -- last, so the rows before keep their positions (`Rows.lean`'s numbering)
    inlConvRow, inrConvRow,
@@ -265,7 +265,7 @@ def prims : List Prim :=
    -- `agg(dom(x) (𝟙 × ≥) dom(x), F(x) ⦇[0, plus]⦈)` (`rowDens`). Not `mono`: a larger `x` changes the sums. Its
    -- definition is, as `asc`'s, no `Elab.dfns` row. The positions `P` and the values `V` are two objects: only
    -- `V` is summed, so only `V` is a number object (`num`); `P` is only ordered (`ord`)
-   { sym := "sums", num := ["V"], ord := ["P"],
+   { sym := "sums", num := [("V", [.i64, .f64])], ord := ["P"],
      sig := ([((.prod (.var {} "K") (.var {} "P"), .var {} "V"), some false)], .prod (.var {} "K") (.var {} "P"),
        .var {} "V"),
      mono := false, aop := .error "AOP declares no prefix sums per key", whole := true },
