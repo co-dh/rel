@@ -3,7 +3,7 @@
   Total and structural: each node is the `T` its `Gen.*_sound` lemma proves, written with the allegory's operators
   (`≫ ° ∩ ∪ 𝟙 𝟘`, D3 = E); `μ`, `ν` are `Core.Rel.mu`, `nu`, defined for every body, so no monotonicity is assumed here.
 -/
-import Rel.Run.Lang.Tm
+import Rel.Run.Lang.TmGen
 import Rel.Run.Where
 import Rel.AscOrder
 import Rel.Rep
@@ -300,20 +300,6 @@ def Sem.one {X Y A B : Obj} (D : Den X Y → Den A B) : List Sem → Den A B
 noncomputable def Val.args : List Nat → List Sem → Val
   | k :: ks, ⟨_, _, T⟩ :: ss => (Val.args ks ss).bind k T
   | _, _ => Val.empty
-
-/-- The object variables `σ` that make the pattern `o` the object `A`, extending `σ`: none where they cannot. -/
-def OExp.unify : OExp → Obj → List (String × Obj) → Option (List (String × Obj))
-  | .var _ n, A, σ => match σ.lookup n with
-    | some B => if A = B then some σ else none
-    | none => some ((n, A) :: σ)
-  | .prod a b, .prod A B, σ | .sum a b, .sum A B, σ => a.unify A σ >>= b.unify B
-  | .list a, .arr A, σ => a.unify A σ
-  | _, _, _ => none
-
-/-- The row `r`'s object variables (`Prim.vars` order) at `A ⟶ B`, read off its constant's type. -/
-def Prim.objs (r : Prim) (A B : Obj) : Option (List Obj) := do
-  let σ ← r.sig.2.1.unify A [] >>= r.sig.2.2.unify B
-  r.vars.mapM fun v => List.lookup v σ
 
 /-- A row of `prims`: its symbol and its objects at its object variables `σ`. -/
 structure RowCode where
