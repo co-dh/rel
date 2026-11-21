@@ -9,7 +9,8 @@ open Rel.Programs.prelude Rel.Programs.frame Rel.Programs.frameGroup in
 rel_program frameJoin where
     -- the matching position pairs
     J(a : β ⟶ κ, b : δ ⟶ κ, x : ν ⟶ β, y : μ ⟶ δ) : ν ⟶ μ ≜ x a (y b)°
-    joinOn(K : ν ⟶ μ, x : ν ⟶ β, y : μ ⟶ δ) : ρ ⟶ β×δ ≜ asc(ran(⟨𝟙, K⟩)) (x × y)
+    -- `⟨π₁ x, π₂ y⟩`, not `x × y`: the product of the two tables would be built whole before the pairs select from it
+    joinOn(K : ν ⟶ μ, x : ν ⟶ β, y : μ ⟶ δ) : ρ ⟶ β×δ ≜ asc(ran(⟨𝟙, K⟩)) ⟨π₁ x, π₂ y⟩
     innerJoin(a : β ⟶ κ, b : δ ⟶ κ, x : ν ⟶ β, y : μ ⟶ δ) : ρ ⟶ β×δ ≜ joinOn(J(a, b, x, y), x, y)
     -- the inner join on the constant key: `⊤ : ν ⟶ μ` would read the universe of `μ`, which an unbounded `μ` has not
     crossJoin(x : ν ⟶ β, y : μ ⟶ δ) : ρ ⟶ β×δ ≜ innerJoin(⊤ 𝟙(1), ⊤ 𝟙(1), x, y)
