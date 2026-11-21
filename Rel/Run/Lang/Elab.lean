@@ -50,8 +50,15 @@ def OTy.ofExpr : Lean.Expr → OTy
   | .mvar m => .mv m
   | e => .base s!"{e}"
 
+/-- The object `n` as a program writes it: another program's object, named by its constant
+    (`Rel.Programs.prelude.«1»`), by that constant's last component (`1`), read by Lean's name-literal parser; a name
+    that is no constant as it is. -/
+def nameShown (n : String) : String :=
+  match Lean.Syntax.decodeNameLit ("`" ++ n) with | some (.str _ s) => s | _ => n
+
+/-- `o` as the program writes it (printing only: a base object by `nameShown`). -/
 def OTy.exp : OTy → OExp
-  | .base n => .name {} n
+  | .base n => .name {} (nameShown n)
   | .prod a b => .prod a.exp b.exp
   | .sum a b => .sum a.exp b.exp
   -- `[A]` is an array; printed as the array the interpreter holds

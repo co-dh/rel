@@ -51,12 +51,12 @@ rel_program twiceT where
     schema Row = {sym : K, px : N}
     input t : Key ⟶ Row from "t"
 
-/-- error: line 59, col 5: input `t` from csv "t.csv": column 'val' is K×N; a CSV field holds an atom, a nullable atom `V+1` (`1` an object of one element) or a text `[C]`; declare it a table directory (drop `csv`) -/
+/-- error: line 59, col 5: input `t` from csv "t.csv": column 'N' appears twice in schema [K, N, N] -/
 #guard_msgs in
 rel_program csvProdT where
     obj K = {A,B}
     obj N
-    input t : N ⟶ K×N from csv "t.csv"
+    input t : N ⟶ K×(N×N) from csv "t.csv"
 
 /-- error: line 66, col 5: input `t` from csv "t.csv": column 'val' is a list of one of A, B; a CSV field holds a list of char only (text) -/
 #guard_msgs in
@@ -139,13 +139,13 @@ rel_program importT where
 #guard importT.inputs == [("Rel.Lang.TestIO.trades.t", true, "trades.csv")]
 #guard importT.outputs == []
 
-/-- error: line 147, col 5: input `t` from "t": the key is positions, stored Rel.Obj.atom (Rel.QAtomicType.i64), and F ⟶ N stores it Rel.Obj.atom (Rel.QAtomicType.f64); declare the key an object stored i64 -/
-#guard_msgs in
+-- any key object but the positions is a key column, `F ⟶ N` a keyed table of `f64` keys (ruling H); it was refused
+-- (on disk `key/` and `val/`, as any keyed table)
 rel_program floatKeyT where
     obj F : f64
     obj N
     input t : F ⟶ N from "t"
-
+#guard floatKeyT.inputs == [("t", false, "t")]
 /-! ## `n.io` (step I3): a CSV input, a positional and a keyed output, in a directory the test makes and removes -/
 
 -- `big` keeps the rows of `t` whose qty is above 100, renumbered from 0 when written; `pxOf : K ⟶ N` (symbol ↦ px of
@@ -301,3 +301,61 @@ info: ("name,px\nabc,10\n\"x,\"\"y\"\"\",\n,7\n",
 rel_program csvSumT where
     obj N
     input t : N ⟶ N+N from csv "t.csv"
+
+/-! ## The CSV columns follow the object: a record `S+1`, a product, a date key -/
+
+-- `N×(Q+1)`: the factor `N` one column, `Q+1` one nullable column per field of `Q`, labelled by its factor (`Q.sym`,
+-- `Q.bid`); both empty is the `1`
+open Rel.Programs.prelude in
+rel_program csvRecNullIO where
+    obj N
+    obj K = {A,B}
+    schema Q = {sym : K, bid : N}
+    input t : N ⟶ N×(Q+1) from csv "/data/tmp/rel-test-io-rec/in.csv"
+    output t to csv "/data/tmp/rel-test-io-rec/out.csv"
+
+-- `obj D : date` is no positions: its key is the column `key`, before `val`
+rel_program csvDateKeyIO where
+    obj D : date
+    obj N
+    input t : D ⟶ N from csv "/data/tmp/rel-test-io-rec/days.csv"
+    output t to csv "/data/tmp/rel-test-io-rec/days-out.csv"
+
+-- by hand: rows (5, (A,10)), (6, the `1`), (7, (B,0)), `Q+1`'s left side rows 0 and 2 at its positions 0, 1, its
+-- right side row 1; the date keys written back in key order; a row with one field of `Q` empty and not the other
+-- refused, naming the row and both columns
+/--
+info: ("N,Q.sym,Q.bid\n5,A,10\n6,,\n7,B,0\n",
+ "key,val\n2024-01-15,1\n2024-01-16,3\n",
+ [(0, 5, Sum.inl (0, 10)), (1, 6, Sum.inr 0), (2, 7, Sum.inl (1, 0))],
+ [(19737, 1), (19738, 3)],
+ "/data/tmp/rel-test-io-rec/bad.csv: data row 2: column 'Q.sym' is not empty and column 'Q.bid' is empty (null); the columns of one `S+1` are empty together, and all of them empty is the `1`")
+-/
+#guard_msgs in
+#eval show IO _ from do
+  let d := "/data/tmp/rel-test-io-rec"
+  if ← System.FilePath.pathExists d then IO.FS.removeDirAll d
+  IO.FS.createDirAll d
+  IO.FS.writeFile (d ++ "/in.csv") "N,Q.sym,Q.bid\n5,A,10\n6,,\n7,B,0\n"
+  IO.FS.writeFile (d ++ "/days.csv") "key,val\n2024-01-16,3\n2024-01-15,1\n"
+  csvRecNullIO.io; csvDateKeyIO.io
+  let out ← IO.FS.readFile (d ++ "/out.csv")
+  let days ← IO.FS.readFile (d ++ "/days-out.csv")
+  let cols : Db.CsvCols := [("N", .atom, .i64, []), ("Q.sym", .null, .i64, ["A", "B"]), ("Q.bid", .null, .i64, [])]
+  let S : Schema := [("val", .prod .long (.sum (.prod .long .long) (.atom .u8)))]
+  let back ← Table.readCsv [] S cols (d ++ "/out.csv")
+  let dback ← Table.readCsv [("key", .atom .date)] [("val", .long)] [("key", .atom, .date, []), ("val", .atom, .i64, [])]
+    (d ++ "/days-out.csv")
+  IO.FS.writeFile (d ++ "/bad.csv") "N,Q.sym,Q.bid\n5,A,10\n6,A,\n"
+  let bad ← try (do let _ ← Table.readCsv [] S cols (d ++ "/bad.csv"); pure "read") catch e => pure e.toString
+  IO.FS.removeDirAll d
+  return (out, days, back.toList, dback.toList, bad)
+
+-- refused, the objects printed as written (`1`, not its constant): a nullable column of a nullable atom
+open Rel.Programs.prelude in
+/-- error: line 361, col 5: input `t` from csv "t.csv": column 'a' is (N+1)+1; a CSV field holds an atom, a nullable atom `V+1` (`1` an object of one element) or a text `[C]`; declare it a table directory (drop `csv`) -/
+#guard_msgs in
+rel_program csvNestT where
+    obj N
+    schema R = {a : (N+1)+1}
+    input t : N ⟶ R from csv "t.csv"
