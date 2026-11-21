@@ -173,29 +173,88 @@ def encVals (path : String) : (A : Obj) → List (USize × Enc) →
     let ⟨r, y, es⟩ ← encVals path b es
     if h : m = n then pure ⟨n, ⟨l, r, tag, h ▸ idx, x, y⟩, es⟩ else .error s!"{path}: sum tags of {n} and positions of {m} rows"
 
+/-- How many atom columns `A` has when it is a product of atoms (the `S` of a CSV `S+1`); none for any other object. -/
+def atomCount : Obj → Option Nat
+  | .atom _ => some 1
+  | .prod a b => return (← atomCount a) + (← atomCount b)
+  | _ => none
+
+/-- The parts of a side of object `A`, `ps` in `cols`' order, as its CSV columns' parts (`Db.CsvShape.atoms`), with
+    the parts left over. A sum is the CSV `S+1` (`Expand.csvLeaves`): one nullable column per atom of `S`, each with
+    its own copy of the sum's tags, positions and null values; every other part as it lies. -/
+def toCsv {α : Type} (path : String) : Obj → List α → Except String (List α × List α)
+  | .atom _, x :: ps => pure ([x], ps)
+  | .prod a b, ps => do let (x, ps) ← toCsv path a ps; let (y, ps) ← toCsv path b ps; pure (x ++ y, ps)
+  | .arr (.atom _), lo :: hi :: e :: ps => pure ([lo, hi, e], ps)
+  | .sum a (.atom _), t :: i :: ps => match atomCount a, ps.drop (atomCount a |>.getD 0) with
+    | some k, r :: ps' => pure ((ps.take k).flatMap fun v => [t, i, v, r], ps')
+    | _, _ => .error s!"{path}: a sum whose left is no product of atoms, or too few parts for it, has no CSV columns"
+  | _, _ => .error s!"{path}: a side whose object is no CSV column set (a list of no atom, a sum of no `S+1`), or too few parts"
+
+/-- `k` groups of four parts from the front of `cs` (one CSV nullable column's tags, positions, values, nulls), and
+    the parts left. -/
+def quads {α : Type} : Nat → List α → Option (List (α × α × α × α) × List α)
+  | 0, cs => some ([], cs)
+  | k + 1, t :: i :: v :: r :: cs => (quads k cs).map fun (g, cs) => ((t, i, v, r) :: g, cs)
+  | _ + 1, _ => none
+
+/-- The converse of `toCsv`: the side `A`'s parts in `cols`' order from its CSV columns' parts `cs`, the header names
+    of those columns `ns` in step, with what is left of both. The nullable columns of one `S+1` are null in the same
+    rows (the `1` is every field of `S` empty): their tags must agree, else the first row where two differ is named. -/
+def ofCsv (path : String) : Obj → List (USize × Enc) → List String →
+    Except String (List (USize × Enc) × List (USize × Enc) × List String)
+  | .atom _, x :: cs, _ :: ns => pure ([x], cs, ns)
+  | .prod a b, cs, ns => do
+    let (x, cs, ns) ← ofCsv path a cs ns; let (y, cs, ns) ← ofCsv path b cs ns; pure (x ++ y, cs, ns)
+  | .arr (.atom _), lo :: hi :: e :: cs, _ :: ns => pure ([lo, hi, e], cs, ns)
+  | .sum a (.atom _), cs, ns => do
+    let some k := atomCount a | .error s!"{path}: a sum whose left is no product of atoms has no CSV columns"
+    let some ((t, i, v, r) :: g, cs) := quads k cs | .error s!"{path}: too few column parts for {k} nullable columns"
+    let some c := ns.head? | .error s!"{path}: no header name left for a nullable column"
+    let ⟨n, x, _⟩ ← encArr path .u1 [t]
+    for ((t', _), c') in g.zip ns.tail do
+      let ⟨m, y, _⟩ ← encArr path .u1 [t']
+      unless m = n do .error s!"{path}: nullable columns '{c}' of {n} rows and '{c'}' of {m}"
+      for j in [0:n.toNat] do
+        if hj : j < n.toNat ∧ j < m.toNat then
+          let (a, b) := (x.get ⟨j, hj.1⟩, y.get ⟨j, hj.2⟩)
+          let s (z : Bool) := if z then "empty (null)" else "not empty"
+          unless a == b do
+            .error s!"{path}: data row {j + 1}: column '{c}' is {s a} and column '{c'}' is {s b}; the columns of one \
+              `S+1` are empty together, and all of them empty is the `1`"
+    pure ([t, i, v] ++ g.map (·.2.2.1) ++ [r], cs, ns.drop k)
+  | _, _, _ => .error s!"{path}: a side whose object is no CSV column set (a list of no atom, a sum of no `S+1`), or too few parts"
+
 /-- The CSV file `path` as the table `K ⟶ S`, its header `cols` (the key's columns then the value's, `Db.CsvCols`),
-    each column read straight into its encoding (`Db.csvRead`, `encVals`); `K = []`: positions, the frame of its rows
-    (`frame`), else keyed, its rows canonical (`canon`). -/
+    each column read straight into its encoding (`Db.csvRead`, `ofCsv`, `encVals`); `K = []`: positions, the frame of
+    its rows (`frame`), else keyed, its rows canonical (`canon`). -/
 def readCsv (K S : Schema) (cols : Db.CsvCols) (path : String) : IO (Tab K.obj S.obj) := do
   let (n, es) ← Db.csvRead path cols
-  let side (R : Schema) (es : List (USize × Enc)) : Except String (Vals R.obj n × List (USize × Enc)) := do
-    let ⟨m, x, es⟩ ← encVals path R.obj es
-    if h : m = n then pure (h ▸ x, es) else .error s!"{path}: a side of {m} rows in a file of {n}"
+  let side (R : Schema) (es : List (USize × Enc)) (ns : List String) :
+      Except String (Vals R.obj n × List (USize × Enc) × List String) := do
+    let (ps, es, ns) ← ofCsv path R.obj es ns
+    let ⟨m, x, rest⟩ ← encVals path R.obj ps
+    unless rest.isEmpty do .error s!"{path}: {rest.length} column parts past a side"
+    if h : m = n then pure (h ▸ x, es, ns) else .error s!"{path}: a side of {m} rows in a file of {n}"
   let done (es : List (USize × Enc)) : Except String Unit :=
     unless es.isEmpty do .error s!"{path}: {es.length} column parts past the schema"
+  let ns := cols.map (·.1)
   match K with
-  | [] => IO.ofExcept (do let (v, es) ← side S es; done es; frame v)
+  | [] => IO.ofExcept (do let (v, es, _) ← side S es ns; done es; frame v)
   | K => IO.ofExcept (do
-    let (k, es) ← side K es
-    let (v, es) ← side S es
+    let (k, es, ns) ← side K es ns
+    let (v, es, _) ← side S es ns
     done es; canon path ⟨n, k, v⟩)
 
-/-- The encodings of the side `x`'s atom columns with their counts, in `cols`' order: a CSV column's parts as
+/-- The encodings of the side `x`'s CSV columns' parts with their counts (`toCsv` of `cols`' order), as
     `Db.CsvShape.atoms` lists them; which objects a CSV column may be is `Db.Csv.schema`'s to say. -/
-def csvEncs {A : Obj} {n : USize} (path : String) (x : Vals A n) : Except String (List (USize × Enc)) :=
-  (cols A x "").mapM fun
+def csvEncs {A : Obj} {n : USize} (path : String) (x : Vals A n) : Except String (List (USize × Enc)) := do
+  let ps ← (cols A x "").mapM fun
     | (_, .vector _ k e _) => .ok (k, e)
     | (p, _) => .error s!"{path}: column part `{p}` is not a vector"
+  let (cs, rest) ← toCsv path A ps
+  unless rest.isEmpty do .error s!"{path}: {rest.length} column parts past a side"
+  pure cs
 
 /-- The table `t : K ⟶ S` as the CSV file `path`, the converse of `readCsv`: its header `cols`, then each row's key
     columns and value columns, written from their encodings (`Db.csvWrite`); `K = []`: positions, the value columns
