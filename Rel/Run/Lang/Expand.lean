@@ -6,10 +6,10 @@ import Rel.Run.ValEq
 import Rel.Run.Table
 
 /-! The expander of `rel_program n`: each closed definition `x ≜ …` becomes the Lean definition
-    `n.x : Except String (Tab A B)`, a composition of `GenK` ops run in the empty context (`Rel.runE`), or the
-    message of the op that failed. At elaboration time the program is elaborated (`elabE`, `build`) to its core term `Tm`, as a run does; the term is then read into a
-    Lean `Expr` constructor by constructor. Every closed sub-term (no keys, no fixed-point variable) becomes one
-    constant `n.c.<i>`, structurally equal ones the same constant, so it is computed once; a fixed point's body is a Lean `fun X => …`; a closed `≫`/`∩`/`−`/`\` runs as a bit-matrix plan. -/
+    `n.x : Except String (Tab A B)`, its term's code (`Tm.gen`) run in the empty context (`Rel.runE`), or the
+    message of the op that failed. Here the program is elaborated (`elabE`, `build`) to its core terms `Tm`, as a
+    run does; `Expand.emit` (`Rel.Run.Lang.TmGen`) numbers their closed parts into one share table per program and
+    emits each term as the `Expr` that builds it (`tmE`). -/
 
 namespace Rel.Lang
 
@@ -172,7 +172,8 @@ inductive Io
   /-- `input n : A ⟶ B from path`: the table of key columns `key` (`[]`: positions) and value columns `val`, read from
       the table directory `path`, or from the CSV file `path` with the header `csv`. -/
   | input (n : String) (A B : Obj) (key val : Schema) (csv : Option Db.CsvCols) (path : String)
-  /-- A run-time definition: the kernel twin of its constant `c` applied to the tables of the run-time names `deps`. -/
+  /-- A run-time definition: the body of its constant `c` run with its variables bound to the tables of the run-time
+      names `deps` (`Expand.ioGo`). -/
   | defn (n : String) (c : Lean.Name) (deps : List String)
   /-- `output n to path`: the table of `n` written as `key ⟶ val`, to the table directory `path`, or to the CSV file
       `path` with the header `csv`; `n` a run-time name or the closed definition whose constant is `closed`. -/
@@ -808,33 +809,21 @@ def read (calls : Lean.Name → Option Once) (homes : List (Lean.Name × Program
     false rt
   pure (ds, ps, cs, e.objs, os, io ++ io')
 
-/-! ### The core term as an `Expr` -/
+/-! ### Constants as the `Expr` that builds them (`tmE`), and the registry -/
 
 open Lean Meta
 
-
-/-- A term that needs no keys and reads no fixed-point variable: computed once, its own constant (`share`). -/
+/-- A term that needs no keys and reads no fixed-point variable: computed once, its slot of the share table
+    (`Tm.number`). -/
 def closed {A B : Obj} (t : Tm A B) : Bool := !t.dem && t.fv.isEmpty
-
-/-- `t` with each closed sub-term `R` wrapped as `.share k R`, `k` the next number: `code` keeps each number's
-    code and `Tm.fv` stops there (a share is closed), so building and proving a closed sub-term never rebuilds it. -/
-partial def number : {A B : Obj} → Tm A B → StateM Nat (Tm A B)
-  | _, _, .share _ R => number R
-  | _, _, t => do w (← t.mapM fun c => number c)
-where w {A B : Obj} (t : Tm A B) : StateM Nat (Tm A B) :=
-  if closed t then modifyGet fun k => (.share k t, k + 1) else pure t
-
-/-- The kernel twin of the constant `c` of a definition elaborated once: its parameters and result are code
-    (`Rel`), not plans, built on the kernel path where its body is on it (`emit`). -/
-def kernelTwin (c : Name) : Name := c ++ `kernel
-
-/-- The constant of each closed value, and the code of each numbered sub-term (`number`). -/
-abbrev RM := (StateT (Std.HashMap Lean.Expr Name × Std.HashMap Nat Lean.Expr) MetaM)
 
 /-- The constant `c : ty := v`, compiled, with the heartbeats a `def` command of its own would have: one
     `rel_program` command adds them all, and a program's count of constants is no measure of any one's cost.
     Regular hints, as `def` gives: an opaque `c` makes the kernel unfold the other side of `c =?= v` first. -/
 def addConst (c : Name) (ty v : Lean.Expr) : MetaM Unit := withCurrHeartbeats do
+  -- equal subterms as one object: `tmE` rebuilds an object's `oE` at each node, and every traversal after this
+  -- (`getMaxHeight`, the compiler, the kernel) visits each object once instead of once per occurrence
+  let v := ShareCommon.shareCommon' v
   let hints := .regular (getMaxHeight (← getEnv) v + 1)
   addAndCompile (.defnDecl { name := c, levelParams := [], type := ty, value := v, hints, safety := .safe })
 
@@ -868,128 +857,6 @@ def valsE : (A : Obj) → (n : USize) → Vals A n → Except String Lean.Expr
 
 def relE {A B : Obj} (R : Tab A B) : Except String Lean.Expr := do
   pure (g ``Gen.relV #[oE A, oE B, uE R.n, ← valsE A R.n R.key, ← valsE B R.n R.val])
-
-def liftE {α : Type} (x : Except String α) : RM α := match x with
-  | .ok a => pure a
-  | .error e => throwError "rel_program expansion: {e}"
-
-
-mutual
-
-/-- `t`'s code, `Gen.Fn d A B`: a closed `t` is its constant (`share`), any other its node; a numbered sub-term's
-    is built once. -/
-partial def code (pre : Name) (ph : List Lean.Expr) (ρ : List (Nat × Lean.Expr)) {A B : Obj} (t : Tm A B) : RM Lean.Expr := do
-  if let .share k R := t then
-    if let some e := (← get).2[k]? then return e
-    let e ← code pre ph ρ R
-    modify fun (m, cs) => (m, cs.insert k e); return e
-  -- a term demanding nothing of its context (`dem = false`) has one table, so it is computed once; but `R × S`'s is
-  -- the CROSS of its parts' (already computed once): it runs on the pairs its context knows (`GenK.prod`), as
-  -- `⟨π₁ R, π₂ S⟩` does, and whole only where none is known
-  let once := !t.dem && !(t matches .prod ..)
-  if closed t then
-    let v ← node pre ph ρ t
-    -- at a placeholder of the constant being built (`Once.ph`, here `ph`) the value lives under its binders: not shared
-    if (v.find? ph.contains).isSome then return v
-    return mkConst (← share pre A B (if once then g ``GenK.memo #[oE A, oE B, v] else v))
-  -- one reading a call's parameters or a round's table has one table per call or round: computed once there, where
-  -- left lazy each context that forces it would run it again (a twin's body reading `x ⟨k, t⟩` at each use)
-  else if once then return g ``GenK.memo #[oE A, oE B, ← node pre ph ρ t]
-  else node pre ph ρ t
-
-/-- The constant of the closed code `v : Rel A B`: one per structurally equal value, so a closed term with
-    `dem = false` (wrapped in `GenK.memo` by `code`) is computed once and any other runs on the context it is given. -/
-partial def share (pre : Name) (A B : Obj) (v : Lean.Expr) : RM Name := do
-  if let some c := (← get).1[v]? then return c
-  let i := (← get).1.size
-  let c := pre ++ `c ++ Name.mkSimple s!"c{i}"
-  addConst c (mkApp2 (mkConst ``Rel.Rel) (oE A) (oE B)) v
-  modify fun (m, cs) => (m.insert v c, cs); pure c
-
-/-- A call, its constant's kernel twin applied to its arguments' code: a `Rel`. -/
-partial def spine (pre : Name) (ph : List Lean.Expr) (ρ : List (Nat × Lean.Expr)) {A B : Obj} : Tm A B → RM Lean.Expr
-  | .share _ f => spine pre ph ρ f
-  | .arg f x => do return mkApp (← spine pre ph ρ f) (← code pre ph ρ x)
-  | .call _ c os _ | .callCv _ c _ os .. => do return mkAppN (mkConst (kernelTwin c)) (os.map oE).toArray
-  | _ => throwError "rel_program expansion: internal: a call's head is not a constant"
-
-/-- `φ`'s body as `fun X => …`, the variable `k` read as `X : Tab A B` (`GenK.nu`, `GenK.mu`). -/
-partial def body (pre : Name) (ph : List Lean.Expr) (ρ : List (Nat × Lean.Expr)) (A B : Obj) (k : Nat) (b : Tm A B) :
-    RM Lean.Expr := do
-  withLocalDeclD `X (mkApp2 (mkConst ``Rel.Tab) (oE A) (oE B)) fun x => do
-    mkLambdaFVars #[x] (← code pre ph ((k, x) :: ρ) b)
-
-/-- `t`'s own node, its `GenK` body with its parts by `code`. -/
-partial def node (pre : Name) (ph : List Lean.Expr) (ρ : List (Nat × Lean.Expr)) {A B : Obj} (t : Tm A B) : RM Lean.Expr := do
-  let c {X Y : Obj} (u : Tm X Y) := code pre ph ρ u
-  match A, B, t with
-  | A, B, .val R => return g ``GenK.val #[oE A, oE B, ← liftE (relE R)]
-  | A, _, .uni (m := m) U => return g ``GenK.uni #[oE A, uE m, ← liftE (valsE A m U)]
-  | A, B, .zero => return g ``GenK.zero #[oE A, oE B]
-  | A, _, .id => return g ``GenK.id #[oE A]
-  | A, B, .top V => return g ``GenK.top #[oE A, oE B, ← c V]
-  | .prod A B, _, .outl => return g ``GenK.outl #[oE A, oE B]
-  | .prod A B, _, .outr => return g ``GenK.outr #[oE A, oE B]
-  | A, C, .comp (B := B) R S => return g ``GenK.comp #[oE A, oE B, oE C, bE S.dem, ← c R, ← c S]
-  | B, A, .conv R => return g ``GenK.conv #[oE A, oE B, ← c R]
-  | A, B, .meet R S => return g ``GenK.meet #[oE A, oE B, bE R.dem, bE S.dem, ← c R, ← c S]
-  | A, B, .join R S => return g ``GenK.join #[oE A, oE B, bE R.dem, bE S.dem, ← c R, ← c S]
-  | A, B, .diff R S => return g ``GenK.diff #[oE A, oE B, bE R.dem, bE S.dem, ← c R, ← c S]
-  | A, _, .dom (B := B) R => return g ``GenK.dom #[oE A, oE B, bE R.dem, ← c R]
-  | B, _, .ran (A := A) R => return g ``GenK.ran #[oE A, oE B, ← c R]
-  | B, C, .ldiv (A := A) R S UB UC => return g ``GenK.ldiv #[oE A, oE B, oE C, ← c R, ← c S, ← c UB, ← c UC]
-  | A, B, .rdiv (C := C) R S UA UB => return g ``GenK.rdiv #[oE A, oE B, oE C, ← c R, ← c S, ← c UA, ← c UB]
-  | A, .prod B C, .pair R S => return g ``GenK.pair #[oE A, oE B, oE C, bE R.dem, bE S.dem, ← c R, ← c S]
-  | .prod A C, .prod B D, .prod R S => return g ``GenK.prod #[oE A, oE B, oE C, oE D, ← c R, ← c S]
-  | A, .arr B, .lam R => return g ``GenK.lam #[oE A, oE B, bE R.dem, ← c R]
-  | .arr A, .arr B, .E R => return g ``GenK.E #[oE A, oE B, bE R.dem, ← c R]
-  | _, B, .est Q => return g ``GenK.est #[oE B, ← c Q]
-  | _, .arr B, .thin Q => return g ``GenK.thin #[oE B, ← c Q]
-  | A, .arr B, .nil => return g ``GenK.nil #[oE A, oE B]
-  | .arr B, _, .atPos k => return g ``GenK.atPos #[oE B, toExpr k]
-  | _, _, .own R => c R
-  | _, _, .succ U => return g ``GenK.succ #[← c U]
-  | _, _, .arith t k U => return g ``GenK.arith #[toExpr t, toExpr k, ← c U]
-  | _, _, .leq t U => return g ``GenK.leq #[toExpr t, ← c U]
-  | _, _, .lt t U => return g ``GenK.lt #[toExpr t, ← c U]
-  | .arr Y, V, .foldr e S => return g ``GenK.foldr #[oE Y, oE V, bE S.dem, ← c e, ← c S]
-  | .arr Y, V, .fold e S => return g ``GenK.fold #[oE Y, oE V, bE S.dem, ← c e, ← c S]
-  | _, _, .share _ R => c R
-  | .prod I (.arr Y), V, .foldI e S =>
-    return g ``GenK.foldI #[oE I, oE Y, oE V, bE e.dem, bE S.dem, ← c e, ← c S]
-  | A, B, .var _ v => match ρ.lookup v with
-    -- by what the binder holds: a kernel twin's parameter (code), a fixed point's variable (a `Tab`)
-    | some x => do
-      let ty ← inferType x
-      if ty.isAppOf ``Rel.Rel then return x
-      if ty.isAppOf ``Rel.Tab then
-        return g ``GenK.const #[oE A, oE B, mkApp3 (mkConst ``Except.ok [0, 0]) (mkConst ``String) ty x]
-      throwError "rel_program expansion: internal: the variable {v} is bound to neither code nor a table: {ty}"
-    | none => throwError "rel_program expansion: internal: the variable {v} is not bound here"
-  | A, B, .nu v S b => return g ``GenK.nu #[oE A, oE B, ← c S, ← body pre ph ρ A B v b]
-  -- `μ` and hylo also take their text: they throw the message naming it
-  | A, B, .mu v w n b => return g ``GenK.mu #[oE A, oE B, toExpr w, toExpr n, ← body pre ph ρ A B v b]
-  | A, B, .hylo v w b => do
-    -- children read in no shape bound no recursion: running `𝟘` for them would compute something else
-    let some ch := b.kids v A
-      | throwError "rel_program expansion: {w}: the hylo's body reads its variable in a shape that gives no children (Tm.kids)"
-    return g ``GenK.hylo #[oE A, oE B, toExpr w, bE ch.dem, bE b.dem, ← c ch, ← body pre ph ρ A B v b]
-  | A, B, t@(.prim _) | A, B, t@(.arg ..) => match primOf t with
-    | some (r, as) => do
-      let some f ← primFit r A B (as.toArray.map fnTy)
-        | throwError "rel_program expansion: row `{r.sym}` at {oE A} → {oE B} given {as.length} relations fits none of its wrappers {primWrappers}"
-      pure (f.beta (← as.toArray.mapM fun x => code pre ph ρ x.2.2))
-    | none => spine pre ph ρ t
-  | _, _, t@(.call ..) | _, _, t@(.callCv ..) => spine pre ph ρ t
-
-end
-
-/-- `k` under one local of each type `tys`, closed over them: `(∀ xs, ty, fun xs => v)` of `k`'s `(ty, v)`. -/
-def lams (tys : List Lean.Expr) (k : Array Lean.Expr → RM (Lean.Expr × Lean.Expr)) (xs : Array Lean.Expr := #[]) :
-    RM (Lean.Expr × Lean.Expr) :=
-  match tys with
-  | [] => do let (t, v) ← k xs; pure (← mkForallFVars xs t, ← mkLambdaFVars xs v)
-  | ty :: tys => withLocalDeclD `x ty fun x => lams tys k (xs.push x)
 
 /-- `x` and `y` are the same columns: of one object, column by column the same vector (`valEq`). -/
 def valsEq : (A : Obj) → {n : USize} → Vals A n → (C : Obj) → {m : USize} → Vals C m → Bool
@@ -1093,199 +960,6 @@ def Registry.call? (r : Registry) : MetaM (Lean.Name → Option Once) := do
         throwError "rel registry: the key `{o.key}` is held by `{o.const}` and by `{o'.const}`, built by two \
           modules neither importing the other, with different bodies: at {d}"
   pure (r.calls.lookup ·)
-
-def pairT (a b : Lean.Expr) : Lean.Expr := mkApp2 (mkConst ``Prod [0, 0]) a b
-def listT (a : Lean.Expr) : Lean.Expr := mkApp (mkConst ``List [0]) a
-
-/-- The objects `objs` as a print reads them (`infoOf`). -/
-def objsE (objs : Objs) : MetaM Lean.Expr := do
-  let ty := pairT (mkConst ``String) (mkConst ``ObjInfo)
-  mkListLit ty (objs.map fun (x, i) => mkApp4 (mkConst ``Prod.mk [0, 0]) (mkConst ``String) (mkConst ``ObjInfo)
-    (toExpr x) (g ``infoOf #[toExpr i.ty, toExpr i.elems, toExpr i.range]))
-
-/-- `t : Tab A B` as a relation computed now (`Rel.tab`), the form a kernel twin takes its parameters in. -/
-def tabRel (A B t : Lean.Expr) : Lean.Expr :=
-  mkApp3 (mkConst ``Rel.Rel.tab) A B (mkApp3 (mkConst ``Except.ok [0, 0]) (mkConst ``String) (mkApp2 (mkConst ``Tab) A B) t)
-
-/-- `m >>= fun x => k x` in `IO`, `x : α`, the rest an `IO Unit` (`ioE`). -/
-def bindIO (inst m α : Lean.Expr) (x : String) (k : Lean.Expr → MetaM Lean.Expr) : MetaM Lean.Expr :=
-  withLocalDeclD (.mkSimple x) α fun v => do
-    pure (mkAppN (mkConst ``Bind.bind [0, 0]) #[mkConst ``IO, inst, α, mkConst ``Unit, m, ← mkLambdaFVars #[v] (← k v)])
-
-/-- The writes of `n.io` (`ioE`), after each output's table is bound: `ws` the writes so far, `σ` the run-time names'
-    tables (name, `A`, `B`, table); a closed definition's table from its constant (`Rel.tab`), run as a run-time one's
-    (`Table.ofRun`). An output keyed by positions writes its value side, renumbered (`Table.write`), any other the key
-    table and the value table (`Table.writeKeyed`); a CSV output both forms in one file (`Table.writeCsv`). -/
-def ioOut (inst done : Lean.Expr) (σ : List (String × Lean.Expr × Lean.Expr × Lean.Expr)) :
-    List (String × Obj × Obj × Schema × Schema × Option Db.CsvCols × String × Option Lean.Name) → List Lean.Expr →
-      MetaM Lean.Expr
-  | [], ws => ws.foldrM (fun w r => bindIO inst w (mkConst ``Unit) "_" fun _ => pure r) done
-  | (x, A, B, k, v, c, p, cl) :: os, ws => do
-    let write (t : Lean.Expr) : Lean.Expr := match c with
-      | some h => mkApp5 (mkConst ``Table.writeCsv) (toExpr k) (toExpr v) (toExpr h) (toExpr p) t
-      | none => if k.isEmpty
-        then mkApp4 (mkConst ``Table.write) (mkApp3 (mkConst ``Tab.n) (oE A) (oE B) t) (toExpr v) (toExpr p)
-          (mkApp3 (mkConst ``Tab.val) (oE A) (oE B) t)
-        else mkApp4 (mkConst ``Table.writeKeyed) (toExpr k) (toExpr v) (toExpr p) t
-    match cl, σ.lookup x with
-    | some c, _ =>
-      bindIO inst (mkApp4 (mkConst ``Table.ofRun) (oE A) (oE B) (toExpr x) (mkApp3 (mkConst ``Rel.Rel.tab) (oE A) (oE B)
-        (mkConst c))) (mkApp2 (mkConst ``Tab) (oE A) (oE B)) x fun t => ioOut inst done σ os (ws ++ [write t])
-    | none, some (_, _, t) => ioOut inst done σ os (ws ++ [write t])
-    | none, none => throwError "rel_program expansion: internal: the output `{x}` is no run-time name bound before it"
-
-/-- The reads and run-time definitions of `n.io` (`ioE`) from `ss` on, each one `reach` holds bound once in statement
-    order: an input read from its path (`Table.read`, `readKeyed`, `readCsv`), a definition its kernel twin applied
-    to the tables of its run-time names and run (`Table.ofRun`); then `fin` of the tables bound. -/
-def ioGo (inst : Lean.Expr) (reach : List String)
-    (fin : List (String × Lean.Expr × Lean.Expr × Lean.Expr) → MetaM Lean.Expr) :
-    List Io → List (String × Lean.Expr × Lean.Expr × Lean.Expr) → MetaM Lean.Expr
-  | [], σ => fin σ
-  | .input x A B k v c p :: ss, σ => if !reach.contains x then ioGo inst reach fin ss σ else
-    let m := match c with
-      | some h => mkApp4 (mkConst ``Table.readCsv) (toExpr k) (toExpr v) (toExpr h) (toExpr p)
-      | none => if k.isEmpty then mkApp2 (mkConst ``Table.read) (toExpr v) (toExpr p)
-        else mkApp3 (mkConst ``Table.readKeyed) (toExpr k) (toExpr v) (toExpr p)
-    bindIO inst m (mkApp2 (mkConst ``Tab) (oE A) (oE B)) x fun t =>
-      ioGo inst reach fin ss ((x, oE A, oE B, t) :: σ)
-  | .defn x c ds :: ss, σ => if !reach.contains x then ioGo inst reach fin ss σ else do
-    let tw := kernelTwin c
-    let some ci := (← getEnv).find? tw
-      | throwError "rel_program: `{x}` reaches an output and has no kernel twin `{tw}` (a node of its body has no \
-          GenK body), so `io` cannot compute it"
-    let args ← ds.mapM fun d => match σ.lookup d with
-      | some (A, B, t) => pure (tabRel A B t)
-      | none => throwError "rel_program expansion: internal: `{d}` is not bound before `{x}`"
-    let arity ← forallTelescope ci.type fun xs _ => pure xs.size
-    unless arity == args.length do
-      throwError "rel_program: the kernel twin `{tw}` of `{x}` takes {arity} arguments, and `{x}` mentions the \
-        run-time names {ds}; a run-time definition takes no object variable"
-    let ty ← instantiateForall ci.type args.toArray
-    let .app (.app _ A) B := ty.consumeMData
-      | throwError "rel_program expansion: internal: the kernel twin `{tw}` of `{x}` is at {ty}, no `Rel A B`"
-    bindIO inst (mkApp4 (mkConst ``Table.ofRun) A B (toExpr x) (mkAppN (mkConst tw) args.toArray))
-      (mkApp2 (mkConst ``Tab) A B) x fun t => ioGo inst reach fin ss ((x, A, B, t) :: σ)
-  | .output .. :: ss, σ => ioGo inst reach fin ss σ
-
-/-- `n.io : IO Unit` (IO design B): the inputs the outputs reach read and the run-time definitions they reach
-    computed, once each in statement order (`ioGo`); every output's table; then the writes in statement order
-    (`ioOut`), so a failure in reading or computing writes no file. -/
-def ioE (io : List Io) : MetaM Lean.Expr := do
-  let inst ← synthInstance (mkApp (mkConst ``Bind [0, 0]) (mkConst ``IO))
-  let outs := io.filterMap fun | .output x A B k v c p cl => some (x, A, B, k, v, c, p, cl) | _ => none
-  let done ← mkAppOptM ``Pure.pure #[mkConst ``IO, none, mkConst ``Unit, mkConst ``Unit.unit]
-  -- the run-time names the outputs reach, through each definition's own (each mentions only names before it)
-  let reach := io.reverse.foldl (init := outs.map (·.1)) fun r s => match s with
-    | .defn x _ ds => if r.contains x then r ++ ds else r
-    | _ => r
-  ioGo inst reach (fun σ => ioOut inst done σ outs []) io []
-
-/-- The Lean definitions of what the program `n` reads (`read`): `n.x` for each closed definition, its
-    sub-terms' constants `n.c.c<i>`, `n.expanded` (the definitions with their objects), `n.objs`, `n.printed`
-    (each `print`'s line and ok bit), `n.prints` (the lines), `n.failures` (`failures`: each `check` that does not
-    hold, and each term that threw) and `n.ok`, that there is none; `n.inputs`, `n.outputs` (each statement's name,
-    `csv`, path, an import's inputs first) and `n.io` (`ioE`). -/
-def emit (n : Name) (r : Read) : MetaM Unit := do
-  let (ds, ps, cs, objs, os, io) := r
-  -- one numbering over the whole program, as the code of each number is kept across it
-  let ((ds, ps, cs), fs) := Prod.fst <| (do
-    let fs ← os.mapM fun o => do let ⟨A, B, t⟩ := o.res; return { o with res := ⟨A, B, ← number t⟩ }
-    let ds ← ds.mapM fun (x, ⟨A, B, t⟩) => return (x, ⟨A, B, ← number t⟩)
-    let ps ← ps.mapM fun (x, ⟨A, B, t⟩, s, u) => return (x, ⟨A, B, ← number t⟩, s, u)
-    let cs ← cs.mapM fun (p, x, y, eq, s, u, ⟨A, B, R, S⟩) =>
-      return (p, x, y, eq, s, u, ⟨A, B, ← number R, ← number S⟩)
-    pure ((ds, ps, cs), fs) : StateM Nat ((List (String × Res) × List (String × Top) × List Chk) × List Once)).run 0
-  addConst (n ++ `objs) (mkConst ``Objs) (← objsE objs)
-  let os := mkConst (n ++ `objs)
-  -- a closed term's table: its code run in the empty context `{}`, which knows neither side; each side a `none`
-  -- at its field's type, read off the field's default (which has no executable code of its own)
-  let app (A B : Obj) (t : Lean.Expr) : MetaM Lean.Expr := do
-    let none' (f : Name) := return mkApp (mkConst ``Option.none [0]) (← inferType (g f #[oE A, oE B])).appArg!
-    pure (g ``Rel.Rel.runE #[oE A, oE B, t,
-      g ``Rel.Known.mk #[oE A, oE B, ← none' ``Rel.Known.dom._default, ← none' ``Rel.Known.ran._default,
-        ← none' ``Rel.Known.pairs._default]])
-  -- each definition elaborated once whose body has a kernel body at every node: its kernel twin
-  -- `n.x.kernel : (A₁ … : Obj) → Rel U₁ → … → Rel R₁ → … → Rel A B` (`kernelTwin`), generic over the objects of its
-  -- generic variables, then code in and out, the universes it reads then its parameters; `n.x.conv.kernel` its
-  -- converse, when its body has one (`convTm`)
-  let ((), st₀) ← (do
-    for o@{ const := c, gen, params := qs, res := ⟨A, B, t⟩, .. } in fs do
-      let nv := gen.length
-      let reads := (List.range nv).map t.fv.contains
-      let vo (k : Nat) : Obj := if gen.getD k false then (varObj o.ph k).getD .long else .long
-      let rk := (List.range nv).filter (reads.getD · false)
-      let gk := (List.range nv).filter (gen.getD · false)
-      let mk (k : Name) (X Y : Obj) (u : Tm X Y) : RM Unit := do
-        let pl (X Y : Obj) := mkApp2 (mkConst ``Rel.Rel) (oE X) (oE Y)
-        let (ty, v) ← lams (gk.map fun _ => mkConst ``Obj) fun xs => do
-          -- each placeholder `varObj k` becomes its binder
-          let sub (z : Lean.Expr) := z.replace fun s =>
-            (gk.zip xs.toList).findSome? fun (k, a) => if (varObj o.ph k).map toExpr == some s then some a else none
-          lams ((rk.map fun k => sub (pl (vo k) (vo k))) ++ qs.map fun (P, Q, _) => sub (pl P Q)) fun ys => do
-            let ρ := o.binds.zip ys.toList
-            pure (sub (pl X Y), sub (← code n (o.ph.map (oE <| .atom ·)) ρ u))
-        addConst k ty v
-      -- each twin's numbered codes live under its own binders: built with an empty number cache, dropped after
-      let twin (k : Name) (X Y : Obj) (u : Tm X Y) : RM Unit := do
-        let env ← getEnv
-        if u.onKernel fun c => env.contains (kernelTwin c) then
-          let saved := (← get).2
-          modify fun (m, _) => (m, {}); mk (kernelTwin k) X Y u; modify fun (m, _) => (m, saved)
-      if let some (c', ⟨X, Y, u⟩) := convOf o then twin c' X Y u
-      twin c A B t : RM Unit).run ({}, {})
-  -- the registry holds each body as elaborated, not numbered: a call copies it (`callTm`), and the numbers are this
-  -- program's
-  for o in r.2.2.2.2.1 do modifyEnv (relRegistry.addEntry · (.call o.key o))
-  -- every node of every term the program runs has a `GenK` body, a call one where its constant has a kernel twin
-  let env ← getEnv
-  let tw (c : Name) := env.contains (kernelTwin c)
-  let off := ds.flatMap (fun (_, ⟨_, _, t⟩) => t.offKernel tw) ++ ps.flatMap (fun (_, ⟨_, _, t⟩, _, _) => t.offKernel tw)
-    ++ cs.flatMap fun (_, _, _, _, _, _, ⟨_, _, R, S⟩) => R.offKernel tw ++ S.offKernel tw
-  unless off.isEmpty do
-    let ctors := (← getConstInfoInduct ``Tm).ctors
-    let kinds := (off.map fun (i, c) =>
-      let k := toString ((ctors.getD i .anonymous).componentsRev.headD .anonymous)
-      if c.isEmpty then k else s!"{k} {c}").eraseDups
-    throwError "rel_program {n}: these nodes have no kernel body (GenK), so the program cannot run: {kinds}"
-  let ((entries, printed, checked, errs), _) ← (do
-    let mut es := []
-    for (x, ⟨A, B, t⟩) in ds do
-      let v ← code n [] [] t
-      let k := Parse.constOf n x
-      unless !t.dem do throwError "rel_program expansion: internal: `{x}` needs keys"
-      addConst k (mkApp2 (mkConst ``Except [0, 0]) (mkConst ``String) (mkApp2 (mkConst ``Tab) (oE A) (oE B))) (← app A B v)
-      es := es ++ [g ``Gen.entry #[toExpr x, oE A, oE B, mkConst k]]
-    -- each term's error message, so `failures` names the op that could not run
-    let one (x : String) {A B : Obj} (t : Tm A B) : RM Lean.Expr := do
-      pure (mkApp4 (mkConst ``Prod.mk [0, 0]) (mkConst ``String) (mkApp (mkConst ``Option [0]) (mkConst ``String))
-        (toExpr x) (g ``Rel.Rel.err #[oE A, oE B, ← code n [] [] t]))
-    let errs := (← ds.mapM fun (x, ⟨_, _, t⟩) => one x t) ++ (← ps.mapM fun (x, ⟨_, _, t⟩, _, _) => one x t) ++
-      (← cs.mapM fun (_, x, _, _, _, _, ⟨_, _, R, _⟩) => one x R) ++
-      (← cs.mapM fun (_, _, y, _, _, _, ⟨_, _, _, S⟩) => one y S)
-    let ps ← ps.mapM fun (x, ⟨A, B, t⟩, s, u) => do
-      pure (g ``printText #[oE A, oE B, os, toExpr x, toExpr s, toExpr u, ← app A B (← code n [] [] t)])
-    let cs ← cs.mapM fun (p, x, y, eq, s, u, ⟨A, B, R, S⟩) => do
-      pure (g ``checkErr #[oE A, oE B, os, toExpr p, toExpr x, toExpr y, toExpr eq, toExpr s, toExpr u,
-        ← app A B (← code n [] [] R), ← app A B (← code n [] [] S)])
-    pure (es, ps, cs, errs) : RM (List Lean.Expr × List Lean.Expr × List Lean.Expr × List Lean.Expr)).run st₀
-  let ety := pairT (mkConst ``String) (mkConst ``Gen.Gv)
-  addConst (n ++ `expanded) (listT ety) (← mkListLit ety entries)
-  let pty := pairT (mkConst ``String) (mkConst ``Bool)
-  addConst (n ++ `printed) (listT pty) (← mkListLit pty printed)
-  -- every term spelled with its implicit arguments: `mkAppM` unifies, and its `isDefEq` is a heartbeat check
-  -- against the whole command's count, which the expansion's own work has already spent (`addConst`)
-  addConst (n ++ `prints) (listT (mkConst ``String)) (mkApp4 (mkConst ``List.map [0, 0]) pty (mkConst ``String)
-    (mkApp2 (mkConst ``Prod.fst [0, 0]) (mkConst ``String) (mkConst ``Bool)) (mkConst (n ++ `printed)))
-  let cty := pairT (mkApp (mkConst ``Option [0]) (mkConst ``Err)) (mkConst ``Bool)
-  addConst (n ++ `failures) (listT (mkConst ``Err))
-    (g ``failures #[← mkListLit cty checked,
-      ← mkListLit (pairT (mkConst ``String) (mkApp (mkConst ``Option [0]) (mkConst ``String))) errs])
-  addConst (n ++ `ok) (mkConst ``Bool) (mkApp2 (mkConst ``List.isEmpty [0]) (mkConst ``Err) (mkConst (n ++ `failures)))
-  -- IO design B: what the program reads and writes, by statement, and the one action that does it
-  let lty := listT (pairT (mkConst ``String) (pairT (mkConst ``Bool) (mkConst ``String)))
-  addConst (n ++ `inputs) lty (toExpr (io.filterMap fun | .input x _ _ _ _ c p => some (x, c.isSome, p) | _ => none))
-  addConst (n ++ `outputs) lty (toExpr (io.filterMap fun | .output x _ _ _ _ c p _ => some (x, c.isSome, p) | _ => none))
-  addConst (n ++ `io) (mkApp (mkConst ``IO) (mkConst ``Unit)) (← ioE io)
 
 end Expand
 

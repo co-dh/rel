@@ -1033,10 +1033,10 @@ Diff table 的「状态」列：✅ 后面是完成它的步骤；🔄 是部分
   （`Rel/Run/Lang/TmGen.lean`），定理是 `Tm.gen_sound`（`Rel/Lang/GenSound.lean`）。`gen_sound` 要求 `t.GenHyp`
   （不动点体正，每个 `share` 槽表示其部分），所以不是每个程序都能包成 subtype；按设计卡片“`rep` 与 `compile`”，保留普通 `Tm.gen`
   加单独的定理。
-- ⬜ 7.3 `rel_program` 发出 `compile t`，从 `Expand.lean` 删除旧路径。
+- ✅ 7.3 `rel_program` 发出 `compile t`，从 `Expand.lean` 删除旧路径。
   Q1 选 A（设计卡片“闭项只算一次”：在共享常量处只算一次）：闭部分是 η 旁边携带的 share 表；`rel_program` 在程序和
   call body 上给它们编号；`.share k R` 读槽 k；`Sound` 增加：每个槽计算 ⟦R⟧。三部分：
-  - ⬜ 7.3a `Tm.gen` 及其运行时部分移到 `RelRun`（`Rel/Run/Lang/TmGen.lean`）；`Tm.code` 不缓存 `.prod`
+  - ✅ 7.3a `Tm.gen` 及其运行时部分移到 `RelRun`（`Rel/Run/Lang/TmGen.lean`）；`Tm.code` 不缓存 `.prod`
     （旧 `Expand.code` 的条件）；`Expand.tmE`：一个 `Tm` 作为构造它的 `Expr`，`GenSoundTest` 测 round-trip。
   - ✅ 7.3b share 表（分支 `s73b`）：`Code` 是结构 `{var, sh}`，`sh : Codes` 是 share 表，`Code.bind`、`Code.args`
     保留它（`Code.args η ks xs`）。`Tm.number`（`RelRun`，`TmGen`）给闭部分编号并进入 call body；相等的部分
@@ -1046,7 +1046,14 @@ Diff table 的「状态」列：✅ 后面是完成它的步骤；🔄 是部分
     只改了 `gen_sound` 与 `gen_wf` 的 share、call 两个 case。未证：`Tm.number`/`Code.shares` 满足 `Codes.Shares`（7.3c）。
     测量（`test/TestCompile.lean`，`REL_COMPILE_TIMES`）：chess 整个程序的 share 表 31.1 s，之后每个定义 0 ms；
     旧的 `Tm.gen` 路径 `chess.mate` 246 s、`chess.m` 245 s。所有程序合计 90.5 s；963 个定义与生成的常量相等，pin 不变。
-  - ⬜ 7.3c `emit` 发出 `Tm.gen η ⌜t⌝`，删除旧路径（`node`、`code`、`spine`、`body`）。
+  - ✅ 7.3c（分支 `s73c`）`Expand.emit` 移到 `TmGen`：程序的全部项（定义、print、check、output 用到的 run-time
+    定义的 body）一起 `Code.program` 编号；槽 k 的项是常量 `n.c.t<k>`（`tmE sh`：已编号的部分写成它们的常量），
+    `n.shares : Code := Code.shares #[…]` 每个程序一个，只算一次；`n.x := runE (Tm.gen n.shares ⌜t⌝) {}`。
+    `io` 的 run-time 定义：`Tm.gen (Code.args n.shares o.binds 表) ⌜body⌝`（`Sound.inputs` 的形状）。没有 code
+    的节点用 `Tm.hasCode` 判断，报错列出 `noCode`（从 `test/TestCompile.lean` 移来），消息同旧。删除：`node`、
+    `code`、`share`、`spine`、`body`、kernel twin（`kernelTwin`、`lams`、`RM`）、`Expand.number`（`Tm.number`
+    取代）、`Tm.kernelNode`/`offKernel`/`onKernel`。保留 `primFit`：`once` 用它判断对象变量是不是数对象，
+    `rowGens` 用它生成。未证：`Code.program` 建的表满足 `Codes.Shares`，只有测试（`TestCompile`）。
 - ⬜ 7.4 清理：`LR unused`、`unused-simp`、`remove-import`。
 - ✅ 7.5 已合并（dbdc72d，`gates3`）：gate `bang`（allowlist 32）、`pointfree`（13）、`kernel-tested`（68 of 84）；`pointfree` 的范围 = L。原条目，规则 gate（owner 选）：三个 gate，allowlist 只减不增：`!` 下标（今天 32 个 def）；关系值 def 的 body 里的
   `∃`（`Rel/Lang/Den.lean` 11 个 + `thinLDen`）；测试 module 里用到的每个 extern（85 个里 69 个没有被用到）。

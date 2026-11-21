@@ -31,12 +31,12 @@ end Tab
 /-- The float verbs, each a row of `prims` under its q name with its `Op` and the atom of its target `D`: the `Op` on
     the operands' `f64` words, the answer written at `D` (`Tab.floatOp`). An `Op` that reads one operand
     (`Op.readsAcc` false) is a row `F ⟶ D`, one that reads two a row `F×F ⟶ D` (`x xexp y` is `x^y`, libm `pow`, so a
-    negative base with an integer exponent has its value). `floor` answers at `i64` as q's `floor` does, the rest at
-    `f64`. -/
+    negative base with an integer exponent has its value). `floor` answers at `i64` as q's `floor` does, and `round`
+    (half to even, `Op.roundEven`; q has none) with it, the rest at `f64`. -/
 def floatOps : List (String × Op × QAtomicType) :=
   [("sqrt", .fsqrt, .f64), ("neg", .fneg, .f64), ("abs", .fabs, .f64), ("exp", .fexp, .f64), ("log", .flog, .f64),
    ("sin", .fsin, .f64), ("cos", .fcos, .f64), ("tan", .ftan, .f64), ("asin", .fasin, .f64), ("acos", .facos, .f64),
-   ("atan", .fatan, .f64), ("floor", .ffloor, .i64), ("xexp", .fpow, .f64)]
+   ("atan", .fatan, .f64), ("floor", .ffloor, .i64), ("round", .fround, .i64), ("xexp", .fpow, .f64)]
 
 namespace Tab
 

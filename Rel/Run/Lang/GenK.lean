@@ -12,7 +12,7 @@ import Rel.Run.Where
 import Rel.Run.Asc
 import Rel.Run.Cast
 
-/-! The code a program runs: one body per node of its terms (`Tm.onKernel`), each a composition of the `Tab`
+/-! The code a program runs: one body per node of its terms (`Tm.gen`), each a composition of the `Tab`
     operators over the five kernels. A `tab` holds the message of the op that could not run, never a dropped
     error. `≫` and `\` take a bit matrix by `Tab.bitsWin` (`Tab.compSel`, `Tab.ldivSel`). -/
 
@@ -234,8 +234,8 @@ def mu (A B : Obj) (what : String) (cap : Nat) (φ : Tab A B → Fn false A B) :
 end GenK
 
 /-- The rows of `prims` with a kernel body: each row's `Tab` operator, run under the `GenK` twin of the wrapper its
-    old constant runs under (`Expand.primE`), as `RowCode` gives the old ones; a row not here keeps a program off
-    the kernel path (`Tm.kernelNode`). The operator is a constant given its leading arguments first: the `floatOps`
+    old constant runs under (`Expand.primE`), as `RowCode` gives the old ones; a row not here has no code
+    (`Tm.hasCode`). The operator is a constant given its leading arguments first: the `floatOps`
     rows share `Tab.floatOp`, given the row. -/
 def kernRows : List (String × Lean.Name × List Lean.Expr) :=
   ([("∋", ``Tab.mem), ("τ", ``Tab.tau), ("length", ``Tab.length), ("setify", ``Tab.setify),
@@ -260,51 +260,6 @@ def kernRows : List (String × Lean.Name × List Lean.Expr) :=
 
 -- every kernel row is a row of `prims`
 #guard kernRows.all fun (s, _) => prims.any (·.sym == s)
-
-/-- `t`'s own node has a kernel body (`GenK`): T2's `val uni 𝟘 𝟙 ° ≫ ∩ ∪ − dom ran`, and `own`, which runs its
-    part; a `var`, bound to a table or a parameter's code; an `arg`, whose head decides (a `call` or a row). -/
-def Tm.kernelNode {A B : Obj} : Tm A B → Bool
-  | .val _ | .uni _ | .zero | .id | .comp .. | .conv _ | .meet .. | .join .. | .diff .. | .dom _ | .ran _
-  | .own _ => true
-  | .leq .. => true
-  | .lt .. => true
-  | .succ _ => true
-  | .arith .. => true
-  | .lam _ => true
-  | .E _ => true
-  | .nil => true
-  | .est _ => true
-  | .thin _ => true
-  | .atPos _ => true
-  | .fold .. | .foldr .. | .foldI .. => true
-  | .prim r => (kernRows.lookup r.sym).isSome
-  | .top _ => true
-  | .outl => true
-  | .outr => true
-  | .pair .. => true
-  | .prod .. => true
-  | .ldiv .. => true
-  | .rdiv .. => true
-  | .nu .. => true
-  | .mu .. => true
-  | .hylo .. => true
-  | .var .. => true
-  | .arg .. => true
-  | _ => false
-
-/-- The nodes of `t` with no kernel body, each as its constructor's index (`Tm.ctorIdx`) and what names it: for a
-    `call` its constant, for a `prim` its row's symbol, else `""`. A call has one where `twin` says its constant has
-    a kernel twin (`Expand.emit` builds one for a definition whose body is on the kernel path). A `share` is entered
-    here, though `Tm.parts` does not enter it. -/
-partial def Tm.offKernel (twin : Lean.Name → Bool) {A B : Obj} (t : Tm A B) : List (Nat × String) :=
-  match t with
-  | .share _ R => R.offKernel twin
-  | .call _ c .. | .callCv _ c .. => if twin c then [] else [(t.ctorIdx, toString c)]
-  | t => (if t.kernelNode then [] else [(t.ctorIdx, match t with | .prim r => r.sym | _ => "")]) ++
-    t.parts.flatMap fun ⟨_, _, u⟩ => u.offKernel twin
-
-/-- Every node of `t` has a kernel body: the test that puts a program on the kernel path. -/
-def Tm.onKernel (twin : Lean.Name → Bool) {A B : Obj} (t : Tm A B) : Bool := (t.offKernel twin).isEmpty
 
 /-! ### T4, T5: `≤ < succ`, the value verbs, `Λ E nil est thin at`, and the wrapper `after` of the rows -/
 

@@ -30,6 +30,16 @@ pub fn floor64(x: f64) -> f64 {
     if t > x { t - 1.0 } else { t }
 }
 
+/// `Op.roundEven` (Rel/Kernel/Op.lean) step for step: the `f64` word `x` rounded half to even from `floor64` and the gap
+/// `x - floor`, a zero answer keeping `x`'s sign, a NaN itself; `core` has no `round_ties_even`.
+pub fn round_even(x: u64) -> u64 {
+    let v = f64::from_bits(x);
+    let y = floor64(v);
+    let d = v - y;
+    let r = if d < 0.5 { y } else if 0.5 < d { y + 1.0 } else if floor64(y / 2.0) * 2.0 == y { y } else { y + 1.0 };
+    if v.is_nan() { x } else if r == 0.0 { x & 0x8000_0000_0000_0000 } else { r.to_bits() }
+}
+
 
 
 
