@@ -2220,14 +2220,6 @@ def litRes (p : Pos) (a b : OTy) (ps : List (Tup × Tup)) (gd : Option String) :
       | some d => ⟨e.pos, s!"`{d}` at the objects of this call: {e.msg}"⟩
       | none => e
 
-/-- The objects at which `t` reads the variable `k` outside any call (a call reads only its own). -/
-partial def Tm.varAt (k : Nat) : {A B : Obj} → Tm A B → List (Obj × Obj)
-  | A, B, .var _ j => if j == k then [(A, B)] else []
-  | _, _, t => t.parts.flatMap fun ⟨_, _, c⟩ => c.varAt k
-
-partial def Tm.closeVars (ks : List Nat) : {A B : Obj} → Tm A B → Tm A B
-  | _, _, .var d k => .var (d && !ks.contains k) k
-  | _, _, t => Id.run (t.mapM fun c => pure (c.closeVars ks))
 
 mutual
 
@@ -2432,12 +2424,10 @@ def build : Pre → Except Err Res
       -- only an argument given a variable of its own (`callOf`) takes the form chosen here
       let dem := (xs.zip rs).any fun (x, r) => !(x matches .var ..) && r.2.2.dem
       let ⟨A', B', t⟩ ← if dem then build od else build cl
-      (ks.zip rs).forM fun (k, ⟨X, Y, _⟩) => (t.varAt k).forM fun (X', Y') =>
-        unless X' == X && Y' == Y do throw ⟨dp, s!"DIAG `{c}` reads {k} at {repr X'} ⟶ {repr Y'}, arg {repr X} ⟶ {repr Y}"⟩
       -- `od` reads every parameter on demand; one whose argument is closed is read whole, as it is given, so the
       -- call needs keys only where its expansion does
-      let t := if !dem then t else t.closeVars (((ks.zip xs).zip rs).filterMap fun ((k, x), ⟨_, _, r⟩) =>
-        if !(x matches .var ..) && !r.dem then some k else none)
+      let t := if !dem then t else t.subst (((ks.zip xs).zip rs).filterMap fun ((k, x), ⟨A, B, r⟩) =>
+        if !(x matches .var ..) && !r.dem then some (k, ⟨A, B, .var false k⟩) else none)
       let u :=rs.foldl (fun f ⟨_, _, x⟩ => .arg f x) (Tm.call ks (.mkSimple c) [] t)
       -- `Tm.dem` counts an argument run on demand even where the body closes it: that call is the expansion's
       if u.dem && !t.dem then internal dp s!"`{c}` closes an argument that needs keys"
@@ -2445,7 +2435,7 @@ def build : Pre → Except Err Res
       else internal dp s!"`{c}`'s body is not at the objects of its call"
     match viaCall with
     | .ok r => pure r
-    | .error e => if e.msg.startsWith "DIAG" then throw e else build alt
+    | .error _ => build alt
   -- the body read whole each round, on its source's universe when it needs keys
   | .fix p least k x S q a b => do
     let A ← toObj objs mc dp a; let B ← toObj objs mc dp b
