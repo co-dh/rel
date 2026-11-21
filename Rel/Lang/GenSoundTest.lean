@@ -93,7 +93,7 @@ run_cmd do
         if t.hasCode && keyed A && keyed B && c matches .ok _ then cands := cands.push (t.size, s!"{n}.{x}", r, v)
   -- a constant whose payload `valsE` cannot rebuild (symbol, general, ALP) is counted, not sampled
   let (built, refused) := (cands.qsort (·.1 < ·.1)).toList.partitionMap fun (k, nm, r, v) =>
-    match Expand.tmE r.2.2 with | .ok e => .inl (k, nm, r, v, e) | .error m => .inr s!"`{nm}`: {m}"
+    match Expand.tmE #[] r.2.2 with | .ok e => .inl (k, nm, r, v, e) | .error m => .inr s!"`{nm}`: {m}"
   logInfo m!"Expand.tmE rebuilds {built.length} of {cands.size} definitions; refuses {refused.length}: {refused.take 3}"
   let has (p : Lean.Expr → Bool) (e : Lean.Expr) := (e.find? p).isSome
   let objs (i : Nat) (x : Lean.Expr) := x.getAppArgs[i]?.any fun o => !o.isAppOf ``List.nil

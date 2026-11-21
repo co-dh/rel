@@ -1,5 +1,5 @@
 import Rel.Run.Lang.Grammar
-import Rel.Run.Lang.Expand
+import Rel.Run.Lang.TmGen
 import Lean
 
 /-! The command `rel_program n where`: it reads the grammar (`Grammar`) into the AST and defines `n : Program`;

@@ -60,8 +60,8 @@ inductive Tm : Obj → Obj → Type where
   | foldr {E V : Obj} (e : Tm V V) (S : Tm (.prod E V) V) : Tm (.arr E) V
   /-- `⦇e,S⦈`, the left fold, on the arrays in demand: each read from index 0, `S` on `(acc, x)`. -/
   | fold {E V : Obj} (e : Tm V V) (S : Tm (.prod V E) V) : Tm (.arr E) V
-  /-- `R`, closed, numbered `k` among the expansion's sub-terms (`Expand.number`): its code is built once
-      (`Expand.code`). -/
+  /-- `R`, closed, numbered `k` among the program's closed parts (`Tm.number`): its code is built once
+      (`Code.shares`). -/
   | share {A B : Obj} (k : Nat) (R : Tm A B) : Tm A B
   /-- `⦇e,S⦈` given a family (§e), on the pairs (key, array) in demand: one fold with carrier `I×V`, seeded at
       each key by the fibre of `e` there, its step `S` given `((i,v),x)` and carrying the key `i`. -/
@@ -137,7 +137,7 @@ def Tm.dem : {A B : Obj} → Tm A B → Bool
   | _, _, .foldr .. | _, _, .fold .. | _, _, .foldI .. | _, _, .hylo .. => true
 
 /-- `t` with each of its parts through `f`, one level down; every walk over `Tm` is an instance (`Tm.parts`,
-    `Tm.fv`, `Expand.mus`, `Expand.number`). A `share` is closed and numbered, so no walk enters it. -/
+    `Tm.fv`, `Expand.mus`, `Tm.number`). A `share` is closed and numbered, so no walk enters it. -/
 def Tm.mapM {m : Type → Type} [Monad m] (f : {A B : Obj} → Tm A B → m (Tm A B)) :
     {A B : Obj} → Tm A B → m (Tm A B)
   | _, _, .top V => return .top (← f V)

@@ -8,7 +8,7 @@ import Rel.Lang.GenSoundTest
 
     - The differential test: each closed definition of every registered program, re-read as a `Tm`
       (`GenSoundTest.reread`) where `Tm.gen` has code at every node (`Tm.hasCode`), run as
-      `(Tm.code η t).runE {}`, `η` the table of the program's closed parts (`Code.program`), and required to have
+      `(Tm.code η t).runE {}`, `η` the table of the program's closed parts (`Code.program`, `Code.shares`), and required to have
       the result of the constant `rel_program` generated
       (`n.expanded`). So on these definitions the generated code equals `Tm.gen`'s, and where the term has no
       `Tm.gap` node `Tm.gen_sound` relates `Tm.gen` to `Tm.den` under its hypotheses (the bit-matrix laws, `LamLaw`
@@ -65,35 +65,6 @@ def diff (b : Json) (s : String) (rs : List (List Nat)) : Except String (Option 
     if n == rs.length && d == (hash rs).toNat then return none
     return some s!"rows differ: {rs.length} rows, digest {(hash rs).toNat} in the run; {n}, {d} in the baseline"
 
-/-- `t`'s constructor's name (`ctors`, by `Tm.ctorIdx`). -/
-def ctorName (ctors : List Name) {A B : Obj} (t : Tm A B) : String :=
-  toString ((ctors.getD t.ctorIdx .anonymous).componentsRev.headD .anonymous)
-
-/-- The head of the spine `t`: its row (`arg` of a row with no code at these objects), or another constructor. -/
-partial def spineHead (ctors : List Name) {A B : Obj} : Tm A B → String
-  | .arg f _ => spineHead ctors f
-  | .prim r => s!"arg {r.sym}"
-  | t => s!"arg headed by {ctorName ctors t}"
-
-mutual
-/-- The nodes of `t` where `Tm.gen` returns its error table (`Tm.hasCode` false there, true at their parts): the
-    constructor, and for a row or a spine its row's symbol. -/
-partial def noCode (ctors : List Name) {A B : Obj} (t : Tm A B) : List String :=
-  if t.hasCode then [] else match t with
-  | .prim r => [s!"prim {r.sym}"]
-  | .arg .. => match argNoCode ctors t with
-    | [] => [spineHead ctors t]
-    | l => l
-  | _ => match t.parts.flatMap fun ⟨_, _, u⟩ => noCode ctors u with
-    | [] => [ctorName ctors t]
-    | l => l
-
-/-- The nodes with no code in the arguments of the spine `t`. -/
-partial def argNoCode (ctors : List Name) {A B : Obj} : Tm A B → List String
-  | .arg f x => argNoCode ctors f ++ noCode ctors x
-  | _ => []
-end
-
 /-- One more than every variable `t` reads or binds outside a call's body: a number no binder of `t` shadows. -/
 partial def fresh {A B : Obj} (t : Tm A B) : Nat :=
   let own := match t with | .var _ k | .nu k .. | .mu k .. | .hylo k .. => k + 1 | _ => 0
@@ -148,7 +119,8 @@ run_cmd do
     let mut prev : List (Nat × Res) := []
     -- the program numbered as one (`Code.program`): each closed part, a call body's included, computed once
     let t0 ← IO.monoMsNow
-    let (dn, η0) ← IO.lazyPure fun _ => Code.program (ds.map (·.2))
+    let (dn, ts) := Code.program (ds.map (·.2))
+    let η0 ← IO.lazyPure fun _ => Code.shares ts
     times := times.push s!"{n}.(share table)\t{(← IO.monoMsNow) - t0}"
     let dn := (ds.map (·.1)).zip dn
     let mut η : Code := η0
