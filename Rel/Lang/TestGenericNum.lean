@@ -127,4 +127,33 @@ rel_program avgGOpen where
     x : N ⟶ [Z] ≜ {(0,[1 2 3 4])}
     print x avgG
 
+-- `sum` at the object variable itself: the constant is built with φ at `.long` (`dfns` has no form at a
+-- placeholder, `Expand.once`), so a use at f64 or at a universe builds the expansion there (`Pre.call`'s `alt`),
+-- where `build` chooses the row: the fused f64 fold, the i64 one, the fold cut to `0…5`; through a second generic
+-- definition (`g`) likewise
+open Rel.Programs.prelude in
+rel_program sumGG where
+    sumT(x : ν ⟶ [φ]) : ν ⟶ φ ≜ x sum
+    sumN(x : ν ⟶ [ψ]) : ν ⟶ ψ ≜ sumT(x)
+    avgS : [φ] ⟶ φ ≜ ⟨sum, length $ φ⟩%
+
+open Rel.Programs.prelude sumGG in
+rel_program sumGT where
+    obj N
+    obj F : f64
+    obj I
+    obj P = 0…5
+    x : N ⟶ [F] ≜ {(0,[1.5 2.5]),(1,[0.25])}
+    y : N ⟶ [I] ≜ {(0,[1 2 3]),(1,[5 -7])}
+    z : N ⟶ [P] ≜ {(0,[1 2]),(1,[4 3])}
+    check sumT(x) = {(0,4.0),(1,0.25)}
+    check sumN(x) = {(0,4.0),(1,0.25)}
+    check x avgS = {(0,2.0),(1,0.25)}
+    check sumT(y) = {(0,6),(1,-2)}
+    check sumN(y) = {(0,6),(1,-2)}
+    check sumN(z) = {(0,3)}
+
+-- by hand: 1.5+2.5 = 4, 4/2 = 2; 1+2+3 = 6, 5−7 = −2; at P = 0…5, 1+2 = 3 and 4+3 = 7 ∉ P, so row 1 has no sum
+#guard sumGT.failures.map toString == []
+
 end Rel.Lang.TestGenericNum
