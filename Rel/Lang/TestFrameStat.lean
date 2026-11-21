@@ -1,8 +1,9 @@
 import Rel.Programs.FrameGroup
 
 /-! The real-valued statistics of `frameStat` (`avg` `var` `svar` `dev` `sdev` `cov` `scov` `corr` `quantile`
-    `skewness` `zScore` `valueProportions` `describe`), each in `F : f64` through `$` and the true quotient `%`, never an integer quotient.
-    They cast the column's values to `F` first and sum with prim `sum` there, so integer and `f64` columns both work.
+    `skewness` `zScore` `valueProportions` `describe`), each generic over its result's float object `φ`, which each
+    check fixes: its other side read at the program's own `F : f64`, or `𝟙(F)` where that side is `𝟘`. They cast the
+    column's values to `φ` first and sum with prim `sum` there, so integer and `f64` columns both work.
     Expected rows worked by hand with values exact in binary. -/
 
 namespace Rel.Lang.TestFrameStat
@@ -80,16 +81,16 @@ rel_program frameStatT where
     one : N ⟶ N ≜ {(0,7)}
     check summarize(F(one) avg, one) = {(∗,7.0)}
     check summarize(F(one) var, one) = {(∗,0.0)}
-    check summarize(F(one) svar, one) = 𝟘
+    check summarize(F(one) svar, one) 𝟙(F) = 𝟘
     check quantile({(∗,0.5)}, one) = {(∗,7.0)}
     -- zScore: no sample std at one row, so no rows
-    check zScore(one) = 𝟘
+    check zScore(one) 𝟙(F) = 𝟘
     check describe(one) ⟨π₁, ⟨π₂ π₁, ⟨π₂ π₂ π₁ [𝟙, {(∗,-1.0)}], π₂ π₂ π₂⟩⟩⟩ = {(∗,(1,(7.0,(-1.0,(7,7)))))}
-    -- no rows: no answer
+    -- no rows: no answer (`𝟙(F)` fixes the result object, which `𝟘` does not)
     z : N ⟶ N ≜ 𝟘
-    check summarize(F(z) avg, z) = 𝟘
+    check summarize(F(z) avg, z) 𝟙(F) = 𝟘
     check quantile({(∗,0.5)}, z) = 𝟘
-    check describe(z) = 𝟘
+    check describe(z) (𝟙 × (𝟙(F) × 𝟙)) = 𝟘
     -- count 3, mean 4, sample std 3, min 1, max 7
     check describe(t) ⟨π₁, ⟨π₂ π₁, ⟨π₂ π₂ π₁ [𝟙, {(∗,-1.0)}], π₂ π₂ π₂⟩⟩⟩ = {(∗,(3,(4.0,(3.0,(1,7)))))}
     -- A at 0 2 3, B at 1: 3/4, 1/4
@@ -134,16 +135,15 @@ rel_program frameStatFloatT where
 
 #guard frameStatFloatT.failures.map toString == []
 
--- the result at an `f32` object: the typed definition fixes `φ` at `H`; 1 4 7 (exact in f32): 12/3 = 4
+-- the result at an `f32` object: the typed definition fixes `φ` at `H`, and prim `sum` has no `f32` row
+/-- error: line 146, col 32: `avg` at this call, where γ is N, φ is H: sum on H: H is an object of f32, and sum runs on objects of i64, f64 only; cast first, `x $ F` with `F` an object of f64 -/
+#guard_msgs in
 open Rel.Programs.prelude Rel.Programs.frame Rel.Programs.frameGroup Rel.Programs.frameStat in
 rel_program frameStatF32T where
     obj N
     obj H : f32
     t : N ⟶ N ≜ {(0,1),(1,4),(2,7)}
     m : 1 ⟶ H ≜ summarize(F(t) avg, t)
-    check m = {(∗,4.0)}
-
-#guard frameStatF32T.failures.map toString == []
 
 -- a bounded object: 7³ = 343 and 40³ lie outside `N`, so the cubes, deviations and weights are computed in `F`
 open Rel.Programs.prelude Rel.Programs.frame Rel.Programs.frameGroup Rel.Programs.frameStat in
