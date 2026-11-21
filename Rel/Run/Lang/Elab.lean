@@ -1857,10 +1857,8 @@ def mkDef (env : Env) (n : String) (dp : Pos) (ps : List Param) (body : Body) (t
     let gdef := if tys.any (fun (x, y) => !(x.vars ++ y.vars).isEmpty) then some n else none
     let env' := { env with params := bound, ovars := vs, gdef }
     let r : Arg ← match body, idx with
-    -- TODO(callshare): the body as `callOf env' p n bound` builds TestFrameBench (b13 563 nodes) but runs
-    -- TestFrameNull's `fullOuterJoin(π₁, π₁, y, x)` without its `antiJoin` rows, so a use is still the expansion
     | .rel e, none => do
-      let r ← elabE env' none e
+      let r ← callOf env' p n bound fun env'' => elabE env'' none e
       let (_, s, t) := r.plain; check s t; pure r
     | .rel e, some I => do
       let r ← famOf I p (← elabE env' (some I) e)
@@ -2221,6 +2219,7 @@ def litRes (p : Pos) (a b : OTy) (ps : List (Tup × Tup)) (gd : Option String) :
     pure ⟨A, B, .val ⟨n, k, v⟩⟩).mapError fun e => match gd with
       | some d => ⟨e.pos, s!"`{d}` at the objects of this call: {e.msg}"⟩
       | none => e
+
 
 mutual
 
