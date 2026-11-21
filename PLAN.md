@@ -394,6 +394,11 @@ Diff table 的「状态」列：✅ 后面是完成它的步骤；🔄 是部分
   （dataframe request 11）：`sqrt : F ⟶ D` 的 `F` 与 `D` 无关，`varG` 的 φ 是类型与参数都够不到的开放对象，
   按设计文档 §1（`Elab.generalise`）取 `.long`，`divide` 在 i64 上报错。改它要定一条开放对象取 atom 的规则
   （例如取每个作用在它上面的数值运算都接受的 atom），与设计文档现文冲突，待 owner 裁定；写 `varG 𝟙(φ) sqrt` 可用。
+  分支 `rq1213`（dataframe request 12、13）：泛型体里的浮点字面量也先开放（`litTy` 用 `numParts`），`numCheck` 在每次
+  使用的对象上读字面量的词（`litCol`，与 `code` 一起移到 section Num），`deferred` 变量上 `code` 不读码；体里写的、
+  没有使用够得到的字面量对象在定义可见的对象里定（`mkDef`）；`callDef` 在实参里仍有字面量 / `nil` 开放对象时不选形式。
+  13 的原因不是 φ：实参里 `{(∗,0)}` 的对象在选形式时仍开放，单态的 `{(∗,0)} $ F` 在有 ν、γ 的定义里同样失败。
+  `quantile` 的 0、1 写成 `{(∗,0.0)}`、`{(∗,1.0)}`；测试 `TestGenericNum.litGT`、`litGN`、`sumLitT`。
 - ⬜ S5 float 上的 `Obj.key = ordCode`；`key_ordCode`、`ascBad`、float 上的 `LamLaw`。
 - 🟡 S6 行 `$`（分支 `tb-s6`，owner 裁定 J）：`x $ F` 与 `QAtomicType.embed s t` 的图复合（`castDen`），部分映射、不舍入；
   允许的对由 `castOK` 从两个 atom 的格式读出（加宽、整数 → 浮点）；有损方向在 elaboration 报错。`Tab.cast`（分支

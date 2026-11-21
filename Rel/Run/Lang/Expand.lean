@@ -417,9 +417,12 @@ def callDef (env : Env) (dp : Pos) (n : String) (qs : List Param) (e : Expr) (ty
       for (b, j?) in bs do
         let (x, a, a') := b.plain
         -- an argument whose objects only the use's context solves, after this call returns, has no form yet: the
-        -- use is the expansion, which reads the arguments where `build` has every object solved
+        -- use is the expansion, which reads the arguments where `build` has every object solved. Its type's objects,
+        -- and those inside it that `settleOpen` settles last (a literal's, `nil`'s source): a form chosen before
+        -- reads a literal at no object, in a generic body (`litTy`) or not
         let mc ← Lean.getMCtx
-        if [zonk mc a, zonk mc a'].any (!·.mvs.isEmpty) then return r
+        let inner := x.lits.flatMap (fun (_, s, t, _, _) => [s, t]) ++ x.nilSrcs
+        if ([a, a'] ++ inner).any fun o => !(zonk mc o).mvs.isEmpty then return r
         let (ix', k?) ← idxClass ix j?; ix := ix'
         -- the first form the argument (a family: its relation from the index) builds in: closed, run on demand,
         -- tested on pairs; else closed, whose build reports why

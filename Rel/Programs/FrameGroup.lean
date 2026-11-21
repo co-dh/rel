@@ -56,9 +56,7 @@ rel_program frameStat where
     skewness : [γ] ⟶ φ ≜ ⟨⟨F(𝟙 $ φ ⟨⟨𝟙, 𝟙⟩times, 𝟙⟩times 𝟙(φ)) avg 𝟙(φ), ⟨avg 𝟙(φ), ⟨⟨var 𝟙(φ), ⟨var 𝟙(φ), var 𝟙(φ)⟩plus⟩plus, ⟨avg 𝟙(φ), avg 𝟙(φ)⟩times⟩plus⟩times⟩minus, ⟨var 𝟙(φ), dev 𝟙(φ)⟩times⟩%
     -- linear interpolation (DataHaskell `quantiles'`, polars "linear"): at h = p·(n−1) on `c` sorted, the rows `i` with
     -- |i − h| < 1 weighted 1 − |i − h|, i.e. lower + frac·(upper − lower); q's `med` is p = 0.5; no row unless 0 ≤ p ≤ 1
-    -- 1 and 0 are m/m and m − m of the row count m (none at no rows, where no quantile is either): a float literal is
-    -- read at no object in `φ`, and `{(∗,1)} $ φ` in a test leaves `summarize`'s argument in no form it takes
-    quantile(p : 1 ⟶ φ, c : ν ⟶ γ) : 1 ⟶ φ ≜ summarize(F(q) sum, q) where m ≜ count(c) $ φ, hi ≜ ⟨m, m⟩%, lo ≜ ⟨m, m⟩minus, h ≜ dom(⟨lo, p⟩ cor(≤)) dom(⟨p, hi⟩ cor(≤)) ⟨p, ⟨m, hi⟩minus⟩times, d ≜ ⟨dom(c) $ φ, ⊤ h⟩minus, w ≜ ⟨⊤ hi, ⟨d, ⟨⊤ lo, d⟩minus⟩max⟩minus, q ≜ dom(⟨⊤ lo, w⟩ cor(<)) ⟨w, sortBy(𝟙, c) $ φ⟩times
+    quantile(p : 1 ⟶ φ, c : ν ⟶ γ) : 1 ⟶ φ ≜ summarize(F(q) sum, q) where m ≜ count(c) $ φ, hi ≜ {(∗,1.0)}, lo ≜ {(∗,0.0)}, h ≜ dom(⟨lo, p⟩ cor(≤)) dom(⟨p, hi⟩ cor(≤)) ⟨p, ⟨m, hi⟩minus⟩times, d ≜ ⟨dom(c) $ φ, ⊤ h⟩minus, w ≜ ⟨⊤ hi, ⟨d, ⟨⊤ lo, d⟩minus⟩max⟩minus, q ≜ dom(⟨⊤ lo, w⟩ cor(<)) ⟨w, sortBy(𝟙, c) $ φ⟩times
     -- per row (x − mean)/std, the sample std as DataHaskell's `variance'` (n − 1); none at one row
     zScore(c : ν ⟶ γ) : ν ⟶ φ ≜ ⟨⟨c $ φ, ⊤ m⟩minus, ⊤ s⟩% where m ≜ summarize(F(c) avg 𝟙(φ), c), s ≜ summarize(F(c) sdev 𝟙(φ), c)
     valueProportions(a : β ⟶ γ, x : ν ⟶ β) : ν ⟶ γ×φ ≜ valueCounts(a, x) ⟨π₁, ⟨π₂ $ φ, ⊤ count(x) $ φ⟩%⟩
