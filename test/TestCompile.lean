@@ -25,8 +25,6 @@ namespace Rel.Lang.TestCompile
 
 open Lean Elab Command Tab Rel.Lang Rel.Lang.Expand
 
-open GenSoundTest (keyed rowsOf)
-
 /-- A table over this many rows is stored as its row count and `hash` of its `rowsOf`: its rows would make the
     baseline too large to review. A toolchain whose `hash` changes regenerates the baseline. -/
 def rowCap : Nat := 512
@@ -35,8 +33,8 @@ def rowCap : Nat := 512
     a result the baseline may not hold: a side `rowsOf` cannot read. -/
 def result {A B : Obj} (c : Except String (Tab A B)) : Except String (String × List (List Nat)) := do
   let .ok g := c | return ("not ok: the generated constant vouches for nothing", [])
-  if !(keyed A && keyed B) then throw "a side holds a `general` atom, whose `Obj.key` is `[]`"
-  pure ("ok", rowsOf g)
+  if !(GenSoundTest.keyed A && GenSoundTest.keyed B) then throw "a side holds a `general` atom, whose `Obj.key` is `[]`"
+  pure ("ok", GenSoundTest.rowsOf g)
 
 /-- A result as the baseline stores it: the status and the rows, or over `rowCap` rows their count and digest. -/
 def toEntry (s : String) (rs : List (List Nat)) : Json :=
