@@ -540,8 +540,8 @@ def ioCols (env : Env) (p : Pos) (what : String) (ty : OExp × OExp) (csv : Bool
   let mut hdr : Db.CsvCols := []
   if csv then
     let elems (n : String) := ((env.obj? n).map (·.elems)).getD []
-    let leaves := (if ks.isEmpty then [] else (← csvLeaves env ty.1 true).map ("key", ·)) ++
-      (← csvLeaves env ty.2 true).map ("val", ·)
+    let kl ← if ks.isEmpty then pure [] else csvLeaves env ty.1 true
+    let leaves := kl.map ("key", ·) ++ (← csvLeaves env ty.2 true).map ("val", ·)
     for (one, ls, e, t) in leaves do
       let c := if ls.isEmpty then one else ".".intercalate ls
       -- the column's shape by its declared type and its stored object together; which atoms each takes is `schema`'s
