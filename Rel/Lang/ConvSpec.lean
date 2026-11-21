@@ -61,7 +61,7 @@ theorem Prim.den_conv : ∀ r ∈ prims, ∀ s r', r.conv = some s → Prim.find
     ∀ A B ss, Prim.den r' B A ss = (Prim.den r A B ss)° := by
   intro r hr s r' hs hr'
   simp only [prims, List.mem_append, List.mem_map, List.mem_cons, List.not_mem_nil, or_false] at hr
-  -- a `unaryOps` row has no converse; then one goal per row, however many `prims` lists
+  -- a `floatOps` row has no converse; then one goal per row, however many `prims` lists
   rcases hr with hr | ⟨_, -, rfl⟩
   rotate_left
   · simp at hs
