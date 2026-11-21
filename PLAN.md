@@ -52,6 +52,10 @@
     `rank32`/`rank64`、`foRKey`、`rank_ofNat_iff`）删除；`Obj.key_ordCode` 不再排除 float；`Obj.ascBad` 只拒绝
     `sym`、`general`，`asc` 接受 float。`LamLaw` 与 `Obj.eq_of_not_lt` 的前提保留，原因只剩 `general`（key 为 `[]`）。
 - 非 log 的输出（baseline、row 分析）写进本文件或 `doc/`，不写进 `/data/tmp`。
+- owner 决定（2026-11-20，最终）：
+  - date 字面量写作 q 的 `2024.01.15`，新 token（实现：分支 `datelit`，`Elab.qForm`；值为 1970-01-01 起的天数）。
+  - 浮点 `sum`/`sums` 按从左到右求和（q 的顺序，与 `sums` 前缀和一致）；整数上右折叠定义不变，浮点的含义写为左折叠。
+  - cast 逐值偏：没有像的值没有行，不报错。
 
 ## 0. 每一步都遵守的约定
 

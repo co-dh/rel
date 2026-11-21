@@ -3,6 +3,7 @@ import Rel.Run.SetOps
 import Rel.Run.Lang.Syntax
 import Rel.Run.Lang.Tm
 import Rel.Run.Lang.Schema
+import Rel.Kernel.Db.Csv
 
 /-! The elaborator of the Rel language (`doc/rel-lang-design.md` §a, §e): names resolved, every term typed
     `A ⟶ B` over the declared objects, definitions expanded, a body whose declared parameter is given a family
@@ -94,10 +95,19 @@ def numParts (w : String) : Option (Bool × Nat × Bool × Nat) :=
   | some k => some (neg, k, false, 0)
   | none => (Lean.Syntax.decodeScientificLitVal? d).map fun (m, s, e) => (neg, m, s, e)
 
+/-- The atoms with a text form of q's besides the integer: a `date` written `2024.01.15`, a `datetime`
+    `2024.01.15D12:30:00.5`, read by the CSV's reader of the atom (`Db.Csv.ymd`, `Db.Csv.stamp`, C.3) at the day's
+    separator `.` where the CSV has `-`: days, nanoseconds since 1970-01-01, proleptic Gregorian, years 0001–9999. -/
+def qForm : Rel.QAtomicType → Option (String × (List UInt8 → Option Int))
+  | .date => some ("day yyyy.mm.dd", Db.Csv.ymd 46)
+  | .datetime => some ("time yyyy.mm.ddDhh:mm:ss[.f]", Db.Csv.stamp 46)
+  | _ => none
+
 /-- The word `w` stored at the atom `t` of the object `n` (`litLayout`): a float of `t`'s width read as Lean reads a
     float literal, a whole number included (`numParts`), normalised where it is produced (`QAtomicType.nonCanonical`: `-0.0`
-    and a `-1e-400` that rounds to it are `0.0`); an integer in `t`'s range. An error names `w` and `n` where it is
-    neither, or where it is no finite float: no literal writes an infinity or a NaN (NaN has no row). -/
+    and a `-1e-400` that rounds to it are `0.0`); an integer in `t`'s range, written as one or in `t`'s `qForm`. An
+    error names `w` and `n` where it is neither, or where it is no finite float: no literal writes an infinity or a NaN
+    (NaN has no row). -/
 def wordAt (p : Pos) (n : String) (t : Rel.QAtomicType) (w : String) : Except Err UInt64 :=
   let no := s!"'{w}' is not an element of {n}, an object of {atomName t}"
   match litLayout t with
@@ -108,10 +118,12 @@ def wordAt (p : Pos) (n : String) (t : Rel.QAtomicType) (w : String) : Except Er
       let x := if t.nonCanonical (floatBits b neg m s e) then floatBits b false m s e else floatBits b neg m s e
       if (floatParts b x).isSome then pure x else throw ⟨p, s!"{no}: it is beyond the range of {atomName t}"⟩
     | none => throw ⟨p, no⟩
-  | some (b, false, sg) => match w.toInt? with
+  | some (b, false, sg) => match w.toInt? <|> (qForm t).bind (·.2 (Db.Csv.bytes w)) with
     | some k => let (lo, hi) : Int × Int := if sg then (-2 ^ (8 * b - 1), 2 ^ (8 * b - 1)) else (0, 2 ^ (8 * b))
       if lo ≤ k ∧ k < hi then pure (Int64.ofInt k).toUInt64 else throw ⟨p, s!"{no}: it is not in {lo}…{hi - 1}"⟩
-    | none => throw ⟨p, no⟩
+    | none => throw ⟨p, match qForm t with
+      | some (f, _) => s!"{no}: it is no integer and no {f} of the years 0001–9999 in the range of {atomName t}"
+      | none => no⟩
 
 /-- `D·10^k` with the trailing zeros of `D` moved into `k`. -/
 def stripZeros : Nat → Nat → Int → Nat × Int
