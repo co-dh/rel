@@ -100,7 +100,8 @@ compile η t : {r : Rel A B // rep r = ⟦t⟧ρ}       -- 方案 A：规格在�
     它们和有限表一样是 `Rel` 的值，不是编译器的特例。复合时自动传播：`tab ≫ lazy` 把左表的值域作为 `dom` 交给右边。],
   card(c-run, [闭项只算一次（草稿，待审）])[闭项的值不随上下文变：由下面的 `rep (f ⟨K, L⟩) = K ≫ R ≫ L`，取空边界得 `rep (f {}) = R`。
     所以一个不需要边界的闭项（有限：旧记号 `Tm.dem = false`）在共享常量处求值一次，存成 `tab`（`GenK.memo`）；
-    需要边界的闭项（`𝟙`、`≤`、`⊤` 等无限关系）仍是 `lazy`，在每个上下文里按边界求值。否则一个闭的 `lazy` 值在 `fold` 的每一轮重算。],
+    需要边界的闭项（`𝟙`、`≤`、`⊤` 等无限关系）仍是 `lazy`，在每个上下文里按边界求值。否则一个闭的 `lazy` 值在 `fold` 的每一轮重算。
+    开项（读变量的部分）不共享，但每次绑定只算一次：定义的实参与 `where` 项经 `call`/`arg` 绑定，体读多少次都不重算。],
   card(c-run, [需要几侧边界])[`succ`（函数）：`dom` 已知即返回 `tab`。`leq`：`Λ(leq)(3) = {3,4,…}` 无限，
     `dom` 与 `ran` 都已知才返回 `tab (K ≫ leq ≫ L)`。`⊤`：`K × L`。],
   card(c-run, [对的需求 `pairs`])[`T ∩ R`、`T − R` 把 `T` 自己作为 `pairs` 交给 `R`：`rep (f ⟨K, L, P⟩) ∩ P = (K ≫ R ≫ L) ∩ P`。
@@ -166,7 +167,10 @@ compile η t : {r : Rel A B // rep r = ⟦t⟧ρ}       -- 方案 A：规格在�
   就在该使用处报错：`` `inc` at this call, where φ is N: '0.5' is not an element of N, an object of i64 ``。
   体里写的字面量、其开放对象没有使用够得到的，在定义可见的已声明对象里定（`mkDef` 调 `settleLit`），不看调用方的对象。
   调用的实参里仍有 `settleOpen` 才定的对象（字面量的、`nil` 的源）时，不在此时选形式（closed、on demand、tested），
-  调用就是展开（`Expand.callDef`）。
+  调用的含义就是展开（`Expand.callDef`），但代码不复制实参：定义体在调用处只 elaborate 一次，每个参数是它自己的变量，
+  得到 `call`，实参经 `arg` 各算一次、由 `Code.args` 绑定（`Elab.callOf`、`Pre.callE`）；`where x ≜ e` 同样是一个参数的
+  `call`，`e` 为其实参（体里其它在作用域内的名字也作为参数传入，因为 `call` 的体只读自己的参数）。`build` 先建这个
+  `call`，建不成（体要整读某参数、实参只能按对测试）时退回展开；分析（`numCheck`、`settleOpen`、极性）读展开。
 
 #tbl(c-syn, (auto, 1fr), ([组], [构造子]),
   [allegory], [`id` `comp` `conv` `meet` `dom` `ran`],
