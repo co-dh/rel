@@ -3,7 +3,7 @@
   Total and structural: each node is the `T` its `Gen.*_sound` lemma proves, written with the allegory's operators
   (`≫ ° ∩ ∪ 𝟙 𝟘`, D3 = E); `μ`, `ν` are `Core.Rel.mu`, `nu`, defined for every body, so no monotonicity is assumed here.
 -/
-import Rel.Run.Lang.TmGen
+import Rel.Run.Lang.Tm
 import Rel.Run.Where
 import Rel.AscOrder
 import Rel.Rep

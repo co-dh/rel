@@ -107,8 +107,8 @@ run_cmd do
       | throwError "GenSoundTest: no definition with code and a keyed ok table holds {what}"
     unless A == A' && B == B' do throwError "GenSoundTest: `{nm}` is re-read at other objects than it is generated at"
     let t' ← liftTermElabM do unsafe Meta.evalExpr (Tm A B) (Expand.g ``Tm #[Expand.oE A, Expand.oE B]) e
-    unless (Tm.diffAt id (fun _ => "") [] ⟨A, B, t⟩ ⟨A, B, t'⟩).isNone do
-      throwError "GenSoundTest: `{nm}` rebuilt from `Expand.tmE` is not its term (Tm.diffAt)"
+    if let some d := Expand.Tm.diffAt id toString [] ⟨A, B, t⟩ ⟨A, B, t'⟩ then
+      throwError "GenSoundTest: `{nm}` rebuilt from `Expand.tmE` is not its term: {d}"
     match c, (Tm.code Code.empty t').runE {} with
     | .ok T, .ok T' => unless rowsOf T == rowsOf T' do
         throwError "GenSoundTest: `{nm}` rebuilt runs to other rows than its generated constant"

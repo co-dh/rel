@@ -169,9 +169,11 @@ end GenK
 
 theorem Tm.code_of {η : Code} {A B : Obj} {t : Tm A B} {X : Core.Rel A.El B.El} (h : ∀ K, (t.gen η).Reps K X) :
     ∀ K, (t.code η).Reps K X := by
-  rw [Tm.code]; split
-  · exact GenK.memo_sound h
-  · exact h
+  unfold Tm.code
+  -- the condition held abstract: `split` would split the `matches` inside it
+  suffices ∀ (c : Prop) [Decidable c], ∀ K, (if c then GenK.memo A B (t.gen η) else t.gen η).Reps K X from this _
+  intro c _; split
+  all_goals first | exact GenK.memo_sound h | exact h
 
 /-! ### The rows: `Prim.den` unfolded once, then one `Tab` law per row -/
 
@@ -818,9 +820,11 @@ theorem primGen_ok (r : Prim) (A B : Obj) (xs : Codes) (hw : ∀ x ∈ xs, x.2.2
   · unfold primGen; rw [if_pos hn]; exact err _
 
 theorem Tm.code_wf {η : Code} {A B : Obj} {t : Tm A B} (h : (t.gen η).Wf) : (t.code η).Wf := by
-  rw [Tm.code]; split
-  · exact GenK.memo_wf h
-  · exact h
+  unfold Tm.code
+  -- the condition held abstract: `split` would split the `matches` inside it
+  suffices ∀ (c : Prop) [Decidable c], (if c then GenK.memo A B (t.gen η) else t.gen η).Wf from this _
+  intro c _; split
+  all_goals first | exact GenK.memo_wf h | exact h
 
 /-- **Every bit matrix `Tm.gen` passes on is `Rel.Wf`**: only `comp` builds one (`GenK.comp_wf`), a variable reads
     `η`'s, and every other op returns tables. -/

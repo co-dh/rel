@@ -92,20 +92,6 @@ run_elab do
   let val ← mkListLit (mkApp2 (mkConst ``Prod [0, 0]) (mkConst ``String) genTy) es
   addAndCompile (.defnDecl (mkDefinitionValEx `Rel.Lang.rowGens [] ty val .abbrev .safe [`Rel.Lang.rowGens]))
 
-/-- The object variables `σ` that make the pattern `o` the object `A`, extending `σ`: none where they cannot. -/
-def OExp.unify : OExp → Obj → List (String × Obj) → Option (List (String × Obj))
-  | .var _ n, A, σ => match σ.lookup n with
-    | some B => if A = B then some σ else none
-    | none => some ((n, A) :: σ)
-  | .prod a b, .prod A B, σ | .sum a b, .sum A B, σ => a.unify A σ >>= b.unify B
-  | .list a, .arr A, σ => a.unify A σ
-  | _, _, _ => none
-
-/-- The row `r`'s object variables (`Prim.vars` order) at `A ⟶ B`, read off its constant's type. -/
-def Prim.objs (r : Prim) (A B : Obj) : Option (List Obj) := do
-  let σ ← r.sig.2.1.unify A [] >>= r.sig.2.2.unify B
-  r.vars.mapM fun v => List.lookup v σ
-
 /-- The number of relations row `s` is given: its `prims` entry's, the one `rowGens` was generated from. -/
 def rowArity (s : String) : Nat := ((prims.find? (·.sym == s)).map (·.sig.1.length)).getD 0
 
