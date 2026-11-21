@@ -227,6 +227,7 @@ def elabOnce (env : Env) (p : Pos) (n : String) (qs : List Param) (e : Expr) (ty
     let (s, u) := match r with | .rel _ s u => (s, u) | .fam _ _ a b => (a, b)
     declared env' p n rigid ty s u
     settleOpen env' p [r.plain.1]
+    settleUses
     pure (r, os) : M (Arg × List (Obj × Obj × Bool))).run { fixes := nv + qs.length, specs, objs }
   pure (os, r, st)
 
@@ -494,6 +495,7 @@ def checkOf (env : Env) (p : Pos) (e f : Expr) (eq : Bool) (specs : List Once) :
     try unify p "" s' s; unify p "" t' t
     catch _ => throw ⟨p, s!"check: the sides have types {zonk mc s} ⟶ {zonk mc t} and {zonk mc s'} ⟶ {zonk mc t'}"⟩
     settleOpen env p [r.plain.1, r'.plain.1]
+    settleUses
     pure (r, r') : M (Arg × Arg)).run { specs, objs := env.objs }
   let mc ← Lean.getMCtx
   let (⟨A, B, R⟩, s, t) ← top env mc p e r
@@ -687,21 +689,23 @@ def walk (prog : Program) (env : Env) (wrap : String → Def → Def) (own : Lea
             s!"`{y}` where `{n}` is used"⟩
       let missing := ps.any (·.ty.isNone) || match b with | .rel _ => ty.isNone | .test .. => false
       if missing then throw ⟨p, s!"`{n}` has no type; it is {← (inferSig env n ps b).run' {}}"⟩
-      match ps, b, ty with
-      | [], .rel e, ty =>
-        let rigid := match ty with | some (a, b) => (a.vars ++ b.vars).map fun v => (v, OTy.base v) | none => []
+      -- a definition whose type names an object variable is generic whatever its parameters, none included: each
+      -- use instantiates its variables, one only the result names from the use's expected type (`mkDef`, `callDef`)
+      match ps, b, ty, ty.toList.flatMap fun (a, b) => a.vars ++ b.vars with
+      | [], .rel e, ty, [] =>
         let (r, st) ← (do
           let k := (← Lean.getMCtx).mvarCounter
           let r ← elabE env none e
-          if let some ty := ty then let (_, s, t) := r.plain; declared env p n rigid ty s t
+          if let some ty := ty then let (_, s, t) := r.plain; declared env p n [] ty s t
           settleOpen env p [r.plain.1]
           let (q, s, t) := r.plain; generalise n p k [s, t] q
+          settleUses
           pure r).run { specs, objs := env.objs }
         specs := st.specs
         let mc ← Lean.getMCtx; let (q, s, t) := r.plain
         let s := zonk mc s; let t := zonk mc t
         let each := wrap n (mkDef env n p [] (.rel e) ty)
-        if !rigid.isEmpty || s.poly || t.poly then env := { env with defs := (n, each) :: env.defs }; continue
+        if s.poly || t.poly then env := { env with defs := (n, each) :: env.defs }; continue
         let q := if (uniOf env.objs s).isSome then Pre.close p q s noLeft else q
         let res@⟨_, _, tm⟩ ← match build env.objs mc p q, test env.objs mc p q with
           | .ok r, _ => pure r
@@ -711,7 +715,7 @@ def walk (prog : Program) (env : Env) (wrap : String → Def → Def) (own : Lea
         if !tm.dem then
           ds := ds ++ [(n, res)]
           if let some ty := ty then whole := whole ++ [(n, ty)]
-      | qs, b, ty =>
+      | qs, b, ty, _ =>
         let d := mkDef env n p qs b ty
         match b, ty with
         | .rel e, some ty =>
@@ -728,7 +732,7 @@ def walk (prog : Program) (env : Env) (wrap : String → Def → Def) (own : Lea
     | .print p e bs =>
       let (e, bs) := (rtNamesE env rt e, bs.map fun (x, l) => (rtName env rt x, l))
       let e := e.subst (← liftExcept (bindIns rt p "print" [e] bs))
-      let (r, st) ← (do let r ← elabE env none e; settleOpen env p [r.plain.1]; pure r).run { specs, objs := env.objs }
+      let (r, st) ← (do let r ← elabE env none e; settleOpen env p [r.plain.1]; settleUses; pure r).run { specs, objs := env.objs }
       specs := st.specs
       pr := pr ++ [(e.show, ← top env (← Lean.getMCtx) p e r)]
     | .check p e f eq bs =>

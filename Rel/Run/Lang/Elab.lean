@@ -481,7 +481,19 @@ structure Once where
 def Once.binds (o : Once) : List Nat :=
   (List.range o.gen.length).filter o.res.2.2.fv.contains ++ (List.range o.params.length).map (o.gen.length + ·)
 
+/-- A use at `p` of the generic definition `n : sig` (`mkDef`): its object variables at the use, `us`, and its
+    expansion's nodes `xs`, whose number checks run once the context has solved `us` (`settleUses`). -/
+structure Use where
+  p : Pos
+  n : String
+  sig : String
+  us : List (String × OTy)
+  xs : List Pre
+
 structure St where
+  /-- The uses whose object variables the context solves after they return, an expected type at the use: a
+      variable only the definition's result names (`mkDef`), checked once the term is elaborated (`settleUses`). -/
+  uses : List Use := []
   /-- The fixed points so far: the next one's variable. -/
   fixes : Nat := 0
   /-- The constants built so far at the forms the program's calls take, in the order `emit` adds them. -/
@@ -1669,7 +1681,25 @@ def numCheck (x : Pre) : Except Err Unit := do
           value, and $ keeps a number's value"⟩
   | _ => pure ()
 
+/-- The number checks of the use `u` at the objects the use solved its variables to (`numCheck`), the error naming
+    the use and each variable's object; a variable nothing at the use solved is refused, naming it and the definition. -/
+def Use.check (u : Use) : Except Err Unit := do
+  let us := u.us.map fun (v, o) => (v, zonk mc o)
+  if let some (v, _) := us.find? (!·.2.mvs.isEmpty) then
+    throw ⟨u.p, s!"`{u.n}` at this use: nothing here fixes its object variable '{v}' \
+      (`{u.n}` : {u.sig}); give the use an expected type: a typed definition, a check against a typed term, or a \
+      composition that fixes {v}"⟩
+  if let .error e := u.xs.forM (numCheck objs mc u.p) then
+    throw ⟨u.p, s!"`{u.n}` at this call, where {", ".intercalate (us.map fun (v, o) => s!"{v} is {o}")}: {e.msg}"⟩
+
 end Num
+
+/-- The uses waiting on their objects (`St.uses`) checked, now that the term around them is elaborated and its
+    open objects settled (`settleOpen`, a definition's `generalise`). -/
+def settleUses : M Unit := do
+  let st ← get; let mc ← Lean.getMCtx
+  st.uses.forM fun u => match u.check st.objs mc with | .error e => throw e | .ok _ => pure ()
+  set { st with uses := [] }
 
 /-- A definition with parameters: its body elaborated at each use, lifted when a declared parameter is given
     a family, its result checked against the declared type `ty`; a test `e ⊑ f` is the coreflexive
@@ -1717,12 +1747,14 @@ def mkDef (env : Env) (n : String) (dp : Pos) (ps : List Param) (body : Body) (t
     generalise n p k (vs.map (·.2) ++ (r :: args).flatMap fun | .rel _ s t => [s, t] | .fam _ i s t => [i, s, t])
       r.plain.1
     -- the number checks a generic body leaves to its uses (`ObjInfo.deferred`), on this expansion once the use has
-    -- solved its variables, so the error names the use and each variable's object; `build` runs them again
+    -- solved its variables, so the error names the use and each variable's object; a variable the use's expected
+    -- type fixes (one only the result names) is solved after this returns, so its use waits (`settleUses`)
     let mc ← Lean.getMCtx
-    let us := vs.reverse.map fun (v, o) => (v, zonk mc o)
-    if gdef.isSome && us.all (·.2.mvs.isEmpty) then
-      if let .error e := r.plain.1.nodes.forM (numCheck (← get).objs mc p) then
-        throw ⟨p, s!"`{n}` at this call, where {", ".intercalate (us.map fun (v, u) => s!"{v} is {u}")}: {e.msg}"⟩
+    let u : Use := ⟨p, n, (ty.map OExp.arrow).getD "", vs.reverse, r.plain.1.nodes⟩
+    if gdef.isSome then
+      if u.us.all fun (_, o) => (zonk mc o).mvs.isEmpty then
+        if let .error e := u.check (← get).objs mc then throw e
+      else modify fun st => { st with uses := st.uses ++ [u] }
     pure r
 
 /-! ### Build: the solved objects, the core term -/
