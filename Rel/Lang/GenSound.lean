@@ -22,9 +22,34 @@ open Rel Rel.Rep Rel.Kernel Rel.Verify Gen
 open scoped Rel.Core.Rel
 open Rel.Core.Rel hiding id comp recip inter union zero le inl inr junc
 
+/-- Every bit matrix `η` holds is `Rel.Wf`: each variable's code at every objects, and each slot's. -/
+def Code.Wf (η : Code) : Prop := (∀ k A B, (η k A B).Wf) ∧ ∀ x ∈ η.sh, x.2.2.Wf
+
 /-- The code environment `η` represents the meaning environment `ρ`, at every variable and object, in every
     context, and every bit matrix it holds is `Rel.Wf`. -/
-def Sound (η : Code) (ρ : Val) : Prop := (∀ k A B K, (η k A B).Reps K (ρ k A B)) ∧ ∀ k A B, (η k A B).Wf
+def Sound (η : Code) (ρ : Val) : Prop := (∀ k A B K, (η k A B).Reps K (ρ k A B)) ∧ η.Wf
+
+/-- The slot `k` of `η`'s table at `A ⟶ B`, where it has one, represents the meaning of the closed part `R`
+    numbered `k`: what `Tm.gen_sound` asks at each `share k R` (`Tm.LamLaws`), since a slot is computed once, apart
+    from the terms that read it (`Code.shares`). -/
+def Code.Shares (η : Code) {A B : Obj} (k : Nat) (R : Tm A B) : Prop :=
+  ∀ r, η.sh.at k A B = some r → ∀ K, r.Reps K (R.den Val.empty)
+
+/-- A slot of a table of `Wf` codes is `Wf`. -/
+theorem Codes.at_wf {xs : Codes} (hw : ∀ x ∈ xs, x.2.2.Wf) {i : Nat} {X Y : Obj} {r : Rel X Y}
+    (h : xs.at i X Y = some r) : r.Wf := by
+  unfold Codes.at at h
+  split at h
+  · rename_i X' Y' x hx
+    split at h
+    · rename_i ho; obtain ⟨rfl, rfl⟩ := ho; cases h; exact hw _ (List.mem_of_getElem? hx)
+    · cases h
+  · cases h
+
+/-- `Code.args` keeps `η`'s table. -/
+theorem Code.args_sh (η : Code) : ∀ (ks : List Nat) (xs : Codes), (Code.args η ks xs).sh = η.sh
+  | k :: ks, ⟨_, _, _⟩ :: xs => Code.args_sh η ks xs
+  | [], _ | _ :: _, [] => rfl
 
 /-- `η` with `k` bound to a `Wf` code `r` that represents `X` represents `ρ` with `k` bound to `X`: a fixed point's
     round (`GenK.const` of its table) or a call's argument (`Sound.args`). -/
@@ -81,29 +106,33 @@ def rowsProved : List (String × (Obj → Obj → List (Obj × Obj))) :=
 
 /-- What `Tm.gen_sound` asks of `t`, with `L` for the order law of a `Λ`: `L` at each `Λ`
     and `E` (`E(R) = Λ(∋ ≫ R)`, at `[A] ⟶ [B]`) and at each row `rowsProved` marks, and the body of each fixed
-    point positive in its variable (`Tm.pol`, which `Tm.den_mono` reads). -/
-def Tm.LamLawsAt (L : Obj → Obj → Prop) : {A B : Obj} → Tm A B → Prop
+    point positive in its variable (`Tm.pol`, which `Tm.den_mono` reads); `P k R` at each `share k R` (its slot,
+    `Code.Shares`). -/
+def Tm.LamLawsAt (L : Obj → Obj → Prop) (P : {A B : Obj} → Nat → Tm A B → Prop) : {A B : Obj} → Tm A B → Prop
   | A, B, .prim r => ∀ f, rowsProved.lookup r.sym = some f → ∀ p ∈ f A B, L p.1 p.2
-  | _, _, .lam (A := A) (B := B) R => L A B ∧ R.LamLawsAt L
-  | _, _, .E (A := A) (B := B) R => L (.arr A) B ∧ R.LamLawsAt L
-  | _, .arr B, .thin Q => L (.arr B) B ∧ Q.LamLawsAt L
+  | _, _, .share k R => P k R ∧ R.LamLawsAt L P
+  | _, _, .lam (A := A) (B := B) R => L A B ∧ R.LamLawsAt L P
+  | _, _, .E (A := A) (B := B) R => L (.arr A) B ∧ R.LamLawsAt L P
+  | _, .arr B, .thin Q => L (.arr B) B ∧ Q.LamLawsAt L P
   | _, _, .top R | _, _, .conv R | _, _, .dom R | _, _, .ran R | _, _, .own R | _, _, .succ R | _, _, .arith _ _ R
-  | _, _, .leq _ R | _, _, .lt _ R | _, _, .share _ R | _, _, .est R | _, _, .call _ _ _ R
-  | _, _, .callCv _ _ _ _ R _ => R.LamLawsAt L
+  | _, _, .leq _ R | _, _, .lt _ R | _, _, .est R | _, _, .call _ _ _ R
+  | _, _, .callCv _ _ _ _ R _ => R.LamLawsAt L P
   | _, _, .comp R S | _, _, .meet R S | _, _, .join R S | _, _, .diff R S | _, _, .pair R S | _, _, .prod R S
-  | _, _, .fold R S | _, _, .foldr R S | _, _, .foldI R S => R.LamLawsAt L ∧ S.LamLawsAt L
-  | _, _, .ldiv R S U V | _, _, .rdiv R S U V => R.LamLawsAt L ∧ S.LamLawsAt L ∧ U.LamLawsAt L ∧ V.LamLawsAt L
-  | _, _, .arg f x => f.LamLawsAt L ∧ x.LamLawsAt L
-  | _, _, .nu k S b => b.pol true k = true ∧ S.LamLawsAt L ∧ b.LamLawsAt L
+  | _, _, .fold R S | _, _, .foldr R S | _, _, .foldI R S => R.LamLawsAt L P ∧ S.LamLawsAt L P
+  | _, _, .ldiv R S U V | _, _, .rdiv R S U V => R.LamLawsAt L P ∧ S.LamLawsAt L P ∧ U.LamLawsAt L P ∧ V.LamLawsAt L P
+  | _, _, .arg f x => f.LamLawsAt L P ∧ x.LamLawsAt L P
+  | _, _, .nu k S b => b.pol true k = true ∧ S.LamLawsAt L P ∧ b.LamLawsAt L P
   -- the children's term asks no more than the body (`Tm.lamLawsAt_kids`)
-  | _, _, .mu k _ _ b | _, _, .hylo k _ b => b.pol true k = true ∧ b.LamLawsAt L
+  | _, _, .mu k _ _ b | _, _, .hylo k _ b => b.pol true k = true ∧ b.LamLawsAt L P
   -- every other constructor spelled out: a catch-all's equation lemmas time `simp` out
   | _, _, .val _ | _, _, .uni _ | _, _, .zero | _, _, .id | _, _, .outl | _, _, .outr | _, _, .nil
   | _, _, .atPos _ | _, _, .var .. => True
 
-/-- `Tm.LamLawsAt` with nothing asked at a `Λ`, the premise of `Tm.gen_sound`: each fixed point's body positive.
-    `Λ`'s order law is a theorem (`Vals.lamLaw`), so only `Tm.monoOK` is left of it (`Tm.monoOK_iff`). -/
-abbrev Tm.LamLaws {A B : Obj} (t : Tm A B) : Prop := t.LamLawsAt fun _ _ => True
+/-- `Tm.LamLawsAt` with nothing asked at a `Λ`, the premise of `Tm.gen_sound` with `P` its table's `Code.Shares`:
+    each fixed point's body positive. `Λ`'s order law is a theorem (`Vals.lamLaw`), so only `Tm.monoOK` is left of
+    it (`Tm.monoOK_iff`). -/
+abbrev Tm.LamLaws {A B : Obj} (t : Tm A B) (P : {A B : Obj} → Nat → Tm A B → Prop := fun _ _ => True) : Prop :=
+  t.LamLawsAt (fun _ _ => True) P
 
 /-- The decidable part of `Tm.LamLawsAt`, every conjunct but `L` (`Tm.monoOK_iff`): what `GenSoundTest` evaluates
     beside `Tm.hasCode`, since `LamLawsAt L` implies it for every `L` (`Tm.LamLawsAt.mono`). -/
@@ -119,11 +148,11 @@ def Tm.monoOK : {A B : Obj} → Tm A B → Bool
   | _, _, .val _ | _, _, .uni _ | _, _, .zero | _, _, .id | _, _, .outl | _, _, .outr | _, _, .nil
   | _, _, .atPos _ | _, _, .var .. | _, _, .prim _ => true
 
-theorem Tm.monoOK_iff {A B : Obj} (t : Tm A B) : t.monoOK = true ↔ t.LamLawsAt fun _ _ => True := by
+theorem Tm.monoOK_iff {A B : Obj} (t : Tm A B) : t.monoOK = true ↔ t.LamLaws := by
   induction t <;> simp [Tm.monoOK, Tm.LamLawsAt, and_assoc, *]
 
-theorem Tm.LamLawsAt.mono {L L' : Obj → Obj → Prop} (h : ∀ A B, L A B → L' A B) {A B : Obj} (t : Tm A B) :
-    t.LamLawsAt L → t.LamLawsAt L' := by
+theorem Tm.LamLawsAt.mono {L L' : Obj → Obj → Prop} {P : {A B : Obj} → Nat → Tm A B → Prop}
+    (h : ∀ A B, L A B → L' A B) {A B : Obj} (t : Tm A B) : t.LamLawsAt L P → t.LamLawsAt L' P := by
   induction t <;> simp only [Tm.LamLawsAt] <;> intro hx
   all_goals first
     | exact fun f e p hp => h _ _ (hx f e p hp)
@@ -132,8 +161,8 @@ theorem Tm.LamLawsAt.mono {L L' : Obj → Obj → Prop} (h : ∀ A B, L A B → 
 
 /-- The children's term of `t` (`Tm.kids`) asks no more than `t`: `kids` builds it of `t`'s parts, `𝟙`, `𝟘`, `∪`,
     `juncD` and `∋`, none of which asks anything. -/
-theorem Tm.lamLawsAt_kids {L : Obj → Obj → Prop} (k : Nat) (A : Obj) {C D : Obj} (t : Tm C D)
-    (h : t.LamLawsAt L) : ((t.kids k A).getD .zero).LamLawsAt L := by
+theorem Tm.lamLawsAt_kids {L : Obj → Obj → Prop} {P : {A B : Obj} → Nat → Tm A B → Prop} (k : Nat) (A : Obj)
+    {C D : Obj} (t : Tm C D) (h : t.LamLawsAt L P) : ((t.kids k A).getD .zero).LamLawsAt L P := by
   induction t
   case arg f x _ _ =>
     cases f <;> unfold Tm.kids <;> (try dsimp only) <;> (repeat' split) <;>
