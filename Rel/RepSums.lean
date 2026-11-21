@@ -13,23 +13,25 @@ namespace Rel
 open Rel.Ext Rel.Kernel Rel.Verify Rel.Rep
 open scoped Rel.Core.Rel
 
-/-- Flipping bit 63 of a word adds `2^63` below it and takes `2^63` off above it. -/
-theorem Nat.xor_top {x : Nat} (hx : x < 2 ^ 64) : x ^^^ 2 ^ 63 = if x < 2 ^ 63 then x + 2 ^ 63 else x - 2 ^ 63 := by
-  have key : ∀ y < 2 ^ 63, y ^^^ 2 ^ 63 = y + 2 ^ 63 := fun y hy => by
+/-- Flipping the top bit `b` of a word of `b + 1` bits adds `2^b` below it and takes `2^b` off above it. -/
+theorem Nat.xor_top {b x : Nat} (hx : x < 2 ^ (b + 1)) :
+    x ^^^ 2 ^ b = if x < 2 ^ b then x + 2 ^ b else x - 2 ^ b := by
+  have hb : 2 ^ (b + 1) = 2 * 2 ^ b := by rw [Nat.pow_succ, Nat.mul_comm]
+  have key : ∀ y < 2 ^ b, y ^^^ 2 ^ b = y + 2 ^ b := fun y hy => by
     rw [Nat.add_comm]
     apply Nat.eq_of_testBit_eq; intro i
     rw [Nat.testBit_xor, Nat.testBit_two_pow]
-    rcases Nat.lt_trichotomy i 63 with hi | rfl | hi
-    · rw [Nat.testBit_two_pow_add_gt hi, decide_eq_false (by omega : ¬ 63 = i)]; simp
+    rcases Nat.lt_trichotomy i b with hi | rfl | hi
+    · rw [Nat.testBit_two_pow_add_gt hi, decide_eq_false (by omega : ¬ b = i)]; simp
     · rw [Nat.testBit_two_pow_add_eq, Nat.testBit_lt_two_pow hy]; simp
-    · have h1 : 2 ^ 63 + y < 2 ^ i := Nat.lt_of_lt_of_le (by omega) (Nat.pow_le_pow_right (by omega) hi)
+    · have h1 : 2 ^ b + y < 2 ^ i := Nat.lt_of_lt_of_le (by omega) (Nat.pow_le_pow_right (by omega) hi)
       rw [Nat.testBit_lt_two_pow h1, Nat.testBit_lt_two_pow (Nat.lt_of_lt_of_le hy (Nat.pow_le_pow_right
-        (by omega) (by omega))), decide_eq_false (by omega : ¬ 63 = i)]; simp
+        (by omega) (Nat.le_of_lt hi))), decide_eq_false (by omega : ¬ b = i)]; simp
   split
   · exact key x ‹_›
-  · have e := key (x - 2 ^ 63) (by omega)
-    rw [show x - 2 ^ 63 + 2 ^ 63 = x by omega] at e
-    have e' : x ^^^ 2 ^ 63 = (x - 2 ^ 63 ^^^ 2 ^ 63) ^^^ 2 ^ 63 := by rw [e]
+  · have e := key (x - 2 ^ b) (by omega)
+    rw [show x - 2 ^ b + 2 ^ b = x by omega] at e
+    have e' : x ^^^ 2 ^ b = (x - 2 ^ b ^^^ 2 ^ b) ^^^ 2 ^ b := by rw [e]
     rw [e', Nat.xor_assoc, Nat.xor_self, Nat.xor_zero]
 
 /-- An `Int64` from its word: the word below `2^63`, the word less `2^64` above. -/
@@ -43,7 +45,7 @@ theorem Int64.toInt_word (a : Int64) : a.toInt =
 /-- **The `i64` order code** (`Order.rank .i64`, `ordCode 8 false true`): the sign bit flipped, `toInt + 2^63`. -/
 theorem Int64.code_toNat (a : Int64) : (a.toUInt64 ^^^ 0x8000000000000000).toNat = (a.toInt + 2 ^ 63).toNat := by
   have hx := a.toUInt64.toNat_lt
-  rw [UInt64.toNat_xor, show (0x8000000000000000 : UInt64).toNat = 2 ^ 63 from rfl, Nat.xor_top hx,
+  rw [UInt64.toNat_xor, show (0x8000000000000000 : UInt64).toNat = 2 ^ 63 from rfl, Nat.xor_top (b := 63) hx,
     Int64.toInt_word]
   split <;> omega
 
@@ -128,8 +130,8 @@ theorem foldDen_snoc {E V : Obj} (Te : Den V V) (TS : Den (.prod V E) V) (xs : L
       simpa [List.getElem_append_left (show xs.length < ys.length by omega), hy] using hS
 
 /-- `dom(T) (𝟙 × ≥) dom(T)` pointwise. -/
-theorem upToDen_iff {K : Obj} (T : Den (.prod K .long) .long) (a b : (Obj.prod K .long).El) :
-    upToDen T a b ↔ (∃ c, T a c) ∧ (∃ c, T b c) ∧ a.1 = b.1 ∧ b.2 ≤ a.2 := by
+theorem upToDen_iff {K : Obj} {t : QAtomicType} (T : Den (.prod K (.atom t)) .long) (a b : (Obj.prod K (.atom t)).El) :
+    upToDen T a b ↔ (∃ c, T a c) ∧ (∃ c, T b c) ∧ a.1 = b.1 ∧ leAt t b.2 a.2 := by
   simp only [upToDen, Core.Rel.comp, Core.Rel.inter, Core.Rel.recip, Core.Rel.id, Core.Rel.graph]
   constructor
   · rintro ⟨a', ⟨rfl, c, hc, -⟩, b', ⟨⟨k, hk1, hk2⟩, s, rfl, s', hs, rfl⟩, rfl, c', -, hc'⟩
@@ -232,30 +234,210 @@ theorem sums_fold {α : Type} [DecidableEq α] {g : Nat → α} {m : Nat}
       rw [hW (t + 1) ht, hW t (by omega), e, if_pos hg, List.map_append, List.foldl_append]; simp
     · rename_i hg; rw [if_neg hg] at e; exact h0 (t + 1) ht e
 
+/-- **canon's order on the atom `t` is the language's** (`ltAt`, `leAt`): what `sums` needs of its positions, which
+canon sorts by their order codes (`Obj.lt`) while `sumsDen` reads them in `leAt t`. -/
+def OrdAt (t : QAtomicType) : Prop :=
+  (∀ a b, Obj.lt (.atom t) a b ↔ ltAt t a b) ∧ ∀ a b, leAt t a b ↔ ltAt t a b ∨ a = b
+
+/-- An `i64` word holding `n` reads back as `n`. -/
+theorem i64_word (n : Int) (h1 : -2 ^ 63 ≤ n) (h2 : n < 2 ^ 63) :
+    (QAtomicType.word .i64 (QAtomicType.ofNum .i64 n)).toInt64.toInt = n := by
+  have e := QAtomicType.ofBits_word (t := .i64) (Int64.ofInt n) rfl
+  simp only [QAtomicType.ofBits, QAtomicType.ofNum] at e ⊢
+  rw [e, Int64.toInt_ofInt_of_le (by omega) (by omega)]
+
+/-- **An integer word widened to `i64`** (`castWord r .i64`): its value, q's null `-2^63` where it is the null. -/
+theorem castWord_int {r : QAtomicType} {s : Bool} {b : Nat} (hr : r.storeFmt? = some (.int s b))
+    (hlo : -2 ^ 63 ≤ (QAtomicType.NumFmt.int s b).lo - 1) (x : UInt64)
+    (hn : (QAtomicType.NumFmt.int s b).lo - 1 ≤ r.num (QAtomicType.ofBits r x) ∧ r.num (QAtomicType.ofBits r x) < 2 ^ 63) :
+    (QAtomicType.castWord r .i64 x).toInt64.toInt =
+      if (QAtomicType.NumFmt.int s b).lo ≤ r.num (QAtomicType.ofBits r x) then r.num (QAtomicType.ofBits r x)
+      else -2 ^ 63 := by
+  simp only [QAtomicType.castWord, QAtomicType.embed, QAtomicType.value, hr]
+  split
+  · simp only [Option.bind_some, QAtomicType.ofValue, (show QAtomicType.i64.storeFmt? = some (.int true 64) from rfl), QAtomicType.intOf, QAtomicType.NumFmt.lo,
+      QAtomicType.NumFmt.hi]
+    simp only [Int.le_refl, ↓reduceIte, Int.toNat_zero, Int.pow_zero, Int.mul_one, Option.bind_some]
+    rw [if_pos (by constructor <;> omega)]
+    exact i64_word _ (by omega) (by omega)
+  · rfl
+
+/-- The code of a signed `w`-byte word: its low `8w` bits with the top one flipped. -/
+theorem ordCode_signed {w : Nat} (h1 : 1 ≤ w) (h8 : w ≤ 8) (u : UInt64) :
+    (ordCode w false true u).toNat = (u.toNat % 2 ^ (8 * w) + 2 ^ (8 * w - 1)) % 2 ^ (8 * w) := by
+  have hm := Verify.toNat_and_mask h1 h8 u
+  have ht : ((2 ^ (8 * w - 1)).toUInt64 : UInt64).toNat = 2 ^ (8 * w - 1) := by
+    rw [Nat.toUInt64_eq, UInt64.toNat_ofNat', Nat.mod_eq_of_lt (Nat.pow_lt_pow_right (by omega) (by omega))]
+  have hx := Nat.mod_lt u.toNat (Nat.two_pow_pos (8 * w))
+  have e : 8 * w = 8 * w - 1 + 1 := by omega
+  simp only [ordCode, Bool.false_eq_true, ↓reduceIte, UInt64.toNat_xor, hm, ht]
+  rw [e] at hx ⊢
+  rw [Nat.add_sub_cancel, Nat.xor_top hx]
+  have hb : 2 ^ (8 * w - 1 + 1) = 2 * 2 ^ (8 * w - 1) := by rw [Nat.pow_succ, Nat.mul_comm]
+  rw [hb] at hx ⊢
+  generalize u.toNat % (2 * 2 ^ (8 * w - 1)) = m at hx ⊢
+  generalize 2 ^ (8 * w - 1) = d at hx ⊢
+  split
+  · rw [Nat.mod_eq_of_lt (by omega)]
+  · rw [Nat.mod_eq_sub_mod (by omega), Nat.mod_eq_of_lt (by omega)]; omega
+
+/-- The code of an unsigned `w`-byte word: its low `8w` bits. -/
+theorem ordCode_unsigned {w : Nat} (h1 : 1 ≤ w) (h8 : w ≤ 8) (u : UInt64) :
+    (ordCode w false false u).toNat = u.toNat % 2 ^ (8 * w) := by
+  simp only [ordCode, Bool.false_eq_true, ↓reduceIte]; exact Verify.toNat_and_mask h1 h8 u
+
+/-- What the order proofs read off an integer-stored atom `t`: its storage atom `r`, width `w` bytes and signedness
+`s`, its layout, and the range of `num`. -/
+theorem intOrd_shape {t : QAtomicType} (h : t.intOrd = true) : ∃ r w s, t.ordNum = some r ∧
+    r.storeFmt? = some (.int s (8 * w)) ∧ t.storeFmt? = some (.int s (8 * w)) ∧ ascLayout t = some (w, false, s) ∧
+    (w = 1 ∨ w = 2 ∨ w = 4 ∨ w = 8) ∧ (s = false → w = 1) ∧ (∀ x, r.num (QAtomicType.ofBits r x) = t.num (QAtomicType.ofBits t x)) ∧
+    ∀ v : (Obj.atom t).El, if s then -2 ^ (8 * w - 1) ≤ t.num v ∧ t.num v < 2 ^ (8 * w - 1)
+      else 0 ≤ t.num v ∧ t.num v < 2 ^ (8 * w) := by
+  cases t <;> first | exact absurd h (by decide) | skip
+  case u8 => exact ⟨.u8, 1, false, rfl, rfl, rfl, rfl, by omega, by decide, fun _ => rfl, fun v => by
+    have := v.toNat_lt; simp [QAtomicType.num]; omega⟩
+  case char => exact ⟨.u8, 1, false, rfl, rfl, rfl, rfl, by omega, by decide, fun _ => rfl, fun v => by
+    have := v.toNat_lt; simp [QAtomicType.num]; omega⟩
+  case i8 => exact ⟨.i8, 1, true, rfl, rfl, rfl, rfl, by omega, by decide, fun _ => rfl, fun v => by
+    have := Int8.le_toInt v; have := Int8.toInt_lt v; simp [QAtomicType.num]; omega⟩
+  case i16 => exact ⟨.i16, 2, true, rfl, rfl, rfl, rfl, by omega, by decide, fun _ => rfl, fun v => by
+    have := Int16.le_toInt v; have := Int16.toInt_lt v; simp [QAtomicType.num]; omega⟩
+  case i32 => exact ⟨.i32, 4, true, rfl, rfl, rfl, rfl, by omega, by decide, fun _ => rfl, fun v => by
+    have := Int32.le_toInt v; have := Int32.toInt_lt v; simp [QAtomicType.num]; omega⟩
+  case date => exact ⟨.i32, 4, true, rfl, rfl, rfl, rfl, by omega, by decide, fun _ => rfl, fun v => by
+    have := Int32.le_toInt v; have := Int32.toInt_lt v; simp [QAtomicType.num]; omega⟩
+  case i64 => exact ⟨.i64, 8, true, rfl, rfl, rfl, rfl, by omega, by decide, fun _ => rfl, fun v => by
+    have := Int64.le_toInt v; have := Int64.toInt_lt v; simp [QAtomicType.num]; omega⟩
+  case datetime => exact ⟨.i64, 8, true, rfl, rfl, rfl, rfl, by omega, by decide, fun _ => rfl, fun v => by
+    have := Int64.le_toInt v; have := Int64.toInt_lt v; simp [QAtomicType.num]; omega⟩
+
+/-- An integer-stored atom's key is its `num` moved up by half its range when signed. -/
+theorem key_num {t : QAtomicType} (h : t.intOrd = true) : ∃ off : Int, ∀ v : (Obj.atom t).El,
+    Obj.key (.atom t) v = [(t.num v + off).toNat] ∧ 0 ≤ t.num v + off := by
+  obtain ⟨r, w, s, -, -, hst, hl, hw, -, -, hb⟩ := intOrd_shape h
+  refine ⟨if s then 2 ^ (8 * w - 1) else 0, fun v => ?_⟩
+  have hs : t.storeFmt?.isSome := by rw [hst]; rfl
+  have hg : t ≠ .general := by rintro rfl; cases hst
+  have k := Obj.key_ordCode hl hg (QAtomicType.word t v) (fun e => by subst e; cases hst)
+  have ho : (Dep.Carrier.of? t (.atom (Column.atomOfBits t (QAtomicType.word t v) hg))).getD default =
+      QAtomicType.ofBits t (QAtomicType.word t v) := by
+    cases t <;> first | rfl | exact absurd hs (by decide)
+  rw [ho, QAtomicType.ofBits_word v hs] at k
+  have hv := hb v
+  have hu : (QAtomicType.word t v).toNat = (t.num v % 2 ^ 64).toNat := by
+    simp [QAtomicType.word, UInt64.ofInt]; omega
+  refine ⟨?_, ?_⟩
+  · rw [k, List.cons.injEq]; refine ⟨?_, rfl⟩
+    cases s
+    · rw [ordCode_unsigned (by omega) (by omega), hu]
+      rcases hw with rfl | rfl | rfl | rfl <;> simp at hv ⊢ <;> omega
+    · rw [ordCode_signed (by omega) (by omega), hu]
+      rcases hw with rfl | rfl | rfl | rfl <;> simp at hv ⊢ <;> omega
+  · cases s <;> simp at hv ⊢ <;> omega
+
+
+/-- `iordAt`'s orders at an integer-stored atom are those of `num`. -/
+theorem iord_num {t : QAtomicType} (h : t.intOrd = true) (a b : (Obj.atom t).El) :
+    (iordAt .lt t a b ↔ t.num a < t.num b) ∧ (iordAt .le t a b ↔ t.num a ≤ t.num b) := by
+  obtain ⟨r, w, s, hr, hrs, hst, -, hw, hsw, hx, hb⟩ := intOrd_shape h
+  have hs : t.storeFmt?.isSome := by rw [hst]; rfl
+  have cw : ∀ x, (QAtomicType.castWord r .i64 x).toInt64.toInt =
+      if (QAtomicType.NumFmt.int s (8 * w)).lo ≤ t.num (QAtomicType.ofBits t x) then t.num (QAtomicType.ofBits t x)
+      else -2 ^ 63 := fun x => by
+    have hv := hb (QAtomicType.ofBits t x)
+    rw [← hx x]; refine castWord_int hrs ?_ x ?_
+    · rcases hw with rfl | rfl | rfl | rfl <;> cases s <;> simp [QAtomicType.NumFmt.lo]
+    · rw [hx x]; rcases hw with rfl | rfl | rfl | rfl <;> cases s <;> simp [QAtomicType.NumFmt.lo] at hv hsw ⊢ <;> omega
+  have hv := hb a; have hv' := hb b
+  have key : ∀ x y, QAtomicType.ofBits t x = a → QAtomicType.ofBits t y = b →
+      ((QAtomicType.castWord r .i64 x).toInt64 < (QAtomicType.castWord r .i64 y).toInt64 ↔ t.num a < t.num b) ∧
+      ((QAtomicType.castWord r .i64 x).toInt64 ≤ (QAtomicType.castWord r .i64 y).toInt64 ↔ t.num a ≤ t.num b) := by
+    intro x y hxa hyb
+    rw [Int64.lt_iff_toInt_lt, Int64.le_iff_toInt_le, cw, cw, hxa, hyb]
+    generalize t.num a = A at *; generalize t.num b = B at *
+    rcases hw with rfl | rfl | rfl | rfl <;> cases s <;> simp only [QAtomicType.NumFmt.lo] at hv hv' ⊢ <;>
+      simp at hv hv' ⊢ <;> split <;> split <;> (constructor <;> constructor <;> intro <;> omega)
+  have elt : ∀ p q : UInt64, Op.eval .lt p q = .ok 1 ↔ p.toInt64 < q.toInt64 := fun p q => by
+    rw [show Op.eval .lt p q = .ok (if decide (p.toInt64 < q.toInt64) = true then 1 else 0) from rfl]
+    by_cases hp : p.toInt64 < q.toInt64 <;> simp [hp]
+  have ele : ∀ p q : UInt64, Op.eval .le p q = .ok 1 ↔ p.toInt64 ≤ q.toInt64 := fun p q => by
+    rw [show Op.eval .le p q = .ok (if decide (p.toInt64 ≤ q.toInt64) = true then 1 else 0) from rfl]
+    by_cases hp : p.toInt64 ≤ q.toInt64 <;> simp [hp]
+  constructor <;> constructor
+  · rintro ⟨r', x, y, hr', hxa, hyb, he⟩
+    rw [hr] at hr'; cases hr'; exact (key x y hxa hyb).1.1 ((elt _ _).1 he)
+  · intro hl; exact ⟨r, _, _, hr, QAtomicType.ofBits_word a hs, QAtomicType.ofBits_word b hs,
+      (elt _ _).2 ((key _ _ (QAtomicType.ofBits_word a hs) (QAtomicType.ofBits_word b hs)).1.2 hl)⟩
+  · rintro ⟨r', x, y, hr', hxa, hyb, he⟩
+    rw [hr] at hr'; cases hr'; exact (key x y hxa hyb).2.1 ((ele _ _).1 he)
+  · intro hl; exact ⟨r, _, _, hr, QAtomicType.ofBits_word a hs, QAtomicType.ofBits_word b hs,
+      (ele _ _).2 ((key _ _ (QAtomicType.ofBits_word a hs) (QAtomicType.ofBits_word b hs)).2.2 hl)⟩
+
+/-- The order of an integer-stored atom's values, three ways, each the order of `num`: canon's (`Obj.lt`), `ltAt`'s,
+`leAt`'s; and `num` is one to one. -/
+theorem num_order {t : QAtomicType} (h : t.intOrd = true) (a b : (Obj.atom t).El) :
+    (Obj.lt (.atom t) a b ↔ t.num a < t.num b) ∧ (ltAt t a b ↔ t.num a < t.num b) ∧
+      (leAt t a b ↔ t.num a ≤ t.num b) ∧ (t.num a = t.num b → a = b) := by
+  have hs : t.storeFmt?.isSome := by
+    obtain ⟨_, _, _, _, _, hst, _⟩ := intOrd_shape h; rw [hst]; rfl
+  obtain ⟨off, hk⟩ := key_num h
+  refine ⟨?_, ?_, ?_, fun e => ?_⟩
+  · obtain ⟨ka, ha⟩ := hk a; obtain ⟨kb, hb⟩ := hk b
+    simp only [Obj.lt, ka, kb, List.cons_lt_cons_iff, List.lt_irrefl, and_false, or_false]
+    omega
+  · cases t <;> first | exact absurd h (by decide) | exact (iord_num h a b).1 | exact Int64.lt_iff_toInt_lt
+  · cases t <;> first | exact absurd h (by decide) | exact (iord_num h a b).2 | exact Int64.le_iff_toInt_le
+  · rw [← QAtomicType.ofBits_word a hs, ← QAtomicType.ofBits_word b hs]
+    simp only [QAtomicType.word, e]
+
+/-- **canon's order is the value order at every integer-stored atom** (`u8 i8 i16 i32 i64 char date datetime`). -/
+theorem ordAt_int {t : QAtomicType} (h : t.intOrd = true) : OrdAt t :=
+  ⟨fun a b => (num_order h a b).1.trans (num_order h a b).2.1.symm, fun a b => by
+    obtain ⟨-, h2, h3, h4⟩ := num_order h a b
+    rw [h2, h3]; constructor
+    · intro hl; rcases Int.lt_or_eq_of_le hl with e | e
+      · exact .inl e
+      · exact .inr (h4 e)
+    · rintro (e | rfl)
+      · exact Int.le_of_lt e
+      · exact Int.le_refl _⟩
+
+/-- Only an atom with an order code (`ascOrd`) can have canon's order be `ltAt`: `u1`'s `false < true`, `sym`'s
+`"" < "a"` have no `ltAt`, and a `general` value is not `leAt` itself. -/
+theorem OrdAt.ascOrd {t : QAtomicType} (h : OrdAt t) : ∃ f, ascOrd t = some f := by
+  cases t
+  case u1 => exact absurd ((h.1 false true).1 (by decide)) (by simp [ltAt, iordAt, QAtomicType.ordNum,
+    QAtomicType.numFmt?, QAtomicType.width])
+  case sym => exact absurd ((h.1 "" "a").1 (by decide)) (by simp [ltAt, iordAt, QAtomicType.ordNum,
+    QAtomicType.numFmt?, QAtomicType.width])
+  case general => exact absurd ((h.2 default default).2 (.inr rfl)) (by simp [leAt, iordAt, QAtomicType.ordNum,
+    QAtomicType.numFmt?, QAtomicType.width])
+  all_goals exact ⟨_, rfl⟩
+
 end Lang
 
 /-- **`sumsDen` on a table of distinct keys whose groups `grp` (equal `κ`) ascend in `ν` with the row**: `(κ, ν)` to
 the left fold over the values of the rows `≤ t` of `t`'s group, `t` the row of `(κ, ν)`. -/
-theorem sumsDen_rows {K : Obj} (C : Tab (.prod K .long) .long) (grp : Nat → Nat)
-    (hD : ∀ i j : Fin C.n.toNat, C.key.row i = C.key.row j → i = j)
+theorem sumsDen_rows {K : Obj} {t : QAtomicType} (hord : Lang.OrdAt t) (C : Tab (.prod K (.atom t)) .long)
+    (grp : Nat → Nat) (hD : ∀ i j : Fin C.n.toNat, C.key.row i = C.key.row j → i = j)
     (hG : ∀ i j : Fin C.n.toNat, grp i = grp j ↔ (C.key.row i).1 = (C.key.row j).1)
     (hO : ∀ i j : Fin C.n.toNat, i.1 < j.1 → (C.key.row i).1 = (C.key.row j).1 →
-      (C.key.row i).2 < (C.key.row j).2) (a : (Obj.prod K .long).El) (w : Int64) :
+      Obj.lt (.atom t) (C.key.row i).2 (C.key.row j).2) (a : (Obj.prod K (.atom t)).El) (w : Int64) :
     Lang.sumsDen (rep C) a w ↔ ∃ t : Fin C.n.toNat, C.key.row t = a ∧
       Lang.foldDen (E := .long) (V := .long) (fun _ b => b = 0) (Lang.stepDen Ew.add)
         (((List.range (t.1 + 1)).filter fun q => grp q = grp t).map fun q =>
           if hq : q < C.n.toNat then C.val.row ⟨q, hq⟩ else 0) w := by
   have hR : ∀ b v, rep C b v ↔ ∃ i, C.key.row i = b ∧ C.val.row i = v := fun _ _ => Iff.rfl
-  have hU : ∀ b c, Lang.upToDen (rep C) b c ↔ (∃ v, rep C b v) ∧ (∃ v, rep C c v) ∧ b.1 = c.1 ∧ c.2 ≤ b.2 :=
-    fun b c => Lang.upToDen_iff _ b c
-  have hle : ∀ y : Int64, y ≤ y := fun y => by rw [Int64.le_iff_toInt_le]; exact Int.le_refl _
+  have hU : ∀ b c, Lang.upToDen (rep C) b c ↔ (∃ v, rep C b v) ∧ (∃ v, rep C c v) ∧ b.1 = c.1 ∧
+      Lang.leAt t c.2 b.2 := fun b c => Lang.upToDen_iff _ b c
+  have hle : ∀ y, Lang.leAt t y y := fun y => (hord.2 y y).2 (.inr rfl)
   have hP : ∀ t : Fin C.n.toNat, ∀ q ∈ (List.range (t.1 + 1)).filter (fun q => grp q = grp t),
       q < C.n.toNat ∧ q ≤ t.1 ∧ grp q = grp t := fun t q hq => by
     simp only [List.mem_filter, List.mem_range, decide_eq_true_eq] at hq; exact ⟨by omega, by omega, hq.2⟩
-  let kAt (t : Fin C.n.toNat) (q : Nat) : (Obj.prod K .long).El :=
+  let kAt (t : Fin C.n.toNat) (q : Nat) : (Obj.prod K (.atom _)).El :=
     if hq : q < C.n.toNat then C.key.row ⟨q, hq⟩ else C.key.row t
   have hM : ∀ t : Fin C.n.toNat, ∀ b, b ∈ ((List.range (t.1 + 1)).filter fun q => grp q = grp t).map (kAt t) ↔
-      (∃ v, rep C b v) ∧ (C.key.row t).1 = b.1 ∧ b.2 ≤ (C.key.row t).2 := by
+      (∃ v, rep C b v) ∧ (C.key.row t).1 = b.1 ∧ Lang.leAt _ b.2 (C.key.row t).2 := by
     intro t b
     rw [List.mem_map]
     constructor
@@ -264,8 +446,7 @@ theorem sumsDen_rows {K : Obj} (C : Tab (.prod K .long) .long) (grp : Nat → Na
       simp only [kAt, dif_pos hqn]
       refine ⟨⟨_, (hR _ _).2 ⟨⟨q, hqn⟩, rfl, rfl⟩⟩, ((hG ⟨q, hqn⟩ t).1 hg).symm, ?_⟩
       rcases Nat.lt_or_ge q t.1 with h | h
-      · have := hO ⟨q, hqn⟩ t h ((hG ⟨q, hqn⟩ t).1 hg)
-        rw [Int64.lt_iff_toInt_lt] at this; rw [Int64.le_iff_toInt_le]; omega
+      · exact (hord.2 _ _).2 (.inl ((hord.1 _ _).1 (hO ⟨q, hqn⟩ t h ((hG ⟨q, hqn⟩ t).1 hg))))
       · obtain rfl : t = ⟨q, hqn⟩ := Fin.ext (show t.1 = q by omega); exact hle _
     · rintro ⟨⟨v, hv⟩, h1, h2⟩
       obtain ⟨q, rfl, -⟩ := (hR _ _).1 hv
@@ -274,16 +455,18 @@ theorem sumsDen_rows {K : Obj} (C : Tab (.prod K .long) .long) (grp : Nat → Na
       refine ⟨?_, (hG q t).2 h1.symm⟩
       apply Nat.lt_of_not_le; intro hc
       have := hO t q (by omega) h1
-      rw [Int64.lt_iff_toInt_lt] at this; rw [Int64.le_iff_toInt_le] at h2; omega
+      rcases (hord.2 _ _).1 h2 with e | e
+      · exact Obj.lt_asymm _ this ((hord.1 _ _).2 e)
+      · rw [e] at this; exact Obj.lt_irrefl _ _ this
   have hS : ∀ t : Fin C.n.toNat,
-      (((List.range (t.1 + 1)).filter fun q => grp q = grp t).map (kAt t)).Pairwise (Obj.prod K .long).lt := by
+      (((List.range (t.1 + 1)).filter fun q => grp q = grp t).map (kAt t)).Pairwise (Obj.prod K (.atom _)).lt := by
     intro t
     rw [List.pairwise_map]
     refine ((List.pairwise_lt_range).filter _).imp_of_mem fun {q q'} hq hq' hlt => ?_
     obtain ⟨hqn, -, hg⟩ := hP t q hq; obtain ⟨hqn', -, hg'⟩ := hP t q' hq'
     simp only [kAt, dif_pos hqn, dif_pos hqn']
     have e := (hG ⟨q, hqn⟩ ⟨q', hqn'⟩).1 (hg.trans hg'.symm)
-    exact (Obj.lt_prod _ _ _ _ _ _).2 (Or.inr ⟨congrArg _ e, (Obj.lt_long _ _).2 (hO ⟨q, hqn⟩ ⟨q', hqn'⟩ hlt e)⟩)
+    exact (Obj.lt_prod _ _ _ _ _ _).2 (Or.inr ⟨congrArg _ e, hO ⟨q, hqn⟩ ⟨q', hqn'⟩ hlt e⟩)
   have hrow : ∀ i : Fin C.n.toNat, ∀ v, rep C (C.key.row i) v ↔ v = C.val.row i := fun i v => by
     rw [hR]; constructor
     · rintro ⟨j, hj, rfl⟩; rw [hD j i hj]
@@ -329,41 +512,60 @@ namespace Tab
 
 /-- **`canon` ascends in `ν` within a `κ`**: its rows are sorted by the codes of `κ`'s columns, then `ν`'s, then the
 value's (`canon_sorted`), so two distinct rows of one `κ` ascend strictly in `ν`. -/
-theorem canon_pos_lt {K : Obj} {x C : Tab (.prod K .long) .long} (hC : x.canon = .ok C)
+theorem canon_pos_lt {K : Obj} {t : QAtomicType} {f : UInt64 → UInt64} (hf : ascOrd t = some f)
+    {x C : Tab (.prod K (.atom t)) .long} (hC : x.canon = .ok C)
     (hD : ∀ i j : Fin C.n.toNat, C.key.row i = C.key.row j → i = j) (i j : Fin C.n.toNat) (hij : i.1 < j.1)
-    (hk : (C.key.row i).1 = (C.key.row j).1) : (C.key.row i).2 < (C.key.row j).2 := by
+    (hk : (C.key.row i).1 = (C.key.row j).1) : Obj.lt (.atom t) (C.key.row i).2 (C.key.row j).2 := by
   obtain ⟨es, cs, hes, hcs⟩ := canon_codes hC
   obtain ⟨sel, hsel, hord⟩ := canon_sorted hC hes
   have hki : ∀ j, C.key.row j = x.key.row (sel j) := fun j => congrArg Prod.fst (hsel j)
   cases heK : Vals.cols x.key.1 with
   | error s => simp [Vals.cols, heK, bind, Except.bind] at hes
   | ok eK =>
-  have hes' : es = eK ++ [(.atom .i64, Arr.enc (t := .i64) x.key.2), (.atom .i64, Arr.enc (t := .i64) x.val)] := by
+  have hes' : es = eK ++ [(.atom t, Arr.enc x.key.2), (.atom .i64, Arr.enc (t := .i64) x.val)] := by
     simp only [Vals.cols, heK, bind, Except.bind, pure, Except.pure, Except.ok.injEq] at hes; rw [← hes]; simp
   rw [hes'] at hcs
-  obtain ⟨csK, -, hcsK, -, -⟩ := mapM_append_ok hcs
+  obtain ⟨csK, csP, hcsK, hcsP, -⟩ := mapM_append_ok hcs
+  obtain ⟨cs1, -, hcs1, -, -⟩ := mapM_append_ok (l1 := [(AscKey.atom t, Arr.enc x.key.2)])
+    (l2 := [(AscKey.atom .i64, Arr.enc (t := .i64) x.val)]) hcsP
   have hκ : x.key.1.row (sel i) = x.key.1.row (sel j) := by rw [hki, hki] at hk; exact hk
   have hcode := Vals.codes_of_row x.key.1 heK hcsK (sel i) (sel j) hκ
   have hlex := (hord i j hij).1
   rw [hes', ascKeys_append, lexLe_append_of_eq _ _ hcode] at hlex
-  have hle := Lang.Arr.lexLe_i64 x.key.2 _ hlex
-  rw [ordCode_i64_le] at hle
-  have hne : (C.key.row i).2 ≠ (C.key.row j).2 := fun e => absurd (hD i j (Prod.ext hk e)) (fun h => by
-    rw [h] at hij; exact Nat.lt_irrefl _ hij)
-  rw [hki, hki] at hne ⊢
-  show x.key.2.row (sel i) < x.key.2.row (sel j)
-  rw [Vals.row_atom, Vals.row_atom] at *
-  rw [Int64.le_iff_toInt_le] at hle
-  rw [Int64.lt_iff_toInt_lt]
-  have : (x.key.2.get (sel i)).toInt ≠ (x.key.2.get (sel j)).toInt := fun e => hne (Int64.toInt_inj.1 e)
-  omega
+  have hg : t ≠ .general := by rintro rfl; simp [ascOrd, ascLayout, orderKind] at hf
+  have hs : t ≠ .sym := by rintro rfl; simp [ascOrd, ascLayout, orderKind] at hf
+  have hv := (Arr.eq_of_codes x.key.2 hcs1).1
+  obtain ⟨a, ha, hua, hga⟩ := Arr.get_raw_atom x.key.2 hv hg hs (sel i)
+  obtain ⟨b, hb, hub, hgb⟩ := Arr.get_raw_atom x.key.2 hv hg hs (sel j)
+  simp only [ascKeys, ascKey, List.cons_append, List.singleton_append, lexLe, Array.getElem?_map, ha, hb,
+    Option.map_some, Option.getD_some, hf, Bool.or_eq_true, decide_eq_true_eq, Bool.and_eq_true,
+    beq_iff_eq] at hlex
+  obtain ⟨⟨w, fl, sg⟩, hL⟩ : ∃ L, ascLayout t = some L := by
+    cases hL : ascLayout t <;> simp [ascOrd, hL] at hf ⊢
+  have hfL : f = ordCode w fl sg := by simp [ascOrd, hL] at hf; exact hf.symm
+  rw [hki, hki]
+  show Obj.lt (.atom t) (Vals.row (A := .atom t) x.key.2 (sel i)) (Vals.row (A := .atom t) x.key.2 (sel j))
+  rw [Vals.row_atom, Vals.row_atom, hga, hgb]
+  unfold Obj.lt
+  rw [Obj.key_ordCode hL hg a hua, Obj.key_ordCode hL hg b hub, ← hfL]
+  rcases hlex with h | ⟨h, -⟩
+  · simp only [List.cons_lt_cons_iff, List.lt_irrefl, and_false, or_false]
+    exact UInt64.lt_iff_toNat_lt.1 h
+  · -- equal codes are one position, and two rows of one `κ` at one position are one row
+    have e := (Verify.ascOrd_atom hf hg fun h => ⟨hua h, hub h⟩).1 h
+    have hne : C.key.row i ≠ C.key.row j := fun e => absurd (hD i j e) (fun h => by rw [h] at hij; exact Nat.lt_irrefl _ hij)
+    refine absurd (Prod.ext hk ?_) hne
+    rw [hki, hki]
+    show Vals.row (A := .atom t) x.key.2 (sel i) = Vals.row (A := .atom t) x.key.2 (sel j)
+    rw [Vals.row_atom, Vals.row_atom, hga, hgb, e]
 
 /-- **`sums x` denotes `sumsDen`** (`Rel/Lang/Den.lean`): `x` simple (one value per `(κ, ν)`, else the error), the
 segmented `kscan .add` holds each row's prefix sum over its `κ`'s rows ascending in `ν`, and the segmented `kscan .or`
 of the bad words keeps a row exactly when no `plus` step of its key up to it wrapped or met the null. -/
-theorem sums_holds {K : Obj} {x T : Tab (.prod K .long) .long} (h : Tab.sums x = .ok T) :
-    rep T = Lang.sumsDen (rep x) := by
-  dsimp only [Tab.sums] at h
+theorem sums_holds {K : Obj} {t : QAtomicType} (hord : Lang.OrdAt t) {x T : Tab (.prod K (.atom t)) .long}
+    (h : Tab.sumsOn x = .ok T) : rep T = Lang.sumsDen (rep x) := by
+  obtain ⟨f, hf⟩ := hord.ascOrd
+  dsimp only [Tab.sumsOn] at h
   simp only [bind] at h
   rw [Except.bind_eq_ok'] at h; obtain ⟨C, hC, h⟩ := h
   rw [Except.bind_eq_ok'] at h; obtain ⟨e1, he1, h⟩ := h
@@ -444,7 +646,7 @@ theorem sums_holds {K : Obj} {x T : Tab (.prod K .long) .long} (h : Tab.sums x =
   rw [hx]
   funext a c
   apply propext
-  rw [sumsDen_rows C (Verify.groupOf (seenKey C.n e2) C.n.toNat) hD hG (canon_pos_lt hC hD) a c]
+  rw [sumsDen_rows hord C (Verify.groupOf (seenKey C.n e2) C.n.toNat) hD hG (canon_pos_lt hf hC hD) a c]
   show T.Holds a c ↔ _
   rw [keep_holds h (fun i hi => by
     rw [hNB i hi]; rcases (hBR i hi).1 with e | e <;> rw [e] <;> decide) a c]
@@ -464,6 +666,18 @@ theorem sums_holds {K : Obj} {x T : Tab (.prod K .long) .long} (h : Tab.sums x =
     rcases hb.1 with e | e <;> rw [e] <;> decide
   rw [hx1, hb.2]
   constructor <;> rintro ⟨h1, h2, h3⟩ <;> exact ⟨h2, h1, h3.symm⟩
+
+/-- **`sums x` at any position object denotes `sumsAt`**: it runs only at an integer-stored atom (`intOrd`), where
+`ordAt_int` gives `sums_holds` its order. -/
+theorem sums_den {K P : Obj} {x T : Tab (.prod K P) .long} (h : Tab.sums x = .ok T) :
+    rep T = Lang.sumsAt K P (rep x) := by
+  cases P with
+  | atom t =>
+    simp only [Tab.sums] at h
+    split at h
+    · exact sums_holds (Lang.ordAt_int ‹_›) h
+    · cases h
+  | _ => cases h
 
 end Tab
 

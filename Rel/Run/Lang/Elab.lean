@@ -2075,6 +2075,16 @@ def build : Pre → Except Err Res
     r.num.forM fun v => do
       if let some o := (r.sig.2.2.varAt v (zonk mc t)).orElse fun _ => r.sig.2.1.varAt v (zonk mc s) then
         discard <| numObj objs mc dp o r.sym (· == .i64)
+    -- an object whose canon order is not its value order (a float's bits, a symbol's bytes) is refused by name
+    r.ord.forM fun v => do
+      if let some o := (r.sig.2.2.varAt v (zonk mc t)).orElse fun _ => r.sig.2.1.varAt v (zonk mc s) then
+        let ats := ", ".intercalate ((atomNames.filter (·.2.intOrd)).map (atomName ·.2))
+        match zonk mc o with
+        | .base n => match objs.lookup n with
+          | some { obj := .atom a, ovar := false, .. } => unless a.intOrd do
+              throw ⟨dp, s!"{r.sym}' position object {n} is an object of {atomName a}; {r.sym} orders positions of {ats}"⟩
+          | _ => pure ()
+        | o => throw ⟨dp, s!"{r.sym}' position object {o} is no atom; {r.sym} orders positions of {ats}"⟩
     let A ← toObj objs mc dp s; let B ← toObj objs mc dp t
     -- `$` is typed by unification at any two objects; which atoms it joins is `castOK`'s, read off their formats
     if r.sym == "$" then

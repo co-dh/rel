@@ -89,6 +89,32 @@ rel_program frameOrderT where
 
 #guard frameOrderT.failures.map toString == []
 
+-- `sums` with its positions at a `date` and at a `datetime`: each key's prefix sums in the order of the positions
+rel_program sumsTimeT where
+    obj K = {A,B}
+    obj N
+    obj D : date
+    obj T : datetime
+    x : K×D ⟶ N ≜ {((A,19000),3),((A,18990),4),((B,19000),5),((A,19005),-2)}
+    -- by hand, A in day order: 18990 → 4, 19000 → 4+3 = 7, 19005 → 7−2 = 5; B has no earlier row: 19000 → 5; the
+    -- day 19000 is a position of both keys
+    check sums(x) = {((A,18990),4),((A,19000),7),((A,19005),5),((B,19000),5)}
+    y : K×T ⟶ N ≜ {((A,1000000000),1),((A,-5),2),((B,7),10)}
+    -- a negative datetime first: −5 → 2, 10^9 → 2+1 = 3; B: 10
+    check sums(y) = {((A,-5),2),((A,1000000000),3),((B,7),10)}
+
+#guard sumsTimeT.failures.map toString == []
+
+-- positions at an `f64`: its canon order is its bits' until S5, so `sums` is refused by name
+/-- error: -/
+#guard_msgs in
+rel_program sumsFloatPosT where
+    obj K = {A}
+    obj N
+    obj G : f64
+    x : K×G ⟶ N ≜ {((A,1.5),1)}
+    s : K×G ⟶ N ≜ sums(x)
+
 -- `sum` and `sums` at an `f64` column: refused by name (a float sum waits on the summation order, S4)
 /-- error: line 100, col 5: sum on G: G is an object of f64, and sum runs on objects of i64 only -/
 #guard_msgs in
