@@ -834,15 +834,18 @@ partial def code (pre : Name) (ph : List Lean.Expr) (ρ : List (Nat × Lean.Expr
     if let some e := (← get).2[k]? then return e
     let e ← code pre ph ρ R
     modify fun (m, cs) => (m, cs.insert k e); return e
+  -- a term demanding nothing of its context (`dem = false`) has one table, so it is computed once; but `R × S`'s is
+  -- the CROSS of its parts' (already computed once): it runs on the pairs its context knows (`GenK.prod`), as
+  -- `⟨π₁ R, π₂ S⟩` does, and whole only where none is known
+  let once := !t.dem && !(t matches .prod ..)
   if closed t then
     let v ← node pre ph ρ t
     -- at a placeholder of the constant being built (`Once.ph`, here `ph`) the value lives under its binders: not shared
     if (v.find? ph.contains).isSome then return v
-    -- a term demanding nothing of its context (`dem = false`) has one table, so it is computed once
-    return mkConst (← share pre A B (if !t.dem then g ``GenK.memo #[oE A, oE B, v] else v))
+    return mkConst (← share pre A B (if once then g ``GenK.memo #[oE A, oE B, v] else v))
   -- one reading a call's parameters or a round's table has one table per call or round: computed once there, where
   -- left lazy each context that forces it would run it again (a twin's body reading `x ⟨k, t⟩` at each use)
-  else if !t.dem then return g ``GenK.memo #[oE A, oE B, ← node pre ph ρ t]
+  else if once then return g ``GenK.memo #[oE A, oE B, ← node pre ph ρ t]
   else node pre ph ρ t
 
 /-- The constant of the closed code `v : Rel A B`: one per structurally equal value, so a closed term with

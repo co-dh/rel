@@ -197,7 +197,7 @@ def pair (A B C : Obj) (d e : Bool) (R : Fn d A B) (S : Fn e A C) : Fn (d && e) 
   | R, S => lift2 Tab.pair (fun K => ⟨K.dom, none, none⟩) (fun K => ⟨K.dom, none, none⟩) R S
 /-- `R × S`: on the pairs `Z` a context knows, `⟨π₁ ≫ R, π₂ ≫ S⟩` on `Z`, each operand run knowing its domain is that
     side of `Z`; where none is known, CROSS of the two tables. -/
-def prod (A B C D : Obj) (R : Fn false A B) (S : Fn false C D) : Fn true (.prod A C) (.prod B D) :=
+def prod (A B C D : Obj) (R : Fn false A B) (S : Fn false C D) : Fn false (.prod A C) (.prod B D) :=
   .lazy fun K => .tab <| match K.dom with
     | some ⟨n, Z⟩ => do
       let l ← (← Tab.outl Z).comp (← R.runE ⟨some ⟨n, Z.1⟩, none, none⟩)
