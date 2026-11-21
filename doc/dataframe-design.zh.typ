@@ -192,7 +192,8 @@ next(n, x)        ≜ dom(x) tot(⟨𝟙, ⊤ n⟩plus x)                 行 i 
 ```
 
 - `f` 的取法（`c = x v`）：`sum` 是 `F(c) sum`（prim `sum`，dfn `⦇[0, plus]⦈ʳ`），`count` 是 `length`，积是
-  `F(c) ⦇[⊤ 1, times]⦈`，`reduce` 是 `F(c) ⦇[e, op]⦈`（`op` 是一个 `arith`）。`mean` 不在库里：它要 `f64` 上的 `sum` 与 `div`（F4）。
+  `F(c) ⦇[⊤ 1, times]⦈`，`reduce` 是 `F(c) ⦇[e, op]⦈`（`op` 是一个 `arith`）；`f64` 列的和是 `F(c) ⦇[{(∗,0)}, plus]⦈ʳ`（`TestFrameStat`）。
+  `mean` 不在库里：它要真正的浮点商，`div` 取整（F4）。
   `min` `max` 只选不造：`F(c) Λ(∋) head`、`last`（`Λ(∋)` 是数组的值的升序集合）。每组第一个、最后一个值：
   `F(c) head`、`last`。`F` 是 prim：数组逐元素后接 `c`。
 - 一个实例：`c = x a = B A B`：`agg(c°, head)` 是 `A ↦ 1`、`B ↦ 0`，`asc` 把 `{0, 1}` 编号，`firstOcc = 0 1`；
@@ -221,21 +222,21 @@ next(n, x)        ≜ dom(x) tot(⟨𝟙, ⊤ n⟩plus x)                 行 i 
   ([`groupBy`], [组 `group(x k)`；组的 key `firstOcc(x k) x k`], [], "full"),
   ([`aggregate`], [`aggregate(a, f, x) ≜ ⟨firstOcc(x a) x a, agg(group(x a), f)⟩`], [], "full"),
   ([`sum` `mean` `count` `countAll` `minimum` `maximum` `reduce`], [`summarize(f, x)`，`f` 见 3.1；`count(x)`],
-    [`minimum` `maximum` 在 `f64`、`date` 列上按值的序；`mean` 要 `f64` 上的 `sum` 与 `div`，整数商不是均值：F4], "part"),
+    [`minimum` `maximum` 在 `f64`、`date` 列上按值的序；`f64` 的 `sum` 是 fold `⦇[{(∗,0)}, plus]⦈ʳ`；`mean` 要真正的浮点商，取整的商不是均值：F4], "part"),
   ([`variance` `stddev` `skewness` `correlation` `zScore`],
-    [无], [需要浮点 `arith` 和浮点 `div`；整数商不是方差：F4], "no"),
+    [无], [平方和可写（`F(c ⟨𝟙, 𝟙⟩times)` 再 fold）；除以计数要真正的浮点商，`stddev` 还要 `sqrt`：F4], "no"),
   ([`median` `percentile` `genericPercentile` `interQuartileRange`],
-    [无], [需要 `f64` 上的 `sum` 与 `div`；中点的整数商不是分位数：F4], "no"),
+    [无], [中点要真正的浮点商；取整的商不是分位数：F4], "no"),
   ([`countDistinct` `mode`], [`countDistinct(x) ≜ count(distinct(x))`；`mode(a, x) ≜ summarize(head, s) s where s ≜ idesc(valueCounts(a, x) π₂) valueCounts(a, x) π₁`],
     [`mode` 在并列中取先出现的（`idesc` 稳定）], "full"),
   ([`collect`], [`collect(a, c, x) ≜ aggregate(a, F(x c), x)`], [结果列的类型是 `Obj.arr V`], "full"),
   ([`firstOrNothing` `lastOrNothing`], [`firstOrNothing(x) ≜ tot(summarize(head, x) x)`；`lastOrNothing(x) ≜ tot(summarize(last, x) x)`],
     [空 frame 得 null；每组一行：`firstOcc(x k) x`、`lastOcc(x k) x`], "full"),
   ([`topK` `bottomK` `kExtremes`], [`topK(n, a, x) ≜ take(n, sortByDesc(a, x))`；`bottomK` 是 `topBy`], [并列按位置顺序], "full"),
-  ([`valueCounts` `valueProportions` `frequencies`], [`valueCounts(a, x) ≜ aggregate(a, length, x)`], [比例：计数经 `$ F` 成为 `f64`，但 `f64` 上没有 `div`：F4], "part"),
+  ([`valueCounts` `valueProportions` `frequencies`], [`valueCounts(a, x) ≜ aggregate(a, length, x)`], [比例：计数经 `$ F` 成为 `f64`，但没有真正的浮点商（`div` 取整）：F4], "part"),
   ([`summarize` `describeColumns`],
     [`describe(c) ≜ ⟨count(c), ⟨summarize(F(c) Λ(∋) head, c), summarize(F(c) Λ(∋) last, c)⟩⟩`],
-    [count、min、max；mean / std 要 `f64` 上的 `sum` 与 `div`：F4], "part"),
+    [count、min、max；mean 要真正的浮点商，std 还要 `sqrt`：F4], "part"),
   ([`nulls`], [`nulls(c, x) ≜ count(filterNothing(c, x))`], [], "full"),
   ([`innerJoin` `join` `joinOn`], [`innerJoin(a, b, x, y) ≜ joinOn(J(a, b, x, y), x, y)`], [], "full"),
   ([`leftJoin`], [`leftJoin(a, b, x, y) ≜ asc(ran(⟨𝟙, dom(x) tot(J(a, b, x, y))⟩)) ⟨π₁ x, π₂ (y ⊕ 𝟙)⟩`],
@@ -254,7 +255,7 @@ next(n, x)        ≜ dom(x) tot(⟨𝟙, ⊤ n⟩plus x)                 行 i 
   ([`lift` `lift2` `nullLift` `bind`], [无], [F7], "no"),
   ([`cast` `toDouble` `div` `mod` `pow` `relu` `eq` `lt` `and` `or` `not` …],
     [`div` `mod` 是 `arith`；`eq` 是 `𝟙`，`lt` 是 `<`；`and` `or` `not` 是 coreflexive 的 `∩` `∪` `−`；`relu = ⟨𝟙, ⊤ 0⟩max`；`toDouble` 是 `x v $ F`（`obj F : f64`）],
-    [`$` 只保值（整数 → 浮点、窄 → 宽）；浮点 → 整数、`pow`、`f64` 上的 `arith` 与 `<`：F4], "part"),
+    [`$` 只保值（整数 → 浮点、窄 → 宽）；`arith` 与 `<` 在 `f64` `f32` 上（`TestFloatArith`），`div` 是取整的商；浮点 → 整数、`pow`、真正的浮点商：F4], "part"),
   ([`over`], [`over(a, f, x)`], [], "full"),
   ([`contains` `length` `splitOn` `match` `matchAll`], [`contains(s) ≜ dom(suffix prefix s)`；`length` 是 prim], [`splitOn` `match`：F3], "part"),
   ([`parseDate` `daysBetween`], [无], [`daysBetween` 是 `date` 上的 `minus`，`minus` 与 `date $ N` 都在 elaboration 被拒绝：F4、F5；`parseDate`：F3], "no"),
@@ -318,11 +319,12 @@ next(n, x)        ≜ dom(x) tot(⟨𝟙, ⊤ n⟩plus x)                 行 i 
 - *F3 字符串别扭。* 字符串是 `arr char`，单元格里的值，不是 frame（F9）；`contains` 的规格要形成全部子串。
   正则是「步骤为转移表」的 fold，把正则编译成表在语言之外。
 - *F4 atom 覆盖。* 列可以在声明的 atom 对象上（`obj F : f64`、`obj D : date`）：只比较、排序、匹配值的运算
-  （`sortBy` `topK` `distinct` `aggregate` 的组与 `min` `max`、join）照常运行（`TestFrameTyped`）。`Tm.arith`、`leq`、`lt`、
-  `sum`、`sums` 只在 `i64` 上；dataframe 需要它们在每个有序 atom 上（`date` 的 `minus` 即 `daysBetween`）。
-  已决定：`arith`、`lt` 以 atom 为下标。没有浮点运算：`mean` `stddev` `skewness` `correlation` `zScore`
-  `valueProportions` `median` `percentile` `quantile` 写不出（整数商不代替它们）；`$` 只给保值的整数 → 浮点、窄 → 宽，
-  没有 `pow`、`fround`、浮点 → 整数。`aj` 的时间沿 `sums` 扫描，所以只能是数对象。
+  （`sortBy` `topK` `distinct` `aggregate` 的组与 `min` `max`、join）照常运行（`TestFrameTyped`）。`arith` 与 `<` `≤`
+  在 `f64` `f32` 上（`TestFloatArith`）；`f64` 列的和是 fold `⦇[{(∗,0)}, plus]⦈ʳ`，逐列、逐组都对（`TestFrameStat`）。
+  仍缺：(1) 真正的浮点商——`div` 是 q 的 `div`，取整；q 的 `%` 没有 verb，所以 `mean` `variance` `valueProportions`
+  与分位数写不出（取整的商不代替它们）；(2) `sqrt`：`stddev` `correlation` `zScore`；(3) prim `sum` 与 `sums` 只在
+  `i64` 上（`cumSum`、`sumsBy` 在 `f64` 上报 internal 错误）；(4) `date` 上的 `minus`（`daysBetween`）、`pow`、`fround`、
+  浮点 → 整数。`aj` 的时间沿 `sums` 扫描，所以只能是数对象。
 - *F5 时间类型。* `date`、`datetime` 是整数 code，没有时区。日历运算（取月份、截断到月）是整数算术加上与日历表的 join。
 - *F6 IO 在代数之外。* 程序读的 frame 是 `input` 语句声明的名字，路径与格式写在语句里；CSV 的解析是 crate 的 IO 导出，不是列上的关系。
 - *F7 宿主函数。* `lift`、`lift2`、`apply`、`bind` 接受任意 Haskell 函数；Rel 只有 `Op` 的有限集合及其复合。

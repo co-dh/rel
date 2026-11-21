@@ -1,8 +1,9 @@
 import Rel.Programs.FrameJoin
 
 /-! A dataframe application (doc/dataframe-design.zh.typ F6): its two frames are `input` statements, its results
-    `output` statements; nothing is read or written here (IO step I3/I9). Each check gives the inputs their tables in
-    a `where`; expected rows worked by hand from `tt`, `qq` (sym `C` has no quote; A's quotes 2 and 3 tie at time 3). -/
+    `output` statements. Each check gives the inputs their tables in a `where`; expected rows worked by hand from `tt`,
+    `qq` (sym `C` has no quote; A's quotes 2 and 3 tie at time 3). The `#eval` at the end runs `tradeApp.io` on the CSV
+    texts of `tt` and `qq` and compares every written file with its text by hand. -/
 
 namespace Rel.Lang.TestFrameApp
 
@@ -31,9 +32,13 @@ rel_program tradeApp where
     lj : N ⟶ Trade×(Quote+1) ≜ leftJoin(col Trade "sym", col Quote "sym", trades, quotes)
     unquoted : 1 ⟶ N ≜ nulls(π₂, lj)
 
-    output top2 to "top2"
-    output bySym to "bysym"
+    -- every result with a CSV shape; `lj` has the nullable column `Quote+1`, not written to CSV yet (IO step I8)
+    output big to csv "big.csv"
+    output bySym to csv "bysym.csv"
+    output top2 to csv "top2.csv"
     output withBid to csv "withbid.csv"
+    output cumSize to csv "cumsize.csv"
+    output unquoted to csv "unquoted.csv"
 
     tt : N ⟶ Trade ≜ {(0,(((A,1),10),100)),(1,(((B,2),20),50)),(2,(((A,3),11),200)),(3,(((C,3),7),300)),
       (4,(((B,5),21),150)),(5,(((A,5),12),50)),(6,(((C,6),8),100))}
@@ -55,5 +60,43 @@ rel_program tradeApp where
     check filterNothing(π₂, lj) π₁ ⟨col Trade "sym", col Trade "time"⟩ = {(0,(C,3)),(1,(C,6))} where trades ≜ tt, quotes ≜ qq
 
 #guard tradeApp.failures.map toString == []
+
+/-! ## `tradeApp.io`: the two CSV inputs read, every output written as CSV (IO step I9) -/
+
+-- the CSV texts of `tt` and `qq`: a header of the schema's columns, then one row per position, symbols by name
+def tradesCsv := "sym,time,price,size\nA,1,10,100\nB,2,20,50\nA,3,11,200\nC,3,7,300\nB,5,21,150\nA,5,12,50\nC,6,8,100\n"
+def quotesCsv := "sym,time,bid\nA,0,9\nB,1,19\nA,3,10\nA,3,11\nB,4,20\nA,6,13\n"
+
+-- each declared output's text, by hand from the checks above: a positional output its value columns only, rows
+-- renumbered; a keyed one the key column `key` first, rows in key order
+def expected : List (String × String) := [
+  ("big", "sym,time,price,size\nA,1,10,100\nA,3,11,200\nC,3,7,300\nB,5,21,150\nC,6,8,100\n"),
+  ("bySym", "key,size,n\nA,300,2\nB,150,1\nC,400,2\n"),
+  ("top2", "sym,time,price,size\nB,5,21,150\nB,2,20,50\n"),
+  ("withBid", "sym,time,price,bid\nA,1,10,9\nB,2,20,19\nA,3,11,11\nC,3,7,0\nB,5,21,20\nA,5,12,11\nC,6,8,0\n"),
+  ("cumSize", "sym,cum\nA,100\nB,50\nA,300\nC,300\nB,200\nA,350\nC,400\n"),
+  ("unquoted", "key,val\n∗,2\n")]
+
+-- `tradeApp.io` run in a fresh directory holding the inputs, its relative paths resolved there (IO design F.1); each
+-- DECLARED output must be a CSV file with its expected text, so a missing, unread or different file fails the build
+#eval show IO Unit from do
+  let d := "/data/tmp/rel-test-frame-app"
+  if ← System.FilePath.pathExists d then IO.FS.removeDirAll d
+  IO.FS.createDirAll d
+  IO.FS.writeFile (d ++ "/trades.csv") tradesCsv
+  IO.FS.writeFile (d ++ "/quotes.csv") quotesCsv
+  let cwd ← IO.currentDir
+  try
+    IO.Process.setCurrentDir d
+    tradeApp.io
+  finally
+    IO.Process.setCurrentDir cwd
+  unless tradeApp.outputs.map (·.1) == expected.map (·.1) do
+    throw (IO.userError s!"outputs declared {tradeApp.outputs.map (·.1)}, texts expected for {expected.map (·.1)}")
+  for ((x, csv, p), (_, e)) in tradeApp.outputs.zip expected do
+    unless csv do throw (IO.userError s!"output `{x}` to \"{p}\" is no CSV file")
+    let t ← IO.FS.readFile (d ++ "/" ++ p)
+    unless t == e do throw (IO.userError s!"output `{x}` wrote {d}/{p}:\n{t}expected:\n{e}")
+  IO.FS.removeDirAll d
 
 end Rel.Lang.TestFrameApp

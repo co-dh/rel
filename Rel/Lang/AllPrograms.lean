@@ -36,6 +36,7 @@ import Rel.Lang.TestDetab
 import Rel.Lang.TestEdit
 import Rel.Lang.TestFrame
 import Rel.Lang.TestFrameApp
+import Rel.Lang.TestFrameBench
 import Rel.Lang.TestFrameBound
 import Rel.Lang.TestFrameCols
 import Rel.Lang.TestFrameGroup
@@ -46,6 +47,7 @@ import Rel.Lang.TestFrameQuery
 import Rel.Lang.TestCmpMeet
 import Rel.Lang.TestFrameScale
 import Rel.Lang.TestFrameSchema
+import Rel.Lang.TestFrameStat
 import Rel.Lang.TestFrameTyped
 import Rel.Lang.TestFrameUnbounded
 import Rel.Lang.TestFusedM
