@@ -218,6 +218,28 @@ rel_program unaryT where
   (QAtomicType.castWord .f64 .i64) ==
     [0xfffffffffffffffd, 0x8000000000000000, 0x8000000000000000, 0x8000000000000000, 0x8000000000000000]
 
+-- `round` (no q verb): the `floatOps` row `fround`, half to even (IEEE roundTiesToEven, C `rint`), answered at `i64`
+-- as `floor` is; no row where the rounded value has no `i64` word (NaN, `1e300`)
+rel_program roundT where
+    obj N
+    obj F : f64
+    obj G : f32
+    obj L : i64
+    x : N ⟶ F ≜ {(0,0.5),(1,1.5),(2,2.5),(3,-0.5),(4,-1.5),(5,2.4),(6,2.6),(7,1e300)}
+    g : N ⟶ G ≜ {(0,2.5),(1,-3.5),(2,0.75)}
+    xr : N ⟶ L ≜ x round
+    check xr = {(0,0),(1,2),(2,2),(3,0),(4,-2),(5,2),(6,3)}
+    gr : N ⟶ L ≜ g round
+    check gr = {(0,2),(1,-4),(2,1)}
+
+-- by hand: ties `0.5 1.5 2.5 -0.5 -1.5` to the even `0 2 2 -0 -2` (`-0` is the `i64` `0`), `2.4 2.6` to `2 3`;
+-- `1e300` has no `i64` word, no row 7; the `f32` `2.5 -3.5 0.75` widened, then `2 -4 1`
+#guard roundT.failures.map toString == []
+-- a column holds no NaN (it is the float null), so the NaN row is checked on the words: `fround` keeps the NaN and
+-- `Op.ofF64 .i64` writes `2^63`, the word the flag drops; `1e300` the same
+#guard [0x7ff8000000000000, (1e300 : Float).toBits].map (fun x => (Kernel.Op.fround.eval 0 x >>=
+  (Kernel.Op.ofF64 .i64).eval 0).toOption) == [some 0x8000000000000000, some 0x8000000000000000]
+
 -- `xexp` (q's `x xexp y`, `x^y`): the `floatOps` row whose `Op` `fpow` reads two operands, so a row `F×F ⟶ D`; libm
 -- `pow` on the `f64` words, answered at `f64`; no row where that is NaN
 rel_program xexpT where
@@ -242,7 +264,7 @@ rel_program xexpT where
 #guard xexpT.failures.map toString == []
 
 -- `sqrt` at an integer object: refused by name, with the cast the program writes first
-/-- error: line 250, col 5: sqrt on N: N is an object of i64, and sqrt runs on objects of f32, f64 only; cast first, `x $ F` with `F` an object of f32, f64 -/
+/-- error: line 272, col 5: sqrt on N: N is an object of i64, and sqrt runs on objects of f32, f64 only; cast first, `x $ F` with `F` an object of f32, f64 -/
 #guard_msgs in
 rel_program sqrtIntT where
     obj N

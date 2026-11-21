@@ -382,11 +382,12 @@ atom 的位宽、符号、指数和尾数位读出，不逐对列出），另加
     `word_ne_nul`）→ `scan` map（`Op.ne`，对常量列 `2^63`）得 0/1 标志 → where（`keep`）→ `canon`。无新 kernel、无新
     导出。`Tab.cast_holds`：结果是 `embed` 在需求值上的图，无前提；像是规范字（`embed_canonical`：无 NaN、无 `−0`）。
     不在 `castOK` 中的对（浮点 → 整数、宽 → 窄）在 elaboration 时报错],
-  [一元浮点动词 `sqrt` `neg` `abs` `exp` `log` `sin` `cos` `tan` `asin` `acos` `atan` `floor`（`x : A ⟶ F` ↦ `A ⟶ F`，
+  [一元浮点动词 `sqrt` `neg` `abs` `exp` `log` `sin` `cos` `tan` `asin` `acos` `atan` `floor` `round`（`x : A ⟶ F` ↦ `A ⟶ F`，
     `F` 为 f32/f64；`floatOps`）], [`f32` 先 `scan` map `f32to64` 宽化 → `scan` map（该行的 `Op`：`fsqrt` …）→ `scan` map
     `fto t` 写回规范字（NaN 写 null）→ `scan` map `Op.ne` 得标志 → where（`keep`）→ `canon`，与 `$` 同形
     （`keep_canon_holds`），末两步与值动词共用（`ftoCols`）。无新 kernel、无新导出。`Tab.floatOp_den`：结果是 `floatDen o`
-    在需求值上的图，无前提；`√−1`、`log −1` 无行。`floor` 回 `F`，不是 q 的 long。整数对象上按名报错，提示先 `$`],
+    在需求值上的图，无前提；`√−1`、`log −1` 无行。`floor` 与 `round`（就近取整、平局取偶，IEEE roundTiesToEven，
+    `Op.roundEven`；q 无 `round`）回 `i64`（末步 `Op.ofF64 .i64`），NaN 与 `i64` 外的值无行。整数对象上按名报错，提示先 `$`],
   [二元浮点动词 `xexp`（q 的 `x xexp y` = `x^y`；`⟨x, y⟩ : A ⟶ F×F` ↦ `A ⟶ D`，`F` 为 f32/f64，`D` 为 f64；
     `floatOps` 中 `Op` 读两个操作数（`Op.readsAcc`）的行）], [同一元浮点动词，一次 `scan` map 读两列：两操作数经
     `f32to64` 宽化 → `fpow`（libm `pow`）→ `Op.ofF64` → `Op.ne` 标志 → where（`keep`）。无新 kernel、无新导出。
