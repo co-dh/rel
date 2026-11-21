@@ -2,6 +2,7 @@ import Lean
 import Rel.Kernel.Op
 import Rel.Run.Core
 import Rel.Kernel.Cast
+import Rel.Run.Cast
 
 /-! The Rel language's surface syntax (`doc/rel-lang-design.md` §c, §h): objects, terms, declarations, each node
     with its source line and column. The builtin operators are one table, `Op.table`, read by the parser (symbol,
@@ -138,6 +139,11 @@ def Expr.pos : Expr → Pos
   | .lit p _ | .fix p .. | .col p .. => p
   | .comp a _ => a.pos
 
+/-- The atom the counting rows (`length`, `sum`, `sums`, `succ`) run on. -/
+def intAtom (t : QAtomicType) : Bool := t == .i64
+/-- The float atoms, whose verbs run on `f64` words (`fval`). -/
+def floatAtom (t : QAtomicType) : Bool := t.numFmt?.any (· matches .float ..)
+
 /-- A builtin run on the keys in demand: `sym` as written (`written`), or the prelude's definition, the constant
     `prelude`, run as it (`Expand.useDef`), or neither: a converse only (`convTm`), or an `Op` of its own that
     `Calc.toTerm` reads over any allegory (`Op.row`); `sig` its relation parameters (each `X ⟶ Y` and its form:
@@ -157,10 +163,10 @@ structure Prim where
   /-- Its table is made from its relations' whole tables (`GenK.ofRel`): it needs no keys where they need none
       (`Tm.dem`), so a closed `asc(P)` runs whole at a source with no universe. -/
   whole : Bool := false
-  /-- Its object variables its constant reads at `.long` (`sums`'s positions `ℕ` and values `V`, `length`'s and
-      `sum`'s `ℕ`): each must be an `i64` number object, refused as `succ` refuses one (`Elab.numObj`), never left to
-      fail inside its definition. -/
-  num : List String := []
+  /-- Its object variables that must be number objects, each with the atoms it admits: those its constant reads at
+      `.long` (`sums`'s positions `ℕ` and values `V`, `length`'s and `sum`'s `ℕ`) at `i64`, a unary float verb's at the
+      float atoms; refused as `succ` refuses one (`Elab.numObj`), never left to fail inside its definition. -/
+  num : List (String × (QAtomicType → Bool)) := []
   deriving Inhabited
 
 def consRow : Prim :=
@@ -186,10 +192,10 @@ def mapRow : Prim :=
 -- `length = ⦇[0, π₁ succ]⦈`, `sum = ⦇[0, plus]⦈ʳ` (§4, `Elab.dfns`): each step kept in the object, as `succ`,
 -- `plus` keep theirs
 def lengthRow : Prim :=
-  { sym := "length", num := ["ℕ"], sig := ([], .list (.var {} "E"), .var {} "ℕ"),
+  { sym := "length", num := [("ℕ", intAtom)], sig := ([], .list (.var {} "E"), .var {} "ℕ"),
     aop := .ok `Freyd.Alg.RelSet.ListRel.length }
 def sumRow : Prim :=
-  { sym := "sum", num := ["ℕ"], sig := ([], .list (.var {} "ℕ"), .var {} "ℕ"),
+  { sym := "sum", num := [("ℕ", intAtom)], sig := ([], .list (.var {} "ℕ"), .var {} "ℕ"),
     aop := .ok `Freyd.Alg.RelSet.ListRel.sum }
 /-- `Rᴵ`: the family `R : I ⟶ A×B` as one relation `I×A ⟶ B`, the fused form of its definition
     `⟨π₁R,π₂⟩dom(π₁π₁ ∩ π₂)π₁π₂` (`Elab.dfns`), `R` run on the keys in demand (`Tab.flat`). -/
@@ -248,13 +254,13 @@ def prims : List Prim :=
      aop := .ok `Freyd.Alg.RelSet.ListRel.setify },
    -- `positions(p)`: dataframe §3.1's `where(dom(xs ≫ p))`, named so because `where` is a keyword (§c); it makes
    -- positions, numbers of `ℕ`, so it has no `dfn` until `rank` can be written and no use where `ℕ` has a universe
-   { sym := "positions", num := ["ℕ"],
+   { sym := "positions", num := [("ℕ", intAtom)],
      sig := ([((.var {} "B", .var {} "B"), some false)], .list (.var {} "B"), .list (.var {} "ℕ")),
      mono := false, aop := .error "AOP declares no positions of the elements of a list that pass a test" },
    -- `asc(P)`: q's `asc` of the set `dom P`, `j ↦` its `j`-th smallest element in `Obj.lt` order; not `mono`: a
    -- larger `P` renumbers. Its definition `(dom(P) Λ(> P) length)°` is no `Elab.dfns` row: `>` on any object
    -- (`Obj.lt`) has no term (`lt` is on ℕ's universe only), and no law proves `ascDen` equal to it
-   { sym := "asc", num := ["ℕ"], sig := ([((.var {} "B", .var {} "B"), some false)], .var {} "ℕ", .var {} "B"),
+   { sym := "asc", num := [("ℕ", intAtom)], sig := ([((.var {} "B", .var {} "B"), some false)], .var {} "ℕ", .var {} "B"),
      mono := false, aop := .error "AOP declares no numbering of a set by its order", whole := true },
    -- last, so the rows before keep their positions (`Rows.lean`'s numbering)
    inlConvRow, inrConvRow,
@@ -262,7 +268,7 @@ def prims : List Prim :=
    -- `agg(dom(x) (𝟙 × ≥) dom(x), F(x) ⦇[0, plus]⦈)` (`rowDens`). Not `mono`: a larger `x` changes the sums. Its
    -- definition is, as `asc`'s, no `Elab.dfns` row. The positions `ℕ` and the values `V` are two objects: only
    -- `V` is summed, so only `V` is a number object (`num`)
-   { sym := "sums", num := ["ℕ", "V"],
+   { sym := "sums", num := [("ℕ", intAtom), ("V", intAtom)],
      sig := ([((.prod (.var {} "K") (.var {} "ℕ"), .var {} "V"), some false)], .prod (.var {} "K") (.var {} "ℕ"),
        .var {} "V"),
      mono := false, aop := .error "AOP declares no prefix sums per key", whole := true },
@@ -270,7 +276,10 @@ def prims : List Prim :=
    -- `x $ F`: each value of `x : A ⟶ N` to the same number at `F`'s atom (`QAtomicType.embed`, typed base S6), written
    -- as its own infix form, which names the target object
    { sym := "$", sig := ([], .var {} "N", .var {} "F"), written := false,
-     aop := .error "AOP declares no change of a number's representation" }]
+     aop := .error "AOP declares no change of a number's representation" }] ++
+  -- `sqrt`, `neg`, …: each a relation `F ⟶ F` on a float object `F` (`num` its float atoms), one row per name
+  unaryOps.map fun (s, _) => { sym := s, sig := ([], .var {} "F", .var {} "F"), num := [("F", floatAtom)],
+    aop := .error "AOP declares no floating-point function" }
 
 def Prim.find?(s : String) : Option Prim := prims.find? (·.sym == s)
 
