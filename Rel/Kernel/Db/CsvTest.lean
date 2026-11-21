@@ -28,9 +28,9 @@ def atomCase : QAtomicType → Option (String × UInt64 × String × String)
   | .f32 => some ("3.4028235e38", 0x7f7fffff, "3.4028235e38", "3.5e38")
   | .f64 => some ("0.10", 0x3fb999999999999a, "0.1", "1.")
   | .char => some ("\"\"\"\"", 34, "\"\"\"\"", "ab")
-  | .date => some ("1969-12-31", 0xffffffff, "1969-12-31", "2023-02-29")
-  | .datetime => some ("1970-01-02D00:00:00.5", 86400500000000, "1970-01-02D00:00:00.500000000",
-      "1970-01-01D24:00:00")
+  | .date => some ("1969.12.31", 0xffffffff, "1969.12.31", "2023.02.29")
+  | .datetime => some ("1970.01.02D00:00:00.5", 86400500000000, "1970.01.02D00:00:00.500000000",
+      "1970.01.01D24:00:00")
   | .sym | .general => none
 
 /-- An atom's case holds: the text reads as the word, the word writes as the text, the refused text is refused at
@@ -106,19 +106,19 @@ def writeCases : List WriteCase := [
   -- the plain form ends at `1e-5` and `1e17`
   ([("f", .atom, .f64, [])], 3, [#[0x3ee4f8b588e368f1, 0x3ee4f8b588e368f0, 0x4376345785d8a000]],
     .inr (bytes "f\n0.00001\n9.999999999999999e-6\n1e17\n")),
-  -- a date outside years 0001–9999: 10000-01-01, 0000-12-31, the ends of `i32`
+  -- a date outside years 0001–9999: 10000.01.01, 0000.12.31, the ends of `i32`
   ([("d", .atom, .date, [])], 1, [#[2932897]],
-    .inl "row 0, column 'd': the word 2932897 has no text as date: YYYY-MM-DD in years 0001-9999"),
+    .inl "row 0, column 'd': the word 2932897 has no text as date: yyyy.mm.dd in years 0001-9999"),
   ([("d", .atom, .date, [])], 1, [#[4294248133]],
-    .inl "row 0, column 'd': the word 4294248133 has no text as date: YYYY-MM-DD in years 0001-9999"),
+    .inl "row 0, column 'd': the word 4294248133 has no text as date: yyyy.mm.dd in years 0001-9999"),
   ([("d", .atom, .date, [])], 2, [#[1, 0x7fffffff]],
-    .inl "row 1, column 'd': the word 2147483647 has no text as date: YYYY-MM-DD in years 0001-9999"),
+    .inl "row 1, column 'd': the word 2147483647 has no text as date: yyyy.mm.dd in years 0001-9999"),
   ([("d", .atom, .date, [])], 1, [#[0x80000000]],
-    .inl "row 0, column 'd': the word 2147483648 has no text as date: YYYY-MM-DD in years 0001-9999"),
-  ([("d", .atom, .date, [])], 3, [#[4294248134, 2932896, 0xffffffff]], .inr (bytes "d\n0001-01-01\n9999-12-31\n1969-12-31\n")),
+    .inl "row 0, column 'd': the word 2147483648 has no text as date: yyyy.mm.dd in years 0001-9999"),
+  ([("d", .atom, .date, [])], 3, [#[4294248134, 2932896, 0xffffffff]], .inr (bytes "d\n0001.01.01\n9999.12.31\n1969.12.31\n")),
   -- every `i64` of nanoseconds is a datetime of years 1677–2262, so a datetime word is never refused
   ([("t", .atom, .datetime, [])], 3, [#[0x8000000000000000, 0x7fffffffffffffff, 86400500000000]],
-    .inr (bytes "t\n1677-09-21D00:12:43.145224192\n2262-04-11D23:47:16.854775807\n1970-01-02D00:00:00.500000000\n")),
+    .inr (bytes "t\n1677.09.21D00:12:43.145224192\n2262.04.11D23:47:16.854775807\n1970.01.02D00:00:00.500000000\n")),
   -- a word that is no index of the names, or wider than its atom
   (kcols, 3, [#[0, 1, 2]], .inr (bytes "k\nA\n\"B,x\"\n\"C\"\"D\"\n")),
   (kcols, 1, [#[3]], .inl "row 0, column 'k': the word 3 has no text as one of A, B,x, C\"D"),
@@ -131,7 +131,7 @@ def writeCases : List WriteCase := [
   ([("x", .atom, .i32, [])], 1, [#[0x100000000]],
     .inl "row 0, column 'x': the word 4294967296 has no text as i32: an integer from -2147483648 to 2147483647"),
   ([("d", .atom, .date, [])], 1, [#[0x100000000]],
-    .inl "row 0, column 'd': the word 4294967296 has no text as date: YYYY-MM-DD in years 0001-9999"),
+    .inl "row 0, column 'd': the word 4294967296 has no text as date: yyyy.mm.dd in years 0001-9999"),
   -- the first refusal in row order, then column order
   (ab, 2, [#[1, 2], #[0x100, 0x100]], .inl "row 0, column 'b': the word 256 has no text as char: one byte"),
   -- records: a field holding `,` `"` `\r` `\n` is quoted, a header name too; no row is the header alone
@@ -176,14 +176,14 @@ def readCases : List ReadCase := [
   ([("s", .atom, .sym, [])], [], .inl "column 's' is a symbol column, which waits for the own-format sym writer (D.9 step 6)"),
   ([("g", .atom, .general, [])], one "1\n", .inl "column 'g' is a general column, which the own format does not hold"),
   ([], bytes "\n", .inl "the schema has no column, and a CSV record has at least one field"),
-  -- the epoch, 1970-01-01 (owner, question F.3: N), and the ends of the range
-  ([("d", .atom, .date, [])], bytes "d\n1969-12-31\n1970-01-01\n1970-01-02\n", .inr (3, [#[0xffffffff, 0, 1]])),
+  -- the epoch, 1970.01.01 (owner, question F.3: N), and the ends of the range
+  ([("d", .atom, .date, [])], bytes "d\n1969.12.31\n1970.01.01\n1970.01.02\n", .inr (3, [#[0xffffffff, 0, 1]])),
   ([("t", .atom, .datetime, [])],
-    bytes "t\n1969-12-31D23:59:59.999999999\n1970-01-01D00:00:00\n1970-01-01D00:00:00.000000001\n",
+    bytes "t\n1969.12.31D23:59:59.999999999\n1970.01.01D00:00:00\n1970.01.01D00:00:00.000000001\n",
     .inr (3, [#[0xffffffffffffffff, 0, 1]])),
-  ([("d", .atom, .date, [])], bytes "d\n0001-01-01\n9999-12-31\n2000-02-29\n", .inr (3, [#[4294248134, 2932896, 11016]])),
-  ([("t", .atom, .datetime, [])], bytes "t\n2262-04-12D00:00:00\n",
-    .inl "row 0 (line 2), column 't': expected datetime: YYYY-MM-DDDhh:mm:ss, up to 9 fraction digits, within i64 nanoseconds of 1970-01-01, found '2262-04-12D00:00:00'"),
+  ([("d", .atom, .date, [])], bytes "d\n0001.01.01\n9999.12.31\n2000.02.29\n", .inr (3, [#[4294248134, 2932896, 11016]])),
+  ([("t", .atom, .datetime, [])], bytes "t\n2262.04.12D00:00:00\n",
+    .inl "row 0 (line 2), column 't': expected datetime: yyyy.mm.ddDhh:mm:ss, up to 9 fraction digits, within i64 nanoseconds of 1970-01-01, found '2262.04.12D00:00:00'"),
   -- named elements: a field equal to a name, quoted where it holds `,` or `"`
   (kcols, bytes "k\nA\n\"B,x\"\n\"C\"\"D\"\n", .inr (3, [#[0, 1, 2]])),
   (kcols, bytes "k\nB\n", .inl "row 0 (line 2), column 'k': expected one of A, B,x, C\"D, found 'B'"),

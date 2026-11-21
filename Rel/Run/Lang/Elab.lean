@@ -104,11 +104,11 @@ def numParts (w : String) : Option (Bool × Nat × Bool × Nat) :=
 
 /-- The atoms with a text form of q's besides the integer: a `date` written `2024.01.15`, a `datetime`
     `2024.01.15D12:30:00.5`, read by the CSV's reader of the atom (`Db.Csv.ymd`, `Db.Csv.stamp`, C.3) at the day's
-    separator `.` where the CSV has `-`: days, nanoseconds since 1970-01-01, proleptic Gregorian, years 0001–9999; a
+    separator `.`, as the CSV: days, nanoseconds since 1970-01-01, proleptic Gregorian, years 0001–9999; a
     `char` written `"a"` or `"\ooo"`, a byte of a string literal (`charText`, `Tup.ofText`). -/
 def qForm : Rel.QAtomicType → Option (String × (List UInt8 → Option Int))
-  | .date => some ("day yyyy.mm.dd", Db.Csv.ymd 46)
-  | .datetime => some ("time yyyy.mm.ddDhh:mm:ss[.f]", Db.Csv.stamp 46)
+  | .date => some ("day yyyy.mm.dd", Db.Csv.ymd)
+  | .datetime => some ("time yyyy.mm.ddDhh:mm:ss[.f]", Db.Csv.stamp)
   | .char => some ("char \"a\"", charOf)
   | _ => none
 
@@ -184,14 +184,17 @@ def elWord : (t : Rel.QAtomicType) → (Obj.atom t).El → Option UInt64
   | .f64, x => some (x : UInt64)
   | .sym, _ | .general, _ => none
 
-/-- The word `x` of the atom `t` printed as `wordAt` reads it back: a float by `floatText`, an integer by its value at
-    `t`'s width and sign. -/
+/-- The word `x` of the atom `t` printed as `wordAt` reads it back: a float by `floatText`, a temporal atom as q
+    shows it (`Db.Csv.cell`, the CSV's one text of the atom; an out-of-range one as its integer), an integer by its
+    value at `t`'s width and sign. -/
 def wordText (t : Rel.QAtomicType) (x : UInt64) : String :=
-  match litLayout t with
-  | some (b, true, _) => floatText b x
-  | some (b, false, sg) => let u := x.toNat % 2 ^ (8 * b)
-    toString (if sg ∧ u ≥ 2 ^ (8 * b - 1) then (u : Int) - 2 ^ (8 * b) else u)
-  | none => "?"
+  match (qForm t).bind fun _ => Db.Csv.cell (t, []) x with
+  | some s => String.ofList (s.map (Char.ofNat ·.toNat))
+  | none => match litLayout t with
+    | some (b, true, _) => floatText b x
+    | some (b, false, sg) => let u := x.toNat % 2 ^ (8 * b)
+      toString (if sg ∧ u ≥ 2 ^ (8 * b - 1) then (u : Int) - 2 ^ (8 * b) else u)
+    | none => "?"
 
 /-- A declared object: what it stands for, and, for a base object, its elements and universe. -/
 structure ObjInfo where
