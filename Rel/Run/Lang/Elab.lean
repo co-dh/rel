@@ -2205,6 +2205,9 @@ def callTm (pos : Pos) (c : Lean.Name) (us : List (OTy × Bool × Bool)) (ks : L
   let inst {X Y : Obj} : Res → Except Err (Tm X Y)
     | ⟨X₀, Y₀, b⟩ => do
       let b ← (b.instObj ph σ).mapError fun e => (⟨pos, s!"`{c}` at the objects of this call: {e}"⟩ : Err)
+      -- a call's body sees only its `ks` (`Code.args`): a variable read beyond them would run as `𝟘`
+      let out := b.fv.eraseDups.filter (!ks.contains ·)
+      unless out.isEmpty do internal dp s!"`{c}`'s body reads the variables {out}, which its call binds not ({ks})"
       if h : X₀.inst ph σ = X ∧ Y₀.inst ph σ = Y then pure (h.1 ▸ h.2 ▸ b)
       else internal dp s!"`{c}`'s body is not at the objects of its call"
   match cv with
@@ -2220,6 +2223,26 @@ def litRes (p : Pos) (a b : OTy) (ps : List (Tup × Tup)) (gd : Option String) :
       | some d => ⟨e.pos, s!"`{d}` at the objects of this call: {e.msg}"⟩
       | none => e
 
+/-- Each place `t` reads the variable `k` free, as that `var` node: a binder of `k` hides its scope, and a call's
+    body is not entered (it reads only its own `ks`, `Code.args`), its arguments are. -/
+partial def Tm.reads (k : Nat) : {A B : Obj} → Tm A B → List Res
+  | A, B, t@(.var _ j) => if j == k then [⟨A, B, t⟩] else []
+  | _, _, .mu j _ _ b | _, _, .hylo j _ b => if j == k then [] else b.reads k
+  | _, _, .nu j S b => S.reads k ++ if j == k then [] else b.reads k
+  | _, _, t => t.parts.flatMap fun ⟨_, _, c⟩ => c.reads k
+
+/-- The call node of `c` given the body `t` and its arguments `rs`, bound to `ks`, one for one. A call's body sees
+    only its `ks` (`Code.args`, `Tm.fv`), so each variable `t` reads beyond them (a universe of the enclosing
+    constant, read by `callOf`'s body) is bound to itself, as an argument of its own; one read at two objects is
+    refused. -/
+def callNode (c : Lean.Name) (ks : List Nat) (rs : List Res) {A B : Obj} (t : Tm A B) :
+    Except Err (Tm A B) := do
+  let free := t.fv.eraseDups.filter (!ks.contains ·)
+  let more ← free.mapM fun k => match t.reads k with
+    | r@⟨X, Y, _⟩ :: rest => if rest.all fun ⟨X', Y', _⟩ => X' == X && Y' == Y then pure r
+      else internal dp s!"`{c}`'s body reads the variable {k} at two objects"
+    | [] => internal dp s!"`{c}`'s body has {k} free but reads it nowhere"
+  pure <| (rs ++ more).foldl (fun f ⟨_, _, x⟩ => .arg f x) (Tm.call (ks ++ free) c [] t)
 
 mutual
 
@@ -2428,7 +2451,7 @@ def build : Pre → Except Err Res
       -- call needs keys only where its expansion does
       let t := if !dem then t else t.subst (((ks.zip xs).zip rs).filterMap fun ((k, x), ⟨A, B, r⟩) =>
         if !(x matches .var ..) && !r.dem then some (k, ⟨A, B, .var false k⟩) else none)
-      let u :=rs.foldl (fun f ⟨_, _, x⟩ => .arg f x) (Tm.call ks (.mkSimple c) [] t)
+      let u ← callNode dp (.mkSimple c) ks rs t
       -- `Tm.dem` counts an argument run on demand even where the body closes it: that call is the expansion's
       if u.dem && !t.dem then internal dp s!"`{c}` closes an argument that needs keys"
       if h : A' = A ∧ B' = B then pure ⟨A, B, h.1 ▸ h.2 ▸ u⟩

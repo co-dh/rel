@@ -891,13 +891,14 @@ def Tm.fieldsEq (key : Lean.Name → Lean.Name) {A B C D : Obj} (t : Tm A B) (u 
 
 /-- The first node, from the root, where the bodies `t`, `u` of one registry key differ, as its path of
     constructors (`ctor`); `none` when they are the same definition: per node its constructor, objects and other
-    fields (`Tm.fieldsEq`), then its parts (`Tm.parts`, a `share`'s term) in order. A call's body is not entered:
-    it is its key's, compared at that key. -/
+    fields (`Tm.fieldsEq`), then its parts (`Tm.parts`, a `share`'s term, a call's body) in order. A call's body is
+    entered: a `callOf` call has no registry key, so its name does not determine its body. -/
 partial def Tm.diffAt (key : Lean.Name → Lean.Name) (ctor : Nat → String) (path : List String := []) :
     Res → Res → Option String
   | ⟨A, B, t⟩, ⟨C, D, u⟩ =>
     let p := path ++ [ctor t.ctorIdx]
-    let parts {X Y : Obj} : Tm X Y → List Res | .share _ R => [⟨_, _, R⟩] | t => t.parts
+    let parts {X Y : Obj} : Tm X Y → List Res
+      | .share _ R | .call _ _ _ R => [⟨_, _, R⟩] | .callCv _ _ _ _ R U => [⟨_, _, R⟩, ⟨_, _, U⟩] | t => t.parts
     if t.ctorIdx != u.ctorIdx then some s!"{" / ".intercalate p} against `{ctor u.ctorIdx}`"
     else if !(A == C && B == D) then some s!"{" / ".intercalate p}: {repr A} ⟶ {repr B} against {repr C} ⟶ {repr D}"
     else if !Tm.fieldsEq key t u then some s!"{" / ".intercalate p}: its fields differ"
