@@ -53,9 +53,14 @@ rel_program frameStat where
     sdev : [γ] ⟶ F ≜ svar sqrt
     -- q calls it `cor`; named `corr` because the prelude's `cor` is already the coreflexive of a relation's pairs
     corr : [γ×γ] ⟶ F ≜ ⟨cov, ⟨F(π₁) dev, F(π₂) dev⟩times⟩%
-    -- the one or two middle rows of `c` sorted: `i ≤ r(i)+1` and `r(i) ≤ i+1`, `r : i ↦ m−1−i`; q's `med` is their `avg`
-    middle(c : ν ⟶ γ) : ν ⟶ γ ≜ dom(⟨dom(c), r succ⟩ cor(≤)) dom(⟨r, dom(c) succ⟩ cor(≤)) sortBy(𝟙, c) where r ≜ dom(c) ⟨⊤ count(c), succ⟩minus
-    med(c : ν ⟶ γ) : 1 ⟶ F ≜ summarize(F(middle(c)) avg, middle(c))
+    -- skewness, population (DataHaskell's `skewness'`, g1 = m3/m2^1.5): m3 = E[x³] − 3μσ² − μ³ over σ²·σ; each value
+    -- reaches `F` as the `avg` of its one-element array, so `E[x³]` is the `F` fold, never a cube in γ
+    skewness : [γ] ⟶ F ≜ ⟨⟨F(Λ(𝟙) avg ⟨⟨𝟙, 𝟙⟩times, 𝟙⟩times) ⟨⦇[{(∗,0)}, plus]⦈ʳ, length 𝟙(Z) $ F⟩%, ⟨avg, ⟨⟨var, ⟨var, var⟩plus⟩plus, ⟨avg, avg⟩times⟩plus⟩times⟩minus, ⟨var, dev⟩times⟩%
+    -- linear interpolation (DataHaskell `quantiles'`, polars "linear"): at h = p·(n−1) on `c` sorted, the rows `i` with
+    -- |i − h| < 1 weighted 1 − |i − h|, i.e. lower + frac·(upper − lower); q's `med` is p = 0.5; no row unless 0 ≤ p ≤ 1
+    quantile(p : 1 ⟶ F, c : ν ⟶ γ) : 1 ⟶ F ≜ summarize(F(q) ⦇[{(∗,0)}, plus]⦈ʳ, q) where h ≜ dom(⟨{(∗,0.0)}, p⟩ cor(≤)) dom(⟨p, {(∗,1.0)}⟩ cor(≤)) ⟨p, ⟨count(c) $ F, {(∗,1.0)}⟩minus⟩times, d ≜ ⟨dom(c) $ F, ⊤ h⟩minus, w ≜ ⟨⊤ {(∗,1.0)}, ⟨d, ⟨⊤ {(∗,0.0)}, d⟩minus⟩max⟩minus, q ≜ dom(⟨⊤ {(∗,0.0)}, w⟩ cor(<)) ⟨w, agg(sortBy(𝟙, c), avg)⟩times
+    -- per row (x − mean)/std, the sample std as DataHaskell's `variance'` (n − 1); none at one row
+    zScore(c : ν ⟶ γ) : ν ⟶ F ≜ ⟨⟨agg(c, avg), ⊤ m⟩minus, ⊤ s⟩% where m ≜ summarize(F(c) avg, c), s ≜ summarize(F(c) sdev, c)
     valueProportions(a : β ⟶ γ, x : ν ⟶ β) : ν ⟶ γ×F ≜ valueCounts(a, x) ⟨π₁, ⟨π₂ $ F, ⊤ count(x) $ F⟩%⟩
     -- count, mean, std (pandas: the sample one, null at one row), min, max of a column
     describe(c : ν ⟶ γ) : 1 ⟶ ν×(F×((F+1)×(γ×γ))) ≜ ⟨count(c), ⟨summarize(F(c) avg, c), ⟨tot(summarize(F(c) sdev, c)), ⟨summarize(F(c) Λ(∋) head, c), summarize(F(c) Λ(∋) last, c)⟩⟩⟩⟩
