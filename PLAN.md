@@ -1154,7 +1154,10 @@ relk 线程池空转 2 526（与前三项重叠）。
 - ✅ W.7 `-Wl,--build-id`（owner 选 F）：rel lakefile 52b6203（gates、relc、librelk.so、两个 precompiled lib），
   cc-guard 8d08fa4（已部署），lean-refactor 22bc2aa；`crate/build.sh` 只出 `.o`，不需要。lake 不跟踪 extern_lib 的
   link 参数，旧的 librelk.so 要重链接才带 build-id。cap 的 build-id 缓存在 947fbca。
-- ⬜ W.8 调查：Lean 的 module 系统（`module` + `public import`）能否让只改 kernel body 时不重建下游。
+- ✅ W.8 调查结论（Lean v4.28.0，实验在 /data/tmp/w8）：`module` 下 body 不 `@[expose]` 时下游不重建，但下游的
+  `rfl`/`decide`/`simp [def]` 也展不开它；kernel body 是 spec，被 KernelSpec、Rep* 和 `#guard` 展开，必须 expose，
+  于是改 body 仍重建全部下游（218 个模块里 217 个在 `Rel.Kernel.*` 下游）。要得益须全仓库迁到 `module` 并让下游只引用
+  KernelSpec 的引理；只为提速不做。
 - ✖ W.9 `SubagentStart` hook：首条命令被拒 0.4%，不值得多一个 hook（owner 选 B）。
 - ✅ W.10 原因是差分测试的参照运行重跑了被 inline 的定义；在 `test/TestCompile.lean` 修复（99c595a），
   14m22s → 7m41s。原记录：`compile` 在每个后面的定义里重新展开前面所有的定义，耗时沿链条每步翻倍（Q 0.5 s、C 1.3、W 2.4、K 5、
