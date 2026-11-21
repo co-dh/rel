@@ -29,11 +29,11 @@ def Code.Wf (η : Code) : Prop := (∀ k A B, (η k A B).Wf) ∧ ∀ x ∈ η.sh
     context, and every bit matrix it holds is `Rel.Wf`. -/
 def Sound (η : Code) (ρ : Val) : Prop := (∀ k A B K, (η k A B).Reps K (ρ k A B)) ∧ η.Wf
 
-/-- The slot `k` of `η`'s table at `A ⟶ B`, where it has one, represents the meaning of the closed part `R`
+/-- The slot `k` of the table `σ` at `A ⟶ B`, where it has one, represents the meaning of the closed part `R`
     numbered `k`: what `Tm.gen_sound` asks at each `share k R` (`Tm.LamLaws`), since a slot is computed once, apart
     from the terms that read it (`Code.shares`). -/
-def Code.Shares (η : Code) {A B : Obj} (k : Nat) (R : Tm A B) : Prop :=
-  ∀ r, η.sh.at k A B = some r → ∀ K, r.Reps K (R.den Val.empty)
+def Codes.Shares (σ : Codes) {A B : Obj} (k : Nat) (R : Tm A B) : Prop :=
+  ∀ r, σ.at k A B = some r → ∀ K, r.Reps K (R.den Val.empty)
 
 /-- A slot of a table of `Wf` codes is `Wf`. -/
 theorem Codes.at_wf {xs : Codes} (hw : ∀ x ∈ xs, x.2.2.Wf) {i : Nat} {X Y : Obj} {r : Rel X Y}
@@ -55,7 +55,7 @@ theorem Code.args_sh (η : Code) : ∀ (ks : List Nat) (xs : Codes), (Code.args 
     round (`GenK.const` of its table) or a call's argument (`Sound.args`). -/
 theorem Sound.bind {η : Code} {ρ : Val} (hs : Sound η ρ) (k : Nat) {A B : Obj} {r : Rel A B} {X : Den A B}
     (hr : ∀ K, r.Reps K X) (hw : r.Wf) : Sound (η.bind k r) (ρ.bind k X) := by
-  refine ⟨fun j A' B' K => ?_, fun j A' B' => ?_⟩
+  refine ⟨fun j A' B' K => ?_, fun j A' B' => ?_, hs.2.2⟩
   · by_cases hj : j = k
     · simp only [Code.bind, Val.bind, hj, if_true]
       by_cases ho : A = A' ∧ B = B'
@@ -68,7 +68,7 @@ theorem Sound.bind {η : Code} {ρ : Val} (hs : Sound η ρ) (k : Nat) {A B : Ob
       by_cases ho : A = A' ∧ B = B'
       · obtain ⟨rfl, rfl⟩ := ho; rw [dif_pos ⟨rfl, rfl⟩]; exact hw
       · rw [dif_neg ho]; trivial
-    · simp only [Code.bind, hj, if_false]; exact hs.2 j A' B'
+    · simp only [Code.bind, hj, if_false]; exact hs.2.1 j A' B'
 
 /-- **A program's run-time names bound in statement order** (IO design A.3, the environment `n.io` computes in):
     each `(k, A, B, r, X)` of `bs` bound in turn, `r` a `Wf` code that represents `X` (an input's table,
@@ -81,16 +81,19 @@ theorem Sound.inputs {η : Code} {ρ : Val} (hs : Sound η ρ) :
   | [], _ => hs
   | b :: bs, h => Sound.inputs (hs.bind b.1 (h b (.head _)).1 (h b (.head _)).2) bs fun c hc => h c (.tail _ hc)
 
-/-- Every code `Code.args` binds is `Wf` when every argument is. -/
-theorem Code.args_wf : ∀ (ks : List Nat) (xs : Codes), (∀ x ∈ xs, x.2.2.Wf) → ∀ j A B, (Code.args ks xs j A B).Wf
-  | k :: ks, ⟨X, Y, x⟩ :: xs, hw, j, A', B' => by
+/-- `Code.args` over a `Wf` `η` is `Wf` when every argument is. -/
+theorem Code.args_wf {η : Code} (hη : η.Wf) :
+    ∀ (ks : List Nat) (xs : Codes), (∀ x ∈ xs, x.2.2.Wf) → (Code.args η ks xs).Wf
+  | k :: ks, ⟨X, Y, x⟩ :: xs, hw => by
+    have ih := Code.args_wf hη ks xs fun y hy => hw y (List.mem_cons_of_mem _ hy)
+    refine ⟨fun j A' B' => ?_, ih.2⟩
     simp only [Code.args, Code.bind]
     split
     · split
       · rename_i h; obtain ⟨rfl, rfl⟩ := h; exact hw _ List.mem_cons_self
       · trivial
-    · exact Code.args_wf ks xs (fun y hy => hw y (List.mem_cons_of_mem _ hy)) j A' B'
-  | [], _, _, _, _, _ | _ :: _, [], _, _, _, _ => trivial
+    · exact ih.1 j A' B'
+  | [], _, _ | _ :: _, [], _ => ⟨fun _ _ _ => trivial, hη.2⟩
 
 /-- The rows whose case of `Tm.gen_sound` is proved (`rowsProved_ok`), each with the objects, as a function of the
     row's `A ⟶ B`, at which its proof reads `LamLaw` (`Tm.LamLawsAt`): none, `A ⟶ [B']` where its table is a `Λ` into
@@ -107,7 +110,7 @@ def rowsProved : List (String × (Obj → Obj → List (Obj × Obj))) :=
 /-- What `Tm.gen_sound` asks of `t`, with `L` for the order law of a `Λ`: `L` at each `Λ`
     and `E` (`E(R) = Λ(∋ ≫ R)`, at `[A] ⟶ [B]`) and at each row `rowsProved` marks, and the body of each fixed
     point positive in its variable (`Tm.pol`, which `Tm.den_mono` reads); `P k R` at each `share k R` (its slot,
-    `Code.Shares`). -/
+    `Codes.Shares`). -/
 def Tm.LamLawsAt (L : Obj → Obj → Prop) (P : {A B : Obj} → Nat → Tm A B → Prop) : {A B : Obj} → Tm A B → Prop
   | A, B, .prim r => ∀ f, rowsProved.lookup r.sym = some f → ∀ p ∈ f A B, L p.1 p.2
   | _, _, .share k R => P k R ∧ R.LamLawsAt L P
@@ -128,7 +131,7 @@ def Tm.LamLawsAt (L : Obj → Obj → Prop) (P : {A B : Obj} → Nat → Tm A B 
   | _, _, .val _ | _, _, .uni _ | _, _, .zero | _, _, .id | _, _, .outl | _, _, .outr | _, _, .nil
   | _, _, .atPos _ | _, _, .var .. => True
 
-/-- `Tm.LamLawsAt` with nothing asked at a `Λ`, the premise of `Tm.gen_sound` with `P` its table's `Code.Shares`:
+/-- `Tm.LamLawsAt` with nothing asked at a `Λ`, the premise of `Tm.gen_sound` with `P` its table's `Codes.Shares`:
     each fixed point's body positive. `Λ`'s order law is a theorem (`Vals.lamLaw`), so only `Tm.monoOK` is left of
     it (`Tm.monoOK_iff`). -/
 abbrev Tm.LamLaws {A B : Obj} (t : Tm A B) (P : {A B : Obj} → Nat → Tm A B → Prop := fun _ _ => True) : Prop :=
@@ -210,16 +213,16 @@ def CodesRep : Codes → List Sem → Prop
 
 /-- `Wf` codes `xs` that represent `ss`, bound at `ks`, represent `ss` bound at `ks`: what a call's body is built
     and read under (`Sound.bind` per argument). -/
-theorem Sound.args : ∀ (ks : List Nat) (xs : Codes) (ss : List Sem), (∀ x ∈ xs, x.2.2.Wf) → CodesRep xs ss →
-    Sound (Code.args ks xs) (Val.args ks ss)
+theorem Sound.args {η : Code} {ρ : Val} (hs : Sound η ρ) : ∀ (ks : List Nat) (xs : Codes) (ss : List Sem),
+    (∀ x ∈ xs, x.2.2.Wf) → CodesRep xs ss → Sound (Code.args η ks xs) (Val.args ks ss)
   | k :: ks, ⟨X, Y, x⟩ :: xs, ⟨X', Y', T⟩ :: ss, hw, hr => by
     simp only [CodesRep] at hr
     split at hr
     · rename_i h; obtain ⟨rfl, rfl⟩ := h
-      exact (Sound.args ks xs ss (fun y hy => hw y (List.mem_cons_of_mem _ hy)) hr.2).bind k hr.1
+      exact (Sound.args hs ks xs ss (fun y hy => hw y (List.mem_cons_of_mem _ hy)) hr.2).bind k hr.1
         (hw _ List.mem_cons_self)
     · exact hr.1.elim
-  | [], _, _, _, _ | _ :: _, [], [], _, _ => ⟨fun _ _ _ => GenK.zero_sound, fun _ _ _ => trivial⟩
+  | [], _, _, _, _ | _ :: _, [], [], _, _ => ⟨fun _ _ _ => GenK.zero_sound, fun _ _ _ => trivial, hs.2.2⟩
   | _ :: _, [], _ :: _, _, hr | _ :: _, _ :: _, [], _, hr => by simp [CodesRep] at hr
 
 /-- Row `s`'s cases of `Tm.gen_wf` and `Tm.gen_sound`: at every objects, given as many relation codes `xs` as it
@@ -849,8 +852,8 @@ theorem Tm.code_wf {η : Code} {A B : Obj} {t : Tm A B} (h : (t.gen η).Wf) : (t
 /-- **Every bit matrix `Tm.gen` passes on is `Rel.Wf`**: only `comp` builds one (`GenK.comp_wf`), a variable reads
     `η`'s, and every other op returns tables. -/
 theorem Tm.gen_wf_spine {A B : Obj} (t : Tm A B) :
-    (∀ η : Code, (∀ k A B, (η k A B).Wf) → (t.gen η).Wf) ∧
-    ∀ (η : Code) (xs : Codes), (∀ k A B, (η k A B).Wf) → (∀ x ∈ xs, x.2.2.Wf) → (t.argGen η xs).Wf := by
+    (∀ η : Code, η.Wf → (t.gen η).Wf) ∧
+    ∀ (η : Code) (xs : Codes), η.Wf → (∀ x ∈ xs, x.2.2.Wf) → (t.argGen η xs).Wf := by
   induction t
   case prim r =>
     refine ⟨fun η _ => ?_, fun η xs _ hx => ?_⟩ <;> simp only [Tm.gen, Tm.argGen]
@@ -863,20 +866,22 @@ theorem Tm.gen_wf_spine {A B : Obj} (t : Tm A B) :
     any_goals exact code_wf (ihx.1 η hη)
     all_goals first | exact hx y hy | simp at hy
   case share _ R ih =>
-    refine ⟨fun η _ => ?_, fun η xs _ hx => ?_⟩ <;> simp only [Tm.gen, Tm.argGen]
-    · exact code_wf (ih.1 Code.empty fun _ _ _ => trivial)
-    · exact ih.2 Code.empty xs (fun _ _ _ => trivial) hx
+    refine ⟨fun η hη => ?_, fun η xs hη hx => ?_⟩ <;> simp only [Tm.gen, Tm.argGen]
+    · split
+      · rename_i h; exact Codes.at_wf hη.2 h
+      · exact code_wf (ih.1 η.closed ⟨fun _ _ _ => trivial, hη.2⟩)
+    · exact ih.2 η.closed xs ⟨fun _ _ _ => trivial, hη.2⟩ hx
   case call ks _ _ b ih | callCv ks _ _ _ b _ ih _ =>
-    refine ⟨fun η _ => ?_, fun η xs _ hx => ?_⟩ <;> simp only [Tm.gen, Tm.argGen]
-    · exact code_wf (ih.1 _ (Code.args_wf ks [] fun _ h => nomatch h))
-    · exact code_wf (ih.1 _ (Code.args_wf ks xs hx))
+    refine ⟨fun η hη => ?_, fun η xs hη hx => ?_⟩ <;> simp only [Tm.gen, Tm.argGen]
+    · exact code_wf (ih.1 _ (Code.args_wf hη ks [] fun _ h => nomatch h))
+    · exact code_wf (ih.1 _ (Code.args_wf hη ks xs hx))
   -- a spine headed by neither a row nor a call is an error table
   all_goals refine ⟨fun η hη => ?_, fun η xs _ _ => by unfold Tm.argGen; exact trivial⟩
   all_goals simp only [Tm.gen]
   case comp R S ihR ihS => exact GenK.comp_wf _ (code_wf (ihS.1 η hη))
   case ldiv R S U V ihR ihS ihU ihV => exact GenK.ldiv_wf _ _ _ (code_wf (ihS.1 η hη))
   case own R ih => exact code_wf (ih.1 η hη)
-  case var k => exact hη k _ _
+  case var k => exact hη.1 k _ _
   case hylo => split <;> first | trivial | exact fun _ => trivial | (intro K; cases h : K.dom <;> simp [h, Rel.Rel.Wf])
   all_goals first
     | trivial
@@ -893,20 +898,20 @@ theorem Tm.gen_wf_spine {A B : Obj} (t : Tm A B) :
 
 /-- **Every bit matrix `Tm.gen` passes on is `Rel.Wf`** (`Tm.gen_wf_spine`, its first half). -/
 theorem Tm.gen_wf {A B : Obj} (t : Tm A B) :
-    ∀ η : Code, (∀ k A B, (η k A B).Wf) → (t.gen η).Wf := (Tm.gen_wf_spine t).1
+    ∀ η : Code, η.Wf → (t.gen η).Wf := (Tm.gen_wf_spine t).1
 
 /-- `Tm.gen_sound` with its spine half: a spine given codes `xs` that are `Wf` and represent `ss` generates code
     that represents its meaning of `ss` (`Tm.argGen`, `Tm.argDen`). -/
 theorem Tm.gen_sound_spine {A B : Obj} (t : Tm A B) :
-    (∀ (η : Code) (ρ : Val), t.LamLaws → Sound η ρ → ∀ K, (t.gen η).Reps K (t.den ρ)) ∧
+    (∀ (η : Code) (ρ : Val), t.LamLaws η.sh.Shares → Sound η ρ → ∀ K, (t.gen η).Reps K (t.den ρ)) ∧
     ∀ (η : Code) (ρ : Val) (xs : Codes) (ss : List Sem),
-      t.LamLaws → Sound η ρ → (∀ x ∈ xs, x.2.2.Wf) → CodesRep xs ss →
+      t.LamLaws η.sh.Shares → Sound η ρ → (∀ x ∈ xs, x.2.2.Wf) → CodesRep xs ss →
         ∀ K, (t.argGen η xs).Reps K (t.argDen ρ ss) := by
   -- strong induction on `Tm.size`: a `hylo`'s children's term (`Tm.kids`) is no subterm, only no larger than its body
   suffices H : ∀ n {A B : Obj} (t : Tm A B), t.size ≤ n →
-      (∀ (η : Code) (ρ : Val), t.LamLaws → Sound η ρ → ∀ K, (t.gen η).Reps K (t.den ρ)) ∧
+      (∀ (η : Code) (ρ : Val), t.LamLaws η.sh.Shares → Sound η ρ → ∀ K, (t.gen η).Reps K (t.den ρ)) ∧
       ∀ (η : Code) (ρ : Val) (xs : Codes) (ss : List Sem),
-        t.LamLaws → Sound η ρ → (∀ x ∈ xs, x.2.2.Wf) → CodesRep xs ss →
+        t.LamLaws η.sh.Shares → Sound η ρ → (∀ x ∈ xs, x.2.2.Wf) → CodesRep xs ss →
           ∀ K, (t.argGen η xs).Reps K (t.argDen ρ ss) from H _ t (Nat.le_refl _)
   -- a fixed point's round binds its variable to its table (`Sound.bind`)
   have hconst {A B : Obj} (Y : Tab A B) : ∀ K, (GenK.const A B (.ok Y)).Reps K (rep Y) :=
@@ -927,7 +932,7 @@ theorem Tm.gen_sound_spine {A B : Obj} (t : Tm A B) :
     · exact (primGen_ok r _ _ xs hx).2 ss hr hl
   case arg C D f x ihf ihx =>
     have step (η ρ) (xs : Codes) (ss : List Sem)
-        (hl : f.LamLaws ∧ x.LamLaws) (hs : Sound η ρ) (hx : ∀ y ∈ xs, y.2.2.Wf) (hr : CodesRep xs ss) :
+        (hl : f.LamLaws η.sh.Shares ∧ x.LamLaws η.sh.Shares) (hs : Sound η ρ) (hx : ∀ y ∈ xs, y.2.2.Wf) (hr : CodesRep xs ss) :
         ∀ K, (f.argGen η (⟨C, D, x.code η⟩ :: xs)).Reps K (f.argDen ρ (⟨C, D, x.den ρ⟩ :: ss)) :=
       (ihf (by omega)).2 η ρ _ _ hl.1 hs (fun y hy => by
           rcases List.mem_cons.1 hy with rfl | hy
@@ -938,18 +943,23 @@ theorem Tm.gen_sound_spine {A B : Obj} (t : Tm A B) :
       simp only [Tm.LamLaws, Tm.LamLawsAt] at hl <;> simp only [Tm.gen, Tm.den, Tm.argGen, Tm.argDen]
     · exact step η ρ [] [] hl hs (fun _ h => nomatch h) trivial
     · exact step η ρ xs ss hl hs hx hr
+  -- its slot where the table has one (`Codes.Shares`), else built under `η`'s table and no variable
   case share _ R ih =>
-    have he : Sound Code.empty Val.empty := ⟨fun _ _ _ => GenK.zero_sound, fun _ _ _ => trivial⟩
-    refine ⟨fun η ρ hl _ => ?_, fun η ρ xs ss hl _ hx hr => ?_⟩ <;>
-      simp only [Tm.LamLaws, Tm.LamLawsAt] at hl <;> simp only [Tm.gen, Tm.den, Tm.argGen, Tm.argDen]
-    · exact code_of ((ih (by omega)).1 Code.empty Val.empty hl he)
-    · exact (ih (by omega)).2 Code.empty Val.empty xs ss hl he hx hr
-  -- the body under its arguments bound at `ks` (`Sound.args`), whatever the caller's `η`, `ρ`
+    refine ⟨fun η ρ hl hs => ?_, fun η ρ xs ss hl hs hx hr => ?_⟩ <;>
+      simp only [Tm.LamLaws, Tm.LamLawsAt] at hl <;> simp only [Tm.gen, Tm.den, Tm.argGen, Tm.argDen] <;>
+      have he : Sound η.closed Val.empty := ⟨fun _ _ _ => GenK.zero_sound, fun _ _ _ => trivial, hs.2.2⟩
+    · intro K; split
+      · rename_i r h; exact hl.1 r h K
+      · exact code_of ((ih (by omega)).1 η.closed Val.empty hl.2 he) K
+    · exact (ih (by omega)).2 η.closed Val.empty xs ss hl.2 he hx hr
+  -- the body under its arguments bound at `ks` (`Sound.args`), whatever the caller's `η`, `ρ`; same table
   case call ks _ _ b ih | callCv ks _ _ _ b _ ih _ =>
-    refine ⟨fun η ρ hl _ => ?_, fun η ρ xs ss hl _ hx hr => ?_⟩ <;>
+    refine ⟨fun η ρ hl hs => ?_, fun η ρ xs ss hl hs hx hr => ?_⟩ <;>
       simp only [Tm.LamLaws, Tm.LamLawsAt] at hl <;> simp only [Tm.gen, Tm.den, Tm.argGen, Tm.argDen]
-    · exact code_of ((ih (by omega)).1 _ _ hl (Sound.args ks [] [] (fun _ h => nomatch h) trivial))
-    · exact code_of ((ih (by omega)).1 _ _ hl (Sound.args ks xs ss hx hr))
+    · exact code_of ((ih (by omega)).1 _ _ (by rw [Code.args_sh]; exact hl)
+        (Sound.args hs ks [] [] (fun _ h => nomatch h) trivial))
+    · exact code_of ((ih (by omega)).1 _ _ (by rw [Code.args_sh]; exact hl)
+        (Sound.args hs ks xs ss hx hr))
   -- a spine headed by neither a row nor a call is an error table
   all_goals refine ⟨fun η ρ hl hs => ?_, fun η ρ xs ss _ _ _ _ => by unfold Tm.argGen; exact herr _ _⟩
   all_goals simp only [Tm.LamLaws, Tm.LamLawsAt] at hl <;> simp only [Tm.gen, Tm.den]
@@ -1027,7 +1037,7 @@ theorem Tm.gen_sound_spine {A B : Obj} (t : Tm A B) :
     `Λ`, and an environment `η` that represents `ρ`; where the code is an error table (`Tm.hasCode` false) the run
     fails, which represents every meaning. -/
 theorem Tm.gen_sound {A B : Obj} (t : Tm A B) :
-    ∀ (η : Code) (ρ : Val), t.LamLaws → Sound η ρ → ∀ K, (t.gen η).Reps K (t.den ρ) :=
+    ∀ (η : Code) (ρ : Val), t.LamLaws η.sh.Shares → Sound η ρ → ∀ K, (t.gen η).Reps K (t.den ρ) :=
   (Tm.gen_sound_spine t).1
 
 end Rel.Lang

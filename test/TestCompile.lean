@@ -8,7 +8,8 @@ import Rel.Lang.GenSoundTest
 
     - The differential test: each closed definition of every registered program, re-read as a `Tm`
       (`GenSoundTest.reread`) where `Tm.gen` has code at every node (`Tm.hasCode`), run as
-      `(Tm.code Code.empty t).runE {}` and required to have the result of the constant `rel_program` generated
+      `(Tm.code η t).runE {}`, `η` the table of the program's closed parts (`Code.program`), and required to have
+      the result of the constant `rel_program` generated
       (`n.expanded`). So on these definitions the generated code equals `Tm.gen`'s, and where the term has no
       `Tm.gap` node `Tm.gen_sound` relates `Tm.gen` to `Tm.den` under its hypotheses (the bit-matrix laws, `LamLaw`
       at each `Λ`); a definition with no code is listed with the nodes that have none, and the definitions
@@ -143,12 +144,17 @@ run_cmd do
     -- the definitions run so far whose `Tm.gen` table is ok, each a variable numbered past every binder of `ds`
     let base := ds.foldl (fun m (_, ⟨_, _, t⟩) => max m (fresh t)) 0
     let mut prev : List (Nat × Res) := []
-    let mut η : Code := Code.empty
+    -- the program numbered as one (`Code.program`): each closed part, a call body's included, computed once
+    let t0 ← IO.monoMsNow
+    let (dn, η0) ← IO.lazyPure fun _ => Code.program (ds.map (·.2))
+    times := times.push s!"{n}.(share table)\t{(← IO.monoMsNow) - t0}"
+    let dn := (ds.map (·.1)).zip dn
+    let mut η : Code := η0
     for (x, ⟨A, B, c⟩) in gs do
       let nm := s!"{n}.{x}"
       unless lit.contains x do unchecked := unchecked ++ [nm]
       closed := closed + 1
-      let some ⟨A', B', t⟩ := ds.lookup x | throwError "TestCompile: `{nm}` is in `{n ++ `expanded}` but not re-read"
+      let some ⟨A', B', t⟩ := dn.lookup x | throwError "TestCompile: `{nm}` is in `{n ++ `expanded}` but not re-read"
       unless A' == A && B' == B do throwError "TestCompile: `{nm}` is re-read at other objects than it is generated at"
       match result c with
       | .error e => errs := errs.push s!"`{nm}`: {e}"

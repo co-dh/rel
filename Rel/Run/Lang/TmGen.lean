@@ -328,10 +328,17 @@ abbrev Shares := Array Res × Std.HashMap Lean.Expr Nat
     (`Code.shares`), not at each call site and fixed-point round. A part's own parts get the lower slots. -/
 partial def Tm.number {A B : Obj} : Tm A B → StateM Shares (Tm A B)
   | .share _ R => R.number
-  | .call ks c os b => do w (.call ks c os (← b.number))
-  | .callCv ks c c' os b u => do w (.callCv ks c c' os (← b.number) u)
+  | t@(.arg ..) | t@(.call ..) | t@(.callCv ..) => do w (← head t)
   | t => do w (← t.mapM Tm.number)
 where
+  /-- A spine `t` numbered but for its head and its earlier arguments: each is a function of the arguments still
+      to come (`Tm.argGen`), no closed part however closed it reads, and a slot would run it on none of them. -/
+  head {A B : Obj} : Tm A B → StateM Shares (Tm A B)
+    | .arg f x => return .arg (← head f) (← x.number)
+    | .call ks c os b => return .call ks c os (← b.number)
+    | .callCv ks c c' os b u => return .callCv ks c c' os (← b.number) u
+    | .share _ R => head R
+    | t => t.number
   w {A B : Obj} (t : Tm A B) : StateM Shares (Tm A B) := do
     if !Expand.closed t then return t
     let (ts, m) ← get
@@ -359,5 +366,18 @@ def Code.program (ds : List Res) : List Res × Code :=
   let (ds', ts, _) := (ds.mapM (m := StateM Shares) fun (r : Res) => do
     pure (⟨r.1, r.2.1, ← r.2.2.number⟩ : Res)).run (#[], {})
   (ds', Code.shares ts)
+
+/-- Two call sites of one body `b`, which reads its parameter `0` beside the closed part `(𝟘)°`; each call given a
+    free variable, so neither call is closed. -/
+private def twoCalls (b : Tm .long .long) : Tm .long .long :=
+  .join (.arg (.call [0] `f [] b) (.var (A := .long) (B := .long) false 5)) (.arg (.call [0] `g [] b) (.var (A := .long) (B := .long) false 6))
+
+-- the body's closed part is numbered inside both calls, to one slot (`𝟘` its own part, slot 0): two slots in all,
+-- each computed once (`Code.shares`), where `Tm.mapM`'s walk numbers none and one slot per site would be four
+#guard
+  let b : Tm .long .long := .meet (.var false 0) (.conv .zero)
+  let (t, ts, _) := ((twoCalls b).number).run (#[], {})
+  let b' : Tm .long .long := .meet (.var false 0) (.share 1 (.conv (.share 0 .zero)))
+  ts.size == 2 && ((Expand.tmE t).toOption.map toString == (Expand.tmE (twoCalls b')).toOption.map toString)
 
 end Rel.Lang
