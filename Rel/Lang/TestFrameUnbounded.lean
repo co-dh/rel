@@ -194,6 +194,7 @@ open Rel.Programs.prelude Rel.Programs.frame Rel.Programs.frameStat in
 rel_program frameDescribeU where
     obj K = {A,B,C}
     obj N
+    obj F : f64
     x : N ⟶ K×N ≜ {(0,(B,5)),(1,(A,3)),(2,(B,5)),(3,(C,1)),(4,(A,7)),(5,(C,2)),(6,(B,1)),(7,(A,3))}
     check describe(x π₂) ⟨π₁, ⟨π₂ π₁, π₂ π₂ π₂⟩⟩ = {(∗,(8,(3.375,(1,7))))}
     check describe(x π₂) π₂ π₂ π₁ [𝟙, {(∗,-1.0)}] <° {(2.125,∗)} = {(∗,∗)}
