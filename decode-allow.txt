@@ -134,6 +134,7 @@ Rel.Tab.snoc
 Rel.Tab.succ
 Rel.Tab.suffix
 Rel.Tab.sum
+Rel.Tab.sumOn
 Rel.Tab.sums
 Rel.Tab.sumsOn
 Rel.Tab.tagged

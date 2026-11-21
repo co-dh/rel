@@ -121,15 +121,20 @@ rel_program sumsFloatPosT where
     x : K×G ⟶ N ≜ {((A,1.5),1)}
     s : K×G ⟶ N ≜ sums(x)
 
--- `sum` at an `f64` column: refused by name (the f64 `sum` row is not built yet; `sums` is, below)
-/-- error: line 132, col 17: `summarize` at this call, where ν is N, δ is G, β is G: sum on G: G is an object of f64, and sum runs on objects of i64 only -/
-#guard_msgs in
+-- `sum` at an `f64` column: the left fold `⦇[0, plus]⦈` of the IEEE sums, from the first element (q's order)
 open Rel.Programs.prelude Rel.Programs.frame in
 rel_program sumFloatT where
     obj N
     obj G : f64
+    -- by hand: 0 + 2.5 = 2.5, then 2.5 − 1.5 = 1
     f : N ⟶ G ≜ {(0,2.5),(1,-1.5)}
-    s : 1 ⟶ G ≜ summarize(F(f) sum, f)
+    check summarize(F(f) sum, f) = {(∗,1.0)}
+    -- by hand, from the left: 0 + 1 = 1, 1 + 1e16 = 1e16 (the spacing there is 2 and the tie rounds to the even
+    -- 1e16), 1e16 − 1e16 = 0; from the right it would be 1 + (1e16 − 1e16) = 1
+    g : N ⟶ G ≜ {(0,1.0),(1,1e16),(2,-1e16)}
+    check summarize(F(g) sum, g) = {(∗,0.0)}
+
+#guard sumFloatT.failures.map toString == []
 
 -- `sums` at `f64` values: one IEEE sum per row, left to right along the positions (q's order)
 rel_program sumsFloatT where
@@ -153,7 +158,7 @@ rel_program sumsFloatT where
 #guard sumsFloatT.failures.map toString == []
 
 -- `sums` at `f32` values: refused by name, with the cast to `f64` that runs it
-/-- error: line 163, col 5: sums on H: H is an object of f32, and sums runs on objects of i64, f64 only; cast first, `x $ F` with `F` an object of f64 -/
+/-- error: line 168, col 5: sums on H: H is an object of f32, and sums runs on objects of i64, f64 only; cast first, `x $ F` with `F` an object of f64 -/
 #guard_msgs in
 rel_program sumsF32T where
     obj K = {A}

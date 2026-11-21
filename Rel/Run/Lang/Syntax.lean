@@ -219,13 +219,13 @@ def inrConvRow : Prim :=
 def mapRow : Prim :=
   { sym := "F", sig := ([((.var {} "A", .var {} "B"), some false)], .list (.var {} "A"), .list (.var {} "B")),
     written := false }
--- `length = ⦇[0, π₁ succ]⦈`, `sum = ⦇[0, plus]⦈ʳ` (§4, `Elab.dfns`): each step kept in the object, as `succ`,
+-- `length = ⦇[0, π₁ succ]⦈`, `sum = ⦇[0, plus]⦈` (§4, `Elab.dfns`): each step kept in the object, as `succ`,
 -- `plus` keep theirs
 def lengthRow : Prim :=
   { sym := "length", num := [("ℕ", intAtoms)], sig := ([], .list (.var {} "E"), .var {} "ℕ"),
     aop := .ok `Freyd.Alg.RelSet.ListRel.length }
 def sumRow : Prim :=
-  { sym := "sum", num := [("ℕ", intAtoms)], sig := ([], .list (.var {} "ℕ"), .var {} "ℕ"),
+  { sym := "sum", num := [("ℕ", sumAtoms)], sig := ([], .list (.var {} "ℕ"), .var {} "ℕ"),
     aop := .ok `Freyd.Alg.RelSet.ListRel.sum }
 /-- `Rᴵ`: the family `R : I ⟶ A×B` as one relation `I×A ⟶ B`, the fused form of its definition
     `⟨π₁R,π₂⟩dom(π₁π₁ ∩ π₂)π₁π₂` (`Elab.dfns`), `R` run on the keys in demand (`Tab.flat`). -/

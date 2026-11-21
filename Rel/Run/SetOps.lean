@@ -76,15 +76,39 @@ def diag (q : Tab k k → Except String (Tab k k)) (D : Tab k k) : Except String
 /-- **`R ⊑ S`**: `R − S` has no row. -/
 def le (R S : Tab k v) : Except String Bool := (fun D => D.n == 0) <$> diff R S
 
+/-- **The left-to-right sum within segments, and its bad rows** (`sumsOn` per key, `sum` per cell): one `kscan` from `0`
+over `v` within the segments `seg` (`1` opens one) is each row's prefix sum `W`, a column of `u`. A row is bad (`1`)
+where its step is not `stepAt u add`: at `i64` it wrapped (`v` and `W − v` of one sign, `W` of the other) or reads or
+makes the null `-2^63`; at `f64` the `fto` `W'` of the IEEE sum `W` is not `W` or is `2^63` (a NaN). A `W'` that is
+neither (a `-0`, which no sum from `+0` of canonical words makes) is the error, never a bad row: `stepAt` would hold
+it. Other atoms have no sum here: the error names the cast. -/
+def sumTail (what : String) (u : QAtomicType) (n : USize) (seg v : Enc) : Except String (Arr u n × Enc) := do
+  let z ← colConst n 0
+  match u with
+  | .i64 =>
+    let W := (← kscan .add false .i64 .i64 n seg [z, v]).1
+    let sv ← colMap .lt n v z
+    let ovf ← colMap .and n (← colMap .eq n sv (← colMap .lt n (← colMap .sub n W v) z)) (← colMap .ne n sv
+      (← colMap .lt n W z))
+    let nul ← colConst n 0x8000000000000000
+    let bad ← colMap .or n ovf (← colMap .or n (← colMap .eq n W nul) (← colMap .eq n v nul))
+    pure (← colArr .add n W z, bad)
+  | .f64 =>
+    let W := (← kscan .fadd false .i64 .i64 n seg [z, v]).1
+    let W' ← colArr (.fto .f64) n W W .f64
+    let nul ← colConst n 0x8000000000000000
+    let ne ← colMap .ne n W'.enc W
+    let nan ← colMap .eq n W'.enc nul
+    let (k, _) ← whereCol n (← colMap .and n ne (← colMap .not n nan nan))
+    if k ≠ 0 then throw s!"{what}: an f64 prefix sum is -0, which no sum of canonical words from +0 makes"
+    pure (W', ← colMap .or n ne nan)
+  | u => throw s!"{what}: values of {repr u} have no sum here; cast them to f64 or i64 first (x $ F)"
+
 /-- **q's `sums` per key** (`rowDens`: `agg(dom(x) (𝟙 × ≥) dom(x), F(x) ⦇[0, plus]⦈)`): `canon` sorts `x` by
 `(κ, ν)`, so each key `κ` is one run; `kseen` on the whole key checks `x` simple (one value per `(κ, ν)`, else the
 error naming a doubled position), `kseen` on the `κ` columns gives each run's first row, ones `kscatter`ed there are
-the segment marks (`groupFold`'s first line), and a segmented `kscan .add` from `0` is the prefix sum `W`. A step is
-bad where it wrapped (`v` and `W − v` of one sign, `W` of the other) or reads or makes the null `-2^63`, as in
-`Tab.sum`; a segmented `kscan .or` carries it to the rest of its key, and those rows are dropped (`keep`).
-At `f64` values the one `kscan .fadd` from `+0` sums left to right (q's order) and `fto` writes each sum `W'`; a row
-is bad where `W' ≠ W` or `W'` is `2^63` (a NaN sum, no row of `stepAt`). A `W'` that is neither (a `-0`, which no sum
-from `+0` of canonical words makes) is the error, never a dropped row: `stepAt` would hold it. -/
+the segment marks (`groupFold`'s first line), and `sumTail` is each row's prefix sum and its bad word; a segmented
+`kscan .or` carries a bad word to the rest of its key, and those rows are dropped (`keep`). -/
 def sumsOn {K : Obj} {t u : QAtomicType} (x : Tab (.prod K (.atom t)) (.atom u)) :
     Except String (Tab (.prod K (.atom t)) (.atom u)) := do
   let C ← canon x
@@ -99,31 +123,9 @@ def sumsOn {K : Obj} {t u : QAtomicType} (x : Tab (.prod K (.atom t)) (.atom u))
       sums folds one value per (key, position)"
   let (gk, _, fk) ← kseen n (← Vals.cols C.key.1)
   let seg ← kscatter .last gk.toUSize fk (← colConst gk.toUSize 1) n 0
-  let z ← colConst n 0
-  match u, C with
-  | .i64, C =>
-    let n := C.n
-    let v := Arr.enc (t := .i64) C.val
-    let W := (← kscan .add false .i64 .i64 n seg [z, v]).1
-    let sv ← colMap .lt n v z
-    let ovf ← colMap .and n (← colMap .eq n sv (← colMap .lt n (← colMap .sub n W v) z)) (← colMap .ne n sv
-      (← colMap .lt n W z))
-    let nul ← colConst n 0x8000000000000000
-    let bad ← colMap .or n ovf (← colMap .or n (← colMap .eq n W nul) (← colMap .eq n v nul))
-    let badR := (← kscan .or false .i64 .i64 n seg [z, bad]).1
-    keep ⟨n, C.key, ← colArr .add n W z⟩ (← colMap .not n badR badR)
-  | .f64, C =>
-    let n := C.n
-    let W := (← kscan .fadd false .i64 .i64 n seg [z, Arr.enc (t := .f64) C.val]).1
-    let W' ← colArr (.fto .f64) n W W .f64
-    let nul ← colConst n 0x8000000000000000
-    let ne ← colMap .ne n W'.enc W
-    let nan ← colMap .eq n W'.enc nul
-    let (k, _) ← whereCol n (← colMap .and n ne (← colMap .not n nan nan))
-    if k ≠ 0 then throw "sums: an f64 prefix sum is -0, which no sum of canonical words from +0 makes"
-    let badR := (← kscan .or false .i64 .i64 n seg [z, ← colMap .or n ne nan]).1
-    keep ⟨n, C.key, W'⟩ (← colMap .not n badR badR)
-  | u, _ => throw s!"sums: values of {repr u} have no sum here; cast them to f64 or i64 first (x $ F)"
+  let (W, bad) ← sumTail "sums" u n seg (Arr.enc (t := u) C.val)
+  let badR := (← kscan .or false .i64 .i64 n seg [← colConst n 0, bad]).1
+  keep ⟨n, C.key, W⟩ (← colMap .not n badR badR)
 
 /-- **`sums` at the position object `P`, the value object `V`**: `sumsOn` where `P` is an integer-stored atom
 (`intOrd`), whose canon order is its value order, and `V` an atom; the error at any other object. -/
