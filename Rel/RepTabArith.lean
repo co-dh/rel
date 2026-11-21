@@ -261,13 +261,13 @@ theorem fverbBy_map {α β : Type} {ap : Op → α → α → Except String α} 
     simp only [hk, bind, Except.bind_eq_ok'] at h ⊢
     obtain ⟨q, hq, hz⟩ := h
     refine ⟨_, hap hq, ?_⟩
-    clear hq
+    clear hq hk
     induction c generalizing q with
     | nil => simp only [List.foldlM_nil, pure, Except.pure, Except.ok.injEq] at hz ⊢; rw [hz]
     | cons p c ih =>
       simp only [List.foldlM_cons, bind, Except.bind_eq_ok'] at hz ⊢
       obtain ⟨q', hq', hz⟩ := hz
-      exact ⟨_, hap hq', by first | exact ih _ hz | exact ih _ _ hz | exact ih hz⟩
+      exact ⟨_, hap hq', ih _ hz⟩
   | none =>
   simp only [hk] at h ⊢
   by_cases c7 : (k == Ew.imod) = true <;> simp only [c7, ↓reduceIte, Bool.false_eq_true] at h ⊢
@@ -283,7 +283,7 @@ theorem widen_fval {t : QAtomicType} (hf : t = .f32 ∨ t = .f64) (W : UInt64) :
   rcases hf with rfl | rfl
   · refine ⟨Op.widen32 W, rfl, ?_⟩
     simp only [fval, QAtomicType.ofBits, Op.widen32, show W.toUInt32.toUInt64.toUInt32 = W.toUInt32 from
-      UInt32.toNat_inj.mp (by simp [Nat.mod_mod])]
+      UInt32.toNat_inj.mp (by simp)]
   · exact ⟨W, rfl, rfl⟩
 
 /-- **`wideCol` reads a float column as `fval`**: row `i` of `wideCol t` of the column `x` is the `f64` word of element

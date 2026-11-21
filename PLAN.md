@@ -383,6 +383,12 @@ Diff table 的「状态」列：✅ 后面是完成它的步骤；🔄 是部分
     `cast_holds` 由它导出。`kernRows` 的项是常量加其前置参数（`Tab.unary` 带行名）。`Prim.num` 改为对象变量 →
     允许的 atom 表（`intAtoms`、`floatAtoms`），整数对象上按名报错并给出 `$` 提示（`numObj`）。`floor` 在此为
     `F ⟶ F`（`Op.ffloor` 的值），不是 q 的 `floor`（q 回 long）。测试 `TestFloatArith.unaryT`、`sqrtIntT`。
+  - 🟨 一趟 element-wise（分支 `kchain`，批准 A）：`kscan` 带每行 Op 链 `pre`/`post`、`seg : Option Enc`（`none` 即
+    map），只改签名、无新导出。`fverbOne k`（动词 = 一个二元 `Op` + 一元链；`mod` 无，仍多趟）定义 `fverbBy`；
+    `widen t`（`wideCol` 的链）、`fstepArr`（`colArr o … (widen t) (c ++ [fto t])`，一趟）、`nanFlag`（`post` 链
+    `ne nulWord`，一趟，无 `colConst`）；`fmapCols` 一趟。`Tab.unary`/`Tab.cast` 在 `keep` 后不再 `canon`
+    （`keep_map_holds`）。native plan 的 `scanB` 读 `Option`，map 不再造常量 `1` 列。未完：一元行 f32/f64 → f64、
+    `floor` → i64（见 `tmp/handoff.md`）。
 - ⬜ S9 文档：architecture §1、§4.3，dataframe F4，PLAN（随各步）。
 
 ### P0 baseline — 1/1
