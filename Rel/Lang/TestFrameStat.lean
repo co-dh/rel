@@ -73,7 +73,7 @@ rel_program frameStatT where
 #guard frameStatT.failures.map toString == []
 
 -- `avg` of an `f64` column: prim `sum` runs on `i64` only (the float summation order is undecided, PLAN S4)
-/-- error: line 81, col 5: sum on Rel.Programs.frameGroup.F: Rel.Programs.frameGroup.F is an object of f64, and sum runs on objects of i64 only -/
+/-- error: line 82, col 5: sum on Rel.Programs.frameGroup.F: Rel.Programs.frameGroup.F is an object of f64, and sum runs on objects of i64 only -/
 #guard_msgs in
 open Rel.Programs.prelude Rel.Programs.frame Rel.Programs.frameGroup in
 rel_program avgFloatT where
