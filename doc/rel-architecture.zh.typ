@@ -161,6 +161,12 @@ compile η t : {r : Rel A B // rep r = ⟦t⟧ρ}       -- 方案 A：规格在�
   `n#i`（`Elab.generalise`，`mkDef` 的每次使用与无参定义都经过它）：没有使用能确定它，所以每次使用都取常量建变量时的
   对象 `.long`（未声明名字的 `objOf`），数检查照常在它上面跑（`numObj`、`numCheck`）。字面量与 `nil` 的开放对象仍归
   `settleOpen`；`check` 不是定义，其中仍开放的对象照旧报错。
+- 泛型定义体里的数字面量（整数与浮点，`Elab.numParts` 读得出的词）先是开放对象（`Elab.litTy`），上下文可把它定在对象
+  变量上（`⟨a, {(∗,0.5)}⟩plus` 里的 φ）；`numCheck` 在每次使用解出的对象上按该对象的 atom 读它的词（`litCol`），读不出
+  就在该使用处报错：`` `inc` at this call, where φ is N: '0.5' is not an element of N, an object of i64 ``。
+  体里写的字面量、其开放对象没有使用够得到的，在定义可见的已声明对象里定（`mkDef` 调 `settleLit`），不看调用方的对象。
+  调用的实参里仍有 `settleOpen` 才定的对象（字面量的、`nil` 的源）时，不在此时选形式（closed、on demand、tested），
+  调用就是展开（`Expand.callDef`）。
 
 #tbl(c-syn, (auto, 1fr), ([组], [构造子]),
   [allegory], [`id` `comp` `conv` `meet` `dom` `ran`],
