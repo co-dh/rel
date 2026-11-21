@@ -5,13 +5,15 @@ Rel.Arr.toList
 Rel.Ew.bitBits
 Rel.Ew.cmpBits
 Rel.Ew.notBits
-Rel.Lang.Code.program
 Rel.Lang.Code.shares
 Rel.Lang.Embed.define
 Rel.Lang.Embed.elabRelProgram
 Rel.Lang.Embed.elabRelVariant
+Rel.Lang.Expand.argNoCode
 Rel.Lang.Expand.callDef
 Rel.Lang.Expand.checkOf
+Rel.Lang.Expand.emit
+Rel.Lang.Expand.noCode
 Rel.Lang.Expand.once
 Rel.Lang.Expand.read
 Rel.Lang.Expand.top
