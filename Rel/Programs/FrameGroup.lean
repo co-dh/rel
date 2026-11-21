@@ -30,4 +30,30 @@ rel_program frameGroup where
     -- the most frequent value; among ties the first to occur (`idesc` is stable)
     mode(a : β ⟶ γ, x : ν ⟶ β) : 1 ⟶ γ ≜ summarize(head, s) s where s ≜ idesc(valueCounts(a, x) π₂) valueCounts(a, x) π₁
 
+    -- real-valued statistics (q's names), always in `F`, never an integer quotient: `$` and `%` name a declared
+    -- object, which an object variable is not, so the library declares the ones its results live in
+    obj F : f64
+    obj Z : i64
+    obj D : date
+    -- on the array of a column's values, like prim `sum`: `summarize(F(c) avg, c)` for a column,
+    -- `aggregate(a, F(x c) avg, x)` per group; `𝟙(Z)` fixes the object `length` counts in
+    avg : [γ] ⟶ F ≜ ⟨sum $ F, length 𝟙(Z) $ F⟩%
+    -- `var` and `svar` are `cov`, `scov` of a column with itself; `scov` scales by n/(n−1), none at one row
+    cov : [γ×γ] ⟶ F ≜ ⟨F(times) avg, ⟨F(π₁) avg, F(π₂) avg⟩times⟩minus
+    scov : [γ×γ] ⟶ F ≜ ⟨cov, ⟨length 𝟙(Z) $ F, tail length 𝟙(Z) $ F⟩%⟩times
+    var : [γ] ⟶ F ≜ F(⟨𝟙, 𝟙⟩) cov
+    svar : [γ] ⟶ F ≜ F(⟨𝟙, 𝟙⟩) scov
+    dev : [γ] ⟶ F ≜ var sqrt
+    sdev : [γ] ⟶ F ≜ svar sqrt
+    -- q's `cor`; the prelude's `cor` is the coreflexive of a relation's pairs
+    corr : [γ×γ] ⟶ F ≜ ⟨cov, ⟨F(π₁) dev, F(π₂) dev⟩times⟩%
+    -- the one or two middle rows of `c` sorted: `i ≤ r(i)+1` and `r(i) ≤ i+1`, `r : i ↦ m−1−i`; q's `med` is their `avg`
+    middle(c : ν ⟶ γ) : ν ⟶ γ ≜ dom(⟨dom(c), r succ⟩ cor(≤)) dom(⟨r, dom(c) succ⟩ cor(≤)) sortBy(𝟙, c) where r ≜ dom(c) ⟨⊤ count(c), succ⟩minus
+    med(c : ν ⟶ γ) : 1 ⟶ F ≜ summarize(F(middle(c)) avg, middle(c))
+    valueProportions(a : β ⟶ γ, x : ν ⟶ β) : ν ⟶ γ×F ≜ valueCounts(a, x) ⟨π₁, ⟨π₂ $ F, ⊤ count(x) $ F⟩%⟩
+    -- count, mean, std (pandas: the sample one, null at one row), min, max of a column
+    describe(c : ν ⟶ γ) : 1 ⟶ ν×(F×((F+1)×(γ×γ))) ≜ ⟨count(c), ⟨summarize(F(c) avg, c), ⟨tot(summarize(F(c) sdev, c)), ⟨summarize(F(c) Λ(∋) head, c), summarize(F(c) Λ(∋) last, c)⟩⟩⟩⟩
+    -- the days from `b` to `a`: each date read as its day count
+    daysBetween(a : ν ⟶ D, b : ν ⟶ D) : ν ⟶ Z ≜ ⟨a $ Z, b $ Z⟩minus
+
 end Rel.Programs
