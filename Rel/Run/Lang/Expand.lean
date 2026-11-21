@@ -235,6 +235,7 @@ def elabOnce (env : Env) (p : Pos) (n : String) (qs : List Param) (e : Expr) (ty
 open Lean in deriving instance ToExpr for Rel.Obj
 open Lean in deriving instance ToExpr for MVarId
 open Lean in deriving instance ToExpr for OTy
+open Lean in deriving instance ToExpr for Rel.Db.CsvShape
 
 open Lean in def oE (A : Obj) : Lean.Expr := toExpr A
 open Lean in def uE (n : USize) : Lean.Expr := mkApp (mkConst ``USize.ofNat) (toExpr n.toNat)

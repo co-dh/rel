@@ -296,7 +296,7 @@ info: ("name,px\nabc,10\n\"x,\"\"y\"\"\",\n,7\n",
   return (out, back.toList)
 
 -- refused at elaboration: a nullable column whose `1` is no one-element object, and a text of no `char`
-/-- error: line 304, col 5: input `t` from csv "t.csv": column 'val' is N+N; a CSV field holds an atom, a nullable atom `V+1` (`1` an object of one element) or a text `[C]`; declare it a table directory (drop `csv`) -/
+/-- error: line 303, col 5: input `t` from csv "t.csv": column 'val' is N+N; a CSV field holds an atom, a nullable atom `V+1` (`1` an object of one element) or a text `[C]`; declare it a table directory (drop `csv`) -/
 #guard_msgs in
 rel_program csvSumT where
     obj N
