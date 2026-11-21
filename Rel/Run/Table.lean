@@ -144,30 +144,58 @@ def readKeyed (K S : Schema) (dir : String) : IO (Tab K.obj S.obj) := do
   let (fv, v) ← readSide S (file dir "val")
   IO.ofExcept (canon dir ⟨n, k, ← same fk n fv v⟩)
 
-/-- The columns of `R`, a schema reversed, from their encodings `es` in the same order, `n` rows each: an atom
-    column entered through `Arr.of` as `readArr` enters a mapped one; any other is no CSV column. -/
-def encCols {n : USize} (path : String) : (R : Schema) → List Enc → Except String (Vals (Schema.objR .long .prod R) n)
-  | [(c, .atom t)], [e] => Arr.of t n (.vector t n e none) s!"{path}: column '{c}'"
-  | (c, .atom t) :: g :: R, e :: es => return ⟨← encCols path (g :: R) es, ← Arr.of t n (.vector t n e none) s!"{path}: column '{c}'"⟩
-  | R, es => .error s!"{path}: {es.length} columns read for the schema {Schema.shown R.reverse}, one atom each"
+/-- The first part of `es` as an atom column of type `t`, entered through `Arr.of` as `readArr` enters a mapped one;
+    its count, and the parts left over. -/
+def encArr (path : String) (t : QAtomicType) : List (USize × Enc) →
+    Except String ((n : USize) × Arr t n × List (USize × Enc))
+  | (k, e) :: es => do pure ⟨k, ← Arr.of t k (.vector t k e none) s!"{path}: a {repr t} column part of {k} rows", es⟩
+  | [] => .error s!"{path}: no column part left for a {repr t} column"
+
+/-- A side of object `A` from its atom columns' encodings `es`, each with its count, in `cols`' order (a sum's tags,
+    positions and two payloads; a list's bounds and payload), the converse of `csvEncs`: each entered through `Arr.of`
+    as `readArr` enters a mapped one; the side's count, and the parts left over. -/
+def encVals (path : String) : (A : Obj) → List (USize × Enc) →
+    Except String ((n : USize) × Vals A n × List (USize × Enc))
+  | .atom t, es => encArr path t es
+  | .prod a b, es => do
+    let ⟨n, x, es⟩ ← encVals path a es
+    let ⟨m, y, es⟩ ← encVals path b es
+    if h : m = n then pure ⟨n, (x, h ▸ y), es⟩ else .error s!"{path}: columns of {n} and {m} rows on one side"
+  | .arr b, es => do
+    let ⟨n, lo, es⟩ ← encArr path .i64 es
+    let ⟨m, hi, es⟩ ← encArr path .i64 es
+    let ⟨k, f, es⟩ ← encVals path b es
+    if h : m = n then pure ⟨n, ⟨k, lo, h ▸ hi, f⟩, es⟩ else .error s!"{path}: list bounds of {n} and {m} rows"
+  | .sum a b, es => do
+    let ⟨n, tag, es⟩ ← encArr path .u1 es
+    let ⟨m, idx, es⟩ ← encArr path .i64 es
+    let ⟨l, x, es⟩ ← encVals path a es
+    let ⟨r, y, es⟩ ← encVals path b es
+    if h : m = n then pure ⟨n, ⟨l, r, tag, h ▸ idx, x, y⟩, es⟩ else .error s!"{path}: sum tags of {n} and positions of {m} rows"
 
 /-- The CSV file `path` as the table `K ⟶ S`, its header `cols` (the key's columns then the value's, `Db.CsvCols`),
-    each column read straight into its encoding (`Db.csvRead`); `K = []`: positions, the frame of its rows (`frame`),
-    else keyed, its rows canonical (`canon`). -/
+    each column read straight into its encoding (`Db.csvRead`, `encVals`); `K = []`: positions, the frame of its rows
+    (`frame`), else keyed, its rows canonical (`canon`). -/
 def readCsv (K S : Schema) (cols : Db.CsvCols) (path : String) : IO (Tab K.obj S.obj) := do
   let (n, es) ← Db.csvRead path cols
-  let side (R : Schema) (es : List Enc) : Except String (Vals R.obj n) := encCols path R.reverse es.reverse
-  let v ← IO.ofExcept (side S (es.drop K.length))
+  let side (R : Schema) (es : List (USize × Enc)) : Except String (Vals R.obj n × List (USize × Enc)) := do
+    let ⟨m, x, es⟩ ← encVals path R.obj es
+    if h : m = n then pure (h ▸ x, es) else .error s!"{path}: a side of {m} rows in a file of {n}"
+  let done (es : List (USize × Enc)) : Except String Unit :=
+    unless es.isEmpty do .error s!"{path}: {es.length} column parts past the schema"
   match K with
-  | [] => IO.ofExcept (frame v)
-  | K => IO.ofExcept (do canon path ⟨n, ← side K (es.take K.length), v⟩)
+  | [] => IO.ofExcept (do let (v, es) ← side S es; done es; frame v)
+  | K => IO.ofExcept (do
+    let (k, es) ← side K es
+    let (v, es) ← side S es
+    done es; canon path ⟨n, k, v⟩)
 
-/-- The encodings of the side `x`'s columns in schema order (`Vals.cols`), the converse of `encCols`: each an atom
-    column's encoding as it lies; a list or sum column is no CSV column. -/
-def csvEncs {A : Obj} {n : USize} (path : String) (x : Vals A n) : Except String (List Enc) := do
-  (← (Vals.cols x).mapError (s!"{path}: " ++ ·)).mapM fun
-    | (.atom _, e) => .ok e
-    | _ => .error s!"{path}: a list or sum column, which a CSV field does not hold"
+/-- The encodings of the side `x`'s atom columns with their counts, in `cols`' order: a CSV column's parts as
+    `Db.CsvShape.atoms` lists them; which objects a CSV column may be is `Db.Csv.schema`'s to say. -/
+def csvEncs {A : Obj} {n : USize} (path : String) (x : Vals A n) : Except String (List (USize × Enc)) :=
+  (cols A x "").mapM fun
+    | (_, .vector _ k e _) => .ok (k, e)
+    | (p, _) => .error s!"{path}: column part `{p}` is not a vector"
 
 /-- The table `t : K ⟶ S` as the CSV file `path`, the converse of `readCsv`: its header `cols`, then each row's key
     columns and value columns, written from their encodings (`Db.csvWrite`); `K = []`: positions, the value columns
