@@ -26,4 +26,27 @@ def cast {A B : Obj} {n : USize} (X : Vals A n) : Except String (Tab A B) :=
   | _, _, _ => .error "$: casts a number object to a number object"
 
 end Tab
+
+/-- The unary float verbs, each a row `F ⟶ F` of `prims` under its q name: its `Op` on each value's `f64` word
+    (`Tab.unary`). Every `Op` that reads one operand at `f64` and answers one there. -/
+def unaryOps : List (String × Op) :=
+  [("sqrt", .fsqrt), ("neg", .fneg), ("abs", .fabs), ("exp", .fexp), ("log", .flog), ("sin", .fsin),
+   ("cos", .fcos), ("tan", .ftan), ("asin", .fasin), ("acos", .facos), ("atan", .fatan), ("floor", .ffloor)]
+
+namespace Tab
+
+/-- **The row `s` of `unaryOps` on the values `X`** (`rowDens`: `unaryDen`): `fmapCols` of its `Op` at `X`'s float
+    atom, each value to the answer, kept where that is a word of the atom (not a NaN); then `canon`. The row is the
+    first argument so `kernRows` names one constant for every name. -/
+def unary (s : String) {A : Obj} {n : USize} (X : Vals A n) : Except String (Tab A A) :=
+  match unaryOps.lookup s, A, X with
+  | some o, .atom t, X =>
+    if t = .f32 ∨ t = .f64 then do
+      let (w, flag) ← fmapCols t o n X.enc
+      Tab.keep (k := .atom t) (v := .atom t) ⟨n, X, w⟩ flag >>= Tab.canon
+    else .error s!"{s} runs on a float object, found one of {repr t}"
+  | some _, _, _ => .error s!"{s} runs on a float object"
+  | none, _, _ => .error s!"{s}: no unary float verb"
+
+end Tab
 end Rel
