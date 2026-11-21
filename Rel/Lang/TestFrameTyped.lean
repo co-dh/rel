@@ -40,9 +40,7 @@ rel_program frameTypedT where
 
 #guard frameTypedT.ok
 
--- `aj` with a date time column: its `sums` runs along the time, which must be a number object
-/-- error: line 53, col 31: `Rel.Lang.TestFrameTyped.ajDateT.Rel.Programs.frameJoin.aj.form.1.1.1.1.0.0.num.0.2.1.0.1.1`: an object variable is D here; its constant is not generic over it, a number object -/
-#guard_msgs in
+-- `aj` with a date time column: its `sums` runs along the days
 open Rel.Programs.prelude Rel.Programs.frame Rel.Programs.frameGroup Rel.Programs.frameJoin in
 rel_program ajDateT where
     obj K = {A,B,C}
@@ -51,9 +49,14 @@ rel_program ajDateT where
     q : N ⟶ K×(D×N) ≜ {(0,(A,(18990,1))),(1,(A,(19001,2))),(2,(B,(18000,3)))}
     xa : N ⟶ K×D ≜ {(0,(A,19000)),(1,(A,19010)),(2,(B,17000)),(3,(A,18000))}
     a : N ⟶ (K×D)×(K×(D×N)) ≜ aj(π₁, π₂, π₁, π₂ π₁, xa, q) ⟨π₁, π₂ [𝟙, {(∗,(C,(0,0)))}]⟩
+    -- by hand, per `xa` row the last `q` row of its key at a day ≤ its own: 0 (A,19000) meets 18990 (19001 is later);
+    -- 1 (A,19010) meets 19001; 2 (B,17000) none (B's 18000 is later); 3 (A,18000) none; none reads (C,(0,0))
+    check a = {(0,((A,19000),(A,(18990,1)))),(1,((A,19010),(A,(19001,2)))),(2,((B,17000),(C,(0,0)))),(3,((A,18000),(C,(0,0))))}
+
+#guard ajDateT.failures.map toString == []
 
 -- `daysBetween`: `minus` at a date, or the date read as its day number
-/-- error: line 62, col 23: minus on D: D is an object of date, and minus runs on objects of i64, f32, f64 only -/
+/-- error: line 65, col 23: minus on D: D is an object of date, and minus runs on objects of i64, f32, f64 only -/
 #guard_msgs in
 rel_program daysMinusT where
     obj N
@@ -106,7 +109,7 @@ rel_program sumsTimeT where
 #guard sumsTimeT.failures.map toString == []
 
 -- positions at an `f64`: its canon order is its bits' until S5, so `sums` is refused by name
-/-- error: -/
+/-- error: line 119, col 5: sums' position object G is an object of f64; sums orders positions of u8, i16, i32, i64, char, i8, date, datetime -/
 #guard_msgs in
 rel_program sumsFloatPosT where
     obj K = {A}
@@ -116,7 +119,7 @@ rel_program sumsFloatPosT where
     s : K×G ⟶ N ≜ sums(x)
 
 -- `sum` and `sums` at an `f64` column: refused by name (a float sum waits on the summation order, S4)
-/-- error: line 100, col 5: sum on G: G is an object of f64, and sum runs on objects of i64 only -/
+/-- error: line 129, col 5: sum on G: G is an object of f64, and sum runs on objects of i64 only -/
 #guard_msgs in
 open Rel.Programs.prelude Rel.Programs.frame in
 rel_program sumFloatT where
@@ -125,7 +128,7 @@ rel_program sumFloatT where
     f : N ⟶ G ≜ {(0,2.5),(1,-1.5)}
     s : 1 ⟶ G ≜ summarize(F(f) sum, f)
 
-/-- error: line 109, col 17: `Rel.Lang.TestFrameTyped.cumSumFloatT.Rel.Programs.frame.cumSum.num.1.1`: an object variable is G here; its constant is not generic over it, a number object -/
+/-- error: line 138, col 17: `Rel.Lang.TestFrameTyped.cumSumFloatT.Rel.Programs.frame.cumSum.num.1.1`: an object variable is G here; its constant is not generic over it, a number object -/
 #guard_msgs in
 open Rel.Programs.prelude Rel.Programs.frame in
 rel_program cumSumFloatT where
