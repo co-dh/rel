@@ -1036,7 +1036,14 @@ Diff table 的「状态」列：✅ 后面是完成它的步骤；🔄 是部分
   call body 上给它们编号；`.share k R` 读槽 k；`Sound` 增加：每个槽计算 ⟦R⟧。三部分：
   - ⬜ 7.3a `Tm.gen` 及其运行时部分移到 `RelRun`（`Rel/Run/Lang/TmGen.lean`）；`Tm.code` 不缓存 `.prod`
     （旧 `Expand.code` 的条件）；`Expand.tmE`：一个 `Tm` 作为构造它的 `Expr`，`GenSoundTest` 测 round-trip。
-  - ⬜ 7.3b share 表：闭部分编号（含 call body），每个编号一个常量，`.share k R` 读槽 k，`Sound` 与 `gen_sound` 随之改。
+  - ✅ 7.3b share 表（分支 `s73b`）：`Code` 是结构 `{var, sh}`，`sh : Codes` 是 share 表，`Code.bind`、`Code.args`
+    保留它（`Code.args η ks xs`）。`Tm.number`（`RelRun`，`TmGen`）给闭部分编号并进入 call body；相等的部分
+    （`Expand.tmE`，其已编号的部分读作槽号）共用一个槽；spine 的头不编号。`Code.shares` 每个槽只算一次，
+    `Code.program` 给一个程序的所有定义一张表。`.share k R` 读槽 k，表里没有时就地构建。`Sound` 增加：每个槽 `Wf`
+    （`Code.Wf`）；`Tm.LamLawsAt` 增加参数 `P`，在 `share k R` 处要求 `Codes.Shares`（槽 k 表示 ⟦R⟧）。
+    只改了 `gen_sound` 与 `gen_wf` 的 share、call 两个 case。未证：`Tm.number`/`Code.shares` 满足 `Codes.Shares`（7.3c）。
+    测量（`test/TestCompile.lean`，`REL_COMPILE_TIMES`）：chess 整个程序的 share 表 31.1 s，之后每个定义 0 ms；
+    旧的 `Tm.gen` 路径 `chess.mate` 246 s、`chess.m` 245 s。所有程序合计 90.5 s；963 个定义与生成的常量相等，pin 不变。
   - ⬜ 7.3c `emit` 发出 `Tm.gen η ⌜t⌝`，删除旧路径（`node`、`code`、`spine`、`body`）。
 - ⬜ 7.4 清理：`LR unused`、`unused-simp`、`remove-import`。
 - ✅ 7.5 已合并（dbdc72d，`gates3`）：gate `bang`（allowlist 32）、`pointfree`（13）、`kernel-tested`（68 of 84）；`pointfree` 的范围 = L。原条目，规则 gate（owner 选）：三个 gate，allowlist 只减不增：`!` 下标（今天 32 个 def）；关系值 def 的 body 里的
