@@ -368,16 +368,13 @@ theorem rdiv_sound {R : Rel A C} {S : Rel B C} {UA : Rel A A} {UB : Rel B B} {X 
     simp only [ldivDen, rdivDen, rep_apply, Tab.conv_holds hsc, Tab.conv_holds hrc]
     exact and_congr Iff.rfl (or_congr Iff.rfl and_comm)
 
-theorem lam_sound {d : Bool} {R : Rel A B} {X : Core.Rel A.El B.El} (hR : ∀ K, R.Reps K X)
-    (hB : ∀ (m : USize) (x : Vals (.prod A B) m) es, Vals.cols x = .ok es → ∀ i i' : Fin m.toNat,
-      (x.row i).1 = (x.row i').1 → lexLe (ascKeys m es) i i' = true → seenKey m es i ≠ seenKey m es i' →
-        B.lt (x.row i).2 (x.row i').2) :
+theorem lam_sound {d : Bool} {R : Rel A B} {X : Core.Rel A.El B.El} (hR : ∀ K, R.Reps K X) :
     ∀ K, (GenK.lam A B d R).Reps K (lamDen X) :=
   ofVals_sound fun _ _ _ _ hK h a ys ha _ _ => by
     obtain ⟨r, hr, ht⟩ := bind_ok h
     have er := (reps_iff _ _ _).1 (hR _) r hr
     have ha' := (side_some hK a).1 ha
-    exact (Tab.lam_den ht hB a ys).trans ((and_iff_right ha').trans (and_congr Iff.rfl
+    exact (Tab.lam_den ht a ys).trans ((and_iff_right ha').trans (and_congr Iff.rfl
       (forall_congr' fun b => iff_congr Iff.rfl (er a b ((side_some rfl a).2 ha') rfl trivial))))
 
 example : ∀ K, (GenK.nil A B).Reps K nilDen := ofVals_row_sound fun _ _ _ h => Tab.nil_holds h
@@ -455,16 +452,10 @@ example : ∀ K, (ofVals A (.sum A B) fun X => Tab.inl X).Reps K Core.Rel.inl :=
   ofVals_row_sound fun _ _ _ h => Tab.inl_holds h
 example : ∀ K, (ofVals B (.sum A B) fun X => Tab.inr X).Reps K Core.Rel.inr :=
   ofVals_row_sound fun _ _ _ h => Tab.inr_holds h
-example (hB : ∀ (m : USize) (x : Vals (.prod A A) m) es, Vals.cols x = .ok es → ∀ i i' : Fin m.toNat,
-      (x.row i).1 = (x.row i').1 → lexLe (ascKeys m es) i i' = true → seenKey m es i ≠ seenKey m es i' →
-        A.lt (x.row i).2 (x.row i').2) :
-    ∀ K, (ofVals A (.arr A) fun X => Tab.tau X).Reps K (fun a ys => ys = [a]) :=
-  ofVals_row_sound fun _ _ _ h => Tab.tau_den h hB
-example (hB : ∀ (m : USize) (x : Vals (.prod (.arr B) B) m) es, Vals.cols x = .ok es → ∀ i i' : Fin m.toNat,
-      (x.row i).1 = (x.row i').1 → lexLe (ascKeys m es) i i' = true → seenKey m es i ≠ seenKey m es i' →
-        B.lt (x.row i).2 (x.row i').2) :
-    ∀ K, (ofVals (.arr B) (.arr B) fun X => Tab.setify X).Reps K (lamDen fun xs b => b ∈ xs) :=
-  ofVals_row_sound fun _ _ _ h => Tab.setify_den h hB
+example : ∀ K, (ofVals A (.arr A) fun X => Tab.tau X).Reps K (fun a ys => ys = [a]) :=
+  ofVals_row_sound fun _ _ _ h => Tab.tau_den h
+example : ∀ K, (ofVals (.arr B) (.arr B) fun X => Tab.setify X).Reps K (lamDen fun xs b => b ∈ xs) :=
+  ofVals_row_sound fun _ _ _ h => Tab.setify_den h
 
 end GenK
 
