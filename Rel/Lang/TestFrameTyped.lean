@@ -41,7 +41,7 @@ rel_program frameTypedT where
 #guard frameTypedT.ok
 
 -- `aj` with a date time column: its `sums` runs along the time, which must be a number object
-/-- error: line 53, col 31: `Rel.Lang.TestFrameTyped.ajDateT.Rel.Programs.frameJoin.aj.form.1.1.1.1.0.0.num.0.2.1.0.1.1`: an object variable is D here; its constant is not generic over it, a number object -/
+/-- error: line 53, col 31: in `Rel.Programs.frameJoin.aj` (its line 25): `agg` at this call, where α is N, ν is N, δ is N: sums on D: D is an object of date, and sums runs on objects of i64 only -/
 #guard_msgs in
 open Rel.Programs.prelude Rel.Programs.frame Rel.Programs.frameGroup Rel.Programs.frameJoin in
 rel_program ajDateT where
@@ -90,7 +90,7 @@ rel_program frameOrderT where
 #guard frameOrderT.failures.map toString == []
 
 -- `sum` and `sums` at an `f64` column: refused by name (a float sum waits on the summation order, S4)
-/-- error: line 100, col 5: sum on G: G is an object of f64, and sum runs on objects of i64 only -/
+/-- error: line 100, col 17: `summarize` at this call, where ν is N, δ is G, β is G: sum on G: G is an object of f64, and sum runs on objects of i64 only -/
 #guard_msgs in
 open Rel.Programs.prelude Rel.Programs.frame in
 rel_program sumFloatT where
@@ -99,7 +99,7 @@ rel_program sumFloatT where
     f : N ⟶ G ≜ {(0,2.5),(1,-1.5)}
     s : 1 ⟶ G ≜ summarize(F(f) sum, f)
 
-/-- error: line 109, col 17: `Rel.Lang.TestFrameTyped.cumSumFloatT.Rel.Programs.frame.cumSum.num.1.1`: an object variable is G here; its constant is not generic over it, a number object -/
+/-- error: line 109, col 17: in `Rel.Programs.frame.cumSum` (its line 38): `sumsBy` at this call, where ν is N, κ is Rel.Programs.prelude.«1», γ is G: sums on G: G is an object of f64, and sums runs on objects of i64 only -/
 #guard_msgs in
 open Rel.Programs.prelude Rel.Programs.frame in
 rel_program cumSumFloatT where

@@ -1602,24 +1602,28 @@ def arithOK (k : UInt8) (t : QAtomicType) : Bool :=
 
 /-- The number checks of the node `x` at its solved objects: a row's `num` variables and `$`'s `castOK`, a number
     verb's atom. `build` runs them; a use of a generic definition runs them on its expansion first, so the error
-    names the use and the objects its variables were given (`mkDef`). -/
-def numCheck : Pre → Except Err Unit
+    names the use and the objects its variables were given (`mkDef`). An object the use has not solved yet is
+    checked when `build` reaches it. -/
+def numCheck (x : Pre) : Except Err Unit :=
+  let num (p : Pos) (o : OTy) (op : String) (ok : QAtomicType → Bool) : Except Err Unit :=
+    if (zonk mc o).mvs.isEmpty then discard (numObj objs mc p o op ok) else pure ()
+  match x with
   | .prim r _ s t => do
     r.num.forM fun (v, ok) => do
       if let some o := (r.sig.2.2.varAt v (zonk mc t)).orElse fun _ => r.sig.2.1.varAt v (zonk mc s) then
-        discard <| numObj objs mc dp o r.sym ok.contains
+        num dp o r.sym ok.contains
     -- `$` is typed by unification at any two objects; which atoms it joins is `castOK`'s, read off their formats
-    if r.sym == "$" then
+    if r.sym == "$" && (zonk mc s).mvs.isEmpty && (zonk mc t).mvs.isEmpty then
       let A ← objOf objs dp (zonk mc s); let B ← objOf objs dp (zonk mc t)
       let nm : Obj → String := fun | .atom a => atomName a | _ => "no atom"
       let dfr (o : OTy) : Bool := match zonk mc o with | .base n => (objs.lookup n).any (·.deferred) | _ => false
       unless dfr s || dfr t || (match A, B with | .atom a, .atom b => QAtomicType.castOK a b | _, _ => false) do
         throw ⟨dp, s!"$ from {zonk mc s} ({nm A}) to {zonk mc t} ({nm B}): not every {nm A} value is a {nm B} \
           value, and $ keeps a number's value"⟩
-  | .succ p n => discard <| numObj objs mc p n "succ" (· == .i64)
-  | .arith p k n => discard <| numObj objs mc p n (Op.arith k).sym (arithOK k)
-  | .leq p n => discard <| numObj objs mc p n "≤" (·.ordNum.isSome)
-  | .lt p n => discard <| numObj objs mc p n "<" (·.ordNum.isSome)
+  | .succ p n => num p n "succ" (· == .i64)
+  | .arith p k n => num p n (Op.arith k).sym (arithOK k)
+  | .leq p n => num p n "≤" (·.ordNum.isSome)
+  | .lt p n => num p n "<" (·.ordNum.isSome)
   | _ => pure ()
 
 end Num

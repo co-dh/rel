@@ -141,6 +141,15 @@ compile η t : {r : Rel A B // rep r = ⟦t⟧ρ}       -- 方案 A：规格在�
   `2024.01.15D12:30:00.5`（小数 1–9 位）。日期、时间是一个词（中间无空格），值是 1970-01-01 起的天数、纳秒数（公历外推，
   年份 0001–9999），由 CSV 的读法 `Db.Csv.ymd`、`Db.Csv.stamp` 以 `.` 为日期分隔符读出（`Elab.qForm`）。词不在该 atom
   里（不存在的日子如 `2024.02.30`、超出 atom 范围、写在别的 atom 的对象上）时 elaboration 报错，写出这个词、对象和 atom。
+- 泛型定义（类型里有对象变量 `φ`）的体里可以写它的对象变量（`x $ φ`）。数动词（`succ` `arith` `≤` `<`、带 `num`
+  约束的 row 如 `sqrt`）与 `$` 的合法性（`numObj`、`castOK`，合起来是 `Elab.numCheck`）在对象变量上不在定义处判定，
+  而是记下、在每次使用时判定：
+  - 定义处先把每个变量当 `.long` 建一次常量（`Expand.once`）；建不成时，把变量上的这些检查留给使用
+    （`ObjInfo.deferred`）再建一次，只作判定、不产出代码：建得成则定义合法、没有常量，否则报原错误。
+  - 没有常量的定义、或常量对某变量不泛型（在 `.long` 上建）而调用给了别的对象时，调用就是定义在调用处对象上的展开
+    （单态化，`Pre.call` 的 `alt`），`numCheck` 在具体对象上运行；所以 `GenSound` 的 `rowOK` 只面对具体 atom，不变。
+  - 使用解出变量的对象后，`mkDef` 在展开上先跑 `numCheck`，报错写出调用、变量和它得到的对象：
+    `` `avg` at this call, where φ is N: divide on N: … ``（`Rel/Lang/TestGenericNum.lean`）。
 
 #tbl(c-syn, (auto, 1fr), ([组], [构造子]),
   [allegory], [`id` `comp` `conv` `meet` `dom` `ran`],
