@@ -255,74 +255,125 @@ theorem fverbBy_map {α β : Type} {ap : Op → α → α → Except String α} 
     (f : α → β) (hap : ∀ {o x y z}, ap o x y = .ok z → ap' o (f x) (f y) = .ok (f z)) {k : UInt8} {x y z : α}
     (h : fverbBy ap k x y = .ok z) : fverbBy ap' k (f x) (f y) = .ok (f z) := by
   unfold fverbBy at h ⊢
-  by_cases c1 : (k == Ew.add) = true <;> simp only [c1, ↓reduceIte, Bool.false_eq_true] at h ⊢
-  · exact hap h
-  by_cases c2 : (k == Ew.sub) = true <;> simp only [c2, ↓reduceIte, Bool.false_eq_true] at h ⊢
-  · exact hap h
-  by_cases c3 : (k == Ew.mul) = true <;> simp only [c3, ↓reduceIte, Bool.false_eq_true] at h ⊢
-  · exact hap h
-  by_cases c4 : (k == Ew.greater) = true <;> simp only [c4, ↓reduceIte, Bool.false_eq_true] at h ⊢
-  · exact hap h
-  by_cases c5 : (k == Ew.lesser) = true <;> simp only [c5, ↓reduceIte, Bool.false_eq_true] at h ⊢
-  · exact hap h
-  by_cases c5' : (k == Ew.divide) = true <;> simp only [c5', ↓reduceIte, Bool.false_eq_true] at h ⊢
-  · exact hap h
-  by_cases c6 : (k == Ew.idiv) = true <;> simp only [c6, ↓reduceIte, Bool.false_eq_true] at h ⊢
-  · simp only [bind, Except.bind_eq_ok'] at h ⊢
+  cases hk : fverbOne k with
+  | some oc =>
+    obtain ⟨o, c⟩ := oc
+    simp only [hk, bind, Except.bind_eq_ok'] at h ⊢
     obtain ⟨q, hq, hz⟩ := h
-    exact ⟨_, hap hq, hap hz⟩
+    refine ⟨_, hap hq, ?_⟩
+    clear hq hk
+    induction c generalizing q with
+    | nil => simp only [List.foldlM_nil, pure, Except.pure, Except.ok.injEq] at hz ⊢; rw [hz]
+    | cons p c ih =>
+      simp only [List.foldlM_cons, bind, Except.bind_eq_ok'] at hz ⊢
+      obtain ⟨q', hq', hz⟩ := hz
+      exact ⟨_, hap hq', ih _ hz⟩
+  | none =>
+  simp only [hk] at h ⊢
   by_cases c7 : (k == Ew.imod) = true <;> simp only [c7, ↓reduceIte, Bool.false_eq_true] at h ⊢
   · simp only [bind, Except.bind_eq_ok'] at h ⊢
     obtain ⟨q, hq, g, hg, m, hm, hz⟩ := h
     exact ⟨_, hap hq, _, hap hg, _, hap hm, hap hz⟩
   · cases h
 
+/-- **`widen` reads a float word as `fval`**: the word `W` of the float atom `t` through `chain (widen t)` is the `f64`
+word of the element `W` holds. -/
+theorem widen_fval {t : QAtomicType} (hf : t = .f32 ∨ t = .f64) (W : UInt64) :
+    ∃ X, chain (widen t) W = .ok X ∧ fval t (QAtomicType.ofBits t W) = some X := by
+  rcases hf with rfl | rfl
+  · refine ⟨Op.widen32 W, rfl, ?_⟩
+    simp only [fval, QAtomicType.ofBits, Op.widen32, show W.toUInt32.toUInt64.toUInt32 = W.toUInt32 from
+      UInt32.toNat_inj.mp (by simp)]
+  · exact ⟨W, rfl, rfl⟩
+
 /-- **`wideCol` reads a float column as `fval`**: row `i` of `wideCol t` of the column `x` is the `f64` word of element
 `i` (an `f32` one read at `f32` and widened). -/
 theorem wideCol_word {t : QAtomicType} {n : USize} (x : Arr t n) {a' : Enc} (h : wideCol t n x.enc = .ok a')
     (hf : t = .f32 ∨ t = .f64) (i : Fin n.toNat) : fval t (x.get i) = some ((raw .i64 n a')[i.1]?.getD 0) := by
-  rcases hf with rfl | rfl
-  · have e := Except.ok.inj ((colMap_raw (s := .f32) h).2.2.2 i i.2)
-    rw [Arr.get_word x (by decide) i, ← e]
-    generalize (raw .f32 n x.enc)[i.1]?.getD 0 = W
-    simp only [fval, QAtomicType.ofBits, Op.widen32, show W.toUInt32.toUInt64.toUInt32 = W.toUInt32 from UInt32.toNat_inj.mp (by simp [Nat.mod_mod])]
-  · simp only [wideCol, pure, Except.pure, Except.ok.injEq] at h; subst h
+  obtain ⟨X, hX, hfv⟩ := widen_fval hf ((raw t n x.enc)[i.1]?.getD 0)
+  rw [Arr.get_word x (by rcases hf with rfl | rfl <;> decide) i, hfv]
+  unfold wideCol at h
+  split at h
+  · rename_i he
+    rcases hf with rfl | rfl
+    · exact absurd he (by decide)
+    simp only [pure, Except.pure, Except.ok.injEq] at h; subst h
+    cases hX
     have hw := x.wf
-    rw [Arr.get_word x (by decide) i]
-    simp only [fval, QAtomicType.ofBits, wd, Option.some.injEq]
+    simp only [Option.some.injEq]
     cases hc : x.enc <;> rw [hc] at hw <;> simp_all [raw, Enc.WF, QAtomicType.width]
+  · obtain ⟨x', y', v, w, hx', -, hv, hw, ho⟩ := (colMap_chain h).2.2.2 i.1 i.2
+    rw [hX] at hx'; cases hx'; cases hv; cases hw
+    simp only [ho, Option.getD_some, if_neg (show QAtomicType.i64 ≠ .u1 by decide)]
 
-/-- **`ftoCols t` writes `Op.fto t` row by row** at a float atom `t`: the keep flag is a bit, set exactly where
-`fto t` of the `f64` word is a word of `t` (not `2^63`), and then that word is the answer. -/
-theorem ftoCols_spec {t : QAtomicType} {n : USize} {r : Enc} {w : Arr t n} {keep : Enc}
-    (hf : t = .f32 ∨ t = .f64) (h : ftoCols t n r = .ok (w, keep)) (i : Fin n.toNat) :
-    wd n keep i < 2 ∧ ∀ v, (wd n keep i ≠ 0 ∧ w.get i = v) ↔ ∃ R, (Op.fto t).eval 0 (wd n r i) = .ok R ∧
-      R ≠ 0x8000000000000000 ∧ v = QAtomicType.ofBits t R := by
-  simp only [ftoCols, bind, Except.bind_eq_ok', pure, Except.pure, Except.ok.injEq, Prod.mk.injEq] at h
-  obtain ⟨w', hw', N, hN, kp, hkp, rfl, rfl⟩ := h
-  obtain ⟨v0, hv0, hwi⟩ := (colMap_get (colArr_ok hw')).2 i i.2
-  have hkv := (colMap_raw hkp).2.2.2 i i.2
-  rw [colConst_raw hN] at hkv
-  simp only [Array.getElem?_replicate, i.2, if_true, Option.getD_some, ev_ne] at hkv
-  rw [show nulWord = 0x8000000000000000 from rfl] at hkv
-  have ev : ∀ A B, (Op.fto t).eval A B = .ok (Op.ftoWord t B) := fun _ _ => rfl
-  have hfs : (Op.fto t).eval 0 (wd n r i) = .ok v0 := (ev 0 _).trans ((ev _ _).symm.trans hv0)
-  have hg : t ≠ .general := by rcases hf with rfl | rfl <;> decide
-  have hs : t ≠ .sym := by rcases hf with rfl | rfl <;> decide
-  obtain ⟨a, ha0, -, ew⟩ := Arr.get_raw_atom w' (colMap_closed (colArr_ok hw')).1 hg hs i
-  have hu : (if t = .u1 then v0 % 2 else v0) = v0 := if_neg (by rcases hf with rfl | rfl <;> decide)
-  rw [hwi, hu, Option.some.injEq] at ha0; subst a
-  have ew' : w'.get i = QAtomicType.ofBits t v0 := by
-    rw [ew]; rcases hf with rfl | rfl <;> simp only [Column.atomOfBits, Dep.Carrier.of?, Option.getD_some,
-      QAtomicType.ofBits]
-  have hwd : (raw .i64 n w'.enc)[i.1]?.getD 0 = v0 := by simp only [hwi, hu, Option.getD_some]
-  rw [hwd] at hkv
-  simp only [wd] at hfs ⊢; rw [← Except.ok.inj hkv]
+/-- **`colMap` of two float columns through `widen`**: row `i` of the answer is `chain post` of `op` on the operands'
+`f64` words (`fval`). -/
+theorem colMap_widen {t u : QAtomicType} {op : Op} {n : USize} {x y : Arr t n} {o : Enc}
+    {post : List (Op × UInt64)} (hf : t = .f32 ∨ t = .f64) (hu : u ≠ .u1)
+    (h : colMap op n x.enc y.enc u t (widen t) post = .ok o) (i : Fin n.toNat) :
+    ∃ X Y v, fval t (x.get i) = some X ∧ fval t (y.get i) = some Y ∧ op.eval X Y = .ok v ∧
+      chain post v = .ok (wd n o i) := by
+  obtain ⟨X, Y, v, W, hX, hY, hv, hW, ho⟩ := (colMap_chain h).2.2.2 i.1 i.2
+  have ht : t.ordNum.isSome := by rcases hf with rfl | rfl <;> decide
+  obtain ⟨X', hX', hfx⟩ := widen_fval hf ((raw t n x.enc)[i.1]?.getD 0)
+  obtain ⟨Y', hY', hfy⟩ := widen_fval hf ((raw t n y.enc)[i.1]?.getD 0)
+  rw [hX] at hX'; rw [hY] at hY'; cases hX'; cases hY'
+  rw [if_neg hu] at ho
+  refine ⟨X, Y, v, by rw [Arr.get_word x ht i]; exact hfx, by rw [Arr.get_word y ht i]; exact hfy, hv, ?_⟩
+  simp only [wd, ho, Option.getD_some]; exact hW
+
+/-- **`fverbOne` is `fverb`**: a verb with one `Op` and a chain computes that `Op`, then the chain. -/
+theorem fverb_one {k : UInt8} {o : Op} {c : List (Op × UInt64)} (h : fverbOne k = some (o, c)) (x y : UInt64) :
+    fverb k x y = (o.eval x y >>= chain c) := by
+  have hc : c = [] ∨ c = [(.ffloor, 0)] := by
+    unfold fverbOne at h
+    repeat' split at h
+    all_goals first | (cases h; simp) | cases h
+  simp only [fverb, fverbBy, h]
+  rcases hc with rfl | rfl <;> cases o.eval x y <;> rfl
+
+namespace Tab
+
+/-- An atom holding a number (`storeFmt?`) is none of `general`, `sym`, `u1`. -/
+theorem storeFmt_ne {u : QAtomicType} (h : u.storeFmt?.isSome) : u ≠ .general ∧ u ≠ .sym ∧ u ≠ .u1 := by
+  cases u <;> revert h <;> decide
+
+/-- A word read as an atom holding a number (`atomOfBits`) is `ofBits t` of it. -/
+theorem of_atomOfBits {t : QAtomicType} (a : UInt64) (hg : t ≠ .general) (h : t.storeFmt?.isSome) :
+    (Dep.Carrier.of? t (.atom (Column.atomOfBits t a hg))).getD default = QAtomicType.ofBits t a := by
+  cases t <;> first | rfl | exact absurd h (by decide)
+
+end Tab
+
+/-- **`nanFlag` of an answer `w`** at a number atom `t`: the flag is a bit, set exactly where `w`'s word is not
+`2^63`, and then `w`'s element is that word read at `t`. -/
+theorem nanFlag_spec {t : QAtomicType} {n : USize} {w : Arr t n} {keep : Enc} (hf : t.storeFmt?.isSome)
+    (hv : Kernel.Enc.Valid n w.enc) (h : nanFlag n w.enc = .ok keep) (i : Fin n.toNat) :
+    wd n keep i < 2 ∧ ∀ v, (wd n keep i ≠ 0 ∧ w.get i = v) ↔
+      (wd n w.enc i ≠ 0x8000000000000000 ∧ v = QAtomicType.ofBits t (wd n w.enc i)) := by
+  obtain ⟨x, y, u, W, hx, -, hu, hW, hk⟩ := (colMap_chain h).2.2.2 i.1 i.2
+  simp only [chain, List.foldlM_nil, pure, Except.pure, Except.ok.injEq] at hx
+  subst hx
+  have hu' : u = (raw .i64 n w.enc)[i.1]?.getD 0 :=
+    (Except.ok.inj (show (Except.ok ((raw .i64 n w.enc)[i.1]?.getD 0) : Except String UInt64) = .ok u from hu)).symm
+  subst hu'
+  simp only [chain, List.foldlM_cons, List.foldlM_nil, ev_ne, bind, Except.bind, pure, Except.pure,
+    Except.ok.injEq] at hW
+  subst hW
+  rw [if_pos rfl] at hk
+  obtain ⟨hg, hs, -⟩ := Tab.storeFmt_ne hf
+  obtain ⟨a, ha, -, ew⟩ := Arr.get_raw_atom w hv hg hs i
+  have ew' : w.get i = QAtomicType.ofBits t a := by rw [ew, Tab.of_atomOfBits a hg hf]
+  rw [ha, Option.getD_some] at hk
+  have hka : wd n keep i = if nulWord ≠ a then 1 else 0 := by
+    simp only [wd, hk, Option.getD_some]; split <;> rfl
+  have hwa : wd n w.enc i = a := by simp only [wd, ha, Option.getD_some]
+  rw [hka, hwa, ew', show nulWord = 0x8000000000000000 from rfl]
   refine ⟨bit_lt _, fun v => ?_⟩
-  rw [bit_ne, ew']
+  rw [bit_ne]
   constructor
-  · rintro ⟨hn, rfl⟩; exact ⟨_, hfs, hn, rfl⟩
-  · rintro ⟨R, hR, hn, rfl⟩; rw [hfs] at hR; cases hR; exact ⟨hn, rfl⟩
+  · rintro ⟨h1, rfl⟩; exact ⟨Ne.symm h1, rfl⟩
+  · rintro ⟨h1, rfl⟩; exact ⟨Ne.symm h1, rfl⟩
 
 /-- **`fstepCols t k` computes `stepAt t k` row by row** at a float atom `t`: `ftoCols_spec` of the `fverb` answer on
 the operands' `f64` words (`wideCol_word`). -/
@@ -330,39 +381,62 @@ theorem fstepCols_spec {t : QAtomicType} {k : UInt8} {n : USize} {x y w : Arr t 
     (hf : t = .f32 ∨ t = .f64) (h : fstepCols t k n x.enc y.enc = .ok (w, keep)) (i : Fin n.toNat) :
     wd n keep i < 2 ∧ ∀ v, (wd n keep i ≠ 0 ∧ w.get i = v) ↔ ∃ X Y R, fval t (x.get i) = some X ∧
       fval t (y.get i) = some Y ∧ fstep t k X Y = .ok R ∧ R ≠ 0x8000000000000000 ∧ v = QAtomicType.ofBits t R := by
-  simp only [fstepCols, bind, Except.bind_eq_ok'] at h
-  obtain ⟨a', ha, b', hb, r, hr, h⟩ := h
-  have hr' := fverbBy_map (ap := fun o x y => colMap o n x y) (ap' := Op.eval) (fun e => wd n e i)
-    (fun hc => (colMap_raw hc).2.2.2 i i.2) hr
-  have hfs : fstep t k (wd n a' i) (wd n b' i) = (Op.fto t).eval 0 (wd n r i) := by
-    show (fverb k _ _ >>= fun q => (Op.fto t).eval 0 q) = _
-    rw [show fverb k (wd n a' i) (wd n b' i) = .ok (wd n r i) from hr']; rfl
-  obtain ⟨h2, hv⟩ := ftoCols_spec hf h i
-  refine ⟨h2, fun v => (hv v).trans ?_⟩
-  rw [wideCol_word x ha hf i, wideCol_word y hb hf i]
+  simp only [fstepCols, bind, Except.bind_eq_ok', pure, Except.pure, Except.ok.injEq, Prod.mk.injEq] at h
+  obtain ⟨w', hw', kp, hkp, rfl, rfl⟩ := h
+  -- row `i` of `w'` is `fstep t k` of the operands' `f64` words, in either branch
+  have key : ∃ X Y, fval t (x.get i) = some X ∧ fval t (y.get i) = some Y ∧
+      fstep t k X Y = .ok (wd n w'.enc i) ∧ Kernel.Enc.Valid n w'.enc := by
+    unfold fstepArr at hw'
+    split at hw'
+    · rename_i o c hk
+      have hc := colArr_ok hw'
+      obtain ⟨X, Y, v, hX, hY, hv, hW⟩ := colMap_widen hf (by rcases hf with rfl | rfl <;> decide) hc i
+      refine ⟨X, Y, hX, hY, ?_, (colMap_closed hc).1⟩
+      have e : chain (c ++ [(.fto t, 0)]) v = (chain c v >>= fun q => (Op.fto t).eval 0 q) := by
+        simp [chain, List.foldlM_append]
+      rw [e] at hW
+      show (fverb k X Y >>= fun q => (Op.fto t).eval 0 q) = _
+      rw [fverb_one hk, hv]; exact hW
+    · simp only [bind, Except.bind_eq_ok'] at hw'
+      obtain ⟨a', ha, b', hb, r, hr, hw''⟩ := hw'
+      have hr' := fverbBy_map (ap := fun o x y => colMap o n x y) (ap' := Op.eval) (fun e => wd n e i)
+        (fun hc => (colMap_raw hc).2.2.2 i i.2) hr
+      have hc := colArr_ok hw''
+      obtain ⟨v0, hv0, hwi⟩ := (colMap_get hc).2 i i.2
+      refine ⟨_, _, wideCol_word x ha hf i, wideCol_word y hb hf i, ?_, (colMap_closed hc).1⟩
+      show (fverb k _ _ >>= fun q => (Op.fto t).eval 0 q) = _
+      rw [show fverb k (wd n a' i) (wd n b' i) = .ok (wd n r i) from hr']
+      rw [if_neg (by rcases hf with rfl | rfl <;> decide)] at hwi
+      simp only [wd, hwi, Option.getD_some]; exact hv0
+  obtain ⟨X, Y, hX, hY, hst, hv⟩ := key
+  obtain ⟨h2, hn⟩ := nanFlag_spec (by rcases hf with rfl | rfl <;> decide) hv hkp i
+  refine ⟨h2, fun v => (hn v).trans ?_⟩
   constructor
-  · rintro ⟨R, hR, hn, rfl⟩; exact ⟨_, _, R, rfl, rfl, hfs ▸ hR, hn, rfl⟩
-  · rintro ⟨X, Y, R, hX, hY, hR, hn, rfl⟩
-    cases hX; cases hY; exact ⟨R, hfs ▸ hR, hn, rfl⟩
+  · rintro ⟨h1, rfl⟩; exact ⟨X, Y, _, hX, hY, hst, h1, rfl⟩
+  · rintro ⟨X', Y', R, hX', hY', hR, h1, rfl⟩
+    rw [hX] at hX'; cases hX'; rw [hY] at hY'; cases hY'; rw [hst] at hR; cases hR; exact ⟨h1, rfl⟩
 
-/-- **`fmapCols t o` computes `o` row by row** at a float atom `t`, for an `o` that reads one operand: `ftoCols_spec` of
-`o` on the `f64` word (`wideCol_word`). -/
-theorem fmapCols_spec {t : QAtomicType} {o : Op} {n : USize} {x w : Arr t n} {keep : Enc}
-    (hf : t = .f32 ∨ t = .f64) (ho : o.readsAcc = false) (h : fmapCols t o n x.enc = .ok (w, keep))
-    (i : Fin n.toNat) :
+/-- **`fmapCols t u o` computes `o` row by row** from a float atom `t` to a number atom `u`, for an `o` that reads one
+operand: `o` on the `f64` word (`colMap_widen`), then `Op.ofF64 u`, kept where that is not `2^63` (`nanFlag_spec`). -/
+theorem fmapCols_spec {t u : QAtomicType} {o : Op} {n : USize} {x : Arr t n} {w : Arr u n} {keep : Enc}
+    (hf : t = .f32 ∨ t = .f64) (hu : u.storeFmt?.isSome) (ho : o.readsAcc = false)
+    (h : fmapCols t u o n x.enc = .ok (w, keep)) (i : Fin n.toNat) :
     wd n keep i < 2 ∧ ∀ v, (wd n keep i ≠ 0 ∧ w.get i = v) ↔ ∃ X Y R, fval t (x.get i) = some X ∧
-      o.eval 0 X = .ok Y ∧ (Op.fto t).eval 0 Y = .ok R ∧ R ≠ 0x8000000000000000 ∧ v = QAtomicType.ofBits t R := by
-  simp only [fmapCols, bind, Except.bind_eq_ok'] at h
-  obtain ⟨a', ha, r, hr, h⟩ := h
-  have hr' : o.eval 0 (wd n a' i) = .ok (wd n r i) := by
-    rw [← (colMap_raw hr).2.2.2 i i.2]; cases o <;> first | rfl | exact absurd ho (by decide)
-  obtain ⟨h2, hv⟩ := ftoCols_spec hf h i
-  refine ⟨h2, fun v => (hv v).trans ?_⟩
-  rw [wideCol_word x ha hf i]
+      o.eval 0 X = .ok Y ∧ (Op.ofF64 u).eval 0 Y = .ok R ∧ R ≠ 0x8000000000000000 ∧ v = QAtomicType.ofBits u R := by
+  simp only [fmapCols, bind, Except.bind_eq_ok', pure, Except.pure, Except.ok.injEq, Prod.mk.injEq] at h
+  obtain ⟨w', hw', kp, hkp, rfl, rfl⟩ := h
+  have hc := colArr_ok hw'
+  obtain ⟨X, Y, v, hX, hY, hv, hW⟩ := colMap_widen hf (Tab.storeFmt_ne hu).2.2 hc i
+  rw [hX] at hY; cases hY
+  have hv' : o.eval 0 X = .ok v := by rw [← hv]; cases o <;> first | rfl | exact absurd ho (by decide)
+  have hW' : (Op.ofF64 u).eval 0 v = .ok (wd n w'.enc i) := by
+    simpa only [chain, List.foldlM_cons, List.foldlM_nil, bind_pure] using hW
+  obtain ⟨h2, hn⟩ := nanFlag_spec hu (colMap_closed hc).1 hkp i
+  refine ⟨h2, fun v' => (hn v').trans ?_⟩
   constructor
-  · rintro ⟨R, hR, hn, rfl⟩; exact ⟨_, _, R, rfl, hr', hR, hn, rfl⟩
-  · rintro ⟨X, Y, R, hX, hY, hR, hn, rfl⟩
-    cases hX; rw [hr'] at hY; cases hY; exact ⟨R, hR, hn, rfl⟩
+  · rintro ⟨h1, rfl⟩; exact ⟨X, v, _, hX, hv', hW', h1, rfl⟩
+  · rintro ⟨X', Y', R, hX', hY', hR, h1, rfl⟩
+    rw [hX] at hX'; cases hX'; rw [hv'] at hY'; cases hY'; rw [hW'] at hR; cases hR; exact ⟨h1, rfl⟩
 
 /-- **`stepColsAt t k` computes `stepAt t k` row by row**, at every atom: `stepCols_spec` at `i64`, `fstepCols_spec` at
 a float atom, and no answer at any other (`stepColsAt` refuses it). -/

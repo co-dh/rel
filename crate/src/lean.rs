@@ -314,6 +314,11 @@ impl<'a> B<'a> {
         assert!(!self.is_scalar() && unsafe { is_ctor(self.p()) && 8 * ctor_num_objs(self.p()) <= off }, "lean::B::u8_field {off}: not a scalar field");
         unsafe { ctor_get_scalar(self.p(), off) }
     }
+    /// `lean_unbox_uint64`: a `UInt64` stored in an object field (a polymorphic one, such as a `Prod`'s)
+    pub fn unbox_u64(self) -> u64 {
+        assert!(!self.is_scalar() && unsafe { is_ctor(self.p()) && ctor_num_objs(self.p()) == 0 }, "lean::B::unbox_u64: not a boxed UInt64");
+        unsafe { unbox_uint64(self.p()) }
+    }
     /// `lean_obj_tag`: the ctor tag of a heap object, the value of a scalar
     pub fn tag(self) -> u32 { unsafe { obj_tag(self.p()) } }
     /// field `i` of a ctor; panics on anything else or an index past its fields
