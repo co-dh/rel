@@ -103,10 +103,10 @@ rel_program tradeApp where
 /-! ## `tradeApp.io`: the two CSV inputs read, every output written as CSV (IO step I9) -/
 
 -- the CSV texts of `tt`, `qq`, `mm`: a header of the schema's columns, then one row per position, symbols by name,
--- a date `yyyy-mm-dd`, a null the empty field; the venues, a text quoted where it holds `,` (C has none)
-def tradesCsv := "sym,day,time,price,size\nA,2024-01-15,1,10.5,100\nB,2024-01-15,2,20.25,50\n\
-  A,2024-01-15,3,11.5,200\nC,2024-01-16,3,7.75,300\nB,2024-01-16,5,21.5,150\nA,2024-01-17,5,12.5,50\n\
-  C,2024-01-17,6,8.25,100\n"
+-- a date `yyyy.mm.dd`, a null the empty field; the venues, a text quoted where it holds `,` (C has none)
+def tradesCsv := "sym,day,time,price,size\nA,2024.01.15,1,10.5,100\nB,2024.01.15,2,20.25,50\n\
+  A,2024.01.15,3,11.5,200\nC,2024.01.16,3,7.75,300\nB,2024.01.16,5,21.5,150\nA,2024.01.17,5,12.5,50\n\
+  C,2024.01.17,6,8.25,100\n"
 def quotesCsv := "sym,time,bid\nA,0,9\nB,1,19\nA,3,10\nA,3,11\nB,4,20\nA,6,13\n"
 def venuesCsv := "sym,venue\nA,NY\nB,\"LN, main\"\n"
 def marksCsv := "sym,px\nA,\nB,5\nC,\nA,7\nB,\n"
@@ -114,26 +114,26 @@ def marksCsv := "sym,px\nA,\nB,5\nC,\nA,7\nB,\n"
 -- each declared output's text, by hand from the checks above: a positional output its value columns only, rows
 -- renumbered; a keyed one the key column `key` first, rows in key order
 def expected : List (String × String) := [
-  ("big", "sym,day,time,price,size\nA,2024-01-15,1,10.5,100\nA,2024-01-15,3,11.5,200\nC,2024-01-16,3,7.75,300\n\
-    B,2024-01-16,5,21.5,150\nC,2024-01-17,6,8.25,100\n"),
+  ("big", "sym,day,time,price,size\nA,2024.01.15,1,10.5,100\nA,2024.01.15,3,11.5,200\nC,2024.01.16,3,7.75,300\n\
+    B,2024.01.16,5,21.5,150\nC,2024.01.17,6,8.25,100\n"),
   ("bySym", "key,size,n\nA,300,2\nB,150,1\nC,400,2\n"),
-  ("top2", "sym,day,time,price,size\nB,2024-01-16,5,21.5,150\nB,2024-01-15,2,20.25,50\n"),
+  ("top2", "sym,day,time,price,size\nB,2024.01.16,5,21.5,150\nB,2024.01.15,2,20.25,50\n"),
   ("withBid", "sym,time,price,bid\nA,1,10.5,9\nB,2,20.25,19\nA,3,11.5,11\nC,3,7.75,\nB,5,21.5,20\nA,5,12.5,11\n\
     C,6,8.25,\n"),
   ("cumSize", "sym,cum\nA,100\nB,50\nA,300\nC,300\nB,200\nA,350\nC,400\n"),
   ("unquoted", "key,val\n∗,2\n"),
-  ("late", "sym,day,time,price,size\nC,2024-01-16,3,7.75,300\nB,2024-01-16,5,21.5,150\nA,2024-01-17,5,12.5,50\n\
-    C,2024-01-17,6,8.25,100\n"),
-  ("perDay", "key,val\n2024-01-15,350\n2024-01-16,450\n2024-01-17,150\n"),
+  ("late", "sym,day,time,price,size\nC,2024.01.16,3,7.75,300\nB,2024.01.16,5,21.5,150\nA,2024.01.17,5,12.5,50\n\
+    C,2024.01.17,6,8.25,100\n"),
+  ("perDay", "key,val\n2024.01.15,350\n2024.01.16,450\n2024.01.17,150\n"),
   -- each trade's quotes of its sym in quote order (A: q0 q2 q3 q5, B: q1 q4); C's rows once, the three `Quote`
   -- fields empty; a factor's columns are prefixed by its schema's name
   ("lj", "Trade.sym,Trade.day,Trade.time,Trade.price,Trade.size,Quote.sym,Quote.time,Quote.bid\n\
-    A,2024-01-15,1,10.5,100,A,0,9\nA,2024-01-15,1,10.5,100,A,3,10\nA,2024-01-15,1,10.5,100,A,3,11\n\
-    A,2024-01-15,1,10.5,100,A,6,13\nB,2024-01-15,2,20.25,50,B,1,19\nB,2024-01-15,2,20.25,50,B,4,20\n\
-    A,2024-01-15,3,11.5,200,A,0,9\nA,2024-01-15,3,11.5,200,A,3,10\nA,2024-01-15,3,11.5,200,A,3,11\n\
-    A,2024-01-15,3,11.5,200,A,6,13\nC,2024-01-16,3,7.75,300,,,\nB,2024-01-16,5,21.5,150,B,1,19\n\
-    B,2024-01-16,5,21.5,150,B,4,20\nA,2024-01-17,5,12.5,50,A,0,9\nA,2024-01-17,5,12.5,50,A,3,10\n\
-    A,2024-01-17,5,12.5,50,A,3,11\nA,2024-01-17,5,12.5,50,A,6,13\nC,2024-01-17,6,8.25,100,,,\n"),
+    A,2024.01.15,1,10.5,100,A,0,9\nA,2024.01.15,1,10.5,100,A,3,10\nA,2024.01.15,1,10.5,100,A,3,11\n\
+    A,2024.01.15,1,10.5,100,A,6,13\nB,2024.01.15,2,20.25,50,B,1,19\nB,2024.01.15,2,20.25,50,B,4,20\n\
+    A,2024.01.15,3,11.5,200,A,0,9\nA,2024.01.15,3,11.5,200,A,3,10\nA,2024.01.15,3,11.5,200,A,3,11\n\
+    A,2024.01.15,3,11.5,200,A,6,13\nC,2024.01.16,3,7.75,300,,,\nB,2024.01.16,5,21.5,150,B,1,19\n\
+    B,2024.01.16,5,21.5,150,B,4,20\nA,2024.01.17,5,12.5,50,A,0,9\nA,2024.01.17,5,12.5,50,A,3,10\n\
+    A,2024.01.17,5,12.5,50,A,3,11\nA,2024.01.17,5,12.5,50,A,6,13\nC,2024.01.17,6,8.25,100,,,\n"),
   ("tradeVenue", "sym,time,venue\nA,1,NY\nB,2,\"LN, main\"\nA,3,NY\nB,5,\"LN, main\"\nA,5,NY\n"),
   ("markNulls", "key,val\n∗,3\n"),
   ("filled", "sym,px\nA,\nB,5\nC,5\nA,7\nB,7\n")]

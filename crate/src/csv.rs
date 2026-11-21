@@ -407,12 +407,12 @@ fn atom_text(t: u8, w: u64, s: &mut Vec<u8>) -> Option<()> {
             v.abs() as f64, |t| t.parse::<f32>() == Ok(v.abs()))? }
         QT_F64 => { let v = f64::from_bits(w); float_text(s, v.is_nan(), v.is_infinite(), v == 0.0, v.is_sign_negative(), format_args!("{:e}", v.abs()),
             v.abs(), |t| t.parse::<f64>() == Ok(v.abs()))? }
-        QT_DATE => { let (y, m, d) = civil(w as u32 as i32 as i64); put(s, format_args!("{:04}-{m:02}-{d:02}", y.max(0)))? }
+        QT_DATE => { let (y, m, d) = civil(w as u32 as i32 as i64); put(s, format_args!("{:04}.{m:02}.{d:02}", y.max(0)))? }
         QT_DATETIME => {
             const DAY: i64 = 86_400_000_000_000;
             let x = w as i64;
             let ((y, m, d), r) = (civil(x.div_euclid(DAY)), x.rem_euclid(DAY));
-            put(s, format_args!("{:04}-{m:02}-{d:02}D{:02}:{:02}:{:02}.{:09}", y.max(0), r / 3_600_000_000_000,
+            put(s, format_args!("{:04}.{m:02}.{d:02}D{:02}:{:02}:{:02}.{:09}", y.max(0), r / 3_600_000_000_000,
                 r / 60_000_000_000 % 60, r / 1_000_000_000 % 60, r % 1_000_000_000))?
         }
         QT_SYM | QT_GENERAL => return None,
@@ -518,8 +518,8 @@ fn form(c: &Col) -> String {
         4 => "i64: an integer from -9223372036854775808 to 9223372036854775807",
         QT_F32 => "f32: a finite decimal, 0w or -0w",
         QT_F64 => "f64: a finite decimal, 0w or -0w",
-        QT_DATE => "date: YYYY-MM-DD in years 0001-9999",
-        QT_DATETIME => "datetime: YYYY-MM-DDDhh:mm:ss, up to 9 fraction digits, within i64 nanoseconds of 1970-01-01",
+        QT_DATE => "date: yyyy.mm.dd in years 0001-9999",
+        QT_DATETIME => "datetime: yyyy.mm.ddDhh:mm:ss, up to 9 fraction digits, within i64 nanoseconds of 1970-01-01",
         _ => "no text",
     }.into()
 }
@@ -602,14 +602,14 @@ fn mdays(y: i64, m: i64) -> i64 {
 
 fn num(d: &[u8]) -> Option<i64> { digits(d).map(|v| v as i64) }
 
-/// `YYYY-MM-DD`, a valid day of years 0001-9999, as days since 1970-01-01 (`ymd`).
+/// `yyyy.mm.dd`, a valid day of years 0001-9999, as days since 1970-01-01 (`ymd`).
 fn ymd(f: &[u8]) -> Option<i64> {
-    let [a, b, c, d, b'-', e, g, b'-', h, i] = *f else { return None };
+    let [a, b, c, d, b'.', e, g, b'.', h, i] = *f else { return None };
     let (y, m, dd) = (num(&[a, b, c, d])?, num(&[e, g])?, num(&[h, i])?);
     if y >= 1 && (1..=12).contains(&m) && dd >= 1 && dd <= mdays(y, m) { Some(days_from(y, m, dd)) } else { None }
 }
 
-/// `YYYY-MM-DDDhh:mm:ss` with an optional `.` and 1-9 fraction digits, as nanoseconds since 1970-01-01 in i64 (`stamp`).
+/// `yyyy.mm.ddDhh:mm:ss` with an optional `.` and 1-9 fraction digits, as nanoseconds since 1970-01-01 in i64 (`stamp`).
 fn stamp(f: &[u8]) -> Option<i64> {
     let d = ymd(f.get(..10)?)?;
     let [b'D', h1, h2, b':', m1, m2, b':', s1, s2, ref r @ ..] = f[10..] else { return None };
@@ -635,10 +635,10 @@ mod tests {
         assert_eq!(cell(&col(QT_F32), b"3.5e38"), None);
     }
     #[test] fn days_and_stamps() {
-        assert_eq!([b"1969-12-31", b"0001-01-01", b"9999-12-31"].map(|s| ymd(s)), [Some(-1), Some(-719162), Some(2932896)]);
-        assert_eq!(ymd(b"2023-02-29"), None);
-        assert_eq!(stamp(b"1969-12-31D23:59:59.999999999"), Some(-1));
-        assert_eq!(stamp(b"2262-04-12D00:00:00"), None);
+        assert_eq!([b"1969.12.31", b"0001.01.01", b"9999.12.31"].map(|s| ymd(s)), [Some(-1), Some(-719162), Some(2932896)]);
+        assert_eq!(ymd(b"2023.02.29"), None);
+        assert_eq!(stamp(b"1969.12.31D23:59:59.999999999"), Some(-1));
+        assert_eq!(stamp(b"2262.04.12D00:00:00"), None);
     }
     // the records' refusals at the model's lines, and the order: the quotes of the whole file before the header
     #[test] fn records_as_the_model() {

@@ -11,9 +11,9 @@ open Rel.Db.Csv
 
 -- the CSV writer's day text at `.` read back by the literal's reader, on every day of the years 0001–9999
 -- (0001-01-01 = -719162, 9999-12-31 = 2932896), and on no day outside them
-#guard (List.range 3652059).all fun k => let z := (k : Int) - 719162; ymd 46 (dayText 46 z) == some z
-#guard [-719163, 2932897].all fun z => ymd 46 (dayText 46 z) == none
-#guard dayText 46 19737 == bytes "2024.01.15"
+#guard (List.range 3652059).all fun k => let z := (k : Int) - 719162; ymd (dayText z) == some z
+#guard [-719163, 2932897].all fun z => ymd (dayText z) == none
+#guard dayText 19737 == bytes "2024.01.15"
 
 open Rel.Programs.prelude Rel.Programs.frame in
 rel_program dateLitT where
@@ -122,5 +122,20 @@ rel_program dateKeyCheckT where
     check agg((x π₁ π₂)°, length) = {(2024.01.15,1),(2024.01.16,2)}
 
 #guard dateKeyCheckT.failures.map toString == []
+
+-- a date and a time shown as q shows them, in a `print` and in a failing `check`'s message
+rel_program dateShowT where
+    obj N
+    obj D : date
+    obj T : datetime
+    d : N ⟶ D ≜ {(0,2024.01.15),(1,1969.12.31)}
+    t : N ⟶ T ≜ {(0,2024.01.15D12:30:00.5)}
+    print d
+    print t
+    check d = {(0,2024.01.16)}
+
+#guard dateShowT.prints == ["d = {(0, 2024.01.15), (1, 1969.12.31)}", "t = {(0, 2024.01.15D12:30:00.500000000)}"]
+#guard dateShowT.failures.map toString ==
+  ["line 135, col 5: check failed: d = {(0, 2024.01.15), (1, 1969.12.31)}, {(0, 2024.01.16)} = {(0, 2024.01.16)}"]
 
 end Rel.Lang.TestDateLit

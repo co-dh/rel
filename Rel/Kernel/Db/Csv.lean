@@ -248,18 +248,18 @@ def mdays (y m : Nat) : Nat :=
   if m = 2 then (if y % 4 = 0 ∧ (y % 100 ≠ 0 ∨ y % 400 = 0) then 29 else 28)
   else if m = 4 ∨ m = 6 ∨ m = 9 ∨ m = 11 then 30 else 31
 
-/-- The day `z` days after 1970-01-01 written `YYYY-MM-DD`, `sep` in place of `-`: `ymd sep` reads it back to `z` on
+/-- The day `z` days after 1970-01-01 written `yyyy.mm.dd` as q shows it: `ymd` reads it back to `z` on
     the years 0001–9999 (`#guard`s in `Rel.Lang.TestDateLit`). -/
-def dayText (sep : UInt8) (z : Int) : List UInt8 :=
-  let (y, m, d) := civil z; pad 4 y.toNat ++ sep :: pad 2 m ++ sep :: pad 2 d
+def dayText (z : Int) : List UInt8 :=
+  let (y, m, d) := civil z; pad 4 y.toNat ++ 46 :: pad 2 m ++ 46 :: pad 2 d
 
-/-- `YYYY-MM-DD` (`sep` the byte `-`; a Rel literal reads q's `YYYY.MM.DD` at `.`, `Elab.qForm`), a valid day of
+/-- `yyyy.mm.dd`, q's spelling (also the Rel literal, `Elab.qForm`), a valid day of
     years 0001–9999, as days since 1970-01-01. -/
-def ymd (sep : UInt8) (f : List UInt8) : Option Int :=
+def ymd (f : List UInt8) : Option Int :=
   match f with
   | [a, b, c, d, s, e, g, s', h, i] =>
     let (y, m, dd) := (natOf [a, b, c, d], natOf [e, g], natOf [h, i])
-    if s = sep ∧ s' = sep ∧ [a, b, c, d, e, g, h, i].all isDig ∧ 1 ≤ y ∧ 1 ≤ m ∧ m ≤ 12 ∧ 1 ≤ dd ∧ dd ≤ mdays y m
+    if s = 46 ∧ s' = 46 ∧ [a, b, c, d, e, g, h, i].all isDig ∧ 1 ≤ y ∧ 1 ≤ m ∧ m ≤ 12 ∧ 1 ≤ dd ∧ dd ≤ mdays y m
     then some (daysFrom y m dd) else none
   | _ => none
 
@@ -268,10 +268,10 @@ def frac : List UInt8 → Option Nat
   | [] => some 0
   | c :: fr => if c = 46 ∧ fr ≠ [] ∧ fr.length ≤ 9 ∧ fr.all isDig then some (natOf fr * 10 ^ (9 - fr.length)) else none
 
-/-- `YYYY-MM-DDDhh:mm:ss` (the day's separator `sep`, as `ymd`) with an optional `.` and 1–9 fraction digits, as
+/-- `yyyy.mm.ddDhh:mm:ss` (the day as `ymd`) with an optional `.` and 1–9 fraction digits, as
     nanoseconds since 1970-01-01 in `i64`. -/
-def stamp (sep : UInt8) (f : List UInt8) : Option Int :=
-  match ymd sep (f.take 10), f.drop 10 with
+def stamp (f : List UInt8) : Option Int :=
+  match ymd (f.take 10), f.drop 10 with
   | some d, t :: h1 :: h2 :: c1 :: m1 :: m2 :: c2 :: s1 :: s2 :: r =>
     let (hh, mm, ss) := (natOf [h1, h2], natOf [m1, m2], natOf [s1, s2])
     if t = 68 ∧ c1 = 58 ∧ c2 = 58 ∧ [h1, h2, m1, m2, s1, s2].all isDig ∧ hh < 24 ∧ mm < 60 ∧ ss < 60 then
@@ -302,8 +302,8 @@ def readAtom : QAtomicType → List UInt8 → Option UInt64
   | .char, _ => none
   | .f32, f => readFloat 23 8 f
   | .f64, f => readFloat 52 11 f
-  | .date, f => (ymd 45 f).map (wordOf 4)
-  | .datetime, f => (stamp 45 f).map (wordOf 8)
+  | .date, f => (ymd f).map (wordOf 4)
+  | .datetime, f => (stamp f).map (wordOf 8)
   | .sym, _ | .general, _ => none
   | t, f => do
     let w ← t.width
@@ -317,11 +317,11 @@ def fmtAtom : QAtomicType → UInt64 → Option (List UInt8)
   | .char, w => some [w.toUInt8]
   | .f32, w => fmtFloat 23 8 w
   | .f64, w => fmtFloat 52 11 w
-  | .date, w => some (dayText 45 (signed 4 w))
+  | .date, w => some (dayText (signed 4 w))
   | .datetime, w =>
     let x := signed 8 w
     let r := (x % 86400000000000).toNat
-    some (dayText 45 (x / 86400000000000) ++ 68 :: pad 2 (r / 3600000000000) ++ 58 ::
+    some (dayText (x / 86400000000000) ++ 68 :: pad 2 (r / 3600000000000) ++ 58 ::
       pad 2 (r / 60000000000 % 60) ++ 58 :: pad 2 (r / 1000000000 % 60) ++ 46 :: pad 9 (r % 1000000000))
   | .sym, _ | .general, _ => none
   | t, w => t.width.map fun k => intText (signed k w)
@@ -350,8 +350,8 @@ def form : QAtomicType → List String → String
   | .i64, [] => "i64: an integer from -9223372036854775808 to 9223372036854775807"
   | .f32, [] => "f32: a finite decimal, 0w or -0w"
   | .f64, [] => "f64: a finite decimal, 0w or -0w"
-  | .date, [] => "date: YYYY-MM-DD in years 0001-9999"
-  | .datetime, [] => "datetime: YYYY-MM-DDDhh:mm:ss, up to 9 fraction digits, within i64 nanoseconds of 1970-01-01"
+  | .date, [] => "date: yyyy.mm.dd in years 0001-9999"
+  | .datetime, [] => "datetime: yyyy.mm.ddDhh:mm:ss, up to 9 fraction digits, within i64 nanoseconds of 1970-01-01"
   | .sym, [] | .general, [] => "no text"
 
 /-! ### Files -/
