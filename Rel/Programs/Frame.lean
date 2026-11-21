@@ -58,7 +58,7 @@ rel_program frame where
     -- q's fills: `r(i)` counts the valued rows `j ≤ i`, so `p` sends `i` to the valued row of equal count, the last
     -- one `≤ i`; at count 0 there is none and the null stays
     fills(c : ν ⟶ γ+1) : ν ⟶ γ+1 ≜ (p ∪ (dom(c) − dom(p))) c where r ≜ cumSum(counts(dom(c), dom(c inl°))), p ≜ r (dom(c inl°) r)°
-    -- describe, its exact part: count, min, max of a column (the mean needs float `sum` and `div`)
+    -- describe, its exact part: count, min, max of a column (the mean needs a true float quotient; `div` floors)
     describe(c : ν ⟶ γ) : 1 ⟶ ν×(γ×γ) ≜ ⟨count(c), ⟨summarize(F(c) Λ(∋) head, c), summarize(F(c) Λ(∋) last, c)⟩⟩
     -- `|||` (polars hstack, q's `,'`): the rows side by side, none unless both frames have the same length
     hstack(x : ν ⟶ β, y : ν ⟶ δ) : ν ⟶ β×δ ≜ dom(⟨x, y⟩ ⊤ count(x) count(y)°) ⟨x, y⟩
