@@ -319,7 +319,7 @@ open Lean Meta in
     object variable's placeholder (`varObj`) that its constant reads at `.long` (`sum` at `[β]`) does not, and that
     is how `once` finds the variable a number object. -/
 partial def primsFit {A B : Obj} (t : Tm A B) : MetaM Bool := do
-  let some (r, as) := primOf t | t.parts.allM fun ⟨_, _, c⟩ => primsFit c
+  let some (r, as) := primOf t | t.inner.allM fun ⟨_, _, c⟩ => primsFit c
   pure (← primFit r A B (as.toArray.map fnTy)).isSome <&&> as.allM fun ⟨_, _, c⟩ => primsFit c
 
 /-- The placeholders of a constant of `n` with `k` object variables in `env`: atoms no object in scope is stored at,
@@ -902,12 +902,10 @@ partial def Tm.diffAt (key : Lean.Name → Lean.Name) (ctor : Nat → String) (p
     Res → Res → Option String
   | ⟨A, B, t⟩, ⟨C, D, u⟩ =>
     let p := path ++ [ctor t.ctorIdx]
-    let parts {X Y : Obj} : Tm X Y → List Res
-      | .share _ R | .call _ _ _ R => [⟨_, _, R⟩] | .callCv _ _ _ _ R U => [⟨_, _, R⟩, ⟨_, _, U⟩] | t => t.parts
     if t.ctorIdx != u.ctorIdx then some s!"{" / ".intercalate p} against `{ctor u.ctorIdx}`"
     else if !(A == C && B == D) then some s!"{" / ".intercalate p}: {repr A} ⟶ {repr B} against {repr C} ⟶ {repr D}"
     else if !Tm.fieldsEq key t u then some s!"{" / ".intercalate p}: its fields differ"
-    else ((parts t).zip (parts u)).findSome? fun (x, y) => Tm.diffAt key ctor p x y
+    else (t.inner.zip u.inner).findSome? fun (x, y) => Tm.diffAt key ctor p x y
 
 /-- An entry of the registry (module design §2.3): a definition elaborated once, its constant (`once`); a program's
     homes, the programs its names reach, in the order they are read (`read`); a program's scope, its namespace and
