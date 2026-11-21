@@ -53,4 +53,36 @@ rel_program prodT where
     x : N ⟶ N ≜ {(1,2)}
     y : N ⟶ N × N ≜ x $ (N × N)
 
+-- a date is its `i32` count of days since 1970-01-01, a datetime its `i64` count: `$` reads and writes that count
+rel_program dateCastT where
+    obj N
+    obj I : i32
+    obj D : date
+    obj T : datetime
+    obj G : f32
+    d : N ⟶ D ≜ {(0,19000),(1,-5),(2,16777217)}
+    i : N ⟶ I ≜ {(0,19000),(1,-5)}
+    m : N ⟶ N ≜ {(0,86400000000000),(1,-1)}
+    t : N ⟶ T ≜ {(0,86400000000000),(1,-1)}
+    check d $ N = {(0,19000),(1,-5),(2,16777217)}
+    check d $ I = {(0,19000),(1,-5),(2,16777217)}
+    check i $ D = {(0,19000),(1,-5)}
+    check t $ N = {(0,86400000000000),(1,-1)}
+    check m $ T = {(0,86400000000000),(1,-1)}
+    check (i $ D) $ I = i
+    -- by hand: `2^24 + 1` is no `f32` value (24 bits of mantissa), so day 16777217 has no image
+    check d $ G = {(0,19000),(1,-5)}
+
+#guard dateCastT.failures.map toString == []
+
+-- a date and a datetime count in different units, so neither casts to the other
+/-- error: line 86, col 5: $ from D (date) to T (datetime): not every date value is a datetime value, and $ keeps a number's value -/
+#guard_msgs in
+rel_program dateTimeT where
+    obj N
+    obj D : date
+    obj T : datetime
+    x : N ⟶ D ≜ {(1,2)}
+    y : N ⟶ T ≜ x $ T
+
 end Rel.Lang.TestCast

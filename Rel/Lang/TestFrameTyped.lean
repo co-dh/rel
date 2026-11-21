@@ -61,13 +61,17 @@ rel_program daysMinusT where
     d : N ⟶ D ≜ {(0,19000),(1,18990)}
     e : N ⟶ D ≜ ⟨d, d⟩minus
 
-/-- error: line 70, col 5: $ from D (date) to N (i64): not every date value is a i64 value, and $ keeps a number's value -/
-#guard_msgs in
+-- the days between two dates: the composition `⟨a $ N, b $ N⟩minus` of their day counts (`daysBetween`, S8)
 rel_program daysCastT where
     obj N
     obj D : date
     d : N ⟶ D ≜ {(0,19000),(1,18990)}
-    e : N ⟶ N ≜ d $ N
+    e : N ⟶ D ≜ {(0,18995),(1,19000)}
+    check d $ N = {(0,19000),(1,18990)}
+    -- by hand: 19000 − 18995 = 5, 18990 − 19000 = −10
+    check ⟨d $ N, e $ N⟩minus = {(0,5),(1,-10)}
+
+#guard daysCastT.failures.map toString == []
 
 -- the orders and `max`/`min` at a `date` and an `f64` column: the integer order of the days, IEEE's order
 open Rel.Programs.prelude Rel.Programs.frame in
@@ -86,7 +90,7 @@ rel_program frameOrderT where
 #guard frameOrderT.failures.map toString == []
 
 -- `sum` and `sums` at an `f64` column: refused by name (a float sum waits on the summation order, S4)
-/-- error: line 96, col 5: sum on G: G is an object of f64, and sum runs on objects of i64 only -/
+/-- error: line 100, col 5: sum on G: G is an object of f64, and sum runs on objects of i64 only -/
 #guard_msgs in
 open Rel.Programs.prelude Rel.Programs.frame in
 rel_program sumFloatT where
@@ -95,7 +99,7 @@ rel_program sumFloatT where
     f : N ⟶ G ≜ {(0,2.5),(1,-1.5)}
     s : 1 ⟶ G ≜ summarize(F(f) sum, f)
 
-/-- error: line 105, col 17: `Rel.Lang.TestFrameTyped.cumSumFloatT.Rel.Programs.frame.cumSum.num.1.1`: an object variable is G here; its constant is not generic over it, a number object -/
+/-- error: line 109, col 17: `Rel.Lang.TestFrameTyped.cumSumFloatT.Rel.Programs.frame.cumSum.num.1.1`: an object variable is G here; its constant is not generic over it, a number object -/
 #guard_msgs in
 open Rel.Programs.prelude Rel.Programs.frame in
 rel_program cumSumFloatT where

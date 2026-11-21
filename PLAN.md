@@ -354,6 +354,12 @@ Diff table 的「状态」列：✅ 后面是完成它的步骤；🔄 是部分
   不在 `castOK` 中的对报错。定律 `Tab.cast_holds`（无前提，已证）、`rowOK_cast`、`embed_canonical`（全部输入）、
   `ofBits_word`；`Table.nonCanonical` 由 `QAtomicType.nonCanonical` 定义。测试 `Rel/Lang/TestCast.lean`。未完：
   `Rel/Lang/EmbedTest.lean:46` 的 `𝟙 $x` 现在被读成 cast 行，报 `expected a term` 而不是 antiquotation 错误（待裁定）。
+  S4b（分支 `tb-s4b`）：没有数 atom 的有序 atom（`date`、`datetime`、`char`）持有其存储字所计的数，`storeFmt?`
+  即其 `ordNum` 的格式（`date` 为 1970-01-01 起的 `i32` 天数）；`value`/`ofValue`/`castOK` 都读 `storeFmt?`，同一条
+  规则给出 `date → i32/i64`、`datetime → i64`、`i32 → date`、`i64 → datetime`（`i64 → date` 是收窄，报错）；两个各有
+  单位的 atom 之间不 cast（`date ↔ datetime`）。Rust `cast_word` 把 `char`/`date`/`datetime` 的码读作 `u8`/`i32`/`i64`，
+  无新 op、无新导出。`Tab.cast_holds` 仍是一条（前提改读 `storeFmt?`）。`daysBetween` 是 `⟨a $ N, b $ N⟩minus`，按 S8
+  留给 dataframe 库；`minus` 在 `date` 上仍报错（`TestFrameTyped.daysCastT` 钉住组合的行）。
 - ✅ S7 `Op.cast s t`（`Op` 的最后一个构造子，带两个字段）：`kscan`/`kscatter` 以 `@& Op` 传对象，Rust `cast_word`
   （`CAST = 46`），无新导出；`Reg Op` 按对象传（`nullOps`）。所有数值对一个构造子，不只 `i64 → f64`。
 - ⬜ S8 库定义 `mean` `stddev` `correlation` `skewness` `zScore` `valueProportions` float `describe` `daysBetween`

@@ -12,12 +12,12 @@ open Rel.Ext Rel.Kernel
 
 namespace Tab
 
-/-- A number atom (`numFmt?`) is none of `general`, `sym`, `u1`. -/
-theorem numFmt_ne {u : QAtomicType} (h : u.numFmt?.isSome) : u ≠ .general ∧ u ≠ .sym ∧ u ≠ .u1 := by
+/-- An atom holding a number (`storeFmt?`) is none of `general`, `sym`, `u1`. -/
+theorem storeFmt_ne {u : QAtomicType} (h : u.storeFmt?.isSome) : u ≠ .general ∧ u ≠ .sym ∧ u ≠ .u1 := by
   cases u <;> revert h <;> decide
 
-/-- A word read as an atom of a number type `t` (`atomOfBits`) is `ofBits t` of it. -/
-theorem of_atomOfBits {t : QAtomicType} (a : UInt64) (hg : t ≠ .general) (h : t.numFmt?.isSome) :
+/-- A word read as an atom holding a number (`atomOfBits`) is `ofBits t` of it. -/
+theorem of_atomOfBits {t : QAtomicType} (a : UInt64) (hg : t ≠ .general) (h : t.storeFmt?.isSome) :
     (Dep.Carrier.of? t (.atom (Column.atomOfBits t a hg))).getD default = QAtomicType.ofBits t a := by
   cases t <;> first | rfl | exact absurd h (by decide)
 
@@ -36,10 +36,11 @@ theorem cast_holds {s t : QAtomicType} {n : USize} {X : Vals (.atom s) n} {T : T
   split at h
   case isFalse => cases h
   rename_i hok
-  have hst : s.numFmt?.isSome ∧ t.numFmt?.isSome := by
-    unfold QAtomicType.castOK at hok; split at hok <;> simp_all
-  obtain ⟨hgs, -, -⟩ := numFmt_ne hst.1
-  obtain ⟨hgt, -, htu⟩ := numFmt_ne hst.2
+  have hst : s.storeFmt?.isSome ∧ t.storeFmt?.isSome := by
+    unfold QAtomicType.castOK at hok
+    revert hok; cases s.storeFmt? <;> cases t.storeFmt? <;> simp
+  obtain ⟨hgs, -, -⟩ := storeFmt_ne hst.1
+  obtain ⟨hgt, -, htu⟩ := storeFmt_ne hst.2
   obtain ⟨w, hw, h⟩ := Except.bind_eq_ok'.1 h
   obtain ⟨c, hc, h⟩ := Except.bind_eq_ok'.1 h
   obtain ⟨flag, hf, h⟩ := Except.bind_eq_ok'.1 h
@@ -58,9 +59,9 @@ theorem cast_holds {s t : QAtomicType} {n : USize} {X : Vals (.atom s) n} {T : T
       ((Enc.raw .i64 n flag)[i.1]?.getD 0 = 1 ∧ QAtomicType.embed s t (X.get i) = some (w.get i)) ∨
       ((Enc.raw .i64 n flag)[i.1]?.getD 0 = 0 ∧ QAtomicType.embed s t (X.get i) = none) := by
     intro i
-    obtain ⟨a, ha, -, hxa⟩ := Arr.get_raw_atom X hv.1 hgs (numFmt_ne hst.1).2.1 i
+    obtain ⟨a, ha, -, hxa⟩ := Arr.get_raw_atom X hv.1 hgs (storeFmt_ne hst.1).2.1 i
     obtain ⟨v, hev, hwv⟩ := hcm.2 i.1 i.2
-    obtain ⟨b, hb, -, hwb⟩ := Arr.get_raw_atom w hv.2 hgt (numFmt_ne hst.2).2.1 i
+    obtain ⟨b, hb, -, hwb⟩ := Arr.get_raw_atom w hv.2 hgt (storeFmt_ne hst.2).2.1 i
     rw [ha] at hev
     simp only [Option.getD_some, Op.eval, Except.ok.injEq] at hev
     rw [if_neg htu] at hwv
