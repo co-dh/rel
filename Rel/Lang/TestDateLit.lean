@@ -92,8 +92,8 @@ rel_program textLitT where
     obj C : char
     input x : N ⟶ [C] from csv "x.csv"
     t : N ⟶ [C] ≜ {(0,"NY"),(1,"TK, main"),(2,"a\"b\\c"),(3,"é"),(4,"")}
-    u : N ⟶ [C] ≜ {(0,[78 89]),(1,[84 75 44 32 109 97 105 110]),(2,[97 34 98 92 99]),(3,[195 169]),(4,[])}
-    check t = u
+    codes : N ⟶ [C] ≜ {(0,[78 89]),(1,[84 75 44 32 109 97 105 110]),(2,[97 34 98 92 99]),(3,[195 169]),(4,[])}
+    check t = codes
     -- no type: the key words are elements of N and of C, `t`'s type decides
     check t = {(0,"NY"),(1,"TK, main"),(2,"a\"b\\c"),(3,"é"),(4,"")}
     -- a text in an input's table
@@ -102,7 +102,7 @@ rel_program textLitT where
 #guard textLitT.failures.map toString == []
 
 -- a text at an object of another atom than `char`
-/-- error: line 113, col 17: no declared object has the elements ["N", "Y"] ('"N"' is not an element of N, an object of i64) -/
+/-- error: line 109, col 19: no declared object has the elements ["N", "Y"] ('"N"' is not an element of N, an object of i64) -/
 #guard_msgs in
 rel_program textAtLongT where
     obj N

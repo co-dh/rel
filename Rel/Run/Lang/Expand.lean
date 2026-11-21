@@ -549,8 +549,13 @@ def bindIns (rt : List (String × Param × Option (List String))) (p : Pos) (wha
   -- each run-time name's inputs, and its term where every one of them is given
   let reach := rt.foldl (init := ([] : List (String × List String))) fun r (y, _, ys) =>
     r ++ [(y, match ys with | none => [y] | some ys => (ys.flatMap fun z => (r.lookup z).getD []).eraseDups)]
-  let σ := rt.foldl (init := ([] : List (String × Expr))) fun σ (y, _, ys) => match ys with
-    | none => match bs.lookup y with | some l => σ ++ [(y, l)] | none => σ
+  -- a literal table stands where its input does at the input's declared type, so its words are read at the input's
+  -- objects as a typed definition's are (`Expr.lit`'s `ty`)
+  let σ := rt.foldl (init := ([] : List (String × Expr))) fun σ (y, P, ys) => match ys with
+    | none => match bs.lookup y with
+      | some (.lit q ps _) => σ ++ [(y, .lit q ps P.ty)]
+      | some l => σ ++ [(y, l)]
+      | none => σ
     | some ys =>
       if ys.all (σ.lookup · |>.isSome) then σ ++ [(y, Expr.app p y (ys.filterMap fun z => σ.lookup z))] else σ
   for y in es.flatMap (·.names) do

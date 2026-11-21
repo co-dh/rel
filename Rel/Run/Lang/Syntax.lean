@@ -147,7 +147,9 @@ inductive Expr
   | pair (p : Pos) (a b : Expr)
   | junc (p : Pos) (a b : Expr)
   | fold (p : Pos) (right : Bool) (r : Expr)
-  | lit (p : Pos) (ps : List (Tup × Tup))
+  /-- A table; `ty` the declared type of the input whose `where` table it is (`Expand.bindIns`), which its objects
+      are unified with as a typed definition's are. -/
+  | lit (p : Pos) (ps : List (Tup × Tup)) (ty : Option (OExp × OExp) := none)
   /-- `col S "c"`: the column `c` of the schema `S`, `S ⟶ C` where `("c", C) ∈ S` (`Schema.col?`). -/
   | col (p : Pos) (s : OExp) (c : String)
   /-- `μX : φ` (`least`) or `νX : φ`: the least or the greatest `X` with `X = φ(X)`; the body reaches to the
@@ -158,7 +160,7 @@ inductive Expr
 /-- The position a term starts at. -/
 def Expr.pos : Expr → Pos
   | .name p _ | .op p .. | .app p .. | .bin p .. | .inf p .. | .conv p _ | .compl p _ | .pair p .. | .junc p .. | .fold p ..
-  | .lit p _ | .fix p .. | .col p .. => p
+  | .lit p .. | .fix p .. | .col p .. => p
   | .comp a _ => a.pos
 
 /-- The atom the counting rows (`length`, `sum`, `sums`, `succ`) run on. -/
@@ -342,7 +344,7 @@ partial def Expr.subst (σ : List (String × Expr)) : Expr → Expr
   | .pair p a b => .pair p (a.subst σ) (b.subst σ)
   | .junc p a b => .junc p (a.subst σ) (b.subst σ)
   | .fold p d r => .fold p d (r.subst σ)
-  | .lit p ps => .lit p ps
+  | .lit p ps ty => .lit p ps ty
   | .col p s c => .col p s c
   -- `x` is bound in the body, so an outer `x` is not replaced there
   | .fix p l x b => .fix p l x (b.subst (σ.filter (·.1 != x)))
@@ -489,7 +491,7 @@ def Expr.render (l : Nat) (full : Bool := false) : Expr → String
   | .pair _ a b => s!"⟨{a.render 0 full}, {b.render 0 full}⟩"
   | .junc _ a b => s!"[{a.render 0 full}, {b.render 0 full}]"
   | .fold _ d r => s!"⦇{r.render 0 full}⦈{if d then "ʳ" else ""}"
-  | .lit _ ps => "{" ++ ", ".intercalate (ps.map fun (a, b) => (Tup.pair a b).show) ++ "}"
+  | .lit _ ps _ => "{" ++ ", ".intercalate (ps.map fun (a, b) => (Tup.pair a b).show) ++ "}"
   | .col _ s c => s!"col {s.render true} {c.quote}"
   | .fix _ least x b =>
     let s := s!"{if least then "μ" else "ν"}{x} : {b.render 0 full}"; if full || l ≥ 1 then s!"({s})" else s

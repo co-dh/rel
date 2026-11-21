@@ -1425,8 +1425,10 @@ def elabE (env : Env) (m : Option OTy) : Expr → M Arg
     unify p "the source of the fold's step" ev (if d then .prod e v else .prod v e)
     unify p "the target of the fold's step" w v
     pure (.rel (.fold d (.close p q v "the fold's start is read whole") r) (.arr e) v)
-  | .lit p ps => do
+  | .lit p ps ty => do
     let a ← litTy env.objs env.gdef p (ps.map (·.1)); let b ← litTy env.objs env.gdef p (ps.map (·.2))
+    if let some (A, B) := ty then
+      unify p "the table's source" a (← oty env [] A); unify p "the table's target" b (← oty env [] B)
     pure (.rel (.lit p a b ps env.gdef) a b)
   -- a built term, as a closed definition is (`walk`)
   | .col p s c => do let (r, a, b) ← MonadExcept.ofExcept (colOf env p s c); settle m p [] (.rel (.tm r) a b)
@@ -2209,7 +2211,7 @@ def build : Pre → Except Err Res
     -- rows' forms (`.prim`) without it, so the expansion, built at the call's objects, runs instead
     if us.any fun (u, _, reads) => reads && !u.mvs.isEmpty && unbounded objs (zonk mc u) then return ← build q
     -- the constant took a numeral at an object variable as the number; the expansion has it at the call's object
-    q.lits.forM fun (p, a, b, ps, d) => discard (litRes objs mc dp p a b ps (some d))
+    q.lits.forM fun (p, a, b, ps, d) => if d.isSome then discard (litRes objs mc dp p a b ps d) else pure ()
     let A ← toObj objs mc dp a; let B ← toObj objs mc dp b
     pure ⟨A, B, ← callArgs pos c us xs ts (← callTm objs mc dp pos c us ks ph t cv A B)⟩
   -- the body read whole each round, on its source's universe when it needs keys
