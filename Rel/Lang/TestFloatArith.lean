@@ -158,7 +158,7 @@ rel_program divideT where
     check ⟨a, b⟩ divide = ⟨a, b⟩ %
     check ⟨one, z⟩ % = ⟨big, ten⟩ times
     check dom(⟨m, z⟩ %) = {(0,0)}
-    check ⟨m, z⟩ % ∩ ⟨one, z⟩ % = 𝟘
+    check (⟨m, z⟩ %) ∩ (⟨one, z⟩ %) = 𝟘
     check ⟨z, z⟩ % = 𝟘
     check ⟨g, h⟩ % = {(0,0.5),(1,0.33333334)}
     check ⟨g0, g0⟩ % = 𝟘
@@ -169,7 +169,7 @@ rel_program divideT where
 #guard divideT.failures.map toString == []
 
 -- `%` at an integer object: refused, the quotient of two integers being no integer; the program casts with `$` first
-/-- error: -/
+/-- error: line 177, col 24: divide on N: N is an object of i64, and divide runs on objects of f32, f64 only; its answer is no integer: cast first, `x $ F` with `F` an object of f32, f64 -/
 #guard_msgs in
 rel_program divideIntT where
     obj N
