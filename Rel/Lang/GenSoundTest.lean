@@ -50,8 +50,8 @@ run_cmd do
   -- the counted terms' largest `Tm.size`, every call's body unfolded in it
   let mut big := 0
   for (x, ⟨_, _, t⟩) in defs do
-    -- an error table represents every meaning, and `monoOK` false makes `LamLaws` false (`Tm.LamLawsAt.mono`,
-    -- `Tm.monoOK_iff`): in either case `gen_sound` says nothing about a run
+    -- an error table represents every meaning, and `monoOK` false makes `GenHyp` false (`Tm.monoOK_iff`):
+    -- in either case `gen_sound` says nothing about a run
     if !t.hasCode then noCode := noCode ++ [x]
     else if t.monoOK then
       ok := ok ++ [x]

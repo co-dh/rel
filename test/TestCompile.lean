@@ -8,10 +8,11 @@ import Rel.Lang.GenSoundTest
 
     - The differential test: each closed definition of every registered program, re-read as a `Tm`
       (`GenSoundTest.reread`) where `Tm.gen` has code at every node (`Tm.hasCode`), run as
-      `(Tm.code Code.empty t).runE {}` and required to have the result of the constant `rel_program` generated
+      `(Tm.code η t).runE {}`, `η` the table of the program's closed parts (`Code.program`), and required to have
+      the result of the constant `rel_program` generated
       (`n.expanded`). So on these definitions the generated code equals `Tm.gen`'s, and where the term has no
-      `Tm.gap` node `Tm.gen_sound` relates `Tm.gen` to `Tm.den` under its hypotheses (the bit-matrix laws, `LamLaw`
-      at each `Λ`); a definition with no code is listed with the nodes that have none, and the definitions
+      `Tm.gap` node `Tm.gen_sound` relates `Tm.gen` to `Tm.den` under its hypotheses (the bit-matrix laws,
+      `Tm.GenHyp`); a definition with no code is listed with the nodes that have none, and the definitions
       elaborated once (`Once`) have no closed constant to compare.
     - The regression pin, with no independent oracle: every closed definition's result against the pin
       `compile-diff.json` beside this file, by name. The pin is an earlier run's output, so a difference says a
@@ -25,6 +26,8 @@ namespace Rel.Lang.TestCompile
 
 open Lean Elab Command Tab Rel.Lang Rel.Lang.Expand
 
+open Rel.Lang.GenSoundTest (rowsOf)
+
 /-- A table over this many rows is stored as its row count and `hash` of its `rowsOf`: its rows would make the
     baseline too large to review. A toolchain whose `hash` changes regenerates the baseline. -/
 def rowCap : Nat := 512
@@ -33,8 +36,10 @@ def rowCap : Nat := 512
     a result the baseline may not hold: a side `rowsOf` cannot read. -/
 def result {A B : Obj} (c : Except String (Tab A B)) : Except String (String × List (List Nat)) := do
   let .ok g := c | return ("not ok: the generated constant vouches for nothing", [])
-  if !(GenSoundTest.keyed A && GenSoundTest.keyed B) then throw "a side holds a `general` atom, whose `Obj.key` is `[]`"
-  pure ("ok", GenSoundTest.rowsOf g)
+  -- `Rel.Lang.keyed` (Elab) shadows the opened name
+  if !(Rel.Lang.GenSoundTest.keyed A && Rel.Lang.GenSoundTest.keyed B) then
+    throw "a side holds a `general` atom, whose `Obj.key` is `[]`"
+  pure ("ok", rowsOf g)
 
 /-- A result as the baseline stores it: the status and the rows, or over `rowCap` rows their count and digest. -/
 def toEntry (s : String) (rs : List (List Nat)) : Json :=
@@ -141,12 +146,17 @@ run_cmd do
     -- the definitions run so far whose `Tm.gen` table is ok, each a variable numbered past every binder of `ds`
     let base := ds.foldl (fun m (_, ⟨_, _, t⟩) => max m (fresh t)) 0
     let mut prev : List (Nat × Res) := []
-    let mut η : Code := Code.empty
+    -- the program numbered as one (`Code.program`): each closed part, a call body's included, computed once
+    let t0 ← IO.monoMsNow
+    let (dn, η0) ← IO.lazyPure fun _ => Code.program (ds.map (·.2))
+    times := times.push s!"{n}.(share table)\t{(← IO.monoMsNow) - t0}"
+    let dn := (ds.map (·.1)).zip dn
+    let mut η : Code := η0
     for (x, ⟨A, B, c⟩) in gs do
       let nm := s!"{n}.{x}"
       unless lit.contains x do unchecked := unchecked ++ [nm]
       closed := closed + 1
-      let some ⟨A', B', t⟩ := ds.lookup x | throwError "TestCompile: `{nm}` is in `{n ++ `expanded}` but not re-read"
+      let some ⟨A', B', t⟩ := dn.lookup x | throwError "TestCompile: `{nm}` is in `{n ++ `expanded}` but not re-read"
       unless A' == A && B' == B do throwError "TestCompile: `{nm}` is re-read at other objects than it is generated at"
       match result c with
       | .error e => errs := errs.push s!"`{nm}`: {e}"

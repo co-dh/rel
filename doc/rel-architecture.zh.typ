@@ -376,7 +376,7 @@ atom 的位宽、符号、指数和尾数位读出，不逐对列出），另加
     同样分段 `scan(or)` 传播；`W'` 既非 `W` 也非 `2^63`（`−0`）报错。f32 按名报错并提示先 `$` 到 f64
     （`stepAt .f32` 每步舍入到 f32，一次 `kscan` 不能算）。不排序 `canon` 之外的东西、不回置换。含义是组合
     `agg(dom(x) (𝟙 × ≥) dom(x), F(x) ⦇[0, plus]⦈)`（左折叠，`rowDens` 即此组合），本行是它的融合形式（定理
-    `Tab.sums_holds`，无前提，故 `rowsProved` 条目不读 `LamLaw`）。`Prim.dfn` 同 `asc`：待 `dfn` 能读行的关系参数],
+    `Tab.sums_holds`，无前提）。`Prim.dfn` 同 `asc`：待 `dfn` 能读行的关系参数],
   [`$`（`x $ F`，`x : A ⟶ N` ↦ `A ⟶ F`，只在 `castOK N F` 的原子对之间）], [`scan` map（`Op.cast s t`，在编码列上）：
     每个值换成 `t` 中表示同一个数的字（`QAtomicType.embed`，不舍入），无像时写 null 字 `2^63`（任何像都不是它：
     `word_ne_nul`）→ `scan` map（`Op.ne`，对常量列 `2^63`）得 0/1 标志 → where（`keep`）→ `canon`。无新 kernel、无新

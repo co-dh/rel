@@ -407,8 +407,10 @@ Diff table 的「状态」列：✅ 后面是完成它的步骤；🔄 是部分
   `lt_inl_inr`、`Obj.lt_arr_of`，cell 的块由 `flatMap_range_lt` 取第一个不同块）；`Vals.lamLaw` 是 `Λ` 的序律。
   `kasc` 拒绝 `sym`、`general`，所以无需对象条件。`lam_den`、`E_den`、`setify_den`、`tau_den`、`thin_den`、
   `asc_holds`、`tails_den`、`inits_den`、`GenK.lam_sound`、`GenK.thin_sound` 去掉 `hB`；`def LamLaw` 删除，
-  `Tm.LamLaws` 在 `Λ` 处什么也不问（只剩不动点体正，即 `Tm.monoOK`）。未做：把 `Tm.LamLawsAt` 的参数 `L`、
-  `rowsProved` 与 `RowOK` 里的 `hl` 一并删去，`gen_sound` 直接取 `t.monoOK = true`。
+  `Tm.LamLaws` 在 `Λ` 处什么也不问（只剩不动点体正，即 `Tm.monoOK`）。✅ 清理（分支 `s5clean`）：`Tm.LamLawsAt`
+  的参数 `L`、`Tm.LamLaws`、`Tm.LamLawsAt.mono`、`rowsProved` 的 object 函数（现为行名 `List String`）、`RowOK`
+  与 `rowOK_args`/`rowOK_of`/`primGen_ok` 里只带 `L` 的前提一并删去；`gen_sound` 的前提是 `Tm.GenHyp P`（不动点体正，
+  `share` 处 `P`，即 7.3b 的 `η.sh.Shares`），`P` 取 `True` 时等于 `t.monoOK = true`（`Tm.monoOK_iff`）。
 - 🟡 S6 行 `$`（分支 `tb-s6`，owner 裁定 J）：`x $ F` 与 `QAtomicType.embed s t` 的图复合（`castDen`），部分映射、不舍入；
   允许的对由 `castOK` 从两个 atom 的格式读出（加宽、整数 → 浮点）；有损方向在 elaboration 报错。`Tab.cast`（分支
   `tb-s6c`）是编码列上一次 `scan` map（`Op.cast s t`，无像写 null 字 `2^63`）+ `colMap .ne` 标志 + `keep` + `canon`，
@@ -1028,15 +1030,22 @@ Diff table 的「状态」列：✅ 后面是完成它的步骤；🔄 是部分
 - ✖ 7.1 library 边界：不做。owner 2026-11-18 选 7.2 的 wrapper，`compile` 留在预编译的 `RelRun`，没有东西要移；
   这推翻 Q12（“`compile` 移到持有证明的 library”）。
 - ✅ 7.2 `Rel/Lang/CompileSpec.lean` 与 `compileS` 已在 a8ca355 删除。compiler 是 `Tm.gen`
-  （`Rel/Run/Lang/TmGen.lean`），定理是 `Tm.gen_sound`（`Rel/Lang/GenSound.lean`）。`gen_sound` 要求 `t.LamLaws`，
-  它在 float 的 `Λ` 处为假，所以不是每个程序都能包成 subtype；按设计卡片“`rep` 与 `compile`”，保留普通 `Tm.gen`
+  （`Rel/Run/Lang/TmGen.lean`），定理是 `Tm.gen_sound`（`Rel/Lang/GenSound.lean`）。`gen_sound` 要求 `t.GenHyp`
+  （不动点体正，每个 `share` 槽表示其部分），所以不是每个程序都能包成 subtype；按设计卡片“`rep` 与 `compile`”，保留普通 `Tm.gen`
   加单独的定理。
 - ⬜ 7.3 `rel_program` 发出 `compile t`，从 `Expand.lean` 删除旧路径。
   Q1 选 A（设计卡片“闭项只算一次”：在共享常量处只算一次）：闭部分是 η 旁边携带的 share 表；`rel_program` 在程序和
   call body 上给它们编号；`.share k R` 读槽 k；`Sound` 增加：每个槽计算 ⟦R⟧。三部分：
   - ⬜ 7.3a `Tm.gen` 及其运行时部分移到 `RelRun`（`Rel/Run/Lang/TmGen.lean`）；`Tm.code` 不缓存 `.prod`
     （旧 `Expand.code` 的条件）；`Expand.tmE`：一个 `Tm` 作为构造它的 `Expr`，`GenSoundTest` 测 round-trip。
-  - ⬜ 7.3b share 表：闭部分编号（含 call body），每个编号一个常量，`.share k R` 读槽 k，`Sound` 与 `gen_sound` 随之改。
+  - ✅ 7.3b share 表（分支 `s73b`）：`Code` 是结构 `{var, sh}`，`sh : Codes` 是 share 表，`Code.bind`、`Code.args`
+    保留它（`Code.args η ks xs`）。`Tm.number`（`RelRun`，`TmGen`）给闭部分编号并进入 call body；相等的部分
+    （`Expand.tmE`，其已编号的部分读作槽号）共用一个槽；spine 的头不编号。`Code.shares` 每个槽只算一次，
+    `Code.program` 给一个程序的所有定义一张表。`.share k R` 读槽 k，表里没有时就地构建。`Sound` 增加：每个槽 `Wf`
+    （`Code.Wf`）；`Tm.GenHyp`（原 `Tm.LamLawsAt`）增加参数 `P`，在 `share k R` 处要求 `Codes.Shares`（槽 k 表示 ⟦R⟧）。
+    只改了 `gen_sound` 与 `gen_wf` 的 share、call 两个 case。未证：`Tm.number`/`Code.shares` 满足 `Codes.Shares`（7.3c）。
+    测量（`test/TestCompile.lean`，`REL_COMPILE_TIMES`）：chess 整个程序的 share 表 31.1 s，之后每个定义 0 ms；
+    旧的 `Tm.gen` 路径 `chess.mate` 246 s、`chess.m` 245 s。所有程序合计 90.5 s；963 个定义与生成的常量相等，pin 不变。
   - ⬜ 7.3c `emit` 发出 `Tm.gen η ⌜t⌝`，删除旧路径（`node`、`code`、`spine`、`body`）。
 - ⬜ 7.4 清理：`LR unused`、`unused-simp`、`remove-import`。
 - ✅ 7.5 已合并（dbdc72d，`gates3`）：gate `bang`（allowlist 32）、`pointfree`（13）、`kernel-tested`（68 of 84）；`pointfree` 的范围 = L。原条目，规则 gate（owner 选）：三个 gate，allowlist 只减不增：`!` 下标（今天 32 个 def）；关系值 def 的 body 里的
