@@ -2205,9 +2205,6 @@ def callTm (pos : Pos) (c : Lean.Name) (us : List (OTy × Bool × Bool)) (ks : L
   let inst {X Y : Obj} : Res → Except Err (Tm X Y)
     | ⟨X₀, Y₀, b⟩ => do
       let b ← (b.instObj ph σ).mapError fun e => (⟨pos, s!"`{c}` at the objects of this call: {e}"⟩ : Err)
-      -- a call's body sees only its `ks` (`Code.args`): a variable read beyond them would run as `𝟘`
-      let out := b.fv.eraseDups.filter (!ks.contains ·)
-      unless out.isEmpty do internal dp s!"`{c}`'s body reads the variables {out}, which its call binds not ({ks})"
       if h : X₀.inst ph σ = X ∧ Y₀.inst ph σ = Y then pure (h.1 ▸ h.2 ▸ b)
       else internal dp s!"`{c}`'s body is not at the objects of its call"
   match cv with

@@ -465,6 +465,11 @@ def callDef (env : Env) (dp : Pos) (n : String) (qs : List Param) (e : Expr) (ty
         | some o => pure (some o, xsL)
         | none => pure (← get? fs, xs)
       let some o := o? | return r
+      -- a call's body sees only the variables its call binds (`Code.args`): one read beyond them would run as `𝟘`;
+      -- checked here, where the fallback to the expansion cannot swallow it
+      let free := o.res.2.2.fv.eraseDups.filter (!o.binds.contains ·)
+      unless free.isEmpty do
+        throw ⟨p, s!"internal: `{o.const}`'s body reads the variables {free}, which its call binds not ({o.binds})"⟩
       xs := ys
       let { const := k, vars := fl, tst, kf } := sigOf o
       let (ks, ph, t, cv) := (o.binds, o.ph, o.res, convOf o)
