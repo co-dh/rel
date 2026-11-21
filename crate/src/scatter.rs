@@ -5,7 +5,7 @@
 //! it, never dropped; a composition that discards a row sends it to a spare cell and cuts that cell off (WHERE,
 //! doc/rel-kernels.md). Its `foR` arguments are read a block at a time (`blocks`) and its answer written by the encoder's
 //! block step (`ffi::Sink`), so no column is decoded whole.
-use alloc::{format, string::String, vec};
+use alloc::{format, string::String};
 use crate::blocks::{Blocks, Grid};
 use crate::enc::Producer;
 use crate::ffi::{Form, Sink};
@@ -35,7 +35,7 @@ pub fn blocks(op: u8, ix: &Blocks, e: &Blocks, n: usize, fill: u64) -> Result<le
     // from `e` without the cells; `e` is read here only for an op that can fail at all
     let fails = op_eval(op, 0, 0).is_err();
     // `at[b] .. at[b + 1]`: the rows answer block `b` takes, in row order once grouped
-    let (mut at, mut asc, mut prev) = (vec![0usize; g.nblk() + 1], true, 0u64);
+    let (mut at, mut asc, mut prev) = (pod::vec_of("scatter", "the answer blocks' row counts", g.nblk() + 1, 0usize)?, true, 0u64);
     for (_, lo, nb) in ix.walk() {
         let es: &[u64] = if fails { rows(e, lo, nb, pod::bytes_mut(&mut eb)) } else { &[] };
         for (k, &i) in rows(ix, lo, nb, pod::bytes_mut(&mut buf)).iter().enumerate() {
@@ -59,7 +59,9 @@ pub fn blocks(op: u8, ix: &Blocks, e: &Blocks, n: usize, fill: u64) -> Result<le
         }))
     }
     // V: each row's offset in its answer block and its value, grouped by answer block in row order
-    let (mut pos, mut val, mut cur) = (pod::uninit::<u16>(ix.n), pod::uninit::<u64>(ix.n), at.clone());
+    let (mut pos, mut val) = (pod::try_uninit::<u16>("scatter", "the rows' offsets", ix.n)?, pod::try_uninit::<u64>("scatter", "the rows' values", ix.n)?);
+    let mut cur = pod::vec_of("scatter", "the answer blocks' cursors", at.len(), 0usize)?;
+    cur.copy_from_slice(&at);
     let mut eb = pod::uninit::<u64>(sc);
     for (_, lo, nb) in ix.walk() {
         let (is, es) = (rows(ix, lo, nb, pod::bytes_mut(&mut buf)), rows(e, lo, nb, pod::bytes_mut(&mut eb)));
@@ -79,7 +81,7 @@ pub fn blocks(op: u8, ix: &Blocks, e: &Blocks, n: usize, fill: u64) -> Result<le
 mod tests {
     use super::*;
     use crate::coc;
-    use alloc::vec::Vec;
+    use alloc::{vec, vec::Vec};
 
     /// `Kernel.scatterWords op is es n fill`: rows in order, each cell becoming `op_eval(op, cell, e)`; the first row whose
     /// index is not below `n`, or whose step fails, is the error. The word model `blocks` is tested against.

@@ -10,10 +10,10 @@ use {crate::lean::{B, O}, crate::{c, reduce}, alloc::{format, string::String, ve
 
 /// The `n` words of a block source, as `i64` (`foRWords`' reading of an index column).
 #[cfg(all(feature = "ffi", not(any(test, feature = "std"))))]
-fn words(b: &crate::blocks::Blocks) -> Vec<i64> {
-    let mut v = alloc::vec![0i64; b.n];
+fn words(what: &str, b: &crate::blocks::Blocks) -> Result<Vec<i64>, String> {
+    let mut v = crate::pod::vec_of("bitrows", what, b.n, 0i64)?;
     for (k, lo, nb) in b.walk() { b.load(k, nb, &mut v[lo..lo + nb]) }
-    v
+    Ok(v)
 }
 
 /// `Kernel.kbitrows` (Rel/Kernel/BitRows.lean): its checks in the model's order, then `bit_rows` over `m`'s bitmap
@@ -24,8 +24,8 @@ fn bitrows(all: bool, w: usize, na: usize, ni: usize, g: usize, ends: B, idx: B,
     let (Some(nm), Some(no)) = (na.checked_mul(w).filter(|&x| x < 1 << 32), g.checked_mul(w).filter(|&x| x < 1 << 32)) else {
         return Err(format!("bitrows: {na} or {g} rows of {w} bits reach 2^32"))
     };
-    let es = words(&blocks_view("bitrows: ends", g, ends)?);
-    let is = words(&blocks_view("bitrows: idx", ni, idx)?);
+    let es = words("ends", &blocks_view("bitrows: ends", g, ends)?)?;
+    let is = words("idx", &blocks_view("bitrows: idx", ni, idx)?)?;
     let c = for_view("bitrows: m", nm, m)?;
     for r in 0..g {
         let (lo, hi) = (if r == 0 { 0 } else { es[r - 1] as u64 }, es[r] as u64);
@@ -35,7 +35,7 @@ fn bitrows(all: bool, w: usize, na: usize, ni: usize, g: usize, ends: B, idx: B,
         return Err(format!("bitrows: idx {} at row {k} is not below na = {na}", i as u64))
     }
     let offs: Vec<i64> = core::iter::once(0).chain(es.iter().copied()).collect();
-    let mut out = alloc::vec![0u8; no.div_ceil(8)];
+    let mut out = crate::pod::vec_of("bitrows", "the answer's bits", no.div_ceil(8), 0u8)?;
     reduce::bit_rows(c::pool(), all, w, &offs, &is, &reduce::col_bits(&c, nm), &mut out);
     Ok(Sink::new(no, 1, Form::For).enc().bools(crate::QLEAN_COST_COPY, &|lo, hi, o| {
         o[..(hi - lo).div_ceil(8)].copy_from_slice(&out[lo / 8..hi.div_ceil(8)])
