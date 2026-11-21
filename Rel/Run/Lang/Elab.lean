@@ -2225,6 +2225,10 @@ partial def Tm.varAt (k : Nat) : {A B : Obj} → Tm A B → List (Obj × Obj)
   | A, B, .var _ j => if j == k then [(A, B)] else []
   | _, _, t => t.parts.flatMap fun ⟨_, _, c⟩ => c.varAt k
 
+partial def Tm.closeVars (ks : List Nat) : {A B : Obj} → Tm A B → Tm A B
+  | _, _, .var d k => .var (d && !ks.contains k) k
+  | _, _, t => Id.run (t.mapM fun c => pure (c.closeVars ks))
+
 mutual
 
 /-- `Pre` to `Tm` at the solved objects. Every check here holds by `elabE`'s unification except the
@@ -2432,8 +2436,8 @@ def build : Pre → Except Err Res
         unless X' == X && Y' == Y do throw ⟨dp, s!"DIAG `{c}` reads {k} at {repr X'} ⟶ {repr Y'}, arg {repr X} ⟶ {repr Y}"⟩
       -- `od` reads every parameter on demand; one whose argument is closed is read whole, as it is given, so the
       -- call needs keys only where its expansion does
-      let t := if !dem then t else t.subst (((ks.zip xs).zip rs).filterMap fun ((k, x), ⟨A, B, r⟩) =>
-        if !(x matches .var ..) && !r.dem then some (k, ⟨A, B, .var false k⟩) else none)
+      let t := if !dem then t else t.closeVars (((ks.zip xs).zip rs).filterMap fun ((k, x), ⟨_, _, r⟩) =>
+        if !(x matches .var ..) && !r.dem then some k else none)
       let u :=rs.foldl (fun f ⟨_, _, x⟩ => .arg f x) (Tm.call ks (.mkSimple c) [] t)
       -- `Tm.dem` counts an argument run on demand even where the body closes it: that call is the expansion's
       if u.dem && !t.dem then internal dp s!"`{c}` closes an argument that needs keys"
