@@ -68,6 +68,26 @@ pub fn uninit<T: Pod>(n: usize) -> alloc::vec::Vec<T> {
     unsafe { v.set_len(n) };
     v
 }
+/// `n` copies of `x` for kernel `k`'s `what`, or the error naming the three and the bytes asked: the one way a kernel
+/// makes a vector whose size its input decides, so an allocation that fails reaches Lean as `Except.error`, not an abort.
+pub fn vec_of<T: Clone>(k: &str, what: &str, n: usize, x: T) -> Result<alloc::vec::Vec<T>, alloc::string::String> {
+    let mut v = room(k, what, n)?;
+    v.resize(n, x);
+    Ok(v)
+}
+/// `uninit` reserved as `vec_of` reserves: no initialisation, the error where the allocator has not got the bytes.
+pub fn try_uninit<T: Pod>(k: &str, what: &str, n: usize) -> Result<alloc::vec::Vec<T>, alloc::string::String> {
+    let mut v = room(k, what, n)?;
+    // Safety: capacity `n` was just reserved, and a `Pod` is valid for any bit pattern; the caller writes before it reads
+    unsafe { v.set_len(n) };
+    Ok(v)
+}
+/// An empty vector with room for exactly `n`, by the fallible reserve.
+fn room<T>(k: &str, what: &str, n: usize) -> Result<alloc::vec::Vec<T>, alloc::string::String> {
+    let mut v = alloc::vec::Vec::new();
+    v.try_reserve_exact(n).map_err(|_| alloc::format!("{k}: cannot allocate {} bytes for {what} ({n} elements)", n.saturating_mul(size_of::<T>())))?;
+    Ok(v)
+}
 /// A slice of numbers as its bytes, for writing.
 pub fn bytes_mut<T: Pod>(s: &mut [T]) -> &mut [u8] {
     // Safety: a `Pod` has no padding, so every byte is initialised, and any byte pattern written back is a valid `T`
@@ -113,6 +133,13 @@ impl<'a, T: Pod + Default, const N: usize> IntoIterator for &'a mut Scr<T, N> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test] fn vec_of_fails_as_an_error() {
+        let n = usize::MAX / 16;
+        assert_eq!(vec_of("gather", "the output", n, 0u64).err(),
+            Some(alloc::format!("gather: cannot allocate {} bytes for the output ({n} elements)", n * 8)));
+        assert!(try_uninit::<u64>("scatter", "the values", n).is_err());
+        assert_eq!(vec_of("k", "x", 3, 7u8), Ok(alloc::vec![7, 7, 7]));
+    }
     #[test] fn cast_rejects_misaligned_and_ragged() {
         let a = [0u64; 4];
         let b: &[u8] = unsafe { core::slice::from_raw_parts(a.as_ptr().cast::<u8>(), 32) };

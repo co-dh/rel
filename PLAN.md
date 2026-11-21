@@ -642,6 +642,18 @@ Diff table 的「状态」列：✅ 后面是完成它的步骤；🔄 是部分
         `Known.pairs` 带来 `T` 的对，只逐对比较 n 对再选行（`Tab.cmpPairs`），不做 `K × L` 的 cross。
         仍做 cross 的：没有表可求交的比较（`P ≤ P`）与 `top`（`top` 尚未用 `pairs`）；`Vals.cross` 超过
         `crossMax = 2^28` 对时返回 error，不再在 Rust 侧 abort。
+      - ✅ `R × S` 与 `⟨π₁ R, π₂ S⟩` 同一 plan（分支 `prodplan`，dataframe 报告）：闭的 `x × y`（`dem = false`）原先被
+        `Expand.code` 包进 `GenK.memo`，无上下文地算出整个 CROSS（`Tab.prod`），复合 `asc(ran⟨𝟙,K⟩) (x × y)` 来不及把
+        `K` 的对交给它；pair 写法 `dem = true`，从不冻结。现在 product 节点不 memo（其两个操作数照旧 memo），已知定义域时
+        `GenK.prod` 就是 pair 写法，没有边界时才 CROSS。`TestFrameBench.joinBig`（1500 × 55001 对，1500 个匹配）：
+        3.84 s / 4.7 GB → 0.34 s，与 pair 写法相同；`TestFrameJoin` 比较两种写法的行。
+      - 🔄 kernel 分配失败是 error 不是 abort（分支 `prodplan`）：`pod::vec_of` / `pod::try_uninit`（`try_reserve_exact`）
+        给出 `"<kernel>: cannot allocate <bytes> bytes for <what> (<n> elements)"`，经 `except` 成为 `Except.error`；
+        已接入：`gather` 的整列 `e`，`scatter` 的行偏移、行值、块计数，`seen` 的游程位、块计数，`bitrows` 的
+        `ends`/`idx`/结果位。未接入：`asc` 的工作数组（`asc.rs` `dense` `work` `codes` `lsd` `rank` `mixed` `grade`，
+        `sort.rs` 的 `cnt` `ba/bb` `ia/ib`：返回 `Option`/`()` 的函数链，要改成 `Result`）、`Sink` 的输出（经 Lean 的
+        `lean_alloc_object`，失败在 Lean 运行时内）与 `coc_alloc`（`exit(1)`）、`Ext.Enc.encode`（签名无 `Except`，
+        要改 extern 签名）。
       - 定律的缺口：`lam_den`/`E_den`（等于 `lamDen`/`EDen`）带前提 `hB`（序码的序与 `B.lt` 一致），未对任何
         `Obj` 证掉；float 上本来不成立（`±0.0`、NaN）。
       - 合并记录：w3arrcat fe67914，w3arith 0f77c2f，w3struct+w3sumcat 4b6f121，w3div+w3divlaw+w3lam 803cd89，

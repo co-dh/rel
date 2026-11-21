@@ -92,4 +92,15 @@ rel_program bench5 where
 
 #guard bench5.failures.map toString == []
 
+-- `joinOn`'s `x × y` at 1500 · 55001 pairs (below the pair bound): read only on the 1500 pairs `J` selects (`i = j`
+-- for `i < 1500`), never built whole; the pair spelling `⟨π₁ x, π₂ y⟩` runs the same plan
+open Rel.Programs.prelude Rel.Programs.frame Rel.Programs.frameGroup Rel.Programs.frameJoin benchN in
+rel_program joinBig where
+    x : N ⟶ N ≜ ran(ext(ext(ext(D)))) dom(𝟙 < {(1500,∗)})
+    y : N ⟶ N ≜ ran(ext(ext(ext(ext(D))))) dom(𝟙 ≤ {(55000,∗)})
+    check count(innerJoin(𝟙, 𝟙, x, y)) = {(∗,1500)}
+    check count(asc(ran(⟨𝟙, J(𝟙, 𝟙, x, y)⟩)) ⟨π₁ x, π₂ y⟩) = {(∗,1500)}
+
+#guard joinBig.failures.map toString == []
+
 end Rel.Lang.TestFrameBench
