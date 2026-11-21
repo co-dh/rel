@@ -195,7 +195,9 @@ next(n, x)        ≜ dom(x) tot(⟨𝟙, ⊤ n⟩plus x)                 行 i 
   `F(c) ⦇[⊤ 1, times]⦈`，`reduce` 是 `F(c) ⦇[e, op]⦈`（`op` 是一个 `arith`）；`f64` 列的和是 `F(c) ⦇[{(∗,0)}, plus]⦈ʳ`（`TestFrameStat`）。
   实数统计（q 的名字 `avg` `var` `svar` `dev` `sdev` `cov` `scov`，q 的 `cor` 写作 `corr`）与 `sum` 一样是数组上的关系
   `[γ] ⟶ F`，接在 `F(c)` 之后：整列 `summarize(F(c) avg, c)`，每组 `aggregate(a, F(x c) avg, x)`，不另写每组的定义。
-  结果在库声明的 `obj F : f64` 中，经 `$` 与真商 `%`，从不取整；它们读 prim `sum`，所以只在整数列上（F4）。
+  结果在库声明的 `obj F : f64` 中，经 `$` 与真商 `%`，从不取整。值在 `avg` 与 `cov` 的入口先经 `$ Z` 一次转到无界的
+  `Z : i64`，此后不在列自己的对象 γ 中计算：在 `obj N = 0…40` 上 `7·7 = 49` 不是元素，在 γ 中相乘会让 `var` 无像。
+  它们读 prim `sum`，所以只在整数列上（F4）。
   `min` `max` 只选不造：`F(c) Λ(∋) head`、`last`（`Λ(∋)` 是数组的值的升序集合）。每组第一个、最后一个值：
   `F(c) head`、`last`。`F` 是 prim：数组逐元素后接 `c`。
 - 一个实例：`c = x a = B A B`：`agg(c°, head)` 是 `A ↦ 1`、`B ↦ 0`，`asc` 把 `{0, 1}` 编号，`firstOcc = 0 1`；
@@ -224,10 +226,10 @@ next(n, x)        ≜ dom(x) tot(⟨𝟙, ⊤ n⟩plus x)                 行 i 
   ([`groupBy`], [组 `group(x k)`；组的 key `firstOcc(x k) x k`], [], "full"),
   ([`aggregate`], [`aggregate(a, f, x) ≜ ⟨firstOcc(x a) x a, agg(group(x a), f)⟩`], [], "full"),
   ([`sum` `mean` `count` `countAll` `minimum` `maximum` `reduce`], [`summarize(f, x)`，`f` 见 3.1；`count(x)`；
-    `mean` 是 `summarize(F(c) avg, c)`，`avg : [γ] ⟶ F ≜ ⟨sum $ F, length 𝟙(Z) $ F⟩%`],
-    [`minimum` `maximum` 在 `f64`、`date` 列上按值的序；`f64` 的 `sum` 是 fold `⦇[{(∗,0)}, plus]⦈ʳ`；`avg` 读 prim `sum`，`f64` 列被拒：F4], "part"),
+    `mean` 是 `summarize(F(c) avg, c)`，`avg : [γ] ⟶ F ≜ F(𝟙 $ Z) avgZ`，`avgZ : [Z] ⟶ F ≜ ⟨sum $ F, length 𝟙(Z) $ F⟩%`],
+    [`minimum` `maximum` 在 `f64`、`date` 列上按值的序；`f64` 的 `sum` 是 fold `⦇[{(∗,0)}, plus]⦈ʳ`；`avg` 读 prim `sum`，`f64` 列在入口的 `$ Z` 被拒：F4], "part"),
   ([`variance` `stddev` `skewness` `correlation` `zScore`],
-    [`cov : [γ×γ] ⟶ F ≜ ⟨F(times) avg, ⟨F(π₁) avg, F(π₂) avg⟩times⟩minus`；
+    [`cov : [γ×γ] ⟶ F ≜ F(⟨π₁ $ Z, π₂ $ Z⟩) ⟨F(times) avgZ, ⟨F(π₁) avgZ, F(π₂) avgZ⟩times⟩minus`；
     `scov : [γ×γ] ⟶ F ≜ ⟨cov, ⟨length 𝟙(Z) $ F, tail length 𝟙(Z) $ F⟩%⟩times`；
     `var : [γ] ⟶ F ≜ F(⟨𝟙, 𝟙⟩) cov`；`svar : [γ] ⟶ F ≜ F(⟨𝟙, 𝟙⟩) scov`；`dev : [γ] ⟶ F ≜ var sqrt`；`sdev : [γ] ⟶ F ≜ svar sqrt`；
     `corr : [γ×γ] ⟶ F ≜ ⟨cov, ⟨F(π₁) dev, F(π₂) dev⟩times⟩%`],
@@ -335,7 +337,7 @@ next(n, x)        ≜ dom(x) tot(⟨𝟙, ⊤ n⟩plus x)                 行 i 
   （`sortBy` `topK` `distinct` `aggregate` 的组与 `min` `max`、join）照常运行（`TestFrameTyped`）。`arith` 与 `<` `≤`
   在 `f64` `f32` 上（`TestFloatArith`）；`f64` 列的和是 fold `⦇[{(∗,0)}, plus]⦈ʳ`，逐列、逐组都对（`TestFrameStat`）。
   真商 `%` 与 `sqrt` 给出 `avg` `var` `cov` `corr` `med` `valueProportions` 与 `describe` 的均值、标准差。仍缺：
-  (1) prim `sum` 与 `sums` 只在 `i64` 上，所以实数统计只在整数列上，`f64` 列被拒（`sum on F`），`cumSum` 在 `f64` 上被拒；
+  (1) prim `sum` 与 `sums` 只在 `i64` 上，所以实数统计只在整数列上，`f64` 列在入口的 `$ Z` 被拒，`cumSum` 在 `f64` 上被拒；
   (2) `$` 与 `%` `sqrt` 只接受声明的对象，对象变量不行，所以库自己声明 `F : f64`、`Z : i64`、`D : date`，统计不在别的
   float 对象上；(3) 浮点 → 整数（分位数的下标）、`pow`、`fround`，故无 `percentile`、`skewness`、`zScore`；
   (4) `aj` 的时间沿 `sums` 扫描，只能是数对象，`date` 时间列被拒（`TestFrameTyped.ajDateT`）。

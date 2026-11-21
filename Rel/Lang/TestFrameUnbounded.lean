@@ -48,7 +48,6 @@ rel_program frameUnboundedT where
     cl : N ⟶ N ≜ c length
     check cl = {(0,3),(1,2),(2,3)}
     check summarize(F(x π₂) ⦇[{(∗,0)}, max]⦈, x) = {(∗,7)}
-    check describe(x π₂) = {(∗,(8,(1,7)))}
     check x π₂ ⟨𝟙, ⊤ {(∗,2)}⟩div = {(0,2),(1,1),(2,2),(3,0),(4,3),(5,1),(6,0),(7,1)}
     check x π₂ ⟨𝟙, ⊤ {(∗,2)}⟩mod = {(0,1),(1,1),(2,1),(3,1),(4,1),(5,0),(6,1),(7,1)}
     check filterBy(dom(π₁ {(A,A)}) ∩ dom(π₂ dom(<°{(2,∗)})), x) = {(0,(A,3)),(1,(A,7)),(2,(A,3))}
@@ -188,5 +187,18 @@ rel_program frameUnboundedT where
     check sa = {(0,2),(1,5),(2,9)}
 
 #guard frameUnboundedT.failures.map toString == []
+
+-- describe `v` (`frameStat`, a program of its own as in `TestFrameCols`): count 8, mean 27/8 = 3.375, min 1, max 7;
+-- sample std √(255/56) ≈ 2.1339 is no float, pinned in (2.125, 2.25): 2.125² = 4.515625 < 255/56 < 5.0625 = 2.25²
+open Rel.Programs.prelude Rel.Programs.frame Rel.Programs.frameStat in
+rel_program frameDescribeU where
+    obj K = {A,B,C}
+    obj N
+    x : N ⟶ K×N ≜ {(0,(B,5)),(1,(A,3)),(2,(B,5)),(3,(C,1)),(4,(A,7)),(5,(C,2)),(6,(B,1)),(7,(A,3))}
+    check describe(x π₂) ⟨π₁, ⟨π₂ π₁, π₂ π₂ π₂⟩⟩ = {(∗,(8,(3.375,(1,7))))}
+    check describe(x π₂) π₂ π₂ π₁ [𝟙, {(∗,-1.0)}] <° {(2.125,∗)} = {(∗,∗)}
+    check describe(x π₂) π₂ π₂ π₁ [𝟙, {(∗,-1.0)}] < {(2.25,∗)} = {(∗,∗)}
+
+#guard frameDescribeU.failures.map toString == []
 
 end Rel.Lang.TestFrameUnbounded

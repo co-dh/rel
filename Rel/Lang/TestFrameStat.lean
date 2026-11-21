@@ -2,7 +2,8 @@ import Rel.Programs.FrameGroup
 
 /-! The real-valued statistics of `frameStat` (`avg` `var` `svar` `dev` `sdev` `cov` `scov` `corr` `med`
     `valueProportions` `describe`), each in `F : f64` through `$` and the true quotient `%`, never an integer quotient.
-    They read the column through prim `sum`, which runs on `i64` only, so an `f64` column is refused (pinned below);
+    They cast the column's values to `Z : i64` first and read prim `sum`, which runs on `i64` only, so an `f64`
+    column is refused at the cast (pinned below);
     its sum is the fold `⦇[{(∗,0)}, plus]⦈ʳ`. Expected rows worked by hand with values exact in binary. -/
 
 namespace Rel.Lang.TestFrameStat
@@ -72,8 +73,9 @@ rel_program frameStatT where
 
 #guard frameStatT.failures.map toString == []
 
--- `avg` of an `f64` column: prim `sum` runs on `i64` only (the float summation order is undecided, PLAN S4)
-/-- error: line 82, col 5: sum on Rel.Programs.frameStat.F: Rel.Programs.frameStat.F is an object of f64, and sum runs on objects of i64 only -/
+-- `avg` of an `f64` column: its entry cast to `Z` keeps values, and prim `sum`, which would take `F` instead, runs on
+-- `i64` only (the float summation order is undecided, PLAN S4)
+/-- error: line 84, col 5: $ from Rel.Programs.frameStat.F (f64) to Rel.Programs.frameStat.Z (i64): not every f64 value is a i64 value, and $ keeps a number's value -/
 #guard_msgs in
 open Rel.Programs.prelude Rel.Programs.frame Rel.Programs.frameGroup Rel.Programs.frameStat in
 rel_program avgFloatT where

@@ -68,13 +68,17 @@ rel_program frameCols where
 #guard frameCols.ok
 
 -- describe `v` (`frameStat`, a program of its own: its float objects would take part in reading the literals above):
--- count 8, mean 27/8 = 3.375, min 1, max 7; `var` squares `v` in its object `N = 0…40`, where 7·7 = 49 is no
--- element, so the variance has no image and the std is null (read back as -1)
+-- count 8, mean 27/8 = 3.375, min 1, max 7; std √(255/56) ≈ 2.1339 is no float, so it is pinned in (2.125, 2.25):
+-- 2.125² = 4.515625 < 255/56 < 5.0625 = 2.25²
 open Rel.Programs.prelude Rel.Programs.frame Rel.Programs.frameStat frameData in
 rel_program frameDescribe where
     check describe(x π₂) ⟨π₁, ⟨π₂ π₁, π₂ π₂ π₂⟩⟩ = {(∗,(8,(3.375,(1,7))))}
-    check describe(x π₂) π₂ π₂ π₁ [𝟙, {(∗,-1.0)}] = {(∗,-1.0)}
-    check summarize(F(x π₂) var, x) = 𝟘
+    check describe(x π₂) π₂ π₂ π₁ [𝟙, {(∗,-1.0)}] <° {(2.125,∗)} = {(∗,∗)}
+    check describe(x π₂) π₂ π₂ π₁ [𝟙, {(∗,-1.0)}] < {(2.25,∗)} = {(∗,∗)}
+    -- squares up to 49 and products v·2v up to 98 leave `N = 0…40`: mean square 123/8, var 123/8 − 3.375² = 255/64;
+    -- cov(v, 2v) = 246/8 − 3.375·6.75 = 255/32
+    check summarize(F(x π₂) var, x) = {(∗,3.984375)}
+    check summarize(F(⟨x π₂, x π₂ ⟨𝟙,𝟙⟩plus⟩) cov, x) = {(∗,7.96875)}
 
 #guard frameDescribe.failures.map toString == []
 

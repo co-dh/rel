@@ -40,15 +40,18 @@ rel_program frameStat where
     obj D : date
     -- on the array of a column's values, like prim `sum`: `summarize(F(c) avg, c)` for a column,
     -- `aggregate(a, F(x c) avg, x)` per group; `𝟙(Z)` fixes the object `length` counts in
-    avg : [γ] ⟶ F ≜ ⟨sum $ F, length 𝟙(Z) $ F⟩%
+    avgZ : [Z] ⟶ F ≜ ⟨sum $ F, length 𝟙(Z) $ F⟩%
+    -- values are cast to the unbounded `Z` once, here and in `cov`: a sum or product in the column's own object
+    -- would have no image wherever it leaves that object (prim `sum` refuses `F`)
+    avg : [γ] ⟶ F ≜ F(𝟙 $ Z) avgZ
     -- `var` and `svar` are `cov`, `scov` of a column with itself; `scov` scales by n/(n−1), none at one row
-    cov : [γ×γ] ⟶ F ≜ ⟨F(times) avg, ⟨F(π₁) avg, F(π₂) avg⟩times⟩minus
+    cov : [γ×γ] ⟶ F ≜ F(⟨π₁ $ Z, π₂ $ Z⟩) ⟨F(times) avgZ, ⟨F(π₁) avgZ, F(π₂) avgZ⟩times⟩minus
     scov : [γ×γ] ⟶ F ≜ ⟨cov, ⟨length 𝟙(Z) $ F, tail length 𝟙(Z) $ F⟩%⟩times
     var : [γ] ⟶ F ≜ F(⟨𝟙, 𝟙⟩) cov
     svar : [γ] ⟶ F ≜ F(⟨𝟙, 𝟙⟩) scov
     dev : [γ] ⟶ F ≜ var sqrt
     sdev : [γ] ⟶ F ≜ svar sqrt
-    -- q's `cor`; the prelude's `cor` is the coreflexive of a relation's pairs
+    -- q calls it `cor`; named `corr` because the prelude's `cor` is already the coreflexive of a relation's pairs
     corr : [γ×γ] ⟶ F ≜ ⟨cov, ⟨F(π₁) dev, F(π₂) dev⟩times⟩%
     -- the one or two middle rows of `c` sorted: `i ≤ r(i)+1` and `r(i) ≤ i+1`, `r : i ↦ m−1−i`; q's `med` is their `avg`
     middle(c : ν ⟶ γ) : ν ⟶ γ ≜ dom(⟨dom(c), r succ⟩ cor(≤)) dom(⟨r, dom(c) succ⟩ cor(≤)) sortBy(𝟙, c) where r ≜ dom(c) ⟨⊤ count(c), succ⟩minus
