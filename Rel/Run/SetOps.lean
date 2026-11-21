@@ -102,6 +102,7 @@ def sumsOn {K : Obj} {t u : QAtomicType} (x : Tab (.prod K (.atom t)) (.atom u))
   let z ← colConst n 0
   match u, C with
   | .i64, C =>
+    let n := C.n
     let v := Arr.enc (t := .i64) C.val
     let W := (← kscan .add false .i64 .i64 n seg [z, v]).1
     let sv ← colMap .lt n v z
@@ -112,6 +113,7 @@ def sumsOn {K : Obj} {t u : QAtomicType} (x : Tab (.prod K (.atom t)) (.atom u))
     let badR := (← kscan .or false .i64 .i64 n seg [z, bad]).1
     keep ⟨n, C.key, ← colArr .add n W z⟩ (← colMap .not n badR badR)
   | .f64, C =>
+    let n := C.n
     let W := (← kscan .fadd false .i64 .i64 n seg [z, Arr.enc (t := .f64) C.val]).1
     let W' ← colArr (.fto .f64) n W W .f64
     let nul ← colConst n 0x8000000000000000

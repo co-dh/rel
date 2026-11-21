@@ -581,8 +581,8 @@ namespace Tab
 
 /-- **`canon` ascends in `ν` within a `κ`**: its rows are sorted by the codes of `κ`'s columns, then `ν`'s, then the
 value's (`canon_sorted`), so two distinct rows of one `κ` ascend strictly in `ν`. -/
-theorem canon_pos_lt {K : Obj} {t : QAtomicType} {f : UInt64 → UInt64} (hf : ascOrd t = some f)
-    {x C : Tab (.prod K (.atom t)) .long} (hC : x.canon = .ok C)
+theorem canon_pos_lt {K : Obj} {t u : QAtomicType} {f : UInt64 → UInt64} (hf : ascOrd t = some f)
+    {x C : Tab (.prod K (.atom t)) (.atom u)} (hC : x.canon = .ok C)
     (hD : ∀ i j : Fin C.n.toNat, C.key.row i = C.key.row j → i = j) (i j : Fin C.n.toNat) (hij : i.1 < j.1)
     (hk : (C.key.row i).1 = (C.key.row j).1) : Obj.lt (.atom t) (C.key.row i).2 (C.key.row j).2 := by
   obtain ⟨es, cs, hes, hcs⟩ := canon_codes hC
@@ -591,12 +591,12 @@ theorem canon_pos_lt {K : Obj} {t : QAtomicType} {f : UInt64 → UInt64} (hf : a
   cases heK : Vals.cols x.key.1 with
   | error s => simp [Vals.cols, heK, bind, Except.bind] at hes
   | ok eK =>
-  have hes' : es = eK ++ [(.atom t, Arr.enc x.key.2), (.atom .i64, Arr.enc (t := .i64) x.val)] := by
+  have hes' : es = eK ++ [(.atom t, Arr.enc x.key.2), (.atom u, Arr.enc (t := u) x.val)] := by
     simp only [Vals.cols, heK, bind, Except.bind, pure, Except.pure, Except.ok.injEq] at hes; rw [← hes]; simp
   rw [hes'] at hcs
   obtain ⟨csK, csP, hcsK, hcsP, -⟩ := mapM_append_ok hcs
   obtain ⟨cs1, -, hcs1, -, -⟩ := mapM_append_ok (l1 := [(AscKey.atom t, Arr.enc x.key.2)])
-    (l2 := [(AscKey.atom .i64, Arr.enc (t := .i64) x.val)]) hcsP
+    (l2 := [(AscKey.atom u, Arr.enc (t := u) x.val)]) hcsP
   have hκ : x.key.1.row (sel i) = x.key.1.row (sel j) := by rw [hki, hki] at hk; exact hk
   have hcode := Vals.codes_of_row x.key.1 heK hcsK (sel i) (sel j) hκ
   have hlex := (hord i j hij).1
@@ -649,7 +649,6 @@ theorem sums_holds {K : Obj} {t : QAtomicType} (hord : Lang.OrdAt t) {x T : Tab 
   rw [Except.bind_eq_ok'] at h; obtain ⟨one, hone, h⟩ := h
   rw [Except.bind_eq_ok'] at h; obtain ⟨seg, hseg, h⟩ := h
   rw [Except.bind_eq_ok'] at h; obtain ⟨z, hz, h⟩ := h
-  dsimp only at h
   rw [Except.bind_eq_ok'] at h; obtain ⟨⟨W, W2⟩, hr, h⟩ := h
   rw [Except.bind_eq_ok'] at h; obtain ⟨sv, hsv, h⟩ := h
   rw [Except.bind_eq_ok'] at h; obtain ⟨d, hd, h⟩ := h
@@ -722,13 +721,13 @@ theorem sums_holds {K : Obj} {t : QAtomicType} (hord : Lang.OrdAt t) {x T : Tab 
   rw [keep_holds h (fun i hi => by
     rw [hNB i hi]; rcases (hBR i hi).1 with e | e <;> rw [e] <;> decide) a c]
   apply exists_congr; intro t
-  have hmap : (((List.range (t.1 + 1)).filter fun q => Verify.groupOf (seenKey C.n e2) C.n.toNat q =
+  have hmap : ∀ d, (((List.range (t.1 + 1)).filter fun q => Verify.groupOf (seenKey C.n e2) C.n.toNat q =
       Verify.groupOf (seenKey C.n e2) C.n.toNat t).map fun q =>
-        if hq : q < C.n.toNat then C.val.row ⟨q, hq⟩ else default) =
+        if hq : q < C.n.toNat then C.val.row ⟨q, hq⟩ else d) =
       ((List.range (t.1 + 1)).filter fun q => Verify.groupOf (seenKey C.n e2) C.n.toNat q =
         Verify.groupOf (seenKey C.n e2) C.n.toNat t).map
         fun q => ((Enc.raw .i64 C.n (Arr.enc (t := .i64) C.val))[q]?.getD 0).toInt64 := by
-    apply List.map_congr_left; intro q hq
+    intro d; apply List.map_congr_left; intro q hq
     simp only [List.mem_filter, List.mem_range] at hq
     rw [dif_pos (by omega), Vals.row_atom, Arr.get_i64]
   rw [hmap, hF t t.2 c, hNB t t.2, hWa t]
@@ -759,7 +758,6 @@ theorem sumsF_holds {K : Obj} {t : QAtomicType} (hord : Lang.OrdAt t)
   rw [Except.bind_eq_ok'] at h; obtain ⟨one, hone, h⟩ := h
   rw [Except.bind_eq_ok'] at h; obtain ⟨seg, hseg, h⟩ := h
   rw [Except.bind_eq_ok'] at h; obtain ⟨z, hz, h⟩ := h
-  dsimp only at h
   rw [Except.bind_eq_ok'] at h; obtain ⟨⟨W, W2⟩, hr, h⟩ := h
   rw [Except.bind_eq_ok'] at h; obtain ⟨W', hW', h⟩ := h
   rw [Except.bind_eq_ok'] at h; obtain ⟨nl, hnl, h⟩ := h
@@ -772,6 +770,7 @@ theorem sumsF_holds {K : Obj} {t : QAtomicType} (hord : Lang.OrdAt t)
   split at h
   · first | cases h | (simp only [throw, throwThe, MonadExceptOf.throw, bind, Except.bind] at h; cases h)
   rename_i hk0; simp only [ne_eq, Decidable.not_not] at hk0
+  rw [Except.bind_eq_ok'] at h; obtain ⟨-, -, h⟩ := h
   rw [Except.bind_eq_ok'] at h; obtain ⟨bad, hbad, h⟩ := h
   rw [Except.bind_eq_ok'] at h; obtain ⟨⟨R, R2⟩, hr2, h⟩ := h
   rw [Except.bind_eq_ok'] at h; obtain ⟨nb, hnb, h⟩ := h
@@ -821,9 +820,9 @@ theorem sumsF_holds {K : Obj} {t : QAtomicType} (hord : Lang.OrdAt t)
   have hH : ∀ q < C.n.toNat, (Enc.raw .i64 C.n W'.enc)[q]?.getD 0 = (Enc.raw .i64 C.n W)[q]?.getD 0 ∨
       (Enc.raw .i64 C.n W'.enc)[q]?.getD 0 = 0x8000000000000000 := fun q hq => by
     have h0 : (Enc.raw .i64 C.n odd)[q]?.getD 0 = 0 := by
-      by_contra hc
+      refine Decidable.byContradiction fun hc => ?_
       obtain ⟨j, hj, -⟩ := (whereCol_mem hk hodd2 q).2 ⟨hq, hc⟩
-      rw [hk0] at hj; exact absurd hj (by decide)
+      rw [hk0] at hj; simp at hj
     rw [hODD q hq, hNE q hq, hNAN q hq] at h0
     by_cases a : (Enc.raw .i64 C.n W'.enc)[q]?.getD 0 = (Enc.raw .i64 C.n W)[q]?.getD 0
     · exact .inl a
@@ -836,7 +835,7 @@ theorem sumsF_holds {K : Obj} {t : QAtomicType} (hord : Lang.OrdAt t)
     fun q hq => by
       rw [hBAD q hq, hNE q hq, hNAN q hq]
       by_cases a : (Enc.raw .i64 C.n W'.enc)[q]?.getD 0 = (Enc.raw .i64 C.n W)[q]?.getD 0 <;>
-        by_cases b : (Enc.raw .i64 C.n W'.enc)[q]?.getD 0 = 0x8000000000000000 <;> simp [a, b]
+        by_cases b : (Enc.raw .i64 C.n W'.enc)[q]?.getD 0 = 0x8000000000000000 <;> simp [a, b] <;> first | exact (Classical.em _).symm | (split <;> decide)
   have hF := Lang.sumsF_fold (kseen_runs hk2)
     (fun q => (Enc.raw .i64 C.n (Arr.enc (t := .f64) C.val))[q]?.getD 0)
     (fun q => (Enc.raw .i64 C.n W)[q]?.getD 0) (fun q => (Enc.raw .i64 C.n W'.enc)[q]?.getD 0)
@@ -868,13 +867,13 @@ theorem sumsF_holds {K : Obj} {t : QAtomicType} (hord : Lang.OrdAt t)
   rw [keep_holds h (fun i hi => by
     rw [hNB i hi]; rcases (hBR i hi).1 with e | e <;> rw [e] <;> decide) a c]
   apply exists_congr; intro t
-  have hmap : (((List.range (t.1 + 1)).filter fun q => Verify.groupOf (seenKey C.n e2) C.n.toNat q =
+  have hmap : ∀ d, (((List.range (t.1 + 1)).filter fun q => Verify.groupOf (seenKey C.n e2) C.n.toNat q =
       Verify.groupOf (seenKey C.n e2) C.n.toNat t).map fun q =>
-        if hq : q < C.n.toNat then C.val.row ⟨q, hq⟩ else default) =
+        if hq : q < C.n.toNat then C.val.row ⟨q, hq⟩ else d) =
       ((List.range (t.1 + 1)).filter fun q => Verify.groupOf (seenKey C.n e2) C.n.toNat q =
         Verify.groupOf (seenKey C.n e2) C.n.toNat t).map
         fun q => (Enc.raw .i64 C.n (Arr.enc (t := .f64) C.val))[q]?.getD 0 := by
-    apply List.map_congr_left; intro q hq
+    intro d; apply List.map_congr_left; intro q hq
     simp only [List.mem_filter, List.mem_range] at hq
     rw [dif_pos (by omega), Vals.row_atom, hget]
   rw [hmap, hF t t.2 c, hNB t t.2, hWa t]
@@ -888,7 +887,7 @@ theorem sumsF_holds {K : Obj} {t : QAtomicType} (hord : Lang.OrdAt t)
   · rintro ⟨hall, h1, h2⟩
     exact ⟨h1, hall, by rw [← h2]; exact ((hbw t t.2).2.1 (hall t hmem)).1⟩
   · rintro ⟨h1, hall, h2⟩
-    exact ⟨hall, h1, by rw [h2]; exact ((hbw t t.2).2.1 (hall t hmem)).1.symm⟩
+    exact ⟨hall, h1, by rw [h2]; exact ((hbw t t.2).2.1 (hall t hmem)).1⟩
 
 /-- **`sums x` at any position object denotes `sumsAt`**: it runs only at an integer-stored atom (`intOrd`), where
 `ordAt_int` gives `sums_holds` its order. -/

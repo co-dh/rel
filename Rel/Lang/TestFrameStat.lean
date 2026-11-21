@@ -28,6 +28,10 @@ rel_program frameStatT where
     check count(f) $ F = {(∗,3.0)}
     -- groups A (rows 0, 2) and B (row 1): 1.5 + 2 = 3.5, 0.25
     check aggregate(π₁, F(x π₂) ⦇[{(∗,0)}, plus]⦈ʳ, x) = {(0,(A,3.5)),(1,(B,0.25))}
+    -- prefix sums left to right: 1.5, 1.5 + 0.25 = 1.75, 1.75 + 2 = 3.75; per group A (rows 0, 2): 1.5, 3.5; B: 0.25
+    check cumSum(f) = {(0,1.5),(1,1.75),(2,3.75)}
+    g : N ⟶ K ≜ {(0,A),(1,B),(2,A)}
+    check sumsBy(g, f) = {(0,1.5),(1,0.25),(2,3.5)}
 
 #guard frameStatT.ok
 

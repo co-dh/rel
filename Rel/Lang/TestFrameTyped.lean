@@ -56,7 +56,7 @@ rel_program ajDateT where
 #guard ajDateT.failures.map toString == []
 
 -- `daysBetween`: `minus` at a date, or the date read as its day number
-/-- error: line 65, col 23: minus on D: D is an object of date, and minus runs on objects of i64, f32, f64 only -/
+/-- error: line 65, col 23: minus on D: D is an object of date, and minus runs on objects of i64, f32, f64 only; cast first, `x $ F` with `F` an object of i64, f32, f64 -/
 #guard_msgs in
 rel_program daysMinusT where
     obj N
@@ -118,7 +118,7 @@ rel_program sumsFloatPosT where
     x : K×G ⟶ N ≜ {((A,1.5),1)}
     s : K×G ⟶ N ≜ sums(x)
 
--- `sum` and `sums` at an `f64` column: refused by name (a float sum waits on the summation order, S4)
+-- `sum` at an `f64` column: refused by name (the f64 `sum` row is not built yet; `sums` is, below)
 /-- error: line 129, col 5: sum on G: G is an object of f64, and sum runs on objects of i64 only -/
 #guard_msgs in
 open Rel.Programs.prelude Rel.Programs.frame in
@@ -128,13 +128,34 @@ rel_program sumFloatT where
     f : N ⟶ G ≜ {(0,2.5),(1,-1.5)}
     s : 1 ⟶ G ≜ summarize(F(f) sum, f)
 
-/-- error: line 138, col 17: `Rel.Lang.TestFrameTyped.cumSumFloatT.Rel.Programs.frame.cumSum.num.1.1`: an object variable is G here; its constant is not generic over it, a number object -/
-#guard_msgs in
-open Rel.Programs.prelude Rel.Programs.frame in
-rel_program cumSumFloatT where
+-- `sums` at `f64` values: one IEEE sum per row, left to right along the positions (q's order)
+rel_program sumsFloatT where
+    obj K = {A,B}
     obj N
     obj G : f64
-    f : N ⟶ G ≜ {(0,2.5),(1,-1.5)}
-    s : N ⟶ G ≜ cumSum(f)
+    -- by hand, A: 1, then 1 + 1e16 = 1e16 (the spacing there is 2 and the tie rounds to the even 1e16), then
+    -- 1e16 − 1e16 = 0, where the exact sum is 1; B: −1.5, then −1.5 + 1.5 = +0
+    x : K×N ⟶ G ≜ {((A,0),1.0),((A,1),1e16),((A,2),-1e16),((B,0),-1.5),((B,1),1.5)}
+    check sums(x) = {((A,0),1.0),((A,1),1e16),((A,2),0.0),((B,0),-1.5),((B,1),0.0)}
+    -- a NaN value (`0 % 0`, q's null word) adds nothing, as q's `sums` skips a null: 1, 1, 1 + 3 = 4
+    z : N ⟶ G ≜ {(0,0.0)}
+    p : K×N ⟶ N ≜ {((A,1),0)}
+    y : K×N ⟶ G ≜ {((A,0),1.0),((A,2),3.0)} ∪ p ⟨z, z⟩%
+    check sums(y) = {((A,0),1.0),((A,1),1.0),((A,2),4.0)}
+    -- a −0 value: +0 + −0 = +0
+    m : K×N ⟶ G ≜ {((A,0),-0.0)}
+    check sums(m) = {((A,0),0.0)}
+
+#guard sumsFloatT.failures.map toString == []
+
+-- `sums` at `f32` values: refused by name, with the cast to `f64` that runs it
+/-- error: line 159, col 5: sums on H: H is an object of f32, and sums runs on objects of i64, f64 only; cast first, `x $ F` with `F` an object of f64 -/
+#guard_msgs in
+rel_program sumsF32T where
+    obj K = {A}
+    obj N
+    obj H : f32
+    x : K×N ⟶ H ≜ {((A,0),1.5)}
+    s : K×N ⟶ H ≜ sums(x)
 
 end Rel.Lang.TestFrameTyped
