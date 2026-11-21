@@ -83,4 +83,26 @@ rel_program frameDescribe where
 
 #guard frameDescribe.failures.map toString == []
 
+-- `pow` (DataHaskell `x ^ i`, `i` an `Int`): no definition, the column expression `⟨c $ F, i $ F⟩xexp`, the exponent a
+-- literal or a column; libm `pow` is exact on these, a negative base with an integer exponent included
+open Rel.Programs.prelude frameData in
+rel_program framePow where
+    obj F : f64
+    obj L : i64
+    a : P ⟶ L ≜ {(0,-2),(1,3),(2,0),(3,1)}
+    e : P ⟶ L ≜ {(0,3),(1,2),(2,0),(3,5)}
+    b : P ⟶ F ≜ {(0,1.5),(1,-0.5),(2,4.0)}
+    three : P ⟶ L ≜ ⊤ {(∗,3)}
+    check ⟨a $ F, three $ F⟩xexp = {(0,-8.0),(1,27.0),(2,0.0),(3,1.0)}
+    check ⟨a $ F, e $ F⟩xexp = {(0,-8.0),(1,9.0),(2,1.0),(3,1.0)}
+    check ⟨b, ⊤ {(∗,2.0)}⟩xexp = {(0,2.25),(1,0.25),(2,16.0)}
+    check ⟨b, e $ F⟩xexp = {(0,3.375),(1,0.25),(2,1.0)}
+    -- derive `v^v` on the fixture: `v = 5 3 5 1 7 2 1 3`
+    check x ⟨𝟙, ⟨π₂ $ F, π₂ $ F⟩xexp⟩ = {(0,((B,5),3125.0)),(1,((A,3),27.0)),(2,((B,5),3125.0)),(3,((C,1),1.0)),
+      (4,((A,7),823543.0)),(5,((C,2),4.0)),(6,((B,1),1.0)),(7,((A,3),27.0))}
+
+-- by hand: `(-2)^3 = -8`, `3^3 = 27`, `0^3 = 0`; `3^2 = 9`, `0^0 = 1`, `1^5 = 1`; `1.5^2 = 2.25`, `(-0.5)^2 = 0.25`,
+-- `1.5^3 = 3.375`, `4^0 = 1`; `5^5 = 3125`, `7^7 = 823543`
+#guard framePow.failures.map toString == []
+
 end Rel.Lang.TestFrameCols
