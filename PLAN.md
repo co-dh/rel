@@ -232,7 +232,7 @@ Diff table 的「状态」列：✅ 后面是完成它的步骤；🔄 是部分
   - ✅ I4 crate：导出分为 `RELK.txt`（kernel）与 `RELIO.txt`（IO），`syms` gate 读两个文件。
   - 🔄 I5 Lean 里的 CSV 模型（`csvWords`、`csvText`、每个 atom 的读写、往返律），尚无 extern。
   - ⬜ I6 `qlean_csv_read`；需要 I4、I5。 ⬜ I7 `qlean_csv_write`；需要 I6。
-  - ⬜ I8 可空列 `V+1`、文本列 `[C]`、`sym`（在步骤 6 之后）。
+  - ✅ I8 可空列 `V+1`、文本列 `[C]`；`sym` 仍在步骤 6 之后。
   - ✅ I9 `n.io` 中的 `from csv`/`to csv`，`relc run MOD NAME`；需要 I3、I7。
   - ⬜ I10 native：`abi` 加 `ownMap`、`csvRead`、`csvWrite`，`Plan.ofTm` 读 input 变量；需要 I9。
   步骤 2（分支 `d9step2`）：`Table.write S dir x`（一侧，按 schema 列名）、`Table.read S dir : IO (Tab .long S.obj)`

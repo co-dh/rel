@@ -257,13 +257,24 @@ def files : List (CsvCols × List UInt8) :=
    (kcols, bytes ("k\n" ++ String.join ((List.range 3000).map fun i => ["A\n", "\"B,x\"\n", "\"C\"\"D\"\n"].getD (i % 3) ""))),
    (vs, vsRows 2500 fun _ => none), (vs, vsRows 2500 fun i => if i = 2100 then some "z,ab\n" else none)]
 
-/-- An answer as compared: the row count and each column's `foR` parts, any other constructor by its index, or the
-    error's text. -/
-def key (r : Except IO.Error (USize × List (USize × Enc))) :
-    String ⊕ (USize × List (USize × ((List UInt8 × List UInt8) ⊕ Nat))) :=
+/-- An answer as compared: the row count and each part's count and `foR` parts, any other constructor by its index,
+    or the error's text. -/
+abbrev Key := String ⊕ (USize × List (USize × ((List UInt8 × List UInt8) ⊕ Nat)))
+
+def key (r : Except IO.Error (USize × List (USize × Enc))) : Key :=
   match r with
   | .ok (n, es) => .inr (n, es.map fun | (k, .foR m p) => (k, .inl (m.data.toList, p.data.toList)) | (k, e) => (k, .inr e.ctorIdx))
   | .error e => .inl (toString e)
+
+/-- Two keys equal, compared side by side: instance search finds no `DecidableEq` for `Key` as a whole (the product of
+    the count and the list is too deep for it), and does for each component. -/
+def Key.same : Key → Key → Bool
+  | .inl a, .inl b => decide (a = b)
+  | .inr (n, ks), .inr (m, ls) => decide (n = m) && decide (ks = ls)
+  | _, _ => false
+
+/-- A key as the error names it. -/
+def Key.say : Key → String | .inl e => e | .inr (n, ks) => s!"{n} rows, {ks.length} parts"
 
 /-- The file at `p` read by the extern `csvRead` and by its body: the same answer, else an error naming both. -/
 def agrees (p : System.FilePath) (cols : CsvCols) : IO Unit := do
@@ -271,9 +282,8 @@ def agrees (p : System.FilePath) (cols : CsvCols) : IO Unit := do
   let body ← (do
     let (n, ws) ← IO.ofExcept ((csvWords cols (← IO.FS.readBinFile p).data.toList).mapError (s!"{p}: {·}"))
     return (n.toUSize, ws.map fun a => (a.size.toUSize, Kernel.wordsFoR a)) : IO (USize × List (USize × Enc))).toBaseIO
-  unless decide (key rust = key body) do
-    let say := fun | Sum.inl e => e | Sum.inr (n, ks) => s!"{n} rows, {ks.length} columns"
-    throw (IO.userError s!"csvRead {names cols} on {p}: the extern answers {say (key rust)}, the body {say (key body)}")
+  unless (key rust).same (key body) do
+    throw (IO.userError s!"csvRead {names cols} on {p}: the extern answers {(key rust).say}, the body {(key body).say}")
 
 /-- Each file written to a temporary and read by both; then a path that does not exist (the OS error of both). -/
 def run : IO Nat := do
@@ -289,7 +299,7 @@ def run : IO Nat := do
   agrees p ab
   return files.length + 1
 
-/-- info: csvRead agrees with its body on 88 files -/
+/-- info: csvRead agrees with its body on 90 files -/
 #guard_msgs in
 #eval do IO.println s!"csvRead agrees with its body on {← run} files"
 
