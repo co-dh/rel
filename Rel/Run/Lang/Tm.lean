@@ -115,9 +115,12 @@ def Tm.dem : {A B : Obj} → Tm A B → Bool
   | _, _, .pair R S | _, _, .meet R S => R.dem && S.dem
   | _, _, .diff R _ => R.dem
   | _, _, .var d _ => d
+  -- `R × S` is `⟨π₁ R, π₂ S⟩` and, as `⊤`, a CROSS: read on the pairs its context knows (`GenK.prod`), its whole
+  -- table only where none is known, so never frozen whole (`GenK.memo`) whatever its operands
+  | _, _, .prod .. => true
   -- every leaf listed, as in `Tm.fv`
   | _, _, .val _ | _, _, .uni _ | _, _, .zero | _, _, .conv _ | _, _, .ran _ | _, _, .ldiv .. | _, _, .rdiv ..
-  | _, _, .prod .. | _, _, .leq .. | _, _, .lt .. | _, _, .nu .. | _, _, .mu .. => false
+  | _, _, .leq .. | _, _, .lt .. | _, _, .nu .. | _, _, .mu .. => false
   | _, _, .id | _, _, .top _ | _, _, .outl | _, _, .outr | _, _, .lam _ | _, _, .E _
   | _, _, .est _ | _, _, .thin _ | _, _, .nil | _, _, .prim _ | _, _, .atPos _ | _, _, .succ _ | _, _, .arith ..
   | _, _, .foldr .. | _, _, .fold .. | _, _, .foldI .. | _, _, .hylo .. => true
