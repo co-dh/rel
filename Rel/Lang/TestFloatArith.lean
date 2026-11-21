@@ -176,39 +176,50 @@ rel_program divideIntT where
     a : N ⟶ N ≜ {(0,1)}
     c : N ⟶ N ≜ ⟨a, a⟩ %
 
--- the unary float verbs (`unaryOps`): each a row `F ⟶ F`, its `Op` on the `f64` word, then `fto`; NaN no row
+-- the unary float verbs (`unaryOps`): each a row `F ⟶ D`, its `Op` on the `f64` word, then `Op.ofF64` at `D`'s atom
+-- (`f64`; `i64` for `floor`); no row where that has no word (NaN, or no `i64` value)
 rel_program unaryT where
     obj N
     obj F : f64
     obj G : f32
+    obj L : i64
     a : N ⟶ F ≜ {(0,4.0),(1,2.0),(2,-1.0),(3,0.0)}
     g : N ⟶ G ≜ {(0,4.0),(1,2.0)}
     z : N ⟶ F ≜ {(0,0.0)}
     one : N ⟶ F ≜ {(0,1.0)}
     x : N ⟶ F ≜ {(0,2.5),(1,-2.5),(2,1.5)}
     check a sqrt = {(0,2.0),(1,1.4142135623730951),(3,0.0)}
-    check g sqrt = {(0,2.0),(1,1.4142135)}
+    gs : N ⟶ F ≜ g sqrt
+    check gs = {(0,2.0),(1,1.4142135623730951)}
     check x neg = {(0,-2.5),(1,2.5),(2,-1.5)}
     check z neg = z
     check x abs = {(0,2.5),(1,2.5),(2,1.5)}
     check z exp = one
     check one log = z
-    check (a log) ∩ (z log) = 𝟘
+    al : N ⟶ F ≜ (a log) ∩ (z log)
+    check al = 𝟘
     check z sin = z
     check z cos = one
     check z tan = z
     check z asin = z
     check one acos = z
     check z atan = z
-    check x floor = {(0,2.0),(1,-3.0),(2,1.0)}
+    xf : N ⟶ L ≜ x floor
+    check xf = {(0,2),(1,-3),(2,1)}
 
 -- by hand: `√4 = 2`, `√0 = 0` exact; `√2` correctly rounded is `0x3ff6a09e667f3bcd`, the word the literal
--- `1.4142135623730951` reads as, and at `f32` `0x3fb504f3`, the word `1.4142135` reads as; `√-1` is NaN, no row 2;
+-- `1.4142135623730951` reads as, at `f64` from the `f32` `2.0` too; `√-1` is NaN, no row 2;
 -- `-0` is written `0`; `exp 0 = 1`, `log 1 = 0`, `log 0 = -∞` a value, `log -1` NaN no row; `floor -2.5 = -3`
 #guard unaryT.failures.map toString == []
 
+-- `floor`'s last step `cast f64 i64` (`Op.ofF64 .i64`): `-3.0` to `-3`; `2^63` (out of range), NaN, `±∞` to `2^63`,
+-- the word `nanFlag` drops
+#guard [0xc008000000000000, 0x43e0000000000000, 0x7ff8000000000000, 0x7ff0000000000000, 0xfff0000000000000].map
+  (QAtomicType.castWord .f64 .i64) ==
+    [0xfffffffffffffffd, 0x8000000000000000, 0x8000000000000000, 0x8000000000000000, 0x8000000000000000]
+
 -- `sqrt` at an integer object: refused by name, with the cast the program writes first
-/-- error: line 216, col 5: sqrt on N: N is an object of i64, and sqrt runs on objects of f32, f64 only; cast first, `x $ F` with `F` an object of f32, f64 -/
+/-- error: line 227, col 5: sqrt on N: N is an object of i64, and sqrt runs on objects of f32, f64 only; cast first, `x $ F` with `F` an object of f32, f64 -/
 #guard_msgs in
 rel_program sqrtIntT where
     obj N

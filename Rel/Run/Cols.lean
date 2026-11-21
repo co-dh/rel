@@ -17,14 +17,15 @@ def colPrefix (op : Op) (n : USize) (a : Enc) : Except String Enc := do
 def shiftCol (n : USize) (s : UInt64) : Except String Enc := do colMap .add n .pos (← colConst n s)
 
 /-- `colMap`'s answer as an `Arr t n`, the map's output well formed at `t` (`colMap_closed`). -/
-def colArr (op : Op) (n : USize) (a b : Enc) (t : QAtomicType := .i64) : Except String (Arr t n) :=
-  match h : colMap op n a b t with
+def colArr (op : Op) (n : USize) (a b : Enc) (t : QAtomicType := .i64) (s : QAtomicType := .i64)
+    (pre post : List (Op × UInt64) := []) : Except String (Arr t n) :=
+  match h : colMap op n a b t s pre post with
   | .ok o => .ok (Arr.mk o (colMap_closed h).2)
   | .error s => .error s
 
 /-- **`colArr` is `colMap`** on the array's column. -/
-theorem colArr_ok {op : Op} {n : USize} {a b : Enc} {t : QAtomicType} {w : Arr t n} (h : colArr op n a b t = .ok w) :
-    colMap op n a b t = .ok w.enc := by
+theorem colArr_ok {op : Op} {n : USize} {a b : Enc} {t s : QAtomicType} {pre post : List (Op × UInt64)}
+    {w : Arr t n} (h : colArr op n a b t s pre post = .ok w) : colMap op n a b t s pre post = .ok w.enc := by
   unfold colArr at h; split at h
   · cases h; rename_i o hc; exact hc
   · cases h

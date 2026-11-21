@@ -705,9 +705,9 @@ theorem rowOK_unary {s : String} (hs : s ∈ unaryOps.map (·.1)) : RowOK s := b
   repeat' (rcases hs with rfl | hs)
   all_goals first | (subst hs) | skip
   all_goals
-    exact rowOK_of (c := ⟨_, fun σ => (σ₁ σ, σ₁ σ)⟩) rfl rfl fun _ σ _ _ _ _ hv => by
+    exact rowOK_of (c := ⟨_, fun σ => (σ₁ σ, σ₂ σ)⟩) rfl rfl fun _ σ _ _ _ _ hv => by
       cases hv
-      rcases σ with _ | ⟨_, _⟩ <;>
+      rcases σ with _ | ⟨_, _ | ⟨_, _⟩⟩ <;>
         exact ⟨GenK.ofVals_wf, fun _ => ⟨⟨rfl, rfl⟩, GenK.ofVals_row_sound fun _ _ _ h => Tab.unary_den rfl h⟩⟩
 
 theorem rowOK_sum : RowOK "sum" := rowOK_of (c := RowCode.sum) rfl rfl fun _ σ _ _ _ _ hv => by

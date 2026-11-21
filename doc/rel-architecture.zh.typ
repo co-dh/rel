@@ -157,6 +157,10 @@ compile η t : {r : Rel A B // rep r = ⟦t⟧ρ}       -- 方案 A：规格在�
     （单态化，`Pre.call` 的 `alt`），`numCheck` 在具体对象上运行；所以 `GenSound` 的 `rowOK` 只面对具体 atom，不变。
   - 使用解出变量的对象后，`mkDef` 在展开上先跑 `numCheck`，报错写出调用、变量和它得到的对象：
     `` `avg` at this call, where φ is N: divide on N: … ``（`Rel/Lang/TestGenericNum.lean`）。
+- 定义的体留下的、类型与参数都够不到的开放对象（`length $ F` 里 `length` 的 ℕ），按 let 泛化成该定义的隐式对象变量
+  `n#i`（`Elab.generalise`，`mkDef` 的每次使用与无参定义都经过它）：没有使用能确定它，所以每次使用都取常量建变量时的
+  对象 `.long`（未声明名字的 `objOf`），数检查照常在它上面跑（`numObj`、`numCheck`）。字面量与 `nil` 的开放对象仍归
+  `settleOpen`；`check` 不是定义，其中仍开放的对象照旧报错。
 
 #tbl(c-syn, (auto, 1fr), ([组], [构造子]),
   [allegory], [`id` `comp` `conv` `meet` `dom` `ran`],
@@ -251,7 +255,7 @@ atom 的位宽、符号、指数和尾数位读出，不逐对列出），另加
 == 5 个 kernel：2 个原语 + 3 个优化
 
 #tbl(c-rs, (auto, 1.4fr, auto, 1fr), ([kernel], [形状（输入输出都是 foR）], [定律], [现有 driver]),
-  [`scan`], [`(op : @& Op) (rev : Bool) (s t) (n) (seg : Enc) (es : List Enc) : Enc × Option UInt64`，分段前缀折叠；含 map 与 fold。第二个分量是折叠结果：最后访问的那一行（正向第 `n − 1` 行，`rev` 时第 0 行）按 `t` 的宽度截取的字，`n = 0` 时为 `none`；kernel 写输出时从累加器取得，无需解码输出（`kscan_last`）], [`raw_scan`], [`scan` `map` `fold`],
+  [`scan`], [`(op : @& Op) (rev : Bool) (s t) (n) (seg : Option Enc) (es : List Enc) (pre post : List (Op × UInt64)) : Enc × Option UInt64`，分段前缀折叠；含 map（`seg = none`：每行一段）与 fold。每个输入字先过 `pre` 链、每个输出字再过 `post` 链（每步 `op.eval x c`），一趟完成 element-wise 的复合（批准 A）。第二个分量是折叠结果：最后访问的那一行（正向第 `n − 1` 行，`rev` 时第 0 行）按 `t` 的宽度截取的字，`n = 0` 时为 `none`；kernel 写输出时从累加器取得，无需解码输出（`kscan_last`）], [`raw_scan`], [`scan` `map` `fold`],
   [`gather`], [`(ix : Enc) (e : Enc) (fill) : Enc`，`out[i] = e[ix[i]]`], [`raw_permute`], [`permute`],
   [`scatter`], [`(ix : Enc) (e : Enc) (n) (fill) : Enc`，`out[ix[i]] = e[i]`], [`raw_scatter`（新）], [—],
   [`asc`（草稿，待审）], [`(m) (es : List (AscKey × Enc)) : List Enc × Enc`，`AscKey = atom t ┃ cells n c lo hi els`；

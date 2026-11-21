@@ -216,10 +216,29 @@ def kscanRow (op : Op) (seg seed : Array UInt64) (xs : List (Array UInt64)) (out
   out.push <$> xs.foldlM (fun a x => op.eval a (x[i]?.getD 0))
     (if 0 < i ∧ seg[i]?.getD 0 = 0 then out[i - 1]?.getD 0 else seed[i]?.getD 0)
 
+/-- A word through the per-row chain `c` of `kscan`: each step `(o, k)` maps the word `x` to `o.eval k x`, left to
+right — a unary `Op` reads `x` alone, a binary one meets the constant `k` on its left (`(.ne, w)`: is `x` not `w`). -/
+def chain (c : List (Op × UInt64)) (x : UInt64) : Except String UInt64 := c.foldlM (fun x p => p.1.eval p.2 x) x
+
+/-- Every word of `a` through `chain c`. -/
+def chainAll (c : List (Op × UInt64)) (a : Array UInt64) : Except String (Array UInt64) :=
+  List.toArray <$> a.toList.mapM (chain c)
+
+/-- The segment marks of `kscan`'s `n` rows: `seg` read as booleans, or every row a segment at `none` (a map, which
+then reads no column for it). -/
+def segAll (n : USize) : Option Enc → Except String (Array UInt64)
+  | none => .ok (Array.replicate n.toNat 1)
+  | some e => rawAll .u1 n e
+
 /-- **The scan primitive** (design §4, `raw_kscan`): the segmented prefix fold of `op` over the `n` rows of `es`, read
-at `s`. `seg`, read as booleans, marks the rows that start a segment; the first column of `es` is the seed a segment
-starts from and the others are folded into each row. So a map is every row a segment (`out[i] = op(a[i], b[i])`), a
-scan one segment from a seed column, a fold a scan's last row, and `es = [e]` fills `e` forward from the marked rows.
+at `s`. `seg`, read as booleans, marks the rows that start a segment (`none`: every row does); the first column of
+`es` is the seed a segment starts from and the others are folded into each row. So a map is every row a segment
+(`out[i] = op(a[i], b[i])`), a scan one segment from a seed column, a fold a scan's last row, and `es = [e]` fills `e`
+forward from the marked rows.
+**Owner approval A, 2026-11-20: per-row Op chain.** Each word read from `es` first goes through `chain pre` and each
+answer word through `chain post`; the fold's carry is the answer before `post`. So an element-wise computation of several
+`Op`s — widen on load, the verb, `fto`, a compare against a constant — is one pass writing one encoded column, never an
+intermediate column per `Op`. A `div` or `mod` step is refused up front, so a chain never fails part way through.
 With `rev` it is the same scan run from the last row back (van Herk's backward pass): the forward scan of every column
 reversed, `seg` included, then reversed, so `seg` marks the row a segment starts at walking backwards (its last row in
 forward order) and the last row always starts one.
@@ -230,14 +249,16 @@ Beside the answer it returns the **fold result**: the word of the row the fold v
 An `Op.eval` error, a column short of `n` raw words, an empty `es` or a `t` of no width is the `.error`, never a default.
 Temporary name until 6.11: `Kernel.scan` (`Driver.lean`) and `qlean_scan` exist. -/
 @[extern "qlean_k_scan"]
-def kscan (op : @& Op) (rev : Bool) (s t : QAtomicType) (n : USize) (seg : @& Enc) (es : @& List Enc) :
-    Except String (Enc × Option UInt64) := do
+def kscan (op : @& Op) (rev : Bool) (s t : QAtomicType) (n : USize) (seg : @& Option Enc) (es : @& List Enc)
+    (pre post : @& List (Op × UInt64) := []) : Except String (Enc × Option UInt64) := do
+  if (pre ++ post).any fun p => p.1 == .div || p.1 == .mod then
+    throw "kscan: a chain step is div or mod, which fails at 0"
   let rv := fun a : Array UInt64 => if rev then a.reverse else a
-  let g ← rawAll .u1 n seg
-  match ← es.mapM (rawAll s n) with
+  let g ← segAll n seg
+  match ← es.mapM fun e => rawAll s n e >>= chainAll pre with
   | [] => .error "kscan: es is empty; its first column is the seed"
   | seed :: xs =>
-    let out ← (List.range n.toNat).foldlM (kscanRow op (rv g) (rv seed) (xs.map rv)) #[]
+    let out ← chainAll post (← (List.range n.toNat).foldlM (kscanRow op (rv g) (rv seed) (xs.map rv)) #[])
     match t.width with
     | none => .error "kscan: the answer type has no fixed width"
     | some w =>

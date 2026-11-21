@@ -1097,8 +1097,8 @@ theorem colConst_ok (n : USize) (w : UInt64) : ∃ md pk, colConst n w = .ok (.f
 
 /-- **`kscan` answers** on columns of `n` raw words, a seed column first, at a type of fixed width, where `op` answers
     on every row's word of every column after the seed. -/
-theorem kscan_ok {op : Op} {rev : Bool} {s t : QAtomicType} {n : USize} {seg c : Enc} {cs : List Enc}
-    (hseg : (seg.raw .u1 n).size = n.toNat) (hes : ∀ x ∈ c :: cs, (x.raw s n).size = n.toNat)
+theorem kscan_ok {op : Op} {rev : Bool} {s t : QAtomicType} {n : USize} {seg : Option Enc} {c : Enc} {cs : List Enc}
+    (hseg : ∀ e, seg = some e → (e.raw .u1 n).size = n.toNat) (hes : ∀ x ∈ c :: cs, (x.raw s n).size = n.toNat)
     (ht : t.width.isSome) (hop : ∀ x ∈ cs, ∀ i < n.toNat, ∀ a, ∃ v, op.eval a ((x.raw s n)[i]?.getD 0) = .ok v) :
     ∃ r, kscan op rev s t n seg (c :: cs) = .ok r := by
   have hm : ∀ l : List Enc, (∀ x ∈ l, (x.raw s n).size = n.toNat) → l.mapM (rawAll s n) = .ok (l.map (·.raw s n)) := by
@@ -1136,12 +1136,19 @@ theorem kscan_ok {op : Op} {rev : Bool} {s t : QAtomicType} {n : USize} {seg c :
       simp only [List.foldlM_cons, kscanRow, hv, bind, Except.bind, Functor.map, Except.map]
       exact ih (fun j hj => hL j (List.mem_cons_of_mem _ hj)) _
   obtain ⟨w, hw⟩ := Option.isSome_iff_exists.1 ht
+  obtain ⟨g, hg⟩ : ∃ g, segAll n seg = .ok g := by
+    cases seg with
+    | none => exact ⟨_, rfl⟩
+    | some e => exact ⟨_, by simp only [segAll, rawAll, hseg e rfl, if_true]; rfl⟩
+  have hm' : (c :: cs).mapM (fun e => rawAll s n e >>= chainAll []) = .ok ((c :: cs).map (·.raw s n)) := by
+    simp only [chainAll_nil, bind_pure]; exact hm _ hes
   unfold kscan
-  rw [show rawAll .u1 n seg = .ok (seg.raw .u1 n) by simp [rawAll, hseg], hm _ hes]
+  rw [hg, hm']
   obtain ⟨out, hout⟩ := hf (List.range n.toNat) (fun i hi => List.mem_range.1 hi)
-    (if rev then (seg.raw .u1 n).reverse else seg.raw .u1 n) (if rev then (c.raw s n).reverse else c.raw s n) #[]
-  simp only [bind, Except.bind, List.map_cons]
-  rw [hout]; simp only [hw]; exact ⟨_, rfl⟩
+    (if rev then g.reverse else g) (if rev then (c.raw s n).reverse else c.raw s n) #[]
+  simp only [List.nil_append, List.any_nil, Bool.false_eq_true, if_false, bind, Except.bind, List.map_cons, pure,
+    Except.pure]
+  rw [hout]; simp only [chainAll_nil, pure, Except.pure, hw]; exact ⟨_, rfl⟩
 
 /-- **`colMap` answers** on columns of `n` raw words where `op` answers on every word of `b` (`kscan` reads raw words,
     not a layout). -/
@@ -1149,10 +1156,9 @@ theorem colMap_ok {op : Op} {n : USize} {a b : Enc} {t : QAtomicType} (ht : t.wi
     (sa : (raw .i64 n a).size = n.toNat) (sb : (raw .i64 n b).size = n.toNat)
     (hop : ∀ i < n.toNat, ∀ c, ∃ v, op.eval c ((raw .i64 n b)[i]?.getD 0) = .ok v) :
     ∃ o, colMap op n a b t = .ok o := by
-  obtain ⟨md, pk, hc⟩ := colConst_ok n 1
-  obtain ⟨r, hr⟩ := kscan_ok (op := op) (rev := false) (s := .i64) (t := t) (n := n) (seg := .foR md pk) (c := a)
-    (cs := [b]) (by simp [Enc.raw]) (by simp [sa, sb]) ht (by simpa using hop)
-  unfold colMap; simp only [hc, hr, bind, Except.bind, pure, Except.pure]; exact ⟨_, rfl⟩
+  obtain ⟨r, hr⟩ := kscan_ok (op := op) (rev := false) (s := .i64) (t := t) (n := n) (seg := none) (c := a)
+    (cs := [b]) (fun _ h => by cases h) (by simp [sa, sb]) ht (by simpa using hop)
+  unfold colMap; simp only [hr, bind, Except.bind, pure, Except.pure]; exact ⟨_, rfl⟩
 
 /-- **`whereCol` answers** on `m` raw `0`/`1` words within its bound, a valid column. -/
 theorem whereCol_ok {m : USize} {b : Enc} (hm : m.toNat < min (USize.size - 1) (2 ^ 63))
@@ -1163,8 +1169,8 @@ theorem whereCol_ok {m : USize} {b : Enc} (hm : m.toNat < min (USize.size - 1) (
   obtain ⟨md, pk, hz⟩ := colConst_ok m 0
   have zv : Enc.Valid m (.foR md pk) := (kscatter_closed hz).1
   have sz := (foRWords_raw _ _ _ _ ((foRWords_valid "" m _).1 zv)).2
-  obtain ⟨sk, hsk⟩ := kscan_ok (op := .add) (rev := false) (s := .i64) (t := .i64) (n := m) (seg := .foR md pk)
-    (c := .foR md pk) (cs := [b]) (by simp [Enc.raw]) (by simp [sz, sb]) rfl (by simp [Op.eval])
+  obtain ⟨sk, hsk⟩ := kscan_ok (op := .add) (rev := false) (s := .i64) (t := .i64) (n := m) (seg := some (.foR md pk))
+    (c := .foR md pk) (cs := [b]) (fun _ h => by cases h; simp [Enc.raw]) (by simp [sz, sb]) rfl (by simp [Op.eval])
   have hP : colPrefix .add m b = .ok sk.1 := by
     unfold colPrefix; simp only [hz, hsk, bind, Except.bind, pure, Except.pure]
   obtain ⟨f, hf⟩ : ∃ f : Nat → Bool, f = fun i => decide ((raw .i64 m b)[i]?.getD 0 ≠ 0) := ⟨_, rfl⟩

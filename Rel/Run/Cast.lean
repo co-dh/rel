@@ -13,7 +13,8 @@ open Rel.Ext Rel.Kernel
 namespace Tab
 
 /-- **`$` on the values `X`** (`rowDens`: the graph of `QAtomicType.embed s t`): each value `x` of `X` to the word of
-    `t` holding the number `x` holds (`colArr (.cast s t)`), kept where that word is not `nulWord`; then `canon`. -/
+    `t` holding the number `x` holds (`colArr (.cast s t)`), kept where that word is not `nulWord`
+    (`Tab.keep`, which keeps a canonical table canonical: no `canon`). -/
 def cast {A B : Obj} {n : USize} (X : Vals A n) : Except String (Tab A B) :=
   match A, B, X with
   | .atom s, .atom t, X =>
@@ -21,32 +22,34 @@ def cast {A B : Obj} {n : USize} (X : Vals A n) : Except String (Tab A B) :=
     if QAtomicType.castOK s t then do
       let w ← colArr (.cast s t) n X.enc X.enc t
       let flag ← colMap .ne n w.enc (← colConst n nulWord)
-      Tab.keep (k := .atom s) (v := .atom t) ⟨n, X, w⟩ flag >>= Tab.canon
+      Tab.keep (k := .atom s) (v := .atom t) ⟨n, X, w⟩ flag
     else .error s!"$: no cast from {repr s} to {repr t}"
   | _, _, _ => .error "$: casts a number object to a number object"
 
 end Tab
 
-/-- The unary float verbs, each a row `F ⟶ F` of `prims` under its q name: its `Op` on each value's `f64` word
-    (`Tab.unary`). Every `Op` that reads one operand at `f64` and answers one there. -/
-def unaryOps : List (String × Op) :=
-  [("sqrt", .fsqrt), ("neg", .fneg), ("abs", .fabs), ("exp", .fexp), ("log", .flog), ("sin", .fsin),
-   ("cos", .fcos), ("tan", .ftan), ("asin", .fasin), ("acos", .facos), ("atan", .fatan), ("floor", .ffloor)]
+/-- The unary float verbs, each a row `F ⟶ D` of `prims` under its q name with its `Op` and the atom of `D`: the `Op`
+    on each value's `f64` word, the answer written at `D` (`Tab.unary`). Every `Op` that reads one operand at `f64` and
+    answers one there; `floor` answers at `i64` as q's `floor` does, the rest at `f64`. -/
+def unaryOps : List (String × Op × QAtomicType) :=
+  [("sqrt", .fsqrt, .f64), ("neg", .fneg, .f64), ("abs", .fabs, .f64), ("exp", .fexp, .f64), ("log", .flog, .f64),
+   ("sin", .fsin, .f64), ("cos", .fcos, .f64), ("tan", .ftan, .f64), ("asin", .fasin, .f64), ("acos", .facos, .f64),
+   ("atan", .fatan, .f64), ("floor", .ffloor, .i64)]
 
 namespace Tab
 
-/-- **The row `s` of `unaryOps` on the values `X`** (`rowDens`: `unaryDen`): `fmapCols` of its `Op` at `X`'s float
-    atom, each value to the answer, kept where that is a word of the atom (not a NaN); then `canon`. The row is the
-    first argument so `kernRows` names one constant for every name. -/
-def unary (s : String) {A : Obj} {n : USize} (X : Vals A n) : Except String (Tab A A) :=
-  match unaryOps.lookup s, A, X with
-  | some o, .atom t, X =>
-    if t = .f32 ∨ t = .f64 then do
-      let (w, flag) ← fmapCols t o n X.enc
-      Tab.keep (k := .atom t) (v := .atom t) ⟨n, X, w⟩ flag >>= Tab.canon
-    else .error s!"{s} runs on a float object, found one of {repr t}"
-  | some _, _, _ => .error s!"{s} runs on a float object"
-  | none, _, _ => .error s!"{s}: no unary float verb"
+/-- **The row `s` of `unaryOps` on the values `X`** (`rowDens`: `unaryDen`): `fmapCols` of its `Op` from `X`'s float
+    atom to `B`'s number atom, each value to the answer, kept where that is a word of `B`'s atom (`Tab.keep`, no
+    `canon`). The row is the first argument so `kernRows` names one constant for every name. -/
+def unary (s : String) {A B : Obj} {n : USize} (X : Vals A n) : Except String (Tab A B) :=
+  match unaryOps.lookup s, A, B, X with
+  | some (o, _), .atom t, .atom u, X =>
+    if (t = .f32 ∨ t = .f64) ∧ u.storeFmt?.isSome then do
+      let (w, flag) ← fmapCols t u o n X.enc
+      Tab.keep (k := .atom t) (v := .atom u) ⟨n, X, w⟩ flag
+    else .error s!"{s} runs from a float object to a number object, found {repr t} to {repr u}"
+  | some _, _, _, _ => .error s!"{s} runs from a float object to a number object"
+  | none, _, _, _ => .error s!"{s}: no unary float verb"
 
 end Tab
 end Rel
