@@ -369,8 +369,14 @@ Diff table 的「状态」列：✅ 后面是完成它的步骤；🔄 是部分
     `Op.table`，`%` 是一个字符的符号名，不改词法。只在 f32/f64 上；在整数对象上按名报错，提示先 `$` 转换
     （`numObj`：没有整数 step 的动词在整数 atom 上都如此；未声明 atom 的对象按 `i64` 一样检查）。`x % 0.0` 为 ±∞
     （值），`0.0 % 0.0` 无行（NaN）。测试 `TestFloatArith.divideT`、`divideIntT`。
-  - ⬜ `sqrt`：`Op.fsqrt` 与 Rust（`scan.rs` op 29，libm `sqrt`）已有；语言层没有一元值动词族，按 design §3.3 是
-    `prims` 行（同 `$` 的 `Tab.cast`：一个 `colArr` 加 keep），待裁定后做。
+  - ✅ `sqrt`（分支 `fsqrt`）：一元 float 动词是 `prims` 行 `F ⟶ F`，一族一个实现：`unaryOps`（`Rel/Run/Cast.lean`）
+    列出 q 名与 `Op`：`sqrt neg abs exp log sin cos tan asin acos atan floor`，每个都是已有 Lean body 与 `#guard`
+    的 `Op`，无新 Op、kernel、导出。`Tab.unary s`（`wideCol` → `colMap o` → `ftoCols`：`Op.fto t` + 非 null 标志，
+    与 `fstepCols` 共用）+ `keep` + `canon`；语义 `unaryDen o`（`fval`、`o.eval 0`、`fto`、非 `2^63`）。定律
+    `fmapCols_spec`、`Tab.unary_den`、`rowOK_unary`；`keep_canon_holds` 是 `$` 与本族共用的"列映射后滤去 null"，
+    `cast_holds` 由它导出。`kernRows` 的项是常量加其前置参数（`Tab.unary` 带行名）。`Prim.num` 改为对象变量 →
+    允许的 atom 表（`intAtoms`、`floatAtoms`），整数对象上按名报错并给出 `$` 提示（`numObj`）。`floor` 在此为
+    `F ⟶ F`（`Op.ffloor` 的值），不是 q 的 `floor`（q 回 long）。测试 `TestFloatArith.unaryT`、`sqrtIntT`。
 - ⬜ S9 文档：architecture §1、§4.3，dataframe F4，PLAN（随各步）。
 
 ### P0 baseline — 1/1

@@ -347,6 +347,11 @@ atom 的位宽、符号、指数和尾数位读出，不逐对列出），另加
     `word_ne_nul`）→ `scan` map（`Op.ne`，对常量列 `2^63`）得 0/1 标志 → where（`keep`）→ `canon`。无新 kernel、无新
     导出。`Tab.cast_holds`：结果是 `embed` 在需求值上的图，无前提；像是规范字（`embed_canonical`：无 NaN、无 `−0`）。
     不在 `castOK` 中的对（浮点 → 整数、宽 → 窄）在 elaboration 时报错],
+  [一元浮点动词 `sqrt` `neg` `abs` `exp` `log` `sin` `cos` `tan` `asin` `acos` `atan` `floor`（`x : A ⟶ F` ↦ `A ⟶ F`，
+    `F` 为 f32/f64；`unaryOps`）], [`f32` 先 `scan` map `f32to64` 宽化 → `scan` map（该行的 `Op`：`fsqrt` …）→ `scan` map
+    `fto t` 写回规范字（NaN 写 null）→ `scan` map `Op.ne` 得标志 → where（`keep`）→ `canon`，与 `$` 同形
+    （`keep_canon_holds`），末两步与值动词共用（`ftoCols`）。无新 kernel、无新导出。`Tab.unary_den`：结果是 `unaryDen o`
+    在需求值上的图，无前提；`√−1`、`log −1` 无行。`floor` 回 `F`，不是 q 的 long。整数对象上按名报错，提示先 `$`],
   [`cons°`], [格界 → where(`s < e`) → `gather`：首元素 = payload 第 `s` 个，尾 = 格 `[s + 1, e)`（`scan`），
     共享原 payload，不建新 payload；`n + m + 1 ≥ 2^63` 拒绝],
   [`snoc°`], [同 `cons°`：格 `[s, e − 1)` 与 payload 第 `e − 1` 个],
