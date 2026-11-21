@@ -1135,7 +1135,7 @@ partial def litTy (objs : Objs) (gd : Option String) (p : Pos) (ts : List Tup) :
   | [], _ => fresh
   | _, .leaf _ =>
     let ws := ts.filterMap fun | .leaf w => some w | _ => none
-    if gd.isSome && ws.all (·.toInt?.isSome) then fresh else
+    if gd.isSome && ws.all (numParts · |>.isSome) then fresh else
     match holders objs ws with
     | [o] => pure o
     | [] => throw ⟨p, refusals objs ws⟩
@@ -1665,8 +1665,81 @@ section Num
 
 variable (objs : Objs) (mc : Lean.MetavarContext) (dp : Pos)
 
+def internal {α : Type} (what : String) : Except Err α := throw ⟨dp, s!"internal: {what}"⟩
+
+/-- The element `w` of the declared base object `o`: its position among the named elements, or the number. -/
+def code (p : Pos) (o : OTy) (w : String) : Except Err Int64 :=
+  match zonk mc o with
+  | .base n => match objs.lookup n with
+    | some i =>
+      -- a numeral at an object variable whose checks are left to each use: that build is never emitted, and each use
+      -- reads the word at the object it puts there (`numCheck`), so no code is read here
+      if i.deferred && (numParts w).isSome then pure 0 else
+      -- a number object's words are `wordAt`'s at its atom; one at another atom than `i64` holds no long (`litCol`)
+      if i.num then match i.obj with
+        | .long => (wordAt p n .i64 w).map (·.toInt64)
+        | o => throw ⟨p, s!"{w} at {n}, an object of {repr o}: no long"⟩
+      else match i.range, i.elems.idxOf? w, w.toInt? with
+      | some (lo, hi), _, some k => if lo ≤ k ∧ k ≤ hi then pure (Int64.ofInt k)
+          else throw ⟨p, s!"{w} is not in {n} = {lo}…{hi}"⟩
+      | none, some k, _ => pure (Int64.ofNat k)
+      | none, none, some k =>
+        -- each call checks its object holds the number (`build`'s `.call`)
+        if i.ovar then
+          if i.obj == .long then pure (Int64.ofInt k)
+          else throw ⟨p, s!"the number {w} at {n}, an object variable its constant is generic over"⟩
+        else throw ⟨p, s!"'{w}' is not an element of {n}"⟩
+      | _, _, _ => throw ⟨p, s!"'{w}' is not an element of {n}"⟩
+    | none => throw ⟨p, s!"unknown object '{n}'"⟩
+  | o => throw ⟨p, s!"a literal relates elements of declared objects, found {o}"⟩
+
+/-- The column of a literal's side of object `o`, its `n` rows' sides `rows`: a long column of codes at a leaf,
+    the pair of the two parts' columns at a product, at an array the column of all its elements row after row
+    as the payload, row `i` the slice `[lo i, hi i)`. `o` is zonked. -/
+def litCol (p : Pos) (n : USize) (o : OTy) (rows : List Tup) : Except Err ((A : Obj) × Vals A n) :=
+  match o with
+  | .prod x y => do
+    let ⟨A, u⟩ ← litCol p n x (rows.map fun | .pair r _ => r | r => r)
+    let ⟨B, v⟩ ← litCol p n y (rows.map fun | .pair _ r => r | r => r)
+    pure ⟨.prod A B, (u, v)⟩
+  | .arr x => do
+    let ts ← rows.mapM fun
+      | .arr es => pure es
+      | r => throw ⟨p, s!"a literal's element of {o} is an array, found {r.show}"⟩
+    let es := ts.flatten
+    needSize es.length "literal array cells" (fun _ => internal dp "literal array cells") fun m => do
+    let ⟨B, v⟩ ← litCol p m x es
+    let ends := (ts.foldl (fun (k, acc) t => (k + t.length, (k + t.length) :: acc)) (0, ([] : List Nat))).2.reverse
+    let hi := ends.map Int64.ofNat; let lo := (ends.zip ts).map fun (e, t) => Int64.ofNat (e - t.length)
+    if h : lo.length.toUSize = n ∧ hi.length.toUSize = n then
+      (let l : Arr .i64 n := h.1 ▸ col lo; let r : Arr .i64 n := h.2 ▸ col hi; pure ⟨.arr B, ⟨_, l, r, v⟩⟩)
+    else internal dp "literal array rows"
+  | .mv _ => throw (litOpen objs p rows)
+  -- a sum only the context gives, to an empty array's elements: no rows to read
+  | .sum x y =>
+    if h : n = 0 ∧ rows.isEmpty then h.1 ▸ (do
+      let ⟨A, u⟩ ← litCol p 0 x []; let ⟨B, v⟩ ← litCol p 0 y []
+      pure ⟨.sum A B, ⟨0, 0, Arr.mk (Rel.Ext.Enc.blank .u1 0) (Rel.Ext.Enc.blank_WF .u1 0), Arr.mk (Rel.Ext.Enc.blank .i64 0)
+        (Rel.Ext.Enc.blank_WF .i64 0), u, v⟩⟩ : Except Err ((A : Obj) × Vals A 0))
+    else throw ⟨p, s!"a literal relates elements of declared objects, found {o}"⟩
+  | o => do
+    -- an object declared at another atom (`obj F : f64`): each word stored at that atom (`wordAt`)
+    if let .base m := o then if let some { num := true, ovar := false, obj := .atom t, .. } := objs.lookup m then
+      if t != .i64 then
+        let ws ← rows.mapM fun
+          | .leaf w => wordAt p m t w
+          | r => throw ⟨p, s!"a literal's element of {o} is a word, found {r.show}"⟩
+        let a := ws.toArray
+        if h : a.size = n.toNat ∧ (t ≠ .u1 ∧ t.width.isSome) then
+          return ⟨.atom t, Arr.ofFn t n (fun i => a[i.val]'(by have := i.isLt; omega)) h.2⟩
+        else return ← internal dp s!"literal rows at {atomName t}"
+    let cs ← rows.mapM fun
+      | .leaf w => code objs mc p o w
+      | r => throw ⟨p, s!"a literal's element of {o} is a word, found {r.show}"⟩
+    if h : cs.length.toUSize = n then (let c : Arr .i64 n := h ▸ col cs; pure ⟨.long, c⟩) else internal dp "literal rows"
+
 /-- The number checks of the node `x` at its solved objects: the number objects it computes on (`numsAt`, read by
-    `settleLit` too) and `$`'s `castOK`. `build` runs them; a use of a generic definition runs them on its expansion
+    `settleLit` too), `$`'s `castOK`, and a literal's words read at its objects (`litCol`). `build` runs them; a use of a generic definition runs them on its expansion
     first, so the error names the use and the objects its variables were given (`mkDef`). An object the use has not
     solved yet is checked when `build` reaches it. -/
 def numCheck (x : Pre) : Except Err Unit := do
@@ -1682,6 +1755,9 @@ def numCheck (x : Pre) : Except Err Unit := do
       unless dfr s || dfr t || (match A, B with | .atom a, .atom b => QAtomicType.castOK a b | _, _ => false) do
         throw ⟨dp, s!"$ from {zonk mc s} ({nm A}) to {zonk mc t} ({nm B}): not every {nm A} value is a {nm B} \
           value, and $ keeps a number's value"⟩
+  | .lit p a b ps _ =>
+    [(a, ps.map (·.1)), (b, ps.map (·.2))].forM fun (o, rows) =>
+      if (zonk mc o).mvs.isEmpty then discard (litCol objs mc dp p rows.length.toUSize (zonk mc o) rows) else pure ()
   | _ => pure ()
 
 /-- The number checks of the use `u` at the objects the use solved its variables to (`numCheck`), the error naming
@@ -1747,8 +1823,17 @@ def mkDef (env : Env) (n : String) (dp : Pos) (ps : List Param) (body : Body) (t
       let S ← famOf I p (← elabE env' (some I) f)
       let (d, _) ← lSame p Pre.diff R S
       pure (.rel (.diff (.id I) (.dom d)) I I)
-    generalise n p k (vs.map (·.2) ++ (r :: args).flatMap fun | .rel _ s t => [s, t] | .fam _ i s t => [i, s, t])
-      r.plain.1
+    let keep := vs.map (·.2) ++ (r :: args).flatMap fun | .rel _ s t => [s, t] | .fam _ i s t => [i, s, t]
+    generalise n p k keep r.plain.1
+    -- a literal written in this body (`Pre.lits`' last part, not one an argument brings) whose open object no use
+    -- reaches is read against the objects the definition sees (`settleLit`), as the body's other names are: the
+    -- caller's objects are not in its scope, so a use cannot make it ambiguous
+    let mc ← Lean.getMCtx
+    let reach := keep.flatMap fun o => (zonk mc o).mvs
+    let ns := r.plain.1.nums mc
+    r.plain.1.lits.forM fun (q, a, b, ps, d) => if gdef.isNone || d != gdef then pure () else
+      [(a, ps.map (·.1)), (b, ps.map (·.2))].forM fun (o, ts) =>
+        if (zonk mc o).mvs.any reach.contains then pure () else settleLit env.objs ns q d ts o
     -- the number checks a generic body leaves to its uses (`ObjInfo.deferred`), on this expansion once the use has
     -- solved its variables, so the error names the use and each variable's object; a variable the use's expected
     -- type fixes (one only the result names) is solved after this returns, so its use waits (`settleUses`)
@@ -1969,8 +2054,6 @@ variable (objs : Objs) (mc : Lean.MetavarContext) (dp : Pos)
 
 def toObj (o : OTy) : Except Err Obj := objOf objs dp (zonk mc o)
 
-def internal {α : Type} (what : String) : Except Err α := throw ⟨dp, s!"internal: {what}"⟩
-
 /-- `t` at the objects `A ⟶ B`: the cast is the equality `build` decided. -/
 def at? {A B : Obj} (r : Res) : Except Err (Tm A B) :=
   match r with
@@ -2044,74 +2127,6 @@ where
   refuse {X : Type} (n : String) : Option ObjInfo → Except Err X
     | some { uniVar := some _, .. } => throw ⟨p, s!"{op} on {n}: a number object, which its constant is not generic over"⟩
     | _ => throw ⟨p, s!"{op} on {n}: no universe"⟩
-
-/-- The element `w` of the declared base object `o`: its position among the named elements, or the number. -/
-def code (p : Pos) (o : OTy) (w : String) : Except Err Int64 :=
-  match zonk mc o with
-  | .base n => match objs.lookup n with
-    | some i =>
-      -- a number object's words are `wordAt`'s at its atom; one at another atom than `i64` holds no long (`litCol`)
-      if i.num then match i.obj with
-        | .long => (wordAt p n .i64 w).map (·.toInt64)
-        | o => throw ⟨p, s!"{w} at {n}, an object of {repr o}: no long"⟩
-      else match i.range, i.elems.idxOf? w, w.toInt? with
-      | some (lo, hi), _, some k => if lo ≤ k ∧ k ≤ hi then pure (Int64.ofInt k)
-          else throw ⟨p, s!"{w} is not in {n} = {lo}…{hi}"⟩
-      | none, some k, _ => pure (Int64.ofNat k)
-      | none, none, some k =>
-        -- each call checks its object holds the number (`build`'s `.call`)
-        if i.ovar then
-          if i.obj == .long then pure (Int64.ofInt k)
-          else throw ⟨p, s!"the number {w} at {n}, an object variable its constant is generic over"⟩
-        else throw ⟨p, s!"'{w}' is not an element of {n}"⟩
-      | _, _, _ => throw ⟨p, s!"'{w}' is not an element of {n}"⟩
-    | none => throw ⟨p, s!"unknown object '{n}'"⟩
-  | o => throw ⟨p, s!"a literal relates elements of declared objects, found {o}"⟩
-
-/-- The column of a literal's side of object `o`, its `n` rows' sides `rows`: a long column of codes at a leaf,
-    the pair of the two parts' columns at a product, at an array the column of all its elements row after row
-    as the payload, row `i` the slice `[lo i, hi i)`. `o` is zonked. -/
-def litCol (p : Pos) (n : USize) (o : OTy) (rows : List Tup) : Except Err ((A : Obj) × Vals A n) :=
-  match o with
-  | .prod x y => do
-    let ⟨A, u⟩ ← litCol p n x (rows.map fun | .pair r _ => r | r => r)
-    let ⟨B, v⟩ ← litCol p n y (rows.map fun | .pair _ r => r | r => r)
-    pure ⟨.prod A B, (u, v)⟩
-  | .arr x => do
-    let ts ← rows.mapM fun
-      | .arr es => pure es
-      | r => throw ⟨p, s!"a literal's element of {o} is an array, found {r.show}"⟩
-    let es := ts.flatten
-    needSize es.length "literal array cells" (fun _ => internal dp "literal array cells") fun m => do
-    let ⟨B, v⟩ ← litCol p m x es
-    let ends := (ts.foldl (fun (k, acc) t => (k + t.length, (k + t.length) :: acc)) (0, ([] : List Nat))).2.reverse
-    let hi := ends.map Int64.ofNat; let lo := (ends.zip ts).map fun (e, t) => Int64.ofNat (e - t.length)
-    if h : lo.length.toUSize = n ∧ hi.length.toUSize = n then
-      (let l : Arr .i64 n := h.1 ▸ col lo; let r : Arr .i64 n := h.2 ▸ col hi; pure ⟨.arr B, ⟨_, l, r, v⟩⟩)
-    else internal dp "literal array rows"
-  | .mv _ => throw (litOpen objs p rows)
-  -- a sum only the context gives, to an empty array's elements: no rows to read
-  | .sum x y =>
-    if h : n = 0 ∧ rows.isEmpty then h.1 ▸ (do
-      let ⟨A, u⟩ ← litCol p 0 x []; let ⟨B, v⟩ ← litCol p 0 y []
-      pure ⟨.sum A B, ⟨0, 0, Arr.mk (Rel.Ext.Enc.blank .u1 0) (Rel.Ext.Enc.blank_WF .u1 0), Arr.mk (Rel.Ext.Enc.blank .i64 0)
-        (Rel.Ext.Enc.blank_WF .i64 0), u, v⟩⟩ : Except Err ((A : Obj) × Vals A 0))
-    else throw ⟨p, s!"a literal relates elements of declared objects, found {o}"⟩
-  | o => do
-    -- an object declared at another atom (`obj F : f64`): each word stored at that atom (`wordAt`)
-    if let .base m := o then if let some { num := true, ovar := false, obj := .atom t, .. } := objs.lookup m then
-      if t != .i64 then
-        let ws ← rows.mapM fun
-          | .leaf w => wordAt p m t w
-          | r => throw ⟨p, s!"a literal's element of {o} is a word, found {r.show}"⟩
-        let a := ws.toArray
-        if h : a.size = n.toNat ∧ (t ≠ .u1 ∧ t.width.isSome) then
-          return ⟨.atom t, Arr.ofFn t n (fun i => a[i.val]'(by have := i.isLt; omega)) h.2⟩
-        else return ← internal dp s!"literal rows at {atomName t}"
-    let cs ← rows.mapM fun
-      | .leaf w => code objs mc p o w
-      | r => throw ⟨p, s!"a literal's element of {o} is a word, found {r.show}"⟩
-    if h : cs.length.toUSize = n then (let c : Arr .i64 n := h ▸ col cs; pure ⟨.long, c⟩) else internal dp "literal rows"
 
 /-- A pair test at the objects `A×B`. -/
 def corAt (A B : Obj) : Cor → Except Err (Tm (.prod A B) (.prod A B))
