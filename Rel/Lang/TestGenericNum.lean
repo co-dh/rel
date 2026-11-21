@@ -96,4 +96,35 @@ rel_program openCheckT where
     x : 1 ⟶ [K] ≜ {(∗,[A B C])}
     check x length $ F = {(∗,3.0)}
 
+-- an object variable only the result names (dataframe request 10): each use's expected type puts an object at it,
+-- a typed definition's or a check's other side, and the number checks run there (`Elab.settleUses`)
+open Rel.Programs.prelude in
+rel_program avgGG where
+    obj Z
+    avgG : [Z] ⟶ φ ≜ ⟨sum $ φ, length $ φ⟩%
+
+open Rel.Programs.prelude avgGG in
+rel_program avgGT where
+    obj N
+    obj F : f64
+    obj G : f64
+    x : N ⟶ [Z] ≜ {(0,[1 2 3 4]),(1,[5])}
+    m : N ⟶ F ≜ x avgG
+    check m = {(0,2.5),(1,5.0)}
+    check x avgG = m
+    g : N ⟶ G ≜ x avgG
+    check g = {(0,2.5),(1,5.0)}
+
+-- by hand: (1+2+3+4)/4 = 2.5, 5/1 = 5
+#guard avgGT.failures.map toString == []
+
+-- a use nothing fixes the variable at is refused, naming the variable, the definition and the use
+/-- error: line 128, col 13: `avgG` at this use: nothing here fixes its object variable 'φ' (`avgG` : [Z] ⟶ φ); give the use an expected type: a typed definition, a check against a typed term, or a composition that fixes φ -/
+#guard_msgs in
+open Rel.Programs.prelude avgGG in
+rel_program avgGOpen where
+    obj N
+    x : N ⟶ [Z] ≜ {(0,[1 2 3 4])}
+    print x avgG
+
 end Rel.Lang.TestGenericNum
