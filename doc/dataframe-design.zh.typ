@@ -295,10 +295,11 @@ next(n, x)        ≜ dom(x) tot(⟨𝟙, ⊤ n⟩plus x)                 行 i 
   ([asof join], [`aj(k, t, h, u, x, y) ≜ ⟨x, dom(x) tot(agg(m, last) y)⟩ where r ≜ ⟨π₁, sums(counts(ran(x ⟨k, t⟩), (y ⟨h, u⟩)°))⟩, m ≜ x ⟨k, t⟩ r (y ⟨h, u⟩ r)°`；
     `counts(D, R) ≜ agg(R, length) ∪ ((D − dom(R)) ⊤ {(∗,0)})`],
     [`counts(D, R)` 在 `D` 的每个点上给 `R` 的像的长度，没有像的点为 0；q 的 `aj`：`r` 数同 key 的 `y` 行中时间不晚于该时间的个数，`m` 接上最新的 `u ≤ t`；`agg(m, last)` 是并列时取最后一行；
-    计数在 `y` 的位置对象 `μ` 里；`ι = 𝟙`；`sums` 沿时间扫描，时间列须是数对象，`date` `datetime` 的时间列被拒绝：F4], "part"),
+    计数在 `y` 的位置对象 `μ` 里；`ι = 𝟙`；`sums` 沿时间扫描，`date` `datetime` 的时间列照常运行（`TestFrameTyped.ajDateT`）；`f64` 的时间列被拒：F4], "full"),
   ([`cum_sum` 等], [`cumAgg(f, x) ≜ agg(dom(x) ≥ dom(x), f)`；`cumSum(c) ≜ sumsBy(dom(c) ⊤ 𝟙(1), c)`；
     `sumsBy(g, c) ≜ ⟨g, 𝟙⟩ sums(⟨g, 𝟙⟩° c)`],
-    [行 `i` 聚合 `j ≤ i` 的行；q：`sums`（`f` 为 `sum`）。`cumSum` 是 `cumAgg(F(c) sum, c)`，一组；`sumsBy` 是每组内的 `cum_sum().over(g)`], "full"),
+    [行 `i` 聚合 `j ≤ i` 的行；q：`sums`（`f` 为 `sum`）。`cumSum` 是 `cumAgg(F(c) sum, c)`，一组；`sumsBy` 是每组内的 `cum_sum().over(g)`；
+    `f64` 列上每行一次 IEEE 加法，沿位置从左到右（`TestFrameStat`）；`f32` 列先 `$` 到 `f64`], "full"),
   ([`shift(k)`], [`shift(k, x)`；`shift(−k)` 是 `next(k, x)`], [前（`next`：后）`k` 个位置是 null], "full"),
   ([`diff`], [`diff(1, c)`], [`c(i) − c(i−1)`，第 0 行 null], "full"),
   ([`rolling(w)`], [`rolling(w, f, x)`], [], "full"),
@@ -340,10 +341,12 @@ next(n, x)        ≜ dom(x) tot(⟨𝟙, ⊤ n⟩plus x)                 行 i 
   （`sortBy` `topK` `distinct` `aggregate` 的组与 `min` `max`、join）照常运行（`TestFrameTyped`）。`arith` 与 `<` `≤`
   在 `f64` `f32` 上（`TestFloatArith`）；`f64` 列的和是 fold `⦇[{(∗,0)}, plus]⦈ʳ`，逐列、逐组都对（`TestFrameStat`）。
   真商 `%` 与 `sqrt` 给出 `avg` `var` `cov` `corr` `med` `valueProportions` 与 `describe` 的均值、标准差。仍缺：
-  (1) prim `sum` 与 `sums` 只在 `i64` 上，所以实数统计只在整数列上，`f64` 列在入口的 `$ Z` 被拒，`cumSum` 在 `f64` 上被拒；
+  (1) prim `sum` 只在 `i64` 上（`TestFrameTyped.sumFloatT`），所以实数统计只在整数列上，`f64` 列在入口的 `$ Z` 被拒；
+  `sums` 在 `i64` `f64` 上，`cumSum` `sumsBy` 在 `f64` 列上运行（`TestFrameStat`），`f32` 列被拒、先 `$` 到 `f64`；
   (2) `$` 与 `%` `sqrt` 只接受声明的对象，对象变量不行，所以库自己声明 `F : f64`、`Z : i64`、`D : date`，统计不在别的
   float 对象上；(3) 浮点 → 整数（分位数的下标）、`pow`、`fround`，故无 `percentile`、`skewness`、`zScore`；
-  (4) `aj` 的时间沿 `sums` 扫描，只能是数对象，`date` 时间列被拒（`TestFrameTyped.ajDateT`）。
+  (4) `aj` 的时间沿 `sums` 扫描：`date` `datetime` 的时间列运行（`TestFrameTyped.ajDateT` `sumsTimeT`），`f64` 的
+  时间列被拒，`f64` 的 canon 序在 S5 之前是位的序（`TestFrameTyped.sumsFloatPosT`）。
 - *F5 时间类型。* `date`、`datetime` 是整数 code，没有时区。日历运算（取月份、截断到月）是整数算术加上与日历表的 join。
 - *F6 IO 在代数之外。* 程序读的 frame 是 `input` 语句声明的名字，路径与格式写在语句里；CSV 的解析是 crate 的 IO 导出，不是列上的关系。
 - *F7 宿主函数。* `lift`、`lift2`、`apply`、`bind` 接受任意 Haskell 函数；Rel 只有 `Op` 的有限集合及其复合。
