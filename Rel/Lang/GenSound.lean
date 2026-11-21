@@ -828,8 +828,8 @@ theorem rowOK_sums : RowOK "sums" :=
   have h1 : rowArity "sums" = 1 := by decide
   rcases xs with _ | ⟨⟨X, Y, x⟩, _ | ⟨_, _⟩⟩ <;> simp only [List.length_cons, List.length_nil, h1] at hn <;>
     try omega
-  rcases σ with _ | ⟨a, σ⟩ <;>
-    simp only [Codes.at, List.getElem?_cons_zero, List.getD_cons_zero, List.getD_nil] at hv
+  rcases σ with _ | ⟨a, _ | ⟨b, _ | ⟨c, σ⟩⟩⟩ <;>
+    simp only [Codes.at, List.getElem?_cons_zero, List.getD_cons_zero, List.getD_cons_succ, List.getD_nil] at hv
   all_goals
     split at hv
     case isFalse => simp at hv
@@ -842,8 +842,8 @@ theorem rowOK_sums : RowOK "sums" :=
     rename_i he; revert hss; obtain ⟨h1, h2⟩ := he; subst h1; subst h2; intro hss
     simp only [Sem.one]
     split
-    · exact GenK.ofRel_sound hss fun _ _ h hr => by subst hr; exact Tab.sums_holds h
-    · rename_i h; exact absurd ⟨rfl, trivial⟩ h
+    · exact GenK.ofRel_sound hss fun _ _ h hr => by subst hr; exact Tab.sums_den h
+    · rename_i h; exact absurd ⟨rfl, rfl⟩ h
 
 theorem rowOK_F : RowOK "F" := rowOK_args (c := RowCode.map) rfl rfl fun _ σ xs _ _ _ _ hn _ hv => by
   have h1 : rowArity "F" = 1 := by decide
