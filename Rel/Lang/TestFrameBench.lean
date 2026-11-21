@@ -29,8 +29,7 @@ rel_program benchN where
 
     -- B1 (Q1): shipdate ≤ 100 keeps d2 < 5; per (returnflag, linestatus): Σ quantity, Σ price, Σ rev, count, by key
     b1(x : N ⟶ LI) : N ⟶ (N×N)×(N×(N×(N×N))) ≜ sortBy(π₁, aggregate(⟨col LI "returnflag", col LI "linestatus"⟩, ⟨F(f col LI "quantity") sum, ⟨F(f col LI "price") sum, ⟨F(f rev) sum, length⟩⟩⟩, f)) where f ≜ filterBy(dom(col LI "shipdate" ≤ {(100,∗)}), x)
-    -- B3 (Q3): segment 1, orderdate < 85, shipdate > 85; Σ rev per order, the 10 largest. At 10⁵ rows `joinOn`'s
-    -- `x × y` is built whole (1500·55001 rows, below the pair bound) and fails the allocation; at 10⁶ it is past it (measured)
+    -- B3 (Q3): segment 1, orderdate < 85, shipdate > 85; Σ rev per order, the 10 largest
     -- a join's position object is free: the inner join of the two is a definition so its frame is at `N`
     co(c : N ⟶ Cust, o : N ⟶ Ord) : N ⟶ Cust×Ord ≜ innerJoin(col Cust "custkey", col Ord "custkey", filterBy(dom(col Cust "segment" {(1,1)}), c), filterBy(dom(col Ord "orderdate" < {(85,∗)}), o))
     b3(c : N ⟶ Cust, o : N ⟶ Ord, l : N ⟶ LI) : N ⟶ N×N ≜ topK({(∗,10)}, π₂, aggregate(π₂ col LI "orderkey", F(j π₂ rev) sum, j)) where j ≜ innerJoin(π₂ col Ord "orderkey", col LI "orderkey", co(c, o), filterBy(dom(col LI "shipdate" > {(85,∗)}), l))
@@ -80,5 +79,17 @@ rel_program bench4 where
     check b13(cu, od) = {(0,(3,300)),(1,(1,100)),(2,(0,100))}
 
 #guard bench4.failures.map toString == []
+
+-- n = 10⁵: orders 10⁴, customers 5000; B3's revenue is 4650o + 3710 whatever n, and the survivors are a ≡ 4 (10), b ∈ {3,4,5}
+-- as above, so the 10 largest o are a = 994, 984, 974 with b = 5, 4, 3, then a = 964, b = 5 (each a step of 465000)
+open Rel.Programs.prelude benchN in
+rel_program bench5 where
+    li : N ⟶ LI ≜ lineitem(ext(ext(ext(ext(D)))))
+    od : N ⟶ Ord ≜ orders(ext(ext(ext(D))))
+    cu : N ⟶ Cust ≜ customer(ext(ext(ext(F5))))
+    check b3(cu, od, li) = {(0,(9945,46247960)),(1,(9944,46243310)),(2,(9943,46238660)),(3,(9845,45782960)),(4,(9844,45778310)),
+      (5,(9843,45773660)),(6,(9745,45317960)),(7,(9744,45313310)),(8,(9743,45308660)),(9,(9645,44852960))}
+
+#guard bench5.failures.map toString == []
 
 end Rel.Lang.TestFrameBench

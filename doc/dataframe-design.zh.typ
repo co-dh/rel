@@ -139,7 +139,7 @@ Rel 本身（`Obj`、`Tm`、kernel、编码、原子、`compile`）见 `rel-arch
   [`sortBy`、`shuffle`], [`dom(x) iasc(x a)`：`dom(x)` 上的置换],
   [`take` `drop` `range`], [`(<n)`、`(+n)`、`(<b−a) (+a)`],
   [`<>`、`union`、`melt`], [第二个 frame 的位置经 `(dom(y) (+m₁))°`：`x ∪ ((dom(y) (+m₁))° y)`],
-  [join], [`asc(ran(⟨𝟙, K⟩)) : N ⟶ N×N`，`K : N ⟶ N` 是匹配的位置对，按 `(i, j)` 的字典序；结果后接 `x × y`],
+  [join], [`asc(ran(⟨𝟙, K⟩)) : N ⟶ N×N`，`K : N ⟶ N` 是匹配的位置对，按 `(i, j)` 的字典序；结果后接 `⟨π₁ x, π₂ y⟩`],
   [`groupBy`、`aggregate`、pivot], [`firstOcc(x k)`：每组一行，按 key 第一次出现的顺序；组是 `group(x k) : N ⟶ N`（3.1）],
 )
 
@@ -167,7 +167,7 @@ firstOcc(c)       ≜ dom(c) asc(ran(agg(c°, head)))   组号 ↦ 该值第一�
 group(c)          ≜ firstOcc(c) c c°             组号 ↦ 持有该值的各位置；q：group
 lastOcc(c)        ≜ agg(group(c), last)          组号 ↦ 组内最后一个位置
 J(a, b, x, y)     ≜ x a (y b)°                   key 相等的左右位置对
-joinOn(K, x, y)   ≜ asc(ran(⟨𝟙, K⟩)) (x × y)     K : N ⟶ N 的位置对按 (i, j) 字典序编号
+joinOn(K, x, y)   ≜ asc(ran(⟨𝟙, K⟩)) ⟨π₁ x, π₂ y⟩   K : N ⟶ N 的位置对按 (i, j) 字典序编号
 // 聚合：f 读一组位置的升序数组
 agg(R, f)         ≜ dom(R) Λ(R) f                R : A ⟶ N；Λ(R) 是 R 的像，位置升序
 summarize(f, x)   ≜ agg((dom(x) ⊤)°, f)          1 ⟶ D：整个 frame 是一组
