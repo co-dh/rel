@@ -18,7 +18,7 @@ inductive Op
   | add | sub | mul | div | mod | min | max | neg | abs
   | eq | ne | lt | le | gt | ge | and | or | not | first | last
   | fadd | fsub | fmul | fdiv | fpow | fmin | fmax | fneg | fabs
-  | fsqrt | fexp | flog | fsin | fcos | ftan | fasin | facos | fatan | ffloor
+  | fsqrt | fexp | flog | fsin | fcos | ftan | fasin | facos | fatan | ffloor | fround
   | feq | fne | flt | fle | fgt | fge
   | f32to64
   /-- `$` (S6/S7): the word of `t` holding the value of the word read at `s` (`QAtomicType.castWord`), `2^63` where
@@ -35,7 +35,7 @@ namespace Op
 unary ops and `last` look at the element alone. -/
 def readsAcc : Op → Bool
   | neg | abs | not | last | fneg | fabs | fsqrt | fexp | flog | fsin | fcos | ftan | fasin | facos | fatan | ffloor
-  | f32to64 | cast .. | fto _ => false
+  | fround | f32to64 | cast .. | fto _ => false
   | _ => true
 
 /-- Whether `eval (eval a b) c = eval a (eval b c)`, so a scan may be cut into blocks and the blocks' totals combined.
@@ -50,6 +50,15 @@ private def w (b : Bool) : UInt64 := if b then 1 else 0
 private def fw (x : Float) : UInt64 := x.toBits
 /-- A NaN is the least value, as `Ew.ord64` orders the floats; so the `fmin`/`fmax` choice is total. -/
 private def fle' (x y : UInt64) : Bool := (f x).isNaN || (!(f y).isNaN && (f x ≤ f y))
+
+/-- `fround`'s word: `x` rounded to the nearest integer, a tie to the even one (IEEE roundTiesToEven, C `rint`), from
+    `floor` and the gap `d = x − ⌊x⌋` (exact below `2^52`, `0` above, where `x` is its own floor); a zero answer keeps
+    `x`'s sign (`−0.5` to `−0`), as `rint` does; a NaN is itself. Lean's `Float.round` sends a tie away from zero. -/
+def roundEven (x : UInt64) : UInt64 :=
+  let y := (f x).floor
+  let d := f x - y
+  let r := if d < 0.5 then y else if 0.5 < d then y + 1 else if (y / 2).floor * 2 == y then y else y + 1
+  if (f x).isNaN then x else if r == 0 then x &&& 0x8000000000000000 else fw r
 
 /-- A NaN keeps the sign of the `f32` NaN it widens (q's null is the negative one). -/
 def widen32 (x : UInt64) : UInt64 :=
@@ -120,6 +129,7 @@ def eval : Op → UInt64 → UInt64 → Except String UInt64
   | facos, _, x => .ok (fw (f x).acos)
   | fatan, _, x => .ok (fw (f x).atan)
   | ffloor, _, x => .ok (fw (f x).floor)
+  | fround, _, x => .ok (roundEven x)
   | feq, a, x => .ok (w (f a == f x))
   | fne, a, x => .ok (w (f a != f x))
   | flt, a, x => .ok (w (f a < f x))
@@ -174,6 +184,13 @@ private def neg1 : UInt64 := 0xffffffffffffffff
 #guard Op.facos.eval 0 (one 1.0) matches .ok 0
 #guard Op.fatan.eval 0 0 matches .ok 0
 #guard Op.ffloor.eval 0 (one 2.5) matches .ok 0x4000000000000000
+-- `fround` (crate/src/scan.rs `op_eval_floors_and_types_its_errors` checks the Rust on the same words): ties to even
+-- `0.5 1.5 2.5 -0.5 -1.5` to `0 2 2 -0 -2`, `2.4 2.6 -0.3` to `2 3 -0`, `2^52 + 1` and `±∞` themselves, a NaN itself
+#guard [0.5, 1.5, 2.5, -0.5, -1.5, 2.4, 2.6, -0.3, 4503599627370497.0, 1.0 / 0.0, -1.0 / 0.0].map
+    (fun x => (Op.fround.eval 0 (one x)).toOption) ==
+  [0, 0x4000000000000000, 0x4000000000000000, 0x8000000000000000, 0xc000000000000000, 0x4000000000000000,
+   0x4008000000000000, 0x8000000000000000, 0x4330000000000001, 0x7ff0000000000000, 0xfff0000000000000].map some
+#guard Op.fround.eval 0 0x7ff8000000000001 matches .ok 0x7ff8000000000001
 #guard Op.feq.eval (one 1.0) (one 1.0) matches .ok 1
 #guard Op.fne.eval (one 1.0) (one 1.0) matches .ok 0
 #guard Op.flt.eval (one 1.0) (one 2.0) matches .ok 1

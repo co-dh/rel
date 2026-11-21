@@ -143,9 +143,9 @@ pub fn op_word(op: u8, a: u64, x: u64) -> u64 {
         27 => x ^ 0x8000_0000_0000_0000, 28 => x & 0x7fff_ffff_ffff_ffff,
         29 => fw(m::sqrt(f(x))), 30 => fw(m::exp(f(x))), 31 => fw(m::log(f(x))), 32 => fw(m::sin(f(x))), 33 => fw(m::cos(f(x))),
         34 => fw(m::tan(f(x))), 35 => fw(m::asin(f(x))), 36 => fw(m::acos(f(x))), 37 => fw(m::atan(f(x))),
-        38 => fw(crate::ew::floor64(f(x))),
-        39 => w(f(a) == f(x)), 40 => w(f(a) != f(x)), 41 => w(f(a) < f(x)), 42 => w(f(a) <= f(x)), 43 => w(f(x) < f(a)), 44 => w(f(x) <= f(a)),
-        45 => widen32(x),
+        38 => fw(crate::ew::floor64(f(x))), 39 => crate::ew::round_even(x),
+        40 => w(f(a) == f(x)), 41 => w(f(a) != f(x)), 42 => w(f(a) < f(x)), 43 => w(f(a) <= f(x)), 44 => w(f(x) < f(a)), 45 => w(f(x) <= f(a)),
+        46 => widen32(x),
         // `fto t`, the last constructor: its code is `FTO + t`; `cast s t`: `CAST + 13 s + t` (`op_code`)
         c if c >= FTO => fto_word(c - FTO, x),
         _ => cast_word(op, x),
@@ -170,10 +170,10 @@ pub fn fto_word(t: u8, x: u64) -> u64 {
 }
 
 /// The code of `Op.cast s t` is `CAST + 13 * s + t` (`s`, `t` `QAtomicType` indices, below 13): one `u8` names every op.
-pub const CAST: u8 = 46;
+pub const CAST: u8 = 47;
 
-/// The op code of the Lean `Op` `o`: a nullary op is the scalar of its constructor index, `cast s t` (tag 46) a ctor
-/// whose two `QAtomicType` fields are its scalar bytes 0 and 1, `fto t` (tag 47) one whose field is byte 0.
+/// The op code of the Lean `Op` `o`: a nullary op is the scalar of its constructor index, `cast s t` (tag 47) a ctor
+/// whose two `QAtomicType` fields are its scalar bytes 0 and 1, `fto t` (tag 48) one whose field is byte 0.
 #[cfg(all(feature = "ffi", not(any(test, feature = "std"))))]
 pub fn op_code(o: crate::lean::B) -> u8 {
     if o.is_scalar() { o.unbox() as u8 }
@@ -230,10 +230,10 @@ pub fn cast_word(code: u8, x: u64) -> u64 {
     r.unwrap_or(NONE)
 }
 
-/// `body` with the const `$k` bound to the op `op` (0 ..= 45, `CAST` for every cast), so a loop over rows is compiled
+/// `body` with the const `$k` bound to the op `op` (0 ..= 46, `CAST` for every cast), so a loop over rows is compiled
 /// once per op and its `op_word` folds to that op's arm: the `match` on the op runs once per block, not once per row.
 macro_rules! by_op { ($op:expr, $k:ident => $body:expr) => { by_op!(@ $op, $k, $body; 0 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17
-    18 19 20 21 22 23 24 25 26 27 28 29 30 31 32 33 34 35 36 37 38 39 40 41 42 43 44 45) };
+    18 19 20 21 22 23 24 25 26 27 28 29 30 31 32 33 34 35 36 37 38 39 40 41 42 43 44 45 46) };
     (@ $op:expr, $k:ident, $body:expr; $($n:literal)*) => { match $op { $($n => { const $k: u8 = $n; $body })* _ => { const $k: u8 = CAST; $body } } } }
 
 /// The writer's block size, `kscan`'s answer grid: a block of rows is computed whole in one scratch of this many words.
@@ -532,7 +532,7 @@ mod kscan_tests {
     }
     /// Chains `kscan` is checked under beside the empty one: `f32to64` on load and a compare against `2^63` on the
     /// answer; `neg` then `+ 3` on load and `fsqrt` then `fto f64` on the answer.
-    const CHAINS: [(&[(u8, u64)], &[(u8, u64)]); 2] = [(&[(45, 0)], &[(10, 1 << 63)]), (&[(7, 0), (0, 3)], &[(29, 0), (FTO + 6, 0)])];
+    const CHAINS: [(&[(u8, u64)], &[(u8, u64)]); 2] = [(&[(46, 0)], &[(10, 1 << 63)]), (&[(7, 0), (0, 3)], &[(29, 0), (FTO + 6, 0)])];
     /// `chain` on words, as `chainAll` states it.
     fn chained(c: &[(u8, u64)], v: &[u64]) -> Vec<u64> { v.iter().map(|&x| c.iter().fold(x, |x, &(o, k)| op_word(o, k, x))).collect() }
     /// Both directions, `seg` as bits and as a boolean `foR` (`kscan`'s own boolean answer, at 8 bytes), as `none` where
@@ -570,7 +570,7 @@ mod kscan_tests {
                 let p = bytes(&y, w);
                 let cut = p[..p.len().saturating_sub(3)].to_vec();
                 let sv: Vec<u64> = (0..n).map(|i| (0..w).fold(0u64, |a, k| a | (cut.get(i * w + k).copied().unwrap_or(0) as u64) << (8 * k))).collect();
-                for op in [0u8, 1, 2, 3, 5, 6, 9, 10, 11, 12, 13, 14, 15, 18, 19, 20, 25, 39, 41, 45] {
+                for op in [0u8, 1, 2, 3, 5, 6, 9, 10, 11, 12, 13, 14, 15, 18, 19, 20, 25, 40, 42, 46] {
                     for g in &segs {
                         for t in [QT_BOOLEAN, 6] {
                             check(op, s, t, n, g, &[col(&c), col(&x)]);
@@ -635,9 +635,15 @@ mod kscan_tests {
         assert_eq!(op_eval(3, i64::MIN as u64, -1i64 as u64), Ok(i64::MIN as u64));
         assert_eq!(op_eval(3, 7, 0), Err("Op.div: integer division by 0"));
         assert_eq!(op_eval(4, 7, 0), Err("Op.mod: integer remainder by 0"));
-        assert_eq!(op_eval(45, 0, 0x3fc0_0000), Ok(0x3ff8_0000_0000_0000));
+        assert_eq!(op_eval(46, 0, 0x3fc0_0000), Ok(0x3ff8_0000_0000_0000));
         assert_eq!(op_eval(25, f64::NAN.to_bits(), 1f64.to_bits()), Ok(f64::NAN.to_bits()));
         assert_eq!(op_eval(38, 0, 2.5f64.to_bits()), Ok(2f64.to_bits()));
+        // `fround` at the words Op.lean's `#guard` checks the Lean body on
+        let r = |x: f64| op_word(39, 0, x.to_bits());
+        assert_eq!([0.5, 1.5, 2.5, -0.5, -1.5, 2.4, 2.6, -0.3, 4503599627370497.0, f64::INFINITY, f64::NEG_INFINITY].map(r),
+            [0, 0x4000000000000000, 0x4000000000000000, 0x8000000000000000, 0xc000000000000000, 0x4000000000000000,
+             0x4008000000000000, 0x8000000000000000, 0x4330000000000001, 0x7ff0000000000000, 0xfff0000000000000]);
+        assert_eq!(op_word(39, 0, 0x7ff8000000000001), 0x7ff8000000000001);
     }
 }
 
