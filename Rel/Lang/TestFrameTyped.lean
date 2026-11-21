@@ -158,7 +158,7 @@ rel_program sumsFloatT where
 #guard sumsFloatT.failures.map toString == []
 
 -- `sums` at `f32` values: refused by name, with the cast to `f64` that runs it
-/-- error: line 163, col 5: sums on H: H is an object of f32, and sums runs on objects of i64, f64 only; cast first, `x $ F` with `F` an object of f64 -/
+/-- error: line 168, col 5: sums on H: H is an object of f32, and sums runs on objects of i64, f64 only; cast first, `x $ F` with `F` an object of f64 -/
 #guard_msgs in
 rel_program sumsF32T where
     obj K = {A}

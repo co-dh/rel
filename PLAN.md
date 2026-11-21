@@ -54,7 +54,7 @@
 - 非 log 的输出（baseline、row 分析）写进本文件或 `doc/`，不写进 `/data/tmp`。
 - owner 决定（2026-11-20，最终）：
   - date 字面量写作 q 的 `2024.01.15`，新 token（实现：分支 `datelit`，`Elab.qForm`；值为 1970-01-01 起的天数）。
-  - 浮点 `sum`/`sums` 按从左到右求和（q 的顺序，与 `sums` 前缀和一致）；整数上右折叠定义不变，浮点的含义写为左折叠。
+  - `sum`/`sums` 在 i64 与 f64 上都按从左到右求和（q 的顺序，owner 裁定 C）：`sum` 的定义是左折叠 `⦇[0, plus]⦈`。
   - cast 逐值偏：没有像的值没有行，不报错。
 - 文本字面量 `"…"`（分支 `txtlit`）：`[C]` 上字节的数组，`Tup.ofText`；未写类型的检查里字面量的对象由其上的数值运算定
   （`Elab.settleLit`），`where` 表按输入的声明类型读（`Expr.lit` 的 `ty`）。测试 `Rel/Lang/TestDateLit.lean`。
@@ -373,11 +373,16 @@ Diff table 的「状态」列：✅ 后面是完成它的步骤；🔄 是部分
   `sums` 的值对象为 i64 或 f64（`sumAtoms`）。`Tab.sumsOn` 对值 atom 泛型：f64 上一次分段 `kscan .fadd`（种子 `+0`），
   `W' = fto W`，`W' ≠ W` 或 NaN 为坏步，`−0` 报错，分段 `kscan .or` 传播后 `keep`。`sumsDen`/`sumsAt K P V` 泛型；
   定律 `stepF_word`、`sumsF_fold`、`sumsF_holds`、`sums_den`（无 sorry）。测试 `TestFrameTyped.sumsFloatT`（手算
-  `(1, 1e16, −1e16) → (1, 1e16, 0)`）、`sumsF32T`，`TestFrameStat` 的 f64 `cumSum`/`sumsBy`。未做：f64 `sum`（格），
-  `sumFloatT` 仍钉住其报错；计划：`RowCode.sum` 为 `(.arr σ₁, σ₁)`，`sumAt` 在 i64 为原右折叠、在 f64 为左折叠
-  `foldDen (· = ofBits 0) (stepAt .f64 add)`；`Tab.sum` 的 f64 分支与 `sumsOn` 共用同一 f64 尾部（EXPAND 后以每格首元素
-  为段标做分段 `kscan .fadd`，`kscatter .or` 得坏格，读每格末元素的 `W'`），需证 `Tab.sum` f64 的 holds 定理（同
-  `RepTabDiv.Tab.sum_holds` 的形状）；`DfnCut.sum` 仍只在 i64。
+  `(1, 1e16, −1e16) → (1, 1e16, 0)`）、`sumsF32T`，`TestFrameStat` 的 f64 `cumSum`/`sumsBy`。
+  S4g（分支 `sumL`→`sumL2`，owner 裁定 C）：`sum` 的定义在每个 atom 上是左折叠 `⦇[0, plus]⦈`（i64 也改为左折叠）。
+  `RowCode.sum` 为 `(.arr σ₁, σ₁)`，含义 `sumAt V`（`foldDen (· = ofBits 0) (stepAt t add)`）；`Tab.sumOn` 与
+  `sumsOn` 共用 `sumTail`（`Rel/Run/SetOps.lean`：分段 `kscan .add`/`.fadd` 与坏步）；定理 `sumTail_fold`、
+  `Tab.sum_holds`（任意 `V`：`T.Holds xs c ↔ (∃ i, X.row i = xs) ∧ sumAt V xs c`）、`runScan_ok`、`seenSeg_ok`；
+  `rowOK_sum` 用 `Tab.sum_holds`。测试 `TestFrameTyped.sumFloatT`（`1, 1e16, −1e16 → 0`）、`Kern45.sumFold`
+  （`3 3 −3` 的中间和 6 ∉ `−3…3`）。
+  🔄 未完：`DfnCut.sum`/`dfns`/`zeroTm` 仍只在 `.arr .long ⟶ .long`，所以 f64 对象上的 `sum` 报
+  "internal: sum's definition (dfns) takes other relations or objects"，泛型常量（`sumG`、`sm`）的体在占位 atom 上
+  以无 universe 的形式建成，跑融合行不截断（`TestFusedM.gz`、`TestGenericN.sm(y)` 失败）。见 `/data/tmp/typedbase/sumL2-notes.md`。
 - ⬜ S5 float 上的 `Obj.key = ordCode`；`key_ordCode`、`ascBad`、float 上的 `LamLaw`。
 - 🟡 S6 行 `$`（分支 `tb-s6`，owner 裁定 J）：`x $ F` 与 `QAtomicType.embed s t` 的图复合（`castDen`），部分映射、不舍入；
   允许的对由 `castOK` 从两个 atom 的格式读出（加宽、整数 → 浮点）；有损方向在 elaboration 报错。`Tab.cast`（分支
@@ -409,7 +414,7 @@ Diff table 的「状态」列：✅ 后面是完成它的步骤；🔄 是部分
     允许的 atom 表（`intAtoms`、`floatAtoms`），整数对象上按名报错并给出 `$` 提示（`numObj`）。`floor` 在此为
     `F ⟶ F`（`Op.ffloor` 的值），不是 q 的 `floor`（q 回 long）。测试 `TestFloatArith.unaryT`、`sqrtIntT`。
   - 🟡 float `sum`/`sums`：`mean`、float `describe` 需要它。`sums` 取 i64 或 f64 值（S4e/S4f），f32 按名报错；
-    f64 `sum`（格）未做。
+    f64 `sum`（格）已落地（分支 `sumL2`）。
   - ✅ 对象变量上的数动词与 `$`（分支 `objvar`，dataframe 请求，architecture §1）：泛型定义的体可写自己的对象变量
     （`x $ φ`，`Parse.S.ovars`、`Env.ovars`）；数动词与 `$` 在对象变量上的检查（`Elab.numCheck`）留到每次使用：
     `Expand.once` 在全 `.long` 建不成时以 `ObjInfo.deferred` 建一次只作判定，成则定义无常量；无常量的定义、以及给
@@ -835,7 +840,7 @@ Diff table 的「状态」列：✅ 后面是完成它的步骤；🔄 是部分
         - 2026-11-20 06:21，master bfa135d + pin：**check-67 全绿**（481/2、483/483，235 / 235；定义数 478 → 483 是新测试
           `sumFold` 的 5 个）。owner 的两项决定已落地：
           - **E**（`sum`/`length` 在有 universe 的对象上等于 fold，逐步检查；sumE af94837）：`Prim.dfn : Option Expr` 是 row 表里
-            每个 row 的定义（`length.dfn = ⦇[0, π₁ succ]⦈`，`sum.dfn = ⦇[0, plus]⦈ʳ`）；`Elab.build` 在 target 有 universe 时
+            每个 row 的定义（`length.dfn = ⦇[0, π₁ succ]⦈`，`sum.dfn = ⦇[0, plus]⦈ʳ`，S4g 起为左折叠 `⦇[0, plus]⦈`）；`Elab.build` 在 target 有 universe 时
             构建定义，否则用融合 row（`long` 上 `rowOK_sum`/`Tab.sum_holds` 不动）。a9998a7 的 `row ≫ U` 已删。附带改动：
             `elabE`/`elabArgs` 变 `partial`；`foldParts.base` 对 source = target 同一未解对象的 base 不再设成 `1`。
             新测试 `sumFold`（手算）：`M = -3…3` 的 `[-3,3,3] sum` 无结果，`P = 1…5` 的 `length = 𝟘`。已有固定值全部不变，
