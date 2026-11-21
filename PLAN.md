@@ -56,6 +56,8 @@
   - date 字面量写作 q 的 `2024.01.15`，新 token（实现：分支 `datelit`，`Elab.qForm`；值为 1970-01-01 起的天数）。
   - 浮点 `sum`/`sums` 按从左到右求和（q 的顺序，与 `sums` 前缀和一致）；整数上右折叠定义不变，浮点的含义写为左折叠。
   - cast 逐值偏：没有像的值没有行，不报错。
+- 文本字面量 `"…"`（分支 `txtlit`）：`[C]` 上字节的数组，`Tup.ofText`；未写类型的检查里字面量的对象由其上的数值运算定
+  （`Elab.settleLit`），`where` 表按输入的声明类型读（`Expr.lit` 的 `ty`）。测试 `Rel/Lang/TestDateLit.lean`。
 
 ## 0. 每一步都遵守的约定
 
@@ -279,6 +281,14 @@ Diff table 的「状态」列：✅ 后面是完成它的步骤；🔄 是部分
   （`List (USize × Enc)`）。可空列 `V+1` 存为 tag(`u1`) + idx + l + r，空字段即 null，写侧把 null 写成空字段；某个 atom
   能印成空文本时在 elaboration 拒绝该列。文本列 `[C]` 存为 lo/hi + 一个扁平字节 payload，引号规则同其余字段。读写都按块，
   不整列解码；往返定律改为按行（`fieldsOf`）成立，布局不唯一。`sym` 仍拒绝（等步骤 6）。见 `/data/tmp/io/i8b-notes.md`。
+  IO-out ✅（分支 `io-out`，dataframe 请求 1121 第 1、3、6 条）：CSV 的列按对象结构展开（`Expand.csvLeaves`）：schema 每字段
+  一列，积的因子各自展开、具名因子以其名为前缀（`Trade×(Quote+1)` → `Trade.sym` … `Quote.sym` …），`S+1` 是 `S` 每列一个
+  可空列；extern 不变，`Table.toCsv`/`ofCsv` 把和的 tag/idx/null 部分按列复制、读回时核对各列 tag 相同（部分为空的行报错，
+  指出行与两列）。key 为位置当且仅当 key 对象是存为 `.long` 的数对象，其它 key（`obj D : date`、`obj F : f64`）是 key 列；
+  旧的“the key is positions … declare the key an object stored i64”拒绝不再可达，已删。对象在消息里按程序写法打印
+  （`OTy.exp` 经 `nameShown`：`Rel.Programs.prelude.«1»` → `1`）。第 6 条不是缺陷：`relk.o` 已按 `pkg.dir / "crate"`，
+  那行 “Compiling relk (/home/dh/repo/rel/crate)” 是 Lake 重放从 main 复制来的 `.lake` trace 里的日志。见
+  `/data/tmp/typedbase/ioout-notes.md`。
   I7 ✅（分支 `io-i7`）：`qlean_csv_write`（列入 `RELIO.txt`），`@[extern]` 在 `Db.csvWrite` 上，body 即 `rawAll` + `csvText`；按 1024 行一块读编码列、逐行格式化、临时文件 rename；写侧 case 表 `decide +kernel`，extern 与 body 及读回在全部用例上一致。选择记在 `/data/tmp/io/i7-notes.md`。
 - ✅ D.11 表层语法（`schema S = {k : K, v : N}`、`col S "v"`）已合并（da636a9）；`Schema` 层此前已合并（5ab6d2e，master 0fb9879，`Rel/Lang/Schema.lean`、`TestSchema.lean`）；余下：TestFrame 的
   frame 按 `Schema` 索引（随 D.9）。frame 的 schema 进入类型（owner 经 dataframe 会话决定，选 wrapper，不加 `Obj` constructor）：
@@ -353,6 +363,21 @@ Diff table 的「状态」列：✅ 后面是完成它的步骤；🔄 是部分
   变量的行在 `Prim.num` 中声明它（`length`、`sum`、`positions`、`asc` 的 `ℕ`，`sums` 的 `ℕ` 与 `V`），在其它 atom 上按名
   报错；常量不泛化的对象变量在 `callTm` 中先检查，`cumSum(f)`（f64）不再报 internal。未做：float 上的 `sum`/`sums`
   （右折叠与逐块扫描在 float 上结果不同，需裁定求和顺序）、`sums` 的位置对象为任意有序 atom、行 `sqrt`。
+  S4c/S4d（分支 `tb-s4d`）：`sums` 的位置在每个以整数存储的有序 atom 上运行（`QAtomicType.intOrd`、`Prim.ord`、
+  `leAt t`、`Tab.sums_den`），f32/f64/sym 位置按名报错；`aj` 在 `date` 时间列上运行（`TestFrameTyped.ajDateT`、
+  `sumsTimeT` 钉住手算的行）。float 的 `sum`/`sums`（owner 裁定：自左向右）未做：f64 可由一次 `kscan .fadd` 精确算出，
+  f32 不能——`stepAt .f32` 每步舍入到 f32，而 `kscan` 每行只折一个 `Op`，在 f64 上累加再舍入一次结果不同
+  （2^24 + 1 + 1）；需 owner 裁定：加 `Op`、改 f32 的含义、或 f32 仍报错。库调用 `cumSum(f)`、`sumsBy(g, f)` 在 f64 上
+  已是具名报错，不再是 internal。
+  S4e/S4f（分支 `tb-s4e`、`tb-s4f`，owner 裁定：float 求和自左向右，q 的顺序；f32 按名报错并给出 `$` 到 f64 的提示）：
+  `sums` 的值对象为 i64 或 f64（`sumAtoms`）。`Tab.sumsOn` 对值 atom 泛型：f64 上一次分段 `kscan .fadd`（种子 `+0`），
+  `W' = fto W`，`W' ≠ W` 或 NaN 为坏步，`−0` 报错，分段 `kscan .or` 传播后 `keep`。`sumsDen`/`sumsAt K P V` 泛型；
+  定律 `stepF_word`、`sumsF_fold`、`sumsF_holds`、`sums_den`（无 sorry）。测试 `TestFrameTyped.sumsFloatT`（手算
+  `(1, 1e16, −1e16) → (1, 1e16, 0)`）、`sumsF32T`，`TestFrameStat` 的 f64 `cumSum`/`sumsBy`。未做：f64 `sum`（格），
+  `sumFloatT` 仍钉住其报错；计划：`RowCode.sum` 为 `(.arr σ₁, σ₁)`，`sumAt` 在 i64 为原右折叠、在 f64 为左折叠
+  `foldDen (· = ofBits 0) (stepAt .f64 add)`；`Tab.sum` 的 f64 分支与 `sumsOn` 共用同一 f64 尾部（EXPAND 后以每格首元素
+  为段标做分段 `kscan .fadd`，`kscatter .or` 得坏格，读每格末元素的 `W'`），需证 `Tab.sum` f64 的 holds 定理（同
+  `RepTabDiv.Tab.sum_holds` 的形状）；`DfnCut.sum` 仍只在 i64。
 - ⬜ S5 float 上的 `Obj.key = ordCode`；`key_ordCode`、`ascBad`、float 上的 `LamLaw`。
 - 🟡 S6 行 `$`（分支 `tb-s6`，owner 裁定 J）：`x $ F` 与 `QAtomicType.embed s t` 的图复合（`castDen`），部分映射、不舍入；
   允许的对由 `castOK` 从两个 atom 的格式读出（加宽、整数 → 浮点）；有损方向在 elaboration 报错。`Tab.cast`（分支
@@ -389,6 +414,8 @@ Diff table 的「状态」列：✅ 后面是完成它的步骤；🔄 是部分
     `ne nulWord`，一趟，无 `colConst`）；`fmapCols` 一趟。`Tab.unary`/`Tab.cast` 在 `keep` 后不再 `canon`
     （`keep_map_holds`）。native plan 的 `scanB` 读 `Option`，map 不再造常量 `1` 列。未完：一元行 f32/f64 → f64、
     `floor` → i64（见 `tmp/handoff.md`）。
+  - 🟡 float `sum`/`sums`：`mean`、float `describe` 需要它。`sums` 取 i64 或 f64 值（S4e/S4f），f32 按名报错；
+    f64 `sum`（格）未做。
 - ⬜ S9 文档：architecture §1、§4.3，dataframe F4，PLAN（随各步）。
 
 ### P0 baseline — 1/1

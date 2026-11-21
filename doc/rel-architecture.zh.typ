@@ -136,11 +136,18 @@ compile η t : {r : Rel A B // rep r = ⟦t⟧ρ}       -- 方案 A：规格在�
 - 前端：`Parse` → `Elab`（得到 `Tm`）→ `Expand`（`rel_program`，elaboration 时编号 `share`、产出代码）。
 - 语句 `input x : A ⟶ B from "路径"` / `output x to "路径"`（后接 `csv` 为 CSV，否则为 mmap 表目录；路径就是语句里的字面量）
   不是 `Tm` 的构造子：`input` 声明一个只有类型的名字，是后续语句里程序层的 `var`；`output` 指名一个定义或 `input`。下表「绑定 / 复用」一行不变。
+  key 是位置（不落盘）当且仅当 key 对象是存为 `.long` 的数对象；其它 key 对象都是 key 列。CSV 的列按对象结构展开，
+  `S+1` 是 `S` 每列一个可空列（`dataframe-design` F6 的落盘一条）。
 - 字面量 `{(a,b),…}` 里的一个词按它所在对象的 atom 读成存储字（`Elab.wordAt`）：整数 `3` `-3`；浮点 `2.5` `1e-3`
   （按 Lean 的浮点字面量读）；`date` 上也可写 q 的日期 `2024.01.15`，`datetime` 上写 q 的时间
   `2024.01.15D12:30:00.5`（小数 1–9 位）。日期、时间是一个词（中间无空格），值是 1970-01-01 起的天数、纳秒数（公历外推，
   年份 0001–9999），由 CSV 的读法 `Db.Csv.ymd`、`Db.Csv.stamp` 以 `.` 为日期分隔符读出（`Elab.qForm`）。词不在该 atom
   里（不存在的日子如 `2024.02.30`、超出 atom 范围、写在别的 atom 的对象上）时 elaboration 报错，写出这个词、对象和 atom。
+- 文本 `"TK, main"` 是 Lean 的字符串字面量（转义按 Lean：`\"` `\\` `\n` `\t` `\xHH` 等），即它的 UTF-8 字节组成的数组：
+  每个字节是 `char` 上的一个词（q 的写法 `"a"`、`"\ooo"`，`Tup.ofText`、`Elab.qForm`），所以只在元素对象是 `char` 的
+  `[C]` 上成立，不是另一种机制。
+- 字面量的对象：唯一持有它的词的已声明对象；多个对象都持有时，取其中每个作用在该位置上的数值运算（行的 `num`、`succ`、
+  算术、`≤`、`<`）都接受的那一个（`Elab.settleLit`，`Pre.nums`），检查的两边一起定。`where` 里输入的表按该输入声明的类型读。
 
 #tbl(c-syn, (auto, 1fr), ([组], [构造子]),
   [allegory], [`id` `comp` `conv` `meet` `dom` `ran`],
@@ -336,7 +343,8 @@ atom 的位宽、符号、指数和尾数位读出，不逐对列出），另加
     `scan` 前缀和得新格；拒绝条件同 `cat`],
   [`sum`（`⦇0, +⦈ʳ`）], [格界 → EXPAND → `gather` 元素 `v` → `scan` 标每格末元素 → 反向分段 `scan(add)` 得后缀和
     `W` → `scan` 测溢出（`v` 与 `W − v` 同号、`W` 异号）或 null `−2^63` → `scatter(or)` 得坏格、`scatter(add)`
-    得每格回绕总和 → where 留无坏元素的格（坏格不出现在结果中，不报错）；`n·m + n + m ≥ 2^63` 拒绝。
+    得每格回绕总和 → where 留无坏元素的格（坏格不出现在结果中，不报错）；`n·m + n + m ≥ 2^63` 拒绝。只在 i64 上；
+    f64（与 `sums` 同一自左向右的 `scan(fadd)`）未做，按名报错。
     `foldr` 的融合形式，`⟦sum 行⟧ = ⟦定义⟧` 未证。融合行只用在没有 universe 的对象（`long`）上；target 有 universe
     （声明的有限对象，或泛型常量里的数变量）时 elaborator 构建定义本身（row 表的 `Prim.dfn`：`sum` 是 `⦇[0, plus]⦈ʳ`，
     `length` 是 `⦇[0, π₁ succ]⦈`），所以每一步都留在对象内：`−3…3` 上 `[−3,3,3] sum` 无结果（中间和 6），`1…5` 上
@@ -344,7 +352,10 @@ atom 的位宽、符号、指数和尾数位读出，不逐对列出），另加
   [`sums`（q 的 `sums`，`x : κ×ν ⟶ γ` ↦ `κ×ν ⟶ γ`）], [`canon(x)` → 全 key 列 `seen`（组数少于行数即 `x` 不简单，
     报错并给出该位置）→ `κ` 列 `seen` 得每个 key 的首行 → `scatter(last)` 得段标 `seg` → 分段 `scan(add)`（种子 0）得
     前缀和 `W` → `scan` 测溢出（`v` 与 `W − v` 同号、`W` 异号）或 null `−2^63` → 分段 `scan(or)` 把坏步传到该 key
-    之后各行 → where 留无坏步的行（同 `sum`，不报错）。不排序 `canon` 之外的东西、不回置换。含义是组合
+    之后各行 → where 留无坏步的行（同 `sum`，不报错）。值对象为 i64 或 f64（`sumAtoms`）：f64 上同一段标做分段
+    `scan(fadd)`（种子 `+0`，自左向右，q 的顺序）得 `W`，`scan(fto)` 得 `W'`，`W' ≠ W` 或 `W' = 2^63`（NaN）为坏步，
+    同样分段 `scan(or)` 传播；`W'` 既非 `W` 也非 `2^63`（`−0`）报错。f32 按名报错并提示先 `$` 到 f64
+    （`stepAt .f32` 每步舍入到 f32，一次 `kscan` 不能算）。不排序 `canon` 之外的东西、不回置换。含义是组合
     `agg(dom(x) (𝟙 × ≥) dom(x), F(x) ⦇[0, plus]⦈)`（左折叠，`rowDens` 即此组合），本行是它的融合形式（定理
     `Tab.sums_holds`，无前提，故 `rowsProved` 条目不读 `LamLaw`）。`Prim.dfn` 同 `asc`：待 `dfn` 能读行的关系参数],
   [`$`（`x $ F`，`x : A ⟶ N` ↦ `A ⟶ F`，只在 `castOK N F` 的原子对之间）], [`scan` map（`Op.cast s t`，在编码列上）：

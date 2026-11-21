@@ -77,7 +77,7 @@ rel_program thm where
 #guard (thm.filterMap fun | .«theorem» _ n _ _ _ _ _ _ ss => some (n, ss.length) | _ => none) ==
   [("unit", 0), ("good", 2), ("le", 2)]
 
-/-- error: line 85, col 7: theorem `t`: this step x is Rel.Lang.EmbedTest.thm.K ⟶ Rel.Lang.EmbedTest.thm.N, the statement's two is Rel.Lang.EmbedTest.thm.N ⟶ Rel.Lang.EmbedTest.thm.N -/
+/-- error: line 85, col 7: theorem `t`: this step x is K ⟶ N, the statement's two is N ⟶ N -/
 #guard_msgs in
 open Rel.Programs.prelude thm in
 rel_program thmType where

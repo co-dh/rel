@@ -28,6 +28,10 @@ rel_program frameStatT where
     check count(f) $ F = {(∗,3.0)}
     -- groups A (rows 0, 2) and B (row 1): 1.5 + 2 = 3.5, 0.25
     check aggregate(π₁, F(x π₂) ⦇[{(∗,0)}, plus]⦈ʳ, x) = {(0,(A,3.5)),(1,(B,0.25))}
+    -- prefix sums left to right: 1.5, 1.5 + 0.25 = 1.75, 1.75 + 2 = 3.75; per group A (rows 0, 2): 1.5, 3.5; B: 0.25
+    check cumSum(f) = {(0,1.5),(1,1.75),(2,3.75)}
+    gk : N ⟶ K ≜ {(0,A),(1,B),(2,A)}
+    check sumsBy(gk, f) = {(0,1.5),(1,0.25),(2,3.5)}
 
     -- an integer column: q's `avg` of longs is a float
     t : N ⟶ N ≜ {(0,1),(1,4),(2,7)}
@@ -75,7 +79,7 @@ rel_program frameStatT where
 
 -- `avg` of an `f64` column: its entry cast to `Z` keeps values, and prim `sum`, which would take `F` instead, runs on
 -- `i64` only (the float summation order is undecided, PLAN S4)
-/-- error: line 84, col 5: $ from Rel.Programs.frameStat.F (f64) to Rel.Programs.frameStat.Z (i64): not every f64 value is a i64 value, and $ keeps a number's value -/
+/-- error: line 88, col 5: $ from F (f64) to Z (i64): not every f64 value is a i64 value, and $ keeps a number's value -/
 #guard_msgs in
 open Rel.Programs.prelude Rel.Programs.frame Rel.Programs.frameGroup Rel.Programs.frameStat in
 rel_program avgFloatT where

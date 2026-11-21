@@ -93,7 +93,7 @@ def emptyErr : String := "the object of [] cannot be read off an empty array: wr
 #eval errAt (arrE ++ "print {(∗,[[]] [])}\n") 2 emptyErr (col := some 7)
 #eval errAt (arrE ++ "print {(∗,[])} ∪ {(∗,[])}\n") 2 emptyErr (col := some 7)
 -- an untyped definition names the type its body has, the object left open a variable
-#eval errAt (arrE ++ "e ≜ {(∗,[])}\n") 2 "`e` has no type; it is e : Rel.Programs.prelude.«1» ⟶ [α]"
+#eval errAt (arrE ++ "e ≜ {(∗,[])}\n") 2 "`e` has no type; it is e : 1 ⟶ [α]"
 -- the context determines it (§c): the other side of a check, the other operand, the declared type, the
 -- composition, the pair
 open Rel.Programs.prelude in
