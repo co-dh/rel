@@ -29,6 +29,7 @@ import Rel.Lang.TestCircuit
 import Rel.Lang.TestDemand
 import Rel.Lang.TestFloatObj
 import Rel.Lang.TestCast
+import Rel.Lang.TestDateLit
 import Rel.Lang.TestFloatArith
 import Rel.Lang.TestIO
 import Rel.Lang.TestTopProd
