@@ -416,6 +416,10 @@ Diff table 的「状态」列：✅ 后面是完成它的步骤；🔄 是部分
     非泛型变量非 `.long` 对象的调用，都在调用处对象上建展开（单态化，代码生成前实例化，`rowOK` 只见具体 atom）。
     `mkDef` 在使用解出变量后先跑 `numCheck`，错误写出调用、变量与对象。库可以对数对象泛型，不必自己声明 `F`/`Z`/`D`。
     测试 `TestGenericNum`（`avg` 在 f64 上运行、在 i64 上于调用处报错；`daysBetween` 在用户的 `date` 对象上运行）。
+  - ✅ 体里开放的对象（dataframe 请求 9，分支 `len9`）：定义的体留下的、类型与参数够不到的对象（`length $ F` 的 ℕ）
+    是该定义的隐式对象变量 `n#i`（`Elab.generalise`，let 泛化），每次使用都在 `.long` 上，数检查照常；`check` 里
+    仍报错。测试 `TestGenericNum.lenT`（`length $ F`）、`wsumT`（`positions(p) sum $ ψ` 的 ℕ）、
+    `openCheckT`（`check` 里仍报错）。
 - ⬜ S9 文档：architecture §1、§4.3，dataframe F4，PLAN（随各步）。
 
 ### P0 baseline — 1/1

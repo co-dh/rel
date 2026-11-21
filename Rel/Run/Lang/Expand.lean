@@ -691,9 +691,11 @@ def walk (prog : Program) (env : Env) (wrap : String → Def → Def) (own : Lea
       | [], .rel e, ty =>
         let rigid := match ty with | some (a, b) => (a.vars ++ b.vars).map fun v => (v, OTy.base v) | none => []
         let (r, st) ← (do
+          let k := (← Lean.getMCtx).mvarCounter
           let r ← elabE env none e
           if let some ty := ty then let (_, s, t) := r.plain; declared env p n rigid ty s t
           settleOpen env p [r.plain.1]
+          let (q, s, t) := r.plain; generalise n p k [s, t] q
           pure r).run { specs, objs := env.objs }
         specs := st.specs
         let mc ← Lean.getMCtx; let (q, s, t) := r.plain

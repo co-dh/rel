@@ -1567,6 +1567,18 @@ def OTy.bases : OTy → List String
   | .arr a => a.bases
   | .mv _ => []
 
+/-- Let-generalisation of the body `x` of the definition `n`: each object it made (a metavariable numbered from `k`
+    on) that is still open and that neither a use nor the result reaches (`keep`) becomes the object variable `n#i`.
+    No use determines it, so every use has it at the one object a constant builds a variable at, `.long` (`objOf`
+    of a name no declaration holds), and its number checks run there (`numObj`, `numCheck`). A literal's or a
+    `nil`'s open object is left to `settleOpen`; a `check` is no definition, so an object open there is refused. -/
+def generalise (n : String) (p : Pos) (k : Nat) (keep : List OTy) (x : Pre) : M Unit := do
+  let mc ← Lean.getMCtx
+  let held := (keep ++ x.nilSrcs ++ x.lits.flatMap fun (_, a, b, _) => [a, b]).flatMap fun o => (zonk mc o).mvs
+  let own := mc.decls.toList.filter fun (m, d) =>
+    d.index ≥ k && !mc.eAssignment.contains m && d.type == .const ``Obj [] && !held.contains m
+  (own.mergeSort (·.2.index ≤ ·.2.index)).zipIdx.forM fun ((m, _), i) => unify p "" (.mv m) (.base s!"{n}#{i}")
+
 /-- The letters an inferred type names its open objects by: `α`…`ω` without `ο` and `π`, which read as `o`, `π₁`. -/
 def varNames : List String := ("αβγδεζηθικλμνξρστυφχψω".toList).map Char.toString
 
@@ -1666,6 +1678,7 @@ def mkDef (env : Env) (n : String) (dp : Pos) (ps : List Param) (body : Body) (t
     Def where
   arity := ps.length
   apply p args := do
+    let k := (← Lean.getMCtx).mvarCounter
     -- one instantiation of the object variables per use, shared by the parameters left to right (§e)
     let (bs, vs) ← (ps.zip args).foldlM (fun (bs, vs) (P, a) => do
       let (b, j, vs) ← bind env p P a vs; pure (bs ++ [(b, j)], vs)) ([], [])
@@ -1701,6 +1714,8 @@ def mkDef (env : Env) (n : String) (dp : Pos) (ps : List Param) (body : Body) (t
       let S ← famOf I p (← elabE env' (some I) f)
       let (d, _) ← lSame p Pre.diff R S
       pure (.rel (.diff (.id I) (.dom d)) I I)
+    generalise n p k (vs.map (·.2) ++ (r :: args).flatMap fun | .rel _ s t => [s, t] | .fam _ i s t => [i, s, t])
+      r.plain.1
     -- the number checks a generic body leaves to its uses (`ObjInfo.deferred`), on this expansion once the use has
     -- solved its variables, so the error names the use and each variable's object; `build` runs them again
     let mc ← Lean.getMCtx

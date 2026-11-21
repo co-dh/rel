@@ -56,4 +56,44 @@ rel_program genNumNT where
     k : 1 ⟶ N ≜ {(∗,3)}
     check avg(k, k) = {(∗,1)}
 
+-- an object the body leaves open and its type does not show (dataframe request 9): `length`'s ℕ in `lenF`, the ℕ
+-- of `positions` and `sum` in the generic `wsum`, each the definition's implicit object variable at `.long`
+-- (`Elab.generalise`)
+open Rel.Programs.prelude in
+rel_program lenT where
+    obj K = {A,B,C}
+    obj N
+    obj F : f64
+    lenF : [K] ⟶ F ≜ length $ F
+    x : N ⟶ [K] ≜ {(0,[A B C]),(1,[A])}
+    check x lenF = {(0,3.0),(1,1.0)}
+
+open Rel.Programs.prelude in
+rel_program wsumG where
+    wsum(p : β ⟶ β) : [β] ⟶ ψ ≜ positions(p) sum $ ψ
+
+open Rel.Programs.prelude wsumG in
+rel_program wsumT where
+    obj K = {A,B,C}
+    obj N
+    obj F : f64
+    sel : K ⟶ K ≜ {(B,B),(C,C)}
+    x : N ⟶ [K] ≜ {(0,[A B C]),(1,[C A C])}
+    w : N ⟶ F ≜ x wsum(sel)
+    check w = {(0,3.0),(1,2.0)}
+
+-- by hand: [A B C] has 3 elements, [A] one; the B and C of [A B C] are at 1, 2 (sum 3), of [C A C] at 0, 2 (sum 2)
+#guard lenT.failures.map toString == []
+#guard wsumT.failures.map toString == []
+
+-- a `check` is no definition: an object open in it is still refused
+/-- error: line 97, col 5: an object is not determined; write the constant's objects, as in ⊤(A,B) or 𝟙(A) -/
+#guard_msgs in
+open Rel.Programs.prelude in
+rel_program openCheckT where
+    obj K = {A,B,C}
+    obj F : f64
+    x : 1 ⟶ [K] ≜ {(∗,[A B C])}
+    check x length $ F = {(∗,3.0)}
+
 end Rel.Lang.TestGenericNum
