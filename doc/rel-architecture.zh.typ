@@ -336,7 +336,8 @@ atom 的位宽、符号、指数和尾数位读出，不逐对列出），另加
     `scan` 前缀和得新格；拒绝条件同 `cat`],
   [`sum`（`⦇0, +⦈ʳ`）], [格界 → EXPAND → `gather` 元素 `v` → `scan` 标每格末元素 → 反向分段 `scan(add)` 得后缀和
     `W` → `scan` 测溢出（`v` 与 `W − v` 同号、`W` 异号）或 null `−2^63` → `scatter(or)` 得坏格、`scatter(add)`
-    得每格回绕总和 → where 留无坏元素的格（坏格不出现在结果中，不报错）；`n·m + n + m ≥ 2^63` 拒绝。
+    得每格回绕总和 → where 留无坏元素的格（坏格不出现在结果中，不报错）；`n·m + n + m ≥ 2^63` 拒绝。只在 i64 上；
+    f64（与 `sums` 同一自左向右的 `scan(fadd)`）未做，按名报错。
     `foldr` 的融合形式，`⟦sum 行⟧ = ⟦定义⟧` 未证。融合行只用在没有 universe 的对象（`long`）上；target 有 universe
     （声明的有限对象，或泛型常量里的数变量）时 elaborator 构建定义本身（row 表的 `Prim.dfn`：`sum` 是 `⦇[0, plus]⦈ʳ`，
     `length` 是 `⦇[0, π₁ succ]⦈`），所以每一步都留在对象内：`−3…3` 上 `[−3,3,3] sum` 无结果（中间和 6），`1…5` 上
@@ -344,7 +345,10 @@ atom 的位宽、符号、指数和尾数位读出，不逐对列出），另加
   [`sums`（q 的 `sums`，`x : κ×ν ⟶ γ` ↦ `κ×ν ⟶ γ`）], [`canon(x)` → 全 key 列 `seen`（组数少于行数即 `x` 不简单，
     报错并给出该位置）→ `κ` 列 `seen` 得每个 key 的首行 → `scatter(last)` 得段标 `seg` → 分段 `scan(add)`（种子 0）得
     前缀和 `W` → `scan` 测溢出（`v` 与 `W − v` 同号、`W` 异号）或 null `−2^63` → 分段 `scan(or)` 把坏步传到该 key
-    之后各行 → where 留无坏步的行（同 `sum`，不报错）。不排序 `canon` 之外的东西、不回置换。含义是组合
+    之后各行 → where 留无坏步的行（同 `sum`，不报错）。值对象为 i64 或 f64（`sumAtoms`）：f64 上同一段标做分段
+    `scan(fadd)`（种子 `+0`，自左向右，q 的顺序）得 `W`，`scan(fto)` 得 `W'`，`W' ≠ W` 或 `W' = 2^63`（NaN）为坏步，
+    同样分段 `scan(or)` 传播；`W'` 既非 `W` 也非 `2^63`（`−0`）报错。f32 按名报错并提示先 `$` 到 f64
+    （`stepAt .f32` 每步舍入到 f32，一次 `kscan` 不能算）。不排序 `canon` 之外的东西、不回置换。含义是组合
     `agg(dom(x) (𝟙 × ≥) dom(x), F(x) ⦇[0, plus]⦈)`（左折叠，`rowDens` 即此组合），本行是它的融合形式（定理
     `Tab.sums_holds`，无前提，故 `rowsProved` 条目不读 `LamLaw`）。`Prim.dfn` 同 `asc`：待 `dfn` 能读行的关系参数],
   [`$`（`x $ F`，`x : A ⟶ N` ↦ `A ⟶ F`，只在 `castOK N F` 的原子对之间）], [`scan` map（`Op.cast s t`，在编码列上）：

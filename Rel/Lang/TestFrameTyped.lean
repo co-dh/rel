@@ -137,11 +137,12 @@ rel_program sumsFloatT where
     -- 1e16 − 1e16 = 0, where the exact sum is 1; B: −1.5, then −1.5 + 1.5 = +0
     x : K×N ⟶ G ≜ {((A,0),1.0),((A,1),1e16),((A,2),-1e16),((B,0),-1.5),((B,1),1.5)}
     check sums(x) = {((A,0),1.0),((A,1),1e16),((A,2),0.0),((B,0),-1.5),((B,1),0.0)}
-    -- a NaN value (`0 % 0`, q's null word) adds nothing, as q's `sums` skips a null: 1, 1, 1 + 3 = 4
+    -- `0 % 0` (NaN) is no row, so position 1 has no value and no sum: 1, then 1 + 3 = 4 at position 2
     z : N ⟶ G ≜ {(0,0.0)}
+    nn : N ⟶ G ≜ ⟨z, z⟩%
     p : K×N ⟶ N ≜ {((A,1),0)}
-    y : K×N ⟶ G ≜ {((A,0),1.0),((A,2),3.0)} ∪ p ⟨z, z⟩%
-    check sums(y) = {((A,0),1.0),((A,1),1.0),((A,2),4.0)}
+    y : K×N ⟶ G ≜ {((A,0),1.0),((A,2),3.0)} ∪ (p nn)
+    check sums(y) = {((A,0),1.0),((A,2),4.0)}
     -- a −0 value: +0 + −0 = +0
     m : K×N ⟶ G ≜ {((A,0),-0.0)}
     check sums(m) = {((A,0),0.0)}
@@ -149,7 +150,7 @@ rel_program sumsFloatT where
 #guard sumsFloatT.failures.map toString == []
 
 -- `sums` at `f32` values: refused by name, with the cast to `f64` that runs it
-/-- error: line 159, col 5: sums on H: H is an object of f32, and sums runs on objects of i64, f64 only; cast first, `x $ F` with `F` an object of f64 -/
+/-- error: line 160, col 5: sums on H: H is an object of f32, and sums runs on objects of i64, f64 only; cast first, `x $ F` with `F` an object of f64 -/
 #guard_msgs in
 rel_program sumsF32T where
     obj K = {A}

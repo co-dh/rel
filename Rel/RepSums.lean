@@ -476,11 +476,11 @@ theorem ordAt_int {t : QAtomicType} (h : t.intOrd = true) : OrdAt t :=
 theorem OrdAt.ascOrd {t : QAtomicType} (h : OrdAt t) : ∃ f, ascOrd t = some f := by
   cases t
   case u1 => exact absurd ((h.1 false true).1 (by decide)) (by simp [ltAt, iordAt, QAtomicType.ordNum,
-    QAtomicType.numFmt?, QAtomicType.width])
+    QAtomicType.numFmt?])
   case sym => exact absurd ((h.1 "" "a").1 (by decide)) (by simp [ltAt, iordAt, QAtomicType.ordNum,
-    QAtomicType.numFmt?, QAtomicType.width])
+    QAtomicType.numFmt?])
   case general => exact absurd ((h.2 default default).2 (.inr rfl)) (by simp [leAt, iordAt, QAtomicType.ordNum,
-    QAtomicType.numFmt?, QAtomicType.width])
+    QAtomicType.numFmt?])
   all_goals exact ⟨_, rfl⟩
 
 end Lang
@@ -606,7 +606,7 @@ theorem canon_pos_lt {K : Obj} {t u : QAtomicType} {f : UInt64 → UInt64} (hf :
   have hv := (Arr.eq_of_codes x.key.2 hcs1).1
   obtain ⟨a, ha, hua, hga⟩ := Arr.get_raw_atom x.key.2 hv hg hs (sel i)
   obtain ⟨b, hb, hub, hgb⟩ := Arr.get_raw_atom x.key.2 hv hg hs (sel j)
-  simp only [ascKeys, ascKey, List.cons_append, List.singleton_append, lexLe, Array.getElem?_map, ha, hb,
+  simp only [ascKeys, ascKey, List.cons_append, lexLe, Array.getElem?_map, ha, hb,
     Option.map_some, Option.getD_some, hf, Bool.or_eq_true, decide_eq_true_eq, Bool.and_eq_true,
     beq_iff_eq] at hlex
   obtain ⟨⟨w, fl, sg⟩, hL⟩ : ∃ L, ascLayout t = some L := by

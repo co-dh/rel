@@ -843,7 +843,7 @@ theorem rowOK_sums : RowOK "sums" :=
     simp only [Sem.one]
     split
     · exact GenK.ofRel_sound hss fun _ _ h hr => by subst hr; exact Tab.sums_den h
-    · rename_i h; exact absurd ⟨rfl, trivial⟩ h
+    · rename_i h; exact absurd ⟨rfl, rfl⟩ h
 
 theorem rowOK_F : RowOK "F" := rowOK_args (c := RowCode.map) rfl rfl fun _ σ xs _ _ _ _ hn _ hv => by
   have h1 : rowArity "F" = 1 := by decide

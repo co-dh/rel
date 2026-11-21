@@ -359,6 +359,15 @@ Diff table 的「状态」列：✅ 后面是完成它的步骤；🔄 是部分
   f32 不能——`stepAt .f32` 每步舍入到 f32，而 `kscan` 每行只折一个 `Op`，在 f64 上累加再舍入一次结果不同
   （2^24 + 1 + 1）；需 owner 裁定：加 `Op`、改 f32 的含义、或 f32 仍报错。库调用 `cumSum(f)`、`sumsBy(g, f)` 在 f64 上
   已是具名报错，不再是 internal。
+  S4e/S4f（分支 `tb-s4e`、`tb-s4f`，owner 裁定：float 求和自左向右，q 的顺序；f32 按名报错并给出 `$` 到 f64 的提示）：
+  `sums` 的值对象为 i64 或 f64（`sumAtoms`）。`Tab.sumsOn` 对值 atom 泛型：f64 上一次分段 `kscan .fadd`（种子 `+0`），
+  `W' = fto W`，`W' ≠ W` 或 NaN 为坏步，`−0` 报错，分段 `kscan .or` 传播后 `keep`。`sumsDen`/`sumsAt K P V` 泛型；
+  定律 `stepF_word`、`sumsF_fold`、`sumsF_holds`、`sums_den`（无 sorry）。测试 `TestFrameTyped.sumsFloatT`（手算
+  `(1, 1e16, −1e16) → (1, 1e16, 0)`）、`sumsF32T`，`TestFrameStat` 的 f64 `cumSum`/`sumsBy`。未做：f64 `sum`（格），
+  `sumFloatT` 仍钉住其报错；计划：`RowCode.sum` 为 `(.arr σ₁, σ₁)`，`sumAt` 在 i64 为原右折叠、在 f64 为左折叠
+  `foldDen (· = ofBits 0) (stepAt .f64 add)`；`Tab.sum` 的 f64 分支与 `sumsOn` 共用同一 f64 尾部（EXPAND 后以每格首元素
+  为段标做分段 `kscan .fadd`，`kscatter .or` 得坏格，读每格末元素的 `W'`），需证 `Tab.sum` f64 的 holds 定理（同
+  `RepTabDiv.Tab.sum_holds` 的形状）；`DfnCut.sum` 仍只在 i64。
 - ⬜ S5 float 上的 `Obj.key = ordCode`；`key_ordCode`、`ascBad`、float 上的 `LamLaw`。
 - 🟡 S6 行 `$`（分支 `tb-s6`，owner 裁定 J）：`x $ F` 与 `QAtomicType.embed s t` 的图复合（`castDen`），部分映射、不舍入；
   允许的对由 `castOK` 从两个 atom 的格式读出（加宽、整数 → 浮点）；有损方向在 elaboration 报错。`Tab.cast`（分支
@@ -389,7 +398,8 @@ Diff table 的「状态」列：✅ 后面是完成它的步骤；🔄 是部分
     `cast_holds` 由它导出。`kernRows` 的项是常量加其前置参数（`Tab.unary` 带行名）。`Prim.num` 改为对象变量 →
     允许的 atom 表（`intAtoms`、`floatAtoms`），整数对象上按名报错并给出 `$` 提示（`numObj`）。`floor` 在此为
     `F ⟶ F`（`Op.ffloor` 的值），不是 q 的 `floor`（q 回 long）。测试 `TestFloatArith.unaryT`、`sqrtIntT`。
-  - ⬜ float `sum`/`sums`：`mean`、float `describe` 需要它（S4，f32 待裁定）。
+  - 🟡 float `sum`/`sums`：`mean`、float `describe` 需要它。`sums` 取 i64 或 f64 值（S4e/S4f），f32 按名报错；
+    f64 `sum`（格）未做。
 - ⬜ S9 文档：architecture §1、§4.3，dataframe F4，PLAN（随各步）。
 
 ### P0 baseline — 1/1
